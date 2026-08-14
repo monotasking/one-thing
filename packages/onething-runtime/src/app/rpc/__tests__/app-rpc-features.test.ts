@@ -22,8 +22,11 @@ import { hasRpcDomain, resetRpcRegistryForTests } from '../registry.js'
  * C2 起这张表里有两种行：还没迁的 `rpc:<域>` 内联包装，和已经迁成真 feature
  * 的 `trajectory`（id 说的是**功能**不是域，注册的域仍然是 `sessionEvents`）。
  * 位置一格没动 —— 迁移不许重排装配顺序。
+ *
+ * C4 起有了第三种：`self-evolution` **一个域都不注册**（它注册的是三个会话
+ * 工具），所以域清单与 feature 清单从这一期起不再是同一张表。
  */
-const EXPECTED_FEATURES = [
+const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:usage', 'usage'],
   ['rpc:prompts', 'prompts'],
   ['rpc:goal', 'goal'],
@@ -37,6 +40,23 @@ const EXPECTED_FEATURES = [
   ['rpc:permission-grants', 'permissionGrants'],
 ] as const
 
+/**
+ * 名册全景 = 域 feature（顺序在前）+ 自进化（最后一格）。
+ *
+ * 自进化在这条路径上的注册项**是零**，而且这不是巧合也不是坏事：它的工具注册
+ * 面有一道「已经有 bash 的宿主才给」的门，而本文件刻意不装工具注册表（被测
+ * 对象是域册的可逆性，不是工具）。零注册的那一行仍然必须在场 —— 它证明
+ * 「装/拆/再装」这一趟连这个 feature 一起走完了。
+ */
+const EXPECTED_FEATURES = [
+  ...EXPECTED_DOMAIN_FEATURES.map(([id, domain]) => ({
+    id,
+    registrations: { rpcDomain: 1, disposer: 0 },
+    rpcDomains: [domain as string],
+  })),
+  { id: 'self-evolution', registrations: { rpcDomain: 0, disposer: 0 }, rpcDomains: [] },
+]
+
 describe('builtin RPC domains as features', () => {
   beforeEach(() => {
     resetFeaturesForTests()
@@ -46,12 +66,8 @@ describe('builtin RPC domains as features', () => {
   it('mounts every builtin domain, in assembly order', { timeout: 60_000 }, async () => {
     const dispose = await registerAppRpcDomains()
 
-    expect(dumpFeatures()).toEqual(EXPECTED_FEATURES.map(([id, domain]) => ({
-      id,
-      registrations: { rpcDomain: 1, disposer: 0 },
-      rpcDomains: [domain],
-    })))
-    for (const [, domain] of EXPECTED_FEATURES) expect(hasRpcDomain(domain)).toBe(true)
+    expect(dumpFeatures()).toEqual(EXPECTED_FEATURES)
+    for (const [, domain] of EXPECTED_DOMAIN_FEATURES) expect(hasRpcDomain(domain)).toBe(true)
 
     await dispose()
   })
@@ -61,12 +77,12 @@ describe('builtin RPC domains as features', () => {
     await first()
 
     expect(dumpFeatures()).toEqual([])
-    for (const [, domain] of EXPECTED_FEATURES) expect(hasRpcDomain(domain)).toBe(false)
+    for (const [, domain] of EXPECTED_DOMAIN_FEATURES) expect(hasRpcDomain(domain)).toBe(false)
 
     const second = await registerAppRpcDomains()
 
     expect(dumpFeatures()).toHaveLength(EXPECTED_FEATURES.length)
-    for (const [, domain] of EXPECTED_FEATURES) expect(hasRpcDomain(domain)).toBe(true)
+    for (const [, domain] of EXPECTED_DOMAIN_FEATURES) expect(hasRpcDomain(domain)).toBe(true)
 
     await second()
   })

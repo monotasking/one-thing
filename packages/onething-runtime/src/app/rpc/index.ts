@@ -32,6 +32,7 @@ import { promptsRouter } from '@shared/ipc/prompts.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 import { usageRouter } from '@shared/ipc/usage.js'
+import { selfEvolutionFeature } from '../features/builtin/self-evolution.js'
 import { trajectoryFeature } from '../features/builtin/trajectory.js'
 import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../features/index.js'
 import { agentsRpcHandlers } from './domains/agents.js'
@@ -70,6 +71,15 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 的 sandboxRoot / owner 判定，不再由 server 壳自己抄一份。
   { id: 'rpc:markdown', mount: ctx => { ctx.registerRpcDomain(markdownRouter, markdownRpcHandlers) } },
   { id: 'rpc:permission-grants', mount: ctx => { ctx.registerRpcDomain(permissionGrantsRouter, permissionGrantsRpcHandlers) } },
+  // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
+  // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
+  //
+  // 位置在**最后**且不可上移:它的工具注册面有一道「已经有 bash 的宿主才给」的
+  // 门(见该文件头),判据要在工具注册表装好之后才为真;而 `backend.ts` 的顺序
+  // 恰好是「三档工具注册 → registerAppRpcDomains」。放在末尾还有第二重意义:
+  // 卸载时它第一个被解绕,模型现场挂进来的那批动态 feature 因此在内置域拆掉
+  // **之前**就已经收干净(动态 feature 可能骑在这些域上)。
+  selfEvolutionFeature,
 ]
 
 /** Bind every builtin domain. Returns a disposer that unbinds all of them. */

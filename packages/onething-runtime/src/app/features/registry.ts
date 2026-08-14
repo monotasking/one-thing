@@ -22,7 +22,7 @@
  * import 零副作用：表在加载时是空的、根 Context 也还没生，只有显式
  * `mountFeature` 才会填。
  */
-import type { Fiber } from '@deepseek-ai/cordis'
+import type { EffectMeta, Fiber } from '@deepseek-ai/cordis'
 import { FeatureContextImpl, type FeatureContext, type FeatureDump } from './context.js'
 import { dropFeatureRootContextForTests, getFeatureRootContext } from './cordis-root.js'
 
@@ -134,6 +134,35 @@ export function dumpFeatures(): FeatureDump[] {
 /** 某个 feature 当前是否挂着。诊断与测试用。 */
 export function hasFeature(id: string): boolean {
   return mounted.has(id)
+}
+
+/** `dumpFeatureEffects()` 的一行:一个 feature 与它 fiber 上的 effect 标签树。 */
+export interface FeatureEffectDump {
+  id: string
+  /** cordis `Fiber.getEffects()` 的原样输出(`{ label, children }` 递归树)。 */
+  effects: EffectMeta[]
+}
+
+/**
+ * 每个 feature 的 cordis effect 标签树。**`dumpFeatures()` 的交叉验证面**,
+ * 不是它的替代(C0 §5.2 已钉死:账本准确性不为「纯 cordis」让路)。
+ *
+ * 两份 dump 的分工:`dumpFeatures()` 说的是「注册了几项、都是什么种类」——
+ * 那是适配层自己的账本,类型信息完整;这一份说的是「fiber 上现在还活着哪些
+ * effect」——那是 cordis 的真相,标签是字符串。**两份对不上,就是账本漏记或
+ * 有人绕过了适配层**,而这正是 C4 自省要看的东西:模型现场挂进来的 feature,
+ * 它的注册到底落在了哪。
+ *
+ * 拿不到 fiber 的行(plugin 的 apply 还没跑完)整行略过,与 `dumpFeatures()`
+ * 的同款处理 —— 半挂载的中间态不进诊断输出。
+ */
+export function dumpFeatureEffects(): FeatureEffectDump[] {
+  const dumps: FeatureEffectDump[] = []
+  for (const [id, record] of mounted) {
+    if (!record.fiber) continue
+    dumps.push({ id, effects: record.fiber.getEffects() })
+  }
+  return dumps
 }
 
 /**

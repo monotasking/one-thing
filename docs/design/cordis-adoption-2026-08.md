@@ -317,3 +317,195 @@ renderer 层模块求值即注册（没有装配序列，"import 到了就一定
 **清单条数基线**：9 条（G1–G9），其中 2 条已排期（G1→C3、G7→C5）、3 条明确拒绝（G2 / G4 / G5）、
 2 条暂缓（G3 待触发判据、G6 待第二个双半 feature）、1 条空结果（G8）、1 条自评（G9）。
 C3 每迁一个 feature 复核一次这张表，**递减曲线是可证伪判据**（§2 的 C3 验收门）。
+
+## 7. C4 第一档落地记录与差距清单 #2（2026-08-15）
+
+C4 = 把 C0 立起来的可逆注册基座**交到模型手里**：`feature_mount` / `feature_unmount` /
+`feature_inspect` 三个会话工具，让模型在一次对话里现场挂载、卸载、自省一件功能，免重启。
+对标 dsh 的 `cordis_define/run/stop/inspect` 四件套 —— **少一个 `define` 是有意的**：
+「写文件」这件事本仓已经有 write/edit 两个工具在干，再造第三个入口只会分叉。
+
+第一档只做**后端半**（无 UI）。UI 半是第二档，理由见下面 G12 对 G5 的复评。
+
+### 7.1 改了什么
+
+| 文件 | 改动 |
+|---|---|
+| `packages/onething-runtime/src/app/features/builtin/self-evolution.ts` | **新增**。一个 `FeatureDefinition`（id `self-evolution`），`mount` 里注册三个会话工具 + 一趟动态 feature 清扫器。 |
+| `packages/onething-runtime/src/app/features/registry.ts` | 新增 `dumpFeatureEffects()`：每个 feature 的 cordis `Fiber.getEffects()` 标签树。C0 §5.2 说 label「是 C4 自省的原料」，这里是那笔原料的提货口。 |
+| `packages/onething-runtime/src/app/features/index.ts` | 导出 `dumpFeatureEffects` / `FeatureEffectDump`。 |
+| `packages/onething-runtime/src/app/rpc/index.ts` | 名册 `BUILTIN_FEATURES` **末尾**加一行 `selfEvolutionFeature`。既有 11 行位置一格未动。 |
+| `packages/onething-runtime/src/app/features/__tests__/self-evolution.test.ts` | **新增**，15 条。 |
+| `packages/onething-runtime/src/app/rpc/__tests__/app-rpc-features.test.ts` | 名册快照跟着长一行；域清单与 feature 清单从本期起拆成两张（自进化一个域都不注册）。 |
+
+**自己也是 feature（吃自己狗粮）**。三个工具**不是**加进 `tools/builtin/index.ts` 那张表的第 25 个内置工具，
+而是一个 feature 的注册项。理由是 D1 那句质问的直接推论：自进化能力如果自己走特权路进内核，
+那它证明的就不是「feature 基座够用」，而是「基座之外还有一条更方便的路」。今天的自证有三条：
+它挂在名册里、`feature_inspect` 看得见自己（标 builtin）、卸载它能把三个工具一起摘干净（有用例钉）。
+
+**名册位置不可上移**（两重理由，都写在 `rpc/index.ts` 的注释里）：
+(a) 它的工具注册面有一道「已经有 bash 的宿主才给」的门，判据要在工具注册表装好之后才为真，
+而 `backend.ts` 的顺序恰好是「三档工具注册 → `registerAppRpcDomains`」；
+(b) 放末尾 = 卸载时**第一个**被解绕，模型现场挂进来的那批动态 feature 因此在内置域拆掉**之前**
+就已经收干净（动态 feature 可能骑在这些域上）。
+
+### 7.2 三条 cordis 语义地雷：第一次真的踩到（对照 §5.5.3 与 G9）
+
+G9 的自评说轨迹「太干净，三条一条没踩到」。本期是第一个**真的踩到**的 feature：
+
+| 地雷 | 本期 | 处方 |
+|---|---|---|
+| 1. 并行 + 吞错的 `_unload` | **踩到**。卸载有真实顺序契约：必须**先**收掉全部动态 feature，**再**注销三个工具；反过来会留下一批没有控制面、还在跑的东西。 | 原样执行 G8 给 C3 的建议：**不加新注册面**，整趟清扫收进**一个** `registerDisposer`（cordis 只在单个 effect 内部保证逆序 + 串行）；它在注册顺序上排最后，于是适配层的逆序解绕让它第一个跑。有正面用例。 |
+| 2. `apply` 抛错 = fiber FAILED | **踩到，且答案分两种**。本 feature 自身的 `mount` 继续用适配层接住的默认（首错原样抛给装配方）；但**动态 feature 的 mount 失败不走这条** —— 那是模型写的代码出错，不是接线 bug，由 `feature_mount` 接住翻成教学文本。一个模型写错的插件绝不该让宿主装配失败。 | 这是第一个「错误往哪走」要分两种情况回答的 feature。 |
+| 3. `ctx.effect()` 在 UNLOADING 期抛 `INACTIVE_EFFECT` | **没有真踩到，但预防性上了闩**：清扫一开始就把 `sealed` 置真，`feature_mount` 当场拒绝并给出教学文本。守的是「清扫已跑完、三个工具还没注销」那条窄缝。 | 如实记：这条仍**没有被真实场景检验过**，信号质量与 G9 同级。 |
+
+### 7.3 权限接法（D1 授信纪律在工具档的映射）
+
+挂载 = 执行任意代码，所以三条护栏，**没有一条是新机制**：
+
+1. **每挂一次问一次，且永不可记住**。`feature_mount` 的 `analyze()` 声明的 effect kind 是
+   **`capability_change`** —— core 的 `NEVER_GRANTABLE_TYPES` 里唯一的成员，所以「以后都允许」
+   这个选项在权限卡上根本不出现（`permission-ledger.ts` 已按同一判据不给授权行）。
+   挑这个 kind 不是凑数：它的定义原文是「Repointing something the system itself acts on …
+   it changes what the assistant can reach, so it is never silent and never grantable」，
+   而挂载一个 feature 正是**改变助手够得着什么**的那件事。
+   **本期没有新增 effect kind** —— 加一个 `feature_mount` kind 就是 D3 第一条禁止的「功能形状的洞」。
+   权限卡的措辞走 `preview.title`（`titleForEffect` 里它排第一），所以卡面是
+   「挂载 feature「demo-echo」— 执行 …/feature.mjs 里的代码」，不是 `capability_change` 的通用兜底句。
+2. **不入自动放行类**：`autoExecute: false` + `permissionGuard: 'permission-gated'`，与 `edit` 同档
+   （本仓写盘工具里最严的那个）。`feature_unmount` / `feature_inspect` 反过来是 `safe` + 自动执行 ——
+   不对称是有意的：危险的是「让代码跑起来」，不是「让它停下来」或「看一眼」。
+3. **只从一个目录加载**：`<store>/features-dev/<id>/`，`entryPath` 夹进**该 feature 自己的目录**
+   （不是夹到 features-dev 根就算数 —— 夹到根的话 `../other/feature.mjs` 会横跨到别人目录）。
+   夹紧复用 `rpc/sandbox.ts` 的 `isPathInside`，与联网宿主的 RPC 沙箱同一份实现，而不是再抄一遍
+   `startsWith`（skills 拒迁时记下的教训）。id 另有一道字面量正则挡住 `..` 与分隔符：两层都在，
+   因为第一层管「长得对不对」，第二层管「解析完落在哪」，后者才是护栏。
+
+另有一道**宿主档门**：三个工具只在 `hasTool('bash')` 为真的宿主上注册。判据不是「是不是桌面」
+（那是宿主探测，装配层不许干），而是一句可证的等价陈述 —— **挂载一个 feature 与跑一条 shell 是
+同一量级的能力**，一个连 bash 都不给的宿主（`readonly` 档，联网 server 的降级形态）当然也不该给这个。
+full 与 headless 两档有 bash、readonly 档没有，门自然落在正确的位置；且**默认拒绝** ——
+工具注册表还没起来时判据为假，一个字都不注册（有用例钉）。
+
+**目录不存在时工具自己不 mkdir**，只给创建指引 —— 与 E0 事件日志同纪律：凭空造目录会把
+「这个宿主没配过这件事」这条信息抹掉。
+
+### 7.4 教学式报错（dsh 判例：报错是写给模型看的操作指南）
+
+九条失败路径，每一条的返回文本都回答两个问题：**发生了什么** + **下一步调什么**。
+（全文逐字录在实施记录里；此处只列判据与要点。）
+
+| 路径 | 要点 |
+|---|---|
+| 目录不存在 | 给 `mkdir -p <绝对路径>` + `write <入口>` + **内联最小模板**（含「任何副作用都要配一个注销」的示范）+ 「再调 feature_mount({id})」三步 |
+| 目录在、入口不在 | 同一份模板，省掉 mkdir 那步 |
+| id 不合法 | 说明「它同时是目录名」，给出合法字符集与一个正例 |
+| entryPath 越界 | 报出解析后的实际路径 + 「挂载等于执行任意代码，所以加载面是白名单目录」+ 正确用法 |
+| 模块求值失败 | 明说「挂载还没开始，什么都没注册进去，不需要清理」 |
+| 模块形状不对 | 给出期望的**导出签名示例** + `ctx` 上现有的两个注册面签名 + 「改完直接重调，会重新读盘，不用重启」 |
+| id 与模块声明不一致 | 两侧 id 都报出来 + 「否则你会卸载 A 却发现 B 还在」+ 两条改法 |
+| mount 抛错 | 原始 message + 「**已经回滚**，没有半挂载记录」+ 「不需要先 unmount」 |
+| 重复挂载 | 「同一个 id 两份实现同时在线永远是接线 bug」+ 指向 `feature_unmount` |
+| 卸载内置 feature | 说明它是随应用构建的 + **列出当前可卸载的清单** |
+| 二次卸载（幂等） | 「没挂过，或者已经卸过了（重复卸载不是错误）」+ 指向 `feature_inspect()` |
+
+`feature_inspect` 的输出是三段：已挂载 feature（注册项 + **cordis effect 标签树** + builtin/dynamic 标记，
+dynamic 那行带入口路径与「第 N 次挂载」）、可挂载而未挂的候选（每行直接给出可复制的
+`feature_mount({ id: "…" })`）、以及目录不存在时的指引。
+
+### 7.5 验收
+
+| 项 | 结果 |
+|---|---|
+| `typecheck`（node + web） | 绿 |
+| 新增 `self-evolution.test.ts` | **15 条全绿**（含完整闭环：挂 → dispatchRpc 调到新域 → inspect 标 dynamic → 改源码重挂 → 行为改变 → 卸载 → 域消失/出表 → 二次卸载幂等） |
+| feature 基座 + RPC + 工具 + import 纯度 | 35 文件 / 276 条全绿 |
+| `boundary:gate` | **ok —— 13 条已知失败，零新红** |
+| `transport:gate` | 红 3 条，与 C2 记录逐字相同（`preload/bridge.ts` +117、`platform/web.ts` +45、`shared/ipc/channels.ts` +1），三份都是工作区在途改动；本期零传输面改动 |
+| `server:build`（SSR，额外） | 绿 —— 动态 `import()` 带 `@vite-ignore`，打包器不试图静态解析它 |
+
+闭环用例的关键证据是**「改源码重挂，行为真的变了」**那一步：Node 的 ESM 模块缓存以 URL 为键，
+不做 cache-bust 的话第二次 `import()` 会给回第一次的模块对象，症状是「代码明明改了却没生效」——
+一个极难自证的坑。`?t=<时间戳>-<第几次>` 让每次挂载都是一个新键，用例直接断言行为从
+`toUpperCase()` 变成 `toLowerCase() + '!'`。
+
+### 7.6 差距清单 #2
+
+格式同 §6.5。**本期新增 6 条（G10–G15）+ 2 条复评（G5 / G8）**。
+
+**G10. 动态 feature 注册不了工具 —— `FeatureContext` 的表达力对第一方与动态方不对等**
+- *缺口*：第一方 feature 编译进 bundle，能 import 任何东西（自进化自己就是这么注册三个工具的）；
+  动态 feature 是从磁盘 import 的裸 `.mjs`，**它 import 不到 `@onething/app` 的内部路径**，
+  所以它的全部能力就是 `ctx` 上那两个面（RPC 域 + 通用 disposer）。想注册一个工具、一个变量、
+  一条斜杠命令，今天做不到。
+- *原语化改写*：`ctx.registerTool(def)`——而这一次它是**被需求驱动的**：C2 的 G8 说
+  「轨迹没提出需求」，本期自进化自己提出来了。
+- *裁决*：**提案采纳，排进 C5；本期仍用 `registerDisposer`。** 理由：本期已经证明
+  `registerDisposer` 接得住（G8 的结论成立），而 `registerTool` 面的正确形状要等第二个消费者
+  才看得清（D3 第一条）。**但这个洞是真的，而且它是 C4 第二档之前最该补的一格** ——
+  「模型现场造一个新工具」是自进化最自然的下一个诉求，而今天它做不到。
+
+**G11. 动态 feature 没有、也不该有「授信免卡」**
+- *缺口*：D1 的四条纪律里本期只落了「默认拒绝 + 知情披露」（每次挂载一张永不可记住的权限卡）。
+  「可撤销」由 `feature_unmount` 代偿；「降级不驱逐」完全不适用（动态 feature 没有降级档：
+  要么以完整权限跑，要么不跑）。
+- *原语化改写*：把动态 feature 纳入插件 ledger 的授信状态机（一次授信 = 这个 id 以后免卡）。
+- *裁决*：**拒绝，而且这条拒绝是本期最重要的一条。** 免卡正是这里最不该有的东西：
+  模型每次挂的都可能是**新写的代码**，「同一个 id」不代表「同一份代码」。插件 ledger 的授信对象
+  是一个带 integrity 校验的 npm tarball，而 features-dev 里的文件下一秒就能被同一个模型改掉。
+  **在 features-dev 上引入常驻授信 = 把 `NEVER_GRANTABLE_TYPES` 那条线从侧门绕过去。**
+
+**G12.（G5 的复评，本期承诺的那一条）renderer 侧仍无挂卸语义 —— 判据未触发，但现在具体了**
+- G5 的裁决原话是「本期拒绝，C4 重新评估……C4 要做『模型现场挂卸 demo feature』，
+  那个 demo 若带 UI，这条才变成真需求」。
+- *复评结论*：**C4 第一档的 demo 不带 UI（它注册的是一个 RPC 域），所以 G5 维持拒绝。**
+  但触发条件从「若带 UI」收紧成一句可执行的判据：**动态 feature 需要在 renderer 注册任何东西的
+  那一刻**，G5 立刻变成必须做的事 —— 那时缺的不止是 `mountRendererFeature`，还有一条
+  「后端挂载完通知 renderer 去注册」的下行通道（今天 renderer 的 feature 全是模块求值即注册，
+  没有任何运行期入口）。这两样是 C4 第二档的实际工作量，不是一个 `registerWorkspacePanel` 的事。
+
+**G13.（G8 的复评）`registerDisposer` 接得住，缺的确实是顺序 —— 处方第一次被执行，并暴露一处可读性债**
+- G8 原话：「不加新注册面，而是把整组工作收进**一个** `registerDisposer`」。
+- *复评结论*：**结论成立，处方原样照做，有用例钉住**（§7.2 地雷 1）。
+- *新记一条经验*：cordis 只保证**单个 effect 内部**串行 + 逆序；effect **之间**的顺序仍然只能靠
+  注册顺序表达。也就是说本层的「顺序」是**由注册顺序编码的隐式契约** —— 读代码的人必须先知道
+  「最后注册的最先解绕」才看得懂 `self-evolution.ts` 末尾那三行为什么是那个次序。
+  这是**可读性债，不是正确性债**：不提案加「顺序声明」API（那会把 D2 明确拒绝的依赖排序从后门放进来），
+  但 C5 收口时值得考虑给 `registerDisposer` 加一个可选 label，让 `getEffects()` 的标签树自己讲出次序。
+  （今天四个 disposer 在标签树里长得一模一样：`feature(self-evolution):disposer` ×4。）
+
+**G14. 测试环境的动态加载器 ≠ 生产环境的动态加载器**
+- *缺口*：vitest 下 `import(file://…)` 走的是 vite-node 的 transform 管线，不是 Node 原生 ESM。
+  证据是语法错用例拿到的 message 是 vite 的
+  「Failed to parse source for import analysis…」而不是 Node 的 `SyntaxError`。
+  也就是说：cache-bust 用例在测试里证明的是「vite-node 的缓存被绕开了」，
+  生产里绕开的是 Node 的 ESM 缓存 —— 两者机制都以 URL 为键，结论**大概率**一致，但不是同一次证明。
+- *原语化改写*：无（这是测试基础设施的性质，不是 API 缺口）。
+- *裁决*：**如实记，不修。** 修它的唯一办法是给这条路径加一个真机/子进程用例，
+  而那要新起一套 harness。**记下判据**：C4 第二档真机走查时，第一件要手验的事就是
+  「改文件 → 重挂 → 行为变了」在打包产物里也成立。在那之前，这条的信号质量是**中**（不是高）。
+
+**G15. 动态 feature 的代码不经过任何静态检查**
+- *缺口*：模型写的 `.mjs` 不过 typecheck / boundary / lint，它 import 什么、碰什么全靠运行期。
+- *原语化改写*：加载前做一道静态扫描（禁 import 清单）。
+- *裁决*：**拒绝。** 两条理由：(1) 它是**安全剧场** —— 一个能执行任意代码的模块可以用
+  `await import(...)` 绕开任何静态禁令；(2) 真正的边界是「要不要让它跑」，而那道门已经在
+  （每次一张永不可记住的权限卡 + 宿主档门 + 目录白名单）。要更强的隔离只有一条真路：
+  进程/worker 隔离（Agent 沙箱那条线，`project_agent_sandbox_design`），而那不是加一个扫描器能凑出来的。
+
+**G16.（G6 的第二次触发点）`feature_inspect` 只看得见后端半**
+- G6 的裁决是「暂缓，等 C3 迁完三个双半 feature 再看」。本期没有增加双半 feature，
+  但 `feature_inspect` 让这个洞第一次**有了消费者**：模型问「这件功能现在长什么样」，
+  拿到的答案只覆盖后端半（`trajectory` 在 inspect 里看起来只有一个 RPC 域，它的面板不在场）。
+- *裁决*：**判据不变，仍然暂缓。** 但记一条给 C4 第二档：inspect 的输出格式要**预留 renderer 半的位置**，
+  别到时候改格式 —— 模型会照着这份输出学「一个 feature 长什么样」。
+
+**清单条数**：#1 是 9 条（G1–G9）。#2 = 新增 6 条（G10 / G11 / G14 / G15 各一条真缺口或裁决，
+G12 / G13 是 §6.5 承诺的两条复评）+ 1 条触发点更新（G16）。
+状态：**1 条排期（G10→C5）、3 条明确拒绝（G11 / G15，以及维持拒绝的 G12/G5）、
+1 条已执行并结案（G13/G8）、2 条如实记录待触发（G14 真机判据、G16 等 C3）**。
+
+#1 里的其余条目本期无变化：G1（聊天入口表达力档）仍排 C3；G2 / G4 维持拒绝；
+G3（renderer 测试补 import）计数未增；G7（`registerAppRpcDomains` 改名）仍排 C5，
+本期又给了它一条新理由 —— 名册里现在有一个**一个 RPC 域都不注册**的成员，
+函数名比内容窄的已经不是半格了。

@@ -10,10 +10,12 @@ export {
   type FeatureDump,
 } from './context.js'
 export {
+  dumpFeatureEffects,
   dumpFeatures,
   hasFeature,
   mountFeature,
   resetFeaturesForTests,
   type FeatureDefinition,
+  type FeatureEffectDump,
   type FeatureUnmount,
 } from './registry.js'
