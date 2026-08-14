@@ -239,40 +239,28 @@
           :panel="pluginPanelFor(tab)!"
         />
 
-        <!-- ── 工作区域(右域):内置六面板 ─────────────────────────────────
+        <!-- ── 工作区域(右域):内置面板 ───────────────────────────────────
              P1 之前它们住在 `MediaPanel.vue` —— 一个自带顶部导航、把聊天区整个
              盖住的全屏容器。那个容器已经拆除:面板改成工作台的一条页签,于是
              「一边看面板一边看会话」第一次成立,而且切会话不再把面板关掉。
-             `TabPane lazy` 就是从前那份手工 `mountedNavs` keep-alive 的等价物。 -->
-        <MediaPanelContent
-          v-else-if="tab.type === 'workspace' && tab.panelId === 'media'"
-          @jump-to-source="onMediaJumpToSource"
+             `TabPane lazy` 就是从前那份手工 `mountedNavs` keep-alive 的等价物。
+
+             K1(内核收缩):这里从前是**一条按 panelId 逐个点名的 v-else-if 链**
+             —— 加一个面板就要回到这个文件补一格,而"补漏一格"正是面板注册表
+             当初被建出来要根治的失效模式(只是从清单挪到了分发)。现在组件、
+             要注入的上下文、宿主接哪几个事件全部写在 descriptor 上,工作台
+             不再需要知道有哪几个面板。
+
+             prop / 事件按**声明**给:无脑全给会把 `active` 落进不声明它的面板的
+             attrs(根节点上凭空多个属性),无条件绑 `@close` 会让根组件(多数
+             面板的根是 PanelShell)自己发的同名事件穿透上来关错页签。 -->
+        <component
+          :is="workspacePanelEntry(tab)?.component"
+          v-else-if="tab.type === 'workspace' && workspacePanelEntry(tab)?.component"
+          v-bind="workspacePanelContext(tab)"
+          @close="onWorkspacePanelClose(tab)"
+          @jump-to-source="onWorkspacePanelJumpToSource(tab, $event)"
         />
-
-        <!-- 「私聊」/「TA 的群聊」开出去的会话落在主区;从前面板盖在上面所以
-             要自己合上,现在它只需要关掉自己这一格页签。 -->
-        <AgentsPanelContent
-          v-else-if="tab.type === 'workspace' && tab.panelId === 'agents'"
-          @close="closeWorkbenchTab(tab.id)"
-        />
-
-        <SchedulerPanelContent
-          v-else-if="tab.type === 'workspace' && tab.panelId === 'tasks'"
-          :active="activeTabId === tab.id"
-        />
-
-        <MusicPanelContent v-else-if="tab.type === 'workspace' && tab.panelId === 'music'" />
-
-        <PracticePanelContent
-          v-else-if="tab.type === 'workspace' && tab.panelId === 'practice'"
-          :active="activeTabId === tab.id"
-        />
-
-        <ArchivedChatsContent v-else-if="tab.type === 'workspace' && tab.panelId === 'archive'" />
-
-        <!-- 轨迹(主线 E1):事件日志的第二投影。数据走 sessionEvents RPC 域,
-             不经过任何壳文件。 -->
-        <TrajectoryPanelContent v-else-if="tab.type === 'workspace' && tab.panelId === 'trajectory'" />
 
         <!-- iframe fallback: apps/web host has no WebContentsView -->
         <section
@@ -371,21 +359,17 @@ import AgentSpace from '@/components/agents/AgentSpace.vue'
 import RoomThreadsWorkbench from './RoomThreadsWorkbench.vue'
 import RoomSchedulePanel from './RoomSchedulePanel.vue'
 import PluginPanelHost from '@/components/plugins/PluginPanelHost.vue'
-import MediaPanelContent from '@/components/MediaPanelContent.vue'
-import AgentsPanelContent from '@/components/AgentsPanelContent.vue'
-import SchedulerPanelContent from '@/components/SchedulerPanelContent.vue'
-import MusicPanelContent from '@/components/MusicPanelContent.vue'
-import PracticePanelContent from '@/components/PracticePanelContent.vue'
-import ArchivedChatsContent from '@/components/ArchivedChatsContent.vue'
-import TrajectoryPanelContent from '@/components/TrajectoryPanelContent.vue'
+// K1:七个面板本体的 import 随内容分发一起搬进了 `panel-registry`
+// —— 工作台不再逐个点名,组件从 descriptor 上取。
 import {
   PLUGIN_PANEL_ICON,
-  WORKSPACE_NAV_PANELS,
   findWorkspacePanel,
   parsePluginPanelNavId,
   pluginPanelNavId,
   usePluginWorkspacePanels,
+  useWorkspaceFeaturePanels,
   type WorkspaceNavId,
+  type WorkspacePanelEntry,
 } from '@/workspace/panel-registry'
 import type { PluginWorkspacePanel } from '@/workspace/plugin-panel-types'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
@@ -622,12 +606,17 @@ const workbenchPluginOptions = computed<WorkbenchTabOption[]>(() =>
 )
 
 /**
- * 内置工作区面板 —— 右域的六条,清单**从注册表派生**(手抄一份就是下一次漂移
+ * 内置工作区面板 —— 右域那几条,清单**从注册表派生**(手抄一份就是下一次漂移
  * 的起点,那正是注册表存在的理由)。已经开着的不再列:它们是单例,列出来只会
  * 让人以为能开第二个。
+ *
+ * K1 起这份清单是**响应式**的:注册表可注册可注销,注销一个面板等于它从这条
+ * 「+」清单里消失。从前它是一个编译期常量数组,注销这回事根本表达不出来。
  */
+const workspaceFeaturePanels = useWorkspaceFeaturePanels()
+
 const workspacePanelOptions = computed<WorkbenchTabOption[]>(() =>
-  WORKSPACE_NAV_PANELS.map(panel => ({
+  workspaceFeaturePanels.value.map(panel => ({
     key: workspaceTabId(panel.id),
     type: 'workspace' as const,
     title: panel.label,
@@ -792,6 +781,58 @@ function openWorkspaceTab(panelId: WorkspaceNavId): void {
 /** 这个工作区面板此刻是不是选中的那一格(todo-plan 的 hide/toggle 要问)。 */
 function isWorkspaceTabActive(panelId: WorkspaceNavId): boolean {
   return activeTabId.value === workspaceTabId(panelId)
+}
+
+// ── 内置面板的内容分发(K1)────────────────────────────────────────────────
+//
+// 从前这里是一条按 panelId 逐个点名的 `v-else-if` 链:加一个面板要回到工作台
+// 补一格,漏一格就是"面板开得出页签、里面一片空白"。现在只有一条通用分发:
+// 组件、要注入的上下文、宿主接哪几个事件都写在 descriptor 上。
+
+/** 这条工作区页签对应的注册表条目(顺着活注册表现查 —— 注销即落空)。 */
+function workspacePanelEntry(tab: WorkbenchTab): WorkspacePanelEntry | undefined {
+  if (tab.type !== 'workspace' || !tab.panelId) return undefined
+  return findWorkspacePanel(tab.panelId)
+}
+
+/**
+ * 宿主注入的渲染上下文 —— **只给面板声明过的那几格**。
+ *
+ * 无脑全给的代价是可观察的:`active` 落进不声明这个 prop 的面板会变成它根节点
+ * 上的一个 `active="true"` 属性(attrs 透传)。声明制让"这个面板要什么"写在
+ * 它自己的 descriptor 上,而不是靠工作台记得。
+ */
+function workspacePanelContext(tab: WorkbenchTab): Record<string, unknown> {
+  const entry = workspacePanelEntry(tab)
+  if (!entry?.context?.includes('active')) return {}
+  return { active: activeTabId.value === tab.id }
+}
+
+/**
+ * 面板要求关掉自己那一格(Agents 的「私聊」开出去之后就这么收场)。
+ *
+ * 判据是**声明**而不是"收到了这个事件":多数面板的根节点是 `PanelShell`,
+ * 一个不发 close 的面板照样可能让根组件的同名事件透上来,那时候关页签是错的。
+ */
+function onWorkspacePanelClose(tab: WorkbenchTab): void {
+  if (!workspacePanelEntry(tab)?.emits?.includes('close')) return
+  closeWorkbenchTab(tab.id)
+}
+
+/**
+ * Media 的「跳到来源消息」。
+ *
+ * 落点是 `chatContainerRef.jumpToMessage(sessionId, messageId)` —— 那条链整个
+ * 在 App.vue 手里(它持有 ChatContainer 的 ref,并且已经为搜索 deeplink 走过
+ * 一遍 switchSession + loadMessagesAround)。这一层只做**中继**:再冒一级,
+ * 不自己去找 ChatContainer,也**不关**工作台(跳转与面板可见性无关)。
+ */
+function onWorkspacePanelJumpToSource(
+  tab: WorkbenchTab,
+  payload: { sessionId: string; messageId: string },
+): void {
+  if (!workspacePanelEntry(tab)?.emits?.includes('jump-to-source')) return
+  emit('jump-to-source', payload)
 }
 
 let variableRequestId = 0
@@ -1003,18 +1044,6 @@ function tabDisplayTitle(tab: WorkbenchTab): string {
     return useAgentsStore().displayAgent(tab.agentId).name || tab.title
   }
   return tab.title
-}
-
-/**
- * Media 的「跳到来源消息」。
- *
- * 落点是 `chatContainerRef.jumpToMessage(sessionId, messageId)` —— 那条链整个
- * 在 App.vue 手里(它持有 ChatContainer 的 ref,并且已经为搜索 deeplink 走过
- * 一遍 switchSession + loadMessagesAround)。这一层只做**中继**:再冒一级,
- * 不自己去找 ChatContainer,也**不关**工作台(跳转与面板可见性无关)。
- */
-function onMediaJumpToSource(payload: { sessionId: string; messageId: string }): void {
-  emit('jump-to-source', payload)
 }
 
 function closeWorkbenchTab(name: TabPaneName) {

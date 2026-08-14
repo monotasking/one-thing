@@ -437,13 +437,17 @@ describe('App container layout', () => {
     const workbench = readRendererFile('components/workbench/RightWorkbenchPanel.vue')
 
     expect(workbench).toContain("from '@/workspace/panel-registry'")
-    expect(workbench).toContain('WORKSPACE_NAV_PANELS')
+    expect(workbench).toContain('useWorkspaceFeaturePanels')
     // 清单从注册表派生,不是手抄一份 id 数组。
-    expect(workbench).toContain('WORKSPACE_NAV_PANELS.map(panel => ({')
+    expect(workbench).toContain('workspaceFeaturePanels.value.map(panel => ({')
     expect(workbench).toContain('lazy')
-    expect(workbench).toContain("tab.type === 'workspace' && tab.panelId === 'agents'")
-    expect(workbench).toContain('<MediaPanelContent')
-    expect(workbench).toContain('<ArchivedChatsContent')
+    // K1:内容分发也从注册表取 —— 工作台里那条按 panelId 逐个点名的
+    // `v-else-if` 链已经拆掉,面板本体挂在 descriptor 的 `component` 上。
+    expect(workbench).toContain("tab.type === 'workspace' && workspacePanelEntry(tab)?.component")
+    expect(workbench).not.toContain('<MediaPanelContent')
+    const registry = readRendererFile('workspace/panel-registry.ts')
+    expect(registry).toContain("import MediaPanelContent from '@/components/MediaPanelContent.vue'")
+    expect(registry).toContain("import ArchivedChatsContent from '@/components/ArchivedChatsContent.vue'")
     // 段边界只有一处维护点。
     expect(workbench).toContain('function insertTab(tab: WorkbenchTab): void')
     expect(workbench).toContain(":order=\"tab.type === 'workspace' ? 1 : 0\"")
