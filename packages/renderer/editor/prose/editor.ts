@@ -15,6 +15,14 @@ export interface NoteEditorOptions extends NoteNodeViewOptions {
   parent: HTMLElement
   editable?: () => boolean
   onDocChanged?: (view: EditorView) => void
+  /**
+   * 追加插件 —— 它们排在 `noteKeymaps()` **之后**。
+   *
+   * 由此换来的一条经验值得留在原位:想抢在回车被 `splitListItem` / `baseKeymap`
+   * 吃掉之前看到它,插件里的 `props.handleKeyDown` 是来不及的 ——
+   * `EditorView.someProp` 先查 view 自己的 props、再查插件,所以那类需求只能落在
+   * view 的直接 prop 上,而不是这里。
+   */
   extraPlugins?: Plugin[]
 }
 

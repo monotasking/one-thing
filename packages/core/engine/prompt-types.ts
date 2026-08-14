@@ -18,12 +18,15 @@ export interface CoreTemplateSkill {
 
 export interface CorePromptActiveProject {
   hasActive: boolean
+  /** Primary root (the session cwd anchor). */
   path?: string
   displayPath?: string
+  /** All roots when the project has more than one directory. */
+  displayPaths?: string[]
   description?: string
 }
 
 export interface CorePromptKnownProjects {
   hasAny: boolean
-  entries: Array<{ path: string; displayPath: string; description: string }>
+  entries: Array<{ path: string; displayPath: string; displayPaths?: string[]; description: string }>
 }

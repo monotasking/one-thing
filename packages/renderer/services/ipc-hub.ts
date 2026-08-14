@@ -14,6 +14,7 @@ import { platformApi } from '@/platform'
 import { useChatStore } from '@/stores/chat'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useInteractionsStore } from '@/stores/interactions'
+import { useScratchpadStore } from '@/stores/scratchpad'
 import {
   isCollabDriveMessage,
   isCollabPassMessage,
@@ -230,6 +231,11 @@ export function initializeIPCHub() {
 
       case 'steering:retracted':
         store.handleSteeringConsumed({ sessionId, messageIds: [(event as any).messageId] })
+        break
+
+      // 草稿纸的某一版真的进了模型 —— 已读水位线只认这条,不猜。
+      case 'scratchpad:consumed':
+        useScratchpadStore().noteConsumed(sessionId, (event as any).version)
         break
 
       case 'messages:replaced':

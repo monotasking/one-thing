@@ -21,7 +21,6 @@ const mocks = vi.hoisted(() => ({
     actCollabBoard: vi.fn(),
     setCollabRoomFrozen: vi.fn(),
     setCollabRoomBudgets: vi.fn(),
-    listAgents: vi.fn(),
     onSessionEvent: vi.fn(() => () => {}),
     openPath: vi.fn(),
     getPendingPermissions: vi.fn(),
@@ -30,7 +29,12 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
+// agents 域已迁到通用 RPC 通道(主线 T1 第二批):名册从壳外客户端来,不再挂在
+// platformApi 上。桩打在客户端模块上,面板的 hydrate 才仍然被真的盯住。
+const agentsApiMock = vi.hoisted(() => ({ listAgents: vi.fn() }))
+
 vi.mock('@/platform', () => ({ platformApi: mocks.platformApi }))
+vi.mock('@/platform/agents-client', () => ({ agentsApi: agentsApiMock }))
 
 const ROSTER = [
   { id: 'pm', name: '阿明', avatar: '📋' },
@@ -112,7 +116,7 @@ describe('CollabBoardPanel card actions (W16)', () => {
     setActivePinia(createPinia())
     // The panel hydrates the agent roster on setup — an empty reply here would
     // overwrite the seeded names and every menu row would fall back to the id.
-    mocks.platformApi.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
+    agentsApiMock.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
     mocks.platformApi.onSessionEvent.mockReturnValue(() => {})
     mocks.platformApi.actCollabBoard.mockResolvedValue({ success: true, board: board([]) })
     mocks.platformApi.getPendingPermissions.mockResolvedValue({ success: true, pending: [] })
@@ -214,7 +218,7 @@ describe('CollabBoardPanel card face (W9b fields)', () => {
     setActivePinia(createPinia())
     // The panel hydrates the agent roster on setup — an empty reply here would
     // overwrite the seeded names and every menu row would fall back to the id.
-    mocks.platformApi.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
+    agentsApiMock.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
     mocks.platformApi.onSessionEvent.mockReturnValue(() => {})
   })
 
@@ -261,7 +265,7 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
     setActivePinia(createPinia())
-    mocks.platformApi.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
+    agentsApiMock.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
     mocks.platformApi.onSessionEvent.mockReturnValue(() => {})
     mocks.platformApi.openPath.mockResolvedValue('')
   })
@@ -366,7 +370,7 @@ describe('CollabBoardPanel 群 folder 入口 (F2)', () => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
     setActivePinia(createPinia())
-    mocks.platformApi.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
+    agentsApiMock.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
     mocks.platformApi.onSessionEvent.mockReturnValue(() => {})
   })
 
@@ -408,7 +412,7 @@ describe('CollabBoardPanel 刹车反馈 (P1-4)', () => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
     setActivePinia(createPinia())
-    mocks.platformApi.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
+    agentsApiMock.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
     mocks.platformApi.onSessionEvent.mockReturnValue(() => {})
     mocks.platformApi.getPendingPermissions.mockResolvedValue({ success: true, pending: [] })
   })

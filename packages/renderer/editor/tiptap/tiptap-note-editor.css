@@ -1,0 +1,202 @@
+/**
+ * Tiptap 编辑器的**引擎侧**涂装 —— 排版本体在 `notion/notion-prose.css`,
+ * 这里只画 Tiptap 特有的那几件:内边距、逐块 placeholder、勾选框、拖拽把手、
+ * 图片壳与宽度拖柄、已读水位线。
+ *
+ * 不 scoped:ProseMirror 的 DOM 是它自己造的,scoped 的 `data-v-*` 到不了。
+ */
+
+.tiptap-note-surface {
+  padding: 12px 20px 24px;
+  min-height: 100%;
+  white-space: pre-wrap;
+}
+
+/* contenteditable 面自己不画焦点环 —— 光标就是焦点提示,再套一圈只会挤掉排版。 */
+.tiptap-note-surface[contenteditable]:focus {
+  outline: none;
+}
+
+/* ------------------------------------------------------------ placeholder */
+
+.tiptap-note-surface p.is-empty::before,
+.tiptap-note-surface h1.is-empty::before,
+.tiptap-note-surface h2.is-empty::before,
+.tiptap-note-surface h3.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--ui-text-faint-fg);
+}
+
+/* ------------------------------------------------------------------- 待办 */
+
+.tiptap-note-surface ul[data-type='taskList'] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.tiptap-note-surface ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tiptap-note-surface ul[data-type='taskList'] li > label {
+  flex: 0 0 auto;
+  /* 与首行文字垂直居中:(行高 − 方框高) / 2(与 prose 档同一条算式)。 */
+  margin-top: calc((1em * var(--notion-line-height, 1.72) - var(--notion-checkbox-size, 16px)) / 2);
+  user-select: none;
+}
+
+.tiptap-note-surface ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tiptap-note-surface ul[data-type='taskList'] input[type='checkbox'] {
+  appearance: none;
+  width: var(--notion-checkbox-size, 16px);
+  height: var(--notion-checkbox-size, 16px);
+  margin: 0;
+  border: 1.5px solid color-mix(in srgb, var(--ui-text-primary-fg) 34%, var(--ui-border-default-border));
+  border-radius: var(--radius-xs, 3px);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default);
+}
+
+.tiptap-note-surface ul[data-type='taskList'] input[type='checkbox']:checked {
+  border-color: var(--ui-accent-primary-fg);
+  background: var(--ui-accent-primary-fg);
+}
+
+.tiptap-note-surface ul[data-type='taskList'] input[type='checkbox']:checked::after {
+  content: '✓';
+  display: block;
+  margin-top: -1px;
+  color: var(--ui-action-primary-fg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: var(--notion-checkbox-size, 16px);
+  text-align: center;
+}
+
+.tiptap-note-surface ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--ui-text-muted-fg);
+  text-decoration: line-through;
+}
+
+/* --------------------------------------------------------------- 拖拽把手 */
+
+.tiptap-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  border-radius: var(--radius-xs, 3px);
+  color: var(--ui-text-faint-fg);
+  background: transparent;
+  cursor: grab;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-default),
+    background var(--duration-fast) var(--ease-default);
+}
+
+/* 扩展在有块可抓时才把它挂上 —— 挂上即淡入,不是常显(常显会把左边距吃掉一条)。 */
+.tiptap-note-editor:hover .tiptap-drag-handle,
+.tiptap-drag-handle:hover {
+  opacity: 1;
+}
+
+.tiptap-drag-handle:hover {
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-muted-fg);
+}
+
+.tiptap-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* ------------------------------------------------------------------- 图片 */
+
+.tiptap-image {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.tiptap-image img {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--radius-sm, 6px);
+  cursor: zoom-in;
+}
+
+.tiptap-image.is-loading::before {
+  content: '…';
+  color: var(--ui-text-muted-fg);
+}
+
+/* 宽度拖柄:压在图片右下角,hover 才浮出。宽度**不持久化**(理由写在
+   TiptapNoteEditor.vue 的 attachWidthGrip 上),所以它只是一枚手感件。 */
+.tiptap-image-grip {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  /* 局部堆叠:只压住自己这张图,没有跨出编辑器的野心(个位数,不进层级表)。 */
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--ui-surface-floating-bg);
+  border-radius: var(--radius-xs, 3px);
+  background: var(--ui-accent-primary-fg);
+  opacity: 0;
+  cursor: ew-resize;
+  transition: opacity var(--duration-fast) var(--ease-default);
+}
+
+.tiptap-image:hover .tiptap-image-grip,
+.tiptap-image-grip:hover {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------- 已读水位线 */
+
+/* 一条极淡的横线 + 右侧一行小字。刻意**不给线以上的内容改颜色**:那片正文是
+   用户自己写的字,读它的人比这条线重要,染一层灰只会碍事。 */
+.tiptap-consumed-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  user-select: none;
+  pointer-events: none;
+}
+
+.tiptap-consumed-line::before {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 24%, transparent);
+}
+
+.tiptap-consumed-label {
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ui-text-faint-fg);
+}
+
+/* ------------------------------------------------------- ProseMirror 必需 */
+
+.tiptap-note-surface .ProseMirror-selectednode {
+  outline: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg) 45%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs, 3px);
+}

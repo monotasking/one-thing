@@ -57,6 +57,12 @@ export interface CoreSessionMeta {
   archivedAt?: number
   messageCount?: number
   previewText?: string
+  /**
+   * 会话归属的 space(workspace)。**缺席 = default** —— 读取端缺省,不做数据
+   * 迁移(`docs/design/workspace-spaces-2026-08.md` 批 B)。core 只负责把它随
+   * 会话记录与索引一起存下来,不解释它的语义。
+   */
+  workspaceId?: string
 }
 
 export type CoreSessionMetadataMutationResult<TSession> =
@@ -425,6 +431,8 @@ export interface CreateCoreSessionRecordOptions {
   name: string
   defaultAgentId: string
   workingDirectory?: string
+  /** 归属 space;缺席 = default(读取端缺省)。 */
+  workspaceId?: string
   now?: number
 }
 
@@ -987,6 +995,7 @@ export function extractSessionMeta<TMessage extends CoreSessionMessage>(
     isPinned: session.isPinned,
     isArchived: session.isArchived,
     archivedAt: session.archivedAt,
+    workspaceId: session.workspaceId,
     messageCount: session.messages.length,
     previewText,
   }
@@ -1302,6 +1311,7 @@ export function createCoreSessionRecord<TMessage extends CoreSessionMessageWithU
     updatedAt: now,
     agentId: options.defaultAgentId,
     workingDirectory: options.workingDirectory,
+    ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
   }
 }
 
@@ -1347,6 +1357,8 @@ export function createSessionWithAdapters<
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     agentId: session.agentId || options.defaultAgentId,
+    // 索引也带上归属,左栏按 space 过滤才不必逐个会话读盘。
+    ...(session.workspaceId ? { workspaceId: session.workspaceId } : {}),
   } as TMeta)
   options.saveIndex(index)
   options.setCurrentSessionId?.(options.sessionId)

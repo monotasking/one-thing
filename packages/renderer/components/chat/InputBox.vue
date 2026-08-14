@@ -398,6 +398,31 @@
               >
                 <span class="plugin-trigger-folded">+{{ composerPluginTruncated.length }}</span>
               </Tooltip>
+              <!-- 草稿纸开关(工程形态限定)。开的是一张**浮在聊天区之上**的
+                   垫子,不是把输入框换掉 —— 输入框在任何时候都是原来那一个。 -->
+              <Tooltip
+                v-if="isEngineeringComposer"
+                class="scratchpad-toggle-cell"
+                :text="isScratchpadOpen ? '收起草稿纸' : '打开草稿纸 —— 浮在聊天上,边看边写,AI 会默默看见'"
+              >
+                <Button
+                  size="small"
+                  class="voice-aux-btn scratchpad-toggle-btn"
+                  :class="{ 'is-active': isScratchpadOpen }"
+                  native-type="button"
+                  :aria-label="isScratchpadOpen ? 'Close the floating scratchpad' : 'Open the floating scratchpad'"
+                  :aria-pressed="isScratchpadOpen ? 'true' : 'false'"
+                  @mousedown.prevent
+                  @click.stop="toggleScratchpad"
+                >
+                  <template #icon>
+                    <NotebookPen
+                      :size="15"
+                      :stroke-width="2"
+                    />
+                  </template>
+                </Button>
+              </Tooltip>
               <Button
                 size="small"
                 class="voice-aux-btn attach-btn"
@@ -587,7 +612,7 @@ import {
   type QueuedFileChangeSummary,
   type QueuedMessage,
 } from './composer/queued-message-utils'
-import { X, Square, Check, Loader2, Mic, Paperclip, Phone, PhoneOff, Puzzle, Volume2, VolumeX } from 'lucide-vue-next'
+import { X, Square, Check, Loader2, Mic, NotebookPen, Paperclip, Phone, PhoneOff, Puzzle, Volume2, VolumeX } from 'lucide-vue-next'
 import { executeCommand, findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
@@ -602,6 +627,9 @@ import { usePickerOrchestration } from '@/composables/usePickerOrchestration'
 import { useCommandFeedback } from '@/composables/useCommandFeedback'
 import { useAttachments } from '@/composables/useAttachments'
 import { useFileDrop } from '@/composables/useFileDrop'
+import { useScratchpadPad } from '@/composables/useScratchpadPad'
+import { useActiveModelCapabilities } from '@/composables/useActiveModelCapabilities'
+import { extractLocalRefs } from './scratchpad/scratchpad-refs'
 import type { AttachedFile } from '@/composables/useAttachments'
 import { createPromptToken, expandFileTokens } from '@shared/prompt-references'
 
@@ -979,6 +1007,30 @@ const composerWrapperRef = ref<HTMLElement | null>(null)
 
 const queuedMessages = ref<QueuedMessage[]>([])
 
+/**
+ * 悬浮草稿垫的开关(scratchpad · AI 静默感知)。
+ *
+ * 垫子本身**不在这棵树里** —— 它是 `ChatPanel` 挂的一张浮卡(见
+ * `components/chat/scratchpad/FloatingScratchpad.vue`)。输入框这边只留两件事:
+ * 工具条上的那枚开关,以及垫子按 ⌘⏎ 时借道过来的那条发送路(见
+ * `sendScratchpadText`)—— 排队、引用物化、附件降级都在这里,重写一份必然分叉。
+ *
+ * `available` 卡在工程形态上 —— messenger(房/私聊)的输入框不是工程台面,
+ * 开关整个不出现。
+ */
+const scratchpad = useScratchpadPad(() => effectiveSessionId.value, {
+  available: () => isEngineeringComposer.value,
+})
+const isScratchpadOpen = computed(() => scratchpad.isOpen.value)
+/** 与发送同源的能力判定 —— 决定纸上的图是原生附上还是留一条路径。 */
+const scratchpadCapabilities = useActiveModelCapabilities(() => effectiveSessionId.value)
+
+function toggleScratchpad() {
+  scratchpad.toggleOpen()
+  // 关掉垫子时焦点回到输入框;打开时由垫子自己接管(它一出现就聚焦编辑器)。
+  if (!isScratchpadOpen.value) nextTick(() => editorRef.value?.focus())
+}
+
 // Get the working directory for file search
 const workingDirectory = computed(() => {
   const sessionId = effectiveSessionId.value
@@ -1097,7 +1149,7 @@ const {
   restoreAttachments,
   toMessageAttachments,
   attachmentFromMessageAttachment,
-} = useAttachments()
+} = useAttachments({ sessionId: () => effectiveSessionId.value })
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const { isDragActive: isFileDragActive, dropHandlers: fileDropHandlers } = useFileDrop({
@@ -1781,6 +1833,73 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 }
 
+/**
+ * 纸上引用到的本地图片 → 原生附件。
+ *
+ * 只在模型**真的认图**时才读盘:引擎对只有 `filePath` 没有 base64 的附件不会
+ * 自己去读文件(message-content.ts 只把它写成一行 `[附件] name → path`),
+ * 所以"原生"这条路必须在这里把字节取出来。不认图 / 不是图片 → 什么都不做,
+ * 路径原样留在正文里,由引擎的路径行兜底。
+ */
+async function scratchpadVisionAttachments(text: string): Promise<MessageAttachment[]> {
+  if (!scratchpadCapabilities.supportsVision.value) return []
+  const refs = extractLocalRefs(text, scratchpad.documentDir.value).filter(ref => ref.isImage)
+  if (refs.length === 0) return []
+  const attachments: MessageAttachment[] = []
+  for (const ref of refs) {
+    try {
+      const dataUrl = await platformApi.readImageBase64(ref.absolutePath)
+      const base64Data = typeof dataUrl === 'string' ? dataUrl.split(',')[1] : ''
+      if (!base64Data) continue
+      attachments.push({
+        id: `scratchpad-${Date.now()}-${attachments.length}`,
+        fileName: ref.fileName,
+        filePath: ref.absolutePath,
+        mimeType: ref.mimeType,
+        // base64 长度换算回字节数(每 4 个字符 3 字节,尾部 '=' 各扣一个)。
+        size: Math.floor(base64Data.length * 3 / 4),
+        mediaType: 'image',
+        base64Data,
+      })
+    } catch {
+      // 读不到就当没有原生附件 —— 路径还在正文里,模型照样能用文件工具去看。
+    }
+  }
+  return attachments
+}
+
+/**
+ * 草稿垫的"正式发出":垫子已经把要发的那一段选好了(选区优先,否则水位之后
+ * 的内容),这里只负责把它送进**与手打消息完全相同**的那条路 —— 引用物化、
+ * 附件降级、忙时排队。
+ *
+ * 发出的内容**不从纸上删除** —— 纸是持久文档,不是一次性草稿;水位由引擎
+ * 消费驱动往前推,与这次发送无关。
+ */
+async function sendScratchpadText(text: string) {
+  const trimmed = (text || '').trim()
+  if (!trimmed) return
+  // 纸上一般没有 @文件 / 页面 token,但用户完全可能手打一个 —— 过一遍既有的
+  // 引用物化管线,别在这里开第二条规则。
+  const fileExpandedText = expandFileTokens(trimmed)
+  const { text: pageExpandedText, attachments: pageAttachments } = materializePageReferences(fileExpandedText)
+  const { text: draftText, mentions } = materializeMemberReferences(pageExpandedText)
+  if (!draftText.trim() && pageAttachments.length === 0) return
+  const visionAttachments = await scratchpadVisionAttachments(draftText)
+  const combined = [...visionAttachments, ...pageAttachments]
+  const attachments = combined.length > 0 ? combined : undefined
+
+  if (hasActiveGeneration.value && !isRoomSessionActive.value) {
+    queuedMessages.value.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      content: draftText,
+      attachments,
+    })
+  } else {
+    emit('sendMessage', draftText, 'send', attachments, mentions.length > 0 ? mentions : undefined)
+  }
+}
+
 async function sendMessage() {
   if (!canSend.value) return
 
@@ -2078,6 +2197,8 @@ defineExpose({
   insertPromptReference,
   addAttachment,
   focus: focusEditor,
+  /** 悬浮草稿垫的 ⌘⏎ 借道这里发 —— 与手打消息同一条路,见 `sendScratchpadText`。 */
+  sendScratchpadText,
   // Snapshot API for session switching
   getMessageInput: () => messageInput.value,
   getQuotedText: () => quotedText.value,
@@ -2599,6 +2720,32 @@ defineExpose({
 /* 降级过的入口:置灰**不消失**(§9.3 第 4 条),照常可点 —— 点进去看降级态。 */
 .plugin-trigger-btn.is-paused {
   opacity: 0.45;
+}
+
+/* 草稿纸开关也被 Tooltip 包了一层 wrapper —— 与 .plugin-trigger-cell 同法,
+   把按钮撑满格子,否则它在工具条里比邻居矮一截。 */
+.toolbar-right > .scratchpad-toggle-cell {
+  display: flex;
+  align-items: stretch;
+}
+
+.toolbar-right > .scratchpad-toggle-cell > .voice-aux-btn {
+  border: 0;
+  border-radius: 0;
+  height: 100%;
+  padding: 0 12px;
+}
+
+/* 开着的时候是**当前形态**,不是"选中项":用 accent 前景 + 淡 accent 底,
+   与 .voice-btn.needs-setup 同一对档位。 */
+.scratchpad-toggle-btn.is-active {
+  color: var(--ui-accent-primary-fg);
+  background: var(--ui-state-hover-accent-bg);
+}
+
+.scratchpad-toggle-btn.is-active:hover:not(:disabled) {
+  color: var(--ui-accent-primary-fg);
+  background: var(--ui-state-hover-accent-strong-bg);
 }
 
 /* 超容量折叠的计数(详情在设置页)。 */

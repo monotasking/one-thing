@@ -609,6 +609,9 @@ export function usePickerOrchestration(
         cwd,
         query,
         limit: 50,
+        // 接入目录是 per-space 的,按**会话归属**解析;宿主不认识「当前空间」,
+        // 所以会话号必须由这里带上去(批 B2)。
+        sessionId: effectiveSessionId.value || undefined,
       })
 
       if (

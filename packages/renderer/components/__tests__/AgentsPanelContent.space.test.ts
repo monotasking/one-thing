@@ -246,7 +246,7 @@ describe('空间页 · 资料块', () => {
 
   it('草稿 agent 没有资料块也没有四面 —— 还不是一个人', async () => {
     const wrapper = await mountPanel()
-    await wrapper.findAll('.ledger-actions .text-action')[0].trigger('click')
+    await wrapper.find('.agents-new').trigger('click')
     await nextTick()
     expect(wrapper.find('.agent-profile').exists()).toBe(false)
     expect(wrapper.find('.detail-tabs').exists()).toBe(false)

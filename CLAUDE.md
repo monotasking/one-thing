@@ -143,7 +143,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 
 - `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: core bans electron/`shared/ipc`/better-sqlite3/mcp+acp SDKs/zod/diff/uuid; runtime outside `src/app` bans electron **and** `@shared/ipc`; `src/app` gets a relaxed set — `@shared/ipc` allowed, but electron, `@onething/electron-host`, `@main/`, `@preload/` banned (hosts inject via configure*Host ports).
 - `bun run boundary:gate` — `scripts/boundary-gate.mjs` ratchet: diffs `[boundary] failed:` lines against `docs/audit/boundary-baseline-2026-08-07.txt` (13 known legacy reds). Exits 1 only on NEW failures; prints healed ones so the baseline can be re-tightened.
-- UI 组件与样式规则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),新代码须过 `bun run ui:gate` — `scripts/ui-gate.mjs` ratchet over `scripts/ui-style-check.mjs`'s 11 line-level rules (z-literal / z-fallback / raw-teleport / native-select / native-confirm / title-attr / ui-hex-fallback / transition-literal / shadow-literal-floating / focus-bare / surface-literal), baseline `docs/audit/ui-baseline-2026-08-11.txt` (97 条 = 12 条逐条确认过的语义保留 + 85 条 `surface-literal` 区域面迁移待办)。`bun run ui:check` prints the full list.
+- UI 组件与样式规则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),新代码须过 `bun run ui:gate` — `scripts/ui-gate.mjs` ratchet over `scripts/ui-style-check.mjs`'s 12 line-level rules (z-literal / z-fallback / raw-teleport / native-select / native-confirm / title-attr / ui-hex-fallback / transition-literal / shadow-literal-floating / focus-bare / overscroll-contain-chat / surface-literal), baseline `docs/audit/ui-baseline-2026-08-13.txt` (81 条 = 5 条逐条确认过的语义保留 + 76 条 `surface-literal` 区域面迁移待办)。`bun run ui:check` prints the full list.
 - `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/app`** (dependency points one way: product ← assembly); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
 
 Notes:
@@ -326,6 +326,14 @@ Notes:
   present → Electron bridge, else the web implementation over `fetch('/api/…')` + SSE.
 - System prompt assembly is a single "directory at top, copy below" builder in
   `packages/onething-runtime/src/prompts/builder.ts`.
+- Media library: drag-and-drop ingest and export run over `media:ingest-files` /
+  `media:save-as` (`packages/shared/ipc/channels.ts` → `apps/electron/src/main/ipc/media.ts`
+  → `mediaLibraryService.ingestLocalFiles`). The `media://` protocol
+  (`apps/electron/src/media/protocol.ts`) serves **two** directories — images/ first,
+  files/ on miss (non-image assets landed with ingest) — and re-resolves every name against
+  the root prefix, since the name comes from the renderer and `../` would otherwise read
+  any file. `MediaAsset.source` (`ai-generated` / `user-upload` / `external`) now has real
+  producers on every facet, so filtering by it no longer lies.
 
 ### Three-Process Model (Electron host)
 
@@ -472,6 +480,10 @@ apps/web/                      # package.json + vite.config.ts only (builds pack
 packages/renderer/             # Vue 3 frontend ('@' / '@renderer')
 │   ├── stores/                # Pinia (workspace, chat, sessions, settings, themes, media, …)
 │   ├── components/ composables/ services/ (ipc-hub) editor/ types/
+│   │   ├── workbench/         # RightWorkbenchPanel — hosts BOTH tab domains (see below)
+│   │   └── workspace/         # shared panel skeleton parts (PanelShell & co.)
+│   ├── workspace/             # panel-registry: the single source of truth for which
+│   │                          # workspace panels exist (builtin six + plugin panels)
 │   └── platform/              # platformApi: electron.ts + web.ts (fetch/SSE) + index.ts proxy
 │
 packages/shared/               # '@shared'
@@ -495,6 +507,10 @@ packages/shared/               # '@shared'
 **MCP / ACP / Skills / Themes**: app wiring under `packages/onething-runtime/src/app/{mcp,acp,skills,themes}/`, product logic under `packages/onething-runtime/src/`.
 
 **CLI daemon**: `bin/onething.mjs` → `out/main/cli.js` (built from `apps/electron/src/main/cli/index.ts`). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
+
+**Workspace panels**: the six builtin panels (media / agents / tasks / music / practice / archive, declared once in `packages/renderer/workspace/panel-registry.ts`) and every plugin panel are **tabs in `RightWorkbenchPanel.vue`**, not a main-area container. Its tab bar carries two domains — 会话域 (left) | 工作区域 (right) — under three rules: a divider is drawn only when both domains are non-empty; a workspace tab shows its ✕ only while selected; new panels arrive through the `+` picker. Workspace tabs sit in the trailing segment (`insertTab` is the only place that maintains the boundary) and are **cross-session**: switching sessions no longer closes or resets them. Entry points — the sidebar `⋯` menu and the per-panel `windowEvent`s — all funnel into `openWorkspaceTab(panelId)`, which takes builtin ids and `plugin:<id>:<panel>` nav ids alike. `MediaPanel.vue`, the old fullscreen container that covered the chat, is retired; the media view itself is `components/MediaPanelContent.vue`. Plugin manifests may still declare `placements`, but both values now land in the same place (the `+` list); it survives only as the self-promotion gate for `api.ui.openWorkbench`.
+
+**Panel skeleton**: workspace panels are all built on `PanelShell` — `packages/renderer/components/workspace/` holds `PanelShell`, `LedgerGroupHeader`, `PanelLedgerRow`, `PanelPrimaryAction`, `MusicPlayerBar`, `MusicEqualizerBars`, `MediaFileRow`, `SelectionMark`, `PanelSkeleton`; plus `components/common/SegmentedPill` and the global `.text-action` class (`styles/components.css`). Two rules: a workspace panel is always assembled on `PanelShell`, and a spinner may appear only in the status bar.
 
 ### State Management
 

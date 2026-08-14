@@ -19,6 +19,12 @@ export interface OnethingStreamProviderAdapterOptions<
   TSession extends CoreSessionProviderSelection = CoreSessionProviderSelection,
 > {
   getSession(sessionId: string): TSession | null | undefined
+  /** per-space 凭证覆盖(批 B3)。缺省 = 恒等,即默认空间语义。 */
+  applySpaceCredentials?(
+    sessionId: string,
+    providerId: string,
+    providerConfig: TProvider | undefined,
+  ): TProvider | undefined
   isProviderSupported(providerId: string): boolean
   isOAuthProvider(providerId: string): boolean
   resolveApiKey(providerId: string, providerConfig: TProvider | undefined): string | null | undefined
@@ -45,7 +51,26 @@ export function createOnethingStreamProviderAdapter<
     getEffectiveConfig(settings, sessionId, override) {
       return getEffectiveOnethingProviderConfig<TProvider, TSession>(settings, sessionId, {
         getSession: options.getSession,
+        applySpaceCredentials: options.applySpaceCredentials,
       }, override)
+    },
+    /**
+     * 标题生成不走 `getEffectiveConfig`(它自己从 settings 取工具模型),
+     * 所以那条路要单独把同一个注入函数再用一次 —— 否则非默认空间的会话会拿
+     * 全局的 key 去生成标题。缺省 = 恒等。
+     */
+    applySpaceCredentials(sessionId, providerId, providerConfig) {
+      return options.applySpaceCredentials
+        ? options.applySpaceCredentials(sessionId, providerId, providerConfig as TProvider | undefined)
+        : providerConfig
+    },
+    /**
+     * 「这个 provider 在这个空间未配置」的文案(批 B3)。核心引擎在
+     * `resolveAuth` 返回 null 时问一句;不实现 / 返回 undefined 就落回原来那两句
+     * 通用文案 —— 默认空间因此一个字都没变。
+     */
+    describeMissingCredentials(_providerId, providerConfig) {
+      return (providerConfig as TProvider | undefined)?.spaceCredential?.unavailable?.message
     },
     resolveAuth(providerId, providerConfig) {
       return resolveOnethingProviderAuth<TProvider, TAuth>(providerId, providerConfig, {

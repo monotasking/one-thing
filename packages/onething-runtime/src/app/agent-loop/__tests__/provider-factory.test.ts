@@ -514,6 +514,46 @@ describe("agent provider runtime factory", () => {
 		).toBe("https://kimi.test/v1/chat/completions");
 	});
 
+	it("sends the OAuth access token as kimi-code's Bearer key", async () => {
+		// OAuth 凭证在 authContext 里,config.apiKey 恒为空串 —— 曾经只读 apiKey,
+		// 空 Bearer 打到套餐 host 直接 401(症状:「API Key 无效或未授权」)。
+		let authHeader = "";
+		const provider = createAgentProviderFromRuntime(
+			"kimi-code",
+			{
+				apiKey: "",
+				authContext: {
+					kind: "oauth",
+					token: { accessToken: "kimi-oauth-token", expiresAt: 0, tokenType: "Bearer" },
+					account: {},
+				},
+			},
+			{
+				fetchImpl: async (_input, init) => {
+					authHeader = new Headers(init?.headers).get("authorization") ?? "";
+					return new Response("", {
+						status: 200,
+						headers: { "content-type": "text/event-stream" },
+					});
+				},
+			},
+		);
+		for await (const _ of provider!.streamTurn!({
+			turn: 0,
+			model: "k3",
+			messages: [{ role: "user", content: "hi" }],
+		})) {
+			// drain
+		}
+		expect(authHeader).toBe("Bearer kimi-oauth-token");
+	});
+
+	it("rejects kimi-code without any credential instead of sending an empty key", () => {
+		expect(() => createAgentProviderFromRuntime("kimi-code", { apiKey: "" })).toThrow(
+			/not logged in/i,
+		);
+	});
+
 	it("allows additional provider runtimes to register without changing the factory", () => {
 		const unregister = registerAgentProviderRuntime(
 			"plugin-agent",

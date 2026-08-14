@@ -73,6 +73,22 @@ vi.mock('@/stores/sessions', () => ({
 vi.mock('@/stores/projects', () => ({
   useProjectsStore: () => ({ entries: [], load: vi.fn(async () => {}), add: vi.fn(), remove: vi.fn() }),
 }))
+// 空间(space):这些用例不验空间过滤,给一份"只有默认空间、切换器不画"的
+// 降级态即可 —— 与 web 端拿不到 /api/spaces 时是同一份口径。
+vi.mock('@/stores/spaces', () => ({
+  DEFAULT_SPACE_ID: 'default',
+  useSpacesStore: () => ({
+    spaces: [{ id: 'default', name: '默认空间', createdAt: 0 }],
+    currentSpaceId: 'default',
+    showSwitcher: false,
+    load: vi.fn(async () => {}),
+    switchTo: vi.fn(),
+    create: vi.fn(),
+    rename: vi.fn(),
+    remove: vi.fn(),
+  }),
+  sessionBelongsToSpace: () => true,
+}))
 vi.mock('@/stores/chat', () => ({
   useChatStore: () => ({ isSessionGenerating: () => false }),
 }))

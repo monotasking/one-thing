@@ -1,6 +1,6 @@
-import { ref, computed } from "vue";
+import { ref } from "vue";
 import { shouldAttemptTextDecode } from "@onething/core/engine/attachment-mime";
-import { useSettingsStore } from "@/stores/settings";
+import { useActiveModelCapabilities } from "@/composables/useActiveModelCapabilities";
 import { platformApi } from "@/platform";
 import type { MessageAttachment, AttachmentMediaType } from "@/types";
 
@@ -65,35 +65,26 @@ export interface AttachmentOperationResult {
 	rejected: AttachmentRejection[];
 }
 
-export function useAttachments() {
-	const settingsStore = useSettingsStore();
+export interface UseAttachmentsOptions {
+	/**
+	 * 这些附件要发到哪个会话。判定"模型认不认图"必须与**发送时实际解析出的**
+	 * provider/model 同源 —— 缺省(不传)时退回全局那一档,与从前一致。
+	 */
+	sessionId?: () => string | undefined;
+}
 
+export function useAttachments(options: UseAttachmentsOptions = {}) {
 	const attachedFiles = ref<AttachedFile[]>([]);
 	const isProcessing = ref(false);
 
-	// Check if current model supports image input (vision capability)
-	const currentModelSupportsVision = computed(() => {
-		const provider = settingsStore.settings.ai.provider;
-		const modelId = settingsStore.settings.ai.providers[provider]?.model;
-		const models = settingsStore.getCachedModels(provider);
-		const model = models.find((m) => m.id === modelId);
-		return model?.architecture?.input_modalities?.includes("image") || false;
-	});
-
-	// Check if current model supports file/document input.
-	// Vision-capable models (GPT-4o, Claude, Gemini, etc.) typically also
-	// support file uploads, so we use the same architecture flag as a proxy.
-	const currentModelSupportsFiles = computed(() => {
-		const provider = settingsStore.settings.ai.provider;
-		const modelId = settingsStore.settings.ai.providers[provider]?.model;
-		const models = settingsStore.getCachedModels(provider);
-		const model = models.find((m) => m.id === modelId);
-		return (
-			model?.architecture?.input_modalities?.includes("file") ||
-			model?.architecture?.input_modalities?.includes("image") ||
-			false
-		);
-	});
+	// 能力判定收口到与发送同源的那一条链(useActiveModelCapabilities):
+	// 从前这里读的是全局 `settings.ai.provider`,而实际发送走会话置顶 / agent
+	// 绑定 —— 会话钉了别的模型时两边就分叉,附件按错的模型降级。
+	const { supportsVision, supportsFiles } = useActiveModelCapabilities(
+		options.sessionId ?? (() => undefined),
+	);
+	const currentModelSupportsVision = supportsVision;
+	const currentModelSupportsFiles = supportsFiles;
 
 	function getMediaType(mimeType: string): AttachmentMediaType {
 		if (mimeType.startsWith("image/")) return "image";

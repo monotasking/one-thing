@@ -491,8 +491,7 @@ describe('AgentsPanelContent tool + model configuration', () => {
 
     it('hides both entries for a draft agent — it has no id and no sessions yet', async () => {
       const wrapper = await mountPanel()
-      const newAgent = wrapper.findAll('.text-action').find(button => button.text().includes('new agent'))
-      await newAgent!.trigger('click')
+      await wrapper.find('.agents-new').trigger('click')
       await nextTick()
 
       expect(wrapper.find('.agent-conversations').exists()).toBe(false)

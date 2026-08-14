@@ -66,6 +66,8 @@ export function buildOnethingUsageLedgerRecord(
   return {
     ts: input.ts ?? now(),
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(input.credentialId ? { credentialId: input.credentialId } : {}),
     providerId: input.providerId,
     modelId: input.modelId,
     platform: input.platform,

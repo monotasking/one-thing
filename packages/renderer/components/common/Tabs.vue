@@ -209,7 +209,17 @@ const resolvedType = computed(() => props.type || 'line')
 const isVertical = computed(() => props.tabPosition === 'left' || props.tabPosition === 'right')
 const canAdd = computed(() => props.addable || props.editable)
 
-const normalizedPanes = computed<NormalizedTabPane[]>(() => panes.value.map((pane, index) => {
+/**
+ * 段排序:同段内保持注册次序(`Array.prototype.sort` 稳定),段之间按 `order`。
+ *
+ * 不声明 `order` 的消费者全体落在同一段(0),排序退化成恒等 —— 与从前逐字节
+ * 一致。声明了的(工作台的工作区域页签)才被拉到尾段,而那正是"重排数据数组
+ * 搬不动页签条"这件事从前无解的地方。
+ */
+const orderedPanes = computed<TabPaneState[]>(() =>
+  [...panes.value].sort((left, right) => left.order.value - right.order.value))
+
+const normalizedPanes = computed<NormalizedTabPane[]>(() => orderedPanes.value.map((pane, index) => {
   const name = pane.name.value ?? index
   const label = pane.label.value || String(name)
 

@@ -7,6 +7,7 @@ import {
   updateOnethingProjectDirForIpc,
   type ProjectDirsAddRequest,
   type ProjectDirsGetRequest,
+  type ProjectDirsListRequest,
   type ProjectDirsRemoveRequest,
   type ProjectDirsUpdateRequest,
 } from '@onething/runtime/project-dirs'
@@ -29,8 +30,10 @@ export function registerProjectDirsHandlers(): void {
       update: IPC_CHANNELS.PROJECT_DIRS_UPDATE,
       remove: IPC_CHANNELS.PROJECT_DIRS_REMOVE,
     },
-    listProjectDirs: () => {
-      const store = getProjectsStore()
+    // 名册 per-space(批 B4):每件都按请求里的 `workspaceId` 取那个空间的 store,
+    // 缺省 = default 空间(`getProjectsStore(undefined)` 就是老的那份)。
+    listProjectDirs: (request: ProjectDirsListRequest) => {
+      const store = getProjectsStore(request.workspaceId)
       return listOnethingProjectDirsForIpc({
         listEntries: () => store.list(),
         getProject: path => store.get(path),
@@ -39,25 +42,26 @@ export function registerProjectDirsHandlers(): void {
     getProjectDir: (request: ProjectDirsGetRequest) => {
       return getOnethingProjectDirForIpc({
         request,
-        getProject: path => getProjectsStore().get(path),
+        getProject: path => getProjectsStore(request.workspaceId).get(path),
       })
     },
     addProjectDir: (request: ProjectDirsAddRequest) => {
       return addOnethingProjectDirForIpc({
         request,
-        addProject: input => getProjectsStore().add(input),
+        addProject: input => getProjectsStore(request.workspaceId).add(input),
       })
     },
     updateProjectDir: (request: ProjectDirsUpdateRequest) => {
       return updateOnethingProjectDirForIpc({
         request,
-        updateProject: (path, patch) => getProjectsStore().update(path, patch),
+        updateProject: (path, patch) =>
+          getProjectsStore(request.workspaceId).update(path, patch),
       })
     },
     removeProjectDir: (request: ProjectDirsRemoveRequest) => {
       return removeOnethingProjectDirForIpc({
         request,
-        removeProject: path => getProjectsStore().remove(path),
+        removeProject: path => getProjectsStore(request.workspaceId).remove(path),
       })
     },
     logger: console,

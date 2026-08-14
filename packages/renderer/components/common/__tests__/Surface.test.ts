@@ -154,12 +154,17 @@ describe('区域根接入(逐处同一枚 token,只是改由原语画)', () => {
     expect(ruleBody(source, '.right-workbench')).not.toContain('background:')
   })
 
-  it('media panel declares the chat tier instead of self-painting', () => {
-    const source = readRepoFile('packages/renderer/components/MediaPanel.vue')
+  /**
+   * `MediaPanel.vue`(接 `chat` 档的那个全屏工作区容器)随 P1 双域页签迁移拆除。
+   * media 视图本体搬进 `MediaPanelContent.vue`,它现在住在**工作台的 panel 面
+   * 里** —— 区域根只剩工作台一处,所以内容层这一侧的约束是"不自涂底"(涂了就
+   * 等于在别人的档位上再画一层,壁纸态下第一个露馅)。
+   */
+  it('media panel content paints no region surface of its own', () => {
+    const source = readRepoFile('packages/renderer/components/MediaPanelContent.vue')
 
-    expect(source).toContain('<Surface')
-    expect(source).toContain('surface="chat"')
-    expect(ruleBody(source, '.media-panel')).not.toContain('background:')
+    expect(source).not.toContain('<Surface')
+    expect(ruleBody(source, '.media-panel-content')).not.toContain('background:')
   })
 
   it('leaves the two declined region roots exactly as they were', () => {

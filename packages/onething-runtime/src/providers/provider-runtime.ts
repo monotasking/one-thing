@@ -36,6 +36,16 @@ export interface OnethingProviderRuntimeAdapters<
   TSession extends CoreSessionProviderSelection = CoreSessionProviderSelection,
 > {
   getSession?(sessionId: string): TSession | null | undefined
+  /**
+   * per-space 凭证覆盖(批 B3)。宿主注入 —— 产品层不认识「会话属于哪个空间」
+   * 这件事的存储形态,它只知道**这一处**是两条解析链共用的注入口。
+   * 缺省 = 恒等,即今天的行为(默认空间 = settings.ai)。
+   */
+  applySpaceCredentials?(
+    sessionId: string,
+    providerId: string,
+    providerConfig: TProvider | undefined,
+  ): TProvider | undefined
   isOAuthProvider(providerId: string): boolean
   refreshOAuthToken(providerId: string): Promise<OnethingOAuthTokenLike>
   resolveApiKey(providerId: string, providerConfig: TProvider | undefined): string | null | undefined
@@ -51,7 +61,7 @@ export interface OnethingProviderConfigForChatOptions<
 > {
   sessionId: string
   settings: CoreAppSettingsWithAI<TProvider>
-  adapters: Pick<OnethingProviderRuntimeAdapters<TProvider, TAuth, TSession>, 'getSession'>
+  adapters: Pick<OnethingProviderRuntimeAdapters<TProvider, TAuth, TSession>, 'getSession' | 'applySpaceCredentials'>
     & Pick<OnethingProviderRuntimeAdapters<TProvider, TAuth, TSession>, 'isOAuthProvider' | 'resolveApiKey' | 'resolveOAuthAuth' | 'createApiKeyAuth' | 'logger'>
 }
 
@@ -203,11 +213,19 @@ export function getEffectiveOnethingProviderConfig<
 >(
   settings: CoreAppSettingsWithAI<TProvider>,
   sessionId: string,
-  adapters: Pick<OnethingProviderRuntimeAdapters<TProvider, CoreProviderAuthLike, TSession>, 'getSession'>,
+  adapters: Pick<
+    OnethingProviderRuntimeAdapters<TProvider, CoreProviderAuthLike, TSession>,
+    'getSession' | 'applySpaceCredentials'
+  >,
   override?: CoreProviderSelectionOverride | null,
 ): CoreEffectiveProviderConfig<TProvider> {
   const resolved = getCoreEffectiveProviderConfig(settings, adapters.getSession?.(sessionId), override)
-  let providerConfig = withResolvedProviderBaseUrl(resolved.providerId, resolved.providerConfig)
+  // per-space 凭证覆盖(批 B3)在 baseUrl 派生**之前**:entry 可以带自己的 apiMode,
+  // 派生要看得见它,否则 zhipu coding-plan 的空间会被算回 standard 端点。
+  const spaceScoped = adapters.applySpaceCredentials
+    ? adapters.applySpaceCredentials(sessionId, resolved.providerId, resolved.providerConfig)
+    : resolved.providerConfig
+  let providerConfig = withResolvedProviderBaseUrl(resolved.providerId, spaceScoped)
   // This is the single chokepoint both resolution chains share (see the
   // deepseek-goes-codex incident), so a pinned think mode applied HERE is the
   // one place it cannot diverge: the turn's thinking is read off
@@ -258,9 +276,16 @@ export async function resolveOnethingProviderConfigForChat<
 >(
   options: OnethingProviderConfigForChatOptions<TProvider, TAuth, TSession>,
 ): Promise<CoreResolvedProviderConfigForChat<TProvider, TAuth> | null> {
+  const applySpaceCredentials = options.adapters.applySpaceCredentials
   const resolved = await resolveCoreProviderConfigForChat({
     settings: options.settings,
     session: options.adapters.getSession?.(options.sessionId),
+    ...(applySpaceCredentials
+      ? {
+          applySpaceCredentials: (providerId: string, providerConfig: TProvider | undefined) =>
+            applySpaceCredentials(options.sessionId, providerId, providerConfig),
+        }
+      : {}),
     resolveAuth: (providerId, providerConfig) =>
       resolveOnethingProviderAuth(providerId, providerConfig, options.adapters),
   })

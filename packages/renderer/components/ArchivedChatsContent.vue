@@ -1,256 +1,293 @@
 <template>
-  <div class="archived-chats-content">
-    <!-- Header -->
-    <div class="content-header">
-      <input
-        v-model="searchQuery"
-        type="text"
-        class="search-input"
-        placeholder="Search archived chats…"
-        aria-label="Search archived chats"
-      >
-      <!-- Grouping Mode Toggle -->
-      <div
-        class="grouping-toggle"
-        role="group"
-        aria-label="Group archived chats"
-      >
-        <Button
-          unstyled
-          class="text-action toggle-action"
-          :class="{ 'is-active': groupingMode === 'date' }"
-          :aria-pressed="groupingMode === 'date'"
-          @click="groupingMode = 'date'"
-        >
-          date
-        </Button>
-        <span
-          class="toggle-sep"
-          aria-hidden="true"
-        >/</span>
-        <Button
-          unstyled
-          class="text-action toggle-action"
-          :class="{ 'is-active': groupingMode === 'branch' }"
-          :aria-pressed="groupingMode === 'branch'"
-          @click="groupingMode = 'branch'"
-        >
-          branch
-        </Button>
+  <!-- Archive 视图。P4 按设计稿(Claude Design «Media Panel», Turn 5 的五兄弟面板段)
+       换成六面板共享骨架:PanelShell 控制条 / LedgerGroupHeader 月分组 /
+       44px 账线行 / 26px 状态条。底色不在这里画:它住在工作台的 `surface="panel"` 面里。 -->
+  <PanelShell
+    class="archived-chats-content"
+    :busy="sessionsStore.isLoading"
+    :padded="false"
+  >
+    <template #controls>
+      <!-- 控制条在窄面板里换行而不是把搜索框压扁:工作台最窄只有 250px,
+           一行塞不下"搜索 + 分组丸 + 时间档"。 -->
+      <div class="archive-controls">
+        <FilterSearchInput
+          v-model="searchQuery"
+          size="compact"
+          class="archive-search"
+          placeholder="搜索已归档会话"
+          label="搜索已归档会话"
+          clear-label="清除搜索"
+        />
+        <SegmentedPill
+          v-model="groupingModeModel"
+          class="archive-grouping"
+          :options="GROUPING_OPTIONS"
+          aria-label="归档会话分组方式"
+        />
+        <Select
+          v-model="timeRangeModel"
+          class="archive-range"
+          :options="TIME_RANGE_OPTIONS"
+          aria-label="按时间筛选"
+          fit-input-width
+        />
       </div>
-    </div>
+    </template>
 
-    <!-- Archived Chats List -->
-    <div class="content-body">
-      <!-- Loading State -->
-      <p
-        v-if="sessionsStore.isLoading"
-        class="ledger-note"
-      >
-        loading archived chats…
-      </p>
-
-      <!-- Grouped Chats -->
-      <div
-        v-else-if="groupedChats.length > 0"
-        class="ledger-body"
-      >
+    <div class="archive-scroll">
+      <template v-if="groupedChats.length > 0">
         <section
-          v-for="(group, index) in groupedChats"
-          :key="`${group.label}-${group.sessions[0]?.id || index}`"
+          v-for="group in groupedChats"
+          :key="group.key"
           class="chat-group"
         >
-          <h4
-            class="group-header"
-            :class="{ collapsed: collapsedGroups.has(group.label) }"
-            role="button"
-            tabindex="0"
-            :aria-expanded="!collapsedGroups.has(group.label)"
-            @click="toggleGroup(group.label)"
-            @keydown.enter.prevent="toggleGroup(group.label)"
-            @keydown.space.prevent="toggleGroup(group.label)"
-          >
-            <span
-              class="group-mark"
-              aria-hidden="true"
-            >{{ collapsedGroups.has(group.label) ? '+' : '−' }}</span>
-            <span class="group-title">{{ group.label }}</span>
-            <span class="group-count">{{ group.sessions.length }}</span>
-          </h4>
+          <LedgerGroupHeader
+            sticky
+            collapsible
+            :label="group.label"
+            :count="group.sessions.length"
+            :collapsed="collapsedGroups.has(group.key)"
+            @update:collapsed="toggleGroup(group.key)"
+          />
           <div
-            v-show="!collapsedGroups.has(group.label)"
+            v-show="!collapsedGroups.has(group.key)"
             class="chat-list"
           >
-            <div
+            <PanelLedgerRow
               v-for="session in group.sessions"
               :key="session.id"
               class="chat-row"
-              :class="{
-                active: sessionsStore.currentSessionId === session.id,
-                'is-branch': session.parentSessionId
-              }"
+              :label="session.name || '未命名会话'"
+              :meta="describeSession(session)"
+              :active="sessionsStore.currentSessionId === session.id"
               role="button"
               tabindex="0"
               @click="viewChat(session)"
               @keydown.enter.prevent="viewChat(session)"
               @keydown.space.prevent="viewChat(session)"
             >
-              <span
-                class="row-index"
-                aria-hidden="true"
-              />
-              <span class="chat-name">{{ session.name || 'Untitled Chat' }}</span>
-              <span class="chat-meta">
-                <!-- Branch parent indicator -->
+              <template #trail>
                 <span
-                  v-if="session.parentSessionId"
-                  class="chat-branch"
-                >↳ {{ getParentName(session.parentSessionId) }}</span>
-                <span
-                  v-else
-                  class="chat-time"
-                >{{ formatTime(session.archivedAt || session.updatedAt) }}</span>
-                <span
-                  v-if="session.messages?.length"
-                  class="chat-messages"
-                >{{ session.messages.length }} msg</span>
-                <!-- Show branch count if has children -->
-                <span
-                  v-if="getBranchCount(session.id) > 0"
-                  class="chat-branches"
-                >{{ getBranchCount(session.id) }} branch{{ getBranchCount(session.id) > 1 ? 'es' : '' }}</span>
-              </span>
-              <span
-                class="chat-actions"
-                @click.stop
-              >
-                <Button
-                  unstyled
-                  class="text-action"
-                  @click="restoreChat(session)"
+                  class="row-actions"
+                  @click.stop
                 >
-                  restore
-                </Button>
-                <Button
-                  unstyled
-                  class="text-action is-danger"
-                  @click="confirmDelete(session)"
-                >
-                  delete
-                </Button>
-              </span>
-            </div>
+                  <button
+                    type="button"
+                    class="row-action is-restore"
+                    :aria-label="`恢复 ${session.name || '未命名会话'}`"
+                    @click="restoreChat(session)"
+                  >
+                    <RotateCcw
+                      :size="13"
+                      :stroke-width="1.8"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    class="row-action is-delete"
+                    :aria-label="`永久删除 ${session.name || '未命名会话'}`"
+                    @click="confirmDelete(session)"
+                  >
+                    <Trash2
+                      :size="13"
+                      :stroke-width="1.8"
+                    />
+                  </button>
+                </span>
+              </template>
+            </PanelLedgerRow>
           </div>
         </section>
+      </template>
+
+      <!-- 空态两屏:库空 vs 筛空 —— 后者要能一键退回 -->
+      <div
+        v-else-if="isLibraryEmpty"
+        class="empty-state"
+      >
+        <span
+          class="empty-icon"
+          aria-hidden="true"
+        >
+          <Archive
+            :size="20"
+            :stroke-width="1.6"
+          />
+        </span>
+        <p class="empty-title">
+          还没有归档的会话
+        </p>
+        <p class="empty-hint">
+          删除的会话会先落到这里,恢复之前不会真的消失。
+        </p>
       </div>
 
-      <!-- Empty State -->
       <div
         v-else
         class="empty-state"
       >
-        <p class="empty-text">
-          No archived chats
+        <span
+          class="empty-icon"
+          aria-hidden="true"
+        >
+          <SearchX
+            :size="20"
+            :stroke-width="1.6"
+          />
+        </span>
+        <p class="empty-title">
+          没有匹配的会话
         </p>
-        <p class="empty-hint">
-          Deleted chats will appear here
-        </p>
+        <Button
+          unstyled
+          class="text-action is-primary"
+          native-type="button"
+          @click="clearFilters"
+        >
+          清除筛选
+        </Button>
       </div>
     </div>
-  </div>
+
+    <template #status>
+      <span class="status-text">{{ statusText }}</span>
+    </template>
+  </PanelShell>
 </template>
 
 <script setup lang="ts">
-import { useConfirm } from '@/composables/useConfirm'
+import { computed, ref } from 'vue'
+import { Archive, RotateCcw, SearchX, Trash2 } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
-import { ref, computed } from 'vue'
+import FilterSearchInput from '@/components/common/FilterSearchInput.vue'
+import SegmentedPill from '@/components/common/SegmentedPill.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
+import LedgerGroupHeader from '@/components/workspace/LedgerGroupHeader.vue'
+import PanelLedgerRow from '@/components/workspace/PanelLedgerRow.vue'
+import PanelShell from '@/components/workspace/PanelShell.vue'
+import { useConfirm } from '@/composables/useConfirm'
 import { useSessionsStore } from '@/stores/sessions'
 import type { ChatSession, ChatMessage } from '@/types'
 
 const sessionsStore = useSessionsStore()
 const { confirm } = useConfirm()
+
 const searchQuery = ref('')
 const groupingMode = ref<'date' | 'branch'>('date')
+const timeRange = ref<TimeRange>('all')
 const collapsedGroups = ref<Set<string>>(new Set())
 
-// Toggle group collapse state
-function toggleGroup(label: string) {
-  if (collapsedGroups.value.has(label)) {
-    collapsedGroups.value.delete(label)
-  } else {
-    collapsedGroups.value.add(label)
-  }
-  // Trigger reactivity
-  collapsedGroups.value = new Set(collapsedGroups.value)
-}
+type TimeRange = 'all' | '7d' | '30d' | 'year'
 
-// Filter archived sessions by search query
-const filteredSessions = computed(() => {
-  const archived = sessionsStore.archivedSessions
-  if (!searchQuery.value) return archived
-  const query = searchQuery.value.toLowerCase()
-  return archived.filter(s =>
-    (s.name || '').toLowerCase().includes(query)
-  )
+const GROUPING_OPTIONS = [
+  { value: 'date', label: '日期' },
+  { value: 'branch', label: '分支' },
+]
+
+const TIME_RANGE_OPTIONS: SelectOptionLike[] = [
+  { value: 'all', label: '全部时间' },
+  { value: '7d', label: '最近 7 天' },
+  { value: '30d', label: '最近 30 天' },
+  { value: 'year', label: '今年' },
+]
+
+/** 分段丸 / 下拉的 v-model 都是裸 string,这里把它接回各自的字面量联合。 */
+const groupingModeModel = computed({
+  get: () => groupingMode.value as string,
+  set: (value: string) => {
+    groupingMode.value = value as 'date' | 'branch'
+  },
 })
+
+const timeRangeModel = computed({
+  get: () => timeRange.value as string,
+  set: (value: string) => {
+    timeRange.value = value as TimeRange
+  },
+})
+
+const DAY_MS = 24 * 60 * 60 * 1000
 
 // Session type for archived list (messages may be undefined for optimized loading)
 type ArchivedSession = Omit<ChatSession, 'messages'> & { messages?: ChatMessage[] }
 
-// Group sessions by date
-function groupByDate(sessions: ArchivedSession[]): { label: string; sessions: ArchivedSession[]; isParent?: boolean }[] {
-  if (sessions.length === 0) return []
+interface ChatGroup {
+  /** 折叠状态的键。分支模式下同名父会话可能重名,所以键不等于展示标签。 */
+  key: string
+  label: string
+  sessions: ArchivedSession[]
+}
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const todayStart = today.getTime()
+function archivedTime(session: ArchivedSession): number {
+  return session.archivedAt || session.updatedAt
+}
 
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStart = yesterday.getTime()
+function toggleGroup(key: string) {
+  const next = new Set(collapsedGroups.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedGroups.value = next
+}
 
-  const weekAgo = new Date(today)
-  weekAgo.setDate(weekAgo.getDate() - 7)
-  const weekAgoStart = weekAgo.getTime()
+function clearFilters() {
+  searchQuery.value = ''
+  timeRange.value = 'all'
+}
 
-  const monthAgo = new Date(today)
-  monthAgo.setMonth(monthAgo.getMonth() - 1)
-  const monthAgoStart = monthAgo.getTime()
+const archivedSessions = computed<ArchivedSession[]>(() => sessionsStore.archivedSessions)
 
-  const groups: { label: string; sessions: ArchivedSession[]; isParent?: boolean }[] = [
-    { label: 'Today', sessions: [] },
-    { label: 'Yesterday', sessions: [] },
-    { label: 'This Week', sessions: [] },
-    { label: 'This Month', sessions: [] },
-    { label: 'Older', sessions: [] },
-  ]
+const isLibraryEmpty = computed(() => archivedSessions.value.length === 0)
 
-  for (const session of sessions) {
-    const time = session.archivedAt || session.updatedAt
-    if (time >= todayStart) {
-      groups[0].sessions.push(session)
-    } else if (time >= yesterdayStart) {
-      groups[1].sessions.push(session)
-    } else if (time >= weekAgoStart) {
-      groups[2].sessions.push(session)
-    } else if (time >= monthAgoStart) {
-      groups[3].sessions.push(session)
-    } else {
-      groups[4].sessions.push(session)
+const filteredSessions = computed<ArchivedSession[]>(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  const now = Date.now()
+  let cutoff = 0
+  if (timeRange.value === '7d') cutoff = now - 7 * DAY_MS
+  else if (timeRange.value === '30d') cutoff = now - 30 * DAY_MS
+  else if (timeRange.value === 'year') cutoff = new Date(new Date().getFullYear(), 0, 1).getTime()
+
+  return archivedSessions.value.filter((session) => {
+    if (cutoff && archivedTime(session) < cutoff) return false
+    if (!query) return true
+    return (session.name || '').toLowerCase().includes(query)
+  })
+})
+
+/** 月分组(设计稿:`8 月 (14)`)。跨年的月份带上年份,免得两个「8 月」并排。 */
+function groupByMonth(sessions: ArchivedSession[]): ChatGroup[] {
+  const currentYear = new Date().getFullYear()
+  const buckets = new Map<string, ChatGroup>()
+
+  for (const session of [...sessions].sort((a, b) => archivedTime(b) - archivedTime(a))) {
+    const date = new Date(archivedTime(session))
+    const year = date.getFullYear()
+    const month = date.getMonth() + 1
+    const key = `${year}-${String(month).padStart(2, '0')}`
+    let bucket = buckets.get(key)
+    if (!bucket) {
+      bucket = {
+        key,
+        label: year === currentYear ? `${month} 月` : `${year} 年 ${month} 月`,
+        sessions: [],
+      }
+      buckets.set(key, bucket)
     }
+    bucket.sessions.push(session)
   }
 
-  return groups.filter(g => g.sessions.length > 0)
+  return [...buckets.values()]
 }
 
 // Group sessions by branch relationship
-function groupByBranch(sessions: ArchivedSession[]): { label: string; sessions: ArchivedSession[]; isParent?: boolean }[] {
+function groupByBranch(sessions: ArchivedSession[]): ChatGroup[] {
   if (sessions.length === 0) return []
 
-  const groups: { label: string; sessions: ArchivedSession[]; isParent?: boolean }[] = []
+  const groups: ChatGroup[] = []
 
   // First, find all parent sessions (sessions without parentSessionId or whose parent is not archived)
-  const parentSessions = sessions.filter(s => {
+  const parentSessions = sessions.filter((s) => {
     if (!s.parentSessionId) return true
     // Check if parent is also in archived list
     const parentInArchived = sessions.find(p => p.id === s.parentSessionId)
@@ -269,72 +306,70 @@ function groupByBranch(sessions: ArchivedSession[]): { label: string; sessions: 
       return allBranches
     }
 
-    const branches = findBranches(parent.id)
-
-    if (branches.length > 0) {
-      // Parent with branches
-      groups.push({
-        label: parent.name || 'Untitled Chat',
-        sessions: [parent, ...branches],
-        isParent: true
-      })
-    } else {
-      // Standalone session (no branches)
-      groups.push({
-        label: parent.name || 'Untitled Chat',
-        sessions: [parent],
-        isParent: true
-      })
-    }
+    groups.push({
+      key: parent.id,
+      label: parent.name || '未命名会话',
+      sessions: [parent, ...findBranches(parent.id)],
+    })
   }
 
   // Sort groups by most recent activity
   groups.sort((a, b) => {
-    const aTime = Math.max(...a.sessions.map(s => s.archivedAt || s.updatedAt))
-    const bTime = Math.max(...b.sessions.map(s => s.archivedAt || s.updatedAt))
+    const aTime = Math.max(...a.sessions.map(archivedTime))
+    const bTime = Math.max(...b.sessions.map(archivedTime))
     return bTime - aTime
   })
 
   return groups
 }
 
-// Computed grouped chats based on mode
-const groupedChats = computed(() => {
+const groupedChats = computed<ChatGroup[]>(() => {
   const sessions = filteredSessions.value
-  if (groupingMode.value === 'branch') {
-    return groupByBranch(sessions)
-  }
-  return groupByDate(sessions)
+  if (sessions.length === 0) return []
+  return groupingMode.value === 'branch' ? groupByBranch(sessions) : groupByMonth(sessions)
 })
 
-// Format time for display
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp)
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
+/** 副行:`8 月 6 日 · 92 条消息 · Sonnet 4.5`。缺的段直接不出现,不留占位。 */
+function describeSession(session: ArchivedSession): string {
+  const parts: string[] = [formatDate(archivedTime(session))]
+  if (session.parentSessionId) parts.push(`↳ ${getParentName(session.parentSessionId)}`)
+  const messages = session.messages?.length
+  if (messages) parts.push(`${messages} 条消息`)
+  const branches = getBranchCount(session.id)
+  if (branches > 0) parts.push(`${branches} 个分支`)
+  if (session.lastModel) parts.push(session.lastModel)
+  return parts.join(' · ')
+}
 
-  if (timestamp >= today.getTime()) {
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  } else if (timestamp >= yesterday.getTime()) {
-    return 'Yesterday ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  } else {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-      ' ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  }
+function formatDate(timestamp: number): string {
+  const date = new Date(timestamp)
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  const year = date.getFullYear()
+  const suffix = year === new Date().getFullYear() ? '' : `${year} 年 `
+  return `${suffix}${month} 月 ${day} 日`
 }
 
 // Get parent session name
 function getParentName(parentId: string): string {
   const parent = sessionsStore.sessions.find(s => s.id === parentId)
-  return parent?.name || 'Parent Chat'
+  return parent?.name || '父会话'
 }
 
 // Get number of branches for a session
 function getBranchCount(sessionId: string): number {
   return sessionsStore.sessions.filter(s => s.parentSessionId === sessionId && s.isArchived).length
 }
+
+const statusText = computed(() => {
+  if (sessionsStore.isLoading) return '正在读取归档…'
+  const total = archivedSessions.value.length
+  if (total === 0) return '归档为空'
+  const shown = filteredSessions.value.length
+  const mode = groupingMode.value === 'branch' ? '按分支分组' : '按月份分组'
+  if (shown === total) return `共 ${total} 个会话 · ${mode}`
+  return `筛出 ${shown} / 共 ${total} 个会话 · ${mode}`
+})
 
 // View archived chat (switch to it in ChatWindow)
 async function viewChat(session: ArchivedSession) {
@@ -349,9 +384,9 @@ async function restoreChat(session: ArchivedSession) {
 // Confirm and permanently delete chat
 async function confirmDelete(session: ArchivedSession) {
   const confirmed = await confirm({
-    title: 'Delete chat',
-    message: `Permanently delete "${session.name || 'Untitled Chat'}"? This cannot be undone.`,
-    confirmText: 'Delete',
+    title: '删除会话',
+    message: `永久删除「${session.name || '未命名会话'}」?此操作不可撤销。`,
+    confirmText: '删除',
     danger: true,
   })
   if (!confirmed) return
@@ -360,357 +395,133 @@ async function confirmDelete(session: ArchivedSession) {
 </script>
 
 <style scoped>
-/*
- * Archived chats — 画线风 (ledger / ink-line).
- * No fills, no radii: groups and rows hang on one vertical rule.
- */
 .archived-chats-content {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
   min-width: 0;
-  animation: ledger-fade 0.15s ease;
 }
 
-@keyframes ledger-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* ---- header ---- */
-.content-header {
-  padding: 16px 4px 12px;
+.archive-controls {
   display: flex;
-  gap: 14px;
-  align-items: baseline;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-}
-
-.search-input {
-  flex: 1 1 160px;
-  min-width: 0;
-  padding: 4px 2px 5px;
-  font-size: 12px;
-  color: var(--ui-text-primary-fg);
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
-  border-radius: 0;
-  transition: border-color var(--duration-fast) var(--ease-default);
-}
-
-.search-input:hover,
-input.search-input:focus {
-  outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg);
-}
-
-.search-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-}
-
-/* Grouping toggle: text actions, active one carries the accent underline */
-.grouping-toggle {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.toggle-sep {
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-}
-
-.toggle-action {
-  padding: 4px 0;
-}
-
-.toggle-action.is-active {
-  color: var(--ui-text-primary-fg);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg);
-}
-
-.content-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 0 4px 16px;
-}
-
-/* ---- notes / empty ---- */
-.ledger-note {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--ui-text-muted-fg);
-}
-
-.empty-state {
-  padding: 8px 0 16px;
-}
-
-.empty-text {
-  font-size: 12px;
-  color: var(--ui-text-muted-fg);
-  margin: 0 0 2px;
-}
-
-.empty-hint {
-  font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  margin: 0;
-}
-
-/* ---- the ledger rule ---- */
-.ledger-body {
-  position: relative;
-  padding-left: 16px;
-}
-
-.ledger-body::before {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 6px;
-  bottom: 6px;
-  width: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border) 72%, transparent);
-}
-
-/* ---- groups ---- */
-.chat-group {
-  margin-bottom: 22px;
-}
-
-.chat-group:last-child {
-  margin-bottom: 0;
-}
-
-.group-header {
-  position: relative;
-  display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold, 600);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ui-text-primary-fg);
-  cursor: pointer;
-  user-select: none;
-  min-width: 0;
-}
-
-.group-header::before {
-  content: '';
-  position: absolute;
-  left: -16px;
-  top: 50%;
-  width: 10px;
-  height: 2px;
-  background: var(--ui-border-strong-border);
-}
-
-.group-header:focus-visible {
-  outline: none;
-}
-
-.group-header:focus-visible::before,
-.group-header:hover::before {
-  background: var(--ui-accent-primary-fg);
-}
-
-.group-header.collapsed {
-  color: var(--ui-text-muted-fg);
-  margin-bottom: 0;
-}
-
-.group-mark {
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  font-weight: var(--font-weight-normal, 400);
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  flex-shrink: 0;
-  min-width: 10px;
-}
-
-.group-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.group-count {
-  font-family: var(--font-mono, monospace);
-  font-variant-numeric: tabular-nums;
-  font-size: 11px;
-  font-weight: var(--font-weight-normal, 400);
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  flex-shrink: 0;
-}
-
-/* ---- rows ---- */
-.chat-list {
-  counter-reset: chat-row;
-}
-
-.chat-row {
-  position: relative;
-  counter-increment: chat-row;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-height: 30px;
-  padding: 6px 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
-  cursor: pointer;
-  min-width: 0;
-}
-
-.chat-row:first-child {
-  border-top: none;
-}
-
-/* Tick hanging the row on the rule */
-.chat-row::before {
-  content: '';
-  position: absolute;
-  left: -13px;
-  top: 50%;
-  width: 7px;
-  height: 1px;
-  background: var(--ui-border-strong-border);
-  transition: width var(--duration-fast) var(--ease-default), height var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
-}
-
-.chat-row:hover::before {
-  width: 12px;
-  background: var(--ui-text-muted-fg);
-}
-
-.chat-row:focus-visible {
-  outline: none;
-}
-
-.chat-row.active::before,
-.chat-row:focus-visible::before {
-  width: 14px;
-  height: 2px;
-  background: var(--ui-accent-primary-fg);
-}
-
-.row-index::before {
-  content: counter(chat-row, decimal-leading-zero);
-  font-family: var(--font-mono, monospace);
-  font-variant-numeric: tabular-nums;
-  font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  flex-shrink: 0;
-  min-width: 16px;
-  display: inline-block;
-}
-
-.chat-name {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  color: var(--ui-text-primary-fg);
+  flex-wrap: wrap;
 }
 
-.chat-row.active .chat-name {
-  color: var(--ui-accent-primary-fg);
-}
-
-.chat-meta {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-shrink: 0;
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+.archive-search {
+  flex: 1 1 140px;
   min-width: 0;
-  max-width: 55%;
 }
 
-.chat-time,
-.chat-messages,
-.chat-branches {
-  white-space: nowrap;
+.archive-grouping,
+.archive-range {
+  flex: 0 0 auto;
 }
 
-.chat-branch {
-  color: var(--ui-text-muted-fg);
+.archive-range {
+  min-width: 104px;
+}
+
+.archive-scroll {
+  padding: 0 14px 16px;
+}
+
+.chat-group {
   min-width: 0;
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-/* Branch rows sit one step in from the rule */
-.chat-row.is-branch {
-  padding-left: 16px;
+.chat-list {
+  min-width: 0;
 }
 
-/* ---- row actions ---- */
-.chat-actions {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-shrink: 0;
+/* ---- 行尾操作:hover 才现 ---- */
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-default);
 }
 
-.chat-row:hover .chat-actions,
-.chat-row:focus-visible .chat-actions,
-.chat-actions:focus-within {
+.chat-row:hover .row-actions,
+.chat-row:focus-visible .row-actions,
+.row-actions:focus-within {
   opacity: 1;
 }
 
-/* ---- shared text-action ---- */
-.text-action {
-  appearance: none;
-  background: transparent;
-  border: none;
+.row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  /* 静止时一律墨色 —— 破坏性动作不在待机状态喊叫(ui-system §1)。 */
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-default);
+  transition:
+    background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
 }
 
-.text-action:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg);
+.row-action:focus-visible {
+  outline: 1px solid var(--ui-accent-primary-fg);
+  outline-offset: 1px;
 }
 
-.text-action.is-danger:hover:not(:disabled) {
+.row-action.is-restore:hover {
+  background: var(--ui-state-hover-accent-bg);
+  color: var(--ui-accent-primary-fg);
+}
+
+.row-action.is-delete:hover {
+  background: var(--ui-status-danger-bg);
   color: var(--ui-status-danger-fg);
-  text-decoration-color: var(--ui-status-danger-fg);
 }
 
-.text-action:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+/* ---- 空态 ---- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 56px 24px 0;
+  text-align: center;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .archived-chats-content {
-    animation: none;
-  }
+.empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border: 1px dashed var(--ui-border-strong-border);
+  border-radius: 10px;
+  color: var(--ui-text-faint-fg);
+}
+
+.empty-title {
+  margin: 0;
+  font-family: var(--font-display, var(--font-serif, serif));
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ui-text-primary-fg);
+}
+
+.empty-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ui-text-secondary-fg);
+}
+
+.status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

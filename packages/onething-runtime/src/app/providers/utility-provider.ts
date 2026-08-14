@@ -20,6 +20,7 @@ import {
 	resolveProviderAuth,
 } from "../engine/stream/provider-helpers.js";
 import { resolveUtilityModel } from "./utility-model.js";
+import { applySessionSpaceCredentials } from "./space-credentials.js";
 
 export interface UtilityProviderRef {
 	provider: AgentProvider;
@@ -66,7 +67,14 @@ export async function createUtilityProvider(
 	);
 	if (!resolved) return undefined;
 
-	const providerConfig = settings.ai?.providers?.[resolved.providerId];
+	// per-space 凭证(批 B3):这条路自己读 settings,所以隔离闸也得自己挂一次。
+	// 会话属于非 default 空间而那个空间没配这个 provider → 拿不到 auth →
+	// 与「没配工具模型」同一条出路:静默跳过,后台工作永不向用户报错。
+	const providerConfig = applySessionSpaceCredentials(
+		options.sessionId ?? "",
+		resolved.providerId,
+		settings.ai?.providers?.[resolved.providerId],
+	);
 	if (!providerConfig) return undefined;
 
 	const authContext = await resolveProviderAuth(resolved.providerId, providerConfig);

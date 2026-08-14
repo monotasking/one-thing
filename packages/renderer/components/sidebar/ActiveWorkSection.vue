@@ -97,7 +97,7 @@ const openedSessionId = computed(() => sessionsStore.currentSessionId)
 .active-work-empty {
   margin: 0;
   padding: 12px 14px 3px;
-  font-size: 11.5px;
+  font-size: var(--sidebar-type-caption);
   font-weight: 500;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
 }
@@ -105,7 +105,7 @@ const openedSessionId = computed(() => sessionsStore.currentSessionId)
 .active-work-group {
   flex: 0 0 auto;
   padding: 12px 14px 3px;
-  font-size: 11.5px;
+  font-size: var(--sidebar-type-caption);
   font-weight: 500;
   line-height: 1.45;
   color: var(--ui-sidebar-rail-muted-fg);

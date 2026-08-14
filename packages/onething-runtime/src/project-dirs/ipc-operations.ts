@@ -2,32 +2,48 @@ import type { Project, ProjectIndexEntry } from './types.js'
 
 export interface ProjectDirSummary {
   path: string
+  paths: string[]
   description: string
   lastUsedAt: number
 }
 
 export interface ProjectDirRecord {
   path: string
+  paths: string[]
   description: string
   addedAt: number
   lastUsedAt: number
 }
 
-export interface ProjectDirsGetRequest {
+/**
+ * 名册 per-space(批 B4):五件套都带一个可选的 `workspaceId`,**缺省 = default**
+ * 空间(= 老的 `<store>/project-dirs/`,零迁移)。web 端宿主没有 space 维度,
+ * 永远传缺省。
+ */
+export interface ProjectDirsWorkspaceScoped {
+  workspaceId?: string
+}
+
+export interface ProjectDirsListRequest extends ProjectDirsWorkspaceScoped {}
+
+export interface ProjectDirsGetRequest extends ProjectDirsWorkspaceScoped {
   path: string
 }
 
-export interface ProjectDirsAddRequest {
+export interface ProjectDirsAddRequest extends ProjectDirsWorkspaceScoped {
   path: string
+  paths?: string[]
   description?: string
 }
 
-export interface ProjectDirsUpdateRequest {
+export interface ProjectDirsUpdateRequest extends ProjectDirsWorkspaceScoped {
   path: string
-  description: string
+  description?: string
+  /** Full replacement root list; `paths[0]` becomes the new primary. */
+  paths?: string[]
 }
 
-export interface ProjectDirsRemoveRequest {
+export interface ProjectDirsRemoveRequest extends ProjectDirsWorkspaceScoped {
   path: string
 }
 
@@ -44,6 +60,7 @@ export type OnethingProjectDirsIpcResult<TPayload extends object = {}> =
 export function projectToOnethingProjectDirRecord(project: Project): ProjectDirRecord {
   return {
     path: project.path,
+    paths: [...project.paths],
     description: project.description,
     addedAt: project.addedAt,
     lastUsedAt: project.lastUsedAt,
@@ -52,6 +69,7 @@ export function projectToOnethingProjectDirRecord(project: Project): ProjectDirR
 
 export function listOnethingProjectDirsForIpc(
   options: {
+    /** The space is already bound into these two closures by the host. */
     listEntries(): ProjectIndexEntry[]
     getProject(path: string): Project | null
   },
@@ -61,6 +79,7 @@ export function listOnethingProjectDirsForIpc(
       const project = options.getProject(entry.path)
       return {
         path: entry.path,
+        paths: [...entry.paths],
         description: project?.description ?? '',
         lastUsedAt: entry.lastUsedAt,
       }
@@ -104,11 +123,19 @@ export function addOnethingProjectDirForIpc(
 export function updateOnethingProjectDirForIpc(
   options: {
     request: ProjectDirsUpdateRequest
-    updateProject(path: string, patch: { description: string }): Project | null
+    updateProject(path: string, patch: { description?: string; paths?: string[] }): Project | null
   },
 ): OnethingProjectDirsIpcResult<{ project: ProjectDirRecord }> {
   try {
-    const project = options.updateProject(options.request.path, { description: options.request.description })
+    const { description, paths } = options.request
+    if (description === undefined && paths === undefined) {
+      return {
+        success: false,
+        error: 'update requires a description and/or paths patch',
+        code: 'BAD_REQUEST',
+      }
+    }
+    const project = options.updateProject(options.request.path, { description, paths })
     if (!project) return projectDirsNotFound(options.request.path)
     return { success: true, project: projectToOnethingProjectDirRecord(project) }
   } catch (error) {

@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import type {
   ProjectDirsAddRequest,
   ProjectDirsGetRequest,
+  ProjectDirsListRequest,
   ProjectDirsRemoveRequest,
   ProjectDirsUpdateRequest,
 } from '@onething/runtime/project-dirs'
@@ -23,7 +24,7 @@ export interface ElectronProjectDirsIpcChannels {
 
 export interface RegisterElectronProjectDirsIpcHandlersOptions {
   channels: ElectronProjectDirsIpcChannels
-  listProjectDirs(): unknown
+  listProjectDirs(request: ProjectDirsListRequest): unknown
   getProjectDir(request: ProjectDirsGetRequest): unknown
   addProjectDir(request: ProjectDirsAddRequest): unknown
   updateProjectDir(request: ProjectDirsUpdateRequest): unknown
@@ -37,8 +38,9 @@ export function registerElectronProjectDirsIpcHandlers(
 ): void {
   const host = options.ipcMain ?? ipcMain
 
-  host.handle(options.channels.list, () => {
-    return options.listProjectDirs()
+  host.handle(options.channels.list, (_event, request?: ProjectDirsListRequest) => {
+    // 旧渲染层不带载荷 —— `{}` = 缺省空间,与批 B4 之前完全一致。
+    return options.listProjectDirs(request ?? {})
   })
 
   host.handle(options.channels.get, (_event, request: ProjectDirsGetRequest) => {

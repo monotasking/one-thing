@@ -499,3 +499,50 @@ input.form-input:focus {
   font-style: italic;
   line-height: 1.5;
 }
+
+/* .text-action — 账页语汇里的**文字动作**:没有按钮壳,靠 hover 时浮出的主色下划线
+   表示"可点"。工作区面板(Media / Scheduler / Archive / Agents)的行尾操作、抽屉
+   底部操作行全用它,不要再为"看起来像链接的按钮"发明第二套。
+
+   写在全局层而不是某个组件里:四个面板各有一份逐字相同的 scoped 拷贝,拷贝之间
+   一改就散;这里是它们的收编目标(scoped 拷贝的特异性更高,收编前后视觉不变)。
+   三个变体:`.is-primary` 常态就用主色(主行动),`.is-danger` 只在 hover 变红
+   (破坏性动作静止时不喊叫),`:disabled` 降透明度且不再有下划线。 */
+.text-action {
+  appearance: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ui-text-muted-fg);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-default);
+}
+
+.text-action:hover:not(:disabled) {
+  color: var(--ui-text-primary-fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg);
+}
+
+.text-action.is-primary {
+  color: var(--ui-accent-primary-fg);
+}
+
+.text-action.is-danger:hover:not(:disabled) {
+  color: var(--ui-status-danger-fg);
+  text-decoration-color: var(--ui-status-danger-fg);
+}
+
+.text-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.text-action:focus-visible {
+  outline: 1px solid var(--ui-accent-primary-fg);
+  outline-offset: 2px;
+}

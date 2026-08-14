@@ -10,6 +10,7 @@ import { oauthManager } from '../../providers/auth/oauth-manager.js'
 import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
 import { resolveProviderApiKey } from '../../providers/env.js'
+import { applySessionSpaceCredentials } from '../../providers/space-credentials.js'
 import {
   extractOnethingProviderErrorDetails,
   getEffectiveOnethingProviderConfig,
@@ -87,6 +88,9 @@ export function getEffectiveProviderConfig(
 ): { providerId: string; providerConfig: ProviderConfig | undefined; model: string } {
   return getEffectiveOnethingProviderConfig(settings, sessionId, {
     getSession: id => store.getSession(id),
+    // per-space 凭证(批 B3):这一处与 core 引擎的 provider 适配器是**同一个**
+    // 注入口 —— 两条解析链共用的那一处,别在别处再判一次。
+    applySpaceCredentials: applySessionSpaceCredentials,
   }, override)
 }
 
@@ -135,6 +139,7 @@ export async function getProviderConfigForChat(
     settings,
     adapters: {
       getSession: id => store.getSession(id),
+      applySpaceCredentials: applySessionSpaceCredentials,
       isOAuthProvider: requiresOAuth,
       resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
       resolveOAuthAuth: (id, apiKey) => authService.resolveProviderAuth(id, apiKey),

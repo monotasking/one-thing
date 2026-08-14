@@ -10,6 +10,7 @@ export { default as ProviderUsageCard } from './ProviderUsageCard.vue'
 export { default as ProviderModels } from './ProviderModels.vue'
 export { default as ModelLedgerSection } from './ModelLedgerSection.vue'
 export { default as ConnectionsSection } from './ConnectionsSection.vue'
+export { default as SpaceCredentialsPanel } from './SpaceCredentialsPanel.vue'
 
 export {
   useProviderSettings,

@@ -21,6 +21,7 @@ import {
 	requiresOAuth,
 } from "../providers/index.js";
 import { resolveProviderApiKey } from "../providers/env.js";
+import { applySessionSpaceCredentials } from "../providers/space-credentials.js";
 import * as modelRegistry from "../providers/model-registry.js";
 import { resolvePromptReferences } from "../prompts/resolver.js";
 import { buildStateVariablesPromptText } from "../variables/index.js";
@@ -98,6 +99,9 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 			),
 		provider: {
 			getSession: (sessionId) => store.getSession(sessionId),
+			// per-space 凭证(批 B3):非 default 空间用它自己的凭证池,没配就是
+			// 「未配置」——起流前置拦截,绝不悄悄用默认空间的 key。
+			applySpaceCredentials: applySessionSpaceCredentials,
 			isProviderSupported,
 			isOAuthProvider: requiresOAuth,
 			resolveApiKey: (providerId, providerConfig) =>

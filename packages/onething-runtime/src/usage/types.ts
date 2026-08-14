@@ -59,6 +59,20 @@ export type OnethingUsageSource =
 export interface OnethingUsageLedgerRecord {
   ts: number
   sessionId?: string
+  /**
+   * 归属 space(批 B2)。**写入端只加维度,不动聚合与旧行解析** —— 账本是
+   * append-only 的,历史行没有这个字段,读侧一律按缺席=`'default'` 理解
+   * (与会话归属同一句缺省)。按 space 出账是后续切片的事。
+   */
+  workspaceId?: string
+  /**
+   * 命中的 per-space 凭证池 entry id(批 B3)。
+   *
+   * **默认空间诚实缺席**:它的凭证来自 `settings.ai`,那里根本没有 entry id,
+   * 编一个 `'legacy'` 只会让后来的人以为有过这么个东西。旧行同理缺席,
+   * 读侧透传即可 —— 聚合与旧行解析一行未动。
+   */
+  credentialId?: string
   providerId: string
   modelId: string
   /** Originating channel: electron | telegram | wechat | cli | api | server */
@@ -76,6 +90,8 @@ export interface OnethingUsageLedgerRecord {
 export interface OnethingUsageRecordInput {
   ts?: number
   sessionId?: string
+  workspaceId?: string
+  credentialId?: string
   providerId: string
   modelId: string
   platform: string

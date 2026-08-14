@@ -63,6 +63,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { getExpansionIntent, setExpansionIntent } from '@/stores/helpers/expansion-intent'
 import { beginCollapseCompensation } from '@/utils/collapse-compensation'
+import { useDeferredAutoCollapse } from '@/composables/useDeferredAutoCollapse'
 
 /**
  * Groups a run of "process" parts (reasoning + tool steps) behind a single
@@ -103,16 +104,60 @@ const rootRef = ref<HTMLElement | null>(null)
 const userToggled = ref<boolean | null>(null)
 let manualToggle = false
 
-// User record > live auto-open > collapsed.
+/**
+ * 挂起中的自动收起:流已经结束(auto 想收),但用户正看着这条 rail,于是先
+ * 保持展开。门在 `useDeferredAutoCollapse` 里,这里只是它在合成态里的那一票。
+ */
+const deferredOpen = ref(false)
+
+const autoOpen = computed(() => Boolean(props.streaming))
+
+// 用户 intent > deferredOpen > auto。
 const expanded = computed(() => {
   const recorded = getExpansionIntent(props.intentKey)
   if (recorded !== undefined) return recorded
-  return userToggled.value ?? Boolean(props.streaming)
+  if (userToggled.value !== null) return userToggled.value
+  return autoOpen.value || deferredOpen.value
 })
+
+const RAIL_GATE_KEY = 'rail'
+const autoCollapseGate = useDeferredAutoCollapse<string>({
+  onDefer: () => {
+    deferredOpen.value = true
+  },
+  // 放行(收起)与取消(用户介入 / 新一轮 streaming)都只是丢掉"保持展开"
+  // 这一票;要不要真收由合成态说了算,补偿由下面那个 watcher 照常兜。
+  onRelease: () => {
+    deferredOpen.value = false
+  },
+})
+
+/** 展开态此刻是否由 auto 说了算(用户表过态就没有"自动收起"可言)。 */
+function autoOwnsExpansion(): boolean {
+  return getExpansionIntent(props.intentKey) === undefined && userToggled.value === null
+}
+
+/**
+ * 可见性门。**同步** flush 是刻意的:auto 想收的那一刻(streaming 翻假)就把
+ * 裁决做完,`expanded` 才不会先翻假、再被挂起翻回真 —— 下面那个补偿 watcher
+ * 看到的每一次 true→false 都是"这次真收"。此刻 DOM 还是展开态,几何量得准。
+ */
+watch(autoOpen, (streaming, prev) => {
+  if (streaming) {
+    // 新一轮 streaming 又把它自动展开了 —— 上一轮的挂起作废。
+    autoCollapseGate.cancel(RAIL_GATE_KEY)
+    deferredOpen.value = false
+    return
+  }
+  if (!prev || !autoOwnsExpansion()) return
+  autoCollapseGate.request(RAIL_GATE_KEY, rootRef.value)
+}, { flush: 'sync' })
 
 function toggle() {
   const next = !expanded.value
   manualToggle = true
+  // 用户意图直接生效:挂起取消(cancel 会把 deferredOpen 归零)。
+  autoCollapseGate.cancel(RAIL_GATE_KEY)
   userToggled.value = next
   setExpansionIntent(props.intentKey, next)
 }
@@ -123,6 +168,9 @@ function toggle() {
  *
  * pre-flush watcher 在 DOM 还是旧高度时量一次,nextTick 后把差值还给 scrollTop。
  * 手动点收起(`toggle`)置旗跳过:那是用户自己要的。
+ *
+ * 挂起中的那次收起被上面的门拦在 `expanded` 之外,所以这里看到的每一次
+ * true→false 都是"这次真收" —— 补偿规范本身一个字没改。
  */
 watch(expanded, (next, prev) => {
   const wasManual = manualToggle

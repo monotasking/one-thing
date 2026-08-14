@@ -400,7 +400,7 @@ function cancelRename() {
   --app-button-min-width: 18px;
   --app-button-padding-x: 5px;
   --app-button-gap: 0;
-  --app-button-font-size: var(--type-caption-size);
+  --app-button-font-size: var(--sidebar-type-caption);
   --app-button-hover-fill: transparent;
   --app-button-hover-fg: var(--ui-accent-primary-fg);
   --app-button-shadow: none;
@@ -412,7 +412,7 @@ function cancelRename() {
   border-radius: 9px;
   background: transparent;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
-  font-size: var(--type-caption-size);
+  font-size: var(--sidebar-type-caption);
   font-weight: var(--font-weight-medium);
   line-height: var(--type-caption-line-height);
   border: 1px solid var(--ui-border-default-border);
@@ -456,8 +456,11 @@ function cancelRename() {
 .session-name {
   flex: 1;
   min-width: 0;
-  /* v7：行文 13px（--type-size-500 是 14px，比设计稿大一号） */
-  font-size: 13px;
+  /* 会话名 = 列表行的主标题，引 sidebar 字号阶梯的 title 档（14px，
+     与聊天区正文同号）。原来写死 13px —— 注释里那句「--type-size-500 是
+     14px，比设计稿大一号」正是当年主动比刻度小 1px 的记录，代价是左栏整体
+     偏小。 */
+  font-size: var(--sidebar-type-title);
   font-weight: var(--type-body-weight);
   line-height: var(--type-chat-compact-line-height-px);
   letter-spacing: 0;
@@ -485,7 +488,8 @@ function cancelRename() {
   margin: 0;
   border: none;
   background: transparent;
-  font-size: 13px;
+  /* 与 .session-name 同档 —— 差一档的话改名时字号会跳一下。 */
+  font-size: var(--sidebar-type-title);
   font-weight: var(--type-body-weight);
   line-height: var(--type-chat-compact-line-height-px);
   color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg));

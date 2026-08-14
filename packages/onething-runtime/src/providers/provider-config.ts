@@ -68,10 +68,32 @@ function formatKnownProviderError(parsed: JsonObject): string | undefined {
     : `${description} (code: ${code})`
 }
 
+/**
+ * per-space 凭证解析的**运行期标记**(批 B3),由
+ * `spaces/provider-credentials.ts` 盖上,**永不落盘** —— 与 `providerOptions`
+ * 同一手法。存在的理由:解析点(`getEffectiveProviderConfig`)有 sessionId,
+ * 鉴权点(`resolveAuth`)没有,判定只能顺着 config 往下走。
+ *
+ * `spaceId === 'default'` 时根本不会有这个字段:默认空间的凭证源是 settings.ai,
+ * 那条路一个字节都不改。
+ */
+export interface CoreSpaceCredentialMarker {
+  spaceId: string
+  /** 命中的凭证池 entry id。账本 `credentialId` 归因用的就是它。 */
+  entryId?: string
+  /**
+   * 「这个 provider 在这个空间未配置」——一等状态,不是错误的近似。
+   * 存在即表示鉴权必须失败,且失败文案用这里的 `message`(说清去哪儿配)。
+   */
+  unavailable?: { reason: 'no-entry' | 'oauth'; message: string }
+}
+
 export interface CoreProviderConfigLike {
   model?: string
   selectedModels?: string[]
   baseUrl?: string
+  /** Runtime-only: stamped by per-space credential resolution, never persisted. */
+  spaceCredential?: CoreSpaceCredentialMarker
   /** Stored, user-editable dials. The settings UI owns these names. */
   zhipuApiMode?: 'standard' | 'coding-plan'
   qwenApiMode?: 'standard' | 'token-plan' | 'coding-plan'
@@ -203,6 +225,12 @@ export interface ResolveProviderConfigForChatOptions<
   settings: CoreAppSettingsWithAI<TProvider>
   session?: CoreSessionProviderSelection | null
   resolveAuth: (providerId: string, providerConfig: TProvider | undefined) => TAuth | null | Promise<TAuth | null>
+  /**
+   * per-space 凭证覆盖(批 B3)。缺省 = 恒等,即默认空间语义。
+   * 这条路径与 `getEffectiveProviderConfig` 各自读 settings,所以隔离闸也得
+   * 各挂一次 —— 少挂的那一条就是漏出去的那一条。
+   */
+  applySpaceCredentials?: (providerId: string, providerConfig: TProvider | undefined) => TProvider | undefined
 }
 
 export function extractErrorDetails(error: CoreProviderErrorDetails | undefined): string | undefined {
@@ -288,6 +316,10 @@ export function getProviderConfig<TProvider extends CoreProviderConfigLike>(
 export async function getProviderApiKeyWithAdapters<TProvider extends CoreProviderConfigLike>(
   options: ResolveProviderApiKeyWithAdaptersOptions<TProvider>,
 ): Promise<string | null> {
+  // 严格隔离闸(批 B3):非 default 空间没有这个 provider 的 entry,就是未配置。
+  // 挡在最前面 —— 后面每一条路(OAuth 刷新、env 兜底)都会绕过隔离。
+  if (options.providerConfig?.spaceCredential?.unavailable) return null
+
   // External agent providers authenticate through their own CLI login;
   // the engine-side credential is deliberately empty.
   if (
@@ -317,6 +349,10 @@ export async function resolveProviderAuthWithAdapters<
   options: ResolveProviderAuthWithAdaptersOptions<TProvider, TAuth>,
 ): Promise<TAuth | null> {
   const createApiKeyAuth = options.createApiKeyAuth ?? ((apiKey: string) => ({ kind: 'api-key', apiKey }) as TAuth)
+
+  // 严格隔离闸(批 B3):见 getProviderApiKeyWithAdapters 的同一句。这里是**唯一**
+  // 让「未配置」变成「起不了流」的地方 —— 上游只负责判定,不负责阻断。
+  if (options.providerConfig?.spaceCredential?.unavailable) return null
 
   if (
     options.providerId === (options.acpProviderId ?? 'acp')
@@ -463,10 +499,11 @@ export async function resolveProviderConfigForChat<
   options: ResolveProviderConfigForChatOptions<TProvider, TAuth>,
 ): Promise<CoreResolvedProviderConfigForChat<TProvider, TAuth> | null> {
   const settings = options.settings
+  const applySpace = options.applySpaceCredentials ?? ((_id: string, config: TProvider | undefined) => config)
 
   if (options.session?.lastProvider && options.session.lastModel) {
     const providerId = options.session.lastProvider
-    const providerConfig = settings.ai.providers[providerId]
+    const providerConfig = applySpace(providerId, settings.ai.providers[providerId])
     const authContext = await options.resolveAuth(providerId, providerConfig)
 
     if (authContext) {
@@ -484,7 +521,7 @@ export async function resolveProviderConfigForChat<
   }
 
   const providerId = settings.ai.provider
-  const providerConfig = settings.ai.providers[providerId]
+  const providerConfig = applySpace(providerId, settings.ai.providers[providerId])
   const authContext = await options.resolveAuth(providerId, providerConfig)
 
   if (!authContext) return null

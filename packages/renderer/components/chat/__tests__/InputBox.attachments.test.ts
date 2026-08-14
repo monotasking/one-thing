@@ -49,6 +49,31 @@ vi.mock("@/stores/collabBoard", () => ({
 	}),
 }));
 
+// 草稿纸(scratchpad):这些用例走的全是**经典输入框**那一半,所以给一个
+// 恒「垫子没开」的空壳 —— 悬浮垫不在这棵树里(它挂在 ChatPanel 上),
+// composer 的行为与草稿纸落地前逐字相同。
+vi.mock("@/stores/scratchpad", () => ({
+	useScratchpadStore: () => ({
+		isPadOpen: () => false,
+		togglePad: vi.fn(),
+		setPadOpen: vi.fn(),
+		clearPadOpen: vi.fn(),
+		getRecord: () => null,
+		setContent: vi.fn(),
+		load: vi.fn().mockResolvedValue(undefined),
+		flushNow: vi.fn().mockResolvedValue(undefined),
+		remove: vi.fn().mockResolvedValue(undefined),
+		adopt: vi.fn().mockResolvedValue(undefined),
+		noteConsumed: vi.fn(),
+		consumedOffset: () => null,
+		pendingText: () => "",
+	}),
+}));
+
+vi.mock("@/stores/agents", () => ({
+	useAgentsStore: () => ({ getAgent: () => null }),
+}));
+
 vi.mock("@/stores/browser", () => ({
 	useBrowserStore: () => ({
 		tabs: [],

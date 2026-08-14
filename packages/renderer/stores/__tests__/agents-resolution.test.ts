@@ -12,8 +12,12 @@ import { useAgentsStore } from '../agents'
 import type { AgentDefinition } from '@shared/ipc'
 
 const platformApiMock = vi.hoisted(() => ({}) as Record<string, unknown>)
+// agents 域已迁到通用 RPC 通道(主线 T1 第二批):store 现在引的是壳外客户端,
+// 不再是 platformApi 上的方法,所以打桩打这个模块。
+const agentsApiMock = vi.hoisted(() => ({}) as Record<string, unknown>)
 
 vi.mock('@/platform', () => ({ platformApi: platformApiMock }))
+vi.mock('@/platform/agents-client', () => ({ agentsApi: agentsApiMock }))
 
 function agent(overrides: Partial<AgentDefinition> & { id: string }): AgentDefinition {
   return {
@@ -118,7 +122,7 @@ describe('agents store: 退休 / 硬删 / 恢复', () => {
     })
     const store = useAgentsStore()
     store.agents = [agent({ id: 'fe', name: '小李' })]
-    platformApiMock.deleteAgent = deleteAgent
+    agentsApiMock.deleteAgent = deleteAgent
 
     await expect(store.deleteAgent('fe')).resolves.toBe('retired')
     expect(store.agents.map(item => item.id)).toEqual(['fe'])
@@ -127,7 +131,7 @@ describe('agents store: 退休 / 硬删 / 恢复', () => {
   })
 
   it('deleted:从名册里真摘掉', async () => {
-    platformApiMock.deleteAgent = vi.fn().mockResolvedValue({ success: true, outcome: 'deleted' })
+    agentsApiMock.deleteAgent = vi.fn().mockResolvedValue({ success: true, outcome: 'deleted' })
     const store = useAgentsStore()
     store.agents = [agent({ id: 'fe', name: '小李' })]
 
@@ -136,7 +140,7 @@ describe('agents store: 退休 / 硬删 / 恢复', () => {
   })
 
   it('restore:status 翻回 active,重回社交面名册', async () => {
-    platformApiMock.restoreAgent = vi.fn().mockResolvedValue({
+    agentsApiMock.restoreAgent = vi.fn().mockResolvedValue({
       success: true,
       agent: agent({ id: 'fe', name: '小李', status: 'active' }),
     })
@@ -149,7 +153,7 @@ describe('agents store: 退休 / 硬删 / 恢复', () => {
   })
 
   it('后端拒绝(default 之类)时抛错,名册一字不动', async () => {
-    platformApiMock.deleteAgent = vi.fn().mockResolvedValue({
+    agentsApiMock.deleteAgent = vi.fn().mockResolvedValue({
       success: false,
       error: 'Default Agent cannot be retired or deleted',
     })

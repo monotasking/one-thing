@@ -1,10 +1,10 @@
 <template>
   <label
     class="filter-search"
-    :class="{ 'has-value': modelValue.length > 0 }"
+    :class="{ 'has-value': modelValue.length > 0, 'is-compact': size === 'compact' }"
   >
     <Search
-      :size="14"
+      :size="size === 'compact' ? 13 : 14"
       :stroke-width="1.8"
       class="filter-search-icon"
     />
@@ -25,7 +25,7 @@
       @click="emit('update:modelValue', '')"
     >
       <X
-        :size="13"
+        :size="size === 'compact' ? 12 : 13"
         :stroke-width="2"
       />
     </Button>
@@ -41,10 +41,16 @@ withDefaults(defineProps<{
   placeholder?: string
   label?: string
   clearLabel?: string
+  /**
+   * `compact` = 30px 高的控制条尺寸(工作区面板的控制条只有 30px 可用高度)。
+   * 默认档一个像素都不动 —— 现存调用点全部落在 `default` 上。
+   */
+  size?: 'default' | 'compact'
 }>(), {
   placeholder: 'Search',
   label: 'Search',
   clearLabel: 'Clear search',
+  size: 'default',
 })
 
 const emit = defineEmits<{
@@ -129,5 +135,31 @@ function emitValue(event: Event) {
 .filter-search-clear:hover {
   color: var(--ui-text-primary-fg);
   background: var(--ui-state-hover-bg);
+}
+
+/* ---- compact:30px 控制条档 ---- */
+.filter-search.is-compact {
+  height: 30px;
+  border-radius: var(--radius-sm);
+}
+
+.filter-search.is-compact .filter-search-icon {
+  margin-left: 8px;
+}
+
+.filter-search.is-compact .filter-search-input {
+  padding: 0 8px 0 6px;
+  font-size: 12px;
+}
+
+.filter-search.is-compact.has-value .filter-search-input {
+  padding-right: 26px;
+}
+
+.filter-search.is-compact .filter-search-clear {
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
 }
 </style>

@@ -82,9 +82,11 @@ describe('SessionList 项目组头的「＋」', () => {
 
     await wrapper.find('.group-new-session').trigger('click')
 
-    expect(wrapper.emitted('new-session-in-project')).toEqual([
-      ['/Users/me/code/app'],
-    ])
+    const emitted = wrapper.emitted('new-session-in-project')
+    expect(emitted).toHaveLength(1)
+    expect(emitted?.[0]?.[0]).toBe('/Users/me/code/app')
+    // 第二个参数是触发事件:多根项目要靠它给「落在哪个根」的菜单定位。
+    expect(emitted?.[0]?.[1]).toBeInstanceOf(Event)
     // 冒泡到了组头的话这一层就没了
     expect(wrapper.find('.session-group-items').exists()).toBe(true)
   })

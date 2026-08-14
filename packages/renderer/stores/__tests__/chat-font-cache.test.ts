@@ -35,8 +35,17 @@ function installLocalStorage() {
 function installElectronAPI() {
   const api = {
     getSettings: vi.fn().mockResolvedValue({ success: true, settings: null as AppSettings | null }),
-    getProviders: vi.fn().mockResolvedValue({ success: true, providers: [] }),
-    getModelNameAliases: vi.fn().mockResolvedValue({ success: true, aliases: {} }),
+    // providers / models 走通用 RPC 通道(主线 T1 第二批):打的是那一条通道,
+    // 再按 domain.method 分发 —— 与生产链路同形。
+    rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
+      if (request.domain === 'providers' && request.method === 'list') {
+        return { ok: true, data: { success: true, providers: [] } }
+      }
+      if (request.domain === 'models' && request.method === 'getNameAliases') {
+        return { ok: true, data: { success: true, aliases: {} } }
+      }
+      return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
+    }),
     saveSettings: vi.fn().mockImplementation((s: AppSettings) =>
       Promise.resolve({ success: true, settings: s }),
     ),

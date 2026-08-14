@@ -54,9 +54,9 @@
               role="button"
               tabindex="0"
               :aria-label="`在 ${group.label} 中新建会话`"
-              @click.stop="startProjectSession(group)"
-              @keydown.enter.stop.prevent="startProjectSession(group)"
-              @keydown.space.stop.prevent="startProjectSession(group)"
+              @click.stop="startProjectSession(group, $event)"
+              @keydown.enter.stop.prevent="startProjectSession(group, $event)"
+              @keydown.space.stop.prevent="startProjectSession(group, $event)"
             >
               <Plus
                 :size="13"
@@ -159,7 +159,12 @@ interface Emits {
   (e: 'confirm-rename', sessionId: string, name: string): void
   (e: 'cancel-rename'): void
   (e: 'overflow-change', isOverflowing: boolean, hasContentBelow: boolean): void
-  (e: 'new-session-in-project', projectPath: string): void
+  /**
+   * 第三个参数是**触发事件**,只为多根项目那颗根选择菜单定位用(它得知道
+   * 「＋」画在哪儿)。单根项目直通建会话,事件用不上。键盘触发时是
+   * KeyboardEvent,没有 clientX/Y —— 由消费方退回元素 rect。
+   */
+  (e: 'new-session-in-project', projectPath: string, event: MouseEvent | KeyboardEvent): void
   (e: 'project-context-menu', event: MouseEvent, group: SessionGroup): void
 }
 
@@ -243,14 +248,14 @@ function handleMenuSelect(index: string) {
  * 先把组展开再报上去 —— 新草稿落在这个组里,组要是收着的,用户点完什么都
  * 看不见(方案六默认只开当前项目那一格,别的项目全收)。
  */
-function startProjectSession(group: SessionGroup) {
+function startProjectSession(group: SessionGroup, event: MouseEvent | KeyboardEvent) {
   if (!group.projectPath) return
   if (collapsedGroups.value.has(group.key)) {
     const next = new Set(collapsedGroups.value)
     next.delete(group.key)
     collapsedGroups.value = next
   }
-  emit('new-session-in-project', group.projectPath)
+  emit('new-session-in-project', group.projectPath, event)
 }
 
 /** 组头右键 —— 只有项目组有菜单可开(移出名册);别的组沉默,不吞浏览器默认。 */
@@ -599,8 +604,9 @@ onUnmounted(() => {
   background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg));
   /* 分组头用全墨：与 72% 墨的行文拉开一档，层级靠色阶不靠猜主题 */
   color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
-  /* v7 dhead：12px/600，无字距 */
-  font-size: 12px;
+  /* v7 dhead：600、无字距。字号引 sidebar 字号阶梯的 row 档(13px)——
+     原来写死 12px，比全局刻度低一档，和 14px 的聊天正文并排时明显偏小。 */
+  font-size: var(--sidebar-type-row);
   font-weight: var(--font-weight-semibold, 600);
   line-height: 1.35;
   letter-spacing: 0;
@@ -650,7 +656,7 @@ onUnmounted(() => {
 /* 未归类 桶内的时间子标签：比分组头更轻，缩进到与行文对齐(x=32) */
 .session-subtime {
   padding: 8px 12px 3px 32px;
-  font-size: var(--type-caption-muted-size, 10px);
+  font-size: var(--sidebar-type-micro);
   font-weight: var(--font-weight-normal, 400);
   letter-spacing: 0.1em;
   color: var(--sidebar-list-meta-fg, var(--ui-text-faint-fg));
@@ -716,7 +722,7 @@ onUnmounted(() => {
 .group-empty {
   padding: 3px 12px 6px 32px;
   color: var(--sidebar-list-meta-fg, var(--ui-text-faint-fg));
-  font-size: 11px;
+  font-size: var(--sidebar-type-caption);
   user-select: none;
 }
 
@@ -725,7 +731,7 @@ onUnmounted(() => {
   --app-button-height: auto;
   --app-button-min-width: 0;
   --app-button-padding-x: 0;
-  --app-button-font-size: 11px;
+  --app-button-font-size: var(--sidebar-type-caption);
   --app-button-hover-fill: transparent;
   --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg));
   --app-button-shadow: none;
@@ -738,7 +744,7 @@ onUnmounted(() => {
   border-radius: 0;
   background: transparent;
   color: var(--sidebar-list-meta-fg);
-  font-size: 11px;
+  font-size: var(--sidebar-type-caption);
   text-align: left;
   cursor: pointer;
   transition: color var(--duration-normal) var(--ease-default);
@@ -765,7 +771,7 @@ onUnmounted(() => {
   padding: 20px;
   text-align: center;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
-  font-size: 13px;
+  font-size: var(--sidebar-type-row);
 }
 
 /*

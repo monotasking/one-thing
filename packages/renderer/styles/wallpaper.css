@@ -403,9 +403,16 @@ html.has-wallpaper .right-workbench :is(.browser-toolbar, .browser-panel) {
   background: transparent;
 }
 
-/* media / workspace 面板(报障 5)那一行已并入上面的通用 chat 规则 —— `.media-panel`
-   是 `surface="chat"` 的 `Surface` 根,盖了章就在册。它内部的抽屉
-   (`.media-panel .inspector-drawer`)是浮层,仍在 E 级名单里,与这里正交。 */
+/* media / workspace 面板(报障 5)那一行已并入上面的通用 chat 规则。
+   **勘误(P1,2026-08-13)**:那个接 `surface="chat"` 的 `.media-panel` 容器随
+   双域页签迁移拆除了 —— media 视图现在住在工作台的 panel 面里,由
+   `.right-workbench` 那一枚章管;视图本体自己不画区域面。
+   **再勘误(P2,2026-08-13)**:那个 330px 右滑抽屉也没了 —— 详情改成**同层推入**
+   (盖住整格 pane 的一面纸,不是浮在内容上的一张卡),不再是浮层,于是
+   `.media-panel-content .inspector-drawer` 从下面的 E 级枚举里一并撤销。
+   它的底走 `--media-pane-bg` 这枚本地别名,上游就是 `--ui-surface-panel-bg`,
+   而那一枚已经由 `.right-workbench` 的章推动 —— 壁纸态下它跟着面板一起变,
+   不需要单独列名。 */
 
 /* ══ S 级·态 ═════════════════════════════════════════════════════════════
    **整块已删除(Surface v2·行为内置,2026-08-11)。**
@@ -499,9 +506,9 @@ html.has-wallpaper .app-content {
    `:is()` 的特异性取列表里最强的一支,而那一支是 `.sidebar.floating
    .sidebar-content`(0,3,0),删掉两条 (0,2,0) 不动它。
 
-   **枚举没有消亡,余下 12 条是自绘壳(如实记名,别当遗留清扫)。** 批 3a 的原始
+   **枚举没有消亡,余下 11 条是自绘壳(如实记名,别当遗留清扫)。** 批 3a 的原始
    假设是"UI 收敛后所有浮层壳都过统一组件",逐条对过 DOM 之后**这条假设不成立**:
-   14 条里只有 2 条走浮面档位。余下 12 条各自 teleport、各自画面,压根不是
+   14 条里只有 2 条走浮面档位。余下的各自 teleport、各自画面,压根不是
    Popover/Dropdown 家族:
      · `.tooltip:not(.tooltip-rich)`       Tooltip.vue 自带 Teleport 壳
      · `.app-select-dropdown`              Select 自带下拉壳
@@ -513,10 +520,13 @@ html.has-wallpaper .app-content {
      · `.prompt-ref-popover`               PromptReferenceCard.vue(纯 CSS hover 面)
      · `.todo-plan-panel .todo-popover`    TodoPlanPanel.vue
      · `.todo-plan-panel .todo-popover-list`  同上
-     · `.media-panel .inspector-drawer`    MediaPanel.vue 抽屉
      · `.sidebar.floating .sidebar-content`   浮层侧栏壳
+   (原先还有一条 `.media-panel-content .inspector-drawer`,P2 随 media 详情从
+   右滑抽屉改成同层推入而**不再是浮层**,已连同选择器一并撤销 —— 它的底改吃
+   `--ui-surface-panel-bg`,由 `.right-workbench` 那枚章推动。)
+
    **为什么不给它们手工补一个 `is-surface` 了事**:那枚章的语义是"我的面由浮面
-   档位画",而这 12 张面是自己画的 —— 盖上去是一句假话,而且下一个人按章去
+   档位画",而这 11 张面是自己画的 —— 盖上去是一句假话,而且下一个人按章去
    `popover-surface.ts` 找画笔会扑空。要收它们,得让它们**真的**接进 Popover /
    Dropdown 的档位(自绘 UI 收敛的活),接一个,这里少一行。在那之前它们留在
    枚举里是诚实的,不是没扫干净。
@@ -570,7 +580,6 @@ html.has-wallpaper :is(
     .prompt-ref-popover,
     .todo-plan-panel .todo-popover,
     .todo-plan-panel .todo-popover-list,
-    .media-panel .inspector-drawer,
     .sidebar.floating .sidebar-content
   ) {
   --ui-surface-menu-bg: var(--wallpaper-frost-menu);
@@ -616,7 +625,6 @@ html.has-wallpaper :is(
     .prompt-ref-popover,
     .todo-plan-panel .todo-popover,
     .todo-plan-panel .todo-popover-list,
-    .media-panel .inspector-drawer,
     .sidebar.floating .sidebar-content,
     .app-dialog-overlay,
     .image-preview-overlay

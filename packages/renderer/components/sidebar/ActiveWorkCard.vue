@@ -98,7 +98,8 @@ const live = computed(() =>
   border-radius: 6px;
   background: transparent;
   font-family: inherit;
-  font-size: 13px;
+  /* 活卡片是「进行中」这条列表的主标题,与会话名 / 房间行同档。 */
+  font-size: var(--sidebar-type-title);
   line-height: 1.45;
   text-align: left;
   white-space: nowrap;
@@ -161,10 +162,10 @@ const live = computed(() =>
   text-overflow: ellipsis;
 }
 
-/* 样板 `.sb .r .meta`:12px、副文墨阶、等宽数字(时间跳动时不抖)。 */
+/* 样板 `.sb .r .meta`:meta 档、副文墨阶、等宽数字(时间跳动时不抖)。 */
 .work-card-meta {
   flex: 0 0 auto;
-  font-size: 12px;
+  font-size: var(--sidebar-type-meta);
   color: var(--ui-sidebar-rail-muted-fg);
   font-variant-numeric: tabular-nums;
 }

@@ -1,17 +1,21 @@
 import * as os from 'node:os'
 import { getProjectsStore } from './store.js'
-import type { Project, ProjectIndexEntry } from './types.js'
+import { canonicalizeProjectRoot, type Project, type ProjectIndexEntry } from './types.js'
 
 export interface ActiveProjectVars {
   hasActive: boolean
+  /** Primary root (the cwd anchor). */
   path?: string
   displayPath?: string
+  /** Every root of the project, primary first. */
+  paths?: string[]
+  displayPaths?: string[]
   description?: string
 }
 
 export interface KnownProjectsVars {
   hasAny: boolean
-  entries: Array<{ path: string; displayPath: string; description: string }>
+  entries: Array<{ path: string; displayPath: string; displayPaths: string[]; description: string }>
 }
 
 export interface ProjectDirsPromptVars {
@@ -21,43 +25,44 @@ export interface ProjectDirsPromptVars {
 
 const DEFAULT_KNOWN_LIMIT = 12
 
+/**
+ * `spaceId` 是**会话归属的空间**(批 B4)。缺省 = default 空间的名册,与旧行为
+ * 一致;传了就只看那个空间的名册 —— 提示词里绝不能出现别的空间的项目。
+ */
 export function buildProjectDirsPromptVars(
   workingDirectory: string | undefined,
-  options: { knownLimit?: number; collapseHome?: boolean } = {},
+  options: { knownLimit?: number; collapseHome?: boolean; spaceId?: string } = {},
 ): ProjectDirsPromptVars {
   const knownLimit = options.knownLimit ?? DEFAULT_KNOWN_LIMIT
   const collapseHome = options.collapseHome ?? true
   const home = collapseHome ? os.homedir() : ''
 
-  const store = getProjectsStore()
+  const store = getProjectsStore(options.spaceId)
   const indexEntries = store.list()
 
-  const active = resolveActive(workingDirectory, indexEntries, home)
-  const known = resolveKnown(indexEntries, home, knownLimit, active.path)
+  const activeEntry = findActiveEntry(workingDirectory, indexEntries, home)
+  const active = resolveActive(activeEntry, home, options.spaceId)
+  const known = resolveKnown(indexEntries, home, knownLimit, activeEntry?.id, options.spaceId)
 
   return { active, known }
 }
 
 function resolveActive(
-  workingDirectory: string | undefined,
-  index: ProjectIndexEntry[],
+  entry: ProjectIndexEntry | undefined,
   home: string,
+  spaceId: string | undefined,
 ): ActiveProjectVars {
-  if (!workingDirectory) return { hasActive: false }
+  if (!entry) return { hasActive: false }
 
-  const matchEntry =
-    findEntryByExactPath(index, workingDirectory)
-    ?? findEntryByExpandedPath(index, workingDirectory, home)
-
-  if (!matchEntry) return { hasActive: false }
-
-  const project: Project | null = getProjectsStore().get(matchEntry.path)
+  const project: Project | null = getProjectsStore(spaceId).get(entry.path)
   if (!project) return { hasActive: false }
 
   return {
     hasActive: true,
     path: project.path,
     displayPath: collapse(project.path, home),
+    paths: [...project.paths],
+    displayPaths: project.paths.map(p => collapse(p, home)),
     description: project.description,
   }
 }
@@ -66,15 +71,17 @@ function resolveKnown(
   index: ProjectIndexEntry[],
   home: string,
   limit: number,
-  excludePath: string | undefined,
+  excludeId: string | undefined,
+  spaceId: string | undefined,
 ): KnownProjectsVars {
   const entries: KnownProjectsVars['entries'] = []
   for (const entry of index) {
-    if (excludePath && entry.path === excludePath) continue
-    const project = getProjectsStore().get(entry.path)
+    if (excludeId && entry.id === excludeId) continue
+    const project = getProjectsStore(spaceId).get(entry.path)
     entries.push({
       path: entry.path,
       displayPath: collapse(entry.path, home),
+      displayPaths: entry.paths.map(p => collapse(p, home)),
       description: project?.description ?? '',
     })
     if (entries.length >= limit) break
@@ -82,20 +89,19 @@ function resolveKnown(
   return { hasAny: entries.length > 0, entries }
 }
 
-function findEntryByExactPath(index: ProjectIndexEntry[], path: string): ProjectIndexEntry | undefined {
-  return index.find(e => e.path === path)
-}
-
-function findEntryByExpandedPath(
+/** The session cwd activates a project when it equals ANY of its roots. */
+function findActiveEntry(
+  workingDirectory: string | undefined,
   index: ProjectIndexEntry[],
-  path: string,
   home: string,
 ): ProjectIndexEntry | undefined {
-  if (!home) return undefined
-  return index.find(e => {
-    if (!e.path.startsWith('~')) return false
-    return home + e.path.slice(1) === path
-  })
+  if (!workingDirectory) return undefined
+  const target = canonicalizeProjectRoot(workingDirectory)
+  return index.find(entry => entry.paths.some(root => {
+    if (canonicalizeProjectRoot(root) === target) return true
+    if (!home || !root.startsWith('~')) return false
+    return canonicalizeProjectRoot(home + root.slice(1)) === target
+  }))
 }
 
 function collapse(p: string, home: string): string {

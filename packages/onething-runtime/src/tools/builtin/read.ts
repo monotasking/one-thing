@@ -44,7 +44,11 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
 
 export interface ReadToolAdapters {
 	getDefaultWorkingDirectory?(): string | undefined;
-	getDefaultReadRoots?(): string[];
+	/**
+	 * 读沙箱的默认根(笔记目录 + 接入目录 + 下载目录…)。带 `sessionId`(批 B2):
+	 * 其中的接入目录是 per-space 的,按**会话归属**解析。
+	 */
+	getDefaultReadRoots?(sessionId?: string): string[];
 }
 
 export interface ReadMetadata {
@@ -251,7 +255,7 @@ export function createReadTool(
 				workingDirectory: ctx.workingDirectory,
 				workingDirectoryRoots: ctx.workingDirectoryRoots,
 				defaultWorkingDirectory,
-				defaultReadRoots: adapters.getDefaultReadRoots?.(),
+				defaultReadRoots: adapters.getDefaultReadRoots?.(ctx.sessionId),
 			});
 			const sensitivity = classifySensitiveFile(resolvedPath);
 			const effects = [];

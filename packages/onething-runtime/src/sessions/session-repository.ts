@@ -589,7 +589,7 @@ export class OnethingSessionRepository<
     }).session
   }
 
-  createSession(sessionId: string, name: string): TSession {
+  createSession(sessionId: string, name: string, options: { workspaceId?: string } = {}): TSession {
     const workingDirectory = this.resolveDefaultWorkingDirectory()
 
     return this.runWithSessionsIndexLock(() => createSessionWithAdapters<TSession, TMessage, TMeta>({
@@ -597,6 +597,7 @@ export class OnethingSessionRepository<
       name,
       defaultAgentId: this.options.defaultAgentId,
       workingDirectory,
+      workspaceId: options.workspaceId,
       saveSession: (id, session) => this.saveSessionToFile(id, session),
       syncSession: session => this.syncSessionToSqliteIfReady(session),
       syncFullSession: session => this.options.sqlite?.syncFullSession?.(session),

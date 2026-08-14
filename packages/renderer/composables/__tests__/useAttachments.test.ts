@@ -12,6 +12,17 @@ vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => mocks.settingsStore,
 }))
 
+// 能力判定改走 useActiveModelCapabilities(与发送同源的那条解析链)之后,它会
+// 顺带碰到 sessions / agents 两个 store。这里给的是"没有会话、没有 agent"的
+// 空壳 —— 于是解析退回全局那一档,正是这些用例一直在测的情形。
+vi.mock('@/stores/sessions', () => ({
+  useSessionsStore: () => ({ getSessionItem: () => null }),
+}))
+
+vi.mock('@/stores/agents', () => ({
+  useAgentsStore: () => ({ getAgent: () => null }),
+}))
+
 vi.mock('@/platform', () => ({
   platformApi: {
     getPathForFile: (file: File) => mocks.getPathForFile(file),

@@ -16,6 +16,12 @@ export interface OnethingListFilesRequest {
   cwd?: string
   query?: string
   limit?: number
+  /**
+   * 发起这次补全的会话(批 B2)。接入目录是 per-space 的,而「哪个 space」由
+   * **会话归属**决定 —— 渲染层的 @ 选择器把当前会话号带上来,宿主据此解析根。
+   * 缺席 = 只给全局层(诚实降级,不猜当前空间)。
+   */
+  sessionId?: string
 }
 
 export interface OnethingListFilesResponse {

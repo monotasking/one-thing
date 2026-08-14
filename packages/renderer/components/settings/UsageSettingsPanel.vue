@@ -1618,7 +1618,7 @@ onMounted(() => {
   color: var(--settings-ink-4, var(--ui-text-muted-fg));
 }
 
-.project-filter:focus {
+.project-filter:focus-visible {
   border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 40%, transparent);
 }
 

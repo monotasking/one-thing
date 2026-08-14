@@ -1,6 +1,6 @@
 import { classifyCommand, createBashTool, parseCommand } from '@onething/runtime/tools'
 import { getSettings } from '../../stores/settings.js'
-import { getConnectedDirectories } from '../../stores/connected-directories.js'
+import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
 import { getToolOutputsDir } from '../../stores/paths.js'
 import { createLocalBashOperations } from '../core/bash-executor.js'
 
@@ -24,7 +24,8 @@ export const BashTool = createBashTool({
   getDefaultWorkingDirectory: () => getSettings().tools?.bash?.defaultWorkingDirectory,
   getToolOutputsDir,
   getShellPath: configuredShellPath,
-  getConnectedDirectories,
+  // per-space:按**会话归属**取,不是当前空间(批 B2 / 设计盲点 1)。
+  getConnectedDirectories: sessionId => getConnectedDirectoriesForSession(sessionId),
   createOperations: options => createLocalBashOperations({
     ...options,
     envAllowlist: configuredEnvAllowlist(),

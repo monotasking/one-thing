@@ -414,9 +414,6 @@ function shouldDefaultExpand(toolName: string, status: ToolRenderStatus): boolea
   // spot that did not match. A rejection has no such detail — stay folded.
   if (status === 'failed') return getFileToolCategory(toolName) === 'edit'
   if (status === 'rejected') return false
-  // Live bash output is the one result the row title can't summarize —
-  // show it while the command runs.
-  if (status === 'executing' && toolName === 'bash') return true
   // A row only opens itself when it wants a decision: an edit awaiting
   // approval must show what it is about to do. Everything else stays folded —
   // rows that merely happened are read on demand.

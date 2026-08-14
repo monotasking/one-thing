@@ -142,7 +142,7 @@ describe('buildToolStepView', () => {
     expect(view.defaultExpanded).toBe(true)
   })
 
-  it('keeps bash rows expandable so the full command is always reachable', () => {
+  it('keeps bash rows reachable but not auto-expanded while running', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         toolId: 'bash',
@@ -156,7 +156,9 @@ describe('buildToolStepView', () => {
     // The single-line title truncates long commands; the expanded details
     // must always be available as the place to read the whole command.
     expect(view.hasDetails).toBe(true)
-    expect(view.defaultExpanded).toBe(true)
+    // Bash no longer auto-expands on `executing` — a fast command popping
+    // open and immediately re-collapsing read as jitter, not signal.
+    expect(view.defaultExpanded).toBe(false)
   })
 
   it('hides read arguments because the row target already carries the file range', () => {

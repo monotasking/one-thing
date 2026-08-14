@@ -19,6 +19,22 @@ vi.mock('../useProviderUsage', () => ({
   useProviderUsage: () => mocks.providerUsage,
 }))
 
+// 空间凭证段(批 B3)在这条测试线里不参演:宿主答不上话时它整段不画,
+// 与 web 宿主的降级同一支路。它自己的行为在 SpaceCredentialsPanel.test.ts 里测。
+vi.mock('@/stores/spaces', () => ({
+  DEFAULT_SPACE_ID: 'default',
+  useSpacesStore: () => ({
+    available: false,
+    spaces: [],
+    currentSpaceId: 'default',
+    lastError: null,
+    load: vi.fn(async () => {}),
+    getCredentials: vi.fn(async () => ({ providers: {} })),
+    setCredential: vi.fn(async () => ({ providers: {} })),
+    clearCredential: vi.fn(async () => ({ providers: {} })),
+  }),
+}))
+
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => ({
     getCachedModels: (providerId: string) => mocks.cachedModels[providerId] ?? [],

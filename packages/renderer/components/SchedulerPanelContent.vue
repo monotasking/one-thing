@@ -1,327 +1,348 @@
 <template>
-  <div class="tasks-panel">
-    <header class="tasks-header">
-      <h2>Tasks</h2>
-      <div class="header-actions">
-        <button
-          class="text-action"
-          type="button"
-          :disabled="loading"
-          @click="() => loadAll()"
-        >
-          {{ loading ? 'loading…' : 'refresh' }}
-        </button>
-        <button
-          class="text-action is-primary"
-          type="button"
-          @click="startCreate"
-        >
-          + new task
-        </button>
+  <!-- Tasks 视图。P4 换成六面板共享骨架:PanelShell 控制条 / LedgerGroupHeader 分组头 /
+       38px mono 时间列的 44px 账线行 / 26px 状态条。**只换壳** —— 右侧详情、Dialog
+       编辑器、运行历史抽屉一行没动。底色住在工作台的 `surface="panel"` 面里。 -->
+  <PanelShell
+    class="tasks-panel"
+    :busy="loading"
+    :scroll="false"
+    :padded="false"
+  >
+    <template #controls>
+      <div class="tasks-controls">
+        <FilterSearchInput
+          v-model="searchQuery"
+          size="compact"
+          class="tasks-search"
+          placeholder="搜索任务"
+          label="搜索任务"
+          clear-label="清除搜索"
+        />
+        <Select
+          v-model="enabledFilterModel"
+          class="tasks-filter"
+          :options="ENABLED_FILTER_OPTIONS"
+          aria-label="按启用状态筛选"
+          fit-input-width
+        />
+        <PanelPrimaryAction @click="startCreate">
+          新建
+        </PanelPrimaryAction>
       </div>
-    </header>
+    </template>
 
-    <ErrorNote
-      v-if="error"
-      class="ledger-error"
-      :message="error"
-    />
+    <div class="tasks-body">
+      <ErrorNote
+        v-if="error"
+        class="ledger-error"
+        :message="error"
+      />
 
-    <div
-      class="tasks-layout"
-      :class="{ 'detail-active': taskDetailActive }"
-    >
-      <section class="task-list">
-        <div class="task-ledger">
-          <div class="task-list-title group-header">
-            <span>All Tasks</span>
-          </div>
-          <div class="task-rows">
-            <div
-              v-for="task in tasks"
-              :key="task.id"
-              class="task-row"
-              :class="{ 'is-active': selectedTaskId === task.id, 'is-off': !task.enabled }"
-              role="button"
-              tabindex="0"
-              @click="selectTask(task.id)"
-              @keydown.enter.prevent="selectTask(task.id)"
-              @keydown.space.prevent="selectTask(task.id)"
-            >
-              <span class="task-line">
-                <span class="task-name">{{ task.name || task.id }}</span>
-                <span :class="['task-status', taskStatusClass(task)]">{{ taskStatusLabel(task) }}</span>
-                <span
-                  class="task-toggle"
-                  @click.stop
-                  @keydown.stop
-                >
-                  <button
-                    class="enable-dot"
-                    type="button"
-                    role="switch"
-                    :class="{ 'is-on': task.enabled }"
-                    :aria-checked="task.enabled"
-                    :disabled="actionId === task.id || task.inFlight"
-                    :aria-label="`${task.name || task.id} ${task.enabled ? 'enabled — click to disable' : 'disabled — click to enable'}`"
-                    @click="toggleTaskEnabled(task, !task.enabled)"
-                  />
-                </span>
-              </span>
-              <span class="task-sub">
-                <span class="task-schedule">{{ formatSchedule(task.schedule) }}</span>
-                <span class="task-lastrun">{{ formatTaskLastRun(task) }}</span>
-                <span class="task-owner">{{ taskOwnerLabel(task) }}</span>
-              </span>
-              <span class="task-preview">{{ task.promptPreview || task.pluginId || task.id }}</span>
-            </div>
-          </div>
-          <p
-            v-if="loading && tasks.length === 0"
-            class="ledger-note"
-          >
-            loading scheduled tasks…
-          </p>
-          <p
-            v-else-if="!loading && tasks.length === 0"
-            class="ledger-note"
-          >
-            no scheduled tasks yet
-          </p>
-        </div>
-      </section>
-
-      <section
-        v-if="selectedTask"
-        class="task-detail"
+      <div
+        class="tasks-layout"
+        :class="{ 'detail-active': taskDetailActive }"
       >
-        <div class="detail-header-nav">
-          <button
-            class="text-action"
-            type="button"
-            @click="taskDetailActive = false"
-          >
-            back
-          </button>
-          <span class="detail-nav-title">Task Details</span>
-        </div>
-
-        <section class="task-detail-head">
-          <div class="task-overview">
-            <span class="overview-kicker">{{ selectedTask.kind === 'agent' ? 'Agent task' : 'Plugin task' }}{{ selectedTask.readonly ? ' · Read only' : '' }}</span>
-            <h3>
-              {{ selectedTask.name || selectedTask.id }}
-            </h3>
+        <section class="task-list">
+          <div class="task-ledger">
             <p
-              v-if="selectedTask.promptPreview || selectedTask.prompt"
-              class="overview-prompt"
+              v-if="loading && tasks.length === 0"
+              class="ledger-note"
             >
-              {{ selectedTask.promptPreview || selectedTask.prompt }}
+              正在读取定时任务…
             </p>
-          </div>
+            <p
+              v-else-if="taskGroups.length === 0"
+              class="ledger-note"
+            >
+              {{ tasks.length === 0 ? '还没有定时任务' : '没有匹配的任务' }}
+            </p>
 
-          <div class="overview-actions">
-            <button
-              class="text-action"
-              type="button"
-              :disabled="actionId === selectedTask.id || selectedTask.inFlight"
-              @click="runNow(selectedTask.id)"
+            <section
+              v-for="group in taskGroups"
+              :key="group.key"
+              class="task-group"
             >
-              run now
-            </button>
-            <button
-              v-if="!selectedTask.readonly"
-              class="text-action"
-              type="button"
-              @click="startEdit(selectedTask)"
-            >
-              edit
-            </button>
-            <button
-              v-if="!selectedTask.readonly"
-              class="text-action is-danger"
-              type="button"
-              @click="deleteTask(selectedTask.id)"
-            >
-              delete
-            </button>
+              <LedgerGroupHeader
+                sticky
+                class="task-list-title"
+                :label="group.label"
+                :count="group.tasks.length"
+              />
+              <PanelLedgerRow
+                v-for="task in group.tasks"
+                :key="task.id"
+                class="task-row"
+                :label="task.name || task.id"
+                :meta="taskMetaLine(task)"
+                :active="selectedTaskId === task.id"
+                :muted="!task.enabled"
+                role="button"
+                tabindex="0"
+                @click="selectTask(task.id)"
+                @keydown.enter.prevent="selectTask(task.id)"
+                @keydown.space.prevent="selectTask(task.id)"
+              >
+                <!-- 首列固定槽位:38px mono 下次运行时刻。推不出来就是一条破折号,
+                     不留空 —— 空槽会让整列的对齐看起来是坏的。 -->
+                <template #lead>
+                  <span class="task-time">{{ nextRunLabel(task) }}</span>
+                </template>
+                <template #label-extra>
+                  <span :class="['task-status', taskStatusClass(task)]">{{ taskStatusLabel(task) }}</span>
+                </template>
+                <template #trail>
+                  <span
+                    class="task-toggle"
+                    @click.stop
+                    @keydown.stop
+                  >
+                    <Switch
+                      variant="pill"
+                      size="mini"
+                      :model-value="task.enabled"
+                      :disabled="actionId === task.id || task.inFlight"
+                      :aria-label="`${task.name || task.id} ${task.enabled ? '已启用 — 点击停用' : '已停用 — 点击启用'}`"
+                      @update:model-value="value => toggleTaskEnabled(task, value)"
+                    />
+                  </span>
+                </template>
+              </PanelLedgerRow>
+            </section>
           </div>
         </section>
 
-        <div class="detail-ledger">
-          <section class="detail-summary-strip">
-            <div class="meta-line">
-              <span class="meta-label">Status</span>
-              <strong :class="['meta-value', 'summary-status', taskStatusClass(selectedTask)]">{{ taskStatusLabel(selectedTask) }}</strong>
-            </div>
-            <div class="meta-line">
-              <span class="meta-label">Next Run</span>
-              <strong class="meta-value">{{ formatShortDate(selectedTask.nextRunAt) }}</strong>
-            </div>
-            <div class="meta-line">
-              <span class="meta-label">Runs</span>
-              <strong class="meta-value">{{ taskRunCountLabel(selectedTask) }}</strong>
-            </div>
-          </section>
-
-          <section class="runtime-section">
-            <h4 class="group-header">
-              <span>Runtime</span>
-              <span class="group-value">{{ formatSchedule(selectedTask.schedule) }}</span>
-            </h4>
-
-            <dl class="runtime-grid">
-              <div class="meta-line">
-                <dt class="meta-label">
-                  Next Run
-                </dt>
-                <dd class="meta-value">
-                  {{ formatShortDate(selectedTask.nextRunAt) }}
-                </dd>
-              </div>
-              <div class="meta-line">
-                <dt class="meta-label">
-                  Last Run
-                </dt>
-                <dd class="meta-value">
-                  {{ formatShortDate(selectedTask.lastRunAt) }}
-                </dd>
-              </div>
-              <div class="meta-line">
-                <dt class="meta-label">
-                  Runs
-                </dt>
-                <dd class="meta-value">
-                  {{ taskRunCountLabel(selectedTask) }}
-                </dd>
-              </div>
-              <div class="meta-line">
-                <dt class="meta-label">
-                  Owner
-                </dt>
-                <dd class="meta-value">
-                  {{ taskOwnerLabel(selectedTask) }}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <section class="history-section">
+        <section
+          v-if="selectedTask"
+          class="task-detail"
+        >
+          <div class="detail-header-nav">
             <button
-              class="history-toggle group-header"
+              class="text-action"
               type="button"
-              @click="toggleHistory"
+              @click="taskDetailActive = false"
             >
-              <span>Run history</span>
-              <span class="toggle-state">{{ historyOpen ? 'hide' : 'show' }}</span>
+              back
             </button>
+            <span class="detail-nav-title">Task Details</span>
+          </div>
 
-            <div
-              v-if="historyOpen"
-              class="history-drawer"
-            >
-              <div class="section-title">
-                <span>Recent runs</span>
-                <button
-                  class="text-action"
-                  type="button"
-                  :disabled="runsLoading"
-                  @click="loadRuns(selectedTask.id)"
-                >
-                  refresh
-                </button>
-              </div>
-
+          <section class="task-detail-head">
+            <div class="task-overview">
+              <span class="overview-kicker">{{ selectedTask.kind === 'agent' ? 'Agent task' : 'Plugin task' }}{{ selectedTask.readonly ? ' · Read only' : '' }}</span>
+              <h3>
+                {{ selectedTask.name || selectedTask.id }}
+              </h3>
               <p
-                v-if="runsLoading"
-                class="ledger-note"
+                v-if="selectedTask.promptPreview || selectedTask.prompt"
+                class="overview-prompt"
               >
-                loading run history…
+                {{ selectedTask.promptPreview || selectedTask.prompt }}
               </p>
-              <p
-                v-else-if="runs.length === 0"
-                class="ledger-note"
-              >
-                no run history yet
-              </p>
-              <div
-                v-else
-                class="runs-ledger"
-              >
-                <button
-                  v-for="run in runs"
-                  :key="run.runId || `${run.taskId}-${run.startedAt}`"
-                  class="run-row"
-                  :class="{ 'is-active': selectedRun?.runId === run.runId }"
-                  type="button"
-                  @click="selectedRun = selectedRun?.runId === run.runId ? null : run"
-                >
-                  <span :class="['run-status', run.status]">{{ run.status }}</span>
-                  <span class="run-date">{{ formatShortDate(run.startedAt) }}</span>
-                  <span class="run-duration">{{ formatDuration(run.durationMs) }}</span>
-                </button>
-              </div>
             </div>
-          </section>
 
-          <article
-            v-if="historyOpen && selectedRun"
-            class="run-detail"
-          >
-            <div class="section-title">
-              <span>Run detail</span>
+            <div class="overview-actions">
               <button
-                v-if="selectedRun.sessionId"
                 class="text-action"
                 type="button"
-                @click="openRunSession(selectedRun.sessionId)"
+                :disabled="actionId === selectedTask.id || selectedTask.inFlight"
+                @click="runNow(selectedTask.id)"
               >
-                open session
+                run now
+              </button>
+              <button
+                v-if="!selectedTask.readonly"
+                class="text-action"
+                type="button"
+                @click="startEdit(selectedTask)"
+              >
+                edit
+              </button>
+              <button
+                v-if="!selectedTask.readonly"
+                class="text-action is-danger"
+                type="button"
+                @click="deleteTask(selectedTask.id)"
+              >
+                delete
               </button>
             </div>
-            <ErrorNote
-              v-if="selectedRun.error"
-              class="ledger-error"
-              :message="selectedRun.error"
-            />
-            <p
-              v-if="selectedRun.resultPreview"
-              class="result-preview"
-            >
-              {{ selectedRun.resultPreview }}
-            </p>
+          </section>
 
-            <div
-              v-if="selectedRun.toolCalls?.length"
-              class="subsection"
-            >
-              <span class="subsection-title">Tools</span>
-              <div
-                v-for="tool in selectedRun.toolCalls"
-                :key="tool.id"
-                class="trace-row"
-              >
-                <span class="trace-title">{{ tool.toolName }}</span>
-                <small>{{ tool.status }} · {{ formatDuration(tool.durationMs) }}</small>
-                <code>{{ tool.argumentsPreview }}</code>
+          <div class="detail-ledger">
+            <section class="detail-summary-strip">
+              <div class="meta-line">
+                <span class="meta-label">Status</span>
+                <strong :class="['meta-value', 'summary-status', taskStatusClass(selectedTask)]">{{ taskStatusLabel(selectedTask) }}</strong>
               </div>
-            </div>
+              <div class="meta-line">
+                <span class="meta-label">Next Run</span>
+                <strong class="meta-value">{{ formatShortDate(selectedTask.nextRunAt) }}</strong>
+              </div>
+              <div class="meta-line">
+                <span class="meta-label">Runs</span>
+                <strong class="meta-value">{{ taskRunCountLabel(selectedTask) }}</strong>
+              </div>
+            </section>
 
-            <div class="subsection">
-              <span class="subsection-title">Timeline</span>
-              <div
-                v-for="item in selectedRun.timeline || []"
-                :key="item.id"
-                class="trace-row"
+            <section class="runtime-section">
+              <h4 class="group-header">
+                <span>Runtime</span>
+                <span class="group-value">{{ formatSchedule(selectedTask.schedule) }}</span>
+              </h4>
+
+              <dl class="runtime-grid">
+                <div class="meta-line">
+                  <dt class="meta-label">
+                    Next Run
+                  </dt>
+                  <dd class="meta-value">
+                    {{ formatShortDate(selectedTask.nextRunAt) }}
+                  </dd>
+                </div>
+                <div class="meta-line">
+                  <dt class="meta-label">
+                    Last Run
+                  </dt>
+                  <dd class="meta-value">
+                    {{ formatShortDate(selectedTask.lastRunAt) }}
+                  </dd>
+                </div>
+                <div class="meta-line">
+                  <dt class="meta-label">
+                    Runs
+                  </dt>
+                  <dd class="meta-value">
+                    {{ taskRunCountLabel(selectedTask) }}
+                  </dd>
+                </div>
+                <div class="meta-line">
+                  <dt class="meta-label">
+                    Owner
+                  </dt>
+                  <dd class="meta-value">
+                    {{ taskOwnerLabel(selectedTask) }}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="history-section">
+              <button
+                class="history-toggle group-header"
+                type="button"
+                @click="toggleHistory"
               >
-                <span class="trace-title">{{ item.title }}</span>
-                <small>{{ formatShortDate(item.timestamp) }}{{ item.status ? ` · ${item.status}` : '' }}</small>
-                <code v-if="item.detail">{{ item.detail }}</code>
+                <span>Run history</span>
+                <span class="toggle-state">{{ historyOpen ? 'hide' : 'show' }}</span>
+              </button>
+
+              <div
+                v-if="historyOpen"
+                class="history-drawer"
+              >
+                <div class="section-title">
+                  <span>Recent runs</span>
+                  <button
+                    class="text-action"
+                    type="button"
+                    :disabled="runsLoading"
+                    @click="loadRuns(selectedTask.id)"
+                  >
+                    refresh
+                  </button>
+                </div>
+
+                <p
+                  v-if="runsLoading"
+                  class="ledger-note"
+                >
+                  loading run history…
+                </p>
+                <p
+                  v-else-if="runs.length === 0"
+                  class="ledger-note"
+                >
+                  no run history yet
+                </p>
+                <div
+                  v-else
+                  class="runs-ledger"
+                >
+                  <button
+                    v-for="run in runs"
+                    :key="run.runId || `${run.taskId}-${run.startedAt}`"
+                    class="run-row"
+                    :class="{ 'is-active': selectedRun?.runId === run.runId }"
+                    type="button"
+                    @click="selectedRun = selectedRun?.runId === run.runId ? null : run"
+                  >
+                    <span :class="['run-status', run.status]">{{ run.status }}</span>
+                    <span class="run-date">{{ formatShortDate(run.startedAt) }}</span>
+                    <span class="run-duration">{{ formatDuration(run.durationMs) }}</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          </article>
-        </div>
-      </section>
+            </section>
+
+            <article
+              v-if="historyOpen && selectedRun"
+              class="run-detail"
+            >
+              <div class="section-title">
+                <span>Run detail</span>
+                <button
+                  v-if="selectedRun.sessionId"
+                  class="text-action"
+                  type="button"
+                  @click="openRunSession(selectedRun.sessionId)"
+                >
+                  open session
+                </button>
+              </div>
+              <ErrorNote
+                v-if="selectedRun.error"
+                class="ledger-error"
+                :message="selectedRun.error"
+              />
+              <p
+                v-if="selectedRun.resultPreview"
+                class="result-preview"
+              >
+                {{ selectedRun.resultPreview }}
+              </p>
+
+              <div
+                v-if="selectedRun.toolCalls?.length"
+                class="subsection"
+              >
+                <span class="subsection-title">Tools</span>
+                <div
+                  v-for="tool in selectedRun.toolCalls"
+                  :key="tool.id"
+                  class="trace-row"
+                >
+                  <span class="trace-title">{{ tool.toolName }}</span>
+                  <small>{{ tool.status }} · {{ formatDuration(tool.durationMs) }}</small>
+                  <code>{{ tool.argumentsPreview }}</code>
+                </div>
+              </div>
+
+              <div class="subsection">
+                <span class="subsection-title">Timeline</span>
+                <div
+                  v-for="item in selectedRun.timeline || []"
+                  :key="item.id"
+                  class="trace-row"
+                >
+                  <span class="trace-title">{{ item.title }}</span>
+                  <small>{{ formatShortDate(item.timestamp) }}{{ item.status ? ` · ${item.status}` : '' }}</small>
+                  <code v-if="item.detail">{{ item.detail }}</code>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
     </div>
 
     <Dialog
@@ -495,7 +516,19 @@
         </button>
       </template>
     </Dialog>
-  </div>
+
+    <template #status>
+      <span class="status-text">{{ statusText }}</span>
+      <button
+        class="text-action tasks-refresh"
+        type="button"
+        :disabled="loading"
+        @click="() => loadAll()"
+      >
+        刷新
+      </button>
+    </template>
+  </PanelShell>
 </template>
 
 <script setup lang="ts">
@@ -503,9 +536,14 @@ import { computed, nextTick, onMounted, ref, shallowRef, watch, type CSSProperti
 import { useAgentsStore } from '@/stores/agents'
 import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import FilterSearchInput from '@/components/common/FilterSearchInput.vue'
 import Select from '@/components/common/Select.vue'
 import type { SelectOptionLike } from '@/components/common/select'
 import Switch from '@/components/common/Switch.vue'
+import LedgerGroupHeader from '@/components/workspace/LedgerGroupHeader.vue'
+import PanelLedgerRow from '@/components/workspace/PanelLedgerRow.vue'
+import PanelPrimaryAction from '@/components/workspace/PanelPrimaryAction.vue'
+import PanelShell from '@/components/workspace/PanelShell.vue'
 import { useConfirm } from '@/composables/useConfirm'
 
 /** The editor fills the viewport height it is given, like the old dialog did. */
@@ -608,6 +646,58 @@ const DAY_OF_WEEK_OPTIONS: SelectOptionLike[] = [
 const agentOptions = computed<SelectOptionLike[]>(() =>
   agentsStore.activeAgents.map(agent => ({ value: agent.id, label: agent.name })),
 )
+
+// ── 控制条:搜索 + 启用状态筛选 ────────────────────────────────────────────
+
+type EnabledFilter = 'all' | 'enabled' | 'disabled'
+
+const ENABLED_FILTER_OPTIONS: SelectOptionLike[] = [
+  { value: 'all', label: '全部' },
+  { value: 'enabled', label: '已启用' },
+  { value: 'disabled', label: '已停用' },
+]
+
+const searchQuery = ref('')
+const enabledFilter = ref<EnabledFilter>('all')
+
+/** Select 的 v-model 是裸 string,这里接回字面量联合。 */
+const enabledFilterModel = computed({
+  get: () => enabledFilter.value as string,
+  set: (value: string) => {
+    enabledFilter.value = value as EnabledFilter
+  },
+})
+
+const filteredTasks = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  return tasks.value.filter((task) => {
+    if (enabledFilter.value === 'enabled' && !task.enabled) return false
+    if (enabledFilter.value === 'disabled' && task.enabled) return false
+    if (!query) return true
+    const haystack = [
+      task.name,
+      task.id,
+      task.promptPreview,
+      task.pluginId,
+      task.schedule?.kind === 'cron' ? task.schedule.expr : '',
+    ]
+    return haystack.some(part => (part || '').toLowerCase().includes(query))
+  })
+})
+
+/**
+ * 分组沿用列表本来就有的那条分界:`loadAll` 一直按 `readonly` 排在前面,
+ * 也就是"我写的任务"和"系统内置的任务"两摞。分组头把这条隐含的次序显式画出来,
+ * 而**不是**按启用状态分 —— 那一维已经归控制条的筛选下拉了。
+ */
+const taskGroups = computed(() => {
+  const mine = filteredTasks.value.filter(task => !task.readonly)
+  const builtin = filteredTasks.value.filter(task => task.readonly)
+  return [
+    { key: 'mine', label: '我的任务', tasks: mine },
+    { key: 'builtin', label: '内置任务', tasks: builtin },
+  ].filter(group => group.tasks.length > 0)
+})
 
 const form = ref({
   name: '',
@@ -889,13 +979,54 @@ function formatDuration(value?: number): string {
   return `${Math.round(value / 60000)}m`
 }
 
-function formatTaskLastRun(task: SchedulerTaskSnapshotDTO): string {
-  if (!task.lastRunAt) return 'Not run yet'
-  const latest = task.recentRuns?.[0]
-  const status = latest
-    ? latest.ok ? 'Succeeded' : latest.skipped ? 'Skipped' : 'Failed'
-    : task.lastErrorAt === task.lastRunAt ? 'Failed' : 'Ran'
-  return `${status} ${formatShortDate(task.lastRunAt)}`
+const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+/**
+ * 首列 38px mono 时间列:下一次运行的**时刻**,不是完整时间戳。
+ * 今天之内给钟点,一周之内给星期,再远给日期 —— 一列里同时排下这三种写法
+ * 靠的是它们都不超过四个字符。推不出来(没排期 / 已停用未算出下次)给破折号。
+ */
+function nextRunLabel(task: SchedulerTaskSnapshotDTO): string {
+  if (!task.nextRunAt) return '—'
+  const next = new Date(task.nextRunAt)
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const dayDiff = Math.floor((next.getTime() - startOfToday) / 86400000)
+  if (dayDiff === 0) {
+    return `${String(next.getHours()).padStart(2, '0')}:${String(next.getMinutes()).padStart(2, '0')}`
+  }
+  if (dayDiff > 0 && dayDiff < 7) return WEEKDAY_LABELS[next.getDay()]
+  return `${next.getMonth() + 1}/${next.getDate()}`
+}
+
+/** 副行:cron 原文 + 人话周期。cron 之外的排期没有"原文"可给,只留人话。 */
+function taskMetaLine(task: SchedulerTaskSnapshotDTO): string {
+  const human = formatSchedule(task.schedule)
+  const raw = task.schedule?.kind === 'cron' ? task.schedule.expr : ''
+  return raw && raw !== human ? `${raw} · ${human}` : human
+}
+
+/** 状态条:最近的一次排期 + 还有多久。停用的任务不参与——它不会到点。 */
+const statusText = computed(() => {
+  if (loading.value && tasks.value.length === 0) return '正在读取定时任务…'
+  const upcoming = tasks.value
+    .filter(task => task.enabled && typeof task.nextRunAt === 'number' && task.nextRunAt > 0)
+    .map(task => task.nextRunAt as number)
+    .sort((a, b) => a - b)[0]
+  const total = `${filteredTasks.value.length} 个任务`
+  if (!upcoming) return `${total} · 无排期`
+  const next = new Date(upcoming)
+  const clock = `${String(next.getHours()).padStart(2, '0')}:${String(next.getMinutes()).padStart(2, '0')}`
+  return `${total} · 下一次 ${clock} · 还有 ${formatCountdown(upcoming - Date.now())}`
+})
+
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return '不到 1 分钟'
+  const minutes = Math.round(ms / 60000)
+  if (minutes < 60) return `${Math.max(1, minutes)} 分钟`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} 小时`
+  return `${Math.round(hours / 24)} 天`
 }
 
 function taskRunCountLabel(task: SchedulerTaskSnapshotDTO): string {
@@ -967,23 +1098,14 @@ watch(
  * One vertical ink rule carries the task register and the detail sheet.
  */
 .tasks-panel {
-  height: 100%;
-  width: 100%;
+  /* 面板底色不在这里画:它住在工作台的 `surface="panel"` 面里(ui-system §4)。
+     `container-type` 留着 —— 窄容器下的堆叠式主从布局是这个面板自己的力学。 */
+  container-type: inline-size;
+  position: relative;
   min-width: 0;
   max-width: none;
   box-sizing: border-box;
-  container-type: inline-size;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin: 0;
-  padding: 16px 16px 20px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg));
   color: var(--ui-text-primary-fg);
-  scrollbar-width: thin;
   animation: ledger-fade 0.15s ease;
 }
 
@@ -1031,36 +1153,48 @@ watch(
   background: color-mix(in srgb, var(--ui-text-muted-fg) 32%, transparent);
 }
 
-/* ---- header ---- */
-.tasks-header {
+/* ---- 控制条 ---- */
+.tasks-controls {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
   min-width: 0;
-  padding: 0 0 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
+  flex-wrap: wrap;
 }
 
-.tasks-header h2 {
-  margin: 0;
+.tasks-search {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.tasks-filter {
+  flex: 0 0 auto;
+  min-width: 92px;
+}
+
+/* ---- 内容区 ---- */
+.tasks-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  padding: 10px 14px 12px;
+}
+
+/* ---- 状态条 ---- */
+.status-text {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-display, var(--font-serif, serif));
-  font-size: 16px;
-  font-weight: var(--font-weight-semibold, 600);
-  line-height: 1.2;
-  color: var(--ui-text-primary-fg);
 }
 
-.header-actions {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-  flex-shrink: 0;
+.tasks-refresh {
+  flex: none;
+  font-size: 10.5px;
 }
 
 /* ---- shared ledger controls ---- */
@@ -1098,54 +1232,8 @@ watch(
   cursor: not-allowed;
 }
 
-/* Ink-dot toggle: solid accent ring with a center dot when on, dashed empty ring when off */
-.enable-dot {
-  appearance: none;
-  flex-shrink: 0;
-  width: 13px;
-  height: 13px;
-  padding: 0;
-  border-radius: 50%;
-  border: 1px dashed var(--ui-border-default-border);
-  background: transparent;
-  cursor: pointer;
-  position: relative;
-  transition: border-color var(--duration-fast) var(--ease-default);
-}
-
-/* Enlarged hit area for the 13px dot */
-.enable-dot::before {
-  content: '';
-  position: absolute;
-  inset: -6px;
-}
-
-.enable-dot.is-on {
-  border-style: solid;
-  border-color: var(--ui-accent-primary-fg);
-}
-
-.enable-dot.is-on::after {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border-radius: 50%;
-  background: var(--ui-accent-primary-fg);
-}
-
-.enable-dot:hover:not(:disabled) {
-  border-color: var(--ui-accent-primary-fg);
-}
-
-.enable-dot:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 .text-action:focus-visible,
-.enable-dot:focus-visible,
 .history-toggle:focus-visible,
-.task-row:focus-visible,
 .run-row:focus-visible {
   outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 2px;
@@ -1198,13 +1286,16 @@ watch(
 }
 
 /* ---- the ledger rule ---- */
-.task-ledger,
+/* 列表侧的账页竖线随 44px 账线行一起退休:行自己带下沿线,再挂一根竖线就是两套语汇。 */
+.task-ledger {
+  min-width: 0;
+}
+
 .detail-ledger {
   position: relative;
   padding-left: 16px;
 }
 
-.task-ledger::before,
 .detail-ledger::before {
   content: '';
   position: absolute;
@@ -1271,87 +1362,22 @@ watch(
   color: var(--ui-text-muted-fg);
 }
 
-.task-list-title {
-  margin-bottom: 4px;
-}
-
-/* ---- task rows (register numbering) ---- */
-.task-rows {
-  counter-reset: task-row;
-  display: flex;
-  flex-direction: column;
-}
-
-.task-row {
-  position: relative;
-  counter-increment: task-row;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 30px;
-  padding: 6px 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
-  cursor: pointer;
-}
-
-.task-row:first-child {
-  border-top: none;
-}
-
-/* Tick hanging the row on the rule */
-.task-row::before {
-  content: '';
-  position: absolute;
-  left: -13px;
-  top: 15px;
-  width: 7px;
-  height: 1px;
-  background: var(--ui-border-strong-border);
-  transition: width var(--duration-fast) var(--ease-default), height var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
-}
-
-.task-row:hover::before,
-.task-row:focus-visible::before {
-  width: 12px;
-  background: var(--ui-text-muted-fg);
-}
-
-.task-row.is-active::before {
-  width: 14px;
-  height: 2px;
-  background: var(--ui-accent-primary-fg);
-}
-
-.task-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+.task-group {
   min-width: 0;
 }
 
-/* Register number */
-.task-line::before {
-  content: counter(task-row, decimal-leading-zero);
-  flex-shrink: 0;
-  min-width: 16px;
+/* ---- 首列:38px mono 时间列 ---- */
+.task-time {
+  display: inline-block;
+  width: 38px;
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
-  font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-}
-
-.task-name {
-  flex: 1;
-  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.2;
+  color: var(--ui-text-primary-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  color: var(--ui-text-primary-fg);
-}
-
-.task-row.is-active .task-name {
-  font-weight: var(--font-weight-medium, 500);
 }
 
 .task-status {
@@ -1389,10 +1415,9 @@ watch(
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
-/* Toggle hidden until hover; stays visible when off or selected */
+/* 行尾开关:停用的、选中的、以及鼠标停在上面的行常显;其余行让位给内容 */
 .task-toggle {
   flex-shrink: 0;
-  align-self: center;
   display: inline-flex;
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-default);
@@ -1400,58 +1425,9 @@ watch(
 
 .task-row:hover .task-toggle,
 .task-row:focus-within .task-toggle,
-.task-row.is-off .task-toggle,
+.task-row.is-muted .task-toggle,
 .task-row.is-active .task-toggle {
   opacity: 1;
-}
-
-.task-sub {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-  padding-left: 24px;
-  font-family: var(--font-mono, monospace);
-  font-variant-numeric: tabular-nums;
-  font-size: 10.5px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-}
-
-.task-schedule,
-.task-lastrun,
-.task-owner {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-schedule {
-  flex-shrink: 0;
-  max-width: 55%;
-  color: var(--ui-text-muted-fg);
-}
-
-.task-preview {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding-left: 24px;
-  font-size: 11.5px;
-  color: var(--ui-text-muted-fg);
-}
-
-.task-row:hover .task-preview {
-  color: var(--ui-text-primary-fg);
-}
-
-/* Disabled task: faint strike-through */
-.task-row.is-off .task-name,
-.task-row.is-off .task-preview {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--ui-text-faint-fg, var(--ui-text-muted-fg)) 60%, transparent);
 }
 
 /* ---- detail: back nav (stacked mode only) ---- */
@@ -1934,7 +1910,9 @@ textarea.field:focus {
     transform: translateX(100%);
     z-index: 2;
     padding: 4px 2px 24px 0;
-    background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg));
+    /* 滑上来的详情要一枚不透明底才盖得住底下的列表。区域面自绘归 Surface 档位管
+       (ui-system §4),所以借 PanelShell 转手的 `--panel-shell-bg`,不直接吃区域面 token。 */
+    background: var(--panel-shell-bg, var(--ui-surface-panel-bg));
   }
 
   .detail-active .task-list {

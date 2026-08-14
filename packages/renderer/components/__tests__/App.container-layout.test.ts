@@ -66,6 +66,10 @@ describe('App container layout', () => {
     expect(app).toContain(':workspace-roots="currentWorkspaceRoots"')
     expect(app).toContain('@open-file="openFileInRightWorkbench"')
     expect(app).toContain('const rightWorkbenchRef = ref<InstanceType<typeof RightWorkbenchPanel> | null>(null)')
+    /* Media 的「跳到来源消息」落在 App:只有这一层同时握着 ChatContainer 的 ref
+       和搜索 deeplink 那条已成熟的 jumpToMessage。 */
+    expect(app).toContain('@jump-to-source="handleWorkbenchJumpToSource"')
+    expect(app).toContain('await chatContainerRef.value?.jumpToMessage?.(payload.sessionId, payload.messageId)')
     expect(app).toContain('async function openFileInRightWorkbench(filePath: string)')
     expect(app).toContain('await rightWorkbenchRef.value?.openFile(filePath)')
     expect(app).not.toContain('class="inspector-resize-handle"')
@@ -86,16 +90,22 @@ describe('App container layout', () => {
     expect(app).toContain('class="app-main-region"')
     expect(app).toContain('body-class="app-main-body"')
     expect(app).toContain('main-class="app-main-content-region"')
+    /* P1:主区只剩会话。工作区面板迁进右侧工作台成为「工作区域」页签,那个
+       把聊天整个盖住的全屏容器(MediaPanel)连同 App 这一侧的 `activeWorkspacePanel`
+       状态一起退役 —— 于是"每条切会话的路径都得记得关面板"这件事也一起没了。
+       壳留着:它是壁纸体系登记在案的四处区域根之一。 */
     expect(app).toContain('class="workspace-view-stack"')
-    expect(app).toContain(':data-active-workspace-view="activeWorkspaceView"')
-    expect(app).toContain('v-show="activeWorkspaceView === \'chat\'"')
     expect(app).toContain('class="workspace-view workspace-view-chat"')
-    expect(app).toContain('v-show="workspacePanelOpen"')
-    expect(app).toContain('class="workspace-view workspace-view-panel"')
-    expect(app).toContain(':active-tab="activeWorkspacePanel"')
-    expect(app).toContain("const activeWorkspaceView = computed(() => activeWorkspacePanel.value ?? 'chat')")
-    expect(app).not.toContain('v-if="activeWorkspacePanel"')
-    expect(app).not.toContain('v-show="!activeWorkspacePanel"')
+    // 钉的是**代码**不是散文:注释里还会提这段历史(它正是这条判决的理由)。
+    expect(app).not.toContain("import MediaPanel from")
+    expect(app).not.toContain('<MediaPanel')
+    expect(app).not.toContain('activeWorkspacePanel.value')
+    expect(app).not.toContain('workspacePanelOpen')
+    expect(app).not.toContain('activeWorkspaceView')
+    expect(app).not.toContain('workspace-view-panel')
+    // 入口全部改走工作台的 expose(展开右栏 + 落座那一格)。
+    expect(app).toContain('async function openWorkspacePanel(panel: WorkspacePanel)')
+    expect(app).toContain('rightWorkbenchRef.value?.openWorkspaceTab(panel)')
   })
 
   it('uses Container for the chat main header and content regions', () => {
@@ -398,42 +408,45 @@ describe('App container layout', () => {
     expect(todoProgress).toContain('flex: 1 1 auto;')
   })
 
-  it('lets workspace loading states fill the media panel', () => {
-    const mediaPanel = readRendererFile('components/MediaPanel.vue')
+  it('lets workspace loading states fill the media view', () => {
+    // 容器(MediaPanel.vue)已拆;这些几何断言跟着 media 视图本体走。
+    const mediaPanel = readRendererFile('components/MediaPanelContent.vue')
 
-    // `side` 形态已删(零使用点的死枝),两条规则合并成一条,几何取 main 那一份。
-    expect(mediaPanel).toContain('.media-panel {\n  flex: 1 1 auto;\n  width: auto;\n  height: 100%;\n  min-height: 0;\n  min-width: 0;')
+    expect(mediaPanel).toContain('.media-panel-content {\n  position: relative;\n  flex: 1 1 auto;\n  width: 100%;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;')
     // 钉的是**选择器**,不是散文 —— 注释里还会提这段历史。
     expect(mediaPanel).not.toMatch(/^\s*\.[\w.-]*mode-(main|side)/m)
     expect(mediaPanel).not.toContain('`mode-${mode}`')
-    expect(mediaPanel).toContain('.media-content {\n  flex: 1 1 auto;\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  min-width: 0;')
-    expect(mediaPanel).toContain('.content-body {\n  position: relative;\n  z-index: 0;\n  flex: 1 1 auto;\n  display: flex;\n  flex-direction: column;\n  min-height: 0;')
-    expect(mediaPanel).toContain('.ledger-note {')
+    // P2 起"控制条 / 内容 / 26px 状态条"这三层归 PanelShell,视图不再自铺
+    // `.content-body` 的伸缩几何 —— 这条守卫跟着改钉**用的是骨架**,
+    // 外加两种空态屏与"忙碌只在状态条"(spinner 归 PanelShell,内容区永远是骨架块)。
+    expect(mediaPanel).toContain('<PanelShell')
+    expect(mediaPanel).toContain(':padded="false"')
+    expect(mediaPanel).toContain('<PanelSkeleton')
     expect(mediaPanel).toContain('.empty-state {')
+    expect(mediaPanel).toContain('empty-state is-filtered')
     expect(mediaPanel).not.toContain('LoadingSpinner')
   })
 
-  it('keeps workspace panels as cached sibling views instead of overlay transitions', () => {
-    const app = readRendererFile('App.vue')
-    const mediaPanel = readRendererFile('components/MediaPanel.vue')
+  /**
+   * 「访问过的面板留在挂载态」这件事从前由 MediaPanel 的手工 `mountedNavs`
+   * keep-alive 实现;P1 之后它是 `TabPane lazy` 的自带语义(`v-if=hasRendered`
+   * + `v-show=isActive`),所以这条守卫改钉工作台那一侧的等价物:
+   * 页签 lazy、面板本体从注册表派生、六条各挂各的本体。
+   */
+  it('keeps workspace panels mounted once visited — now via lazy tab panes', () => {
+    const workbench = readRendererFile('components/workbench/RightWorkbenchPanel.vue')
 
-    expect(app).toContain('class="workspace-view-stack"')
-    expect(app).toContain('v-show="activeWorkspaceView === \'chat\'"')
-    expect(app).toContain('v-show="workspacePanelOpen"')
-    expect(mediaPanel).toContain('v-show="visible"')
-    // 面板清单收编进注册表之后,这里不再钉住手抄的联合字面量 ——
-    // 钉住它等于把"必须手抄"写成契约。改为断言它确实从注册表派生。
-    expect(mediaPanel).toContain('type WorkspaceNavId')
-    expect(mediaPanel).toContain("from '@/workspace/panel-registry'")
-    expect(mediaPanel).toContain('const mountedNavs = ref<WorkspaceNavId[]>([activeNav.value])')
-    expect(mediaPanel).toContain('function hasMountedNav(nav: WorkspaceNavId): boolean')
-    expect(mediaPanel).toContain('v-if="hasMountedNav(\'agents\')"')
-    expect(mediaPanel).toContain('data-workspace-panel-view="agents"')
-    expect(mediaPanel).toContain('.workspace-panel-views {')
-    expect(mediaPanel).toContain('.workspace-panel-view {')
-    expect(mediaPanel).not.toContain('<Transition name="media-panel">')
-    expect(mediaPanel).not.toContain('media-panel-enter-active')
-    expect(mediaPanel).not.toContain('v-else-if="activeNav === \'agents\'"')
+    expect(workbench).toContain("from '@/workspace/panel-registry'")
+    expect(workbench).toContain('WORKSPACE_NAV_PANELS')
+    // 清单从注册表派生,不是手抄一份 id 数组。
+    expect(workbench).toContain('WORKSPACE_NAV_PANELS.map(panel => ({')
+    expect(workbench).toContain('lazy')
+    expect(workbench).toContain("tab.type === 'workspace' && tab.panelId === 'agents'")
+    expect(workbench).toContain('<MediaPanelContent')
+    expect(workbench).toContain('<ArchivedChatsContent')
+    // 段边界只有一处维护点。
+    expect(workbench).toContain('function insertTab(tab: WorkbenchTab): void')
+    expect(workbench).toContain(":order=\"tab.type === 'workspace' ? 1 : 0\"")
   })
 
   it('drives sidebar panels and sessions through one Menu active index', () => {
@@ -465,9 +478,12 @@ describe('App container layout', () => {
     expect(sessionList).not.toContain('CollapsePanel')
 
     expect(app).toContain('@select-session="selectSidebarSession"')
-    expect(app).toContain('activeWorkspacePanel.value = panel')
+    expect(app).toContain('@open-workspace-panel="openWorkspacePanel"')
     expect(app).toContain('async function selectSidebarSession(sessionId: string)')
-    expect(app).toContain('activeWorkspacePanel.value = null\n  await sessionsStore.switchSession(sessionId)')
-    expect(app).not.toContain('activeWorkspacePanel.value === panel ? null : panel')
+    /* 切会话**不再关工作区面板**(P1 刻意的行为变化:右域跨会话保持)。
+       从前每一条切会话的路径都得记着 `activeWorkspacePanel = null`,漏一条就是
+       "面板卡在那儿" —— 现在压根没有这个状态可漏。 */
+    expect(app).toContain('  await sessionsStore.switchSession(sessionId)')
+    expect(app).not.toContain('activeWorkspacePanel.value = null')
   })
 })

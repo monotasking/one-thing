@@ -443,6 +443,18 @@ export interface SteeringRetractedEvent {
   messageId: string
 }
 
+/**
+ * 草稿纸的某一版真的进了模型(beforeTurn 瞬态尾块)。
+ *
+ * 界面的"已读水位线"只认这条事件 —— 它是引擎回推的事实,不是渲染层的猜测。
+ * `version` 就是纸的文件 mtime,与渲染层握着的版本号是同一个数。
+ */
+export interface ScratchpadConsumedEvent {
+  type: 'scratchpad:consumed'
+  version: number
+  turn: number
+}
+
 // ── Message events ──────────────────────────────
 
 export interface MessageUserCreatedEvent {
@@ -578,6 +590,7 @@ export type SessionEvent =
   | SteeringQueuedEvent
   | SteeringConsumedEvent
   | SteeringRetractedEvent
+  | ScratchpadConsumedEvent
   | MessageCreatedEvent
   | MessageUserCreatedEvent
   | MessageAssistantCreatedEvent

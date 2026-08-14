@@ -226,7 +226,14 @@ export interface BuildSystemPromptSnapshotWithAdaptersOptions<
     toolSettings?: TSettings['tools']
     supportsTools: boolean
   }): Promise<string[]> | string[]
-  buildProjectDirsPromptVars(workingDirectory?: string): {
+  /**
+   * `sessionId` 让宿主把会话解析成 space —— 项目名册批 B4 起 per-space,
+   * 快照必须与真回合看同一份名册。宿主可以忽略它。
+   */
+  buildProjectDirsPromptVars(
+    workingDirectory?: string,
+    options?: { sessionId?: string },
+  ): {
     active?: CorePromptActiveProject
     known?: CorePromptKnownProjects
   }
@@ -482,7 +489,9 @@ export async function buildSystemPromptSnapshotWithAdapters<
   const builtinToolDefinitions = hasTools
     ? options.sourceToolsToModelDefinitions(builtinTools)
     : {}
-  const projectVars = options.buildProjectDirsPromptVars(session.workingDirectory)
+  const projectVars = options.buildProjectDirsPromptVars(session.workingDirectory, {
+    sessionId: options.sessionId,
+  })
   const agent = options.getAgent(session.agentId)
   const requestMessages = await options.buildPrompt({
     sessionId: options.sessionId,

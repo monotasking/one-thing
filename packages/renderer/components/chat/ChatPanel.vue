@@ -21,6 +21,18 @@
       @review-goal="(goalSessionId) => emit('reviewGoal', goalSessionId)"
     />
 
+    <!-- 悬浮草稿垫。挂在聊天面板层而不是 composer 里 —— 它是一张 `position:
+         fixed` 的浮卡,与消息流的滚动、composer 的宽度动画一概无关(那正是
+         "滚上去看回复时还能写字"的前提)。只有当前活跃的面板挂它,否则多会话
+         常驻时会同时飘出好几张。 -->
+    <FloatingScratchpad
+      v-if="props.active && !isAgentExecutionSession"
+      :session-id="effectiveSessionId"
+      :available="!isCollabSessionActive"
+      @send="handleScratchpadSend"
+      @return-focus="focusInput"
+    />
+
     <Teleport
       :to="props.footerTarget ?? 'body'"
       :disabled="!props.footerTarget"
@@ -125,6 +137,7 @@ import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
 import UiSlotHost from '@/components/plugins/UiSlotHost.vue'
 import GoalStatusBar from './GoalStatusBar.vue'
 import MusicStatusBar from './composer/MusicStatusBar.vue'
+import FloatingScratchpad from './scratchpad/FloatingScratchpad.vue'
 import type { ChatMessage, ChatMessageMention, ChatMessageReplyTo, MessageAttachment, ToolCall } from '@/types'
 import { filterRoomMessages } from './message/room-grouping'
 import { isAgentExecutionSession as isAgentExecutionSessionKind } from '@/utils/agent-sessions'
@@ -744,6 +757,15 @@ async function handleSendMessage(
       ...(mentions ? { mentions } : {}),
     })
   }
+}
+
+/**
+ * 草稿垫的"正式发出"。刻意**借道 InputBox** 而不是直接调 chatStore:排队
+ * (生成中先攒着)、引用物化、附件按模型能力降级这三件事全在那边,在这里再写
+ * 一份必然与手打消息分叉。
+ */
+function handleScratchpadSend(text: string) {
+  void inputBoxRef.value?.sendScratchpadText(text)
 }
 
 async function handleStopGeneration() {

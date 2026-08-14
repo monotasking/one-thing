@@ -16,9 +16,12 @@ const rendererDir = path.resolve(dirname, '..', '..')
 // 现在的规矩:每一行顶栏是自己那条 drag 的根,控件都是它的真实子孙,靠自身
 // no-drag 挖洞。这条守卫拦住"预留槽"这种写法回来。
 
+// `components/MediaPanel.vue` 曾是第三位 drag 宿主(它那条 40px 头带着交通灯
+// 让位与 SidebarActionGroup)。P1 把六个工作区面板迁进右侧工作台之后那个全屏
+// 容器整个拆除,连带它那条顶栏 —— 侧栏收起时的落点回到 SessionHeader(聊天区
+// 现在永远在屏上,不再会被面板盖住),**没有新开让位槽**。
 const HEADER_HOSTS = [
   'components/chat/SessionHeader.vue',
-  'components/MediaPanel.vue',
   'components/sidebar/SidebarHeader.vue',
 ]
 
@@ -44,7 +47,6 @@ describe('顶栏拖拽区的组合方式', () => {
   it('按钮住在各自的 drag 宿主里', () => {
     expect(read('components/sidebar/SidebarHeader.vue')).toContain('<slot />')
     expect(read('components/chat/SessionHeader.vue')).toContain('<SidebarActionGroup')
-    expect(read('components/MediaPanel.vue')).toContain('<SidebarActionGroup')
   })
 
   it('没有任何"让位槽"再声明 no-drag', () => {

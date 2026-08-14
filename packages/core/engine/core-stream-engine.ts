@@ -1125,10 +1125,10 @@ export class CoreStreamEngine<
 
   private async generateSessionTitle(sessionId: string, displayContent: string): Promise<string> {
     const settings = this.store.getSettings()
-    const { providerId, providerConfig, model } = resolveToolCallModel(
+    const { providerId, providerConfig: rawProviderConfig, model } = resolveToolCallModel(
       settings as unknown as StreamEngineSettingsWithProviders<{ model?: string; selectedModels?: string[] }>,
     )
-    if (!providerId || !providerConfig || !model) {
+    if (!providerId || !rawProviderConfig || !model) {
       return generateTitleFromMessage(displayContent)
     }
 
@@ -1136,7 +1136,17 @@ export class CoreStreamEngine<
       return generateTitleFromMessage(displayContent)
     }
 
-    const authContext = await this.runtime.provider.resolveAuth(providerId, providerConfig as TProviderConfig)
+    // Title generation resolves its provider straight off settings rather than
+    // through getEffectiveConfig, so the host's per-session credential scoping
+    // has to be applied here too — otherwise a session whose workspace has its
+    // own keys would still bill its title to the global ones.
+    const providerConfig = this.runtime.provider.applySpaceCredentials?.(
+      sessionId,
+      providerId,
+      rawProviderConfig as TProviderConfig,
+    ) ?? (rawProviderConfig as TProviderConfig)
+
+    const authContext = await this.runtime.provider.resolveAuth(providerId, providerConfig)
     if (!authContext) {
       return generateTitleFromMessage(displayContent)
     }
@@ -1176,10 +1186,18 @@ export class CoreStreamEngine<
 
     const authContext = await this.runtime.provider.resolveAuth(providerId, providerConfig)
     if (!authContext) {
+      // The host may know a more specific reason than "no key" — e.g. this
+      // session's workspace has its own credential pool and this provider is
+      // not in it. Falling back keeps the message identical when it doesn't.
+      const described = this.runtime.provider.describeMissingCredentials?.(
+        providerId,
+        providerConfig,
+        sessionId,
+      )
       const isOAuth = this.runtime.provider.requiresOAuth(providerId)
-      this.emitStreamError(sessionId, isOAuth
+      this.emitStreamError(sessionId, described || (isOAuth
         ? `Not logged in to ${providerId}. Please login in settings.`
-        : 'API Key not configured. Please configure your AI settings.')
+        : 'API Key not configured. Please configure your AI settings.'))
       return null
     }
 

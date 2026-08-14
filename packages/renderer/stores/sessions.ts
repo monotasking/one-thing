@@ -17,7 +17,9 @@ import {
 } from "@onething/runtime/agents/presence";
 import { useAgentsStore } from "./agents";
 import { useChatStore } from "./chat";
+import { useScratchpadStore } from "./scratchpad";
 import { useWorkspaceStore } from "./workspace";
+import { currentSpaceId } from "./spaces";
 import {
 	createReadMark,
 	isMarkUnread,
@@ -553,6 +555,8 @@ export const useSessionsStore = defineStore("sessions", () => {
 		chatStore.clearSessionMessages(sessionId);
 		chatStore.deleteSnapshot(sessionId);
 		chatStore.clearComposerDraft(sessionId);
+		// 草稿纸是**文件**,草稿会话被丢弃时它不会自己消失。
+		void useScratchpadStore().remove(sessionId);
 		newChatDrafts.value = newChatDrafts.value.filter(
 			(draft) => draft.id !== sessionId,
 		);
@@ -572,10 +576,13 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 */
 	function openNewChatDraft(
 		name = "New Chat",
-		options?: { workingDirectory?: string },
+		options?: { workingDirectory?: string; workspaceId?: string },
 	) {
 		const chatStore = useChatStore();
 		const workingDirectory = options?.workingDirectory?.trim() || undefined;
+		// 草稿从出生就归属当前空间 —— 否则它会掉进 default,在别的空间里凭空
+		// 出现一行。调用方没指定就取 window 级的当前空间。
+		const workspaceId = options?.workspaceId || currentSpaceId();
 		const currentDraft = newChatDrafts.value.find(
 			(draft) => draft.id === currentSessionId.value,
 		);
@@ -583,6 +590,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			// 复用那条空草稿时也要改嫁目录:用户点的是「在项目 A 里新建」,
 			// 留着旧目录会让这一行停在别的组里,看起来像什么都没发生。
 			if (workingDirectory) currentDraft.workingDirectory = workingDirectory;
+			currentDraft.workspaceId = workspaceId;
 			currentDraft.updatedAt = Date.now();
 			newChatDrafts.value = [
 				currentDraft,
@@ -601,6 +609,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			updatedAt: now,
 			agentId: DEFAULT_AGENT_ID,
 			messageCount: 0,
+			workspaceId,
 			...(workingDirectory ? { workingDirectory } : {}),
 		};
 		newChatDrafts.value = [draft, ...newChatDrafts.value];
@@ -629,12 +638,22 @@ export const useSessionsStore = defineStore("sessions", () => {
 		// The session persists under the draft's own id, so the existing tab,
 		// composer draft, and snapshots keep pointing at the right session
 		// with no rename step.
-		const created = await createSessionWithoutSwitch(draftName, draft.id);
+		// 归属随草稿落盘 —— 空间是**创建时**定死的,不走后续 patch(后端没有
+		// 「当前空间」的概念,补写等于再开一条链路)。
+		const created = await createSessionWithoutSwitch(draftName, draft.id, {
+			workspaceId: draft.workspaceId,
+		});
 		chatStore.clearComposerDraft(sessionId);
 		if (!created) {
 			newChatDrafts.value = [draft, ...newChatDrafts.value];
 			void switchSession(draft.id);
 			return created;
+		}
+
+		// 会话在**草稿自己的 id**下落盘,所以纸通常原地就对。只有后端换了 id
+		// 才要搬家 —— 这一条守的是"万一",不是常态。
+		if (created.id !== sessionId) {
+			await useScratchpadStore().adopt(sessionId, created.id);
 		}
 
 		// currentSessionId already equals the draft/session id, so
@@ -669,9 +688,9 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	async function createSession(name: string) {
 		try {
-			const response = await platformApi.createSession(
-				name || "New Chat",
-			);
+			const response = await platformApi.createSession(name || "New Chat", {
+				workspaceId: currentSpaceId(),
+			});
 			if (response.success && response.session) {
 				sessions.value.unshift(response.session);
 				await switchSession(response.session.id);
@@ -687,12 +706,16 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 * draft materialization, which passes the draft's own id so the session
 	 * persists under the identity the renderer has been using all along.
 	 */
-	async function createSessionWithoutSwitch(name: string, sessionId?: string) {
+	async function createSessionWithoutSwitch(
+		name: string,
+		sessionId?: string,
+		options?: { workspaceId?: string },
+	) {
 		try {
-			const response = await platformApi.createSession(
-				name,
-				sessionId ? { sessionId } : undefined,
-			);
+			const response = await platformApi.createSession(name, {
+				...(sessionId ? { sessionId } : {}),
+				workspaceId: options?.workspaceId || currentSpaceId(),
+			});
 			if (response.success && response.session) {
 				sessions.value.unshift(response.session);
 				return response.session;
@@ -1040,6 +1063,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 				sessions.value = sessions.value.filter(
 					(s) => !allIdsToDelete.includes(s.id),
 				);
+				// 后端级联删的是会话,草稿纸是另一棵树上的文件 —— 连同子会话
+				// 一起收(它们的纸也留在 scratchpads/ 下)。
+				const scratchpadStore = useScratchpadStore();
+				for (const id of allIdsToDelete) void scratchpadStore.remove(id);
 			}
 		} catch (error) {
 			console.error("Failed to permanently delete session:", error);

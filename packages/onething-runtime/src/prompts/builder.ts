@@ -298,9 +298,15 @@ function todo(
 }
 
 function activeProject(project: CorePromptActiveProject): string {
+	const extraRoots = (project.displayPaths ?? []).filter(
+		(p) => p !== project.displayPath,
+	);
 	return [
 		"# Active Project",
 		`- path: ${project.displayPath}`,
+		extraRoots.length > 0
+			? `- additional roots (same project, writable): ${extraRoots.join(", ")}`
+			: "",
 		project.description ? `- description: ${project.description}` : "",
 	]
 		.filter(Boolean)
@@ -312,8 +318,12 @@ function knownProjects(ctx: CoreBuildPromptContextOptions): string {
 	if (!known) return "";
 	const lines = ["# Known Projects"];
 	for (const item of (known as CorePromptKnownProjects).entries ?? []) {
+		const extraRoots = (item.displayPaths ?? []).filter(
+			(p) => p !== item.displayPath,
+		);
+		const rootsSuffix = extraRoots.length > 0 ? ` (also: ${extraRoots.join(", ")})` : "";
 		lines.push(
-			`- ${item.displayPath}${item.description ? ` \u2014 ${item.description}` : ""}`,
+			`- ${item.displayPath}${rootsSuffix}${item.description ? ` \u2014 ${item.description}` : ""}`,
 		);
 	}
 	if (ctx.knownProjectsInstructions) {

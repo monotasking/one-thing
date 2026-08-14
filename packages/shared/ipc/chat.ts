@@ -554,6 +554,11 @@ export interface SessionMeta {
   // Active project directory, surfaced into the list so the sidebar can group
   // by project. Persisted per-session (meta.json); the fast index backfills it.
   workingDirectory?: string
+  /**
+   * 归属的 space(workspace)。**缺席 = default space** —— 旧会话零迁移,
+   * 所有读取端自己缺省(`docs/design/workspace-spaces-2026-08.md` 批 B)。
+   */
+  workspaceId?: string
 }
 
 /**
@@ -616,6 +621,8 @@ export interface ChatSession {
   // Sandbox boundary - tools restrict file access to this directory
   workingDirectory?: string  // Active project directory for this session
   workingDirectoryRoots?: string[] // Additional sandbox roots for this session
+  /** 归属的 space;缺席 = default space(读取端缺省,零迁移)。 */
+  workspaceId?: string
   variables?: ContextVariable[] // Session-scoped context variables
   goal?: SessionGoal // Current goal; mirrors goals' newest unfinished record
   goals?: SessionGoal[] // Goal history, oldest first (docs/design/goal-system-v3.md)
@@ -753,6 +760,11 @@ export interface CreateSessionRequest {
 export interface CreateSessionOptions {
   /** 调用方指定 id(建房走派生 id:一个人只有一间私聊房)。 */
   sessionId?: string
+  /**
+   * 新会话落在哪个 space。缺省 = default —— 后端不认识「当前空间」
+   * (那是 window 级状态,住在渲染层),所以每次创建都得显式带上。
+   */
+  workspaceId?: string
   /** 桌面端只放行 'room';服务端对任何 kind 一律拒绝(它不跑协调器)。 */
   kind?: Extract<SessionKind, "room">
   room?: {

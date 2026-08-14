@@ -17,6 +17,10 @@
       @add-custom-provider="$emit('add-custom-provider')"
       @edit-custom-provider="$emit('edit-custom-provider', $event)"
     />
+
+    <!-- 空间凭证(批 B3):非默认空间的密钥住在 workspaces/<id>/credentials.json,
+         与上面那张 settings.ai 的表是两层,分开画。 -->
+    <SpaceCredentialsPanel :providers="providers" />
   </div>
 </template>
 
@@ -24,6 +28,7 @@
 import type { AppSettings, ProviderInfo } from '@/types'
 import ModelLedgerSection from './ModelLedgerSection.vue'
 import ConnectionsSection from './ConnectionsSection.vue'
+import SpaceCredentialsPanel from './SpaceCredentialsPanel.vue'
 
 defineProps<{
   settings: AppSettings

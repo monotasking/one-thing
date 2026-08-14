@@ -19,6 +19,7 @@ import {
 } from '@onething/core/engine'
 import * as store from '../../store.js'
 import { goalRuntimeHooks } from '../../goals/runtime-hooks.js'
+import { scratchpadRuntimeHooks } from '../../scratchpad/index.js'
 import { resolveAgentProfileForSessionObject } from '../../agents/profile.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
 import { getMCPToolDefinitionsForModel } from '../../mcp/index.js'
@@ -196,6 +197,7 @@ function createAgentLoopRuntimeAdapters(
       inputTokens?: number
     }) => shouldSkipAutoCompactForProviderUsageMismatchSafe(input),
     goal: goalRuntimeHooks,
+    scratchpad: scratchpadRuntimeHooks,
     logger: console,
     createId: undefined,
   })

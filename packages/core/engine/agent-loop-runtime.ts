@@ -245,6 +245,30 @@ export interface CoreAgentLoopTurnQueueAdapters {
   drainFollowUpMessages?: () => CorePendingAgentLoopInputMessage[]
 }
 
+/** 瞬态尾块的哨兵:一条 user 消息,正文以这个开头,就是上一轮挂的那一块。 */
+export const CORE_EPHEMERAL_TAIL_SENTINEL = '<scratchpad '
+
+export interface CoreAgentLoopEphemeralTail {
+  /** 整块正文(自带哨兵开头)。 */
+  text: string
+  /** 内容版本;与在场那一块相同 = 原样保留,不重挂、不回调。 */
+  version: number
+}
+
+/**
+ * 每 turn 一块的**瞬态尾块** —— 进模型、不进聊天流、不持久化。
+ *
+ * 语义是**替换而非追加**:先按哨兵把上一块从数组里剥掉,再把新的一块 push 到
+ * 尾巴。所以连跑 20 个 turn 也只有一块在场(token 不累积),而缓存前缀只从
+ * 尾巴那里失效 —— 那里本来就是边界。
+ *
+ * 适配器缺席 = 一个字节都不变(整段跳过)。
+ */
+export interface CoreAgentLoopEphemeralTailAdapters {
+  buildEphemeralTail?: (turn: number) => Promise<CoreAgentLoopEphemeralTail | undefined>
+  onEphemeralTailInjected?: (info: { turn: number, version: number }) => void
+}
+
 export interface CoreAgentLoopProviderConfigWithOptionalKey {
   apiKey?: string
 }
@@ -525,6 +549,7 @@ export interface RunAgentLoopBeforeTurnWithAdaptersOptions<
   adapters:
     & CoreAgentLoopPendingMessageAdapters<TContentParts>
     & CoreAgentLoopTurnQueueAdapters
+    & CoreAgentLoopEphemeralTailAdapters
     & CoreAgentLoopTurnCompactionAdapters<TSettings, TProviderConfig, TSession, TMessage, TCompactResult>
 }
 
@@ -1298,6 +1323,55 @@ export function resolvePendingAgentLoopMessages<TContentParts = unknown>(
   })
 }
 
+function isEphemeralTailMessage(message: { role?: string, content?: unknown }): boolean {
+  return message.role === 'user'
+    && typeof message.content === 'string'
+    && message.content.startsWith(CORE_EPHEMERAL_TAIL_SENTINEL)
+}
+
+/**
+ * 把瞬态尾块换成新的一块。返回 undefined = 没有任何变化(数组原样,调用方不必
+ * 重建)。
+ *
+ * 三种情况:
+ *  - 没有适配器 / 适配器返回 undefined → 剥掉在场的旧块(纸被清空了就不该还挂着),
+ *    没有旧块则原样返回 undefined。
+ *  - 在场那块版本相同 → **原样保留**,不重挂也不发回调(逐字去重,免得同一
+ *    版本在账上被消费两次)。
+ *  - 其余 → 剥旧 + push 新 + 回调。
+ */
+export async function applyAgentLoopEphemeralTail<TMessage extends CoreAgentLoopMessage>(options: {
+  messages: CoreAgentLoopTurnMessages<TMessage>
+  turn: number
+  adapters: CoreAgentLoopEphemeralTailAdapters
+}): Promise<CoreAgentLoopTurnMessages<TMessage> | undefined> {
+  const { messages, adapters } = options
+  const existingIndex = messages.findIndex(isEphemeralTailMessage)
+  const tail = adapters.buildEphemeralTail
+    ? await adapters.buildEphemeralTail(options.turn)
+    : undefined
+
+  if (!tail) {
+    if (existingIndex < 0) return undefined
+    return messages.filter(message => !isEphemeralTailMessage(message))
+  }
+
+  if (existingIndex >= 0) {
+    const existing = messages[existingIndex]
+    if (typeof existing.content === 'string' && existing.content === tail.text) {
+      // 已经在场且逐字相同 —— 什么都不做才是对的。
+      return undefined
+    }
+  }
+
+  const next: CoreAgentLoopTurnMessages<TMessage> = messages.filter(
+    message => !isEphemeralTailMessage(message),
+  )
+  next.push({ role: 'user', content: tail.text })
+  adapters.onEphemeralTailInjected?.({ turn: options.turn, version: tail.version })
+  return next
+}
+
 export async function runAgentLoopBeforeTurnWithAdapters<
   TSettings,
   TProviderConfig extends object,
@@ -1350,7 +1424,16 @@ export async function runAgentLoopBeforeTurnWithAdapters<
     keepRecentTurns: options.keepRecentTurns,
     adapters: compactAdapters,
   })
-  if (compactedMessages) return { messages: compactedMessages, startNewResponse }
+  if (compactedMessages) {
+    // 压缩 rebuild 是从会话历史重新拼的,天然不含尾块 —— 所以压完之后要重新挂,
+    // 而不是"压缩后这一轮就没有草稿纸了"。
+    const compactedWithTail = await applyAgentLoopEphemeralTail({
+      messages: compactedMessages,
+      turn: options.turn,
+      adapters: options.adapters,
+    })
+    return { messages: compactedWithTail ?? compactedMessages, startNewResponse }
+  }
 
   const blockSession = options.adapters.getSession(options.ctx.sessionId) ?? undefined
   const blockUsage = blockSession
@@ -1373,6 +1456,16 @@ export async function runAgentLoopBeforeTurnWithAdapters<
     inputTokens: blockUsage?.visibleInputTokens,
   })
   if (blockReason) throw new Error(blockReason)
+
+  // 尾块最后挂:它是**瞬态**的,不该参与上面那两处按历史算的预算判定
+  // (算进去等于让一块随时会消失的内容去触发压缩)。
+  const withTail = await applyAgentLoopEphemeralTail({
+    messages: nextMessages,
+    turn: options.turn,
+    adapters: options.adapters,
+  })
+  if (withTail) nextMessages = withTail
+
   return nextMessages === options.messages
     ? undefined
     : { messages: nextMessages, startNewResponse }

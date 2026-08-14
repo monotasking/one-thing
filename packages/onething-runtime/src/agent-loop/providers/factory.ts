@@ -592,15 +592,20 @@ registerAgentProviderRuntime(
 
 /**
  * Kimi Code(订阅)。与 `kimi` 同一套 OpenAI 兼容线材,差别只有两处:
- * 地址钉死在套餐 host(不吃地区/档位),`apiKey` 是上游换来的 OAuth access_token
+ * 地址钉死在套餐 host(不吃地区/档位),凭证是 OAuth access_token
  * (klip-14:「OAuth 模型和 API 兼容性与当前 Bearer key 完全一致」)。
+ * OAuth 凭证在 authContext 里,config.apiKey 对 OAuth provider 恒为空串 ——
+ * 必须走 accessTokenFromRuntimeConfig,与 claude-code / grok-oauth 同一条路。
  */
 registerAgentProviderRuntime(
 	"kimi-code",
-	(config, options) =>
-		createOpenAICompatibleAgentProvider({
+	(config, options) => {
+		const accessToken = accessTokenFromRuntimeConfig(config);
+		if (!accessToken) {
+			throw new Error("Not logged in to Kimi Code. Please login first.");
+		}
+		return createOpenAICompatibleAgentProvider({
 			providerId: "kimi-code",
-			apiKey: config.apiKey,
 			baseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
 			defaultBaseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
 			fetchImpl: options.fetchImpl,
@@ -608,7 +613,9 @@ registerAgentProviderRuntime(
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
 			reasoningStyle: "thinking-type",
-		}),
+			resolveAuth: async () => ({ apiKey: accessToken }),
+		});
+	},
 	{ replace: true },
 );
 

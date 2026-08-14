@@ -275,6 +275,8 @@ describe('usePickerOrchestration', () => {
         cwd: '/repo',
         query: 'downloads',
         limit: 50,
+        // 接入目录 per-space,宿主按会话归属解析(批 B2)。
+        sessionId: 'session-1',
       })
     } finally {
       harness.scope.stop()
@@ -312,6 +314,7 @@ describe('usePickerOrchestration', () => {
         cwd: '',
         query: '',
         limit: 50,
+        sessionId: 'session-1',
       })
       expect(harness.api.activeExtension.value.items).toEqual([
         expect.objectContaining({
@@ -344,6 +347,7 @@ describe('usePickerOrchestration', () => {
         cwd: '',
         query: 'receipt',
         limit: 50,
+        sessionId: 'session-1',
       })
     } finally {
       harness.scope.stop()

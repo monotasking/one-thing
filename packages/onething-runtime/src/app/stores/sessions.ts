@@ -34,6 +34,10 @@ import {
 } from "@onething/runtime/sessions";
 import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/runtime/collab";
 import {
+	DEFAULT_SPACE_ID as DEFAULT_WORKSPACE_ID,
+	isValidSpaceId,
+} from "@onething/runtime/spaces/types";
+import {
 	CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID,
 	deriveRetainedContextSize,
 	repairSessionTimelineMetadata,
@@ -328,8 +332,41 @@ export function getSession(sessionId: string): ChatSession | undefined {
 }
 
 // Create a new session
-export function createSession(sessionId: string, name: string): ChatSession {
-	return sessionRepository.createSession(sessionId, name);
+export function createSession(
+	sessionId: string,
+	name: string,
+	options: { workspaceId?: string } = {},
+): ChatSession {
+	return sessionRepository.createSession(sessionId, name, options);
+}
+
+/**
+ * 会话归属的 space id —— **会话 → 空间**这条映射的唯一读法(批 B2 起)。
+ *
+ * 住在这里而不是接入目录模块里(批 B3 挪的):它是会话表的一条投影,与「接入目录」
+ * 无关。凭证解析、账本归因、目录解析都要问同一句话,让凭证去 import 接入目录模块
+ * 只会长出一条谁也解释不清的依赖。
+ *
+ * 会话不存在 / 缺 `workspaceId` / id 非法 → default。与 `countSessionsInWorkspace`、
+ * 渲染层 `sessionBelongsToSpace` 同一句缺省,零迁移。
+ */
+export function resolveSessionSpaceId(sessionId: string | undefined | null): string {
+	if (!sessionId) return DEFAULT_WORKSPACE_ID;
+	const workspaceId = getSession(sessionId)?.workspaceId;
+	return workspaceId && isValidSpaceId(workspaceId) ? workspaceId : DEFAULT_WORKSPACE_ID;
+}
+
+/**
+ * 某个 space 里还有多少条会话(含归档)。删空间的「只删空的」判定唯一的依据。
+ * 缺 workspaceId 的旧会话一律算在 default 名下 —— 与所有读取端同一句缺省。
+ */
+export function countSessionsInWorkspace(workspaceId: string): number {
+	const target = workspaceId || DEFAULT_WORKSPACE_ID;
+	let count = 0;
+	for (const meta of sessionRepository.getSessionsList()) {
+		if ((meta.workspaceId || DEFAULT_WORKSPACE_ID) === target) count++;
+	}
+	return count;
 }
 
 /**
@@ -347,9 +384,10 @@ export function createSession(sessionId: string, name: string): ChatSession {
 export function createSessionWithoutFocus(
 	sessionId: string,
 	name: string,
+	options: { workspaceId?: string } = {},
 ): ChatSession {
 	const previousSessionId = getCurrentSessionId();
-	const session = sessionRepository.createSession(sessionId, name);
+	const session = sessionRepository.createSession(sessionId, name, options);
 	if (previousSessionId !== sessionId) setCurrentSessionId(previousSessionId);
 	return session;
 }

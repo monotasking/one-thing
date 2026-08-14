@@ -11,7 +11,8 @@ const electronAPI = {
   getSkills: vi.fn(),
   refreshSkills: vi.fn(),
   listSkillDirectories: vi.fn(),
-  listAgents: vi.fn(),
+  // agents 域走通用 RPC 通道(主线 T1 第二批):打的是那一条通道。
+  rpcInvoke: vi.fn(),
   toggleSkillEnabled: vi.fn(),
   setSkillAgent: vi.fn(),
   addSkillDirectory: vi.fn(),
@@ -71,12 +72,20 @@ describe('SkillsSettingsPanel', () => {
         { id: 'dir-1', path: '/team/skills', label: 'Team', agentId: 'writer', enabled: true },
       ],
     })
-    electronAPI.listAgents.mockResolvedValue({
-      success: true,
-      agents: [
-        { id: 'default', name: 'Default Agent', systemPrompt: '', isDefault: true, createdAt: 0, updatedAt: 0 },
-        { id: 'writer', name: 'Writer', systemPrompt: '', createdAt: 0, updatedAt: 0 },
-      ],
+    electronAPI.rpcInvoke.mockImplementation(async (request: { domain: string; method: string }) => {
+      if (request.domain === 'agents' && request.method === 'list') {
+        return {
+          ok: true,
+          data: {
+            success: true,
+            agents: [
+              { id: 'default', name: 'Default Agent', systemPrompt: '', isDefault: true, createdAt: 0, updatedAt: 0 },
+              { id: 'writer', name: 'Writer', systemPrompt: '', createdAt: 0, updatedAt: 0 },
+            ],
+          },
+        }
+      }
+      return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
     })
     electronAPI.toggleSkillEnabled.mockResolvedValue({ success: true })
     electronAPI.setSkillAgent.mockResolvedValue({ success: true })

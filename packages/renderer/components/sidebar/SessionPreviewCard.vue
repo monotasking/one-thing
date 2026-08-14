@@ -81,7 +81,10 @@ const hiddenCount = computed(() => Math.max(0, props.segments.length - props.max
   overscroll-behavior: contain;
   padding: 10px 12px 11px;
   font-family: var(--type-label-font);
-  font-size: 12px;
+  /* 直接引全局 token 而不是 sidebar 的区域档位:这张卡走 Tooltip 的 #content,
+     被 Teleport 到 body —— DOM 上根本不在 .sidebar 里面,区域变量继承不到。
+     值与 --sidebar-type-meta 同源(--type-meta-size),档位一致。 */
+  font-size: var(--type-meta-size);
   line-height: 1.5;
   color: var(--preview-ink);
   background: var(--ui-surface-panel-bg);
@@ -115,7 +118,8 @@ const hiddenCount = computed(() => Math.max(0, props.segments.length - props.max
 .preview-count,
 .preview-more {
   font-family: var(--type-mono-font, monospace);
-  font-size: 10px;
+  /* 同上:teleport 到 body,引全局 token(与 --sidebar-type-micro 同源)。 */
+  font-size: var(--type-micro-size);
   letter-spacing: 0.06em;
   color: var(--preview-muted);
   flex-shrink: 0;

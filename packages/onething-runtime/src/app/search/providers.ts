@@ -9,7 +9,7 @@ import type {
 } from '@shared/ipc/search.js'
 import { listPrompts } from '../prompts/store.js'
 import { getCurrentSessionId } from '../stores/app-state.js'
-import { getConnectedDirectories } from '../stores/connected-directories.js'
+import { getConnectedDirectoriesForSession } from '../stores/connected-directories.js'
 import { getSession, getSessionRaw, getSessionsList } from '../stores/sessions.js'
 import { getSettings } from '../stores/settings.js'
 import { listFiles } from '../utils/ripgrep.js'
@@ -31,7 +31,8 @@ export function configureAppSearchProviders(): void {
     getCurrentSessionId,
     getSettings,
     getVariablesStore,
-    getConnectedDirectories,
+    // 搜索窗没有请求级会话号:当前会话是这里能拿到的最诚实的空间语境(批 B2)。
+    getConnectedDirectories: () => getConnectedDirectoriesForSession(getCurrentSessionId()),
     listFiles,
     listPrompts,
   })

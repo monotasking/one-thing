@@ -7,6 +7,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import {
   registerElectronMediaIpcHandlers,
+  saveElectronMediaFileAs,
   type ElectronImageGalleryRequest,
   type ElectronImagePreviewRequest,
   type ElectronMediaGalleryRequest,
@@ -17,6 +18,7 @@ import {
   deleteOnethingMediaItem,
   getOnethingMediaGallery,
   hideOnethingMediaAsset,
+  ingestOnethingMediaFilesForIpc,
   listOnethingLegacyMediaImages,
   listOnethingMediaAssets,
   OnethingImagePreviewRegistry,
@@ -24,13 +26,19 @@ import {
   openOnethingImagePreviewForIpc,
   readOnethingImageFileDataUrlForIpc,
   rebuildOnethingMediaLibraryForIpc,
+  type OnethingMediaIngestLocalFilesInput,
 } from '@onething/runtime/media'
 import { getSessions } from '@onething/app/stores/index.js'
 import { openImagePreviewWindow } from '@onething/electron-host/window'
 import { mediaLibraryService } from '@onething/app/media/media-library-service.js'
 import { saveMediaImage, type MediaItem } from '@onething/app/media/save-image.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import type { MediaAsset, MediaQuery } from '@shared/ipc.js'
+import type {
+  MediaAsset,
+  MediaIngestFilesResponse,
+  MediaQuery,
+  MediaSaveAsRequest,
+} from '@shared/ipc.js'
 
 export { saveMediaImage, type MediaItem } from '@onething/app/media/save-image.js'
 
@@ -42,6 +50,8 @@ export function registerMediaHandlers() {
   registerElectronMediaIpcHandlers({
     channels: {
       listAssets: IPC_CHANNELS.LIST_MEDIA_ASSETS,
+      ingestFiles: IPC_CHANNELS.INGEST_MEDIA_FILES,
+      saveAs: IPC_CHANNELS.SAVE_MEDIA_AS,
       hideAsset: IPC_CHANNELS.HIDE_MEDIA_ASSET,
       rebuildLibrary: IPC_CHANNELS.REBUILD_MEDIA_LIBRARY,
       getGallery: IPC_CHANNELS.GET_MEDIA_GALLERY,
@@ -59,6 +69,13 @@ export function registerMediaHandlers() {
         query: (query as MediaQuery | undefined) || {},
         listAssets: mediaQuery => mediaLibraryService.listAssets(mediaQuery),
       }),
+    ingestFiles: async (request?: unknown): Promise<MediaIngestFilesResponse> =>
+      ingestOnethingMediaFilesForIpc({
+        request: (request as OnethingMediaIngestLocalFilesInput | undefined) || { files: [] },
+        ingestFiles: input => mediaLibraryService.ingestLocalFiles(input),
+        logger: console,
+      }),
+    saveAs: (request: MediaSaveAsRequest) => saveElectronMediaFileAs(request),
     hideAsset: async (id: string): Promise<{ success: boolean }> =>
       hideOnethingMediaAsset({
         id,

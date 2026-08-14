@@ -20,9 +20,11 @@ import {
 	type OnethingUsageSummaryRequest,
 	type OnethingUsageSummaryResult,
 } from "@onething/runtime/usage";
+import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
 import { getStorePath } from "../stores/paths.js";
 import { getModelCapabilityEntry } from "../providers/model-registry.js";
+import { resolveSessionCredentialId } from "../providers/space-credentials.js";
 import * as store from "../store.js";
 
 /**
@@ -77,6 +79,17 @@ function resolvePlatform(input: RecordUsageInput): string {
 		return platformForOrigin(message?.origin as MessageOrigin | undefined);
 	}
 	return "electron";
+}
+
+/**
+ * 归属 space(批 B2)。**写入时定死**:归因字段不写就永远补不回来
+ * (`docs/design/workspace-spaces-2026-08.md` 批 B「一期必须进的归因字段」)。
+ * 会话缺席 / 缺 `workspaceId` 一律记 `'default'`,与所有读取端同一句缺省;
+ * 聚合侧本切片一行不动(旧行没有这个字段,读侧照旧)。
+ */
+function resolveWorkspaceId(sessionId: string | undefined): string {
+	if (!sessionId) return DEFAULT_SPACE_ID;
+	return store.getSession(sessionId)?.workspaceId || DEFAULT_SPACE_ID;
 }
 
 let ledgerInstance: OnethingUsageLedger | null = null;
@@ -147,6 +160,10 @@ export function recordUsage(input: RecordUsageInput): OnethingUsageLedgerRecord 
 	const billing = resolveUsageBillingMode(input.providerId);
 	return getUsageLedger().record({
 		sessionId: input.sessionId,
+		workspaceId: resolveWorkspaceId(input.sessionId),
+		// 默认空间不写 credentialId(诚实缺席):它的凭证源是 settings.ai,
+		// 那里没有 entry id —— 造一个假值只会污染将来的按 key 出账。
+		credentialId: resolveSessionCredentialId(input.sessionId, input.providerId),
 		providerId: input.providerId,
 		modelId: input.modelId,
 		platform: resolvePlatform(input),

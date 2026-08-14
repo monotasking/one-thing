@@ -127,11 +127,50 @@ export interface OnethingMediaIngestGeneratedImageInput {
   sessionId: string
   messageId: string
   /**
+   * Where the bytes came FROM. Defaults to `'ai-generated'` — this path exists
+   * for image generation — but a picked agent avatar travels the same pipe and
+   * is genuinely a `'user-upload'`; letting the caller say so is what keeps the
+   * source facet from lying (it did, until 2026-08).
+   */
+  source?: OnethingMediaSource
+  /**
    * What the image is FOR (e.g. 'persona-avatar'). Recorded on the asset so a
    * picked agent avatar can be told apart from generated artwork later; it does
    * not change where the bytes land.
    */
   usageTags?: OnethingMediaUsageTag[]
+}
+
+/**
+ * One file handed to the library from outside a chat message — a drop, a
+ * "选择文件" pick, a web upload. Exactly one of `filePath` / `base64Data`
+ * carries the bytes: the desktop has a real path (no base64 round trip, so a
+ * 300MB video costs nothing to ingest), the browser only ever has bytes.
+ */
+export interface OnethingMediaIngestFileInput {
+  filePath?: string
+  base64Data?: string
+  fileName: string
+  mimeType?: string
+}
+
+export interface OnethingMediaIngestLocalFilesInput {
+  files: OnethingMediaIngestFileInput[]
+  /** Defaults to `'user-upload'` — a hand-fed file is by definition an upload. */
+  source?: OnethingMediaSource
+  links?: OnethingMediaAssetLink[]
+}
+
+/**
+ * Per-file outcome, not a batch verdict. One unreadable path must not sink the
+ * other four files of the same drop, so failures are collected and reported
+ * rather than thrown.
+ */
+export interface OnethingMediaIngestLocalFilesResult {
+  assets: OnethingMediaAsset[]
+  created: number
+  skipped: number
+  errors: { fileName: string; error: string }[]
 }
 
 interface IngestMediaAssetResult {
@@ -156,18 +195,61 @@ function mimeToExtension(mimeType: string, fallbackName?: string): string {
   return '.bin'
 }
 
+/**
+ * The one mime→kind rule in this file. Extracted (not copied) out of
+ * `kindFromAttachment` so file ingest and attachment ingest can never drift
+ * into two different answers for the same mime type.
+ */
+function kindFromMimeType(mimeType: string): OnethingMediaKind {
+  const normalized = mimeType.toLowerCase()
+  if (normalized.startsWith('image/')) return 'image'
+  if (normalized.startsWith('audio/')) return 'audio'
+  if (normalized.startsWith('video/')) return 'video'
+  if (normalized === 'application/pdf' || normalized.startsWith('text/')) return 'document'
+  return 'file'
+}
+
 function kindFromAttachment(attachment: OnethingMessageAttachment): OnethingMediaKind {
   if (attachment.mediaType === 'image') return 'image'
   if (attachment.mediaType === 'audio') return 'audio'
   if (attachment.mediaType === 'video') return 'video'
   if (attachment.mediaType === 'document') return 'document'
 
-  const mimeType = attachment.mimeType.toLowerCase()
-  if (mimeType.startsWith('image/')) return 'image'
-  if (mimeType.startsWith('audio/')) return 'audio'
-  if (mimeType.startsWith('video/')) return 'video'
-  if (mimeType === 'application/pdf' || mimeType.startsWith('text/')) return 'document'
-  return 'file'
+  return kindFromMimeType(attachment.mimeType)
+}
+
+/**
+ * Reverse of `mimeToExtension` for the handful of extensions that table knows,
+ * plus the ones a dropped file actually arrives as. A drop from Finder often
+ * carries no mime at all (the renderer only sees `File.type === ''`), and
+ * guessing wrong here would file a PNG under `kind: 'file'`.
+ */
+const EXTENSION_MIME_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.heic': 'image/heic',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+  '.csv': 'text/csv',
+  '.json': 'application/json',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.zip': 'application/zip',
+}
+
+function mimeFromFileName(fileName: string): string {
+  const extension = extnamePath(fileName).toLowerCase()
+  return EXTENSION_MIME_TYPES[extension] || 'application/octet-stream'
 }
 
 function base64ToBuffer(base64Data: string): Buffer {
@@ -354,7 +436,8 @@ export class OnethingMediaLibraryService {
       ? base64ToBuffer(input.base64)
       : await downloadToBuffer(input.url!)
     const contentHash = hashBuffer(buffer)
-    const existing = this.findByHash('image', 'ai-generated', contentHash)
+    const source: OnethingMediaSource = input.source ?? 'ai-generated'
+    const existing = this.findByHash('image', source, contentHash)
     const link: OnethingMediaAssetLink = {
       sessionId: input.sessionId,
       messageId: input.messageId,
@@ -381,7 +464,7 @@ export class OnethingMediaLibraryService {
 
     return this.createStoredAsset({
       kind: 'image',
-      source: 'ai-generated',
+      source,
       buffer,
       mimeType: 'image/png',
       fileName: undefined,
@@ -402,6 +485,92 @@ export class OnethingMediaLibraryService {
   ): Promise<OnethingLegacyMediaItem> {
     const asset = await this.ingestGeneratedImage(input)
     return mediaAssetToLegacyImage(asset)
+  }
+
+  /**
+   * Ingest files that never travelled through a chat message — a drop onto the
+   * Media panel, a "选择文件" pick, a web upload.
+   *
+   * Three things it deliberately reuses rather than reinvents: the mime→kind
+   * rule (`kindFromMimeType`), the dedup key ((kind, source, contentHash), same
+   * as attachment ingest), and `createStoredAssetInIndex` — still the ONLY
+   * place in this class that writes bytes to disk.
+   *
+   * Errors are per file. A missing path is one line in `errors`, not a thrown
+   * batch: dropping five files and losing all five because one was a dangling
+   * symlink is the wrong failure mode.
+   */
+  ingestLocalFiles(input: OnethingMediaIngestLocalFilesInput): OnethingMediaIngestLocalFilesResult {
+    const index = this.loadIndex()
+    const source: OnethingMediaSource = input.source ?? 'user-upload'
+    const links = input.links ?? []
+    const result: OnethingMediaIngestLocalFilesResult = {
+      assets: [],
+      created: 0,
+      skipped: 0,
+      errors: [],
+    }
+    let changed = false
+
+    for (const file of input.files ?? []) {
+      const fileName = file.fileName
+        || (file.filePath ? basenamePath(file.filePath) : '')
+        || 'untitled'
+      try {
+        const buffer = this.readIngestBuffer(file)
+        const mimeType = file.mimeType || mimeFromFileName(fileName)
+        const kind = kindFromMimeType(mimeType)
+        const contentHash = hashBuffer(buffer)
+
+        const existing = this.findByHashInIndex(index, kind, source, contentHash)
+        if (existing) {
+          for (const link of links) {
+            changed = mergeLink(existing, link) || changed
+          }
+          result.assets.push(existing)
+          result.skipped += 1
+          continue
+        }
+
+        const asset = this.createStoredAssetInIndex(index, {
+          kind,
+          source,
+          buffer,
+          mimeType,
+          fileName,
+          link: links[0] ?? {},
+          contentHash,
+        })
+        // `createStoredAssetInIndex` always seeds one link; with no caller-supplied
+        // links that seed is an empty object, which would read as "linked to
+        // nothing in particular" instead of "not linked".
+        if (links.length === 0) asset.links = []
+        for (const link of links.slice(1)) mergeLink(asset, link)
+
+        result.assets.push(asset)
+        result.created += 1
+        changed = true
+      } catch (error) {
+        result.errors.push({
+          fileName,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    if (changed) this.saveIndex(index)
+    return result
+  }
+
+  private readIngestBuffer(file: OnethingMediaIngestFileInput): Buffer {
+    if (file.filePath) {
+      if (!fs.existsSync(file.filePath)) {
+        throw new Error(`File not found: ${file.filePath}`)
+      }
+      return fs.readFileSync(file.filePath)
+    }
+    if (file.base64Data) return base64ToBuffer(file.base64Data)
+    throw new Error('No file data provided')
   }
 
   ingestMessageAttachments(

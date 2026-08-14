@@ -31,6 +31,27 @@ vi.mock('@/stores/music', () => ({ useMusicStore: () => mocks.musicStore }))
 vi.mock('@/stores/collabBoard', () => ({
   useCollabBoardStore: () => ({ isRoomTurnActive: () => false }),
 }))
+// 草稿纸:这些用例走的是输入框本身,给一个恒「垫子没开」的空壳。
+vi.mock('@/stores/scratchpad', () => ({
+  useScratchpadStore: () => ({
+    isPadOpen: () => false,
+    togglePad: vi.fn(),
+    setPadOpen: vi.fn(),
+    clearPadOpen: vi.fn(),
+    getRecord: () => null,
+    setContent: vi.fn(),
+    load: vi.fn().mockResolvedValue(undefined),
+    flushNow: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+    adopt: vi.fn().mockResolvedValue(undefined),
+    noteConsumed: vi.fn(),
+    consumedOffset: () => null,
+    pendingText: () => '',
+  }),
+}))
+vi.mock('@/stores/agents', () => ({
+  useAgentsStore: () => ({ getAgent: () => null }),
+}))
 vi.mock('@/stores/browser', () => ({
   useBrowserStore: () => ({
     tabs: [],

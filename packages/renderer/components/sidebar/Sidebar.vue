@@ -25,6 +25,59 @@
         />
       </SidebarHeader>
 
+      <!-- 空间(space)切换器 —— 批 B1 的极简形态:一行色点 + 名字,点了就换。
+           切换 = 换过滤条件,不做 teardown、不打断任何在跑的流(Arc 式)。
+           后端答不上话(web 端本切片没有 /api/spaces)整行不画,只剩默认空间。
+           右键 = 重命名 / 删除;「＋」= 新建并切过去。 -->
+      <div
+        v-if="spacesStore.showSwitcher"
+        class="sidebar-space-row"
+      >
+        <button
+          v-for="space in spacesStore.spaces"
+          :key="space.id"
+          type="button"
+          class="sidebar-space-chip"
+          :class="{ 'is-on': space.id === spacesStore.currentSpaceId }"
+          :aria-pressed="space.id === spacesStore.currentSpaceId"
+          @click="selectSpace(space.id)"
+          @contextmenu.prevent="openSpaceMenu($event, space.id)"
+        >
+          <span
+            class="sidebar-space-dot"
+            :style="{ background: spaceColor(space) }"
+            aria-hidden="true"
+          />
+          <input
+            v-if="editingSpaceId === space.id"
+            ref="spaceRenameInput"
+            v-model="editingSpaceName"
+            class="sidebar-space-input"
+            type="text"
+            @click.stop
+            @keydown.enter.stop.prevent="commitSpaceRename"
+            @keydown.esc.stop.prevent="cancelSpaceRename"
+            @blur="commitSpaceRename"
+          >
+          <span
+            v-else
+            class="sidebar-space-name"
+          >{{ space.name }}</span>
+        </button>
+        <button
+          type="button"
+          class="sidebar-space-add"
+          aria-label="新建空间"
+          @click="createSpace($event)"
+        >
+          <Plus
+            :size="13"
+            :stroke-width="1.9"
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+
       <!-- 形态切换器(U3,样板 ChatGPT 左栏顶部的 `ChatGPT ▾`)。
            一个产品两种形态:对话 = 老模式直聊,协作 = 群聊 + 私聊。
            它只换左栏与「＋」建什么 —— 主区画什么永远由 `session.kind` 推
@@ -641,6 +694,41 @@
         @close="projectMenu = null"
       />
 
+      <!-- 多根项目的「＋」:先问落在哪个根 —— cwd 是单值,替用户猜就是猜错。 -->
+      <ContextMenu
+        :show="projectRootPicker !== null"
+        :x="projectRootPicker?.x ?? 0"
+        :y="projectRootPicker?.y ?? 0"
+        :items="projectRootPickerItems"
+        :min-width="180"
+        @select="onProjectRootPickerSelect"
+        @close="projectRootPicker = null"
+      />
+
+      <!-- 空间切换器的右键菜单:重命名 / 删除(只删得掉空的、非默认的)。 -->
+      <ContextMenu
+        :show="spaceMenu !== null"
+        :x="spaceMenu?.x ?? 0"
+        :y="spaceMenu?.y ?? 0"
+        :items="spaceMenuItems"
+        :min-width="160"
+        @select="onSpaceMenuSelect"
+        @close="spaceMenu = null"
+      />
+
+      <!-- 新建空间向导(批 B3):二选一 —— 空白开始 / 从默认空间导入凭证快照。
+           凭证 per-space 严格隔离不回落,所以「新空间要不要带钥匙」必须在这里问,
+           不能替用户猜。 -->
+      <ContextMenu
+        :show="spaceCreateMenu !== null"
+        :x="spaceCreateMenu?.x ?? 0"
+        :y="spaceCreateMenu?.y ?? 0"
+        :items="spaceCreateMenuItems"
+        :min-width="200"
+        @select="onSpaceCreateMenuSelect"
+        @close="spaceCreateMenu = null"
+      />
+
       <!-- 联系人右键:「打开空间」(= 点头像同一处)与「配置 Agent」。两条都走
            `openAgentSpace`,差别只是停在哪一面。 -->
       <ContextMenu
@@ -657,15 +745,16 @@
 
 <script setup lang="ts">
 import Space from '@/components/common/Space.vue'
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import ContextMenu from '@/components/common/ContextMenu.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
+import { normalizeProjectDir } from '@/utils/project-dir'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
-import { Check, ChevronDown, FolderPlus, MoreVertical, Pencil, Pin, Plus, Settings, Trash2, X } from 'lucide-vue-next'
+import { Check, ChevronDown, Copy, FolderCheck, FolderMinus, FolderPlus, MoreVertical, Pencil, Pin, Plus, Settings, Trash2, X } from 'lucide-vue-next'
 import {
   useWorkspaceNavEntries,
   type WorkspaceNavId,
@@ -696,6 +785,11 @@ import {
 import { platformApi } from '@/platform'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useProjectsStore } from '@/stores/projects'
+import {
+  DEFAULT_SPACE_ID as SPACES_DEFAULT_ID,
+  sessionBelongsToSpace,
+  useSpacesStore,
+} from '@/stores/spaces'
 import {
   formatRelativeTime,
   useSessionOrganizer,
@@ -1209,9 +1303,54 @@ const canPickProjectDir = platformApi.capabilities.desktopWindows
 const creatingProject = ref(false)
 const projectMenu = ref<{ x: number; y: number; path: string; label: string } | null>(null)
 
-const projectMenuItems = computed<ContextMenuItem[]>(() => [
-  { id: 'remove', label: '移出项目列表', icon: Trash2, danger: true },
-])
+// 多根:菜单里列出副根(可摘除),主根是身份锚点不给摘;再挂一个根走系统目录对话框。
+const projectMenuEntry = computed(() => {
+  const target = projectMenu.value
+  if (!target) return undefined
+  const normalized = normalizeProjectDir(target.path)
+  return projectsStore.entries.find(entry =>
+    (entry.paths?.length ? entry.paths : [entry.path])
+      .some(p => normalizeProjectDir(p) === normalized),
+  )
+})
+
+function projectRootLabel(root: string): string {
+  const trimmed = root.replace(/[/\\]+$/, '')
+  return trimmed.split(/[/\\]/).pop() || trimmed
+}
+
+const projectMenuItems = computed<ContextMenuItem[]>(() => {
+  const items: ContextMenuItem[] = []
+  if (canPickProjectDir) {
+    items.push({ id: 'add-root', label: '添加目录到项目…', icon: FolderPlus })
+  }
+  const entry = projectMenuEntry.value
+  const extraRoots = (entry?.paths ?? []).slice(1)
+  // 每个副根两条:提成主根(换 cwd 锚点)/ 摘掉。主根自己不列 —— 它既
+  // 不能摘,也已经是主根。
+  for (const root of extraRoots) {
+    items.push({
+      id: `set-primary:${root}`,
+      label: `设 ${projectRootLabel(root)} 为主根`,
+      icon: FolderCheck,
+      group: '目录',
+    })
+    items.push({
+      id: `remove-root:${root}`,
+      label: `移除 ${projectRootLabel(root)}`,
+      icon: FolderMinus,
+      group: '目录',
+    })
+  }
+  items.push({
+    id: 'remove',
+    label: '移出项目列表',
+    icon: Trash2,
+    danger: true,
+    separatorBefore: items.length > 0,
+  })
+  return items
+})
 
 async function createProject(): Promise<void> {
   if (creatingProject.value) return
@@ -1229,9 +1368,72 @@ async function createProject(): Promise<void> {
   }
 }
 
-/** 组头「＋」:在这个项目里开一条新会话(草稿从出生就带着目录)。 */
-function startProjectSession(projectPath: string): void {
-  sessionsStore.openNewChatDraft('New Chat', { workingDirectory: projectPath })
+/**
+ * 组头「＋」:在这个项目里开一条新会话(草稿从出生就带着目录)。
+ *
+ * 多根项目要先问「落在哪个根」—— cwd 是单值(批 A 的 cwd 语义),这条会话
+ * 的 bash 执行目录、相对路径全锚在它上面,替用户猜等于替他挑错目录。
+ * 单根项目行为不变:直通,不弹菜单。
+ */
+function startProjectSession(projectPath: string, event: MouseEvent | KeyboardEvent): void {
+  const roots = projectRootsFor(projectPath)
+  if (roots.length > 1) {
+    const anchor = menuAnchorFromEvent(event)
+    projectRootPicker.value = { x: anchor.x, y: anchor.y, roots }
+    return
+  }
+  sessionsStore.openNewChatDraft('New Chat', {
+    workingDirectory: roots[0] ?? projectPath,
+    workspaceId: spacesStore.currentSpaceId,
+  })
+}
+
+/** 名册里这个项目的全部根(主根第一);没登记就只有它自己。 */
+function projectRootsFor(projectPath: string): string[] {
+  const normalized = normalizeProjectDir(projectPath)
+  const entry = projectsStore.entries.find(candidate =>
+    (candidate.paths?.length ? candidate.paths : [candidate.path])
+      .some(p => normalizeProjectDir(p) === normalized),
+  )
+  if (!entry) return [projectPath]
+  return entry.paths?.length ? [...entry.paths] : [entry.path]
+}
+
+/**
+ * 浮层锚点。鼠标点击取指针位置;键盘触发(enter/space)没有指针,退回
+ * 触发元素的 rect —— 否则菜单会钉在屏幕左上角。
+ */
+function menuAnchorFromEvent(event: MouseEvent | KeyboardEvent): { x: number; y: number } {
+  if (event instanceof MouseEvent && (event.clientX !== 0 || event.clientY !== 0)) {
+    return { x: event.clientX, y: event.clientY }
+  }
+  const target = event.currentTarget ?? event.target
+  if (target instanceof HTMLElement) {
+    const rect = target.getBoundingClientRect()
+    return { x: rect.left, y: rect.bottom }
+  }
+  return { x: 0, y: 0 }
+}
+
+const projectRootPicker = ref<{ x: number; y: number; roots: string[] } | null>(null)
+
+const projectRootPickerItems = computed<ContextMenuItem[]>(() =>
+  (projectRootPicker.value?.roots ?? []).map((root, index) => ({
+    id: `root:${root}`,
+    label: index === 0 ? `${projectRootLabel(root)}(主根)` : projectRootLabel(root),
+    icon: index === 0 ? FolderCheck : FolderPlus,
+    group: '在哪个目录里新建',
+  })),
+)
+
+function onProjectRootPickerSelect(id: string): void {
+  if (!id.startsWith('root:')) return
+  const root = id.slice('root:'.length)
+  projectRootPicker.value = null
+  sessionsStore.openNewChatDraft('New Chat', {
+    workingDirectory: root,
+    workspaceId: spacesStore.currentSpaceId,
+  })
 }
 
 function openProjectContextMenu(event: MouseEvent, group: SessionGroup): void {
@@ -1248,6 +1450,167 @@ async function onProjectMenuSelect(id: string): Promise<void> {
     // 只取消登记,一条会话都不动:这个目录下还有会话的话,它会退回
     // 「推导出来的项目」那条路继续成组,只有空项目才真的消失。
     await projectsStore.remove(target.path)
+    return
+  }
+  if (id === 'add-root') {
+    const result = await platformApi.showOpenDialog({
+      properties: ['openDirectory'],
+      title: '添加目录到项目',
+    })
+    const picked = result?.filePaths?.[0]
+    if (result?.canceled || !picked) return
+    await projectsStore.addRoot(target.path, picked)
+    return
+  }
+  if (id.startsWith('set-primary:')) {
+    await projectsStore.setPrimaryRoot(target.path, id.slice('set-primary:'.length))
+    return
+  }
+  if (id.startsWith('remove-root:')) {
+    await projectsStore.removeRoot(target.path, id.slice('remove-root:'.length))
+  }
+}
+
+// ── 空间(space)────────────────────────────────────────────────────────────
+// 切换 = 换过滤条件(Arc 式:所有 space 同时活着,切走的流继续跑)。
+// currentSpaceId 是 window 级状态,住在 store 的 localStorage,不进后端。
+const spacesStore = useSpacesStore()
+const spaceMenu = ref<{ x: number; y: number; id: string } | null>(null)
+
+/** 没配色就按 id 派生一个稳定色相 —— 同一个空间每次开都是同一个点。 */
+function spaceColor(space: { id: string; color?: string }): string {
+  if (space.color) return space.color
+  if (space.id === SPACES_DEFAULT_ID) return 'var(--ui-accent-primary-fg)'
+  let hash = 0
+  for (const ch of space.id) hash = (hash * 31 + ch.charCodeAt(0)) % 360
+  return `hsl(${hash} 58% 55%)`
+}
+
+function selectSpace(id: string): void {
+  if (id === spacesStore.currentSpaceId) return
+  spacesStore.switchTo(id)
+  // 正在看的会话不属于新空间就换一条 —— 停在幽灵会话上比空态更让人困惑。
+  reconcileActiveSessionWithSpace()
+}
+
+/**
+ * 名册 per-space(批 B4):换空间就整份重载,否则上一个空间的项目会留在左栏
+ * ——「切换空间的时候项目也带过来了」正是这一条。
+ *
+ * 挂在 watch 上而不是 `selectSpace` 里:删空间会把当前空间弹回 default
+ * (`spacesStore.remove` → `switchTo`),那条路不经过 `selectSpace`。
+ */
+watch(() => spacesStore.currentSpaceId, () => {
+  void projectsStore.load()
+})
+
+/**
+ * 换空间后校正激活会话:还属于本空间就不动;否则挑本空间最近的一条,
+ * 一条都没有就退回空态(`sidebarSessions` 已按 updatedAt 排好)。
+ */
+function reconcileActiveSessionWithSpace(): void {
+  const currentId = sessionsStore.currentSessionId
+  const visible = spaceFilteredSessions.value
+  if (currentId && visible.some(session => session.id === currentId)) return
+  const next = visible[0]
+  if (next) void sessionsStore.switchSession(next.id)
+  else sessionsStore.clearCurrentSession()
+}
+
+/**
+ * 新建空间 = 一次二选一(批 B3)。
+ *
+ * 凭证 per-space 严格隔离且不回落,所以「空白开始」的新空间**一把钥匙都没有** ——
+ * 直接建完了事会让用户在新空间里发第一条消息就撞上「未配置」。二选一把这件事
+ * 摆在建之前问,而不是在错误信息里补课。
+ */
+const spaceCreateMenu = ref<{ x: number; y: number } | null>(null)
+
+const spaceCreateMenuItems = computed<ContextMenuItem[]>(() => [
+  { id: 'blank', label: '空白开始', icon: Plus },
+  { id: 'import', label: '从默认空间导入凭证', icon: Copy },
+])
+
+function createSpace(event: MouseEvent): void {
+  const rect = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect()
+  spaceCreateMenu.value = rect
+    ? { x: rect.left, y: rect.bottom + 4 }
+    : { x: event.clientX, y: event.clientY }
+}
+
+async function onSpaceCreateMenuSelect(id: string): Promise<void> {
+  spaceCreateMenu.value = null
+  const created = await spacesStore.create(undefined, { importCredentials: id === 'import' })
+  if (!created) return
+  selectSpace(created.space.id)
+}
+
+function openSpaceMenu(event: MouseEvent, id: string): void {
+  spaceMenu.value = { x: event.clientX, y: event.clientY, id }
+}
+
+const spaceMenuItems = computed<ContextMenuItem[]>(() => {
+  const id = spaceMenu.value?.id
+  const isDefault = !id || id === SPACES_DEFAULT_ID
+  return [
+    { id: 'rename', label: '重命名…', icon: Pencil, disabled: isDefault },
+    {
+      id: 'remove',
+      label: '删除空间',
+      icon: Trash2,
+      danger: true,
+      // 默认空间删不掉;非空的也删不掉(后端会拒,这里先把按钮灰掉,
+      // 让"点了没反应"变成"看得见为什么点不动")。
+      disabled: isDefault || spaceSessionCount(id) > 0,
+      separatorBefore: true,
+    },
+  ]
+})
+
+function spaceSessionCount(spaceId: string | undefined): number {
+  if (!spaceId) return 0
+  return sessionsStore.sidebarSessions
+    .filter(session => sessionBelongsToSpace(session, spaceId)).length
+}
+
+// 就地重命名(与会话行同一套做法:输入框顶掉标签,Enter 提交 / Esc 撤销)。
+const editingSpaceId = ref<string | null>(null)
+const editingSpaceName = ref('')
+const spaceRenameInput = ref<HTMLInputElement | HTMLInputElement[] | null>(null)
+
+function startSpaceRename(id: string): void {
+  editingSpaceId.value = id
+  editingSpaceName.value = spacesStore.spaces.find(space => space.id === id)?.name ?? ''
+  void nextTick(() => {
+    const el = spaceRenameInput.value
+    const input = Array.isArray(el) ? el[0] : el
+    input?.focus()
+    input?.select()
+  })
+}
+
+async function commitSpaceRename(): Promise<void> {
+  const id = editingSpaceId.value
+  if (!id) return
+  const name = editingSpaceName.value
+  editingSpaceId.value = null
+  await spacesStore.rename(id, name)
+}
+
+function cancelSpaceRename(): void {
+  editingSpaceId.value = null
+}
+
+async function onSpaceMenuSelect(id: string): Promise<void> {
+  const target = spaceMenu.value
+  if (!target) return
+  if (id === 'rename') {
+    startSpaceRename(target.id)
+    return
+  }
+  if (id === 'remove') {
+    await spacesStore.remove(target.id)
+    reconcileActiveSessionWithSpace()
   }
 }
 
@@ -1270,9 +1633,19 @@ const sidebarStyle = computed(() => {
   }
 })
 
+/**
+ * 空间过滤 —— 输入侧就切掉,置顶 / 草稿 / 项目分组的语义一律不动。
+ * 缺 `workspaceId` 的旧会话算 default(读取端缺省,零迁移)。
+ */
+const spaceFilteredSessions = computed(() =>
+  sessionsStore.sidebarSessions.filter(session =>
+    sessionBelongsToSpace(session, spacesStore.currentSpaceId),
+  ),
+)
+
 // Filtered and flat sessions
 const filteredSessions = computed(() => {
-  const sessions = sessionsStore.sidebarSessions
+  const sessions = spaceFilteredSessions.value
   if (!localSearchQuery.value.trim()) {
     return sessions
   }
@@ -1430,6 +1803,7 @@ function handleWindowResize() {
 onMounted(() => {
   window.addEventListener('resize', handleWindowResize)
   void projectsStore.load()
+  void spacesStore.load()
 })
 
 onUnmounted(() => {
@@ -1453,6 +1827,24 @@ onUnmounted(() => {
   --sidebar-row-fg: var(--ui-sidebar-row-fg);
   --sidebar-row-hover-fill: var(--ui-sidebar-item-hover-bg);
   --sidebar-row-active-fill: var(--ui-sidebar-item-active-bg);
+  /* 字号阶梯。与上面那条墨色派生链同规:整棵 sidebar 共用五档,各处引档位而不是
+     各写各的数 —— 归口前这里散着 9 / 10 / 11 / 11.5 / 12 / 13 / 14px 七种字面量,
+     同一层级的东西(「进行中」的活卡片 11.5px、「私下」段头 11px、面板段头
+     11.5px)靠肉眼对齐,谁也说不清哪两处该一样大。
+     档位映射到全局刻度(styles/variables.css),不自己发明数:
+       title   14px  列表行的**主标题** —— 会话名、房间名、活卡片、形态名
+       row     13px  组头 / 面板头 / 次级动作(比主标题轻一档的结构文字)
+       meta    12px  补语 —— 时间、计数、职位
+       caption 11px  段头、空态、错误、「显示更多」
+       micro   10px  角标 —— 时间子标题、方章首字、成员堆计数
+     左栏原先整体比刻度低一档(SessionItem 的注释写着「--type-size-500 是 14px,
+     比设计稿大一号」故意压到 13px),结果是 14px 正文的聊天区旁边挂一条 13/12px
+     的左栏。归口即把这一档补回来。 */
+  --sidebar-type-title: var(--type-body-size);      /* 14px */
+  --sidebar-type-row: var(--type-label-size);       /* 13px */
+  --sidebar-type-meta: var(--type-meta-size);       /* 12px */
+  --sidebar-type-caption: var(--type-caption-size); /* 11px */
+  --sidebar-type-micro: var(--type-micro-size);     /* 10px */
   position: relative;
   flex: 1 1 auto;
   flex-shrink: 0;
@@ -1571,6 +1963,104 @@ onUnmounted(() => {
 /* ── 形态切换器(U3,样板 ChatGPT 左栏顶部的 `ChatGPT ▾`)──────────────────
    一行,不是一块:它换的是左栏装什么,不是一个需要视觉重量的功能入口。
    墨阶沿用 rail 那一族 token,不另起一套颜色。 */
+/* ── 空间(space)切换器 ─────────────────────────────────────────────────
+   一行 chip:色点 + 名字。切换是换过滤条件,不是换窗口,所以它长得像标签
+   而不是像导航 —— 视觉重量刻意压在形态切换器之下。 */
+.sidebar-space-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  padding: 4px 10px 2px;
+}
+
+.sidebar-space-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 3px 7px;
+  font-family: inherit;
+  font-size: var(--sidebar-type-meta);
+  color: var(--ui-sidebar-rail-muted-fg);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-default),
+              color var(--duration-fast) var(--ease-default);
+}
+
+.sidebar-space-chip:hover {
+  background: var(--ui-sidebar-rail-hover-bg);
+}
+
+.sidebar-space-chip.is-on {
+  background: var(--ui-sidebar-rail-hover-bg);
+  color: var(--ui-text-primary-fg);
+}
+
+.sidebar-space-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
+}
+
+.sidebar-space-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.sidebar-space-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-space-input {
+  width: 8em;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--ui-text-primary-fg);
+}
+
+/* 就地重命名的输入框:裸 `:focus` 关焦点环是对的(键入时 `:focus-visible`
+   不触发),元素选择器写全才不会被 focus-bare 规则误伤。 */
+input.sidebar-space-input:focus {
+  outline: none;
+}
+
+.sidebar-space-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-sidebar-rail-muted-fg);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-default),
+              color var(--duration-fast) var(--ease-default);
+}
+
+.sidebar-space-add:hover {
+  background: var(--ui-sidebar-rail-hover-bg);
+  color: var(--ui-text-primary-fg);
+}
+
+.sidebar-space-add:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
+}
+
 .sidebar-form-row {
   flex-shrink: 0;
   display: flex;
@@ -1604,7 +2094,7 @@ onUnmounted(() => {
 }
 
 .sidebar-form-name {
-  font-size: 14px;
+  font-size: var(--sidebar-type-title);
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -1751,7 +2241,7 @@ onUnmounted(() => {
 }
 
 .sidebar-pane-title {
-  font-size: 13px;
+  font-size: var(--sidebar-type-row);
   font-weight: 550;
   line-height: 1.45;
   color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
@@ -1760,7 +2250,7 @@ onUnmounted(() => {
 
 .sidebar-pane-count {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--sidebar-type-meta);
   font-variant-numeric: tabular-nums;
   color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 47%, transparent);
   user-select: none;
@@ -1780,7 +2270,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--sidebar-type-row);
   line-height: 1;
   padding: 2px 6px;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
@@ -1796,7 +2286,9 @@ onUnmounted(() => {
   background: transparent;
   text-align: left;
   font-family: inherit;
-  font-size: 13px;
+  /* 房间行 / 联系人行是这条列表的**主标题**,与对话形态的会话名同档 ——
+     两种形态的行标题不该一大一小。 */
+  font-size: var(--sidebar-type-title);
   line-height: 1.5;
   padding: 4px 8px 4px 0;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
@@ -1866,6 +2358,8 @@ onUnmounted(() => {
   border-radius: 50%;
   box-shadow: 0 0 0 1.5px var(--sidebar-bg);
   background: var(--sidebar-bg);
+  /* 圆章里 emoji 的字号,**故意不上字号阶梯**:它由圆的直径决定,跟着正文
+     刻度走的话字号一变 emoji 就顶破圈。下面 .sidebar-agent-avatar 同理。 */
   font-size: 9px;
   line-height: 1;
 }
@@ -1881,7 +2375,7 @@ onUnmounted(() => {
 
 .sidebar-room-face-more {
   margin-left: 3px;
-  font-size: 10px;
+  font-size: var(--sidebar-type-micro);
   font-variant-numeric: tabular-nums;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
 }
@@ -1913,7 +2407,7 @@ onUnmounted(() => {
   background: transparent;
   text-align: left;
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--sidebar-type-caption);
   line-height: 1.5;
   letter-spacing: 0.08em;
   padding: 4px 8px 2px 0;
@@ -1927,7 +2421,8 @@ onUnmounted(() => {
 
 .sidebar-subgroup-caret {
   display: inline-block;
-  font-size: 12px;
+  /* 没有 font-size:壳里是一枚 width/height=12 的 SVG,字号不参与渲染。
+     归口时删掉了那条死属性,免得它冒充一个字号档位。 */
   line-height: 1;
   transition: transform var(--duration-fast) var(--ease-default);
 }
@@ -1937,7 +2432,7 @@ onUnmounted(() => {
 }
 
 .sidebar-subgroup-count {
-  font-size: 10px;
+  font-size: var(--sidebar-type-micro);
   opacity: 0.7;
 }
 
@@ -1978,7 +2473,7 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--sidebar-type-caption);
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   opacity: 0.75;
 }
@@ -1997,7 +2492,7 @@ onUnmounted(() => {
    而"这是群不是人"一眼可辨(圆=人,方=群,画线风里形状就是分类)。 */
 .sidebar-recent-room-mark {
   border-radius: 5px;
-  font-size: 10px;
+  font-size: var(--sidebar-type-micro);
   font-weight: 500;
   color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 62%, transparent);
 }
@@ -2006,7 +2501,7 @@ onUnmounted(() => {
    (`flex: 0 0 auto`)—— 名字先被省略号截,时间是最后一个字都不能少的那一栏。 */
 .sidebar-recent-time {
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: var(--sidebar-type-meta);
   font-variant-numeric: tabular-nums;
   color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 42%, transparent);
 }
@@ -2018,7 +2513,7 @@ onUnmounted(() => {
 
 .sidebar-recent-empty {
   padding: 14px 14px 10px;
-  font-size: 11.5px;
+  font-size: var(--sidebar-type-caption);
   line-height: 1.7;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
 }
@@ -2028,7 +2523,7 @@ onUnmounted(() => {
 .sidebar-pane-group {
   flex-shrink: 0;
   padding: 12px 14px 3px;
-  font-size: 11.5px;
+  font-size: var(--sidebar-type-caption);
   font-weight: 500;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   user-select: none;
@@ -2040,7 +2535,7 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--sidebar-type-caption);
   color: var(--ui-text-muted-fg);
 }
 
@@ -2055,6 +2550,7 @@ onUnmounted(() => {
   justify-content: center;
   border: 1px solid color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 30%, transparent);
   border-radius: 50%;
+  /* 同上:18px 圆章内的 emoji 字号,由直径定,不上字号阶梯。 */
   font-size: 10px;
   line-height: 1;
 }
@@ -2189,7 +2685,7 @@ onUnmounted(() => {
 /* 职位退成样板的 `.meta`(12px 副文,靠在行尾)。 */
 .sidebar-pane .sidebar-contact-title {
   flex: 0 0 auto;
-  font-size: 12px;
+  font-size: var(--sidebar-type-meta);
   opacity: 1;
   color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 47%, transparent);
 }
@@ -2197,7 +2693,7 @@ onUnmounted(() => {
 /* 「私下」子分组头退成样板的 `.grp`(与「进行中」的组头同一句法)。 */
 .sidebar-pane .sidebar-subgroup {
   padding: 12px 14px 3px;
-  font-size: 11.5px;
+  font-size: var(--sidebar-type-caption);
   font-weight: 500;
   letter-spacing: 0;
 }

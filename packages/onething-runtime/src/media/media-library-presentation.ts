@@ -81,6 +81,57 @@ export async function rebuildOnethingMediaLibraryForIpc<TSession = unknown>(
   }
 }
 
+export interface IngestOnethingMediaFilesOptions<TRequest = unknown, TAsset = unknown> {
+  request: TRequest
+  ingestFiles(request: TRequest): MaybePromise<{
+    assets: TAsset[]
+    created: number
+    skipped: number
+    errors: { fileName: string; error: string }[]
+  }>
+  logger?: OnethingMediaIpcLogger
+}
+
+export interface IngestOnethingMediaFilesResult<TAsset = unknown> {
+  success: boolean
+  assets: TAsset[]
+  created: number
+  skipped: number
+  errors: { fileName: string; error: string }[]
+  error?: string
+}
+
+/**
+ * Host-facing shape for "put these files in the library". Per-file failures
+ * already ride inside `errors` (the service never throws for one bad file), so
+ * the catch here only covers the batch-level accident — an unwritable index,
+ * a missing store. Both hosts get the same envelope.
+ */
+export async function ingestOnethingMediaFilesForIpc<TRequest = unknown, TAsset = unknown>(
+  options: IngestOnethingMediaFilesOptions<TRequest, TAsset>,
+): Promise<IngestOnethingMediaFilesResult<TAsset>> {
+  try {
+    const result = await options.ingestFiles(options.request)
+    return {
+      success: true,
+      assets: result.assets,
+      created: result.created,
+      skipped: result.skipped,
+      errors: result.errors,
+    }
+  } catch (error) {
+    options.logger?.error?.('[Media IPC] Failed to ingest media files:', error)
+    return {
+      success: false,
+      assets: [],
+      created: 0,
+      skipped: 0,
+      errors: [],
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
 export interface GetOnethingMediaGalleryOptions<TQuery = unknown, TAsset = unknown> {
   assetId: string
   query: TQuery

@@ -263,9 +263,8 @@ hljs-theme.css 与 StreamingCodeBlock 仍按那套名字消费,照旧双写。
 
 | n | 谁 |
 |---|---|
-| +0 | 普通锚定浮层(nav rail、SubMenu、主题菜单、emoji 面板底、MediaPanel 抽屉、prompt 引用卡) |
+| +0 | 普通锚定浮层(nav rail、SubMenu、主题菜单、emoji 面板底、prompt 引用卡) |
 | +1 / +2 / +3 | 复合器三兄弟:ComposerExtensionPanel / InputBox 浮层 / AgentSelector flyout |
-| +5 | MediaPanel 工具条 |
 | +20 | 表单下拉:Select、Mention、ProviderModels 能力 popover |
 | +24 | 表格筛选菜单、emoji 面板遮罩 |
 | +25 | 消息级浮层:MessageActions 三个菜单、branch-menu、MessageItem 反应卡、emoji 面板 |
@@ -284,6 +283,15 @@ hljs-theme.css 与 StreamingCodeBlock 仍按那套名字消费,照旧双写。
   `zOffset`(= `calc(var(--z-x) + n)`),完全跳出档位表则用 `baseZ` 传整条表达式。
 - `evals/EvalsWorkbench.vue` 用 `calc(var(--z-modal) + 10)` 而不是 `--z-overlay`:它是从设置弹层里打开的,
   掉到 overlay 档就会被设置弹层盖住。
+
+- **两条 media 行已撤(P2,2026-08-13)**:原先的 `+5 MediaPanel 工具条` 与 `+0` 那行里的
+  「MediaPanel 抽屉」都不再存在。`MediaPanelContent.vue` 现在在自己根上写 `isolation: isolate`
+  建一个层叠上下文,于是"控制区盖住网格"「详情盖住整格」全部降为**个位数的局部关系**
+  (控制区 2 / 粘底条 3 / 详情 4),不再从 `--z-dropdown` 借档 —— 借档本来也只是为了赢过
+  同层的兄弟,而那正是 stacking context 该解决的事。整棵子树另被工作台的 pane
+  (`isolation: isolate`,`RightWorkbenchPanel.test.ts` 钉着)再关一层,所以这些局部值
+  与全局层级表没有任何交涉。视图内唯一还在表上的浮层是右键菜单,它走 `ContextMenu` 原语的
+  `--z-modal` 档。
 
 `Select.vue` / `Mention.vue` 默认在 dropdown+20(=120),**压不过 modal(600)**。
 P3 起 Select、P5 起 Mention 都接了内核,这条不再是陷阱而是一个 prop:**在 Dialog 里
@@ -345,12 +353,13 @@ bun run ui:check   # 全量清单(存量 + 新增),按规则分类计数
 bun run ui:gate    # 棘轮:只对基线之外的新增 exit 1;治愈的行会打印出来
 ```
 
-基线:`docs/audit/ui-baseline-2026-08-11.txt`(**97 条**存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
+基线:`docs/audit/ui-baseline-2026-08-13.txt`(**81 条**存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
 P0 首录 1144 条 → P2 实测 1044(`native-confirm` 归零、`raw-teleport` 12→4,未重录)
 → P4 收官 768(`ui-hex-fallback` 151→0、`focus-bare` 65→27,已重录)
 → P5 第一波 376(`title-attr` 455→63)→ P5 收官 70(已重录)
 → 波 0 的 `title-attr` 豁免扩表 **58 → 12**(2026-08-10 重录)
-→ G7-3 新增第 11 条 `surface-literal` **12 → 97**(2026-08-11 重录;旧五条计数一条没变)。
+→ G7-3 新增第 11 条 `surface-literal` **12 → 97**(2026-08-11 重录;旧五条计数一条没变)
+→ Media Panel 设计落地 P5 净治愈 16 条 **97 → 81**(2026-08-13 重录;规则数 11 → 12,新增的 `overscroll-contain-chat` 存量为 0)。
 
 **重录纪律**:检查器读的是**工作树**,所以重录必须在 `git worktree add --detach <tmp> HEAD`
 出来的干净树里跑(新规则的实现 `cp` 进去),否则当时未提交的工作会被一起录进基线 ——

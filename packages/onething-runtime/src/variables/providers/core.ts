@@ -26,8 +26,14 @@ export interface CoreProviderAdapters {
   /**
    * Directories the user has already blessed (e.g. registered project dirs).
    * Switching the workdir into one of these skips the permission barrier.
+   *
+   * `ctx.sessionId` 是**必给**的第二参(批 B4):名册 per-space,判据必须落在
+   * 会话归属的那一份上,否则 A 空间的名册会替 B 空间的会话免掉审批。
    */
-  isPreauthorizedDirectory?: (path: string) => boolean | Promise<boolean>
+  isPreauthorizedDirectory?: (
+    path: string,
+    ctx: { sessionId: string },
+  ) => boolean | Promise<boolean>
 }
 
 const NAME_WORKDIR = 'workdir'
@@ -123,7 +129,7 @@ export class CoreProvider implements VariableProvider {
       root => resolved === root || resolved.startsWith(root + path.sep),
     )
     if (covered) return
-    if (await this.adapters.isPreauthorizedDirectory?.(resolved)) return
+    if (await this.adapters.isPreauthorizedDirectory?.(resolved, { sessionId: ctx.sessionId })) return
 
     await this.adapters.enforcePermission({
       sessionId: ctx.sessionId,

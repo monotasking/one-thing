@@ -12,7 +12,19 @@ const api = vi.hoisted(() => ({
   setCollabRoomBudgets: vi.fn(async () => ({ success: true })),
   setCollabRoomFrozen: vi.fn(async () => ({ success: true })),
   getCollabRoomSpend: vi.fn(async () => ({ success: true, spentTodayUSD: 1.234, dailyCostUSD: 5 })),
-  listAgents: vi.fn(async () => ({ success: true, agents: [] })),
+  // 域已迁到通用 RPC 通道(主线 T1 第二批):打那一条通道,按 domain.method 分发。
+  rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
+    if (request.domain === 'agents' && request.method === 'list') {
+      return { ok: true, data: { success: true, agents: [] } }
+    }
+    if (request.domain === 'providers' && request.method === 'list') {
+      return { ok: true, data: { success: true, providers: [] } }
+    }
+    if (request.domain === 'models' && request.method === 'getNameAliases') {
+      return { ok: true, data: { success: true, aliases: {} } }
+    }
+    return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
+  }),
   getSessions: vi.fn(async () => ({ success: true, sessions: [] })),
 }))
 

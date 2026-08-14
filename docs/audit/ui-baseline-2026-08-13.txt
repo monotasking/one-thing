@@ -1,0 +1,95 @@
+[ui] failed: App.vue:1521 surface-literal
+[ui] failed: App.vue:1598 surface-literal
+[ui] failed: App.vue:1659 surface-literal
+[ui] failed: App.vue:1694 surface-literal
+[ui] failed: components/ChatContainer.vue:413 surface-literal
+[ui] failed: components/ChatContainer.vue:470 surface-literal
+[ui] failed: components/ChatContainer.vue:480 surface-literal
+[ui] failed: components/ImagePreviewWindow.vue:700 surface-literal
+[ui] failed: components/ImagePreviewWindow.vue:718 surface-literal
+[ui] failed: components/ImagePreviewWindow.vue:753 surface-literal
+[ui] failed: components/ImagePreviewWindow.vue:843 surface-literal
+[ui] failed: components/SettingsPage.vue:1897 focus-bare
+[ui] failed: components/agents/AgentSpace.vue:310 surface-literal
+[ui] failed: components/chat/BackgroundJobsStatusBar.vue:180 surface-literal
+[ui] failed: components/chat/InputBox.vue:2182 surface-literal
+[ui] failed: components/chat/InputBox.vue:2215 surface-literal
+[ui] failed: components/chat/MessageItem.vue:1585 surface-literal
+[ui] failed: components/chat/MessageList.vue:2325 surface-literal
+[ui] failed: components/chat/PracticeStrip.vue:667 transition-literal
+[ui] failed: components/chat/QuotedContext.vue:74 surface-literal
+[ui] failed: components/chat/UserMessageNavRail.vue:377 surface-literal
+[ui] failed: components/chat/WebSearchResultRenderer.vue:734 surface-literal
+[ui] failed: components/chat/composer/AttachmentRow.vue:121 surface-literal
+[ui] failed: components/chat/composer/QueuePanel.vue:158 surface-literal
+[ui] failed: components/chat/empty-state-themes/NewYearTheme.vue:366 surface-literal
+[ui] failed: components/chat/message/GoalSetMessage.vue:112 surface-literal
+[ui] failed: components/chat/message/GoalSummaryCard.vue:157 surface-literal
+[ui] failed: components/chat/message/MessageBubble.vue:833 surface-literal
+[ui] failed: components/chat/message/MessageError.vue:120 surface-literal
+[ui] failed: components/chat/room/RoomSurface.vue:851 surface-literal
+[ui] failed: components/chat/room/RoomSurface.vue:855 surface-literal
+[ui] failed: components/chat/room/RoomSurface.vue:1045 surface-literal
+[ui] failed: components/chat/room/RoomSurface.vue:1072 surface-literal
+[ui] failed: components/common/MenuItem.vue:15 title-attr
+[ui] failed: components/common/SubMenu.vue:17 title-attr
+[ui] failed: components/editor/EditorTabStrip.vue:51 surface-literal
+[ui] failed: components/editor/EditorWorkbench.vue:434 surface-literal
+[ui] failed: components/editor/EditorWorkbench.vue:453 surface-literal
+[ui] failed: components/editor/FileExplorer.vue:324 surface-literal
+[ui] failed: components/editor/FileExplorer.vue:415 surface-literal
+[ui] failed: components/editor/FileExplorer.vue:439 surface-literal
+[ui] failed: components/editor/ProblemsPanel.vue:54 surface-literal
+[ui] failed: components/evals/EvalsWorkbench.vue:694 surface-literal
+[ui] failed: components/evals/EvalsWorkbench.vue:804 surface-literal
+[ui] failed: components/evals/EvalsWorkbench.vue:840 surface-literal
+[ui] failed: components/evals/EvalsWorkbench.vue:904 surface-literal
+[ui] failed: components/evals/EvalsWorkbench.vue:927 surface-literal
+[ui] failed: components/evals/EvalsWorkbench.vue:963 surface-literal
+[ui] failed: components/evals/EvalsWorkbench.vue:1014 surface-literal
+[ui] failed: components/evals/EvalsWorkbench.vue:1031 surface-literal
+[ui] failed: components/evals/IncidentTranscript.vue:150 surface-literal
+[ui] failed: components/evals/IncidentTranscript.vue:170 surface-literal
+[ui] failed: components/evals/IncidentTranscript.vue:181 surface-literal
+[ui] failed: components/evals/IncidentTranscript.vue:205 surface-literal
+[ui] failed: components/evals/RoundTimeline.vue:327 surface-literal
+[ui] failed: components/evals/RoundTimeline.vue:406 surface-literal
+[ui] failed: components/evals/RoundTimeline.vue:427 surface-literal
+[ui] failed: components/evals/RoundTimeline.vue:493 surface-literal
+[ui] failed: components/evals/RoundTimeline.vue:522 surface-literal
+[ui] failed: components/plugins/PluginPanelNode.vue:952 surface-literal
+[ui] failed: components/search/SearchWindow.vue:443 surface-literal
+[ui] failed: components/search/SearchWindow.vue:767 surface-literal
+[ui] failed: components/settings/ShortcutInput.vue:190 focus-bare
+[ui] failed: components/sidebar/SessionPreviewCard.vue:90 surface-literal
+[ui] failed: components/terminal/TerminalView.vue:137 surface-literal
+[ui] failed: components/voice/VoiceCallPanel.vue:127 surface-literal
+[ui] failed: components/voice/VoiceOverlay.vue:116 surface-literal
+[ui] failed: components/workbench/CollabBoardPanel.vue:645 surface-literal
+[ui] failed: components/workbench/CollabBoardPanel.vue:747 surface-literal
+[ui] failed: components/workbench/MembersWorkbench.vue:207 surface-literal
+[ui] failed: components/workbench/MembersWorkbench.vue:256 surface-literal
+[ui] failed: components/workbench/RightWorkbenchPanel.vue:1940 surface-literal
+[ui] failed: components/workbench/RightWorkbenchPanel.vue:1950 surface-literal
+[ui] failed: components/workbench/RoomSchedulePanel.vue:398 surface-literal
+[ui] failed: components/workbench/RoomThreadsWorkbench.vue:341 surface-literal
+[ui] failed: components/workbench/SchedulingOverviewWorkbench.vue:217 surface-literal
+[ui] failed: components/workbench/browser/BrowserPanel.vue:704 surface-literal
+[ui] failed: components/workbench/browser/BrowserPanel.vue:875 surface-literal
+[ui] failed: components/workbench/browser/BrowserPanel.vue:967 surface-literal
+[ui] failed: components/workbench/browser/BrowserStartPage.vue:153 surface-literal
+[ui] failed: editor/prompt-cards.ts:238 surface-literal
+
+[ui] 81 violation(s) across 12 rules:
+  z-literal: 0
+  z-fallback: 0
+  raw-teleport: 0
+  native-select: 0
+  native-confirm: 0
+  title-attr: 2
+  ui-hex-fallback: 0
+  transition-literal: 1
+  shadow-literal-floating: 0
+  focus-bare: 2
+  overscroll-contain-chat: 0
+  surface-literal: 76

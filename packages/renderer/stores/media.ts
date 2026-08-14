@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { MediaAsset, MediaKind, MediaQuery } from '@/types'
+import type {
+  MediaAsset,
+  MediaIngestFilesRequest,
+  MediaIngestFilesResponse,
+  MediaKind,
+  MediaQuery,
+} from '@/types'
 import { platformApi } from '@/platform'
 
 export type GeneratedMedia = MediaAsset
@@ -118,6 +124,11 @@ export const useMediaStore = defineStore('media', () => {
    *
    * The `persona-avatar` usage tag is what later tells an avatar apart from
    * generated artwork — the bytes land in the same image store either way.
+   *
+   * `source: 'user-upload'` is not decoration: until 2026-08 this path left the
+   * default `'ai-generated'` in place, so every picked avatar showed up under
+   * the「生成」filter. The `model: 'user-upload'` string below was the old,
+   * lossy stand-in for the same fact and stays only as the caption.
    */
   async function savePersonaAvatar(data: {
     base64: string
@@ -131,6 +142,7 @@ export const useMediaStore = defineStore('media', () => {
         model: 'user-upload',
         sessionId: '',
         messageId: '',
+        source: 'user-upload',
         usageTags: ['persona-avatar'],
       })
       const fileName = mediaFileNameFromPath(item?.filePath)
@@ -142,6 +154,31 @@ export const useMediaStore = defineStore('media', () => {
     } catch (e) {
       console.error('Failed to save persona avatar:', e)
       return null
+    }
+  }
+
+  /**
+   * Put arbitrary files in the library (panel drop / 「选择文件」 / web upload).
+   *
+   * Refreshing is the CALLER's job, not this action's: the panel holds the live
+   * `MediaQuery` (kind/source/search) and a blind `loadMedia()` here would drop
+   * back to the unfiltered list right after a drop.
+   */
+  async function ingestFiles(
+    request: MediaIngestFilesRequest,
+  ): Promise<MediaIngestFilesResponse> {
+    try {
+      return await platformApi.ingestMediaFiles(request)
+    } catch (e) {
+      console.error('Failed to ingest media files:', e)
+      return {
+        success: false,
+        assets: [],
+        created: 0,
+        skipped: 0,
+        errors: [],
+        error: e instanceof Error ? e.message : String(e),
+      }
     }
   }
 
@@ -184,6 +221,7 @@ export const useMediaStore = defineStore('media', () => {
     rebuildLibraryOnce,
     saveImage,
     savePersonaAvatar,
+    ingestFiles,
     removeMedia,
     clearAll,
     getImageUrl,

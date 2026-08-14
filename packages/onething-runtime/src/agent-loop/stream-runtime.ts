@@ -175,6 +175,21 @@ export interface OnethingAgentLoopGoalHooks {
 	beginContinuation(sessionId: string): string | undefined;
 }
 
+/**
+ * 草稿纸(scratchpad · AI 静默感知)。宿主没接 = 一个字节都不变。
+ *
+ * 这里只问一句"本 turn 的尾块是什么" —— 纸住在哪、怎么读、超长怎么截,全在
+ * 装配层。产品层读不到 `@onething/app`(依赖单向:产品 ← 装配),所以它必须
+ * 以回调的形式**注入进来**,而不是被 import 进来。
+ */
+export interface OnethingAgentLoopScratchpadHooks {
+	/** 返回 undefined = 纸是空的 / 这张纸不存在,这一轮不挂任何东西。 */
+	buildTail(
+		sessionId: string,
+		turn: number,
+	): Promise<{ text: string; version: number } | undefined>;
+}
+
 export interface OnethingAgentLoopRuntimeAdapters<
 	TSettings extends OnethingAgentLoopRuntimeSettings<TToolSettings>,
 	TProviderConfig extends CoreAgentLoopProviderRuntimeConfigLike,
@@ -224,8 +239,13 @@ export interface OnethingAgentLoopRuntimeAdapters<
 		agentId: string | undefined,
 		session?: unknown,
 	): Promise<string[] | null | undefined> | string[] | null | undefined;
+	/**
+	 * `sessionId` 是**空间归属的唯一入口**(批 B4):项目名册 per-space,宿主要靠
+	 * 它把会话解析成 space。宿主可以忽略它(单空间宿主行为不变)。
+	 */
 	buildProjectPromptVars(
 		workingDirectory?: string,
+		options?: { sessionId?: string },
 	): OnethingAgentLoopProjectPromptVars;
 	buildPrompt(
 		options: CoreBuildPromptOptions,
@@ -282,6 +302,7 @@ export interface OnethingAgentLoopRuntimeAdapters<
 		modelContextLength: number;
 	}): boolean;
 	goal?: OnethingAgentLoopGoalHooks;
+	scratchpad?: OnethingAgentLoopScratchpadHooks;
 	logger?: OnethingAgentLoopLogger;
 	createId?(): string;
 }
@@ -337,8 +358,13 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 		agentId: string | undefined,
 		session?: unknown,
 	): Promise<string[] | null | undefined> | string[] | null | undefined;
+	/**
+	 * `sessionId` 是**空间归属的唯一入口**(批 B4):项目名册 per-space,宿主要靠
+	 * 它把会话解析成 space。宿主可以忽略它(单空间宿主行为不变)。
+	 */
 	buildProjectPromptVars(
 		workingDirectory?: string,
+		options?: { sessionId?: string },
 	): OnethingAgentLoopProjectPromptVars;
 	buildPrompt(
 		options: CoreBuildPromptOptions,
@@ -392,6 +418,7 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 		modelContextLength: number;
 	}): boolean;
 	goal?: OnethingAgentLoopGoalHooks;
+	scratchpad?: OnethingAgentLoopScratchpadHooks;
 	logger?: OnethingAgentLoopLogger;
 	createId?(): string;
 }
@@ -717,7 +744,9 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		toolSettings: effectiveToolSettings,
 		allowedToolIds: agentToolAllowlist,
 	});
-	const projectVars = adapters.buildProjectPromptVars(sessionWorkingDir);
+	const projectVars = adapters.buildProjectPromptVars(sessionWorkingDir, {
+		sessionId: ctx.sessionId,
+	});
 	const budget = await resolveOnethingAgentLoopContextBudget(
 		ctx,
 		providerCapabilities,
@@ -793,6 +822,31 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		},
 		drainFollowUpMessages: (): CorePendingAgentLoopInputMessage[] =>
 			ctx.followUpQueue?.drain() ?? [],
+	};
+	// 草稿纸的瞬态尾块。宿主没接 scratchpad hook = `buildEphemeralTail` 缺席 =
+	// core 里那一段整个跳过,行为逐字不变。
+	const scratchpadHooks = adapters.scratchpad;
+	const ephemeralTailAdapters = {
+		...(scratchpadHooks
+			? {
+					buildEphemeralTail: (turn: number) =>
+						scratchpadHooks.buildTail(ctx.sessionId, turn),
+				}
+			: {}),
+		onEphemeralTailInjected: ({
+			turn,
+			version,
+		}: {
+			turn: number;
+			version: number;
+		}) => {
+			// 已读水位靠这条事件回推 —— 界面画的是"引擎真的读到了哪",不是猜的。
+			void adapters.emitEvent(ctx.sessionId, {
+				type: "scratchpad:consumed",
+				version,
+				turn,
+			});
+		},
 	};
 	const turnCompactionAdapters = {
 		getSession: adapters.getSession,
@@ -893,6 +947,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 				adapters: {
 					...pendingMessageAdapters,
 					...turnQueueAdapters,
+					...ephemeralTailAdapters,
 					...turnCompactionAdapters,
 				},
 			});

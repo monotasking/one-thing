@@ -47,7 +47,8 @@ export interface EditToolAdapters {
 	getDefaultWorkingDirectory?(): string | undefined;
 	getFileMutationsDir(): string;
 	/** 用户配置的「接入目录」= 额外的可写沙箱根;缺席 = 现状不变。 */
-	getConnectedDirectories?(): string[];
+	/** 见 WriteToolAdapters:per-space,按**会话归属**取(批 B2)。 */
+	getConnectedDirectories?(sessionId?: string): string[];
 }
 
 export interface EditMetadata {
@@ -200,7 +201,7 @@ export function createEditTool(
 			const matchedRoot = findCoreSandboxRootForPath(resolvedPath, {
 				workingDirectory: ctx.workingDirectory,
 				workingDirectoryRoots: ctx.workingDirectoryRoots,
-				connectedDirectories: adapters.getConnectedDirectories?.(),
+				connectedDirectories: adapters.getConnectedDirectories?.(ctx.sessionId),
 				defaultWorkingDirectory,
 			});
 			const plan = buildEditPlan(

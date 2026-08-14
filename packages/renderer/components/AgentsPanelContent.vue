@@ -1,86 +1,84 @@
 <template>
+  <!-- P4b:名册套上六面板共享骨架(PanelShell 控制条 / 内容 / 状态条)。主从两栏、
+       四子视图、容器查询响应式全部原样 —— 换的是外框与左栏那一列行。 -->
   <div class="agents-panel agent-ledger">
-    <header class="ledger-header">
-      <div class="ledger-heading">
-        <h2 class="ledger-title">
-          <span>Agents</span>
-          <span class="ledger-count">{{ agentsStore.agents.length }}</span>
-        </h2>
-        <p class="ledger-sub">
-          System prompts that shape each conversation.
-        </p>
-      </div>
-      <div class="ledger-actions">
+    <PanelShell
+      :busy="agentsStore.isLoading"
+      :scroll="false"
+      :padded="false"
+    >
+      <template #controls>
+        <FilterSearchInput
+          v-model="rosterQuery"
+          size="compact"
+          class="agents-search"
+          placeholder="搜索 agent"
+          label="搜索 agent"
+        />
         <button
-          class="text-action"
+          class="agents-new u-focus-ring"
           type="button"
           @click="startCreate"
         >
-          + new agent
+          <Plus
+            :size="13"
+            :stroke-width="2"
+          />
+          新建
         </button>
-      </div>
-    </header>
+      </template>
 
-    <div
-      class="agents-layout"
-      :class="{ 'detail-active': agentDetailActive }"
-    >
-      <aside class="agents-list">
-        <p
-          v-if="agentsStore.isLoading"
-          class="ledger-note"
-        >
-          loading…
-        </p>
-        <ErrorNote
-          v-else-if="agentsStore.error"
-          class="ledger-error"
-          :message="agentsStore.error"
-        />
-        <p
-          v-else-if="agentsStore.agents.length === 0"
-          class="ledger-note"
-        >
-          No agents configured yet.
-        </p>
+      <div
+        class="agents-layout"
+        :class="{ 'detail-active': agentDetailActive }"
+      >
+        <aside class="agents-list">
+          <p
+            v-if="agentsStore.isLoading"
+            class="ledger-note"
+          >
+            loading…
+          </p>
+          <ErrorNote
+            v-else-if="agentsStore.error"
+            class="ledger-error"
+            :message="agentsStore.error"
+          />
+          <p
+            v-else-if="agentsStore.agents.length === 0"
+            class="ledger-note"
+          >
+            No agents configured yet.
+          </p>
+          <p
+            v-else-if="visibleActive.length === 0 && visibleRetired.length === 0"
+            class="ledger-note"
+          >
+            没有匹配「{{ rosterQuery }}」的 agent。
+          </p>
 
-        <!-- 在职与已退休分两栏(域模型 §3.2):退休的不消失,只是沉到下面灰着 ——
-             管理页是唯一还能看见并恢复它们的地方。 -->
-        <div class="ledger-body">
-          <ol class="agent-rows">
-            <li
-              v-for="agent in agentsStore.activeAgents"
-              :key="agent.id"
-              class="agent-row"
-              :class="{ 'is-active': !isCreating && agent.id === activeAgentId }"
+          <!-- 在职与已退休分两栏(域模型 §3.2):退休的不消失,只是沉到下面灰着 ——
+               管理页是唯一还能看见并恢复它们的地方。
+
+               设计稿画的是「运行中 / 空闲」两组 + 行尾停止钮 + 需确认橙 chip;那三样
+               全部依赖"这个 agent 此刻在跑什么"这一维数据,而 agentsStore 里没有它,
+               presence(computeAgentPresence)回答的是"在哪些会话里",不是"正在跑"。
+               所以这里如实退化成在职 / 已退休 —— 等真有运行态数据源了,再往首列那颗
+               点上加绿色、往行尾加停止钮,槽位是留着的。 -->
+          <div class="ledger-body">
+            <LedgerGroupHeader
+              v-if="visibleActive.length > 0"
+              label="在职"
+              :count="visibleActive.length"
+            />
+            <ol
+              v-if="visibleActive.length > 0"
+              class="agent-rows"
             >
-              <button
-                class="row-line"
-                type="button"
-                @click="selectAgent(agent.id)"
-              >
-                <span class="row-name">{{ agent.name }}</span>
-                <span
-                  v-if="agent.isDefault"
-                  class="agent-chip"
-                >default</span>
-                <span
-                  v-else
-                  class="row-meta"
-                >{{ formatUpdated(agent.updatedAt) }}</span>
-              </button>
-            </li>
-          </ol>
-
-          <template v-if="agentsStore.retiredAgents.length > 0">
-            <p class="ledger-note agent-group-label">
-              已退休 · {{ agentsStore.retiredAgents.length }}
-            </p>
-            <ol class="agent-rows">
               <li
-                v-for="agent in agentsStore.retiredAgents"
+                v-for="agent in visibleActive"
                 :key="agent.id"
-                class="agent-row is-retired"
+                class="agent-row"
                 :class="{ 'is-active': !isCreating && agent.id === activeAgentId }"
               >
                 <button
@@ -88,201 +86,246 @@
                   type="button"
                   @click="selectAgent(agent.id)"
                 >
-                  <span class="row-name">{{ agent.name }}</span>
-                  <span class="agent-chip">已注销</span>
+                  <span
+                    class="row-dot"
+                    aria-hidden="true"
+                  />
+                  <span class="row-body">
+                    <span class="row-name">{{ agent.name }}</span>
+                    <span class="row-meta">上次更新 {{ formatUpdated(agent.updatedAt) }}</span>
+                  </span>
+                  <span
+                    v-if="agent.isDefault"
+                    class="agent-chip"
+                  >default</span>
                 </button>
               </li>
             </ol>
-          </template>
-        </div>
-      </aside>
 
-      <section class="agent-editor">
-        <div class="editor-header">
-          <button
-            class="text-action back-btn"
-            type="button"
-            @click="agentDetailActive = false"
-          >
-            ‹ back
-          </button>
-          <div class="editor-title">
-            <h3>
-              {{ isCreating ? 'New Agent' : selectedAgent?.name || 'Agent' }}
-            </h3>
-            <span>{{ editorSubtitle }}</span>
+            <template v-if="visibleRetired.length > 0">
+              <LedgerGroupHeader
+                label="已退休"
+                :count="visibleRetired.length"
+              />
+              <ol class="agent-rows">
+                <li
+                  v-for="agent in visibleRetired"
+                  :key="agent.id"
+                  class="agent-row is-retired"
+                  :class="{ 'is-active': !isCreating && agent.id === activeAgentId }"
+                >
+                  <button
+                    class="row-line"
+                    type="button"
+                    @click="selectAgent(agent.id)"
+                  >
+                    <span
+                      class="row-dot"
+                      aria-hidden="true"
+                    />
+                    <span class="row-body">
+                      <span class="row-name">{{ agent.name }}</span>
+                      <span class="row-meta">上次更新 {{ formatUpdated(agent.updatedAt) }}</span>
+                    </span>
+                    <span class="agent-chip">已注销</span>
+                  </button>
+                </li>
+              </ol>
+            </template>
           </div>
-          <Tooltip
-            v-if="canRestore"
-            text="重新入职:回到同事名册与激活链"
-          >
-            <button
-              class="text-action"
-              type="button"
-              :disabled="saving"
-              @click="restoreSelectedAgent"
-            >
-              恢复在职
-            </button>
-          </Tooltip>
-          <Tooltip
-            v-if="canDelete"
-            text="退休:退出社交面与激活链,记录保留(从未被引用过的才真删)"
-          >
-            <button
-              class="text-action is-danger"
-              type="button"
-              :disabled="saving"
-              @click="deleteSelectedAgent"
-            >
-              退休
-            </button>
-          </Tooltip>
-        </div>
+        </aside>
 
-        <!-- 资料块(agent-im-chat-ui.md §3.2)。空间页 = "我与 TA"的那一页,
-             进来第一眼得是**这个人**:大头像 + 名字 + 职位 + 说明,以及两个
-             动作。小卡(AgentContactCard)因此退役 —— 它承接的就是这一块。
-             草稿 agent 还不是一个人,没有资料可摆。 -->
-        <div
-          v-if="!isCreating && selectedAgent"
-          class="agent-profile"
-        >
-          <AgentAvatar
-            class="profile-avatar"
-            aria-hidden="true"
-            :avatar="selectedAgent.avatar"
-            :avatar-image="selectedAgent.avatarImage"
-            :size="44"
-          />
-          <div class="profile-heading">
-            <span class="profile-name">{{ selectedAgent.name }}</span>
-            <span
-              v-if="selectedAgent.title"
-              class="profile-title"
-            >{{ selectedAgent.title }}</span>
-            <!-- 墓碑(域模型 §3.2):身份还在,只是不再接活。 -->
-            <span
-              v-if="selectedRetired"
-              class="profile-tombstone"
-            >已注销 · 记录保留</span>
-          </div>
-          <div class="profile-actions">
-            <!-- 退休那句是**禁用理由**:按钮自己收不到 hover,浮层挂在外层
-                 wrapper 上才说得出口;没退休就没什么可说的,整层静音。 -->
+        <section class="agent-editor">
+          <div class="editor-header">
+            <button
+              class="text-action back-btn"
+              type="button"
+              @click="agentDetailActive = false"
+            >
+              ‹ back
+            </button>
+            <div class="editor-title">
+              <h3>
+                {{ isCreating ? 'New Agent' : selectedAgent?.name || 'Agent' }}
+              </h3>
+              <span>{{ editorSubtitle }}</span>
+            </div>
             <Tooltip
-              text="已退休:不再接活,也开不了新私聊"
-              :disabled="!selectedRetired"
+              v-if="canRestore"
+              text="重新入职:回到同事名册与激活链"
             >
               <button
                 class="text-action"
                 type="button"
-                :disabled="selectedRetired || openingDm"
-                @click="startDmChat"
+                :disabled="saving"
+                @click="restoreSelectedAgent"
               >
-                {{ openingDm ? '打开中…' : '发消息' }}
+                恢复在职
               </button>
             </Tooltip>
-            <Tooltip text="TA 的心智与能力:提示词、工具、模型、边界">
+            <Tooltip
+              v-if="canDelete"
+              text="退休:退出社交面与激活链,记录保留(从未被引用过的才真删)"
+            >
               <button
-                class="text-action"
+                class="text-action is-danger"
                 type="button"
-                @click="detailTab = 'config'"
+                :disabled="saving"
+                @click="deleteSelectedAgent"
               >
-                配置
+                退休
               </button>
             </Tooltip>
           </div>
-        </div>
-        <p
-          v-if="!isCreating && selectedAgent?.description"
-          class="profile-description"
-        >
-          {{ selectedAgent.description }}
-        </p>
-        <p
-          v-if="!isCreating && historyError"
-          class="field-hint profile-error"
-        >
-          {{ historyError }}
-        </p>
-        <!-- 退休 / 恢复 / 真删的结果:这三件事是名册面的动作,回执也归本页
-             (保存那条在表单里)。 -->
-        <ErrorNote
-          v-if="lifecycleError"
-          class="ledger-error profile-error"
-          :message="lifecycleError"
-        />
-        <p
-          v-else-if="lifecycleNote"
-          class="ledger-note profile-error"
-        >
-          {{ lifecycleNote }}
-        </p>
 
-        <!-- 空间页四面(agent-im-chat-ui.md §3.2):配置 / 会话 / 文件 / 搜索。
-             复用本页 .mode-switch 的画线开关句法,不再拉一套 Tabs 组件进来 ——
-             这页整体是账页风,Tabs 的卡片皮不属于这儿。 -->
-        <div
-          v-if="!isCreating"
-          class="mode-switch detail-tabs"
-          role="tablist"
-          aria-label="Agent 空间"
-        >
-          <template
-            v-for="(tab, index) in DETAIL_TABS"
-            :key="tab.key"
+          <!-- 资料块(agent-im-chat-ui.md §3.2)。空间页 = "我与 TA"的那一页,
+               进来第一眼得是**这个人**:大头像 + 名字 + 职位 + 说明,以及两个
+               动作。小卡(AgentContactCard)因此退役 —— 它承接的就是这一块。
+               草稿 agent 还不是一个人,没有资料可摆。 -->
+          <div
+            v-if="!isCreating && selectedAgent"
+            class="agent-profile"
           >
-            <span
-              v-if="index > 0"
-              class="mode-divider"
+            <AgentAvatar
+              class="profile-avatar"
+              aria-hidden="true"
+              :avatar="selectedAgent.avatar"
+              :avatar-image="selectedAgent.avatarImage"
+              :size="44"
             />
-            <button
-              class="mode-option"
-              :class="{ 'is-on': detailTab === tab.key }"
-              type="button"
-              role="tab"
-              :aria-selected="detailTab === tab.key"
-              @click="detailTab = tab.key"
+            <div class="profile-heading">
+              <span class="profile-name">{{ selectedAgent.name }}</span>
+              <span
+                v-if="selectedAgent.title"
+                class="profile-title"
+              >{{ selectedAgent.title }}</span>
+              <!-- 墓碑(域模型 §3.2):身份还在,只是不再接活。 -->
+              <span
+                v-if="selectedRetired"
+                class="profile-tombstone"
+              >已注销 · 记录保留</span>
+            </div>
+            <div class="profile-actions">
+              <!-- 退休那句是**禁用理由**:按钮自己收不到 hover,浮层挂在外层
+                   wrapper 上才说得出口;没退休就没什么可说的,整层静音。 -->
+              <Tooltip
+                text="已退休:不再接活,也开不了新私聊"
+                :disabled="!selectedRetired"
+              >
+                <button
+                  class="text-action"
+                  type="button"
+                  :disabled="selectedRetired || openingDm"
+                  @click="startDmChat"
+                >
+                  {{ openingDm ? '打开中…' : '发消息' }}
+                </button>
+              </Tooltip>
+              <Tooltip text="TA 的心智与能力:提示词、工具、模型、边界">
+                <button
+                  class="text-action"
+                  type="button"
+                  @click="detailTab = 'config'"
+                >
+                  配置
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+          <p
+            v-if="!isCreating && selectedAgent?.description"
+            class="profile-description"
+          >
+            {{ selectedAgent.description }}
+          </p>
+          <p
+            v-if="!isCreating && historyError"
+            class="field-hint profile-error"
+          >
+            {{ historyError }}
+          </p>
+          <!-- 退休 / 恢复 / 真删的结果:这三件事是名册面的动作,回执也归本页
+               (保存那条在表单里)。 -->
+          <ErrorNote
+            v-if="lifecycleError"
+            class="ledger-error profile-error"
+            :message="lifecycleError"
+          />
+          <p
+            v-else-if="lifecycleNote"
+            class="ledger-note profile-error"
+          >
+            {{ lifecycleNote }}
+          </p>
+
+          <!-- 空间页四面(agent-im-chat-ui.md §3.2):配置 / 会话 / 文件 / 搜索。
+               复用本页 .mode-switch 的画线开关句法,不再拉一套 Tabs 组件进来 ——
+               这页整体是账页风,Tabs 的卡片皮不属于这儿。 -->
+          <div
+            v-if="!isCreating"
+            class="mode-switch detail-tabs"
+            role="tablist"
+            aria-label="Agent 空间"
+          >
+            <template
+              v-for="(tab, index) in DETAIL_TABS"
+              :key="tab.key"
             >
-              {{ tab.label }}
-            </button>
-          </template>
-        </div>
+              <span
+                v-if="index > 0"
+                class="mode-divider"
+              />
+              <button
+                class="mode-option"
+                :class="{ 'is-on': detailTab === tab.key }"
+                type="button"
+                role="tab"
+                :aria-selected="detailTab === tab.key"
+                @click="detailTab = tab.key"
+              >
+                {{ tab.label }}
+              </button>
+            </template>
+          </div>
 
-        <!-- 四面全部是共享件(agent-space-workbench.md P0):右栏空间页挂的是
-             同一批组件,所以"在哪儿看到的账"永远是同一份。行的落点由本页决定
-             —— 管理页盖在聊天区上,开完会话/文件必须把自己合上。 -->
-        <AgentSessionsPane
-          v-if="showSessions"
-          :agent-id="historyAgentId"
-          :agent-name="selectedAgent?.name"
-          @open-session="openSessionAndClose"
-        />
+          <!-- 四面全部是共享件(agent-space-workbench.md P0):右栏空间页挂的是
+               同一批组件,所以"在哪儿看到的账"永远是同一份。行的落点由本页决定
+               —— 管理页盖在聊天区上,开完会话/文件必须把自己合上。 -->
+          <AgentSessionsPane
+            v-if="showSessions"
+            :agent-id="historyAgentId"
+            :agent-name="selectedAgent?.name"
+            @open-session="openSessionAndClose"
+          />
 
-        <AgentFilesPane
-          v-else-if="showFiles"
-          :agent-id="historyAgentId"
-          @open-file="openFileAndClose"
-        />
+          <AgentFilesPane
+            v-else-if="showFiles"
+            :agent-id="historyAgentId"
+            @open-file="openFileAndClose"
+          />
 
-        <AgentSearchPane
-          v-else-if="showSearch"
-          :agent-id="historyAgentId"
-          :agent-name="selectedAgent?.name"
-          @open-session="openSessionAndClose"
-        />
+          <AgentSearchPane
+            v-else-if="showSearch"
+            :agent-id="historyAgentId"
+            :agent-name="selectedAgent?.name"
+            @open-session="openSessionAndClose"
+          />
 
-        <AgentConfigForm
-          v-show="showConfig"
-          :agent="isCreating ? null : selectedAgent"
-          :is-creating="isCreating"
-          @saved="onAgentSaved"
-          @cancel="onFormCancel"
-          @open-session="openSessionAndClose"
-        />
-      </section>
-    </div>
+          <AgentConfigForm
+            v-show="showConfig"
+            :agent="isCreating ? null : selectedAgent"
+            :is-creating="isCreating"
+            @saved="onAgentSaved"
+            @cancel="onFormCancel"
+            @open-session="openSessionAndClose"
+          />
+        </section>
+      </div>
+
+      <template #status>
+        <span class="status-text">{{ statusText }}</span>
+      </template>
+    </PanelShell>
   </div>
 </template>
 
@@ -304,9 +347,13 @@ import { DEFAULT_AGENT_ID, useAgentsStore, type AgentDetailTab } from '@/stores/
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { isActiveAgent, type AgentDefinition } from '@shared/ipc'
+import { Plus } from 'lucide-vue-next'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import FilterSearchInput from '@/components/common/FilterSearchInput.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
+import PanelShell from '@/components/workspace/PanelShell.vue'
+import LedgerGroupHeader from '@/components/workspace/LedgerGroupHeader.vue'
 import { COLLAB_TAG_OPEN_FILE_EVENT } from '@/composables/collabInlineTags'
 import AgentConfigForm from '@/components/agents/AgentConfigForm.vue'
 import AgentSessionsPane from '@/components/agents/AgentSessionsPane.vue'
@@ -337,6 +384,27 @@ const selectedAgent = computed(() =>
   agentsStore.agents.find(agent => agent.id === activeAgentId.value) ||
   agentsStore.defaultAgent
 )
+
+/* ---- 控制条:名册搜索 ---- */
+
+const rosterQuery = ref('')
+
+/** 名字与职位都算数 —— 记不住名字时人找的是"那个写文案的"。 */
+function matchesQuery(agent: AgentDefinition): boolean {
+  const query = rosterQuery.value.trim().toLowerCase()
+  if (!query) return true
+  return `${agent.name ?? ''} ${agent.title ?? ''}`.toLowerCase().includes(query)
+}
+
+const visibleActive = computed(() => agentsStore.activeAgents.filter(matchesQuery))
+const visibleRetired = computed(() => agentsStore.retiredAgents.filter(matchesQuery))
+
+/** 状态条:没筛选时报总数,筛了就先报筛出多少。 */
+const statusText = computed(() => {
+  const total = agentsStore.agents.length
+  if (!rosterQuery.value.trim()) return `${total} 个 agent`
+  return `筛出 ${visibleActive.value.length + visibleRetired.value.length} · 共 ${total} 个 agent`
+})
 
 /**
  * 生命周期(agent-domain-model.md §3.2)。管理页是这两个动作的**唯一**入口:
@@ -534,8 +602,8 @@ onMounted(async () => {
 /*
  * Agents ledger — 画线风.
  * No background fills, no radii: state lives in the line.
- * Agents hang as numbered rows on one vertical ink rule;
- * the editor is a plain sheet with rule-hung field labels.
+ * P4b:外框换成 PanelShell(控制条 / 内容 / 26px 状态条),左栏那一列换成六面板
+ * 共用的 44px 账线行(首列槽 + 两行体);右侧主从、四子视图、容器查询全部原样。
  */
 .agents-panel {
   height: 100%;
@@ -546,6 +614,11 @@ onMounted(async () => {
   background: transparent;
   animation: ledger-fade 0.15s ease;
   container-type: inline-size;
+
+  /* 滑入的详情面要一枚不透明底才盖得住底下的名册。区域面自绘归 Surface 档位管
+     (ui-system §4 surface-literal)—— 所以借 PanelShell 声明的那枚变量转手,
+     脱离 PanelShell 时 fallback 到 panel 面。 */
+  --agents-pane-bg: var(--panel-shell-bg, var(--ui-surface-panel-bg));
 }
 
 @keyframes ledger-fade {
@@ -553,135 +626,64 @@ onMounted(async () => {
   to { opacity: 1; }
 }
 
-/* ---- header ---- */
-.ledger-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 18px 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
-}
-
-.ledger-heading {
+/* ---- 控制条 ---- */
+.agents-search {
+  flex: 1;
   min-width: 0;
 }
 
-.ledger-title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin: 0;
-  font-family: var(--font-display, var(--font-serif, serif));
-  font-size: 15px;
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-primary-fg);
-}
-
-.ledger-title > span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ledger-count {
-  font-family: var(--font-mono, monospace);
-  font-variant-numeric: tabular-nums;
-  font-size: 11px;
-  font-weight: var(--font-weight-normal, 400);
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-}
-
-.ledger-sub {
-  margin: 3px 0 0;
+/* 「新建」是这个面板唯一的主动作,所以它是控制条上唯一一颗实心钮。 */
+.agents-new {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 11px;
+  border: none;
+  border-radius: 7px;
+  background: var(--ui-action-primary-bg);
+  color: var(--ui-action-primary-fg);
   font-size: 12px;
-  color: var(--ui-text-muted-fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  cursor: pointer;
   white-space: nowrap;
+  transition: background-color var(--duration-fast) var(--ease-default);
 }
 
-.ledger-actions {
-  display: flex;
-  gap: 16px;
-  flex-shrink: 0;
-  padding-bottom: 2px;
+.agents-new:hover {
+  background: var(--ui-action-primary-hover-bg);
 }
 
 /* ---- layout ---- */
 .agents-layout {
-  flex: 1;
+  height: 100%;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(200px, 290px) minmax(0, 1fr);
   gap: 20px;
-  padding: 12px 18px 18px;
+  padding: 8px 14px 14px;
   position: relative;
   overflow: hidden;
 }
 
-/* The vertical ink rule the rows hang on */
 .ledger-body {
   position: relative;
-  padding-left: 16px;
-  margin-top: 6px;
 }
 
-.ledger-body::before {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 6px;
-  bottom: 6px;
-  width: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border) 72%, transparent);
-}
-
-/* ---- agent rows (register numbering) ---- */
+/* ---- agent rows(44px 账线行)---- */
 .agent-rows {
   list-style: none;
   margin: 0;
   padding: 0;
-  counter-reset: agent-row;
 }
 
 .agent-row {
   position: relative;
-  counter-increment: agent-row;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
-}
-
-.agent-row:first-child {
-  border-top: none;
-}
-
-/* Tick hanging each row on the rule */
-.agent-row::before {
-  content: '';
-  position: absolute;
-  left: -13px;
-  top: 50%;
-  width: 7px;
-  height: 1px;
-  background: var(--ui-border-strong-border);
-  transition: width var(--duration-fast) var(--ease-default), height var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
-}
-
-.agent-row:hover::before {
-  width: 12px;
-  background: var(--ui-text-muted-fg);
-}
-
-/* Active agent: heavier accent tick + accent figure number */
-.agent-row.is-active::before {
-  width: 14px;
-  height: 2px;
-  background: var(--ui-accent-primary-fg);
+  border-bottom: 1px solid var(--ui-border-subtle-border);
 }
 
 /* 已退休:整行压暗、徽标转中性墨色。行还在(才点得进去恢复),只是不再是在职
-   的那一栏 —— 分组标题已经说了这是哪一栏,所以这里只需要一层灰。 */
+   的那一栏 —— 分组头已经说了这是哪一栏,所以这里只需要一层灰。 */
 .agent-row.is-retired .row-name {
   color: var(--ui-text-muted-fg);
 }
@@ -691,19 +693,13 @@ onMounted(async () => {
   color: var(--ui-text-muted-fg);
 }
 
-/* 分组标题:一行 10px 的墨字,不是 section 头 —— 名册只有一张,分栏是它的内部
-   秩序。上面留一道呼吸,免得贴在最后一行的横线上。 */
-.agent-group-label {
-  margin-top: 14px;
-}
-
 .row-line {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 30px;
-  padding: 6px 0;
+  height: 44px;
+  padding: 0 6px;
   appearance: none;
   background: transparent;
   border: none;
@@ -713,39 +709,66 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-/* Figure number, like rows on a blueprint sheet */
-.row-line::before {
-  content: counter(agent-row, decimal-leading-zero);
-  font-family: var(--font-mono, monospace);
-  font-variant-numeric: tabular-nums;
-  font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  flex-shrink: 0;
-  min-width: 16px;
+.row-line:hover {
+  background: var(--ui-state-hover-bg);
 }
 
-.agent-row.is-active .row-line::before {
+/* 选中 = 左 2px 墨边 + 主色字,不涂底(ui-system §1:账线域的选中态)。 */
+.agent-row.is-active .row-line {
+  box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg);
+}
+
+.agent-row.is-active .row-name {
   color: var(--ui-accent-primary-fg);
 }
 
-.row-name {
+/* 首列 6px 槽位,跨面板与 Media 的徽章、Music 的序号对齐。
+   在职空心一档、退休再淡一档 —— 绿色留给"正在跑",而这一维数据还不存在
+   (见模板里那段注释),所以这里一颗绿点都不画。 */
+.row-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ui-border-strong-border);
+}
+
+.agent-row.is-retired .row-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ui-border-strong-border);
+}
+
+.agent-row.is-active .row-dot {
+  background: var(--ui-accent-primary-fg);
+}
+
+.row-body {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--ui-text-primary-fg);
+}
+
+.row-meta {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  color: var(--ui-text-primary-fg);
-}
-
-.row-meta {
-  flex-shrink: 0;
-  font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 10px;
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  white-space: nowrap;
 }
 
 /* ---- editor sheet ---- */
@@ -767,7 +790,7 @@ onMounted(async () => {
 }
 
 .agent-editor .back-btn {
-  display: none; /* shown in stacked/side mode only */
+  display: none; /* shown in stacked mode only */
   flex-shrink: 0;
 }
 
@@ -880,10 +903,6 @@ onMounted(async () => {
   margin-top: 6px;
 }
 
-/* ── 履历页(agent-im-dm.md §4.2)────────────────────────────────────────
-   行 = 会话,列 = 名称 / 最后活跃 / 条数。整块沿用上面「TA 的群聊」那套画线
-   排版(.agent-room-line 的语言),只多了副标注与两列数字,所以这里写的都是
-   增量,不是第二套行样式。 */
 .detail-tabs {
   flex: 0 0 auto;
   align-self: flex-start;
@@ -893,56 +912,7 @@ onMounted(async () => {
 .text-action:focus-visible,
 .row-line:focus-visible {
   outline: 1px solid var(--ui-accent-primary-fg);
-  outline-offset: 2px;
-}
-
-/* ---- stacked slide layout (workspace side panel) ---- */
-.mode-side .agents-layout {
-  display: block;
-  position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  padding: 8px 12px 12px;
-}
-
-.mode-side .agents-list {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-  padding: 8px 12px 12px;
-  box-sizing: border-box;
-  transform: translateX(0);
-  transition: transform var(--duration-slow) var(--ease-out);
-  z-index: 1;
-}
-
-.mode-side .agent-editor {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-  padding: 0 12px 12px;
-  box-sizing: border-box;
-  transform: translateX(100%);
-  transition: transform var(--duration-slow) var(--ease-out);
-  z-index: 2;
-  background: var(--ui-surface-panel-bg);
-}
-
-.mode-side .detail-active .agents-list {
-  transform: translateX(-20%);
-}
-
-.mode-side .detail-active .agent-editor {
-  transform: translateX(0);
-}
-
-.mode-side .agent-editor .back-btn {
-  display: inline-block;
+  outline-offset: -1px;
 }
 
 /* Narrow panel (not just narrow viewport): stack list/editor as slide-over */
@@ -980,7 +950,7 @@ onMounted(async () => {
     transform: translateX(100%);
     transition: transform var(--duration-slow) var(--ease-out);
     z-index: 2;
-    background: var(--ui-surface-panel-bg);
+    background: var(--agents-pane-bg);
   }
 
   .detail-active .agents-list {
@@ -1002,20 +972,17 @@ onMounted(async () => {
   }
 
   .agents-list,
-  .agent-editor,
-  .mode-side .agents-list,
-  .mode-side .agent-editor {
+  .agent-editor {
     transition: none;
   }
 }
-
 
 /* ---- list column ---- */
 .agents-list {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 2px 8px 0;
+  padding: 0 2px 8px 0;
   background: transparent;
 }
 
@@ -1035,5 +1002,12 @@ onMounted(async () => {
 
 .agents-list::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--ui-text-muted-fg) 32%, transparent);
+}
+
+.status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

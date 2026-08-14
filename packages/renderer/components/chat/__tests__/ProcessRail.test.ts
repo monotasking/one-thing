@@ -1,9 +1,14 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { nextTick, defineComponent, ref } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed, nextTick, defineComponent, ref } from 'vue'
 import ProcessRail from '../message/ProcessRail.vue'
 import { clearExpansionIntents } from '@/stores/helpers/expansion-intent'
+import { CHAT_FOLLOW_STATE_KEY } from '@/composables/useFollowScroll'
+import {
+  MockIntersectionObserver,
+  verticalRect,
+} from '@/composables/__tests__/intersection-observer-mock'
 
 // Stand-in for anything inside the rail that owns expansion state
 // (StepsPanel / CollapseGroup / inline reasoning panel).
@@ -269,5 +274,176 @@ describe('ProcessRail auto-collapse scroll compensation', () => {
 
     expect(rail.getScrollTop()).toBe(3200)
     rail.cleanup()
+  })
+})
+
+// 补偿只覆盖"塌缩在视口顶之上"。用户真正丢内容的场景是元素**就在眼前**:
+// 正读着 rail 里的输出,流一结束它自己折了。那时候不该收 —— 先挂起。
+describe('ProcessRail auto-collapse visibility gate', () => {
+  // 展开时整条在视口里(200..500),折起后 200..224。
+  const RAIL_TOP = 200
+  const RAIL_OPEN_BOTTOM = 500
+  const RAIL_FOLDED_BOTTOM = 224
+
+  function setupVisibleRail(options: { following?: boolean } = {}) {
+    const following = ref(options.following ?? false)
+
+    const scroller = document.createElement('div')
+    scroller.style.overflowY = 'auto'
+    Object.defineProperty(scroller, 'scrollHeight', { value: 4000, configurable: true })
+    Object.defineProperty(scroller, 'clientHeight', { value: 800, configurable: true })
+    scroller.getBoundingClientRect = () => verticalRect(0, 800)
+
+    const host = document.createElement('div')
+    scroller.appendChild(host)
+    document.body.appendChild(scroller)
+
+    const wrapper = mount(ProcessRail, {
+      props: { summary: '3 steps', streaming: true, solo: false, intentKey: 'rail-gate' },
+      slots: { default: StatefulChild },
+      attachTo: host,
+      global: {
+        provide: { [CHAT_FOLLOW_STATE_KEY as symbol]: computed(() => following.value) },
+      },
+    })
+
+    const railElement = wrapper.element as HTMLElement
+    railElement.getBoundingClientRect = () =>
+      verticalRect(
+        RAIL_TOP,
+        railElement.classList.contains('is-open') ? RAIL_OPEN_BOTTOM : RAIL_FOLDED_BOTTOM,
+      )
+
+    return {
+      wrapper,
+      following,
+      cleanup: () => {
+        wrapper.unmount()
+        scroller.remove()
+      },
+    }
+  }
+
+  beforeEach(() => {
+    clearExpansionIntents()
+    MockIntersectionObserver.reset()
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
+  })
+
+  it('stays open when the stream settles while the user is looking at it', async () => {
+    const rail = setupVisibleRail()
+    await nextTick()
+
+    await rail.wrapper.setProps({ streaming: false })
+    await nextTick()
+
+    expect(isOpen(rail.wrapper)).toBe(true)
+    expect(MockIntersectionObserver.instances).toHaveLength(1)
+    rail.cleanup()
+  })
+
+  it('collapses once the rail scrolls out of the viewport', async () => {
+    const rail = setupVisibleRail()
+    await nextTick()
+    await rail.wrapper.setProps({ streaming: false })
+    await nextTick()
+    expect(isOpen(rail.wrapper)).toBe(true)
+
+    MockIntersectionObserver.last.emit(false)
+    await nextTick()
+
+    expect(isOpen(rail.wrapper)).toBe(false)
+    expect(MockIntersectionObserver.allDisconnected()).toBe(true)
+    rail.cleanup()
+  })
+
+  it('collapses once the user is pinned to the bottom again', async () => {
+    const rail = setupVisibleRail()
+    await nextTick()
+    await rail.wrapper.setProps({ streaming: false })
+    await nextTick()
+    expect(isOpen(rail.wrapper)).toBe(true)
+
+    rail.following.value = true
+    await nextTick()
+
+    expect(isOpen(rail.wrapper)).toBe(false)
+    expect(MockIntersectionObserver.allDisconnected()).toBe(true)
+    rail.cleanup()
+  })
+
+  it('collapses immediately while following the bottom — the gate never engages', async () => {
+    const rail = setupVisibleRail({ following: true })
+    await nextTick()
+
+    await rail.wrapper.setProps({ streaming: false })
+    await nextTick()
+
+    expect(isOpen(rail.wrapper)).toBe(false)
+    expect(MockIntersectionObserver.instances).toHaveLength(0)
+    rail.cleanup()
+  })
+
+  it('lets a manual toggle cancel the pending collapse', async () => {
+    const rail = setupVisibleRail()
+    await nextTick()
+    await rail.wrapper.setProps({ streaming: false })
+    await nextTick()
+    expect(isOpen(rail.wrapper)).toBe(true)
+
+    await rail.wrapper.find('.process-rail-header').trigger('click')
+    await nextTick()
+
+    expect(isOpen(rail.wrapper)).toBe(false)
+    expect(MockIntersectionObserver.allDisconnected()).toBe(true)
+
+    // 挂起已作废:再报一次"滚出视口"不该有任何影响,用户重新展开就是展开。
+    MockIntersectionObserver.last.emit(false)
+    await rail.wrapper.find('.process-rail-header').trigger('click')
+    await nextTick()
+    expect(isOpen(rail.wrapper)).toBe(true)
+    rail.cleanup()
+  })
+
+  it('cancels the pending collapse when a new stream re-opens the rail', async () => {
+    const rail = setupVisibleRail()
+    await nextTick()
+    await rail.wrapper.setProps({ streaming: false })
+    await nextTick()
+    expect(isOpen(rail.wrapper)).toBe(true)
+
+    await rail.wrapper.setProps({ streaming: true })
+    await nextTick()
+    expect(isOpen(rail.wrapper)).toBe(true)
+    expect(MockIntersectionObserver.allDisconnected()).toBe(true)
+
+    // 陈旧的 observer 回调不得把新一轮的 rail 折了。
+    MockIntersectionObserver.last.emit(false)
+    await nextTick()
+    expect(isOpen(rail.wrapper)).toBe(true)
+
+    // 新一轮结束时重新问门 —— 又是一次全新的挂起。
+    await rail.wrapper.setProps({ streaming: false })
+    await nextTick()
+    expect(isOpen(rail.wrapper)).toBe(true)
+    expect(MockIntersectionObserver.instances).toHaveLength(2)
+    rail.cleanup()
+  })
+
+  it('drops the pending collapse on unmount', async () => {
+    const rail = setupVisibleRail()
+    await nextTick()
+    await rail.wrapper.setProps({ streaming: false })
+    await nextTick()
+    expect(MockIntersectionObserver.instances).toHaveLength(1)
+
+    rail.cleanup()
+
+    expect(MockIntersectionObserver.allDisconnected()).toBe(true)
   })
 })

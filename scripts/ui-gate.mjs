@@ -21,13 +21,17 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-// 2026-08-11 重录(G7-3):新增第 11 条 `surface-literal`,12 → 97(旧五条计数
+// 2026-08-13 重录(Media Panel 设计落地 P5):97 → 81,净治愈 16 条(五兄弟面板套
+// PanelShell 骨架顺手消掉的 surface-literal / focus-bare / native-select),新增
+// 0 条。规则数 11 → 12(`overscroll-contain-chat`,存量 0)。
+// 2026-08-11 那轮(G7-3):新增第 11 条 `surface-literal`,12 → 97(旧五条计数
 // 一条没变,+85 全是新规则的存量 —— 那 85 条就是波 6 区域面迁移的自动待办清单)。
 // 2026-08-10 那轮是 58 → 12(title-attr 豁免名单扩到组件 prop)。
-// **基线只录 HEAD 的状态** —— 检查器读的是工作树,所以重录必须在
+// **基线录的必须是与它同批落库的状态** —— 检查器读的是工作树,所以重录要么在
 // `git worktree add --detach <tmp> HEAD` 出来的干净树里跑(新规则的实现要 cp 进去),
-// 否则会把当时未提交的工作(healed 的、以及新引入的红)一起录进去,棘轮当场失去公信力。
-const baselinePath = path.join(root, 'docs/audit/ui-baseline-2026-08-11.txt')
+// 要么确认工作树上的改动与新基线进同一个提交(2026-08-13 这轮是后者);把不会落库
+// 的工作(healed 的、以及新引入的红)录进去,棘轮当场失去公信力。
+const baselinePath = path.join(root, 'docs/audit/ui-baseline-2026-08-13.txt')
 
 const ANSI_CSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g')
 const FAILURE_PREFIX = '[ui] failed:'

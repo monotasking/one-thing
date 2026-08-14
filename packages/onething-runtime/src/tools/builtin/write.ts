@@ -46,8 +46,13 @@ const MAX_REVALIDATION_ATTEMPTS = 5;
 export interface WriteToolAdapters {
 	getDefaultWorkingDirectory?(): string | undefined;
 	getFileMutationsDir(): string;
-	/** 用户配置的「接入目录」= 额外的可写沙箱根;缺席 = 现状不变。 */
-	getConnectedDirectories?(): string[];
+	/**
+	 * 用户配置的「接入目录」= 额外的可写沙箱根;缺席 = 现状不变。
+	 *
+	 * 带 `sessionId`(批 B2):接入目录是 per-space 的,而「哪个 space」由**会话
+	 * 归属**决定,不是宿主的当前空间 —— 调用方一律把 `ctx.sessionId` 递进来。
+	 */
+	getConnectedDirectories?(sessionId?: string): string[];
 }
 
 export interface WriteResultMetadata {
@@ -164,7 +169,7 @@ export function createWriteTool(
 			const matchedRoot = findCoreSandboxRootForPath(resolvedPath, {
 				workingDirectory: ctx.workingDirectory,
 				workingDirectoryRoots: ctx.workingDirectoryRoots,
-				connectedDirectories: adapters.getConnectedDirectories?.(),
+				connectedDirectories: adapters.getConnectedDirectories?.(ctx.sessionId),
 				defaultWorkingDirectory,
 			});
 			const bytesWritten = Buffer.byteLength(args.content, "utf-8");

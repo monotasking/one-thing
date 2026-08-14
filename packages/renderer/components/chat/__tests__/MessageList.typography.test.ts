@@ -70,6 +70,8 @@ vi.mock('@/composables/useFollowScroll', async () => {
   const { ref } = await import('vue')
   return {
     shouldShowScrollToBottomButton: vi.fn(() => false),
+    // 跟底状态的只读出口:这些用例不走可见性门,provide 空转即可。
+    provideChatFollowState: vi.fn(),
     useFollowScroll: () => ({
       allowOneScroll: vi.fn(),
       checkReattach: vi.fn(),

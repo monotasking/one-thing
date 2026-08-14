@@ -150,7 +150,9 @@ describe('SchedulerPanelContent', () => {
       expect(wrapper.text()).toContain('Morning news')
     })
 
-    expect(wrapper.find('.task-list-title').text()).toBe('All Tasks')
+    // P4: 列表头换成共享的 LedgerGroupHeader,分的是"我写的 / 系统内置"这条
+    // 列表本来就在按 `readonly` 排的分界(启用状态那一维归控制条的筛选下拉)。
+    expect(wrapper.find('.task-list-title').text()).toContain('我的任务')
     expect(window.electronAPI.listSchedulerRuns).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('Run detail')
 
@@ -190,7 +192,7 @@ describe('SchedulerPanelContent', () => {
     expect(wrapper.find('.editor-section').exists()).toBe(false)
     expect(editor()).toBeNull()
 
-    await wrapper.findAll('button').find(button => button.text().includes('new task'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('新建'))!.trigger('click')
     await vi.waitFor(() => {
       expect(editor()).not.toBeNull()
     })
@@ -201,7 +203,7 @@ describe('SchedulerPanelContent', () => {
     await nextTick()
     expect(editor()).toBeNull()
 
-    await wrapper.findAll('button').find(button => button.text().includes('new task'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('新建'))!.trigger('click')
     await vi.waitFor(() => {
       expect(editor()).not.toBeNull()
     })
@@ -255,13 +257,11 @@ describe('SchedulerPanelContent', () => {
     }))
   })
 
-  it('uses row switches for enablement without adding the task count to the list heading', async () => {
+  it('uses row switches for enablement', async () => {
     const wrapper = mount(SchedulerPanelContent)
     await vi.waitFor(() => {
       expect(wrapper.text()).toContain('Morning news')
     })
-
-    expect(wrapper.find('.task-list-title').text()).toBe('All Tasks')
 
     const morningRow = wrapper.findAll('.task-row').find(row => row.text().includes('Morning news'))!
     expect(morningRow.exists()).toBe(true)
@@ -275,6 +275,39 @@ describe('SchedulerPanelContent', () => {
         enabled: false,
       })
     })
+  })
+
+  it('lays the row out on the shared 44px ledger shell', async () => {
+    const wrapper = mount(SchedulerPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Morning news')
+    })
+
+    const row = wrapper.findAll('.task-row').find(r => r.text().includes('Morning news'))!
+    // 首列 38px mono 时间列:这条夹具没有 nextRunAt,推不出来就给破折号而不是留空
+    expect(row.find('.plr-lead .task-time').text()).toBe('—')
+    // 副行 = cron 原文 + 人话周期
+    expect(row.find('.plr-meta').text()).toBe('0 9 * * * · Daily 09:00')
+    // 行尾是开关,不再是自绘的墨点
+    expect(row.find('.plr-trail [role="switch"]').exists()).toBe(true)
+  })
+
+  it('reports the schedule in the status bar and filters from the control bar', async () => {
+    const wrapper = mount(SchedulerPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Morning news')
+    })
+
+    expect(wrapper.find('.panel-shell-status').text()).toContain('1 个任务 · 无排期')
+
+    await wrapper.find('.filter-search-input').setValue('nothing matches this')
+    expect(wrapper.findAll('.task-row')).toHaveLength(0)
+    expect(wrapper.text()).toContain('没有匹配的任务')
+    expect(wrapper.find('.panel-shell-status').text()).toContain('0 个任务')
+
+    // cron 原文也是可搜的
+    await wrapper.find('.filter-search-input').setValue('0 9 * * *')
+    expect(wrapper.findAll('.task-row')).toHaveLength(1)
   })
 
   it('does not render the retired Memory Dreaming configuration block', async () => {

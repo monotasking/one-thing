@@ -195,4 +195,165 @@ describe('MediaLibraryService', () => {
       expect(empty.filePath).toBeUndefined()
     })
   })
+
+  /**
+   * 任意文件入库(拖放 / 「选择文件」 / web 上传)。这些用例全部在**真实临时
+   * 目录**上跑,构造函数收 paths —— 不 mock 路径模块:少写一层的 mock 路径会
+   * 静默写穿真实 ~/.onething(2026-07 电台事故的原样复现条件)。
+   */
+  describe('ingestLocalFiles', () => {
+    function sourceFile(name: string, contents: string): string {
+      const filePath = path.join(tempDir, name)
+      fs.writeFileSync(filePath, Buffer.from(contents))
+      return filePath
+    }
+
+    it('reads bytes from a path and files them by mime-derived kind', () => {
+      const imagePath = sourceFile('shot.png', 'png-bytes')
+      const docPath = sourceFile('brief.pdf', 'pdf-bytes')
+
+      const result = service.ingestLocalFiles({
+        files: [
+          { filePath: imagePath, fileName: 'shot.png' },
+          { filePath: docPath, fileName: 'brief.pdf' },
+        ],
+      })
+
+      expect(result.created).toBe(2)
+      expect(result.errors).toEqual([])
+      const [image, doc] = result.assets
+      expect(image.kind).toBe('image')
+      expect(image.mimeType).toBe('image/png')
+      expect(path.dirname(image.filePath!)).toBe(imagesDir)
+      expect(doc.kind).toBe('document')
+      expect(path.dirname(doc.filePath!)).toBe(filesDir)
+      expect(fs.readFileSync(doc.filePath!).toString()).toBe('pdf-bytes')
+      // 手喂的文件默认就是上传 —— 这是 source 这一维的缺省真相。
+      expect(image.source).toBe('user-upload')
+      // 没给 links 就是没有来源消息,而不是"链到一个空会话"。
+      expect(image.links).toEqual([])
+    })
+
+    it('accepts base64 for hosts with no local path, and guesses mime from the name', () => {
+      const result = service.ingestLocalFiles({
+        files: [{
+          base64Data: Buffer.from('browser-bytes').toString('base64'),
+          fileName: 'from-web.jpg',
+        }],
+      })
+
+      expect(result.created).toBe(1)
+      expect(result.assets[0].mimeType).toBe('image/jpeg')
+      expect(result.assets[0].kind).toBe('image')
+      expect(fs.readFileSync(result.assets[0].filePath!).toString()).toBe('browser-bytes')
+    })
+
+    it('dedupes on (kind, source, contentHash) and merges the new links in', () => {
+      const filePath = sourceFile('twice.png', 'same-bytes')
+
+      const first = service.ingestLocalFiles({
+        files: [{ filePath, fileName: 'twice.png' }],
+        links: [{ sessionId: 'session-1', messageId: 'message-1' }],
+      })
+      const second = service.ingestLocalFiles({
+        files: [{ filePath, fileName: 'renamed.png' }],
+        links: [{ sessionId: 'session-2', messageId: 'message-2' }],
+      })
+
+      expect(first.created).toBe(1)
+      expect(second.created).toBe(0)
+      expect(second.skipped).toBe(1)
+      expect(second.assets[0].id).toBe(first.assets[0].id)
+      expect(second.assets[0].links).toEqual([
+        { sessionId: 'session-1', messageId: 'message-1' },
+        { sessionId: 'session-2', messageId: 'message-2' },
+      ])
+      expect(service.listAssets()).toHaveLength(1)
+    })
+
+    it('keeps a declared source separate from the same bytes uploaded', () => {
+      const filePath = sourceFile('shared.png', 'shared-bytes')
+
+      service.ingestLocalFiles({ files: [{ filePath, fileName: 'shared.png' }] })
+      const generated = service.ingestLocalFiles({
+        files: [{ filePath, fileName: 'shared.png' }],
+        source: 'tool-output',
+      })
+
+      expect(generated.created).toBe(1)
+      expect(generated.assets[0].source).toBe('tool-output')
+    })
+
+    it('reports one unreadable file without sinking the rest of the batch', () => {
+      const good = sourceFile('good.png', 'good-bytes')
+
+      const result = service.ingestLocalFiles({
+        files: [
+          { filePath: path.join(tempDir, 'missing.png'), fileName: 'missing.png' },
+          { filePath: good, fileName: 'good.png' },
+          { fileName: 'no-bytes.png' },
+        ],
+      })
+
+      expect(result.created).toBe(1)
+      expect(result.assets).toHaveLength(1)
+      expect(result.errors.map(error => error.fileName)).toEqual(['missing.png', 'no-bytes.png'])
+      expect(result.errors[0].error).toContain('File not found')
+      expect(result.errors[1].error).toBe('No file data provided')
+    })
+
+    it('carries every supplied link onto a newly created asset', () => {
+      const filePath = sourceFile('linked.png', 'linked-bytes')
+
+      const result = service.ingestLocalFiles({
+        files: [{ filePath, fileName: 'linked.png' }],
+        links: [
+          { sessionId: 'session-1', messageId: 'message-1' },
+          { sessionId: 'session-1', messageId: 'message-2' },
+        ],
+      })
+
+      expect(result.assets[0].links).toEqual([
+        { sessionId: 'session-1', messageId: 'message-1' },
+        { sessionId: 'session-1', messageId: 'message-2' },
+      ])
+    })
+
+    it('persists across a fresh service over the same paths', () => {
+      const filePath = sourceFile('persisted.png', 'persisted-bytes')
+      service.ingestLocalFiles({ files: [{ filePath, fileName: 'persisted.png' }] })
+
+      const reopened = new MediaLibraryService({ indexPath, imagesDir, filesDir })
+      expect(reopened.listAssets()).toHaveLength(1)
+      expect(reopened.listAssets()[0].fileName).toBe('persisted.png')
+    })
+  })
+
+  describe('ingestGeneratedImage source', () => {
+    it('defaults to ai-generated but honours a declared source', async () => {
+      const generated = await service.ingestGeneratedImage({
+        base64: Buffer.from('generated').toString('base64'),
+        prompt: 'a quiet room',
+        model: 'gpt-image-1',
+        sessionId: 'session-1',
+        messageId: 'message-1',
+      })
+      expect(generated.source).toBe('ai-generated')
+
+      // 挑来的头像走的是同一条管子,但它**是**一次上传 —— 这是 2026-08 之前
+      // 「上传的头像出现在生成筛选里」那条 wart 的修法。
+      const avatar = await service.ingestGeneratedImage({
+        base64: Buffer.from('avatar').toString('base64'),
+        prompt: 'Agent avatar',
+        model: 'user-upload',
+        sessionId: '',
+        messageId: '',
+        source: 'user-upload',
+        usageTags: ['persona-avatar'],
+      })
+      expect(avatar.source).toBe('user-upload')
+      expect(avatar.metadata?.usageTags).toEqual(['persona-avatar'])
+      expect(service.listAssets({ source: 'user-upload' })).toHaveLength(1)
+    })
+  })
 })

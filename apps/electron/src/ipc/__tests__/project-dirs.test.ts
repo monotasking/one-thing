@@ -55,11 +55,53 @@ describe('electron project-dirs IPC host', () => {
     await expect(handle.mock.calls[3][1]({}, updateRequest)).resolves.toEqual({ success: true, project: { path: '/repo' } })
     await expect(handle.mock.calls[4][1]({}, removeRequest)).resolves.toEqual({ success: true })
 
-    expect(listProjectDirs).toHaveBeenCalledWith()
+    // 批 B4:list 的载荷可缺席 —— 旧渲染层不带参,宿主补 `{}` = 默认空间。
+    expect(listProjectDirs).toHaveBeenCalledWith({})
     expect(getProjectDir).toHaveBeenCalledWith(getRequest)
     expect(addProjectDir).toHaveBeenCalledWith(addRequest)
     expect(updateProjectDir).toHaveBeenCalledWith(updateRequest)
     expect(removeProjectDir).toHaveBeenCalledWith(removeRequest)
     expect(logger.log).toHaveBeenCalledWith('[project-dirs] IPC handlers registered (list/get/add/update/remove)')
+  })
+
+  it('forwards workspaceId verbatim on every channel (批 B4)', async () => {
+    const handle = vi.fn()
+    const listProjectDirs = vi.fn()
+    const getProjectDir = vi.fn()
+    const addProjectDir = vi.fn()
+    const updateProjectDir = vi.fn()
+    const removeProjectDir = vi.fn()
+
+    registerElectronProjectDirsIpcHandlers({
+      channels: {
+        list: 'project-dirs:list',
+        get: 'project-dirs:get',
+        add: 'project-dirs:add',
+        update: 'project-dirs:update',
+        remove: 'project-dirs:remove',
+      },
+      listProjectDirs,
+      getProjectDir,
+      addProjectDir,
+      updateProjectDir,
+      removeProjectDir,
+      ipcMain: { handle },
+    })
+
+    await handle.mock.calls[0][1]({}, { workspaceId: 'work' })
+    await handle.mock.calls[1][1]({}, { path: '/repo', workspaceId: 'work' })
+    await handle.mock.calls[2][1]({}, { path: '/repo', workspaceId: 'work' })
+    await handle.mock.calls[3][1]({}, { path: '/repo', paths: ['/repo'], workspaceId: 'work' })
+    await handle.mock.calls[4][1]({}, { path: '/repo', workspaceId: 'work' })
+
+    expect(listProjectDirs).toHaveBeenCalledWith({ workspaceId: 'work' })
+    expect(getProjectDir).toHaveBeenCalledWith({ path: '/repo', workspaceId: 'work' })
+    expect(addProjectDir).toHaveBeenCalledWith({ path: '/repo', workspaceId: 'work' })
+    expect(updateProjectDir).toHaveBeenCalledWith({
+      path: '/repo',
+      paths: ['/repo'],
+      workspaceId: 'work',
+    })
+    expect(removeProjectDir).toHaveBeenCalledWith({ path: '/repo', workspaceId: 'work' })
   })
 })

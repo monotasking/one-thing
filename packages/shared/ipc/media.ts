@@ -45,6 +45,52 @@ export interface MediaQuery {
   includeHidden?: boolean
 }
 
+/**
+ * Mirror of `OnethingMediaIngestFileInput` (runtime side). Exactly one of
+ * `filePath` / `base64Data` carries the bytes: the desktop hands over a path
+ * (no base64 round trip through IPC), the browser only ever has bytes.
+ */
+export interface MediaIngestFileInput {
+	filePath?: string;
+	base64Data?: string;
+	fileName: string;
+	mimeType?: string;
+}
+
+export interface MediaIngestFilesRequest {
+	files: MediaIngestFileInput[];
+	/** Defaults to 'user-upload' on the service side. */
+	source?: MediaSource;
+	links?: MediaAssetLink[];
+}
+
+export interface MediaIngestFilesResponse {
+	success: boolean;
+	assets: MediaAsset[];
+	created: number;
+	skipped: number;
+	/** Per-file failures. A bad path never sinks the rest of the batch. */
+	errors: { fileName: string; error: string }[];
+	error?: string;
+}
+
+/**
+ * "另存为". With `targetDir` the copy is silent (multi-select saves pick one
+ * directory and then write N files); without it the host opens a save dialog.
+ */
+export interface MediaSaveAsRequest {
+	filePath: string;
+	fileName?: string;
+	targetDir?: string;
+}
+
+export interface MediaSaveAsResponse {
+	success: boolean;
+	canceled?: boolean;
+	path?: string;
+	error?: string;
+}
+
 export interface MediaGalleryResponse {
   images: MediaAsset[]
   currentIndex: number

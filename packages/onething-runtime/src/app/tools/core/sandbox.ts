@@ -38,6 +38,12 @@ export function configureAppToolSandbox(): void {
     const store = getVariablesStore()
     return [store.getUserNoteDir(), store.getWorkNoteDir()]
   },
+  /**
+   * **全局层**接入目录。这份适配器服务的是拿不到会话的调用面(`checkFileAccess`、
+   * `findReadSandboxRootForPath` 等 —— 它们的签名里没有 sessionId,也没有一条
+   * 诚实的路能补出来),所以退回全局层是这里的正确答案,不是遗漏。
+   * 带会话的读根走 `app/tools/builtin/read.ts` 的 adaptersOverride(批 B2)。
+   */
   getConnectedDirectories,
   // The bash tool's overflow logs ("full output saved to …"): re-reading a
   // tool result already adjudicated by the permission system — never prompt.

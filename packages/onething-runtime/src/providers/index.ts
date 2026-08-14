@@ -13,6 +13,12 @@ export * from './network.js'
 export * from './oauth-config.js'
 export * from './provider-routing.js'
 export * from './provider-runtime.js'
+// per-space 凭证解析(批 B3)要的两个类型:注入函数的签名住在宿主侧,
+// 但契约(「provider config 长什么样」「运行期标记长什么样」)在这里。
+export type {
+  CoreProviderConfigLike,
+  CoreSpaceCredentialMarker,
+} from './provider-config.js'
 export * from './provider-facade.js'
 export * from './provider-definition.js'
 export * from './provider-options.js'

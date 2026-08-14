@@ -72,6 +72,28 @@ export interface StreamEngineProviderAdapter<TSettings = unknown, TProviderConfi
     override?: { providerId?: string; model?: string; thinking?: boolean; thinkingEffort?: string } | null
   ): { providerId: string; providerConfig: TProviderConfig; model: string }
   resolveAuth(providerId: string, providerConfig: TProviderConfig): Promise<TAuthContext | null>
+  /**
+   * Optional: let the host re-scope a provider config it did not hand out
+   * through `getEffectiveConfig` (title generation resolves the tool-call
+   * model straight off settings). Absent = identity.
+   */
+  applySpaceCredentials?(
+    sessionId: string,
+    providerId: string,
+    providerConfig: TProviderConfig,
+  ): TProviderConfig
+  /**
+   * Optional: a host-supplied reason for why `resolveAuth` came back empty.
+   * When it returns a string the engine surfaces that instead of the generic
+   * "API Key not configured" / "Not logged in" lines — the host knows things
+   * the engine cannot (which workspace this session belongs to, which
+   * credential pool was consulted). Absent or undefined = unchanged behaviour.
+   */
+  describeMissingCredentials?(
+    providerId: string,
+    providerConfig: TProviderConfig,
+    sessionId: string,
+  ): string | undefined
   getApiType(settings: TSettings, providerId: string): unknown
   isSupported(providerId: string): boolean
   requiresOAuth(providerId: string): boolean

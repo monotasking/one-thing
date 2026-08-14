@@ -14,10 +14,11 @@
 import type { ContextVariable } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getProjectsStore } from '../project-dirs/index.js'
+import { resolveSessionSpaceId } from '../stores/sessions.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import { getVariablesStore } from './store/index.js'
 import { DEFAULT_ONETHING_AGENT_ID } from '@onething/runtime/agents'
-import { projectIdFromPath } from '@onething/runtime/project-dirs'
+import { canonicalizeProjectRoot, projectIdFromPath } from '@onething/runtime/project-dirs'
 import type { GlobalStoreGateway } from '@onething/runtime/variables/providers/global-store'
 import type { GoalVariableGateway } from '@onething/runtime/variables/providers/goal'
 import type { KeyedStoreGateway } from '@onething/runtime/variables/providers/keyed-store'
@@ -58,14 +59,17 @@ export const workdirGateway: WorkdirGateway = {
     // project dirs in sync regardless of who initiated the change.
     if (workdir) {
       try {
-        const projects = getProjectsStore()
+        // 名册 per-space(批 B4):自动登记必须落进**会话归属的**空间,否则在 B
+        // 空间跑的会话会把项目登记进 A —— 那正是「切空间项目也跟着来」的病根。
+        const projects = getProjectsStore(resolveSessionSpaceId(sessionId))
         const sessionName = store.getSession(sessionId)?.name ?? ''
-        projects.touch(workdir, sessionName)
+        const project = projects.touch(workdir, sessionName)
         // An explicit description names/renames the project entry;
         // the session name above is only a first-touch fallback.
         if (options?.description) {
           projects.update(workdir, { description: options.description })
         }
+        syncProjectDerivedRoots(sessionId, project.paths)
       } catch (err) {
         console.error('[variables.gateway] project-dirs touch failed:', err)
       }
@@ -81,6 +85,32 @@ export const workdirGateway: WorkdirGateway = {
     workdirListeners.add(callback)
     return () => workdirListeners.delete(callback)
   },
+}
+
+/**
+ * Multi-root projects extend the session's sandbox roots automatically: when
+ * the cwd lands in one, its full root list becomes workingDirectoryRoots.
+ * Only roots the session doesn't own are touched — empty roots, or roots that
+ * exactly equal some registered project's root set (i.e. a previous derivation),
+ * are safe to replace; anything else was set deliberately (AI/user) and is
+ * left alone.
+ */
+function syncProjectDerivedRoots(sessionId: string, projectPaths: readonly string[]): void {
+  const current = store.getSession(sessionId)?.workingDirectoryRoots ?? []
+  const target = projectPaths.length > 1 ? [...projectPaths] : []
+  if (rootSetsEqual(current, target)) return
+  const currentIsDerived = current.length === 0
+    || getProjectsStore(resolveSessionSpaceId(sessionId))
+      .list()
+      .some(entry => rootSetsEqual(current, entry.paths))
+  if (!currentIsDerived) return
+  store.updateSessionWorkingDirectoryRoots(sessionId, target)
+}
+
+function rootSetsEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  const keys = new Set(a.map(canonicalizeProjectRoot))
+  return b.every(root => keys.has(canonicalizeProjectRoot(root)))
 }
 
 /** Called from places that mutate workingDirectory outside CoreProvider.set. */
@@ -151,7 +181,17 @@ export const agentStoreGateway: KeyedStoreGateway = {
 export const projectStoreGateway: KeyedStoreGateway = {
   resolveKey(sessionId) {
     const workdir = store.getSession(sessionId)?.workingDirectory
-    return workdir ? projectIdFromPath(workdir) : null
+    if (!workdir) return null
+    // Registered projects key by their stable id so every root of a
+    // multi-root project shares one variable scope; unregistered workdirs
+    // keep the legacy path-derived key.
+    try {
+      const project = getProjectsStore(resolveSessionSpaceId(sessionId)).get(workdir)
+      if (project) return project.id
+    } catch {
+      // fall through to the derived key
+    }
+    return projectIdFromPath(workdir)
   },
   read(key) {
     return getVariablesStore().getScopedVariables('project', key)

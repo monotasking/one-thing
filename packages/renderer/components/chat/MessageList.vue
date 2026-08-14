@@ -231,6 +231,7 @@ import type { PermissionResponse } from './permission/permission-ledger'
 import type { AnchorRect } from '@/composables/floating/compute-position'
 import {
   useFollowScroll,
+  provideChatFollowState,
   shouldShowScrollToBottomButton,
 } from '@/composables/useFollowScroll'
 import { useMessageScrollCoordinator } from '@/composables/useMessageScrollCoordinator'
@@ -649,6 +650,8 @@ const follow = useFollowScroll({
 })
 
 const { isFollowing } = follow
+// 子树深处的自动收起要用它做可见性裁决(useDeferredAutoCollapse)。只读投影。
+provideChatFollowState(isFollowing)
 const useBottomScrollAnchor = computed(() => isFollowing.value && hasActiveStream.value)
 const scrollCoordinator = useMessageScrollCoordinator({
   scroller: messageListRef,

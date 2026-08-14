@@ -20,6 +20,7 @@
 import path from "node:path";
 import { getEventBus } from "../events/index.js";
 import { getProjectsStore } from "../project-dirs/index.js";
+import { resolveSessionSpaceId } from "../stores/sessions.js";
 import * as appStore from "../store.js";
 import { enforcePermissionPolicy } from "../tools/core/permission-policy.js";
 import { getVariableRegistry } from "@onething/runtime/variables/registry";
@@ -69,15 +70,23 @@ export function bootstrapVariableSystem(): void {
 			enforcePermission: enforcePermissionPolicy,
 			// Registered project directories are user-blessed: switching the
 			// workdir into one (or a subdirectory) never prompts.
-			isPreauthorizedDirectory: (dir) => {
+			//
+			// 批 B4:名册 per-space,所以判据只认**这条会话归属的**那一份名册。
+			// 调用链上有会话语境(CoreProvider.enforceSetPermission 手里就有
+			// ctx.sessionId),所以取的是真值而不是保守回退;真要没有 sessionId,
+			// `resolveSessionSpaceId` 给的是 default —— 更严,绝不做全空间并集
+			// (那等于让任一空间的名册替所有空间免审批)。
+			isPreauthorizedDirectory: (dir, ctx) => {
 				try {
 					const target = path.resolve(dir);
-					return getProjectsStore()
+					return getProjectsStore(resolveSessionSpaceId(ctx?.sessionId))
 						.list()
-						.some((project) => {
-							const root = path.resolve(project.path);
-							return target === root || target.startsWith(root + path.sep);
-						});
+						.some((project) =>
+							project.paths.some((projectRoot) => {
+								const root = path.resolve(projectRoot);
+								return target === root || target.startsWith(root + path.sep);
+							}),
+						);
 				} catch {
 					return false;
 				}

@@ -57,18 +57,22 @@ async function toAttachmentInput(file: File, index: number): Promise<MarkdownAtt
   }
 }
 
-export async function handleMarkdownAttachmentPaste(options: {
-  event: ClipboardEvent
+/**
+ * 落盘 + 插入引用的那一段,与"文件是从哪儿来的"无关。
+ *
+ * 粘贴走剪贴板,斜杠菜单的「图片」走文件选择框——两条入口同一条管线,不该有
+ * 两份落盘规则(第二份迟早会和第一份的目录约定分叉)。
+ */
+export async function insertMarkdownAttachmentFiles(options: {
+  files: File[]
   editor: EditorHandle | null
   documentPath?: string
   workspaceRoot?: string
 }): Promise<boolean> {
-  const files = clipboardFiles(options.event)
-  if (!files.length) return false
+  if (!options.files.length) return false
   if (!options.editor || !options.documentPath) return false
 
-  options.event.preventDefault()
-  const attachments = await Promise.all(files.map(toAttachmentInput))
+  const attachments = await Promise.all(options.files.map(toAttachmentInput))
   const response = await platformApi.saveMarkdownAttachments({
     documentPath: options.documentPath,
     workspaceRoot: options.workspaceRoot,
@@ -85,4 +89,23 @@ export async function handleMarkdownAttachmentPaste(options: {
   const selection = options.editor.getSelection()
   options.editor.replaceRange(selection.from, selection.to, response.insertText)
   return true
+}
+
+export async function handleMarkdownAttachmentPaste(options: {
+  event: ClipboardEvent
+  editor: EditorHandle | null
+  documentPath?: string
+  workspaceRoot?: string
+}): Promise<boolean> {
+  const files = clipboardFiles(options.event)
+  if (!files.length) return false
+  if (!options.editor || !options.documentPath) return false
+
+  options.event.preventDefault()
+  return insertMarkdownAttachmentFiles({
+    files,
+    editor: options.editor,
+    documentPath: options.documentPath,
+    workspaceRoot: options.workspaceRoot,
+  })
 }

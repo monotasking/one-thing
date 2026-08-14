@@ -1,10 +1,15 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
-import { nextTick } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed, nextTick, ref } from 'vue'
 import { createPinia } from 'pinia'
 import StepsPanel from '../StepsPanel.vue'
 import { clearExpansionIntents } from '@/stores/helpers/expansion-intent'
+import { CHAT_FOLLOW_STATE_KEY } from '@/composables/useFollowScroll'
+import {
+  MockIntersectionObserver,
+  verticalRect,
+} from '@/composables/__tests__/intersection-observer-mock'
 import type { Step, ToolCall } from '@/types'
 
 function fileStep(id: string, status: Step['status'] = 'completed', turnIndex?: number): Step {
@@ -448,11 +453,11 @@ describe('StepsPanel parallel-batch auto expansion', () => {
     expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
   })
 
-  it('still auto-expands a lone running bash', () => {
+  it('does not auto-expand a lone running bash either', () => {
     const wrapper = mountPanel([runningBashStep('solo', 'sleep 1', 7)])
 
     expect(wrapper.find('.workflow-group').exists()).toBe(false)
-    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
   })
 
   it('suppresses batch auto-expansion in flat rail mode as well', () => {
@@ -572,11 +577,11 @@ describe('StepsPanel auto-collapse scroll compensation', () => {
     document.body.innerHTML = ''
   })
 
-  it('gives back the folded height when a running bash settles above the viewport', async () => {
-    const panel = setupPanel([runningBashStep('a', 'sleep 1', 7)])
+  it('gives back the folded height when a resolved edit settles above the viewport', async () => {
+    const panel = setupPanel([fileStep('a', 'awaiting-confirmation', 7)])
     expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
 
-    await panel.wrapper.setProps({ steps: [commandStep('a', 'sleep 1')] })
+    await panel.wrapper.setProps({ steps: [fileStep('a', 'completed', 7)] })
     await nextTick()
     await nextTick()
 
@@ -586,7 +591,7 @@ describe('StepsPanel auto-collapse scroll compensation', () => {
   })
 
   it('does not compensate when the user folds the row themselves', async () => {
-    const panel = setupPanel([runningBashStep('a', 'sleep 1', 7)])
+    const panel = setupPanel([fileStep('a', 'awaiting-confirmation', 7)])
     expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
 
     await panel.wrapper.find('.operation-row').trigger('click')
@@ -596,5 +601,147 @@ describe('StepsPanel auto-collapse scroll compensation', () => {
     expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(false)
     expect(panel.getScrollTop()).toBe(900)
     panel.cleanup()
+  })
+})
+
+// 补偿只兜"塌缩在视口顶之上"。行就在眼前时(用户正读着 bash 的输出),
+// 合上等于把眼前的东西抽走 —— 那时候先挂起,别收。
+describe('StepsPanel auto-collapse visibility gate', () => {
+  // 展开时整行在视口里(200..480),合上后 200..240。
+  const ROW_TOP = 200
+  const ROW_OPEN_BOTTOM = 480
+  const ROW_FOLDED_BOTTOM = 240
+
+  function setupVisiblePanel(steps: Step[], options: { following?: boolean } = {}) {
+    const following = ref(options.following ?? false)
+
+    const scroller = document.createElement('div')
+    scroller.style.overflowY = 'auto'
+    Object.defineProperty(scroller, 'scrollHeight', { value: 4000, configurable: true })
+    Object.defineProperty(scroller, 'clientHeight', { value: 800, configurable: true })
+    scroller.getBoundingClientRect = () => verticalRect(0, 800)
+
+    const host = document.createElement('div')
+    scroller.appendChild(host)
+    document.body.appendChild(scroller)
+
+    const wrapper = mount(StepsPanel, {
+      props: { steps, intentScope: 'steps-gate' },
+      attachTo: host,
+      global: {
+        plugins: [createPinia()],
+        provide: { [CHAT_FOLLOW_STATE_KEY as symbol]: computed(() => following.value) },
+        stubs: {
+          FartCallItem: { template: '<div class="fart-stub" />' },
+          ToolActivityDetails: { template: '<div class="detail-stub" />' },
+        },
+      },
+    })
+
+    const row = wrapper.find('[data-activity-panel-key]').element as HTMLElement
+    row.getBoundingClientRect = () =>
+      verticalRect(ROW_TOP, row.querySelector('.activity-inline-details') ? ROW_OPEN_BOTTOM : ROW_FOLDED_BOTTOM)
+
+    return {
+      wrapper,
+      following,
+      cleanup: () => {
+        wrapper.unmount()
+        scroller.remove()
+      },
+    }
+  }
+
+  beforeEach(() => {
+    clearExpansionIntents()
+    MockIntersectionObserver.reset()
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    clearExpansionIntents()
+    document.body.innerHTML = ''
+  })
+
+  it('keeps a settled row open while the user is looking at it', async () => {
+    const panel = setupVisiblePanel([fileStep('a', 'awaiting-confirmation', 7)])
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
+
+    await panel.wrapper.setProps({ steps: [fileStep('a', 'completed', 7)] })
+    await nextTick()
+
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
+    expect(MockIntersectionObserver.instances).toHaveLength(1)
+    panel.cleanup()
+  })
+
+  it('folds the row once it scrolls out of the viewport', async () => {
+    const panel = setupVisiblePanel([fileStep('a', 'awaiting-confirmation', 7)])
+    await panel.wrapper.setProps({ steps: [fileStep('a', 'completed', 7)] })
+    await nextTick()
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
+
+    MockIntersectionObserver.last.emit(false)
+    await nextTick()
+
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(false)
+    expect(MockIntersectionObserver.allDisconnected()).toBe(true)
+    panel.cleanup()
+  })
+
+  it('folds the row once the user is pinned to the bottom again', async () => {
+    const panel = setupVisiblePanel([fileStep('a', 'awaiting-confirmation', 7)])
+    await panel.wrapper.setProps({ steps: [fileStep('a', 'completed', 7)] })
+    await nextTick()
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
+
+    panel.following.value = true
+    await nextTick()
+
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(false)
+    panel.cleanup()
+  })
+
+  it('folds immediately while following the bottom — the gate never engages', async () => {
+    const panel = setupVisiblePanel([fileStep('a', 'awaiting-confirmation', 7)], { following: true })
+
+    await panel.wrapper.setProps({ steps: [fileStep('a', 'completed', 7)] })
+    await nextTick()
+
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(false)
+    expect(MockIntersectionObserver.instances).toHaveLength(0)
+    panel.cleanup()
+  })
+
+  it('lets a manual toggle cancel the pending fold', async () => {
+    const panel = setupVisiblePanel([fileStep('a', 'awaiting-confirmation', 7)])
+    await panel.wrapper.setProps({ steps: [fileStep('a', 'completed', 7)] })
+    await nextTick()
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
+
+    await panel.wrapper.find('.operation-row').trigger('click')
+    await nextTick()
+
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(false)
+    expect(MockIntersectionObserver.allDisconnected()).toBe(true)
+
+    // 挂起已作废:陈旧回调不得压过用户重新展开的意图。
+    await panel.wrapper.find('.operation-row').trigger('click')
+    MockIntersectionObserver.last.emit(false)
+    await nextTick()
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
+    panel.cleanup()
+  })
+
+  it('drops the pending fold on unmount', async () => {
+    const panel = setupVisiblePanel([fileStep('a', 'awaiting-confirmation', 7)])
+    await panel.wrapper.setProps({ steps: [fileStep('a', 'completed', 7)] })
+    await nextTick()
+    expect(MockIntersectionObserver.instances).toHaveLength(1)
+
+    panel.cleanup()
+
+    expect(MockIntersectionObserver.allDisconnected()).toBe(true)
   })
 })

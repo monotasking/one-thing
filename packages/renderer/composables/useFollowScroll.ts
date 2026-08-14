@@ -6,10 +6,46 @@
  * tail padding in the message list, not an artificial anchor correction.
  */
 
-import { getCurrentInstance, nextTick, onUnmounted, ref, watch, type ComputedRef, type Ref } from 'vue'
+import {
+  computed,
+  getCurrentInstance,
+  inject,
+  nextTick,
+  onUnmounted,
+  provide,
+  ref,
+  watch,
+  type ComputedRef,
+  type InjectionKey,
+  type Ref,
+} from 'vue'
 import { isTraceEnabled, traceEvent } from '@/utils/stream-scroll-trace'
 
 export const FOLLOW_BOTTOM_GAP = 64
+
+/**
+ * 跟底状态的只读出口。
+ *
+ * 跟底这件事只有消息列表知道(useFollowScroll 的实例在 MessageList 里),但
+ * 子树深处的自动收起需要它来判断"现在收会不会挪走用户眼前的东西"
+ * (见 `useDeferredAutoCollapse`)。所以 MessageList provide 一个**只读**的
+ * ComputedRef,子组件 inject。
+ *
+ * 拿不到时(挂在 MessageList 之外,比如侧栏预览)按 `true` 处理 —— 维持旧行为,
+ * 而不是让非消息流的挂载点跟着改表现。
+ */
+export const CHAT_FOLLOW_STATE_KEY: InjectionKey<ComputedRef<boolean>> =
+  Symbol('onething:chat-follow-state')
+
+/** 在消息列表侧提供跟底状态(只读投影,子树改不动它)。 */
+export function provideChatFollowState(isFollowing: Ref<boolean>): void {
+  provide(CHAT_FOLLOW_STATE_KEY, computed(() => isFollowing.value))
+}
+
+/** 子树侧读取跟底状态;不在消息列表下时返回 null。 */
+export function useChatFollowState(): ComputedRef<boolean> | null {
+  return inject(CHAT_FOLLOW_STATE_KEY, null)
+}
 
 const BOTTOM_EPSILON_PX = 0.75
 const USER_DETACH_REATTACH_LOCK_MS = 700

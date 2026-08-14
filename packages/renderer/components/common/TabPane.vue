@@ -29,12 +29,15 @@ const props = withDefaults(defineProps<{
   name?: string | number
   closable?: boolean
   lazy?: boolean
+  /** 页签段(越小越靠前);缺省 0 = 与其余页签同段,次序仍是注册次序。 */
+  order?: number
 }>(), {
   label: '',
   disabled: false,
   name: undefined,
   closable: false,
   lazy: false,
+  order: 0,
 })
 
 const slots = defineSlots<{
@@ -67,6 +70,7 @@ const paneState: TabPaneState = {
   disabled: computed(() => props.disabled),
   closable: computed(() => props.closable),
   lazy: computed(() => props.lazy),
+  order: computed(() => props.order),
   renderLabel: props => slots.label?.(props),
 }
 

@@ -123,12 +123,18 @@ describe('runtime CoreProvider', () => {
     expect(enforcePermission).not.toHaveBeenCalled()
 
     const project = await fs.mkdtemp(path.join(os.tmpdir(), 'runtime-variable-project-'))
+    // 批 B4:名册 per-space,判据必须拿到会话语境 —— 宿主靠 ctx.sessionId 把会话
+    // 解析成空间。少喂这一个字段,A 空间的名册就会替 B 空间的会话免掉审批。
+    const isPreauthorizedDirectory = vi.fn(
+      (dir: string, ctx: { sessionId: string }) => dir === project && ctx.sessionId === 'sess-a',
+    )
     const preauthorized = new CoreProvider(workdirGateway(tempDir), {
       enforcePermission,
-      isPreauthorizedDirectory: dir => dir === project,
+      isPreauthorizedDirectory,
     })
     await preauthorized.set({ sessionId: 'sess-a', messageId: 'm1' }, { name: 'workdir', value: project })
     expect(enforcePermission).not.toHaveBeenCalled()
+    expect(isPreauthorizedDirectory).toHaveBeenCalledWith(project, { sessionId: 'sess-a' })
 
     await fs.rm(project, { recursive: true, force: true })
   })

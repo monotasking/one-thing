@@ -24,6 +24,7 @@ import {
   updateOnethingSessionPermissionMode,
   updateOnethingSessionWorkingDirectory,
 } from '@onething/runtime/sessions'
+import { isValidSpaceId } from '@onething/runtime/spaces/types'
 import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '@onething/app/todo-plan/store.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest } from '@shared/ipc.js'
@@ -143,12 +144,16 @@ export function registerSessionHandlers() {
       {
         channel: IPC_CHANNELS.CREATE_SESSION,
         handle: async (request) => {
-          const { name, sessionId, kind, room } = request as {
+          const { name, sessionId, workspaceId, kind, room } = request as {
             name?: string
             sessionId?: string
+            workspaceId?: string
             kind?: string
             room?: CollabGroupRoomInput
           }
+          // workspaceId 进 `workspaces/<id>/` 的路径片段,字符集卡死;非法值
+          // 不报错、直接当没带(缺席 = default),不给它拖垮建会话这条路。
+          const resolvedWorkspaceId = isValidSpaceId(workspaceId) ? workspaceId : undefined
           // Client-supplied ids keep session identity stable from the renderer's
           // draft phase onwards (the draft id *is* the future session id). The
           // id becomes a storage path segment, so accept only the exact UUID
@@ -177,7 +182,8 @@ export function registerSessionHandlers() {
           return await createOnethingSessionForIpc({
             sessionId: sessionId ?? uuidv4(),
             name,
-            createSession: (id, nextName) => store.createSession(id, nextName),
+            createSession: (id, nextName) =>
+              store.createSession(id, nextName, { workspaceId: resolvedWorkspaceId }),
             logger: console,
           })
         },

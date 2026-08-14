@@ -55,9 +55,12 @@ export interface SessionGroup {
   isRegistered?: boolean
 }
 
-/** 项目名册里的一条 —— 只取分组用得上的两个字段(见 stores/projects.ts)。 */
+/** 项目名册里的一条 —— 只取分组用得上的字段(见 stores/projects.ts)。 */
 export interface RegisteredProjectDir {
+  /** 主根(`paths[0]`)。 */
   path: string
+  /** 全部根;多根项目的每个根都归到同一组。可缺省(等价于 `[path]`)。 */
+  paths?: string[]
   lastUsedAt: number
 }
 
@@ -389,17 +392,27 @@ export function useSessionOrganizer() {
     const pinnedBlocks: Block[] = []
     const draftBlocks: Block[] = []
     const uncategorized: Block[] = []
-    type ProjectEntry = { label: string; blocks: Block[]; registeredAt?: number }
+    // `dir` 是这一格的规范键(多根项目取主根);map 里每个根都指向同一个
+    // entry 对象,会话按自己的 cwd 查表就自然落进正确的格。
+    type ProjectEntry = { dir: string; label: string; blocks: Block[]; registeredAt?: number }
     const projects = new Map<string, ProjectEntry>()
 
     // 名册先落座 —— 空项目也要有一格,而且「登记过」这件事要在会话入座之前
-    // 就已知(见下面 dir 的收留判据)。
+    // 就已知(见下面 dir 的收留判据)。多根项目的每个根都指向同一格。
     for (const registered of registeredProjects) {
-      const dir = normalizeProjectDir(registered.path)
-      if (!dir) continue
-      const existing = projects.get(dir)
-      if (existing) existing.registeredAt = registered.lastUsedAt
-      else projects.set(dir, { label: projectLabel(dir), blocks: [], registeredAt: registered.lastUsedAt })
+      const primary = normalizeProjectDir(registered.path)
+      if (!primary) continue
+      let entry = projects.get(primary)
+      if (entry) {
+        entry.registeredAt = registered.lastUsedAt
+      } else {
+        entry = { dir: primary, label: projectLabel(primary), blocks: [], registeredAt: registered.lastUsedAt }
+        projects.set(primary, entry)
+      }
+      for (const root of registered.paths ?? []) {
+        const normalized = normalizeProjectDir(root)
+        if (normalized && !projects.has(normalized)) projects.set(normalized, entry)
+      }
     }
 
     for (const block of blocks) {
@@ -423,7 +436,7 @@ export function useSessionOrganizer() {
       }
       let entry = registeredEntry
       if (!entry) {
-        entry = { label: projectLabel(dir), blocks: [] }
+        entry = { dir, label: projectLabel(dir), blocks: [] }
         projects.set(dir, entry)
       }
       entry.blocks.push(block)
@@ -440,14 +453,17 @@ export function useSessionOrganizer() {
     pinnedBlocks.sort(byRecency)
     uncategorized.sort(byRecency)
     draftBlocks.sort(byRecency)
-    for (const entry of projects.values()) entry.blocks.sort(draftFirstByRecency)
+    // 多根项目的各个根共享同一个 entry 对象 —— 去重后再排序/成组,免得
+    // 一个项目排两次、画两格。
+    const uniqueProjectEntries = [...new Set(projects.values())]
+    for (const entry of uniqueProjectEntries) entry.blocks.sort(draftFirstByRecency)
 
     // Project sections ordered by their most recently active session.
     // 空的登记项目没有会话可比,退回名册的 lastUsedAt —— 刚加的项目 lastUsedAt
     // 是此刻,于是浮到最前(用户刚挑完目录,该看见它),久未使用的自然下沉。
-    const projectSections = [...projects.entries()]
-      .map(([dir, entry]) => ({
-        dir,
+    const projectSections = uniqueProjectEntries
+      .map(entry => ({
+        dir: entry.dir,
         label: entry.label,
         blocks: entry.blocks,
         registered: entry.registeredAt !== undefined,
