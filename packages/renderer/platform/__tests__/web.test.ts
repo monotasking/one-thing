@@ -931,7 +931,13 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/project-dirs',
     })
-    await expect(api.projectDirsUpdate('/workspace', 'Updated')).resolves.toEqual({
+    await expect(api.projectDirsUpdate('/workspace', { description: 'Updated' })).resolves.toEqual({
+      success: true,
+      url: '/api/project-dirs/update',
+    })
+    await expect(
+      api.projectDirsUpdate('/workspace', { paths: ['/workspace', '/workspace-docs'] }),
+    ).resolves.toEqual({
       success: true,
       url: '/api/project-dirs/update',
     })
@@ -1389,8 +1395,17 @@ describe('createWebPlatformApi', () => {
   })
 
   it('maps prompt and todo-plan platform methods to server REST endpoints', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
+      // 走了通用 RPC 的域(prompts / goal / todo-plan 数据面)命中这一支:
+      // 回的是 RpcResponse 信封,把域名与方法原样送回,好断言路由对不对。
+      if (url === '/api/rpc') {
+        const request = JSON.parse(String(init?.body ?? '{}'))
+        return new Response(JSON.stringify({ ok: true, data: { success: true, rpc: request } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
       if (url === '/api/capabilities') {
         return new Response(JSON.stringify({}), {
           status: 200,
@@ -1412,25 +1427,40 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/sessions/session-1/system-prompt-snapshot',
     })
+    // 片段 CRUD 已经不再是五条 REST 路径,而是一条通道上的五个方法。
     await expect(api.listPrompts()).resolves.toEqual({
       success: true,
-      url: '/api/prompts',
+      rpc: { domain: 'prompts', method: 'list', payload: {} },
     })
     await expect(api.getPrompt({ id: 'prompt-1' })).resolves.toEqual({
       success: true,
-      url: '/api/prompts/prompt-1',
+      rpc: { domain: 'prompts', method: 'get', payload: { id: 'prompt-1' } },
     })
     await expect(api.createPrompt({ title: 'Reusable', body: 'Use this' })).resolves.toEqual({
       success: true,
-      url: '/api/prompts',
+      rpc: { domain: 'prompts', method: 'create', payload: { title: 'Reusable', body: 'Use this' } },
     })
     await expect(api.updatePrompt({ id: 'prompt-1', title: 'Updated' })).resolves.toEqual({
       success: true,
-      url: '/api/prompts/prompt-1/update',
+      rpc: { domain: 'prompts', method: 'update', payload: { id: 'prompt-1', title: 'Updated' } },
     })
     await expect(api.deletePrompt({ id: 'prompt-1' })).resolves.toEqual({
       success: true,
-      url: '/api/prompts/prompt-1',
+      rpc: { domain: 'prompts', method: 'delete', payload: { id: 'prompt-1' } },
+    })
+    // 目标以前在 web 是三个写死的错误桩,现在是真调用。
+    await expect(api.goalGet('session-1')).resolves.toEqual({
+      success: true,
+      rpc: { domain: 'goal', method: 'get', payload: { sessionId: 'session-1' } },
+    })
+    // todo/plan 只有数据面上了通道;窗口面仍是本地 DOM 事件,不发请求。
+    await expect(api.getTodoPlan({ sessionId: 'session-1' })).resolves.toEqual({
+      success: true,
+      rpc: { domain: 'todo-plan', method: 'get', payload: { sessionId: 'session-1' } },
+    })
+    await expect(api.revealTodoPlanDirectory()).resolves.toEqual({
+      success: true,
+      rpc: { domain: 'todo-plan', method: 'revealDirectory', payload: {} },
     })
     await expect(api.getSkills('/workspace')).resolves.toEqual({
       success: true,
@@ -1623,25 +1653,6 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/acp/sessions/cancel',
     })
-    await expect(api.getTodoPlan({ sessionId: 'session-1' })).resolves.toEqual({
-      success: true,
-      url: '/api/todo-plan/get',
-    })
-    await expect(api.createTodoPlanNote({ title: 'Plan' })).resolves.toEqual({
-      success: true,
-      url: '/api/todo-plan/create',
-    })
-    await expect(api.updateTodoPlan({
-      scope: 'session-ai-todo',
-      content: '- [ ] Ship web',
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/todo-plan/update',
-    })
-    await expect(api.renameTodoPlanNote({ id: 'plan', title: 'Next' })).resolves.toEqual({
-      success: true,
-      url: '/api/todo-plan/rename',
-    })
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/execute-command', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ commandName: '/demo', args: '--fast', sessionId: 'session-1' }),
@@ -1708,14 +1719,6 @@ describe('createWebPlatformApi', () => {
       method: 'POST',
       body: JSON.stringify({ sessionId: 'session-1', agentId: 'web-acp' }),
     }))
-    await expect(api.deleteTodoPlanNote({ id: 'plan' })).resolves.toEqual({
-      success: true,
-      url: '/api/todo-plan/delete',
-    })
-    await expect(api.revealTodoPlanDirectory()).resolves.toEqual({
-      success: true,
-      url: '/api/todo-plan/reveal-directory',
-    })
     await expect(api.listSchedulerTasks()).resolves.toEqual({
       success: true,
       url: '/api/scheduler/tasks',
@@ -1757,68 +1760,10 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/scheduler/runs/get',
     })
-    await expect(api.listAgents()).resolves.toEqual({
-      success: true,
-      url: '/api/agents',
-    })
-    await expect(api.createAgent('Reviewer', 'Review carefully')).resolves.toEqual({
-      success: true,
-      url: '/api/agents',
-    })
-    await expect(api.updateAgent('agent-1', { name: 'Builder' })).resolves.toEqual({
-      success: true,
-      url: '/api/agents/agent-1/update',
-    })
-    await expect(api.deleteAgent('agent-1')).resolves.toEqual({
-      success: true,
-      url: '/api/agents/agent-1',
-    })
-    // 恢复(域模型 §8)是自己的一条动作,不是 update 的一个字段。
-    await expect(api.restoreAgent('agent-1')).resolves.toEqual({
-      success: true,
-      url: '/api/agents/agent-1/restore',
-    })
-    await expect(api.getProviders()).resolves.toEqual({
-      success: true,
-      url: '/api/providers',
-    })
-    await expect(api.getProviderUsage('codex')).resolves.toEqual({
-      success: true,
-      url: '/api/providers/codex/usage',
-    })
-    await expect(api.getProviderEnvStatus('openai')).resolves.toEqual({
-      success: true,
-      url: '/api/providers/openai/env-status',
-    })
-    await expect(api.getModelsWithCapabilities('local', { forceRefresh: true })).resolves.toEqual({
-      success: true,
-      url: '/api/providers/local/models?forceRefresh=true',
-    })
-    await expect(api.getAllModels()).resolves.toEqual({
-      success: true,
-      url: '/api/models',
-    })
-    await expect(api.searchModels('echo', 'local')).resolves.toEqual({
-      success: true,
-      url: '/api/models/search',
-    })
-    await expect(api.refreshModelRegistry()).resolves.toEqual({
-      success: true,
-      url: '/api/models/refresh',
-    })
-    await expect(api.getModelNameAliases()).resolves.toEqual({
-      success: true,
-      url: '/api/models/name-aliases',
-    })
-    await expect(api.getModelDisplayName('local-echo')).resolves.toEqual({
-      success: true,
-      url: '/api/models/local-echo/display-name',
-    })
+    // agents / providers / models 已迁到通用 RPC 通道(主线 T1 第二批):
+    // web 壳上不再有它们的方法,客户端在 platform/{agents,providers,models}-client.ts。
 
     expect(fetchMock).toHaveBeenCalledWith('/api/sessions/session-1/system-prompt-snapshot', expect.any(Object))
-    expect(fetchMock).toHaveBeenCalledWith('/api/prompts/prompt-1', expect.objectContaining({
-      method: 'DELETE',
-    }))
     expect(fetchMock).toHaveBeenCalledWith('/api/skills/read-file', expect.objectContaining({
       method: 'POST',
     }))
@@ -1834,19 +1779,10 @@ describe('createWebPlatformApi', () => {
       body: JSON.stringify({ pluginId: 'note-skills' }),
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/commands', expect.any(Object))
-    expect(fetchMock).toHaveBeenCalledWith('/api/todo-plan/update', expect.objectContaining({
-      method: 'POST',
-    }))
     expect(fetchMock).toHaveBeenCalledWith('/api/scheduler/tasks/update', expect.objectContaining({
       method: 'POST',
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/scheduler/runs/get', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/agents/agent-1', expect.objectContaining({
-      method: 'DELETE',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/models/search', expect.objectContaining({
       method: 'POST',
     }))
   })

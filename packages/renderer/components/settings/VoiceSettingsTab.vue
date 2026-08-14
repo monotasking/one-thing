@@ -657,6 +657,7 @@ import {
 } from './settings-primitives'
 import { DEFAULT_VOICE_SETTINGS } from '@shared/defaults/settings'
 import { platformApi } from '@/platform'
+import { agentsApi } from '@/platform/agents-client'
 
 const props = defineProps<{
   settings: AppSettings
@@ -910,7 +911,7 @@ const ENDPOINTING_PRESETS: Record<Exclude<VoiceEndpointingMode, 'custom'>, numbe
 
 onMounted(async () => {
   try {
-    const response = await platformApi.listAgents()
+    const response = await agentsApi.listAgents()
     if (response.success && response.agents?.length) agents.value = response.agents
   } catch {
     agents.value = []

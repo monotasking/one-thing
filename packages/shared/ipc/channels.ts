@@ -4,6 +4,14 @@
  */
 
 export const IPC_CHANNELS = {
+	/**
+	 * Generic RPC envelope (主线 T0). One channel for every domain router —
+	 * `{ domain, method, payload }` in, `RpcResponse` out. This is the LAST
+	 * per-domain-free channel we need: a new domain is a router file plus a
+	 * backend handler registration, never a new constant here.
+	 */
+	RPC_INVOKE: "rpc:invoke",
+
 	// Chat related
 	GET_CHAT_HISTORY: "chat:get-history",
 	CLEAR_CHAT: "chat:clear",
@@ -132,48 +140,15 @@ export const IPC_CHANNELS = {
 	GATEWAY_WECHAT_REMOVE_ACCOUNT: "gateway:wechat-remove-account",
 	GATEWAY_WECHAT_RENAME_ACCOUNT: "gateway:wechat-rename-account",
 
-	// Channel identity and IM reply routing
-	CHANNEL_IDENTITY_LIST_LINKS: "channel-identity:list-links",
-	CHANNEL_IDENTITY_LIST_PROFILES: "channel-identity:list-profiles",
-	CHANNEL_IDENTITY_CREATE_PROFILE: "channel-identity:create-profile",
-	CHANNEL_IDENTITY_UPDATE_PROFILE: "channel-identity:update-profile",
-	CHANNEL_IDENTITY_CREATE_LINK: "channel-identity:create-link",
-	CHANNEL_IDENTITY_DELETE_LINK: "channel-identity:delete-link",
-	CHANNEL_IDENTITY_RESOLVE: "channel-identity:resolve",
-	CHANNEL_DELIVERY_LIST: "channel-delivery:list",
+	// Agent 档案 CRUD:已迁到通用 RPC 通道(agentsRouter),此处不再有常量。
 
-	// Agents related
-	AGENTS_LIST: "agents:list",
-	AGENTS_CREATE: "agents:create",
-	AGENTS_UPDATE: "agents:update",
-	/** UI 的「删除」= 退休或硬删(域模型 §3.2);响应里的 outcome 说明是哪种。 */
-	AGENTS_DELETE: "agents:delete",
-	/** 重新入职(域模型 §8):退休翻回 active。入口只在 Agents 管理页。 */
-	AGENTS_RESTORE: "agents:restore",
-
-	// User prompt snippets
-	PROMPTS_LIST: "prompts:list",
-	PROMPTS_GET: "prompts:get",
-	PROMPTS_CREATE: "prompts:create",
-	PROMPTS_UPDATE: "prompts:update",
-	PROMPTS_DELETE: "prompts:delete",
+	// User prompt snippets:已迁到通用 RPC 通道(promptsRouter),此处不再有常量。
 
 	// Network related
 	TEST_PROXY: "network:test-proxy",
 
-	// Models related (read from settings.json modelRegistry)
-	// Model registry
-	GET_MODELS_WITH_CAPABILITIES: "models:get-with-capabilities",
-	GET_ALL_MODELS: "models:get-all",
-	SEARCH_MODELS: "models:search",
-	REFRESH_MODEL_REGISTRY: "models:refresh-registry",
-	GET_MODEL_NAME_ALIASES: "models:get-name-aliases",
-	GET_MODEL_DISPLAY_NAME: "models:get-display-name",
-
-	// Providers related
-	GET_PROVIDERS: "providers:get-all",
-	GET_PROVIDER_USAGE: "providers:get-usage",
-	GET_PROVIDER_ENV_STATUS: "providers:get-env-status",
+	// Model registry 与 Providers:已迁到通用 RPC 通道(modelsRouter /
+	// providersRouter),此处不再有常量。
 
 	// Tools related
 	GET_TOOLS: "tools:get-all",
@@ -232,6 +207,8 @@ export const IPC_CHANNELS = {
 
 	// Image Preview related
 	LIST_MEDIA_ASSETS: "media:list-assets",
+	INGEST_MEDIA_FILES: "media:ingest-files",
+	SAVE_MEDIA_AS: "media:save-as",
 	HIDE_MEDIA_ASSET: "media:hide-asset",
 	REBUILD_MEDIA_LIBRARY: "media:rebuild-library",
 	GET_MEDIA_GALLERY: "media:get-gallery",
@@ -309,10 +286,7 @@ export const IPC_CHANNELS = {
 	VARIABLES_SET: "variables:set",
 	VARIABLES_DELETE: "variables:delete",
 
-	// Session goals
-	GOAL_GET: "goal:get",
-	GOAL_SET: "goal:set",
-	GOAL_DIFFS: "goal:diffs",
+	// Session goals:已迁到通用 RPC 通道(goalRouter)。实时变化仍走 session:goal-updated。
 
 	// Project directories — independent module
 	PROJECT_DIRS_LIST: "project-dirs:list",
@@ -320,6 +294,21 @@ export const IPC_CHANNELS = {
 	PROJECT_DIRS_ADD: "project-dirs:add",
 	PROJECT_DIRS_UPDATE: "project-dirs:update",
 	PROJECT_DIRS_REMOVE: "project-dirs:remove",
+
+	// Spaces (workspaces) — 独立模块,与 project-dirs 同形态
+	SPACES_LIST: "spaces:list",
+	SPACES_CREATE: "spaces:create",
+	SPACES_UPDATE: "spaces:update",
+	SPACES_REMOVE: "spaces:remove",
+	// per-space overlay(批 B2):身份改 update,配置层走这两条
+	SPACES_GET_OVERLAY: "spaces:get-overlay",
+	SPACES_SET_OVERLAY: "spaces:set-overlay",
+	// per-space provider 凭证池(批 B3):落盘在 workspaces/<id>/credentials.json,
+	// 与 overlay 分文件 —— 整空间导出默认剔除凭证
+	SPACES_GET_CREDENTIALS: "spaces:get-credentials",
+	SPACES_SET_CREDENTIAL: "spaces:set-credential",
+	SPACES_CLEAR_CREDENTIAL: "spaces:clear-credential",
+	SPACES_IMPORT_CREDENTIALS: "spaces:import-credentials",
 
 	// Plugin management
 	PLUGINS_LIST: "plugins:list",
@@ -397,17 +386,20 @@ export const IPC_CHANNELS = {
 	DEEPLINK_RESPOND: "deeplink:respond",
 
 	// Todo / Plan
-	TODO_PLAN_GET: "todo-plan:get",
-	TODO_PLAN_CREATE: "todo-plan:create",
-	TODO_PLAN_UPDATE: "todo-plan:update",
-	TODO_PLAN_RENAME: "todo-plan:rename",
-	TODO_PLAN_DELETE: "todo-plan:delete",
-	TODO_PLAN_REVEAL_DIRECTORY: "todo-plan:reveal-directory",
+	// 数据面(get/create/update/rename/delete/revealDirectory)已迁到通用 RPC 通道
+	// (todoPlanRouter);下面四条动窗口、一条推变更,是宿主原生的,留在这里。
 	TODO_PLAN_OPEN_WINDOW: "todo-plan:open-window",
 	TODO_PLAN_HIDE_WINDOW: "todo-plan:hide-window",
 	TODO_PLAN_TOGGLE_WINDOW: "todo-plan:toggle-window",
 	TODO_PLAN_SET_WINDOW_PINNED: "todo-plan:set-window-pinned",
 	TODO_PLAN_CHANGED: "todo-plan:changed",
+
+	// Scratchpad (per-session draft paper the AI silently perceives)
+	SCRATCHPAD_GET: "scratchpad:get",
+	SCRATCHPAD_UPDATE: "scratchpad:update",
+	SCRATCHPAD_DELETE: "scratchpad:delete",
+	SCRATCHPAD_ADOPT: "scratchpad:adopt",
+	SCRATCHPAD_CHANGED: "scratchpad:changed",
 
 	// Practice (kegel / pomodoro / exercise log)
 	PRACTICE_START: "practice:start",
@@ -460,9 +452,7 @@ export const IPC_CHANNELS = {
 	EVALS_ROUND_LIST: "evals:round-list",
 	EVALS_ROUND_REPLAY: "evals:round-replay",
 
-	// Token usage / billing
-	GET_USAGE_SUMMARY: "usage:get-summary",
-	GET_SESSION_USAGE: "usage:get-session",
+	// Token usage / billing moved to the generic RPC channel (usageRouter).
 
 	// Terminal (real PTY, user-driven; distinct from the ACP protocol "terminal")
 	TERMINAL_CREATE: "terminal:create",

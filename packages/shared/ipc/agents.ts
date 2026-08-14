@@ -1,3 +1,4 @@
+import { defineRouter } from './router.js'
 import type { PermissionMode } from './tools.js'
 
 export const DEFAULT_AGENT_ID = 'default'
@@ -199,3 +200,26 @@ export interface AgentRestoreResponse {
   agent?: AgentDefinition
   error?: string
 }
+
+/**
+ * Agent 档案 CRUD 域(主线 T1 第二批)。
+ *
+ * 纯数据面:五个方法全是 agents.json 的读写,零窗口、零流式、零事件推送。
+ * 「删除」的两条路(退休 vs 硬删)在 runtime 的 `deleteOnethingAgentFromRequestForIpc`
+ * 里判,传输面不参与 —— 这也是它能整只搬走的原因。
+ */
+export type AgentsRoutes = {
+  list: { input: Record<string, never>; output: AgentsListResponse }
+  create: { input: AgentCreateRequest; output: AgentCreateResponse }
+  update: { input: AgentUpdateRequest; output: AgentUpdateResponse }
+  delete: { input: AgentDeleteRequest; output: AgentDeleteResponse }
+  restore: { input: AgentRestoreRequest; output: AgentRestoreResponse }
+}
+
+export const agentsRouter = defineRouter<AgentsRoutes>('agents', [
+  'list',
+  'create',
+  'update',
+  'delete',
+  'restore',
+])

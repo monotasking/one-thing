@@ -9,7 +9,7 @@ import {
   type AgentRemovalOutcome,
 } from '@shared/ipc'
 import { agentTombstoneLabel } from '@onething/runtime/agents/model'
-import { platformApi } from '@/platform'
+import { agentsApi } from '@/platform/agents-client'
 
 export const DEFAULT_AGENT_ID = 'default'
 
@@ -172,7 +172,7 @@ export const useAgentsStore = defineStore('agents', () => {
     isLoading.value = true
     error.value = null
     const load = (async () => {
-      const response = await platformApi.listAgents()
+      const response = await agentsApi.listAgents()
       if (!response.success || !response.agents) {
         throw new Error(response.error || 'Failed to load agents')
       }
@@ -196,7 +196,7 @@ export const useAgentsStore = defineStore('agents', () => {
   }
 
   async function createAgent(name: string, systemPrompt = ''): Promise<AgentDefinition> {
-    const response = await platformApi.createAgent(name, systemPrompt)
+    const response = await agentsApi.createAgent(name, systemPrompt)
     if (!response.success || !response.agent) {
       throw new Error(response.error || 'Failed to create agent')
     }
@@ -206,7 +206,7 @@ export const useAgentsStore = defineStore('agents', () => {
   }
 
   async function updateAgent(agentId: string, updates: Omit<AgentUpdateRequest, 'agentId'>): Promise<AgentDefinition> {
-    const response = await platformApi.updateAgent(agentId, updates)
+    const response = await agentsApi.updateAgent(agentId, updates)
     if (!response.success || !response.agent) {
       throw new Error(response.error || 'Failed to update agent')
     }
@@ -221,7 +221,7 @@ export const useAgentsStore = defineStore('agents', () => {
    * 才真从列表里摘掉。返回 outcome 让调用方分文案:「已退休」不是「已删除」。
    */
   async function deleteAgent(agentId: string): Promise<AgentRemovalOutcome> {
-    const response = await platformApi.deleteAgent(agentId)
+    const response = await agentsApi.deleteAgent(agentId)
     if (!response.success) {
       throw new Error(response.error || 'Failed to delete agent')
     }
@@ -237,7 +237,7 @@ export const useAgentsStore = defineStore('agents', () => {
 
   /** 重新入职(§8)。只有 Agents 管理页调它 —— 社交面没有这个动作。 */
   async function restoreAgent(agentId: string): Promise<AgentDefinition> {
-    const response = await platformApi.restoreAgent(agentId)
+    const response = await agentsApi.restoreAgent(agentId)
     if (!response.success || !response.agent) {
       throw new Error(response.error || 'Failed to restore agent')
     }

@@ -12,20 +12,8 @@ import type {
 import type { ProxySettings } from '@shared/ipc/settings.js'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
 import { SessionStreamCoalescer } from '@onething/app/events/stream-coalescer.js'
-import { getServerChannelIdentityApi } from './runtime.js'
-import type {
-  ChannelIdentityCreateLinkRequest,
-  ChannelIdentityCreateProfileRequest,
-  ChannelIdentityDeleteLinkRequest,
-  ChannelIdentityListLinksRequest,
-  ChannelIdentityResolveRequest,
-  ChannelIdentityUpdateProfileRequest,
-  ChannelReplyDeliveryRecord,
-  ChannelUserLink,
-  ChannelUserProfile,
-  MessageOrigin,
-  ResolvedIdentity,
-} from '@shared/ipc/channel-identity.js'
+import { dispatchRpc } from '@onething/app/rpc/registry.js'
+import { RPC_ERROR_CODES, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
 
 export type OnethingServerRequestHandler = (
   request: IncomingMessage,
@@ -57,16 +45,6 @@ interface RouteContext {
 }
 
 type RouteHandler = (context: RouteContext) => Promise<void> | void
-type RuntimeChannelIdentityApi = {
-  listProfiles(): ChannelUserProfile[]
-  createProfile(input: ChannelIdentityCreateProfileRequest): ChannelUserProfile
-  updateProfile(input: ChannelIdentityUpdateProfileRequest): ChannelUserProfile
-  listLinks(filter?: ChannelIdentityListLinksRequest): ChannelUserLink[]
-  createLink(input: ChannelIdentityCreateLinkRequest): ChannelUserLink
-  deleteLink(id: string): boolean
-  resolve(origin: MessageOrigin): { identity: ResolvedIdentity; origin: MessageOrigin; sessionId?: string }
-  listDeliveries(): ChannelReplyDeliveryRecord[]
-}
 
 export function createOnethingHttpServer(options: OnethingHttpServerOptions): Server {
   return createServer(createOnethingServerRequestHandler(options))
@@ -126,8 +104,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'GET' && pathname === '/api/themes') return handleGetThemes
   if (method === 'POST' && pathname === '/api/themes/refresh') return handleRefreshThemes
   if (method === 'POST' && pathname === '/api/themes/open-folder') return handleOpenThemesFolder
-  if (method === 'GET' && pathname === '/api/prompts') return handleListPrompts
-  if (method === 'POST' && pathname === '/api/prompts') return handleCreatePrompt
   if (method === 'GET' && pathname === '/api/skills') return handleListSkills
   if (method === 'POST' && pathname === '/api/skills') return handleCreateSkill
   if (method === 'POST' && pathname === '/api/skills/refresh') return handleRefreshSkills
@@ -176,13 +152,12 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/acp/agents/disconnect') return handleACPDisconnectAgent
   if (method === 'POST' && pathname === '/api/acp/agents/refresh') return handleACPRefreshAgent
   if (method === 'POST' && pathname === '/api/acp/sessions/cancel') return handleACPCancelSession
-  if (method === 'POST' && pathname === '/api/todo-plan/get') return handleGetTodoPlan
-  if (method === 'POST' && pathname === '/api/todo-plan/create') return handleCreateTodoPlanNote
-  if (method === 'POST' && pathname === '/api/todo-plan/update') return handleUpdateTodoPlan
-  if (method === 'POST' && pathname === '/api/todo-plan/rename') return handleRenameTodoPlanNote
-  if (method === 'POST' && pathname === '/api/todo-plan/delete') return handleDeleteTodoPlanNote
-  if (method === 'POST' && pathname === '/api/todo-plan/reveal-directory') return handleRevealTodoPlanDirectory
   if (method === 'GET' && pathname === '/api/todo-plan/events') return handleTodoPlanEvents
+  if (method === 'POST' && pathname === '/api/scratchpad/get') return handleGetScratchpad
+  if (method === 'POST' && pathname === '/api/scratchpad/update') return handleUpdateScratchpad
+  if (method === 'POST' && pathname === '/api/scratchpad/delete') return handleDeleteScratchpad
+  if (method === 'POST' && pathname === '/api/scratchpad/adopt') return handleAdoptScratchpad
+  if (method === 'GET' && pathname === '/api/scratchpad/events') return handleScratchpadEvents
   if (method === 'GET' && pathname === '/api/scheduler/tasks') return handleListSchedulerTasks
   if (method === 'POST' && pathname === '/api/scheduler/tasks/get') return handleGetSchedulerTask
   if (method === 'POST' && pathname === '/api/scheduler/tasks/run-now') return handleRunSchedulerTaskNow
@@ -192,13 +167,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/scheduler/tasks/delete') return handleDeleteSchedulerTask
   if (method === 'POST' && pathname === '/api/scheduler/runs') return handleListSchedulerRuns
   if (method === 'POST' && pathname === '/api/scheduler/runs/get') return handleGetSchedulerRun
-  if (method === 'GET' && pathname === '/api/agents') return handleListAgents
-  if (method === 'POST' && pathname === '/api/agents') return handleCreateAgent
-  if (method === 'GET' && pathname === '/api/providers') return handleListProviders
-  if (method === 'GET' && pathname === '/api/models') return handleGetAllModels
-  if (method === 'POST' && pathname === '/api/models/search') return handleSearchModels
-  if (method === 'POST' && pathname === '/api/models/refresh') return handleRefreshModelRegistry
-  if (method === 'GET' && pathname === '/api/models/name-aliases') return handleGetModelNameAliases
   if (method === 'GET' && pathname === '/api/tools') return handleGetTools
   if (method === 'POST' && pathname === '/api/tools/execute') return handleExecuteTool
   if (method === 'POST' && pathname === '/api/tools/cancel') return handleCancelTool
@@ -237,8 +205,8 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/chat/title') return handleGenerateTitle
   if (method === 'POST' && pathname === '/api/chat/messages') return handleChatMessages
   if (method === 'POST' && pathname === '/api/chat/token-usage') return handleChatTokenUsage
-  if (method === 'POST' && pathname === '/api/usage/summary') return handleGetUsageSummary
-  if (method === 'POST' && pathname === '/api/usage/session') return handleGetSessionUsage
+  // 通用 RPC 单路由(主线 T0):所有 router 域走这一条,加域不再往本文件加路由。
+  if (method === 'POST' && pathname === '/api/rpc') return handleRpc
   if (method === 'POST' && pathname === '/api/chat/update-session-pin') return handleUpdateSessionPin
   if (method === 'POST' && pathname === '/api/chat/add-system-message') return handleAddSystemMessage
   if (method === 'POST' && pathname === '/api/chat/remove-system-marker') return handleRemoveSystemMarkerMessage
@@ -250,6 +218,7 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/project-dirs/update') return handleProjectDirsUpdate
   if (method === 'POST' && pathname === '/api/project-dirs/remove') return handleProjectDirsRemove
   if (method === 'GET' && pathname === '/api/media/assets') return handleListMediaAssets
+  if (method === 'POST' && pathname === '/api/media/ingest') return handleIngestMediaFiles
   if (method === 'POST' && pathname === '/api/media/assets/hide') return handleHideMediaAsset
   if (method === 'POST' && pathname === '/api/media/rebuild') return handleRebuildMediaLibrary
   if (method === 'POST' && pathname === '/api/media/gallery') return handleGetMediaGallery
@@ -262,14 +231,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/media/preview/get') return handleGetImagePreview
   if (method === 'POST' && pathname === '/api/media/gallery/open') return handleOpenImageGallery
   if (method === 'GET' && pathname === '/api/media/events') return handleMediaEvents
-  if (method === 'POST' && pathname === '/api/channel-identity/profiles/list') return handleChannelIdentityListProfiles
-  if (method === 'POST' && pathname === '/api/channel-identity/profiles/create') return handleChannelIdentityCreateProfile
-  if (method === 'POST' && pathname === '/api/channel-identity/profiles/update') return handleChannelIdentityUpdateProfile
-  if (method === 'POST' && pathname === '/api/channel-identity/links/list') return handleChannelIdentityListLinks
-  if (method === 'POST' && pathname === '/api/channel-identity/links/create') return handleChannelIdentityCreateLink
-  if (method === 'POST' && pathname === '/api/channel-identity/links/delete') return handleChannelIdentityDeleteLink
-  if (method === 'POST' && pathname === '/api/channel-identity/resolve') return handleChannelIdentityResolve
-  if (method === 'GET' && pathname === '/api/channel-identity/deliveries') return handleChannelDeliveryList
   if (method === 'GET' && pathname === '/api/sessions') return handleListSessions
   if (method === 'POST' && pathname === '/api/sessions') return handleCreateSession
   if (method === 'POST' && pathname === '/api/sessions/branch') return handleCreateBranch
@@ -287,14 +248,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
     const action = sessionPermissionMatch[2]
     if (method === 'GET' && action === 'pending') return withSessionId(sessionPermissionMatch[1], handleGetPendingPermissions)
     if (method === 'POST' && action === 'clear') return withSessionId(sessionPermissionMatch[1], handleClearSessionPermissions)
-  }
-
-  const promptMatch = pathname.match(/^\/api\/prompts\/([^/]+)(?:\/([^/]+))?$/)
-  if (promptMatch) {
-    const action = promptMatch[2]
-    if (method === 'GET' && !action) return withPromptId(promptMatch[1], handleGetPrompt)
-    if (method === 'POST' && action === 'update') return withPromptId(promptMatch[1], handleUpdatePrompt)
-    if (method === 'DELETE' && !action) return withPromptId(promptMatch[1], handleDeletePrompt)
   }
 
   const skillMatch = pathname.match(/^\/api\/skills\/([^/]+)(?:\/([^/]+))?$/)
@@ -355,27 +308,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
     return withBackgroundJobId(backgroundJobMatch[1], handleStopBackgroundJob)
   }
 
-  const agentMatch = pathname.match(/^\/api\/agents\/([^/]+)(?:\/([^/]+))?$/)
-  if (agentMatch) {
-    const action = agentMatch[2]
-    if (method === 'POST' && action === 'update') return withAgentId(agentMatch[1], handleUpdateAgent)
-    if (method === 'POST' && action === 'restore') return withAgentId(agentMatch[1], handleRestoreAgent)
-    if (method === 'DELETE' && !action) return withAgentId(agentMatch[1], handleDeleteAgent)
-  }
-
-  const providerMatch = pathname.match(/^\/api\/providers\/([^/]+)\/([^/]+)$/)
-  if (providerMatch) {
-    const action = providerMatch[2]
-    if (method === 'GET' && action === 'usage') return withProviderId(providerMatch[1], handleGetProviderUsage)
-    if (method === 'GET' && action === 'env-status') return withProviderId(providerMatch[1], handleGetProviderEnvStatus)
-    if (method === 'GET' && action === 'models') return withProviderId(providerMatch[1], handleGetModelsWithCapabilities)
-  }
-
-  const modelDisplayMatch = pathname.match(/^\/api\/models\/([^/]+)\/display-name$/)
-  if (modelDisplayMatch && method === 'GET') {
-    return withModelId(modelDisplayMatch[1], handleGetModelDisplayName)
-  }
-
   const permissionMatch = pathname.match(/^\/api\/permissions\/([^/]+)\/respond$/)
   if (permissionMatch && method === 'POST') {
     return withRequestId(permissionMatch[1], handlePermissionResponse)
@@ -432,20 +364,6 @@ function withThemeId(encodedThemeId: string, handler: RouteHandler): RouteHandle
   }
 }
 
-function withAgentId(encodedAgentId: string, handler: RouteHandler): RouteHandler {
-  return (context) => {
-    context.url.searchParams.set('agentId', decodeURIComponent(encodedAgentId))
-    return handler(context)
-  }
-}
-
-function withPromptId(encodedPromptId: string, handler: RouteHandler): RouteHandler {
-  return (context) => {
-    context.url.searchParams.set('promptId', decodeURIComponent(encodedPromptId))
-    return handler(context)
-  }
-}
-
 function withSkillId(encodedSkillId: string, handler: RouteHandler): RouteHandler {
   return (context) => {
     context.url.searchParams.set('skillId', decodeURIComponent(encodedSkillId))
@@ -461,20 +379,6 @@ function withPluginRequestTarget(
   return (context) => {
     context.url.searchParams.set('pluginId', decodeURIComponent(encodedPluginId))
     context.url.searchParams.set('action', decodeURIComponent(encodedAction))
-    return handler(context)
-  }
-}
-
-function withProviderId(encodedProviderId: string, handler: RouteHandler): RouteHandler {
-  return (context) => {
-    context.url.searchParams.set('providerId', decodeURIComponent(encodedProviderId))
-    return handler(context)
-  }
-}
-
-function withModelId(encodedModelId: string, handler: RouteHandler): RouteHandler {
-  return (context) => {
-    context.url.searchParams.set('modelId', decodeURIComponent(encodedModelId))
     return handler(context)
   }
 }
@@ -656,19 +560,34 @@ async function handleChatTokenUsage(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await adapter.getTokenUsage(body?.sessionId ?? '', context.requestContext), context.corsOrigin)
 }
 
-async function handleGetUsageSummary(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.usage
-  if (!adapter) return sendNotImplemented(context, 'usage.getSummary')
-  const body = await readJson<{ granularity?: 'day' | 'week' | 'month'; count?: number }>(context.request)
-  const granularity = body?.granularity === 'week' || body?.granularity === 'month' ? body.granularity : 'day'
-  sendJson(context.response, 200, await adapter.getSummary({ granularity, count: body?.count }, context.requestContext), context.corsOrigin)
-}
-
-async function handleGetSessionUsage(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.usage
-  if (!adapter) return sendNotImplemented(context, 'usage.getSessionUsage')
-  const body = await readJson<{ sessionId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.getSessionUsage(body?.sessionId ?? '', context.requestContext), context.corsOrigin)
+/**
+ * The generic RPC adapter — server half (主线 T0).
+ *
+ * One route for every domain, forever. It sits behind the same bearer-auth
+ * gate as every other `/api` route (checked in the request handler before any
+ * route matching) and hands the envelope straight to the assembly layer's
+ * dispatch table; nothing about a domain is known here.
+ *
+ * Always 200 with an `RpcResponse` body: the failure shape must be identical
+ * across IPC and HTTP, and the renderer client is the one place that turns
+ * `{ ok:false }` into a throw. A malformed body is an RPC-level error too, not
+ * an HTTP one.
+ */
+async function handleRpc(context: RouteContext): Promise<void> {
+  let request: RpcRequest
+  try {
+    request = await readJson<RpcRequest>(context.request)
+  } catch (error) {
+    sendJson(context.response, 200, {
+      ok: false,
+      error: {
+        message: `Invalid RPC request body: ${error instanceof Error ? error.message : String(error)}`,
+        code: RPC_ERROR_CODES.BAD_REQUEST,
+      },
+    } satisfies RpcResponse, context.corsOrigin)
+    return
+  }
+  sendJson(context.response, 200, await dispatchRpc(request), context.corsOrigin)
 }
 
 async function handleUpdateSessionPin(context: RouteContext): Promise<void> {
@@ -737,15 +656,20 @@ async function handleProjectDirsGet(context: RouteContext): Promise<void> {
 async function handleProjectDirsAdd(context: RouteContext): Promise<void> {
   const adapter = context.runtime.projectDirs
   if (!adapter?.add) return sendNotImplemented(context, 'projectDirs.add')
-  const body = await readJson<{ path?: string; description?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.add(body?.path ?? '', body?.description, context.requestContext), context.corsOrigin)
+  const body = await readJson<{ path?: string; description?: string; paths?: string[] }>(context.request)
+  sendJson(context.response, 200, await adapter.add(body?.path ?? '', body?.description, context.requestContext, body?.paths), context.corsOrigin)
 }
 
 async function handleProjectDirsUpdate(context: RouteContext): Promise<void> {
   const adapter = context.runtime.projectDirs
   if (!adapter?.update) return sendNotImplemented(context, 'projectDirs.update')
-  const body = await readJson<{ path?: string; description?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.update(body?.path ?? '', body?.description ?? '', context.requestContext), context.corsOrigin)
+  const body = await readJson<{ path?: string; description?: string; paths?: string[] }>(context.request)
+  sendJson(
+    context.response,
+    200,
+    await adapter.update(body?.path ?? '', { description: body?.description, paths: body?.paths }, context.requestContext),
+    context.corsOrigin,
+  )
 }
 
 async function handleProjectDirsRemove(context: RouteContext): Promise<void> {
@@ -759,6 +683,13 @@ async function handleListMediaAssets(context: RouteContext): Promise<void> {
   const adapter = context.runtime.media
   if (!adapter?.listAssets) return sendNotImplemented(context, 'media.listAssets')
   sendJson(context.response, 200, await adapter.listAssets(readMediaQuery(context), context.requestContext), context.corsOrigin)
+}
+
+async function handleIngestMediaFiles(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.media
+  if (!adapter?.ingestFiles) return sendNotImplemented(context, 'media.ingestFiles')
+  // 请求整体透传:files/source/links 是共享契约,拆字段只会让服务端悄悄吞掉新字段。
+  sendJson(context.response, 200, await adapter.ingestFiles(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
 async function handleHideMediaAsset(context: RouteContext): Promise<void> {
@@ -832,66 +763,6 @@ async function handleOpenImageGallery(context: RouteContext): Promise<void> {
   if (!adapter?.openGallery) return sendNotImplemented(context, 'media.openGallery')
   const body = await readJson<{ mediaId?: string }>(context.request)
   sendJson(context.response, 200, await adapter.openGallery(body?.mediaId ?? '', context.requestContext), context.corsOrigin)
-}
-
-function getChannelIdentityApi(context: RouteContext): RuntimeChannelIdentityApi | undefined {
-  return getServerChannelIdentityApi(context.runtime) as RuntimeChannelIdentityApi | undefined
-}
-
-function handleChannelIdentityListProfiles(context: RouteContext): void {
-  const api = getChannelIdentityApi(context)
-  if (!api) return sendNotImplemented(context, 'channelIdentity.listProfiles')
-  sendJson(context.response, 200, { success: true, profiles: api.listProfiles() }, context.corsOrigin)
-}
-
-async function handleChannelIdentityCreateProfile(context: RouteContext): Promise<void> {
-  const api = getChannelIdentityApi(context)
-  if (!api) return sendNotImplemented(context, 'channelIdentity.createProfile')
-  const body = await readJson<ChannelIdentityCreateProfileRequest>(context.request)
-  sendJson(context.response, 200, { success: true, profile: api.createProfile(body) }, context.corsOrigin)
-}
-
-async function handleChannelIdentityUpdateProfile(context: RouteContext): Promise<void> {
-  const api = getChannelIdentityApi(context)
-  if (!api) return sendNotImplemented(context, 'channelIdentity.updateProfile')
-  const body = await readJson<ChannelIdentityUpdateProfileRequest>(context.request)
-  sendJson(context.response, 200, { success: true, profile: api.updateProfile(body) }, context.corsOrigin)
-}
-
-async function handleChannelIdentityListLinks(context: RouteContext): Promise<void> {
-  const api = getChannelIdentityApi(context)
-  if (!api) return sendNotImplemented(context, 'channelIdentity.listLinks')
-  const body = await readJson<ChannelIdentityListLinksRequest>(context.request)
-  sendJson(context.response, 200, { success: true, links: api.listLinks(body ?? {}) }, context.corsOrigin)
-}
-
-async function handleChannelIdentityCreateLink(context: RouteContext): Promise<void> {
-  const api = getChannelIdentityApi(context)
-  if (!api) return sendNotImplemented(context, 'channelIdentity.createLink')
-  const body = await readJson<ChannelIdentityCreateLinkRequest>(context.request)
-  sendJson(context.response, 200, { success: true, link: api.createLink(body) }, context.corsOrigin)
-}
-
-async function handleChannelIdentityDeleteLink(context: RouteContext): Promise<void> {
-  const api = getChannelIdentityApi(context)
-  if (!api) return sendNotImplemented(context, 'channelIdentity.deleteLink')
-  const body = await readJson<ChannelIdentityDeleteLinkRequest>(context.request)
-  const deleted = api.deleteLink(body.id)
-  sendJson(context.response, 200, deleted ? { success: true } : { success: false, error: 'Channel user link not found' }, context.corsOrigin)
-}
-
-async function handleChannelIdentityResolve(context: RouteContext): Promise<void> {
-  const api = getChannelIdentityApi(context)
-  if (!api) return sendNotImplemented(context, 'channelIdentity.resolve')
-  const body = await readJson<ChannelIdentityResolveRequest>(context.request)
-  const resolved = api.resolve(body.origin)
-  sendJson(context.response, 200, { success: true, ...resolved }, context.corsOrigin)
-}
-
-function handleChannelDeliveryList(context: RouteContext): void {
-  const api = getChannelIdentityApi(context)
-  if (!api) return sendNotImplemented(context, 'channelIdentity.deliveries')
-  sendJson(context.response, 200, { success: true, deliveries: api.listDeliveries() }, context.corsOrigin)
 }
 
 async function handleReadMediaFile(context: RouteContext): Promise<void> {
@@ -991,40 +862,6 @@ async function handleGetSystemPromptSnapshot(context: RouteContext): Promise<voi
     await adapter.getSystemPromptSnapshot(readSessionId(context), context.requestContext),
     context.corsOrigin,
   )
-}
-
-async function handleListPrompts(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.prompts
-  if (!adapter?.list) return sendNotImplemented(context, 'prompts.list')
-  sendJson(context.response, 200, await adapter.list(context.requestContext), context.corsOrigin)
-}
-
-async function handleGetPrompt(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.prompts
-  if (!adapter?.get) return sendNotImplemented(context, 'prompts.get')
-  sendJson(context.response, 200, await adapter.get({ id: readPromptId(context) }, context.requestContext), context.corsOrigin)
-}
-
-async function handleCreatePrompt(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.prompts
-  if (!adapter?.create) return sendNotImplemented(context, 'prompts.create')
-  sendJson(context.response, 200, await adapter.create(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleUpdatePrompt(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.prompts
-  if (!adapter?.update) return sendNotImplemented(context, 'prompts.update')
-  const body = await readJson<JsonObject>(context.request) ?? {}
-  sendJson(context.response, 200, await adapter.update({
-    ...body,
-    id: readPromptId(context),
-  }, context.requestContext), context.corsOrigin)
-}
-
-async function handleDeletePrompt(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.prompts
-  if (!adapter?.delete) return sendNotImplemented(context, 'prompts.delete')
-  sendJson(context.response, 200, await adapter.delete({ id: readPromptId(context) }, context.requestContext), context.corsOrigin)
 }
 
 async function handleListSkills(context: RouteContext): Promise<void> {
@@ -1419,40 +1256,28 @@ async function handleACPCancelSession(context: RouteContext): Promise<void> {
   )
 }
 
-async function handleGetTodoPlan(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.todoPlan
-  if (!adapter) return sendNotImplemented(context, 'todoPlan.get')
+async function handleGetScratchpad(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.scratchpad
+  if (!adapter) return sendNotImplemented(context, 'scratchpad.get')
   sendJson(context.response, 200, await adapter.get(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
-async function handleCreateTodoPlanNote(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.todoPlan
-  if (!adapter?.createNote) return sendNotImplemented(context, 'todoPlan.createNote')
-  sendJson(context.response, 200, await adapter.createNote(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleUpdateTodoPlan(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.todoPlan
-  if (!adapter?.update) return sendNotImplemented(context, 'todoPlan.update')
+async function handleUpdateScratchpad(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.scratchpad
+  if (!adapter?.update) return sendNotImplemented(context, 'scratchpad.update')
   sendJson(context.response, 200, await adapter.update(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
-async function handleRenameTodoPlanNote(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.todoPlan
-  if (!adapter?.renameNote) return sendNotImplemented(context, 'todoPlan.renameNote')
-  sendJson(context.response, 200, await adapter.renameNote(await readJson(context.request), context.requestContext), context.corsOrigin)
+async function handleDeleteScratchpad(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.scratchpad
+  if (!adapter?.delete) return sendNotImplemented(context, 'scratchpad.delete')
+  sendJson(context.response, 200, await adapter.delete(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
-async function handleDeleteTodoPlanNote(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.todoPlan
-  if (!adapter?.deleteNote) return sendNotImplemented(context, 'todoPlan.deleteNote')
-  sendJson(context.response, 200, await adapter.deleteNote(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleRevealTodoPlanDirectory(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.todoPlan
-  if (!adapter?.revealDirectory) return sendNotImplemented(context, 'todoPlan.revealDirectory')
-  sendJson(context.response, 200, await adapter.revealDirectory(context.requestContext), context.corsOrigin)
+async function handleAdoptScratchpad(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.scratchpad
+  if (!adapter?.adopt) return sendNotImplemented(context, 'scratchpad.adopt')
+  sendJson(context.response, 200, await adapter.adopt(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
 async function handleListSchedulerTasks(context: RouteContext): Promise<void> {
@@ -1507,109 +1332,6 @@ async function handleGetSchedulerRun(context: RouteContext): Promise<void> {
   const adapter = context.runtime.scheduler
   if (!adapter?.getRun) return sendNotImplemented(context, 'scheduler.getRun')
   sendJson(context.response, 200, await adapter.getRun(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleListAgents(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.agents
-  if (!adapter) return sendNotImplemented(context, 'agents.list')
-  sendJson(context.response, 200, await adapter.list(context.requestContext), context.corsOrigin)
-}
-
-async function handleCreateAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.agents
-  if (!adapter?.create) return sendNotImplemented(context, 'agents.create')
-  sendJson(context.response, 200, await adapter.create(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleUpdateAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.agents
-  if (!adapter?.update) return sendNotImplemented(context, 'agents.update')
-  const body = await readJson<JsonObject>(context.request) ?? {}
-  sendJson(context.response, 200, await adapter.update({
-    ...body,
-    agentId: readAgentId(context),
-  }, context.requestContext), context.corsOrigin)
-}
-
-/** 退休或硬删(agent-domain-model.md §3.2);响应带 outcome,web 端照 desktop 分文案。 */
-async function handleDeleteAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.agents
-  if (!adapter?.delete) return sendNotImplemented(context, 'agents.delete')
-  sendJson(context.response, 200, await adapter.delete({ agentId: readAgentId(context) }, context.requestContext), context.corsOrigin)
-}
-
-/** 重新入职(§8)。刻意是独立动作而不是 update 的一个字段:生命周期只经语义变更。 */
-async function handleRestoreAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.agents
-  if (!adapter?.restore) return sendNotImplemented(context, 'agents.restore')
-  sendJson(context.response, 200, await adapter.restore({ agentId: readAgentId(context) }, context.requestContext), context.corsOrigin)
-}
-
-async function handleListProviders(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.providers
-  if (!adapter) return sendNotImplemented(context, 'providers.list')
-  sendJson(context.response, 200, await adapter.list(context.requestContext), context.corsOrigin)
-}
-
-async function handleGetProviderUsage(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.providers
-  if (!adapter) return sendNotImplemented(context, 'providers.usage')
-  sendJson(context.response, 200, await adapter.usage(readProviderId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleGetProviderEnvStatus(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.providers
-  if (!adapter) return sendNotImplemented(context, 'providers.envStatus')
-  sendJson(context.response, 200, await adapter.envStatus(readProviderId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleGetModelsWithCapabilities(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.providers
-  if (!adapter) return sendNotImplemented(context, 'providers.getModelsWithCapabilities')
-  sendJson(
-    context.response,
-    200,
-    await adapter.getModelsWithCapabilities(readProviderId(context), {
-      forceRefresh: context.url.searchParams.get('forceRefresh') === 'true',
-    }, context.requestContext),
-    context.corsOrigin,
-  )
-}
-
-async function handleGetAllModels(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.providers
-  if (!adapter) return sendNotImplemented(context, 'providers.getAllModels')
-  sendJson(context.response, 200, await adapter.getAllModels(context.requestContext), context.corsOrigin)
-}
-
-async function handleSearchModels(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.providers
-  if (!adapter) return sendNotImplemented(context, 'providers.searchModels')
-  const body = await readJson<{ query?: string; providerId?: string }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.searchModels(body?.query || '', body?.providerId, context.requestContext),
-    context.corsOrigin,
-  )
-}
-
-async function handleRefreshModelRegistry(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.providers
-  if (!adapter) return sendNotImplemented(context, 'providers.refreshModelRegistry')
-  sendJson(context.response, 200, await adapter.refreshModelRegistry(context.requestContext), context.corsOrigin)
-}
-
-async function handleGetModelNameAliases(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.providers
-  if (!adapter) return sendNotImplemented(context, 'providers.getModelNameAliases')
-  sendJson(context.response, 200, await adapter.getModelNameAliases(context.requestContext), context.corsOrigin)
-}
-
-async function handleGetModelDisplayName(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.providers
-  if (!adapter) return sendNotImplemented(context, 'providers.getModelDisplayName')
-  sendJson(context.response, 200, await adapter.getModelDisplayName(readModelId(context), context.requestContext), context.corsOrigin)
 }
 
 async function handleGetTools(context: RouteContext): Promise<void> {
@@ -2053,6 +1775,32 @@ function handleEvents(context: RouteContext): void {
   })
 }
 
+function handleScratchpadEvents(context: RouteContext): void {
+  const adapter = context.runtime.scratchpad
+  if (!adapter?.subscribeChanged) {
+    sendNotImplemented(context, 'scratchpad.subscribeChanged')
+    return
+  }
+
+  context.response.writeHead(200, {
+    ...corsHeaders(context.corsOrigin),
+    'content-type': 'text/event-stream',
+    'cache-control': 'no-cache',
+    'x-accel-buffering': 'no',
+    connection: 'keep-alive',
+  })
+  context.response.flushHeaders()
+  context.response.write(': connected\n\n')
+
+  const unsubscribe = adapter.subscribeChanged((payload: unknown) => {
+    writeSse(context.response, 'scratchpad:changed', payload)
+  }, context.requestContext)
+
+  context.request.on('close', () => {
+    unsubscribe()
+  })
+}
+
 function handleTodoPlanEvents(context: RouteContext): void {
   const adapter = context.runtime.todoPlan
   if (!adapter?.subscribeChanged) {
@@ -2162,24 +1910,8 @@ function readThemeId(context: RouteContext): string {
   return context.url.searchParams.get('themeId') || ''
 }
 
-function readAgentId(context: RouteContext): string {
-  return context.url.searchParams.get('agentId') || ''
-}
-
-function readPromptId(context: RouteContext): string {
-  return context.url.searchParams.get('promptId') || ''
-}
-
 function readSkillId(context: RouteContext): string {
   return context.url.searchParams.get('skillId') || ''
-}
-
-function readProviderId(context: RouteContext): string {
-  return context.url.searchParams.get('providerId') || ''
-}
-
-function readModelId(context: RouteContext): string {
-  return context.url.searchParams.get('modelId') || ''
 }
 
 function readMediaQuery(context: RouteContext): Record<string, unknown> {

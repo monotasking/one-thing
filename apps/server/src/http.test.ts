@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createOnethingRuntimeFacade } from '@onething/core'
+import { defineRouter } from '@onething/core/ipc'
 import type { CorePluginCommandContext } from '@onething/core/plugins'
+import { registerRouterHandlers, resetRpcRegistryForTests } from '@onething/app/rpc/registry.js'
 import { resetPermissionGrantsForTests } from '@onething/core/permission'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import type { MCPServerConfig, MCPServerState } from '@shared/ipc/mcp.js'
@@ -1157,18 +1159,6 @@ describe('createOnethingHttpServer', () => {
     const removeSystemMarkerMessage = vi.fn(async () => ({ success: true, removedId: 'system-1' }))
     const removeMessage = vi.fn(async () => ({ success: true }))
     const updateMessageThinkingTime = vi.fn(async () => ({ success: true }))
-    const getUsageSummary = vi.fn(async () => ({
-      granularity: 'day',
-      buckets: [{ records: 0, apiCostUSD: 0, subscriptionCostUSD: 0 }],
-      totalApiCostUSD: 0,
-      totalSubscriptionCostUSD: 0,
-    }))
-    const getSessionUsage = vi.fn(async () => ({
-      apiCostUSD: 0,
-      subscriptionCostUSD: 0,
-      turnCount: 0,
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: 0 },
-    }))
     const runtime = createOnethingRuntimeFacade({
       sessions: {
         list: async () => ({ success: true, sessions: [] }),
@@ -1184,10 +1174,6 @@ describe('createOnethingHttpServer', () => {
         removeSystemMarkerMessage,
         removeMessage,
         updateMessageThinkingTime,
-      },
-      usage: {
-        getSummary: getUsageSummary,
-        getSessionUsage,
       },
       commands: {
         emit: async () => ({ success: true }),
@@ -1238,31 +1224,6 @@ describe('createOnethingHttpServer', () => {
         contextSize: 1,
       },
     })
-    await expect(fetchJson(`${baseUrlValue}/api/usage/summary`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ granularity: 'day', count: 3 }),
-    })).resolves.toEqual({
-      granularity: 'day',
-      buckets: [{ records: 0, apiCostUSD: 0, subscriptionCostUSD: 0 }],
-      totalApiCostUSD: 0,
-      totalSubscriptionCostUSD: 0,
-    })
-    expect(getUsageSummary).toHaveBeenCalledWith(
-      { granularity: 'day', count: 3 },
-      expect.anything(),
-    )
-    await expect(fetchJson(`${baseUrlValue}/api/usage/session`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId: 'session-1' }),
-    })).resolves.toEqual({
-      apiCostUSD: 0,
-      subscriptionCostUSD: 0,
-      turnCount: 0,
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: 0 },
-    })
-    expect(getSessionUsage).toHaveBeenCalledWith('session-1', expect.anything())
     await expect(fetchJson(`${baseUrlValue}/api/chat/update-session-pin`, {
       method: 'POST',
       headers: jsonHeaders,
@@ -2358,63 +2319,14 @@ describe('createOnethingHttpServer', () => {
     expect(openThemesFolder).toHaveBeenCalledWith(expect.any(Object))
   })
 
-  it('routes prompt and todo-plan REST calls through the runtime facade', async () => {
+  it('routes the system-prompt snapshot through the runtime facade', async () => {
+    // agents / providers / models 三个域已迁到通用 RPC 通道(主线 T1 第二批),
+    // 它们的 HTTP 路由与 facade 适配器整只拔除,不留双轨 —— 所以这里只剩
+    // system-prompt 快照这一条还走 facade 的路。
     const getSystemPromptSnapshot = vi.fn(async (sessionId: string) => ({
       success: true,
       snapshot: { sessionId },
     }))
-    const getTodoPlan = vi.fn(async (request: unknown) => ({
-      success: true,
-      snapshot: { directory: '/todo', userNotes: [], request },
-    }))
-    const createNote = vi.fn(async (request: unknown) => ({
-      success: true,
-      document: { id: 'note-1', request },
-    }))
-    const update = vi.fn(async (request: unknown) => ({
-      success: true,
-      document: { id: 'session-ai-todo', request },
-    }))
-    const renameNote = vi.fn(async (request: unknown) => ({
-      success: true,
-      document: { id: 'renamed', request },
-    }))
-    const deleteNote = vi.fn(async () => ({ success: true }))
-    const revealDirectory = vi.fn(async () => ({ success: false, error: 'not available' }))
-    const listAgents = vi.fn(async () => ({
-      success: true,
-      agents: [{ id: 'default', name: 'Default Agent' }],
-    }))
-    const createAgent = vi.fn(async (request: unknown) => ({
-      success: true,
-      agent: { id: 'agent-1', request },
-    }))
-    const updateAgent = vi.fn(async (request: unknown) => ({
-      success: true,
-      agent: { id: 'agent-1', request },
-    }))
-    const deleteAgent = vi.fn(async (request: unknown) => ({
-      success: true,
-      request,
-    }))
-    const listProviders = vi.fn(async () => ({ success: true, providers: [{ id: 'local' }] }))
-    const providerUsage = vi.fn(async (providerId: string) => ({ success: true, providerId, unsupported: true }))
-    const providerEnvStatus = vi.fn(async (providerId: string) => ({
-      success: true,
-      status: { providerId, candidates: [] },
-    }))
-    const getModelsWithCapabilities = vi.fn(async (providerId: string, options?: { forceRefresh?: boolean }) => ({
-      success: true,
-      models: [{ id: `${providerId}-model`, options }],
-    }))
-    const getAllModels = vi.fn(async () => ({ success: true, models: [{ id: 'local-echo' }] }))
-    const searchModels = vi.fn(async (query: string, providerId?: string) => ({
-      success: true,
-      models: [{ id: 'local-echo', query, providerId }],
-    }))
-    const refreshModelRegistry = vi.fn(async () => ({ success: true }))
-    const getModelNameAliases = vi.fn(async () => ({ success: true, aliases: { 'local-echo': 'Local Echo' } }))
-    const getModelDisplayName = vi.fn(async (modelId: string) => ({ success: true, displayName: modelId }))
     const server = await listen(createOnethingHttpServer({
       runtime: createOnethingRuntimeFacade({
         sessions: {
@@ -2430,31 +2342,6 @@ describe('createOnethingHttpServer', () => {
         prompts: {
           getSystemPromptSnapshot,
         },
-        todoPlan: {
-          get: getTodoPlan,
-          createNote,
-          update,
-          renameNote,
-          deleteNote,
-          revealDirectory,
-        },
-        agents: {
-          list: listAgents,
-          create: createAgent,
-          update: updateAgent,
-          delete: deleteAgent,
-        },
-        providers: {
-          list: listProviders,
-          usage: providerUsage,
-          envStatus: providerEnvStatus,
-          getModelsWithCapabilities,
-          getAllModels,
-          searchModels,
-          refreshModelRegistry,
-          getModelNameAliases,
-          getModelDisplayName,
-        },
       }),
     }))
 
@@ -2462,142 +2349,11 @@ describe('createOnethingHttpServer', () => {
       success: true,
       snapshot: { sessionId: 'session-1' },
     })
-    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/get`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'session-1' }),
-    })).resolves.toEqual({
-      success: true,
-      snapshot: {
-        directory: '/todo',
-        userNotes: [],
-        request: { sessionId: 'session-1' },
-      },
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/create`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'Plan' }),
-    })).resolves.toEqual({
-      success: true,
-      document: { id: 'note-1', request: { title: 'Plan' } },
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/update`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ scope: 'session-ai-todo', content: '- [ ] Ship' }),
-    })).resolves.toEqual({
-      success: true,
-      document: {
-        id: 'session-ai-todo',
-        request: { scope: 'session-ai-todo', content: '- [ ] Ship' },
-      },
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/rename`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 'note-1', title: 'Next' }),
-    })).resolves.toEqual({
-      success: true,
-      document: { id: 'renamed', request: { id: 'note-1', title: 'Next' } },
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/delete`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 'note-1' }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/reveal-directory`, {
-      method: 'POST',
-    })).resolves.toEqual({
-      success: false,
-      error: 'not available',
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/agents`)).resolves.toEqual({
-      success: true,
-      agents: [{ id: 'default', name: 'Default Agent' }],
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/agents`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Reviewer', systemPrompt: 'Review carefully' }),
-    })).resolves.toEqual({
-      success: true,
-      agent: {
-        id: 'agent-1',
-        request: { name: 'Reviewer', systemPrompt: 'Review carefully' },
-      },
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/agents/agent-1/update`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Builder' }),
-    })).resolves.toEqual({
-      success: true,
-      agent: {
-        id: 'agent-1',
-        request: { name: 'Builder', agentId: 'agent-1' },
-      },
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/agents/agent-1`, {
-      method: 'DELETE',
-    })).resolves.toEqual({
-      success: true,
-      request: { agentId: 'agent-1' },
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/providers`)).resolves.toEqual({
-      success: true,
-      providers: [{ id: 'local' }],
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/providers/codex/usage`)).resolves.toEqual({
-      success: true,
-      providerId: 'codex',
-      unsupported: true,
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/providers/openai/env-status`)).resolves.toEqual({
-      success: true,
-      status: { providerId: 'openai', candidates: [] },
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/providers/local/models?forceRefresh=true`)).resolves.toEqual({
-      success: true,
-      models: [{ id: 'local-model', options: { forceRefresh: true } }],
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/models`)).resolves.toEqual({
-      success: true,
-      models: [{ id: 'local-echo' }],
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/models/search`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ query: 'echo', providerId: 'local' }),
-    })).resolves.toEqual({
-      success: true,
-      models: [{ id: 'local-echo', query: 'echo', providerId: 'local' }],
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/models/refresh`, {
-      method: 'POST',
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrl(server)}/api/models/name-aliases`)).resolves.toEqual({
-      success: true,
-      aliases: { 'local-echo': 'Local Echo' },
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/models/local-echo/display-name`)).resolves.toEqual({
-      success: true,
-      displayName: 'local-echo',
-    })
 
     expect(getSystemPromptSnapshot).toHaveBeenCalledWith('session-1', expect.objectContaining({
       userId: 'local-user',
       workspaceId: 'default',
     }))
-    expect(getTodoPlan).toHaveBeenCalledWith({ sessionId: 'session-1' }, expect.any(Object))
-    expect(revealDirectory).toHaveBeenCalledWith(expect.any(Object))
-    expect(listAgents).toHaveBeenCalledWith(expect.any(Object))
-    expect(updateAgent).toHaveBeenCalledWith({ name: 'Builder', agentId: 'agent-1' }, expect.any(Object))
-    expect(deleteAgent).toHaveBeenCalledWith({ agentId: 'agent-1' }, expect.any(Object))
-    expect(providerUsage).toHaveBeenCalledWith('codex', expect.any(Object))
-    expect(getModelsWithCapabilities).toHaveBeenCalledWith('local', { forceRefresh: true }, expect.any(Object))
-    expect(searchModels).toHaveBeenCalledWith('echo', 'local', expect.any(Object))
-    expect(getModelDisplayName).toHaveBeenCalledWith('local-echo', expect.any(Object))
   })
 
   it('exposes sandboxed read-only tool routes for the web runtime', async () => {
@@ -3505,7 +3261,16 @@ describe('createOnethingHttpServer', () => {
 	    expect(bobSessionSse).not.toContain('session:stream')
 	  })
 
-	  it('manages user prompts through owner-scoped server runtime stores', async () => {
+	  /**
+	   * 片段的增删改查已迁到通用 RPC 通道(promptsRouter),`/api/prompts*` 五条路由
+	   * 连同 server 的 per-owner 片段库一起拔除。这条测试把**新事实**钉住:那些
+	   * 路径必须是 404,而不是悄悄留一条旧轨。
+	   *
+	   * 原测试断言的是 alice/bob 各自一份片段库——那条隔离随路由一起没了(信封不带
+	   * request context,单用户前提下三宿主共用 `<store>/prompts.json`)。域本身的
+	   * 行为改由 `src/app/rpc/__tests__/prompts-domain.test.ts` 守。
+	   */
+	  it('no longer serves the retired /api/prompts REST surface', async () => {
 	    const dataRoot = await createTempDir('onething-prompts-')
 	    const serverRuntime = await createTestServerRuntime({ dataRoot })
 	    runtimes.push(serverRuntime)
@@ -3515,87 +3280,12 @@ describe('createOnethingHttpServer', () => {
 	    }))
 
 	    const aliceHeaders = contextHeaders('alice', 'workspace-prompts')
-	    const bobHeaders = contextHeaders('bob', 'workspace-prompts')
-	    const created = await fetchJson(`${baseUrl(server)}/api/prompts`, {
-	      method: 'POST',
-	      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-	      body: JSON.stringify({
-	        title: 'Reusable Review',
-	        body: 'Review this carefully.',
-	        tags: ['review', 'review', ' code '],
-	      }),
-	    })
-	    const promptId = created.prompt?.id
-	    expect(created).toEqual(expect.objectContaining({
-	      success: true,
-	      prompt: expect.objectContaining({
-	        title: 'Reusable Review',
-	        body: 'Review this carefully.',
-	        tags: ['review', 'code'],
-	      }),
-	    }))
-	    expect(promptId).toBeTruthy()
-
 	    await expect(fetchJson(`${baseUrl(server)}/api/prompts`, {
 	      headers: aliceHeaders,
-	    })).resolves.toEqual({
-	      success: true,
-	      prompts: [
-	        expect.objectContaining({
-	          id: promptId,
-	          title: 'Reusable Review',
-	        }),
-	      ],
-	    })
-
-	    await expect(fetchJson(`${baseUrl(server)}/api/prompts/${encodeURIComponent(promptId!)}`, {
+	    })).resolves.toEqual({ success: false, error: 'Not found' })
+	    await expect(fetchJson(`${baseUrl(server)}/api/prompts/prompt-1`, {
 	      headers: aliceHeaders,
-	    })).resolves.toEqual({
-	      success: true,
-	      prompt: expect.objectContaining({
-	        id: promptId,
-	        body: 'Review this carefully.',
-	      }),
-	    })
-
-	    const updated = await fetchJson(`${baseUrl(server)}/api/prompts/${encodeURIComponent(promptId!)}/update`, {
-	      method: 'POST',
-	      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-	      body: JSON.stringify({ body: 'Updated body' }),
-	    })
-	    expect(updated).toEqual(expect.objectContaining({
-	      success: true,
-	      prompt: expect.objectContaining({
-	        id: promptId,
-	        title: 'Reusable Review',
-	        body: 'Updated body',
-	      }),
-	    }))
-
-	    await expect(fetchJson(`${baseUrl(server)}/api/prompts`, {
-	      headers: bobHeaders,
-	    })).resolves.toEqual({
-	      success: true,
-	      prompts: [],
-	    })
-	    await expect(fetchJson(`${baseUrl(server)}/api/prompts/${encodeURIComponent(promptId!)}`, {
-	      headers: bobHeaders,
-	    })).resolves.toEqual({
-	      success: false,
-	      error: 'Prompt not found',
-	    })
-
-	    await expect(fetchJson(`${baseUrl(server)}/api/prompts/${encodeURIComponent(promptId!)}`, {
-	      method: 'DELETE',
-	      headers: aliceHeaders,
-	    })).resolves.toEqual({ success: true })
-
-	    await expect(fetchJson(`${baseUrl(server)}/api/prompts`, {
-	      headers: aliceHeaders,
-	    })).resolves.toEqual({
-	      success: true,
-	      prompts: [],
-	    })
+	    })).resolves.toEqual({ success: false, error: 'Not found' })
 	  })
 
 	  it('manages user skills through owner-scoped server runtime stores', async () => {
@@ -4046,6 +3736,88 @@ describe('createOnethingHttpServer', () => {
       headers: { authorization: `Bearer ${TEST_SERVER_AUTH_TOKEN}` },
     })
     expect(authorized.status).toBe(200)
+  })
+
+  /**
+   * The generic RPC route (主线 T0). The server half is domain-blind: it
+   * forwards the envelope to the assembly-layer dispatch table and serializes
+   * whatever comes back. What is pinned here is that it sits behind the same
+   * bearer gate as every other /api route, that a registered domain is
+   * reachable, and that failures arrive as `{ ok:false }` bodies rather than
+   * HTTP error codes (the renderer client is the only place that throws).
+   */
+  it('serves every domain router through the single POST /api/rpc route', async () => {
+    resetRpcRegistryForTests()
+    const echo = vi.fn(async (input: { value: string }) => ({ value: input.value.toUpperCase() }))
+    const dispose = registerRouterHandlers(
+      defineRouter<{
+        echo: { input: { value: string }; output: { value: string } }
+        boom: { input: void; output: void }
+      }>('http-probe', ['echo', 'boom']),
+      {
+        echo,
+        async boom() { throw new Error('handler exploded') },
+      },
+    )
+    const serverRuntime = await createTestServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
+      runtime: serverRuntime.runtime,
+    }))
+    const rpcUrl = `${baseUrl(server)}/api/rpc`
+    const jsonHeaders = {
+      ...contextHeaders('alice', 'rpc-workspace'),
+      'content-type': 'application/json',
+    }
+    const post = (body: unknown) => fetchJson(rpcUrl, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(body),
+    })
+
+    try {
+      const unauthorized = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: 'http-probe', method: 'echo', payload: { value: 'hi' } }),
+      })
+      expect(unauthorized.status).toBe(401)
+
+      await expect(post({ domain: 'http-probe', method: 'echo', payload: { value: 'hi' } }))
+        .resolves.toEqual({ ok: true, data: { value: 'HI' } })
+      expect(echo).toHaveBeenCalledWith({ value: 'hi' })
+
+      await expect(post({ domain: 'nope', method: 'echo', payload: {} })).resolves.toEqual({
+        ok: false,
+        error: { message: 'Unknown RPC domain "nope"', code: 'UNKNOWN_DOMAIN' },
+      })
+
+      await expect(post({ domain: 'http-probe', method: 'nope', payload: {} })).resolves.toEqual({
+        ok: false,
+        error: { message: 'Unknown RPC method "http-probe.nope"', code: 'UNKNOWN_METHOD' },
+      })
+
+      await expect(post({ domain: 'http-probe', method: 'boom', payload: null })).resolves.toEqual({
+        ok: false,
+        error: { message: 'handler exploded' },
+      })
+
+      // Garbage body: still 200 + an RpcResponse, so one client-side branch
+      // handles every failure shape.
+      const malformed = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: 'not json',
+      })
+      expect(malformed.status).toBe(200)
+      const malformedBody = await malformed.json() as { ok: boolean; error: { code?: string } }
+      expect(malformedBody.ok).toBe(false)
+      expect(malformedBody.error.code).toBe('BAD_REQUEST')
+    } finally {
+      dispose()
+      resetRpcRegistryForTests()
+    }
   })
 })
 

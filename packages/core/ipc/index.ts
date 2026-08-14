@@ -1,6 +1,15 @@
-import type { JsonValue } from '../json.js'
-
-export type RoutePayload = JsonValue | void
+/**
+ * Route payloads must survive the process boundary (structured clone over
+ * Electron IPC, JSON over HTTP).
+ *
+ * That contract is enforced by the transport, not by this type. `JsonValue`
+ * was tried first and is why `defineRouter` had zero adoption among the
+ * shared domain contracts: TypeScript gives an *interface* no implicit index
+ * signature, so every one of the repo's ~40 domain request/response
+ * interfaces failed `extends JsonObject` and no domain could be defined
+ * without being rewritten into type aliases first.
+ */
+export type RoutePayload = unknown
 
 /** Route configuration - input/output types for a single IPC method */
 export interface RouteConfig<Input extends RoutePayload = RoutePayload, Output extends RoutePayload = RoutePayload> {

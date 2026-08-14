@@ -1,4 +1,5 @@
 import type { JsonObject } from '../json.js'
+import { defineRouter } from './router.js'
 
 export type OriginTransport = 'desktop' | 'voice' | 'api' | 'im'
 export type ConversationType = 'desktop' | 'dm' | 'group' | 'thread'
@@ -230,3 +231,42 @@ export interface ChannelReplyDeliveryRecord {
   createdAt: number
   updatedAt: number
 }
+
+export interface ChannelDeliveryListResponse {
+  success: boolean
+  deliveries?: ChannelReplyDeliveryRecord[]
+  error?: string
+}
+
+/**
+ * 渠道身份域(主线 T1 第二批)。
+ *
+ * 迁移前这个域在 server 上是一份**平行实现**:`createServerChannelIdentityApi`
+ * 自己读写 `<dataRoot>/channel-identity.json`,而 `@onething/app` 的
+ * `ChannelIdentityStore`(会话路由、出站回投都吃它)读的是 `<store>/channel-identity.json`。
+ * 也就是说 server 的 HTTP 面和 server 自己的引擎面看的是两本账。迁到通用 RPC
+ * 通道后两侧共用同一个 store —— 这不是等价搬迁,是**顺带修好一处分账**。
+ *
+ * 八个方法全是纯读写,零窗口、零流式、零事件推送。
+ */
+export type ChannelIdentityRoutes = {
+  listProfiles: { input: Record<string, never>; output: ChannelIdentityListProfilesResponse }
+  createProfile: { input: ChannelIdentityCreateProfileRequest; output: ChannelIdentityCreateProfileResponse }
+  updateProfile: { input: ChannelIdentityUpdateProfileRequest; output: ChannelIdentityUpdateProfileResponse }
+  listLinks: { input: ChannelIdentityListLinksRequest; output: ChannelIdentityListLinksResponse }
+  createLink: { input: ChannelIdentityCreateLinkRequest; output: ChannelIdentityCreateLinkResponse }
+  deleteLink: { input: ChannelIdentityDeleteLinkRequest; output: ChannelIdentityDeleteLinkResponse }
+  resolve: { input: ChannelIdentityResolveRequest; output: ChannelIdentityResolveResponse }
+  listDeliveries: { input: Record<string, never>; output: ChannelDeliveryListResponse }
+}
+
+export const channelIdentityRouter = defineRouter<ChannelIdentityRoutes>('channelIdentity', [
+  'listProfiles',
+  'createProfile',
+  'updateProfile',
+  'listLinks',
+  'createLink',
+  'deleteLink',
+  'resolve',
+  'listDeliveries',
+])

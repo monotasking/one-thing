@@ -161,13 +161,12 @@ export interface RuntimeThemesAdapter {
   openThemesFolder?(context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
 }
 
+/**
+ * 只剩系统提示词快照这一条:片段的增删改查已经走通用 RPC 通道(promptsRouter),
+ * 三个宿主共用一份实现,facade 这一侧不再需要对应成员。
+ */
 export interface RuntimePromptsAdapter {
   getSystemPromptSnapshot(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
-  list?(context?: RuntimeRequestContext): Promise<unknown>
-  get?(request: { id: string }, context?: RuntimeRequestContext): Promise<unknown>
-  create?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  update?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  delete?(request: { id: string }, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
 }
 
 export interface RuntimeFilesAdapter {
@@ -199,8 +198,8 @@ export interface RuntimeMarkdownAdapter {
 export interface RuntimeProjectDirsAdapter {
   list?(context?: RuntimeRequestContext): Promise<unknown>
   get?(path: string, context?: RuntimeRequestContext): Promise<unknown>
-  add?(path: string, description?: string, context?: RuntimeRequestContext): Promise<unknown>
-  update?(path: string, description: string, context?: RuntimeRequestContext): Promise<unknown>
+  add?(path: string, description?: string, context?: RuntimeRequestContext, paths?: string[]): Promise<unknown>
+  update?(path: string, patch: { description?: string; paths?: string[] }, context?: RuntimeRequestContext): Promise<unknown>
   remove?(path: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
 }
 
@@ -221,6 +220,8 @@ export interface RuntimeMediaAdapter {
   clearAll?(context?: RuntimeRequestContext): Promise<unknown>
   readImageBase64?(filePath: string, context?: RuntimeRequestContext): Promise<unknown>
   listAssets?(query?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  /** Put arbitrary files in the library. Optional: a host without it degrades to 501. */
+  ingestFiles?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
   hideAsset?(id: string, context?: RuntimeRequestContext): Promise<unknown>
   rebuildLibrary?(context?: RuntimeRequestContext): Promise<unknown>
   getGallery?(assetId: string, query?: unknown, context?: RuntimeRequestContext): Promise<unknown>
@@ -234,20 +235,36 @@ export interface RuntimeMediaAdapter {
   ): RuntimeUnsubscribe
 }
 
+/**
+ * 数据面(读快照 / 增删改重命名 / 显示目录)已迁到通用 RPC 通道(todoPlanRouter);
+ * 留在 facade 上的只有变更订阅 —— 它是事件下行,归主线 T2 收敛。
+ */
 export interface RuntimeTodoPlanAdapter<
-  TGetRequest = unknown,
-  TCreateRequest = unknown,
-  TUpdateRequest = unknown,
-  TRenameRequest = unknown,
-  TDeleteRequest = unknown,
   TChangedPayload = unknown,
 > {
-  get(request?: TGetRequest, context?: RuntimeRequestContext): Promise<unknown>
-  createNote?(request: TCreateRequest, context?: RuntimeRequestContext): Promise<unknown>
-  update?(request: TUpdateRequest, context?: RuntimeRequestContext): Promise<unknown>
-  renameNote?(request: TRenameRequest, context?: RuntimeRequestContext): Promise<unknown>
-  deleteNote?(request: TDeleteRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  revealDirectory?(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  subscribeChanged?(
+    handler: (payload: TChangedPayload) => void,
+    context?: RuntimeRequestContext,
+  ): RuntimeUnsubscribe
+}
+
+/**
+ * The per-session scratchpad (草稿纸). One markdown file per session, read and
+ * written from the renderer and watched on disk (the AI edits it with the
+ * ordinary file tools), so `subscribeChanged` is what keeps a browser client
+ * in sync — the desktop host uses its own IPC broadcast instead.
+ */
+export interface RuntimeScratchpadAdapter<
+  TGetRequest = unknown,
+  TUpdateRequest = unknown,
+  TDeleteRequest = unknown,
+  TAdoptRequest = unknown,
+  TChangedPayload = unknown,
+> {
+  get(request: TGetRequest, context?: RuntimeRequestContext): Promise<unknown>
+  update(request: TUpdateRequest, context?: RuntimeRequestContext): Promise<unknown>
+  delete(request: TDeleteRequest, context?: RuntimeRequestContext): Promise<unknown>
+  adopt(request: TAdoptRequest, context?: RuntimeRequestContext): Promise<unknown>
   subscribeChanged?(
     handler: (payload: TChangedPayload) => void,
     context?: RuntimeRequestContext,
@@ -273,21 +290,6 @@ export interface RuntimeSchedulerAdapter<
   deleteTask?(request: TDeleteTaskRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
   listRuns?(request: TListRunsRequest, context?: RuntimeRequestContext): Promise<unknown>
   getRun?(request: TGetRunRequest, context?: RuntimeRequestContext): Promise<unknown>
-}
-
-export interface RuntimeAgentsAdapter<
-  TCreateRequest = unknown,
-  TUpdateRequest = unknown,
-  TDeleteRequest = unknown,
-  TRestoreRequest = unknown,
-> {
-  list(context?: RuntimeRequestContext): Promise<unknown>
-  create?(request: TCreateRequest, context?: RuntimeRequestContext): Promise<unknown>
-  update?(request: TUpdateRequest, context?: RuntimeRequestContext): Promise<unknown>
-  /** Retire-or-delete: the outcome field in the result says which happened. */
-  delete?(request: TDeleteRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  /** Un-retire a retired agent (status back to active). */
-  restore?(request: TRestoreRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
 }
 
 export interface RuntimeSkillsAdapter {
@@ -366,23 +368,6 @@ export interface RuntimeACPAdapter {
     agentId?: string,
     context?: RuntimeRequestContext,
   ): Promise<RuntimeMutationResult | unknown>
-}
-
-export interface RuntimeProvidersAdapter {
-  list(context?: RuntimeRequestContext): Promise<unknown>
-  usage(providerId: string, context?: RuntimeRequestContext): Promise<unknown>
-  envStatus(providerId: string, context?: RuntimeRequestContext): Promise<unknown>
-  getModelsWithCapabilities(providerId: string, options?: { forceRefresh?: boolean }, context?: RuntimeRequestContext): Promise<unknown>
-  getAllModels(context?: RuntimeRequestContext): Promise<unknown>
-  searchModels(query: string, providerId?: string, context?: RuntimeRequestContext): Promise<unknown>
-  refreshModelRegistry(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  getModelNameAliases(context?: RuntimeRequestContext): Promise<unknown>
-  getModelDisplayName(modelId: string, context?: RuntimeRequestContext): Promise<unknown>
-}
-
-export interface RuntimeUsageAdapter {
-  getSummary(request: { granularity: 'day' | 'week' | 'month'; count?: number }, context?: RuntimeRequestContext): Promise<unknown>
-  getSessionUsage(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
 }
 
 export interface RuntimeToolsAdapter<
@@ -504,16 +489,14 @@ export interface OnethingRuntimeFacadeOptions<
   variables?: RuntimeVariablesAdapter
   media?: RuntimeMediaAdapter
   todoPlan?: RuntimeTodoPlanAdapter
+  scratchpad?: RuntimeScratchpadAdapter
   scheduler?: RuntimeSchedulerAdapter
-  agents?: RuntimeAgentsAdapter
   skills?: RuntimeSkillsAdapter
   plugins?: RuntimePluginsAdapter
   oauth?: RuntimeOAuthAdapter
   gateway?: RuntimeGatewayAdapter
   voice?: RuntimeVoiceAdapter
   acp?: RuntimeACPAdapter
-  providers?: RuntimeProvidersAdapter
-  usage?: RuntimeUsageAdapter
   tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
   mcp?: RuntimeMCPAdapter<
     TMCPServerConfig,
@@ -586,16 +569,14 @@ export interface OnethingRuntimeFacade<
   readonly variables?: RuntimeVariablesAdapter
   readonly media?: RuntimeMediaAdapter
   readonly todoPlan?: RuntimeTodoPlanAdapter
+  readonly scratchpad?: RuntimeScratchpadAdapter
   readonly scheduler?: RuntimeSchedulerAdapter
-  readonly agents?: RuntimeAgentsAdapter
   readonly skills?: RuntimeSkillsAdapter
   readonly plugins?: RuntimePluginsAdapter
   readonly oauth?: RuntimeOAuthAdapter
   readonly gateway?: RuntimeGatewayAdapter
   readonly voice?: RuntimeVoiceAdapter
   readonly acp?: RuntimeACPAdapter
-  readonly providers?: RuntimeProvidersAdapter
-  readonly usage?: RuntimeUsageAdapter
   readonly tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
   readonly mcp?: RuntimeMCPAdapter<
     TMCPServerConfig,
@@ -739,16 +720,14 @@ export function createOnethingRuntimeFacade<
     variables: options.variables ? Object.freeze({ ...options.variables }) : undefined,
     media: options.media ? Object.freeze({ ...options.media }) : undefined,
     todoPlan: options.todoPlan ? Object.freeze({ ...options.todoPlan }) : undefined,
+    scratchpad: options.scratchpad ? Object.freeze({ ...options.scratchpad }) : undefined,
     scheduler: options.scheduler ? Object.freeze({ ...options.scheduler }) : undefined,
-    agents: options.agents ? Object.freeze({ ...options.agents }) : undefined,
     skills: options.skills ? Object.freeze({ ...options.skills }) : undefined,
     plugins: options.plugins ? Object.freeze({ ...options.plugins }) : undefined,
     oauth: options.oauth ? Object.freeze({ ...options.oauth }) : undefined,
     gateway: options.gateway ? Object.freeze({ ...options.gateway }) : undefined,
     voice: options.voice ? Object.freeze({ ...options.voice }) : undefined,
     acp: options.acp ? Object.freeze({ ...options.acp }) : undefined,
-    providers: options.providers ? Object.freeze({ ...options.providers }) : undefined,
-    usage: options.usage ? Object.freeze({ ...options.usage }) : undefined,
     tools: options.tools ? Object.freeze({ ...options.tools }) : undefined,
     mcp: options.mcp ? Object.freeze({ ...options.mcp }) : undefined,
     async shutdown() {

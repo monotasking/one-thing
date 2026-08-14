@@ -99,7 +99,10 @@ export type {
 	ChannelIdentityResolveRequest,
 	ChannelIdentityResolveResponse,
 	ChannelReplyDeliveryRecord,
+	ChannelDeliveryListResponse,
+	ChannelIdentityRoutes,
 } from "./channel-identity.js";
+export { channelIdentityRouter } from "./channel-identity.js";
 export type {
 	AgentDefinition,
 	AgentIdentity,
@@ -117,7 +120,9 @@ export type {
 	AgentRemovalOutcome,
 	AgentRestoreRequest,
 	AgentRestoreResponse,
+	AgentsRoutes,
 } from "./agents.js";
+export { agentsRouter } from "./agents.js";
 
 // IPC Router infrastructure
 export { defineRouter, getChannelName } from "./router.js";
@@ -298,6 +303,11 @@ export type {
 	MediaAssetMetadata,
 	MediaAsset,
 	MediaQuery,
+	MediaIngestFileInput,
+	MediaIngestFilesRequest,
+	MediaIngestFilesResponse,
+	MediaSaveAsRequest,
+	MediaSaveAsResponse,
 	MediaGalleryResponse,
 	MediaRebuildResponse,
 } from "./media.js";
@@ -340,9 +350,18 @@ export type {
 	ProviderEnvStatus,
 	GetProviderEnvStatusRequest,
 	GetProviderEnvStatusResponse,
+	ModelsListResponse,
+	ModelsWithCapabilitiesRequest,
+	ModelsSearchRequest,
+	ModelRefreshRegistryResponse,
+	ModelNameAliasesResponse,
+	ModelDisplayNameRequest,
+	ModelDisplayNameResponse,
+	ProvidersRoutes,
+	ModelsRoutes,
 } from "./providers.js";
 
-export { AIProvider } from "./providers.js";
+export { AIProvider, modelsRouter, providersRouter } from "./providers.js";
 
 // MCP types
 export type {
@@ -647,7 +666,9 @@ export type {
 	GoalFileDiff,
 	GoalDiffsRequest,
 	GoalDiffsResponse,
+	GoalRoutes,
 } from "./goal.js";
+export { goalRouter } from "./goal.js";
 
 // Session TOC (table of contents) types
 export type {
@@ -663,6 +684,8 @@ export type {
 export type {
 	ProjectDirSummary,
 	ProjectDirRecord,
+	ProjectDirsWorkspaceScoped,
+	ProjectDirsListRequest,
 	ProjectDirsListResponse,
 	ProjectDirsGetRequest,
 	ProjectDirsGetResponse,
@@ -673,6 +696,35 @@ export type {
 	ProjectDirsRemoveRequest,
 	ProjectDirsRemoveResponse,
 } from "./project-dirs.js";
+
+// Space (workspace) types
+export type {
+	SpaceRecord,
+	SpacesListResponse,
+	SpacesCreateRequest,
+	SpacesCreateResponse,
+	SpacesUpdateRequest,
+	SpacesUpdateResponse,
+	SpacesRemoveRequest,
+	SpacesRemoveResponse,
+	SpaceOverlayPayload,
+	SpacesGetOverlayRequest,
+	SpacesGetOverlayResponse,
+	SpacesSetOverlayRequest,
+	SpacesSetOverlayResponse,
+	SpaceCredentialEntrySummary,
+	SpaceProviderCredentialSummary,
+	SpaceCredentialsSummary,
+	SpaceCredentialImportSkip,
+	SpacesGetCredentialsRequest,
+	SpacesGetCredentialsResponse,
+	SpacesSetCredentialRequest,
+	SpacesSetCredentialResponse,
+	SpacesClearCredentialRequest,
+	SpacesClearCredentialResponse,
+	SpacesImportCredentialsRequest,
+	SpacesImportCredentialsResponse,
+} from "./spaces.js";
 
 // UIMessage types
 export type {
@@ -739,7 +791,9 @@ export type {
 	PromptUpdateResponse,
 	PromptDeleteRequest,
 	PromptDeleteResponse,
+	PromptsRoutes,
 } from "./prompts.js";
+export { promptsRouter } from "./prompts.js";
 
 // Todo / plan panel types
 export type {
@@ -762,7 +816,24 @@ export type {
 	TodoPlanDeleteRequest,
 	TodoPlanDeleteResponse,
 	TodoPlanChangedPayload,
+	TodoPlanRevealDirectoryResponse,
+	TodoPlanRoutes,
 } from "./todo-plan.js";
+export { todoPlanRouter } from "./todo-plan.js";
+
+// Scratchpad types
+export type {
+	ScratchpadDocument,
+	ScratchpadGetRequest,
+	ScratchpadGetResponse,
+	ScratchpadUpdateRequest,
+	ScratchpadUpdateResponse,
+	ScratchpadDeleteRequest,
+	ScratchpadDeleteResponse,
+	ScratchpadAdoptRequest,
+	ScratchpadAdoptResponse,
+	ScratchpadChangedPayload,
+} from "./scratchpad.js";
 
 // Evals types
 export type {
@@ -837,7 +908,12 @@ export type {
 	OnethingUsagePricingQuality,
 	OnethingUsageProjectTotals,
 	OnethingUsageSummaryGranularity,
+	UsageRoutes,
 } from "./usage.js";
+export { usageRouter } from "./usage.js";
+
+export type { RpcError, RpcErrorCode, RpcRequest, RpcResponse } from "./rpc.js";
+export { RPC_ERROR_CODES } from "./rpc.js";
 
 export type {
 	PracticeConfig,

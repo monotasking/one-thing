@@ -53,6 +53,7 @@ import {
 import './tools/builtin/index.js'
 import './tools/builtin/headless.js'
 import './tools/builtin/readonly.js'
+import { registerAppRpcDomains } from './rpc/index.js'
 import { initializeSessionSkills } from './skills/session-skills.js'
 import { MCPManager, registerMCPTools } from './mcp/index.js'
 import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
@@ -178,6 +179,14 @@ export async function createOnethingBackend(
   } else {
     await initializeHeadlessToolRegistry()
   }
+
+  // RPC domains go up BEFORE afterTools: that hook is where the Electron host
+  // runs initializeIPC() and mounts the `rpc:invoke` adapter, so the table it
+  // dispatches into must already be complete. Registration itself is pure
+  // bookkeeping (closures into a Map) — the handlers resolve their
+  // dependencies lazily, per call.
+  const disposeRpcDomains = await registerAppRpcDomains()
+
   await options.hooks?.afterTools?.()
 
   if (options.sessionSkills) {
@@ -217,6 +226,9 @@ export async function createOnethingBackend(
     eventBus: getEventBus(),
     streamChannel: getStreamChannel(),
     async shutdown() {
+      // Reversible registration: a second createOnethingBackend in the same
+      // process (tests, host restarts) must not trip the duplicate-domain guard.
+      await disposeRpcDomains()
       if (options.collab) {
         try {
           await shutdownCollabV3Runtime()

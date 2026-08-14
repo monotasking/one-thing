@@ -135,10 +135,37 @@ async function settle() {
 	await nextTick();
 }
 
+/**
+ * todo/plan 的数据面已迁到通用 RPC 通道(todoPlanRouter),preload 不再逐方法暴露。
+ * 这个桩因此分两层:数据面的 vi.fn() 仍然在(断言还看它们),但组件是经
+ * `rpcInvoke` 到达它们的 —— 桩里这个 dispatcher 就是那条通道在测试里的替身。
+ */
+const TODO_PLAN_RPC_METHODS: Record<string, string> = {
+	get: "getTodoPlan",
+	create: "createTodoPlanNote",
+	update: "updateTodoPlan",
+	rename: "renameTodoPlanNote",
+	delete: "deleteTodoPlanNote",
+	revealDirectory: "revealTodoPlanDirectory",
+};
+
 function installElectronApi() {
 	Object.defineProperty(window, "electronAPI", {
 		configurable: true,
 		value: {
+			rpcInvoke: vi.fn(async (request: any) => {
+				const name = request?.domain === "todo-plan"
+					? TODO_PLAN_RPC_METHODS[request.method]
+					: undefined;
+				if (!name) {
+					return {
+						ok: false,
+						error: { message: `unstubbed rpc ${request?.domain}.${request?.method}` },
+					};
+				}
+				const handler = (window.electronAPI as any)[name];
+				return { ok: true, data: await handler(request.payload) };
+			}),
 			getTodoPlan: vi.fn().mockResolvedValue({ success: true, snapshot }),
 			updateTodoPlan: vi.fn().mockImplementation((request) =>
 				Promise.resolve({
@@ -646,7 +673,7 @@ describe("TodoPlanPanel", () => {
 	});
 
 	it("does not show a workspace AI todo before one exists", async () => {
-		window.electronAPI.getTodoPlan = vi.fn().mockResolvedValue({
+		(window.electronAPI as any).getTodoPlan = vi.fn().mockResolvedValue({
 			success: true,
 			snapshot: {
 				directory: snapshot.directory,

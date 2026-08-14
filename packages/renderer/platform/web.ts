@@ -1,11 +1,13 @@
 import type {
 	CreateSessionOptions,
-	AgentUpdateRequest,
 	AppSettings,
-	GetSessionUsageRequest,
-	GetUsageSummaryRequest,
 	PracticeConfigResponse,
 	PracticeSummaryRequest,
+	SpacesCreateRequest,
+	SpacesClearCredentialRequest,
+	SpacesSetCredentialRequest,
+	SpacesSetOverlayRequest,
+	SpacesUpdateRequest,
 } from "@/types";
 import type { SessionEventEnvelope } from "@shared/events";
 import type {
@@ -25,6 +27,12 @@ import type {
 	PickPluginFileResponse,
 	ReadPluginTarballResponse,
 } from "@shared/ipc/plugins.js";
+import type { RpcResponse } from "@shared/ipc/rpc.js";
+import { goalRouter } from "@shared/ipc/goal.js";
+import { promptsRouter } from "@shared/ipc/prompts.js";
+import { todoPlanRouter } from "@shared/ipc/todo-plan.js";
+import { usageRouter } from "@shared/ipc/usage.js";
+import { createRouterClient, type RpcInvoke } from "./router-client";
 import type { PlatformApi, PlatformCapabilities } from "./types";
 
 function browserClipboardWriteCapability(): boolean {
@@ -131,6 +139,43 @@ function postJson<T>(path: string, body?: unknown): Promise<T> {
 		method: "POST",
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
+}
+
+/**
+ * 通用 RPC 传输面(主线 T0):所有 router 域共用这一条路由。
+ * 每个域在下面的 webApi 里各占一行 —— 加域不再往本文件加 fetch 包装。
+ */
+const rpcInvoke: RpcInvoke = request => postJson<RpcResponse>("/api/rpc", request);
+const usageApi = createRouterClient(usageRouter, rpcInvoke);
+const promptsApi = createRouterClient(promptsRouter, rpcInvoke);
+const goalApi = createRouterClient(goalRouter, rpcInvoke);
+const todoPlanApi = createRouterClient(todoPlanRouter, rpcInvoke);
+
+/**
+ * 请求失败不抛,回一份结构化的 `{ success:false }`(可带补充字段)。
+ *
+ * 给「server 还没有这条路由,但渲染层必须活下去」的能力用 —— spaces(批 B1)
+ * 就是这一档:web 端拿不到空间列表就退成只有 default,而不是把左栏整片带塌。
+ */
+async function softJson<T extends object>(
+	path: string,
+	fallbackPayload?: object,
+	init?: { method?: string; body?: unknown },
+): Promise<T> {
+	try {
+		const value = await requestJson<T>(path, {
+			method: init?.method,
+			body: init?.body === undefined ? undefined : JSON.stringify(init.body),
+		});
+		return value;
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : "Request failed",
+			code: "UNAVAILABLE",
+			...fallbackPayload,
+		} as unknown as T;
+	}
 }
 
 function booleanProperty(
@@ -589,16 +634,7 @@ const webApi = {
 		requestJson(
 			`/api/sessions/${encodeURIComponent(sessionId)}/system-prompt-snapshot`,
 		),
-	listPrompts: () => requestJson("/api/prompts"),
-	getPrompt: (request: { id: string }) =>
-		requestJson(`/api/prompts/${encodeURIComponent(request.id)}`),
-	createPrompt: (request: unknown) => postJson("/api/prompts", request),
-	updatePrompt: (request: { id: string }) =>
-		postJson(`/api/prompts/${encodeURIComponent(request.id)}/update`, request),
-	deletePrompt: (request: { id: string }) =>
-		requestJson(`/api/prompts/${encodeURIComponent(request.id)}`, {
-			method: "DELETE",
-		}),
+	// User prompt snippets 走通用 RPC(promptsRouter),见文件末尾的域客户端一行区。
 
 	getSkills: (workingDirectory?: string) => {
 		const query = workingDirectory
@@ -695,21 +731,6 @@ const webApi = {
 		postJson("/api/gateway/wechat/accounts/remove", request),
 	gatewayWechatRenameAccount: (request: unknown) =>
 		postJson("/api/gateway/wechat/accounts/rename", request),
-	channelIdentityListLinks: (request?: unknown) =>
-		postJson("/api/channel-identity/links/list", request ?? {}),
-	channelIdentityListProfiles: () =>
-		postJson("/api/channel-identity/profiles/list", {}),
-	channelIdentityCreateProfile: (request: unknown) =>
-		postJson("/api/channel-identity/profiles/create", request),
-	channelIdentityUpdateProfile: (request: unknown) =>
-		postJson("/api/channel-identity/profiles/update", request),
-	channelIdentityCreateLink: (request: unknown) =>
-		postJson("/api/channel-identity/links/create", request),
-	channelIdentityDeleteLink: (id: string) =>
-		postJson("/api/channel-identity/links/delete", { id }),
-	channelIdentityResolve: (origin: unknown) =>
-		postJson("/api/channel-identity/resolve", { origin }),
-	channelDeliveryList: () => requestJson("/api/channel-identity/deliveries"),
 	voiceGetState: () => requestJson("/api/voice/state"),
 	voiceStart: (request?: unknown) => postJson("/api/voice/start", request),
 	voiceStop: (request?: unknown) => postJson("/api/voice/stop", request),
@@ -754,16 +775,15 @@ const webApi = {
 	acpCancelSession: (sessionId: string, agentId?: string) =>
 		postJson("/api/acp/sessions/cancel", { sessionId, agentId }),
 
-	getTodoPlan: (request?: unknown) => postJson("/api/todo-plan/get", request),
-	createTodoPlanNote: (request: unknown) =>
-		postJson("/api/todo-plan/create", request),
-	updateTodoPlan: (request: unknown) =>
-		postJson("/api/todo-plan/update", request),
-	renameTodoPlanNote: (request: unknown) =>
-		postJson("/api/todo-plan/rename", request),
-	deleteTodoPlanNote: (request: unknown) =>
-		postJson("/api/todo-plan/delete", request),
-	revealTodoPlanDirectory: () => postJson("/api/todo-plan/reveal-directory"),
+	getScratchpad: (request: unknown) => postJson("/api/scratchpad/get", request),
+	updateScratchpad: (request: unknown) =>
+		postJson("/api/scratchpad/update", request),
+	deleteScratchpad: (request: unknown) =>
+		postJson("/api/scratchpad/delete", request),
+	adoptScratchpad: (request: unknown) =>
+		postJson("/api/scratchpad/adopt", request),
+
+	// Todo / plan 数据面走通用 RPC(todoPlanRouter);窗口面在 web 是本地 DOM 事件。
 	openTodoPlanWindow: (request?: unknown) => {
 		dispatchTodoPlanWindowAction("open", { request });
 		return Promise.resolve({ success: true });
@@ -802,43 +822,6 @@ const webApi = {
 	onMusicNowPlaying: () => () => {},
 	onMusicDjSpeak: () => () => {},
 	musicDjSpeakDone: () => Promise.resolve(),
-
-	listAgents: () => requestJson("/api/agents"),
-	createAgent: (name: string, systemPrompt?: string) =>
-		postJson("/api/agents", { name, systemPrompt }),
-	updateAgent: (
-		agentId: string,
-		updates: Omit<AgentUpdateRequest, "agentId">,
-	) => postJson(`/api/agents/${encodeURIComponent(agentId)}/update`, updates),
-	// 「删除」= 退休或硬删(域模型 §3.2);服务端回同一个 outcome 字段。
-	deleteAgent: (agentId: string) =>
-		requestJson(`/api/agents/${encodeURIComponent(agentId)}`, {
-			method: "DELETE",
-		}),
-	restoreAgent: (agentId: string) =>
-		postJson(`/api/agents/${encodeURIComponent(agentId)}/restore`, {}),
-
-	getProviders: () => requestJson("/api/providers"),
-	getProviderUsage: (providerId: string) =>
-		requestJson(`/api/providers/${encodeURIComponent(providerId)}/usage`),
-	getProviderEnvStatus: (providerId: string) =>
-		requestJson(`/api/providers/${encodeURIComponent(providerId)}/env-status`),
-	getModelsWithCapabilities: (
-		providerId: string,
-		options?: { forceRefresh?: boolean },
-	) => {
-		const query = options?.forceRefresh ? "?forceRefresh=true" : "";
-		return requestJson(
-			`/api/providers/${encodeURIComponent(providerId)}/models${query}`,
-		);
-	},
-	getAllModels: () => requestJson("/api/models"),
-	searchModels: (query: string, providerId?: string) =>
-		postJson("/api/models/search", { query, providerId }),
-	refreshModelRegistry: () => postJson("/api/models/refresh"),
-	getModelNameAliases: () => requestJson("/api/models/name-aliases"),
-	getModelDisplayName: (modelId: string) =>
-		requestJson(`/api/models/${encodeURIComponent(modelId)}/display-name`),
 
 	getTools: () => requestJson("/api/tools"),
 	executeTool: (
@@ -1076,25 +1059,26 @@ const webApi = {
 	deleteVariable: (sessionId: string, name: string) =>
 		postJson("/api/variables/delete", { sessionId, name }),
 
-	// Session goals — Electron-only for now (see docs/design/goal-system.md)
-	goalGet: async () => ({
-		success: false,
-		error: "Goals are not supported in the web build",
-	}),
-	goalSet: async () => ({
-		success: false,
-		error: "Goals are not supported in the web build",
-	}),
-	goalDiffs: async () => ({
-		success: false,
-		error: "Goals are not supported in the web build",
-	}),
-
-	getUsageSummary: (request: GetUsageSummaryRequest) =>
-		postJson("/api/usage/summary", request),
-
-	getSessionUsage: (request: GetSessionUsageRequest) =>
-		postJson("/api/usage/session", request),
+	// ── Generic RPC(主线 T0)。域客户端各占一行,传输面只有这一条。──
+	rpcInvoke,
+	getUsageSummary: usageApi.getSummary,
+	getSessionUsage: usageApi.getSession,
+	listPrompts: () => promptsApi.list({}),
+	getPrompt: promptsApi.get,
+	createPrompt: promptsApi.create,
+	updatePrompt: promptsApi.update,
+	deletePrompt: promptsApi.delete,
+	// 目标以前在 web 是三个写死的错误桩;走通用通道之后是真实现。
+	goalGet: (sessionId: string) => goalApi.get({ sessionId }),
+	goalSet: goalApi.set,
+	goalDiffs: (sessionId: string) => goalApi.diffs({ sessionId }),
+	getTodoPlan: (request?: Parameters<typeof todoPlanApi.get>[0]) =>
+		todoPlanApi.get(request ?? {}),
+	createTodoPlanNote: todoPlanApi.create,
+	updateTodoPlan: todoPlanApi.update,
+	renameTodoPlanNote: todoPlanApi.rename,
+	deleteTodoPlanNote: todoPlanApi.delete,
+	revealTodoPlanDirectory: () => todoPlanApi.revealDirectory({}),
 
 	// Practice runs on the Electron main process; the web build has no engine.
 	// Values mirror ONETHING_PRACTICE_DEFAULT_CONFIG (no value import: the
@@ -1318,13 +1302,68 @@ const webApi = {
 	}),
 	onPluginRequestProgress: () => () => {},
 
-	projectDirsList: () => requestJson("/api/project-dirs"),
-	projectDirsGet: (path: string) => postJson("/api/project-dirs/get", { path }),
-	projectDirsAdd: (path: string, description?: string) =>
-		postJson("/api/project-dirs", { path, description }),
-	projectDirsUpdate: (path: string, description: string) =>
-		postJson("/api/project-dirs/update", { path, description }),
-	projectDirsRemove: (path: string) =>
+	// 名册 per-space 是桌面宿主的维度:apps/server 没有 space,`workspaceId` 在这里
+	// 收下即丢 —— 传给一个不认识它的宿主只会造成「以为分家了」的假象(批 B4)。
+	projectDirsList: (_workspaceId?: string) => requestJson("/api/project-dirs"),
+	projectDirsGet: (path: string, _workspaceId?: string) =>
+		postJson("/api/project-dirs/get", { path }),
+	projectDirsAdd: (
+		path: string,
+		description?: string,
+		paths?: string[],
+		_workspaceId?: string,
+	) => postJson("/api/project-dirs", { path, description, paths }),
+	projectDirsUpdate: (
+		path: string,
+		patch: { description?: string; paths?: string[] },
+		_workspaceId?: string,
+	) => postJson("/api/project-dirs/update", { path, ...patch }),
+	// Spaces(workspace)—— server 端本切片没有 /api/spaces 路由,请求必然失败。
+	// 这里**不抛**:store 拿不到列表就降级成「只有 default 空间、切换器不画」,
+	// 而不是让整个左栏跟着炸(优雅降级,见 workspace-spaces-2026-08.md 批 B1)。
+	spacesList: () => softJson("/api/spaces", { spaces: [] }),
+	spacesCreate: (request: SpacesCreateRequest) =>
+		softJson("/api/spaces", undefined, { method: "POST", body: request }),
+	spacesUpdate: (request: SpacesUpdateRequest) =>
+		softJson(`/api/spaces/${encodeURIComponent(request.id)}`, undefined, {
+			method: "POST",
+			body: request,
+		}),
+	spacesRemove: (id: string) =>
+		softJson(`/api/spaces/${encodeURIComponent(id)}`, undefined, {
+			method: "DELETE",
+		}),
+	// overlay(批 B2)同样没有 server 路由:读退成空 overlay(= 只有全局层),
+	// 写退成 `{success:false}`,设置页据此把 space 段标成不可用。
+	spacesGetOverlay: (id: string) =>
+		softJson(`/api/spaces/${encodeURIComponent(id)}/overlay`, { overlay: {} }),
+	spacesSetOverlay: (request: SpacesSetOverlayRequest) =>
+		softJson(`/api/spaces/${encodeURIComponent(request.id)}/overlay`, undefined, {
+			method: "POST",
+			body: request,
+		}),
+	// 凭证池(批 B3):server 侧没有这些路由,一律走 softJson 降级 —— 空凭证表
+	// 即「这个宿主管不了空间凭证」,设置页那一段自然不画。
+	spacesGetCredentials: (id: string) =>
+		softJson(`/api/spaces/${encodeURIComponent(id)}/credentials`, {
+			credentials: { providers: {} },
+		}),
+	spacesSetCredential: (request: SpacesSetCredentialRequest) =>
+		softJson(`/api/spaces/${encodeURIComponent(request.id)}/credentials`, undefined, {
+			method: "POST",
+			body: request,
+		}),
+	spacesClearCredential: (request: SpacesClearCredentialRequest) =>
+		softJson(`/api/spaces/${encodeURIComponent(request.id)}/credentials/clear`, undefined, {
+			method: "POST",
+			body: request,
+		}),
+	spacesImportCredentials: (id: string) =>
+		softJson(`/api/spaces/${encodeURIComponent(id)}/credentials/import`, undefined, {
+			method: "POST",
+			body: { id },
+		}),
+	projectDirsRemove: (path: string, _workspaceId?: string) =>
 		postJson("/api/project-dirs/remove", { path }),
 
 	saveImage: (data: unknown) => postJson("/api/media/save-image", data),
@@ -1347,6 +1386,18 @@ const webApi = {
 		const suffix = params.toString() ? `?${params.toString()}` : "";
 		return requestJson(`/api/media/assets${suffix}`);
 	},
+	// 浏览器没有本地路径可给,所以 body 里一定是 base64(桌面才走 filePath)。
+	// 请求整体透传:字段是共享契约,这里不逐个手抄。
+	ingestMediaFiles: (request: unknown) =>
+		postJson("/api/media/ingest", request),
+	/**
+	 * 「另存为」在浏览器里不是一次宿主对话框,而是一次下载 —— 沙箱里页面自发的
+	 * 下载会被拦,所以这里只**承认做不到**并让调用方退回 `<a download>`。
+	 */
+	saveMediaAs: async () => ({
+		success: false,
+		error: "Saving a copy is not available in the browser.",
+	}),
 	hideMediaAsset: (id: string) => postJson("/api/media/assets/hide", { id }),
 	rebuildMediaLibrary: () => postJson("/api/media/rebuild"),
 	getMediaGallery: (assetId: string, query?: unknown) =>
@@ -1391,6 +1442,7 @@ const webApi = {
 		postJson("/api/sessions", {
 			name,
 			sessionId: options?.sessionId,
+			workspaceId: options?.workspaceId,
 			kind: options?.kind,
 			room: options?.room,
 		}),
@@ -1546,6 +1598,41 @@ const webApi = {
 		await navigator.clipboard.writeText(text);
 		return { success: true };
 	},
+	/**
+	 * 浏览器端的「复制图片」。`filePath` 在 server 上是 `/api/media/file/…`,
+	 * 所以取字节就是一次同源 fetch。异步剪贴板**只**接 image/png(规范如此,
+	 * 不是实现缺陷),其余格式老实说做不到,由调用方决定禁用还是隐藏。
+	 */
+	writeClipboardImage: async (filePath: string) => {
+		const ClipboardItemCtor = (
+			window as unknown as { ClipboardItem?: typeof ClipboardItem }
+		).ClipboardItem;
+		if (!navigator.clipboard?.write || !ClipboardItemCtor) {
+			return {
+				success: false,
+				error: "Clipboard image write is not available in this browser.",
+			};
+		}
+		try {
+			const response = await fetch(filePath);
+			const blob = await response.blob();
+			if (blob.type !== "image/png") {
+				return {
+					success: false,
+					error: "This browser can only copy PNG images to the clipboard.",
+				};
+			}
+			await navigator.clipboard.write([
+				new ClipboardItemCtor({ [blob.type]: blob }),
+			]);
+			return { success: true };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	},
 	openExternal: async (url: string) => {
 		if (typeof window === "undefined" || typeof window.open !== "function") {
 			return {
@@ -1572,6 +1659,12 @@ const webApi = {
 		createEventSourceSubscription(
 			"/api/todo-plan/events",
 			"todo-plan:changed",
+			callback,
+		),
+	onScratchpadChanged: (callback: (payload: unknown) => void) =>
+		createEventSourceSubscription(
+			"/api/scratchpad/events",
+			"scratchpad:changed",
 			callback,
 		),
 

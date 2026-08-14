@@ -159,6 +159,7 @@ import {
 	deleteOnethingMediaItem,
 	getOnethingMediaGallery,
 	hideOnethingMediaAsset,
+	ingestOnethingMediaFilesForIpc,
 	listOnethingLegacyMediaImages,
 	listOnethingMediaAssets,
 	MediaLibraryService,
@@ -169,6 +170,7 @@ import {
 	type OnethingLegacyMediaItem,
 	type OnethingMediaAsset,
 	type OnethingMediaIngestGeneratedImageInput,
+	type OnethingMediaIngestLocalFilesInput,
 	type OnethingMediaLibraryPaths,
 	type OnethingMediaQuery,
 } from "@onething/runtime/media";
@@ -183,55 +185,22 @@ import {
 	refreshOnethingPluginsForIpc,
 } from "@onething/runtime/plugins";
 import {
-	createOnethingAgentFromRequestForIpc,
 	createOnethingAgentStore,
-	deleteOnethingAgentFromRequestForIpc,
-	listOnethingAgentsForIpc,
-	restoreOnethingAgentFromRequestForIpc,
-	updateOnethingAgentFromRequestForIpc,
 	DEFAULT_ONETHING_AGENT_ID,
-	type OnethingAgentDefinition,
 } from "@onething/runtime/agents";
 import {
-	getAllOnethingModelRegistryModelsForIpc,
-	getAllOnethingModels,
-	getOnethingModelRegistryDisplayNameForIpc,
-	getOnethingModelRegistryNameAliasesForIpc,
-	getOnethingModelsForProvider,
-	getOnethingProviderEnvStatus,
-	getOnethingProviderUsage,
-	listOnethingProvidersForIpc,
-	onethingBaseBuiltinProviders,
 	createRequiredOnethingAppFetch,
-	createOnethingModelEntriesFromModelsDev,
-	refreshOnethingModelRegistryForIpc,
-	searchOnethingModelRegistryForIpc,
-	searchOnethingModels,
 	validateOnethingAppProxyUrl,
-	type OnethingOpenRouterModel,
-	type OnethingProviderModelConfigs,
 } from "@onething/runtime/providers";
-import {
-	OnethingUsageLedger,
-	getOnethingSessionUsageTotal,
-} from "@onething/runtime/usage";
-import { getUsageSummaryWithProjects } from "@onething/app/usage/index.js";
-import {
-	OnethingPromptStore,
-	createOnethingPromptForIpc,
-	deleteOnethingPromptForIpc,
-	getOnethingPromptForIpc,
-	listOnethingPromptsForIpc,
-	updateOnethingPromptForIpc,
-	type PromptCreateRequest,
-	type PromptUpdateRequest,
-	type UserPrompt,
-} from "@onething/runtime/prompts";
+// 片段的 ipc-operations 已随 CRUD 一起迁到 RPC 域;这里只剩搜索面还要读 store。
+import { OnethingPromptStore } from "@onething/runtime/prompts";
 import {
 	addOnethingProjectDirForIpc,
 	getOnethingProjectDirForIpc,
 	listOnethingProjectDirsForIpc,
+	normalizeProjectRoots,
 	projectIdFromPath,
+	projectRootsInclude,
 	removeOnethingProjectDirForIpc,
 	updateOnethingProjectDirForIpc,
 	type Project,
@@ -303,20 +272,9 @@ import {
 	type PermissionGrant,
 } from "@onething/runtime/permissions";
 import { defaultOnethingThemeRuntime } from "@onething/runtime/themes/theme-runtime";
-import {
-	OnethingTodoPlanStore,
-	createOnethingTodoNoteForIpc,
-	deleteOnethingTodoNoteForIpc,
-	getOnethingTodoPlanForIpc,
-	renameOnethingTodoNoteForIpc,
-	updateOnethingTodoPlanDocumentForIpc,
-	type TodoPlanChangedPayload,
-	type TodoPlanContext,
-	type TodoPlanCreateRequest,
-	type TodoPlanDeleteRequest,
-	type TodoPlanRenameRequest,
-	type TodoPlanUpdateRequest,
-} from "@onething/runtime/todo-plan";
+// todo/plan 的数据面已整体迁走(含 per-owner 分库);server 这侧只剩变更广播的载荷类型。
+import type { TodoPlanChangedPayload } from "@onething/runtime/todo-plan";
+import { configureTodoPlanHost } from "@onething/app/todo-plan/store.js";
 import {
 	OnethingSchedulerRunHistory,
 	OnethingSchedulerUserTaskStore,
@@ -356,7 +314,6 @@ import {
 	type VariablesSetRequest,
 } from "@onething/runtime/variables";
 import {
-	getOnethingAgentsDir,
 	getOnethingAgentsPath,
 	getOnethingAppStatePath,
 	getOnethingCurrentSessionId,
@@ -418,6 +375,22 @@ import type {
 	VoiceTTSModelsResponse,
 	VoiceSubmitUtteranceResponse,
 } from "@shared/ipc/voice.js";
+import {
+	adoptScratchpad as adoptAppScratchpad,
+	configureScratchpadHost,
+	readScratchpad as readAppScratchpad,
+	removeScratchpad as removeAppScratchpad,
+	startScratchpadWatcher,
+	stopScratchpadWatcher,
+	updateScratchpad as updateAppScratchpad,
+} from "@onething/app/scratchpad/index.js";
+import type {
+	ScratchpadAdoptRequest,
+	ScratchpadChangedPayload,
+	ScratchpadDeleteRequest,
+	ScratchpadGetRequest,
+	ScratchpadUpdateRequest,
+} from "@shared/ipc/scratchpad.js";
 import type {
 	ChatMessage,
 	ChatSession,
@@ -465,13 +438,6 @@ import type {
 	ProxySettings,
 	TestProxyResponse,
 } from "@shared/ipc/settings.js";
-import type {
-	ChannelReplyDeliveryRecord,
-	ChannelUserLink,
-	ChannelUserProfile,
-	MessageOrigin,
-	ResolvedIdentity,
-} from "@shared/ipc/channel-identity.js";
 import type { SessionCommand } from "@shared/events/session-commands.js";
 import type { PermissionInfo } from "@shared/ipc/permissions.js";
 import type {
@@ -488,52 +454,6 @@ type ServerChatSession = ChatSession & {
 	messageCount?: number;
 	previewText?: string;
 };
-
-export interface ServerChannelIdentityApi {
-	listProfiles(): ChannelUserProfile[];
-	createProfile(input: {
-		id?: string;
-		name: string;
-		isMain?: boolean;
-	}): ChannelUserProfile;
-	updateProfile(input: {
-		id: string;
-		name?: string;
-		isMain?: boolean;
-	}): ChannelUserProfile;
-	listLinks(filter?: {
-		connector?: string;
-		workspaceId?: string;
-		clientUserId?: string;
-	}): ChannelUserLink[];
-	createLink(
-		input: Omit<ChannelUserLink, "id" | "createdAt" | "updatedAt">,
-	): ChannelUserLink;
-	deleteLink(id: string): boolean;
-	resolve(origin: MessageOrigin): {
-		identity: ResolvedIdentity;
-		origin: MessageOrigin;
-		sessionId?: string;
-	};
-	listDeliveries(): ChannelReplyDeliveryRecord[];
-}
-
-interface ServerChannelIdentityStoreData {
-	profiles: ChannelUserProfile[];
-	links: ChannelUserLink[];
-	deliveries: ChannelReplyDeliveryRecord[];
-}
-
-const serverChannelIdentityApis = new WeakMap<
-	OnethingRuntimeFacade,
-	ServerChannelIdentityApi
->();
-
-export function getServerChannelIdentityApi(
-	runtime: OnethingRuntimeFacade,
-): ServerChannelIdentityApi | undefined {
-	return serverChannelIdentityApis.get(runtime);
-}
 
 const DEFAULT_SESSION_MAX_TOKENS = 128000;
 export type ServerMCPClientFactory = (config: MCPServerConfig) => MCPClientLike;
@@ -696,87 +616,6 @@ const webServerCapabilities: RuntimeHostCapabilities = {
 	globalMenuEvents: false,
 };
 
-const localProviderInfo = {
-	id: "local",
-	name: "Local Echo",
-	description: "Development-only echo provider for the web server runtime",
-	defaultBaseUrl: "",
-	defaultModel: "local-echo",
-	icon: "terminal",
-	supportsCustomBaseUrl: false,
-	requiresApiKey: false,
-};
-
-const localEchoModel: OnethingOpenRouterModel = {
-	id: "local-echo",
-	name: "Local Echo",
-	description:
-		"Development-only echo model for validating the web runtime without external credentials",
-	context_length: 128000,
-	architecture: {
-		modality: "text",
-		input_modalities: ["text"],
-		output_modalities: ["text"],
-		tokenizer: "none",
-	},
-	pricing: {
-		prompt: "0",
-		completion: "0",
-		request: "0",
-		image: "0",
-	},
-	top_provider: {
-		context_length: 128000,
-		max_completion_tokens: 4096,
-		is_moderated: false,
-	},
-	supported_parameters: [],
-};
-
-// xAI Grok fallback models (used by both grok and grok-oauth providers).
-// Source: models.dev xai catalog.
-function grokModel(
-	id: string,
-	opts: { context?: number; reasoning?: boolean } = {},
-): OnethingOpenRouterModel {
-	return {
-		id,
-		name: id,
-		description: `xAI Grok model`,
-		context_length: opts.context ?? 131072,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: opts.context ?? 131072,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: opts.reasoning
-			? ["tools", "reasoning", "temperature"]
-			: ["tools", "temperature"],
-	};
-}
-
-const GROK_FALLBACK_MODELS: OnethingOpenRouterModel[] = [
-	grokModel("grok-4.5", { context: 500000, reasoning: true }),
-	grokModel("grok-4.3", { context: 1000000, reasoning: true }),
-	grokModel("grok-4.20-0309-reasoning", { context: 1000000, reasoning: true }),
-	grokModel("grok-4.20-0309-non-reasoning", { context: 1000000 }),
-	grokModel("grok-4.20-multi-agent-0309", {
-		context: 1000000,
-		reasoning: true,
-	}),
-	grokModel("grok-build-0.1", { context: 256000, reasoning: true }),
-	grokModel("grok-3-latest", { context: 131072 }),
-	grokModel("grok-3-fast-latest", { context: 131072 }),
-	grokModel("grok-3-mini-latest", { context: 131072, reasoning: true }),
-];
-
 class ServerStreamChannel extends StreamChannel<AgentEngineStreamChunk> {
 	private readonly wildcardHandlers = new Set<StreamPayloadHandler>();
 
@@ -814,62 +653,97 @@ class ServerProjectDirsStore {
 			.map((project) => ({
 				id: project.id,
 				path: project.path,
+				paths: [...project.paths],
 				lastUsedAt: project.lastUsedAt,
 			}))
 			.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
 	}
 
 	get(path: string): Project | null {
-		const id = projectIdFromPath(path.trim());
-		return this.readProjects().find((project) => project.id === id) ?? null;
+		return (
+			this.readProjects().find((project) =>
+				projectRootsInclude(project.paths, path),
+			) ?? null
+		);
 	}
 
 	add(input: ProjectDirsAddRequest): Project {
-		const trimmedPath = input.path.trim();
-		if (!trimmedPath) throw new Error("project requires a non-empty path");
+		const roots = normalizeProjectRoots(input.path, input.paths ?? []);
+		if (!roots) throw new Error("project requires a non-empty path");
 
 		const now = Date.now();
-		const id = projectIdFromPath(trimmedPath);
 		const projects = this.readProjects();
-		const existing = projects.find((project) => project.id === id);
+		const existing =
+			projects.find((project) =>
+				roots.some((root) => projectRootsInclude(project.paths, root)),
+			) ?? null;
 		const project: Project = existing
 			? {
 					...existing,
-					path: trimmedPath,
+					paths:
+						normalizeProjectRoots(existing.path, [
+							...existing.paths,
+							...roots,
+						]) ?? existing.paths,
 					description: input.description ?? existing.description,
 					lastUsedAt: now,
 				}
 			: {
-					id,
-					path: trimmedPath,
+					id: projectIdFromPath(roots[0]),
+					path: roots[0],
+					paths: roots,
 					description: input.description ?? "",
 					addedAt: now,
 					lastUsedAt: now,
 				};
+		project.path = project.paths[0];
 
 		this.projects = existing
-			? projects.map((item) => (item.id === id ? project : item))
+			? projects.map((item) => (item.id === project.id ? project : item))
 			: [...projects, project];
 		this.save();
 		return project;
 	}
 
-	update(path: string, patch: { description: string }): Project | null {
-		const id = projectIdFromPath(path.trim());
+	update(
+		path: string,
+		patch: { description?: string; paths?: string[] },
+	): Project | null {
 		const projects = this.readProjects();
-		const existing = projects.find((project) => project.id === id);
+		const existing = projects.find((project) =>
+			projectRootsInclude(project.paths, path),
+		);
 		if (!existing) return null;
-		const project = { ...existing, description: patch.description };
-		this.projects = projects.map((item) => (item.id === id ? project : item));
+		let nextPaths = existing.paths;
+		if (patch.paths) {
+			const normalized = normalizeProjectRoots(
+				patch.paths[0] ?? "",
+				patch.paths.slice(1),
+			);
+			if (!normalized)
+				throw new Error("project requires at least one non-empty root");
+			nextPaths = normalized;
+		}
+		const project: Project = {
+			...existing,
+			path: nextPaths[0],
+			paths: nextPaths,
+			description: patch.description ?? existing.description,
+		};
+		this.projects = projects.map((item) =>
+			item.id === existing.id ? project : item,
+		);
 		this.save();
 		return project;
 	}
 
 	remove(path: string): boolean {
-		const id = projectIdFromPath(path.trim());
 		const projects = this.readProjects();
-		if (!projects.some((project) => project.id === id)) return false;
-		this.projects = projects.filter((project) => project.id !== id);
+		const existing = projects.find((project) =>
+			projectRootsInclude(project.paths, path),
+		);
+		if (!existing) return false;
+		this.projects = projects.filter((project) => project.id !== existing.id);
 		this.save();
 		return true;
 	}
@@ -885,7 +759,9 @@ class ServerProjectDirsStore {
 				readFileSync(this.filePath, "utf-8"),
 			) as ServerProjectDirsFile;
 			this.projects = Array.isArray(parsed.projects)
-				? parsed.projects.filter(isServerProjectDirProject)
+				? parsed.projects
+						.filter(isServerProjectDirProject)
+						.map(normalizeServerProjectDirRecord)
 				: [];
 			return this.projects;
 		} catch {
@@ -904,6 +780,7 @@ class ServerProjectDirsStore {
 	}
 }
 
+// Legacy rows carry only `path`; `paths` is normalized in afterwards.
 function isServerProjectDirProject(value: unknown): value is Project {
 	if (!value || typeof value !== "object") return false;
 	const project = value as Partial<Project>;
@@ -914,6 +791,17 @@ function isServerProjectDirProject(value: unknown): value is Project {
 		typeof project.addedAt === "number" &&
 		typeof project.lastUsedAt === "number"
 	);
+}
+
+function normalizeServerProjectDirRecord(project: Project): Project {
+	const paths =
+		normalizeProjectRoots(
+			project.path,
+			Array.isArray(project.paths)
+				? project.paths.filter((p): p is string => typeof p === "string")
+				: [],
+		) ?? [project.path];
+	return { ...project, path: paths[0], paths };
 }
 
 type ServerPluginCatalogEntry = () => void | Promise<void>;
@@ -1241,11 +1129,6 @@ export async function createDevelopmentOnethingServerRuntime(
 		OnethingAuthService<OnethingOAuthToken>
 	>();
 	const mcpManagersByOwner = new Map<string, ServerMCPManager>();
-	const todoPlanStoresByOwner = new Map<string, OnethingTodoPlanStore>();
-	const todoPlanChangedHandlersByOwner = new Map<
-		string,
-		Set<TodoPlanChangedHandler>
-	>();
 	const agentStoresByOwner = new Map<
 		string,
 		ReturnType<typeof createOnethingAgentStore>
@@ -1279,9 +1162,6 @@ export async function createDevelopmentOnethingServerRuntime(
 	const dataRoot = resolve(
 		options.dataRoot ?? process.env.ONETHING_SERVER_DATA_ROOT ?? storePath,
 	);
-	const usageLedger = new OnethingUsageLedger({
-		ledgerDir: () => join(dataRoot, "usage"),
-	});
 	const explicitSettingsRoot =
 		options.settingsRoot ?? process.env.ONETHING_SERVER_SETTINGS_ROOT;
 	const baseSettingsStore =
@@ -1664,15 +1544,6 @@ export async function createDevelopmentOnethingServerRuntime(
 		};
 	};
 
-	const notifyTodoPlanChanged = (
-		context: RuntimeRequestContext,
-		payload: TodoPlanChangedPayload,
-	): void => {
-		const handlers = todoPlanChangedHandlersByOwner.get(ownerKey(context));
-		if (!handlers) return;
-		for (const handler of handlers) handler(payload);
-	};
-
 	const notifyMediaImageGenerated = (
 		context: RuntimeRequestContext,
 		payload: unknown,
@@ -1682,36 +1553,69 @@ export async function createDevelopmentOnethingServerRuntime(
 		for (const handler of handlers) handler(payload);
 	};
 
-	const getTodoPlanStoreForContext = (
-		context = defaultRequestContext(),
-	): OnethingTodoPlanStore => {
-		const key = ownerKey(context);
-		let store = todoPlanStoresByOwner.get(key);
-		if (!store) {
-			store = new OnethingTodoPlanStore({
-				getConfiguredDirectory: () => undefined,
-				getDefaultStorePath: () => ownerDataRootForContext(context),
-				notifyChanged: (payload) => notifyTodoPlanChanged(context, payload),
-			});
-			todoPlanStoresByOwner.set(key, store);
-		}
-		return store;
+	/**
+	 * 草稿纸的广播是**进程级**的:store 是 `@onething/app/scratchpad` 的单例
+	 * (引擎在同一进程里读同一张纸),所以订阅者也不按 owner 分表 —— 分了就要
+	 * 有第二个 store,而第二个 store 就是第二份事实。
+	 */
+	const scratchpadChangedHandlers = new Set<
+		(payload: ScratchpadChangedPayload) => void
+	>();
+	/**
+	 * todo/plan 的广播和草稿纸同形:数据面迁到通用 RPC 通道之后,写发生在
+	 * `@onething/app/todo-plan` 那一个进程级 store 里,per-owner 的第二个 store
+	 * 连同它的 per-owner 订阅表一起没了。**这个端口是 `/api/todo-plan/events`
+	 * 这条 SSE 唯一的货源** —— 少了它,浏览器端的变更推送会安静地断掉。
+	 */
+	const todoPlanChangedHandlers = new Set<TodoPlanChangedHandler>();
+	configureTodoPlanHost({
+		broadcastChanged: (payload) => {
+			for (const handler of todoPlanChangedHandlers) {
+				try {
+					handler(payload);
+				} catch (error) {
+					console.error("[server] todo-plan broadcast failed:", error);
+				}
+			}
+		},
+	});
+
+	configureScratchpadHost({
+		broadcastChanged: (payload) => {
+			for (const handler of scratchpadChangedHandlers) {
+				try {
+					handler(payload);
+				} catch (error) {
+					console.error("[server] scratchpad broadcast failed:", error);
+				}
+			}
+		},
+	});
+	// AI 用普通 write/edit 工具改纸时不经过 store —— watcher 是唯一会告诉
+	// 浏览器"纸变了"的人。
+	void startScratchpadWatcher().catch((error) => {
+		console.error("[server] scratchpad watcher failed to start:", error);
+	});
+
+	const subscribeScratchpadChanged = (
+		handler: (payload: ScratchpadChangedPayload) => void,
+	): RuntimeUnsubscribe => {
+		scratchpadChangedHandlers.add(handler);
+		return () => {
+			scratchpadChangedHandlers.delete(handler);
+		};
 	};
+
+	function describeRuntimeError(error: unknown): string {
+		return error instanceof Error ? error.message : String(error);
+	}
 
 	const subscribeTodoPlanChanged = (
 		handler: TodoPlanChangedHandler,
-		context = defaultRequestContext(),
 	): RuntimeUnsubscribe => {
-		const key = ownerKey(context);
-		let handlers = todoPlanChangedHandlersByOwner.get(key);
-		if (!handlers) {
-			handlers = new Set<TodoPlanChangedHandler>();
-			todoPlanChangedHandlersByOwner.set(key, handlers);
-		}
-		handlers.add(handler);
+		todoPlanChangedHandlers.add(handler);
 		return () => {
-			handlers?.delete(handler);
-			if (handlers?.size === 0) todoPlanChangedHandlersByOwner.delete(key);
+			todoPlanChangedHandlers.delete(handler);
 		};
 	};
 
@@ -2376,85 +2280,6 @@ export async function createDevelopmentOnethingServerRuntime(
 		if (watchers?.size === 0)
 			workspaceWatchersByOwner.delete(ownerKey(context));
 		return { success: true };
-	};
-
-	const providerModelConfigsForContext = async (
-		context = defaultRequestContext(),
-	): Promise<OnethingProviderModelConfigs> => {
-		const settings = await getOwnerSettings(
-			settingsByOwner,
-			settingsStore,
-			context,
-		);
-		return settings.ai?.providers as OnethingProviderModelConfigs;
-	};
-
-	const getFallbackModelsForProvider = (
-		providerId: string,
-	): OnethingOpenRouterModel[] => {
-		if (providerId === "local") return [localEchoModel];
-		// grok / grok-oauth share the same xAI model catalog.
-		// Return all known models so the list isn't limited to the default.
-		if (providerId === "grok" || providerId === "grok-oauth") {
-			return GROK_FALLBACK_MODELS;
-		}
-		const provider = onethingBaseBuiltinProviders.find(
-			(candidate) => candidate.id === providerId,
-		);
-		if (!provider?.info.defaultModel) return [];
-		return [
-			createFallbackModel(provider.info.defaultModel, provider.info.name),
-		];
-	};
-
-	const getFallbackModel = (
-		modelId: string,
-		providerId?: string,
-	): OnethingOpenRouterModel | undefined => {
-		if (modelId === localEchoModel.id) return localEchoModel;
-		if (providerId) {
-			return getFallbackModelsForProvider(providerId).find(
-				(model) => model.id === modelId,
-			);
-		}
-		for (const provider of [
-			localProviderInfo,
-			...onethingBaseBuiltinProviders.map((candidate) => candidate.info),
-		]) {
-			const model = getFallbackModelsForProvider(provider.id).find(
-				(candidate) => candidate.id === modelId,
-			);
-			if (model) return model;
-		}
-		return undefined;
-	};
-
-	const getModelsForProvider = async (
-		providerId: string,
-		context = defaultRequestContext(),
-	): Promise<OnethingOpenRouterModel[]> =>
-		getOnethingModelsForProvider(
-			await providerModelConfigsForContext(context),
-			providerId,
-			{
-				getFallbackModelsForProvider,
-				getFallbackModel,
-			},
-		);
-
-	const getAllModelsForContext = async (
-		context = defaultRequestContext(),
-	): Promise<OnethingOpenRouterModel[]> => {
-		const cached = getAllOnethingModels(
-			await providerModelConfigsForContext(context),
-		);
-		const fallback = [
-			localEchoModel,
-			...onethingBaseBuiltinProviders.flatMap((provider) =>
-				getFallbackModelsForProvider(provider.id),
-			),
-		];
-		return mergeModelsById(cached, fallback);
 	};
 
 	const buildSystemPromptSnapshotForContext = async (
@@ -3259,47 +3084,6 @@ export async function createDevelopmentOnethingServerRuntime(
 		},
 		prompts: {
 			getSystemPromptSnapshot: buildSystemPromptSnapshotForContext,
-			async list(context = defaultRequestContext()) {
-				const store = getPromptStoreForContext(context);
-				return listOnethingPromptsForIpc({
-					listPrompts: () => store.list() as UserPrompt[],
-					logger: console,
-				});
-			},
-			async get(request: { id: string }, context = defaultRequestContext()) {
-				const store = getPromptStoreForContext(context);
-				return getOnethingPromptForIpc({
-					request,
-					getPrompt: (id) => store.get(id) as UserPrompt | undefined,
-					logger: console,
-				});
-			},
-			async create(request: unknown, context = defaultRequestContext()) {
-				const store = getPromptStoreForContext(context);
-				return createOnethingPromptForIpc({
-					request: request as PromptCreateRequest,
-					createPrompt: (promptRequest) =>
-						store.create(promptRequest) as UserPrompt,
-					logger: console,
-				});
-			},
-			async update(request: unknown, context = defaultRequestContext()) {
-				const store = getPromptStoreForContext(context);
-				return updateOnethingPromptForIpc({
-					request: request as PromptUpdateRequest,
-					updatePrompt: (promptRequest) =>
-						store.update(promptRequest) as UserPrompt | undefined,
-					logger: console,
-				});
-			},
-			async delete(request: { id: string }, context = defaultRequestContext()) {
-				const store = getPromptStoreForContext(context);
-				return deleteOnethingPromptForIpc({
-					request,
-					deletePrompt: (id) => store.delete(id),
-					logger: console,
-				});
-			},
 		},
 		files: {
 			async listFiles(request: unknown, context = defaultRequestContext()) {
@@ -3716,6 +3500,7 @@ export async function createDevelopmentOnethingServerRuntime(
 				path: string,
 				description?: string,
 				context = defaultRequestContext(),
+				paths?: string[],
 			) {
 				const resolvedPath = resolveServerWorkspaceFilePath(
 					workspaceRoot,
@@ -3723,15 +3508,28 @@ export async function createDevelopmentOnethingServerRuntime(
 					path,
 				);
 				if (!resolvedPath) return serverProjectDirsPathError();
+				let resolvedExtraPaths: string[] | undefined;
+				if (paths && paths.length > 0) {
+					resolvedExtraPaths = [];
+					for (const extra of paths) {
+						const resolvedExtra = resolveServerWorkspaceFilePath(
+							workspaceRoot,
+							context,
+							extra,
+						);
+						if (!resolvedExtra) return serverProjectDirsPathError();
+						resolvedExtraPaths.push(resolvedExtra);
+					}
+				}
 				const store = projectDirsStoreForContext(context);
 				return addOnethingProjectDirForIpc({
-					request: { path: resolvedPath, description },
+					request: { path: resolvedPath, paths: resolvedExtraPaths, description },
 					addProject: (input) => store.add(input),
 				});
 			},
 			async update(
 				path: string,
-				description: string,
+				patch: { description?: string; paths?: string[] },
 				context = defaultRequestContext(),
 			) {
 				const resolvedPath = resolveServerWorkspaceFilePath(
@@ -3740,10 +3538,28 @@ export async function createDevelopmentOnethingServerRuntime(
 					path,
 				);
 				if (!resolvedPath) return serverProjectDirsPathError();
+				let resolvedPaths: string[] | undefined;
+				if (patch.paths) {
+					resolvedPaths = [];
+					for (const root of patch.paths) {
+						const resolvedRoot = resolveServerWorkspaceFilePath(
+							workspaceRoot,
+							context,
+							root,
+						);
+						if (!resolvedRoot) return serverProjectDirsPathError();
+						resolvedPaths.push(resolvedRoot);
+					}
+				}
 				const store = projectDirsStoreForContext(context);
 				return updateOnethingProjectDirForIpc({
-					request: { path: resolvedPath, description },
-					updateProject: (targetPath, patch) => store.update(targetPath, patch),
+					request: {
+						path: resolvedPath,
+						description: patch.description,
+						paths: resolvedPaths,
+					},
+					updateProject: (targetPath, targetPatch) =>
+						store.update(targetPath, targetPatch),
 				});
 			},
 			async remove(path: string, context = defaultRequestContext()) {
@@ -3833,6 +3649,27 @@ export async function createDevelopmentOnethingServerRuntime(
 					listAssets: (mediaQuery) => service.listAssets(mediaQuery),
 				});
 				return assets.map(toServerClientMediaAsset);
+			},
+			async ingestFiles(request: unknown, context = defaultRequestContext()) {
+				const service = getServerMediaServiceForContext(
+					mediaServicesByOwner,
+					dataRoot,
+					context,
+					isDefaultContext(context) ? storePath : undefined,
+				);
+				const result = await ingestOnethingMediaFilesForIpc({
+					request: (request as OnethingMediaIngestLocalFilesInput | undefined) || {
+						files: [],
+					},
+					ingestFiles: (input) => service.ingestLocalFiles(input),
+					logger: console,
+				});
+				// 出站资产的 filePath 必须重写成 URL:浏览器拿到主机的绝对路径既没用
+				// 也是一次泄露(其余 media 出口同此口径)。
+				return {
+					...result,
+					assets: result.assets.map(toServerClientMediaAsset),
+				};
 			},
 			async hideAsset(id: string, context = defaultRequestContext()) {
 				const service = getServerMediaServiceForContext(
@@ -4003,66 +3840,53 @@ export async function createDevelopmentOnethingServerRuntime(
 				};
 			},
 		},
+		// todo/plan 的数据面已迁到通用 RPC 通道(todoPlanRouter);这里只剩事件订阅,
+		// 它给 `/api/todo-plan/events` 那条 SSE 供货 —— 事件下行的收敛是主线 T2。
 		todoPlan: {
-			get(
-				request: TodoPlanContext | undefined,
-				context = defaultRequestContext(),
-			) {
-				const store = getTodoPlanStoreForContext(context);
-				return getOnethingTodoPlanForIpc({
-					request,
-					readSnapshot: (todoContext) => store.readSnapshot(todoContext),
-				});
-			},
-			createNote(
-				request: TodoPlanCreateRequest,
-				context = defaultRequestContext(),
-			) {
-				const store = getTodoPlanStoreForContext(context);
-				return createOnethingTodoNoteForIpc({
-					request,
-					createUserNote: (title, content) =>
-						store.createUserNote(title, content),
-				});
-			},
-			update(
-				request: TodoPlanUpdateRequest,
-				context = defaultRequestContext(),
-			) {
-				const store = getTodoPlanStoreForContext(context);
-				return updateOnethingTodoPlanDocumentForIpc({
-					request,
-					updateDocument: (todoUpdate) => store.updateDocument(todoUpdate),
-				});
-			},
-			renameNote(
-				request: TodoPlanRenameRequest,
-				context = defaultRequestContext(),
-			) {
-				const store = getTodoPlanStoreForContext(context);
-				return renameOnethingTodoNoteForIpc({
-					request,
-					renameUserNote: (id, title) => store.renameUserNote(id, title),
-				});
-			},
-			deleteNote(
-				request: TodoPlanDeleteRequest,
-				context = defaultRequestContext(),
-			) {
-				const store = getTodoPlanStoreForContext(context);
-				return deleteOnethingTodoNoteForIpc({
-					request,
-					deleteUserNote: (id) => store.deleteUserNote(id),
-				});
-			},
-			async revealDirectory() {
-				return {
-					success: false,
-					error:
-						"Opening the todo plan directory is not available in the web server runtime.",
-				};
-			},
 			subscribeChanged: subscribeTodoPlanChanged,
+		},
+		// 草稿纸没有 per-owner 分表:server 是单用户,而且**引擎在同一个进程里
+		// 读同一张纸**(beforeTurn 尾块注入)。第二个仓等于把事实分叉。
+		scratchpad: {
+			async get(request: ScratchpadGetRequest) {
+				try {
+					const document = await readAppScratchpad(request.sessionId);
+					return { success: true, document };
+				} catch (error) {
+					return { success: false, error: describeRuntimeError(error) };
+				}
+			},
+			async update(request: ScratchpadUpdateRequest) {
+				try {
+					const document = await updateAppScratchpad(
+						request.sessionId,
+						request.content,
+					);
+					return { success: true, document };
+				} catch (error) {
+					return { success: false, error: describeRuntimeError(error) };
+				}
+			},
+			async delete(request: ScratchpadDeleteRequest) {
+				try {
+					await removeAppScratchpad(request.sessionId);
+					return { success: true };
+				} catch (error) {
+					return { success: false, error: describeRuntimeError(error) };
+				}
+			},
+			async adopt(request: ScratchpadAdoptRequest) {
+				try {
+					await adoptAppScratchpad(
+						request.fromSessionId,
+						request.toSessionId,
+					);
+					return { success: true };
+				} catch (error) {
+					return { success: false, error: describeRuntimeError(error) };
+				}
+			},
+			subscribeChanged: subscribeScratchpadChanged,
 		},
 		scheduler: {
 			async listTasks(context = defaultRequestContext()) {
@@ -4221,130 +4045,6 @@ export async function createDevelopmentOnethingServerRuntime(
 							...(record as SchedulerRunDetailDTO),
 							result: toJsonValue((record as SchedulerRunDetailDTO).result),
 						}) as SchedulerRunDetailDTO,
-					logger: console,
-				});
-			},
-		},
-		agents: {
-			list(context = defaultRequestContext()) {
-				const store = getAgentStoreForContext(context);
-				return listOnethingAgentsForIpc({
-					listAgents: () => store.listAgents() as OnethingAgentDefinition[],
-					logger: console,
-				});
-			},
-			create(
-				request: {
-					name?: string;
-					systemPrompt?: string;
-					tools?: string[];
-					title?: string;
-					avatar?: string;
-					avatarImage?: string;
-					color?: string;
-					description?: string;
-					model?: { providerId?: string; modelId?: string; thinking?: string };
-					toolGrants?: string[];
-					permissionMode?: string;
-					maxTurns?: number;
-				} = {},
-				context = defaultRequestContext(),
-			) {
-				const store = getAgentStoreForContext(context);
-				return createOnethingAgentFromRequestForIpc({
-					name: request.name ?? "",
-					systemPrompt: request.systemPrompt ?? "",
-					tools: request.tools,
-					title: request.title,
-					avatar: request.avatar,
-					avatarImage: request.avatarImage,
-					color: request.color,
-					description: request.description,
-					model: request.model,
-					toolGrants: request.toolGrants,
-					permissionMode: request.permissionMode,
-					maxTurns: request.maxTurns,
-					createId: randomUUID,
-					createAgent: (input) =>
-						store.createAgent(input) as OnethingAgentDefinition,
-					logger: console,
-				});
-			},
-			update(
-				request: {
-					agentId?: string;
-					name?: string;
-					systemPrompt?: string;
-					tools?: string[] | null;
-					title?: string | null;
-					avatar?: string | null;
-					avatarImage?: string | null;
-					color?: string | null;
-					description?: string | null;
-					model?: { providerId?: string; modelId?: string; thinking?: string } | null;
-					toolGrants?: string[] | null;
-					permissionMode?: string | null;
-					maxTurns?: number | null;
-				} = {},
-				context = defaultRequestContext(),
-			) {
-				const store = getAgentStoreForContext(context);
-				return updateOnethingAgentFromRequestForIpc({
-					agentId: request.agentId ?? "",
-					name: request.name,
-					systemPrompt: request.systemPrompt,
-					tools: request.tools,
-					title: request.title,
-					avatar: request.avatar,
-					avatarImage: request.avatarImage,
-					color: request.color,
-					description: request.description,
-					model: request.model,
-					toolGrants: request.toolGrants,
-					permissionMode: request.permissionMode,
-					maxTurns: request.maxTurns,
-					updateAgent: (input) =>
-						store.updateAgent(input) as OnethingAgentDefinition,
-					logger: console,
-				});
-			},
-			/**
-			 * 「删除」的两条路(agent-domain-model.md §3.2):被任何会话引用过 →
-			 * 退休(墓碑,身份面全留);从未被引用过 → 真硬删。引用检查要的四个
-			 * 字段(agentId/kind/room/collab)都从会话索引里递过去 —— 少递一个就
-			 * 会把「房间成员」这类引用看漏,把墓碑删成孤儿。
-			 */
-			delete(
-				request: { agentId?: string } = {},
-				context = defaultRequestContext(),
-			) {
-				const store = getAgentStoreForContext(context);
-				return deleteOnethingAgentFromRequestForIpc({
-					agentId: request.agentId,
-					defaultAgentId: DEFAULT_ONETHING_AGENT_ID,
-					listSessions: () =>
-						listSessionsForContext(context).map((session) => ({
-							id: session.id,
-							kind: session.kind,
-							agentId: session.agentId,
-							collab: session.collab,
-							room: session.room,
-						})),
-					retireAgent: (agentId) =>
-						store.retireAgent(agentId) as OnethingAgentDefinition,
-					deleteAgent: (agentId) => store.deleteAgent(agentId),
-					logger: console,
-				});
-			},
-			restore(
-				request: { agentId?: string } = {},
-				context = defaultRequestContext(),
-			) {
-				const store = getAgentStoreForContext(context);
-				return restoreOnethingAgentFromRequestForIpc({
-					agentId: request.agentId,
-					restoreAgent: (agentId) =>
-						store.restoreAgent(agentId) as OnethingAgentDefinition,
 					logger: console,
 				});
 			},
@@ -4992,174 +4692,6 @@ export async function createDevelopmentOnethingServerRuntime(
 				});
 			},
 		},
-		providers: {
-			list() {
-				return listOnethingProvidersForIpc({
-					getAvailableProviders: () => [
-						localProviderInfo,
-						...onethingBaseBuiltinProviders.map((provider) => provider.info),
-					],
-					logger: console,
-				});
-			},
-			usage(providerId: string) {
-				return getOnethingProviderUsage({
-					providerId,
-					codexProviderIds: ["codex"],
-					canonicalCodexProviderId: "codex",
-					refreshTokenIfNeeded: () => {
-						throw new Error(
-							"Provider usage requires OAuth in the desktop host.",
-						);
-					},
-					fetchCodexUsage: () => {
-						throw new Error(
-							"Provider usage requires OAuth in the desktop host.",
-						);
-					},
-				});
-			},
-			async envStatus(providerId: string) {
-				return {
-					success: true,
-					status: getOnethingProviderEnvStatus(providerId),
-				};
-			},
-			async getModelsWithCapabilities(
-				providerId: string,
-				_options,
-				context = defaultRequestContext(),
-			) {
-				return {
-					success: true,
-					models: await getModelsForProvider(providerId, context),
-				};
-			},
-			async getAllModels(context = defaultRequestContext()) {
-				return getAllOnethingModelRegistryModelsForIpc({
-					getAllModels: () => getAllModelsForContext(context),
-					logger: console,
-				});
-			},
-			async searchModels(
-				query: string,
-				providerId?: string,
-				context = defaultRequestContext(),
-			) {
-				return searchOnethingModelRegistryForIpc({
-					query,
-					providerId,
-					searchModels: async (modelQuery, targetProviderId) => {
-						if (targetProviderId) {
-							const lower = modelQuery.toLowerCase();
-							return (
-								await getModelsForProvider(targetProviderId, context)
-							).filter(
-								(model) =>
-									model.id.toLowerCase().includes(lower) ||
-									model.name.toLowerCase().includes(lower) ||
-									model.description?.toLowerCase().includes(lower),
-							);
-						}
-						return searchOnethingModels(
-							await providerModelConfigsForContext(context),
-							modelQuery,
-							undefined,
-							{
-								getFallbackModelsForProvider,
-								getFallbackModel,
-							},
-						);
-					},
-					logger: console,
-				});
-			},
-			async refreshModelRegistry(context = defaultRequestContext()) {
-				return refreshOnethingModelRegistryForIpc({
-					forceRefresh: async () => {
-						const settings = await getOwnerSettings(
-							settingsByOwner,
-							settingsStore,
-							context,
-						);
-						if (!settings?.ai?.providers) return;
-
-						// Fetch models from models.dev
-						let data: Record<
-							string,
-							{ id: string; name: string; models: Record<string, any> }
-						>;
-						try {
-							const res = await fetch("https://models.dev/api.json", {
-								headers: {
-									"User-Agent": "onething-server/1.0",
-									Accept: "application/json",
-								},
-								signal: AbortSignal.timeout(15000),
-							});
-							if (!res.ok)
-								throw new Error(`models.dev API error: ${res.status}`);
-							data = (await res.json()) as any;
-						} catch (err) {
-							console.error("[refreshModels] Failed to fetch models.dev:", err);
-							return;
-						}
-
-						// Refresh each configured provider that has models.dev data
-						let changed = false;
-						for (const providerId of Object.keys(settings.ai.providers)) {
-							if (providerId === "custom" || providerId === "codex") continue;
-							const entries = createOnethingModelEntriesFromModelsDev(
-								providerId,
-								data,
-							);
-							if (!entries) continue;
-							const config = settings.ai.providers[providerId]!;
-							config.models = entries;
-							config.modelsLastFetched = Date.now();
-							changed = true;
-							console.log(
-								`[refreshModels] Saved ${Object.keys(entries).length} models for ${providerId}`,
-							);
-						}
-
-						if (changed) {
-							const key = ownerKey(context);
-							settingsByOwner.set(key, cloneJson(settings));
-							settingsStore
-								.save(context, settings)
-								.catch((err) =>
-									console.error("[refreshModels] failed to persist:", err),
-								);
-						}
-					},
-					logger: console,
-				});
-			},
-			async getModelNameAliases() {
-				return getOnethingModelRegistryNameAliasesForIpc({
-					getModelNameAliases: () => ({
-						[localEchoModel.id]: localEchoModel.name,
-					}),
-					logger: console,
-				});
-			},
-			async getModelDisplayName(modelId: string) {
-				return getOnethingModelRegistryDisplayNameForIpc({
-					modelId,
-					getModelDisplayName: (id) => getFallbackModel(id)?.name || id,
-					logger: console,
-				});
-			},
-		},
-		usage: {
-			async getSummary(request: { granularity: "day" | "week" | "month"; count?: number }) {
-				return getUsageSummaryWithProjects(usageLedger, request);
-			},
-			async getSessionUsage(sessionId: string) {
-				return getOnethingSessionUsageTotal(usageLedger, sessionId);
-			},
-		},
 		tools: {
 			async getTools(): Promise<GetToolsResponse> {
 				return {
@@ -5481,18 +5013,15 @@ export async function createDevelopmentOnethingServerRuntime(
 			}
 			workspaceWatchersByOwner.clear();
 			workspaceFileChangedHandlersByOwner.clear();
-			todoPlanStoresByOwner.clear();
-			todoPlanChangedHandlersByOwner.clear();
+			todoPlanChangedHandlers.clear();
+			stopScratchpadWatcher();
+			scratchpadChangedHandlers.clear();
 			mediaImageGeneratedHandlersByOwner.clear();
 			agentStoresByOwner.clear();
 			promptStoresByOwner.clear();
 			pluginCatalogManagersByOwner.clear();
 		},
 	});
-	serverChannelIdentityApis.set(
-		runtime,
-		createServerChannelIdentityApi(join(dataRoot, "channel-identity.json")),
-	);
 
 	return {
 		runtime,
@@ -6712,413 +6241,6 @@ function writeServerRuntimeJsonFile<T>(filePath: string, data: T): void {
 	writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
-function createServerChannelIdentityApi(
-	filePath: string,
-): ServerChannelIdentityApi {
-	const defaultData: ServerChannelIdentityStoreData = {
-		profiles: [],
-		links: [],
-		deliveries: [],
-	};
-	const localProfile = (now = Date.now()): ChannelUserProfile => ({
-		id: "local-owner",
-		name: "Local user",
-		isMain: true,
-		source: "local",
-		createdAt: now,
-		updatedAt: now,
-	});
-	const channelProfileId = (input: {
-		connector: string;
-		workspaceId?: string;
-		externalUserId: string;
-	}) =>
-		`channel-${sanitizeServerIdentityPart(input.connector)}-${sanitizeServerIdentityPart(input.workspaceId || "default")}-${sanitizeServerIdentityPart(input.externalUserId)}`;
-	const readData = (): ServerChannelIdentityStoreData => {
-		const data = readServerRuntimeJsonFile<ServerChannelIdentityStoreData>(
-			filePath,
-			defaultData,
-		);
-		const profiles = Array.isArray(data.profiles) ? data.profiles : [];
-		if (!profiles.some((profile) => profile.id === "local-owner"))
-			profiles.unshift(localProfile());
-		return {
-			profiles,
-			links: Array.isArray(data.links) ? data.links : [],
-			deliveries: Array.isArray(data.deliveries) ? data.deliveries : [],
-		};
-	};
-	const writeData = (data: ServerChannelIdentityStoreData) =>
-		writeServerRuntimeJsonFile(filePath, data);
-	const normalizeWorkspaceId = (workspaceId?: string) =>
-		workspaceId?.trim() || undefined;
-	const findProfile = (id: string) =>
-		readData().profiles.find((profile) => profile.id === id);
-	const createProfileRecord = (input: {
-		id?: string;
-		name: string;
-		isMain?: boolean;
-		source?: ChannelUserProfile["source"];
-		channel?: {
-			connector: string;
-			workspaceId?: string;
-			externalUserId: string;
-		};
-	}): ChannelUserProfile => {
-		const now = Date.now();
-		const data = readData();
-		const id = sanitizeServerIdentityPart(
-			input.id || input.name || `user-${now}`,
-		);
-		const existing = data.profiles.find((profile) => profile.id === id);
-		if (input.isMain) {
-			data.profiles.forEach((profile) => {
-				profile.isMain = profile.id === id;
-			});
-		}
-		if (existing) {
-			existing.name = input.name.trim() || existing.name;
-			if (input.channel) {
-				existing.connector = input.channel.connector;
-				existing.workspaceId = input.channel.workspaceId?.trim() || "default";
-				existing.externalUserId = input.channel.externalUserId;
-			}
-			existing.source = input.source || existing.source;
-			existing.isMain =
-				input.isMain === undefined ? existing.isMain : input.isMain;
-			existing.updatedAt = now;
-			writeData(data);
-			return existing;
-		}
-		const profile: ChannelUserProfile = {
-			id,
-			name: input.name.trim() || id,
-			isMain: input.isMain === true,
-			source: input.source || "manual",
-			...(input.channel
-				? {
-						connector: input.channel.connector,
-						workspaceId: input.channel.workspaceId?.trim() || "default",
-						externalUserId: input.channel.externalUserId,
-					}
-				: {}),
-			createdAt: now,
-			updatedAt: now,
-		};
-		data.profiles.push(profile);
-		if (profile.isMain) {
-			data.profiles.forEach((item) => {
-				item.isMain = item.id === profile.id;
-			});
-		}
-		writeData(data);
-		return profile;
-	};
-	const ensureClientProfile = (
-		clientUserId: string,
-		displayName?: string,
-	): ChannelUserProfile =>
-		findProfile(clientUserId) ||
-		createProfileRecord({
-			id: clientUserId,
-			name: displayName || clientUserId,
-			source: clientUserId === "local-owner" ? "local" : "manual",
-			isMain: clientUserId === "local-owner",
-		});
-	const ensureChannelProfile = (input: {
-		connector: string;
-		workspaceId?: string;
-		externalUserId: string;
-		displayName?: string;
-	}) =>
-		findProfile(channelProfileId(input)) ||
-		createProfileRecord({
-			id: channelProfileId(input),
-			name: input.displayName || input.externalUserId,
-			source: "channel",
-			channel: input,
-		});
-	const touchProfile = (
-		id: string,
-		input: {
-			sentAt?: number;
-			transport?: MessageOrigin["transport"];
-			connector?: string;
-			displayName?: string;
-		} = {},
-	) => {
-		const data = readData();
-		const profile = data.profiles.find((item) => item.id === id);
-		if (!profile) return;
-		const now = Date.now();
-		profile.lastSentAt = input.sentAt || now;
-		profile.lastTransport = input.transport || profile.lastTransport;
-		profile.lastConnector = input.connector || profile.lastConnector;
-		if (input.displayName && profile.source === "channel")
-			profile.name = input.displayName;
-		profile.updatedAt = now;
-		writeData(data);
-	};
-
-	const findLink = (origin: MessageOrigin): ChannelUserLink | undefined => {
-		const connector = serverOriginConnector(origin);
-		const workspaceId = normalizeWorkspaceId(serverOriginWorkspaceId(origin));
-		const externalUserId = serverOriginExternalUserId(origin);
-		return readData().links.find(
-			(link) =>
-				link.connector === connector &&
-				normalizeWorkspaceId(link.workspaceId) === workspaceId &&
-				link.externalUserId === externalUserId,
-		);
-	};
-
-	const resolveIdentity = (origin: MessageOrigin): ResolvedIdentity => {
-		if (origin.transport === "desktop" || origin.transport === "voice") {
-			const profile = origin.resolvedIdentity?.profileId
-				? findProfile(origin.resolvedIdentity.profileId) ||
-					readData().profiles.find((item) => item.isMain) ||
-					localProfile()
-				: readData().profiles.find((item) => item.isMain) || localProfile();
-			touchProfile(profile.id, {
-				sentAt: origin.receivedAt,
-				transport: origin.transport,
-			});
-			return {
-				...(origin.resolvedIdentity ?? { kind: "client-user" as const }),
-				kind: "client-user",
-				userId: profile.id,
-				profileId: profile.id,
-				displayName: profile.name,
-				linkedClientUserId: profile.id,
-			};
-		}
-		if (origin.resolvedIdentity?.kind === "client-user") {
-			const profile = ensureClientProfile(
-				origin.resolvedIdentity.profileId ||
-					origin.resolvedIdentity.linkedClientUserId ||
-					origin.resolvedIdentity.userId,
-				origin.resolvedIdentity.displayName ||
-					origin.actor?.displayName ||
-					origin.actor?.handle,
-			);
-			touchProfile(profile.id, {
-				sentAt: origin.receivedAt,
-				transport: origin.transport,
-				connector: serverOriginConnector(origin),
-				displayName: origin.actor?.displayName || origin.actor?.handle,
-			});
-			return {
-				...origin.resolvedIdentity,
-				userId: profile.id,
-				profileId: profile.id,
-				displayName: origin.resolvedIdentity.displayName || profile.name,
-				linkedClientUserId: profile.id,
-			};
-		}
-
-		const connector = serverOriginConnector(origin);
-		const workspaceId = serverOriginWorkspaceId(origin);
-		const externalUserId = serverOriginExternalUserId(origin);
-		const link = findLink(origin);
-		if (link) {
-			const profile = ensureClientProfile(
-				link.clientUserId,
-				origin.actor?.displayName || origin.actor?.handle,
-			);
-			touchProfile(profile.id, {
-				sentAt: origin.receivedAt,
-				transport: origin.transport,
-				connector,
-			});
-			return {
-				kind: "client-user",
-				userId: profile.id,
-				profileId: profile.id,
-				displayName:
-					origin.actor?.displayName || origin.actor?.handle || profile.name,
-				linkedClientUserId: profile.id,
-				externalUserKey: `${connector}:${workspaceId || "default"}:${externalUserId}`,
-			};
-		}
-
-		const externalUserKey = `${connector}:${workspaceId || "default"}:${externalUserId}`;
-		const profile = ensureChannelProfile({
-			connector,
-			workspaceId,
-			externalUserId,
-			displayName: origin.actor?.displayName || origin.actor?.handle,
-		});
-		touchProfile(profile.id, {
-			sentAt: origin.receivedAt,
-			transport: origin.transport,
-			connector,
-			displayName: origin.actor?.displayName || origin.actor?.handle,
-		});
-		return {
-			kind: "channel-user",
-			userId:
-				profile.id || `channel:${sanitizeServerIdentityPart(externalUserKey)}`,
-			profileId: profile.id,
-			displayName:
-				origin.actor?.displayName ||
-				origin.actor?.handle ||
-				profile.name ||
-				externalUserId,
-			externalUserKey,
-		};
-	};
-
-	return {
-		listProfiles() {
-			return [...readData().profiles].sort((left, right) => {
-				if (left.isMain && !right.isMain) return -1;
-				if (!left.isMain && right.isMain) return 1;
-				return (
-					(right.lastSentAt || right.updatedAt) -
-					(left.lastSentAt || left.updatedAt)
-				);
-			});
-		},
-		createProfile(input) {
-			return createProfileRecord(input);
-		},
-		updateProfile(input) {
-			const data = readData();
-			const profile = data.profiles.find((item) => item.id === input.id);
-			if (!profile) throw new Error("Channel user profile not found");
-			if (input.name !== undefined)
-				profile.name = input.name.trim() || profile.name;
-			if (input.isMain !== undefined) {
-				data.profiles.forEach((item) => {
-					item.isMain = input.isMain
-						? item.id === input.id
-						: item.isMain && item.id !== input.id;
-				});
-				profile.isMain = input.isMain;
-			}
-			profile.updatedAt = Date.now();
-			writeData(data);
-			return profile;
-		},
-		listLinks(filter = {}) {
-			const workspaceId = normalizeWorkspaceId(filter.workspaceId);
-			return readData().links.filter((link) => {
-				if (filter.connector && link.connector !== filter.connector)
-					return false;
-				if (
-					workspaceId !== undefined &&
-					normalizeWorkspaceId(link.workspaceId) !== workspaceId
-				)
-					return false;
-				if (filter.clientUserId && link.clientUserId !== filter.clientUserId)
-					return false;
-				return true;
-			});
-		},
-		createLink(input) {
-			ensureClientProfile(input.clientUserId);
-			const now = Date.now();
-			const data = readData();
-			const workspaceId = normalizeWorkspaceId(input.workspaceId);
-			const existing = data.links.find(
-				(link) =>
-					link.connector === input.connector &&
-					normalizeWorkspaceId(link.workspaceId) === workspaceId &&
-					link.externalUserId === input.externalUserId,
-			);
-			if (existing) {
-				existing.clientUserId = input.clientUserId;
-				existing.updatedAt = now;
-				writeData(data);
-				return existing;
-			}
-			const link: ChannelUserLink = {
-				id: `link-${now}-${Math.random().toString(36).slice(2, 10)}`,
-				connector: input.connector,
-				workspaceId,
-				externalUserId: input.externalUserId,
-				clientUserId: input.clientUserId,
-				createdAt: now,
-				updatedAt: now,
-			};
-			data.links.push(link);
-			writeData(data);
-			return link;
-		},
-		deleteLink(id) {
-			const data = readData();
-			const nextLinks = data.links.filter((link) => link.id !== id);
-			if (nextLinks.length === data.links.length) return false;
-			writeData({ ...data, links: nextLinks });
-			return true;
-		},
-		resolve(origin) {
-			const normalized: MessageOrigin = {
-				...origin,
-				source:
-					origin.source ||
-					(origin.transport === "voice"
-						? "voice"
-						: origin.transport === "api"
-							? "api"
-							: "text"),
-				receivedAt:
-					typeof origin.receivedAt === "number"
-						? origin.receivedAt
-						: Date.now(),
-			};
-			const identity = resolveIdentity(normalized);
-			const resolvedOrigin = { ...normalized, resolvedIdentity: identity };
-			return {
-				identity,
-				origin: resolvedOrigin,
-				sessionId: serverIdentitySessionKey(resolvedOrigin),
-			};
-		},
-		listDeliveries() {
-			return readData().deliveries;
-		},
-	};
-}
-
-function serverOriginConnector(origin: MessageOrigin): string {
-	return (
-		origin.conversation?.connector ||
-		origin.replyTarget?.connector ||
-		origin.transport
-	);
-}
-
-function serverOriginWorkspaceId(origin: MessageOrigin): string | undefined {
-	return origin.conversation?.workspaceId || origin.replyTarget?.workspaceId;
-}
-
-function serverOriginExternalUserId(origin: MessageOrigin): string {
-	return (
-		origin.actor?.externalUserId ||
-		origin.resolvedIdentity?.externalUserKey ||
-		origin.resolvedIdentity?.userId ||
-		`${origin.transport}-anonymous`
-	);
-}
-
-function sanitizeServerIdentityPart(value: string | undefined): string {
-	return (
-		(value || "unknown").trim().replace(/[^a-zA-Z0-9_.@-]+/g, "_") || "unknown"
-	);
-}
-
-function serverIdentitySessionKey(origin: MessageOrigin): string | undefined {
-	if (
-		!origin.resolvedIdentity ||
-		origin.transport === "desktop" ||
-		origin.transport === "voice"
-	)
-		return undefined;
-	const connector = serverOriginConnector(origin);
-	const workspaceId = serverOriginWorkspaceId(origin) || "default";
-	return `identity:${origin.transport}:${connector}:${workspaceId}:${origin.resolvedIdentity.userId}`;
-}
 
 function ensureServerSkillsDirectories(
 	dataRoot: string,
@@ -7634,54 +6756,6 @@ export function sanitizeSettingsForClient(settings: AppSettings): AppSettings {
 
 function cloneJson<T>(value: T): T {
 	return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function createFallbackModel(
-	modelId: string,
-	providerName: string,
-): OnethingOpenRouterModel {
-	// Grok models have accurate capabilities for the model list UI
-	const isGrokModel = modelId.toLowerCase().includes("grok");
-	return {
-		id: modelId,
-		name: modelId,
-		description: `${providerName} default model`,
-		context_length: isGrokModel ? 131072 : 128000,
-		architecture: {
-			modality: isGrokModel ? "multimodal" : "text",
-			input_modalities: isGrokModel ? ["text", "image"] : ["text"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: {
-			prompt: "0",
-			completion: "0",
-			request: "0",
-			image: "0",
-		},
-		top_provider: {
-			context_length: isGrokModel ? 131072 : 128000,
-			max_completion_tokens: isGrokModel ? 16384 : 4096,
-			is_moderated: false,
-		},
-		supported_parameters: isGrokModel
-			? modelId.toLowerCase().includes("mini")
-				? ["tools", "reasoning", "temperature"]
-				: ["tools", "temperature"]
-			: ["tools"],
-	};
-}
-
-function mergeModelsById(
-	...groups: OnethingOpenRouterModel[][]
-): OnethingOpenRouterModel[] {
-	const models = new Map<string, OnethingOpenRouterModel>();
-	for (const group of groups) {
-		for (const model of group) {
-			if (!models.has(model.id)) models.set(model.id, model);
-		}
-	}
-	return Array.from(models.values());
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

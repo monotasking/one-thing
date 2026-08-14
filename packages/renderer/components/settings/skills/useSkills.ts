@@ -6,6 +6,7 @@ import type {
   SkillSettings,
 } from '@/types'
 import { platformApi } from '@/platform'
+import { agentsApi } from '@/platform/agents-client'
 
 export interface UseSkillsEmit {
   (e: 'update:settings', value: SkillSettings): void
@@ -61,7 +62,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
     const [skillsResult, directoriesResult, agentsResult] = await Promise.allSettled([
       platformApi.getSkills(),
       platformApi.listSkillDirectories(),
-      platformApi.listAgents(),
+      agentsApi.listAgents(),
     ])
     if (skillsResult.status === 'fulfilled' && skillsResult.value.success && skillsResult.value.skills) {
       skills.value = skillsResult.value.skills

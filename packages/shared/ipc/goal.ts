@@ -7,14 +7,16 @@
  * the canonical definition and all state transitions; these types only cross
  * the IPC boundary.
  *
- * Three RPCs:
- *   - GOAL_GET   : pull the current goal for a session
- *   - GOAL_SET   : create / update (pause, resume, edit, budget) / clear
- *   - GOAL_DIFFS : the goal's file changes with full patches, for review
+ * Three RPCs, all on the generic RPC channel (`goalRouter`, 主线 T1):
+ *   - get   : pull the current goal for a session
+ *   - set   : create / update (pause, resume, edit, budget) / clear
+ *   - diffs : the goal's file changes with full patches, for review
  *
  * Live updates flow through the `session:goal-updated` event on
- * SESSION_EVENT, so renderer code only needs GET for the initial fetch.
+ * SESSION_EVENT, so renderer code only needs `get` for the initial fetch.
+ * That event stays on its own channel — 主线 T2 收敛事件下行，不是这一批。
  */
+import { defineRouter } from './router.js'
 
 export type SessionGoalStatus =
   | 'active'
@@ -113,3 +115,23 @@ export interface GoalDiffsResponse {
   diffs?: GoalFileDiff[]
   error?: string
 }
+
+/**
+ * 会话目标域（主线 T1 第一批）。
+ *
+ * 迁移前 goal 只有 desktop 一条腿：web.ts 里三个函数返回写死的
+ * "Goals are not available in the web build"。目标系统本身住在装配层
+ * （`@onething/app/goals`，每个宿主都装配了它），所以走通用通道之后 web/server
+ * 拿到的是真实现——这一条不是等价搬迁，是顺带补齐的能力。
+ */
+export type GoalRoutes = {
+  get: { input: GoalGetRequest; output: GoalGetResponse }
+  set: { input: GoalSetRequest; output: GoalSetResponse }
+  diffs: { input: GoalDiffsRequest; output: GoalDiffsResponse }
+}
+
+export const goalRouter = defineRouter<GoalRoutes>('goal', [
+  'get',
+  'set',
+  'diffs',
+])

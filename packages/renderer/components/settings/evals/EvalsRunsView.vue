@@ -343,6 +343,7 @@ import Tooltip from "@/components/common/Tooltip.vue";
 import type { SelectOptionLike } from "@/components/common/select";
 import { useEvalsStore } from "@/stores/evals";
 import { platformApi } from "@/platform";
+import { providersApi } from "@/platform/providers-client";
 
 const store = useEvalsStore();
 
@@ -418,7 +419,7 @@ const selectedRunMean = computed(() => {
 
 onMounted(async () => {
   try {
-    const res = await platformApi.getProviders();
+    const res = await providersApi.getProviders();
     if (res.success && res.providers) {
       providers.value = res.providers
         // The eval model caller only supports API-key providers; listing

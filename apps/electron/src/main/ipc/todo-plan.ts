@@ -1,14 +1,19 @@
-import {
-  registerElectronTodoPlanIpcHandlers,
-  type ElectronTodoPlanPinnedRequest,
-} from '@onething/electron-host/ipc/todo-plan'
+/**
+ * Todo / plan 的**窗口面**（主线 T1 第一批之后剩下的部分）。
+ *
+ * 数据面（读快照 / 增删改重命名 / 在文件管理器里显示目录）已迁到通用 RPC 通道
+ * （`todoPlanRouter` → `@onething/app/rpc/domains/todo-plan.ts`）。这里只剩两样
+ * 东西，都是宿主原生、迁不走的：
+ *
+ *  1. 四条窗口动作 —— 直接操作 BrowserWindow；
+ *  2. `configureTodoPlanHost` 的端口注入 —— 变更广播（webContents.send）与
+ *     Finder 里显示目录。注入必须留在这里，**RPC 域那边靠的正是这两个端口**：
+ *     未注入端口的宿主（server / CLI）自然降级，而不是各写一份。
+ */
+import { registerElectronTodoPlanIpcHandlers } from '@onething/electron-host/ipc/todo-plan'
+import type { ElectronTodoPlanPinnedRequest } from '@onething/electron-host/ipc/todo-plan'
 import {
   IPC_CHANNELS,
-  type TodoPlanCreateRequest,
-  type TodoPlanDeleteRequest,
-  type TodoPlanGetRequest,
-  type TodoPlanRenameRequest,
-  type TodoPlanUpdateRequest,
   type TodoPlanWindowActionRequest,
 } from '@shared/ipc.js'
 import { hideTodoPlanWindow, openTodoPlanWindow, setTodoPlanWindowPinned, toggleTodoPlanWindow } from '@onething/electron-host/window'
@@ -17,24 +22,10 @@ import {
   revealElectronTodoPlanDirectory,
 } from '@onething/electron-host/todo-plan/notifications'
 import {
-  createOnethingTodoNoteForIpc,
-  deleteOnethingTodoNoteForIpc,
-  getOnethingTodoPlanForIpc,
-  renameOnethingTodoNoteForIpc,
-  revealOnethingTodoPlanDirectoryForIpc,
   runOnethingTodoPlanWindowActionForIpc,
   setOnethingTodoPlanWindowPinnedForIpc,
-  updateOnethingTodoPlanDocumentForIpc,
 } from '@onething/runtime/todo-plan'
-import {
-  configureTodoPlanHost,
-  createUserTodoNote,
-  deleteUserTodoNote,
-  readTodoPlanSnapshot,
-  renameUserTodoNote,
-  revealTodoPlanDirectory,
-  updateTodoPlanDocument,
-} from '@onething/app/todo-plan/store.js'
+import { configureTodoPlanHost } from '@onething/app/todo-plan/store.js'
 
 export function registerTodoPlanHandlers(): void {
   configureTodoPlanHost({
@@ -46,44 +37,11 @@ export function registerTodoPlanHandlers(): void {
   })
   registerElectronTodoPlanIpcHandlers({
     channels: {
-      get: IPC_CHANNELS.TODO_PLAN_GET,
-      create: IPC_CHANNELS.TODO_PLAN_CREATE,
-      update: IPC_CHANNELS.TODO_PLAN_UPDATE,
-      rename: IPC_CHANNELS.TODO_PLAN_RENAME,
-      delete: IPC_CHANNELS.TODO_PLAN_DELETE,
-      revealDirectory: IPC_CHANNELS.TODO_PLAN_REVEAL_DIRECTORY,
       openWindow: IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW,
       hideWindow: IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW,
       toggleWindow: IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW,
       setWindowPinned: IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED,
     },
-    get: request =>
-      getOnethingTodoPlanForIpc({
-        request: request as TodoPlanGetRequest | undefined,
-        readSnapshot: readTodoPlanSnapshot,
-      }),
-    create: request =>
-      createOnethingTodoNoteForIpc({
-        request: request as TodoPlanCreateRequest,
-        createUserNote: createUserTodoNote,
-      }),
-    update: request =>
-      updateOnethingTodoPlanDocumentForIpc({
-        request: request as TodoPlanUpdateRequest,
-        updateDocument: updateTodoPlanDocument,
-      }),
-    rename: request =>
-      renameOnethingTodoNoteForIpc({
-        request: request as TodoPlanRenameRequest,
-        renameUserNote: renameUserTodoNote,
-      }),
-    delete: request =>
-      deleteOnethingTodoNoteForIpc({
-        request: request as TodoPlanDeleteRequest,
-        deleteUserNote: deleteUserTodoNote,
-      }),
-    revealDirectory: () =>
-      revealOnethingTodoPlanDirectoryForIpc({ revealDirectory: revealTodoPlanDirectory }),
     openWindow: request =>
       runOnethingTodoPlanWindowActionForIpc({
         request: request as TodoPlanWindowActionRequest | undefined,

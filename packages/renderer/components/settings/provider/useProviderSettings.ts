@@ -1,4 +1,5 @@
 import { platformApi } from "@/platform";
+import { providersApi } from "@/platform/providers-client";
 /**
  * Provider Settings Composable
  *
@@ -881,7 +882,7 @@ export function useProviderSettings(
 	// Model loading
 	async function refreshProviderEnvStatus(providerId = viewingProvider.value) {
 		try {
-			const response = await platformApi.getProviderEnvStatus(providerId);
+			const response = await providersApi.getProviderEnvStatus(providerId);
 			if (response.success && response.status) {
 				providerEnvStatuses.value = {
 					...providerEnvStatuses.value,

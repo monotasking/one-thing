@@ -443,6 +443,7 @@ import {
   SettingsSection,
 } from './settings-primitives'
 import { platformApi } from '@/platform'
+import { channelIdentityApi } from '@/platform/channel-identity-client'
 
 const props = defineProps<{
   settings: AppSettings
@@ -844,8 +845,8 @@ async function loadProfiles(): Promise<void> {
   profileMessage.value = ''
   try {
     const [profileResponse, linkResponse] = await Promise.all([
-      platformApi.channelIdentityListProfiles(),
-      platformApi.channelIdentityListLinks({}),
+      channelIdentityApi.listProfiles({}),
+      channelIdentityApi.listLinks({}),
     ])
     if (profileResponse.success) {
       profiles.value = profileResponse.profiles || []
@@ -871,7 +872,7 @@ async function createProfile(): Promise<void> {
   profileBusy.value = true
   profileMessage.value = ''
   try {
-    const response = await platformApi.channelIdentityCreateProfile({ name })
+    const response = await channelIdentityApi.createProfile({ name })
     if (!response.success) {
       profileMessage.value = response.error || 'Failed to create profile.'
       return
@@ -887,7 +888,7 @@ async function setMainProfile(id: string): Promise<void> {
   profileBusy.value = true
   profileMessage.value = ''
   try {
-    const response = await platformApi.channelIdentityUpdateProfile({ id, isMain: true })
+    const response = await channelIdentityApi.updateProfile({ id, isMain: true })
     if (!response.success) {
       profileMessage.value = response.error || 'Failed to update profile.'
       return
@@ -904,7 +905,7 @@ async function createBinding(): Promise<void> {
   profileBusy.value = true
   profileMessage.value = ''
   try {
-    const response = await platformApi.channelIdentityCreateLink({
+    const response = await channelIdentityApi.createLink({
       connector: binding.value.connector,
       workspaceId: workspaceValue(binding.value.workspaceId),
       externalUserId,
@@ -925,7 +926,7 @@ async function deleteBinding(id: string): Promise<void> {
   profileBusy.value = true
   profileMessage.value = ''
   try {
-    const response = await platformApi.channelIdentityDeleteLink(id)
+    const response = await channelIdentityApi.deleteLink({ id })
     if (!response.success) {
       profileMessage.value = response.error || 'Failed to remove channel binding.'
       return

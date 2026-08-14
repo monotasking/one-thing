@@ -77,18 +77,6 @@ import type {
 	MessageOrigin,
 	ChannelUserLink,
 	ChannelUserProfile,
-	ChannelIdentityListLinksRequest,
-	ChannelIdentityListLinksResponse,
-	ChannelIdentityListProfilesResponse,
-	ChannelIdentityCreateLinkRequest,
-	ChannelIdentityCreateLinkResponse,
-	ChannelIdentityCreateProfileRequest,
-	ChannelIdentityCreateProfileResponse,
-	ChannelIdentityDeleteLinkResponse,
-	ChannelIdentityUpdateProfileRequest,
-	ChannelIdentityUpdateProfileResponse,
-	ChannelIdentityResolveResponse,
-	ChannelReplyDeliveryRecord,
 	VoiceAudioChunkPayload,
 	VoiceEndpointingMode,
 	VoiceEvent,
@@ -148,6 +136,11 @@ import type {
 	MediaAssetMetadata,
 	MediaQuery,
 	MediaUsageTag,
+	MediaIngestFileInput,
+	MediaIngestFilesRequest,
+	MediaIngestFilesResponse,
+	MediaSaveAsRequest,
+	MediaSaveAsResponse,
 	MediaGalleryResponse,
 	MediaRebuildResponse,
 	MarkdownResolveAssetRequest,
@@ -170,7 +163,6 @@ import type {
 	GetSettingsResponse,
 	SaveSettingsResponse,
 	GenerateTitleResponse,
-	GetProvidersResponse,
 	ToolDefinition,
 	ToolParameter,
 	ToolCall,
@@ -348,12 +340,37 @@ import type {
 	OnethingUsagePricingQuality,
 	OnethingUsageProjectTotals,
 	OnethingUsageSummaryGranularity,
+	// Generic RPC envelope (主线 T0)
+	RpcRequest,
+	RpcResponse,
 	// Project directories types (independent module)
 	ProjectDirsListResponse,
 	ProjectDirsGetResponse,
 	ProjectDirsAddResponse,
 	ProjectDirsUpdateResponse,
 	ProjectDirsRemoveResponse,
+	// Space (workspace) types (independent module)
+	SpaceRecord,
+	SpacesListResponse,
+	SpacesCreateRequest,
+	SpacesCreateResponse,
+	SpacesUpdateRequest,
+	SpacesUpdateResponse,
+	SpacesRemoveResponse,
+	SpaceOverlayPayload,
+	SpacesSetOverlayRequest,
+	SpacesGetOverlayResponse,
+	SpacesSetOverlayResponse,
+	SpaceCredentialEntrySummary,
+	SpaceProviderCredentialSummary,
+	SpaceCredentialsSummary,
+	SpaceCredentialImportSkip,
+	SpacesGetCredentialsResponse,
+	SpacesSetCredentialRequest,
+	SpacesSetCredentialResponse,
+	SpacesClearCredentialRequest,
+	SpacesClearCredentialResponse,
+	SpacesImportCredentialsResponse,
 	TodoPlanChangedPayload,
 	TodoPlanCreateRequest,
 	TodoPlanCreateResponse,
@@ -368,6 +385,16 @@ import type {
 	TodoPlanUpdateResponse,
 	TodoPlanUpdateRequest,
 	TodoPlanWindowActionRequest,
+	ScratchpadAdoptRequest,
+	ScratchpadAdoptResponse,
+	ScratchpadChangedPayload,
+	ScratchpadDeleteRequest,
+	ScratchpadDeleteResponse,
+	ScratchpadDocument,
+	ScratchpadGetRequest,
+	ScratchpadGetResponse,
+	ScratchpadUpdateRequest,
+	ScratchpadUpdateResponse,
 	PracticeConfig,
 	PracticeConfigResponse,
 	PracticeEventPayload,
@@ -414,6 +441,8 @@ export type {
 	GetUsageSummaryResponse,
 	GetSessionUsageRequest,
 	GetSessionUsageResponse,
+	RpcRequest,
+	RpcResponse,
 	PracticeConfig,
 	PracticeConfigResponse,
 	PracticeEventPayload,
@@ -454,6 +483,27 @@ export type {
 	PromptDeleteRequest,
 	PromptDeleteResponse,
 	CreateSessionOptions,
+	SpaceRecord,
+	SpacesListResponse,
+	SpacesCreateRequest,
+	SpacesCreateResponse,
+	SpacesUpdateRequest,
+	SpacesUpdateResponse,
+	SpacesRemoveResponse,
+	SpaceOverlayPayload,
+	SpacesSetOverlayRequest,
+	SpacesGetOverlayResponse,
+	SpacesSetOverlayResponse,
+	SpaceCredentialEntrySummary,
+	SpaceProviderCredentialSummary,
+	SpaceCredentialsSummary,
+	SpaceCredentialImportSkip,
+	SpacesGetCredentialsResponse,
+	SpacesSetCredentialRequest,
+	SpacesSetCredentialResponse,
+	SpacesClearCredentialRequest,
+	SpacesClearCredentialResponse,
+	SpacesImportCredentialsResponse,
 	SessionMeta,
 	SessionDetails,
 	GetSessionsListResponse,
@@ -559,6 +609,11 @@ export type {
 	MediaAssetMetadata,
 	MediaQuery,
 	MediaUsageTag,
+	MediaIngestFileInput,
+	MediaIngestFilesRequest,
+	MediaIngestFilesResponse,
+	MediaSaveAsRequest,
+	MediaSaveAsResponse,
 	MediaGalleryResponse,
 	MediaRebuildResponse,
 	MarkdownResolveAssetRequest,
@@ -681,6 +736,16 @@ export type {
 	TodoPlanSnapshot,
 	TodoPlanUpdateResponse,
 	TodoPlanUpdateRequest,
+	ScratchpadChangedPayload,
+	ScratchpadDocument,
+	ScratchpadGetRequest,
+	ScratchpadGetResponse,
+	ScratchpadUpdateRequest,
+	ScratchpadUpdateResponse,
+	ScratchpadDeleteRequest,
+	ScratchpadDeleteResponse,
+	ScratchpadAdoptRequest,
+	ScratchpadAdoptResponse,
 };
 
 // Gallery image type for image preview window
@@ -1174,13 +1239,12 @@ export interface ElectronAPI {
 		sessionId: string,
 		name: string,
 	) => Promise<VariablesDeleteResponse>;
-	// Session goals
-	goalGet: (sessionId: string) => Promise<GoalGetResponse>;
-	goalSet: (request: GoalSetRequest) => Promise<GoalSetResponse>;
-	goalDiffs: (sessionId: string) => Promise<GoalDiffsResponse>;
-	// Token usage / billing
-	getUsageSummary: (request: GetUsageSummaryRequest) => Promise<GetUsageSummaryResponse>;
-	getSessionUsage: (request: GetSessionUsageRequest) => Promise<GetSessionUsageResponse>;
+	// Session goals:走通用 RPC(goalRouter),方法在 platformApi 上,不在这里。
+	/**
+	 * 通用 RPC 出口(主线 T0)。router 域(usage 起)全走这一条,不再逐域加方法;
+	 * 对外方法名由 `platformApi` 上的 router client 提供。
+	 */
+	rpcInvoke: (request: RpcRequest) => Promise<RpcResponse>;
 	// Practice (kegel / pomodoro / exercise log)
 	practiceStart: (request: PracticeStartRequest) => Promise<PracticeStateResponse>;
 	practicePause: () => Promise<PracticeStateResponse>;
@@ -1278,18 +1342,53 @@ export interface ElectronAPI {
 	respondDeepLink: (
 		request: DeepLinkRespondRequest,
 	) => Promise<DeepLinkRespondResponse>;
-	// Project directories — independent module
-	projectDirsList: () => Promise<ProjectDirsListResponse>;
-	projectDirsGet: (path: string) => Promise<ProjectDirsGetResponse>;
+	// Project directories — independent module.
+	// 末位 `workspaceId` 缺省 = default 空间(批 B4:名册 per-space)。
+	projectDirsList: (workspaceId?: string) => Promise<ProjectDirsListResponse>;
+	projectDirsGet: (
+		path: string,
+		workspaceId?: string,
+	) => Promise<ProjectDirsGetResponse>;
 	projectDirsAdd: (
 		path: string,
 		description?: string,
+		paths?: string[],
+		workspaceId?: string,
 	) => Promise<ProjectDirsAddResponse>;
 	projectDirsUpdate: (
 		path: string,
-		description: string,
+		patch: { description?: string; paths?: string[] },
+		workspaceId?: string,
 	) => Promise<ProjectDirsUpdateResponse>;
-	projectDirsRemove: (path: string) => Promise<ProjectDirsRemoveResponse>;
+	projectDirsRemove: (
+		path: string,
+		workspaceId?: string,
+	) => Promise<ProjectDirsRemoveResponse>;
+	// Spaces (workspaces) — independent module
+	spacesList: () => Promise<SpacesListResponse>;
+	spacesCreate: (request: SpacesCreateRequest) => Promise<SpacesCreateResponse>;
+	spacesUpdate: (request: SpacesUpdateRequest) => Promise<SpacesUpdateResponse>;
+	spacesRemove: (id: string) => Promise<SpacesRemoveResponse>;
+	/** per-space overlay(批 B2)。整层写入:传什么就是什么。 */
+	spacesGetOverlay: (id: string) => Promise<SpacesGetOverlayResponse>;
+	spacesSetOverlay: (
+		request: SpacesSetOverlayRequest,
+	) => Promise<SpacesSetOverlayResponse>;
+	/**
+	 * per-space provider 凭证池(批 B3)。摘要出、原文进 —— 读回来永远只有
+	 * `hasApiKey` + 预览,密钥原文不出后端。默认空间走 settings.ai,这四条
+	 * 对它一律拒绝。
+	 */
+	spacesGetCredentials: (id: string) => Promise<SpacesGetCredentialsResponse>;
+	spacesSetCredential: (
+		request: SpacesSetCredentialRequest,
+	) => Promise<SpacesSetCredentialResponse>;
+	spacesClearCredential: (
+		request: SpacesClearCredentialRequest,
+	) => Promise<SpacesClearCredentialResponse>;
+	spacesImportCredentials: (
+		id: string,
+	) => Promise<SpacesImportCredentialsResponse>;
 	getSessionTokenUsage: (sessionId: string) => Promise<{
 		success: boolean;
 		usage?: {
@@ -1388,30 +1487,6 @@ export interface ElectronAPI {
 	gatewayWechatRenameAccount: (
 		request: GatewayWechatRenameAccountRequest,
 	) => Promise<GatewayWechatRenameAccountResponse>;
-	channelIdentityListLinks: (
-		request?: ChannelIdentityListLinksRequest,
-	) => Promise<ChannelIdentityListLinksResponse>;
-	channelIdentityListProfiles: () => Promise<ChannelIdentityListProfilesResponse>;
-	channelIdentityCreateProfile: (
-		request: ChannelIdentityCreateProfileRequest,
-	) => Promise<ChannelIdentityCreateProfileResponse>;
-	channelIdentityUpdateProfile: (
-		request: ChannelIdentityUpdateProfileRequest,
-	) => Promise<ChannelIdentityUpdateProfileResponse>;
-	channelIdentityCreateLink: (
-		request: ChannelIdentityCreateLinkRequest,
-	) => Promise<ChannelIdentityCreateLinkResponse>;
-	channelIdentityDeleteLink: (
-		id: string,
-	) => Promise<ChannelIdentityDeleteLinkResponse>;
-	channelIdentityResolve: (
-		origin: MessageOrigin,
-	) => Promise<ChannelIdentityResolveResponse>;
-	channelDeliveryList: () => Promise<{
-		success: boolean;
-		deliveries?: ChannelReplyDeliveryRecord[];
-		error?: string;
-	}>;
 	voiceGetState: () => Promise<VoiceGetStateResponse>;
 	voiceStart: (
 		request?: VoiceStartRequest,
@@ -1473,26 +1548,8 @@ export interface ElectronAPI {
 	onSystemThemeChanged: (
 		callback: (theme: "light" | "dark") => void,
 	) => () => void;
-	// Agent methods
-	listAgents: () => Promise<AgentsListResponse>;
-	createAgent: (
-		name: string,
-		systemPrompt?: string,
-	) => Promise<AgentCreateResponse>;
-	updateAgent: (
-		agentId: string,
-		updates: Omit<AgentUpdateRequest, "agentId">,
-	) => Promise<AgentUpdateResponse>;
-	/** 「删除」= 退休或硬删(域模型 §3.2);看响应的 outcome 分文案。 */
-	deleteAgent: (agentId: string) => Promise<AgentDeleteResponse>;
-	/** 重新入职(域模型 §8):只有 Agents 管理页调它。 */
-	restoreAgent: (agentId: string) => Promise<AgentRestoreResponse>;
-	// User prompt methods
-	listPrompts: () => Promise<PromptListResponse>;
-	getPrompt: (request: { id: string }) => Promise<PromptGetResponse>;
-	createPrompt: (request: PromptCreateRequest) => Promise<PromptCreateResponse>;
-	updatePrompt: (request: PromptUpdateRequest) => Promise<PromptUpdateResponse>;
-	deletePrompt: (request: PromptDeleteRequest) => Promise<PromptDeleteResponse>;
+	// Agent methods:走通用 RPC(agentsRouter),方法在 agents-client.ts 上。
+		// User prompt methods:走通用 RPC(promptsRouter),方法在 platformApi 上。
 	// Theme methods
 	getThemes: () => Promise<GetThemesResponse>;
 	getTheme: (themeId: string) => Promise<GetThemeResponse>;
@@ -1502,42 +1559,8 @@ export interface ElectronAPI {
 	) => Promise<ApplyThemeResponse>;
 	refreshThemes: (projectPath?: string) => Promise<RefreshThemesResponse>;
 	openThemesFolder: () => Promise<{ success: boolean; error?: string }>;
-	getProviders: () => Promise<GetProvidersResponse>;
-	getProviderUsage: (providerId: string) => Promise<ProviderUsageResponse>;
-	getProviderEnvStatus: (
-		providerId: string,
-	) => Promise<GetProviderEnvStatusResponse>;
-	// New OpenRouter-based model API
-	getModelsWithCapabilities: (
-		providerId: string,
-		options?: { forceRefresh?: boolean },
-	) => Promise<{
-		success: boolean;
-		models?: OpenRouterModel[];
-		error?: string;
-	}>;
-	getAllModels: () => Promise<{
-		success: boolean;
-		models?: OpenRouterModel[];
-		error?: string;
-	}>;
-	searchModels: (
-		query: string,
-		providerId?: string,
-	) => Promise<{
-		success: boolean;
-		models?: OpenRouterModel[];
-		error?: string;
-	}>;
-	refreshModelRegistry: () => Promise<{ success: boolean; error?: string }>;
-	getModelNameAliases: () => Promise<{
-		success: boolean;
-		aliases?: Record<string, string>;
-		error?: string;
-	}>;
-	getModelDisplayName: (
-		modelId: string,
-	) => Promise<{ success: boolean; displayName?: string; error?: string }>;
+	// Providers / model registry:走通用 RPC(providersRouter / modelsRouter),
+	// 方法在 platform/{providers,models}-client.ts 上。
 	// Tools methods
 	getTools: () => Promise<GetToolsResponse>;
 	executeTool: (
@@ -1695,6 +1718,16 @@ export interface ElectronAPI {
 	) =>
 		| Promise<{ success: boolean; error?: string }>
 		| { success: boolean; error?: string };
+	/**
+	 * Put the image at `filePath` on the clipboard. Optional: the web platform
+	 * can only do this for formats the browser's async clipboard accepts, so
+	 * callers must feature-check before offering the action.
+	 */
+	writeClipboardImage?: (
+		filePath: string,
+	) =>
+		| Promise<{ success: boolean; error?: string }>
+		| { success: boolean; error?: string };
 
 	// Media methods
 	saveImage: (data: {
@@ -1705,6 +1738,8 @@ export interface ElectronAPI {
 		model: string;
 		sessionId: string;
 		messageId: string;
+		/** Where the bytes came from. Defaults to 'ai-generated'. */
+		source?: MediaSource;
 		/** What the image is for, e.g. 'persona-avatar'. */
 		usageTags?: MediaUsageTag[];
 	}) => Promise<{
@@ -1735,6 +1770,11 @@ export interface ElectronAPI {
 	clearAllMedia: () => Promise<void>;
 	readImageBase64: (filePath: string) => Promise<string>;
 	listMediaAssets: (query?: MediaQuery) => Promise<MediaAsset[]>;
+	/** Put arbitrary files in the library (drop / picker / web upload). */
+	ingestMediaFiles: (
+		request: MediaIngestFilesRequest,
+	) => Promise<MediaIngestFilesResponse>;
+	saveMediaAs: (request: MediaSaveAsRequest) => Promise<MediaSaveAsResponse>;
 	hideMediaAsset: (id: string) => Promise<{ success: boolean }>;
 	rebuildMediaLibrary: () => Promise<MediaRebuildResponse>;
 	getMediaGallery: (
@@ -1839,6 +1879,8 @@ export interface ElectronAPI {
 		cwd?: string;
 		query?: string;
 		limit?: number;
+		/** 发起补全的会话 —— 接入目录 per-space,按会话归属解析(批 B2)。 */
+		sessionId?: string;
 	}) => Promise<{
 		success: boolean;
 		files: string[];
@@ -2164,21 +2206,7 @@ export interface ElectronAPI {
 	searchExecuteAction: (actionId: string) => Promise<{ success: boolean }>;
 	onSearchAction: (callback: (actionId: string) => void) => () => void;
 
-	// Todo / Plan
-	getTodoPlan: (request?: TodoPlanGetRequest) => Promise<TodoPlanGetResponse>;
-	createTodoPlanNote: (
-		request: TodoPlanCreateRequest,
-	) => Promise<TodoPlanCreateResponse>;
-	updateTodoPlan: (
-		request: TodoPlanUpdateRequest,
-	) => Promise<TodoPlanUpdateResponse>;
-	renameTodoPlanNote: (
-		request: TodoPlanRenameRequest,
-	) => Promise<TodoPlanRenameResponse>;
-	deleteTodoPlanNote: (
-		request: TodoPlanDeleteRequest,
-	) => Promise<TodoPlanDeleteResponse>;
-	revealTodoPlanDirectory: () => Promise<{ success: boolean; error?: string }>;
+	// Todo / Plan:数据面走通用 RPC(todoPlanRouter),下面只剩窗口面。
 	openTodoPlanWindow: (
 		request?: TodoPlanWindowActionRequest,
 	) => Promise<{ success: boolean }>;
@@ -2193,6 +2221,23 @@ export interface ElectronAPI {
 	) => Promise<{ success: boolean; pinned: boolean }>;
 	onTodoPlanChanged: (
 		callback: (data: TodoPlanChangedPayload) => void,
+	) => () => void;
+
+	// Scratchpad (per-session draft paper)
+	getScratchpad: (
+		request: ScratchpadGetRequest,
+	) => Promise<ScratchpadGetResponse>;
+	updateScratchpad: (
+		request: ScratchpadUpdateRequest,
+	) => Promise<ScratchpadUpdateResponse>;
+	deleteScratchpad: (
+		request: ScratchpadDeleteRequest,
+	) => Promise<ScratchpadDeleteResponse>;
+	adoptScratchpad: (
+		request: ScratchpadAdoptRequest,
+	) => Promise<ScratchpadAdoptResponse>;
+	onScratchpadChanged: (
+		callback: (data: ScratchpadChangedPayload) => void,
 	) => () => void;
 }
 

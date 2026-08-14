@@ -77,6 +77,49 @@ async function settle(): Promise<void> {
   await nextTick()
 }
 
+const CHANNEL_IDENTITY_RPC_RESULTS: Record<string, unknown> = {
+  listProfiles: {
+    success: true,
+    profiles: [
+      {
+        id: 'local-owner',
+        name: 'Local user',
+        isMain: true,
+        createdAt: 1,
+        updatedAt: 1,
+        lastSentAt: 2,
+      },
+      {
+        id: 'channel-wechat-default-wechat-user-1',
+        name: 'WeChat user',
+        connector: 'wechat',
+        workspaceId: 'default',
+        externalUserId: 'wechat-user-1',
+        source: 'channel',
+        createdAt: 2,
+        updatedAt: 2,
+        lastSentAt: 3,
+      },
+    ],
+  },
+  listLinks: { success: true, links: [] },
+  createProfile: { success: true },
+  updateProfile: { success: true },
+  createLink: { success: true },
+  deleteLink: { success: true },
+}
+
+const rpcInvokeMock = vi.fn(async (request: { domain: string; method: string }) => {
+  if (request.domain !== 'channelIdentity') {
+    return { ok: false, error: { message: `Unknown RPC domain "${request.domain}"` } }
+  }
+  const data = CHANNEL_IDENTITY_RPC_RESULTS[request.method]
+  if (data === undefined) {
+    return { ok: false, error: { message: `Unknown RPC method "${request.method}"` } }
+  }
+  return { ok: true, data }
+})
+
 describe('ChannelsSettingsTab', () => {
   beforeEach(() => {
     vi.useRealTimers()
@@ -139,36 +182,9 @@ describe('ChannelsSettingsTab', () => {
         }),
         gatewayWechatRemoveAccount: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
         gatewayWechatRenameAccount: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
-        channelIdentityListProfiles: vi.fn().mockResolvedValue({
-          success: true,
-          profiles: [
-            {
-              id: 'local-owner',
-              name: 'Local user',
-              
-              isMain: true,
-              createdAt: 1,
-              updatedAt: 1,
-              lastSentAt: 2,
-            },
-            {
-              id: 'channel-wechat-default-wechat-user-1',
-              name: 'WeChat user',
-              connector: 'wechat',
-              workspaceId: 'default',
-              externalUserId: 'wechat-user-1',
-              source: 'channel',
-              createdAt: 2,
-              updatedAt: 2,
-              lastSentAt: 3,
-            },
-          ],
-        }),
-        channelIdentityListLinks: vi.fn().mockResolvedValue({ success: true, links: [] }),
-        channelIdentityCreateProfile: vi.fn().mockResolvedValue({ success: true }),
-        channelIdentityUpdateProfile: vi.fn().mockResolvedValue({ success: true }),
-        channelIdentityCreateLink: vi.fn().mockResolvedValue({ success: true }),
-        channelIdentityDeleteLink: vi.fn().mockResolvedValue({ success: true }),
+        // 渠道身份域已迁到通用 RPC 通道(主线 T1 第二批):这里不再逐方法打桩,
+        // 而是打**那一条**通道,再按 method 分发 —— 和生产链路同形。
+        rpcInvoke: rpcInvokeMock,
         writeClipboardText: vi.fn().mockReturnValue({ success: true }),
         openExternal: vi.fn().mockResolvedValue({ success: true }),
       },
@@ -356,11 +372,15 @@ describe('ChannelsSettingsTab', () => {
     await wrapper.find('.binding-form .channel-action').trigger('click')
     await settle()
 
-    expect(window.electronAPI.channelIdentityCreateLink).toHaveBeenCalledWith({
-      connector: 'wechat',
-      workspaceId: 'default',
-      externalUserId: 'wechat-user-1',
-      clientUserId: 'local-owner',
+    expect(rpcInvokeMock).toHaveBeenCalledWith({
+      domain: 'channelIdentity',
+      method: 'createLink',
+      payload: {
+        connector: 'wechat',
+        workspaceId: 'default',
+        externalUserId: 'wechat-user-1',
+        clientUserId: 'local-owner',
+      },
     })
 
     wrapper.unmount()

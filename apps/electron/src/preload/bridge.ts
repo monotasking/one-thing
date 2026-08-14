@@ -1,27 +1,25 @@
-import { clipboard, contextBridge, ipcRenderer, webUtils } from "electron";
+import {
+	clipboard,
+	contextBridge,
+	ipcRenderer,
+	nativeImage,
+	webUtils,
+} from "electron";
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import type { DeepLinkRespondRequest } from "@shared/ipc/deeplink.js";
 import type {
 	CreateSessionOptions,
-	AgentUpdateRequest,
 	CollabBoardAction,
 	CollabRoomBudgetsPatch,
 	CollabRoomUpdatePatch,
 	GetSessionMessagesPageRequest,
-	GetSessionUsageRequest,
-	GetSessionUsageResponse,
-	GetUsageSummaryRequest,
-	GetUsageSummaryResponse,
+	MediaIngestFilesRequest,
 	MediaQuery,
+	MediaSaveAsRequest,
+	MediaSource,
 	MediaUsageTag,
 	MarkdownResolveAssetRequest,
 	MarkdownSaveAttachmentsRequest,
-	PromptCreateRequest,
-	PromptDeleteRequest,
-	PromptGetRequest,
-	PromptUpdateRequest,
-	GetProviderEnvStatusResponse,
-	ProviderUsageResponse,
 	SchedulerCreateTaskRequest,
 	SchedulerDeleteTaskRequest,
 	SchedulerGetRunRequest,
@@ -29,6 +27,11 @@ import type {
 	SchedulerUpdateTaskRequest,
 	SearchRequest,
 	SearchWindowAnchor,
+	SpacesCreateRequest,
+	SpacesClearCredentialRequest,
+	SpacesSetCredentialRequest,
+	SpacesSetOverlayRequest,
+	SpacesUpdateRequest,
 	SearchWindowGuideState,
 	SearchWindowOpenOptions,
 	SearchWindowShownPayload,
@@ -66,6 +69,8 @@ import type {
 	PluginLifecycleInfoResponse,
 	ReadPluginTarballResponse,
 	PluginFootprintResponse,
+	RpcRequest,
+	RpcResponse,
 } from "@shared/ipc.js";
 
 /**
@@ -89,6 +94,14 @@ function withPlainCommandMentions(command: any): any {
 }
 
 const electronAPI = {
+	/**
+	 * 通用 RPC 出口(主线 T0)。所有 router 域共用这一条 —— 加域不再往本文件加暴露块。
+	 * 不解包 `RpcResponse`:失败在渲染层的 `createRouterClient` 统一转成 throw,
+	 * 桌面与 web 两侧的失败形状因此完全一致。
+	 */
+	rpcInvoke: (request: RpcRequest): Promise<RpcResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.RPC_INVOKE, request),
+
 	onSkillActivated: (
 		callback: (data: {
 			sessionId: string;
@@ -396,6 +409,7 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, {
 			name,
 			sessionId: options?.sessionId,
+			workspaceId: options?.workspaceId,
 			kind: options?.kind,
 			room: options?.room,
 		}),
@@ -487,33 +501,8 @@ const electronAPI = {
 	deleteVariable: (sessionId: string, name: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_DELETE, { sessionId, name }),
 
-	// ── Session goals ───────────────────────────────────────────
-	// Live updates arrive through the session:goal-updated event; these
-	// RPCs are the initial fetch and the /goal command's mutations.
-	goalGet: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GOAL_GET, { sessionId }),
-
-	goalSet: (request: {
-		sessionId: string
-		action: "create" | "update" | "clear"
-		objective?: string
-		status?: "active" | "paused"
-		tokenBudget?: number | null
-	}) => ipcRenderer.invoke(IPC_CHANNELS.GOAL_SET, request),
-
-	goalDiffs: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GOAL_DIFFS, { sessionId }),
-
-	// ── Token usage / billing ───────────────────────────────────
-	getUsageSummary: (
-		request: GetUsageSummaryRequest,
-	): Promise<GetUsageSummaryResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_USAGE_SUMMARY, request),
-
-	getSessionUsage: (
-		request: GetSessionUsageRequest,
-	): Promise<GetSessionUsageResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_USAGE, request),
+	// ── Session goals:三条 RPC 已走通用通道(goalRouter),本文件不再暴露。
+	// 实时变化仍从 session:goal-updated 事件来。──────────────────
 
 	// ── Practice (kegel / pomodoro / exercise log) ──────────────
 	practiceStart: (request: PracticeStartRequest): Promise<PracticeStateResponse> =>
@@ -637,20 +626,66 @@ const electronAPI = {
 	respondDeepLink: (request: DeepLinkRespondRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.DEEPLINK_RESPOND, request),
 
-	// Project directories — independent module
-	projectDirsList: () => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_LIST),
+	// Project directories — independent module.
+	// `workspaceId` 缺省 = default 空间(批 B4:名册 per-space)。
+	projectDirsList: (workspaceId?: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_LIST, { workspaceId }),
 
-	projectDirsGet: (path: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_GET, { path }),
+	projectDirsGet: (path: string, workspaceId?: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_GET, { path, workspaceId }),
 
-	projectDirsAdd: (path: string, description?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_ADD, { path, description }),
+	projectDirsAdd: (
+		path: string,
+		description?: string,
+		paths?: string[],
+		workspaceId?: string,
+	) =>
+		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_ADD, {
+			path,
+			description,
+			paths,
+			workspaceId,
+		}),
 
-	projectDirsUpdate: (path: string, description: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_UPDATE, { path, description }),
+	projectDirsUpdate: (
+		path: string,
+		patch: { description?: string; paths?: string[] },
+		workspaceId?: string,
+	) =>
+		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_UPDATE, { path, ...patch, workspaceId }),
 
-	projectDirsRemove: (path: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_REMOVE, { path }),
+	projectDirsRemove: (path: string, workspaceId?: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_REMOVE, { path, workspaceId }),
+
+	// Spaces (workspaces) — independent module
+	spacesList: () => ipcRenderer.invoke(IPC_CHANNELS.SPACES_LIST),
+
+	spacesCreate: (request: SpacesCreateRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_CREATE, request),
+
+	spacesUpdate: (request: SpacesUpdateRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_UPDATE, request),
+
+	spacesRemove: (id: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_REMOVE, { id }),
+
+	spacesGetOverlay: (id: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_GET_OVERLAY, { id }),
+
+	spacesSetOverlay: (request: SpacesSetOverlayRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_OVERLAY, request),
+
+	spacesGetCredentials: (id: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_GET_CREDENTIALS, { id }),
+
+	spacesSetCredential: (request: SpacesSetCredentialRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_CREDENTIAL, request),
+
+	spacesClearCredential: (request: SpacesClearCredentialRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_CLEAR_CREDENTIAL, request),
+
+	spacesImportCredentials: (id: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_IMPORT_CREDENTIALS, { id }),
 
 	getSessionTokenUsage: (sessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, sessionId),
@@ -811,30 +846,6 @@ const electronAPI = {
 	gatewayWechatRenameAccount: (request: any) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_RENAME_ACCOUNT, request),
 
-	channelIdentityListLinks: (request?: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_LIST_LINKS, request || {}),
-
-	channelIdentityListProfiles: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_LIST_PROFILES),
-
-	channelIdentityCreateProfile: (request: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_CREATE_PROFILE, request),
-
-	channelIdentityUpdateProfile: (request: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_UPDATE_PROFILE, request),
-
-	channelIdentityCreateLink: (request: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_CREATE_LINK, request),
-
-	channelIdentityDeleteLink: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_DELETE_LINK, { id }),
-
-	channelIdentityResolve: (origin: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_RESOLVE, { origin }),
-
-	channelDeliveryList: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_DELIVERY_LIST),
-
 	// Voice methods
 	voiceGetState: () => ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_STATE),
 
@@ -959,23 +970,8 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener);
 	},
 
-	// Agent methods
-	listAgents: () => ipcRenderer.invoke(IPC_CHANNELS.AGENTS_LIST),
-
-	createAgent: (name: string, systemPrompt?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.AGENTS_CREATE, { name, systemPrompt }),
-
-	updateAgent: (
-		agentId: string,
-		updates: Omit<AgentUpdateRequest, "agentId">,
-	) => ipcRenderer.invoke(IPC_CHANNELS.AGENTS_UPDATE, { agentId, ...updates }),
-
-	// 「删除」= 退休或硬删(域模型 §3.2);响应的 outcome 告诉 UI 是哪一种。
-	deleteAgent: (agentId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.AGENTS_DELETE, { agentId }),
-
-	restoreAgent: (agentId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.AGENTS_RESTORE, { agentId }),
+	// Agent 档案 CRUD 已迁到通用 RPC 通道(agentsRouter),渲染侧客户端在
+	// packages/renderer/platform/agents-client.ts —— 这里不再有它的出口。
 
 	// Theme methods
 	getThemes: () => ipcRenderer.invoke(IPC_CHANNELS.THEME_GET_ALL),
@@ -991,42 +987,8 @@ const electronAPI = {
 
 	openThemesFolder: () => ipcRenderer.invoke(IPC_CHANNELS.THEME_OPEN_FOLDER),
 
-	// Model registry methods (reads from settings.json modelRegistry)
-	getModelsWithCapabilities: (
-		providerId: string,
-		options?: { forceRefresh?: boolean },
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_MODELS_WITH_CAPABILITIES, {
-			providerId,
-			forceRefresh: options?.forceRefresh,
-		}),
-
-	getAllModels: () => ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_MODELS),
-
-	searchModels: (query: string, providerId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_MODELS, { query, providerId }),
-
-	refreshModelRegistry: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.REFRESH_MODEL_REGISTRY),
-
-	getModelNameAliases: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_MODEL_NAME_ALIASES),
-
-	getModelDisplayName: (modelId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_MODEL_DISPLAY_NAME, { modelId }),
-
-	// Providers methods
-	getProviders: () => ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDERS),
-
-	getProviderUsage: (providerId: string): Promise<ProviderUsageResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDER_USAGE, { providerId }),
-
-	getProviderEnvStatus: (
-		providerId: string,
-	): Promise<GetProviderEnvStatusResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDER_ENV_STATUS, {
-			providerId,
-		}),
+	// Model registry 与 Providers 已迁到通用 RPC 通道(modelsRouter /
+	// providersRouter);渲染侧客户端在 platform/{models,providers}-client.ts。
 
 	// Tools methods
 	getTools: () => ipcRenderer.invoke(IPC_CHANNELS.GET_TOOLS),
@@ -1262,6 +1224,29 @@ const electronAPI = {
 		}
 	},
 
+	/**
+	 * Put an image on the clipboard. Deliberately NOT an IPC channel: it is the
+	 * exact sibling of `writeClipboardText` above, and `nativeImage` is available
+	 * in this process — a round trip to main would buy nothing but a channel to
+	 * maintain. `createFromPath` does the disk read itself, so preload never
+	 * touches `fs`.
+	 */
+	writeClipboardImage: (filePath: string) => {
+		try {
+			const image = nativeImage.createFromPath(String(filePath ?? ""));
+			if (image.isEmpty()) {
+				return { success: false, error: "Not a readable image file." };
+			}
+			clipboard.writeImage(image);
+			return { success: true };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	},
+
 	// Media methods
 	saveImage: (data: {
 		url?: string;
@@ -1271,6 +1256,7 @@ const electronAPI = {
 		model: string;
 		sessionId: string;
 		messageId: string;
+		source?: MediaSource;
 		usageTags?: MediaUsageTag[];
 	}) => ipcRenderer.invoke("media:save-image", data),
 
@@ -1285,6 +1271,12 @@ const electronAPI = {
 
 	listMediaAssets: (query?: MediaQuery) =>
 		ipcRenderer.invoke(IPC_CHANNELS.LIST_MEDIA_ASSETS, query),
+
+	ingestMediaFiles: (request: MediaIngestFilesRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.INGEST_MEDIA_FILES, request),
+
+	saveMediaAs: (request: MediaSaveAsRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SAVE_MEDIA_AS, request),
 
 	hideMediaAsset: (id: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.HIDE_MEDIA_ASSET, id),
@@ -1527,20 +1519,7 @@ const electronAPI = {
 	getSchedulerRun: (request: SchedulerGetRunRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_GET_RUN, request),
 
-	// ── User Prompts ───────────────────────────────
-	listPrompts: () => ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_LIST),
-
-	getPrompt: (request: PromptGetRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_GET, request),
-
-	createPrompt: (request: PromptCreateRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_CREATE, request),
-
-	updatePrompt: (request: PromptUpdateRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_UPDATE, request),
-
-	deletePrompt: (request: PromptDeleteRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_DELETE, request),
+	// ── User Prompts:已走通用 RPC 通道(promptsRouter),本文件不再暴露。──
 
 	// ── App State (restore on startup) ─────────────
 	getAppState: () => ipcRenderer.invoke(IPC_CHANNELS.GET_APP_STATE),
@@ -1596,25 +1575,7 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_ACTION, listener);
 	},
 
-	// Todo / Plan
-	getTodoPlan: (request?: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_GET, request),
-
-	createTodoPlanNote: (request: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_CREATE, request),
-
-	updateTodoPlan: (request: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_UPDATE, request),
-
-	renameTodoPlanNote: (request: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_RENAME, request),
-
-	deleteTodoPlanNote: (request: any) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_DELETE, request),
-
-	revealTodoPlanDirectory: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_REVEAL_DIRECTORY),
-
+	// Todo / Plan:数据面已走通用通道(todoPlanRouter);下面只剩窗口面。
 	openTodoPlanWindow: (request?: TodoPlanWindowActionRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW, request),
 
@@ -1632,6 +1593,26 @@ const electronAPI = {
 		ipcRenderer.on(IPC_CHANNELS.TODO_PLAN_CHANGED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.TODO_PLAN_CHANGED, listener);
+	},
+
+	// Scratchpad (per-session draft paper)
+	getScratchpad: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_GET, request),
+
+	updateScratchpad: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_UPDATE, request),
+
+	deleteScratchpad: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_DELETE, request),
+
+	adoptScratchpad: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_ADOPT, request),
+
+	onScratchpadChanged: (callback: (data: any) => void) => {
+		const listener = (_event: any, data: any) => callback(data);
+		ipcRenderer.on(IPC_CHANNELS.SCRATCHPAD_CHANGED, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.SCRATCHPAD_CHANGED, listener);
 	},
 
 	// Evals (prompt evaluation) — 👎 downvote + Review + Run + Actions

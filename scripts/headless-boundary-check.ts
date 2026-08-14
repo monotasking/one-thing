@@ -5100,89 +5100,83 @@ function checkElectronHostOwnsProjectDirsIpcHost(): void {
   assertNoMatches('apps/electron owns Electron project-dirs IPC host operations', lines)
 }
 
-function checkElectronHostOwnsAgentsIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronAgentsFile = path.join(root, 'apps/electron/src/ipc/agents.ts')
-  const mainAgentsFile = path.join(root, 'apps/electron/src/main/ipc/agents.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronAgentsContent = fs.existsSync(electronAgentsFile) ? fs.readFileSync(electronAgentsFile, 'utf-8') : ''
-  const mainAgentsContent = fs.existsSync(mainAgentsFile) ? fs.readFileSync(mainAgentsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronAgentsIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronAgentCreateRequest',
-    'ElectronAgentUpdateRequest',
-    'ElectronAgentDeleteRequest',
+/**
+ * Agent 档案 CRUD 域已整体迁到通用 RPC 通道(主线 T1 第二批)。
+ *
+ * 与 prompts 同形,这条检查是**反向**的:守的不是"Electron 那侧还在",而是
+ * "Electron 那侧已经不在,而且没人偷偷把它加回来"。旧线只要复活一处(重建
+ * @main handler / `src/ipc/agents.ts` 工厂、重新往 channels.ts 加 AGENTS_* 常量),
+ * 这里就红。
+ */
+function checkAgentsDomainRidesTheRpcChannel(): void {
+  const retiredFiles = [
+    'apps/electron/src/ipc/agents.ts',
+    'apps/electron/src/main/ipc/agents.ts',
   ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/agents',
-    'registerElectronAgentsIpcHandlers',
-    'IPC_CHANNELS.AGENTS_LIST',
-    'IPC_CHANNELS.AGENTS_CREATE',
-    'IPC_CHANNELS.AGENTS_UPDATE',
-    'IPC_CHANNELS.AGENTS_DELETE',
+  const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
+  const routerFile = path.join(root, 'packages/shared/ipc/agents.ts')
+  const domainFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/agents.ts')
+  const registryIndexFile = path.join(root, 'packages/onething-runtime/src/app/rpc/index.ts')
+  const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
+  const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
+  const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
+  const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
+  const requiredDomainSymbols = [
+    'agentsRouter',
+    'registerRouterHandlers',
     'listOnethingAgentsForIpc',
     'createOnethingAgentFromRequestForIpc',
     'updateOnethingAgentFromRequestForIpc',
     'deleteOnethingAgentFromRequestForIpc',
+    'restoreOnethingAgentFromRequestForIpc',
   ]
   const lines = [
-    ...(!packageContent.includes('./ipc/agents')
-      ? [`${rel(electronPackage)}: missing agents IPC host export`]
+    ...retiredFiles
+      .filter(file => fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: retired agents IPC line is back — the domain rides rpc:invoke now`),
+    ...(/\bAGENTS_(LIST|CREATE|UPDATE|DELETE|RESTORE)\b/.test(channelsContent)
+      ? ['packages/shared/ipc/channels.ts: a hand-written agents channel constant is back']
       : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronAgentsContent.includes(symbol))
-      .map(symbol => `${rel(electronAgentsFile)}: missing Electron agents IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainAgentsContent.includes(symbol))
-      .map(symbol => `${rel(mainAgentsFile)}: missing agents IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/agents')
-      ? [`${rel(viteConfig)}: missing electron agents IPC package alias`]
+    ...(!routerContent.includes("defineRouter<AgentsRoutes>('agents'")
+      ? [`${rel(routerFile)}: missing agentsRouter definition`]
       : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/agents')
-      ? [`${rel(vitestConfig)}: missing electron agents IPC test alias`]
+    ...(!fs.existsSync(domainFile)
+      ? [`${rel(domainFile)}: missing agents RPC domain`]
       : []),
-    ...(fs.existsSync(mainAgentsFile)
-      ? matchingLines(mainAgentsFile, MAIN_AGENTS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/agents.ts: missing agents IPC adapter']),
+    ...requiredDomainSymbols
+      .filter(symbol => !domainContent.includes(symbol))
+      .map(symbol => `${rel(domainFile)}: missing agents RPC domain symbol ${symbol}`),
+    ...(!registryIndexContent.includes('registerAgentsRpcDomain')
+      ? [`${rel(registryIndexFile)}: agents domain is not listed in the RPC assembly point`]
+      : []),
   ]
 
-  assertNoMatches('apps/electron owns Electron agents IPC host operations', lines)
+  assertNoMatches('agents domain rides the generic RPC channel', lines)
 }
 
-function checkElectronHostOwnsPromptsIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronPromptsFile = path.join(root, 'apps/electron/src/ipc/prompts.ts')
-  const mainPromptsFile = path.join(root, 'apps/electron/src/main/ipc/prompts.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronPromptsContent = fs.existsSync(electronPromptsFile) ? fs.readFileSync(electronPromptsFile, 'utf-8') : ''
-  const mainPromptsContent = fs.existsSync(mainPromptsFile) ? fs.readFileSync(mainPromptsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronPromptsIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronPromptGetRequest',
-    'ElectronPromptCreateRequest',
-    'ElectronPromptUpdateRequest',
-    'ElectronPromptDeleteRequest',
+/**
+ * 提示词片段域已整体迁到通用 RPC 通道(主线 T1 第一批)。
+ *
+ * 这条检查因此是**反向**的:它守的不是"Electron 那侧还在",而是"Electron 那侧
+ * 已经不在,而且没人偷偷把它加回来"。旧线只要复活一处(重建 @main handler、
+ * 重新往 channels.ts 加 PROMPTS_* 常量),这里就红。
+ */
+function checkPromptsDomainRidesTheRpcChannel(): void {
+  const retiredFiles = [
+    'apps/electron/src/ipc/prompts.ts',
+    'apps/electron/src/main/ipc/prompts.ts',
   ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/prompts',
-    'registerElectronPromptsIpcHandlers',
-    'IPC_CHANNELS.PROMPTS_LIST',
-    'IPC_CHANNELS.PROMPTS_GET',
-    'IPC_CHANNELS.PROMPTS_CREATE',
-    'IPC_CHANNELS.PROMPTS_UPDATE',
-    'IPC_CHANNELS.PROMPTS_DELETE',
+  const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
+  const routerFile = path.join(root, 'packages/shared/ipc/prompts.ts')
+  const domainFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/prompts.ts')
+  const registryIndexFile = path.join(root, 'packages/onething-runtime/src/app/rpc/index.ts')
+  const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
+  const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
+  const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
+  const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
+  const requiredDomainSymbols = [
+    'promptsRouter',
+    'registerRouterHandlers',
     'listOnethingPromptsForIpc',
     'getOnethingPromptForIpc',
     'createOnethingPromptForIpc',
@@ -5190,27 +5184,27 @@ function checkElectronHostOwnsPromptsIpcHost(): void {
     'deleteOnethingPromptForIpc',
   ]
   const lines = [
-    ...(!packageContent.includes('./ipc/prompts')
-      ? [`${rel(electronPackage)}: missing prompts IPC host export`]
+    ...retiredFiles
+      .filter(file => fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: retired prompts IPC line is back — the domain rides rpc:invoke now`),
+    ...(/\bPROMPTS_(LIST|GET|CREATE|UPDATE|DELETE)\b/.test(channelsContent)
+      ? ['packages/shared/ipc/channels.ts: a hand-written prompts channel constant is back']
       : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronPromptsContent.includes(symbol))
-      .map(symbol => `${rel(electronPromptsFile)}: missing Electron prompts IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainPromptsContent.includes(symbol))
-      .map(symbol => `${rel(mainPromptsFile)}: missing prompts IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/prompts')
-      ? [`${rel(viteConfig)}: missing electron prompts IPC package alias`]
+    ...(!routerContent.includes("defineRouter<PromptsRoutes>('prompts'")
+      ? [`${rel(routerFile)}: missing promptsRouter definition`]
       : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/prompts')
-      ? [`${rel(vitestConfig)}: missing electron prompts IPC test alias`]
+    ...(!fs.existsSync(domainFile)
+      ? [`${rel(domainFile)}: missing prompts RPC domain`]
       : []),
-    ...(fs.existsSync(mainPromptsFile)
-      ? matchingLines(mainPromptsFile, MAIN_PROMPTS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/prompts.ts: missing prompts IPC adapter']),
+    ...requiredDomainSymbols
+      .filter(symbol => !domainContent.includes(symbol))
+      .map(symbol => `${rel(domainFile)}: missing prompts RPC domain symbol ${symbol}`),
+    ...(!registryIndexContent.includes('registerPromptsRpcDomain')
+      ? [`${rel(registryIndexFile)}: prompts domain is not listed in the RPC assembly point`]
+      : []),
   ]
 
-  assertNoMatches('apps/electron owns Electron prompts IPC host operations', lines)
+  assertNoMatches('prompts domain rides the generic RPC channel', lines)
 }
 
 function checkElectronHostOwnsSchedulerIpcHost(): void {
@@ -5512,88 +5506,73 @@ function checkElectronHostOwnsThemesIpcHost(): void {
   assertNoMatches('apps/electron owns Electron themes IPC host operations', lines)
 }
 
-function checkElectronHostOwnsProvidersIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronProvidersFile = path.join(root, 'apps/electron/src/ipc/providers.ts')
-  const mainProvidersFile = path.join(root, 'apps/electron/src/main/ipc/providers.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronProvidersContent = fs.existsSync(electronProvidersFile) ? fs.readFileSync(electronProvidersFile, 'utf-8') : ''
-  const mainProvidersContent = fs.existsSync(mainProvidersFile) ? fs.readFileSync(mainProvidersFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronProvidersIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronProviderUsageRequest',
-    'ElectronProviderEnvStatusRequest',
+/**
+ * Provider 目录 / 配额 / env 域已整体迁到通用 RPC 通道(主线 T1 第二批)。
+ * 反向检查,同 prompts / agents。
+ */
+function checkProvidersDomainRidesTheRpcChannel(): void {
+  const retiredFiles = [
+    'apps/electron/src/ipc/providers.ts',
+    'apps/electron/src/main/ipc/providers.ts',
   ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/providers',
-    'registerElectronProvidersIpcHandlers',
-    'IPC_CHANNELS.GET_PROVIDERS',
-    'IPC_CHANNELS.GET_PROVIDER_USAGE',
-    'IPC_CHANNELS.GET_PROVIDER_ENV_STATUS',
+  const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
+  const routerFile = path.join(root, 'packages/shared/ipc/providers.ts')
+  const domainFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/providers.ts')
+  const registryIndexFile = path.join(root, 'packages/onething-runtime/src/app/rpc/index.ts')
+  const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
+  const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
+  const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
+  const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
+  const requiredDomainSymbols = [
+    'providersRouter',
+    'registerRouterHandlers',
     'listOnethingProvidersForIpc',
     'getOnethingProviderUsage',
     'inspectOnethingProviderEnvStatusForIpc',
-    'handleGetProviderUsage',
-    'handleGetProviderEnvStatus',
   ]
   const lines = [
-    ...(!packageContent.includes('./ipc/providers')
-      ? [`${rel(electronPackage)}: missing providers IPC host export`]
+    ...retiredFiles
+      .filter(file => fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: retired providers IPC line is back — the domain rides rpc:invoke now`),
+    ...(/\bGET_PROVIDERS\b|\bGET_PROVIDER_USAGE\b|\bGET_PROVIDER_ENV_STATUS\b/.test(channelsContent)
+      ? ['packages/shared/ipc/channels.ts: a hand-written providers channel constant is back']
       : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronProvidersContent.includes(symbol))
-      .map(symbol => `${rel(electronProvidersFile)}: missing Electron providers IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainProvidersContent.includes(symbol))
-      .map(symbol => `${rel(mainProvidersFile)}: missing providers IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/providers')
-      ? [`${rel(viteConfig)}: missing electron providers IPC package alias`]
+    ...(!routerContent.includes("defineRouter<ProvidersRoutes>('providers'")
+      ? [`${rel(routerFile)}: missing providersRouter definition`]
       : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/providers')
-      ? [`${rel(vitestConfig)}: missing electron providers IPC test alias`]
+    ...(!fs.existsSync(domainFile)
+      ? [`${rel(domainFile)}: missing providers RPC domain`]
       : []),
-    ...(fs.existsSync(mainProvidersFile)
-      ? matchingLines(mainProvidersFile, MAIN_PROVIDERS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/providers.ts: missing providers IPC adapter']),
+    ...requiredDomainSymbols
+      .filter(symbol => !domainContent.includes(symbol))
+      .map(symbol => `${rel(domainFile)}: missing providers RPC domain symbol ${symbol}`),
+    ...(!registryIndexContent.includes('registerProvidersRpcDomain')
+      ? [`${rel(registryIndexFile)}: providers domain is not listed in the RPC assembly point`]
+      : []),
   ]
 
-  assertNoMatches('apps/electron owns Electron providers IPC host operations', lines)
+  assertNoMatches('providers domain rides the generic RPC channel', lines)
 }
 
-function checkElectronHostOwnsModelsIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronModelsFile = path.join(root, 'apps/electron/src/ipc/models.ts')
-  const mainModelsFile = path.join(root, 'apps/electron/src/main/ipc/models.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronModelsContent = fs.existsSync(electronModelsFile) ? fs.readFileSync(electronModelsFile, 'utf-8') : ''
-  const mainModelsContent = fs.existsSync(mainModelsFile) ? fs.readFileSync(mainModelsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronModelsIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronModelsWithCapabilitiesRequest',
-    'ElectronModelsSearchRequest',
-    'ElectronModelDisplayNameRequest',
+/**
+ * 模型注册表域已整体迁到通用 RPC 通道(主线 T1 第二批)。反向检查,同上。
+ */
+function checkModelsDomainRidesTheRpcChannel(): void {
+  const retiredFiles = [
+    'apps/electron/src/ipc/models.ts',
+    'apps/electron/src/main/ipc/models.ts',
   ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/models',
-    'registerElectronModelsIpcHandlers',
-    'IPC_CHANNELS.GET_MODELS_WITH_CAPABILITIES',
-    'IPC_CHANNELS.GET_ALL_MODELS',
-    'IPC_CHANNELS.SEARCH_MODELS',
-    'IPC_CHANNELS.REFRESH_MODEL_REGISTRY',
-    'IPC_CHANNELS.GET_MODEL_NAME_ALIASES',
-    'IPC_CHANNELS.GET_MODEL_DISPLAY_NAME',
+  const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
+  const routerFile = path.join(root, 'packages/shared/ipc/providers.ts')
+  const domainFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/models.ts')
+  const registryIndexFile = path.join(root, 'packages/onething-runtime/src/app/rpc/index.ts')
+  const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
+  const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
+  const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
+  const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
+  const requiredDomainSymbols = [
+    'modelsRouter',
+    'registerRouterHandlers',
     'getOnethingModelsWithCapabilities',
     'getAllOnethingModelRegistryModelsForIpc',
     'searchOnethingModelRegistryForIpc',
@@ -5602,27 +5581,27 @@ function checkElectronHostOwnsModelsIpcHost(): void {
     'getOnethingModelRegistryDisplayNameForIpc',
   ]
   const lines = [
-    ...(!packageContent.includes('./ipc/models')
-      ? [`${rel(electronPackage)}: missing models IPC host export`]
+    ...retiredFiles
+      .filter(file => fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: retired models IPC line is back — the domain rides rpc:invoke now`),
+    ...(/\bGET_MODELS_WITH_CAPABILITIES\b|\bGET_ALL_MODELS\b|\bSEARCH_MODELS\b|\bREFRESH_MODEL_REGISTRY\b|\bGET_MODEL_NAME_ALIASES\b|\bGET_MODEL_DISPLAY_NAME\b/.test(channelsContent)
+      ? ['packages/shared/ipc/channels.ts: a hand-written models channel constant is back']
       : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronModelsContent.includes(symbol))
-      .map(symbol => `${rel(electronModelsFile)}: missing Electron models IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainModelsContent.includes(symbol))
-      .map(symbol => `${rel(mainModelsFile)}: missing models IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/models')
-      ? [`${rel(viteConfig)}: missing electron models IPC package alias`]
+    ...(!routerContent.includes("defineRouter<ModelsRoutes>('models'")
+      ? [`${rel(routerFile)}: missing modelsRouter definition`]
       : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/models')
-      ? [`${rel(vitestConfig)}: missing electron models IPC test alias`]
+    ...(!fs.existsSync(domainFile)
+      ? [`${rel(domainFile)}: missing models RPC domain`]
       : []),
-    ...(fs.existsSync(mainModelsFile)
-      ? matchingLines(mainModelsFile, MAIN_MODELS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/models.ts: missing models IPC adapter']),
+    ...requiredDomainSymbols
+      .filter(symbol => !domainContent.includes(symbol))
+      .map(symbol => `${rel(domainFile)}: missing models RPC domain symbol ${symbol}`),
+    ...(!registryIndexContent.includes('registerModelsRpcDomain')
+      ? [`${rel(registryIndexFile)}: models domain is not listed in the RPC assembly point`]
+      : []),
   ]
 
-  assertNoMatches('apps/electron owns Electron models IPC host operations', lines)
+  assertNoMatches('models domain rides the generic RPC channel', lines)
 }
 
 function checkElectronHostOwnsMcpIpcHost(): void {
@@ -5852,24 +5831,16 @@ function checkElectronHostOwnsTodoPlanIpcHost(): void {
     'ElectronTodoPlanPinnedRequest',
   ]
   const requiredFacadeSymbols = [
+    // 数据面(get/create/update/rename/delete/revealDirectory)已迁到通用 RPC 通道,
+    // 留在 @main 的只有窗口面 + configureTodoPlanHost 的端口注入。
     '@onething/electron-host/ipc/todo-plan',
     'registerElectronTodoPlanIpcHandlers',
-    'IPC_CHANNELS.TODO_PLAN_GET',
-    'IPC_CHANNELS.TODO_PLAN_CREATE',
-    'IPC_CHANNELS.TODO_PLAN_UPDATE',
-    'IPC_CHANNELS.TODO_PLAN_RENAME',
-    'IPC_CHANNELS.TODO_PLAN_DELETE',
-    'IPC_CHANNELS.TODO_PLAN_REVEAL_DIRECTORY',
+    'configureTodoPlanHost',
+    'IPC_CHANNELS.TODO_PLAN_CHANGED',
     'IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW',
     'IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW',
     'IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW',
     'IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED',
-    'getOnethingTodoPlanForIpc',
-    'createOnethingTodoNoteForIpc',
-    'updateOnethingTodoPlanDocumentForIpc',
-    'renameOnethingTodoNoteForIpc',
-    'deleteOnethingTodoNoteForIpc',
-    'revealOnethingTodoPlanDirectoryForIpc',
     'runOnethingTodoPlanWindowActionForIpc',
     'setOnethingTodoPlanWindowPinnedForIpc',
   ]
@@ -8055,15 +8026,17 @@ function checkRuntimeOwnsImageStreamEntryPoint(): void {
 
 function checkRuntimeOwnsProvidersIpcUsageFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-usage.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/providers.ts')
+  // 域迁到通用 RPC 通道后(主线 T1 第二批),宿主适配器换了地址:守的还是
+  // 同一件事 —— 适配器不许把 runtime 拥有的那套流程再抄一遍。
+  const adapterFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/providers.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('getOnethingProviderUsage')
       ? [`${rel(runtimeFile)}: missing runtime-owned provider usage flow`]
       : []),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_PROVIDERS_IPC_USAGE_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/providers.ts: missing providers IPC adapter']),
+    ...(fs.existsSync(adapterFile)
+      ? matchingLines(adapterFile, MAIN_PROVIDERS_IPC_USAGE_FORBIDDEN_PATTERNS)
+      : [`${rel(adapterFile)}: missing providers RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider usage flow', lines)
@@ -8071,7 +8044,7 @@ function checkRuntimeOwnsProvidersIpcUsageFlow(): void {
 
 function checkRuntimeOwnsProvidersIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-presentation.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/providers.ts')
+  const adapterFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/providers.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingProviders',
@@ -8083,9 +8056,9 @@ function checkRuntimeOwnsProvidersIpcPresentation(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_PROVIDERS_IPC_PRESENTATION_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/providers.ts: missing providers IPC adapter']),
+    ...(fs.existsSync(adapterFile)
+      ? matchingLines(adapterFile, MAIN_PROVIDERS_IPC_PRESENTATION_FORBIDDEN_PATTERNS)
+      : [`${rel(adapterFile)}: missing providers RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider IPC presentation', lines)
@@ -8157,7 +8130,7 @@ function checkRuntimeOwnsModelRegistryRefresh(): void {
 
 function checkRuntimeOwnsModelsIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/model-registry.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/models.ts')
+  const adapterFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/models.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'mergeOnethingModelsById',
@@ -8170,9 +8143,9 @@ function checkRuntimeOwnsModelsIpcPresentation(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_MODELS_IPC_PRESENTATION_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/models.ts: missing models IPC adapter']),
+    ...(fs.existsSync(adapterFile)
+      ? matchingLines(adapterFile, MAIN_MODELS_IPC_PRESENTATION_FORBIDDEN_PATTERNS)
+      : [`${rel(adapterFile)}: missing models RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns models IPC presentation helpers', lines)
@@ -8180,7 +8153,7 @@ function checkRuntimeOwnsModelsIpcPresentation(): void {
 
 function checkRuntimeOwnsModelQueryIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/model-query-presentation.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/models.ts')
+  const adapterFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/models.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getAllOnethingModelRegistryModels',
@@ -8198,9 +8171,9 @@ function checkRuntimeOwnsModelQueryIpcPresentation(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_MODELS_IPC_QUERY_PRESENTATION_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/models.ts: missing models IPC adapter']),
+    ...(fs.existsSync(adapterFile)
+      ? matchingLines(adapterFile, MAIN_MODELS_IPC_QUERY_PRESENTATION_FORBIDDEN_PATTERNS)
+      : [`${rel(adapterFile)}: missing models RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns model query IPC presentation', lines)
@@ -9951,7 +9924,8 @@ function checkRuntimeOwnsPromptsStore(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/prompts/store.ts')
   const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/prompts/ipc-operations.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/prompts/store.ts')
-  const mainIpcFile = path.join(root, 'apps/electron/src/main/ipc/prompts.ts')
+  // 迁移后调用 ipc-operations 的是 RPC 域,不再是 @main 的 handler。
+  const mainIpcFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/prompts.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
@@ -9987,7 +9961,7 @@ function checkRuntimeOwnsPromptsStore(): void {
       : ['packages/onething-runtime/src/app/prompts/store.ts: missing prompts store facade']),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_PROMPTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/prompts.ts: missing prompts IPC adapter']),
+      : ['packages/onething-runtime/src/app/rpc/domains/prompts.ts: missing prompts RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns prompts store', lines)
@@ -10178,7 +10152,7 @@ function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
   const runtimeStoreFile = path.join(root, 'packages/onething-runtime/src/agents/store.ts')
   const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/agents/ipc-operations.ts')
   const mainStoreFile = path.join(root, 'packages/onething-runtime/src/app/agents/store.ts')
-  const mainIpcFile = path.join(root, 'apps/electron/src/main/ipc/agents.ts')
+  const adapterFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/agents.ts')
   const runtimeContent = [
     fs.existsSync(runtimeStoreFile) ? fs.readFileSync(runtimeStoreFile, 'utf-8') : '',
     fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : '',
@@ -10201,9 +10175,9 @@ function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
     ...(fs.existsSync(mainStoreFile)
       ? matchingLines(mainStoreFile, MAIN_AGENTS_STORE_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/agents/store.ts: missing agent store adapter']),
-    ...(fs.existsSync(mainIpcFile)
-      ? matchingLines(mainIpcFile, MAIN_AGENTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/agents.ts: missing agents IPC adapter']),
+    ...(fs.existsSync(adapterFile)
+      ? matchingLines(adapterFile, MAIN_AGENTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : [`${rel(adapterFile)}: missing agents RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns agents store and IPC operations', lines)
@@ -10919,7 +10893,7 @@ checkElectronHostOwnsAppStateIpcHost()
 checkElectronHostOwnsVariablesIpcHost()
 checkElectronHostOwnsProjectDirsIpcHost()
 checkElectronHostOwnsAgentsIpcHost()
-checkElectronHostOwnsPromptsIpcHost()
+checkPromptsDomainRidesTheRpcChannel()
 checkElectronHostOwnsSchedulerIpcHost()
 checkElectronHostOwnsMarkdownIpcHost()
 checkElectronHostOwnsPermissionIpcHost()

@@ -1,7 +1,7 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import type { ProviderUsageResponse } from '@/types'
 import type { OAuthStatus } from './useProviderAuth'
-import { platformApi } from '@/platform'
+import { providersApi } from '@/platform/providers-client'
 
 const CACHE_TTL_MS = 60_000
 
@@ -48,7 +48,7 @@ export function useProviderUsage(
     error.value = ''
 
     try {
-      const next = await platformApi.getProviderUsage(id)
+      const next = await providersApi.getProviderUsage(id)
       if (seq !== requestSeq) return
       if (!next.success) {
         throw new Error(next.error || 'Failed to fetch provider usage')

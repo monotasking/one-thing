@@ -4,6 +4,7 @@
  */
 
 import type { JsonObject } from '../json.js'
+import { defineRouter } from './router.js'
 
 // Provider IDs - can be extended by adding new providers
 export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'kimi-code' | 'zhipu' | 'qwen' | 'gemini' | 'codex' | 'acp' | 'custom' | string
@@ -314,3 +315,77 @@ export interface GetProviderEnvStatusResponse {
   status?: ProviderEnvStatus
   error?: string
 }
+
+// ── 通用 RPC 通道上的两个域(主线 T1 第二批)────────────────────────────
+//
+// providers 与 models 都是纯查询/注册表读写:零窗口、零流式、零事件推送。
+// 迁移前 desktop 走 `models:*` / `providers:*` 手写通道,web 走 `/api/models*`
+// 与 `/api/providers*`;两侧各一份实现。现在两侧共用 `@onething/app` 的
+// provider 注册表与 model registry。
+
+export interface ModelsListResponse {
+  success: boolean
+  models?: OpenRouterModel[]
+  error?: string
+}
+
+export interface ModelsWithCapabilitiesRequest {
+  providerId: string
+  forceRefresh?: boolean
+}
+
+export interface ModelsSearchRequest {
+  query: string
+  providerId?: string
+}
+
+export interface ModelRefreshRegistryResponse {
+  success: boolean
+  error?: string
+}
+
+export interface ModelNameAliasesResponse {
+  success: boolean
+  aliases?: Record<string, string>
+  error?: string
+}
+
+export interface ModelDisplayNameRequest {
+  modelId: string
+}
+
+export interface ModelDisplayNameResponse {
+  success: boolean
+  displayName?: string
+  error?: string
+}
+
+export type ProvidersRoutes = {
+  list: { input: Record<string, never>; output: GetProvidersResponse }
+  usage: { input: ProviderUsageRequest; output: ProviderUsageResponse }
+  envStatus: { input: GetProviderEnvStatusRequest; output: GetProviderEnvStatusResponse }
+}
+
+export const providersRouter = defineRouter<ProvidersRoutes>('providers', [
+  'list',
+  'usage',
+  'envStatus',
+])
+
+export type ModelsRoutes = {
+  getWithCapabilities: { input: ModelsWithCapabilitiesRequest; output: ModelsListResponse }
+  getAll: { input: Record<string, never>; output: ModelsListResponse }
+  search: { input: ModelsSearchRequest; output: ModelsListResponse }
+  refreshRegistry: { input: Record<string, never>; output: ModelRefreshRegistryResponse }
+  getNameAliases: { input: Record<string, never>; output: ModelNameAliasesResponse }
+  getDisplayName: { input: ModelDisplayNameRequest; output: ModelDisplayNameResponse }
+}
+
+export const modelsRouter = defineRouter<ModelsRoutes>('models', [
+  'getWithCapabilities',
+  'getAll',
+  'search',
+  'refreshRegistry',
+  'getNameAliases',
+  'getDisplayName',
+])

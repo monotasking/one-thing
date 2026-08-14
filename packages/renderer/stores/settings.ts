@@ -5,6 +5,8 @@ import { AIProvider as AIProviderEnum } from '@shared/ipc'
 import type { AIProviderId, ThinkingEffort, TypographyDensity } from '@shared/ipc'
 import { createDefaultSettings } from '@shared/defaults/settings'
 import { platformApi } from '@/platform'
+import { modelsApi } from '@/platform/models-client'
+import { providersApi } from '@/platform/providers-client'
 
 const CHAT_FONT_CACHE_KEY = 'cached-chat-fonts'
 
@@ -224,8 +226,8 @@ export const useSettingsStore = defineStore('settings', () => {
       // Load settings, providers, and model aliases in parallel
       const [settingsResponse, providersResponse, aliasesResponse] = await Promise.all([
         platformApi.getSettings(),
-        platformApi.getProviders(),
-        platformApi.getModelNameAliases(),
+        providersApi.getProviders(),
+        modelsApi.getModelNameAliases(),
       ])
 
       if (settingsResponse.success && settingsResponse.settings) {
@@ -275,7 +277,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function loadProviders() {
     try {
-      const response = await platformApi.getProviders()
+      const response = await providersApi.getProviders()
       if (response.success && response.providers) {
         // Merge with custom providers — a bare assignment here would clobber
         // any custom providers a previous loadSettings() merge had populated.
@@ -569,7 +571,7 @@ export const useSettingsStore = defineStore('settings', () => {
   // Refresh available providers list (used after adding/updating/deleting custom providers)
   async function refreshAvailableProviders() {
     try {
-      const response = await platformApi.getProviders()
+      const response = await providersApi.getProviders()
       if (response.success && response.providers) {
         updateAvailableProviders(response.providers)
       }
@@ -651,7 +653,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     try {
       // Read from settings.json modelRegistry (via IPC)
-      const response = await platformApi.getModelsWithCapabilities(providerId, { forceRefresh })
+      const response = await modelsApi.getModelsWithCapabilities(providerId, { forceRefresh })
 
       if (response.success && response.models && response.models.length > 0) {
         const models = response.models
@@ -680,7 +682,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const providerDirectModels = new Set(['codex', 'github-copilot'])
     if (!providerDirectModels.has(providerId)) {
       try {
-        await platformApi.refreshModelRegistry()
+        await modelsApi.refreshModelRegistry()
       } catch (error) {
         console.warn('[SettingsStore] Failed to refresh model registry:', error)
       }

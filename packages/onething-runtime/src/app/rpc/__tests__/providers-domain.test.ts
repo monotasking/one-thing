@@ -1,30 +1,35 @@
+/**
+ * providers 域(主线 T1 第二批),搬自 `apps/electron/src/main/ipc/__tests__/providers.test.ts`。
+ *
+ * 钉的是与被删掉那条线的等价:非 Codex provider 报 unsupported、Codex 先刷新
+ * token 再取官方用量、登录失效时把原话回上去、env status 永远不回显真钥匙。
+ *
+ * mock 的路径必须解析到 handler **自己 import 的那个模块**(`../../auth/...`、
+ * `../../providers/...`)——差一层就什么也没 mock 到,测试会拿用户真 store 跑。
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { handleGetProviderEnvStatus, handleGetProviderUsage } from '../providers.js'
 
 const mocks = vi.hoisted(() => ({
   refreshTokenIfNeeded: vi.fn(),
   fetchCodexUsage: vi.fn(),
-}))
-
-vi.mock('electron', () => ({
-  ipcMain: { handle: vi.fn() },
-}))
-
-vi.mock('@onething/app/auth/auth-service.js', () => ({
-  authService: {
-    refreshTokenIfNeeded: mocks.refreshTokenIfNeeded,
-  },
-}))
-
-vi.mock('@onething/app/providers/builtin/codex.js', () => ({
-  fetchCodexUsage: mocks.fetchCodexUsage,
-}))
-
-vi.mock('@onething/app/providers/index.js', () => ({
   getAvailableProviders: vi.fn(() => []),
 }))
 
-describe('provider usage IPC helpers', () => {
+vi.mock('../../auth/auth-service.js', () => ({
+  authService: { refreshTokenIfNeeded: mocks.refreshTokenIfNeeded },
+}))
+
+vi.mock('../../providers/builtin/codex.js', () => ({
+  fetchCodexUsage: mocks.fetchCodexUsage,
+}))
+
+vi.mock('../../providers/index.js', () => ({
+  getAvailableProviders: mocks.getAvailableProviders,
+}))
+
+const { providersRpcHandlers } = await import('../domains/providers.js')
+
+describe('providers RPC domain', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     delete process.env.OPENAI_API_KEY
@@ -35,7 +40,7 @@ describe('provider usage IPC helpers', () => {
   })
 
   it('returns unsupported for non-Codex providers', async () => {
-    const response = await handleGetProviderUsage({} as any, { providerId: 'openai' })
+    const response = await providersRpcHandlers.usage({ providerId: 'openai' })
 
     expect(response).toEqual({ success: true, providerId: 'openai', unsupported: true })
     expect(mocks.refreshTokenIfNeeded).not.toHaveBeenCalled()
@@ -60,7 +65,7 @@ describe('provider usage IPC helpers', () => {
     mocks.refreshTokenIfNeeded.mockResolvedValue(token)
     mocks.fetchCodexUsage.mockResolvedValue(usage)
 
-    const response = await handleGetProviderUsage({} as any, { providerId: 'codex' })
+    const response = await providersRpcHandlers.usage({ providerId: 'codex' })
 
     expect(mocks.refreshTokenIfNeeded).toHaveBeenCalledWith('codex')
     expect(mocks.fetchCodexUsage).toHaveBeenCalledWith(token)
@@ -81,7 +86,7 @@ describe('provider usage IPC helpers', () => {
   it('returns a clear error when Codex is not logged in', async () => {
     mocks.refreshTokenIfNeeded.mockRejectedValue(new Error('Not logged in'))
 
-    const response = await handleGetProviderUsage({} as any, { providerId: 'codex' })
+    const response = await providersRpcHandlers.usage({ providerId: 'codex' })
 
     expect(response).toEqual({
       success: false,
@@ -94,9 +99,7 @@ describe('provider usage IPC helpers', () => {
   it('reports provider env status without returning the API key value', async () => {
     process.env.OPENAI_API_KEY = 'secret-env-key-1234'
 
-    const response = await handleGetProviderEnvStatus({} as any, {
-      providerId: 'openai',
-    })
+    const response = await providersRpcHandlers.envStatus({ providerId: 'openai' })
 
     expect(response).toMatchObject({
       success: true,
@@ -112,5 +115,14 @@ describe('provider usage IPC helpers', () => {
       isSet: true,
     })
     expect(JSON.stringify(response)).not.toContain('secret-env-key-1234')
+  })
+
+  it('reads the provider catalog off the app registry', async () => {
+    mocks.getAvailableProviders.mockReturnValue([{ id: 'openai' }] as never)
+
+    await expect(providersRpcHandlers.list({})).resolves.toMatchObject({
+      success: true,
+      providers: [{ id: 'openai' }],
+    })
   })
 })

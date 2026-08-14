@@ -33,6 +33,14 @@ function installElectronAPI(snapshot: TodoPlanSnapshot) {
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
+      // 快照读取已走通用 RPC(todoPlanRouter),preload 不再暴露 getTodoPlan;
+      // 这个 dispatcher 就是那条通道在测试里的替身。
+      rpcInvoke: vi.fn(async (request: { domain: string, method: string, payload: unknown }) => {
+        if (request?.domain !== 'todo-plan' || request?.method !== 'get') {
+          return { ok: false, error: { message: `unstubbed rpc ${request?.domain}.${request?.method}` } }
+        }
+        return { ok: true, data: await (window.electronAPI as any).getTodoPlan(request.payload) }
+      }),
       getTodoPlan: vi.fn().mockResolvedValue({ success: true, snapshot }),
       onTodoPlanChanged: vi.fn((callback: (data: TodoPlanChangedPayload) => void) => {
         changedCallback = callback

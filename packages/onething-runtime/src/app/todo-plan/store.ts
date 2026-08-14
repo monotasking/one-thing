@@ -26,6 +26,17 @@ export function configureTodoPlanHost(ports: TodoPlanHostPorts): void {
   hostPorts = ports
 }
 
+/**
+ * 宿主到底有没有「在文件管理器里显示目录」这个能力。
+ *
+ * 端口没注入时 `revealTodoPlanDirectory()` 静默成功——那对内部调用没问题,但对
+ * 一条要回给用户的 RPC 就是在撒谎(server 迁移前给的是明确的"此宿主不支持")。
+ * 传输面统一之后由这个谓词把那句实话留住。
+ */
+export function canRevealTodoPlanDirectory(): boolean {
+  return typeof hostPorts.revealDirectory === 'function'
+}
+
 function broadcast(payload: TodoPlanChangedPayload): void {
   hostPorts.broadcastChanged?.(payload)
 }
