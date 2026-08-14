@@ -168,20 +168,20 @@ describe('built-in theme gallery regression', () => {
     expect(gallery).toMatchInlineSnapshot(`
       [
         {
-          "accent": "#6fbcd4",
+          "accent": "#7cc4dc",
           "scheme": "dark",
           "states": {
-            "composerFocus": "#334B5A",
-            "sidebarActive": "#3C4E5B",
-            "tabActive": "#314856",
+            "composerFocus": "#2F5061",
+            "sidebarActive": "#384F5D",
+            "tabActive": "#2E4C5D",
           },
           "surfaces": {
-            "app": "#1f3340",
-            "chat": "#273d4b",
-            "composer": "#344650",
-            "sidebar": "#1f3340",
-            "tabbar": "#273d4b",
-            "tool": "#304856",
+            "app": "#1b3443",
+            "chat": "#234152",
+            "composer": "#2b4a5b",
+            "sidebar": "#1b3443",
+            "tabbar": "#234152",
+            "tool": "#2c4d5e",
           },
           "theme": "雨后夜晚 Night After Rain",
         },
