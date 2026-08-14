@@ -76,6 +76,22 @@ vi.mock('@/stores/sessions', () => ({
 vi.mock('@/stores/projects', () => ({
   useProjectsStore: () => ({ entries: [], load: vi.fn(async () => {}), add: vi.fn(), remove: vi.fn() }),
 }))
+// 空间(space):这些用例不验空间过滤,给一份"只有默认空间、切换器不画"的
+// 降级态即可 —— 与 web 端拿不到 /api/spaces 时是同一份口径。
+vi.mock('@/stores/spaces', () => ({
+  DEFAULT_SPACE_ID: 'default',
+  useSpacesStore: () => ({
+    spaces: [{ id: 'default', name: '默认空间', createdAt: 0 }],
+    currentSpaceId: 'default',
+    showSwitcher: false,
+    load: vi.fn(async () => {}),
+    switchTo: vi.fn(),
+    create: vi.fn(),
+    rename: vi.fn(),
+    remove: vi.fn(),
+  }),
+  sessionBelongsToSpace: () => true,
+}))
 vi.mock('@/stores/chat', () => ({
   useChatStore: () => ({ isSessionGenerating: () => false }),
 }))
@@ -781,7 +797,7 @@ describe('工作区面板入口一个都不丢', () => {
     // 推翻了 inSidebarMenu 那个区分:从用户视角 ⋯ 就是"工作区面板列表",
     // 里面缺 Practice / Archived Chats / 插件面板就是缺三项。
     expect((menu.props('items') as Array<{ id: string }>).map(item => item.id))
-      .toEqual(['media', 'agents', 'tasks', 'music', 'practice', 'archive'])
+      .toEqual(['media', 'agents', 'tasks', 'music', 'practice', 'archive', 'trajectory'])
   })
 
   it('菜单每一项都真的把对应面板打开(没有一个面板变得进不去)', async () => {
@@ -790,11 +806,11 @@ describe('工作区面板入口一个都不丢', () => {
       .find(tab => tab.attributes('aria-label') === '工作区面板')!
     await more.trigger('click')
     const menu = menuWithItem(wrapper, 'media')
-    for (const id of ['media', 'agents', 'tasks', 'music', 'practice', 'archive']) {
+    for (const id of ['media', 'agents', 'tasks', 'music', 'practice', 'archive', 'trajectory']) {
       menu.vm.$emit('select', id)
     }
     expect(wrapper.emitted('open-workspace-panel')?.flat())
-      .toEqual(['media', 'agents', 'tasks', 'music', 'practice', 'archive'])
+      .toEqual(['media', 'agents', 'tasks', 'music', 'practice', 'archive', 'trajectory'])
   })
 
   it('新会话与设置照旧各占一枚(不进菜单)', async () => {

@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
@@ -58,6 +60,27 @@ vi.mock('@/components/plugins/PluginPanelHost.vue', () => ({
     template: '<div class="mock-plugin-panel-host">{{ panel.pluginId }}:{{ panel.panelId }}</div>',
   },
 }))
+
+// 六个工作区面板本体各拖着一整棵 store 树(media / agents / scheduler / music /
+// practice / archive)。这一层的契约只是"workspace 页签渲染对应的面板本体",
+// 所以桩成可断言的标记。
+function workspacePanelStub(name: string) {
+  return {
+    default: {
+      name,
+      props: ['active'],
+      // `jump-to-source` 只有 Media 会发,但桩共用一份 —— 多声明一个不改变行为。
+      emits: ['close', 'jump-to-source'],
+      template: `<div class="mock-workspace-panel" data-panel="${name}"><button class="mock-panel-close" @click="$emit('close')">x</button></div>`,
+    },
+  }
+}
+vi.mock('@/components/MediaPanelContent.vue', () => workspacePanelStub('media'))
+vi.mock('@/components/AgentsPanelContent.vue', () => workspacePanelStub('agents'))
+vi.mock('@/components/SchedulerPanelContent.vue', () => workspacePanelStub('tasks'))
+vi.mock('@/components/MusicPanelContent.vue', () => workspacePanelStub('music'))
+vi.mock('@/components/PracticePanelContent.vue', () => workspacePanelStub('practice'))
+vi.mock('@/components/ArchivedChatsContent.vue', () => workspacePanelStub('archive'))
 
 vi.mock('@/components/editor/EditorWorkbench.vue', () => ({
   default: {
@@ -282,10 +305,16 @@ describe('RightWorkbenchPanel', () => {
     /* 「调度」(D8 §4.5 的总览)是 picker 里的第五格:它**不属于任何一间房**,
        所以落点是工具页签而不是房间背台的一格。线程仍然不进 picker —— 它必须绑
        一个房,picker 里点一下开不出有意义的空白页。 */
-    it('线程不进 picker / 空态清单 —— 可选 tab 集合只多了「调度」', () => {
+    it('线程不进 picker / 空态清单 —— 会话域五条 + 工作区域七条', () => {
       const wrapper = mountPanel()
       const labels = wrapper.findAll('.empty-action').map(button => button.text())
-      expect(labels).toEqual(['Files', 'Terminal', 'Browser', '看板', '调度总览'])
+      // 前五条是会话域(这次会话的工具),后七条是工作区域(跨会话的面板,
+      // P1 从退役的 MediaPanel 容器迁进来,清单从 panel-registry 派生;
+      // 「轨迹」是主线 E1 加的第七条)。
+      expect(labels).toEqual([
+        'Files', 'Terminal', 'Browser', '看板', '调度总览',
+        'Media', 'Agents', 'Tasks', 'Music', 'Practice', 'Archived Chats', '轨迹',
+      ])
       expect(wrapper.text()).not.toContain('线程')
     })
 
@@ -344,7 +373,15 @@ describe('RightWorkbenchPanel', () => {
       return mount(RightWorkbenchPanel, { props: { sessionId: 'session-1', workspaceRoot: '/repo' } })
     }
 
-    it('「+」空态清单只列声明了 workbench 的面板 —— 缺省 workspace 的不列', async () => {
+    /**
+     * P1 起「+」清单**不按 `placements` 过滤**。
+     *
+     * 主工作区容器(MediaPanel)已经拆除,工作台是面板唯一的落点 —— 再按声明
+     * 过滤,缺省 `['workspace']` 的插件面板就一个入口都不剩。`placements` 仍是
+     * 插件布局动词那条链上的自荐闸(App.vue),那是另一回事:自荐要报备,
+     * 用户自己找面板不要。
+     */
+    it('「+」空态清单列出全部插件面板 —— 缺省 workspace 的也在(容器已退役)', async () => {
       await withPanels([
         { pluginId: 'canvas-clock', panelId: 'canvas-clock', label: 'Canvas Clock', placements: ['workspace', 'workbench'] },
         { pluginId: 'note-skills', panelId: 'notes', label: 'Notes' }, // 缺省 workspace-only
@@ -354,7 +391,7 @@ describe('RightWorkbenchPanel', () => {
 
       const labels = wrapper.findAll('.empty-action').map(button => button.text())
       expect(labels).toContain('Canvas Clock')
-      expect(labels).not.toContain('Notes')
+      expect(labels).toContain('Notes')
     })
 
     it('点一下开一个 plugin tab 并渲染 PluginPanelHost —— 单例,再点是聚焦', async () => {
@@ -407,6 +444,214 @@ describe('RightWorkbenchPanel', () => {
       // 出现在「+」清单里(入口),而不会替用户开出一条 tab。
       expect(wrapper.find('.mock-plugin-panel-host').exists()).toBe(false)
       expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(0)
+    })
+  })
+
+  // ── 双域页签:会话域(左)/ 工作区域(右)(P1)──────────────────────────
+  describe('workspace tabs (P1 双域)', () => {
+    function mountPanel() {
+      return mount(RightWorkbenchPanel, { props: { sessionId: 'session-1', workspaceRoot: '/repo' } })
+    }
+
+    function stripLabels(wrapper: ReturnType<typeof mountPanel>): string[] {
+      return wrapper.findAll('.app-tabs-tab .workbench-tab-label').map(label => label.text())
+    }
+
+    /** 「+」清单是 Popover(Teleport 到 body),不在 wrapper 的树里。 */
+    function pickerLabels(): string[] {
+      return Array.from(document.querySelectorAll('.picker-option'))
+        .map(node => (node.textContent || '').trim())
+    }
+
+    type WorkspaceApi = {
+      openWorkspaceTab: (panelId: string) => void
+      isWorkspaceTabActive: (panelId: string) => boolean
+      openRoomTabs: (roomSessionId: string) => void
+    }
+
+    it('从「+」清单开一个面板 —— 单例,再点是聚焦,开着的从清单里撤掉', async () => {
+      const wrapper = mountPanel()
+      await wrapper.findAll('.empty-action').find(button => button.text() === 'Media')!.trigger('click')
+      await settle()
+
+      expect(wrapper.find('[data-panel="media"]').exists()).toBe(true)
+      expect(stripLabels(wrapper)).toEqual(['Media'])
+
+      // 单例:同一个面板再开一次是聚焦
+      ;(wrapper.vm as unknown as WorkspaceApi).openWorkspaceTab('media')
+      await settle()
+      expect(stripLabels(wrapper)).toEqual(['Media'])
+      expect((wrapper.vm as unknown as WorkspaceApi).isWorkspaceTabActive('media')).toBe(true)
+
+      // 已经开着的那条从「+」清单里撤掉 —— 它是单例,列出来只会让人以为能开第二个
+      await wrapper.find('.app-tabs-add').trigger('click')
+      await settle()
+      expect(pickerLabels()).not.toContain('Media')
+      expect(pickerLabels()).toContain('Agents')
+      // 两个域之间画一道 —— 与页签条上那道竖线说的是同一件事。
+      expect(document.querySelectorAll('.picker-separator')).toHaveLength(1)
+      wrapper.unmount()
+    })
+
+    /**
+     * 「跳到来源消息」在这一层只做**中继**:落点是 App.vue(它持着 ChatContainer
+     * 的 ref)。这里守两件事 —— 意图确实再冒了一级,以及跳转**不关**工作台。
+     */
+    it('把 Media 的「跳到来源消息」原样冒给 App,而且不关工作台', async () => {
+      const wrapper = mountPanel()
+      ;(wrapper.vm as unknown as WorkspaceApi).openWorkspaceTab('media')
+      await settle()
+
+      const payload = { sessionId: 'session-9', messageId: 'message-9' }
+      wrapper.findComponent({ name: 'media' }).vm.$emit('jump-to-source', payload)
+      await settle()
+
+      expect(wrapper.emitted('jump-to-source')).toEqual([[payload]])
+      expect(wrapper.emitted('close')).toBeUndefined()
+      expect(wrapper.find('[data-panel="media"]').exists()).toBe(true)
+      wrapper.unmount()
+    })
+
+    it('六个内置面板各渲染自己的本体', async () => {
+      const wrapper = mountPanel()
+      const vm = wrapper.vm as unknown as WorkspaceApi
+      for (const id of ['media', 'agents', 'tasks', 'music', 'practice', 'archive']) {
+        vm.openWorkspaceTab(id)
+        await settle()
+        expect(wrapper.find(`[data-panel="${id}"]`).exists()).toBe(true)
+      }
+      expect(stripLabels(wrapper)).toEqual(['Media', 'Agents', 'Tasks', 'Music', 'Practice', 'Archived Chats'])
+    })
+
+    it('工作区页签恒在尾段 —— 先开面板后开工具也不搅在一起', async () => {
+      const wrapper = mountPanel()
+      const vm = wrapper.vm as unknown as WorkspaceApi & { openFile: (p: string) => Promise<void> }
+      vm.openWorkspaceTab('media')
+      await settle()
+      await vm.openFile('/repo/src/a.ts')
+      await settle()
+
+      // 页签**条**的次序(不是数据数组):后开的会话域页签仍排在面板之前。
+      expect(stripLabels(wrapper)).toEqual(['a.ts', 'Media'])
+    })
+
+    it('分隔线只在两域都非空时出现', async () => {
+      const wrapper = mountPanel()
+      ;(wrapper.vm as unknown as WorkspaceApi).openWorkspaceTab('media')
+      await settle()
+      // 只有右域 —— 不画
+      expect(wrapper.find('.workbench-tab-label.is-segment-start').exists()).toBe(false)
+
+      await (wrapper.vm as unknown as { openFile: (p: string) => Promise<void> }).openFile('/repo/src/a.ts')
+      await settle()
+
+      const marks = wrapper.findAll('.workbench-tab-label.is-segment-start')
+      expect(marks).toHaveLength(1)
+      expect(marks[0].text()).toBe('Media')
+    })
+
+    it('✕ 只在选中的工作区页签上;房的固定页签一条都不可关', async () => {
+      const wrapper = mountPanel()
+      const vm = wrapper.vm as unknown as WorkspaceApi
+      vm.openWorkspaceTab('media')
+      vm.openWorkspaceTab('agents')
+      await settle()
+
+      const closeByLabel = (label: string) => {
+        const tab = wrapper.findAll('.app-tabs-tab')
+          .find(item => item.find('.workbench-tab-label').text() === label)!
+        return tab.find('.app-tabs-close').exists()
+      }
+      // 选中的是后开的 Agents
+      expect(closeByLabel('Agents')).toBe(true)
+      expect(closeByLabel('Media')).toBe(false)
+
+      vm.openWorkspaceTab('media')
+      await settle()
+      expect(closeByLabel('Media')).toBe(true)
+      expect(closeByLabel('Agents')).toBe(false)
+
+      // 房的固定页签:格数由房的形态决定,关掉一条下一拍就被补回来 —— 那不是
+      // 关闭是闪烁,所以它们根本没有 ✕。
+      vm.openRoomTabs('room-1')
+      await settle()
+      for (const label of ['线程', '成员', '看板', '调度']) {
+        const tab = wrapper.findAll('.app-tabs-tab')
+          .find(item => item.find('.workbench-tab-label').text() === label)
+        if (tab) expect(tab.find('.app-tabs-close').exists(), label).toBe(false)
+      }
+    })
+
+    it('会话域的临时页签照旧可关(能力不减)', async () => {
+      const wrapper = mountPanel()
+      await wrapper.findAll('.empty-action').find(button => button.text() === 'Files')!.trigger('click')
+      await settle()
+      const tab = wrapper.findAll('.app-tabs-tab')
+        .find(item => item.find('.workbench-tab-label').text() === 'Files')!
+      expect(tab.find('.app-tabs-close').exists()).toBe(true)
+    })
+
+    it('换会话不动工作区页签 —— 右域跨会话保持', async () => {
+      const wrapper = mountPanel()
+      ;(wrapper.vm as unknown as WorkspaceApi).openWorkspaceTab('archive')
+      await settle()
+      await wrapper.setProps({ sessionId: 'session-2' })
+      await settle()
+      expect(stripLabels(wrapper)).toEqual(['Archived Chats'])
+      expect(wrapper.find('[data-panel="archive"]').exists()).toBe(true)
+    })
+
+    it('Agents 面板的 close 关掉的是它自己那一格', async () => {
+      const wrapper = mountPanel()
+      ;(wrapper.vm as unknown as WorkspaceApi).openWorkspaceTab('agents')
+      await settle()
+      await wrapper.find('[data-panel="agents"] .mock-panel-close').trigger('click')
+      await settle()
+      expect(wrapper.find('[data-panel="agents"]').exists()).toBe(false)
+      expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(0)
+    })
+
+    /**
+     * 真机走查(web :5174 + Playwright)抓到的相遇性缺陷:Media 页签开着时点
+     * 「+」,选择器下半张被 media 工具条盖住,点击被 `.filter-search-input` 截走。
+     *
+     * 成因是**两条 z 第一次相遇**:media 工具条是 §3 z 表里的「dropdown+5」
+     * (105),工作台的页签选择器是 teleport 到 body 的 Popover(dropdown 档,
+     * 100)。旧架构里 MediaPanel 是盖住聊天的全屏容器,与工作台永不共存。
+     *
+     * 修法是**隔离**不是加价:每格 pane 关进自己的 stacking context,里面的 105
+     * 只在 pane 内分层,对外整格按 z-auto 参与根层叠。抬高选择器的 z 只是军备
+     * 竞赛 —— 下一个高 z 的面板内容照样赢它。
+     */
+    it('每格 pane 关在自己的 stacking context 里 —— 面板内容不再和 teleport 浮层竞争', async () => {
+      const wrapper = mountPanel()
+      ;(wrapper.vm as unknown as WorkspaceApi).openWorkspaceTab('media')
+      await settle()
+      expect(wrapper.find('.app-tab-pane').exists()).toBe(true)
+
+      const source = readFileSync(
+        resolve(process.cwd(), 'packages/renderer/components/workbench/RightWorkbenchPanel.vue'),
+        'utf8',
+      )
+      const start = source.indexOf('.right-workbench-tabs :deep(.app-tab-pane) {')
+      expect(start).toBeGreaterThan(-1)
+      const rule = source.slice(start, source.indexOf('}', start))
+      expect(rule).toContain('isolation: isolate')
+    })
+
+    it('openWorkspaceTab 也收插件面板的 nav id —— 侧栏菜单两种 id 混在一条清单里', async () => {
+      const { setPluginWorkspacePanels } = await import('@/workspace/panel-registry')
+      setPluginWorkspacePanels([
+        { pluginId: 'ui-demo', pluginName: 'UI Demo', panelId: 'demo', label: 'UI Demo', loaded: true },
+      ])
+      const wrapper = mountPanel()
+      await settle()
+
+      ;(wrapper.vm as unknown as WorkspaceApi).openWorkspaceTab('plugin:ui-demo:demo')
+      await settle()
+      expect(wrapper.find('.mock-plugin-panel-host').text()).toBe('ui-demo:demo')
+
+      setPluginWorkspacePanels([])
     })
   })
 

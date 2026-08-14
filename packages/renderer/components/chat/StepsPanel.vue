@@ -135,7 +135,10 @@
       />
 
       <template v-else-if="isActivityTimelineItem(item)">
-        <ToolActivityDetails :activity="getTimelineItemActivity(item)" />
+        <ToolActivityDetails
+          :activity="getTimelineItemActivity(item)"
+          :session-id="sessionId"
+        />
       </template>
     </template>
   </NestedCollapseGroup>
@@ -145,6 +148,7 @@
 import { computed, nextTick, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import type { Step } from '@/types'
 import { beginCollapseCompensation } from '@/utils/collapse-compensation'
+import { useDeferredAutoCollapse } from '@/composables/useDeferredAutoCollapse'
 import NestedCollapseGroup from '@/components/common/NestedCollapseGroup.vue'
 import type {
   CollapsePanelKey,
@@ -314,9 +318,9 @@ function subtreeHasIntent(item: ToolTimelineItem): boolean {
  * closing one**.
  *
  * `auto` is recomputed from live status on every frame, not registered once at
- * mount. Opening that way is the whole point: a bash call entering `executing`,
- * an edit going `awaiting-confirmation` — those must pop open the moment they
- * happen. Closing that way is what ate the user's reading position: a parallel
+ * mount. Opening that way is the whole point: an edit going
+ * `awaiting-confirmation` must pop open the moment it happens. Closing that
+ * way is what ate the user's reading position: a parallel
  * batch settling flips its group's auto from true to false, and since the group
  * itself carried no intent it folded — taking the tool call the user had just
  * expanded inside it out of sight with it.
@@ -359,12 +363,46 @@ function findPanelAncestorKeys(
   return null
 }
 
-/** `undefined` leaves CollapseGroup uncontrolled — the legacy behaviour. */
-const controlledExpandedKeys = computed<CollapsePanelKey[] | undefined>(() => {
+/**
+ * 纯 auto+intent 的裁决,还没经过可见性门。`undefined` = 不受控(旧行为)。
+ */
+const autoExpandedKeys = computed<CollapsePanelKey[] | undefined>(() => {
   if (!props.intentScope) return undefined
   const keys: CollapsePanelKey[] = []
   collectExpandedKeys(timelineItems.value, keys)
   return keys
+})
+
+/**
+ * 挂起中的自动收起:auto 已经想收了,但用户正看着这一行,于是这些 key **暂不**
+ * 从受控集合里移除。门在 `useDeferredAutoCollapse`,见下面的 gate watcher。
+ */
+const deferredKeys = ref<CollapsePanelKey[]>([])
+
+const autoCollapseGate = useDeferredAutoCollapse<CollapsePanelKey>({
+  onDefer: (key) => {
+    if (deferredKeys.value.includes(key)) return
+    deferredKeys.value = [...deferredKeys.value, key]
+  },
+  // 放行(收起)与取消(用户介入 / auto 又把它展开了)都只是丢掉这一票;
+  // 收不收由受控集合的合成说了算,补偿由下面那个 watcher 照常兜。
+  onRelease: (key) => {
+    deferredKeys.value = deferredKeys.value.filter(pending => pending !== key)
+  },
+})
+
+/** `undefined` leaves CollapseGroup uncontrolled — the legacy behaviour. */
+const controlledExpandedKeys = computed<CollapsePanelKey[] | undefined>(() => {
+  const base = autoExpandedKeys.value
+  if (!base || deferredKeys.value.length === 0) return base
+  const merged = [...base]
+  const present = new Set(base)
+  for (const key of deferredKeys.value) {
+    if (present.has(key)) continue
+    present.add(key)
+    merged.push(key)
+  }
+  return merged
 })
 
 /**
@@ -380,6 +418,9 @@ function handleIntentPanelChange(change: NestedCollapsePanelChange): void {
   if (!props.intentScope) return
   // 用户点的这一下由 `controlledExpandedKeys` 的 watcher 消费:主动收起不补偿。
   manualPanelToggle = true
+  // 用户意图直接生效:这一行若正挂着自动收起,挂起作废(cancel 会把它从
+  // deferredKeys 里摘掉,受控集合随即听用户的)。
+  autoCollapseGate.cancel(change.item.key)
   setExpansionIntent(intentIdFor(change.item.key), change.expanded)
   if (!change.expanded) return
 
@@ -409,6 +450,30 @@ function panelElement(key: CollapsePanelKey): HTMLElement | null {
   }
   return null
 }
+
+/**
+ * 可见性门。**同步** flush 是刻意的:auto 想收的那一刻就把裁决做完,受控集合
+ * 才不会先掉 key、再被挂起加回来 —— 下面那个补偿 watcher 看到的每一次"少了
+ * 一个 key"都是"这次真收"。此刻 DOM 还是展开态,几何量得准。
+ *
+ * 用户自己点收起(`handleIntentPanelChange` 置旗)不进门:意图直接生效。
+ * 这里只**读**旗,不清 —— 清旗归补偿 watcher,一处消费。
+ */
+watch(autoExpandedKeys, (next, prev) => {
+  if (!prev || !next) return
+  const stillOpen = new Set(next)
+
+  // auto 又把它展开了(新一轮 streaming / 重新进入执行态):挂起作废。
+  for (const key of autoCollapseGate.pendingKeys()) {
+    if (stillOpen.has(key)) autoCollapseGate.cancel(key)
+  }
+
+  if (manualPanelToggle) return
+  for (const key of prev) {
+    if (stillOpen.has(key)) continue
+    autoCollapseGate.request(key, panelElement(key))
+  }
+}, { flush: 'sync' })
 
 watch(controlledExpandedKeys, (next, prev) => {
   const wasManual = manualPanelToggle
@@ -500,11 +565,6 @@ function createGroupTimelineItem(group: StepGroup): ToolTimelineItem {
 
 /**
  * 批次抑制:并行批次里,**没有一行**因为「正在执行」而自动展开。
- *
- * `shouldDefaultExpand` 里唯一由 executing 触发的自动展开是 bash —— 它的实时
- * 输出行标题概括不了,单发时展开是对的。但一次 10 个并行 bash 会同时弹开 10 个
- * 图纸框、跑完再一个个自动合上,而 RUNNING 阶段框里只有一行 `$ 命令`,和行标题
- * 完全重复,零信息增益,纯粹是抖动源。
  *
  * 失败(failed)与待审批(awaiting-confirmation)不受批次影响:错误和审批必须
  * 显眼。所以这里只按 `status === 'executing'` 抑制,不动其他状态。

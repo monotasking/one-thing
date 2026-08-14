@@ -47,6 +47,7 @@ import type {
 	CoreRequestMessage,
 } from "@onething/core/engine";
 import { hashSections } from "@onething/runtime";
+import { attachSessionEventRecorder } from "./session-event-recorder.js";
 
 /** Strip non-serializable values via JSON round-trip. Survives circular refs. */
 function safeClone<T>(value: T): T {
@@ -494,7 +495,19 @@ export async function executeAgentLoopStreamGeneration(
 				// Event system not initialized.
 			}
 		},
-		streamChunks: (prepared) => streamAgentLoopProviderChunks(prepared.runtime),
+		// E0 采集点:事件日志挂在 runtime 的 onEvent 上(理由见
+		// session-event-recorder.ts 头注释 —— 挂这里才能保证 tool/call 在工具
+		// 执行**之前**落账)。这里除了装配没有任何逻辑。
+		streamChunks: (prepared) =>
+			streamAgentLoopProviderChunks(
+				attachSessionEventRecorder(prepared.runtime, {
+					sessionId: ctx.sessionId,
+					providerId: ctx.providerId,
+					model: ctx.providerConfig.model,
+					systemPrompt: prepared.systemPrompt,
+					getMessageId: () => state.ctx.assistantMessageId,
+				}),
+			),
 		applyChunk: (chunk) => applyAgentLoopStreamChunk(state, chunk),
 		finalize: () => state.processor.finalize(),
 		updateUsage(durationMs) {

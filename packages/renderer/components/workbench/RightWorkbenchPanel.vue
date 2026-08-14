@@ -29,22 +29,32 @@
         class="workbench-tab-picker"
         @mousedown.stop
       >
-        <Button
+        <template
           v-for="option in availableTabOptions"
           :key="option.key"
-          unstyled
-          class="picker-option"
-          :style="workbenchToolStyle(option.categorySlot)"
-          @click="onPickOption(option)"
         >
-          <component
-            :is="option.icon"
-            :size="15"
-            :stroke-width="2"
-            aria-hidden="true"
+          <!-- 两个域之间画一道分隔:上面是这次会话的工具,下面是跨会话的工作区
+               面板。与页签条上那道竖线说的是同一件事。 -->
+          <div
+            v-if="option.key === firstWorkspaceOptionKey && hasSessionOption"
+            class="picker-separator"
+            role="separator"
           />
-          <span>{{ option.title }}</span>
-        </Button>
+          <Button
+            unstyled
+            class="picker-option"
+            :style="workbenchToolStyle(option.categorySlot)"
+            @click="onPickOption(option)"
+          >
+            <component
+              :is="option.icon"
+              :size="15"
+              :stroke-width="2"
+              aria-hidden="true"
+            />
+            <span>{{ option.title }}</span>
+          </Button>
+        </template>
       </div>
     </Popover>
 
@@ -68,7 +78,6 @@
       v-model="activeTabId"
       class="right-workbench-tabs"
       addable
-      closable
       @tab-add="togglePicker"
       @tab-remove="closeWorkbenchTab"
     >
@@ -92,16 +101,22 @@
         :key="tab.id"
         :name="tab.id"
         :label="tab.title"
+        :closable="isTabClosable(tab)"
+        :order="tab.type === 'workspace' ? 1 : 0"
         lazy
       >
         <template #label>
           <span
             class="workbench-tab-label"
-            :class="{ 'has-fixed-label': FIXED_LABEL_TABS.has(tab.type) }"
+            :class="{
+              'has-fixed-label': FIXED_LABEL_TABS.has(tab.type),
+              'is-workspace-tab': tab.type === 'workspace',
+              'is-segment-start': tab.id === segmentStartTabId,
+            }"
             :style="workbenchToolStyle(tabCategorySlot(tab.type))"
           >
             <component
-              :is="tabIcon(tab.type)"
+              :is="tabIconFor(tab)"
               :size="14"
               :stroke-width="2"
               aria-hidden="true"
@@ -224,6 +239,41 @@
           :panel="pluginPanelFor(tab)!"
         />
 
+        <!-- ── 工作区域(右域):内置六面板 ─────────────────────────────────
+             P1 之前它们住在 `MediaPanel.vue` —— 一个自带顶部导航、把聊天区整个
+             盖住的全屏容器。那个容器已经拆除:面板改成工作台的一条页签,于是
+             「一边看面板一边看会话」第一次成立,而且切会话不再把面板关掉。
+             `TabPane lazy` 就是从前那份手工 `mountedNavs` keep-alive 的等价物。 -->
+        <MediaPanelContent
+          v-else-if="tab.type === 'workspace' && tab.panelId === 'media'"
+          @jump-to-source="onMediaJumpToSource"
+        />
+
+        <!-- 「私聊」/「TA 的群聊」开出去的会话落在主区;从前面板盖在上面所以
+             要自己合上,现在它只需要关掉自己这一格页签。 -->
+        <AgentsPanelContent
+          v-else-if="tab.type === 'workspace' && tab.panelId === 'agents'"
+          @close="closeWorkbenchTab(tab.id)"
+        />
+
+        <SchedulerPanelContent
+          v-else-if="tab.type === 'workspace' && tab.panelId === 'tasks'"
+          :active="activeTabId === tab.id"
+        />
+
+        <MusicPanelContent v-else-if="tab.type === 'workspace' && tab.panelId === 'music'" />
+
+        <PracticePanelContent
+          v-else-if="tab.type === 'workspace' && tab.panelId === 'practice'"
+          :active="activeTabId === tab.id"
+        />
+
+        <ArchivedChatsContent v-else-if="tab.type === 'workspace' && tab.panelId === 'archive'" />
+
+        <!-- 轨迹(主线 E1):事件日志的第二投影。数据走 sessionEvents RPC 域,
+             不经过任何壳文件。 -->
+        <TrajectoryPanelContent v-else-if="tab.type === 'workspace' && tab.panelId === 'trajectory'" />
+
         <!-- iframe fallback: apps/web host has no WebContentsView -->
         <section
           v-else-if="tab.type === 'browser'"
@@ -321,11 +371,21 @@ import AgentSpace from '@/components/agents/AgentSpace.vue'
 import RoomThreadsWorkbench from './RoomThreadsWorkbench.vue'
 import RoomSchedulePanel from './RoomSchedulePanel.vue'
 import PluginPanelHost from '@/components/plugins/PluginPanelHost.vue'
+import MediaPanelContent from '@/components/MediaPanelContent.vue'
+import AgentsPanelContent from '@/components/AgentsPanelContent.vue'
+import SchedulerPanelContent from '@/components/SchedulerPanelContent.vue'
+import MusicPanelContent from '@/components/MusicPanelContent.vue'
+import PracticePanelContent from '@/components/PracticePanelContent.vue'
+import ArchivedChatsContent from '@/components/ArchivedChatsContent.vue'
+import TrajectoryPanelContent from '@/components/TrajectoryPanelContent.vue'
 import {
   PLUGIN_PANEL_ICON,
-  pluginPanelHasPlacement,
+  WORKSPACE_NAV_PANELS,
+  findWorkspacePanel,
+  parsePluginPanelNavId,
   pluginPanelNavId,
   usePluginWorkspacePanels,
+  type WorkspaceNavId,
 } from '@/workspace/panel-registry'
 import type { PluginWorkspacePanel } from '@/workspace/plugin-panel-types'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
@@ -353,7 +413,7 @@ import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling' | 'plugin'
+type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling' | 'plugin' | 'workspace'
 
 interface WorkbenchTab {
   id: string
@@ -385,7 +445,11 @@ interface WorkbenchTab {
   scheduleNonce?: number
   /** plugin tabs only(H1):这一格渲染哪个插件的哪个面板(复用 PluginPanelHost 双形态)。 */
   pluginId?: string
-  /** plugin tabs only(H1):面板 id(与 manifest 的 contributes.panels[].id 一致)。 */
+  /**
+   * plugin tabs(H1):面板 id(与 manifest 的 contributes.panels[].id 一致)。
+   * workspace tabs(P1):内置工作区面板的 nav id(media / agents / …),
+   * 取自 `panel-registry` —— 这一格就是这条页签的**单例键**。
+   */
   panelId?: string
 }
 
@@ -399,8 +463,10 @@ const props = withDefaults(defineProps<{
   revealed: true,
 })
 
-defineEmits<{
+const emit = defineEmits<{
   close: []
+  /** Media 的「跳到来源消息」——落点在 App.vue(它持有 ChatContainer 的 ref)。 */
+  'jump-to-source': [payload: { sessionId: string; messageId: string }]
 }>()
 
 // ── 这一面对着哪一间房 ────────────────────────────────────────────────────
@@ -520,51 +586,89 @@ const canUseCollabRooms = computed(() => platformApi.capabilities.collabRooms)
 const pluginPanels = usePluginWorkspacePanels()
 
 interface WorkbenchTabOption {
-  /** 唯一键(静态项 = type;插件项 = plugin:<id>:<panel> 的 nav id)。 */
+  /** 唯一键(静态项 = type;面板项 = nav id / plugin:<id>:<panel>)。 */
   key: string
   type: WorkbenchTabType
   title: string
   icon: Component
   categorySlot: number
+  /** 哪个域 —— 「+」菜单据此在两段之间画分隔,与页签条上那道竖线同一件事。 */
+  domain: 'session' | 'workspace'
   /** 插件项才有 —— 点击时据此开一个 plugin tab。 */
   pluginId?: string
+  /** 面板项才有:插件面板 id,或内置工作区面板的 nav id。 */
   panelId?: string
 }
 
 /**
- * 声明了 `workbench` 位的插件面板 —— 「+」菜单里可加的那几条。
+ * 插件贡献的面板 —— 「+」菜单里可加的那几条。
  *
- * 清单来源复用既有面板投影(不新造):缺省 placements 是 `['workspace']`,
- * 只有显式声明了 `'workbench'` 的面板才进这里(append-only,老面板零变化)。
+ * **不按 `placements` 过滤(P1)**:主工作区容器已经拆除,工作台是面板唯一的
+ * 落点,再按声明过滤等于让缺省 `['workspace']` 的插件面板一个入口都不剩。
+ * (`placements` 仍有一个真消费者 —— 插件布局动词的自荐闸,见 panel-registry。)
  * 图标由宿主统一给(Puzzle),UI 不执行插件代码。
  */
 const workbenchPluginOptions = computed<WorkbenchTabOption[]>(() =>
-  pluginPanels.value
-    .filter(panel => pluginPanelHasPlacement(panel, 'workbench'))
-    .map(panel => ({
-      key: pluginPanelNavId(panel.pluginId, panel.panelId),
-      type: 'plugin' as const,
-      title: panel.label,
-      icon: PLUGIN_PANEL_ICON,
-      categorySlot: 5,
-      pluginId: panel.pluginId,
-      panelId: panel.panelId,
-    })),
+  pluginPanels.value.map(panel => ({
+    key: pluginPanelNavId(panel.pluginId, panel.panelId),
+    type: 'plugin' as const,
+    title: panel.label,
+    icon: PLUGIN_PANEL_ICON,
+    categorySlot: 5,
+    domain: 'workspace' as const,
+    pluginId: panel.pluginId,
+    panelId: panel.panelId,
+  })),
 )
 
-const availableTabOptions = computed<WorkbenchTabOption[]>(() => [
-  ...tabOptions
+/**
+ * 内置工作区面板 —— 右域的六条,清单**从注册表派生**(手抄一份就是下一次漂移
+ * 的起点,那正是注册表存在的理由)。已经开着的不再列:它们是单例,列出来只会
+ * 让人以为能开第二个。
+ */
+const workspacePanelOptions = computed<WorkbenchTabOption[]>(() =>
+  WORKSPACE_NAV_PANELS.map(panel => ({
+    key: workspaceTabId(panel.id),
+    type: 'workspace' as const,
+    title: panel.label,
+    icon: panel.icon,
+    categorySlot: 5,
+    domain: 'workspace' as const,
+    panelId: panel.id,
+  })),
+)
+
+const sessionTabOptions = computed<WorkbenchTabOption[]>(() =>
+  tabOptions
     .filter(option =>
       (option.type !== 'terminal' || canUseTerminal.value) &&
       ((option.type !== 'board' && option.type !== 'scheduling') || canUseCollabRooms.value))
-    .map(option => ({ ...option, key: option.type })),
-  ...workbenchPluginOptions.value,
-])
+    .map(option => ({ ...option, key: option.type, domain: 'session' as const })),
+)
 
-/** 「+」菜单/空态里点了一条:插件项开 plugin tab,其余走既有 addWorkbenchTab。 */
+const availableTabOptions = computed<WorkbenchTabOption[]>(() => {
+  const openKeys = new Set(openTabs.value.map(tab => tab.id))
+  return [
+    ...sessionTabOptions.value,
+    // 单例且已经开着的面板从清单里撤掉(图纸规则③)。
+    ...workspacePanelOptions.value.filter(option => !openKeys.has(option.key)),
+    ...workbenchPluginOptions.value.filter(option => !openKeys.has(option.key)),
+  ]
+})
+
+const hasSessionOption = computed(() => sessionTabOptions.value.length > 0)
+const firstWorkspaceOptionKey = computed(
+  () => availableTabOptions.value.find(option => option.domain === 'workspace')?.key ?? '',
+)
+
+/** 「+」菜单/空态里点了一条:面板项开面板页签,其余走既有 addWorkbenchTab。 */
 function onPickOption(option: WorkbenchTabOption): void {
   if (option.type === 'plugin' && option.pluginId && option.panelId) {
     openPluginTab(option.pluginId, option.panelId, option.title)
+    return
+  }
+  if (option.type === 'workspace' && option.panelId) {
+    openWorkspaceTab(option.panelId)
     return
   }
   addWorkbenchTab(option.type)
@@ -596,9 +700,100 @@ function openPluginTab(pluginId: string, panelId: string, title: string): void {
     return
   }
   const tab: WorkbenchTab = { id, type: 'plugin', title, pluginId, panelId }
-  openTabs.value = [...openTabs.value, tab]
+  insertTab(tab)
   activeTabId.value = tab.id
 }
+
+// ── 双域页签:会话域(左)/ 工作区域(右)──────────────────────────────────
+//
+// 右域是**跨会话**的那一半:工作区面板不随会话切换重置,也不再被会话切换关掉
+// (从前每一条切会话的路径都强制 `activeWorkspacePanel = null`)。左域照旧。
+
+/** 工作区面板的页签 id —— 与 `plugin:<id>:<panel>` 同一手法,id 即单例键。 */
+function workspaceTabId(panelId: WorkspaceNavId): string {
+  return `workspace:${panelId}`
+}
+
+/**
+ * 段边界的**唯一**维护点。
+ *
+ * 工作区页签恒在尾段,会话域页签插在它们之前 —— 到处 `push` 的话,先开 Media
+ * 再开 Files 就把两个域搅在一起,分隔线也就无处可画。页签**条**的次序另有一套
+ * (注册次序),由 `TabPane :order` 与这里的数组次序对齐(见 `tabs.ts` 的注)。
+ */
+function insertTab(tab: WorkbenchTab): void {
+  const tabs = openTabs.value
+  if (tab.type === 'workspace') {
+    openTabs.value = [...tabs, tab]
+    return
+  }
+  const boundary = tabs.findIndex(item => item.type === 'workspace')
+  if (boundary === -1) {
+    openTabs.value = [...tabs, tab]
+    return
+  }
+  openTabs.value = [...tabs.slice(0, boundary), tab, ...tabs.slice(boundary)]
+}
+
+/** 右域第一条(两域都非空时才画分隔线 —— 图纸规则①)。 */
+const segmentStartTabId = computed(() => {
+  const boundary = openTabs.value.findIndex(tab => tab.type === 'workspace')
+  if (boundary <= 0) return ''
+  return openTabs.value[boundary].id
+})
+
+/**
+ * 关闭钮的三档口径:
+ *  · 房的固定页签(线程/成员/看板/调度)**不可关** —— 格数由房的形态决定,
+ *    关掉一条只会让 `ensureRoomTabs` 下一拍再补回来,那不是关闭是闪烁;
+ *  · 工作区页签只在**选中时**露出 ✕(图纸规则②:关闭钮只出现在选中的右域页签);
+ *  · 其余会话域页签照旧可关(能力不减)。
+ */
+function isTabClosable(tab: WorkbenchTab): boolean {
+  if (ROOM_FIXED_TAB_TYPES.has(tab.type)) return false
+  if (tab.type === 'workspace') return activeTabId.value === tab.id
+  return true
+}
+
+/**
+ * 打开(或聚焦)一个工作区面板页签。侧栏「⋯」菜单、`toggle-media-panel`、三条
+ * window 事件全部落在这里 —— 从前它们落在 App 的 `activeWorkspacePanel` 上。
+ *
+ * 内置 id 与插件 nav id 都收:调用方(侧栏菜单)吃的是同一份
+ * `useWorkspaceNavEntries()`,两种 id 混在一条清单里,分流该由这里做。
+ */
+function openWorkspaceTab(panelId: WorkspaceNavId): void {
+  pickerOpen.value = false
+
+  const plugin = parsePluginPanelNavId(String(panelId))
+  if (plugin) {
+    const panel = pluginPanels.value.find(
+      item => item.pluginId === plugin.pluginId && item.panelId === plugin.panelId,
+    )
+    if (!panel) return
+    openPluginTab(panel.pluginId, panel.panelId, panel.label)
+    return
+  }
+
+  const panel = findWorkspacePanel(String(panelId))
+  if (!panel) return
+
+  const id = workspaceTabId(panel.id)
+  const existing = openTabs.value.find(tab => tab.id === id)
+  if (existing) {
+    activeTabId.value = existing.id
+    return
+  }
+  const tab: WorkbenchTab = { id, type: 'workspace', title: panel.label, panelId: panel.id }
+  insertTab(tab)
+  activeTabId.value = tab.id
+}
+
+/** 这个工作区面板此刻是不是选中的那一格(todo-plan 的 hide/toggle 要问)。 */
+function isWorkspaceTabActive(panelId: WorkspaceNavId): boolean {
+  return activeTabId.value === workspaceTabId(panelId)
+}
+
 let variableRequestId = 0
 
 const NOTE_ROOT_VARIABLE_NAMES = new Set(['user_note_dir', 'work_note_dir'])
@@ -645,13 +840,17 @@ function ensureRoomTabs(target: RoomPanelTarget): void {
   )
   const next = openTabs.value.filter(tab => !dropped.includes(tab))
 
-  // 缺的按固定次序补在末尾。**不重排已有页签** —— 页签条的次序是注册次序
-  // (`Tabs.vue` 的 pane 注册表),重排数组也搬不动它,只会让两处次序对不上。
+  // 缺的按固定次序补在**会话域那一段的末尾**(工作区页签恒在其后,与 `insertTab`
+  // 同一条边界)。**不重排已有页签** —— 页签条的次序是注册次序(`Tabs.vue` 的
+  // pane 注册表),重排数组也搬不动它,只会让两处次序对不上;两个域之间的次序
+  // 由 `TabPane :order` 显式说,那是段与段,不是段内。
   for (const spec of fixed) {
     let tab = next.find(item => item.type === spec.type)
     if (!tab) {
       tab = { id: spec.type, type: spec.type, title: spec.label }
-      next.push(tab)
+      const boundary = next.findIndex(item => item.type === 'workspace')
+      if (boundary === -1) next.push(tab)
+      else next.splice(boundary, 0, tab)
     }
     tab.title = spec.label
     tab.sessionId = target.roomSessionId
@@ -752,7 +951,7 @@ function addWorkbenchTab(type: WorkbenchTabType): void {
     type,
     title: option?.title || type,
   }
-  openTabs.value = [...openTabs.value, tab]
+  insertTab(tab)
   activeTabId.value = tab.id
 }
 
@@ -783,7 +982,7 @@ function adoptTerminalTab(terminalId: string, options: { activate?: boolean } = 
     title: descriptor?.title || 'Terminal',
     terminalId,
   }
-  openTabs.value = [...openTabs.value, tab]
+  insertTab(tab)
   if (options.activate) activeTabId.value = tab.id
 }
 
@@ -804,6 +1003,18 @@ function tabDisplayTitle(tab: WorkbenchTab): string {
     return useAgentsStore().displayAgent(tab.agentId).name || tab.title
   }
   return tab.title
+}
+
+/**
+ * Media 的「跳到来源消息」。
+ *
+ * 落点是 `chatContainerRef.jumpToMessage(sessionId, messageId)` —— 那条链整个
+ * 在 App.vue 手里(它持有 ChatContainer 的 ref,并且已经为搜索 deeplink 走过
+ * 一遍 switchSession + loadMessagesAround)。这一层只做**中继**:再冒一级,
+ * 不自己去找 ChatContainer,也**不关**工作台(跳转与面板可见性无关)。
+ */
+function onMediaJumpToSource(payload: { sessionId: string; messageId: string }): void {
+  emit('jump-to-source', payload)
 }
 
 function closeWorkbenchTab(name: TabPaneName) {
@@ -837,6 +1048,18 @@ onMounted(async () => {
   }
 })
 
+/**
+ * 页签图标。工作区页签的图标是**那个面板的**(注册表给),不是"工作区"这个
+ * 类别的 —— 六个面板并排时按类别发同一枚图标等于没发。
+ */
+function tabIconFor(tab: WorkbenchTab): Component {
+  if (tab.type === 'workspace' && tab.panelId) {
+    const panel = findWorkspacePanel(tab.panelId)
+    if (panel) return panel.icon
+  }
+  return tabIcon(tab.type)
+}
+
 function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'file') return FileText
   if (type === 'terminal') return Terminal
@@ -852,7 +1075,7 @@ function tabIcon(type: WorkbenchTabType): Component {
 }
 
 function tabCategorySlot(type: WorkbenchTabType): number {
-  if (type === 'plugin') return 5
+  if (type === 'plugin' || type === 'workspace') return 5
   if (type === 'terminal') return 6
   if (type === 'browser') return 7
   if (type === 'board') return 8
@@ -974,7 +1197,7 @@ function openGoalReview(reviewSessionId: string) {
     sessionId: reviewSessionId,
     reviewNonce: 0,
   }
-  openTabs.value = [...openTabs.value, tab]
+  insertTab(tab)
   activeTabId.value = tab.id
 }
 
@@ -1021,7 +1244,7 @@ function openThread(threadSessionId: string, title?: string, roomSessionId?: str
   tab.sessionId = roomSessionId || (threadSessionId ? '' : tab.sessionId || '')
   tab.threadSessionId = threadSessionId
 
-  if (!existing) openTabs.value = [...openTabs.value, tab]
+  if (!existing) insertTab(tab)
   activeTabId.value = tab.id
 }
 
@@ -1075,7 +1298,7 @@ function openMembers(roomSessionId: string, agentId?: string, title?: string): v
     sessionId: roomSessionId,
     memberAgentId: agentId || '',
   }
-  openTabs.value = [...openTabs.value, tab]
+  insertTab(tab)
   activeTabId.value = tab.id
 }
 
@@ -1120,7 +1343,7 @@ function openAgentTab(agentId: string, tab?: AgentDetailTab | null): void {
     agentId,
     detailTab: tab ?? null,
   }
-  openTabs.value = [...openTabs.value, created]
+  insertTab(created)
   activeTabId.value = created.id
 }
 
@@ -1196,7 +1419,7 @@ async function openFile(filePath: string) {
       filePath,
       workspaceRoot: root,
     }
-    openTabs.value = [...openTabs.value, tab]
+    insertTab(tab)
     activeTabId.value = tab.id
   }
   await nextTick()
@@ -1298,6 +1521,8 @@ defineExpose({
   openMembers,
   openAgentTab,
   openPluginTab,
+  openWorkspaceTab,
+  isWorkspaceTabActive,
 })
 </script>
 
@@ -1407,19 +1632,46 @@ defineExpose({
   opacity: 1;
 }
 
+/* 每一格**关在自己的 stacking context 里**(P1 真机走查抓到的相遇性缺陷)。
+   面板内容里有自己的 z 分层 —— media 工具条就是 §3 z 表里那条「dropdown+5」
+   (105),它比工作台自己的页签选择器(Popover,teleport 到 body,dropdown 档
+   100)高。旧架构里这两样**永不共存**(MediaPanel 是盖住聊天的全屏容器,
+   workbench 在它旁边),把面板装进 TabPane 之后它们第一次相遇:工具条全局压过
+   选择器,选择器下半张被 media 内容盖住,点不动。
+
+   修法是隔离不是加价:pane 一旦是 stacking context,里面的 105 就只在 pane 内
+   分层(media 的 kind/source 下拉不 teleport,照旧盖在自己的内容上),对外整格
+   按 z-auto 参与根层叠 —— teleport 到 body 的浮层稳稳在上。抬高选择器的 z 是
+   军备竞赛:下一个高 z 的面板内容照样赢它。 */
 .right-workbench-tabs :deep(.app-tab-pane) {
   height: 100%;
   min-width: 0;
   min-height: 0;
+  isolation: isolate;
 }
 
 .workbench-tab-label {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 7px;
   /* `min-width: 0` 是给**文件名**那种长标签留的:它必须能被截断。 */
   min-width: 0;
   font: inherit;
+}
+
+/* 两域之间那道 1px 竖线 —— 只画在右域第一条上,而 `segmentStartTabId` 只在
+   左域也非空时才给得出 id(图纸规则①:分隔线只在两域都非空时出现)。
+   `-13px` 正好是页签自己的左内边距,于是线落在页签左缘上而不是标签左缘。 */
+.workbench-tab-label.is-segment-start::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -13px;
+  width: 1px;
+  height: 18px;
+  margin-top: -9px;
+  background: var(--ui-tab-bar-divider-border, var(--ui-border-default-border));
 }
 
 /* 线程 / 成员 / 看板这三条是固定短标签(样板 final.html 的常驻三 tab),
@@ -1494,6 +1746,13 @@ defineExpose({
 .workbench-tab-picker {
   width: 220px;
   max-width: min(220px, calc(100vw - 32px));
+}
+
+/* 「+」清单里两个域之间的横线 —— 与页签条上那道竖线说的是同一件事。 */
+.picker-separator {
+  height: 1px;
+  margin: 5px 0;
+  background: var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border));
 }
 
 .right-workbench .picker-option {

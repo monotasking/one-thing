@@ -22,6 +22,7 @@ import {
   CalendarClock,
   Images,
   Radio,
+  Route,
 } from 'lucide-vue-next'
 
 export interface WorkspacePanelDefinition {
@@ -72,6 +73,15 @@ export const BUILTIN_WORKSPACE_PANELS = [
     label: 'Archived Chats',
     icon: Archive,
     inPanelNav: true,
+  },
+  {
+    // 轨迹(主线 E1):会话事件日志的第二投影。聊天里的工具卡片够不着
+    // openWorkspacePanel 的 emit 链,所以和 practice / agents 同款走 window 事件。
+    id: 'trajectory',
+    label: '轨迹',
+    icon: Route,
+    inPanelNav: true,
+    windowEvent: 'trajectory:open-workspace',
   },
 ] as const satisfies readonly WorkspacePanelDefinition[]
 
@@ -132,9 +142,18 @@ export interface PluginContributedPanel {
   /** 插件登记了 `panel:init:<id>` 吗(纯静态面板没有,合法)。 */
   hasInit?: boolean
   /**
-   * 这个面板可以出现在哪些宿主表面(H1)。`'workspace'` = 主工作区面板;
-   * `'workbench'` = 可作为右侧工作台的一个 tab 打开。缺省(空/未定义)按
-   * `['workspace']` 解 —— 老面板只在主工作区(append-only)。
+   * 这个面板可以出现在哪些宿主表面(H1)。
+   *
+   * **勘误(P1,2026-08-13):`'workspace'` 这个落点已经不存在了。**
+   * 主工作区容器(`MediaPanel.vue`)随双域页签迁移一并拆除,内置六面板与插件
+   * 面板现在都是右侧工作台的一条 tab。声明值保留是因为它写在插件 manifest 里
+   * (append-only,改口径等于让已发布的插件失效),但两个值现在**落点相同**:
+   * 无论声明什么,面板都进工作台的「+」清单。
+   *
+   * `pluginPanelHasPlacement` 仍有一个真消费者:插件布局动词
+   * (`api.ui.openWorkbench`,App.vue)。那条链路上它是**自荐闸** —— 插件把
+   * 自己弹到前台必须先在 manifest 里说过要;而「+」清单是**用户主动找面板**,
+   * 按声明过滤只会让缺省的插件面板一个入口都不剩。
    */
   placements?: string[]
 }

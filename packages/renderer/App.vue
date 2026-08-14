@@ -50,8 +50,6 @@
         :floating-closing="sidebarFloatingClosing"
         :no-transition="sidebarNoTransition"
         :width="sidebarWidth"
-        :media-panel-open="workspacePanelOpen"
-        :active-workspace-panel="activeWorkspacePanel"
         @open-settings="openSettingsWindow"
         @toggle-collapse="handleSidebarToggle"
         @open-search="openSearch"
@@ -88,8 +86,6 @@
           :floating-closing="false"
           :no-transition="sidebarNoTransition"
           :width="sidebarWidth"
-          :media-panel-open="workspacePanelOpen"
-          :active-workspace-panel="activeWorkspacePanel"
           @open-settings="openSettingsWindow"
           @toggle-collapse="handleSidebarToggle"
           @open-search="openSearch"
@@ -142,18 +138,18 @@
                 overflow="hidden"
                 main-overflow="hidden"
               >
-                <div
-                  class="workspace-view-stack"
-                  :data-active-workspace-view="activeWorkspaceView"
-                >
+                <!-- 主区只剩会话。工作区面板(Media/Agents/Tasks/…)已迁进右侧
+                     工作台成为「工作区域」页签(P1),那个把聊天整个盖住的全屏
+                     容器随之退役 —— 于是"一边看面板一边看会话"第一次成立。
+                     这一层壳留着:它是壁纸体系登记在案的四处区域根之一
+                     (wallpaper.css `html.has-wallpaper .workspace-view-stack`)。 -->
+                <div class="workspace-view-stack">
                   <ChatContainer
-                    v-show="activeWorkspaceView === 'chat'"
                     ref="chatContainerRef"
                     class="workspace-view workspace-view-chat"
                     :sidebar-collapsed="sidebarCollapsed"
                     :sidebar-floating="sidebarFloating"
                     :show-hover-trigger="sidebarCollapsed && !sidebarFloating"
-                    :media-panel-open="workspacePanelOpen"
                     :is-inspector-open="inspectorOpen"
                     :reserve-sidebar-actions="reserveSidebarActions"
                     :layout-transitioning="sidebarActionAnimating"
@@ -165,19 +161,6 @@
                     @toggle-inspector="inspectorOpen = !inspectorOpen"
                     @open-file="openFileInRightWorkbench"
                     @review-goal="openGoalReviewInRightWorkbench"
-                  />
-
-                  <MediaPanel
-                    v-show="workspacePanelOpen"
-                    class="workspace-view workspace-view-panel"
-                    :visible="workspacePanelOpen"
-                    :active-tab="activeWorkspacePanel"
-                    :reserve-sidebar-actions="reserveSidebarActions"
-                    @close="closeWorkspacePanel"
-                    @switch-panel="openWorkspacePanel"
-                    @toggle-sidebar="handleSidebarToggle"
-                    @open-search="openSearch"
-                    @create-new-chat="createNewChat"
                   />
                 </div>
               </Container>
@@ -208,6 +191,7 @@
                   :workspace-roots="currentWorkspaceRoots"
                   :revealed="workbenchRevealed"
                   @close="inspectorOpen = false"
+                  @jump-to-source="handleWorkbenchJumpToSource"
                 />
               </div>
             </SplitterPanel>
@@ -245,7 +229,6 @@ import Container from '@/components/common/Container.vue'
 import Splitter from '@/components/common/Splitter.vue'
 import SplitterPanel from '@/components/common/SplitterPanel.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
-import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
 import RightWorkbenchPanel from '@/components/workbench/RightWorkbenchPanel.vue'
@@ -478,9 +461,9 @@ const sidebarResizing = ref(false)
 /**
  * 工作区面板的 nav id。
  *
- * 从 `OpenableWorkspacePanelId` 放宽到 `WorkspaceNavId`:⋯ 菜单现在覆盖全部
+ * 从 `OpenableWorkspacePanelId` 放宽到 `WorkspaceNavId`:⋯ 菜单覆盖全部
  * inPanelNav 面板,而 nav-only 的内置面板(archive / practice)与插件面板
- * 按老类型根本不能当 activeWorkspacePanel —— 那正是它们进不去的原因。
+ * 按老类型根本进不了这条链 —— 那正是它们当年没有入口的原因。
  */
 type WorkspacePanel = WorkspaceNavId
 type TodoPlanWebWindowActionDetail = {
@@ -491,28 +474,33 @@ type TodoPlanWebWindowActionDetail = {
 // (deep components reach App through a window event —— 与 todo-plan 同款)。
 const TODO_PLAN_WEB_WINDOW_EVENT = workspacePanelWindowEvent('tasks')
 const PRACTICE_OPEN_WORKSPACE_EVENT = workspacePanelWindowEvent('practice')
+const TRAJECTORY_OPEN_WORKSPACE_EVENT = workspacePanelWindowEvent('trajectory')
 
-// Main workspace panel state. These panels are launched from the sidebar
-// actions area and occupy the main content region instead of expanding from
-// the left edge.
-const activeWorkspacePanel = ref<WorkspacePanel | null>(null)
-const workspacePanelOpen = computed(() => activeWorkspacePanel.value !== null)
-const activeWorkspaceView = computed(() => activeWorkspacePanel.value ?? 'chat')
-
-function openWorkspacePanel(panel: WorkspacePanel) {
+/**
+ * 工作区面板的入口(P1 起全部落在右侧工作台上)。
+ *
+ * 从前这些面板是**主区的另一半** —— 一置位,`MediaPanel` 就把聊天整个盖住,
+ * 而且每一条切会话的路径都得记着把它关掉(漏一条就是"面板卡在那儿")。
+ * 现在它们是工作台的一条页签:展开右栏 + 落座那一格,于是
+ * **切会话不再关面板**(右域跨会话保持,是刻意的行为变化),App 这一侧也不再
+ * 存"当前哪个面板"这个状态 —— 唯一事实在工作台的 openTabs 里。
+ */
+async function openWorkspacePanel(panel: WorkspacePanel) {
   if (sidebarFloating.value) {
     closeFloatingSidebar()
   }
-  activeWorkspacePanel.value = panel
-}
-
-function closeWorkspacePanel() {
-  activeWorkspacePanel.value = null
+  workspacePanelRequested.value = true
+  inspectorOpen.value = true
+  /* 首次打开时右栏是**这几拍才挂载**的(mount → nextTick → reveal 两段),
+     一个 nextTick 不一定等得到那个 ref —— 等不到就等于这条入口在"右栏还没开过"
+     的那一次静默失效。 */
+  for (let tick = 0; tick < 3 && !rightWorkbenchRef.value; tick += 1) await nextTick()
+  rightWorkbenchRef.value?.openWorkspaceTab(panel)
 }
 
 function handlePracticeOpenWorkspace() {
   if (isAuxiliaryWindow.value) return
-  openWorkspacePanel('practice')
+  void openWorkspacePanel('practice')
 }
 
 /* Agent 空间页(agent-im-chat-ui.md C3):群聊气泡、dm 房头深在组件树里,够不到
@@ -521,27 +509,39 @@ function handlePracticeOpenWorkspace() {
 
 function handleAgentOpenWorkspace() {
   if (isAuxiliaryWindow.value) return
-  openWorkspacePanel('agents')
+  void openWorkspacePanel('agents')
 }
 
+/* 轨迹面板(主线 E1):聊天里的工具卡片点「检查」时,要看的那一笔已经由
+   `requestTrajectoryInspect` 寄存进 one-shot handoff,这里只管把页签开出来 ——
+   与 practice / agents 同款。 */
+function handleTrajectoryOpenWorkspace() {
+  if (isAuxiliaryWindow.value) return
+  void openWorkspacePanel('trajectory')
+}
+
+/**
+ * todo-plan 的 open / hide / toggle 落在工作台上。
+ *
+ * 「关」现在的意思是**收起右栏**(工作台整条折叠),而不是卸掉那条页签 ——
+ * 页签是用户自己开的,替 TA 关掉等于下次还得再找一遍;而且只有当 tasks 就是
+ * 当前那一格时才收,不然收的是别人的面。
+ */
 function handleTodoPlanWebWindowAction(event: Event) {
   if (isAuxiliaryWindow.value) return
   const detail = (event as CustomEvent<TodoPlanWebWindowActionDetail>).detail
+  const tasksShowing = () =>
+    inspectorOpen.value && !!rightWorkbenchRef.value?.isWorkspaceTabActive('tasks')
   switch (detail?.action) {
     case 'open':
-      openWorkspacePanel('tasks')
+      void openWorkspacePanel('tasks')
       break
     case 'hide':
-      if (activeWorkspacePanel.value === 'tasks') {
-        closeWorkspacePanel()
-      }
+      if (tasksShowing()) inspectorOpen.value = false
       break
     case 'toggle':
-      if (activeWorkspacePanel.value === 'tasks') {
-        closeWorkspacePanel()
-      } else {
-        openWorkspacePanel('tasks')
-      }
+      if (tasksShowing()) inspectorOpen.value = false
+      else void openWorkspacePanel('tasks')
       break
     case 'pin':
       break
@@ -552,7 +552,6 @@ async function selectSidebarSession(sessionId: string) {
   if (sidebarFloating.value) {
     closeFloatingSidebar()
   }
-  activeWorkspacePanel.value = null
   await sessionsStore.switchSession(sessionId)
 }
 
@@ -645,7 +644,18 @@ function handleSidebarResizeEnd() {
   sidebarResizing.value = false
   localStorage.setItem('sidebarWidth', String(sidebarWidth.value))
 }
-const inspectorVisible = computed(() => inspectorOpen.value && Boolean(sessionsStore.currentSessionId))
+/**
+ * 右栏从前**只**在"有一个会话"时才挂:它那时装的全是会话的东西(文件/终端/
+ * 线程/看板)。P1 之后它还装**跨会话**的工作区面板 —— 于是"一个会话都没开"
+ * (空工作区)时它不能再一律不挂,否则侧栏「⋯」里的六个面板在那个状态下
+ * 一个都点不开(从前它们是主区的全屏面板,与有没有会话无关)。
+ *
+ * 这个开关是**单向**的,与 `workbenchMounted` 同型:要过一次工作区面板,右栏
+ * 就一直是"可显示"的,收起与否照旧由 `inspectorOpen` 说了算。
+ */
+const workspacePanelRequested = ref(false)
+const inspectorVisible = computed(() =>
+  inspectorOpen.value && (Boolean(sessionsStore.currentSessionId) || workspacePanelRequested.value))
 function normalizeRootPath(root?: string | null): string {
   if (!root) return ''
   const trimmed = root.trim()
@@ -788,6 +798,19 @@ const mainWorkspacePanelSize = computed({
 function handleInspectorResizeEnd() {
   inspectorResizing.value = false
   localStorage.setItem('inspectorPanelSize', String(inspectorPanelSize.value))
+}
+
+/**
+ * 「跳到来源消息」的落点(Media 面板 → 工作台中继 → 这里)。
+ *
+ * 复用搜索 deeplink 那条已成熟的路:`jumpToMessage` 自己处理 leaf 安置、
+ * switchSession 与 `loadMessagesAround`。跳不到(消息已删/会话没了)时**静默** ——
+ * 菜单那一侧已经把空 id 的项禁掉了,再弹一句错话只是噪音。工作台**不关**:
+ * 跳转与右栏可见性是两件事。
+ */
+async function handleWorkbenchJumpToSource(payload: { sessionId: string; messageId: string }) {
+  if (!payload?.sessionId || !payload?.messageId) return
+  await chatContainerRef.value?.jumpToMessage?.(payload.sessionId, payload.messageId)
 }
 
 async function openFileInRightWorkbench(filePath: string) {
@@ -1116,7 +1139,7 @@ watch(sidebarCollapsed, (collapsed) => {
 })
 
 // Persist sidebar collapsed state and always show traffic lights
-watch([sidebarCollapsed, sidebarFloating, activeWorkspacePanel], ([collapsed]) => {
+watch([sidebarCollapsed, sidebarFloating], ([collapsed]) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
   // Auxiliary windows own their chrome behavior. Todo/Notes uses native hover-only buttons.
   if (isSettingsWindow.value || isImagePreviewWindow.value || isSearchWindow.value || isTodoPlanWindow.value) return
@@ -1173,7 +1196,6 @@ if (!isSettingsWindow.value && !isImagePreviewWindow.value && !isSearchWindow.va
 
 // Open a temporary New Chat UI. A real session is created only when the user sends the first message.
 async function createNewChat() {
-  activeWorkspacePanel.value = null
   sessionsStore.openNewChatDraft('New Chat')
   await nextTick()
   chatContainerRef.value?.focusInput?.()
@@ -1202,7 +1224,6 @@ function handleVisibilityChange() {
  */
 async function openSessionFromNotification(sessionId: string): Promise<void> {
   if (!sessionId) return
-  activeWorkspacePanel.value = null
   workspaceStore.openSession(sessionId)
   await sessionsStore.switchSession(sessionId)
 }
@@ -1223,6 +1244,7 @@ onMounted(async () => {
   window.addEventListener(TODO_PLAN_WEB_WINDOW_EVENT, handleTodoPlanWebWindowAction)
   window.addEventListener(PRACTICE_OPEN_WORKSPACE_EVENT, handlePracticeOpenWorkspace)
   window.addEventListener(AGENT_OPEN_WORKSPACE_EVENT, handleAgentOpenWorkspace)
+  window.addEventListener(TRAJECTORY_OPEN_WORKSPACE_EVENT, handleTrajectoryOpenWorkspace)
 
   const markdownCacheReady = ensureMarkdownCacheReady().catch((e) => {
     console.warn('[App] markdown cache init failed', e)
@@ -1354,7 +1376,6 @@ onMounted(async () => {
     }
     if (actionId.startsWith('switch-session:')) {
       const sessionId = actionId.replace('switch-session:', '')
-      activeWorkspacePanel.value = null
       await sessionsStore.switchSession(sessionId)
       return
     }
@@ -1364,7 +1385,6 @@ onMounted(async () => {
       if (separatorIndex > 0) {
         const panelId = payload.slice(0, separatorIndex)
         const sessionId = payload.slice(separatorIndex + 1)
-        activeWorkspacePanel.value = null
         chatContainerRef.value?.splitPanel?.(panelId, sessionId)
       }
       return
@@ -1412,6 +1432,7 @@ onUnmounted(() => {
   window.removeEventListener(TODO_PLAN_WEB_WINDOW_EVENT, handleTodoPlanWebWindowAction)
   window.removeEventListener(PRACTICE_OPEN_WORKSPACE_EVENT, handlePracticeOpenWorkspace)
   window.removeEventListener(AGENT_OPEN_WORKSPACE_EVENT, handleAgentOpenWorkspace)
+  window.removeEventListener(TRAJECTORY_OPEN_WORKSPACE_EVENT, handleTrajectoryOpenWorkspace)
 
   if (unsubscribeNotifyActivate) {
     unsubscribeNotifyActivate()

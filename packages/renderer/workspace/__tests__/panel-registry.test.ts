@@ -2,7 +2,11 @@
  * 面板注册表 —— 收编手抄清单之后,这里是那份清单唯一的守卫。
  *
  * 断言的重点不是"内容对不对",而是**别处不许再抄一份**:三个消费方
- * (App.vue / Sidebar.vue / MediaPanel.vue)都必须从这里派生。
+ * (App.vue / Sidebar.vue / RightWorkbenchPanel.vue)都必须从这里派生。
+ *
+ * 第三位从 `MediaPanel.vue` 换成了 `RightWorkbenchPanel.vue`(P1):那个自带
+ * 顶部导航的全屏工作区容器已拆除,六个面板改成右侧工作台的「工作区域」页签,
+ * 于是"面板清单"的读者也换了一个人 —— 换人不换规矩。
  */
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -26,12 +30,18 @@ function readRendererFile(relativePath: string): string {
   return readFileSync(join(RENDERER_ROOT, relativePath), 'utf-8')
 }
 
-const CONSUMERS = ['App.vue', 'components/sidebar/Sidebar.vue', 'components/MediaPanel.vue'] as const
+const CONSUMERS = [
+  'App.vue',
+  'components/sidebar/Sidebar.vue',
+  'components/workbench/RightWorkbenchPanel.vue',
+] as const
 
 describe('workspace panel registry', () => {
   it('keeps the panels the shell had before the refactor, in the same order', () => {
+    // 前六条是迁移当天的原班人马,顺序即呈现顺序;`trajectory`(主线 E1)是
+    // 之后**追加**的第七条 —— 新面板一律往后加,不插队。
     expect(BUILTIN_WORKSPACE_PANELS.map(panel => panel.id)).toEqual([
-      'media', 'agents', 'tasks', 'music', 'practice', 'archive',
+      'media', 'agents', 'tasks', 'music', 'practice', 'archive', 'trajectory',
     ])
   })
 
@@ -61,7 +71,7 @@ describe('workspace panel registry', () => {
 
   it('reproduces the panel nav exactly as it was (archive included)', () => {
     expect(WORKSPACE_NAV_PANELS.map(panel => panel.id)).toEqual([
-      'media', 'agents', 'tasks', 'music', 'practice', 'archive',
+      'media', 'agents', 'tasks', 'music', 'practice', 'archive', 'trajectory',
     ])
   })
 
