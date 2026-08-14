@@ -3,7 +3,18 @@ import path from 'node:path'
 
 const root = process.cwd()
 
+// cordis 是**装配层专属**依赖（C0 底座替换，
+// docs/design/cordis-adoption-2026-08.md §1）：只允许出现在
+// packages/onething-runtime/src/app/**。core 保持零依赖、runtime 产品层保持纯
+// 库、hosts 与 renderer 一概不感知 —— 写法照搬 electron 禁令。
+const CORDIS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]@deepseek-ai\/cordis['"]/,
+  /import\(['"]@deepseek-ai\/cordis['"]\)/,
+  /require\(['"]@deepseek-ai\/cordis['"]\)/,
+]
+
 const CORE_FORBIDDEN_PATTERNS: RegExp[] = [
+  ...CORDIS_FORBIDDEN_PATTERNS,
   /from\s+['"]electron['"]/,
   /require\(['"]electron['"]\)/,
   /src\/main/,
@@ -2537,7 +2548,10 @@ function checkRuntimeHostBoundary(): void {
   const lines = walkFiles(path.join(root, 'packages/onething-runtime'))
     .flatMap(file => matchingLines(
       file,
-      file.startsWith(appRoot) ? APP_ASSEMBLY_FORBIDDEN_PATTERNS : HOST_BOUNDARY_FORBIDDEN_PATTERNS,
+      // src/app 是唯一可以 import cordis 的地方；产品层不感知底座。
+      file.startsWith(appRoot)
+        ? APP_ASSEMBLY_FORBIDDEN_PATTERNS
+        : [...HOST_BOUNDARY_FORBIDDEN_PATTERNS, ...CORDIS_FORBIDDEN_PATTERNS],
     ))
   assertNoMatches('packages/onething-runtime has no Electron/main/shared IPC forbidden imports', lines)
 }

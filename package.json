@@ -74,6 +74,7 @@
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.42.1",
+    "@deepseek-ai/cordis": "4.0.1",
     "@fontsource-variable/lora": "^5.2.8",
     "@fontsource-variable/noto-sans-sc": "^5.2.10",
     "@fontsource-variable/noto-serif-sc": "^5.2.10",
