@@ -8,14 +8,13 @@
     :padded="false"
     :scroll="false"
   >
+    <!--
+      控制条按六面板的房规写:**只放筛选与动作,不放标题也不放计数**。
+      标题由页签说,计数由状态条说(此前这里两样都抄了一份,窄面板下还得靠
+      `display:none` 把自己抄的那份藏起来 —— 抄件的典型下场)。
+    -->
     <template #controls>
       <div class="trajectory-controls">
-        <span class="trajectory-title">轨迹</span>
-        <span
-          v-if="groups.length"
-          class="trajectory-count"
-        >{{ groups.length }} 次请求</span>
-
         <!-- 条带的两个开关住在控制条里,不占条带自己的高度(条带预算 ~52px)。 -->
         <template v-if="timeline.spans.length">
           <SegmentedPill
@@ -25,19 +24,30 @@
             aria-label="时间条带的横轴"
             @update:model-value="setTimelineMode"
           />
+          <!--
+            开关的文案是**稳定**的("时间线"),开合由 `aria-expanded` 与主色
+            说 —— 换文案的按钮每点一次都要重读一遍才知道现在是什么状态,而且
+            按钮宽度跟着跳。`is-primary` 是 `.text-action` 自带的修饰符,不自绘。
+          -->
           <button
             type="button"
-            class="trajectory-reload u-focus-ring"
+            class="trajectory-toggle text-action"
+            :class="{ 'is-primary': timelineOpen }"
             :aria-expanded="timelineOpen"
             @click="timelineOpen = !timelineOpen"
           >
-            {{ timelineOpen ? '收起时间线' : '时间线' }}
+            时间线
           </button>
         </template>
 
+        <span
+          class="trajectory-controls-gap"
+          aria-hidden="true"
+        />
+
         <button
           type="button"
-          class="trajectory-reload u-focus-ring"
+          class="trajectory-refresh text-action"
           :disabled="loading || !sessionId"
           @click="reload"
         >
@@ -138,10 +148,17 @@
               :count="toolCountOf(group)"
             >
               <template #trailing>
+                <!--
+                  组头右端那个时刻**是个按钮**(点它看这次请求的信封)。
+                  走全局 `.text-action` 而不是自绘:选中态用它自带的 `is-primary`
+                  修饰符,不写自己的颜色规则 —— 自写 `.group-open.is-active` 的
+                  颜色会与 `.text-action:hover:not(:disabled)` 撞成 (0,3,0) 平局,
+                  由样式表注入顺序裁决(ui-system §1 的平局判例)。
+                -->
                 <button
                   type="button"
-                  class="group-open"
-                  :class="{ 'is-active': isGroupSelected(group) }"
+                  class="group-open text-action"
+                  :class="{ 'is-primary': isGroupSelected(group) }"
                   :aria-label="`查看请求 ${group.requestIndex} 的信封`"
                   @click="selectGroup(group)"
                 >
@@ -170,6 +187,14 @@
                   @keydown.enter.prevent="selectRow(row)"
                   @keydown.space.prevent="selectRow(row)"
                 >
+                  <!--
+                    `lead` 是账线行的首列固定槽位(Tasks 的 mono 时间列同款)。
+                    调用时刻进这一列,于是整份 ledger 有了一条连续的时刻沟 ——
+                    工具行、刻度行、组头右端读的都是同一种 mono tabular 时刻。
+                  -->
+                  <template #lead>
+                    <span class="row-time">{{ formatTrajectoryTime(row.callTime) }}</span>
+                  </template>
                   <template #trail>
                     <span
                       class="row-timing"
@@ -178,16 +203,22 @@
                   </template>
                 </PanelLedgerRow>
 
+                <!--
+                  刻度行不是可 inspect 的对象,只是时间上的记号,所以比账线行轻
+                  一档。种类判据用 `tickKind`(**不是** `label`)—— 拿中文文案
+                  比对等于把一次文案微调变成一次功能回归,与条带同一条纪律。
+                -->
                 <div
                   v-else
                   class="trajectory-tick"
+                  :class="`is-${row.tickKind}`"
                 >
+                  <span class="tick-time">{{ formatTrajectoryTime(row.time) }}</span>
                   <span class="tick-label">{{ row.label }}</span>
                   <span
                     class="tick-rule"
                     aria-hidden="true"
                   />
-                  <span class="tick-time">{{ formatTrajectoryTime(row.time) }}</span>
                 </div>
               </template>
             </div>
@@ -224,6 +255,13 @@
           <div class="inspector-head">
             <span class="inspector-name">请求 #{{ selectedGroup.requestIndex }}</span>
           </div>
+          <!--
+            分节头用共享的 `LedgerGroupHeader`,不自绘:此前这里有一枚
+            `.inspector-section-label`,配方(10px / 700 / .09em / uppercase /
+            faint)与 `.lgh-label` 逐字节相同 —— 那就是同一个组件被抄了一遍。
+            换过来顺带拿到那根拉通到底的账线,inspector 从"一坨 dl"变成两节账页。
+          -->
+          <LedgerGroupHeader label="信封" />
           <dl class="inspector-fields">
             <dt>provider</dt>
             <dd>{{ selectedGroup.provider || '—' }}</dd>
@@ -251,30 +289,26 @@
           </dl>
 
           <!-- token 数在这里,不在主表:宽度留给内容(dsh 判例)。 -->
-          <div class="inspector-section">
-            <div class="inspector-section-label">
-              Usage
-            </div>
-            <dl
-              v-if="selectedGroup.usage"
-              class="inspector-fields"
-            >
-              <dt>input</dt>
-              <dd>{{ selectedGroup.usage.inputTokens ?? '—' }}</dd>
-              <dt>output</dt>
-              <dd>{{ selectedGroup.usage.outputTokens ?? '—' }}</dd>
-              <dt>cache read</dt>
-              <dd>{{ selectedGroup.usage.cacheReadTokens ?? '—' }}</dd>
-              <dt>cache write</dt>
-              <dd>{{ selectedGroup.usage.cacheWriteTokens ?? '—' }}</dd>
-            </dl>
-            <p
-              v-else
-              class="inspector-unavailable"
-            >
-              这次请求没有记下 usage
-            </p>
-          </div>
+          <LedgerGroupHeader label="Usage" />
+          <dl
+            v-if="selectedGroup.usage"
+            class="inspector-fields"
+          >
+            <dt>input</dt>
+            <dd>{{ selectedGroup.usage.inputTokens ?? '—' }}</dd>
+            <dt>output</dt>
+            <dd>{{ selectedGroup.usage.outputTokens ?? '—' }}</dd>
+            <dt>cache read</dt>
+            <dd>{{ selectedGroup.usage.cacheReadTokens ?? '—' }}</dd>
+            <dt>cache write</dt>
+            <dd>{{ selectedGroup.usage.cacheWriteTokens ?? '—' }}</dd>
+          </dl>
+          <p
+            v-else
+            class="inspector-unavailable"
+          >
+            这次请求没有记下 usage
+          </p>
         </template>
 
         <template v-else-if="selectedRow">
@@ -383,6 +417,10 @@
 <script setup lang="ts">
 /**
  * 轨迹面板(主线 E1)。
+ *
+ * **注册不在这里**(C2):这个面板由 `@/features/trajectory` 注册进工作区面板
+ * 注册表,后端那半是 `app/features/builtin/trajectory.ts` 的 cordis feature。
+ * 本文件只负责画。
  *
  * 数据只有一条来路:`sessionEvents` RPC 域(list / inspectCall)。它没有经过
  * 任何一个壳文件 —— 加这个域的时候 `channels.ts` / `bridge.ts` / `http.ts` /
@@ -755,6 +793,12 @@ defineExpose({ reload })
 .trajectory-panel {
   container-type: inline-size;
   min-width: 0;
+
+  /*
+   * 时刻沟的宽度。工具行的 lead、刻度行的首格共用它 —— 两处各写一个数字就是
+   * 下一次"差 2px 没对齐"的起点。`08:00:01` 这种 mono 8 字在 10px 下约 44px。
+   */
+  --trajectory-time-col: 46px;
 }
 
 .trajectory-controls {
@@ -765,49 +809,21 @@ defineExpose({ reload })
   min-width: 0;
 }
 
-.trajectory-title {
-  font-size: 12.5px;
-  color: var(--ui-text-primary-fg);
-}
-
-.trajectory-count {
+/* 把「刷新」推到右端。用一枚会伸缩的空元素而不是 `margin-left: auto`:
+   控制条的成员数随条带的有无变化,auto 边距挂在谁身上要跟着条件走。 */
+.trajectory-controls-gap {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  color: var(--ui-text-faint-fg);
 }
 
-.trajectory-reload {
+/*
+ * 三枚文本动作(时间线 / 刷新 / 组头时刻)全部走全局 `.text-action`。
+ * 这里只管**排布**,不写一笔 paint —— 颜色、hover 下划线、disabled、焦点环
+ * 都归那份全局配方,scoped 里再刷一遍就是 ui-system §1 的平局赌局。
+ */
+.trajectory-toggle,
+.trajectory-refresh {
   flex: none;
-  padding: 2px 8px;
-  border: 1px solid var(--ui-border-subtle-border);
-  border-radius: var(--radius-xs);
-  background: transparent;
-  font-size: 11px;
-  color: var(--ui-text-muted-fg);
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-default),
-    border-color var(--duration-fast) var(--ease-default);
-}
-
-.trajectory-reload:hover:not(:disabled) {
-  color: var(--ui-accent-primary-fg);
-  border-color: var(--ui-accent-primary-fg);
-}
-
-.trajectory-reload:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.trajectory-reload:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg);
-  outline-offset: 1px;
 }
 
 /* 双栏 + 头上一整行条带。窄面板(工作台最窄 250px)下改上下 —— 用容器查询,
@@ -870,20 +886,38 @@ defineExpose({ reload })
   margin-top: 3px;
 }
 
+/* 右对齐定宽:两条泳道的 track 起点必须在同一条竖线上,否则两行时间轴的
+   同一个横坐标不是同一个时刻 —— 那正是条带要表达的唯一一件事。 */
 .lane-name {
   flex: none;
-  width: 20px;
+  width: 22px;
+  text-align: right;
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   color: var(--ui-text-faint-fg);
 }
 
+/*
+ * 泳道自带一条居中基线。没有它时,一条**空泳道**(这一组没有工具调用)在屏
+ * 上什么都没有,读起来像"条带画漏了"而不是"这一段没有工具" —— 轴线在,
+ * 空才读得出是空。
+ */
 .lane-track {
   position: relative;
   flex: 1;
   min-width: 0;
   height: 100%;
   border-radius: var(--radius-xs);
+}
+
+.lane-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--ui-border-subtle-border);
 }
 
 .timeline-span {
@@ -896,9 +930,7 @@ defineExpose({ reload })
   border-radius: var(--radius-xs);
   background: var(--ui-state-hover-raised-bg);
   cursor: pointer;
-  transition:
-    opacity var(--duration-fast) var(--ease-default),
-    border-color var(--duration-fast) var(--ease-default);
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 /* 等待(TTFT)与生成分色 —— 一眼看出"卡在等首 token"还是"真的在写"。 */
@@ -929,8 +961,14 @@ defineExpose({ reload })
   border-color: var(--ui-status-danger-border);
 }
 
+/*
+ * hover 与 selected 是**两条正交通道**:hover 改描边,selected 画外圈。
+ * 此前 hover 用 `opacity: .75` —— 一条整块降透明的 span 在深色主题下几乎读不出
+ * 变化,而且它会把 `is-active` 的外圈一起冲淡(同一条通道互相取消,正是
+ * ui-system §1"选中行必须保留 hover 反馈"要防的形态)。
+ */
 .timeline-span:hover {
-  opacity: 0.75;
+  border-color: var(--ui-accent-primary-fg);
 }
 
 .timeline-span.is-active {
@@ -987,7 +1025,8 @@ defineExpose({ reload })
   flex: none;
 }
 
-/* 窄容器:条带压扁到只剩两条泳道(组号刻度先让位),控制条上的计数让位给档位丸。 */
+/* 窄容器:条带压扁到只剩两条泳道(组号刻度先让位)。控制条不再需要在这里
+   藏东西 —— 它只剩筛选与动作,没有可让位的抄件了。 */
 @container (max-width: 520px) {
   .trajectory-timeline {
     padding: 4px 10px 5px;
@@ -999,10 +1038,6 @@ defineExpose({ reload })
 
   .timeline-lane {
     height: 10px;
-  }
-
-  .trajectory-count {
-    display: none;
   }
 }
 
@@ -1025,7 +1060,19 @@ defineExpose({ reload })
   min-width: 0;
 }
 
+/* 时刻沟:工具行的首列。定宽 + tabular,列才对得齐(ragged 的数字列读不成账)。 */
+.row-time {
+  width: var(--trajectory-time-col);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--ui-text-faint-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 行尾耗时右对齐并留出固定位:三位数与 `执行中` 换来换去不该把名字挤动。 */
 .row-timing {
+  min-width: 44px;
+  text-align: right;
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   color: var(--ui-text-faint-fg);
@@ -1040,37 +1087,37 @@ defineExpose({ reload })
   color: var(--ui-status-danger-fg);
 }
 
+/* paint 归全局 `.text-action`,这里只把它压到组头那一行的字号与数字形。 */
 .group-open {
-  padding: 0 2px;
-  border: none;
-  background: transparent;
-  font-family: var(--font-mono, monospace);
+  flex: none;
   font-size: 10px;
-  color: var(--ui-text-faint-fg);
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-default);
+  font-variant-numeric: tabular-nums;
 }
 
-.group-open:hover,
-.group-open.is-active {
-  color: var(--ui-accent-primary-fg);
-}
-
-.group-open:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg);
-  outline-offset: 1px;
-}
-
-/* 刻度行:比账线行轻一档 —— 它们不是可 inspect 的对象,只是时间上的记号。 */
+/*
+ * 刻度行:比账线行轻一档 —— 它们不是可 inspect 的对象,只是时间上的记号。
+ * 首格与工具行的 lead 同宽同起点(含 `PanelLedgerRow` 的 6px 内边距与 10px
+ * 间距),所以整份 ledger 的时刻读在同一条竖线上。
+ */
 .trajectory-tick {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   height: 22px;
   padding: 0 6px;
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   color: var(--ui-text-faint-fg);
+}
+
+.tick-time {
+  flex: none;
+  width: var(--trajectory-time-col);
+  font-variant-numeric: tabular-nums;
+}
+
+.tick-label {
+  flex: none;
 }
 
 .tick-rule {
@@ -1079,8 +1126,14 @@ defineExpose({ reload })
   background: var(--ui-border-subtle-border);
 }
 
-.tick-time {
-  font-variant-numeric: tabular-nums;
+/* 一次请求收尾的那条记号收得实一点:它是一段的**边界**,首 token 只是段内的
+   一个转折。判据取自 `tickKind`,不是文案。 */
+.trajectory-tick.is-request-end .tick-rule {
+  background: var(--ui-border-strong-border);
+}
+
+.trajectory-tick.is-request-end .tick-label {
+  color: var(--ui-text-muted-fg);
 }
 
 /* ---- inspector ---- */
@@ -1171,18 +1224,6 @@ defineExpose({ reload })
   min-width: 0;
 }
 
-.inspector-section {
-  margin-top: 12px;
-}
-
-.inspector-section-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ui-text-faint-fg);
-}
-
 .inspector-fields {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -1202,6 +1243,8 @@ defineExpose({ reload })
   overflow-wrap: anywhere;
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
+  /* token 数、时刻、seq 全在这一格里。等宽数字让上下两行的位数对得齐。 */
+  font-variant-numeric: tabular-nums;
   color: var(--ui-text-secondary-fg);
 }
 
@@ -1253,8 +1296,9 @@ defineExpose({ reload })
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 48px 20px 0;
+  gap: 10px;
+  /* 40px 而不是 48:面板本来就窄,再往下压空态就飘到视野中线以下了。 */
+  padding: 40px 20px 0;
   text-align: center;
 }
 
@@ -1265,7 +1309,8 @@ defineExpose({ reload })
   width: 46px;
   height: 46px;
   border: 1px dashed var(--ui-border-strong-border);
-  border-radius: 10px;
+  /* 档位表里的 10px 就是 `--radius-md`;写字面量等于把这一枚排除在改档之外。 */
+  border-radius: var(--radius-md);
   color: var(--ui-text-faint-fg);
 }
 
@@ -1277,8 +1322,10 @@ defineExpose({ reload })
   color: var(--ui-text-primary-fg);
 }
 
+/* 一行别拉太长:36em 上下是舒服的读距,窄面板下它自己会先到边。 */
 .empty-hint {
   margin: 0;
+  max-width: 34em;
   font-size: 12.5px;
   line-height: 1.7;
   color: var(--ui-text-secondary-fg);

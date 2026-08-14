@@ -163,7 +163,9 @@ describe('TrajectoryPanelContent', () => {
     await flushPromises()
 
     expect(rpc.list).toHaveBeenCalledWith({ sessionId: 's1' })
-    const headers = wrapper.findAll('.ledger-group-header')
+    // 限定在 ledger 里数:inspector 的分节头也是 LedgerGroupHeader(设计轮把
+    // 那枚自绘的 `.inspector-section-label` 换成了共享组件),不限定就会数进来。
+    const headers = wrapper.findAll('.trajectory-ledger .ledger-group-header')
     expect(headers).toHaveLength(2)
     expect(headers[0].find('.lgh-label').text()).toContain('#1')
     expect(headers[0].find('.lgh-label').text()).toContain('claude-sonnet')
@@ -358,10 +360,13 @@ describe('TrajectoryPanelContent', () => {
     const wrapper = mountPanel()
     await flushPromises()
 
-    const toggle = wrapper.findAll('.trajectory-reload')
-      .find(button => button.text() === '收起时间线')!
+    // 开关的文案是**稳定**的("时间线"),开合由 `aria-expanded` 说 —— 所以
+    // 这里也按状态断言,不按文案:换一次措辞不该变成一次功能回归。
+    const toggle = wrapper.find('.trajectory-toggle')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
     await toggle.trigger('click')
 
+    expect(toggle.attributes('aria-expanded')).toBe('false')
     expect(wrapper.find('.trajectory-timeline').exists()).toBe(false)
     expect(wrapper.findAll('.trajectory-row')).toHaveLength(2)
   })

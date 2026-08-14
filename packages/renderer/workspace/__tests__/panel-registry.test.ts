@@ -22,6 +22,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, expectTypeOf, it } from 'vitest'
 import { Puzzle } from 'lucide-vue-next'
+// C2:`trajectory` 不在 panel-registry 里注册了,它在自己的 feature 模块里,
+// 由名册在**启动入口**被 import 一次。`main.ts` 不参与单测,所以要在场就得
+// 在这里手动重现那一行 —— renderer 没有装配序列的账单,如实付。
+import '@/features'
 import {
   findWorkspacePanel,
   isWorkspacePanelId,
@@ -50,7 +54,13 @@ const CONSUMERS = [
   'components/workbench/RightWorkbenchPanel.vue',
 ] as const
 
-/** 内置面板的 id,注册顺序即呈现顺序。 */
+/**
+ * 第一方面板的 id,注册顺序即呈现顺序。
+ *
+ * 前六条仍在 panel-registry 里集中注册;`trajectory` 从 C2 起由它自己的
+ * feature 模块注册 —— **对这份清单来说没有区别**,那正是要钉的事:一个面板
+ * 迁不迁出内核,在注册表这一侧一格都不该变。
+ */
 const BUILTIN_IDS = ['media', 'agents', 'tasks', 'music', 'practice', 'archive', 'trajectory']
 
 function featureIds(): string[] {
@@ -71,6 +81,33 @@ describe('workspace panel registry', () => {
     // 之后**追加**的第七条 —— 新面板一律往后加,不插队。
     // K1:清单从"编译期数组字面量"换成注册表快照,内容一格不变。
     expect(featureIds()).toEqual(BUILTIN_IDS)
+  })
+
+  /**
+   * C2:搬家要真的搬走。
+   *
+   * 一个"迁成 feature"的面板如果注册表里还留着一行,症状是重复 id 直接抛
+   * (注册表守得住);但更常见的半吊子是**只搬了组件、注册还在原地**,那样
+   * `features/` 目录就成了摆设。所以两头都钉:注册表源码里没有它,名册那条
+   * import 链走完之后它在场。
+   */
+  it('registers the migrated panel from its feature module, not from the registry file', () => {
+    const registrySource = readRendererFile('workspace/panel-registry.ts')
+    expect(registrySource).not.toContain("id: 'trajectory'")
+    expect(registrySource).not.toContain('TrajectoryPanelContent')
+
+    // 名册是数据形状的:一行一个 feature,没有逻辑。
+    expect(readRendererFile('features/index.ts')).toContain("import './trajectory'")
+    // 启动入口 import 名册一次 —— 生产路径上"谁 import feature 模块"的答案。
+    expect(readRendererFile('main.ts')).toContain("import './features'")
+
+    // 在场,且带着全套 descriptor(少一格就是一条死路径)。
+    const trajectory = findWorkspacePanel('trajectory')
+    expect(trajectory?.label).toBe('轨迹')
+    expect(trajectory?.component).toBeTruthy()
+    // 事件名不再是注册表里的一份抄件,它从拥有者模块来。
+    expect(readRendererFile('workspace/trajectory-inspect.ts'))
+      .toContain(`TRAJECTORY_OPEN_WORKSPACE_EVENT = '${workspacePanelWindowEvent('trajectory')}'`)
   })
 
   it('has no flag left that nobody reads', () => {

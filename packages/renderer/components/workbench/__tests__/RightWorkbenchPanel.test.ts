@@ -5,6 +5,9 @@ import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+// C2:`trajectory` 从 feature 模块注册,名册只在启动入口 `main.ts` 被 import。
+// 单测不跑 main.ts,所以「+」清单要覆盖到它就得在这里手动重现那一行。
+import '@/features'
 import RightWorkbenchPanel from '../RightWorkbenchPanel.vue'
 
 const mocks = vi.hoisted(() => ({

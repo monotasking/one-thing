@@ -33,6 +33,20 @@
  * (打包行为与从前逐字相同)。K2/K3 迁移时才把各自的 `registerWorkspacePanel`
  * 调用搬进各 feature 模块。
  *
+ * ── C2(2026-08-14):第一个搬走的面板 ─────────────────────────────────────
+ *
+ * `trajectory` 的注册已经搬进 `packages/renderer/features/trajectory.ts`,由
+ * `features/index.ts` 名册在启动入口被 import 一次。本文件因此**少了一个面板**
+ * 与它的两条 import(组件树 + 图标)—— 这正是"注册表本体重新变轻"的第一格。
+ *
+ * 两个跟着变的东西,别读成疏漏:
+ *  - `WorkspacePanelId` 这枚**编译期字面量联合**只覆盖下面这个数组。搬出去的
+ *    面板编译期列不出来(与插件面板同理),所以按 id 查询的入口一律收宽到
+ *    `WorkspaceNavId`,拼错由**运行期抛错**接住而不是编译器。这是"移出内核 =
+ *    交出编译期特权"的第一笔账,记在差距清单 §6。
+ *  - 剩下的六个面板仍在这里集中注册(C3 继续迁),所以这个数组不是"内置面板的
+ *    全集",而是"还没迁的那批"。全集永远看注册表快照。
+ *
  * ── 注册时机:模块求值即注册(与 app 层的"import 零副作用"纪律不同域)──────
  *
  * `@onething/app` 那一层禁止 import 副作用,因为它有一条显式装配序列
@@ -50,7 +64,6 @@ import {
   CalendarClock,
   Images,
   Radio,
-  Route,
 } from 'lucide-vue-next'
 import MediaPanelContent from '@/components/MediaPanelContent.vue'
 import AgentsPanelContent from '@/components/AgentsPanelContent.vue'
@@ -58,7 +71,6 @@ import SchedulerPanelContent from '@/components/SchedulerPanelContent.vue'
 import MusicPanelContent from '@/components/MusicPanelContent.vue'
 import PracticePanelContent from '@/components/PracticePanelContent.vue'
 import ArchivedChatsContent from '@/components/ArchivedChatsContent.vue'
-import TrajectoryPanelContent from '@/components/TrajectoryPanelContent.vue'
 
 /**
  * 宿主愿意注入的**渲染上下文键**。
@@ -179,24 +191,16 @@ const BUILTIN_WORKSPACE_PANELS = [
     inPanelNav: true,
     component: ArchivedChatsContent,
   },
-  {
-    // 轨迹(主线 E1):会话事件日志的第二投影。聊天里的工具卡片够不着
-    // openWorkspacePanel 的 emit 链,所以和 practice / agents 同款走 window 事件。
-    id: 'trajectory',
-    label: '轨迹',
-    icon: Route,
-    inPanelNav: true,
-    windowEvent: 'trajectory:open-workspace',
-    component: TrajectoryPanelContent,
-  },
+  // 轨迹(主线 E1)从这里搬走了 —— C2 起它在 `features/trajectory.ts` 自注册。
 ] as const satisfies readonly WorkspacePanelDescriptor[]
 
 /**
- * 内置面板 id 的类型。
+ * **还没迁出去的**内置面板 id 的类型。
  *
  * 保持字面量联合而不是退化成 `string`:`openWorkspaceTab` 拼错一个名字仍然要在
  * 编译期被抓住 —— 注册表化不等于放弃类型。运行期注册进来的面板(插件面板、
- * K2 之后从 feature 模块注册的面板)编译期列不出来,走下面更宽的 `WorkspaceNavId`。
+ * C2 起从 feature 模块注册的 `trajectory`)编译期列不出来,走下面更宽的
+ * `WorkspaceNavId`。
  */
 export type WorkspacePanelId = (typeof BUILTIN_WORKSPACE_PANELS)[number]['id']
 
@@ -277,8 +281,13 @@ export function isWorkspacePanelId(value: unknown): value is WorkspacePanelId {
  * 事件名的**事实源**仍在各自的产生方(例如 agents 的常量在 stores/agents.ts),
  * 注册表只是把"这个面板还有一条 window 事件入口"这件事记下来 —— 收编的是
  * 可发现性,不是所有权。
+ *
+ * 参数收宽到 `WorkspaceNavId`(C2):从 feature 模块注册的面板编译期列不出来,
+ * 窄联合会把 `workspacePanelWindowEvent('trajectory')` 判成拼写错误。内置 id
+ * 仍有字面量补全;查不到的 id 由下面这行**运行期抛错**接住 —— 死路径照旧
+ * 不许静默存在,只是发现它的时刻从编译期挪到了首次求值。
  */
-export function workspacePanelWindowEvent(id: WorkspacePanelId): string {
+export function workspacePanelWindowEvent(id: WorkspaceNavId): string {
   const panel = findWorkspacePanel(id)
   if (!panel?.windowEvent) throw new Error(`Workspace panel "${id}" has no window event entry`)
   return panel.windowEvent
@@ -430,10 +439,11 @@ export function useWorkspaceNavEntries(): ComputedRef<WorkspaceNavEntry[]> {
   })
 }
 
-// ── 内置面板的注册(K1:集中在本文件;K2/K3 迁移时搬进各 feature 模块)──────
+// ── 还没迁出去的那批面板的注册(C2 起 trajectory 不在其中;C3 继续迁)──────
 //
 // 模块求值时注册 —— 见文件头"注册时机"那一节:renderer 没有装配序列,
-// "import 到了就一定可用"是这一层的正确语义。
+// "import 到了就一定可用"是这一层的正确语义。搬进 feature 模块之后这条纪律
+// **不变**(见 `features/trajectory.ts`),变的只是谁来写这一行。
 for (const descriptor of BUILTIN_WORKSPACE_PANELS) {
   registerWorkspacePanel(descriptor)
 }

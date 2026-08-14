@@ -148,3 +148,172 @@ effect labels = [ "feature(rpc:usage):rpcDomain:usage", …, "feature(rpc:permis
 | `bun run build:unpack`（额外） | 绿；预检「依赖采集完整：283 个包（采集器 = npm）」，`app.asar` 内含 `@deepseek-ai/cordis` 与 `@deepseek-ai/cosmokit` |
 
 > 注：C0 开工时工作区**并非干净**（93 个改动文件在途），上表中的两处红都在这些在途改动里，与本期无关。
+
+## 6. C2 落地记录与差距清单 #1（2026-08-14）
+
+C2 = 把**轨迹**迁成第一个真 cordis feature，并产出第一份「纯 feature API 复刻不了什么」的清单。
+选轨迹的理由在 K1 记录里：最新、边界最清楚（消费事件日志的纯投影）、被既有测试钉死。
+
+### 6.1 改了什么
+
+**后端半（一个真 cordis plugin）**
+
+- 新增 `packages/onething-runtime/src/app/features/builtin/trajectory.ts`：`FeatureDefinition`，
+  `id: 'trajectory'`，`mount(ctx)` 里 `ctx.registerRpcDomain(sessionEventsRouter, sessionEventsRpcHandlers)`。
+  文件头把 §5.5.3 的三条地雷**逐条对照**写死（见 6.5 G9：本期三条都不适用，那是被试品太干净，不是地雷不存在）。
+- `app/rpc/index.ts` 的名册里，`rpc:session-events` 那一行换成 `trajectoryFeature`——**位置一格没动**。
+  `dumpFeatures()` 里那一格从 `rpc:session-events` 变成 `trajectory`（注册的域仍是 `sessionEvents`）。
+
+**前端半（注册搬家 + 「谁 import」的拍板）**
+
+- 新增 `packages/renderer/features/trajectory.ts`：`registerWorkspacePanel({ id: 'trajectory', … })` 从
+  `panel-registry.ts` 搬到这里。顺带消掉一处抄件——`windowEvent` 现在直接引
+  `trajectory-inspect.ts` 的 `TRAJECTORY_OPEN_WORKSPACE_EVENT` 常量，不再抄字面量。
+- 新增 `packages/renderer/features/index.ts`：**名册**，内容就是一列 `import`（一行一个 feature），
+  由启动入口 `packages/renderer/main.ts` import 一次。
+- `panel-registry.ts` 少一个面板与两条 import（组件树 + 图标），文件头记下"这个数组不是内置面板
+  的全集，是**还没迁的那批**"。
+
+### 6.2 两处名册的形状（拍板）
+
+| | 形状 | 为什么 |
+|---|---|---|
+| 后端 | `rpc/index.ts` 里**一张有序数组** `BUILTIN_FEATURES`（原 `RPC_FEATURES`），成员两种：还没迁的 `rpc:<域>` 内联包装，和 import 进来的 feature | 一张表、一个入口，迁一个功能 = 把一行内联包装换成一次 import，**装配顺序一格不动**。另起一张表 + 第二条装配调用会把顺序拆成两处、给 `backend.ts` 加一行，与 C5「feature 名册 = 一个显式数组」正好相反 |
+| 前端 | `features/index.ts` = **一列 import**，由 `main.ts` import 一次 | renderer 没有装配序列，feature 模块必须被某处静态 import 才会求值（K1 留下的第一个真问题）。三个候选被否：让 panel-registry 反过来 import 各 feature（注册表依赖注册者）、各消费方各 import 各的（又一份手抄清单）、`import.meta.glob`（"有哪些 feature"退化成运行期发现，删个文件静默少一件功能） |
+
+两边都遵守各自的注册时机纪律，**这条不是笔误**：app 层 import 零副作用（有显式装配序列，顺序必须留在那一处可读），
+renderer 层模块求值即注册（没有装配序列，"import 到了就一定可用"才是对的）。K1 的判例原样成立。
+
+### 6.3 设计轮（用户原话："做的很粗糙"）
+
+行为语义一格未改（分组 / 配对 / 选中 / 跳转 / 两档模式全保留），改的全是表现层。要点：
+
+1. **控制条按房规重写**：六个兄弟面板没有一个在控制条里放自己的标题，计数一律归状态条。
+   轨迹此前两样都抄了一份，窄面板下还得靠 `display:none` 把自己抄的那份藏起来——抄件的典型下场。两条一起删。
+2. **三枚文本动作统一走全局 `.text-action`**，删掉自绘的 `.trajectory-reload` 边框丸（26 行 CSS）。
+   组头时刻的选中态用它自带的 `is-primary` 修饰符而不是自写颜色规则——自写的 `.group-open.is-active`
+   会与 `.text-action:hover:not(:disabled)` 撞成 (0,3,0) 平局，由注入顺序裁决（ui-system §1 的平局判例）。
+3. **时间线开关的文案改成稳定的"时间线"**，开合由 `aria-expanded` + 主色说。换文案的按钮每点一次都要
+   重读才知道当前状态，宽度还跟着跳。
+4. **账线行长出时刻沟**：`PanelLedgerRow` 的 `lead` 槽（Tasks 的 mono 时间列同款用法）放调用时刻，
+   行尾耗时定宽右对齐。刻度行首格与它同宽同起点——整份 ledger 的时刻读在同一条竖线上。
+   刻度行的种类判据取 `tickKind` 不取 `label`（与条带同纪律），顺带给"`tickKind` 只有条带在消费"的
+   E2 遗留补上第二个消费者。
+5. **inspector 的分节头换成共享 `LedgerGroupHeader`**：原来那枚 `.inspector-section-label` 的配方
+   （10px / 700 / .09em / uppercase / faint）与 `.lgh-label` 逐字节相同，就是同一个组件被抄了一遍。
+   换过来顺带拿到拉通线，inspector 从"一坨 dl"变成「信封 / Usage」两节账页。
+6. **条带**：泳道加居中基线（空泳道此前在屏上什么都没有，读起来像"画漏了"而不是"这一段没有工具"）；
+   泳道名右对齐定宽，两条 track 起点对齐；span 的 hover 从 `opacity: .75` 改成描边升主色——
+   降透明会把 `is-active` 的外圈一起冲淡（同一条通道互相取消，正是"选中行必须保留 hover 反馈"要防的形态）。
+7. 杂项：`border-radius: 10px` → `var(--radius-md)`；数字格一律 `tabular-nums`；空态收 8px 顶距 + 限行宽。
+
+`ui:gate` 绿（81 条已知，零新增）。
+
+### 6.4 验收
+
+| 项 | 结果 |
+|---|---|
+| `typecheck`（node + web） | 绿 |
+| 轨迹 / E 线 + feature 基座 10 个 suite | **173 条全绿**（含面板 16、投影 16、E0 采集器 9、域 5、sessions 21、二次装配门 3、feature 基座 11、注册表 15、工作台 28、侧栏 49） |
+| renderer 全量 | 313 文件 / 3063 条绿 |
+| `@onething/app` 全量 | 265 文件 / 2361 条绿 |
+| `packages/core` + `apps/*` | 145 文件 / 1167 条绿 |
+| `ui:gate` | 绿，81 条已知零新增 |
+| `boundary:gate` | 1 条红：`packages/onething-runtime owns Markdown asset service`——**不是本期的**：它由工作区在途的 `scripts/headless-boundary-check.ts` / `boundary-gate.mjs` 改动引起（另一条会话正在改这两个文件），触发点是 `apps/electron/src/main/ipc/markdown.ts` 的缺席，本期一个 markdown 文件都没碰 |
+| `transport:gate` | 3 条红：`preload/bridge.ts` +117 行、`platform/web.ts` +45 行、`shared/ipc/channels.ts` +1 行——三份都是工作区在途改动，本期零传输面改动（轨迹的域早就骑在通用 RPC 通道上） |
+
+### 6.5 差距清单 #1
+
+格式：**缺口 → 原语化改写 → 采纳/拒绝 + 理由**。这份清单是 C3/C4 的方向盘，宁多勿漏。
+
+**G1. 聊天「检查」入口没有 feature 侧的落点**
+- *缺口*：轨迹的第三个表面是聊天里工具卡片上的「检查」按钮。它今天是
+  `components/chat/ToolActivityDetails.vue` 直接 `import { requestTrajectoryInspect }`——
+  也就是说**内核组件硬编码知道有轨迹这件功能**。轨迹这次只迁走了面板与后端域，入口还留在内核里。
+- *原语化改写*：不需要新锚点。既有的 ui-slot 锚点 `message.footer`（block，ctx 带 `messageId`）
+  与 `message.actions`（trigger，同样带 `messageId`）正好接得住这个形状。缺的是**表达力档**：
+  `ui-anchor-registry` 今天只接插件贡献的**描述树**，第一方 feature 要挂的是一个真组件。
+  提案：给 slot 注册增加 `component` 一档，判据与 panel-registry 的 `component` 完全相同
+  （D1「可信 by construction」才填得起），第一方与插件同表注册、同锚点、不同表达力档。
+- *裁决*：**提案采纳，排进 C3；本期不做。** D3 第三条（锚点加设问）已被满足——要长的是既有锚点的
+  表达力，不是新锚点，所以它是原语不是洞。不塞进本期的理由是它要动 `ui-anchor-registry` 与
+  `PluginTriggerPopover` 两处宿主代码，那是一次独立的原语改动，不该混在"迁一个 feature"里。
+
+**G2. E0 采集器（`session-event-recorder` / `agent-loop-executor`）的归属**
+- *缺口*：事件日志的**写侧**长在引擎流水线里，它是轨迹面板唯一的数据来源，却不属于轨迹 feature。
+- *原语化改写*：要迁就得有一个"往引擎流水线挂钩子"的注册面（`ctx.registerStreamHook(...)`）。
+- *裁决*：**拒绝迁；采纳"这是基础设施不是 feature"的定性。** 三条理由：
+  (1) 采集器**没有消费者也要跑**——事件日志是账本不是面板的私有缓存，面板卸载了账照记；
+  (2) 它有真实的写侧生命周期（先停写再关文件），正撞 §5.5.3 的第一条地雷，迁它就得当场发明
+  "把一组顺序敏感的工作收进同一个 effect"的约定；
+  (3) `registerStreamHook` 会是本仓第一个**往热路径挂东西**的注册面，它的失败模型（一个坏 hook
+  会不会拖垮一次请求）必须先单独想清楚。
+  结论：E0 留在内核，轨迹 feature 是它的**纯消费者**——这正是选轨迹当第一个被试品的理由。
+
+**G3. renderer 没有装配序列，名册的求值时机要在测试里手动重现**
+- *缺口*：`features/index.ts` 只被 `main.ts` import，而 `main.ts` 不参与单测。于是任何断言
+  "某 feature 的面板在场"的用例都要自己补一行 `import '@/features'`。本期补了 3 处：
+  `panel-registry.test.ts` / `Sidebar.workbench.test.ts` / `RightWorkbenchPanel.test.ts`
+  （少一处的症状是"某个入口里这个面板不见了"，红得很清楚，不会静默）。
+- *原语化改写*：(a) 把名册 import 下沉进 `panel-registry`——注册表反过来依赖注册者，否决；
+  (b) 沉进 vitest 的 setup——当前 `vitest.setup.ts` 是全仓共用的，node 环境的 app 测试 import 它
+  会当场缺 `document`，除非 renderer 拆出独立的 vitest project（`environment: happy-dom` + 自己的
+  `setupFiles`）。
+- *裁决*：**本期采纳"逐测试显式 import"**——它诚实（测试确实在重现启动入口做的那一件事），
+  爆炸半径为零。记成待办：C3 再迁两三个面板后这个成本线性上升，那时是拆 renderer vitest project
+  的时机；**判据是"补 import 的测试文件数超过 6"**，不是感觉烦了。
+
+**G4. 编译期 id 联合是内核特权**
+- *缺口*：`WorkspacePanelId` 是从 panel-registry 的静态数组抽出的字面量联合。面板一迁走就掉出联合，
+  `workspacePanelWindowEvent('trajectory')` 从"编译期抓拼写"降级成"运行期抛错"。
+- *原语化改写*：让 feature 模块也能贡献字面量——TS 里唯一可行的形态是名册文件里再写一份
+  `export const FEATURE_PANEL_IDS = [...] as const`，那就是把 id 清单**再抄一遍**。
+- *裁决*：**拒绝。** 判据：迁出内核 = 交出编译期特权，这是插件面板一直在付的价（它们的 id 本来就是
+  运行期字符串），第一方 feature 没有理由例外；而消灭抄件正是这张注册表存在的理由。
+  补偿是运行期抛错必须**保留且响亮**（`workspacePanelWindowEvent` 查不到就抛）。
+  代价如实记：`openWorkspaceTab('trajectroy')` 这类拼写错误现在到运行期才发现。
+
+**G5. renderer 侧的 feature 没有挂卸语义**
+- *缺口*：同一个 feature 的两端可逆性不对称——后端半是 cordis fiber（装卸可往返 200 轮，实测），
+  renderer 半是"模块求值即注册"，`registerWorkspacePanel` 返回的 disposer 被丢弃，不可卸。
+- *原语化改写*：renderer 也建一条装配序列（`mountRendererFeature(def)` + 名册数组），两端同构。
+- *裁决*：**本期拒绝，C4 重新评估。** 理由：可卸载在 renderer 侧今天**没有消费者**——没有任何产品
+  动作是"运行期停用一个第一方 feature"（插件面板的整批注销走的是另一条已有的路）。
+  C4 要做"模型现场挂卸 demo feature"，那个 demo 若带 UI，这条才变成真需求。
+
+**G6. 一个 feature 是两个半，没有一处能同时看见它们**
+- *缺口*：`trajectory` 在后端名册与 renderer 注册表里都叫 `trajectory`，但两者之间**没有任何链接**——
+  改一边的 id 另一边不会知道；`dumpFeatures()` 只看得见后端半。
+- *原语化改写*：一个跨端的 feature 清单（共享常量），或让 renderer 注册表也进 dump。
+- *裁决*：**暂缓，不是拒绝。** 一条判例做不出制度：现在只有一个 feature 是两个半的。
+  C3 迁完 practice / 音乐 / todo-plan（三个都有 UI 半）之后再看——那时"两半对不上"若真出过一次事故，
+  就有确凿的形状可依。**先记下这个洞，不预雕。**
+
+**G7. `registerAppRpcDomains` 的名字比内容窄了半格**
+- *缺口*：名册已经不只是 RPC 域了（`BUILTIN_FEATURES` 里有一个真 feature），函数还叫
+  `registerAppRpcDomains`，表还住在 `rpc/index.ts` 里。
+- *原语化改写*：名册搬到 `features/builtin/index.ts`，函数改名 `mountBuiltinFeatures()`，
+  `backend.ts` 跟着改一行。
+- *裁决*：**采纳，排进 C5（收口期）。** 本期不做的理由：它要动 `backend.ts`，而 C2 的宪法是
+  "迁功能不动装配序列"。
+
+**G8. `FeatureContext` 只有两个注册面（rpc / 通用 disposer）**
+- *缺口*：轨迹恰好只需要 `registerRpcDomain`，所以本期一个新注册面都没提出需求。
+  但 C3 的三个功能各要一类资源：定时器（scheduler）、外部进程（音乐的 ncm 守护）、文件监听（todo-plan）。
+- *原语化改写*：**别加功能形状的注册面**。`registerDisposer` 这个逃生舱已经能接住全部三类资源，
+  真正缺的是**顺序**——三者都有"先停写再关"的次序契约。
+- *裁决*：**本期不加任何注册面**（D3 第一条：差距清单驱动，轨迹没提出需求）。
+  给 C3 的做法建议：第一个真正需要顺序的 feature 落地时，不要加新注册面，而是把整组工作收进
+  **一个** `registerDisposer`——cordis 只在单个 effect 内部保证逆序 + 串行（§5.5.3 第一条已写死）。
+  同理记一条空结果作为对照基线：面板 descriptor 的 `context` / `emits` 两张有限清单，本期
+  **零新增需求**（轨迹只用到 `component` + `windowEvent`）。
+
+**G9. 三条 cordis 语义地雷，本期一条都没真正踩到**
+- *记录（不是缺口，是信号质量的自评）*：轨迹只注册一项、`mount` 同步、dispose 路径不注册任何东西——
+  §5.5.3 的三条逐条不适用。**这不是"地雷不存在"的证据，是"第一个被试品太干净"的证据。**
+  差距清单在这一项上的信号质量是低的；C3 的三个功能（都有顺序契约）才是真检验。
+- *裁决*：如实记下来，**免得 C3 时有人拿"C2 都没事"当跳过论证的理由**。
+
+**清单条数基线**：9 条（G1–G9），其中 2 条已排期（G1→C3、G7→C5）、3 条明确拒绝（G2 / G4 / G5）、
+2 条暂缓（G3 待触发判据、G6 待第二个双半 feature）、1 条空结果（G8）、1 条自评（G9）。
+C3 每迁一个 feature 复核一次这张表，**递减曲线是可证伪判据**（§2 的 C3 验收门）。

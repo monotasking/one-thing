@@ -127,4 +127,14 @@
 
 ## 7. 差距清单（K2 起累积）
 
-（待 K2 产出。每条格式：缺口 → 原语化改写 → 采纳/拒绝 + 理由。）
+**清单不住在这里** —— K 线的期号在 C0 之后重编为 C 线，第一份清单随 C2 一起产出，
+住在 [`cordis-adoption-2026-08.md` §6.5](./cordis-adoption-2026-08.md)（9 条，G1–G9，
+格式即本节原定的「缺口 → 原语化改写 → 采纳/拒绝 + 理由」）。后续每期在那一处递减，
+两处各存一份就是下一次漂移的起点。
+
+K1 在 §3 留给 K2 的两个已知阻碍，C2 的答案：
+
+- **「谁 import feature 模块」** → 显式名册 `packages/renderer/features/index.ts`（一列 import），
+  由启动入口 `main.ts` import 一次；`import.meta.glob` 与"让注册表反过来 import"都被否决（§6.2）。
+- **`ui-anchor-registry` 未动 / 聊天入口那条 slot** → C2 **没有**建新锚点：既有的 `message.footer`
+  / `message.actions` 接得住，要长的是它们的**表达力档**（第一方能挂真组件），提案在 §6.5 G1，排进 C3。

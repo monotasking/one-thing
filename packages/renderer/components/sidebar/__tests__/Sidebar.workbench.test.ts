@@ -17,6 +17,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+// C2:`trajectory` 从 feature 模块注册,名册只在启动入口 `main.ts` 被 import。
+// 单测不跑 main.ts,所以 ⋯ 菜单要覆盖到它就得在这里手动重现那一行。
+import '@/features'
 import Sidebar from '../Sidebar.vue'
 
 const mocks = vi.hoisted(() => ({

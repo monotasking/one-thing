@@ -5320,11 +5320,13 @@ function checkMarkdownDomainRidesTheRpcChannel(): void {
     'resolveOnethingMarkdownAssetForIpc',
     'saveOnethingMarkdownAttachmentsForIpc',
   ]
-  // 沙箱护栏必须留在 app 层：这几条是从 apps/server 搬过来的,搬丢了就等于
-  // 迁移把安全护栏一起迁没了 —— 批 1 退回这个域正是为了避免这件事。
+  // 沙箱护栏必须留在 app 层的**调用路径**上：这几条是从 apps/server 搬过来的,
+  // 搬丢了就等于迁移把安全护栏一起迁没了 —— 批 1 退回这个域正是为了避免这件事。
+  // 注:Obsidian vault 判定的**实现**已按 "owns Markdown asset service" 规则归位
+  // runtime(卫生批 7739c230),app 层留的是对它的调用 —— 守卫因此盯调用符号。
   const requiredGuardSymbols = [
     'isTargetInsideSandbox',
-    'isObsidianConfigInsideSandbox',
+    'obsidianAttachmentRootStaysInside',
     'clampAttachmentDirectory',
   ]
   const lines = [

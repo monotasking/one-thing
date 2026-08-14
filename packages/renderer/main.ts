@@ -1,6 +1,10 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
+// feature 名册（C2）。renderer 没有装配序列,feature 模块必须被某处静态 import
+// 才会求值 —— 这里就是那个"某处",整棵应用只此一行。名册本身是数据形状的
+// (`features/index.ts` = 一列 import),加一个 feature 不用碰这个文件。
+import './features'
 import { initializeIPCHub } from './services/ipc-hub'
 import { installGlobalCrashCapture } from './services/crash-log'
 import { installGlobalFileDropGuard } from './composables/useFileDrop'

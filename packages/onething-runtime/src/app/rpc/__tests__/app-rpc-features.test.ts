@@ -16,13 +16,19 @@ import { dumpFeatures, resetFeaturesForTests } from '../../features/index.js'
 import { registerAppRpcDomains } from '../index.js'
 import { hasRpcDomain, resetRpcRegistryForTests } from '../registry.js'
 
-/** 域册的现状快照。顺序 = 装配顺序（包装不重排）。 */
+/**
+ * 名册的现状快照。顺序 = 装配顺序（包装不重排）。
+ *
+ * C2 起这张表里有两种行：还没迁的 `rpc:<域>` 内联包装，和已经迁成真 feature
+ * 的 `trajectory`（id 说的是**功能**不是域，注册的域仍然是 `sessionEvents`）。
+ * 位置一格没动 —— 迁移不许重排装配顺序。
+ */
 const EXPECTED_FEATURES = [
   ['rpc:usage', 'usage'],
   ['rpc:prompts', 'prompts'],
   ['rpc:goal', 'goal'],
   ['rpc:todo-plan', 'todo-plan'],
-  ['rpc:session-events', 'sessionEvents'],
+  ['trajectory', 'sessionEvents'],
   ['rpc:channel-identity', 'channelIdentity'],
   ['rpc:agents', 'agents'],
   ['rpc:providers', 'providers'],
