@@ -507,6 +507,7 @@ import type {
   TodoNotesActionContext,
 } from './todo-notes-actions'
 import { platformApi } from '@/platform'
+import { markdownApi } from '@/platform/markdown-client'
 
 const props = defineProps<{
   sessionId?: string
@@ -1204,7 +1205,7 @@ async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution
   if (asset) return asset
   const documentPath = activeDocument.value?.filePath
   if (!documentPath) return null
-  const response = await platformApi.resolveMarkdownAsset({
+  const response = await markdownApi.resolveAsset({
     documentPath,
     workspaceRoot: snapshot.value?.directory || effectiveWorkingDirectory.value,
     rawTarget: href,

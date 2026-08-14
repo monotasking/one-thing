@@ -165,10 +165,6 @@ export const IPC_CHANNELS = {
 	PERMISSION_REQUEST: "permission:request",
 	PERMISSION_GET_PENDING: "permission:get-pending",
 	PERMISSION_CLEAR_SESSION: "permission:clear-session",
-	PERMISSION_LIST_GRANTS: "permission:list-grants",
-	PERMISSION_REVOKE_GRANT: "permission:revoke-grant",
-	PERMISSION_CLEAR_SESSION_GRANTS: "permission:clear-session-grants",
-	PERMISSION_CLEAR_WORKSPACE_GRANTS: "permission:clear-workspace-grants",
 
 	// Interaction related (agent 提问 → 用户应答)
 	INTERACTION_RESPOND: "interaction:respond",
@@ -271,10 +267,6 @@ export const IPC_CHANNELS = {
 	FILE_WATCH_START: "file:watch-start",
 	FILE_WATCH_STOP: "file:watch-stop",
 	FILE_WATCH_EVENT: "file:watch-event",
-
-	// Markdown asset / attachment related
-	MARKDOWN_RESOLVE_ASSET: "markdown:resolve-asset",
-	MARKDOWN_SAVE_ATTACHMENTS: "markdown:save-attachments",
 
 	// Unified event-driven channels (Phase 4)
 	SESSION_EVENT: "session:event",

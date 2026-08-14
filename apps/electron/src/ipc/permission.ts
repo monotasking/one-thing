@@ -7,46 +7,23 @@ export interface ElectronIpcMainLike {
   ): void
 }
 
+/**
+ * 主线 T 批 3：授权账页那四条（listGrants / revokeGrant / clearSessionGrants /
+ * clearWorkspaceGrants）已整只迁到通用 RPC 通道的 `permissionGrants` 域，连同
+ * server 侧的归属校验一起收成一份实现。这里只剩**运行中**的权限询问那两条 ——
+ * 它们与流式生命周期同呼吸，不属于账页。
+ */
 export interface ElectronPermissionIpcChannels {
   getPending: string
   clearSession: string
-  listGrants: string
-  revokeGrant: string
-  clearSessionGrants: string
-  clearWorkspaceGrants: string
 }
 
 export type ElectronPermissionSessionId = string
-
-export interface ElectronPermissionListGrantsRequest {
-  sessionId?: string
-  workspaceRoot?: string
-  userId?: string
-  workspaceId?: string
-}
-
-export interface ElectronPermissionRevokeGrantRequest {
-  id: string
-}
-
-export interface ElectronPermissionClearSessionGrantsRequest {
-  sessionId: string
-}
-
-export interface ElectronPermissionClearWorkspaceGrantsRequest {
-  workspaceRoot: string
-  userId?: string
-  workspaceId?: string
-}
 
 export interface RegisterElectronPermissionIpcHandlersOptions {
   channels: ElectronPermissionIpcChannels
   getPending(sessionId: ElectronPermissionSessionId): unknown
   clearSession(sessionId: ElectronPermissionSessionId): unknown
-  listGrants(request: ElectronPermissionListGrantsRequest): unknown
-  revokeGrant(request: ElectronPermissionRevokeGrantRequest): unknown
-  clearSessionGrants(request: ElectronPermissionClearSessionGrantsRequest): unknown
-  clearWorkspaceGrants(request: ElectronPermissionClearWorkspaceGrantsRequest): unknown
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -57,22 +34,6 @@ export function registerElectronPermissionIpcHandlers(
 
   host.handle(options.channels.getPending, (_event, sessionId: ElectronPermissionSessionId) => {
     return options.getPending(sessionId)
-  })
-
-  host.handle(options.channels.listGrants, (_event, request: ElectronPermissionListGrantsRequest) => {
-    return options.listGrants(request)
-  })
-
-  host.handle(options.channels.revokeGrant, (_event, request: ElectronPermissionRevokeGrantRequest) => {
-    return options.revokeGrant(request)
-  })
-
-  host.handle(options.channels.clearSessionGrants, (_event, request: ElectronPermissionClearSessionGrantsRequest) => {
-    return options.clearSessionGrants(request)
-  })
-
-  host.handle(options.channels.clearWorkspaceGrants, (_event, request: ElectronPermissionClearWorkspaceGrantsRequest) => {
-    return options.clearWorkspaceGrants(request)
   })
 
   host.handle(options.channels.clearSession, (_event, sessionId: ElectronPermissionSessionId) => {

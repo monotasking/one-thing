@@ -163,6 +163,7 @@ import { handleMarkdownAttachmentPaste } from '@/editor/markdown-attachments'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import { useScratchpadPad } from '@/composables/useScratchpadPad'
 import { platformApi } from '@/platform'
+import { markdownApi } from '@/platform/markdown-client'
 import {
   BUBBLE_SIZE,
   clampBubble,
@@ -406,7 +407,7 @@ async function resolveMarkdownAsset(
 ): Promise<MarkdownAssetResolution | null> {
   if (asset) return asset
   if (!filePath.value) return null
-  const response = await platformApi.resolveMarkdownAsset({
+  const response = await markdownApi.resolveAsset({
     documentPath: filePath.value,
     workspaceRoot: documentDir.value,
     rawTarget: href,

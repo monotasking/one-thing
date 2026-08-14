@@ -23,7 +23,6 @@ import { registerSpacesHandlers } from "./spaces.js";
 import { registerPluginHandlers } from "./plugins.js";
 import { registerSchedulerHandlers } from "./scheduler.js";
 import { registerFilesHandlers } from "./files.js";
-import { registerMarkdownHandlers } from "./markdown.js";
 import { registerSearchHandlers } from "@onething/electron-host/search/ipc";
 import { registerAppStateHandlers } from "./app-state.js";
 import { registerWindowHandlers } from "@onething/electron-host/ipc/window";
@@ -65,7 +64,6 @@ export function initializeIPC() {
 	registerPluginHandlers();
 	registerSchedulerHandlers();
 	registerFilesHandlers();
-	registerMarkdownHandlers();
 	registerSearchHandlers();
 	registerAppStateHandlers();
 	registerWindowHandlers();

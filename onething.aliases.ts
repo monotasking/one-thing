@@ -90,7 +90,6 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/electron-host/ipc/files', replacement: resolve(projectRoot, 'apps/electron/src/ipc/files.ts') },
   { find: '@onething/electron-host/ipc/gateway', replacement: resolve(projectRoot, 'apps/electron/src/ipc/gateway.ts') },
   { find: '@onething/electron-host/ipc/interaction', replacement: resolve(projectRoot, 'apps/electron/src/ipc/interaction.ts') },
-  { find: '@onething/electron-host/ipc/markdown', replacement: resolve(projectRoot, 'apps/electron/src/ipc/markdown.ts') },
   { find: '@onething/electron-host/ipc/media', replacement: resolve(projectRoot, 'apps/electron/src/ipc/media.ts') },
   { find: '@onething/electron-host/ipc/mcp', replacement: resolve(projectRoot, 'apps/electron/src/ipc/mcp.ts') },
   { find: '@onething/electron-host/ipc/oauth', replacement: resolve(projectRoot, 'apps/electron/src/ipc/oauth.ts') },

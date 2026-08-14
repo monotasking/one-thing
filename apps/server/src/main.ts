@@ -38,6 +38,11 @@ const server = createOnethingHttpServer({
   runtime: serverRuntime.runtime,
   corsOrigin,
   authToken,
+  // Taken from the runtime rather than from `workspaceRoot` above: the runtime
+  // is where the env var + tmpdir fallback are resolved, and a second
+  // resolution here could drift into a *different* root — which for the
+  // sandbox-scoped RPC domains would mean clamping against the wrong tree.
+  workspaceRoot: serverRuntime.workspaceRoot,
 })
 
 server.listen(port, host, () => {

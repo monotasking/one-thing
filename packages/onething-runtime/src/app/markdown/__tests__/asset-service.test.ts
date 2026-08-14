@@ -6,7 +6,36 @@ import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 import { resetVariablesStoreForTests } from '../../variables/store/index.js'
 import { getSettings, updateSettingsInMemory } from '../../stores/settings.js'
-import { resolveMarkdownAsset, saveMarkdownAttachments } from '../asset-service.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import type {
+  MarkdownAssetResolution,
+  MarkdownResolveAssetRequest,
+  MarkdownSaveAttachmentsRequest,
+  MarkdownSaveAttachmentsResponse,
+} from '@shared/ipc/markdown.js'
+import { markdownRpcHandlers } from '../../rpc/domains/markdown.js'
+
+/**
+ * 主线 T 批 3 之后这两个方法的唯一入口是域 handler。这里用桌面 context
+ * (`transport:'ipc'` = 未夹紧) 薄封一层,**下面每一条断言一字未改** ——
+ * 这正是本文件在这一批要证的事:桌面语义与迁移前逐字相同。
+ * 夹紧宿主的行为另有一份 `__tests__/markdown-sandbox.test.ts`。
+ */
+async function resolveMarkdownAsset(
+  request: MarkdownResolveAssetRequest,
+): Promise<MarkdownAssetResolution> {
+  const response = await markdownRpcHandlers.resolveAsset(request, DESKTOP_RPC_CONTEXT)
+  if (!response.success || !response.asset) {
+    throw new Error(response.error ?? 'Failed to resolve Markdown asset')
+  }
+  return response.asset
+}
+
+function saveMarkdownAttachments(
+  request: MarkdownSaveAttachmentsRequest,
+): Promise<MarkdownSaveAttachmentsResponse> {
+  return markdownRpcHandlers.saveAttachments(request, DESKTOP_RPC_CONTEXT)
+}
 
 const tempRoots: string[] = []
 

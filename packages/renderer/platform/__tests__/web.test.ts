@@ -891,22 +891,6 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/files/delete',
     })
-    await expect(api.resolveMarkdownAsset({
-      documentPath: '/workspace/docs/readme.md',
-      workspaceRoot: '/workspace',
-      rawTarget: 'image.png',
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/markdown/resolve-asset',
-    })
-    await expect(api.saveMarkdownAttachments({
-      documentPath: '/workspace/docs/readme.md',
-      workspaceRoot: '/workspace',
-      files: [],
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/markdown/save-attachments',
-    })
     await expect(api.listVariables('session-1')).resolves.toEqual({
       success: true,
       url: '/api/variables/list',
@@ -1003,12 +987,6 @@ describe('createWebPlatformApi', () => {
       body: JSON.stringify({ root: '/workspace' }),
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/files/rename', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/markdown/resolve-asset', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/markdown/save-attachments', expect.objectContaining({
       method: 'POST',
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/variables/set', expect.objectContaining({
@@ -1146,29 +1124,6 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/sessions/session-1/permissions/clear',
     })
-    await expect(api.listPermissionGrants({ sessionId: 'session-1', workspaceRoot: '/workspace' })).resolves.toEqual({
-      success: true,
-      url: '/api/permission-grants/list',
-    })
-    await expect(api.revokePermissionGrant('grant-1')).resolves.toEqual({
-      success: true,
-      url: '/api/permission-grants/revoke',
-    })
-    await expect(api.clearSessionPermissionGrants('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/permission-grants/session/clear',
-    })
-    await expect(api.clearWorkspacePermissionGrants('/workspace')).resolves.toEqual({
-      success: true,
-      url: '/api/permission-grants/workspace/clear',
-    })
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/permission-grants/list', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/permission-grants/revoke', expect.objectContaining({
-      method: 'POST',
-    }))
   })
 
   it('maps chat and session message platform methods to server REST endpoints', async () => {

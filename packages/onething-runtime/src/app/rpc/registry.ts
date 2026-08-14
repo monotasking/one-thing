@@ -14,15 +14,24 @@
  */
 import type { DomainRoutes, RouteHandlers, Router } from '@onething/core/ipc'
 import {
+  DESKTOP_RPC_CONTEXT,
   RPC_ERROR_CODES,
+  type RpcDispatchContext,
   type RpcRequest,
   type RpcResponse,
 } from '@shared/ipc/rpc.js'
 
+/**
+ * Handlers of a domain that rides this channel. Pins `RouteHandlers`' generic
+ * context parameter to `RpcDispatchContext` — a handler may declare the second
+ * parameter and read it, or ignore it entirely.
+ */
+export type RpcRouteHandlers<T extends DomainRoutes> = RouteHandlers<T, RpcDispatchContext>
+
 interface RegisteredDomain {
   /** Method allowlist, straight off the router — an unlisted method never runs. */
   methods: ReadonlySet<string>
-  handlers: Record<string, (input: unknown) => Promise<unknown>>
+  handlers: Record<string, (input: unknown, context: RpcDispatchContext) => Promise<unknown>>
 }
 
 const domains = new Map<string, RegisteredDomain>()
@@ -45,7 +54,7 @@ function fail(message: string, code?: string): RpcResponse {
  */
 export function registerRouterHandlers<T extends DomainRoutes>(
   router: Router<T>,
-  handlers: RouteHandlers<T>,
+  handlers: RpcRouteHandlers<T>,
 ): () => void {
   if (domains.has(router.domain)) {
     throw new Error(
@@ -53,9 +62,9 @@ export function registerRouterHandlers<T extends DomainRoutes>(
       + 'Unregister the previous handlers before registering again.',
     )
   }
-  const bound: Record<string, (input: unknown) => Promise<unknown>> = {}
+  const bound: RegisteredDomain['handlers'] = {}
   for (const method of router.methods) {
-    bound[method] = handlers[method] as (input: unknown) => Promise<unknown>
+    bound[method] = handlers[method] as RegisteredDomain['handlers'][string]
   }
   const entry: RegisteredDomain = {
     methods: new Set<string>(router.methods),
@@ -79,8 +88,20 @@ export function hasRpcDomain(domain: string): boolean {
  *
  * Handler failures return the error's `message` only. No stack, no `cause`:
  * this string crosses to a renderer (and, on the server, to the network).
+ *
+ * `context` is the **host adapter's** word on who is asking (主线 T 批 3) and
+ * is never read off the wire — see `RpcDispatchContext`. It defaults to the
+ * desktop/in-process context because that is what an in-process caller (tests,
+ * a future host that runs the backend directly) truthfully is; the one host
+ * where the default would be a lie — `apps/server`, whose callers are on a
+ * network — passes its own, and the app-layer sandbox guard refuses an
+ * `'http'` context that arrives without a sandbox root rather than silently
+ * running unconfined.
  */
-export async function dispatchRpc(request: RpcRequest): Promise<RpcResponse> {
+export async function dispatchRpc(
+  request: RpcRequest,
+  context: RpcDispatchContext = DESKTOP_RPC_CONTEXT,
+): Promise<RpcResponse> {
   const domain = typeof request?.domain === 'string' ? request.domain : ''
   const method = typeof request?.method === 'string' ? request.method : ''
   if (!domain || !method) {
@@ -99,7 +120,7 @@ export async function dispatchRpc(request: RpcRequest): Promise<RpcResponse> {
   }
 
   try {
-    const data = await entry.handlers[method](request.payload)
+    const data = await entry.handlers[method](request.payload, context)
     return { ok: true, data: data === undefined ? null : data }
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error))

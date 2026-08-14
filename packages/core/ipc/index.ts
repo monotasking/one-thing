@@ -27,9 +27,25 @@ export interface Router<T extends DomainRoutes> {
   readonly methods: readonly (keyof T & string)[]
 }
 
-/** Handler implementations for a router */
-export type RouteHandlers<T extends DomainRoutes> = {
-  [K in keyof T]: (input: T[K]['input']) => Promise<T[K]['output']>
+/**
+ * Handler implementations for a router.
+ *
+ * The second parameter is the **dispatch context** — who is asking, minted by
+ * the host adapter after that host authenticated the call (主线 T 批 3). It is
+ * deliberately optional: a handler that does not declare it simply ignores it,
+ * which is why the nine domains that landed before 批 3 did not need a single
+ * edit, and an in-process caller (a test, another app-layer module) may call a
+ * handler directly without inventing one. A handler that DOES read it takes the
+ * `(input, context = DESKTOP_RPC_CONTEXT)` shape — the same default
+ * `dispatchRpc` uses, and a truthful one, because the only caller that reaches
+ * a handler without a context is in-process. The dangerous direction — a
+ * networked host — always goes through `dispatchRpc`, which always passes one.
+ *
+ * `Ctx` stays generic here because `packages/core` may not import the shared
+ * IPC package (boundary rule); the app layer pins it to `RpcDispatchContext`.
+ */
+export type RouteHandlers<T extends DomainRoutes, Ctx = unknown> = {
+  [K in keyof T]: (input: T[K]['input'], context?: Ctx) => Promise<T[K]['output']>
 }
 
 /** Client API type for a router */

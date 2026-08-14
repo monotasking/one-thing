@@ -44,6 +44,7 @@ import type {
 import type { SkillDefinition, UserPrompt } from '@shared/ipc'
 import type { CommandDefinition } from '@/types/commands'
 import { platformApi } from '@/platform'
+import { markdownApi } from '@/platform/markdown-client'
 
 interface MarkdownAssetContext {
   documentPath?: string
@@ -123,8 +124,8 @@ const markdownLivePreviewOptions = computed<MarkdownLivePreviewOptions>(() => ({
   features: props.markdownLivePreviewFeatures,
   resolveAsset: async (rawTarget) => {
     const documentPath = props.markdownAssetContext?.documentPath
-    if (!documentPath || !platformApi?.resolveMarkdownAsset) return null
-    const response = await platformApi.resolveMarkdownAsset({
+    if (!documentPath) return null
+    const response = await markdownApi.resolveAsset({
       documentPath,
       workspaceRoot: props.markdownAssetContext?.workspaceRoot,
       rawTarget,

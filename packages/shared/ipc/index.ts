@@ -912,8 +912,8 @@ export type {
 } from "./usage.js";
 export { usageRouter } from "./usage.js";
 
-export type { RpcError, RpcErrorCode, RpcRequest, RpcResponse } from "./rpc.js";
-export { RPC_ERROR_CODES } from "./rpc.js";
+export type { RpcDispatchContext, RpcError, RpcErrorCode, RpcRequest, RpcResponse } from "./rpc.js";
+export { DESKTOP_RPC_CONTEXT, RPC_ERROR_CODES } from "./rpc.js";
 
 export type {
 	PracticeConfig,

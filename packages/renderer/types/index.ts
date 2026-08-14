@@ -1012,26 +1012,6 @@ export interface ElectronAPI {
 		sessionId: string,
 		workingDirectory: string | null,
 	) => Promise<{ success: boolean; error?: string }>;
-	listPermissionGrants: (options: {
-		sessionId?: string;
-		workspaceRoot?: string;
-		userId?: string;
-		workspaceId?: string;
-	}) => Promise<{
-		success: boolean;
-		error?: string;
-		sessionGrants?: any[];
-		workspaceGrants?: any[];
-	}>;
-	revokePermissionGrant: (
-		id: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	clearSessionPermissionGrants: (
-		sessionId: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	clearWorkspacePermissionGrants: (
-		workspaceRoot: string,
-	) => Promise<{ success: boolean; error?: string }>;
 	// Evals (prompt evaluation) — 👎 downvote + Review + Run + Actions
 	recordEvalsDownvote: (request: {
 		sessionId: string;
@@ -1984,12 +1964,6 @@ export interface ElectronAPI {
 	onWorkspaceFileChanged: (
 		callback: (data: { root: string; path: string; eventType: string }) => void,
 	) => () => void;
-	resolveMarkdownAsset: (
-		request: MarkdownResolveAssetRequest,
-	) => Promise<MarkdownResolveAssetResponse>;
-	saveMarkdownAttachments: (
-		request: MarkdownSaveAttachmentsRequest,
-	) => Promise<MarkdownSaveAttachmentsResponse>;
 
 	// Window methods
 	setWindowButtonVisibility: (

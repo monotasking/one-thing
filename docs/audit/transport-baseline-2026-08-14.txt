@@ -1,16 +1,8 @@
 # transport ratchet baseline (主线 T1)
 # 只许降不许升。降了之后跑 `bun run transport:gate --write-baseline` 收紧。
 # 生成于 2026-08-14；每一行是 `<指标名> <数值>`。
-#
-# 历史（收紧一次记一行，这是这把尺子唯一的进度条）：
-#   2026-08-14 T1 前：IPC_CHANNELS 379，四壳 6638 行
-#     (http 2376 / bridge 1886 / web 1793 / channels 583)
-#   2026-08-14 T1 第一批（prompts + goal + todo-plan 数据面）：−14 常量，−164 行
-#   2026-08-14 T1 第二批（channel-identity + agents + providers + models）：
-#     −22 常量，−413 行 → IPC_CHANNELS 343，四壳 6057 行
-#     (http 2023 / bridge 1761 / web 1730 / channels 543)
-channels:IPC_CHANNELS 343
-lines:apps/electron/src/preload/bridge.ts 1761
-lines:apps/server/src/http.ts 2023
-lines:packages/renderer/platform/web.ts 1730
-lines:packages/shared/ipc/channels.ts 543
+channels:IPC_CHANNELS 337
+lines:apps/electron/src/preload/bridge.ts 1737
+lines:apps/server/src/http.ts 1989
+lines:packages/renderer/platform/web.ts 1718
+lines:packages/shared/ipc/channels.ts 535

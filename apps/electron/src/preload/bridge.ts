@@ -360,24 +360,6 @@ const electronAPI = {
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.BROWSER_TABS_CHANGED, listener);
 	},
 
-	// Permission grant management
-	listPermissionGrants: (options: {
-		sessionId?: string;
-		workspaceRoot?: string;
-		userId?: string;
-		workspaceId?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_LIST_GRANTS, options),
-	revokePermissionGrant: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_REVOKE_GRANT, { id }),
-	clearSessionPermissionGrants: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_CLEAR_SESSION_GRANTS, {
-			sessionId,
-		}),
-	clearWorkspacePermissionGrants: (workspaceRoot: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_CLEAR_WORKSPACE_GRANTS, {
-			workspaceRoot,
-		}),
-
 	// ── Streaming methods ───────────────────────────
 	abortStream: (sessionId?: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.ABORT_STREAM, { sessionId }),
@@ -1462,12 +1444,6 @@ const electronAPI = {
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.FILE_WATCH_EVENT, listener);
 	},
-
-	resolveMarkdownAsset: (request: MarkdownResolveAssetRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MARKDOWN_RESOLVE_ASSET, request),
-
-	saveMarkdownAttachments: (request: MarkdownSaveAttachmentsRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MARKDOWN_SAVE_ATTACHMENTS, request),
 
 	// ── Plugin management ───────────────────────────
 	getPlugins: () => ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_LIST),

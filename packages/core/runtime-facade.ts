@@ -123,20 +123,6 @@ export interface RuntimePermissionsAdapter<TPermissionResponse = unknown> {
     error?: string
   }>
   clearSession?(sessionId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  listGrants?(options: {
-    sessionId?: string
-    workspaceRoot?: string
-    userId?: string
-    workspaceId?: string
-  }, context?: RuntimeRequestContext): Promise<{
-    success: boolean
-    sessionGrants?: unknown[]
-    workspaceGrants?: unknown[]
-    error?: string
-  }>
-  revokeGrant?(id: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  clearSessionGrants?(sessionId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  clearWorkspaceGrants?(workspaceRoot: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
 }
 
 export interface RuntimeSettingsAdapter<TSettings = unknown, TSettingsUpdateResult = TSettings> {
@@ -188,11 +174,6 @@ export interface RuntimeFilesAdapter {
     handler: (payload: unknown) => void,
     context?: RuntimeRequestContext,
   ): RuntimeUnsubscribe
-}
-
-export interface RuntimeMarkdownAdapter {
-  resolveAsset?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  saveAttachments?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
 }
 
 export interface RuntimeProjectDirsAdapter {
@@ -484,7 +465,6 @@ export interface OnethingRuntimeFacadeOptions<
   themes?: RuntimeThemesAdapter
   prompts?: RuntimePromptsAdapter
   files?: RuntimeFilesAdapter
-  markdown?: RuntimeMarkdownAdapter
   projectDirs?: RuntimeProjectDirsAdapter
   variables?: RuntimeVariablesAdapter
   media?: RuntimeMediaAdapter
@@ -564,7 +544,6 @@ export interface OnethingRuntimeFacade<
   readonly themes?: RuntimeThemesAdapter
   readonly prompts?: RuntimePromptsAdapter
   readonly files?: RuntimeFilesAdapter
-  readonly markdown?: RuntimeMarkdownAdapter
   readonly projectDirs?: RuntimeProjectDirsAdapter
   readonly variables?: RuntimeVariablesAdapter
   readonly media?: RuntimeMediaAdapter
@@ -715,7 +694,6 @@ export function createOnethingRuntimeFacade<
     themes: options.themes ? Object.freeze({ ...options.themes }) : undefined,
     prompts: options.prompts ? Object.freeze({ ...options.prompts }) : undefined,
     files: options.files ? Object.freeze({ ...options.files }) : undefined,
-    markdown: options.markdown ? Object.freeze({ ...options.markdown }) : undefined,
     projectDirs: options.projectDirs ? Object.freeze({ ...options.projectDirs }) : undefined,
     variables: options.variables ? Object.freeze({ ...options.variables }) : undefined,
     media: options.media ? Object.freeze({ ...options.media }) : undefined,

@@ -174,6 +174,7 @@ import type { MarkdownDocumentEditorHandle, MarkdownFeatureSet } from '@/editor/
 import type { EditorTransaction } from '@/editor/types'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import { platformApi } from '@/platform'
+import { markdownApi } from '@/platform/markdown-client'
 
 const props = defineProps<{
   initialFilePath?: string
@@ -350,7 +351,7 @@ async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution
   if (asset) return asset
   const documentPath = currentEditorFilePath()
   if (!documentPath) return null
-  const response = await platformApi.resolveMarkdownAsset({
+  const response = await markdownApi.resolveAsset({
     documentPath,
     workspaceRoot: workspaceRoot.value,
     rawTarget: href,

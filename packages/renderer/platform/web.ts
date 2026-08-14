@@ -937,10 +937,6 @@ const webApi = {
 		postJson("/api/files/delete", { path: targetPath }),
 	revealPath: (targetPath: string) =>
 		postJson("/api/files/reveal", { path: targetPath }),
-	resolveMarkdownAsset: (request: unknown) =>
-		postJson("/api/markdown/resolve-asset", request),
-	saveMarkdownAttachments: (request: unknown) =>
-		postJson("/api/markdown/save-attachments", request),
 	recordEvalsDownvote: async () => ({
 		success: false,
 		error: "Evals is not supported in the web build",
@@ -1504,14 +1500,6 @@ const webApi = {
 		postJson(
 			`/api/sessions/${encodeURIComponent(sessionId)}/permissions/clear`,
 		),
-	listPermissionGrants: (options: unknown) =>
-		postJson("/api/permission-grants/list", options),
-	revokePermissionGrant: (id: string) =>
-		postJson("/api/permission-grants/revoke", { id }),
-	clearSessionPermissionGrants: (sessionId: string) =>
-		postJson("/api/permission-grants/session/clear", { sessionId }),
-	clearWorkspacePermissionGrants: (workspaceRoot: string) =>
-		postJson("/api/permission-grants/workspace/clear", { workspaceRoot }),
 
 	getSessionMessagesPage: (request: unknown) =>
 		postJson("/api/session-messages/page", request),

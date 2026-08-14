@@ -354,6 +354,8 @@ import type {
 	ACPRemoveAgentResponse,
 	ACPUpdateAgentResponse,
 } from "@shared/ipc/acp.js";
+import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
+import { ownerSandboxRoot } from "@onething/app/rpc/sandbox.js";
 import type {
 	GatewayGetStatusResponse,
 	GatewayStartRequest,
@@ -463,6 +465,13 @@ export interface OnethingServerRuntime {
 	runtime: OnethingRuntimeFacade;
 	eventBus: EventBus<AgentEngineSessionEvent>;
 	streamChannel: ServerStreamChannelLike;
+	/**
+	 * The resolved per-owner workspace sandbox base (`<root>/<uid>/<wid>`).
+	 * The HTTP layer needs it to mint `RpcDispatchContext.sandboxRoot`
+	 * (主线 T 批 3); exposing it here keeps the resolution in exactly one place
+	 * instead of having `main.ts` re-derive it from the same env var.
+	 */
+	workspaceRoot: string;
 	shutdown(): Promise<void>;
 }
 
@@ -2918,100 +2927,6 @@ export async function createDevelopmentOnethingServerRuntime(
 					logger: console,
 				});
 			},
-			async listGrants(request = {}, context = defaultRequestContext()) {
-				const sessionId =
-					typeof request.sessionId === "string" ? request.sessionId : undefined;
-				const workspaceRootInput =
-					typeof request.workspaceRoot === "string"
-						? request.workspaceRoot
-						: undefined;
-				const workspaceGrantRoot = workspaceRootInput
-					? resolveServerWorkspaceGrantRoot(
-							workspaceRoot,
-							context,
-							workspaceRootInput,
-						)
-					: undefined;
-				if (workspaceRootInput && !workspaceGrantRoot) {
-					return {
-						success: false,
-						error:
-							"Workspace root must stay inside the workspace sandbox root.",
-					};
-				}
-				if (sessionId) {
-					const session = getSessionForContext(sessionId, context);
-					if (!session) {
-						return { success: false, error: "Session not found" };
-					}
-				}
-
-				return listOnethingPermissionGrantsForIpc({
-					sessionId,
-					workspaceRoot: workspaceGrantRoot ?? undefined,
-					userId: context.userId,
-					workspaceId: context.workspaceId,
-					listSessionGrants: (targetSessionId) =>
-						listSessionGrants(targetSessionId),
-					listWorkspaceGrants,
-					logger: console,
-				});
-			},
-			async revokeGrant(id: string, context = defaultRequestContext()) {
-				if (
-					!canRevokePermissionGrant(
-						id,
-						listOwnedSessionMetas(context),
-						workspaceRoot,
-						context,
-					)
-				) {
-					return { success: false, error: "Permission grant not found" };
-				}
-				return revokeOnethingPermissionGrantForIpc({
-					id,
-					revokeGrant,
-					logger: console,
-				});
-			},
-			async clearSessionGrants(
-				sessionId: string,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) {
-					return { success: false, error: "Session not found" };
-				}
-				return clearOnethingSessionPermissionGrantsForIpc({
-					sessionId,
-					clearSessionGrants,
-					logger: console,
-				});
-			},
-			async clearWorkspaceGrants(
-				workspaceRootInput: string,
-				context = defaultRequestContext(),
-			) {
-				const workspaceGrantRoot = resolveServerWorkspaceGrantRoot(
-					workspaceRoot,
-					context,
-					workspaceRootInput,
-				);
-				if (!workspaceGrantRoot) {
-					return {
-						success: false,
-						error:
-							"Workspace root must stay inside the workspace sandbox root.",
-					};
-				}
-				return clearOnethingWorkspacePermissionGrantsForIpc({
-					workspaceRoot: workspaceGrantRoot,
-					userId: context.userId,
-					workspaceId: context.workspaceId,
-					clearWorkspaceGrants,
-					logger: console,
-				});
-			},
 		},
 		settings: {
 			async get(context = defaultRequestContext()) {
@@ -3406,74 +3321,6 @@ export async function createDevelopmentOnethingServerRuntime(
 					handler as WorkspaceFileChangedHandler,
 					context,
 				),
-		},
-		markdown: {
-			async resolveAsset(request: unknown, context = defaultRequestContext()) {
-				const prepared = await prepareServerMarkdownRequest(
-					workspaceRoot,
-					settingsByOwner,
-					settingsStore,
-					context,
-					request,
-				);
-				if (!prepared.success) return { success: false, error: prepared.error };
-				if (!prepared.request.rawTarget)
-					return {
-						success: false,
-						error: "Markdown asset target is required.",
-					};
-				return resolveOnethingMarkdownAssetForIpc({
-					request: {
-						documentPath: prepared.request.documentPath,
-						workspaceRoot: prepared.request.workspaceRoot,
-						rawTarget: prepared.request.rawTarget,
-					},
-					resolveAsset: async (markdownRequest) => {
-						const asset = await resolveOnethingMarkdownAsset(
-							markdownRequest,
-							prepared.adapters,
-						);
-						return sanitizeServerMarkdownAsset(workspaceRoot, context, asset);
-					},
-				});
-			},
-			async saveAttachments(
-				request: unknown,
-				context = defaultRequestContext(),
-			) {
-				const prepared = await prepareServerMarkdownRequest(
-					workspaceRoot,
-					settingsByOwner,
-					settingsStore,
-					context,
-					request,
-				);
-				if (!prepared.success)
-					return {
-						success: false,
-						error: prepared.error,
-						code: "WORKSPACE_PATH",
-					};
-				return saveOnethingMarkdownAttachmentsForIpc({
-					request: {
-						...prepared.request,
-						files: Array.isArray((request as { files?: unknown }).files)
-							? (request as MarkdownSaveAttachmentsRequest).files
-							: [],
-					},
-					saveAttachments: async (markdownRequest) => {
-						const result = await saveOnethingMarkdownAttachments(
-							markdownRequest,
-							prepared.adapters,
-						);
-						return sanitizeServerMarkdownAttachmentResult(
-							workspaceRoot,
-							context,
-							result,
-						);
-					},
-				});
-			},
 		},
 		projectDirs: {
 			async list(context = defaultRequestContext()) {
@@ -5027,6 +4874,7 @@ export async function createDevelopmentOnethingServerRuntime(
 		runtime,
 		eventBus,
 		streamChannel,
+		workspaceRoot,
 		shutdown() {
 			return runtime.shutdown().catch(() => {});
 		},
@@ -7050,290 +6898,6 @@ function resolveServerWorkspaceFilePath(
 	return isPathInside(candidate, sandboxRoot) ? candidate : null;
 }
 
-interface PreparedServerMarkdownRequest {
-	success: true;
-	request: {
-		documentPath: string;
-		workspaceRoot: string;
-		rawTarget?: string;
-		files?: MarkdownSaveAttachmentsRequest["files"];
-	};
-	adapters: OnethingMarkdownAssetServiceAdapters;
-}
-
-type PreparedServerMarkdownResult =
-	| PreparedServerMarkdownRequest
-	| {
-			success: false;
-			error: string;
-	  };
-
-async function prepareServerMarkdownRequest(
-	serverWorkspaceRoot: string,
-	settingsByOwner: Map<string, AppSettings>,
-	settingsStore: ServerSettingsStore,
-	context: RuntimeRequestContext,
-	request: unknown,
-): Promise<PreparedServerMarkdownResult> {
-	const typedRequest =
-		request && typeof request === "object"
-			? (request as {
-					documentPath?: unknown;
-					workspaceRoot?: unknown;
-					rawTarget?: unknown;
-					files?: unknown;
-				})
-			: {};
-	const documentPath =
-		typeof typedRequest.documentPath === "string"
-			? resolveServerWorkspaceFilePath(
-					serverWorkspaceRoot,
-					context,
-					typedRequest.documentPath,
-				)
-			: null;
-	if (!documentPath) {
-		return {
-			success: false,
-			error:
-				"Markdown document path must stay inside the workspace sandbox root.",
-		};
-	}
-
-	const sandboxRoot = await ensureServerWorkspaceSandboxRoot(
-		serverWorkspaceRoot,
-		context,
-	);
-	const markdownWorkspaceRoot =
-		typeof typedRequest.workspaceRoot === "string" && typedRequest.workspaceRoot
-			? resolveServerWorkspaceFilePath(
-					serverWorkspaceRoot,
-					context,
-					typedRequest.workspaceRoot,
-				)
-			: sandboxRoot;
-	if (!markdownWorkspaceRoot) {
-		return {
-			success: false,
-			error:
-				"Markdown workspace root must stay inside the workspace sandbox root.",
-		};
-	}
-
-	if (
-		typeof typedRequest.rawTarget === "string" &&
-		!isServerMarkdownTargetSafe(
-			documentPath,
-			sandboxRoot,
-			typedRequest.rawTarget,
-		)
-	) {
-		return {
-			success: false,
-			error:
-				"Markdown asset target must stay inside the workspace sandbox root.",
-		};
-	}
-
-	if (!(await isServerMarkdownObsidianConfigSafe(documentPath, sandboxRoot))) {
-		return {
-			success: false,
-			error:
-				"Markdown attachment configuration must stay inside the workspace sandbox root.",
-		};
-	}
-
-	const settings = await getOwnerSettings(
-		settingsByOwner,
-		settingsStore,
-		context,
-	);
-	return {
-		success: true,
-		request: {
-			documentPath,
-			workspaceRoot: markdownWorkspaceRoot,
-			rawTarget:
-				typeof typedRequest.rawTarget === "string"
-					? typedRequest.rawTarget
-					: undefined,
-			files: Array.isArray(typedRequest.files)
-				? (typedRequest.files as MarkdownSaveAttachmentsRequest["files"])
-				: undefined,
-		},
-		adapters: createServerMarkdownAdapters(
-			settings.general.editor,
-			sandboxRoot,
-		),
-	};
-}
-
-function createServerMarkdownAdapters(
-	editorSettings: OnethingMarkdownEditorSettings | undefined,
-	sandboxRoot: string,
-): OnethingMarkdownAssetServiceAdapters {
-	return {
-		getEditorSettings: () =>
-			sanitizeServerMarkdownEditorSettings(editorSettings, sandboxRoot),
-		getNoteRoots: () => [],
-	};
-}
-
-function sanitizeServerMarkdownEditorSettings(
-	editorSettings: OnethingMarkdownEditorSettings | undefined,
-	sandboxRoot: string,
-): OnethingMarkdownEditorSettings {
-	return {
-		markdownNoteAttachmentDirectory: sanitizeServerMarkdownAttachmentDirectory(
-			editorSettings?.markdownNoteAttachmentDirectory,
-			sandboxRoot,
-		),
-		markdownProjectAttachmentDirectory:
-			sanitizeServerMarkdownAttachmentDirectory(
-				editorSettings?.markdownProjectAttachmentDirectory,
-				sandboxRoot,
-			),
-	};
-}
-
-function sanitizeServerMarkdownAttachmentDirectory(
-	value: string | undefined,
-	sandboxRoot: string,
-): string | undefined {
-	const trimmed = value?.trim();
-	if (!trimmed) return undefined;
-	if (
-		trimmed === "~" ||
-		trimmed.startsWith("~/") ||
-		trimmed.startsWith("$HOME/")
-	)
-		return undefined;
-	const target = resolve(
-		isAbsolute(trimmed) ? trimmed : join(sandboxRoot, trimmed),
-	);
-	return isPathInside(target, sandboxRoot) ? target : undefined;
-}
-
-function cleanServerMarkdownTarget(rawTarget: string): string {
-	let target = rawTarget.trim();
-	const wiki = target.match(/^!?\[\[([\s\S]+)\]\]$/);
-	if (wiki) target = wiki[1].trim();
-	if (target.startsWith("<") && target.endsWith(">"))
-		target = target.slice(1, -1).trim();
-	target = target.split("|")[0].trim();
-	target = target.split("#")[0].trim();
-	try {
-		return decodeURI(target);
-	} catch {
-		return target;
-	}
-}
-
-function isServerMarkdownTargetSafe(
-	documentPath: string,
-	sandboxRoot: string,
-	rawTarget: string,
-): boolean {
-	const trimmed = rawTarget.trim();
-	if (!trimmed) return true;
-	if (trimmed.startsWith("#")) return true;
-
-	const target = cleanServerMarkdownTarget(rawTarget);
-	if (!target) return true;
-	if (
-		/^[a-z][a-z\d+.-]*:/i.test(target) &&
-		!target.toLowerCase().startsWith("file:")
-	)
-		return true;
-
-	if (target.toLowerCase().startsWith("file:")) {
-		try {
-			return isPathInside(fileURLToPath(target), sandboxRoot);
-		} catch {
-			return false;
-		}
-	}
-
-	if (isAbsolute(target)) return isPathInside(resolve(target), sandboxRoot);
-	const parts = target.replace(/\\/g, "/").split("/").filter(Boolean);
-	if (parts.includes("..") || parts.includes("~")) return false;
-	return isPathInside(resolve(dirname(documentPath), target), sandboxRoot);
-}
-
-async function isServerMarkdownObsidianConfigSafe(
-	documentPath: string,
-	sandboxRoot: string,
-): Promise<boolean> {
-	let current = dirname(documentPath);
-	while (isPathInside(current, sandboxRoot)) {
-		const obsidianDir = join(current, ".obsidian");
-		if (existsSync(obsidianDir)) {
-			try {
-				const raw = await readFile(join(obsidianDir, "app.json"), "utf-8");
-				const parsed = JSON.parse(raw) as { attachmentFolderPath?: unknown };
-				const folder =
-					typeof parsed.attachmentFolderPath === "string"
-						? parsed.attachmentFolderPath.trim()
-						: "";
-				if (!folder) return true;
-				if (
-					folder === "~" ||
-					folder.startsWith("~/") ||
-					folder.startsWith("$HOME/")
-				)
-					return false;
-				const attachmentRoot = resolve(
-					isAbsolute(folder) ? folder : join(current, folder),
-				);
-				return isPathInside(attachmentRoot, sandboxRoot);
-			} catch {
-				return true;
-			}
-		}
-
-		const parent = dirname(current);
-		if (parent === current) return true;
-		current = parent;
-	}
-	return true;
-}
-
-function sanitizeServerMarkdownAsset(
-	serverWorkspaceRoot: string,
-	context: RuntimeRequestContext,
-	asset: MarkdownAssetResolution,
-): MarkdownAssetResolution {
-	if (!asset.absolutePath) return asset;
-	const sandboxRoot = workspaceSandboxRoot(serverWorkspaceRoot, context);
-	if (isPathInside(asset.absolutePath, sandboxRoot)) return asset;
-	return {
-		kind: "missing",
-		rawTarget: asset.rawTarget,
-		error: "Markdown asset path must stay inside the workspace sandbox root.",
-	};
-}
-
-function sanitizeServerMarkdownAttachmentResult(
-	serverWorkspaceRoot: string,
-	context: RuntimeRequestContext,
-	result: MarkdownSaveAttachmentsResponse,
-): MarkdownSaveAttachmentsResponse {
-	if (!result.success || !result.attachments?.length) return result;
-	const sandboxRoot = workspaceSandboxRoot(serverWorkspaceRoot, context);
-	if (
-		result.attachments.every((attachment) =>
-			isPathInside(attachment.absolutePath, sandboxRoot),
-		)
-	) {
-		return result;
-	}
-	return {
-		success: false,
-		error: "Markdown attachments must stay inside the workspace sandbox root.",
-		code: "WORKSPACE_PATH",
-	};
-}
-
 function getServerProjectDirsStoreForContext(
 	stores: Map<string, ServerProjectDirsStore>,
 	dataRoot: string,
@@ -7527,37 +7091,6 @@ function emptyWorkspaceFileList(error: string): {
 		entries: [],
 		error,
 	};
-}
-
-function canRevokePermissionGrant(
-	grantId: string,
-	sessions: readonly SessionWorkspaceRef[],
-	serverWorkspaceRoot: string,
-	context: RuntimeRequestContext,
-): boolean {
-	const workspaceRoots = new Set<string>([
-		workspaceSandboxRoot(serverWorkspaceRoot, context),
-	]);
-	for (const session of sessions) {
-		if (listSessionGrants(session.id).some((grant) => grant.id === grantId))
-			return true;
-		workspaceRoots.add(
-			workspaceSandboxRootForSession(serverWorkspaceRoot, session),
-		);
-		if (session.workingDirectory) workspaceRoots.add(session.workingDirectory);
-	}
-
-	const owner = { userId: context.userId, workspaceId: context.workspaceId };
-	for (const workspaceRoot of workspaceRoots) {
-		if (
-			listWorkspaceGrants(workspaceRoot, owner).some(
-				(grant: PermissionGrant) => grant.id === grantId,
-			)
-		) {
-			return true;
-		}
-	}
-	return false;
 }
 
 function readPermissionTrackingEvent(event: unknown): {
@@ -7773,15 +7306,39 @@ function applyVariablesSnapshotToSession(
 	session.variables = variables;
 }
 
+/**
+ * `<workspaceRoot>/<uid>/<wid>` —— per-owner 沙箱根。
+ *
+ * 主线 T 批 3：公式本身搬到了 `@onething/app/rpc/sandbox`(域 handler 与宿主
+ * 适配器都要用它),这里改成委托,免得同一条路径规则在仓库里有两份。
+ */
 function workspaceSandboxRoot(
 	workspaceRoot: string,
 	context = defaultRequestContext(),
 ): string {
-	return join(
-		workspaceRoot,
-		safePathSegment(context.userId),
-		safePathSegment(context.workspaceId),
-	);
+	return ownerSandboxRoot(workspaceRoot, context.userId, context.workspaceId);
+}
+
+/**
+ * 已认证身份 → 通用 RPC 通道的 dispatch context（主线 T 批 3）。
+ *
+ * 住在 runtime 而不是 http.ts,是因为「owner 的沙箱根长什么样」本来就是这个
+ * 文件的知识;http.ts 只负责在鉴权之后把它取出来交给 `dispatchRpc`。
+ * 全部字段来自 `RuntimeRequestContext` —— 那是 bearer 门放行之后的身份头,
+ * 与 RPC 信封(客户端可控)零关系。
+ */
+export function createServerRpcDispatchContext(
+	workspaceRoot: string | undefined,
+	context: RuntimeRequestContext,
+): RpcDispatchContext {
+	return {
+		transport: "http",
+		ownerUid: context.userId,
+		workspaceId: context.workspaceId,
+		sandboxRoot: workspaceRoot
+			? workspaceSandboxRoot(workspaceRoot, context)
+			: undefined,
+	};
 }
 
 function workspaceSandboxRootForSession(

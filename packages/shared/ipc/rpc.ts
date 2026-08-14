@@ -23,6 +23,53 @@ export interface RpcRequest {
 	payload: unknown;
 }
 
+/**
+ * Who is asking — the second argument of `dispatchRpc`, **not a field of
+ * `RpcRequest`** (主线 T 批 3).
+ *
+ * This is the whole security design of the generic channel. The envelope
+ * crosses the wire and is therefore attacker-controlled on a networked host;
+ * the context never does. It is minted by the shell adapter *after* that
+ * shell's own authentication ran — `@main` mints `{ transport: 'ipc' }`
+ * unconditionally (desktop is the user's own machine), `apps/server` mints it
+ * from the already-authenticated `RuntimeRequestContext`. A client that puts a
+ * `context` key in its JSON body is simply ignored: there is no such field to
+ * put it in.
+ *
+ * 批 1 的「不可迁清单」第 2 类（`markdown` / `permission-grants` / `files` /
+ * `project-dirs` / `spaces`）成因就是这个信封原本不带 context —— 域一迁走,
+ * server 侧那些 owner-scoped / sandbox-scoped 的护栏就没有输入了。
+ */
+export interface RpcDispatchContext {
+	/** Which shell adapter minted this context. */
+	transport: "ipc" | "http";
+	/**
+	 * Authenticated owner id. Undefined on desktop (single local user; a
+	 * handler that needs an owner label uses its own local default).
+	 */
+	ownerUid?: string;
+	/** Authenticated workspace id. Undefined on desktop, same reason. */
+	workspaceId?: string;
+	/**
+	 * Absolute path this request's filesystem reach must stay inside.
+	 *
+	 * Undefined means "unconfined" and is only legal together with
+	 * `transport: 'ipc'` — an `'http'` context without a sandbox root is a
+	 * host wiring bug, and the app-layer guard denies rather than falls back
+	 * to unconfined (fail-closed; see `resolveRpcSandbox`).
+	 */
+	sandboxRoot?: string;
+}
+
+/**
+ * The desktop/in-process context. Exported as a constant so the one place that
+ * grants unconfined filesystem reach is greppable, and so tests and the
+ * `@main` adapter cannot drift apart on what "desktop" means.
+ */
+export const DESKTOP_RPC_CONTEXT: RpcDispatchContext = Object.freeze({
+	transport: "ipc",
+});
+
 export interface RpcError {
 	message: string;
 	code?: string;

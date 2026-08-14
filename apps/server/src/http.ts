@@ -13,7 +13,8 @@ import type { ProxySettings } from '@shared/ipc/settings.js'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
 import { SessionStreamCoalescer } from '@onething/app/events/stream-coalescer.js'
 import { dispatchRpc } from '@onething/app/rpc/registry.js'
-import { RPC_ERROR_CODES, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
+import { RPC_ERROR_CODES, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
+import { createServerRpcDispatchContext } from './runtime.js'
 
 export type OnethingServerRequestHandler = (
   request: IncomingMessage,
@@ -33,6 +34,12 @@ export interface OnethingHttpServerOptions {
    * spoofing headers.
    */
   authToken?: string
+  /**
+   * Root under which each owner's workspace sandbox lives. Required by the
+   * sandbox-scoped RPC domains (主线 T 批 3); without it the app-layer guard
+   * refuses those calls rather than running unconfined.
+   */
+  workspaceRoot?: string
 }
 
 interface RouteContext {
@@ -42,6 +49,8 @@ interface RouteContext {
   runtime: OnethingRuntimeFacade
   corsOrigin?: string
   requestContext: RuntimeRequestContext
+  /** Derived from `requestContext` (bearer-gated headers), never the body. */
+  rpcContext: RpcDispatchContext
 }
 
 type RouteHandler = (context: RouteContext) => Promise<void> | void
@@ -61,13 +70,15 @@ export function createOnethingServerRequestHandler(
         return
       }
     }
+    const requestContext = getRuntimeRequestContext(request, options)
     void handleRequest({
       request,
       response,
       url: getRequestUrl(request),
       runtime: options.runtime,
       corsOrigin: options.corsOrigin,
-      requestContext: getRuntimeRequestContext(request, options),
+      requestContext,
+      rpcContext: createServerRpcDispatchContext(options.workspaceRoot, requestContext),
     }).catch(error => {
       sendJson(response, 500, {
         success: false,
@@ -196,8 +207,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/files/rename') return handleRenamePath
   if (method === 'POST' && pathname === '/api/files/delete') return handleDeletePath
   if (method === 'POST' && pathname === '/api/files/reveal') return handleRevealPath
-  if (method === 'POST' && pathname === '/api/markdown/resolve-asset') return handleResolveMarkdownAsset
-  if (method === 'POST' && pathname === '/api/markdown/save-attachments') return handleSaveMarkdownAttachments
   if (method === 'POST' && pathname === '/api/variables/list') return handleListVariables
   if (method === 'POST' && pathname === '/api/variables/set') return handleSetVariable
   if (method === 'POST' && pathname === '/api/variables/delete') return handleDeleteVariable
@@ -238,10 +247,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'GET' && pathname === '/api/events') return handleEvents
   if (method === 'POST' && pathname === '/api/streams/abort') return handleAbortStream
   if (method === 'GET' && pathname === '/api/streams/active') return handleGetActiveStreams
-  if (method === 'POST' && pathname === '/api/permission-grants/list') return handleListPermissionGrants
-  if (method === 'POST' && pathname === '/api/permission-grants/revoke') return handleRevokePermissionGrant
-  if (method === 'POST' && pathname === '/api/permission-grants/session/clear') return handleClearSessionPermissionGrants
-  if (method === 'POST' && pathname === '/api/permission-grants/workspace/clear') return handleClearWorkspacePermissionGrants
 
   const sessionPermissionMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/permissions\/([^/]+)$/)
   if (sessionPermissionMatch) {
@@ -502,18 +507,6 @@ async function handleRevealPath(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await adapter.revealPath(body?.path ?? '', context.requestContext), context.corsOrigin)
 }
 
-async function handleResolveMarkdownAsset(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.markdown
-  if (!adapter?.resolveAsset) return sendNotImplemented(context, 'markdown.resolveAsset')
-  sendJson(context.response, 200, await adapter.resolveAsset(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleSaveMarkdownAttachments(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.markdown
-  if (!adapter?.saveAttachments) return sendNotImplemented(context, 'markdown.saveAttachments')
-  sendJson(context.response, 200, await adapter.saveAttachments(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
 async function handleListVariables(context: RouteContext): Promise<void> {
   const adapter = context.runtime.variables
   if (!adapter) return sendNotImplemented(context, 'variables.list')
@@ -587,7 +580,7 @@ async function handleRpc(context: RouteContext): Promise<void> {
     } satisfies RpcResponse, context.corsOrigin)
     return
   }
-  sendJson(context.response, 200, await dispatchRpc(request), context.corsOrigin)
+  sendJson(context.response, 200, await dispatchRpc(request, context.rpcContext), context.corsOrigin)
 }
 
 async function handleUpdateSessionPin(context: RouteContext): Promise<void> {
@@ -1679,33 +1672,6 @@ async function handleClearSessionPermissions(context: RouteContext): Promise<voi
   const adapter = context.runtime.permissions
   if (!adapter?.clearSession) return sendNotImplemented(context, 'permissions.clearSession')
   sendJson(context.response, 200, await adapter.clearSession(readSessionId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleListPermissionGrants(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.permissions
-  if (!adapter?.listGrants) return sendNotImplemented(context, 'permissions.listGrants')
-  sendJson(context.response, 200, await adapter.listGrants(await readJson(context.request) ?? {}, context.requestContext), context.corsOrigin)
-}
-
-async function handleRevokePermissionGrant(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.permissions
-  if (!adapter?.revokeGrant) return sendNotImplemented(context, 'permissions.revokeGrant')
-  const body = await readJson<{ id?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.revokeGrant(body?.id || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleClearSessionPermissionGrants(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.permissions
-  if (!adapter?.clearSessionGrants) return sendNotImplemented(context, 'permissions.clearSessionGrants')
-  const body = await readJson<{ sessionId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.clearSessionGrants(body?.sessionId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleClearWorkspacePermissionGrants(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.permissions
-  if (!adapter?.clearWorkspaceGrants) return sendNotImplemented(context, 'permissions.clearWorkspaceGrants')
-  const body = await readJson<{ workspaceRoot?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.clearWorkspaceGrants(body?.workspaceRoot || '', context.requestContext), context.corsOrigin)
 }
 
 async function handleAbortStream(context: RouteContext): Promise<void> {

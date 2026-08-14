@@ -73,6 +73,7 @@ import { Markdown } from 'tiptap-markdown'
 import DragHandle from '@tiptap/extension-drag-handle-vue-3'
 import { GripVertical } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
+import { markdownApi } from '@/platform/markdown-client'
 import type { FloatingZLayer } from '@/composables/floating/useFloatingLayer'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import type { MarkdownDocumentSurface, MarkdownFeatureSet } from '../markdown-document'
@@ -192,7 +193,7 @@ function attachWidthGrip(dom: HTMLElement): void {
 async function resolveImageSrc(rawSrc: string): Promise<string | null> {
   if (/^(?:https?:|data:)/i.test(rawSrc)) return rawSrc
   if (!props.documentPath) return null
-  const response = await platformApi.resolveMarkdownAsset({
+  const response = await markdownApi.resolveAsset({
     documentPath: props.documentPath,
     workspaceRoot: props.workspaceRoot,
     rawTarget: rawSrc,

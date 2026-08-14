@@ -1919,11 +1919,6 @@ const MAIN_MARKDOWN_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
   /Failed to save Markdown attachments/,
 ]
 
-const MAIN_MARKDOWN_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-]
-
 const MAIN_THEMES_IPC_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]electron['"]/,
   /ipcMain\.handle/,
@@ -5277,56 +5272,125 @@ function checkElectronHostOwnsSchedulerIpcHost(): void {
   assertNoMatches('apps/electron owns Electron scheduler IPC host operations', lines)
 }
 
-function checkElectronHostOwnsMarkdownIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronMarkdownFile = path.join(root, 'apps/electron/src/ipc/markdown.ts')
-  const mainMarkdownFile = path.join(root, 'apps/electron/src/main/ipc/markdown.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronMarkdownContent = fs.existsSync(electronMarkdownFile) ? fs.readFileSync(electronMarkdownFile, 'utf-8') : ''
-  const mainMarkdownContent = fs.existsSync(mainMarkdownFile) ? fs.readFileSync(mainMarkdownFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronMarkdownIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronMarkdownResolveAssetRequest',
-    'ElectronMarkdownSaveAttachmentsRequest',
+function checkMarkdownDomainRidesTheRpcChannel(): void {
+  // 主线 T 批 3：markdown 整只迁到通用 RPC 通道。守的还是同一件事 ——
+  // 适配器不许把 runtime 拥有的那套流程再抄一遍 —— 只是适配器换了地址：
+  // 从 `@main/ipc/markdown.ts` 变成 `app/rpc/domains/markdown.ts`。
+  const retiredFiles = [
+    'apps/electron/src/ipc/markdown.ts',
+    'apps/electron/src/main/ipc/markdown.ts',
   ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/markdown',
-    'registerElectronMarkdownIpcHandlers',
-    'IPC_CHANNELS.MARKDOWN_RESOLVE_ASSET',
-    'IPC_CHANNELS.MARKDOWN_SAVE_ATTACHMENTS',
+  const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
+  const routerFile = path.join(root, 'packages/shared/ipc/markdown.ts')
+  const domainFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/markdown.ts')
+  const guardFile = path.join(root, 'packages/onething-runtime/src/app/markdown/asset-service.ts')
+  const registryIndexFile = path.join(root, 'packages/onething-runtime/src/app/rpc/index.ts')
+  const serverRuntimeFile = path.join(root, 'apps/server/src/runtime.ts')
+  const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
+  const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
+  const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
+  const guardContent = fs.existsSync(guardFile) ? fs.readFileSync(guardFile, 'utf-8') : ''
+  const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
+  const serverRuntimeContent = fs.existsSync(serverRuntimeFile) ? fs.readFileSync(serverRuntimeFile, 'utf-8') : ''
+  const requiredDomainSymbols = [
+    'markdownRouter',
+    'registerRouterHandlers',
+    'resolveRpcSandbox',
+    'prepareMarkdownRequest',
+    'clampResolvedAsset',
+    'clampSavedAttachments',
     'resolveOnethingMarkdownAssetForIpc',
     'saveOnethingMarkdownAttachmentsForIpc',
-    'resolveMarkdownAsset',
-    'saveMarkdownAttachments',
+  ]
+  // 沙箱护栏必须留在 app 层：这几条是从 apps/server 搬过来的,搬丢了就等于
+  // 迁移把安全护栏一起迁没了 —— 批 1 退回这个域正是为了避免这件事。
+  const requiredGuardSymbols = [
+    'isTargetInsideSandbox',
+    'isObsidianConfigInsideSandbox',
+    'clampAttachmentDirectory',
   ]
   const lines = [
-    ...(!packageContent.includes('./ipc/markdown')
-      ? [`${rel(electronPackage)}: missing markdown IPC host export`]
+    ...retiredFiles
+      .filter(file => fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: retired markdown IPC line is back — the domain rides rpc:invoke now`),
+    ...(/\bMARKDOWN_(RESOLVE_ASSET|SAVE_ATTACHMENTS)\b/.test(channelsContent)
+      ? ['packages/shared/ipc/channels.ts: a hand-written markdown channel constant is back']
       : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronMarkdownContent.includes(symbol))
-      .map(symbol => `${rel(electronMarkdownFile)}: missing Electron markdown IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainMarkdownContent.includes(symbol))
-      .map(symbol => `${rel(mainMarkdownFile)}: missing markdown IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/markdown')
-      ? [`${rel(viteConfig)}: missing electron markdown IPC package alias`]
+    ...(!routerContent.includes("defineRouter<MarkdownRoutes>('markdown'")
+      ? [`${rel(routerFile)}: missing markdownRouter definition`]
       : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/markdown')
-      ? [`${rel(vitestConfig)}: missing electron markdown IPC test alias`]
+    ...(!fs.existsSync(domainFile)
+      ? [`${rel(domainFile)}: missing markdown RPC domain`]
       : []),
-    ...(fs.existsSync(mainMarkdownFile)
-      ? matchingLines(mainMarkdownFile, MAIN_MARKDOWN_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/markdown.ts: missing markdown IPC adapter']),
+    ...requiredDomainSymbols
+      .filter(symbol => !domainContent.includes(symbol))
+      .map(symbol => `${rel(domainFile)}: missing markdown RPC domain symbol ${symbol}`),
+    ...requiredGuardSymbols
+      .filter(symbol => !guardContent.includes(symbol))
+      .map(symbol => `${rel(guardFile)}: missing markdown workspace sandbox guard ${symbol}`),
+    ...(!registryIndexContent.includes('markdownRpcHandlers')
+      ? [`${rel(registryIndexFile)}: markdown domain is not listed in the RPC assembly point`]
+      : []),
+    ...(/prepareServerMarkdownRequest|sanitizeServerMarkdownAsset/.test(serverRuntimeContent)
+      ? [`${rel(serverRuntimeFile)}: the server-side markdown sandbox helper is back — the guard lives in @onething/app now`]
+      : []),
   ]
 
-  assertNoMatches('apps/electron owns Electron markdown IPC host operations', lines)
+  assertNoMatches('markdown domain rides the generic RPC channel', lines)
+}
+
+function checkPermissionGrantsDomainRidesTheRpcChannel(): void {
+  // 主线 T 批 3：授权账页四条迁到通用 RPC 通道；`@main/ipc/permission.ts`
+  // **不退役**,它还留着运行中权限询问那两条,所以这里守的是「四条别回来」
+  // 而不是「文件别回来」。
+  const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
+  const routerFile = path.join(root, 'packages/shared/ipc/permission-grants.ts')
+  const domainFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/permission-grants.ts')
+  const registryIndexFile = path.join(root, 'packages/onething-runtime/src/app/rpc/index.ts')
+  const mainPermissionFile = path.join(root, 'apps/electron/src/main/ipc/permission.ts')
+  const serverRuntimeFile = path.join(root, 'apps/server/src/runtime.ts')
+  const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
+  const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
+  const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
+  const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
+  const mainPermissionContent = fs.existsSync(mainPermissionFile) ? fs.readFileSync(mainPermissionFile, 'utf-8') : ''
+  const serverRuntimeContent = fs.existsSync(serverRuntimeFile) ? fs.readFileSync(serverRuntimeFile, 'utf-8') : ''
+  const requiredDomainSymbols = [
+    'permissionGrantsRouter',
+    'registerRouterHandlers',
+    'resolveRpcSandbox',
+    'listOnethingPermissionGrantsForIpc',
+    'revokeOnethingPermissionGrantForIpc',
+    'clearOnethingSessionPermissionGrantsForIpc',
+    'clearOnethingWorkspacePermissionGrantsForIpc',
+  ]
+  const lines = [
+    ...(/\bPERMISSION_(LIST_GRANTS|REVOKE_GRANT|CLEAR_SESSION_GRANTS|CLEAR_WORKSPACE_GRANTS)\b/.test(channelsContent)
+      ? ['packages/shared/ipc/channels.ts: a hand-written permission grant channel constant is back']
+      : []),
+    ...(/listGrants|revokeGrant|clearSessionGrants|clearWorkspaceGrants/.test(mainPermissionContent)
+      ? [`${rel(mainPermissionFile)}: a permission grant handler is back in @main — the domain rides rpc:invoke now`]
+      : []),
+    ...(!routerContent.includes("defineRouter<PermissionGrantsRoutes>('permissionGrants'")
+      ? [`${rel(routerFile)}: missing permissionGrantsRouter definition`]
+      : []),
+    ...(!fs.existsSync(domainFile)
+      ? [`${rel(domainFile)}: missing permissionGrants RPC domain`]
+      : []),
+    ...requiredDomainSymbols
+      .filter(symbol => !domainContent.includes(symbol))
+      .map(symbol => `${rel(domainFile)}: missing permissionGrants RPC domain symbol ${symbol}`),
+    ...(!registryIndexContent.includes('permissionGrantsRpcHandlers')
+      ? [`${rel(registryIndexFile)}: permissionGrants domain is not listed in the RPC assembly point`]
+      : []),
+    // `resolveServerWorkspaceGrantRoot` 故意不列:它还在给 skills 用(skills 未迁,
+    // 见「不可迁清单」)。只守授权归属那一个 —— 它没有第二个消费者。
+    ...(/canRevokePermissionGrant/.test(serverRuntimeContent)
+      ? [`${rel(serverRuntimeFile)}: the server-side grant ownership helper is back — the guard lives in @onething/app now`]
+      : []),
+  ]
+
+  assertNoMatches('permissionGrants domain rides the generic RPC channel', lines)
 }
 
 function checkElectronHostOwnsPermissionIpcHost(): void {
@@ -5345,26 +5409,14 @@ function checkElectronHostOwnsPermissionIpcHost(): void {
     'options.ipcMain ?? ipcMain',
     'host.handle',
     'ElectronPermissionSessionId',
-    'ElectronPermissionListGrantsRequest',
-    'ElectronPermissionRevokeGrantRequest',
-    'ElectronPermissionClearSessionGrantsRequest',
-    'ElectronPermissionClearWorkspaceGrantsRequest',
   ]
   const requiredFacadeSymbols = [
     '@onething/electron-host/ipc/permission',
     'registerElectronPermissionIpcHandlers',
     'IPC_CHANNELS.PERMISSION_GET_PENDING',
     'IPC_CHANNELS.PERMISSION_CLEAR_SESSION',
-    'IPC_CHANNELS.PERMISSION_LIST_GRANTS',
-    'IPC_CHANNELS.PERMISSION_REVOKE_GRANT',
-    'IPC_CHANNELS.PERMISSION_CLEAR_SESSION_GRANTS',
-    'IPC_CHANNELS.PERMISSION_CLEAR_WORKSPACE_GRANTS',
     'getOnethingPendingPermissionsForIpc',
     'clearOnethingPermissionSessionForIpc',
-    'listOnethingPermissionGrantsForIpc',
-    'revokeOnethingPermissionGrantForIpc',
-    'clearOnethingSessionPermissionGrantsForIpc',
-    'clearOnethingWorkspacePermissionGrantsForIpc',
   ]
   const lines = [
     ...(!packageContent.includes('./ipc/permission')
@@ -10895,7 +10947,8 @@ checkElectronHostOwnsProjectDirsIpcHost()
 checkElectronHostOwnsAgentsIpcHost()
 checkPromptsDomainRidesTheRpcChannel()
 checkElectronHostOwnsSchedulerIpcHost()
-checkElectronHostOwnsMarkdownIpcHost()
+checkMarkdownDomainRidesTheRpcChannel()
+checkPermissionGrantsDomainRidesTheRpcChannel()
 checkElectronHostOwnsPermissionIpcHost()
 checkElectronHostOwnsPluginsIpcHost()
 checkElectronHostOwnsThemesIpcHost()

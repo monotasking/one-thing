@@ -27,6 +27,8 @@ const EXPECTED_FEATURES = [
   ['rpc:agents', 'agents'],
   ['rpc:providers', 'providers'],
   ['rpc:models', 'models'],
+  ['rpc:markdown', 'markdown'],
+  ['rpc:permission-grants', 'permissionGrants'],
 ] as const
 
 describe('builtin RPC domains as features', () => {

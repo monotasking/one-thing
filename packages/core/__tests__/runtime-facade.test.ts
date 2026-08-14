@@ -77,9 +77,6 @@ describe('createOnethingRuntimeFacade', () => {
           return unsubscribe
         }),
       },
-      markdown: {
-        resolveAsset: vi.fn(async request => ({ success: true, request })),
-      },
       projectDirs: {
         list: vi.fn(async () => ({ success: true, entries: [] })),
       },
@@ -227,10 +224,6 @@ describe('createOnethingRuntimeFacade', () => {
       eventType: 'change',
     })
     offWorkspace?.()
-    await expect(runtime.markdown?.resolveAsset?.({ rawTarget: 'image.png' })).resolves.toEqual({
-      success: true,
-      request: { rawTarget: 'image.png' },
-    })
     await expect(runtime.projectDirs?.list?.()).resolves.toEqual({ success: true, entries: [] })
     await expect(runtime.variables?.list({ sessionId: 'session-1' })).resolves.toEqual({
       success: true,
@@ -368,7 +361,6 @@ describe('createOnethingRuntimeFacade', () => {
     expect(runtime.search).toBeUndefined()
     expect(runtime.streams).toBeUndefined()
     expect(runtime.files).toBeUndefined()
-    expect(runtime.markdown).toBeUndefined()
     expect(runtime.projectDirs).toBeUndefined()
     expect(runtime.variables).toBeUndefined()
     expect(runtime.media).toBeUndefined()

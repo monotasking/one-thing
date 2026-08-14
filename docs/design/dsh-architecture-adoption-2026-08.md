@@ -114,6 +114,41 @@
   - `skills`（6 方法）——server 有 `"Skill path must stay inside the owner skills root"` 这条明确的归属校验 + `ensureServerSkillsDirectories` 的 per-owner 根目录。第 2 类（迁了会掉安全护栏）。
   - `acp`（8 方法）——server 上是刻意的桩（`ServerACPManager` 永远返回 disconnected）；迁过去会让 server 拿到真 `ACPManager`，即**凭一条 HTTP 请求在服务器上拉起外部 agent 子进程**。这不是传输面该顺手做的决定。
   - `mcp`（16 方法）——server 有自己的 `HeadlessMCPManager` + `mcp-client.ts`，与 desktop 的 `MCPManager` 是两套生命周期。同 acp，归第 3 类。
+
+  **第三批：RPC 调用上下文 + 安全域迁移【✅ 已落地 2026-08-14，未提交】**。批 1 那句「最贵的发现」——不可迁清单第 2 类的成因是**通用信封不带 request context**——本批把成因本身修掉。
+
+  **context 不进 wire，是 dispatch 的第二参数**。`RpcDispatchContext`（`packages/shared/ipc/rpc.ts`）由**宿主适配器**铸造，`dispatchRpc(request, context)` 第二参传入，`RouteHandlers<T, Ctx>` 第二参可选接收。信封上**根本没有这个字段**，所以客户端塞不进来（`http.test.ts` 有一条专门的 spoof 断言：请求体里带 `context` 也不影响 handler 收到的那份）。三条设计约束：
+  - 既有九个域的 handler **一个字没改** —— 第二参可选，不声明即忽略；
+  - 缺省值是 `DESKTOP_RPC_CONTEXT`（`{transport:'ipc'}`），因为唯一会不带 context 到达 handler 的调用方是**进程内**调用（测试、装配层自己），那本来就是桌面语义；
+  - 危险方向 fail-closed：`transport:'http'` 却没有 `sandboxRoot` = 宿主接线漏了，`resolveRpcSandbox` **抛错拒绝**，绝不退回「不夹」。
+
+  | 字段 | 消费者（证据） |
+  | --- | --- |
+  | `transport` | `app/rpc/sandbox.ts:resolveRpcSandbox` —— `'ipc'` 走未夹紧分支；`'http'` 且缺 `sandboxRoot` 时拒绝。是「未夹紧」与「宿主漏接线」两种 undefined 的唯一判据。 |
+  | `sandboxRoot` | `markdown` 域（documentPath / workspaceRoot / rawTarget / Obsidian 配置四处夹紧 + 解析结果与落盘附件两处出口夹紧）；`permissionGrants` 域（`list`/`clearWorkspace` 的 workspaceRoot 夹紧、`revoke` 的候选根集合）。 |
+  | `ownerUid` / `workspaceId` | `permissionGrants` 域：`grantOwner()` 在夹紧宿主上用它**覆盖请求体里的同名字段**（迁移前 server 也是这么做的，只是那时规则写在 `runtime.ts` 里）；`listOwnedSessions()` 用它过滤会话归属。 |
+
+  没有第四个字段：`roles` / `authToken` / `origin`（`RuntimeRequestContext` 有的）本批**零消费者，一律不加** —— 只长原语不长洞。
+
+  **迁了两个域**（整只迁、无双轨，客户端照 E1 判例搭在壳外，四壳只减不增）：
+  - `markdown`（2 方法）——server 那套 `prepareServerMarkdownRequest` / `sanitizeServerMarkdownAsset` / `isServerMarkdownTargetSafe` / `isServerMarkdownObsidianConfigSafe` / `sanitizeServerMarkdownEditorSettings` 共 9 个 helper 整体搬进 `app/markdown/asset-service.ts`，两个宿主共用一份。一处**必须搬对**的细节：夹紧时 `getNoteRoots()` 返回 `[]` —— 笔记根来自变量系统与接入目录，是**宿主机器上的用户数据**，逐条夹的结果必然是空集，这与迁移前 server 的 `createServerMarkdownAdapters` 逐字同义。
+  - `permissionGrants`（4 方法）——`canRevokePermissionGrant` 的归属校验搬进域 handler。**注意这个域当前零 UI 消费者**（渲染层搜不到一处调用点，只有 `types/index.ts` 声明与 `web.ts` 桩测试）；迁它不是为了改 UI，是为了收掉 4 条通道 + 4 条 HTTP 路由 + 2 个 server helper，并让能力保持可达。
+
+  **一处有意的收紧**（写进代码注释以免日后被当 bug）：旧 `canRevokePermissionGrant` 会把「未盖章会话」的默认 owner 沙箱根也放进候选集合 —— 非默认 owner 只要持有一个未盖章会话就能撤掉默认 owner 的工作区 grant。新实现的候选根 = 本 owner 沙箱根 ∪ 自己会话的 `workingDirectory`。单用户 server（唯一生产形态）下 context 即默认 owner，行为一字不变；多 owner 下这是修洞。
+
+  **skills 读完代码后回退，进不可迁清单**（批 2 已列，本批补上更硬的理由——不是「有归属校验」这么简单，而是**无法用 context 等价补偿**）：
+  1. `skills:add-directory` 收一个**任意绝对路径**当技能根，`validateSkillDirectoryPath`（`@main/ipc/skills.ts:206`）只查「绝对 + 存在 + 是目录」，**没有任何 containment**。迁到通用通道 = 一条 HTTP 请求就能把服务器上任意目录变成技能根，`skills:read-file` 随即可读其下文件。server 今天**根本没有 addDirectory 路由**，这是凭空开的洞。
+  2. 夹紧它又会改变可观察行为：桌面上用户配的绝对路径自定义目录在 server 上会被静默丢弃——而这些是**用户数据，不是请求输入**，context 补不出来。
+  3. `getUserSkillsPath()` 是 `<store>/skills` 这个**单一全局根**，不是 per-owner；迁移会把 server 的技能库从 `<dataRoot>/owners/<uid>/<wid>/skills` 挪成所有 owner 共享一份。
+  4. `skills:open-directory` 是宿主原生（`shell.openPath`），server 明确答「web server runtime 不支持」——这条要么补 host port（照 `canRevealTodoPlanDirectory` 判例），要么就不是纯数据面。
+  结论：**skills 要迁得先给它一个技能根的归属模型**，那是 skills 自己的设计题，不是传输面顺手能做的决定。
+
+  棘轮改造：`checkElectronHostOwnsMarkdownIpcHost` → 反向检查 `checkMarkdownDomainRidesTheRpcChannel`（旧文件复活 / 常量回来 / router 或域 handler 缺失 / **沙箱守卫符号丢失** / server 侧 helper 复活，任一即红——第四条是本批新增的形状：迁移最大的风险是「搬的时候把护栏搬丢了」，所以守卫符号本身进检查表）；新增 `checkPermissionGrantsDomainRidesTheRpcChannel`（`@main/ipc/permission.ts` **不退役**，它还留着运行中权限询问那两条，所以守的是「四条别回来」而不是「文件别回来」）；`checkElectronHostOwnsPermissionIpcHost` 削到只认剩下的两条。`resolveServerWorkspaceGrantRoot` 故意不列进禁词——skills 还在用它。
+
+  两条端到端 HTTP 断言（`http.test.ts` 的 markdown 沙箱与授权账页）**改走 `POST /api/rpc` 而不是删掉**，断言一条没减，含跨 owner 隔离（bob 拿不到 alice 的文档 / 会话 grant）。授权账页那条顺手改成 `sessionStore: createAppBackedServerSessionStore()` —— 归属校验读的是 app 会话库，echo backend 那份独立内存库会让「同一个 server 两本账」在测试里假绿。新增单测：`app/rpc/__tests__/markdown-sandbox.test.ts`（7 条，`../` / 绝对路径 / `~` / `file:` / wiki 链接 / vault 配置 / fail-closed，desktop 与 http 两种 context 各打一遍）、`app/rpc/__tests__/permission-grants-domain.test.ts`（9 条）。
+
+  指标：IPC_CHANNELS 343 → 337（−6），四壳 6057 → 5979 行（−78）。累计（T1 前 → 现在）：379 → 337（−42），6638 → 5979（−659）。基线已 `--write-baseline` 收紧。
+
 - **T2 事件下行统一**：非会话域的零散事件推送收敛到 EventBus + **单一 allowlist 文件**（对齐 dsh `remote-events.ts`："加一个事件 = 这里一行"）。IPCBridge 与 SSE 共用同一份转发表。
   验收门：allowlist 之外无 `webContents.send` / SSE 手写事件（脚本扫描）。
 - **T3 收尾蒸发**：`channels.ts` 只剩少数真特殊通道（流式/二进制/窗口管理），`bridge.ts` 收敛为 router 循环 + 特例区，`web.ts`、`http.ts` 同理。

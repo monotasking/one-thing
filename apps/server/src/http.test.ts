@@ -8,6 +8,8 @@ import { createOnethingRuntimeFacade } from '@onething/core'
 import { defineRouter } from '@onething/core/ipc'
 import type { CorePluginCommandContext } from '@onething/core/plugins'
 import { registerRouterHandlers, resetRpcRegistryForTests } from '@onething/app/rpc/registry.js'
+import { registerMarkdownRpcDomain } from '@onething/app/rpc/domains/markdown.js'
+import { registerPermissionGrantsRpcDomain } from '@onething/app/rpc/domains/permission-grants.js'
 import { resetPermissionGrantsForTests } from '@onething/core/permission'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import type { MCPServerConfig, MCPServerState } from '@shared/ipc/mcp.js'
@@ -15,6 +17,7 @@ import type { AppSettings } from '@shared/ipc/settings.js'
 import { createOnethingHttpServer } from './http.js'
 import {
   SERVER_REDACTED_SECRET,
+  createAppBackedServerSessionStore,
   mergeServerSettingsUpdate,
   sanitizeSettingsForClient,
   type OnethingServerRuntime,
@@ -1746,15 +1749,30 @@ describe('createOnethingHttpServer', () => {
     })
   })
 
-  it('exposes sandboxed Markdown asset routes for the web runtime', async () => {
+  /**
+   * 主线 T 批 3：markdown 迁到通用 RPC 通道，这条端到端断言跟着改走
+   * `POST /api/rpc` —— **断言本身一条没减**。它证的是护栏从 `apps/server`
+   * 搬进 `@onething/app` 之后，经过真实 HTTP 层（含身份头 → dispatch context）
+   * 的行为一字未变，含跨 owner 隔离。
+   */
+  it('serves sandboxed Markdown asset methods over the generic RPC route', async () => {
     const workspaceRoot = await createTempDir('onething-server-markdown-')
     const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
+    // 装配层在 echo backend 下不跑,域要自己挂上(与上面 http-probe 同款)。
+    const disposeDomain = registerMarkdownRpcDomain()
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
+      workspaceRoot: serverRuntime.workspaceRoot,
     }))
     const baseUrlValue = baseUrl(server)
+    const rpc = (headers: Record<string, string>, method: string, payload: unknown) =>
+      fetchJson(`${baseUrlValue}/api/rpc`, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: 'markdown', method, payload }),
+      })
     const aliceHeaders = contextHeaders('alice', 'markdown-workspace')
     const bobHeaders = contextHeaders('bob', 'markdown-workspace')
     const created = await createSession(baseUrlValue, 'Markdown session', aliceHeaders)
@@ -1767,71 +1785,69 @@ describe('createOnethingHttpServer', () => {
     await writeFile(documentPath, '# Readme\n![image](image.png)\n', 'utf8')
     await writeFile(imagePath, Buffer.from('image-bytes'))
 
-    await expect(fetchJson(`${baseUrlValue}/api/markdown/resolve-asset`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        documentPath,
-        workspaceRoot: workspaceDir,
-        rawTarget: 'image.png',
-      }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      asset: expect.objectContaining({
-        kind: 'image',
-        absolutePath: imagePath,
-        fileName: 'image.png',
-        dataUrl: expect.stringMatching(/^data:image\/png;base64,/),
-      }),
-    }))
-
-    await expect(fetchJson(`${baseUrlValue}/api/markdown/save-attachments`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        documentPath,
-        workspaceRoot: workspaceDir,
-        files: [{
-          fileName: 'clip.png',
-          mimeType: 'image/png',
-          base64Data: Buffer.from('clip-bytes').toString('base64'),
-        }],
-      }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      insertText: '![clip](../clip.png)',
-      attachments: [
-        expect.objectContaining({
-          fileName: 'clip.png',
-          absolutePath: join(workspaceDir!, 'clip.png'),
+    await expect(rpc(aliceHeaders, 'resolveAsset', {
+      documentPath,
+      workspaceRoot: workspaceDir,
+      rawTarget: 'image.png',
+    })).resolves.toEqual({
+      ok: true,
+      data: expect.objectContaining({
+        success: true,
+        asset: expect.objectContaining({
+          kind: 'image',
+          absolutePath: imagePath,
+          fileName: 'image.png',
+          dataUrl: expect.stringMatching(/^data:image\/png;base64,/),
         }),
-      ],
-    }))
+      }),
+    })
 
-    await expect(fetchJson(`${baseUrlValue}/api/markdown/resolve-asset`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        documentPath,
-        workspaceRoot: workspaceDir,
-        rawTarget: '../escape.png',
-      }),
+    await expect(rpc(aliceHeaders, 'saveAttachments', {
+      documentPath,
+      workspaceRoot: workspaceDir,
+      files: [{
+        fileName: 'clip.png',
+        mimeType: 'image/png',
+        base64Data: Buffer.from('clip-bytes').toString('base64'),
+      }],
     })).resolves.toEqual({
-      success: false,
-      error: 'Markdown asset target must stay inside the workspace sandbox root.',
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/markdown/resolve-asset`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        documentPath,
-        workspaceRoot: workspaceDir,
-        rawTarget: 'image.png',
+      ok: true,
+      data: expect.objectContaining({
+        success: true,
+        insertText: '![clip](../clip.png)',
+        attachments: [
+          expect.objectContaining({
+            fileName: 'clip.png',
+            absolutePath: join(workspaceDir!, 'clip.png'),
+          }),
+        ],
       }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Markdown document path must stay inside the workspace sandbox root.',
     })
+
+    await expect(rpc(aliceHeaders, 'resolveAsset', {
+      documentPath,
+      workspaceRoot: workspaceDir,
+      rawTarget: '../escape.png',
+    })).resolves.toEqual({
+      ok: true,
+      data: {
+        success: false,
+        error: 'Markdown asset target must stay inside the workspace sandbox root.',
+      },
+    })
+    // 跨 owner:bob 的 dispatch context 指向 bob 的沙箱,alice 的文档在它之外。
+    await expect(rpc(bobHeaders, 'resolveAsset', {
+      documentPath,
+      workspaceRoot: workspaceDir,
+      rawTarget: 'image.png',
+    })).resolves.toEqual({
+      ok: true,
+      data: {
+        success: false,
+        error: 'Markdown document path must stay inside the workspace sandbox root.',
+      },
+    })
+    disposeDomain()
   })
 
   it('exposes owner-scoped variables and emits session variable updates', async () => {
@@ -3571,15 +3587,38 @@ describe('createOnethingHttpServer', () => {
     expect(emptyPending).toEqual({ success: true, pending: [] })
   })
 
-  it('manages owner-scoped permission grants over HTTP', async () => {
+  /**
+   * 主线 T 批 3：授权账页迁到通用 RPC 通道，这条端到端断言跟着改走
+   * `POST /api/rpc`。归属护栏（跨 owner 看不见、越界工作区根被拒）由
+   * `app/rpc/domains/permission-grants.ts` 顶着,不再是 server 自己的
+   * `canRevokePermissionGrant` —— 断言一条没减。
+   */
+  it('manages owner-scoped permission grants over the generic RPC route', async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), 'onething-permissions-'))
     tempDirs.push(dataRoot)
-    const serverRuntime = await createTestServerRuntime({ dataRoot })
+    // 生产形态:HTTP 面与引擎面共用**同一个** app 会话库。归属校验搬进
+    // `@onething/app` 之后它读的就是这一份 —— echo backend 默认那份独立的
+    // 内存库会让「同一个 server 两本账」的老毛病在测试里假绿。
+    const serverRuntime = await createTestServerRuntime({
+      dataRoot,
+      sessionStore: createAppBackedServerSessionStore(),
+    })
     runtimes.push(serverRuntime)
+    const disposeDomain = registerPermissionGrantsRpcDomain()
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
+      workspaceRoot: serverRuntime.workspaceRoot,
     }))
+    const grantsRpc = async (headers: Record<string, string>, method: string, payload: unknown) => {
+      const response = await fetchJson(`${baseUrl(server)}/api/rpc`, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: 'permissionGrants', method, payload }),
+      })
+      expect(response.ok).toBe(true)
+      return response.data
+    }
 
     const aliceHeaders = contextHeaders('alice', 'workspace-grants')
     const bobHeaders = contextHeaders('bob', 'workspace-grants')
@@ -3606,11 +3645,7 @@ describe('createOnethingHttpServer', () => {
       body: JSON.stringify({ decision: 'session' }),
     })
 
-    const listedSessionGrants = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })
+    const listedSessionGrants = await grantsRpc(aliceHeaders, 'list', { sessionId })
     const sessionGrantId = listedSessionGrants.sessionGrants?.[0]?.id
     expect(listedSessionGrants).toEqual(expect.objectContaining({
       success: true,
@@ -3627,18 +3662,11 @@ describe('createOnethingHttpServer', () => {
     }))
     expect(sessionGrantId).toBeTruthy()
 
-    const bobSessionGrants = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })
+    const bobSessionGrants = await grantsRpc(bobHeaders, 'list', { sessionId })
     expect(bobSessionGrants).toEqual({ success: false, error: 'Session not found' })
 
-    await expect(fetchJson(`${baseUrl(server)}/api/permission-grants/revoke`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ id: sessionGrantId }),
-    })).resolves.toEqual({ success: true })
+    await expect(grantsRpc(aliceHeaders, 'revoke', { id: sessionGrantId }))
+      .resolves.toEqual({ success: true })
 
     await (serverRuntime.eventBus as any).emit(sessionId!, {
       type: 'permission:request',
@@ -3657,11 +3685,7 @@ describe('createOnethingHttpServer', () => {
       body: JSON.stringify({ decision: 'workdir' }),
     })
 
-    const listedWorkspaceGrants = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ workspaceRoot }),
-    })
+    const listedWorkspaceGrants = await grantsRpc(aliceHeaders, 'list', { workspaceRoot })
     expect(listedWorkspaceGrants).toEqual(expect.objectContaining({
       success: true,
       sessionGrants: [],
@@ -3676,27 +3700,17 @@ describe('createOnethingHttpServer', () => {
       ],
     }))
 
-    const bobWorkspaceGrants = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ workspaceRoot }),
-    })
+    const bobWorkspaceGrants = await grantsRpc(bobHeaders, 'list', { workspaceRoot })
     expect(bobWorkspaceGrants).toEqual({
       success: false,
       error: 'Workspace root must stay inside the workspace sandbox root.',
     })
 
-    await expect(fetchJson(`${baseUrl(server)}/api/permission-grants/workspace/clear`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ workspaceRoot }),
-    })).resolves.toEqual({ success: true })
+    await expect(grantsRpc(aliceHeaders, 'clearWorkspace', { workspaceRoot }))
+      .resolves.toEqual({ success: true })
 
-    const afterClear = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ workspaceRoot }),
-    })
+    const afterClear = await grantsRpc(aliceHeaders, 'list', { workspaceRoot })
+    disposeDomain()
     expect(afterClear).toEqual({ success: true, sessionGrants: [], workspaceGrants: [] })
   })
 
@@ -3764,6 +3778,7 @@ describe('createOnethingHttpServer', () => {
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
+      workspaceRoot: serverRuntime.workspaceRoot,
     }))
     const rpcUrl = `${baseUrl(server)}/api/rpc`
     const jsonHeaders = {
@@ -3786,7 +3801,29 @@ describe('createOnethingHttpServer', () => {
 
       await expect(post({ domain: 'http-probe', method: 'echo', payload: { value: 'hi' } }))
         .resolves.toEqual({ ok: true, data: { value: 'HI' } })
-      expect(echo).toHaveBeenCalledWith({ value: 'hi' })
+      // 主线 T 批 3：handler 拿到的第二个参数是**宿主铸的** dispatch context，
+      // 不是请求体里的任何东西。这条断言是整个安全设计的落点：owner 来自已过
+      // bearer 门的身份头，sandboxRoot 由 server 自己按 owner 算出来。
+      expect(echo).toHaveBeenCalledWith({ value: 'hi' }, {
+        transport: 'http',
+        ownerUid: 'alice',
+        workspaceId: 'rpc-workspace',
+        sandboxRoot: join(serverRuntime.workspaceRoot, 'alice', 'rpc-workspace'),
+      })
+
+      // 客户端在信封里塞 context 是徒劳的：wire 上没有这个字段。
+      await post({
+        domain: 'http-probe',
+        method: 'echo',
+        payload: { value: 'spoof' },
+        context: { transport: 'ipc', sandboxRoot: '/' },
+      } as unknown as Record<string, unknown>)
+      expect(echo).toHaveBeenLastCalledWith({ value: 'spoof' }, {
+        transport: 'http',
+        ownerUid: 'alice',
+        workspaceId: 'rpc-workspace',
+        sandboxRoot: join(serverRuntime.workspaceRoot, 'alice', 'rpc-workspace'),
+      })
 
       await expect(post({ domain: 'nope', method: 'echo', payload: {} })).resolves.toEqual({
         ok: false,

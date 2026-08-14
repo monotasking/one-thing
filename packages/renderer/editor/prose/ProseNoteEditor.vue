@@ -11,6 +11,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { EditorView } from 'prosemirror-view'
 import { TextSelection, Selection } from 'prosemirror-state'
 import { platformApi } from '@/platform'
+import { markdownApi } from '@/platform/markdown-client'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import type {
   MarkdownCommand,
@@ -63,7 +64,7 @@ let lastSelectionReport: HandleSelection = { from: 0, to: 0 }
 
 async function resolveAsset(rawTarget: string): Promise<MarkdownAssetResolution | null> {
   if (!props.documentPath) return null
-  const response = await platformApi.resolveMarkdownAsset({
+  const response = await markdownApi.resolveAsset({
     documentPath: props.documentPath,
     workspaceRoot: props.workspaceRoot,
     rawTarget,

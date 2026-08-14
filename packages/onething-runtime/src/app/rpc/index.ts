@@ -14,6 +14,8 @@
 import { agentsRouter } from '@shared/ipc/agents.js'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
 import { goalRouter } from '@shared/ipc/goal.js'
+import { markdownRouter } from '@shared/ipc/markdown.js'
+import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { sessionEventsRouter } from '@shared/ipc/session-events.js'
@@ -23,7 +25,9 @@ import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../fe
 import { agentsRpcHandlers } from './domains/agents.js'
 import { channelIdentityRpcHandlers } from './domains/channel-identity.js'
 import { goalRpcHandlers } from './domains/goal.js'
+import { markdownRpcHandlers } from './domains/markdown.js'
 import { modelsRpcHandlers } from './domains/models.js'
+import { permissionGrantsRpcHandlers } from './domains/permission-grants.js'
 import { promptsRpcHandlers } from './domains/prompts.js'
 import { providersRpcHandlers } from './domains/providers.js'
 import { sessionEventsRpcHandlers } from './domains/session-events.js'
@@ -44,6 +48,10 @@ const RPC_FEATURES: FeatureDefinition[] = [
   { id: 'rpc:agents', mount: ctx => { ctx.registerRpcDomain(agentsRouter, agentsRpcHandlers) } },
   { id: 'rpc:providers', mount: ctx => { ctx.registerRpcDomain(providersRouter, providersRpcHandlers) } },
   { id: 'rpc:models', mount: ctx => { ctx.registerRpcDomain(modelsRouter, modelsRpcHandlers) } },
+  // 批 3：两个「带 context 的安全域」。护栏在 handler 里，靠 dispatch context
+  // 的 sandboxRoot / owner 判定，不再由 server 壳自己抄一份。
+  { id: 'rpc:markdown', mount: ctx => { ctx.registerRpcDomain(markdownRouter, markdownRpcHandlers) } },
+  { id: 'rpc:permission-grants', mount: ctx => { ctx.registerRpcDomain(permissionGrantsRouter, permissionGrantsRpcHandlers) } },
 ]
 
 /** Bind every builtin domain. Returns a disposer that unbinds all of them. */

@@ -1,6 +1,7 @@
 import type { MarkdownAttachmentInput } from '@shared/ipc/markdown'
 import type { EditorHandle } from './types'
 import { platformApi } from '@/platform'
+import { markdownApi } from '@/platform/markdown-client'
 import { toast } from '@/composables/useToast'
 
 function clipboardFiles(event: ClipboardEvent): File[] {
@@ -73,7 +74,7 @@ export async function insertMarkdownAttachmentFiles(options: {
   if (!options.editor || !options.documentPath) return false
 
   const attachments = await Promise.all(options.files.map(toAttachmentInput))
-  const response = await platformApi.saveMarkdownAttachments({
+  const response = await markdownApi.saveAttachments({
     documentPath: options.documentPath,
     workspaceRoot: options.workspaceRoot,
     files: attachments,

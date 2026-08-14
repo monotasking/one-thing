@@ -23,8 +23,8 @@
  * import 零副作用：本模块加载时不注册任何东西（见
  * `src/app/__tests__/import-side-effect-free.test.ts`）。
  */
-import type { DomainRoutes, RouteHandlers, Router } from '@onething/core/ipc'
-import { registerRouterHandlers } from '../rpc/registry.js'
+import type { DomainRoutes, Router } from '@onething/core/ipc'
+import { registerRouterHandlers, type RpcRouteHandlers } from '../rpc/registry.js'
 
 /** 解绕一项注册。允许异步：未来的注册面（面板、连接）可能要等 I/O。 */
 export type FeatureDisposer = () => void | Promise<void>
@@ -40,7 +40,7 @@ export interface FeatureContext {
    */
   registerRpcDomain: <T extends DomainRoutes>(
     router: Router<T>,
-    handlers: RouteHandlers<T>,
+    handlers: RpcRouteHandlers<T>,
   ) => FeatureDisposer
 
   /**
@@ -88,7 +88,7 @@ export class FeatureContextImpl implements FeatureContext {
 
   registerRpcDomain<T extends DomainRoutes>(
     router: Router<T>,
-    handlers: RouteHandlers<T>,
+    handlers: RpcRouteHandlers<T>,
   ): FeatureDisposer {
     const unregister = registerRouterHandlers(router, handlers)
     return this.track({ kind: 'rpcDomain', label: router.domain, dispose: unregister })
