@@ -5155,7 +5155,11 @@ function checkAgentsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing agents RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('registerAgentsRpcDomain')
+    // 装配点从「逐域调 registerXRpcDomain()」换成了 feature 描述子
+    // (`{ id: 'rpc:agents', mount: ctx => ctx.registerRpcDomain(...) }`,K0/C0),
+    // 域函数本身还在 domains/agents.ts 里、也还有测试在用,只是 index 不再直接叫它。
+    // 认 handlers 名 —— 和 markdown / permissionGrants 两条同族规则一个口径。
+    ...(!registryIndexContent.includes('agentsRpcHandlers')
       ? [`${rel(registryIndexFile)}: agents domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -5208,7 +5212,7 @@ function checkPromptsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing prompts RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('registerPromptsRpcDomain')
+    ...(!registryIndexContent.includes('promptsRpcHandlers')
       ? [`${rel(registryIndexFile)}: prompts domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -5612,7 +5616,7 @@ function checkProvidersDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing providers RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('registerProvidersRpcDomain')
+    ...(!registryIndexContent.includes('providersRpcHandlers')
       ? [`${rel(registryIndexFile)}: providers domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -5662,7 +5666,7 @@ function checkModelsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing models RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('registerModelsRpcDomain')
+    ...(!registryIndexContent.includes('modelsRpcHandlers')
       ? [`${rel(registryIndexFile)}: models domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -9534,9 +9538,14 @@ function checkRuntimeOwnsMarkdownIpcOperations(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned Markdown IPC operation ${symbol}`),
+    // 缺席现在是**正确**状态,不是缺口:主线 T 批 3 把 markdown 整只迁到通用 RPC 通道,
+    // 这个适配器随之退役 —— checkMarkdownDomainRidesTheRpcChannel 把同一个路径列进
+    // retiredFiles,它**回来**才算红。原来那句 else 要求它必须在,和孪生规则要求它必须
+    // 不在,是两条规则在同一个文件上说反话;谁在跑谁说了算,而两条都在跑。
+    // 文件若真回来了,这里照旧扫禁令模式,双保险不变。
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MARKDOWN_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/markdown.ts: missing Markdown IPC adapter']),
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns Markdown IPC operations', lines)
@@ -10958,7 +10967,7 @@ checkElectronHostOwnsSettingsIpcHost()
 checkElectronHostOwnsAppStateIpcHost()
 checkElectronHostOwnsVariablesIpcHost()
 checkElectronHostOwnsProjectDirsIpcHost()
-checkElectronHostOwnsAgentsIpcHost()
+checkAgentsDomainRidesTheRpcChannel()
 checkPromptsDomainRidesTheRpcChannel()
 checkElectronHostOwnsSchedulerIpcHost()
 checkMarkdownDomainRidesTheRpcChannel()
@@ -10966,8 +10975,8 @@ checkPermissionGrantsDomainRidesTheRpcChannel()
 checkElectronHostOwnsPermissionIpcHost()
 checkElectronHostOwnsPluginsIpcHost()
 checkElectronHostOwnsThemesIpcHost()
-checkElectronHostOwnsProvidersIpcHost()
-checkElectronHostOwnsModelsIpcHost()
+checkProvidersDomainRidesTheRpcChannel()
+checkModelsDomainRidesTheRpcChannel()
 checkElectronHostOwnsMcpIpcHost()
 checkElectronHostOwnsAcpIpcHost()
 checkElectronHostOwnsMediaIpcHost()
@@ -11119,3 +11128,11 @@ checkRuntimeOwnsConcreteBuiltinTools()
 if (!process.exitCode) {
   console.log('[boundary] ok: headless core boundary checks passed')
 }
+
+// 跑完的凭据。检查器中途崩掉时(比如调用了一个已被删掉的检查函数 —— 2026-08-14
+// 就是这么塌的:d5cec15a 把 agents/providers/models 换成反向守卫,加了新声明却
+// 漏改三处调用点,脚本在第 49 个检查处 ReferenceError 退出),前面已经打出的红
+// 仍是「非空」,棘轮 gate 的空集护栏放行,于是一次半程运行被当成全绿 —— 那不是
+// 绿,是只看了四分之一。这行只有走到文件末尾才会出现,gate 拿它当「这次结果算数」
+// 的凭据;没有它一律不认。
+console.log('[boundary] complete: all boundary checks executed')

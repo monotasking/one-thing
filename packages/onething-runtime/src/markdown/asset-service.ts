@@ -146,6 +146,37 @@ async function readObsidianConfig(vaultRoot: string): Promise<ObsidianConfig> {
   }
 }
 
+/**
+ * Obsidian 的 `.obsidian/app.json` 能把附件目录指到任意路径 —— 那是**磁盘上的
+ * 配置文件**,不是请求输入,所以它是一条独立的逃逸面:请求里的路径全都夹住了,
+ * 附件仍可能按 vault 配置写到界外。
+ *
+ * 从 `documentPath` 往上、以 `boundaryRoot` 为界找到第一个 `.obsidian`,判它的
+ * `attachmentFolderPath` 是否留在界内:空配置 = 编辑器默认目录(界内)放行;
+ * `~` / `$HOME` 前缀直接拒;相对路径以 vault 根解析。找不到配置或读不动,
+ * 一律当默认目录放行。界内没有 vault 时恒 true。
+ */
+export async function obsidianAttachmentRootStaysInside(
+  documentPath: string,
+  boundaryRoot: string,
+): Promise<boolean> {
+  let current = path.dirname(documentPath)
+  while (isPathInside(boundaryRoot, current)) {
+    if (await pathExists(path.join(current, '.obsidian'))) {
+      const folder = (await readObsidianConfig(current)).attachmentFolderPath
+      const trimmed = typeof folder === 'string' ? folder.trim() : ''
+      if (!trimmed) return true
+      if (trimmed === '~' || trimmed.startsWith('~/') || trimmed.startsWith('$HOME/')) return false
+      const attachmentRoot = path.resolve(path.isAbsolute(trimmed) ? trimmed : path.join(current, trimmed))
+      return isPathInside(boundaryRoot, attachmentRoot)
+    }
+    const parent = path.dirname(current)
+    if (parent === current) return true
+    current = parent
+  }
+  return true
+}
+
 function getEditorSettings(adapters?: OnethingMarkdownAssetServiceAdapters): OnethingMarkdownEditorSettings {
   return adapters?.getEditorSettings?.() || {}
 }

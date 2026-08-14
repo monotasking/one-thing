@@ -51,6 +51,17 @@ try {
 const baseline = failuresOf(readFileSync(baselinePath, 'utf8'))
 const current = failuresOf(output)
 
+// 半程运行也是假绿的一种,而且比空集更阴:检查器崩在中途时,崩之前打出的红是
+// 「非空」的,下面那道空集护栏根本不响,gate 照常报 ok —— 只是它比对的是一份残缺
+// 的当前集,后半程所有检查连跑都没跑,基线里剩下的红全被当成「已治愈」。
+// 检查器在文件末尾无条件打一行 complete;没有它就说明这次没跑到底,不认。
+const COMPLETION_MARKER = '[boundary] complete:'
+if (!output.includes(COMPLETION_MARKER)) {
+  console.error('[boundary-gate] 检查器没跑到底(缺 complete 标记)—— 中途崩了,这次结果不算数:')
+  console.error(output.slice(-2000))
+  process.exit(1)
+}
+
 // 空集是可疑而不是干净:检查脚本自己崩了、输出格式变了、正则再次失配,都长这样。
 // 上一次的假绿就是从这里溜过去的,所以把它当硬错处理。
 if (current.size === 0 && baseline.size > 0) {

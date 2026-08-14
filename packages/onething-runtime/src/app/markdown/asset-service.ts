@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  obsidianAttachmentRootStaysInside,
   type MarkdownAssetResolution,
   type MarkdownSaveAttachmentsResponse,
   type OnethingMarkdownAssetServiceAdapters,
@@ -123,37 +124,10 @@ function isTargetInsideSandbox(documentPath: string, sandboxRoot: string, rawTar
   return isPathInside(resolve(dirname(documentPath), target), sandboxRoot)
 }
 
-/**
- * Obsidian 的 `.obsidian/app.json` 能把附件目录指到任意路径 —— 那是**磁盘上的
- * 配置文件**，不是请求输入，所以它是一条独立的逃逸面：请求里的路径全都夹住了，
- * 附件仍可能按 vault 配置写到沙箱外。往上找到第一个 `.obsidian` 就判它。
- */
-async function isObsidianConfigInsideSandbox(documentPath: string, sandboxRoot: string): Promise<boolean> {
-  let current = dirname(documentPath)
-  while (isPathInside(current, sandboxRoot)) {
-    const obsidianDir = join(current, '.obsidian')
-    if (existsSync(obsidianDir)) {
-      try {
-        const raw = await readFile(join(obsidianDir, 'app.json'), 'utf-8')
-        const parsed = JSON.parse(raw) as { attachmentFolderPath?: unknown }
-        const folder = typeof parsed.attachmentFolderPath === 'string'
-          ? parsed.attachmentFolderPath.trim()
-          : ''
-        if (!folder) return true
-        if (folder === '~' || folder.startsWith('~/') || folder.startsWith('$HOME/')) return false
-        const attachmentRoot = resolve(isAbsolute(folder) ? folder : join(current, folder))
-        return isPathInside(attachmentRoot, sandboxRoot)
-      } catch {
-        // 读不动 / 不是 JSON:当作没有特殊配置,走编辑器默认目录(仍在沙箱内)。
-        return true
-      }
-    }
-    const parent = dirname(current)
-    if (parent === current) return true
-    current = parent
-  }
-  return true
-}
+// Obsidian vault 配置的逃逸面判定是**产品逻辑**,住 runtime 的
+// markdown/asset-service(那里本来就有 ObsidianConfig/readObsidianConfig 全套
+// 原语);本层只当适配器,把沙箱根喂给它。T 批 3 曾在这里重新发明过一份,
+// boundary 的 "owns Markdown asset service" 规则抓的就是那次越界。
 
 export interface PreparedMarkdownRequest {
   documentPath: string
@@ -196,7 +170,7 @@ export async function prepareMarkdownRequest(
     ) {
       return { error: 'Markdown asset target must stay inside the workspace sandbox root.' }
     }
-    if (!(await isObsidianConfigInsideSandbox(documentPath, sandbox.root))) {
+    if (!(await obsidianAttachmentRootStaysInside(documentPath, sandbox.root))) {
       return { error: 'Markdown attachment configuration must stay inside the workspace sandbox root.' }
     }
   }
