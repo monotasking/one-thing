@@ -8,9 +8,12 @@
  * onething 是 Vue 3，且五个 package 都没有 dist/ 产物，renderer 是 private 包，
  * common/ 也没有 barrel 导出 —— 三条都接不上转换器。
  *
- * 所以本次是**部分同步**：只出「样子」（token / 字体 / 样式规范），不出组件
- * bundle、不出 .d.ts、不出预览卡。设计 agent 用它自己的通用 React 件搭界面，
- * 但配色、排版、间距、圆角、动效会是 onething 的。
+ * 所以本次是**部分同步**：只出「样子」（token / 字体 / 规范 / 预览卡），不出组件
+ * bundle、不出 .d.ts。设计 agent 用它自己的通用 React 件搭界面，但配色、排版、
+ * 间距、圆角、动效会是 onething 的。
+ *
+ * 预览卡（guidelines/*.html）**必须有**：面板不按文件列表显示，它靠每份 HTML
+ * 首行的 `@dsCard` 标记建索引。没有卡片 = 面板空白，哪怕 token 全传上去了。
  *
  * ── 唯一的一处非拷贝改造 ──────────────────────────────────────────────
  * onething 的颜色变量**只挂在 `[data-theme="dark"|"light"]` 上**，强调色挂在
@@ -36,6 +39,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync, copyFileSync, rmSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { CARDS, renderCard } from './cards.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const SRC = join(ROOT, 'packages/renderer/styles');
@@ -180,7 +184,7 @@ writeFileSync(join(OUT, 'styles.css'), `/* onething design tokens —— 入口�
  *   variables   语义字典 + --ui-* 语义层（自带 @import ./flexoki-colors.css 原色板）
  *   state-alpha 态 token 的行为层（墨 × alpha 旋钮），必须排在字典之后
  *   components  共享构件层：.app-surface / .u-focus-ring / .text-action
- *   defaults    默认调色兜底（:where(:root)，特异性 0，不干扰主题切换）
+ *   defaults    默认调色兜底（:root:not([data-theme])，设了属性即不匹配，不干扰主题切换）
  *
  * 完整规范见 guidelines/style-reference.md。
  */
@@ -198,6 +202,17 @@ copyFileSync(
   join(OUT, 'guidelines', 'style-reference.md'),
 );
 log('guidelines/style-reference.md');
+
+// ── 5b. 预览卡 ─────────────────────────────────────────────────────────
+// 面板不按文件列表显示，它显示**卡片** —— app 自检扫描每份 HTML 首行的
+// `<!-- @dsCard … -->` 标记编成 _ds_manifest.json。没有卡片 = 面板空白，
+// 哪怕 token 全都传上去了（2026-08-15 首次同步就踩了这个坑）。
+// 卡片是纯 HTML/CSS，link 回 ../styles.css —— 所以它同时也是 token 闭包的
+// 一次真实渲染验证。清单不用我们生成，app 自检会从标记里编。
+for (const c of CARDS) {
+  writeFileSync(join(OUT, 'guidelines', c.file), renderCard(c));
+}
+log(`${CARDS.length} 张预览卡 → guidelines/`);
 
 // ── 6. README = 规范头 + 生成正文 ──────────────────────────────────────
 const header = readFileSync(join(ROOT, '.design-sync/conventions.md'), 'utf8');
@@ -221,9 +236,10 @@ writeFileSync(join(OUT, 'README.md'), `${header}
 | \`tokens/components.css\` | 共享构件层：\`.app-surface\` / \`.u-focus-ring\` / \`.btn\` / \`.text-action\` / \`.ledger-*\` |
 | \`tokens/defaults.css\` | 默认调色兜底（\`:root:not([data-theme])\`），**本次同步唯一的语义改造** |
 | \`tokens/fonts.css\` + \`fonts/\` | Public Sans Variable + Lora Variable（${fontFiles} 个 woff2） |
+| \`guidelines/*.html\` | **${CARDS.length} 张预览卡** —— 面板显示的就是这些（靠首行 \`@dsCard\` 标记建索引） |
 | \`guidelines/style-reference.md\` | 完整设计规范 |
 
-**不包含**：组件 bundle、\`.d.ts\`、预览卡。原因见顶部说明。
+**不包含**：组件 bundle、\`.d.ts\`（无法从 Vue 源码产出 React 组件）。原因见顶部说明。
 
 ## 来源与再生成
 

@@ -59,6 +59,26 @@ onething 把颜色全挂在 `[data-theme]` / `[data-color-theme]` 上，裸 `:ro
 
 ---
 
+### ⚠️ 预览卡不是可选项（首次同步踩的坑）
+
+面板**不按文件列表显示**，它显示**卡片**。卡片来自 `_ds_manifest.json`，而这份清单是
+app 自检时扫描每份预览 HTML **首行**的标记编出来的：
+
+```html
+<!-- @dsCard group="Colors" viewport="700x210" name="面 Surfaces" subtitle="…" -->
+```
+
+首次同步只传了 CSS + woff2 + markdown，**一个 HTML 都没有** → `cards: []` → 项目打开是空白，
+尽管 `list_files` 显示 30 个文件都在。**"文件传上去了"不等于"看得见"。**
+
+卡片是纯 HTML/CSS，不需要 React —— 这是非 React 仓库也能让设计系统可见的那条路。
+每张卡是独立文档，`<link href="../styles.css">`，所以它同时也是 token 闭包的一次真实渲染验证。
+定义在 `.design-sync/cards.mjs`，当前 17 张：Colors(5) Type(4) Shape(3) Recipes(4) Themes(1)。
+
+卡片**不需要**自己生成 `_ds_manifest.json` —— app 自检会从标记里编（子技能：转换器不emit manifest）。
+
+---
+
 ## 已知的另一个项目：不要碰
 
 `4a2f39d4-4b0e-48d2-8fb6-e7a8c7e7c3d5` **onething Design System** 是一套**手写的 React 再创作**
