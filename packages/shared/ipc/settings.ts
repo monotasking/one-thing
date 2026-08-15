@@ -93,10 +93,7 @@ export interface DailyNoteSettings {
 	format?: string;
 }
 
-export type NoteEditorEngine = 'codemirror' | 'prosemirror';
-
 export interface EditorSettings {
-	noteEngine?: NoteEditorEngine;
 	tabSize?: number;
 	lineWrapping?: boolean;
 	softWrapColumn?: number;

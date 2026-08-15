@@ -2,9 +2,41 @@
   <div
     ref="hostRef"
     class="tiptap-note-editor"
+    :class="surfaceClass"
     :data-surface="surface"
+    :data-source-mode="sourceMode ? 'source' : 'preview'"
   >
+    <!-- 源码态是**只读**的一屏 markdown,不是第二个编辑器。理由见 script 里
+         `sourceMode` 的注释:纸的存储格式就是 markdown,这里要的是"让我看一眼
+         真正落盘的是什么",不是再开一条会与文档打架的编辑路径。 -->
+    <Tooltip
+      v-if="sourceToggle"
+      :text="sourceMode ? '回到编辑' : '查看 Markdown 源码(只读)'"
+      position="left"
+    >
+      <Button
+        text
+        class="tiptap-source-toggle"
+        native-type="button"
+        :aria-label="sourceMode ? 'Back to editing' : 'View markdown source'"
+        :aria-pressed="sourceMode ? 'true' : 'false'"
+        @mousedown.prevent
+        @click.stop="toggleSourceMode"
+      >
+        <component
+          :is="sourceMode ? Eye : Code2"
+          :size="14"
+        />
+      </Button>
+    </Tooltip>
+
+    <pre
+      v-if="sourceMode"
+      class="tiptap-note-scroll tiptap-source-view"
+    >{{ sourceText }}</pre>
+
     <EditorContent
+      v-show="!sourceMode"
       class="tiptap-note-scroll"
       :editor="editor ?? undefined"
     />
@@ -12,7 +44,7 @@
     <!-- 块拖拽把手:官方 MIT 扩展(v3 起开源)。它自己 floating-ui 定位到当前
          悬停的块左侧,宿主只出图标与皮肤。 -->
     <DragHandle
-      v-if="editor"
+      v-if="editor && !sourceMode"
       :editor="editor"
       class="tiptap-drag-handle"
     >
@@ -57,11 +89,16 @@
  * 存进纸里的仍然是 `- [ ]` / `![](绝对路径)` —— AI 每回合读的就是这份纯 markdown,
  * 所以编辑器不许往里塞任何只有自己看得懂的东西。
  *
- * 一处诚实的偏差:`getSelection()` 返回的是 **ProseMirror 坐标**而不是 markdown
- * 字符偏移(Tiptap 没有 offset-map 那样的换算表)。唯一的消费者是紧随其后的
- * `replaceRange`,两者成对使用、坐标系自洽;把这对数字当字符偏移用是错的。
+ * 一处诚实的偏差:`getSelection()` / `findTextMatches()` 返回的是 **ProseMirror
+ * 坐标**而不是 markdown 字符偏移(Tiptap 没有 offset-map 那样的换算表)。它们
+ * 的消费者只有同一套坐标系里的 `replaceRange` / `setSelection`,成对使用自洽;
+ * 把这些数字当字符偏移用是错的 —— 宿主要按 markdown 位置找东西,得让编辑器
+ * 自己找(`findTextMatches`),不能自己 `indexOf`。
+ *
+ * 唯一跨坐标系的入口是 `consumedOffset`(markdown 字符偏移),换算在
+ * `consumed-watermark.ts` 里显式做,精度只到块边界。
  */
-import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import type { Node as PMNode } from 'prosemirror-model'
 import StarterKit from '@tiptap/starter-kit'
@@ -71,17 +108,19 @@ import TaskItem from '@tiptap/extension-task-item'
 import Image from '@tiptap/extension-image'
 import { Markdown } from 'tiptap-markdown'
 import DragHandle from '@tiptap/extension-drag-handle-vue-3'
-import { GripVertical } from 'lucide-vue-next'
-import { platformApi } from '@/platform'
+import { Code2, Eye, GripVertical } from 'lucide-vue-next'
+import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { markdownApi } from '@/platform/markdown-client'
 import type { FloatingZLayer } from '@/composables/floating/useFloatingLayer'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
-import type { MarkdownDocumentSurface, MarkdownFeatureSet } from '../markdown-document'
+import type { MarkdownCommand, MarkdownDocumentSurface, MarkdownFeatureSet } from '../markdown-document'
 import type { EditorSelection as HandleSelection } from '../types'
 import { insertMarkdownAttachmentFiles } from '../markdown-attachments'
 import SlashMenu from '../slash/SlashMenu.vue'
 import { useSlashMenu } from '../slash/useSlashMenu'
 import type { SlashCommandId } from '../slash/slash-commands'
+import { applyTiptapMarkdownCommand } from './apply-command'
 import { consumedWatermarkKey, consumedWatermarkPlugin } from './consumed-watermark'
 import '../notion/notion-prose.css'
 import './tiptap-note-editor.css'
@@ -100,6 +139,11 @@ const props = withDefaults(defineProps<{
    * 编辑器据此在块边界上画一条水位线,见 `consumed-watermark.ts`。
    */
   consumedOffset?: number | null
+  /**
+   * 出不出「查看源码」那枚钮。缺省**不出** —— 草稿纸上没人要看源码,那是
+   * 代码工作台里打开一个 `.md` 时才成立的需求。
+   */
+  sourceToggle?: boolean
   /** 宿主所在的 z 档 —— 斜杠菜单要压过它。 */
   slashZLayer?: FloatingZLayer
   slashZOffset?: number
@@ -112,6 +156,7 @@ const props = withDefaults(defineProps<{
   placeholder: '',
   spellcheck: true,
   consumedOffset: null,
+  sourceToggle: false,
   slashZLayer: 'dropdown',
   slashZOffset: 0,
 })
@@ -120,6 +165,12 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
   'keydown': [event: KeyboardEvent]
   'paste': [event: ClipboardEvent]
+  /**
+   * 光标动了。`line` 是**顶层块的序号**而不是 markdown 行号 —— 所见即所得的面
+   * 上没有"源码行"这回事,一个块就是用户看到的一行/一段。状态栏拿它显示位置,
+   * 语义上比硬换算出一个对不上的行号诚实。
+   */
+  'selectionUpdate': [info: { line: number, column: number }]
   'openImage': [payload: { src: string, alt: string, asset?: MarkdownAssetResolution | null }]
   'openLink': [payload: { href: string, asset?: MarkdownAssetResolution | null }]
 }>()
@@ -128,6 +179,22 @@ const hostRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const editor = shallowRef<Editor | null>(null)
 let lastEmitted = ''
+
+/**
+ * 源码态 —— **只读的一屏 markdown**,不是第二个可编辑面。
+ *
+ * 这是从 `MarkdownDocumentEditor`(CodeMirror 档)接过来的口子里,唯一一件
+ * Tiptap 天生做不到的事:那一档的"源码模式"是把同一个 CodeMirror 的实时预览
+ * 关掉,底下本来就是一份可编辑的源码;Tiptap 底下是文档树,markdown 只是
+ * **存取格式**,并不存在一份可以直接编辑的源码缓冲。
+ *
+ * 硬造一个(textarea ↔ 文档双向同步)会立刻多出一条与文档打架的写路径 ——
+ * 光标、撤销栈、外部变更三处都要各自对齐,而它服务的需求只是"让我看一眼真正
+ * 落盘的是什么"。所以这里诚实地只做只读:看得见,改不了;要改就回编辑态。
+ */
+const sourceMode = ref(false)
+const sourceText = ref('')
+const surfaceClass = computed(() => (props.sourceToggle ? 'has-source-toggle' : ''))
 
 interface MarkdownStorage {
   getMarkdown: () => string
@@ -241,6 +308,19 @@ function textBeforeCursor(instance: Editor): string {
   return instance.state.doc.textBetween($from.start(), $from.pos, '\n', '\n')
 }
 
+/**
+ * 顶层块序号 + 块内偏移。见 `selectionUpdate` 的注释:这不是源码行列。
+ *
+ * 参数按**结构**收而不是收一个 `Editor`:生命周期回调递进来的是
+ * `@tiptap/core` 的 Editor,而 `editor.value` 是 `@tiptap/vue-3` 的 —— 两者
+ * 在类型上不互相赋值(vue 那个多几个响应式字段)。这里只用到一个 ResolvedPos。
+ */
+function cursorInfoAt(
+  $from: { index: (depth: number) => number, parentOffset: number },
+): { line: number, column: number } {
+  return { line: $from.index(0) + 1, column: $from.parentOffset + 1 }
+}
+
 function cursorPoint(instance: Editor): { x: number, y: number } {
   const coords = instance.view.coordsAtPos(instance.state.selection.from)
   return { x: coords.left, y: coords.bottom }
@@ -348,8 +428,12 @@ function buildEditor(): Editor {
         emit('update:modelValue', markdown)
       }
       syncSlash()
+      emit('selectionUpdate', cursorInfoAt(instance.state.selection.$from))
     },
-    onSelectionUpdate: syncSlash,
+    onSelectionUpdate: ({ editor: instance }) => {
+      syncSlash()
+      emit('selectionUpdate', cursorInfoAt(instance.state.selection.$from))
+    },
     onBlur: () => slash.close(),
   })
 }
@@ -418,13 +502,42 @@ watch(() => props.modelValue, (value) => {
 })
 
 // ---------------------------------------------------------------------------
-// EditorHandle(够 markdown-attachments 与悬浮垫用的那一面)
+// MarkdownDocumentEditorHandle
 
 function scroller(): HTMLElement | null {
   return hostRef.value?.querySelector('.tiptap-note-scroll') ?? null
 }
 
+function setSourceMode(enabled: boolean): void {
+  const instance = editor.value
+  if (enabled && instance) sourceText.value = markdownStorage(instance).getMarkdown()
+  sourceMode.value = enabled
+  if (!enabled) void nextTick(() => instance?.commands.focus())
+}
+
+function toggleSourceMode(): void {
+  setSourceMode(!sourceMode.value)
+}
+
 const handle = {
+  /**
+   * 命令面板 / 格式条的唯一入口。映射表在 `apply-command.ts`;词表里没有对应
+   * 实现的那几条(table)在那里静静降级 —— 点了不动,不炸。
+   *
+   * `image` 由这里接住:它不是编辑器命令,是"先落盘再插引用"的那条管线,
+   * 与斜杠菜单的 `/图片` 走同一个文件选择框。
+   */
+  applyCommand: (command: MarkdownCommand) => {
+    const instance = editor.value
+    // 源码态是只读的:命令改不了一份看得见改不动的文本,静静吞掉比假装生效好。
+    if (!instance || sourceMode.value) return
+    if (applyTiptapMarkdownCommand(instance, command) === 'delegated') {
+      fileInputRef.value?.click()
+    }
+  },
+  setSourceMode,
+  toggleSourceMode,
+  getSourceMode: () => sourceMode.value,
   focus: () => editor.value?.commands.focus(),
   blur: () => editor.value?.commands.blur(),
   getValue: () => (editor.value ? markdownStorage(editor.value).getMarkdown() : props.modelValue),
@@ -445,6 +558,35 @@ const handle = {
   },
   setSelection: (from: number, to?: number) => {
     editor.value?.commands.setTextSelection({ from, to: to ?? from })
+  },
+  /**
+   * 查找 —— 返回的是 **ProseMirror 位置**,与 `setSelection` 成对使用。
+   *
+   * 必须由编辑器自己来找,不能让宿主拿 markdown 原文去 `indexOf`:那串偏移
+   * 与文档坐标不是同一套(`#` / `- [ ]` / `**` 在 markdown 里占位、在文档里
+   * 不占),照着它选就会选到别处。搜的是**用户看得见的文字**,这也正是"查找"
+   * 该有的语义。
+   *
+   * 一处诚实的边界:跨文本节点(一半在 `**粗**` 里、一半在外面)的匹配找不到。
+   * 要覆盖它得把整篇拍平再反查位置,对一个查找框不值当。
+   */
+  findTextMatches: (query: string): HandleSelection[] => {
+    const instance = editor.value
+    const needle = query.trim().toLowerCase()
+    if (!instance || !needle) return []
+    const matches: HandleSelection[] = []
+    instance.state.doc.descendants((node, pos) => {
+      if (!node.isText) return true
+      const text = (node.text ?? '').toLowerCase()
+      let index = text.indexOf(needle)
+      while (index !== -1) {
+        const from = pos + index
+        matches.push({ from, to: from + needle.length })
+        index = text.indexOf(needle, index + Math.max(needle.length, 1))
+      }
+      return true
+    })
+    return matches
   },
   replaceRange: (from: number, to: number, text: string) => {
     editor.value?.chain().focus().insertContentAt({ from, to }, text).run()
@@ -490,5 +632,31 @@ defineExpose(handle)
 /* 文件选择框永远不该被看见 —— 它只是 `/图片` 的一个触发器。 */
 .tiptap-file-input {
   display: none;
+}
+
+/* 源码钮浮在右上角:它是一个偶尔用一次的开关,不值得占一整条工具条。
+   本地堆叠(个位数,不进层级表)—— 它只需要压过同一张纸上的正文。 */
+.tiptap-source-toggle {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  z-index: 1;
+}
+
+/* 有钮时给正文让出右上角那一块,否则第一行标题会钻到钮底下。 */
+.tiptap-note-editor.has-source-toggle .tiptap-note-scroll {
+  padding-top: 4px;
+}
+
+.tiptap-source-view {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--ui-text-muted-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
 }
 </style>

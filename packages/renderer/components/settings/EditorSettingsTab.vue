@@ -22,18 +22,6 @@
     <SettingsSection title="Text Editor">
       <SettingsGroup>
         <SettingRow
-          label="Notes Engine"
-          description="Rendering engine for Todo / Notes. Render-first is Typora-style (experimental); source-first keeps raw markdown editable inline."
-        >
-          <Switch
-            variant="ledger"
-            :model-value="currentEditor.noteEngine === 'prosemirror'"
-            aria-label="use render-first notes engine"
-            @update:model-value="updateEditor({ noteEngine: $event ? 'prosemirror' : 'codemirror' })"
-          />
-        </SettingRow>
-
-        <SettingRow
           label="Tab Size"
           description="Number of spaces used for each tab stop."
         >
@@ -170,7 +158,6 @@ const emit = defineEmits<{
 const currentMaxTabs = computed(() => props.settings.general.maxTabs ?? 15)
 const currentMaxFilePreviewKB = computed(() => props.settings.general.maxFilePreviewKB ?? 256)
 const currentEditor = computed<Required<EditorSettings>>(() => ({
-  noteEngine: props.settings.general.editor?.noteEngine ?? 'codemirror',
   tabSize: props.settings.general.editor?.tabSize ?? 2,
   lineWrapping: props.settings.general.editor?.lineWrapping ?? true,
   softWrapColumn: props.settings.general.editor?.softWrapColumn ?? 88,

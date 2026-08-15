@@ -83,7 +83,7 @@
               >
                 {{ activeBufferForRoot.error }}
               </div>
-              <MarkdownDocumentEditor
+              <TiptapNoteEditor
                 v-else-if="activeBufferForRoot?.isMarkdown"
                 ref="markdownRef"
                 class="markdown-workbench-editor"
@@ -92,14 +92,11 @@
                 :document-id="activeBufferForRoot.filePath"
                 :document-path="activeBufferForRoot.filePath"
                 :workspace-root="workspaceRoot"
-                :settings="editorSettings"
                 :features="markdownFeatures"
-                :toolbar="false"
-                :min-height="120"
-                :max-height="100000"
                 placeholder=""
+                :source-toggle="true"
                 @update:model-value="onMarkdownChange"
-                @transaction="onMarkdownTransaction"
+                @selection-update="onMarkdownSelection"
                 @paste="onMarkdownPaste"
                 @open-link="openMarkdownLink"
                 @open-image="openMarkdownImage"
@@ -165,13 +162,12 @@ import Splitter from '@/components/common/Splitter.vue'
 import SplitterPanel from '@/components/common/SplitterPanel.vue'
 import { PanelRightClose, PanelRightOpen } from 'lucide-vue-next'
 import MonacoEditor from '@/editor/MonacoEditor.vue'
-import MarkdownDocumentEditor from '@/editor/MarkdownDocumentEditor.vue'
+import TiptapNoteEditor from '@/editor/tiptap/TiptapNoteEditor.vue'
 import EditorStatusBar from './EditorStatusBar.vue'
 import FileExplorer from './FileExplorer.vue'
 import ProblemsPanel from './ProblemsPanel.vue'
 import { handleMarkdownAttachmentPaste } from '@/editor/markdown-attachments'
-import type { MarkdownDocumentEditorHandle, MarkdownFeatureSet } from '@/editor/markdown-document'
-import type { EditorTransaction } from '@/editor/types'
+import type { MarkdownFeatureSet } from '@/editor/markdown-document'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import { platformApi } from '@/platform'
 import { markdownApi } from '@/platform/markdown-client'
@@ -205,7 +201,7 @@ const {
 } = editorWorkspace
 
 const monacoRef = ref<InstanceType<typeof MonacoEditor> | null>(null)
-const markdownRef = ref<MarkdownDocumentEditorHandle | null>(null)
+const markdownRef = ref<InstanceType<typeof TiptapNoteEditor> | null>(null)
 const editorPanelSize = ref(62)
 const explorerPanelSize = ref(38)
 const explorerCollapsed = ref(false)
@@ -295,20 +291,15 @@ function onMarkdownChange(value: string) {
   handleModelChange(filePath, value)
 }
 
-function lineColumnAt(value: string, position: number): { line: number; column: number } {
-  const before = value.slice(0, Math.max(0, Math.min(position, value.length)))
-  const lines = before.split('\n')
-  return {
-    line: lines.length,
-    column: (lines.at(-1)?.length || 0) + 1,
-  }
-}
-
-function onMarkdownTransaction(transaction: EditorTransaction) {
+/**
+ * markdown 面上的"光标在哪儿"。数字由编辑器给,不再由宿主拿源码偏移换算 ——
+ * 所见即所得的文档里没有源码行,`line` 是顶层块的序号(见 TiptapNoteEditor 的
+ * `selectionUpdate`)。状态栏读的是同一个"Ln/Col"格子,语义换了但位置没换。
+ */
+function onMarkdownSelection(info: { line: number; column: number }) {
   const filePath = currentEditorFilePath()
   if (!filePath) return
-  const cursor = lineColumnAt(transaction.value, transaction.selection.to)
-  setCursor(filePath, cursor.line, cursor.column)
+  setCursor(filePath, info.line, info.column)
   setScrollTop(filePath, markdownRef.value?.getScrollTop() || 0)
 }
 

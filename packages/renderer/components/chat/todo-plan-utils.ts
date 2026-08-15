@@ -12,12 +12,12 @@ export interface TaskSection {
   tasks: ParsedTask[]
 }
 
-export interface FindMatch {
-  from: number
-  to: number
-  lineIndex: number
-}
-
+/**
+ * 查找**不在这里**(2026-08-15 编辑器换 Tiptap 之后)。它曾经是一个在 markdown
+ * 原文上跑的 `indexOf`,给回源码字符偏移;而所见即所得的面上选区用的是
+ * ProseMirror 文档位置,两套坐标对不上,照着源码偏移去选会稳定地选到别处。
+ * 现在由编辑器自己找(`TiptapNoteEditor.findTextMatches`),返回同一套坐标。
+ */
 export type MarkdownFormatKind = 'bold' | 'italic' | 'inline-code' | 'task'
 
 export interface MarkdownFormatResult {
@@ -34,10 +34,6 @@ function lineBoundsAt(content: string, position: number): { from: number; to: nu
   const nextBreak = content.indexOf('\n', safePosition)
   const to = nextBreak === -1 ? content.length : nextBreak
   return { from, to, text: content.slice(from, to) }
-}
-
-function lineIndexAt(content: string, position: number): number {
-  return content.slice(0, Math.max(0, Math.min(position, content.length))).split('\n').length - 1
 }
 
 function replaceRange(content: string, from: number, to: number, insert: string): string {
@@ -144,26 +140,6 @@ export function titleFromMarkdown(content: string, fallback: string): string {
   if (!firstContentLine) return fallback
   const heading = firstContentLine.match(/^#\s+(.+)$/)
   return (heading?.[1] || firstContentLine).trim() || fallback
-}
-
-export function findMarkdownMatches(content: string, query: string): FindMatch[] {
-  const needle = query.trim().toLowerCase()
-  if (!needle) return []
-
-  const matches: FindMatch[] = []
-  const haystack = content.toLowerCase()
-  let index = 0
-  while (index <= haystack.length) {
-    const found = haystack.indexOf(needle, index)
-    if (found === -1) break
-    matches.push({
-      from: found,
-      to: found + needle.length,
-      lineIndex: lineIndexAt(content, found),
-    })
-    index = found + Math.max(needle.length, 1)
-  }
-  return matches
 }
 
 function wrapSelection(

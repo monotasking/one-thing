@@ -163,7 +163,6 @@ describe('editor settings defaults', () => {
       composerMaxHeight: 200,
       markdownNoteAttachmentDirectory: '',
       markdownProjectAttachmentDirectory: '',
-      noteEngine: 'codemirror',
     })
   })
 

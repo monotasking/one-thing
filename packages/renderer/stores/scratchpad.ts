@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, reactive, ref } from 'vue'
+import { reactive } from 'vue'
 import type { ScratchpadChangedPayload, ScratchpadDocument } from '@/types'
 import { platformApi } from '@/platform'
 
@@ -24,14 +24,13 @@ interface VersionLength {
 /** 环长:一次会话里能追溯的历史版本数。多了也没人看,少了水位会掉。 */
 const VERSION_RING_SIZE = 24
 const FLUSH_DEBOUNCE_MS = 500
+
 /**
- * 悬浮垫**开着没开**,按会话记。
- *
- * 只记这一位:垫子摆在屏幕哪儿、多大、收起没有,是每窗口的偏好,住在
- * `components/chat/scratchpad/floating-pad-state.ts`。两份账分开的理由很实际
- * —— 换会话时前者该跟着换,后者绝不该动。
+ * **这里不记"开着没开"**(2026-08-15 合并)。草稿纸并进 Todo 窗之后,"在不在
+ * 看这张纸"就是那扇窗的模式(`components/chat/todo-panel-mode.ts`,每窗口一份
+ * localStorage),不再是每会话的一位状态 —— 连同悬浮垫的几何一起退役了。
+ * 这个 store 只管纸的**内容**与**已读水位**。
  */
-export const SCRATCHPAD_OPEN_STORAGE_KEY = 'onething:scratchpad-open:v1'
 
 function emptyRecord(): ScratchpadRecord {
   return {
@@ -44,42 +43,8 @@ function emptyRecord(): ScratchpadRecord {
   }
 }
 
-/**
- * localStorage 在测试 / 无浏览器环境可能缺席 —— 存不下不是错误,只是不持久。
- *
- * 判据卡在**方法在不在**而不是"全局有没有":Node 22 起 globalThis 上有一个
- * 没开 `--localstorage-file` 的空壳 localStorage(属性齐、方法全 undefined)。
- */
-function safeStorage(): Storage | null {
-  try {
-    const storage = typeof localStorage === 'undefined' ? null : localStorage
-    return typeof storage?.getItem === 'function' ? storage : null
-  } catch {
-    return null
-  }
-}
-
-function hydrateOpenFlags(): Record<string, boolean> {
-  const storage = safeStorage()
-  if (!storage) return {}
-  try {
-    const raw = storage.getItem(SCRATCHPAD_OPEN_STORAGE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    const result: Record<string, boolean> = {}
-    for (const [sessionId, open] of Object.entries(parsed as Record<string, unknown>)) {
-      if (sessionId && open === true) result[sessionId] = true
-    }
-    return result
-  } catch {
-    return {}
-  }
-}
-
 export const useScratchpadStore = defineStore('scratchpad', () => {
   const records = reactive<Record<string, ScratchpadRecord>>({})
-  const openFlags = ref<Record<string, boolean>>(hydrateOpenFlags())
   const versionRings = new Map<string, VersionLength[]>()
   const flushTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const inFlight = new Map<string, Promise<void>>()
@@ -275,7 +240,6 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
     deferredRemote.delete(sessionId)
     versionRings.delete(sessionId)
     delete records[sessionId]
-    clearPadOpen(sessionId)
     try {
       await platformApi.deleteScratchpad({ sessionId })
     } catch (error) {
@@ -296,10 +260,6 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
     if (ring) {
       versionRings.set(toSessionId, ring)
       versionRings.delete(fromSessionId)
-    }
-    if (openFlags.value[fromSessionId]) {
-      setPadOpen(toSessionId, true)
-      clearPadOpen(fromSessionId)
     }
     try {
       await platformApi.adoptScratchpad({ fromSessionId, toSessionId })
@@ -344,49 +304,6 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
     return record.content.slice(offset)
   }
 
-  // --- 悬浮垫开关(每会话一位) ---
-
-  function persistOpenFlags() {
-    const storage = safeStorage()
-    if (!storage) return
-    try {
-      storage.setItem(SCRATCHPAD_OPEN_STORAGE_KEY, JSON.stringify(openFlags.value))
-    } catch {
-      // 存不下不是错误,只是不持久。
-    }
-  }
-
-  function isPadOpen(sessionId: string | undefined | null): boolean {
-    if (!sessionId) return false
-    return openFlags.value[sessionId] === true
-  }
-
-  function setPadOpen(sessionId: string, open: boolean) {
-    if (!sessionId) return
-    if (!open) {
-      clearPadOpen(sessionId)
-      return
-    }
-    openFlags.value = { ...openFlags.value, [sessionId]: true }
-    persistOpenFlags()
-    // 垫子一露面就得有内容 —— 装载是幂等的,重复开关不会多打一次 IPC。
-    void load(sessionId)
-  }
-
-  function clearPadOpen(sessionId: string) {
-    if (!sessionId || !(sessionId in openFlags.value)) return
-    const next = { ...openFlags.value }
-    delete next[sessionId]
-    openFlags.value = next
-    persistOpenFlags()
-  }
-
-  function togglePad(sessionId: string): boolean {
-    const next = !isPadOpen(sessionId)
-    setPadOpen(sessionId, next)
-    return next
-  }
-
   // 一次性订阅:主进程 / server 的 changed 广播是这张纸的第二个写者。
   // 宿主缺席(node 环境的组件单测)时静静跳过,不炸掉整个 store。
   try {
@@ -399,7 +316,6 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
 
   return {
     records,
-    openFlags: computed(() => openFlags.value),
     getRecord,
     load,
     setContent,
@@ -412,9 +328,5 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
     noteConsumed,
     consumedOffset,
     pendingText,
-    isPadOpen,
-    setPadOpen,
-    clearPadOpen,
-    togglePad,
   }
 })

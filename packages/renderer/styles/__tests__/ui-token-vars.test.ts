@@ -512,6 +512,12 @@ describe('renderer UI semantic variables', () => {
     expect(collectStatusColorMixUsage()).toEqual([])
   })
 
+  /** SFC 的 `<style>` 段。断言 CSS 的时候只该看这一段。 */
+  function styleBlockOf(source: string): string {
+    const start = source.indexOf('<style')
+    return start === -1 ? '' : source.slice(start)
+  }
+
   it('keeps the todo window startup surface on semantic color fallbacks', () => {
     const html = fs.readFileSync(path.resolve(rendererDir, '..', '..', 'index.html'), 'utf8')
     const todoPlanWindow = readRendererFile('components/TodoPlanWindow.vue')
@@ -526,7 +532,9 @@ describe('renderer UI semantic variables', () => {
     expect(todoNotesActionPanel).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
     expect(todoPopover).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
     expect(todoPlanPanel).toContain('--todo-plan-nav-gutter: 52px')
-    expect(todoPlanPanel).not.toContain('flush')
+    // 退役的 `.flush` 版式变体。只看样式段:`flush` 也是脚本里的常用词
+    // (草稿纸落盘走的就是 `flushNow`),整文件搜会把无关的代码当成 CSS 报出来。
+    expect(styleBlockOf(todoPlanPanel)).not.toContain('flush')
     expect(todoPlanPanel).toContain('overflow: hidden;')
     expect(todoPlanPanel).toContain('popover-open')
     expect(todoPlanPanel).not.toContain('surface-chat-floating-card.action-panel-open')

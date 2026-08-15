@@ -41,8 +41,37 @@
           {{ displayTitle }}
         </div>
 
+        <!-- 形态开关。这扇窗是**唯一的浮面**:Todo/笔记与草稿纸是同一张纸的
+             两种内容,不是两个浮层。 -->
+        <SegmentedPill
+          class="mode-pill"
+          :model-value="mode"
+          :options="MODE_OPTIONS"
+          aria-label="Todo window mode"
+          @update:model-value="selectMode"
+        />
+
         <div class="panel-actions">
-          <Tooltip text="Command Panel">
+          <Tooltip
+            v-if="isScratchpadMode"
+            text="把水位之后的内容(或选中的一段)正式发出 ⌘⏎"
+          >
+            <Button
+              text
+              class="icon-button"
+              native-type="button"
+              :disabled="!canSendScratchpad"
+              aria-label="Send scratchpad content"
+              @mousedown.prevent
+              @click.stop="sendScratchpadPending"
+            >
+              <CornerDownLeft :size="14" />
+            </Button>
+          </Tooltip>
+          <Tooltip
+            v-if="isTodoMode"
+            text="Command Panel"
+          >
             <Button
               text
               class="icon-button"
@@ -54,7 +83,10 @@
               <Command :size="14" />
             </Button>
           </Tooltip>
-          <Tooltip text="Browse notes">
+          <Tooltip
+            v-if="isTodoMode"
+            text="Browse notes"
+          >
             <Button
               ref="titleButtonRef"
               text
@@ -67,7 +99,10 @@
               <FileText :size="14" />
             </Button>
           </Tooltip>
-          <Tooltip text="New note">
+          <Tooltip
+            v-if="isTodoMode"
+            text="New note"
+          >
             <Button
               text
               class="icon-button"
@@ -258,26 +293,22 @@
         ref="bodyRef"
         class="panel-body"
       >
-        <component
-          :is="noteEditorComponent"
+        <TiptapNoteEditor
           ref="editorRef"
-          :model-value="draft"
+          :model-value="editorValue"
           surface="todo-notes"
-          :document-id="activeDocument?.id || 'todo-notes'"
-          :document-path="activeDocument?.filePath || ''"
-          :workspace-root="snapshot?.directory || effectiveWorkingDirectory || ''"
-          :settings="editorSettings"
-          :features="todoMarkdownFeatures"
-          :toolbar="false"
-          placeholder="# Untitled Note"
+          :document-id="editorDocumentId"
+          :document-path="editorDocumentPath"
+          :workspace-root="editorWorkspaceRoot"
+          :features="editorFeatures"
+          :placeholder="editorPlaceholder"
           :spellcheck="true"
-          :source-toggle="false"
-          @update:model-value="handleDraftUpdate"
+          :consumed-offset="editorConsumedOffset"
+          @update:model-value="handleEditorUpdate"
           @keydown="handleEditorKeydown"
           @paste="handleMarkdownPaste"
           @open-link="openMarkdownLink"
           @open-image="openMarkdownImage"
-          @cancel="handleEscape"
         />
       </div>
 
@@ -426,7 +457,16 @@
         </div>
         <template v-else>
           <span>{{ characterCountLabel }}</span>
-          <Tooltip text="Show formatting bar">
+          <!-- 水位文案由 `scratchpad:consumed` 事件驱动,不是猜的:没有事件就
+               不说"已读"。 -->
+          <span
+            v-if="watermarkLabel"
+            class="pad-watermark"
+          >{{ watermarkLabel }}</span>
+          <Tooltip
+            v-if="isTodoMode"
+            text="Show formatting bar"
+          >
             <Button
               text
               class="format-toggle"
@@ -454,6 +494,7 @@
 import { useConfirm } from '@/composables/useConfirm'
 import Button from '@/components/common/Button.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
+import SegmentedPill from '@/components/common/SegmentedPill.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   Bot,
@@ -463,6 +504,7 @@ import {
   Code2,
   Command,
   Copy,
+  CornerDownLeft,
   FileText,
   FolderOpen,
   Heading1,
@@ -489,23 +531,29 @@ import {
   X,
 } from 'lucide-vue-next'
 import { useSessionsStore } from '@/stores/sessions'
-import { useSettingsStore } from '@/stores/settings'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import type { TodoPlanDocument, TodoPlanSnapshot } from '@/types'
-import MarkdownDocumentEditor from '@/editor/MarkdownDocumentEditor.vue'
-import ProseNoteEditor from '@/editor/prose/ProseNoteEditor.vue'
-import type { MarkdownCommand, MarkdownDocumentEditorHandle, MarkdownFeatureSet } from '@/editor/markdown-document'
+import TiptapNoteEditor from '@/editor/tiptap/TiptapNoteEditor.vue'
+import type { MarkdownCommand, MarkdownFeatureSet } from '@/editor/markdown-document'
 import { handleMarkdownAttachmentPaste } from '@/editor/markdown-attachments'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
+import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import TodoNotesActionPanel from './TodoNotesActionPanel.vue'
+import { titleFromMarkdown } from './todo-plan-utils'
 import {
-  findMarkdownMatches,
-  titleFromMarkdown,
-} from './todo-plan-utils'
+  normalizeTodoPanelMode,
+  readTodoPanelMode,
+  TODO_PANEL_CARD_STORAGE_PREFIX,
+  TODO_PANEL_WINDOW_STORAGE_PREFIX,
+  todoPanelModeStorageKey,
+  writeTodoPanelMode,
+  type TodoPanelMode,
+} from './todo-panel-mode'
 import type {
   TodoNotesAction,
   TodoNotesActionContext,
 } from './todo-notes-actions'
+import { useScratchpadPad } from '@/composables/useScratchpadPad'
 import { platformApi } from '@/platform'
 import { markdownApi } from '@/platform/markdown-client'
 
@@ -516,8 +564,9 @@ const props = defineProps<{
 }>()
 
 const sessionsStore = useSessionsStore()
-const settingsStore = useSettingsStore()
-const storagePrefix = props.standalone ? 'todoPlanWindow' : 'todoPlanCard'
+const storagePrefix = props.standalone
+  ? TODO_PANEL_WINDOW_STORAGE_PREFIX
+  : TODO_PANEL_CARD_STORAGE_PREFIX
 const legacyChatStorage: Record<string, string> = {
   ActiveId: 'todoPlanActiveId',
   Pinned: 'todoPlanPinned',
@@ -579,7 +628,9 @@ const switcherRef = ref<HTMLElement | null>(null)
 const switcherInputRef = ref<HTMLInputElement | null>(null)
 const findBarRef = ref<HTMLElement | null>(null)
 const findInputRef = ref<HTMLInputElement | null>(null)
-const editorRef = ref<MarkdownDocumentEditorHandle | null>(null)
+const editorRef = ref<InstanceType<typeof TiptapNoteEditor> | null>(null)
+const modeStorageKey = todoPanelModeStorageKey(storagePrefix)
+const mode = ref<TodoPanelMode>(readTodoPanelMode(modeStorageKey))
 let cleanupChanged: (() => void) | undefined
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let resizing = false
@@ -594,14 +645,27 @@ const todoMarkdownFeatures: MarkdownFeatureSet = {
   codeBlocks: true,
   frontmatter: true,
 }
-const editorSettings = computed(() => settingsStore.settings.general.editor)
-// Render-first (ProseMirror) engine behind a settings flag; CodeMirror stays
-// the default and the fallback. Both implement MarkdownDocumentEditorHandle.
-const noteEditorComponent = computed(() =>
-  editorSettings.value?.noteEngine === 'prosemirror' ? ProseNoteEditor : MarkdownDocumentEditor,
-)
+/**
+ * 草稿纸是**写想法的地方**,不是文档编辑器:任务/图片/代码块留着(粘图管线
+ * 要靠 images),表格/公式/frontmatter 关掉 —— 那些属于 Todo/笔记那一侧。
+ */
+const scratchpadMarkdownFeatures: MarkdownFeatureSet = {
+  tasks: true,
+  images: true,
+  codeBlocks: true,
+  tables: false,
+  math: false,
+  frontmatter: false,
+}
+
+const MODE_OPTIONS = [
+  { value: 'todo', label: 'Todo' },
+  { value: 'scratchpad', label: '草稿纸' },
+]
 
 const isStandalone = computed(() => props.standalone === true)
+const isTodoMode = computed(() => mode.value === 'todo')
+const isScratchpadMode = computed(() => mode.value === 'scratchpad')
 const panelStyle = computed(() => {
   if (collapsed.value || isStandalone.value) return {}
   return { height: `${panelHeight.value}px` }
@@ -616,6 +680,17 @@ const effectiveWorkingDirectory = computed(() => {
   const session = sessionsStore.sessions.find(item => item.id === resolvedSessionId.value)
   return session?.workingDirectory || undefined
 })
+/**
+ * 草稿纸(scratchpad · AI 静默感知)。每会话一张纸,AI 每个 turn 静默读一遍,
+ * 读到哪儿由 `scratchpad:consumed` 事件回推成一条水位线。
+ *
+ * 会话取 `resolvedSessionId` —— 独立窗里 sessions store 从不填充,会话是宿主
+ * 解析出来的那一个(snapshot 带回来的)。
+ */
+const scratchpad = useScratchpadPad(() => resolvedSessionId.value, {
+  active: () => isScratchpadMode.value,
+})
+
 const allDocuments = computed(() => {
   if (!snapshot.value) return []
   return [
@@ -624,14 +699,63 @@ const allDocuments = computed(() => {
   ]
 })
 const activeDocument = computed(() => allDocuments.value.find(doc => doc.id === activeId.value) || allDocuments.value[0])
-const displayTitle = computed(() => titleFromMarkdown(draft.value, activeDocument.value?.title || 'Todo / Notes'))
+const displayTitle = computed(() => isScratchpadMode.value
+  ? '草稿纸'
+  : titleFromMarkdown(draft.value, activeDocument.value?.title || 'Todo / Notes'))
 const pinControlLabel = computed(() => pinned.value ? 'Unpin Todo' : 'Pin Todo')
 const noteCountLabel = computed(() => {
   const count = snapshot.value?.userNotes.length || 0
   const label = count === 1 ? 'Note' : 'Notes'
   return `${count} ${label}`
 })
-const characterCountLabel = computed(() => `${draft.value.length} characters`)
+const characterCountLabel = computed(() => isScratchpadMode.value
+  ? `${scratchpad.charCount.value} 字${scratchpad.isDirty.value ? ' · 未保存' : ''}`
+  : `${draft.value.length} characters`)
+
+/** 水位文案:只认事件,不猜。没有事件就不说"已读"。 */
+const watermarkLabel = computed(() => {
+  if (!isScratchpadMode.value) return ''
+  const offset = scratchpad.consumedOffset.value
+  const text = scratchpad.content.value
+  if (offset === null) return text.trim() ? 'AI 尚未读过' : ''
+  if (offset >= text.length) return 'AI 已读全部'
+  return `AI 已读至 ${offset} 字`
+})
+
+// --- 编辑器的一套入参:两种模式喂同一个 TiptapNoteEditor 实例 --------------
+// `documentId` 一变编辑器就整份重置(含撤销历史)—— 切模式 = 换一份文档,
+// undo 不许走回上一份,这正是想要的。
+
+const editorValue = computed(() => isScratchpadMode.value ? scratchpad.content.value : draft.value)
+const editorDocumentId = computed(() => isScratchpadMode.value
+  ? `scratchpad:${resolvedSessionId.value ?? 'none'}`
+  : (activeDocument.value?.id || 'todo-notes'))
+const editorDocumentPath = computed(() => isScratchpadMode.value
+  ? scratchpad.filePath.value
+  : (activeDocument.value?.filePath || ''))
+const editorWorkspaceRoot = computed(() => isScratchpadMode.value
+  ? scratchpad.documentDir.value
+  : (snapshot.value?.directory || effectiveWorkingDirectory.value || ''))
+const editorFeatures = computed(() => isScratchpadMode.value
+  ? scratchpadMarkdownFeatures
+  : todoMarkdownFeatures)
+const editorPlaceholder = computed(() => isScratchpadMode.value
+  ? '随手写,AI 会看见'
+  : '# Untitled Note')
+const editorConsumedOffset = computed(() => isScratchpadMode.value
+  ? scratchpad.consumedOffset.value
+  : null)
+
+/**
+ * 「正式发出」能不能按。草稿会话的 id 只活在渲染层,永远不许过 IPC —— 这里是
+ * 独立窗,没有 composer 那条物化管线接住它,所以直接把钮关掉而不是发出去失败。
+ */
+const canSendScratchpad = computed(() => {
+  if (!isScratchpadMode.value) return false
+  const sessionId = resolvedSessionId.value
+  if (!sessionId || sessionsStore.isNewChatDraftId?.(sessionId)) return false
+  return scratchpad.hasUnreadTail.value
+})
 const actionContext = computed<TodoNotesActionContext>(() => ({
   activeDocument: activeDocument.value,
   selection: editorRef.value?.getSelection() || { from: 0, to: 0 },
@@ -773,7 +897,20 @@ watch([switcherQuery, switcherDocumentSignature], () => {
   if (!switcherOpen.value) return
   resetSwitcherSelection()
 })
-const findMatches = computed(() => findMarkdownMatches(draft.value, findQuery.value))
+/**
+ * 查找交给编辑器做,而不是拿 markdown 原文 `indexOf`。
+ *
+ * 换 Tiptap 之后这一条从"可以"变成"必须":选区用的是 ProseMirror 坐标,而
+ * markdown 字符偏移与它不是同一套(`#` / `- [ ]` / `**` 在源码里占位、在文档里
+ * 不占)。照着源码偏移去选,会稳定地选到别处。
+ */
+const findMatches = computed<Array<{ from: number; to: number }>>(() => {
+  // 读一下 draft:它一变说明文档变了,匹配位置要跟着重算(PM 的 state 不是
+  // Vue 的响应式依赖,这里得手动挂一个)。
+  void draft.value
+  if (!isTodoMode.value) return []
+  return editorRef.value?.findTextMatches(findQuery.value) ?? []
+})
 const findStatus = computed(() => {
   if (!findQuery.value.trim()) return '0/0'
   if (!findMatches.value.length) return '0/0'
@@ -902,9 +1039,54 @@ function applyEditorCommand(command: MarkdownCommand) {
   editorRef.value?.applyCommand(command)
 }
 
+function handleEditorUpdate(value: string) {
+  if (isScratchpadMode.value) {
+    // 纸自己就是事实:store 本地即改 + 防抖落盘,不走 todo 的保存路。
+    scratchpad.setContent(value)
+    return
+  }
+  handleDraftUpdate(value)
+}
+
 function handleDraftUpdate(value: string) {
   draft.value = value
   scheduleSave()
+}
+
+// --- 形态开关 -------------------------------------------------------------
+
+/** 换形态前先把浮层收干净 —— 它们全是 Todo 侧的东西,跟到草稿纸上就是幽灵。 */
+function closeTodoPopovers() {
+  actionPanelOpen.value = false
+  actionQuery.value = ''
+  switcherOpen.value = false
+  findOpen.value = false
+  findQuery.value = ''
+  formatBufferOpen.value = false
+}
+
+function applyMode(next: TodoPanelMode, options?: { persist?: boolean }) {
+  if (next === mode.value) return
+  // 离开草稿纸时把欠的 flush 结掉:纸是文件,不是内存草稿。
+  if (isScratchpadMode.value) void scratchpad.store.flushNow(resolvedSessionId.value)
+  closeTodoPopovers()
+  mode.value = next
+  if (options?.persist !== false) writeTodoPanelMode(modeStorageKey, next)
+  nextTick(() => editorRef.value?.focus())
+}
+
+function selectMode(next: string) {
+  applyMode(normalizeTodoPanelMode(next))
+}
+
+/**
+ * 跨窗口的形态信号。composer 的草稿纸钮在主窗里写这个键,这扇窗靠 `storage`
+ * 事件跟上(同源的另一个文档写了键才会派发)。事件没送达也不会坏事 —— 最差是
+ * 已经开着的窗停在原形态。
+ */
+function handleModeStorage(event: StorageEvent) {
+  if (event.key !== modeStorageKey) return
+  applyMode(normalizeTodoPanelMode(event.newValue), { persist: false })
 }
 
 function scheduleSave() {
@@ -1001,6 +1183,7 @@ async function deleteUserNote(id: string) {
 }
 
 function openSwitcher() {
+  if (!isTodoMode.value) return
   actionPanelOpen.value = false
   formatBufferOpen.value = false
   findOpen.value = false
@@ -1053,6 +1236,7 @@ function scrollSelectedSwitcherDocumentIntoView() {
 }
 
 function openActionPanel() {
+  if (!isTodoMode.value) return
   actionPanelOpen.value = true
   actionQuery.value = ''
   switcherOpen.value = false
@@ -1077,6 +1261,7 @@ async function runAction(action: TodoNotesAction) {
 }
 
 function openFind() {
+  if (!isTodoMode.value) return
   actionPanelOpen.value = false
   formatBufferOpen.value = false
   switcherOpen.value = false
@@ -1095,6 +1280,7 @@ function closeFind() {
 }
 
 function toggleFormatBuffer() {
+  if (!isTodoMode.value) return
   formatBufferOpen.value = !formatBufferOpen.value
   if (formatBufferOpen.value) {
     actionPanelOpen.value = false
@@ -1117,6 +1303,35 @@ async function copyMarkdown() {
   if (!success) {
     console.warn('[TodoPlanPanel] Failed to copy markdown')
   }
+}
+
+/**
+ * 草稿纸的「正式发出」:选区优先,否则水位之后没被读过的那一段。发出的内容
+ * **不从纸上删除** —— 纸是持久文档,水位由引擎消费驱动往前推,与这次发送无关。
+ *
+ * ## 为什么这里直接 emitCommand,而不是借道 composer
+ * 借不到。这个组件唯一活着的挂载点是**独立的 Todo 窗**(`TodoPlanWindow.vue`),
+ * 那扇窗里没有 InputBox —— 排队、引用物化、附件降级那一套全在主窗的 composer 里,
+ * 跨窗口够不着(要够着就得加一条主进程通道,那是后端改动)。
+ *
+ * 所以这条路**诚实地窄**:纯文本,一条 `command:send-message`,与 chatStore
+ * 发普通消息落到主进程的是同一个命令。它不做的事说清楚:不物化 `@文件` / 页面
+ * 引用(纸上手打的 token 会原样进正文)、不按模型能力把图降级成原生附件
+ * (路径留在正文,模型用文件工具去看)、生成中不排队(引擎自己决定怎么接)。
+ */
+async function sendScratchpadPending() {
+  if (!canSendScratchpad.value) return
+  const sessionId = resolvedSessionId.value
+  if (!sessionId) return
+  const selected = editorRef.value?.getSelectedText() ?? ''
+  const text = selected.trim() ? selected : scratchpad.pendingText()
+  if (!text.trim()) return
+  // 先把纸落盘再发:模型下一个 turn 读到的那份必须已经包含这段话。
+  await scratchpad.store.flushNow(sessionId)
+  await platformApi.emitCommand(sessionId, {
+    type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
+    content: text,
+  })
 }
 
 function moveFind(direction: number) {
@@ -1170,6 +1385,16 @@ function handleEditorKeydown(event: KeyboardEvent) {
   const command = event.metaKey || event.ctrlKey
   const key = event.key.toLowerCase()
 
+  if (isScratchpadMode.value) {
+    // 纸上 Enter 永远是换行 —— 只有 ⌘⏎ / Ctrl⏎ 才是"正式发出"。Todo 侧的
+    // ⌘F/⌘P/⌘K/⌘N 全是笔记操作,草稿纸上一律不接管(留给系统)。
+    if (command && event.key === 'Enter') {
+      event.preventDefault()
+      void sendScratchpadPending()
+    }
+    return
+  }
+
   if (command && key === 'f') {
     event.preventDefault()
     openFind()
@@ -1193,21 +1418,23 @@ function handleEditorKeydown(event: KeyboardEvent) {
 }
 
 async function handleMarkdownPaste(event: ClipboardEvent) {
+  // 粘图落盘要一个"文档在哪儿"的基准。草稿纸模式下那就是纸本身的路径 ——
+  // 这张纸是真实文件,所以整条附件管线原样通。
   await handleMarkdownAttachmentPaste({
     event,
     editor: editorRef.value,
-    documentPath: activeDocument.value?.filePath,
-    workspaceRoot: snapshot.value?.directory || effectiveWorkingDirectory.value,
+    documentPath: editorDocumentPath.value || undefined,
+    workspaceRoot: editorWorkspaceRoot.value || undefined,
   })
 }
 
 async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution | null) {
   if (asset) return asset
-  const documentPath = activeDocument.value?.filePath
+  const documentPath = editorDocumentPath.value
   if (!documentPath) return null
   const response = await markdownApi.resolveAsset({
     documentPath,
-    workspaceRoot: snapshot.value?.directory || effectiveWorkingDirectory.value,
+    workspaceRoot: editorWorkspaceRoot.value || undefined,
     rawTarget: href,
   })
   return response.success ? response.asset || null : null
@@ -1246,25 +1473,28 @@ function handleShortcut(event: KeyboardEvent) {
   }
   if (!isInPanel) return
 
-  if (command && key === 'f') {
-    event.preventDefault()
-    openFind()
-    return
-  }
-  if (command && key === 'p') {
-    event.preventDefault()
-    openSwitcher()
-    return
-  }
-  if (command && key === 'k') {
-    event.preventDefault()
-    openActionPanel()
-    return
-  }
-  if (command && key === 'n') {
-    event.preventDefault()
-    createNote()
-    return
+  // 笔记快捷键只在 Todo 侧成立 —— 草稿纸上没有"笔记"这个东西。
+  if (isTodoMode.value) {
+    if (command && key === 'f') {
+      event.preventDefault()
+      openFind()
+      return
+    }
+    if (command && key === 'p') {
+      event.preventDefault()
+      openSwitcher()
+      return
+    }
+    if (command && key === 'k') {
+      event.preventDefault()
+      openActionPanel()
+      return
+    }
+    if (command && key === 'n') {
+      event.preventDefault()
+      createNote()
+      return
+    }
   }
   if (event.key === 'Escape') {
     event.preventDefault()
@@ -1399,6 +1629,7 @@ onMounted(() => {
   })
   window.addEventListener('keydown', handleShortcut)
   window.addEventListener('pointerdown', handleOutsidePointerDown, true)
+  window.addEventListener('storage', handleModeStorage)
   if (!isStandalone.value) {
     window.addEventListener('todo-plan:toggle-card', toggleCollapsed)
   }
@@ -1409,6 +1640,7 @@ onUnmounted(() => {
   cleanupChanged?.()
   window.removeEventListener('keydown', handleShortcut)
   window.removeEventListener('pointerdown', handleOutsidePointerDown, true)
+  window.removeEventListener('storage', handleModeStorage)
   if (!isStandalone.value) {
     window.removeEventListener('todo-plan:toggle-card', toggleCollapsed)
   }
@@ -1592,7 +1824,9 @@ onUnmounted(() => {
   -webkit-app-region: drag;
 }
 
+/* 拖动区里的可点区必须逐个还回来 —— `no-drag` 只对 drag 分支上的子孙生效。 */
 .todo-plan-panel.standalone .panel-actions,
+.todo-plan-panel.standalone .mode-pill,
 .todo-plan-panel.standalone .note-switcher,
 .todo-plan-panel.standalone .todo-notes-action-panel,
 .todo-plan-panel.standalone .floating-find-bar,
@@ -1600,10 +1834,26 @@ onUnmounted(() => {
   -webkit-app-region: no-drag;
 }
 
+/* 形态丸压得比通用件更紧:它住在一条 30px 高的窗标题栏里,通用尺寸会把它顶开。 */
+.mode-pill {
+  flex: 0 0 auto;
+  /* 局部堆叠:标题是绝对定位的,丸要压在它之上才点得动。 */
+  position: relative;
+  z-index: 1;
+}
+
+.mode-pill :deep(.segmented-pill-item) {
+  height: 18px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+/* 标题居中是靠左右等距的内缩实现的,形态丸挤进左边之后这个距离得跟着变 ——
+   两侧必须同步改,否则"居中"会变成"偏心"。 */
 .window-title {
   position: absolute;
-  left: 108px;
-  right: 108px;
+  left: var(--todo-title-inset, 108px);
+  right: var(--todo-title-inset, 108px);
   width: auto;
   min-width: 0;
   overflow: hidden;
@@ -1614,6 +1864,14 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
+}
+
+.todo-plan-panel .window-title {
+  --todo-title-inset: 120px;
+}
+
+.todo-plan-panel.standalone .window-title {
+  --todo-title-inset: 200px;
 }
 
 .window-traffic-spacer {
@@ -1862,8 +2120,8 @@ onUnmounted(() => {
   }
 
   .todo-plan-panel.standalone .window-title {
-    left: 96px;
-    right: 96px;
+    --todo-title-inset: 188px;
+
     font-size: 13px;
   }
 
@@ -1948,6 +2206,17 @@ onUnmounted(() => {
 
 .note-footer span {
   text-align: center;
+}
+
+/* 水位文案:说的是"AI 读到哪儿了",是一句状态而不是一个操作 —— 用强调色的
+   弱档说话,别抢字数那一格的位置。 */
+.pad-watermark {
+  justify-self: end;
+  color: var(--ui-accent-subtle-fg);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .format-toggle {

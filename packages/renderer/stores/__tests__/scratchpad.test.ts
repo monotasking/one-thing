@@ -207,48 +207,22 @@ describe('scratchpad store', () => {
   it('remove 把本地账与宿主上的文件一起清掉', async () => {
     const store = useScratchpadStore()
     await store.load('s1')
-    store.setPadOpen('s1', true)
 
     await store.remove('s1')
 
     expect(store.getRecord('s1')).toBeNull()
-    expect(store.isPadOpen('s1')).toBe(false)
     expect(mocks.deleteScratchpad).toHaveBeenCalledWith({ sessionId: 's1' })
   })
 
-  it('adopt 把纸和垫子开关一起搬到新 id 下', async () => {
+  it('adopt 把纸搬到新 id 下', async () => {
     const store = useScratchpadStore()
     await store.load('s1')
     store.setContent('s1', '带走')
-    store.setPadOpen('s1', true)
 
     await store.adopt('s1', 's2')
 
     expect(mocks.adoptScratchpad).toHaveBeenCalledWith({ fromSessionId: 's1', toSessionId: 's2' })
-    expect(store.isPadOpen('s2')).toBe(true)
-    expect(store.isPadOpen('s1')).toBe(false)
-  })
-
-  it('垫子开关按会话记,缺省是关的', () => {
-    const store = useScratchpadStore()
-
-    expect(store.isPadOpen('s1')).toBe(false)
-    expect(store.togglePad('s1')).toBe(true)
-    expect(store.isPadOpen('s1')).toBe(true)
-    expect(store.togglePad('s1')).toBe(false)
-    // 别的会话不受影响。
-    expect(store.isPadOpen('s2')).toBe(false)
-  })
-
-  it('开关落到 localStorage,坏数据不炸', () => {
-    const store = useScratchpadStore()
-    store.setPadOpen('s1', true)
-
-    expect(JSON.parse(localStorage.getItem('onething:scratchpad-open:v1') || '{}'))
-      .toEqual({ s1: true })
-
-    localStorage.setItem('onething:scratchpad-open:v1', 'not json at all')
-    setActivePinia(createPinia())
-    expect(useScratchpadStore().isPadOpen('s1')).toBe(false)
+    // 旧 id 下一份不留 —— 草稿会话物化之后它就不该再被任何人读到。
+    expect(store.getRecord('s1')).toBeNull()
   })
 })

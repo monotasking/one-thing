@@ -1,5 +1,5 @@
 export { default as TextEditor } from './TextEditor.vue'
-export { default as MarkdownDocumentEditor } from './MarkdownDocumentEditor.vue'
+export { default as TiptapNoteEditor } from './tiptap/TiptapNoteEditor.vue'
 export * from './types'
 export * from './triggers'
 export * from './markdown-document'

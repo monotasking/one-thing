@@ -4,16 +4,40 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import TodoPlanPanel from "../TodoPlanPanel.vue";
 
-const mocks = vi.hoisted(() => ({
-	sessionsStore: {
-		currentSessionId: "session-1",
-		sessions: [{ id: "session-1", workingDirectory: "/repo" }],
-	},
-	editorFocus: vi.fn(),
-	editorSetSelection: vi.fn(),
-	editorSetValue: vi.fn(),
-	editorApplyCommand: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+	const scratchpadRecord = {
+		content: "纸上写了一句话",
+		version: 3,
+		filePath: "/store/scratchpads/session-1.md",
+		loaded: true,
+		dirty: false,
+		consumedVersion: 0,
+	};
+	return {
+		sessionsStore: {
+			currentSessionId: "session-1",
+			sessions: [{ id: "session-1", workingDirectory: "/repo" }],
+			isNewChatDraftId: () => false,
+		},
+		scratchpadRecord,
+		scratchpadStore: {
+			records: { "session-1": scratchpadRecord },
+			getRecord: (sessionId?: string | null) =>
+				sessionId === "session-1" ? scratchpadRecord : null,
+			load: vi.fn().mockResolvedValue(undefined),
+			setContent: vi.fn(),
+			flushNow: vi.fn().mockResolvedValue(undefined),
+			consumedOffset: () => null,
+			pendingText: () => scratchpadRecord.content,
+		},
+		editorFocus: vi.fn(),
+		editorSetSelection: vi.fn(),
+		editorSetValue: vi.fn(),
+		editorApplyCommand: vi.fn(),
+		editorSelectedText: vi.fn(() => ""),
+		editorFindTextMatches: vi.fn((_query: string) => [] as Array<{ from: number; to: number }>),
+	};
+});
 
 vi.mock("@/stores/sessions", () => ({
 	useSessionsStore: () => mocks.sessionsStore,
@@ -35,9 +59,9 @@ vi.mock("@/stores/settings", () => ({
 	}),
 }));
 
-vi.mock("@/editor/MarkdownDocumentEditor.vue", () => ({
+vi.mock("@/editor/tiptap/TiptapNoteEditor.vue", () => ({
 	default: {
-		name: "MarkdownDocumentEditor",
+		name: "TiptapNoteEditor",
 		props: [
 			"features",
 			"modelValue",
@@ -45,17 +69,18 @@ vi.mock("@/editor/MarkdownDocumentEditor.vue", () => ({
 			"documentId",
 			"documentPath",
 			"workspaceRoot",
-			"settings",
-			"toolbar",
+			"placeholder",
+			"spellcheck",
+			"consumedOffset",
 			"sourceToggle",
 		],
 		emits: [
 			"update:modelValue",
 			"keydown",
-			"cancel",
 			"paste",
 			"openLink",
 			"openImage",
+			"selectionUpdate",
 		],
 		setup(
 			_props: unknown,
@@ -67,7 +92,8 @@ vi.mock("@/editor/MarkdownDocumentEditor.vue", () => ({
 				setValue: mocks.editorSetValue,
 				getSelection: () => ({ from: 0, to: 0 }),
 				getValue: () => "",
-				getSelectedText: () => "",
+				getSelectedText: () => mocks.editorSelectedText(),
+				findTextMatches: (query: string) => mocks.editorFindTextMatches(query),
 				blur: vi.fn(),
 				replaceRange: vi.fn(),
 				scrollToTop: vi.fn(),
@@ -81,6 +107,9 @@ vi.mock("@/editor/MarkdownDocumentEditor.vue", () => ({
 					text: "",
 				}),
 				applyCommand: mocks.editorApplyCommand,
+				setSourceMode: vi.fn(),
+				toggleSourceMode: vi.fn(),
+				getSourceMode: () => false,
 			});
 			return {};
 		},
@@ -93,6 +122,15 @@ vi.mock("@/editor/MarkdownDocumentEditor.vue", () => ({
       />
     `,
 	},
+}));
+
+/**
+ * 草稿纸的账本是一个真 Pinia store,而这个测试文件不装 Pinia —— 桩掉它,
+ * 让面板的模式切换能单独被验证,不把纸的同步链一起拖进来(那条链有自己的
+ * 测试:`stores/__tests__/scratchpad.test.ts`)。
+ */
+vi.mock("@/stores/scratchpad", () => ({
+	useScratchpadStore: () => mocks.scratchpadStore,
 }));
 
 class ResizeObserverStub {
@@ -195,6 +233,7 @@ function installElectronApi() {
 			toggleTodoPlanWindow: vi.fn(),
 			setTodoPlanWindowPinned: vi.fn(),
 			setWindowButtonVisibility: vi.fn().mockResolvedValue({ success: true }),
+			emitCommand: vi.fn().mockResolvedValue({ success: true }),
 			onTodoPlanChanged: vi.fn((callback: (data: any) => void) => {
 				todoPlanChangedHandler = callback;
 				return vi.fn(() => {
@@ -220,6 +259,13 @@ describe("TodoPlanPanel", () => {
 		mocks.editorSetSelection.mockClear();
 		mocks.editorSetValue.mockClear();
 		mocks.editorApplyCommand.mockClear();
+		mocks.editorSelectedText.mockClear();
+		mocks.editorSelectedText.mockReturnValue("");
+		mocks.editorFindTextMatches.mockClear();
+		mocks.scratchpadStore.load.mockClear();
+		mocks.scratchpadStore.setContent.mockClear();
+		mocks.scratchpadStore.flushNow.mockClear();
+		mocks.scratchpadRecord.content = "纸上写了一句话";
 		storage = {};
 		vi.stubGlobal("localStorage", {
 			getItem: vi.fn((key: string) => storage[key] ?? null),
@@ -650,14 +696,14 @@ describe("TodoPlanPanel", () => {
 		expect(chatCard.text()).not.toContain("Keep Card Open");
 	});
 
-	it("always uses the markdown live preview editor without a separate preview mode", async () => {
+	it("always uses the render-first editor without a separate preview mode", async () => {
 		const wrapper = mount(TodoPlanPanel, {
 			attachTo: document.body,
 			props: { sessionId: "session-1", workingDirectory: "/repo" },
 		});
 		await settle();
 
-		const editor = wrapper.findComponent({ name: "MarkdownDocumentEditor" });
+		const editor = wrapper.findComponent({ name: "TiptapNoteEditor" });
 
 		expect(editor.props("surface")).toBe("todo-notes");
 		expect(editor.props("features")).toMatchObject({
@@ -666,7 +712,8 @@ describe("TodoPlanPanel", () => {
 			images: true,
 			math: true,
 		});
-		expect(editor.props("sourceToggle")).toBe(false);
+		// 源码钮是代码工作台那边才打开的能力,笔记面上不出。
+		expect(editor.props("sourceToggle")).toBeUndefined();
 		expect(wrapper.find('[aria-label="Preview markdown"]').exists()).toBe(false);
 		expect(wrapper.find('[aria-label="Edit markdown"]').exists()).toBe(false);
 		expect(wrapper.find(".markdown-preview").exists()).toBe(false);
@@ -691,7 +738,7 @@ describe("TodoPlanPanel", () => {
 		expect(wrapper.text()).not.toContain("AI Todo");
 		expect(
 			wrapper
-				.findComponent({ name: "MarkdownDocumentEditor" })
+				.findComponent({ name: "TiptapNoteEditor" })
 				.props("modelValue"),
 		).toContain("# User Todo");
 		expect(storage.todoPlanCardActiveId).toBe("user-todo-1");
@@ -709,7 +756,7 @@ describe("TodoPlanPanel", () => {
 
 		expect(standalone.text()).toContain("AI Todo");
 		expect(
-			standalone.findComponent({ name: "MarkdownDocumentEditor" }).exists(),
+			standalone.findComponent({ name: "TiptapNoteEditor" }).exists(),
 		).toBe(true);
 
 		standalone.unmount();
@@ -722,7 +769,7 @@ describe("TodoPlanPanel", () => {
 
 		expect(chatCard.find(".window-title").text()).toBe("User Todo");
 		const chatEditor = chatCard.findComponent({
-			name: "MarkdownDocumentEditor",
+			name: "TiptapNoteEditor",
 		});
 		expect(chatEditor.exists()).toBe(true);
 		expect(chatEditor.props("modelValue")).toContain("# User Todo");
@@ -738,7 +785,7 @@ describe("TodoPlanPanel", () => {
 
 		expect(
 			wrapper
-				.findComponent({ name: "MarkdownDocumentEditor" })
+				.findComponent({ name: "TiptapNoteEditor" })
 				.props("modelValue"),
 		).toContain("Review work");
 
@@ -756,7 +803,7 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		const editor = wrapper.findComponent({ name: "MarkdownDocumentEditor" });
+		const editor = wrapper.findComponent({ name: "TiptapNoteEditor" });
 		expect(editor.props("modelValue")).toContain("Ship the refresh fix");
 		expect(wrapper.find(".window-title").text()).toBe("AI Todo");
 		expect(wrapper.text()).not.toContain("1/2 open task");
@@ -785,7 +832,7 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		const editor = wrapper.findComponent({ name: "MarkdownDocumentEditor" });
+		const editor = wrapper.findComponent({ name: "TiptapNoteEditor" });
 		expect(editor.props("modelValue")).toContain("Local draft");
 		expect(editor.props("modelValue")).not.toContain("External tool update");
 	});
@@ -882,5 +929,144 @@ describe("TodoPlanPanel", () => {
 			preserveMainWindowVisibility: true,
 		});
 		expect(window.electronAPI.toggleTodoPlanWindow).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * 草稿纸模式(2026-08-15 合并)。这一组钉的是"同一扇窗两种内容"的边界:
+	 * 换过去之后 Todo 侧的一切(笔记按钮、格式条、⌘F/⌘P/⌘K/⌘N)必须整体退场,
+	 * 换回来必须原样回来 —— 混在一起就是两个形态互相污染。
+	 */
+	describe("scratchpad mode", () => {
+		async function mountStandalone() {
+			const wrapper = mount(TodoPlanPanel, {
+				attachTo: document.body,
+				props: { standalone: true },
+			});
+			await settle();
+			return wrapper;
+		}
+
+		async function switchTo(wrapper: any, label: string) {
+			const item = wrapper
+				.findAll(".mode-pill .segmented-pill-item")
+				.find((node: any) => node.text() === label);
+			await item.trigger("click");
+			await settle();
+		}
+
+		it("每窗口记一份形态,重挂时读回来", async () => {
+			const wrapper = await mountStandalone();
+			expect(wrapper.findComponent({ name: "TiptapNoteEditor" }).props("modelValue"))
+				.toContain("# User Todo");
+
+			await switchTo(wrapper, "草稿纸");
+
+			expect(storage.todoPlanWindowMode).toBe("scratchpad");
+			// 内嵌卡片那一份不受影响 —— 两个形态各记各的。
+			expect(storage.todoPlanCardMode).toBeUndefined();
+			wrapper.unmount();
+
+			const reopened = await mountStandalone();
+			expect(reopened.findComponent({ name: "TiptapNoteEditor" }).props("modelValue"))
+				.toBe("纸上写了一句话");
+		});
+
+		it("切过去之后 Todo 侧的入口整体退场,切回来原样回来", async () => {
+			const wrapper = await mountStandalone();
+
+			await switchTo(wrapper, "草稿纸");
+
+			expect(wrapper.find('[aria-label="Command Panel"]').exists()).toBe(false);
+			expect(wrapper.find('[aria-label="Browse notes"]').exists()).toBe(false);
+			expect(wrapper.find('[aria-label="New note"]').exists()).toBe(false);
+			expect(wrapper.find('[aria-label="Show formatting bar"]').exists()).toBe(false);
+			expect(wrapper.find('[aria-label="Send scratchpad content"]').exists()).toBe(true);
+			expect(wrapper.find(".window-title").text()).toBe("草稿纸");
+
+			// ⌘K 在草稿纸上不该唤出命令面板 —— 那是笔记的东西。
+			wrapper.find(".todo-plan-panel").element.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true, cancelable: true }),
+			);
+			await settle();
+			expect(wrapper.find(".todo-notes-action-panel").exists()).toBe(false);
+
+			await switchTo(wrapper, "Todo");
+
+			expect(wrapper.find('[aria-label="Command Panel"]').exists()).toBe(true);
+			expect(wrapper.find('[aria-label="Send scratchpad content"]').exists()).toBe(false);
+			expect(wrapper.findComponent({ name: "TiptapNoteEditor" }).props("modelValue"))
+				.toContain("# User Todo");
+		});
+
+		it("纸上的编辑写进 scratchpad store,不走 todo 的保存路", async () => {
+			const wrapper = await mountStandalone();
+			await switchTo(wrapper, "草稿纸");
+			(window.electronAPI as any).updateTodoPlan.mockClear();
+
+			await wrapper.find(".mock-editor").setValue("又想到一句");
+			await settle();
+
+			expect(mocks.scratchpadStore.setContent).toHaveBeenCalledWith("session-1", "又想到一句");
+			expect((window.electronAPI as any).updateTodoPlan).not.toHaveBeenCalled();
+		});
+
+		it("⌘⏎ 把水位之后的内容直发成一条 send-message", async () => {
+			const wrapper = await mountStandalone();
+			await switchTo(wrapper, "草稿纸");
+
+			wrapper.find(".mock-editor").element.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true, cancelable: true }),
+			);
+			await settle();
+
+			// 先落盘再发:模型下一轮读到的那份必须已经含这段话。
+			expect(mocks.scratchpadStore.flushNow).toHaveBeenCalledWith("session-1");
+			expect((window.electronAPI as any).emitCommand).toHaveBeenCalledWith("session-1", {
+				type: "command:send-message",
+				content: "纸上写了一句话",
+			});
+		});
+
+		it("有选区就只发选区", async () => {
+			const wrapper = await mountStandalone();
+			await switchTo(wrapper, "草稿纸");
+			mocks.editorSelectedText.mockReturnValue("只发这一句");
+
+			await wrapper.find('[aria-label="Send scratchpad content"]').trigger("click");
+			await settle();
+
+			expect((window.electronAPI as any).emitCommand).toHaveBeenCalledWith("session-1", {
+				type: "command:send-message",
+				content: "只发这一句",
+			});
+		});
+
+		it("空纸时发送钮是关的", async () => {
+			mocks.scratchpadRecord.content = "   ";
+			const wrapper = await mountStandalone();
+			await switchTo(wrapper, "草稿纸");
+
+			expect(
+				wrapper.find('[aria-label="Send scratchpad content"]').attributes("disabled"),
+			).toBeDefined();
+		});
+
+		/**
+		 * 跨窗口信号:composer 的草稿纸钮在主窗里写键,这扇窗靠 `storage` 事件跟上。
+		 * 这是两个渲染进程之间唯一不需要后端改动的通道。
+		 */
+		it("别的窗口写了形态键,这扇窗跟着切", async () => {
+			const wrapper = await mountStandalone();
+			expect(wrapper.find(".window-title").text()).toBe("User Todo");
+
+			window.dispatchEvent(
+				new StorageEvent("storage", { key: "todoPlanWindowMode", newValue: "scratchpad" }),
+			);
+			await settle();
+
+			expect(wrapper.find(".window-title").text()).toBe("草稿纸");
+			// 跟随不回写:写的那一边已经落过盘了,再写一次只会多一次事件。
+			expect(storage.todoPlanWindowMode).toBeUndefined();
+		});
 	});
 });

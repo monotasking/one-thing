@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyMarkdownFormat,
-  findMarkdownMatches,
   parseTasks,
   titleFromMarkdown,
   toggleTaskLine,
@@ -33,12 +32,8 @@ describe('todo-plan-utils', () => {
     expect(toggleTaskLine(content, 3)).toBe('# Note\n\n- [ ] First\n- [ ] Second\n')
   })
 
-  it('finds Chinese text matches in markdown content', () => {
-    const matches = findMarkdownMatches('# 计划\n\n今天修复中文输入，然后验证中文搜索。', '中文')
-
-    expect(matches).toHaveLength(2)
-    expect(matches[0]).toMatchObject({ lineIndex: 2 })
-  })
+  // 查找搬去编辑器了(坐标系必须与选区一致),中文命中的覆盖跟着搬到
+  // `editor/tiptap/__tests__/apply-command.test.ts`。
 
   it('uses the first markdown heading as the note title', () => {
     expect(titleFromMarkdown('\n# Meeting Notes\n\nBody', 'Fallback')).toBe('Meeting Notes')

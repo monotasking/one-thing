@@ -31,7 +31,6 @@ export const DEFAULT_MAX_TOKENS = 4096
 export const DEFAULT_CONTEXT_LENGTH = 128000
 
 export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
-  noteEngine: 'codemirror',
   tabSize: 2,
   lineWrapping: true,
   softWrapColumn: 88,
@@ -804,7 +803,6 @@ export function normalizeVoiceSettings(settings?: VoiceSettings): VoiceSettings 
 
 export function normalizeEditorSettings(settings?: EditorSettings): Required<EditorSettings> {
   return {
-    noteEngine: settings?.noteEngine === 'prosemirror' ? 'prosemirror' : DEFAULT_EDITOR_SETTINGS.noteEngine,
     tabSize: clampNumber(settings?.tabSize, 1, 8, DEFAULT_EDITOR_SETTINGS.tabSize),
     lineWrapping: settings?.lineWrapping ?? DEFAULT_EDITOR_SETTINGS.lineWrapping,
     softWrapColumn: clampNumber(

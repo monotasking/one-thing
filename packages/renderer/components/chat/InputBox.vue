@@ -398,22 +398,21 @@
               >
                 <span class="plugin-trigger-folded">+{{ composerPluginTruncated.length }}</span>
               </Tooltip>
-              <!-- 草稿纸开关(工程形态限定)。开的是一张**浮在聊天区之上**的
-                   垫子,不是把输入框换掉 —— 输入框在任何时候都是原来那一个。 -->
+              <!-- 草稿纸入口(工程形态限定)。它不在这棵树里开任何东西 ——
+                   点一下是**去 Todo 窗并把它切到草稿纸模式**(那扇窗是唯一的
+                   浮面)。输入框在任何时候都是原来那一个。 -->
               <Tooltip
                 v-if="isEngineeringComposer"
                 class="scratchpad-toggle-cell"
-                :text="isScratchpadOpen ? '收起草稿纸' : '打开草稿纸 —— 浮在聊天上,边看边写,AI 会默默看见'"
+                text="打开草稿纸 —— 在 Todo 窗里边看边写,AI 会默默看见"
               >
                 <Button
                   size="small"
                   class="voice-aux-btn scratchpad-toggle-btn"
-                  :class="{ 'is-active': isScratchpadOpen }"
                   native-type="button"
-                  :aria-label="isScratchpadOpen ? 'Close the floating scratchpad' : 'Open the floating scratchpad'"
-                  :aria-pressed="isScratchpadOpen ? 'true' : 'false'"
+                  aria-label="Open the scratchpad in the todo window"
                   @mousedown.prevent
-                  @click.stop="toggleScratchpad"
+                  @click.stop="openScratchpad"
                 >
                   <template #icon>
                     <NotebookPen
@@ -627,7 +626,8 @@ import { usePickerOrchestration } from '@/composables/usePickerOrchestration'
 import { useCommandFeedback } from '@/composables/useCommandFeedback'
 import { useAttachments } from '@/composables/useAttachments'
 import { useFileDrop } from '@/composables/useFileDrop'
-import { useScratchpadPad } from '@/composables/useScratchpadPad'
+import { useScratchpadStore } from '@/stores/scratchpad'
+import { requestTodoPlanWindowScratchpadMode } from './todo-panel-mode'
 import { useActiveModelCapabilities } from '@/composables/useActiveModelCapabilities'
 import { extractLocalRefs } from './scratchpad/scratchpad-refs'
 import type { AttachedFile } from '@/composables/useAttachments'
@@ -1007,28 +1007,25 @@ const composerWrapperRef = ref<HTMLElement | null>(null)
 
 const queuedMessages = ref<QueuedMessage[]>([])
 
-/**
- * 悬浮草稿垫的开关(scratchpad · AI 静默感知)。
- *
- * 垫子本身**不在这棵树里** —— 它是 `ChatPanel` 挂的一张浮卡(见
- * `components/chat/scratchpad/FloatingScratchpad.vue`)。输入框这边只留两件事:
- * 工具条上的那枚开关,以及垫子按 ⌘⏎ 时借道过来的那条发送路(见
- * `sendScratchpadText`)—— 排队、引用物化、附件降级都在这里,重写一份必然分叉。
- *
- * `available` 卡在工程形态上 —— messenger(房/私聊)的输入框不是工程台面,
- * 开关整个不出现。
- */
-const scratchpad = useScratchpadPad(() => effectiveSessionId.value, {
-  available: () => isEngineeringComposer.value,
-})
-const isScratchpadOpen = computed(() => scratchpad.isOpen.value)
 /** 与发送同源的能力判定 —— 决定纸上的图是原生附上还是留一条路径。 */
 const scratchpadCapabilities = useActiveModelCapabilities(() => effectiveSessionId.value)
 
-function toggleScratchpad() {
-  scratchpad.toggleOpen()
-  // 关掉垫子时焦点回到输入框;打开时由垫子自己接管(它一出现就聚焦编辑器)。
-  if (!isScratchpadOpen.value) nextTick(() => editorRef.value?.focus())
+/**
+ * 草稿纸入口(scratchpad · AI 静默感知)。
+ *
+ * **形态说明(2026-08-15 合并)**:草稿纸不再有自己的浮卡 —— 它是 Todo 窗的
+ * 一种模式。所以这枚钮只做两件事:把那扇窗的形态先定成草稿纸(写一个每窗口的
+ * localStorage 键,已经开着的窗靠 `storage` 事件跟上),再把窗开出来/聚焦。
+ *
+ * 这里没有"开关"语义 —— 它是一个**去**,不是一个 toggle:窗关不关由那扇窗
+ * 自己说了算(Esc / ⌘⇧T),输入框不该替它记状态。
+ */
+function openScratchpad() {
+  requestTodoPlanWindowScratchpadMode()
+  void platformApi.openTodoPlanWindow?.({
+    activation: 'focus-if-app-active',
+    preserveMainWindowVisibility: true,
+  })
 }
 
 // Get the working directory for file search
@@ -1834,6 +1831,19 @@ function handleKeyDown(e: KeyboardEvent) {
 }
 
 /**
+ * 纸的所在目录 —— 相对引用(`![](a.png)`)以它为基准。
+ *
+ * 直接**窥视** store 而不是挂 `useScratchpadPad`:这条路只在发送的一瞬间用一次,
+ * 挂上整套装载/防抖/flush 生命周期是为一次读值养一个后台。纸没在本窗口装载过
+ * 就是空串,`extractLocalRefs` 那边只认绝对路径 —— 少认几个,不认错。
+ */
+function scratchpadBaseDir(): string {
+  const path = useScratchpadStore().getRecord(effectiveSessionId.value)?.filePath ?? ''
+  const index = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  return index > 0 ? path.slice(0, index) : ''
+}
+
+/**
  * 纸上引用到的本地图片 → 原生附件。
  *
  * 只在模型**真的认图**时才读盘:引擎对只有 `filePath` 没有 base64 的附件不会
@@ -1843,7 +1853,7 @@ function handleKeyDown(e: KeyboardEvent) {
  */
 async function scratchpadVisionAttachments(text: string): Promise<MessageAttachment[]> {
   if (!scratchpadCapabilities.supportsVision.value) return []
-  const refs = extractLocalRefs(text, scratchpad.documentDir.value).filter(ref => ref.isImage)
+  const refs = extractLocalRefs(text, scratchpadBaseDir()).filter(ref => ref.isImage)
   if (refs.length === 0) return []
   const attachments: MessageAttachment[] = []
   for (const ref of refs) {
@@ -1869,12 +1879,19 @@ async function scratchpadVisionAttachments(text: string): Promise<MessageAttachm
 }
 
 /**
- * 草稿垫的"正式发出":垫子已经把要发的那一段选好了(选区优先,否则水位之后
- * 的内容),这里只负责把它送进**与手打消息完全相同**的那条路 —— 引用物化、
- * 附件降级、忙时排队。
+ * 草稿纸的"正式发出":调用方已经把要发的那一段选好了(选区优先,否则水位
+ * 之后的内容),这里只负责把它送进**与手打消息完全相同**的那条路 —— 引用
+ * 物化、附件降级、忙时排队。
  *
  * 发出的内容**不从纸上删除** —— 纸是持久文档,不是一次性草稿;水位由引擎
  * 消费驱动往前推,与这次发送无关。
+ *
+ * **当前没有调用方**(2026-08-15 合并):草稿纸搬进 Todo 窗之后,唯一的
+ * "正式发出"发生在那扇**独立窗**里,而窗里没有 composer,跨窗口够不到这条路
+ * (它在那边退化成一条直发 `command:send-message`,见 `TodoPlanPanel` 的
+ * `sendScratchpadPending`)。这一条留着不是摆设:同一棵树里再出现草稿纸入口
+ * (内嵌卡片形态回来 / 主窗里再挂一张纸)时,发送必须走这里,而不是在旁边
+ * 重写一份必然分叉的。
  */
 async function sendScratchpadText(text: string) {
   const trimmed = (text || '').trim()
@@ -2197,7 +2214,7 @@ defineExpose({
   insertPromptReference,
   addAttachment,
   focus: focusEditor,
-  /** 悬浮草稿垫的 ⌘⏎ 借道这里发 —— 与手打消息同一条路,见 `sendScratchpadText`。 */
+  /** 草稿纸的 ⌘⏎ 借道这里发 —— 与手打消息同一条路,见 `sendScratchpadText`。 */
   sendScratchpadText,
   // Snapshot API for session switching
   getMessageInput: () => messageInput.value,
@@ -2722,8 +2739,11 @@ defineExpose({
   opacity: 0.45;
 }
 
-/* 草稿纸开关也被 Tooltip 包了一层 wrapper —— 与 .plugin-trigger-cell 同法,
-   把按钮撑满格子,否则它在工具条里比邻居矮一截。 */
+/* 草稿纸入口也被 Tooltip 包了一层 wrapper —— 与 .plugin-trigger-cell 同法,
+   把按钮撑满格子,否则它在工具条里比邻居矮一截。
+
+   它**没有选中态**:这枚钮是一个"去 Todo 窗",不是一个开关,那扇窗开没开
+   不由输入框记账。 */
 .toolbar-right > .scratchpad-toggle-cell {
   display: flex;
   align-items: stretch;
@@ -2734,18 +2754,6 @@ defineExpose({
   border-radius: 0;
   height: 100%;
   padding: 0 12px;
-}
-
-/* 开着的时候是**当前形态**,不是"选中项":用 accent 前景 + 淡 accent 底,
-   与 .voice-btn.needs-setup 同一对档位。 */
-.scratchpad-toggle-btn.is-active {
-  color: var(--ui-accent-primary-fg);
-  background: var(--ui-state-hover-accent-bg);
-}
-
-.scratchpad-toggle-btn.is-active:hover:not(:disabled) {
-  color: var(--ui-accent-primary-fg);
-  background: var(--ui-state-hover-accent-strong-bg);
 }
 
 /* 超容量折叠的计数(详情在设置页)。 */

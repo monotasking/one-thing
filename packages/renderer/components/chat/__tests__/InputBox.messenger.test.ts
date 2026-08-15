@@ -55,14 +55,9 @@ vi.mock("@/stores/agents", () => ({
 	useAgentsStore: () => mocks.agentsStore,
 }));
 
-// 草稿纸:messenger 形态本来就没有草稿纸(开关钮不渲染),这里给一个恒
-// 「垫子没开」的空壳,把"房面零变化"这条也钉住。
+// 草稿纸:messenger 形态本来就没有草稿纸(开关钮不渲染),这里给一个只读空壳,把"房面零变化"这条也钉住。
 vi.mock("@/stores/scratchpad", () => ({
 	useScratchpadStore: () => ({
-		isPadOpen: () => false,
-		togglePad: vi.fn(),
-		setPadOpen: vi.fn(),
-		clearPadOpen: vi.fn(),
 		getRecord: () => null,
 		setContent: vi.fn(),
 		load: vi.fn().mockResolvedValue(undefined),
