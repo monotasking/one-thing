@@ -62,3 +62,6 @@ tmp.md
 /manual-test.png
 /page-loaded.png
 /test-page.png
+
+# design-sync 构建产物（node .design-sync/build-tokens.mjs 重建）
+ds-bundle/

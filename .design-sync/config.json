@@ -1,0 +1,36 @@
+{
+  "projectId": "978b192f-93c2-4aa9-867a-084ab64985bd",
+  "projectName": "onething Tokens",
+  "shape": "custom",
+  "builder": ".design-sync/build-tokens.mjs",
+  "outDir": "ds-bundle",
+  "readmeHeader": ".design-sync/conventions.md",
+
+  "_why_custom": [
+    "design-sync 自带的 package/storybook 转换器都要求 React 设计系统",
+    "（non-storybook/SKILL.md:262：a non-React DS has nothing for the agent to build with）。",
+    "onething 是 Vue 3，且五个 package 均无 dist/、renderer 是 private 包、",
+    "common/ 无 barrel 导出 —— 三条都接不上转换器。",
+    "故本仓库走自建构建器，只同步「样式面」：token / 字体 / 规范，不出组件 bundle。",
+    "没有 _ds_sync.json 锚点是有意的：无组件可哈希，下次同步全量重建即可。"
+  ],
+
+  "_scope": {
+    "ships": ["styles.css", "tokens/*.css", "fonts/*.woff2", "guidelines/", "README.md"],
+    "omits": ["_ds_bundle.js", "components/", "_preview/", "_vendor/", "_ds_sync.json"]
+  },
+
+  "_related": {
+    "otherProject": "4a2f39d4-4b0e-48d2-8fb6-e7a8c7e7c3d5",
+    "otherProjectName": "onething Design System",
+    "note": [
+      "那个项目是一套**手写的 React 再创作**（Button/Badge/Card/Input/Switch/ToolCall 六件 + 近似 token），",
+      "不是从本仓库源码生成的。2026-08-15 明确决定：不碰它。",
+      "已核对的分歧：其 tokens/colors.css 有 7 枚本系统不存在的自造 token",
+      "（--bg-code --bg-tool --bg-overlay --text-inverse --text-on-accent --accent-strong --color-accent-purple）；",
+      "其 Card 组件自带阴影，违反本系统头号禁令「内容面不投影」；",
+      "其 ToolCall 画成带阴影的紫色卡片，而真实现是无卡片的 radius-0 编号行、hover 无背景带。",
+      "若将来要合并两者，须先修掉 Card / ToolCall，否则 token 再准也会教错设计 agent。"
+    ]
+  }
+}
