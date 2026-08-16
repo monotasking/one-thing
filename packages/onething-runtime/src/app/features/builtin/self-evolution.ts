@@ -626,6 +626,17 @@ function mountSelfEvolution(ctx: FeatureContext): void {
         for (const name of candidates) lines.push(`  - ${name}    → feature_mount({ id: ${JSON.stringify(name)} })`)
       }
 
+      // 契约与起步模板恒定附上:inspect 是模型的第一跳,得让它看完就能动手,
+      // 而不是先挂一次、靠报错才拿到模板。当前边界(后端 only)也写在这里 ——
+      // 一段说不清的能力,模型会拿去做它做不到的事(真机首验:被要求改输入框样式)。
+      lines.push('')
+      lines.push('契约与起步:')
+      lines.push(`  - 新建 feature = 在 ${root}/<id>/ 下写 ${DEFAULT_ENTRY_FILENAME}(目录用文件工具创建,本工具不代建),然后 feature_mount({ id })。`)
+      lines.push('  - 模块默认导出 { id, mount(ctx) };ctx.registerRpcDomain(router, handlers) / ctx.registerDisposer(fn) 都返回 disposer。')
+      lines.push('  - 当前边界:feature 只能加后端能力(RPC 域、用 disposer 持有的资源);**改 UI(样式/面板/组件)与注册新工具暂不可用**。')
+      lines.push('  - 起步模板(把 <id> 换掉即可):')
+      for (const line of minimalTemplate('<id>').split('\n')) lines.push(`      ${line}`)
+
       return {
         title: `feature 全景:${dumps.length} 挂载 / ${dynamic.size} 动态 / ${candidates.length} 候选`,
         output: lines.join('\n'),

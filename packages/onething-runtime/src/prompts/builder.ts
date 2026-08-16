@@ -25,6 +25,7 @@ import osLinuxRaw from "./content/os-linux.md?raw";
 import contextUpdateConventionRaw from "./content/context-update-convention.md?raw";
 import contextVariablesIntroRaw from "./content/context-variables-intro.md?raw";
 import todoRulesRaw from "./content/todo-rules.md?raw";
+import selfEvolutionRaw from "./content/self-evolution.md?raw";
 
 const normalizeContent = (s: string) => s.replace(/\n+$/, "");
 
@@ -171,6 +172,15 @@ async function buildRuntimeSystemPrompt(
 			Boolean(ctx.hasTools && ctx.toolNames?.includes("variable")) &&
 				`<context-variables>\n${CONTEXT_VARIABLES_INTRO}\n</context-variables>`,
 		],
+		// 常量字节(cache-safe):自进化说明只在 `feature_mount` 工具在场时注入
+		// (readonly / 无 bash 的宿主拿不到这组工具,那时这段话会是假的)。只写事实:
+		// feature 是什么、在哪、契约、流程与当前边界(后端 only)。没有这一段时,模型
+		// 不知道应用能被它运行时扩展,会去翻源码目录找 feature —— 真机首验撞到的正是这个。
+		[
+			"self-evolution",
+			Boolean(ctx.hasTools && ctx.toolNames?.includes("feature_mount")) &&
+				`<self-evolution>\n${SELF_EVOLUTION}\n</self-evolution>`,
+		],
 	];
 	for (const plugin of plugins) sections.push(["plugins", plugin]);
 
@@ -254,6 +264,7 @@ function agentPrompt(name: string, systemPrompt: string): string {
 }
 
 const VOICE_SPEAK_MODE = normalizeContent(voiceSpeakModeRaw);
+const SELF_EVOLUTION = normalizeContent(selfEvolutionRaw);
 
 function workdir(ctx: CoreBuildPromptContextOptions): string {
 	const homeDir = ctx.homeDir || os.homedir();
