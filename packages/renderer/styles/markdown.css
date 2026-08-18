@@ -14,6 +14,15 @@
 	margin-bottom: 0;
 }
 
+/* Streaming renders the body as sibling `.md-segment` shells (display: contents,
+   one per stable prefix / live tail). A segment's last <p> is only the body's
+   last <p> when the segment itself is last — otherwise stripping its margin
+   makes the gap before the live paragraph 0 and then snap open (one paragraph
+   gap, every paragraph boundary) the moment the next segment splits off. */
+.md-body .md-segment:not(:last-of-type) > p:last-child {
+	margin-bottom: var(--content-paragraph-gap, var(--content-spacing, 0.75em));
+}
+
 /* Lists */
 .md-body ul,
 .md-body ol {

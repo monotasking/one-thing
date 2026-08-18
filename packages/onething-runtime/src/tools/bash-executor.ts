@@ -43,7 +43,7 @@ export interface BashOperations {
   /**
    * Launch a command as a managed background job. Returns immediately;
    * stdout/stderr stream into the job's log file for the process lifetime
-   * (readable incrementally via readBackgroundJobOutput / bash_output).
+   * (readable incrementally via readBackgroundJobOutput).
    */
   execBackground?: (
     command: string,

@@ -37,6 +37,8 @@
 import type { CorePluginStatusPart } from '@onething/core/plugins'
 import { getEventBus } from '../events/index.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /** 这一格在 `(pluginId, id)` 寻址里的 id。整条会话上只有这一格。 */
 export const EXTERNAL_AGENT_BACKGROUND_STATUS_ID = 'background-tasks'
 
@@ -96,7 +98,7 @@ export function publishExternalAgentBackgroundStatus(
   try {
     const part = buildExternalAgentBackgroundStatusPart(input)
     // 走既有的 `content:part` 轨道,不新开通道 —— 与 R6 §5.2 第 4 条同一条理由。
-    void getEventBus().emit(input.localSessionId, { type: 'content:part', part } as never)
+    void getEventBus().emit(input.localSessionId, { type: SESSION_EVENT_TYPES.CONTENT_PART, part } as never)
   } catch {
     // 观测绝不能变成第二个故障源。
   }

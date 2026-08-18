@@ -12,7 +12,6 @@ import {
 } from '../background-jobs.js'
 import { createLocalBashOperations } from '../bash-executor.js'
 import { createBashTool } from '../builtin/bash.js'
-import { BashOutputTool, KillBashTool } from '../builtin/bash-jobs.js'
 import type { ToolContext } from '../tool.js'
 
 let outputRoot = ''
@@ -128,22 +127,20 @@ describe('bash background jobs', () => {
     stopBackgroundJob(jobId)
   })
 
-  it('bash_output reads new output and kill_bash stops the job', async () => {
+  it('a background launch tells the model the log path and pid, and the job can be read and stopped', async () => {
     const ops = createLocalBashOperations()
     const launch = await ops.execBackground!('echo hello-from-job; sleep 30', cwd)
     await wait(150)
 
-    const outputResult = await BashOutputTool.execute({ job_id: launch.jobId }, makeCtx())
-    expect(outputResult.output).toContain('hello-from-job')
-    expect(outputResult.metadata.status).toBe('running')
+    // 没有 bash_output / kill_bash 了(2026-08-18):读日志与停任务并回 bash 本身,
+    // 所以启动结果必须把日志路径与 pid 都交给模型。
+    const read = readBackgroundJobOutput(launch.jobId, { fromStart: true })
+    expect(read?.output).toContain('hello-from-job')
+    expect(read?.job.status).toBe('running')
+    expect(launch.logPath).toBeTruthy()
+    expect(launch.pid).toBeGreaterThan(0)
 
-    const killResult = await KillBashTool.execute({ job_id: launch.jobId }, makeCtx())
-    expect(killResult.metadata.status).toBe('killed')
-
-    const again = await KillBashTool.execute({ job_id: launch.jobId }, makeCtx())
-    expect(again.output).toContain('already')
-
-    await expect(BashOutputTool.execute({ job_id: 'bg-missing' }, makeCtx()))
-      .rejects.toThrow(/Unknown background job/)
+    expect(stopBackgroundJob(launch.jobId)).toBe(true)
+    expect(listBackgroundJobs({ includeInactive: true }).find(job => job.id === launch.jobId)?.status).toBe('killed')
   })
 })

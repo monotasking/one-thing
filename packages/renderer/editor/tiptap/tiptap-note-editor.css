@@ -10,6 +10,92 @@
   padding: 12px 20px 24px;
   min-height: 100%;
   white-space: pre-wrap;
+  /* 整面是一张可以写字的纸 —— 指针就该是 I 形。写在这一层而不是块上:块与块之间
+     的留白、末段以下那一大片空白也都是"点进去就能写"的地方,箭头会让人以为不是。
+     交互件各自覆盖它(把手 grab、勾选框 pointer、图片 zoom-in、拖柄 ew-resize)。 */
+  cursor: text;
+}
+
+/* Todo 窗的文档区按设计稿收窄上下、放宽左右。写在**滚动内容**上而不是宿主的
+   容器上:padding 挂在容器时顶部那一段不会随内容滚走,第一行会被永久顶住。 */
+.tiptap-note-editor[data-surface='todo-notes'] .tiptap-note-surface {
+  padding: 4px 26px 32px;
+}
+
+/* ------------------------------------------------------------ 块级 hover
+   一层极淡的底,向左右各外扩 8px、上下各外扩 6px —— 指哪一块一眼看得见,而不是靠
+   把手浮出来才知道。混的是**中性墨**不是 accent:每划过一块就闪一次主色太吵。
+
+   三个条件缺一不可:`hovered && 没在拖 && 不是光标所在的那一块`。
+   ·「没在拖」:拖拽有自己的落点指示线,鼠标底下再亮一块会被读成落点。
+   ·「不是光标块」:光标已经是最强的位置提示,再叠一层灰底,人会以为自己还没进去。
+     那一块由 `caret-block.ts` 打上 `.is-caret-block`;只在编辑器**持有焦点**时排除
+     (`.ProseMirror-focused` 是 prosemirror-view 自己加的)—— 失焦时光标不可见,
+     再排除就成了一块无缘无故不响应的死区。
+
+   底色画在 `::after` 上,而不是块自己的 padding + 负 margin:
+   ·「阴影法」(`box-shadow: 0 0 0 8px`)试过,不等价 —— spread 会把圆角一起撑大
+     (7 + 8 = 15),包不住外扩区;而且四面等距,上下也跟着扩 8px,这正是"底色范围
+     过大"的来源。
+   ·「真 padding + margin: 0 -8px」几何是对的,但它要改**布局**:顶层块的竖直留白
+     由 notion-prose 的 `--notion-block-gap`(0.32em ≈ 4.6px)与标题的 em 边距定,
+     每块再加 12px 竖直 padding 会把段距变成三倍多;而 `margin: 0` 那一半又会把
+     "标题上留白远大于下留白"整平。当年那场特异性打架(`.tiptap-note-surface > *`
+     0-1-0 输给 `.notion-prose p` 0-1-1)只是表症 —— 真正的问题是"画一条 hover 带"
+     这件事本就不该去动排版。伪元素 + `inset: -6px -8px` 画出的是同一条带子,圆角
+     写 7 就真的是 7:几何照设计稿,布局一格不动。
+   ·用 `::after` 而不是 `::before`:`::before` 已经被逐块 placeholder 占了
+     (`p.is-empty::before` 那几条),抢过来会让空段落一 hover 就丢占位文案。 */
+
+/* `isolation: isolate` 不是可省的一行:带子是 `z-index: -1` 的伪元素,负层级会一路
+   逃到**最近的层叠上下文**去画。不隔离的话那个上下文是 Todo 窗根(`isolation: isolate`),
+   而负层级在那里排在"块级后代的背景"之前 —— 带子会被主区那张卡的底色整片盖住,
+   肉眼上等于没画。每块自成一个上下文,负层级就只落在这一块的背景之上、文字之下。 */
+.tiptap-note-surface > * {
+  position: relative;
+  isolation: isolate;
+}
+
+/* 带子常驻但透明 —— 只有常驻的伪元素才过渡得起来(hover 时才 `content: ''` 的话,
+   元素是新生的,第一帧就已经是终态)。 */
+.tiptap-note-surface > *::after {
+  content: '';
+  position: absolute;
+  inset: -6px -8px;
+  z-index: -1;
+  border-radius: 7px;
+  background: transparent;
+  pointer-events: none;
+  transition: background var(--duration-fast) var(--ease-default);
+}
+
+/* `is-typing`(进入输入后)与拖拽同罪:打字时鼠标停着的那一行不亮底,
+   鼠标一动 `is-typing` 摘掉,hover 才回来 —— Notion 同款。
+   `:not(pre)`:代码块的 `::after` 被语言角标占用(code-block-language.ts),
+   这条 hover 底涂上去就成了"角标悬停变色"—— 代码块靠自己的面表达 hover。 */
+.tiptap-note-editor:not(.is-dragging):not(.is-typing) .tiptap-note-surface > *:not(pre):hover::after {
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 4%, transparent);
+}
+
+/* 光标所在的那一块:正在编辑,不画底。 */
+.tiptap-note-editor .tiptap-note-surface.ProseMirror-focused > .is-caret-block:hover::after {
+  background: transparent;
+}
+
+/* 代码块自带底色,再叠一层 hover 只会脏 —— 它靠自己的面表达"我是一块"。 */
+.tiptap-note-surface > pre::after {
+  content: none;
+}
+
+/* 表格同理,外加一条硬理由:它的外壳 `.tableWrapper` 要 `overflow-x: auto`(宽表
+   得能横滚),而带子是向外扩 8px 的伪元素 —— 画出来当场被裁成半条。表自己有表头
+   面与横线,本来也不缺"我是一块"的表达。 */
+.tiptap-note-surface > .tableWrapper::after {
+  content: none;
+}
+
+.tiptap-note-surface > pre:hover {
+  background: var(--ui-surface-code-block-bg, var(--ui-state-hover-bg));
 }
 
 /* contenteditable 面自己不画焦点环 —— 光标就是焦点提示,再套一圈只会挤掉排版。 */
@@ -57,11 +143,12 @@
 
 .tiptap-note-surface ul[data-type='taskList'] input[type='checkbox'] {
   appearance: none;
-  width: var(--notion-checkbox-size, 16px);
-  height: var(--notion-checkbox-size, 16px);
+  position: relative;
+  width: var(--notion-checkbox-size, 17px);
+  height: var(--notion-checkbox-size, 17px);
   margin: 0;
-  border: 1.5px solid color-mix(in srgb, var(--ui-text-primary-fg) 34%, var(--ui-border-default-border));
-  border-radius: var(--radius-xs, 3px);
+  border: 2px solid color-mix(in srgb, var(--ui-text-muted-fg) 62%, var(--ui-border-default-border));
+  border-radius: 6px;
   background: transparent;
   cursor: pointer;
   transition:
@@ -74,15 +161,18 @@
   background: var(--ui-accent-primary-fg);
 }
 
+/* 勾用两条边画,不用 '✓' 字形:字形的粗细与位置随字体走,换一套中文字体就
+   歪一次。两条边的角度和粗细是我们自己定的,任何字体下都一样。 */
 .tiptap-note-surface ul[data-type='taskList'] input[type='checkbox']:checked::after {
-  content: '✓';
-  display: block;
-  margin-top: -1px;
-  color: var(--ui-action-primary-fg);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: var(--notion-checkbox-size, 16px);
-  text-align: center;
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--ui-action-primary-fg);
+  border-width: 0 2.4px 2.4px 0;
+  transform: rotate(43deg);
 }
 
 .tiptap-note-surface ul[data-type='taskList'] li[data-checked='true'] > div {
@@ -92,14 +182,24 @@
 
 /* --------------------------------------------------------------- 拖拽把手 */
 
+/* 几何按设计稿:把手占 gutter 的 [-20px, -8px] 那一段 —— 宽 12px,右缘正好贴住
+   hover 带子的左缘(带子是 `inset: -6px -8px`,左缘在 -8px)。两者相接、互不重叠,
+   所以带子不会罩住 ⠿。
+   **左移那 8px 用负 margin,不用改扩展的定位**:官方扩展按 floating-ui 的
+   `placement: 'left-start'` 把把手的右缘顶到块的左缘(x = 块左 − 把手宽),然后把
+   算出来的 x 写成内联 `left`。绝对定位元素的 `left` 定的是**外边距框**,所以
+   `margin-left: -8px` 就是整体再往左 8px = [-20, -8];而 floating-ui 量的是
+   `getBoundingClientRect`(不含 margin),不会因此反复重算。
+   文档区左 padding 26px(todo-notes 档)装得下 20px 的 gutter。 */
 .tiptap-drag-handle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
+  width: 12px;
   height: 22px;
+  margin-left: -8px;
   border-radius: var(--radius-xs, 3px);
-  color: var(--ui-text-faint-fg);
+  color: var(--ui-text-muted-fg);
   background: transparent;
   cursor: grab;
   opacity: 0;
@@ -108,19 +208,49 @@
     background var(--duration-fast) var(--ease-default);
 }
 
-/* 扩展在有块可抓时才把它挂上 —— 挂上即淡入,不是常显(常显会把左边距吃掉一条)。 */
-.tiptap-note-editor:hover .tiptap-drag-handle,
-.tiptap-drag-handle:hover {
-  opacity: 1;
+/* 六圆点:2 列 × 3 行,3px 的点、2.5px 的缝。用 currentColor,所以 hover 加深
+   一档时点跟着走,不必两处各写一遍颜色。 */
+.tiptap-drag-dots {
+  display: grid;
+  grid-template-columns: repeat(2, 3px);
+  gap: 2.5px;
+}
+
+.tiptap-drag-dots i {
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentcolor;
+}
+
+/* 扩展在有块可抓时才把它挂上 —— 挂上即淡入,不是常显(常显会把左边距吃掉一条)。
+   淡入只到 .5:它是"这里可以抓",不是一件要被读的东西。 */
+.tiptap-note-editor.is-typing .tiptap-drag-handle,
+.tiptap-note-editor.is-typing:hover .tiptap-drag-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tiptap-note-editor:hover .tiptap-drag-handle {
+  opacity: 0.5;
 }
 
 .tiptap-drag-handle:hover {
+  opacity: 1;
   background: var(--ui-state-hover-bg);
-  color: var(--ui-text-muted-fg);
+  color: var(--ui-text-primary-fg);
 }
 
 .tiptap-drag-handle:active {
   cursor: grabbing;
+}
+
+/* 拖到哪儿的指示线。扩展用 `color: false` 留白(见 TiptapNoteEditor 的
+   dropcursor 配置),颜色由这里给 —— 这样它才跟着主题走。 */
+.tiptap-drop-cursor.prosemirror-dropcursor-block,
+.tiptap-drop-cursor.prosemirror-dropcursor-inline {
+  border-radius: 999px;
+  background: var(--ui-accent-primary-fg);
 }
 
 /* ------------------------------------------------------------------- 图片 */
@@ -140,6 +270,21 @@
 
 .tiptap-image.is-loading::before {
   content: '…';
+  color: var(--ui-text-muted-fg);
+}
+
+/* 解析不出来的图 = 一个虚线占位框,而不是一行裸文件名:框在告诉人"这里本该
+   有张图,拖一张进来"。文件名留在框里,是线索不是标题。 */
+.tiptap-image.is-missing {
+  padding: 10px 14px;
+  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border) 78%, transparent);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--ui-text-faint-fg);
+  font-size: 12px;
+}
+
+.tiptap-image.is-missing::before {
+  content: '拖入图片 · ';
   color: var(--ui-text-muted-fg);
 }
 
@@ -195,7 +340,40 @@
 
 /* ------------------------------------------------------- ProseMirror 必需 */
 
-.tiptap-note-surface .ProseMirror-selectednode {
+/* ## 「整块选中」在文本块上一律不画面 —— 那条底色粘滞就是它
+ *
+ * 拖拽把手上没有 click / mousedown 监听(查过官方扩展的实现:元素上只绑了
+ * `dragstart` / `dragend`),所以"点一下就留底"并不是点击本身干的。真凶是**拖完
+ * 之后**:扩展在 `dragstart` 把被拖的块设成 NodeRangeSelection / NodeSelection,
+ * 并在 drop 之后由自己的 `appendTransaction` **再把它恢复回来**(为了"刚移动的这
+ * 块还选着")。那个选区没有配置项可以关,而拦 `mousedown` 会连拖拽本身一起废掉
+ * (dragstart 要靠它的默认行为)。
+ *
+ * 于是它留下的底色有两个来源,都不是我们画的:
+ *  · `@tiptap/extension-node-range` 给每个块打的 `.ProseMirror-selectednoderange`
+ *    与 PM 自己的 `.ProseMirror-selectednode`(官方 CSS 我们没引,靠这两个类自己
+ *    并不上色);
+ *  · **浏览器的原生选区底** —— 这两种选区都会让 DOM 选区罩住整块,一片灰蓝,
+ *    鼠标移开也不走,直到选区变化。只有 `::selection` 拦得住它。
+ *
+ * 设计稿里把手只用来拖:拖完不留任何选中底。所以这里把两种记号在文本块上一起
+ * 抹平。选区**本身仍然在**(撤销、再拖、键盘操作照旧),只是不再画出来。 */
+.tiptap-note-surface .ProseMirror-selectednoderange,
+.tiptap-note-surface > .ProseMirror-selectednode {
+  outline: none;
+}
+
+.tiptap-note-surface .ProseMirror-selectednoderange::selection,
+.tiptap-note-surface .ProseMirror-selectednoderange *::selection,
+.tiptap-note-surface > .ProseMirror-selectednode::selection,
+.tiptap-note-surface > .ProseMirror-selectednode *::selection {
+  background: transparent;
+}
+
+/* 原子节点(图片 / 分隔线)反过来**必须**画一枚记号:它们里面没有光标,不画就
+   完全读不出选没选中。特异性 (0,2,1) 压过上面那条 (0,2,0) 的抹平。 */
+.tiptap-note-surface .tiptap-image.ProseMirror-selectednode,
+.tiptap-note-surface hr.ProseMirror-selectednode {
   outline: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg) 45%, transparent);
   outline-offset: 2px;
   border-radius: var(--radius-xs, 3px);

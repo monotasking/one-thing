@@ -49,6 +49,7 @@ const mocks = vi.hoisted(() => {
     setAlwaysOnTop = vi.fn((pinned: boolean) => {
       this.alwaysOnTop = pinned
     })
+    setWindowButtonVisibility = vi.fn()
     getNativeWindowHandle = vi.fn(() => Buffer.alloc(8))
     getBounds = vi.fn(() => this.bounds)
     isMaximized = vi.fn(() => false)
@@ -568,7 +569,7 @@ describe('todo plan standalone window controls', () => {
     expect(main.visible).toBe(false)
   })
 
-  it('uses always-visible macOS traffic lights aligned with the standalone todo header', async () => {
+  it('hides the native macOS traffic lights — the standalone panel draws its own', async () => {
     const { openTodoPlanWindow } = await loadWindowModule()
     const win = openTodoPlanWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
 
@@ -581,7 +582,10 @@ describe('todo plan standalone window controls', () => {
       expect(win.options.acceptFirstMouse).toBe(true)
       expect(win.options.skipTaskbar).toBe(true)
       expect(win.options.titleBarStyle).toBe('hidden')
-      expect(win.options.trafficLightPosition).toEqual({ x: 16, y: 9 })
+      // non-activating NSPanel 永远成不了 main window,系统交通灯只画得出灰点 ——
+      // 摆位没有意义,按钮收起来,三枚彩点由渲染层画在形态轨顶。
+      expect(win.options.trafficLightPosition).toBeUndefined()
+      expect(win.setWindowButtonVisibility).toHaveBeenCalledWith(false)
     } else {
       expect(win.options.titleBarStyle).toBe('default')
     }

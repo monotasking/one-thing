@@ -71,6 +71,8 @@ interface Props {
   status?: 'compacting' | 'completed' | 'failed'
   error?: string
   compactedMessageCount?: number
+  /** P3:多块摘要的进度。单块压缩没有这个字段,呈现退回原文案。 */
+  progress?: { chunk: number; totalChunks: number }
 }
 
 const props = defineProps<Props>()
@@ -94,9 +96,12 @@ const title = computed(() => {
 
 const meta = computed(() => {
   if (isCompacting.value) {
+    const progress = props.progress && props.progress.totalChunks > 1
+      ? ` (${props.progress.chunk}/${props.progress.totalChunks})`
+      : ''
     return props.compactedMessageCount
-      ? `Summarizing ${props.compactedMessageCount} older messages...`
-      : 'Summarizing older messages...'
+      ? `Summarizing ${props.compactedMessageCount} older messages${progress}...`
+      : `Summarizing older messages${progress}...`
   }
   if (isFailed.value) return props.error || 'Conversation history was left unchanged'
   return props.compactedMessageCount

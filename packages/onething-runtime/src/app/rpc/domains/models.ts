@@ -83,9 +83,11 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
       logger: console,
     })
   },
-  async refreshRegistry() {
+  async refreshRegistry(request) {
+    const providerId = request?.providerId
     return refreshOnethingModelRegistryForIpc({
-      forceRefresh: () => modelRegistry.forceRefresh(),
+      forceRefresh: () =>
+        providerId ? modelRegistry.refreshProviderModels(providerId) : modelRegistry.forceRefresh(),
       logger: console,
     })
   },

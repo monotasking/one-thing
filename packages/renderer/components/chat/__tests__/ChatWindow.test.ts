@@ -54,18 +54,17 @@ vi.mock('../SessionHeader.vue', () => ({
   default: {
     name: 'SessionHeader',
     components: { Button },
-    props: ['sessionId', 'sessionName', 'sidePanelAvailable', 'sidePanelCollapsed'],
-    emits: ['toggleSidePanel'],
+    props: ['sessionId', 'sessionName'],
+    emits: ['openOutline'],
     template: `
       <div class="mock-session-header" :data-session="sessionId">
         <span class="mock-session-title">{{ sessionName }}</span>
         <Button
           unstyled
-          class="mock-side-toggle"
-          :data-collapsed="String(!!sidePanelCollapsed)"
-          @click="$emit('toggleSidePanel')"
+          class="mock-outline-toggle"
+          @click="$emit('openOutline')"
         >
-          side
+          contents
         </Button>
       </div>
     `,
@@ -194,22 +193,33 @@ describe('ChatWindow 单会话外壳', () => {
     expect(chatPanel.props('sessionId')).toBe('session-1')
   })
 
-  it('forwards the shared side-panel props straight through to the header and ChatPanel', async () => {
-    const wrapper = mount(ChatWindow, {
-      props: {
-        sidePanelAvailable: true,
-        sidePanelCollapsed: false,
-        outlineRailTarget: document.createElement('div'),
-      },
-    })
+  /**
+   * L3:大纲栏退役之后,轨的宿主不再由 prop 一路传进来 —— 它登记在
+   * `composables/useOutlineRail.ts` 那枚模块级 ref 上,这一层只回答
+   * "轮不轮得到我"(聚焦的那一格才拿得到)。
+   */
+  it('takes the outline rail host from the shared ref, and only when focused', async () => {
+    const { setOutlineRailHost, resetOutlineRailHost } = await import('@/composables/useOutlineRail')
+    const host = document.createElement('div')
+    setOutlineRailHost(host)
+
+    const focused = mount(ChatWindow, { props: { panelFocused: true } })
+    await settle()
+    expect(focused.findComponent({ name: 'ChatPanel' }).props('outlineRailTarget')).toBe(host)
+
+    const blurred = mount(ChatWindow, { props: { panelFocused: false } })
+    await settle()
+    expect(blurred.findComponent({ name: 'ChatPanel' }).props('outlineRailTarget')).toBeNull()
+
+    resetOutlineRailHost()
+  })
+
+  it('asks for the right-hand Contents tab from the header button', async () => {
+    const wrapper = mount(ChatWindow)
     await settle()
 
-    const chatPanel = wrapper.findComponent({ name: 'ChatPanel' })
-    expect(wrapper.find('.mock-side-toggle').attributes('data-collapsed')).toBe('false')
-    expect(chatPanel.props('outlineRailTarget')).toBe(wrapper.props('outlineRailTarget'))
-
-    await wrapper.find('.mock-side-toggle').trigger('click')
-    expect(wrapper.emitted('toggleSidePanel')).toHaveLength(1)
+    await wrapper.find('.mock-outline-toggle').trigger('click')
+    expect(wrapper.emitted('openOutline')).toHaveLength(1)
   })
 
   it('emits file opens for the app-level right workbench (文件不进工作区树)', async () => {

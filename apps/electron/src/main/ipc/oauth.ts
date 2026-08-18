@@ -16,6 +16,7 @@ import {
   type ElectronOAuthDevicePollRequest,
   type ElectronOAuthProviderRequest,
 } from '@onething/electron-host/ipc/oauth'
+import { normalizeCredentialTarget } from '@onething/runtime/auth'
 import {
   completeOnethingOAuthCallbackForIpc,
   getOnethingOAuthStatusForIpc,
@@ -38,6 +39,18 @@ import type {
   OAuthStatusResponse,
 } from '@shared/ipc.js'
 import { authService } from '@onething/app/auth/auth-service.js'
+
+/**
+ * 请求里的目标字段 → 归一后的写回目标(批 B6)。缺席/非法/默认空间一律 settings,
+ * 即这个参数出现之前的行为。
+ */
+function targetOf(request: ElectronOAuthProviderRequest) {
+  return normalizeCredentialTarget({
+    spaceId: request.spaceId,
+    entryId: request.entryId,
+    label: request.label,
+  })
+}
 
 function notifyTokenRefreshed(providerId: string): void {
   broadcastElectronOAuthTokenRefreshed({
@@ -84,7 +97,7 @@ export function registerOAuthHandlers(): void {
       const typedRequest = request as OAuthStartRequest
       return startOnethingOAuthForIpc({
         providerId: typedRequest.providerId,
-        start: providerId => authService.start(providerId),
+        start: providerId => authService.start(providerId, targetOf(typedRequest)),
         openExternal: url => openElectronExternal(url).then(() => undefined),
         logger: console,
       })
@@ -96,7 +109,7 @@ export function registerOAuthHandlers(): void {
         code: typedRequest.code,
         state: typedRequest.state,
         completeManualCode: (providerId, code, state) =>
-          authService.completeManualCode(providerId, code, state),
+          authService.completeManualCode(providerId, code, state, targetOf(typedRequest)),
         logger: console,
       })
     },
@@ -106,14 +119,15 @@ export function registerOAuthHandlers(): void {
         providerId: typedRequest.providerId,
         flowId: typedRequest.flowId,
         deviceCode: typedRequest.deviceCode,
-        pollDeviceFlow: (providerId, flowId) => authService.pollDeviceFlow(providerId, flowId),
+        pollDeviceFlow: (providerId, flowId) =>
+          authService.pollDeviceFlow(providerId, flowId, targetOf(typedRequest)),
         logger: console,
       })
     },
     refresh: async (request: ElectronOAuthProviderRequest): Promise<{ success: boolean; error?: string }> => {
       return refreshOnethingOAuthForIpc({
         providerId: request.providerId,
-        refreshToken: providerId => authService.refreshToken(providerId),
+        refreshToken: providerId => authService.refreshToken(providerId, targetOf(request)),
         notifyTokenExpired,
         logger: console,
       })
@@ -122,7 +136,7 @@ export function registerOAuthHandlers(): void {
       const typedRequest = request as OAuthStatusRequest
       return getOnethingOAuthStatusForIpc({
         providerId: typedRequest.providerId,
-        getStatus: providerId => authService.getStatus(providerId),
+        getStatus: providerId => authService.getStatus(providerId, targetOf(typedRequest)),
         logger: console,
       })
     },
@@ -130,7 +144,7 @@ export function registerOAuthHandlers(): void {
       const typedRequest = request as OAuthLogoutRequest
       return logoutOnethingOAuthForIpc({
         providerId: typedRequest.providerId,
-        deleteToken: providerId => authService.deleteToken(providerId),
+        deleteToken: providerId => authService.deleteToken(providerId, targetOf(typedRequest)),
         logger: console,
       })
     },

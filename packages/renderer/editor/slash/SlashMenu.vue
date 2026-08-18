@@ -59,6 +59,7 @@ import {
   ListTodo,
   Minus,
   Quote,
+  Table2,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import Popover from '@/components/common/Popover.vue'
@@ -95,6 +96,7 @@ const ICONS: Record<SlashCommandId, Component> = {
   'task-list': ListTodo,
   'blockquote': Quote,
   'code-block': Code,
+  'table': Table2,
   'horizontal-rule': Minus,
   'image': ImageIcon,
 }

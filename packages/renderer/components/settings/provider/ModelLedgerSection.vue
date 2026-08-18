@@ -140,6 +140,12 @@
           class="ledger-tune"
           @click.stop
         >
+          <!-- C2 推翻 C1 的「逐模型调参与空间无关」:用户 08-18 要的是
+               「完整、独立的两套」,逐模型覆盖也跟着空间走。说清楚它只影响
+               当前空间,免得用户以为改一次到处生效。 -->
+          <p class="tune-scope-note">
+            仅当前空间
+          </p>
           <div class="tune-line">
             <span class="tune-label">Style</span>
             <template v-if="row.supportsTemperature">
@@ -831,4 +837,10 @@ function removeTitle(row: LedgerRow): string {
   color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 12.5px;
 }
+.tune-scope-note {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: var(--ui-text-muted);
+}
+
 </style>

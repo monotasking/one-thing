@@ -313,9 +313,10 @@ html.has-wallpaper .chat {
    引这枚 token 的后代面**一起**跟随。
    注意不能顺手去动 `--ui-surface-app-bg`:它是 `--wallpaper-veil-ink` 的来源,
    在 body 上动它就成环,整条纱静默作废。
-   迁根副作用(如实记):选择器从 `.app-shell …` 变成根级之后,**浮层侧栏**
-   (`.app-floating-sidebar-host` 里那份,DOM 上是 `.app-shell` 的兄弟)第一次真
-   被这些规则命中 —— 旧写法够不着它,那条 D 级例外其实一直是死码。 */
+   迁根副作用(如实记):选择器从 `.app-shell …` 变成根级之后,**浮层侧栏**第一次
+   真被这些规则命中 —— 旧写法够不着它,那条 D 级例外其实一直是死码。
+   (L4 起浮层侧栏与停靠侧栏是**同一个实例**,住在 `.app-shell` 里的左栏 region
+   下,不再有 `.app-floating-sidebar-host` 那棵壳外的兄弟树。) */
 html.has-wallpaper .sidebar {
   --ui-sidebar-surface-bg: var(--wallpaper-veil);
   /* S 级·态|侧栏四档。它们是**区域别名** token(消费者不止侧栏一棵树),所以公式
@@ -426,8 +427,8 @@ html.has-wallpaper .right-workbench :is(.browser-toolbar, .browser-panel) {
    `--ot-active-alpha` 两个数。新态 token 进 `STATE_ALPHA_TIERS` 一行即入册,
    这里**永远不必再加行**。
 
-   作用域上的一处如实变化:旧覆写落在窗内两棵树(`.app-shell` /
-   `.app-floating-sidebar-host`)上,壳外的浮层/对话框天然是满强度;新公式住在
+   作用域上的一处如实变化:旧覆写落在窗内两棵树(`.app-shell` / 那时还独立存在的
+   浮层侧栏宿主)上,壳外的浮层/对话框天然是满强度;新公式住在
    `:root`,稀释是全局的。于是"壳外要用满"的那批面必须显式回满 —— 见下面 E 级块
    的选择器清单(它比旧 E 级名单多了对话框与图片预览两族:那两族**不**磨砂,
    但它们的底是不透明的,反馈同样要用满)。 */
@@ -444,8 +445,9 @@ html.has-wallpaper .right-workbench :is(.browser-toolbar, .browser-panel) {
    重构里顺手改掉。但它是一处**已知的不一致**(壁纸只该改浓度、不该改色相),
    要不要收掉是一次独立的观感裁决,留给用户 —— 收掉的话删掉这个块即可,两枚会
    各自跟随自己的墨。 */
-html.has-wallpaper .app-shell,
-html.has-wallpaper .app-floating-sidebar-host {
+/* L4 起只剩 `.app-shell` 一棵树:浮层侧栏是它里面那个唯一的 `<Sidebar>` 实例
+   加 `.floating` 画出去的,不再是壳外的兄弟节点。 */
+html.has-wallpaper .app-shell {
   --ui-sidebar-action-hover-bg: color-mix(in srgb, var(--ot-ink-state-hover-bg) var(--ot-state-alpha), transparent);
   --ui-tab-bar-item-active-bg: color-mix(in srgb, var(--ot-ink-state-selected-bg) var(--ot-active-alpha), transparent);
 }

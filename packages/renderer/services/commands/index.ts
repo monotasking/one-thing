@@ -16,6 +16,8 @@ import {
   POMODORO_SLASH_COMMAND,
   PRACTICE_STOP_SLASH_COMMAND,
 } from '@onething/core/slash-commands'
+import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 /**
  * All registered commands
  */
@@ -99,11 +101,18 @@ const commands: CommandDefinition[] = [
     insertText: COMPACT_CONTEXT_SLASH_COMMAND.insertText,
     consumesInputImmediately: true,
     async execute(context) {
+      // On a new-chat draft the compact command would reach the engine with a
+      // session id it has never seen and come back "Session not found".
+      // Mirrors /goal's short-circuit.
+      if (context.isDraftSession) {
+        return { success: true, message: 'Nothing to compact yet' }
+      }
+
       const requestId = globalThis.crypto?.randomUUID?.() || `compact-${Date.now()}-${Math.random().toString(36).slice(2)}`
       const completion = waitForCompactCompletion(context.sessionId, requestId)
 
       const emitted = await platformApi.emitCommand(context.sessionId, {
-        type: 'command:compact-context',
+        type: SESSION_COMMAND_TYPES.COMPACT_CONTEXT,
         requestId,
         manual: true,
       })
@@ -345,6 +354,9 @@ export async function refreshPluginCommands(): Promise<CommandDefinition[]> {
   return pluginCommandsPromise
 }
 
+/** 只防传输死亡,不是压缩的时限 —— 时限在后端(见 core 的压缩超时常量)。 */
+const COMPACT_TRANSPORT_FALLBACK_MS = 10 * 60 * 1000
+
 function waitForCompactCompletion(sessionId: string, requestId: string): {
   promise: Promise<{ success: boolean; skipped?: boolean; error?: string }>
   cancel: () => void
@@ -359,14 +371,18 @@ function waitForCompactCompletion(sessionId: string, requestId: string): {
       resolve(result)
     }
 
+    // P3(2026-08-14):压缩的生死时限归后端(per-chunk AbortSignal 超时)。
+    // 前端从前那个 120s 墙钟让长会话必然假超时 —— 先报失败,几十秒后卡片又
+    // 变成功。这里剩下的只是「传输死了」的兜底,所以给足 10 分钟,而且文案不
+    // 说失败:压缩很可能还在跑,结果会落在会话内的卡片上。
     timeout = window.setTimeout(() => {
-      finish({ success: false, error: 'Timed out waiting for compact to finish' })
-    }, 120000)
+      finish({ success: true, skipped: true, error: 'Still compacting — check the card in the conversation for the result' })
+    }, COMPACT_TRANSPORT_FALLBACK_MS)
 
     cleanup = platformApi.onSessionEvent((envelope: any) => {
       if (envelope.sessionId !== sessionId) return
       const event = envelope.event
-      if (event?.type !== 'context:compact-completed') return
+      if (event?.type !== SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED) return
       if (event.requestId !== requestId) return
 
       finish({

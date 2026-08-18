@@ -1,0 +1,448 @@
+/* ==========================================================================
+   变体 11 · 三块真正的面板
+   --------------------------------------------------------------------------
+   一句话：窗口是「地」，地上摆三块面板，面板里再摆卡。三层，可数。
+   规矩：
+     · 地铺满窗口，四边留 12px，面板之间留 12px —— 间隙就是分隔，不画竖线
+     · 每块面板 14px 圆角、比地亮一档、极淡描边 + 极淡投影
+     · 面板里的东西（输入框卡 / 工具卡 / 工作区分区卡 / 选中会话行）再亮/暗一档
+     · 1px 细线只允许出现在同一张卡内部的行与行之间
+   配色由 ?cw= 切换，结构四套完全一致：warm(默认) / crisp / crisp-blue / dark
+   ========================================================================== */
+
+/* ---------- 配色 A：warm —— Flexoki 纸墨（默认） ---------- */
+:root,
+:root[data-cw="warm"] {
+  --lv-ground: #cecdc3;   /* 地：base200 */
+  --lv-panel:  #fffcf0;   /* 面板：paper */
+  --lv-card:   #f2f0e5;   /* 卡：base50 */
+  --lv-nest:   #e6e4d9;   /* 卡内嵌套：base100 */
+  --lv-sel:    #e6e4d9;   /* 选中行 */
+
+  --lv-panel-line: #bcbbb0;
+  --lv-card-line:  #dad8ce;
+  --lv-hair:       #e2e0d5;
+
+  --c-ink-1: #100f0f;
+  --c-ink-2: #403e3c;
+  --c-ink-3: #6f6e69;
+  --c-ink-4: #a09e97;
+
+  --c-line-strong: #b7b5ac;
+  --c-line: #cecdc3;
+  --c-line-faint: #dad8ce;
+
+  --c-accent: #bc5215;
+  --c-accent-strong: #a3450f;
+  --c-accent-soft: #f8e7d8;
+  --c-accent-ring: rgba(188, 82, 21, 0.24);
+  --c-accent-ink: #fffcf0;
+
+  --c-accent2: #24837b;
+  --c-accent2-strong: #1b6b64;
+  --c-accent2-soft: #e2efed;
+  --c-accent2-ring: rgba(36, 131, 123, 0.26);
+
+  --c-ok: #66800b;     --c-ok-ink: #55690a;    --c-ok-soft: #eaf0dc;
+  --c-warn: #ad8301;   --c-warn-ink: #8d6a01;  --c-warn-soft: #f8eed3;
+  --c-danger: #af3029; --c-danger-ink: #9a2a24; --c-danger-soft: #f9e5e2;
+
+  --c-notice: #100f0f; --c-notice-ink: #f2f0e5;
+
+  --lv-panel-shadow: 0 1px 1px rgba(16, 15, 15, 0.05),
+                     0 10px 24px -14px rgba(16, 15, 15, 0.28);
+  --fade: linear-gradient(to bottom, rgba(255, 252, 240, 0) 0%, #fffcf0 68%);
+}
+
+/* ---------- 配色 B：crisp —— 冷中性、白面板 ---------- */
+:root[data-cw="crisp"] {
+  --lv-ground: #e4e6ea;   /* 地：明显不是白 */
+  --lv-panel:  #ffffff;   /* 面板 */
+  --lv-card:   #f1f3f6;   /* 卡 */
+  --lv-nest:   #e7eaef;   /* 卡内嵌套 */
+  --lv-sel:    #e7eaf0;
+
+  --lv-panel-line: #d7dae1;
+  --lv-card-line:  #e0e3e9;
+  --lv-hair:       #e6e9ee;
+
+  --c-ink-1: #111214;
+  --c-ink-2: #3c4046;
+  --c-ink-3: #6b7079;
+  --c-ink-4: #9aa0a9;
+
+  --c-line-strong: #c6cad1;
+  --c-line: #dee1e6;
+  --c-line-faint: #eaecf0;
+
+  --c-accent: #c2540f;
+  --c-accent-strong: #a5470c;
+  --c-accent-soft: #fbeade;
+  --c-accent-ring: rgba(194, 84, 15, 0.22);
+  --c-accent-ink: #ffffff;
+
+  --c-accent2: #157a72;
+  --c-accent2-strong: #10635c;
+  --c-accent2-soft: #e3f0ee;
+  --c-accent2-ring: rgba(21, 122, 114, 0.24);
+
+  --c-ok: #5e7a0d;     --c-ok-ink: #4e6a0b;    --c-ok-soft: #ebf1de;
+  --c-warn: #9c7502;   --c-warn-ink: #86660a;  --c-warn-soft: #f7eed6;
+  --c-danger: #a4302a; --c-danger-ink: #9a2c26; --c-danger-soft: #fae8e6;
+
+  --c-notice: #17181a; --c-notice-ink: #f4f5f7;
+
+  --lv-panel-shadow: 0 1px 1px rgba(17, 18, 20, 0.04),
+                     0 10px 24px -14px rgba(17, 18, 20, 0.22);
+  --fade: linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, #ffffff 68%);
+}
+
+/* ---------- 配色 C：crisp-blue —— 同一套冷中性面，动作换成干净的蓝 ----------
+   面与字和 crisp 完全一致；只换「人的操作」和状态色，全程不带一点暖偏 */
+:root[data-cw="crisp-blue"] {
+  --lv-ground: #e4e6ea;
+  --lv-panel:  #ffffff;
+  --lv-card:   #f1f3f6;
+  --lv-nest:   #e7eaef;
+  --lv-sel:    #e3ecfd;   /* 选中行带一点蓝，和动作同源 */
+
+  --lv-panel-line: #d7dae1;
+  --lv-card-line:  #e0e3e9;
+  --lv-hair:       #e6e9ee;
+
+  --c-ink-1: #111214;
+  --c-ink-2: #3c4046;
+  --c-ink-3: #6b7079;
+  --c-ink-4: #9aa0a9;
+
+  --c-line-strong: #c6cad1;
+  --c-line: #dee1e6;
+  --c-line-faint: #eaecf0;
+
+  --c-accent: #2563eb;
+  --c-accent-strong: #1d4ed8;
+  --c-accent-soft: #e8effc;
+  --c-accent-ring: rgba(37, 99, 235, 0.22);
+  --c-accent-ink: #ffffff;
+
+  /* 助手 / 系统陈述：靛紫，和动作蓝拉开但同族 */
+  --c-accent2: #6d5ce7;
+  --c-accent2-strong: #5847d1;
+  --c-accent2-soft: #eeecfd;
+  --c-accent2-ring: rgba(109, 92, 231, 0.24);
+
+  --c-ok: #16a34a;     --c-ok-ink: #15803d;    --c-ok-soft: #e7f6ec;
+  --c-warn: #d97706;   --c-warn-ink: #b45309;  --c-warn-soft: #fdf0dd;
+  --c-danger: #dc2626; --c-danger-ink: #b91c1c; --c-danger-soft: #fdeaea;
+
+  --c-notice: #17181a; --c-notice-ink: #f4f5f7;
+
+  --lv-panel-shadow: 0 1px 1px rgba(17, 18, 20, 0.04),
+                     0 10px 24px -14px rgba(17, 18, 20, 0.22);
+  --fade: linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, #ffffff 68%);
+}
+
+/* ---------- 配色 D：dark ---------- */
+:root[data-cw="dark"] {
+  --lv-ground: #100f0f;
+  --lv-panel:  #1c1b1a;
+  --lv-card:   #282726;
+  --lv-nest:   #343331;
+  --lv-sel:    #343331;
+
+  --lv-panel-line: #2b2a28;
+  --lv-card-line:  #363432;
+  --lv-hair:       #3a3835;
+
+  --c-ink-1: #f2f0e5;
+  --c-ink-2: #cecdc3;
+  --c-ink-3: #9f9d96;
+  --c-ink-4: #78766f;
+
+  --c-line-strong: #575653;
+  --c-line: #403e3c;
+  --c-line-faint: #343331;
+
+  --c-accent: #da702c;
+  --c-accent-strong: #f0b593;
+  --c-accent-soft: #3a2519;
+  --c-accent-ring: rgba(218, 112, 44, 0.38);
+  --c-accent-ink: #100f0f;
+
+  --c-accent2: #3aa99f;
+  --c-accent2-strong: #8fd0c9;
+  --c-accent2-soft: #1d3634;
+  --c-accent2-ring: rgba(58, 169, 159, 0.4);
+
+  --c-ok: #879a39;     --c-ok-ink: #cbd79b;    --c-ok-soft: #2b3120;
+  --c-warn: #d0a215;   --c-warn-ink: #ecd28a;  --c-warn-soft: #362d16;
+  --c-danger: #d14d41; --c-danger-ink: #eeb2ac; --c-danger-soft: #38211f;
+
+  --c-notice: #43413e; --c-notice-ink: #f2f0e5;
+
+  --lv-panel-shadow: 0 1px 1px rgba(0, 0, 0, 0.5),
+                     0 12px 28px -16px rgba(0, 0, 0, 0.9);
+  --fade: linear-gradient(to bottom, rgba(28, 27, 26, 0) 0%, #1c1b1a 68%);
+}
+
+/* ---------- 三层阶梯接回基础 token（四套配色共用） ----------
+   选择器带上 [data-theme] / [data-cw]，压过 styles.css 里同名的 0,2,0 暗色块 */
+:root,
+:root[data-theme],
+:root[data-cw] {
+  --c-ground: var(--lv-ground);
+  --c-chrome: var(--lv-panel);
+  --c-card: var(--lv-card);
+  --c-nest: var(--lv-nest);
+  --c-overlay: var(--lv-card);
+  --c-recede-surface: var(--lv-panel);
+  --c-recede-card: var(--lv-card);
+  --c-accent-quiet: var(--c-accent);
+}
+
+/* 本变体取消「侧栏退后」：三块面板一样亮，靠容纳而不是明暗讲结构 */
+:root,
+:root[data-theme],
+:root[data-cw],
+.is-focus,
+.is-receded {
+  --surface-region: var(--lv-panel);
+  --surface-card: var(--lv-card);
+  --ink-1: var(--c-ink-1);
+  --ink-2: var(--c-ink-2);
+  --ink-3: var(--c-ink-3);
+  --ink-4: var(--c-ink-4);
+  --line: var(--lv-card-line);
+  --line-quiet: var(--lv-hair);
+  --accent: var(--c-accent);
+}
+
+/* ---------- 字阶：沿用 8b（标题 40/700） ---------- */
+:root {
+  --fs-caption: 13px;
+  --fs-small: 14px;
+  --fs-ui: 15px;
+  --fs-body: 16px;
+  --fs-h4: 19px;
+  --fs-h3: 22px;
+  --fs-h2: 30px;
+  --fs-h1: 40px;
+}
+
+/* ==========================================================================
+   L1 · 地：窗口铺满，四边 12，面板间 12
+   ========================================================================== */
+.shell {
+  padding: 12px;
+  gap: 12px;
+  grid-template-columns: 272px minmax(0, 1fr) 328px;
+  background: var(--lv-ground);
+}
+
+/* ==========================================================================
+   L2 · 面板：三块，一样的圆角、一样的描边、一样的抬升
+   ========================================================================== */
+.col-left,
+.col-center,
+.col-right {
+  background: var(--lv-panel);
+  border: 1px solid var(--lv-panel-line);
+  border-radius: 14px;
+  box-shadow: var(--lv-panel-shadow);
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   L2a · 会话面板（中）
+   ========================================================================== */
+/* 页签行：面板自己的头，不画分隔线 */
+.topbar {
+  height: 56px;
+  padding: 0 16px;
+  background: transparent;
+  border-bottom: 0;
+}
+
+/* 页签做成分段控件 —— 面板里的第一张卡 */
+.tabs {
+  gap: 2px;
+  padding: 3px;
+  background: var(--lv-card);
+  border: 1px solid var(--lv-card-line);
+  border-radius: 10px;
+}
+.tab {
+  padding: 5px 12px;
+  border-radius: 7px;
+  color: var(--c-ink-3);
+  background: transparent;
+}
+.tab:hover { background: var(--lv-nest); color: var(--c-ink-1); }
+.tab.is-active {
+  background: var(--lv-panel);
+  color: var(--c-ink-1);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.thread { padding: 8px 20px 0; }
+.msg { margin-top: 22px; }
+.thread-inner { max-width: none; margin: 0; }
+
+/* 正文自己控制字行长度，版面照样铺满面板 */
+.msg-body { max-width: 60ch; }
+.session-title { font-weight: 700; letter-spacing: -0.032em; }
+.session-meta { color: var(--c-ink-3); }
+
+.msg-user .msg-body {
+  background: var(--c-accent-soft);
+  border: 1px solid var(--c-accent-ring);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+/* 工具卡：面板里的卡，和输入框卡对齐同一条内边距 */
+.tool-card {
+  margin-left: 0;
+  margin-top: 14px;
+  max-width: none;
+  background: var(--lv-card);
+  border: 1px solid var(--lv-card-line);
+  border-left: 3px solid var(--c-accent2);
+  border-radius: 12px;
+}
+.tool-files {
+  margin: 0 12px;
+  background: var(--lv-nest);
+  border-radius: 8px;
+}
+/* 唯一允许的细线：同一张卡内部的行与行之间 */
+.file-row + .file-row { border-top: 1px solid var(--lv-card); }
+
+.msg-actions { margin-left: -10px; }
+
+/* 输入框：面板里的一张卡，四边留自己的边距 */
+.composer-dock { padding: 12px 20px 20px; }
+.composer-dock::before { height: 40px; background: var(--fade); }
+.composer {
+  max-width: none;
+  margin: 0;
+  background: var(--lv-card);
+  border: 1px solid var(--lv-card-line);
+  border-radius: 12px;
+  padding: 14px 14px 12px;
+}
+.composer-input { min-height: 42px; color: var(--c-ink-4); }
+.model-chip {
+  background: var(--lv-panel);
+  border: 1px solid var(--lv-card-line);
+  color: var(--c-ink-2);
+}
+.composer-hint {
+  max-width: none;
+  margin-top: 10px;
+  text-align: center;
+  color: var(--c-ink-4);
+}
+
+.toast { right: 32px; bottom: 148px; }
+
+/* ==========================================================================
+   L2b · 会话列表面板（左）
+   ========================================================================== */
+.brand { height: 56px; padding: 0 16px; }
+.side-top { padding: 0 12px 10px; }
+.side-scroll { padding: 4px 12px; }
+.side-group + .side-group { margin-top: 22px; }
+.group-label { font-size: 14px; font-weight: 700; padding: 0 10px; }
+
+.field {
+  height: 36px;
+  background: var(--lv-card);
+  border: 1px solid var(--lv-card-line);
+  border-radius: 9px;
+}
+
+.list-row {
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+.list-row .row-name { font-weight: 500; color: var(--c-ink-2); }
+.list-row:hover { background: var(--lv-card); }
+
+/* 选中行：升到卡层 —— 有填充、有描边、有橙脊 */
+.sidebar-item.is-selected {
+  background: var(--lv-sel);
+  border-color: var(--lv-card-line);
+  overflow: hidden;
+}
+.sidebar-item.is-selected::before {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0;
+}
+
+/* 底部账户条也是一张卡，不用横线切一刀 */
+.side-foot {
+  margin: 0 12px 12px;
+  padding: 10px 12px;
+  border-top: 0;
+  background: var(--lv-card);
+  border: 1px solid var(--lv-card-line);
+  border-radius: 10px;
+  color: var(--c-ink-2);
+}
+
+/* ==========================================================================
+   L2c · 工作区面板（右）
+   ========================================================================== */
+.right-head {
+  height: 56px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--c-ink-2);
+}
+.right-body { padding: 0 12px 12px; }
+
+/* 分区做成卡，不做细线行 */
+.panel {
+  background: var(--lv-card);
+  border: 1px solid var(--lv-card-line);
+  border-radius: 12px;
+  padding: 14px;
+}
+.panel + .panel { margin-top: 10px; }
+.panel-title { font-weight: 700; letter-spacing: -0.018em; }
+
+.ledger {
+  margin-top: 12px;
+  border-top: 1px solid var(--lv-hair);
+}
+.ledger-row {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--lv-hair);
+}
+.ledger-row .v { font-size: 16px; }
+.ledger-row:last-child { border-bottom: 0; padding-bottom: 0; }
+
+.stepper {
+  background: var(--lv-panel);
+  border: 1px solid var(--lv-card-line);
+  border-radius: 9px;
+  height: 36px;
+}
+.stepper-btns span { background: var(--lv-nest); }
+
+.sub-label { font-size: 13px; font-weight: 700; color: var(--c-ink-3); }
+
+/* ==========================================================================
+   控件小修
+   ========================================================================== */
+.btn { border-radius: 8px; }
+.btn-block { height: 38px; }
+.brand-name { font-size: 16px; }
+.msg-who { font-size: 13px; }
+.pill { background: var(--lv-nest); }

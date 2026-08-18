@@ -5,8 +5,9 @@
  * 断言看的是**落盘的 markdown**,不是编辑器内部状态:纸的存储格式就是 markdown,
  * 命令生效与否唯一诚实的证据是那串字符变了没有。
  *
- * 另一半同样重要:词表里有几条在当前扩展集里没有实现(没装表格扩展)。链上调一个
- * 不存在的方法在 Tiptap 里是 TypeError,所以这里钉住"点了不动、但不炸"。
+ * 另一半同样重要:词表里可能有条目在当前扩展集里没有实现。链上调一个不存在的方法
+ * 在 Tiptap 里是 TypeError,所以那条链路要"点了不动、但不炸"(`table` 曾是这一档的
+ * 样板,装了表格扩展之后转正 —— 它现在真的插一张表)。
  */
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
@@ -71,13 +72,14 @@ describe('applyCommand', () => {
     expect(handle.getValue()).toContain('> 一行字')
   })
 
-  it('没装扩展的命令静静不动,不抛', async () => {
+  it('表格是真插一张(3×2 带表头),不再是静默降级', async () => {
     const handle = await mountEditor('原样')
-    const before = handle.getValue()
 
     expect(() => handle.applyCommand('table')).not.toThrow()
 
-    expect(handle.getValue()).toBe(before)
+    const markdown = handle.getValue()
+    expect(markdown).toContain('| --- | --- |')
+    expect(markdown).toContain('原样')
   })
 
   it('图片交给宿主的文件选择框,不是一条编辑器命令', async () => {

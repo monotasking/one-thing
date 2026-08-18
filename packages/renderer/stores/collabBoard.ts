@@ -17,6 +17,8 @@ import { platformApi } from '@/platform'
 import { useChatStore } from './chat'
 import { invalidateCollabTagCards } from '@/composables/collabInlineTags'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /**
  * Room board mirrors (docs/design/multi-agent-collab.md P1): hydrate via
  * COLLAB_BOARD_GET, then follow 'collab:board-changed' session events —
@@ -200,7 +202,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
       decision?: 'allowed' | 'rejected'
     },
   ): void {
-    if (event.type === 'permission:settled' && event.toolCallIds?.length) {
+    if (event.type === SESSION_EVENT_TYPES.PERMISSION_SETTLED && event.toolCallIds?.length) {
       useChatStore().handlePermissionSettled({
         sessionId,
         requestId: event.requestId ?? '',
@@ -353,23 +355,23 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
         }
         | undefined
       if (!event?.type) return
-      if (event.type === 'collab:board-changed' && event.board) {
+      if (event.type === SESSION_EVENT_TYPES.COLLAB_BOARD_CHANGED && event.board) {
         applySnapshot(envelope.sessionId, event.board)
-      } else if (event.type === 'collab:agent-changed' && event.activity) {
+      } else if (event.type === SESSION_EVENT_TYPES.COLLAB_AGENT_CHANGED && event.activity) {
         // 信封挂在房上,账按 `activity.agentId` 归 —— 同一个人的快照会从 TA 此刻
         // 牵涉到的每一间房各来一份(后端刻意的扇出),`seq` 去序把重复的收干净。
         hydratedAgents.add(event.activity.agentId)
         applyAgentActivitySnapshot(event.activity)
-      } else if (event.type === 'collab:coordinator-changed' && event.state) {
+      } else if (event.type === SESSION_EVENT_TYPES.COLLAB_COORDINATOR_CHANGED && event.state) {
         // 「谁在说 / 谁在打字」全在这一份里(C4 §1)。`collab:typing` 与
         // `collab:turn-active` 照旧在线上,但这里**刻意不接**:后端在同一处触发
         // 点上推快照,再接一遍就是第二本账,而两本账迟早对不上 —— 那正是这次
         // 收敛要拆掉的东西。
         applyCoordinatorSnapshot(envelope.sessionId, event.state)
       } else if (
-        event.type === 'permission:request'
-        || event.type === 'permission:queued'
-        || event.type === 'permission:settled'
+        event.type === SESSION_EVENT_TYPES.PERMISSION_REQUEST
+        || event.type === SESSION_EVENT_TYPES.PERMISSION_QUEUED
+        || event.type === SESSION_EVENT_TYPES.PERMISSION_SETTLED
       ) {
         // The event says "something moved here"; the ledger comes from the ask.
         notePermissionEvent(envelope.sessionId, event as Parameters<typeof notePermissionEvent>[1])

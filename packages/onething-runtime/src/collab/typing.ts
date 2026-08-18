@@ -43,6 +43,8 @@ import {
   type CollabTurnToolCallLike,
 } from './say.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /** Structural view of the session events the tracker reads — the fields of
  *  `tool:input-start` / `tool:input-end` / stream terminals it actually needs. */
 export interface CollabTypingSignal {
@@ -121,7 +123,7 @@ export function createCollabTypingTracker(
     observe(signal) {
       if (!signal?.type) return null
 
-      if (signal.type === 'tool:input-start') {
+      if (signal.type === SESSION_EVENT_TYPES.TOOL_INPUT_START) {
         // 现名 + 退役名(`isCollabSendCall`):事件流带的是模型吐出来的原始名,
         // 一次照着旧转录写的 `say` 调用照样会把消息发出去,那盏灯就该跟着亮。
         if (!isCollabSendCall(toolNameOf(signal))) return null
@@ -139,7 +141,7 @@ export function createCollabTypingTracker(
 
       // Arguments complete — the authoritative receive moment (input-end) or,
       // for a provider that skips it, the execution that necessarily follows.
-      if (signal.type === 'tool:input-end' || signal.type === 'tool:execution-start') {
+      if (signal.type === SESSION_EVENT_TYPES.TOOL_INPUT_END || signal.type === SESSION_EVENT_TYPES.TOOL_EXECUTION_START) {
         const toolCallId = toolCallIdOf(signal)
         if (!toolCallId || !streaming.delete(toolCallId)) return null
         if (streaming.size > 0 || !lit) return null

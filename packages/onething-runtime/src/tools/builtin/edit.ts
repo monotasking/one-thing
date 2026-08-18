@@ -171,6 +171,11 @@ function getEditRisk(plan: EditPlan): EditRisk {
 	return { requiresExplicitPermission: false };
 }
 
+/** Guideline the edit tool brings into `Tool Guidelines:` when it is on the surface. */
+export const EDIT_TOOL_PROMPT = {
+	guidelines: ["使用edit来修改文件，禁止使用bash工具来修改文件"],
+} as const satisfies Tool.Info["prompt"];
+
 export function createEditTool(
 	adapters: EditToolAdapters,
 ): Tool.Info<typeof EditParameters, EditMetadata> {
@@ -184,6 +189,7 @@ export function createEditTool(
 		permissionGuard: "permission-gated",
 		executionMode: "sequential",
 		renderKind: "diff",
+		prompt: EDIT_TOOL_PROMPT,
 
 		parameters: EditParameters,
 

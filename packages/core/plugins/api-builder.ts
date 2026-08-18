@@ -1,4 +1,5 @@
 import type { CorePluginAPIState } from './api-state.js'
+import { describeToolPromptContributionProblem } from '../engine/prompt-fragments.js'
 import {
   clampPluginBackgroundParamsPatch,
   describePluginRuntimeBackgroundImageProblem,
@@ -93,6 +94,12 @@ import {
   pluginDeepLinkAddress,
   type CorePluginDeepLinkActionRegistration,
 } from './deep-link.js'
+import {
+  PLUGIN_CREDENTIAL_STRATEGY_NAME_PATTERN,
+  PLUGIN_PERMISSION_CREDENTIAL_STRATEGY,
+  pluginCredentialStrategyPolicy,
+  type CorePluginCredentialStrategyRegistration,
+} from './credential-strategy.js'
 import type {
   CorePluginToolContext,
   CorePluginToolDefinition,
@@ -202,6 +209,17 @@ export interface CorePluginAPIHost<
   registerDeepLinkAction?(
     pluginId: string,
     registration: CorePluginDeepLinkActionRegistration & { name: string },
+  ): (() => void) | undefined
+  /**
+   * 凭证策略注册表的转发口(批 E)。返回退订函数。
+   *
+   * 宿主注入;core 不认识空间、不认识凭证池、更不认识账本(超时 / 熔断 /
+   * 脱敏投影 / 用量聚合全在装配层)。开放模式照抄 registerIMConnector 那一行 +
+   * 策略表加条目。
+   */
+  registerCredentialStrategy?(
+    pluginId: string,
+    registration: CorePluginCredentialStrategyRegistration & { name: string },
   ): (() => void) | undefined
   /**
    * 插件自有配置的访问面(R3)。
@@ -661,6 +679,14 @@ export function createCorePluginAPI<
           (tool as { executionMode?: unknown }).executionMode,
           tool.name,
         )
+        // Same rule for the prompt it brings: an illegal declaration rejects
+        // this one tool, loudly, instead of a silently mangled system prompt.
+        const promptProblem = describeToolPromptContributionProblem(
+          (tool as { prompt?: unknown }).prompt,
+        )
+        if (promptProblem) {
+          throw new Error(`Tool "${tool.name}": ${promptProblem}`)
+        }
         host.registerTool(pluginId, toolId, tool)
         if (!toolIds.includes(toolId)) {
           toolIds.push(toolId)
@@ -1627,6 +1653,96 @@ export function createCorePluginAPI<
       }
       disposeCallbacks.push(release)
       logger.log(`[Plugin:${pluginId}] Registered deep link action: ${address}`)
+      return release
+    },
+
+    /**
+     * 凭证轮换策略(批 E)。第四个既有宿主动词面,五件事与前三个同构:
+     *  - **形状**:`{ name, title, select }` 三件全要,name 限 `[a-z0-9-]+` ——
+     *    它要进 `credentials.json` 的 `policy` 字段并被人眼读;
+     *  - **声明门**:manifest 没声明 `credentials:strategy` 就拒绝 —— 报错 + 返回
+     *    noop,**不计熔断**(manifest 笔误不该连坐整个插件,与 sessions:* /
+     *    search:provide / deeplink:handle 同规);
+     *  - **disposed 闩**:拆除之后再注册 = 往一个没人再会来清扫的表里塞东西;
+     *  - **退订进 disposeCallbacks**:插件不调也能拆干净;
+     *  - **命名空间**:policy 取值由宿主拼(`plugin:<id>:<name>`),插件抢不到
+     *    别人的格子,也抢不到 `single` / `priority-failover` / `round-robin`
+     *    这三个内置名(它们不含冒号,拼不出来)。
+     *
+     * 脱敏投影、超时预算、熔断降级、用量聚合都在装配层(它才认识凭证池与账本);
+     * core 只做门控与转发。宿主没接这条线(headless / server / CLI daemon ——
+     * 它们只有默认空间,没有凭证池)时如实告诉插件它被忽略了,而不是假装成功。
+     */
+    registerCredentialStrategy(
+      registration: CorePluginCredentialStrategyRegistration,
+    ): () => void {
+      if (rejectLateCall('registerCredentialStrategy')) return () => {}
+      const name = String(registration?.name ?? '').trim()
+      const title = String(registration?.title ?? '').trim()
+      if (!name || !title || typeof registration?.select !== 'function') {
+        logger.error(
+          `[Plugin:${pluginId}] registerCredentialStrategy needs { name, title, select() }`,
+          undefined,
+        )
+        reportFailure(
+          pluginScope.registration('CredentialStrategy'),
+          new Error('malformed credential strategy'),
+        )
+        return () => {}
+      }
+      if (!PLUGIN_CREDENTIAL_STRATEGY_NAME_PATTERN.test(name)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerCredentialStrategy("${name}") — the name must match `
+          + `${PLUGIN_CREDENTIAL_STRATEGY_NAME_PATTERN} (it is stored as the pool's policy value).`,
+          undefined,
+        )
+        reportFailure(
+          pluginScope.registration('CredentialStrategy'),
+          new Error(`illegal strategy name: ${name}`),
+        )
+        return () => {}
+      }
+      if (!declaredPermissions.has(PLUGIN_PERMISSION_CREDENTIAL_STRATEGY)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerCredentialStrategy requires `
+          + `"${PLUGIN_PERMISSION_CREDENTIAL_STRATEGY}" in contributes.permissions (plugin.json). `
+          + 'Declare it first — the install page tells the user this plugin can choose which of '
+          + 'their credentials a workspace uses (it never sees the key itself).',
+          undefined,
+        )
+        return () => {}
+      }
+      const policy = pluginCredentialStrategyPolicy(pluginId, name)
+      let unregister: (() => void) | undefined
+      try {
+        unregister = host.registerCredentialStrategy?.(pluginId, { ...registration, name, title })
+      } catch (error) {
+        logger.error(`[Plugin:${pluginId}] registerCredentialStrategy("${policy}") failed:`, error)
+        reportFailure(pluginScope.registration('CredentialStrategy'), error)
+        return () => {}
+      }
+      if (!unregister) {
+        logger.log(
+          `[Plugin:${pluginId}] Credential strategies are not available on this host; `
+          + `"${policy}" was ignored`,
+        )
+        return () => {}
+      }
+      let released = false
+      const release = (): void => {
+        if (released) return
+        released = true
+        try {
+          unregister?.()
+        } catch (error) {
+          logger.error(
+            `[Plugin:${pluginId}] Failed to unregister credential strategy "${policy}":`,
+            error,
+          )
+        }
+      }
+      disposeCallbacks.push(release)
+      logger.log(`[Plugin:${pluginId}] Registered credential strategy: ${policy}`)
       return release
     },
 

@@ -63,6 +63,8 @@ import {
   type CollabSnapshotThrottle,
 } from './snapshot-throttle.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /**
  * 一位同事的**原始事实**,由运行时喂进来。
  *
@@ -342,7 +344,7 @@ function emitAgentActivity(agentId: string, state: AgentChannelState): void {
   const bus = getEventBus()
   for (const roomSessionId of targets) {
     void bus.emit(roomSessionId, {
-      type: 'collab:agent-changed',
+      type: SESSION_EVENT_TYPES.COLLAB_AGENT_CHANGED,
       activity,
     } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
   }

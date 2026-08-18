@@ -35,6 +35,8 @@ import {
   type CollabSnapshotThrottle,
 } from './snapshot-throttle.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /** 「刚才」最多留几条。定长环形缓冲 —— 一间房不会因为聊得久而涨内存。 */
 export const COLLAB_LOG_LIMIT = 32
 
@@ -254,7 +256,7 @@ function emitCoordinatorState(roomSessionId: string, state: InspectorRoomState):
   if (!snapshot) return
   state.throttle.lastSentAt = Date.now()
   void getEventBus().emit(roomSessionId, {
-    type: 'collab:coordinator-changed',
+    type: SESSION_EVENT_TYPES.COLLAB_COORDINATOR_CHANGED,
     state: snapshot,
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
 }

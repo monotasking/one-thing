@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer'
 import type { FetchLike } from '@onething/core/http'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /**
  * Normalize model ID for image generation API calls.
  */
@@ -377,13 +379,13 @@ export function buildImageGenerationErrorContent(error?: string): string {
 
 export interface CoreImageStreamStartEventPlan {
   startEvent: {
-    type: 'stream:start'
+    type: typeof SESSION_EVENT_TYPES.STREAM_START
     messageId: string
     assistantMessageId: string
     model: string
   }
   loadingEvent: {
-    type: 'content:part'
+    type: typeof SESSION_EVENT_TYPES.CONTENT_PART
     part: { type: 'image-loading'; label: string }
   }
 }
@@ -394,11 +396,11 @@ export interface CoreImageStreamSuccessEventPlan {
     text: string
   }
   contentEvent: {
-    type: 'content:part'
+    type: typeof SESSION_EVENT_TYPES.CONTENT_PART
     part: { type: 'text'; content: string }
   }
   completeEvent: {
-    type: 'stream:complete'
+    type: typeof SESSION_EVENT_TYPES.STREAM_COMPLETE
     data: { sessionName?: string }
   }
 }
@@ -406,7 +408,7 @@ export interface CoreImageStreamSuccessEventPlan {
 export interface CoreImageStreamErrorEventPlan {
   errorContent: string
   errorEvent: {
-    type: 'stream:error'
+    type: typeof SESSION_EVENT_TYPES.STREAM_ERROR
     data: { error: string }
   }
 }
@@ -418,13 +420,13 @@ export function buildImageStreamStartEventPlan(options: {
 }): CoreImageStreamStartEventPlan {
   return {
     startEvent: {
-      type: 'stream:start',
+      type: SESSION_EVENT_TYPES.STREAM_START,
       messageId: options.assistantMessageId,
       assistantMessageId: options.assistantMessageId,
       model: options.model,
     },
     loadingEvent: {
-      type: 'content:part',
+      type: SESSION_EVENT_TYPES.CONTENT_PART,
       part: {
         type: 'image-loading',
         label: options.loadingLabel || 'Generating image',
@@ -443,11 +445,11 @@ export function buildImageStreamSuccessEventPlan(options: {
       text: options.responseContent,
     },
     contentEvent: {
-      type: 'content:part',
+      type: SESSION_EVENT_TYPES.CONTENT_PART,
       part: { type: 'text', content: options.responseContent },
     },
     completeEvent: {
-      type: 'stream:complete',
+      type: SESSION_EVENT_TYPES.STREAM_COMPLETE,
       data: { sessionName: options.sessionName },
     },
   }
@@ -458,7 +460,7 @@ export function buildImageStreamErrorEventPlan(error?: string): CoreImageStreamE
   return {
     errorContent: buildImageGenerationErrorContent(error),
     errorEvent: {
-      type: 'stream:error',
+      type: SESSION_EVENT_TYPES.STREAM_ERROR,
       data: { error: errorMessage },
     },
   }

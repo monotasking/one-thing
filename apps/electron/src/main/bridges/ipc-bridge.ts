@@ -19,6 +19,8 @@ import type { Unsubscribe } from '@onething/app/events/types.js'
 import { getEventBus, getStreamChannel } from '@onething/app/events/index.js'
 import { SessionStreamCoalescer } from '@onething/app/events/stream-coalescer.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 export interface IPCBridgeSender {
   isDestroyed(): boolean
   send(channel: string, payload: unknown): void
@@ -160,13 +162,13 @@ export class IPCBridge {
 
     // StreamChannel subscription lifecycle
     switch (event.type) {
-      case 'stream:start':
+      case SESSION_EVENT_TYPES.STREAM_START:
         this.handleStreamStart(sessionId)
         break
 
-      case 'stream:complete':
-      case 'stream:error':
-      case 'stream:aborted':
+      case SESSION_EVENT_TYPES.STREAM_COMPLETE:
+      case SESSION_EVENT_TYPES.STREAM_ERROR:
+      case SESSION_EVENT_TYPES.STREAM_ABORTED:
         this.handleStreamEnd(sessionId)
         break
     }

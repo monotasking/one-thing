@@ -38,6 +38,8 @@ export const ONETHING_USAGE_SOURCES = {
   skill: 'skill',
   /** Session table-of-contents segmentation. */
   toc: 'toc',
+  /** Context compaction summary — one call per chunk, on the session model. */
+  compact: 'compact',
   /** Evals workbench / replay / judge. */
   evals: 'evals',
   /** Collab room response-willingness judgement (one small call per member). */

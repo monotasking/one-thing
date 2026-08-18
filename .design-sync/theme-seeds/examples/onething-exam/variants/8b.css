@@ -1,0 +1,18 @@
+/* 8b 字阶：标题 40/700 负字距，正文 16，列表 15，标签 13–14 */
+:root, :root[data-theme="light"] {
+  --fs-caption: 13px;
+  --fs-small: 14px;
+  --fs-ui: 15px;
+  --fs-body: 16px;
+  --fs-h4: 19px;
+  --fs-h3: 22px;
+  --fs-h2: 30px;
+  --fs-h1: 40px;
+}
+.session-title { font-weight: 700; letter-spacing: -0.032em; }
+.list-row .row-name { font-weight: 500; }
+.group-label { font-size: 14px; font-weight: 700; }
+.msg-who { font-size: 13px; }
+.panel-title { font-weight: 700; letter-spacing: -0.018em; }
+.brand-name { font-size: 16px; }
+.ledger-row .v { font-size: 16px; }

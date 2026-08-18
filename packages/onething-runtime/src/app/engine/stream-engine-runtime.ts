@@ -9,7 +9,6 @@ import {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	type OnethingProductStreamRuntime,
 } from "@onething/runtime/product-stream-runtime";
-import { authService } from "../auth/auth-service.js";
 import { Permission } from "../permission/index.js";
 import { Interaction } from "../interaction/index.js";
 import * as store from "../store.js";
@@ -21,10 +20,14 @@ import {
 	requiresOAuth,
 } from "../providers/index.js";
 import { resolveProviderApiKey } from "../providers/env.js";
-import { applySessionSpaceCredentials } from "../providers/space-credentials.js";
+import {
+	applySessionSpaceCredentials,
+	resolveSessionSpaceOAuthAuth,
+} from "../providers/space-credentials.js";
+import { resolveSessionSpaceDefaultSelection } from "../providers/space-defaults.js";
+import { getSessionSettings } from "../providers/space-ai-settings.js";
 import * as modelRegistry from "../providers/model-registry.js";
 import { resolvePromptReferences } from "../prompts/resolver.js";
-import { buildStateVariablesPromptText } from "../variables/index.js";
 import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";
 import { executeMessageStream } from "./stream/stream-executor.js";
@@ -66,6 +69,9 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 	>({
 		store: {
 			getSettings: () => store.getSettings(),
+			// 换源(C2):provider 设置整套 per-space 之后,不经过 getEffectiveConfig
+			// 的解析点(标题模型)也必须看这条会话所在空间的那一份。
+			getSettingsForSession: (sessionId: string) => getSessionSettings(sessionId),
 			getSession: (sessionId) => store.getSession(sessionId),
 			addMessage: (sessionId, message) => store.addMessage(sessionId, message),
 			renameSession: (sessionId, name) => store.renameSession(sessionId, name),
@@ -102,12 +108,17 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 			// per-space 凭证(批 B3):非 default 空间用它自己的凭证池,没配就是
 			// 「未配置」——起流前置拦截,绝不悄悄用默认空间的 key。
 			applySpaceCredentials: applySessionSpaceCredentials,
+			// per-space 默认 provider/model(批 B9)。与上一行同源:两条解析链各自
+			// 构造一次适配器,少挂的那一条就是会话悄悄用回全局默认的那一条。
+			resolveSpaceDefaultSelection: resolveSessionSpaceDefaultSelection,
 			isProviderSupported,
 			isOAuthProvider: requiresOAuth,
 			resolveApiKey: (providerId, providerConfig) =>
 				resolveProviderApiKey(providerId, providerConfig),
-			resolveOAuthAuth: (providerId, apiKey) =>
-				authService.resolveProviderAuth(providerId, apiKey),
+			// per-space OAuth(批 B6):token 去 `spaceCredential` 指的那条 entry 取,
+			// 缺席才回 settings。刷新被拒会顺手给那条 entry 写 auth-invalid 冷却。
+			resolveOAuthAuth: (providerId, apiKey, credential) =>
+				resolveSessionSpaceOAuthAuth(providerId, apiKey, credential),
 			createApiKeyAuth: (apiKey) => ({ kind: "api-key", apiKey }),
 			generateTitle: (providerId, providerConfig, content, options) => {
 				const titleOptions = options as Parameters<typeof generateChatTitle>[3];
@@ -154,6 +165,5 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 					typeof shouldSkipAutoCompactForProviderUsageMismatch
 				>[0],
 			),
-		buildTurnContextText: (sessionId) => buildStateVariablesPromptText(sessionId),
 	}) as unknown as MainStreamEngineRuntime;
 }

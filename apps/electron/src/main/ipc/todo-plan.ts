@@ -15,8 +15,17 @@ import type { ElectronTodoPlanPinnedRequest } from '@onething/electron-host/ipc/
 import {
   IPC_CHANNELS,
   type TodoPlanWindowActionRequest,
+  type TodoPlanWindowDragRequest,
 } from '@shared/ipc.js'
-import { hideTodoPlanWindow, openTodoPlanWindow, setTodoPlanWindowPinned, toggleTodoPlanWindow } from '@onething/electron-host/window'
+import {
+  dragTodoPlanWindow,
+  hideTodoPlanWindow,
+  minimizeTodoPlanWindow,
+  openTodoPlanWindow,
+  setTodoPlanWindowPinned,
+  toggleTodoPlanWindow,
+  zoomTodoPlanWindow,
+} from '@onething/electron-host/window'
 import {
   broadcastElectronTodoPlanChanged,
   revealElectronTodoPlanDirectory,
@@ -41,6 +50,9 @@ export function registerTodoPlanHandlers(): void {
       hideWindow: IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW,
       toggleWindow: IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW,
       setWindowPinned: IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED,
+      minimizeWindow: IPC_CHANNELS.TODO_PLAN_MINIMIZE_WINDOW,
+      zoomWindow: IPC_CHANNELS.TODO_PLAN_ZOOM_WINDOW,
+      dragWindow: IPC_CHANNELS.TODO_PLAN_DRAG_WINDOW,
     },
     openWindow: request =>
       runOnethingTodoPlanWindowActionForIpc({
@@ -61,6 +73,20 @@ export function registerTodoPlanHandlers(): void {
       setOnethingTodoPlanWindowPinnedForIpc({
         pinned: request.pinned,
         setPinned: setTodoPlanWindowPinned,
+      }),
+    // 自绘红绿灯的黄 / 绿两枚。红点复用 hideWindow —— 这扇窗是隐藏不是销毁。
+    minimizeWindow: () =>
+      runOnethingTodoPlanWindowActionForIpc({
+        action: () => minimizeTodoPlanWindow(),
+      }),
+    zoomWindow: () =>
+      runOnethingTodoPlanWindowActionForIpc({
+        action: () => zoomTodoPlanWindow(),
+      }),
+    dragWindow: request =>
+      runOnethingTodoPlanWindowActionForIpc({
+        request: request as TodoPlanWindowDragRequest | undefined,
+        action: dragRequest => dragTodoPlanWindow(dragRequest),
       }),
   })
 }

@@ -226,13 +226,20 @@ describe('context compact summary helpers', () => {
     expect(estimateSessionInputTokens(testSession)).toBeGreaterThan(100)
   })
 
-  it('normalizes JSON returned inside a markdown fence', () => {
-    const normalized = normalizeContextSummaryOutput('```json\n{"goal":"Ship compact","completed":["tests"]}\n```')
+  it('normalizes a six-section summary returned inside a markdown fence', () => {
+    const normalized = normalizeContextSummaryOutput(
+      '```md\n## Goal\nShip compact\n\n## Next Steps\n1. Land C5\n```',
+    )
 
-    expect(normalized).toBe(JSON.stringify({
-      goal: 'Ship compact',
-      completed: ['tests'],
-    }, null, 2))
+    expect(normalized).toBe('## Goal\nShip compact\n\n## Next Steps\n1. Land C5')
+  })
+
+  it('returns the trimmed original when the output misses the `## Goal` heading', () => {
+    // 不合格不代表要丢:一份没按格式写的摘要仍然比没有摘要好。
+    expect(normalizeContextSummaryOutput('  Sure! Here is what happened.  '))
+      .toBe('Sure! Here is what happened.')
+    // 从前的 JSON 抽取兜底已删 —— JSON 进来就原样出去,不再被重排。
+    expect(normalizeContextSummaryOutput('{"goal":"old"}')).toBe('{"goal":"old"}')
   })
 
   it('includes bounded tool result context for the summarizer', () => {

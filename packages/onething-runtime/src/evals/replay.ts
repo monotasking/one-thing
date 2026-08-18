@@ -14,7 +14,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { CoreRequestMessage } from "@onething/core/engine";
+import type { CoreRequestMessage, TurnBlock } from "@onething/core/engine";
+import { attachTurnBlocksToLastUserMessage } from "../prompts/turn-delivery.js";
 import {
 	getIncidentDir,
 	readIncident,
@@ -299,6 +300,13 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
 	// the CURRENT builder from scene inputs (the default — tests whether
 	// today's prompt rescues the old failure, and enables ablation).
 	let systemPrompt: string;
+	/**
+	 * Blocks for the turn channel. They are part of what the model reads (they
+	 * ride the user message tail), so a replay that dropped them would be
+	 * reproducing a prompt nobody ever sent — and an ablation over a turn
+	 * section would compare two identical requests.
+	 */
+	let turnBlocks: TurnBlock[] = [];
 	if (
 		options.useCapturedPrompt &&
 		scene.capturedSystemPrompt &&
@@ -325,15 +333,17 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
 			historyMessages: [],
 		});
 		systemPrompt = built.systemPrompt;
+		turnBlocks = [...(built.turn ?? [])];
 	}
 
-	const messages: EvalChatMessage[] = [
+	let messages: EvalChatMessage[] = [
 		{ role: "system", content: systemPrompt },
 		...contextToEvalMessages(scene.contextMessages),
 	];
 	if (!messages.some((m) => m.role === "user")) {
 		messages.push({ role: "user", content: scene.userMessage });
 	}
+	messages = attachTurnBlocksToLastUserMessage(messages, turnBlocks);
 
 	const tools: EvalToolDef[] = scene.tools.map((t) => ({
 		type: "function",

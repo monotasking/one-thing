@@ -14,6 +14,7 @@ import {
 	historyMessagesForLog,
 	renderContextUpdateBlock,
 	sanitizeToolResultForAI,
+	TurnContextLedger,
 } from "@onething/core/engine";
 import {
 	buildOnethingHistoryMessages,
@@ -55,6 +56,7 @@ export function buildMessageContent(message: ChatMessage): AIMessageContent {
 				dataUrlPrefix,
 			});
 		},
+		finalizeContent: applyTurnContextToBuiltContent,
 	}) as AIMessageContent;
 }
 
@@ -128,6 +130,7 @@ export function buildHistoryMessages(
 					dataUrlPrefix,
 				});
 			},
+			finalizeContent: applyTurnContextToBuiltContent,
 			onCompactedHistory: (details) => {
 				logMessageBodyShape(
 					"[buildHistoryMessages] compacted history body",
@@ -486,6 +489,7 @@ export function collapseSupersededGoalDrives(
 			content: SUPERSEDED_GOAL_DRIVE_MARKER,
 			// The stale turn-context block adds nothing to a superseded ping.
 			contextUpdate: undefined,
+			turnContext: undefined,
 		};
 	});
 }
@@ -494,7 +498,12 @@ function prepareUserMessageForModel(message: ChatMessage): ChatMessage {
 	return appendContextUpdateForModel(labelUserMessageForModel(message));
 }
 
-function labelUserMessageForModel(message: ChatMessage): ChatMessage {
+/**
+ * The user's own text as the model sees it (speaker label applied). Exported
+ * for `SessionTurnContext`, which must place a freshly attached block exactly
+ * where this file's replay will put it on the next build.
+ */
+export function labelUserMessageForModel(message: ChatMessage): ChatMessage {
 	if (message.role !== "user") return message;
 	const actor = message.origin?.actor;
 	if (!actor) return message;
@@ -507,17 +516,46 @@ function labelUserMessageForModel(message: ChatMessage): ChatMessage {
 	};
 }
 
+const turnContextLedger = new TurnContextLedger();
+
 /**
- * Render the persisted turn-volatile context block into the model-facing
- * content. The stored field is replayed verbatim on every history rebuild so
- * the request bytes stay identical (prompt-cache safe, append-only history).
+ * Render the persisted turn-context block into the model-facing content. The
+ * stored field is replayed verbatim on every history rebuild so the request
+ * bytes stay identical (prompt-cache safe, append-only history).
+ *
+ * Two shapes coexist and must both keep their bytes: the sectioned delta
+ * written since 2026-08-18, and the bare `contextUpdate` string of older
+ * sessions — the latter is rendered exactly as it always was (no `<section>`
+ * wrapper), otherwise every historical message in an old session would shift
+ * and invalidate its cache on the first upgraded turn.
  */
 function appendContextUpdateForModel(message: ChatMessage): ChatMessage {
-	if (message.role !== "user" || !message.contextUpdate) return message;
+	if (message.role !== "user") return message;
+	// The sectioned delta is applied AFTER the parts are built
+	// (`applyTurnContextToBuiltContent`) — same placement rule as the attach.
+	if (message.turnContext) return message;
+	if (!message.contextUpdate) return message;
 	return {
 		...message,
 		content: renderContextUpdateBlock(message.content, message.contextUpdate),
 	};
+}
+
+/**
+ * The sectioned turn-context delta goes onto the **built** content — the one
+ * placement rule (`TurnContextLedger.applyTo`) the first-build attach also
+ * uses on the request, so the tool loop replays identical bytes whether the
+ * message is plain text, text + attachments, or attachment-only.
+ */
+function applyTurnContextToBuiltContent<TContent>(
+	content: TContent,
+	message: object,
+): TContent {
+	// The history builder types the message as a bare content source; the
+	// ChatMessage fields ride along at runtime (structural pass-through).
+	const carrier = message as { role?: string; turnContext?: ChatMessage["turnContext"] };
+	if (carrier.role !== "user" || !carrier.turnContext) return content;
+	return turnContextLedger.applyTo(content, carrier.turnContext);
 }
 
 /**

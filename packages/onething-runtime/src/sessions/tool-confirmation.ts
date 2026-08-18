@@ -1,3 +1,5 @@
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 type MaybePromise<T> = T | Promise<T>
 
 export interface OnethingResumeToolCallLike {
@@ -16,9 +18,9 @@ export interface OnethingResumeSessionLike<TMessage extends OnethingResumeMessag
 }
 
 export type OnethingResumeAfterToolConfirmEvent =
-  | { type: 'content:continuation' }
+  | { type: typeof SESSION_EVENT_TYPES.CONTENT_CONTINUATION }
   | {
-      type: 'stream:error'
+      type: typeof SESSION_EVENT_TYPES.STREAM_ERROR
       data: {
         error: string
         errorDetails?: string
@@ -108,7 +110,7 @@ export async function resumeOnethingAfterToolConfirmation<
     }
 
     await options.emitEvent(options.sessionId, {
-      type: 'content:continuation',
+      type: SESSION_EVENT_TYPES.CONTENT_CONTINUATION,
     })
 
     options.schedule(async () => {
@@ -117,7 +119,7 @@ export async function resumeOnethingAfterToolConfirmation<
       } catch (error) {
         options.logger?.error?.('[OnethingRuntime] StreamEngine resume-after-confirm error:', error)
         await options.emitEvent(options.sessionId, {
-          type: 'stream:error',
+          type: SESSION_EVENT_TYPES.STREAM_ERROR,
           data: {
             error: messageForError(error, 'Failed to resume streaming'),
             errorDetails: options.errorDetails?.(error),

@@ -1,0 +1,46 @@
+/* 1b 清脆度：近白地 + 纯白卡 + 近黑字 + 冷中性灰 */
+:root, :root[data-theme="light"] {
+  --c-ground: #FAFAF7;
+  --c-chrome: #FFFFFF;
+  --c-card: #FFFFFF;
+  --c-overlay: #FFFFFF;
+  --c-nest: #F4F4F5;
+  --c-notice: #111113;
+  --c-notice-ink: #FFFFFF;
+
+  --c-recede-surface: #F1F1EF;
+  --c-recede-card: #FFFFFF;
+
+  --c-ink-1: #111113;
+  --c-ink-2: #3F3F46;
+  --c-ink-3: #71717A;
+  --c-ink-4: #A1A1AA;
+
+  --c-line-strong: #C4C4C9;
+  --c-line: #DEDEE2;
+  --c-line-faint: #EBEBEE;
+
+  --c-accent-soft: #FFF0E6;
+  --c-accent-ring: color-mix(in srgb, #bc5215 26%, transparent);
+  --c-accent-ink: #FFFFFF;
+
+  --c-accent2-soft: color-mix(in srgb, #24837b 9%, #FFFFFF);
+  --c-ok-soft: #EEF5E0;
+  --c-warn-soft: #FBF2DA;
+  --c-danger-soft: #FCEBE9;
+
+  --sh-1: 0 1px 2px rgba(17,17,19,0.06);
+  --sh-2: 0 1px 2px rgba(17,17,19,0.06), 0 8px 20px -8px rgba(17,17,19,0.16);
+  --fade: linear-gradient(to bottom, rgba(250,250,247,0) 0%, #FAFAF7 62%);
+}
+/* 纯白卡压在近白地上，围合靠一道冷灰描边 + 极淡阴影 */
+.panel, .tool-card, .composer, .field, .stepper, .sidebar-item.is-selected {
+  border: 1px solid var(--c-line);
+}
+.composer { box-shadow: var(--sh-2); }
+.panel, .tool-card { box-shadow: var(--sh-1); }
+.tool-card { border-left: 3px solid var(--c-accent2); }
+.tool-files { border: 1px solid var(--c-line-faint); }
+.file-row + .file-row { border-top-color: var(--c-line-faint); }
+.col-left, .col-right { border-color: var(--c-line); }
+.topbar { border-bottom-color: var(--c-line); }

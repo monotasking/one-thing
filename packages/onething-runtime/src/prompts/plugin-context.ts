@@ -1,9 +1,13 @@
-import type {
-  CorePromptActiveProject,
-  CorePromptKnownProjects,
-  CorePromptProviderConfig,
-  CorePromptProviderConfigValue,
+import {
+  CORE_PROMPT_ORDER_PLUGIN,
+  type CoreBuildPromptContextOptions,
+  type CorePromptActiveProject,
+  type CorePromptFragment,
+  type CorePromptKnownProjects,
+  type CorePromptProviderConfig,
+  type CorePromptProviderConfigValue,
 } from '@onething/core/engine'
+import type { PromptSource } from './composer.js'
 import {
   CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS,
   isCorePluginTimeoutError,
@@ -54,6 +58,13 @@ export interface OnethingPluginPromptContextFragmentInput {
   role: OnethingPromptContextRole
   source?: string
   content: string
+  /**
+   * Which provider produced it. Stamped by the collector, never by the plugin —
+   * it is the identity the turn-channel block dedupes on
+   * (`plugin:<pluginId>/<providerId>`), so it must not be forgeable.
+   */
+  pluginId?: string
+  providerId?: string
 }
 
 export type OnethingPluginPromptContextProvider = (
@@ -151,6 +162,8 @@ export async function collectPluginPromptContext(
             role: 'developer',
             source: `plugins/${item.pluginId}/${item.providerId}`,
             content: entry,
+            pluginId: item.pluginId,
+            providerId: item.providerId,
           })
           continue
         }
@@ -158,6 +171,8 @@ export async function collectPluginPromptContext(
           role: normalizeInjectedPromptContextRole(entry.role),
           source: entry.source || `plugins/${item.pluginId}/${item.providerId}`,
           content: entry.content,
+          pluginId: item.pluginId,
+          providerId: item.providerId,
         })
       }
       options.onProviderSuccess?.({ pluginId: item.pluginId, providerId: item.providerId })
@@ -189,4 +204,74 @@ export function getPromptContextProviderCount(): number {
 
 export function clearAllPromptContextProviders(): void {
   providers.clear()
+}
+
+/** The group name that switches every plugin provider off at once. */
+export const PLUGIN_PROMPT_GROUP = 'plugins'
+
+/**
+ * Plugin providers as a `PromptSource`. The host constructs it with the
+ * health callbacks (timeout / failure / success → breaker); the product
+ * default composer constructs it bare.
+ *
+ * Provider output is recomputed every turn by definition, so it rides the
+ * **turn channel** — it never belonged in a prefix that is supposed to be
+ * identical across sessions. Each provider gets its own block id
+ * (`plugin:<pluginId>/<providerId>`) so a chatty provider does not force a
+ * quiet one to re-send; they all share the group `plugins`, which is what
+ * `disabledSections: ['plugins']` (collab rooms) still keys on.
+ */
+export class PluginPromptContextSource implements PromptSource {
+  readonly name = 'plugins'
+
+  constructor(private readonly options: CollectOnethingPluginPromptContextOptions = {}) {}
+
+  async collect(ctx: CoreBuildPromptContextOptions): Promise<CorePromptFragment[]> {
+    const fragments = await collectPluginPromptContext(pluginPromptContextFrom(ctx), this.options)
+    return fragments.map(fragment => ({
+      id: pluginPromptBlockId(fragment),
+      slot: 'section' as const,
+      channel: 'turn' as const,
+      group: PLUGIN_PROMPT_GROUP,
+      source: fragment.source ?? 'plugin',
+      order: CORE_PROMPT_ORDER_PLUGIN,
+      content: fragment.content,
+    }))
+  }
+}
+
+/**
+ * The dedupe key of one provider's block. Falls back to the group name when a
+ * fragment predates the stamped identity — one shared block is a degraded
+ * dedupe, never a lost paragraph.
+ */
+export function pluginPromptBlockId(
+  fragment: Pick<OnethingPluginPromptContextFragmentInput, 'pluginId' | 'providerId'>,
+): string {
+  if (!fragment.pluginId) return PLUGIN_PROMPT_GROUP
+  return `plugin:${fragment.pluginId}/${fragment.providerId ?? 'default'}`
+}
+
+/** The slice of the build context a plugin provider is allowed to see. */
+export function pluginPromptContextFrom(ctx: CoreBuildPromptContextOptions): OnethingPluginPromptContext {
+  const providerModel = ctx.providerConfig?.model
+  return {
+    sessionId: ctx.sessionId,
+    // F4:身份透传。ctx.agentId 是回合入口解析好的那一个,与 persona 取的是
+    // 同一个字段,所以插件看到的身份与提示词里的身份恒一致。
+    agentId: ctx.agentId,
+    providerId: ctx.providerId,
+    model: ctx.model?.trim()
+      || (typeof providerModel === 'string' && providerModel.trim() ? providerModel.trim() : undefined),
+    providerConfig: ctx.providerConfig,
+    settings: ctx.settings,
+    hasTools: ctx.hasTools,
+    skills: ctx.skills,
+    workingDirectory: ctx.workingDirectory,
+    workingDirectoryRoots: ctx.workingDirectoryRoots,
+    activeProject: ctx.activeProject,
+    knownProjects: ctx.knownProjects,
+    toolNames: ctx.toolNames,
+    mcpToolNames: ctx.mcpToolNames,
+  }
 }

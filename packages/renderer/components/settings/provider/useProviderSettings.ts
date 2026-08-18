@@ -11,13 +11,13 @@ import type {
 	ACPAgentConfig,
 	ACPAgentState,
 	AppSettings,
-	AIProvider,
 	OpenRouterModel,
 	ProviderEnvStatus,
 	ProviderInfo,
 } from "@/types";
 import { useSettingsStore } from "@/stores/settings";
-import { isProviderConfigEnabled } from "@/stores/helpers/provider-model";
+import { providerFamilyOf } from "@shared/provider-families";
+import { useSpaceProviderView } from "@/composables/useSpaceProviderView";
 import { useProviderAuth } from "./useProviderAuth";
 import {
 	getOnethingQwenBaseUrl,
@@ -60,6 +60,18 @@ export function useProviderSettings(
 ) {
 	const settingsStore = useSettingsStore();
 
+	/**
+	 * 「当前空间的 provider 视图」(批 B7)。凭证与 selectedModels 的**唯一**读写口:
+	 * default 空间落回 `props.settings`(草稿态,零迁移),非 default 走凭证池 +
+	 * space.json overlay。这里传的是**草稿 settings** 而不是 settings store ——
+	 * 用户刚敲进去还没保存的 key 必须立刻让状态点亮(见视图头注)。
+	 */
+	const spaceView = useSpaceProviderView({
+		settings: () => props.settings,
+		providers: () => props.providers,
+		usesEnvApiKey: (providerId) => providerUsesEnvApiKey(providerId),
+	});
+
 	// Local state
 	const modelSearchQuery = ref("");
 	const newModelInput = ref("");
@@ -83,8 +95,9 @@ export function useProviderSettings(
 	// deselectable) after a Refresh wipes them from the models.dev-backed cache.
 	const availableModels = computed(() => {
 		const fetched = settingsStore.getCachedModels(viewingProvider.value);
-		const selectedIds =
-			props.settings.ai.providers[viewingProvider.value]?.selectedModels ?? [];
+		// 目录缓存全空间共享(§3),但「选了哪些」按当前空间取 —— 否则在空间 B 里
+		// 刷新一次目录,B 自己勾的自定义模型会从列表上消失。
+		const selectedIds = spaceView.selectedModelsOf(viewingProvider.value);
 		if (selectedIds.length === 0) return fetched;
 		const fetchedIds = new Set(fetched.map((m) => m.id));
 		const missing = selectedIds
@@ -104,11 +117,9 @@ export function useProviderSettings(
 		);
 	});
 
-	const currentSelectedModels = computed(() => {
-		return (
-			props.settings.ai.providers[viewingProvider.value]?.selectedModels || []
-		);
-	});
+	const currentSelectedModels = computed(() =>
+		spaceView.selectedModelsOf(viewingProvider.value),
+	);
 
 	// ──────────────── Temperature: per-model with provider/global fallbacks ────────────────
 	//
@@ -309,9 +320,9 @@ export function useProviderSettings(
 	// Global default computed properties
 	const enabledProviders = computed(() => {
 		return props.providers.filter((p) => {
-			const config = props.settings.ai.providers[p.id];
 			return (
-				isProviderConfigEnabled(config) && (config?.selectedModels?.length ?? 0) > 0
+				spaceView.isProviderEnabled(p.id) &&
+				spaceView.selectedModelsOf(p.id).length > 0
 			);
 		});
 	});
@@ -338,8 +349,12 @@ export function useProviderSettings(
 		return settingsStore.isCustomProvider(providerId);
 	}
 
+	/**
+	 * 「这个 provider 在**当前空间**开着没有」(批 B9)。家族(API + 订阅)派生
+	 * 仍在 `isProviderEnabledIn` 一处,视图只是把空间覆盖接成它的读取源。
+	 */
 	function isProviderEnabled(providerId: string): boolean {
-		return isProviderConfigEnabled(props.settings.ai.providers[providerId]);
+		return spaceView.isProviderEnabled(providerId);
 	}
 
 	function getProviderEnvStatus(
@@ -355,9 +370,7 @@ export function useProviderSettings(
 	}
 
 	function isModelSelected(modelId: string): boolean {
-		const selectedModels =
-			props.settings.ai.providers[viewingProvider.value]?.selectedModels || [];
-		return selectedModels.includes(modelId);
+		return spaceView.selectedModelsOf(viewingProvider.value).includes(modelId);
 	}
 
 	function getModelName(modelId: string): string {
@@ -481,14 +494,14 @@ export function useProviderSettings(
 
 	// Set the provider's active model — this is the row that the
 	// Temperature / Max Output sliders below the list will configure.
+	//
+	// C1(接批 B10 移交):落点是**当前空间的 overlay defaultSelection**,不再是
+	// 全局 `providers[pid].model`。B10 时非 default 空间点这一行会写进全局那一格,
+	// 于是「在空间 2 里选个模型」把空间 1 的默认也改了 —— 那是两套形状的又一次
+	// 显形。统一之后 default 也走这条。
 	function setActiveModel(modelId: string) {
 		if (!modelId) return;
-		const providers = { ...props.settings.ai.providers };
-		providers[viewingProvider.value] = {
-			...providers[viewingProvider.value],
-			model: modelId,
-		};
-		updateSettings({ ai: { ...props.settings.ai, providers } });
+		void spaceView.setDefaultSelection(viewingProvider.value, modelId);
 	}
 
 	function updateModelMaxOutput(modelId: string, value: number | null) {
@@ -684,16 +697,18 @@ export function useProviderSettings(
 		updateSettings({ ai: { ...props.settings.ai, providers } });
 	}
 
+	/**
+	 * A family (API + subscription channel) is one enable unit — the read side
+	 * (`isProviderEnabledIn`) treats it so, and the write side must not be able
+	 * to pull the two members apart again.
+	 */
 	function toggleProviderEnabled(providerId: string) {
-		const providers = { ...props.settings.ai.providers };
-		const config = providers[providerId];
-		if (config) {
-			providers[providerId] = {
-				...config,
-				enabled: !isProviderEnabled(providerId),
-			};
-			updateSettings({ ai: { ...props.settings.ai, providers } });
-		}
+		if (!props.settings.ai.providers[providerId]) return;
+		const family = providerFamilyOf(providerId);
+		const ids = family
+			? [family.apiProviderId, family.subscriptionProviderId]
+			: [providerId];
+		setProvidersEnabled(ids, !isProviderEnabled(providerId));
 	}
 
 	/**
@@ -702,11 +717,9 @@ export function useProviderSettings(
 	 * each spread the not-yet-updated props and lose the earlier write.
 	 */
 	function setProvidersEnabled(providerIds: string[], enabled: boolean) {
-		const providers = { ...props.settings.ai.providers };
-		for (const providerId of providerIds) {
-			providers[providerId] = { ...providers[providerId], enabled };
-		}
-		updateSettings({ ai: { ...props.settings.ai, providers } });
+		// 落点永远是**当前空间的 overlay**(C1)。批 B9 时这里还分了一支
+		// (default 写全局),而那正是「开关不独立」的病根。
+		void spaceView.setProvidersEnabled(providerIds, enabled);
 	}
 
 	async function switchViewingProvider(provider: string) {
@@ -793,87 +806,68 @@ export function useProviderSettings(
 		}
 	}
 
-	function toggleModelSelection(modelId: string) {
-		const providers = { ...props.settings.ai.providers };
-		const providerConfig = { ...providers[viewingProvider.value] };
-
-		if (!providerConfig.selectedModels) {
-			providerConfig.selectedModels = [];
-		} else {
-			providerConfig.selectedModels = [...providerConfig.selectedModels];
-		}
-
-		const index = providerConfig.selectedModels.indexOf(modelId);
+	/**
+	 * 非默认空间的模型勾选落进 space.json overlay(批 B7)。
+	 *
+	 * 只搬 `selectedModels` 这一格:`providerConfig.model`(该 provider 的默认
+	 * 模型)、maxOutput/contextLength/capabilities 这些**逐模型调参**仍在全局层 ——
+	 * 它们描述的是「这个模型是什么样」,不是「这个空间想用哪些」。
+	 */
+	function toggleSpaceModelSelection(modelId: string) {
+		const current = spaceView.selectedModelsOf(viewingProvider.value);
+		const index = current.indexOf(modelId);
 		if (index === -1) {
-			providerConfig.selectedModels.push(modelId);
-			if (providerConfig.selectedModels.length === 1) {
-				providerConfig.model = modelId;
-			}
-		} else {
-			if (
-				providerConfig.selectedModels.length > 1 ||
-				providerConfig.model !== modelId
-			) {
-				providerConfig.selectedModels.splice(index, 1);
-				if (
-					providerConfig.model === modelId &&
-					providerConfig.selectedModels.length > 0
-				) {
-					providerConfig.model = providerConfig.selectedModels[0];
-				}
-			}
+			void spaceView.setSelectedModels(viewingProvider.value, [...current, modelId]);
+			return;
 		}
-
-		providers[viewingProvider.value] = providerConfig;
-		updateSettings({ ai: { ...props.settings.ai, providers } });
+		// 与全局那一支同一条守则:不允许把最后一个模型摘掉。
+		if (current.length <= 1) return;
+		void spaceView.setSelectedModels(
+			viewingProvider.value,
+			current.filter((id) => id !== modelId),
+		);
 	}
 
-	// Global default provider and model setters
+	// C1:一条路 —— 勾选永远写当前空间的 overlay。
+	function toggleModelSelection(modelId: string) {
+		toggleSpaceModelSelection(modelId);
+	}
+
+	/**
+	 * 「默认用哪个 provider / 哪个模型」——**当前空间的默认**(C1)。
+	 *
+	 * 批 B9 之前这两个函数写的是全局 `settings.ai.provider` / `providers[pid].model`;
+	 * 迁移之后那两格已经不是真相了(default 空间的默认住在它自己的 space.json)。
+	 */
 	function setDefaultProvider(providerId: string) {
-		updateSettings({
-			ai: { ...props.settings.ai, provider: providerId as AIProvider },
-		});
+		const model = spaceView.selectedModelsOf(providerId)[0] ?? "";
+		void spaceView.setDefaultSelection(providerId, model);
 	}
 
 	function setDefaultModel(modelId: string) {
-		const defaultProvider = props.settings.ai.provider;
-		const providers = { ...props.settings.ai.providers };
-		const providerConfig = { ...providers[defaultProvider] };
-		providerConfig.model = modelId;
-		providers[defaultProvider] = providerConfig;
-		updateSettings({ ai: { ...props.settings.ai, providers } });
+		const provider =
+			spaceView.defaultSelection.value.provider || viewingProvider.value;
+		void spaceView.setDefaultSelection(provider, modelId);
 	}
 
 	function addCustomModel() {
 		const modelId = newModelInput.value.trim();
 		if (!modelId) return;
 
-		const providers = { ...props.settings.ai.providers };
-		const providerConfig = { ...providers[viewingProvider.value] };
-
-		if (!providerConfig.selectedModels) {
-			providerConfig.selectedModels = [];
-		} else {
-			providerConfig.selectedModels = [...providerConfig.selectedModels];
-		}
-
-		if (providerConfig.selectedModels.includes(modelId)) {
+		const current = spaceView.selectedModelsOf(viewingProvider.value);
+		if (current.includes(modelId)) {
 			modelError.value = `"${modelId}" is already in this provider's model list.`;
 			return;
 		}
-
-		providerConfig.selectedModels.push(modelId);
-		providerConfig.model = modelId;
-
+		// 目录缓存是全局共享的(§3):自定义模型进缓存这一步两种空间下都一样,
+		// 空间只决定「选了哪些」。
 		if (!availableModels.value.find((m) => m.id === modelId)) {
 			settingsStore.addCustomModelToCache(
 				viewingProvider.value,
 				createCustomModel(modelId),
 			);
 		}
-
-		providers[viewingProvider.value] = providerConfig;
-		updateSettings({ ai: { ...props.settings.ai, providers } });
+		void spaceView.setSelectedModels(viewingProvider.value, [...current, modelId]);
 		modelSearchQuery.value = "";
 		modelError.value = "";
 		newModelInput.value = "";
@@ -950,6 +944,10 @@ export function useProviderSettings(
 	}
 
 	return {
+		// 当前空间的 provider 视图(批 B7)。连接区复用**同一个实例** —— 各建一个
+		// 会各挂一次 onMounted 拉取,也会让「切空间后谁先刷新」变成运气。
+		spaceView,
+
 		// State
 		viewingProvider,
 		modelSearchQuery,

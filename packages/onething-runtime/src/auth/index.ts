@@ -24,8 +24,27 @@ export type {
   OnethingAuthCallbackRegistration,
   OnethingAuthCallbackServerAdapter,
   OnethingAuthServiceOptions,
+  OnethingAuthTokenEvent,
   OnethingAuthTokenStore,
 } from './auth-service.js'
+export {
+  credentialRefreshKey,
+  credentialTargetFromSpaceMarker,
+  credentialTargetKey,
+  isSpaceCredentialTarget,
+  normalizeCredentialTarget,
+  SETTINGS_CREDENTIAL_TARGET,
+} from './credential-target.js'
+export type {
+  OnethingCredentialTarget,
+  OnethingSettingsCredentialTarget,
+  OnethingSpaceCredentialTarget,
+} from './credential-target.js'
+export {
+  createOnethingSpaceTokenStore,
+  parseSpaceOAuthToken,
+} from './space-token-store.js'
+export type { OnethingSpaceAuthTokenStore } from './space-token-store.js'
 export type {
   OnethingAuthRuntimeOptions,
 } from './service-factory.js'

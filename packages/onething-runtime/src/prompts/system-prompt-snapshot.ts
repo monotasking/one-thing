@@ -127,6 +127,13 @@ export interface CoreSystemPromptSnapshotAgentLoopStream {
 
 export interface CoreSystemPromptSnapshotPromptResult {
   systemPrompt: string
+  /**
+   * The turn-channel blocks of this build (prompt-channels 2026-08-18). They
+   * are not part of the prefix, but they ARE part of what the model reads, so
+   * the snapshot has to see them — otherwise the one screen that answers
+   * "what is this turn assembled from" goes quiet about half the sections.
+   */
+  turn?: Array<{ id: string; content: string }>
 }
 
 export interface CoreSystemPromptSnapshotToolInitContext<TSkill> {
@@ -510,6 +517,19 @@ export async function buildSystemPromptSnapshotWithAdapters<
     historyMessages: [],
   })
 
+  /**
+   * What the model actually reads this turn: the static prefix, then the turn
+   * blocks under a marker. Two channels, one screen — the alternative is a
+   * snapshot that quietly stops mentioning skills, todo and AGENTS.md the day
+   * they change channel.
+   */
+  const assembledPrompt = [
+    requestMessages.systemPrompt,
+    ...(requestMessages.turn?.length
+      ? ['--- turn ---', ...requestMessages.turn.map(block => block.content)]
+      : []),
+  ].filter(Boolean).join('\n\n')
+
   return {
     sessionId: options.sessionId,
     generatedAt: options.now?.() ?? Date.now(),
@@ -520,8 +540,8 @@ export async function buildSystemPromptSnapshotWithAdapters<
     workingDirectory: session.workingDirectory,
     agentId: agent.id,
     agentName: agent.name,
-    systemPrompt: requestMessages.systemPrompt,
-    systemPromptChars: requestMessages.systemPrompt.length,
+    systemPrompt: assembledPrompt,
+    systemPromptChars: assembledPrompt.length,
     tools: {
       enableToolCalls,
       modelSupportsTools,
@@ -535,7 +555,7 @@ export async function buildSystemPromptSnapshotWithAdapters<
     agentLoopStream,
     skills: {
       enabled: skillsEnabled,
-      includedInPrompt: requestMessages.systemPrompt.includes('# Skills'),
+      includedInPrompt: assembledPrompt.includes('# Skills'),
       count: enabledSkills.length,
       items: enabledSkills.map(skillSnapshot),
     },

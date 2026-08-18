@@ -27,11 +27,24 @@ describe('core prompt context helpers', () => {
   })
 
   it('builds context compact prompts without main prompt modules', () => {
-    const prompt = buildContextCompactPrompt('USER: hello', '{"goal":"old"}')
+    const prompt = buildContextCompactPrompt('USER: hello', 'old summary')
 
-    expect(prompt).toContain('Return valid JSON only')
-    expect(prompt).toContain('Existing summary JSON or text:')
-    expect(prompt).toContain('USER: hello')
+    // C5:转录在前、既有摘要居中、指令块**最后**(recency 位)。
+    expect(prompt).toContain('<conversation>\nUSER: hello\n</conversation>')
+    expect(prompt).toContain('<previous-summary>\nold summary\n</previous-summary>')
+    expect(prompt.indexOf('<conversation>')).toBeLessThan(prompt.indexOf('<previous-summary>'))
+    expect(prompt.indexOf('<previous-summary>')).toBeLessThan(prompt.indexOf('## Goal'))
+    // 有既有摘要 → 走 UPDATE 指令。
+    expect(prompt).toContain('PRESERVE')
+  })
+
+  it('uses the CREATE instructions and omits the previous-summary tag on a first compaction', () => {
+    const prompt = buildContextCompactPrompt('USER: hello')
+
+    expect(prompt).not.toContain('<previous-summary>')
+    expect(prompt).not.toContain('PRESERVE')
+    expect(prompt).toContain('## Goal')
+    expect(prompt.indexOf('<conversation>')).toBeLessThan(prompt.indexOf('## Goal'))
   })
 
   it('normalizes provider ids and collects plugin prompt fragments', async () => {
@@ -55,11 +68,15 @@ describe('core prompt context helpers', () => {
         role: 'developer',
         source: 'plugins/plugin-a/memory',
         content: 'Plugin memory context',
+        pluginId: 'plugin-a',
+        providerId: 'memory',
       },
       {
         role: 'developer',
         source: 'plugins/plugin-b/summary',
         content: 'Plugin summary context',
+        pluginId: 'plugin-b',
+        providerId: 'summary',
       },
     ])
 
@@ -105,12 +122,18 @@ describe('core prompt context helpers', () => {
       now: new Date('2026-06-25T00:00:00Z'),
     })
 
-    expect(prompt.system).toContain('Current date: 2026-06-25')
+    // No `Current date:` line since prompt-channels 2026-08-18 — the date is
+    // on the board (`datetime`), and the prefix stays constant across days.
+    expect(prompt.system).not.toContain('Current date:')
     expect(prompt.developer.join('\n\n')).toContain('# Agent: Research Lead')
-    expect(prompt.developer.join('\n\n')).toContain('Current work directory: ~/project (/Users/example/project)')
-    expect(prompt.developer.join('\n\n')).toContain('<name>review-workflow</name>')
     expect(prompt.developer.join('\n\n')).toContain('/docs/macos-automation.md')
-    expect(prompt.developer.join('\n\n')).toContain('Plugin memory context')
+    // The working directory section is gone (the `workdir` variable carries it);
+    // skills and plugin context left the prefix for the turn channel.
+    expect(prompt.developer.join('\n\n')).not.toContain('Current work directory')
+    expect(prompt.developer.join('\n\n')).toContain('## Tool Workspace Rules')
+    const turn = prompt.turn.map(block => block.content).join('\n\n')
+    expect(turn).toContain('<name>review-workflow</name>')
+    expect(turn).toContain('Plugin memory context')
 
     const codex = await buildPrompt({
       providerId: 'codex',

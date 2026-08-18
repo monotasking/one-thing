@@ -1,0 +1,17 @@
+/* 3b 圆角：卡 14 / 控件 10 / 按钮全药丸 */
+:root, :root[data-theme="light"] {
+  --r-sm: 10px;
+  --r: 16px;
+  --r-lg: 20px;
+}
+.btn { border-radius: var(--r-pill); }
+.tab { border-radius: var(--r-pill); }
+.msg-user .msg-body { border-radius: 18px; }
+.tool-card { border-radius: 16px; }
+.composer { border-radius: 22px; }
+.panel { border-radius: 16px; }
+.stepper-btns span { border-radius: 8px; }
+.brand-mark { border-radius: 50%; }
+.field { border-radius: var(--r-pill); }
+.model-chip { border-radius: var(--r-pill); }
+.sidebar-item { border-radius: 10px; }

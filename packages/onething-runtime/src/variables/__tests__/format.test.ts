@@ -34,7 +34,11 @@ describe('formatStateVariablesForPrompt', () => {
     ])).toBe('<var name="q" state="true" desc="says &quot;hi&quot; &amp; &lt;bye>">a &lt; b &amp; c</var>')
   })
 
-  it('skips workdir entirely (rendered by the prompt builder, never twice)', () => {
+  // The formatter used to drop `workdir` because the prompt builder had its own
+  // `# Work Directory` section. That section is gone (prompt-channels
+  // 2026-08-18): the board is now the single place the working directory is
+  // stated, so skipping it would mean nobody states it at all.
+  it('renders workdir like any other variable — it is no longer stated twice', () => {
     const home = os.homedir()
     const out = formatStateVariablesForPrompt([
       v({
@@ -44,7 +48,9 @@ describe('formatStateVariablesForPrompt', () => {
       }),
       v({ name: 'a', value: '1' }),
     ])
-    expect(out).toBe('<var name="a" state="true">1</var>')
+    expect(out).toBe(
+      '<var name="a" state="true">1</var>\n<var name="workdir" state="true">~/project</var>',
+    )
   })
 
   it('folds multiline values and truncates with the existing ellipsis', () => {

@@ -67,12 +67,19 @@ import {
 	type EffectiveAgentProfile,
 } from "../agents/profile.js";
 import {
-	sessionHiddenToolIds,
-	type TaskSessionLike,
-} from "../tasks/index.js";
+	resolveSceneHiddenToolIds,
+	type SceneSurfaceSessionLike,
+} from "../tools/scene-surface.js";
+// R2b 缝 1(切换期;开关关时下面那一段整个不求值)。目录由装配层通过
+// `configureToolkitCatalog` 递进来 —— 产品层不许 import `@onething/app`。
+import { isToolkitEnabled } from "../toolkit/flag.js";
+import {
+	resolveToolkitSurface,
+	toolkitAgentSourceTools,
+} from "../toolkit/host.js";
+import type { SceneSessionLike as ToolkitSceneSessionLike } from "../toolkit/scene.js";
 
-/** 会话级工具屏蔽读的那一小片会话形状(结构类型 —— 产品层不认 IPC 契约包)。 */
-type SessionHiddenToolInput = TaskSessionLike | null | undefined;
+import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 
 export interface OnethingAgentLoopChatSettings {
 	maxTokens?: number;
@@ -507,7 +514,7 @@ export function createOnethingAgentLoopRuntimeAdapters<
 		async emitInjectedUserMessage(sessionId, message) {
 			try {
 				await host.emitEvent(sessionId, {
-					type: "message:user-created",
+					type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
 					message,
 				});
 			} catch (error) {
@@ -537,6 +544,19 @@ export type BuildOnethingAgentLoopStreamRuntimeResult<
 	| {
 			supported: true;
 			runtime: AgentLoopOptions;
+			/**
+			 * 用另一份凭证重建同一个 provider(批 D)。装配层拿它去实现
+			 * `AgentLoopOptions.rotateCredential` —— provider 怎么造只有这里知道,
+			 * 所以只开一个「改凭证」的窄口子而不是把造法导出去。
+			 */
+			reprovision?: (override: {
+				apiKey?: string;
+				baseUrl?: string;
+				/** OAuth 型凭证的换手(批 B6):换的是 token,不是 key。 */
+				oauthToken?: AgentProviderRuntimeConfig["oauthToken"];
+				/** 换过之后的归属标记 —— 后续的中途刷新要写回新的那条 entry。 */
+				spaceCredential?: AgentProviderRuntimeConfig["spaceCredential"];
+			}) => AgentProvider | undefined;
 			systemPrompt: string;
 			/** Named prompt sections built for this turn (for hash-based versioning and snapshots). */
 			sections: PromptSection[];
@@ -687,6 +707,43 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		preparation.providerHostContext,
 	);
 
+	/**
+	 * 用另一份凭证重建同一个 provider(批 D 的凭证轮换)。
+	 *
+	 * 为什么这个函数必须住在这里:`createProvider` 的另外两个参数
+	 * (`providerRuntimeConfig` / `providerHostContext`)只在这一段作用域里存在,
+	 * 把它们导出去让调用方自己拼,等于把"provider 怎么造"复制成第二份。
+	 * 这里只开一个**改凭证**的窄口子,其余一律沿用首次解析的那份。
+	 */
+	const reprovision = (
+		override: {
+			apiKey?: string;
+			baseUrl?: string;
+			oauthToken?: AgentProviderRuntimeConfig["oauthToken"];
+			spaceCredential?: AgentProviderRuntimeConfig["spaceCredential"];
+		},
+	): AgentProvider | undefined =>
+		createProvider(
+			ctx.providerId,
+			{
+				...(preparation.providerRuntimeConfig as AgentProviderRuntimeConfig),
+				...(override.apiKey ? { apiKey: override.apiKey } : {}),
+				...(override.baseUrl ? { baseUrl: override.baseUrl } : {}),
+				// OAuth 换手要把 authContext 一并顶掉:它是首次解析烤进去的那一个,
+				// 留着会让 provider 继续拿旧账号的 token 拼请求头。
+				...(override.oauthToken
+					? {
+							oauthToken: override.oauthToken,
+							authContext: { kind: "oauth", token: override.oauthToken },
+						}
+					: {}),
+				...(override.spaceCredential
+					? { spaceCredential: override.spaceCredential }
+					: {}),
+			} as AgentProviderRuntimeConfig,
+			preparation.providerHostContext,
+		);
+
 	if (!provider) {
 		return {
 			supported: false,
@@ -708,23 +765,6 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	const toolLoadingEnabled = Boolean(
 		preparation.toolCallsEnabled && supportsTools,
 	);
-	/**
-	 * 会话级工具屏蔽(自举差距审计 P0-3)。
-	 *
-	 * 与 agent 的 allowlist 是**两件事**:allowlist 答「这个 agent 能用哪些」,
-	 * 而且只有配了 agent 的回合才有;这一条答「这条会话的形态决定了哪些工具在这里
-	 * 根本不成立」,与 agent 无关 —— 一条派工开出来的工作会话看不见 `task`
-	 * (禁止套娃),哪怕它没有 agent、没有 allowlist。
-	 *
-	 * 放在这里而不是在执行时拒绝:摆在工具表里的工具模型会去调,调了被拒是一次纯
-	 * 浪费的往返。执行时的拒绝仍然保留在派工那一侧作为兜底 —— 工具面是给模型看的,
-	 * 闸才是不能被绕过的。
-	 */
-	const hiddenToolIds = new Set(sessionHiddenToolIds(session as SessionHiddenToolInput));
-	const allEnabledTools = toolLoadingEnabled
-		? (await adapters.getEnabledTools(effectiveToolSettings?.tools))
-			.filter(tool => !hiddenToolIds.has(tool.id))
-		: [];
 	const mcpToolDefinitions = toolLoadingEnabled
 		? (adapters.getMCPToolDefinitionsForModel?.()
 			?? (adapters.getMCPRouterToolDefinition?.() ? [adapters.getMCPRouterToolDefinition()!] : []))
@@ -737,9 +777,69 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		: ctx.agentProfile
 			? ctx.agentProfile.tools
 			: await adapters.getAgentToolAllowlist?.(preparation.agentId, session);
+	/**
+	 * R2b 缝 1 —— 工具面(docs/design/tool-system-oop-2026-08.md §12.5)。
+	 *
+	 * 开关开时,「这一回合模型看得见哪些内置工具」由 `Surface.resolve` 一次算出
+	 * (目录 × 场景 × agent 白名单 × 设置),取代上面三处口径拼装:
+	 * `resolveSceneHiddenToolIds` 的减法表、`getEnabledTools` 的 enabled 过滤、
+	 * `planAgentLoopTools` 的 allowlist。空白名单的两种读法在
+	 * `normalizeLegacyAllowlist` 那道归一门里对齐(R2a 决定⑤)。
+	 *
+	 * **MCP 与 provider 原生名不走这条**:它们仍旧按老路递给
+	 * `planAgentLoopTools`(flat/router 的互斥、enabled 过滤都在那里),只作为
+	 * `extraNames` 进 `Surface.names()` —— 那一格答的是"这个名字这一回合合法吗",
+	 * 不是"谁来跑它"。于是开关翻开时模型看到的 MCP 面逐字不变。
+	 *
+	 * 目录没配上(宿主没走 backend、装配还没到)时 `toolkitSourceTools` 为空,
+	 * 整段落回旧路。
+	 */
+	const toolkitSurface = isToolkitEnabled() && toolLoadingEnabled
+		? resolveToolkitSurface({
+			session: session as ToolkitSceneSessionLike | null | undefined,
+			enabledSkillNames: enabledSkills.map(skill => skill.name),
+			allowlist: agentToolAllowlist,
+			toolSettings: effectiveToolSettings?.tools as
+				Readonly<Record<string, { enabled?: boolean; autoExecute?: boolean }>> | undefined,
+			extraNames: mcpToolDefinitions.map(tool => tool.id),
+		})
+		: undefined;
+	const toolkitSourceTools = toolkitSurface
+		? toolkitAgentSourceTools(toolkitSurface)
+		: null;
+	/**
+	 * 场景工具面(2026-08-18 工具梳理;前身是自举差距审计 P0-3 的会话级屏蔽)。
+	 *
+	 * 与 agent 的 allowlist 是**两件事**:allowlist 答「这个 agent 能用哪些」,
+	 * 而且只有配了 agent 的回合才有;这一条答「这条会话所在的场景决定了哪些工具在
+	 * 这里根本不成立」—— 普通对话看不见协作四件套,没有 active goal 的回合看不见
+	 * `goal`,派工开出来的工作会话看不见 `task`(禁止套娃),skill 带进来的工具只在
+	 * 该 skill 启用时出现。表在 `tools/scene-surface.ts`,一处。
+	 *
+	 * 放在这里而不是在执行时拒绝:摆在工具表里的工具模型会去调,调了被拒是一次纯
+	 * 浪费的往返。执行时的闸(场子门、套娃闸)原样保留 —— 工具面是给模型看的,
+	 * 闸才是不能被绕过的。
+	 */
+	/*
+	 * R3b(§14.4-6 结清):开关开且目录真的答上来了时,旧的两道口径**不再空跑**。
+	 *
+	 * R2b 留着它们是为了"旧路一行不改",代价是每一回合白算一次减法表 + 一次异步
+	 * 注册表列举,结果当场丢弃。判据是 `toolkitSourceTools !== null`(不是开关本身)
+	 * —— 目录没配上时整段仍然要退回旧路,那时这两道口径是唯一的答案。
+	 */
+	const hiddenToolIds = toolkitSourceTools
+		? new Set<string>()
+		: new Set(resolveSceneHiddenToolIds({
+			session: session as SceneSurfaceSessionLike | null | undefined,
+			enabledSkillNames: enabledSkills.map(skill => skill.name),
+		}));
+	const allEnabledTools = toolLoadingEnabled && !toolkitSourceTools
+		? (await adapters.getEnabledTools(effectiveToolSettings?.tools))
+			.filter(tool => !hiddenToolIds.has(tool.id))
+		: [];
 	const toolPlan = planAgentLoopTools({
 		toolLoadingEnabled,
-		allEnabledTools,
+		allEnabledTools: (toolkitSourceTools ?? allEnabledTools) as typeof allEnabledTools,
 		mcpTools: mcpToolDefinitions,
 		toolSettings: effectiveToolSettings,
 		allowedToolIds: agentToolAllowlist,
@@ -814,7 +914,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 				.filter((id): id is string => Boolean(id));
 			if (messageIds.length > 0) {
 				void adapters.emitEvent(ctx.sessionId, {
-					type: "steering:consumed",
+					type: SESSION_EVENT_TYPES.STEERING_CONSUMED,
 					messageIds,
 				});
 			}
@@ -842,7 +942,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		}) => {
 			// 已读水位靠这条事件回推 —— 界面画的是"引擎真的读到了哪",不是猜的。
 			void adapters.emitEvent(ctx.sessionId, {
-				type: "scratchpad:consumed",
+				type: SESSION_EVENT_TYPES.SCRATCHPAD_CONSUMED,
 				version,
 				turn,
 			});
@@ -1023,6 +1123,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	return {
 		supported: true,
 		runtime,
+		reprovision,
 		systemPrompt: requestMessages.systemPrompt,
 		sections: requestMessages.sections ?? [],
 		enabledSkills,

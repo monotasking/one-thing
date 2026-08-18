@@ -85,15 +85,27 @@
             listening: isVoiceRecordingActive,
             transcribing: isVoiceTranscribingActive,
             command: commandModeActive,
+            generating: generationFrameActive,
+            [`phase-${generation.status.value?.phase}`]: generationFrameActive,
           }"
-          aria-hidden="true"
+          :aria-hidden="generationFrameActive ? undefined : 'true'"
+          :role="generationFrameActive ? 'status' : undefined"
+          :aria-live="generationFrameActive ? 'polite' : undefined"
         >{{ composerFrameLabel }}<span
           v-if="isVoiceRecordingActive"
           class="composer-frame-elapsed"
         >{{ formattedVoiceElapsed }}</span><span
           v-else-if="commandModeActive && commandModeHint"
           class="composer-frame-hint"
-        >{{ commandModeHint }}</span></span>
+        >{{ commandModeHint }}</span><template v-else-if="generationFrameActive"><span
+          v-if="generation.toolName.value"
+          class="composer-frame-hint composer-frame-tool"
+        >{{ generation.toolName.value }}</span><span
+          class="composer-frame-elapsed"
+        >{{ generation.phaseElapsed.value }}</span><span
+          v-if="generation.tokens.value"
+          class="composer-frame-tokens"
+        >{{ generation.tokens.value }}</span></template></span>
         <button
           v-if="isVoiceRecordingActive"
           class="composer-voice-cancel"
@@ -112,25 +124,6 @@
         >
           esc exit
         </button>
-        <Transition name="fade">
-          <div
-            v-if="commandFeedback"
-            :class="['command-feedback', commandFeedback.type]"
-            @click.stop
-          >
-            <Check
-              v-if="commandFeedback.type === 'success'"
-              :size="14"
-              :stroke-width="2.5"
-            />
-            <X
-              v-else
-              :size="14"
-              :stroke-width="2.5"
-            />
-            <span>{{ commandFeedback.message }}</span>
-          </div>
-        </Transition>
 
         <CommandPicker
           :visible="activeExtension.type === 'palette'"
@@ -611,7 +604,7 @@ import {
   type QueuedFileChangeSummary,
   type QueuedMessage,
 } from './composer/queued-message-utils'
-import { X, Square, Check, Loader2, Mic, NotebookPen, Paperclip, Phone, PhoneOff, Puzzle, Volume2, VolumeX } from 'lucide-vue-next'
+import { Square, Loader2, Mic, NotebookPen, Paperclip, Phone, PhoneOff, Puzzle, Volume2, VolumeX } from 'lucide-vue-next'
 import { executeCommand, findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
@@ -623,7 +616,8 @@ import { getDiffFromStep } from '@/stores/helpers/tool-step-view'
 // Composables
 import { useInputHistory } from '@/composables/useInputHistory'
 import { usePickerOrchestration } from '@/composables/usePickerOrchestration'
-import { useCommandFeedback } from '@/composables/useCommandFeedback'
+import { useToast } from '@/composables/useToast'
+import { useGenerationStatus } from '@/composables/useGenerationStatus'
 import { useAttachments } from '@/composables/useAttachments'
 import { useFileDrop } from '@/composables/useFileDrop'
 import { useScratchpadStore } from '@/stores/scratchpad'
@@ -1135,7 +1129,12 @@ function handleRemoveReference(id: string) {
   removePageReference(id)
 }
 
-const { commandFeedback, showCommandFeedback } = useCommandFeedback()
+// 命令 / 工具 / 语音的结果提示走全局 ToastHost(与系统其余通知同一个组件,
+// 2026-08-17 拍板);从前 InputBox 自带一条小条,是第二套通知。
+const toast = useToast()
+function showCommandFeedback(type: 'success' | 'error', message: string) {
+  toast[type](message)
+}
 const {
   attachedFiles,
   isProcessing: isProcessingAttachments,
@@ -1299,7 +1298,11 @@ const isPrimaryActionDisabled = computed(() => {
 const primaryActionTitle = computed(() => {
   if (shouldShowStopAction.value) return 'Stop generation'
   if (commandModeActive.value) return `Run /${activeCommand.value?.id}`
-  if (hasActiveGeneration.value) return 'Queue message after current response'
+  if (hasActiveGeneration.value && !isRoomSessionActive.value) {
+    return hasAttachments.value
+      ? 'Queue message after current response'
+      : 'Steer the current response'
+  }
   return 'Send message'
 })
 const voiceSettings = computed(() => settingsStore.settings.voice ?? DEFAULT_VOICE_SETTINGS)
@@ -1397,9 +1400,25 @@ async function handleCallButton() {
 // E 期(composer-bands)起,帧标签**只**讲语音与命令:电台迁进了 S 状态带,
 // 输入框为播放器预留高度的那套占位机制与 NOW PLAYING/RADIO 标签一族随之退役。
 
+// 手势提示走占位符,不走通知(2026-08-17 拍板):"esc again to stop"、
+// "Steering · esc to take it back" 这类话是给正在盯着输入框的人看的,占位符
+// 就在视线上;通知条是给命令执行结果用的。有草稿时占位符不可见,清空手势的
+// 提示改挂在帧右角(见 escArmed)。
+const placeholderHint = ref('')
+let placeholderHintTimer: ReturnType<typeof setTimeout> | null = null
+function showPlaceholderHint(text: string, ms = 3000) {
+  placeholderHint.value = text
+  if (placeholderHintTimer) clearTimeout(placeholderHintTimer)
+  placeholderHintTimer = setTimeout(() => {
+    placeholderHintTimer = null
+    placeholderHint.value = ''
+  }, ms)
+}
+
 const composerPlaceholder = computed(() => {
   if (isVoiceRecordingActive.value) return voiceStore.lastTranscript || 'Listening...'
   if (isVoiceTranscribingActive.value) return voiceStore.lastTranscript || 'Transcribing...'
+  if (placeholderHint.value) return placeholderHint.value
   // The original radio vision: lyrics live in the placeholder. Only while a
   // song plays and only until the user types — a placeholder yields to input
   // by nature, so the lyric never competes with composing. The host's patter
@@ -1413,10 +1432,18 @@ const composerPlaceholder = computed(() => {
   return props.placeholder || 'Ask anything...'
 })
 
+// 生成状态读数(2026-08-17):Waiting / Thinking / Responding / Running <tool>
+// 从消息里搬到输入框顶沿 —— 一处计时、一处 token 计数;消息侧只留 reasoning
+// 正文与它的折叠头。store 里派生阶段,这里只是那个 100ms 的钟。
+const generation = useGenerationStatus(effectiveSessionId)
+const generationFrameActive = computed(() =>
+  !!generation.status.value && !isVoiceRecordingActive.value && !isVoiceTranscribingActive.value && !commandModeActive.value)
+
 const composerFrameLabel = computed(() => {
   if (isVoiceRecordingActive.value) return 'LISTENING'
   if (isVoiceTranscribingActive.value) return 'TRANSCRIBING'
   if (commandModeActive.value) return `/${activeCommand.value?.id.toUpperCase()}`
+  if (generationFrameActive.value) return generation.label.value
   // 静息态无标签(空串即 v-if 隐藏):框上只留描边,不留装饰字。
   return ''
 })
@@ -1502,6 +1529,8 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', handleDocumentMouseDown)
   window.removeEventListener('onething:composer-attach', handleWebElementPicked)
   stopVoiceRecordingTimer()
+  disarmEscape()
+  if (placeholderHintTimer) clearTimeout(placeholderHintTimer)
 })
 
 // --- Core handlers ---
@@ -1783,6 +1812,37 @@ function handleKeyDown(e: KeyboardEvent) {
     clearQuotedText()
     return
   }
+  // Then: with a draft, Escape twice clears it; with an empty draft, Escape
+  // pulls the most recent auto-steered message back out of the engine's
+  // steering queue and into the composer; failing that, while a response is
+  // running, Escape twice stops it. Both double-presses announce themselves
+  // on the first press.
+  if (e.key === 'Escape' && hasMessageContent.value) {
+    e.preventDefault()
+    handleEscapeClearGesture()
+    return
+  }
+  if (e.key === 'Escape' && retractLatestSteer()) {
+    e.preventDefault()
+    return
+  }
+  if (e.key === 'Escape' && hasActiveGeneration.value && props.allowStopAction) {
+    e.preventDefault()
+    handleEscapeStopGesture()
+    return
+  }
+
+  // Ctrl+C with nothing selected clears the draft (Cmd+C is copy on mac and
+  // untouched; a real selection keeps Ctrl+C as copy on other platforms).
+  if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'c') {
+    const selection = editorRef.value?.getSelection?.()
+    const hasSelection = !!selection && selection.from !== selection.to
+    if (!hasSelection && hasMessageContent.value) {
+      e.preventDefault()
+      clearDraftText()
+      return
+    }
+  }
 
   // History navigation (up/down arrows)
   if (e.key === 'ArrowUp') {
@@ -2015,11 +2075,20 @@ async function sendMessage() {
   if (hasActiveGeneration.value && !isRoomSessionActive.value) {
     // Mentions never reach this branch: they exist only in rooms, and rooms
     // take the immediate path above (the queue is for streaming sessions).
-    queuedMessages.value.push({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      content: fullMessage,
-      attachments,
-    })
+    if (attachments) {
+      // Steering carries text only — file sends wait for the response.
+      queuedMessages.value.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        content: fullMessage,
+        attachments,
+      })
+    } else {
+      // Text sent mid-response steers straight away; Escape on an empty
+      // composer pulls it back (see retractLatestSteer).
+      rememberSteeredDraft(fullMessage, messageInput.value, quotedText.value)
+      emit('sendMessage', fullMessage, 'steer')
+      showPlaceholderHint('Steering · esc to take it back', 5000)
+    }
   } else {
     emit('sendMessage', fullMessage, 'send', attachments, mentions.length > 0 ? mentions : undefined)
   }
@@ -2165,6 +2234,118 @@ function flushQueuedMessage() {
   const nextMessage = queuedMessages.value.shift()
   if (!nextMessage) return
   emit('sendMessage', nextMessage.content, 'send', nextMessage.attachments)
+}
+
+// --- Composer gestures: Esc retract / Esc×2 stop / Ctrl+C clear ---
+
+/**
+ * Raw drafts that were auto-steered from this composer, keyed by the exact
+ * text that went out, so an Escape retract can restore what the user typed
+ * (pre-materialization: `@file` tokens, quote separated) rather than the
+ * expanded copy the engine persisted. Bounded; stale entries are harmless
+ * because lookup is by content match, never by position.
+ */
+const steeredDrafts: Array<{ sent: string; raw: string; quotedText: string }> = []
+const STEERED_DRAFT_MEMORY = 20
+
+function rememberSteeredDraft(sent: string, raw: string, quoted: string) {
+  steeredDrafts.push({ sent, raw, quotedText: quoted })
+  if (steeredDrafts.length > STEERED_DRAFT_MEMORY) steeredDrafts.shift()
+}
+
+/**
+ * Pull the newest still-pending steer for this session back out of the
+ * engine queue and into the composer. Pending-ness is the store's account of
+ * `steering:queued` / `steering:consumed` — once a turn drained the message
+ * there is nothing to take back and this is a no-op (returns false so Escape
+ * can fall through to the next gesture).
+ */
+function retractLatestSteer(): boolean {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return false
+  let messageId: string | null = null
+  for (const [id, pendingSessionId] of chatStore.pendingSteeringByMessageId) {
+    if (pendingSessionId === sessionId) messageId = id
+  }
+  if (!messageId) return false
+  const persisted = chatStore.sessionMessages.get(sessionId)?.find(message => message.id === messageId)
+  const sent = typeof persisted?.content === 'string' ? persisted.content : ''
+  let draftIndex = -1
+  for (let i = steeredDrafts.length - 1; i >= 0; i--) {
+    if (steeredDrafts[i].sent === sent) { draftIndex = i; break }
+  }
+  const draft = draftIndex >= 0 ? steeredDrafts.splice(draftIndex, 1)[0] : null
+  void chatStore.retractSteerMessage(messageId)
+  const restored = draft?.raw ?? sent
+  if (restored) {
+    messageInput.value = restored
+    if (draft?.quotedText) quotedText.value = draft.quotedText
+    resetHistoryNavigation()
+    nextTick(() => {
+      updateComposerHeight()
+      editorRef.value?.focus()
+    })
+  }
+  return true
+}
+
+/**
+ * Escape double-press gestures. One arm slot for both: a first press arms a
+ * named gesture and announces it, a second press of the SAME gesture within
+ * the window fires it. Switching gestures (typing after arming "stop", say)
+ * re-arms instead of firing the wrong one.
+ */
+const ESC_GESTURE_WINDOW_MS = 2000
+const escArmed = ref<{ gesture: 'stop' | 'clear'; at: number } | null>(null)
+let escArmTimer: ReturnType<typeof setTimeout> | null = null
+
+function disarmEscape() {
+  escArmed.value = null
+  if (escArmTimer) {
+    clearTimeout(escArmTimer)
+    escArmTimer = null
+  }
+}
+
+function armOrFireEscape(gesture: 'stop' | 'clear', fire: () => void) {
+  const now = Date.now()
+  const armed = escArmed.value
+  if (armed && armed.gesture === gesture && now - armed.at <= ESC_GESTURE_WINDOW_MS) {
+    disarmEscape()
+    fire()
+    return
+  }
+  disarmEscape()
+  escArmed.value = { gesture, at: now }
+  escArmTimer = setTimeout(disarmEscape, ESC_GESTURE_WINDOW_MS)
+}
+
+function handleEscapeStopGesture() {
+  armOrFireEscape('stop', () => {
+    stopGeneration()
+    showPlaceholderHint('Response stopped')
+  })
+  if (escArmed.value?.gesture === 'stop') showPlaceholderHint('Press esc again to stop the response', ESC_GESTURE_WINDOW_MS)
+}
+
+// With a draft present the placeholder is hidden: the arm is silent, the
+// second press within the window clears (no corner tag — 2026-08-17 拍板).
+function handleEscapeClearGesture() {
+  armOrFireEscape('clear', () => {
+    clearDraftText()
+    showPlaceholderHint('Draft cleared')
+  })
+}
+
+/** Ctrl+C: drop the draft text (attachments and quote stay). */
+function clearDraftText() {
+  messageInput.value = ''
+  resetHistoryNavigation()
+  nextTick(() => {
+    updateComposerHeight()
+    editorRef.value?.scrollToTop()
+    editorRef.value?.focus()
+  })
 }
 
 function focusEditor() {
@@ -2327,6 +2508,39 @@ defineExpose({
   user-select: none;
 }
 
+/* --- generation readout: WAITING 1.2s / THINKING 4.8s · ≈420 tok / RUNNING bash 3.0s --- */
+.composer-frame-label.generating {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: calc(100% - 120px); /* leaves the esc-esc-stop tag its corner */
+  color: var(--ui-text-muted-fg);
+  letter-spacing: 1.4px;
+}
+
+.composer-frame-label.phase-thinking,
+.composer-frame-label.phase-responding {
+  color: var(--ui-accent-primary-fg);
+}
+
+.composer-frame-label.phase-approval {
+  color: var(--ui-status-warning-fg, var(--ui-accent-primary-fg));
+}
+
+.composer-frame-tool {
+  margin-left: 0.6em;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: none;
+}
+
+.composer-frame-tokens {
+  margin-left: 1em;
+  letter-spacing: 0.4px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+}
+
 /* --- voice turn: the frame itself is the state --- */
 .composer-frame-label.listening {
   color: var(--ui-status-danger-fg);
@@ -2461,43 +2675,10 @@ defineExpose({
 
 /* Transient toast floating above the composer's top edge; never affects
    layout, unlike the old in-composer context stack. */
-.command-feedback {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 9px);
-  z-index: calc(var(--z-dropdown) + 2);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 6px 10px;
-  border: 0.5px solid var(--ui-composer-overlay-border);
-  border-radius: var(--radius-xs, 4px);
-  background: var(--ui-composer-overlay-bg);
-  box-shadow: var(--ui-composer-overlay-shadow);
-  backdrop-filter: blur(8px) saturate(1.02);
-  -webkit-backdrop-filter: blur(8px) saturate(1.02);
-  color: var(--ui-text-primary-fg);
-  font-size: 12px;
-  line-height: 1.3;
-  pointer-events: none;
-}
 
-.command-feedback.success {
-  border-color: var(--ui-status-success-border, var(--color-success));
-  color: var(--ui-status-success-fg);
-}
 
-.command-feedback.error {
-  border-color: var(--ui-status-danger-border, var(--color-danger));
-  color: var(--ui-status-danger-fg);
-}
 
-.command-feedback span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+
 
 .fade-enter-active,
 .fade-leave-active {

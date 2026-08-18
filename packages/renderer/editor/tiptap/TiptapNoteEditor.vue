@@ -2,7 +2,7 @@
   <div
     ref="hostRef"
     class="tiptap-note-editor"
-    :class="surfaceClass"
+    :class="[surfaceClass, { 'is-dragging': dragging, 'is-typing': typing }]"
     :data-surface="surface"
     :data-source-mode="sourceMode ? 'source' : 'preview'"
   >
@@ -48,10 +48,14 @@
       :editor="editor"
       class="tiptap-drag-handle"
     >
-      <GripVertical
-        :size="14"
-        :stroke-width="2"
-      />
+      <!-- 2×3 六圆点。刻意不用 lucide 的 GripVertical:它是描边图标,在 14px 上
+           点与点糊成两条竖线;这里要的是**六个实心点**的疏密感,纯 CSS 画得更准。 -->
+      <span
+        class="tiptap-drag-dots"
+        aria-hidden="true"
+      >
+        <i /><i /><i /><i /><i /><i />
+      </span>
     </DragHandle>
 
     <SlashMenu
@@ -106,9 +110,13 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Image from '@tiptap/extension-image'
+// v3 起表格四件套合并进**一个**包(`extension-table-row/-header/-cell` 是 v2 的形态,
+// 在 3.x 线上已经没有对应版本可装)。
+import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { Markdown } from 'tiptap-markdown'
+import { ProgressiveSelectAll } from './progressive-select-all'
 import DragHandle from '@tiptap/extension-drag-handle-vue-3'
-import { Code2, Eye, GripVertical } from 'lucide-vue-next'
+import { Code2, Eye } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { markdownApi } from '@/platform/markdown-client'
@@ -121,7 +129,14 @@ import SlashMenu from '../slash/SlashMenu.vue'
 import { useSlashMenu } from '../slash/useSlashMenu'
 import type { SlashCommandId } from '../slash/slash-commands'
 import { applyTiptapMarkdownCommand } from './apply-command'
-import { consumedWatermarkKey, consumedWatermarkPlugin } from './consumed-watermark'
+import { caretBlockPlugin } from './caret-block'
+import { codeBlockLanguagePlugin } from './code-block-language'
+import { MarkdownHighlight } from './markdown-highlight'
+import {
+  consumedWatermarkKey,
+  consumedWatermarkPlugin,
+  type ConsumedWatermarkResolution,
+} from './consumed-watermark'
 import '../notion/notion-prose.css'
 import './tiptap-note-editor.css'
 
@@ -173,6 +188,11 @@ const emit = defineEmits<{
   'selectionUpdate': [info: { line: number, column: number }]
   'openImage': [payload: { src: string, alt: string, asset?: MarkdownAssetResolution | null }]
   'openLink': [payload: { href: string, asset?: MarkdownAssetResolution | null }]
+  /**
+   * 已读水位换算完了 —— 宿主拿 `blockIndex` 说「AI 读到第 N 段」(N = index + 1)。
+   * 段号只能从这里出:换算要序列化器,而序列化器只有编辑器内部有。
+   */
+  'watermark': [resolution: ConsumedWatermarkResolution]
 }>()
 
 const hostRef = ref<HTMLElement | null>(null)
@@ -286,9 +306,13 @@ const ResolvedImage = Image.extend({
       attachWidthGrip(dom)
       void resolveImageSrc(rawSrc).then((resolved) => {
         dom.classList.remove('is-loading')
-        if (resolved) img.src = resolved
-        // 解析不出来时保留一行可读的字,而不是一个碎图标。
-        else dom.replaceChildren(document.createTextNode(alt || rawSrc))
+        if (resolved) {
+          img.src = resolved
+          return
+        }
+        // 解析不出来时保留一行可读的字,而不是一个碎图标。虚线占位框由 CSS 画。
+        dom.classList.add('is-missing')
+        dom.replaceChildren(document.createTextNode(alt || rawSrc))
       })
       return { dom, ignoreMutation: () => true }
     }
@@ -348,6 +372,7 @@ function applySlashCommand(id: SlashCommandId, query: string): void {
   else if (id === 'task-list') chain.toggleTaskList().run()
   else if (id === 'blockquote') chain.toggleBlockquote().run()
   else if (id === 'code-block') chain.toggleCodeBlock().run()
+  else if (id === 'table') chain.insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run()
   else if (id === 'horizontal-rule') chain.setHorizontalRule().run()
   else if (id === 'image') {
     chain.run()
@@ -379,7 +404,15 @@ function buildEditor(): Editor {
         codeBlock: features?.codeBlocks === false ? false : undefined,
         // 纸上的换行就是换行 —— markdown 的"两个空格才换行"在草稿里是反直觉的。
         hardBreak: { keepMarks: false },
+        /**
+         * 拖到哪儿的指示线。`color: false` 是这个扩展的**官方留白口**:不写内联
+         * 底色,只挂一个类 —— 于是颜色能走我们自己的 token(内联色写死一个字面
+         * 值就是把主题切换废掉)。皮肤在 `tiptap-note-editor.css`。
+         */
+        dropcursor: { color: false, width: 2, class: 'tiptap-drop-cursor' },
       }),
+      // 渐进式 ⌘A:第一次选当前块,再按逐级向上,最后才是全选。
+      ProgressiveSelectAll,
       Markdown.configure({
         html: false,
         tightLists: true,
@@ -391,6 +424,22 @@ function buildEditor(): Editor {
       TaskList,
       // `- [ ]` 的往返靠它 —— tiptap-markdown 的 markdown-it 侧装了 task-lists 插件。
       TaskItem.configure({ nested: true }),
+      /**
+       * 表格。**列宽拖拽不开**(`resizable: false`):列宽在 markdown 里没有落脚处
+       * (与图片宽度同一条纪律 —— 见 `attachWidthGrip` 的注释),开了就是造一个
+       * 存不住的手感;设计稿上的表本来也是静态的。
+       *
+       * 往返走 tiptap-markdown 自带的 table 序列化器(GFM 管道表)+ markdown-it 的
+       * 表格规则,两侧都不必我们接线;它对**带表头、无合并、每格单段**的表才写
+       * 管道语法,越界的表退成 HTML —— 而我们 `html: false`,所以插入命令一律带表头
+       * (见 `apply-command.ts`),合并单元格的 UI 也刻意不提供。
+       */
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      // `==高亮==`。往返的两半由它自己带,见 `markdown-highlight.ts`。
+      MarkdownHighlight,
       ResolvedImage.configure({ inline: true, allowBase64: false }),
       Placeholder.configure({
         showOnlyCurrent: false,
@@ -442,10 +491,23 @@ function buildEditor(): Editor {
  * 已读水位线挂在编辑器建好**之后** —— 它要的序列化器是 tiptap-markdown 在
  * `onBeforeCreate` 里塞进 storage 的,建构期的扩展列表里够不着。
  */
+let lastWatermarkKey = ''
+
 function installWatermark(instance: Editor): void {
   instance.registerPlugin(consumedWatermarkPlugin({
     getOffset: () => props.consumedOffset ?? null,
     serialize: doc => markdownStorage(instance).serializer.serialize(doc),
+    /**
+     * 回调发生在 PM 的 state 计算期里 —— 就地 `emit` 会让宿主在事务中间重渲染
+     * (最坏是再发一条事务,自己套自己)。推到微任务里,事务先结掉。
+     * 顺带去重:打字时每一跳都会重算,值没变就不惊动宿主。
+     */
+    onResolve: (resolution) => {
+      const key = `${resolution.blockIndex}:${resolution.blockCount}`
+      if (key === lastWatermarkKey) return
+      lastWatermarkKey = key
+      queueMicrotask(() => emit('watermark', resolution))
+    },
   }))
 }
 
@@ -465,15 +527,64 @@ function handleDomPaste(event: ClipboardEvent): void {
   emit('paste', event)
 }
 
+/**
+ * 「正在拖块」这一位状态。
+ *
+ * 拖拽期间任何块都不该画 hover 底 —— 拖拽有自己的落点指示线,再让鼠标底下那一块
+ * 亮起来,人会以为那是落点。把手是官方扩展、拖拽由 ProseMirror 自己接管,所以不去
+ * 猜它的内部状态,只听最外层的原生事件:`dragstart` 一定先于任何拖拽发生,
+ * `dragend` / `drop` 一定收尾(拖到窗外取消也会有 `dragend`)。
+ */
+const dragging = ref(false)
+
+function handleDragStart(): void {
+  dragging.value = true
+}
+
+function handleDragEnd(): void {
+  dragging.value = false
+}
+
+/**
+ * 「正在打字」这一位状态(Notion 的行为):进入输入后,鼠标恰好停着的那一行
+ * 不该亮 hover 底、把手也不该冒出来 —— 那是给鼠标的招呼,不是给键盘的。
+ * 鼠标一动就复原。只认会产出内容的键:纯修饰键与方向/功能键不算"在打字"。
+ */
+const typing = ref(false)
+
+function handleTypingKeydown(event: KeyboardEvent): void {
+  if (event.metaKey || event.ctrlKey || event.altKey) return
+  if (event.key.length !== 1 && event.key !== 'Enter' && event.key !== 'Backspace' && event.key !== 'Delete') return
+  typing.value = true
+}
+
+function handleTypingPointerMove(): void {
+  if (typing.value) typing.value = false
+}
+
 onMounted(() => {
   lastEmitted = props.modelValue
   const instance = buildEditor()
   editor.value = instance
   instance.view.dom.addEventListener('paste', handleDomPaste)
   installWatermark(instance)
+  instance.registerPlugin(caretBlockPlugin())
+  instance.registerPlugin(codeBlockLanguagePlugin())
+  const host = hostRef.value
+  host?.addEventListener('dragstart', handleDragStart, true)
+  host?.addEventListener('dragend', handleDragEnd, true)
+  host?.addEventListener('drop', handleDragEnd, true)
+  host?.addEventListener('keydown', handleTypingKeydown, true)
+  host?.addEventListener('pointermove', handleTypingPointerMove, true)
 })
 
 onBeforeUnmount(() => {
+  const host = hostRef.value
+  host?.removeEventListener('dragstart', handleDragStart, true)
+  host?.removeEventListener('dragend', handleDragEnd, true)
+  host?.removeEventListener('drop', handleDragEnd, true)
+  host?.removeEventListener('keydown', handleTypingKeydown, true)
+  host?.removeEventListener('pointermove', handleTypingPointerMove, true)
   const instance = editor.value
   if (!instance) return
   instance.view.dom.removeEventListener('paste', handleDomPaste)
@@ -522,7 +633,7 @@ function toggleSourceMode(): void {
 const handle = {
   /**
    * 命令面板 / 格式条的唯一入口。映射表在 `apply-command.ts`;词表里没有对应
-   * 实现的那几条(table)在那里静静降级 —— 点了不动,不炸。
+   * 实现的条目在那里静静降级 —— 点了不动,不炸。
    *
    * `image` 由这里接住:它不是编辑器命令,是"先落盘再插引用"的那条管线,
    * 与斜杠菜单的 `/图片` 走同一个文件选择框。

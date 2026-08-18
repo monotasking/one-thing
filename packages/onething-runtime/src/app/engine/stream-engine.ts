@@ -1,4 +1,10 @@
-import type { ChatMessageMention, ChatMessageReplyTo, PermissionMode } from "@shared/ipc.js";
+import type {
+	ChatMessageMention,
+	ChatMessageReplyTo,
+	MessageAttachment,
+	PermissionMode,
+	VoiceTranscriptMetadata,
+} from "@shared/ipc.js";
 import type { MessageOrigin } from "@shared/ipc.js";
 import {
 	type CoreInitialToolChoice,
@@ -32,6 +38,8 @@ import { defaultAgent, findAgent } from "../agents/store.js";
 import { resolveAgentProfileForSession } from "../agents/profile.js";
 import { getSession } from "../stores/sessions.js";
 import { takeExternalAgentSteering } from "../external-agents/index.js";
+
+import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 
 export type StreamSenderPayload = OnethingStreamSenderPayload;
 export type StreamSender = OnethingStreamSender;
@@ -73,8 +81,8 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 			channel?: string;
 			source?: string;
 			content: string;
-			attachments?: unknown[];
-			voice?: unknown;
+			attachments?: MessageAttachment[];
+			voice?: VoiceTranscriptMetadata;
 			origin?: MessageOrigin;
 			replyTo?: ChatMessageReplyTo;
 			/** Picked @mentions (W14a); consumed by the room ingress gate. */
@@ -397,7 +405,7 @@ async function emitCollabRefusal(sessionId: string, error: string): Promise<void
 	console.warn(`[StreamEngine] ${error}`, sessionId);
 	try {
 		await getEventBus().emit(sessionId, {
-			type: "stream:error",
+			type: SESSION_EVENT_TYPES.STREAM_ERROR,
 			data: { error },
 		} as Parameters<ReturnType<typeof getEventBus>["emit"]>[1]);
 	} catch (cause) {

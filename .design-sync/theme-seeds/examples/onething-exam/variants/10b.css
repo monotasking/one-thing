@@ -1,0 +1,17 @@
+/* 10b 暗色地（仅暗色）：地更深 #100F0F，侧栏 #282726，卡 #343331，层与层拉开 */
+:root[data-theme="dark"] {
+  --c-ground: #100F0F;
+  --c-chrome: #1C1B1A;
+  --c-card: #343331;
+  --c-overlay: #575653;
+  --c-nest: #282726;
+
+  --c-recede-surface: #282726;
+  --c-recede-card: #343331;
+
+  --c-line-strong: #6f6e69;
+  --c-line: #403e3c;
+  --c-line-faint: #282726;
+
+  --fade: linear-gradient(to bottom, rgba(16,15,15,0) 0%, #100F0F 62%);
+}

@@ -54,6 +54,8 @@ import { isCollabCoordinatorDrivenSession } from '../collab/ingress.js'
 import { pluginMessageSource } from '../channel/origin.js'
 import * as modelRegistry from '../providers/model-registry.js'
 
+import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 /* ── 循环闸:跳数账 ───────────────────────────────────────────────────────── */
 
 interface TriggerLedgerEntry {
@@ -234,7 +236,7 @@ export async function deliverInternalMessage(
       // 起一轮 = **既有的** command:send-message 路径(与调度器、语音、网关同一条),
       // 不另造入口。channel 不设 → 引擎按 'ipc' 记,桌面 UI 答得了权限卡。
       await deps.eventBus.emit(sessionId, {
-        type: 'command:send-message',
+        type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
         content,
         source,
         origin,

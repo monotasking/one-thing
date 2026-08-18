@@ -186,7 +186,7 @@ import type { AppSettings, ToolDefinition } from '@/types'
 import type { ThinkingEffort } from '@shared/ipc/providers'
 import type { PermissionMode, WebSearchSettings } from '@shared/ipc/tools'
 import { useSettingsStore } from '@/stores/settings'
-import { isProviderConfigEnabled } from '@/stores/helpers/provider-model'
+import { isProviderEnabledIn } from '@/stores/helpers/provider-model'
 import BashSettingsPanel from './BashSettingsPanel.vue'
 import BackgroundJobsPanel from './BackgroundJobsPanel.vue'
 import ConnectedDirectoriesPanel from './ConnectedDirectoriesPanel.vue'
@@ -207,6 +207,7 @@ const emit = defineEmits<{
 }>()
 
 const settingsStore = useSettingsStore()
+/** 批 B9:provider 开关的空间覆盖(default 空间恒 undefined)。 */
 
 /** Settings-area dropdown spelling; teleported because the tab body scrolls. */
 const LEDGER_SELECT = {
@@ -239,8 +240,10 @@ const displayTools = computed(() => {
 
 const configuredProviders = computed(() => {
   return settingsStore.availableProviders.filter(provider => {
-    const config = props.settings.ai.providers[provider.id]
-    return isProviderConfigEnabled(config) && getProviderModelIds(provider.id).length > 0
+    // 批 B9:开关 per-space —— 第三参是空间覆盖(default 空间恒 undefined,
+    // 那一支逐字不变);家族派生仍在 `isProviderEnabledIn` 内部一处。
+    return isProviderEnabledIn(props.settings.ai.providers, provider.id)
+      && getProviderModelIds(provider.id).length > 0
   })
 })
 

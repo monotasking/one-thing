@@ -328,6 +328,21 @@ export class OnethingSessionMessageRuntime<
     return this.patchMessage(sessionId, messageId, { replyTo } as Partial<TMessage>)
   }
 
+  /**
+   * The turn-context delta delivered with a user message (prompt-channels
+   * 2026-08-18). Written once, at request-build time, by the assembly layer's
+   * `SessionTurnContext`; every later rebuild of that turn replays the stored
+   * delta, which is what keeps the request bytes identical across the tool
+   * loop. Metadata on an already-written message — the ordinary patch path.
+   */
+  updateMessageTurnContext(
+    sessionId: string,
+    messageId: string,
+    turnContext: unknown,
+  ): boolean {
+    return this.patchMessage(sessionId, messageId, { turnContext } as unknown as Partial<TMessage>)
+  }
+
   // Identity-resolved @mentions (W14a): the coordinator stamps ids onto an
   // agent reply once the stream settled — metadata on an already-written
   // message, same ordinary patch path reactions and quotes ride.

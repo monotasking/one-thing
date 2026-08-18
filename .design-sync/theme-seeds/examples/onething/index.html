@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>onething · 一次只做一件事</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script>
+  // ?theme=dark / ?theme=light 显式指定；否则跟随系统
+  (function () {
+    var t = new URLSearchParams(location.search).get('theme');
+    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ───────── 左：退后 ───────── -->
+  <aside class="col col-left is-receded">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-name">onething</div>
+    </div>
+
+    <div class="side-top">
+      <button class="btn btn-soft btn-block"><span class="glyph">＋</span>新会话</button>
+      <div class="field"><span>⌕</span><span>搜索会话</span></div>
+    </div>
+
+    <div class="side-scroll">
+      <div class="side-group">
+        <div class="group-label">今天</div>
+        <div class="list-row sidebar-item is-selected">
+          <span class="row-name">重构会话存储驱动</span>
+          <span class="row-meta">14:02</span>
+        </div>
+        <div class="list-row sidebar-item">
+          <span class="row-name">壁纸六级分档实现</span>
+          <span class="row-meta">11:48</span>
+        </div>
+        <div class="list-row sidebar-item">
+          <span class="row-name">插件 UI 锚点审计</span>
+          <span class="row-meta">09:31</span>
+        </div>
+        <div class="list-row sidebar-item">
+          <span class="row-name">token 层级自引用排查</span>
+          <span class="row-meta">08:15</span>
+        </div>
+      </div>
+
+      <div class="side-group">
+        <div class="group-label">更早</div>
+        <div class="list-row sidebar-item">
+          <span class="row-name">衬线标题的中英配对</span>
+          <span class="row-meta">周四</span>
+        </div>
+        <div class="list-row sidebar-item">
+          <span class="row-name">焦点环双环方案</span>
+          <span class="row-meta">周二</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-foot">
+      <div class="avatar"></div>
+      <span>你的工作台</span>
+    </div>
+  </aside>
+
+  <!-- ───────── 中：焦点 ───────── -->
+  <main class="col col-center is-focus">
+    <div class="topbar">
+      <nav class="tabs">
+        <button class="tab is-active">会话</button>
+        <button class="tab">工作区</button>
+        <button class="tab">差异</button>
+      </nav>
+      <div class="topbar-meta">已自动保存 · 14:06</div>
+    </div>
+
+    <div class="thread">
+      <div class="thread-inner">
+        <h1 class="session-title">重构会话存储驱动</h1>
+        <div class="session-meta">今天 14:02 · 12 轮 · 工具调用 3 次</div>
+
+        <div class="msg msg-user">
+          <div class="msg-who"><span class="dot"></span>你</div>
+          <div class="msg-body">把 JSONL 的落盘改成按会话分目录，流式写入时追加，不要每次重写整文件。</div>
+        </div>
+
+        <div class="msg msg-assistant">
+          <div class="msg-who"><span class="dot"></span>助手</div>
+          <div class="msg-body">已经改成追加写。每个会话一个目录，索引单独一份，重放时按 offset 续读，不再全量解析。</div>
+
+          <section class="tool-card">
+            <div class="tool-head">
+              <h4>写入了 3 个文件</h4>
+              <span class="tool-time">用时 1.2 秒</span>
+            </div>
+            <div class="tool-files">
+              <div class="file-row">
+                <span class="path"><span class="dir">src/main/store/</span>session-writer.ts</span>
+                <span class="add">+128</span><span class="del">−41</span>
+              </div>
+              <div class="file-row">
+                <span class="path"><span class="dir">src/main/store/</span>index-shard.ts</span>
+                <span class="add">+64</span><span class="del">−0</span>
+              </div>
+              <div class="file-row">
+                <span class="path"><span class="dir">tests/</span>session-replay.spec.ts</span>
+                <span class="waiting">待运行</span>
+              </div>
+            </div>
+            <div class="tool-foot">
+              <span class="pill pill-warn">待确认迁移</span>
+              <span class="spacer"></span>
+              <button class="btn btn-sm btn-ghost">查看差异</button>
+              <button class="btn btn-sm btn-soft">确认迁移</button>
+            </div>
+          </section>
+
+          <div class="msg-actions">
+            <button class="btn btn-sm btn-ghost">复制</button>
+            <button class="btn btn-sm btn-ghost">重试</button>
+            <button class="btn btn-sm btn-ghost">查看差异</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="composer-dock">
+      <div class="composer">
+        <div class="composer-input"><span class="caret"></span>接着让测试跑起来，顺便把索引重建的进度报出来…</div>
+        <div class="composer-bar">
+          <span class="model-chip">Claude Opus · 长上下文</span>
+          <button class="btn btn-sm btn-ghost"><span class="glyph">＋</span>附件</button>
+          <span class="spacer"></span>
+          <button class="btn btn-primary">发送</button>
+        </div>
+      </div>
+      <div class="composer-hint">Enter 发送 · Shift + Enter 换行</div>
+    </div>
+
+    <div class="toast"><span class="dot"></span>已复制回复</div>
+  </main>
+
+  <!-- ───────── 右：退后 ───────── -->
+  <aside class="col col-right is-receded">
+    <div class="right-head">工作区</div>
+    <div class="right-body">
+      <section class="panel">
+        <h3 class="panel-title">会话存储</h3>
+        <p class="panel-desc">每个会话一个 JSONL 目录，流式写入时追加。</p>
+        <div class="ledger">
+          <div class="ledger-row"><span class="k">目录数</span><span class="v">312</span></div>
+          <div class="ledger-row"><span class="k">占用</span><span class="v">567 KB</span></div>
+          <div class="ledger-row"><span class="k">最近压缩</span><span class="v">3 天前</span></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="sub-label">保留策略</div>
+        <div class="stepper">
+          <span>保留天数</span>
+          <span class="stepper-side">
+            <span class="num">90</span>
+            <span class="stepper-btns"><span>−</span><span>＋</span></span>
+          </span>
+        </div>
+        <p class="panel-desc">超期会话只删除正文，索引保留。</p>
+      </section>
+
+      <section class="panel">
+        <div class="sub-label">状态</div>
+        <div class="pill-stack">
+          <span class="pill pill-ok">迁移完成</span>
+          <span class="pill pill-warn">索引重建中</span>
+          <span class="pill pill-danger">2 份校验失败</span>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+</div>
+</body>
+</html>

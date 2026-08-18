@@ -28,6 +28,8 @@ import {
   type OnethingStreamSender,
 } from './stream-engine.js'
 
+import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 export type OnethingConversationRuntimeFromStreamEngineOptions<TChunk extends StreamChunkBase = StreamChunkBase> =
   CoreConversationRuntimeFactoryOptions<TChunk, OnethingStreamSender>
 
@@ -55,7 +57,7 @@ export function createOnethingConversationRuntimeFromStreamEngine<TChunk extends
       await options.engine.handleSendMessage(
         message.sessionId,
         {
-          type: 'command:send-message',
+          type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
           channel: message.channel,
           content: message.content,
           source: message.source,
@@ -84,7 +86,7 @@ function createPermissionSurface(
     },
     async respondPermission(input) {
       await eventBus.emit(input.sessionId, {
-        type: 'command:permission-respond',
+        type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
         channel: input.channel,
         requestId: input.requestId,
         decision: input.decision,
@@ -109,7 +111,7 @@ function permissionRequestFromEvent(
   sessionId: string,
   event: CoreConversationEventEnvelopeLike['event'],
 ): CorePermissionRequestEvent | null {
-  if (event.type !== 'permission:request') return null
+  if (event.type !== SESSION_EVENT_TYPES.PERMISSION_REQUEST) return null
   if (typeof event.requestId !== 'string') return null
   if (typeof event.targetChannel !== 'string') return null
   if (typeof event.permissionType !== 'string') return null

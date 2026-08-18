@@ -14,6 +14,12 @@
         Add provider
       </Button>
     </div>
+    <!-- C2:自定义 provider 的**定义**也是这个空间自己的了(用户 08-18:
+         「provider 设置应该是完整的、独立的两套」);钥匙同样跟着空间走,
+         落在下面的凭证池里。全局只剩 models.dev 的目录缓存。 -->
+    <p class="section-scope-note">
+      provider 设置与密钥都按空间各自配置;模型目录缓存全空间共享。
+    </p>
 
     <div class="conn-rows">
       <div
@@ -54,6 +60,13 @@
               >custom</span>
             </span>
             <span class="conn-summary">{{ cardSummary(card) }}</span>
+            <!-- 批 B9-0:把已有摘要('本空间未配置' / '本空间未登录')连到它的
+                 可见性后果上 —— 模型选择器的三道闸对用户是静默的,开着却不出现
+                 是最难自查的一种。 -->
+            <span
+              v-if="showsMissingCredentialNote(card)"
+              class="conn-consequence"
+            >本空间未配置凭证,不会出现在模型选择器</span>
           </span>
 
           <Button
@@ -122,9 +135,31 @@
                 >✓</span>
               </button>
             </div>
+            <!-- 非默认空间:凭证区换成本空间的凭证池(批 B7)。单条时它长得和
+                 默认空间那两个输入框一样,多条才展开顺序/策略;OAuth 型画的是
+                 「在本空间登录」。ACP / 本地 agent 不问凭证,不走这一支。 -->
+            <div
+              v-if="usesSpacePool && !providerSettings.isACPProvider?.value && !isLocalAgentProvider(activeMember(card).id)"
+              class="settings-group"
+            >
+              <SpaceCredentialPool
+                :provider-id="activeMember(card).id"
+                :provider-name="activeMember(card).name"
+                :oauth="providerSettings.isOAuthProvider.value"
+              />
+
+              <ProviderUsageCard
+                v-if="providerUsage.shouldShow.value"
+                :response="providerUsage.response.value"
+                :is-loading="providerUsage.isLoading.value"
+                :error="providerUsage.error.value"
+                @refresh="providerUsage.refresh(true)"
+              />
+            </div>
+
             <!-- OAuth Provider Login -->
             <div
-              v-if="providerSettings.isOAuthProvider.value"
+              v-else-if="providerSettings.isOAuthProvider.value"
               class="oauth-config-stack"
             >
               <AuthCard
@@ -282,138 +317,27 @@
               </div>
             </div>
 
-            <!-- Traditional API Key Input -->
+            <!-- Traditional API Key Input.
+                 行组本身住在 ProviderCredentialRows —— **非默认空间的凭证池渲染的是
+                 同一个组件**(用户 08-18:「切空间只换数据、不换外观」)。 -->
             <div
               v-else
               class="settings-group"
             >
-              <div class="settings-row">
-                <span class="row-label api-key-label">
-                  API Key
-                  <span
-                    v-if="providerSettings.currentProviderUsesEnvApiKey.value"
-                    class="env-detected-badge"
-                  >
-                    <Terminal :size="12" />
-                    Env {{ providerSettings.currentProviderEnvVarName.value }}
-                    <span v-if="providerSettings.currentProviderEnvKeyPreview.value">
-                      · {{ providerSettings.currentProviderEnvKeyPreview.value }}
-                    </span>
-                  </span>
-                </span>
-                <Input
-                  :model-value="providerApiKeyInputValue(activeMember(card).id)"
-                  type="password"
-                  show-password
-                  variant="ledger"
-                  class="row-input"
-                  :placeholder="providerApiKeyPlaceholder(activeMember(card).id, activeMember(card).name)"
-                  :spellcheck="false"
-                  aria-label="API key"
-                  @update:model-value="providerSettings.updateProviderApiKey"
-                />
-              </div>
-              <div class="settings-row">
-                <span class="row-label">Base URL</span>
-                <Input
-                  :model-value="settings.ai.providers?.[activeMember(card).id]?.baseUrl"
-                  type="text"
-                  variant="ledger"
-                  class="row-input"
-                  :placeholder="providerSettings.getDefaultBaseUrl()"
-                  :spellcheck="false"
-                  aria-label="Base URL"
-                  @update:model-value="providerSettings.updateProviderBaseUrl"
-                />
-              </div>
-              <div
-                v-if="providerSettings.isZhipuProvider.value"
-                class="settings-row"
-              >
-                <span class="row-label">API mode</span>
-                <Select
-                  variant="ledger"
-                  size="small"
-                  teleported
-                  fit-input-width
-                  class="row-select"
-                  :model-value="providerSettings.currentZhipuApiMode.value"
-                  :options="ZHIPU_API_MODE_OPTIONS"
-                  aria-label="Zhipu API mode"
-                  @update:model-value="providerSettings.updateZhipuApiMode(String($event))"
-                />
-              </div>
-              <template v-if="providerSettings.isQwenProvider.value">
-                <div class="settings-row">
-                  <span class="row-label">版本</span>
-                  <Select
-                    variant="ledger"
-                    size="small"
-                    teleported
-                    fit-input-width
-                    class="row-select"
-                    :model-value="providerSettings.currentQwenRegion.value"
-                    :options="QWEN_REGION_OPTIONS"
-                    aria-label="Qwen region"
-                    @update:model-value="providerSettings.updateQwenRegion(String($event))"
-                  />
-                </div>
-                <div class="settings-row">
-                  <span class="row-label">计费方式</span>
-                  <Select
-                    variant="ledger"
-                    size="small"
-                    teleported
-                    fit-input-width
-                    class="row-select"
-                    :model-value="providerSettings.currentQwenApiMode.value"
-                    :options="QWEN_API_MODE_OPTIONS"
-                    aria-label="Qwen API mode"
-                    @update:model-value="providerSettings.updateQwenApiMode(String($event))"
-                  />
-                </div>
-                <p class="row-note">
-                  订阅用户必须选对档位。用通用 Key 和地址调用会走按量计费，在订阅之外额外扣钱。
-                </p>
-              </template>
-              <template v-if="providerSettings.isKimiProvider.value">
-                <!-- 版本只对开放平台成立：编程套餐(Kimi Code)只有一个全球地址，
-                     那一格在这时没有意义，整行收起而不是留个拨了不动的选择器。 -->
-                <div
-                  v-if="providerSettings.kimiRegionApplies.value"
-                  class="settings-row"
-                >
-                  <span class="row-label">版本</span>
-                  <Select
-                    variant="ledger"
-                    size="small"
-                    teleported
-                    fit-input-width
-                    class="row-select"
-                    :model-value="providerSettings.currentKimiRegion.value"
-                    :options="KIMI_REGION_OPTIONS"
-                    aria-label="Kimi region"
-                    @update:model-value="providerSettings.updateKimiRegion(String($event))"
-                  />
-                </div>
-                <div class="settings-row">
-                  <span class="row-label">计费方式</span>
-                  <Select
-                    variant="ledger"
-                    size="small"
-                    teleported
-                    fit-input-width
-                    class="row-select"
-                    :model-value="providerSettings.currentKimiApiMode.value"
-                    :options="KIMI_API_MODE_OPTIONS"
-                    aria-label="Kimi API mode"
-                    @update:model-value="providerSettings.updateKimiApiMode(String($event))"
-                  />
-                </div>
-                <p class="row-note">
-                  编程套餐的 Key 与地址(api.kimi.com)和开放平台不通用：留着按量的那一套调用，会在订阅之外再按量扣一次钱。
-                </p>
-              </template>
+              <ProviderCredentialRows
+                :provider-id="activeMember(card).id"
+                :api-key="providerApiKeyInputValue(activeMember(card).id)"
+                :api-key-placeholder="providerApiKeyPlaceholder(activeMember(card).id, activeMember(card).name)"
+                :base-url="settings.ai.providers?.[activeMember(card).id]?.baseUrl || ''"
+                :base-url-placeholder="providerSettings.getDefaultBaseUrl()"
+                :api-mode="dialApiMode(activeMember(card).id)"
+                :region="dialRegion(activeMember(card).id)"
+                :env-badge="envBadge"
+                @update:api-key="providerSettings.updateProviderApiKey"
+                @update:base-url="providerSettings.updateProviderBaseUrl"
+                @update:api-mode="updateDialApiMode(activeMember(card).id, $event)"
+                @update:region="updateDialRegion(activeMember(card).id, $event)"
+              />
             </div>
 
             <!-- Model catalog for this provider: checked models feed the ledger above -->
@@ -457,41 +381,17 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ChevronDown, Terminal } from 'lucide-vue-next'
+import { ChevronDown } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
 
-const QWEN_REGION_OPTIONS = [
-  { value: 'cn', label: '国内版' },
-  { value: 'intl', label: '海外版 (QwenCloud)' },
-]
-
+/* zhipu/qwen/kimi 的旋钮选项表搬进了 `provider-dials.ts` —— 那是全仓唯一一张,
+   default 与空间凭证池共读(批 B10)。这里只留 ACP 自己那一格。 */
 const ACP_PERMISSION_OPTIONS = [
   { value: 'allow', label: 'Allow' },
   { value: 'reject', label: 'Reject' },
-]
-
-const ZHIPU_API_MODE_OPTIONS = [
-  { value: 'standard', label: 'Standard' },
-  { value: 'coding-plan', label: 'Coding Plan' },
-]
-
-const QWEN_API_MODE_OPTIONS = [
-  { value: 'standard', label: 'API 按量付费 (sk-ws-)' },
-  { value: 'token-plan', label: 'Token Plan 订阅 (sk-sp-)' },
-  { value: 'coding-plan', label: 'Coding Plan 订阅 (sk-sp-)' },
-]
-
-const KIMI_REGION_OPTIONS = [
-  { value: 'cn', label: '国内版 (moonshot.cn)' },
-  { value: 'intl', label: '海外版 (moonshot.ai)' },
-]
-
-const KIMI_API_MODE_OPTIONS = [
-  { value: 'standard', label: '开放平台 按量付费' },
-  { value: 'coding-plan', label: '编程套餐 Kimi Code 订阅' },
 ]
 import type { AppSettings, ProviderInfo } from '@/types'
 import { providerFamilyOf, type ProviderFamily } from '@shared/provider-families'
@@ -499,6 +399,8 @@ import ProviderIcon from '../ProviderIcon.vue'
 import AuthCard from './AuthCard.vue'
 import ProviderUsageCard from './ProviderUsageCard.vue'
 import ProviderModels from './ProviderModels.vue'
+import ProviderCredentialRows from './ProviderCredentialRows.vue'
+import SpaceCredentialPool from './SpaceCredentialPool.vue'
 import { useProviderSettings } from './useProviderSettings'
 import { useProviderUsage } from './useProviderUsage'
 
@@ -514,7 +416,82 @@ const emit = defineEmits<{
 }>()
 
 const providerSettings = useProviderSettings(props, (event, value) => emit(event, value))
-const providerUsage = useProviderUsage(providerSettings.viewingProvider, providerSettings.oauthStatus)
+
+/**
+ * 「当前空间的 provider 视图」(批 B7)—— 连接区不再直读 `settings.ai.providers[*]`
+ * 的凭证字段。**连接区本身就是「当前空间的」连接区**:切到空间 B 打开设置,
+ * 看到的就是 B 的 key / B 的登录态。用户 08-15 推翻了 B3 的独立面板路线
+ * (「不是一个多余的新表单让你填,而是我切换 workspace 的时候它就自动切换过去了」)。
+ *
+ * C1 起视图只有一条数据路(default 也是普通空间),连接区因此不再有
+ * `isDefaultSpace ? A : B`。
+ */
+const spaceView = providerSettings.spaceView
+
+/**
+ * 凭证区一律用池编辑器(C1)。唯一的例外是**后端答不上话**(web 端降级):
+ * 那时没有空间维度可言,画一个永远写不进去的池编辑器比画不出来更糟。
+ */
+const usesSpacePool = computed(() => spaceView.spaceAvailable.value)
+
+/**
+ * 用量卡(批 B10 移交项 2)。C1 之前它只画在 OAuth 那一支里,而那一支在非默认
+ * 空间根本不渲染 —— 于是切个空间用量卡就静默消失了。现在它按**本空间池里的
+ * codex 账号**判定并查询。
+ */
+const providerUsage = useProviderUsage(
+  providerSettings.viewingProvider,
+  providerSettings.oauthStatus,
+  {
+    id: computed(() => spaceView.spaceId.value),
+    loggedIn: computed(
+      () => spaceView.credentialOf(providerSettings.viewingProvider.value).configured
+        && spaceView.credentialOf(providerSettings.viewingProvider.value).oauth,
+    ),
+  },
+)
+
+/**
+ * 三家旋钮的读/写适配(批 B10)。判据与写路仍是 `useProviderSettings` 里那三对
+ * (它们顺手把派生出来的 baseUrl 一起落盘,这里不重复那件事);这一层只是把
+ * 「哪个 provider 用哪一对」从模板里的三段 `v-if` 收成两个 switch。
+ */
+function dialApiMode(providerId: string): string | undefined {
+  if (providerId === 'zhipu') return providerSettings.currentZhipuApiMode.value
+  if (providerId === 'qwen') return providerSettings.currentQwenApiMode.value
+  if (providerId === 'kimi') return providerSettings.currentKimiApiMode.value
+  return undefined
+}
+
+function dialRegion(providerId: string): string | undefined {
+  if (providerId === 'qwen') return providerSettings.currentQwenRegion.value
+  if (providerId === 'kimi') return providerSettings.currentKimiRegion.value
+  return undefined
+}
+
+function updateDialApiMode(providerId: string, value: unknown): void {
+  const mode = String(value)
+  if (providerId === 'zhipu') providerSettings.updateZhipuApiMode(mode)
+  else if (providerId === 'qwen') providerSettings.updateQwenApiMode(mode)
+  else if (providerId === 'kimi') providerSettings.updateKimiApiMode(mode)
+}
+
+function updateDialRegion(providerId: string, value: unknown): void {
+  const region = String(value)
+  if (providerId === 'qwen') providerSettings.updateQwenRegion(region)
+  else if (providerId === 'kimi') providerSettings.updateKimiRegion(region)
+}
+
+/** 「这把 key 来自环境变量」的徽章。**只有 default 空间给得出** —— env 是机器级的,
+    非默认空间严格隔离不吃它(B3 决策,B10 勘误 1 复核)。 */
+const envBadge = computed(() =>
+  providerSettings.currentProviderUsesEnvApiKey.value
+    ? {
+        varName: providerSettings.currentProviderEnvVarName.value,
+        keyPreview: providerSettings.currentProviderEnvKeyPreview.value,
+      }
+    : null,
+)
 
 onMounted(() => {
   providerSettings.initialize()
@@ -606,6 +583,15 @@ function cardSummary(card: ConnCard): string {
     .join(' · ')
 }
 
+/**
+ * 「开着,但这个空间没凭证」——只有非 default 空间才谈得上(default 空间的
+ * 凭证源就是 settings.ai,没有「本空间未配置」这一态)。
+ */
+function showsMissingCredentialNote(card: ConnCard): boolean {
+  if (!usesSpacePool.value) return false
+  return isCardEnabled(card) && !isCardConnected(card)
+}
+
 function isViewingMember(card: ConnCard): boolean {
   return card.members.some(member => member.id === providerSettings.viewingProvider.value)
 }
@@ -643,19 +629,17 @@ function isLocalAgentProvider(providerId: string): boolean {
   return Boolean(provider && provider.requiresApiKey === false && !provider.requiresOAuth)
 }
 
+/**
+ * 「配好了没有」——**当前空间**口径。default 空间下视图内部就是今天那套判据
+ * (key / env / baseUrl / OAuth),非 default 空间问的是凭证池里有没有可用条目。
+ */
 function isConnected(providerId: string): boolean {
-  const config = props.settings.ai.providers?.[providerId]
-  const provider = props.providers.find(p => p.id === providerId)
-  if (providerId === 'acp' || isLocalAgentProvider(providerId)) return true
-  if (provider?.requiresOAuth) {
-    return Boolean(config?.oauthToken) || (config?.selectedModels?.length ?? 0) > 0
-  }
-  if (config?.apiKey?.trim()) return true
-  if (providerSettings.providerUsesEnvApiKey(providerId)) return true
-  return Boolean(config?.baseUrl)
+  return spaceView.isConfigured(providerId)
 }
 
 function connectionSummary(providerId: string): string {
+  // 非默认空间:摘要来自凭证池(几把密钥 / 哪个账号 / 未配置),不看 settings。
+  if (usesSpacePool.value) return spaceView.credentialOf(providerId).summary
   const config = props.settings.ai.providers?.[providerId]
   const provider = props.providers.find(p => p.id === providerId)
   const key = config?.apiKey?.trim()
@@ -837,6 +821,14 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   white-space: nowrap;
 }
 
+.conn-consequence {
+  overflow: hidden;
+  color: var(--ui-status-warning-fg, var(--settings-ink-4));
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Row actions as text: mono rhythm, hover pulls an accent underline. */
 .conn-action,
 .mini-action {
@@ -967,32 +959,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   font-weight: 520;
 }
 
-.api-key-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.env-detected-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 1px 7px 2px;
-  border: 1px solid var(--ui-status-success-border, var(--ui-status-success-fg));
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ui-status-success-fg);
-  font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
-  font-weight: 560;
-  line-height: 1.3;
-  white-space: nowrap;
-}
+/* API Key 行与 env 徽章的样式随模板一起搬进了 ProviderCredentialRows。 */
 
 .row-input {
   width: 100%;
@@ -1099,4 +1066,10 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 24%, transparent);
   outline-offset: 2px;
 }
+.section-scope-note {
+  margin: -2px 0 10px;
+  font-size: 11px;
+  color: var(--ui-text-muted);
+}
+
 </style>

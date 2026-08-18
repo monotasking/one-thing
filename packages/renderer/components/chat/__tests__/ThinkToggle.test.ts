@@ -2,6 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import ThinkToggle from '../ThinkToggle.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -160,6 +161,9 @@ async function clickPanelOption(label: string) {
 
 describe('ThinkToggle', () => {
   beforeEach(() => {
+  	// 空间层(批 B9)从 ModelSelector/ThinkToggle/InputBox 一路读到这里,
+  	// 它住在 pinia 里 —— 独立挂载的组件测试也得有一个 pinia。
+  	setActivePinia(createPinia());
     setup()
   })
 
@@ -255,8 +259,13 @@ describe('ThinkToggle', () => {
 
     await openPanel(wrapper)
     await clickPanelOption('On')
+    // C1:写默认多了一跳(先读盘上的 overlay 再整层写),微任务要多冲几拍。
+    for (let i = 0; i < 8; i++) await Promise.resolve()
+    await nextTick()
 
-    expect(mocks.settingsStore.saveAIProviderDefault).toHaveBeenCalledWith('deepseek', 'deepseek-reasoner')
+    // C1:「改默认」写的是**当前空间的 overlay**,不再是 settings.ai
+    // (空间那一侧由 provider-defaults.space.test.ts / ModelSelector.space.test.ts 钉)。
+    expect(mocks.settingsStore.saveAIProviderDefault).not.toHaveBeenCalled()
     expect(mocks.sessionsStore.updateSessionModel).toHaveBeenCalledWith('draft:one', 'deepseek', 'deepseek-reasoner')
     expect(wrapper.find('.think-value').text()).toBe('On')
   })

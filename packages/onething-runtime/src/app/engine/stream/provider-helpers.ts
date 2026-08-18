@@ -7,10 +7,15 @@ import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/ipc.js'
 import { requiresOAuth } from '../../providers/index.js'
 import { oauthManager } from '../../providers/auth/oauth-manager.js'
-import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
 import { resolveProviderApiKey } from '../../providers/env.js'
-import { applySessionSpaceCredentials } from '../../providers/space-credentials.js'
+import {
+  applySessionSpaceCredentials,
+  credentialTargetFromMarker,
+  resolveSessionSpaceOAuthAuth,
+} from '../../providers/space-credentials.js'
+import { resolveSessionSpaceDefaultSelection } from '../../providers/space-defaults.js'
+import { getSessionSettings } from '../../providers/space-ai-settings.js'
 import {
   extractOnethingProviderErrorDetails,
   getEffectiveOnethingProviderConfig,
@@ -48,7 +53,9 @@ export function getProviderConfig(settings: AppSettings): ProviderConfig | undef
 export async function getApiKeyForProvider(providerId: string, providerConfig: ProviderConfig | undefined): Promise<string | null> {
   return getOnethingApiKeyForProvider<ProviderConfig>(providerId, providerConfig, {
     isOAuthProvider: requiresOAuth,
-    refreshOAuthToken: id => oauthManager.refreshTokenIfNeeded(id),
+    // per-space OAuth(批 B6):标记在就去那个空间的 entry 上刷新,缺席才走 settings。
+    refreshOAuthToken: (id, credential) =>
+      oauthManager.refreshTokenIfNeeded(id, credentialTargetFromMarker(credential)),
     resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
     logger: console,
   })
@@ -64,7 +71,7 @@ export async function resolveProviderAuth(
   return resolveOnethingProviderAuth<ProviderConfig, ProviderAuthContext>(providerId, providerConfig, {
     isOAuthProvider: requiresOAuth,
     resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
-    resolveOAuthAuth: (id, apiKey) => authService.resolveProviderAuth(id, apiKey),
+    resolveOAuthAuth: (id, apiKey, credential) => resolveSessionSpaceOAuthAuth(id, apiKey, credential),
     createApiKeyAuth: apiKey => ({ kind: 'api-key', apiKey }),
     logger: console,
   })
@@ -86,11 +93,19 @@ export function getEffectiveProviderConfig(
   sessionId: string,
   override?: { providerId?: string; model?: string } | null
 ): { providerId: string; providerConfig: ProviderConfig | undefined; model: string } {
-  return getEffectiveOnethingProviderConfig(settings, sessionId, {
+  // **换源(C2)**:provider 设置整套 per-space 之后,`settings.ai` 必须是**这条
+  // 会话所在空间**的那一份。调用方递进来的 settings 只保证是「一份 settings」,
+  // 它的 `ai` 可能是 default 空间的(`store.getSettings()` 的缺省)。换源放在
+  // 这条唯一的解析缝里 —— 让每个调用方各自记得换,就是漏一个的开始。
+  const scoped = { ...settings, ai: getSessionSettings(sessionId).ai }
+  return getEffectiveOnethingProviderConfig(scoped, sessionId, {
     getSession: id => store.getSession(id),
     // per-space 凭证(批 B3):这一处与 core 引擎的 provider 适配器是**同一个**
     // 注入口 —— 两条解析链共用的那一处,别在别处再判一次。
     applySpaceCredentials: applySessionSpaceCredentials,
+    // per-space 默认 provider/model(批 B9):同一个注入口的第二格。会话没表达过
+    // 选择时,先问所在空间的默认,再落全局 —— 默认空间恒无,那一支零变化。
+    resolveSpaceDefaultSelection: resolveSessionSpaceDefaultSelection,
   }, override)
 }
 
@@ -133,7 +148,8 @@ export interface ResolvedProviderConfig {
 export async function getProviderConfigForChat(
   sessionId: string
 ): Promise<ResolvedProviderConfig | null> {
-  const settings = store.getSettings()
+  // 换源(C2):第二条解析链,与 `getEffectiveProviderConfig` 同一句话。
+  const settings = getSessionSettings(sessionId)
   const resolved = await resolveOnethingProviderConfigForChat<ProviderConfig, ProviderAuthContext>({
     sessionId,
     settings,
@@ -142,7 +158,7 @@ export async function getProviderConfigForChat(
       applySpaceCredentials: applySessionSpaceCredentials,
       isOAuthProvider: requiresOAuth,
       resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
-      resolveOAuthAuth: (id, apiKey) => authService.resolveProviderAuth(id, apiKey),
+      resolveOAuthAuth: (id, apiKey, credential) => resolveSessionSpaceOAuthAuth(id, apiKey, credential),
       createApiKeyAuth: apiKey => ({ kind: 'api-key', apiKey }),
       logger: console,
     },

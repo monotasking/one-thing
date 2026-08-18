@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>onething · 一次只做一件事</title>
+<link rel="stylesheet" href="fonts/fonts.css" />
+<link rel="stylesheet" href="styles.css" />
+<script>
+  // ?theme=dark / ?theme=light 显式指定；否则跟随系统
+  (function () {
+    var t = new URLSearchParams(location.search).get('theme');
+    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></symbol>
+  <symbol id="ic-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="ic-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="ic-dots" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+  <symbol id="ic-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M15 3v18"/></symbol>
+  <symbol id="ic-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+  <symbol id="ic-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+  <symbol id="ic-user" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="ic-pen" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2 2 0 0 1 2.8 2.8L12 14.6l-3.6.9.9-3.6z"/></symbol>
+  <symbol id="ic-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="ic-retry" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="ic-diff" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.6"/><circle cx="19" cy="18" r="2.6"/><path d="M12 6h5a2 2 0 0 1 2 2v6.5"/><path d="M12 18H7a2 2 0 0 1-2-2V9"/></symbol>
+  <symbol id="ic-clip" viewBox="0 0 24 24"><path d="M21.4 11 12.3 20.1a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.5 3.5 0 1 1 5 5l-8.5 8.5a1.5 1.5 0 0 1-2.2-2.2l7.8-7.8"/></symbol>
+  <symbol id="ic-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></symbol>
+  <symbol id="ic-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.8" cy="8.8" r="1.4"/><path d="m21 15.5-4.6-4.6L5.5 21.5"/></symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.2 1.9"/></symbol>
+  <symbol id="ic-drive" viewBox="0 0 24 24"><path d="M22 12H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/><path d="M6.5 16h.01M10 16h.01"/></symbol>
+  <symbol id="ic-write" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M15 2v5h5"/><path d="M9 13.5h6M9 17h4"/></symbol>
+  <symbol id="ic-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="ic-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+</defs></svg>
+
+<div class="shell">
+
+  <!-- ── 窗口条：画在地上 ───────────────────────────────── -->
+  <div class="titlebar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="crumb">
+      个人工作台
+      <svg class="i i-12"><use href="#ic-chev-r"/></svg>
+      <b>重构会话存储驱动</b>
+    </div>
+    <div class="tb-right">
+      <span class="sync"><i></i>已同步</span>
+      <button class="ib" title="切换工作台"><svg class="i"><use href="#ic-panel"/></svg></button>
+      <button class="ib" title="设置"><svg class="i"><use href="#ic-sliders"/></svg></button>
+    </div>
+  </div>
+
+  <!-- ── 左：会话 ───────────────────────────────────────── -->
+  <aside class="panel rail">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-name">onething</div>
+      <div class="brand-tag">一次一件</div>
+    </div>
+
+    <button class="btn-new">
+      <svg class="i i-14"><use href="#ic-plus"/></svg>
+      新会话
+      <span class="kbd num">⌘N</span>
+    </button>
+
+    <label class="search">
+      <svg class="i i-14"><use href="#ic-search"/></svg>
+      <input placeholder="搜索会话" />
+      <span class="kbd num">⌘K</span>
+    </label>
+
+    <div class="group">
+      <div class="group-label">今天</div>
+      <div class="srow is-active">
+        <span class="srow-title">重构会话存储驱动</span>
+        <span class="srow-time num">14:02</span>
+      </div>
+      <div class="srow">
+        <span class="srow-title">壁纸六级分档实现</span>
+        <span class="srow-time num">11:48</span>
+      </div>
+      <div class="srow is-hover">
+        <span class="srow-title">插件 UI 锚点审计</span>
+        <span class="srow-time num">09:31</span>
+        <svg class="i i-14 srow-more"><use href="#ic-dots"/></svg>
+      </div>
+      <div class="srow">
+        <span class="srow-title">token 层级自引用排查</span>
+        <span class="srow-time num">08:15</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-label">更早</div>
+      <div class="srow">
+        <span class="srow-title">衬线标题的中英配对</span>
+        <span class="srow-time">周四</span>
+      </div>
+      <div class="srow">
+        <span class="srow-title">焦点环双环方案</span>
+        <span class="srow-time">周二</span>
+      </div>
+    </div>
+
+    <div class="rail-foot">
+      <div class="avatar">宋</div>
+      <div class="who">宋一天</div>
+      <button class="ib" title="更多"><svg class="i i-14"><use href="#ic-dots"/></svg></button>
+    </div>
+  </aside>
+
+  <!-- ── 中：对话 ───────────────────────────────────────── -->
+  <main class="panel chat">
+    <div class="chat-head">
+      <div class="seg">
+        <button class="is-on">会话</button>
+        <button>工作区</button>
+        <button>差异</button>
+      </div>
+      <div class="spacer"></div>
+      <span class="meta num">已自动保存 · 14:06</span>
+      <button class="ib" title="目录"><svg class="i"><use href="#ic-list"/></svg></button>
+      <button class="ib" title="更多"><svg class="i"><use href="#ic-dots"/></svg></button>
+    </div>
+
+    <div class="stream">
+      <div class="measure">
+
+        <div class="title-block">
+          <h1>重构会话存储驱动</h1>
+          <div class="title-meta num">今天 14:02 <b>·</b> 12 轮 <b>·</b> 工具调用 3 次</div>
+        </div>
+
+        <div class="msg msg-user">
+          <div class="mark"><svg class="i i-12"><use href="#ic-user"/></svg></div>
+          <div>
+            <div class="speaker"><span class="name">你</span><span class="sub num">13:54</span></div>
+            <p class="prose">先看看现在的落盘逻辑，哪一步最费时间？</p>
+          </div>
+        </div>
+
+        <div class="msg msg-ai">
+          <div class="mark is-ai"><i></i></div>
+          <div>
+            <div class="speaker"><span class="name">onething</span><span class="sub">Claude Opus 4.6</span></div>
+            <p class="prose">瓶颈在重写：单个会话 3.4 MB 时，每追加一条消息都要把整份 JSONL 读出来再写回去。</p>
+            <div class="receipt is-folded">
+              <button class="receipt-head">
+                <svg class="i i-14 tool-ico"><use href="#ic-search"/></svg>
+                <span class="t">读了 2 个文件</span>
+                <span class="took">0.4s</span>
+                <svg class="i i-14 fold"><use href="#ic-chev-d"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="msg msg-user">
+          <div class="mark"><svg class="i i-12"><use href="#ic-user"/></svg></div>
+          <div>
+            <div class="speaker"><span class="name">你</span><span class="sub num">14:02</span></div>
+            <p class="prose">把 JSONL 的落盘改成按会话分目录，流式写入时追加，不要每次重写整文件。</p>
+          </div>
+        </div>
+
+        <div class="msg msg-ai">
+          <div class="mark is-ai"><i></i></div>
+          <div>
+            <div class="speaker"><span class="name">onething</span><span class="sub">Claude Opus 4.6</span></div>
+            <p class="prose">已经改成追加写。每个会话一个目录，索引单独一份，重放时按 offset 续读，不再全量解析。</p>
+
+            <!-- 签名：工作痕迹卡 —— 全屏唯一装盒、唯一 mono 的东西 -->
+            <div class="receipt">
+              <div class="receipt-head">
+                <svg class="i i-14 tool-ico"><use href="#ic-write"/></svg>
+                <span class="t">写入了 3 个文件</span>
+                <span class="took">1.2s</span>
+              </div>
+              <div class="files">
+                <div class="frow">
+                  <span class="path"><em>src/main/store/</em>session-writer.ts</span>
+                  <span class="bar"><i style="flex:128"></i><b style="flex:41"></b></span>
+                  <span class="add num">+128</span><span class="del num">−41</span>
+                </div>
+                <div class="frow">
+                  <span class="path"><em>src/main/store/</em>index-shard.ts</span>
+                  <span class="bar"><i style="flex:64"></i><b style="flex:0"></b></span>
+                  <span class="add num">+64</span><span class="del num">−0</span>
+                </div>
+                <div class="frow is-pending">
+                  <span class="path"><em>tests/</em>session-replay.spec.ts</span>
+                  <span class="waiting"><svg class="i i-12"><use href="#ic-clock"/></svg>待运行</span>
+                </div>
+              </div>
+              <div class="receipt-foot">
+                <span class="pill pill-warn"><i></i>待确认迁移</span>
+                <div class="acts">
+                  <button class="act"><svg class="i i-14"><use href="#ic-diff"/></svg>查看差异</button>
+                  <button class="act"><svg class="i i-14"><use href="#ic-retry"/></svg>跑测试</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="msg-acts">
+              <button class="act"><svg class="i i-14"><use href="#ic-copy"/></svg>复制</button>
+              <button class="act"><svg class="i i-14"><use href="#ic-retry"/></svg>重试</button>
+              <button class="act"><svg class="i i-14"><use href="#ic-diff"/></svg>查看差异</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="measure">
+        <div class="composer">
+          <input class="field" placeholder="接着让测试跑起来，顺便把索引重建的进度报出来…" />
+          <div class="composer-foot">
+            <button class="chip"><span class="dot"></span>Opus 4.6<svg class="i i-12"><use href="#ic-chev-d"/></svg></button>
+            <div class="tools">
+              <button class="ib" title="附件"><svg class="i"><use href="#ic-clip"/></svg></button>
+              <button class="ib" title="引用"><svg class="i"><use href="#ic-at"/></svg></button>
+              <button class="ib" title="图片"><svg class="i"><use href="#ic-image"/></svg></button>
+            </div>
+            <span class="send-hint num">⌘⏎</span>
+            <button class="btn-send">发送</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── 右：工作台 ─────────────────────────────────────── -->
+  <aside class="panel work">
+    <div class="work-head">
+      <svg class="i i-14 lead"><use href="#ic-drive"/></svg>
+      <span class="t">会话存储</span>
+      <button class="ib" title="更多"><svg class="i i-14"><use href="#ic-dots"/></svg></button>
+      <button class="ib" title="关闭"><svg class="i i-14"><use href="#ic-x"/></svg></button>
+    </div>
+
+    <div class="work-body">
+      <p class="work-desc">每会话一个 JSONL 目录，流式写入时追加。</p>
+
+      <div class="sec">
+        <div class="sec-label">用量</div>
+        <div class="lrow">目录数<span class="v num">312</span></div>
+        <div class="lrow">占用<span class="v num">567 <u>KB</u></span></div>
+        <div class="lrow">最近压缩<span class="v">3 天前</span></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-label">保留策略</div>
+        <div class="field-row">
+          <span class="l">保留天数</span>
+          <div class="stepper">
+            <button><svg class="i i-12"><use href="#ic-minus"/></svg></button>
+            <span class="val num">90</span>
+            <button><svg class="i i-12"><use href="#ic-plus"/></svg></button>
+          </div>
+        </div>
+        <p class="hint">超期会话仅删除正文，索引保留。</p>
+      </div>
+
+      <div class="sec">
+        <div class="sec-label">状态<button class="ib" title="刷新"><svg class="i i-12"><use href="#ic-retry"/></svg></button></div>
+        <div class="pills">
+          <span class="pill pill-ok"><i></i>迁移完成</span>
+          <span class="pill pill-warn"><i></i>索引重建中</span>
+          <span class="pill pill-bad"><i></i>2 份校验失败</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="work-foot">
+      <button class="btn-soft">立即压缩</button>
+      <button class="act"><svg class="i i-14"><use href="#ic-drive"/></svg>打开目录</button>
+    </div>
+  </aside>
+
+</div>
+</body>
+</html>

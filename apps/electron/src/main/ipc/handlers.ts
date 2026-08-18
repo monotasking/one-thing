@@ -44,6 +44,8 @@ import { registerNotifyHandlers } from "./notify.js";
 import { getEventBus } from "@onething/app/events/index.js";
 import { sanitizeRendererOrigin } from "@onething/app/channel/index.js";
 
+import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
+
 export function initializeIPC() {
 	registerChatHandlers();
 	registerSessionHandlers();
@@ -129,7 +131,7 @@ function sanitizeRendererCommand(command: unknown): unknown {
 	// turnId must match the assistant message id recorded by
 	// turn-evaluation.ts (see collectContext there), not the sessionId —
 	// otherwise every turn in a session collapses onto one record.
-	if (record.type === "command:retry-message") {
+	if (record.type === SESSION_COMMAND_TYPES.RETRY_MESSAGE) {
 		const sessionId = record.sessionId as string | undefined;
 		// messageId here is the assistant message being retried, which is
 		// exactly the turnId recorded for that turn.
@@ -157,7 +159,7 @@ function sanitizeRendererCommand(command: unknown): unknown {
 				.catch(() => {});
 		}
 	}
-	if (record.type === "command:edit-and-resend") {
+	if (record.type === SESSION_COMMAND_TYPES.EDIT_AND_RESEND) {
 		const sessionId = record.sessionId as string | undefined;
 		// messageId here is the user message being edited, not the assistant
 		// turnId — best-effort amend key until callers can pass the
@@ -187,10 +189,10 @@ function sanitizeRendererCommand(command: unknown): unknown {
 	}
 
 	if (
-		record.type === "command:send-message" ||
-		record.type === "command:edit-and-resend" ||
-		record.type === "command:inject-steering" ||
-		record.type === "command:inject-followup"
+		record.type === SESSION_COMMAND_TYPES.SEND_MESSAGE ||
+		record.type === SESSION_COMMAND_TYPES.EDIT_AND_RESEND ||
+		record.type === SESSION_COMMAND_TYPES.INJECT_STEERING ||
+		record.type === SESSION_COMMAND_TYPES.INJECT_FOLLOWUP
 	) {
 		return {
 			...record,

@@ -9,17 +9,48 @@
  * Phase 3b+: IPC handlers will emit commands, StreamEngine will subscribe.
  */
 
-import type { ChatMessageMention, ChatMessageReplyTo } from '../ipc/chat.js'
+import type { ChatMessageMention, ChatMessageReplyTo, MessageAttachment } from '../ipc/chat.js'
 import type { VoiceTranscriptMetadata } from '../ipc/voice.js'
 import type { MessageOrigin } from '../ipc/channel-identity.js'
-import type { JsonObject } from '../json.js'
+
+// ── Type registry ───────────────────────────────
+
+/**
+ * 命令 type 字面量的**单一权威** —— 与 `SESSION_EVENT_TYPES` 同一条理由、同一套
+ * 双向断言,只是分两张表:事件和命令是两个联合(批 4 之后 `SessionEvent` 已不含
+ * 命令),合成一张表就等于把它们又搅回一起。
+ *
+ * 键上不再重复 `COMMAND_` —— 表名已经说了它是命令。值与线上格式逐字相同。
+ */
+export const SESSION_COMMAND_TYPES = {
+  SEND_MESSAGE: 'command:send-message',
+  EDIT_AND_RESEND: 'command:edit-and-resend',
+  ABORT: 'command:abort',
+  CONFIRM_TOOL: 'command:confirm-tool',
+  RESUME_AFTER_CONFIRM: 'command:resume-after-confirm',
+  PERMISSION_RESPOND: 'command:permission-respond',
+  INTERACTION_RESPOND: 'command:interaction-respond',
+  RETRY_MESSAGE: 'command:retry-message',
+  COMPACT_CONTEXT: 'command:compact-context',
+  INJECT_STEERING: 'command:inject-steering',
+  RETRACT_STEERING: 'command:retract-steering',
+  INJECT_FOLLOWUP: 'command:inject-followup',
+} as const satisfies Record<string, SessionCommand['type']>
+
+export type SessionCommandType = (typeof SESSION_COMMAND_TYPES)[keyof typeof SESSION_COMMAND_TYPES]
+
+// 双向穷尽:多一个 / 少一个都在这里编译不过。
+const _commandTableIsExhaustive: SessionCommandType extends SessionCommand['type']
+  ? SessionCommand['type'] extends SessionCommandType ? true : never
+  : never = true
+void _commandTableIsExhaustive
 
 export interface SendMessageCommand {
   type: 'command:send-message'
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   content: string
-  attachments?: JsonObject[]
+  attachments?: MessageAttachment[]
   source?: 'text' | 'voice' | 'api' | string
   voice?: VoiceTranscriptMetadata
   origin?: MessageOrigin
@@ -158,6 +189,9 @@ export interface RetryMessageCommand {
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   messageId: string
+  /** See SendMessageCommand.providerId/model — the retry path resolves them the same way. */
+  providerId?: string
+  model?: string
 }
 
 export interface CompactContextCommand {

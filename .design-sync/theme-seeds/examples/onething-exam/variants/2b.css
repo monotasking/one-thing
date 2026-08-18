@@ -1,0 +1,19 @@
+/* 2b 疏密：内边距 ×1.5、栏距更宽、正文宽 640、行高 48、段距 32+ */
+:root, :root[data-theme="light"] {
+  --sp-1: 6px;  --sp-2: 12px; --sp-3: 18px; --sp-4: 24px;
+  --sp-5: 30px; --sp-6: 36px; --sp-8: 44px; --sp-10: 60px; --sp-14: 84px;
+}
+.shell { grid-template-columns: 300px minmax(0, 1fr) 348px; }
+.thread { padding: 26px 36px 0; }
+.thread-inner, .composer, .composer-hint { max-width: 640px; }
+.list-row { min-height: 48px; align-items: center; padding: 0 16px; }
+.list-row + .list-row { margin-top: 6px; }
+.side-group + .side-group { margin-top: 36px; }
+.msg { margin-top: 26px; }
+.panel + .panel { margin-top: 20px; }
+.panel { padding: 24px; }
+.ledger-row { padding: 12px 0; }
+.brand, .topbar, .right-head { height: 60px; }
+.tool-head, .tool-foot { padding: 14px 22px; }
+.file-row { padding: 10px 18px; }
+.composer { padding: 24px 24px 18px; }

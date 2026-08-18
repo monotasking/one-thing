@@ -13,6 +13,10 @@ vi.mock('../../registry.js', () => ({
   registerTool: (tool: { id: string }) => {
     registered.ids.push(tool.id)
   },
+  // The barrels drag in the stream runtime, which builds `desktopPromptComposer`
+  // at module scope from the registry-as-prompt-source. A mock without it makes
+  // the whole file fail to load, and the failure names the composer, not the tools.
+  toolPromptSource: { name: 'tools', collect: () => [] },
 }))
 
 async function idsFrom(register: () => void): Promise<string[]> {
@@ -53,12 +57,19 @@ describe('builtin tool tiers', () => {
     registered.ids = []
   })
 
-  it('registers Grep in the desktop full tier', async () => {
+  /**
+   * 2026-08-18 工具梳理:find / grep / glob / fart / bash_output / kill_bash 全部摘掉。
+   * 找文件与找内容走 bash(rg / fd);后台任务的读与停并回 bash 的启动结果。
+   */
+  it('registers the desktop full tier as the chat floor + goal + collab tools', async () => {
     const ids = await idsFrom(tiers.full)
-    expect(ids).toContain('grep')
-    // find 仍在 —— 两者不是替代关系:find 找文件名,grep 找文件内容。
-    expect(ids).toContain('find')
-    expect(ids).toContain('read')
+    expect(ids.sort()).toEqual([
+      'ask_user', 'bash', 'board', 'edit', 'goal', 'history', 'notebook', 'practice',
+      'radio', 'read', 'send_message', 'task', 'time', 'variable', 'web_open', 'web_search', 'write',
+    ].sort())
+    for (const gone of ['find', 'grep', 'glob', 'fart', 'bash_output', 'kill_bash']) {
+      expect(ids).not.toContain(gone)
+    }
   })
 
   /**
@@ -82,21 +93,12 @@ describe('builtin tool tiers', () => {
     expect(await idsFrom(tiers.readonly)).not.toContain('ask_user')
   })
 
-  /**
-   * Glob 有意缺席:它与 Find 是同一件事(都按 glob 找路径),2026-07 的工具裁减
-   * 正是为此把它摘掉的。把它再加回来只会在提示词里多一份重复描述。
-   */
-  it('does not re-add Glob alongside Find', async () => {
-    const ids = await idsFrom(tiers.full)
-    expect(ids).not.toContain('glob')
-  })
-
   it('leaves the headless and readonly tiers untouched', async () => {
     const headless = await idsFrom(tiers.headless)
     const readonly = await idsFrom(tiers.readonly)
 
     expect(headless).not.toContain('grep')
-    expect(readonly).not.toContain('grep')
+    expect(headless).not.toContain('bash_output')
     // 只读档仍是零本机副作用的那四件。
     expect(readonly.sort()).toEqual(['read', 'time', 'web_open', 'web_search'].sort())
   })

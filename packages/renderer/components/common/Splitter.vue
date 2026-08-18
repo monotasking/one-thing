@@ -445,6 +445,10 @@ function getPanelIndex(key: symbol): number {
   return panels.value.findIndex(panel => panel.key === key)
 }
 
+/* 只写 flex 三件套,**不要**再往面板上挂 `--splitter-panel-size` 之类的内联自定义
+   变量:祖先的自定义属性一变,Blink 会把所有引用了 var() 的后代样式全部重算 ——
+   主面板是整棵聊天树的祖先,实测一次 10.9ms(3272 元素)vs 只改 flex-grow 0.1ms,
+   拖分隔条时每帧一次,就是拖拽掉帧的大头(2026-08-18 trace)。当时也没有任何消费者。 */
 function getPanelStyle(key: symbol): StyleValue {
   const index = getPanelIndex(key)
   const size = index === -1 ? 0 : displaySizes()[index] ?? 0
@@ -453,7 +457,6 @@ function getPanelStyle(key: symbol): StyleValue {
 
   if (panel && usesPercentOnlySizing(panels.value)) {
     return {
-      '--splitter-panel-size': String(roundSplitterSize(size)),
       flexGrow: collapsed ? 0 : Math.max(0, size),
       flexShrink: collapsed ? 0 : 1,
       flexBasis: collapsed ? '0px' : '0%',
@@ -462,7 +465,6 @@ function getPanelStyle(key: symbol): StyleValue {
 
   if (!panel || collapsed) {
     return {
-      '--splitter-panel-size': String(roundSplitterSize(size)),
       flexGrow: 0,
       flexShrink: 0,
       flexBasis: '0px',
@@ -471,7 +473,6 @@ function getPanelStyle(key: symbol): StyleValue {
 
   if (panel.flex.value) {
     return {
-      '--splitter-panel-size': String(roundSplitterSize(size)),
       flexGrow: 1,
       flexShrink: 1,
       flexBasis: '0px',
@@ -479,7 +480,6 @@ function getPanelStyle(key: symbol): StyleValue {
   }
 
   return {
-    '--splitter-panel-size': String(roundSplitterSize(size)),
     flexGrow: 0,
     flexShrink: 0,
     flexBasis: panelUnit(panel) === 'px'
@@ -858,9 +858,13 @@ onBeforeUnmount(() => {
   cursor: row-resize;
 }
 
+/* 停用的分隔条**不吃指针**(L4)。它的命中区有 12px 宽,坐在被收起的那一侧面板
+   的边上;侧栏收起后左缘那 12px 正是浮层侧栏的 hover 触发区,一个既不能拖也不能
+   聚焦的按钮压在上面,只会把触发区吃掉。 */
 .splitter-resizer.is-disabled {
   cursor: default;
   opacity: 0.45;
+  pointer-events: none;
 }
 
 .splitter-resizer-line {

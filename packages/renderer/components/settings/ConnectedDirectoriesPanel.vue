@@ -288,16 +288,15 @@ async function commitOverlay(next: string[]): Promise<void> {
   overlayDirectories.value = next
   overlayError.value = null
   try {
-    const response = await platformApi.spacesSetOverlay({
-      id: scope.value,
-      overlay: { connectedDirectories: next },
-    })
-    if (!response.success) {
+    // **先读后并**:后端那条通道是整层写(B2 勘误 3)。overlay 从批 B7 起还装着
+    // `selectedModels`,只写 `connectedDirectories` 会把模型选择一起抹掉。
+    const response = await spacesStore.patchOverlay(scope.value, { connectedDirectories: next })
+    if (!response) {
       overlayDirectories.value = previous
-      overlayError.value = response.error || '保存失败'
+      overlayError.value = spacesStore.lastError || '保存失败'
       return
     }
-    overlayDirectories.value = response.overlay?.connectedDirectories ?? next
+    overlayDirectories.value = response.connectedDirectories ?? next
   } catch (error) {
     overlayDirectories.value = previous
     overlayError.value = error instanceof Error ? error.message : '保存失败'

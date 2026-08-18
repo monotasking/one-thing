@@ -24,10 +24,22 @@ import {
   listOnethingProvidersForIpc,
 } from '@onething/runtime/providers'
 import { authService } from '../../auth/auth-service.js'
+import {
+  credentialTargetFromMarker,
+  resolveSpaceProviderCredentialForSpace,
+} from '../../providers/space-credentials.js'
+import { toSpaceCredentialMarker } from '@onething/runtime/spaces/provider-credentials'
+import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import { fetchCodexUsage } from '../../providers/builtin/codex.js'
 import { getAvailableProviders } from '../../providers/index.js'
 import { getProviderEnvStatus } from '../../providers/env.js'
 import { registerRouterHandlers } from '../registry.js'
+
+/** 「这个空间的这个 provider 的 OAuth 账号」→ auth 层的读写目标。 */
+function providerUsageCredentialTarget(spaceId: string | undefined, providerId: string) {
+  const resolution = resolveSpaceProviderCredentialForSpace(spaceId || DEFAULT_SPACE_ID, providerId)
+  return credentialTargetFromMarker(toSpaceCredentialMarker(resolution))
+}
 
 export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
   async list() {
@@ -38,7 +50,14 @@ export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
       providerId: request?.providerId ?? '',
       codexProviderIds: ['codex', AIProvider.Codex],
       canonicalCodexProviderId: AIProvider.Codex,
-      refreshTokenIfNeeded: providerId => authService.refreshTokenIfNeeded(providerId),
+      refreshTokenIfNeeded: providerId =>
+        authService.refreshTokenIfNeeded(
+          providerId,
+          // C1:token 住在空间的凭证池里,不再有「settings 那一把」。请求带哪个
+          // 空间就查哪个空间的账号 —— 用量卡因此在每个空间都说得出话,而不是
+          // 在非默认空间静默消失(批 B10 移交项 2)。
+          providerUsageCredentialTarget(request?.spaceId, providerId),
+        ),
       fetchCodexUsage,
     })
   },

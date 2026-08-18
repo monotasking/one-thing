@@ -1,10 +1,19 @@
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
+import { withProviderRetryAfter } from '../agent-loop/provider-error-classification.js'
+import {
+  credentialRefreshKey,
+  credentialTargetKey,
+  isSpaceCredentialTarget,
+  SETTINGS_CREDENTIAL_TARGET,
+  type OnethingCredentialTarget,
+} from './credential-target.js'
 import {
   generatePKCE,
   getAuthProviderDefinition,
   normalizeGenericOAuthToken,
 } from './registry.js'
+import type { OnethingSpaceAuthTokenStore } from './space-token-store.js'
 import type {
   OnethingAuthAccount,
   OnethingAuthBodyFormat,
@@ -53,6 +62,12 @@ export interface OnethingAuthCallbackServerAdapter {
 
 export interface OnethingAuthServiceOptions<TToken extends OnethingOAuthToken = OnethingOAuthToken> {
   tokenStore: OnethingAuthTokenStore<TToken>
+  /**
+   * per-space 的 token 存放面(批 B6)。**缺席 = 只有默认空间**:任何带 space
+   * 目标的调用都会退回 settings 那一份 —— 宿主没装这块就当它不存在,而不是
+   * 半路抛错。
+   */
+  spaceTokenStore?: OnethingSpaceAuthTokenStore<TToken>
   fetch?: typeof fetch
   getDefinition?: (providerId: string) => OnethingAuthProviderDefinition | undefined
   callbackServer?: OnethingAuthCallbackServerAdapter
@@ -61,8 +76,16 @@ export interface OnethingAuthServiceOptions<TToken extends OnethingOAuthToken = 
   logger?: Pick<Console, 'warn'>
 }
 
+/** 事件载荷。`target` 缺席 = 默认空间(settings 源),与调用侧缺省一致。 */
+export interface OnethingAuthTokenEvent {
+  providerId: string
+  target?: OnethingCredentialTarget
+  error?: string
+}
+
 export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAuthToken> extends EventEmitter {
   private readonly tokenStore: OnethingAuthTokenStore<TToken>
+  private readonly spaceTokenStore?: OnethingSpaceAuthTokenStore<TToken>
   private readonly fetchImpl: typeof fetch
   private readonly getDefinitionImpl: (providerId: string) => OnethingAuthProviderDefinition | undefined
   private readonly callbackServer?: OnethingAuthCallbackServerAdapter
@@ -70,12 +93,21 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
   private readonly now: () => number
   private readonly logger: Pick<Console, 'warn'>
   private flows = new Map<string, OnethingAuthFlowState>()
+  /** key = `providerId::<target>` —— 同一个 provider 在两个空间是两条独立的登录流。 */
   private providerFlowIds = new Map<string, string>()
   private providerErrors = new Map<string, string>()
+  /**
+   * 刷新单飞锁(盲点 5)。并发 refresh 会互相作废 refresh token:第二次拿着
+   * 已经被消费掉的那一串去换,换回来的是一个错误,而它可能还会覆盖第一次的成果。
+   * 锁的粒度**恰好等于 token 的存放位置**(`credentialRefreshKey`)—— 粗一格会让
+   * A 空间的调用拿到 B 空间的 token,细一格就等于没锁。
+   */
+  private refreshInFlight = new Map<string, Promise<TToken>>()
 
   constructor(options: OnethingAuthServiceOptions<TToken>) {
     super()
     this.tokenStore = options.tokenStore
+    this.spaceTokenStore = options.spaceTokenStore
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis)
     this.getDefinitionImpl = options.getDefinition ?? getAuthProviderDefinition
     this.callbackServer = options.callbackServer
@@ -88,12 +120,64 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     return this.getDefinitionImpl(providerId)
   }
 
-  async start(providerId: string): Promise<OnethingOAuthStartResponse> {
+  /**
+   * 目标归一。**宿主没装 spaceTokenStore 时 space 目标一律退回 settings** ——
+   * 那种宿主(CLI daemon / server)本来就只有默认空间,让它半路抛错等于把一个
+   * 不适用的功能变成一个 bug。
+   */
+  private resolveTarget(target?: OnethingCredentialTarget | null): OnethingCredentialTarget {
+    if (isSpaceCredentialTarget(target) && this.spaceTokenStore) return target
+    return SETTINGS_CREDENTIAL_TARGET
+  }
+
+  private async readToken(
+    providerId: string,
+    target: OnethingCredentialTarget,
+  ): Promise<TToken | null> {
+    return isSpaceCredentialTarget(target) && this.spaceTokenStore
+      ? this.spaceTokenStore.getToken(providerId, target)
+      : this.tokenStore.getToken(providerId)
+  }
+
+  /** 写回。space 目标会回报真正落地的 entryId(新登录时才知道)。 */
+  private async writeToken(
+    providerId: string,
+    token: TToken,
+    target: OnethingCredentialTarget,
+  ): Promise<OnethingCredentialTarget> {
+    if (isSpaceCredentialTarget(target) && this.spaceTokenStore) {
+      const { entryId } = await this.spaceTokenStore.saveToken(providerId, token, target)
+      return { ...target, entryId }
+    }
+    await this.tokenStore.saveToken(providerId, token)
+    return SETTINGS_CREDENTIAL_TARGET
+  }
+
+  private async removeToken(
+    providerId: string,
+    target: OnethingCredentialTarget,
+  ): Promise<void> {
+    if (isSpaceCredentialTarget(target) && this.spaceTokenStore) {
+      await this.spaceTokenStore.deleteToken(providerId, target)
+      return
+    }
+    await this.tokenStore.deleteToken(providerId)
+  }
+
+  private flowKey(providerId: string, target?: OnethingCredentialTarget | null): string {
+    return `${providerId}::${credentialTargetKey(target)}`
+  }
+
+  async start(
+    providerId: string,
+    target?: OnethingCredentialTarget,
+  ): Promise<OnethingOAuthStartResponse> {
     const definition = this.requireDefinition(providerId)
-    this.clearProviderFlow(providerId)
+    const resolvedTarget = this.resolveTarget(target)
+    this.clearProviderFlow(providerId, resolvedTarget)
 
     if (definition.flowKind === 'device-code') {
-      return this.startDeviceFlow(definition)
+      return this.startDeviceFlow(definition, resolvedTarget)
     }
 
     const { codeVerifier, codeChallenge } = generatePKCE()
@@ -104,6 +188,7 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     const flow: OnethingAuthFlowState = {
       flowId,
       providerId,
+      target: resolvedTarget,
       kind: definition.flowKind,
       state,
       codeVerifier,
@@ -131,8 +216,8 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
             await this.completeAuthorizationCodeFlow(providerId, code, returnedState, flowId)
           } catch (error) {
             const message = this.toPublicError(error, 'OAuth callback failed')
-            this.providerErrors.set(providerId, message)
-            this.emit('token-expired', { providerId, error: message })
+            this.providerErrors.set(this.flowKey(providerId, resolvedTarget), message)
+            this.emit('token-expired', { providerId, target: resolvedTarget, error: message })
           }
         },
       })
@@ -141,8 +226,8 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     }
 
     this.flows.set(flowId, flow)
-    this.providerFlowIds.set(providerId, flowId)
-    this.providerErrors.delete(providerId)
+    this.providerFlowIds.set(this.flowKey(providerId, resolvedTarget), flowId)
+    this.providerErrors.delete(this.flowKey(providerId, resolvedTarget))
 
     const authUrl = this.buildAuthorizationUrl(definition, {
       providerId,
@@ -171,24 +256,30 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     providerId: string,
     code: string,
     state: string,
+    target?: OnethingCredentialTarget,
   ): Promise<OnethingOAuthCallbackResponse> {
+    const resolvedTarget = this.resolveTarget(target)
     try {
-      await this.completeAuthorizationCodeFlow(providerId, code, state)
+      await this.completeAuthorizationCodeFlow(providerId, code, state, undefined, resolvedTarget)
       return { success: true }
     } catch (error) {
       const message = this.toPublicError(error, 'OAuth callback failed')
-      this.providerErrors.set(providerId, message)
+      this.providerErrors.set(this.flowKey(providerId, resolvedTarget), message)
       return { success: false, error: message }
     }
   }
 
-  async pollDeviceFlow(providerId: string, flowId?: string): Promise<OnethingOAuthDevicePollResponse> {
+  async pollDeviceFlow(
+    providerId: string,
+    flowId?: string,
+    target?: OnethingCredentialTarget,
+  ): Promise<OnethingOAuthDevicePollResponse> {
     const definition = this.requireDefinition(providerId)
     if (definition.flowKind !== 'device-code') {
       return { success: false, completed: false, error: `Device flow not supported for ${providerId}` }
     }
 
-    const flow = this.getFlow(providerId, flowId)
+    const flow = this.getFlow(providerId, flowId, this.resolveTarget(target))
     if (!flow?.deviceCode || flow.kind !== 'device-code') {
       return { success: false, completed: false, error: 'expired_token' }
     }
@@ -224,16 +315,43 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     }
 
     const token = this.normalizeToken(definition, data)
-    await this.tokenStore.saveToken(providerId, token)
+    const flowTarget = this.resolveTarget(flow.target as OnethingCredentialTarget | undefined)
+    const savedTarget = await this.writeToken(providerId, token, flowTarget)
     this.clearFlow(flow.flowId)
-    this.providerErrors.delete(providerId)
-    this.emit('token-refreshed', { providerId })
+    this.providerErrors.delete(this.flowKey(providerId, flowTarget))
+    this.emit('token-refreshed', { providerId, target: savedTarget })
     return { success: true, completed: true }
   }
 
-  async refreshToken(providerId: string): Promise<TToken> {
+  /**
+   * 刷新。**单飞**(盲点 5):同一个 (provider, 目标) 上并发调用只会真的发一次
+   * 请求,其余人等同一个 promise。粒度见 `credentialRefreshKey` 的注释。
+   */
+  async refreshToken(
+    providerId: string,
+    target?: OnethingCredentialTarget,
+  ): Promise<TToken> {
+    const resolvedTarget = this.resolveTarget(target)
+    const key = credentialRefreshKey(providerId, resolvedTarget)
+    const inFlight = this.refreshInFlight.get(key)
+    if (inFlight) return inFlight
+
+    const run = this.performRefresh(providerId, resolvedTarget)
+    // 先落表再挂清理:清理只在自己还是当表里那一份时才删,避免把后一轮的
+    // 单飞记录顺手抹掉。
+    this.refreshInFlight.set(key, run)
+    void run.catch(() => undefined).finally(() => {
+      if (this.refreshInFlight.get(key) === run) this.refreshInFlight.delete(key)
+    })
+    return run
+  }
+
+  private async performRefresh(
+    providerId: string,
+    target: OnethingCredentialTarget,
+  ): Promise<TToken> {
     const definition = this.requireDefinition(providerId)
-    const currentToken = await this.tokenStore.getToken(providerId)
+    const currentToken = await this.readToken(providerId, target)
     if (!currentToken?.refreshToken) {
       throw new Error('No refresh token available')
     }
@@ -258,56 +376,84 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     })
 
     if (!response.ok) {
-      throw new Error(`Token refresh failed: ${response.status}`)
+      // 状态码挂在错误对象顶层 —— 批 D 的分类器要靠它把「refresh 被拒」判成
+      // auth-invalid。裸消息 `Token refresh failed: 401` 不匹配分类器的锚定
+      // 前缀(`API error: NNN` / `request failed (NNN)`),不带就永远是 unknown。
+      const error = new Error(`Token refresh failed: ${response.status}`) as Error & {
+        statusCode?: number
+        responseBody?: string
+      }
+      error.statusCode = response.status
+      error.responseBody = await response.text().catch(() => undefined)
+      // 批 B8-2:token 端点同样会回 `Retry-After`(429 刷新过频)。
+      // `classifyOAuthRefreshError` 已经会消费它,这里补上唯一的生产者。
+      throw withProviderRetryAfter(error, {
+        headers: response.headers,
+        body: error.responseBody,
+      })
     }
 
     const data = await response.json()
     const token = this.normalizeToken(definition, data, currentToken)
-    await this.tokenStore.saveToken(providerId, token)
-    this.providerErrors.delete(providerId)
-    this.emit('token-refreshed', { providerId })
+    const savedTarget = await this.writeToken(providerId, token, target)
+    this.providerErrors.delete(this.flowKey(providerId, target))
+    this.emit('token-refreshed', { providerId, target: savedTarget })
     return token
   }
 
-  async refreshTokenIfNeeded(providerId: string): Promise<TToken> {
-    const token = await this.tokenStore.getToken(providerId)
+  async refreshTokenIfNeeded(
+    providerId: string,
+    target?: OnethingCredentialTarget,
+  ): Promise<TToken> {
+    const resolvedTarget = this.resolveTarget(target)
+    const token = await this.readToken(providerId, resolvedTarget)
     if (!token) throw new Error('Not logged in')
 
     if (token.expiresAt - this.now() < REFRESH_BUFFER_MS) {
       if (!token.refreshToken) {
         throw new Error('Token expired and no refresh token available')
       }
-      return this.refreshToken(providerId)
+      // 走公开的 refreshToken —— 单飞锁在那里,绕过去就等于没有锁。
+      return this.refreshToken(providerId, resolvedTarget)
     }
 
     return token
   }
 
-  async getToken(providerId: string): Promise<TToken | null> {
-    return this.tokenStore.getToken(providerId)
+  async getToken(providerId: string, target?: OnethingCredentialTarget): Promise<TToken | null> {
+    return this.readToken(providerId, this.resolveTarget(target))
   }
 
-  async saveToken(providerId: string, token: TToken): Promise<void> {
-    await this.tokenStore.saveToken(providerId, token)
+  async saveToken(
+    providerId: string,
+    token: TToken,
+    target?: OnethingCredentialTarget,
+  ): Promise<void> {
+    await this.writeToken(providerId, token, this.resolveTarget(target))
   }
 
-  async deleteToken(providerId: string): Promise<void> {
-    this.clearProviderFlow(providerId)
-    await this.tokenStore.deleteToken(providerId)
-    this.providerErrors.delete(providerId)
+  async deleteToken(providerId: string, target?: OnethingCredentialTarget): Promise<void> {
+    const resolvedTarget = this.resolveTarget(target)
+    this.clearProviderFlow(providerId, resolvedTarget)
+    await this.removeToken(providerId, resolvedTarget)
+    this.providerErrors.delete(this.flowKey(providerId, resolvedTarget))
   }
 
   isTokenExpired(token: TToken): boolean {
     return this.tokenStore.isTokenExpired(token)
   }
 
-  async isLoggedIn(providerId: string): Promise<boolean> {
-    const token = await this.tokenStore.getToken(providerId)
+  async isLoggedIn(providerId: string, target?: OnethingCredentialTarget): Promise<boolean> {
+    const token = await this.readToken(providerId, this.resolveTarget(target))
     return !!token && !this.tokenStore.isTokenExpired(token)
   }
 
-  async getStatus(providerId: string): Promise<OnethingOAuthStatusResponse> {
-    const token = await this.tokenStore.getToken(providerId)
+  async getStatus(
+    providerId: string,
+    target?: OnethingCredentialTarget,
+  ): Promise<OnethingOAuthStatusResponse> {
+    const resolvedTarget = this.resolveTarget(target)
+    const token = await this.readToken(providerId, resolvedTarget)
     const isExpired = token ? this.tokenStore.isTokenExpired(token) : false
     return {
       success: true,
@@ -317,17 +463,21 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
       canRefresh: !!token?.refreshToken,
       expiresAt: token?.expiresAt,
       account: toAccount(token),
-      lastError: this.providerErrors.get(providerId),
+      lastError: this.providerErrors.get(this.flowKey(providerId, resolvedTarget)),
     }
   }
 
-  async resolveProviderAuth(providerId: string, apiKey?: string): Promise<OnethingProviderAuthContext | null> {
+  async resolveProviderAuth(
+    providerId: string,
+    apiKey?: string,
+    target?: OnethingCredentialTarget,
+  ): Promise<OnethingProviderAuthContext | null> {
     const definition = this.getDefinition(providerId)
     if (!definition) {
       return apiKey ? { kind: 'api-key', apiKey } : null
     }
 
-    const token = await this.refreshTokenIfNeeded(providerId)
+    const token = await this.refreshTokenIfNeeded(providerId, target)
     return {
       kind: 'oauth',
       token,
@@ -339,9 +489,13 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     this.callbackServer?.cleanup()
     this.flows.clear()
     this.providerFlowIds.clear()
+    this.refreshInFlight.clear()
   }
 
-  private async startDeviceFlow(definition: OnethingAuthProviderDefinition): Promise<OnethingOAuthStartResponse> {
+  private async startDeviceFlow(
+    definition: OnethingAuthProviderDefinition,
+    target: OnethingCredentialTarget,
+  ): Promise<OnethingOAuthStartResponse> {
     if (!definition.deviceCodeUrl) {
       throw new Error(`Device flow not configured for ${definition.providerId}`)
     }
@@ -371,6 +525,7 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     const flow: OnethingAuthFlowState = {
       flowId,
       providerId: definition.providerId,
+      target,
       kind: 'device-code',
       state: this.createId(),
       deviceCode: data.device_code,
@@ -384,8 +539,8 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     }
 
     this.flows.set(flowId, flow)
-    this.providerFlowIds.set(definition.providerId, flowId)
-    this.providerErrors.delete(definition.providerId)
+    this.providerFlowIds.set(this.flowKey(definition.providerId, target), flowId)
+    this.providerErrors.delete(this.flowKey(definition.providerId, target))
 
     return {
       success: true,
@@ -405,9 +560,10 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     code: string,
     state: string,
     flowId?: string,
+    target?: OnethingCredentialTarget,
   ): Promise<TToken> {
     const definition = this.requireDefinition(providerId)
-    const flow = this.getFlow(providerId, flowId)
+    const flow = this.getFlow(providerId, flowId, target)
     if (!flow) {
       throw new Error('OAuth flow has expired. Please try logging in again.')
     }
@@ -454,15 +610,20 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     })
 
     if (!response.ok) {
-      throw new Error(`Token exchange failed: ${response.status}`)
+      const error = new Error(`Token exchange failed: ${response.status}`) as Error & {
+        statusCode?: number
+      }
+      error.statusCode = response.status
+      throw error
     }
 
     const data = await response.json()
     const token = this.normalizeToken(definition, data)
-    await this.tokenStore.saveToken(providerId, token)
+    const flowTarget = this.resolveTarget(flow.target as OnethingCredentialTarget | undefined)
+    const savedTarget = await this.writeToken(providerId, token, flowTarget)
     this.clearFlow(flow.flowId)
-    this.providerErrors.delete(providerId)
-    this.emit('token-refreshed', { providerId })
+    this.providerErrors.delete(this.flowKey(providerId, flowTarget))
+    this.emit('token-refreshed', { providerId, target: savedTarget })
     return token
   }
 
@@ -510,16 +671,25 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     return definition
   }
 
-  private getFlow(providerId: string, flowId?: string): OnethingAuthFlowState | undefined {
-    const resolvedFlowId = flowId || this.providerFlowIds.get(providerId)
+  /**
+   * flowId 优先(回调/轮询都带着它),没有才按 (provider, 目标) 反查。
+   * **反查一定要带目标** —— 否则一个空间的手输验证码会去认领另一个空间的流。
+   */
+  private getFlow(
+    providerId: string,
+    flowId?: string,
+    target?: OnethingCredentialTarget,
+  ): OnethingAuthFlowState | undefined {
+    const resolvedFlowId = flowId
+      || this.providerFlowIds.get(this.flowKey(providerId, this.resolveTarget(target)))
     if (!resolvedFlowId) return undefined
     const flow = this.flows.get(resolvedFlowId)
     if (!flow || flow.providerId !== providerId) return undefined
     return flow
   }
 
-  private clearProviderFlow(providerId: string): void {
-    const flowId = this.providerFlowIds.get(providerId)
+  private clearProviderFlow(providerId: string, target?: OnethingCredentialTarget): void {
+    const flowId = this.providerFlowIds.get(this.flowKey(providerId, this.resolveTarget(target)))
     if (flowId) this.clearFlow(flowId)
   }
 
@@ -527,8 +697,9 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     const flow = this.flows.get(flowId)
     if (!flow) return
     this.flows.delete(flowId)
-    if (this.providerFlowIds.get(flow.providerId) === flowId) {
-      this.providerFlowIds.delete(flow.providerId)
+    const key = this.flowKey(flow.providerId, flow.target as OnethingCredentialTarget | undefined)
+    if (this.providerFlowIds.get(key) === flowId) {
+      this.providerFlowIds.delete(key)
     }
     this.callbackServer?.unregisterState(flow.state)
   }

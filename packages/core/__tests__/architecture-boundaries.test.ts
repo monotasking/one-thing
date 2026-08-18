@@ -124,6 +124,30 @@ describe('architecture boundaries', () => {
     expect(findForbiddenReferencesInCode('packages/core/engine', [idComparison, namedKnob])).toEqual([])
   })
 
+  /**
+   * P1(docs/design/context-compact-fix-2026-08.md §4):压缩通知只有一条正路
+   * —— `session:event` 信封里的 `context:compact-started` / `-completed`。
+   *
+   * 从前还有三层死代码:两个专用 IPC 通道常量、preload 的两个订阅方法(主进程
+   * 从来没往那两条通道发过一条)、以及 web 端靠 `JSON.parse` 嗅探消息内容的
+   * 幻影订阅。三层都删了 —— 这一条守着它们不被"顺手加回来"。
+   */
+  it('keeps the retired context-compact IPC surface at zero references', () => {
+    // 批 6:光看常量名已经分不出敌我 —— `SESSION_EVENT_TYPES.CONTEXT_COMPACT_STARTED`
+    // 正是那"一条正路"的事件表键,与被退役的 IPC 通道**同名不同物**。所以榜上换成
+    // 退役通道的**通道名字符串**(改个键名也逃不掉)加那三个订阅方法。
+    const deadNames = /sessions:context-compact-(started|completed)|\b(onContextCompactStarted|onContextCompactCompleted|isContextCompactStartedMessage)\b/
+
+    for (const directory of [
+      'packages/shared',
+      'packages/renderer',
+      'apps/electron/src',
+      'apps/server/src',
+    ]) {
+      expect(findForbiddenReferencesInCode(directory, [deadNames])).toEqual([])
+    }
+  })
+
 })
 
 /** Matches import/require/export-from of `src/main|renderer|preload` from any relative depth. */

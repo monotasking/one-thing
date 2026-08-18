@@ -1,0 +1,84 @@
+{
+  "name": "studio",
+  "label": "夜灯 Studio",
+  "lineage": "Product-dark (Linear / Raycast / Arc)",
+  "mode": "dark",
+  "mood": "深夜书房里开着一盏暖灯：地是近中性的暖黑，卡片是真的浮起来的一层，一点橙色落在最想让你按的地方。暗，但不冷、不硬、不像终端。",
+
+  "palette": {
+    "bg": "#1a1918",
+    "bgSunk": "#151413",
+    "bgWash": "#1f1e1c",
+    "surface": "#232120",
+    "surfaceAlt": "#2a2827",
+    "surfaceSunk": "#1e1d1b",
+    "surfaceRaised": "#302d2b",
+    "border": "rgba(247,237,226,0.075)",
+    "borderStrong": "rgba(247,237,226,0.14)",
+
+    "text": "#efebe5",
+    "textSecondary": "#b9b2a8",
+    "textMuted": "#8d857a",
+    "textSubtle": "#6d665d",
+
+    "accent": "#da702c",
+    "accentStrong": "#e88b4a",
+    "accentSoft": "rgba(218,112,44,0.14)",
+    "accentLine": "rgba(218,112,44,0.34)",
+    "accentInk": "#1a1108",
+
+    "accent2": "#8faa74",
+    "accent2Strong": "#a6c089",
+    "accent2Soft": "rgba(143,170,116,0.14)",
+
+    "warning": "#d0a215",
+    "warningSoft": "rgba(208,162,21,0.14)",
+    "danger": "#d97066",
+    "dangerSoft": "rgba(217,112,102,0.14)"
+  },
+
+  "fonts": {
+    "display": "Inter, \"Noto Sans SC\", -apple-system, \"PingFang SC\", sans-serif",
+    "body": "Inter, \"Noto Sans SC\", -apple-system, \"PingFang SC\", sans-serif",
+    "mono": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, monospace",
+    "cjkDisplay": "Noto Sans SC",
+    "cjkBody": "Noto Sans SC",
+    "baseSize": "15.5px",
+    "bodyLineHeight": 1.68,
+    "displayWeight": 650,
+    "scale": ["12px", "13px", "14px", "15.5px", "17px", "20px", "24px", "32px"]
+  },
+
+  "density": "roomy",
+  "radius": {
+    "sm": "7px",
+    "md": "10px",
+    "lg": "14px",
+    "xl": "18px",
+    "pill": "999px"
+  },
+  "layoutStyle": "three-column-workbench",
+  "dividers": "elevation-first",
+  "buttonStyle": "soft-rect",
+  "colorUse": "one-accent",
+
+  "colorRoles": {
+    "accent": "唯一填色：主行动「新会话」、发送键、AI 的身份标记与回复脊线、选中会话",
+    "accent2": "只做「完成」状态点与工具卡新增行数",
+    "warning": "只做「进行中 / 待确认」状态点",
+    "danger": "只做「失败」状态点与工具卡删除行数"
+  },
+
+  "elevation": {
+    "note": "分层靠面的明度差，不靠 1px 线；线只是面的收边",
+    "steps": ["#151413 地", "#1a1918 主地", "#232120 侧栏/面板", "#2a2827 卡片/输入框", "#302d2b 悬停/内嵌行"]
+  },
+
+  "shadows": {
+    "sm": "0 1px 2px rgba(0,0,0,.34)",
+    "md": "0 2px 4px rgba(0,0,0,.28), 0 10px 26px -12px rgba(0,0,0,.62)",
+    "lg": "0 4px 10px rgba(0,0,0,.32), 0 24px 56px -20px rgba(0,0,0,.72)",
+    "lamp": "0 0 0 1px rgba(218,112,44,.20), 0 18px 48px -22px rgba(218,112,44,.36), 0 10px 30px -14px rgba(0,0,0,.7)"
+  },
+  "focusRing": "2px solid #e88b4a, offset 2px"
+}

@@ -40,6 +40,12 @@ import {
 	stopBackgroundJob,
 } from "@onething/app/tools/core/background-jobs.js";
 import * as store from "@onething/app/store.js";
+// R3b:开关开时工具列表与直接执行改由目录 / runner 回答(设计文档 §10.2-④)。
+import { isToolkitEnabled } from "@onething/runtime/toolkit/flag";
+import {
+	runToolkitToolDirectly,
+	toolkitCatalogToolDefinitions,
+} from "@onething/app/toolkit/index.js";
 
 /**
  * Register all tool-related IPC handlers
@@ -61,10 +67,21 @@ export function registerToolHandlers() {
 			updateToolCall: IPC_CHANNELS.UPDATE_TOOL_CALL,
 		},
 		getTools: async () => {
+			/*
+			 * 呈现一个字不改(`listOnethingSettingsToolsForIpc` 是同一个函数、同一份
+			 * MCP 合并、同一条 source 推导),换的只是"有哪些工具"这一格的来源:
+			 * 开关开时来自 Catalog + 派生 guard,关时来自旧 registry。目录建不起来
+			 * 时 `toolkitCatalogToolDefinitions()` 返回 undefined,原样退回旧路。
+			 */
+			const toolkitTools = isToolkitEnabled()
+				? toolkitCatalogToolDefinitions()
+				: undefined;
 			return listOnethingSettingsToolsForIpc({
 				getSessionsList: () => store.getSessionsList(),
 				getSession: (sessionId) => store.getSession(sessionId),
-				getAllToolsAsync,
+				getAllToolsAsync: toolkitTools
+					? async () => toolkitTools
+					: getAllToolsAsync,
 				getMCPToolDefinitions: getMCPToolDefinitionsForModel,
 				setInitContext: (context) =>
 					setInitContext(context as Parameters<typeof setInitContext>[0]),
@@ -85,12 +102,23 @@ export function registerToolHandlers() {
 				sessionId,
 				messageId,
 				getSession: (id) => store.getSession(id),
-				executeTool: (id, toolArgs, context) =>
-					executeTool(
+				executeTool: async (id, toolArgs, context) => {
+					// 开关开且目录里有它 —— 走 runner(两阶段 + 统一取消 + 统一截断 +
+					// 审计)。目录里没有就 `undefined`,原样退回旧路。
+					if (isToolkitEnabled()) {
+						const outcome = await runToolkitToolDirectly(
+							id,
+							toolArgs,
+							context as Parameters<typeof runToolkitToolDirectly>[2],
+						);
+						if (outcome) return outcome;
+					}
+					return executeTool(
 						id,
 						toolArgs,
 						context as Parameters<typeof executeTool>[2],
-					),
+					);
+				},
 				logger: console,
 			});
 		},

@@ -1,0 +1,20 @@
+/* 7b 退后：两侧不再退后，墨 / 线 / 强调全部回到满对比 */
+.is-receded {
+  --surface-card: var(--c-card);
+  --ink-1: var(--c-ink-1);
+  --ink-2: var(--c-ink-2);
+  --ink-3: var(--c-ink-3);
+  --ink-4: var(--c-ink-4);
+  --line: var(--c-line);
+  --line-quiet: var(--c-line);
+  --accent: var(--c-accent);
+}
+.is-receded .btn-soft {
+  background: var(--c-accent-soft);
+  color: var(--c-accent-strong);
+  border-color: var(--c-accent-ring);
+}
+.is-receded .list-row .row-name { color: var(--c-ink-1); font-weight: 500; }
+.is-receded .group-label, .is-receded .right-head { color: var(--c-ink-2); }
+.is-receded .panel-title { color: var(--c-ink-1); }
+.is-receded .ledger-row .k, .is-receded .panel-desc { color: var(--c-ink-2); }

@@ -5,11 +5,58 @@ import type {
 	PracticeSummaryRequest,
 	SpacesCreateRequest,
 	SpacesClearCredentialRequest,
+	SpacesSetCredentialPoolRequest,
 	SpacesSetCredentialRequest,
 	SpacesSetOverlayRequest,
+	SpacesSetProviderSettingsRequest,
 	SpacesUpdateRequest,
+	ACPAgentConfig,
+	GatewayStartRequest,
+	GatewayWechatAddAccountRequest,
+	GatewayWechatLogoutRequest,
+	GatewayWechatRemoveAccountRequest,
+	GatewayWechatRenameAccountRequest,
+	GatewayWechatStopAccountRequest,
+	GetSessionMessagesPageRequest,
+	MCPServerConfig,
+	MediaIngestFilesRequest,
+	MediaQuery,
+	MediaSource,
+	MediaUsageTag,
+	PermissionMode,
+	ProxySettings,
+	SchedulerCreateTaskRequest,
+	SchedulerDeleteTaskRequest,
+	SchedulerGetRequest,
+	SchedulerGetRunRequest,
+	SchedulerListRunsRequest,
+	SchedulerRunNowRequest,
+	SchedulerSetEnabledRequest,
+	SchedulerUpdateTaskRequest,
+	ScratchpadAdoptRequest,
+	ScratchpadChangedPayload,
+	ScratchpadDeleteRequest,
+	ScratchpadGetRequest,
+	ScratchpadUpdateRequest,
+	SearchRequest,
+	Step,
+	TodoPlanChangedPayload,
+	TodoPlanWindowActionRequest,
+	TodoPlanWindowDragRequest,
+	ToolCall,
+	VoiceAudioChunkPayload,
+	VoiceEvent,
+	VoiceRuntimeCommand,
+	VoiceStartRequest,
+	VoiceStopRequest,
+	VoiceSubmitTranscriptRequest,
+	VoiceSubmitUtteranceRequest,
+	VoiceSynthesizeRequest,
+	VoiceTestASRRequest,
+	VoiceTestTTSRequest,
+	OAuthCredentialTargetRequest,
 } from "@/types";
-import type { SessionEventEnvelope } from "@shared/events";
+import type { SessionCommand, SessionEventEnvelope } from "@shared/events";
 import type {
 	AbortPluginRequestResult,
 	PluginConfigResponse,
@@ -18,7 +65,6 @@ import type {
 	SetPluginConfigResponse,
 	PluginFootprintResponse,
 	UninstallPluginResponse,
-	InstallPluginRequest,
 	InstallPluginResponse,
 	UpdatePluginResponse,
 	CheckPluginUpdatesResponse,
@@ -33,7 +79,13 @@ import { promptsRouter } from "@shared/ipc/prompts.js";
 import { todoPlanRouter } from "@shared/ipc/todo-plan.js";
 import { usageRouter } from "@shared/ipc/usage.js";
 import { createRouterClient, type RpcInvoke } from "./router-client";
-import type { PlatformApi, PlatformCapabilities } from "./types";
+import type {
+	PlatformApi,
+	PlatformCapabilities,
+	SessionStreamPayload,
+} from "./types";
+
+import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
 
 function browserClipboardWriteCapability(): boolean {
 	return (
@@ -55,7 +107,6 @@ const webCapabilities: PlatformCapabilities = {
 };
 
 type Unsubscribe = () => void;
-type SessionStreamPayload = { sessionId: string; chunk: unknown };
 type SearchActionHandler = (actionId: string) => void;
 type TodoPlanWebWindowAction = "open" | "hide" | "toggle" | "pin";
 type ImagePreviewUpdatePayload = {
@@ -101,7 +152,7 @@ function subscribeImagePreviewUpdate(
 
 function dispatchTodoPlanWindowAction(
 	action: TodoPlanWebWindowAction,
-	detail: { request?: unknown; pinned?: boolean } = {},
+	detail: { request?: TodoPlanWindowActionRequest; pinned?: boolean } = {},
 ): void {
 	const target = typeof window === "undefined" ? undefined : window;
 	if (!target?.dispatchEvent) return;
@@ -276,15 +327,15 @@ function createSessionMessagesChangedSubscription(
 		"/api/events",
 		"session:event",
 		(envelope) => {
-			const event = envelope.event as
-				| { type?: string; message?: { id?: string }; messageId?: string }
-				| undefined;
+			// `envelope.event` 已经是 `SessionBusMessage` 判别联合 —— 按 `type` 收窄即可,
+			// 不再用结构断言把共享契约打回匿名对象。
+			const event = envelope.event;
 			if (!event?.type) return;
 
 			if (
-				event.type === "message:user-created" ||
-				event.type === "message:assistant-created" ||
-				event.type === "message:created"
+				event.type === SESSION_EVENT_TYPES.MESSAGE_USER_CREATED ||
+				event.type === SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED ||
+				event.type === SESSION_EVENT_TYPES.MESSAGE_CREATED
 			) {
 				callback({
 					sessionId: envelope.sessionId,
@@ -295,18 +346,21 @@ function createSessionMessagesChangedSubscription(
 			}
 
 			if (
-				event.type === "message:updated" ||
-				event.type === "messages:replaced"
+				event.type === SESSION_EVENT_TYPES.MESSAGE_UPDATED ||
+				event.type === SESSION_EVENT_TYPES.MESSAGES_REPLACED
 			) {
 				callback({
 					sessionId: envelope.sessionId,
 					action: "updated",
-					messageId: event.messageId,
+					// `messages:replaced` 契约上没有 messageId(整段换掉,没有单条地址),
+					// 与从前读它读到 undefined 是同一件事。
+					messageId:
+						event.type === SESSION_EVENT_TYPES.MESSAGE_UPDATED ? event.messageId : undefined,
 				});
 				return;
 			}
 
-			if (event.type === "message:deleted") {
+			if (event.type === SESSION_EVENT_TYPES.MESSAGE_DELETED) {
 				callback({
 					sessionId: envelope.sessionId,
 					action: "deleted",
@@ -321,21 +375,22 @@ function createStepAddedSubscription(
 	callback: (data: {
 		sessionId: string;
 		messageId: string;
-		step: unknown;
+		step: Step;
 	}) => void,
 ): Unsubscribe {
 	return createEventSourceSubscription<SessionEventEnvelope>(
 		"/api/events",
 		"session:event",
 		(envelope) => {
-			const event = envelope.event as
-				| { type?: string; step?: unknown }
-				| undefined;
-			if (event?.type !== "step:added") return;
-			const step = event.step as { messageId?: unknown } | undefined;
+			const event = envelope.event;
+			if (event?.type !== SESSION_EVENT_TYPES.STEP_ADDED) return;
+			// 归属的 messageId 一直是从 step 里读的,而 `Step` 契约上没有这个字段
+			// (事件自身的 `messageId` 才是契约位置)—— 保留原读法,按 unknown 取。
+			const stepMessageId = (event.step as { messageId?: unknown } | undefined)
+				?.messageId;
 			callback({
 				sessionId: envelope.sessionId,
-				messageId: typeof step?.messageId === "string" ? step.messageId : "",
+				messageId: typeof stepMessageId === "string" ? stepMessageId : "",
 				step: event.step,
 			});
 		},
@@ -347,17 +402,15 @@ function createStepUpdatedSubscription(
 		sessionId: string;
 		messageId: string;
 		stepId: string;
-		updates: unknown;
+		updates: Partial<Step>;
 	}) => void,
 ): Unsubscribe {
 	return createEventSourceSubscription<SessionEventEnvelope>(
 		"/api/events",
 		"session:event",
 		(envelope) => {
-			const event = envelope.event as
-				| { type?: string; stepId?: unknown; updates?: unknown }
-				| undefined;
-			if (event?.type !== "step:updated" || typeof event.stepId !== "string")
+			const event = envelope.event;
+			if (event?.type !== SESSION_EVENT_TYPES.STEP_UPDATED || typeof event.stepId !== "string")
 				return;
 			callback({
 				sessionId: envelope.sessionId,
@@ -380,11 +433,9 @@ function createSkillActivatedSubscription(
 		"/api/events",
 		"session:event",
 		(envelope) => {
-			const event = envelope.event as
-				| { type?: string; skillName?: unknown }
-				| undefined;
+			const event = envelope.event;
 			if (
-				event?.type !== "skill:activated" ||
+				event?.type !== SESSION_EVENT_TYPES.SKILL_ACTIVATED ||
 				typeof event.skillName !== "string"
 			)
 				return;
@@ -404,11 +455,9 @@ function createContextSizeUpdatedSubscription(
 		"/api/events",
 		"session:event",
 		(envelope) => {
-			const event = envelope.event as
-				| { type?: string; contextSize?: unknown }
-				| undefined;
+			const event = envelope.event;
 			if (
-				event?.type !== "context:size-updated" ||
+				event?.type !== SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED ||
 				typeof event.contextSize !== "number"
 			)
 				return;
@@ -420,68 +469,12 @@ function createContextSizeUpdatedSubscription(
 	);
 }
 
-function createContextCompactStartedSubscription(
-	callback: (data: { sessionId: string }) => void,
-): Unsubscribe {
-	return createEventSourceSubscription<SessionEventEnvelope>(
-		"/api/events",
-		"session:event",
-		(envelope) => {
-			const event = envelope.event as
-				| { type?: string; message?: unknown }
-				| undefined;
-			if (event?.type === "context:compact-started") {
-				callback({ sessionId: envelope.sessionId });
-				return;
-			}
-			if (!event?.type?.startsWith("message:")) return;
-			if (!isContextCompactStartedMessage(event.message)) return;
-			callback({ sessionId: envelope.sessionId });
-		},
-	);
-}
-
-function createContextCompactCompletedSubscription(
-	callback: (data: {
-		sessionId: string;
-		success: boolean;
-		error?: string;
-	}) => void,
-): Unsubscribe {
-	return createEventSourceSubscription<SessionEventEnvelope>(
-		"/api/events",
-		"session:event",
-		(envelope) => {
-			const event = envelope.event as
-				| { type?: string; success?: unknown; error?: unknown }
-				| undefined;
-			if (event?.type !== "context:compact-completed") return;
-			callback({
-				sessionId: envelope.sessionId,
-				success: event.success === true,
-				...(typeof event.error === "string" ? { error: event.error } : {}),
-			});
-		},
-	);
-}
-
-function isContextCompactStartedMessage(message: unknown): boolean {
-	if (!message || typeof message !== "object") return false;
-	const content = (message as { content?: unknown }).content;
-	if (typeof content !== "string") return false;
-	if (
-		!content.includes('"context-compact"') ||
-		!content.includes('"compacting"')
-	)
-		return false;
-
-	try {
-		const parsed = JSON.parse(content) as { type?: unknown; status?: unknown };
-		return parsed.type === "context-compact" && parsed.status === "compacting";
-	} catch {
-		return false;
-	}
-}
+// P1(2026-08-14):createContextCompactStartedSubscription /
+// createContextCompactCompletedSubscription / isContextCompactStartedMessage
+// 已删。前者先查一个后端从不 emit 的幻影事件,再退回逐条 JSON.parse 嗅探消息
+// 内容(与序列化格式硬耦合);renderer 里零消费者。压缩通知现在走
+// session:event 的 context:compact-started / -progress / -completed,由
+// ipc-hub 消费(progress 是 C6 加的分块进度,同一条信封,零新通道)。
 
 function unsupported(method: string) {
 	return async () => ({
@@ -597,7 +590,11 @@ const webApi = {
 	getCapabilities: refreshWebCapabilities,
 
 	getAppState: () => requestJson("/api/app-state"),
-	saveUIState: (uiState: unknown) => postJson("/api/app-state/ui", uiState),
+	saveUIState: (uiState: {
+		workspace?: import("@/stores/workspace-persistence").PersistedWorkspace;
+		sidebarCollapsed?: boolean;
+		sessionReadMarks?: import("@/stores/session-read-marks").PersistedSessionReadMarks;
+	}) => postJson("/api/app-state/ui", uiState),
 
 	getSettings: () => requestJson("/api/settings"),
 	saveSettings: (settings: AppSettings) => postJson("/api/settings", settings),
@@ -608,9 +605,13 @@ const webApi = {
 		return { success: true };
 	},
 	onSettingsNavigate: () => () => {},
-	testProxy: (proxy: unknown) => postJson("/api/network/test-proxy", { proxy }),
+	testProxy: (proxy: ProxySettings) =>
+		postJson("/api/network/test-proxy", { proxy }),
 	onSettingsChanged: () => () => {},
-	searchQuery: (request: unknown) => postJson("/api/search/query", request),
+	// web 端没有第二个窗口,也没有这条广播(批 B9-0):noop 退订即可。
+	onSpacesChanged: () => () => {},
+	searchQuery: (request: SearchRequest) =>
+		postJson("/api/search/query", request),
 	searchExecuteAction: async (actionId: string) => {
 		const response = await postJson<{
 			success: boolean;
@@ -676,8 +677,10 @@ const webApi = {
 		}),
 	setSkillAgent: (skillId: string, agentId: string | null) =>
 		postJson(`/api/skills/${encodeURIComponent(skillId)}/agent`, { agentId }),
-	executeSkill: (skillId: string, options: unknown) =>
-		postJson("/api/skills/execute", { skillId, options }),
+	executeSkill: (
+		skillId: string,
+		options: { sessionId: string; input: string },
+	) => postJson("/api/skills/execute", { skillId, options }),
 
 	getPlugins: () => requestJson("/api/plugins"),
 	enablePlugin: (pluginId: string) =>
@@ -692,17 +695,27 @@ const webApi = {
 		sessionId: string,
 	) =>
 		postJson("/api/plugins/execute-command", { commandName, args, sessionId }),
-	oauthStart: (providerId: string) =>
+	// 末位 `_target` 是 per-space 凭证的写回目标(批 B6)。**web 端收下即丢** ——
+	// apps/server 没有 space 维度(B4 勘误 5 同一条口径),转发给一个不认识它的
+	// 宿主只会造出「以为分空间登录了」的假象。形态对齐,语义诚实。
+	oauthStart: (providerId: string, _target?: OAuthCredentialTargetRequest) =>
 		postJson("/api/oauth/start", { providerId }),
-	oauthCallback: (providerId: string, code: string, state: string) =>
-		postJson("/api/oauth/callback", { providerId, code, state }),
-	oauthLogout: (providerId: string) =>
+	oauthCallback: (
+		providerId: string,
+		code: string,
+		state: string,
+		_target?: OAuthCredentialTargetRequest,
+	) => postJson("/api/oauth/callback", { providerId, code, state }),
+	oauthLogout: (providerId: string, _target?: OAuthCredentialTargetRequest) =>
 		postJson("/api/oauth/logout", { providerId }),
-	oauthGetStatus: (providerId: string) =>
+	oauthGetStatus: (providerId: string, _target?: OAuthCredentialTargetRequest) =>
 		postJson("/api/oauth/status", { providerId }),
-	oauthDevicePoll: (providerId: string, flowId?: string) =>
-		postJson("/api/oauth/device-poll", { providerId, flowId }),
-	oauthRefresh: (providerId: string) =>
+	oauthDevicePoll: (
+		providerId: string,
+		flowId?: string,
+		_target?: OAuthCredentialTargetRequest,
+	) => postJson("/api/oauth/device-poll", { providerId, flowId }),
+	oauthRefresh: (providerId: string, _target?: OAuthCredentialTargetRequest) =>
 		postJson("/api/oauth/refresh", { providerId }),
 	onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) =>
 		createEventSourceSubscription<{ providerId: string }>(
@@ -719,50 +732,60 @@ const webApi = {
 			callback,
 		),
 	gatewayGetStatus: () => requestJson("/api/gateway/status"),
-	gatewayStart: (request?: unknown) => postJson("/api/gateway/start", request),
+	gatewayStart: (request?: GatewayStartRequest) =>
+		postJson("/api/gateway/start", request),
 	gatewayStop: () => postJson("/api/gateway/stop"),
-	gatewayWechatLogout: (request?: unknown) =>
+	gatewayWechatLogout: (request?: GatewayWechatLogoutRequest) =>
 		postJson("/api/gateway/wechat/logout", request ?? {}),
-	gatewayWechatAddAccount: (request?: unknown) =>
+	gatewayWechatAddAccount: (request?: GatewayWechatAddAccountRequest) =>
 		postJson("/api/gateway/wechat/accounts/add", request ?? {}),
-	gatewayWechatStopAccount: (request: unknown) =>
+	gatewayWechatStopAccount: (request: GatewayWechatStopAccountRequest) =>
 		postJson("/api/gateway/wechat/accounts/stop", request),
-	gatewayWechatRemoveAccount: (request: unknown) =>
+	gatewayWechatRemoveAccount: (request: GatewayWechatRemoveAccountRequest) =>
 		postJson("/api/gateway/wechat/accounts/remove", request),
-	gatewayWechatRenameAccount: (request: unknown) =>
+	gatewayWechatRenameAccount: (request: GatewayWechatRenameAccountRequest) =>
 		postJson("/api/gateway/wechat/accounts/rename", request),
 	voiceGetState: () => requestJson("/api/voice/state"),
-	voiceStart: (request?: unknown) => postJson("/api/voice/start", request),
-	voiceStop: (request?: unknown) => postJson("/api/voice/stop", request),
-	voiceSubmitUtterance: (request: unknown) =>
+	voiceStart: (request?: VoiceStartRequest) =>
+		postJson("/api/voice/start", request),
+	voiceStop: (request?: VoiceStopRequest) =>
+		postJson("/api/voice/stop", request),
+	voiceSubmitUtterance: (request: VoiceSubmitUtteranceRequest) =>
 		postJson("/api/voice/submit-utterance", request),
-	voiceSubmitTranscript: (request: unknown) =>
+	voiceSubmitTranscript: (request: VoiceSubmitTranscriptRequest) =>
 		postJson("/api/voice/submit-transcript", request),
-	voiceSynthesize: (request: unknown) =>
+	voiceSynthesize: (request: VoiceSynthesizeRequest) =>
 		postJson("/api/voice/synthesize", request),
-	voiceTestASR: (request: unknown) => postJson("/api/voice/test-asr", request),
-	voiceTestTTS: (request: unknown) => postJson("/api/voice/test-tts", request),
-	voiceGetTTSModels: (request?: unknown) =>
+	voiceTestASR: (request: VoiceTestASRRequest) =>
+		postJson("/api/voice/test-asr", request),
+	voiceTestTTS: (request: VoiceTestTTSRequest) =>
+		postJson("/api/voice/test-tts", request),
+	voiceGetTTSModels: (request?: { force?: boolean }) =>
 		postJson("/api/voice/tts-models", request),
-	onVoiceEvent: (callback: (event: unknown) => void) =>
-		createEventSourceSubscription("/api/voice/events", "voice:event", callback),
+	onVoiceEvent: (callback: (event: VoiceEvent) => void) =>
+		createEventSourceSubscription<VoiceEvent>(
+			"/api/voice/events",
+			"voice:event",
+			callback,
+		),
 	voiceRuntimeReady: () => postJson("/api/voice/runtime-ready"),
-	voiceRuntimeEvent: (event: unknown) =>
+	voiceRuntimeEvent: (event: VoiceEvent) =>
 		postJson("/api/voice/runtime-event", event),
-	voiceAudioChunk: (payload: unknown) => {
+	voiceAudioChunk: (payload: VoiceAudioChunkPayload) => {
 		void postJson("/api/voice/audio-chunk", payload).catch(() => {
 			// Fire-and-forget PCM uplink; drops are tolerated on the web build.
 		});
 	},
-	onVoiceRuntimeCommand: (callback: (command: unknown) => void) =>
-		createEventSourceSubscription(
+	onVoiceRuntimeCommand: (callback: (command: VoiceRuntimeCommand) => void) =>
+		createEventSourceSubscription<VoiceRuntimeCommand>(
 			"/api/voice/runtime-commands",
 			"voice:runtime-command",
 			callback,
 		),
 	acpGetAgents: () => requestJson("/api/acp/agents"),
-	acpAddAgent: (config: unknown) => postJson("/api/acp/agents", { config }),
-	acpUpdateAgent: (config: unknown) =>
+	acpAddAgent: (config: ACPAgentConfig) =>
+		postJson("/api/acp/agents", { config }),
+	acpUpdateAgent: (config: ACPAgentConfig) =>
 		postJson("/api/acp/agents/update", { config }),
 	acpRemoveAgent: (agentId: string) =>
 		postJson("/api/acp/agents/remove", { agentId }),
@@ -775,24 +798,25 @@ const webApi = {
 	acpCancelSession: (sessionId: string, agentId?: string) =>
 		postJson("/api/acp/sessions/cancel", { sessionId, agentId }),
 
-	getScratchpad: (request: unknown) => postJson("/api/scratchpad/get", request),
-	updateScratchpad: (request: unknown) =>
+	getScratchpad: (request: ScratchpadGetRequest) =>
+		postJson("/api/scratchpad/get", request),
+	updateScratchpad: (request: ScratchpadUpdateRequest) =>
 		postJson("/api/scratchpad/update", request),
-	deleteScratchpad: (request: unknown) =>
+	deleteScratchpad: (request: ScratchpadDeleteRequest) =>
 		postJson("/api/scratchpad/delete", request),
-	adoptScratchpad: (request: unknown) =>
+	adoptScratchpad: (request: ScratchpadAdoptRequest) =>
 		postJson("/api/scratchpad/adopt", request),
 
 	// Todo / plan 数据面走通用 RPC(todoPlanRouter);窗口面在 web 是本地 DOM 事件。
-	openTodoPlanWindow: (request?: unknown) => {
+	openTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => {
 		dispatchTodoPlanWindowAction("open", { request });
 		return Promise.resolve({ success: true });
 	},
-	hideTodoPlanWindow: (request?: unknown) => {
+	hideTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => {
 		dispatchTodoPlanWindowAction("hide", { request });
 		return Promise.resolve({ success: true });
 	},
-	toggleTodoPlanWindow: (request?: unknown) => {
+	toggleTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => {
 		dispatchTodoPlanWindowAction("toggle", { request });
 		return Promise.resolve({ success: true });
 	},
@@ -800,6 +824,13 @@ const webApi = {
 		dispatchTodoPlanWindowAction("pin", { pinned });
 		return Promise.resolve({ success: true, pinned });
 	},
+	// 自绘红绿灯与手动拖窗是**桌面窗**的事。浏览器里没有窗可挪,也没有系统交通灯
+	// 要替代 —— 面板在 web 端始终是嵌在页面里的一块,所以这三条老实地报 false,
+	// 而不是派一个假的本地事件出去骗调用点。
+	minimizeTodoPlanWindow: () => Promise.resolve({ success: false }),
+	zoomTodoPlanWindow: () => Promise.resolve({ success: false }),
+	dragTodoPlanWindow: (_request: TodoPlanWindowDragRequest) =>
+		Promise.resolve({ success: false }),
 
 	// The radio drives ncm-cli's mpv on the host machine, so a browser client
 	// would only make audio come out of the server. Unsupported by design.
@@ -842,7 +873,7 @@ const webApi = {
 		sessionId: string,
 		messageId: string,
 		toolCallId: string,
-		updates: unknown,
+		updates: Partial<ToolCall>,
 	) =>
 		postJson("/api/tools/update-call", {
 			sessionId,
@@ -858,8 +889,9 @@ const webApi = {
 		postJson(`/api/tools/background-jobs/${encodeURIComponent(jobId)}/stop`),
 
 	mcpGetServers: () => requestJson("/api/mcp/servers"),
-	mcpAddServer: (config: unknown) => postJson("/api/mcp/servers", config),
-	mcpUpdateServer: (config: { id?: string }) =>
+	mcpAddServer: (config: MCPServerConfig) =>
+		postJson("/api/mcp/servers", config),
+	mcpUpdateServer: (config: MCPServerConfig) =>
 		postJson(
 			`/api/mcp/servers/${encodeURIComponent(config.id || "")}/update`,
 			config,
@@ -874,7 +906,7 @@ const webApi = {
 		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/disconnect`),
 	mcpLogoutServer: (serverId: string) =>
 		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/oauth/logout`),
-	mcpProbeServer: (config: any) =>
+	mcpProbeServer: (config: MCPServerConfig) =>
 		postJson(`/api/mcp/probe`, config),
 	mcpRefreshServer: (serverId: string) =>
 		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/refresh`),
@@ -896,8 +928,14 @@ const webApi = {
 	mcpReadConfigFile: (filePath: string) =>
 		postJson("/api/mcp/config-file/read", { filePath }),
 
-	listFiles: (request: unknown) => postJson("/api/files/list", request),
-	listDirs: (request: unknown) => postJson("/api/dirs/list", request),
+	listFiles: (request: {
+		cwd?: string;
+		query?: string;
+		limit?: number;
+		sessionId?: string;
+	}) => postJson("/api/files/list", request),
+	listDirs: (request: { basePath: string; query?: string; limit?: number }) =>
+		postJson("/api/dirs/list", request),
 	readFileContent: (filePath: string, maxSize?: number) =>
 		postJson("/api/files/read", { path: filePath, maxSize }),
 	saveFileContent: (
@@ -906,7 +944,12 @@ const webApi = {
 		expectedMtimeMs?: number,
 	) =>
 		postJson("/api/files/save", { path: filePath, content, expectedMtimeMs }),
-	rollbackFile: (request: unknown) => postJson("/api/files/rollback", request),
+	rollbackFile: (request: {
+		auditPath?: string;
+		filePath?: string;
+		originalContent?: string;
+		isNew?: boolean;
+	}) => postJson("/api/files/rollback", request),
 	watchWorkspace: (root: string) =>
 		postJson("/api/files/watch/start", { root }),
 	unwatchWorkspace: (root: string) =>
@@ -1338,6 +1381,17 @@ const webApi = {
 			method: "POST",
 			body: request,
 		}),
+	// 整套 provider 设置(C2):同样没有 server 路由。读退成「这个空间是空的」,
+	// 写退成 `{success:false}` —— 渲染层据此落回 `/api/settings` 那一份(web 端
+	// 只有一个空间,那份就是 default 的生效设置)。
+	spacesGetProviderSettings: (id: string) =>
+		softJson(`/api/spaces/${encodeURIComponent(id)}/provider-settings`, undefined),
+	spacesSetProviderSettings: (request: SpacesSetProviderSettingsRequest) =>
+		softJson(
+			`/api/spaces/${encodeURIComponent(request.id)}/provider-settings`,
+			undefined,
+			{ method: "POST", body: request },
+		),
 	// 凭证池(批 B3):server 侧没有这些路由,一律走 softJson 降级 —— 空凭证表
 	// 即「这个宿主管不了空间凭证」,设置页那一段自然不画。
 	spacesGetCredentials: (id: string) =>
@@ -1346,6 +1400,11 @@ const webApi = {
 		}),
 	spacesSetCredential: (request: SpacesSetCredentialRequest) =>
 		softJson(`/api/spaces/${encodeURIComponent(request.id)}/credentials`, undefined, {
+			method: "POST",
+			body: request,
+		}),
+	spacesSetCredentialPool: (request: SpacesSetCredentialPoolRequest) =>
+		softJson(`/api/spaces/${encodeURIComponent(request.id)}/credentials/pool`, undefined, {
 			method: "POST",
 			body: request,
 		}),
@@ -1362,7 +1421,17 @@ const webApi = {
 	projectDirsRemove: (path: string, _workspaceId?: string) =>
 		postJson("/api/project-dirs/remove", { path }),
 
-	saveImage: (data: unknown) => postJson("/api/media/save-image", data),
+	saveImage: (data: {
+		url?: string;
+		base64?: string;
+		prompt: string;
+		revisedPrompt?: string;
+		model: string;
+		sessionId: string;
+		messageId: string;
+		source?: MediaSource;
+		usageTags?: MediaUsageTag[];
+	}) => postJson("/api/media/save-image", data),
 	loadAllMedia: () => requestJson("/api/media/legacy-images"),
 	deleteMedia: (id: string) => postJson("/api/media/delete", { id }),
 	clearAllMedia: () => postJson("/api/media/clear-all"),
@@ -1384,7 +1453,7 @@ const webApi = {
 	},
 	// 浏览器没有本地路径可给,所以 body 里一定是 base64(桌面才走 filePath)。
 	// 请求整体透传:字段是共享契约,这里不逐个手抄。
-	ingestMediaFiles: (request: unknown) =>
+	ingestMediaFiles: (request: MediaIngestFilesRequest) =>
 		postJson("/api/media/ingest", request),
 	/**
 	 * 「另存为」在浏览器里不是一次宿主对话框,而是一次下载 —— 沙箱里页面自发的
@@ -1396,9 +1465,21 @@ const webApi = {
 	}),
 	hideMediaAsset: (id: string) => postJson("/api/media/assets/hide", { id }),
 	rebuildMediaLibrary: () => postJson("/api/media/rebuild"),
-	getMediaGallery: (assetId: string, query?: unknown) =>
+	getMediaGallery: (assetId: string, query?: MediaQuery) =>
 		postJson("/api/media/gallery", { assetId, query }),
-	onImageGenerated: (callback: (payload: unknown) => void) =>
+	onImageGenerated: (
+		callback: (payload: {
+			id: string;
+			url?: string;
+			base64?: string;
+			prompt: string;
+			revisedPrompt?: string;
+			model: string;
+			sessionId: string;
+			messageId: string;
+			createdAt: number;
+		}) => void,
+	) =>
 		createEventSourceSubscription(
 			"/api/media/events",
 			"media:image-generated",
@@ -1479,7 +1560,10 @@ const webApi = {
 		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/agent`, {
 			agentId,
 		}),
-	updateSessionPermissionMode: (sessionId: string, permissionMode: unknown) =>
+	updateSessionPermissionMode: (
+		sessionId: string,
+		permissionMode: PermissionMode,
+	) =>
 		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/permission-mode`, {
 			permissionMode,
 		}),
@@ -1501,7 +1585,7 @@ const webApi = {
 			`/api/sessions/${encodeURIComponent(sessionId)}/permissions/clear`,
 		),
 
-	getSessionMessagesPage: (request: unknown) =>
+	getSessionMessagesPage: (request: GetSessionMessagesPageRequest) =>
 		postJson("/api/session-messages/page", request),
 	getSessionUserMarkers: (sessionId: string) =>
 		requestJson(`/api/sessions/${encodeURIComponent(sessionId)}/user-markers`),
@@ -1523,8 +1607,10 @@ const webApi = {
 		postJson("/api/chat/token-usage", { sessionId }),
 	updateSessionPin: (sessionId: string, isPinned: boolean) =>
 		postJson("/api/chat/update-session-pin", { sessionId, isPinned }),
-	addSystemMessage: (sessionId: string, message: unknown) =>
-		postJson("/api/chat/add-system-message", { sessionId, message }),
+	addSystemMessage: (
+		sessionId: string,
+		message: { id: string; role: string; content: string; timestamp: number },
+	) => postJson("/api/chat/add-system-message", { sessionId, message }),
 	removeFilesChangedMessage: (sessionId: string) =>
 		postJson("/api/chat/remove-system-marker", {
 			sessionId,
@@ -1547,14 +1633,14 @@ const webApi = {
 			messageId,
 			thinkingTime,
 		}),
-	emitCommand: (sessionId: string, command: unknown) =>
+	emitCommand: (sessionId: string, command: SessionCommand) =>
 		postJson(
 			`/api/sessions/${encodeURIComponent(sessionId)}/commands`,
 			command,
 		),
 	resumeAfterToolConfirm: (sessionId: string, messageId: string) =>
 		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/commands`, {
-			type: "command:resume-after-confirm",
+			type: SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM,
 			messageId,
 		}),
 	abortStream: (sessionId?: string) =>
@@ -1566,8 +1652,6 @@ const webApi = {
 		theme: getPreferredColorScheme(),
 	}),
 	onContextSizeUpdated: createContextSizeUpdatedSubscription,
-	onContextCompactStarted: createContextCompactStartedSubscription,
-	onContextCompactCompleted: createContextCompactCompletedSubscription,
 	onSystemThemeChanged: (callback: (theme: "light" | "dark") => void) => {
 		const media = window.matchMedia?.("(prefers-color-scheme: dark)");
 		if (!media) return () => {};
@@ -1643,35 +1727,35 @@ const webApi = {
 	onStepAdded: createStepAddedSubscription,
 	onStepUpdated: createStepUpdatedSubscription,
 	onSkillActivated: createSkillActivatedSubscription,
-	onTodoPlanChanged: (callback: (payload: unknown) => void) =>
-		createEventSourceSubscription(
+	onTodoPlanChanged: (callback: (payload: TodoPlanChangedPayload) => void) =>
+		createEventSourceSubscription<TodoPlanChangedPayload>(
 			"/api/todo-plan/events",
 			"todo-plan:changed",
 			callback,
 		),
-	onScratchpadChanged: (callback: (payload: unknown) => void) =>
-		createEventSourceSubscription(
+	onScratchpadChanged: (callback: (payload: ScratchpadChangedPayload) => void) =>
+		createEventSourceSubscription<ScratchpadChangedPayload>(
 			"/api/scratchpad/events",
 			"scratchpad:changed",
 			callback,
 		),
 
 	listSchedulerTasks: () => requestJson("/api/scheduler/tasks"),
-	getSchedulerTask: (request: unknown) =>
+	getSchedulerTask: (request: SchedulerGetRequest) =>
 		postJson("/api/scheduler/tasks/get", request),
-	runSchedulerTaskNow: (request: unknown) =>
+	runSchedulerTaskNow: (request: SchedulerRunNowRequest) =>
 		postJson("/api/scheduler/tasks/run-now", request),
-	setSchedulerTaskEnabled: (request: unknown) =>
+	setSchedulerTaskEnabled: (request: SchedulerSetEnabledRequest) =>
 		postJson("/api/scheduler/tasks/enabled", request),
-	createSchedulerTask: (request: unknown) =>
+	createSchedulerTask: (request: SchedulerCreateTaskRequest) =>
 		postJson("/api/scheduler/tasks", request),
-	updateSchedulerTask: (request: unknown) =>
+	updateSchedulerTask: (request: SchedulerUpdateTaskRequest) =>
 		postJson("/api/scheduler/tasks/update", request),
-	deleteSchedulerTask: (request: unknown) =>
+	deleteSchedulerTask: (request: SchedulerDeleteTaskRequest) =>
 		postJson("/api/scheduler/tasks/delete", request),
-	listSchedulerRuns: (request: unknown) =>
+	listSchedulerRuns: (request: SchedulerListRunsRequest) =>
 		postJson("/api/scheduler/runs", request),
-	getSchedulerRun: (request: unknown) =>
+	getSchedulerRun: (request: SchedulerGetRunRequest) =>
 		postJson("/api/scheduler/runs/get", request),
 
 	// Browsers never expose local file paths.

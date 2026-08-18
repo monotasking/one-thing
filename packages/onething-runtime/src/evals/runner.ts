@@ -17,6 +17,7 @@ import { evaluate, type EvalResult } from "./evaluator.js";
 import { getPromptVersion } from "./fixture.js";
 import type { EvalModelCaller } from "./model-call.js";
 import type { EvalFixture } from "./fixture.js";
+import { attachTurnBlocksToLastUserMessage } from "../prompts/turn-delivery.js";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -524,11 +525,15 @@ async function runSingleCase(options: {
 		historyMessages: historyMessages as any,
 	});
 
-	// Build messages for the model call
-	const messages = result.messages.map((m: any) => ({
-		role: m.role === "developer" ? "system" : (m.role as any),
-		content: typeof m.content === "string" ? m.content : String(m.content),
-	}));
+	// Build messages for the model call. The turn blocks ride the last user
+	// message, the same place a live session puts them.
+	const messages = attachTurnBlocksToLastUserMessage(
+		result.messages.map((m: any) => ({
+			role: m.role === "developer" ? "system" : (m.role as any),
+			content: typeof m.content === "string" ? m.content : String(m.content),
+		})),
+		result.turn,
+	);
 
 	// Build tools from fixture context
 	const tools = ctx.toolNames?.length

@@ -4,6 +4,7 @@ import {
   buildOnethingSystemPrompt,
 } from '../builder.js'
 import { ONETHING_DEFAULT_SYSTEM_PROMPT } from '../system-prompt.js'
+import { testPromptComposer } from './fixtures/tool-prompts.js'
 
 const host = {
   getAgent: () => ({
@@ -80,14 +81,18 @@ describe('onething prompt builder', () => {
     const todoHost = { ...host, getTodoPlanDirectory: () => '/Users/tester/.onething/todo-plan' }
 
     it('points the session at its own AI todo file and the shared user notes', async () => {
-      const { developer } = await buildOnethingSystemPrompt({
+      // The todo section rides the turn channel: it names a per-session path,
+      // so it must never be part of the shared system prefix.
+      const { developer, turn } = await buildOnethingSystemPrompt({
         sessionId: 'session-abc',
         hasTools: true,
+        toolNames: ['read', 'edit', 'write'],
         skills: [],
         host: todoHost,
       })
 
-      const todo = developer.find(section => section.startsWith('# Todo'))
+      expect(developer.find(section => section.startsWith('# Todo'))).toBeUndefined()
+      const todo = turn.find(block => block.id === 'todo')?.content
       expect(todo).toContain('~/.onething/todo-plan/sessions/session-abc/ai-todo.md')
       expect(todo).toContain('~/.onething/todo-plan/user-notes')
     })
@@ -96,12 +101,13 @@ describe('onething prompt builder', () => {
       const build = (sessionId: string) => buildOnethingSystemPrompt({
         sessionId,
         hasTools: true,
+        toolNames: ['read', 'edit', 'write'],
         skills: [],
         host: todoHost,
       })
 
-      const a = (await build('session-a')).developer.find(s => s.startsWith('# Todo'))
-      const b = (await build('session-b')).developer.find(s => s.startsWith('# Todo'))
+      const a = (await build('session-a')).turn.find(b => b.id === 'todo')?.content
+      const b = (await build('session-b')).turn.find(b => b.id === 'todo')?.content
 
       expect(a).toContain('sessions/session-a/ai-todo.md')
       expect(a).not.toContain('session-b')
@@ -109,9 +115,10 @@ describe('onething prompt builder', () => {
       expect(b).not.toContain('session-a')
     })
 
-    it('is omitted without a session or without tools', async () => {
+    it('is omitted without a session, without tools, or without any file tool to operate it', async () => {
       const noSession = await buildOnethingSystemPrompt({
         hasTools: true,
+        toolNames: ['read', 'edit', 'write'],
         skills: [],
         host: todoHost,
       })
@@ -121,9 +128,19 @@ describe('onething prompt builder', () => {
         skills: [],
         host: todoHost,
       })
+      // The todo instructions say "read / edit / write it"; a surface without
+      // any of those tools cannot follow them, so the section stays out.
+      const noFileTools = await buildOnethingSystemPrompt({
+        sessionId: 'session-abc',
+        hasTools: true,
+        toolNames: ['variable', 'web_search'],
+        skills: [],
+        host: todoHost,
+      })
 
-      expect(noSession.developer.find(s => s.startsWith('# Todo'))).toBeUndefined()
-      expect(noTools.developer.find(s => s.startsWith('# Todo'))).toBeUndefined()
+      expect(noSession.turn.find(b => b.id === 'todo')).toBeUndefined()
+      expect(noTools.turn.find(b => b.id === 'todo')).toBeUndefined()
+      expect(noFileTools.turn.find(b => b.id === 'todo')).toBeUndefined()
     })
   })
   /**
@@ -131,12 +148,14 @@ describe('onething prompt builder', () => {
    * 不再因为写变量而失效。
    */
   describe('the <context-variables> section', () => {
+    // The section is the `variable` tool's own (`VARIABLE_TOOL_PROMPT`); it
+    // reaches the prompt through the tools source, gated by the turn's surface.
     const withTools = (toolNames: string[]) => buildOnethingSystemPrompt({
       hasTools: true,
       skills: [],
       toolNames,
       host,
-    })
+    }, testPromptComposer)
 
     it('carries no variable values at all — only the two read actions and the block below', async () => {
       const prompt = await withTools(['read', 'variable'])
@@ -172,7 +191,7 @@ describe('onething prompt builder', () => {
         skills: [],
         toolNames: ['variable'],
         host,
-      })
+      }, testPromptComposer)
       expect(noVariableTool.developer.find(s => s.startsWith('<context-variables>'))).toBeUndefined()
       expect(noTools.developer.find(s => s.startsWith('<context-variables>'))).toBeUndefined()
     })

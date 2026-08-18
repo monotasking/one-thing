@@ -41,6 +41,7 @@ export type {
   CreateHostMcpServerOptions,
   CreateSdkMcpServerFn,
   HostMcpCallResult,
+  HostMcpHostTool,
   HostMcpInjection,
   HostMcpServer,
   HostMcpSurfaceResolver,

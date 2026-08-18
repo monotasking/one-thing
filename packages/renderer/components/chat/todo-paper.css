@@ -1,0 +1,225 @@
+/**
+ * Todo 窗的纸面色板(「边栏 v2」设计稿的 Organic 系)。
+ *
+ * 这是**这扇窗自己的设计 token 层**:色值只允许出现在这个文件里,组件一律
+ * 消费 --paper-* 语义名(或被本层覆写的 --ui-* / --todo-*)。它刻意不跟随
+ * 应用主题的冷暖 —— 纸就是纸;深色主题下翻成"墨纸"(同一族暖色的暗面),
+ * 方向由文件底部的 [data-theme='dark'] 块负责。
+ *
+ * 两条 accent 的分工来自设计稿:
+ *   橄榄(struct)= 结构 —— 勾选、列表记号、引用竖线、进度、Todo 侧、pills;
+ *   暖橙(warm) = 语汇 —— 行内代码、链接、草稿纸侧状态与「发送给 AI」。
+ */
+.todo-paper {
+  /* 面与墨 */
+  --paper-shell: #ebddc5;
+  --paper-main: #f9f4ed;
+  --paper-ink: #201e1d;
+  --paper-strong: #645c50;
+  --paper-muted: #82796a;
+  --paper-faint: #a19786;
+  --paper-border: #c0b6a5;
+  --paper-track: #dcd3c4;
+  --paper-pill-bg: #eee7db;
+  --paper-divider: color-mix(in srgb, var(--paper-ink) 16%, transparent);
+
+  /* 橄榄:结构 */
+  --paper-struct: #728157;
+  --paper-struct-mid: #8fa073;
+  --paper-struct-deep: #3d472b;
+  --paper-struct-soft: #e1eecc;
+
+  /* 暖橙:语汇 */
+  --paper-warm: #d67f48;
+  --paper-warm-hover: #b2622d;
+  --paper-warm-deep: #643312;
+
+  /* 行内代码 / 高亮 / 链接 / 代码块(亮暗两面取值不同,单列语义位) */
+  --paper-code-inline-bg: #fff2eb;
+  --paper-code-inline-fg: #643312;
+  --paper-mark-bg: #e1eecc;
+  --paper-mark-fg: #272e1b;
+  --paper-link-fg: #8c491a;
+  --paper-link-hover-fg: #643312;
+  --paper-link-underline: #ffc6a5;
+  --paper-codeblock-bg: #2e2b25;
+  --paper-codeblock-fg: #ffe1d0;
+  --paper-codeblock-label: #a19786;
+  --paper-image-bg: #e1eecc;
+  --paper-image-border: #aebf92;
+  --paper-image-fg: #3d472b;
+
+  /* 交通灯:真 macOS 定值(不随明暗翻)。设计稿的低饱和三点被用户否了 ——
+     "要像系统的那个",所以色值、描边圈、失焦灰全按系统来。 */
+  --paper-dot-close: #ff5f57;
+  --paper-dot-min: #febc2e;
+  --paper-dot-zoom: #28c840;
+  --paper-dot-rim: color-mix(in srgb, var(--paper-ink) 14%, transparent);
+  --paper-dot-inactive: color-mix(in srgb, var(--paper-ink) 16%, var(--paper-main));
+
+  /* ---- 窗内语义覆写:编辑器与共享子组件在这扇窗里落到纸面值 ---- */
+  --ui-text-primary-fg: var(--paper-ink);
+  --ui-text-muted-fg: var(--paper-muted);
+  --ui-text-faint-fg: var(--paper-faint);
+  --ui-accent-primary-fg: var(--paper-struct);
+  --ui-border-default-border: var(--paper-divider);
+  --ui-border-subtle-border: color-mix(in srgb, var(--paper-ink) 10%, transparent);
+  --ui-border-strong-border: var(--paper-border);
+  --ui-state-hover-bg: color-mix(in srgb, var(--paper-ink) 7%, transparent);
+  --ui-state-hover-accent-bg: var(--paper-struct-soft);
+  --ui-surface-elevated-bg: var(--paper-main);
+}
+
+[data-theme='dark'] .todo-paper {
+  --paper-shell: #201e1d;
+  --paper-main: #2e2b25;
+  --paper-ink: #f2ece1;
+  --paper-strong: #c0b6a5;
+  --paper-muted: #a19786;
+  --paper-faint: #82796a;
+  --paper-border: #645c50;
+  --paper-track: #474238;
+  --paper-pill-bg: #3a362e;
+
+  --paper-struct: #8fa073;
+  --paper-struct-mid: #8fa073;
+  --paper-struct-deep: #ccdbb2;
+  --paper-struct-soft: #333d22;
+
+  --paper-warm: #f6a06b;
+  --paper-warm-hover: #ffc6a5;
+  --paper-warm-deep: #ffe1d0;
+
+  --paper-code-inline-bg: #402d1e;
+  --paper-code-inline-fg: #ffc6a5;
+  --paper-mark-bg: #333d22;
+  --paper-mark-fg: #dbe8c2;
+  --paper-link-fg: #f6a06b;
+  --paper-link-hover-fg: #ffc6a5;
+  --paper-link-underline: #8c491a;
+  --paper-codeblock-bg: #191713;
+  --paper-codeblock-fg: #ffe1d0;
+  --paper-codeblock-label: #82796a;
+  --paper-image-bg: #333d22;
+  --paper-image-border: #56633f;
+  --paper-image-fg: #ccdbb2;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   纸面皮肤:编辑器内部件在 .todo-paper 范围内的取色。
+   共享的 notion-prose.css / tiptap-note-editor.css 一字不动(EditorWorkbench
+   还在用它们的缺省 --ui 取色),这里用更高特异性整体接管。
+   ════════════════════════════════════════════════════════════════ */
+
+/* 行内语汇 —— 设计稿:code 橙系淡底、mark 橄榄淡底、链接橙系 + 淡下划线。 */
+.todo-paper .notion-prose :not(pre) > code {
+  background: var(--paper-code-inline-bg);
+  color: var(--paper-code-inline-fg);
+}
+
+.todo-paper .notion-prose mark {
+  background: var(--paper-mark-bg);
+  color: var(--paper-mark-fg);
+}
+
+.todo-paper .notion-prose a {
+  color: var(--paper-link-fg);
+  text-decoration-color: var(--paper-link-underline);
+}
+
+.todo-paper .notion-prose a:hover {
+  color: var(--paper-link-hover-fg);
+}
+
+/* 结构 —— h3 用橄榄深档;引用竖线、列表记号、勾选都走 struct 族。 */
+.todo-paper .notion-prose h3 {
+  color: var(--paper-struct-deep);
+}
+
+.todo-paper .notion-prose blockquote {
+  border-left-color: var(--paper-struct);
+}
+
+/* ul 圆点经 --ui-accent 覆写已是橄榄;序号按设计稿再压深一档。 */
+.todo-paper .notion-prose ol > li::marker {
+  color: var(--paper-struct-deep);
+}
+
+/* 代码块:近黑暖底 + 桃色代码字 + 右上角语言小标。 */
+.todo-paper .notion-prose pre {
+  background: var(--paper-codeblock-bg);
+}
+
+.todo-paper .notion-prose pre code {
+  color: var(--paper-codeblock-fg);
+}
+
+.todo-paper .notion-prose pre[data-language]::after {
+  color: var(--paper-codeblock-label);
+}
+
+/* 表格。表头底 = 窗底那一层的面(设计稿 color-surface);分隔线三圆点走
+   --ui-text-faint-fg 覆写,不必另写。 */
+.todo-paper .notion-prose th {
+  background: var(--paper-shell);
+}
+
+.todo-paper .notion-prose th,
+.todo-paper .notion-prose td {
+  border-bottom-color: var(--paper-divider);
+}
+
+/* 勾选:选中橄榄实底、纸白勾;未选 2px 纸边;完成文本退淡。 */
+.todo-paper .tiptap-note-surface ul[data-type='taskList'] input[type='checkbox'] {
+  border-color: var(--paper-border);
+}
+
+.todo-paper .tiptap-note-surface ul[data-type='taskList'] input[type='checkbox']:checked {
+  border-color: transparent;
+  background: var(--paper-struct);
+}
+
+.todo-paper .tiptap-note-surface ul[data-type='taskList'] input[type='checkbox']:checked::after {
+  border-color: var(--paper-main);
+}
+
+.todo-paper .tiptap-note-surface ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--paper-faint);
+}
+
+/* 块级 hover 带子:设计稿 = neutral-300 的 42%(比通用面的 4% 墨浓得多,
+   纸上要一眼看得见"指着哪一块")。 */
+.todo-paper .tiptap-note-editor:not(.is-dragging):not(.is-typing) .tiptap-note-surface > *:not(pre):hover::after {
+  background: color-mix(in srgb, var(--paper-track) 42%, transparent);
+}
+
+/* 上一条不许吃掉「光标所在块不画底」:tiptap-note-editor.css 里的排除规则与它
+   特异性打平,装载顺序在前就会输 —— 这里以更高特异性重申。点进哪一块,哪一块
+   的 hover 底立刻消失(光标本身就是最强的位置提示)。 */
+.todo-paper .tiptap-note-editor .tiptap-note-surface.ProseMirror-focused > .is-caret-block:hover::after {
+  background: transparent;
+}
+
+/* 拖拽把手六圆点与图片占位。 */
+.todo-paper .tiptap-drag-dots {
+  color: var(--paper-strong);
+}
+
+.todo-paper .tiptap-image.is-missing {
+  background: var(--paper-image-bg);
+  border-color: var(--paper-image-border);
+  color: var(--paper-image-fg);
+}
+
+/* 文本选区:设计稿 ::selection = accent 30%。 */
+.todo-paper .tiptap-note-surface ::selection {
+  background: color-mix(in srgb, var(--paper-warm) 30%, transparent);
+}
+
+/* 上一条不许把 node-range 的"幽灵选区"重新画回来(拖完块之后扩展会把整块
+   选区恢复,tiptap-note-editor.css 里已把它抹平)—— 同域重申,免受两份样式
+   文件装载顺序的摆布。 */
+.todo-paper .tiptap-note-surface .ProseMirror-selectednoderange ::selection,
+.todo-paper .tiptap-note-surface > .ProseMirror-selectednode ::selection {
+  background: transparent;
+}

@@ -1,6 +1,7 @@
 import { collectAgentTurnFromStream } from "@onething/core/agent-loop";
 import { agentToolMessageContentToStructuredPayload } from "@onething/core/agent-loop";
 import { undeliverableAttachmentText } from "@onething/core/agent-loop";
+import { withProviderRetryAfter } from "../provider-error-classification.js";
 import type {
 	AgentContentPart,
 	AgentFinishReason,
@@ -664,15 +665,20 @@ function createCodexAgentApiError(
 ): Error {
 	const detail = summarizeCodexErrorBody(responseBody);
 	const requestId = headers.get("x-oai-request-id");
-	return Object.assign(
-		new Error(
-			`Codex request failed (${status})${detail ? `: ${detail}` : ""}${requestId ? ` [request-id: ${requestId}]` : ""}`,
+	// 批 B8-2:headers 本来就传进来了(只用来取 request-id),顺手把
+	// `retry-after` / `x-ratelimit-reset-*` 解析成绝对时间戳挂上去。
+	return withProviderRetryAfter(
+		Object.assign(
+			new Error(
+				`Codex request failed (${status})${detail ? `: ${detail}` : ""}${requestId ? ` [request-id: ${requestId}]` : ""}`,
+			),
+			{
+				statusCode: status,
+				responseBody,
+				isRetryable: status >= 500 || status === 429,
+			},
 		),
-		{
-			statusCode: status,
-			responseBody,
-			isRetryable: status >= 500 || status === 429,
-		},
+		{ headers, body: responseBody },
 	);
 }
 

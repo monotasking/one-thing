@@ -362,11 +362,13 @@
           </template>
         </div>
 
-        <!-- Turn-volatile state board captured at send time. Rendered into
-             the model request as a <context-update> block; shown here so the
-             user can see exactly what state the model was told. -->
+        <!-- The turn context delivered with this message. Rendered into the
+             model request as a <context-update> block; shown here so the user
+             can see exactly what the model was told. Two stored shapes: the
+             sectioned delta written since 2026-08-18 and the bare string of
+             older sessions. -->
         <div
-          v-if="message.role === 'user' && message.contextUpdate"
+          v-if="message.role === 'user' && contextUpdateText"
           class="message-context-update"
         >
           <button
@@ -380,7 +382,7 @@
           <pre
             v-if="contextUpdateExpanded"
             class="context-update-body"
-          >{{ message.contextUpdate }}</pre>
+          >{{ contextUpdateText }}</pre>
         </div>
 
         <!-- Inline error for assistant messages that failed mid-stream -->
@@ -568,6 +570,22 @@ const emit = defineEmits<{
 const isEditing = ref(false)
 const editContent = ref('')
 const contextUpdateExpanded = ref(false)
+
+/**
+ * What this message's turn-context block says, in the order it was delivered:
+ * the sections it (re)sent, then the ones it retired. Falls back to the legacy
+ * whole-block string for sessions written before the block gained sections.
+ */
+const contextUpdateText = computed(() => {
+  const delta = props.message.turnContext
+  if (delta) {
+    return [
+      ...Object.entries(delta.set ?? {}).map(([name, content]) => `[${name}]\n${content}`),
+      ...(delta.removed ?? []).map(name => `[${name}] removed`),
+    ].join('\n\n')
+  }
+  return props.message.contextUpdate ?? ''
+})
 
 // Steering identity + retraction. `steered` is the persisted marker (also
 // true for historical messages); the pending set only tracks messages still
@@ -1261,14 +1279,14 @@ function handleUpdateThinkingTime(time: number) {
   color: var(--ui-accent-primary-fg);
 }
 
+/* Opacity only: a translateY on top of the send scroll was a third
+   simultaneous motion (2026-08-17). */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 

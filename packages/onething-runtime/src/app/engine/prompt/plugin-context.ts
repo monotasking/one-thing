@@ -1,7 +1,9 @@
 import { pluginScope } from '@onething/core/plugins'
 import {
+  PluginPromptContextSource,
   clearPromptContextProvidersForPlugin as clearRuntimePromptContextProvidersForPlugin,
   collectPluginPromptContext as collectRuntimePluginPromptContext,
+  type CollectOnethingPluginPromptContextOptions,
   getPromptContextProviderCount as getRuntimePromptContextProviderCount,
   registerPromptContextProvider as registerRuntimePromptContextProvider,
   type OnethingPluginPromptContext,
@@ -69,28 +71,40 @@ export function getPromptContextProviderCount(): number {
   return getRuntimePromptContextProviderCount()
 }
 
+/**
+ * The host's health wiring for plugin prompt providers: every timeout /
+ * exception counts one failure on the plugin's promptContext scope (the
+ * breaker disables the plugin after N in a row), every success clears it.
+ * Scope carries no variable suffix ("(timeout)" would split one lane in two).
+ * Success reporting is zero-IO — it runs per provider on the send hot path.
+ */
+export const pluginPromptContextHealthOptions: CollectOnethingPluginPromptContextOptions = {
+  onProviderError(providerRef, error) {
+    console.error(`[PluginPromptContext] Provider "${providerRef}" failed:`, error)
+  },
+  onProviderFailure({ pluginId, providerId, error, timedOut }) {
+    reportPluginRuntimeFailure(
+      pluginId,
+      pluginScope.promptContext(providerId),
+      timedOut ? new Error(`timed out: ${describeError(error)}`) : error,
+    )
+  },
+  onProviderSuccess({ pluginId, providerId }) {
+    reportPluginRuntimeSuccess(pluginId, pluginScope.promptContext(providerId))
+  },
+}
+
+/** Plugin providers as a `PromptSource`, with the desktop health wiring. */
+export const pluginPromptSource: PluginPromptContextSource =
+  new PluginPromptContextSource(pluginPromptContextHealthOptions)
+
 export async function collectPluginPromptContext(
   context: PluginPromptContext,
 ): Promise<PluginPromptContextFragmentInput[]> {
-  return collectRuntimePluginPromptContext(context, {
-    onProviderError(providerRef, error) {
-      console.error(`[PluginPromptContext] Provider "${providerRef}" failed:`, error)
-    },
-    // 超时/异常都记一次失败:同一 scope 连续 N 次由熔断器自动禁用该插件。
-    // scope 里不带 "(timeout)" 之类的可变后缀 —— 那会把同一条车道拆成两条,
-    // 交替出现的超时与异常就永远攒不满阈值。
-    onProviderFailure({ pluginId, providerId, error, timedOut }) {
-      reportPluginRuntimeFailure(
-        pluginId,
-        pluginScope.promptContext(providerId),
-        timedOut ? new Error(`timed out: ${describeError(error)}`) : error,
-      )
-    },
-    // 成功清同 scope 的账:没有它,这条车道的连败数永远只增不减。
-    onProviderSuccess({ pluginId, providerId }) {
-      reportPluginRuntimeSuccess(pluginId, pluginScope.promptContext(providerId))
-    },
-  }) as Promise<PluginPromptContextFragmentInput[]>
+  return collectRuntimePluginPromptContext(
+    context,
+    pluginPromptContextHealthOptions,
+  ) as Promise<PluginPromptContextFragmentInput[]>
 }
 
 export type {

@@ -73,8 +73,12 @@ describe('Pi-style prompt builder', () => {
     expect(result.systemPrompt).toContain(ONETHING_DEFAULT_SYSTEM_PROMPT)
     expect(result.systemPrompt).not.toContain('Available tools:')
     expect(result.systemPrompt).not.toContain('- read:')
-    expect(result.systemPrompt).toContain('Current work directory: /repo')
-    expect(result.systemPrompt).toContain('Current date:')
+    // Neither the working directory nor the date is in the prefix any more
+    // (prompt-channels 2026-08-18): the path is a session fact carried by the
+    // `workdir` variable on the board, and the date by `datetime`.
+    expect(result.systemPrompt).not.toContain('Current work directory')
+    expect(result.systemPrompt).not.toContain('Current date:')
+    expect(result.systemPrompt).toContain('## Tool Workspace Rules')
     expect(result.messages[0].role).toBe('system')
     expect(result.messages[result.messages.length - 1]).toEqual({ role: 'user', content: 'hello' })
   })
@@ -127,11 +131,13 @@ describe('Pi-style prompt builder', () => {
       historyMessages: [],
     })
 
-    expect(JSON.stringify(voice.messages)).toContain('Voice Speak Mode')
-    expect(JSON.stringify(text.messages)).not.toContain('Voice Speak Mode')
+    // Speak mode is a per-turn fact — it rides the turn block, not the prefix.
+    expect(JSON.stringify(voice.messages)).not.toContain('Voice Speak Mode')
+    expect(JSON.stringify(voice.turn)).toContain('Voice Speak Mode')
+    expect(JSON.stringify(text.turn)).not.toContain('Voice Speak Mode')
   })
 
-  it('includes plugin prompt providers as plain developer sections without diffing', async () => {
+  it('includes plugin prompt providers as their own turn blocks', async () => {
     const seen: Array<{ providerId?: string; model?: string }> = []
     const unregister = registerPromptContextProvider('test-plugin', 'memory', async context => {
       seen.push({ providerId: context.providerId, model: context.model })
@@ -149,11 +155,13 @@ describe('Pi-style prompt builder', () => {
     })
     unregister()
 
-    expect(result.messages.some(message => String(message.content).includes('Plugin memory context'))).toBe(true)
+    expect(result.turn).toEqual([
+      { id: 'plugin:test-plugin/memory', content: 'Plugin memory context' },
+    ])
     expect(seen).toEqual([{ providerId: 'codex', model: 'gpt-5-codex' }])
   })
 
-  it('normalizes plugin user-role context to developer so only real history is user', async () => {
+  it('keeps plugin context out of the user history — it is a turn block, never a user message', async () => {
     const unregister = registerPromptContextProvider('note-skills', 'graph-profile', async () => ({
       role: 'user',
       source: 'plugins/note-skills/graph-profile',
@@ -167,7 +175,9 @@ describe('Pi-style prompt builder', () => {
     unregister()
 
     expect(result.messages.filter(message => message.role === 'user')).toEqual([{ role: 'user', content: 'real user message' }])
-    expect(result.messages.some(message => message.role === 'developer' && String(message.content).includes('Graph memory context'))).toBe(true)
+    expect(result.turn).toEqual([
+      { id: 'plugin:note-skills/graph-profile', content: 'Graph memory context' },
+    ])
   })
 
   it('loads AGENTS instructions from project root to work directory with override priority', () => {
@@ -274,7 +284,7 @@ describe('Pi-style prompt builder', () => {
 
     expect(result.messages[0].role).toBe('system')
     expect(result.messages.some(message => message.role === 'developer')).toBe(true)
-    expect(result.messages.some(message => message.role === 'developer' && String(message.content).includes('Work Directory'))).toBe(true)
+    expect(result.messages.some(message => message.role === 'developer' && String(message.content).includes('Tool Workspace Rules'))).toBe(true)
     expect(result.messages.filter(message => message.role === 'user')).toEqual([{ role: 'user', content: 'hello' }])
     expect(result.messages[result.messages.length - 1]).toEqual({ role: 'user', content: 'hello' })
   })

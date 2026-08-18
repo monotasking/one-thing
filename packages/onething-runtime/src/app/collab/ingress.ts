@@ -14,7 +14,9 @@ import {
   type ChatMessage,
   type ChatMessageMention,
   type ChatMessageReplyTo,
+  type MessageAttachment,
   type MessageOrigin,
+  type VoiceTranscriptMetadata,
 } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
@@ -30,10 +32,12 @@ import {
 import { isTrustedCollabDrive } from './drive-guard.js'
 import { collabV3RoomPostPort } from './actors/turn-context.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 export interface CollabRoomInboundCommand {
   content: string
-  attachments?: unknown[]
-  voice?: unknown
+  attachments?: MessageAttachment[]
+  voice?: VoiceTranscriptMetadata
   origin?: MessageOrigin
   source?: string
   channel?: string
@@ -119,9 +123,9 @@ export async function handleCollabRoomSendMessage(
     role: 'user',
     content: command.content,
     timestamp: Date.now(),
-    attachments: command.attachments as ChatMessage['attachments'],
+    attachments: command.attachments,
     source: command.source || 'text',
-    ...(command.voice !== undefined ? { voice: command.voice as ChatMessage['voice'] } : {}),
+    ...(command.voice !== undefined ? { voice: command.voice } : {}),
     ...(command.origin !== undefined ? { origin: command.origin } : {}),
     // Room messages never reach the core engine's own构造 (this gate persists
     // them itself), so the quote snapshot has to be carried across HERE too —
@@ -136,7 +140,7 @@ export async function handleCollabRoomSendMessage(
 
   store.addMessage(sessionId, message)
   await getEventBus().emit(sessionId, {
-    type: 'message:user-created',
+    type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
     message,
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
   /**

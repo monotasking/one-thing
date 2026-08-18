@@ -63,6 +63,8 @@ import { getStreamEngineSafe } from '../engine/index.js'
 import { taskMessageSource } from '../channel/origin.js'
 import { deliverInternalMessage } from '../plugins/sessions.js'
 
+import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 /* ── 在飞的账(内存态,单一属主)────────────────────────────────────────────── */
 
 interface ActiveTask {
@@ -115,10 +117,10 @@ function waitForTaskTerminalEvent(sessionId: string): Promise<TaskOutcome> {
       sessionId,
       envelope => {
         const type = (envelope.event as { type?: string } | undefined)?.type
-        if (type === 'stream:start') sawStart = true
-        else if (type === 'stream:complete') finish('complete')
-        else if (type === 'stream:error') finish('error')
-        else if (type === 'stream:aborted') finish('aborted')
+        if (type === SESSION_EVENT_TYPES.STREAM_START) sawStart = true
+        else if (type === SESSION_EVENT_TYPES.STREAM_COMPLETE) finish('complete')
+        else if (type === SESSION_EVENT_TYPES.STREAM_ERROR) finish('error')
+        else if (type === SESSION_EVENT_TYPES.STREAM_ABORTED) finish('aborted')
       },
       'task-dispatch-wait',
     )
@@ -279,7 +281,7 @@ export async function dispatchTask(
     const terminal = waitForTaskTerminalEvent(taskSessionId)
 
     await getEventBus().emit(taskSessionId, {
-      type: 'command:send-message',
+      type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
       content: request.prompt,
       source: taskMessageSource(taskSessionId),
       origin: taskOrigin(taskSessionId, 0, now),

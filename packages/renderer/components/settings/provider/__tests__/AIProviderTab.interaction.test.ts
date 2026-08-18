@@ -19,19 +19,41 @@ vi.mock('../useProviderUsage', () => ({
   useProviderUsage: () => mocks.providerUsage,
 }))
 
-// 空间凭证段(批 B3)在这条测试线里不参演:宿主答不上话时它整段不画,
-// 与 web 宿主的降级同一支路。它自己的行为在 SpaceCredentialsPanel.test.ts 里测。
+// 空间维度(批 B3 起,批 B7 折进连接卡片)在这条测试线里停在**默认空间**:
+// 宿主答不上话 = web 降级支路,凭证区仍是 settings 的那两个输入框。
+// 池本身的行为在 `SpaceCredentialPool.test.ts`,三态在
+// `ConnectionsSection.space.test.ts` / `useSpaceProviderView.test.ts`。
 vi.mock('@/stores/spaces', () => ({
   DEFAULT_SPACE_ID: 'default',
   useSpacesStore: () => ({
     available: false,
     spaces: [],
+    currentSpace: { id: 'default', name: '默认空间', createdAt: 0 },
     currentSpaceId: 'default',
     lastError: null,
     load: vi.fn(async () => {}),
+    getOverlay: vi.fn(async () => ({})),
+    patchOverlay: vi.fn(async () => ({})),
     getCredentials: vi.fn(async () => ({ providers: {} })),
     setCredential: vi.fn(async () => ({ providers: {} })),
     clearCredential: vi.fn(async () => ({ providers: {} })),
+  }),
+}))
+
+vi.mock('@/stores/spaceProviders', () => ({
+  useSpaceProvidersStore: () => ({
+    credentials: { providers: {} },
+    selectedModels: undefined,
+    loading: false,
+    lastError: null,
+    spaceId: 'default',
+    isDefaultSpace: true,
+    spaceAvailable: false,
+    poolOf: () => undefined,
+    applyCredentials: vi.fn(),
+    writeSelectedModels: vi.fn(async () => false),
+    ensureLoaded: vi.fn(async () => {}),
+    refresh: vi.fn(async () => {}),
   }),
 }))
 
@@ -149,6 +171,26 @@ beforeEach(() => {
 
     mocks.providerSettings = {
       viewingProvider,
+      // 批 B7:连接区通过 `providerSettings.spaceView` 判「当前空间配没配好」。
+      // 这条线停在默认空间 —— 视图内部落回 settings,判据与 B7 之前一字不差。
+      spaceView: {
+        isDefaultSpace: computed(() => true),
+        spaceAvailable: computed(() => false),
+        spaceName: computed(() => '默认空间'),
+        // openai 有 key、codex 有 oauthToken —— 与 B7 之前那套判据同结果。
+        isConfigured: vi.fn((providerId: string) => providerId === 'openai' || providerId === 'codex'),
+        credentialOf: vi.fn((providerId: string) => ({
+          providerId,
+          configured: providerId === 'openai' || providerId === 'codex',
+          summary: '',
+          entries: [],
+          entryCount: 0,
+          policy: 'single',
+          oauth: false,
+        })),
+        selectedModelsOf: vi.fn(() => ['openai/gpt-4o', 'openai/o4-mini']),
+        setSelectedModels: vi.fn(async () => false),
+      },
       isUserCustomProvider: vi.fn(() => false),
       isProviderEnabled: vi.fn((providerId: string) => providerId === 'openai'),
       getProviderEnvStatus: vi.fn(() => undefined),
@@ -248,7 +290,7 @@ describe('AIProviderTab model ledger', () => {
     expect(wrapper.text()).not.toContain('anthropic/claude-3-5-sonnet')
   })
 
-  it('marks the default model with a star and sets provider+model on star click', async () => {
+  it('marks the default model with a star; the click writes the space overlay, not settings (C1)', async () => {
     const wrapper = mountProviderTab()
 
     expect(ledgerRowById(wrapper, 'openai/gpt-4o').find('.row-star').classes()).toContain('set')
@@ -256,9 +298,9 @@ describe('AIProviderTab model ledger', () => {
 
     await ledgerRowById(wrapper, 'openai/o4-mini').find('.row-star').trigger('click')
 
-    const updated = lastSettingsUpdate(wrapper)
-    expect(updated.ai.provider).toBe('openai')
-    expect(updated.ai.providers.openai.model).toBe('openai/o4-mini')
+    // C1:默认选择住在 `space.json` 的 overlay 里,settings 一个字节都不动
+    // (overlay 那一侧由 provider-defaults.space.test.ts 钉)。
+    expect(wrapper.emitted('update:settings') ?? []).toEqual([])
     // Star click must not toggle the tune drawer.
     expect(wrapper.find('.ledger-tune').exists()).toBe(false)
   })

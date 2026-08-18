@@ -18,6 +18,14 @@ export interface ElectronOAuthIpcChannels {
 
 export interface ElectronOAuthProviderRequest {
   providerId: string
+  /**
+   * 凭证写回目标(批 B6)。缺席 = 默认空间(`oauth-tokens.json`)。
+   * 这一层只搬运,不解释 —— 归一在 `@onething/runtime/auth` 的
+   * `normalizeCredentialTarget`(非法/默认 spaceId 一律落回 settings)。
+   */
+  spaceId?: string
+  entryId?: string
+  label?: string
 }
 
 export interface ElectronOAuthCallbackRequest extends ElectronOAuthProviderRequest {

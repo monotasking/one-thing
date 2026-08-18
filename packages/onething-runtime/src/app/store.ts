@@ -39,6 +39,7 @@ export {
   updateMessageMentions,
   updateMessageReactions,
   updateMessageReplyTo,
+  updateMessageTurnContext,
   addMessageStep,
   updateMessageStep,
   updateMessageSteps,

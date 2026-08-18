@@ -64,6 +64,7 @@ import type { AIProvider, OpenRouterModel, ThinkingEffort } from '@shared/ipc'
 import type { SelectModelValue, SelectOptionLike } from '@/components/common/select'
 import Tooltip from '../common/Tooltip.vue'
 import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
+import { useSpaceProviderView } from '@/composables/useSpaceProviderView'
 import { useSessionAgentModel } from '@/composables/useSessionAgentModel'
 import { resolveOnethingModelCapabilities } from '@onething/runtime/providers/model-capability'
 
@@ -126,6 +127,16 @@ const props = defineProps<Props>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 
+/**
+ * 当前空间的 provider 视图(批 B9)。ThinkToggle 也会「改默认」——切换思考档
+ * 的那一对模型(deepseek-chat ↔ deepseek-reasoner)走的是同一条改默认的路,
+ * 所以落点也得跟着空间走。
+ */
+const spaceView = useSpaceProviderView({
+  settings: () => settingsStore.settings,
+  providers: () => settingsStore.availableProviders || [],
+})
+
 const tooltipDisabled = ref(false)
 
 function handleThinkVisibleChange(visible: boolean) {
@@ -170,6 +181,7 @@ const currentSelection = computed(() => resolveProviderModelSelection({
   settings: settingsStore.settings,
   session: currentSession.value,
   agentModel: sessionAgentModel.value,
+  spaceDefault: spaceView.spaceDefault.value,
 }))
 
 const currentProvider = computed(() => currentSelection.value.providerId)
@@ -572,12 +584,16 @@ async function setLegacyPairThinking(enabled: boolean): Promise<void> {
   const target = enabled ? pair.value.thinking : pair.value.normal
   const provider = currentProvider.value as AIProvider
 
-  await settingsStore.saveAIProviderDefault(provider, target)
-
+  // **会话置顶先落**:它是这次点击的主语(「这条会话用 thinking 档」),而
+  // 「顺手把空间默认也改了」是副产物。反过来写的话,一次 overlay 落盘失败/挂起
+  // 就会把会话那一格一起卡住 —— 用户点了没反应,而他要的那件事根本不依赖它。
   const sid = props.sessionId || sessionsStore.currentSessionId
   if (sid) {
     await sessionsStore.updateSessionModel(sid, provider, target)
   }
+
+  // 改默认永远写当前空间的 overlay(C1),与 ModelSelector.selectOption 同一条。
+  await spaceView.setDefaultSelection(provider, target)
 }
 </script>
 

@@ -3,8 +3,24 @@
  * OAuth-related type definitions for IPC communication
  */
 
+/**
+ * 凭证的写回目标(批 B6)。**缺席 = 默认空间**(`<store>/oauth-tokens.json`),
+ * 即这个字段出现之前的行为,一字未改。
+ *
+ * 带上 `spaceId` = 落进该空间的凭证池(`workspaces/<id>/credentials.json`);
+ * `entryId` 缺席表示「登录一个新账号,追加一条 entry」——同一个 provider 允许
+ * 多条 oauth entry。OAuth token **不能跨空间复制**(共用一串 refresh token 在
+ * rotation 下会互相作废),所以每个空间必须自己登一次。
+ */
+export interface OAuthCredentialTargetRequest {
+  spaceId?: string
+  entryId?: string
+  /** 新建 entry 的展示名。只在 `entryId` 缺席时用得上。 */
+  label?: string
+}
+
 // OAuth start request
-export interface OAuthStartRequest {
+export interface OAuthStartRequest extends OAuthCredentialTargetRequest {
   providerId: string
 }
 
@@ -31,7 +47,7 @@ export interface OAuthStartResponse {
 }
 
 // OAuth callback request (after user completes auth in browser)
-export interface OAuthCallbackRequest {
+export interface OAuthCallbackRequest extends OAuthCredentialTargetRequest {
   providerId: string
   code: string
   state: string
@@ -44,7 +60,7 @@ export interface OAuthCallbackResponse {
 }
 
 // OAuth status request
-export interface OAuthStatusRequest {
+export interface OAuthStatusRequest extends OAuthCredentialTargetRequest {
   providerId: string
 }
 
@@ -67,7 +83,7 @@ export interface OAuthStatusResponse {
 }
 
 // OAuth logout request
-export interface OAuthLogoutRequest {
+export interface OAuthLogoutRequest extends OAuthCredentialTargetRequest {
   providerId: string
 }
 
@@ -78,7 +94,7 @@ export interface OAuthLogoutResponse {
 }
 
 // OAuth device poll request (for device flow)
-export interface OAuthDevicePollRequest {
+export interface OAuthDevicePollRequest extends OAuthCredentialTargetRequest {
   providerId: string
   deviceCode?: string
   flowId?: string

@@ -27,7 +27,11 @@ import { setPluginBackground, type PluginBackgroundLayer } from '@/workspace/bac
 import { setPluginAmbient, type PluginAmbientLayer } from '@/workspace/ambient-registry'
 import { shouldNotifyInbound, summarizeNotificationBody } from './notify-inbound'
 import { playPluginNotifySound } from './plugin-notify-sound'
+import type { ChatMessage } from '@/types'
 import type { SessionEventEnvelope } from '@shared/events/index.js'
+import type { SessionStreamPayload } from '@/platform/types'
+
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
 let initialized = false
 
@@ -70,25 +74,30 @@ export function initializeIPCHub() {
 
     switch (event.type) {
       // Stream lifecycle
-      case 'stream:complete':
+      case SESSION_EVENT_TYPES.STREAM_COMPLETE:
         if (shouldDebugStream()) {
           console.log('[IPC Hub] session:event stream:complete', { sessionId, event })
         }
         store.handleStreamComplete({ sessionId, ...event.data })
         break
 
-      case 'stream:error':
+      case SESSION_EVENT_TYPES.STREAM_ERROR:
         if (shouldDebugStream()) {
           console.log('[IPC Hub] session:event stream:error', { sessionId, event })
         }
         store.handleStreamError({ sessionId, ...event.data })
         break
 
-      case 'stream:aborted':
+      case SESSION_EVENT_TYPES.STREAM_ABORTED:
         store.handleStreamComplete({ sessionId, aborted: true })
         break
 
-      case 'stream:start':
+      // Per-turn usage: snaps the composer's live token readout to real numbers.
+      case SESSION_EVENT_TYPES.STREAM_USAGE:
+        store.handleStreamUsage({ sessionId, usage: event.usage, accumulated: event.accumulated })
+        break
+
+      case SESSION_EVENT_TYPES.STREAM_START:
         if (shouldDebugStream()) {
           console.log('[IPC Hub] session:event stream:start', {
             time: logTime(),
@@ -107,60 +116,60 @@ export function initializeIPCHub() {
       // 进会话),整批工具事件就被泊死或丢弃,消息永远长不出那条调用,随后带真号
       // 来的 permission:request 就只能空等,卡片一张都不出。空串保留为兜底,给的
       // 是旧重放数据。
-      case 'tool:call':
+      case SESSION_EVENT_TYPES.TOOL_CALL:
         store.handleStreamChunk({ type: 'tool_call', sessionId, messageId: event.messageId || '', content: '', toolCall: event.toolCall })
         break
 
-      case 'tool:result':
+      case SESSION_EVENT_TYPES.TOOL_RESULT:
         store.handleStreamChunk({ type: 'tool_result', sessionId, messageId: event.messageId || '', content: '', toolCall: event.toolCall })
         break
 
-      case 'tool:input-start':
+      case SESSION_EVENT_TYPES.TOOL_INPUT_START:
         store.handleStreamChunk({
           type: 'tool_input_start', sessionId, messageId: event.messageId || '', content: '',
           toolCallId: event.toolCallId, toolName: event.toolName, toolCall: event.toolCall,
         })
         break
 
-      case 'tool:input-end':
+      case SESSION_EVENT_TYPES.TOOL_INPUT_END:
         store.handleStreamChunk({
           type: 'tool_input_end', sessionId, messageId: event.messageId || '', content: '',
           toolCallId: event.toolCallId, toolCall: event.toolCall,
         })
         break
 
-      case 'tool:execution-start':
+      case SESSION_EVENT_TYPES.TOOL_EXECUTION_START:
         store.handleToolExecutionStart({ sessionId, messageId: '', ...event })
         break
 
-      case 'tool:execution-update':
+      case SESSION_EVENT_TYPES.TOOL_EXECUTION_UPDATE:
         store.handleToolExecutionUpdate({ sessionId, messageId: '', ...event })
         break
 
-      case 'tool:execution-end':
+      case SESSION_EVENT_TYPES.TOOL_EXECUTION_END:
         store.handleToolExecutionEnd({ sessionId, messageId: '', ...event })
         break
 
       // Content events → mapped to stream chunk format
-      case 'content:part':
+      case SESSION_EVENT_TYPES.CONTENT_PART:
         store.handleStreamChunk({ type: 'content_part', sessionId, messageId: '', content: '', contentPart: event.part })
         break
 
-      case 'content:continuation':
+      case SESSION_EVENT_TYPES.CONTENT_CONTINUATION:
         store.handleStreamChunk({ type: 'continuation', sessionId, messageId: '', content: '', turnIndex: event.turnIndex })
         break
 
       // Step events(同上:认发射器盖的号,不猜活跃流)
-      case 'step:added':
+      case SESSION_EVENT_TYPES.STEP_ADDED:
         store.handleStepAdded({ sessionId, messageId: event.messageId || '', step: event.step })
         break
 
-      case 'step:updated':
+      case SESSION_EVENT_TYPES.STEP_UPDATED:
         store.handleStepUpdated({ sessionId, messageId: event.messageId || '', stepId: event.stepId, updates: event.updates })
         break
 
       // Skill events
-      case 'skill:activated':
+      case SESSION_EVENT_TYPES.SKILL_ACTIVATED:
         store.handleSkillActivated({ sessionId, messageId: '', skillName: event.skillName })
         break
 
@@ -173,9 +182,9 @@ export function initializeIPCHub() {
       //
       // settle 的 decision 是事件里独有的事实(账本答得出"还欠不欠",答不出"上次
       // 是批还是拒"),`notePermissionEvent` 会当场转达,不等那 200ms 的反查。
-      case 'permission:request':
-      case 'permission:queued':
-      case 'permission:settled':
+      case SESSION_EVENT_TYPES.PERMISSION_REQUEST:
+      case SESSION_EVENT_TYPES.PERMISSION_QUEUED:
+      case SESSION_EVENT_TYPES.PERMISSION_SETTLED:
         useCollabBoardStore().notePermissionEvent(sessionId, event)
         break
 
@@ -186,109 +195,131 @@ export function initializeIPCHub() {
       //
       // 落在**独立**的 interactions store 而不是 collabBoard:提问不是协作专属
       // (协议里 `origin: 'host-tool'` 是一等分支),而水龙头仍然只有这一个。
-      case 'interaction:requested':
-      case 'interaction:settled':
+      case SESSION_EVENT_TYPES.INTERACTION_REQUESTED:
+      case SESSION_EVENT_TYPES.INTERACTION_SETTLED:
         useInteractionsStore().noteInteractionEvent(sessionId, event)
         break
 
       // Message lifecycle events (event-driven message creation)
-      case 'message:user-created':
+      case SESSION_EVENT_TYPES.MESSAGE_USER_CREATED:
         refreshSessionListIfUnknown(sessionId)
-        noteReadWatermark(sessionId, (event as any).message)
-        notifyInbound(sessionId, (event as any).message)
-        store.handleMessageCreated({ sessionId, message: (event as any).message })
+        noteReadWatermark(sessionId, event.message)
+        notifyInbound(sessionId, event.message)
+        store.handleMessageCreated({ sessionId, message: event.message })
         break
 
-      case 'message:created':
-        noteReadWatermark(sessionId, (event as any).message)
-        notifyInbound(sessionId, (event as any).message)
-        store.handleMessageCreated({ sessionId, message: (event as any).message })
+      case SESSION_EVENT_TYPES.MESSAGE_CREATED:
+        noteReadWatermark(sessionId, event.message)
+        notifyInbound(sessionId, event.message)
+        store.handleMessageCreated({ sessionId, message: event.message })
         break
 
-      case 'message:assistant-created':
-        noteReadWatermark(sessionId, (event as any).message)
-        notifyInbound(sessionId, (event as any).message)
-        store.handleAssistantCreated({ sessionId, message: (event as any).message })
+      case SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED:
+        noteReadWatermark(sessionId, event.message)
+        notifyInbound(sessionId, event.message)
+        store.handleAssistantCreated({ sessionId, message: event.message })
         break
 
-      case 'message:updated':
-        store.updateSessionMessage(sessionId, (event as any).messageId, (event as any).updates)
+      case SESSION_EVENT_TYPES.MESSAGE_UPDATED:
+        store.updateSessionMessage(sessionId, event.messageId, event.updates)
         break
 
-      case 'message:deleted':
-        store.handleMessageDeleted({ sessionId, messageId: (event as any).messageId })
+      case SESSION_EVENT_TYPES.MESSAGE_DELETED:
+        store.handleMessageDeleted({ sessionId, messageId: event.messageId })
         break
 
       // Steering lifecycle: track which persisted steer messages are still
       // pending in the queue (retractable before the next loop turn).
-      case 'steering:queued':
-        store.handleSteeringQueued({ sessionId, messageId: (event as any).messageId })
+      case SESSION_EVENT_TYPES.STEERING_QUEUED:
+        store.handleSteeringQueued({ sessionId, messageId: event.messageId })
         break
 
-      case 'steering:consumed':
-        store.handleSteeringConsumed({ sessionId, messageIds: (event as any).messageIds })
+      case SESSION_EVENT_TYPES.STEERING_CONSUMED:
+        store.handleSteeringConsumed({ sessionId, messageIds: event.messageIds })
         break
 
-      case 'steering:retracted':
-        store.handleSteeringConsumed({ sessionId, messageIds: [(event as any).messageId] })
+      case SESSION_EVENT_TYPES.STEERING_RETRACTED:
+        store.handleSteeringConsumed({ sessionId, messageIds: [event.messageId] })
         break
 
       // 草稿纸的某一版真的进了模型 —— 已读水位线只认这条,不猜。
-      case 'scratchpad:consumed':
-        useScratchpadStore().noteConsumed(sessionId, (event as any).version)
+      case SESSION_EVENT_TYPES.SCRATCHPAD_CONSUMED:
+        useScratchpadStore().noteConsumed(sessionId, event.version)
         break
 
-      case 'messages:replaced':
-        store.handleMessagesReplaced({ sessionId, messages: (event as any).messages })
+      case SESSION_EVENT_TYPES.MESSAGES_REPLACED:
+        store.handleMessagesReplaced({ sessionId, messages: event.messages })
         break
 
-      case 'session:renamed':
-        store.handleSessionRenamed({ sessionId, name: (event as any).name })
+      case SESSION_EVENT_TYPES.SESSION_RENAMED:
+        store.handleSessionRenamed({ sessionId, name: event.name })
         break
 
       // 房间配置(名册 / 房名 / PM / 预算 / 冻结 / 响应模式)变了(架构收敛 C4 §3)。
       // 载全量小快照,列表就地合并 —— 写入方不再需要各自 `loadSessions()` 全量重拉。
-      case 'session:collab-updated':
+      case SESSION_EVENT_TYPES.SESSION_COLLAB_UPDATED:
         import('@/stores/sessions').then(({ useSessionsStore }) => {
           useSessionsStore().applyCollabRoomUpdate(sessionId, {
-            name: (event as any).name,
-            room: (event as any).room,
+            name: event.name,
+            room: event.room,
           })
         })
         break
 
-      case 'request:snapshot':
-        console.log('[IPCHub] request:snapshot', sessionId, (event as any).snapshot?.turn)
-        store.handleRequestSnapshot({ sessionId, snapshot: (event as any).snapshot })
+      case SESSION_EVENT_TYPES.REQUEST_SNAPSHOT:
+        console.log('[IPCHub] request:snapshot', sessionId, event.snapshot?.turn)
+        store.handleRequestSnapshot({ sessionId, snapshot: event.snapshot })
         break
 
-      case 'context:size-updated':
+      case SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED:
         // Per-turn input-token usage. Inspector's Context tab uses
         // contextSize as "last turn input" against the model's window.
         import('@/stores/sessions').then(({ useSessionsStore }) => {
           useSessionsStore().updateSessionTokenStats(sessionId, {
-            contextSize: (event as any).contextSize,
-            lastInputTokens: (event as any).contextSize,
+            contextSize: event.contextSize,
+            lastInputTokens: event.contextSize,
           })
         })
         break
 
-      case 'session:variables-updated':
+      // P1(2026-08-14):压缩通知的唯一正路。started 置位、completed 清位 ——
+      // stream:error 与会话切换都**不**清这个位:压缩是会话级的后台作业,和
+      // 某一条流的死活无关。SSE 重连有 ring buffer 的 ?after= 回放,不丢事件。
+      case SESSION_EVENT_TYPES.CONTEXT_COMPACT_STARTED:
+        store.setSessionCompacting(sessionId, true)
+        // C6:新一轮压缩开始 → 进度清零(上一轮的 2/5 不该留在状态条上)。
+        store.setSessionCompactProgress(sessionId, null)
+        break
+
+      // C6:分块进度。只有多块摘要会发,单块压缩全程没有这条。
+      case SESSION_EVENT_TYPES.CONTEXT_COMPACT_PROGRESS:
+        store.setSessionCompactProgress(sessionId, {
+          chunk: event.chunk,
+          totalChunks: event.totalChunks,
+        })
+        break
+
+      case SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED:
+        store.setSessionCompacting(sessionId, false)
+        store.setSessionCompactProgress(sessionId, null)
+        break
+
+      case SESSION_EVENT_TYPES.SESSION_VARIABLES_UPDATED:
         import('@/stores/sessions').then(({ useSessionsStore }) => {
           useSessionsStore().updateSessionVariables(sessionId, {
-            workingDirectory: (event as any).workingDirectory,
-            workingDirectoryRoots: (event as any).workingDirectoryRoots,
-            variables: (event as any).variables,
+            workingDirectory: event.workingDirectory,
+            workingDirectoryRoots: event.workingDirectoryRoots,
+            variables: event.variables,
           })
         })
         break
 
-      case 'session:goal-updated':
+      case SESSION_EVENT_TYPES.SESSION_GOAL_UPDATED:
         import('@/stores/sessions').then(({ useSessionsStore }) => {
           useSessionsStore().updateSessionGoal(
             sessionId,
-            (event as any).goal ?? null,
-            (event as any).goals,
+            event.goal ?? null,
+            event.goals,
           )
         })
         break
@@ -298,14 +329,14 @@ export function initializeIPCHub() {
   // ── Unified stream channel ────────────────────
   // High-frequency chunks: text-delta, reasoning-delta, tool-input-delta
   // Already batched by IPCBridge (16ms coalescing), so route directly to store.
-  platformApi.onSessionStream(({ sessionId, chunk }: { sessionId: string; chunk: any }) => {
+  platformApi.onSessionStream(({ sessionId, chunk }: SessionStreamPayload) => {
     const store = useChatStore()
     if (shouldDebugStream()) {
-      const text = typeof chunk.text === 'string'
+      const text = chunk.type === 'text-delta'
         ? chunk.text
-        : typeof chunk.reasoning === 'string'
+        : chunk.type === 'reasoning-delta'
           ? chunk.reasoning
-          : typeof chunk.argsTextDelta === 'string'
+          : chunk.type === 'tool-input-delta'
             ? chunk.argsTextDelta
             : ''
       console.log('[IPC Hub] session:stream chunk', {
@@ -392,6 +423,40 @@ export function initializeIPCHub() {
 }
 
 /**
+ * 插件目录投影里这条路真正读到的那几个字段。
+ *
+ * 形状的单源是主进程的 `OnethingRendererPluginInfo`(plugin-list.ts),但
+ * renderer 不该反向依赖 runtime 去拿它;而 `ElectronAPI['getPlugins']` 那份声明
+ * 至今只覆盖了投影的前半截(没有 contributes / requestActions)。在补齐之前,
+ * 这里按**本文件实际读到的字段**收窄,而不是退回 any。
+ */
+type PluginCatalogEntry = {
+  id: string
+  name: string
+  enabled: boolean
+  loaded?: boolean
+  requestActions?: string[]
+  contributes?: {
+    panels?: Array<{
+      id: string
+      label: string
+      view?: string
+      entry?: string
+      unsupported?: boolean
+      placements?: string[]
+    }>
+    uiSlots?: Array<{
+      anchor: string
+      id: string
+      label: string
+      unsupported?: boolean
+      drawer?: boolean
+      side?: string
+    }>
+  }
+}
+
+/**
  * 拉一次插件面板清单。
  *
  * 数据源是 `/api/plugins` 或 IPC 的列表投影 —— 里面已经带着 manifest 的
@@ -405,8 +470,8 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
       // 停用的插件不贡献入口 —— 用户把它关了,它的界面就该消失。
       // 但**启用却加载失败**的插件入口要留着:入口来自 manifest,不需要插件跑起来,
       // 于是它还能把"这插件没起来"这件事告诉用户(声明先于代码的实际好处)。
-      .filter((plugin: any) => plugin.enabled)
-      .flatMap((plugin: any) =>
+      .filter((plugin: PluginCatalogEntry) => plugin.enabled)
+      .flatMap((plugin: PluginCatalogEntry) =>
         (plugin.contributes?.panels || [])
           // 非法的 webview 声明(缺 entry / entry 越界 / 静态根非法)在投影层
           // 已经判过并标了 unsupported —— 这里把它丢掉,理由在设置页卡片上说。
@@ -435,8 +500,8 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
     // unsupported 的块保留在注册表里(设置页据此说"该锚点宿主不认识"),
     // 挂点组件会把它们过滤掉。
     setPluginUiSlots((result.plugins || [])
-      .filter((plugin: any) => plugin.enabled)
-      .flatMap((plugin: any) =>
+      .filter((plugin: PluginCatalogEntry) => plugin.enabled)
+      .flatMap((plugin: PluginCatalogEntry) =>
         // drawer / side 都是投影层**裁决后**的结果(锚点开了那个能力 + 这条
         // 声明了它;side 已归一到缺省侧);renderer 不再判第二遍,原样收下。
         (plugin.contributes?.uiSlots || []).map((slot: { anchor: string; id: string; label: string; unsupported?: boolean; drawer?: boolean; side?: string }) => ({
@@ -482,7 +547,7 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
  *
  * 只吃 message:* 落库事件,不碰流式 chunk —— 徽标因此不会在生成过程中闪。
  */
-function noteReadWatermark(sessionId: string, message: unknown): void {
+function noteReadWatermark(sessionId: string, message: ChatMessage): void {
   const role = (message as { role?: string } | undefined)?.role
   if (role !== 'user' && role !== 'assistant') return
   const raw = (message as { timestamp?: number } | undefined)?.timestamp
@@ -507,7 +572,7 @@ function noteReadWatermark(sessionId: string, message: unknown): void {
  */
 const lastNotifiedAt = new Map<string, number>()
 
-function notifyInbound(sessionId: string, message: unknown): void {
+function notifyInbound(sessionId: string, message: ChatMessage): void {
   const record = message as {
     role?: string
     content?: string

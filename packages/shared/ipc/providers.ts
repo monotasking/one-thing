@@ -215,17 +215,69 @@ export interface ModelCapabilityEntry {
   providerMetadata?: JsonObject
 }
 
+/**
+ * models.dev 目录缓存的一格。**缓存不是设置** —— 它是「这个 provider 有哪些模型」
+ * 的机器级快照(~500KB),刷新一次就该所有空间同时看见,复制 N 份纯属浪费。
+ * C2 把它从 `ProviderConfig` 里抬出来,单独挂在全局 `AISettings.modelCatalog`。
+ */
+export interface ProviderModelCatalog {
+  /** Model metadata from models.dev. Keyed by modelId. */
+  models?: Record<string, ModelCapabilityEntry>
+  /** Timestamp of last model fetch for this provider. */
+  modelsLastFetched?: number
+}
+
+/**
+ * **一个空间的整套 provider 设置**(C2)—— 落盘在 `workspaces/<id>/providers.json`。
+ *
+ * 用户 08-18 原话:「不同的空间,provider 设置应该是完整的、独立的两套。对齐。」
+ * 于是形状 = 旧的 `AISettings` 减去两样:
+ *
+ * - **凭证**(apiKey / oauthToken):留在同空间的 `credentials.json` 凭证池 ——
+ *   多把 key 轮换需要池,一格装不下。
+ * - **models.dev 目录缓存**(`models` / `modelsLastFetched`):见
+ *   `ProviderModelCatalog`,缓存全局一份。
+ *
+ * 其余全部 per-space 且**无回落**:空间即空间。默认 provider/model、每个 provider
+ * 的 enabled / selectedModels / provider 级 baseUrl 与档位、逐模型的
+ * 上下文·最大输出·思考档位覆盖、自定义 provider 定义,都在这里。
+ */
+export interface SpaceProviderSettings {
+  /** 这个空间的默认 provider。空串 = 这个空间还没选过(空白空间的初值)。 */
+  provider: string
+  /** 这个空间的采样温度。缺席 = 用全局缺省。 */
+  temperature?: number
+  /** 每个 provider 在这个空间的配置。键缺席 = 这个空间没配过它。 */
+  providers: Record<string, ProviderConfig>
+  /** 自定义 provider 的**定义**(不含凭证)。C2 起也是 per-space。 */
+  customProviders: CustomProviderConfig[]
+}
+
+/**
+ * **全局 AI 设置**(`settings.json` 的 `ai` 段)—— C2 之后只剩目录缓存。
+ *
+ * `provider` / `providers` / `customProviders` 已经**搬进** per-space 的
+ * `SpaceProviderSettings`(见上)。这里留下的两格都不是「设置」:`temperature`
+ * 是空间没表达时的机器级缺省,`modelCatalog` 是 models.dev 的目录快照。
+ */
 export interface AISettings {
-  provider: string  // Can be built-in provider or custom provider ID
   temperature: number
-  // Per-provider configurations (built-in providers)
+  /** provider id → models.dev 目录缓存。全空间共享。 */
+  modelCatalog: Record<string, ProviderModelCatalog>
+}
+
+/**
+ * **生效形状** = 某个空间的 `SpaceProviderSettings` + 全局目录缓存。
+ *
+ * 这是运行期与渲染层实际拿在手里的那份(`AppSettings.ai` 就是它):解析链、
+ * 设置页、模型选择器读的都是「当前空间的设置,叠上全局目录」。落盘时由
+ * `app/stores/settings.ts` 拆回两边 —— 拆分点只此一处。
+ */
+export interface EffectiveAISettings extends AISettings {
+  provider: string
   providers: {
-    [AIProvider.OpenAI]: ProviderConfig
-    [AIProvider.Claude]: ProviderConfig
-    [AIProvider.Custom]: ProviderConfig
-    [key: string]: ProviderConfig  // Allow dynamic provider keys
+    [key: string]: ProviderConfig
   }
-  // User-defined custom providers
   customProviders?: CustomProviderConfig[]
 }
 
@@ -276,6 +328,14 @@ export interface CodexProviderUsage {
 
 export interface ProviderUsageRequest {
   providerId: string
+  /**
+   * 用量按**哪个空间的凭证**查(C1 接批 B10 移交)。
+   *
+   * 凭证迁进空间池之后,后端已经没有「settings 里那一把 codex token」可用;而
+   * 「当前空间」是 window 级状态,后端不持有 —— 所以由渲染层把它带上。缺席 =
+   * 默认空间(旧调用方与 web 端降级路径)。
+   */
+  spaceId?: string
 }
 
 export interface ProviderUsageResponse {
@@ -339,6 +399,16 @@ export interface ModelsSearchRequest {
   providerId?: string
 }
 
+/**
+ * Empty = refresh every configured provider from models.dev (the manual
+ * button). `providerId` = only that provider — the store uses it when a
+ * provider's catalog key moved (千问/Kimi 计费方式·地区), so the list under
+ * the new endpoint is re-pulled without touching everyone else's.
+ */
+export interface ModelRefreshRegistryRequest {
+  providerId?: string
+}
+
 export interface ModelRefreshRegistryResponse {
   success: boolean
   error?: string
@@ -376,7 +446,7 @@ export type ModelsRoutes = {
   getWithCapabilities: { input: ModelsWithCapabilitiesRequest; output: ModelsListResponse }
   getAll: { input: Record<string, never>; output: ModelsListResponse }
   search: { input: ModelsSearchRequest; output: ModelsListResponse }
-  refreshRegistry: { input: Record<string, never>; output: ModelRefreshRegistryResponse }
+  refreshRegistry: { input: ModelRefreshRegistryRequest; output: ModelRefreshRegistryResponse }
   getNameAliases: { input: Record<string, never>; output: ModelNameAliasesResponse }
   getDisplayName: { input: ModelDisplayNameRequest; output: ModelDisplayNameResponse }
 }

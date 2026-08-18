@@ -401,6 +401,16 @@ export interface AgentRunnableProvider extends AgentProvider {
 
 export type AgentExecutableProvider = AgentStreamingProvider | AgentRunnableProvider
 
+/** What a host hands back when it wants the next attempt to use another credential. */
+export interface AgentCredentialRotation {
+  /** The rebuilt provider, carrying the next credential. */
+  provider: AgentProvider
+  /** Wait before the next attempt. Defaults to 0 — a fresh key needs no backoff. */
+  delayMs?: number
+  /** Short human-readable reason, surfaced on the `auto-retry` event. */
+  reason?: string
+}
+
 export interface AgentLoopOptions {
   provider: AgentProvider
   model: string
@@ -450,6 +460,32 @@ export interface AgentLoopOptions {
    * Defaults to 2s/4s/8s; primarily overridable for tests.
    */
   turnRetryDelaysMs?: number[]
+  /**
+   * Credential rotation hook, consulted at the turn-retry boundary — the ONE
+   * place a different key may be swapped in (never mid-stream: this runs in
+   * the catch block of a failed attempt, and the `resultsByToolCallId` guard
+   * already forbids retrying past a tool side effect).
+   *
+   * The host classifies the error and decides; returning a provider means
+   * "retry this turn against that one instead", returning undefined means
+   * "nothing to rotate onto" and the ordinary retry rules take over.
+   *
+   * Rotation is an INDEPENDENT reason to retry, deliberately consulted before
+   * `isRetryableAgentError`: quota exhaustion is fatal for the key that hit it
+   * (retrying the same one is pointless) but not for the next key in the pool.
+   *
+   * Optional and additive — the loop behaves exactly as before when absent.
+   */
+  rotateCredential?: (
+    error: unknown,
+    attempt: number,
+  ) => Promise<AgentCredentialRotation | undefined>
+  /**
+   * Cap on credential rotations within one run. Defaults to 3 — a pool bigger
+   * than that still gets used, but one run cannot walk the whole pool while
+   * the user waits.
+   */
+  maxCredentialRotations?: number
   onEvent?: (event: AgentStreamEvent) => void
   /** Per-round request/response observer (tracing). Must be synchronous
    * and non-throwing from the loop's perspective; errors are swallowed. */

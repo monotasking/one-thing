@@ -1,0 +1,29 @@
+{
+  "name": "onething Ledger",
+  "_note": "试验种子：把 onething 现有审美（墨/纸、衬线标题、墨线分区、描边配色）压成 Organic/Classical 同款的十几个参数，交给 claude.ai/design 的生成器派生一整套（色阶/字阶/阴影/间距/组件）。用来分辨『丑』到底出在审美选择还是出在缺派生。字段名与取值沿用 Organic / Classical 两份 theme.json 里出现过的词，未出现过的没有编造。色值全部取自 Flexoki（packages/renderer/styles/flexoki-colors.css）。",
+  "palette": {
+    "hue": 40,
+    "band": "dark",
+    "scheme": "mono",
+    "sat": 0.35,
+    "pin": { "bg": "#282726", "surface": "#343331", "accent2": "#D0A215" },
+    "bg": "#282726",
+    "surface": "#343331",
+    "text": "#F2F0E5",
+    "accent": "#4385BE",
+    "accent2": "#D0A215"
+  },
+  "fonts": {
+    "heading": { "family": "Lora", "class": "serif-trans", "weights": [400, 500] },
+    "body": { "family": "Public Sans", "class": "humanist", "weights": [400, 500, 600] },
+    "headingWeight": 500
+  },
+  "density": 1.0,
+  "radius": 4,
+  "layoutStyle": "left",
+  "dividers": "hairline",
+  "buttonStyle": "outline",
+  "colorUse": "stroke",
+  "imageTreatment": "plate",
+  "iconSet": "lucide"
+}

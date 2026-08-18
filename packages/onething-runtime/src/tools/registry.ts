@@ -29,6 +29,13 @@ import {
   type ToolInfoUnion,
 } from './tool.js'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
+import {
+  promptFragmentsFromToolContribution,
+  type CoreBuildPromptContextOptions,
+  type CorePromptFragment,
+} from '@onething/core/engine'
+import { resolveAIToolName } from '@onething/core/agent-loop'
+import type { PromptSource } from '../prompts/composer.js'
 
 export interface OnethingToolDefinition {
   id: string
@@ -133,7 +140,9 @@ function toToolExecutionError(error: object | undefined): OnethingToolExecutionR
   return { success: false, error: extractCoreErrorMessage(error, 'Unknown error during tool execution') }
 }
 
-export class OnethingToolRegistry {
+export class OnethingToolRegistry implements PromptSource {
+  /** `PromptSource` name (diagnostics). */
+  readonly name = 'tools'
   private readonly toolRegistry = new HeadlessToolRegistry<ToolInfo, ToolInfoAsync, InitContext>()
   private readonly logger: OnethingToolRuntimeLogger
   private readonly createToolCallId: () => string
@@ -169,6 +178,40 @@ export class OnethingToolRegistry {
 
   hasTool(toolId: string): boolean {
     return this.toolRegistry.has(toolId)
+  }
+
+  /**
+   * Prompt fragments contributed by the given tools (`ToolInfo.prompt`), in
+   * the order the ids are given. Pass the turn's **surface** (the tool ids
+   * that actually go into the request), not the catalog: the registry is a
+   * directory, and a tool that is registered but off this turn's surface must
+   * not talk in the prompt. Unknown ids and tools without `prompt` yield
+   * nothing.
+   */
+  /**
+   * `PromptSource`: the prompt of the tools **on this build's surface**.
+   * `ctx.toolNames` are the model-facing names of exactly the tools that go
+   * into the request (tier ∩ settings ∩ scene ∩ agent allowlist), resolved
+   * back to registry ids and sorted — the rendered bytes must not depend on
+   * registration order (prompt-cache prefix). No tools → nothing.
+   */
+  collect(ctx: CoreBuildPromptContextOptions): CorePromptFragment[] {
+    if (!ctx.hasTools) return []
+    const ids = (ctx.toolNames ?? []).map(name => resolveAIToolName(name)).sort()
+    return this.getPromptFragments(ids)
+  }
+
+  getPromptFragments(toolIds: Iterable<string>): CorePromptFragment[] {
+    const out: CorePromptFragment[] = []
+    const seen = new Set<string>()
+    for (const toolId of toolIds) {
+      if (seen.has(toolId)) continue
+      seen.add(toolId)
+      const tool = this.toolRegistry.getStatic(toolId) ?? this.toolRegistry.getAsync(toolId)
+      if (!tool?.prompt) continue
+      out.push(...promptFragmentsFromToolContribution(toolId, tool.prompt))
+    }
+    return out
   }
 
   getToolExecutionMode(toolId: string): ToolExecutionMode {

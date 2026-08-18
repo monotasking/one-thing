@@ -15,6 +15,9 @@ import { initializeAgents } from './agents/index.js'
 import { configureSandboxHost, configureAppToolSandbox } from './tools/core/sandbox.js'
 import { configureAppBackgroundJobs } from './tools/core/background-jobs.js'
 import { configureAppProviderRegistry } from './providers/index.js'
+import { configureAppSpaceCredentialsCrypto } from './providers/space-credentials.js'
+import { migrateProviderConfigToDefaultSpace } from './providers/space-config-migration.js'
+import { configureAppPluginCredentialStrategyHost } from './providers/credential-strategy.js'
 import { configureAppScheduler } from './scheduler/index.js'
 import { configureAppRipgrep } from './utils/ripgrep.js'
 import { configureAppSearchProviders } from './search/providers.js'
@@ -53,6 +56,21 @@ import {
 import './tools/builtin/index.js'
 import './tools/builtin/headless.js'
 import './tools/builtin/readonly.js'
+// R2b:切换期开关 + MCP 目录挂点(两个都不拉新树模块)。
+import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
+import { configureToolkitMCPCapabilitiesChangedHandler } from './mcp/capabilities-changed.js'
+/**
+ * R2b —— 与上面那三条 builtin barrel 静态边**同一条理由**,而且是同一个坑真的
+ * 踩过一次:下面缝 4 里的 `await import('./toolkit/wiring.js')` 在 apps/server 的
+ * 单文件包(vite SSR `inlineDynamicImports`)里被内联成对模块常量 `wiring` 的引用,
+ * 而打包器按**静态**图排序 —— 只被动态引用的 wiring 被排在了本工厂的顶层 await
+ * 之后,于是 `ONETHING_TOOLKIT=1` 启动即 `ReferenceError: Cannot access 'wiring'
+ * before initialization`。
+ *
+ * 这条静态边只负责**排序**:wiring 的 import 无副作用(`import-side-effect-free`
+ * 那道栅栏对它同样成立),开关关时它里面一个函数都不会被调到。
+ */
+import { buildToolkitCatalog, refreshToolkitMcpTools } from './toolkit/wiring.js'
 import { registerAppRpcDomains } from './rpc/index.js'
 import { initializeSessionSkills } from './skills/session-skills.js'
 import { MCPManager, registerMCPTools } from './mcp/index.js'
@@ -70,6 +88,8 @@ export function configureAppRuntimeAdapters(): void {
   configureAppToolSandbox()
   configureAppBackgroundJobs()
   configureAppProviderRegistry()
+  configureAppSpaceCredentialsCrypto()
+  configureAppPluginCredentialStrategyHost()
   configureAppScheduler()
   configureAppRipgrep()
   configureAppSearchProviders()
@@ -127,6 +147,15 @@ export async function createOnethingBackend(
 
   initializeStores()
   await initializeSettings()
+  // provider 配置迁进空间层(C1)。位置是**刚读完 settings、任何人问「这个
+  // provider 配了没有」之前** —— 引擎、工具、插件都会问,而迁移之前那个答案
+  // 还在旧形状里。幂等:标记在就是一次同步返回。迁移失败不写标记、不清旧字段,
+  // 下次启动重跑;把整次装配拖垮才是更坏的结果,所以这里只记不抛。
+  try {
+    await migrateProviderConfigToDefaultSpace()
+  } catch (error) {
+    console.error('[Backend] provider config migration failed (will retry next boot):', error)
+  }
   // Agents are read on every turn (and once per room member); warm the cache
   // here so nothing downstream pays a synchronous read + normalize.
   await initializeAgents()
@@ -178,6 +207,20 @@ export async function createOnethingBackend(
     await initializeReadonlyToolRegistry()
   } else {
     await initializeHeadlessToolRegistry()
+  }
+
+  // R2b 缝 4 —— 新树的三档目录**并行**建在旧注册表旁边(§12.5)。
+  //
+  // 只在 `ONETHING_TOOLKIT=1` 时建:不建就一个函数都不跑(模块本身由上面那条
+  // 静态排序边带进来,它 import 无副作用)。
+  // 档位与上面那三行一一对位。`feature_*` 与插件工具**不在这里**:前者由
+  // self-evolution feature 在 mount 时自己装进目录,后者由 `api.registerTool`
+  // 装(R3b)—— 两者的寿命都不是"一档目录"的寿命。
+  if (isToolkitEnabled()) {
+    buildToolkitCatalog(options.toolRegistry ?? 'headless')
+    // §13.7 裁定 5:服务器工具面变了就重算目录。挂在既有的唯一通知点上,
+    // 不顶掉宿主自己那个 handler(它注册的是另一个口子)。
+    configureToolkitMCPCapabilitiesChangedHandler(() => refreshToolkitMcpTools())
   }
 
   // RPC domains go up BEFORE afterTools: that hook is where the Electron host

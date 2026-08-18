@@ -712,7 +712,7 @@ describe('stream end visual stability', () => {
     expect(wrapper.findAll('.plugin-status-line')).toHaveLength(2)
   })
 
-  it('renders generation waiting after data steps', async () => {
+  it('renders no waiting row after data steps — the readout lives in the composer (2026-08-17)', async () => {
     const wrapper = mount(MessageBubble, {
       props: {
         role: 'assistant',
@@ -727,9 +727,10 @@ describe('stream end visual stability', () => {
       global: { stubs: markdownStubs },
     })
 
-    const waiting = wrapper.find('.generation-waiting')
-    expect(waiting.exists()).toBe(true)
-    expect(waiting.text()).toContain('Waiting')
+    expect(wrapper.find('.generation-waiting').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Waiting')
+    // The steps rail still paints — only the waiting placeholder is silent.
+    expect(wrapper.find('.process-rail').exists()).toBe(true)
   })
 
   it('summarizes inline thought headers from their reasoning content', async () => {
@@ -843,7 +844,8 @@ describe('stream end visual stability', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('.generation-waiting').exists()).toBe(true)
+    // The waiting placeholder itself paints nothing (composer readout owns it).
+    expect(wrapper.find('.generation-waiting').exists()).toBe(false)
     const trailing = wrapper.findAll('.other-parts-container > .content')
     expect(trailing).toHaveLength(1)
     const trailingEl = trailing[0].element
@@ -1022,7 +1024,8 @@ describe('stream end visual stability', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Waiting')
+    // Waiting is a composer-side readout now: the message shows nothing yet.
+    expect(wrapper.text()).not.toContain('Waiting')
 
     await wrapper.setProps({
       message: {

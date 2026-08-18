@@ -16,6 +16,10 @@ configureAppSkillManage()
 
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import type { ChatMessage, ProviderConfig } from '@shared/ipc.js'
+import {
+  resetSpaceCredentialsCacheForTests,
+  upsertSpaceProviderApiKey,
+} from '@onething/runtime/spaces/credentials'
 import { createSkillReviewTrigger } from '../skill-review.js'
 import { clearSkillReviewState } from '../skill-review-state.js'
 import type { TriggerContext } from '../index.js'
@@ -81,11 +85,20 @@ beforeEach(() => {
     runTurn: vi.fn(),
   })
   vi.mocked(runAgentLoop).mockReset()
+  // C1:凭证住在**空间的凭证池**里,不再是 `settings.ai.providers[*].apiKey`。
+  // 工具 provider 走的是同一条解析链,所以这里得把那把 key 放进 default 池,
+  // 否则它会被诚实拦成「本空间未配置」。
+  resetSpaceCredentialsCacheForTests()
+  upsertSpaceProviderApiKey('default', 'deepseek', {
+    apiKey: 'deepseek-key',
+    baseUrl: 'https://deepseek.test',
+  })
 })
 
 afterEach(() => {
   invalidateSkillsCache()
   clearSkillReviewState()
+  resetSpaceCredentialsCacheForTests()
   fs.rmSync(tmpDir, { recursive: true, force: true })
   restoreEnv()
 })

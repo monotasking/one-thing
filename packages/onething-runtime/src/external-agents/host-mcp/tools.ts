@@ -42,7 +42,7 @@ import {
   type CollabVenueTool,
 } from '../../collab/tool-surface.js'
 import { resolveAgentToolSurface } from '../../agents/profile.js'
-import type { ToolContext, ToolInfo } from '../../tools/tool.js'
+import type { ToolContext } from '../../tools/tool.js'
 import { resolveHostToolContext } from './context.js'
 import type { HostToolTurnContext } from './types.js'
 
@@ -101,6 +101,24 @@ export function resolveHostToolSurface(input: HostToolSurfaceInput): CollabVenue
   })
 }
 
+/**
+ * 一只**可注入的宿主工具**。
+ *
+ * R3b 把这里的入参从旧 `ToolInfo` 放宽成这张结构表:装配层开关关时递的是旧注册表
+ * 里那个对象(它逐字满足这张表),开关开时递的是目录里那只工具的一层薄包装
+ * (schema 从契约表反查回 zod,执行走 `runToolkitToolDirectly`)。这个文件因此
+ * **不再 import 任何一棵注册表**,两条路对它是同一个形状。
+ *
+ * `parameters` 刻意是 `unknown`:这里只会去取它的 `.shape`(见 `rawShapeOf`),
+ * 取不到就给一张空表 —— 那条兜底本来就在。
+ */
+export interface HostMcpHostTool {
+  id: string
+  description: string
+  parameters: unknown
+  execute(args: Record<string, unknown>, ctx: ToolContext): Promise<{ output: string }>
+}
+
 /** MCP 的工具结果形状(`CallToolResult` 的我们用得到的那一小块)。 */
 export interface HostMcpCallResult {
   content: Array<{ type: 'text'; text: string }>
@@ -150,7 +168,7 @@ export const HOST_MCP_TURN_GONE =
  * 「身份从会话推,不从参数收」是同一条纪律。
  */
 export function toHostMcpToolDefinition(
-  tool: ToolInfo,
+  tool: HostMcpHostTool,
   execSessionId: string,
 ): HostMcpToolDefinition {
   return {

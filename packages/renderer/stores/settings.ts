@@ -1,12 +1,18 @@
 import { defineStore } from 'pinia'
-import { ref, toRaw, computed } from 'vue'
+import { ref, toRaw, computed, watch } from 'vue'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, OpenRouterModel } from '@/types'
 import { AIProvider as AIProviderEnum } from '@shared/ipc'
 import type { AIProviderId, ThinkingEffort, TypographyDensity } from '@shared/ipc'
 import { createDefaultSettings } from '@shared/defaults/settings'
+import {
+  composeEffectiveAISettings,
+  splitEffectiveAISettings,
+} from '@shared/defaults/ai-settings'
+import { useSpaceProvidersStore } from './spaceProviders'
 import { platformApi } from '@/platform'
 import { modelsApi } from '@/platform/models-client'
 import { providersApi } from '@/platform/providers-client'
+import { getOnethingModelsDevProviderId } from '@onething/runtime/providers/models-dev-catalog'
 
 const CHAT_FONT_CACHE_KEY = 'cached-chat-fonts'
 
@@ -220,6 +226,52 @@ export const useSettingsStore = defineStore('settings', () => {
     document.documentElement.setAttribute('data-typography-density', typographyDensity)
   }
 
+  /**
+   * **换源(C2)**:`settings.ai` = 当前空间的 `providers.json` + 全局目录缓存。
+   *
+   * 后端 `getSettings()` 回的是 **default 空间**合成出来的那一份(它没有「当前
+   * 空间」的概念 —— 那是 window 级状态)。所以渲染层拿到之后要用**这个窗口的**
+   * 空间重新合成一次:整棵消费者树(设置页、模型选择器、AgentConfigForm、
+   * useActiveModelCapabilities…)读的都是 `settings.ai.providers`,换源放在这一处,
+   * 它们一个字不改就变成了 per-space。
+   *
+   * 后端答不上话(web 降级,`providerSettings === null`)时**保持原样** —— 那台
+   * 宿主只有一个空间,`/api/settings` 那一份就是它的生效设置。
+   */
+  async function applySpaceProviderSettings(): Promise<void> {
+    const spaceProviders = useSpaceProvidersStore()
+    await spaceProviders.ensureLoaded()
+    watchSpaceProviderSettings(spaceProviders)
+    const space = spaceProviders.providerSettings
+    if (!space) return
+    settings.value.ai = composeEffectiveAISettings(
+      { temperature: settings.value.ai?.temperature, modelCatalog: settings.value.ai?.modelCatalog },
+      space,
+    )
+  }
+
+  /**
+   * 切空间(以及别的窗口写盘之后的重拉)要把 `settings.ai` 一起换掉 ——
+   * 否则「切空间只换数据不换外观」会退化成「换了空间,设置页还画着上一个空间的
+   * provider」。
+   *
+   * **惰性注册**:等到第一次真的合成过一次再挂,免得 settings store 一被实例化
+   * 就把 spaceProviders / spaces 两个 store 也拖起来(它们要读 localStorage 与
+   * 平台 API,一堆只用 settings 的单测并没有铺那些桩)。
+   */
+  let spaceWatchStarted = false
+  function watchSpaceProviderSettings(
+    spaceProviders: ReturnType<typeof useSpaceProvidersStore>,
+  ): void {
+    if (spaceWatchStarted) return
+    spaceWatchStarted = true
+    watch(
+      () => spaceProviders.providerSettings,
+      () => { void applySpaceProviderSettings() },
+      { deep: true },
+    )
+  }
+
   async function loadSettings() {
     isLoading.value = true
     try {
@@ -232,6 +284,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
       if (settingsResponse.success && settingsResponse.settings) {
         settings.value = settingsResponse.settings
+        await applySpaceProviderSettings()
         // Ensure customProviders array exists
         if (!settings.value.ai.customProviders) {
           settings.value.ai.customProviders = []
@@ -311,13 +364,46 @@ export const useSettingsStore = defineStore('settings', () => {
       const nextCustomKey = JSON.stringify(plainSettings.ai?.customProviders ?? [])
       const customProvidersChanged = prevCustomKey !== nextCustomKey
 
+      // A provider whose catalog key moved (千问/Kimi: 计费方式 × 地区 pick which
+      // models.dev book it reads) must have its list re-pulled under the new
+      // endpoint — otherwise the settings card keeps showing the OLD book's
+      // models (k3 / k3-256k under 按量付费, kimi-k2.7 under 编程套餐) until
+      // someone presses Refresh, and the models the user can actually pick
+      // are nowhere on the page. Decided here, after the save lands, because
+      // the registry refresh reads the persisted mode.
+      const catalogMovedProviders = providersWhoseCatalogKeyMoved(
+        settings.value.ai?.providers,
+        plainSettings.ai?.providers,
+      )
+
       settings.value = plainSettings
-      const response = await platformApi.saveSettings(plainSettings)
+
+      // **拆分落盘(C2)**:`ai` 的 per-space 那一半 → 当前空间的 providers.json,
+      // 其余(温度缺省 + models.dev 目录缓存)→ settings.json。
+      //
+      // 顺序是先空间后全局:全局那条通道会广播 `settings:changed`,而收件方会
+      // 立刻回来读 providers.json —— 反过来它读到的是上一版。
+      const spaceProviders = useSpaceProvidersStore()
+      const { global, space } = splitEffectiveAISettings(plainSettings.ai)
+      let savedSpace = false
+      if (spaceProviders.providerSettings) {
+        savedSpace = await spaceProviders.writeProviderSettings(space, '保存 provider 设置失败')
+        if (!savedSpace) throw new Error(spaceProviders.lastError || 'Failed to save provider settings')
+      }
+      // 后端只收全局那一半(`ai.providers` 缺席 = 「这次不表达 per-space」,见
+      // `app/stores/settings.ts` 的 `prepareSave`)。
+      const globalPayload = savedSpace
+        ? ({ ...plainSettings, ai: global } as unknown as AppSettings)
+        : plainSettings
+      const response = await platformApi.saveSettings(globalPayload)
       if (!response.success) {
         throw new Error(response.error || 'Failed to save settings')
       }
       const savedSettings = response.settings ?? plainSettings
       settings.value = savedSettings
+      // 后端回的 `ai` 是 default 空间那一份(它不知道这个窗口在哪个空间),
+      // 再合成一次才是这个窗口该显示的。
+      await applySpaceProviderSettings()
       cacheChatFonts(savedSettings)
 
       // Only apply theme if theme-related settings actually changed
@@ -330,9 +416,32 @@ export const useSettingsStore = defineStore('settings', () => {
       if (customProvidersChanged) {
         await refreshAvailableProviders()
       }
+      for (const providerId of catalogMovedProviders) {
+        void refreshModelsForProvider(providerId).catch(error => {
+          console.warn(`[SettingsStore] Failed to re-pull models for ${providerId} after endpoint change:`, error)
+        })
+      }
     } finally {
       isLoading.value = false
     }
+  }
+
+  function providersWhoseCatalogKeyMoved(
+    prev: AppSettings['ai']['providers'] | undefined,
+    next: AppSettings['ai']['providers'] | undefined,
+  ): string[] {
+    if (!prev || !next) return []
+    const moved: string[] = []
+    for (const providerId of Object.keys(next)) {
+      if (!prev[providerId]) continue
+      if (
+        getOnethingModelsDevProviderId(providerId, prev[providerId]) !==
+        getOnethingModelsDevProviderId(providerId, next[providerId])
+      ) {
+        moved.push(providerId)
+      }
+    }
+    return moved
   }
 
   function updateAIProvider(provider: AIProviderId) {
@@ -682,7 +791,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const providerDirectModels = new Set(['codex', 'github-copilot'])
     if (!providerDirectModels.has(providerId)) {
       try {
-        await modelsApi.refreshModelRegistry()
+        await modelsApi.refreshModelRegistry(providerId)
       } catch (error) {
         console.warn('[SettingsStore] Failed to refresh model registry:', error)
       }
@@ -787,6 +896,7 @@ export const useSettingsStore = defineStore('settings', () => {
     isLoading,
     effectiveTheme,
     loadSettings,
+    applySpaceProviderSettings,
     loadProviders,
     saveSettings,
     updateAIProvider,

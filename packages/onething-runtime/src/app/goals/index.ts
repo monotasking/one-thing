@@ -35,6 +35,8 @@ import type { SessionGoal, SessionGoalLimits } from "@onething/runtime/goals";
 import { getEventBus } from "../events/index.js";
 import * as store from "../store.js";
 
+import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+
 const pendingUsage = new Map<string, { tokens: number; seconds: number }>();
 
 // Model rounds observed since the last automatic continuation. More than one
@@ -92,7 +94,7 @@ function persistGoal(sessionId: string, goal: SessionGoal | null): void {
 	const current = currentGoalOf(goals) ?? null;
 	store.updateSessionGoals(sessionId, goals, current);
 	try {
-		getEventBus().emit(sessionId, { type: "session:goal-updated", goal: settled, goals });
+		getEventBus().emit(sessionId, { type: SESSION_EVENT_TYPES.SESSION_GOAL_UPDATED, goal: settled, goals });
 	} catch (error) {
 		console.error("[goals] Failed to emit goal-updated:", error);
 	}
@@ -109,7 +111,7 @@ function persistGoalRecord(sessionId: string, goal: SessionGoal): void {
 	const goals = pruneGoalHistory(mergeGoalRecord(storedGoals(sessionId), goal));
 	store.updateSessionGoals(sessionId, goals, currentGoalOf(goals) ?? null);
 	try {
-		getEventBus().emit(sessionId, { type: "session:goal-updated", goal, goals });
+		getEventBus().emit(sessionId, { type: SESSION_EVENT_TYPES.SESSION_GOAL_UPDATED, goal, goals });
 	} catch (error) {
 		console.error("[goals] Failed to emit goal-updated:", error);
 	}

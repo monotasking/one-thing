@@ -142,7 +142,12 @@ onBeforeUnmount(() => {
     flex-basis var(--duration-normal) var(--ease-default);
 }
 
-:global(.splitter.is-dragging) .splitter-panel {
+/* 拖拽期间关过渡。不能写 `:global(.splitter.is-dragging) .splitter-panel`:
+   scoped 编译会把 :global() 后面的后代整段丢掉,规则被截成 `.splitter.is-dragging`
+   —— transition:none 落在容器上,面板自己的 flex 过渡照跑,拖起来边缘滞后、松手还
+   继续滑(2026-08-18 真机复现)。祖先门直接裸写,Vue 只给最后一个复合选择器加
+   [data-v-x],作用域仍在。 */
+.splitter.is-dragging .splitter-panel {
   transition: none;
 }
 

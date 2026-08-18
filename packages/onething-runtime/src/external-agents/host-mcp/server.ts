@@ -33,8 +33,7 @@
  * 而一轮一台服务器让并发隔离成为**结构事实**而不是纪律 —— 两间房同时跑,各自
  * 的 handler 闭包里是各自的会话 id,没有任何一条路能让它们看见对方。
  */
-import type { ToolInfo } from '../../tools/tool.js'
-import { toHostMcpToolDefinition, type HostMcpToolDefinition } from './tools.js'
+import { toHostMcpToolDefinition, type HostMcpHostTool, type HostMcpToolDefinition } from './tools.js'
 import { HOST_MCP_SERVER_NAME, hostMcpToolName } from './types.js'
 
 /** `createSdkMcpServer` 的结构子集 —— SDK 保持软依赖,测试可以替身。 */
@@ -76,7 +75,7 @@ export interface CreateHostMcpServerOptions {
   /** 这台服务器服务的那一轮。闭包进每个 handler。 */
   execSessionId: string
   /** 已过场子门的工具对象 —— 本地回合调的**同一批**。 */
-  tools: readonly ToolInfo[]
+  tools: readonly HostMcpHostTool[]
   /** 测试替身。缺席时惰性 import SDK。 */
   createSdkMcpServer?: CreateSdkMcpServerFn
   logger?: Pick<Console, 'warn'>

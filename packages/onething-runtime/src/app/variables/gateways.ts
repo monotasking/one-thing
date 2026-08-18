@@ -19,6 +19,7 @@ import { expandPath } from '../tools/core/sandbox.js'
 import { getVariablesStore } from './store/index.js'
 import { DEFAULT_ONETHING_AGENT_ID } from '@onething/runtime/agents'
 import { canonicalizeProjectRoot, projectIdFromPath } from '@onething/runtime/project-dirs'
+import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import type { GlobalStoreGateway } from '@onething/runtime/variables/providers/global-store'
 import type { GoalVariableGateway } from '@onething/runtime/variables/providers/goal'
 import type { KeyedStoreGateway } from '@onething/runtime/variables/providers/keyed-store'
@@ -178,20 +179,50 @@ export const agentStoreGateway: KeyedStoreGateway = {
   },
 }
 
+/**
+ * project 变量的 scope key(批 B8-3)—— **带空间维度**。
+ *
+ * 病根(B4 勘误 4 记档的那颗雷):`projectIdFromPath` 是路径的确定性哈希,
+ * 所以 `/repo` 在 A、B 两个空间拿到同一个 id;名册 per-space 之后「同一目录在
+ * 两个空间是两个项目」已经成立,但 `variables.json` 是全局单文件,两个项目
+ * 因此共用同一格项目级变量 —— 空间隔离在这一格上漏了。
+ *
+ * **零迁移的做法是给 key 加前缀而不是搬文件**:
+ *
+ *  - default 空间 → `<projectId>`,**与本切片之前逐字一致**。老用户(以及所有
+ *    从没建过第二个空间的用户)的 `project_variables` 一个键都不会变,读得回、
+ *    写得回,没有任何一次性迁移动作。
+ *  - 其余空间 → `<spaceId>:<projectId>`。空间 id 过 `isValidSpaceId` 的门,
+ *    项目 id 是 hex 哈希或随机 id,两者都不含 `:`,所以前缀不会与老键撞车。
+ *
+ * 为什么不是「project 变量跟着 project 记录搬进 `workspaces/<id>/`」:那要给
+ * VariablesStore 开第二个持久化根、给 default 留一条特判读路径,并且 agent 级
+ * 与全局级变量仍然得留在 `variables.json` —— 一个文件变三个,换来的隔离与前缀
+ * 完全等价。前缀是同一份隔离里最小的那个改动。
+ *
+ * **agent 级与全局级变量有意保持全局**:agent 定义本身(`agents/`)是全空间共享的,
+ * 同一个 agent 在哪个空间都是同一个人格,它的变量跟着定义走才自洽;真要按空间
+ * 分家,该分的是 agent 定义,不是变量。
+ */
+export function scopedProjectVariableKey(spaceId: string, projectId: string): string {
+  return spaceId === DEFAULT_SPACE_ID ? projectId : `${spaceId}:${projectId}`
+}
+
 export const projectStoreGateway: KeyedStoreGateway = {
   resolveKey(sessionId) {
     const workdir = store.getSession(sessionId)?.workingDirectory
     if (!workdir) return null
+    const spaceId = resolveSessionSpaceId(sessionId)
     // Registered projects key by their stable id so every root of a
     // multi-root project shares one variable scope; unregistered workdirs
     // keep the legacy path-derived key.
     try {
-      const project = getProjectsStore(resolveSessionSpaceId(sessionId)).get(workdir)
-      if (project) return project.id
+      const project = getProjectsStore(spaceId).get(workdir)
+      if (project) return scopedProjectVariableKey(spaceId, project.id)
     } catch {
       // fall through to the derived key
     }
-    return projectIdFromPath(workdir)
+    return scopedProjectVariableKey(spaceId, projectIdFromPath(workdir))
   },
   read(key) {
     return getVariablesStore().getScopedVariables('project', key)

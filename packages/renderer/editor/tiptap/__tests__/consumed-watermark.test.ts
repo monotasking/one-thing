@@ -23,6 +23,7 @@ import {
   consumedWatermarkPlugin,
   watermarkBlockIndex,
   watermarkBlocks,
+  type ConsumedWatermarkResolution,
 } from '../consumed-watermark'
 
 describe('水位线 · 偏移 → 第几块', () => {
@@ -130,12 +131,15 @@ function mountWithWatermark(markdown: string, initialOffset: number | null) {
     markdown: { serializer: { serialize: (doc: PMNode) => string } }
   }
   let offset = initialOffset
+  const resolutions: ConsumedWatermarkResolution[] = []
   editor.registerPlugin(consumedWatermarkPlugin({
     getOffset: () => offset,
     serialize: doc => storage.markdown.serializer.serialize(doc),
+    onResolve: resolution => resolutions.push(resolution),
   }))
   return {
     editor,
+    resolutions,
     lines: () => editor.view.dom.querySelectorAll('.tiptap-consumed-line'),
     setOffset(next: number | null) {
       offset = next
@@ -171,6 +175,34 @@ describe('水位线 · 真编辑器里的那条线', () => {
 
     pad.setOffset(blocks[0].end)
     expect(pad.lines().length).toBe(1)
+
+    pad.editor.destroy()
+  })
+
+  /**
+   * 宿主的「AI 读到第 N 段」只能从这里拿:字符偏移 → 块序这条换算要序列化器,
+   * 而序列化器只有编辑器内部有。宿主自己数 `\n\n` 会得到另一套数字。
+   */
+  it('每次重算都把块序回给宿主 —— 不画线的那几种情况也回', () => {
+    const blocks = withEditor(SAMPLE, (doc, serialize) => watermarkBlocks(doc, serialize))
+    const pad = mountWithWatermark(SAMPLE, null)
+
+    // 没读过:回 null,但块总数是真的。
+    expect(pad.resolutions.at(-1)).toEqual({ blockIndex: null, blockCount: blocks.length })
+
+    pad.setOffset(blocks[0].end)
+    expect(pad.resolutions.at(-1)?.blockIndex).toBe(0)
+
+    pad.setOffset(blocks[1].end)
+    expect(pad.resolutions.at(-1)?.blockIndex).toBe(1)
+
+    // 落在块中间照样归到那一块 —— 与画线用的是同一个换算,不许两处各算各的。
+    pad.setOffset(blocks[0].end + 1)
+    expect(pad.resolutions.at(-1)?.blockIndex).toBe(1)
+
+    // 读完全文:不画线,也就没有"第 N 段"。
+    pad.setOffset(blocks[blocks.length - 1].end)
+    expect(pad.resolutions.at(-1)?.blockIndex).toBeNull()
 
     pad.editor.destroy()
   })

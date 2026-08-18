@@ -7,6 +7,14 @@
  * 四件套 —— 我们少一个 `define`,是因为「写文件」这件事本仓已经有 write/edit
  * 两个工具在干,再造第三个入口只会分叉。
  *
+ * ── 场景门(2026-08-18 工具梳理)───────────────────────────────────────
+ *
+ * 三个工具照旧由本 feature 注册,但**不再出现在普通对话的工具面上**:它们挂在
+ * 内置 skill `onething-self-evolution`(`resources/skills/`,默认关闭)名下 ——
+ * `tools/scene-surface.ts` 的 `SKILL_SCENE_TOOLS` 只在该 skill 于本回合启用时把
+ * 它们放进请求。使用说明也从系统提示词搬进了那份 SKILL.md(原 `self-evolution.md`
+ * 段落已删):进场景 = 用户在 设置 → Skills 打开它。
+ *
  * ── 自己也是 feature(吃自己狗粮)────────────────────────────────────────
  *
  * 这三个工具**不是**加在 `tools/builtin/index.ts` 那张表里的第 25 个内置工具,
@@ -80,6 +88,10 @@ import { isPathInside } from '../../rpc/sandbox.js'
 import { getStorePath } from '../../stores/paths.js'
 import { Tool } from '../../tools/core/tool.js'
 import { hasTool, registerTool, unregisterTool } from '../../tools/registry.js'
+// R3b:开关开时三件套改进 toolkit 目录(见 mountSelfEvolution 顶部的注释)。
+import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
+import { getToolkitCatalog } from '@onething/runtime/toolkit'
+import { FeatureToolRuntime, registerFeatureTools } from '../../toolkit/catalog.js'
 import {
   dumpFeatureEffects,
   dumpFeatures,
@@ -306,6 +318,29 @@ const InspectParameters = z.object({})
  * 卸载再挂载就会捡到上一轮的残留记录(而那些记录指向的 unmount 早已失效)。
  */
 function mountSelfEvolution(ctx: FeatureContext): void {
+  /*
+   * R3b:开关开时三件套进**目录**,不进旧 registry(设计文档 §10.2-④)。
+   *
+   * 纪律与旧路逐字相同,只是换了一本册子:
+   *  - 宿主档门还是那一句(判据从 `hasTool('bash')` 变成 `catalog.has('bash')`,
+   *    问的是同一件事:这台宿主给不给跑 shell);
+   *  - 注册顺序 = 解绕的逆序,所以清扫的 disposer 仍然在三只工具**之后**注册,
+   *    卸载时第一个跑;
+   *  - 那张动态挂载表的寿命 = 这次 mount 的寿命(`FeatureToolRuntime` 是在这里 new 的)。
+   *
+   * 目录没装上(宿主没走 backend、装配还没到)时**退回旧路** —— 与其余改口点同一条
+   * 兜底;判据是目录在不在,不是开关本身。
+   */
+  const catalog = isToolkitEnabled() ? getToolkitCatalog() : undefined
+  if (catalog) {
+    const handle = registerFeatureTools(catalog, new FeatureToolRuntime())
+    // 档门拒绝(目录里没有 bash)= 一个字都不注册,与旧路的 `hasTool('bash')` 同判据。
+    if (!handle.registered) return
+    ctx.registerDisposer(() => { handle.unregister() })
+    ctx.registerDisposer(() => handle.runtime.sweep())
+    return
+  }
+
   // 宿主档门:见文件头。默认拒绝 —— 注册表没起来时一个字都不注册。
   if (!hasTool('bash')) return
 

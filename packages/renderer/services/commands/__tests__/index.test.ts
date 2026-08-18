@@ -25,6 +25,8 @@ const platformMocks = vi.hoisted(() => ({
   goalSet: vi.fn(),
   getPluginCommands: vi.fn(),
   executePluginCommand: vi.fn(),
+  emitCommand: vi.fn(),
+  onSessionEvent: vi.fn(() => vi.fn()),
 }))
 
 vi.mock('@/stores/sessions', () => ({
@@ -62,6 +64,9 @@ describe('renderer command registry', () => {
     platformMocks.goalSet.mockReset()
     platformMocks.getPluginCommands.mockReset()
     platformMocks.executePluginCommand.mockReset()
+    platformMocks.emitCommand.mockReset()
+    platformMocks.onSessionEvent.mockReset()
+    platformMocks.onSessionEvent.mockImplementation(() => vi.fn())
   })
 
   it('registers /new for the command picker', () => {
@@ -214,6 +219,18 @@ describe('renderer command registry', () => {
     expect(resume).toEqual({ success: false, error: 'No goal is set for this session' })
     expect(platformMocks.goalGet).not.toHaveBeenCalled()
     expect(platformMocks.goalSet).not.toHaveBeenCalled()
+    expect(storeMocks.materializeNewChatDraft).not.toHaveBeenCalled()
+  })
+
+  // P3(docs/design/context-compact-fix-2026-08.md §4):草稿会话上 /compact 从前
+  // 会把命令发给一个引擎从没见过的 sessionId,回来一句 "Session not found"。
+  it('short-circuits /compact on a new-chat draft', async () => {
+    storeMocks.isNewChatDraftId.mockReturnValue(true)
+
+    const result = await executeCommand('compact', { sessionId: 'draft:abc', args: '' })
+
+    expect(result).toEqual({ success: true, message: 'Nothing to compact yet' })
+    expect(platformMocks.emitCommand).not.toHaveBeenCalled()
     expect(storeMocks.materializeNewChatDraft).not.toHaveBeenCalled()
   })
 

@@ -15,6 +15,7 @@ import {
 	getOnethingModelCapabilityEntry,
 	getOnethingModelContextLength,
 	getOnethingModelDisplayName,
+	getOnethingKnownModelMaxOutputTokens,
 	getOnethingModelMaxOutputTokens,
 	getOnethingModelNameAliases,
 	getOnethingModelsForProvider,
@@ -483,6 +484,19 @@ export async function getModelContextLength(
 	providerId?: string,
 ): Promise<number> {
 	return getOnethingModelContextLength(
+		getProviderConfigs(),
+		modelId,
+		providerId,
+		queryOptions(),
+	);
+}
+
+/** Strict: real max output or undefined — never an invented 4096. */
+export async function getKnownModelMaxOutputTokens(
+	modelId: string,
+	providerId?: string,
+): Promise<number | undefined> {
+	return getOnethingKnownModelMaxOutputTokens(
 		getProviderConfigs(),
 		modelId,
 		providerId,

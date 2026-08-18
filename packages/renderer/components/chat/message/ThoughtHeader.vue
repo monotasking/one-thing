@@ -10,6 +10,16 @@
       :class="{ flowing: live }"
     >{{ label }}</span>
     <span
+      v-if="meta"
+      class="thought-detail thought-meta"
+    >
+      <span
+        class="thought-detail-separator"
+        aria-hidden="true"
+      >·</span>
+      <span class="thought-detail-text">{{ meta }}</span>
+    </span>
+    <span
       v-if="detail"
       class="thought-detail"
     >
@@ -17,7 +27,10 @@
         class="thought-detail-separator"
         aria-hidden="true"
       >·</span>
-      <span class="thought-detail-text">{{ detail }}</span>
+      <span
+        class="thought-detail-text"
+        :class="{ tail: detailTail }"
+      ><bdi>{{ detail }}</bdi></span>
     </span>
   </div>
 </template>
@@ -40,12 +53,22 @@
 withDefaults(defineProps<{
   /** 'Thought' when settled; 'Thinking' / 'Waiting' while live. */
   label: string
+  /** Short fixed-width fact (elapsed time) that never gets ellipsised; sits before `detail`. */
+  meta?: string
   /** Summary or elapsed time. Rendered behind a middot, ellipsised. */
   detail?: string
+  /**
+   * Show the END of `detail` when it does not fit (ellipsis on the left) —
+   * for the live reasoning tail streaming through a collapsed thought header,
+   * where the newest words are the ones that matter.
+   */
+  detailTail?: boolean
   /** Live phase: pulsing dot + breathing label. */
   live?: boolean
 }>(), {
+  meta: '',
   detail: '',
+  detailTail: false,
   live: false,
 })
 </script>
@@ -96,6 +119,11 @@ withDefaults(defineProps<{
   white-space: nowrap;
 }
 
+.thought-meta {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
 .thought-detail-separator {
   flex: 0 0 auto;
   color: color-mix(in srgb, var(--thought-fg) 52%, transparent);
@@ -107,6 +135,19 @@ withDefaults(defineProps<{
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Left-side ellipsis: lay the box out RTL so overflow clips (and the ellipsis
+   lands) at the start; the <bdi> keeps the text itself LTR. */
+.thought-detail-text.tail {
+  direction: rtl;
+  text-align: left;
+  font-variant-numeric: normal;
+}
+
+.thought-detail-text.tail > bdi {
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 /* Liveness cue for the phases that have no other one (waiting / thinking
@@ -162,7 +203,9 @@ withDefaults(defineProps<{
   min-height: 0;
   overflow: hidden;
   padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--ui-border-default-border)) 60%, transparent);
+  /* No frame (2026-08-17 拍板): the thought body is quiet text under its
+     header, not a boxed panel. */
+  border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--ui-message-thinking-fg);
@@ -177,6 +220,12 @@ withDefaults(defineProps<{
 
 .thought-body p:last-child {
   margin-bottom: 0;
+}
+
+/* Streaming segment shells: only the last segment's last <p> is the body's
+   last <p> (see markdown.css). */
+.thought-body .md-segment:not(:last-of-type) > p:last-child {
+  margin-bottom: 0.5em;
 }
 
 .thought-body ul {

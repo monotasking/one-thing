@@ -195,6 +195,15 @@ watch(
   min-height: 0;
 }
 
+/* 右栏这份聊天面同样要有 `chat-surface` 容器(L5):`.thread-chat-panel` 与
+   `.chat-panel` 是**同一个元素**,查不了自己,所以容器落在 `.thread-chat-detail`
+   上。这里恰恰是窄栏降级最该生效的地方 —— 右栏 250–310px,而旧的 `@media` 查的
+   是窗口宽,整块聊天面在这儿从来没进过 768 那一档。 */
+.thread-chat-detail {
+  container-type: inline-size;
+  container-name: chat-surface;
+}
+
 /* ────────────────────────────────────────────────────────────────────────
    窄栏适配(右栏 250–310px)。
    一条纪律:**只压尺寸,不裁内容** —— 放不下的一律给横滚,永远不 `hidden`。

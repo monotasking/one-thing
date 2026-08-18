@@ -84,11 +84,31 @@ export function watermarkBlocks(doc: PMNode, serialize: (doc: PMNode) => string)
   return blocks
 }
 
+/**
+ * 换算的结果,**也是宿主唯一能拿到「AI 读到第几段」的地方**。
+ *
+ * 段号不由宿主再算一遍:字符偏移 → 块序这条换算要序列化器,而序列化器只有
+ * 编辑器内部有。宿主自己拿 markdown 数 `\n\n` 得到的是另一套数字,两处会漂。
+ */
+export interface ConsumedWatermarkResolution {
+  /** 已读末尾落在第几个顶层块(0 基);`null` = 画不出线(没读过 / 读完了 / 算不出)。 */
+  blockIndex: number | null
+  /** 当前文档的顶层块总数。 */
+  blockCount: number
+}
+
 export interface ConsumedWatermarkConfig {
   /** 已读末尾的 markdown 字符偏移;`null` = 还没有任何一版被消费过。 */
   getOffset: () => number | null
   /** 与纸上存的 markdown 同一套语法的序列化器(即 tiptap-markdown 那一份)。 */
   serialize: (doc: PMNode) => string
+  /**
+   * 每次重算都回一次结果 —— 宿主拿它显示「AI 读到第 N 段」。
+   *
+   * **回调在 PM 的 state 计算期里被调用**,所以实现方必须自己把副作用推迟到
+   * 事务之外(宿主用 `queueMicrotask`),不能就地改文档。
+   */
+  onResolve?: (resolution: ConsumedWatermarkResolution) => void
 }
 
 function renderLine(): HTMLElement {
@@ -104,9 +124,13 @@ function renderLine(): HTMLElement {
 
 function buildDecorations(doc: PMNode, config: ConsumedWatermarkConfig): DecorationSet {
   const offset = config.getOffset()
-  if (offset === null || offset <= 0) return DecorationSet.empty
+  if (offset === null || offset <= 0) {
+    config.onResolve?.({ blockIndex: null, blockCount: doc.childCount })
+    return DecorationSet.empty
+  }
   const blocks = watermarkBlocks(doc, config.serialize)
   const index = watermarkBlockIndex(blocks.map(block => block.end), offset)
+  config.onResolve?.({ blockIndex: index, blockCount: doc.childCount })
   if (index === null) return DecorationSet.empty
   const pos = blocks[index].pos
   return DecorationSet.create(doc, [

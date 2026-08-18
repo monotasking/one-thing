@@ -12,6 +12,8 @@ import {
 import type { SchedulerTaskContext } from './types.js'
 import type { OnethingSchedulerUserTask } from './user-tasks.js'
 
+import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 type MaybePromise<T> = T | Promise<T>
 
 export interface OnethingSchedulerAgentTaskLogger {
@@ -195,19 +197,19 @@ export async function runOnethingSchedulerAgentTask(
 
     cleanupFns.push(options.eventBus.onAny(sessionId, (envelope) => {
       const event = eventObject(envelope)
-      if (event.type === 'stream:start') {
+      if (event.type === SESSION_EVENT_TYPES.STREAM_START) {
         clearTimeout(startTimer)
         assistantMessageId = typeof event.assistantMessageId === 'string' ? event.assistantMessageId : ''
         detail.assistantMessageId = assistantMessageId
         detail.timeline?.push(timelineEntry({
-          type: 'stream:start',
+          type: SESSION_EVENT_TYPES.STREAM_START,
           title: 'Agent stream started',
           detail: typeof event.model === 'string' ? event.model : undefined,
           timestamp: envelope.timestamp,
         }, options))
         return
       }
-      if (event.type === 'permission:request') {
+      if (event.type === SESSION_EVENT_TYPES.PERMISSION_REQUEST) {
         blocked = true
         const requestId = typeof event.requestId === 'string' ? event.requestId : ''
         detail.timeline?.push(timelineEntry({
@@ -219,7 +221,7 @@ export async function runOnethingSchedulerAgentTask(
           metadata: { permissionType: event.permissionType, pattern: event.pattern },
         }, options))
         options.eventBus.emit(sessionId, {
-          type: 'command:permission-respond',
+          type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
           channel: 'scheduler',
           requestId,
           decision: 'reject',
@@ -227,10 +229,10 @@ export async function runOnethingSchedulerAgentTask(
         }).catch(error => options.logger?.error?.('[SchedulerUserTasks] Failed to reject permission:', error))
         return
       }
-      if (event.type === 'step:added') {
+      if (event.type === SESSION_EVENT_TYPES.STEP_ADDED) {
         const step = event.step as { id?: string; title?: string; status?: string; toolCallId?: string } | undefined
         detail.timeline?.push(timelineEntry({
-          type: 'step:added',
+          type: SESSION_EVENT_TYPES.STEP_ADDED,
           title: step?.title || 'Step added',
           status: step?.status,
           stepId: step?.id,
@@ -239,11 +241,11 @@ export async function runOnethingSchedulerAgentTask(
         }, options))
         return
       }
-      if (event.type === 'step:updated') {
+      if (event.type === SESSION_EVENT_TYPES.STEP_UPDATED) {
         const updates = event.updates as { title?: string; status?: string } | undefined
         const stepId = typeof event.stepId === 'string' ? event.stepId : ''
         detail.timeline?.push(timelineEntry({
-          type: 'step:updated',
+          type: SESSION_EVENT_TYPES.STEP_UPDATED,
           title: updates?.title || stepId,
           status: updates?.status,
           stepId,
@@ -251,7 +253,7 @@ export async function runOnethingSchedulerAgentTask(
         }, options))
         return
       }
-      if (event.type === 'tool:call' || event.type === 'tool:result') {
+      if (event.type === SESSION_EVENT_TYPES.TOOL_CALL || event.type === SESSION_EVENT_TYPES.TOOL_RESULT) {
         const toolCall = event.toolCall as { id?: string; toolName?: string; status?: string; error?: string } | undefined
         detail.timeline?.push(timelineEntry({
           type: event.type,
@@ -263,10 +265,10 @@ export async function runOnethingSchedulerAgentTask(
         }, options))
         return
       }
-      if (event.type === 'stream:complete') {
+      if (event.type === SESSION_EVENT_TYPES.STREAM_COMPLETE) {
         const data = event.data as { error?: string; usage?: unknown } | undefined
         detail.timeline?.push(timelineEntry({
-          type: 'stream:complete',
+          type: SESSION_EVENT_TYPES.STREAM_COMPLETE,
           title: 'Agent stream completed',
           detail: data?.error,
           timestamp: envelope.timestamp,
@@ -275,10 +277,10 @@ export async function runOnethingSchedulerAgentTask(
         complete(data?.error)
         return
       }
-      if (event.type === 'stream:error') {
+      if (event.type === SESSION_EVENT_TYPES.STREAM_ERROR) {
         const data = event.data as { error?: string } | undefined
         detail.timeline?.push(timelineEntry({
-          type: 'stream:error',
+          type: SESSION_EVENT_TYPES.STREAM_ERROR,
           title: 'Agent stream failed',
           detail: data?.error,
           timestamp: envelope.timestamp,
@@ -286,10 +288,10 @@ export async function runOnethingSchedulerAgentTask(
         complete(data?.error)
         return
       }
-      if (event.type === 'stream:aborted') {
+      if (event.type === SESSION_EVENT_TYPES.STREAM_ABORTED) {
         const reason = typeof event.reason === 'string' ? event.reason : undefined
         detail.timeline?.push(timelineEntry({
-          type: 'stream:aborted',
+          type: SESSION_EVENT_TYPES.STREAM_ABORTED,
           title: 'Agent stream aborted',
           detail: reason,
           timestamp: envelope.timestamp,
@@ -306,7 +308,7 @@ export async function runOnethingSchedulerAgentTask(
     cleanupFns.push(() => context.signal.removeEventListener('abort', onAbort))
 
     options.eventBus.emit(sessionId, {
-      type: 'command:send-message',
+      type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
       channel: 'scheduler',
       content: task.prompt,
     }).catch(error => complete(error instanceof Error ? error.message : String(error)))

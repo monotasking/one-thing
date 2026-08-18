@@ -16,7 +16,7 @@ import type {
 } from '../ipc/settings.js'
 import type { VoiceSettings } from '../ipc/voice.js'
 import type { MusicRadioSource, MusicSettings } from '../ipc/music.js'
-import type { ProviderConfig, AISettings } from '../ipc/providers.js'
+import type { ProviderConfig, EffectiveAISettings } from '../ipc/providers.js'
 import type { ToolSettings } from '../ipc/tools.js'
 import type { ACPSettings } from '../ipc/acp.js'
 
@@ -155,11 +155,23 @@ export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
 // AI Settings
 // ============================================================================
 
-export const DEFAULT_AI_SETTINGS: AISettings = {
+/**
+ * 首装种子(生效形状)。
+ *
+ * C2 之后 `provider` / `providers` / `customProviders` 这三格**不再落盘在
+ * settings.json** —— 它们住在每个空间的 `providers.json`。这份种子仍然是生效
+ * 形状(`EffectiveAISettings`),因为它同时充当:
+ *
+ * - 全新安装第一次合成时的兜底(`createDefaultSettings()` 的 `ai`);
+ * - `DEFAULT_PROVIDER_CONFIGS` 的宿主 —— 空白空间加第一把 key 时的模型种子表
+ *   (`seedSpaceSelectedModels`)从这里取。
+ */
+export const DEFAULT_AI_SETTINGS: EffectiveAISettings = {
   provider: AIProvider.OpenAI,
   temperature: DEFAULT_TEMPERATURE,
-  providers: DEFAULT_PROVIDER_CONFIGS as AISettings['providers'],
+  providers: DEFAULT_PROVIDER_CONFIGS as EffectiveAISettings['providers'],
   customProviders: [],
+  modelCatalog: {},
 }
 
 // ============================================================================
@@ -479,6 +491,44 @@ export const DEFAULT_MUSIC_SETTINGS: MusicSettings = {
  * Create a fresh copy of default settings
  * Use this function to ensure you get a clean copy without reference issues
  */
+
+/**
+ * `ai` 段的归一 —— **两种形状,由迁移标记分家**。
+ *
+ * - **C2 迁移已跑过**(`storage.spaceProviderSettingsMigratedAt` 在)且盘上没有
+ *   `providers` 这一格:那就是干净的全局段 —— 只留温度缺省 + models.dev 目录
+ *   缓存。不能再把 `DEFAULT_PROVIDER_CONFIGS` 并回去,否则每次保存都会往
+ *   `settings.json` 里写回一整张永远不被读的默认 provider 表。
+ * - **其余情况**:仍然并进默认表。两个理由,缺一不可 ——
+ *   ① 迁移**之前**盘上还躺着 `provider` / `providers` / `customProviders`,
+ *      一次性迁移正要读它们(展开 `settings.ai` 放在最前面是故意的);
+ *   ② apps/server 的多租户树(`owners/<uid>/<wid>`)**不在本次改造内**,它直接
+ *      拿这个函数的结果当生效设置用,少了默认 provider 表就会让新用户第一次
+ *      打开设置页时拿到一个空的 provider 列表。
+ */
+function normalizeAISection(
+  settings: Partial<AppSettings>,
+  // **必须是 `createDefaultSettings()` 深拷出来的那一份**,不能直接用模块常量:
+  // 展开只复制一层,`providers[*]` 仍然是同一批对象 —— 一个 owner 改了 openai
+  // 的 key,所有 owner(以及下一次 merge)都跟着变。apps/server 的多租户树上
+  // 这就是一次跨用户的密钥泄漏。
+  defaults: EffectiveAISettings,
+): EffectiveAISettings {
+  const ai = settings.ai as (EffectiveAISettings & { providers?: unknown }) | undefined
+  const migrated = typeof (settings.storage as { spaceProviderSettingsMigratedAt?: number } | undefined)
+    ?.spaceProviderSettingsMigratedAt === 'number'
+  const modelCatalog = { ...(ai?.modelCatalog ?? {}) }
+  if (migrated && ai?.providers === undefined) {
+    return { temperature: ai?.temperature ?? defaults.temperature, modelCatalog } as EffectiveAISettings
+  }
+  return {
+    ...defaults,
+    ...ai,
+    providers: { ...defaults.providers, ...(ai?.providers as EffectiveAISettings['providers']) },
+    modelCatalog,
+  }
+}
+
 export function createDefaultSettings(): AppSettings {
   return {
     ai: JSON.parse(JSON.stringify(DEFAULT_AI_SETTINGS)),
@@ -505,14 +555,19 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
   // Use type assertion because we know defaults provides all required fields
   // and spread operations preserve those values
   const merged = {
-    ai: {
-      ...defaults.ai,
-      ...settings.ai,
-      providers: {
-        ...defaults.ai.providers,
-        ...settings.ai?.providers,
-      },
-    },
+    // **`ai` 归一产出的是「生效形状」**(`EffectiveAISettings`),不是落盘形状。
+    //
+    // C2 之后桌面/CLI 的 `settings.ai` 只落两格(温度缺省 + models.dev 目录
+    // 缓存),per-space 那一半住在 `workspaces/<id>/providers.json`;剥离发生在
+    // **仓库的写路**(`app/stores/settings.ts` 的 `prepareSave`),不在这里。
+    //
+    // 这里仍然把 `DEFAULT_PROVIDER_CONFIGS` 并进来,有两个理由:
+    //  1. 迁移**之前**的 settings.json 里还躺着 `provider` / `providers` /
+    //     `customProviders`,一次性迁移正要读它们(展开放在最前面是故意的);
+    //  2. apps/server 的多租户树(`owners/<uid>/<wid>`)**不在本次改造内** ——
+    //     它直接拿这个函数的结果当生效设置用,少了默认 provider 表就会在
+    //     「新用户第一次打开设置页」时拿到一个空的 provider 列表。
+    ai: normalizeAISection(settings, defaults.ai),
     theme: settings.theme ?? defaults.theme,
     general: {
       ...defaults.general,
@@ -587,18 +642,28 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     plugins: normalizePluginPreferences(settings.plugins),
     // 必须显式列出:`merged` 是白名单式重建,漏掉的键会被静默丢弃
     // (settings.json 里改了也不生效),而结尾的 `as AppSettings` 断言把这件事
-    // 藏了起来。C0 审计:`storage` 与 `evals` 就是这样两个既有漏项(见
-    // settings.test.ts 的「白名单漏键审计」,那条测试同时挡住第三个漏项)。
+    // 藏了起来。C0 审计当时记下 `storage` / `evals` 两个既有漏项;C1 补上
+    // `storage` —— 迁移标记 `storage.providerConfigMigratedAt` 就住在那里,
+    // 被吞掉的后果是**每次启动重跑一遍迁移**。顺带把 `storage.sessionFormat`
+    // 这个一直是死的开关一起救活(见 settings.test.ts 的「白名单漏键审计」)。
+    storage: settings.storage,
+    evals: settings.evals,
   }
 
-  stripProviderLocalAddress(merged.ai.providers)
-  if (Array.isArray(merged.ai.customProviders)) {
-    for (const provider of merged.ai.customProviders) {
-      delete (provider as ProviderConfigWithLocalAddress).localAddress
+  // 历史脏键 `localAddress`(剥在这里 + 剥在 `providers.json` 的写入归一里,
+  // 两处都剥不算重复)。
+  const ai = merged.ai as unknown as {
+    providers?: Record<string, ProviderConfigWithLocalAddress | undefined>
+    customProviders?: ProviderConfigWithLocalAddress[]
+  }
+  if (ai.providers) stripProviderLocalAddress(ai.providers as Record<string, ProviderConfig>)
+  if (Array.isArray(ai.customProviders)) {
+    for (const provider of ai.customProviders) {
+      delete provider.localAddress
     }
   }
 
-  return merged as AppSettings
+  return merged as unknown as AppSettings
 }
 
 /**

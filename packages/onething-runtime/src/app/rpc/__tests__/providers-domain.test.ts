@@ -13,6 +13,11 @@ const mocks = vi.hoisted(() => ({
   refreshTokenIfNeeded: vi.fn(),
   fetchCodexUsage: vi.fn(),
   getAvailableProviders: vi.fn(() => []),
+  resolveSpaceCredential: vi.fn((spaceId: string) => ({
+    kind: 'oauth-entry' as const,
+    spaceId,
+    entry: { id: 'entry-1', label: 'l', authType: 'oauth' as const, source: 'user' },
+  })),
 }))
 
 vi.mock('../../auth/auth-service.js', () => ({
@@ -25,6 +30,14 @@ vi.mock('../../providers/builtin/codex.js', () => ({
 
 vi.mock('../../providers/index.js', () => ({
   getAvailableProviders: mocks.getAvailableProviders,
+}))
+
+// C1:用量按**哪个空间的 codex 账号**查。这里只 mock 解析那一格 —— 真实模块会
+// 顺着 registry 把整棵 provider 树拖进来(builtin/codex 的默认导出正是那样漏进
+// 这条测试的)。
+vi.mock('../../providers/space-credentials.js', () => ({
+  resolveSpaceProviderCredentialForSpace: mocks.resolveSpaceCredential,
+  credentialTargetFromMarker: (marker: unknown) => marker,
 }))
 
 const { providersRpcHandlers } = await import('../domains/providers.js')
@@ -67,7 +80,12 @@ describe('providers RPC domain', () => {
 
     const response = await providersRpcHandlers.usage({ providerId: 'codex' })
 
-    expect(mocks.refreshTokenIfNeeded).toHaveBeenCalledWith('codex')
+    // C1:第二个参数是**这个空间的那条 codex entry**(批 B10 移交项 2)。
+    expect(mocks.refreshTokenIfNeeded).toHaveBeenCalledWith('codex', {
+      spaceId: 'default',
+      entryId: 'entry-1',
+      authType: 'oauth',
+    })
     expect(mocks.fetchCodexUsage).toHaveBeenCalledWith(token)
     expect(response).toMatchObject({
       success: true,

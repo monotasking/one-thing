@@ -44,7 +44,9 @@ function context(sessionId: string) {
     skills: [],
     activeProject: { hasActive: false },
     knownProjects: { hasAny: false, entries: [] },
-    toolNames: ['send_message', 'board'],
+    // 工作会话的真实面:文件工具 + 协作工具。`# Todo` 只在有文件工具可操作它时
+    // 出现(它的说明书写的就是 read/edit/write),所以这里必须像真回合一样带上。
+    toolNames: ['read', 'edit', 'bash', 'send_message', 'board'],
     mcpToolNames: [],
   } as unknown as Parameters<typeof buildSystemPrompt>[0]
 }
@@ -53,6 +55,12 @@ function context(sessionId: string) {
 async function whole(sessionId: string): Promise<string> {
   const { system, developer } = await buildSystemPrompt(context(sessionId))
   return [system, ...developer].join('\n\n')
+}
+
+/** Everything this session gets, both channels — for "is it there at all". */
+async function everything(sessionId: string): Promise<string> {
+  const { system, developer, turn } = await buildSystemPrompt(context(sessionId))
+  return [system, ...developer, ...turn.map(block => block.content)].join('\n\n')
 }
 
 beforeEach(() => {
@@ -92,11 +100,13 @@ describe('collab work overrides —— 工作身份常驻 system prompt (C3-5)',
   })
 
   it('产品段一个都不禁 —— 工作会话真的在读文件、跑命令', async () => {
-    const prompt = await whole(WORK)
     // 房间回合会把这些整批禁掉(D3「模拟房间」);工作台恰恰需要它们。
+    // 「不禁」与「在哪条通道」是两件事:todo 现在走回合尾块(它带会话路径),
+    // 所以这条断言看两条通道的并集。
+    const prompt = await whole(WORK)
     expect(prompt).toContain('# Agent:')
-    expect(prompt).toContain('Current date:')
-    expect(prompt).toContain('# Todo')
+    expect(prompt).toContain('You are running on')
+    expect(await everything(WORK)).toContain('# Todo')
   })
 
   it('卡框架缺席时只给身份,不编一张不存在的卡', async () => {

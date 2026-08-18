@@ -59,6 +59,24 @@ function deepSeekResponse(lines: string[]): Response {
 }
 
 describe('onething provider agent turn runners', () => {
+  it('sends no max_tokens when the caller set none — no hidden 4096 (2026-08-15)', async () => {
+    let request: AgentTurnRequest | undefined
+    const dumps: OnethingProviderRequestDumpContext[] = []
+    const result = await runOnethingUtilityAgentTurn({
+      providerId: 'openai',
+      provider: fakeProvider(next => { request = next }),
+      config: { model: 'gpt-test' },
+      messages: [{ role: 'user', content: 'hello' }],
+      mode: 'generate',
+      options: {},
+      onRequestPrepared(context) { dumps.push(context) },
+    })
+    expect(request?.maxTokens).toBeUndefined()
+    expect((dumps[0]?.requestBody as { max_tokens?: unknown }).max_tokens).toBeUndefined()
+    // and the stop reason rides along so callers can tell a full answer from a cut one
+    expect(result?.finishReason).toBe('stop')
+  })
+
   it('runs utility agent turns through core agent-loop primitives', async () => {
     let request: AgentTurnRequest | undefined
     const dumps: OnethingProviderRequestDumpContext[] = []
@@ -119,6 +137,9 @@ describe('onething provider agent turn runners', () => {
       // Carried out so side-line callers (title, memory) can bill the call —
       // the generate path used to drop it while the stream twin kept it.
       usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+      // Stop reason rides along too (2026-08-15): compaction refuses a
+      // 'length'-truncated summary instead of storing half of one.
+      finishReason: 'stop',
     })
   })
 

@@ -18,8 +18,8 @@ const providers = createRouterClient(providersRouter, request => platformApi.rpc
 
 export const providersApi = {
   getProviders: (): Promise<GetProvidersResponse> => providers.list({}),
-  getProviderUsage: (providerId: string): Promise<ProviderUsageResponse> =>
-    providers.usage({ providerId }),
+  getProviderUsage: (providerId: string, spaceId?: string): Promise<ProviderUsageResponse> =>
+    providers.usage({ providerId, ...(spaceId ? { spaceId } : {}) }),
   getProviderEnvStatus: (providerId: string): Promise<GetProviderEnvStatusResponse> =>
     providers.envStatus({ providerId }),
 }

@@ -39,6 +39,8 @@ import {
   type CollabTurnToolCallLike,
 } from './say.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /**
  * Most tool calls one room turn may make. A turn that says its piece and reads
  * the board uses two or three; forty is "something is wrong" with room to
@@ -176,7 +178,7 @@ export function createCollabTurnCircuitBreaker(
 
     observe(signal) {
       if (tripped) return null
-      if (signal?.type !== 'tool:execution-start') return null
+      if (signal?.type !== SESSION_EVENT_TYPES.TOOL_EXECUTION_START) return null
 
       // P2-15: a call with no id is COUNTED, just not de-duplicated. It used to
       // be dropped entirely, which points this component's failure mode the

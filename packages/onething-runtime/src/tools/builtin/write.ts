@@ -139,6 +139,11 @@ function buildWritePlan(
 	};
 }
 
+/** Guideline the write tool brings into `Tool Guidelines:` when it is on the surface. */
+export const WRITE_TOOL_PROMPT = {
+	guidelines: ["使用write来重写或创建文件"],
+} as const satisfies Tool.Info["prompt"];
+
 export function createWriteTool(
 	adapters: WriteToolAdapters,
 ): Tool.Info<typeof WriteParameters, WriteMetadata> {
@@ -152,6 +157,7 @@ export function createWriteTool(
 		permissionGuard: "permission-gated",
 		executionMode: "sequential",
 		renderKind: "diff",
+		prompt: WRITE_TOOL_PROMPT,
 
 		parameters: WriteParameters,
 

@@ -5,8 +5,17 @@ import {
 	nativeImage,
 	webUtils,
 } from "electron";
+import type { IpcRendererEvent } from "electron";
 import { IPC_CHANNELS } from "@shared/ipc.js";
-import type { DeepLinkRespondRequest } from "@shared/ipc/deeplink.js";
+import type {
+	SessionCommand,
+	SessionEventEnvelope,
+	StreamChunk,
+} from "@shared/events/index.js";
+import type {
+	DeepLinkConfirmRequest,
+	DeepLinkRespondRequest,
+} from "@shared/ipc/deeplink.js";
 import type {
 	CreateSessionOptions,
 	CollabBoardAction,
@@ -27,15 +36,19 @@ import type {
 	SchedulerUpdateTaskRequest,
 	SearchRequest,
 	SearchWindowAnchor,
+	SpacesChangedEvent,
 	SpacesCreateRequest,
 	SpacesClearCredentialRequest,
+	SpacesSetCredentialPoolRequest,
 	SpacesSetCredentialRequest,
 	SpacesSetOverlayRequest,
+	SpacesSetProviderSettingsRequest,
 	SpacesUpdateRequest,
 	SearchWindowGuideState,
 	SearchWindowOpenOptions,
 	SearchWindowShownPayload,
 	TodoPlanWindowActionRequest,
+	TodoPlanWindowDragRequest,
 	PracticeConfigResponse,
 	PracticeEventPayload,
 	PracticeLogRequest,
@@ -71,6 +84,52 @@ import type {
 	PluginFootprintResponse,
 	RpcRequest,
 	RpcResponse,
+	AppSettings,
+	SaveSettingsRequest,
+	ProxySettings,
+	ChatMessageMention,
+	Step,
+	BrowserTabsChangedEvent,
+	GatewayStartRequest,
+	GatewayWechatAddAccountRequest,
+	GatewayWechatLogoutRequest,
+	GatewayWechatRemoveAccountRequest,
+	GatewayWechatRenameAccountRequest,
+	GatewayWechatStopAccountRequest,
+	VoiceAudioChunkPayload,
+	VoiceEvent,
+	VoiceRuntimeCommand,
+	VoiceRuntimeEvent,
+	VoiceStartRequest,
+	VoiceStopRequest,
+	VoiceSubmitTranscriptRequest,
+	VoiceSubmitUtteranceRequest,
+	VoiceSynthesizeRequest,
+	VoiceTestASRRequest,
+	VoiceTestTTSRequest,
+	MusicCommandRequest,
+	MusicDjSpeak,
+	MusicEvent,
+	MusicLyrics,
+	MusicNowPlaying,
+	MusicOpenRadioRequest,
+	MusicProgrammeActionRequest,
+	MusicRequestSongRequest,
+	MusicSearchRequest,
+	MusicSetProviderRequest,
+	MusicSetupRequest,
+	MCPServerConfig,
+	ACPAgentConfig,
+	TodoPlanChangedPayload,
+	ScratchpadAdoptRequest,
+	ScratchpadChangedPayload,
+	ScratchpadDeleteRequest,
+	ScratchpadGetRequest,
+	ScratchpadUpdateRequest,
+	EvalsDiagnoseProgressEvent,
+	EvalsReplayProgressEvent,
+	EvalsRunProgressEvent,
+	OAuthCredentialTargetRequest,
 } from "@shared/ipc.js";
 
 /**
@@ -80,17 +139,33 @@ import type {
  * command; this rebuilds them again AT the boundary, because a caller has no
  * reliable way to know it is holding a proxy. Only the mentions array is
  * touched — everything else on the command travels exactly as before.
+ *
+ * 拍平必须搬走 `ChatMessageMention` 声明的**每一个**字段:少搬一个,这条通道就
+ * 成了一个按传输方式分叉的静默丢字段点(web 走 HTTP 原样透传,桌面不)。字段形状
+ * 与 runtime 的 `mergeCollabMentions` 保持同一套写法。
  */
-function withPlainCommandMentions(command: any): any {
-	const mentions = command?.mentions;
+function withPlainCommandMentions(command: SessionCommand): SessionCommand {
+	const mentions = (command as { mentions?: unknown })?.mentions;
 	if (!Array.isArray(mentions)) return command;
 	return {
 		...command,
-		mentions: mentions.map((mention: any) => ({
+		mentions: (mentions as Partial<ChatMessageMention>[]).map((mention) => ({
 			agentId: String(mention?.agentId ?? ""),
 			label: String(mention?.label ?? ""),
+			// `kind` 缺省是 `'agent'`,那一条**不写这个键** —— 老转录里它本来就不
+			// 存在,拍平不该给整仓凭空长出一批 `kind:'agent'`。用户那一条的
+			// `agentId` 是空串(collab-handle-codec.md §2.3),身份全在 kind/句柄上:
+			// 白名单掉它们,等于让 `@用户` 只在桌面这条通道上悄悄失效。
+			...(mention?.kind === "user"
+				? {
+						kind: "user" as const,
+						...(mention?.userHandle
+							? { userHandle: String(mention.userHandle) }
+							: {}),
+					}
+				: {}),
 		})),
-	};
+	} as SessionCommand;
 }
 
 const electronAPI = {
@@ -109,7 +184,10 @@ const electronAPI = {
 			skillName: string;
 		}) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.SKILL_ACTIVATED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SKILL_ACTIVATED, listener);
@@ -119,10 +197,13 @@ const electronAPI = {
 		callback: (data: {
 			sessionId: string;
 			messageId: string;
-			step: any;
+			step: Step;
 		}) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.STEP_ADDED, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.STEP_ADDED, listener);
 	},
@@ -132,10 +213,13 @@ const electronAPI = {
 			sessionId: string;
 			messageId: string;
 			stepId: string;
-			updates: any;
+			updates: Partial<Step>;
 		}) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.STEP_UPDATED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.STEP_UPDATED, listener);
@@ -153,30 +237,42 @@ const electronAPI = {
 			createdAt: number;
 		}) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.IMAGE_GENERATED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_GENERATED, listener);
 	},
 
 	// ── Unified event-driven channels (Phase 4) ──────
-	onSessionEvent: (callback: (envelope: any) => void) => {
-		const listener = (_event: any, envelope: any) => callback(envelope);
+	onSessionEvent: (callback: (envelope: SessionEventEnvelope) => void) => {
+		const listener = (_event: IpcRendererEvent, envelope: SessionEventEnvelope) =>
+			callback(envelope);
 		ipcRenderer.on(IPC_CHANNELS.SESSION_EVENT, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SESSION_EVENT, listener);
 	},
 
 	onSessionStream: (
-		callback: (data: { sessionId: string; chunk: any }) => void,
+		// `messageId` 不在 StreamChunk 的契约里 —— 它是 SessionStreamCoalescer 在
+		// 出口盖上去的,老的重放数据没有,所以是可选的。
+		callback: (data: {
+			sessionId: string;
+			chunk: StreamChunk & { messageId?: string };
+		}) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.SESSION_STREAM, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SESSION_STREAM, listener);
 	},
 
-	emitCommand: (sessionId: string, command: any) =>
+	emitCommand: (sessionId: string, command: SessionCommand) =>
 		// 给main线程发送消息
 		ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, {
 			sessionId,
@@ -208,14 +304,20 @@ const electronAPI = {
 	onTerminalData: (
 		callback: (data: { terminalId: string; seq: number; data: string }) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.TERMINAL_DATA, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_DATA, listener);
 	},
 	onTerminalExit: (
 		callback: (data: { terminalId: string; exitCode: number | null }) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.TERMINAL_EXIT, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_EXIT, listener);
 	},
@@ -229,7 +331,10 @@ const electronAPI = {
 		setBadge: (hasUnread: boolean) =>
 			ipcRenderer.invoke(IPC_CHANNELS.NOTIFY_BADGE, { hasUnread }),
 		onActivate: (callback: (data: { sessionId: string }) => void) => {
-			const listener = (_event: any, data: any) => callback(data);
+			const listener = (
+				_event: IpcRendererEvent,
+				data: Parameters<typeof callback>[0],
+			) => callback(data);
 			ipcRenderer.on(IPC_CHANNELS.NOTIFY_ACTIVATE, listener);
 			return () =>
 				ipcRenderer.removeListener(IPC_CHANNELS.NOTIFY_ACTIVATE, listener);
@@ -354,8 +459,9 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_REMOVE_PROFILE, { profileId }),
 	switchBrowserProfile: (profileId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SWITCH_PROFILE, { profileId }),
-	onBrowserTabsChanged: (callback: (event: any) => void) => {
-		const listener = (_event: any, data: any) => callback(data);
+	onBrowserTabsChanged: (callback: (event: BrowserTabsChangedEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: BrowserTabsChangedEvent) =>
+			callback(data);
 		ipcRenderer.on(IPC_CHANNELS.BROWSER_TABS_CHANGED, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.BROWSER_TABS_CHANGED, listener);
 	},
@@ -518,7 +624,7 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_SET_CONFIG, request),
 
 	onPracticeEvent: (callback: (payload: PracticeEventPayload) => void) => {
-		const listener = (_event: any, payload: PracticeEventPayload) => callback(payload);
+		const listener = (_event: IpcRendererEvent, payload: PracticeEventPayload) => callback(payload);
 		ipcRenderer.on(IPC_CHANNELS.PRACTICE_EVENT, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.PRACTICE_EVENT, listener);
@@ -535,7 +641,10 @@ const electronAPI = {
 	onPluginRequestProgress: (
 		callback: (payload: PluginRequestProgressPayload) => void,
 	) => {
-		const listener = (_event: any, payload: any) => callback(payload);
+		const listener = (
+			_event: IpcRendererEvent,
+			payload: PluginRequestProgressPayload,
+		) => callback(payload);
 		ipcRenderer.on(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, listener);
@@ -588,7 +697,10 @@ const electronAPI = {
 	onPluginNotification: (
 		callback: (payload: PluginNotificationPayload) => void,
 	) => {
-		const listener = (_event: any, payload: any) => callback(payload);
+		const listener = (
+			_event: IpcRendererEvent,
+			payload: PluginNotificationPayload,
+		) => callback(payload);
 		ipcRenderer.on(IPC_CHANNELS.PLUGINS_NOTIFICATION, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_NOTIFICATION, listener);
@@ -598,8 +710,9 @@ const electronAPI = {
 	// ready 是渲染层给冷启动队列的放行信号,request 是推来的卡,respond 是那一按。
 	deepLinkReady: () => ipcRenderer.invoke(IPC_CHANNELS.DEEPLINK_READY),
 
-	onDeepLinkRequest: (callback: (request: any) => void) => {
-		const listener = (_event: any, request: any) => callback(request);
+	onDeepLinkRequest: (callback: (request: DeepLinkConfirmRequest) => void) => {
+		const listener = (_event: IpcRendererEvent, request: DeepLinkConfirmRequest) =>
+			callback(request);
 		ipcRenderer.on(IPC_CHANNELS.DEEPLINK_REQUEST, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.DEEPLINK_REQUEST, listener);
@@ -657,12 +770,21 @@ const electronAPI = {
 	spacesSetOverlay: (request: SpacesSetOverlayRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_OVERLAY, request),
 
+	// 整套 provider 设置(C2)—— `workspaces/<id>/providers.json`。
+	spacesGetProviderSettings: (id: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_GET_PROVIDER_SETTINGS, { id }),
+
+	spacesSetProviderSettings: (request: SpacesSetProviderSettingsRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_PROVIDER_SETTINGS, request),
+
 	spacesGetCredentials: (id: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SPACES_GET_CREDENTIALS, { id }),
 
 	spacesSetCredential: (request: SpacesSetCredentialRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_CREDENTIAL, request),
 
+	spacesSetCredentialPool: (request: SpacesSetCredentialPoolRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_CREDENTIAL_POOL, request),
 	spacesClearCredential: (request: SpacesClearCredentialRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SPACES_CLEAR_CREDENTIAL, request),
 
@@ -675,39 +797,17 @@ const electronAPI = {
 	onContextSizeUpdated: (
 		callback: (data: { sessionId: string; contextSize: number }) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, listener);
 	},
 
-	onContextCompactStarted: (
-		callback: (data: { sessionId: string }) => void,
-	) => {
-		const listener = (_event: any, data: any) => callback(data);
-		ipcRenderer.on(IPC_CHANNELS.CONTEXT_COMPACT_STARTED, listener);
-		return () =>
-			ipcRenderer.removeListener(
-				IPC_CHANNELS.CONTEXT_COMPACT_STARTED,
-				listener,
-			);
-	},
-
-	onContextCompactCompleted: (
-		callback: (data: {
-			sessionId: string;
-			success: boolean;
-			error?: string;
-		}) => void,
-	) => {
-		const listener = (_event: any, data: any) => callback(data);
-		ipcRenderer.on(IPC_CHANNELS.CONTEXT_COMPACT_COMPLETED, listener);
-		return () =>
-			ipcRenderer.removeListener(
-				IPC_CHANNELS.CONTEXT_COMPACT_COMPLETED,
-				listener,
-			);
-	},
+	// P1(2026-08-14):onContextCompactStarted / onContextCompactCompleted 已删。
+	// 它们订阅的是两条主进程从来没发过的通道;真正的通知走 session:event。
 
 	updateSessionMaxTokens: (sessionId: string, maxTokens: number) =>
 		ipcRenderer.invoke(
@@ -751,7 +851,10 @@ const electronAPI = {
 			messageId?: string;
 		}) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.SESSION_MESSAGES_CHANGED, listener);
 		return () =>
 			ipcRenderer.removeListener(
@@ -785,92 +888,108 @@ const electronAPI = {
 	// Settings methods
 	getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS),
 
-	saveSettings: (settings: any) =>
+	saveSettings: (settings: SaveSettingsRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SAVE_SETTINGS, settings),
 
 	openSettingsWindow: (options?: { tab?: string }) =>
 		ipcRenderer.invoke(IPC_CHANNELS.OPEN_SETTINGS_WINDOW, options),
 
 	onSettingsNavigate: (callback: (payload: { tab: string }) => void) => {
-		const listener = (_event: any, payload: { tab: string }) => callback(payload);
+		const listener = (_event: IpcRendererEvent, payload: { tab: string }) => callback(payload);
 		ipcRenderer.on(IPC_CHANNELS.SETTINGS_NAVIGATE, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_NAVIGATE, listener);
 	},
 
-	onSettingsChanged: (callback: (settings: any) => void) => {
-		const listener = (_event: any, settings: any) => callback(settings);
+	onSettingsChanged: (callback: (settings: AppSettings) => void) => {
+		const listener = (_event: IpcRendererEvent, settings: AppSettings) =>
+			callback(settings);
 		ipcRenderer.on(IPC_CHANNELS.SETTINGS_CHANGED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_CHANGED, listener);
 	},
 
+	/**
+	 * 空间数据变更(批 B9-0)。设置窗写完 key / 登录完 OAuth,主窗那份
+	 * `spaceProviders` 缓存要靠这一声才知道该重拉 —— 否则模型选择器一直藏着
+	 * 那个 provider,直到切走再切回空间。
+	 */
+	onSpacesChanged: (callback: (event: SpacesChangedEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, payload: SpacesChangedEvent) =>
+			callback(payload);
+		ipcRenderer.on(IPC_CHANNELS.SPACES_CHANGED, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.SPACES_CHANGED, listener);
+	},
+
 	// Gateway / IM channel methods
 	gatewayGetStatus: () => ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_GET_STATUS),
 
-	gatewayStart: (request?: any) =>
+	gatewayStart: (request?: GatewayStartRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_START, request || {}),
 
 	gatewayStop: () => ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_STOP),
 
-	gatewayWechatLogout: (request?: any) =>
+	gatewayWechatLogout: (request?: GatewayWechatLogoutRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_LOGOUT, request || {}),
 
-	gatewayWechatAddAccount: (request?: any) =>
+	gatewayWechatAddAccount: (request?: GatewayWechatAddAccountRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_ADD_ACCOUNT, request || {}),
 
-	gatewayWechatStopAccount: (request: any) =>
+	gatewayWechatStopAccount: (request: GatewayWechatStopAccountRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_STOP_ACCOUNT, request),
 
-	gatewayWechatRemoveAccount: (request: any) =>
+	gatewayWechatRemoveAccount: (request: GatewayWechatRemoveAccountRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_REMOVE_ACCOUNT, request),
 
-	gatewayWechatRenameAccount: (request: any) =>
+	gatewayWechatRenameAccount: (request: GatewayWechatRenameAccountRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_RENAME_ACCOUNT, request),
 
 	// Voice methods
 	voiceGetState: () => ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_STATE),
 
-	voiceStart: (request?: any) =>
+	voiceStart: (request?: VoiceStartRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_START, request || {}),
 
-	voiceStop: (request?: any) =>
+	voiceStop: (request?: VoiceStopRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_STOP, request || {}),
 
-	voiceSubmitUtterance: (request: any) =>
+	voiceSubmitUtterance: (request: VoiceSubmitUtteranceRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_SUBMIT_UTTERANCE, request),
 
-	voiceSubmitTranscript: (request: any) =>
+	voiceSubmitTranscript: (request: VoiceSubmitTranscriptRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_SUBMIT_TRANSCRIPT, request),
 
-	voiceSynthesize: (request: any) =>
+	voiceSynthesize: (request: VoiceSynthesizeRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_SYNTHESIZE, request),
 
-	voiceTestASR: (request: any) =>
+	voiceTestASR: (request: VoiceTestASRRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_TEST_ASR, request),
 
-	voiceTestTTS: (request: any) =>
+	voiceTestTTS: (request: VoiceTestTTSRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_TEST_TTS, request),
 
-	voiceGetTTSModels: (request?: any) =>
+	voiceGetTTSModels: (request?: { force?: boolean }) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_TTS_MODELS, request || {}),
 
-	onVoiceEvent: (callback: (event: any) => void) => {
-		const listener = (_event: any, event: any) => callback(event);
+	onVoiceEvent: (callback: (event: VoiceEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, event: VoiceEvent) =>
+			callback(event);
 		ipcRenderer.on(IPC_CHANNELS.VOICE_EVENT, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.VOICE_EVENT, listener);
 	},
 
 	voiceRuntimeReady: () => ipcRenderer.invoke(IPC_CHANNELS.VOICE_RUNTIME_READY),
 
-	voiceRuntimeEvent: (event: any) =>
+	voiceRuntimeEvent: (event: VoiceRuntimeEvent) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_RUNTIME_EVENT, event),
 
-	voiceAudioChunk: (payload: any) =>
+	voiceAudioChunk: (payload: VoiceAudioChunkPayload) =>
 		ipcRenderer.send(IPC_CHANNELS.VOICE_AUDIO_CHUNK, payload),
 
-	onVoiceRuntimeCommand: (callback: (command: any) => void) => {
-		const listener = (_event: any, command: any) => callback(command);
+	onVoiceRuntimeCommand: (callback: (command: VoiceRuntimeCommand) => void) => {
+		const listener = (_event: IpcRendererEvent, command: VoiceRuntimeCommand) =>
+			callback(command);
 		ipcRenderer.on(IPC_CHANNELS.VOICE_RUNTIME_COMMAND, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.VOICE_RUNTIME_COMMAND, listener);
@@ -879,16 +998,17 @@ const electronAPI = {
 	// Music radio methods
 	musicGetState: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_STATE),
 
-	musicSetup: (request: any) =>
+	musicSetup: (request: MusicSetupRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SETUP, request),
 
-	onMusicEvent: (callback: (event: any) => void) => {
-		const listener = (_event: any, event: any) => callback(event);
+	onMusicEvent: (callback: (event: MusicEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, event: MusicEvent) =>
+			callback(event);
 		ipcRenderer.on(IPC_CHANNELS.MUSIC_EVENT, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_EVENT, listener);
 	},
 
-	musicCommand: (request: any) =>
+	musicCommand: (request: MusicCommandRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_COMMAND, request),
 
 	musicGetNowPlaying: () =>
@@ -896,41 +1016,48 @@ const electronAPI = {
 
 	musicGetRadio: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_RADIO),
 
-	musicOpenRadio: (request: any) =>
+	musicOpenRadio: (request: MusicOpenRadioRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_OPEN_RADIO, request),
 
-	musicSearch: (request: any) => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SEARCH, request),
+	musicSearch: (request: MusicSearchRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SEARCH, request),
 
-	musicRequestSong: (request: any) =>
+	musicRequestSong: (request: MusicRequestSongRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_REQUEST_SONG, request),
 
 	musicGetProgramme: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_PROGRAMME),
 
-	musicProgrammeAction: (request: any) =>
+	musicProgrammeAction: (request: MusicProgrammeActionRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_PROGRAMME_ACTION, request),
 
 	musicListProviders: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_LIST_PROVIDERS),
 
-	musicSetProvider: (request: any) =>
+	musicSetProvider: (request: MusicSetProviderRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SET_PROVIDER, request),
 
 	musicGetLyrics: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_LYRICS),
 
-	onMusicLyrics: (callback: (lyrics: any) => void) => {
-		const listener = (_event: any, lyrics: any) => callback(lyrics);
+	onMusicLyrics: (callback: (lyrics: MusicLyrics) => void) => {
+		const listener = (_event: IpcRendererEvent, lyrics: MusicLyrics) =>
+			callback(lyrics);
 		ipcRenderer.on(IPC_CHANNELS.MUSIC_LYRICS, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_LYRICS, listener);
 	},
 
-	onMusicNowPlaying: (callback: (nowPlaying: any) => void) => {
-		const listener = (_event: any, nowPlaying: any) => callback(nowPlaying);
+	// 主进程在没有播放器时广播 null(nudgeMusicClients),所以这一路是可空的。
+	onMusicNowPlaying: (callback: (nowPlaying: MusicNowPlaying | null) => void) => {
+		const listener = (
+			_event: IpcRendererEvent,
+			nowPlaying: MusicNowPlaying | null,
+		) => callback(nowPlaying);
 		ipcRenderer.on(IPC_CHANNELS.MUSIC_NOW_PLAYING, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_NOW_PLAYING, listener);
 	},
 
-	onMusicDjSpeak: (callback: (speak: any) => void) => {
-		const listener = (_event: any, speak: any) => callback(speak);
+	onMusicDjSpeak: (callback: (speak: MusicDjSpeak) => void) => {
+		const listener = (_event: IpcRendererEvent, speak: MusicDjSpeak) =>
+			callback(speak);
 		ipcRenderer.on(IPC_CHANNELS.MUSIC_DJ_SPEAK, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_DJ_SPEAK, listener);
 	},
@@ -940,13 +1067,13 @@ const electronAPI = {
 
 	getSystemTheme: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_THEME),
 
-	testProxy: (proxy: any) =>
+	testProxy: (proxy: ProxySettings) =>
 		ipcRenderer.invoke(IPC_CHANNELS.TEST_PROXY, {
 			proxy: JSON.parse(JSON.stringify(proxy)),
 		}),
 
 	onSystemThemeChanged: (callback: (theme: "light" | "dark") => void) => {
-		const listener = (_event: any, theme: "light" | "dark") => callback(theme);
+		const listener = (_event: IpcRendererEvent, theme: "light" | "dark") => callback(theme);
 		ipcRenderer.on(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener);
@@ -977,7 +1104,7 @@ const electronAPI = {
 
 	executeTool: (
 		toolId: string,
-		args: Record<string, any>,
+		args: Record<string, unknown>,
 		messageId: string,
 		sessionId: string,
 	) =>
@@ -1001,7 +1128,7 @@ const electronAPI = {
 		sessionId: string,
 		messageId: string,
 		toolCallId: string,
-		updates: Record<string, any>,
+		updates: Record<string, unknown>,
 	) =>
 		ipcRenderer.invoke(IPC_CHANNELS.UPDATE_TOOL_CALL, {
 			sessionId,
@@ -1013,10 +1140,10 @@ const electronAPI = {
 	// MCP methods
 	mcpGetServers: () => ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_SERVERS),
 
-	mcpAddServer: (config: any) =>
+	mcpAddServer: (config: MCPServerConfig) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MCP_ADD_SERVER, { config }),
 
-	mcpUpdateServer: (config: any) =>
+	mcpUpdateServer: (config: MCPServerConfig) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MCP_UPDATE_SERVER, { config }),
 
 	mcpRemoveServer: (serverId: string) =>
@@ -1031,7 +1158,7 @@ const electronAPI = {
 	mcpLogoutServer: (serverId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MCP_LOGOUT_SERVER, { serverId }),
 
-	mcpProbeServer: (config: any) =>
+	mcpProbeServer: (config: MCPServerConfig) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MCP_PROBE_SERVER, { config }),
 
 	mcpRefreshServer: (serverId: string) =>
@@ -1042,7 +1169,7 @@ const electronAPI = {
 	mcpCallTool: (
 		serverId: string,
 		toolName: string,
-		args: Record<string, any>,
+		args: Record<string, unknown>,
 	) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MCP_CALL_TOOL, {
 			serverId,
@@ -1074,10 +1201,10 @@ const electronAPI = {
 	// ACP methods
 	acpGetAgents: () => ipcRenderer.invoke(IPC_CHANNELS.ACP_GET_AGENTS),
 
-	acpAddAgent: (config: any) =>
+	acpAddAgent: (config: ACPAgentConfig) =>
 		ipcRenderer.invoke(IPC_CHANNELS.ACP_ADD_AGENT, { config }),
 
-	acpUpdateAgent: (config: any) =>
+	acpUpdateAgent: (config: ACPAgentConfig) =>
 		ipcRenderer.invoke(IPC_CHANNELS.ACP_UPDATE_AGENT, { config }),
 
 	acpRemoveAgent: (agentId: string) =>
@@ -1290,7 +1417,7 @@ const electronAPI = {
 		}) => void,
 	) => {
 		const listener = (
-			_event: any,
+			_event: IpcRendererEvent,
 			data: { mode: "single"; previewId?: string; src?: string; alt?: string },
 		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, listener);
@@ -1322,32 +1449,50 @@ const electronAPI = {
 	respondInteraction: (request: InteractionRespondRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.INTERACTION_RESPOND, request),
 
-	// OAuth methods
-	oauthStart: (providerId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_START, { providerId }),
+	// OAuth methods。末位 `target` 是凭证写回目标(批 B6):缺席 = 默认空间,
+	// 带 spaceId = 落进那个空间的凭证池(entryId 缺席 = 登一个新账号)。
+	oauthStart: (providerId: string, target?: OAuthCredentialTargetRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_START, { providerId, ...target }),
 
-	oauthLogout: (providerId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_LOGOUT, { providerId }),
+	oauthLogout: (providerId: string, target?: OAuthCredentialTargetRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_LOGOUT, { providerId, ...target }),
 
-	oauthGetStatus: (providerId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_STATUS, { providerId }),
+	oauthGetStatus: (providerId: string, target?: OAuthCredentialTargetRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_STATUS, { providerId, ...target }),
 
-	oauthDevicePoll: (providerId: string, flowId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_DEVICE_POLL, { providerId, flowId }),
+	oauthDevicePoll: (
+		providerId: string,
+		flowId?: string,
+		target?: OAuthCredentialTargetRequest,
+	) =>
+		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_DEVICE_POLL, {
+			providerId,
+			flowId,
+			...target,
+		}),
 
-	oauthRefresh: (providerId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_REFRESH, { providerId }),
+	oauthRefresh: (providerId: string, target?: OAuthCredentialTargetRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_REFRESH, { providerId, ...target }),
 
-	oauthCallback: (providerId: string, code: string, state: string) =>
+	oauthCallback: (
+		providerId: string,
+		code: string,
+		state: string,
+		target?: OAuthCredentialTargetRequest,
+	) =>
 		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_CALLBACK, {
 			providerId,
 			code,
 			state,
+			...target,
 		}),
 
 	// OAuth event listeners
 	onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.OAUTH_TOKEN_REFRESHED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.OAUTH_TOKEN_REFRESHED, listener);
@@ -1356,7 +1501,10 @@ const electronAPI = {
 	onOAuthTokenExpired: (
 		callback: (data: { providerId: string; error?: string }) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.OAUTH_TOKEN_EXPIRED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.OAUTH_TOKEN_EXPIRED, listener);
@@ -1439,7 +1587,10 @@ const electronAPI = {
 	onWorkspaceFileChanged: (
 		callback: (data: { root: string; path: string; eventType: string }) => void,
 	) => {
-		const listener = (_event: any, data: any) => callback(data);
+		const listener = (
+			_event: IpcRendererEvent,
+			data: Parameters<typeof callback>[0],
+		) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.FILE_WATCH_EVENT, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.FILE_WATCH_EVENT, listener);
@@ -1523,7 +1674,7 @@ const electronAPI = {
 	onSearchWindowShown: (
 		callback: (payload?: SearchWindowShownPayload | null) => void,
 	) => {
-		const listener = (_event: any, payload?: SearchWindowShownPayload | null) =>
+		const listener = (_event: IpcRendererEvent, payload?: SearchWindowShownPayload | null) =>
 			callback(payload);
 		ipcRenderer.on(IPC_CHANNELS.SEARCH_WINDOW_SHOWN, listener);
 		return () =>
@@ -1531,7 +1682,7 @@ const electronAPI = {
 	},
 
 	onSearchWindowGuides: (callback: (state: SearchWindowGuideState) => void) => {
-		const listener = (_event: any, state: SearchWindowGuideState) =>
+		const listener = (_event: IpcRendererEvent, state: SearchWindowGuideState) =>
 			callback(state);
 		ipcRenderer.on(IPC_CHANNELS.SEARCH_WINDOW_GUIDES, listener);
 		return () =>
@@ -1545,7 +1696,7 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_EXECUTE_ACTION, actionId),
 
 	onSearchAction: (callback: (actionId: string) => void) => {
-		const listener = (_event: any, actionId: string) => callback(actionId);
+		const listener = (_event: IpcRendererEvent, actionId: string) => callback(actionId);
 		ipcRenderer.on(IPC_CHANNELS.SEARCH_ACTION, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_ACTION, listener);
@@ -1564,28 +1715,40 @@ const electronAPI = {
 	setTodoPlanWindowPinned: (pinned: boolean) =>
 		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED, { pinned }),
 
-	onTodoPlanChanged: (callback: (data: any) => void) => {
-		const listener = (_event: any, data: any) => callback(data);
+	// 独立窗自绘红绿灯 / 手动拖窗。拖窗是拖拽期间每帧一条,不走通用 RPC 的重封装。
+	minimizeTodoPlanWindow: () =>
+		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_MINIMIZE_WINDOW),
+
+	zoomTodoPlanWindow: () =>
+		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_ZOOM_WINDOW),
+
+	dragTodoPlanWindow: (request: TodoPlanWindowDragRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_DRAG_WINDOW, request),
+
+	onTodoPlanChanged: (callback: (data: TodoPlanChangedPayload) => void) => {
+		const listener = (_event: IpcRendererEvent, data: TodoPlanChangedPayload) =>
+			callback(data);
 		ipcRenderer.on(IPC_CHANNELS.TODO_PLAN_CHANGED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.TODO_PLAN_CHANGED, listener);
 	},
 
 	// Scratchpad (per-session draft paper)
-	getScratchpad: (request: any) =>
+	getScratchpad: (request: ScratchpadGetRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_GET, request),
 
-	updateScratchpad: (request: any) =>
+	updateScratchpad: (request: ScratchpadUpdateRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_UPDATE, request),
 
-	deleteScratchpad: (request: any) =>
+	deleteScratchpad: (request: ScratchpadDeleteRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_DELETE, request),
 
-	adoptScratchpad: (request: any) =>
+	adoptScratchpad: (request: ScratchpadAdoptRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_ADOPT, request),
 
-	onScratchpadChanged: (callback: (data: any) => void) => {
-		const listener = (_event: any, data: any) => callback(data);
+	onScratchpadChanged: (callback: (data: ScratchpadChangedPayload) => void) => {
+		const listener = (_event: IpcRendererEvent, data: ScratchpadChangedPayload) =>
+			callback(data);
 		ipcRenderer.on(IPC_CHANNELS.SCRATCHPAD_CHANGED, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SCRATCHPAD_CHANGED, listener);
@@ -1631,8 +1794,10 @@ const electronAPI = {
 
 	evalsRunCancel: () => ipcRenderer.invoke(IPC_CHANNELS.EVALS_RUN_CANCEL),
 
-	onEvalsRunProgress: (callback: (event: any) => void) => {
-		const listener = (_event: any, data: any) => callback(data);
+	// `detail` 在主进程发送前被剥掉(太大),所以到手的是它可选的那一半。
+	onEvalsRunProgress: (callback: (event: EvalsRunProgressEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: EvalsRunProgressEvent) =>
+			callback(data);
 		ipcRenderer.on(IPC_CHANNELS.EVALS_RUN_PROGRESS, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.EVALS_RUN_PROGRESS, listener);
@@ -1689,8 +1854,9 @@ const electronAPI = {
 	evalsReplayCancel: (request: { incidentId: string }) =>
 		ipcRenderer.invoke(IPC_CHANNELS.EVALS_REPLAY_CANCEL, request),
 
-	onEvalsReplayProgress: (callback: (event: any) => void) => {
-		const listener = (_event: any, data: any) => callback(data);
+	onEvalsReplayProgress: (callback: (event: EvalsReplayProgressEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: EvalsReplayProgressEvent) =>
+			callback(data);
 		ipcRenderer.on(IPC_CHANNELS.EVALS_REPLAY_PROGRESS, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.EVALS_REPLAY_PROGRESS, listener);
@@ -1708,8 +1874,11 @@ const electronAPI = {
 	evalsDiagnoseStart: (request: { incidentId: string; quick?: boolean }) =>
 		ipcRenderer.invoke(IPC_CHANNELS.EVALS_DIAGNOSE_START, request),
 
-	onEvalsDiagnoseProgress: (callback: (event: any) => void) => {
-		const listener = (_event: any, data: any) => callback(data);
+	onEvalsDiagnoseProgress: (
+		callback: (event: EvalsDiagnoseProgressEvent) => void,
+	) => {
+		const listener = (_event: IpcRendererEvent, data: EvalsDiagnoseProgressEvent) =>
+			callback(data);
 		ipcRenderer.on(IPC_CHANNELS.EVALS_DIAGNOSE_PROGRESS, listener);
 		return () =>
 			ipcRenderer.removeListener(

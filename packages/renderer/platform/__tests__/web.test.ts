@@ -651,34 +651,10 @@ describe('createWebPlatformApi', () => {
 
     const { createWebPlatformApi } = await import('../web.js')
     const api = createWebPlatformApi()
-    const startedCallback = vi.fn()
     const sizeCallback = vi.fn()
-    const compactCallback = vi.fn()
-    const cleanupStarted = api.onContextCompactStarted(startedCallback)
     const cleanupSize = api.onContextSizeUpdated(sizeCallback)
-    const cleanupCompact = api.onContextCompactCompleted(compactCallback)
 
     expect(events.map(event => event.url)).toEqual(['/api/events'])
-    events[0]?.emit('session:event', {
-      sessionId: 'session-1',
-      event: {
-        type: 'message:created',
-        message: {
-          content: JSON.stringify({
-            type: 'context-compact',
-            status: 'compacting',
-            compactedMessageCount: 4,
-          }),
-        },
-      },
-    })
-    events[0]?.emit('session:event', {
-      sessionId: 'session-1',
-      event: {
-        type: 'message:created',
-        message: { content: JSON.stringify({ type: 'context-compact', status: 'completed' }) },
-      },
-    })
     events[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'context:size-updated', contextSize: 1234 },
@@ -686,6 +662,11 @@ describe('createWebPlatformApi', () => {
     events[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'context:size-updated', contextSize: '1234' },
+    })
+    // P1:压缩事件不再有专属平台订阅 —— 它们走 onSessionEvent → ipc-hub。
+    events[0]?.emit('session:event', {
+      sessionId: 'session-1',
+      event: { type: 'context:compact-started' },
     })
     events[0]?.emit('session:event', {
       sessionId: 'session-1',
@@ -696,26 +677,15 @@ describe('createWebPlatformApi', () => {
       event: { type: 'stream:start' },
     })
 
-    expect(startedCallback).toHaveBeenCalledTimes(1)
-    expect(startedCallback).toHaveBeenCalledWith({
-      sessionId: 'session-1',
-    })
     expect(sizeCallback).toHaveBeenCalledTimes(1)
     expect(sizeCallback).toHaveBeenCalledWith({
       sessionId: 'session-1',
       contextSize: 1234,
     })
-    expect(compactCallback).toHaveBeenCalledTimes(1)
-    expect(compactCallback).toHaveBeenCalledWith({
-      sessionId: 'session-1',
-      success: false,
-      error: 'too large',
-    })
+    expect('onContextCompactStarted' in api).toBe(false)
+    expect('onContextCompactCompleted' in api).toBe(false)
 
-    cleanupStarted()
     cleanupSize()
-    expect(events[0]?.closed).toBe(false)
-    cleanupCompact()
     expect(events[0]?.closed).toBe(true)
   })
 

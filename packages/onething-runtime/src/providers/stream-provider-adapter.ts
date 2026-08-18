@@ -5,6 +5,8 @@ import type {
   CoreProviderAuthLogger,
   CoreProviderConfigLike,
   CoreSessionProviderSelection,
+  CoreSpaceCredentialMarker,
+  CoreSpaceDefaultSelection,
 } from './provider-config.js'
 import {
   getEffectiveOnethingProviderConfig,
@@ -25,10 +27,20 @@ export interface OnethingStreamProviderAdapterOptions<
     providerId: string,
     providerConfig: TProvider | undefined,
   ): TProvider | undefined
+  /**
+   * per-space 默认 provider/model(批 B9)。缺省 = 恒无,即默认空间语义
+   * (会话没表达过选择就落全局默认)。
+   */
+  resolveSpaceDefaultSelection?(sessionId: string): CoreSpaceDefaultSelection | undefined
   isProviderSupported(providerId: string): boolean
   isOAuthProvider(providerId: string): boolean
   resolveApiKey(providerId: string, providerConfig: TProvider | undefined): string | null | undefined
-  resolveOAuthAuth(providerId: string, apiKey?: string): Promise<TAuth | null>
+  /** 末位是 per-space 凭证标记(批 B6):token 该去哪个空间的哪条 entry 上取。 */
+  resolveOAuthAuth(
+    providerId: string,
+    apiKey?: string,
+    credential?: CoreSpaceCredentialMarker,
+  ): Promise<TAuth | null>
   createApiKeyAuth?(apiKey: string): TAuth
   generateTitle(
     providerId: string,
@@ -52,6 +64,7 @@ export function createOnethingStreamProviderAdapter<
       return getEffectiveOnethingProviderConfig<TProvider, TSession>(settings, sessionId, {
         getSession: options.getSession,
         applySpaceCredentials: options.applySpaceCredentials,
+        resolveSpaceDefaultSelection: options.resolveSpaceDefaultSelection,
       }, override)
     },
     /**

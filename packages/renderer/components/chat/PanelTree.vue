@@ -22,9 +22,6 @@
         :reserve-sidebar-actions="reserveSidebarActions"
         :layout-transitioning="layoutTransitioning"
         :register-panel-ref="registerPanelRef"
-        :side-panel-available="sidePanelAvailable"
-        :side-panel-collapsed="sidePanelCollapsed"
-        :outline-rail-target="outlineRailTarget"
         @panel-event="$emit('panelEvent', $event)"
       />
     </SplitterPanel>
@@ -41,9 +38,6 @@
     :reserve-sidebar-actions="node.id === firstLeafId && reserveSidebarActions"
     :layout-transitioning="layoutTransitioning"
     :panel-focused="totalLeafCount === 1 || node.id === activeLeafId"
-    :side-panel-available="sidePanelAvailable"
-    :side-panel-collapsed="sidePanelCollapsed"
-    :outline-rail-target="node.id === activeLeafId ? outlineRailTarget : null"
     :show-practice-strip="node.id === firstLeafId"
     @pointerdown.capture="$emit('panelEvent', { type: 'focus', leafId: node.id })"
     @split="$emit('panelEvent', { type: 'openSplitSearch', leafId: node.id })"
@@ -58,7 +52,7 @@
     @review-goal="(sessionId: string) => $emit('panelEvent', { type: 'reviewGoal', leafId: node.id, sessionId })"
     @switch-session="(sessionId: string) => $emit('panelEvent', { type: 'switchSession', leafId: node.id, sessionId })"
     @split-drop="(payload: { direction: SplitDirection; sessionId: string; sourcePanelId: string }) => $emit('panelEvent', { type: 'splitDrop', leafId: node.id, ...payload })"
-    @toggle-side-panel="$emit('panelEvent', { type: 'toggleSidePanel', leafId: node.id })"
+    @open-outline="$emit('panelEvent', { type: 'openOutline', leafId: node.id })"
   />
 </template>
 
@@ -82,9 +76,6 @@ defineProps<{
   reserveSidebarActions?: boolean
   layoutTransitioning?: boolean
   registerPanelRef: (id: string, el: unknown) => void
-  sidePanelAvailable?: boolean
-  sidePanelCollapsed?: boolean
-  outlineRailTarget?: HTMLElement | null
 }>()
 
 defineEmits<{

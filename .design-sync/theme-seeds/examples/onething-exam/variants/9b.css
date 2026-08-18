@@ -1,0 +1,15 @@
+/* 9b 侧栏面：侧栏比正文更亮（纸做侧栏、地做正文），阶梯方向反过来 */
+.col-left.is-receded, .col-right.is-receded {
+  --surface-region: #fffcf0;
+  --surface-card: #e6e4d9;
+  --line: #dad8ce;
+  --line-quiet: #e6e4d9;
+}
+.col-left { border-right: 1px solid var(--c-line); }
+.col-right { border-left: 1px solid var(--c-line); }
+.field { background: #f2f0e5; border: 1px solid var(--c-line-faint); }
+.sidebar-item.is-selected { background: var(--c-accent-soft); }
+.sidebar-item.is-selected .row-name { color: var(--c-ink-1); }
+.panel { background: #f2f0e5; }
+.stepper { background: #fffcf0; border: 1px solid var(--c-line-faint); }
+.stepper-btns span { background: #e6e4d9; }

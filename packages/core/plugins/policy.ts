@@ -99,6 +99,12 @@ export const pluginScope = {
    * 连败要分得清是哪一个在坏;降级则折成同一个 `search:<id>` surface。
    */
   searchProvide: (providerId: string) => brand(`searchProvide:${providerId}`),
+  /**
+   * 凭证轮换策略(批 E)的运行期失败。address = `plugin:<id>:<name>`(也就是落进
+   * credentials.json 的 policy 取值)—— 一个插件可注册多个策略,连败要分得清是
+   * 哪一个在坏;降级则折成同一个 `credential-strategy:<policy>` surface。
+   */
+  credentialStrategy: (policy: string) => brand(`credentialStrategy:${policy}`),
 } as const
 
 /**
@@ -193,6 +199,7 @@ export const PLUGIN_SCOPE_FAMILIES = [
   'connector',
   'search-provide',
   'deep-link',
+  'credential-strategy',
 ] as const
 
 export type PluginScopeFamily = (typeof PLUGIN_SCOPE_FAMILIES)[number]
@@ -328,6 +335,19 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
       + '暂时不在",而不是让用户以为自己记错了)。没有"用户点重试"的逃生口,'
       + '靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
   },
+  'credential-strategy': {
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
+    remedy: 'degrade-surface',
+    rationale: '一个凭证策略超时或抛错只影响"这次挑哪把钥匙"这一个判断,而这个判断'
+      + '**从来就有一个可用的默认答案**(内置 priority-failover)—— 整体禁用会把一次'
+      + '挑选抖动放大成插件故障;更糟的是它坐在起流的关键路径上,升级成 disable-plugin '
+      + '等于让一个坏策略能挡住用户发消息。所以罚则只能是降级:停掉**这一个策略**,'
+      + '该空间的凭证改由内置 failover 挑,插件的工具/命令/面板照常。闸不在请求通道上,'
+      + '而在装配层的策略调用口 —— 降级后连 handler 都不调,省掉每一次起流白等一个'
+      + '超时预算。面板上那一项**变灰而不是消失**(与触发式锚点、深链动作同规),'
+      + '用户存下的 policy 字段也原样保留 —— 插件回来自动生效。没有"用户点重试"的'
+      + '逃生口,靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
+  },
 }
 
 /**
@@ -365,6 +385,9 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (scope.startsWith('searchProvide')) return 'search-provide'
   // 深链动作(H4):同样不与上面任何一个撞前缀 —— `deepLink:` 是它独占的。
   if (scope.startsWith('deepLink:')) return 'deep-link'
+  // 凭证策略(批 E):`credentialStrategy:` 与上面任何一个都不撞前缀
+  // (`connector` / `register` 都不同头),放最后即可。
+  if (scope.startsWith('credentialStrategy:')) return 'credential-strategy'
   return null
 }
 
@@ -459,6 +482,12 @@ export function describePluginSurface(scope: string): string {
   // 深链动作(H4):`deepLink:<address>` 折成 `deeplink:<address>` —— 与
   // pluginDeepLinkSurface 是同一把尺,派发口据它短路(灰掉那一条,不关整扇门)。
   if (scope.startsWith('deepLink:')) return `deeplink:${scope.slice('deepLink:'.length)}`
+  // 凭证策略(批 E):`credentialStrategy:<policy>` 折成 `credential-strategy:<policy>`
+  // —— 与 pluginCredentialStrategySurface 是同一把尺,策略调用口据它短路(灰掉
+  // 那一条策略,不关掉整个凭证池)。
+  if (scope.startsWith('credentialStrategy:')) {
+    return `credential-strategy:${scope.slice('credentialStrategy:'.length)}`
+  }
   return scope
 }
 
@@ -507,7 +536,7 @@ export interface PluginRegistryPolicy {
  *  4. app 层 host 对象加转发,必要时给注册表补 ownerPluginId 归属;
  *  5. 拆除快照测试加一行,并确认 C17 那条"转发口 ↔ 开放清单"守卫仍然绿。
  */
-export const PLUGIN_OPEN_REGISTRIES = ['im-connector', 'search-provider', 'deep-link-action'] as const
+export const PLUGIN_OPEN_REGISTRIES = ['im-connector', 'search-provider', 'deep-link-action', 'credential-strategy'] as const
 
 export type PluginOpenRegistry = (typeof PLUGIN_OPEN_REGISTRIES)[number]
 
@@ -561,6 +590,25 @@ export const PLUGIN_REGISTRY_POLICY: Record<PluginOpenRegistry, PluginRegistryPo
     trafficNote: '**当前无生产流量**:主仓没有内置插件注册深链动作(样例翻译插件'
       + '另派)。`onething://ask` 这个**宿主**动词是真流量,但它不经过本注册表。'
       + '试点验证的是契约、声明门、超时/熔断与拆除语义。',
+  },
+  'credential-strategy': {
+    // 停用即撤下:策略调用口查不到该策略,选择回落内置 priority-failover ——
+    // 与前三个不同,**这里真的有一个宿主默认路径**,而且它是选择器本来就在跑的
+    // 那一条。所以它是三个标签里唯一一个 `degrade-to-default`:调用仍然成功,
+    // 只是挑法换回内置的。把它标成 fail-open 会是在描述一个不存在的失败。
+    teardown: 'degrade-to-default',
+    inFlight: '停用时退订函数被调用,策略从注册表摘除;此后 selectSpaceCredentialEntry '
+      + '对该 policy 取值回落内置 priority-failover(**调用仍然成功**,起流不受影响)。'
+      + '正在跑的那一次 select 不被打断,但它的结果会被丢弃 —— 契约里写明了 select '
+      + '不得有副作用。**用户空间里的 `policy` 字段一个字节都不改**:那是用户的选择,'
+      + '插件回来自动生效;面板上把它画成灰态并注明"策略不可用,正在使用内置 failover"。',
+    hostDivergence: '仅桌面宿主执行插件(§6 方案 A):server / CLI daemon 不装配插件系统,'
+      + '那里的 `plugin:*` policy 恒回落内置 failover。而且这两个宿主本来就只有默认'
+      + '空间(无池),所以这条注册表在它们上面是"不适用"而不是"降级"。',
+    hasProductionTraffic: false,
+    trafficNote: '**当前无生产流量**:主仓没有内置插件注册凭证策略。验证的是契约、'
+      + '脱敏投影、超时/非法返回值回落、熔断降级与拆除语义;真实插件供策略的链路'
+      + '待第三方插件安装后。',
   },
 }
 

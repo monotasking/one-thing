@@ -47,17 +47,28 @@ export type OnethingHistoryMessage =
 
 export interface BuildOnethingHistoryMessagesOptions {
   onImageAttachment?: BuildMessageContentOptions['onImageAttachment']
+  /**
+   * Last touch on a message's **built** content (string or parts). The app
+   * layer applies the persisted turn-context delta here — after the parts are
+   * built, so the placement rule is the same one the first-build attach uses on
+   * the request (`TurnContextLedger.applyTo`).
+   */
+  finalizeContent?: (
+    content: OnethingHistoryAIMessageContent,
+    message: CoreMessageContentSource,
+  ) => OnethingHistoryAIMessageContent
   onCompactedHistory?: (details: CoreCompactedHistoryLogDetails) => void
   onMissingSummaryAnchor?: (details: { sessionId?: string; summaryUpToMessageId: string }) => void
 }
 
 export function buildOnethingMessageContent(
   message: CoreMessageContentSource,
-  options: Pick<BuildOnethingHistoryMessagesOptions, 'onImageAttachment'> = {},
+  options: Pick<BuildOnethingHistoryMessagesOptions, 'onImageAttachment' | 'finalizeContent'> = {},
 ): OnethingHistoryAIMessageContent {
-  return buildCoreMessageContent(message, {
+  const content = buildCoreMessageContent(message, {
     onImageAttachment: options.onImageAttachment,
   })
+  return options.finalizeContent ? options.finalizeContent(content, message) : content
 }
 
 export function buildOnethingHistoryMessages<TMessage extends CoreHistoryChatMessage>(

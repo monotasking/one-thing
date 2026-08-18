@@ -69,6 +69,12 @@ export interface OnethingAuthProviderDefinition {
 export interface OnethingAuthFlowState {
   flowId: string
   providerId: string
+  /**
+   * 这一次登录的 token 该落到哪儿(批 B6)。缺席 = settings(默认空间)。
+   * 类型故意写成结构体而不是 import —— types.ts 是叶子模块,不反向依赖
+   * credential-target.ts(那边要 import spaces/types)。
+   */
+  target?: { kind: 'settings' } | { kind: 'space'; spaceId: string; entryId?: string; label?: string }
   kind: OnethingAuthFlowKind
   state: string
   codeVerifier?: string

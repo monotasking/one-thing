@@ -33,57 +33,41 @@
       class="app-background-layer"
       :style="pluginBackgroundStyle"
     />
-    <div
-      v-if="sidebarFloating || sidebarFloatingClosing"
-      class="app-floating-sidebar-host"
+    <!-- 三栏树在 `components/shell/AppShell.vue`(L5)。App 这一侧只剩窗口模式
+         分发、插件背景/氛围层、事件路由与空间切换 —— 布局是这四件事里唯一
+         可以被单独看懂的一块,它的输入只有协调器那几个数。 -->
+    <AppShell
+      ref="appShellRef"
+      v-model:sidebar-width="sidebarWidth"
+      :sidebar-min-width="MIN_SIDEBAR_WIDTH"
+      :sidebar-max-width="shellLayout.sidebarMaxWidth"
+      :sidebar-docked="sidebarDockedVisible"
+      :sidebar-resizing="sidebarResizing"
+      :chat-min-width="CHAT_MIN_WIDTH"
+      :workbench-mounted="workbenchMounted"
+      :workbench-revealed="workbenchRevealed"
+      :workbench-visible="workbenchVisible"
+      :workbench-panel-width="workbenchPanelWidth"
+      :workbench-min-width="shellLayout.workbenchMinWidth"
+      :workbench-max-width="shellLayout.workbenchMaxWidth"
+      :workbench-slide-width="shellLayout.workbenchWidth"
+      @sidebar-resize-start="handleSidebarResizeStart"
+      @sidebar-resize-end="handleSidebarResizeEnd"
+      @workbench-resize-start="inspectorResizing = true"
+      @workbench-resize-end="handleInspectorResizeEnd"
+      @update:workbench-panel-width="handleInspectorPanelSizeUpdate"
     >
-      <!-- Floating sidebar overlay backdrop -->
-      <!--      <div-->
-      <!--        v-if="sidebarFloating"-->
-      <!--        :class="['sidebar-floating-backdrop', { closing: sidebarFloatingClosing }]"-->
-      <!--        @click="closeFloatingSidebar"-->
-      <!--      ></div>-->
-
-      <Sidebar
-        :collapsed="false"
-        :floating="sidebarFloating"
-        :floating-closing="sidebarFloatingClosing"
-        :no-transition="sidebarNoTransition"
-        :width="sidebarWidth"
-        @open-settings="openSettingsWindow"
-        @toggle-collapse="handleSidebarToggle"
-        @open-search="openSearch"
-        @create-new-chat="createNewChat"
-        @toggle-media-panel="openWorkspacePanel('media')"
-        @open-workspace-panel="openWorkspacePanel"
-        @select-session="selectSidebarSession"
-        @request-floating-keep-open="keepFloatingSidebarOpen"
-        @request-floating-close="closeFloatingSidebar"
-      />
-    </div>
-
-    <Splitter
-      class="app-shell"
-      :class="{ 'is-sidebar-resizing': sidebarResizing }"
-      :gap="0"
-      :resizer-size="1"
-      :resizer-hit-size="12"
-      @resize-start="handleSidebarResizeStart"
-      @resize-end="handleSidebarResizeEnd"
-    >
-      <SplitterPanel
-        v-if="sidebarDockedVisible"
-        v-model:size="sidebarWidth"
-        as="aside"
-        class="app-left-sidebar-region"
-        size-unit="px"
-        :min="MIN_SIDEBAR_WIDTH"
-        :max="MAX_SIDEBAR_WIDTH"
-      >
+      <!-- 全仓**唯一**一个 `<Sidebar>`(L4)。浮层态不是第二个实例,而是同一个
+           实例加 `.floating` 后 `position: fixed` 覆盖出去,左栏 SplitterPanel
+           同时收成 0 宽(`:collapsed`)—— 于是滚动位置、展开的分组、搜索框里
+           打了一半的字在浮层⇄停靠之间天然保留(双实例时代做不到)。
+           `position: fixed` 不被 `.splitter-panel` 的 `overflow: hidden` 裁:
+           链路上没有任何祖先带 transform/contain,浮层的包含块仍是视口。 -->
+      <template #sidebar>
         <Sidebar
           :collapsed="false"
-          :floating="false"
-          :floating-closing="false"
+          :floating="sidebarFloating"
+          :floating-closing="sidebarFloatingClosing"
           :no-transition="sidebarNoTransition"
           :width="sidebarWidth"
           @open-settings="openSettingsWindow"
@@ -93,117 +77,71 @@
           @toggle-media-panel="openWorkspacePanel('media')"
           @open-workspace-panel="openWorkspacePanel"
           @select-session="selectSidebarSession"
+          @request-floating-keep-open="keepFloatingSidebarOpen"
+          @request-floating-close="closeFloatingSidebar"
         />
-      </SplitterPanel>
+      </template>
 
-      <!-- 折叠 = 整条侧栏卸下来(classic 与 workbench 同一套语义)。
-           方案三曾在 workbench 下把折叠画成一条 46px 的 rail,2026-07-31 撤掉:
-           macOS 的三颗交通灯横跨到窗口左起 ~70px,比 rail 还宽,于是黄绿两颗
-           压在聊天区上、横跨那条竖分隔线;顶栏又按"顶到窗口左缘"死留 84px,
-           没扣掉左边这 46px,标题被平白推远一截。左上角因此永远对不齐。
-           五个类别入口在收起态由顶栏那组按钮 + 浮层侧栏(hover 左缘)承接。 -->
-
-      <!-- Main Content - No Header -->
-      <SplitterPanel
-        flex
-        class="app-shell-main-region"
-        :resizable="sidebarDockedVisible"
-      >
-        <div
-          ref="appContentRef"
-          class="app-content"
+      <template #main>
+        <Container
+          as="div"
+          main-as="div"
+          class="app-main-region"
+          body-class="app-main-body"
+          main-class="app-main-content-region"
+          full-height
+          :main-flex="'1 1 0'"
+          overflow="hidden"
+          main-overflow="hidden"
         >
-          <Splitter
-            ref="contentSplitterRef"
-            class="app-content-splitter"
-            :gap="0"
-            :resizer-size="1"
-            :resizer-hit-size="12"
-            @resize-start="inspectorResizing = true"
-            @resize-end="handleInspectorResizeEnd"
-          >
-            <SplitterPanel
-              v-model:size="mainWorkspacePanelSize"
-              :min="52"
-              :resizable="inspectorVisible"
-            >
-              <Container
-                as="div"
-                main-as="div"
-                class="app-main-region"
-                body-class="app-main-body"
-                main-class="app-main-content-region"
-                full-height
-                :main-flex="'1 1 0'"
-                overflow="hidden"
-                main-overflow="hidden"
-              >
-                <!-- 主区只剩会话。工作区面板(Media/Agents/Tasks/…)已迁进右侧
-                     工作台成为「工作区域」页签(P1),那个把聊天整个盖住的全屏
-                     容器随之退役 —— 于是"一边看面板一边看会话"第一次成立。
-                     这一层壳留着:它是壁纸体系登记在案的四处区域根之一
-                     (wallpaper.css `html.has-wallpaper .workspace-view-stack`)。 -->
-                <div class="workspace-view-stack">
-                  <ChatContainer
-                    ref="chatContainerRef"
-                    class="workspace-view workspace-view-chat"
-                    :sidebar-collapsed="sidebarCollapsed"
-                    :sidebar-floating="sidebarFloating"
-                    :show-hover-trigger="sidebarCollapsed && !sidebarFloating"
-                    :is-inspector-open="inspectorOpen"
-                    :reserve-sidebar-actions="reserveSidebarActions"
-                    :layout-transitioning="sidebarActionAnimating"
-                    @toggle-sidebar="handleSidebarToggle"
-                    @open-search="openSearch"
-                    @create-new-chat="createNewChat"
-                    @show-floating-sidebar="handleTriggerEnter"
-                    @hide-floating-sidebar="handleTriggerLeave"
-                    @toggle-inspector="inspectorOpen = !inspectorOpen"
-                    @open-file="openFileInRightWorkbench"
-                    @review-goal="openGoalReviewInRightWorkbench"
-                  />
-                </div>
-              </Container>
-            </SplitterPanel>
+          <!-- 主区只剩会话。工作区面板(Media/Agents/Tasks/…)已迁进右侧
+               工作台成为「工作区域」页签(P1),那个把聊天整个盖住的全屏
+               容器随之退役 —— 于是"一边看面板一边看会话"第一次成立。
+               这一层壳留着:它是壁纸体系登记在案的四处区域根之一
+               (wallpaper.css `html.has-wallpaper .workspace-view-stack`)。 -->
+          <div class="workspace-view-stack">
+            <ChatContainer
+              ref="chatContainerRef"
+              class="workspace-view workspace-view-chat"
+              :sidebar-collapsed="sidebarStowed"
+              :sidebar-floating="sidebarFloating"
+              :show-hover-trigger="sidebarStowed && !sidebarFloating"
+              :is-inspector-open="inspectorOpen"
+              :reserve-sidebar-actions="reserveSidebarActions"
+              :layout-transitioning="sidebarActionAnimating || inspectorResizing"
+              @toggle-sidebar="handleSidebarToggle"
+              @open-search="openSearch"
+              @create-new-chat="createNewChat"
+              @show-floating-sidebar="handleTriggerEnter"
+              @hide-floating-sidebar="handleTriggerLeave"
+              @toggle-inspector="inspectorOpen = !inspectorOpen"
+              @open-outline="openOutlineInRightWorkbench"
+              @open-file="openFileInRightWorkbench"
+              @review-goal="openGoalReviewInRightWorkbench"
+            />
+          </div>
+        </Container>
+      </template>
 
-            <!-- Collapsed (not unmounted) when hidden: the panel slides shut
-                 symmetrically and workbench tab state survives toggles. The
-                 slide wrapper freezes content at the expanded width so the
-                 panel edge clips it instead of reflowing tabs every frame. -->
-            <SplitterPanel
-              v-if="workbenchMounted"
-              as="aside"
-              class="app-right-sidebar-region"
-              :size="inspectorPanelSize"
-              :min="inspectorMinPanelSize"
-              :max="48"
-              :collapsed="!workbenchRevealed"
-              @update:size="handleInspectorPanelSizeUpdate"
-            >
-              <div
-                class="workbench-slide"
-                :style="workbenchSlideStyle"
-              >
-                <RightWorkbenchPanel
-                  ref="rightWorkbenchRef"
-                  :session-id="sessionsStore.currentSessionId"
-                  :workspace-root="currentWorkspaceRoot"
-                  :workspace-roots="currentWorkspaceRoots"
-                  :revealed="workbenchRevealed"
-                  @close="inspectorOpen = false"
-                  @jump-to-source="handleWorkbenchJumpToSource"
-                />
-              </div>
-            </SplitterPanel>
-          </Splitter>
+      <template #workbench>
+        <RightWorkbenchPanel
+          ref="rightWorkbenchRef"
+          :session-id="sessionsStore.currentSessionId"
+          :workspace-root="currentWorkspaceRoot"
+          :workspace-roots="currentWorkspaceRoots"
+          :revealed="workbenchRevealed"
+          @close="inspectorOpen = false"
+          @jump-to-source="handleWorkbenchJumpToSource"
+        />
+      </template>
 
-          <VoiceOverlay />
-          <VoiceCallPanel />
-        </div>
-      </SplitterPanel>
+      <template #content-overlays>
+        <VoiceOverlay />
+        <VoiceCallPanel />
+      </template>
 
       <!-- Old search overlay removed — replaced by Search Everywhere window -->
-    </Splitter>
+    </AppShell>
   </ErrorBoundary>
 
   <!-- Evals incident workbench (full-screen overlay). Rendered OUTSIDE the
@@ -217,17 +155,20 @@
 import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useSpacesStore } from '@/stores/spaces'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
 import { useThemeStore } from '@/stores/themes'
 import { useVoiceStore } from '@/stores/voice'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { resolveInspectorDefaultOpen } from '@/composables/useInspectorDefault'
+import { MIN_SIDEBAR_WIDTH, useLayoutPrefsStore } from '@/stores/layoutPrefs'
+import { CHAT_MIN_WIDTH, useShellLayout } from '@/composables/useShellLayout'
+import { useFloatingSidebar } from '@/composables/useFloatingSidebar'
 import { Sidebar } from '@/components/sidebar'
+import AppShell from '@/components/shell/AppShell.vue'
 import ChatContainer from '@/components/ChatContainer.vue'
 import Container from '@/components/common/Container.vue'
-import Splitter from '@/components/common/Splitter.vue'
-import SplitterPanel from '@/components/common/SplitterPanel.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
@@ -295,12 +236,22 @@ function syncCurrentHash() {
 
 const sessionsStore = useSessionsStore()
 const workspaceStore = useWorkspaceStore()
+// ⌘1..9 切空间要按列表序取 id(批 B5)。
+const spacesStore = useSpacesStore()
 const collabBoardStore = useCollabBoardStore()
 const agentsStore = useAgentsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const themeStore = useThemeStore()
 const voiceStore = useVoiceStore()
+/* 布局偏好(L0)与布局协调器(L2)—— 四列的尺寸/开合从此各有一个唯一来源:
+   **偏好**在 store 里(落盘),**实际**由 `shellLayout` 按窗宽预算算出来(不落盘)。 */
+const layoutPrefs = useLayoutPrefsStore()
+const {
+  layout: shellLayout,
+  setWorkbenchRequested,
+  observeShellWidth,
+} = useShellLayout()
 
 const appReady = ref(false)
 const evalsWorkbenchStore = useEvalsWorkbenchStore()
@@ -311,7 +262,11 @@ const browserStore = useBrowserStore()
 // register them so BrowserPanel hides the view while they're open (§8.2).
 watch(() => evalsWorkbenchStore.open, open => overlayPresenceStore.setOverlay('evals', open))
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
-const appContentRef = ref<HTMLElement | null>(null)
+/* `.app-shell` / `.app-content` 两个元素归 AppShell 画,App 只从它 expose 的口
+   取回来:一处挂协调器那唯一的 ResizeObserver,一处给搜索窗当居中锚点。 */
+const appShellRef = ref<InstanceType<typeof AppShell> | null>(null)
+const appShellElement = computed(() => appShellRef.value?.shellElement ?? null)
+const appContentElement = computed(() => appShellRef.value?.contentElement ?? null)
 
 /**
  * 插件背景层(G 期,L2.5)。
@@ -399,28 +354,9 @@ const inspectorOpen = computed({
 /* C0 的 workbench↔classic 外壳回滚闸已于 2026-08-05 整套退役(D2 / U0),它的
    根属性 `data-shell-mode` 与 CSS 门也随 U0b 一起删干净了 —— 外壳只有一套。 */
 
-/* 右栏开合的持久化(W-Q2)。沿用右栏自己既有的那套 —— `inspectorPanelSize`
-   就住在 localStorage —— 而不是另开一条 appState 字段。 */
-const INSPECTOR_OPEN_STORAGE_KEY = 'inspectorOpen'
-
-function readStoredInspectorOpen(): boolean | null {
-  try {
-    const raw = localStorage.getItem(INSPECTOR_OPEN_STORAGE_KEY)
-    if (raw === 'true') return true
-    if (raw === 'false') return false
-  } catch {
-    // localStorage 不可用(隐私模式 / 测试夹具):当作没存过,走窗宽默认值。
-  }
-  return null
-}
-
-function writeStoredInspectorOpen(open: boolean): void {
-  try {
-    localStorage.setItem(INSPECTOR_OPEN_STORAGE_KEY, String(open))
-  } catch {
-    // 存不下就算了:下次启动退回按窗宽的默认值,不影响本次使用。
-  }
-}
+/* 右栏开合的持久化(W-Q2)。落点自 L0 起统一在 `layoutPrefs` store(单 key
+   `onething.layout.v1`),旧的裸 `localStorage['inspectorOpen']` 由 store 首次读时
+   迁移并删除 —— App.vue 这一侧不再自己碰 localStorage。 */
 
 /**
  * 右栏初值(W-Q2:≥1400px 默认展开,否则默认收起但入口保留)。
@@ -434,7 +370,7 @@ function applyInspectorDefaultOnce() {
   if (isAuxiliaryWindow.value) return
   inspectorOpen.value = resolveInspectorDefaultOpen({
     viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth,
-    stored: readStoredInspectorOpen(),
+    stored: layoutPrefs.workbenchOpen,
   })
 }
 
@@ -442,19 +378,15 @@ function applyInspectorDefaultOnce() {
    照用户上次留下的样子,而不是把窗宽默认值再算一遍。 */
 watch(inspectorOpen, open => {
   if (!inspectorDefaultApplied || isAuxiliaryWindow.value) return
-  writeStoredInspectorOpen(open)
+  layoutPrefs.setWorkbenchOpen(open)
 })
 
-// Sidebar width (persisted)
-const MIN_SIDEBAR_WIDTH = 200
-const MAX_SIDEBAR_WIDTH = 500
-
-function clampSidebarWidth(width: number): number {
-  if (!Number.isFinite(width)) return 300
-  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width))
-}
-
-const sidebarWidth = ref(clampSidebarWidth(parseInt(localStorage.getItem('sidebarWidth') || '300', 10)))
+/* 侧栏宽度/折叠的**唯一**落点是 layoutPrefs store(L0);这里只是它的读写门面。
+   clamp 也只在 store 里做一次 —— App.vue 从前那份 `clampSidebarWidth` 已删。 */
+const sidebarWidth = computed({
+  get: () => layoutPrefs.sidebarWidth,
+  set: (width: number) => { layoutPrefs.sidebarWidth = width },
+})
 const sidebarResizing = ref(false)
 
 // 面板 id 从注册表派生 —— 这条联合原先是 ≥6 处手抄之一。
@@ -592,16 +524,48 @@ useShortcuts({
     if (isAuxiliaryWindow.value) return
     window.dispatchEvent(new CustomEvent('todo-plan:toggle-card'))
   },
+  /**
+   * ⌘1..9 切空间(批 B5)。这里只改"当前空间"这一个值 —— 换分栏树、重载项目
+   * 名册、校正激活会话全挂在 Sidebar 对 `currentSpaceId` 的那条 watch 上,
+   * 与点色点走的是同一条路。
+   */
+  onSelectSpace: (index: number) => {
+    if (isAuxiliaryWindow.value) return
+    const target = spacesStore.spaces[index]
+    if (target) spacesStore.switchTo(target.id)
+  },
 })
 
 
 // Persist sidebar collapsed state and control traffic lights visibility
-const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
-const sidebarFloating = ref(false)
-const sidebarFloatingClosing = ref(false)
-const sidebarNoTransition = ref(false) // Disable transition during/after floating
+const sidebarCollapsed = computed({
+  get: () => layoutPrefs.sidebarCollapsed,
+  set: (collapsed: boolean) => { layoutPrefs.setSidebarCollapsed(collapsed) },
+})
+/**
+ * 侧栏「不在停靠位上」—— 用户折叠的,**或**预算把它挤成浮层的(L2 降级第 4 步)。
+ *
+ * 呈现层(hover 触发区、顶栏留位、房头缩进)一律读它而不是 `sidebarCollapsed`:
+ * 那一枚是**偏好**,窄窗自动收起时它不该被改写,否则窗宽恢复后侧栏回不来。
+ */
+const sidebarStowed = computed(() => !shellLayout.value.sidebarDocked)
+/* 浮层侧栏的四段时序(hover 延迟 / 关闭动画 / 关闭后冷却 / toggle 后冷却)整台
+   搬进 `useFloatingSidebar`(L4)。App 这一侧只剩三枚布尔与几个回调 —— 从前这里
+   躺着四个裸 timer、一枚 cooldown 布尔,以及 onUnmounted 里四段清场代码。 */
+const {
+  floating: sidebarFloating,
+  closing: sidebarFloatingClosing,
+  noTransition: sidebarNoTransition,
+  actionAnimating: sidebarActionAnimating,
+  triggerEnter: handleTriggerEnter,
+  triggerLeave: handleTriggerLeave,
+  keepOpen: keepFloatingSidebarOpen,
+  close: closeFloatingSidebar,
+  notifyToggled: notifySidebarToggled,
+  reset: resetFloatingSidebar,
+} = useFloatingSidebar()
 const sidebarDockedVisible = computed(() =>
-  !sidebarCollapsed.value && !sidebarFloating.value && !sidebarFloatingClosing.value
+  !sidebarStowed.value && !sidebarFloating.value && !sidebarFloatingClosing.value
 )
 
 /**
@@ -628,21 +592,14 @@ watch(trafficLightsOverhang, (px) => {
   document.documentElement.style.setProperty('--shell-lights-overhang', `${px}px`)
 }, { immediate: true })
 
-const reserveSidebarActions = ref(sidebarCollapsed.value)
-const sidebarActionAnimating = ref(false)
-const floatingCooldown = ref(false) // Prevent re-expansion after toggle
-const floatingShowTimer = ref<ReturnType<typeof setTimeout> | null>(null) // Delay before showing floating sidebar
-let sidebarToggleTimer: ReturnType<typeof setTimeout> | null = null
-let floatingCloseTimer: ReturnType<typeof setTimeout> | null = null
-let floatingCooldownTimer: ReturnType<typeof setTimeout> | null = null
+const reserveSidebarActions = ref(layoutPrefs.sidebarCollapsed)
 function handleSidebarResizeStart() {
   sidebarResizing.value = true
 }
 
 function handleSidebarResizeEnd() {
-  sidebarWidth.value = clampSidebarWidth(sidebarWidth.value)
+  layoutPrefs.setSidebarWidth(sidebarWidth.value)
   sidebarResizing.value = false
-  localStorage.setItem('sidebarWidth', String(sidebarWidth.value))
 }
 /**
  * 右栏从前**只**在"有一个会话"时才挂:它那时装的全是会话的东西(文件/终端/
@@ -656,6 +613,10 @@ function handleSidebarResizeEnd() {
 const workspacePanelRequested = ref(false)
 const inspectorVisible = computed(() =>
   inspectorOpen.value && (Boolean(sessionsStore.currentSessionId) || workspacePanelRequested.value))
+/* 运行时闸灌给协调器;右栏**实际**显不显示由预算说了算(窄窗会把它临时收起,
+   而 `inspectorOpen` 这枚偏好一个字节不动 —— 窗宽一恢复它自己弹回来)。 */
+watch(inspectorVisible, requested => setWorkbenchRequested(requested), { immediate: true })
+const workbenchVisible = computed(() => shellLayout.value.workbenchVisible)
 function normalizeRootPath(root?: string | null): string {
   if (!root) return ''
   const trimmed = root.trim()
@@ -683,56 +644,30 @@ const currentWorkspaceRoots = computed(() => {
   ])
 })
 const currentWorkspaceRoot = computed(() => currentWorkspaceRoots.value[0] || '')
-const MIN_INSPECTOR_PANEL_SIZE = 22
-const MAX_INSPECTOR_PANEL_SIZE = 48
-const DEFAULT_INSPECTOR_PANEL_SIZE = 32
-
 /**
- * 右栏的**像素**下限(设计稿 `right-panel.html`:最窄 250px 是硬指标)。
+ * 右栏的尺寸模型:**px**(L1)。
  *
- * 原来的下限只有百分比 22% —— 窗口一小就破线:620px 的窗口里右栏只剩 136px,
- * 分段器还撑得住,但行被压成「I..」「服...」,信息全没了(真机走查看到的正是这个)。
- * 所以下限改成「22% 与 250px 取大」,再让 max 48% 兜底(极窄窗口下 250px 可能
- * 超过 48%,那时以 48% 为准 —— 中栏也有自己的下限,不能为了右栏把它挤没)。
+ * 从前它是百分比,于是需要三件 hack 才能守住"最窄 250px"这条设计稿硬指标:
+ * 一个量分栏容器宽的 ResizeObserver、一段 px→% 的下限换算、一份"每次读都重新
+ * clamp"的 computed(只在写入时 clamp 会被窗口变窄绕过)。三件现在全没了 ——
+ * 下限直接就是 250,上限由协调器按预算给(`shellLayout.workbenchMaxWidth`)。
+ *
+ * `workbenchPanelWidth` 是**拖拽期间的活值**:分栏器每帧回吐一次,松手才提交进
+ * store。因此落盘只发生一次,`--workbench-width` 也只写一次(AppShell 在
+ * `.app-content` 上写它)。
  */
-/* 提前声明:`clampInspectorPanelSize` 在 setup 期就被调用(初始化存档值),
-   它经 `inspectorMinPanelSize` 读到这里 —— 声明晚了会 TDZ,整个 App 白屏。 */
-const contentSplitterWidth = ref(0)
-
-const MIN_INSPECTOR_PANEL_PX = 250
-
-/* 换算基数必须是**分栏容器**的宽度,不是窗口宽度 —— 这里的百分比是相对
-   `contentSplitterRef` 的(窗口还要扣掉左栏)。拿 window.innerWidth 换算会
-   算出一个偏小的百分比,地板照样破(真机实测:面板仍只有 203.8px)。
-   `contentSplitterWidth` 由 ResizeObserver 维护,天然跟着窗口与左栏变。 */
-const inspectorMinPanelSize = computed(() => {
-  const base = contentSplitterWidth.value
-  const pct = base > 0 ? (MIN_INSPECTOR_PANEL_PX / base) * 100 : MIN_INSPECTOR_PANEL_SIZE
-  return Math.min(MAX_INSPECTOR_PANEL_SIZE, Math.max(MIN_INSPECTOR_PANEL_SIZE, pct))
-})
-
-function clampInspectorPanelSize(size: number): number {
-  if (!Number.isFinite(size)) return DEFAULT_INSPECTOR_PANEL_SIZE
-  return Math.min(MAX_INSPECTOR_PANEL_SIZE, Math.max(inspectorMinPanelSize.value, size))
-}
-
-const storedInspectorPanelSize = ref(clampInspectorPanelSize(
-  Number.parseFloat(localStorage.getItem('inspectorPanelSize') || String(DEFAULT_INSPECTOR_PANEL_SIZE))
-))
-
-/**
- * 存的是百分比,而地板是像素 —— 所以**每次读都要重新收敛**,不能只在写入时 clamp。
- * 否则窗口一变窄,存着的 25.5% 在 800px 窗口里就是 204px,250px 的地板形同虚设
- * (真机走查抓到:面板 203.82px,行被压得没法看)。
- */
-const inspectorPanelSize = computed({
-  get: () => Math.min(
-    MAX_INSPECTOR_PANEL_SIZE,
-    Math.max(inspectorMinPanelSize.value, storedInspectorPanelSize.value),
-  ),
-  set: (value: number) => { storedInspectorPanelSize.value = clampInspectorPanelSize(value) },
-})
+const workbenchPanelWidth = ref(shellLayout.value.workbenchWidth)
 const inspectorResizing = ref(false)
+
+/* 预算改了宽度(窗口变窄 → 收窄到 250)或用户在别处改了偏好时同步活值;
+   拖拽中不同步,免得把用户正在拖的那一帧顶回去。 */
+watch(() => shellLayout.value.workbenchWidth, width => {
+  if (inspectorResizing.value) return
+  workbenchPanelWidth.value = width
+})
+
+/* 折叠动画的冻结宽(`--workbench-width`)由 AppShell 从 `workbenchSlideWidth`
+   算并写在 `.app-content` 上 —— 一次写入、不每帧。 */
 
 // Mount the workbench panel on first open, then keep it mounted so closing
 // only collapses it (animated) and its tab/terminal state is preserved.
@@ -740,14 +675,14 @@ const inspectorResizing = ref(false)
 // transition runs from width 0.
 const workbenchMounted = ref(false)
 const workbenchRevealed = ref(false)
-watch(inspectorVisible, async visible => {
+watch(workbenchVisible, async visible => {
   if (visible && !workbenchMounted.value) {
     workbenchMounted.value = true
     await nextTick()
     // Flush layout so the collapsed style is committed as the transition's
     // starting state; otherwise the panel pops in at partial width.
-    void (contentSplitterRef.value?.$el as HTMLElement | undefined)?.offsetWidth
-    workbenchRevealed.value = inspectorVisible.value
+    void appContentElement.value?.offsetWidth
+    workbenchRevealed.value = workbenchVisible.value
     return
   }
   workbenchRevealed.value = visible
@@ -756,48 +691,26 @@ watch(inspectorVisible, async visible => {
 // The splitter reports size 0 for the collapsed panel; ignore it so the
 // stored width survives close/reopen.
 function handleInspectorPanelSizeUpdate(size: number) {
-  if (!inspectorVisible.value) return
-  inspectorPanelSize.value = clampInspectorPanelSize(size)
+  if (!workbenchVisible.value) return
+  workbenchPanelWidth.value = size
 }
 
-const contentSplitterRef = ref<InstanceType<typeof Splitter> | null>(null)
-let contentSplitterObserver: ResizeObserver | null = null
-
-watch(contentSplitterRef, splitter => {
-  contentSplitterObserver?.disconnect()
-  const el = splitter?.$el as HTMLElement | undefined
-  if (!el || typeof ResizeObserver === 'undefined') return
-  contentSplitterObserver ??= new ResizeObserver(entries => {
-    contentSplitterWidth.value = entries[0]?.contentRect.width ?? 0
-  })
-  contentSplitterObserver.observe(el)
+/* 全仓唯一一处量外壳宽的 ResizeObserver(L2)。协调器要的是**外壳总宽**,
+   四列的预算都从这一个数派生 —— 从前 App.vue 量分栏容器、ChatContainer 又量
+   聊天区,两个数各自定义各自的阈值,谁也不知道对方。 */
+let disposeShellWidthObserver: (() => void) | null = null
+watch(appShellElement, element => {
+  disposeShellWidthObserver?.()
+  disposeShellWidthObserver = observeShellWidth(element)
 }, { flush: 'post' })
-
 onUnmounted(() => {
-  contentSplitterObserver?.disconnect()
-  contentSplitterObserver = null
-})
-
-// Expanded pixel width of the workbench. While the panel collapses/expands,
-// this stays constant (inspectorPanelSize is not written during the
-// animation), so the content is clipped by the sliding edge instead of
-// being reflowed at every frame.
-const workbenchSlideStyle = computed(() => {
-  if (!contentSplitterWidth.value) return undefined
-  const width = Math.ceil(contentSplitterWidth.value * inspectorPanelSize.value / 100)
-  return { width: `${width}px` }
-})
-const mainWorkspacePanelSize = computed({
-  get: () => inspectorVisible.value ? 100 - inspectorPanelSize.value : 100,
-  set: (size: number) => {
-    if (!inspectorVisible.value) return
-    inspectorPanelSize.value = clampInspectorPanelSize(100 - size)
-  }
+  disposeShellWidthObserver?.()
+  disposeShellWidthObserver = null
 })
 
 function handleInspectorResizeEnd() {
   inspectorResizing.value = false
-  localStorage.setItem('inspectorPanelSize', String(inspectorPanelSize.value))
+  layoutPrefs.setWorkbenchWidth(workbenchPanelWidth.value)
 }
 
 /**
@@ -811,6 +724,20 @@ function handleInspectorResizeEnd() {
 async function handleWorkbenchJumpToSource(payload: { sessionId: string; messageId: string }) {
   if (!payload?.sessionId || !payload?.messageId) return
   await chatContainerRef.value?.jumpToMessage?.(payload.sessionId, payload.messageId)
+}
+
+/**
+ * 顶栏那颗「Contents」钮(L3):展开右栏 + 落座 outline 页签。
+ *
+ * 与 `openWorkspacePanel` 同一副骨架(它落的是工作区域那一半),差别只在这条
+ * 开的是**会话域**的页签,因此不置 `workspacePanelRequested` —— 有会话本来就够
+ * 让右栏可显示了。首开时右栏是"这几拍才挂载"的,所以同样要等那个 ref。
+ */
+async function openOutlineInRightWorkbench() {
+  if (isAuxiliaryWindow.value) return
+  inspectorOpen.value = true
+  for (let tick = 0; tick < 3 && !rightWorkbenchRef.value; tick += 1) await nextTick()
+  rightWorkbenchRef.value?.openWorkbenchTab('outline')
 }
 
 async function openFileInRightWorkbench(filePath: string) {
@@ -1034,113 +961,36 @@ onMounted(() => {
   registerCollabTags()
 })
 
-// Close floating sidebar with animation
-function closeFloatingSidebar() {
-  if (!sidebarFloating.value || sidebarFloatingClosing.value) return
-  if (floatingCloseTimer) {
-    clearTimeout(floatingCloseTimer)
-    floatingCloseTimer = null
-  }
-  if (floatingCooldownTimer) {
-    clearTimeout(floatingCooldownTimer)
-    floatingCooldownTimer = null
-  }
-  sidebarFloatingClosing.value = true
-  sidebarNoTransition.value = true
-  floatingCooldown.value = true
-  floatingCloseTimer = setTimeout(() => {
-    sidebarFloating.value = false
-    sidebarFloatingClosing.value = false
-    floatingCloseTimer = null
-    // Keep transition disabled a bit longer to prevent flash
-    floatingCooldownTimer = setTimeout(() => {
-      sidebarNoTransition.value = false
-      floatingCooldown.value = false
-      floatingCooldownTimer = null
-    }, 300)
-  }, 200) // Match animation duration
-}
-
-function keepFloatingSidebarOpen() {
-  if (!sidebarFloating.value && !sidebarFloatingClosing.value) return
-  if (floatingCloseTimer) {
-    clearTimeout(floatingCloseTimer)
-    floatingCloseTimer = null
-  }
-  if (floatingCooldownTimer) {
-    clearTimeout(floatingCooldownTimer)
-    floatingCooldownTimer = null
-  }
-  sidebarFloating.value = true
-  sidebarFloatingClosing.value = false
-  floatingCooldown.value = false
-  sidebarNoTransition.value = false
-}
-
 // Handle sidebar toggle - if floating, just close floating mode
 function handleSidebarToggle() {
   if (sidebarFloating.value) {
     closeFloatingSidebar()
-  } else {
-    const nextCollapsed = !sidebarCollapsed.value
-
-    // Animate sidebar width and top-bar reservation as complementary offsets.
-    // This keeps the tab strip from being pushed twice during expand.
-    floatingCooldown.value = true
-    sidebarActionAnimating.value = true
-    reserveSidebarActions.value = nextCollapsed
-    sidebarCollapsed.value = nextCollapsed
-
-    if (sidebarToggleTimer) {
-      clearTimeout(sidebarToggleTimer)
-    }
-    sidebarToggleTimer = setTimeout(() => {
-      sidebarActionAnimating.value = false
-      floatingCooldown.value = false
-      sidebarToggleTimer = null
-    }, 340)
+    return
   }
+  const nextCollapsed = !sidebarCollapsed.value
+
+  // Animate sidebar width and top-bar reservation as complementary offsets.
+  // This keeps the tab strip from being pushed twice during expand.
+  reserveSidebarActions.value = nextCollapsed
+  sidebarCollapsed.value = nextCollapsed
+  // 340ms 的动画窗口 + hover 冷却归时序机(L4)。
+  notifySidebarToggled()
 }
 
-// Handle hover trigger enter - with delay to avoid accidental triggers
-function handleTriggerEnter() {
-  // Don't expand if in cooldown period (after toggle or close)
-  if (sidebarFloatingClosing.value || floatingCooldown.value) return
-
-  // Clear any existing timer
-  if (floatingShowTimer.value) {
-    clearTimeout(floatingShowTimer.value)
-  }
-
-  // Add 200ms delay before showing floating sidebar
-  floatingShowTimer.value = setTimeout(() => {
-    sidebarNoTransition.value = true
-    sidebarFloating.value = true
-    floatingShowTimer.value = null
-  }, 200)
-}
-
-// Handle hover trigger leave - cancel pending show
-function handleTriggerLeave() {
-  if (floatingShowTimer.value) {
-    clearTimeout(floatingShowTimer.value)
-    floatingShowTimer.value = null
-  }
-}
-
-// Close floating mode when sidebar is expanded permanently
-watch(sidebarCollapsed, (collapsed) => {
+/* Close floating mode when the sidebar is docked again.
+   跟的是 `sidebarStowed`(偏好 ∪ 预算)而不是偏好本身:窄窗把侧栏挤成浮层时,
+   顶栏也得照样留出那颗按钮的位置。 */
+watch(sidebarStowed, (stowed) => {
   if (!sidebarActionAnimating.value) {
-    reserveSidebarActions.value = collapsed
+    reserveSidebarActions.value = stowed
   }
-  if (!collapsed) {
-    sidebarFloating.value = false
+  if (!stowed) {
+    resetFloatingSidebar()
   }
 })
 
-// Persist sidebar collapsed state and always show traffic lights
-watch([sidebarCollapsed, sidebarFloating], ([collapsed]) => {
-  localStorage.setItem('sidebarCollapsed', String(collapsed))
+/* 折叠偏好的落盘归 layoutPrefs store;这里只剩交通灯。 */
+watch([sidebarStowed, sidebarFloating], () => {
   // Auxiliary windows own their chrome behavior. Todo/Notes uses native hover-only buttons.
   if (isSettingsWindow.value || isImagePreviewWindow.value || isSearchWindow.value || isTodoPlanWindow.value) return
   // Always show traffic lights since sidebar strip is always visible
@@ -1165,7 +1015,7 @@ let searchAnchorObserver: ResizeObserver | null = null
 let searchAnchorReportTimer: ReturnType<typeof setTimeout> | null = null
 
 function reportSearchAnchor() {
-  const el = appContentRef.value
+  const el = appContentElement.value
   if (!el || typeof platformApi.setSearchWindowAnchor !== 'function') return
   const rect = el.getBoundingClientRect()
   void platformApi
@@ -1182,7 +1032,7 @@ function scheduleSearchAnchorReport() {
 }
 
 function setupSearchAnchorObserver() {
-  const el = appContentRef.value
+  const el = appContentElement.value
   if (!el || typeof ResizeObserver === 'undefined') return
   searchAnchorObserver = new ResizeObserver(() => scheduleSearchAnchorReport())
   searchAnchorObserver.observe(el)
@@ -1279,7 +1129,7 @@ onMounted(async () => {
     await sessionsStore.switchSession(restoredSessionId)
   }
   if (appState?.sidebarCollapsed !== undefined) {
-    sidebarCollapsed.value = appState.sidebarCollapsed
+    layoutPrefs.setSidebarCollapsed(appState.sidebarCollapsed)
     reserveSidebarActions.value = appState.sidebarCollapsed
   }
 
@@ -1461,22 +1311,7 @@ onUnmounted(() => {
     clearTimeout(searchAnchorReportTimer)
     searchAnchorReportTimer = null
   }
-  if (floatingShowTimer.value) {
-    clearTimeout(floatingShowTimer.value)
-    floatingShowTimer.value = null
-  }
-  if (sidebarToggleTimer) {
-    clearTimeout(sidebarToggleTimer)
-    sidebarToggleTimer = null
-  }
-  if (floatingCloseTimer) {
-    clearTimeout(floatingCloseTimer)
-    floatingCloseTimer = null
-  }
-  if (floatingCooldownTimer) {
-    clearTimeout(floatingCooldownTimer)
-    floatingCooldownTimer = null
-  }
+  // 浮层侧栏那四个 timer 的清场归时序机自己(`onScopeDispose`)。
 })
 
 // Theme is managed by settingsStore.applyTheme() which correctly resolves 'system' to 'light'/'dark'
@@ -1484,131 +1319,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.app-shell {
-  --app-sidebar-transition-duration: var(--duration-slow);
-  --app-sidebar-transition-ease: var(--ease-default);
-  /* 区域之间的接缝线。窗口边框不归任何人画 —— 交给系统投影收口。 */
-  --app-seam-line: color-mix(in srgb, var(--ui-border-subtle-border) 52%, transparent);
-
-  height: 100%;
-  width: 100%;
-  /* 判过不接 `surface="app"` 档(自绘 UI 收敛波 6·批 1,2026-08-11)——
-     本文件四处区域根(.app-shell / .app-content / .app-main-region /
-     .workspace-view-stack)是同一条判决,理由与 G7-1 判 `.sidebar` 不接同型:
-
-     · 非壁纸态迁过来确实零变化(同一枚 token,只是改由档位画);
-     · 壁纸态下四处已由 A 级·让位整张透明化(wallpaper.css `html.has-wallpaper
-       .app-shell` / `.app-content, .app-main-region, .workspace-view-stack`),
-       档位画的底压根到不了眼前 —— 迁移买不到壁纸参与度;
-     · 而盖章的**副作用**是真的:B 级通用规则
-       `html.has-wallpaper .app-surface[data-surface='app']` 会把
-       `--ui-surface-app-bg` 就地稀释成 18% 的纱,并按继承落到整棵子树。
-       本波实测这枚 token 在 renderer 里有 **91 处**消费、约 45 个文件,其中
-       Link / BorderBox / BreadcrumbItem / Dialog 的
-       `box-shadow: 0 0 0 2px var(--ui-surface-app-bg)` 是**焦点环的实色垫底**,
-       Progress / RoomSurface 拿它当**反色文字**,todo-popover 拿它当浮层底 ——
-       稀释成纱等于焦点环透明、反色文字透明。
-
-     wallpaper.css 的 app 档预写注里那句"第一个住户进档前必须先量一遍它的子树"
-     就是这件事;这里是量完的结论。
-
-     ── G8-c 复审(2026-08-11):**判决转正,四根永远具名** ────────────────────
-     波 6 留的口子是"等 G8 让 app 档不再是整棵树都在读的那一枚"。G8 复审时认真
-     评估过那条路 —— **区域 ink 中介层**:再造一枚 `--ui-region-app-bg:
-     var(--ui-surface-app-bg)`,区域根只画中介,B 级只稀释中介、不动原 token,
-     91 处消费(焦点环垫底 / 反色文字)就都不受影响。判不做,两条理由:
-
-     · **买不到东西**:这四根在壁纸下是 A 级·让位(整张透明),中介层稀释了也
-       画不到眼前 —— 波 6 量的那句"迁移买不到壁纸参与度"对中介层同样成立。
-     · **代价不是零风险**:四档要各配一枚中介(app/panel/chat/elevated),每个
-       区域根的 CSS 都要改引中介,而"面 token 与中介 token 长得一样、该引哪个"
-       这个新坑会长期在场。为一个当前住户为零的收益造两套平行 token,是把
-       G7 刚终结的枚举制换成一张更难维护的对照表。
-
-     所以:根级大区**不进档位表**,壁纸下由 A 级·让位承担(那才是它们该有的
-     处理 —— 根级大区没有"自己的底色"要保,它们的活是让路)。档位表继续只服务
-     "有自己的面、且要被壁纸认出来"的区域根。这条判决与 `.sidebar` 的 G8-b 判决
-     (不并档、永久具名)是同一条:**能被档位表收的是面,不是根,也不是态**。 */
-  background: var(--ui-surface-app-bg);
-}
-
-.app-shell :deep(.app-shell-body),
-.app-shell :deep(.app-shell-main-region),
-.app-shell :deep(.app-content-body),
-.app-shell :deep(.app-content-main-region),
-.app-shell :deep(.app-main-body),
-.app-shell :deep(.app-main-content-region) {
-  min-width: 0;
-  min-height: 0;
-}
-
-.app-shell :deep(.app-shell-body),
-.app-shell :deep(.app-shell-main-region),
-.app-shell :deep(.app-content-body),
-.app-shell :deep(.app-content-main-region),
-.app-shell :deep(.app-main-body),
-.app-shell :deep(.app-main-content-region) {
-  height: 100%;
-}
-
-.app-shell :deep(.app-left-sidebar-region),
-.app-shell :deep(.app-right-sidebar-region) {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/*
- * 接缝归邻居画,而不是归中间的聊天面板画。
- *
- * 左栏 region 只在 sidebarDockedVisible 时才进 DOM,右栏 region 收起时挂
- * is-collapsed(宽度 0)—— 两者都做到了"邻居不在,线就不在",所以线永远落在
- * 两块内容之间,绝不会跑到窗口边上去跟系统投影叠成一条粗边。
- * 全局 box-sizing: border-box,这 1px 不会把面板挤宽。
- */
-.app-shell :deep(.app-left-sidebar-region) {
-  border-right: 1px solid var(--app-seam-line);
-}
-
-.app-shell :deep(.app-right-sidebar-region:not(.is-collapsed)) {
-  border-left: 1px solid var(--app-seam-line);
-}
-
-.app-shell :deep(.app-shell-main-region),
-.app-shell :deep(.app-content-main-region),
-.app-shell :deep(.app-main-content-region) {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.app-shell :deep(.app-left-sidebar-region > .sidebar) {
-  flex: 1 1 auto;
-  height: 100%;
-}
-
-.app-shell :deep(.app-left-sidebar-region) {
-  /* Keep layout width discrete; animating it relayouts the full message list every frame. */
-  transition: none;
-}
-
-.app-shell.is-sidebar-resizing :deep(.app-left-sidebar-region) {
-  transition: none;
-}
-
-/* Main Content - Full height, horizontal layout */
-.app-content {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  min-width: 0;
-  position: relative;
-  overflow: hidden;
-  background: var(--ui-surface-app-bg);
-}
-
 /*
  * 插件背景层(G 期,L2.5)。
  *
@@ -1670,29 +1380,6 @@ html[data-theme='dark'] .app-background-layer {
   background: var(--ui-surface-app-bg);
 }
 
-.app-content-splitter {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-}
-
-.app-right-sidebar-region {
-  position: relative;
-}
-
-.workbench-slide {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-}
-
-/* Hide only after the slide-out finishes; reappear instantly on expand. */
-.app-right-sidebar-region.is-collapsed .workbench-slide {
-  visibility: hidden;
-  transition: visibility 0s linear var(--duration-normal);
-}
-
 .workspace-view-stack {
   display: flex;
   flex-direction: column;
@@ -1712,33 +1399,9 @@ html[data-theme='dark'] .app-background-layer {
   min-height: 0;
 }
 
-/* Floating sidebar backdrop */
-.sidebar-floating-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.3);
-  z-index: calc(var(--z-sidebar) - 1); /* just below the floating sidebar itself */
-  animation: fadeIn 0.2s ease forwards;
-  /* Optimize rendering */
-  contain: strict;
-  will-change: opacity;
-}
-
-.sidebar-floating-backdrop.closing {
-  animation: fadeOut 0.2s ease forwards;
-}
-
-html[data-theme='light'] .sidebar-floating-backdrop {
-  background: rgba(0, 0, 0, 0.15);
-}
-
-@keyframes fadeOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
+/* `.sidebar-floating-backdrop` 与它的 `fadeOut` 关键帧在 L4 删除:那份 markup
+   自 2026 年初起就是注释掉的死码,规则跟着躺了半年。浮层侧栏不铺遮罩 —— 它靠
+   hover 进出,一层吃点击的遮罩只会让"扫过左缘顺手点聊天区"这件事失灵。 */
 
 /* `.agent-dialog-overlay` / `.agent-dialog-container` were removed in P2: the
    markup they styled (CustomAgentDialog) had already been deleted, leaving a

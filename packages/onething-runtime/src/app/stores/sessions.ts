@@ -932,6 +932,23 @@ export function updateMessageReplyTo(
 	);
 }
 
+/**
+ * Persist the turn-context delta on a user message (prompt-channels
+ * 2026-08-18). Written once per turn by `SessionTurnContext`; does not affect
+ * sort order.
+ */
+export function updateMessageTurnContext(
+	sessionId: string,
+	messageId: string,
+	turnContext: NonNullable<ChatMessage["turnContext"]>,
+): boolean {
+	return sessionMessageRuntime!.updateMessageTurnContext(
+		sessionId,
+		messageId,
+		turnContext,
+	);
+}
+
 // Stamp identity-resolved @mentions after the fact (W14a, rooms only; does
 // not affect sort order)
 export function updateMessageMentions(

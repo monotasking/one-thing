@@ -52,6 +52,8 @@ import { getEventBus } from '../events/index.js'
 import { broadcastCollabAgentActivity } from './agent-activity.js'
 import { findCollabV3Turn } from './actors/turn-context.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /* ── 写入口 ───────────────────────────────────────────────────────────────── */
 
 let sink: CollabSchedulerLogSink | null = null
@@ -142,7 +144,7 @@ export function recordExternalAgentTool(input: {
 export function installCollabExternalObservers(): () => void {
   const bus = getEventBus()
   const unsubscribes = [
-    bus.onAnySession('interaction:requested', envelope => {
+    bus.onAnySession(SESSION_EVENT_TYPES.INTERACTION_REQUESTED, envelope => {
       const request = envelope.event.request
       recordInteraction(envelope.sessionId, {
         phase: 'open',
@@ -155,7 +157,7 @@ export function installCollabExternalObservers(): () => void {
       })
     }, 'collab-external-interaction-open'),
 
-    bus.onAnySession('interaction:settled', envelope => {
+    bus.onAnySession(SESSION_EVENT_TYPES.INTERACTION_SETTLED, envelope => {
       const answer = envelope.event.answer
       recordInteraction(envelope.sessionId, {
         phase: answer.outcome,
@@ -169,10 +171,10 @@ export function installCollabExternalObservers(): () => void {
 
     // 审批链只点灯不记账:它在时间轴上已经有自己的位置(策略门那一侧),
     // 这里要的只是让 `waitingOn` 那一格及时翻面。
-    bus.onAnySession('permission:request', envelope => {
+    bus.onAnySession(SESSION_EVENT_TYPES.PERMISSION_REQUEST, envelope => {
       lightWaitingOn(envelope.sessionId)
     }, 'collab-external-permission-light'),
-    bus.onAnySession('permission:settled', envelope => {
+    bus.onAnySession(SESSION_EVENT_TYPES.PERMISSION_SETTLED, envelope => {
       lightWaitingOn(envelope.sessionId)
     }, 'collab-external-permission-light'),
   ]

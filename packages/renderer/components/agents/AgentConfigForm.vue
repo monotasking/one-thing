@@ -380,7 +380,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import { useMediaStore } from '@/stores/media'
-import { isProviderConfigEnabled } from '@/stores/helpers/provider-model'
+import { isProviderEnabledIn } from '@/stores/helpers/provider-model'
 import { platformApi } from '@/platform'
 import { providerFamilyDisplayName } from '@shared/provider-families'
 import type { PermissionMode } from '@shared/ipc'
@@ -429,6 +429,7 @@ const emit = defineEmits<{
 
 const agentsStore = useAgentsStore()
 const settingsStore = useSettingsStore()
+/** 批 B9:provider 开关的空间覆盖(default 空间恒 undefined)。 */
 const sessionsStore = useSessionsStore()
 const { confirm } = useConfirm()
 
@@ -688,7 +689,8 @@ const modelWarning = computed(() => {
   if (!config) {
     return 'This provider is not configured yet — drives fall back to the session default.'
   }
-  if (!isProviderConfigEnabled(config)) {
+  // 批 B9:开关 per-space(第三参 = 空间覆盖,default 空间恒 undefined)。
+  if (!isProviderEnabledIn(settingsStore.settings?.ai?.providers, providerId)) {
     return 'This provider is disabled in Settings — drives fall back to the session default.'
   }
   const provider = (settingsStore.availableProviders || []).find(item => item.id === providerId)

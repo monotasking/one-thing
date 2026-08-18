@@ -17,6 +17,8 @@ import type { ChatMessage, ToolCall } from '@/types'
 import { platformApi } from '@/platform'
 import type { PermissionResponse } from '@/components/chat/permission/permission-ledger'
 
+import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 export type PermissionToolCall = Pick<ToolCall, 'id' | 'permissionId' | 'canRespond'>
 
 export interface UsePermissionResponderOptions {
@@ -53,7 +55,7 @@ export function usePermissionResponder(options: UsePermissionResponderOptions) {
     console.log(`[Frontend] Responding to permission for tool call ${toolCall.id} with ${response}`)
     try {
       await platformApi.emitCommand(sessionId, {
-        type: 'command:permission-respond',
+        type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
         requestId: toolCall.permissionId,
         toolCallId: toolCall.id,
         decision: response,
@@ -89,7 +91,7 @@ export function usePermissionResponder(options: UsePermissionResponderOptions) {
       console.log(`[Frontend] Rejecting permission for tool call ${toolCall.id}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
       try {
         await platformApi.emitCommand(sessionId, {
-          type: 'command:permission-respond',
+          type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
           requestId: toolCall.permissionId,
           toolCallId: toolCall.id,
           decision: 'reject',

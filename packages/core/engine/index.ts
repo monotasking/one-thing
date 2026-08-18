@@ -32,6 +32,23 @@ export type {
 } from "./system-prompt.js";
 
 export {
+	CORE_PROMPT_ORDER_PLUGIN,
+	CORE_PROMPT_ORDER_TOOL,
+	corePromptToolSurface,
+	describeToolPromptContributionProblem,
+	isCorePromptFragmentActive,
+	promptFragmentsFromToolContribution,
+	renderCorePromptFragment,
+} from "./prompt-fragments.js";
+export type {
+	CorePromptChannel,
+	CorePromptFragment,
+	CorePromptFragmentRender,
+	CorePromptSlot,
+	CoreToolPromptContribution,
+} from "./prompt-fragments.js";
+
+export {
 	extractResponseBodyDetails,
 	extractErrorDetails,
 } from "./error-details.js";
@@ -189,7 +206,6 @@ export type {
 	StreamEngineSkillsAdapter,
 	StreamEngineStreamsAdapter,
 	StreamEngineStoreAdapter,
-	StreamEngineVariablesAdapter,
 } from "./stream-runtime.js";
 
 export {
@@ -528,11 +544,19 @@ export {
 	buildContextCompactFailedContent,
 	buildContextCompactSummaryMessages,
 	chunkText,
+	COMPACT_MODIFIED_FILES_TAG,
+	COMPACT_READ_FILES_TAG,
+	CONTEXT_COMPACT_CHUNK_TIMEOUT_MS,
+	CONTEXT_COMPACT_TOTAL_BUDGET_MS,
 	createContextCompactMessage,
 	DEFAULT_KEEP_RECENT_TURNS,
 	estimateCurrentInputTokens,
 	estimateSessionInputTokens,
+	extractCompactFileOperations,
+	formatCompactFileOperations,
 	formatMessagesForSummary,
+	mergeCompactFileOperations,
+	stripCompactFileOperations,
 	getContextCompactReason,
 	MAX_CHUNK_CHARS,
 	normalizeContextCompactError,
@@ -540,7 +564,6 @@ export {
 	selectCompactPlan,
 	shouldAutoCompactBeforeSend,
 	shouldSkipAutoCompactForProviderUsageMismatch,
-	SUMMARY_MAX_OUTPUT_TOKENS,
 	SUMMARY_TOOL_RESULT_MAX_CHARS,
 	summarizeContextInChunks,
 } from "./context-compact.js";
@@ -560,18 +583,26 @@ export type {
 	CoreContextUsageTriggerReason,
 } from "./context-usage.js";
 export {
+	LEGACY_TURN_CONTEXT_SECTION_ID,
+	TurnContextLedger,
 	renderContextUpdateBlock,
-	resolveTurnContextUpdateText,
 	visibleMessagesAfterSummary,
+} from "./turn-context.js";
+export type {
+	TurnBlock,
+	TurnContextCarrier,
+	TurnContextDelta,
 } from "./turn-context.js";
 export type {
 	CompactPlan,
 	CoreContextCompactContent,
 	CoreContextCompactMessage,
+	CoreContextCompactProgress,
 	CoreContextCompactReason,
 	CoreContextCompactStatus,
 	CoreContextCompactSummaryMessage,
 	CoreCompactAttachment,
+	CoreCompactFileOperations,
 	CoreCompactMessage,
 	CoreCompactSession,
 	CoreCompactToolCall,

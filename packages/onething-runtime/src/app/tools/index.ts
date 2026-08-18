@@ -68,6 +68,8 @@ export {
   createToolCall,
   canAutoExecute,
   getToolExecutionMode,
+  getToolPromptFragments,
+  toolPromptSource,
   initializeHeadlessToolRegistry,
   initializeReadonlyToolRegistry,
   initializeToolRegistry,

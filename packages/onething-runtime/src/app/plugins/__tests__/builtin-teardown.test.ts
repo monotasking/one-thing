@@ -20,7 +20,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>
 
 async function loadModules() {
-  const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks] = await Promise.all([
+  const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks, credentialStrategies] = await Promise.all([
     import('../loader.js'),
     import('../api.js'),
     import('../../tools/index.js'),
@@ -34,8 +34,9 @@ async function loadModules() {
     import('../../variables/index.js'),
     import('../../channel/connector-registry.js'),
     import('../../deeplink/registry.js'),
+    import('../../providers/credential-strategy.js'),
   ])
-  return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks }
+  return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks, credentialStrategies }
 }
 
 /**
@@ -97,6 +98,8 @@ interface RegistrySnapshot {
   imConnectorIds: string[]
   /** H4 开放的第三个注册表(深链动作)。同一条规矩:开一个就要进快照。 */
   deepLinkActionAddresses: string[]
+  /** 批 E 开放的第四个注册表(凭证策略)。同一条规矩:开一个就要进快照。 */
+  credentialStrategyPolicies: string[]
   /** N2 的干预型钩子:开一个钩子点就要进快照,同一条"开一个漏一个"的规矩。 */
   inputInterceptHooks: number
   /** N4 的干预型钩子:同上。fail-closed 让漏拆的代价更大 —— 一条被遗忘的
@@ -171,6 +174,15 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
   } catch {
     deepLinkActionAddresses = []
   }
+  let credentialStrategyPolicies: string[] = []
+  try {
+    credentialStrategyPolicies = mods.credentialStrategies
+      .listPluginCredentialStrategies()
+      .map((info: { policy: string }) => info.policy)
+      .sort()
+  } catch {
+    credentialStrategyPolicies = []
+  }
   let variableSubscriptions = 0
   try {
     variableSubscriptions = mods.variables.getVariablesStore().listenerCount()
@@ -190,6 +202,7 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
     variableSubscriptions,
     imConnectorIds,
     deepLinkActionAddresses,
+    credentialStrategyPolicies,
   }
 }
 

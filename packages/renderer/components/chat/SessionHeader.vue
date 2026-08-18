@@ -61,6 +61,17 @@
           />
           <span class="session-title-text">{{ displayName }}</span>
         </button>
+        <!-- 改名入口。标题本身是 drag 区(拖窗要吃掉鼠标事件,双击到不了这里),
+             所以给一颗 hover 才现身的小笔;桌面上双击 = 系统的标题栏缩放。 -->
+        <button
+          v-if="!renaming"
+          type="button"
+          class="session-title-rename"
+          aria-label="Rename session"
+          @click.stop="startRename"
+        >
+          <Pencil :size="12" />
+        </button>
       </div>
 
       <div
@@ -161,18 +172,21 @@
         </Button>
       </Tooltip>
 
+      <!-- L3:这颗钮从前开合的是第四列大纲栏,现在它开右栏的 Contents 页签
+           —— 大纲只剩右栏一个落点,按钮也就只剩"带我去"这一个语义(没有
+           "收起"这回事:那归右栏自己的关闭钮)。 -->
       <Tooltip
         v-if="showActionButtons"
-        :text="sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel'"
+        text="Contents"
         position="bottom"
       >
         <Button
           unstyled
-          class="header-btn side-panel-toggle"
-          :aria-label="sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel'"
-          @click="emit('toggleSidePanel')"
+          class="header-btn outline-toggle"
+          aria-label="Contents"
+          @click="emit('openOutline')"
         >
-          <ListTree
+          <AlignLeft
             :size="14"
             :stroke-width="2"
           />
@@ -238,12 +252,13 @@ import Button from '@/components/common/Button.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import {
+  AlignLeft,
   ArrowLeft,
   Columns2,
   Ellipsis,
   Equal,
-  ListTree,
   PanelRightOpen,
+  Pencil,
   X,
 } from 'lucide-vue-next'
 import AgentSelector from './AgentSelector.vue'
@@ -268,8 +283,6 @@ const props = defineProps<{
   canClose: boolean
   isInspectorOpen?: boolean
   reserveSidebarActions?: boolean
-  sidePanelAvailable?: boolean
-  sidePanelCollapsed?: boolean
   /** False for split panels that don't own focus: only the title stays. */
   panelFocused?: boolean
 }>()
@@ -284,7 +297,8 @@ const emit = defineEmits<{
   close: []
   equalize: []
   toggleInspector: []
-  toggleSidePanel: []
+  /** 顶栏那颗「Contents」钮 —— 落点是右栏的 outline 页签(L3)。 */
+  openOutline: []
 }>()
 
 // ── 标题 ────────────────────────────────────────────────────────────────────
@@ -399,11 +413,7 @@ const overflowItems = computed<ContextMenuItem[]>(() => {
   if (props.showSplitButton) items.push({ id: 'split', label: 'Split view', icon: Columns2 })
   if (props.canClose) items.push({ id: 'equalize', label: 'Equalize panels', icon: Equal })
   if (props.canClose) items.push({ id: 'close', label: 'Close panel', icon: X })
-  items.push({
-    id: 'side-panel',
-    label: props.sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel',
-    icon: ListTree,
-  })
+  items.push({ id: 'outline', label: 'Contents', icon: AlignLeft })
   if (!props.isInspectorOpen) items.push({ id: 'inspector', label: 'Show workbench', icon: PanelRightOpen })
   return items
 })
@@ -414,7 +424,7 @@ function onOverflowSelect(action: string) {
     case 'split': emit('split'); break
     case 'equalize': emit('equalize'); break
     case 'close': emit('close'); break
-    case 'side-panel': emit('toggleSidePanel'); break
+    case 'outline': emit('openOutline'); break
     case 'inspector': emit('toggleInspector'); break
   }
 }
@@ -510,7 +520,10 @@ watch(showOverflowMenu, (shown) => {
   align-items: center;
   flex: 0 1 auto;
   min-width: 0;
+  /* 长标题不许把整条头栏吃掉:封顶,超出省略。 */
+  max-width: min(360px, 50%);
   padding: 0 10px 0 12px;
+  gap: 4px;
 }
 
 .session-title {
@@ -527,7 +540,39 @@ watch(showOverflowMenu, (shown) => {
   line-height: 1.4;
   color: var(--ot-active-text);
   cursor: default;
+  /* 标题**可拖窗**(2026-08-17 现场:标题一长,头栏左半整块拖不动)。改名走
+     旁边那颗小笔,不再靠双击 —— 拖拽区里的鼠标事件被原生层吃掉,双击到不了 DOM。 */
+  -webkit-app-region: drag;
+}
+
+.session-title-rename {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs, 4px);
+  background: transparent;
+  color: var(--ui-text-muted-fg);
+  /* 常显一枚淡笔,不靠 hover:拖拽区里 hover 是否可靠取决于原生层。 */
+  opacity: 0.45;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
   -webkit-app-region: no-drag;
+}
+
+.session-title-wrap:hover .session-title-rename,
+.session-title-rename:focus-visible {
+  opacity: 1;
+}
+
+.session-title-rename:hover {
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .session-title-avatar {

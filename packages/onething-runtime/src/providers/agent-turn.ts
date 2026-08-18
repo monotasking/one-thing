@@ -4,6 +4,7 @@ import {
   agentModelToolsFromDefinitions,
   collectAgentTurnFromStream,
   streamAgentProviderTurnEvents,
+  type AgentFinishReason,
   type AgentJsonObject,
   type AgentMessage,
   type AgentProvider,
@@ -95,6 +96,12 @@ export interface OnethingChatResponseResult {
    * calls — without it their tokens are invisible in the usage ledger.
    */
   usage?: AgentUsage
+  /**
+   * How the provider ended the turn. `'length'` means max_tokens truncated the
+   * output — callers that must not accept a half answer (context compaction)
+   * read this instead of guessing from an empty/short text.
+   */
+  finishReason?: AgentFinishReason
 }
 
 export type OnethingReasoningStreamChunk =
@@ -122,7 +129,7 @@ interface PreparedUtilityAgentTurn {
   agentTools?: AgentTool[]
   thinking: OnethingAgentThinking | undefined
   reasoningEffort: OnethingAgentReasoningEffort | undefined
-  maxTokens: number
+  maxTokens: number | undefined
   toolChoice: 'auto' | 'none'
   request: AgentTurnRequest
 }
@@ -149,7 +156,11 @@ function prepareUtilityAgentTurn(options: {
   const runnerOptions = options.runnerOptions ?? {}
   const thinking = resolveOnethingAgentThinking(runnerOptions)
   const reasoningEffort = normalizeOnethingAgentReasoningEffort(runnerOptions.thinkingEffort)
-  const maxTokens = runnerOptions.maxTokens || 4096
+  // No invented default (2026-08-15): a caller that says nothing about maxTokens
+  // means "no artificial cap". The app-level generateChatResponse fills in the
+  // model's real max when the registry knows it; otherwise nothing is sent and
+  // the provider's own default (or its own "field required" error) applies.
+  const maxTokens = runnerOptions.maxTokens
   return {
     agentMessages: options.messages,
     agentTools: options.agentTools,
@@ -254,6 +265,7 @@ export async function runOnethingUtilityAgentTurn(
       args: parseToolArgs(toolCall.arguments),
     })),
     usage: turn.usage,
+    finishReason: turn.finishReason,
   }
 }
 

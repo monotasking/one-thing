@@ -3,6 +3,8 @@ import type {
   CorePluginCommandDefinition,
 } from '@onething/core/plugins'
 
+import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 type MaybePromise<T> = T | Promise<T>
 
 export interface OnethingPluginCommandSessionLike {
@@ -22,13 +24,13 @@ export interface OnethingPluginCommandExecOptions {
 }
 
 export interface OnethingPluginCommandSteeringEvent {
-  type: 'command:inject-steering'
+  type: typeof SESSION_COMMAND_TYPES.INJECT_STEERING
   content: string
   source: string
 }
 
 export interface OnethingPluginCommandFollowUpEvent {
-  type: 'command:inject-followup'
+  type: typeof SESSION_COMMAND_TYPES.INJECT_FOLLOWUP
   content: string
   source: string
 }
@@ -95,14 +97,14 @@ export async function executeOnethingPluginCommand<
     cwd,
     steer(content) {
       emitSessionCommand(options, 'steer', options.sessionId, {
-        type: 'command:inject-steering',
+        type: SESSION_COMMAND_TYPES.INJECT_STEERING,
         content,
         source: `plugin-command:${commandName}`,
       })
     },
     followUp(content) {
       emitSessionCommand(options, 'follow-up', options.sessionId, {
-        type: 'command:inject-followup',
+        type: SESSION_COMMAND_TYPES.INJECT_FOLLOWUP,
         content,
         source: `plugin-command:${commandName}`,
       })

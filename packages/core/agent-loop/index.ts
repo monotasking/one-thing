@@ -3,6 +3,7 @@ export {
   isRetryableAgentError,
   sleepWithAbort,
   turnRetryDelayMs,
+  MAX_CREDENTIAL_ROTATIONS,
   MAX_TURN_RETRIES,
 } from './retry.js'
 export {
@@ -105,6 +106,7 @@ export type {
   AgentAudioContentPart,
   AgentBeforeTurnHook,
   AgentContentPart,
+  AgentCredentialRotation,
   AgentExecutableProvider,
   AgentFinishReason,
   AgentFileContentPart,

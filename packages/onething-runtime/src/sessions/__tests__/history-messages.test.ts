@@ -44,14 +44,11 @@ describe('onething history messages', () => {
       },
     )
 
+    // C5(2026-08-14):摘要注入只剩单条 user,没有伪造的 assistant 握手。
     expect(history).toEqual([
       {
         role: 'user',
-        content: expect.stringContaining('Earlier context'),
-      },
-      {
-        role: 'assistant',
-        content: expect.any(String),
+        content: expect.stringContaining('<summary>\nEarlier context\n</summary>'),
       },
       {
         role: 'user',

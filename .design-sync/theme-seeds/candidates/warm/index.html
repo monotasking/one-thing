@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>onething · 暖砂 warm</title>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- 左：会话 -->
+  <aside class="col sidebar">
+    <div class="brand">
+      <div class="brand-mark">o</div>
+      <div class="brand-name">onething</div>
+    </div>
+
+    <button class="btn-primary">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>
+      新会话
+    </button>
+
+    <label class="search">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7.2" cy="7.2" r="4.3"/><path d="M10.5 10.5L13.5 13.5" stroke-linecap="round"/></svg>
+      <input placeholder="搜索会话" aria-label="搜索会话">
+    </label>
+
+    <div class="scroll">
+      <div class="group-label">今天</div>
+      <div class="list">
+        <button class="item is-active">
+          <div class="item-title">重构会话存储驱动</div>
+          <div class="item-time">14:02 · 进行中</div>
+        </button>
+        <button class="item">
+          <div class="item-title">壁纸六级分档实现</div>
+          <div class="item-time">11:48</div>
+        </button>
+        <button class="item">
+          <div class="item-title">插件 UI 锚点审计</div>
+          <div class="item-time">09:31</div>
+        </button>
+        <button class="item">
+          <div class="item-title">token 层级自引用排查</div>
+          <div class="item-time">08:15</div>
+        </button>
+      </div>
+
+      <div class="group-label">更早</div>
+      <div class="list">
+        <button class="item">
+          <div class="item-title">衬线标题的中英配对</div>
+          <div class="item-time">周四</div>
+        </button>
+        <button class="item">
+          <div class="item-title">焦点环双环方案</div>
+          <div class="item-time">周二</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="avatar-sm">宋</div>
+      <div class="foot-name">宋一天</div>
+      <button class="icon-btn" aria-label="设置">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8L3.5 3.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- 中：对话 -->
+  <main class="col main">
+    <nav class="tabs">
+      <button class="tab is-active">会话</button>
+      <button class="tab">工作区</button>
+      <button class="tab">差异</button>
+    </nav>
+
+    <div class="scroll">
+      <div class="thread">
+        <header class="thread-head">
+          <h1>重构会话存储驱动</h1>
+          <div class="thread-meta"><span>今天 14:02</span><span class="dot">·</span><span>Claude Opus</span><span class="dot">·</span><span>12 轮</span></div>
+        </header>
+
+        <article class="msg">
+          <div class="who who-you">宋</div>
+          <div>
+            <div class="name">你</div>
+            <div class="said-you msg-body">把 JSONL 的落盘改成按会话分目录，流式写入时追加，不要每次重写整文件。</div>
+          </div>
+        </article>
+
+        <article class="msg">
+          <div class="who who-ai"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6c.35 3.2 1.6 4.6 4.7 5.1v.6C9.6 7.8 8.35 9.2 8 12.4h-.6C7.05 9.2 5.8 7.8 2.7 7.3v-.6C5.8 6.2 7.05 4.8 7.4 1.6z"/><circle cx="12.5" cy="12" r="1.5"/></svg></div>
+          <div>
+            <div class="name">助手</div>
+            <p class="said-ai msg-body">已经改成追加写。每个会话一个目录，索引单独一份，重放时按 offset 续读，不再全量解析。</p>
+
+            <section class="tool">
+              <div class="tool-head">
+                <svg class="leaf" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13c0-5 3.5-8.5 10-9 .3 5.6-3.2 9.6-8 9.6-.7 0-1.4-.2-2-.6z"/><path d="M3 13.5c1.6-3 4-5.2 7-6.6"/></svg>
+                <div class="tool-title">写入了 3 个文件</div>
+                <div class="tool-time tnum">耗时 1.2s</div>
+              </div>
+
+              <div class="files">
+                <div class="file">
+                  <div class="path">src/main/store/<b>session-writer.ts</b></div>
+                  <div class="counts tnum"><span class="add">+128</span><span class="del">−41</span></div>
+                </div>
+                <div class="file">
+                  <div class="path">src/main/store/<b>index-shard.ts</b></div>
+                  <div class="counts tnum"><span class="add">+64</span><span class="del">−0</span></div>
+                </div>
+                <div class="file">
+                  <div class="path">tests/<b>session-replay.spec.ts</b></div>
+                  <div class="counts"><span class="chip chip-idle">待运行</span></div>
+                </div>
+              </div>
+
+              <div class="tool-foot">
+                <span class="chip chip-wait">待确认迁移</span>
+                <span>确认后才会把旧文件搬走</span>
+                <button class="btn-quiet">确认迁移</button>
+              </div>
+            </section>
+
+            <div class="actions">
+              <button class="action">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="8" height="8" rx="2"/><path d="M10.5 3.5h-6a2 2 0 0 0-2 2v6"/></svg>复制
+              </button>
+              <button class="action">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13.2 2.6v2.9h-2.9"/></svg>重试
+              </button>
+              <button class="action">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.8 5.2h6.4M2.8 8h4.2M2.8 10.8h6.4M12.2 4.4v7.2M10.6 10l1.6 1.8 1.6-1.8"/></svg>查看差异
+              </button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div class="composer">
+      <input class="composer-input" placeholder="接着说点什么…" aria-label="消息输入框">
+      <div class="composer-bar">
+        <button class="pill-ghost">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M11.5 7.3l-4.2 4.2a2.4 2.4 0 0 1-3.4-3.4l5-5a1.6 1.6 0 0 1 2.3 2.3l-5 5"/></svg>附件
+        </button>
+        <button class="pill-ghost">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.2"/><path d="M8 5.6v2.6l1.8 1" stroke-linecap="round"/></svg>Claude Opus
+        </button>
+        <span class="hint">↩ 发送 · ⇧↩ 换行</span>
+        <button class="send">
+          发送
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9.5M8.6 4l4 4-4 4"/></svg>
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- 右：面板 -->
+  <aside class="col panel">
+    <header>
+      <h2 class="panel-title">会话存储</h2>
+      <p class="panel-note">每会话一个 JSONL 目录，流式写入时追加。</p>
+    </header>
+
+    <section>
+      <div class="block-label">用量</div>
+      <div class="stats">
+        <div class="stat"><span class="stat-name">目录数</span><span class="stat-value tnum">312</span></div>
+        <div class="stat"><span class="stat-name">占用</span><span class="stat-value tnum">567<small>KB</small></span></div>
+        <div class="stat"><span class="stat-name">最近压缩</span><span class="stat-value tnum">3<small>天前</small></span></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="block-label">保留策略</div>
+      <div class="keep">
+        <div class="keep-row">
+          <span class="keep-name">保留天数</span>
+          <span class="keep-value tnum">90<small>天</small></span>
+        </div>
+        <p class="keep-note">超期会话仅删除正文，索引保留。</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="block-label">状态</div>
+      <div class="status">
+        <div class="st"><span class="st-dot d-ok"></span>迁移完成<span class="st-tail">14:02</span></div>
+        <div>
+          <div class="st"><span class="st-dot d-run"></span>索引重建中<span class="st-tail tnum">62%</span></div>
+          <div class="bar"><i></i></div>
+        </div>
+        <div class="st"><span class="st-dot d-bad"></span>2 份校验失败<span class="st-tail">今天</span></div>
+        <button class="st-link">查看失败的会话</button>
+      </div>
+    </section>
+    <div class="panel-foot">
+      <div>
+        <div class="foot-label">存储位置</div>
+        <div class="path">~/.onething/sessions</div>
+      </div>
+      <button class="pill-ghost">打开目录</button>
+    </div>
+  </aside>
+
+</div>
+</body>
+</html>

@@ -100,19 +100,7 @@ export function createWebSearchTool(
 
   return Tool.define<typeof WebSearchParameters, WebSearchMetadata>('web_search', {
     name: 'Web Search',
-    description: `Search the web for real-time information using search engines.
-
-Use this tool when you need:
-- Current events or news
-- Up-to-date information that may not be in your training data
-- Facts that change over time (prices, weather, scores, etc.)
-- Information about recent releases, updates, or announcements
-
-The tool can run several related queries in one call and returns candidate
-sources with titles, URLs, and snippets. For ChatGPT-style research, use this
-tool to discover sources, then call web_open for selected pages. Set fetchPages
-to true only when a single-call search with automatic top-page extraction is
-preferred.`,
+    description: `Search the web for real-time information: current events, facts that change over time (prices, weather, scores), recent releases and anything past your training data. Runs one or several related queries in a call and returns candidate sources (title, URL, snippet); then call web_open on the pages worth reading. Set fetchPages only when you want top-page text extracted in the same call.`,
 
     category: 'builtin',
     enabled: true,

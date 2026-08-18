@@ -19,7 +19,6 @@ import {
   type StreamEngineSkillsAdapter,
   type StreamEngineStreamsAdapter,
   type StreamEngineStoreAdapter,
-  type StreamEngineVariablesAdapter,
 } from '@onething/core/engine'
 
 export type OnethingStreamRuntime<
@@ -75,7 +74,6 @@ export interface OnethingStreamRuntimeOptions<
   history: StreamEngineHistoryAdapter<TSession, TMessage, THistoryMessage>
   streams: StreamEngineStreamsAdapter<THistoryMessage, TStreamResult>
   compaction: StreamEngineCompactionAdapter<unknown, TCompactResult>
-  variables?: StreamEngineVariablesAdapter
 }
 
 export function createOnethingStreamEngineRuntime<
@@ -122,6 +120,5 @@ export function createOnethingStreamEngineRuntime<
     history: options.history as CoreStreamEngineRuntime['history'],
     streams: options.streams as CoreStreamEngineRuntime['streams'],
     compaction: options.compaction as CoreStreamEngineRuntime['compaction'],
-    ...(options.variables ? { variables: options.variables } : {}),
   }
 }

@@ -63,6 +63,8 @@ export interface OnethingTextChatResponseResult {
   text: string
   /** Present when the provider reported it; used to bill side-line calls. */
   usage?: OnethingProviderTokenUsage
+  /** Provider's stop reason; 'length' = truncated by max_tokens. */
+  finishReason?: string
 }
 
 export interface OnethingChatResponseWithReasoningResult extends OnethingTextChatResponseResult {
@@ -174,6 +176,7 @@ export interface GenerateOnethingTextChatResponseOptions<
     messages: TMessage[],
     options: TOptions,
   ): Promise<TResult>
+  onFinish?: (info: { finishReason?: string }) => void
 }
 
 
@@ -390,6 +393,7 @@ export async function generateOnethingTextChatResponse<
     options.options,
   )
   if (result.usage) options.onUsage?.(result.usage)
+  options.onFinish?.({ finishReason: result.finishReason })
   return result.text
 }
 

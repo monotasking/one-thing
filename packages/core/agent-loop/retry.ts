@@ -13,6 +13,14 @@ import { isAgentLoopPauseForConfirmationError } from './errors.js'
 export const MAX_TURN_RETRIES = 3
 export const TURN_RETRY_BASE_DELAY_MS = 2_000
 
+/**
+ * Default cap on credential rotations within one run (see
+ * `AgentLoopOptions.rotateCredential`). Rotation is orthogonal to the retry
+ * schedule above: it does not consume a backoff slot and needs no delay,
+ * because the next attempt uses a *different* credential.
+ */
+export const MAX_CREDENTIAL_ROTATIONS = 3
+
 export function turnRetryDelayMs(attempt: number): number {
   // attempt is 1-based: 2s / 4s / 8s
   return TURN_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1)

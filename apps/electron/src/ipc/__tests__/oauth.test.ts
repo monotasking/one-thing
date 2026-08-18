@@ -74,4 +74,38 @@ describe('electron OAuth IPC host', () => {
     expect(status).toHaveBeenCalledWith(providerRequest)
     expect(logout).toHaveBeenCalledWith(providerRequest)
   })
+
+  it('搬运凭证写回目标(批 B6):spaceId / entryId / label 原样透传给业务层', async () => {
+    const handle = vi.fn()
+    const start = vi.fn().mockResolvedValue({ success: true })
+    const logout = vi.fn().mockResolvedValue({ success: true })
+
+    registerElectronOAuthIpcHandlers({
+      channels: {
+        start: 'oauth:start',
+        callback: 'oauth:callback',
+        devicePoll: 'oauth:device-poll',
+        refresh: 'oauth:refresh',
+        status: 'oauth:status',
+        logout: 'oauth:logout',
+      },
+      start,
+      callback: vi.fn(),
+      devicePoll: vi.fn(),
+      refresh: vi.fn(),
+      status: vi.fn(),
+      logout,
+      ipcMain: { handle },
+    })
+
+    const loginRequest = { providerId: 'codex', spaceId: 'work', label: '工作号' }
+    const logoutRequest = { providerId: 'codex', spaceId: 'work', entryId: 'cred-1' }
+    await handle.mock.calls[0][1]({}, loginRequest)
+    await handle.mock.calls[5][1]({}, logoutRequest)
+
+    // 这一层只搬运不解释 —— 归一(非法 id 落回 settings)住在 runtime 的
+    // normalizeCredentialTarget,不在 IPC 边界重写一份。
+    expect(start).toHaveBeenCalledWith(loginRequest)
+    expect(logout).toHaveBeenCalledWith(logoutRequest)
+  })
 })

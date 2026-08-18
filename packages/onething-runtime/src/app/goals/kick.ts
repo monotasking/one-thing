@@ -29,6 +29,8 @@ import { getEventBus } from "../events/index.js";
 import * as store from "../store.js";
 import { getGoal, goalLimits } from "./index.js";
 
+import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
+
 function goalRunChannel(sessionId: string): string | undefined {
 	const live = getStreamEngineSafe()?.getChannel(sessionId);
 	// 'ipc' is also getChannel's no-entry fallback, so it carries no signal;
@@ -54,7 +56,7 @@ export async function emitGoalDrive(
 	if (isCollabSession(sessionId)) return;
 	try {
 		await getEventBus().emit(sessionId, {
-			type: "command:send-message",
+			type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
 			channel: goalRunChannel(sessionId),
 			content: renderGoalContinuationPrompt(goal, goalLimits()),
 			source: "goal",

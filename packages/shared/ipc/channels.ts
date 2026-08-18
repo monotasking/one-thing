@@ -49,8 +49,9 @@ export const IPC_CHANNELS = {
 	GET_SESSION_TOKEN_USAGE: "sessions:get-token-usage",
 	UPDATE_SESSION_MAX_TOKENS: "sessions:update-max-tokens",
 	CONTEXT_SIZE_UPDATED: "sessions:context-size-updated",
-	CONTEXT_COMPACT_STARTED: "sessions:context-compact-started",
-	CONTEXT_COMPACT_COMPLETED: "sessions:context-compact-completed",
+	// P1(2026-08-14):压缩的开始/结束通知只有一条正路 —— session:event 信封里
+	// 的 context:compact-started / context:compact-completed。专用 IPC 通道
+	// (主进程从来没往里发过一条)已删,别再加回来。
 	// Session optimization (metadata separation)
 	GET_SESSIONS_LIST: "sessions:get-list", // Returns SessionMeta[] only (no messages)
 	ACTIVATE_SESSION: "sessions:activate", // Mark session as active, return details
@@ -297,10 +298,26 @@ export const IPC_CHANNELS = {
 	SPACES_SET_OVERLAY: "spaces:set-overlay",
 	// per-space provider 凭证池(批 B3):落盘在 workspaces/<id>/credentials.json,
 	// 与 overlay 分文件 —— 整空间导出默认剔除凭证
+	/** 整套 provider 设置(C2)—— `workspaces/<id>/providers.json`。 */
+	SPACES_GET_PROVIDER_SETTINGS: "spaces:get-provider-settings",
+	SPACES_SET_PROVIDER_SETTINGS: "spaces:set-provider-settings",
 	SPACES_GET_CREDENTIALS: "spaces:get-credentials",
 	SPACES_SET_CREDENTIAL: "spaces:set-credential",
 	SPACES_CLEAR_CREDENTIAL: "spaces:clear-credential",
 	SPACES_IMPORT_CREDENTIALS: "spaces:import-credentials",
+	// 多条目管理(批 D):排序 + 删除 + 策略一次整池写。密钥原文永远走
+	// set-credential 那条路 —— 渲染层拿不到原文,它能回传的只有 id 与顺序。
+	SPACES_SET_CREDENTIAL_POOL: "spaces:set-credential-pool",
+	/**
+	 * 空间数据变更广播(批 B9-0,主进程 → 所有窗口)。
+	 *
+	 * 设置窗与主窗是两个独立 BrowserWindow、两份 Pinia:在设置窗里配好的 key /
+	 * 登录态,主窗那份 `spaceProviders` 缓存不会知道(它已经 `loadedSpaceId ===
+	 * spaceId`),于是模型选择器一直把那个 provider 藏着,直到切走再切回空间。
+	 * 载荷 `{ spaceId, kind }` —— kind 分 'credentials' / 'overlay',两份文件、
+	 * 两条缓存。
+	 */
+	SPACES_CHANGED: "spaces:changed",
 
 	// Plugin management
 	PLUGINS_LIST: "plugins:list",
@@ -379,11 +396,17 @@ export const IPC_CHANNELS = {
 
 	// Todo / Plan
 	// 数据面(get/create/update/rename/delete/revealDirectory)已迁到通用 RPC 通道
-	// (todoPlanRouter);下面四条动窗口、一条推变更,是宿主原生的,留在这里。
+	// (todoPlanRouter);下面七条动窗口、一条推变更,是宿主原生的,留在这里。
 	TODO_PLAN_OPEN_WINDOW: "todo-plan:open-window",
 	TODO_PLAN_HIDE_WINDOW: "todo-plan:hide-window",
 	TODO_PLAN_TOGGLE_WINDOW: "todo-plan:toggle-window",
 	TODO_PLAN_SET_WINDOW_PINNED: "todo-plan:set-window-pinned",
+	// 独立窗自绘红绿灯与手动拖拽的三条。它们只对 Todo 窗有意义:那扇窗是 macOS
+	// non-activating NSPanel,系统交通灯永远是灰的、原生 app-region 拖拽也不生效,
+	// 所以「最小化 / 缩放 / 挪窗」必须由渲染层显式发回主进程。
+	TODO_PLAN_MINIMIZE_WINDOW: "todo-plan:minimize-window",
+	TODO_PLAN_ZOOM_WINDOW: "todo-plan:zoom-window",
+	TODO_PLAN_DRAG_WINDOW: "todo-plan:drag-window",
 	TODO_PLAN_CHANGED: "todo-plan:changed",
 
 	// Scratchpad (per-session draft paper the AI silently perceives)

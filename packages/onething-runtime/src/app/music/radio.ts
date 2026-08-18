@@ -54,6 +54,8 @@ import {
 } from './service.js'
 import { prefetchDjPatter, resetDjPatterCache, speakDjPatter } from './dj-voice.js'
 
+import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 let radioStore: OnethingRadioStore | null = null
 let conductor: OnethingRadioConductor | null = null
 /** Sessions this process already pre-granted music-dir writes to. */
@@ -339,7 +341,7 @@ async function wakeRadioDj(): Promise<void> {
     : {}
 
   await getEventBus().emit(sessionId, {
-    type: 'command:send-message',
+    type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
     content,
     source: 'radio',
     origin: { transport: 'api', source: 'radio', receivedAt: Date.now() },

@@ -42,6 +42,8 @@ import { buildSystemPromptSnapshot } from '@onething/app/engine/prompt/system-pr
 import { getEventBus } from '@onething/app/events/index.js'
 import { billTitleUsage } from '@onething/app/usage/bill-side-line.js'
 
+import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 // ============================================
 // IPC Handlers
 // ============================================
@@ -166,7 +168,7 @@ export function registerChatHandlers() {
         resume: () =>
           getStreamEngine().handleResumeAfterConfirm(
             sessionId,
-            { type: 'command:resume-after-confirm', messageId },
+            { type: SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM, messageId },
             sender as ChatResumeSender,
           ),
         errorMessage: (error, fallback) =>

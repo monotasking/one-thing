@@ -18,6 +18,84 @@ import type { InteractionAnswer, InteractionRequest } from '@onething/core/inter
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
 
+// ── Type registry ───────────────────────────────
+
+/**
+ * 事件 type 字面量的**单一权威**。命名风格沿用 `IPC_CHANNELS`:键是
+ * SCREAMING_SNAKE,值与线上格式逐字相同。
+ *
+ * 存在的理由与 `SESSION_STREAM_TERMINAL_EVENTS` 同一条:手打的 `'stream:complete'`
+ * 散在四百多处,改名时没有任何一处会编译红 —— 拼错一个字母只表现为"这条事件永远
+ * 不到",而那是最难归因的一类。收进这张表之后,拼错就是一个不存在的属性名。
+ *
+ * 下面的 `satisfies` 保证"没有多的",`_eventTableIsExhaustive` 保证"没有少的"
+ * —— 双向,判据来自 `SessionEvent` 联合本身,不是人的记性。
+ *
+ * 注:`packages/core` 因边界规则不能 import `@shared`,它手抄的那份形状保持字面量,
+ * 由核心侧自己的焊点断言护着。
+ */
+export const SESSION_EVENT_TYPES = {
+  STREAM_START: 'stream:start',
+  STREAM_COMPLETE: 'stream:complete',
+  STREAM_ERROR: 'stream:error',
+  STREAM_ABORTED: 'stream:aborted',
+  STREAM_USAGE: 'stream:usage',
+  TOOL_CALL: 'tool:call',
+  TOOL_RESULT: 'tool:result',
+  TOOL_INPUT_START: 'tool:input-start',
+  TOOL_INPUT_END: 'tool:input-end',
+  TOOL_EXECUTION_START: 'tool:execution-start',
+  TOOL_EXECUTION_UPDATE: 'tool:execution-update',
+  TOOL_EXECUTION_END: 'tool:execution-end',
+  STEP_ADDED: 'step:added',
+  STEP_UPDATED: 'step:updated',
+  CONTENT_PART: 'content:part',
+  CONTENT_CONTINUATION: 'content:continuation',
+  CONTEXT_SIZE_UPDATED: 'context:size-updated',
+  CONTEXT_COMPACT_STARTED: 'context:compact-started',
+  CONTEXT_COMPACT_PROGRESS: 'context:compact-progress',
+  CONTEXT_COMPACT_COMPLETED: 'context:compact-completed',
+  SESSION_VARIABLES_UPDATED: 'session:variables-updated',
+  SESSION_GOAL_UPDATED: 'session:goal-updated',
+  STREAM_PARAMS_RESOLVING: 'stream:params-resolving',
+  REQUEST_SNAPSHOT: 'request:snapshot',
+  SKILL_ACTIVATED: 'skill:activated',
+  PERMISSION_REQUEST: 'permission:request',
+  PERMISSION_TIMEOUT: 'permission:timeout',
+  PERMISSION_QUEUED: 'permission:queued',
+  PERMISSION_SETTLED: 'permission:settled',
+  INTERACTION_REQUESTED: 'interaction:requested',
+  INTERACTION_SETTLED: 'interaction:settled',
+  TOOL_EXECUTING: 'tool:executing',
+  TOOL_METADATA: 'tool:metadata',
+  SESSION_RENAMED: 'session:renamed',
+  SESSION_COLLAB_UPDATED: 'session:collab-updated',
+  STEERING_QUEUED: 'steering:queued',
+  STEERING_CONSUMED: 'steering:consumed',
+  STEERING_RETRACTED: 'steering:retracted',
+  SCRATCHPAD_CONSUMED: 'scratchpad:consumed',
+  MESSAGE_USER_CREATED: 'message:user-created',
+  MESSAGE_CREATED: 'message:created',
+  MESSAGE_ASSISTANT_CREATED: 'message:assistant-created',
+  MESSAGE_UPDATED: 'message:updated',
+  MESSAGE_DELETED: 'message:deleted',
+  MESSAGES_REPLACED: 'messages:replaced',
+  COLLAB_BOARD_CHANGED: 'collab:board-changed',
+  COLLAB_TYPING: 'collab:typing',
+  COLLAB_TURN_ACTIVE: 'collab:turn-active',
+  COLLAB_COORDINATOR_CHANGED: 'collab:coordinator-changed',
+  COLLAB_AGENT_CHANGED: 'collab:agent-changed',
+} as const satisfies Record<string, SessionEvent['type']>
+
+export type SessionEventType = (typeof SESSION_EVENT_TYPES)[keyof typeof SESSION_EVENT_TYPES]
+
+// 双向穷尽:表少一个键(某个事件没进表)或联合少一个成员(表里有陈年死字符串)
+// 都在这里编译不过。写法与下面的 `_terminalListIsExhaustive` 同款。
+const _eventTableIsExhaustive: SessionEventType extends SessionEvent['type']
+  ? SessionEvent['type'] extends SessionEventType ? true : never
+  : never = true
+void _eventTableIsExhaustive
+
 // ── Stream lifecycle ────────────────────────────
 
 export interface StreamCompleteUsage {
@@ -73,6 +151,21 @@ export interface StreamAbortedEvent {
 }
 
 /**
+ * Per-turn usage, emitted the moment a model turn finishes (2026-08-17).
+ * `stream:complete` still carries the final totals; this one exists so a
+ * live "tokens so far" readout can snap from a character estimate to the real
+ * count at every turn boundary of a long tool-using response.
+ * `usage` is this turn's; `accumulated` is the running total for the stream.
+ */
+export interface StreamUsageEvent {
+  type: 'stream:usage'
+  messageId: string
+  turnIndex?: number
+  usage: StreamCompleteUsage
+  accumulated: StreamCompleteUsage
+}
+
+/**
  * 流的三种终止事件 —— **单一权威**。
  *
  * 这份名单此前被手抄在五处(collab typing / voice store / stream-coalescer /
@@ -81,7 +174,11 @@ export interface StreamAbortedEvent {
  * 它与 `StreamCompleteEvent | StreamErrorEvent | StreamAbortedEvent` 三个接口
  * 由下面的类型断言绑死:加一个终止事件接口却忘了进名单,typecheck 就会红。
  */
-export const SESSION_STREAM_TERMINAL_EVENTS = ['stream:complete', 'stream:error', 'stream:aborted'] as const
+export const SESSION_STREAM_TERMINAL_EVENTS = [
+  SESSION_EVENT_TYPES.STREAM_COMPLETE,
+  SESSION_EVENT_TYPES.STREAM_ERROR,
+  SESSION_EVENT_TYPES.STREAM_ABORTED,
+] as const
 
 export type SessionStreamTerminalEventType = (typeof SESSION_STREAM_TERMINAL_EVENTS)[number]
 
@@ -205,6 +302,30 @@ export interface ContentContinuationEvent {
 export interface ContextSizeUpdatedEvent {
   type: 'context:size-updated'
   contextSize: number
+}
+
+/**
+ * P1(2026-08-14):压缩开始的**唯一**正路通知。从前 renderer 只能靠嗅探
+ * 「一条内容长得像 context-compact/compacting 的消息」来猜,而专用 IPC 通道
+ * 主进程从来没发过。现在手动/自动两条路统一在引擎的 runContextCompact 里发这
+ * 一条,手动路径带 requestId。
+ */
+export interface ContextCompactStartedEvent {
+  type: 'context:compact-started'
+  requestId?: string
+  auto?: boolean
+  compactedThroughMessageId?: string
+}
+
+/**
+ * C6(2026-08-14):分块摘要的进度。**只在多块时发** —— 单块压缩没有可报的进度。
+ * 唯一发射点是 `compactSessionContext` 的 onChunkComplete(与刷 marker 同一处),
+ * 三条调用路(手动 / 发送前自动 / 回合中 adapters)各自转发到 eventBus。
+ */
+export interface ContextCompactProgressEvent {
+  type: 'context:compact-progress'
+  chunk: number
+  totalChunks: number
 }
 
 export interface ContextCompactCompletedEvent {
@@ -559,6 +680,7 @@ export type SessionEvent =
   | StreamCompleteEvent
   | StreamErrorEvent
   | StreamAbortedEvent
+  | StreamUsageEvent
   | ToolCallEvent
   | ToolResultEvent
   | ToolInputStartEvent
@@ -571,6 +693,8 @@ export type SessionEvent =
   | ContentPartEvent
   | ContentContinuationEvent
   | ContextSizeUpdatedEvent
+  | ContextCompactStartedEvent
+  | ContextCompactProgressEvent
   | ContextCompactCompletedEvent
   | SessionVariablesUpdatedEvent
   | SessionGoalUpdatedEvent
@@ -602,4 +726,20 @@ export type SessionEvent =
   | CollabTurnActiveEvent
   | CollabCoordinatorChangedEvent
   | CollabAgentChangedEvent
-  | SessionCommand
+
+/**
+ * 总线上实际跑的东西 —— 事件**和**命令。
+ *
+ * 命令不是事件,但它们走的是同一条 `EventBus.emit()`:desktop 的
+ * `emitCoreSessionCommandForIpc`、server 的 `POST /sessions/:id/commands`、
+ * 插件的 `sendMessage`,都是往这条总线上 emit,引擎再按 `command:*` 类型订阅。
+ * 于是命令和事件一样拿序号、一样进 per-session 环形缓冲、一样被 IPCBridge 的
+ * `onAnySessionAny` 和 server SSE 原样转给渲染层(`?after=` 重放也照发,全链路
+ * 没有任何一处按 `command:` 前缀过滤)。渲染层的 switch 只是不认识就忽略。
+ *
+ * 所以这里是两个名字而不是一个:`SessionEvent` 是**纯事件**,给所有对事件做
+ * 穷尽 switch 的消费者;`SessionBusMessage` 是**总线载荷**,给总线本身和一切
+ * 原样转发总线信封的表面。从前只有一个 `SessionEvent` 把命令混在尾部,
+ * 代价是每个对事件穷尽的 switch 都被迫处理十几个它永远不该看见的命令分支。
+ */
+export type SessionBusMessage = SessionEvent | SessionCommand

@@ -1,37 +1,52 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type {
-	CoreBuildPromptContextOptions,
-	CoreBuildPromptOptions,
-	CoreBuildPromptResult,
-	CorePromptActiveProject,
-	CorePromptKnownProjects,
-	CorePromptRequestMessage,
-	PromptSection,
+import {
+	corePromptToolSurface,
+	type CoreBuildPromptContextOptions,
+	type CoreBuildPromptOptions,
+	type CoreBuildPromptResult,
+	type CorePromptActiveProject,
+	type CorePromptFragment,
+	type CorePromptKnownProjects,
+	type CorePromptRequestMessage,
 } from "@onething/core/engine";
-import { collectPluginPromptContext } from "./plugin-context.js";
+import {
+	PromptComposer,
+	StaticPromptSource,
+	type ComposedPrompt,
+	type PromptSource,
+} from "./composer.js";
+import { promptFragments } from "./fragments.js";
+import { PluginPromptContextSource } from "./plugin-context.js";
 import {
 	ONETHING_DEFAULT_SYSTEM_PROMPT,
 	ONETHING_KNOWN_PROJECTS_INSTRUCTIONS,
-	ONETHING_TOOL_GUIDELINES,
-	ONETHING_TOOL_WORKSPACE_RULES,
 } from "./system-prompt.js";
+
+export {
+	PROMPT_BLOCK_TOOL_GUIDELINES,
+	PROMPT_BLOCK_TOOL_WORKSPACE_RULES,
+} from "./composer.js";
 
 import voiceSpeakModeRaw from "./content/voice-speak-mode.md?raw";
 import osDarwinRaw from "./content/os-darwin.md?raw";
 import osWin32Raw from "./content/os-win32.md?raw";
 import osLinuxRaw from "./content/os-linux.md?raw";
 import contextUpdateConventionRaw from "./content/context-update-convention.md?raw";
-import contextVariablesIntroRaw from "./content/context-variables-intro.md?raw";
 import todoRulesRaw from "./content/todo-rules.md?raw";
-import selfEvolutionRaw from "./content/self-evolution.md?raw";
 
 const normalizeContent = (s: string) => s.replace(/\n+$/, "");
 
 const CONTEXT_UPDATE_CONVENTION = normalizeContent(contextUpdateConventionRaw);
-const CONTEXT_VARIABLES_INTRO = normalizeContent(contextVariablesIntroRaw);
 const TODO_RULES = normalizeContent(todoRulesRaw);
+
+/**
+ * File tools that resolve relative paths against the work directory. Their
+ * shared workspace rule is rendered from whichever of them are on the surface —
+ * a sentence naming a tool that is not there would be a lie.
+ */
+const WORKDIR_FILE_TOOL_IDS = ["read", "edit", "write", "bash"] as const;
 
 /**
  * 一份项目纪律文件最多带多少进 system prompt。
@@ -90,15 +105,17 @@ export type BuildOnethingPromptResult = CoreBuildPromptResult;
 
 export async function buildOnethingSystemPrompt(
 	ctx: BuildOnethingPromptContextOptions,
-): Promise<{ system: string; developer: string[] }> {
-	return buildRuntimeSystemPrompt(coreOptions(ctx));
+	composer: PromptComposer = defaultOnethingPromptComposer,
+): Promise<ComposedPrompt> {
+	return composer.compose(resolveOnethingPromptContext(ctx));
 }
 
 export async function buildOnethingPrompt(
 	options: BuildOnethingPromptOptions,
+	composer: PromptComposer = defaultOnethingPromptComposer,
 ): Promise<BuildOnethingPromptResult> {
-	return buildRuntimePrompt({
-		...coreOptions(options),
+	return composer.build({
+		...resolveOnethingPromptContext(options),
 		providerId: options.providerId,
 		historyMessages: options.historyMessages,
 		separateDeveloperMessages:
@@ -106,7 +123,12 @@ export async function buildOnethingPrompt(
 	});
 }
 
-function coreOptions(
+/**
+ * Fill the product defaults and consult the host adapters — persona lookup,
+ * home dir, platform, docs path, todo directory. Pure: hosts call it before
+ * handing the context to their own composer.
+ */
+export function resolveOnethingPromptContext(
 	ctx: BuildOnethingPromptContextOptions,
 ): CoreBuildPromptContextOptions {
 	const { host, ...core } = ctx;
@@ -117,8 +139,6 @@ function coreOptions(
 		agentName: ctx.agentName ?? agent?.name,
 		agentSystemPrompt: ctx.agentSystemPrompt ?? agent?.systemPrompt,
 		baseSystemPrompt: ctx.baseSystemPrompt ?? ONETHING_DEFAULT_SYSTEM_PROMPT,
-		toolGuidelines: ctx.toolGuidelines ?? ONETHING_TOOL_GUIDELINES,
-		toolWorkspaceRules: ctx.toolWorkspaceRules ?? ONETHING_TOOL_WORKSPACE_RULES,
 		knownProjectsInstructions:
 			ctx.knownProjectsInstructions ?? ONETHING_KNOWN_PROJECTS_INSTRUCTIONS,
 		homeDir: ctx.homeDir ?? host?.getHomeDir?.() ?? os.homedir(),
@@ -130,162 +150,160 @@ function coreOptions(
 	};
 }
 
-async function buildRuntimeSystemPrompt(
-	ctx: CoreBuildPromptContextOptions,
-): Promise<{ system: string; developer: string[]; sections: PromptSection[] }> {
-	const plugins = await collectPlugins(ctx);
-	const agentSystemPrompt = ctx.agentSystemPrompt?.trim();
-	const disabled = new Set(ctx.disabledSections ?? []);
+/**
+ * The builtin fragment table — the product's own sections, in their historical
+ * order (100-steps so a contributor can slot between two of them). Tool and
+ * plugin fragments are appended by the composer; nothing here knows about a
+ * specific tool except through `requiresTools`, the same gate every other
+ * contributor uses.
+ */
+export const BUILTIN_PROMPT_FRAGMENTS: readonly CorePromptFragment[] = [
+	{
+		id: "agent",
+		slot: "section",
+		source: "builtin",
+		order: 100,
+		content: (ctx) => {
+			const agentSystemPrompt = ctx.agentSystemPrompt?.trim();
+			return (
+				agentSystemPrompt &&
+				agentPrompt(ctx.agentName || "Agent", agentSystemPrompt)
+			);
+		},
+	},
+	// Whether this turn arrived by voice is a per-turn fact: on the turn channel
+	// it costs one block when speak mode starts and a tombstone when it ends,
+	// instead of forking the static prefix in two.
+	{
+		id: "voice",
+		slot: "section",
+		channel: "turn",
+		source: "builtin",
+		order: 200,
+		when: (ctx) => Boolean(ctx.speakMode ?? ctx.voiceConversation),
+		content: () => VOICE_SPEAK_MODE,
+	},
+	{
+		id: "runtime-context",
+		slot: "section",
+		source: "builtin",
+		order: 300,
+		content: runtimeContext,
+	},
+	// Constant bytes (cache-safe): documents the <context-update> channel so the
+	// model knows the latest block supersedes earlier ones. Unconditional — the
+	// blocks can arrive whether or not the `variable` tool is on the surface.
+	{
+		id: "context-update-convention",
+		slot: "section",
+		source: "builtin",
+		order: 400,
+		content: CONTEXT_UPDATE_CONVENTION,
+	},
+	// There is no `# Work Directory` section any more: the path is a session
+	// fact and the `workdir` variable already carries it (with its extra roots)
+	// on the board — the section was the same truth stated twice, which is why
+	// the variable formatter used to skip it. The composer renders the
+	// `workspace-rules` bullets as a standalone static section in its place
+	// (id `tool-workspace-rules`, the same name `disabledSections` always used).
+	{
+		id: "workdir-file-tools",
+		slot: "workspace-rules",
+		source: "builtin",
+		order: 100,
+		requiresAnyTools: WORKDIR_FILE_TOOL_IDS,
+		content: (ctx) => {
+			const surface = corePromptToolSurface(ctx);
+			const present = WORKDIR_FILE_TOOL_IDS.filter((id) => surface.has(id));
+			return `${joinNames(present)} ${present.length === 1 ? "uses" : "use"} the current work directory by default.`;
+		},
+	},
+	{
+		id: "active-project",
+		slot: "section",
+		channel: "turn",
+		source: "builtin",
+		order: 600,
+		when: (ctx) => Boolean(ctx.activeProject?.hasActive),
+		content: (ctx) => activeProject(ctx.activeProject!),
+	},
+	{
+		id: "known-projects",
+		slot: "section",
+		channel: "turn",
+		source: "builtin",
+		order: 700,
+		when: (ctx) => Boolean(ctx.knownProjects?.hasAny),
+		content: knownProjects,
+	},
+	// Skills are loaded with `read`; without it the list is unreachable.
+	{
+		id: "skills",
+		slot: "section",
+		channel: "turn",
+		source: "builtin",
+		order: 800,
+		requiresTools: ["read"],
+		content: skills_,
+	},
+	{
+		id: "os",
+		slot: "section",
+		source: "builtin",
+		order: 900,
+		content: os_,
+	},
+	// The todo surface is operated with the file tools; without any of them the
+	// instructions cannot be followed.
+	{
+		id: "todo",
+		slot: "section",
+		channel: "turn",
+		source: "builtin",
+		order: 1000,
+		requiresAnyTools: ["read", "edit", "write"],
+		when: (ctx) => Boolean(ctx.todoPlanDirectory),
+		content: (ctx) => todo(ctx, ctx.todoPlanDirectory!),
+	},
+	{
+		id: "agents-md",
+		slot: "section",
+		channel: "turn",
+		source: "builtin",
+		order: 1100,
+		content: (ctx) => loadAgentsMdInstructions(ctx.workingDirectory),
+	},
+];
 
-	const sections: Array<[string, string | false | 0 | null | undefined]> = [
-		[
-			"agent",
-			agentSystemPrompt &&
-				agentPrompt(ctx.agentName || "Agent", agentSystemPrompt),
-		],
-		["voice", (ctx.speakMode ?? ctx.voiceConversation) && VOICE_SPEAK_MODE],
-		["runtime-context", runtimeContext(ctx)],
-		// Constant bytes (cache-safe): documents the <context-update> channel
-		// so the model knows the latest block supersedes earlier ones.
-		["context-update-convention", CONTEXT_UPDATE_CONVENTION],
-		["workdir", ctx.workingDirectory && workdir(ctx)],
-		[
-			"active-project",
-			ctx.activeProject?.hasActive && activeProject(ctx.activeProject),
-		],
-		["known-projects", ctx.knownProjects?.hasAny && knownProjects(ctx)],
-		["skills", skills_(ctx)],
-		["os", os_(ctx)],
-		[
-			"todo",
-			ctx.hasTools && ctx.todoPlanDirectory
-				? todo(ctx, ctx.todoPlanDirectory)
-				: undefined,
-		],
-		["agents-md", loadAgentsMdInstructions(ctx.workingDirectory)],
-		// 常量字节(cache-safe):这一段只指路,**不装任何变量值** —— 状态走
-		// `<context-update>` 尾部块,其余的靠 keys/get 读(§R.4)。变量因此永远
-		// 不再打穿 system 前缀。有没有这一段只取决于 `variable` 工具在不在
-		// (readonly 工具档没有它,那时这句话会是假的)。
-		[
-			"context-variables",
-			Boolean(ctx.hasTools && ctx.toolNames?.includes("variable")) &&
-				`<context-variables>\n${CONTEXT_VARIABLES_INTRO}\n</context-variables>`,
-		],
-		// 常量字节(cache-safe):自进化说明只在 `feature_mount` 工具在场时注入
-		// (readonly / 无 bash 的宿主拿不到这组工具,那时这段话会是假的)。只写事实:
-		// feature 是什么、在哪、契约、流程与当前边界(后端 only)。没有这一段时,模型
-		// 不知道应用能被它运行时扩展,会去翻源码目录找 feature —— 真机首验撞到的正是这个。
-		[
-			"self-evolution",
-			Boolean(ctx.hasTools && ctx.toolNames?.includes("feature_mount")) &&
-				`<self-evolution>\n${SELF_EVOLUTION}\n</self-evolution>`,
-		],
-	];
-	for (const plugin of plugins) sections.push(["plugins", plugin]);
+/** The builtin table as a source. */
+export const builtinPromptSource: PromptSource = new StaticPromptSource(
+	"builtin",
+	BUILTIN_PROMPT_FRAGMENTS,
+);
 
-	const systemContent = core(ctx);
-	const activeSections = sections.filter(([name]) => !disabled.has(name));
-	const developer = compact(activeSections.map(([, content]) => content));
-
-	// Build named sections: system + each non-falsy developer section; plugins merged
-	const namedSections: PromptSection[] = [
-		{ name: "system", content: systemContent },
-	];
-	const pluginContents: string[] = [];
-	for (const [name, content] of activeSections) {
-		if (typeof content !== "string" || !content) continue;
-		if (name === "plugins") {
-			pluginContents.push(content);
-		} else {
-			namedSections.push({ name, content });
-		}
-	}
-	if (pluginContents.length > 0) {
-		namedSections.push({
-			name: "plugins",
-			content: pluginContents.join("\n\n"),
-		});
-	}
-
-	return { system: systemContent, developer, sections: namedSections };
-}
-
-async function buildRuntimePrompt(
-	options: CoreBuildPromptOptions,
-): Promise<CoreBuildPromptResult> {
-	const { system, developer, sections } =
-		await buildRuntimeSystemPrompt(options);
-	const systemPrompt = [system, ...developer].filter(Boolean).join("\n\n");
-
-	if (options.separateDeveloperMessages) {
-		return {
-			messages: [
-				{ role: "system", content: system },
-				...developer.map((content) => ({
-					role: "developer" as const,
-					content,
-				})),
-				...options.historyMessages,
-			],
-			systemPrompt,
-			sections,
-		};
-	}
-
-	return {
-		messages: [
-			{ role: "system", content: systemPrompt },
-			...options.historyMessages,
-		],
-		systemPrompt,
-		sections,
-	};
-}
-
-function core(ctx: CoreBuildPromptContextOptions): string {
-	const baseSystemPrompt =
-		ctx.baseSystemPrompt?.trim() ||
-		"You are an AI assistant. Help users by reading context, using available tools, and producing clear, useful answers.";
-	const guidelines = ctx.toolGuidelines ?? [];
-
-	return [
-		baseSystemPrompt,
-		...(guidelines.length
-			? ["", "Tool Guidelines:", ...guidelines.map((item) => `- ${item}`)]
-			: []),
-		"",
-		`Current date: ${formatDate(ctx.now)}`,
-	].join("\n");
-}
+/**
+ * The default composer: builtin sections + runtime-registered fragments +
+ * plugin providers (without host health callbacks). It has **no tool source**
+ * — hosts with a tool registry build their own (`app/engine/prompt/`), and
+ * tests add a `StaticPromptSource`. Kept for callers that only need the
+ * product prompt (`backend.ts` prompt version, evals, unit tests).
+ */
+export const defaultOnethingPromptComposer: PromptComposer = new PromptComposer([
+	builtinPromptSource,
+	promptFragments,
+	new PluginPromptContextSource(),
+]);
 
 function agentPrompt(name: string, systemPrompt: string): string {
 	return `# Agent: ${name}\n\n${systemPrompt.trim()}`;
 }
 
 const VOICE_SPEAK_MODE = normalizeContent(voiceSpeakModeRaw);
-const SELF_EVOLUTION = normalizeContent(selfEvolutionRaw);
 
-function workdir(ctx: CoreBuildPromptContextOptions): string {
-	const homeDir = ctx.homeDir || os.homedir();
-	const lines = [
-		"# Work Directory",
-		`Current work directory: ${displayPath(ctx.workingDirectory, homeDir) ?? ctx.workingDirectory} (${ctx.workingDirectory})`,
-	];
-	const roots = displayRoots(ctx.workingDirectoryRoots, homeDir);
-	if (roots.length > 0) {
-		lines.push("Additional work directories:");
-		for (const root of roots)
-			lines.push(`- ${root.displayPath} (${root.path})`);
-	}
-	const rules = ctx.toolWorkspaceRules ?? [];
-	if (ctx.hasTools && rules.length) {
-		lines.push("", "## Tool Workspace Rules");
-		lines.push(
-			...rules.map((rule) => (rule.startsWith("- ") ? rule : `- ${rule}`)),
-		);
-	}
-	return lines.join("\n");
+function joinNames(names: readonly string[]): string {
+	if (names.length <= 1) return names.join("");
+	if (names.length === 2) return `${names[0]} and ${names[1]}`;
+	return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
 // The AI todo path is derived from the session id here, in the prompt. That is
@@ -344,8 +362,7 @@ function knownProjects(ctx: CoreBuildPromptContextOptions): string {
 }
 
 function skills_(ctx: CoreBuildPromptContextOptions): string | undefined {
-	const hasReadTool = Boolean(ctx.hasTools && ctx.toolNames?.includes("read"));
-	if (!hasReadTool || !ctx.skills.length) return undefined;
+	if (!ctx.skills?.length) return undefined;
 	const skills = ctx.skills
 		.filter((skill) => skill.enabled !== false && !skill.disableModelInvocation)
 		.slice()
@@ -507,31 +524,6 @@ function compact(
 		.filter(Boolean);
 }
 
-async function collectPlugins(
-	ctx: CoreBuildPromptContextOptions,
-): Promise<string[]> {
-	const fragments = await collectPluginPromptContext({
-		sessionId: ctx.sessionId,
-		// F4:身份透传。ctx.agentId 是回合入口解析好的那一个,与 persona 取的是
-		// 同一个字段(见 coreOptions/getAgent),所以插件看到的身份与提示词里的
-		// 身份恒一致。
-		agentId: ctx.agentId,
-		providerId: ctx.providerId,
-		model: resolvePromptModelId(ctx),
-		providerConfig: ctx.providerConfig,
-		settings: ctx.settings,
-		hasTools: ctx.hasTools,
-		skills: ctx.skills,
-		workingDirectory: ctx.workingDirectory,
-		workingDirectoryRoots: ctx.workingDirectoryRoots,
-		activeProject: ctx.activeProject,
-		knownProjects: ctx.knownProjects,
-		toolNames: ctx.toolNames,
-		mcpToolNames: ctx.mcpToolNames,
-	});
-	return fragments.map((fragment) => fragment.content);
-}
-
 function runtimeContext(
 	ctx: CoreBuildPromptContextOptions,
 ): string | undefined {
@@ -561,21 +553,4 @@ function displayPath(
 ): string | undefined {
 	if (!input) return undefined;
 	return input.startsWith(homeDir) ? input.replace(homeDir, "~") : input;
-}
-
-function displayRoots(
-	roots: string[] | undefined,
-	homeDir: string,
-): Array<{ path: string; displayPath: string }> {
-	return (roots ?? []).map((root) => ({
-		path: root,
-		displayPath: displayPath(root, homeDir) ?? root,
-	}));
-}
-
-function formatDate(date = new Date()): string {
-	const year = date.getFullYear();
-	const month = String(date.getMonth() + 1).padStart(2, "0");
-	const day = String(date.getDate()).padStart(2, "0");
-	return `${year}-${month}-${day}`;
 }

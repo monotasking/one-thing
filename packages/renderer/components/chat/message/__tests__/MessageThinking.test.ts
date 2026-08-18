@@ -22,7 +22,7 @@ describe('MessageThinking', () => {
     vi.useRealTimers()
   })
 
-  it('auto-expands reasoning content when it first arrives', async () => {
+  it('stays collapsed when reasoning arrives and streams its tail through the header', async () => {
     const wrapper = mount(MessageThinking, {
       props: {
         isStreaming: true,
@@ -33,16 +33,21 @@ describe('MessageThinking', () => {
 
     expect(wrapper.find('.thinking-reasoning-wrapper').exists()).toBe(false)
 
-    await wrapper.setProps({ reasoning: 'reasoning summary' })
+    await wrapper.setProps({ reasoning: 'first line of reasoning\nsecond   line' })
     await nextTick()
 
     expect(wrapper.find('.thinking-panel').classes()).toContain('collapse-panel')
     expect(wrapper.find('.thinking-panel').classes()).toContain('variant-plain')
     expect(wrapper.find('.thinking-panel').classes()).toContain('icon-inline-end')
+    // No auto-expand (2026-08-17): the body stays folded …
     const reasoning = wrapper.find('.thinking-reasoning-wrapper')
     expect(reasoning.exists()).toBe(true)
-    expect(reasoning.classes()).toContain('expanded')
-    expect(wrapper.text()).toContain('reasoning summary')
+    expect(reasoning.classes()).not.toContain('expanded')
+    // … and the live text shows in the collapsed header, one line, tail-first.
+    const header = wrapper.find('.thought-header')
+    expect(header.text()).toContain('Thinking')
+    expect(header.find('.thought-detail-text').classes()).toContain('tail')
+    expect(header.find('.thought-detail-text').text()).toBe('first line of reasoning second line')
 
     wrapper.unmount()
   })
@@ -98,7 +103,7 @@ describe('MessageThinking', () => {
     wrapper.unmount()
   })
 
-  it('auto-collapses reasoning when streaming ends', async () => {
+  it('never folds or opens by itself across answer start and stream end', async () => {
     const wrapper = mount(MessageThinking, {
       props: {
         isStreaming: true,
@@ -106,13 +111,19 @@ describe('MessageThinking', () => {
         reasoning: 'reasoning summary',
       },
     })
+    expect(wrapper.find('.thinking-reasoning-wrapper').classes()).not.toContain('expanded')
 
-    expect(wrapper.find('.thinking-reasoning-wrapper').classes()).toContain('expanded')
+    await wrapper.setProps({ hasContent: true })
+    await nextTick()
+    expect(wrapper.find('.thinking-reasoning-wrapper').classes()).not.toContain('expanded')
 
     await wrapper.setProps({ isStreaming: false })
     await nextTick()
-
     expect(wrapper.find('.thinking-reasoning-wrapper').classes()).not.toContain('expanded')
+    // Settled header keeps the streamed tail; elapsed shows only once a timer measured it.
+    const header = wrapper.find('.thought-header')
+    expect(header.text()).toContain('Thought')
+    expect(header.find('.thought-detail-text.tail').text()).toBe('reasoning summary')
 
     wrapper.unmount()
   })
@@ -126,10 +137,8 @@ describe('MessageThinking', () => {
       },
     })
 
-    await wrapper.find('.thinking-status-row.clickable').trigger('click')
-    await nextTick()
+    // Starts collapsed; one click opens it.
     expect(wrapper.find('.thinking-reasoning-wrapper').classes()).not.toContain('expanded')
-
     await wrapper.find('.thinking-status-row.clickable').trigger('click')
     await nextTick()
     expect(wrapper.find('.thinking-reasoning-wrapper').classes()).toContain('expanded')

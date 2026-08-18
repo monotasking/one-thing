@@ -1,0 +1,27 @@
+/* 4b 版式隐喻：地铺满窗口，侧栏 / 右栏 / 输入框都是浮在地上的卡 */
+.shell {
+  padding: 12px;
+  gap: 12px;
+  grid-template-columns: 264px minmax(0, 1fr) 312px;
+  background: var(--c-ground);
+}
+.col-left, .col-right {
+  border: 1px solid var(--c-line-faint);
+  border-radius: 14px;
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+.col-center { background: transparent; }
+.topbar {
+  background: transparent;
+  border-bottom: 0;
+  padding: 0 var(--sp-2);
+}
+.thread { padding-top: var(--sp-4); }
+.composer-dock { padding: 0 0 var(--sp-2); }
+.composer {
+  border: 1px solid var(--c-line-faint);
+  box-shadow: var(--sh-2);
+  border-radius: 14px;
+}
+.toast { bottom: 150px; right: var(--sp-6); }

@@ -5,6 +5,7 @@ import type {
 } from '@onething/core'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
 import type { Principal } from '@onething/core/permission'
+import type { CoreToolPromptContribution } from '@onething/core/engine'
 
 type JsonObjectProperty = JsonValue | undefined
 interface JsonSchemaObject extends JsonObject {
@@ -168,6 +169,13 @@ export interface ToolInfo<
   renderShell?: ToolRenderShell
   renderKind?: ToolRenderKind
   permissionGuard?: 'safe' | 'sandboxed' | 'internal-check' | 'permission-gated' | 'external'
+  /**
+   * The prompt this tool brings with it (guideline bullets, workspace-rule
+   * bullets, standalone sections). It travels with the tool: on the surface
+   * → injected, off the surface / disabled / unregistered → gone. Static by
+   * design — see `CoreToolPromptContribution`.
+   */
+  prompt?: CoreToolPromptContribution
   execute(args: z.infer<P>, ctx: ToolContext<M>): Promise<ToolResult<M>>
   formatValidationError?(error: z.ZodError): string
 }
@@ -204,6 +212,8 @@ export interface ToolInfoAsync<
   executionMode?: ToolExecutionMode
   renderShell?: ToolRenderShell
   renderKind?: ToolRenderKind
+  /** Same as `ToolInfo.prompt`; declared up front, not in `init` — the prompt must not wait for I/O. */
+  prompt?: CoreToolPromptContribution
   init: (ctx?: InitContext) => Promise<ToolInitResult<P, M>>
   _initialized?: ToolInitResult<P, M>
 }
@@ -237,6 +247,7 @@ export namespace Tool {
     executionMode?: ToolExecutionMode
     renderShell?: ToolRenderShell
     renderKind?: ToolRenderKind
+    prompt?: CoreToolPromptContribution
   }
 
   export function define<P extends z.ZodType, M extends ToolMetadata = ToolMetadata>(
@@ -264,6 +275,7 @@ export namespace Tool {
         executionMode: config.executionMode,
         renderShell: config.renderShell,
         renderKind: config.renderKind,
+        prompt: config.prompt,
         init,
       } as ToolInfoAsync<P, M>
     }

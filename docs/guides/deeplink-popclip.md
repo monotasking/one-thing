@@ -75,6 +75,13 @@ onething://x/<pluginId>/<action>?text=<urlencoded>[&<其余参数>]
 
 ## 按钮二:翻译(走插件动作)
 
+> **省事的路(quick-translate ≥ 1.1.0)**:装好 `quick-translate` 插件后,在会话里
+> 输入 `/popclip-install`(可带语言码,例 `/popclip-install zh en ja`)。插件会在自己的
+> 数据目录 `~/.onething/plugins/quick-translate/` 生成一份 PopClip snippet
+> `onething-translate.popcliptxt` 并 `open` 它,PopClip 弹出自己的安装确认,点 Install
+> 即可。用户手抄 Config.json 的写法保留在下面,供别的插件参考。
+> 卸载插件不会收回 PopClip 里的按钮 —— 去 PopClip 设置里删。
+
 假设你装了一个 id 为 `translator` 的插件,它注册了一个名为 `translate` 的深链
 动作:
 

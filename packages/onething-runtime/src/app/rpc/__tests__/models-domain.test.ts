@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => {
   })
 
   return {
+    forceRefresh: vi.fn(),
+    refreshProviderModels: vi.fn(),
     fetchCodexModels: vi.fn(),
     getCodexFallbackModels: vi.fn((ids?: string[]) => {
       const modelIds = ids && ids.length > 0 ? ids : ['fallback-codex']
@@ -46,7 +48,8 @@ vi.mock('../../auth/auth-service.js', () => ({
 }))
 
 vi.mock('../../providers/model-registry.js', () => ({
-  forceRefresh: vi.fn(),
+  forceRefresh: mocks.forceRefresh,
+  refreshProviderModels: mocks.refreshProviderModels,
   getAllModels: vi.fn(),
   getModelDisplayName: vi.fn(),
   getModelNameAliases: vi.fn(),
@@ -182,5 +185,18 @@ describe('models RPC domain — Codex cache handling', () => {
     expect(response.success).toBe(true)
     expect(response.models?.map(m => m.id)).toEqual(['cached-codex', 'fallback-codex'])
     expect(mocks.saveProviderModels).not.toHaveBeenCalled()
+  })
+
+  it('refreshRegistry: no providerId = every provider, providerId = only that one', async () => {
+    mocks.forceRefresh.mockResolvedValue(undefined)
+    mocks.refreshProviderModels.mockResolvedValue(undefined)
+
+    await modelsRpcHandlers.refreshRegistry({})
+    expect(mocks.forceRefresh).toHaveBeenCalledTimes(1)
+    expect(mocks.refreshProviderModels).not.toHaveBeenCalled()
+
+    await modelsRpcHandlers.refreshRegistry({ providerId: 'kimi' })
+    expect(mocks.refreshProviderModels).toHaveBeenCalledWith('kimi')
+    expect(mocks.forceRefresh).toHaveBeenCalledTimes(1)
   })
 })

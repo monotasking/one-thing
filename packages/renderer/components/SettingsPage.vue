@@ -26,6 +26,26 @@
         <div class="titlebar-title">
           Settings
         </div>
+        <!-- 「你在改哪个空间的配置」(批 B7)。这不是一张新表单,是一块标识 ——
+             凭证/模型这些页面本来就是**当前空间的**,不写出来用户会以为在改全局。
+             切换写的是同一份 window 级 currentSpaceId,主窗会跟着切。 -->
+        <div
+          v-if="spacesStore.available"
+          class="titlebar-space"
+        >
+          <span class="titlebar-space-label">当前空间</span>
+          <Select
+            variant="ledger"
+            size="small"
+            teleported
+            fit-input-width
+            class="titlebar-space-select"
+            :model-value="spacesStore.currentSpaceId"
+            :options="spaceOptions"
+            aria-label="当前空间(设置页改的就是这个空间的配置)"
+            @update:model-value="spacesStore.switchTo(String($event))"
+          />
+        </div>
         <div
           class="titlebar-save-state"
           :class="{ active: hasUnsavedChanges }"
@@ -267,6 +287,7 @@
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import AppMenu from '@/components/common/Menu.vue'
+import Select from '@/components/common/Select.vue'
 import MenuItem from '@/components/common/MenuItem.vue'
 import SubMenu from '@/components/common/SubMenu.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
@@ -289,6 +310,7 @@ import {
   Wrench,
 } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
+import { useSpacesStore } from '@/stores/spaces'
 import { matchShortcut } from '@/composables/useShortcuts'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
 import { platformApi } from '@/platform'
@@ -315,6 +337,12 @@ import EvalsSettingsTab from './settings/evals/EvalsSettingsTab.vue'
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
 
 const settingsStore = useSettingsStore()
+const spacesStore = useSpacesStore()
+
+/** 标题栏那个「当前空间」选择器的选项。设置窗是独立 window,列表自己拉一次。 */
+const spaceOptions = computed(() =>
+  spacesStore.spaces.map(space => ({ value: space.id, label: space.name })),
+)
 
 // State
 const isLoading = ref(true)
@@ -773,6 +801,8 @@ function applyDeepLinkTab(tabId: string | null | undefined) {
 let unsubscribeNavigate: (() => void) | null = null
 
 onMounted(async () => {
+  // 设置窗是独立 window:空间列表得自己拉一次,标题栏那块标识才知道该写谁的名字。
+  void spacesStore.load()
   await loadSettings()
   applyDeepLinkTab(new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('tab'))
   unsubscribeNavigate = platformApi.onSettingsNavigate?.(payload => applyDeepLinkTab(payload.tab)) ?? null
@@ -843,6 +873,29 @@ onUnmounted(() => {
   font-size: 12.5px;
   font-weight: 500;
   pointer-events: none;
+}
+
+/* 「当前空间」标识:`.titlebar-title` 是绝对定位铺满整条的(且 pointer-events:none),
+   这一块作为它之后的兄弟节点用 position:relative 就画在它上面 —— 不需要 z-index
+   (ui-gate 禁字面量层级),同一层叠上下文里后来者在上。 */
+.titlebar-space {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-right: 10px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-space-label {
+  color: var(--settings-ink-3);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.titlebar-space-select {
+  min-width: 118px;
 }
 
 .settings-search {

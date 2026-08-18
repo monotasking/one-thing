@@ -358,16 +358,24 @@ import type {
 	SpacesUpdateResponse,
 	SpacesRemoveResponse,
 	SpaceOverlayPayload,
+	SpacesChangedEvent,
 	SpacesSetOverlayRequest,
 	SpacesGetOverlayResponse,
+	SpacesGetProviderSettingsResponse,
+	SpacesSetProviderSettingsRequest,
+	SpacesSetProviderSettingsResponse,
 	SpacesSetOverlayResponse,
+	OAuthCredentialTargetRequest,
 	SpaceCredentialEntrySummary,
+	SpaceCredentialStrategySummary,
 	SpaceProviderCredentialSummary,
 	SpaceCredentialsSummary,
 	SpaceCredentialImportSkip,
 	SpacesGetCredentialsResponse,
 	SpacesSetCredentialRequest,
 	SpacesSetCredentialResponse,
+	SpacesSetCredentialPoolRequest,
+	SpacesSetCredentialPoolResponse,
 	SpacesClearCredentialRequest,
 	SpacesClearCredentialResponse,
 	SpacesImportCredentialsResponse,
@@ -385,6 +393,7 @@ import type {
 	TodoPlanUpdateResponse,
 	TodoPlanUpdateRequest,
 	TodoPlanWindowActionRequest,
+	TodoPlanWindowDragRequest,
 	ScratchpadAdoptRequest,
 	ScratchpadAdoptResponse,
 	ScratchpadChangedPayload,
@@ -418,6 +427,21 @@ import type {
 	DeepLinkRespondRequest,
 	DeepLinkRespondResponse,
 } from "@shared/ipc/deeplink";
+import type {
+	SessionCommand,
+	SessionEventEnvelope,
+	StreamChunk,
+} from "@shared/events";
+
+/**
+ * 流通道上的一片。底座是 `StreamChunk`,`messageId` 不在分片自己的契约里 ——
+ * 它是发出前由 `SessionStreamCoalescer` 盖的号(装配层的 `OutgoingStreamChunk`),
+ * 老的重放数据里可能没有。
+ */
+export type SessionStreamPayload = {
+	sessionId: string;
+	chunk: StreamChunk & { messageId?: string };
+};
 
 export type {
 	ChatMessage,
@@ -491,16 +515,24 @@ export type {
 	SpacesUpdateResponse,
 	SpacesRemoveResponse,
 	SpaceOverlayPayload,
+	SpacesChangedEvent,
 	SpacesSetOverlayRequest,
 	SpacesGetOverlayResponse,
+	SpacesGetProviderSettingsResponse,
+	SpacesSetProviderSettingsRequest,
+	SpacesSetProviderSettingsResponse,
 	SpacesSetOverlayResponse,
+	OAuthCredentialTargetRequest,
 	SpaceCredentialEntrySummary,
+	SpaceCredentialStrategySummary,
 	SpaceProviderCredentialSummary,
 	SpaceCredentialsSummary,
 	SpaceCredentialImportSkip,
 	SpacesGetCredentialsResponse,
 	SpacesSetCredentialRequest,
 	SpacesSetCredentialResponse,
+	SpacesSetCredentialPoolRequest,
+	SpacesSetCredentialPoolResponse,
 	SpacesClearCredentialRequest,
 	SpacesClearCredentialResponse,
 	SpacesImportCredentialsResponse,
@@ -547,6 +579,11 @@ export type {
 	GatewayStartRequest,
 	GatewayStartResponse,
 	GatewayStopResponse,
+	GatewayWechatAddAccountRequest,
+	GatewayWechatStopAccountRequest,
+	GatewayWechatRemoveAccountRequest,
+	GatewayWechatRenameAccountRequest,
+	GatewayWechatLogoutRequest,
 	GatewayWechatLogoutResponse,
 	MessageOrigin,
 	ChannelUserLink,
@@ -562,6 +599,7 @@ export type {
 	VoiceStartRequest,
 	VoiceStopRequest,
 	VoiceSubmitUtteranceRequest,
+	VoiceSubmitTranscriptRequest,
 	VoiceSynthesizeRequest,
 	VoiceTestASRRequest,
 	VoiceTestTTSRequest,
@@ -736,6 +774,10 @@ export type {
 	TodoPlanSnapshot,
 	TodoPlanUpdateResponse,
 	TodoPlanUpdateRequest,
+	TodoPlanWindowActionRequest,
+	TodoPlanWindowDragRequest,
+	SearchRequest,
+	SearchResponse,
 	ScratchpadChangedPayload,
 	ScratchpadDocument,
 	ScratchpadGetRequest,
@@ -852,7 +894,7 @@ export interface ElectronAPI {
 		callback: (data: {
 			sessionId: string;
 			messageId: string;
-			step: any;
+			step: Step;
 		}) => void,
 	) => () => void;
 	onStepUpdated: (
@@ -860,7 +902,7 @@ export interface ElectronAPI {
 			sessionId: string;
 			messageId: string;
 			stepId: string;
-			updates: any;
+			updates: Partial<Step>;
 		}) => void,
 	) => () => void;
 	onImageGenerated: (
@@ -1355,6 +1397,16 @@ export interface ElectronAPI {
 		request: SpacesSetOverlayRequest,
 	) => Promise<SpacesSetOverlayResponse>;
 	/**
+	 * per-space **整套 provider 设置**(C2)—— `workspaces/<id>/providers.json`。
+	 * 整层写入:传什么就是什么。无回落:这个空间没表达过的就是没有。
+	 */
+	spacesGetProviderSettings: (
+		id: string,
+	) => Promise<SpacesGetProviderSettingsResponse>;
+	spacesSetProviderSettings: (
+		request: SpacesSetProviderSettingsRequest,
+	) => Promise<SpacesSetProviderSettingsResponse>;
+	/**
 	 * per-space provider 凭证池(批 B3)。摘要出、原文进 —— 读回来永远只有
 	 * `hasApiKey` + 预览,密钥原文不出后端。默认空间走 settings.ai,这四条
 	 * 对它一律拒绝。
@@ -1363,6 +1415,9 @@ export interface ElectronAPI {
 	spacesSetCredential: (
 		request: SpacesSetCredentialRequest,
 	) => Promise<SpacesSetCredentialResponse>;
+	spacesSetCredentialPool: (
+		request: SpacesSetCredentialPoolRequest,
+	) => Promise<SpacesSetCredentialPoolResponse>;
 	spacesClearCredential: (
 		request: SpacesClearCredentialRequest,
 	) => Promise<SpacesClearCredentialResponse>;
@@ -1428,16 +1483,8 @@ export interface ElectronAPI {
 	onContextSizeUpdated: (
 		callback: (data: { sessionId: string; contextSize: number }) => void,
 	) => () => void;
-	onContextCompactStarted: (
-		callback: (data: { sessionId: string }) => void,
-	) => () => void;
-	onContextCompactCompleted: (
-		callback: (data: {
-			sessionId: string;
-			success: boolean;
-			error?: string;
-		}) => void,
-	) => () => void;
+	// P1(2026-08-14):onContextCompactStarted / onContextCompactCompleted 已删
+	// (专用 IPC 通道 + web 端嗅探,零消费者)。压缩通知走 session:event。
 	updateSessionMaxTokens: (
 		sessionId: string,
 		maxTokens: number,
@@ -1447,6 +1494,11 @@ export interface ElectronAPI {
 	openSettingsWindow: (options?: { tab?: string }) => Promise<{ success: boolean }>;
 	onSettingsNavigate: (callback: (payload: { tab: string }) => void) => () => void;
 	onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void;
+	/**
+	 * 空间数据变更广播(批 B9-0)。凭证 / overlay 落盘之后主进程发给所有窗口,
+	 * 渲染层 `spaceProviders` store 据此重拉当前空间那一侧 —— 跨窗口缓存过期的解药。
+	 */
+	onSpacesChanged: (callback: (event: SpacesChangedEvent) => void) => () => void;
 	gatewayGetStatus: () => Promise<GatewayGetStatusResponse>;
 	gatewayStart: (
 		request?: GatewayStartRequest,
@@ -1565,7 +1617,17 @@ export interface ElectronAPI {
 		updates: Partial<ToolCall>,
 	) => Promise<{ success: boolean }>;
 	abortStream: (sessionId?: string) => Promise<{ success: boolean }>;
-	getActiveStreams: () => Promise<{ success: boolean; streams?: string[] }>;
+	/**
+	 * 两个宿主对同一件事**用了不同的字段名**,类型如实记两个:
+	 * desktop 走 `listOnethingActiveStreamsForIpc` 回 `sessionIds`,
+	 * server 的 `/api/streams/active` 回 `streams`。消费者两边都读
+	 * (`response.sessionIds ?? response.streams`),别只认一个。
+	 */
+	getActiveStreams: () => Promise<{
+		success: boolean;
+		streams?: string[];
+		sessionIds?: string[];
+	}>;
 	resumeAfterToolConfirm: (
 		sessionId: string,
 		messageId: string,
@@ -1783,8 +1845,12 @@ export interface ElectronAPI {
 		}) => void,
 	) => () => void;
 
-	// OAuth methods
-	oauthStart: (providerId: string) => Promise<{
+	// OAuth methods。末位 `target` 是凭证写回目标(批 B6):缺席 = 默认空间,
+	// 带 spaceId = 落进那个空间的凭证池(entryId 缺席 = 登一个新账号)。
+	oauthStart: (
+		providerId: string,
+		target?: OAuthCredentialTargetRequest,
+	) => Promise<{
 		success: boolean;
 		error?: string;
 		flowId?: string;
@@ -1804,14 +1870,19 @@ export interface ElectronAPI {
 		providerId: string,
 		code: string,
 		state: string,
+		target?: OAuthCredentialTargetRequest,
 	) => Promise<{
 		success: boolean;
 		error?: string;
 	}>;
 	oauthLogout: (
 		providerId: string,
+		target?: OAuthCredentialTargetRequest,
 	) => Promise<{ success: boolean; error?: string }>;
-	oauthGetStatus: (providerId: string) => Promise<{
+	oauthGetStatus: (
+		providerId: string,
+		target?: OAuthCredentialTargetRequest,
+	) => Promise<{
 		success: boolean;
 		providerId?: string;
 		isLoggedIn: boolean;
@@ -1830,6 +1901,7 @@ export interface ElectronAPI {
 	oauthDevicePoll: (
 		providerId: string,
 		flowId?: string,
+		target?: OAuthCredentialTargetRequest,
 	) => Promise<{
 		success: boolean;
 		completed?: boolean;
@@ -1838,6 +1910,7 @@ export interface ElectronAPI {
 	}>;
 	oauthRefresh: (
 		providerId: string,
+		target?: OAuthCredentialTargetRequest,
 	) => Promise<{ success: boolean; error?: string }>;
 	onOAuthTokenRefreshed: (
 		callback: (data: { providerId: string }) => void,
@@ -1971,14 +2044,16 @@ export interface ElectronAPI {
 	) => Promise<{ success: boolean }>;
 
 	// Unified event-driven channels (Phase 4)
-	onSessionEvent: (callback: (envelope: any) => void) => () => void;
+	onSessionEvent: (
+		callback: (envelope: SessionEventEnvelope) => void,
+	) => () => void;
 	onSessionStream: (
-		callback: (data: { sessionId: string; chunk: any }) => void,
+		callback: (payload: SessionStreamPayload) => void,
 	) => () => void;
 	emitCommand: (
 		sessionId: string,
-		command: any,
-	) => Promise<{ success: boolean; error?: string; result?: any }>;
+		command: SessionCommand,
+	) => Promise<{ success: boolean; error?: string; result?: unknown }>;
 
 	// Terminal (real PTY; wire contracts in packages/shared/ipc/terminal.ts)
 	createTerminal: (request: {
@@ -2193,6 +2268,12 @@ export interface ElectronAPI {
 	setTodoPlanWindowPinned: (
 		pinned: boolean,
 	) => Promise<{ success: boolean; pinned: boolean }>;
+	// 独立窗自绘红绿灯(黄 / 绿)与手动拖窗。红点复用 hideTodoPlanWindow。
+	minimizeTodoPlanWindow: () => Promise<{ success: boolean }>;
+	zoomTodoPlanWindow: () => Promise<{ success: boolean }>;
+	dragTodoPlanWindow: (
+		request: TodoPlanWindowDragRequest,
+	) => Promise<{ success: boolean }>;
 	onTodoPlanChanged: (
 		callback: (data: TodoPlanChangedPayload) => void,
 	) => () => void;

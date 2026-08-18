@@ -1,3 +1,5 @@
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 type MaybePromise<T> = T | Promise<T>
 
 export interface OnethingAbortToolCallLike {
@@ -24,17 +26,17 @@ export interface OnethingAbortSessionLike<TMessage extends OnethingAbortMessageL
 
 export type OnethingAbortCleanupEvent<TStep extends OnethingAbortStepLike = OnethingAbortStepLike> =
   | {
-      type: 'step:updated'
+      type: typeof SESSION_EVENT_TYPES.STEP_UPDATED
       stepId: string
       updates: Partial<TStep>
     }
   | {
-      type: 'message:updated'
+      type: typeof SESSION_EVENT_TYPES.MESSAGE_UPDATED
       messageId: string
       updates: { isStreaming: false }
     }
   | {
-      type: 'stream:complete'
+      type: typeof SESSION_EVENT_TYPES.STREAM_COMPLETE
       data: { aborted: true }
     }
 
@@ -156,7 +158,7 @@ export async function cancelOnethingStreamingStepsForAbort<
 
     await options.updateMessageStep(options.sessionId, streamingMessage.id, step.id, updates)
     await options.emitEvent(options.sessionId, {
-      type: 'step:updated',
+      type: SESSION_EVENT_TYPES.STEP_UPDATED,
       stepId: step.id,
       updates,
     })
@@ -166,12 +168,12 @@ export async function cancelOnethingStreamingStepsForAbort<
   await options.updateMessageStreaming(options.sessionId, streamingMessage.id, false)
   await options.flushSessionSave(options.sessionId)
   await options.emitEvent(options.sessionId, {
-    type: 'message:updated',
+    type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
     messageId: streamingMessage.id,
     updates: { isStreaming: false },
   })
   await options.emitEvent(options.sessionId, {
-    type: 'stream:complete',
+    type: SESSION_EVENT_TYPES.STREAM_COMPLETE,
     data: { aborted: true },
   })
 

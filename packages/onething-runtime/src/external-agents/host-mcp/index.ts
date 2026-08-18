@@ -23,6 +23,7 @@ export {
   resolveHostToolSurface,
   toHostMcpToolDefinition,
   type HostMcpCallResult,
+  type HostMcpHostTool,
   type HostMcpToolDefinition,
   type HostToolSurfaceInput,
 } from './tools.js'

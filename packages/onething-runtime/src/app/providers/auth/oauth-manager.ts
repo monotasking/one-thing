@@ -7,6 +7,7 @@
  */
 
 import type { OAuthToken } from '@shared/ipc.js'
+import type { OnethingCredentialTarget } from '@onething/runtime/auth'
 import { authService } from '../../auth/auth-service.js'
 import { generatePKCE } from '../../auth/auth-registry.js'
 import type { AuthProviderDefinition } from '../../auth/types.js'
@@ -26,24 +27,29 @@ class OAuthManager {
     throw new Error(`buildAuthorizationUrl is no longer supported directly for ${providerId}; use authService.start()`)
   }
 
-  async exchangeCodeForToken(providerId: string, code: string, state: string): Promise<OAuthToken> {
-    const response = await authService.completeManualCode(providerId, code, state)
+  async exchangeCodeForToken(
+    providerId: string,
+    code: string,
+    state: string,
+    target?: OnethingCredentialTarget,
+  ): Promise<OAuthToken> {
+    const response = await authService.completeManualCode(providerId, code, state, target)
     if (!response.success) {
       throw new Error(response.error || 'OAuth callback failed')
     }
-    const token = await authService.getToken(providerId)
+    const token = await authService.getToken(providerId, target)
     if (!token) throw new Error('OAuth token was not saved')
     return token
   }
 
-  async startDeviceFlow(providerId: string): Promise<{
+  async startDeviceFlow(providerId: string, target?: OnethingCredentialTarget): Promise<{
     userCode: string
     verificationUri: string
     expiresIn: number
     interval: number
     flowId?: string
   }> {
-    const response = await authService.start(providerId)
+    const response = await authService.start(providerId, target)
     if (!response.success || !response.userCode || !response.verificationUri) {
       throw new Error(response.error || 'Device flow start failed')
     }
@@ -56,40 +62,44 @@ class OAuthManager {
     }
   }
 
-  async pollDeviceFlow(providerId: string, flowId?: string): Promise<{ completed: boolean; error?: string }> {
-    const response = await authService.pollDeviceFlow(providerId, flowId)
+  async pollDeviceFlow(
+    providerId: string,
+    flowId?: string,
+    target?: OnethingCredentialTarget,
+  ): Promise<{ completed: boolean; error?: string }> {
+    const response = await authService.pollDeviceFlow(providerId, flowId, target)
     return {
       completed: response.completed,
       error: response.pollStatus || response.error,
     }
   }
 
-  refreshToken(providerId: string): Promise<OAuthToken> {
-    return authService.refreshToken(providerId)
+  refreshToken(providerId: string, target?: OnethingCredentialTarget): Promise<OAuthToken> {
+    return authService.refreshToken(providerId, target)
   }
 
-  refreshTokenIfNeeded(providerId: string): Promise<OAuthToken> {
-    return authService.refreshTokenIfNeeded(providerId)
+  refreshTokenIfNeeded(providerId: string, target?: OnethingCredentialTarget): Promise<OAuthToken> {
+    return authService.refreshTokenIfNeeded(providerId, target)
   }
 
   isTokenExpired(token: OAuthToken): boolean {
     return authService.isTokenExpired(token)
   }
 
-  getToken(providerId: string): Promise<OAuthToken | null> {
-    return authService.getToken(providerId)
+  getToken(providerId: string, target?: OnethingCredentialTarget): Promise<OAuthToken | null> {
+    return authService.getToken(providerId, target)
   }
 
-  saveToken(providerId: string, token: OAuthToken): Promise<void> {
-    return authService.saveToken(providerId, token)
+  saveToken(providerId: string, token: OAuthToken, target?: OnethingCredentialTarget): Promise<void> {
+    return authService.saveToken(providerId, token, target)
   }
 
-  deleteToken(providerId: string): Promise<void> {
-    return authService.deleteToken(providerId)
+  deleteToken(providerId: string, target?: OnethingCredentialTarget): Promise<void> {
+    return authService.deleteToken(providerId, target)
   }
 
-  isLoggedIn(providerId: string): Promise<boolean> {
-    return authService.isLoggedIn(providerId)
+  isLoggedIn(providerId: string, target?: OnethingCredentialTarget): Promise<boolean> {
+    return authService.isLoggedIn(providerId, target)
   }
 }
 

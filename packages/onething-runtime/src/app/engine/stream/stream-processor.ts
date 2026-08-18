@@ -19,11 +19,19 @@ import {
 } from '@onething/core/engine'
 import type { CoreInitialToolChoice } from '@onething/core/engine'
 import type { EffectiveAgentProfile } from '@onething/runtime/agents'
+import type { CoreSpaceCredentialMarker } from '@onething/runtime/providers'
 import {
   createOnethingStreamProcessor,
 } from '@onething/runtime/stream-processor'
 
-export type StreamProviderConfig = ProviderConfig & AgentRuntimeProviderConfig
+export type StreamProviderConfig = ProviderConfig & AgentRuntimeProviderConfig & {
+  /**
+   * per-space 凭证解析盖上的**运行期标记**(批 B3),永不落盘 —— 所以它声明在
+   * 这条"活的" stream config 上,而不是 `ProviderConfig`(那是设置的落盘形状)。
+   * 批 D 的轮换从这里读「本次流用的是哪一条 entry」。
+   */
+  spaceCredential?: CoreSpaceCredentialMarker
+}
 
 export type StreamSenderPayload =
   | string

@@ -4,6 +4,8 @@ import { getChannelIdentityStore } from './identity-store.js'
 import { sendIMReply } from './connector-registry.js'
 import { writeAppLog } from '../logging/index.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 function isFinalAssistantMessage(message: ChatMessage): boolean {
   return message.role === 'assistant' && message.isStreaming !== true && Boolean(message.content?.trim())
 }
@@ -40,7 +42,7 @@ export class OutboundReplyDispatcher {
   start(eventBus: EventBus): void {
     if (this.unsubscribe) return
 
-    this.unsubscribe = eventBus.onAnySession('message:updated', envelope => {
+    this.unsubscribe = eventBus.onAnySession(SESSION_EVENT_TYPES.MESSAGE_UPDATED, envelope => {
       const event = envelope.event as {
         type?: string
         messageId?: string

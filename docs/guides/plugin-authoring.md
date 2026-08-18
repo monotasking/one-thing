@@ -102,6 +102,9 @@ api.registerTool({
   description: '读一份只读索引',
   parameters: z.object({ key: z.string() }),
   executionMode: 'parallel',        // 可选,见下
+  prompt: {                         // 可选:随工具进出的提示词,见下
+    guidelines: ['查索引前先 peek_index,别用 bash 去 grep 索引文件'],
+  },
   async execute(args, ctx) {
     return { title: 'peek', output: '…', metadata: {} }
   },
@@ -155,6 +158,49 @@ agent(要按 agent 分作用域时就只剩 global,那是正确的降级)。
 工作),日志里有一条点名的错误。宿主刻意不做"未知值默默当 sequential"
 的降级 —— 降级是安全的,但你永远不会知道自己拼错了,只会觉得"我的工具
 好像没并发起来"。
+
+### `prompt`:工具自带的提示词(随工具面进出)
+
+一个工具常常需要一段**怎么用它**的说明,而不只是 description。把它写在工具上,
+宿主会在**这个工具进入回合的工具面时**把它拼进 system prompt,不在时一字不留 ——
+用户在设置里禁用它、agent 白名单没给它、场景把它摘掉、插件被禁用/卸载,四种
+"不在"一视同仁,不用你另注册、也不用你自己撤。
+
+```js
+prompt: {
+  guidelines: ['…'],        // 进 system 段的 `Tool Guidelines:` 列表,一条一个 bullet
+  workspaceRules: ['…'],    // 进 `# Work Directory` 的 `## Tool Workspace Rules`(有工作目录时才渲染)
+  sections: [               // 独立段落(有自己的名字;缺省名 = 工具 id)
+    { id: 'peek-index', content: '# Index\n…' },
+  ],
+}
+```
+
+三条语义:
+
+- **静态**。这里写的是"这个工具是什么、怎么用",与回合无关;会变的事实(状态、
+  进度)走 `<context-update>` 或工具结果,不写进 prompt。
+- **只跟工具面走**。同名的 bullet 只说一次(两个工具声明同一句话不会重复);
+  段落排在产品段之后、其它插件的 promptContext 之前。
+- **形状不对就装不上**:与 `executionMode` 同一条规则 —— 非法的 `prompt` 拒绝
+  **这一个工具**,日志点名,插件其余的面照常。
+
+`prompt` 与 `api.registerPromptContextProvider` 的分工:前者是"工具的说明书",
+随工具面;后者是"每回合现算的上下文"(能读会话、能查外部),随插件生命周期。
+一段话如果只在你的工具在场时才成立,写在工具上;否则才用 provider。
+
+**provider 的输出落在哪(2026-08-18,`docs/design/prompt-channels-2026-08.md`)**:
+不在 system 前缀里,而在**最新一条 user 消息尾部**的 `<context-update>` 块里,
+块名是 `plugin:<你的插件 id>/<providerId>`。宿主按块逐字去重:**你返回的文本
+与上次相同就不重发**,变了才发一次,一直不返回就发一条撤销标记。对你的写法有
+两条实际影响:
+
+- 值稳定的东西尽量渲染成稳定的字节(别每回合插入时间戳、随机 id、无序遍历的
+  Map),否则每回合都会重发一整块;
+- 不要在文案里写"如上/见上文"这类指向 system 段的话 —— 你的块在对话尾部,
+  与 system 段之间隔着整段历史。
+
+`prompt`(工具的说明书)仍然是静态的、在 system 前缀里,两者不要混用。
 
 ## 事件订阅(api.on)
 
@@ -1272,6 +1318,120 @@ export default function (api) {
 
 接入 PopClip 的完整配方(两个按钮:快速提问 + 翻译)见
 `docs/guides/deeplink-popclip.md`。
+
+## 凭证轮换策略:决定用哪把钥匙,但看不见钥匙(批 E)
+
+一个空间的一个 provider 可以配**多把 key / 多个 OAuth 账号**(凭证池),池上挂一条
+「策略」决定下一次请求用哪一条。宿主内置三条(`single` / `priority-failover` /
+`round-robin`),`api.registerCredentialStrategy` 让你加第四条。
+
+**这一面的全部意义是:你决定用哪一条,你看不到任何一条的内容。** 你拿到的是脱敏
+视图,你交回一个 entry id,宿主拿 id 去取真钥匙。
+
+### 先声明(不声明就注册不上)
+
+```json
+{ "contributes": { "permissions": ["credentials:strategy"] } }
+```
+
+装前确认页会把它念成:*can choose which of your credentials a workspace uses
+(it never sees the key or token itself)*。未声明就调 `registerCredentialStrategy`:
+宿主拒绝、返回 noop、记一条 error 日志,**不计熔断**(manifest 笔误不该连坐整个插件)。
+
+### 注册
+
+```js
+export default function (api) {
+  api.registerCredentialStrategy({
+    // [a-z0-9-]+;宿主拼成 policy 取值 `plugin:<你的id>:<name>`
+    name: 'least-used',
+    // 用户在「设置 → 模型服务」的策略选择器里读到的就是这一句
+    title: '用得最少的优先',
+    // 选择器下方的说明。省略时宿主用一句兜底文案
+    description: '按近 24h 的 token 量挑最闲的那把。',
+    select(ctx) {
+      // ctx.entries 至少一条,顺序 = 用户排的优先级
+      return [...ctx.entries]
+        .sort((a, b) => a.usage.totalTokens - b.usage.totalTokens)[0].id
+    },
+  })
+}
+```
+
+注册之后**它还不会被调用** —— 用户得先在那个空间的那个 provider 上把策略选成你这条。
+返回退订函数;你不调也没关系,dispose 会兜底。
+
+### `ctx` 的确切形状
+
+```ts
+{
+  providerId: string        // 'deepseek' / 'claude' / …
+  spaceId: string           // 空间 id(默认空间没有池,不会走到你这里)
+  entries: [{
+    id: string              // ← 你要交回来的就是它
+    label: string           // 用户给这条凭证起的名字
+    authType: 'apiKey' | 'oauth'
+    source: string          // 'user' 或 'plugin:<id>'
+    cooldownUntil?: number  // 历史信息:候选集里不会有还在冷却的条目
+    usage: {                // 近期用量,窗口见 ctx.usageWindowMs(当前 24h)
+      requests: number      // 账本记录条数 ≈ 请求轮数
+      inputTokens: number
+      outputTokens: number
+      totalTokens: number
+      costUSD: number       // 能定价的那部分;定不出价的记 0
+    }
+    lastErrorKind?: 'quota-exhausted' | 'rate-limited' | 'auth-invalid' | 'transient' | 'unknown'
+  }]
+  attempt: number           // 首次解析 = 1;轮换重试时递增
+  lastFailure?: { entryId, kind, status? }   // 只有轮换路径才有
+  usageWindowMs: number
+  now: number               // 宿主的"现在"。别自己 Date.now()
+}
+```
+
+**这就是全部。** `apiKey` / `oauthToken` / `baseUrl` / `apiMode` / OAuth 账号名
+一个字节都不在里面 —— 视图是按白名单**正向构造**出来的,不是"删掉几个字段"。
+
+`entries` 已经是**可用候选集**:没有凭证材料的、正在冷却的、鉴权形态对不上的
+(OAuth 型 provider 只给 oauth entry)都已经剔掉。你不必、也不该重新实现这套过滤
+——重实现一遍就等于给自己开了一个绕过冷却的口子。
+
+### 三条你必须知道的语义
+
+1. **返回错了不是事故,是回落。** 返回不认识的 id / 空串 / 抛错 / 超过 2 秒,
+   宿主一律改用内置 `priority-failover`,起流照常。你只会在熔断账上记一笔;
+   连败三次那条**策略**被降级(宿主此后连调都不调它,靠时间半开),
+   而你的工具/命令/面板/定时任务**照常**。
+2. **`select` 里不要做副作用。** 它可能因为超时被丢弃结果 —— 一个已经写了盘的
+   副作用配上一个被丢弃的返回值,是最难排查的那种不一致。要记状态用 `api.storage`。
+3. **只在请求/重试边界被问,流中绝不被问。** 一条流开始之后就不会换钥匙;
+   换手发生在这一轮失败之后的重试上。所以你的 `select` 不需要考虑并发流。
+
+### 什么时候你的答案是"新鲜"的
+
+宿主问你的时机分两条路,行为不同,写策略前请知道:
+
+- **重试/轮换路径**(上一把 key 配额耗尽或被限流):宿主 **await 你的 `select`**,
+  带着 `attempt`(≥2)和 `lastFailure`,当场按你的答案换手。这是「这个用完用另一个」
+  的主场,恒新鲜。
+- **正常起流路径**:宿主的凭证解析链是同步的(它一路通到引擎的适配器契约),
+  所以它取用的是**上一次异步算好的那条裁决**,同时排一次刷新给下一次用。
+  实际影响:进程刚起来的**第一次**选择走内置 failover,从第二次起是你说了算;
+  池发生增删改排序时那条裁决作废,同样先走一次 failover。
+
+### 用户看得见什么
+
+策略出现在「设置 → 模型服务」里那个 provider 的策略选择器中(池里 ≥2 条时才显示),
+显示的是你的 `title`,下面一行是你的 `description`。
+
+你的插件被停用/卸载之后:**用户的选择不会被改写** —— `policy` 字段原样留在
+`credentials.json` 里,选择器里那一项变灰并注明「策略不可用,正在使用内置 failover」。
+你回来它自动生效。
+
+### 只有桌面
+
+只有 Electron 桌面宿主有空间与凭证池。server / CLI daemon 上
+`registerCredentialStrategy` 会如实告诉你"这个宿主没有凭证策略",返回 noop。
 
 ## 安全与边界(速查)
 

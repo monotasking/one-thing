@@ -15,7 +15,9 @@ import {
 	collectAgentTurnFromStream,
 } from "@onething/core/agent-loop";
 import { agentToolMessageContentToText } from "@onething/core/agent-loop";
+import { mergeAdjacentSameRoleMessages } from "./message-merge.js";
 import { readJsonSseData } from "./sse.js";
+import { withProviderRetryAfter } from "../provider-error-classification.js";
 import type { AgentProviderRequestDumper } from "./request-dump.js";
 
 type FetchFn = typeof globalThis.fetch;
@@ -382,7 +384,11 @@ export function createDeepSeekAgentProvider(
 		const tools = toDeepSeekTools(request.tools);
 		const body: DeepSeekRequestBody = {
 			model: request.model,
-			messages: request.messages.map(toDeepSeekMessage),
+			// DeepSeek 严格要求 user/assistant 交替(reasoner 尤甚):相邻同角色
+			// 在这里合成一条(C5 —— 压缩摘要注入不再垫伪造的 assistant 握手)。
+			messages: mergeAdjacentSameRoleMessages(request.messages).map(
+				toDeepSeekMessage,
+			),
 			stream: true,
 			stream_options: { include_usage: true },
 		};
@@ -449,8 +455,11 @@ export function createDeepSeekAgentProvider(
 
 		if (!response.ok) {
 			const text = await response.text();
-			throw new Error(
-				`DeepSeek agent loop API error: ${response.status} ${text}`,
+			// 批 B8-2:DeepSeek 走 OpenAI 那套头(`retry-after` +
+			// `x-ratelimit-reset-*`),透传成绝对时间戳。
+			throw withProviderRetryAfter(
+				new Error(`DeepSeek agent loop API error: ${response.status} ${text}`),
+				{ headers: response.headers, body: text },
 			);
 		}
 

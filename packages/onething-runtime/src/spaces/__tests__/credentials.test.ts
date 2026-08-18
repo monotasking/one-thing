@@ -5,15 +5,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildImportedSpaceCredentials,
   clearSpaceProviderCredentials,
+  configureSpaceCredentialPluginStrategyHost,
   createSpaceCredentialEntryId,
+  getSpaceCredentialEntry,
   getSpaceProviderCredentials,
+  isPluginSpaceCredentialPolicy,
   isSpaceCredentialEntryCooling,
+  isSpaceCredentialEntryUsable,
+  normalizeSpaceCredentialPolicy,
   parseSpaceCredentialEntry,
   parseSpaceCredentialsFile,
   previewSpaceCredentialApiKey,
   readSpaceCredentials,
+  removeSpaceProviderCredentialEntry,
   resetSpaceCredentialsCacheForTests,
   selectSpaceCredentialEntry,
+  selectSpaceCredentialEntryDetailed,
+  setSpaceProviderCredentialPool,
+  upsertSpaceProviderOAuthToken,
   spaceCredentialsFilePath,
   upsertSpaceProviderApiKey,
   writeSpaceCredentials,
@@ -298,5 +307,224 @@ describe('preview', () => {
     expect(previewSpaceCredentialApiKey('short')).toBe('short••••')
     expect(previewSpaceCredentialApiKey('  ')).toBeUndefined()
     expect(previewSpaceCredentialApiKey(undefined)).toBeUndefined()
+  })
+})
+
+/* ── OAuth entry(批 B6)────────────────────────────────────────────────────── */
+
+const TOKEN = { accessToken: 'at', refreshToken: 'rt', expiresAt: 10_000, tokenType: 'Bearer' }
+
+describe('OAuth entry 的存取(批 B6)', () => {
+  it('entryId 缺席 = 追加一条(多账号是原始需求,不能定成覆盖)', () => {
+    const first = upsertSpaceProviderOAuthToken('work', 'codex', { label: '工作号', token: TOKEN })
+    const second = upsertSpaceProviderOAuthToken('work', 'codex', { label: '私人号', token: TOKEN })
+    expect(first.entryId).not.toBe(second.entryId)
+
+    const entries = getSpaceProviderCredentials('work', 'codex')?.entries ?? []
+    expect(entries.map(entry => entry.label)).toEqual(['工作号', '私人号'])
+    expect(entries.every(entry => entry.authType === 'oauth')).toBe(true)
+  })
+
+  it('entryId 在 = 改那一条,并顺手抹掉冷却(刚刷新成功的凭证不该坐冷板凳)', () => {
+    const created = upsertSpaceProviderOAuthToken('work', 'codex', { label: '工作号', token: TOKEN })
+    writeSpaceCredentials('work', {
+      providers: {
+        codex: {
+          entries: [{
+            id: created.entryId,
+            label: '工作号',
+            authType: 'oauth',
+            oauthToken: TOKEN,
+            source: 'user',
+            cooldownUntil: Date.now() + 60_000,
+          }],
+          policy: 'single',
+        },
+      },
+    })
+
+    upsertSpaceProviderOAuthToken('work', 'codex', {
+      entryId: created.entryId,
+      token: { ...TOKEN, accessToken: 'at-2' },
+    })
+    const entry = getSpaceCredentialEntry('work', 'codex', created.entryId)
+    expect((entry?.oauthToken as { accessToken: string }).accessToken).toBe('at-2')
+    expect(entry?.cooldownUntil).toBeUndefined()
+    expect(getSpaceProviderCredentials('work', 'codex')?.entries).toHaveLength(1)
+  })
+
+  it('删一条 entry 不动别的;删光了整段消失(= 该 provider 未配置)', () => {
+    const a = upsertSpaceProviderOAuthToken('work', 'codex', { label: 'A', token: TOKEN })
+    const b = upsertSpaceProviderOAuthToken('work', 'codex', { label: 'B', token: TOKEN })
+
+    removeSpaceProviderCredentialEntry('work', 'codex', a.entryId)
+    expect(getSpaceProviderCredentials('work', 'codex')?.entries.map(e => e.id)).toEqual([b.entryId])
+
+    removeSpaceProviderCredentialEntry('work', 'codex', b.entryId)
+    expect(getSpaceProviderCredentials('work', 'codex')).toBeUndefined()
+  })
+
+  it('「能用」的判据多了一种材料:oauth entry 有 token 就算数(批 B6)', () => {
+    expect(isSpaceCredentialEntryUsable({
+      id: 'a', label: 'a', authType: 'oauth', oauthToken: TOKEN, source: 'user',
+    })).toBe(true)
+    expect(isSpaceCredentialEntryUsable({
+      id: 'a', label: 'a', authType: 'oauth', source: 'user',
+    })).toBe(false)
+    expect(isSpaceCredentialEntryUsable({
+      id: 'a', label: 'a', authType: 'apiKey', apiKey: 'sk', source: 'user',
+    })).toBe(true)
+  })
+
+  it('按鉴权形态过滤候选:OAuth 型 provider 不会挑到 apiKey entry', () => {
+    const credentials = {
+      entries: [
+        { id: 'k', label: 'k', authType: 'apiKey' as const, apiKey: 'sk', source: 'user' },
+        { id: 'o', label: 'o', authType: 'oauth' as const, oauthToken: TOKEN, source: 'user' },
+      ],
+      policy: 'single',
+    }
+    expect(selectSpaceCredentialEntryDetailed(credentials, { authType: 'oauth' }).entry?.id).toBe('o')
+    expect(selectSpaceCredentialEntryDetailed(credentials, { authType: 'apiKey' }).entry?.id).toBe('k')
+    // 不给形态 = 不过滤(批 D 之前的调用点行为一字未改)。
+    expect(selectSpaceCredentialEntry(credentials)?.id).toBe('k')
+  })
+
+  it('OAuth 池全在冷却里 = exhausted(「等」),不是 no-entry(「去登录」)', () => {
+    const until = Date.now() + 60_000
+    const selection = selectSpaceCredentialEntryDetailed({
+      entries: [
+        { id: 'o1', label: 'o1', authType: 'oauth', oauthToken: TOKEN, source: 'user', cooldownUntil: until },
+        { id: 'o2', label: 'o2', authType: 'oauth', oauthToken: TOKEN, source: 'user', cooldownUntil: until + 5 },
+      ],
+      policy: 'priority-failover',
+    }, { authType: 'oauth' })
+    expect(selection.entry).toBeUndefined()
+    expect(selection.exhausted?.earliestRecoveryAt).toBe(until)
+  })
+})
+
+describe('批 E:插件策略在分叉点上的落点', () => {
+  const POOL = {
+    entries: [
+      { id: 'a', label: 'a', authType: 'apiKey' as const, apiKey: 'k1', source: 'user' },
+      { id: 'b', label: 'b', authType: 'apiKey' as const, apiKey: 'k2', source: 'user' },
+      { id: 'c', label: 'c', authType: 'apiKey' as const, apiKey: 'k3', source: 'user' },
+    ],
+    policy: 'plugin:balancer:least-used',
+  }
+
+  afterEach(() => {
+    configureSpaceCredentialPluginStrategyHost(null)
+  })
+
+  it('认得 plugin:<id>:<name> 的形状,且它与三个内置名物理分家', () => {
+    expect(isPluginSpaceCredentialPolicy('plugin:balancer:least-used')).toBe(true)
+    for (const builtin of ['single', 'priority-failover', 'round-robin']) {
+      expect(isPluginSpaceCredentialPolicy(builtin)).toBe(false)
+    }
+    expect(isPluginSpaceCredentialPolicy('plugin:p:Bad Name')).toBe(false)
+    expect(isPluginSpaceCredentialPolicy(undefined)).toBe(false)
+  })
+
+  it('规范化**放行**合法的插件策略 —— 批 D 时它会被压成 single,那样根本存不进去', () => {
+    expect(normalizeSpaceCredentialPolicy('plugin:balancer:least-used'))
+      .toBe('plugin:balancer:least-used')
+    expect(normalizeSpaceCredentialPolicy('priority-failover')).toBe('priority-failover')
+    // 形状不认识的仍然退回最保守的那一条,而不是猜。
+    expect(normalizeSpaceCredentialPolicy('whatever')).toBe('single')
+    expect(normalizeSpaceCredentialPolicy(undefined)).toBe('single')
+  })
+
+  it('整池写能把插件策略落盘(不是被规范化掉)', async () => {
+    upsertSpaceProviderApiKey('work', 'deepseek', { apiKey: 'sk-1' })
+    setSpaceProviderCredentialPool('work', 'deepseek', {
+      entryIds: getSpaceProviderCredentials('work', 'deepseek')!.entries.map(e => e.id),
+      policy: 'plugin:balancer:least-used',
+    })
+    resetSpaceCredentialsCacheForTests()
+    expect(getSpaceProviderCredentials('work', 'deepseek')?.policy)
+      .toBe('plugin:balancer:least-used')
+  })
+
+  it('宿主没装裁决口 = 回落 priority-failover(不是错误,是默认答案)', () => {
+    const selection = selectSpaceCredentialEntryDetailed(POOL, {
+      spaceId: 'work', providerId: 'deepseek',
+    })
+    expect(selection.entry?.id).toBe('a')
+    expect(selection.pluginPolicy).toEqual({
+      policy: 'plugin:balancer:least-used', applied: false,
+    })
+  })
+
+  it('裁决口给出候选集里的 id = 用它,并把上下文原样递过去', () => {
+    const seen: unknown[] = []
+    configureSpaceCredentialPluginStrategyHost({
+      decide(input) { seen.push(input); return 'c' },
+    })
+    const selection = selectSpaceCredentialEntryDetailed(POOL, {
+      spaceId: 'work', providerId: 'deepseek', now: 1_700_000_000_000,
+    })
+    expect(selection.entry?.id).toBe('c')
+    expect(selection.pluginPolicy).toEqual({
+      policy: 'plugin:balancer:least-used', applied: true,
+    })
+    expect(seen).toEqual([{
+      policy: 'plugin:balancer:least-used',
+      spaceId: 'work',
+      providerId: 'deepseek',
+      candidates: POOL.entries,
+      now: 1_700_000_000_000,
+    }])
+  })
+
+  it('裁决口给出不认识的 id = 回落,起流不受影响', () => {
+    configureSpaceCredentialPluginStrategyHost({ decide: () => 'nope' })
+    const selection = selectSpaceCredentialEntryDetailed(POOL, {
+      spaceId: 'work', providerId: 'deepseek',
+    })
+    expect(selection.entry?.id).toBe('a')
+    expect(selection.pluginPolicy?.applied).toBe(false)
+  })
+
+  it('裁决口给出**冷却中**的 id = 回落 —— 候选集里本来就没有它', () => {
+    const now = Date.now()
+    configureSpaceCredentialPluginStrategyHost({
+      decide: input => {
+        // 候选集必须是已剔冷却的那一份,否则策略就有了绕过冷却的口子。
+        expect(input.candidates.map(entry => entry.id)).toEqual(['b', 'c'])
+        return 'a'
+      },
+    })
+    const selection = selectSpaceCredentialEntryDetailed({
+      ...POOL,
+      entries: [{ ...POOL.entries[0], cooldownUntil: now + 60_000 }, ...POOL.entries.slice(1)],
+    }, { spaceId: 'work', providerId: 'deepseek', now })
+    expect(selection.entry?.id).toBe('b')
+    expect(selection.pluginPolicy?.applied).toBe(false)
+  })
+
+  it('全池冷却仍然先判 exhausted —— 策略压根不该被问到', () => {
+    const now = Date.now()
+    const decide = vi.fn(() => 'a')
+    configureSpaceCredentialPluginStrategyHost({ decide })
+    const selection = selectSpaceCredentialEntryDetailed({
+      ...POOL,
+      entries: POOL.entries.map(entry => ({ ...entry, cooldownUntil: now + 60_000 })),
+    }, { spaceId: 'work', providerId: 'deepseek', now })
+    expect(selection.entry).toBeUndefined()
+    expect(selection.exhausted?.earliestRecoveryAt).toBe(now + 60_000)
+    expect(decide).not.toHaveBeenCalled()
+  })
+
+  it('内置三策略一个字都不看裁决口(批 D 之前的行为一字未改)', () => {
+    const decide = vi.fn(() => 'c')
+    configureSpaceCredentialPluginStrategyHost({ decide })
+    for (const policy of ['single', 'priority-failover', 'round-robin']) {
+      expect(selectSpaceCredentialEntryDetailed({ ...POOL, policy }, {
+        spaceId: 'work', providerId: 'deepseek', cursorKey: `k-${policy}`,
+      }).entry?.id).toBe('a')
+    }
+    expect(decide).not.toHaveBeenCalled()
   })
 })

@@ -35,6 +35,7 @@ import { toJsonObject } from '@shared/json.js'
 import { buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import type { StreamContext } from './stream-processor.js'
 import { buildPrompt } from '../prompt/index.js'
+import { SessionTurnContext } from '../prompt/session-turn-context.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import { executeToolDirectly } from './tool-execution.js'
 import { compactSessionContext } from '../context-compact.js'
@@ -42,6 +43,8 @@ import * as contextCompact from '../context-compact.js'
 import { getEventBus } from '../../events/index.js'
 import { resolvePromptReferences } from '../../prompts/resolver.js'
 import type { IPCEmitter } from './ipc-emitter.js'
+
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
 export {
   buildAgentLoopContextHardLimitError,
@@ -105,7 +108,7 @@ export async function maybeCompactAgentLoopContext(options: {
     rebuildMessages: options.rebuildMessages,
     adapters: {
       getSession: sessionId => store.getSession(sessionId),
-      compactSessionContext: input => compactSessionContext(input as Parameters<typeof compactSessionContext>[0]),
+      compactSessionContext: input => compactSessionContext(withCompactProgressEmit(input)),
       emitEvent,
       shouldSkipProviderUsageMismatch: input => shouldSkipAutoCompactForProviderUsageMismatchSafe(input),
       logger: console,
@@ -165,10 +168,28 @@ function createAgentLoopRuntimeAdapters(
       ).tools
     },
     buildProjectPromptVars: buildProjectDirsPromptVars,
-    buildPrompt: (promptOptions: Parameters<typeof buildPrompt>[0]) => buildPrompt({
-      ...promptOptions,
-      providerConfig: toJsonObject(promptOptions.providerConfig),
-    } as Parameters<typeof buildPrompt>[0]),
+    /**
+     * The turn channel is attached here, on the real turn path only (a prompt
+     * snapshot or an eval must never write to a session). The composer decided
+     * the blocks from this very build's context; `SessionTurnContext` decides
+     * which of them are new, persists that on the newest user message, and puts
+     * it in this request. Repeated builds inside one turn find the field
+     * already written and change nothing — identical request bytes.
+     */
+    buildPrompt: async (promptOptions: Parameters<typeof buildPrompt>[0]) => {
+      const result = await buildPrompt({
+        ...promptOptions,
+        providerConfig: toJsonObject(promptOptions.providerConfig),
+      } as Parameters<typeof buildPrompt>[0])
+      return {
+        ...result,
+        messages: sessionTurnContext.attach(
+          promptOptions.sessionId,
+          result.messages,
+          result.turn ?? [],
+        ),
+      }
+    },
     buildHistoryMessages: (messages: ChatMessage[], session: ChatSession) =>
       buildHistoryMessages(messages, session),
     resolvePromptReferences(content, input) {
@@ -188,7 +209,7 @@ function createAgentLoopRuntimeAdapters(
     ) =>
       executeToolDirectly(toolName, args, toolContext as Parameters<typeof executeToolDirectly>[2]),
     compactSessionContext: (input: Parameters<typeof compactSessionContext>[0]) =>
-      compactSessionContext(input as Parameters<typeof compactSessionContext>[0]),
+      compactSessionContext(withCompactProgressEmit(input)),
     emitEvent,
     shouldSkipProviderUsageMismatch: (input: {
       providerId: string
@@ -202,6 +223,28 @@ function createAgentLoopRuntimeAdapters(
     createId: undefined,
   })
 }
+
+/**
+ * C6:回合中(mid-turn)那条压缩路的进度接线。核心引擎的手动/自动两路在
+ * `runContextCompact` 里统一接,这条不经过那里 —— 它从 agent-loop 的 adapters
+ * 直接调 `compactSessionContext`,所以进度也在这里往 eventBus 转发一次。
+ */
+function withCompactProgressEmit(
+  input: unknown,
+): Parameters<typeof compactSessionContext>[0] {
+  const options = input as Parameters<typeof compactSessionContext>[0]
+  return {
+    ...options,
+    onProgress: progress => emitEvent(options.sessionId, {
+      type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_PROGRESS,
+      chunk: progress.chunk,
+      totalChunks: progress.totalChunks,
+    }),
+  }
+}
+
+/** One per process: it is stateless, the session store holds the record. */
+const sessionTurnContext = new SessionTurnContext(store)
 
 async function emitEvent(sessionId: string, event: unknown): Promise<void> {
   await getEventBus().emit(sessionId, event as Parameters<ReturnType<typeof getEventBus>['emit']>[1])

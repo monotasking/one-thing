@@ -22,6 +22,8 @@ import type {
   StreamChunk,
 } from '@shared/events/index.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 export type BufferedStreamChunk =
   | { type: 'text-delta'; text: string; turnIndex?: number; voiceSpeakText?: string }
   | { type: 'reasoning-delta'; reasoning: string; turnIndex?: number; placement?: ReasoningPlacement }
@@ -158,16 +160,16 @@ export class SessionStreamCoalescer {
   handleEvent(envelope: SessionEventEnvelope): void {
     const { sessionId, event } = envelope
     const existing = this.sessions.get(sessionId)
-    if (existing && event.type !== 'stream:start') {
+    if (existing && event.type !== SESSION_EVENT_TYPES.STREAM_START) {
       this.flush(sessionId, existing)
     }
     switch (event.type) {
-      case 'stream:start':
+      case SESSION_EVENT_TYPES.STREAM_START:
         this.start(sessionId, event.assistantMessageId)
         break
-      case 'stream:complete':
-      case 'stream:error':
-      case 'stream:aborted':
+      case SESSION_EVENT_TYPES.STREAM_COMPLETE:
+      case SESSION_EVENT_TYPES.STREAM_ERROR:
+      case SESSION_EVENT_TYPES.STREAM_ABORTED:
         this.end(sessionId)
         break
     }

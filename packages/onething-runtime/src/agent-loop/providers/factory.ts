@@ -62,6 +62,12 @@ export interface AgentProviderRuntimeConfig {
 	apiType?: "openai" | "anthropic";
 	oauthToken?: AgentProviderRuntimeOAuthToken;
 	authContext?: AgentProviderRuntimeAuthContext;
+	/**
+	 * per-space 凭证标记(批 B6),原样透传、这一层不解释。宿主的
+	 * `refreshOAuthToken` 靠它知道「回合中途刷新出来的 token 该写回哪个空间的
+	 * 哪条 entry」—— 刷新发生在 provider 内部,那里早就没有 sessionId 了。
+	 */
+	spaceCredential?: { spaceId?: string; entryId?: string; authType?: string };
 	modelCapabilitiesByModel?: Record<
 		string,
 		{

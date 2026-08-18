@@ -269,13 +269,14 @@ describe('mergeWithDefaults 白名单漏键审计', () => {
    * ——用户在 settings.json 里改了也不生效。这条测试拿一个「每个键都有值」的
    * 探针过一遍 merge,把幸存集合钉死。
    *
-   * `storage` / `evals` 是 C0 之前就存在的两个漏项,**不在 C0 范围内修**
-   * (修了会让 storage.sessionFormat 这类开关突然生效,属于另一件事);
-   * 列在这里是为了让第三个漏项一出现就红,并且修掉既有漏项的人知道要来改这里。
+   * `storage` / `evals` 曾是 C0 之前就存在的两个漏项,C1 一起补上了 ——
+   * 迁移标记 `storage.providerConfigMigratedAt` 就住在 `storage` 里,被吞掉的
+   * 后果是每次启动重跑一遍 provider 配置迁移。名单因此清空:**任何一个键被
+   * merge 吞掉都是红**。
    */
-  const KNOWN_DROPPED_KEYS = ['storage', 'evals'] as const
+  const KNOWN_DROPPED_KEYS: readonly string[] = []
 
-  it('除两个既有漏项外,AppSettings 的每个键都活过 merge', () => {
+  it('AppSettings 的每个键都活过 merge(不再有既有漏项)', () => {
     const probe: Record<string, unknown> = {
       ...createDefaultSettings(),
       storage: { sessionFormat: 'jsonl' },

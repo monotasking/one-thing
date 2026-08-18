@@ -9,6 +9,7 @@
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import InputBox from '../InputBox.vue'
 import { createDefaultSettings } from '@shared/defaults/settings'
 import { executeCommand } from '@/services/commands'
@@ -21,6 +22,13 @@ const mocks = vi.hoisted(() => ({
   promptsStore: null as any,
   musicStore: null as any,
 }))
+
+// 结果提示走全局 ToastHost;这里不需要真的挂 overlay 宿主(它还带深链确认卡,
+// 要 Pinia),只要 toasts 队列可断言。
+vi.mock("@/services/ui-overlay-host", () => ({
+	ensureUiOverlayHost: vi.fn(),
+	destroyUiOverlayHost: vi.fn(),
+}));
 
 vi.mock('@/stores/settings', () => ({ useSettingsStore: () => mocks.settingsStore }))
 vi.mock('@/stores/sessions', () => ({ useSessionsStore: () => mocks.sessionsStore }))
@@ -120,6 +128,12 @@ function mountInputBox() {
 }
 
 beforeEach(() => {
+
+  // 空间层(批 B9)从 ModelSelector / ThinkToggle / InputBox 一路读到这里,
+
+  // 它住在 pinia 里 —— 独立挂载的组件测试也得有一个 pinia。
+
+  setActivePinia(createPinia())
   const settings = createDefaultSettings()
   settings.ai.provider = 'openai'
   settings.ai.providers.openai.model = 'gpt-x'

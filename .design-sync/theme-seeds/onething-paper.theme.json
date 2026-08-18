@@ -1,0 +1,29 @@
+{
+  "name": "onething Paper",
+  "_note": "对照组：同一审美的亮色档（Flexoki paper），accent2 换成 Flexoki 橙做暖信号。其余同 onething-ledger。",
+  "palette": {
+    "hue": 40,
+    "band": "light",
+    "scheme": "mono",
+    "sat": 0.35,
+    "pin": { "bg": "#FFFCF0", "surface": "#F2F0E5", "accent2": "#DA702C" },
+    "bg": "#FFFCF0",
+    "surface": "#F2F0E5",
+    "text": "#100F0F",
+    "accent": "#205EA6",
+    "accent2": "#DA702C"
+  },
+  "fonts": {
+    "heading": { "family": "Lora", "class": "serif-trans", "weights": [400, 500] },
+    "body": { "family": "Public Sans", "class": "humanist", "weights": [400, 500, 600] },
+    "headingWeight": 500
+  },
+  "density": 1.0,
+  "radius": 4,
+  "layoutStyle": "left",
+  "dividers": "hairline",
+  "buttonStyle": "outline",
+  "colorUse": "stroke",
+  "imageTreatment": "plate",
+  "iconSet": "lucide"
+}

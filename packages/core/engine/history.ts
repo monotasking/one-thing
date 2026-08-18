@@ -683,14 +683,15 @@ export function buildHistoryMessages<
 		if (summaryIndex !== -1) {
 			const recentMessages = messages.slice(summaryIndex + 1);
 			const result: CoreHistoryMessage[] = [
+				// C5(2026-08-14 拍板):注入**只有这一条** user 消息。从前跟着一条
+				// 伪造的 assistant 握手("Understood…"),它的唯一作用是给严格
+				// user/assistant 交替的 provider(DeepSeek 系)垫一条 —— 历史里为
+				// 了迁就传输层而放一条模型从没说过的话,是在会话事实里掺假。
+				// 交替风险改由 provider 适配层的相邻同角色合并兜底
+				// (packages/onething-runtime/src/agent-loop/providers/)。
 				{
 					role: "user",
-					content: `[Conversation History Summary]\n${session.summary}\n\nPlease continue the conversation based on the above context.`,
-				},
-				{
-					role: "assistant",
-					content:
-						"Understood. I have reviewed the previous conversation context. Please continue.",
+					content: `The conversation history before this point was compacted into the following summary:\n\n<summary>\n${session.summary}\n</summary>`,
 				},
 			];
 

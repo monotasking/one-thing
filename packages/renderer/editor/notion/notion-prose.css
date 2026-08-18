@@ -1,26 +1,27 @@
 /**
- * Notion 级排版层 —— 两个对比引擎(自研 PM 升级档 / Tiptap 档)共用的**同一份**
- * 涂装。哪个引擎排得好看不该由 CSS 的多少决定,所以这一层只写一次,两边都挂
- * `.notion-prose` 这一个类。
+ * Notion 级排版层 —— 编辑器面的**唯一**一份涂装(Tiptap 档在用;自研 PM 对比档
+ * 已退役,但这一层仍然按"引擎无关"写,换引擎不必重画)。
  *
  * 三条自我约束:
  *  · 字体只走语义变量(`--font-body` / `--font-display` / `--font-mono`)。主题
  *    不定义字体族,写死字体族等于把用户的中英配对废掉。
  *  · 颜色只走 `--ui-*` token,fallback 只能是另一个变量(dark 下 hex fallback 爆白)。
- *  · 中文正文行高压在 1.72 —— 1.55 那档是给英文的,中文方块字在小字号下会糊成一片。
+ *  · 行高走 `--notion-line-height`(缺省 1.65)。**中文正文不许低于 1.6** ——
+ *    1.55 那档是给英文的,方块字在小字号下会糊成一片。Todo 窗按设计稿取 1.65,
+ *    比旧的 1.72 紧一档,仍在这条底线之上。
  *
- * 标题的字重/字号对比刻意拉大(h1 1.75em/650 vs 正文 1em/400):Notion 的
+ * 标题的字重/字号对比刻意拉大(h1 1.862em/650 vs 正文 1em/400):Notion 的
  * "看起来舒服"有一大半来自层级一眼可辨,而不是来自更多的装饰。
  */
 
 .notion-prose {
-  --notion-line-height: 1.72;
+  --notion-line-height: 1.65;
   --notion-block-gap: 0.32em;
-  --notion-checkbox-size: 16px;
+  --notion-checkbox-size: 17px;
 
   color: var(--editor-text, var(--ui-editor-text-fg, var(--ui-text-primary-fg)));
   font-family: var(--font-body);
-  font-size: var(--editor-font-size, 15px);
+  font-size: var(--editor-font-size, 14.5px);
   line-height: var(--notion-line-height);
   caret-color: var(--ui-accent-primary-fg);
   word-break: break-word;
@@ -45,7 +46,6 @@
   /* 上留白远大于下留白:标题属于它下面那一段,不是浮在两段中间。 */
   margin: 1.35em 0 0.4em;
   font-family: var(--font-display);
-  line-height: 1.32;
   letter-spacing: -0.006em;
 }
 
@@ -53,12 +53,22 @@
   margin-top: 0;
 }
 
-.notion-prose h1 { font-size: 1.75em; font-weight: 650; }
-.notion-prose h2 { font-size: 1.38em; font-weight: 650; }
-.notion-prose h3 { font-size: 1.16em; font-weight: 600; }
+/* 字号按设计稿的绝对值换算成 em(基准 14.5px):27 / 18 / 15。
+   行高逐级收紧 —— 标题越大,松散的行距越像散架。 */
+.notion-prose h1 { font-size: 1.862em; font-weight: 650; line-height: 1.15; }
+.notion-prose h2 { font-size: 1.241em; font-weight: 650; line-height: 1.3; }
+
+/* h3 用深一档 accent 说话:它是段落级小标题,靠颜色而不是再加字号来分层。 */
+.notion-prose h3 {
+  font-size: 1.034em;
+  font-weight: 600;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--ui-accent-primary-fg) 76%, var(--ui-text-primary-fg));
+}
+
 .notion-prose h4,
 .notion-prose h5,
-.notion-prose h6 { font-size: 1em; font-weight: 600; }
+.notion-prose h6 { font-size: 1em; font-weight: 600; line-height: 1.4; }
 
 /* ------------------------------------------------------------------- 引用 */
 
@@ -67,6 +77,7 @@
   padding: 0.05em 0 0.05em 0.95em;
   border-left: 3px solid var(--ui-accent-subtle-fg, var(--ui-border-strong-border));
   color: var(--ui-text-muted-fg);
+  font-style: italic;
 }
 
 .notion-prose blockquote > :last-child {
@@ -97,12 +108,14 @@
   margin-bottom: 0;
 }
 
+/* 圆点与序号都上 accent:它们是"这是一条"的记号,不是装饰性的灰。 */
 .notion-prose ul > li::marker {
-  color: var(--ui-text-faint-fg);
+  color: var(--ui-accent-primary-fg);
 }
 
 .notion-prose ol > li::marker {
-  color: var(--ui-text-faint-fg);
+  color: color-mix(in srgb, var(--ui-accent-primary-fg) 82%, var(--ui-text-primary-fg));
+  font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
 }
 
@@ -113,32 +126,48 @@
 }
 
 .notion-prose code {
-  padding: 0.12em 0.36em;
-  border-radius: var(--radius-xs, 3px);
-  background: var(--ui-surface-code-block-bg, var(--ui-state-hover-bg));
-  color: var(--ui-accent-primary-fg);
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--ui-state-hover-accent-bg);
+  color: color-mix(in srgb, var(--ui-accent-primary-fg) 88%, var(--ui-text-primary-fg));
   font-family: var(--font-mono);
-  font-size: 0.86em;
+  font-size: 0.87em;
 }
 
+/* `==高亮==`。与行内代码同一族的写法:淡 accent 底 + 深 accent 字,只是这枚更淡
+   一档(它标的是**正文**,底色压过去就成了另一种字体)。padding 只给左右,上下留 0
+   —— 行内块撑高会把行距顶出台阶。 */
+.notion-prose mark {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--ui-state-hover-accent-bg);
+  color: color-mix(in srgb, var(--ui-accent-primary-fg) 62%, var(--ui-text-primary-fg));
+}
+
+/* 下划线走 text-decoration 而不是 border-bottom:offset 才调得动,折行时也跟着
+   每一行走(border 只画在最后一行的盒子底下)。 */
 .notion-prose a {
   color: var(--ui-accent-primary-fg);
-  text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg) 38%, transparent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ui-accent-primary-fg) 40%, transparent);
+  text-underline-offset: 3px;
   cursor: pointer;
 }
 
 /* ----------------------------------------------------------------- 代码块 */
 
 .notion-prose pre {
+  position: relative;
   margin: 0.55em 0 0.7em;
-  padding: 10px 13px;
-  border-radius: var(--radius-sm, 6px);
+  padding: 11px 13px;
+  border-radius: 10px;
   background: var(--ui-surface-code-block-bg, var(--ui-state-hover-bg));
   overflow-x: auto;
+  /* 字色**不写**:代码块的前景归语法高亮那一套(`--text-code-*` / `--hljs-*`,
+     ui-system §2 里点名保留的双写族),这里插一脚只会和它打架。 */
   font-family: var(--font-mono);
-  font-size: 0.86em;
-  line-height: 1.6;
+  font-size: 0.862em;
+  line-height: 1.65;
 }
 
 .notion-prose pre code {
@@ -149,12 +178,95 @@
   font-size: inherit;
 }
 
+/* 语言角标。属性由 `code-block-language.ts` 的节点装饰挂上来 —— 没有语言就没有
+   属性,这条规则天然不命中(不必再写一条"空了别画")。
+   `user-select: none` 是必需的:它落在 contenteditable 里,不挡住就会被框选进去。 */
+.notion-prose pre[data-language]::after {
+  content: attr(data-language);
+  position: absolute;
+  /* 四边与层级**全部**显式写死:hover 带子那条 `.tiptap-note-surface > *::after`
+     也命中这枚伪元素,它的 `inset: -6px -8px; z-index: -1` 只被 top/right 盖住
+     两个值的话,残余的 left/bottom 会把角标拉成整块宽、文字挤去左上角还垫到
+     代码底下(真机实锤过)。 */
+  inset: 7px 11px auto auto;
+  z-index: 0;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: var(--ui-text-muted-fg);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ------------------------------------------------------------------- 表格 */
+
+/* Tiptap 的 table 节点视图自带一层 `div.tableWrapper`。留白挂在它身上而不是 table
+   上:table 的 margin 不参与外面那套块间距的合并,两处各写一份就会打架。
+   横向滚动也只能挂这一层 —— `table` 自己 `overflow` 是不生效的。 */
+.notion-prose .tableWrapper {
+  margin: 0.55em 0 0.7em;
+  overflow-x: auto;
+}
+
+/* 设计稿的 13px @ 14.5px 基准 —— 与标题同一条换算(见文件头)。
+   `collapse` 而不是 `separate`:全表只有横线,分隔线必须是**一条**而不是上下两条
+   各画一半。 */
+.notion-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.897em;
+}
+
+.notion-prose th,
+.notion-prose td {
+  padding: 6px 11px;
+  border-bottom: 1px solid var(--ui-table-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+/* 表头**不加粗**:它靠面色与字族站住,再上一档字重就成了三层强调(设计稿是
+   400)。`--font-display` 与标题同族,这一行读起来才像"栏名"而不是数据。 */
+.notion-prose th {
+  background: var(--ui-table-header-bg);
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+
+/* 最后一行不画线:表的下边界由它下面那一段留白说了算,多一条线像表没写完。 */
+.notion-prose tr:last-child > td {
+  border-bottom: 0;
+}
+
+/* 空格子也得有高度,否则新插的表是三条挤在一起的线。 */
+.notion-prose th > p:only-child,
+.notion-prose td > p:only-child {
+  margin: 0;
+  min-height: calc(var(--notion-line-height) * 1em);
+}
+
 /* ----------------------------------------------------------------- 分隔线 */
 
+/* 三枚圆点而不是一条通栏横线:草稿里的分节是"喘口气",不是"到此为止"。
+   纯背景画法 —— hr 是空元素,伪元素在部分引擎里不可靠。 */
 .notion-prose hr {
-  margin: 1.15em 0;
+  height: 4px;
+  margin: 0;
+  padding: 9px 0;
   border: 0;
-  border-top: 1px solid var(--ui-border-default-border);
+  box-sizing: content-box;
+  background-image:
+    radial-gradient(circle, var(--ui-text-faint-fg) 2px, transparent 2.2px),
+    radial-gradient(circle, var(--ui-text-faint-fg) 2px, transparent 2.2px),
+    radial-gradient(circle, var(--ui-text-faint-fg) 2px, transparent 2.2px);
+  background-position: calc(50% - 11px) center, 50% center, calc(50% + 11px) center;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  background-origin: content-box;
 }
 
 /* ------------------------------------------------------------------- 图片 */
@@ -162,4 +274,10 @@
 .notion-prose img {
   max-width: 100%;
   border-radius: var(--radius-sm, 6px);
+}
+
+.notion-prose figcaption {
+  margin-top: 4px;
+  color: var(--ui-text-muted-fg);
+  font-size: 11.5px;
 }

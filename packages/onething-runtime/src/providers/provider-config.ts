@@ -82,10 +82,16 @@ export interface CoreSpaceCredentialMarker {
   /** 命中的凭证池 entry id。账本 `credentialId` 归因用的就是它。 */
   entryId?: string
   /**
+   * 命中的 entry 是哪一类凭证(批 B6)。鉴权点靠它知道该走 OAuth 那一支
+   * (拿 `{spaceId, entryId}` 去 auth 层换 token,必要时先刷新)还是直接用
+   * 已经盖进 config 的 apiKey。
+   */
+  authType?: 'apiKey' | 'oauth'
+  /**
    * 「这个 provider 在这个空间未配置」——一等状态,不是错误的近似。
    * 存在即表示鉴权必须失败,且失败文案用这里的 `message`(说清去哪儿配)。
    */
-  unavailable?: { reason: 'no-entry' | 'oauth'; message: string }
+  unavailable?: { reason: 'no-entry' | 'oauth' | 'exhausted'; message: string }
 }
 
 export interface CoreProviderConfigLike {
@@ -186,7 +192,14 @@ export interface ResolveProviderApiKeyWithAdaptersOptions<TProvider extends Core
   providerConfig: TProvider | undefined
   acpProviderId?: string
   isOAuthProvider: (providerId: string) => boolean
-  refreshOAuthToken: (providerId: string) => Promise<{ accessToken: string }>
+  /**
+   * 第二参是 B3 盖在 config 上的运行期标记(批 B6)——「这条会话的 token 存在
+   * 哪儿」。缺席 = settings(默认空间),即本参数出现之前的行为。
+   */
+  refreshOAuthToken: (
+    providerId: string,
+    credential?: CoreSpaceCredentialMarker,
+  ) => Promise<{ accessToken: string }>
   resolveApiKey: (providerId: string, providerConfig: TProvider | undefined) => string | null | undefined
   logger?: CoreProviderAuthLogger
 }
@@ -200,7 +213,12 @@ export interface ResolveProviderAuthWithAdaptersOptions<
   acpProviderId?: string
   isOAuthProvider: (providerId: string) => boolean
   resolveApiKey: (providerId: string, providerConfig: TProvider | undefined) => string | null | undefined
-  resolveOAuthAuth: (providerId: string, apiKey?: string) => Promise<TAuth | null>
+  /** 第三参见 `refreshOAuthToken` 的同一句(批 B6)。 */
+  resolveOAuthAuth: (
+    providerId: string,
+    apiKey?: string,
+    credential?: CoreSpaceCredentialMarker,
+  ) => Promise<TAuth | null>
   createApiKeyAuth?: (apiKey: string) => TAuth
   logger?: CoreProviderAuthLogger
 }
@@ -331,7 +349,10 @@ export async function getProviderApiKeyWithAdapters<TProvider extends CoreProvid
 
   if (options.isOAuthProvider(options.providerId)) {
     try {
-      const token = await options.refreshOAuthToken(options.providerId)
+      const token = await options.refreshOAuthToken(
+        options.providerId,
+        options.providerConfig?.spaceCredential,
+      )
       return token.accessToken
     } catch (error) {
       options.logger?.error?.(`Failed to get OAuth token for ${options.providerId}:`, error)
@@ -366,6 +387,7 @@ export async function resolveProviderAuthWithAdapters<
       return await options.resolveOAuthAuth(
         options.providerId,
         options.resolveApiKey(options.providerId, options.providerConfig) ?? undefined,
+        options.providerConfig?.spaceCredential,
       )
     } catch (error) {
       options.logger?.error?.(`Failed to resolve OAuth credentials for ${options.providerId}:`, error)
@@ -378,24 +400,39 @@ export async function resolveProviderAuthWithAdapters<
 }
 
 /**
+ * 「这个空间的默认选择」(批 B9)。宿主注入 —— 产品层不认识「会话属于哪个空间」
+ * 这件事的存储形态。缺席 = 这个空间没表达过默认(回落全局),即默认空间的行为。
+ */
+export interface CoreSpaceDefaultSelection {
+  provider?: string
+  model?: string
+}
+
+/**
  * THE resolution rule for "which provider/model does this session use":
  * an explicit override (when its config exists) wins outright — see
  * CoreProviderSelectionOverride; otherwise session.lastProvider (when its
  * config exists) wins, with lastModel falling back to that provider's
- * configured default; anything else is the global selection. Deliberately
- * no inference or "repair" of mismatched pairs — a wrong pair must fail
- * loudly at the provider, not silently reroute.
+ * configured default; then the SPACE default (batch B9, when its config
+ * exists); anything else is the global selection. Deliberately no inference
+ * or "repair" of mismatched pairs — a wrong pair must fail loudly at the
+ * provider, not silently reroute.
  *
  * The override is expected to be the renderer's own
  * resolveProviderModelSelection (packages/renderer/stores/helpers/provider-model.ts)
  * result, passed through unchanged — the send path no longer needs a second,
  * independent computation of "what should this session use" to potentially
  * diverge from what the picker showed.
+ *
+ * 空间默认插在**会话之下、全局之上**(批 B9):agent 绑定与会话置顶都是「这一条
+ * 会话的选择」,比「这个空间的缺省」更具体;而空间默认比全局默认更具体。默认空间
+ * 的调用方一律传 `undefined`,那一支一字未变。
  */
 export function getEffectiveProviderConfig<TProvider extends CoreProviderConfigLike>(
   settings: CoreAppSettingsWithAI<TProvider>,
   session?: CoreSessionProviderSelection | null,
   override?: CoreProviderSelectionOverride | null,
+  spaceDefault?: CoreSpaceDefaultSelection | null,
 ): CoreEffectiveProviderConfig<TProvider> {
   if (override?.providerId) {
     const providerId = override.providerId
@@ -435,6 +472,30 @@ export function getEffectiveProviderConfig<TProvider extends CoreProviderConfigL
         model,
       }
     }
+  }
+
+  if (spaceDefault?.provider) {
+    const providerId = spaceDefault.provider
+    const providerConfig = settings.ai.providers[providerId]
+
+    if (providerConfig) {
+      // 空间只钉了 provider 没钉 model 时,落回该 provider 的全局默认模型 ——
+      // 与 override / session 两支同一句,不为空间另发明一条。
+      const model = spaceDefault.model || providerConfig.model || ''
+      const effectiveConfig = withResolvedProviderBaseUrl(providerId, {
+        ...providerConfig,
+        model,
+      })
+      return {
+        providerId,
+        providerConfig: effectiveConfig,
+        model,
+      }
+    }
+    // 空间默认指着一个 settings 里根本没有的 provider(删掉了 / 从没配过):
+    // 与 override、session 两支同一条不变式 —— 落到全局,不去猜。注意这**不是**
+    // 「这个空间没配凭证」那一档:那一档 provider 配置在,只是 entry 不在,由
+    // B3 的隔离闸在下游诚实拦截(不静默改选别的)。
   }
 
   const providerId = settings.ai.provider

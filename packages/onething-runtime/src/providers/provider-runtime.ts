@@ -19,10 +19,12 @@ import {
   type CoreProviderErrorDetails,
   type CoreResolvedProviderConfigForChat,
   type CoreSessionProviderSelection,
+  type CoreSpaceCredentialMarker,
+  type CoreSpaceDefaultSelection,
   type CoreProviderSelectionOverride,
 } from './provider-config.js'
 
-export type { CoreProviderSelectionOverride } from './provider-config.js'
+export type { CoreProviderSelectionOverride, CoreSpaceDefaultSelection } from './provider-config.js'
 
 export type OnethingProviderErrorDetails = CoreProviderErrorDetails
 
@@ -46,10 +48,27 @@ export interface OnethingProviderRuntimeAdapters<
     providerId: string,
     providerConfig: TProvider | undefined,
   ): TProvider | undefined
+  /**
+   * per-space 默认 provider/model(批 B9)。同一个宿主注入口的第二格:产品层依旧
+   * 不认识「会话属于哪个空间」,它只知道**这一处**能拿到 sessionId。
+   * 缺省 = 恒无,即今天的行为(会话没表达过就落全局)。
+   */
+  resolveSpaceDefaultSelection?(sessionId: string): CoreSpaceDefaultSelection | undefined
   isOAuthProvider(providerId: string): boolean
-  refreshOAuthToken(providerId: string): Promise<OnethingOAuthTokenLike>
+  /**
+   * 末位是 B3 的运行期标记(批 B6)——「token 存在哪个空间的哪条 entry 上」。
+   * 缺席 = settings 源,即默认空间的行为(一字未改)。
+   */
+  refreshOAuthToken(
+    providerId: string,
+    credential?: CoreSpaceCredentialMarker,
+  ): Promise<OnethingOAuthTokenLike>
   resolveApiKey(providerId: string, providerConfig: TProvider | undefined): string | null | undefined
-  resolveOAuthAuth(providerId: string, apiKey?: string): Promise<TAuth | null>
+  resolveOAuthAuth(
+    providerId: string,
+    apiKey?: string,
+    credential?: CoreSpaceCredentialMarker,
+  ): Promise<TAuth | null>
   createApiKeyAuth?(apiKey: string): TAuth
   logger?: CoreProviderAuthLogger
 }
@@ -215,11 +234,18 @@ export function getEffectiveOnethingProviderConfig<
   sessionId: string,
   adapters: Pick<
     OnethingProviderRuntimeAdapters<TProvider, CoreProviderAuthLike, TSession>,
-    'getSession' | 'applySpaceCredentials'
+    'getSession' | 'applySpaceCredentials' | 'resolveSpaceDefaultSelection'
   >,
   override?: CoreProviderSelectionOverride | null,
 ): CoreEffectiveProviderConfig<TProvider> {
-  const resolved = getCoreEffectiveProviderConfig(settings, adapters.getSession?.(sessionId), override)
+  // per-space 默认(批 B9)在选择解析里,不在凭证覆盖里:它决定「用哪个 provider
+  // 的哪个模型」,凭证覆盖决定「用哪把钥匙」。同一个注入缝的两格,顺序上前者先。
+  const resolved = getCoreEffectiveProviderConfig(
+    settings,
+    adapters.getSession?.(sessionId),
+    override,
+    adapters.resolveSpaceDefaultSelection?.(sessionId),
+  )
   // per-space 凭证覆盖(批 B3)在 baseUrl 派生**之前**:entry 可以带自己的 apiMode,
   // 派生要看得见它,否则 zhipu coding-plan 的空间会被算回 standard 端点。
   const spaceScoped = adapters.applySpaceCredentials

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { useAttachments } from '../useAttachments'
 
 const mocks = vi.hoisted(() => ({
@@ -51,6 +52,9 @@ function makePasteEvent(files: File[]): ClipboardEvent {
 
 describe('useAttachments', () => {
   beforeEach(() => {
+    // 空间层(批 B9)从 ModelSelector / ThinkToggle / InputBox 一路读到这里,
+    // 它住在 pinia 里 —— 独立挂载的组件测试也得有一个 pinia。
+    setActivePinia(createPinia())
     mocks.getPathForFile = () => ''
     mocks.settingsStore = reactive({
       settings: {

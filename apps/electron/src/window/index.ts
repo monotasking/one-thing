@@ -71,6 +71,9 @@ import {
   normalizeElectronTodoPlanWindowActionOptions,
   prepareElectronTodoPlanWindowAction,
   presentElectronTodoPlanWindow,
+  resolveElectronTodoPlanDragPosition,
+  type ElectronTodoPlanDragOrigin,
+  type ElectronTodoPlanDragRequest,
   type NormalizedElectronTodoPlanWindowActionOptions,
 } from '@onething/electron-host/window/todo-plan-presentation'
 export { MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS } from '@onething/electron-host/window/main-window-recovery'
@@ -181,6 +184,8 @@ let todoPlanPinned = true
 let isHidingTodoPlanWindow = false
 let isSyncingTodoPlanNativeFrame = false
 let todoPlanNativeFrameGuardToken = 0
+/** 手动拖窗时,拖起那一刻的窗位。`null` = 现在没有在拖。 */
+let todoPlanDragOrigin: ElectronTodoPlanDragOrigin | null = null
 const mainWindowActivation = createElectronMainWindowActivationController({
   platform: () => process.platform,
 })
@@ -420,6 +425,58 @@ export function toggleTodoPlanWindow(options: TodoPlanWindowActionOptions = {}) 
     return openTodoPlanWindow(options)
   }
   return openTodoPlanWindow(options)
+}
+
+/**
+ * 自绘红绿灯的黄点。系统按钮已被隐藏(见 `todo-plan-window.ts`),所以最小化必须
+ * 显式走这里。窗不在 / 已销毁时静默返回 false —— 渲染层不该为此报错。
+ */
+export function minimizeTodoPlanWindow(): boolean {
+  if (!todoPlanWindow || todoPlanWindow.isDestroyed()) return false
+  todoPlanWindow.minimize()
+  return todoPlanWindow.isMinimized()
+}
+
+/** 自绿点:mac 惯例的 zoom = 在「贴满工作区」与「原尺寸」之间切。 */
+export function zoomTodoPlanWindow(): boolean {
+  if (!todoPlanWindow || todoPlanWindow.isDestroyed()) return false
+  if (todoPlanWindow.isMaximized()) {
+    todoPlanWindow.unmaximize()
+  } else {
+    todoPlanWindow.maximize()
+  }
+  return todoPlanWindow.isMaximized()
+}
+
+/**
+ * 手动拖窗。这扇窗是 non-activating NSPanel,`-webkit-app-region: drag` 在它身上
+ * 不生效(见 TodoPlanPanel.vue 里那段注释),所以位移由渲染层每帧发过来。
+ *
+ * 拖起点的窗位记在**主进程**:渲染层只知道自己量到的累计位移,窗在哪儿由这里说了
+ * 算 —— 于是每一帧都是「起点 + 累计」的绝对定位,丢一帧也不会攒出漂移。
+ */
+export function dragTodoPlanWindow(request?: ElectronTodoPlanDragRequest): boolean {
+  if (!request) return false
+  if (!todoPlanWindow || todoPlanWindow.isDestroyed()) {
+    todoPlanDragOrigin = null
+    return false
+  }
+
+  if (request.phase === 'start') {
+    const [x, y] = todoPlanWindow.getPosition()
+    todoPlanDragOrigin = { x, y }
+    return true
+  }
+
+  if (request.phase === 'end') {
+    todoPlanDragOrigin = null
+    return true
+  }
+
+  const next = resolveElectronTodoPlanDragPosition(todoPlanDragOrigin, request)
+  if (!next) return false
+  todoPlanWindow.setPosition(next.x, next.y)
+  return true
 }
 
 export function setTodoPlanWindowPinned(pinned: boolean): boolean {

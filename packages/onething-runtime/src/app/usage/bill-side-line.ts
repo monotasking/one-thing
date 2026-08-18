@@ -44,6 +44,21 @@ export function billTitleUsage(
 	return bill("title", ONETHING_USAGE_SOURCES.title, providerId, modelId, sessionId);
 }
 
+/**
+ * Context compaction summary — one call per chunk on the session model.
+ *
+ * Until 2026-08-15 this call reached no ledger at all: a compaction of a
+ * 100k-token session was a five-figure input bill that never showed up in the
+ * usage panel. Same helper shape as the rest so the call site stays one line.
+ */
+export function billCompactUsage(
+	providerId: string,
+	modelId: string,
+	sessionId?: string,
+): (usage: SideLineUsage) => void {
+	return bill("context compact", ONETHING_USAGE_SOURCES.compact, providerId, modelId, sessionId);
+}
+
 /** Session TOC segmentation — one call per substantive turn. */
 export function billTocUsage(
 	providerId: string,

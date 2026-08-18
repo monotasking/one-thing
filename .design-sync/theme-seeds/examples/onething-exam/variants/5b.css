@@ -1,0 +1,60 @@
+/* 5b 消息形态：助手整条住进一张卡（头像+名字是卡头，工具卡嵌在里面），用户消息靠右成气泡 */
+.msg-assistant {
+  background: var(--c-card);
+  border: 1px solid var(--c-line-faint);
+  border-radius: var(--r);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+.msg-assistant .msg-who {
+  margin-bottom: 0;
+  padding: 10px var(--sp-4);
+  border-bottom: 1px solid var(--c-line-faint);
+  font-size: var(--fs-small);
+}
+.msg-assistant .msg-who .dot {
+  width: 20px;
+  height: 20px;
+  background: var(--c-accent2-soft);
+  border: 1px solid var(--c-accent2-ring);
+  position: relative;
+}
+.msg-assistant .msg-who .dot::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--c-accent2);
+}
+.msg-assistant .msg-body { padding: var(--sp-4) var(--sp-4) 0; }
+
+/* 卡中卡：工具卡退到地色，文件行回到纸色 */
+.msg-assistant .tool-card {
+  margin: var(--sp-4) var(--sp-4) 0;
+  background: var(--c-ground);
+  border-radius: var(--r-sm);
+}
+.msg-assistant .tool-files { background: var(--c-card); }
+.msg-assistant .file-row + .file-row { border-top-color: var(--c-ground); }
+.msg-assistant .msg-actions {
+  margin: var(--sp-2) 0 0;
+  padding: 0 var(--sp-3) var(--sp-2);
+  border-top: 1px solid var(--c-line-faint);
+  padding-top: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+/* 用户消息：右对齐气泡 */
+.msg-user { display: flex; flex-direction: column; align-items: flex-end; }
+.msg-user .msg-who { flex-direction: row-reverse; }
+.msg-user .msg-body {
+  max-width: 74%;
+  border-radius: 16px 16px 4px 16px;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+/* 卡要能看见收口：整条上移一点，别被输入框的渐隐吃掉 */
+.msg-assistant { margin-top: var(--sp-4); }
+.msg-assistant .msg-body { padding-top: var(--sp-3); }
+.msg-assistant .tool-card { margin-top: var(--sp-3); }
+.msg-assistant .msg-actions { margin-top: var(--sp-3); padding-bottom: var(--sp-1); }

@@ -15,6 +15,8 @@ import { ref, computed, watch, onUnmounted, type Ref, toValue, type MaybeRef } f
 import type { SessionEventEnvelope, StreamChunk, SessionEvent } from '@shared/events/index.js'
 import type { Step, ToolCall } from '@shared/ipc.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 export interface SessionEventState {
   /** Accumulated text content */
   content: Ref<string>
@@ -64,7 +66,7 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
     const event = envelope.event
 
     switch (event.type) {
-      case 'stream:start':
+      case SESSION_EVENT_TYPES.STREAM_START:
         isStreaming.value = true
         content.value = ''
         reasoning.value = ''
@@ -73,25 +75,25 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
         steps.value = []
         break
 
-      case 'stream:complete':
+      case SESSION_EVENT_TYPES.STREAM_COMPLETE:
         isStreaming.value = false
         break
 
-      case 'stream:error':
+      case SESSION_EVENT_TYPES.STREAM_ERROR:
         isStreaming.value = false
         error.value = event.data.error
         break
 
-      case 'stream:aborted':
+      case SESSION_EVENT_TYPES.STREAM_ABORTED:
         isStreaming.value = false
         break
 
-      case 'tool:call':
+      case SESSION_EVENT_TYPES.TOOL_CALL:
         activeToolCalls.value.set(event.toolCall.id, { ...event.toolCall })
         activeToolCalls.value = new Map(activeToolCalls.value) // trigger reactivity
         break
 
-      case 'tool:result':
+      case SESSION_EVENT_TYPES.TOOL_RESULT:
         const tc = activeToolCalls.value.get(event.toolCall.id)
         if (tc) {
           Object.assign(tc, event.toolCall)
@@ -99,11 +101,11 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
         }
         break
 
-      case 'step:added':
+      case SESSION_EVENT_TYPES.STEP_ADDED:
         steps.value = [...steps.value, event.step]
         break
 
-      case 'step:updated': {
+      case SESSION_EVENT_TYPES.STEP_UPDATED: {
         const idx = steps.value.findIndex(s => s.id === event.stepId)
         if (idx >= 0) {
           const updated = { ...steps.value[idx], ...event.updates }
@@ -112,7 +114,7 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
         break
       }
 
-      case 'tool:execution-update': {
+      case SESSION_EVENT_TYPES.TOOL_EXECUTION_UPDATE: {
         const idx = steps.value.findIndex(s => s.id === event.stepId || s.toolCallId === event.toolCallId)
         if (idx >= 0) {
           const updated = { ...steps.value[idx], status: 'running' as const, partialResult: event.partialResult, partialResultIsPartial: true }
@@ -121,7 +123,7 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
         break
       }
 
-      case 'tool:execution-end': {
+      case SESSION_EVENT_TYPES.TOOL_EXECUTION_END: {
         const idx = steps.value.findIndex(s => s.id === event.stepId || s.toolCallId === event.toolCallId)
         if (idx >= 0) {
           const updated = { ...steps.value[idx], partialResult: event.result, partialResultIsPartial: false, ...(event.isError ? { error: event.error } : {}) }

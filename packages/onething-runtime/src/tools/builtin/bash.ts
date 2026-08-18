@@ -81,7 +81,7 @@ export const BashParameters = z.object({
   run_in_background: z
     .boolean()
     .optional()
-    .describe('Run the command as a managed background job and return immediately with a job id. Use for long-running services (dev servers, watchers). Read new output later with bash_output; stop it with kill_bash. Do NOT use for commands that finish on their own.'),
+    .describe('Run as a managed background job and return immediately (for dev servers, watchers — never for commands that finish on their own). The result carries the log file path and pid: read the log with read / `tail`, stop the job with `kill -- -<pid>`.'),
 })
 
 function formatTruncatedOutput(
@@ -102,11 +102,11 @@ function formatTruncatedOutput(
 export function createBashTool(adapters: BashToolAdapters): Tool.Info<typeof BashParameters, BashMetadata> {
   return Tool.define<typeof BashParameters, BashMetadata>('bash', {
     name: 'Bash',
-    description: `Execute a bash command in the session work directory. Returns stdout and stderr. Output is truncated to the last ${DEFAULT_OUTPUT_MAX_LINES} lines or ${MAX_OUTPUT_DISPLAY} (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in milliseconds.
+    description: `Execute a bash command in the session work directory; returns stdout+stderr, truncated to the last ${DEFAULT_OUTPUT_MAX_LINES} lines / ${MAX_OUTPUT_DISPLAY} (full output is saved to a temp file when truncated). Also the way to find files and search contents (rg / fd / find / grep).
 
-For long-running services (dev servers, watchers), set run_in_background: true — the command is launched as a managed background job and this call returns immediately with a job id plus initial output. Read new output later with the bash_output tool; stop the job with kill_bash.
+Long-running services: set run_in_background: true — the call returns at once with a job id, initial output, the log file path and pid. Read the log later with read or \`tail\`; stop it with \`kill -- -<pid>\`.
 
-To change the work directory for bash and file tools, use variable { action: "set", name: "workdir", value: <directory> } before calling bash.`,
+To change the work directory for bash and file tools, use variable { action: "set", name: "workdir", value: <directory> } first.`,
     category: 'builtin',
     enabled: true,
     autoExecute: false,
@@ -263,7 +263,7 @@ To change the work directory for bash and file tools, use variable { action: "se
         if (startupOutput) {
           backgroundOutput += `\n\n${startupOutput}`
         }
-        backgroundOutput += `\n\n<bash_metadata>\nBackground job: ${launch.jobId}. Use bash_output to read new output, kill_bash to stop it.\nLog file: ${launch.logPath}\n</bash_metadata>`
+        backgroundOutput += `\n\n<bash_metadata>\nBackground job: ${launch.jobId} (pid ${launch.pid}). Read new output: tail the log file; stop: kill -- -${launch.pid}\nLog file: ${launch.logPath}\n</bash_metadata>`
 
         return {
           title: `${command} (background ${launch.jobId})`,

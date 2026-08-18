@@ -4,23 +4,34 @@ import {
   createOnethingSpaceForIpc,
   getOnethingSpaceCredentialsForIpc,
   getOnethingSpaceOverlayForIpc,
+  getOnethingSpaceProviderSettingsForIpc,
+  setOnethingSpaceProviderSettingsForIpc,
   importOnethingSpaceCredentialsForIpc,
   listOnethingSpacesForIpc,
   removeOnethingSpaceForIpc,
   setOnethingSpaceCredentialForIpc,
+  setOnethingSpaceCredentialPoolForIpc,
   setOnethingSpaceOverlayForIpc,
   updateOnethingSpaceForIpc,
   type SpacesClearCredentialRequest,
   type SpacesCreateRequest,
   type SpacesGetCredentialsRequest,
   type SpacesGetOverlayRequest,
+  type SpacesGetProviderSettingsRequest,
+  type SpacesSetProviderSettingsRequest,
   type SpacesImportCredentialsRequest,
   type SpacesRemoveRequest,
+  type SpacesSetCredentialPoolRequest,
   type SpacesSetCredentialRequest,
   type SpacesSetOverlayRequest,
   type SpacesUpdateRequest,
 } from '@onething/runtime/spaces'
 import { readSpaceOverlay, writeSpaceOverlay } from '@onething/runtime/spaces/overlay'
+import {
+  createEmptySpaceProviderSettings,
+  readSpaceProviderSettings,
+  writeSpaceProviderSettings,
+} from '@onething/runtime/spaces/provider-settings'
 import { getSpacesStore } from '@onething/runtime/spaces/store'
 import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import { countSessionsInWorkspace } from '@onething/app/stores/sessions.js'
@@ -29,6 +40,7 @@ import {
   getSpaceCredentialsSummary,
   importDefaultSpaceCredentials,
   setSpaceProviderCredential,
+  setSpaceProviderCredentialPoolForRequest,
 } from '@onething/app/providers/space-credentials.js'
 import { registerElectronSpacesIpcHandlers } from './spaces-controller.js'
 
@@ -48,8 +60,11 @@ export function registerSpacesHandlers(): void {
       remove: IPC_CHANNELS.SPACES_REMOVE,
       getOverlay: IPC_CHANNELS.SPACES_GET_OVERLAY,
       setOverlay: IPC_CHANNELS.SPACES_SET_OVERLAY,
+      getProviderSettings: IPC_CHANNELS.SPACES_GET_PROVIDER_SETTINGS,
+      setProviderSettings: IPC_CHANNELS.SPACES_SET_PROVIDER_SETTINGS,
       getCredentials: IPC_CHANNELS.SPACES_GET_CREDENTIALS,
       setCredential: IPC_CHANNELS.SPACES_SET_CREDENTIAL,
+      setCredentialPool: IPC_CHANNELS.SPACES_SET_CREDENTIAL_POOL,
       clearCredential: IPC_CHANNELS.SPACES_CLEAR_CREDENTIAL,
       importCredentials: IPC_CHANNELS.SPACES_IMPORT_CREDENTIALS,
     },
@@ -92,8 +107,24 @@ export function registerSpacesHandlers(): void {
         writeOverlay: (id, overlay) => writeSpaceOverlay(id, overlay),
       })
     },
-    // provider 凭证池(批 B3)。默认空间一律拒绝:它的凭证层就是 settings.ai,
-    // 往 credentials.json 里再写一份等于造第二份真相。
+    // 整套 provider 设置(C2):`workspaces/<id>/providers.json`。与 overlay 同
+    // 一条纪律 —— 只对**已登记**的空间开放。缺文件 = 这个空间还是空的(无回落)。
+    getSpaceProviderSettings: (request: SpacesGetProviderSettingsRequest) => {
+      return getOnethingSpaceProviderSettingsForIpc({
+        request,
+        hasSpace: id => getSpacesStore().list().some(space => space.id === id),
+        readProviderSettings: id => readSpaceProviderSettings(id) ?? createEmptySpaceProviderSettings(),
+      })
+    },
+    setSpaceProviderSettings: (request: SpacesSetProviderSettingsRequest) => {
+      return setOnethingSpaceProviderSettingsForIpc({
+        request,
+        hasSpace: id => getSpacesStore().list().some(space => space.id === id),
+        writeProviderSettings: (id, ai) => writeSpaceProviderSettings(id, ai),
+      })
+    },
+    // provider 凭证池(批 B3;C1 起 default 也走这条)。唯一还挡着默认空间的
+    // 是「导入」—— 它就是导入的来源,导给自己是句废话。
     getSpaceCredentials: (request: SpacesGetCredentialsRequest) => {
       return getOnethingSpaceCredentialsForIpc({
         request,
@@ -105,15 +136,21 @@ export function registerSpacesHandlers(): void {
       return setOnethingSpaceCredentialForIpc({
         request,
         hasSpace: id => getSpacesStore().list().some(space => space.id === id),
-        isDefaultSpace: id => id === DEFAULT_SPACE_ID,
         writeCredential: input => setSpaceProviderCredential(input),
+      })
+    },
+    // 整池写(批 D):排序 + 删除 + 策略。密钥原文走上面那条 setCredential。
+    setSpaceCredentialPool: (request: SpacesSetCredentialPoolRequest) => {
+      return setOnethingSpaceCredentialPoolForIpc({
+        request,
+        hasSpace: id => getSpacesStore().list().some(space => space.id === id),
+        writePool: input => setSpaceProviderCredentialPoolForRequest(input),
       })
     },
     clearSpaceCredential: (request: SpacesClearCredentialRequest) => {
       return clearOnethingSpaceCredentialForIpc({
         request,
         hasSpace: id => getSpacesStore().list().some(space => space.id === id),
-        isDefaultSpace: id => id === DEFAULT_SPACE_ID,
         clearCredential: input => clearSpaceProviderCredential(input),
       })
     },

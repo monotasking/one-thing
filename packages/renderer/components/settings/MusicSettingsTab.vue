@@ -363,10 +363,11 @@ import type { ToolCallModelSettings } from '@shared/ipc/tools'
 import { platformApi } from '@/platform'
 import { useMusicStore } from '@/stores/music'
 import { useSettingsStore } from '@/stores/settings'
-import { isProviderConfigEnabled } from '@/stores/helpers/provider-model'
+import { isProviderEnabledIn } from '@/stores/helpers/provider-model'
 
 const store = useMusicStore()
 const settingsStore = useSettingsStore()
+/** 批 B9:provider 开关的空间覆盖(default 空间恒 undefined)。 */
 
 // ---------------------------------------------------------------------------
 // 电台编排模型(settings.music.radioDj):toolCallModel 的形制 —— 独立的
@@ -412,8 +413,9 @@ function providerModelIds(providerId: string): string[] {
 
 const configuredProviders = computed(() =>
   settingsStore.availableProviders.filter(provider => {
-    const config = settingsStore.settings.ai.providers[provider.id]
-    return isProviderConfigEnabled(config) && providerModelIds(provider.id).length > 0
+    // 批 B9:开关 per-space(第三参 = 空间覆盖,default 空间恒 undefined)。
+    return isProviderEnabledIn(settingsStore.settings.ai.providers, provider.id)
+      && providerModelIds(provider.id).length > 0
   }),
 )
 

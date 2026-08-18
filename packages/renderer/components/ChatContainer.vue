@@ -13,13 +13,10 @@
       class="chat-panels"
     >
       <Container
-        sidebar-position="right"
-        :sidebar-width="chatSidePanelWidth"
         main-class="chat-panels-main"
         full-height
         overflow="hidden"
         main-overflow="hidden"
-        sidebar-overflow="hidden"
       >
         <!-- Empty state when nothing is open -->
         <div
@@ -74,28 +71,8 @@
           :reserve-sidebar-actions="reserveSidebarActions"
           :layout-transitioning="layoutTransitioning"
           :register-panel-ref="setPanelRef"
-          :side-panel-available="sidePanelAvailable"
-          :side-panel-collapsed="sidePanelCollapsed"
-          :outline-rail-target="chatSideOutlineTarget"
           @panel-event="handlePanelEvent"
         />
-
-        <template
-          v-if="sidePanelVisible"
-          #sidebar
-        >
-          <ChatSidePanel
-            :session-id="activeLeafSession?.id"
-            :working-directory="activeLeafSession?.workingDirectory || ''"
-            :agent-id="activeLeafSession?.agentId"
-            :last-provider="activeLeafSession?.lastProvider"
-            :last-model="activeLeafSession?.lastModel"
-            :collapsed="sidePanelCollapsed"
-            @outline-target-change="handleSideOutlineTargetChange"
-            @toggle-collapsed="toggleSidePanelCollapsed"
-            @jump-to-message="(sessionId, messageId) => { void jumpToMessage(sessionId, messageId) }"
-          />
-        </template>
       </Container>
     </div>
   </div>
@@ -103,12 +80,11 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
+import { computed, ref, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
 import { platformApi } from '@/platform'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
-import ChatSidePanel from '@/components/chat/ChatSidePanel.vue'
 import PanelTree from '@/components/chat/PanelTree.vue'
 import Container from '@/components/common/Container.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -132,6 +108,8 @@ const emit = defineEmits<{
   'show-floating-sidebar': []
   'hide-floating-sidebar': []
   'toggle-inspector': []
+  /** 顶栏那颗「Contents」钮 —— 落点是右栏的 outline 页签(L3)。 */
+  'open-outline': []
   'open-file': [filePath: string]
   'review-goal': [sessionId: string]
 }>()
@@ -154,84 +132,14 @@ const revealSidebarToggle = computed(() => !!props.sidebarCollapsed && !props.si
 // one tree); this component is a view over it.
 const workspaceStore = useWorkspaceStore()
 
-const activeLeafSession = computed(() => {
-  const sessionId = workspaceStore.activeSessionId
-  return sessionId ? sessionsStore.getSessionItem(sessionId) : null
-})
-
-// Single shared side panel (Outline/System prompt/Todo/Variables) for the
-// whole split-panel workspace, reflecting whichever leaf is focused — moved
-// up from ChatWindow.vue, which used to render one of these per split panel.
-const CHAT_SIDE_PANEL_WIDTH = 268
-const CHAT_SIDE_PANEL_COLLAPSED_WIDTH = 0
-const CHAT_SIDE_PANEL_MIN_WINDOW_WIDTH = 1100
-const CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY = 'chatSidePanelCollapsed'
-
-const chatPanelsRootRef = ref<HTMLElement | null>(null)
-const chatSideOutlineTarget = ref<HTMLElement | null>(null)
-const sidePanelAvailable = ref(false)
-const sidePanelCollapsed = ref(localStorage.getItem(CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY) === 'true')
-let chatResizeObserver: ResizeObserver | null = null
-const chatSidePanelWidth = computed(() =>
-  activeLeafOnRoomSurface.value || sidePanelCollapsed.value
-    ? CHAT_SIDE_PANEL_COLLAPSED_WIDTH
-    : CHAT_SIDE_PANEL_WIDTH)
-
-/**
- * 房 / 私聊新面上没有 ChatSidePanel(去复用重构 R1,§8.2):它的活(大纲 / 文件 /
- * 引用)并入右栏 tab 或房头动作。判定与 `ChatWindow.roomSurfaceActive` 同口径,
- * 只是这里看的是**当前聚焦的那个 leaf** —— 侧栏本来就只服务它。
- * classic 与直聊一个字节不变。
+/*
+ * 大纲栏(ChatSidePanel)这一列在 L3 整条退役:它的四段搬进右栏会话域的两条
+ * 页签(Contents / Context),于是这里既不再有 `Container` 的 sidebar 插槽,
+ * 也不再有 `chatSidePanelWidth` / `chatSideCollapsed` / outlineTarget 那条
+ * 五层 prop 链。大纲轨的宿主改由 `composables/useOutlineRail.ts` 那枚模块级
+ * ref 登记,聊天面每一格自己按"轮不轮得到我"去取(见 ChatWindow.vue)。
  */
-const activeLeafOnRoomSurface = computed(() => activeLeafSession.value?.kind === 'room')
-
-const sidePanelVisible = computed(() =>
-  !activeLeafOnRoomSurface.value && (sidePanelAvailable.value || !sidePanelCollapsed.value))
-
-function updateSidePanelAvailability() {
-  const width = chatPanelsRootRef.value?.getBoundingClientRect().width ?? 0
-  sidePanelAvailable.value = width >= CHAT_SIDE_PANEL_MIN_WINDOW_WIDTH
-}
-
-function observeChatWidth() {
-  chatResizeObserver?.disconnect()
-  chatResizeObserver = null
-  const root = chatPanelsRootRef.value
-  if (!root || typeof ResizeObserver === 'undefined') {
-    updateSidePanelAvailability()
-    return
-  }
-  chatResizeObserver = new ResizeObserver(updateSidePanelAvailability)
-  chatResizeObserver.observe(root)
-  updateSidePanelAvailability()
-}
-
-function handleSideOutlineTargetChange(target: HTMLElement | null) {
-  chatSideOutlineTarget.value = !sidePanelCollapsed.value ? target : null
-}
-
-function toggleSidePanelCollapsed() {
-  sidePanelCollapsed.value = !sidePanelCollapsed.value
-  localStorage.setItem(CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY, String(sidePanelCollapsed.value))
-  if (sidePanelCollapsed.value) {
-    chatSideOutlineTarget.value = null
-  }
-}
-
-watch(sidePanelCollapsed, (collapsed) => {
-  if (collapsed) {
-    chatSideOutlineTarget.value = null
-  }
-})
-
-onMounted(() => {
-  nextTick(observeChatWidth)
-})
-
-onBeforeUnmount(() => {
-  chatResizeObserver?.disconnect()
-  chatResizeObserver = null
-})
+const chatPanelsRootRef = ref<HTMLElement | null>(null)
 
 // Split goes through the Search Everywhere window: it opens locked to Chats
 // with a split intent, and the chosen session comes back via search:action.
@@ -304,8 +212,8 @@ function handlePanelEvent(event: PanelEvent) {
     case 'splitDrop':
       handleSplitDrop(event.leafId, event.sessionId, event.sourcePanelId, event.direction)
       break
-    case 'toggleSidePanel':
-      toggleSidePanelCollapsed()
+    case 'openOutline':
+      emit('open-outline')
       break
     case 'toggleSidebar':
       emit('toggle-sidebar')

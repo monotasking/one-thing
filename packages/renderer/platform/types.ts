@@ -17,6 +17,7 @@ import type {
   PromptListResponse,
   PromptUpdateRequest,
   PromptUpdateResponse,
+  SessionStreamPayload,
   TodoPlanCreateRequest,
   TodoPlanCreateResponse,
   TodoPlanDeleteRequest,
@@ -30,6 +31,10 @@ import type {
 } from '@/types'
 
 export type PlatformEnvironment = 'electron' | 'web'
+
+// `PlatformApi` 是 `ElectronAPI` 的交集类型:两边声明的 `onSessionStream` 必须是
+// **同一个**类型,否则交集会摊成重载,未标注的回调参数会落回先声明的那一条。
+export type { SessionStreamPayload }
 
 export interface PlatformCapabilities {
   localFileSystem: boolean
@@ -52,6 +57,7 @@ export type PlatformApi = ElectronAPI & {
   readonly capabilities: PlatformCapabilities
   getCapabilities: () => Promise<PlatformCapabilities>
   onSessionEvent: (callback: (envelope: SessionEventEnvelope) => void) => () => void
+  onSessionStream: (callback: (payload: SessionStreamPayload) => void) => () => void
   /**
    * Token usage / billing (主线 T0 试点域). Not on `ElectronAPI` any more: the
    * preload bridge only exposes the generic `rpcInvoke`, and each platform

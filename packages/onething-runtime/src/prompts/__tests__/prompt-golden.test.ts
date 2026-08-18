@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import type { TurnBlock } from "@onething/core/engine";
 import { buildOnethingSystemPrompt, buildOnethingPrompt } from "../builder.js";
+import { testPromptComposer } from "./fixtures/tool-prompts.js";
 import {
 	scenarios,
 	type SegmentId,
@@ -123,11 +125,30 @@ function computeBudget(_sceneName: string, prompt: string): SceneBudget {
 	};
 }
 
+/**
+ * The turn-channel appendix (prompt-channels 2026-08-18). The scenes have to
+ * keep capturing the WHOLE picture: half the product's sections now travel in
+ * the `<context-update>` tail of the user message instead of the system prefix,
+ * and a golden file that only showed the prefix would silently stop covering
+ * them. The appendix is not what the model receives verbatim — the ledger wraps
+ * each block in `<section name="…">` and only sends the ones that changed — but
+ * it is the exact content each block carries this turn.
+ */
+function turnAppendix(turn: TurnBlock[]): string {
+	if (turn.length === 0) return "";
+	return [
+		"--- turn ---",
+		...turn.map((block) => `## ${block.id}\n${block.content}`),
+	].join("\n\n");
+}
+
 async function buildGoldenForScene(name: string): Promise<string> {
 	const sceneList = scenarios();
 	const scene = sceneList.find((s) => s.name === name);
 	if (!scene) throw new Error(`Unknown scene: ${name}`);
 
+	// The scenes go through the same composer shape the desktop uses (builtin
+	// + tool prompts + registry + plugins), so the snapshot is what gets sent.
 	// For codex scene, use buildOnethingPrompt with separate developer messages
 	if (name === "codex-split") {
 		const result = await buildOnethingPrompt({
@@ -135,12 +156,16 @@ async function buildGoldenForScene(name: string): Promise<string> {
 			providerId: "codex",
 			model: "gpt-5-codex",
 			historyMessages: [{ role: "user", content: "hello" }],
-		});
-		return result.systemPrompt;
+		}, testPromptComposer);
+		return [result.systemPrompt, turnAppendix(result.turn ?? [])]
+			.filter(Boolean)
+			.join("\n\n");
 	}
 
-	const result = await buildOnethingSystemPrompt(scene.ctx);
-	return [result.system, ...result.developer].filter(Boolean).join("\n\n");
+	const result = await buildOnethingSystemPrompt(scene.ctx, testPromptComposer);
+	return [result.system, ...result.developer, turnAppendix(result.turn)]
+		.filter(Boolean)
+		.join("\n\n");
 }
 
 describe("prompt golden snapshots", () => {

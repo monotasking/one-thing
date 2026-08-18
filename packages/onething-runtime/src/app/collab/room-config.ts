@@ -57,6 +57,8 @@ import {
 } from './actors/runtime.js'
 import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from './actors/turn-context.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /** 预算/费用的读口从这里转发一次,调用方(say 执行器、设置面板、IPC)只认一个入口。 */
 export {
   getCollabRoomSpend,
@@ -216,7 +218,7 @@ export async function clearCollabRoomHistory(
  */
 function broadcastClearedTranscript(sessionId: string): void {
   void getEventBus().emit(sessionId, {
-    type: 'messages:replaced',
+    type: SESSION_EVENT_TYPES.MESSAGES_REPLACED,
     messages: [],
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
 }

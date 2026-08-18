@@ -1,5 +1,6 @@
 import type { AgentProviderData } from "../agent-loop/types.js";
 import type { JsonObject, JsonObjectProperty } from "../json.js";
+import type { TurnBlock } from "./turn-context.js";
 import type {
 	CorePromptActiveProject,
 	CorePromptKnownProjects,
@@ -16,8 +17,6 @@ export interface CoreBuildPromptContextOptions {
 	model?: string;
 	providerConfig?: CorePromptProviderConfig;
 	baseSystemPrompt?: string;
-	toolGuidelines?: string[];
-	toolWorkspaceRules?: string[];
 	knownProjectsInstructions?: string;
 	settings?: unknown;
 	hasTools: boolean;
@@ -35,7 +34,12 @@ export interface CoreBuildPromptContextOptions {
 	macOSAutomationDocsPath?: string;
 	todoPlanDirectory?: string;
 	now?: Date;
-	/** Phase 5 ablation: disable specific prompt sections for testing. */
+	/**
+	 * Section names to drop from this build (Phase 5 ablation; collab room
+	 * turns use it to strip the product prompt around a persona). Matches
+	 * `PromptFragment.id` of `section` fragments, plus the two composite
+	 * blocks `tool-guidelines` and `tool-workspace-rules`.
+	 */
 	disabledSections?: string[];
 }
 
@@ -82,4 +86,11 @@ export interface CoreBuildPromptResult {
 	systemPrompt: string;
 	/** Named prompt sections, for per-section hashing and snapshot display (optional). */
 	sections?: PromptSection[];
+	/**
+	 * Blocks for the turn channel (`docs/design/prompt-channels-2026-08.md`).
+	 * They are **not** in `messages` yet: the host attaches them to the latest
+	 * user message through `TurnContextLedger`/`SessionTurnContext`, which is
+	 * also what persists them so the next rebuild replays identical bytes.
+	 */
+	turn?: TurnBlock[];
 }

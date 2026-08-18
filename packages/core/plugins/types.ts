@@ -1,4 +1,5 @@
 import type { PluginInputInterceptHandler } from './input-intercept.js'
+import type { CoreToolPromptContribution } from '../engine/prompt-fragments.js'
 import type { PluginToolCallInterceptHandler } from './tool-call-intercept.js'
 import type { PluginToolResultInterceptHandler } from './tool-result-intercept.js'
 import type { CorePluginRequestHandler } from './request-channel.js'
@@ -8,6 +9,7 @@ import type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
 import type { CorePluginPanelRegistration } from './panel.js'
 import type { CorePluginUiSlotRegistration, PluginLayoutResult } from './ui-anchor.js'
 import type { CorePluginSearchProviderRegistration } from './search-provider.js'
+import type { CorePluginCredentialStrategyRegistration } from './credential-strategy.js'
 import type { CorePluginDeepLinkActionRegistration } from './deep-link.js'
 import type {
   PluginSendMessageOptions,
@@ -347,6 +349,15 @@ export interface CorePluginToolDefinition<
    * 不声明 = 缺省 = 屏障 = 今天的行为。语义与校验见 `tool-execution-mode.ts`。
    */
   executionMode?: CorePluginToolExecutionMode
+  /**
+   * The prompt this tool brings with it (guideline bullets / workspace-rule
+   * bullets / standalone sections; `CoreToolPromptContribution`). It rides the
+   * tool surface: injected when the tool is in the request, gone when the tool
+   * is disabled, off-scene, or the plugin is unloaded — no separate registration.
+   * Structurally validated at registration; an illegal shape rejects **this
+   * one tool** (like `executionMode`), never the whole plugin.
+   */
+  prompt?: CoreToolPromptContribution
 }
 
 export interface CorePluginCommandContext {
@@ -459,6 +470,7 @@ export interface CorePluginAPI<
   TUiSlotRegistration = CorePluginUiSlotRegistration,
   TSearchProviderRegistration = CorePluginSearchProviderRegistration,
   TDeepLinkActionRegistration = CorePluginDeepLinkActionRegistration,
+  TCredentialStrategyRegistration = CorePluginCredentialStrategyRegistration,
 > {
   readonly id: string
   registerTool(tool: TTool): void
@@ -709,6 +721,26 @@ export interface CorePluginAPI<
    * **仅桌面宿主执行**(§6 方案 A;而且只有桌面宿主注册了 URL scheme)。
    */
   registerDeepLinkAction(registration: TDeepLinkActionRegistration): () => void
+  /**
+   * 凭证轮换策略(批 E):决定一个空间的一个 provider 下一次用池里的哪条凭证。
+   *
+   * 与前三个注册表同构 —— core 开放的第四个既有宿主动词面。声明门
+   * `contributes.permissions` 要有 `credentials:strategy`(未声明 = 结构化拒绝
+   * + noop,**不计熔断**:那是 manifest 笔误,不该连坐插件)。
+   *
+   * **插件不见钥匙**:`ctx.entries` 是白名单投影(id / label / authType /
+   * source / cooldownUntil / usage / lastErrorKind),`apiKey` / `oauthToken` /
+   * `baseUrl` 一个字节都不出现;策略交回一个 entry id,宿主拿 id 去取真钥匙。
+   *
+   * **失效绝不阻塞起流**:超时(2s)/ 抛错 / 返回非法 id,一律回落内置
+   * `priority-failover` 并按 `credential-strategy` 家族降级(停这一个策略,
+   * 不连坐插件其余能力)。用户在面板里选中的 policy 字段**不被改写** ——
+   * 插件回来自动生效。
+   *
+   * 返回退订函数;插件不调也没关系,dispose 会兜底。
+   * **仅桌面宿主执行**(§6 方案 A;server / CLI daemon 只有默认空间,无池)。
+   */
+  registerCredentialStrategy(registration: TCredentialStrategyRegistration): () => void
 }
 
 export type CorePluginEntry<TAPI> = (api: TAPI) => void | Promise<void>

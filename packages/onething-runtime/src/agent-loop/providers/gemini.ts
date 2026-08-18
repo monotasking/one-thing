@@ -1,6 +1,8 @@
 import { collectAgentTurnFromStream } from '@onething/core/agent-loop'
 import { agentToolMessageContentToText } from '@onething/core/agent-loop'
+import { mergeAdjacentSameRoleMessages } from './message-merge.js'
 import { readJsonSseData } from './sse.js'
+import { withProviderRetryAfter } from '../provider-error-classification.js'
 import {
   ONETHING_GEMINI_THINKING_BUDGETS,
   onethingGeminiThinkingLevels,
@@ -499,7 +501,9 @@ export function createGeminiAgentProvider(options: GeminiAgentProviderOptions): 
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
 
   async function* streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
-    const { systemInstruction, contents } = buildGeminiContents(request.messages)
+    // Gemini 的 contents 期望 user/model 交替(相邻同角色它自己会合,但依赖
+    // 对端的宽容不是接口契约):在这里先合成一条,与 DeepSeek/Claude 同规。
+    const { systemInstruction, contents } = buildGeminiContents(mergeAdjacentSameRoleMessages(request.messages))
     const tools = request.toolChoice === 'none' ? undefined : toGeminiTools(request.tools)
     const thinkingConfig = geminiThinkingConfig(request)
     const body: GeminiRequestBody = {
@@ -548,7 +552,13 @@ export function createGeminiAgentProvider(options: GeminiAgentProviderOptions): 
 
     if (!response.ok) {
       const text = await response.text().catch(() => '')
-      throw new Error(`Gemini agent loop API error: ${response.status} ${text}`)
+      // 批 B8-2:Gemini **没有 Retry-After 头** —— 它把 `RetryInfo`
+      // (`retryDelay: "27s"`)放在响应体的 `error.details[]` 里。所以这里必须
+      // 把 body 也喂给解析器,否则整个家族拿不到任何恢复时刻。
+      throw withProviderRetryAfter(
+        new Error(`Gemini agent loop API error: ${response.status} ${text}`),
+        { headers: response.headers, body: text },
+      )
     }
 
     yield* streamGeminiResponse(response, request.turn)

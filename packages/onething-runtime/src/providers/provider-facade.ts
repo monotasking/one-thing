@@ -125,6 +125,11 @@ export interface OnethingChatGenerationOptions {
    * here instead. Stripped before the options reach the provider.
    */
   onUsage?: (usage: OnethingProviderTokenUsage) => void
+  /**
+   * Side channel for the provider's stop reason. `'length'` = max_tokens cut
+   * the output. Compaction fails loudly on it instead of storing a half summary.
+   */
+  onFinish?: (info: { finishReason?: string }) => void
 }
 
 export interface OnethingProviderFacadeAdapters<
@@ -260,13 +265,14 @@ export function createOnethingProviderFacade<
   const facade: OnethingProviderFacade<TConfig, TProvider> = {
     generateChatResponse(providerId, config, messages, options = {}) {
       // onUsage is ours, not the provider's — keep it out of the request.
-      const { onUsage, ...providerOptions } = options
+      const { onUsage, onFinish, ...providerOptions } = options
       return generateOnethingTextChatResponse({
         providerId,
         config,
         messages,
         options: providerOptions,
         onUsage,
+        onFinish,
         generateWithReasoning: generateChatResponseWithReasoning,
       })
     },

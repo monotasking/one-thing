@@ -232,6 +232,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       pluginScope.connector('wechat'),
       pluginScope.searchProvide('emoji'),
       pluginScope.deepLinkAction('plugin:trans:translate'),
+      pluginScope.credentialStrategy('plugin:b:least-used'),
     ]
     // 工厂数量与样本数量对齐 —— 加了工厂却忘了在这里取样,这条会红。
     expect(samples).toHaveLength(Object.keys(pluginScope).length)
@@ -293,6 +294,10 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       // H4:深链动作自成一族 —— 一个动作抛错/超时只影响那一个入口,`onething://ask`
       // 与插件其余动作照常。生产者在派发口(app/deeplink/registry)。
       { factory: 'deepLinkAction', scope: pluginScope.deepLinkAction('plugin:trans:translate'), family: 'deep-link' },
+      // 批 E:凭证策略自成一族 —— 它坐在**起流的关键路径**上,而"挑哪把钥匙"
+      // 从来就有一个可用的默认答案(内置 priority-failover),所以罚则只能是
+      // 降级、绝不能是整体禁用。生产者在策略调用口(app/providers/credential-strategy)。
+      { factory: 'credentialStrategy', scope: pluginScope.credentialStrategy('plugin:b:least-used'), family: 'credential-strategy' },
     ]
 
     // 声明本身要对。
@@ -339,7 +344,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
 
 describe('R7 registry teardown table — 每个开放的注册表都要回答"在飞的怎么办"', () => {
   it('declares a teardown policy for every open registry', () => {
-    expect([...PLUGIN_OPEN_REGISTRIES]).toEqual(['im-connector', 'search-provider', 'deep-link-action'])
+    expect([...PLUGIN_OPEN_REGISTRIES]).toEqual(['im-connector', 'search-provider', 'deep-link-action', 'credential-strategy'])
     for (const registry of PLUGIN_OPEN_REGISTRIES) {
       const policy = PLUGIN_REGISTRY_POLICY[registry]
       expect(policy, registry).toBeTruthy()

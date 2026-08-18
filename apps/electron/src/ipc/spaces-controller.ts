@@ -6,8 +6,11 @@ import type {
   SpacesGetOverlayRequest,
   SpacesImportCredentialsRequest,
   SpacesRemoveRequest,
+  SpacesSetCredentialPoolRequest,
   SpacesSetCredentialRequest,
   SpacesSetOverlayRequest,
+  SpacesGetProviderSettingsRequest,
+  SpacesSetProviderSettingsRequest,
   SpacesUpdateRequest,
 } from '@onething/runtime/spaces'
 
@@ -25,8 +28,11 @@ export interface ElectronSpacesIpcChannels {
   remove: string
   getOverlay: string
   setOverlay: string
+  getProviderSettings: string
+  setProviderSettings: string
   getCredentials: string
   setCredential: string
+  setCredentialPool: string
   clearCredential: string
   importCredentials: string
 }
@@ -39,8 +45,11 @@ export interface RegisterElectronSpacesIpcHandlersOptions {
   removeSpace(request: SpacesRemoveRequest): unknown
   getSpaceOverlay(request: SpacesGetOverlayRequest): unknown
   setSpaceOverlay(request: SpacesSetOverlayRequest): unknown
+  getSpaceProviderSettings(request: SpacesGetProviderSettingsRequest): unknown
+  setSpaceProviderSettings(request: SpacesSetProviderSettingsRequest): unknown
   getSpaceCredentials(request: SpacesGetCredentialsRequest): unknown
   setSpaceCredential(request: SpacesSetCredentialRequest): unknown
+  setSpaceCredentialPool(request: SpacesSetCredentialPoolRequest): unknown
   clearSpaceCredential(request: SpacesClearCredentialRequest): unknown
   importSpaceCredentials(request: SpacesImportCredentialsRequest): unknown
   ipcMain?: ElectronIpcMainLike
@@ -72,6 +81,14 @@ export function registerElectronSpacesIpcHandlers(
     return options.getSpaceOverlay(request)
   })
 
+  host.handle(options.channels.getProviderSettings, (_event, request: SpacesGetProviderSettingsRequest) => {
+    return options.getSpaceProviderSettings(request)
+  })
+
+  host.handle(options.channels.setProviderSettings, (_event, request: SpacesSetProviderSettingsRequest) => {
+    return options.setSpaceProviderSettings(request)
+  })
+
   host.handle(options.channels.setOverlay, (_event, request: SpacesSetOverlayRequest) => {
     return options.setSpaceOverlay(request)
   })
@@ -83,6 +100,13 @@ export function registerElectronSpacesIpcHandlers(
   host.handle(options.channels.setCredential, (_event, request: SpacesSetCredentialRequest) => {
     return options.setSpaceCredential(request)
   })
+
+  host.handle(
+    options.channels.setCredentialPool,
+    (_event, request: SpacesSetCredentialPoolRequest) => {
+      return options.setSpaceCredentialPool(request)
+    },
+  )
 
   host.handle(options.channels.clearCredential, (_event, request: SpacesClearCredentialRequest) => {
     return options.clearSpaceCredential(request)

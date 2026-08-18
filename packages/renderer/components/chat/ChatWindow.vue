@@ -44,8 +44,6 @@
           :is-inspector-open="isInspectorOpen"
           :media-panel-open="mediaPanelOpen"
           :reserve-sidebar-actions="reserveSidebarActions"
-          :side-panel-available="sidePanelAvailable"
-          :side-panel-collapsed="sidePanelCollapsed"
           :panel-focused="panelFocused"
           @rename-session="(sid, name) => sessionsStore.renameSession(sid, name)"
           @toggle-sidebar="emit('toggleSidebar')"
@@ -56,7 +54,7 @@
           @close="emit('close')"
           @equalize="emit('equalize')"
           @toggle-inspector="emit('toggleInspector')"
-          @toggle-side-panel="emit('toggleSidePanel')"
+          @open-outline="emit('openOutline')"
         />
         <!-- 练习条是直聊的东西,不进房(样板末节)。 -->
         <PracticeStrip v-if="showPracticeStrip && !roomSurfaceActive" />
@@ -124,6 +122,7 @@ import RoomSurface from './room/RoomSurface.vue'
 import Container from '@/components/common/Container.vue'
 import BorderBox from '@/components/common/BorderBox.vue'
 import PracticeStrip from './PracticeStrip.vue'
+import { useOutlineRail } from '@/composables/useOutlineRail'
 import { platformApi } from '@/platform'
 
 interface Props {
@@ -135,11 +134,6 @@ interface Props {
   reserveSidebarActions?: boolean
   layoutTransitioning?: boolean
   panelFocused?: boolean
-  /** Shared side panel state, owned by ChatContainer (see stores/workspace) — this window only reflects it in its tab bar toggle. */
-  sidePanelAvailable?: boolean
-  sidePanelCollapsed?: boolean
-  /** Non-null only for the currently focused panel; ChatPanel teleports its outline rail here. */
-  outlineRailTarget?: HTMLElement | null
   /** Practice strip renders once globally, under the primary panel's tab bar. */
   showPracticeStrip?: boolean
 }
@@ -181,11 +175,21 @@ const emit = defineEmits<{
   reviewGoal: [sessionId: string]
   switchSession: [sessionId: string]
   splitDrop: [payload: { direction: SplitDirection; sessionId: string; sourcePanelId: string }]
-  toggleSidePanel: []
+  /** 顶栏那颗「Contents」钮:开右栏的 outline 页签(L3)。 */
+  openOutline: []
 }>()
 
 const sessionsStore = useSessionsStore()
 const workspaceStore = useWorkspaceStore()
+
+/**
+ * 大纲轨的落点(L3)。右栏的 Contents 页签登记宿主,这里只回答"轮不轮得到我"
+ * —— 分屏时只有聚焦的那一格该把轨投过去,而"哪一格聚焦"正是这一层知道的事。
+ * 从前这个元素是从 ChatContainer 一路 prop 透传下来的(五层),现在它从
+ * `composables/useOutlineRail.ts` 那枚模块级 ref 上取。
+ */
+const { outlineRailTarget: resolveOutlineRailTarget } = useOutlineRail()
+const outlineRailTarget = resolveOutlineRailTarget(() => props.panelFocused !== false)
 
 // This window renders one workspace leaf; which session sits in it lives in
 // the store (一格恰好一条会话,U2)。
@@ -391,6 +395,19 @@ defineExpose({
   overflow: visible;
 }
 
+/*
+ * 聊天面的**查询容器**(L5,`docs/design/shell-layout-2026-08.md` §L5)。
+ *
+ * `.chat-panel` 的窄栏降级从前查的是**窗口宽**(`@media`),而聊天列的真实宽度
+ * 取决于左右两栏开没开、拖到多宽 —— 分屏两格时更是差一倍。容器化之后它查的是
+ * 自己那一格的宽度(P7)。
+ *
+ * 容器落在**父级**而不是 `.chat-panel` 自己身上:一个元素查不了自己
+ * (`container-type` 只为**后代**建容器),而 `.chat-panel` 正是那条规则的主语。
+ * `.tab-content` 与 `.chat-panel` 之间没有 padding/border,两者同宽,断点因此
+ * 逐像素等价。取名 `chat-surface` 是为了让 ChatPanel 那两条查询指名道姓 ——
+ * 匿名查询会落到"最近的祖先容器"上,谁在中间加一个都会把它偷走。
+ */
 .tab-content {
   display: flex;
   flex-direction: column;
@@ -398,6 +415,8 @@ defineExpose({
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  container-type: inline-size;
+  container-name: chat-surface;
 }
 
 .split-drop-overlay {

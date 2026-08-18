@@ -71,13 +71,14 @@ describe('buildHistoryMessages', () => {
       },
     )
 
-    expect(history).toHaveLength(3)
+    // C5(2026-08-14):注入是**单条** user(带 <summary> 标签),伪造的
+    // assistant 握手已删 —— 交替归 provider 适配层的相邻同角色合并。
+    expect(history).toHaveLength(2)
     expect(history[0]).toMatchObject({
       role: 'user',
-      content: expect.stringContaining('Earlier context'),
+      content: expect.stringContaining('<summary>\nEarlier context\n</summary>'),
     })
-    expect(history[1]).toMatchObject({ role: 'assistant' })
-    expect(history[2]).toMatchObject({ role: 'user', content: 'user 3' })
+    expect(history[1]).toMatchObject({ role: 'user', content: 'user 3' })
   })
 
   it('does not use a summary when the summary anchor is missing', () => {

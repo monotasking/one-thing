@@ -94,26 +94,14 @@
                   v-for="{ part, key } in group.entries"
                   :key="key"
                 >
-                  <!-- Generation waiting (工具执行后等待 AI 继续).
-                       同一个 ThoughtHeader:rail 里的等待行和消息顶部的
-                       MessageThinking 等待行必须是同一行高(22px),真内容到来时
-                       在同一插槽原地顶替,周围不动。以前这里是一套手写的
-                       点+粗体字,行高 30px,出现/消失就是一次块级抖动。 -->
-                  <div
-                    v-if="part.type === 'waiting'"
-                    class="generation-waiting"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <ThoughtHeader
-                      label="Waiting"
-                      live
-                    />
-                  </div>
+                  <!-- Generation waiting (工具执行后等待 AI 继续)**不在这里画**
+                       (2026-08-17):Waiting / Thinking 的实时状态搬到了 composer
+                       顶沿(useGenerationStatus),消息里不再为它留一行。`waiting`
+                       part 仍存在于数据里(它是"模型被要求继续"的事实),只是零渲染。 -->
                   <!-- Inline reasoning parts. Controlled by the expansion
                        intent record so a remount cannot undo a user's click. -->
                   <CollapsePanel
-                    v-else-if="part.type === 'reasoning'"
+                    v-if="part.type === 'reasoning'"
                     class="inline-reasoning"
                     :name="key"
                     default-collapsed
@@ -523,7 +511,8 @@ const processGroupRenders = computed(() => {
         continue
       }
       if (part.type === 'waiting') {
-        hasContent = true
+        // Renders nothing since the status moved to the composer; a group
+        // holding only a waiting placeholder draws no rail frame.
         continue
       }
 
@@ -1096,16 +1085,6 @@ html[data-theme='light'] .image-generation-skeleton::after {
   opacity: 0;
 }
 
-/* Generation waiting (工具执行后等待 AI 继续).
-   点、字、呼吸动画全在 ThoughtHeader 里;这里只负责"锁成恒定一行"。高度写死
-   而不是 min-height:等待行被真内容原地顶替时,高度差必须是零,不能因为字体
-   /缩放让这一行忽高忽低。22px = ThoughtHeader 的行盒高度。 */
-.generation-waiting {
-  display: flex;
-  align-items: center;
-  height: 22px;
-}
-
 .inline-reasoning {
   --reasoning-fg: var(--ui-message-thinking-fg);
   margin: 3px 0;
@@ -1131,6 +1110,12 @@ html[data-theme='light'] .image-generation-skeleton::after {
 
 .content :deep(p:last-child) {
   margin-bottom: 0;
+}
+
+/* Same as markdown.css: a streaming segment's last <p> keeps its gap unless
+   the segment is the last one (see .md-segment note there). */
+.content :deep(.md-segment:not(:last-of-type) > p:last-child) {
+  margin-bottom: var(--content-paragraph-gap, 8px);
 }
 
 .content :deep(ul),

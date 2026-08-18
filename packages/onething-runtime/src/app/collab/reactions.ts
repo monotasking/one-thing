@@ -16,6 +16,8 @@ import type { ChatMessageReaction, ChatMessageReactionActor } from '@shared/ipc.
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 export interface CollabMessageReactionResult {
   success: boolean
   error?: string
@@ -65,7 +67,7 @@ export function reactToCollabMessage(
   }
 
   void getEventBus().emit(roomSessionId, {
-    type: 'message:updated',
+    type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
     messageId,
     updates: { reactions: next },
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])

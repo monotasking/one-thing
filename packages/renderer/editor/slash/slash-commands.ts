@@ -19,6 +19,7 @@ export type SlashCommandId = Extract<
   | 'task-list'
   | 'blockquote'
   | 'code-block'
+  | 'table'
   | 'horizontal-rule'
   | 'image'
 >
@@ -41,6 +42,7 @@ export const SLASH_COMMANDS: SlashCommandItem[] = [
   { id: 'task-list', label: '待办', hint: '☐ 可勾选', keywords: ['todo', 'task', 'check', 'box', '待办', '勾选', 'daiban'] },
   { id: 'blockquote', label: '引用', hint: '│ 竖线引一段', keywords: ['quote', 'blockquote', '引用', 'yinyong'] },
   { id: 'code-block', label: '代码块', hint: '``` 等宽', keywords: ['code', 'pre', 'fence', '代码', 'daima'] },
+  { id: 'table', label: '表格', hint: '3×2 带表头', keywords: ['table', 'grid', 'sheet', '表格', 'biaoge'] },
   { id: 'horizontal-rule', label: '分隔线', hint: '——— 断一段', keywords: ['hr', 'divider', 'rule', 'line', '分隔', 'fenge'] },
   { id: 'image', label: '图片', hint: '插一张图', keywords: ['image', 'img', 'picture', 'photo', '图片', 'tupian'] },
 ]

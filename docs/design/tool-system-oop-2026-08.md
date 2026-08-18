@@ -1098,3 +1098,11 @@ degrade-surface、闸落在 `PluginTool.visibleIn`(连败三次把这只工具�
 | eslint `--max-warnings 0`(本期改动的 22 个文件) | **0 error**。33 条 warning 全部落在 `apps/server/src/runtime.ts` 与 `app/headless/backend.ts` 的既有未用符号上(那两个文件本来就带着别处的在途改动) |
 | `bun run server:build` + 单文件包真跑 | 开关开:`/api/sessions` 200、`/api/tools` 200 报 **20 只**(17 内置 + 3 个 `feature_*`,证明 self-evolution feature 在服务端也把三件套装进了目录)、`ReferenceError` 计数 **0**;开关关:`/api/sessions` 200、`/api/tools` 报 **1 只**(`read` —— 那份只读假路),`ReferenceError` 0 |
 | `bun run build` | EXIT 0 |
+
+## 16. R4a 记录(2026-08-18):默认值翻开
+
+用户拍板两条:web 端 `/api/tools` 显示真实工具面(引擎实际装的 17 + `feature_*`),不再回退到只读假表;R4a 现在翻。
+
+- `packages/onething-runtime/src/toolkit/flag.ts`:`isToolkitEnabled()` 从 `=== '1'` 改为 `!== '0'`。`ONETHING_TOOLKIT=0` 是杀开关,`=1` 仍接受。
+- 验证:全量 vitest 与翻前逐字相同(仅 `renderer/styles/ui-token-vars` 既有 2 条红);`bun run server:build` + 无环境变量启动 → `/api/tools` 20 个、零 ReferenceError;typecheck 无新增;boundary-gate 无新增;`bun run build` EXIT 0。
+- 桌面真机 soak(§14.6 九条)仍由用户进行;R4b(按 §15 的 9 步删旧树 + 删 flag + 删 `canAutoExecute`/`autoExecute` 死概念 + `external-agent` EffectClass 尾巴)等 soak 与并行会话落地后做。

@@ -248,8 +248,14 @@ function wrapStreamingWords(root: ParentNode, animateNew: boolean) {
   display: contents;
 }
 
+/* `inline`, never `inline-block`: an atomic inline adds line-break
+   opportunities plain text does not have (around `Foo.vue`, `a/b`, URLs), so
+   the wrapped live paragraph and the unwrapped completed one could wrap to
+   different line counts — measured 10/105 mixed CJK/Latin paragraphs — and
+   everything below jumped at every paragraph boundary. Opacity animates on
+   inline spans just the same. */
 .md-segment :deep(.stream-word) {
-  display: inline-block;
+  display: inline;
   opacity: 1;
   will-change: opacity;
 }

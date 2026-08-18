@@ -33,20 +33,81 @@ afterEach(async () => {
 const oauthProviders = new Set(['codex', 'claude-code', 'kimi-code'])
 const isOAuthProvider = (id: string): boolean => oauthProviders.has(id)
 
-describe('三态解析', () => {
-  it('default space → settings 源(一个字节都不改)', () => {
-    // 就算 default 的 credentials.json 里真有东西也不看它:默认空间的凭证层
-    // 就是 settings.ai,这不是回落而是身份定义。
+describe('两态解析(C1:default 也是普通空间)', () => {
+  it('default space 走**同一条**路 —— 池里那条 entry 说了算,不再看 settings', () => {
     upsertSpaceProviderApiKey(DEFAULT_SPACE_ID, 'deepseek', { apiKey: 'sk-file' })
     const resolution = resolveSpaceProviderCredential({
       spaceId: DEFAULT_SPACE_ID,
       providerId: 'deepseek',
       isOAuthProvider,
     })
-    expect(resolution.kind).toBe('settings')
+    expect(resolution).toMatchObject({ kind: 'entry', spaceId: DEFAULT_SPACE_ID })
 
-    const config = { model: 'm', apiKey: 'sk-settings' }
-    expect(applySpaceProviderCredential(config, resolution, 'deepseek')).toBe(config)
+    const next = applySpaceProviderCredential(
+      { model: 'm', apiKey: 'sk-settings' },
+      resolution,
+      'deepseek',
+    ) as Record<string, unknown>
+    expect(next.apiKey).toBe('sk-file')
+  })
+
+  it('default space 池里没有 entry → 与别的空间一样报「未配置」(configured 闸不再豁免)', () => {
+    const resolution = resolveSpaceProviderCredential({
+      spaceId: DEFAULT_SPACE_ID,
+      providerId: 'deepseek',
+      isOAuthProvider,
+    })
+    expect(resolution).toMatchObject({ kind: 'unavailable', reason: 'no-entry' })
+    const next = applySpaceProviderCredential(
+      { model: 'm', apiKey: 'sk-settings' },
+      resolution,
+      'deepseek',
+    ) as Record<string, unknown>
+    // 迁移之前 settings 里可能还留着一把旧钥匙:抹掉,否则隔离对没迁完的机器不生效。
+    expect(next.apiKey).toBeUndefined()
+  })
+
+  it('env key 机器级、全空间可见(C1 拍板 1)—— 不盖标记,交给 env 兜底', () => {
+    for (const spaceId of [DEFAULT_SPACE_ID, 'work']) {
+      const resolution = resolveSpaceProviderCredential({
+        spaceId,
+        providerId: 'deepseek',
+        isOAuthProvider,
+        hasEnvApiKey: () => ({ envVar: 'DEEPSEEK_API_KEY' }),
+      })
+      expect(resolution).toMatchObject({ kind: 'env', spaceId, envVar: 'DEEPSEEK_API_KEY' })
+      const next = applySpaceProviderCredential(
+        { model: 'm', apiKey: 'sk-stale' },
+        resolution,
+        'deepseek',
+      ) as Record<string, unknown>
+      // 不阻断(没有 spaceCredential 标记),但也不把旧 settings key 递过去。
+      expect(next.spaceCredential).toBeUndefined()
+      expect(next.apiKey).toBeUndefined()
+    }
+  })
+
+  it('池里有 entry 时 env 不参与 —— 空间里配了钥匙却被环境变量顶掉是解释不清的一天', () => {
+    upsertSpaceProviderApiKey('work', 'deepseek', { apiKey: 'sk-space' })
+    const resolution = resolveSpaceProviderCredential({
+      spaceId: 'work',
+      providerId: 'deepseek',
+      isOAuthProvider,
+      hasEnvApiKey: () => true,
+    })
+    expect(resolution.kind).toBe('entry')
+  })
+
+  it('从不问凭证的 provider(ACP / 本地 agent)不是「未配置」', () => {
+    const resolution = resolveSpaceProviderCredential({
+      spaceId: 'work',
+      providerId: 'acp',
+      isOAuthProvider,
+      isCredentialFreeProvider: id => id === 'acp',
+    })
+    expect(resolution).toMatchObject({ kind: 'credential-free', spaceId: 'work' })
+    const config = { model: 'claude-code' }
+    expect(applySpaceProviderCredential(config, resolution, 'acp')).toBe(config)
   })
 
   it('非 default + 有 entry → 覆盖 apiKey / baseUrl 并留下 entryId', () => {
@@ -98,8 +159,8 @@ describe('三态解析', () => {
   })
 })
 
-describe('OAuth 在非 default 空间一律拒绝', () => {
-  it('provider 本身是 OAuth/订阅型时,连查池都不查', () => {
+describe('OAuth 在非 default 空间:没登录才拒绝(批 B6)', () => {
+  it('本空间没有 oauth entry = 未登录,文案指向「在本空间登录」而不是「换个空间」', () => {
     const resolution = resolveSpaceProviderCredential({
       spaceId: 'work',
       providerId: 'codex',
@@ -109,10 +170,97 @@ describe('OAuth 在非 default 空间一律拒绝', () => {
     })
     expect(resolution).toMatchObject({ kind: 'unavailable', reason: 'oauth' })
     if (resolution.kind !== 'unavailable') throw new Error('unreachable')
-    expect(resolution.message).toContain('默认空间')
+    expect(resolution.message).toContain('本空间登录')
+    // B3/D 的临时闸(「请在默认空间使用」)已经拆掉 —— 出路变了,文案必须跟着变。
+    expect(resolution.message).not.toContain('请在默认空间使用')
   })
 
-  it('池里存的是 oauth entry 也一样拒绝', () => {
+  it('本空间登录过 → oauth-entry(带上那条 entry,标记 authType 为 oauth)', () => {
+    writeSpaceCredentials('work', {
+      providers: {
+        codex: {
+          entries: [{
+            id: 'acc-1',
+            label: '工作号',
+            authType: 'oauth',
+            oauthToken: { accessToken: 'at', expiresAt: Date.now() + 3_600_000, tokenType: 'Bearer' },
+            source: 'user',
+          }],
+          policy: 'single',
+        },
+      },
+    })
+    const resolution = resolveSpaceProviderCredential({
+      spaceId: 'work',
+      providerId: 'codex',
+      isOAuthProvider,
+    })
+    expect(resolution.kind).toBe('oauth-entry')
+    expect(toSpaceCredentialMarker(resolution)).toEqual({
+      spaceId: 'work',
+      entryId: 'acc-1',
+      authType: 'oauth',
+    })
+  })
+
+  it('登录记录是个空壳(没有 token)= 未登录 —— 不让 401 去替我们说话', () => {
+    writeSpaceCredentials('work', {
+      providers: {
+        codex: {
+          entries: [{ id: 'acc-1', label: '空壳', authType: 'oauth', source: 'user' }],
+          policy: 'single',
+        },
+      },
+    })
+    expect(resolveSpaceProviderCredential({
+      spaceId: 'work',
+      providerId: 'codex',
+      isOAuthProvider,
+    })).toMatchObject({ kind: 'unavailable', reason: 'oauth' })
+  })
+
+  it('OAuth 型 provider 的池里混进 apiKey entry:按形态过滤掉,不拿它去撞登录端点', () => {
+    writeSpaceCredentials('work', {
+      providers: {
+        codex: {
+          entries: [{ id: 'k', label: 'k', authType: 'apiKey', apiKey: 'sk-x', source: 'user' }],
+          policy: 'single',
+        },
+      },
+    })
+    expect(resolveSpaceProviderCredential({
+      spaceId: 'work',
+      providerId: 'codex',
+      isOAuthProvider,
+    })).toMatchObject({ kind: 'unavailable', reason: 'oauth' })
+  })
+
+  it('把 oauth token 盖进 config 时,settings 的 apiKey 被抹掉(严格隔离)', () => {
+    const token = { accessToken: 'at', expiresAt: Date.now() + 3_600_000, tokenType: 'Bearer' }
+    writeSpaceCredentials('work', {
+      providers: {
+        codex: {
+          entries: [{ id: 'acc-1', label: '工作号', authType: 'oauth', oauthToken: token, source: 'user' }],
+          policy: 'single',
+        },
+      },
+    })
+    const resolution = resolveSpaceProviderCredential({
+      spaceId: 'work',
+      providerId: 'codex',
+      isOAuthProvider,
+    })
+    const next = applySpaceProviderCredential(
+      { apiKey: 'sk-from-settings', model: 'gpt-5' } as Record<string, unknown>,
+      resolution,
+      'codex',
+    ) as Record<string, unknown>
+    expect(next.apiKey).toBeUndefined()
+    expect(next.oauthToken).toEqual(token)
+  })
+
+  // 非 OAuth 型 provider 的池里混进 oauth entry:那是配错了,仍然拒绝。
+  it('provider 不是 OAuth 型,却在池里存了 oauth entry —— 一样拒绝', () => {
     writeSpaceCredentials('work', {
       providers: {
         openai: {
@@ -151,7 +299,7 @@ describe('边角', () => {
       spaceId: '../evil',
       providerId: 'deepseek',
       isOAuthProvider,
-    }).kind).toBe('settings')
+    }).spaceId).toBe(DEFAULT_SPACE_ID)
   })
 
   it('entry 的 apiMode 落进 provider 自己的档位字段', () => {
@@ -179,8 +327,9 @@ describe('边角', () => {
     expect(next.zhipuApiMode).toBe('coding-plan')
   })
 
-  it('marker: default 不盖标记,其余两态各自成形', () => {
-    expect(toSpaceCredentialMarker({ kind: 'settings', spaceId: DEFAULT_SPACE_ID })).toBeUndefined()
+  it('marker: env / credential-free 不盖标记,其余各自成形', () => {
+    expect(toSpaceCredentialMarker({ kind: 'env', spaceId: DEFAULT_SPACE_ID })).toBeUndefined()
+    expect(toSpaceCredentialMarker({ kind: 'credential-free', spaceId: 'work' })).toBeUndefined()
     expect(toSpaceCredentialMarker({
       kind: 'unavailable',
       spaceId: 'work',

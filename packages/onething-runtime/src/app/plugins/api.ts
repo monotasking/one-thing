@@ -8,6 +8,12 @@ import {
   registerTool as registerToolInRegistry,
   unregisterTool as unregisterToolInRegistry,
 } from '../tools/index.js'
+// R3b:插件工具进目录(见 host.registerTool / disposePlugin 两处的注释)。
+import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
+import {
+  registerPluginToolInCatalog,
+  unregisterPluginToolFromCatalog,
+} from '../toolkit/plugin-tools.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
@@ -28,6 +34,7 @@ import { pluginStorageImageExists } from './file-import.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
 import { registerPluginDeepLinkAction } from '../deeplink/registry.js'
 import { registerPluginSearchProvider } from '../search/plugin-search-registry.js'
+import { registerPluginCredentialStrategy } from '../providers/credential-strategy.js'
 import {
   forgetUiActionGestures,
   PLUGIN_FILES_QUOTA_WARNING_EVENT,
@@ -81,6 +88,8 @@ import {
   executeCorePluginTool,
   type CorePluginAPIState,
 } from '@onething/core/plugins'
+
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
 export interface PluginState extends CorePluginAPIState<PluginAPI, PluginCommandDefinition> {}
 
@@ -352,6 +361,9 @@ export function createPluginAPI(
              * 的 `executionMode !== 'parallel'` 判据。
              */
             executionMode: tool.executionMode,
+            // 工具自带的提示词原样透传:core 注册闸已经校验过形状。它随工具面
+            // 进出 —— 插件禁用/卸载时工具注销,段落随之消失,不另记账。
+            prompt: tool.prompt,
             async execute(args: unknown, ctx: any) {
               return executeCorePluginTool(tool, args as any, {
                 sessionId: ctx.sessionId,
@@ -370,6 +382,29 @@ export function createPluginAPI(
             },
           }),
         )
+        /*
+         * R3b:同一个定义**同时**进新树目录(设计文档 §14.5 第 1 条)。
+         *
+         * 旧路那一段一个字不改 —— 开关关时这一句不执行,开关开时两边都注册:
+         * 目录答"谁来跑它"(`runToolkitToolDirectly`),旧 registry 仍然答着那些
+         * 还没改口的读点。R4 删旧树时删的是上面那一段,不是这一句。
+         *
+         * `permissionGuard: 'permission-gated'` 那句话在新树里由 `plugin_exec`
+         * 这条效果说出来(§13.3),所以这里不必再传一次。
+         */
+        if (isToolkitEnabled()) {
+          registerPluginToolInCatalog({
+            toolId,
+            definition: {
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.parameters,
+              ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+              ...(tool.prompt ? { prompt: tool.prompt } : {}),
+            },
+            execute: (args, hostContext) => executeCorePluginTool(tool, args as any, hostContext as any),
+          })
+        }
       },
       subscribeEvent(id, eventType, handler) {
         // 会话事件走 per-session 环形缓冲,全局事件走 globalHandlers —— 两条投递面
@@ -451,6 +486,16 @@ export function createPluginAPI(
        */
       registerDeepLinkAction(id, registration) {
         return registerPluginDeepLinkAction(id, registration)
+      },
+      /**
+       * 凭证轮换策略(批 E)—— 第四个既有宿主动词面。转发到装配层的注册表;
+       * 脱敏投影、超时、熔断、用量聚合都在那里(它才认识凭证池与账本)。
+       *
+       * 这里**只登记**:一个策略被注册不代表它会被调用 —— 只有用户在某个空间的
+       * 某个 provider 上把 policy 选成 `plugin:<id>:<name>` 之后,它才会被问到。
+       */
+      registerCredentialStrategy(id, registration) {
+        return registerPluginCredentialStrategy(id, registration)
       },
       emitPluginEvent(id, eventName, payload) {
         // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast
@@ -579,7 +624,7 @@ export function createPluginAPI(
   // 插件 state 对齐 —— 排进 storeClosers,拆除时最先退订。
   const cascadeUnsubs = [
     eventBus.onAnySession(
-      'message:deleted',
+      SESSION_EVENT_TYPES.MESSAGE_DELETED,
       (env) => messageState.handleMessageDeleted(env.sessionId, env.event.messageId),
       `PluginMessageState:${pluginId}`,
     ),
@@ -623,7 +668,16 @@ const storeClosers = new WeakMap<PluginState, () => void>()
 
 export function disposePlugin(state: PluginState): void {
   disposeCorePluginState(state, {
-    unregisterTool: unregisterToolInRegistry,
+    /*
+     * R3b:**两侧拆除**。core 按注册过的工具 id 逐个调这个口,所以把"两边都摘"
+     * 收在这一处,注册表足迹与目录足迹不可能漂开(`builtin-teardown.test.ts` 钉的
+     * 就是"停用之后一个字都不剩")。目录没建起来时后一句返回 false,无害。
+     */
+    unregisterTool: (toolId: string) => {
+      const removed = unregisterToolInRegistry(toolId)
+      const removedFromCatalog = isToolkitEnabled() && unregisterPluginToolFromCatalog(toolId)
+      return removed || removedFromCatalog
+    },
   })
   // KV **在 onDispose 回调全部跑完之后**才关 —— 插件在 onDispose 里
   // `api.store.set` 存盘是最自然的收尾写法,提前关掉就是静默丢数据。

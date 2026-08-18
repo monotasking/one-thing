@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -50,6 +51,8 @@ function track<T extends VueWrapper>(wrapper: T): T {
 }
 
 beforeEach(() => {
+  // 压缩位住 chatStore(C6),后台任务这枚 chip 因此要一个活的 pinia。
+  setActivePinia(createPinia())
   state.jobs = []
   state.goal = null
   state.music = {
@@ -110,6 +113,71 @@ describe('S 状态带 · 后台任务', () => {
     expect(flyout?.textContent).toContain(':5173')
     expect(flyout?.querySelectorAll('.job-stop')).toHaveLength(2)
     expect(flyout?.querySelector('.refresh-btn')).not.toBeNull()
+  })
+})
+
+describe('S 状态带 · 压缩(C6)', () => {
+  async function mountBar(props: Record<string, unknown> = {}) {
+    const { default: BackgroundJobsStatusBar } = await import('../BackgroundJobsStatusBar.vue')
+    const wrapper = track(mount(BackgroundJobsStatusBar, { attachTo: document.body, props }))
+    await flushPromises()
+    return wrapper
+  }
+
+  it('压缩中:即使一个后台任务都没有,chip 也为它出场', async () => {
+    const { useChatStore } = await import('@/stores/chat')
+    useChatStore().setSessionCompacting('s-1', true)
+
+    const wrapper = await mountBar({ sessionId: 's-1' })
+    const chip = wrapper.find('button.status-chip')
+    expect(chip.exists()).toBe(true)
+    expect(chip.text()).toContain('Compacting')
+    // 没有进度就不带计数。
+    expect(chip.text()).not.toMatch(/\d+\/\d+/)
+
+    await chip.trigger('click')
+    await flushPromises()
+    expect(document.body.querySelector('.compact-row')?.textContent)
+      .toContain('Compacting context…')
+  })
+
+  it('有分块进度时带 2/5', async () => {
+    const { useChatStore } = await import('@/stores/chat')
+    const chatStore = useChatStore()
+    chatStore.setSessionCompacting('s-1', true)
+    chatStore.setSessionCompactProgress('s-1', { chunk: 2, totalChunks: 5 })
+
+    const wrapper = await mountBar({ sessionId: 's-1' })
+    expect(wrapper.find('button.status-chip').text()).toContain('2/5')
+
+    await wrapper.find('button.status-chip').trigger('click')
+    await flushPromises()
+    expect(document.body.querySelector('.compact-row')?.textContent).toContain('2/5')
+  })
+
+  it('completed 即隐:没有任务也没在压缩时一个字节都不渲染', async () => {
+    const { useChatStore } = await import('@/stores/chat')
+    const chatStore = useChatStore()
+    chatStore.setSessionCompacting('s-1', true)
+    chatStore.setSessionCompactProgress('s-1', { chunk: 2, totalChunks: 5 })
+
+    const wrapper = await mountBar({ sessionId: 's-1' })
+    expect(wrapper.find('.status-chip').exists()).toBe(true)
+
+    // completed 的两条清位(ipc-hub 的 case 就是这么做的)。
+    chatStore.setSessionCompacting('s-1', false)
+    chatStore.setSessionCompactProgress('s-1', null)
+    await flushPromises()
+
+    expect(wrapper.find('.status-chip').exists()).toBe(false)
+  })
+
+  it('压缩是按会话的:别的会话在压不影响本会话的 chip', async () => {
+    const { useChatStore } = await import('@/stores/chat')
+    useChatStore().setSessionCompacting('s-other', true)
+
+    const wrapper = await mountBar({ sessionId: 's-1' })
+    expect(wrapper.find('.status-chip').exists()).toBe(false)
   })
 })
 

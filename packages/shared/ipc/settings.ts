@@ -3,7 +3,7 @@
  * Application settings type definitions for IPC communication
  */
 
-import type { AISettings } from "./providers.js";
+import type { AISettings, EffectiveAISettings } from "./providers.js";
 import type { ToolSettings } from "./tools.js";
 import type { MCPSettings } from "./mcp.js";
 import type { ACPSettings } from "./acp.js";
@@ -215,6 +215,23 @@ export interface ChannelSettings {
 export interface StorageSettings {
 	/** 新建会话的持久化格式;已有会话跟随其盘上格式。默认 legacy-json。 */
 	sessionFormat?: "legacy-json" | "jsonl";
+	/**
+	 * provider 配置迁进空间层的时间戳(C1)。**缺席 = 还没迁**,装配序列会在
+	 * 下一次启动时跑一次 `migrateProviderConfigToDefaultSpace`。
+	 *
+	 * 它是**幂等闸**,不是审计字段:手动删掉它会让迁移重跑一遍(重跑是安全的 ——
+	 * 搬运只补不覆盖),这也正是回滚流程里的一步。
+	 */
+	providerConfigMigratedAt?: number;
+	/**
+	 * `settings.ai` **整体**搬进 default 空间 `providers.json` 的时间戳(C2)。
+	 *
+	 * 与上面那格是两段迁移,各有各的闸:C1 只搬了凭证与三格偏好,C2 把剩下的
+	 * (每 provider 的 model/enabled/selectedModels/端点·档位/逐模型覆盖、默认
+	 * provider、自定义 provider 定义)整体搬走。C1 版本已经跑过的机器上第一格
+	 * 在、第二格不在 —— 那正是二段迁移的触发条件。
+	 */
+	spaceProviderSettingsMigratedAt?: number;
 }
 
 /*
@@ -254,7 +271,15 @@ export interface PluginPreferences {
 }
 
 export interface AppSettings {
-	ai: AISettings;
+	/**
+	 * **生效形状**:当前空间的 provider 设置 + 全局目录缓存(C2)。
+	 *
+	 * 落盘时被拆成两半 —— `workspaces/<id>/providers.json`(整套 provider 设置)
+	 * 与 `settings.json` 的 `ai` 段(只剩 `AISettings`:温度缺省 + 目录缓存)。
+	 * 拆分点只此一处:`app/stores/settings.ts`。持久化形状见
+	 * `PersistedAppSettings`。
+	 */
+	ai: EffectiveAISettings;
 	theme: "light" | "dark" | "system";
 	general: GeneralSettings;
 	voice?: VoiceSettings;
@@ -270,6 +295,15 @@ export interface AppSettings {
 	evals?: EvalsSettings;
 	plugins?: PluginPreferences;
 }
+
+/**
+ * `settings.json` 真正落盘的形状(C2)。与 `AppSettings` 只差 `ai` 一段:
+ * per-space 的那部分已经搬进 `workspaces/<id>/providers.json`。
+ *
+ * 只有设置仓库(`app/stores/settings.ts`)、defaults 归一与一次性迁移认识它;
+ * 其余所有消费者拿到的都是 `AppSettings`(生效形状)。
+ */
+export type PersistedAppSettings = Omit<AppSettings, "ai"> & { ai: AISettings };
 
 // Settings IPC Request/Response types
 export interface GetSettingsResponse {

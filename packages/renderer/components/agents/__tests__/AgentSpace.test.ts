@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import AgentSpace from '../AgentSpace.vue'
 
 /**
@@ -102,6 +103,9 @@ async function openFace(wrapper: ReturnType<typeof mountSpace>, label: string) {
 
 describe('AgentSpace — 右栏的空间页', () => {
   beforeEach(() => {
+    // 空间层(批 B9)从 ModelSelector / ThinkToggle / InputBox 一路读到这里,
+    // 它住在 pinia 里 —— 独立挂载的组件测试也得有一个 pinia。
+    setActivePinia(createPinia())
     vi.clearAllMocks()
     mocks.visibleSessionIds.clear()
   })

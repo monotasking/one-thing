@@ -85,6 +85,32 @@ vi.mock('@/components/MusicPanelContent.vue', () => workspacePanelStub('music'))
 vi.mock('@/components/PracticePanelContent.vue', () => workspacePanelStub('practice'))
 vi.mock('@/components/ArchivedChatsContent.vue', () => workspacePanelStub('archive'))
 
+// 会话域头两条(L3,原大纲栏的四段)。真组件各自拖着 sessions / chat store 与
+// SystemPrompt/Variables 面板;这一层的契约只是"页签渲染对应的本体、跳转再冒一级"。
+vi.mock('../OutlineWorkbench.vue', () => ({
+  default: {
+    name: 'OutlineWorkbench',
+    props: ['sessionId', 'active'],
+    emits: ['jump-to-source'],
+    template: `
+      <div class="mock-outline-workbench" :data-session="sessionId" :data-active="String(!!active)">
+        <button
+          class="mock-outline-jump"
+          @click="$emit('jump-to-source', { sessionId: 'session-9', messageId: 'message-9' })"
+        >jump</button>
+      </div>
+    `,
+  },
+}))
+
+vi.mock('../SessionContextWorkbench.vue', () => ({
+  default: {
+    name: 'SessionContextWorkbench',
+    props: ['sessionId'],
+    template: '<div class="mock-context-workbench" :data-session="sessionId" />',
+  },
+}))
+
 vi.mock('@/components/editor/EditorWorkbench.vue', () => ({
   default: {
     name: 'EditorWorkbench',
@@ -308,14 +334,14 @@ describe('RightWorkbenchPanel', () => {
     /* 「调度」(D8 §4.5 的总览)是 picker 里的第五格:它**不属于任何一间房**,
        所以落点是工具页签而不是房间背台的一格。线程仍然不进 picker —— 它必须绑
        一个房,picker 里点一下开不出有意义的空白页。 */
-    it('线程不进 picker / 空态清单 —— 会话域五条 + 工作区域七条', () => {
+    it('线程不进 picker / 空态清单 —— 会话域七条 + 工作区域七条', () => {
       const wrapper = mountPanel()
       const labels = wrapper.findAll('.empty-action').map(button => button.text())
-      // 前五条是会话域(这次会话的工具),后七条是工作区域(跨会话的面板,
-      // P1 从退役的 MediaPanel 容器迁进来,清单从 panel-registry 派生;
-      // 「轨迹」是主线 E1 加的第七条)。
+      // 前七条是会话域(这次会话的工具;Contents / Context 是 L3 从退役的大纲栏
+      // 并进来的两条,排在 Files 之前 —— 它们说的是这条会话本身),后七条是
+      // 工作区域(跨会话的面板,清单从 panel-registry 派生)。
       expect(labels).toEqual([
-        'Files', 'Terminal', 'Browser', '看板', '调度总览',
+        'Contents', 'Context', 'Files', 'Terminal', 'Browser', '看板', '调度总览',
         'Media', 'Agents', 'Tasks', 'Music', 'Practice', 'Archived Chats', '轨迹',
       ])
       expect(wrapper.text()).not.toContain('线程')
@@ -491,8 +517,9 @@ describe('RightWorkbenchPanel', () => {
       await settle()
       expect(pickerLabels()).not.toContain('Media')
       expect(pickerLabels()).toContain('Agents')
-      // 两个域之间画一道 —— 与页签条上那道竖线说的是同一件事。
-      expect(document.querySelectorAll('.picker-separator')).toHaveLength(1)
+      // 两个域各成一组、各带标题 —— 与页签条上那道竖线说的是同一件事。
+      const groupTitles = Array.from(document.querySelectorAll('.picker-group-title')).map(el => el.textContent?.trim())
+      expect(groupTitles).toEqual(['本会话', '工作区'])
       wrapper.unmount()
     })
 
@@ -512,6 +539,38 @@ describe('RightWorkbenchPanel', () => {
       expect(wrapper.emitted('jump-to-source')).toEqual([[payload]])
       expect(wrapper.emitted('close')).toBeUndefined()
       expect(wrapper.find('[data-panel="media"]').exists()).toBe(true)
+      wrapper.unmount()
+    })
+
+    /**
+     * L3:大纲栏并入右栏 —— Contents / Context 是**会话域**的两条页签,
+     * 跳转与 Media 共用同一条 `jump-to-source` 中继链(落点是 App)。
+     */
+    it('Contents / Context 是会话域页签,大纲的跳转走同一条中继链', async () => {
+      const wrapper = mountPanel()
+      const vm = wrapper.vm as unknown as { openWorkbenchTab: (type: string) => void }
+
+      vm.openWorkbenchTab('outline')
+      await settle()
+      expect(wrapper.find('.mock-outline-workbench').attributes('data-session')).toBe('session-1')
+      expect(wrapper.find('.mock-outline-workbench').attributes('data-active')).toBe('true')
+
+      await wrapper.find('.mock-outline-jump').trigger('click')
+      expect(wrapper.emitted('jump-to-source')).toEqual([
+        [{ sessionId: 'session-9', messageId: 'message-9' }],
+      ])
+      expect(wrapper.emitted('close')).toBeUndefined()
+
+      vm.openWorkbenchTab('context')
+      await settle()
+      expect(wrapper.find('.mock-context-workbench').attributes('data-session')).toBe('session-1')
+      // 单例:再点一次是聚焦不是新开。
+      vm.openWorkbenchTab('outline')
+      await settle()
+      expect(wrapper.findAll('.mock-outline-workbench')).toHaveLength(1)
+      // 两条都在**会话域**(工作区页签恒在其后)。
+      const labels = wrapper.findAll('.workbench-tab-label').map(label => label.text())
+      expect(labels).toEqual(['Contents', 'Context'])
       wrapper.unmount()
     })
 

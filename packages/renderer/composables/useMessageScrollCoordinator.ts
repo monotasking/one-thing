@@ -21,6 +21,34 @@ interface UseMessageScrollCoordinatorOptions {
 const DRIFT_EPSILON_PX = 2;
 const DEFAULT_ANCHOR_DURATION_MS = 2400;
 const DEFAULT_SMOOTH_SCROLL_MS = 260;
+const WIDTH_CHANGE_EPSILON_PX = 0.5;
+
+export interface ReadingAnchor {
+	messageId: string;
+	offsetWithinMessage: number;
+}
+
+export interface ScrollerBox {
+	width: number;
+	height: number;
+}
+
+/**
+ * 阅读锚只对**宽度**变化负责。
+ *
+ * 高度变化(消息增长、工具卡展开、composer 变高)已经有 tail / anchor /
+ * hold-top 三条路在管;阅读锚再插一脚只会打架。宽度变化则是没人管的那一格:
+ * 视口上方的每一条消息重新换行,可见内容被整体推走。
+ *
+ * 首次观测(previous 为 null)只记基线,不还原 —— 那不是"变化"。
+ */
+export function shouldRestoreReadingAnchor(
+	previous: ScrollerBox | null,
+	next: ScrollerBox,
+): boolean {
+	if (!previous) return false;
+	return Math.abs(next.width - previous.width) > WIDTH_CHANGE_EPSILON_PX;
+}
 
 interface ScrollWriteOptions {
 	behavior?: ScrollBehavior;
@@ -31,9 +59,11 @@ export function useMessageScrollCoordinator(
 	options: UseMessageScrollCoordinatorOptions,
 ) {
 	let mode: MessageScrollMode = { type: "idle" };
+	let readingAnchor: (ReadingAnchor & { sessionId: string }) | null = null;
 	let restoreFrame: number | null = null;
 	let smoothFrame: number | null = null;
 	let smoothToken = 0;
+	let smoothTarget: number | null = null;
 
 	function getMaxScrollTop(el: HTMLElement): number {
 		return Math.max(0, el.scrollHeight - el.clientHeight);
@@ -56,6 +86,7 @@ export function useMessageScrollCoordinator(
 
 	function cancelSmoothScroll() {
 		smoothToken++;
+		smoothTarget = null;
 		if (smoothFrame !== null) {
 			cancelAnimationFrame(smoothFrame);
 			smoothFrame = null;
@@ -85,21 +116,32 @@ export function useMessageScrollCoordinator(
 			return;
 		}
 
+		// Re-target in flight: same destination → keep the running animation;
+		// new destination → continue from the last value WE wrote (not a DOM
+		// read that may already be clamped by a pending layout), so the curve
+		// never steps backwards.
+		const inFlight = smoothFrame !== null;
+		if (inFlight && smoothTarget !== null && Math.abs(smoothTarget - target) <= DRIFT_EPSILON_PX) return;
+		const startTop = inFlight && _lastSelfWriteTarget !== null ? _lastSelfWriteTarget : scroller.scrollTop;
 		cancelSmoothScroll();
 		const token = smoothToken;
-		const startTop = scroller.scrollTop;
 		const distance = target - startTop;
 		if (Math.abs(distance) <= DRIFT_EPSILON_PX) return;
+		smoothTarget = target;
 
 		const startedAt = performance.now();
 		const tick = (now: number) => {
 			if (token !== smoothToken) return;
-			const progress = Math.min(1, (now - startedAt) / Math.max(1, durationMs));
+			// rAF timestamps are the frame's start and can precede `startedAt`
+			// (we were called mid-frame): clamp at 0 or ease-out goes negative
+			// and the first tick lands BEHIND the start.
+			const progress = Math.min(1, Math.max(0, (now - startedAt) / Math.max(1, durationMs)));
 			applyScrollTop(startTop + distance * easeOutCubic(progress));
 			if (progress < 1) {
 				smoothFrame = requestAnimationFrame(tick);
 			} else {
 				smoothFrame = null;
+				smoothTarget = null;
 				applyScrollTop(target);
 			}
 		};
@@ -144,7 +186,72 @@ export function useMessageScrollCoordinator(
 		return true;
 	}
 
-	function restoreAnchorNow() {
+	/**
+	 * 空闲态 = 没人在驱动滚动位置。tail / 未过期的 anchor 都算"有人管"。
+	 * 读 anchor 走 isAnchored(),顺带把过期的 anchor 归零。
+	 */
+	function isIdle(): boolean {
+		if (mode.type === "tail") return false;
+		if (mode.type === "anchor") return !isAnchored();
+		return true;
+	}
+
+	/**
+	 * 记下"最上方可见消息 + 它顶到视口顶的偏移"。只在空闲态记 —— 其余模式下
+	 * 位置由 tail / anchor 说了算,记了也只会在宽度变化时和它们抢方向盘。
+	 */
+	function captureReadingAnchor(anchor: ReadingAnchor | null) {
+		if (!isIdle()) return;
+		const sessionId = options.getSessionId();
+		if (!sessionId || !anchor) {
+			readingAnchor = null;
+			return;
+		}
+		readingAnchor = { ...anchor, sessionId };
+	}
+
+	function getReadingAnchor(): ReadingAnchor | null {
+		if (!readingAnchor) return null;
+		if (readingAnchor.sessionId !== options.getSessionId()) {
+			readingAnchor = null;
+			return null;
+		}
+		return {
+			messageId: readingAnchor.messageId,
+			offsetWithinMessage: readingAnchor.offsetWithinMessage,
+		};
+	}
+
+	function clearReadingAnchor() {
+		readingAnchor = null;
+	}
+
+	/**
+	 * 同步还原(给 ResizeObserver 回调用:layout 之后、paint 之前,一帧都不漏)。
+	 * 返回是否真的写了 scrollTop。
+	 */
+	function restoreReadingAnchor(): boolean {
+		if (!isIdle()) return false;
+		const anchor = getReadingAnchor();
+		if (!anchor) return false;
+		const scroller = options.scroller.value;
+		const row = options.getMessageRowById(anchor.messageId);
+		if (!scroller || !row) return false;
+
+		const target = Math.max(
+			0,
+			Math.min(
+				getMaxScrollTop(scroller),
+				row.offsetTop + anchor.offsetWithinMessage,
+			),
+		);
+		if (Math.abs(scroller.scrollTop - target) <= DRIFT_EPSILON_PX) return false;
+		cancelSmoothScroll();
+		applyScrollTop(target);
+		return true;
+	}
+
+	function restoreAnchorNow(writeOptions: ScrollWriteOptions = {}) {
 		if (!isAnchored() || mode.type !== "anchor") return;
 		const scroller = options.scroller.value;
 		const row = options.getMessageRowById(mode.messageId);
@@ -157,7 +264,18 @@ export function useMessageScrollCoordinator(
 			return;
 		}
 
-		writeScrollTop(target);
+		// A layout change while a smooth restore is still animating (the
+		// composer collapsing after send, the assistant placeholder landing)
+		// re-targets the animation from wherever it is instead of cancelling
+		// it with an instant write — that instant write was the "smooth then
+		// snap" double scroll the old send path had to avoid by never being
+		// smooth at all.
+		if (smoothFrame !== null && writeOptions.behavior !== "smooth") {
+			animateScrollTop(target, writeOptions.durationMs);
+			return;
+		}
+
+		writeScrollTop(target, writeOptions);
 	}
 
 	function scheduleRestoreAnchor() {
@@ -189,6 +307,7 @@ export function useMessageScrollCoordinator(
 		messageId: string,
 		offsetWithinMessage: number,
 		durationMs = DEFAULT_ANCHOR_DURATION_MS,
+		writeOptions: ScrollWriteOptions = {},
 	) {
 		const sessionId = options.getSessionId();
 		if (!sessionId) return;
@@ -199,10 +318,10 @@ export function useMessageScrollCoordinator(
 			offsetWithinMessage,
 			until: performance.now() + durationMs,
 		};
-		restoreAnchorNow();
+		restoreAnchorNow(writeOptions);
 		requestAnimationFrame(() => {
 			restoreAnchorNow();
-			requestAnimationFrame(restoreAnchorNow);
+			requestAnimationFrame(() => restoreAnchorNow());
 		});
 	}
 
@@ -242,11 +361,18 @@ export function useMessageScrollCoordinator(
 	}
 
 	return {
+		captureReadingAnchor,
 		clear,
+		clearReadingAnchor,
 		detectExternalScroll,
+		getReadingAnchor,
 		isAnchored,
+		isIdle,
 		isTail,
 		onLayoutChange,
+		restoreReadingAnchor,
+		/** Synchronous anchor restore for post-layout callers (ResizeObserver). */
+		restoreAnchorNow: () => restoreAnchorNow(),
 		setAnchor,
 		setTail,
 		writeScrollTop,

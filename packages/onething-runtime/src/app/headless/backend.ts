@@ -53,6 +53,8 @@ import {
 import { ensureCollabGroupRoom } from '../collab/room-create.js'
 import { getSettings } from '../stores/settings.js'
 import { getAllToolsAsync } from '../tools/index.js'
+import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
+import { toolkitCatalogToolDefinitions } from '../toolkit/catalog-projection.js'
 import { shutdownEventSystem, getEventBus, getStreamChannel } from '../events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from '../session/index.js'
 import { shutdownStreamEngine, getStreamEngine } from '../engine/index.js'
@@ -62,6 +64,8 @@ import { ACPManager } from '../acp/index.js'
 import { killTrackedDetachedChildren } from '../tools/core/bash-executor.js'
 import { killAllTerminals } from '../terminal/service.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
+
+import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 
 type EmitStreamEvent = (event: DaemonStreamEvent) => void
 
@@ -191,7 +195,7 @@ export class HeadlessBackend {
         getEventBus().onAny(sessionId, envelope => {
           const event = envelope.event
           switch (event.type) {
-            case 'tool:call':
+            case SESSION_EVENT_TYPES.TOOL_CALL:
               emit({
                 streamId,
                 sessionId,
@@ -203,7 +207,7 @@ export class HeadlessBackend {
                 },
               })
               break
-            case 'tool:result':
+            case SESSION_EVENT_TYPES.TOOL_RESULT:
               emit({
                 streamId,
                 sessionId,
@@ -215,7 +219,7 @@ export class HeadlessBackend {
                 },
               })
               break
-            case 'permission:request':
+            case SESSION_EVENT_TYPES.PERMISSION_REQUEST:
               if (event.targetChannel !== 'cli') break
               emit({
                 streamId,
@@ -229,19 +233,19 @@ export class HeadlessBackend {
               })
               this.startPermissionTimeout(record, event.requestId)
               break
-            case 'stream:complete': {
+            case SESSION_EVENT_TYPES.STREAM_COMPLETE: {
               const stopReason = event.data?.aborted ? 'aborted' : event.data?.error ? 'error' : 'end_turn'
               emit({ streamId, sessionId, event: { type: 'done', stopReason, usage: event.data?.usage } })
               resolve({ streamId, sessionId, stopReason })
               cleanup()
               break
             }
-            case 'stream:error':
+            case SESSION_EVENT_TYPES.STREAM_ERROR:
               emit({ streamId, sessionId, event: { type: 'error', code: 'STREAM_ERROR', message: event.data.error } })
               resolve({ streamId, sessionId, stopReason: 'error' })
               cleanup()
               break
-            case 'stream:aborted':
+            case SESSION_EVENT_TYPES.STREAM_ABORTED:
               emit({ streamId, sessionId, event: { type: 'done', stopReason: 'aborted' } })
               resolve({ streamId, sessionId, stopReason: 'aborted' })
               cleanup()
@@ -254,7 +258,7 @@ export class HeadlessBackend {
       this.activeStreamBySession.set(sessionId, streamId)
 
       getEventBus().emit(sessionId, {
-        type: 'command:send-message',
+        type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
         channel: 'cli',
         content: request.prompt,
         source: request.source || 'cli',
@@ -297,11 +301,11 @@ export class HeadlessBackend {
           if (chunk.type === 'reasoning-delta') emit({ streamId, sessionId, event: { type: 'reasoning_delta', text: chunk.reasoning } })
         }),
         getEventBus().onAny(sessionId, envelope => {
-          if (envelope.event.type === 'stream:complete') {
+          if (envelope.event.type === SESSION_EVENT_TYPES.STREAM_COMPLETE) {
             emit({ streamId, sessionId, event: { type: 'done', stopReason: envelope.event.data?.aborted ? 'aborted' : 'end_turn' } })
             resolve({ streamId, sessionId, stopReason: envelope.event.data?.aborted ? 'aborted' : 'end_turn' })
             cleanup()
-          } else if (envelope.event.type === 'stream:error') {
+          } else if (envelope.event.type === SESSION_EVENT_TYPES.STREAM_ERROR) {
             emit({ streamId, sessionId, event: { type: 'error', code: 'STREAM_ERROR', message: envelope.event.data.error } })
             resolve({ streamId, sessionId, stopReason: 'error' })
             cleanup()
@@ -311,7 +315,7 @@ export class HeadlessBackend {
       this.activeStreams.set(streamId, record)
       this.activeStreamBySession.set(sessionId, streamId)
       getEventBus().emit(sessionId, {
-        type: 'command:retry-message',
+        type: SESSION_COMMAND_TYPES.RETRY_MESSAGE,
         messageId: lastAssistant.id,
       }).catch(error => {
         reject(error instanceof Error ? error : new Error(String(error)))
@@ -329,7 +333,7 @@ export class HeadlessBackend {
       stream?.permissionTimers.delete(requestId)
     }
     void getEventBus().emit(sessionId, {
-      type: 'command:permission-respond',
+      type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
       channel: 'cli',
       requestId,
       decision,
@@ -419,7 +423,7 @@ export class HeadlessBackend {
     const session = getSession(roomSessionId)
     if (session?.kind !== 'room') throw new Error(`Not a room session: ${roomSessionId}`)
     await getEventBus().emit(roomSessionId, {
-      type: 'command:send-message',
+      type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
       content,
       source: 'text',
     } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
@@ -513,7 +517,10 @@ export class HeadlessBackend {
   }
 
   async listTools(): Promise<ToolSummary[]> {
-    const tools = await getAllToolsAsync()
+    // R3b:开关开时"有哪些工具"由目录回答(设计文档 §10.2-④)。呈现一个字不改
+    // —— `listOnethingHeadlessToolSummaries` 是同一个投影,换的是入参的来源。
+    const tools = (isToolkitEnabled() ? toolkitCatalogToolDefinitions() : undefined)
+      ?? await getAllToolsAsync()
     return listOnethingHeadlessToolSummaries(tools)
   }
 

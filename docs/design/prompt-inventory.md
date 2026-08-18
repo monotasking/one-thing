@@ -2,6 +2,11 @@
 
 > 2026-07-26 整理，基于 `redesign/prompt-assembly` 分支现状。
 > 目的：回答"现在到底有哪些提示词、散落在哪、实际发给 AI 的 system prompt 长什么样"。
+>
+> **2026-08-18 更新**：装配改为片段组合（`docs/design/prompt-composition-2026-08.md`）。
+> §1.2 的 `tool-guidelines.md` 与 §2 的 `tool-workspace-rules.md` / `context-variables-intro.md`
+> 已不存在——那些文本搬到了各自的工具上（`edit` / `write` / `variable` 的 `ToolInfo.prompt`），
+> 只在该工具进入回合工具面时出现。下文的清单按当时现状保留，读时以此为准。
 
 ---
 

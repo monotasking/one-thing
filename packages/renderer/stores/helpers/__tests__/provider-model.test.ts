@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { AppSettings } from '@/types'
-import { resolveProviderModelSelection } from '../provider-model'
+import { isProviderEnabledIn, resolveProviderModelSelection } from '../provider-model'
 import {
   resolveAgentProfile,
   type OnethingAgentDefinition,
@@ -205,4 +205,122 @@ describe('display resolver mirrors the engine', () => {
       ).toEqual(engineSelection(testCase))
     })
   }
+})
+
+/**
+ * A family card has ONE switch, so a member reads as enabled off the family
+ * (the API member's flag); the subscription member's own flag survives only
+ * as the legacy per-provider override that can switch it on when the API
+ * side is off. Both directions of legacy drift are covered.
+ */
+describe('isProviderEnabledIn — provider families', () => {
+  it('api ON / subscription OFF: the subscription member is enabled (kimi true / kimi-code false)', () => {
+    const providers = { kimi: { enabled: true }, 'kimi-code': { enabled: false } }
+    expect(isProviderEnabledIn(providers, 'kimi')).toBe(true)
+    expect(isProviderEnabledIn(providers, 'kimi-code')).toBe(true)
+  })
+
+  it('api OFF / subscription ON: the API member stays off (openai false / codex true)', () => {
+    const providers = { openai: { enabled: false }, codex: { enabled: true } }
+    expect(isProviderEnabledIn(providers, 'openai')).toBe(false)
+    expect(isProviderEnabledIn(providers, 'codex')).toBe(true)
+  })
+
+  it('both OFF: both hidden; missing sibling counts as unset (= enabled)', () => {
+    expect(isProviderEnabledIn({ grok: { enabled: false }, 'grok-oauth': { enabled: false } }, 'grok-oauth')).toBe(false)
+    expect(isProviderEnabledIn({ 'kimi-code': { enabled: false } }, 'kimi-code')).toBe(true)
+  })
+
+  it('non-family providers read their own flag only', () => {
+    expect(isProviderEnabledIn({ deepseek: { enabled: false } }, 'deepseek')).toBe(false)
+    expect(isProviderEnabledIn({}, 'deepseek')).toBe(true)
+  })
+})
+
+/* ── 批 B9:空间默认 + 空间开关覆盖 ─────────────────────────────────────── */
+
+describe('resolveProviderModelSelection —— 空间默认这一格(批 B9)', () => {
+  it('会话/agent 都没表达过 → 空间默认压过全局', () => {
+    expect(
+      resolveProviderModelSelection({
+        settings: settings(),
+        spaceDefault: { provider: 'deepseek', model: 'deepseek-chat' },
+      }),
+    ).toEqual({ providerId: 'deepseek', model: 'deepseek-chat' })
+  })
+
+  it('空间只钉 provider → model 落回该 provider 的全局默认模型', () => {
+    expect(
+      resolveProviderModelSelection({ settings: settings(), spaceDefault: { provider: 'deepseek' } }),
+    ).toEqual({ providerId: 'deepseek', model: 'deepseek-chat' })
+  })
+
+  it('缺席(default 空间 / 这个空间没表达过)→ 逐字等于今天', () => {
+    expect(resolveProviderModelSelection({ settings: settings(), spaceDefault: undefined }))
+      .toEqual({ providerId: 'codex', model: 'gpt-5.5' })
+  })
+
+  it('优先级:agent 绑定 > 空间默认 > 全局', () => {
+    expect(
+      resolveProviderModelSelection({
+        settings: settings(),
+        agentModel: { providerId: 'codex', modelId: 'gpt-5.5' },
+        spaceDefault: { provider: 'deepseek', model: 'deepseek-chat' },
+      }),
+    ).toEqual({ providerId: 'codex', model: 'gpt-5.5' })
+  })
+
+  it('优先级:会话 lastProvider > 空间默认', () => {
+    expect(
+      resolveProviderModelSelection({
+        settings: settings(),
+        session: { lastProvider: 'codex', lastModel: 'gpt-5.5' },
+        spaceDefault: { provider: 'deepseek', model: 'deepseek-chat' },
+      }),
+    ).toEqual({ providerId: 'codex', model: 'gpt-5.5' })
+  })
+
+  it('空间默认指着不存在的 provider → 落全局(与 agent/session 同一条不变式)', () => {
+    expect(
+      resolveProviderModelSelection({ settings: settings(), spaceDefault: { provider: 'ghost' } }),
+    ).toEqual({ providerId: 'codex', model: 'gpt-5.5' })
+  })
+
+  it('与引擎侧逐条同形(同一组输入,两边同解)', () => {
+    const spaceDefault = { provider: 'deepseek', model: 'deepseek-chat' }
+    const engine = getEffectiveProviderConfig(settings() as never, null, null, spaceDefault)
+    const display = resolveProviderModelSelection({ settings: settings(), spaceDefault })
+    expect(display).toEqual({ providerId: engine.providerId, model: engine.model })
+  })
+})
+
+describe('isProviderEnabledIn —— 空间覆盖(批 B9),家族语义不变', () => {
+  it('逐 id 缺席 = 回落全局;整个覆盖缺席 = 逐字等于今天', () => {
+    const providers = { deepseek: { enabled: false }, zhipu: { enabled: true } }
+    expect(isProviderEnabledIn(providers, 'deepseek', undefined)).toBe(false)
+    expect(isProviderEnabledIn(providers, 'deepseek', {})).toBe(false)
+    expect(isProviderEnabledIn(providers, 'deepseek', { zhipu: false })).toBe(false)
+  })
+
+  it('表达过即以空间为准(两个方向都能翻)', () => {
+    const providers = { deepseek: { enabled: false }, zhipu: { enabled: true } }
+    expect(isProviderEnabledIn(providers, 'deepseek', { deepseek: true })).toBe(true)
+    expect(isProviderEnabledIn(providers, 'zhipu', { zhipu: false })).toBe(false)
+  })
+
+  it('家族派生看的是**经过空间层之后**的成员开关(Kimi 家族)', () => {
+    // 全局 kimi 关着,空间里把 API 成员打开 → 订阅成员 kimi-code 跟着可见。
+    const providers = { kimi: { enabled: false }, 'kimi-code': { enabled: false } }
+    expect(isProviderEnabledIn(providers, 'kimi-code', { kimi: true })).toBe(true)
+    expect(isProviderEnabledIn(providers, 'kimi', { kimi: true })).toBe(true)
+  })
+
+  it('家族:空间里关掉 API 成员,订阅成员自己的 legacy 开关仍能把它救回来', () => {
+    const providers = { kimi: { enabled: true }, 'kimi-code': { enabled: true } }
+    expect(isProviderEnabledIn(providers, 'kimi', { kimi: false })).toBe(false)
+    // kimi-code 自己那格没被空间表达过 → 回落全局 true,家族读法照旧放行。
+    expect(isProviderEnabledIn(providers, 'kimi-code', { kimi: false })).toBe(true)
+    // 两个成员都在空间里关掉 → 都不可见。
+    expect(isProviderEnabledIn(providers, 'kimi-code', { kimi: false, 'kimi-code': false })).toBe(false)
+  })
 })

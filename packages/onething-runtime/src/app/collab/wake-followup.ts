@@ -33,6 +33,8 @@ import { findAgent } from '../agents/index.js'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { noteCollabSchedule } from './inspector.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /**
  * 等一个回合最多等这么久。与权限降级同一个数字(120s)不是巧合:两处问的是
  * 同一个问题 —— "对面还会不会回应我",而超过两分钟的答案在两处都是"不等了"。
@@ -88,7 +90,7 @@ export function registerCollabWakeFollowup(input: {
     input.dmRoomSessionId,
     envelope => {
       const event = (envelope as { event?: { type?: string; agentId?: string; active?: boolean } } | undefined)?.event
-      if (event?.type !== 'collab:turn-active') return
+      if (event?.type !== SESSION_EVENT_TYPES.COLLAB_TURN_ACTIVE) return
       if (event.agentId !== input.targetAgentId) return
       // 落边才是 settle:起边(true)只是说回合开始了。
       if (event.active !== false) return

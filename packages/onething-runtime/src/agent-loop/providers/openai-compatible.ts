@@ -1,7 +1,9 @@
 import { collectAgentTurnFromStream } from "@onething/core/agent-loop";
 import { agentToolMessageContentToText } from "@onething/core/agent-loop";
 import { undeliverableAttachmentText } from "@onething/core/agent-loop";
+import { mergeAdjacentSameRoleMessages } from "./message-merge.js";
 import { readJsonSseData } from "./sse.js";
+import { withProviderRetryAfter } from "../provider-error-classification.js";
 import type {
 	AgentContentPart,
 	AgentFinishReason,
@@ -330,20 +332,28 @@ function createOpenAICompatibleApiError(
 	providerId: string,
 	status: number,
 	responseBody: string,
+	headers?: Headers,
 ): Error & {
 	responseBody: string;
 	data: { providerId: string; statusCode: number; responseBody: string };
+	retryAfterAt?: number;
 } {
-	return Object.assign(
-		new Error(`${providerId} agent loop API error: ${status} ${responseBody}`),
-		{
-			responseBody,
-			data: {
-				providerId,
-				statusCode: status,
+	// 批 B8-2:OpenAI 系用 `retry-after` + `x-ratelimit-reset-requests/-tokens`
+	// (Go duration,`6m0s` / `2m59.56s`)。`retryAfterAt` 挂**顶层**,与
+	// `statusCode` 藏在 data 里的老习惯不同 —— 那是既有形状,不去动它。
+	return withProviderRetryAfter(
+		Object.assign(
+			new Error(`${providerId} agent loop API error: ${status} ${responseBody}`),
+			{
 				responseBody,
+				data: {
+					providerId,
+					statusCode: status,
+					responseBody,
+				},
 			},
-		},
+		),
+		{ headers, body: responseBody },
 	);
 }
 
@@ -601,8 +611,11 @@ export function createOpenAICompatibleAgentProvider(
 		const tools = toOpenAICompatibleTools(request.tools);
 		const body: OpenAICompatibleRequestBody = {
 			model: request.model,
+			// 这条适配层同时服务一批 OpenAI 方言端点,其中包含要求 user/assistant
+			// 严格交替的(DeepSeek 兼容端点走的就是这里)。相邻同角色先合成一条 ——
+			// 对宽松的端点是无害的等价改写,对严格的端点是能不能发出去的分界。
 			messages: toOpenAICompatibleMessages(
-				request.messages,
+				mergeAdjacentSameRoleMessages(request.messages),
 				Boolean(options.includeAssistantReasoning),
 			),
 			stream: true,
@@ -659,6 +672,7 @@ export function createOpenAICompatibleAgentProvider(
 				options.providerId,
 				response.status,
 				text,
+				response.headers,
 			);
 		}
 

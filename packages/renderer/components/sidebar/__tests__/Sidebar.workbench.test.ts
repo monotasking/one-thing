@@ -779,9 +779,19 @@ describe('整体折叠 = 整条侧栏卸下来', () => {
     expect(wrapper.find('.sidebar-content').classes()).toContain('content-hidden')
   })
 
-  it('折叠即不挂侧栏,没有 rail 分支', () => {
+  /* L4 起"折叠"不再等于**卸载**:侧栏只有一个实例,折叠 = 左栏面板收成 0 宽
+     (`:collapsed`),实例留在树上,于是浮层⇄停靠不丢滚动位置与展开的分组。
+     这条 case 钉的那件事没变 —— 收起态**看不见任何侧栏**,而且没有 rail 分支。 */
+  it('折叠即收成 0 宽,没有 rail 分支', () => {
     const app = readFileSync(resolve(process.cwd(), 'packages/renderer/App.vue'), 'utf8')
-    expect(app).toContain('v-if="sidebarDockedVisible"')
+    // L5:三栏树在 AppShell,App 只把"侧栏在不在停靠位"这一枚布尔灌进去。
+    const shell = readFileSync(
+      resolve(process.cwd(), 'packages/renderer/components/shell/AppShell.vue'),
+      'utf8',
+    )
+    expect(app).toContain(':sidebar-docked="sidebarDockedVisible"')
+    expect(shell).toContain(':collapsed="!sidebarDocked"')
+    expect(app).not.toContain('v-if="sidebarDockedVisible"')
     expect(app).not.toContain('SIDEBAR_RAIL_WIDTH')
     expect(app).not.toContain('sidebarRailOnly')
   })

@@ -3,14 +3,31 @@
  * drives the full service pipeline — coalescing, ring, attach snapshot.
  * Exercises the native addon + spawn-helper exec bit on this machine.
  */
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createNodePtyBackend } from '../pty-backend.js'
 import { TerminalService } from '../service.js'
+
+// The spawned shell is a REAL interactive login zsh. Left alone it would
+// source the developer's ~/.zshrc and append the marker commands below to
+// the developer's real ~/.zsh_history on every test run (macOS /etc/zshrc
+// pins HISTFILE=$ZDOTDIR/.zsh_history unconditionally, so overriding
+// HISTFILE alone is not enough). Point ZDOTDIR at a throwaway directory:
+// the shell's history lands there and no user rc files are read at all.
+const previousZdotdir = process.env.ZDOTDIR
+const zdotdir = mkdtempSync(path.join(os.tmpdir(), 'onething-pty-smoke-'))
+writeFileSync(path.join(zdotdir, '.zshrc'), '')
+process.env.ZDOTDIR = zdotdir
 
 const service = new TerminalService(createNodePtyBackend(), () => null)
 
 afterAll(() => {
   service.killAll()
+  if (previousZdotdir === undefined) delete process.env.ZDOTDIR
+  else process.env.ZDOTDIR = previousZdotdir
+  rmSync(zdotdir, { recursive: true, force: true })
 })
 
 async function waitFor(predicate: () => boolean, timeoutMs = 8000): Promise<void> {

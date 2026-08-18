@@ -2,7 +2,9 @@
 import { mount, type VueWrapper } from "@vue/test-utils";
 import { nextTick, reactive } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
 import InputBox from "../InputBox.vue";
+import { toasts } from "@/composables/useToast";
 import Tooltip from "@/components/common/Tooltip.vue";
 import { createDefaultSettings } from "@shared/defaults/settings";
 import { executeCommand, findCommand } from "@/services/commands";
@@ -15,6 +17,13 @@ const mocks = vi.hoisted(() => ({
 	voiceStore: null as any,
 	promptsStore: null as any,
 	musicStore: null as any,
+}));
+
+// 结果提示走全局 ToastHost;这里不需要真的挂 overlay 宿主(它还带深链确认卡,
+// 要 Pinia),只要 toasts 队列可断言。
+vi.mock("@/services/ui-overlay-host", () => ({
+	ensureUiOverlayHost: vi.fn(),
+	destroyUiOverlayHost: vi.fn(),
 }));
 
 vi.mock("@/stores/settings", () => ({
@@ -213,6 +222,9 @@ async function setComposerValue(wrapper: VueWrapper, value: string) {
 
 describe("InputBox paste attachments", () => {
 	beforeEach(() => {
+	  // 空间层(批 B9)从 ModelSelector / ThinkToggle / InputBox 一路读到这里,
+	  // 它住在 pinia 里 —— 独立挂载的组件测试也得有一个 pinia。
+	  setActivePinia(createPinia());
 		vi.mocked(findCommand).mockReturnValue(undefined);
 		const baseSettings = createDefaultSettings();
 		baseSettings.ai.provider = "openai";
@@ -554,16 +566,15 @@ describe("InputBox paste attachments", () => {
 		await waitFor(() => !wrapper.find(".queued-messages").exists());
 	});
 
-	it("queues text messages without showing a duplicate queued toast", async () => {
+	it("steers text messages straight away instead of queueing them locally", async () => {
 		const wrapper = mountInputBox({ isLoading: true });
 
 		await setComposerValue(wrapper, "hi");
 		await wrapper.find(".send-btn").trigger("click");
 		await settle();
 
-		expect(wrapper.emitted("sendMessage")).toBeUndefined();
-		expect(wrapper.find(".queued-message-card").text()).toContain("Insert message");
-		expect(wrapper.find(".queued-message-card").text()).toContain("hi");
+		expect(wrapper.emitted("sendMessage")?.[0]).toEqual(["hi", "steer"]);
+		expect(wrapper.find(".queued-message-card").exists()).toBe(false);
 		expect(wrapper.text()).not.toContain("Message queued");
 	});
 
@@ -590,7 +601,10 @@ describe("InputBox paste attachments", () => {
 			},
 		]);
 		const wrapper = mountInputBox({ isLoading: true });
+		const file = new File(["hello"], "queued.txt", { type: "text/plain" });
 
+		wrapper.find("textarea").element.dispatchEvent(makePasteEvent([file]));
+		await waitFor(() => wrapper.text().includes("queued.txt"));
 		await setComposerValue(wrapper, "hi");
 		await wrapper.find(".send-btn").trigger("click");
 		await settle();
@@ -673,7 +687,8 @@ describe("InputBox paste attachments", () => {
 		expect(savedSettings.voice.asr.provider).toBe("funasr-stream");
 		expect(window.electronAPI.openSettingsWindow).toHaveBeenCalled();
 		expect(mocks.voiceStore.startListening).not.toHaveBeenCalled();
-		expect(wrapper.text()).toContain("Voice was reset to streaming ASR");
+		// 结果提示走全局 ToastHost(与系统通知同一个组件),不再画在 InputBox 里。
+		expect(toasts.value.map((item) => item.message).join("\n")).toContain("Voice was reset to streaming ASR");
 	});
 
 	it("enables the recommended voice path from the mic button when FunASR streaming is configured", async () => {

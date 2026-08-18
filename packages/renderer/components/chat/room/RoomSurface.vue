@@ -65,7 +65,7 @@
       ref="composerRef"
       class="room-composer"
     >
-      <BackgroundJobsStatusBar />
+      <BackgroundJobsStatusBar :session-id="effectiveSessionId" />
 
       <!-- 权限账页栏位(§8 铁律 1):位置与语义与旧壳逐字段一致 —— 中栏底部、
            composer 上方、按 toolCallId 应答、scope 档位、Enter/D 快捷键。

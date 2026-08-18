@@ -2,6 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import AgentsPanelContent from '../AgentsPanelContent.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -107,6 +108,12 @@ describe('AgentsPanelContent tool + model configuration', () => {
   })
 
   beforeEach(() => {
+
+    // 空间层(批 B9)从 ModelSelector / ThinkToggle / InputBox 一路读到这里,
+
+    // 它住在 pinia 里 —— 独立挂载的组件测试也得有一个 pinia。
+
+    setActivePinia(createPinia())
     mocks.getTools = vi.fn().mockResolvedValue({
       success: true,
       tools: [

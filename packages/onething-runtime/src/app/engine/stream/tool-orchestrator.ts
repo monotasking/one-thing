@@ -10,6 +10,8 @@ import {
   planToolCallArtifactRemoval,
 } from '@onething/core/engine'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 interface ToolCallData {
   toolName: string
   args: JsonObject
@@ -138,7 +140,7 @@ export class ToolOrchestrator {
     try {
       getEventBus()
         .emit(this.ctx.sessionId, {
-          type: 'message:updated',
+          type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
           messageId: this.ctx.assistantMessageId,
           updates: plan.updates ?? { toolCalls: [...this.processor.toolCalls] },
         })
@@ -155,7 +157,7 @@ export class ToolOrchestrator {
     try {
       getEventBus()
         .emit(this.ctx.sessionId, {
-          type: 'message:updated',
+          type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
           messageId: this.ctx.assistantMessageId,
           updates: { toolCalls: [...this.processor.toolCalls] },
         })

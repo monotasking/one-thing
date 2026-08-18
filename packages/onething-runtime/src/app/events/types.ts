@@ -1,6 +1,7 @@
 import type {
   GlobalEvent,
   GlobalEventEnvelope,
+  SessionBusMessage,
   SessionEvent,
   SessionEventEnvelope,
   StreamChunk,
@@ -18,15 +19,18 @@ import type {
 
 export type { Unsubscribe, InterceptResult }
 
-export type ObserveHandler = CoreObserveHandler<SessionEvent>
-export type TypedObserveHandler<T extends SessionEvent['type']> = CoreTypedObserveHandler<SessionEvent, T>
+// 这几个都是**总线**的形状,载荷因此是 `SessionBusMessage`:订阅方
+// (IPCBridge / SSE / 引擎的 `command:*` 订阅)看到的就是事件与命令的并集。
+export type ObserveHandler = CoreObserveHandler<SessionBusMessage>
+export type TypedObserveHandler<T extends SessionBusMessage['type']> = CoreTypedObserveHandler<SessionBusMessage, T>
 export type GlobalObserveHandler = CoreGlobalObserveHandler<GlobalEvent>
 export type StreamChunkHandler = CoreStreamChunkHandler<StreamChunk>
-export type InterceptHandler = CoreInterceptHandler<SessionEvent>
-export type EmitResult = CoreEmitResult<SessionEvent>
+export type InterceptHandler = CoreInterceptHandler<SessionBusMessage>
+export type EmitResult = CoreEmitResult<SessionBusMessage>
 export type {
   GlobalEventEnvelope,
   SessionEventEnvelope,
+  SessionBusMessage,
   SessionEvent,
   StreamChunk,
 }

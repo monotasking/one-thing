@@ -25,6 +25,8 @@ import {
 } from "@onething/runtime/collab";
 import { getStreamEngineSafe } from "../engine/index.js";
 
+import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
+
 /**
  * 一条 collab drive 的信封骨架 —— 把「这是谁发的、算谁的账、别给它起标题」
  * 一次说清。
@@ -37,7 +39,7 @@ import { getStreamEngineSafe } from "../engine/index.js";
  * `receivedAt` 现取:一条 drive 的「收到时刻」就是它被组装出来的时刻。
  */
 export interface CollabDriveEnvelope {
-	type: "command:send-message";
+	type: typeof SESSION_COMMAND_TYPES.SEND_MESSAGE;
 	channel: string | undefined;
 	content: string;
 	source: string;
@@ -60,7 +62,7 @@ export function collabDriveEnvelope(options: {
 	usageSource: string;
 }): CollabDriveEnvelope {
 	return {
-		type: "command:send-message",
+		type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
 		channel: options.channel,
 		content: options.content,
 		source: COLLAB_MESSAGE_SOURCE,

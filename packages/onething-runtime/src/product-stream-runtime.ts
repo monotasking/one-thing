@@ -11,7 +11,6 @@ import type {
   StreamEngineSkillsAdapter,
   StreamEngineStreamsAdapter,
   StreamEngineStoreAdapter,
-  StreamEngineVariablesAdapter,
 } from '@onething/core/engine'
 import {
   createOnethingStreamProviderAdapter,
@@ -52,7 +51,6 @@ export interface OnethingProductStreamRuntime<
   history: StreamEngineHistoryAdapter<TSession, TMessage, THistoryMessage>
   streams: StreamEngineStreamsAdapter<THistoryMessage, TStreamResult>
   compaction: StreamEngineCompactionAdapter<unknown, TCompactResult>
-  variables?: StreamEngineVariablesAdapter
 }
 
 export interface OnethingProductStreamRuntimeOptions<
@@ -88,7 +86,6 @@ export interface OnethingProductStreamRuntimeOptions<
     ): Promise<TStreamResult>
   }
   compaction: StreamEngineCompactionAdapter<unknown, TCompactResult>
-  variables?: StreamEngineVariablesAdapter
 }
 
 export interface OnethingProductStreamRuntimeHostAdapters<
@@ -120,7 +117,6 @@ export interface OnethingProductStreamRuntimeHostAdapters<
   compactSessionContext: StreamEngineCompactionAdapter<unknown, TCompactResult>['compactSessionContext']
   getContextCompactReason: StreamEngineCompactionAdapter<unknown, TCompactResult>['getContextCompactReason']
   shouldSkipAutoCompactForProviderUsageMismatch: StreamEngineCompactionAdapter<unknown, TCompactResult>['shouldSkipAutoCompactForProviderUsageMismatch']
-  buildTurnContextText?: StreamEngineVariablesAdapter['buildTurnContext']
 }
 
 export function createOnethingProductStreamRuntime<
@@ -192,7 +188,6 @@ export function createOnethingProductStreamRuntime<
     history: options.history,
     streams: options.streams,
     compaction: options.compaction,
-    variables: options.variables,
   }) as unknown as OnethingProductStreamRuntime<
     TSettings,
     TMessage,
@@ -290,8 +285,5 @@ export function createOnethingProductStreamRuntimeFromHostAdapters<
       getContextCompactReason: adapters.getContextCompactReason,
       shouldSkipAutoCompactForProviderUsageMismatch: adapters.shouldSkipAutoCompactForProviderUsageMismatch,
     },
-    variables: adapters.buildTurnContextText
-      ? { buildTurnContext: adapters.buildTurnContextText }
-      : undefined,
   })
 }

@@ -171,6 +171,8 @@ import {
 import { createCollabEngineWorkerPort } from './worker-mind-port.js'
 import { migrateCollabToV3 } from './migrate.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /** 预算读数的缓存窗口。与 v2 费用闸同一个数 —— 两代对同一笔钱不该有两种口径。 */
 const BUDGET_CACHE_MS = 60_000
 /** 裁判的房间尾巴取多少条(压缩窗在纯层再裁一次)。 */
@@ -388,7 +390,7 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
   //      与预算、断路器同一类机械台账,所以走 `postSystemLine`(display-only,
   //      不进模型投影):这不是房里的一句发言,是一盏灯。只在提问**开**的那一刻
   //      落一行 —— 收场时卡片自己会变成历史态,再补一行只是把转录撑长。
-  runtime.disposers.push(getEventBus().onAnySession('interaction:requested', envelope => {
+  runtime.disposers.push(getEventBus().onAnySession(SESSION_EVENT_TYPES.INTERACTION_REQUESTED, envelope => {
     const turn = findCollabV3Turn(envelope.sessionId)
     if (!turn) return
     const name = findAgent(turn.agentId)?.name ?? turn.agentId
@@ -1408,7 +1410,7 @@ function roomHost(): CollabRoomActorHost {
       store.addMessage(roomId, chat)
       // 与 v2 say / ingress 共用同一条广播:房间 UI 与 SSE 镜像不必认新事件。
       void getEventBus().emit(roomId, {
-        type: 'message:user-created',
+        type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
         message: chat,
       } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
     },

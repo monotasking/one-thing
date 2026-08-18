@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
     handlers = new Map<string, (...args: any[]) => void>()
     loadURL = vi.fn()
     loadFile = vi.fn()
+    setWindowButtonVisibility = vi.fn()
 
     constructor(public readonly options: Record<string, unknown>) {
       MockBrowserWindow.instances.push(this)
@@ -89,6 +90,8 @@ describe('electron todo plan window', () => {
       },
     })
     expect(options.onCreated).toHaveBeenCalledWith(todoWindow)
+    // 非 mac 走系统标题栏,交通灯是系统的事,一句都不该发。
+    expect(todoWindow.setWindowButtonVisibility).not.toHaveBeenCalled()
     expect(todoWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:5173/#/todo-plan?theme=dark&colorTheme=blue')
   })
 
@@ -109,8 +112,11 @@ describe('electron todo plan window', () => {
       transparent: true,
       backgroundColor: undefined,
       titleBarStyle: 'hidden',
-      trafficLightPosition: { x: 16, y: 9 },
     })
+    // non-activating NSPanel 永远成不了 main window,系统交通灯只会画成灰点 ——
+    // 所以摆位没有意义(这一项已经整条删掉),按钮直接收起来,由渲染层在形态轨顶自绘三枚。
+    expect(todoWindow.options).not.toHaveProperty('trafficLightPosition')
+    expect(todoWindow.setWindowButtonVisibility).toHaveBeenCalledWith(false)
     expect(todoWindow.loadFile).toHaveBeenCalledWith('/dist/renderer/index.html', {
       hash: '/todo-plan?theme=light&colorTheme=green',
     })

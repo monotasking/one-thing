@@ -218,13 +218,9 @@ export function createAskUserTool(
 ): Tool.Info<typeof AskUserParameters, AskUserMetadata> {
   return Tool.define<typeof AskUserParameters, AskUserMetadata>('ask_user', {
     name: 'AskUser',
-    description: `Ask the user a multiple-choice question and wait for their answer.
+    description: `Ask the user a multiple-choice question and wait for their answer. It shows in a panel above the input box; the choice (one, several, or free text when allowed) comes back as the tool result and the panel then closes — restate anything you rely on later.
 
-The question appears in a panel just above the user's input box; they pick an option (or several, or type their own when you allow it) and their choice comes back to you as the tool result. The panel closes once they answer, so the answer you get here is the only record of it — restate anything you rely on later.
-
-This blocks until the user answers. They may take a long time, or never answer at all — the call then comes back as declined / timeout / aborted, and you must continue on your own judgement, stating the assumption you made.
-
-Use it only when you genuinely need the user to decide: an ambiguous requirement, a fork with real trade-offs, a destructive action with several plausible shapes. Do not use it to confirm work you can verify yourself, to ask permission for something the permission system already gates, or to narrate progress.`,
+This blocks until answered; the user may take long or never answer (declined / timeout / aborted), in which case continue on your own judgement and state the assumption. Use it only when the user genuinely must decide (an ambiguous requirement, a fork with real trade-offs, a destructive action with several plausible shapes) — not to confirm work you can verify yourself, to ask permission the permission system already gates, or to narrate progress.`,
     category: 'builtin',
     enabled: true,
     autoExecute: true,

@@ -62,15 +62,12 @@ export function createGoalTool(
 	const completeSelfCheckPassed = new Set<string>();
 	return Tool.define<typeof GoalParameters, GoalMetadata>("goal", {
 		name: "Goal",
-		description: `Declare how your work toward the session's persistent goal proceeds.
-
-While a goal is active, end every reply by calling this tool with your disposition:
-- continue: keep working. Put your next concrete step in "note"; the loop resumes with your plan in hand.
-- complete: the objective is fully satisfied. "reason" (delivery summary shown to the user) and "evidence" (itemized verification per requirement) are both required. The first complete call per goal triggers a mandatory self-check instead of completing; verify each requirement with tools, then call complete again to confirm.
-- pause: you need the user. "reason" is required and must state exactly what you need (a decision, missing input, an external blocker). Never pause merely because the work is hard, slow, or long.
-- get: read the objective, status and remaining budget at any time.
-
-Creating, resuming and re-budgeting goals belong to the user (/goal command).`,
+		description: `Declare how your work toward the session's active goal proceeds. While a goal is active, end every reply with one call:
+- continue: keep working; "note" = your next concrete step.
+- complete: the objective is fully satisfied; "reason" (delivery summary) and "evidence" (itemized verification per requirement) are required. The first complete call per goal triggers a mandatory self-check instead of completing — verify each requirement with tools, then call complete again.
+- pause: you need the user; "reason" must state exactly what (a decision, missing input, an external blocker). Never pause because the work is hard, slow or long.
+- get: read the objective, status and remaining budget.
+Creating, resuming and re-budgeting goals belong to the user (/goal).`,
 		category: "builtin",
 		enabled: true,
 		autoExecute: true,

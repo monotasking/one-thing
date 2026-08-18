@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>onething Ledger — 派生示例</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600&family=Public+Sans:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============================ 左：会话账页 ============================ -->
+  <aside class="col-side">
+    <div class="brand">
+      <span class="brand-name">onething</span>
+      <span class="brand-tag">ledger</span>
+    </div>
+
+    <button class="btn btn-primary btn-block">新会话</button>
+
+    <div class="field">
+      <label class="field-label" for="q" hidden>搜索</label>
+      <input class="input input--sm" id="q" type="search" placeholder="搜索会话">
+    </div>
+
+    <div class="session-list">
+      <ul class="ledger">
+        <li class="ledger-group">今天</li>
+        <li class="ledger-row is-selected" data-interactive>
+          <span class="ledger-label">重构会话存储驱动</span>
+          <span class="ledger-figure">14:02</span>
+        </li>
+        <li class="ledger-row" data-interactive>
+          <span class="ledger-label">壁纸六级分档实现</span>
+          <span class="ledger-figure">11:48</span>
+        </li>
+        <li class="ledger-row" data-interactive>
+          <span class="ledger-label">插件 UI 锚点审计</span>
+          <span class="ledger-figure">09:31</span>
+        </li>
+        <li class="ledger-row" data-interactive>
+          <span class="ledger-label">token 层级自引用排查</span>
+          <span class="ledger-figure">08:15</span>
+        </li>
+
+        <li class="ledger-group">更早</li>
+        <li class="ledger-row" data-interactive>
+          <span class="ledger-label">衬线标题的中英配对</span>
+          <span class="ledger-figure">周四</span>
+        </li>
+        <li class="ledger-row" data-interactive>
+          <span class="ledger-label">焦点环双环方案</span>
+          <span class="ledger-figure">周二</span>
+        </li>
+      </ul>
+    </div>
+  </aside>
+
+  <!-- ============================ 中：会话 ============================ -->
+  <main class="col-main">
+    <div class="main-head">
+      <div class="nav-tabs" role="tablist">
+        <button class="nav-tab" role="tab" aria-selected="true">会话</button>
+        <button class="nav-tab" role="tab" aria-selected="false">工作区</button>
+        <button class="nav-tab" role="tab" aria-selected="false">差异</button>
+      </div>
+    </div>
+
+    <div class="main-scroll">
+      <div class="reading">
+
+        <header class="session-head">
+          <span class="kicker kicker--accent2">今天 · 14:02</span>
+          <h1>重构会话存储驱动</h1>
+          <div class="session-sub">
+            <span>jsonl</span><span class="dot">/</span>
+            <span>3 个文件</span><span class="dot">/</span>
+            <span>已应用</span>
+          </div>
+        </header>
+
+        <article class="msg msg--user">
+          <span class="msg-who">我</span>
+          <p class="msg-body">把 JSONL 的落盘改成按会话分目录，流式写入时追加，不要每次重写整文件。</p>
+        </article>
+
+        <article class="msg msg--assistant">
+          <span class="msg-who">onething</span>
+          <p class="msg-body">已经改成追加写。每个会话一个目录，索引单独一份，重放时按 offset 续读，不再全量解析。</p>
+
+          <section class="bracket-frame">
+            <span class="bracket-label">write</span>
+            <ul class="ledger">
+              <li class="file-row">
+                <span class="file-path">src/main/store/session-writer.ts</span>
+                <span class="diff-add">+128</span>
+                <span class="diff-del">−41</span>
+              </li>
+              <li class="file-row">
+                <span class="file-path">src/main/store/index-shard.ts</span>
+                <span class="diff-add">+64</span>
+                <span class="diff-del">−0</span>
+              </li>
+              <li class="file-row">
+                <span class="file-path">tests/session-replay.spec.ts</span>
+                <span class="diff-none">pending</span>
+              </li>
+            </ul>
+          </section>
+
+          <div class="tag-row">
+            <span class="tag tag--plain">session-writer.ts</span>
+            <span class="tag tag--warning">待确认迁移</span>
+            <span class="tag tag--plain">1.2s</span>
+          </div>
+
+          <div class="msg-actions">
+            <button class="btn btn-ghost">复制</button>
+            <button class="btn btn-ghost">重试</button>
+            <button class="btn btn-ghost">查看差异</button>
+          </div>
+        </article>
+
+      </div>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="composer">
+        <textarea class="composer-input" rows="1" placeholder="继续这条会话…"></textarea>
+        <div class="composer-bar">
+          <button class="btn btn-ghost">＋ 附件</button>
+          <button class="btn btn-ghost">/ 命令</button>
+          <span class="spacer"></span>
+          <span class="caption mono">claude · sonnet</span>
+          <button class="btn btn-sm">发送</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============================ 右：设置账页 ============================ -->
+  <aside class="col-side col-side--right">
+    <div class="panel-head">
+      <h2>会话存储</h2>
+      <p class="panel-lede">每会话一个 JSONL 目录，流式写入时追加。</p>
+    </div>
+
+    <section class="panel-section">
+      <span class="kicker kicker--rule">用量</span>
+      <div class="card card--flush">
+        <ul class="ledger">
+          <li class="ledger-row"><span class="ledger-label">目录数</span><span class="ledger-figure">312</span></li>
+          <li class="ledger-row"><span class="ledger-label">占用</span><span class="ledger-figure">567 KB</span></li>
+          <li class="ledger-row"><span class="ledger-label">最近压缩</span><span class="ledger-figure">3 天前</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="panel-section">
+      <span class="kicker kicker--rule">保留策略</span>
+      <div class="field">
+        <label class="field-label" for="keep">保留天数</label>
+        <input class="input input--sm mono" id="keep" value="90">
+        <span class="field-hint">超期会话仅删除正文，索引保留。</span>
+      </div>
+    </section>
+
+    <section class="panel-section">
+      <span class="kicker kicker--rule">状态</span>
+      <div class="tag-row" style="margin-top:0">
+        <span class="tag tag--success">迁移完成</span>
+        <span class="tag tag--info">索引重建中</span>
+        <span class="tag tag--danger">2 份校验失败</span>
+      </div>
+    </section>
+  </aside>
+
+</div>
+
+</body>
+</html>

@@ -9,11 +9,12 @@
  * 在**命令名**上对齐,一条一条列出来。
  *
  * ## 缺席的命令一律优雅降级,不抛
- * 词表里有几条在当前扩展集里根本没有对应实现:`table`(没装
- * `@tiptap/extension-table`)、`image`(由宿主的文件选择框走落盘管线,不是一条
+ * 词表里仍有一条在这里没有实现:`image`(由宿主的文件选择框走落盘管线,不是一条
  * 编辑器命令)。链上调一个不存在的方法在 Tiptap 里是 `TypeError`,所以整条
  * 执行包在 try/catch 里 —— **命令不支持是一种正常结果,不是错误**:按钮点下去
  * 什么都不发生,而不是把宿主整棵树打崩。
+ * (`table` 曾经也在这一档静默降级,2026-08-15 装了 `@tiptap/extension-table`
+ * 之后转正 —— 它现在真的插一张 3×2 带表头的表。)
  *
  * 返回值三态是给宿主看的,不是给用户看的:`delegated` 意味着"这条我不做,你做"
  * (目前只有 image),宿主据此打开文件选择框。
@@ -44,6 +45,9 @@ const RUNNERS: Partial<Record<MarkdownCommand, CommandRunner>> = {
   'task-list': editor => editor.chain().focus().toggleTaskList().run(),
   'blockquote': editor => editor.chain().focus().toggleBlockquote().run(),
   'code-block': editor => editor.chain().focus().toggleCodeBlock().run(),
+  // 表头行是 markdown 表格的**语法必需项**(`| --- |` 那一行只在有表头时成立),
+  // 所以插入时一律带表头 —— 不带表头的表在 tiptap-markdown 里会退化成 HTML。
+  'table': editor => editor.chain().focus().insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run(),
   'horizontal-rule': editor => editor.chain().focus().setHorizontalRule().run(),
 }
 

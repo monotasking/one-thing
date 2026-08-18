@@ -325,7 +325,35 @@ Notes:
   never `window.electronAPI` directly. `platformApi` resolves per access: electronAPI
   present → Electron bridge, else the web implementation over `fetch('/api/…')` + SSE.
 - System prompt assembly is a single "directory at top, copy below" builder in
-  `packages/onething-runtime/src/prompts/builder.ts`.
+  `packages/onething-runtime/src/prompts/builder.ts`, composed by a **`PromptComposer`
+  over `PromptSource`s** (2026-08-18, `docs/design/prompt-composition-2026-08.md`).
+  One shape (`CorePromptFragment`, `packages/core/engine/prompt-fragments.ts`: `slot`
+  guidelines / workspace-rules / section, `source`, `order`, `requiresTools` /
+  `requiresAnyTools` / `when`, `content`); one interface (`PromptSource.collect(ctx)`,
+  `prompts/composer.ts`); sources: `builtinPromptSource` (the section table),
+  `OnethingToolRegistry` itself (the `ToolInfo.prompt` of the tools **on the turn's
+  surface** — declared next to the tool, so enable/disable/scene/allowlist/unregister
+  all just work; `edit`/`write`/`variable` own the former `tool-guidelines.md` /
+  `tool-workspace-rules.md` / `context-variables-intro.md` text), `PromptFragmentRegistry`
+  (`promptFragments` / `registerPromptFragment` with a disposer, for runtime features /
+  hosts) and `PluginPromptContextSource` (`api.registerPromptContextProvider`; plugin
+  tools carry `prompt` like builtins). Hosts assemble their own composer:
+  `desktopPromptComposer` (`app/engine/prompt/system-prompt.ts`) = builtin + tools +
+  registry + plugins-with-breaker; `defaultOnethingPromptComposer` has no tool source
+  (evals / prompt version / tests add a `StaticPromptSource`). The composer only
+  filters → sorts → renders; `disabledSections` matches fragment ids plus the composite
+  blocks `tool-guidelines` / `tool-workspace-rules`. Nothing in the composer or the
+  builtin table names a tool except through `requires*`.
+  **Two channels** (2026-08-18, `docs/design/prompt-channels-2026-08.md`): a fragment
+  declares `channel: 'system'` (default, the static prefix — byte-identical across every
+  session of one agent) or `'turn'` (delivered in the `<context-update>` tail of the
+  newest user message). Anything session- or turn-level is `turn` — voice, projects,
+  skills, todo, AGENTS.md, plugin providers, the variable board (`VariableBoardSource`);
+  the `Current date:` line and the `# Work Directory` section are gone (the `datetime`
+  and `workdir` variables carry them). `TurnContextLedger` (core, pure) dedupes per block
+  against the visible history and `SessionTurnContext` (app, hooked into the `buildPrompt`
+  wrapper in `app/engine/stream/agent-loop-runtime.ts`) persists the delta on the message
+  as `ChatMessage.turnContext`, so a rebuild replays identical bytes.
 - Media library: drag-and-drop ingest and export run over `media:ingest-files` /
   `media:save-as` (`packages/shared/ipc/channels.ts` → `apps/electron/src/main/ipc/media.ts`
   → `mediaLibraryService.ingestLocalFiles`). The `media://` protocol
@@ -500,7 +528,7 @@ packages/shared/               # '@shared'
 
 **Providers**: registry wiring in `packages/onething-runtime/src/app/providers/`; the hand-rolled fetch/SSE implementations live in `packages/onething-runtime/src/agent-loop/providers/` (Vercel AI SDK was removed). New providers implement `ProviderDefinition`.
 
-**Tools**: registry + builtins in `packages/onething-runtime/src/app/tools/` (three tiers: full/headless/readonly); tool core (executor, policy, permission-guards) in `packages/core/tools/`.
+**Tools — toolkit (2026-08-18 rebuild, default ON)**: the tool system is `packages/core/toolkit/` (kernel: `ToolSpec` / `Tool { plan → apply }` / `Intent` / `Outcome` / `AbortScope` / `OutputBudget` / `Job` / `Catalog` / `Surface` / `ToolRunner` + effect policy table) + `packages/onething-runtime/src/toolkit/` (zod contract, family base classes, 20 builtin tools, `PluginTool`/`McpTool`, `resolveScene`) + `packages/onething-runtime/src/app/toolkit/` (ports: `PermissionAuthorizer` over `enforcePermissionPolicy`, `IpcProjector`, `AuditProjector` → `events.jsonl` `tool/audit`, `BackgroundJobRegistry`, three-tier catalogs, `createAppToolRunner`, `wiring.ts`). Every call runs `validate → intercept → plan → effect-based authorize → apply → budget`; permission looks only at `Intent.effects`. Kill switch: `ONETHING_TOOLKIT=0` falls back to the legacy registry (`app/tools/`, `tools/`, `core/tools/` — slated for deletion in R4b, see design doc §15). Design + per-phase records: `docs/design/tool-system-oop-2026-08.md`. Legacy: registry + builtins in `packages/onething-runtime/src/app/tools/` (three tiers: full/headless/readonly); tool core (executor, policy, permission-guards) in `packages/core/tools/`. **Registration is a catalog, the per-turn surface is scene-resolved** (2026-08-18): `packages/onething-runtime/src/tools/scene-surface.ts` (`resolveSceneHiddenToolIds`, consumed by `agent-loop/stream-runtime.ts`) decides what a turn actually sends the model — plain chat = bash/read/write/edit/variable/time/web_search/web_open/radio/practice/task/ask_user; `goal` only while the session goal is `active`; collab tools (`send_message`/`board`/`history`/`notebook`) only in their venue (`collab/tool-surface.ts` is the single table); `task` hidden inside task sessions; skill-scene tools (`SKILL_SCENE_TOOLS`) only when that skill is enabled — today the self-evolution trio `feature_mount/unmount/inspect` rides the default-off builtin skill `resources/skills/onething-self-evolution` (frontmatter `default-enabled: false`). Retired that day: `find`/`grep`/`glob` (use bash rg/fd), `fart`, `bash_output`/`kill_bash` (bash `run_in_background` now reports the log path + pid; tail/kill via bash).
 
 **Permission**: core `Permission` in `packages/core/permission/` (channel-affinity enforcement); app wiring in `packages/onething-runtime/src/app/permission/`.
 

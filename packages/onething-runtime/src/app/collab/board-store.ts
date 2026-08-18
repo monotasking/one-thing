@@ -27,6 +27,8 @@ import {
 import { getEventBus } from '../events/index.js'
 import { getStorePath } from '../stores/paths.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 export interface CollabBoardActionOutcome {
   task?: CollabTask
   board: CollabBoard
@@ -120,7 +122,7 @@ const pendingBroadcasts = new Map<string, PendingBoardBroadcast>()
 
 function emitBoardChanged(roomSessionId: string, board: CollabBoard): void {
   void getEventBus().emit(roomSessionId, {
-    type: 'collab:board-changed',
+    type: SESSION_EVENT_TYPES.COLLAB_BOARD_CHANGED,
     board,
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
 }

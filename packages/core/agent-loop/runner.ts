@@ -42,7 +42,13 @@ import {
 } from './capabilities.js'
 import { toolCallSignature } from './tool-signature.js'
 import { resolveRetiredAgentToolName } from './tool-names.js'
-import { MAX_TURN_RETRIES, turnRetryDelayMs, isRetryableAgentError, sleepWithAbort } from './retry.js'
+import {
+  MAX_CREDENTIAL_ROTATIONS,
+  MAX_TURN_RETRIES,
+  turnRetryDelayMs,
+  isRetryableAgentError,
+  sleepWithAbort,
+} from './retry.js'
 import { ToolExecutionScheduler } from './tool-execution-scheduler.js'
 
 const DEFAULT_MAX_TURNS = 8
@@ -545,6 +551,11 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   let finalReasoning = ''
   let finishReason: AgentFinishReason = 'unknown'
   let usage: AgentUsage | undefined
+  // Credential rotations are budgeted per RUN, not per turn: a pool that is
+  // burning down should not get a fresh allowance every turn, or one run could
+  // walk an arbitrarily large pool while the user waits on a spinner.
+  const maxRotations = Math.max(0, options.maxCredentialRotations ?? MAX_CREDENTIAL_ROTATIONS)
+  let rotationsUsed = 0
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     throwIfAgentAborted(options.abortSignal)
@@ -594,6 +605,9 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     }
 
     const resultsByToolCallId = new Map<string, AgentToolResult>()
+    // The provider is a `let` only so the credential-rotation hook can swap it
+    // BETWEEN attempts. Nothing reassigns it while a stream is open.
+    let activeProvider = options.provider
     const runProviderTurn = () => runWithAgentAbort(options.abortSignal, () =>
       executeProviderTurn({
         request: {
@@ -610,7 +624,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           onEvent: options.onEvent,
           turn,
         },
-        provider: options.provider,
+        provider: activeProvider,
         onExternalToolResult: (toolCall, result) => {
           allToolResults.push({ toolCall, result })
         },
@@ -659,11 +673,38 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         agentTurn = await runProviderTurn()
         break
       } catch (error) {
-        if (
-          attempt >= retryDelays.length
-          || resultsByToolCallId.size > 0
-          || !isRetryableAgentError(error)
-        ) {
+        // The side-effect guard comes first and applies to rotation too: once a
+        // tool has produced a result this attempt, re-running the request could
+        // double-execute it — a fresh key does not make that safe.
+        if (attempt >= retryDelays.length || resultsByToolCallId.size > 0) {
+          throw error
+        }
+
+        // Rotation is asked BEFORE `isRetryableAgentError` on purpose. A quota
+        // exhaustion is fatal for the key that hit it — and precisely the case
+        // where the next key in the pool should get the turn.
+        const rotation = rotationsUsed < maxRotations
+          ? await options.rotateCredential?.(error, attempt + 1)
+          : undefined
+        if (rotation) {
+          rotationsUsed += 1
+          activeProvider = rotation.provider
+          const delayMs = rotation.delayMs ?? 0
+          options.onEvent?.({
+            type: 'auto-retry',
+            turn,
+            attempt: attempt + 1,
+            maxAttempts: retryDelays.length,
+            delayMs,
+            error: rotation.reason
+              ?? (error instanceof Error ? error.message : String(error)),
+          })
+          if (delayMs > 0) await sleepWithAbort(delayMs, options.abortSignal)
+          throwIfAgentAborted(options.abortSignal)
+          continue
+        }
+
+        if (!isRetryableAgentError(error)) {
           throw error
         }
         const delayMs = retryDelays[attempt]

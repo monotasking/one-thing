@@ -1,0 +1,650 @@
+/* =============================================================================
+   onething Ledger — derived from .design-sync/theme-seeds/onething-ledger.theme.json
+   A single stylesheet: tokens derived from a 13-parameter seed, then a thin
+   component layer. Nothing here is harvested from the product; every value below
+   is either pinned by the seed or computed from it.
+
+   Seed → what it decided
+     palette.bg / surface / text / accent / accent2 → the five pinned anchors
+     palette.hue 40 · sat 0.35 · scheme mono         → ramp hues & chroma ceilings
+     radius 4                                        → the radius scale
+     density 1.0                                     → 4px spacing base
+     dividers hairline                               → 1px, never 2px, never shadow
+     buttonStyle outline                             → .btn default is stroked
+     colorUse stroke                                 → status color on border+text only
+     layoutStyle left                                → content hugs left, air on right
+     fonts heading Lora 500 / body Public Sans       → the two families
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   1. TONAL RAMPS
+
+   RAMP CONVENTION — read this before using a step.
+
+   The index tracks *perceptual lightness, ascending*: 100 is the darkest step,
+   900 the lightest. That is the same direction in both bands; what flips on a
+   dark ground is which end does which job.
+
+     on this dark ground (bg = n-200):
+       100–300  RECEDE — tinted fills, wells, chrome. These are the "light"
+                steps of a light theme, mirrored: they sit at or below the
+                ground and are what you fill a surface or a tint-block with.
+       400–500  hairlines and dividers. 400 is subtle, 500 is default.
+       600–700  the accents themselves, and secondary/muted text.
+       700–900  ADVANCE — text on tint, primary text, the bright end.
+
+   So `--b-300` is the fill you would put *behind* a warning, and `--b-700` is
+   the warning's ink. They are the two ends of one hue, not two colors.
+
+   Lightness is a single shared scale across all three ramps, so n-400, a-400 and
+   b-400 are the same weight of gray to the eye. The scale is deliberately
+   compressed at the dark end (ΔL 0.048 from 100→300, where five points of
+   lightness is a visible surface change on a dark ground) and stretched through
+   the middle (ΔL 0.12–0.14, where it is not).
+
+     L: 100 .225 · 200 .273 · 300 .321 · 400 .380 · 500 .475
+        600 .599 · 700 .735 · 800 .850 · 900 .954
+
+   The seed's pins land on the scale rather than beside it:
+     bg #282726 → n-200   surface #343331 → n-300   text #F2F0E5 → n-900
+     accent #4385BE → a-600            accent2 #D0A215 → b-700
+   Every other step is oklch(L C H) with H fixed per ramp and C on a bell that
+   peaks at the pinned step. Two ends were pulled in slightly to stay in sRGB.
+   -------------------------------------------------------------------------- */
+
+:root {
+  /* neutral — warm ink gray, H 85 (the measured hue of the pinned surface) */
+  --n-100: #1c1c1a;   /* wells, recessed inputs — below the ground */
+  --n-200: #282726;   /* ◆ seed bg — app ground */
+  --n-300: #343331;   /* ◆ seed surface — column chrome */
+  --n-400: #44423f;   /* cards, hairline-subtle */
+  --n-500: #5e5c58;   /* hairline-default, disabled ink */
+  --n-600: #82807a;   /* faint ink, mono meta */
+  --n-700: #aca9a2;   /* muted ink */
+  --n-800: #d2cdc4;   /* secondary ink */
+  --n-900: #F2F0E5;   /* ◆ seed text — primary ink */
+
+  /* accent — lamp blue, H 247 */
+  --a-100: #111d28;
+  --a-200: #172939;
+  --a-300: #1d354b;
+  --a-400: #234564;
+  --a-500: #2d608c;
+  --a-600: #4385BE;   /* ◆ seed accent */
+  --a-700: #75afe4;
+  --a-800: #a9d3fa;
+  --a-900: #e2f2ff;
+
+  /* accent2 — brass yellow, H 87.5 */
+  --b-100: #221b0a;
+  --b-200: #2f260e;
+  --b-300: #3e3110;
+  --b-400: #514013;
+  --b-500: #725811;
+  --b-600: #9e7a0a;
+  --b-700: #D0A215;   /* ◆ seed accent2 */
+  --b-800: #f1c966;
+  --b-900: #fcefd1;
+
+  /* status — two extra hues, admitted only because a ledger has to report
+     outcomes. colorUse:stroke means these ever only touch border + text. */
+  --status-success: oklch(0.700 0.116 119.4);
+  --status-danger:  oklch(0.660 0.158 28.4);
+  --status-warning: var(--b-700);
+  --status-info:    var(--a-700);
+
+  /* ---- semantic assignment ------------------------------------------------ */
+  --ground:        var(--n-200);   /* the window's floor */
+  --chrome:        var(--n-300);   /* side columns */
+  --raised:        var(--n-400);   /* cards inside a column */
+  --well:          var(--n-100);   /* inputs, recessed */
+
+  --ink:           var(--n-900);
+  --ink-secondary: var(--n-800);
+  --ink-muted:     var(--n-700);
+  --ink-faint:     var(--n-600);
+
+  --rule:          var(--n-400);   /* hairline, subtle */
+  --rule-strong:   var(--n-500);   /* hairline, default */
+
+  --accent:        var(--a-600);
+  --accent-hi:     var(--a-700);
+  --accent2:       var(--b-700);
+  --accent2-hi:    var(--b-800);
+
+  /* ---- type: Lora 500 for headings, Public Sans for text, CJK fallbacks --- */
+  --font-heading: 'Lora', 'Noto Serif SC', 'Songti SC', Georgia, serif;
+  --font-body:    'Public Sans', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  --font-mono:    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+
+  /* size / line-height / tracking. Tracking goes negative as size grows —
+     Lora's default fit is set for text, not for 36px. */
+  --t-caption:    11px;  --t-caption-lh:  1.45;  --t-caption-tr:  0.01em;
+  --t-meta:       12px;  --t-meta-lh:     1.40;  --t-meta-tr:     0.005em;
+  --t-body:       14px;  --t-body-lh:     1.62;  --t-body-tr:     0;
+  --t-body-lg:    16px;  --t-body-lg-lh:  1.60;  --t-body-lg-tr:  0;
+  --t-h4:         18px;  --t-h4-lh:       1.40;  --t-h4-tr:      -0.005em;
+  --t-h3:         22px;  --t-h3-lh:       1.30;  --t-h3-tr:      -0.010em;
+  --t-h2:         28px;  --t-h2-lh:       1.22;  --t-h2-tr:      -0.015em;
+  --t-h1:         36px;  --t-h1-lh:       1.14;  --t-h1-tr:      -0.020em;
+  /* display/48 is defined and deliberately unused on a chat surface — it is
+     reserved for empty states and first-run. Nothing in a working session
+     earns 48px. */
+  --t-display:    48px;  --t-display-lh:  1.06;  --t-display-tr: -0.026em;
+
+  /* the one place tracking goes positive. 0.10em, not 0.16em: CJK glyphs are
+     already full-width, so a Latin-sized kicker track visibly breaks a 词 apart. */
+  --kicker-tr: 0.10em;
+
+  /* ---- spacing: 4px base × density 1.0 ------------------------------------ */
+  --sp-1: 4px;   --sp-2: 8px;   --sp-3: 12px;  --sp-4: 16px;
+  --sp-5: 20px;  --sp-6: 24px;  --sp-8: 32px;  --sp-10: 40px;
+  --sp-12: 48px; --sp-16: 64px;
+
+  /* ---- radius: seeded from radius:4 --------------------------------------- */
+  --radius-sm: 3px;    /* tags, inline chips — one under the seed */
+  --radius-md: 4px;    /* ◆ the seed value: buttons, inputs, cards */
+  --radius-lg: 8px;    /* the only step allowed to look soft: floating panes */
+  --radius-full: 999px;
+
+  /* ---- shadow: three steps, cool and low-opacity ---------------------------
+     dividers:hairline means this system separates with a 1px rule, not with a
+     shadow. Shadows exist only for things that genuinely float off the plane.
+     Tuned for the dark ground: a pure-black shadow on #282726 reads as a smudge,
+     so the shadow color is a cool near-black (H≈250) at low alpha, which reads
+     as depth instead of dirt. */
+  --shadow-1: 0 1px 2px rgb(9 12 20 / 0.34);
+  --shadow-2: 0 2px 4px -1px rgb(9 12 20 / 0.38), 0 1px 2px rgb(9 12 20 / 0.30);
+  --shadow-3: 0 10px 28px -8px rgb(9 12 20 / 0.52), 0 2px 6px rgb(9 12 20 / 0.32);
+
+  /* ---- motion ------------------------------------------------------------- */
+  --ease: cubic-bezier(.4, 0, .2, 1);
+  --dur: 120ms;
+  --dur-slow: 200ms;
+}
+
+/* =============================================================================
+   2. BASE
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  line-height: var(--t-body-lh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+  font-weight: 500;              /* seed fonts.headingWeight */
+  color: var(--ink);
+  margin: 0;
+}
+
+h1 { font-size: var(--t-h1); line-height: var(--t-h1-lh); letter-spacing: var(--t-h1-tr); }
+h2 { font-size: var(--t-h2); line-height: var(--t-h2-lh); letter-spacing: var(--t-h2-tr); }
+h3 { font-size: var(--t-h3); line-height: var(--t-h3-lh); letter-spacing: var(--t-h3-tr); }
+h4 { font-size: var(--t-h4); line-height: var(--t-h4-lh); letter-spacing: var(--t-h4-tr); }
+
+p { margin: 0; }
+
+/* One focus treatment for the whole system. Never a browser default, never on
+   bare :focus. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+::selection { background: var(--a-400); color: var(--n-900); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}
+
+/* =============================================================================
+   3. TYPE UTILITIES
+   ========================================================================== */
+
+.display { font-family: var(--font-heading); font-weight: 500;
+           font-size: var(--t-display); line-height: var(--t-display-lh);
+           letter-spacing: var(--t-display-tr); }
+
+.body-lg { font-size: var(--t-body-lg); line-height: var(--t-body-lg-lh); }
+.meta    { font-size: var(--t-meta); line-height: var(--t-meta-lh);
+           letter-spacing: var(--t-meta-tr); color: var(--ink-faint); }
+.caption { font-size: var(--t-caption); line-height: var(--t-caption-lh);
+           letter-spacing: var(--t-caption-tr); color: var(--ink-faint); }
+.mono    { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Section kicker — the ledger's column head. 12px, not 10px: a label you have
+   to lean in for is not a label. */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  line-height: 1;
+  letter-spacing: var(--kicker-tr);
+  color: var(--ink-muted);
+  text-transform: uppercase;
+}
+.kicker--accent2 { color: var(--accent2); }
+
+/* the kicker wearing the ledger's rule — same device as .ledger-group, so a
+   section head and a row group read as one family */
+.kicker--rule { display: flex; align-items: center; gap: var(--sp-3); }
+.kicker--rule::after { content: ''; flex: 1; height: 1px; background: var(--rule-strong); }
+
+/* =============================================================================
+   4. BUTTONS  (seed buttonStyle: outline → .btn is stroked by default)
+   ========================================================================== */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  height: 32px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-secondary);
+  font-family: var(--font-body);
+  font-size: var(--t-meta);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              color var(--dur) var(--ease),
+              transform var(--dur) var(--ease);
+}
+.btn:hover       { background: var(--n-400); border-color: var(--n-600); color: var(--ink); }
+.btn:active      { background: var(--n-300); transform: translateY(0.5px); }
+.btn[disabled]   { opacity: 0.45; pointer-events: none; }
+
+.btn-outline     { /* the default, named for intent */ }
+
+/* THE one filled block on the screen. There is exactly one per view. */
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--n-100);
+  font-weight: 600;
+}
+.btn-primary:hover  { background: var(--a-700); border-color: var(--a-700); color: var(--n-100); }
+.btn-primary:active { background: var(--a-600); border-color: var(--a-500); transform: translateY(0.5px); }
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--ink-muted);
+  padding: 0 var(--sp-2);
+  height: 26px;
+  font-family: var(--font-mono);
+  font-size: var(--t-caption);
+  letter-spacing: 0.04em;
+}
+.btn-ghost:hover  { background: transparent; border-color: transparent;
+                    color: var(--ink); text-decoration: underline;
+                    text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.btn-ghost:active { background: transparent; color: var(--ink-secondary); }
+
+.btn-block { width: 100%; }
+.btn-sm    { height: 26px; padding: 0 var(--sp-3); }
+
+/* =============================================================================
+   5. TAG  (seed colorUse: stroke → border + text carry the color, fill never does)
+   ========================================================================== */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--t-caption);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.tag::before {
+  content: '';
+  width: 4px; height: 4px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  flex: none;
+}
+.tag--plain::before { display: none; }
+
+.tag--warning { color: var(--status-warning); border-color: color-mix(in oklab, var(--status-warning) 46%, transparent); }
+.tag--success { color: var(--status-success); border-color: color-mix(in oklab, var(--status-success) 46%, transparent); }
+.tag--info    { color: var(--status-info);    border-color: color-mix(in oklab, var(--status-info) 46%, transparent); }
+.tag--danger  { color: var(--status-danger);  border-color: color-mix(in oklab, var(--status-danger) 46%, transparent); }
+
+/* =============================================================================
+   6. CARD  (surface fill + hairline, no shadow — dividers:hairline)
+   ========================================================================== */
+
+.card {
+  background: var(--raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+}
+.card--flush { padding: 0; }
+
+/* =============================================================================
+   7. LEDGER — onething's signature device.
+   Hairline-separated rows; label hugs left, a mono figure hangs on the right
+   margin so the numbers form a column you can read straight down.
+   ========================================================================== */
+
+.ledger { list-style: none; margin: 0; padding: 0; }
+
+.ledger-group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-1) var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--t-caption);
+  letter-spacing: var(--kicker-tr);
+  color: var(--ink-muted);
+}
+.ledger-group::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.ledger-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--rule);
+  border-left: 2px solid transparent;   /* the selection channel */
+  color: var(--ink-secondary);
+  font-size: var(--t-body);
+  text-decoration: none;
+  cursor: default;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.ledger > .ledger-row:last-child { border-bottom: 0; }
+
+.ledger-label  { flex: 1; min-width: 0; overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; }
+.ledger-figure { flex: none; font-family: var(--font-mono);
+                 font-size: var(--t-meta); font-variant-numeric: tabular-nums;
+                 color: var(--ink-faint); letter-spacing: 0; }
+
+/* hover and selected are orthogonal channels: hover moves the fill,
+   selection moves the left rule and the ink. Never both. */
+.ledger-row[data-interactive]:hover { background: var(--n-400); color: var(--ink); cursor: pointer; }
+.col-side--right .ledger-row[data-interactive]:hover { background: var(--n-500); }
+
+.ledger-row.is-selected {
+  border-left-color: var(--accent2);
+  color: var(--ink);
+  font-weight: 500;
+}
+.ledger-row.is-selected .ledger-figure { color: var(--accent2); }
+
+/* =============================================================================
+   8. BRACKET FRAME — onething's other signature. A bordered block whose label
+   rides the top border, like a schematic callout. 12px mono, not 10px.
+   ========================================================================== */
+
+.bracket-frame {
+  position: relative;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-md);
+  padding: var(--sp-5) var(--sp-4) var(--sp-2);
+  margin-top: var(--sp-5);
+  background: transparent;
+}
+.bracket-frame > .bracket-label {
+  position: absolute;
+  top: 0;
+  left: var(--sp-4);
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0 var(--sp-2);
+  background: var(--ground);           /* punches the hairline */
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  line-height: 1;
+  letter-spacing: var(--kicker-tr);
+  color: var(--accent2);
+  text-transform: uppercase;
+}
+.bracket-label::before { content: '⟨'; color: var(--b-600); letter-spacing: 0; }
+.bracket-label::after  { content: '⟩'; color: var(--b-600); letter-spacing: 0; }
+
+/* when a bracket frame sits on a column instead of the ground */
+.col-side .bracket-frame > .bracket-label { background: var(--chrome); }
+
+/* file rows inside a bracket frame */
+.file-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+}
+.file-row:last-child { border-bottom: 0; }
+.file-path { flex: 1; min-width: 0; color: var(--ink-secondary);
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-add  { color: var(--status-success); font-variant-numeric: tabular-nums; }
+.diff-del  { color: var(--status-danger);  font-variant-numeric: tabular-nums; }
+.diff-none { color: var(--ink-muted); letter-spacing: 0.08em; }
+
+/* =============================================================================
+   9. FIELD + INPUT
+   ========================================================================== */
+
+.field { display: flex; flex-direction: column; gap: var(--sp-2); }
+.field-label {
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+}
+.field-hint { font-size: var(--t-meta); line-height: 1.5; color: var(--ink-faint); }
+
+.input {
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--sp-3);
+  background: var(--well);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.input::placeholder { color: var(--ink-faint); }
+.input:hover        { border-color: var(--rule-strong); }
+.input:focus        { outline: none; border-color: var(--accent); }
+.input:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
+.input.mono         { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.input--sm          { height: 28px; font-size: var(--t-meta); }
+
+/* =============================================================================
+   10. NAV TABS
+   ========================================================================== */
+
+.nav-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--rule);
+}
+.nav-tab {
+  position: relative;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--ink-faint);
+  font-family: var(--font-body);
+  font-size: var(--t-meta);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+.nav-tab::after {
+  content: '';
+  position: absolute;
+  left: var(--sp-3); right: var(--sp-3); bottom: -1px;
+  height: 2px;
+  background: transparent;
+  transition: background var(--dur) var(--ease);
+}
+.nav-tab:hover           { color: var(--ink-secondary); }
+.nav-tab[aria-selected="true"]         { color: var(--ink); }
+.nav-tab[aria-selected="true"]::after  { background: var(--accent); }
+.nav-tab:active          { color: var(--ink-muted); }
+
+/* =============================================================================
+   11. THE SCENE — a three-column workbench. layoutStyle:left, so the reading
+   column hugs the left edge of the center pane and the air collects on the right.
+   ========================================================================== */
+
+.app {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr) 344px;
+  height: 100vh;
+  background: var(--ground);
+}
+
+.col-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--chrome);
+  border-right: 1px solid var(--n-200);
+  padding: var(--sp-5) var(--sp-4);
+  gap: var(--sp-4);
+}
+.col-side--right { border-right: 0; border-left: 1px solid var(--n-200);
+                   padding: var(--sp-6) var(--sp-5); gap: var(--sp-6);
+                   overflow-y: auto; }
+
+/* --- brand -------------------------------------------------------------- */
+.brand { display: flex; align-items: baseline; gap: var(--sp-2); padding: 0 var(--sp-1) var(--sp-1); }
+.brand-name { font-family: var(--font-heading); font-weight: 500;
+              font-size: var(--t-h4); letter-spacing: var(--t-h4-tr); color: var(--ink); }
+.brand-tag  { font-family: var(--font-mono); font-size: var(--t-caption);
+              letter-spacing: var(--kicker-tr); color: var(--ink-faint); text-transform: uppercase; }
+
+.session-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 calc(var(--sp-3) * -1); }
+.session-list .ledger-row { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+.session-list .ledger-group { padding-left: var(--sp-4); padding-right: var(--sp-3); }
+
+/* --- center ------------------------------------------------------------- */
+.col-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--ground);
+}
+.main-head { padding: var(--sp-2) var(--sp-10) 0; }
+.main-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-8) var(--sp-10) var(--sp-6); }
+.reading { max-width: 620px; }      /* content hugs left; the rest is air */
+
+.session-head { padding-bottom: var(--sp-6); border-bottom: 1px solid var(--rule); }
+.session-head .kicker { display: block; margin-bottom: var(--sp-3); }
+.session-head h1 { margin-bottom: var(--sp-3); }
+.session-sub { display: flex; gap: var(--sp-3); align-items: center;
+               font-family: var(--font-mono); font-size: var(--t-meta);
+               color: var(--ink-faint); }
+.session-sub .dot { color: var(--n-500); }
+
+/* --- messages ----------------------------------------------------------- */
+.msg { padding: var(--sp-6) 0; border-bottom: 1px solid var(--rule); }
+.msg:last-child { border-bottom: 0; }
+.msg-who {
+  display: block;
+  margin-bottom: var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: var(--t-caption);
+  letter-spacing: var(--kicker-tr);
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.msg--user .msg-body {
+  font-size: var(--t-body-lg);
+  line-height: var(--t-body-lg-lh);
+  color: var(--ink-secondary);
+  padding-left: var(--sp-4);
+  border-left: 1px solid var(--n-500);
+}
+.msg--assistant .msg-body {
+  font-size: var(--t-body-lg);
+  line-height: var(--t-body-lg-lh);
+  color: var(--ink);
+}
+.tag-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-4); }
+.msg-actions { display: flex; gap: var(--sp-1); margin-top: var(--sp-4); margin-left: calc(var(--sp-2) * -1); }
+
+/* --- composer ----------------------------------------------------------- */
+.composer-wrap { padding: 0 var(--sp-10) var(--sp-6); }
+.composer {
+  max-width: 620px;
+  background: var(--well);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-3) var(--sp-2);
+  transition: border-color var(--dur) var(--ease);
+}
+.composer:focus-within { border-color: var(--n-600); }
+.composer-input {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--t-body-lg);
+  line-height: var(--t-body-lg-lh);
+  resize: none;
+}
+.composer-input:focus { outline: none; }
+.composer-input::placeholder { color: var(--ink-faint); }
+.composer-bar { display: flex; align-items: center; gap: var(--sp-2);
+                padding-top: var(--sp-2); border-top: 1px solid var(--n-300); }
+.composer-bar .spacer { flex: 1; }
+
+/* --- right panel -------------------------------------------------------- */
+.panel-head h2 { margin-bottom: var(--sp-3); }
+.panel-lede { font-size: var(--t-body); line-height: var(--t-body-lh); color: var(--ink-muted); }
+.panel-section { display: flex; flex-direction: column; gap: var(--sp-3); }
+.col-side--right .ledger-row { padding-left: var(--sp-3); padding-right: var(--sp-3);
+                               border-bottom-color: var(--rule-strong); }
+/* a figure sitting on the raised card needs one step more ink than the same
+   figure on chrome — same token family, one step up */
+.col-side--right .ledger-figure { color: var(--ink-muted); }
+.col-side--right .card .ledger-row:last-child { border-bottom: 0; }

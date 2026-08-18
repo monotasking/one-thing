@@ -28,6 +28,8 @@ import {
   executeOnethingDirectTool,
   executeOnethingToolAndUpdate,
 } from '@onething/runtime/tools'
+// R2b:切换期的内部开关(§7 纪律 2)。它只读一个环境变量,不拉任何新树模块。
+import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
 
 export {
   detectSkillUsage,
@@ -59,6 +61,23 @@ export async function executeToolDirectly(
     beforeSideEffect?: () => Promise<void>
   }
 ): Promise<ToolExecutionResult> {
+  // ── R2b 缝 2 + 缝 3(docs/design/tool-system-oop-2026-08.md §12.5)────────
+  //
+  // 这一个函数是**每一次工具直调的唯一必经点**:agent-loop 的每一次
+  // tool-call-done、orchestrator 的每一次 start、sub-agent 的递归入口(下面
+  // executeToolAndUpdate 那一处)最后都收敛到这里。所以三处缝里的两处
+  // (执行函数 + 事件源)只需要这一段分支:四个回调在 `runToolkitToolDirectly`
+  // 里被包成 `IpcProjector`(一个 Observer),两条插件拦截链被包成一个
+  // `Interceptor`,返回形状与旧路逐字相同。
+  //
+  // 动态 import:开关关时这一行不执行,新树一个模块都不加载。
+  // 目录里没有这个工具时它返回 undefined,原样落回下面的旧路。
+  if (isToolkitEnabled()) {
+    const { runToolkitToolDirectly } = await import('../../toolkit/wiring.js')
+    const outcome = await runToolkitToolDirectly(toolName, args, context)
+    if (outcome) return outcome as ToolExecutionResult
+  }
+
   return executeOnethingDirectTool<
     ToolExecutionResult,
     ToolExecutionContext,

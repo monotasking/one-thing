@@ -6,6 +6,8 @@ import type { VoiceEvent, VoiceLatencyMilestone, VoiceRuntimeState } from '@/typ
 import { useSessionsStore } from './sessions'
 import { platformApi } from '@/platform'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 interface VoiceTurn {
   sessionId: string
   assistantMessageId?: string
@@ -123,7 +125,7 @@ export const useVoiceStore = defineStore('voice', () => {
     const turn = activeTurn.value
     if (!turn || envelope.sessionId !== turn.sessionId) return
     const event = envelope.event
-    if (event.type === 'message:assistant-created') {
+    if (event.type === SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED) {
       turn.assistantMessageId = event.message.id
       return
     }

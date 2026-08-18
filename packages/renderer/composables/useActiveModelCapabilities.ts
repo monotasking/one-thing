@@ -3,6 +3,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import { useAgentsStore } from '@/stores/agents'
 import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
+import { useSpaceProviderView } from '@/composables/useSpaceProviderView'
 import { createCustomModel, hasVision } from '@/components/settings/provider/model-capabilities'
 import type { OpenRouterModel } from '@/types'
 
@@ -22,6 +23,11 @@ export function useActiveModelCapabilities(sessionId: () => string | undefined) 
   const settingsStore = useSettingsStore()
   const sessionsStore = useSessionsStore()
   const agentsStore = useAgentsStore()
+  // 批 B9:空间默认也在这条链上 —— 判定与发送必须同源,少一格就又分叉一次。
+  const spaceView = useSpaceProviderView({
+    settings: () => settingsStore.settings,
+    autoLoad: false,
+  })
 
   const selection = computed(() => {
     const session = sessionsStore.getSessionItem(sessionId() || '') || null
@@ -35,6 +41,7 @@ export function useActiveModelCapabilities(sessionId: () => string | undefined) 
       settings: settingsStore.settings,
       session,
       agentModel,
+      spaceDefault: spaceView.spaceDefault.value,
     })
   })
 

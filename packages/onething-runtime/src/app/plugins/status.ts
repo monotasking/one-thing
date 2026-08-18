@@ -19,6 +19,8 @@ import {
 } from '@onething/core/plugins'
 import { SESSION_STREAM_TERMINAL_EVENTS } from '@shared/events/session-events.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 type SessionEventEmitter = (
   sessionId: string,
   event: { type: string; [key: string]: unknown },
@@ -77,7 +79,7 @@ export function resetPluginStatusHostForTests(): void {
 
 export function emitPluginStatusPart(sessionId: string, part: CorePluginStatusPart): void {
   // 走既有的 content:part 会话事件,不新开轨道(§5.2 第 4 条)。
-  void ports?.emitSessionEvent(sessionId, { type: 'content:part', part })
+  void ports?.emitSessionEvent(sessionId, { type: SESSION_EVENT_TYPES.CONTENT_PART, part })
 }
 
 // ── 合并窗的 trailing flush ────────────────────
@@ -140,7 +142,7 @@ export async function sweepPluginStatusForSession(sessionId: string): Promise<Co
   for (const part of cleared) {
     // 逐条 await:清扫必须在终止事件之前**完成**过线,否则 renderer 收到 cleared
     // 时那条消息已经收尾了。
-    await ports?.emitSessionEvent(sessionId, { type: 'content:part', part })
+    await ports?.emitSessionEvent(sessionId, { type: SESSION_EVENT_TYPES.CONTENT_PART, part })
   }
   return cleared
 }

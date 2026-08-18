@@ -89,6 +89,24 @@ describe('spaces store', () => {
     expect(currentSpaceId()).toBe('work')
   })
 
+  /**
+   * 批 B10 任务 3:**设置窗打开即显示当前空间**。
+   *
+   * 判据是「store 创建那一刻就已经是对的」——`currentSpaceId` 的初值来自
+   * `readStoredSpaceId()` 这个**同步**读法,不是某个 onMounted 里的异步补齐。
+   * 只要它是异步的,设置窗就会先按 default 画一帧再跳,而那一帧里连接卡片读的是
+   * 默认空间的凭证。这里不 `await` 任何东西,就是在钉这件事。
+   */
+  it('设置窗首帧就是主窗当前空间 —— 初值同步取自 localStorage,不先画一帧 default', () => {
+    memory.set('onething:current-space', 'work')
+    setActivePinia(createPinia())
+    // 没有 load()、没有 await、没有 nextTick:这就是「首帧」。
+    const store = useSpacesStore()
+    expect(store.currentSpaceId).toBe('work')
+    // 非组件调用点(spaceProviders 的 spaceId)读的是同一份真相。
+    expect(currentSpaceId()).toBe('work')
+  })
+
   it('falls back to default when the stored space is gone', async () => {
     memory.set('onething:current-space', 'ghost')
     setActivePinia(createPinia())

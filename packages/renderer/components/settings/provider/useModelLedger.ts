@@ -19,7 +19,7 @@ import type {
 	ModelCapabilityOverride,
 } from "@/types";
 import { useSettingsStore } from "@/stores/settings";
-import { isProviderConfigEnabled } from "@/stores/helpers/provider-model";
+import { useSpaceProviderView } from "@/composables/useSpaceProviderView";
 import { providerFamilyDisplayName } from "@shared/provider-families";
 import {
 	hasVision,
@@ -72,6 +72,16 @@ export function useModelLedger(
 ) {
 	const settingsStore = useSettingsStore();
 
+	/**
+	 * 「当前空间的 provider 视图」(批 B7)。总账列的是**当前空间选了哪些模型**;
+	 * 逐模型调参(温度/输出上限/能力覆盖)仍写全局 —— 那描述的是「这个模型是
+	 * 什么样」,不是「这个空间想用哪些」。
+	 */
+	const spaceView = useSpaceProviderView({
+		settings: () => props.settings,
+		providers: () => props.providers,
+	});
+
 	const searchQuery = ref("");
 	const capabilityFilter = ref<CapabilityFilter>("all");
 	const expandedRowKey = ref<string | null>(null);
@@ -98,14 +108,18 @@ export function useModelLedger(
 	const rows = computed<LedgerRow[]>(() => {
 		const out: LedgerRow[] = [];
 		for (const provider of props.providers) {
-			const cfg = providerConfig(provider.id);
-			if (!isProviderConfigEnabled(cfg)) continue;
-			const selected = cfg?.selectedModels ?? [];
+			// 批 B9:开关也 per-space。视图内部仍走 `isProviderEnabledIn`(家族派生
+			// 只此一份),只是多接了空间覆盖这一层读取源。
+			if (!spaceView.isProviderEnabled(provider.id)) continue;
+			const selected = spaceView.selectedModelsOf(provider.id);
 			if (selected.length === 0) continue;
 			const catalog = settingsStore.getCachedModels(provider.id);
+			// ★ 打在**当前空间的**默认那一行(批 B9):非 default 空间表达过就是
+			// overlay 那一对,没表达过落回全局。
 			const defaultModel =
-				props.settings.ai.provider === provider.id
-					? effectiveProviderModel(provider.id)
+				spaceView.defaultSelection.value.provider === provider.id
+					? spaceView.defaultSelection.value.model ||
+						effectiveProviderModel(provider.id)
 					: "";
 			for (const modelId of selected) {
 				const fetched = catalog.find((m) => m.id === modelId);
@@ -180,20 +194,14 @@ export function useModelLedger(
 		updateSettings({ ai: { ...props.settings.ai, providers } });
 	}
 
-	/** ★: make this provider+model the global default in one settings write. */
+	/**
+	 * ★:把这一行设成默认。
+	 *
+	 * 落点是**当前空间的 overlay**(C1)。批 B9 时 default 空间走的是另一条
+	 * (一次 settings 写),而那正是「默认模型不独立」的病根。
+	 */
 	function setDefault(row: LedgerRow) {
-		const providers = { ...props.settings.ai.providers };
-		providers[row.providerId] = {
-			...providers[row.providerId],
-			model: row.modelId,
-		};
-		updateSettings({
-			ai: {
-				...props.settings.ai,
-				provider: row.providerId,
-				providers,
-			},
-		});
+		void spaceView.setDefaultSelection(row.providerId, row.modelId);
 	}
 
 	// ──────────────── temperature (style presets) ────────────────
@@ -347,22 +355,16 @@ export function useModelLedger(
 	 * provider's last model (same guard as the catalog checklist).
 	 */
 	function removeModel(row: LedgerRow): { ok: boolean; reason?: string } {
-		const cfg = providerConfig(row.providerId);
-		const selected = cfg?.selectedModels ?? [];
+		const selected = spaceView.selectedModelsOf(row.providerId);
 		if (!selected.includes(row.modelId)) return { ok: true };
 		if (selected.length === 1) {
 			return { ok: false, reason: "last" };
 		}
-		patchProvider(row.providerId, (current) => {
-			const nextSelected = (current.selectedModels ?? []).filter(
-				(id) => id !== row.modelId,
-			);
-			current.selectedModels = nextSelected;
-			if (current.model === row.modelId) {
-				current.model = nextSelected[0];
-			}
-			return current;
-		});
+		// 摘一个模型 = 改这个空间的 overlay(C1:default 也一样)。
+		void spaceView.setSelectedModels(
+			row.providerId,
+			selected.filter((id) => id !== row.modelId),
+		);
 		if (expandedRowKey.value === row.key) expandedRowKey.value = null;
 		return { ok: true };
 	}
@@ -379,17 +381,19 @@ export function useModelLedger(
 		if (!trimmed) return { ok: false, reason: "empty" };
 		if (trimmed === row.modelId) return { ok: true };
 
-		const cfg = providerConfig(row.providerId);
-		const selected = cfg?.selectedModels ?? [];
+		const selected = spaceView.selectedModelsOf(row.providerId);
 		if (selected.includes(trimmed)) {
 			return { ok: false, reason: "duplicate" };
 		}
 
+		// 改名要动两层:id 清单按空间走(C1:default 也一样),逐模型调参的 key
+		// 迁移永远在全局层 —— 那些 map 是「这个模型是什么样」,全空间共享。
+		void spaceView.setSelectedModels(
+			row.providerId,
+			selected.map((id) => (id === row.modelId ? trimmed : id)),
+		);
+
 		patchProvider(row.providerId, (current) => {
-			current.selectedModels = (current.selectedModels ?? []).map((id) =>
-				id === row.modelId ? trimmed : id,
-			);
-			if (current.model === row.modelId) current.model = trimmed;
 
 			const moveKey = <T>(
 				map: Record<string, T> | undefined,
@@ -426,9 +430,9 @@ export function useModelLedger(
 	async function warmModelCaches() {
 		const ids = props.providers
 			.filter((provider) => {
-				const cfg = providerConfig(provider.id);
 				return (
-					isProviderConfigEnabled(cfg) && (cfg?.selectedModels?.length ?? 0) > 0
+					spaceView.isProviderEnabled(provider.id) &&
+					spaceView.selectedModelsOf(provider.id).length > 0
 				);
 			})
 			.map((provider) => provider.id);

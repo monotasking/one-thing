@@ -9,8 +9,6 @@ import {
 } from "../storage/paths.js";
 import {
 	ONETHING_DEFAULT_SYSTEM_PROMPT,
-	ONETHING_TOOL_GUIDELINES,
-	ONETHING_TOOL_WORKSPACE_RULES,
 	ONETHING_KNOWN_PROJECTS_INSTRUCTIONS,
 } from "../prompts/system-prompt.js";
 import { hashSections } from "./section-hash.js";
@@ -82,10 +80,11 @@ export interface EvalFixture {
  * production path (matches the design: hash of Phase 0 minimal scene).
  */
 export function computeStaticPromptVersion(): string {
+	// Tool guidelines / workspace rules left this skeleton when they moved onto
+	// the tools (2026-08-18): they are part of the tool surface now, and the
+	// section-level version (`versionFromSections`) already sees them.
 	const skeleton = [
 		ONETHING_DEFAULT_SYSTEM_PROMPT,
-		(ONETHING_TOOL_GUIDELINES ?? []).join("\n"),
-		(ONETHING_TOOL_WORKSPACE_RULES ?? []).join("\n"),
 		ONETHING_KNOWN_PROJECTS_INSTRUCTIONS ?? "",
 	].join("\n");
 	return createHash("sha256").update(skeleton).digest("hex").slice(0, 8);
@@ -114,7 +113,7 @@ export function getPromptVersion(): string {
 }
 
 /**
- * Return the skeleton version — the static 4-constant hash that serves as a
+ * Return the skeleton version — the static skeleton hash that serves as a
  * coarse cross-session grouping key. Backward-compatible with old records
  * that only had this value as promptVersion.
  */

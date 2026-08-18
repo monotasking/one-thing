@@ -71,24 +71,11 @@ export function createTaskTool(
 ): Tool.Info<typeof TaskParameters, TaskMetadata> {
   return Tool.define<typeof TaskParameters, TaskMetadata>(TASK_TOOL_ID, {
     name: 'Task',
-    description: `Dispatch a piece of work to a BACKGROUND session and keep going.
+    description: `Dispatch self-contained work to a BACKGROUND session and keep going. It returns immediately with the new session id — it does NOT wait; when that session finishes (done, failed or stopped) its full closing text is delivered back into THIS conversation on its own, so never poll and never promise to "check back".
 
-It returns immediately with the new session's id — it does NOT wait. When that session finishes its turn (done, failed, or stopped) its result is delivered back into THIS conversation on its own: you will be woken up with the full closing text, so never poll for it and never promise the user you will "check back".
+The task session is a real session (visible in the session list, the user can open or take it over), starts empty (sees only your prompt), inherits this session's working directory (unless overridden), model and permission mode, and has the normal tools. It may stop on a permission card nobody is watching — prefer work that runs under this session's existing permissions. At most ${TASK_MAX_CONCURRENT_PER_SESSION} tasks per session run at once (a further dispatch is refused, not queued); a task session may NOT dispatch tasks of its own.
 
-What the task session is:
-- a real session, visible in the session list — the user can open it, read it, and take it over;
-- started empty: it sees only your "prompt", never this conversation's history;
-- it inherits this session's working directory (unless you pass another one), model, and permission mode;
-- it has the normal tools, so it can read, edit, run commands, search.
-
-What you must expect:
-- it may STOP AND WAIT on a permission card in its own session. Nobody is watching that session, so a task that needs approval can sit there until the user opens it. Prefer tasks that run under the permissions this session already has.
-- at most ${TASK_MAX_CONCURRENT_PER_SESSION} tasks from this session may run at once; a further dispatch is refused, not queued.
-- a task session may NOT dispatch tasks of its own — the tree is two levels deep, on purpose.
-
-Use it for work that is self-contained and would otherwise eat this conversation: a survey of the codebase, a long build-and-fix loop, a batch of independent edits. Do not use it to ask a question you could answer here.
-
-To stop one: the report and this tool's result both carry the task session id — open that session and stop it there.`,
+Use it for work that would otherwise eat this conversation (a codebase survey, a long build-and-fix loop, a batch of independent edits) — not to ask a question you could answer here. To stop one, open that session and stop it there.`,
     category: 'builtin',
     enabled: true,
     autoExecute: true,

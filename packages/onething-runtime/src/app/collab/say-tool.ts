@@ -57,6 +57,8 @@ import {
   type CollabV3SpeakPort,
 } from './actors/turn-context.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 interface SayContext {
   roomSessionId: string
   agentId: string
@@ -326,7 +328,7 @@ export async function speakIntoCollabRoom(input: {
   recentSays.set(fingerprint, { messageId: message.id, at: now })
   store.addMessage(context.roomSessionId, message)
   void getEventBus().emit(context.roomSessionId, {
-    type: 'message:user-created',
+    type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
     message,
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
   /**

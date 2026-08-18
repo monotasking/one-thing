@@ -9,9 +9,19 @@ import type { JsonObject, JsonObjectProperty } from '@shared/json.js'
 import {
   buildOnethingPrompt,
   buildOnethingSystemPrompt,
+  builtinPromptSource,
   loadAgentsMdInstructions,
+  PROMPT_BLOCK_TOOL_GUIDELINES,
+  PROMPT_BLOCK_TOOL_WORKSPACE_RULES,
+  PromptComposer,
+  promptFragments,
+  VariableBoardSource,
   type BuildOnethingPromptContextOptions,
+  type ComposedPrompt,
 } from '@onething/runtime/prompts'
+import { toolPromptSource } from '../../tools/registry.js'
+import { buildStateVariablesPromptText } from '../../variables/index.js'
+import { pluginPromptSource } from './plugin-context.js'
 import { getMacOSAutomationDocsPath } from '../../stores/paths.js'
 import { getTodoPlanDirectory } from '../../todo-plan/store.js'
 import { defaultAgent, findAgent } from '../../agents/index.js'
@@ -139,7 +149,6 @@ function collabRoomOverrides(
       // 用户是**旁观者**。透明制要进 agent 的认知,不然它会以为这是暗通道。
       dmPair: isAgentPairDmRoom(room.room),
     }),
-    toolGuidelines: [],
     // 禁用整批产品段的理由是「插件贡献的规则不得渗入 persona」——
     // 防的是**产品说明文案**污染 persona。而 `<context-variables>` 不是产品说明,
     // 它是通往运行时状态板的那句指路,正是群聊里最该有的东西
@@ -149,9 +158,14 @@ function collabRoomOverrides(
     // 块进来了,却没有任何文案告诉模型那是什么。
     disabledSections: [
       'agent', // persona already IS the system prompt — no duplicate section
+      // 工具自带的守则条目(edit/write 的 `Tool Guidelines:`)是产品说明,不进 persona。
+      // 工具自带的**段落**不在此列 —— `context-variables` 正是靠这一点留下来的。
+      PROMPT_BLOCK_TOOL_GUIDELINES,
+      // 工作目录守则跟着守则走(它此前是 `# Work Directory` 段的尾巴,靠禁用
+      // `workdir` 一并消失;那一段搬去回合通道后,块要自己点名才禁得掉)。
+      PROMPT_BLOCK_TOOL_WORKSPACE_RULES,
       'voice',
       'runtime-context',
-      'workdir',
       'active-project',
       'known-projects',
       'skills',
@@ -209,6 +223,34 @@ function collabWorkOverrides(
   return { agentSystemPrompt: [persona, work].filter(Boolean).join('\n\n') }
 }
 
+/**
+ * The desktop composer — the sources, in tie-break order:
+ *
+ * 1. `builtinPromptSource` — the product's own section table;
+ * 2. `toolPromptSource` — what the tools **on this turn's surface** declared
+ *    (`ToolInfo.prompt`), read off the app tool registry per build; a tool
+ *    that is registered but off the surface does not talk;
+ * 3. `promptFragments` — what runtime features / hosts registered, with
+ *    disposers (they gate themselves with `requiresTools` when they need to);
+ * 4. `variableBoardSource` — the session's context-variable board, one `turn`
+ *    block. It used to be a private hook inside the stream engine; as a source
+ *    it goes through the same filter/order/dedupe path as everything else;
+ * 5. `pluginPromptSource` — plugin providers, with the desktop's breaker
+ *    callbacks (before this object existed the build path called the bare
+ *    runtime collector and the promptContext breaker lane was never fed).
+ */
+const variableBoardSource = new VariableBoardSource({
+  render: (sessionId: string) => buildStateVariablesPromptText(sessionId),
+})
+
+export const desktopPromptComposer: PromptComposer = new PromptComposer([
+  builtinPromptSource,
+  toolPromptSource,
+  promptFragments,
+  variableBoardSource,
+  pluginPromptSource,
+])
+
 function coreOptions(ctx: BuildPromptContextOptions): BuildOnethingPromptContextOptions {
   return {
     ...ctx,
@@ -227,8 +269,8 @@ function coreOptions(ctx: BuildPromptContextOptions): BuildOnethingPromptContext
 
 export async function buildSystemPrompt(
   ctx: BuildPromptContextOptions,
-): Promise<{ system: string; developer: string[] }> {
-  return buildOnethingSystemPrompt(coreOptions(ctx))
+): Promise<ComposedPrompt> {
+  return buildOnethingSystemPrompt(coreOptions(ctx), desktopPromptComposer)
 }
 
 export async function buildPrompt(options: BuildPromptOptions): Promise<BuildPromptResult> {
@@ -236,7 +278,7 @@ export async function buildPrompt(options: BuildPromptOptions): Promise<BuildPro
     ...coreOptions(options),
     providerId: options.providerId,
     historyMessages: options.historyMessages as CorePromptRequestMessage[],
-  }) as Promise<BuildPromptResult>
+  }, desktopPromptComposer) as Promise<BuildPromptResult>
 }
 
 export {

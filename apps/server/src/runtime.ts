@@ -249,8 +249,6 @@ import {
 } from "@onething/runtime/skills";
 import {
 	OnethingToolRegistry,
-	createGlobTool,
-	createGrepTool,
 	createReadTool,
 	expandOnethingToolSandboxPath,
 	type OnethingToolExecutionResult,
@@ -356,6 +354,14 @@ import type {
 } from "@shared/ipc/acp.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
 import { ownerSandboxRoot } from "@onething/app/rpc/sandbox.js";
+// R3b:开关开且真引擎在跑时,"有哪些工具 / 跑一个工具"由目录 + runner 回答
+// (设计文档 §10.2-④)。降级档的只读注册表本身一个字不动 —— 它服务的是
+// echo/test 那条非真引擎的假路。
+import { isToolkitEnabled } from "@onething/runtime/toolkit/flag";
+import {
+	runToolkitToolDirectly,
+	toolkitCatalogToolDefinitions,
+} from "@onething/app/toolkit/index.js";
 import type {
 	GatewayGetStatusResponse,
 	GatewayStartRequest,
@@ -449,6 +455,8 @@ import type {
 	ToolDefinition,
 } from "@shared/ipc/tools.js";
 import { ServerMCPClient, probeServerMCPConfig } from "./mcp-client.js";
+
+import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
 
 type ServerChatSession = ChatSession & {
 	userId?: string;
@@ -612,8 +620,7 @@ const mcpServerPrivateKeys = new Set([
 	"headers",
 ]);
 
-const serverReadOnlyToolIds = new Set(["read", "glob", "grep"]);
-const serverSearchMaxFileBytes = 1024 * 1024;
+const serverReadOnlyToolIds = new Set(["read"]);
 
 const webServerCapabilities: RuntimeHostCapabilities = {
 	localFileSystem: false,
@@ -1382,17 +1389,17 @@ export async function createDevelopmentOnethingServerRuntime(
 
 	eventBus.onAnySessionAny((envelope) => {
 		const eventType = (envelope.event as { type?: string }).type;
-		if (eventType === "stream:start") {
+		if (eventType === SESSION_EVENT_TYPES.STREAM_START) {
 			activeStreamSessions.add(envelope.sessionId);
 		} else if (
-			eventType === "stream:complete" ||
-			eventType === "stream:error" ||
-			eventType === "stream:aborted"
+			eventType === SESSION_EVENT_TYPES.STREAM_COMPLETE ||
+			eventType === SESSION_EVENT_TYPES.STREAM_ERROR ||
+			eventType === SESSION_EVENT_TYPES.STREAM_ABORTED
 		) {
 			activeStreamSessions.delete(envelope.sessionId);
 		}
 		const permissionEvent = readPermissionTrackingEvent(envelope.event);
-		if (permissionEvent?.type === "permission:request") {
+		if (permissionEvent?.type === SESSION_EVENT_TYPES.PERMISSION_REQUEST) {
 			// Resolve through the store (not the echo working set): real-engine
 			// sessions never enter the `sessions` map.
 			const session = resolveSession(envelope.sessionId);
@@ -1405,8 +1412,8 @@ export async function createDevelopmentOnethingServerRuntime(
 					info,
 				});
 		} else if (
-			permissionEvent?.type === "permission:timeout" ||
-			permissionEvent?.type === "permission:settled"
+			permissionEvent?.type === SESSION_EVENT_TYPES.PERMISSION_TIMEOUT ||
+			permissionEvent?.type === SESSION_EVENT_TYPES.PERMISSION_SETTLED
 		) {
 			pendingPermissions.delete(permissionEvent.requestId);
 		}
@@ -1828,7 +1835,7 @@ export async function createDevelopmentOnethingServerRuntime(
 							label,
 						),
 					emit: async (sessionId, event) => {
-						if (event.type === "command:send-message") {
+						if (event.type === SESSION_COMMAND_TYPES.SEND_MESSAGE) {
 							const session = getSessionForContext(sessionId, ownerContext);
 							if (!session) {
 								throw new Error("Session not found");
@@ -2079,7 +2086,7 @@ export async function createDevelopmentOnethingServerRuntime(
 		) => {
 			eventBus
 				.emit(session.id, {
-					type: "session:variables-updated",
+					type: SESSION_EVENT_TYPES.SESSION_VARIABLES_UPDATED,
 					workingDirectory: session.workingDirectory,
 					workingDirectoryRoots: session.workingDirectoryRoots,
 					variables: snapshot,
@@ -2431,7 +2438,7 @@ export async function createDevelopmentOnethingServerRuntime(
 		}
 		pendingPermissions.delete(requestId);
 		const command: Record<string, unknown> = {
-			type: "command:permission-respond",
+			type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
 			// Adopt the ask's target channel (owner already authenticated at
 			// the HTTP boundary); the normalized body channel is the fallback.
 			channel: pending.info.targetChannel || permissionResponse.channel,
@@ -2775,7 +2782,7 @@ export async function createDevelopmentOnethingServerRuntime(
 				const session = getSessionForContext(sessionId, context);
 				if (!session) return { success: false, error: "Session not found" };
 
-				if (command.type === "command:abort") {
+				if (command.type === SESSION_COMMAND_TYPES.ABORT) {
 					backend.abortSession(sessionId, "HTTP abort");
 					clearSessionPermissions(sessionId);
 					return { success: true };
@@ -2794,7 +2801,7 @@ export async function createDevelopmentOnethingServerRuntime(
 				// this endpoint already authenticated the session owner, and
 				// core's affinity check guards against cross-channel spoofing
 				// on the bus, not against the owner approving over HTTP.
-				if (command.type === "command:permission-respond") {
+				if (command.type === SESSION_COMMAND_TYPES.PERMISSION_RESPOND) {
 					const pending =
 						(command.requestId
 							? pendingPermissions.get(command.requestId)
@@ -4540,11 +4547,20 @@ export async function createDevelopmentOnethingServerRuntime(
 			},
 		},
 		tools: {
-			async getTools(): Promise<GetToolsResponse> {
+			async getTools(
+				context = defaultRequestContext(),
+			): Promise<GetToolsResponse> {
+				// 真引擎在跑时,这台服务器**真的**装了 full / readonly 档的那一份目录;
+				// 报只读注册表那四只是在说谎(旧行为)。开关开时改报目录。
+				const toolkitTools =
+					isToolkitEnabled() && useAppSubsystems(context)
+						? toolkitCatalogToolDefinitions()
+						: undefined;
 				return {
 					success: true,
 					tools:
-						(await readOnlyToolRegistry.getAllToolsAsync()) as ToolDefinition[],
+						toolkitTools
+						?? ((await readOnlyToolRegistry.getAllToolsAsync()) as ToolDefinition[]),
 				};
 			},
 			async executeTool(
@@ -4574,12 +4590,25 @@ export async function createDevelopmentOnethingServerRuntime(
 				);
 				if (!access.success) return access;
 
-				const result = (await readOnlyToolRegistry.executeTool(toolId, args, {
-					sessionId,
-					messageId,
-					workingDirectory: session.workingDirectory,
-					workingDirectoryRoots: session.workingDirectoryRoots,
-				})) as OnethingToolExecutionResult;
+				// 执行面的两道闸(`serverReadOnlyToolIds` 白名单 + 路径校验)在上面,
+				// **一个字不动** —— 换的只是"谁来跑它":开关开且真引擎在跑时走 runner
+				// (两阶段 + 权限 + 统一取消 + 统一截断 + 审计),否则照旧。
+				const toolkitResult =
+					isToolkitEnabled() && useAppSubsystems(context)
+						? await runToolkitToolDirectly(toolId, args, {
+								sessionId,
+								messageId,
+								workingDirectory: session.workingDirectory,
+								workingDirectoryRoots: session.workingDirectoryRoots,
+							} as Parameters<typeof runToolkitToolDirectly>[2])
+						: undefined;
+				const result = (toolkitResult
+					?? (await readOnlyToolRegistry.executeTool(toolId, args, {
+						sessionId,
+						messageId,
+						workingDirectory: session.workingDirectory,
+						workingDirectoryRoots: session.workingDirectoryRoots,
+					}))) as OnethingToolExecutionResult;
 
 				return {
 					success: result.success,
@@ -4896,7 +4925,7 @@ function applySessionEvent(
 		return;
 	}
 
-	if ((event as { type?: string }).type === "messages:replaced") {
+	if ((event as { type?: string }).type === SESSION_EVENT_TYPES.MESSAGES_REPLACED) {
 		const replaced = event as unknown as { messages: ChatMessage[] };
 		session.messages = replaced.messages.map((message) => ({ ...message }));
 		refreshSessionMeta(session);
@@ -4904,29 +4933,29 @@ function applySessionEvent(
 	}
 
 	switch (event.type) {
-		case "message:user-created":
-		case "message:assistant-created":
+		case SESSION_EVENT_TYPES.MESSAGE_USER_CREATED:
+		case SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED:
 			upsertMessage(session, toChatMessage(session.id, event.message));
 			break;
-		case "message:updated":
+		case SESSION_EVENT_TYPES.MESSAGE_UPDATED:
 			updateMessage(
 				session,
 				event.messageId,
 				event.updates as Partial<ChatMessage>,
 			);
 			break;
-		case "stream:start":
+		case SESSION_EVENT_TYPES.STREAM_START:
 			updateMessage(session, event.messageId || event.assistantMessageId, {
 				isStreaming: true,
 				model: event.model,
 				provider: "local",
 			});
 			break;
-		case "stream:complete":
+		case SESSION_EVENT_TYPES.STREAM_COMPLETE:
 			markStreamingComplete(session);
 			applyServerSessionUsage(session, event.data.usage);
 			break;
-		case "stream:error":
+		case SESSION_EVENT_TYPES.STREAM_ERROR:
 			markStreamingComplete(session);
 			session.messages.push({
 				id: `error-${Date.now()}`,
@@ -5376,16 +5405,6 @@ function createServerReadOnlyToolRegistry(): OnethingToolRegistry {
 			getDefaultReadRoots: () => [],
 		}),
 	);
-	registry.registerTool(
-		createGlobTool({
-			files: listServerToolFiles,
-		}),
-	);
-	registry.registerTool(
-		createGrepTool({
-			search: searchServerToolFiles,
-		}),
-	);
 	return registry;
 }
 
@@ -5474,97 +5493,8 @@ async function* listServerToolFiles(options: {
 
 async function* emptyServerFileSearchResults(): AsyncGenerator<string> {}
 
-async function searchServerToolFiles(options: {
-	cwd: string;
-	pattern: string;
-	glob?: string[];
-	maxCount?: number;
-	ignoreCase?: boolean;
-	literal?: boolean;
-}): Promise<Array<{ path: string; lineNumber: number; lineText: string }>> {
-	const matcher = createServerSearchMatcher(options.pattern, {
-		ignoreCase: options.ignoreCase,
-		literal: options.literal,
-	});
-	const targetPath = resolve(options.cwd);
-	const targetStat = await stat(targetPath);
-	const files: string[] = [];
 
-	if (targetStat.isFile()) {
-		const fileName = toPosixRelativePath(dirname(targetPath), targetPath);
-		if (
-			!options.glob?.length ||
-			options.glob.some((pattern) => matchesServerGlob(fileName, pattern))
-		) {
-			files.push(targetPath);
-		}
-	} else if (targetStat.isDirectory()) {
-		for await (const relativeFile of listServerToolFiles({
-			cwd: targetPath,
-			glob: options.glob,
-		})) {
-			files.push(resolve(targetPath, relativeFile));
-		}
-	} else {
-		return [];
-	}
 
-	const results: Array<{ path: string; lineNumber: number; lineText: string }> =
-		[];
-	const limit = Math.max(1, Math.floor(options.maxCount ?? 100));
-
-	for (const filePath of files) {
-		const content = await readServerSearchableTextFile(filePath);
-		if (content === null) continue;
-
-		const lines = content
-			.replace(/\r\n/g, "\n")
-			.replace(/\r/g, "\n")
-			.split("\n");
-		for (let index = 0; index < lines.length; index += 1) {
-			if (!matcher(lines[index] ?? "")) continue;
-			results.push({
-				path: filePath,
-				lineNumber: index + 1,
-				lineText: lines[index] ?? "",
-			});
-			if (results.length >= limit) return results;
-		}
-	}
-
-	return results;
-}
-
-async function readServerSearchableTextFile(
-	filePath: string,
-): Promise<string | null> {
-	try {
-		const fileStat = await stat(filePath);
-		if (!fileStat.isFile() || fileStat.size > serverSearchMaxFileBytes)
-			return null;
-
-		const buffer = await readFile(filePath);
-		if (buffer.subarray(0, 8192).includes(0)) return null;
-		return buffer.toString("utf8");
-	} catch {
-		return null;
-	}
-}
-
-function createServerSearchMatcher(
-	pattern: string,
-	options: { ignoreCase?: boolean; literal?: boolean },
-): (line: string) => boolean {
-	if (options.literal) {
-		const needle = options.ignoreCase ? pattern.toLowerCase() : pattern;
-		return (line) =>
-			(options.ignoreCase ? line.toLowerCase() : line).includes(needle);
-	}
-
-	const flags = options.ignoreCase ? "i" : "";
-	const regex = new RegExp(pattern, flags);
-	return (line) => regex.test(line);
-}
 
 function matchesServerGlob(relativePath: string, pattern: string): boolean {
 	const normalizedPattern = normalizeServerGlobPattern(pattern);
@@ -7094,16 +7024,19 @@ function emptyWorkspaceFileList(error: string): {
 }
 
 function readPermissionTrackingEvent(event: unknown): {
-	type: "permission:request" | "permission:timeout" | "permission:settled";
+	type:
+		| typeof SESSION_EVENT_TYPES.PERMISSION_REQUEST
+		| typeof SESSION_EVENT_TYPES.PERMISSION_TIMEOUT
+		| typeof SESSION_EVENT_TYPES.PERMISSION_SETTLED;
 	requestId: string;
 } | null {
 	if (!event || typeof event !== "object") return null;
 	const candidate = event as Record<string, unknown>;
 	const type = candidate.type;
 	if (
-		type !== "permission:request" &&
-		type !== "permission:timeout" &&
-		type !== "permission:settled"
+		type !== SESSION_EVENT_TYPES.PERMISSION_REQUEST &&
+		type !== SESSION_EVENT_TYPES.PERMISSION_TIMEOUT &&
+		type !== SESSION_EVENT_TYPES.PERMISSION_SETTLED
 	)
 		return null;
 	return typeof candidate.requestId === "string"
@@ -7118,7 +7051,7 @@ function readSessionVariablesUpdatedEvent(event: unknown): {
 } | null {
 	if (!event || typeof event !== "object") return null;
 	const candidate = event as Record<string, unknown>;
-	if (candidate.type !== "session:variables-updated") return null;
+	if (candidate.type !== SESSION_EVENT_TYPES.SESSION_VARIABLES_UPDATED) return null;
 	return {
 		...(typeof candidate.workingDirectory === "string"
 			? { workingDirectory: candidate.workingDirectory }

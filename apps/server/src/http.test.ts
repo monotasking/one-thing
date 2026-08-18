@@ -2396,7 +2396,8 @@ describe('createOnethingHttpServer', () => {
 
     const tools = await fetchJson(`${baseUrl(server)}/api/tools`, { headers: aliceHeaders })
     expect(tools.success).toBe(true)
-    expect(tools.tools.map((tool: { id: string }) => tool.id)).toEqual(['read', 'glob', 'grep'])
+    // glob / grep 于 2026-08-18 随工具梳理摘掉(找文件与找内容走 bash);web 只读档只剩 read。
+    expect(tools.tools.map((tool: { id: string }) => tool.id)).toEqual(['read'])
 
     const readResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
       method: 'POST',
@@ -2411,32 +2412,19 @@ describe('createOnethingHttpServer', () => {
     expect(readResult.success).toBe(true)
     expect(readResult.result.output).toContain('needle here')
 
-    const globResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        toolId: 'glob',
-        arguments: { pattern: '**/*.txt' },
-        messageId: 'message-1',
-        sessionId,
-      }),
-    })
-    expect(globResult.success).toBe(true)
-    expect(globResult.result.output).toContain('notes/a.txt')
-    expect(globResult.result.output).not.toContain('secret.txt')
-
-    const grepResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        toolId: 'grep',
-        arguments: { pattern: 'needle', path: 'notes', glob: '*.txt', literal: true },
-        messageId: 'message-1',
-        sessionId,
-      }),
-    })
-    expect(grepResult.success).toBe(true)
-    expect(grepResult.result.output).toContain('a.txt:2: needle here')
+    for (const retired of ['glob', 'grep']) {
+      const retiredResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
+        method: 'POST',
+        headers: { ...aliceHeaders, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          toolId: retired,
+          arguments: { pattern: '**/*.txt' },
+          messageId: 'message-1',
+          sessionId,
+        }),
+      })
+      expect(retiredResult.success).toBe(false)
+    }
 
     await expect(fetchJson(`${baseUrl(server)}/api/tools/execute`, {
       method: 'POST',

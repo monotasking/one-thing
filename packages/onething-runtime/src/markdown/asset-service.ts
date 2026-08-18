@@ -241,7 +241,11 @@ function cleanRawTarget(rawTarget: string): string {
   target = target.split('|')[0].trim()
   target = target.split('#')[0].trim()
   try {
-    return decodeURI(target)
+    // 外链保持 URL 语义(decodeURI 不动保留字的转义);本地路径必须**完全**
+    // 解码 —— decodeURI 会把 %40(@)这类保留字原样留下,而粘贴管线插的是
+    // encodeURI 过的文件名,CleanShot 的 `@2x` 就此永远对不上盘上的文件
+    // (真机实锤:`...%402x-2.png` 找不到 `...@2x-2.png`)。
+    return isExternalTarget(target) ? decodeURI(target) : decodeURIComponent(target)
   } catch {
     return target
   }

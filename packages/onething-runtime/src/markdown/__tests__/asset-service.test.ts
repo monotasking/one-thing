@@ -57,6 +57,23 @@ function saveMarkdownAttachments(request: MarkdownSaveAttachmentsRequest) {
 }
 
 describe('Markdown asset service', () => {
+  it('decodes reserved percent-escapes in local targets (CleanShot @2x names)', async () => {
+    const root = await makeTempRoot()
+    const notePath = path.join(root, 'paper.md')
+    const imagePath = path.join(root, 'CleanShot 2026-08-15 at 17.40.24@2x-2.png')
+    await fs.writeFile(notePath, '# paper')
+    await fs.writeFile(imagePath, Buffer.from('image'))
+
+    // 粘贴管线插的是 encodeURI 过的文件名:%20 之外还有保留字 %40(@)——
+    // decodeURI 不还原保留字,这个名字曾永远对不上盘上的文件。
+    const asset = await resolveMarkdownAsset({
+      documentPath: notePath,
+      rawTarget: 'CleanShot%202026-08-15%20at%2017.40.24%402x-2.png',
+    })
+
+    expect(asset).toMatchObject({ kind: 'image', absolutePath: imagePath })
+  })
+
   it('resolves Obsidian attachment images from the configured attachment folder', async () => {
     const vault = await makeTempRoot()
     const notePath = path.join(vault, 'notes', 'today.md')

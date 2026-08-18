@@ -65,7 +65,7 @@ export class BackgroundJobsProvider implements VariableProvider {
       value: jobs.map(describeJob).join('; '),
       readonly: true,
       state: true,
-      description: 'Managed background jobs. Read output with bash_output(id); stop with kill_bash(id).',
+      description: 'Managed background jobs started by bash run_in_background. Read output by tailing the log file; stop with kill -- -<pid>.',
     }]
   }
 

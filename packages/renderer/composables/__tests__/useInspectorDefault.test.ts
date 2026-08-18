@@ -56,10 +56,18 @@ describe('App.vue 的挂载线', () => {
     expect(app).toContain('let inspectorDefaultApplied = false')
   })
 
-  it('用户的开合落盘,沿用右栏自己那套 localStorage(不另开 appState 字段)', () => {
-    expect(app).toContain("const INSPECTOR_OPEN_STORAGE_KEY = 'inspectorOpen'")
-    expect(app).toContain('writeStoredInspectorOpen(open)')
-    expect(app).toContain('stored: readStoredInspectorOpen(),')
+  /**
+   * 落点自外壳布局收敛 L0 起统一在 `layoutPrefs` store(单 key
+   * `onething.layout.v1`),旧的裸 `localStorage['inspectorOpen']` 由 store 首次读时
+   * 迁移并删除。仍然**不开 appState 字段** —— 那一条判决没变,只是换了落点。
+   */
+  it('用户的开合落盘,归 layoutPrefs store(不另开 appState 字段)', () => {
+    expect(app).toContain('stored: layoutPrefs.workbenchOpen,')
+    expect(app).toContain('layoutPrefs.setWorkbenchOpen(open)')
+    // App.vue 自己不再碰 localStorage —— 布局偏好只有 store 一个读写点。
+    expect(app).not.toContain("const INSPECTOR_OPEN_STORAGE_KEY = 'inspectorOpen'")
+    expect(app).not.toContain('function readStoredInspectorOpen')
+    expect(app).not.toContain('function writeStoredInspectorOpen')
   })
 
   /**
@@ -82,13 +90,16 @@ describe('ChatPanel 的阅读列纪律', () => {
   it('阅读列公式拆成变量后展开仍与改造前逐字符等价', () => {
     expect(chatPanel).toContain('--chat-measure-cap: max(58%, calc(100% - 144px));')
     expect(chatPanel).toContain('--chat-content-width: min(var(--content-measure, 46rem), var(--chat-measure-cap));')
-    expect(chatPanel).toContain('@media (max-width: 768px)')
+    /* L5:窄栏降级从窗口宽改成**这一格聊天面自己的宽度**(P7)。容器由宿主承担
+       (`.tab-content` / `.thread-chat-detail`)—— 元素查不了自己。 */
+    expect(chatPanel).toContain('@container chat-surface (max-width: 768px)')
+    expect(chatPanel).not.toContain('@media (max-width: 768px)')
   })
 
   /**
    * 纪律仍然成立:谁要在 `.chat-panel` 上加高特异性的覆盖,只许改
    * `--content-measure` / `--chat-measure-cap` 这两枚**输入**变量。直接写派生的
-   * `--chat-content-width` 会压过本文件末尾 768 / 480 两个 `@media` 里 (0,1,0)
+   * `--chat-content-width` 会压过本文件末尾 768 / 480 两个 `@container` 里 (0,1,0)
    * 的 `.chat-panel` 覆盖,把窄窗降级整个废掉。
    */
   it('不许有人直接写派生的 --chat-content-width 去压窄窗降级', () => {
@@ -104,6 +115,29 @@ describe('ChatPanel 的阅读列纪律', () => {
     for (const block of overrides) {
       expect(block).not.toContain('--chat-content-width:')
     }
-    expect(chatPanel).toContain('@media (max-width: 480px)')
+    expect(chatPanel).toContain('@container chat-surface (max-width: 480px)')
+  })
+
+  /**
+   * 容器必须由**宿主**声明:`.chat-panel` 是查询的主语,而 `container-type` 只为
+   * **后代**建容器 —— 元素查不了自己。少一处宿主 = 那一份聊天面的窄栏降级静默失效
+   * (只会在真机上看出来),所以两处宿主都钉住。
+   */
+  it('两处聊天面宿主都声明了 chat-surface 容器', () => {
+    const chatWindow = readRendererFile('components/chat/ChatWindow.vue')
+    const threadDetail = readRendererFile('components/workbench/ThreadChatDetail.vue')
+
+    for (const source of [chatWindow, threadDetail]) {
+      expect(source).toContain('container-type: inline-size;')
+      expect(source).toContain('container-name: chat-surface;')
+    }
+  })
+
+  /* 侧栏那条窄窗 `@media` 在 L5 删除(理由写在它原来的位置):窄窗降级的唯一事实
+     在 `useShellLayout` 的预算里,CSS 里再留一条按窗口宽走的路就是 P7 本身。 */
+  it('侧栏不再有按窗口宽走的第二条降级路', () => {
+    const sidebar = readRendererFile('components/sidebar/Sidebar.vue')
+    // 扫**规则**不扫字面量 —— 那段说明它为什么被删的注释当然会提到这个查询。
+    expect(sidebar.split('\n').filter(line => line.trimStart().startsWith('@media'))).toEqual([])
   })
 })

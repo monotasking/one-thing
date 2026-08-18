@@ -1,7 +1,9 @@
 import { collectAgentTurnFromStream } from '@onething/core/agent-loop'
 import { agentToolMessageContentToText } from '@onething/core/agent-loop'
 import { undeliverableAttachmentText } from '@onething/core/agent-loop'
+import { mergeAdjacentSameRoleMessages } from './message-merge.js'
 import { readJsonSseData } from './sse.js'
+import { withProviderRetryAfter } from '../provider-error-classification.js'
 import {
   ONETHING_CLAUDE_THINKING_BUDGETS,
   onethingClaudeModelFamily,
@@ -693,7 +695,7 @@ export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): 
   interface ClaudeRequestBody {
     model: string
     messages: ClaudeMessage[]
-    max_tokens: number
+    max_tokens?: number
     stream: true
     system?: string | ClaudeTextBlock[]
     tools?: ClaudeTool[]
@@ -709,12 +711,19 @@ export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): 
   async function* streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
     const family = onethingClaudeModelFamily(request.model)
     const thinkingEnabled = request.thinking === 'enabled'
-    const converted = buildClaudeMessages(request.messages, { includeThinking: thinkingEnabled })
+    // Anthropic 的 Messages API 同样要求 user/assistant 交替(它自己不合并):
+    // 相邻同角色先合成一条(C5 —— 摘要注入不再垫伪造的 assistant 握手)。
+    const converted = buildClaudeMessages(mergeAdjacentSameRoleMessages(request.messages), { includeThinking: thinkingEnabled })
     const tools = request.toolChoice === 'none' ? undefined : toClaudeTools(request.tools)
     const body: ClaudeRequestBody = {
       model: request.model,
       messages: converted.messages,
-      max_tokens: request.maxTokens ?? 4096,
+      // Anthropic requires max_tokens, but we do not invent one (2026-08-15):
+      // the app-level caller fills in the model's real max when the registry
+      // knows it; when it doesn't, the field is omitted and Anthropic's own
+      // "max_tokens: field required" surfaces — an honest error beats a hidden
+      // 4096 nobody can find in any setting.
+      ...(request.maxTokens !== undefined ? { max_tokens: request.maxTokens } : {}),
       stream: true,
     }
 
@@ -731,7 +740,7 @@ export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): 
         const budget = ONETHING_CLAUDE_THINKING_BUDGETS[request.reasoningEffort ?? 'high']
         body.thinking = { type: 'enabled', budget_tokens: budget }
         // budget_tokens must stay below max_tokens.
-        if (body.max_tokens <= budget) body.max_tokens = budget + 4096
+        if (body.max_tokens !== undefined && body.max_tokens <= budget) body.max_tokens = budget + 4096
       }
     } else if (request.thinking === 'disabled' && family.adaptive && !family.alwaysThinking) {
       // Sonnet 5 runs adaptive thinking when the param is omitted; an explicit
@@ -780,7 +789,12 @@ export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): 
 
     if (!response.ok) {
       const text = await response.text().catch(() => '')
-      throw new Error(`Claude agent loop API error: ${response.status} ${text}`)
+      // 批 B8-2:Anthropic 429 必带 `retry-after`(秒),另有
+      // `anthropic-ratelimit-*-reset`(RFC 3339)。挂成绝对时间戳,冷却按它走。
+      throw withProviderRetryAfter(
+        new Error(`Claude agent loop API error: ${response.status} ${text}`),
+        { headers: response.headers, body: text },
+      )
     }
 
     yield* streamClaudeResponse(response, request.turn)

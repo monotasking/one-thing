@@ -8,7 +8,7 @@
       :class="[
         'message-list',
         `density-${messageListDensity}`,
-        { 'stream-following': useBottomScrollAnchor, 'is-room': isRoomSession },
+        { 'stream-following': useBottomScrollAnchor, 'is-room': isRoomSession, 'is-holding-top': isHoldingTop },
       ]"
       :style="messageListStyles"
     >
@@ -103,6 +103,16 @@
         <!-- agent 提问不画在这里:它是 composer 上方的一条栏位(与审批同一格),
              答完即收、流里不留痕。见 `interaction/InteractionPrompt.vue`。 -->
 
+        <!-- Tail spacer for the hold-top gesture (send / regenerate): grows so
+             the held row can sit at the viewport top, then gives way as the
+             answer streams into it — the scroll height stays put while the
+             answer fills the space, so nothing under the reader moves. Height
+             is written imperatively (measured before the scroll write). -->
+        <div
+          ref="tailSpacerRef"
+          class="message-list-tail-spacer"
+          aria-hidden="true"
+        />
         <div
           ref="bottomSentinelRef"
           class="message-list-bottom-sentinel"
@@ -234,7 +244,7 @@ import {
   provideChatFollowState,
   shouldShowScrollToBottomButton,
 } from '@/composables/useFollowScroll'
-import { useMessageScrollCoordinator } from '@/composables/useMessageScrollCoordinator'
+import { shouldRestoreReadingAnchor, useMessageScrollCoordinator } from '@/composables/useMessageScrollCoordinator'
 import { buildFontFamily, buildFontLoadSpecs } from '@shared/fonts'
 import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
@@ -318,6 +328,7 @@ const messageScrollbarRef = ref<InstanceType<typeof Scrollbar> | null>(null)
 const messageListRef = ref<HTMLElement | null>(null)
 const messageListContentRef = ref<HTMLElement | null>(null)
 const bottomSentinelRef = ref<HTMLElement | null>(null)
+const tailSpacerRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
 const assistantOutlineMarkers = ref<AssistantMessageOutlineMarker[]>([])
 const hasNavPanelRoom = ref(false)
@@ -579,6 +590,9 @@ let assistantOutlineUpdateFrame: number | null = null
 let visibleUserMessageFrame: number | null = null
 let measurementRefreshFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
+let readingAnchorResizeObserver: ResizeObserver | null = null
+let readingAnchorCaptureFrame: number | null = null
+let lastScrollerBox: { width: number; height: number } | null = null
 let isAssistantOutlineNavigating = false
 let assistantOutlineCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let renderMeasureStart: number | null = null
@@ -606,9 +620,14 @@ const pageHistorySummary = computed(() => {
   const state = pageState.value
   const total = totalMessageCount.value
   const loaded = loadedMessageCount.value
-  if (!state || !state.hasMoreBefore || total <= loaded) return ''
-  if (state.isLoadingOlder) return `Loading earlier messages... ${loaded}/${total}`
-  return `Load earlier messages · ${loaded}/${total}`
+  // `hasMoreBefore` is the authority. `totalCount` lags a send by a tick
+  // (the two new rows land before the page state refreshes), and hiding the
+  // button on `total <= loaded` made it vanish for a frame on every send —
+  // 42px removed above the whole list, right as the new turn scrolled in.
+  if (!state || !state.hasMoreBefore) return ''
+  const counts = total > loaded ? ` · ${loaded}/${total}` : ''
+  if (state.isLoadingOlder) return `Loading earlier messages...${counts}`
+  return `Load earlier messages${counts}`
 })
 
 const hasActiveStream = computed(() => props.messages.some(message => message.isStreaming))
@@ -660,6 +679,74 @@ const scrollCoordinator = useMessageScrollCoordinator({
   onStateChange: updateScrollToBottomButton,
 })
 
+// —— 宽度变化时的阅读锚 ——
+//
+// `.message-list-row { overflow-anchor: none }` 是刻意的:位置由 scrollCoordinator
+// 说了算。但 coordinator 只在 tail / anchor(流式跟随、发送后、hold-top)介入,
+// 空闲阅读时没人维持锚点。于是拖工作台分隔条 / 收起展开左栏时聊天列变宽变窄,
+// 视口**上方**每一条消息重新换行,可见内容被整体推走(实测单帧 26–104px,一次
+// 拖拽累计 ~500px,方向随宽窄反转)。
+//
+// 补的是那一格空缺,不是把 overflow-anchor 重新打开 —— 浏览器原生锚定历史上和
+// coordinator 打过架。只认宽度:高度变化仍旧全权交给 tail/anchor/hold-top。
+function canTrackReadingAnchor(): boolean {
+  if (hasActiveStream.value) return false
+  return scrollCoordinator.isIdle()
+}
+
+function captureReadingAnchorNow() {
+  if (!canTrackReadingAnchor()) return
+  const el = messageListRef.value
+  if (!el) return
+  // 宽度已变但 ResizeObserver 还没派送(同一帧里 scroll 事件与 rAF 都排在 RO
+  // 之前):此刻量到的是**已经漂走**的位置,记下来等于把漂移当成用户意图。
+  if (props.layoutTransitioning) return
+  if (lastScrollerBox && Math.abs(el.clientWidth - lastScrollerBox.width) > 0.5) return
+  scrollCoordinator.captureReadingAnchor(captureTopAnchor())
+}
+
+// scroll 事件很密,不能每次都 querySelectorAll 全表:一帧最多量一次。
+function scheduleReadingAnchorCapture() {
+  if (!canTrackReadingAnchor()) return
+  if (readingAnchorCaptureFrame !== null) return
+  readingAnchorCaptureFrame = requestAnimationFrame(() => {
+    readingAnchorCaptureFrame = null
+    captureReadingAnchorNow()
+  })
+}
+
+function attachReadingAnchorObserver(scroller: HTMLElement) {
+  if (typeof ResizeObserver === 'undefined') return
+  lastScrollerBox = { width: scroller.clientWidth, height: scroller.clientHeight }
+  readingAnchorResizeObserver = new ResizeObserver(() => {
+    const el = messageListRef.value
+    if (!el) return
+    const next = { width: el.clientWidth, height: el.clientHeight }
+    const widthChanged = shouldRestoreReadingAnchor(lastScrollerBox, next)
+    lastScrollerBox = next
+    if (!canTrackReadingAnchor()) return
+    if (widthChanged) {
+      // RO 回调 = layout 之后、paint 之前。同步写 scrollTop,一帧都不漏。
+      scrollCoordinator.restoreReadingAnchor()
+      return
+    }
+    // 只是高度变了(工具卡展开、composer 变高):不还原,但把锚点刷新一次,
+    // 否则视口上方内容长高后锚点就过期了,下一次宽度变化会还原到错的地方。
+    scheduleReadingAnchorCapture()
+  })
+  readingAnchorResizeObserver.observe(scroller)
+}
+
+function detachReadingAnchorObserver() {
+  readingAnchorResizeObserver?.disconnect()
+  readingAnchorResizeObserver = null
+  lastScrollerBox = null
+  if (readingAnchorCaptureFrame !== null) {
+    cancelAnimationFrame(readingAnchorCaptureFrame)
+    readingAnchorCaptureFrame = null
+  }
+}
+
 // 历史分页(向上补旧 / 向下补新)—— 与房面共用同一份实现与阈值(R1)。
 const historyPagination = useHistoryPagination({
   scroller: messageListRef,
@@ -690,6 +777,7 @@ let followNudgeFrame: number | null = null
 
 function scheduleFollowNudge(source: string) {
   void source
+  updateTailSpacer()
   if ((isFollowing.value && hasActiveStream.value) || scrollCoordinator.isTail()) {
     scrollCoordinator.onLayoutChange()
     updateScrollToBottomButton()
@@ -775,10 +863,246 @@ watch([effectiveSessionId, lastUserMessageId, () => props.messages.length], asyn
     }
   }
   
-  follow.isFollowing.value = true
-  scrollCoordinator.setTail()
-  nextTick(() => scheduleFollowNudge('watch:lastUserMsg'))
+  // A steer interjects into a running response the reader is already
+  // following: keep following. An ordinary send holds the new question at the
+  // top and lets the answer stream into the space below it (D1, 2026-08-17)
+  // — one continuous scroll instead of a hard jump to the tail.
+  const newMessage = props.messages.find(m => m.id === newId)
+  if (newMessage?.steered) {
+    follow.isFollowing.value = true
+    scrollCoordinator.setTail()
+    nextTick(() => scheduleFollowNudge('watch:lastUserMsg'))
+    return
+  }
+  // Detach NOW (pre-flush): the follow composable's ResizeObserver fires
+  // right after the new row lays out and would pin to the bottom instantly,
+  // landing on the very position the smooth hold is about to animate to.
+  follow.isFollowing.value = false
+  scrollCoordinator.clear()
+  // Same patch as the new rows: the browser must not anchor-adjust the frame
+  // they land in (see isHoldingTop).
+  isHoldingTop.value = true
+  nextTick(() => {
+    if (!holdMessageAtTop(newId, sendHoldOffset(), { behavior: 'smooth' })) {
+      isHoldingTop.value = false
+      follow.isFollowing.value = true
+      scrollCoordinator.setTail()
+    }
+    scheduleFollowNudge('watch:lastUserMsg')
+  })
 })
+
+// ============ Hold-top: send / regenerate keep a row at the viewport top ============
+//
+// Two callers, one mechanism. On send, the new question is held at the top; on
+// regenerate, the question above the regenerated answer (or whatever row the
+// reader was already looking at above it) is held where it is. The tail spacer
+// makes the hold physically possible when the content below the row is shorter
+// than the viewport, and shrinks as the answer streams in — total scroll height
+// is constant until the answer outgrows the viewport, at which point the hold
+// hands over to ordinary tail-following. A user scroll (wheel / thumb drag)
+// clears the coordinator anchor and thereby ends the hold; the spacer then
+// freezes at its current height (shrinking it under the reader would jump).
+const HOLD_TOP_ANCHOR_MS = 10 * 60_000
+/**
+ * Where a freshly sent question comes to rest: this fraction of the viewport
+ * down from the top (2026-08-17 拍板 1/3). Pinning it to the very top read as
+ * a page flip — the answer you were just reading vanished in one motion; a
+ * third leaves the tail of the previous answer in view above the new turn.
+ */
+const SEND_HOLD_VIEWPORT_FRACTION = 1 / 3
+function sendHoldOffset(): number {
+  const el = messageListRef.value
+  return el ? -Math.round(el.clientHeight * SEND_HOLD_VIEWPORT_FRACTION) : 0
+}
+// `armed` flips once the spacer has actually been needed (content below the
+// row shorter than the viewport). Only an armed hold may hand over to tail
+// following: a regenerate hold is taken BEFORE the truncation removes the
+// content below, so at that instant the viewport is trivially "full".
+let holdTop: { messageId: string; offsetWithinMessage: number; armed: boolean } | null = null
+// Mirrors `holdTop` for the template: while holding, the scroller opts out of
+// the browser's own scroll anchoring (measured: it re-adjusted scrollTop by the
+// composer's collapse delta in the frame the new rows landed, a 66px step in
+// front of the smooth hold). The coordinator owns the position during a hold.
+const isHoldingTop = ref(false)
+
+function setTailSpacerHeight(px: number) {
+  const spacer = tailSpacerRef.value
+  if (!spacer) return
+  const next = Math.max(0, Math.round(px))
+  if (spacer.offsetHeight === next) return
+  spacer.style.height = next > 0 ? `${next}px` : ''
+}
+
+function releaseHoldTop() {
+  holdTop = null
+  isHoldingTop.value = false
+}
+
+/**
+ * Size the spacer for the current hold. Returns false when the hold is over.
+ * `allowHandover` lets a filled viewport end the hold in favour of tail
+ * following — off at hold time (a regenerate hold is measured BEFORE the
+ * truncation removes the content below the row).
+ */
+function applyTailSpacer(allowHandover: boolean): boolean {
+  if (!holdTop) return false
+  const scroller = messageListRef.value
+  const spacer = tailSpacerRef.value
+  if (!scroller || !spacer) return false
+  const row = getMessageRowById(holdTop.messageId)
+  if (!row) {
+    releaseHoldTop()
+    return false
+  }
+  // Real content height WITHOUT the spacer, measured on the content box —
+  // not scrollHeight, which is clamped to clientHeight when the content is
+  // shorter than the viewport (exactly the case a spacer exists for).
+  const content = messageListContentRef.value
+  if (!content) return false
+  const baseHeight = content.offsetHeight - spacer.offsetHeight
+  const needed = row.offsetTop + holdTop.offsetWithinMessage + scroller.clientHeight - baseHeight
+  if (needed > 0) holdTop.armed = true
+  if (needed <= 0 && allowHandover && holdTop.armed) {
+    // The answer has filled the viewport below the held row: hand over to
+    // tail-following from exactly here (no movement — the bottom is already
+    // at the bottom).
+    setTailSpacerHeight(0)
+    releaseHoldTop()
+    scrollCoordinator.clear()
+    follow.isFollowing.value = true
+    scrollCoordinator.setTail()
+    return false
+  }
+  setTailSpacerHeight(needed)
+  return true
+}
+
+/** Layout-change path: only while the coordinator anchor still holds. */
+function updateTailSpacer() {
+  if (!holdTop) {
+    clampTailSpacerToLastQuestion()
+    return
+  }
+  if (!scrollCoordinator.isAnchored()) {
+    // User took over: stop holding. The spacer is not frozen — it keeps
+    // getting clamped below so it can only ever shrink from here.
+    releaseHoldTop()
+    clampTailSpacerToLastQuestion()
+    return
+  }
+  applyTailSpacer(true)
+}
+
+/**
+ * Invariant outside a hold: the spacer never lets the list scroll PAST the
+ * last question at its send-hold position (SEND_HOLD_VIEWPORT_FRACTION). Without this the spacer left behind by
+ * a finished/abandoned hold stayed at its old size while the answer kept
+ * growing, and the last message could be scrolled almost out of the window
+ * (2026-08-17 field report). Only ever shrinks, and while content grows the
+ * shrink cancels the growth exactly, so max scroll holds still — no jump.
+ */
+function clampTailSpacerToLastQuestion() {
+  const scroller = messageListRef.value
+  const spacer = tailSpacerRef.value
+  const content = messageListContentRef.value
+  if (!scroller || !spacer || !content) return
+  const current = spacer.offsetHeight
+  if (current <= 0) return
+  let row: HTMLElement | null = null
+  for (let i = props.messages.length - 1; i >= 0; i--) {
+    if (props.messages[i].role !== 'user') continue
+    row = getMessageRowById(props.messages[i].id)
+    if (row) break
+  }
+  if (!row) {
+    setTailSpacerHeight(0)
+    return
+  }
+  const baseHeight = content.offsetHeight - current
+  const allowed = row.offsetTop + sendHoldOffset() + scroller.clientHeight - baseHeight
+  if (allowed < current) setTailSpacerHeight(Math.max(0, allowed))
+}
+
+/**
+ * Send is a two-beat event: the composer collapses NOW (draft cleared), the
+ * new rows land a round-trip later. At the bottom of the list, a taller
+ * viewport means the browser clamps scrollTop and the whole conversation
+ * drops by the collapse delta one frame before the smooth hold can start.
+ * ChatPanel calls this right before dispatching a send; the next composer
+ * resize (notifyLayoutChange, same frame as the RO, pre-paint) grows the tail
+ * spacer by the viewport delta so nothing moves — the hold then re-sizes the
+ * spacer from real content.
+ */
+let sendPrep: { clientHeight: number; scrollTop: number; until: number } | null = null
+
+function prepareForSend() {
+  const el = messageListRef.value
+  if (!el) return
+  sendPrep = { clientHeight: el.clientHeight, scrollTop: el.scrollTop, until: performance.now() + 2000 }
+}
+
+function absorbComposerCollapseForSend() {
+  if (!sendPrep) return
+  const el = messageListRef.value
+  const spacer = tailSpacerRef.value
+  if (!el || !spacer || performance.now() > sendPrep.until) {
+    sendPrep = null
+    return
+  }
+  const grown = el.clientHeight - sendPrep.clientHeight
+  if (grown <= 0) return
+  setTailSpacerHeight(spacer.offsetHeight + grown)
+  scrollCoordinator.writeScrollTop(sendPrep.scrollTop)
+  sendPrep.clientHeight = el.clientHeight
+}
+
+function holdMessageAtTop(
+  messageId: string,
+  offsetWithinMessage: number,
+  writeOptions: { behavior?: 'auto' | 'smooth' } = {},
+): boolean {
+  const scroller = messageListRef.value
+  const row = getMessageRowById(messageId)
+  if (!scroller || !row || !tailSpacerRef.value) return false
+  holdTop = { messageId, offsetWithinMessage, armed: false }
+  isHoldingTop.value = true
+  sendPrep = null
+  follow.isFollowing.value = false
+  // Spacer first (synchronously, so the scroll target is reachable), then the
+  // anchor — its restore is what actually moves the viewport.
+  if (!applyTailSpacer(false)) return true
+  scrollCoordinator.setAnchor(messageId, offsetWithinMessage, HOLD_TOP_ANCHOR_MS, writeOptions)
+  updateScrollToBottomButton()
+  return true
+}
+
+/**
+ * Regenerate is a truncate-and-restream: the target answer and everything
+ * after it vanish, then a placeholder streams in the same slot. Without a
+ * hold the browser clamps scrollTop into whatever is left and the reader
+ * lands somewhere else. Call BEFORE the command goes out.
+ */
+function holdForRegenerate(assistantMessageId: string): boolean {
+  const index = props.messages.findIndex(m => m.id === assistantMessageId)
+  if (index < 0) return false
+  const targetRow = getMessageRowById(assistantMessageId)
+  // Reader already looking at content above the target: keep that view.
+  const topAnchor = captureTopAnchor()
+  if (topAnchor && targetRow) {
+    const anchorRow = getMessageRowById(topAnchor.messageId)
+    if (anchorRow && anchorRow !== targetRow && anchorRow.offsetTop < targetRow.offsetTop) {
+      return holdMessageAtTop(topAnchor.messageId, topAnchor.offsetWithinMessage)
+    }
+  }
+  // Otherwise pin the question the answer belongs to at the top.
+  for (let i = index - 1; i >= 0; i--) {
+    if (props.messages[i].role === 'user' && getMessageRowById(props.messages[i].id)) {
+      return holdMessageAtTop(props.messages[i].id, 0, { behavior: 'smooth' })
+    }
+  }
+  return false
+}
 
 // Nav-rail markers + visible-user-msg tracking also depend on content
 // height changes. We add a separate (cheap) ResizeObserver here so the nav
@@ -793,6 +1117,18 @@ watch(
     }
     if (!el || typeof ResizeObserver === 'undefined') return
     navContentResizeObserver = new ResizeObserver(() => {
+      // Hold-top: keep the spacer in step with content height *every* layout
+      // (CSS height transitions — the thinking panel folding — shrink the
+      // content between store nudges; without this the max scroll dips under
+      // the held offset for a few frames and the held row bobs).
+      if (holdTop && scrollCoordinator.isAnchored()) {
+        applyTailSpacer(true)
+        // Synchronous, not the rAF-scheduled onLayoutChange: RO runs after
+        // layout and before paint, so restoring here paints no clamped frame.
+        scrollCoordinator.restoreAnchorNow()
+      } else {
+        clampTailSpacerToLastQuestion()
+      }
       if (deferLayoutMeasurementDuringTransition()) return
       scheduleNavMarkerUpdate()
       scheduleNavPanelRoomUpdate()
@@ -1623,6 +1959,7 @@ function handleScroll() {
     }
   }
   updateScrollToBottomButton()
+  scheduleReadingAnchorCapture()
   scheduleNavMarkerUpdate()
   scheduleAssistantOutlineUpdate()
   scheduleVisibleUserMessageIndexUpdate()
@@ -1724,6 +2061,7 @@ function attachMessageListListeners() {
     })
     navResizeObserver.observe(scroller)
   }
+  attachReadingAnchorObserver(scroller)
 }
 
 function detachMessageListListeners() {
@@ -1735,6 +2073,7 @@ function detachMessageListListeners() {
   attachedMessageListElement = null
   navResizeObserver?.disconnect()
   navResizeObserver = null
+  detachReadingAnchorObserver()
 }
 
 // Setup event listeners
@@ -1841,6 +2180,7 @@ onUnmounted(() => {
     navContentResizeObserver.disconnect()
     navContentResizeObserver = null
   }
+  detachReadingAnchorObserver()
 })
 
 
@@ -2195,19 +2535,28 @@ defineExpose({
   getAnchorOffset: () => captureTopAnchor()?.offsetWithinMessage ?? 0,
   getNavMessageId: () => displayNavMarkers.value[currentUserMessageNavIndex.value]?.messageId ?? null,
   notifyLayoutChange: () => {
+    absorbComposerCollapseForSend()
     scheduleFollowNudge('composer-resize')
     updateScrollToBottomButton()
   },
 
+  prepareForSend,
+
   prepareForSwitch: () => {
     scrollCoordinator.clear()
+    releaseHoldTop()
+    setTailSpacerHeight(0)
     follow.prepareForSwitch()
   },
+
+  holdForRegenerate,
 
   finishSwitch: finishSessionSwitchFromViewport,
 
   restoreTail: () => {
     scrollCoordinator.clear()
+    releaseHoldTop()
+    setTailSpacerHeight(0)
     hasNavigated.value = false
     setNavIndexToLastMarker()
     follow.isFollowing.value = true
@@ -2518,6 +2867,18 @@ defineExpose({
 .message-list-bottom-sentinel {
   width: 100%;
   height: 1px;
+  pointer-events: none;
+  overflow-anchor: none;
+}
+
+/* Hold-top: the coordinator drives the position; the browser must not. */
+.message-list.is-holding-top :deep(.scrollbar-viewport) {
+  overflow-anchor: none;
+}
+
+.message-list-tail-spacer {
+  width: 100%;
+  height: 0;
   pointer-events: none;
   overflow-anchor: none;
 }

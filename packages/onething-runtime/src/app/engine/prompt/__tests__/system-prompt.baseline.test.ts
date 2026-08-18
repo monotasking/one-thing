@@ -1,4 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+import { Tool } from '@onething/runtime/tools'
+import { EDIT_TOOL_PROMPT } from '../../../../tools/builtin/edit.js'
+import { VARIABLE_TOOL_PROMPT } from '../../../../tools/builtin/variable.js'
+import { WRITE_TOOL_PROMPT } from '../../../../tools/builtin/write.js'
+import { registerTool, unregisterTool } from '../../../tools/registry.js'
 import type { BuildPromptContextOptions, PromptRequestMessage } from '../system-prompt.js'
 import { buildPrompt } from '../index.js'
 
@@ -28,12 +34,38 @@ function baseOptions(overrides: Partial<BuildPromptContextOptions> = {}): BuildP
   }
 }
 
+/**
+ * The prompt a tool brings along is read off the **registry** for the tools on
+ * the turn's surface (`turnFragments`). The baseline registers stand-ins that
+ * carry the real declarations of the builtin tools, so the snapshot shows what
+ * the desktop sends without dragging the whole builtin barrel (and its host
+ * adapters) into this test.
+ */
+const PROMPT_CARRIERS = [
+  { id: 'edit', prompt: EDIT_TOOL_PROMPT },
+  { id: 'write', prompt: WRITE_TOOL_PROMPT },
+  { id: 'variable', prompt: VARIABLE_TOOL_PROMPT },
+]
+
 beforeAll(() => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-06-09T12:00:00Z'))
+  for (const { id, prompt } of PROMPT_CARRIERS) {
+    registerTool(Tool.define(id, {
+      name: id,
+      description: `${id} stand-in`,
+      category: 'builtin',
+      parameters: z.object({}),
+      prompt,
+      async execute() {
+        return { title: id, output: '', metadata: {} }
+      },
+    }))
+  }
 })
 afterAll(() => {
   vi.useRealTimers()
+  for (const { id } of PROMPT_CARRIERS) unregisterTool(id)
 })
 
 beforeEach(() => {
@@ -68,6 +100,9 @@ describe('system prompt baseline', () => {
     })
     expect(result.systemPrompt).toMatchSnapshot('openai-systemPrompt')
     expect(shape(result.messages)).toMatchSnapshot('openai-messages')
+    // The sections that left the prefix are still pinned — they moved channel,
+    // they did not disappear.
+    expect(result.turn).toMatchSnapshot('openai-turn')
   })
 
   it('codex full context (system/developer split)', async () => {
@@ -129,12 +164,16 @@ describe('system prompt baseline', () => {
       historyMessages: [],
     })
 
-    expect(result.systemPrompt).toContain('# Skills')
-    expect(result.systemPrompt).toContain('<available_skills>')
-    expect(result.systemPrompt).toContain('<name>docs-polish</name>')
-    expect(result.systemPrompt).toContain('<description>Improve documentation writing</description>')
-    expect(result.systemPrompt).toContain('<location>/skills/writing/docs/SKILL.md</location>')
-    expect(result.systemPrompt).toContain('Use the read tool to load a skill file')
+    // The skill index is a session fact (it changes with the workdir and the
+    // enable switches), so it rides the turn channel, not the system prefix.
+    expect(result.systemPrompt).not.toContain('# Skills')
+    const skills = result.turn?.find(block => block.id === 'skills')?.content ?? ''
+    expect(skills).toContain('# Skills')
+    expect(skills).toContain('<available_skills>')
+    expect(skills).toContain('<name>docs-polish</name>')
+    expect(skills).toContain('<description>Improve documentation writing</description>')
+    expect(skills).toContain('<location>/skills/writing/docs/SKILL.md</location>')
+    expect(skills).toContain('Use the read tool to load a skill file')
   })
 
   it('excludes skills marked disable-model-invocation from the automatic index', async () => {
@@ -167,7 +206,8 @@ describe('system prompt baseline', () => {
       historyMessages: [],
     })
 
-    expect(result.systemPrompt).toContain('<name>visible-skill</name>')
-    expect(result.systemPrompt).not.toContain('manual-only')
+    const skills = result.turn?.find(block => block.id === 'skills')?.content ?? ''
+    expect(skills).toContain('<name>visible-skill</name>')
+    expect(skills).not.toContain('manual-only')
   })
 })

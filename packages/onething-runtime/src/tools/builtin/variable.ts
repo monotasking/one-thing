@@ -3,6 +3,29 @@ import type { JsonObject, JsonObjectProperty } from "@onething/core";
 import type { VariableScope, VariableType } from "../../variables/types.js";
 import { isCapabilityVariable } from "../../variables/types.js";
 import { Tool } from "../tool.js";
+import contextVariablesRaw from "./prompts/variable-context.md?raw";
+
+/**
+ * The prompt this tool brings along. It rides on the tool: on the surface →
+ * injected, off it → gone (readonly tiers, room turns without it, …).
+ *
+ * `context-variables` is a constant paragraph (cache-safe): it only points at
+ * the board — no variable value is ever rendered here; state travels in the
+ * `<context-update>` tail blocks and the rest is read with keys/get (§R.4).
+ * The section id is a named concept of its own (`disabledSections`, snapshots)
+ * so it is spelled out instead of defaulting to the tool id.
+ */
+export const VARIABLE_TOOL_PROMPT = {
+	workspaceRules: [
+		'To change the work directory, call `variable` with action="set", name="workdir", value=<directory>.',
+	],
+	sections: [
+		{
+			id: "context-variables",
+			content: `<context-variables>\n${contextVariablesRaw.replace(/\n+$/, "")}\n</context-variables>`,
+		},
+	],
+} as const satisfies Tool.Info["prompt"];
 
 export type VariableAction =
 	| "list"
@@ -271,20 +294,18 @@ export function createVariableTool(
 ): Tool.Info<typeof VariableParameters, VariableMetadata> {
 	return Tool.define<typeof VariableParameters, VariableMetadata>("variable", {
 		name: "Variable",
-		description: `Read and manage context variables - the session's board of named runtime facts and kept settings.
+		description: `Read and manage context variables — the session's board of named runtime facts and kept settings.
 
-The board is context to read, not a place to park your own working state. System variables (workdir, note dirs, background_jobs, git_branch, ...) are published by the system; the rest are values the user asked to have kept. Write when the user asks for something to be kept or changed, or when you are operating a lever the board owns such as workdir - not to record your progress, findings, or intermediate results, which belong in your reply or in notes.
+The board is context to read, not a place to park your own working state: write only when the user asks for something to be kept or changed, or when operating a lever the board owns (e.g. workdir) — never for progress, findings or intermediate results. System variables (workdir, note dirs, background_jobs, git_branch, ...) explain themselves via their description in list output.
 
-state=true is the difference between "on the board" and "in front of you": those variables arrive in full in every <context-update> block from then on. Everything else stays on the board and out of your context until you read it - keys lists every name that exists, get reads one back in full.
-
-A variable has a typed value (string, number, bool, list, map, set), an optional description, and lives in one of four scopes: session (this session), agent (every session of this agent), project (the active workdir's project), global (all sessions). Collections support element-wise append/remove. Custom names are non-reserved snake_case matching /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/; system variables (workdir, note dirs, background_jobs, ...) explain their own semantics via their description in list output.
-`,
+state=true puts a variable in front of you (it arrives in full in every <context-update>); everything else stays on the board until you read it — keys lists names, get reads one in full. Values are typed (string, number, bool, list, map, set; collections support append/remove) with an optional description, in one of four scopes: session, agent, project, global. Custom names are non-reserved snake_case.`,
 		category: "builtin",
 		enabled: true,
 		autoExecute: true,
 		permissionGuard: "safe",
 		executionMode: "sequential",
 		renderKind: "text",
+		prompt: VARIABLE_TOOL_PROMPT,
 
 		parameters: VariableParameters,
 

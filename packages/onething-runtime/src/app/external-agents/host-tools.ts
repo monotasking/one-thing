@@ -37,12 +37,55 @@ import {
   type HostMcpInjection,
   type HostMcpSurfaceResolver,
 } from '@onething/runtime/external-agents'
+import type { JsonObject } from '@shared/json.js'
+import type { HostMcpHostTool } from '@onething/runtime/external-agents'
 import type { ToolInfo } from '@onething/runtime/tools'
 import { getSession } from '../stores/sessions.js'
 import { resolveAgentProfileForSession } from '../agents/profile.js'
 import { getTool } from '../tools/registry.js'
 import { collabVenueOf } from '../collab/venue.js'
 import { findCollabV3Turn } from '../collab/actors/turn-context.js'
+// R3b:开关开时宿主工具面改由目录 + runner 回答(设计文档 §10.2-④)。
+import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
+import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
+
+/**
+ * 目录里的一只工具 → 一只可注入的宿主工具。
+ *
+ * 两格是它全部的内容:
+ *  - `parameters` 从**契约表**反查回 zod(`contractForSchema(spec.input)`),因为
+ *    SDK 的 `tool()` 要的是 zod raw shape 而 `ToolSpec.input` 是 JSON Schema。
+ *    反查不到(插件 / MCP —— 它们的契约不由本地生产)就交空,与
+ *    `rawShapeOf` 原有的兜底同一句话;
+ *  - `execute` 走 `runToolkitToolDirectly`,于是外部这一轮与本地回合**跑的是同
+ *    一条路**:两阶段、权限、统一取消、统一截断、审计一格不少。执行失败照旧
+ *    抛出去 —— `toHostMcpToolDefinition` 的 catch 把它翻成 `isError` 的那一条,
+ *    与旧路(执行器抛错)逐字同款。
+ */
+function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
+  const catalog = getToolkitCatalog()
+  const tool = catalog?.get(toolId)
+  if (!tool) return undefined
+  return {
+    id: tool.spec.id,
+    description: tool.spec.description,
+    parameters: contractForSchema(tool.spec.input)?.zod,
+    async execute(args, ctx) {
+      // 动态 import:开关关时这一行不执行,装配层那棵树一个模块都不进这个文件的
+      // 静态图(与 `app/engine/stream/tool-execution.ts` 同一个姿势)。
+      const { runToolkitToolDirectly } = await import('../toolkit/wiring.js')
+      const result = await runToolkitToolDirectly(tool.spec.id, args as unknown as JsonObject, {
+        sessionId: ctx.sessionId,
+        messageId: ctx.messageId,
+        ...(ctx.workingDirectory ? { workingDirectory: ctx.workingDirectory } : {}),
+        ...(ctx.abortSignal ? { abortSignal: ctx.abortSignal } : {}),
+      })
+      if (!result) throw new Error(`${tool.spec.id} is not in the toolkit catalog`)
+      if (!result.success) throw new Error(result.error ?? 'tool execution failed')
+      return { output: (result.data as { output?: string } | undefined)?.output ?? '' }
+    },
+  }
+}
 
 /**
  * 一次解析。返回 `undefined` = 这一轮不注入。
@@ -74,9 +117,16 @@ export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (r
   const toolIds = filterHostToolSurface({ allowlist: profile.tools, venue })
   if (toolIds.length === 0) return undefined
 
-  const tools = toolIds
-    .map(id => getTool(id))
-    .filter((tool): tool is ToolInfo => Boolean(tool))
+  // 判据是"目录真的装上了",不是开关本身:没装上时退回旧路(与其余改口点同一条
+  // 兜底),否则一次装配顺序问题会让这一轮悄悄没有宿主工具。
+  const useToolkit = isToolkitEnabled() && Boolean(getToolkitCatalog())
+  const tools: HostMcpHostTool[] = useToolkit
+    ? toolIds
+      .map(id => toolkitHostTool(id))
+      .filter((tool): tool is HostMcpHostTool => Boolean(tool))
+    : toolIds
+      .map(id => getTool(id))
+      .filter((tool): tool is ToolInfo => Boolean(tool)) as unknown as HostMcpHostTool[]
   if (tools.length === 0) {
     console.warn(
       `[host-mcp] no builtin tool object for [${toolIds.join(', ')}] — host tools not injected`,

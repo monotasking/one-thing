@@ -25,7 +25,8 @@ export const modelsApi = {
   getAllModels: (): Promise<ModelsListResponse> => models.getAll({}),
   searchModels: (query: string, providerId?: string): Promise<ModelsListResponse> =>
     models.search({ query, providerId }),
-  refreshModelRegistry: (): Promise<ModelRefreshRegistryResponse> => models.refreshRegistry({}),
+  refreshModelRegistry: (providerId?: string): Promise<ModelRefreshRegistryResponse> =>
+    models.refreshRegistry(providerId ? { providerId } : {}),
   getModelNameAliases: (): Promise<ModelNameAliasesResponse> => models.getNameAliases({}),
   getModelDisplayName: (modelId: string): Promise<ModelDisplayNameResponse> =>
     models.getDisplayName({ modelId }),

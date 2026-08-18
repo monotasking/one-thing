@@ -24,6 +24,8 @@ import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
 import { resolveUserIdentity } from './user-identity.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 function authorLabelOf(message: ChatMessage): string {
   // 快照语义(agent-dm-user.md §2.3):这里取的是**引用发生那一刻**的称呼,
   // 之后改名不追改旧引用 —— 引用本来就是一段话的副本,不是一个身份指针。
@@ -71,7 +73,7 @@ export function attachCollabReplyTo(
   if (!store.updateMessageReplyTo(roomSessionId, replyMessageId, snapshot)) return null
 
   void getEventBus().emit(roomSessionId, {
-    type: 'message:updated',
+    type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
     messageId: replyMessageId,
     updates: { replyTo: snapshot },
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])

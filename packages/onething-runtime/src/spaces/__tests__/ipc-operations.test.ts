@@ -155,16 +155,17 @@ describe('spaces credential IPC operations', () => {
     ).toEqual({ success: true, credentials: emptySummary })
   })
 
-  it('refuses to write the default space — settings.ai IS its credential layer', () => {
+  // C1:default 也是普通空间,写它的池是**唯一**的编辑路径。C1 之前这里挡着它
+  // (理由是「settings.ai IS its credential layer」),迁移之后那个理由没有了。
+  it('writes the default space like any other — it is a normal space now', () => {
     const writeCredential = vi.fn(() => emptySummary)
     const result = setOnethingSpaceCredentialForIpc({
       request: { id: 'default', providerId: 'deepseek', apiKey: 'sk' },
       hasSpace: () => true,
-      isDefaultSpace: id => id === 'default',
       writeCredential,
     })
-    expect(result).toMatchObject({ success: false, code: 'DEFAULT_SPACE' })
-    expect(writeCredential).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ success: true })
+    expect(writeCredential).toHaveBeenCalledTimes(1)
   })
 
   it('rejects an empty key instead of silently storing a useless entry', () => {
@@ -173,7 +174,6 @@ describe('spaces credential IPC operations', () => {
       setOnethingSpaceCredentialForIpc({
         request: { id: 'work', providerId: 'deepseek', apiKey: '   ' },
         hasSpace: () => true,
-        isDefaultSpace: () => false,
         writeCredential,
       }),
     ).toMatchObject({ success: false, code: 'INVALID' })
@@ -183,10 +183,38 @@ describe('spaces credential IPC operations', () => {
       setOnethingSpaceCredentialForIpc({
         request: { id: 'work', providerId: '  ', apiKey: 'sk' },
         hasSpace: () => true,
-        isDefaultSpace: () => false,
         writeCredential,
       }),
     ).toMatchObject({ success: false, code: 'INVALID' })
+  })
+
+  /**
+   * 批 B10:改一条 entry 的**档位/地区**不该要求重新粘一次密钥 —— 渲染层根本
+   * 拿不到密钥原文(B3 决策 8),逼它重填就是逼用户重打一遍。
+   */
+  it('带 entryId 而不带 key = 只改非密钥字段(档位/地区),放行', () => {
+    const writeCredential = vi.fn(() => emptySummary)
+    const result = setOnethingSpaceCredentialForIpc({
+      request: { id: 'work', providerId: 'kimi', entryId: 'a', region: 'intl' },
+      hasSpace: () => true,
+      writeCredential,
+    })
+    expect(result).toMatchObject({ success: true })
+    expect(writeCredential).toHaveBeenCalledWith(
+      expect.objectContaining({ entryId: 'a', region: 'intl' }),
+    )
+  })
+
+  it('**追加**那一支仍然要求密钥:池里不该多出一行永远用不了的东西', () => {
+    const writeCredential = vi.fn(() => emptySummary)
+    expect(
+      setOnethingSpaceCredentialForIpc({
+        request: { id: 'work', providerId: 'kimi', region: 'intl' },
+        hasSpace: () => true,
+        writeCredential,
+      }),
+    ).toMatchObject({ success: false, code: 'INVALID' })
+    expect(writeCredential).not.toHaveBeenCalled()
   })
 
   it('writes and clears for a normal space', () => {
@@ -194,7 +222,6 @@ describe('spaces credential IPC operations', () => {
       setOnethingSpaceCredentialForIpc({
         request: { id: 'work', providerId: 'deepseek', apiKey: 'sk' },
         hasSpace: () => true,
-        isDefaultSpace: () => false,
         writeCredential: () => emptySummary,
       }),
     ).toEqual({ success: true, credentials: emptySummary })
@@ -203,7 +230,6 @@ describe('spaces credential IPC operations', () => {
       clearOnethingSpaceCredentialForIpc({
         request: { id: 'work', providerId: 'deepseek' },
         hasSpace: () => true,
-        isDefaultSpace: () => false,
         clearCredential: () => emptySummary,
       }),
     ).toEqual({ success: true, credentials: emptySummary })

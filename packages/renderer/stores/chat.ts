@@ -48,6 +48,14 @@ import { rawTextFromPromptParts } from "@shared/prompt-references";
 import type { JsonObject } from "@shared/json";
 import type { RequestSnapshotEvent } from "@shared/events/index.js";
 
+import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
+import {
+	derivePhase,
+	estimateTokens,
+	type GenerationPhase,
+	type GenerationStatus,
+} from "./helpers/generation-status";
+
 type RequestSnapshot = RequestSnapshotEvent["snapshot"];
 type ImportMetaWithDebugEnv = ImportMeta & {
 	env?: {
@@ -67,6 +75,23 @@ async function draftAwareSessionsStore() {
 async function draftAwareSettingsStore() {
 	const { useSettingsStore } = await import("./settings");
 	return useSettingsStore();
+}
+
+/**
+ * 当前空间自己表达过的默认 provider/model(批 B9),没表达过就是 `undefined`。
+ * 走 store 而不是 `useSpaceProviderView` —— 这里不在组件里,视图那层的生命周期
+ * 钩子对它没有意义,它要的只是那一格数据。
+ */
+async function currentSpaceDefaultSelection() {
+	const { useSpaceProvidersStore } = await import("./spaceProviders");
+	const store = useSpaceProvidersStore();
+	// C1:default 也是普通空间;C2:它住在这个空间的 `providers.json`
+	// (`provider` + `providers[provider].model`)。
+	const space = store.providerSettings;
+	const provider = space?.provider;
+	if (!provider) return undefined;
+	const model = space?.providers?.[provider]?.model;
+	return model ? { provider, model } : { provider };
 }
 
 /**
@@ -109,6 +134,9 @@ async function resolveSendProviderOverride(sessionId: string) {
 		settings: settingsStore.settings,
 		session,
 		agentModel: await resolveSessionAgentModel(session?.agentId),
+		// 批 B9:会话/agent 都没表达过时,空间默认排在全局默认前面。引擎侧同一格
+		// 在 `getEffectiveProviderConfig`——两边同形,所见即所发。
+		spaceDefault: await currentSpaceDefaultSelection(),
 	});
 	return providerId ? { providerId, model } : {};
 }
@@ -273,10 +301,73 @@ export const useChatStore = defineStore("chat", () => {
 	// Active streams (sessionId -> messageId)
 	const activeStreams = ref<Map<string, string>>(new Map());
 
+	/**
+	 * P1(2026-08-14):压缩进行中的会话。由 ipc-hub 的
+	 * context:compact-started / -completed 两个 case 维护(C6 又加了 -progress
+	 * 一条,写的是下面那张 compactProgress)—— **只有 completed
+	 * 清位**:压缩是会话级后台作业,stream:error 或切会话都不该把它抹掉。
+	 */
+	const compactingSessions = ref<Map<string, boolean>>(new Map());
+
+	function setSessionCompacting(sessionId: string, compacting: boolean) {
+		if (!sessionId) return;
+		const next = new Map(compactingSessions.value);
+		if (compacting) next.set(sessionId, true);
+		else next.delete(sessionId);
+		compactingSessions.value = next;
+	}
+
+	function isSessionCompacting(sessionId: string): boolean {
+		return compactingSessions.value.get(sessionId) === true;
+	}
+
+	/**
+	 * C6(2026-08-14):多块摘要的分块进度。与 compactingSessions 并列而不是
+	 * 塞进同一张表:压缩「在跑」是布尔事实(单块压缩全程没有进度),进度是**可选**
+	 * 的附加信息。started 清零、completed 清除,由 ipc-hub 的三个 case 维护。
+	 */
+	const compactProgress = ref<
+		Map<string, { chunk: number; totalChunks: number }>
+	>(new Map());
+
+	function setSessionCompactProgress(
+		sessionId: string,
+		progress: { chunk: number; totalChunks: number } | null,
+	) {
+		if (!sessionId) return;
+		if (!progress && !compactProgress.value.has(sessionId)) return;
+		const next = new Map(compactProgress.value);
+		if (progress) next.set(sessionId, progress);
+		else next.delete(sessionId);
+		compactProgress.value = next;
+	}
+
+	function getSessionCompactProgress(
+		sessionId: string,
+	): { chunk: number; totalChunks: number } | null {
+		return compactProgress.value.get(sessionId) ?? null;
+	}
+
 	// Steering messages still waiting in the queue (messageId -> sessionId).
 	// A message stays retractable until the next loop turn drains it. Keyed
 	// by message id because loaded messages don't reliably carry sessionId.
 	const pendingSteeringByMessageId = ref<Map<string, string>>(new Map());
+
+	// ============ Live generation stats (composer readout) ============
+	// Plain (non-reactive) bookkeeping polled by useGenerationStatus: chunk
+	// arrival is far too frequent to trigger a reactive graph for a 100ms
+	// readout. Phase is derived from the streaming message on each read.
+	interface GenerationLiveStats {
+		startedAt: number;
+		receivedChars: number;
+		/** Estimated tokens for characters received since the last exact usage. */
+		estimatedSinceUsage: number;
+		exactOutputTokens: number | null;
+		inputTokens: number | null;
+		phase: GenerationPhase | null;
+		phaseSince: number;
+	}
+	const generationStats = new Map<string, GenerationLiveStats>();
 
 	interface ComposerDraft {
 		messageInput: string;
@@ -1407,6 +1498,10 @@ export const useChatStore = defineStore("chat", () => {
 
 		const parts = message.contentParts;
 
+		if (chunk.type === "text") noteGenerationChars(sessionId, chunk.content);
+		else if (chunk.type === "reasoning") noteGenerationChars(sessionId, chunk.reasoning);
+		else if (chunk.type === "tool_input_delta") noteGenerationChars(sessionId, chunk.argsTextDelta);
+
 		if (chunk.type === "text") {
 			if (chunk.replace) {
 				message.content = chunk.content;
@@ -1648,6 +1743,7 @@ export const useChatStore = defineStore("chat", () => {
 		sessionGenerating.value.set(sessionId, false);
 		sessionLoading.value.set(sessionId, false);
 		activeStreams.value.delete(sessionId);
+		generationStats.delete(sessionId);
 		clearPendingStreamChunks(sessionId);
 		clearPendingContinuationWait(sessionId);
 		clearToolInputDeltas(sessionId);
@@ -1730,6 +1826,7 @@ export const useChatStore = defineStore("chat", () => {
 		sessionGenerating.value.set(sessionId, false);
 		sessionLoading.value.set(sessionId, false);
 		activeStreams.value.delete(sessionId);
+		generationStats.delete(sessionId);
 		clearPendingStreamChunks(sessionId);
 		clearPendingContinuationWait(sessionId);
 		clearToolInputDeltas(sessionId);
@@ -2272,7 +2369,7 @@ export const useChatStore = defineStore("chat", () => {
 
 		// platformApi : 根据web或electron环境生成对应的api
 		await platformApi.emitCommand(sessionId, {
-			type: "command:send-message",
+			type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
 			content,
 			attachments,
 			...providerOverride,
@@ -2317,7 +2414,7 @@ export const useChatStore = defineStore("chat", () => {
 		// run. Materializing wouldn't help either — refuse instead.
 		if ((await draftAwareSessionsStore()).isNewChatDraftId(sessionId)) return false;
 		await platformApi.emitCommand(sessionId, {
-			type: "command:inject-steering",
+			type: SESSION_COMMAND_TYPES.INJECT_STEERING,
 			content,
 			source: "user",
 		});
@@ -2331,7 +2428,7 @@ export const useChatStore = defineStore("chat", () => {
 		// Same as steerMessage: no main-process session, nothing to follow up.
 		if ((await draftAwareSessionsStore()).isNewChatDraftId(sessionId)) return false;
 		await platformApi.emitCommand(sessionId, {
-			type: "command:inject-followup",
+			type: SESSION_COMMAND_TYPES.INJECT_FOLLOWUP,
 			content,
 			source: "user",
 		});
@@ -2355,7 +2452,7 @@ export const useChatStore = defineStore("chat", () => {
 
 		const providerOverride = await resolveSendProviderOverride(sessionId);
 		await platformApi.emitCommand(sessionId, {
-			type: "command:edit-and-resend",
+			type: SESSION_COMMAND_TYPES.EDIT_AND_RESEND,
 			messageId,
 			newContent,
 			...providerOverride,
@@ -2377,7 +2474,7 @@ export const useChatStore = defineStore("chat", () => {
 
 			const providerOverride = await resolveSendProviderOverride(sessionId);
 			await platformApi.emitCommand(sessionId, {
-				type: "command:retry-message",
+				type: SESSION_COMMAND_TYPES.RETRY_MESSAGE,
 				messageId,
 				...providerOverride,
 			});
@@ -2590,7 +2687,65 @@ export const useChatStore = defineStore("chat", () => {
 		sessionGenerating.value.set(sessionId, true);
 		triggerRef(activeStreams);
 		triggerRef(sessionGenerating);
+		generationStats.set(sessionId, {
+			startedAt: Date.now(),
+			receivedChars: 0,
+			estimatedSinceUsage: 0,
+			exactOutputTokens: null,
+			inputTokens: null,
+			phase: null,
+			phaseSince: Date.now(),
+		});
 		flushPendingStreamChunks(sessionId, messageId);
+	}
+
+	/** stream:usage — a model turn finished; snap the readout to real numbers. */
+	function handleStreamUsage(data: {
+		sessionId: string;
+		usage: { inputTokens: number; outputTokens: number };
+		accumulated: { inputTokens: number; outputTokens: number };
+	}) {
+		const stats = generationStats.get(data.sessionId);
+		if (!stats) return;
+		stats.exactOutputTokens = data.accumulated.outputTokens;
+		stats.estimatedSinceUsage = 0;
+		stats.inputTokens = data.usage.inputTokens;
+	}
+
+	/** Track streamed characters for the estimate (called from handleStreamChunk). */
+	function noteGenerationChars(sessionId: string, text: string | undefined) {
+		if (!text) return;
+		const stats = generationStats.get(sessionId);
+		if (!stats) return;
+		stats.receivedChars += text.length;
+		stats.estimatedSinceUsage += estimateTokens(text);
+	}
+
+	/**
+	 * Snapshot of what the session's stream is doing right now, for the
+	 * composer's status readout. Null when nothing is generating.
+	 */
+	function getGenerationStatus(sessionId: string): GenerationStatus | null {
+		const stats = generationStats.get(sessionId);
+		if (!stats || !isSessionGenerating(sessionId)) return null;
+		const messageId = activeStreams.value.get(sessionId);
+		const message = messageId
+			? getSessionMessagesRef(sessionId).find((m) => m.id === messageId)
+			: undefined;
+		const derived = message ? derivePhase(message) : { phase: "waiting" as const };
+		if (derived.phase !== stats.phase) {
+			stats.phase = derived.phase;
+			stats.phaseSince = Date.now();
+		}
+		return {
+			phase: derived.phase,
+			phaseSince: stats.phaseSince,
+			startedAt: stats.startedAt,
+			...(derived.toolName ? { toolName: derived.toolName } : {}),
+			outputTokens: Math.round((stats.exactOutputTokens ?? 0) + stats.estimatedSinceUsage),
+			outputTokensExact: stats.exactOutputTokens !== null && stats.estimatedSinceUsage === 0,
+			inputTokens: stats.inputTokens,
+		};
 	}
 
 	/**
@@ -2639,7 +2794,7 @@ export const useChatStore = defineStore("chat", () => {
 		const sessionId = pendingSteeringByMessageId.value.get(messageId);
 		if (!sessionId) return false;
 		await platformApi.emitCommand(sessionId, {
-			type: "command:retract-steering",
+			type: SESSION_COMMAND_TYPES.RETRACT_STEERING,
 			messageId,
 		});
 		return true;
@@ -2880,11 +3035,17 @@ export const useChatStore = defineStore("chat", () => {
 		sessionError,
 		sessionErrorDetails,
 		activeStreams,
+		compactingSessions,
+		compactProgress,
 		composerDrafts,
 
 		// Getters
 		getSessionState,
 		isSessionGenerating,
+		isSessionCompacting,
+		setSessionCompacting,
+		getSessionCompactProgress,
+		setSessionCompactProgress,
 		getSessionPageState,
 		// 纯追加的出口:向上补页会把"向下那一边"的分页账写坏(存储层对更旧那一页
 		// 一律答 hasMoreAfter:true),房面补完页要把那两栏原样还回去。store 内部
@@ -2944,6 +3105,8 @@ export const useChatStore = defineStore("chat", () => {
 		sendMessage,
 		steerMessage,
 		retractSteerMessage,
+		handleStreamUsage,
+		getGenerationStatus,
 		isSteeringPending,
 		pendingSteeringByMessageId,
 		queueFollowUpMessage,

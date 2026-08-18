@@ -21,6 +21,12 @@
  * 形态的**归属在这里**,不在 Sidebar —— 它决定主区显示哪条会话,早就不是侧栏的
  * 本机视图偏好了(D7 修正了 D6 的这一句)。落点仍是 localStorage。
  *
+ * 2026-08-14(批 B5)再升一层:**每个空间 × 每个形态一棵树**。切空间 = 换树
+ * (`setSpace`),切走的那棵原样寄存在 `parkedSpaces` 里,切回来还在。形态本身
+ * **保持全局**(「我现在想看哪类活」不随空间走),所以每个空间存的是两棵树。
+ * 切空间**不 abort 任何活跃流** —— 树只是 UI 布局,会话/流的生命周期不归它管
+ * (Arc 语义,docs/design/workspace-spaces-2026-08.md §2)。
+ *
  * Invariants (maintained by every mutation):
  * - I1: 每个 leaf 恰好一条会话;只有空工作区那唯一一格允许 sessionId === ''。
  * - I2: `activeLeafId` points at an existing leaf.
@@ -54,10 +60,19 @@ import {
   rebuildFromLegacyTabs,
   rebuildWorkspace,
   serializeWorkspace,
+  serializeWorkspaceArchive,
+  splitWorkspaceArchive,
   type LegacyPersistedTab,
   type PersistedWorkspace,
+  type PersistedWorkspaceSpaceEntry,
+  type PersistedWorkspaceV4,
   type RebuildFormResult,
 } from './workspace-persistence'
+import {
+  DEFAULT_SPACE_ID,
+  currentSpaceId as readCurrentSpaceId,
+  sessionBelongsToSpace,
+} from './spaces'
 
 export interface WorkspaceHydrationSource {
   currentSessionId?: string
@@ -104,6 +119,38 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   })
   const hydrated = ref(false)
 
+  // ── 空间(批 B5)─────────────────────────────────────────────────────────
+  //
+  // `roots` / `activeLeafIds` 永远是**当前空间**那两棵树 —— 组件、分栏操作、
+  // 形态切换全都不必知道空间这回事。别的空间寄存在 `parkedSpaces` 里。
+  // currentSpaceId 是 window 级状态(localStorage 即真相),所以初值直接读它,
+  // 不必等 spaces store 装配好。
+
+  interface SpaceTrees {
+    roots: Record<SidebarFormMode, WorkspaceNode>
+    activeLeafIds: Record<SidebarFormMode, string>
+  }
+
+  function emptyTrees(): SpaceTrees {
+    return {
+      roots: { chat: createLeaf(MAIN_LEAF_ID, 100), collab: createLeaf(MAIN_LEAF_ID, 100) },
+      activeLeafIds: { chat: MAIN_LEAF_ID, collab: MAIN_LEAF_ID },
+    }
+  }
+
+  const spaceId = ref<string>(readCurrentSpaceId() || DEFAULT_SPACE_ID)
+  /** 非当前空间的那些树。切回去要原样还在,所以只是寄存,不是丢弃。 */
+  const parkedSpaces = ref<Record<string, SpaceTrees>>({})
+
+  /** 当前空间 + 所有寄存空间。删会话、写盘这类"要扫全部"的动作走这一个出口。 */
+  function allSpaceTrees(): Array<[string, SpaceTrees]> {
+    const current: SpaceTrees = { roots: roots.value, activeLeafIds: activeLeafIds.value }
+    return [
+      [spaceId.value, current],
+      ...Object.entries(parkedSpaces.value).filter(([id]) => id !== spaceId.value),
+    ]
+  }
+
   /** 当前形态那棵树 —— 组件一律读这两个,不直接碰 `roots`。 */
   const root = computed<WorkspaceNode>({
     get: () => roots.value[formMode.value],
@@ -148,6 +195,33 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   let persistTimer: ReturnType<typeof setTimeout> | null = null
 
+  /** 整份存档(v5):每个空间一份 v4 快照。 */
+  function snapshotArchive(): Record<string, PersistedWorkspaceV4> {
+    // Draft-ness is session-store state (unmaterialized session), so the
+    // skip-drafts predicate is injected here rather than inferred from the
+    // id — draft ids are ordinary UUIDs.
+    const sessionsStore = useSessionsStore()
+    const isDraft = (id: string) => sessionsStore.isNewChatDraftId(id)
+    const out: Record<string, PersistedWorkspaceV4> = {}
+    for (const [id, trees] of allSpaceTrees()) {
+      out[id] = serializeWorkspace(
+        {
+          chat: { root: trees.roots.chat, activeLeafId: trees.activeLeafIds.chat },
+          collab: { root: trees.roots.collab, activeLeafId: trees.activeLeafIds.collab },
+        },
+        isDraft,
+      )
+    }
+    return out
+  }
+
+  function writeArchiveNow(): void {
+    if (!platformApi?.saveUIState) return
+    platformApi
+      .saveUIState({ workspace: serializeWorkspaceArchive(snapshotArchive()) })
+      .catch(() => {})
+  }
+
   function persist() {
     // Before hydration finishes there is nothing worth writing (and writing
     // would clobber the saved state we are about to restore from).
@@ -155,22 +229,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (persistTimer) clearTimeout(persistTimer)
     persistTimer = setTimeout(() => {
       persistTimer = null
-      // Draft-ness is session-store state (unmaterialized session), so the
-      // skip-drafts predicate is injected here rather than inferred from the
-      // id — draft ids are ordinary UUIDs.
-      const sessionsStore = useSessionsStore()
-      platformApi
-        .saveUIState({
-          workspace: serializeWorkspace(
-            {
-              chat: { root: roots.value.chat, activeLeafId: activeLeafIds.value.chat },
-              collab: { root: roots.value.collab, activeLeafId: activeLeafIds.value.collab },
-            },
-            id => sessionsStore.isNewChatDraftId(id),
-          ),
-        })
-        .catch(() => {})
+      writeArchiveNow()
     }, PERSIST_DEBOUNCE_MS)
+  }
+
+  /**
+   * 把 debounce 窗口里挂着的那一击立刻写掉。
+   *
+   * 切空间必须先 flush:换树本身会改掉 `roots`,挂着的那次写盘醒来时看到的已经
+   * 是新空间的树 —— 最后一次分栏操作就这么无声无息地丢了。
+   */
+  function flushPersist(): void {
+    if (!persistTimer) return
+    clearTimeout(persistTimer)
+    persistTimer = null
+    writeArchiveNow()
   }
 
   function hydrate(appState: WorkspaceHydrationSource | null | undefined): void {
@@ -183,8 +256,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     // Drafts are never persisted and never in the session list, so plain
     // membership covers them.
-    const isValidSessionId = (sessionId: string) =>
-      sessionsStore.sessions.some(s => s.id === sessionId)
+    //
+    // 批 B5:合法还要求**属于这个空间** —— 会话被挪走/删掉之后,别的空间那棵树
+    // 里留下的引用走的就是这条既有的"无效叶清理"路(整格丢掉、空分栏收起),
+    // 不另起一套。
+    const validIn = (space: string) => (sessionId: string) =>
+      sessionsStore.sessions.some(s => s.id === sessionId && sessionBelongsToSpace(s, space))
+    const isValidSessionId = validIn(spaceId.value)
 
     /** 老存档(v2/v3 单树)整棵认领给谁 —— 按它当前会话的 kind 判。 */
     const claimLegacyBy = (sessionIds: string[]): SidebarFormMode => {
@@ -195,6 +273,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return 'chat'
     }
 
+    // v5 → 每空间一份分片;v4 及更老的整份归 default 空间(其他空间无树)。
+    const archive = splitWorkspaceArchive(appState?.workspace, DEFAULT_SPACE_ID)
+
+    // 别的空间先按存档还原好寄存起来 —— 切过去才有东西可换。
+    for (const [id, entry] of Object.entries(archive)) {
+      if (id === spaceId.value) continue
+      const trees = rebuildWorkspace(entry, validIn(id), claimLegacyBy)
+      parkedSpaces.value[id] = {
+        roots: { chat: trees.chat.root, collab: trees.collab.root },
+        activeLeafIds: { chat: trees.chat.activeLeafId, collab: trees.collab.activeLeafId },
+      }
+    }
+
     let rebuilt: Record<SidebarFormMode, RebuildFormResult> | null = null
     /**
      * 老存档(v1/v2/v3 单树、或只有 `currentSessionId`)没有形态这个概念 ——
@@ -202,10 +293,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
      * 形态上,「我的会话呢」。v4 存档自己带形态,不走这一条。
      */
     let claimedForm: SidebarFormMode | null = null
-    const persisted = appState?.workspace
-    // v4 / v3 / v2 都读得进来。版本号不匹配就静默清空工作区,那是迁移最容易踩的
-    // 坑,所以这里**必须**认全(product-two-forms-chatgpt-shell.md §6.2)。
-    if (persisted && (persisted.version === 4 || persisted.version === 3 || persisted.version === 2)) {
+    const persisted: PersistedWorkspaceSpaceEntry | undefined = archive[spaceId.value]
+    // v5 / v4 / v3 / v2 都读得进来(`splitWorkspaceArchive` 已按版本白名单筛过)。
+    // 版本号不匹配就静默清空工作区,那是迁移最容易踩的坑,所以必须认全
+    // (product-two-forms-chatgpt-shell.md §6.2)。
+    if (persisted) {
       rebuilt = rebuildWorkspace(persisted, isValidSessionId, (ids) => {
         const claimed = claimLegacyBy(ids)
         claimedForm = claimed
@@ -299,6 +391,37 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     persist()
   }
 
+  // ── 空间 ────────────────────────────────────────────────────────────────
+
+  /**
+   * 切空间 = 换树(批 B5)。
+   *
+   * 当前这两棵原样寄存,目标空间那两棵取回来;目标空间从没开过东西就给空树 ——
+   * 主叶由调用方按"校正激活会话"的口径落位(Sidebar 手上才有按空间过滤好的
+   * 会话表)。
+   *
+   * **不 abort 任何活跃流**:树只是 UI 布局。A 空间在跑的那条流切走后继续跑,
+   * 切回来还在原位(Arc 语义)。
+   *
+   * 形态**不跟着换** —— 「我现在想看哪类活」是全局偏好,每个空间存的是两棵树。
+   */
+  function setSpace(next: string): void {
+    const target = next || DEFAULT_SPACE_ID
+    if (target === spaceId.value) return
+    // 换树会改掉 `roots`,挂着的那次写盘醒来就写错空间了。
+    flushPersist()
+    parkedSpaces.value[spaceId.value] = {
+      roots: roots.value,
+      activeLeafIds: activeLeafIds.value,
+    }
+    const parked = parkedSpaces.value[target] ?? emptyTrees()
+    delete parkedSpaces.value[target]
+    roots.value = parked.roots
+    activeLeafIds.value = parked.activeLeafIds
+    spaceId.value = target
+    persist()
+  }
+
   // ── session mutations ───────────────────────────────────────────────────
 
   function setActiveLeaf(leafId: string) {
@@ -340,25 +463,28 @@ export const useWorkspaceStore = defineStore('workspace', () => {
    */
   function closeSession(sessionId: string, opts?: { onlyLeafId?: string }) {
     let changed = false
-    // **两棵树都要扫**:会话删了/归档了,不能在另一个形态的树里留一个指向
-    // 不存在会话的格子 —— 切过去才发现是个空壳。
-    for (const id of FORM_IDS) {
-      const formLeaves = collectLeaves(roots.value[id])
-      const emptiedLeafIds: string[] = []
-      for (const leaf of formLeaves) {
-        if (opts?.onlyLeafId && leaf.id !== opts.onlyLeafId) continue
-        if (leaf.sessionId !== sessionId) continue
-        leaf.sessionId = ''
-        changed = true
-        emptiedLeafIds.push(leaf.id)
-      }
-      for (const leafId of emptiedLeafIds) {
-        if (collectLeaves(roots.value[id]).length > 1) {
-          const result = closeLeafInTree(roots.value[id], leafId, activeLeafIds.value[id])
-          roots.value[id] = result.root
-          activeLeafIds.value[id] = result.activeLeafId
+    // **每个空间的两棵树都要扫**:会话删了/归档了,不能在别处留一个指向不存在
+    // 会话的格子 —— 切过去才发现是个空壳。(寄存的空间里那份同理:留着它等
+    // 下次 rebuild 去清也行,但那要等到重启,中间那次切换就是空壳。)
+    for (const [, trees] of allSpaceTrees()) {
+      for (const id of FORM_IDS) {
+        const formLeaves = collectLeaves(trees.roots[id])
+        const emptiedLeafIds: string[] = []
+        for (const leaf of formLeaves) {
+          if (opts?.onlyLeafId && leaf.id !== opts.onlyLeafId) continue
+          if (leaf.sessionId !== sessionId) continue
+          leaf.sessionId = ''
+          changed = true
+          emptiedLeafIds.push(leaf.id)
         }
-        // 唯一那格允许留空 —— 那就是这个形态的空工作区态。
+        for (const leafId of emptiedLeafIds) {
+          if (collectLeaves(trees.roots[id]).length > 1) {
+            const result = closeLeafInTree(trees.roots[id], leafId, trees.activeLeafIds[id])
+            trees.roots[id] = result.root
+            trees.activeLeafIds[id] = result.activeLeafId
+          }
+          // 唯一那格允许留空 —— 那就是这个形态的空工作区态。
+        }
       }
     }
     if (changed) persist()
@@ -424,6 +550,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     formMode,
     availableFormModes,
     setFormMode,
+    spaceId,
+    setSpace,
     rootOf,
     activeLeafIdOf,
     hydrate,

@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import type { AppSettings } from '@/types'
 import { useModelLedger, STYLE_PRESET_TEMPERATURES } from '../useModelLedger'
 
@@ -85,6 +86,15 @@ function createLedger(settings = createSettings()) {
   return { ledger, updates }
 }
 
+// 总账从批 B7 起经「当前空间的 provider 视图」取 selectedModels,那条路上有两个
+// pinia store。C1 之后**「选了哪些 / 默认是哪个」一律写空间 overlay**,不再进
+// settings —— 这份测试没有 mock `@/platform`,所以那条写路是哑的,它钉的是
+// **还留在 settings 里的那一半**(逐模型 override 表)。overlay 那一半由
+// `provider-defaults.space.test.ts` 与 `space-provider-view.test.ts` 钉。
+beforeEach(() => {
+  setActivePinia(createPinia())
+})
+
 describe('useModelLedger', () => {
   it('aggregates rows across enabled providers only', () => {
     stores.cachedModels = { openai: [model('gpt-4o'), model('o4-mini')], deepseek: [] }
@@ -103,15 +113,13 @@ describe('useModelLedger', () => {
     ])
   })
 
-  it('setDefault writes provider and model in one update', () => {
+  it('setDefault no longer touches settings — the default lives in the space overlay (C1)', () => {
     stores.cachedModels = { openai: [model('gpt-4o'), model('o4-mini')], deepseek: [] }
     const { ledger, updates } = createLedger()
 
     ledger.setDefault(ledger.rows.value[2])
 
-    expect(updates).toHaveLength(1)
-    expect(updates[0].ai.provider).toBe('deepseek')
-    expect(updates[0].ai.providers.deepseek.model).toBe('deepseek-chat')
+    expect(updates).toEqual([])
   })
 
   it('maps style presets onto temperatureByModel and clears on default', () => {
@@ -151,7 +159,7 @@ describe('useModelLedger', () => {
     expect(updates[1].ai.providers.openai.maxOutputByModel).toBeUndefined()
   })
 
-  it('refuses to remove a provider’s last model, removes otherwise and refalls the active model', () => {
+  it('refuses to remove a provider’s last model; the removal itself goes to the space overlay (C1)', () => {
     stores.cachedModels = { openai: [model('gpt-4o'), model('o4-mini')], deepseek: [] }
     const { ledger, updates } = createLedger()
 
@@ -159,8 +167,8 @@ describe('useModelLedger', () => {
     expect(updates).toHaveLength(0)
 
     expect(ledger.removeModel(ledger.rows.value[0]).ok).toBe(true)
-    expect(updates[0].ai.providers.openai.selectedModels).toEqual(['o4-mini'])
-    expect(updates[0].ai.providers.openai.model).toBe('o4-mini')
+    // id 清单按空间走,settings 一个字节都不动。
+    expect(updates).toEqual([])
   })
 
   it('renames a hand-added model, migrating per-model override maps', () => {
@@ -175,7 +183,8 @@ describe('useModelLedger', () => {
     const result = ledger.renameModel(o4mini, 'o4-mini-2026')
     expect(result.ok).toBe(true)
     const next = updates[0].ai.providers.openai
-    expect(next.selectedModels).toEqual(['gpt-4o', 'o4-mini-2026'])
+    // C1:id 清单迁去空间 overlay;逐模型 override 表是全局共享的,留在 settings。
+    expect(next.selectedModels).toEqual(['gpt-4o', 'o4-mini'])
     expect(next.temperatureByModel).toEqual({ 'o4-mini-2026': 0.4 })
     expect(next.maxOutputByModel).toEqual({ 'o4-mini-2026': 2048 })
     expect(stores.addCustomModelToCache).toHaveBeenCalledWith(

@@ -1,5 +1,12 @@
 export interface StreamEngineStoreAdapter<TSettings = unknown, TSession = unknown, TMessage = unknown> {
   getSettings(): TSettings
+  /**
+   * 「这条会话该看哪一份 settings」。宿主可选注入 —— onething 的 provider 设置
+   * 整套 per-space(C2),而标题模型这类**不经过 getEffectiveConfig 的**解析点
+   * 手里只有 sessionId。缺席 = 与 `getSettings()` 同一份(引擎自己不知道空间
+   * 是什么,也不该知道)。
+   */
+  getSettingsForSession?(sessionId: string): TSettings
   getSession(sessionId: string): TSession | undefined
   addMessage(sessionId: string, message: TMessage): void
   renameSession(sessionId: string, name: string): void
@@ -40,15 +47,6 @@ export interface StreamEnginePromptAdapter<TSkill = unknown, TContentPart = unkn
     content: string,
     options: { skills: TSkill[] }
   ): StreamEnginePromptResolution<TContentPart>
-}
-
-export interface StreamEngineVariablesAdapter {
-  /**
-   * Text for the per-turn <context-update> block (turn-volatile context
-   * variables). Attached to the user message at send time and persisted
-   * there, so history rebuilds replay identical bytes (prompt-cache safe).
-   */
-  buildTurnContext(sessionId: string): Promise<string> | string
 }
 
 export interface StreamEngineMediaAdapter<TAttachment = unknown> {

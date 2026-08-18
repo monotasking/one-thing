@@ -31,6 +31,8 @@ interface SkillFrontmatter {
   'allowed-tools'?: string[]
   platforms?: string[]
   'disable-model-invocation'?: boolean
+  /** 默认关闭的 skill:用户在 设置 → Skills 打开前不进回合(也不带进它的场景工具)。 */
+  'default-enabled'?: boolean
   tags?: string[] | string
   related_skills?: string[] | string
   metadata?: Record<string, unknown>
@@ -126,6 +128,9 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | nu
           ...(parsed['disable-model-invocation'] !== undefined
             ? { 'disable-model-invocation': isTruthyFrontmatterValue(parsed['disable-model-invocation']) }
             : {}),
+          ...(parsed['default-enabled'] !== undefined
+            ? { 'default-enabled': isTruthyFrontmatterValue(parsed['default-enabled']) }
+            : {}),
           ...(parsed.tags !== undefined ? { tags: parsed.tags as string[] | string } : {}),
           ...(parsed.related_skills !== undefined ? { related_skills: parsed.related_skills as string[] | string } : {}),
           ...(parsed.metadata && typeof parsed.metadata === 'object' ? { metadata: parsed.metadata as Record<string, unknown> } : {}),
@@ -185,6 +190,8 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | nu
       if (value) {
         if (key === 'disable-model-invocation') {
           frontmatter['disable-model-invocation'] = isTruthyFrontmatterValue(value)
+        } else if (key === 'default-enabled') {
+          frontmatter['default-enabled'] = isTruthyFrontmatterValue(value)
         } else {
           frontmatter[key as keyof SkillFrontmatter] = value as any
         }
@@ -627,7 +634,7 @@ function loadSkillFromDirectory(
       directoryPath: skillDir,
       rootPath: rootDir,
       relativePath: getRelativeSkillPath(skillMdPath, rootDir),
-      enabled: true,
+      enabled: frontmatter['default-enabled'] !== false,
       instructions,
       runtimeContext: runtimeContext || undefined,
       files: files.length > 0 ? files : undefined

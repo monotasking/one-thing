@@ -1,0 +1,35 @@
+{
+  "name": "onething",
+  "_note": "onething 自己的种子（2026-08-16，用户拍板）：色板沿用现有 Flexoki 主题系统不改；跟随系统明暗（无固定默认）；只用无衬线（放弃衬线气质）；主强调可换（默认改暖橙，仍走现有 accent 切换）；第一视觉主张 = 一次只做一件事（焦点/退后）；第一要修的 = 组件之间的上下层级（输入框必须是浮在会话区之上的独立对象，卡片必须围合、嵌套可见）。",
+  "palette": {
+    "band": "system",
+    "source": "packages/onething-runtime/src/themes/builtin/flexoki.json (defs)",
+    "ground":  { "dark": "#1C1B1A", "light": "#F2F0E5" },
+    "chrome":  { "dark": "#282726", "light": "#E6E4D9" },
+    "card":    { "dark": "#343331", "light": "#FFFCF0" },
+    "overlay": { "dark": "#403E3C", "light": "#FFFCF0" },
+    "text":    { "dark": "#F2F0E5", "light": "#100F0F" },
+    "accent":  { "dark": "#DA702C", "light": "#BC5215" },
+    "accent2": { "dark": "#3AA99F", "light": "#24837B" }
+  },
+  "fonts": {
+    "heading": { "family": "Public Sans", "cjk": "Noto Sans SC", "class": "humanist", "weights": [600, 700] },
+    "body":    { "family": "Public Sans", "cjk": "Noto Sans SC", "class": "humanist", "weights": [400, 500, 600] },
+    "mono":    { "family": "ui-monospace", "scope": "tool-card-internals-only" }
+  },
+  "density": 1.0,
+  "radius": 8,
+  "layoutStyle": "left",
+  "dividers": "surface",
+  "elevation": "layered",
+  "buttonStyle": "filled-primary",
+  "colorUse": "soft-fill",
+  "focusDevice": "spotlight",
+  "principles": [
+    "一次只做一件事：一屏只有一个焦点对象被完整照亮，其余区域在面与墨两个维度上各退一档",
+    "四层海拔：地 / 区域 / 卡 / 浮层，各有唯一住户；输入框住在卡层且带阴影，永远读成浮在会话区之上的独立对象",
+    "围合优先：容器靠底色差 + 描边 + 圆角 + 内边距被认出来，不靠 1px 线切",
+    "一枚色 ≤ 两种含义：accent = 人的操作；accent2 = 助手/系统陈述；状态色只在状态语义上出现",
+    "无衬线、说人话、mono 只在工具卡内部"
+  ]
+}

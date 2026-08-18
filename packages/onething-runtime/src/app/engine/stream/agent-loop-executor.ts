@@ -20,6 +20,7 @@ import {
 	buildAgentLoopRuntimeFromStreamContext,
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
+import { createSessionCredentialRotator } from "../../providers/credential-rotation.js";
 import { resolveAgentProfileForSession } from "../../agents/profile.js";
 import { saveMediaImage } from "../../media/save-image.js";
 import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop/providers";
@@ -48,6 +49,8 @@ import type {
 } from "@onething/core/engine";
 import { hashSections } from "@onething/runtime";
 import { attachSessionEventRecorder } from "./session-event-recorder.js";
+
+import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 
 /** Strip non-serializable values via JSON round-trip. Survives circular refs. */
 function safeClone<T>(value: T): T {
@@ -139,7 +142,7 @@ async function finishCurrentAssistantWriter(
 	await state.processor.finalize();
 	try {
 		await getEventBus().emit(state.ctx.sessionId, {
-			type: "message:updated",
+			type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
 			messageId: state.ctx.assistantMessageId,
 			updates: { isStreaming: false },
 		});
@@ -416,6 +419,26 @@ export async function applyAgentLoopStreamChunk(
 		syncLastTurnUsage: (usage) => {
 			state.lastTurnUsage = usage;
 			state.ctx.lastTurnUsage = usage;
+			// Live readout (composer status): exact per-turn numbers at every
+			// turn boundary. Fire-and-forget; must never block the stream.
+			void getEventBus()
+				.emit(state.ctx.sessionId, {
+					type: SESSION_EVENT_TYPES.STREAM_USAGE,
+					messageId: state.ctx.assistantMessageId,
+					turnIndex: state.turnIndex,
+					usage: {
+						inputTokens: usage.inputTokens,
+						outputTokens: usage.outputTokens,
+						totalTokens: usage.totalTokens,
+						...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
+					},
+					accumulated: {
+						inputTokens: state.accumulatedUsage?.inputTokens ?? usage.inputTokens,
+						outputTokens: state.accumulatedUsage?.outputTokens ?? usage.outputTokens,
+						totalTokens: state.accumulatedUsage?.totalTokens ?? usage.totalTokens,
+					},
+				})
+				.catch(() => {});
 			// Billing must never break the chat stream: isolate failures here.
 			try {
 				recordUsage({
@@ -486,7 +509,7 @@ export async function executeAgentLoopStreamGeneration(
 		async emitStreamStart() {
 			try {
 				await getEventBus().emit(ctx.sessionId, {
-					type: "stream:start",
+					type: SESSION_EVENT_TYPES.STREAM_START,
 					messageId: ctx.assistantMessageId,
 					assistantMessageId: ctx.assistantMessageId,
 					model: ctx.providerConfig.model,
@@ -499,15 +522,27 @@ export async function executeAgentLoopStreamGeneration(
 		// session-event-recorder.ts 头注释 —— 挂这里才能保证 tool/call 在工具
 		// 执行**之前**落账)。这里除了装配没有任何逻辑。
 		streamChunks: (prepared) =>
-			streamAgentLoopProviderChunks(
-				attachSessionEventRecorder(prepared.runtime, {
+			streamAgentLoopProviderChunks({
+				...attachSessionEventRecorder(prepared.runtime, {
 					sessionId: ctx.sessionId,
 					providerId: ctx.providerId,
 					model: ctx.providerConfig.model,
 					systemPrompt: prepared.systemPrompt,
 					getMessageId: () => state.ctx.assistantMessageId,
 				}),
-			),
+				// per-space 凭证轮换(批 D)。挂在 core 的 turn 级重试边界上,
+				// **不另起重试链**;没有池(默认空间 / 单条)时这里是 undefined,
+				// core 的行为一行不变。
+				rotateCredential: prepared.reprovision
+					? createSessionCredentialRotator({
+							sessionId: ctx.sessionId,
+							providerId: ctx.providerId,
+							currentEntryId: ctx.providerConfig.spaceCredential?.entryId,
+							reprovision: prepared.reprovision,
+							logger: console,
+						})
+					: undefined,
+			}),
 		applyChunk: (chunk) => applyAgentLoopStreamChunk(state, chunk),
 		finalize: () => state.processor.finalize(),
 		updateUsage(durationMs) {

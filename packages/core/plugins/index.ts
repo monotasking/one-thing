@@ -33,6 +33,31 @@ export {
   pluginSearchResultHasForbiddenKey,
   sanitizePluginSearchResults,
 } from './search-provider.js'
+export {
+  PLUGIN_CREDENTIAL_ENTRY_FIELDS,
+  PLUGIN_CREDENTIAL_FAILURE_KINDS,
+  PLUGIN_CREDENTIAL_STRATEGY_NAME_PATTERN,
+  PLUGIN_CREDENTIAL_STRATEGY_PLUGIN_ID_PATTERN,
+  PLUGIN_CREDENTIAL_STRATEGY_PERMISSION_NOTE,
+  PLUGIN_CREDENTIAL_STRATEGY_TIMEOUT_MS,
+  PLUGIN_PERMISSION_CREDENTIAL_STRATEGY,
+  emptyPluginCredentialUsage,
+  isPluginCredentialChoiceValid,
+  isPluginCredentialStrategyPolicy,
+  parsePluginCredentialStrategyPolicy,
+  pluginCredentialStrategyPolicy,
+  pluginCredentialStrategySurface,
+  toPluginCredentialEntryView,
+} from './credential-strategy.js'
+export type {
+  CorePluginCredentialStrategyContext,
+  CorePluginCredentialStrategyRegistration,
+  PluginCredentialEntryField,
+  PluginCredentialEntrySource,
+  PluginCredentialEntryView,
+  PluginCredentialFailureKind,
+  PluginCredentialUsage,
+} from './credential-strategy.js'
 export type {
   CorePluginSearchActionContext,
   CorePluginSearchContext,

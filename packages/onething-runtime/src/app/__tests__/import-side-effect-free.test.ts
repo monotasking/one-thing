@@ -44,6 +44,12 @@ vi.mock('../providers/registry.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   initializeRegistry: () => { spy.calls.push('provider-registry') },
 }))
+vi.mock('@onething/runtime/spaces/credentials', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  configureSpaceCredentialsCrypto: () => { spy.calls.push('space-credentials-crypto') },
+  // 批 E:插件凭证策略的裁决口也是一个 configure*Host 端口,同归这道栅栏管。
+  configureSpaceCredentialPluginStrategyHost: () => { spy.calls.push('credential-strategy-host') },
+}))
 vi.mock('../permission/capabilities.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   registerBuiltinCapabilities: () => { spy.calls.push('capabilities') },
@@ -61,6 +67,8 @@ describe('src/app import purity', () => {
     await import('../skills/manage.js')
     await import('../skills/loader.js')
     await import('../permission/permission-grants.js')
+    await import('../providers/space-credentials.js')
+    await import('../providers/credential-strategy.js')
 
     expect(spy.calls).toEqual([])
   })
@@ -90,6 +98,7 @@ describe('src/app import purity', () => {
     expect([...spy.calls].sort()).toEqual([
       'background-jobs',
       'capabilities',
+      'credential-strategy-host',
       'permission-grants',
       'provider-registry',
       'ripgrep',
@@ -98,6 +107,7 @@ describe('src/app import purity', () => {
       'search',
       'skill-manage',
       'skills-loader',
+      'space-credentials-crypto',
     ])
   })
 })

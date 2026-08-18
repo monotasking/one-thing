@@ -38,7 +38,7 @@
              全员离场时整带零高度(`:empty`),输入区上方干净。
              横向溢出走滚动而不换行 —— 浮层已 teleport,不受裁切影响。 -->
         <div class="status-band">
-          <BackgroundJobsStatusBar />
+          <BackgroundJobsStatusBar :session-id="effectiveSessionId" />
           <GoalStatusBar :session-id="effectiveSessionId" />
           <MusicStatusBar />
           <UiSlotHost
@@ -711,10 +711,11 @@ async function handleSendMessage(
 ) {
   const session = currentSession.value
   if (!session) return
-  // Note: do not scroll here. This runs before the message is in state, so it
-  // would smooth-scroll against stale content and then fight MessageList's
-  // new-user-message watcher (force-follow + instant setTail), producing a
-  // visible "smooth then snap" double scroll. The watcher owns follow-on-send.
+  // Note: do not scroll here. This runs before the message is in state; the
+  // MessageList new-user-message watcher owns the hold-top scroll on send.
+  // What we do tell it is that a send is coming, so the composer collapse a
+  // few ms from now does not drop the list by its own height first.
+  if (mode === 'send') messageListRef.value?.prepareForSend?.()
   if (mode === 'steer') {
     await chatSteerMessage(message)
   } else if (mode === 'followup') {
@@ -760,6 +761,9 @@ function handleSetQuotedText(text: string) {
 
 async function handleRegenerate(messageId: string) {
   if (!currentSession.value) return
+  // Hold the viewport BEFORE the truncate-and-restream lands, so the reader
+  // stays on the question this answer belongs to (MessageList hold-top).
+  messageListRef.value?.holdForRegenerate?.(messageId)
   await chatRegenerate(messageId)
 }
 
@@ -926,13 +930,17 @@ defineExpose({
     margin var(--app-sidebar-transition-duration, var(--duration-slow)) var(--app-sidebar-transition-ease, var(--ease-default));
 }
 
-@media (max-width: 768px) {
+/* 窄栏降级(L5)。查的是**这一格聊天面自己的宽度**,不是窗口宽 —— 容器
+   `chat-surface` 由宿主承担(直聊是 ChatWindow 的 `.tab-content`,右栏线程是
+   `.thread-chat-detail`),因为一个元素查不了自己。指名道姓而不用匿名查询:
+   匿名会落到最近的祖先容器上,谁在中间加一个都会把它偷走。 */
+@container chat-surface (max-width: 768px) {
   .chat-panel {
     --chat-content-width: calc(100% - 48px);
   }
 }
 
-@media (max-width: 480px) {
+@container chat-surface (max-width: 480px) {
   .chat-panel {
     --chat-content-width: calc(100% - 24px);
   }

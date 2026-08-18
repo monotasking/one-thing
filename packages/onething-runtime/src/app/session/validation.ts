@@ -22,6 +22,8 @@ import {
   validateSessionStateConsistency,
 } from '@onething/core/session'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 const isDev = process.env.NODE_ENV !== 'production'
 
 export function setupValidation(
@@ -32,7 +34,7 @@ export function setupValidation(
     return () => {} // No-op in production
   }
 
-  return eventBus.onAnySession('stream:complete', (envelope) => {
+  return eventBus.onAnySession(SESSION_EVENT_TYPES.STREAM_COMPLETE, (envelope) => {
     const sessionId = envelope.sessionId
     const session = sessionManager.get(sessionId)
     if (!session) {

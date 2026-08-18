@@ -8,25 +8,45 @@ function readRendererFile(relativePath: string) {
 describe('App container layout', () => {
   it('uses Splitter for the app shell and both sidebars', () => {
     const app = readRendererFile('App.vue')
+    /* L5:三栏树整棵搬进 `components/shell/AppShell.vue`(P8)。App 只剩窗口模式
+       分发、插件背景/氛围层、事件路由、空间切换 —— 分栏原语因此也只在 AppShell
+       里 import。 */
+    const shell = readRendererFile('components/shell/AppShell.vue')
 
     expect(app).toContain("import Container from '@/components/common/Container.vue'")
-    expect(app).toContain("import Splitter from '@/components/common/Splitter.vue'")
-    expect(app).toContain("import SplitterPanel from '@/components/common/SplitterPanel.vue'")
+    expect(app).toContain("import AppShell from '@/components/shell/AppShell.vue'")
+    expect(app).not.toContain("import Splitter from '@/components/common/Splitter.vue'")
+    expect(app).not.toContain("import SplitterPanel from '@/components/common/SplitterPanel.vue'")
+    expect(shell).toContain("import Splitter from '@/components/common/Splitter.vue'")
+    expect(shell).toContain("import SplitterPanel from '@/components/common/SplitterPanel.vue'")
     expect(app).toContain("import RightWorkbenchPanel from '@/components/workbench/RightWorkbenchPanel.vue'")
     expect(app).not.toContain("import SidebarResizeHandle from '@/components/sidebar/SidebarResizeHandle.vue'")
-    expect(app).toContain('class="app-shell"')
-    expect(app).toContain(':class="{ \'is-sidebar-resizing\': sidebarResizing }"')
-    expect(app).toContain('v-if="sidebarDockedVisible"')
-    expect(app).toContain('v-model:size="sidebarWidth"')
-    expect(app).toContain('class="app-left-sidebar-region"')
-    expect(app).toContain('size-unit="px"')
-    expect(app).toContain(':min="MIN_SIDEBAR_WIDTH"')
-    expect(app).toContain(':max="MAX_SIDEBAR_WIDTH"')
-    expect(app).toContain('flex\n        class="app-shell-main-region"')
-    expect(app).toContain('class="app-shell-main-region"')
-    expect(app).toContain(':resizable="sidebarDockedVisible"')
-    expect(app).toContain('@resize-start="handleSidebarResizeStart"')
-    expect(app).toContain('@resize-end="handleSidebarResizeEnd"')
+    // 三个插槽是 AppShell 与外界的全部接口。
+    expect(shell).toContain('<slot name="sidebar" />')
+    expect(shell).toContain('<slot name="main" />')
+    expect(shell).toContain('<slot name="workbench" />')
+    expect(app).toContain('<template #sidebar>')
+    expect(app).toContain('<template #main>')
+    expect(app).toContain('<template #workbench>')
+    expect(shell).toContain('class="app-shell"')
+    expect(shell).toContain(':class="{ \'is-sidebar-resizing\': sidebarResizing }"')
+    /* L4:左栏 region **常驻 DOM** —— 浮层态改成收成 0 宽(`:collapsed`),
+       而不是把整条侧栏连同它的实例一起卸掉。`v-if` 那一版每次浮层进出都重挂
+       一次 `<Sidebar>`,滚动位置与展开的分组必然丢。 */
+    expect(shell).not.toContain('v-if="sidebarDocked"')
+    expect(shell).toContain(':collapsed="!sidebarDocked"')
+    expect(app).toContain('v-model:sidebar-width="sidebarWidth"')
+    expect(shell).toContain('class="app-left-sidebar-region"')
+    expect(shell).toContain('size-unit="px"')
+    expect(app).toContain(':sidebar-min-width="MIN_SIDEBAR_WIDTH"')
+    /* 上限归布局协调器(L2):拖到头也得给聊天列留 480px,所以它随窗宽/右栏走,
+       不再是一个写死的 500。产品上限 500 仍在,只是收进了 `sidebarMaxWidth`。 */
+    expect(app).toContain(':sidebar-max-width="shellLayout.sidebarMaxWidth"')
+    expect(shell).toContain('flex\n      class="app-shell-main-region"')
+    expect(shell).toContain('class="app-shell-main-region"')
+    expect(shell).toContain(':resizable="sidebarDocked"')
+    expect(app).toContain('@sidebar-resize-start="handleSidebarResizeStart"')
+    expect(app).toContain('@sidebar-resize-end="handleSidebarResizeEnd"')
     expect(app).toContain('const sidebarResizing = ref(false)')
     expect(app).toContain('const sidebarDockedVisible = computed')
     expect(app).not.toContain('sidebarPanelSizeFromWidth')
@@ -37,9 +57,9 @@ describe('App container layout', () => {
     expect(app).not.toContain("const appLeftSidebarFlex = '0 0 auto'")
     expect(app).not.toContain('const appLeftSidebarRegionStyle = computed')
     expect(app).not.toContain(':sidebar-style="appLeftSidebarRegionStyle"')
-    expect(app).toContain('--app-sidebar-transition-duration: var(--duration-slow)')
-    expect(app).toContain('--app-sidebar-transition-ease: var(--ease-default)')
-    expect(app).toContain('animating it relayouts the full message list every frame')
+    expect(shell).toContain('--app-sidebar-transition-duration: var(--duration-slow)')
+    expect(shell).toContain('--app-sidebar-transition-ease: var(--ease-default)')
+    expect(shell).toContain('animating it relayouts the full message list every frame')
     // 侧栏操作按钮不再是跨分支的 fixed 浮层:Chromium 只让 drag 元素的子孙用
     // no-drag 挖洞,浮层挖不动,才逼出了顶栏那块按坐标预留的死区。按钮现在住在
     // 各自的 drag 宿主里(展开→SidebarHeader,收起→TabBar / MediaPanel 头)。
@@ -48,18 +68,22 @@ describe('App container layout', () => {
     expect(app).not.toContain('transition: inline-size var(--app-sidebar-transition-duration) var(--app-sidebar-transition-ease)')
     expect(app).not.toContain('transition: left var(--app-sidebar-transition-duration) var(--app-sidebar-transition-ease)')
     expect(app).not.toContain('flex-basis 0.3s')
-    expect(app).toContain('.app-shell.is-sidebar-resizing :deep(.app-left-sidebar-region)')
-    expect(app).toContain('class="app-content"')
-    expect(app).toContain('class="app-content-splitter"')
-    expect(app).toContain('@resize-start="inspectorResizing = true"')
-    expect(app).toContain('@resize-end="handleInspectorResizeEnd"')
-    expect(app).toContain('v-model:size="mainWorkspacePanelSize"')
-    expect(app).toContain(':resizable="inspectorVisible"')
-    expect(app).toContain(':size="inspectorPanelSize"')
-    expect(app).toContain(':collapsed="!workbenchRevealed"')
-    expect(app).toContain('@update:size="handleInspectorPanelSizeUpdate"')
-    expect(app).toContain('class="app-right-sidebar-region"')
-    expect(app).toContain('class="workbench-slide"')
+    expect(shell).toContain('.app-shell.is-sidebar-resizing :deep(.app-left-sidebar-region)')
+    expect(shell).toContain('class="app-content"')
+    expect(shell).toContain('class="app-content-splitter"')
+    expect(app).toContain('@workbench-resize-start="inspectorResizing = true"')
+    expect(app).toContain('@workbench-resize-end="handleInspectorResizeEnd"')
+    /* 尺寸模型统一成 px(L1):中栏 flex 吃剩余,右栏才是那个被拖的定宽列。
+       百分比时代的 `mainWorkspacePanelSize`(= 100 − 右栏%)随之退役。 */
+    expect(app).not.toContain('mainWorkspacePanelSize')
+    expect(app).toContain(':chat-min-width="CHAT_MIN_WIDTH"')
+    expect(shell).toContain(':min="chatMinWidth"')
+    expect(shell).toContain(':resizable="workbenchVisible"')
+    expect(shell).toContain(':size="workbenchPanelWidth"')
+    expect(shell).toContain(':collapsed="!workbenchRevealed"')
+    expect(app).toContain('@update:workbench-panel-width="handleInspectorPanelSizeUpdate"')
+    expect(shell).toContain('class="app-right-sidebar-region"')
+    expect(shell).toContain('class="workbench-slide"')
     expect(app).toContain('<RightWorkbenchPanel')
     expect(app).toContain('ref="rightWorkbenchRef"')
     expect(app).toContain(':workspace-root="currentWorkspaceRoot"')
@@ -75,14 +99,21 @@ describe('App container layout', () => {
     expect(app).not.toContain('class="inspector-resize-handle"')
     expect(app).not.toContain('edge="left"')
     expect(app).not.toContain('@resize="handleInspectorPixelResize"')
-    /* 右栏尺寸存的是百分比、地板是像素,所以**每次读都要重新收敛** ——
-       只在写入时 clamp 的话,窗口一变窄存着的百分比就跌破 250px 地板。 */
-    expect(app).toContain('const storedInspectorPanelSize = ref(clampInspectorPanelSize(')
-    expect(app).toContain('const inspectorPanelSize = computed({')
-    expect(app).toContain('localStorage.getItem(\'inspectorPanelSize\')')
+    /* L1:右栏改 px 之后,百分比时代那三件 hack 全部退场 —— 量分栏容器宽的
+       ResizeObserver、px→% 的下限换算、"每次读都重新 clamp"的 computed。
+       下限直接就是 250,clamp 只在 layoutPrefs store 里做一次。 */
+    expect(app).not.toContain('storedInspectorPanelSize')
+    expect(app).not.toContain('inspectorPanelSize')
+    expect(app).not.toContain('inspectorMinPanelSize')
+    expect(app).not.toContain('contentSplitterWidth')
+    expect(app).not.toContain('function clampInspectorPanelSize')
     expect(app).not.toContain('function handleInspectorPixelResize(width: number)')
     expect(app).toContain('function handleInspectorResizeEnd()')
-    expect(app).toContain('localStorage.setItem(\'inspectorPanelSize\', String(inspectorPanelSize.value))')
+    expect(app).toContain('layoutPrefs.setWorkbenchWidth(workbenchPanelWidth.value)')
+    // 布局偏好只有 layoutPrefs store 一个读写点;App.vue 不再裸写 localStorage。
+    expect(app).not.toContain("localStorage.setItem('sidebarWidth'")
+    expect(app).not.toContain("localStorage.setItem('sidebarCollapsed'")
+    expect(app).not.toContain("localStorage.getItem('sidebarWidth'")
     expect(app).not.toContain('const INSPECTOR_SIDEBAR_WIDTH')
     expect(app).not.toContain('const appRightSidebarRegionStyle = computed')
     expect(app).not.toContain(':sidebar-style="appRightSidebarRegionStyle"')
@@ -109,6 +140,7 @@ describe('App container layout', () => {
   })
 
   it('uses Container for the chat main header and content regions', () => {
+    const app = readRendererFile('App.vue')
     const chatWindow = readRendererFile('components/chat/ChatWindow.vue')
 
     expect(chatWindow).toContain("import Container from '@/components/common/Container.vue'")
@@ -124,40 +156,39 @@ describe('App container layout', () => {
     expect(chatWindow).toContain('outlineRailTarget')
     expect(chatWindow).not.toContain('border-left')
 
-    // The side panel (Outline/System prompt/Todo/Variables) moved up to
-    // ChatContainer.vue: one shared instance for the whole split-panel
-    // workspace instead of one per ChatWindow. ChatWindow only reflects the
-    // shared collapsed/available state in its tab bar toggle and forwards
-    // whichever outline-rail-target it's handed (null unless it's the
-    // currently focused panel).
+    /* L3:大纲栏(Contents/System prompt/Todo/Variables)整条退役 —— 四段进了
+       右栏会话域的两条页签。ChatWindow 这一侧因此只剩两件事:顶栏那颗
+       「Contents」钮的转发,以及**自己**从共享 ref 上取大纲轨宿主
+       (聚焦的那一格才取得到),而不是接一条从 ChatContainer 传下来的 prop。 */
     expect(chatWindow).not.toContain("import ChatSidePanel from './ChatSidePanel.vue'")
     expect(chatWindow).not.toContain('<ChatSidePanel')
     expect(chatWindow).not.toContain('sidebar-position="right"')
     expect(chatWindow).not.toContain('#sidebar')
-    expect(chatWindow).not.toContain('const CHAT_SIDE_PANEL_COLLAPSED_WIDTH = 0')
     expect(chatWindow).not.toContain('outlineTargetChange')
-    expect(chatWindow).toContain('sidePanelAvailable?: boolean')
-    expect(chatWindow).toContain('sidePanelCollapsed?: boolean')
-    expect(chatWindow).toContain(':side-panel-available="sidePanelAvailable"')
-    expect(chatWindow).toContain(':side-panel-collapsed="sidePanelCollapsed"')
+    expect(chatWindow).not.toContain('sidePanelAvailable?: boolean')
+    expect(chatWindow).not.toContain('sidePanelCollapsed?: boolean')
+    expect(chatWindow).toContain("import { useOutlineRail } from '@/composables/useOutlineRail'")
+    expect(chatWindow).toContain('const outlineRailTarget = resolveOutlineRailTarget(() => props.panelFocused !== false)')
     expect(chatWindow).toContain(':outline-rail-target="outlineRailTarget"')
-    expect(chatWindow).toContain('emit(\'toggleSidePanel\')')
+    expect(chatWindow).toContain('emit(\'openOutline\')')
 
     const chatContainer = readRendererFile('components/ChatContainer.vue')
-    expect(chatContainer).toContain("import ChatSidePanel from '@/components/chat/ChatSidePanel.vue'")
     expect(chatContainer).toContain("import Container from '@/components/common/Container.vue'")
-    expect(chatContainer).toContain('sidebar-position="right"')
-    expect(chatContainer).toContain(':sidebar-width="chatSidePanelWidth"')
-    expect(chatContainer).toContain('v-if="sidePanelVisible"')
-    // 侧栏的可见性口径没变(可用 或 未收起);R1 之后多一道房面闸 ——
-    // 房 / 私聊新面上没有 ChatSidePanel(§8.2),直聊与 classic 一个字节不变。
-    expect(chatContainer).toContain('(sidePanelAvailable.value || !sidePanelCollapsed.value)')
-    expect(chatContainer).toContain('!activeLeafOnRoomSurface.value &&')
-    expect(chatContainer).toContain('const CHAT_SIDE_PANEL_COLLAPSED_WIDTH = 0')
-    expect(chatContainer).toContain('@outline-target-change="handleSideOutlineTargetChange"')
-    expect(chatContainer).toContain('@toggle-collapsed="toggleSidePanelCollapsed"')
-    expect(chatContainer).toContain("case 'toggleSidePanel':")
-    expect(chatContainer).toContain('activeLeafSession')
+    // 第四列没了:Container 不再开 sidebar 插槽,也不再有那条五层 outlineTarget 链。
+    expect(chatContainer).not.toContain("import ChatSidePanel")
+    expect(chatContainer).not.toContain('sidebar-position="right"')
+    expect(chatContainer).not.toContain(':sidebar-width=')
+    expect(chatContainer).not.toContain('sidePanelVisible')
+    expect(chatContainer).not.toContain('setChatSideSupported')
+    expect(chatContainer).not.toContain('const CHAT_SIDE_PANEL_MIN_WINDOW_WIDTH')
+    expect(chatContainer).not.toContain('chatResizeObserver')
+    expect(chatContainer).not.toContain('outline-target-change')
+    expect(chatContainer).not.toContain('chatSideOutlineTarget')
+    // 顶栏那颗钮改成"去右栏开 Contents 页签"的一条转发。
+    expect(chatContainer).toContain("case 'openOutline':")
+    expect(chatContainer).toContain("emit('open-outline')")
+    expect(app).toContain('async function openOutlineInRightWorkbench()')
+    expect(app).toContain("rightWorkbenchRef.value?.openWorkbenchTab('outline')")
   })
 
   it('keeps docked sidebar content fixed while the outer container animates', () => {
@@ -186,11 +217,24 @@ describe('App container layout', () => {
     const app = readRendererFile('App.vue')
     const sidebar = readRendererFile('components/sidebar/Sidebar.vue')
 
+    const floatingSidebar = readRendererFile('composables/useFloatingSidebar.ts')
+
     expect(app).toContain('@request-floating-close="closeFloatingSidebar"')
     expect(app).toContain('@request-floating-keep-open="keepFloatingSidebarOpen"')
-    expect(app).toContain('let floatingCloseTimer: ReturnType<typeof setTimeout> | null = null')
-    expect(app).toContain('let floatingCooldownTimer: ReturnType<typeof setTimeout> | null = null')
-    expect(app).toContain('function keepFloatingSidebarOpen()')
+    /* L4:四个裸 timer 与那枚 cooldown 布尔整台搬进 `useFloatingSidebar`。
+       App 只认三枚布尔 + 几个回调,清场也归时序机自己(`onScopeDispose`)。 */
+    expect(app).toContain("import { useFloatingSidebar } from '@/composables/useFloatingSidebar'")
+    expect(app).toContain('} = useFloatingSidebar()')
+    expect(app).not.toContain('let floatingCloseTimer')
+    expect(app).not.toContain('let floatingCooldownTimer')
+    expect(app).not.toContain('let sidebarToggleTimer')
+    expect(app).not.toContain('const floatingCooldown = ref')
+    expect(app).not.toContain('const floatingShowTimer = ref')
+    expect(floatingSidebar).toContain('let showTimer: ReturnType<typeof setTimeout> | null = null')
+    expect(floatingSidebar).toContain('let closeTimer: ReturnType<typeof setTimeout> | null = null')
+    expect(floatingSidebar).toContain('let closeCooldownTimer: ReturnType<typeof setTimeout> | null = null')
+    expect(floatingSidebar).toContain('let toggleTimer: ReturnType<typeof setTimeout> | null = null')
+    expect(floatingSidebar).toContain('function keepOpen()')
     expect(app).not.toContain('@mouseleave="handleSidebarMouseLeave"')
     expect(app).not.toContain('function handleSidebarMouseLeave')
     expect(app).not.toContain('sidebarFloating.value ? 280 : 0')
@@ -226,20 +270,20 @@ describe('App container layout', () => {
     const workbench = readRendererFile('components/workbench/RightWorkbenchPanel.vue')
     const editor = readRendererFile('components/editor/EditorWorkbench.vue')
 
-    expect(app).toContain('const MIN_INSPECTOR_PANEL_SIZE = 22')
-    expect(app).toContain('const MAX_INSPECTOR_PANEL_SIZE = 48')
-    expect(app).toContain('const DEFAULT_INSPECTOR_PANEL_SIZE = 32')
     expect(app).toContain('const currentWorkspaceRoots = computed')
     expect(app).toContain('const currentWorkspaceRoot = computed')
     /**
-     * 右栏下限改成「22% 与 250px 取大」(设计稿 right-panel.html:最窄 250px 是
-     * 硬指标)。原来只有百分比下限,620px 的窗口里右栏只剩 136px,行被压成
-     * 「I..」「服...」—— 真机走查看到的正是这个。
+     * 右栏尺寸自 L1 起是 **px**:下限 250(设计稿 right-panel.html 的硬指标)、
+     * 上限由协调器按预算给。百分比那一套(22 / 48 / 32 三个数 + px→% 换算)整套
+     * 退役 —— 它当年之所以存在,只是因为右栏和侧栏用了两种单位。
      */
-    expect(app).toContain('return Math.min(MAX_INSPECTOR_PANEL_SIZE, Math.max(inspectorMinPanelSize.value, size))')
-    expect(app).toContain('const MIN_INSPECTOR_PANEL_PX = 250')
-    expect(app).toContain(':min="inspectorMinPanelSize"')
-    expect(app).toContain(':max="48"')
+    expect(readRendererFile('components/shell/AppShell.vue')).toContain('size-unit="px"')
+    expect(app).toContain(':workbench-min-width="shellLayout.workbenchMinWidth"')
+    expect(app).toContain(':workbench-max-width="shellLayout.workbenchMaxWidth"')
+    expect(app).not.toContain('MIN_INSPECTOR_PANEL_SIZE')
+    expect(app).not.toContain('MAX_INSPECTOR_PANEL_SIZE')
+    expect(app).not.toContain('DEFAULT_INSPECTOR_PANEL_SIZE')
+    expect(app).not.toContain('MIN_INSPECTOR_PANEL_PX')
     expect(app).not.toContain(':min-width="inspectorMinWidth"')
     expect(app).not.toContain(':max-width="inspectorMaxWidth"')
     expect(app).not.toContain('const MIN_INSPECTOR_PANEL_WIDTH = 320')
@@ -250,7 +294,7 @@ describe('App container layout', () => {
     expect(workbench).toContain("import TabPane from '@/components/common/TabPane.vue'")
     expect(workbench).toContain("import EditorWorkbench from '@/components/editor/EditorWorkbench.vue'")
     expect(workbench).toContain("import { useEditorWorkspace } from '@/composables/useEditorWorkspace'")
-    expect(workbench).toContain("type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser'")
+    expect(workbench).toContain("type WorkbenchTabType = 'outline' | 'context' | 'files' | 'file' | 'terminal' | 'browser'")
     expect(workbench).toContain('addable')
     expect(workbench).toContain('closable')
     expect(workbench).toContain('@tab-add="togglePicker"')
@@ -315,7 +359,13 @@ describe('App container layout', () => {
     const chatPanel = readRendererFile('components/chat/ChatPanel.vue')
     const messageList = readRendererFile('components/chat/MessageList.vue')
 
-    expect(app).toContain(':layout-transitioning="sidebarActionAnimating"')
+    /* 左栏动画与工作台拖拽都在改聊天列宽度 —— 两者共用同一面闸门。
+       第三项 `workbenchSlideAnimating` 随 L1 退役:折叠动画期间内容由 CSS
+       冻结在 `--workbench-width` 上被面板边缘裁切,不再逐帧重排,那面闸门也就
+       没有对应的开销要挡了(顺带拆掉一个 280ms 的定时器)。 */
+    expect(app).toContain(':layout-transitioning="sidebarActionAnimating || inspectorResizing"')
+    expect(app).not.toContain('workbenchSlideAnimating')
+    expect(app).not.toContain('workbenchSlideStyle')
     expect(chatContainer).toContain(':layout-transitioning="layoutTransitioning"')
     expect(chatContainer).toContain('<div class="chat-container-wrapper">')
     expect(chatContainer).not.toContain('sidebar-collapsed')
@@ -346,13 +396,18 @@ describe('App container layout', () => {
     expect(messageList).not.toContain('left: var(--chat-content-column-center, 50%);')
   })
 
-  it('routes outline into the side panel while trail remains in the message panel', () => {
+  it('routes outline into the right workbench while trail remains in the message panel', () => {
     const messageList = readRendererFile('components/chat/MessageList.vue')
     const userRail = readRendererFile('components/chat/UserMessageNavRail.vue')
     const assistantRail = readRendererFile('components/chat/AssistantMessageNavRail.vue')
-    const sidePanel = readRendererFile('components/chat/ChatSidePanel.vue')
+    /* L3:大纲栏那一列退役,四段落在右栏的两条会话域页签上,段落组件随之搬进
+       `components/workbench/`。这一组用例跟着搬,不跟着删。 */
+    const outlineTab = readRendererFile('components/workbench/OutlineWorkbench.vue')
+    const contextTab = readRendererFile('components/workbench/SessionContextWorkbench.vue')
+    const outlineRail = readRendererFile('composables/useOutlineRail.ts')
+    const workbench = readRendererFile('components/workbench/RightWorkbenchPanel.vue')
     const sessionHeader = readRendererFile('components/chat/SessionHeader.vue')
-    const todoProgress = readRendererFile('components/chat/TodoProgressPanel.vue')
+    const todoProgress = readRendererFile('components/workbench/TodoProgressPanel.vue')
 
     expect(messageList).toContain('<Teleport')
     expect(messageList).toContain(':to="props.outlineRailTarget || \'body\'"')
@@ -386,22 +441,32 @@ describe('App container layout', () => {
     expect(assistantRail).toContain('v-if="!isSidePlacement && hasPreviousPage"')
     expect(assistantRail).toContain('v-if="!isSidePlacement && panelAvailable && effectiveOpen"')
 
-    expect(sidePanel).toContain('ref="outlineHostRef"')
-    expect(sidePanel).toContain('class="chat-side-esec chat-side-outline-section"')
-    expect(sidePanel).toContain('class="chat-side-esec chat-side-system-section"')
-    expect(sidePanel).toContain('class="chat-side-esec chat-side-todo-section"')
-    expect(sidePanel).toContain("emit('outlineTargetChange', props.collapsed ? null : outlineHostRef.value)")
-    expect(sidePanel).not.toContain('chat-side-panel-toggle')
-    expect(sidePanel).toContain('background: transparent;')
-    expect(sidePanel).toContain('.chat-side-panel.collapsed')
-    expect(sidePanel).toContain('padding: 0;')
-    expect(sessionHeader).toContain('sidePanelAvailable?: boolean')
-    expect(sessionHeader).toContain('sidePanelCollapsed?: boolean')
-    expect(sessionHeader).toContain('class="header-btn side-panel-toggle"')
-    expect(sessionHeader).not.toContain('v-if="sidePanelAvailable"')
-    expect(sessionHeader).toContain("toggleSidePanel: []")
-    expect(sidePanel).toContain('<TodoProgressPanel')
-    expect(sidePanel).toContain("window.addEventListener('todo-plan:toggle-card', handleTodoToggleCard)")
+    // 宿主登记在模块级 ref 上(一处写、一处读),不再是五层 prop 透传。
+    expect(outlineTab).toContain('ref="outlineHostRef"')
+    expect(outlineTab).toContain('class="outline-rail-host"')
+    expect(outlineTab).toContain("import { releaseOutlineRailHost, setOutlineRailHost } from '@/composables/useOutlineRail'")
+    expect(outlineTab).toContain('setOutlineRailHost(outlineHostRef.value)')
+    expect(outlineTab).toContain('releaseOutlineRailHost(outlineHostRef.value)')
+    expect(outlineRail).toContain('export function setOutlineRailHost')
+    expect(outlineRail).toContain('export function releaseOutlineRailHost')
+    // 两条会话域页签排在 files 之前(会话的事在前,机器的事在后)。
+    expect(workbench).toContain("{ type: 'outline', title: 'Contents', icon: AlignLeft, categorySlot: 3 }")
+    expect(workbench).toContain("{ type: 'context', title: 'Context', icon: Braces, categorySlot: 4 }")
+    expect(workbench.indexOf("type: 'outline'")).toBeLessThan(workbench.indexOf("type: 'files'"))
+    expect(workbench).toContain('<OutlineWorkbench')
+    expect(workbench).toContain('<SessionContextWorkbench')
+    expect(workbench).toContain("@jump-to-source=\"payload => emit('jump-to-source', payload)\"")
+    // 三段落在 Context 页签上,呼吸(聚焦段长开)原样保留。
+    expect(contextTab).toContain('class="sctx-sec sctx-system-section"')
+    expect(contextTab).toContain('class="sctx-sec sctx-todo-section"')
+    expect(contextTab).toContain('class="sctx-sec sctx-variables-section"')
+    expect(contextTab).toContain('<TodoProgressPanel')
+    expect(contextTab).toContain("window.addEventListener('todo-plan:toggle-card', handleTodoToggleCard)")
+    // 顶栏那颗钮只剩"带我去 Contents 页签"一个语义(开合归右栏自己)。
+    expect(sessionHeader).not.toContain('sidePanelAvailable?: boolean')
+    expect(sessionHeader).not.toContain('sidePanelCollapsed?: boolean')
+    expect(sessionHeader).toContain('class="header-btn outline-toggle"')
+    expect(sessionHeader).toContain("openOutline: []")
     expect(todoProgress).toContain('platformApi.getTodoPlan')
     expect(todoProgress).toContain('platformApi.onTodoPlanChanged')
     expect(todoProgress).toContain('parseTasks')

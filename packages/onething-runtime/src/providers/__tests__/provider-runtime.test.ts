@@ -184,7 +184,8 @@ describe('onething provider runtime', () => {
       resolveApiKey: () => null,
     })).resolves.toBe('oauth-token')
 
-    expect(refreshOAuthToken).toHaveBeenCalledWith('codex')
+    // 末位是 per-space 凭证标记(批 B6):默认空间没有标记 = undefined。
+    expect(refreshOAuthToken).toHaveBeenCalledWith('codex', undefined)
   })
 
   it('resolves chat provider config with auth supplied by adapters', async () => {

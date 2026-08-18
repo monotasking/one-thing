@@ -273,13 +273,11 @@ describe('core resume history', () => {
     })
 
     expect(history).toEqual([
+      // C5(2026-08-14):注入只剩这一条 user。伪造的 assistant 握手已删 ——
+      // 交替风险归 provider 适配层的相邻同角色合并。
       {
         role: 'user',
-        content: '[Conversation History Summary]\nEarlier summary\n\nPlease continue the conversation based on the above context.',
-      },
-      {
-        role: 'assistant',
-        content: 'Understood. I have reviewed the previous conversation context. Please continue.',
+        content: 'The conversation history before this point was compacted into the following summary:\n\n<summary>\nEarlier summary\n</summary>',
       },
       {
         role: 'assistant',
@@ -298,5 +296,29 @@ describe('core resume history', () => {
       droppedRecentMessages: 0,
       summaryChars: 'Earlier summary'.length,
     })
+  })
+
+  it('C5:摘要注入是单条 user + <summary> 标签,没有伪造的 assistant 握手', () => {
+    const history = buildHistoryMessages([
+      { id: 'u1', role: 'user', content: 'old' },
+      { id: 'a1', role: 'assistant', content: 'anchor' },
+      { id: 'u2', role: 'user', content: 'continue please' },
+    ], {
+      id: 's1',
+      summary: '## Goal\nShip C5',
+      summaryUpToMessageId: 'a1',
+    }, {
+      buildMessageContent: message => `content:${message.id}`,
+      providerDataFromContentPart: providerDataFromOnethingContentPart,
+    })
+
+    expect(history[0]).toEqual({
+      role: 'user',
+      content: 'The conversation history before this point was compacted into the following summary:\n\n<summary>\n## Goal\nShip C5\n</summary>',
+    })
+    // 握手已删:注入之后紧接着的就是被保留的最近一轮真消息。连续两条 user 的
+    // 交替风险由 provider 适配层的相邻同角色合并兜底,不在历史里造假消息。
+    expect(history[1]).toEqual({ role: 'user', content: 'content:u2' })
+    expect(JSON.stringify(history)).not.toContain('Understood')
   })
 })

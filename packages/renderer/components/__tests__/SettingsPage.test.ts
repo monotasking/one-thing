@@ -10,6 +10,20 @@ const mocks = vi.hoisted(() => ({
   settingsStore: null as any,
 }))
 
+// 标题栏那块「当前空间」标识(批 B7)不是这条测试线的题目 —— 给它一个
+// 「后端答不上话」的空间 store,整块不画,壳子的断言一字不动。
+vi.mock('@/stores/spaces', () => ({
+  DEFAULT_SPACE_ID: 'default',
+  useSpacesStore: () => ({
+    available: false,
+    spaces: [],
+    currentSpace: { id: 'default', name: '默认空间', createdAt: 0 },
+    currentSpaceId: 'default',
+    load: vi.fn(async () => {}),
+    switchTo: vi.fn(),
+  }),
+}))
+
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => mocks.settingsStore,
 }))

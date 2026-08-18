@@ -525,6 +525,15 @@ UI 侧给它专门的一态("已停用 + 原因 + 再试一次"),显式重试带
 清单写在 `PLUGIN_OPEN_REGISTRIES` 的注释里。守卫:policy.test 的
 "宿主转发口 ↔ 开放清单"用例会在多了一个转发口却没登记时变红。
 
+**已开放的注册表(append-only,按开放顺序)**:
+
+| 注册表 | 开放于 | 拆除语义 | 备注 |
+| --- | --- | --- | --- |
+| `im-connector` | R7(试点) | `fail-open` | 无宿主默认渠道,撤下后投递抛可读错误 |
+| `search-provider` | M2 | `fail-open` | 撤下后聚合器不再迭代它 |
+| `deep-link-action` | H4 | `fail-open` | 撤下后确认卡直接说"该动作已不可用" |
+| `credential-strategy` | 批 E(2026-08-16,space 蓝图) | **`degrade-to-default`** | **三个 fail-open 之外的第一条** —— 内置 `priority-failover` 是一条真实存在、而且本来就在跑的默认路径,所以撤下后选择**仍然成功**,只是挑法换回内置的。详见 `docs/design/workspace-spaces-2026-08.md` 批 E 勘误 2 |
+
 ## 6. 多宿主战线:已拍板方案 A(2026-08-06)
 
 这是原文档完全没有讨论、但决定多期设计的一个真分叉。**已决定:方案 A —— 近期插件明确

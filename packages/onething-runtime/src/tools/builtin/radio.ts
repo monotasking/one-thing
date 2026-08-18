@@ -71,17 +71,10 @@ export function createRadioTool(
 ): Tool.Info<typeof RadioParameters, RadioMetadata> {
 	return Tool.define<typeof RadioParameters, RadioMetadata>("radio", {
 		name: "Radio",
-		description: `Run the personal radio station — the default way to play music that keeps going.
+		description: `Run the personal radio station — the default way to play music that keeps going ("放点歌", "来点轻音乐,一直放着"). Call open with a one-sentence intent; the DJ agent curates the programme and playback starts on its own (first song within ~a minute). You never pick songs yourself.
 
-Use this whenever the user wants ambience or continuous music ("放点歌", "来点轻音乐,一直放着"): call open with a one-sentence intent, and the DJ agent curates a programme, playback starts automatically (first song within ~a minute), songs chain with spoken host patter and lyrics. You never pick songs yourself — that is the DJ's job.
-
-- open: start (or restart) the station with an intent.
-- retune: the user wants a different direction — pass the new intent; the old programme is discarded and the DJ re-curates.
-- close: the user is done ("别放了") — stops curation and the music.
-- status: what is playing, how many songs remain, any problems.
-- request: the user names a specific song while the station is on ("下一首放晴天") — it cuts in as the next track. NEVER play manually while the radio is on.
-
-Only play songs manually (ncm-cli via bash, see the netease-music-cli skill) when the user names ONE specific song AND the radio is off.`,
+- open: start (or restart) with an intent. retune: new direction, pass the new intent. close: the user is done ("别放了"). status: what is playing, songs left, problems. request: the user names a song while the station is on — it cuts in as the next track; NEVER play manually while the radio is on.
+- Only play manually (ncm-cli via bash, see the netease-music-cli skill) when the user names ONE song AND the radio is off.`,
 		category: "builtin",
 		enabled: true,
 		autoExecute: true,

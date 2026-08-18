@@ -168,6 +168,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ChevronDown, Search as SearchIcon } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
+import { useSpaceProviderView } from '@/composables/useSpaceProviderView'
 import { useSessionsStore } from '@/stores/sessions'
 import type { AIProvider, OpenRouterModel } from '@shared/ipc'
 import { providerFamilyDisplayName } from '@shared/provider-families'
@@ -176,7 +177,7 @@ import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
 import Popover from '@/components/common/Popover.vue'
 import type { FloatingCloseReason } from '@/composables/floating/useFloatingLayer'
 import type { ComputedPosition } from '@/composables/floating/compute-position'
-import { isProviderConfigEnabled, resolveProviderModelSelection } from '@/stores/helpers/provider-model'
+import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
 import { useSessionAgentModel } from '@/composables/useSessionAgentModel'
 
 interface Props {
@@ -196,6 +197,16 @@ interface ModelPickerOption {
 const props = defineProps<Props>()
 
 const settingsStore = useSettingsStore()
+
+/**
+ * 「当前空间的 provider 视图」(批 B7)。模型选择器只列**这个空间配好的** provider,
+ * 模型清单也按空间取 —— 切 workspace 就自动切过去,不需要用户再填一张表。
+ * 默认空间下这一支恒等于今天的行为(视图内部落回 settings.ai),零回归。
+ */
+const spaceView = useSpaceProviderView({
+  settings: () => settingsStore.settings,
+  providers: () => settingsStore.availableProviders || [],
+})
 const sessionsStore = useSessionsStore()
 
 const selectorRef = ref<HTMLElement | null>(null)
@@ -263,6 +274,8 @@ const currentSelection = computed(() => resolveProviderModelSelection({
   settings: settingsStore.settings,
   session: currentSession.value,
   agentModel: sessionAgentModel.value,
+  // 批 B9:会话/agent 都没表达过选择时,先问当前空间的默认再落全局。
+  spaceDefault: spaceView.spaceDefault.value,
 }))
 
 const currentProvider = computed(() => (currentSelection.value.providerId || 'claude') as AIProvider)
@@ -283,10 +296,17 @@ const visibleProviders = computed(() => {
     const config = settings.ai.providers[provider.id]
     const isCurrent = provider.id === currentProvider.value
     const isCustom = settingsStore.isCustomProvider(provider.id)
-    const selectedModels = config?.selectedModels || []
+    const selectedModels = spaceView.selectedModelsOf(provider.id)
     const customDefaultModel = isCustom ? config?.model : ''
     const hasModels = selectedModels.length > 0 || (isCurrent && !!currentModel.value) || !!customDefaultModel
-    return isProviderConfigEnabled(config) && hasModels
+    // 「这个空间配了凭证没有」——没配的 provider 列出来只会让用户选中一个
+    // 起不了流的模型。**C1 起 default 也过这道闸**(方案 §2):它是默认空间
+    // 唯一有意的可见变化 —— 配了模型没配 key 的 provider 从选择器消失,而它
+    // 本来就发不出去。
+    const usableHere = spaceView.isConfigured(provider.id)
+    // 批 B9:开关也 per-space —— 视图内部仍走 `isProviderEnabledIn`(家族派生
+    // 不能在调用点各写一遍),只是多接了空间覆盖这一层读取源。
+    return spaceView.isProviderEnabled(provider.id) && hasModels && usableHere
   })
 })
 
@@ -397,8 +417,7 @@ function providerLabel(provider: { id: string; name: string }): string {
 
 function buildProviderModelOptions(providerId: string, providerName: string): ModelPickerOption[] {
   const config = settingsStore.settings?.ai?.providers?.[providerId]
-  const selectedModels = config?.selectedModels || []
-  const ids = [...selectedModels]
+  const ids = [...spaceView.selectedModelsOf(providerId)]
 
   if (providerId === currentProvider.value && currentModel.value && !ids.includes(currentModel.value)) {
     ids.unshift(currentModel.value)
@@ -486,14 +505,18 @@ function cycleProviderFilter(backwards: boolean) {
 }
 
 async function selectOption(option: ModelPickerOption) {
-  await settingsStore.saveAIProviderDefault(option.providerId as AIProvider, option.modelId)
-
   closeFlyout()
 
+  // **会话置顶先落**(与 ThinkToggle 同一条):它是这次点击的主语,而「顺手把
+  // 空间默认也改了」是副产物 —— 一次 overlay 落盘失败不该把它一起卡住。
   const effectiveSessionId = props.sessionId || sessionsStore.currentSessionId
   if (effectiveSessionId) {
     await sessionsStore.updateSessionModel(effectiveSessionId, option.providerId, option.modelId)
   }
+
+  // 「改默认」永远写**当前空间的 overlay**(C1)。批 B9 时 default 走的是
+  // `saveAIProviderDefault`(settings.ai),那条支路正是「默认模型不独立」的病根。
+  await spaceView.setDefaultSelection(option.providerId, option.modelId)
 }
 
 function handleSearchKeydown(event: KeyboardEvent) {

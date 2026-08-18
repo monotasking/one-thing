@@ -35,6 +35,8 @@ import { getEventBus } from '../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
 import { getStorePath } from '../stores/paths.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /**
  * 一间房同时最多几个人在说话。
  *
@@ -113,7 +115,7 @@ export function emitCollabRoomUpdated(roomSessionId: string): void {
   if (session?.kind !== 'room' || !session.room) return
   try {
     void getEventBus().emit(roomSessionId, {
-      type: 'session:collab-updated',
+      type: SESSION_EVENT_TYPES.SESSION_COLLAB_UPDATED,
       name: session.name,
       room: session.room,
     } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
@@ -139,7 +141,7 @@ export function postSystemLine(roomSessionId: string, content: string, source: s
   }
   store.addMessage(roomSessionId, message)
   void getEventBus().emit(roomSessionId, {
-    type: 'message:user-created',
+    type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
     message,
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
 }

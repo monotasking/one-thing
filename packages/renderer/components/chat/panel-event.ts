@@ -15,4 +15,5 @@ export type PanelEvent =
   | { type: 'reviewGoal'; leafId: string; sessionId: string }
   | { type: 'switchSession'; leafId: string; sessionId: string }
   | { type: 'splitDrop'; leafId: string; direction: SplitDirection; sessionId: string; sourcePanelId: string }
-  | { type: 'toggleSidePanel'; leafId: string }
+  /** 顶栏那颗「Contents」钮 —— L3 起它开的是右栏的 outline 页签,不再开合第四列。 */
+  | { type: 'openOutline'; leafId: string }

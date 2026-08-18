@@ -11,6 +11,7 @@ import {
   getRefreshableOnethingProviderIds,
   getOnethingModelById,
   getOnethingModelContextLength,
+  getOnethingKnownModelMaxOutputTokens,
   getOnethingModelMaxOutputTokens,
   getOnethingModelsForProvider,
   mergeOnethingModelsById,
@@ -85,6 +86,19 @@ describe('onething model registry helpers', () => {
       },
     },
   }
+
+  it('strict max-output lookup never invents 4096: known → number, unknown → undefined', () => {
+    expect(getOnethingKnownModelMaxOutputTokens(providers, 'shared-model', 'custom')).toBe(8192)
+    expect(getOnethingKnownModelMaxOutputTokens(providers, 'never-heard-of', 'custom')).toBeUndefined()
+    // an entry built from a catalog row that had no output limit is stored as 0 = unknown
+    const withUnknown: OnethingProviderModelConfigs = {
+      custom: { models: { 'no-limit': entry('no-limit', 'custom', 64000, 0) } },
+    }
+    expect(getOnethingKnownModelMaxOutputTokens(withUnknown, 'no-limit', 'custom')).toBeUndefined()
+    // the lenient getter keeps its historic 4096 for the chat path — the two are
+    // deliberately different functions so a caller must choose.
+    expect(getOnethingModelMaxOutputTokens(withUnknown, 'no-limit', 'custom')).toBe(4096)
+  })
 
   it('keeps provider-scoped lookups isolated when model IDs collide', () => {
     expect(getOnethingModelContextLength(providers, 'shared-model', 'custom')).toBe(64000)

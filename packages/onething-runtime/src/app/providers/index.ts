@@ -22,6 +22,7 @@ import type {
   AgentProvider,
 } from '@onething/core/agent-loop'
 import { oauthManager } from '../providers/auth/oauth-manager.js'
+import * as modelRegistry from './model-registry.js'
 import {
   createRequiredAppFetch,
 } from './bound-fetch.js'
@@ -142,9 +143,19 @@ export async function generateChatResponse(
     debugSessionId?: string
     /** Side channel for token usage, so side-line callers can bill their calls. */
     onUsage?: (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void
+    /** Side channel for the stop reason ('length' = truncated by max_tokens). */
+    onFinish?: (info: { finishReason?: string }) => void
   } = {},
 ): Promise<string> {
-  return providerFacade.generateChatResponse(providerId, config, messages, options)
+  // No hidden 4096 anywhere on this path (2026-08-15 ruling). A caller that says
+  // nothing about maxTokens gets the model's real max output when the registry
+  // knows it; when it doesn't, nothing is sent and the provider decides.
+  const maxTokens = options.maxTokens
+    ?? await modelRegistry.getKnownModelMaxOutputTokens(config.model, providerId)
+  return providerFacade.generateChatResponse(providerId, config, messages, {
+    ...options,
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
+  })
 }
 
 

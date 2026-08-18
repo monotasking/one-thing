@@ -1,0 +1,67 @@
+{
+  "name": "onething Paper",
+  "_note": "候选 · Notion / Craft 一脉。暖纸地 + 纯白卡 + 单一饱和蓝。层级靠“面”而不是靠线：地有暖度、卡有 1px 描边、只有浮层配阴影。正文当文档排，工具卡当 Notion 页里的看板卡。彩色只出现在小胶囊里。",
+  "palette": {
+    "hue": 34,
+    "band": "light",
+    "scheme": "accent",
+    "sat": 0.06,
+    "pin": {
+      "bg": "#F5F3F0",
+      "surface": "#FFFFFF",
+      "rail": "#EFEDE8",
+      "accent": "#2B62DE",
+      "accent2": "#B9761B"
+    },
+    "bg": "#F5F3F0",
+    "surface": "#FFFFFF",
+    "text": "#1B1A17",
+    "accent": "#2B62DE",
+    "accent2": "#B9761B",
+    "inkAlphas": { "primary": 1.0, "secondary": 0.62, "tertiary": 0.44 },
+    "pills": {
+      "positive": { "fg": "#1B7A46", "bg": "#E6F3EB" },
+      "negative": { "fg": "#B23A2B", "bg": "#FAEAE6" },
+      "pending": { "fg": "#8E5A0C", "bg": "#FAF0DE" },
+      "neutral": { "fg": "#5E5A52", "bg": "#F0EEE9" },
+      "info": { "fg": "#2450BE", "bg": "#E8EEFC" }
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Public Sans",
+      "cjk": "Noto Sans SC",
+      "class": "humanist",
+      "weights": [600, 700]
+    },
+    "body": {
+      "family": "Public Sans",
+      "cjk": "Noto Sans SC",
+      "class": "humanist",
+      "weights": [400, 500, 600]
+    },
+    "accentSerif": {
+      "family": "Source Serif 4",
+      "cjk": "Noto Serif SC",
+      "class": "transitional",
+      "weights": [400],
+      "usage": "只用一处：右侧面板的说明句"
+    },
+    "headingWeight": 700,
+    "headingTracking": "-0.025em",
+    "bodySize": 15.5,
+    "bodyLeading": 1.68
+  },
+  "density": 1.05,
+  "radius": 12,
+  "layoutStyle": "document",
+  "dividers": "space",
+  "buttonStyle": "filled-once",
+  "colorUse": "fill-sparingly",
+  "elevation": {
+    "content": "none",
+    "floating": "0 10px 30px rgba(27,26,23,.13), 0 2px 6px rgba(27,26,23,.07)"
+  },
+  "imageTreatment": "card",
+  "iconSet": "lucide"
+}

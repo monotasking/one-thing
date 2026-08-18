@@ -69,10 +69,10 @@ function renderLines(variables: ContextVariable[], opts: RenderOptions): string 
   const ordered = [...variables].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 
   for (const v of ordered) {
-    // workdir is rendered by the prompt builder's dedicated "# Work Directory"
-    // section; skip it here so the same directories are never injected twice.
-    if (v.name === 'workdir') continue
-
+    // `workdir` used to be skipped here because the prompt builder had a
+    // dedicated `# Work Directory` section. That section is gone
+    // (prompt-channels 2026-08-18): the board is the single place the working
+    // directory (and its extra roots, which are part of the value) is stated.
     if (!v.value) continue
 
     const firstLine = v.value.split('\n')[0]
@@ -119,7 +119,6 @@ function renderCatalogLines(variables: ContextVariable[]): string {
   const ordered = [...variables].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   const lines: string[] = []
   for (const v of ordered) {
-    if (v.name === 'workdir') continue
     const attrs = [`name="${escapeAttr(v.name)}"`, 'state="false"']
     if (v.type && v.type !== 'string') attrs.push(`type="${v.type}"`)
     if (v.scope && v.scope !== 'session') attrs.push(`scope="${v.scope}"`)

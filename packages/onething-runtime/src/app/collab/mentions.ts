@@ -27,6 +27,8 @@ import type { ChatMessage } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /**
  * Resolve the `@名字` in an already-persisted room message against `members`
  * and stamp the result onto it. Returns the mentions that were resolved (empty
@@ -55,7 +57,7 @@ export function attachCollabMentions(
   if (!store.updateMessageMentions(roomSessionId, messageId, mentions)) return []
 
   void getEventBus().emit(roomSessionId, {
-    type: 'message:updated',
+    type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
     messageId,
     updates: { mentions },
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])

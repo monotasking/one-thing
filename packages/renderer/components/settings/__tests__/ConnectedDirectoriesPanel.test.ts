@@ -61,6 +61,21 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
         { id: 'work', name: '工作', createdAt: 1 },
       ],
       load: vi.fn().mockResolvedValue(undefined),
+      lastError: null,
+      // 真 store 的 `patchOverlay` 是**先读后并**(批 B7):后端那条通道整层写,
+      // 只递一格会把 overlay 的其他字段抹掉。这里照抄同一个形状。
+      patchOverlay: vi.fn(async (id: string, patch: Record<string, unknown>) => {
+        const current = await mocks.platformApi.spacesGetOverlay(id)
+        const response = await mocks.platformApi.spacesSetOverlay({
+          id,
+          overlay: { ...(current.overlay ?? {}), ...patch },
+        })
+        if (!response.success) {
+          mocks.spacesStore.lastError = response.error
+          return null
+        }
+        return response.overlay ?? {}
+      }),
     })
     mocks.platformApi = {
       capabilities: { localFileSystem: true },
@@ -113,6 +128,25 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
       overlay: { connectedDirectories: [] },
     })
     expect(wrapper.emitted('update:settings')).toBeUndefined()
+  })
+
+  it('改目录不会顺手抹掉 overlay 里的模型选择(整层写的陷阱)', async () => {
+    mocks.platformApi.spacesGetOverlay = vi.fn().mockResolvedValue({
+      success: true,
+      overlay: { connectedDirectories: ['/work-only'], selectedModels: { deepseek: ['m1'] } },
+    })
+    const wrapper = mountPanel(['/global'])
+    await settle()
+    await wrapper.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'work')
+    await settle()
+
+    await wrapper.find('.directory-list .remove-btn').trigger('click')
+    await settle()
+
+    expect(mocks.platformApi.spacesSetOverlay).toHaveBeenCalledWith({
+      id: 'work',
+      overlay: { connectedDirectories: [], selectedModels: { deepseek: ['m1'] } },
+    })
   })
 
   it('全局层的删除仍走 update:settings,不碰 spaces IPC', async () => {

@@ -13,7 +13,7 @@ Your own work-tracking surface for the current session. Nobody else writes to it
 
 The user's own todo notes — their tasks, commitments, reminders, errands. These are shared across all sessions, so treat them as someone else's document.
 
-- Use `find` with pattern `*.md` on the notes directory first: filenames are the note titles, and you need to know what exists before adding to it.
+- List the `*.md` files in the notes directory first (bash `ls` / `fd`): filenames are the note titles, and you need to know what exists before adding to it.
 - Add to the most relevant existing note rather than creating near-duplicates. Create a new note only when nothing fits.
 - Write to them when the user asks you to remember or track something, or states a concrete future task worth preserving. Ask first when the intent is ambiguous.
 - Never delete a note. Deleting is the user's own action in the todo panel.

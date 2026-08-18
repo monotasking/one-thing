@@ -1,0 +1,8 @@
+/* 6b 强调色：橙 → Flexoki 蓝 #205EA6，其余一模一样 */
+:root, :root[data-theme="light"] {
+  --c-accent: #205EA6;
+  --c-accent-strong: #1B4F8C;
+  --c-accent-soft: #E3ECF8;
+  --c-accent-ring: color-mix(in srgb, #205EA6 24%, transparent);
+  --c-accent-ink: #fffcf0;
+}

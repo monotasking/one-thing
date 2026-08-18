@@ -63,4 +63,53 @@ describe('settings store', () => {
     expect(settingsStore.settings.ai.provider).toBe('local')
     expect(settingsStore.settings.ai.providers.local.model).toBe('local-echo')
   })
+
+  it('re-pulls a provider\'s catalog after a save that moved its models.dev key (Kimi 计费方式)', async () => {
+    const saveSettings = vi.fn((settings: unknown) =>
+      Promise.resolve({ success: true, settings }),
+    )
+    const rpcInvoke = vi.fn(async (request: { domain: string; method: string; payload: unknown }) => {
+      if (request.method === 'refreshRegistry') return { ok: true, data: { success: true } }
+      if (request.method === 'getWithCapabilities') return { ok: true, data: { success: true, models: [] } }
+      return { ok: true, data: { success: true } }
+    })
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: {
+        saveSettings,
+        rpcInvoke,
+        onSystemThemeChanged: vi.fn(() => () => {}),
+        getSystemTheme: vi.fn().mockResolvedValue({ success: true, theme: 'light' }),
+      },
+    })
+
+    const { useSettingsStore } = await import('../settings')
+    const settingsStore = useSettingsStore()
+    settingsStore.settings.ai.providers.kimi = {
+      ...settingsStore.settings.ai.providers.kimi,
+      kimiApiMode: 'standard',
+      kimiRegion: 'cn',
+    }
+
+    // 按量 → 编程套餐 is a different models.dev book (moonshotai-cn → kimi-for-coding).
+    const next = JSON.parse(JSON.stringify(settingsStore.settings))
+    next.ai.providers.kimi.kimiApiMode = 'coding-plan'
+    // Unrelated edit on a provider whose key does not depend on config: no re-pull.
+    next.ai.providers.deepseek = { ...next.ai.providers.deepseek, apiKey: 'sk-x' }
+    await settingsStore.saveSettings(next)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const refreshCalls = rpcInvoke.mock.calls
+      .map(([request]) => request)
+      .filter(request => request.domain === 'models' && request.method === 'refreshRegistry')
+    expect(refreshCalls).toEqual([
+      expect.objectContaining({ payload: { providerId: 'kimi' } }),
+    ])
+
+    // Same mode saved again: nothing moved, nothing re-pulled.
+    rpcInvoke.mockClear()
+    await settingsStore.saveSettings(JSON.parse(JSON.stringify(settingsStore.settings)))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(rpcInvoke.mock.calls.some(([request]) => request.method === 'refreshRegistry')).toBe(false)
+  })
 })

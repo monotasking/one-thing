@@ -84,8 +84,12 @@ function seedIncident(): string {
  * so ablating known-projects flips the verdict.
  */
 const replayModel: EvalModelCaller = async ({ messages }) => {
-	const system = messages.find((m) => m.role === "system")?.content ?? "";
-	const bad = system.includes("Known Projects");
+	// The whole request, not just the system message: `known-projects` moved to
+	// the turn channel (prompt-channels 2026-08-18) and now arrives in the
+	// `<context-update>` tail of the user message. Ablation is about whether
+	// the model SAW the section, not about which message carried it.
+	const request = messages.map((m) => m.content ?? "").join("\n");
+	const bad = request.includes("Known Projects");
 	return {
 		content: bad ? "BAD: 直接在当前目录改" : "GOOD: 先切到 transreader 目录再改",
 		toolCalls: [],

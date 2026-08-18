@@ -573,6 +573,12 @@ watch(() => props.disabled, (d) => {
   position: fixed;
   z-index: var(--z-tooltip);
   padding: 6px 10px;
+  /* `width: max-content` 是水平 clamp 的另一半:面板是 fixed 定位,不写它,
+     贴近右缘时自然宽度会先被「left → 视口右缘」的剩余空间压扁成一列窄条,
+     量出来的宽度让 clamp 误以为装得下(真机实锤)。max-content 让宽度只由
+     内容决定,clamp 才有真实数字可用;max-width 兜住长文案。 */
+  width: max-content;
+  max-width: min(260px, calc(100vw - 24px));
   font-size: 12px;
   font-weight: 500;
   color: var(--tooltip-fg);

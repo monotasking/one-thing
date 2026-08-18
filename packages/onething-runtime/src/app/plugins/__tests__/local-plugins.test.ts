@@ -139,6 +139,7 @@ describe('能力收窄:LocalPluginAPI 物理不挂需声明的能力', () => {
       theme: { updateBackground() {} },
       registerSearchProvider: () => {},
       registerIMConnector: () => {},
+      registerCredentialStrategy: () => {},
       registerRequestHandler: () => {},
       settings: { get() {}, onChange() {} },
       registerPromptContextProvider: () => {},
@@ -162,7 +163,8 @@ describe('能力收窄:LocalPluginAPI 物理不挂需声明的能力', () => {
       'sendMessage', 'sessions', 'isIdle', 'llm', 'steer', 'followUp',
       'interceptInput', 'interceptToolCall', 'interceptToolResult',
       'registerWorkspacePanel', 'registerUiSlot', 'theme',
-      'registerSearchProvider', 'registerIMConnector', 'registerRequestHandler',
+      'registerSearchProvider', 'registerIMConnector', 'registerCredentialStrategy',
+      'registerRequestHandler',
       'settings', 'registerPromptContextProvider', 'beforeContextCompact',
       'afterAssistantResponse', 'registerSkillRoot', 'status',
     ]) {
@@ -176,7 +178,7 @@ describe('能力收窄:LocalPluginAPI 物理不挂需声明的能力', () => {
 
   it('LOCAL_PLUGIN_API_KEYS 不含任何需声明门控的能力', async () => {
     const { LOCAL_PLUGIN_API_KEYS } = await import('../types.js')
-    const banned = ['sendMessage', 'sessions', 'llm', 'interceptInput', 'interceptToolCall', 'interceptToolResult', 'registerWorkspacePanel', 'registerUiSlot', 'theme', 'registerSearchProvider', 'registerIMConnector']
+    const banned = ['sendMessage', 'sessions', 'llm', 'interceptInput', 'interceptToolCall', 'interceptToolResult', 'registerWorkspacePanel', 'registerUiSlot', 'theme', 'registerSearchProvider', 'registerIMConnector', 'registerCredentialStrategy']
     for (const key of banned) {
       expect(LOCAL_PLUGIN_API_KEYS).not.toContain(key)
     }

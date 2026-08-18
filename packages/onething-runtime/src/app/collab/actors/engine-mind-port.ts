@@ -59,6 +59,8 @@ import {
   endCollabV3Turn,
 } from './turn-context.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /** 起流的等待上限。没见到 `stream:start` 就是没跑起来。 */
 const TURN_START_TIMEOUT_MS = 20_000
 /** 一轮的总墙钟。超了掐流(见 `abortCollabZombieStream`)。 */
@@ -101,10 +103,10 @@ function waitForTerminalEvent(
       sessionId,
       envelope => {
         const type = (envelope.event as { type?: string } | undefined)?.type
-        if (type === 'stream:start') sawStart = true
-        else if (type === 'stream:complete') finish('complete')
-        else if (type === 'stream:error') finish('error')
-        else if (type === 'stream:aborted') finish('aborted')
+        if (type === SESSION_EVENT_TYPES.STREAM_START) sawStart = true
+        else if (type === SESSION_EVENT_TYPES.STREAM_COMPLETE) finish('complete')
+        else if (type === SESSION_EVENT_TYPES.STREAM_ERROR) finish('error')
+        else if (type === SESSION_EVENT_TYPES.STREAM_ABORTED) finish('aborted')
       },
       'collab-v3-turn-wait',
     )
@@ -345,15 +347,15 @@ export function createCollabEngineMindPort(
           envelope => {
             const event = envelope.event as { type?: string; messageId?: string } | undefined
             switch (event?.type) {
-              case 'steering:queued':
+              case SESSION_EVENT_TYPES.STEERING_QUEUED:
                 if (event.messageId) queuedMessageId = event.messageId
                 return
-              case 'steering:consumed':
+              case SESSION_EVENT_TYPES.STEERING_CONSUMED:
                 finish(true)
                 return
-              case 'stream:complete':
-              case 'stream:error':
-              case 'stream:aborted':
+              case SESSION_EVENT_TYPES.STREAM_COMPLETE:
+              case SESSION_EVENT_TYPES.STREAM_ERROR:
+              case SESSION_EVENT_TYPES.STREAM_ABORTED:
                 // 回合结束了却没人 drain 过 —— 这条注入迟到了。
                 finish(false)
                 return

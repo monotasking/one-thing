@@ -48,6 +48,8 @@ import {
   type VoiceHostWindow,
 } from './host-ports.js'
 
+import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+
 // Host-surface delegates: the audio runtime window and tray are Electron
 // concepts injected via configureVoiceHost; headless hosts no-op them.
 const ensureVoiceRuntimeWindow = (): void => getVoiceHostPorts().runtimeWindow?.ensure?.()
@@ -365,7 +367,7 @@ class VoiceService {
 
       this.beginReplyPlayback(request.sessionId)
       await getEventBus().emit(request.sessionId, {
-        type: 'command:send-message',
+        type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
         channel: 'voice',
         source: 'voice',
         content: text,
@@ -626,9 +628,9 @@ class VoiceService {
       this.handleReplyStreamChunk(turn, chunk)
     })
     turn.unsubscribeEvents = getEventBus().onAny(sessionId, envelope => {
-      if (envelope.event.type === 'stream:complete'
-        || envelope.event.type === 'stream:error'
-        || envelope.event.type === 'stream:aborted') {
+      if (envelope.event.type === SESSION_EVENT_TYPES.STREAM_COMPLETE
+        || envelope.event.type === SESSION_EVENT_TYPES.STREAM_ERROR
+        || envelope.event.type === SESSION_EVENT_TYPES.STREAM_ABORTED) {
         this.finishReplyPlayback(turn.id, true)
       }
     }, 'VoiceService:TTS')

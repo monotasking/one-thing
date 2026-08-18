@@ -6,6 +6,7 @@
     :status="contextCompactData.status"
     :error="contextCompactData.error"
     :compacted-message-count="contextCompactData.compactedMessageCount"
+    :progress="contextCompactData.progress"
   />
 
   <!-- Default system message rendering -->
@@ -84,6 +85,8 @@ const contextCompactData = computed<{
   summary: string
   error?: string
   compactedMessageCount?: number
+  compactedThroughMessageId?: string
+  progress?: { chunk: number; totalChunks: number }
 } | null>(() => {
   try {
     const parsed = JSON.parse(props.content)
@@ -94,6 +97,8 @@ const contextCompactData = computed<{
         summary: string
         error?: string
         compactedMessageCount?: number
+        compactedThroughMessageId?: string
+        progress?: { chunk: number; totalChunks: number }
       }
     }
   } catch {

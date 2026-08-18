@@ -39,6 +39,13 @@ export interface CoreAgentLoopProviderRuntimeConfigLike extends CoreAgentLoopPro
   apiType?: unknown
   oauthToken?: unknown
   authContext?: unknown
+  /**
+   * per-space credential marker, stamped by the host's credential resolution and
+   * forwarded verbatim (core never inspects it). The provider factory needs it to
+   * know WHERE an in-turn OAuth refresh should write back — the refresh happens
+   * deep inside a provider, long after the session id is gone.
+   */
+  spaceCredential?: unknown
   modelCapabilitiesByModel?: unknown
   models?: unknown
   /**
@@ -60,6 +67,7 @@ export type CoreAgentLoopProviderRuntimeConfigFor<TProviderConfig extends CoreAg
     | 'apiType'
     | 'oauthToken'
     | 'authContext'
+    | 'spaceCredential'
     | 'modelCapabilitiesByModel'
     | 'models'
   >
@@ -637,6 +645,7 @@ export function planAgentLoopRuntimePreparation<
       apiType: input.ctx.providerConfig.apiType,
       oauthToken: input.ctx.providerConfig.oauthToken,
       authContext: input.ctx.providerConfig.authContext,
+      spaceCredential: input.ctx.providerConfig.spaceCredential,
       modelCapabilitiesByModel: input.ctx.providerConfig.modelCapabilitiesByModel,
       models: input.ctx.providerConfig.models,
     } as CoreAgentLoopProviderRuntimeConfigFor<TProviderConfig>,

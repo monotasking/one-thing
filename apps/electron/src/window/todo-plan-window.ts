@@ -45,7 +45,6 @@ export function createElectronTodoPlanWindow(options: ElectronTodoPlanWindowOpti
     transparent: options.isMac,
     backgroundColor: options.isMac ? undefined : options.backgroundColor,
     titleBarStyle: options.isMac ? 'hidden' : 'default',
-    trafficLightPosition: options.isMac ? { x: 16, y: 9 } : undefined,
     resizable: true,
     alwaysOnTop: false,
     webPreferences: {
@@ -54,6 +53,24 @@ export function createElectronTodoPlanWindow(options: ElectronTodoPlanWindowOpti
       nodeIntegration: false,
     },
   })
+
+  // macOS:把系统交通灯**收起来**,由渲染层在形态轨顶自绘三枚竖排彩点。
+  //
+  // 不是审美偏好,是这扇窗的窗型决定的:它是 non-activating NSPanel(见
+  // `native/macos-panel/macos_panel.mm` 加的 `NSWindowStyleMaskNonactivatingPanel`
+  // 与 `_setPreventsActivation:`),永远不会成为 main window —— 系统交通灯因此
+  // 恒定画成失活的灰点,再怎么摆 `trafficLightPosition` 也不会上色。留着一排灰点
+  // 比没有更糟,所以隐藏,让设计稿里那三枚点成为真的控件。
+  //
+  // `setWindowButtonVisibility` 只有 macOS 有,且在 `titleBarStyle: 'customButtonsOnHover'`
+  // 下会抛;这里是 `'hidden'`,合法。仍然包一层 —— 这一步失败不该连累开窗。
+  if (options.isMac && typeof todoPlanWindow.setWindowButtonVisibility === 'function') {
+    try {
+      todoPlanWindow.setWindowButtonVisibility(false)
+    } catch (error) {
+      console.warn('[TodoPanel] Failed to hide native window buttons:', error)
+    }
+  }
 
   options.onCreated?.(todoPlanWindow)
 

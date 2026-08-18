@@ -1,11 +1,12 @@
 <template>
   <section
     ref="panelRef"
-    class="todo-plan-panel"
+    class="todo-plan-panel todo-paper"
     :class="{
       pinned,
       collapsed,
       standalone: isStandalone,
+      'window-inactive': isStandalone && !windowFocused,
       'popover-open': popoverOpen,
       'find-open': findOpen,
       'switcher-open': switcherOpen,
@@ -16,6 +17,11 @@
     @mouseenter="handlePanelMouseEnter"
     @mouseleave="handlePanelMouseLeave"
     @keydown="handleShortcut"
+    @pointerdown="handleRootWindowDragStart"
+    @pointermove="handleWindowDragMove"
+    @pointerup="handleWindowDragEnd"
+    @pointercancel="handleWindowDragEnd"
+    @dblclick="handleRootWindowDragDoubleClick"
   >
     <Button
       v-if="collapsed"
@@ -30,456 +36,686 @@
     </Button>
 
     <template v-else>
-      <header class="panel-header">
+      <!-- 形态轨。这扇窗是**唯一的浮面**:Todo/笔记与草稿纸是同一张纸的两种
+           内容,不是两个浮层 —— 所以形态开关是一条常驻的轨,不是标题栏里的
+           一枚丸。轨自己是窗的底面,主区是"垫在上面"的那张纸。 -->
+      <nav
+        class="mode-rail"
+        aria-label="Todo window mode"
+        @pointerdown="handleWindowDragStart"
+        @pointermove="handleWindowDragMove"
+        @pointerup="handleWindowDragEnd"
+        @pointercancel="handleWindowDragEnd"
+        @dblclick="handleWindowDragDoubleClick"
+      >
+        <!-- 竖排三点。**不是装饰**:这扇窗是 non-activating NSPanel,永远成不了
+             main window,系统交通灯因此恒定是灰的 —— 所以主进程把系统按钮收了
+             (`setWindowButtonVisibility(false)`),这三枚才是真控件。
+             和上面的形态钮同一个理由:逐个写出来,不走 v-for(Tooltip 里有
+             `Teleport to="body"`,进了 v-for 会在重排时拿错实例)。 -->
         <div
           v-if="isStandalone"
-          class="window-traffic-spacer"
+          class="window-lights"
+        >
+          <Tooltip
+            text="关闭"
+            position="right"
+          >
+            <button
+              class="window-light close"
+              type="button"
+              aria-label="关闭"
+              @pointerdown.stop
+              @click.stop="closeStandaloneWindow"
+            />
+          </Tooltip>
+          <Tooltip
+            text="最小化"
+            position="right"
+          >
+            <button
+              class="window-light minimize"
+              type="button"
+              aria-label="最小化"
+              @pointerdown.stop
+              @click.stop="minimizeStandaloneWindow"
+            />
+          </Tooltip>
+          <Tooltip
+            text="缩放"
+            position="right"
+          >
+            <button
+              class="window-light zoom"
+              type="button"
+              aria-label="缩放"
+              @pointerdown.stop
+              @click.stop="zoomStandaloneWindow"
+            />
+          </Tooltip>
+        </div>
+
+        <!-- 两枚钮**逐个写出来**,不走 v-for。`Tooltip` 里有 `Teleport to="body"`,
+             而 teleport 放进 v-for 之后 Vue 会在重排时拿错实例(实测:切形态时
+             patch 到 null 容器,报 emitsOptions / insertBefore of null)。
+             这一族本来就恰好两枚,穷举比省两行划算。 -->
+        <div class="rail-buttons">
+          <Tooltip
+            text="待做 / 笔记"
+            position="right"
+          >
+            <Button
+              text
+              class="rail-button rail-todo"
+              :class="{ active: isTodoMode }"
+              native-type="button"
+              aria-label="待做 / 笔记"
+              :aria-pressed="isTodoMode ? 'true' : 'false'"
+              @mousedown.prevent
+              @click.stop="selectMode('todo')"
+            >
+              <SquareCheckBig
+                :size="17"
+                :stroke-width="1.9"
+              />
+            </Button>
+          </Tooltip>
+          <Tooltip
+            text="草稿纸"
+            position="right"
+          >
+            <Button
+              text
+              class="rail-button rail-scratch"
+              :class="{ active: isScratchpadMode }"
+              native-type="button"
+              aria-label="草稿纸"
+              :aria-pressed="isScratchpadMode ? 'true' : 'false'"
+              @mousedown.prevent
+              @click.stop="selectMode('scratchpad')"
+            >
+              <NotebookPen
+                :size="17"
+                :stroke-width="1.9"
+              />
+            </Button>
+          </Tooltip>
+        </div>
+
+        <span
+          class="rail-label"
           aria-hidden="true"
-        />
+        >{{ railLabel }}</span>
+      </nav>
 
-        <div class="window-title">
-          {{ displayTitle }}
-        </div>
-
-        <!-- 形态开关。这扇窗是**唯一的浮面**:Todo/笔记与草稿纸是同一张纸的
-             两种内容,不是两个浮层。 -->
-        <SegmentedPill
-          class="mode-pill"
-          :model-value="mode"
-          :options="MODE_OPTIONS"
-          aria-label="Todo window mode"
-          @update:model-value="selectMode"
-        />
-
-        <div class="panel-actions">
-          <Tooltip
-            v-if="isScratchpadMode"
-            text="把水位之后的内容(或选中的一段)正式发出 ⌘⏎"
+      <div class="panel-main">
+        <div class="panel-column">
+          <header
+            class="panel-header"
+            @pointerdown="handleWindowDragStart"
+            @pointermove="handleWindowDragMove"
+            @pointerup="handleWindowDragEnd"
+            @pointercancel="handleWindowDragEnd"
+            @dblclick="handleWindowDragDoubleClick"
           >
-            <Button
-              text
-              class="icon-button"
-              native-type="button"
-              :disabled="!canSendScratchpad"
-              aria-label="Send scratchpad content"
-              @mousedown.prevent
-              @click.stop="sendScratchpadPending"
-            >
-              <CornerDownLeft :size="14" />
-            </Button>
-          </Tooltip>
-          <Tooltip
-            v-if="isTodoMode"
-            text="Command Panel"
-          >
-            <Button
-              text
-              class="icon-button"
-              native-type="button"
-              aria-label="Command Panel"
-              @mousedown.prevent
-              @click.stop="openActionPanel"
-            >
-              <Command :size="14" />
-            </Button>
-          </Tooltip>
-          <Tooltip
-            v-if="isTodoMode"
-            text="Browse notes"
-          >
-            <Button
-              ref="titleButtonRef"
-              text
-              class="icon-button"
-              native-type="button"
-              aria-label="Browse notes"
-              @mousedown.prevent
-              @click.stop="openSwitcher"
-            >
-              <FileText :size="14" />
-            </Button>
-          </Tooltip>
-          <Tooltip
-            v-if="isTodoMode"
-            text="New note"
-          >
-            <Button
-              text
-              class="icon-button"
-              native-type="button"
-              aria-label="New note"
-              @mousedown.prevent
-              @click.stop="createNote"
-            >
-              <Plus :size="14" />
-            </Button>
-          </Tooltip>
-          <Tooltip :text="pinControlLabel">
-            <Button
-              text
-              class="icon-button"
-              :class="{ active: pinned }"
-              native-type="button"
-              :aria-label="pinControlLabel"
-              @mousedown.prevent
-              @click.stop="togglePinned"
-            >
-              <Pin :size="14" />
-            </Button>
-          </Tooltip>
-        </div>
-      </header>
+            <!-- 头行标题是**形态名**(设计稿如此),不是笔记名 —— 笔记自己的
+                 标题就是文档第一行的 H1,头行再念一遍是重复;换笔记走 ⌘P。 -->
+            <h1 class="window-title">
+              {{ headerTitle }}
+            </h1>
 
-      <TodoNotesActionPanel
-        :visible="actionPanelOpen"
-        :query="actionQuery"
-        :actions="todoActions"
-        @update:query="actionQuery = $event"
-        @select="runAction"
-        @close="closeActionPanel"
-      />
+            <!-- 这张纸属于哪个会话。纸和 AI todo 都是按会话分的,窗又跟着主窗的
+                 当前会话走 —— 不写出来,用户无从核对"我在往哪个会话的纸上写"。 -->
+            <span
+              v-if="sessionTitle"
+              class="header-session"
+            >{{ sessionTitle }}</span>
 
-      <div
-        v-if="switcherOpen"
-        ref="switcherRef"
-        class="note-switcher todo-popover todo-popover-notes"
-      >
-        <label class="switcher-search todo-popover-search">
-          <Search :size="15" />
-          <input
-            ref="switcherInputRef"
-            v-model="switcherQuery"
-            placeholder="Search for notes..."
-            spellcheck="false"
-            @keydown="handleSwitcherKeydown"
-          >
-        </label>
+            <span class="header-stat">{{ headerStatLabel }}</span>
 
-        <div class="switcher-list todo-popover-list">
-          <div class="switcher-header-row">
-            <strong>Notes</strong>
-            <span>
-              {{ noteCountLabel }}
-              <Info :size="16" />
-            </span>
-          </div>
+            <div class="panel-actions">
+              <Tooltip
+                v-if="isScratchpadMode && !showInfoPanel"
+                text="把水位之后的内容(或选中的一段)正式发出 ⌘⏎"
+              >
+                <Button
+                  text
+                  class="icon-button"
+                  native-type="button"
+                  :disabled="!canSendScratchpad"
+                  aria-label="Send scratchpad content"
+                  @mousedown.prevent
+                  @click.stop="sendScratchpadPending"
+                >
+                  <CornerDownLeft :size="14" />
+                </Button>
+              </Tooltip>
+              <!-- 设计稿的头行只有「标题 + 读数」:那排图标钮收敛成一枚 ⋯,
+                   切换笔记 / 新建 / 查找 / 格式条 / 钉住全部住进命令面板
+                   (⌘K 同一入口)。`titleButtonRef` 留在这枚钮上 —— 笔记
+                   切换器的"点外面关掉"靠它认得触发源。 -->
+              <Tooltip
+                v-if="isTodoMode"
+                text="更多操作 ⌘K"
+              >
+                <Button
+                  ref="titleButtonRef"
+                  text
+                  class="icon-button"
+                  native-type="button"
+                  aria-label="更多操作"
+                  @mousedown.prevent
+                  @click.stop="openActionPanel"
+                >
+                  <MoreHorizontal :size="15" />
+                </Button>
+              </Tooltip>
+            </div>
+          </header>
+
+          <TodoNotesActionPanel
+            :visible="actionPanelOpen"
+            :query="actionQuery"
+            :actions="todoActions"
+            @update:query="actionQuery = $event"
+            @select="runAction"
+            @close="closeActionPanel"
+          />
+
           <div
-            v-for="doc in filteredUserNotes"
-            :key="doc.id"
-            :class="['note-option', { active: activeId === doc.id, selected: switcherSelectedDocument?.id === doc.id }]"
-            :data-note-id="doc.id"
-            @mouseenter="selectSwitcherDocument(doc.id)"
+            v-if="switcherOpen"
+            ref="switcherRef"
+            class="note-switcher todo-popover todo-popover-notes"
           >
-            <Button
-              text
-              class="note-option-main"
-              native-type="button"
-              @mousedown.prevent
-              @click.stop="selectDocument(doc.id)"
-            >
-              <strong>{{ doc.title }}</strong>
-              <small>
-                <i :class="{ current: activeId === doc.id }" />
-                {{ activeId === doc.id ? 'Current' : 'Note' }}
-                <b>•</b>
-                {{ doc.content.length }} Characters
-              </small>
-            </Button>
-            <div class="note-option-actions">
-              <Button
-                text
-                :class="{ active: isNotePinned(doc.id) }"
-                native-type="button"
-                :aria-label="isNotePinned(doc.id) ? 'Unpin note' : 'Pin note'"
-                @mousedown.prevent
-                @click.stop="toggleNotePinned(doc.id)"
+            <label class="switcher-search todo-popover-search">
+              <Search :size="15" />
+              <input
+                ref="switcherInputRef"
+                v-model="switcherQuery"
+                placeholder="Search for notes..."
+                spellcheck="false"
+                @keydown="handleSwitcherKeydown"
               >
-                <Pin :size="16" />
-              </Button>
-              <Button
-                text
-                native-type="button"
-                aria-label="Delete note"
-                @mousedown.prevent
-                @click.stop="deleteUserNote(doc.id)"
+            </label>
+
+            <div class="switcher-list todo-popover-list">
+              <div class="switcher-header-row">
+                <strong>Notes</strong>
+                <span>
+                  {{ noteCountLabel }}
+                  <Info :size="16" />
+                </span>
+              </div>
+              <div
+                v-for="doc in filteredUserNotes"
+                :key="doc.id"
+                :class="['note-option', { active: activeId === doc.id, selected: switcherSelectedDocument?.id === doc.id }]"
+                :data-note-id="doc.id"
+                @mouseenter="selectSwitcherDocument(doc.id)"
               >
-                <Trash2 :size="16" />
-              </Button>
+                <Button
+                  text
+                  class="note-option-main"
+                  native-type="button"
+                  @mousedown.prevent
+                  @click.stop="selectDocument(doc.id)"
+                >
+                  <strong>{{ doc.title }}</strong>
+                  <small>
+                    <i :class="{ current: activeId === doc.id }" />
+                    {{ activeId === doc.id ? 'Current' : 'Note' }}
+                    <b>•</b>
+                    {{ doc.content.length }} Characters
+                  </small>
+                </Button>
+                <div class="note-option-actions">
+                  <Button
+                    text
+                    :class="{ active: isNotePinned(doc.id) }"
+                    native-type="button"
+                    :aria-label="isNotePinned(doc.id) ? 'Unpin note' : 'Pin note'"
+                    @mousedown.prevent
+                    @click.stop="toggleNotePinned(doc.id)"
+                  >
+                    <Pin :size="16" />
+                  </Button>
+                  <Button
+                    text
+                    native-type="button"
+                    aria-label="Delete note"
+                    @mousedown.prevent
+                    @click.stop="deleteUserNote(doc.id)"
+                  >
+                    <Trash2 :size="16" />
+                  </Button>
+                </div>
+              </div>
+
+              <div
+                v-if="filteredSystemNotes.length"
+                class="switcher-label"
+              >
+                System
+              </div>
+              <div
+                v-for="doc in filteredSystemNotes"
+                :key="doc.id"
+                :class="['note-option', 'system', { active: activeId === doc.id, selected: switcherSelectedDocument?.id === doc.id }]"
+                :data-note-id="doc.id"
+                @mouseenter="selectSwitcherDocument(doc.id)"
+              >
+                <Button
+                  text
+                  class="note-option-main"
+                  native-type="button"
+                  @mousedown.prevent
+                  @click.stop="selectDocument(doc.id)"
+                >
+                  <strong>AI Todo</strong>
+                  <small>
+                    <i :class="{ current: activeId === doc.id }" />
+                    {{ activeId === doc.id ? 'Current' : 'System' }}
+                    <b>•</b>
+                    {{ doc.content.length }} Characters
+                  </small>
+                </Button>
+                <div class="note-option-actions">
+                  <Bot :size="16" />
+                </div>
+              </div>
             </div>
           </div>
 
           <div
-            v-if="filteredSystemNotes.length"
-            class="switcher-label"
+            v-if="findOpen"
+            ref="findBarRef"
+            class="floating-find-bar"
           >
-            System
-          </div>
-          <div
-            v-for="doc in filteredSystemNotes"
-            :key="doc.id"
-            :class="['note-option', 'system', { active: activeId === doc.id, selected: switcherSelectedDocument?.id === doc.id }]"
-            :data-note-id="doc.id"
-            @mouseenter="selectSwitcherDocument(doc.id)"
-          >
+            <Search :size="15" />
+            <input
+              ref="findInputRef"
+              v-model="findQuery"
+              placeholder="Find"
+              spellcheck="false"
+              @keydown="handleFindKeydown"
+            >
+            <span>{{ findStatus }}</span>
             <Button
               text
-              class="note-option-main"
+              class="mini-button"
               native-type="button"
+              aria-label="Previous match"
               @mousedown.prevent
-              @click.stop="selectDocument(doc.id)"
+              @click.stop="moveFind(-1)"
             >
-              <strong>AI Todo</strong>
-              <small>
-                <i :class="{ current: activeId === doc.id }" />
-                {{ activeId === doc.id ? 'Current' : 'System' }}
-                <b>•</b>
-                {{ doc.content.length }} Characters
-              </small>
+              <ChevronUp :size="14" />
             </Button>
-            <div class="note-option-actions">
-              <Bot :size="16" />
+            <Button
+              text
+              class="mini-button"
+              native-type="button"
+              aria-label="Next match"
+              @mousedown.prevent
+              @click.stop="moveFind(1)"
+            >
+              <ChevronDown :size="14" />
+            </Button>
+            <Button
+              text
+              class="mini-button"
+              native-type="button"
+              aria-label="Close find"
+              @mousedown.prevent
+              @click.stop="closeFind"
+            >
+              <X :size="14" />
+            </Button>
+          </div>
+
+          <div
+            ref="bodyRef"
+            class="panel-body"
+            @compositionstart="isComposingText = true"
+            @compositionend="handleCompositionEnd"
+          >
+            <TiptapNoteEditor
+              ref="editorRef"
+              :model-value="editorValue"
+              surface="todo-notes"
+              :document-id="editorDocumentId"
+              :document-path="editorDocumentPath"
+              :workspace-root="editorWorkspaceRoot"
+              :features="editorFeatures"
+              :placeholder="editorPlaceholder"
+              :spellcheck="false"
+              :consumed-offset="editorConsumedOffset"
+              @update:model-value="handleEditorUpdate"
+              @keydown="handleEditorKeydown"
+              @paste="handleMarkdownPaste"
+              @open-link="openMarkdownLink"
+              @open-image="openMarkdownImage"
+              @selection-update="handleSelectionUpdate"
+              @watermark="handleWatermark"
+            />
+
+            <!-- 选区浮条。`mousedown.prevent` 是它能工作的全部前提:不拦下来,
+                 按下的那一刻焦点离开编辑器,选区当场没了,点到的是一段空文本。 -->
+            <div
+              v-if="selectionFloaterVisible"
+              class="selection-floater"
+              @mousedown.prevent
+            >
+              <span class="selection-count">{{ selectionCharCount }} 字</span>
+              <Button
+                text
+                class="selection-send"
+                native-type="button"
+                aria-label="Send selection to AI"
+                @mousedown.prevent
+                @click.stop="sendScratchpadPending"
+              >
+                发给 AI
+              </Button>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div
-        v-if="findOpen"
-        ref="findBarRef"
-        class="floating-find-bar"
-      >
-        <Search :size="15" />
-        <input
-          ref="findInputRef"
-          v-model="findQuery"
-          placeholder="Find"
-          spellcheck="false"
-          @keydown="handleFindKeydown"
-        >
-        <span>{{ findStatus }}</span>
-        <Button
-          text
-          class="mini-button"
-          native-type="button"
-          aria-label="Previous match"
-          @mousedown.prevent
-          @click.stop="moveFind(-1)"
-        >
-          <ChevronUp :size="14" />
-        </Button>
-        <Button
-          text
-          class="mini-button"
-          native-type="button"
-          aria-label="Next match"
-          @mousedown.prevent
-          @click.stop="moveFind(1)"
-        >
-          <ChevronDown :size="14" />
-        </Button>
-        <Button
-          text
-          class="mini-button"
-          native-type="button"
-          aria-label="Close find"
-          @mousedown.prevent
-          @click.stop="closeFind"
-        >
-          <X :size="14" />
-        </Button>
-      </div>
-
-      <div
-        ref="bodyRef"
-        class="panel-body"
-      >
-        <TiptapNoteEditor
-          ref="editorRef"
-          :model-value="editorValue"
-          surface="todo-notes"
-          :document-id="editorDocumentId"
-          :document-path="editorDocumentPath"
-          :workspace-root="editorWorkspaceRoot"
-          :features="editorFeatures"
-          :placeholder="editorPlaceholder"
-          :spellcheck="true"
-          :consumed-offset="editorConsumedOffset"
-          @update:model-value="handleEditorUpdate"
-          @keydown="handleEditorKeydown"
-          @paste="handleMarkdownPaste"
-          @open-link="openMarkdownLink"
-          @open-image="openMarkdownImage"
-        />
-      </div>
-
-      <footer
-        class="note-footer"
-        :class="{ formatting: formatBufferOpen }"
-      >
-        <div
-          v-if="formatBufferOpen"
-          class="format-buffer"
-          role="toolbar"
-          aria-label="Markdown formatting"
-        >
-          <Button
-            text
-            class="format-command heading-command"
-            native-type="button"
-            aria-label="Heading 1"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('heading-1')"
+          <footer
+            v-if="showFooterBar || formatBufferOpen"
+            class="note-footer"
+            :class="{ formatting: formatBufferOpen }"
           >
-            <span>H</span>
-            <ChevronDown :size="12" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Bold"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('bold')"
-          >
-            <Bold :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Italic"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('italic')"
-          >
-            <Italic :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Strikethrough"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('strikethrough')"
-          >
-            <Strikethrough :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Underline"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('underline')"
-          >
-            <Underline :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Inline code"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('inline-code')"
-          >
-            <Code2 :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Link"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('link')"
-          >
-            <Link :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Code block"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('code-block')"
-          >
-            <Code2 :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Quote"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('blockquote')"
-          >
-            <Quote :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Bulleted list"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('bullet-list')"
-          >
-            <List :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Numbered list"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('ordered-list')"
-          >
-            <ListOrdered :size="16" />
-          </Button>
-          <Button
-            text
-            class="format-command"
-            native-type="button"
-            aria-label="Task list"
-            @mousedown.prevent
-            @click.stop="runFormatCommand('task-list')"
-          >
-            <ListChecks :size="16" />
-          </Button>
-          <span class="format-separator" />
-          <Button
-            text
-            class="format-command close-format"
-            native-type="button"
-            aria-label="Hide formatting bar"
-            @mousedown.prevent
-            @click.stop="formatBufferOpen = false"
-          >
-            <X :size="16" />
-          </Button>
-        </div>
-        <template v-else>
-          <span>{{ characterCountLabel }}</span>
-          <!-- 水位文案由 `scratchpad:consumed` 事件驱动,不是猜的:没有事件就
+            <div
+              v-if="formatBufferOpen"
+              class="format-buffer"
+              role="toolbar"
+              aria-label="Markdown formatting"
+            >
+              <Button
+                text
+                class="format-command heading-command"
+                native-type="button"
+                aria-label="Heading 1"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('heading-1')"
+              >
+                <span>H</span>
+                <ChevronDown :size="12" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Bold"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('bold')"
+              >
+                <Bold :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Italic"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('italic')"
+              >
+                <Italic :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Strikethrough"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('strikethrough')"
+              >
+                <Strikethrough :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Underline"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('underline')"
+              >
+                <Underline :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Inline code"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('inline-code')"
+              >
+                <Code2 :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Link"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('link')"
+              >
+                <Link :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Code block"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('code-block')"
+              >
+                <Code2 :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Quote"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('blockquote')"
+              >
+                <Quote :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Bulleted list"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('bullet-list')"
+              >
+                <List :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Numbered list"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('ordered-list')"
+              >
+                <ListOrdered :size="16" />
+              </Button>
+              <Button
+                text
+                class="format-command"
+                native-type="button"
+                aria-label="Task list"
+                @mousedown.prevent
+                @click.stop="runFormatCommand('task-list')"
+              >
+                <ListChecks :size="16" />
+              </Button>
+              <span class="format-separator" />
+              <Button
+                text
+                class="format-command close-format"
+                native-type="button"
+                aria-label="Hide formatting bar"
+                @mousedown.prevent
+                @click.stop="formatBufferOpen = false"
+              >
+                <X :size="16" />
+              </Button>
+            </div>
+            <template v-else>
+              <span>{{ characterCountLabel }}</span>
+              <!-- 水位文案由 `scratchpad:consumed` 事件驱动,不是猜的:没有事件就
                不说"已读"。 -->
-          <span
-            v-if="watermarkLabel"
-            class="pad-watermark"
-          >{{ watermarkLabel }}</span>
-          <Tooltip
-            v-if="isTodoMode"
-            text="Show formatting bar"
-          >
-            <Button
-              text
-              class="format-toggle"
-              native-type="button"
-              aria-label="Show formatting bar"
-              @mousedown.prevent
-              @click.stop="toggleFormatBuffer"
-            >
-              <Type :size="21" />
-            </Button>
-          </Tooltip>
-        </template>
-      </footer>
+              <span
+                v-if="watermarkLabel"
+                class="pad-watermark"
+              >{{ watermarkLabel }}</span>
+              <Tooltip
+                v-if="isTodoMode"
+                text="Show formatting bar"
+              >
+                <Button
+                  text
+                  class="format-toggle"
+                  native-type="button"
+                  aria-label="Show formatting bar"
+                  @mousedown.prevent
+                  @click.stop="toggleFormatBuffer"
+                >
+                  <Type :size="21" />
+                </Button>
+              </Tooltip>
+            </template>
+          </footer>
+        </div>
+
+        <!-- 信息面。它不是第二块内容区,是**这一刻这张纸的读数** ——
+             Todo 侧读进度,草稿纸侧读"AI 看到哪儿了 / 什么时候会看到"。 -->
+        <aside
+          v-if="showInfoPanel"
+          class="info-panel"
+        >
+          <template v-if="isTodoMode">
+            <span class="info-title">进度</span>
+            <div class="progress-block">
+              <!-- 「5/5」是一个词,不拆大小字(设计稿如此)。 -->
+              <div class="progress-figure">
+                <b>{{ todoProgress.done }}/{{ todoProgress.total }}</b>
+              </div>
+              <div
+                class="progress-track"
+                role="progressbar"
+                :aria-valuenow="todoProgressPercent"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <div
+                  class="progress-fill"
+                  :style="{ width: `${todoProgressPercent}%` }"
+                />
+              </div>
+            </div>
+            <p class="info-hint">
+              拖左侧手柄调顺序,完成的项留在原位。
+            </p>
+            <!-- 设计稿此处还有一枚「AI 已读」丸 —— 被裁掉了(用户裁定):Todo 侧
+                 没有任何真实信号在驱动它,常驻等于假功能。等 todo 有了诚实的
+                 已读事实(比如注入消费回执)再谈。 -->
+          </template>
+
+          <template v-else>
+            <span class="info-title">AI 上下文</span>
+
+            <div class="info-state">
+              <span class="state-line">
+                <i class="state-dot" />{{ watermarkLabel || 'AI 尚未读过' }}
+              </span>
+              <span class="state-sub">{{ pushStatusLabel }}</span>
+              <span class="state-sub">{{ scratchpadSaveLabel }}</span>
+            </div>
+
+            <div class="send-group">
+              <Button
+                text
+                class="send-primary"
+                native-type="button"
+                :disabled="!canSendScratchpad"
+                aria-label="Send scratchpad content"
+                @mousedown.prevent
+                @click.stop="sendScratchpadPending"
+              >
+                发送给 AI
+              </Button>
+              <!-- ↩ 后面跟文本变体选择符(U+FE0E):裸 ↩ 会被 emoji 字形接管,
+                   渲染成一枚键帽盒子 —— 设计稿是素文字。 -->
+              <span class="send-hint">⌘ + ↩&#xFE0E;</span>
+            </div>
+
+            <div class="info-divider" />
+
+            <div class="push-settings">
+              <span class="info-title">推送设置</span>
+
+              <div class="push-row">
+                <span class="push-label">自动推送</span>
+                <Switch
+                  v-model="pushAuto"
+                  size="small"
+                  aria-label="自动推送"
+                />
+              </div>
+
+              <!-- 「仅回复中」要靠宿主查得到"这一刻 AI 在不在回复"。查不到就把
+                   整行关掉并说清楚,而不是留一个点得动、其实不生效的选项。 -->
+              <Tooltip
+                v-if="!canDetectReplying"
+                text="本窗口查不到 AI 的回复状态,时机固定为「随时」"
+              >
+                <div
+                  class="push-field is-off"
+                  inert
+                >
+                  <span class="push-label">时机</span>
+                  <SegmentedPill
+                    :model-value="effectivePushTiming"
+                    :options="PUSH_TIMING_OPTIONS"
+                    aria-label="推送时机"
+                  />
+                </div>
+              </Tooltip>
+              <div
+                v-else
+                class="push-field"
+                :class="{ 'is-off': !pushAuto }"
+                :inert="!pushAuto"
+              >
+                <span class="push-label">时机</span>
+                <SegmentedPill
+                  :model-value="pushPrefs.timing"
+                  :options="PUSH_TIMING_OPTIONS"
+                  aria-label="推送时机"
+                  @update:model-value="selectPushTiming"
+                />
+              </div>
+
+              <div
+                class="push-field"
+                :class="{ 'is-off': !canUseWaitPills }"
+                :inert="!canUseWaitPills"
+              >
+                <span class="push-label">等待</span>
+                <SegmentedPill
+                  :model-value="String(pushPrefs.waitSeconds)"
+                  :options="PUSH_WAIT_OPTIONS"
+                  aria-label="停笔等待时长"
+                  @update:model-value="selectPushWait"
+                />
+              </div>
+            </div>
+          </template>
+        </aside>
+      </div>
 
       <div
         v-if="!isStandalone"
@@ -495,14 +731,16 @@ import { useConfirm } from '@/composables/useConfirm'
 import Button from '@/components/common/Button.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import SegmentedPill from '@/components/common/SegmentedPill.vue'
+import Switch from '@/components/common/Switch.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   Bot,
   Bold,
+  NotebookPen,
+  SquareCheckBig,
   ChevronDown,
   ChevronUp,
   Code2,
-  Command,
   Copy,
   CornerDownLeft,
   FileText,
@@ -518,6 +756,7 @@ import {
   ListChecks,
   ListOrdered,
   Minus,
+  MoreHorizontal,
   Pencil,
   Pin,
   Plus,
@@ -534,12 +773,25 @@ import { useSessionsStore } from '@/stores/sessions'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import type { TodoPlanDocument, TodoPlanSnapshot } from '@/types'
 import TiptapNoteEditor from '@/editor/tiptap/TiptapNoteEditor.vue'
+// 纸面色板(全局层,不 scoped):这扇窗的一切取色都从这里走。
+import './todo-paper.css'
 import type { MarkdownCommand, MarkdownFeatureSet } from '@/editor/markdown-document'
 import { handleMarkdownAttachmentPaste } from '@/editor/markdown-attachments'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import TodoNotesActionPanel from './TodoNotesActionPanel.vue'
-import { titleFromMarkdown } from './todo-plan-utils'
+import { parseTasks, titleFromMarkdown } from './todo-plan-utils'
+import {
+  createScratchpadPushScheduler,
+  describeScratchpadPushStatus,
+  readScratchpadPushPrefs,
+  SCRATCHPAD_PUSH_WAIT_OPTIONS,
+  scratchpadPushStorageKey,
+  writeScratchpadPushPrefs,
+  type ScratchpadPushPrefs,
+  type ScratchpadPushTiming,
+} from './scratchpad-push'
+import type { ConsumedWatermarkResolution } from '@/editor/tiptap/consumed-watermark'
 import {
   normalizeTodoPanelMode,
   readTodoPanelMode,
@@ -554,6 +806,13 @@ import type {
   TodoNotesActionContext,
 } from './todo-notes-actions'
 import { useScratchpadPad } from '@/composables/useScratchpadPad'
+import {
+  isWindowDragExcludedTarget,
+  shouldStartWindowDrag,
+  windowDragOffset,
+  type WindowDragOffset,
+  type WindowDragOrigin,
+} from './todo-window-drag'
 import { platformApi } from '@/platform'
 import { markdownApi } from '@/platform/markdown-client'
 
@@ -631,7 +890,33 @@ const findInputRef = ref<HTMLInputElement | null>(null)
 const editorRef = ref<InstanceType<typeof TiptapNoteEditor> | null>(null)
 const modeStorageKey = todoPanelModeStorageKey(storagePrefix)
 const mode = ref<TodoPanelMode>(readTodoPanelMode(modeStorageKey))
+
+// --- 草稿纸推送(状态与偏好)-----------------------------------------------
+const pushStorageKeyName = scratchpadPushStorageKey(storagePrefix)
+const pushPrefs = ref<ScratchpadPushPrefs>(readScratchpadPushPrefs(pushStorageKeyName))
+/**
+ * 宿主查不查得到"这一刻 AI 在回复"。**一次性判定,不是猜**:查不到就把
+ * 「仅回复中」整行关掉,而不是留一个点得动、其实永远不触发的选项。
+ */
+const canDetectReplying = typeof platformApi.getActiveStreams === 'function'
+const replying = ref(false)
+const pushCountdown = ref<number | null>(null)
+const justSentChars = ref<number | null>(null)
+/** IME 组字中不 arm:半个字打到一半被推出去,是最难堪的那种"自动"。 */
+const isComposingText = ref(false)
+/**
+ * 已经推送过的那一份纸。自动推送只对**这之后又写的东西**生效 —— 否则发出去
+ * 会自己触发下一次(水位要等引擎回推才前移,pending 在那之前一直不空)。
+ */
+const lastPushedContent = ref<string | null>(null)
+/** 编辑器算出来的已读块序(0 基);段号只能从那边来,见 consumed-watermark.ts。 */
+const consumedBlockIndex = ref<number | null>(null)
+const selectionText = ref('')
+const viewportWidth = ref(typeof window === 'undefined' ? 0 : window.innerWidth)
+
 let cleanupChanged: (() => void) | undefined
+let replyPollTimer: ReturnType<typeof setInterval> | null = null
+let justSentTimer: ReturnType<typeof setTimeout> | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let resizing = false
 let resizeStartY = 0
@@ -658,10 +943,37 @@ const scratchpadMarkdownFeatures: MarkdownFeatureSet = {
   frontmatter: false,
 }
 
-const MODE_OPTIONS = [
-  { value: 'todo', label: 'Todo' },
-  { value: 'scratchpad', label: '草稿纸' },
+/** 轨底的落款。两枚钮的图标与可及名逐个写在模板里(理由见那里的注释)。 */
+const RAIL_LABELS: Record<TodoPanelMode, string> = {
+  todo: 'TODO',
+  scratchpad: 'SCRATCH',
+}
+
+const PUSH_TIMING_OPTIONS = [
+  { value: 'anytime', label: '随时' },
+  { value: 'while-replying', label: '仅回复中' },
 ]
+
+const PUSH_WAIT_OPTIONS = SCRATCHPAD_PUSH_WAIT_OPTIONS.map(seconds => ({
+  value: String(seconds),
+  label: `${seconds}s`,
+}))
+
+/**
+ * 「AI 在不在回复」的轮询间隔。
+ *
+ * 独立窗收不到主窗那条流事件(IPCBridge 只发给绑定的 webContents),所以这一位
+ * 状态只能主动问 —— `platformApi.getActiveStreams()` 是渲染层唯一查得到它的地方。
+ * 1.5s 是"人察觉不到延迟"与"别把 IPC 敲成鼓"之间的取值,而且**只在真的选了
+ * 「仅回复中」时才轮**,其余时候一次也不问。
+ */
+const REPLY_POLL_MS = 1500
+
+/** 「刚推送完」那句话停留多久。够看清,又不至于把状态行长期占住。 */
+const JUST_SENT_HOLD_MS = 3200
+
+/** 低于这个宽度就没有信息面了 —— 194px 的面加 60px 的轨会把文档挤成一条缝。 */
+const INFO_PANEL_MIN_WIDTH = 560
 
 const isStandalone = computed(() => props.standalone === true)
 const isTodoMode = computed(() => mode.value === 'todo')
@@ -672,9 +984,13 @@ const panelStyle = computed(() => {
 })
 const popoverOpen = computed(() => switcherOpen.value || actionPanelOpen.value || findOpen.value)
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId || undefined)
-// Standalone runs in its own window, where the sessions store is never
-// populated, so the session is whatever the host resolved the snapshot to.
-const resolvedSessionId = computed(() => effectiveSessionId.value || snapshot.value?.sessionId || undefined)
+// 独立窗里 host 的答案优先:这扇窗跑的也是整套 App 引导,自己的 sessions store
+// 在**开窗那一刻**水合过一次、此后永不更新 —— 把它排在 snapshot.sessionId 前面,
+// 纸就永远停在开窗时的会话(真机实锤)。主窗切会话 → 主进程记下新的当前会话并
+// 广播 → 这里重拉 snapshot,拿到的才是现在的会话。
+const resolvedSessionId = computed(() => (isStandalone.value
+  ? snapshot.value?.sessionId || effectiveSessionId.value
+  : effectiveSessionId.value || snapshot.value?.sessionId) || undefined)
 const effectiveWorkingDirectory = computed(() => {
   if (props.workingDirectory !== undefined) return props.workingDirectory || undefined
   const session = sessionsStore.sessions.find(item => item.id === resolvedSessionId.value)
@@ -702,7 +1018,38 @@ const activeDocument = computed(() => allDocuments.value.find(doc => doc.id === 
 const displayTitle = computed(() => isScratchpadMode.value
   ? '草稿纸'
   : titleFromMarkdown(draft.value, activeDocument.value?.title || 'Todo / Notes'))
-const pinControlLabel = computed(() => pinned.value ? 'Unpin Todo' : 'Pin Todo')
+const headerTitle = computed(() => (isScratchpadMode.value ? '草稿纸' : '待做'))
+/**
+ * 会话名。主窗里 sessions store 是活的,直接查;独立窗的 store 停在开窗那一刻,
+ * 得按 id 去问 host(getSession)。查不到就空着 —— 头行少一个名字,不编一个。
+ */
+const sessionTitle = ref('')
+watch(resolvedSessionId, async (sessionId) => {
+  sessionTitle.value = ''
+  if (!sessionId) return
+  const local = sessionsStore.sessions.find(item => item.id === sessionId)?.name
+  if (local) {
+    sessionTitle.value = local
+    return
+  }
+  try {
+    const response = await platformApi.getSession(sessionId)
+    // 异步回来时会话可能又换了 —— 只认还是当前会话的那份答案。
+    if (resolvedSessionId.value === sessionId && response?.success) {
+      sessionTitle.value = response.session?.name || ''
+    }
+  } catch {
+    sessionTitle.value = ''
+  }
+}, { immediate: true })
+/** 窗有没有键盘焦点 —— 交通灯褪灰的依据(真 mac 行为)。 */
+const windowFocused = ref(typeof document === 'undefined' ? true : document.hasFocus())
+function handleWindowFocusIn() {
+  windowFocused.value = true
+}
+function handleWindowFocusOut() {
+  windowFocused.value = false
+}
 const noteCountLabel = computed(() => {
   const count = snapshot.value?.userNotes.length || 0
   const label = count === 1 ? 'Note' : 'Notes'
@@ -712,15 +1059,56 @@ const characterCountLabel = computed(() => isScratchpadMode.value
   ? `${scratchpad.charCount.value} 字${scratchpad.isDirty.value ? ' · 未保存' : ''}`
   : `${draft.value.length} characters`)
 
-/** 水位文案:只认事件,不猜。没有事件就不说"已读"。 */
+/**
+ * 水位文案:只认事件,不猜。没有事件就不说"已读"。
+ *
+ * 「第 N 段」优先于「第 N 字」:水位本来就是**块边界**语义(offset 落在块中间
+ * 时向后取整),报字数会给出一个比它实际知道的更精确的假象。段号由编辑器算
+ * (`@watermark`),算不出来时才退回字数 —— 退回的是精度,不是诚实。
+ */
 const watermarkLabel = computed(() => {
   if (!isScratchpadMode.value) return ''
   const offset = scratchpad.consumedOffset.value
   const text = scratchpad.content.value
   if (offset === null) return text.trim() ? 'AI 尚未读过' : ''
   if (offset >= text.length) return 'AI 已读全部'
+  if (consumedBlockIndex.value !== null) return `AI 读到第 ${consumedBlockIndex.value + 1} 段`
   return `AI 已读至 ${offset} 字`
 })
+
+/** 纸的存档状态:字数 + 落没落盘。dirty 只是"这一拍还没写出去",不是错误。 */
+const scratchpadSaveLabel = computed(() =>
+  `${scratchpad.charCount.value} 字 · ${scratchpad.isDirty.value ? '未保存' : '自动保存'}`)
+
+// --- 头行读数 ---------------------------------------------------------------
+
+/** 与 `todo-plan-utils.parseTasks` 同一条口径(围栏内的 `- [ ]` 不算任务)。 */
+const todoProgress = computed(() => {
+  const tasks = parseTasks(draft.value)
+  return { done: tasks.filter(task => task.done).length, total: tasks.length }
+})
+const todoProgressPercent = computed(() => {
+  const { done, total } = todoProgress.value
+  return total ? Math.round((done / total) * 100) : 0
+})
+/** 没有任务的笔记不报"0 / 0 已完成" —— 那是在说一件不存在的事,改报字数。 */
+const headerStatLabel = computed(() => {
+  if (isScratchpadMode.value) return `${scratchpad.charCount.value} 字`
+  const { done, total } = todoProgress.value
+  return total ? `${done} / ${total} 已完成` : `${draft.value.length} 字`
+})
+const railLabel = computed(() => RAIL_LABELS[mode.value])
+
+// --- 壳层可见性 -------------------------------------------------------------
+
+/**
+ * 信息面只在独立窗、且窗够宽时出。卡片形态(280px)放不下,窄窗放下了也只剩
+ * 一条缝 —— 它退场之后发送钮回到头行,能力不掉。
+ */
+const showInfoPanel = computed(() =>
+  isStandalone.value && viewportWidth.value >= INFO_PANEL_MIN_WIDTH)
+/** 常驻页脚只属于卡片形态;窗形态的页脚只在格式条打开时临时出现。 */
+const showFooterBar = computed(() => !isStandalone.value)
 
 // --- 编辑器的一套入参:两种模式喂同一个 TiptapNoteEditor 实例 --------------
 // `documentId` 一变编辑器就整份重置(含撤销历史)—— 切模式 = 换一份文档,
@@ -750,11 +1138,57 @@ const editorConsumedOffset = computed(() => isScratchpadMode.value
  * 「正式发出」能不能按。草稿会话的 id 只活在渲染层,永远不许过 IPC —— 这里是
  * 独立窗,没有 composer 那条物化管线接住它,所以直接把钮关掉而不是发出去失败。
  */
-const canSendScratchpad = computed(() => {
-  if (!isScratchpadMode.value) return false
+const scratchpadSessionReady = computed(() => {
   const sessionId = resolvedSessionId.value
-  if (!sessionId || sessionsStore.isNewChatDraftId?.(sessionId)) return false
-  return scratchpad.hasUnreadTail.value
+  if (!sessionId) return false
+  return !sessionsStore.isNewChatDraftId?.(sessionId)
+})
+const canSendScratchpad = computed(() => {
+  if (!isScratchpadMode.value || !scratchpadSessionReady.value) return false
+  // 选区优先的另一半:水位之后空着,但手里正选着一段,那一段照样发得出去。
+  return scratchpad.hasUnreadTail.value || selectionText.value.trim().length > 0
+})
+
+// --- 选区浮条 ---------------------------------------------------------------
+
+const selectionCharCount = computed(() => selectionText.value.trim().length)
+const selectionFloaterVisible = computed(() =>
+  isScratchpadMode.value && scratchpadSessionReady.value && selectionCharCount.value > 0)
+
+// --- 自动推送 ---------------------------------------------------------------
+
+/**
+ * 生效的时机档。查不到"AI 在不在回复"时**强制回到「随时」** —— 存着的偏好
+ * 不动(宿主换了就自然恢复),但这一刻不许按一个判不了的条件去等。
+ */
+const effectivePushTiming = computed<ScratchpadPushTiming>(() =>
+  canDetectReplying ? pushPrefs.value.timing : 'anytime')
+/** 「等待」只对「随时」有意义:回复时机是被事件触发的,没有停笔这回事。 */
+const canUseWaitPills = computed(() =>
+  pushPrefs.value.auto && effectivePushTiming.value === 'anytime')
+/** 还有没有"没推送过"的新内容。推过的那一份不再自动重发。 */
+const hasUnpushedContent = computed(() =>
+  canSendScratchpad.value && scratchpad.content.value !== lastPushedContent.value)
+
+const pushAuto = computed({
+  get: () => pushPrefs.value.auto,
+  set: (value: boolean) => updatePushPrefs({ auto: value === true }),
+})
+
+const pushStatusLabel = computed(() => describeScratchpadPushStatus({
+  auto: pushPrefs.value.auto,
+  timing: effectivePushTiming.value,
+  waitSeconds: pushPrefs.value.waitSeconds,
+  hasPending: hasUnpushedContent.value,
+  countdownSeconds: pushCountdown.value,
+  replying: replying.value,
+  replyingKnown: canDetectReplying,
+  justSentChars: justSentChars.value,
+}))
+
+const pushScheduler = createScratchpadPushScheduler({
+  onFire: () => { void sendScratchpadPending() },
+  onTick: (remaining) => { pushCountdown.value = remaining },
 })
 const actionContext = computed<TodoNotesActionContext>(() => ({
   activeDocument: activeDocument.value,
@@ -864,6 +1298,24 @@ const todoActions = computed<TodoNotesAction[]>(() => {
       keywords: ['search'],
       run: openFind,
     },
+    {
+      id: 'toggle-format-bar',
+      title: formatBufferOpen.value ? 'Hide Formatting Bar' : 'Show Formatting Bar',
+      subtitle: 'Markdown formatting shortcuts',
+      group: 'Navigation',
+      icon: Type,
+      keywords: ['format', 'markdown', 'bar'],
+      run: toggleFormatBuffer,
+    },
+    {
+      id: 'pin-window',
+      title: pinned.value ? 'Unpin Todo' : 'Pin Todo',
+      subtitle: pinned.value ? 'Let the window hide with the app' : 'Keep the window on top',
+      group: 'Navigation',
+      icon: Pin,
+      keywords: ['pin', 'float', 'top'],
+      run: togglePinned,
+    },
   ]
 })
 const sortedUserNotes = computed(() => {
@@ -946,6 +1398,18 @@ watch(findQuery, () => {
 
 watch(activeFindIndex, () => {
   selectActiveFindMatch()
+})
+
+/**
+ * 纸一变就重排推送。挂在 `content` 上而不是 keydown 上:外部改动(AI 用文件
+ * 工具写了这张纸、别的窗口在写)同样是"纸变了",凭什么不算。
+ */
+watch(() => scratchpad.content.value, () => {
+  syncAutoPushArming()
+})
+
+watch([() => mode.value, () => resolvedSessionId.value], () => {
+  syncAutoPush()
 })
 
 async function loadSnapshot() {
@@ -1070,6 +1534,10 @@ function applyMode(next: TodoPanelMode, options?: { persist?: boolean }) {
   // 离开草稿纸时把欠的 flush 结掉:纸是文件,不是内存草稿。
   if (isScratchpadMode.value) void scratchpad.store.flushNow(resolvedSessionId.value)
   closeTodoPopovers()
+  // 换形态 = 换一份文档:选区、已读段序、排着的推送都属于上一份,一律清掉。
+  pushScheduler.disarm()
+  selectionText.value = ''
+  consumedBlockIndex.value = null
   mode.value = next
   if (options?.persist !== false) writeTodoPanelMode(modeStorageKey, next)
   nextTick(() => editorRef.value?.focus())
@@ -1326,12 +1794,118 @@ async function sendScratchpadPending() {
   const selected = editorRef.value?.getSelectedText() ?? ''
   const text = selected.trim() ? selected : scratchpad.pendingText()
   if (!text.trim()) return
+  // 手动发出去的那一刻,已经排好的自动推送作废 —— 否则等一会儿会再发一次。
+  pushScheduler.disarm()
   // 先把纸落盘再发:模型下一个 turn 读到的那份必须已经包含这段话。
   await scratchpad.store.flushNow(sessionId)
   await platformApi.emitCommand(sessionId, {
     type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
     content: text,
   })
+  lastPushedContent.value = scratchpad.content.value
+  noteJustSent(text.trim().length)
+}
+
+// --- 推送设置的状态机接线 ---------------------------------------------------
+
+function updatePushPrefs(patch: Partial<ScratchpadPushPrefs>) {
+  pushPrefs.value = { ...pushPrefs.value, ...patch }
+  writeScratchpadPushPrefs(pushStorageKeyName, pushPrefs.value)
+  syncAutoPush()
+}
+
+function selectPushTiming(next: string) {
+  updatePushPrefs({ timing: next === 'while-replying' ? 'while-replying' : 'anytime' })
+}
+
+function selectPushWait(next: string) {
+  updatePushPrefs({ waitSeconds: Number(next) })
+}
+
+function noteJustSent(chars: number) {
+  justSentChars.value = chars
+  if (justSentTimer) clearTimeout(justSentTimer)
+  justSentTimer = setTimeout(() => {
+    justSentTimer = null
+    justSentChars.value = null
+  }, JUST_SENT_HOLD_MS)
+}
+
+/**
+ * 「随时」档的停笔倒计时。每一次内容变化就重新计时 —— 这正是"停笔多久"的
+ * 含义。条件一个不满足就解除,而不是留一个跑着的钟。
+ */
+function syncAutoPushArming() {
+  const armed = isScratchpadMode.value
+    && pushPrefs.value.auto
+    && effectivePushTiming.value === 'anytime'
+    && hasUnpushedContent.value
+    && !isComposingText.value
+  if (!armed) {
+    pushScheduler.disarm()
+    return
+  }
+  pushScheduler.arm(pushPrefs.value.waitSeconds)
+}
+
+/**
+ * 「仅回复中」档的探针。**只在真的选了它的时候才轮** —— 别的时候一次 IPC 都不打。
+ *
+ * 两个宿主的返回字段不同名(desktop 是 `sessionIds`,server 是 `streams`),
+ * 两边都读,谁在读谁。查不到就当"不在回复",不猜。
+ */
+async function pollReplying() {
+  const sessionId = resolvedSessionId.value
+  if (!sessionId) {
+    replying.value = false
+    return
+  }
+  try {
+    const response = await platformApi.getActiveStreams()
+    const ids = response?.sessionIds ?? response?.streams ?? []
+    const next = Array.isArray(ids) && ids.includes(sessionId)
+    const started = next && !replying.value
+    replying.value = next
+    if (started && hasUnpushedContent.value) await sendScratchpadPending()
+  } catch {
+    replying.value = false
+  }
+}
+
+function syncReplyPolling() {
+  const wanted = canDetectReplying
+    && isScratchpadMode.value
+    && pushPrefs.value.auto
+    && effectivePushTiming.value === 'while-replying'
+  if (wanted && !replyPollTimer) {
+    void pollReplying()
+    replyPollTimer = setInterval(() => { void pollReplying() }, REPLY_POLL_MS)
+    return
+  }
+  if (!wanted && replyPollTimer) {
+    clearInterval(replyPollTimer)
+    replyPollTimer = null
+    replying.value = false
+  }
+}
+
+function syncAutoPush() {
+  syncAutoPushArming()
+  syncReplyPolling()
+}
+
+function handleCompositionEnd() {
+  isComposingText.value = false
+  syncAutoPushArming()
+}
+
+/** 选区变了就重取一次:浮条与"发选区"读的是同一个值,不许各拿各的。 */
+function handleSelectionUpdate() {
+  selectionText.value = editorRef.value?.getSelectedText() ?? ''
+}
+
+function handleWatermark(resolution: ConsumedWatermarkResolution) {
+  consumedBlockIndex.value = resolution.blockIndex
 }
 
 function moveFind(direction: number) {
@@ -1606,6 +2180,109 @@ function handlePanelMouseLeave() {
   collapseToEdge()
 }
 
+// ── 独立窗:自绘红绿灯 + 手动拖窗 ─────────────────────────────────────────────
+//
+// 两件事同一个根因:这扇窗是 macOS non-activating `NSPanel`(`type: 'panel'` +
+// native 的 `NSWindowStyleMaskNonactivatingPanel` / `_setPreventsActivation:`)。
+// 它永远成不了 main window,于是 ① 系统交通灯恒定画成失活的灰点;② 原生
+// `-webkit-app-region: drag` 那条路(最终落到 `-[NSWindow performWindowDragWithEvent:]`)
+// 对它不生效 —— 同一份 CSS 在主窗和搜索窗上都拖得动,唯独这扇不动。
+//
+// 所以:主进程把系统按钮收起来,这里画三枚真的点;CSS 里的 drag 声明**保留**
+// (哪天窗型变了它自然接管),同时补一条手动拖拽。两条路互斥:原生 drag 一旦生效,
+// 拖动面上的 pointerdown 会被原生层吃掉,下面这套自然就不再触发。
+
+/** 红点 = 隐藏,不是销毁 —— 这扇窗从来就是「收起来」的语义(见 hideTodoPlanWindow)。 */
+function closeStandaloneWindow() {
+  void platformApi.hideTodoPlanWindow()
+}
+
+function minimizeStandaloneWindow() {
+  void platformApi.minimizeTodoPlanWindow?.()
+}
+
+function zoomStandaloneWindow() {
+  void platformApi.zoomTodoPlanWindow?.()
+}
+
+let windowDragPointerId: number | null = null
+let windowDragSurface: HTMLElement | null = null
+let windowDragOrigin: WindowDragOrigin | null = null
+let windowDragPending: WindowDragOffset | null = null
+let windowDragFrame: number | null = null
+
+function flushWindowDrag() {
+  windowDragFrame = null
+  const offset = windowDragPending
+  windowDragPending = null
+  if (!offset) return
+  void platformApi.dragTodoPlanWindow?.({ phase: 'move', dx: offset.dx, dy: offset.dy })
+}
+
+function handleWindowDragStart(event: PointerEvent) {
+  if (!isStandalone.value) return
+  if (typeof platformApi.dragTodoPlanWindow !== 'function') return
+  if (!shouldStartWindowDrag(event)) return
+
+  const surface = event.currentTarget as HTMLElement | null
+  windowDragPointerId = event.pointerId
+  windowDragSurface = surface
+  windowDragOrigin = { screenX: event.screenX, screenY: event.screenY }
+  // 指针捕获:拖到窗外、拖过别的元素都还收得到 move,松手也一定收得到 up。
+  surface?.setPointerCapture?.(event.pointerId)
+  // 拖动期间禁选:否则一路拖过去会把标题刷成蓝底。
+  document.body.classList.add('todo-window-dragging')
+  void platformApi.dragTodoPlanWindow({ phase: 'start' })
+}
+
+function handleWindowDragMove(event: PointerEvent) {
+  if (windowDragPointerId === null || event.pointerId !== windowDragPointerId) return
+  if (!windowDragOrigin) return
+  // 每帧最多一条 invoke。攒的是**累计位移**而不是帧间增量,所以合帧时丢掉中间那些
+  // 也不会少挪一段。
+  windowDragPending = windowDragOffset(windowDragOrigin, event)
+  if (windowDragFrame !== null) return
+  windowDragFrame = requestAnimationFrame(flushWindowDrag)
+}
+
+function handleWindowDragEnd(event?: PointerEvent) {
+  if (windowDragPointerId === null) return
+  if (event && event.pointerId !== windowDragPointerId) return
+  if (windowDragFrame !== null) {
+    cancelAnimationFrame(windowDragFrame)
+    windowDragFrame = null
+  }
+  flushWindowDrag()
+  if (event) windowDragSurface?.releasePointerCapture?.(event.pointerId)
+  windowDragPointerId = null
+  windowDragSurface = null
+  windowDragOrigin = null
+  document.body.classList.remove('todo-window-dragging')
+  void platformApi.dragTodoPlanWindow?.({ phase: 'end' })
+}
+
+/** 双击顶带 = zoom,mac 惯例。落在可交互件上的双击不算。 */
+/**
+ * 根元素的裸面 = `panel-main` 四周那圈窗底缝隙(margin 露出来的部分)。它也是
+ * 窗铬,得能拖 —— 但只认根元素**自己**:子元素(编辑器/按钮/信息面)各有各的
+ * 手柄或本来就不该拖,`target === currentTarget` 一条判掉,不抢。
+ */
+function handleRootWindowDragStart(event: PointerEvent) {
+  if (event.target !== event.currentTarget) return
+  handleWindowDragStart(event)
+}
+
+function handleRootWindowDragDoubleClick(event: MouseEvent) {
+  if (event.target !== event.currentTarget) return
+  handleWindowDragDoubleClick(event)
+}
+
+function handleWindowDragDoubleClick(event: MouseEvent) {
+  if (!isStandalone.value) return
+  if (isWindowDragExcludedTarget(event.target as Element | null)) return
+  zoomStandaloneWindow()
+}
+
 function shouldRefreshChanged(data: { scope: string; sessionId?: string }) {
   if (data.scope === 'global-user' || data.scope === 'all') return true
   if (data.scope === 'session-ai-todo') {
@@ -1614,11 +2291,17 @@ function shouldRefreshChanged(data: { scope: string; sessionId?: string }) {
   return false
 }
 
+function handleViewportResize() {
+  viewportWidth.value = window.innerWidth
+}
+
 onMounted(() => {
   loadSnapshot()
+  syncAutoPush()
   if (isStandalone.value) {
     platformApi.setTodoPlanWindowPinned(pinned.value)
   }
+  window.addEventListener('resize', handleViewportResize)
   cleanupChanged = platformApi.onTodoPlanChanged((data) => {
     if (!shouldRefreshChanged(data)) return
     if (data.document) {
@@ -1630,6 +2313,10 @@ onMounted(() => {
   window.addEventListener('keydown', handleShortcut)
   window.addEventListener('pointerdown', handleOutsidePointerDown, true)
   window.addEventListener('storage', handleModeStorage)
+  // 真 mac 行为:窗失焦时交通灯整组褪灰。non-activating panel 拿不到系统的
+  // main/key 状态,但 webContents 的 focus/blur 是真的 —— 用它当代理。
+  window.addEventListener('focus', handleWindowFocusIn)
+  window.addEventListener('blur', handleWindowFocusOut)
   if (!isStandalone.value) {
     window.addEventListener('todo-plan:toggle-card', toggleCollapsed)
   }
@@ -1637,14 +2324,21 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer)
+  if (justSentTimer) clearTimeout(justSentTimer)
+  if (replyPollTimer) clearInterval(replyPollTimer)
+  pushScheduler.dispose()
+  window.removeEventListener('resize', handleViewportResize)
   cleanupChanged?.()
   window.removeEventListener('keydown', handleShortcut)
   window.removeEventListener('pointerdown', handleOutsidePointerDown, true)
   window.removeEventListener('storage', handleModeStorage)
+  window.removeEventListener('focus', handleWindowFocusIn)
+  window.removeEventListener('blur', handleWindowFocusOut)
   if (!isStandalone.value) {
     window.removeEventListener('todo-plan:toggle-card', toggleCollapsed)
   }
   window.removeEventListener('pointermove', handleResize)
+  handleWindowDragEnd()
 })
 </script>
 
@@ -1660,16 +2354,29 @@ onUnmounted(() => {
    下面各枚的分类:几何/尺寸(nav-gutter / plan-width / popover-* / row-min-height)
    纯布局,永远保留;`--todo-rule*` 是边框浓度(主题层无边框档);`--todo-text/-muted/
    -accent` 是区域别名(sidebar 先例);`--todo-card-bg*` 是这张卡自己的纸色语言。 */
+/* ── 边栏 v2 的两级面 ─────────────────────────────────────────────────────
+   设计稿是"暖纸上垫一层更亮的纸"。落地不抄它的色值,抄的是**层级关系**:
+   窗底(轨所在的那一层)取 `--todo-card-bg-soft`(纸色掺一档 app 底 = 退后),
+   主区取 `--todo-card-bg`(纸色本身 = 浮起)。两者都从 `--ui-surface-*` 派生,
+   于是深色主题下"退后/浮起"的方向自动反过来仍然成立 —— 硬写两个暖色就只在
+   浅色主题里像话。若这套观感值得沉淀成一张正式的纸色主题,那是主题层的事
+   (`packages/onething-runtime/src/themes/`),不是这个组件的事。 */
 .todo-plan-panel {
   --todo-plan-nav-gutter: 52px;
-  --todo-card-bg: color-mix(in srgb, var(--ui-surface-elevated-bg) 92%, var(--ui-surface-note-bg, var(--color-warning-bg)) 8%);
-  --todo-card-bg-soft: color-mix(in srgb, var(--todo-card-bg) 86%, var(--ui-surface-app-bg) 14%);
-  --todo-rule: var(--ui-border-default-border);
+  /* 两级面直接落纸面色板:主区 = 亮纸,窗底/轨 = 深一档的壳。 */
+  --todo-card-bg: var(--paper-main);
+  --todo-card-bg-soft: var(--paper-shell);
+  --todo-rail-width: 60px;
+  --todo-info-width: 194px;
+  --todo-main-inset: 9px;
+  --todo-rule: var(--paper-divider);
   --todo-rule-soft: color-mix(in srgb, var(--todo-rule) 58%, transparent);
-  --todo-rule-strong: var(--ui-border-strong-border);
-  --todo-text: var(--ui-text-primary-fg);
-  --todo-muted: var(--ui-text-muted-fg);
-  --todo-accent: var(--ui-accent-primary-fg);
+  --todo-rule-strong: var(--paper-border);
+  --todo-text: var(--paper-ink);
+  --todo-muted: var(--paper-muted);
+  /* 窗内的"主色"是暖橙(语汇侧);结构记号(进度/勾选/pills)单走橄榄,见
+     各自的规则 —— 设计稿的两条 accent 不折成一条。 */
+  --todo-accent: var(--paper-warm);
   /* `--todo-accent-soft`(accent 14%)于 G8 删除:全仓零消费者 —— 岛上唯一一枚
      真·死 token,删它零观感变化。同族的强调底今后引 `--ui-state-hover-accent-bg`。 */
   --todo-accent-border: color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
@@ -1703,12 +2410,322 @@ onUnmounted(() => {
   z-index: calc(var(--z-dropdown) + 2);
   width: min(var(--todo-plan-width), calc(100vw - var(--todo-plan-nav-gutter) - 18px));
   min-height: 220px;
+  display: flex;
+  align-items: stretch;
   border: 1px solid var(--todo-rule);
   border-radius: 22px;
-  background: var(--todo-card-bg);
+  background: var(--todo-card-bg-soft);
   box-shadow: none;
   color: var(--todo-text);
   overflow: hidden;
+}
+
+/* ── 形态轨 ─────────────────────────────────────────────────────────────── */
+
+.mode-rail {
+  flex: 0 0 var(--todo-rail-width);
+  width: var(--todo-rail-width);
+  padding: 8px 0 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+}
+
+.rail-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 选中 = **浮起到主区那张面**(同一枚 token)+ 一圈 accent 描边环,不是涂一块主色底
+   —— ui-system §2 禁的是 accent 当**背景**;描边环是选中语义的允许写法(与侧栏行的
+   左缘墨线同一路数:另开一条通道,不去动面色)。前景照旧上主色。 */
+.rail-button {
+  --app-button-height: 40px;
+  --app-button-tone: color-mix(in srgb, var(--todo-muted) 82%, transparent);
+  --app-button-hover-fill: var(--ui-state-hover-bg);
+  --app-button-hover-fg: var(--todo-text);
+
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  color: color-mix(in srgb, var(--todo-muted) 82%, transparent);
+  transition:
+    background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
+}
+
+.rail-button:hover {
+  color: var(--todo-text);
+  background: var(--ui-state-hover-bg);
+}
+
+.rail-button.active,
+.rail-button.active:hover {
+  /* 选中前景随形态走(设计稿:Todo=橄榄深、草稿纸=暖橙深),缺省落暖橙。 */
+  --rail-active-fg: var(--todo-accent);
+  --app-button-tone: var(--rail-active-fg);
+  --app-button-hover-fill: var(--todo-card-bg);
+  --app-button-hover-fg: var(--rail-active-fg);
+
+  color: var(--rail-active-fg);
+  background: var(--todo-card-bg);
+  /* 不画描边环(用户裁定):选中态只靠"浮起到主区面色 + 着色前景 + 一层薄影"。 */
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--todo-text) 8%, transparent);
+}
+
+.rail-button.rail-todo.active,
+.rail-button.rail-todo.active:hover {
+  --rail-active-fg: var(--paper-struct-deep, var(--todo-accent));
+}
+
+.rail-button.rail-scratch.active,
+.rail-button.rail-scratch.active:hover {
+  --rail-active-fg: var(--paper-warm-deep, var(--todo-accent));
+}
+
+.rail-button:focus-visible {
+  outline: 2px solid var(--todo-accent-border);
+  outline-offset: 2px;
+}
+
+/* 轨底的竖排小字:它是"你现在在哪一格"的落款,不是可点的东西。 */
+.rail-label {
+  margin-top: auto;
+  color: color-mix(in srgb, var(--todo-muted) 62%, transparent);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  writing-mode: vertical-rl;
+  user-select: none;
+}
+
+/* ── 主区(垫在窗底上的那张纸)───────────────────────────────────────────── */
+
+.panel-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: var(--todo-main-inset) var(--todo-main-inset) var(--todo-main-inset) 0;
+  display: flex;
+  align-items: stretch;
+  border-radius: 9px;
+  background: var(--todo-card-bg);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--todo-text) 6%, transparent);
+  /* **不设 overflow: hidden** —— 笔记切换器 / 命令面板 / 查找条都住在这棵子树里
+     并按面板宽度居中;裁掉它们就等于把三个浮层关进主区。 */
+}
+
+.panel-column {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 信息面 ─────────────────────────────────────────────────────────────── */
+
+.info-panel {
+  flex: 0 0 var(--todo-info-width);
+  width: var(--todo-info-width);
+  padding: 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-left: 1px solid var(--todo-rule-soft);
+  overflow-y: auto;
+  /* 读数面同样是铬:进度 / 状态 / 设置项的文案都不该被选中。 */
+  user-select: none;
+}
+
+.info-title {
+  color: var(--todo-muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.progress-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.progress-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-figure b {
+  color: var(--todo-text);
+  font-size: 30px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.progress-figure span {
+  color: var(--todo-muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--paper-track, color-mix(in srgb, var(--todo-text) 8%, transparent));
+  overflow: hidden;
+}
+
+/* 进度是**结构**,走橄榄(设计稿 accent-2-500),不跟暖橙。 */
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--paper-struct-mid, var(--todo-accent));
+  transition: width var(--duration-normal) var(--ease-default);
+}
+
+.info-hint {
+  margin: 0;
+  color: var(--todo-muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.state-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: currentcolor;
+}
+
+.info-state {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* 「AI 读到第 N 段」:深暖橙字 + 亮暖橙点(设计稿 accent-800 / accent-500)。 */
+.state-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--paper-warm-deep, var(--todo-accent));
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.state-line .state-dot {
+  background: var(--paper-warm, currentcolor);
+}
+
+.state-sub {
+  padding-left: 12px;
+  color: var(--todo-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.send-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.send-primary {
+  --app-button-height: 30px;
+  --app-button-tone: var(--ui-action-primary-fg);
+  --app-button-hover-fill: color-mix(in srgb, var(--todo-accent) 88%, var(--todo-text));
+  --app-button-hover-fg: var(--ui-action-primary-fg);
+
+  height: 30px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--paper-main, var(--ui-action-primary-fg));
+  background: var(--todo-accent);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: background var(--duration-fast) var(--ease-default);
+}
+
+.send-primary:hover {
+  background: var(--paper-warm-hover, color-mix(in srgb, var(--todo-accent) 88%, var(--todo-text)));
+}
+
+.send-primary:disabled {
+  background: color-mix(in srgb, var(--todo-text) 12%, transparent);
+  color: var(--todo-muted);
+  cursor: not-allowed;
+}
+
+.send-primary:focus-visible {
+  outline: 2px solid var(--todo-accent-border);
+  outline-offset: 2px;
+}
+
+.send-hint {
+  color: color-mix(in srgb, var(--todo-muted) 78%, transparent);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+}
+
+.info-divider {
+  height: 1px;
+  background: var(--todo-rule-soft);
+}
+
+.push-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.push-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.push-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: opacity var(--duration-fast) var(--ease-default);
+}
+
+/* 关掉的那一组:降透明 + `inert`(在模板上)。只降透明是**假禁用** ——
+   点得动、还进 Tab 序列。 */
+.push-field.is-off {
+  opacity: 0.42;
+}
+
+.push-label {
+  color: var(--todo-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.push-field :deep(.segmented-pill-item) {
+  height: 22px;
+  padding: 0 9px;
+  font-size: 11.5px;
 }
 
 .todo-plan-panel.collapsed {
@@ -1727,6 +2744,29 @@ onUnmounted(() => {
 .todo-plan-panel.standalone {
   width: 100%;
   min-height: 100%;
+}
+
+/* 卡片形态只有 280px 宽:轨与内缩全部收一档,头行也不摆窗标题栏的谱。
+   它没有信息面(`showInfoPanel` 卡在 standalone 上),读数留在头行与页脚。 */
+.todo-plan-panel:not(.standalone) {
+  --todo-rail-width: 44px;
+  --todo-main-inset: 6px;
+}
+
+.todo-plan-panel:not(.standalone) .mode-rail {
+  padding: 8px 0 10px;
+}
+
+.todo-plan-panel:not(.standalone) .rail-button {
+  --app-button-height: 32px;
+
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+
+.todo-plan-panel:not(.standalone) .panel-header {
+  padding: 12px 14px 6px;
 }
 
 .wake-button,
@@ -1809,24 +2849,40 @@ onUnmounted(() => {
   opacity: 0.72;
 }
 
+/* 头行:左标题、右读数,读数之后才是几枚图标钮。三段一条基线,不再靠绝对定位
+   把标题"摆到中间"—— 那套做法每加一枚钮就要重算一次左右内缩。 */
 .panel-header {
-  position: relative;
-  height: 30px;
-  padding: 0 10px 0 0;
+  flex: 0 0 auto;
+  padding: 22px 26px 8px;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  border-bottom: 0;
-  background: color-mix(in srgb, var(--todo-card-bg) 84%, transparent);
+  align-items: baseline;
+  gap: 12px;
+  /* 头行是窗铬(标题/读数),不是内容 —— 静态禁选。这不只为了好看:拖窗兜底
+     依赖 preload 的 IPC,宿主还没带上那条通道时(比如没重启的 dev),起拖被
+     放弃,mousedown 就会落回文本选择,把「草稿纸 N 字」刷成蓝底。 */
+  user-select: none;
 }
 
+/* 轨与头行是这扇窗的拖动区。**红绿灯下面那一格必须能拖** —— 它是无内容的空白,
+   不给 drag 就成了一块死区。
+   声明保留,但**当下真正在拖窗的不是它**:这扇窗是 non-activating NSPanel,原生
+   drag region 那条路对它不生效(理由见 script 里那段)。同一批面上挂了 pointer 事件
+   做手动兜底;哪天窗型变了,原生 drag 会先把 pointerdown 吃掉,手动那套自动让位。 */
+.todo-plan-panel.standalone .mode-rail,
 .todo-plan-panel.standalone .panel-header {
   -webkit-app-region: drag;
 }
 
+/* 手动拖窗期间禁选。写在 body 上而不是面板上:指针捕获会把 move 一路送到窗外,
+   选区却是整份文档的事。`user-select` 会继承,一条就够。 */
+:global(body.todo-window-dragging) {
+  user-select: none;
+}
+
 /* 拖动区里的可点区必须逐个还回来 —— `no-drag` 只对 drag 分支上的子孙生效。 */
+.todo-plan-panel.standalone .window-lights,
+.todo-plan-panel.standalone .rail-button,
 .todo-plan-panel.standalone .panel-actions,
-.todo-plan-panel.standalone .mode-pill,
 .todo-plan-panel.standalone .note-switcher,
 .todo-plan-panel.standalone .todo-notes-action-panel,
 .todo-plan-panel.standalone .floating-find-bar,
@@ -1834,55 +2890,155 @@ onUnmounted(() => {
   -webkit-app-region: no-drag;
 }
 
-/* 形态丸压得比通用件更紧:它住在一条 30px 高的窗标题栏里,通用尺寸会把它顶开。 */
-.mode-pill {
-  flex: 0 0 auto;
-  /* 局部堆叠:标题是绝对定位的,丸要压在它之上才点得动。 */
-  position: relative;
-  z-index: 1;
-}
-
-.mode-pill :deep(.segmented-pill-item) {
-  height: 18px;
-  padding: 0 8px;
-  font-size: 11px;
-}
-
-/* 标题居中是靠左右等距的内缩实现的,形态丸挤进左边之后这个距离得跟着变 ——
-   两侧必须同步改,否则"居中"会变成"偏心"。 */
 .window-title {
-  position: absolute;
-  left: var(--todo-title-inset, 108px);
-  right: var(--todo-title-inset, 108px);
-  width: auto;
   min-width: 0;
+  margin: 0;
+  flex: 0 0 auto;
   overflow: hidden;
-  color: color-mix(in srgb, var(--todo-text) 72%, transparent);
-  font-size: 14px;
+  color: var(--todo-text);
+  font-family: var(--font-display);
+  font-size: 15px;
   font-weight: 650;
-  text-align: center;
+  letter-spacing: -0.004em;
   text-overflow: ellipsis;
   white-space: nowrap;
-  pointer-events: none;
 }
 
-.todo-plan-panel .window-title {
-  --todo-title-inset: 120px;
+/* 会话名:退后一档的小字,窄了先牺牲它(标题与读数不让)。 */
+.header-session {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--todo-muted) 88%, transparent);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.todo-plan-panel.standalone .window-title {
-  --todo-title-inset: 200px;
+.header-stat {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--todo-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.window-traffic-spacer {
+/* 自绘红绿灯:竖排三枚 11px 圆点,轨内居中,gap 7px。系统那组已经被主进程收起
+   (`setWindowButtonVisibility(false)`),这里不会叠出第二排。
+   颜色走语义 status token —— 主题换色时三枚点跟着走,而不是钉死在 mac 的三个 hex 上。 */
+.window-lights {
   display: none;
 }
 
-.todo-plan-panel.standalone .window-traffic-spacer {
-  display: block;
-  flex: 0 0 82px;
-  height: 100%;
-  pointer-events: none;
+.todo-plan-panel.standalone .window-lights {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  /* 真 mac 的灯距是 8pt(横排如此,竖排沿用)。 */
+  gap: 8px;
+  padding-bottom: 6px;
+}
+
+/* 真 mac 规格:12px 满色圆 + 一圈极细深描边;hover 不变色,只浮符号;按下加深;
+   窗失焦整组变灰(hover 又亮回来 —— 系统就是这么干的)。系统灯在 non-activating
+   NSPanel 上永远是灰的,所以这三枚是自绘,但规格照抄系统。 */
+.window-light {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--window-light-tone);
+  box-shadow: inset 0 0 0 0.5px var(--paper-dot-rim, transparent);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-default);
+}
+
+.window-light:active {
+  background: color-mix(in srgb, var(--window-light-tone) 75%, var(--todo-text) 25%);
+}
+
+/* 窗失焦 = 整组褪成灰点(真 mac 行为);悬回这组时立刻恢复满色。 */
+.todo-plan-panel.window-inactive .window-lights:not(:hover) .window-light {
+  background: var(--paper-dot-inactive, color-mix(in srgb, var(--todo-text) 16%, transparent));
+}
+
+/* 符号:深一档的同族色(系统符号就是各自颜色的暗面),组悬停才现身。
+   杆与三角都是画出来的,不用字形 —— 任何字体/主题下都不走样。 */
+.window-light::before,
+.window-light::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 1.3px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--window-light-tone) 30%, var(--todo-text) 70%);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-default);
+}
+
+.window-lights:hover .window-light::before,
+.window-lights:hover .window-light::after,
+.window-lights:focus-within .window-light::before,
+.window-lights:focus-within .window-light::after {
+  opacity: 1;
+}
+
+/* 关闭 = ×;最小化 = −;缩放 = 两枚对角三角(系统绿点的全屏符号 —— 这枚点的
+   动作是贴满/还原,语义相邻,认知上跟系统一致比字面精确更重要)。 */
+.window-light.close::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.window-light.close::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.window-light.minimize::before {
+  transform: translate(-50%, -50%);
+}
+
+.window-light.minimize::after {
+  content: none;
+}
+
+.window-light.zoom::before,
+.window-light.zoom::after {
+  width: 4.5px;
+  height: 4.5px;
+  border-radius: 0.5px;
+}
+
+.window-light.zoom::before {
+  transform: translate(-100%, -100%) translate(1px, 1px);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.window-light.zoom::after {
+  transform: translate(0, 0) translate(-1px, -1px);
+  clip-path: polygon(100% 100%, 0 100%, 100% 0);
+}
+
+.window-light:focus-visible {
+  outline: 2px solid var(--todo-accent-border);
+  outline-offset: 2px;
+}
+
+.window-light.close {
+  --window-light-tone: var(--paper-dot-close, var(--ui-status-danger-fg));
+}
+
+.window-light.minimize {
+  --window-light-tone: var(--paper-dot-min, var(--ui-status-warning-fg));
+}
+
+.window-light.zoom {
+  --window-light-tone: var(--paper-dot-zoom, var(--ui-status-success-fg));
 }
 
 .note-option:hover {
@@ -1891,9 +3047,9 @@ onUnmounted(() => {
 }
 
 .panel-actions {
-  margin-left: auto;
   display: flex;
   flex: 0 0 auto;
+  align-self: center;
   gap: 4px;
 }
 
@@ -2114,17 +3270,28 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
+/* 窄窗:轨收一档、头行内缩跟着收。信息面在这个宽度下已经由 `showInfoPanel`
+   撤走了(JS 判据与这里的断点是同一个数,见 INFO_PANEL_MIN_WIDTH)。 */
 @media (max-width: 460px) {
-  .todo-plan-panel.standalone .window-traffic-spacer {
-    flex-basis: 76px;
+  .todo-plan-panel.standalone {
+    --todo-rail-width: 48px;
+    --todo-main-inset: 6px;
+  }
+
+  .todo-plan-panel.standalone .panel-header {
+    padding: 18px 16px 6px;
   }
 
   .todo-plan-panel.standalone .window-title {
-    --todo-title-inset: 188px;
-
     font-size: 13px;
   }
 
+  .todo-plan-panel.standalone .rail-button {
+    --app-button-height: 34px;
+
+    width: 34px;
+    height: 34px;
+  }
 }
 
 @container (max-width: 240px) {
@@ -2178,14 +3345,65 @@ onUnmounted(() => {
   text-align: center;
 }
 
+/* 文档区吃掉剩下的全部高度。`min-height: 0` 是 flex 列里滚动区能滚的前提 ——
+   缺了它子元素的 `overflow-y: auto` 会被内容撑成"不滚,只是变高"。 */
 .panel-body {
-  height: calc(100% - 68px);
-  min-height: 120px;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
-  background: var(--todo-card-bg);
+  background: transparent;
+}
+
+/* 选区浮条:反色小条,浮在文档区顶部中线。局部层级(个位数,不进层级表)——
+   它只需要压住同一张纸上的正文。 */
+.selection-floater {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: var(--z-sticky);
+  padding: 5px 6px 5px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  color: var(--todo-card-bg);
+  background: color-mix(in srgb, var(--todo-text) 88%, transparent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--todo-text) 18%, transparent);
+  font-size: 12px;
+  transform: translateX(-50%);
+}
+
+.selection-count {
+  color: color-mix(in srgb, var(--todo-card-bg) 80%, transparent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.selection-send {
+  --app-button-height: 22px;
+  --app-button-tone: var(--ui-action-primary-fg);
+  --app-button-hover-fill: color-mix(in srgb, var(--todo-accent) 86%, var(--todo-card-bg));
+  --app-button-hover-fg: var(--ui-action-primary-fg);
+
+  height: 22px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  color: var(--ui-action-primary-fg);
+  background: var(--todo-accent);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.selection-send:hover {
+  background: color-mix(in srgb, var(--todo-accent) 86%, var(--todo-card-bg));
 }
 
 .note-footer {
+  flex: 0 0 auto;
   height: 38px;
   padding: 0 18px;
   display: grid;

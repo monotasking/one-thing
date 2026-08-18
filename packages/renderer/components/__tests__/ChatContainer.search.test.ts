@@ -52,14 +52,6 @@ vi.mock('@/components/chat/ChatWindow.vue', () => ({
   },
 }))
 
-vi.mock('@/components/chat/ChatSidePanel.vue', () => ({
-  default: {
-    name: 'ChatSidePanel',
-    props: ['sessionId', 'workingDirectory', 'agentId', 'lastProvider', 'lastModel', 'collapsed'],
-    template: '<aside class="mock-chat-side-panel" :data-session-id="sessionId" />',
-  },
-}))
-
 async function settle() {
   await nextTick()
   await Promise.resolve()

@@ -18,6 +18,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   sessionsById: new Map<string, Record<string, unknown>>(),
   writtenRoots: new Map<string, string[]>(),
+  // variables.json 的替身。**必须 mock** —— 真 store 会往
+  // `getOnethingStorePath()/variables.json` 写,那是用户的真文件。
+  // 这里只需要它「一个 key 一格」的语义,批 B8-3 验的正是 key 分不分家。
+  variableBuckets: new Map<string, unknown[]>(),
+}))
+
+vi.mock('../store/index.js', () => ({
+  getVariablesStore: () => ({
+    initialize: () => undefined,
+    getGlobalVariables: () => mocks.variableBuckets.get('global') ?? [],
+    setGlobalVariables: (vars: unknown[]) => void mocks.variableBuckets.set('global', vars),
+    getScopedVariables: (kind: string, key: string) =>
+      mocks.variableBuckets.get(`${kind}:${key}`) ?? [],
+    setScopedVariables: (kind: string, key: string, vars: unknown[]) =>
+      void mocks.variableBuckets.set(`${kind}:${key}`, vars),
+    getUserNoteDir: () => '',
+    getWorkNoteDir: () => '',
+    setUserNoteDir: () => undefined,
+    setWorkNoteDir: () => undefined,
+    subscribe: () => () => undefined,
+  }),
 }))
 
 vi.mock('../../store.js', () => ({
@@ -42,7 +63,9 @@ vi.mock('../../stores/sessions.js', () => ({
     (id ? (mocks.sessionsById.get(id)?.workspaceId as string | undefined) : undefined) || 'default',
 }))
 
-const { workdirGateway, projectStoreGateway } = await import('../gateways.js')
+const { workdirGateway, projectStoreGateway, agentStoreGateway, globalStoreGateway } =
+  await import('../gateways.js')
+const { projectIdFromPath } = await import('@onething/runtime/project-dirs')
 const { getProjectsStore } = await import('@onething/runtime/project-dirs/store')
 const { buildProjectDirsPromptVars } = await import('../../project-dirs/index.js')
 const { setRootDirForTests } = await import('@onething/runtime/project-dirs/persistence')
@@ -69,6 +92,7 @@ beforeEach(async () => {
     ['s-work', { id: 's-work', name: '公司那条', workspaceId: 'work' }],
   ])
   mocks.writtenRoots.clear()
+  mocks.variableBuckets.clear()
 })
 
 afterEach(async () => {
@@ -119,8 +143,75 @@ describe('workdir gateway × space', () => {
 
     const workProjectId = getProjectsStore('work').get(workdirB)?.id
     // 副根在 work 空间归到同一个项目 id;default 空间那条没有登记,退回派生 key。
-    expect(projectStoreGateway.resolveKey('s-work')).toBe(workProjectId)
-    expect(projectStoreGateway.resolveKey('s-home')).not.toBe(workProjectId)
+    // 批 B8-3 起 key 还带空间前缀 —— 非 default 空间是 `<spaceId>:<projectId>`。
+    expect(projectStoreGateway.resolveKey('s-work')).toBe(`work:${workProjectId}`)
+    expect(projectStoreGateway.resolveKey('s-home')).not.toContain(String(workProjectId))
+  })
+
+  // ── 批 B8-3:项目级变量 scope 的空间维度 ────────────────────────
+
+  it('gives the same directory a different variable scope in each space', () => {
+    // 两个空间各自登记同一个目录 —— B4 之后它们是两个项目记录,
+    // 但 B8 之前 `projectIdFromPath` 会让它们落在同一格变量上。
+    mocks.sessionsById.get('s-home')!.workingDirectory = workdirA
+    mocks.sessionsById.get('s-work')!.workingDirectory = workdirA
+
+    const homeKey = projectStoreGateway.resolveKey('s-home')
+    const workKey = projectStoreGateway.resolveKey('s-work')
+    expect(homeKey).toBeTruthy()
+    expect(workKey).toBeTruthy()
+    expect(workKey).not.toBe(homeKey)
+    expect(workKey).toBe(`work:${homeKey}`)
+  })
+
+  it('keeps the default space on the legacy (unprefixed) key — zero migration', () => {
+    // 老数据的键就是裸的 projectId(注册项目)或 sha(路径)(未注册)。
+    // default 空间必须逐字读回它们,否则就是一次静默的数据丢失。
+    mocks.sessionsById.get('s-home')!.workingDirectory = workdirA
+    const derived = projectStoreGateway.resolveKey('s-home')
+    expect(derived).toBe(projectIdFromPath(workdirA))
+
+    getProjectsStore().add({ path: workdirA })
+    const registeredId = getProjectsStore().get(workdirA)?.id
+    expect(projectStoreGateway.resolveKey('s-home')).toBe(registeredId)
+    expect(projectStoreGateway.resolveKey('s-home')).not.toContain(':')
+  })
+
+  it('reads and writes project variables per space through the store', () => {
+    mocks.sessionsById.get('s-home')!.workingDirectory = workdirA
+    mocks.sessionsById.get('s-work')!.workingDirectory = workdirA
+    const homeKey = projectStoreGateway.resolveKey('s-home')!
+    const workKey = projectStoreGateway.resolveKey('s-work')!
+
+    projectStoreGateway.write(homeKey, [
+      { name: 'ticket', value: 'HOME-1', type: 'string', scope: 'project' },
+    ] as never)
+    projectStoreGateway.write(workKey, [
+      { name: 'ticket', value: 'WORK-9', type: 'string', scope: 'project' },
+    ] as never)
+
+    expect(projectStoreGateway.read(homeKey).map(v => v.value)).toEqual(['HOME-1'])
+    expect(projectStoreGateway.read(workKey).map(v => v.value)).toEqual(['WORK-9'])
+  })
+
+  it('keeps agent and global variables shared across spaces', () => {
+    // agent 定义本身是全空间共享的,变量跟着定义走 —— 这一条是有意的,不是漏网。
+    mocks.sessionsById.get('s-home')!.agentId = 'writer'
+    mocks.sessionsById.get('s-work')!.agentId = 'writer'
+    expect(agentStoreGateway.resolveKey('s-work')).toBe('writer')
+    expect(agentStoreGateway.resolveKey('s-home')).toBe(
+      agentStoreGateway.resolveKey('s-work'),
+    )
+
+    agentStoreGateway.write('writer', [
+      { name: 'tone', value: 'dry', type: 'string', scope: 'agent' },
+    ] as never)
+    expect(agentStoreGateway.read('writer').map(v => v.value)).toEqual(['dry'])
+
+    globalStoreGateway.write([
+      { name: 'nickname', value: 'yt', type: 'string', scope: 'global' },
+    ] as never)
+    expect(globalStoreGateway.read().map(v => v.value)).toEqual(['yt'])
   })
 
   it('builds prompt vars from the session space roster', () => {

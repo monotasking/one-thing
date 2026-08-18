@@ -78,7 +78,8 @@ describe('createOnethingStreamProviderAdapter', () => {
       kind: 'oauth',
       token: 'codex-token',
     })
-    expect(resolveOAuthAuth).toHaveBeenCalledWith('codex', undefined)
+    // 末位是 per-space 凭证标记(批 B6):默认空间没有标记 = undefined。
+    expect(resolveOAuthAuth).toHaveBeenCalledWith('codex', undefined, undefined)
 
     await expect(adapter.generateTitle('deepseek', settings.ai.providers.deepseek, 'hello', {
       debugPurpose: 'chat-title',

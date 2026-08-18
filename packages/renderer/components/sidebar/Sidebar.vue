@@ -763,7 +763,7 @@ import { buildRoomMemberEntries, type RoomMemberEntry } from '@/components/chat/
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarActionGroup from './SidebarActionGroup.vue'
 import SessionList from './SessionList.vue'
-import { SIDEBAR_FORM_MODES, type SidebarFormMode } from '@/stores/form-mode'
+import { SIDEBAR_FORM_MODES, formModeForSessionKind, type SidebarFormMode } from '@/stores/form-mode'
 import RoomCreateDialog from './RoomCreateDialog.vue'
 import ActiveWorkSection from './ActiveWorkSection.vue'
 import { hasActiveWorkSignal, type ActiveWorkCardModel } from './active-work'
@@ -1487,33 +1487,43 @@ function spaceColor(space: { id: string; color?: string }): string {
 }
 
 function selectSpace(id: string): void {
-  if (id === spacesStore.currentSpaceId) return
+  // 换空间的全部后果都挂在下面那条 watch 上(删空间弹回 default 这条路不经过
+  // 这里),所以这里只负责"改当前空间"这一件事。
   spacesStore.switchTo(id)
-  // 正在看的会话不属于新空间就换一条 —— 停在幽灵会话上比空态更让人困惑。
-  reconcileActiveSessionWithSpace()
 }
 
 /**
- * 名册 per-space(批 B4):换空间就整份重载,否则上一个空间的项目会留在左栏
- * ——「切换空间的时候项目也带过来了」正是这一条。
+ * 换空间的全部后果都在这一条上:
+ *  1. 名册 per-space(批 B4):不重载的话上一个空间的项目会留在左栏;
+ *  2. 分栏树 per-space(批 B5):不换树的话打开的还是旧空间那几条会话;
+ *  3. 校正激活会话:目标空间没有树时主叶要落位。
  *
  * 挂在 watch 上而不是 `selectSpace` 里:删空间会把当前空间弹回 default
- * (`spacesStore.remove` → `switchTo`),那条路不经过 `selectSpace`。
+ * (`spacesStore.remove` → `switchTo`),那条路不经过 `selectSpace`;⌘1..9
+ * 同理(它在 App.vue 里只调 `switchTo`)。
  */
-watch(() => spacesStore.currentSpaceId, () => {
+watch(() => spacesStore.currentSpaceId, (spaceId) => {
   void projectsStore.load()
+  workspaceStore.setSpace(spaceId)
+  reconcileActiveSessionWithSpace()
 })
 
 /**
- * 换空间后校正激活会话:还属于本空间就不动;否则挑本空间最近的一条,
- * 一条都没有就退回空态(`sidebarSessions` 已按 updatedAt 排好)。
+ * 换空间后校正激活会话:目标空间那棵树已经坐着一条本空间的会话就不动;否则挑
+ * 本空间最近的一条,一条都没有就退回空态(`sidebarSessions` 已按 updatedAt 排好)。
+ *
+ * 候选只在**当前形态**里挑:形态是全局的,不该因为换个空间就被一条房拽去协作
+ * (`openSession` 会跟着会话认形态)。这一形态没有会话时落空态屏 —— 与切形态
+ * 时"那个形态还没被用过"同一口径。
  */
 function reconcileActiveSessionWithSpace(): void {
-  const currentId = sessionsStore.currentSessionId
+  const currentId = workspaceStore.activeSessionId
   const visible = spaceFilteredSessions.value
   if (currentId && visible.some(session => session.id === currentId)) return
-  const next = visible[0]
-  if (next) void sessionsStore.switchSession(next.id)
+  const next = visible.find(session =>
+    formModeForSessionKind(session.kind ?? 'chat', workspaceStore.availableFormModes)
+      === workspaceStore.formMode)
+  if (next) workspaceStore.openSession(next.id)
   else sessionsStore.clearCurrentSession()
 }
 
@@ -1655,45 +1665,14 @@ const filteredSessions = computed(() => {
   )
 })
 
-/**
- * The radio DJ's curation sessions as a sidebar group of their own —
- * filtered out of the public list (they drive themselves and would read as
- * ghosts there), but one expand away. Clicking opens in the main chat like
- * any session. Synthesizing a SessionGroup buys SubMenu's collapse, the
- * 5-visible/show-more limit and the context menu for free.
- */
-const musicGroup = computed(() => {
-  const radioSessions = sessionsStore.radioSessions
-  if (radioSessions.length === 0) return null
-  return {
-    key: 'music',
-    label: 'Music · 电台',
-    // 电台不是项目 —— 不画文件夹图标。
-    kind: 'other' as const,
-    sessions: radioSessions.map((session): SessionWithBranches => ({
-      ...session,
-      branches: [],
-      depth: 0,
-      hasBranches: false,
-      isCollapsed: false,
-      isLastChild: false,
-      branchCount: 0,
-      isHidden: false,
-      lastBranchUpdate: session.updatedAt,
-      ancestorsLastChild: [],
-    })),
-  }
-})
-
-const groupedSessions = computed(() => {
-  const groups = sessionOrganizer.getProjectGroupedSessions(
+// 电台会话不再在侧栏顶部单独成组(2026-08-17 用户裁决:那段合成绕开了空间过滤,
+// 切到任何空间它都在,是多余的)。电台会话归音乐面板管,侧栏只画按空间过滤后的会话。
+const groupedSessions = computed(() =>
+  sessionOrganizer.getProjectGroupedSessions(
     filteredSessions.value,
     projectsStore.entries,
-  )
-  const music = musicGroup.value
-  // Music rides on top: the station is a live thing, not an archive.
-  return music ? [music, ...groups] : groups
-})
+  ),
+)
 
 const activeSidebarIndex = computed(() => {
   if (sessionsStore.currentSessionId) return sessionMenuIndex(sessionsStore.currentSessionId)
@@ -2707,11 +2686,23 @@ input.sidebar-space-input:focus {
    撑开,而不是抢走整条竖轴。规则写在 `SessionList.vue` 自己身上(scoped CSS
    够不到子组件内部,而 `.sessions-list` 的 `contain: strict` 必须同时解开)。 */
 
-@media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    height: 100%;
-    z-index: var(--z-sidebar);
-  }
-}
+/* ── 窄窗那条 `@media (max-width: 768px)` 在 L5 删除,而不是改写成 `@container`
+   ────────────────────────────────────────────────────────────────────────────
+   它做的事是"窗口一窄就把**停靠态**侧栏改成 `position: fixed`"。三条理由让它
+   既不该留、也没法容器化:
+
+   1. **它已经是第二条窄窗降级路**。L2 的布局协调器(`useShellLayout`)按预算
+      算降级:窗宽不够时侧栏自动转浮层(`sidebarFloatingByBudget`),而浮层态
+      的 `position: fixed` 写在 `.sidebar.floating` 上。P7 说的"响应式基准用
+      窗口宽"正是这条规则本身 —— 把它容器化只是把一条重复的机制换个写法留着。
+   2. **它今天就是个 bug**。侧栏可以窄到 200px:窗宽 768 + 侧栏 200 时聊天列
+      还有 568px(> 480 硬下限),协调器判定继续停靠,而这条 `@media` 会把停靠
+      态的侧栏抽成 fixed —— 聊天区当场被压在侧栏底下。
+   3. **没有一个诚实的容器可以承担它**。规则的主语是 `.sidebar` 自己(元素查
+      不了自己);它的父级左栏 region 恒 ≤500px,查询会永远为真;而把整条
+      `.app-shell` 变成容器要给它加 containment,那会把壳内所有 `position: fixed`
+      的浮层(语音面板等)的包含块和层叠上下文一起改掉 —— 为一条该删的规则付
+      这个代价不划算。
+
+   窄窗下侧栏该怎么表现,唯一的事实在协调器里。 */
 </style>

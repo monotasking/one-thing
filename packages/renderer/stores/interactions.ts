@@ -7,6 +7,8 @@ import type {
 } from '@shared/ipc.js'
 import { platformApi } from '@/platform'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /**
  * agent 提问的 renderer 账本(claude-code-integration-v2 §4,E2)。
  *
@@ -105,7 +107,7 @@ export const useInteractionsStore = defineStore('interactions', () => {
    *  2. settled 额外确定一件反查还要 200ms 才追上的事:这条已经不欠了。
    */
   function noteInteractionEvent(sessionId: string, event: InteractionBusEventLike): void {
-    if (event.type === 'interaction:settled' && event.answer) {
+    if (event.type === SESSION_EVENT_TYPES.INTERACTION_SETTLED && event.answer) {
       dropPending(sessionId, event.answer.id)
     }
     scheduleReconcile(sessionId)

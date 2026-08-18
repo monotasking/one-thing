@@ -495,10 +495,21 @@ export interface ChatMessage {
   reactions?: ChatMessageReaction[]
   voice?: VoiceTranscriptMetadata
   origin?: MessageOrigin
-  // Turn-volatile context variables captured at send time (user messages only).
-  // Rendered into the model request as a <context-update> block; persisted so
-  // history rebuilds replay identical bytes. Not displayed as message content.
+  // Legacy whole-block turn context (pre-2026-08-18 sessions): the variable
+  // board captured at send time. Still read and replayed verbatim — the bytes
+  // of an old session must not move — but nothing writes it any more.
   contextUpdate?: string
+  /**
+   * Turn context delivered with this user message (prompt-channels 2026-08-18):
+   * the named sections it (re)sent and the ones it retired. Written once per
+   * turn at request-build time and replayed verbatim on every history rebuild,
+   * so repeated calls inside one turn produce identical request bytes.
+   * Not displayed as message content.
+   */
+  turnContext?: {
+    set?: Record<string, string>
+    removed?: string[]
+  }
   // Token usage for this message (for assistant messages)
   usage?: {
     inputTokens: number

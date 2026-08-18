@@ -22,6 +22,7 @@ export {
 export {
   buildPrompt,
   buildSystemPrompt,
+  desktopPromptComposer,
   loadAgentsMdInstructions,
 } from './system-prompt.js'
 export type {

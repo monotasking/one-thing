@@ -27,34 +27,37 @@
     >
       <div
         class="workbench-tab-picker"
+        role="menu"
         @mousedown.stop
       >
-        <template
-          v-for="option in availableTabOptions"
-          :key="option.key"
+        <!-- 两个域各成一组、各带一行小标题:上面是这次会话的工具,下面是跨会话
+             的工作区面板。与页签条上那道竖线说的是同一件事。 -->
+        <section
+          v-for="group in pickerGroups"
+          :key="group.domain"
+          class="picker-group"
         >
-          <!-- 两个域之间画一道分隔:上面是这次会话的工具,下面是跨会话的工作区
-               面板。与页签条上那道竖线说的是同一件事。 -->
-          <div
-            v-if="option.key === firstWorkspaceOptionKey && hasSessionOption"
-            class="picker-separator"
-            role="separator"
-          />
+          <div class="picker-group-title">{{ group.title }}</div>
           <Button
+            v-for="option in group.options"
+            :key="option.key"
             unstyled
             class="picker-option"
+            role="menuitem"
             :style="workbenchToolStyle(option.categorySlot)"
             @click="onPickOption(option)"
           >
-            <component
-              :is="option.icon"
-              :size="15"
-              :stroke-width="2"
-              aria-hidden="true"
-            />
-            <span>{{ option.title }}</span>
+            <span class="picker-option-icon">
+              <component
+                :is="option.icon"
+                :size="15"
+                :stroke-width="2"
+                aria-hidden="true"
+              />
+            </span>
+            <span class="picker-option-label">{{ option.title }}</span>
           </Button>
-        </template>
+        </section>
       </div>
     </Popover>
 
@@ -133,8 +136,22 @@
           </span>
         </template>
 
+        <!-- 会话域头两条(L3,原 ChatSidePanel 的四段)。大纲的「跳到来源消息」
+             与 Media 面板共用 `jump-to-source` 那条既有中继链,不新开路。 -->
+        <OutlineWorkbench
+          v-if="tab.type === 'outline'"
+          :session-id="sessionId"
+          :active="activeTabId === tab.id"
+          @jump-to-source="payload => emit('jump-to-source', payload)"
+        />
+
+        <SessionContextWorkbench
+          v-else-if="tab.type === 'context'"
+          :session-id="sessionId"
+        />
+
         <EditorWorkbench
-          v-if="tab.type === 'files' || tab.type === 'file'"
+          v-else-if="tab.type === 'files' || tab.type === 'file'"
           :workspace-root="tab.workspaceRoot || workspaceRoot"
           :initial-file-path="tab.filePath"
           :active="activeTabId === tab.id"
@@ -342,7 +359,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
-import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Radar, Terminal, UserRound, Users, X } from 'lucide-vue-next'
+import { AlignLeft, ArrowRight, Braces, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Radar, Terminal, UserRound, Users, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import Popover from '@/components/common/Popover.vue'
@@ -351,6 +368,8 @@ import TabPane from '@/components/common/TabPane.vue'
 import EditorWorkbench from '@/components/editor/EditorWorkbench.vue'
 import TerminalView from '@/components/terminal/TerminalView.vue'
 import BrowserPanel from './browser/BrowserPanel.vue'
+import OutlineWorkbench from './OutlineWorkbench.vue'
+import SessionContextWorkbench from './SessionContextWorkbench.vue'
 import CollabBoardPanel from './CollabBoardPanel.vue'
 import SchedulingOverviewWorkbench from './SchedulingOverviewWorkbench.vue'
 import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
@@ -397,7 +416,7 @@ import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling' | 'plugin' | 'workspace'
+type WorkbenchTabType = 'outline' | 'context' | 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling' | 'plugin' | 'workspace'
 
 interface WorkbenchTab {
   id: string
@@ -535,6 +554,11 @@ const tabOptions: Array<{
   icon: Component
   categorySlot: number
 }> = [
+  /* 会话域的头两条(L3):大纲栏并入右栏之后,「这条会话讲了什么」与「它此刻
+     带着什么上下文」都是页签,不再是第四列。排在 Files 之前 —— 它们说的是
+     **这条会话**,而 Files/Terminal/Browser 说的是它工作的那台机器。 */
+  { type: 'outline', title: 'Contents', icon: AlignLeft, categorySlot: 3 },
+  { type: 'context', title: 'Context', icon: Braces, categorySlot: 4 },
   { type: 'files', title: 'Files', icon: Files, categorySlot: 5 },
   { type: 'terminal', title: 'Terminal', icon: Terminal, categorySlot: 6 },
   { type: 'browser', title: 'Browser', icon: Globe2, categorySlot: 7 },
@@ -645,10 +669,15 @@ const availableTabOptions = computed<WorkbenchTabOption[]>(() => {
   ]
 })
 
-const hasSessionOption = computed(() => sessionTabOptions.value.length > 0)
-const firstWorkspaceOptionKey = computed(
-  () => availableTabOptions.value.find(option => option.domain === 'workspace')?.key ?? '',
-)
+/** 「+」清单按域分组:本会话的工具在上,跨会话的工作区面板在下;空组不画。 */
+const pickerGroups = computed(() => {
+  const session = availableTabOptions.value.filter(option => option.domain === 'session')
+  const workspace = availableTabOptions.value.filter(option => option.domain !== 'session')
+  return [
+    { domain: 'session', title: '本会话', options: session },
+    { domain: 'workspace', title: '工作区', options: workspace },
+  ].filter(group => group.options.length > 0)
+})
 
 /** 「+」菜单/空态里点了一条:面板项开面板页签,其余走既有 addWorkbenchTab。 */
 function onPickOption(option: WorkbenchTabOption): void {
@@ -1090,6 +1119,8 @@ function tabIconFor(tab: WorkbenchTab): Component {
 }
 
 function tabIcon(type: WorkbenchTabType): Component {
+  if (type === 'outline') return AlignLeft
+  if (type === 'context') return Braces
   if (type === 'file') return FileText
   if (type === 'terminal') return Terminal
   if (type === 'browser') return Globe2
@@ -1104,6 +1135,8 @@ function tabIcon(type: WorkbenchTabType): Component {
 }
 
 function tabCategorySlot(type: WorkbenchTabType): number {
+  if (type === 'outline') return 3
+  if (type === 'context') return 4
   if (type === 'plugin' || type === 'workspace') return 5
   if (type === 'terminal') return 6
   if (type === 'browser') return 7
@@ -1540,8 +1573,17 @@ async function openFolder(root: string): Promise<void> {
   await editorWorkspace.setWorkspaceRoot(root).catch(() => {})
 }
 
+/**
+ * 会话域页签的外部入口(L3)。顶栏那颗「Contents」钮走这条 —— 从前它开合的是
+ * 第四列大纲栏,现在它开的是右栏的一条页签(展开右栏归 App,落座归这里)。
+ */
+function openWorkbenchTab(type: WorkbenchTabType): void {
+  addWorkbenchTab(type)
+}
+
 defineExpose({
   openFile,
+  openWorkbenchTab,
   openGoalReview,
   openBoard,
   openFolder,
@@ -1773,18 +1815,37 @@ defineExpose({
    `elevated` 档 + 工作台画线风的方角(实例覆写,见文件末的全局块)。
    这里只剩宽度。删掉的字面投影 `0 14px 34px rgba(0,0,0,.18)` 不跟主题。 */
 .workbench-tab-picker {
-  width: 220px;
-  max-width: min(220px, calc(100vw - 32px));
+  width: 236px;
+  max-width: min(236px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
 }
 
-/* 「+」清单里两个域之间的横线 —— 与页签条上那道竖线说的是同一件事。 */
-.picker-separator {
-  height: 1px;
-  margin: 5px 0;
-  background: var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border));
+/* 两个域各成一组;组与组之间画一道横线 —— 与页签条上那道竖线说的是同一件事。 */
+.picker-group {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
 }
 
-.right-workbench .picker-option {
+.picker-group + .picker-group {
+  border-top: 1px solid var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border));
+  margin-top: 4px;
+}
+
+.picker-group-title {
+  padding: 4px 10px 6px;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--ui-text-muted-fg);
+  user-select: none;
+}
+
+/* Popover 把内容送进 body,祖先 `.right-workbench` 到不了这里 —— 选择器不能
+   带它,否则整组规则失效、按钮退化成裸 inline(2026-08-18 真机所见)。 */
+.picker-option {
   --app-button-fill: transparent;
   --app-button-hover-fill: var(--workbench-tool-card-hover-bg);
   --app-button-hover-border: var(--workbench-tool-card-hover-border);
@@ -1794,23 +1855,39 @@ defineExpose({
   height: 30px;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 9px;
+  gap: 10px;
+  padding: 0 10px;
   border-radius: 0;
   color: var(--ui-text-primary-fg);
-  font-size: 12px;
+  font-size: 12.5px;
+  line-height: 1;
   text-align: left;
+  white-space: nowrap;
   transition: background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default);
 }
 
-.right-workbench .picker-option:hover {
+.picker-option-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.picker-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-option:hover {
   background: var(--workbench-tool-card-hover-bg);
   color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg));
   box-shadow: none;
 }
 
-.right-workbench .picker-option:hover svg,
-.right-workbench .picker-option:focus-visible svg,
+.picker-option:hover svg,
+.picker-option:focus-visible svg,
 .right-workbench .empty-action:hover svg,
 .right-workbench .empty-action:focus-visible svg {
   color: var(--workbench-tool-icon-color, var(--ui-accent-primary-fg));
@@ -1818,7 +1895,7 @@ defineExpose({
   transform: scale(1.1);
 }
 
-.right-workbench .picker-option:active {
+.picker-option:active {
   --app-button-hover-fill: var(--workbench-tool-card-active-bg);
   --app-button-hover-border: var(--workbench-tool-card-active-border);
   --app-button-hover-shadow: none;

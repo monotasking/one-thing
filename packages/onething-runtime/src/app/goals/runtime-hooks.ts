@@ -20,6 +20,8 @@ import {
 } from "./index.js";
 import { kickGoalRunIfIdle } from "./kick.js";
 
+import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+
 // Wall-clock accounting: seconds between consecutive rounds of the same
 // session approximate active time. Entries are dropped when a run ends.
 const lastUsageTick = new Map<string, number>();
@@ -108,7 +110,7 @@ export function bootstrapGoalStreamBreakers(): void {
 	// A new run supersedes any pending retry: whatever started it (user
 	// message, retry kick, continuation) is now the goal's driver.
 	bus.onAnySession(
-		"stream:start",
+		SESSION_EVENT_TYPES.STREAM_START,
 		({ sessionId }) => {
 			cancelGoalRetry(sessionId);
 		},
@@ -116,7 +118,7 @@ export function bootstrapGoalStreamBreakers(): void {
 	);
 
 	bus.onAnySession(
-		"stream:complete",
+		SESSION_EVENT_TYPES.STREAM_COMPLETE,
 		({ sessionId, event }) => {
 			lastUsageTick.delete(sessionId);
 			try {
@@ -136,7 +138,7 @@ export function bootstrapGoalStreamBreakers(): void {
 	);
 
 	bus.onAnySession(
-		"stream:error",
+		SESSION_EVENT_TYPES.STREAM_ERROR,
 		({ sessionId, event }) => {
 			lastUsageTick.delete(sessionId);
 			try {
@@ -149,7 +151,7 @@ export function bootstrapGoalStreamBreakers(): void {
 	);
 
 	bus.onAnySession(
-		"stream:aborted",
+		SESSION_EVENT_TYPES.STREAM_ABORTED,
 		({ sessionId }) => {
 			lastUsageTick.delete(sessionId);
 			try {
@@ -165,7 +167,7 @@ export function bootstrapGoalStreamBreakers(): void {
 	// A permission prompt hands the clock to the user; drop the tick so the
 	// approval wait is not billed as goal working time.
 	bus.onAnySession(
-		"permission:request",
+		SESSION_EVENT_TYPES.PERMISSION_REQUEST,
 		({ sessionId }) => {
 			lastUsageTick.delete(sessionId);
 		},

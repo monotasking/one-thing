@@ -13,8 +13,12 @@ import type {
   ToolInfoUnion,
 } from './core/tool.js'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
+import type { CorePromptFragment } from '@onething/core/engine'
+import type { PromptSource } from '@onething/runtime/prompts'
 import type { JsonObject } from '@shared/json.js'
 import { createOnethingToolRegistry } from '@onething/runtime/tools'
+// R2b:`permissionGuard` 的派生投影(开关关时恒等)。
+import { withDerivedToolGuards } from './toolkit-guard.js'
 import type { OnethingToolExecutionContext } from '@onething/runtime/tools'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -50,16 +54,24 @@ export function hasTool(toolId: string): boolean {
   return toolRegistry.hasTool(toolId)
 }
 
+/** Prompt fragments of the given tools — see `OnethingToolRegistry.getPromptFragments`. */
+export function getToolPromptFragments(toolIds: Iterable<string>): CorePromptFragment[] {
+  return toolRegistry.getPromptFragments(toolIds)
+}
+
+/** The desktop tool registry as a `PromptSource` (what the surfaced tools say). */
+export const toolPromptSource: PromptSource = toolRegistry
+
 export function getToolExecutionMode(toolId: string): ToolExecutionMode {
   return toolRegistry.getToolExecutionMode(toolId) as ToolExecutionMode
 }
 
 export function getAllTools(): ToolDefinition[] {
-  return toolRegistry.getAllTools() as ToolDefinition[]
+  return withDerivedToolGuards(toolRegistry.getAllTools() as ToolDefinition[])
 }
 
 export async function getAllToolsAsync(): Promise<ToolDefinition[]> {
-  return await toolRegistry.getAllToolsAsync() as ToolDefinition[]
+  return withDerivedToolGuards(await toolRegistry.getAllToolsAsync() as ToolDefinition[])
 }
 
 export async function getEnabledToolsAsync(

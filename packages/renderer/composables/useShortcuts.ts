@@ -70,6 +70,26 @@ export function resolveSearchEverywhereShortcut(
   return shortcuts?.searchEverywhere ?? shortcuts?.searchOverlay
 }
 
+/**
+ * ⌘1..9 / Ctrl+1..9 → 按列表序切空间(批 B5,
+ * docs/design/workspace-spaces-2026-08.md)。返回 0 起的下标,不是这个组合就
+ * 返回 null。
+ *
+ * 这几个键位是**空的**:⌘1..9 原本按位置切页签,随多页签一起退役(U2),此后
+ * 注释里明写着"留白,不抢"。全仓再无第二处 ⌘/Ctrl+数字(菜单只有 ⌘W/⌘T/⌘,;
+ * 编辑器那三条是 ⌘⇧7/8/9)。
+ *
+ * ⌥ / ⇧ 一律不认:⌘⌥数字与 ⌘⇧数字要留给别人,顺手吃掉等于把冲突推给将来。
+ * 与 ⌘, 一样是**固定键位**,不进 `ShortcutSettings` —— 那张表是"一个动作一个
+ * 键",装不下一段 9 键的区间。
+ */
+export function spaceShortcutIndex(event: KeyboardEvent): number | null {
+  if (!event.metaKey && !event.ctrlKey) return null
+  if (event.altKey || event.shiftKey) return null
+  if (!/^[1-9]$/.test(event.key)) return null
+  return Number(event.key) - 1
+}
+
 export interface ShortcutHandlers {
   onNewChat?: () => void
   onCloseChat?: () => void
@@ -79,7 +99,8 @@ export interface ShortcutHandlers {
   onSearchEverywhere?: () => void
   onToggleTodoPlanWindow?: () => void
   onToggleTodoPlan?: () => void
-  /** digit is 1-9, browser convention: 9 always means "last tab" */
+  /** ⌘1..9 切空间。参数是 0 起的下标(⌘1 = 列表第一个空间)。 */
+  onSelectSpace?: (index: number) => void
 }
 
 /**
@@ -184,7 +205,16 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
     }
 
     // ⌘1..9(按位置切页签)随多页签一起退役(U2,product-two-forms-chatgpt-shell.md
-    // D4):一格恰好一条会话,没有"第 N 张"可切。这几个键位现在留白,不抢。
+    // D4):一格恰好一条会话,没有"第 N 张"可切。空出来的键位批 B5 给了空间切换
+    // (Arc 的口径:数字键换的是空间,不是标签页)。
+    //
+    // 输入框里照样生效 —— 带修饰键的组合本来就不与打字争(同 ⌘,)。
+    const spaceIndex = handlers.onSelectSpace ? spaceShortcutIndex(event) : null
+    if (spaceIndex !== null) {
+      event.preventDefault()
+      handlers.onSelectSpace?.(spaceIndex)
+      return
+    }
 
     // Prevent Cmd+A (Select All) when not in input/textarea
     // This prevents selecting all text on the page

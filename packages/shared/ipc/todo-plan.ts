@@ -11,6 +11,20 @@ export interface TodoPlanWindowActionRequest {
   preserveMainWindowVisibility?: boolean
 }
 
+/**
+ * 手动拖窗的三个时刻。`start` 只是让主进程把**拖起那一刻的窗位**记下来;之后每帧
+ * 的 `move` 都带**从拖起点算起的累计位移**(不是帧间增量)—— 累计量对丢帧免疫,
+ * 也不会像帧间增量那样把舍入误差一路攒成漂移。
+ */
+export type TodoPlanWindowDragPhase = 'start' | 'move' | 'end'
+
+export interface TodoPlanWindowDragRequest {
+  phase: TodoPlanWindowDragPhase
+  /** 相对拖起点的累计位移(CSS/屏幕像素)。`start` / `end` 不带。 */
+  dx?: number
+  dy?: number
+}
+
 export interface TodoPlanDocument {
   id: string
   scope: TodoPlanScope

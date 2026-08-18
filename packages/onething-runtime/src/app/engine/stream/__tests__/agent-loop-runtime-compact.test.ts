@@ -11,7 +11,9 @@ const getSession = vi.fn(() => ({
   updatedAt: 1,
   contextSize: 9000,
 }))
-const compactSessionContext = vi.fn(() => Promise.resolve({
+const compactSessionContext = vi.fn((_input: {
+  onProgress?: (progress: { chunk: number; totalChunks: number }) => Promise<void> | void
+}) => Promise.resolve({
   success: true,
   summary: 'compacted',
   retainedContextSize: 0,
@@ -100,5 +102,43 @@ describe('agent loop runtime compaction', () => {
     })
     expect(rebuildMessages).toHaveBeenCalled()
     expect(result).toBe(rebuilt)
+  })
+
+  it('C6:回合中这条路自己接进度线 —— onProgress 转发成 context:compact-progress', async () => {
+    // 这条路不经过引擎的 runContextCompact,进度必须在 adapters 里接。
+    compactSessionContext.mockImplementationOnce(async (input: {
+      onProgress?: (progress: { chunk: number; totalChunks: number }) => Promise<void> | void
+    }) => {
+      await input.onProgress?.({ chunk: 1, totalChunks: 3 })
+      await input.onProgress?.({ chunk: 2, totalChunks: 3 })
+      return { success: true, summary: 'compacted', retainedContextSize: 0 }
+    })
+
+    await maybeCompactAgentLoopContext({
+      ctx: ctx(),
+      turn: 2,
+      messages: [
+        { role: 'user', content: 'hello '.repeat(10000) },
+        { role: 'assistant', content: '', toolCalls: [{ id: 'call_1', name: 'read', arguments: '{}' }] },
+        { role: 'tool', toolCallId: 'call_1', content: 'tool result' },
+      ],
+      budget: {
+        modelContextLength: 10000,
+        reservedOutputTokens: 512,
+        thresholdPercent: 85,
+      },
+      rebuildMessages: vi.fn(async () => []),
+    })
+
+    expect(emit).toHaveBeenCalledWith('s1', {
+      type: 'context:compact-progress',
+      chunk: 1,
+      totalChunks: 3,
+    })
+    expect(emit).toHaveBeenCalledWith('s1', {
+      type: 'context:compact-progress',
+      chunk: 2,
+      totalChunks: 3,
+    })
   })
 })

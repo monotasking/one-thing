@@ -3,25 +3,53 @@
     <!-- data-ambient-anchor:氛围层地标(L0)。chip 在场即可落雪,离场即缺席
          —— 惰性 attribute,零逻辑。 -->
     <StatusChip
-      v-if="runningJobs.length > 0"
+      v-if="runningJobs.length > 0 || isCompacting"
       class="background-jobs-chip"
       data-ambient-anchor="status.chip"
       label="后台任务"
       :flyout-width="280"
       aria-live="polite"
     >
-      <span
-        class="chip-glyph"
-        aria-hidden="true"
-      >⚙</span>
-      <span class="chip-num">{{ runningJobs.length }}</span>
-      <span>{{ runningJobs.length === 1 ? 'job' : 'jobs' }}</span>
+      <template v-if="runningJobs.length > 0">
+        <span
+          class="chip-glyph"
+          aria-hidden="true"
+        >⚙</span>
+        <span class="chip-num">{{ runningJobs.length }}</span>
+        <span>{{ runningJobs.length === 1 ? 'job' : 'jobs' }}</span>
+      </template>
+      <!-- C6:压缩是同一类「会话级后台作业」,所以它是这枚 chip 的一行,
+           而不是第二枚 chip。没有任务时 chip 只为它出场。 -->
+      <template v-if="isCompacting">
+        <span
+          class="chip-glyph"
+          aria-hidden="true"
+        >⟳</span>
+        <span>Compacting</span>
+        <span
+          v-if="compactProgress"
+          class="chip-num"
+        >{{ compactProgress.chunk }}/{{ compactProgress.totalChunks }}</span>
+      </template>
 
       <!-- 展开态就是原来的整行内容:逐 job + 端口 + 停止 + 刷新,
            一个交互都没降级(composer-bands §3.2)。 -->
       <template #flyout>
         <div class="background-jobs-bar">
-          <div class="jobs-summary">
+          <div
+            v-if="isCompacting"
+            class="compact-row"
+          >
+            <span class="status-dot is-working" />
+            <span class="summary-text">
+              Compacting context…<template v-if="compactProgress"> {{ compactProgress.chunk }}/{{ compactProgress.totalChunks }}</template>
+            </span>
+          </div>
+
+          <div
+            v-if="runningJobs.length > 0"
+            class="jobs-summary"
+          >
             <span class="status-dot" />
             <span class="summary-text">
               {{ runningJobs.length }} background {{ runningJobs.length === 1 ? 'service' : 'services' }} running
@@ -37,7 +65,10 @@
             </Button>
           </div>
 
-          <div class="jobs-list">
+          <div
+            v-if="runningJobs.length > 0"
+            class="jobs-list"
+          >
             <div
               v-for="job in runningJobs"
               :key="job.id"
@@ -72,11 +103,17 @@
  *
  * E 期只换形态:收起态是 `⚙ N jobs` 的 chip,展开态是原来的整行内容整体
  * 搬进浮层。`v-if running > 0` 的显隐语义与轮询逐字不变。
+ *
+ * C6(2026-08-14):上下文压缩并入**这枚既有 chip**,不新起一个状态条
+ * (docs/design/context-compact-capability-2026-08.md §C6)。它与后台任务是
+ * 同一类东西:会话级的、在后台跑的、用户只需知道"在跑/跑到哪儿"的作业。
+ * 失败不在这里呈现 —— 那归消息卡片(ContextCompactPanel),状态条不做错误态。
  */
 import Button from '@/components/common/Button.vue'
 import StatusChip from '@/components/common/StatusChip.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { platformApi } from '@/platform'
+import { useChatStore } from '@/stores/chat'
 
 interface BackgroundJobView {
   id: string
@@ -88,11 +125,26 @@ interface BackgroundJobView {
   logPath?: string
 }
 
+const props = defineProps<{
+  /** 压缩是**按会话**的状态,所以这枚 chip 需要知道自己在哪个会话里。 */
+  sessionId?: string
+}>()
+
+const chatStore = useChatStore()
+
 const jobs = ref<BackgroundJobView[]>([])
 const loading = ref(false)
 let refreshTimer: ReturnType<typeof setInterval> | undefined
 
 const runningJobs = computed(() => jobs.value.filter(job => job.status === 'running'))
+
+const isCompacting = computed(
+  () => !!props.sessionId && chatStore.isSessionCompacting(props.sessionId),
+)
+
+const compactProgress = computed(
+  () => (props.sessionId ? chatStore.getSessionCompactProgress(props.sessionId) : null),
+)
 
 function compactCommand(command: string): string {
   const normalized = command.replace(/\s+/g, ' ').trim()
@@ -138,6 +190,19 @@ onBeforeUnmount(() => {
   height: 6px;
   border-radius: 999px;
   background: var(--ui-status-success-fg);
+}
+
+/* 压缩在跑:同一颗点,换一档语义色。不做 spinner —— 状态带里只有静态标记。 */
+.status-dot.is-working {
+  background: var(--ui-accent-primary-fg);
+}
+
+.compact-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-weight: 600;
 }
 
 .background-jobs-bar {

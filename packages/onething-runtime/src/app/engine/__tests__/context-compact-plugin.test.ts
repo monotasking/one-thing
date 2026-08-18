@@ -22,6 +22,7 @@ vi.mock('../../providers/index.js', () => ({
 vi.mock('../../providers/model-registry.js', () => ({
   getModelContextLength: async () => 200_000,
   getModelMaxOutputTokens: async () => 8_192,
+  getKnownModelMaxOutputTokens: async () => 8_192,
 }))
 vi.mock('../stream/message-helpers.js', () => ({
   buildHistoryMessages: () => [],
@@ -31,7 +32,9 @@ const sessionRef: { current: ChatSession } = { current: null as unknown as ChatS
 
 vi.mock('../../store.js', () => ({
   getSession: () => sessionRef.current,
-  insertMessageAfter: () => {},
+  addMessage: (_sessionId: string, message: ChatMessage) => {
+    sessionRef.current.messages.push(message)
+  },
   updateSessionSummary: (_sessionId: string, summary: string, cutoff: string) => {
     summaryWrites.push({ summary, cutoff })
   },
@@ -72,7 +75,7 @@ const baseOptions = {
 beforeEach(() => {
   runBeforeContextCompactHooks.mockReset()
   generateChatResponse.mockReset()
-  generateChatResponse.mockResolvedValue('HOST SUMMARY')
+  generateChatResponse.mockResolvedValue('## Goal\nHOST SUMMARY')
   summaryWrites.length = 0
   sessionRef.current = makeSession()
 })
@@ -102,10 +105,10 @@ describe('compactSessionContext + N7-a replacement', () => {
     const result = await compactSessionContext(baseOptions)
 
     expect(result.success).toBe(true)
-    expect(result.summary).toBe('HOST SUMMARY')
+    expect(result.summary).toBe('## Goal\nHOST SUMMARY')
     // 无人替换 → 宿主的 summarizeInChunks 真的跑了。
     expect(generateChatResponse).toHaveBeenCalled()
-    expect(summaryWrites[0]?.summary).toBe('HOST SUMMARY')
+    expect(summaryWrites[0]?.summary).toBe('## Goal\nHOST SUMMARY')
   })
 })
 
@@ -175,6 +178,6 @@ describe('G3a compact-as-replay — the hook receives the full ChatMessage[] ver
 
     expect(collected.length).toBeGreaterThan(0)
     expect(collected.every(item => typeof item.content === 'string' && item.content.length > 0)).toBe(true)
-    expect(result.summary).toBe('HOST SUMMARY')
+    expect(result.summary).toBe('## Goal\nHOST SUMMARY')
   })
 })

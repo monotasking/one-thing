@@ -28,7 +28,11 @@ describe('collectPluginPromptContext timeout budget', () => {
       onProviderFailure: failure => failures.push({ pluginId: failure.pluginId, timedOut: failure.timedOut }),
     })
 
+    // pluginId/providerId are stamped by the collector — they are the turn
+    // block's dedupe identity, so they must be present and not plugin-supplied.
     expect(fragments).toEqual([{
+      pluginId: 'good-plugin',
+      providerId: 'fast',
       role: 'developer',
       source: 'plugins/good-plugin/fast',
       content: 'fast fragment',

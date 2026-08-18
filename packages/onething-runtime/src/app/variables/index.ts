@@ -45,6 +45,8 @@ import {
 } from "@onething/runtime/variables/format";
 import type { ContextVariable } from "@onething/runtime/variables";
 
+import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+
 let bootstrapped = false;
 let unsubscribeBridge: (() => void) | null = null;
 
@@ -123,7 +125,7 @@ function emitVariablesSnapshot(
 	try {
 		getEventBus()
 			.emit(sessionId, {
-				type: "session:variables-updated",
+				type: SESSION_EVENT_TYPES.SESSION_VARIABLES_UPDATED,
 				workingDirectory: workdir,
 				workingDirectoryRoots: workdirRoots,
 				variables: snapshot,

@@ -26,6 +26,8 @@ import { createCollabTypingTracker, type CollabTypingSignal } from '@onething/ru
 import { getEventBus } from '../events/index.js'
 import { broadcastCollabCoordinator, setCollabTypingState } from './inspector.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 /**
  * IM typing indicator (§2.4). Since W19 `true` means "this member's `say` call
  * is streaming its words right now"; `false` means that line is done — or that
@@ -39,7 +41,7 @@ import { broadcastCollabCoordinator, setCollabTypingState } from './inspector.js
 export function emitCollabTyping(roomSessionId: string, agentId: string, typing: boolean): void {
   setCollabTypingState(roomSessionId, agentId, typing)
   void getEventBus().emit(roomSessionId, {
-    type: 'collab:typing',
+    type: SESSION_EVENT_TYPES.COLLAB_TYPING,
     agentId,
     typing,
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
@@ -61,7 +63,7 @@ export function emitCollabTurnActive(roomSessionId: string, agentId: string, act
   // (架构收敛 C4 §1)。走活动窗口:停止按钮要在人伸手的那一刻就已经画好。
   broadcastCollabCoordinator(roomSessionId, { activity: true })
   void getEventBus().emit(roomSessionId, {
-    type: 'collab:turn-active',
+    type: SESSION_EVENT_TYPES.COLLAB_TURN_ACTIVE,
     agentId,
     active,
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])

@@ -72,6 +72,8 @@ import type {
   CollabWorkerRunResult,
 } from './worker-child.js'
 
+import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+
 type TerminalOutcome = 'complete' | 'error' | 'aborted' | 'timeout'
 
 /**
@@ -102,10 +104,10 @@ function waitForTerminalEvent(
       sessionId,
       envelope => {
         const type = (envelope.event as { type?: string } | undefined)?.type
-        if (type === 'stream:start') sawStart = true
-        else if (type === 'stream:complete') finish('complete')
-        else if (type === 'stream:error') finish('error')
-        else if (type === 'stream:aborted') finish('aborted')
+        if (type === SESSION_EVENT_TYPES.STREAM_START) sawStart = true
+        else if (type === SESSION_EVENT_TYPES.STREAM_COMPLETE) finish('complete')
+        else if (type === SESSION_EVENT_TYPES.STREAM_ERROR) finish('error')
+        else if (type === SESSION_EVENT_TYPES.STREAM_ABORTED) finish('aborted')
       },
       'collab-v3-work-wait',
     )

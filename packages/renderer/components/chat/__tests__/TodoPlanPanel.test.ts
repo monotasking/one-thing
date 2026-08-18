@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { mount } from "@vue/test-utils";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import TodoPlanPanel from "../TodoPlanPanel.vue";
@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => {
 		dirty: false,
 		consumedVersion: 0,
 	};
+	/** 水位偏移在用例里现调 —— 「AI 读到第 N 段」这句话就靠它和 watermark 事件。 */
+	const consumed: { offset: number | null } = { offset: null };
 	return {
+		consumed,
 		sessionsStore: {
 			currentSessionId: "session-1",
 			sessions: [{ id: "session-1", workingDirectory: "/repo" }],
@@ -27,7 +30,7 @@ const mocks = vi.hoisted(() => {
 			load: vi.fn().mockResolvedValue(undefined),
 			setContent: vi.fn(),
 			flushNow: vi.fn().mockResolvedValue(undefined),
-			consumedOffset: () => null,
+			consumedOffset: () => consumed.offset,
 			pendingText: () => scratchpadRecord.content,
 		},
 		editorFocus: vi.fn(),
@@ -81,6 +84,7 @@ vi.mock("@/editor/tiptap/TiptapNoteEditor.vue", () => ({
 			"openLink",
 			"openImage",
 			"selectionUpdate",
+			"watermark",
 		],
 		setup(
 			_props: unknown,
@@ -232,6 +236,9 @@ function installElectronApi() {
 			hideTodoPlanWindow: vi.fn(),
 			toggleTodoPlanWindow: vi.fn(),
 			setTodoPlanWindowPinned: vi.fn(),
+			minimizeTodoPlanWindow: vi.fn().mockResolvedValue({ success: true }),
+			zoomTodoPlanWindow: vi.fn().mockResolvedValue({ success: true }),
+			dragTodoPlanWindow: vi.fn().mockResolvedValue({ success: true }),
 			setWindowButtonVisibility: vi.fn().mockResolvedValue({ success: true }),
 			emitCommand: vi.fn().mockResolvedValue({ success: true }),
 			onTodoPlanChanged: vi.fn((callback: (data: any) => void) => {
@@ -244,6 +251,14 @@ function installElectronApi() {
 		},
 	});
 }
+
+/**
+ * 每条用例结束都把挂过的面板卸掉。这不是洁癖:面板在 `window` 上挂了 keydown /
+ * pointerdown / storage 三个监听,不卸载的话上一条用例留下的那一份**照样会收到**
+ * 下一条用例派发的事件,然后往已经被 afterEach 清空的 DOM 里渲染
+ * (实测:`insertBefore of null`,而且报在无辜的那条用例身上)。
+ */
+enableAutoUnmount(afterEach);
 
 describe("TodoPlanPanel", () => {
 	let storage: Record<string, string>;
@@ -266,6 +281,7 @@ describe("TodoPlanPanel", () => {
 		mocks.scratchpadStore.setContent.mockClear();
 		mocks.scratchpadStore.flushNow.mockClear();
 		mocks.scratchpadRecord.content = "纸上写了一句话";
+		mocks.consumed.offset = null;
 		storage = {};
 		vi.stubGlobal("localStorage", {
 			getItem: vi.fn((key: string) => storage[key] ?? null),
@@ -300,19 +316,103 @@ describe("TodoPlanPanel", () => {
 		await settle();
 
 		expect(wrapper.find('[aria-label="Keep window on top"]').exists()).toBe(false);
-		expect(wrapper.find('[aria-label="Command Panel"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(true);
 		expect(
 			wrapper.find(".panel-actions .icon-button").attributes("aria-label"),
-		).toBe("Command Panel");
-		expect(wrapper.find('[aria-label="Browse notes"]').exists()).toBe(true);
-		expect(wrapper.find('[aria-label="New note"]').exists()).toBe(true);
-		expect(wrapper.find('[aria-label="Unpin Todo"]').exists()).toBe(true);
+		).toBe("更多操作");
+		// 设计稿头行只有「标题 + 读数 + ⋯」:换笔记 / 新建 / 钉住全部收进 ⌘K 命令面板。
+		expect(wrapper.find('[aria-label="Browse notes"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="New note"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Unpin Todo"]').exists()).toBe(false);
 		expect(wrapper.find('[aria-label="Find in note"]').exists()).toBe(false);
-		expect(wrapper.find(".window-traffic-spacer").exists()).toBe(true);
+		// 自绘红绿灯:系统那组是灰的(non-activating NSPanel 成不了 main window),
+		// 主进程已把它收起来,这三枚才是真控件。
+		expect(wrapper.find(".window-lights").exists()).toBe(true);
+		expect(wrapper.find('.window-light[aria-label="关闭"]').exists()).toBe(true);
+		expect(wrapper.find('.window-light[aria-label="最小化"]').exists()).toBe(true);
+		expect(wrapper.find('.window-light[aria-label="缩放"]').exists()).toBe(true);
 		expect(wrapper.find(".window-title").exists()).toBe(true);
 		expect(wrapper.find('[aria-label="Open in window"]').exists()).toBe(false);
 		expect(wrapper.find('[aria-label="Dock card"]').exists()).toBe(false);
 		expect(wrapper.find(".resize-handle").exists()).toBe(false);
+	});
+
+	/**
+	 * 自绘红绿灯与手动拖窗。两件事同一个根因:这扇窗是 non-activating NSPanel,
+	 * 系统交通灯恒灰、原生 `-webkit-app-region: drag` 也不生效,所以两样都得自己来。
+	 */
+	it("wires the three self-drawn window lights", async () => {
+		const wrapper = mount(TodoPlanPanel, {
+			attachTo: document.body,
+			props: { standalone: true },
+		});
+		await settle();
+
+		// 红点是**隐藏**不是销毁 —— 这扇窗从来就是收起来的语义。
+		await wrapper.find('.window-light[aria-label="关闭"]').trigger("click");
+		expect(window.electronAPI.hideTodoPlanWindow).toHaveBeenCalled();
+
+		await wrapper.find('.window-light[aria-label="最小化"]').trigger("click");
+		expect(window.electronAPI.minimizeTodoPlanWindow).toHaveBeenCalled();
+
+		await wrapper.find('.window-light[aria-label="缩放"]').trigger("click");
+		expect(window.electronAPI.zoomTodoPlanWindow).toHaveBeenCalled();
+	});
+
+	it("drags the window by cumulative screen offset, and buttons never start a drag", async () => {
+		const wrapper = mount(TodoPlanPanel, {
+			attachTo: document.body,
+			props: { standalone: true },
+		});
+		await settle();
+
+		const drag = window.electronAPI.dragTodoPlanWindow as ReturnType<typeof vi.fn>;
+		const rail = wrapper.find(".mode-rail").element;
+		const nextFrame = () =>
+			new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+		rail.dispatchEvent(
+			new PointerEvent("pointerdown", {
+				bubbles: true,
+				button: 0,
+				pointerId: 1,
+				screenX: 400,
+				screenY: 300,
+			}),
+		);
+		expect(drag).toHaveBeenCalledWith({ phase: "start" });
+
+		rail.dispatchEvent(
+			new PointerEvent("pointermove", {
+				bubbles: true,
+				pointerId: 1,
+				screenX: 430,
+				screenY: 280,
+			}),
+		);
+		await nextFrame();
+		// 相对**按下那一点**的累计位移,不是帧间增量。
+		expect(drag).toHaveBeenCalledWith({ phase: "move", dx: 30, dy: -20 });
+
+		rail.dispatchEvent(
+			new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }),
+		);
+		expect(drag).toHaveBeenCalledWith({ phase: "end" });
+
+		// 轨上的形态钮:按下去只是切形态,不该顺手把窗拖走。
+		drag.mockClear();
+		wrapper
+			.find('[aria-label="草稿纸"]')
+			.element.dispatchEvent(
+				new PointerEvent("pointerdown", {
+					bubbles: true,
+					button: 0,
+					pointerId: 2,
+					screenX: 400,
+					screenY: 300,
+				}),
+			);
+		expect(drag).not.toHaveBeenCalled();
 	});
 
 	it("shows chat card controls in chat mode", async () => {
@@ -322,11 +422,11 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		expect(wrapper.find('[aria-label="Command Panel"]').exists()).toBe(true);
-		expect(wrapper.find('[aria-label="Browse notes"]').exists()).toBe(true);
-		expect(wrapper.find('[aria-label="New note"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="Browse notes"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="New note"]').exists()).toBe(false);
 		expect(wrapper.find('[aria-label="Find in note"]').exists()).toBe(false);
-		expect(wrapper.find('[aria-label="Pin Todo"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="Pin Todo"]').exists()).toBe(false);
 		expect(wrapper.find('[aria-label="Keep card open"]').exists()).toBe(false);
 		expect(wrapper.find('[aria-label="Dock card"]').exists()).toBe(false);
 		expect(wrapper.find('[aria-label="Open in window"]').exists()).toBe(false);
@@ -391,13 +491,16 @@ describe("TodoPlanPanel", () => {
 		expect(wrapper.find(".title-display").exists()).toBe(false);
 		expect(wrapper.find(".panel-title").exists()).toBe(false);
 		expect(wrapper.find(".window-title").exists()).toBe(true);
-		expect(wrapper.find(".window-title").text()).toBe("User Todo");
+		expect(wrapper.find(".window-title").text()).toBe("待做");
 
 		await wrapper.find(".window-title").trigger("click");
 		await settle();
 		expect(wrapper.find(".note-switcher").exists()).toBe(false);
 
-		await wrapper.find('[aria-label="Browse notes"]').trigger("click");
+		// 换笔记的直陈钮收进了命令面板:⌘P 直达切换器。
+		wrapper.find(".todo-plan-panel").element.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "p", metaKey: true, bubbles: true, cancelable: true }),
+		);
 		await settle();
 		expect(wrapper.find(".note-switcher").exists()).toBe(true);
 	});
@@ -409,7 +512,7 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		expect(wrapper.find(".window-title").text()).toBe("User Todo");
+		expect(wrapper.find(".window-title").text()).toBe("待做");
 		expect(wrapper.text()).not.toContain("1/1 open task");
 	});
 
@@ -615,13 +718,13 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		await wrapper.find('[aria-label="Command Panel"]').trigger("click");
+		await wrapper.find('[aria-label="更多操作"]').trigger("click");
 		await settle();
 
 		expect(wrapper.find(".todo-notes-action-panel").exists()).toBe(true);
 		expect(
 			wrapper.find(".panel-actions .icon-button").attributes("aria-label"),
-		).toBe("Command Panel");
+		).toBe("更多操作");
 		wrapper.unmount();
 	});
 
@@ -754,7 +857,9 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		expect(standalone.text()).toContain("AI Todo");
+		expect(
+		standalone.findComponent({ name: "TiptapNoteEditor" }).props("modelValue"),
+	).toContain("AI Todo");
 		expect(
 			standalone.findComponent({ name: "TiptapNoteEditor" }).exists(),
 		).toBe(true);
@@ -767,7 +872,7 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		expect(chatCard.find(".window-title").text()).toBe("User Todo");
+		expect(chatCard.find(".window-title").text()).toBe("待做");
 		const chatEditor = chatCard.findComponent({
 			name: "TiptapNoteEditor",
 		});
@@ -805,7 +910,7 @@ describe("TodoPlanPanel", () => {
 
 		const editor = wrapper.findComponent({ name: "TiptapNoteEditor" });
 		expect(editor.props("modelValue")).toContain("Ship the refresh fix");
-		expect(wrapper.find(".window-title").text()).toBe("AI Todo");
+		expect(wrapper.find(".window-title").text()).toBe("待做");
 		expect(wrapper.text()).not.toContain("1/2 open task");
 	});
 
@@ -946,11 +1051,13 @@ describe("TodoPlanPanel", () => {
 			return wrapper;
 		}
 
+		/**
+		 * 形态开关从标题栏的分段丸搬到了左侧图标轨(边栏 v2)。测试跟着按
+		 * **可及名**找那两枚钮 —— 那是这两个入口对读屏与对测试的同一个名字。
+		 */
 		async function switchTo(wrapper: any, label: string) {
-			const item = wrapper
-				.findAll(".mode-pill .segmented-pill-item")
-				.find((node: any) => node.text() === label);
-			await item.trigger("click");
+			const tooltip = label === "草稿纸" ? "草稿纸" : "待做 / 笔记";
+			await wrapper.find(`.mode-rail [aria-label="${tooltip}"]`).trigger("click");
 			await settle();
 		}
 
@@ -976,7 +1083,7 @@ describe("TodoPlanPanel", () => {
 
 			await switchTo(wrapper, "草稿纸");
 
-			expect(wrapper.find('[aria-label="Command Panel"]').exists()).toBe(false);
+			expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(false);
 			expect(wrapper.find('[aria-label="Browse notes"]').exists()).toBe(false);
 			expect(wrapper.find('[aria-label="New note"]').exists()).toBe(false);
 			expect(wrapper.find('[aria-label="Show formatting bar"]').exists()).toBe(false);
@@ -992,7 +1099,7 @@ describe("TodoPlanPanel", () => {
 
 			await switchTo(wrapper, "Todo");
 
-			expect(wrapper.find('[aria-label="Command Panel"]').exists()).toBe(true);
+			expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(true);
 			expect(wrapper.find('[aria-label="Send scratchpad content"]').exists()).toBe(false);
 			expect(wrapper.findComponent({ name: "TiptapNoteEditor" }).props("modelValue"))
 				.toContain("# User Todo");
@@ -1057,7 +1164,7 @@ describe("TodoPlanPanel", () => {
 		 */
 		it("别的窗口写了形态键,这扇窗跟着切", async () => {
 			const wrapper = await mountStandalone();
-			expect(wrapper.find(".window-title").text()).toBe("User Todo");
+			expect(wrapper.find(".window-title").text()).toBe("待做");
 
 			window.dispatchEvent(
 				new StorageEvent("storage", { key: "todoPlanWindowMode", newValue: "scratchpad" }),
@@ -1067,6 +1174,101 @@ describe("TodoPlanPanel", () => {
 			expect(wrapper.find(".window-title").text()).toBe("草稿纸");
 			// 跟随不回写:写的那一边已经落过盘了,再写一次只会多一次事件。
 			expect(storage.todoPlanWindowMode).toBeUndefined();
+		});
+	});
+
+	/**
+	 * 边栏 v2 的信息面(2026-08-15)。这一组钉的是"读数不许说谎":
+	 * 没有任务就不报 0/0、水位没事件就不说已读、时机判不了就把那一行关掉。
+	 */
+	describe("信息面", () => {
+		async function mountWindow() {
+			const wrapper = mount(TodoPlanPanel, {
+				attachTo: document.body,
+				props: { standalone: true },
+			});
+			await settle();
+			return wrapper;
+		}
+
+		async function toScratchpad(wrapper: any) {
+			await wrapper.find('.mode-rail [aria-label="草稿纸"]').trigger("click");
+			await settle();
+		}
+
+		it("Todo 侧报 done / total,并把它换算成进度条宽度", async () => {
+			const wrapper = await mountWindow();
+
+			// 样本笔记是 `- [ ] Write tests` —— 一条,没做完。
+			expect(wrapper.find(".progress-figure").text()).toBe("0/1");
+			expect(
+				(wrapper.find(".progress-fill").element as HTMLElement).style.width,
+			).toBe("0%");
+			expect(wrapper.find(".header-stat").text()).toBe("0 / 1 已完成");
+		});
+
+		it("没有任务的笔记不报 0 / 0 —— 改报字数", async () => {
+			(window.electronAPI as any).getTodoPlan = vi.fn().mockResolvedValue({
+				success: true,
+				snapshot: {
+					directory: snapshot.directory,
+					userNotes: [{ ...snapshot.userNotes[0], content: "# 空笔记" }],
+				},
+			});
+
+			const wrapper = await mountWindow();
+
+			expect(wrapper.find(".header-stat").text()).toBe("5 字");
+		});
+
+		it("没有水位事件就不说已读", async () => {
+			const wrapper = await mountWindow();
+			await toScratchpad(wrapper);
+
+			expect(wrapper.find(".state-line").text()).toBe("AI 尚未读过");
+		});
+
+		/**
+		 * 水位本来就是**块边界**语义(偏移落在块中间时向后取整)。所以有块序时报
+		 * 段号,报字数是给出一个比它实际知道的更精确的假象 —— 只有算不出块序时
+		 * 才退回字数,退的是精度不是诚实。
+		 */
+		it("有块序就说第几段,算不出来才退回第几字", async () => {
+			mocks.consumed.offset = 3;
+			const wrapper = await mountWindow();
+			await toScratchpad(wrapper);
+
+			expect(wrapper.find(".state-line").text()).toBe("AI 已读至 3 字");
+
+			wrapper
+				.findComponent({ name: "TiptapNoteEditor" })
+				.vm.$emit("watermark", { blockIndex: 1, blockCount: 4 });
+			await settle();
+
+			expect(wrapper.find(".state-line").text()).toBe("AI 读到第 2 段");
+		});
+
+		it("推送设置落在本窗口自己的键上,状态行跟着改口", async () => {
+			const wrapper = await mountWindow();
+			await toScratchpad(wrapper);
+
+			expect(wrapper.findAll(".state-sub")[0].text()).toBe("手动推送");
+
+			await wrapper.find('[aria-label="自动推送"]').trigger("click");
+			await settle();
+
+			expect(JSON.parse(storage.todoPlanWindowScratchpadPush).auto).toBe(true);
+			// 纸上已经有没推过的内容 —— 一开就该开始倒计时,而不是干等下一次敲键。
+			expect(wrapper.findAll(".state-sub")[0].text()).toBe("还有 5 秒后推送");
+		});
+
+		it("宿主查不到 AI 回复状态时,「时机」整行是真的关着的(inert),不是灰给你看", async () => {
+			const wrapper = await mountWindow();
+			await toScratchpad(wrapper);
+
+			const timing = wrapper.findAll(".push-field")[0];
+			expect(timing.classes()).toContain("is-off");
+			expect(timing.attributes("inert")).toBeDefined();
 		});
 	});
 });
