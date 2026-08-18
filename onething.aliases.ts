@@ -57,6 +57,9 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/core/session', replacement: resolve(projectRoot, 'packages/core/session/index.ts') },
   { find: '@onething/core/slash-commands', replacement: resolve(projectRoot, 'packages/core/slash-commands.ts') },
   { find: '@onething/core/storage', replacement: resolve(projectRoot, 'packages/core/storage/index.ts') },
+  // 工具系统内核(docs/design/tool-system-oop-2026-08.md §3)。与下面的 tools 互不
+  // 为前缀('toolk' ≠ 'tools'),但仍按字典序排在它前面,别让人以为顺序无所谓。
+  { find: '@onething/core/toolkit', replacement: resolve(projectRoot, 'packages/core/toolkit/index.ts') },
   { find: '@onething/core/tools', replacement: resolve(projectRoot, 'packages/core/tools/index.ts') },
   { find: '@onething/core', replacement: resolve(projectRoot, 'packages/core/index.ts') },
   { find: '@onething/gateway/config', replacement: resolve(projectRoot, 'packages/gateway/src/config.ts') },
@@ -276,6 +279,11 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/tools/sensitive-files', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/sensitive-files.ts') },
   { find: '@onething/runtime/tools/text-truncation', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/text-truncation.ts') },
   { find: '@onething/runtime/tools', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/index.ts') },
+  // R2b:切换期开关的**窄入口**。放在 `@onething/runtime/toolkit` 之上(前缀
+  // 匹配,先命中先用):引擎缝只想读一个环境变量,不该为此把整棵新工具树拖进
+  // 一条开关关着的执行路。
+  { find: '@onething/runtime/toolkit/flag', replacement: resolve(projectRoot, 'packages/onething-runtime/src/toolkit/flag.ts') },
+  { find: '@onething/runtime/toolkit', replacement: resolve(projectRoot, 'packages/onething-runtime/src/toolkit/index.ts') },
   { find: '@onething/runtime/tasks', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tasks/index.ts') },
   { find: '@onething/runtime/perf', replacement: resolve(projectRoot, 'packages/onething-runtime/src/perf/index.ts') },
   { find: '@onething/runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/index.ts') },

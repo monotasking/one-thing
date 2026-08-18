@@ -38,6 +38,15 @@ export const SESSION_EVENT_TYPES = [
   'assistant/first-token',
   'tool/call',
   'tool/result',
+  /**
+   * R2b(工具系统重建):一次工具调用的**审计证词**。
+   *
+   * 它不是第八种"回合事件",而是 `AuditProjector`(`app/toolkit/audit-observer.ts`)
+   * 那条投影的落盘口 —— 三条生命周期证词(planned / decided / finished)攒成扁平
+   * 的一行:计划里报了哪些效果类、授权结论、人被问过没有、最终结局、拦截器动没
+   * 动手。**只在 `ONETHING_TOOLKIT=1` 时出现**;开关关时这个类型一行都不写。
+   */
+  'tool/audit',
   'request/end',
 ] as const
 
@@ -104,6 +113,26 @@ export interface SessionToolResultEventData {
   sourceSeq?: number
 }
 
+/**
+ * 一次工具调用的审计行(R2b)。形状 = `ToolAuditRecord` 去掉 `at`(时刻由记录
+ * 外层的 `time` 给,不存两份)。
+ */
+export interface SessionToolAuditEventData {
+  callId: string
+  toolId: string
+  /** 计划里报的效果类(去重)。资源级细节不进索引 —— 它们在权限卡的 preview 里。 */
+  effects: string[]
+  /** 效果条数(与 `effects` 不同:同一类可以有多条,资源不同)。 */
+  effectCount: number
+  previewTitle?: string
+  decision?: 'allow' | 'deny'
+  /** 人被问过没有。 */
+  asked?: boolean
+  outcome: 'ok' | 'invalid' | 'denied' | 'aborted' | 'failed'
+  intercepted?: { action: 'rewrite' | 'block'; by?: string[] }
+  messageId?: string
+}
+
 export interface SessionRequestEndUsage {
   inputTokens?: number
   outputTokens?: number
@@ -132,6 +161,7 @@ export type SessionRequestStartEvent = SessionEventRecordShape<'request/start', 
 export type SessionAssistantFirstTokenEvent = SessionEventRecordShape<'assistant/first-token', SessionAssistantFirstTokenEventData>
 export type SessionToolCallEvent = SessionEventRecordShape<'tool/call', SessionToolCallEventData>
 export type SessionToolResultEvent = SessionEventRecordShape<'tool/result', SessionToolResultEventData>
+export type SessionToolAuditEvent = SessionEventRecordShape<'tool/audit', SessionToolAuditEventData>
 export type SessionRequestEndEvent = SessionEventRecordShape<'request/end', SessionRequestEndEventData>
 
 export type SessionEventRecord =
@@ -141,6 +171,7 @@ export type SessionEventRecord =
   | SessionAssistantFirstTokenEvent
   | SessionToolCallEvent
   | SessionToolResultEvent
+  | SessionToolAuditEvent
   | SessionRequestEndEvent
 
 export type SessionEventDataFor<TType extends SessionEventType> =
