@@ -51,14 +51,32 @@ export interface OnethingProviderRequestDumpPruneResult {
   bytesAfter: number
 }
 
+/**
+ * 调试转储归 `log/dumps/<kind>/`(§2.4 的第三类:默认关、有界、显式开),
+ * 与诊断日志分家 —— janitor 用这个前缀认它。
+ */
 export function getOnethingProviderRequestDumpDir(logDir: string): string {
-  return path.join(logDir, 'provider-requests')
+  return path.join(logDir, 'dumps', 'provider-requests')
+}
+
+/**
+ * **默认关**(拍板 B)。真机上这一路曾经写出 1.1G 的请求正文(含 system 全文与
+ * 全部 messages),而它默认是开的。现在两条路才打得开:
+ *  - `ONETHING_DUMP_PROVIDER_REQUESTS=1`(显式 opt-in);
+ *  - 设置页的「诊断模式」(装配层 `setOnethingProviderRequestDumpEnabled(true)`)。
+ */
+let dumpOverride: boolean | undefined
+
+export function setOnethingProviderRequestDumpEnabled(enabled: boolean | undefined): void {
+  dumpOverride = enabled
 }
 
 export function shouldDumpOnethingProviderRequests(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env.ONETHING_DUMP_PROVIDER_REQUESTS !== '0'
+  if (dumpOverride === true) return true
+  const raw = (env.ONETHING_DUMP_PROVIDER_REQUESTS ?? '').toLowerCase()
+  return raw === '1' || raw === 'true' || raw === 'yes'
 }
 
 export function safeOnethingProviderRequestDumpFilenamePart(value: string): string {

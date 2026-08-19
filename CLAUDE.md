@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 bun run dev                # unified dev: electron + web + server (scripts/dev-unified.mjs)
 bun run dev:electron       # managed lane: electron only (can run alongside dev:web)
 bun run dev:web            # managed lane: web frontend :5174 + headless server :8787
-bun run electron:dev       # electron only (dev-with-logging.mjs → electron-vite dev, logs to ~/.onething/log/dev.log)
+bun run electron:dev       # electron only (dev-with-logging.mjs → electron-vite dev; dev.log keeps runner+stderr only — the main process writes app.jsonl itself)
 bun run web:dev            # bare vite for apps/web (no server, no cleanup)
 bun run server:start       # node dist/server/main.js (run server:build first; dynamic port
                            # unless ONETHING_SERVER_PORT; refuses if the desktop already
@@ -37,6 +37,12 @@ bun run typecheck          # typecheck:node + typecheck:web
 # Guardrails
 bun run boundary           # full static boundary checker (scripts/headless-boundary-check.ts)
 bun run boundary:gate      # ratchet gate: diffs checker output vs baseline, fails only on NEW reds
+bun run log:gate           # console.* ratchet (baseline docs/audit/log-gate-baseline-2026-08-20.txt)
+bun run log:check          # the full console.* call-site list behind that gate
+
+# Logs
+bun run log:tail           # pretty-print + follow <store>/log/app.jsonl ([--ns engine.*] [--level warn] [--session id])
+bun run log:smoke          # real-machine gate: boots dist/server on a temp store, asserts server.jsonl
 
 # Evals
 bun run evals              # bun evals/run.mjs
@@ -149,9 +155,51 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: core bans electron/`shared/ipc`/better-sqlite3/mcp+acp SDKs/zod/diff/uuid; runtime outside `src/app` bans electron **and** `@shared/ipc`; `src/app` gets a relaxed set — `@shared/ipc` allowed, but electron, `@onething/electron-host`, `@main/`, `@preload/` banned (hosts inject via configure*Host ports).
 - `bun run boundary:gate` — `scripts/boundary-gate.mjs` ratchet: diffs `[boundary] failed:` lines against `docs/audit/boundary-baseline-2026-08-07.txt` (13 known legacy reds). Exits 1 only on NEW failures; prints healed ones so the baseline can be re-tightened.
 - UI 组件与样式规则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),新代码须过 `bun run ui:gate` — `scripts/ui-gate.mjs` ratchet over `scripts/ui-style-check.mjs`'s 12 line-level rules (z-literal / z-fallback / raw-teleport / native-select / native-confirm / title-attr / ui-hex-fallback / transition-literal / shadow-literal-floating / focus-bare / overscroll-contain-chat / surface-literal), baseline `docs/audit/ui-baseline-2026-08-13.txt` (81 条 = 5 条逐条确认过的语义保留 + 76 条 `surface-literal` 区域面迁移待办)。`bun run ui:check` prints the full list.
+- `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854, the pre-migration stock; L4 消它). Whitelist: `scripts/` and the CLI's product-output helper `apps/electron/src/main/cli/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
 - `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/app`** (dependency points one way: product ← assembly); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
 
 Notes:
+
+- **Logging** (L0/L1 landed 2026-08-20, `docs/design/logging-system-2026-08.md` §7;
+  current-state audit: `docs/audit/logging-inventory-2026-08-19.md`). One facade, one
+  record shape, one governor:
+  - `packages/core/logging/` (zero deps, zero node imports) owns `Logger`
+    (`trace/debug/info/warn/error/fatal/child(fields)`), `LogRecord
+    {time, level, ns, msg, fields?, err?, src?}`, `LevelFilter`, `ConsoleSink(pretty|json)`,
+    `MemoryRingSink`, `normalizeError`. `packages/onething-runtime/src/app/logging/`
+    assembles it: **`configureLogging()` is the single wiring point** (idempotent — the
+    desktop's embedded HTTP face never double-configures), and product code only ever
+    calls `getLogger('engine.stream')`. `msg` is a fixed short sentence; variables go in
+    `fields` (`log.info('stream finished', { sessionId, ms })`), errors go in `err`.
+  - **Files are JSONL**: `<store>/log/app.jsonl` (desktop + CLI) / `server.jsonl`
+    (standalone server), one `LogRecord` per line, rotated + gzipped by `JsonlFileSink`
+    (same `ONETHING_LOG_MAX_SIZE_MB` / `MAX_ARCHIVES` / `RETENTION_DAYS` / `COMPRESS`
+    env group). Read them with `bun run log:tail` (pretty, follows, `--ns/--level/--session`).
+    `dev.log` no longer mirrors main-process stdout — it keeps runner + stderr only.
+  - **Level switch**: `ONETHING_LOG='<default>[,<ns-glob>=<level>]*'`, e.g.
+    `ONETHING_LOG=info,engine.*=debug,providers.deepseek=trace` (most specific glob wins).
+    Read at configure time; `setLogLevelSpec()` re-points it at runtime.
+  - **诊断模式** = settings `diagnostics.enabled` (default false, General → Diagnostics):
+    one switch =全域 `debug` + provider request dump ON. Applied in `createOnethingBackend`
+    right after settings load and re-applied on every `saveSettings*` — turning it off
+    returns to the env spec, not to a hardcoded `info`.
+  - **Provider request dumps are OFF by default** (真机上默认开曾写出 1.1G):
+    `ONETHING_DUMP_PROVIDER_REQUESTS=1` or 诊断模式, and they land in
+    `log/dumps/provider-requests/` (7 days / 100MiB, janitor-governed).
+  - **`log/` has exactly one governor**: `LogDirJanitor` + `LOG_DIR_POLICY` (per-family
+    archives/retention, the dumps dir, a 512MiB directory cap), running at start and every
+    5 min. It only ever deletes **archives and dumps** — never a live ledger, never a file
+    it does not recognize. Event ledgers (`sessions/<id>/events.jsonl`, `usage/*.jsonl`,
+    scheduler logs) are product data in their owners' directories and are **not** logs:
+    the janitor never touches them.
+  - Process safety: `installProcessCrashHooks` logs `unhandledRejection` /
+    `uncaughtException` as `fatal` and `flushSync`s — via `uncaughtExceptionMonitor` by
+    default, so Node's own crash behaviour is unchanged.
+  - Migration-era leftovers: `LegacyConsoleSink` still captures raw `console.*` +
+    stdout/stderr as `ns='console'`, `fields.legacy=true`, `fields.callsite` (that stream
+    *is* the L4 to-do list); the Electron `console-message` renderer capture is a
+    **fallback** only — warn+, structured fields, multi-line Vue warns collapsed into one
+    record with `fields.stack`.
 
 - Session persistence is file-based: new sessions use per-session JSONL dirs
   (`sessions/<id>/meta.json` + `messages.jsonl`, append/suffix writes during streaming);
@@ -509,6 +557,7 @@ packages/core/                 # no src/ — files at the package root
 │   ├── permission/            # capability-registry, permission-grants, permission-policy
 │   ├── toolkit/               # tool-system kernel: ToolSpec/Tool/Intent/Outcome/Catalog/Surface/Runner
 │   ├── tools/                 # what survives beside it: effects, abort, diff-hunks, tool-result
+│   ├── logging/               # Logger/LogRecord/LevelFilter/sinks — zero deps, zero node imports
 │   ├── plugins/  mcp/  context/  storage/  providers/ (types)  http/
 │   └── gateway-runtime.ts  runtime-facade.ts  slash-commands.ts
 │
@@ -543,7 +592,8 @@ packages/onething-runtime/src/app/  # ASSEMBLY layer ('@onething/app'; @shared a
 │   │                          # discovery.ts (<store>/run/http.json), embed.ts (host mounting)
 │   ├── channel/               # gateway identity, session-router, outbound dispatch
 │   ├── headless/backend.ts    # HeadlessBackend for the CLI daemon
-│   └── logging/  auth/  session/  usage/  toc/  todo-plan/  practice/  …
+│   └── logging/               # configureLogging + JsonlFileSink/LegacyConsoleSink/janitor/crash-hooks
+│       auth/  session/  usage/  toc/  todo-plan/  practice/  …
 │
 apps/electron/src/
 │   ├── main/                  # '@main' — ONLY: ipc/ (per-domain handlers + handlers.ts),

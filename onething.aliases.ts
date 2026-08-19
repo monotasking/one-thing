@@ -36,6 +36,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/core/interaction', replacement: resolve(projectRoot, 'packages/core/interaction/index.ts') },
   { find: '@onething/core/ipc', replacement: resolve(projectRoot, 'packages/core/ipc/index.ts') },
   { find: '@onething/core/json', replacement: resolve(projectRoot, 'packages/core/json.ts') },
+  { find: '@onething/core/logging', replacement: resolve(projectRoot, 'packages/core/logging/index.ts') },
   { find: '@onething/core/mcp', replacement: resolve(projectRoot, 'packages/core/mcp/index.ts') },
   { find: '@onething/core/permission', replacement: resolve(projectRoot, 'packages/core/permission/index.ts') },
   // Browser-safe leaf module (zero imports, pure serialization logic) — must be

@@ -542,6 +542,7 @@ export function createDefaultSettings(): AppSettings {
     channels: JSON.parse(JSON.stringify(DEFAULT_CHANNEL_SETTINGS)),
     acp: JSON.parse(JSON.stringify(DEFAULT_ACP_SETTINGS)),
     plugins: JSON.parse(JSON.stringify(DEFAULT_PLUGIN_PREFERENCES)),
+    diagnostics: { enabled: false },
   }
 }
 
@@ -648,6 +649,9 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     // 这个一直是死的开关一起救活(见 settings.test.ts 的「白名单漏键审计」)。
     storage: settings.storage,
     evals: settings.evals,
+    // 诊断模式:默认关。显式归一而不是直接透传 —— 白名单式重建漏掉的键会被
+    // 静默丢弃,而这一格的"丢弃"意味着用户打开的诊断模式下次启动就没了。
+    diagnostics: { enabled: settings.diagnostics?.enabled === true },
   }
 
   // 历史脏键 `localAddress`(剥在这里 + 剥在 `providers.json` 的写入归一里,

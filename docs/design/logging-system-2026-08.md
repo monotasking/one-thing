@@ -305,3 +305,88 @@ L0–L1 可一天;L2/L3 各半天;L4 是量最大的一期(~800 处),按区派 o
 | **F** | `no-console` 收口力度 | ①棘轮 gate 只降不升 + 迁完的目录开 ESLint error(**推荐①**)②全仓一次性 error,未迁的用 eslint-disable 标注 |
 | **H** | 逐轮 provider 响应/请求正文 | **已按 §2.7.4 算账后定**:响应正文始终记(`io/responses.jsonl`,~1KB/次)、请求存配方不存正文(`io/requests.jsonl`+`blobs/`)、逐字请求正文只在诊断模式(`io/dumps/`)。用户 2026-08-19 关切=空间占用,§2.7.4 给出 1.1G→~55MB 的对比 |
 | **G** | 静默 catch 189 处 | ①不动 ②逐处判定,值得留痕的补 `debug`(**推荐②**,L4 顺手,不改控制流)③全部补 |
+
+---
+
+## 7. L0/L1 落地记录(2026-08-20)
+
+> 状态:**L0 + L1 已实施**(未提交)。L2 的 server 那半(`configureLogging` + 请求日志
+> 中间件 + crash hooks)顺手一起落了 —— 它是"日志系统有没有第二个宿主"的最小证明;
+> daemon / gateway / renderer(L3)/ 调用点迁移(L4)未动。
+
+### 7.1 落了什么
+
+| 层 | 件 | 位置 |
+|---|---|---|
+| L0 内核(零依赖、零 node import) | `Logger` / `LogRecord` / `LogSource`、`LevelFilter` + `parseLogLevelSpec`、`LoggerRoot` + `createLogger`、`normalizeError` / `safeStringify`、`ConsoleSink(pretty\|json)` / `MemoryRingSink` / `JsonlFileSink`(接口)/ `formatJsonLine` / `formatPretty` | `packages/core/logging/{types,level,error,logger,sinks,index}.ts` |
+| L1 装配 | `configureLogging()`(唯一接线点,幂等)、`getLogger(ns)`、`setLogLevelSpec()`、`writeAppLog`(兼容别名)、`initializeAppLogging`(旧名别名)、`dumpRecentLogRecords()` | `packages/onething-runtime/src/app/logging/index.ts` |
+| | `JsonlFileSink`(轮转/gzip/保留期复用 `RollingFileLogger`,写 `app.jsonl`) | `.../logging/jsonl-file-sink.ts` |
+| | `LegacyConsoleSink`(console + stdout/stderr 劫持 → `ns='console'`) | `.../logging/legacy-console-sink.ts` |
+| | `installProcessCrashHooks` | `.../logging/crash-hooks.ts` |
+| | `LogDirJanitor` + `LOG_DIR_POLICY` | `.../logging/janitor.ts` |
+| | 诊断模式 `applyDiagnosticsMode` | `.../logging/diagnostics.ts` |
+| 宿主 | Electron:`configureLogging({src:'main'})`;renderer 兜底降级为 warn+ 且结构化 | `apps/electron/src/app/main-process.ts`、`apps/electron/src/logging/console-capture.ts` |
+| | server:`configureLogging({fileBaseName:'server',src:'server'})` + `server.http` 访问日志 | `apps/server/src/main.ts`、`packages/onething-runtime/src/app/server/http.ts` |
+| 工具 | `log:check` / `log:gate`(棘轮,基线 854)/ `log:tail`(pretty 跟随)/ `log:smoke`(真机门) | `scripts/log-{check,gate,tail,smoke}.mjs` |
+| 设置 | `AppSettings.diagnostics.enabled`(默认 false)+ 设置页 General → Diagnostics 一行开关 | `packages/shared/ipc/settings.ts`、`packages/shared/defaults/settings.ts`、`GeneralSettingsTab.vue` |
+
+`RollingFileLogger` 只加了两处:`extension` 选项(`log` / `jsonl`,归档识别与压缩跟着走)与
+`writeLine(line)`(落一行已经成形的文本)。旧的文本 `log()` 路径原样保留 —— `dev.log`
+与迁移期的调用点还在用。
+
+### 7.2 拍板项的落法
+
+- **A(JSONL)**:`app.jsonl` / `server.jsonl`,一行一条 `LogRecord`;归档
+  `app-<ts>-nnn-<reason>.jsonl.gz`。`bun run log:tail` 是人眼那一侧的补偿。
+- **B(dump 默认关)**:`shouldDumpOnethingProviderRequests` 改为 opt-in ——
+  `ONETHING_DUMP_PROVIDER_REQUESTS=1` 或诊断模式;目录搬到 `log/dumps/provider-requests/`,
+  由 janitor 按 7 天 / 100MiB 治理(它自己那套"只压不删"的 100MiB 预算留着,作为
+  进程内的第一道刹车)。
+- **C(console-message 降级)**:只抓 warn+;元数据进 `fields`;多行 Vue warn 折成
+  **一条**记录,首行是 `msg`,其余进 `fields.stack`。
+- **D(dev.log)**:`scripts/dev-with-logging.mjs` 不再复刻主进程 stdout,只留
+  runner 与 stderr —— 主进程自己写 `app.jsonl`。
+- **E(诊断模式)**:设置页一个开关 = 全域 `debug` + dump 开;关掉回到 env
+  `ONETHING_LOG` 给的 spec(不是硬编码 `info` —— 开着 `ONETHING_LOG=engine.*=debug`
+  跑的人不该因为关掉诊断模式就丢掉它)。生效点两个:`createOnethingBackend` 读完
+  settings 的第一时间、以及 `app/stores/settings.ts` 的两条保存路。
+- **F(no-console 棘轮)**:`bun run log:gate`,基线
+  `docs/audit/log-gate-baseline-2026-08-20.txt` = **854** 条(口径见 `log-check.mjs`
+  头注;与盘点的 831 差在扫描范围)。CLI 产品输出口 `apps/electron/src/main/cli/stdout.ts`
+  与 `scripts/` 在白名单外/内,不计数。
+
+### 7.3 与设计文本的两处偏差(有意)
+
+1. **未捕获异常默认走 `uncaughtExceptionMonitor`,不是 `uncaughtException`**。
+   装 `uncaughtException` 监听等于**接管** Node 的默认行为(打栈 + 退出码 1),
+   那是用户可感知的变化,不该由日志改造顺手做掉。monitor 一样能在进程死之前
+   fatal 一条 + `flushSync`,而崩溃语义逐字不变。需要接管的宿主显式传
+   `uncaughtException: 'handle'`(那条路测过:fatal → flush → 打栈 → `exit(1)`)。
+2. **server 的 `configureLogging` 在 runtime 装配之后调用**。store 根
+   (`ONETHING_STORE_PATH`)是在 `createRealServerBackend` 里钉死的,提前接线会把
+   `server.jsonl` 写进另一个 store 的 `log/`。代价:装配期那几行 console 只进内存环,
+   不落盘(真机门实测 `server.jsonl` 12 行,全是 listen 之后的)。
+
+### 7.4 门(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run typecheck` | 3 red,全部是既有的 `spaces/__tests__/provider-dials.test.ts`(中途另有 2 条来自并行的会话批,已由那一批自己修掉) |
+| `ONETHING_SESSION_FREEZE=1 bun run test` | 1128 文件通过 / 1 失败:`ui-token-vars.test.ts` ×2 + `AIProviderTab.interaction.test.ts` 的 unhandled rejection —— 与本批前的既有红逐条相同 |
+| `bun run boundary:gate` | ok — 13 known, none new |
+| `bun run session:gate` | ok — 0 |
+| `bun run lint:ci` | 334 problems(128 errors / 206 warnings),与基线一致 |
+| `bun run log:gate` | ok — 854 known, none new |
+| `bun run server:build` + 真机 `bun run log:smoke` | 9/9 通过:3 条 `server.http`(200/404/500 逐条对上)、每行 JSON.parse 成功且带 time/level/ns、`[object Object]` = 0、默认无 dump 目录 |
+| `bun run build`(electron) | ok |
+
+真机脚本全程 `ONETHING_STORE_PATH` 指向 `mkdtemp` 出来的临时目录,**没有碰过
+`~/.onething`**。
+
+### 7.5 留给后续期的尾巴
+
+- `writeAppLog` 的 8 个调用点仍是"source 当 ns"的形状(L4 顺手改成 `getLogger`)。
+- `RollingFileLogger` 的文本 `log()` 路径要等 `dev.log` 也结构化之后才能删。
+- janitor 的"已知前缀"名单里 `agent-*` 只被认得、不被治理(插件自管,§2.4)。
+- renderer 仍然只有 `console-message` 兜底,没有自己的 hub —— 那是 L3。
+- `log/memory/` 空目录残留、8 个 `ONETHING_DEBUG_*` 别名未删 —— L5。

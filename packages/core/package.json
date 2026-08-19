@@ -17,6 +17,7 @@
     "./http": "./http/index.ts",
     "./ipc": "./ipc/index.ts",
     "./json": "./json.ts",
+    "./logging": "./logging/index.ts",
     "./mcp": "./mcp/index.ts",
     "./plugins": "./plugins/index.ts",
     "./providers": "./providers/index.ts",

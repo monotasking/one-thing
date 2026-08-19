@@ -256,6 +256,22 @@
       </SettingsGroup>
     </SettingsSection>
 
+    <SettingsSection title="Diagnostics">
+      <SettingsGroup>
+        <SettingRow
+          label="诊断模式"
+          description="出问题时打开:日志降到 debug(app.jsonl),并把 provider 请求正文转储到 log/dumps/。平时保持关闭 —— 转储会很大。查看:bun run log:tail。"
+        >
+          <Switch
+            variant="ledger"
+            :model-value="diagnosticsEnabled"
+            aria-label="诊断模式"
+            @update:model-value="updateDiagnosticsEnabled(Boolean($event))"
+          />
+        </SettingRow>
+      </SettingsGroup>
+    </SettingsSection>
+
     <!-- English Font -->
     <SettingsSection title="Fonts">
       <SettingsGroup>
@@ -533,6 +549,7 @@ const currentComposerWidth = computed<ComposerWidthGear>(() =>
 const currentFontEn = computed(() => props.settings.chat?.chatFontEn ?? DEFAULT_FONT_EN)
 const currentFontZh = computed(() => props.settings.chat?.chatFontZh ?? DEFAULT_FONT_ZH)
 const contextCompactEnabled = computed(() => props.settings.chat?.contextCompactEnabled !== false)
+const diagnosticsEnabled = computed(() => props.settings.diagnostics?.enabled === true)
 const contextCompactThreshold = computed(() => props.settings.chat?.contextCompactThreshold ?? 85)
 const contextCompactKeepRecentTurns = computed(() => props.settings.chat?.contextCompactKeepRecentTurns ?? 6)
 const maxTurns = computed(() => props.settings.chat?.maxTurns ?? 100)
@@ -681,6 +698,13 @@ function updateFontZh(fontId: string) {
       ...props.settings.chat!,
       chatFontZh: fontId,
     },
+  })
+}
+
+function updateDiagnosticsEnabled(enabled: boolean) {
+  emit('update:settings', {
+    ...props.settings,
+    diagnostics: { ...props.settings.diagnostics, enabled },
   })
 }
 

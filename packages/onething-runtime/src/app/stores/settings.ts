@@ -12,6 +12,7 @@ import {
   splitEffectiveAISettings,
 } from '../providers/ai-settings-compose.js'
 import { getSettingsPath } from './paths.js'
+import { applyDiagnosticsMode } from '../logging/diagnostics.js'
 
 const settingsRepository = createOnethingSettingsRepository<AppSettings>({
   filePath: getSettingsPath,
@@ -130,6 +131,9 @@ export async function saveSettingsAsync(
   options?: SaveSettingsOptions,
 ): Promise<void> {
   await settingsRepository.saveAsync(prepareSave(settings, options))
+  // 「诊断模式」的**唯一续接点**:两条保存路都经过这里,所以设置页那一格
+  // 一存就生效,不必等重启(applyDiagnosticsMode 自身幂等)。
+  applyDiagnosticsMode(settings.diagnostics?.enabled === true)
 }
 
 /**
@@ -138,6 +142,7 @@ export async function saveSettingsAsync(
  */
 export function saveSettings(settings: AppSettings, options?: SaveSettingsOptions): void {
   settingsRepository.save(prepareSave(settings, options))
+  applyDiagnosticsMode(settings.diagnostics?.enabled === true)
 }
 
 // ============================================================================

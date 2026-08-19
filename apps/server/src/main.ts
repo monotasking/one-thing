@@ -14,6 +14,7 @@ import {
   removeHttpDiscovery,
   writeHttpDiscovery,
 } from '@onething/app/server/discovery.js'
+import { configureLogging } from '@onething/app/logging/index.js'
 import { randomBytes } from 'node:crypto'
 
 const forced = process.argv.includes('--force')
@@ -82,7 +83,14 @@ const serverRuntime = await createDevelopmentOnethingServerRuntime({
   console.error(`[onething-server] FATAL: ${error instanceof Error ? error.message : String(error)}`)
   process.exit(1)
 })
+// 日志接线(L2 的 server 那半,L1 一起落):`<store>/log/server.jsonl` + 进程钩子
+// + log/ 目录治理。位置在 runtime 之后是**故意的** —— store 根(`ONETHING_STORE_PATH`)
+// 由 runtime 装配时钉死,提前接线会把日志写进另一个 store 的 log/ 目录。
+// 桌面里那只**嵌入式** HTTP 面不会走到这里(它在主进程,`configureLogging` 幂等,
+// 记录进 app.jsonl),所以不存在两个进程抢同一个 server.jsonl 的情况。
+const logging = configureLogging({ fileBaseName: 'server', src: 'server' })
 console.log(`[Perf][Startup] runtime-created in ${Date.now() - runtimeCreateStart}ms`)
+console.log(`[onething-server] logging to ${logging.logPath}`)
 const server = createOnethingHttpServer({
   runtime: serverRuntime.runtime,
   corsOrigin,

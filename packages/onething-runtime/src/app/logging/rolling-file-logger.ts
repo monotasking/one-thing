@@ -17,6 +17,11 @@ export interface AppLogRecord {
 export interface RollingFileLoggerOptions {
   logDir: string
   baseName?: string
+  /**
+   * 活动文件与归档的扩展名(不含点)。`log` = 迁移期的文本行,`jsonl` = L1 之后
+   * 的结构化记录(拍板 A)。归档识别、压缩、清理三处都跟着它走。
+   */
+  extension?: string
   maxFileBytes?: number
   maxArchiveFiles?: number
   retentionDays?: number
@@ -83,6 +88,7 @@ function formatRecord(record: AppLogRecord): string {
 export class RollingFileLogger {
   private readonly logDir: string
   private readonly baseName: string
+  private readonly extension: string
   private readonly maxFileBytes: number
   private readonly maxArchiveFiles: number
   private readonly retentionDays: number
@@ -104,6 +110,7 @@ export class RollingFileLogger {
   constructor(options: RollingFileLoggerOptions) {
     this.logDir = options.logDir
     this.baseName = options.baseName ?? 'app'
+    this.extension = (options.extension ?? 'log').replace(/^\.+/, '') || 'log'
     this.maxFileBytes = Math.max(1024, options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES)
     this.maxArchiveFiles = Math.max(1, options.maxArchiveFiles ?? DEFAULT_MAX_ARCHIVE_FILES)
     this.retentionDays = Math.max(1, options.retentionDays ?? DEFAULT_RETENTION_DAYS)
@@ -114,7 +121,7 @@ export class RollingFileLogger {
   }
 
   getActiveLogPath(): string {
-    return path.join(this.logDir, `${this.baseName}.log`)
+    return path.join(this.logDir, `${this.baseName}.${this.extension}`)
   }
 
   start(): void {
@@ -129,9 +136,17 @@ export class RollingFileLogger {
   }
 
   log(record: AppLogRecord): void {
+    this.writeLine(formatRecord(record))
+  }
+
+  /**
+   * 落一行**已经成形**的文本(JSONL sink 用):轮转 / 压缩 / 保留期与 `log()`
+   * 共用同一套实现,只是不经过文本格式化。行尾没有换行就补一个。
+   */
+  writeLine(line: string): void {
     if (this.closed) return
     if (!this.started) this.start()
-    this.buffer.push(formatRecord(record))
+    this.buffer.push(line.endsWith('\n') ? line : `${line}\n`)
     this.scheduleFlush(this.buffer.length >= MAX_BATCH_LINES ? 0 : this.flushIntervalMs)
   }
 
@@ -299,7 +314,7 @@ export class RollingFileLogger {
       timestampForFilename(),
       String(++this.archiveCounter).padStart(3, '0'),
       safeReason(reason),
-    ].join('-') + '.log'
+    ].join('-') + `.${this.extension}`
     const archivePath = path.join(this.logDir, archiveName)
     await fsp.rename(activePath, archivePath)
     this.currentSize = 0
@@ -335,7 +350,7 @@ export class RollingFileLogger {
       timestampForFilename(),
       String(++this.archiveCounter).padStart(3, '0'),
       safeReason(reason),
-    ].join('-') + '.log'
+    ].join('-') + `.${this.extension}`
     const archivePath = path.join(this.logDir, archiveName)
     fs.renameSync(activePath, archivePath)
     this.currentSize = 0
@@ -382,7 +397,7 @@ export class RollingFileLogger {
     })
     for (const entry of entries) {
       if (!entry.isFile()) continue
-      if (!entry.name.startsWith(`${this.baseName}-`) || !entry.name.endsWith('.log')) continue
+      if (!entry.name.startsWith(`${this.baseName}-`) || !entry.name.endsWith(`.${this.extension}`)) continue
       await this.compressArchive(path.join(this.logDir, entry.name))
     }
   }
@@ -396,7 +411,7 @@ export class RollingFileLogger {
     for (const entry of entries) {
       if (!entry.isFile()) continue
       if (!entry.name.startsWith(`${this.baseName}-`)) continue
-      if (!entry.name.endsWith('.log') && !entry.name.endsWith('.log.gz')) continue
+      if (!entry.name.endsWith(`.${this.extension}`) && !entry.name.endsWith(`.${this.extension}.gz`)) continue
       const filePath = path.join(this.logDir, entry.name)
       const stat = await fsp.stat(filePath)
       archives.push({ filePath, mtimeMs: stat.mtimeMs })

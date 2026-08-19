@@ -8,6 +8,7 @@ import {
   getOnethingProviderRequestDumpDir,
   pruneOnethingProviderRequestDumps,
   safeOnethingProviderRequestDumpFilenamePart,
+  setOnethingProviderRequestDumpEnabled,
   shouldDumpOnethingProviderRequests,
   stringifyOnethingProviderRequestDump,
 } from '../request-dump.js'
@@ -24,9 +25,14 @@ async function writeDump(dir: string, name: string, bytes: number, ageDays: numb
 
 describe('onething provider request dump', () => {
   it('keeps dump path and feature flag policy in runtime', () => {
-    expect(getOnethingProviderRequestDumpDir('/tmp/onething-logs')).toBe('/tmp/onething-logs/provider-requests')
-    expect(shouldDumpOnethingProviderRequests({})).toBe(true)
+    // 调试转储归 log/dumps/(§2.4 第三类),与诊断日志分家。
+    expect(getOnethingProviderRequestDumpDir('/tmp/onething-logs'))
+      .toBe(path.join('/tmp/onething-logs', 'dumps', 'provider-requests'))
+    // 拍板 B:**默认关**(真机上默认开写出过 1.1G 的请求正文)。只有显式 opt-in
+    // 或设置页的诊断模式打得开。
+    expect(shouldDumpOnethingProviderRequests({})).toBe(false)
     expect(shouldDumpOnethingProviderRequests({ ONETHING_DUMP_PROVIDER_REQUESTS: '0' })).toBe(false)
+    expect(shouldDumpOnethingProviderRequests({ ONETHING_DUMP_PROVIDER_REQUESTS: '1' })).toBe(true)
     expect(safeOnethingProviderRequestDumpFilenamePart('codex/http:model?x')).toBe('codex_http_model_x')
     expect(safeOnethingProviderRequestDumpFilenamePart('!!!')).toBe('unknown')
   })
@@ -54,11 +60,11 @@ describe('onething provider request dump', () => {
       requestBody: { model: 'deepseek-chat', messages: ['hello'] },
     }, {
       getLogDir: () => dir,
-      env: {},
+      env: { ONETHING_DUMP_PROVIDER_REQUESTS: '1' },
       logger,
     })
 
-    expect(dumpPath).toContain(path.join(dir, 'provider-requests'))
+    expect(dumpPath).toContain(path.join(dir, 'dumps', 'provider-requests'))
     expect(path.basename(dumpPath ?? '')).toContain('deepseek_test')
     const parsed = JSON.parse(await fs.readFile(dumpPath ?? '', 'utf-8'))
     expect(parsed.metadata).toMatchObject({
@@ -72,7 +78,7 @@ describe('onething provider request dump', () => {
     expect(logger.warn).not.toHaveBeenCalled()
   })
 
-  it('does not write when provider request dumps are disabled', async () => {
+  it('does not write by default — opting in is the only way in (拍板 B)', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-provider-dump-disabled-'))
 
     await expect(dumpOnethingProviderRequest({
@@ -82,10 +88,30 @@ describe('onething provider request dump', () => {
       requestBody: {},
     }, {
       getLogDir: () => dir,
-      env: { ONETHING_DUMP_PROVIDER_REQUESTS: '0' },
+      env: {},
     })).resolves.toBeUndefined()
 
     await expect(fs.readdir(dir)).resolves.toEqual([])
+  })
+
+  it('the diagnostics-mode override opens it without touching env', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-provider-dump-diagnostics-'))
+    try {
+      setOnethingProviderRequestDumpEnabled(true)
+      expect(shouldDumpOnethingProviderRequests({})).toBe(true)
+
+      const dumpPath = await dumpOnethingProviderRequest({
+        providerId: 'deepseek',
+        model: 'deepseek-chat',
+        mode: 'stream',
+        requestBody: {},
+      }, { getLogDir: () => dir, env: {}, skipMaintenance: true })
+
+      expect(dumpPath).toContain(path.join(dir, 'dumps', 'provider-requests'))
+    } finally {
+      setOnethingProviderRequestDumpEnabled(undefined)
+    }
+    expect(shouldDumpOnethingProviderRequests({})).toBe(false)
   })
 
   it('deletes dumps past the retention window', async () => {

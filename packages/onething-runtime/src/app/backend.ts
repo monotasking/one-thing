@@ -11,6 +11,7 @@
  */
 import { initializeStores, flushAllPendingSaves } from './store.js'
 import { getSettings, initializeSettings } from './stores/settings.js'
+import { applyDiagnosticsMode } from './logging/diagnostics.js'
 import { initializeAgents } from './agents/index.js'
 import { configureSandboxHost, configureAppToolSandbox } from './tools/core/sandbox.js'
 import { configureAppBackgroundJobs } from './tools/core/background-jobs.js'
@@ -123,6 +124,10 @@ export async function createOnethingBackend(
 
   initializeStores()
   await initializeSettings()
+  // 「诊断模式」是设置里的一格,但生效面在日志系统(等级 spec + provider 转储)。
+  // 落点就在读完 settings 的第一时间 —— 再晚一点,启动期的 debug 行就已经被
+  // 默认等级滤掉了。之后每次保存设置由 `stores/settings.ts` 的同一个函数续上。
+  applyDiagnosticsMode(getSettings().diagnostics?.enabled === true)
   // provider 配置迁进空间层(C1)。位置是**刚读完 settings、任何人问「这个
   // provider 配了没有」之前** —— 引擎、工具、插件都会问,而迁移之前那个答案
   // 还在旧形状里。幂等:标记在就是一次同步返回。迁移失败不写标记、不清旧字段,

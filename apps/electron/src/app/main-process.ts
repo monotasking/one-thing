@@ -94,7 +94,7 @@ import {
 import { killTrackedDetachedChildren } from "@onething/app/tools/core/bash-executor.js";
 import {
 	configureAppLoggingHost,
-	initializeAppLogging,
+	configureLogging,
 	shutdownAppLogging,
 } from "@onething/app/logging/index.js";
 import {
@@ -411,7 +411,10 @@ export function startOnethingElectronMain(): void {
 		},
 		updateTray: updateVoiceTray,
 	});
-	initializeAppLogging();
+	// 日志系统的接线点(L1):`app.jsonl` + console 兜底 + 进程钩子 + log/ 目录治理。
+	// hostPorts 已在上面的 configureAppLoggingHost 里给过(顺序不能反 —— renderer
+	// 兜底采集是在 configure 里 attach 的)。
+	configureLogging({ src: "main" });
 	// 宿主版本是 minAppVersion 判定的唯一输入 —— 只有宿主自己知道它
 	// (打包后 package.json 不在可预测的相对位置)。没配 = 判定跳过。
 	configurePluginAppVersion(getElectronAppVersion());

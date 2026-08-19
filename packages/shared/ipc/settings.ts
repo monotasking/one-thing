@@ -270,6 +270,17 @@ export interface PluginPreferences {
 	ambientMutedPluginIds: string[];
 }
 
+/**
+ * 「诊断模式」(logging L1,拍板 E②)。**一个开关**,打开 = 全域日志降到 debug
+ * + provider 请求正文转储打开;关掉 = 回到 env `ONETHING_LOG` 给的等级、转储关。
+ *
+ * 精细控制仍然只有 env(`ONETHING_LOG=info,engine.*=debug`)—— 设置页不长出
+ * 第二套等级面板,那与「设置极简」相悖。
+ */
+export interface DiagnosticsSettings {
+	enabled: boolean;
+}
+
 export interface AppSettings {
 	/**
 	 * **生效形状**:当前空间的 provider 设置 + 全局目录缓存(C2)。
@@ -294,6 +305,7 @@ export interface AppSettings {
 	storage?: StorageSettings;
 	evals?: EvalsSettings;
 	plugins?: PluginPreferences;
+	diagnostics?: DiagnosticsSettings;
 }
 
 /**

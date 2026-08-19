@@ -69,13 +69,49 @@ describe('electron logging console capture', () => {
 
     expect(log).toHaveBeenCalledWith({
       level: 'warn',
+      ns: 'renderer',
       source: 'renderer:42',
-      message: 'renderer warning',
-      metadata: {
+      msg: 'renderer warning',
+      fields: {
+        webContentsId: 42,
         sourceId: 'Chat.vue',
         lineNumber: 99,
         url: 'app://renderer/#/chat',
       },
+    })
+  })
+
+  it('drops renderer info/debug noise — the fallback only captures warn+ (拍板 C②)', async () => {
+    const { createElectronRendererConsoleCapture } = await import('../console-capture.js')
+    const log = vi.fn()
+    const capture = createElectronRendererConsoleCapture({ log })
+    const webContents = webContentsMock(3)
+
+    capture.attachWebContentsLogging(webContents)
+    webContents.emitConsole({ level: 'info', message: 'chatty' })
+    webContents.emitConsole({ level: 'debug', message: 'chattier' })
+    webContents.emitConsole({}, 1, 'legacy info')
+
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  it('collapses a multi-line Vue warn into one record with the stack in fields', async () => {
+    const { createElectronRendererConsoleCapture } = await import('../console-capture.js')
+    const log = vi.fn()
+    const capture = createElectronRendererConsoleCapture({ log })
+    const webContents = webContentsMock(1)
+
+    capture.attachWebContentsLogging(webContents)
+    webContents.emitConsole({
+      level: 'warning',
+      message: '[Vue warn]: Invalid prop\n  at <Container>\n  at <SplitterPanel>',
+    })
+
+    expect(log).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls[0][0]).toMatchObject({
+      level: 'warn',
+      msg: '[Vue warn]: Invalid prop',
+      fields: { stack: 'at <Container>\n  at <SplitterPanel>' },
     })
   })
 
@@ -90,9 +126,11 @@ describe('electron logging console capture', () => {
 
     expect(log).toHaveBeenCalledWith({
       level: 'error',
+      ns: 'renderer',
       source: 'renderer:8',
-      message: 'legacy error',
-      metadata: {
+      msg: 'legacy error',
+      fields: {
+        webContentsId: 8,
         sourceId: 'legacy.js',
         lineNumber: 11,
         url: 'app://renderer',

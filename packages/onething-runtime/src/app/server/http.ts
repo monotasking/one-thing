@@ -15,6 +15,21 @@ import { SessionStreamCoalescer } from '@onething/app/events/stream-coalescer.js
 import { dispatchRpc } from '@onething/app/rpc/registry.js'
 import { RPC_ERROR_CODES, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
 import { createServerRpcDispatchContext } from './runtime.js'
+import { getLogger } from '../logging/index.js'
+
+/**
+ * 访问日志(logging L1 §2.2 的 `server.http`)。在它之前这个 1900 行的文件里
+ * 一条日志都没有 —— 没有访问记录、没有 4xx/5xx、没有耗时,server 出问题只能靠猜。
+ */
+const httpLog = getLogger('server.http')
+
+/** `/api/sessions/<id>/…` 里的会话 id —— 让访问日志能和会话账本 join。 */
+export function sessionIdFromPath(pathname: string): string | undefined {
+  const match = /^\/api\/sessions\/([^/]+)/.exec(pathname)
+  if (!match) return undefined
+  const id = decodeURIComponent(match[1])
+  return id && id !== 'search' ? id : undefined
+}
 
 export type OnethingServerRequestHandler = (
   request: IncomingMessage,
@@ -63,6 +78,30 @@ export function createOnethingServerRequestHandler(
   options: OnethingHttpServerOptions,
 ): OnethingServerRequestHandler {
   return (request, response) => {
+    const url = getRequestUrl(request)
+    const startedAt = Date.now()
+    const sessionId = sessionIdFromPath(url.pathname)
+    // `close` 而不是 `finish`:SSE 那条长连接永远不会 `finish`,只有断开才算一次
+    // 请求结束。一次只记一条(两个事件都可能到)。
+    let logged = false
+    const logRequest = (): void => {
+      if (logged) return
+      logged = true
+      const status = response.statusCode
+      const fields = {
+        method: request.method || 'GET',
+        path: url.pathname,
+        status,
+        ms: Date.now() - startedAt,
+        ...(sessionId ? { sessionId } : {}),
+      }
+      if (status >= 500) httpLog.error('request failed', fields)
+      else if (status >= 400) httpLog.warn('request rejected', fields)
+      else httpLog.info('request', fields)
+    }
+    response.on('finish', logRequest)
+    response.on('close', logRequest)
+
     if (request.method !== 'OPTIONS') {
       const authError = checkRequestAuthorization(request, options)
       if (authError) {
@@ -74,7 +113,7 @@ export function createOnethingServerRequestHandler(
     void handleRequest({
       request,
       response,
-      url: getRequestUrl(request),
+      url,
       runtime: options.runtime,
       corsOrigin: options.corsOrigin,
       requestContext,

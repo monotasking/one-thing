@@ -1,12 +1,29 @@
 import { app, type WebContents } from 'electron'
 
+/**
+ * Electron 侧的 renderer **兜底**采集(拍板 C②)。
+ *
+ * L3 之前 renderer 没有自己的日志通路,只能靠 `console-message` 顺带落盘;
+ * 那条路把 app.log 的 38% 灌成了 Vue warn 的组件链栈(每条多行、每行一条记录)。
+ * 这里做三件事把它降级成"兜底":
+ *  1. **只抓 warn+** —— info/debug 的 renderer 噪音不再进主进程日志;
+ *  2. **结构化** —— `fields {webContentsId, sourceId, lineNumber, url}`,不再把
+ *     元数据拼进消息字符串;
+ *  3. **多行折叠** —— Vue warn 的组件链栈折成**一条**记录,首行是 msg,
+ *     其余进 `fields.stack`。
+ */
+
 export type ElectronAppLogLevel = 'debug' | 'info' | 'warn' | 'error'
 
+/** 与 `@onething/app/logging` 的 `RendererCaptureLogEntry` 对齐。 */
 export interface ElectronAppLogEntry {
   level: ElectronAppLogLevel
-  source: string
-  message: string
-  metadata?: Record<string, unknown>
+  /** 命名空间;renderer 兜底一律 `renderer`。 */
+  ns?: string
+  msg: string
+  fields?: Record<string, unknown>
+  /** 旧口径标签 `renderer:<wcId>`,装配层把它放进 `fields.source`。 */
+  source?: string
 }
 
 export interface ElectronLoggingAppLike {
@@ -53,6 +70,19 @@ const STRING_RENDERER_LEVELS: Record<string, ElectronAppLogLevel> = {
   error: 'error',
 }
 
+/** 兜底只收 warn 及以上。 */
+const CAPTURED_LEVELS = new Set<ElectronAppLogLevel>(['warn', 'error'])
+
+/** 首行是消息,其余(组件链 / 栈)折进一个字段。 */
+export function splitRendererMessage(message: string): { msg: string; stack?: string } {
+  const normalized = message.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const newline = normalized.indexOf('\n')
+  if (newline === -1) return { msg: normalized.trim() }
+  const msg = normalized.slice(0, newline).trim()
+  const stack = normalized.slice(newline + 1).trim()
+  return stack ? { msg, stack } : { msg }
+}
+
 export function setElectronAppLogsPath(logDir: string, electronApp: Pick<ElectronLoggingAppLike, 'setAppLogsPath'> = app): void {
   electronApp.setAppLogsPath(logDir)
 }
@@ -82,17 +112,23 @@ export function createElectronRendererConsoleCapture(
       const level = typeof rawLevel === 'number'
         ? NUMERIC_RENDERER_LEVELS[rawLevel] ?? 'info'
         : STRING_RENDERER_LEVELS[rawLevel] ?? 'info'
+      if (!CAPTURED_LEVELS.has(level)) return
+
       const lineNumber = typeof details.lineNumber === 'number' ? details.lineNumber : legacyLine
       const sourceId = details.sourceId || legacySourceId
+      const { msg, stack } = splitRendererMessage(message)
 
       options.log({
         level,
+        ns: 'renderer',
         source: `renderer:${webContents.id}`,
-        message,
-        metadata: {
+        msg,
+        fields: {
+          webContentsId: webContents.id,
           ...(sourceId ? { sourceId } : {}),
           ...(lineNumber ? { lineNumber } : {}),
           url: webContents.getURL(),
+          ...(stack ? { stack } : {}),
         },
       })
     })

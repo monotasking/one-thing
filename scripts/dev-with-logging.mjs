@@ -136,21 +136,31 @@ function writeLogLine(source, text) {
   currentDay = dayKey()
 }
 
+/**
+ * 拍板 D②:`dev.log` **只记 runner 与 stderr**。
+ *
+ * 主进程的 stdout 现在由它自己写进 `app.jsonl`(结构化、带等级、带 ns),
+ * 这里再复刻一份就是"同一行落两处、格式两样"(盘点 §2.3:同一时间窗两边各有
+ * 1,513 行 `[EventBus] emit`)。stderr 保留 —— 那是子进程死掉时唯一的现场,
+ * 而它未必来得及走日志系统。
+ */
 function writeChunk(stream, chunk, options = {}) {
   const text = chunk.toString()
   const source = stream === process.stderr ? 'stderr' : 'stdout'
   const pending = streamLineBuffers.get(source) || ''
   const parts = `${pending}${text}`.split(/\r?\n/)
   streamLineBuffers.set(source, parts.pop() || '')
-  for (const line of parts) {
-    if (line.length > 0) writeLogLine(source, line)
+  if (source === 'stderr') {
+    for (const line of parts) {
+      if (line.length > 0) writeLogLine(source, line)
+    }
   }
   if (forwardChildOutput && options.forward !== false) safeStreamWrite(stream, chunk)
 }
 
 function flushLineBuffers() {
   for (const [source, line] of streamLineBuffers) {
-    if (line.length > 0) writeLogLine(source, line)
+    if (source === 'stderr' && line.length > 0) writeLogLine(source, line)
   }
   streamLineBuffers.clear()
 }
