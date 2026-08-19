@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SessionEventRecord } from '@shared/ipc/session-events.js'
+import type { SessionEventRecord, SessionTrace } from '@shared/ipc/session-events.js'
 import TrajectoryPanelContent from '../TrajectoryPanelContent.vue'
 import {
   requestTrajectoryInspect,
@@ -16,6 +16,8 @@ const holder = vi.hoisted(() => ({ store: null as { currentSessionId: string } |
 const rpc = vi.hoisted(() => ({
   list: vi.fn(),
   inspectCall: vi.fn(),
+  getTrace: vi.fn(),
+  getResponseText: vi.fn(),
 }))
 
 vi.mock('@/stores/sessions', async () => {
@@ -35,8 +37,20 @@ vi.mock('@/platform/session-events-client', () => ({
   sessionEventsApi: {
     list: (...args: unknown[]) => rpc.list(...args),
     inspectCall: (...args: unknown[]) => rpc.inspectCall(...args),
+    getTrace: (...args: unknown[]) => rpc.getTrace(...args),
+    getResponseText: (...args: unknown[]) => rpc.getResponseText(...args),
   },
 }))
+
+/** 这份 fixture 只有 E0 七类 —— 没有 run/start,所以树上没有 run 层。 */
+const LEGACY_TRACE: SessionTrace = {
+  sessionId: 's1',
+  hasRunEvents: false,
+  eventCount: 0,
+  totalRuns: 0,
+  runs: [],
+  compactions: [],
+}
 
 const EVENTS: SessionEventRecord[] = [
   // 目录先写、信封后写(同一 turn-start 内的顺序),两者各自独立去重。
@@ -143,6 +157,8 @@ describe('TrajectoryPanelContent', () => {
     vi.stubGlobal('localStorage', createMemoryStorage())
     sessionsStore.currentSessionId = 's1'
     rpc.list.mockResolvedValue({ events: EVENTS })
+    rpc.getTrace.mockResolvedValue({ trace: LEGACY_TRACE })
+    rpc.getResponseText.mockResolvedValue({ response: { text: '', reasoning: '', partCount: 0 } })
     rpc.inspectCall.mockResolvedValue({
       inspection: {
         callId: 'c1',
@@ -392,5 +408,84 @@ describe('TrajectoryPanelContent', () => {
 
     expect(rpc.list).toHaveBeenLastCalledWith({ sessionId: 's2' })
     expect(wrapper.find('.trajectory-empty').exists()).toBe(true)
+  })
+
+  /* ── Run 分组与响应正文(S3)───────────────────────────────────────── */
+
+  it('老日志(树上没有 run)照旧平铺 —— 不画任何 run 头', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    expect(wrapper.findAll('.trajectory-run-head')).toHaveLength(0)
+    expect(wrapper.findAll('.trajectory-group')).toHaveLength(2)
+  })
+
+  it('树上有 run 时按 run 分段:头带 kind/模型/结局与现算时长', async () => {
+    rpc.getTrace.mockResolvedValue({
+      trace: {
+        ...LEGACY_TRACE,
+        hasRunEvents: true,
+        totalRuns: 1,
+        runs: [{
+          key: 'run_a',
+          runId: 'run_a',
+          synthetic: false,
+          kind: 'send',
+          model: 'claude-sonnet',
+          outcome: 'completed',
+          firstSeq: 1,
+          startTime: 1_000,
+          endTime: 3_400,
+          trigger: { preview: '帮我看下时间' },
+          requests: [
+            { requestIndex: 1, startSeq: 3, parts: [], errors: [], toolCalls: [] },
+            { requestIndex: 2, startSeq: 8, parts: [], errors: [], toolCalls: [] },
+          ],
+        }],
+      } satisfies SessionTrace,
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    const heads = wrapper.findAll('.trajectory-run-head')
+    expect(heads).toHaveLength(1)
+    expect(heads[0].find('.lgh-label').text()).toContain('claude-sonnet')
+    expect(heads[0].find('.lgh-count').text()).toBe('2')
+    // 结局 + 现算时长(2.4s),不是存下来的字段。
+    expect(heads[0].find('.run-outcome').text()).toBe('completed · 2.4s')
+    expect(wrapper.find('.run-trigger').text()).toBe('帮我看下时间')
+    expect(wrapper.findAll('.trajectory-group')).toHaveLength(2)
+  })
+
+  it('选中请求组时按需取响应正文;取不到就说取不到,不留空白', async () => {
+    rpc.getTrace.mockResolvedValue({
+      trace: {
+        ...LEGACY_TRACE,
+        hasRunEvents: true,
+        totalRuns: 1,
+        runs: [{
+          key: 'run_a', runId: 'run_a', synthetic: false, firstSeq: 1,
+          requests: [{ requestIndex: 1, startSeq: 3, parts: [], errors: [], toolCalls: [] }],
+        }],
+      } satisfies SessionTrace,
+    })
+    rpc.getResponseText.mockResolvedValue({
+      response: { text: '现在是下午三点', reasoning: '', partCount: 1 },
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.findAll('.group-open')[0].trigger('click')
+    await flushPromises()
+
+    expect(rpc.getResponseText).toHaveBeenCalledWith({ sessionId: 's1', run: 'run_a', request: 1 })
+    expect(wrapper.find('.trajectory-inspector').text()).toContain('现在是下午三点')
+
+    // 连不上 run 的那一组:不发请求,直接说没有账。
+    rpc.getResponseText.mockClear()
+    await wrapper.findAll('.group-open')[1].trigger('click')
+    await flushPromises()
+    expect(rpc.getResponseText).not.toHaveBeenCalled()
+    expect(wrapper.find('.trajectory-inspector').text()).toContain('没有记下响应正文')
   })
 })

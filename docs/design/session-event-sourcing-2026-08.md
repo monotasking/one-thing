@@ -888,3 +888,155 @@ S2b 的性能门(首屏 ±10%、翻页 p95 ≤50ms)按这两行看是宽裕的,�
 | 7 | **图片回合的正文形态** | S1b 缺口 5 原样敞着:messages.jsonl 那条是内嵌 base64 的 markdown,投影是一格 image part。切读之后渲染层认哪一种,是 S2b 的读路径裁定 |
 | 8 | **`sanitizeSessionOnStartup` 的退役** | 今天 `prepare` 只补事件账本,消息那边仍由它管。两者的收尾口径要不要合并成一条 |
 | 9 | **`.meta.json.*.tmp` 残留** | 真实 store 里 12 个(见上)。迁移白名单把它们列为"不认识",但清理它们是另一件事 |
+
+## 12. S3 规格与落地记录(2026-08-20):只读查询面
+
+S3 是**读**的一期,但它与 S2 的"切读"是两件事:S2 换的是产品行为的事实来源
+(聊天区读哪份),S3 只是把已经写下来的账**读给人看**。因此它不依赖 read mode ——
+S1a/S1b 起事件就一直在写,不管默认读的是哪边,查询面都有完整的料。这也是它能在
+S2 还没切默认的时候先落地的原因。
+
+### 12.1 一个装配器,三个出口
+
+设计文本(`logging-system-2026-08.md` §2.7.5)把装配器放在
+`packages/onething-runtime/src/sessions/trace.ts`。**落地时上移到了 core**:
+
+| | 位置 | 为什么 |
+| --- | --- | --- |
+| 装配器(纯) | `packages/core/session/trace/assemble.ts` | 事件词表与两个投影已经住在 core(S0 的判例),装配器是同一批事实的第三种排法。放 runtime 会让 renderer 只能靠 `export type` 擦除去引它的形状,而 S3 的形状是要给面板**用**的 |
+| 读实现 | `packages/onething-runtime/src/app/session/trace.ts` | 只负责"从哪拿事件":文件 vs 活投影 |
+| RPC | `sessionEvents` 域加两个方法 `getTrace` / `getResponseText` | 不新开域:轨迹面板已经骑在这个域上,加方法 = router 一行 + handler 一段,四个壳零改动 |
+| HTTP | **没有专用 REST 路由** —— `POST /api/rpc` 一条通用路由,body 是 `{domain:'sessionEvents', method:'getTrace'|'getResponseText', payload}` | 见 §12.1.1 |
+| CLI | `onething trace <sessionId> [--run <id>|--last] [--json] [--response <k>]` | **不经 daemon**(第二个这样的 scope,前一个是 `plugin`):轨迹的事实是一个纯追加文件,读它不该要求引擎活着 —— 排障时引擎往往正是那个起不来的东西 |
+
+#### 12.1.1 为什么 HTTP 侧没有 `GET /api/sessions/:id/trace`
+
+初稿(本期第一版实现)按 `logging-system-2026-08.md` §2.7.5 的字面往
+`app/server/http.ts` 加了两条手写 REST 路由。**评审当场退回,已删除** ——
+理由是结构性的,不是风格:
+
+- `sessionEvents` 的两个 router 方法**已经**给了 web 侧完整的能力,走的是
+  T0 立下的通用 RPC 单路由。再加一条 REST 等于同一份树有两个出口、两套入参
+  消毒、两处会漂移的错误口径;
+- `transport:gate` 量的正是 `http.ts` 的**行数**,而它量这个就是为了挡住
+  "加功能顺手加条手写路由"。基线 1989、`http.ts` 早已 2027 —— 在一把已经红着的
+  尺子上再加 32 行,是把债做实,不是维持现状;
+- 脚本 / curl 一侧没有损失:一条 `POST /api/rpc` 带 `{domain, method, payload}`
+  和一条 GET 一样能用,而且**多域共用同一条**。
+
+于是纪律落成一句:**加功能走 router 域,不再往 `http.ts` 加手写通道。**
+删完之后 `http.ts` 与 HEAD 逐字节相同(`git diff` 为空),
+`transport:gate` 上 `http.ts` 那一格回到 2027 —— 本期对它的净贡献是 **0**。
+
+拒绝的表现形式因此也变了:路径形态的 sessionId 由**域自己的门**
+(`isSafeSessionId`)挡下,RPC 通道永远回 200 信封,拒绝是 `data.trace === null`,
+不是一个 HTTP 状态码。真机脚本按这个口径断言。
+
+树的形状:
+
+```
+SessionTrace
+└─ SessionTraceRun(key, runId, synthetic, kind, agentId, trigger.preview,
+   │               provider/model, outcome, error, startTime/endTime)
+   └─ SessionTraceRequest(requestIndex, startSeq, provider/model/systemPromptHash/
+      │                   toolsHash/toolCount/recipeMessageCount, startTime/
+      │                   firstTokenTime/endTime, usage, finishReason, parts[], errors[])
+      └─ SessionTraceToolCall(callId, name, argumentsRaw, callTime/resultTime,
+                              resultPreview | resultRef, audit{effects/decision/asked/
+                              outcome}, permission{approved/reason})
+SessionTrace.compactions[]   ← 压缩发生在 run 之外,是会话级的一行
+```
+
+### 12.2 四条纪律(装配器文件头逐条钉着)
+
+1. **只记时刻,时长现算**。树上一个 `duration` 字段都没有 —— CLI 的
+   `+340ms`、面板的 `2.4s` 都是两个时刻相减。真机脚本里有一条
+   `!/"duration/i.test(JSON.stringify(trace))` 的断言。
+2. **正文不进树**。响应正文的唯一来源仍是 `assistant/chunks` 的 fold;树上只有各
+   part 的 `{kind, len, hash}`。要正文就调 `materializeTraceResponseText` /
+   `getResponseText` / `--response k`。带正文的树在 CLI 上刷爆终端,在 HTTP 上把
+   一次列表请求变成几 MB。
+3. **没有账就是没有账**。拿不到的格子一律缺席,不用 `0` / `''` 冒充"量到了但是零"
+   (与轨迹面板的 `unavailable` 同一条)。
+4. **老文件不编 runId**。只有 E0 七类的会话没有 `run/start`,按
+   `request/start.messageId`(助手那条消息的 id)合成分组,`key` 是
+   `legacy:<messageId>`、`runId` 留空串、`synthetic: true` 如实标出。
+
+### 12.3 分组判据(三档),与真机上找出的那个坑
+
+```
+1. data.runId                        → 真 run
+2. data.messageId
+   ├─ 命中 run/start 的 assistantMessageId → 那个真 run
+   └─ 没命中                                → legacy:<messageId>(合成组)
+3. 两样都没有                         → "当时开着的那一组"
+```
+
+第二档里那一次查表**是真机逼出来的**:S3 首跑时
+`GET /api/sessions/:id/trace?last=1` 返回了 `totalRuns: 2`,第二棵是一个
+`runId: ''`、`requests: []` 的空组。原因是采集点**并不齐** ——
+`tool/audit` 只带 `messageId`,没有 `runId`(真机 27 条事件里唯一的一条),
+于是装配器为它凭空开了一棵 run。查表之后它归位到自己的 run;查不到的
+messageId(迁移当天那种混合文件里的老事件)仍然自成一个 legacy 组,
+**不缝进任何 run**——缝要靠猜,而猜出来的树看上去和真的一模一样。
+两条都有回归测试(`trace-assemble.test.ts` 场景 9 / 10)。
+
+> 顺带记下这个采集缺口本身:`tool/audit` 该带 `runId` 而没带。S3 是只读面,
+> **没有去改写侧**(改采集点是另一件事,且会动 T0 的门);装配器容下它,
+> 缺口留在这里等写侧一并收。
+
+### 12.4 只读是硬约束,不是形容词
+
+`getLiveSessionProjection` 的第一步是 `prepareSessionEventsOnce` —— 它会为上次
+进程死亡留下的未闭合 run **补写** `run/end`。一个只读出口触发它,就等于"看一眼
+轨迹改了账本",而 CLI / HTTP 随时可能在别的进程里跑。所以读实现的判据是
+**`hasLiveSessionProjection` 为真才用活投影**(那说明引擎已经在跑它了,prepare 早
+跑过),否则一律读文件。两条断言钉着:
+
+- 单测 `app/session/__tests__/trace.test.ts`:构造一个**未闭合的 run**,读完之后
+  整个 store 的文件内容逐字节相同;
+- 真机:CLI 跑两次(树 + `--response`)前后 store 的 `shasum` 相同。
+
+### 12.5 轨迹面板:加一层,不换投影
+
+面板的 ledger 与时间条带**照旧**读 `sessionEvents.list` 那份七类瘦事件 —— 那条路
+被 105+ 测试钉死,而且 v2 全集里的 `assistant/chunks` 带着每一条 delta,整份发给
+renderer 是几 MB。run 那一层单独走 `getTrace`,由
+`buildTrajectoryRuns(groups, trace)` 做一次**连接**:按 `request/start` 的 seq
+(`TrajectoryGroup.startSeq` ↔ `SessionTraceRequest.startSeq`)把已有的请求组挂到
+run 下面。两份解析会在"哪个请求属于哪次执行"上分叉,所以这里不重新解析事件。
+
+- 老会话(树上 `hasRunEvents: false`)→ `buildTrajectoryRuns` 返回空数组,面板
+  **照旧平铺**,一个 run 头都不画;
+- 连不上任何 run 的组进一格显式的 `run-unlinked`,不悄悄丢掉;
+- run 头用共享的 `LedgerGroupHeader`(不自绘第二种分组头),**刻意不 sticky** ——
+  两层同时吸顶会在滚动时叠成一堵墙;
+- 请求组的 inspector 多一节 `Response`:选中组时才去 `getResponseText`,取不到就
+  写"这次请求没有记下响应正文",不留空白。
+- `getTrace` 失败时面板退回平铺(`.catch(() => ({ trace: null }))`),不把 ledger
+  一起拖垮。
+
+### 12.6 门(全部实跑,2026-08-20)
+
+| 门 | 结果 |
+| --- | --- |
+| `bun run typecheck` | node 侧只剩 3 条既存红(`spaces/__tests__/provider-dials.test.ts`);web 侧 0 |
+| `ONETHING_SESSION_FREEZE=1 bun run test` | 10931 passed;失败全在并发进行中的日志线(gateway ×3、`rpc:logs` 名册 ×2)与既存的 `ui-token-vars` ×2 |
+| `bun run session:gate` | 0,none new |
+| `bun run boundary:gate` | 13,none new |
+| `bun run ui:gate` | 81,none new |
+| `bun run log:gate` | 822,none new(CLI 新代码走 `stdout()`,不是 `console`) |
+| `bun run transport:gate` | 5 个指标红,**全是既有的**。其中四个(`channels:IPC_CHANNELS`、`channels.ts` 行数、`bridge.ts`、`web.ts`)来自并发进行中的日志线;第五个 `http.ts` 在 HEAD 上就已经超基线(1989 → 2028)。删掉手写路由后 `http.ts` 与 HEAD **逐字节相同**(`git diff` 为空),这一格从 2059 回到 2028,**本期净贡献 0 行**(§12.1.1)。〔2028 是 gate 的计数口径(按 `split('\n')`),`wc -l` 是 2027;HEAD 同口径也是 2028〕 |
+| `bun run server:build` / `bun run build` | 绿 |
+| 真机(临时 store + 假 provider,`scratchpad/s3-realmachine.mjs`) | 27 条事件 → `POST /api/rpc {sessionEvents.getTrace, last:true}` 返回 1 run / 2 requests / 1 tool call;树里没有正文也没有 duration;`getResponseText` 折出 `let me check the time`;`../../etc` 形态的 sessionId 被域的门挡下(信封 ok、`data.trace === null`);**`GET /api/sessions/:id/trace` 返回 404**(手写路由确实不存在) |
+| 真机 CLI(同一个 store,直接读文件、无 daemon) | `onething trace` / `--last` / `--run` / `--json` / `--response 1` 全通;前后 store `shasum` 相同 |
+
+### 12.7 留下的尾巴
+
+| # | 事项 |
+| --- | --- |
+| 1 | `tool/audit` 没有 `runId`(§12.3)。写侧的采集缺口,S3 只是容下它 |
+| 2 | `log:tail --session --run`(设计文本 §2.7.5 的第四个出口)没做 —— 它属于日志线那半,由 `app.jsonl` 的 fields 过滤,与本期的账本树无关 |
+| 3 | `SessionTraceRequest.params`(`request/recipe.params`)原样透传,没有裁剪策略。今天它只有采样参数那几格,大了再说 |
+| 4 | 面板的 run 层没有折叠。`LedgerGroupHeader` 支持 `collapsible`,但折叠状态该记在哪(每会话?每窗口?)是一次呈现裁定,没有先斩 |
+| 5 | `getTrace` **没有分页**:一条几百个 run 的会话会一次返回整棵树。`last` 是唯一的减法。真要分页应该按 run 而不是按事件 |

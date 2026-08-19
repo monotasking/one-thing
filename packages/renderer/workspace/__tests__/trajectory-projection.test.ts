@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import type { SessionEventRecord } from '@shared/ipc/session-events.js'
+import type { SessionEventRecord, SessionTrace } from '@shared/ipc/session-events.js'
 import {
   buildTrajectoryGroups,
+  buildTrajectoryRuns,
   deriveTrajectoryTimeline,
   findTrajectoryToolRow,
   formatTrajectoryDuration,
   summarizeToolArguments,
   TRAJECTORY_IDLE_AXIS_MS,
   TRAJECTORY_MIN_SPAN_SIZE,
+  TRAJECTORY_UNGROUPED_RUN_KEY,
 } from '../trajectory-projection'
 
 function call(seq: number, time: number, callId: string, name = 'read'): SessionEventRecord {
@@ -273,5 +275,94 @@ describe('trajectory timeline', () => {
       gaps: [],
       axisTotal: 0,
     })
+  })
+})
+
+/* ── Run 分组(S3 只读查询面)───────────────────────────────────────────── */
+
+function traceOf(
+  runs: Array<{ key: string; runId?: string; startSeqs: number[]; model?: string; outcome?: string; kind?: string; preview?: string }>,
+  hasRunEvents = true,
+): SessionTrace {
+  return {
+    hasRunEvents,
+    eventCount: 0,
+    totalRuns: runs.length,
+    compactions: [],
+    runs: runs.map((run, index) => ({
+      key: run.key,
+      runId: run.runId ?? run.key,
+      synthetic: false,
+      firstSeq: index,
+      ...(run.kind ? { kind: run.kind as never } : {}),
+      ...(run.model ? { model: run.model } : {}),
+      ...(run.outcome ? { outcome: run.outcome as never } : {}),
+      ...(run.preview ? { trigger: { preview: run.preview } } : {}),
+      startTime: 1_000,
+      endTime: 3_000,
+      requests: run.startSeqs.map((startSeq, position) => ({
+        requestIndex: position + 1,
+        startSeq,
+        parts: [],
+        errors: [],
+        toolCalls: [],
+      })),
+    })),
+  }
+}
+
+describe('buildTrajectoryRuns', () => {
+  const events: SessionEventRecord[] = [
+    { seq: 1, time: 10, type: 'request/start', data: { requestIndex: 1, messageId: 'a1' } },
+    { seq: 2, time: 20, type: 'request/end', data: { requestIndex: 1 } },
+    { seq: 3, time: 30, type: 'request/start', data: { requestIndex: 2, messageId: 'a1' } },
+    { seq: 4, time: 40, type: 'request/end', data: { requestIndex: 2 } },
+    { seq: 5, time: 50, type: 'request/start', data: { requestIndex: 3, messageId: 'a2' } },
+    { seq: 6, time: 60, type: 'request/end', data: { requestIndex: 3 } },
+  ]
+
+  it('按 request/start 的 seq 把请求组挂到它所属的 run 下', () => {
+    const groups = buildTrajectoryGroups(events)
+    const runs = buildTrajectoryRuns(groups, traceOf([
+      { key: 'run_a', startSeqs: [1, 3], model: 'gpt-4o', outcome: 'completed', kind: 'send', preview: '你好' },
+      { key: 'run_b', startSeqs: [5], model: 'gpt-4o', outcome: 'aborted' },
+    ]))
+
+    expect(runs.map(run => run.key)).toEqual(['run_a', 'run_b'])
+    expect(runs[0].groups.map(group => group.requestIndex)).toEqual([1, 2])
+    expect(runs[1].groups.map(group => group.requestIndex)).toEqual([3])
+    expect(runs[0].triggerPreview).toBe('你好')
+    expect(runs[1].outcome).toBe('aborted')
+    // 时长不进数据结构:只有时刻。
+    expect(runs[0]).not.toHaveProperty('durationMs')
+  })
+
+  it('老会话(没有 run/start)返回空数组 —— 面板据此照旧平铺', () => {
+    const groups = buildTrajectoryGroups(events)
+    expect(buildTrajectoryRuns(groups, traceOf([], false))).toEqual([])
+    expect(buildTrajectoryRuns(groups, null)).toEqual([])
+    expect(buildTrajectoryRuns(groups, undefined)).toEqual([])
+  })
+
+  it('连不上任何 run 的组落进显式的一格,而不是被丢掉', () => {
+    const groups = buildTrajectoryGroups([
+      call(0, 5, 'orphan'),
+      ...events,
+    ])
+    const runs = buildTrajectoryRuns(groups, traceOf([{ key: 'run_a', startSeqs: [1, 3, 5] }]))
+
+    const ungrouped = runs.find(run => run.key === TRAJECTORY_UNGROUPED_RUN_KEY)
+    expect(ungrouped).toBeDefined()
+    expect(ungrouped!.groups).toHaveLength(1)
+    expect(ungrouped!.groups[0].requestIndex).toBe(0)
+  })
+
+  it('过滤过的树只画收到组的那些 run 头', () => {
+    const groups = buildTrajectoryGroups(events)
+    // `?run=` 过滤后的树:只有 run_b,但 groups 仍是完整的 list。
+    const runs = buildTrajectoryRuns(groups, traceOf([{ key: 'run_b', startSeqs: [5] }]))
+    expect(runs.map(run => run.key)).toEqual(['run_b', TRAJECTORY_UNGROUPED_RUN_KEY])
+    expect(runs[0].groups).toHaveLength(1)
+    expect(runs[1].groups).toHaveLength(2)
   })
 })

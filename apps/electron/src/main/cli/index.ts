@@ -60,6 +60,20 @@ async function main(): Promise<void> {
     case 'collab':
       await collabCommand(command, rest, parsed)
       break
+    case 'trace': {
+      // 第二个不经 daemon 的 scope(理由见 trace-command.ts 的头注):轨迹的
+      // 事实是一个纯追加文件,读它不该要求引擎活着 —— 排障时引擎往往正是
+      // 那个起不来的东西。
+      const lastFlag = parsed.flags.last
+      const responseFlag = stringFlag(parsed, 'response')
+      await (await import('./trace-command.js')).traceCommand(command, {
+        ...(stringFlag(parsed, 'run') ? { run: stringFlag(parsed, 'run') } : {}),
+        ...(lastFlag !== undefined ? { last: typeof lastFlag === 'string' ? Number(lastFlag) : true } : {}),
+        ...(parsed.flags.json ? { json: true } : {}),
+        ...(responseFlag !== undefined ? { response: Number(responseFlag) || 0 } : {}),
+      })
+      break
+    }
     case 'plugin':
       // 唯一不经 daemon 的 scope:插件只在桌面宿主执行,CLI daemon 不装配
       // 插件系统。这里直接动账本,装完由用户去桌面刷新(命令自己会说)。
@@ -183,18 +197,21 @@ async function daemonCommand(command = 'status', rest: string[], parsed: ParsedA
         client.close()
         await sleep(500)
       }
-      spawnDaemon(parsed.storePath, paths.logPath)
+      spawnDaemon(parsed.storePath, paths.bootLogPath)
       const restarted = await ensureDaemon({ storePath: parsed.storePath })
       console.log(formatJson(await restarted.request('daemon.status')))
       restarted.close()
       break
     }
     case 'logs': {
-      if (!fs.existsSync(paths.logPath)) {
+      // L2 之后正主是结构化的 `daemon.jsonl`;`daemon.log` 只剩配置之前的 stderr,
+      // 前者不在就退回后者(升级过来的机器上它可能还有历史内容)。
+      const logFile = fs.existsSync(paths.logPath) ? paths.logPath : paths.bootLogPath
+      if (!fs.existsSync(logFile)) {
         console.log(`No daemon log found at ${paths.logPath}`)
         return
       }
-      const text = fs.readFileSync(paths.logPath, 'utf8')
+      const text = fs.readFileSync(logFile, 'utf8')
       const lines = text.split(/\r?\n/)
       const count = Number(parsed.flags.n || parsed.flags.lines || 200)
       console.log(lines.slice(Math.max(0, lines.length - count)).join('\n'))
@@ -514,7 +531,7 @@ async function handleChatSlash(
 function parseArgs(argv: string[]): ParsedArgs {
   const args: string[] = []
   const flags: Record<string, string | boolean> = {}
-  const booleanFlags = new Set(['clear', 'daemon-child', 'force', 'h', 'help', 'json', 'y', 'yes'])
+  const booleanFlags = new Set(['clear', 'daemon-child', 'force', 'h', 'help', 'json', 'last', 'y', 'yes'])
   const valueShortFlags = new Set(['n', 's'])
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
@@ -603,11 +620,16 @@ Usage:
   onething plugin install <path.tgz | market id> [more...]
   onething plugin list
   onething plugin uninstall <id | package name>
+  onething trace <sessionId> [--run <id> | --last] [--json] [--response <requestIndex>]
 
 Global:
   --store <path>  Use a non-default store directory
 
 Notes:
+  trace reads <store>/sessions/<id>/events.jsonl directly (no daemon needed) and
+  never writes. --response prints the assistant text of one request, folded from
+  the recorded chunks.
+
   plugin commands only edit the npm ledger under <store>/plugins — plugins run on
   the desktop host, so a running desktop app needs Settings → Plugins → Refresh
   (or a restart) before an install/uninstall takes effect. Requires a local npm.

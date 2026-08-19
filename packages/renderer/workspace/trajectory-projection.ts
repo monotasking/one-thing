@@ -20,6 +20,7 @@
 import type {
   SessionEventRecord,
   SessionRequestEndUsage,
+  SessionTrace,
 } from '@shared/ipc/session-events.js'
 
 /** 一次工具调用在 ledger 上的一行(call 与 result 合成一行)。 */
@@ -69,6 +70,13 @@ export interface TrajectoryGroup {
   toolCount?: number
   /** 该组解析到的 header 事件 seq;没有 header(旧日志)时是 undefined。 */
   headerSeq?: number
+  /**
+   * 开这一组的那条 `request/start` 的 seq。
+   *
+   * 它是与轨迹树(S3)对接的**连接键**:`SessionTraceRequest.startSeq` 是同一
+   * 个数。不用"第几组"这种位置量 —— 位置会随孤儿组的出现平移,seq 是身份。
+   */
+  startSeq?: number
   /** 请求开始时刻。孤儿组(没有 request/start)取组内第一条事件的时刻。 */
   startTime?: number
   endTime?: number
@@ -220,6 +228,7 @@ export function buildTrajectoryGroups(
         current = {
           key: `request-${event.data.requestIndex}-${event.seq}`,
           requestIndex: event.data.requestIndex,
+          startSeq: event.seq,
           provider: lastHeader?.provider ?? '',
           model: lastHeader?.model ?? '',
           systemPromptHash: lastHeader?.hash ?? '',
@@ -601,4 +610,89 @@ export function findTrajectoryToolRow(
     }
   }
   return undefined
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Run 分组(S3 只读查询面,`docs/design/session-event-sourcing-2026-08.md` §12)
+ *
+ * 请求组(上面那一层)是 E1 就有的;run 是 T0 才加进事件词表的**上一层**:
+ * 一次执行 = 一条用户消息触发的、可能包含多次请求(工具循环 / 重试)的整段。
+ *
+ * 这里**不重新解析事件**:run 的事实由后端那棵轨迹树(`getTrace`)交付,这个
+ * 函数只做一次**连接** —— 按 `request/start` 的 seq 把已有的请求组挂到它所属的
+ * run 下面。两份解析会在"哪个请求属于哪次执行"上分叉,而分叉出来的树看上去
+ * 和真的一模一样。
+ *
+ * 老会话(只有 E0 七类、没有 `run/start`)返回**空数组**:面板据此照旧渲染
+ * 平铺的请求组。合成一层假的 run 头会让"这条会话记过执行账"这件事说谎。
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export interface TrajectoryRun {
+  /** run 的地址(真 runId;后端对合成组用 `legacy:<mid>`)。 */
+  key: string
+  runId: string
+  synthetic: boolean
+  kind?: string
+  agentId?: string
+  provider?: string
+  model?: string
+  outcome?: string
+  /** 触发这次执行的那条用户消息的开头(后端截断过的)。 */
+  triggerPreview?: string
+  startTime?: number
+  endTime?: number
+  groups: TrajectoryGroup[]
+}
+
+/** 连不上任何 run 的请求组落在这一格里 —— 显式收下,而不是悄悄丢掉。 */
+export const TRAJECTORY_UNGROUPED_RUN_KEY = 'run-unlinked'
+
+export function buildTrajectoryRuns(
+  groups: readonly TrajectoryGroup[],
+  trace: SessionTrace | null | undefined,
+): TrajectoryRun[] {
+  if (!trace?.hasRunEvents || !trace.runs.length) return []
+
+  const runByStartSeq = new Map<number, string>()
+  const runs: TrajectoryRun[] = trace.runs.map(run => {
+    for (const request of run.requests) {
+      if (request.startSeq !== undefined) runByStartSeq.set(request.startSeq, run.key)
+    }
+    return {
+      key: run.key,
+      runId: run.runId,
+      synthetic: run.synthetic,
+      ...(run.kind !== undefined ? { kind: run.kind } : {}),
+      ...(run.agentId !== undefined ? { agentId: run.agentId } : {}),
+      ...(run.provider !== undefined ? { provider: run.provider } : {}),
+      ...(run.model !== undefined ? { model: run.model } : {}),
+      ...(run.outcome !== undefined ? { outcome: run.outcome } : {}),
+      ...(run.trigger?.preview ? { triggerPreview: run.trigger.preview } : {}),
+      ...(run.startTime !== undefined ? { startTime: run.startTime } : {}),
+      ...(run.endTime !== undefined ? { endTime: run.endTime } : {}),
+      groups: [],
+    }
+  })
+  const byKey = new Map(runs.map(run => [run.key, run]))
+
+  const leftovers: TrajectoryGroup[] = []
+  for (const group of groups) {
+    const runKey = group.startSeq === undefined ? undefined : runByStartSeq.get(group.startSeq)
+    const run = runKey === undefined ? undefined : byKey.get(runKey)
+    if (run) run.groups.push(group)
+    else leftovers.push(group)
+  }
+
+  // 只保留真的收到组的 run:`?run=`/`--last` 过滤过的树里,别的 run 的组仍在
+  // `groups` 里(它来自完整的 `list`),但那些 run 的头这次不该画出来。
+  const result = runs.filter(run => run.groups.length > 0)
+  if (leftovers.length) {
+    result.push({
+      key: TRAJECTORY_UNGROUPED_RUN_KEY,
+      runId: '',
+      synthetic: true,
+      groups: leftovers,
+    })
+  }
+  return result
 }

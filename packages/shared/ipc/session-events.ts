@@ -2,6 +2,18 @@ import type {
   SessionEventRecord,
   SessionToolCallInspection,
 } from "@onething/runtime/sessions/session-events";
+import type {
+  SessionTrace,
+  SessionTraceCompaction,
+  SessionTraceRequest,
+  SessionTraceRequestError,
+  SessionTraceResponsePart,
+  SessionTraceResponseText,
+  SessionTraceRun,
+  SessionTraceToolAudit,
+  SessionTraceToolCall,
+  SessionTracePermission,
+} from "@onething/core/session";
 import { defineRouter } from "./router.js";
 
 /**
@@ -26,6 +38,24 @@ export type {
   SessionToolResultEvent,
 } from "@onething/runtime/sessions/session-events";
 
+/**
+ * 轨迹树的形状住在 core(`packages/core/session/trace/`),这里同样只是
+ * `export type` 的再导出 —— core 是零依赖的,但走同一条纪律让契约面保持
+ * 「一个形状一个出处」。
+ */
+export type {
+  SessionTrace,
+  SessionTraceCompaction,
+  SessionTracePermission,
+  SessionTraceRequest,
+  SessionTraceRequestError,
+  SessionTraceResponsePart,
+  SessionTraceResponseText,
+  SessionTraceRun,
+  SessionTraceToolAudit,
+  SessionTraceToolCall,
+};
+
 export interface ListSessionEventsRequest {
   sessionId: string;
 }
@@ -45,6 +75,32 @@ export interface InspectSessionToolCallResponse {
   inspection: SessionToolCallInspection | null;
 }
 
+export interface GetSessionTraceRequest {
+  sessionId: string;
+  /** 只要这一组(`SessionTraceRun.key`,真 runId 也认)。 */
+  run?: string;
+  /** 只要最后 N 组;`true` = 1。与 `run` 同时给时 `run` 优先。 */
+  last?: number | boolean;
+}
+
+export interface GetSessionTraceResponse {
+  /** 会话不存在 / id 不合法时是 `null`;没有事件是一棵空树,不是 `null`。 */
+  trace: SessionTrace | null;
+}
+
+export interface GetSessionTraceResponseTextRequest {
+  sessionId: string;
+  /** run 的地址(真 runId;合成组没有正文,折出来必然是空)。 */
+  run: string;
+  /** 缺席 = 整个 run 的正文。 */
+  request?: number;
+}
+
+export interface GetSessionTraceResponseTextResponse {
+  /** 正文是**按需**折出来的:轨迹树上永远没有它(S3 纪律 2)。 */
+  response: SessionTraceResponseText | null;
+}
+
 /**
  * 会话事件日志的读取域(主线 E1 —— 轨迹面板的唯一数据来源)。
  *
@@ -58,9 +114,19 @@ export type SessionEventsRoutes = {
     input: InspectSessionToolCallRequest;
     output: InspectSessionToolCallResponse;
   };
+  /** S3 查询面:同一份日志装配成 run → request → toolCall 的树。 */
+  getTrace: {
+    input: GetSessionTraceRequest;
+    output: GetSessionTraceResponse;
+  };
+  /** S3 查询面:一次请求的响应正文(`assistant/chunks` 的 fold)。 */
+  getResponseText: {
+    input: GetSessionTraceResponseTextRequest;
+    output: GetSessionTraceResponseTextResponse;
+  };
 };
 
 export const sessionEventsRouter = defineRouter<SessionEventsRoutes>(
   "sessionEvents",
-  ["list", "inspectCall"],
+  ["list", "inspectCall", "getTrace", "getResponseText"],
 );

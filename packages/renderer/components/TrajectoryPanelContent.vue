@@ -137,92 +137,118 @@
         class="trajectory-ledger"
       >
         <template v-if="groups.length">
-          <section
-            v-for="group in groups"
-            :key="group.key"
-            class="trajectory-group"
+          <template
+            v-for="run in runSections"
+            :key="run.key"
           >
+            <!--
+              Run 头(S3)。只有日志里真有 `run/start` 时才画 —— 老会话没有执行账,
+              合成一层假的 run 头会让"这条会话记过执行账"这件事说谎。
+            -->
             <LedgerGroupHeader
-              sticky
-              :label="groupLabel(group)"
-              :count="toolCountOf(group)"
+              v-if="run.showHeader"
+              class="trajectory-run-head"
+              :label="runLabel(run)"
+              :count="run.groups.length"
             >
               <template #trailing>
-                <!--
+                <span class="run-outcome">{{ runOutcomeText(run) }}</span>
+              </template>
+            </LedgerGroupHeader>
+            <p
+              v-if="run.showHeader && run.triggerPreview"
+              class="run-trigger"
+            >
+              {{ run.triggerPreview }}
+            </p>
+
+            <section
+              v-for="group in run.groups"
+              :key="group.key"
+              class="trajectory-group"
+            >
+              <LedgerGroupHeader
+                sticky
+                :label="groupLabel(group)"
+                :count="toolCountOf(group)"
+              >
+                <template #trailing>
+                  <!--
                   组头右端那个时刻**是个按钮**(点它看这次请求的信封)。
                   走全局 `.text-action` 而不是自绘:选中态用它自带的 `is-primary`
                   修饰符,不写自己的颜色规则 —— 自写 `.group-open.is-active` 的
                   颜色会与 `.text-action:hover:not(:disabled)` 撞成 (0,3,0) 平局,
                   由样式表注入顺序裁决(ui-system §1 的平局判例)。
                 -->
-                <button
-                  type="button"
-                  class="group-open text-action"
-                  :class="{ 'is-primary': isGroupSelected(group) }"
-                  :aria-label="`查看请求 ${group.requestIndex} 的信封`"
-                  @click="selectGroup(group)"
-                >
-                  {{ formatTrajectoryTime(group.startTime) }}
-                </button>
-              </template>
-            </LedgerGroupHeader>
+                  <button
+                    type="button"
+                    class="group-open text-action"
+                    :class="{ 'is-primary': isGroupSelected(group) }"
+                    :aria-label="`查看请求 ${group.requestIndex} 的信封`"
+                    @click="selectGroup(group)"
+                  >
+                    {{ formatTrajectoryTime(group.startTime) }}
+                  </button>
+                </template>
+              </LedgerGroupHeader>
 
-            <div class="trajectory-rows">
-              <template
-                v-for="row in group.rows"
-                :key="row.key"
-              >
-                <PanelLedgerRow
-                  v-if="row.kind === 'tool'"
-                  :ref="element => registerRow(row.callId, element)"
-                  class="trajectory-row"
-                  :label="row.name"
-                  :meta="row.argsSummary"
-                  :active="isRowSelected(row)"
-                  :muted="row.pending"
-                  role="button"
-                  tabindex="0"
-                  :data-call-id="row.callId"
-                  @click="selectRow(row)"
-                  @keydown.enter.prevent="selectRow(row)"
-                  @keydown.space.prevent="selectRow(row)"
+              <div class="trajectory-rows">
+                <template
+                  v-for="row in group.rows"
+                  :key="row.key"
                 >
-                  <!--
+                  <PanelLedgerRow
+                    v-if="row.kind === 'tool'"
+                    :ref="element => registerRow(row.callId, element)"
+                    class="trajectory-row"
+                    :label="row.name"
+                    :meta="row.argsSummary"
+                    :active="isRowSelected(row)"
+                    :muted="row.pending"
+                    role="button"
+                    tabindex="0"
+                    :data-call-id="row.callId"
+                    @click="selectRow(row)"
+                    @keydown.enter.prevent="selectRow(row)"
+                    @keydown.space.prevent="selectRow(row)"
+                  >
+                    <!--
                     `lead` 是账线行的首列固定槽位(Tasks 的 mono 时间列同款)。
                     调用时刻进这一列,于是整份 ledger 有了一条连续的时刻沟 ——
                     工具行、刻度行、组头右端读的都是同一种 mono tabular 时刻。
                   -->
-                  <template #lead>
-                    <span class="row-time">{{ formatTrajectoryTime(row.callTime) }}</span>
-                  </template>
-                  <template #trail>
-                    <span
-                      class="row-timing"
-                      :class="{ 'is-pending': row.pending, 'is-error': row.isError }"
-                    >{{ rowTiming(row) }}</span>
-                  </template>
-                </PanelLedgerRow>
+                    <template #lead>
+                      <span class="row-time">{{ formatTrajectoryTime(row.callTime) }}</span>
+                    </template>
+                    <template #trail>
+                      <span
+                        class="row-timing"
+                        :class="{ 'is-pending': row.pending, 'is-error': row.isError }"
+                      >{{ rowTiming(row) }}</span>
+                    </template>
+                  </PanelLedgerRow>
 
-                <!--
+                  <!--
                   刻度行不是可 inspect 的对象,只是时间上的记号,所以比账线行轻
                   一档。种类判据用 `tickKind`(**不是** `label`)—— 拿中文文案
                   比对等于把一次文案微调变成一次功能回归,与条带同一条纪律。
                 -->
-                <div
-                  v-else
-                  class="trajectory-tick"
-                  :class="`is-${row.tickKind}`"
-                >
-                  <span class="tick-time">{{ formatTrajectoryTime(row.time) }}</span>
-                  <span class="tick-label">{{ row.label }}</span>
-                  <span
-                    class="tick-rule"
-                    aria-hidden="true"
-                  />
-                </div>
-              </template>
-            </div>
-          </section>
+                  <div
+                    v-else
+                    class="trajectory-tick"
+                    :class="`is-${row.tickKind}`"
+                  >
+                    <span class="tick-time">{{ formatTrajectoryTime(row.time) }}</span>
+                    <span class="tick-label">{{ row.label }}</span>
+                    <span
+                      class="tick-rule"
+                      aria-hidden="true"
+                    />
+                  </div>
+                </template>
+              </div>
+            </section>
+          </template>
         </template>
 
         <!-- 空态:旧会话没有事件日志是**正常**的,不是坏了。 -->
@@ -309,6 +335,33 @@
           >
             这次请求没有记下 usage
           </p>
+
+          <!--
+            正文(S3)。**按需取**:轨迹树上永远没有它(树带正文会把一次列表
+            请求变成几 MB),点开这一格才走 `getResponseText` 折一遍 chunks。
+          -->
+          <LedgerGroupHeader label="Response" />
+          <p
+            v-if="responseState === 'unavailable'"
+            class="inspector-unavailable"
+          >
+            这次请求没有记下响应正文(老日志只记了指纹)
+          </p>
+          <p
+            v-else-if="responseState === 'loading'"
+            class="inspector-unavailable"
+          >
+            读取正文…
+          </p>
+          <template v-else-if="responseText">
+            <p
+              v-if="responseText.reasoning"
+              class="inspector-desc"
+            >
+              {{ responseText.reasoning }}
+            </p>
+            <pre class="inspector-pre">{{ responseText.text || '(空正文)' }}</pre>
+          </template>
         </template>
 
         <template v-else-if="selectedRow">
@@ -436,6 +489,8 @@ import { computed, nextTick, ref, watch, type ComponentPublicInstance } from 'vu
 import { Route } from 'lucide-vue-next'
 import type {
   SessionToolCallInspection,
+  SessionTrace,
+  SessionTraceResponseText,
 } from '@shared/ipc/session-events.js'
 import PanelShell from '@/components/workspace/PanelShell.vue'
 import LedgerGroupHeader from '@/components/workspace/LedgerGroupHeader.vue'
@@ -445,12 +500,14 @@ import { sessionEventsApi } from '@/platform/session-events-client'
 import { useSessionsStore } from '@/stores/sessions'
 import {
   buildTrajectoryGroups,
+  buildTrajectoryRuns,
   deriveTrajectoryTimeline,
   findTrajectoryToolRow,
   formatTrajectoryDuration,
   formatTrajectoryTime,
   type TrajectoryGroup,
   type TrajectoryLaneId,
+  type TrajectoryRun,
   type TrajectoryTimelineGap,
   type TrajectoryTimelineMode,
   type TrajectoryTimelineSpan,
@@ -500,6 +557,10 @@ const groups = ref<TrajectoryGroup[]>([])
 const selectedCallId = ref('')
 const selectedGroupKey = ref('')
 const inspection = ref<SessionToolCallInspection | null>(null)
+/** 轨迹树(S3)。只用来给请求组分 run —— ledger 与条带仍读 `list` 那份事件。 */
+const trace = ref<SessionTrace | null>(null)
+const responseText = ref<SessionTraceResponseText | null>(null)
+const responseState = ref<'idle' | 'loading' | 'ready' | 'unavailable'>('idle')
 const inspectorTab = ref<InspectorTabId>('payload')
 const missingNotice = ref('')
 
@@ -599,6 +660,41 @@ function registerRow(callId: string, element: Element | ComponentPublicInstance 
   if (el instanceof HTMLElement) rowElements.set(callId, el)
 }
 
+/**
+ * 画出来的分段。日志里有 run 就按 run 分段并画头;没有(老会话)就退回**一段
+ * 无头**的平铺 —— 与 S3 之前逐字节相同的观感。
+ */
+const runSections = computed<Array<TrajectoryRun & { showHeader: boolean }>>(() => {
+  const runs = buildTrajectoryRuns(groups.value, trace.value)
+  if (!runs.length) {
+    return [{ key: '__flat', runId: '', synthetic: true, groups: groups.value, showHeader: false }]
+  }
+  return runs.map(run => ({ ...run, showHeader: true }))
+})
+
+/** 组 → 它所属 run 的 runId(取正文要它)。连不上就空串。 */
+const runIdByGroupKey = computed(() => {
+  const map = new Map<string, string>()
+  for (const run of runSections.value) {
+    for (const group of run.groups) map.set(group.key, run.runId)
+  }
+  return map
+})
+
+function runLabel(run: TrajectoryRun): string {
+  const parts = [run.kind ?? 'run']
+  if (run.model) parts.push(run.model)
+  if (run.agentId) parts.push(run.agentId)
+  return parts.join(' · ')
+}
+
+/** 结局 + 现算的时长。时长不进任何数据结构(与工具行同一条纪律)。 */
+function runOutcomeText(run: TrajectoryRun): string {
+  const outcome = run.outcome ?? '进行中'
+  if (run.startTime === undefined || run.endTime === undefined) return outcome
+  return `${outcome} · ${formatTrajectoryDuration(run.endTime - run.startTime)}`
+}
+
 const selectedRow = computed<TrajectoryToolRow | null>(() => {
   if (!selectedCallId.value) return null
   return findTrajectoryToolRow(groups.value, selectedCallId.value)?.row ?? null
@@ -665,6 +761,35 @@ function selectGroup(group: TrajectoryGroup): void {
   selectedGroupKey.value = group.key
   selectedCallId.value = ''
   inspection.value = null
+  void loadResponseText(group)
+}
+
+/**
+ * 一次请求的响应正文。走 `getResponseText`(后端从 `assistant/chunks` 折),
+ * 不从这边的事件里再折一遍:`list` 交付的是七类瘦事件,里面根本没有 chunks。
+ */
+async function loadResponseText(group: TrajectoryGroup): Promise<void> {
+  responseText.value = null
+  const runId = runIdByGroupKey.value.get(group.key) ?? ''
+  if (!sessionId.value || !runId) {
+    responseState.value = 'unavailable'
+    return
+  }
+  responseState.value = 'loading'
+  const key = group.key
+  try {
+    const result = await sessionEventsApi.getResponseText({
+      sessionId: sessionId.value,
+      run: runId,
+      request: group.requestIndex,
+    })
+    if (selectedGroupKey.value !== key) return
+    responseText.value = result.response
+    responseState.value = result.response ? 'ready' : 'unavailable'
+  } catch {
+    if (selectedGroupKey.value !== key) return
+    responseState.value = 'unavailable'
+  }
 }
 
 function selectRow(row: TrajectoryToolRow): void {
@@ -697,12 +822,19 @@ async function load(): Promise<void> {
   }
   loading.value = true
   try {
-    const response = await sessionEventsApi.list({ sessionId: target })
+    // 两条读并发:`list` 是 ledger 与条带的事实,`getTrace` 只提供 run 那一层。
+    // 树读不出来(老后端 / 域没注册)不该把面板也拖垮 —— 那时退回平铺。
+    const [response, traceResult] = await Promise.all([
+      sessionEventsApi.list({ sessionId: target }),
+      sessionEventsApi.getTrace({ sessionId: target }).catch(() => ({ trace: null })),
+    ])
     if (sessionId.value !== target) return
     groups.value = buildTrajectoryGroups(response.events)
+    trace.value = traceResult.trace
   } catch (error) {
     if (sessionId.value !== target) return
     groups.value = []
+    trace.value = null
     errorText.value = error instanceof Error ? error.message : String(error)
   } finally {
     if (sessionId.value === target) loading.value = false
@@ -766,6 +898,9 @@ watch(sessionId, () => {
   selectedCallId.value = ''
   selectedGroupKey.value = ''
   inspection.value = null
+  trace.value = null
+  responseText.value = null
+  responseState.value = 'idle'
   missingNotice.value = ''
   rowElements.clear()
   // hover 记的是上一份投影里的 span 对象,换会话后它指向的账已经不在了。
@@ -1054,6 +1189,39 @@ defineExpose({ reload })
 
 .trajectory-group {
   min-width: 0;
+}
+
+/* ---- run 分段(S3)----
+ * run 头比请求组头**重一档**:它是上一层。手法只有两处(上留白 + 不吸顶),
+ * 不自绘第二种分组头 —— 版式配方仍是 `LedgerGroupHeader` 那一份。
+ * 请求组头是 sticky 的,run 头**刻意不是**:两层同时吸顶会在滚动时叠成一堵墙。
+ */
+.trajectory-run-head {
+  margin-top: 10px;
+}
+
+.trajectory-run-head:first-child {
+  margin-top: 0;
+}
+
+.run-outcome {
+  flex: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--ui-text-faint-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 触发消息只留一行:它是**认出这次执行**的线索,不是要在这里读的正文。 */
+.run-trigger {
+  margin: 0 0 2px;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ui-text-muted-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trajectory-rows {
