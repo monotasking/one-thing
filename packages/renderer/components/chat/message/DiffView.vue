@@ -307,6 +307,17 @@ function generateCustomCSS(): string {
 
       --diffs-font-family: var(--font-mono);
     }
+
+    /* Line numbers are 'position: sticky; left: 0' in the library so they
+       stay put while a long line scrolls horizontally. Every sticky box in a
+       composited scroller is its own compositing candidate, so a 400-line
+       write/diff pane brought 400 layers — and every animation frame anywhere
+       on the page (a tool row folding, a rail collapsing) paid ~40–100ms of
+       layerization for as long as the pane was open (measured 2026-08-19).
+       Static numbers scroll with the code; the trade is worth it. */
+    [data-column-number] {
+      position: static;
+    }
   `.trim()
 }
 

@@ -201,6 +201,10 @@ function formatSummarySection(label: string, value: unknown): string {
 }
 
 .event-toggle {
+  /* Button's skeleton centres its content and this toggle is `flex: 1`, so
+     without this the label drifted to the middle of the row while the mark
+     stayed at the left edge (2026-08-19). The row reads mark → title → meta. */
+  justify-content: flex-start;
   border: 0;
   padding: 0;
   background: transparent;

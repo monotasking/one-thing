@@ -98,11 +98,8 @@
           v-else-if="commandModeActive && commandModeHint"
           class="composer-frame-hint"
         >{{ commandModeHint }}</span><template v-else-if="generationFrameActive"><span
-          v-if="generation.toolName.value"
-          class="composer-frame-hint composer-frame-tool"
-        >{{ generation.toolName.value }}</span><span
           class="composer-frame-elapsed"
-        >{{ generation.phaseElapsed.value }}</span><span
+        >{{ generation.elapsed.value }}</span><span
           v-if="generation.tokens.value"
           class="composer-frame-tokens"
         >{{ generation.tokens.value }}</span></template></span>
@@ -1322,8 +1319,8 @@ const voiceConfigurationError = computed(() => {
     if (!/^wss?:\/\//i.test(url)) return 'FunASR streaming ASR needs a ws:// or wss:// URL'
   }
   if (voice.asr.provider === 'openrouter-transcribe') {
-    const voiceKey = voice.asr.openrouter.apiKey?.trim()
-    const globalKey = (settingsStore.settings.ai.providers.openrouter as any)?.apiKey?.trim()
+    const voiceKey = voice.asr.openrouter?.apiKey?.trim()
+    const globalKey = (settingsStore.settings.ai.providers?.openrouter as any)?.apiKey?.trim()
     if (!voiceKey && !globalKey) return 'Add an OpenRouter API key in Voice settings'
   }
   if (voice.asr.provider === 'funasr-server' && !voice.asr.funasr.url.trim()) {
@@ -1331,7 +1328,7 @@ const voiceConfigurationError = computed(() => {
   }
   if (voice.asr.provider === 'openai-transcribe') {
     const voiceKey = voice.asr.openai.apiKey?.trim()
-    const globalKey = (settingsStore.settings.ai.providers.openai as any)?.apiKey?.trim()
+    const globalKey = (settingsStore.settings.ai.providers?.openai as any)?.apiKey?.trim()
     if (!voiceKey && !globalKey) return 'OpenAI transcription is selected, but no OpenAI API key is configured'
   }
   if (voice.asr.provider === 'doubao') {
@@ -2129,7 +2126,7 @@ async function prepareVoiceInput() {
 
   if (nextVoice.asr.provider === 'openai-transcribe') {
     const openAIKey = nextVoice.asr.openai.apiKey?.trim()
-    const globalOpenAIKey = (currentSettings.ai.providers.openai as any)?.apiKey?.trim()
+    const globalOpenAIKey = (currentSettings.ai.providers?.openai as any)?.apiKey?.trim()
     if (!openAIKey && !globalOpenAIKey) {
       nextVoice.asr.provider = 'funasr-stream'
       changed = true
@@ -2164,8 +2161,8 @@ async function prepareVoiceInput() {
   }
 
   if (nextVoice.asr.provider === 'openrouter-transcribe') {
-    const globalOpenRouterKey = (currentSettings.ai.providers.openrouter as any)?.apiKey?.trim()
-    const openRouterVoiceKey = nextVoice.asr.openrouter.apiKey?.trim()
+    const globalOpenRouterKey = (currentSettings.ai.providers?.openrouter as any)?.apiKey?.trim()
+    const openRouterVoiceKey = nextVoice.asr.openrouter?.apiKey?.trim()
     const hasOpenRouterKey = Boolean(openRouterVoiceKey || globalOpenRouterKey)
     if (!hasOpenRouterKey) {
       void platformApi.openSettingsWindow()
@@ -2508,7 +2505,7 @@ defineExpose({
   user-select: none;
 }
 
-/* --- generation readout: WAITING 1.2s / THINKING 4.8s · ≈420 tok / RUNNING bash 3.0s --- */
+/* --- generation readout: WAITING 1s / THINKING 4s · ≈420 tokens / WORKING 12s (tool detail lives in the steps panel) --- */
 .composer-frame-label.generating {
   display: inline-flex;
   align-items: baseline;
@@ -2524,13 +2521,6 @@ defineExpose({
 
 .composer-frame-label.phase-approval {
   color: var(--ui-status-warning-fg, var(--ui-accent-primary-fg));
-}
-
-.composer-frame-tool {
-  margin-left: 0.6em;
-  font-weight: 500;
-  letter-spacing: 0.4px;
-  text-transform: none;
 }
 
 .composer-frame-tokens {

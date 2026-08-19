@@ -36,6 +36,7 @@ import {
 	pushImageLoading,
 	pushDataStepsIfMissing,
 	pushWaiting,
+	rebuildLoadedContentParts,
 	removeTransientIndicators,
 	upsertToolCall,
 } from "./helpers/content-parts";
@@ -971,8 +972,9 @@ export const useChatStore = defineStore("chat", () => {
 	// ============ Helper Functions ============
 
 	/**
-	 * Rebuild contentParts for a message from content and/or toolCalls
-	 * This is needed when loading historical messages from storage
+	 * Rebuild contentParts for a message from content and/or steps/toolCalls.
+	 * This is needed when loading historical messages from storage; the
+	 * judgement itself is `rebuildLoadedContentParts` (helpers/content-parts).
 	 */
 	function rebuildContentParts(message: ChatMessage): ChatMessage {
 		if (message.role !== "assistant") return message;
@@ -984,15 +986,7 @@ export const useChatStore = defineStore("chat", () => {
 
 		if (message.contentParts && message.contentParts.length > 0) return message;
 
-		const parts: ChatMessage["contentParts"] = [];
-
-		if (message.content) {
-			parts.push({ type: "text", content: message.content });
-		}
-
-		if (message.toolCalls && message.toolCalls.length > 0) {
-			parts.push({ type: "tool-call", toolCalls: [...message.toolCalls] });
-		}
+		const parts = rebuildLoadedContentParts(message);
 
 		if (parts.length > 0) {
 			return { ...message, contentParts: parts };

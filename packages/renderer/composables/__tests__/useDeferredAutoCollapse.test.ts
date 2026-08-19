@@ -5,6 +5,8 @@ import { computed, defineComponent, h, nextTick, ref } from 'vue'
 import {
   useDeferredAutoCollapse,
   intersectsScrollerViewport,
+  resolveDeferredExpanded,
+  resolveDeferredExpandedKeys,
   type DeferredAutoCollapseGate,
   type DeferredReleaseReason,
 } from '../useDeferredAutoCollapse'
@@ -233,5 +235,42 @@ describe('useDeferredAutoCollapse gate', () => {
     expect(harness.gate.request('row', orphan)).toBe('collapse')
     expect(harness.gate.request('missing', null)).toBe('collapse')
     harness.unmount()
+  })
+})
+
+/**
+ * 合成态(ProcessRail 与 StepsPanel 共用的那一份判定)。两种形态的差异是刻意
+ * 保留的:单键形态里用户票压过挂起票,多键形态的 `base` 已经把 intent 揉进去,
+ * 只剩 auto | deferred。
+ */
+describe('resolveDeferredExpanded', () => {
+  it('用户 intent 一锤定音,挂起票掀不翻', () => {
+    expect(resolveDeferredExpanded({ recorded: false, userToggled: null, auto: true, deferred: true })).toBe(false)
+    expect(resolveDeferredExpanded({ recorded: true, userToggled: null, auto: false, deferred: false })).toBe(true)
+  })
+
+  it('没有 intent 记录时听本实例的 toggle', () => {
+    expect(resolveDeferredExpanded({ recorded: undefined, userToggled: false, auto: true, deferred: true })).toBe(false)
+    expect(resolveDeferredExpanded({ recorded: undefined, userToggled: true, auto: false, deferred: false })).toBe(true)
+  })
+
+  it('两票都缺席时 auto 与 deferred 取或', () => {
+    expect(resolveDeferredExpanded({ recorded: undefined, userToggled: null, auto: false, deferred: false })).toBe(false)
+    expect(resolveDeferredExpanded({ recorded: undefined, userToggled: null, auto: true, deferred: false })).toBe(true)
+    expect(resolveDeferredExpanded({ recorded: undefined, userToggled: null, auto: false, deferred: true })).toBe(true)
+  })
+})
+
+describe('resolveDeferredExpandedKeys', () => {
+  it('undefined 原样透传 —— CollapseGroup 保持不受控', () => {
+    expect(resolveDeferredExpandedKeys(undefined, ['a'])).toBeUndefined()
+  })
+
+  it('没有挂起时就是 auto 的结果集(保序)', () => {
+    expect(resolveDeferredExpandedKeys(['a', 'b'], [])).toEqual(['a', 'b'])
+  })
+
+  it('挂起的 key 补在后面,已在集合里的不重复', () => {
+    expect(resolveDeferredExpandedKeys(['a', 'b'], ['b', 'c'])).toEqual(['a', 'b', 'c'])
   })
 })

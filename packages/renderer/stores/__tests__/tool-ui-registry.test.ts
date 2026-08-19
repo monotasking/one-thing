@@ -3,7 +3,7 @@ import {
   getToolUiCategory,
   getToolDisplayLabel,
   getToolIcon,
-  getStatusLabel,
+  getToolStatusBadgeText,
 } from '../helpers/tool-ui-registry'
 
 describe('tool-ui-registry', () => {
@@ -15,7 +15,6 @@ describe('tool-ui-registry', () => {
     expect(getToolUiCategory('web_search')).toBe('search')
     expect(getToolUiCategory('web-open')).toBe('search')
     expect(getToolUiCategory('bash')).toBe('console')
-    expect(getToolUiCategory('fart')).toBe('fart')
     expect(getToolUiCategory('whatever')).toBe('tool')
   })
 
@@ -36,10 +35,21 @@ describe('tool-ui-registry', () => {
     expect(getToolIcon('totally_unknown')).toBeTruthy()
   })
 
-  it('labels every render status', () => {
-    expect(getStatusLabel('awaiting-confirmation')).toBe('Needs approval')
-    expect(getStatusLabel('streaming-input')).toBe('Receiving')
-    expect(getStatusLabel('received')).toBe('Running')
+  // 这些字面量是 StepsPanel 行徽标的现网输出,逐字节钉死(含中文的 '失败')。
+  it('badges only the statuses the reader must act on or mourn', () => {
+    expect(getToolStatusBadgeText('awaiting-confirmation')).toBe('Needs approval')
+    expect(getToolStatusBadgeText('awaiting-confirmation', { permissionQueued: true }))
+      .toBe('Waiting for approval')
+    expect(getToolStatusBadgeText('cancelled')).toBe('Cancelled')
+    expect(getToolStatusBadgeText('rejected')).toBe('Rejected')
+    expect(getToolStatusBadgeText('failed')).toBe('失败')
+  })
+
+  it('renders no badge for the states the row already shows by icon and duration', () => {
+    for (const status of ['queued', 'pending', 'streaming-input', 'received', 'executing', 'completed'] as const) {
+      expect(getToolStatusBadgeText(status)).toBe('')
+      expect(getToolStatusBadgeText(status, { permissionQueued: true })).toBe('')
+    }
   })
 
 })

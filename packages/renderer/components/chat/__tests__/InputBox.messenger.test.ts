@@ -755,21 +755,35 @@ describe("InputBox generation readout", () => {
 		expect(label.exists()).toBe(true);
 		expect(label.classes()).toContain("generating");
 		expect(label.text()).toContain("THINKING");
-		expect(label.text()).toMatch(/4\.[89]s/);
-		expect(label.text()).toContain("≈420 tok");
+		expect(label.text()).toMatch(/THINKING4s/);
+		expect(label.text()).toContain("≈420 tokens");
 	});
 
-	it("tool:RUNNING + 工具名;精确 token 不带 ≈", async () => {
+	it("tool:WORKING,不露工具名,用时走整条流的钟;精确 token 按个数不带 ≈", async () => {
 		const now = Date.now();
 		generatingWith({ phase: "tool", toolName: "bash", phaseSince: now - 1000, startedAt: now - 9000, outputTokens: 1250, outputTokensExact: true, inputTokens: 3000 });
 		const wrapper = mountInputBox("chat-1");
 		await settle();
 
 		const label = wrapper.find(".composer-frame-label");
-		expect(label.text()).toContain("RUNNING");
-		expect(label.text()).toContain("bash");
-		expect(label.text()).toContain("1.3k tok");
+		expect(label.text()).toContain("WORKING");
+		expect(label.text()).not.toContain("RUNNING");
+		expect(label.text()).not.toContain("bash");
+		expect(label.text()).toMatch(/WORKING9s/);
+		expect(label.text()).toContain("1250 tokens");
 		expect(label.text()).not.toContain("≈");
+	});
+
+	it("token 过万才折成 k;用时不带小数", async () => {
+		const now = Date.now();
+		generatingWith({ phase: "responding", phaseSince: now - 65_400, startedAt: now - 70_000, outputTokens: 12_345, outputTokensExact: true, inputTokens: null });
+		const wrapper = mountInputBox("chat-1");
+		await settle();
+
+		const label = wrapper.find(".composer-frame-label");
+		expect(label.text()).toContain("12.3k tokens");
+		expect(label.text()).toContain("1:05");
+		expect(label.text()).not.toMatch(/\d\.\ds/);
 	});
 
 	it("空闲:无标签、无 stop 角标", async () => {

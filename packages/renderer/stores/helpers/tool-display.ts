@@ -144,7 +144,6 @@ export function buildToolActivityTarget(toolNameInput: string | undefined, toolC
   }
   if (toolName === 'calculator') return valueOf(toolCall, 'expression') || 'expression'
   if (toolName === 'get_current_time') return valueOf(toolCall, 'timezone') || 'current time'
-  if (toolName === 'fart') return 'fart'
   if (isLegacyMcpTool(toolName)) return toolCall?.toolName || toolCall?.toolId || 'MCP tool'
   return ''
 }
@@ -176,7 +175,6 @@ export function buildToolPermissionTitle(toolCall: ToolCall): string {
   if (isMcpSearchTool(toolName)) return buildMcpSearchPermissionTitle(toolCall)
   if (toolName === 'calculator') return `Calculate ${valueOf(toolCall, 'expression') || 'expression'}`
   if (toolName === 'get_current_time') return 'Get current time'
-  if (toolName === 'fart') return 'Summon fart'
   if (isLegacyMcpTool(toolName)) return `Call ${toolCall.toolName || toolCall.toolId || 'MCP tool'}`
 
   return `Call ${toolCall.toolName || toolCall.toolId || 'tool'}`

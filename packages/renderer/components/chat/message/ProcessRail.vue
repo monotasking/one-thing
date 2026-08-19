@@ -25,13 +25,16 @@
       >
         <polyline points="9 6 15 12 9 18" />
       </svg>
-      <span class="process-rail-summary">{{ summary }}</span>
-      <!-- Duration sits outside the uppercased summary so the unit keeps
-           its lowercase "s" (3.9s, not 3.9S). -->
-      <span
-        v-if="duration"
-        class="process-rail-duration"
-      >{{ duration }}</span>
+      <!-- The same one-line grammar as every other process header in the
+           message (ThoughtHeader): label · meta · detail. Live: "Working ·
+           12s · bash ×3"; settled: "Worked · 41s · bash ×3 · read". -->
+      <ThoughtHeader
+        class="process-rail-title"
+        :label="headerLabel"
+        :meta="duration"
+        :detail="summary"
+        :live="streaming"
+      />
       <span
         v-if="failedCount > 0"
         class="process-rail-failed"
@@ -42,11 +45,6 @@
         />
         {{ failedCount }} 失败
       </span>
-      <span
-        v-if="streaming"
-        class="process-rail-live"
-        aria-hidden="true"
-      />
     </button>
     <div
       v-if="hasBeenOpen"
@@ -63,11 +61,20 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { getExpansionIntent, setExpansionIntent } from '@/stores/helpers/expansion-intent'
 import { beginCollapseCompensation } from '@/utils/collapse-compensation'
-import { useDeferredAutoCollapse } from '@/composables/useDeferredAutoCollapse'
+import { resolveDeferredExpanded, useDeferredAutoCollapse } from '@/composables/useDeferredAutoCollapse'
+import ThoughtHeader from './ThoughtHeader.vue'
 
 /**
- * Groups a run of "process" parts (reasoning + tool steps) behind a single
- * summary line, indented on a rail. The rail's own left border is the ONLY
+ * The message-level work group (2026-08-19): everything an assistant turn did
+ * before its final answer — top thought, inline thoughts, tool rounds and the
+ * interim narration between them — sits behind ONE header that reads
+ * "Working · 12s" while the turn is in flight and "Worked · 41s" once it has
+ * settled. Collapsed, only the answer after the last tool round stays on the
+ * page. Thoughts and tool rounds are separate rows inside; nothing merges
+ * them into a per-run summary any more.
+ *
+ * Mechanics are unchanged from the per-run rail it replaces: indented on a
+ * rail, The rail's own left border is the ONLY
  * vertical line in the whole process area — nested content (thought bodies,
  * tool details) expresses hierarchy with indent + tinted surfaces, enforced
  * by the :deep overrides below.
@@ -78,7 +85,12 @@ import { useDeferredAutoCollapse } from '@/composables/useDeferredAutoCollapse'
  * header entirely and always shows the row.
  */
 interface Props {
-  summary: string
+  /** Detail behind the middot: what the work consisted of (tool tally). */
+  summary?: string
+  /** Live label / settled label. Defaults: Working / Worked. */
+  liveLabel?: string
+  settledLabel?: string
+  /** Meta behind the label: elapsed / total work time. */
   duration?: string
   streaming?: boolean
   solo?: boolean
@@ -93,6 +105,9 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  summary: '',
+  liveLabel: 'Working',
+  settledLabel: 'Worked',
   duration: '',
   streaming: false,
   solo: false,
@@ -101,6 +116,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const rootRef = ref<HTMLElement | null>(null)
+const headerLabel = computed(() => (props.streaming ? props.liveLabel : props.settledLabel))
 const userToggled = ref<boolean | null>(null)
 let manualToggle = false
 
@@ -112,13 +128,14 @@ const deferredOpen = ref(false)
 
 const autoOpen = computed(() => Boolean(props.streaming))
 
-// 用户 intent > deferredOpen > auto。
-const expanded = computed(() => {
-  const recorded = getExpansionIntent(props.intentKey)
-  if (recorded !== undefined) return recorded
-  if (userToggled.value !== null) return userToggled.value
-  return autoOpen.value || deferredOpen.value
-})
+// 用户 intent > deferredOpen > auto —— 合成本身在 `resolveDeferredExpanded`,
+// 与 StepsPanel 的受控集合共用同一份判定。
+const expanded = computed(() => resolveDeferredExpanded({
+  recorded: getExpansionIntent(props.intentKey),
+  userToggled: userToggled.value,
+  auto: autoOpen.value,
+  deferred: deferredOpen.value,
+}))
 
 const RAIL_GATE_KEY = 'rail'
 const autoCollapseGate = useDeferredAutoCollapse<string>({
@@ -258,25 +275,12 @@ watch(() => expanded.value || props.solo, (open) => {
   transform: rotate(90deg);
 }
 
-.process-rail-summary {
+.process-rail-title {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--ledger-label-font, var(--font-mono, monospace));
-  font-size: var(--ledger-label-size, 10px);
-  font-weight: var(--ledger-label-weight, 600);
-  letter-spacing: var(--ledger-label-tracking, 0.14em);
-  text-transform: uppercase;
-}
-
-.process-rail-duration {
-  flex-shrink: 0;
-  font-family: var(--ledger-label-font, var(--font-mono, monospace));
-  font-size: var(--ledger-label-size, 10px);
-  font-weight: var(--ledger-label-weight, 600);
-  letter-spacing: 0.08em;
-  font-variant-numeric: tabular-nums;
+  flex: 0 1 auto;
+  /* Inherit the header's hover brightening instead of the thought fg. */
+  --thought-fg: var(--ui-text-primary-fg);
+  color: inherit;
 }
 
 .process-rail-failed {
@@ -295,25 +299,7 @@ watch(() => expanded.value || props.solo, (open) => {
   background: var(--ui-status-danger-fg);
 }
 
-.process-rail-live {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ui-accent-primary-fg);
-  animation: process-rail-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes process-rail-pulse {
-  0%, 100% { opacity: 0.35; }
-  50% { opacity: 1; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .process-rail-live {
-    animation: none;
-  }
-
   .process-rail-chevron {
     transition: none;
   }
@@ -371,6 +357,13 @@ watch(() => expanded.value || props.solo, (open) => {
    the rail only positions it. */
 .process-rail-body :deep(.tool-step-details) {
   margin: 8px 0 8px 22px;
+}
+
+/* Interim narration between tool rounds is process, not answer: keep it
+   legible but a register below the tail text so the eye lands on the
+   answer outside the frame. */
+.process-rail-body :deep(.content) {
+  color: var(--ui-text-muted-fg);
 }
 
 /* Timeline row rhythm: uniform 24px rows; icon and text share a vertical

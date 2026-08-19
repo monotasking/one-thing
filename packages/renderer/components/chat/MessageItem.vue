@@ -185,17 +185,9 @@
           </button>
         </div>
 
-        <!-- Thinking/Waiting status -->
-        <MessageThinking
-          v-if="message.role === 'assistant'"
-          :is-streaming="message.isStreaming || false"
-          :has-content="messageHasContent"
-          :reasoning="topReasoning"
-          :thinking-start-time="message.thinkingStartTime"
-          :thinking-time="message.thinkingTime"
-          :intent-key="`thinking-${message.id}`"
-          @update-thinking-time="handleUpdateThinkingTime"
-        />
+        <!-- Thinking/Waiting status: rendered by MessageItem, PLACED by
+             MessageBubble (#thinking slot) — inside the work group when the
+             turn calls tools, at the top of the answer otherwise. -->
 
         <!-- Attachments live outside the bubble: bare thumbnails for
              images, compact chips for files. -->
@@ -277,13 +269,30 @@
           :edit-content="editContent"
           :session-id="message.sessionId"
           :message-id="message.id"
+          :has-thinking="message.role === 'assistant' && Boolean(topReasoning)"
+          :started-at="message.timestamp"
           @submit-edit="handleSubmitEdit"
           @cancel-edit="handleCancelEdit"
           @open-media="handleOpenMedia"
           @text-selection="handleTextSelection"
           @execute-tool="handleToolExecute"
           @open-file="(filePath) => emit('openFile', filePath)"
-        />
+        >
+          <template
+            v-if="message.role === 'assistant'"
+            #thinking
+          >
+            <MessageThinking
+              :is-streaming="message.isStreaming || false"
+              :has-content="messageHasContent"
+              :reasoning="topReasoning"
+              :thinking-start-time="message.thinkingStartTime"
+              :thinking-time="message.thinkingTime"
+              :intent-key="`thinking-${message.id}`"
+              @update-thinking-time="handleUpdateThinkingTime"
+            />
+          </template>
+        </MessageBubble>
 
         <!-- Reaction chips (§3.5 B): the room's ambient feedback, on the
              bubble's lower edge. Room-only — an ordinary session never grows
@@ -392,15 +401,6 @@
           :message="inlineErrorText"
         />
 
-        <!-- Steps panel fallback - only for legacy messages without contentParts -->
-        <StepsPanel
-          v-if="showLegacyStepsPanel"
-          :steps="message.steps ?? []"
-          :session-id="message.sessionId"
-          :intent-scope="legacyStepsIntentScope"
-          @open-file="(filePath) => emit('openFile', filePath)"
-        />
-
         <!-- Message footer -->
         <div
           class="message-footer"
@@ -456,7 +456,6 @@ import type { ChatMessage, ChatMessageReplyTo, MessageAttachment, ToolCall } fro
 import type { AnchorRect } from '@/composables/floating/compute-position'
 import { REPLY_USER_LABEL, buildReplyToSnapshot } from './message/reply-quote'
 import { buildReactionChips } from './message/reactions'
-import StepsPanel from './StepsPanel.vue'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import AttachmentThumb from '@/components/common/AttachmentThumb.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
@@ -610,21 +609,6 @@ const steeringPending = computed(() =>
 async function handleRetractSteer() {
   await chatStore.retractSteerMessage(props.message.id)
 }
-
-// Legacy messages carry steps without a data-steps contentPart placeholder;
-// only those need the standalone StepsPanel below the bubble.
-const showLegacyStepsPanel = computed(() =>
-  props.message.role === 'assistant' &&
-  (props.message.steps?.length ?? 0) > 0 &&
-  !props.message.contentParts?.some(p => p.type === 'data-steps')
-)
-
-// Same address space as the in-bubble panel (`steps-<messageId>`): a message
-// renders through exactly one of the two, and expansion must behave the same
-// in both — user record > live auto-expand > collapsed.
-const legacyStepsIntentScope = computed(() =>
-  props.message.id ? `steps-${props.message.id}` : '',
-)
 
 // Engine-injected goal continuation prompts persist as user messages so
 // history rebuilds replay them; the UI renders them as a hairline tick.

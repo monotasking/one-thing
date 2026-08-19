@@ -28,6 +28,7 @@
         v-else
         ref="messageListContentRef"
         class="message-list-content"
+        :class="{ 'rows-skippable': rowsSkippable }"
       >
         <Button
           v-if="pageHistorySummary"
@@ -237,7 +238,7 @@ import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 import { useCollabReactions } from '@/composables/useCollabReactions'
 import { usePermissionResponder } from '@/composables/usePermissionResponder'
 import { useHistoryPagination } from '@/composables/useHistoryPagination'
-import type { PermissionResponse } from './permission/permission-ledger'
+import { findRespondableToolCall, type PermissionResponse } from './permission/permission-ledger'
 import type { AnchorRect } from '@/composables/floating/compute-position'
 import {
   useFollowScroll,
@@ -264,7 +265,7 @@ const EMPTY_BRANCHES: BranchInfo[] = []
 type NavMarker = UserMessageNavMarker
 type MessageScrollBehavior = 'auto' | 'instant' | 'smooth'
 type ExecutableToolCall = Pick<ToolCall, 'id' | 'toolId' | 'arguments'>
-type PermissionToolCall = Pick<ToolCall, 'id' | 'permissionId' | 'canRespond'>
+type PermissionToolCall = Pick<ToolCall, 'id' | 'permissionId' | 'requiresConfirmation' | 'canRespond'>
 
 interface Props {
   messages: ChatMessage[]
@@ -327,6 +328,39 @@ const settingsStore = useSettingsStore()
 const messageScrollbarRef = ref<InstanceType<typeof Scrollbar> | null>(null)
 const messageListRef = ref<HTMLElement | null>(null)
 const messageListContentRef = ref<HTMLElement | null>(null)
+
+// ---- Off-screen row skipping (content-visibility: auto) -------------------
+// Rows may skip layout/paint only once every row has been rendered at its
+// real size at least once (contain-intrinsic-size: auto then remembers it):
+// the flag drops whenever the row set or the column width changes and comes
+// back one frame after the full-size layout, so remembered sizes are never
+// stale for skipped rows. See the .rows-skippable rule.
+const rowsSkippable = ref(false)
+let rowsSkippableFrame: number | null = null
+
+function rearmRowSkipping() {
+  rowsSkippable.value = false
+  if (rowsSkippableFrame !== null) cancelAnimationFrame(rowsSkippableFrame)
+  // Two frames: the first lets Vue flush + the browser lay every row out at
+  // full size and record it (last remembered size updates at RO timing, after
+  // layout); the second turns skipping back on.
+  rowsSkippableFrame = requestAnimationFrame(() => {
+    rowsSkippableFrame = requestAnimationFrame(() => {
+      rowsSkippableFrame = null
+      rowsSkippable.value = true
+    })
+  })
+}
+
+// Keyed on the row SET (ids), not the array identity: the store hands the
+// list over as a fresh array on every stream chunk, and rearming on identity
+// would toggle the class at chunk rate (2026-08-19: a 15 Hz width flicker
+// after context compaction while a reply streamed).
+watch(
+  () => props.messages.map(message => message.id).join('\n'),
+  () => rearmRowSkipping(),
+  { immediate: true },
+)
 const bottomSentinelRef = ref<HTMLElement | null>(null)
 const tailSpacerRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
@@ -724,6 +758,9 @@ function attachReadingAnchorObserver(scroller: HTMLElement) {
     const next = { width: el.clientWidth, height: el.clientHeight }
     const widthChanged = shouldRestoreReadingAnchor(lastScrollerBox, next)
     lastScrollerBox = next
+    // A new column width invalidates every skipped row's remembered height:
+    // lay them all out once at the new width before skipping again.
+    if (widthChanged) rearmRowSkipping()
     if (!canTrackReadingAnchor()) return
     if (widthChanged) {
       // RO 回调 = layout 之后、paint 之前。同步写 scrollTop,一帧都不漏。
@@ -1668,8 +1705,69 @@ function getMessageRow(messageIndex: number): HTMLElement | null {
   return messageListContentRef.value?.querySelector<HTMLElement>(`[data-index="${messageIndex}"]`) ?? null
 }
 
+// ---- Row lookup cache ------------------------------------------------------
+// `getMessageRowById` used to be one full-subtree `querySelector` per call.
+// The layout-measurement passes (assistant outline, user-message measurements,
+// nav markers, tail-spacer clamp) call it once per MESSAGE, and the content
+// ResizeObserver runs those passes on every frame of a collapse animation —
+// on a 300-message / 37k-node list that was ~300 × 1ms of selector matching
+// per frame, i.e. 100–230ms long tasks for the whole 180ms a tool row took to
+// expand (measured 2026-08-19). Rows are direct children of the content box,
+// so one `querySelectorAll` walk builds an id → row map; a childList observer
+// on the content box (no subtree) invalidates it when rows mount/unmount.
+// First match wins, exactly like `querySelector` did (the outer
+// `.message-list-row` carries the id before the inner `.message` does).
+let messageRowCache: Map<string, HTMLElement> | null = null
+let messageRowCacheContent: HTMLElement | null = null
+let messageRowCacheObserver: MutationObserver | null = null
+let messageRowCacheMissRebuilt = false
+
+function invalidateMessageRowCache() {
+  messageRowCache = null
+}
+
+function buildMessageRowCache(content: HTMLElement): Map<string, HTMLElement> {
+  const map = new Map<string, HTMLElement>()
+  for (const el of content.querySelectorAll<HTMLElement>('[data-message-id]')) {
+    const id = el.dataset.messageId
+    if (id && !map.has(id)) map.set(id, el)
+  }
+  if (messageRowCacheContent !== content) {
+    messageRowCacheObserver?.disconnect()
+    messageRowCacheObserver = null
+    messageRowCacheContent = content
+    if (typeof MutationObserver !== 'undefined') {
+      messageRowCacheObserver = new MutationObserver(invalidateMessageRowCache)
+      messageRowCacheObserver.observe(content, { childList: true })
+    }
+  }
+  messageRowCache = map
+  return map
+}
+
 function getMessageRowById(messageId: string): HTMLElement | null {
-  return messageListContentRef.value?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`) ?? null
+  const content = messageListContentRef.value
+  if (!content) return null
+  let map = messageRowCache && messageRowCacheContent === content ? messageRowCache : null
+  if (!map) map = buildMessageRowCache(content)
+  const hit = map.get(messageId)
+  if (hit) {
+    if (hit.isConnected) return hit
+    // A row swapped under us without a childList mutation on the content box
+    // (only possible for a nested match) — rebuild once and re-answer.
+    map = buildMessageRowCache(content)
+    return map.get(messageId) ?? null
+  }
+  // Miss: the row may have mounted in this very task, before the observer's
+  // microtask delivered. Re-walk at most once per microtask checkpoint so a
+  // loop over hidden rows (room mode) cannot degrade back to N walks.
+  if (!messageRowCacheMissRebuilt) {
+    messageRowCacheMissRebuilt = true
+    queueMicrotask(() => { messageRowCacheMissRebuilt = false })
+    map = buildMessageRowCache(content)
+    return map.get(messageId) ?? null
+  }
+  return null
 }
 
 function getMessageSeq(message: ChatMessage | undefined): number | null {
@@ -1978,15 +2076,12 @@ function handlePointerDown() {
 
 // Track permission request cleanup function
 
-// Get the first actionable permission request. `requiresConfirmation` alone is
-// not enough: it is persisted engine history, while an approval is only
-// answerable when the live permission manager has an emitted prompt for it —
-// which is what `canRespond` (set from permission events / pending seed)
-// tracks. Gating on both keeps dead approval cards from rendering after a
-// restart or for queued followers.
+// Get the first actionable permission request. 「可应答」的谓词只有一份
+// (`findRespondableToolCall`),这里与 `findPendingPermission` 共用它;这里多留
+// 的只是 message —— 审批卡要挂在哪条消息下面。
 const currentPendingPermission = computed<{ message: ChatMessage; toolCall: ToolCall } | null>(() => {
   for (const message of props.messages) {
-    const pendingToolCall = message.toolCalls?.find(tc => tc.requiresConfirmation && tc.canRespond)
+    const pendingToolCall = findRespondableToolCall(message)
     if (pendingToolCall) {
       return { message, toolCall: pendingToolCall }
     }
@@ -2145,6 +2240,14 @@ watch(
 )
 
 onUnmounted(() => {
+  if (rowsSkippableFrame !== null) {
+    cancelAnimationFrame(rowsSkippableFrame)
+    rowsSkippableFrame = null
+  }
+  messageRowCacheObserver?.disconnect()
+  messageRowCacheObserver = null
+  messageRowCache = null
+  messageRowCacheContent = null
   document.removeEventListener('selectionchange', handleSelectionChange)
   if (deferredLayoutMeasurementTimer) {
     clearTimeout(deferredLayoutMeasurementTimer)
@@ -2765,6 +2868,32 @@ defineExpose({
 .message-list-row {
   width: 100%;
   overflow-anchor: none;
+  /* Records each row's last rendered size (see rowsSkippable): with the row
+     skipped, its remembered box stands in, so nothing above or below moves. */
+  contain-intrinsic-size: auto 240px;
+}
+
+/* Off-screen rows opt out of layout / paint work (2026-08-19). Expanding a
+   tool row mid-list used to re-run pre-paint over every row below it on each
+   animation frame — the last of the "tool expand stutters" causes once the
+   selector storm was gone. The class arrives one frame AFTER any row set
+   change (see rowsSkippable), so every row has been laid out at full size
+   once and its remembered size is exact; without that, a never-rendered row
+   would stand in with the 240px estimate and shove content when it later
+   rendered — with `overflow-anchor: none` on the rows nobody would
+   compensate. */
+.message-list-content.rows-skippable .message-list-row {
+  content-visibility: auto;
+  /* `auto` brings paint containment: anything painted outside the row's box
+     is clipped. The only such paint is the navigation highlight glow around a
+     bubble (up to 20px). Widen the paint box without moving the content box:
+     symmetric padding cancelled by margin. */
+  padding-inline: 24px;
+  margin-inline: -24px;
+  /* The global reset is border-box, under which the padding would eat 48px
+     of the row's content width and every line would rewrap each time the
+     class toggles. content-box keeps `width: 100%` as the content width. */
+  box-sizing: content-box;
 }
 
 /* ── Room (kind='room') gap table ── docs/design/multi-agent-collab-im.md §3.6

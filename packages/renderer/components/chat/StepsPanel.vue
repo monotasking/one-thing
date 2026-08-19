@@ -12,24 +12,7 @@
     @panel-change="handleIntentPanelChange"
   >
     <template #title="{ item, expanded, toggle }">
-      <template v-if="isFartTimelineItem(item)">
-        <div class="operation-row tree-node-row">
-          <ToolIcon
-            tool-name="fart"
-            :status="getTimelineItemGroup(item).status"
-          />
-          <div class="operation-copy tree-node-content">
-            <div class="operation-primary">
-              <span class="node-target operation-target">
-                <span class="node-action">Fart</span>
-                <span class="node-target-name">fart</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      </template>
-
-      <template v-else-if="isGroupTimelineItem(item)">
+      <template v-if="isGroupTimelineItem(item)">
         <div class="group-header-anchor">
           <div class="group-header">
             <span class="group-icons">
@@ -129,16 +112,28 @@
     </template>
 
     <template #content="{ item }">
-      <FartCallItem
-        v-if="isFartTimelineItem(item)"
-        :tool-call="getTimelineItemActivity(item).toolCall"
-      />
-
-      <template v-else-if="isActivityTimelineItem(item)">
-        <ToolActivityDetails
-          :activity="getTimelineItemActivity(item)"
-          :session-id="sessionId"
+      <template v-if="isActivityTimelineItem(item)">
+        <ToolStepDetails
+          :view="getDetailView(getTimelineItemActivity(item))"
+          :wrap="true"
         />
+
+        <!-- 「检查」入口(主线 E1)。这条卡片与轨迹面板是同一份事件窗口的两次装配,
+             所以入口只做一件事:把 {sessionId, callId} 写进 one-shot handoff 并请求
+             开页签,定位交给面板在数据层做。没有 callId(旧消息、合成 step)就不画 ——
+             画一个点了没反应的入口比没有入口更糟。 -->
+        <div
+          v-if="getInspectCallId(getTimelineItemActivity(item))"
+          class="tool-inspect-entry"
+        >
+          <button
+            type="button"
+            class="tool-inspect-action"
+            @click="openInspect(getTimelineItemActivity(item))"
+          >
+            检查
+          </button>
+        </div>
       </template>
     </template>
   </NestedCollapseGroup>
@@ -148,7 +143,7 @@
 import { computed, nextTick, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import type { Step } from '@/types'
 import { beginCollapseCompensation } from '@/utils/collapse-compensation'
-import { useDeferredAutoCollapse } from '@/composables/useDeferredAutoCollapse'
+import { resolveDeferredExpandedKeys, useDeferredAutoCollapse } from '@/composables/useDeferredAutoCollapse'
 import NestedCollapseGroup from '@/components/common/NestedCollapseGroup.vue'
 import type {
   CollapsePanelKey,
@@ -158,15 +153,18 @@ import type {
 } from '@/components/common/collapse'
 import { getExpansionIntent, setExpansionIntent } from '@/stores/helpers/expansion-intent'
 import {
+  buildDetailedToolStepView,
   buildToolActivityViews,
   type ToolActivityView,
 } from '@/stores/helpers/tool-activity-view'
+import type { ToolStepView } from '@/stores/helpers/tool-step-view'
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
-import FartCallItem from './FartCallItem.vue'
+import { getToolStatusBadgeText } from '@/stores/helpers/tool-ui-registry'
 import LiveToolDuration from './LiveToolDuration.vue'
-import ToolActivityDetails from './ToolActivityDetails.vue'
 import ToolIcon from './ToolIcon.vue'
+import ToolStepDetails from './ToolStepDetails.vue'
 import { openReference } from '@/references'
+import { requestTrajectoryInspect } from '@/workspace/trajectory-inspect'
 
 const props = withDefaults(defineProps<{
   steps: Step[]
@@ -219,13 +217,11 @@ interface StepGroup {
   id: string
   /** Model generation round that issued this parallel batch (Step.turnIndex). */
   turnIndex: number | undefined
-  isFart: boolean
   activities: ToolActivityView[]
   status: ToolRenderStatus
 }
 
 type ToolTimelineItemData =
-  | { kind: 'fart'; group: StepGroup; activity: ToolActivityView }
   | { kind: 'group'; group: StepGroup }
   | { kind: 'single-container'; group: StepGroup }
   | { kind: 'activity'; group: StepGroup; activity: ToolActivityView; single: boolean }
@@ -254,25 +250,9 @@ const stepGroups = computed<StepGroup[]>(() => {
   let currentGroup: StepGroup | null = null
 
   for (const activity of activities.value) {
-    if (activity.isFart) {
-      if (currentGroup) {
-        groups.push(currentGroup)
-        currentGroup = null
-      }
-      groups.push({
-        id: activityRowId(activity),
-        turnIndex: undefined,
-        isFart: true,
-        activities: [activity],
-        status: activity.status,
-      })
-      continue
-    }
-
     const turnIndex = activity.step.turnIndex
     if (
       currentGroup &&
-      !currentGroup.isFart &&
       currentGroup.turnIndex !== undefined &&
       turnIndex !== undefined &&
       turnIndex === currentGroup.turnIndex
@@ -284,7 +264,6 @@ const stepGroups = computed<StepGroup[]>(() => {
       currentGroup = {
         id: activityRowId(activity),
         turnIndex,
-        isFart: false,
         activities: [activity],
         status: activity.status,
       }
@@ -392,19 +371,14 @@ const autoCollapseGate = useDeferredAutoCollapse<CollapsePanelKey>({
   },
 })
 
-/** `undefined` leaves CollapseGroup uncontrolled — the legacy behaviour. */
-const controlledExpandedKeys = computed<CollapsePanelKey[] | undefined>(() => {
-  const base = autoExpandedKeys.value
-  if (!base || deferredKeys.value.length === 0) return base
-  const merged = [...base]
-  const present = new Set(base)
-  for (const key of deferredKeys.value) {
-    if (present.has(key)) continue
-    present.add(key)
-    merged.push(key)
-  }
-  return merged
-})
+/**
+ * `undefined` leaves CollapseGroup uncontrolled — the legacy behaviour.
+ * 合成本身在 `resolveDeferredExpandedKeys`,与 ProcessRail 的单键形态共用同一
+ * 份判定(差异见那里的注释:这里 intent 已经揉进 `base`,只剩 auto|deferred)。
+ */
+const controlledExpandedKeys = computed<CollapsePanelKey[] | undefined>(() =>
+  resolveDeferredExpandedKeys(autoExpandedKeys.value, deferredKeys.value),
+)
 
 /**
  * Expanding something also pins everything it lives inside — the group above
@@ -520,19 +494,6 @@ function isGrouped(group: StepGroup): boolean {
 }
 
 function createGroupTimelineItem(group: StepGroup): ToolTimelineItem {
-  if (group.isFart) {
-    const activity = group.activities[0]
-    return {
-      key: `fart-${group.id}`,
-      data: { kind: 'fart', group, activity },
-      class: ['activity-group', 'single-operation', 'fart-panel', 'tool-operation-panel', group.status],
-      attrs: { 'data-tool-activity-row': true },
-      collapsible: false,
-      status: getCollapsePanelStatus(group.status),
-      streaming: isStreamingToolStatus(group.status),
-    }
-  }
-
   if (isGrouped(group) && !props.flat) {
     return {
       key: `group-${group.id}`,
@@ -668,18 +629,11 @@ function isFlowingStatus(status: ToolRenderStatus): boolean {
   return status === 'executing' || status === 'streaming-input' || status === 'received'
 }
 
+// 文案表在 `tool-ui-registry`(唯一状态词表);这里只把行的两个入参喂进去。
 function getStatusBadgeText(activity: ToolActivityView): string {
-  // Queued behind another prompt in the session's permission queue: waiting,
-  // not actionable yet (no respond card).
-  if (activity.status === 'awaiting-confirmation' && activity.toolCall.permissionQueued) {
-    return 'Waiting for approval'
-  }
-  if (activity.status === 'awaiting-confirmation') return 'Needs approval'
-  if (activity.status === 'cancelled') return 'Cancelled'
-  if (activity.status === 'rejected') return 'Rejected'
-  // A failed row used to differ from a successful one by text colour alone.
-  if (activity.status === 'failed') return '失败'
-  return ''
+  return getToolStatusBadgeText(activity.status, {
+    permissionQueued: activity.toolCall.permissionQueued,
+  })
 }
 
 function getCollapsePanelStatus(status: ToolRenderStatus): CollapsePanelStatus {
@@ -751,13 +705,14 @@ function getActivityMetaText(activity: ToolActivityView): string {
 }
 
 /**
- * Live tick anchor per phase: receiving ticks from the toolCall's creation
- * (input-start), execution from the authoritative startTime.
+ * Live tick anchor: the timer is **execution time only**, anchored to the
+ * authoritative startTime the main process stamps when the tool actually
+ * begins running (2026-08-19 用户裁定 a). The receiving phase
+ * (streaming-input / received) deliberately shows no timer — that span is
+ * the model rendering arguments plus scheduler queueing, and counting it
+ * made the number read as a slow tool.
  */
 function getActivityLiveStart(activity: ToolActivityView): number | undefined {
-  if (activity.status === 'streaming-input' || activity.status === 'received') {
-    return activity.toolCall.timestamp
-  }
   if (activity.status === 'executing' && typeof activity.toolCall.startTime === 'number') {
     return activity.toolCall.startTime
   }
@@ -797,10 +752,6 @@ function getTimelineItemData(item: NestedCollapseItem): ToolTimelineItemData | n
   return (item.data as ToolTimelineItemData | undefined) ?? null
 }
 
-function isFartTimelineItem(item: NestedCollapseItem): boolean {
-  return getTimelineItemData(item)?.kind === 'fart'
-}
-
 function isGroupTimelineItem(item: NestedCollapseItem): boolean {
   return getTimelineItemData(item)?.kind === 'group'
 }
@@ -815,8 +766,32 @@ function getTimelineItemGroup(item: NestedCollapseItem): StepGroup {
 
 function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   const data = getTimelineItemData(item)!
-  if (data.kind === 'activity' || data.kind === 'fart') return data.activity
+  if (data.kind === 'activity') return data.activity
   return data.group.activities[0]
+}
+
+/**
+ * 展开区的详情视图。原先住在 ToolActivityDetails 里的 computed —— 并层后
+ * 用一张以 activity 对象为键的 WeakMap 复现同一份缓存语义:activities 只在
+ * steps 变化时重建,所以详情也只在那时重算,而不是每帧重算。
+ */
+const detailViewCache = new WeakMap<ToolActivityView, ToolStepView>()
+
+function getDetailView(activity: ToolActivityView): ToolStepView {
+  const cached = detailViewCache.get(activity)
+  if (cached) return cached
+  const view = buildDetailedToolStepView(activity)
+  detailViewCache.set(activity, view)
+  return view
+}
+
+/** 没有 callId(旧消息、合成 step)就不画「检查」入口。 */
+function getInspectCallId(activity: ToolActivityView): string {
+  return activity.step?.toolCallId || ''
+}
+
+function openInspect(activity: ToolActivityView): void {
+  requestTrajectoryInspect({ sessionId: props.sessionId, callId: getInspectCallId(activity) })
 }
 </script>
 
@@ -1290,6 +1265,34 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   max-width: calc(100% - 25px);
   min-width: 0;
   margin: 2px 5px 7px 20px;
+}
+
+/* 「检查」入口:随 ToolActivityDetails 并入本组件的展开区。这些元素由本组件的
+   插槽渲染,带的是 StepsPanel 的 scope 属性,选择器照旧命中。 */
+.tool-inspect-entry {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px 2px 0;
+}
+
+.tool-inspect-action {
+  padding: 1px 4px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--ui-text-faint-fg);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-default);
+}
+
+.tool-inspect-action:hover {
+  color: var(--ui-accent-primary-fg);
+}
+
+.tool-inspect-action:focus-visible {
+  outline: 1px solid var(--ui-accent-primary-fg);
+  outline-offset: 1px;
 }
 
 /* Narrow message column: give content width priority over indentation. */

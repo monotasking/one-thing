@@ -412,6 +412,19 @@ async function* streamOpenAICompatibleResponse(
 				const index = toolCallDelta.index;
 				let entry = toolCalls.get(index);
 				if (!entry) {
+					// Index switch = the previous tool call's arguments are complete.
+					// OpenAI-style streams emit tool calls strictly by index, so a
+					// delta for a NEW index proves every earlier index is done —
+					// emit their tool-call-done now so execution can start while
+					// later tool calls are still rendering. (The `{}`-prefix gateway
+					// hazard only applies to "first parseable prefix" heuristics;
+					// an index switch is not a heuristic.)
+					for (const [priorIndex, prior] of [...toolCalls.entries()].sort(([a], [b]) => a - b)) {
+						if (priorIndex < index && !prior.done) {
+							prior.done = true;
+							yield toolCallDoneEvent(turn, prior);
+						}
+					}
 					entry = {
 						id: toolCallDelta.id ?? `tool-${turn}-${index}`,
 						name: "",
@@ -449,12 +462,22 @@ async function* streamOpenAICompatibleResponse(
 				}
 
 				// No early-done on first parseable prefix: gateways may send `{}`
-				// before the real arguments. Done is emitted once at stream end.
+				// before the real arguments. Done is emitted on index switch /
+				// finish_reason (above) or, as a last resort, at stream end.
 			}
 		}
 
 		if (choice?.finish_reason) {
 			finishReason = mapFinishReason(choice.finish_reason);
+			// The provider has declared the turn over: every accumulated tool
+			// call is complete. Emit done here (not after the SSE loop) so the
+			// last tool call starts executing without waiting for stream teardown.
+			for (const [, entry] of [...toolCalls.entries()].sort(([a], [b]) => a - b)) {
+				if (!entry.done) {
+					entry.done = true;
+					yield toolCallDoneEvent(turn, entry);
+				}
+			}
 		}
 	}
 

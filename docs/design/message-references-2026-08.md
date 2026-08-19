@@ -131,4 +131,5 @@ P0–P2 一起交付,P3 拆条按需。真机走查只留审美项(图标/hover 
 
 - 落地文件:`packages/renderer/references/{parse,autolink,open,dom,index}.ts` + 三份测试;`useMarkdownRenderer.ts`(validateLink / link_open / code_inline / 委托点击安装);`styles/markdown.css`;`markdownRenderCache.ts` 版本 7→8;`App.vue`(`createReferenceHost`,仅主窗);`RightWorkbenchPanel.openFile(path, position)` → `EditorWorkbench :initial-position` → `MonacoEditor.revealPosition`;`external-links.ts` + `renderer-targets.isElectronRendererIndexFileUrl`;`prompts/content/references.md` + builder 条目(order 450)+ golden 重生成。
 - 与 §2–§5 的偏差:① `~/` 渲染端没有 home 可展开(platformApi 无此口),点击提示"无法解析路径",待补一个 host 端口;② 行内代码 autolink 按空白切 token,含空格的路径不 autolink(显式 `[]()` 仍可);③ `data:image/…` 链接返回 null(不打标),不交给 openExternal;④ 图片走已有 `platformApi.openImagePreview(file://…)`,不需要全局灯箱;⑤ `ReferenceHost` 比 §3 多 `openFolder / openImage / notify` 三个可选成员。
+- 追加(同日):工具行(read/write/edit)的目标名点击改为**始终打开文件**(此前有详情时兼职折叠开关),走同一个 `openReference`(`StepsPanel.handleTargetClick`);edit 定位到首个 hunk 的 `newStart`(`ToolActivityView.fileLine`);无宿主环境退回 `open-file` 事件链。折叠仍由行头其余部分 / 展开图标负责。
 

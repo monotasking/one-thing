@@ -4,6 +4,7 @@ import {
   canAllowWorkspace,
   countQueuedBehind,
   findPendingPermission,
+  findRespondableToolCall,
   permissionDetailKey,
   permissionPreview,
   permissionTarget,
@@ -76,6 +77,14 @@ describe('待审批的挑选与排队计数', () => {
     expect(findPendingPermission([{ toolCalls: [toolCall({ requiresConfirmation: true })] }])).toBeNull()
     expect(findPendingPermission([{ toolCalls: [toolCall({ canRespond: true })] }])).toBeNull()
     expect(findPendingPermission([{ toolCalls: [pending] }])?.id).toBe('p1')
+  })
+
+  // MessageList 的审批卡与这里共用同一个谓词 —— 它是单条消息级的那一半。
+  it('单条消息级谓词与整段挑选同口径', () => {
+    expect(findRespondableToolCall({ toolCalls: [toolCall({ requiresConfirmation: true })] })).toBeNull()
+    expect(findRespondableToolCall({ toolCalls: [toolCall({ canRespond: true })] })).toBeNull()
+    expect(findRespondableToolCall({})).toBeNull()
+    expect(findRespondableToolCall({ toolCalls: [toolCall(), pending] })?.id).toBe('p1')
   })
 
   it('只数排在它后面的 queued 调用', () => {

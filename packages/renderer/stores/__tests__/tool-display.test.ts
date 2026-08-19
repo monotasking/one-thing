@@ -35,7 +35,6 @@ describe('tool display mappings', () => {
     expect(getToolDisplayLabel('time')).toBe('Time')
     expect(getToolDisplayLabel('project_dirs')).toBe('Projects')
     expect(getToolDisplayLabel('mcp_search')).toBe('MCP')
-    expect(getToolDisplayLabel('fart')).toBe('Fart')
   })
 
   it('shows raw names for MCP and unknown tools instead of "Called"', () => {

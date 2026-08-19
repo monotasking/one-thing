@@ -48,167 +48,116 @@
         }"
         :style="role === 'user' && isCollapsed && isOverflowing && !isStreaming ? { maxHeight: maxCollapsedHeight + 'px' } : {}"
       >
-        <!-- New contentParts-based rendering -->
-        <template v-if="contentParts && contentParts.length > 0">
-          <!-- Text 内容 - Waiting 状态由 MessageThinking 组件处理 -->
-          <Transition
-            name="text-fade"
-            :css="false"
+        <!-- New contentParts-based rendering (2026-08-19 regrouping).
+
+             Assistant turns split in two at the LAST tool round:
+               · the WORK GROUP — top thought, inline thoughts, every tool
+                 round and the interim narration between them — behind one
+                 "Working · 12s" / "Worked · 41s" header (ProcessRail);
+               · the TAIL — the answer after the last tool round — at full
+                 volume, the only thing left on the page once the group folds.
+             Thoughts and tool rounds are separate rows inside the group;
+             nothing merges them into a per-run summary any more.
+
+             The rail is ALWAYS mounted for assistant messages and runs
+             frameless (`solo`) until the first tool row exists: the top
+             thought lives inside it from the first frame, so the moment the
+             turn starts calling tools the header appears around content that
+             is already there instead of remounting it. -->
+        <ProcessRail
+          v-if="role === 'assistant'"
+          class="work-group"
+          :solo="!hasWorkGroup"
+          :summary="workSummary"
+          :duration="workDuration"
+          :streaming="isWorkLive"
+          :failed-count="workFailedCount"
+          :intent-key="workIntentKey"
+        >
+          <!-- Top-of-message thought (`message.reasoning`), handed in by
+                 MessageItem — it stays a MessageItem concern, only its place
+                 in the flow moved into the group. -->
+          <slot name="thinking" />
+          <template
+            v-for="{ part, key } in workEntries"
+            :key="key"
           >
-            <div
-              v-if="firstTextPart"
-              class="content md-code-block-scope md-inline-code-scope"
-            >
-              <MessageMarkdown
-                :content="firstTextPart.content"
-                :is-user="role === 'user'"
-                :live="shouldUseStreamingMarkdown(role === 'user')"
-                :is-streaming="Boolean(isStreaming)"
-              />
-            </div>
-          </Transition>
+            <!-- Inline reasoning parts. Controlled by the expansion
+                   intent record so a remount cannot undo a user's click. -->
+            <InlineThought
+              v-if="part.type === 'reasoning'"
+              :name="key"
+              :content="part.content"
+              :expanded="inlineReasoningExpanded(key)"
+              :live="isWorkLive"
+              :live-markdown="shouldUseStreamingMarkdown(false)"
+              :is-streaming="Boolean(isStreaming)"
+              @update:expanded="(v: boolean) => setInlineReasoningExpanded(key, v)"
+            />
+            <!-- Tool activity — ONE render point. A row that starts as a
+                   streaming-input synthetic step and later gains a real
+                   step stays in THIS panel (same NestedCollapseGroup, same
+                   `activity-<toolCallId>` key): it evolves in place instead
+                   of moving house between two panels. See stepsByEntry. -->
+            <StepsPanel
+              v-else-if="entryStepsFor(key).length > 0"
+              :steps="entryStepsFor(key)"
+              :session-id="sessionId"
+              :intent-scope="stepsIntentScope"
+              :parent-intent-ids="workParentIntentIds"
+              flat
+              @open-file="(filePath) => emit('openFile', filePath)"
+            />
+            <!-- Interim narration between tool rounds and any indicator
+                   that landed before the last round: same renderers as the
+                   tail, just inside the group. -->
+            <ContentPartView
+              v-else-if="isContentPart(part)"
+              :part="part"
+              :is-user="false"
+              :live="shouldUseStreamingMarkdown(false)"
+              :is-streaming="Boolean(isStreaming)"
+            />
+          </template>
+        </ProcessRail>
 
-          <div
-            v-if="partGroups.length > 0"
-            class="other-parts-container"
+        <div
+          v-if="tailEntries.length > 0"
+          class="other-parts-container"
+        >
+          <template
+            v-for="{ part, key } in tailEntries"
+            :key="key"
           >
-            <template
-              v-for="group in partGroups"
-              :key="group.key"
-            >
-              <!-- Process rail: a run of reasoning/tool parts collapses
-                   behind one summary line, indented off the answer column.
-                   A group that would render nothing at all (a data-steps
-                   placeholder whose steps have not landed yet) draws no
-                   frame — an empty dashed box is not a state worth showing. -->
-              <ProcessRail
-                v-if="group.kind === 'process' && processGroupHasContent(group)"
-                :summary="processGroupSummary(group)"
-                :duration="processGroupDuration(group)"
-                :streaming="isProcessGroupLive(group)"
-                :solo="isSoloProcessGroup(group)"
-                :failed-count="processGroupFailedCount(group)"
-                :intent-key="railIntentKey(group)"
-              >
-                <template
-                  v-for="{ part, key } in group.entries"
-                  :key="key"
-                >
-                  <!-- Generation waiting (工具执行后等待 AI 继续)**不在这里画**
-                       (2026-08-17):Waiting / Thinking 的实时状态搬到了 composer
-                       顶沿(useGenerationStatus),消息里不再为它留一行。`waiting`
-                       part 仍存在于数据里(它是"模型被要求继续"的事实),只是零渲染。 -->
-                  <!-- Inline reasoning parts. Controlled by the expansion
-                       intent record so a remount cannot undo a user's click. -->
-                  <CollapsePanel
-                    v-if="part.type === 'reasoning'"
-                    class="inline-reasoning"
-                    :name="key"
-                    default-collapsed
-                    :model-value="inlineReasoningExpanded(key)"
-                    :status="isProcessGroupLive(group) ? 'streaming' : 'completed'"
-                    :streaming="isProcessGroupLive(group)"
-                    variant="plain"
-                    expand-icon-position="inline-end"
-                    expand-icon-display="hover"
-                    @update:model-value="(v: boolean) => setInlineReasoningExpanded(key, v)"
-                  >
-                    <template #title>
-                      <!-- Same header component (and same body skin) as the
-                           top-of-message MessageThinking: one "Thought" line
-                           in the app, not two look-alikes. -->
-                      <ThoughtHeader
-                        class="inline-reasoning-header"
-                        label="Thought"
-                        :detail="getInlineReasoningSummary(part)"
-                      />
-                    </template>
-
-                    <div class="inline-reasoning-body">
-                      <div
-                        class="inline-reasoning-content thought-body md-body"
-                      >
-                        <MessageMarkdown
-                          :content="cleanReasoningContent(part.content)"
-                          :is-user="false"
-                          :live="shouldUseStreamingMarkdown(false)"
-                          :is-streaming="Boolean(isStreaming)"
-                        />
-                      </div>
-                    </div>
-                  </CollapsePanel>
-                  <!-- Tool activity — ONE render point. A row that starts as a
-                       streaming-input synthetic step and later gains a real
-                       step stays in THIS panel (same NestedCollapseGroup, same
-                       `activity-<toolCallId>` key): it evolves in place instead
-                       of moving house between two panels, which used to reset
-                       its expansion, restart the shimmer and re-number the
-                       ledger. See entryStepsFor(). -->
-                  <StepsPanel
-                    v-else-if="entryStepsFor(group, key).length > 0"
-                    :steps="entryStepsFor(group, key)"
-                    :session-id="sessionId"
-                    :intent-scope="stepsIntentScope"
-                    :parent-intent-ids="railParentIntentIds(group)"
-                    flat
-                    @open-file="(filePath) => emit('openFile', filePath)"
-                  />
-                </template>
-              </ProcessRail>
-              <template v-else>
-                <template
-                  v-for="{ part, key } in group.entries"
-                  :key="key"
-                >
-                  <div
-                    v-if="part.type === 'image-loading'"
-                    class="image-generation-skeleton"
-                    role="status"
-                    :aria-label="part.label || 'Generating image'"
-                  />
-                  <!-- 流内状态(R6)。宿主认**一种**类型就够了 —— 新增状态不需要
-                       再改这里,label、归属与计时都由投递方在描述里给。走秒的时钟
-                       在子组件里,所以没有状态条时它根本不存在。 -->
-                  <PluginStatusLine
-                    v-else-if="part.type === 'plugin-status'"
-                    :part="part"
-                  />
-                  <PromptReferenceCard
-                    v-else-if="part.type === 'prompt-ref'"
-                    :title="part.title"
-                    :content="part.content"
-                    :description="part.description"
-                  />
-                  <PromptReferenceCard
-                    v-else-if="part.type === 'skill-ref'"
-                    :title="part.name"
-                    :content="part.content"
-                    :description="part.description"
-                  />
-                  <!-- Additional text parts (after the first one) -->
-                  <div
-                    v-else-if="part.type === 'text'"
-                    class="content md-code-block-scope md-inline-code-scope"
-                  >
-                    <MessageMarkdown
-                      :content="part.content"
-                      :is-user="role === 'user'"
-                      :live="shouldUseStreamingMarkdown(role === 'user')"
-                      :is-streaming="Boolean(isStreaming)"
-                    />
-                  </div>
-                </template>
-              </template>
-            </template>
-          </div>
-        </template>
-
+            <!-- A user message never has a work group, so an assistant
+                   tail is content-only by construction; the reasoning branch
+                   below covers the tool-less inline thought (rare: text →
+                   thought → text with no tool between). -->
+            <InlineThought
+              v-if="part.type === 'reasoning'"
+              :name="key"
+              :content="part.content"
+              :expanded="inlineReasoningExpanded(key)"
+              :live="Boolean(isStreaming)"
+              :live-markdown="shouldUseStreamingMarkdown(false)"
+              :is-streaming="Boolean(isStreaming)"
+              @update:expanded="(v: boolean) => setInlineReasoningExpanded(key, v)"
+            />
+            <ContentPartView
+              v-else-if="isContentPart(part)"
+              :part="part"
+              :is-user="role === 'user'"
+              :live="shouldUseStreamingMarkdown(role === 'user')"
+              :is-streaming="Boolean(isStreaming)"
+            />
+          </template>
+        </div>
         <!-- Fallback for messages without contentParts (user messages and
              empty edge cases). Assistant messages always have contentParts
              populated by rebuildContentParts before reaching here, so no
              tool-call rendering is needed in this branch. -->
         <div
-          v-else
+          v-else-if="!(contentParts && contentParts.length > 0)"
           class="content md-code-block-scope md-inline-code-scope"
         >
           <MessageMarkdown
@@ -248,22 +197,20 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onBeforeUnmount, watch } from 'vue'
 import StepsPanel from '../StepsPanel.vue'
-import CollapsePanel from '@/components/common/CollapsePanel.vue'
-import PromptReferenceCard from '@/components/common/PromptReferenceCard.vue'
-import MessageMarkdown from './MessageMarkdown.vue'
 import MessageInlineEdit from './MessageInlineEdit.vue'
+import MessageMarkdown from './MessageMarkdown.vue'
 import ProcessRail from './ProcessRail.vue'
-import PluginStatusLine from './PluginStatusLine.vue'
-import ThoughtHeader from './ThoughtHeader.vue'
+import InlineThought from './InlineThought.vue'
+import ContentPartView, { CONTENT_PART_TYPES } from './ContentPartView.vue'
 import type { ToolCall, Step, ContentPart } from '@/types'
 import type { AnchorRect } from '@/composables/floating/compute-position'
-import { stepFromToolCall } from '@/stores/helpers/tool-step-view'
+import { buildWorkRender, buildWorkSummary } from '@/stores/helpers/work-group'
+import { formatDuration } from '@/utils/format-duration'
 import { getExpansionIntent, setExpansionIntent } from '@/stores/helpers/expansion-intent'
-import { cleanReasoningContent } from '@/composables/useMarkdownRenderer'
 import { useCollapsibleContent } from '@/composables/useCollapsibleContent'
-import { hasVisibleReasoningContent, summarizeReasoningContent } from './reasoning-summary'
+import { hasVisibleReasoningContent } from './reasoning-summary'
 
 interface Props {
   role: 'user' | 'assistant'
@@ -278,6 +225,11 @@ interface Props {
   sessionId?: string  // Session ID for AgentExecutionPanel state management
   /** Stable address space for expansion-intent records (see expansion-intent.ts). */
   messageId?: string
+  /** The message carries a top-of-message thought (`message.reasoning`) — the
+   *  #thinking slot has something to render and counts as one 思考 step. */
+  hasThinking?: boolean
+  /** When the turn started (message timestamp): the work timer's origin. */
+  startedAt?: number
 }
 
 const props = defineProps<Props>()
@@ -306,18 +258,11 @@ const { isCollapsed, isOverflowing, toggleCollapse, maxCollapsedHeight } = useCo
   content: () => props.content,
 })
 
-// ============ New overlay-based transition system ============
-
-// Extract the first text part (rendered separately for smooth transition)
-// Only treat the first part as "firstTextPart" if it's actually a text part.
-// If the first part is a tool-call/data-steps, all parts go through otherParts in order.
-const firstTextPart = computed(() => {
-  const parts = props.contentParts
-  if (!parts || parts.length === 0) return null
-  return parts[0].type === 'text' ? parts[0] : null
-})
-
-// Parts rendered after the first text part, paired with render keys.
+// Every part flows through `otherPartEntries` in order — the old
+// "first text part rendered separately" path is gone: with a work group the
+// opening text belongs INSIDE the group (it precedes the last tool round),
+// and rendering it elsewhere would remount it the moment the first tool
+// call arrived.
 //
 // Keys derive from the part's position among the ANCHOR parts (or from an id
 // it carries). Position among *all* parts is not usable: indicator parts
@@ -330,13 +275,9 @@ const firstTextPart = computed(() => {
 // mid-stream would shift the very indices it is meant to pin. The three
 // skipped types carry ids of their own (turnIndex / pluginId+id), so nothing
 // downgrades to a positional key.
-// If firstTextPart captured parts[0], skip it here; otherwise keep all parts
-// in order.
 const otherPartEntries = computed(() => {
   const parts = props.contentParts
   if (!parts) return []
-  const hasFirstText = !!firstTextPart.value
-  let skippedFirstText = false
   let sawVisiblePartBeforeWaiting = false
   let stableIndex = -1
   const entries: { part: ContentPart; key: string }[] = []
@@ -363,13 +304,6 @@ const otherPartEntries = computed(() => {
       return
     }
 
-    // Only skip the first text if firstTextPart is rendering it
-    if (p.type === 'text' && hasFirstText && !skippedFirstText) {
-      skippedFirstText = true
-      sawVisiblePartBeforeWaiting = true
-      return
-    }
-
     if (p.type !== 'waiting') {
       sawVisiblePartBeforeWaiting = true
     }
@@ -379,15 +313,10 @@ const otherPartEntries = computed(() => {
   return entries
 })
 
-// ============ Process rail grouping ============
-// Consecutive "process" parts (thinking + tool activity) collapse behind a
-// single ProcessRail; content parts (answer text, references) stay at full
-// volume on the main column.
-
-type PartEntry = { part: ContentPart; key: string }
-type PartGroup = { kind: 'process' | 'content'; key: string; entries: PartEntry[] }
-
-const PROCESS_PART_TYPES = new Set<ContentPart['type']>(['reasoning', 'tool-call', 'data-steps', 'waiting'])
+// ============ Work group (2026-08-19) ============
+// An assistant turn splits in two at the LAST tool round: the work group
+// (thoughts + tool rounds + interim narration, behind one Working/Worked
+// header) and the tail (the answer after the last round, full volume).
 
 /**
  * Parts that anchor a render key. The three indicator types are excluded:
@@ -400,52 +329,8 @@ function isAnchorPart(part: ContentPart): boolean {
     && part.type !== 'plugin-status'
 }
 
-// Group key anchors on the first ANCHOR entry, not merely the first entry:
-// a run that opens with a `waiting` indicator would otherwise re-key itself
-// when that indicator is spliced away at stream end, remounting the whole
-// rail (and with it every panel's expansion state) at the exact moment the
-// stream settles. contentParts is append-only during streaming, so once an
-// anchor exists it never moves.
-const partGroups = computed<PartGroup[]>(() => {
-  const groups: PartGroup[] = []
-  for (const entry of otherPartEntries.value) {
-    const isProcess = PROCESS_PART_TYPES.has(entry.part.type)
-    const last = groups[groups.length - 1]
-    if (isProcess && last?.kind === 'process') {
-      last.entries.push(entry)
-      continue
-    }
-    if (!isProcess && last?.kind === 'content') {
-      last.entries.push(entry)
-      continue
-    }
-    groups.push({
-      kind: isProcess ? 'process' : 'content',
-      key: '',
-      entries: [entry],
-    })
-  }
-  for (const group of groups) {
-    const anchor = group.entries.find(entry => isAnchorPart(entry.part)) ?? group.entries[0]
-    group.key = `${group.kind}-${anchor.key}`
-  }
-  return groups
-})
-
-interface ProcessGroupStats {
-  reasoningCount: number
-  toolCount: number
-  failedCount: number
-  toolCounts: Map<string, number>
-  durationMs: number
-}
-
-interface ProcessGroupRender {
-  /** entry key → the steps THAT entry renders (real ∪ synthesized). */
-  stepsByEntry: Map<string, Step[]>
-  stats: ProcessGroupStats
-  /** Would this group paint anything at all? An empty rail draws no frame. */
-  hasContent: boolean
+function isContentPart(part: ContentPart): boolean {
+  return CONTENT_PART_TYPES.has(part.type)
 }
 
 const stepByToolCallId = computed(() => {
@@ -457,182 +342,48 @@ const stepByToolCallId = computed(() => {
 })
 
 /**
- * The single place that decides WHICH entry renders WHICH rows.
- *
- * A tool call is delivered twice: first as a `tool-call` part (streaming
- * input, no real step yet), then as a `data-steps` placeholder once the engine
- * emits the step. Rendering both parts independently made the row "move house"
- * mid-flight — two StepsPanels, two NestedCollapseGroups, so the row remounted
- * exactly when it became interesting. Here the `tool-call` part keeps
- * ownership of every call it introduced (rendering the real step as soon as
- * one exists, a synthesized one before that) and the `data-steps` part renders
- * only what the tool-call parts did not already claim — historical messages,
- * where no tool-call part was ever built, therefore still render normally.
- *
- * Synthesized steps inherit the turnIndex of whichever sibling already has a
- * real step (falling back to a per-part negative pseudo-turn) so that a
- * parallel batch stays ONE StepsPanel group from the first frame to the last;
- * mixing `undefined` with a real turnIndex would split and re-merge the batch
- * mid-stream and remount its rows.
+ * The work group's whole judgement lives in `buildWorkRender`
+ * (`stores/helpers/work-group.ts`) — which entry renders which tool rows, the
+ * tally behind the header, and where the group ends and the tail begins. This
+ * computed is only its reactive wrapper.
  */
-const processGroupRenders = computed(() => {
-  const renders = new Map<string, ProcessGroupRender>()
-  const realSteps = stepByToolCallId.value
-  // Message-wide, first-come-wins: a tool call is rendered by exactly one
-  // entry no matter how the parts happen to be split into groups.
-  const claimed = new Set<string>()
-  let pseudoTurn = -1
+const workRender = computed(() => buildWorkRender({
+  entries: otherPartEntries.value,
+  role: props.role,
+  hasThinking: props.hasThinking,
+  findStep: toolCallId => stepByToolCallId.value.get(toolCallId),
+  stepsForTurn: getStepsForTurn,
+}))
 
-  for (const group of partGroups.value) {
-    if (group.kind !== 'process') continue
-
-    const stepsByEntry = new Map<string, Step[]>()
-    const stats: ProcessGroupStats = {
-      reasoningCount: 0,
-      toolCount: 0,
-      failedCount: 0,
-      toolCounts: new Map<string, number>(),
-      durationMs: 0,
-    }
-    let hasContent = false
-
-    const countStep = (step: Step) => {
-      const name = step.toolCall?.toolName || step.title || 'tool'
-      stats.toolCount++
-      stats.toolCounts.set(name, (stats.toolCounts.get(name) ?? 0) + 1)
-      stats.durationMs += step.toolCall?.durationMs ?? 0
-      if (step.status === 'failed') stats.failedCount++
-    }
-
-    for (const { part, key } of group.entries) {
-      if (part.type === 'reasoning') {
-        stats.reasoningCount++
-        hasContent = true
-        continue
-      }
-      if (part.type === 'waiting') {
-        // Renders nothing since the status moved to the composer; a group
-        // holding only a waiting placeholder draws no rail frame.
-        continue
-      }
-
-      let rows: Step[] = []
-      if (part.type === 'tool-call') {
-        pseudoTurn -= 1
-        const batchTurn = part.toolCalls
-          .map(tc => realSteps.get(tc.id)?.turnIndex)
-          .find(turnIndex => turnIndex !== undefined) ?? pseudoTurn
-        rows = part.toolCalls
-          .filter(toolCall => !claimed.has(toolCall.id))
-          .map((toolCall) => {
-            claimed.add(toolCall.id)
-            const real = realSteps.get(toolCall.id)
-            if (real) return real
-            return { ...stepFromToolCall(toolCall), turnIndex: batchTurn }
-          })
-      } else if (part.type === 'data-steps') {
-        rows = getStepsForTurn(part.turnIndex).filter(step => !step.toolCallId || !claimed.has(step.toolCallId))
-        for (const step of rows) {
-          if (step.toolCallId) claimed.add(step.toolCallId)
-        }
-      } else {
-        continue
-      }
-
-      if (rows.length > 0) {
-        stepsByEntry.set(key, rows)
-        rows.forEach(countStep)
-        hasContent = true
-      }
-    }
-
-    renders.set(group.key, { stepsByEntry, stats, hasContent })
-  }
-
-  return renders
-})
+const hasWorkGroup = computed(() => workRender.value.hasWorkGroup)
+const workEntries = computed(() => workRender.value.workEntries)
+const tailEntries = computed(() => workRender.value.tailEntries)
 
 const EMPTY_STEPS: Step[] = []
 
-function entryStepsFor(group: PartGroup, key: string): Step[] {
-  return processGroupRenders.value.get(group.key)?.stepsByEntry.get(key) ?? EMPTY_STEPS
+function entryStepsFor(key: string): Step[] {
+  return workRender.value.stepsByEntry.get(key) ?? EMPTY_STEPS
 }
 
-function processGroupHasContent(group: PartGroup): boolean {
-  return processGroupRenders.value.get(group.key)?.hasContent ?? false
-}
+const workFailedCount = computed(() => workRender.value.stats.failedCount)
 
-const EMPTY_STATS: ProcessGroupStats = {
-  reasoningCount: 0,
-  toolCount: 0,
-  failedCount: 0,
-  toolCounts: new Map<string, number>(),
-  durationMs: 0,
-}
-
-function processGroupStats(group: PartGroup): ProcessGroupStats {
-  return processGroupRenders.value.get(group.key)?.stats ?? EMPTY_STATS
-}
-
-function processGroupSummary(group: PartGroup): string {
-  const stats = processGroupStats(group)
-
-  const bits: string[] = []
-  if (stats.reasoningCount > 0) bits.push(`思考 ${stats.reasoningCount} 步`)
-
-  const toolBits = [...stats.toolCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
-  if (toolBits.length > 4) {
-    const extra = toolBits.length - 4
-    toolBits.length = 4
-    toolBits.push(`+${extra}`)
-  }
-  bits.push(...toolBits)
-
-  return bits.length > 0 ? bits.join(' · ') : '过程'
-}
-
-// Rendered outside the uppercased summary span so the seconds unit keeps its
-// lowercase "s".
-function processGroupDuration(group: PartGroup): string {
-  const { durationMs } = processGroupStats(group)
-  if (durationMs < 1000) return ''
-  return `${(durationMs / 1000).toFixed(durationMs >= 10_000 ? 0 : 1)}s`
-}
-
-/** A one-item process reads better as a bare timeline row than as a
- *  summary header that merely repeats it.
- *
- *  The count includes tool calls that are still streaming their input (they
- *  are ordinary rows in `stepsByEntry` now). Before that, a "thinking + tool
- *  in flight" group read as solo — no header, no frame — and then sprouted a
- *  summary header and an 18px-padded dashed box the instant the step landed,
- *  shoving everything below it down the page. The shape is now decided when
- *  the row appears, and only grows monotonically from there. */
-function isSoloProcessGroup(group: PartGroup): boolean {
-  const stats = processGroupStats(group)
-  return stats.reasoningCount + stats.toolCount <= 1
-}
-
-function processGroupFailedCount(group: PartGroup): number {
-  return processGroupStats(group).failedCount
-}
+/** Header detail: what the work consisted of. "思考 3 步 · bash ×5 · read". */
+const workSummary = computed(() => buildWorkSummary(workRender.value.stats))
 
 const LIVE_STEP_STATUSES = new Set(['pending', 'running', 'awaiting-confirmation'])
 const LIVE_TOOL_STATUSES = new Set(['pending', 'queued', 'executing', 'input-streaming'])
 
 /**
- * A rail animates only while ITS OWN work is in flight — earlier, finished
- * process groups must settle even though the message as a whole is still
- * streaming. "Live" = an in-flight step inside the group, or being the
- * trailing process group of an actively streaming message (the turn that
- * is thinking / about to call tools).
+ * The group is live while its OWN work is in flight: a tool still running,
+ * or a streaming turn whose newest part is still process (thinking / about
+ * to call the next tool). The moment the answer starts streaming after the
+ * last round the header settles to "Worked" and the group folds — even
+ * though the message as a whole is still streaming. Another tool call after
+ * that flips it live again (and the rail re-opens).
  */
-function isProcessGroupLive(group: PartGroup): boolean {
-  if (!props.isStreaming) return false
-
-  for (const { part } of group.entries) {
+const isWorkLive = computed(() => {
+  if (!props.isStreaming || !hasWorkGroup.value) return false
+  for (const { part } of workEntries.value) {
     if (part.type === 'data-steps') {
       for (const step of getStepsForTurn(part.turnIndex)) {
         if (LIVE_STEP_STATUSES.has(step.status)) return true
@@ -641,13 +392,53 @@ function isProcessGroupLive(group: PartGroup): boolean {
       if (part.toolCalls.some(tc => LIVE_TOOL_STATUSES.has(tc.status))) return true
     }
   }
+  return tailEntries.value.every(({ part }) => !isAnchorPart(part))
+})
 
-  const groups = partGroups.value
-  for (let i = groups.length - 1; i >= 0; i--) {
-    if (groups[i].kind === 'process') return groups[i] === group
-  }
-  return false
+// ---- Work duration: ticking while live, frozen at the moment work ended ----
+// Live: elapsed since the turn started (`startedAt`, the message timestamp).
+// Settled: the value the ticker showed when the group went live→settled in
+// this instance; a message mounted already settled (history) falls back to
+// the last tool end minus the turn start.
+const workElapsedMs = ref(0)
+const frozenWorkMs = ref<number | null>(null)
+let workTimer: ReturnType<typeof setInterval> | null = null
+
+function tickWork() {
+  if (typeof props.startedAt === 'number') workElapsedMs.value = Math.max(0, Date.now() - props.startedAt)
 }
+
+function stopWorkTimer() {
+  if (!workTimer) return
+  clearInterval(workTimer)
+  workTimer = null
+}
+
+watch(isWorkLive, (live, wasLive) => {
+  if (live) {
+    frozenWorkMs.value = null
+    tickWork()
+    if (!workTimer) workTimer = setInterval(tickWork, 250)
+    return
+  }
+  stopWorkTimer()
+  if (wasLive) {
+    tickWork()
+    frozenWorkMs.value = workElapsedMs.value
+  }
+}, { immediate: true })
+
+onBeforeUnmount(stopWorkTimer)
+
+const workDurationMs = computed<number>(() => {
+  if (isWorkLive.value) return workElapsedMs.value
+  if (frozenWorkMs.value !== null) return frozenWorkMs.value
+  const { lastToolEnd } = workRender.value.stats
+  if (typeof props.startedAt === 'number' && lastToolEnd > props.startedAt) return lastToolEnd - props.startedAt
+  return 0
+})
+
+const workDuration = computed(() => formatDuration(workDurationMs.value, { style: 'work' }))
 
 const useLiveAssistantMarkdown = computed(() =>
   props.role === 'assistant' && hasBeenStreaming.value,
@@ -657,8 +448,8 @@ function shouldUseStreamingMarkdown(isUser: boolean): boolean {
   return Boolean(props.isStreaming || (!isUser && useLiveAssistantMarkdown.value))
 }
 
-// Generate render keys for other parts. `sourceIndex` is the part's index
-// in the original (unfiltered) contentParts array, which is append-only
+// Generate render keys for parts. `sourceIndex` is the part's index among the
+// anchor parts of the original contentParts array, which is append-only
 // during streaming and therefore stable.
 function getOtherPartKey(part: ContentPart, sourceIndex: number): string {
   if (part.type === 'text') return `text-other-${sourceIndex}`
@@ -683,10 +474,6 @@ function inlineReasoningKey(part: Extract<ContentPart, { type: 'reasoning' }>, i
   return `reasoning-${part.turnIndex ?? index}`
 }
 
-function getInlineReasoningSummary(part: Extract<ContentPart, { type: 'reasoning' }>): string {
-  return summarizeReasoningContent(part.content)
-}
-
 // ============ Expansion intent (user record > live auto > static default) ============
 // The records live outside the component tree (expansion-intent.ts) so a
 // remount — the thing that used to reset every one of these — cannot undo a
@@ -695,29 +482,18 @@ function getInlineReasoningSummary(part: Extract<ContentPart, { type: 'reasoning
 
 const stepsIntentScope = computed(() => (props.messageId ? `steps-${props.messageId}` : ''))
 
-function railIntentKey(group: PartGroup): string {
-  return props.messageId ? `rail-${props.messageId}-${group.key}` : ''
-}
+const workIntentKey = computed(() => (props.messageId ? `rail-${props.messageId}-work` : ''))
 
 /**
- * The rail this StepsPanel sits in, handed down as its parent intent address:
- * expanding a tool row records the rail as expanded too, so the rail's
- * "streaming ends → fold" auto-collapse cannot take the row away.
- * Cached per key so the prop keeps its identity across re-renders.
+ * The work group this StepsPanel sits in, handed down as its parent intent
+ * address: expanding a tool row records the group as expanded too, so the
+ * group's "work ends → fold" auto-collapse cannot take the row away.
+ * Cached so the prop keeps its identity across re-renders.
  */
-const railParentIntentIdCache = new Map<string, string[]>()
 const NO_PARENT_INTENTS: string[] = []
-
-function railParentIntentIds(group: PartGroup): string[] {
-  const key = railIntentKey(group)
-  if (!key) return NO_PARENT_INTENTS
-  let cached = railParentIntentIdCache.get(key)
-  if (!cached) {
-    cached = [key]
-    railParentIntentIdCache.set(key, cached)
-  }
-  return cached
-}
+const workParentIntentIds = computed<string[]>(() =>
+  workIntentKey.value ? [workIntentKey.value] : NO_PARENT_INTENTS,
+)
 
 // `key` is already `reasoning-<turnIndex>`; the messageId is spliced in so the
 // address reads `reasoning-<messageId>-<turnIndex>`.
@@ -749,6 +525,7 @@ const hasVisibleContent = computed(() => {
   return Boolean(
     props.content ||
     props.contentParts?.length ||
+    props.hasThinking ||
     !props.isStreaming,
   )
 })
@@ -1072,17 +849,6 @@ html[data-theme='light'] .image-generation-skeleton::after {
   /* Manuscript voice: the user's words are set in the display serif,
      independent of the chat reading-font setting. */
   font-family: var(--font-display, var(--font-sans));
-}
-
-/* ============ Text 淡入动画 ============ */
-
-/* Text 内容淡入 - Waiting 状态由 MessageThinking 组件处理 */
-.text-fade-enter-active {
-  transition: opacity var(--duration-slow) var(--ease-default);
-}
-
-.text-fade-enter-from {
-  opacity: 0;
 }
 
 .inline-reasoning {

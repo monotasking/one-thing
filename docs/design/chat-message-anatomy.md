@@ -149,7 +149,7 @@ ChatWindow
 [房内] 头像列（一组只画一次，点头像下钻 agent 空间）
 └ message-content-wrapper
   ├ 署名行        头像 · 名字 · 头衔 · 时间（dm 模式下省掉整行）
-  ├ MessageThinking      顶部 reasoning（message.reasoning）
+  ├ (MessageThinking 顶部 reasoning 由 MessageBubble 的 #thinking 插槽摆放，见 §3.4)
   ├ 附件区        图片走 figure + AttachmentThumb，文件走 FileChip
   ├ 引用块        replyTo 快照：作者 + ≤120 字摘录，点击回跳
   ├ MessageBubble ★ 正文主体，见 §3.4
@@ -164,20 +164,31 @@ ChatWindow
 `MessageActions` 能发出的动作：`copy / reply / react / edit / regenerate / branch /
 goToBranch / downvote`，外加 TTS 朗读。房内消息 `mutations-disabled`。
 
-### 3.4 `MessageBubble` 内部：正文与「过程」分列
+### 3.4 `MessageBubble` 内部：工作组与答案（2026-08-19 改）
 
-`MessageBubble.vue:371 partGroups` 把 `contentParts` 扫成交替的两种组：
+一条 assistant 回复在**最后一轮工具调用**处一分为二（`MessageBubble.vue workRender`）：
 
-- **content 组** —— `text` / `prompt-ref` / `skill-ref` / `image-loading`，正文列直出；
-- **process 组** —— `reasoning` / `tool-call` / `data-steps` / `waiting`
-  （`PROCESS_PART_TYPES`），整段收进一条 `ProcessRail`：缩进出正文列，
-  折叠成一行摘要（做了几步、调了什么工具、耗时多久、失败几个），点开才是详情。
+- **工作组（work group）** —— 顶部思考（`message.reasoning`，由 MessageItem 经
+  `#thinking` 插槽交进来）、行内 `reasoning`、每一轮 `tool-call` / `data-steps`、
+  以及夹在工具轮之间的过渡叙述 `text` —— 整段收进一条 `ProcessRail`：一行头
+  「Working · 12s · bash ×3」（在跑）/「Worked · 41s · 思考 9 步 · read ×4 · bash ×3」
+  （已结束），流式期间自动展开，答案开始流出即自动收起（可见性门照旧）。
+  组内思考与工具**各自成行**（`InlineThought` / `StepsPanel`），不再按连续段合并
+  成一条摘要 rail。
+- **尾部（tail）** —— 最后一轮工具之后的 `text` / `prompt-ref` / `skill-ref` /
+  指示器（`ContentPartView`），正文列全量直出；收起后页面上只剩它。
 
-分组 key 复用该组第一条的 key —— 流式期间 `contentParts` 只追加，所以延长一个组
-不会让已渲染的内容重新挂载。
+「Working」的判定：消息在流、且组内有工具在跑或最新 part 仍是过程（思考 / 待调工具）；
+一旦尾部出现可见内容就翻成「Worked」，即使消息整体还在流。用时：活着时从
+`startedAt`（消息 timestamp）走秒，翻 settled 那一刻冻结；历史消息按「最后一个工具的
+endTime − startedAt」推算。
 
-首个 text part 会被单独拎出来（`firstTextPart`）先画，让「先说话、再干活」这个
-最常见的形状不必等分组结果。
+`ProcessRail` 对 assistant 消息**恒挂载**：没有工具行时走 `solo`（无头无框），
+第一条工具行出现时只是长出头和框，顶部思考等已在场的内容不重挂。分组 key 沿用
+part 的锚点序号 —— 流式期间 `contentParts` 只追加，延长工作组不会让已渲染内容重挂；
+唯一会搬家的是「先说了话再调工具」那段开场文本（从尾部搬进组里），一次。
+
+用户消息没有工作组：所有 part 都在尾部。
 
 ### 3.5 房面的 `SayMessageRow`
 

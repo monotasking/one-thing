@@ -236,7 +236,7 @@ const FULL_VALUE_ARGS: Record<string, string> = {
  */
 const argEntries = computed<ArgEntry[]>(() => {
   const category = getToolUiCategory(props.view.toolName)
-  if (category === 'read' || category === 'write' || category === 'edit' || category === 'fart') return []
+  if (category === 'read' || category === 'write' || category === 'edit') return []
   const args = props.view.toolCall.arguments || {}
   return Object.entries(args)
     .filter(([, value]) => value !== undefined && value !== null && String(value) !== '')

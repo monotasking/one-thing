@@ -1,6 +1,6 @@
 import type { ToolStepView } from './tool-step-view'
 
-export type StepActivityRunKind = 'fart' | 'edited' | 'utility' | 'misc'
+export type StepActivityRunKind = 'edited' | 'utility' | 'misc'
 
 export interface StepActivityRun {
   id: string
@@ -17,7 +17,6 @@ export function isExploreStepView(view: ToolStepView): boolean {
 }
 
 export function getStepActivityRunKind(view: ToolStepView): StepActivityRunKind {
-  if (view.toolName === 'fart') return 'fart'
   if (isEditedStepView(view)) return 'edited'
   if (isExploreStepView(view) || view.toolName === 'bash') return 'utility'
   return 'misc'

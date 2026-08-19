@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, nextTick, ref } from 'vue'
 import { createPinia } from 'pinia'
@@ -131,27 +131,6 @@ function variableStep(id: string, value: string): Step {
   }
 }
 
-function fartStep(id: string): Step {
-  const toolCall: ToolCall = {
-    id,
-    toolId: 'fart',
-    toolName: 'fart',
-    status: 'completed',
-    arguments: { action: 'fart' },
-    timestamp: 1,
-  }
-
-  return {
-    id,
-    type: 'tool-call',
-    title: 'fart',
-    status: 'completed',
-    timestamp: 1,
-    toolCallId: id,
-    toolCall,
-  }
-}
-
 function webSearchStep(id: string): Step {
   const toolCall: ToolCall = {
     id,
@@ -218,8 +197,7 @@ function mountPanel(steps: Step[], pinia = createPinia()) {
     global: {
       plugins: [pinia],
       stubs: {
-        FartCallItem: { template: '<div class="fart-stub" />' },
-        ToolActivityDetails: { template: '<div class="detail-stub" />' },
+        ToolStepDetails: { template: '<div class="detail-stub" />' },
       },
     },
   })
@@ -230,9 +208,6 @@ function mountPanelWithDetails(steps: Step[], pinia = createPinia()) {
     props: { steps },
     global: {
       plugins: [pinia],
-      stubs: {
-        FartCallItem: { template: '<div class="fart-stub" />' },
-      },
     },
   })
 }
@@ -258,13 +233,6 @@ describe('StepsPanel interaction contract', () => {
     expect(single.find('.operation-block').classes()).toContain('icon-inline-end')
   })
 
-  it('wraps special tool-call renderers in a collapse panel shell', () => {
-    const wrapper = mountPanel([fartStep('fart')])
-
-    expect(wrapper.find('.fart-panel').classes()).toContain('collapse-panel')
-    expect(wrapper.find('.fart-stub').exists()).toBe(true)
-  })
-
   it('renders web search results through the shared collapse content panel', async () => {
     const wrapper = mountPanelWithDetails([webSearchStep('web')])
     const operation = wrapper.find('.operation-block')
@@ -285,15 +253,25 @@ describe('StepsPanel interaction contract', () => {
     expect(details.find('.details-content-wrapper').exists()).toBe(false)
   })
 
-  it('expands read details when clicking a file-link target name', async () => {
+  it('opens the file when clicking a file-link target name, even when the row has details', async () => {
     const wrapper = mountPanel([readStep('a')])
 
     await wrapper.find('.node-target-name.file-link').trigger('click')
+    await flushPromises()
+
+    // 没有引用宿主的环境退回 open-file 事件链;详情不因目标名点击而展开。
+    expect(wrapper.emitted('open-file')).toBeTruthy()
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
+  })
+
+  it('still expands details from the row header for a file tool', async () => {
+    const wrapper = mountPanel([readStep('a')])
+
+    await wrapper.find('.operation-row').trigger('click')
 
     expect(wrapper.emitted('open-file')).toBeUndefined()
     expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
     expect(wrapper.find('.activity-inline-details').classes()).toContain('collapse-panel-content')
-    expect(wrapper.find('.details-content-wrapper').exists()).toBe(false)
   })
 
   it('toggles a nested operation from its own expand icon without collapsing the group', async () => {
@@ -469,8 +447,7 @@ describe('StepsPanel parallel-batch auto expansion', () => {
       global: {
         plugins: [createPinia()],
         stubs: {
-          FartCallItem: { template: '<div class="fart-stub" />' },
-          ToolActivityDetails: { template: '<div class="detail-stub" />' },
+          ToolStepDetails: { template: '<div class="detail-stub" />' },
         },
       },
     })
@@ -551,8 +528,7 @@ describe('StepsPanel auto-collapse scroll compensation', () => {
       global: {
         plugins: [createPinia()],
         stubs: {
-          FartCallItem: { template: '<div class="fart-stub" />' },
-          ToolActivityDetails: { template: '<div class="detail-stub" />' },
+          ToolStepDetails: { template: '<div class="detail-stub" />' },
         },
       },
     })
@@ -632,8 +608,7 @@ describe('StepsPanel auto-collapse visibility gate', () => {
         plugins: [createPinia()],
         provide: { [CHAT_FOLLOW_STATE_KEY as symbol]: computed(() => following.value) },
         stubs: {
-          FartCallItem: { template: '<div class="fart-stub" />' },
-          ToolActivityDetails: { template: '<div class="detail-stub" />' },
+          ToolStepDetails: { template: '<div class="detail-stub" />' },
         },
       },
     })

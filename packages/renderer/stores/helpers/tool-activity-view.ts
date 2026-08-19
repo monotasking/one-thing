@@ -9,7 +9,8 @@ import {
 import { buildToolPrimaryArg, getFileToolCategory } from './tool-display'
 import { basename, shortenPath } from './tool-preview'
 import type { ToolRenderStatus } from './tool-status'
-import { getStatusLabel, getToolDisplayLabel } from './tool-ui-registry'
+import { getToolDisplayLabel } from './tool-ui-registry'
+import { formatDuration } from '@/utils/format-duration'
 
 export interface ToolActivityView {
   id: string
@@ -30,12 +31,10 @@ export interface ToolActivityView {
   deletions: number
   stats: string
   duration: string
-  statusLabel: string
   errorSummary: string
   isAwaitingConfirmation: boolean
   hasDetails: boolean
   defaultExpanded: boolean
-  isFart: boolean
 }
 
 export function buildToolActivityViews(steps: Step[], nowMs = Date.now()): ToolActivityView[] {
@@ -121,12 +120,10 @@ export function buildToolActivityView(step: Step, nowMs = Date.now()): ToolActiv
     deletions: stats.deletions,
     stats: stats.text,
     duration: buildDuration(toolCall, nowMs),
-    statusLabel: getStatusLabel(view.status),
     errorSummary: buildErrorSummary(step, toolCall, view.status),
     isAwaitingConfirmation: view.isAwaitingConfirmation,
     hasDetails: view.hasDetails,
     defaultExpanded: view.defaultExpanded,
-    isFart: toolName === 'fart',
   }
 }
 
@@ -203,12 +200,8 @@ function buildStats(diff: ToolDiffData | null, toolCall: ToolCall): ActivityStat
  */
 export function formatToolDuration(ms: number): string {
   // Sub-100ms runs would render "0.0s", which reads as a broken timer; every
-  // real execution displays at least the 0.1s floor.
-  const clamped = Math.max(ms, 100)
-  if (clamped < 60_000) return `${(clamped / 1000).toFixed(1)}s`
-  const minutes = Math.floor(clamped / 60_000)
-  const seconds = (clamped % 60_000) / 1000
-  return `${minutes}m${seconds < 10 ? '0' : ''}${seconds.toFixed(1)}s`
+  // real execution displays at least the 0.1s floor (the `tool` style's job).
+  return formatDuration(ms, { style: 'tool' })
 }
 
 /**

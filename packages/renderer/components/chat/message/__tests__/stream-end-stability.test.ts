@@ -68,8 +68,7 @@ const markdownStubs = {
 const { StepsPanel: _stubbedStepsPanel, ...markdownStubsBase } = markdownStubs
 const toolTimelineStubs = {
   ...markdownStubsBase,
-  FartCallItem: { template: '<div />' },
-  ToolActivityDetails: { template: '<div class="detail-stub" />' },
+  ToolStepDetails: { template: '<div class="detail-stub" />' },
 }
 
 const messageItemStubs = {
@@ -283,7 +282,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -308,7 +306,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -338,7 +335,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -372,7 +368,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -414,7 +409,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -451,7 +445,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -502,7 +495,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -548,7 +540,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -583,7 +574,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -624,7 +614,6 @@ describe('stream end visual stability', () => {
       },
       global: {
         stubs: {
-          FartCallItem: { template: '<div />' },
         },
       },
     })
@@ -749,11 +738,13 @@ describe('stream end visual stability', () => {
       global: { stubs: markdownStubs },
     })
 
-    // Settled message: the whole process run sits collapsed behind one rail
-    // summary line; thought panels appear after expanding it.
+    // Settled message: the whole process sits collapsed behind ONE work-group
+    // header ("Worked · …"); thought panels appear after expanding it.
     const rail = wrapper.find('.process-rail')
     expect(rail.exists()).toBe(true)
-    expect(rail.find('.process-rail-summary').text()).toContain('思考 2 步')
+    expect(rail.classes()).not.toContain('is-solo')
+    expect(rail.find('.process-rail-title').text()).toContain('Worked')
+    expect(rail.find('.process-rail-title').text()).toContain('思考 2 步')
     expect(wrapper.findAll('.inline-reasoning')).toHaveLength(0)
 
     await rail.find('.process-rail-header').trigger('click')
@@ -845,10 +836,12 @@ describe('stream end visual stability', () => {
     await nextTick()
 
     // The waiting placeholder itself paints nothing (composer readout owns it).
+    // No tool round → no work group: both text parts sit in the tail.
     expect(wrapper.find('.generation-waiting').exists()).toBe(false)
     const trailing = wrapper.findAll('.other-parts-container > .content')
-    expect(trailing).toHaveLength(1)
-    const trailingEl = trailing[0].element
+    expect(trailing).toHaveLength(2)
+    const firstEl = trailing[0].element
+    const trailingEl = trailing[1].element
 
     // removeTransientIndicators splices the waiting part out at stream end.
     await wrapper.setProps({
@@ -862,9 +855,10 @@ describe('stream end visual stability', () => {
 
     expect(wrapper.find('.generation-waiting').exists()).toBe(false)
     const after = wrapper.findAll('.other-parts-container > .content')
-    expect(after).toHaveLength(1)
+    expect(after).toHaveLength(2)
     // A positional key would have shifted 2 → 1 here and remounted the block.
-    expect(after[0].element).toBe(trailingEl)
+    expect(after[0].element).toBe(firstEl)
+    expect(after[1].element).toBe(trailingEl)
   })
 
   it('draws no rail frame for a process group that renders nothing yet', async () => {
@@ -881,7 +875,10 @@ describe('stream end visual stability', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('.process-rail').exists()).toBe(false)
+    // The rail shell is always mounted for an assistant turn, but with no
+    // tool row it runs frameless: no header, no "Working" line, no border.
+    expect(wrapper.find('.process-rail').classes()).toContain('is-solo')
+    expect(wrapper.find('.process-rail-header').exists()).toBe(false)
   })
 
   it('hides opening waiting because MessageThinking owns that status', async () => {

@@ -1,6 +1,6 @@
 /**
  * Single source of truth for how each tool is presented in the UI:
- * category (grouping/inspector), display label, icon, status labels.
+ * category (grouping/inspector), display label, icon, status badge text.
  * Adding a new tool's UI treatment means editing THIS file only.
  */
 import type { Component } from 'vue'
@@ -23,12 +23,11 @@ import {
   Terminal,
   TextSearch,
   Variable,
-  Wind,
   Wrench,
 } from 'lucide-vue-next'
 import type { ToolRenderStatus } from './tool-status'
 
-export type ToolUiCategory = 'read' | 'write' | 'edit' | 'search' | 'console' | 'fart' | 'tool'
+export type ToolUiCategory = 'read' | 'write' | 'edit' | 'search' | 'console' | 'tool'
 
 const CATEGORY_ALIASES: Record<string, ToolUiCategory> = {
   read: 'read', read_file: 'read', 'read-file': 'read', readfile: 'read',
@@ -42,7 +41,6 @@ const CATEGORY_ALIASES: Record<string, ToolUiCategory> = {
   web_open: 'search', 'web-open': 'search', webopen: 'search',
   web_find: 'search', 'web-find': 'search', webfind: 'search',
   bash: 'console',
-  fart: 'fart',
 }
 
 /**
@@ -77,7 +75,6 @@ const TOOL_LABELS: Record<string, string> = {
   task: 'Task',
   agent: 'Task',
   skill: 'Skill',
-  fart: 'Fart',
 }
 
 const TOOL_ICONS: Record<string, Component> = {
@@ -104,7 +101,6 @@ const TOOL_ICONS: Record<string, Component> = {
   task: Bot,
   agent: Bot,
   skill: Sparkles,
-  fart: Wind,
 }
 
 const CATEGORY_ICONS: Record<ToolUiCategory, Component> = {
@@ -113,19 +109,26 @@ const CATEGORY_ICONS: Record<ToolUiCategory, Component> = {
   edit: FilePen,
   search: Globe,
   console: Terminal,
-  fart: Wind,
   tool: Wrench,
 }
 
-const STATUS_LABELS: Record<ToolRenderStatus, string> = {
-  queued: 'Queued',
-  pending: 'Pending',
-  'streaming-input': 'Receiving',
-  received: 'Running',
-  executing: 'Running',
+/**
+ * Row status badge text — the ONLY status vocabulary in the tool UI.
+ *
+ * A badge is drawn only when the status is something the reader must act on or
+ * mourn: waiting on them, refused, or dead. Everything else renders '' (the row
+ * already carries its state through icon / colour / live duration), which is why
+ * this is not a "label per status" table.
+ */
+const STATUS_BADGE_TEXT: Record<ToolRenderStatus, string> = {
+  queued: '',
+  pending: '',
+  'streaming-input': '',
+  received: '',
+  executing: '',
   'awaiting-confirmation': 'Needs approval',
-  completed: 'Done',
-  failed: 'Failed',
+  completed: '',
+  failed: '失败',
   rejected: 'Rejected',
   cancelled: 'Cancelled',
 }
@@ -162,8 +165,16 @@ export function getToolIcon(toolName: string | undefined): Component {
   return CATEGORY_ICONS[getToolUiCategory(normalized)]
 }
 
-export function getStatusLabel(status: ToolRenderStatus): string {
-  return STATUS_LABELS[status] ?? 'Pending'
+/**
+ * `permissionQueued` splits the awaiting row in two: a prompt queued behind
+ * another one is waiting, not actionable (no respond card is drawn for it).
+ */
+export function getToolStatusBadgeText(
+  status: ToolRenderStatus,
+  opts: { permissionQueued?: boolean } = {},
+): string {
+  if (status === 'awaiting-confirmation' && opts.permissionQueued) return 'Waiting for approval'
+  return STATUS_BADGE_TEXT[status] ?? ''
 }
 
 /** Category for read/write/edit file tools, null otherwise (legacy helper shape). */

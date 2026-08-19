@@ -108,19 +108,29 @@ export function countQueuedBehind(
   return queued
 }
 
+/** 判定「这次调用现在能应答吗」只需要这两个字段。 */
+export type RespondableToolCall = Pick<ToolCall, 'requiresConfirmation' | 'canRespond'>
+
 /**
- * 待审批的那一次调用。
+ * 这条消息里可应答的那一次调用 —— 「可应答」的唯一谓词。
  *
  * Actionability needs both truths: `requiresConfirmation` is persisted engine
  * history, `canRespond` marks a live emitted prompt in the permission manager
  * (set from permission events / the pending seed). Either alone renders a
  * card that can't be answered — stale after restart, or a queued follower.
  */
+export function findRespondableToolCall<T extends RespondableToolCall>(
+  message: { toolCalls?: T[] },
+): T | null {
+  return message.toolCalls?.find(tc => tc.requiresConfirmation && tc.canRespond) ?? null
+}
+
+/** 整段消息流里最先可应答的那一次调用。 */
 export function findPendingPermission(
   messages: Array<{ toolCalls?: ToolCall[] }>,
 ): ToolCall | null {
   for (const message of messages) {
-    const toolCall = message.toolCalls?.find(tc => tc.requiresConfirmation && tc.canRespond)
+    const toolCall = findRespondableToolCall(message)
     if (toolCall) return toolCall
   }
   return null

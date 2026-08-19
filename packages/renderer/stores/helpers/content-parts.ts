@@ -3,9 +3,12 @@
  * chunks arrive. Each helper mutates the `parts` array in place; the caller is
  * responsible for re-assigning `message.contentParts = [...parts]` (or
  * equivalent) to trigger Vue reactivity downstream.
+ *
+ * 末尾另有**加载路径**那一份(`rebuildLoadedContentParts`):它不是流式的,
+ * 一次性把一条历史消息重建成 parts,与上面的增量函数互不调用。
  */
 
-import type { ContentPart, ToolCall } from '@/types'
+import type { ContentPart, Step, ToolCall } from '@/types'
 import { isPlaceholderTransientPart, isTransientPart } from '@shared/ipc/chat'
 import { mergeToolCall } from './tool-calls'
 
@@ -257,4 +260,51 @@ export function pushImageLoading(parts: ContentPart[], turnIndex?: number, label
     ...(turnIndex !== undefined ? { turnIndex } : {}),
     ...(label ? { label } : {}),
   })
+}
+
+// ---------------------------------------------------------------------------
+// 加载路径(非流式)
+// ---------------------------------------------------------------------------
+
+/**
+ * 历史消息重建 parts。
+ *
+ * 老消息从存储读回来时没有 `contentParts`(那时还没有这个字段,或者是被脱水
+ * 掉了),渲染层却按 part 走位。这里按消息**自己**的内容补一份:正文在前,
+ * 工具在后。
+ *
+ * 工具占位统一走 `data-steps`:一条 `data-steps` 就是「这一轮的 step 行画在
+ * 这里」,渲染时由 `buildWorkRender` 用 `stepsForTurn` 取真 step。多轮消息
+ * 因此拿到多个占位(按 `turnIndex` 升序、去重),而不是一个把所有工具糊在一
+ * 起的 `tool-call` 块 —— 后者只在**没有任何 step**(更老的、只存了
+ * `toolCalls` 的消息)时才作为兜底出现。流式路径不受影响,它仍然先发
+ * `tool-call` 再发 `data-steps`,`buildWorkRender` 的 `claimed` 去重照旧。
+ */
+export function rebuildLoadedContentParts(message: {
+  content?: string
+  steps?: Step[]
+  toolCalls?: ToolCall[]
+}): ContentPart[] {
+  const parts: ContentPart[] = []
+
+  if (message.content) {
+    parts.push({ type: 'text', content: message.content })
+  }
+
+  const steps = message.steps ?? []
+  if (steps.length > 0) {
+    // `turnIndex` 缺省视为第 0 轮 —— 单轮老消息就是这个形状。
+    const turns = [...new Set(steps.map(step => step.turnIndex ?? 0))].sort((a, b) => a - b)
+    for (const turnIndex of turns) {
+      parts.push({ type: 'data-steps', turnIndex })
+    }
+    return parts
+  }
+
+  const toolCalls = message.toolCalls ?? []
+  if (toolCalls.length > 0) {
+    parts.push({ type: 'tool-call', toolCalls: [...toolCalls] })
+  }
+
+  return parts
 }

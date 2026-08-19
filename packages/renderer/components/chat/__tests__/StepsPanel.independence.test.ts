@@ -39,8 +39,7 @@ function mountPanel(steps: Step[], intentScope?: string, parentIntentIds?: strin
     global: {
       plugins: [createPinia()],
       stubs: {
-        FartCallItem: { template: '<div class="fart-stub" />' },
-        ToolActivityDetails: { template: '<div class="detail-stub" />' },
+        ToolStepDetails: { template: '<div class="detail-stub" />' },
       },
     },
   })

@@ -97,6 +97,61 @@ export function intersectsScrollerViewport(
   return true
 }
 
+/**
+ * 展开态的合成 —— 「用户 intent > deferred > auto」这句话的唯一实现。
+ *
+ * 三票,优先级从高到低:
+ *  1. `recorded` —— 落在 expansion-intent 记录里的用户意图(跨重挂载存活);
+ *  2. `userToggled` —— 本实例内的用户 toggle(没有 intentKey 时唯一的用户票);
+ *  3. `auto` / `deferred` —— 自动展开,以及「auto 想收但用户正看着它」的挂起票。
+ *
+ * 前两票一旦有值就一锤定音:用户说收就收,挂起票掀不翻它。只有在两票都缺席时
+ * auto 与 deferred 才以**或**的关系生效。
+ */
+export function resolveDeferredExpanded(input: {
+  /** expansion-intent 记录;`undefined` = 用户没表过态。 */
+  recorded?: boolean | undefined
+  /** 本实例内的 toggle;`null` = 没点过。 */
+  userToggled?: boolean | null
+  auto: boolean
+  deferred: boolean
+}): boolean {
+  if (input.recorded !== undefined) return input.recorded
+  if (input.userToggled !== null && input.userToggled !== undefined) return input.userToggled
+  return input.auto || input.deferred
+}
+
+/**
+ * 同一套合成的**多键**形态(StepsPanel 的受控集合)。
+ *
+ * 差异是真实的,不是疏忽:这里的 `base` 是已经把 intent 揉进去的结果集
+ * (`recorded ?? (auto || subtreeHasIntent)`),所以每个 key 只剩 auto 与
+ * deferred 两票 —— 也就是说一个 key 若同时"被用户记为收起"又"挂着自动收起",
+ * 集合形态会让它保持展开,而单键形态(ProcessRail)会听用户的。实际路径上不会
+ * 撞上:用户一 toggle 就 `cancel` 掉了那条挂起。保留差异,不抹平。
+ *
+ * `undefined` 原样透传:CollapseGroup 收到 `undefined` 就是"不受控"(旧行为)。
+ */
+export function resolveDeferredExpandedKeys<K>(
+  base: readonly K[] | undefined,
+  deferred: readonly K[],
+): K[] | undefined {
+  if (!base) return undefined
+  if (deferred.length === 0) return [...base]
+  const inBase = new Set<K>(base)
+  const inDeferred = new Set<K>(deferred)
+  // auto 裁定展开的那批保持原序在前,挂起票带进来的补在后面。
+  const seen = new Set<K>()
+  const merged: K[] = []
+  for (const key of [...base, ...deferred]) {
+    if (seen.has(key)) continue
+    seen.add(key)
+    if (!resolveDeferredExpanded({ auto: inBase.has(key), deferred: inDeferred.has(key) })) continue
+    merged.push(key)
+  }
+  return merged
+}
+
 export function useDeferredAutoCollapse<K = string>(
   options: UseDeferredAutoCollapseOptions<K> = {},
 ): DeferredAutoCollapseGate<K> {
