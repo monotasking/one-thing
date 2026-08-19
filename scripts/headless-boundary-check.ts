@@ -5258,7 +5258,7 @@ function checkMarkdownDomainRidesTheRpcChannel(): void {
   const domainFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/markdown.ts')
   const guardFile = path.join(root, 'packages/onething-runtime/src/app/markdown/asset-service.ts')
   const registryIndexFile = path.join(root, 'packages/onething-runtime/src/app/rpc/index.ts')
-  const serverRuntimeFile = path.join(root, 'apps/server/src/runtime.ts')
+  const serverRuntimeFile = path.join(root, 'packages/onething-runtime/src/app/server/runtime.ts')
   const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
   const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
@@ -5323,7 +5323,7 @@ function checkPermissionGrantsDomainRidesTheRpcChannel(): void {
   const domainFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/permission-grants.ts')
   const registryIndexFile = path.join(root, 'packages/onething-runtime/src/app/rpc/index.ts')
   const mainPermissionFile = path.join(root, 'apps/electron/src/main/ipc/permission.ts')
-  const serverRuntimeFile = path.join(root, 'apps/server/src/runtime.ts')
+  const serverRuntimeFile = path.join(root, 'packages/onething-runtime/src/app/server/runtime.ts')
   const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
   const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''

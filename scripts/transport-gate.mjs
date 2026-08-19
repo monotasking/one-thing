@@ -18,7 +18,7 @@ const baselinePath = path.join(root, 'docs/audit/transport-baseline-2026-08-14.t
 
 /** 四个壳文件：加一个域时历史上必须逐个改的那四处。 */
 const SHELL_FILES = [
-  'apps/server/src/http.ts',
+  'packages/onething-runtime/src/app/server/http.ts',
   'apps/electron/src/preload/bridge.ts',
   'packages/renderer/platform/web.ts',
   'packages/shared/ipc/channels.ts',

@@ -14,14 +14,14 @@ import { resetPermissionGrantsForTests } from '@onething/core/permission'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import type { MCPServerConfig, MCPServerState } from '@shared/ipc/mcp.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
-import { createOnethingHttpServer } from './http.js'
+import { createOnethingHttpServer } from '../http.js'
 import {
   SERVER_REDACTED_SECRET,
   createAppBackedServerSessionStore,
   mergeServerSettingsUpdate,
   sanitizeSettingsForClient,
   type OnethingServerRuntime,
-} from './runtime.js'
+} from '../runtime.js'
 import { createEchoServerBackend, createTestServerRuntime } from './test-helpers.js'
 
 const servers: Server[] = []

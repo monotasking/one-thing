@@ -39,6 +39,16 @@ export interface ElectronBeforeQuitCleanupOptions {
    * 所以把它放进同步段是真的有保证,不是碰运气。
    */
   shutdownPlugins: () => void
+  /**
+   * 内嵌的 core HTTP/SSE 面(A 期,docs/design/one-core-2026-08.md §3)。
+   *
+   * 刻意是**同步**签名并排在同步段:发现文件 `<store>/run/http.json` 是
+   * "这个 store 由我在服务"的宣告,它必须先于一切 await 消失,否则一次
+   * Cmd+Q 竞速就会在盘上留下一条指向死进程的线索,`server:start` 还得靠
+   * pid+端口两段探活才敢无视它。关端口本身是异步的,fire-and-forget。
+   * 可选:没挂 HTTP 面的宿主(测试)不用给。
+   */
+  stopEmbeddedHttpServer?: () => void
   shutdownStreamEngine: CleanupFn
   shutdownPermission: CleanupFn
   shutdownSessionLayer: CleanupFn
@@ -72,6 +82,7 @@ export async function runElectronBeforeQuitCleanup(
    * 进程可能随时消失。数据关键且能同步完成的收尾必须待在这里。
    */
   options.shutdownPlugins()
+  options.stopEmbeddedHttpServer?.()
 
   options.markVoiceQuitRequested()
   await options.shutdownVoiceService()

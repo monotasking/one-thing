@@ -3,6 +3,6 @@
 # 生成于 2026-08-14；每一行是 `<指标名> <数值>`。
 channels:IPC_CHANNELS 337
 lines:apps/electron/src/preload/bridge.ts 1737
-lines:apps/server/src/http.ts 1989
+lines:packages/onething-runtime/src/app/server/http.ts 1989
 lines:packages/renderer/platform/web.ts 1718
 lines:packages/shared/ipc/channels.ts 535

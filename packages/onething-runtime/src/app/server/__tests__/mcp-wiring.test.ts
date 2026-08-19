@@ -21,7 +21,7 @@ import {
   type MCPServerConfig,
   type MCPServerState,
 } from '@onething/core/mcp'
-import { createDevelopmentOnethingServerRuntime, type OnethingServerRuntime } from './runtime.js'
+import { createDevelopmentOnethingServerRuntime, type OnethingServerRuntime } from '../runtime.js'
 
 function createStubMCPClient(config: MCPServerConfig): MCPClientLike {
   let state: MCPServerState = createMCPServerState(config)

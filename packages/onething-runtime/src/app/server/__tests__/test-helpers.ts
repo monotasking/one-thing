@@ -9,8 +9,8 @@ import type {
   OnethingServerBackend,
   OnethingServerRuntime,
   OnethingServerRuntimeOptions,
-} from './runtime.js'
-import { createDevelopmentOnethingServerRuntime } from './runtime.js'
+} from '../runtime.js'
+import { createDevelopmentOnethingServerRuntime } from '../runtime.js'
 
 type AnyEvent = { type?: string } & Record<string, unknown>
 

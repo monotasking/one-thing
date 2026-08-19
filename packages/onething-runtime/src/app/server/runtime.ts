@@ -47,7 +47,7 @@ import {
 	type RuntimeStreamPayload,
 	type RuntimeUnsubscribe,
 } from "@onething/core";
-import { createOnethingBackend } from "@onething/app/backend.js";
+import { createOnethingBackend, type OnethingBackend } from "@onething/app/backend.js";
 import { buildSystemPromptSnapshot as buildAppSystemPromptSnapshot } from "@onething/app/engine/prompt/system-prompt-snapshot.js";
 import { buildOnethingSystemPromptSnapshotForIpc } from "@onething/runtime/prompts";
 import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/app/stores/settings.js";
@@ -276,7 +276,10 @@ import {
 import { defaultOnethingThemeRuntime } from "@onething/runtime/themes/theme-runtime";
 // todo/plan 的数据面已整体迁走(含 per-owner 分库);server 这侧只剩变更广播的载荷类型。
 import type { TodoPlanChangedPayload } from "@onething/runtime/todo-plan";
-import { configureTodoPlanHost } from "@onething/app/todo-plan/store.js";
+import {
+	configureTodoPlanHost,
+	getTodoPlanHostPorts,
+} from "@onething/app/todo-plan/store.js";
 import {
 	OnethingSchedulerRunHistory,
 	OnethingSchedulerUserTaskStore,
@@ -403,6 +406,7 @@ import type {
 import {
 	adoptScratchpad as adoptAppScratchpad,
 	configureScratchpadHost,
+	getScratchpadHostPorts,
 	readScratchpad as readAppScratchpad,
 	removeScratchpad as removeAppScratchpad,
 	startScratchpadWatcher,
@@ -545,6 +549,25 @@ export interface OnethingServerRuntimeOptions {
 	mcpClientFactory?: ServerMCPClientFactory;
 	pluginCommands?: ServerPluginCommandDefinition[];
 	oauthFetch?: typeof fetch;
+	/**
+	 * 进程级单槽端口(MCP 客户端宿主 + clientInfo + capabilities-changed、授权账页
+	 * 存储、todo/scratchpad 广播)归谁配。
+	 *
+	 * - `'own'`(默认):这个进程就是 core 进程(`server:start`),由 server runtime 配。
+	 * - `'host'`:宿主(Electron 桌面)已经配好了,HTTP 面只是搭车。此时
+	 *   MCP/授权存储**一律不改写**,todo/scratchpad 广播改为**串联**(先调宿主
+	 *   原本那只,再喂 SSE),`shutdown()` 里再把它们还原回去。
+	 */
+	processPorts?: "own" | "host";
+}
+
+export interface OnethingServerRuntimeOverBackendOptions
+	extends Omit<OnethingServerRuntimeOptions, "createBackend"> {
+	/**
+	 * `runtime.shutdown()` 要不要连带关掉传进来的 backend。
+	 * `server:start` 自己装配的 → true(默认);桌面借出来的 → false。
+	 */
+	ownsBackend?: boolean;
 }
 
 export interface ServerSettingsStore {
@@ -1087,7 +1110,32 @@ function normalizeServerPluginCommandName(commandName: string): string {
 	return commandName.startsWith("/") ? commandName : `/${commandName}`;
 }
 
-async function createRealServerBackend(storePath: string): Promise<OnethingServerBackend> {
+/**
+ * 把产品后端(`createOnethingBackend` 的返回值)适配成 server runtime 认识的底座。
+ *
+ * A 期(docs/design/one-core-2026-08.md §3)之后这段适配有**两个**调用方:
+ * `server:start` 自己装配的那只 backend,以及桌面主进程借出来的那只。区别只有
+ * `ownsBackend` 一个:借来的不能在 HTTP 面关掉时把宿主的引擎一起关了。
+ */
+export function toOnethingServerBackend(
+	backend: OnethingBackend,
+	options: { ownsBackend?: boolean } = {},
+): OnethingServerBackend {
+	const ownsBackend = options.ownsBackend ?? true;
+	return {
+		eventBus: backend.eventBus as unknown as EventBus<AgentEngineSessionEvent>,
+		streamChannel: backend.streamChannel as unknown as ServerStreamChannelLike,
+		persistsMessages: true,
+		abortSession(sessionId, reason) {
+			backend.engine.abort(sessionId, reason ?? "server abort");
+		},
+		shutdown: async () => {
+			if (ownsBackend) await backend.shutdown();
+		},
+	};
+}
+
+async function createRealServerBackend(storePath: string): Promise<OnethingBackend> {
 	// The @onething/app path layer resolves its root from ONETHING_STORE_PATH.
 	// One server process assembles one backend; pin the root before booting so
 	// engine writes land in the same store the server serves.
@@ -1116,7 +1164,7 @@ async function createRealServerBackend(storePath: string): Promise<OnethingServe
 			"[ServerRuntime] ONETHING_SERVER_TOOLS=readonly — degraded tool set (read/time/web only)",
 		);
 	}
-	const backend = await createOnethingBackend({
+	return createOnethingBackend({
 		sandboxHost: {
 			getPath(name) {
 				if (name === "downloads") return join(homedir(), "Downloads");
@@ -1127,26 +1175,55 @@ async function createRealServerBackend(storePath: string): Promise<OnethingServe
 		sessionSkills: true,
 		sender: new ServerNoopSender() as never,
 	});
-	return {
-		eventBus: backend.eventBus as unknown as EventBus<AgentEngineSessionEvent>,
-		streamChannel: backend.streamChannel as unknown as ServerStreamChannelLike,
-		persistsMessages: true,
-		abortSession(sessionId, reason) {
-			backend.engine.abort(sessionId, reason ?? "server abort");
-		},
-		shutdown: async () => {
-			await backend.shutdown();
-		},
-	};
+}
+
+/**
+ * 在一只**已经存在**的产品后端之上建 server runtime(A 期的核心接缝)。
+ *
+ * 桌面主进程装配完 backend 之后调这个:HTTP/SSE 面因此和 renderer 的 IPC 面
+ * 共享同一条事件流、同一份内存真相、同一个 seq 分配器 —— 而不是像从前那样
+ * 由 apps/server 再装配一只引擎。
+ *
+ * 借来的 backend 必须传 `processPorts: 'host'`:MCP 客户端宿主、授权账页存储、
+ * todo/scratchpad 广播这三组是**进程级单槽端口**,宿主已经配好了,server runtime
+ * 再配一次就是把桌面的接线覆盖掉(MCP 会被换成 DisabledServerMCPClient)。
+ */
+export async function createOnethingServerRuntimeOverBackend(
+	backend: OnethingBackend,
+	options: OnethingServerRuntimeOverBackendOptions = {},
+): Promise<OnethingServerRuntime> {
+	return createServerRuntimeOverServerBackend(
+		toOnethingServerBackend(backend, { ownsBackend: options.ownsBackend }),
+		options,
+	);
 }
 
 export async function createDevelopmentOnethingServerRuntime(
 	options: OnethingServerRuntimeOptions = {},
 ): Promise<OnethingServerRuntime> {
 	const storePath = resolve(options.storePath ?? getOnethingStorePath());
-	const backend = options.createBackend
-		? await options.createBackend()
-		: await createRealServerBackend(storePath);
+	// echo / local-store 测试后端仍然走原路:它们给的就是 `OnethingServerBackend`
+	// 这只适配壳,不是产品后端。
+	if (options.createBackend) {
+		return createServerRuntimeOverServerBackend(await options.createBackend(), {
+			...options,
+			storePath,
+		});
+	}
+	return createOnethingServerRuntimeOverBackend(
+		await createRealServerBackend(storePath),
+		{ ...options, storePath, ownsBackend: true },
+	);
+}
+
+async function createServerRuntimeOverServerBackend(
+	backend: OnethingServerBackend,
+	options: OnethingServerRuntimeOptions = {},
+): Promise<OnethingServerRuntime> {
+	const storePath = resolve(options.storePath ?? getOnethingStorePath());
+	// 进程级单槽端口:'own' = 这个进程就是 core 进程,由 server runtime 配;
+	// 'host' = 宿主(桌面)已经配好了,只做叠加不做改写。
+	const ownsProcessPorts = (options.processPorts ?? "own") === "own";
 	const eventBus = backend.eventBus;
 	const streamChannel = backend.streamChannel;
 	// Real engine backends persist through the @onething/app repository; a
@@ -1239,11 +1316,15 @@ export async function createDevelopmentOnethingServerRuntime(
 				},
 			}
 		: baseSettingsStore;
-	configureOnethingPermissionGrantStorage({
-		getPermissionsDir: () => join(dataRoot, "permissions"),
-		readJsonFile: readServerRuntimeJsonFile,
-		writeJsonFile: writeServerRuntimeJsonFile,
-	});
+	// 嵌在宿主里时不碰这个端口:桌面已经按它自己的口径配过了,再配一次等于把
+	// 桌面的授权账页搬到另一个目录(dataRoot 与 store 不一定同一处)。
+	if (ownsProcessPorts) {
+		configureOnethingPermissionGrantStorage({
+			getPermissionsDir: () => join(dataRoot, "permissions"),
+			readJsonFile: readServerRuntimeJsonFile,
+			writeJsonFile: writeServerRuntimeJsonFile,
+		});
+	}
 	const enableMCPConnections =
 		options.enableMCPConnections ??
 		process.env.ONETHING_SERVER_MCP_CONNECTIONS === "1";
@@ -1549,37 +1630,44 @@ export async function createDevelopmentOnethingServerRuntime(
 	// (same class of split as the session double-repository above).
 	// Scoped owners keep their isolated server-local managers.
 	if (backend.persistsMessages) {
-		// clientInfo version: workspace packages all say 0.0.0 — only the repo
-		// root package.json carries the product version, and this host runs
-		// from the repo (a packaged form would configure its own).
-		try {
-			const rootPkg = JSON.parse(
-				readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
-			) as { version?: unknown };
-			configureMCPClientIdentity({
-				version: typeof rootPkg.version === "string" ? rootPkg.version : undefined,
+		// 嵌在宿主里(processPorts: 'host')时这三个 configure* 一律不碰:桌面配的是
+		// 真的 MCP 客户端,server 这份默认是 DisabledServerMCPClient —— 覆盖过去
+		// 等于把桌面的 MCP 静悄悄关掉。初始化同理由桌面的 initializeMCP() 负责。
+		if (ownsProcessPorts) {
+			// clientInfo version: workspace packages all say 0.0.0 — only the repo
+			// root package.json carries the product version, and this host runs
+			// from the repo (a packaged form would configure its own).
+			try {
+				const rootPkg = JSON.parse(
+					readFileSync(new URL("../../../../../package.json", import.meta.url), "utf8"),
+				) as { version?: unknown };
+				configureMCPClientIdentity({
+					version: typeof rootPkg.version === "string" ? rootPkg.version : undefined,
+				});
+			} catch {
+				// Root package.json unreadable → identity default stays.
+			}
+			configureMCPClientHost(mcpClientFactory);
+			// P2-1: server-pushed list changes re-read into state by the client;
+			// regenerate the model-facing catalog through the same path.
+			configureMCPCapabilitiesChangedHandler(() => {
+				void registerAppMCPTools();
 			});
-		} catch {
-			// Root package.json unreadable → identity default stays.
 		}
-		configureMCPClientHost(mcpClientFactory);
-		// P2-1: server-pushed list changes re-read into state by the client;
-		// regenerate the model-facing catalog through the same path.
-		configureMCPCapabilitiesChangedHandler(() => {
-			void registerAppMCPTools();
-		});
 		mcpManagersByOwner.set(
 			ownerKey(defaultRequestContext()),
 			appMCPManager as ServerMCPManager,
 		);
-		void (async () => {
-			try {
-				await appMCPManager.initialize(await getMCPSettingsForContext());
-				await registerAppMCPTools();
-			} catch (error) {
-				console.error("[ServerRuntime] MCP initialization failed:", error);
-			}
-		})();
+		if (ownsProcessPorts) {
+			void (async () => {
+				try {
+					await appMCPManager.initialize(await getMCPSettingsForContext());
+					await registerAppMCPTools();
+				} catch (error) {
+					console.error("[ServerRuntime] MCP initialization failed:", error);
+				}
+			})();
+		}
 	}
 
 	const getACPSettingsForContext = async (
@@ -1645,8 +1733,14 @@ export async function createDevelopmentOnethingServerRuntime(
 	 * 这条 SSE 唯一的货源** —— 少了它,浏览器端的变更推送会安静地断掉。
 	 */
 	const todoPlanChangedHandlers = new Set<TodoPlanChangedHandler>();
+	// 两个单槽端口:嵌在宿主里时**串联**(先调宿主原来那只,再喂 SSE),
+	// `shutdown()` 里还原。独立进程里前一位是空的,串联退化成今天的行为。
+	const previousTodoPlanHostPorts = getTodoPlanHostPorts();
+	const previousScratchpadHostPorts = getScratchpadHostPorts();
 	configureTodoPlanHost({
+		...previousTodoPlanHostPorts,
 		broadcastChanged: (payload) => {
+			previousTodoPlanHostPorts.broadcastChanged?.(payload);
 			for (const handler of todoPlanChangedHandlers) {
 				try {
 					handler(payload);
@@ -1658,7 +1752,9 @@ export async function createDevelopmentOnethingServerRuntime(
 	});
 
 	configureScratchpadHost({
+		...previousScratchpadHostPorts,
 		broadcastChanged: (payload) => {
+			previousScratchpadHostPorts.broadcastChanged?.(payload);
 			for (const handler of scratchpadChangedHandlers) {
 				try {
 					handler(payload);
@@ -1669,10 +1765,13 @@ export async function createDevelopmentOnethingServerRuntime(
 		},
 	});
 	// AI 用普通 write/edit 工具改纸时不经过 store —— watcher 是唯一会告诉
-	// 浏览器"纸变了"的人。
-	void startScratchpadWatcher().catch((error) => {
-		console.error("[server] scratchpad watcher failed to start:", error);
-	});
+	// 浏览器"纸变了"的人。嵌在宿主里时宿主已经起过同一只 watcher(它是单例),
+	// 不重复起,也因此不由这里停。
+	if (ownsProcessPorts) {
+		void startScratchpadWatcher().catch((error) => {
+			console.error("[server] scratchpad watcher failed to start:", error);
+		});
+	}
 
 	const subscribeScratchpadChanged = (
 		handler: (payload: ScratchpadChangedPayload) => void,
@@ -4947,7 +5046,11 @@ export async function createDevelopmentOnethingServerRuntime(
 			mcpManagersByOwner.clear();
 			// Release the injected client factory: it closes over this runtime's
 			// config, and the app singleton outlives us (module scope).
-			if (backend.persistsMessages) configureMCPClientHost(null);
+			if (backend.persistsMessages && ownsProcessPorts) configureMCPClientHost(null);
+			// 单槽端口还原:串联上去的那一层必须摘掉,否则宿主的广播会经过一个
+			// 已经关掉的 runtime 的闭包(handler 集合虽已清空,但链子还在)。
+			configureTodoPlanHost(previousTodoPlanHostPorts);
+			configureScratchpadHost(previousScratchpadHostPorts);
 			for (const service of authServicesByOwner.values()) {
 				service.cleanup();
 			}
@@ -4967,7 +5070,7 @@ export async function createDevelopmentOnethingServerRuntime(
 			workspaceWatchersByOwner.clear();
 			workspaceFileChangedHandlersByOwner.clear();
 			todoPlanChangedHandlers.clear();
-			stopScratchpadWatcher();
+			if (ownsProcessPorts) stopScratchpadWatcher();
 			scratchpadChangedHandlers.clear();
 			mediaImageGeneratedHandlersByOwner.clear();
 			agentStoresByOwner.clear();

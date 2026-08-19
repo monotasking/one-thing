@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createLocalServerSessionStore,
   type OnethingServerRuntime,
-} from './runtime.js'
+} from '../runtime.js'
 import { createTestServerRuntime } from './test-helpers.js'
 
 // 方案 A 防回归:sessions.create 接受客户端指定的 session id(renderer 的

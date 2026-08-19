@@ -260,6 +260,11 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   // The catch-all below already resolves this one, but the boundary checker
   // wants每个真实用到的子路径都在表里有名有姓 —— 登记本身就是那条门禁。
   { find: '@onething/runtime/sessions/session-events', replacement: resolve(projectRoot, 'packages/onething-runtime/src/sessions/session-events.ts') },
+  // A 期把 server runtime 搬进装配层之后,这三条从 apps/server 一起进了包内 ——
+  // 门禁因此开始要求它们也有名有姓。
+  { find: '@onething/runtime/sessions/session-message-runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/sessions/session-message-runtime.ts') },
+  { find: '@onething/runtime/sessions/session-repository', replacement: resolve(projectRoot, 'packages/onething-runtime/src/sessions/session-repository.ts') },
+  { find: '@onething/runtime/sessions/storage-driver', replacement: resolve(projectRoot, 'packages/onething-runtime/src/sessions/storage-driver.ts') },
   // Deep-family catch-alls: leaf modules resolve to <name>.ts; keep them
   // ABOVE the family barrel so the prefix entry cannot swallow them.
   { find: /^@onething\/runtime\/sessions\/(.+)$/, replacement: resolve(projectRoot, 'packages/onething-runtime/src/sessions/$1.ts') },

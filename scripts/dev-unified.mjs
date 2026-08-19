@@ -1,11 +1,13 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
 
 import {
   commandBelongsToDevSelf,
   electronMainCommandPrefix,
+  devSelfStorePath,
   isDevSelfLane,
   lanePorts,
   laneServerOutDir,
@@ -36,6 +38,52 @@ const managesWeb = mode !== 'electron'
 const devSelf = isDevSelfLane()
 const ports = lanePorts(devSelf)
 const serverOutDir = laneServerOutDir(devSelf)
+
+/**
+ * A 期(docs/design/one-core-2026-08.md §3):一个 store 只有一个 core 进程。
+ *
+ * Electron 泳道在跑时,**桌面就是那个进程** —— 它自己挂 HTTP/SSE 面并把地址写进
+ * `<store>/run/http.json`,所以这里不再拉第二个 server。web 泳道单独跑时才需要
+ * 一个 core:先读发现文件,活着就直接连,否则自己拉 `server:start`。
+ */
+function laneStorePath() {
+  if (devSelf) return devSelfStorePath()
+  return process.env.ONETHING_STORE_PATH || join(os.homedir(), '.onething')
+}
+
+function readLaneHttpDiscovery() {
+  try {
+    const record = JSON.parse(readFileSync(join(laneStorePath(), 'run', 'http.json'), 'utf8'))
+    if (typeof record?.port !== 'number' || typeof record?.pid !== 'number') return null
+    try {
+      process.kill(record.pid, 0)
+    } catch (error) {
+      if (error?.code !== 'EPERM') return null
+    }
+    return record
+  } catch {
+    return null
+  }
+}
+
+async function waitForLaneHttpDiscovery(timeoutMs = 60000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const record = readLaneHttpDiscovery()
+    if (record) {
+      try {
+        const response = await fetch(`http://${record.host}:${record.port}/api/capabilities`, {
+          headers: record.token ? { authorization: `Bearer ${record.token}` } : {},
+        })
+        if (response.ok) return record
+      } catch {
+        // core 还在起,继续等。
+      }
+    }
+    await wait(250)
+  }
+  return null
+}
 
 function npmCommand() {
   return isWindows ? 'npm.cmd' : 'npm'
@@ -319,7 +367,9 @@ async function stopExistingDevProcesses() {
   await cleanupStaleProjectProcesses({ graceMs: 3500 })
   if (managesWeb) {
     await cleanupPort(ports.web)
-    await cleanupPort(ports.server)
+    // 只有真的要自己拉 server 时才清那个口:electron 在场时 core 用的是动态端口,
+    // 端口号上蹲着的很可能是别人的进程,不该顺手杀。
+    if (!managesElectron) await cleanupPort(ports.server)
   }
   await waitForNoStaleProjectProcesses()
   await wait(300)
@@ -441,6 +491,17 @@ function ensureBetterSqliteNodeAbi() {
 }
 
 async function startBackendLane() {
+  // 桌面在同一次 run 里 → 它就是这个 store 的 core,不起第二个引擎进程。
+  if (managesElectron) {
+    log('dev', 'electron lane owns the core — web will connect to the desktop HTTP surface')
+    return
+  }
+  // web 单独跑:已经有活着的 core(桌面或别人起的 server)就直接连。
+  const existing = readLaneHttpDiscovery()
+  if (existing) {
+    log('dev', `found a live core at http://${existing.host}:${existing.port} (${existing.owner}) — not starting a server`)
+    return
+  }
   log('dev', 'preparing web backend')
   ensureBetterSqliteNodeAbi()
   // dev-self 的 server bundle 走独立 outDir:两条泳道往同一个
@@ -475,7 +536,12 @@ async function startWebLane() {
 async function startElectronLane() {
   if (skipElectron) return
   log('dev', 'starting Electron')
-  spawnManaged('electron', npmCommand(), ['run', 'electron:dev'])
+  spawnManaged('electron', npmCommand(), ['run', 'electron:dev'], {
+    env: {
+      // 桌面内嵌的 HTTP 面要放行这条泳道的 web 前端(单值 header)。
+      ONETHING_CORS_ORIGIN: process.env.ONETHING_CORS_ORIGIN ?? `http://127.0.0.1:${ports.web}`,
+    },
+  })
   await waitForProcess(isProjectElectronMainCommand, 'Electron')
 }
 
@@ -495,10 +561,18 @@ async function main() {
   if (managesWeb) lanes.push(startWebLane(), startBackendLane())
   await Promise.all(lanes)
 
+  // API 地址不再是常量:动态端口 + 发现文件。等它出现顺带证明了 core 真的在服务。
+  let apiUrl = null
+  if (managesWeb) {
+    const discovered = await waitForLaneHttpDiscovery(managesElectron ? 90000 : 60000)
+    apiUrl = discovered ? `http://${discovered.host}:${discovered.port}` : null
+    if (!apiUrl) log('dev', 'warning: no core HTTP surface found — /api will 502 until one appears')
+  }
+
   const readyParts = []
   if (managesElectron && !skipElectron) readyParts.push('Electron dev')
   if (managesWeb) {
-    readyParts.push(`Web http://127.0.0.1:${ports.web}`, `API http://127.0.0.1:${ports.server}`)
+    readyParts.push(`Web http://127.0.0.1:${ports.web}`, `API ${apiUrl ?? '(pending)'}`)
   }
   log('dev', `ready: ${readyParts.join(', ')}`)
 }

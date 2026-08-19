@@ -11,7 +11,9 @@ bun run dev:electron       # managed lane: electron only (can run alongside dev:
 bun run dev:web            # managed lane: web frontend :5174 + headless server :8787
 bun run electron:dev       # electron only (dev-with-logging.mjs → electron-vite dev, logs to ~/.onething/log/dev.log)
 bun run web:dev            # bare vite for apps/web (no server, no cleanup)
-bun run server:start       # node dist/server/main.js (run server:build first; port 8787)
+bun run server:start       # node dist/server/main.js (run server:build first; dynamic port
+                           # unless ONETHING_SERVER_PORT; refuses if the desktop already
+                           # serves this store — `--force` bypasses)
 
 # Production build
 bun run build              # electron build (native mac panel + electron-vite → out/)
@@ -41,7 +43,7 @@ bun run evals              # bun evals/run.mjs
 bun run evals:diagnose     # scripts/diagnose-weekly.mjs
 ```
 
-Dev ports: Electron renderer dev server **5173**, web frontend **5174**, server **8787** (apps/web dev proxies `/api` → `ONETHING_API_URL` || `http://127.0.0.1:8787`).
+Dev ports: Electron renderer dev server **5173**, web frontend **5174**. The core HTTP/SSE port is **dynamic** since A 期 (`docs/design/one-core-2026-08.md`): whoever serves the store writes `<store>/run/http.json`, and apps/web's dev `/api` proxy (`apps/web/dev-api-proxy.ts`, a plugin — vite's built-in proxy pins its target at creation) re-reads that file per request and injects the Bearer token, falling back to `ONETHING_API_URL` || `http://127.0.0.1:8787`. `bun run dev` with the electron lane does NOT start a second server process — the desktop is the core.
 
 ## Architecture Overview
 
@@ -97,9 +99,12 @@ packages/renderer/           # Shared Vue 3 renderer UI ('@' / '@renderer'), con
 apps/electron/               # Electron host. src/main ('@main') = ipc/bridges/cli only;
                              # the rest of src/* (window, app, voice, menu, search, …) is
                              # the '@onething/electron-host/*' alias family.
-apps/server/                 # Headless host running the REAL StreamEngine in-process via
-                             # createOnethingBackend (HTTP + SSE, ONETHING_SERVER_PORT=8787).
-apps/web/                    # Browser build of packages/renderer; talks to apps/server /api.
+apps/server/                 # Process shell only (main.ts + index.ts). The HTTP/SSE surface
+                             # and the server runtime live in the assembly layer
+                             # (packages/onething-runtime/src/app/server/), so the Electron
+                             # desktop mounts the SAME code over its own backend.
+apps/web/                    # Browser build of packages/renderer; talks to whatever core
+                             # serves this store (desktop or server:start) via /api.
 ```
 
 ### createOnethingBackend — the single assembly recipe
@@ -121,8 +126,8 @@ Host call sites:
 
 | Host | Call site | Config |
 | --- | --- | --- |
-| Electron desktop | `apps/electron/src/app/main-process.ts` | `toolRegistry: 'full'`, `promptVersion: true`, hooks: shortcuts+proxy / `initializeIPC()`+todo watcher; engine binds to window later via `getStreamEngine().bind(webContents)` |
-| Headless server | `apps/server/src/runtime.ts` (`createRealServerBackend`) | `toolRegistry: ONETHING_SERVER_TOOLS === 'readonly' ? 'readonly' : 'full'` (desktop parity by default), `sessionSkills: true`, noop sender (SSE observes the bus directly) |
+| Electron desktop | `apps/electron/src/app/main-process.ts` | `toolRegistry: 'full'`, `promptVersion: true`, hooks: shortcuts+proxy / `initializeIPC()`+todo watcher; engine binds to window later via `getStreamEngine().bind(webContents)`. **Also mounts the HTTP/SSE surface** over that same backend post-window (`startEmbeddedOnethingHttpServer`, non-blocking) |
+| Headless server | `packages/onething-runtime/src/app/server/runtime.ts` (`createRealServerBackend` → `createOnethingServerRuntimeOverBackend`) | `toolRegistry: ONETHING_SERVER_TOOLS === 'readonly' ? 'readonly' : 'full'` (desktop parity by default), `sessionSkills: true`, noop sender (SSE observes the bus directly) |
 | CLI daemon | `packages/onething-runtime/src/app/headless/backend.ts` (`HeadlessBackend`, used by `apps/electron/src/main/cli/daemon-server.ts`) | `toolRegistry: 'headless'`, `sessionSkills: true`, `mcpAcp: true`, noop sender |
 
 Note: `backend.ts` carries static `import './tools/builtin/{index,headless,readonly}.js'` edges purely so single-file bundlers order the tool barrels before the factory's top-level await (the registry itself dynamic-imports them for test mocks). Do not remove them.
@@ -306,9 +311,28 @@ Notes:
   tabs → L1 v2 nodes; brand theming → L2 token overrides (phase 2); charts / editors /
   drag & drop → L3 webview (H line, not built); taking over the composer or the message
   list → **never**.
+- **One core per store** (A 期, `docs/design/one-core-2026-08.md`). The HTTP/SSE surface is
+  assembly-layer code (`packages/onething-runtime/src/app/server/{http,runtime,discovery,embed}.ts`);
+  `apps/server/src/main.ts` is a process shell around it and the Electron desktop mounts the
+  **same** code over its own backend, so a browser at :5174 subscribes to the desktop's event
+  stream rather than a second engine's. The seam is
+  `createOnethingServerRuntimeOverBackend(backend, { ownsBackend, processPorts })`:
+  `ownsBackend: false` keeps `shutdown()` off the host's engine, and `processPorts: 'host'`
+  stops the server runtime from clobbering the process-level single-slot ports the host
+  already owns (MCP client host/identity/capabilities, permission-grant storage) — todo-plan
+  and scratchpad broadcast are **chained** onto the host's port instead (IPC *and* SSE), and
+  restored on shutdown. Whoever serves the store writes
+  `<store>/run/http.json = {port, host, token, pid, startedAt, owner:'desktop'|'server'}`
+  (0600, next to `daemon.sock`/`backend.lock`; run dir = `getOnethingRunDir()`), deletes it on
+  shutdown, and answers on a **dynamic** port unless `ONETHING_SERVER_PORT` pins one (pinned
+  and busy = explicit error, never a silent fallback). `server:start` reads that file first and
+  **refuses to start** when a live record says `owner !== 'server'` (`--force` bypasses); alive
+  means pid alive **and** the port connects. Token = `ONETHING_SERVER_TOKEN` or a fresh
+  `randomBytes(24).base64url` per launch.
 - apps/server is single-user: one server process assembles one backend and pins
   `ONETHING_STORE_PATH` before boot. Bearer auth via `ONETHING_SERVER_TOKEN` (warns when
-  binding non-loopback without it). Tools ship with desktop parity by default;
+  binding non-loopback without it; loopback launches mint their own token into the discovery
+  file). Tools ship with desktop parity by default;
   `ONETHING_SERVER_TOOLS=readonly` degrades to zero-side-effect tools (read/time/web only).
   The server's HTTP session store is backed by the same `@onething/app` store the engine
   uses in-process — a second repository over the same files would fork the in-memory truth.
@@ -413,7 +437,7 @@ renderer chatStore → platformApi.emitCommand(sessionId, { type: 'command:send-
   web:     GET /api/events SSE (same event names; ?after= replays from ring buffers)
 ```
 
-Both fan-outs share **`SessionStreamCoalescer`** (`packages/onething-runtime/src/app/events/stream-coalescer.ts`): text/reasoning/tool-input deltas batched on a 16ms ordered buffer, active stream's `messageId` stamped onto every chunk, and pending deltas flushed before any session event goes out. Consumers: `apps/electron/src/main/bridges/ipc-bridge.ts` and `apps/server/src/http.ts` (per-SSE-connection instance).
+Both fan-outs share **`SessionStreamCoalescer`** (`packages/onething-runtime/src/app/events/stream-coalescer.ts`): text/reasoning/tool-input deltas batched on a 16ms ordered buffer, active stream's `messageId` stamped onto every chunk, and pending deltas flushed before any session event goes out. Consumers: `apps/electron/src/main/bridges/ipc-bridge.ts` and `packages/onething-runtime/src/app/server/http.ts` (per-SSE-connection instance).
 
 **Tool Call + Permission Flow:**
 
@@ -497,6 +521,9 @@ packages/onething-runtime/src/app/  # ASSEMBLY layer ('@onething/app'; @shared a
 │   ├── tools/core/            # host-injection ports only (sandbox, bash-executor, permission-policy)
 │   ├── providers/  permission/  mcp/  acp/  skills/  plugins/  variables/  goals/
 │   ├── media/  music/  voice/  search/  scheduler/  agents/  external-agents/
+│   ├── server/                # the core HTTP/SSE surface: http.ts (routes/SSE), runtime.ts
+│   │                          # (OnethingRuntimeFacade + session/settings/permission facades),
+│   │                          # discovery.ts (<store>/run/http.json), embed.ts (host mounting)
 │   ├── channel/               # gateway identity, session-router, outbound dispatch
 │   ├── headless/backend.ts    # HeadlessBackend for the CLI daemon
 │   └── logging/  auth/  session/  usage/  toc/  todo-plan/  practice/  …
@@ -510,9 +537,10 @@ apps/electron/src/
 │   ├── ipc/                   # portable typed host surface (register*IpcHandler factories)
 │   └── voice/ music/ menu/ search/ gateway/ auth/ shell/ …   # '@onething/electron-host/*'
 │
-apps/server/src/               # http.ts (routes/SSE), runtime.ts (createRealServerBackend,
-│                              # session/settings/permission facades), main.ts, mcp-client.ts
-apps/web/                      # package.json + vite.config.ts only (builds packages/renderer)
+apps/server/src/               # process shell only: main.ts (env, discovery-file refusal,
+│                              # listen, SIGTERM flush) + index.ts (re-exports @onething/app/server/*)
+apps/web/                      # package.json + vite.config.ts + dev-api-proxy.ts (dynamic
+│                              # /api proxy via the discovery file); builds packages/renderer
 │
 packages/renderer/             # Vue 3 frontend ('@' / '@renderer')
 │   ├── stores/                # Pinia (workspace, chat, sessions, settings, themes, media, …)

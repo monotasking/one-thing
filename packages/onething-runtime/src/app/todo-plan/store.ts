@@ -27,6 +27,15 @@ export function configureTodoPlanHost(ports: TodoPlanHostPorts): void {
 }
 
 /**
+ * 当前注入的端口。单槽端口的**串联**要靠它:A 期桌面内嵌 HTTP 面之后,
+ * todo/plan 的变更既要走 IPC 给 renderer,又要走 SSE 给浏览器 —— 后来的那位
+ * 必须先读到前一位再把自己叠上去,否则就是把宿主的接线覆盖掉。
+ */
+export function getTodoPlanHostPorts(): TodoPlanHostPorts {
+  return hostPorts
+}
+
+/**
  * 宿主到底有没有「在文件管理器里显示目录」这个能力。
  *
  * 端口没注入时 `revealTodoPlanDirectory()` 静默成功——那对内部调用没问题,但对

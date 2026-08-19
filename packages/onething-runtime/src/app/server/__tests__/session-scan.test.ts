@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createLocalServerSessionStore,
   type OnethingServerRuntime,
-} from './runtime.js'
+} from '../runtime.js'
 import { createTestServerRuntime } from './test-helpers.js'
 
 // P1′ 防回归:server 运行时不允许在创建 / 列表 / 取会话路径上做

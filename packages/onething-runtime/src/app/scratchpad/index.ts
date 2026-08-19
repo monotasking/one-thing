@@ -20,6 +20,11 @@ export function configureScratchpadHost(ports: ScratchpadHostPorts): void {
   hostPorts = ports
 }
 
+/** 当前注入的端口 —— 单槽端口串联用,理由同 `getTodoPlanHostPorts`。 */
+export function getScratchpadHostPorts(): ScratchpadHostPorts {
+  return hostPorts
+}
+
 function broadcast(payload: ScratchpadChangedPayload): void {
   hostPorts.broadcastChanged?.(payload)
 }

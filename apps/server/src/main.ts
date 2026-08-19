@@ -1,10 +1,28 @@
-import { createOnethingHttpServer } from './http.js'
-import { createDevelopmentOnethingServerRuntime } from './runtime.js'
+/**
+ * `server:start` 的进程壳。
+ *
+ * A 期(docs/design/one-core-2026-08.md §3)之后 HTTP/SSE 面与 server runtime 的
+ * **实现**都在 `@onething/app/server/*`,这个文件只剩三件事:读环境、决定要不要
+ * 让位给桌面 core 服务、以及进程生命周期(监听 / 发现文件 / 退出刷盘)。
+ */
+import { createOnethingHttpServer } from '@onething/app/server/http.js'
+import { createDevelopmentOnethingServerRuntime } from '@onething/app/server/runtime.js'
+import {
+  httpDiscoveryUrl,
+  isHttpDiscoveryAlive,
+  readHttpDiscovery,
+  removeHttpDiscovery,
+  writeHttpDiscovery,
+} from '@onething/app/server/discovery.js'
+import { randomBytes } from 'node:crypto'
 
-const port = Number.parseInt(process.env.ONETHING_SERVER_PORT || '8787', 10)
+const forced = process.argv.includes('--force')
+// 端口:显式给了就固定(被占直接报错,不静默换),没给就 listen(0) 动态分配。
+// 用户 2026-08-19 的裁定 —— 8787 这个固定值一直在撞。
+const explicitPort = process.env.ONETHING_SERVER_PORT
+const port = explicitPort ? Number.parseInt(explicitPort, 10) : 0
 const host = process.env.ONETHING_SERVER_HOST || '127.0.0.1'
 const corsOrigin = process.env.ONETHING_CORS_ORIGIN || 'http://127.0.0.1:5174'
-const authToken = process.env.ONETHING_SERVER_TOKEN
 const workspaceRoot = process.env.ONETHING_SERVER_WORKSPACE_ROOT
 const dataRoot = process.env.ONETHING_SERVER_DATA_ROOT
 const settingsRoot = process.env.ONETHING_SERVER_SETTINGS_ROOT
@@ -13,9 +31,12 @@ const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1'])
 const allowInsecure = ['1', 'true', 'yes'].includes(
   (process.env.ONETHING_SERVER_ALLOW_INSECURE || '').toLowerCase(),
 )
-// Fail fast before paying the runtime-creation cost: a non-loopback bind
-// without a shared-secret token exposes the full API to the LAN.
-if (!authToken && !loopbackHosts.has(host)) {
+// 回环 + token(§3 鉴权):env 给了就用 env,否则每次启动随机生成一把,写进
+// 发现文件让本机的客户端读走。非回环仍然要求显式 token —— 随机 token 只在
+// 「谁能读 <store>/run/http.json 谁就能连」这个前提下才是安全的。
+const isLoopback = loopbackHosts.has(host)
+const envToken = process.env.ONETHING_SERVER_TOKEN
+if (!envToken && !isLoopback) {
   if (!allowInsecure) {
     console.error(
       `[onething-server] FATAL: refusing to listen on ${host} without ONETHING_SERVER_TOKEN — `
@@ -29,6 +50,25 @@ if (!authToken && !loopbackHosts.has(host)) {
     `[onething-server] WARNING: listening on ${host} without ONETHING_SERVER_TOKEN — `
     + 'the API is reachable from other machines without authentication.',
   )
+}
+const authToken = envToken || (isLoopback ? randomBytes(24).toString('base64url') : undefined)
+
+/**
+ * 「一个 store 一个 core」的直接体现(§3):这不是锁,是让位。
+ *
+ * 桌面开着时它就是这个 store 的 core 进程,并且已经暴露了 HTTP/SSE 面 ——
+ * 再起一个 server 就又回到"两个引擎两份内存真相"。所以启动前读发现文件,
+ * 活着且不是自己人就拒绝启动,`--force` 可以绕过(自负后果)。
+ */
+const existing = readHttpDiscovery()
+if (existing && existing.owner !== 'server' && !forced) {
+  if (await isHttpDiscoveryAlive(existing)) {
+    console.error(
+      `[onething-server] this store is already served by the ${existing.owner} core at `
+      + `${httpDiscoveryUrl(existing)} — connect to it instead (pass --force to start anyway)`,
+    )
+    process.exit(1)
+  }
 }
 
 const runtimeCreateStart = Date.now()
@@ -54,10 +94,35 @@ const server = createOnethingHttpServer({
   workspaceRoot: serverRuntime.workspaceRoot,
 })
 
+// 固定端口被占 = 明确报错,绝不静默换一个:换了的话客户端(和发现文件的读者)
+// 会连到一个它没打算连的实例上。
+server.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(
+      `[onething-server] FATAL: port ${port} is already in use (ONETHING_SERVER_PORT=${explicitPort}) — `
+      + 'free it, or unset ONETHING_SERVER_PORT to let the core pick a free port.',
+    )
+  } else {
+    console.error('[onething-server] FATAL: listen failed', error)
+  }
+  process.exit(1)
+})
+
 server.listen(port, host, () => {
-  console.log(`[onething-server] listening on http://${host}:${port}`)
+  const address = server.address()
+  const actualPort = typeof address === 'object' && address ? address.port : port
+  console.log(`[onething-server] listening on http://${host}:${actualPort}`)
+  // 发现文件:客户端(web dev 代理 / CLI / B 期 renderer)一律靠它找到这个进程。
+  writeHttpDiscovery({
+    port: actualPort,
+    host,
+    token: authToken,
+    pid: process.pid,
+    startedAt: Date.now(),
+    owner: 'server',
+  })
   // Pairing line for mobile clients: scan/encode this JSON as a QR code.
-  const pairing: Record<string, unknown> = { host, port }
+  const pairing: Record<string, unknown> = { host, port: actualPort }
   if (authToken) pairing.token = authToken
   console.log(`[onething-server] pairing ${JSON.stringify(pairing)}`)
   console.log(`[Perf][Startup] http-listening +${Math.round(process.uptime() * 1000)}ms since process start`)
@@ -81,10 +146,13 @@ let shuttingDown = false
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) {
     console.warn(`[onething-server] received ${signal} again while shutting down, exiting now`)
+    removeHttpDiscovery()
     process.exit(1)
   }
   shuttingDown = true
   console.log(`[onething-server] received ${signal}, shutting down`)
+  // 发现文件先删:它是"我还在服务"的宣告,关端口这一步开始就已经不成立了。
+  removeHttpDiscovery()
 
   // 超时罩住整段(close 也算在内):挂着的 SSE 连接会让 `server.close()` 的回调
   // 迟迟不来,那种情况下也必须走到刷盘,不能被卡在关端口这一步。

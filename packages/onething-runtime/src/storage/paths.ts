@@ -278,6 +278,19 @@ export function getOnethingPermissionsDir(
 	return path.join(getOnethingStorePath(options), "permissions");
 }
 
+/**
+ * 运行期瞬时文件目录:`daemon.sock` / `daemon.pid` / `backend.lock` /
+ * `http.json`(A 期发现文件)都住这里。
+ *
+ * 从前这条路径只写在 CLI 那份 runtime-paths 助手里,发现文件要用它
+ * 就得抄一遍 —— 抄第二份就意味着两边可以悄悄漂开。提到这里做唯一定义。
+ */
+export function getOnethingRunDir(
+	options: OnethingStorePathOptions = {},
+): string {
+	return path.join(getOnethingStorePath(options), "run");
+}
+
 export function getOnethingEvalsDir(
 	options: OnethingStorePathOptions = {},
 ): string {

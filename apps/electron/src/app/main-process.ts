@@ -32,7 +32,15 @@ import {
 	getStreamEngineSafe,
 	shutdownStreamEngine,
 } from "@onething/app/engine/index.js";
-import { createOnethingBackend } from "@onething/app/backend.js";
+import {
+    createOnethingBackend,
+    type OnethingBackend,
+} from "@onething/app/backend.js";
+import {
+    startEmbeddedOnethingHttpServer,
+    stopEmbeddedOnethingHttpServer,
+} from "@onething/app/server/embed.js";
+import { removeHttpDiscovery } from "@onething/app/server/discovery.js";
 import {
 	configureStorePathHost,
 	getMediaFilesDir,
@@ -167,13 +175,19 @@ type MainBrowserWindow = ReturnType<typeof createWindow>;
 let mainWindow: MainBrowserWindow | null = null;
 let desktopStoreLock: StoreLock | null = null;
 let electronMainStarted = false;
+/**
+ * 桌面自己那只 backend。A 期(docs/design/one-core-2026-08.md)之后它不再只喂
+ * renderer 的 IPC 面 —— 内嵌的 HTTP/SSE 面挂的是**同一只**,于是 Web 端订阅到的
+ * 就是桌面这条事件流,而不是另一个进程的。
+ */
+let desktopBackend: OnethingBackend | null = null;
 
 async function initializeElectronReadyServices(): Promise<void> {
 	markStartup("ready-begin");
 
 	// The assembly recipe lives in createOnethingBackend; this host only
 	// contributes its Electron-specific steps through the hooks.
-	await createOnethingBackend({
+	desktopBackend = await createOnethingBackend({
 		toolRegistry: "full",
 		promptVersion: true,
 		collab: true,
@@ -213,7 +227,31 @@ function formatElectronDesktopStoreLockError(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * 内嵌 core 服务的 HTTP/SSE 面(A 期)。
+ *
+ * 放在窗口之后、非阻塞:它对桌面自己是**锦上添花**(桌面走 IPC),挂不上不该
+ * 让桌面起不来 —— 所以失败只记一条日志。挂上之后 `<store>/run/http.json` 就是
+ * 这个 store 的 core 服务地址,web dev 代理、CLI、`server:start` 的让位判定
+ * 都读它。
+ */
+function startEmbeddedCoreHttpSurface(): void {
+	const backend = desktopBackend;
+	if (!backend) {
+		console.error("[core-http] backend is not ready — HTTP surface not mounted");
+		return;
+	}
+	void startEmbeddedOnethingHttpServer(backend).catch((error) => {
+		console.error(
+			"[core-http] failed to mount the embedded HTTP/SSE surface (non-blocking):",
+			error instanceof Error ? error.message : error,
+		);
+	});
+}
+
 function startPostWindowServices(): void {
+	startEmbeddedCoreHttpSurface();
+
 	const pluginsReady = (async () => {
 		const { bootstrapPluginSystem } = await import("@onething/app/plugins/index.js");
 		// P3:市场索引 URL(共享层死常量,裁决"纯硬编码")——装配期注入,
@@ -321,6 +359,9 @@ export function startOnethingElectronMain(): void {
 	// SIGHUP-ignoring children via the service's group signal.
 	for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		process.on(signal, () => {
+			// 发现文件是"这个 store 由我在服务"的宣告 —— dev 重启走的正是这条路,
+			// 留下它下一次 `server:start` 就得靠探活才敢无视。
+			removeHttpDiscovery();
 			killAllTerminals();
 			killAllBrowserTabs();
 			process.exit(signal === "SIGINT" ? 130 : 143);
@@ -448,6 +489,13 @@ export function startOnethingElectronMain(): void {
 				}
 				manager.shutdown();
 				console.log("[PluginManager] Shut down");
+			},
+			// 同步段:先摘掉发现文件,关端口 fire-and-forget(before-quit 不被 await)。
+			stopEmbeddedHttpServer: () => {
+				removeHttpDiscovery();
+				void stopEmbeddedOnethingHttpServer().catch((error) => {
+					console.error("[core-http] shutdown failed:", error);
+				});
 			},
 			shutdownStreamEngine,
 			shutdownPermission: () => Permission.shutdown(),
