@@ -20,7 +20,6 @@ import {
   resolveHostToolContext,
   toHostMcpToolDefinition,
 } from '@onething/runtime/external-agents'
-import type { ToolInfo } from '@onething/runtime/tools'
 
 interface FakeMessage {
   id: string
@@ -93,17 +92,64 @@ vi.mock('../../agents/profile.js', () => ({
   }),
 }))
 
-vi.mock('../../tools/registry.js', () => ({
-  getTool: (id: string) => mocks.registry.get(id),
-}))
-
 vi.mock('../../collab/budget.js', () => ({
   isRoomOverBudget: async () => false,
 }))
 
 const { resolveClaudeCodeHostToolSurface } = await import('../host-tools.js')
-const { SayTool, clearCollabSayIdempotence, speakIntoCollabRoom }
+const { clearCollabSayIdempotence, speakIntoCollabRoom }
   = await import('../../collab/say-tool.js')
+const { Catalog, Decision, ToolRunner } = await import('@onething/core/toolkit')
+const {
+  configureToolkitCatalog,
+  contractForSchema,
+  createSendMessageTool,
+  ZodValidator,
+} = await import('@onething/runtime/toolkit')
+
+/**
+ * R4b:宿主工具面从旧注册表(`getTool`)换成**目录**。这里装一份只有
+ * `send_message` 的目录 —— 与 `mocks.registry.set('send_message', SayTool)` 是
+ * 同一件事,只是换了本册子。
+ */
+const sendMessageTool = createSendMessageTool({
+  sessionKind: (sessionId: string) => (mocks.sessions.get(sessionId) as FakeSession | undefined)?.kind,
+  sessionAgentId: (sessionId: string) => (mocks.sessions.get(sessionId) as FakeSession | undefined)?.agentId,
+  speak: speakIntoCollabRoom,
+  sendDm: async () => ({ ok: false, error: '这个文件不测私聊档' }),
+})
+
+/**
+ * 与 `host-tools.ts` 的 `toolkitHostTool` 同形的一层薄包装(那个函数是私有的)。
+ * 执行走 `ToolRunner`,与真回合逐字同路。
+ */
+const sendMessageHostTool = {
+  id: 'send_message',
+  description: sendMessageTool.spec.description,
+  parameters: contractForSchema(sendMessageTool.spec.input)?.zod,
+  async execute(args: Record<string, unknown>, ctx: { sessionId: string; messageId: string }) {
+    const runner = new ToolRunner({
+      authorizer: { async decide() { return Decision.allow() } },
+      observer: { on: () => {} },
+      validator: new ZodValidator(),
+    })
+    const outcome = await runner.run(sendMessageTool, {
+      callId: 'host-mcp-call',
+      toolId: 'send_message',
+      input: args,
+      sessionId: ctx.sessionId,
+      messageId: ctx.messageId,
+      principal: undefined as never,
+    })
+    if (outcome.kind !== 'ok') throw new Error(`unexpected outcome: ${outcome.kind}`)
+    return {
+      output: outcome.result.content
+        .filter(part => part.type === 'text')
+        .map(part => part.text ?? '')
+        .join('\n'),
+    }
+  },
+}
 const {
   beginCollabV3Turn,
   clearCollabV3Turns,
@@ -144,8 +190,7 @@ beforeEach(() => {
   mocks.sessions.clear()
   mocks.emitted.length = 0
   mocks.profileTools = null
-  mocks.registry.clear()
-  mocks.registry.set('send_message', SayTool)
+  configureToolkitCatalog(new Catalog().register(sendMessageTool))
   speakPort.mockClear()
   clearCollabSayIdempotence()
   clearCollabV3Turns()
@@ -182,7 +227,7 @@ function startTurn(): void {
 
 /** 模型经 MCP 调 `send_message` 的那一下。 */
 async function callSendMessage(args: Record<string, unknown>) {
-  const definition = toHostMcpToolDefinition(SayTool as unknown as ToolInfo, EXEC)
+  const definition = toHostMcpToolDefinition(sendMessageHostTool, EXEC)
   return definition.handler(args, undefined)
 }
 
@@ -342,9 +387,9 @@ describe('装配面:场子门、注册表、语境绑定', () => {
     expect(injection).toBeUndefined()
   })
 
-  it('注册表里一个工具对象都取不到时不注,而且说出来', async () => {
+  it('目录里一个工具都取不到时不注,而且说出来', async () => {
     startTurn()
-    mocks.registry.clear()
+    configureToolkitCatalog(new Catalog())
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const injection = await resolveClaudeCodeHostToolSurface({
       localSessionId: EXEC,

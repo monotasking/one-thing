@@ -22,7 +22,6 @@ import {
   resolveCollabAgentHandle,
   type CollabBoardAction,
 } from '@onething/runtime/collab'
-import { COLLAB_NOTEBOOK_INJECT_MAX_CHARS } from '@onething/runtime/collab/actors'
 import type {
   AskUserToolAdapters,
   BoardToolAdapters,
@@ -30,7 +29,6 @@ import type {
   GoalToolAdapters,
   HistoryToolAdapters,
   NotebookToolAdapters,
-  NotebookToolResult,
   PracticeToolAdapters,
   RadioToolAdapters,
   SendMessageToolAdapters,
@@ -53,12 +51,10 @@ import { collabRoomMembers } from '../collab/members.js'
 import { applyBoardAction } from '../collab/board-store.js'
 import { searchCollabHistory } from '../collab/history-tool.js'
 import { speakIntoCollabRoom } from '../collab/say-tool.js'
-import { collabLinkedRoomSessionId, collabVenueOf } from '../collab/venue.js'
-import {
-  COLLAB_NOTEBOOK_NO_IDENTITY,
-  COLLAB_NOTEBOOK_WRONG_VENUE,
-} from '../collab/actors/notebook-tool.js'
-import { createCollabNotebookFileStore } from '../collab/actors/notebook-store.js'
+import { collabLinkedRoomSessionId } from '../collab/venue.js'
+// R4b:落盘口不再在这里重建一份 —— 与旧 `app/collab/actors/notebook-tool.ts` 的
+// `appendNote` 曾经"逐字相同"的那份代码,现在直接用原处那一个(它已导出)。
+import { appendNote } from '../collab/actors/notebook-tool.js'
 
 // ── 网络 ────────────────────────────────────────────────────────────────────
 
@@ -216,41 +212,6 @@ export function boardAdapters(): BoardToolAdapters {
 
 export function historyAdapters(): HistoryToolAdapters {
   return { ...collabAdapters(), search: searchCollabHistory }
-}
-
-const notebookStore = createCollabNotebookFileStore()
-
-/**
- * 笔记的落盘口。与旧 `app/collab/actors/notebook-tool.ts` 的 `appendNote` 逐字
- * 相同(那个函数没有导出,所以在这里重建;两句拒绝文案 import 自原处,不复制)。
- *
- * 身份**只从会话自己身上推**,不从参数收:笔记是私人的,而工具参数是模型写的,
- * 让模型传 agentId 等于给了它一条写进别人笔记本的路。
- */
-function appendNote(input: { sessionId: string; note: string }): Promise<NotebookToolResult> {
-  const session = store.getSession(input.sessionId)
-  const venue = collabVenueOf(session as CollabSessionLike | undefined)
-  if (venue !== 'agent' && venue !== 'work') {
-    return Promise.resolve({ ok: false, error: COLLAB_NOTEBOOK_WRONG_VENUE })
-  }
-
-  const agentId = session?.agentId?.trim()
-  if (!agentId) return Promise.resolve({ ok: false, error: COLLAB_NOTEBOOK_NO_IDENTITY })
-
-  const roomId = session?.collab?.roomSessionId
-  const roomLabel = roomId ? store.getSession(roomId)?.name?.trim() : undefined
-  const written = notebookStore.append({
-    agentId,
-    note: input.note,
-    at: Date.now(),
-    ...(roomLabel ? { roomLabel } : {}),
-  })
-  return Promise.resolve({
-    ok: true,
-    entry: written.entry,
-    totalChars: written.totalChars,
-    budgetChars: COLLAB_NOTEBOOK_INJECT_MAX_CHARS,
-  })
 }
 
 export function notebookAdapters(): NotebookToolAdapters {

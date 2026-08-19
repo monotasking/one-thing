@@ -24,6 +24,8 @@ export interface ToolActivityView {
   targetMeta: string
   filePath: string
   canOpenFile: boolean
+  /** edit 的落点:第一个 hunk 在新文件里的起始行,打开文件时定位到改动处。 */
+  fileLine?: number
   additions: number
   deletions: number
   stats: string
@@ -114,6 +116,7 @@ export function buildToolActivityView(step: Step, nowMs = Date.now()): ToolActiv
     targetMeta,
     filePath,
     canOpenFile: !!filePath && getFileToolCategory(toolName) !== null,
+    fileLine: diff?.hunks?.[0]?.newStart || undefined,
     additions: stats.additions,
     deletions: stats.deletions,
     stats: stats.text,

@@ -23,7 +23,7 @@ async function loadModules() {
   const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks, credentialStrategies] = await Promise.all([
     import('../loader.js'),
     import('../api.js'),
-    import('../../tools/index.js'),
+    import('@onething/runtime/toolkit'),
     import('../../engine/prompt/plugin-context.js'),
     import('../../skills/plugin-roots.js'),
     import('../lifecycle.js'),
@@ -190,7 +190,10 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
     variableSubscriptions = 0
   }
   return {
-    toolIds: mods.tools.getAllTools().map((tool: { id: string }) => tool.id).sort(),
+    // R4b:工具足迹从旧注册表换成**目录**(插件工具 R3b 起就装在那里)。
+    toolIds: (mods.tools.getToolkitCatalog()?.all() ?? [])
+      .map((tool: { spec: { id: string } }) => tool.spec.id)
+      .sort(),
     promptContextProviders: mods.promptContext.getPromptContextProviderCount(),
     skillRoots: mods.skillRoots.listPluginSkillRoots().length,
     lifecycleHooks: mods.lifecycle.getLifecycleHookCounts(),
@@ -325,7 +328,9 @@ describe('plugin tools cannot grant themselves an auto-execute pass', () => {
      * `contributes.permissions` 纯装饰、不参与任何判定 —— **示例插件正在教这个写法**。
      */
     const definitions = modules.loader.scanPlugins().filter(def => def.source === 'builtin')
-    const before = modules.tools.getAllTools().map((tool: { id: string }) => tool.id)
+    const catalogIds = () => (modules.tools.getToolkitCatalog()?.all() ?? [])
+      .map((tool: { spec: { id: string } }) => tool.spec.id)
+    const before = catalogIds()
 
     for (const definition of definitions) {
       const { api, state } = modules.api.createPluginAPI(
@@ -337,13 +342,15 @@ describe('plugin tools cannot grant themselves an auto-execute pass', () => {
       if (typeof entry !== 'function') continue
       await entry(api)
 
-      const added = modules.tools.getAllTools()
-        .filter((tool: { id: string }) => !before.includes(tool.id))
+      const added = (modules.tools.getToolkitCatalog()?.all() ?? [])
+        .filter((tool: { spec: { id: string } }) => !before.includes(tool.spec.id))
       for (const tool of added) {
+        // R4b:`permissionGuard: 'permission-gated'` 这句话现在由 `plugin_exec`
+        // 这条效果说出来(派生表的输入就是它),所以钉的是效果本身。
         expect(
-          (tool as { permissionGuard?: string }).permissionGuard,
-          `${tool.id} must not be able to skip the permission prompt`,
-        ).toBe('permission-gated')
+          [...(tool as { spec: { effects: readonly string[] } }).spec.effects],
+          `${(tool as { spec: { id: string } }).spec.id} must not be able to skip the permission prompt`,
+        ).toEqual(['plugin_exec'])
       }
       modules.api.disposePlugin(state)
     }

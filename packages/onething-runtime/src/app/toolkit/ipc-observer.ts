@@ -35,7 +35,7 @@ import type {
   ResultPart,
   ToolEvent,
 } from '@onething/core/toolkit'
-import type { OnethingToolExecutionResult } from '@onething/runtime/tools'
+import type { ToolExecutionResult as OnethingToolExecutionResult } from './execution-types.js'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
 
 /** 旧 `data.attachments` 的元素形状(`core/tools/tool-result.ts` 的 `ToolResultLike`)。 */

@@ -34,11 +34,48 @@ describe('electron external link handling', () => {
       webContents,
       shell,
       isAppUrl: url => url.startsWith('file://'),
+      isAppFileUrl: url => url.startsWith('file:///app/index.html'),
     })
 
     const event = webContents.emitWillNavigate('file:///app/index.html')
 
     expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(shell.openExternal).not.toHaveBeenCalled()
+  })
+
+  // docs/design/message-references-2026-08.md §5 主进程兜底
+  it('blocks any other file:// navigation and never hands it to the system', async () => {
+    const { setupElectronExternalLinkHandling } = await import('../external-links.js')
+    const webContents = createWebContents()
+    const shell = { openExternal: vi.fn() }
+
+    setupElectronExternalLinkHandling({
+      webContents,
+      shell,
+      isAppUrl: url => url.startsWith('file://'),
+      isAppFileUrl: url => url.startsWith('file:///app/index.html'),
+    })
+
+    const event = webContents.emitWillNavigate('file:///Users/me/secret.txt')
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(shell.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('blocks file:// even when no app-index predicate is supplied', async () => {
+    const { setupElectronExternalLinkHandling } = await import('../external-links.js')
+    const webContents = createWebContents()
+    const shell = { openExternal: vi.fn() }
+
+    setupElectronExternalLinkHandling({
+      webContents,
+      shell,
+      isAppUrl: () => true,
+    })
+
+    const event = webContents.emitWillNavigate('FILE:///Users/me/secret.txt')
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
     expect(shell.openExternal).not.toHaveBeenCalled()
   })
 

@@ -4,9 +4,7 @@ import {
   runAgentLoop,
   type AgentProvider,
   type AgentJsonObject,
-  type AgentToolExecutionContext,
 } from '@onething/core/agent-loop'
-import { toJsonObject } from '@onething/core'
 import path from 'path'
 import {
   SUPPORT_FILE_ROOTS,
@@ -44,10 +42,6 @@ import {
   writeTextFileInDir,
 } from '@onething/core/storage'
 import {
-  Tool,
-  zodToJsonSchema,
-} from '../tools/index.js'
-import {
   isSkillReviewRunning,
   markSkillReviewRunning,
   recordOnethingSkillReviewCounter,
@@ -84,24 +78,23 @@ export type OnethingSkillReviewContext<
   TProviderConfig extends OnethingSkillReviewProviderConfigLike = OnethingSkillReviewProviderConfigLike,
 > = CoreTriggerContext<TSettings, TSession, TMessage, TProviderConfig>
 
+/**
+ * 这次审查用哪三只文件工具。
+ *
+ * R4b:宿主给的是**已经适配好**的三张表(或一个按回合现算的函数),产品层不再
+ * 认识任何一棵工具注册表 —— 旧的 `createOnethingSkillReviewFileToolAdapters`
+ * (把 `Tool.Info` 包成适配器)随旧树删除。返回 `undefined` = 这台宿主给不出
+ * 这三只(readonly 档),本次审查整个跳过而不是拿半组去跑。
+ */
+export type { CoreSkillReviewFileToolAdapter }
+
 export type OnethingSkillReviewFileToolAdapters<TContext> = Record<
   'read' | 'write' | 'edit',
   CoreSkillReviewFileToolAdapter
 > | ((ctx: TContext, options: { mutableRoots: string[] }) => Record<
   'read' | 'write' | 'edit',
   CoreSkillReviewFileToolAdapter
->)
-
-export interface OnethingSkillReviewFileTools {
-  read: Tool.Info
-  write: Tool.Info
-  edit: Tool.Info
-}
-
-export interface CreateOnethingSkillReviewFileToolAdaptersOptions {
-  tools: OnethingSkillReviewFileTools
-  toToolContext(toolCtx: AgentToolExecutionContext): Tool.Context
-}
+> | undefined)
 
 export interface OnethingSkillReviewProviderRequestDump {
   providerId: string
@@ -152,48 +145,6 @@ function getLogger<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
 ): Pick<Console, 'log' | 'warn' | 'error'> {
   return adapters.logger ?? console
-}
-
-function toolSchema(parameters: Tool.Info['parameters']): AgentJsonObject {
-  const schema = zodToJsonSchema(parameters)
-  return toJsonObject({
-    type: 'object',
-    properties: schema.properties,
-    required: schema.required,
-  })
-}
-
-function createFileToolAdapter(tool: Tool.Info, toToolContext: (toolCtx: AgentToolExecutionContext) => Tool.Context): CoreSkillReviewFileToolAdapter {
-  return {
-    description: tool.description,
-    parameters: toolSchema(tool.parameters),
-    parse(args) {
-      const parsed = tool.parameters.safeParse(args)
-      return parsed.success
-        ? { success: true, data: parsed.data as AgentJsonObject & { path: string } }
-        : { success: false, error: parsed.error.message }
-    },
-    async execute(args, toolCtx) {
-      const result = await tool.execute(
-        args as never,
-        toToolContext(toolCtx),
-      )
-      return {
-        output: result.output,
-        metadata: result.metadata as Record<string, unknown>,
-      }
-    },
-  }
-}
-
-export function createOnethingSkillReviewFileToolAdapters(
-  options: CreateOnethingSkillReviewFileToolAdaptersOptions,
-): Record<'read' | 'write' | 'edit', CoreSkillReviewFileToolAdapter> {
-  return {
-    read: createFileToolAdapter(options.tools.read, options.toToolContext),
-    write: createFileToolAdapter(options.tools.write, options.toToolContext),
-    edit: createFileToolAdapter(options.tools.edit, options.toToolContext),
-  }
 }
 
 function userSkillSummary<TContext extends OnethingSkillReviewContext>(
@@ -263,22 +214,25 @@ function resolveFileToolAdapters<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
   ctx: TContext,
   mutableRoots: string[],
-): Record<'read' | 'write' | 'edit', CoreSkillReviewFileToolAdapter> {
+): Record<'read' | 'write' | 'edit', CoreSkillReviewFileToolAdapter> | undefined {
   const fileTools = adapters.fileTools
   return typeof fileTools === 'function'
     ? fileTools(ctx, { mutableRoots })
     : fileTools
 }
 
+/** `undefined` = 这台宿主给不出这三只文件工具,本次审查跳过。 */
 function createSkillFileAgentTools<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
   ctx: TContext,
   target: SkillReviewTarget,
 ) {
+  const fileToolAdapters = resolveFileToolAdapters(adapters, ctx, target.mutableRoots)
+  if (!fileToolAdapters) return undefined
   return buildSkillReviewFileAgentTools({
     userSkillsRoot: adapters.getUserSkillsPath(),
     resolvePath: rawPath => assertSkillToolPath(adapters, rawPath, ctx, target.pathBase, target.mutableRoots),
-    adapters: resolveFileToolAdapters(adapters, ctx, target.mutableRoots),
+    adapters: fileToolAdapters,
   })
 }
 
@@ -393,6 +347,12 @@ async function runAgentSkillReview<TContext extends OnethingSkillReviewContext>(
     transcript: skillReviewTranscriptFromMessages(ctx.messages as CoreSkillReviewMessage[]),
   })
   const skillFileTools = createSkillFileAgentTools(adapters, ctx, target)
+  if (!skillFileTools) {
+    // readonly 档(没有 read/write/edit)。一次没有文件工具的技能审查写不出任何
+    // 东西,跑它只是白烧一次模型调用。
+    getLogger(adapters).log('[SkillReview] host has no read/write/edit tools; skipping')
+    return
+  }
 
   const result = await runAgentLoop({
     provider: agentProvider.provider,

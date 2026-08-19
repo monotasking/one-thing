@@ -1,0 +1,196 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: read > attachments: an image lands as an image part carrying the payload > model text 1`] = `
+"[Image file: <DIR>/pic.png]
+Size: 16 bytes
+MIME type: image/png
+This image was attached for vision-capable models. Content cannot be displayed as text."
+`;
+
+exports[`golden: read > boundary: line truncation at 2000 lines matches, footer included > tail of truncated output 1`] = `
+"43
+l1944
+l1945
+l1946
+l1947
+l1948
+l1949
+l1950
+l1951
+l1952
+l1953
+l1954
+l1955
+l1956
+l1957
+l1958
+l1959
+l1960
+l1961
+l1962
+l1963
+l1964
+l1965
+l1966
+l1967
+l1968
+l1969
+l1970
+l1971
+l1972
+l1973
+l1974
+l1975
+l1976
+l1977
+l1978
+l1979
+l1980
+l1981
+l1982
+l1983
+l1984
+l1985
+l1986
+l1987
+l1988
+l1989
+l1990
+l1991
+l1992
+l1993
+l1994
+l1995
+l1996
+l1997
+l1998
+l1999
+
+[Showing lines 1-2000 of 2500. Use offset=2001 to continue.]"
+`;
+
+exports[`golden: read > boundary: offset + limit adds the same continuation footer > model text 1`] = `
+"line 5
+line 6
+line 7
+line 8
+line 9
+line 10
+line 11
+line 12
+line 13
+line 14
+
+[26 more lines in file. Use offset=15 to continue.]"
+`;
+
+exports[`golden: read > error: a directory > directory 1`] = `"Path is a directory, not a file: <DIR>/sub. Use ls command via Bash tool to list directory contents."`;
+
+exports[`golden: read > error: illegal arguments reuse the tool-specific wording > validation wording 1`] = `
+"Invalid read parameters:
+- path: Invalid input: expected string, received undefined
+
+Usage: read({ path: string, offset?: number, limit?: number }). The path field is required."
+`;
+
+exports[`golden: read > error: missing file > missing file 1`] = `"File not found: <DIR>/nope.txt"`;
+
+exports[`golden: read > error: offset past EOF > offset past EOF 1`] = `"Offset 9 is beyond end of file (1 lines total)"`;
+
+exports[`golden: read > normal: reads a small text file > annotation titles 1`] = `
+[
+  "Reading note.txt",
+  "note.txt (4 lines)",
+]
+`;
+
+exports[`golden: read > normal: reads a small text file > metadata 1`] = `
+{
+  "fileSize": 17,
+  "isBinary": false,
+  "limit": 2000,
+  "lineCount": 4,
+  "offset": 1,
+  "path": "<DIR>/note.txt",
+  "truncated": false,
+  "truncation": {
+    "maxBytes": 51200,
+    "maxLines": 2000,
+    "outputLines": 4,
+    "totalLines": 4,
+    "truncated": false,
+    "truncatedBy": null,
+  },
+}
+`;
+
+exports[`golden: read > normal: reads a small text file > model text 1`] = `
+"alpha
+beta
+gamma
+"
+`;
+
+exports[`golden: read > permission input: a sensitive file reports sensitive_file_read > effects 1`] = `
+[
+  {
+    "barrier": true,
+    "kind": "sensitive_file_read",
+    "metadata": {
+      "category": "env",
+      "path": "<DIR>/.env",
+      "reason": "Environment/config secret file",
+    },
+    "resources": [
+      "<DIR>/.env",
+    ],
+    "sensitive": true,
+  },
+]
+`;
+
+exports[`golden: read > permission input: a sensitive file reports sensitive_file_read > preview 1`] = `
+{
+  "path": "<DIR>/.env",
+  "title": "Read sensitive file: .env",
+}
+`;
+
+exports[`golden: read > permission input: an out-of-sandbox path reports external_directory > effects 1`] = `
+[
+  {
+    "barrier": true,
+    "external": true,
+    "kind": "external_directory",
+    "metadata": {
+      "boundary": "<DIR0>",
+      "operation": "Read file",
+      "path": "<DIR1>/secret.txt",
+      "targetType": "file",
+    },
+    "resources": [
+      "<DIR1>/*",
+    ],
+  },
+  {
+    "barrier": false,
+    "kind": "read",
+    "metadata": {
+      "path": "<DIR1>/secret.txt",
+    },
+    "resources": [
+      "<DIR1>/secret.txt",
+    ],
+    "sensitive": false,
+  },
+]
+`;
+
+exports[`golden: read > permission input: an out-of-sandbox path reports external_directory > preview 1`] = `
+{
+  "path": "<DIR1>/secret.txt",
+  "title": "Read secret.txt",
+}
+`;
+
+exports[`golden: read > spec 钉住 > description 1`] = `"Read the contents of a file. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete."`;

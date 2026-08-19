@@ -34,11 +34,13 @@ import osDarwinRaw from "./content/os-darwin.md?raw";
 import osWin32Raw from "./content/os-win32.md?raw";
 import osLinuxRaw from "./content/os-linux.md?raw";
 import contextUpdateConventionRaw from "./content/context-update-convention.md?raw";
+import referencesRaw from "./content/references.md?raw";
 import todoRulesRaw from "./content/todo-rules.md?raw";
 
 const normalizeContent = (s: string) => s.replace(/\n+$/, "");
 
 const CONTEXT_UPDATE_CONVENTION = normalizeContent(contextUpdateConventionRaw);
+const REFERENCES = normalizeContent(referencesRaw);
 const TODO_RULES = normalizeContent(todoRulesRaw);
 
 /**
@@ -199,6 +201,16 @@ export const BUILTIN_PROMPT_FRAGMENTS: readonly CorePromptFragment[] = [
 		source: "builtin",
 		order: 400,
 		content: CONTEXT_UPDATE_CONVENTION,
+	},
+	// Constant bytes (cache-safe): what the renderer turns into a clickable
+	// reference. Facts only — the model is told what resolves, not what to do.
+	// docs/design/message-references-2026-08.md §6.
+	{
+		id: "references",
+		slot: "section",
+		source: "builtin",
+		order: 450,
+		content: REFERENCES,
 	},
 	// There is no `# Work Directory` section any more: the path is a session
 	// fact and the `workdir` variable already carries it (with its extra roots)

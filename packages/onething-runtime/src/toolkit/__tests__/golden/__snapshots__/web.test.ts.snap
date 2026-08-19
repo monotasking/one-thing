@@ -1,0 +1,669 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: web_open > spec 钉住 > description 1`] = `
+"Open a web page and extract readable text from it.
+
+Use this after web_search identifies a promising source, or when the user gives
+a direct URL that should be read. This is the "open result" step in a
+ChatGPT-style web search workflow."
+`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:正常:抓到一页 > metadata 1`] = `
+{
+  "fetchedPageCount": 1,
+  "mode": "open",
+  "pageCount": 1,
+  "pages": [
+    {
+      "charCount": 11,
+      "contentType": "text/html; charset=utf-8",
+      "description": "D",
+      "excerpt": "Hello world",
+      "finalUrl": "https://example.com/a",
+      "id": "p1",
+      "query": "https://example.com/a",
+      "resultId": "open-r1",
+      "searchId": "open",
+      "snippet": "",
+      "status": "ready",
+      "statusCode": 200,
+      "text": "Hello world",
+      "title": "Page",
+      "truncated": false,
+      "url": "https://example.com/a",
+      "wordCount": 2,
+    },
+  ],
+  "phase": "ready",
+  "provider": "direct",
+  "query": "https://example.com/a",
+  "resultCount": 1,
+  "results": [
+    {
+      "id": "open-r1",
+      "pageId": "p1",
+      "query": "https://example.com/a",
+      "rank": 1,
+      "searchId": "open",
+      "snippet": "Hello world",
+      "title": "Page",
+      "url": "https://example.com/a",
+    },
+  ],
+  "searches": [
+    {
+      "id": "open",
+      "query": "https://example.com/a",
+      "resultCount": 1,
+      "results": [
+        {
+          "id": "open-r1",
+          "pageId": "p1",
+          "query": "https://example.com/a",
+          "rank": 1,
+          "searchId": "open",
+          "snippet": "Hello world",
+          "title": "Page",
+          "url": "https://example.com/a",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:正常:抓到一页 > model text 1`] = `
+"Opened page: Page
+URL: https://example.com/a
+Description: D
+Hello world"
+`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:正常:抓到一页 > partial count 1`] = `2`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:正常:抓到一页 > title 1`] = `"Opened: Page"`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:边界:带 title/query/snippet 与 maxChars 下限 > metadata 1`] = `
+{
+  "fetchedPageCount": 1,
+  "mode": "open",
+  "pageCount": 1,
+  "pages": [
+    {
+      "charCount": 11,
+      "contentType": "text/html; charset=utf-8",
+      "description": "D",
+      "excerpt": "Hello world",
+      "finalUrl": "https://example.com/a",
+      "id": "p1",
+      "query": "q",
+      "resultId": "open-r1",
+      "searchId": "open",
+      "snippet": "s",
+      "status": "ready",
+      "statusCode": 200,
+      "text": "Hello world",
+      "title": "Page",
+      "truncated": false,
+      "url": "https://example.com/a",
+      "wordCount": 2,
+    },
+  ],
+  "phase": "ready",
+  "provider": "direct",
+  "query": "q",
+  "resultCount": 1,
+  "results": [
+    {
+      "id": "open-r1",
+      "pageId": "p1",
+      "query": "q",
+      "rank": 1,
+      "searchId": "open",
+      "snippet": "Hello world",
+      "title": "Page",
+      "url": "https://example.com/a",
+    },
+  ],
+  "searches": [
+    {
+      "id": "open",
+      "query": "q",
+      "resultCount": 1,
+      "results": [
+        {
+          "id": "open-r1",
+          "pageId": "p1",
+          "query": "q",
+          "rank": 1,
+          "searchId": "open",
+          "snippet": "Hello world",
+          "title": "Page",
+          "url": "https://example.com/a",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:边界:带 title/query/snippet 与 maxChars 下限 > model text 1`] = `
+"Opened page: Page
+URL: https://example.com/a
+Description: D
+Hello world"
+`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:边界:带 title/query/snippet 与 maxChars 下限 > partial count 1`] = `2`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:边界:带 title/query/snippet 与 maxChars 下限 > title 1`] = `"Opened: Page"`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:错误:抓页失败(工具仍然正常返回,只是 status 不是 ready) > metadata 1`] = `
+{
+  "fetchedPageCount": 0,
+  "mode": "open",
+  "pageCount": 1,
+  "pages": [
+    {
+      "error": "boom",
+      "id": "p1",
+      "query": "https://example.com/a",
+      "resultId": "open-r1",
+      "searchId": "open",
+      "snippet": "",
+      "status": "failed",
+      "title": "https://example.com/a",
+      "url": "https://example.com/a",
+    },
+  ],
+  "phase": "ready",
+  "provider": "direct",
+  "query": "https://example.com/a",
+  "resultCount": 1,
+  "results": [
+    {
+      "id": "open-r1",
+      "pageId": "p1",
+      "query": "https://example.com/a",
+      "rank": 1,
+      "searchId": "open",
+      "snippet": "",
+      "title": "https://example.com/a",
+      "url": "https://example.com/a",
+    },
+  ],
+  "searches": [
+    {
+      "id": "open",
+      "query": "https://example.com/a",
+      "resultCount": 1,
+      "results": [
+        {
+          "id": "open-r1",
+          "pageId": "p1",
+          "query": "https://example.com/a",
+          "rank": 1,
+          "searchId": "open",
+          "snippet": "",
+          "title": "https://example.com/a",
+          "url": "https://example.com/a",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:错误:抓页失败(工具仍然正常返回,只是 status 不是 ready) > model text 1`] = `
+"Could not read page: https://example.com/a
+URL: https://example.com/a
+Error: boom"
+`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:错误:抓页失败(工具仍然正常返回,只是 status 不是 ready) > partial count 1`] = `2`;
+
+exports[`golden: web_open > 模型文本与渲染信息钉住:错误:抓页失败(工具仍然正常返回,只是 status 不是 ready) > title 1`] = `"Could not open: https://example.com/a"`;
+
+exports[`golden: web_search > spec 钉住(描述 + JSON schema + 并发档 + 渲染档) > description 1`] = `"Search the web for real-time information: current events, facts that change over time (prices, weather, scores), recent releases and anything past your training data. Runs one or several related queries in a call and returns candidate sources (title, URL, snippet); then call web_open on the pages worth reading. Set fetchPages only when you want top-page text extracted in the same call."`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:正常:单条 query > annotation titles 1`] = `
+[
+  "Searching: onething",
+  "Found 2 results and 0 pages for: onething",
+]
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:正常:单条 query > metadata 1`] = `
+{
+  "fetchedPageCount": 0,
+  "pageCount": 0,
+  "pages": [],
+  "phase": "ready",
+  "provider": "fake",
+  "queries": [
+    "onething",
+  ],
+  "query": "onething",
+  "resultCount": 2,
+  "results": [
+    {
+      "id": "s1-r1",
+      "query": "onething",
+      "rank": 1,
+      "searchId": "s1",
+      "snippet": "s1",
+      "title": "T1 onething",
+      "url": "https://example.com/a",
+    },
+    {
+      "id": "s1-r2",
+      "query": "onething",
+      "rank": 2,
+      "searchId": "s1",
+      "snippet": "s2",
+      "title": "T2 onething",
+      "url": "https://example.com/b",
+    },
+  ],
+  "searches": [
+    {
+      "id": "s1",
+      "query": "onething",
+      "resultCount": 2,
+      "results": [
+        {
+          "extraSnippets": [
+            "extra",
+          ],
+          "id": "s1-r1",
+          "publishedDate": "2026-01-01",
+          "query": "onething",
+          "rank": 1,
+          "searchId": "s1",
+          "snippet": "s1",
+          "title": "T1 onething",
+          "url": "https://example.com/a",
+        },
+        {
+          "id": "s1-r2",
+          "query": "onething",
+          "rank": 2,
+          "searchId": "s1",
+          "snippet": "s2",
+          "title": "T2 onething",
+          "url": "https://example.com/b",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:正常:单条 query > model text 1`] = `
+"Search results for "onething" (via Fake Search)
+
+## Search: onething
+[s1.1] T1 onething
+URL: https://example.com/a
+Snippet: s1 extra
+Published: 2026-01-01
+
+[s1.2] T2 onething
+URL: https://example.com/b
+Snippet: s2"
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:正常:单条 query > partial count 1`] = `3`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:count 被夹到 10 > annotation titles 1`] = `
+[
+  "Searching: a",
+  "Found 2 results and 0 pages for: a",
+]
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:count 被夹到 10 > metadata 1`] = `
+{
+  "fetchedPageCount": 0,
+  "pageCount": 0,
+  "pages": [],
+  "phase": "ready",
+  "provider": "fake",
+  "queries": [
+    "a",
+  ],
+  "query": "a",
+  "resultCount": 2,
+  "results": [
+    {
+      "id": "s1-r1",
+      "query": "a",
+      "rank": 1,
+      "searchId": "s1",
+      "snippet": "s1",
+      "title": "T1 a",
+      "url": "https://example.com/a",
+    },
+    {
+      "id": "s1-r2",
+      "query": "a",
+      "rank": 2,
+      "searchId": "s1",
+      "snippet": "s2",
+      "title": "T2 a",
+      "url": "https://example.com/b",
+    },
+  ],
+  "searches": [
+    {
+      "id": "s1",
+      "query": "a",
+      "resultCount": 2,
+      "results": [
+        {
+          "extraSnippets": [
+            "extra",
+          ],
+          "id": "s1-r1",
+          "publishedDate": "2026-01-01",
+          "query": "a",
+          "rank": 1,
+          "searchId": "s1",
+          "snippet": "s1",
+          "title": "T1 a",
+          "url": "https://example.com/a",
+        },
+        {
+          "id": "s1-r2",
+          "query": "a",
+          "rank": 2,
+          "searchId": "s1",
+          "snippet": "s2",
+          "title": "T2 a",
+          "url": "https://example.com/b",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:count 被夹到 10 > model text 1`] = `
+"Search results for "a" (via Fake Search)
+
+## Search: a
+[s1.1] T1 a
+URL: https://example.com/a
+Snippet: s1 extra
+Published: 2026-01-01
+
+[s1.2] T2 a
+URL: https://example.com/b
+Snippet: s2"
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:count 被夹到 10 > partial count 1`] = `3`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:多 query 去重 + 大小写归一 > annotation titles 1`] = `
+[
+  "Searching: a",
+  "Found 4 results and 0 pages for: a",
+]
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:多 query 去重 + 大小写归一 > metadata 1`] = `
+{
+  "fetchedPageCount": 0,
+  "pageCount": 0,
+  "pages": [],
+  "phase": "ready",
+  "provider": "fake",
+  "queries": [
+    "a",
+    "b",
+  ],
+  "query": "a",
+  "resultCount": 4,
+  "results": [
+    {
+      "id": "s1-r1",
+      "query": "a",
+      "rank": 1,
+      "searchId": "s1",
+      "snippet": "s1",
+      "title": "T1 a",
+      "url": "https://example.com/a",
+    },
+    {
+      "id": "s1-r2",
+      "query": "a",
+      "rank": 2,
+      "searchId": "s1",
+      "snippet": "s2",
+      "title": "T2 a",
+      "url": "https://example.com/b",
+    },
+    {
+      "id": "s2-r1",
+      "query": "b",
+      "rank": 1,
+      "searchId": "s2",
+      "snippet": "s1",
+      "title": "T1 b",
+      "url": "https://example.com/a",
+    },
+    {
+      "id": "s2-r2",
+      "query": "b",
+      "rank": 2,
+      "searchId": "s2",
+      "snippet": "s2",
+      "title": "T2 b",
+      "url": "https://example.com/b",
+    },
+  ],
+  "searches": [
+    {
+      "id": "s1",
+      "query": "a",
+      "resultCount": 2,
+      "results": [
+        {
+          "extraSnippets": [
+            "extra",
+          ],
+          "id": "s1-r1",
+          "publishedDate": "2026-01-01",
+          "query": "a",
+          "rank": 1,
+          "searchId": "s1",
+          "snippet": "s1",
+          "title": "T1 a",
+          "url": "https://example.com/a",
+        },
+        {
+          "id": "s1-r2",
+          "query": "a",
+          "rank": 2,
+          "searchId": "s1",
+          "snippet": "s2",
+          "title": "T2 a",
+          "url": "https://example.com/b",
+        },
+      ],
+    },
+    {
+      "id": "s2",
+      "query": "b",
+      "resultCount": 2,
+      "results": [
+        {
+          "extraSnippets": [
+            "extra",
+          ],
+          "id": "s2-r1",
+          "publishedDate": "2026-01-01",
+          "query": "b",
+          "rank": 1,
+          "searchId": "s2",
+          "snippet": "s1",
+          "title": "T1 b",
+          "url": "https://example.com/a",
+        },
+        {
+          "id": "s2-r2",
+          "query": "b",
+          "rank": 2,
+          "searchId": "s2",
+          "snippet": "s2",
+          "title": "T2 b",
+          "url": "https://example.com/b",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:多 query 去重 + 大小写归一 > model text 1`] = `
+"Search results for "a" (via Fake Search)
+Queries searched: a | b
+
+## Search: a
+[s1.1] T1 a
+URL: https://example.com/a
+Snippet: s1 extra
+Published: 2026-01-01
+
+[s1.2] T2 a
+URL: https://example.com/b
+Snippet: s2
+
+
+## Search: b
+[s2.1] T1 b
+URL: https://example.com/a
+Snippet: s1 extra
+Published: 2026-01-01
+
+[s2.2] T2 b
+URL: https://example.com/b
+Snippet: s2"
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:多 query 去重 + 大小写归一 > partial count 1`] = `4`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:抓页(fetchPages + maxPages=1) > annotation titles 1`] = `
+[
+  "Searching: a",
+  "Found 2 results and 1 pages for: a",
+]
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:抓页(fetchPages + maxPages=1) > metadata 1`] = `
+{
+  "fetchedPageCount": 1,
+  "pageCount": 1,
+  "pages": [
+    {
+      "charCount": 11,
+      "contentType": "text/html; charset=utf-8",
+      "description": "D",
+      "excerpt": "Hello world",
+      "finalUrl": "https://example.com/a",
+      "id": "p1",
+      "query": "a",
+      "resultId": "s1-r1",
+      "searchId": "s1",
+      "snippet": "s1",
+      "status": "ready",
+      "statusCode": 200,
+      "text": "Hello world",
+      "title": "Page",
+      "truncated": false,
+      "url": "https://example.com/a",
+      "wordCount": 2,
+    },
+  ],
+  "phase": "ready",
+  "provider": "fake",
+  "queries": [
+    "a",
+  ],
+  "query": "a",
+  "resultCount": 2,
+  "results": [
+    {
+      "id": "s1-r1",
+      "pageId": "p1",
+      "query": "a",
+      "rank": 1,
+      "searchId": "s1",
+      "snippet": "s1",
+      "title": "T1 a",
+      "url": "https://example.com/a",
+    },
+    {
+      "id": "s1-r2",
+      "query": "a",
+      "rank": 2,
+      "searchId": "s1",
+      "snippet": "s2",
+      "title": "T2 a",
+      "url": "https://example.com/b",
+    },
+  ],
+  "searches": [
+    {
+      "id": "s1",
+      "query": "a",
+      "resultCount": 2,
+      "results": [
+        {
+          "extraSnippets": [
+            "extra",
+          ],
+          "id": "s1-r1",
+          "pageId": "p1",
+          "publishedDate": "2026-01-01",
+          "query": "a",
+          "rank": 1,
+          "searchId": "s1",
+          "snippet": "s1",
+          "title": "T1 a",
+          "url": "https://example.com/a",
+        },
+        {
+          "id": "s1-r2",
+          "query": "a",
+          "rank": 2,
+          "searchId": "s1",
+          "snippet": "s2",
+          "title": "T2 a",
+          "url": "https://example.com/b",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:抓页(fetchPages + maxPages=1) > model text 1`] = `
+"Search results for "a" (via Fake Search)
+
+## Search: a
+[s1.1] T1 a
+URL: https://example.com/a
+Snippet: s1 extra
+Published: 2026-01-01
+Page title: Page
+Page excerpt: Hello world
+
+[s1.2] T2 a
+URL: https://example.com/b
+Snippet: s2"
+`;
+
+exports[`golden: web_search > 模型文本与渲染信息钉住:边界:抓页(fetchPages + maxPages=1) > partial count 1`] = `5`;
+
+exports[`golden: web_search > 错误:没有配置任何 provider > no provider 1`] = `"No web search provider configured. Please add a Brave Search API key in Settings → Tools → Web Search."`;

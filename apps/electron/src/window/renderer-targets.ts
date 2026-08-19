@@ -36,6 +36,31 @@ export function isElectronRendererWindowUrl(
   return url.startsWith('file://') || url.startsWith(devUrl)
 }
 
+/**
+ * 精确判定"这个 `file://` 就是渲染器自己的 index"。
+ *
+ * `isElectronRendererWindowUrl` 用的是 `startsWith('file://')` —— 那是**窗口
+ * 归属**的判据(所有 app 窗口都从同一个 index 加载),拿来当导航放行判据就太宽了:
+ * 消息里任何一个 `file://` 锚点都会被当成 app URL 而把整窗导航走。
+ * 见 docs/design/message-references-2026-08.md §5。
+ */
+export function isElectronRendererIndexFileUrl(
+  url: string,
+  rendererIndexPath: string,
+): boolean {
+  if (!rendererIndexPath || !url.startsWith('file://')) return false
+  let pathname = ''
+  try {
+    pathname = decodeURIComponent(new URL(url).pathname)
+  } catch {
+    return false
+  }
+  // Windows: `file:///C:/…` 的 pathname 带一道多余的前导斜杠。
+  if (/^\/[A-Za-z]:/.test(pathname)) pathname = pathname.slice(1)
+  const normalize = (value: string) => value.replace(/\\/g, '/')
+  return normalize(pathname) === normalize(rendererIndexPath)
+}
+
 export function isElectronMainAppWindowUrl(
   url: string,
   options: ElectronRendererTargetOptions = {},

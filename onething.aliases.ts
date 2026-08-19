@@ -283,10 +283,6 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/tools/sensitive-files', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/sensitive-files.ts') },
   { find: '@onething/runtime/tools/text-truncation', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/text-truncation.ts') },
   { find: '@onething/runtime/tools', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/index.ts') },
-  // R2b:切换期开关的**窄入口**。放在 `@onething/runtime/toolkit` 之上(前缀
-  // 匹配,先命中先用):引擎缝只想读一个环境变量,不该为此把整棵新工具树拖进
-  // 一条开关关着的执行路。
-  { find: '@onething/runtime/toolkit/flag', replacement: resolve(projectRoot, 'packages/onething-runtime/src/toolkit/flag.ts') },
   { find: '@onething/runtime/toolkit', replacement: resolve(projectRoot, 'packages/onething-runtime/src/toolkit/index.ts') },
   { find: '@onething/runtime/tasks', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tasks/index.ts') },
   { find: '@onething/runtime/perf', replacement: resolve(projectRoot, 'packages/onething-runtime/src/perf/index.ts') },

@@ -3,8 +3,13 @@
  * (`docs/audit/self-hosting-gap-audit-2026-08-11.md` P0-3 / P0-5)。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { Tool } from '../../tools/tool.js'
-import { createTaskTool, type TaskDispatchOutcome } from '../../tools/builtin/task.js'
+import { Decision, Outcome, ToolRunner } from '@onething/core/toolkit'
+import {
+  createTaskTool,
+  TaskInputSchema,
+  ZodValidator,
+  type TaskDispatchOutcome,
+} from '../../toolkit/index.js'
 import {
   TASK_MAX_CONCURRENT_PER_SESSION,
   TASK_TOOL_ID,
@@ -50,10 +55,40 @@ describe('task report', () => {
   })
 })
 
+/**
+ * R4b:旧 `tools/builtin/task.ts` 随旧树删除,同一只工具在
+ * `toolkit/builtin/task.ts`;调用从 `info.execute(args, ctx)` 换成
+ * `ToolRunner.run`(生产路径上那一台)。
+ */
 describe('task tool', () => {
   function tool(outcome: TaskDispatchOutcome) {
     const dispatch = vi.fn(async () => outcome)
     return { dispatch, info: createTaskTool({ dispatch }) }
+  }
+
+  async function run(
+    info: ReturnType<typeof createTaskTool>,
+    args: Record<string, unknown>,
+    sessionId = 'test-session',
+  ) {
+    const runner = new ToolRunner({
+      authorizer: { async decide() { return Decision.allow() } },
+      observer: { on: () => {} },
+      validator: new ZodValidator(),
+    })
+    const outcome = await runner.run(info, {
+      callId: 'call-1',
+      toolId: 'task',
+      input: args,
+      sessionId,
+      messageId: 'm-1',
+      principal: undefined as never,
+    })
+    return {
+      kind: outcome.kind,
+      output: Outcome.toModelText(outcome),
+      metadata: (outcome.kind === 'ok' ? outcome.result.details ?? {} : {}) as Record<string, unknown>,
+    }
   }
 
   const ok: TaskDispatchOutcome = {
@@ -64,10 +99,9 @@ describe('task tool', () => {
   }
 
   it('requires a prompt', () => {
-    const { info } = tool(ok)
-    expect(Tool.safeValidateArgs(info, {}).success).toBe(false)
-    expect(Tool.safeValidateArgs(info, { prompt: 'go' }).success).toBe(true)
-    expect(Tool.safeValidateArgs(info, {
+    expect(TaskInputSchema.safeParse({}).success).toBe(false)
+    expect(TaskInputSchema.safeParse({ prompt: 'go' }).success).toBe(true)
+    expect(TaskInputSchema.safeParse({
       prompt: 'go',
       workingDirectory: '/x',
       model: 'm',
@@ -77,17 +111,14 @@ describe('task tool', () => {
 
   it('refuses a blank prompt without touching the dispatcher', async () => {
     const { dispatch, info } = tool(ok)
-    const result = await info.execute({ prompt: '   ' }, Tool.createTestContext())
+    const result = await run(info, { prompt: '   ' })
     expect(dispatch).not.toHaveBeenCalled()
     expect(result.output).toContain('prompt is empty')
   })
 
   it('passes the caller session id through and reports the new session id back', async () => {
     const { dispatch, info } = tool(ok)
-    const result = await info.execute(
-      { prompt: '  go  ', description: '  label  ' },
-      Tool.createTestContext({ sessionId: 'caller' }),
-    )
+    const result = await run(info, { prompt: '  go  ', description: '  label  ' }, 'caller')
     expect(dispatch).toHaveBeenCalledWith({
       callerSessionId: 'caller',
       prompt: 'go',
@@ -100,23 +131,23 @@ describe('task tool', () => {
 
   it('surfaces a structured rejection as words the model can act on', async () => {
     const { info } = tool({ ok: false, reason: 'concurrency', detail: '4 running: a, b, c, d' })
-    const result = await info.execute({ prompt: 'go' }, Tool.createTestContext())
+    const result = await run(info, { prompt: 'go' })
     expect(result.output).toContain(String(TASK_MAX_CONCURRENT_PER_SESSION))
     expect(result.output).toContain('4 running: a, b, c, d')
     expect(result.metadata.rejected).toBe(true)
 
     const nested = tool({ ok: false, reason: 'nested' })
-    const nestedResult = await nested.info.execute({ prompt: 'go' }, Tool.createTestContext())
+    const nestedResult = await run(nested.info, { prompt: 'go' })
     expect(nestedResult.output).toContain('nested dispatch')
   })
 
   it('tells the model the truth about how it behaves', () => {
     const { info } = tool(ok)
     // 后台异步 + 会回投 + 可能停在审批卡 + 并发上限 + 不许套娃 —— 五条都要在描述里。
-    expect(info.description).toContain('BACKGROUND')
-    expect(info.description).toContain('returns immediately')
-    expect(info.description).toContain('permission card')
-    expect(info.description).toContain(String(TASK_MAX_CONCURRENT_PER_SESSION))
-    expect(info.description).toContain('may NOT dispatch tasks of its own')
+    expect(info.spec.description).toContain('BACKGROUND')
+    expect(info.spec.description).toContain('returns immediately')
+    expect(info.spec.description).toContain('permission card')
+    expect(info.spec.description).toContain(String(TASK_MAX_CONCURRENT_PER_SESSION))
+    expect(info.spec.description).toContain('may NOT dispatch tasks of its own')
   })
 })

@@ -35,6 +35,7 @@ export type EffectClass =
   | 'session_message'
   | 'session_spawn'
   | 'plugin_exec'
+  | 'external-agent'
 
 /**
  * 默认处置:
@@ -91,6 +92,21 @@ const ROWS: readonly EffectPolicyRow[] = [
   // 一条效果说出来。不复用 `mcp`:那会在权限账本与卡片文案里把一个插件写成
   // 一台 MCP 服务器,而账本是要被人读的。
   { kind: 'plugin_exec', policy: 'ask', prompt: 'Run plugin tool', barrier: true },
+  /**
+   * R4b —— 一台**外部 agent**(Claude Code SDK / ACP)要动手做一件我们认不出的事。
+   *
+   * 它在 R4b 之前是一条**不在任何表里**的手搓 kind,由
+   * `app/external-agents/index.ts` 与 `app/acp/permission-bridge.ts` 各自直接喂给
+   * 权限核 —— 一个不在任何表里的效果类,策略靠"权限核不认识它所以走 ask"这条
+   * 巧合成立。§15.5-7 记的就是这一条:要让那两处改调 `Authorizer.decide`,它得先
+   * 是一行。名字**逐字沿用**那条旧字符串(连字符,与本表其余下划线风格不同):
+   * 它同时是权限卡的 `type`,而渲染器与它的测试都按这个字面量分支 —— 改成
+   * `external_agent` 会是一次悄悄的契约变更。
+   *
+   * `ask`(可被 grant 记住,pattern 是工具名),`barrier` 为真:外部这一步与本地
+   * 工具一样可能写盘/跑命令,认不出内容时按最强的那一档排队。
+   */
+  { kind: 'external-agent', policy: 'ask', prompt: 'Run an external agent tool', barrier: true },
 ]
 
 export const EFFECT_POLICY: Readonly<Record<EffectClass, EffectPolicyRow>> = Object.freeze(

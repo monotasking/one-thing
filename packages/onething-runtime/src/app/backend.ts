@@ -44,32 +44,7 @@ import { Interaction } from './interaction/index.js'
 import { bootstrapVariableSystem } from './variables/index.js'
 import { bootstrapGoalStreamBreakers } from './goals/runtime-hooks.js'
 import { bootstrapProjectDirs } from './project-dirs/index.js'
-import {
-  initializeToolRegistry,
-  initializeHeadlessToolRegistry,
-  initializeReadonlyToolRegistry,
-} from './tools/index.js'
-// Static edges for the builtin tool barrels: the registry loads them via
-// dynamic import (tests re-mock them), but a single-file host bundle needs
-// these modules ordered BEFORE the factory's top-level await — a
-// dynamic-only edge deadlocks (chunked) or TDZ-crashes (inlined) there.
-import './tools/builtin/index.js'
-import './tools/builtin/headless.js'
-import './tools/builtin/readonly.js'
-// R2b:切换期开关 + MCP 目录挂点(两个都不拉新树模块)。
-import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
 import { configureToolkitMCPCapabilitiesChangedHandler } from './mcp/capabilities-changed.js'
-/**
- * R2b —— 与上面那三条 builtin barrel 静态边**同一条理由**,而且是同一个坑真的
- * 踩过一次:下面缝 4 里的 `await import('./toolkit/wiring.js')` 在 apps/server 的
- * 单文件包(vite SSR `inlineDynamicImports`)里被内联成对模块常量 `wiring` 的引用,
- * 而打包器按**静态**图排序 —— 只被动态引用的 wiring 被排在了本工厂的顶层 await
- * 之后,于是 `ONETHING_TOOLKIT=1` 启动即 `ReferenceError: Cannot access 'wiring'
- * before initialization`。
- *
- * 这条静态边只负责**排序**:wiring 的 import 无副作用(`import-side-effect-free`
- * 那道栅栏对它同样成立),开关关时它里面一个函数都不会被调到。
- */
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './toolkit/wiring.js'
 import { registerAppRpcDomains } from './rpc/index.js'
 import { initializeSessionSkills } from './skills/session-skills.js'
@@ -201,27 +176,14 @@ export async function createOnethingBackend(
   bootstrapGoalStreamBreakers()
   bootstrapProjectDirs()
 
-  if (options.toolRegistry === 'full') {
-    await initializeToolRegistry()
-  } else if (options.toolRegistry === 'readonly') {
-    await initializeReadonlyToolRegistry()
-  } else {
-    await initializeHeadlessToolRegistry()
-  }
-
-  // R2b 缝 4 —— 新树的三档目录**并行**建在旧注册表旁边(§12.5)。
+  // 缝 4 —— 三档目录。R4b 之后它是**唯一**一本工具册子(旧注册表已删)。
   //
-  // 只在 `ONETHING_TOOLKIT=1` 时建:不建就一个函数都不跑(模块本身由上面那条
-  // 静态排序边带进来,它 import 无副作用)。
-  // 档位与上面那三行一一对位。`feature_*` 与插件工具**不在这里**:前者由
-  // self-evolution feature 在 mount 时自己装进目录,后者由 `api.registerTool`
-  // 装(R3b)—— 两者的寿命都不是"一档目录"的寿命。
-  if (isToolkitEnabled()) {
-    buildToolkitCatalog(options.toolRegistry ?? 'headless')
-    // §13.7 裁定 5:服务器工具面变了就重算目录。挂在既有的唯一通知点上,
-    // 不顶掉宿主自己那个 handler(它注册的是另一个口子)。
-    configureToolkitMCPCapabilitiesChangedHandler(() => refreshToolkitMcpTools())
-  }
+  // `feature_*` 与插件工具**不在这里**:前者由 self-evolution feature 在 mount 时
+  // 自己装进目录,后者由 `api.registerTool` 装 —— 两者的寿命都不是"一档目录"的寿命。
+  buildToolkitCatalog(options.toolRegistry ?? 'headless')
+  // §13.7 裁定 5:服务器工具面变了就重算目录。挂在既有的唯一通知点上,
+  // 不顶掉宿主自己那个 handler(它注册的是另一个口子)。
+  configureToolkitMCPCapabilitiesChangedHandler(() => refreshToolkitMcpTools())
 
   // RPC domains go up BEFORE afterTools: that hook is where the Electron host
   // runs initializeIPC() and mounts the `rpc:invoke` adapter, so the table it

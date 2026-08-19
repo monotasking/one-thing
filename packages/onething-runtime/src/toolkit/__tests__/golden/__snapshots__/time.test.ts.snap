@@ -1,0 +1,266 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: time > model text and render info are pinned: add (negative amount) > annotation titles 1`] = `
+[
+  "Added -90 minute",
+  "Added -90 minute",
+]
+`;
+
+exports[`golden: time > model text and render info are pinned: add (negative amount) > final metadata 1`] = `
+{
+  "action": "add",
+  "formatted": "Tuesday, 2026-08-18 06:30:00 UTC+08:00 (Asia/Shanghai)",
+  "iso": "2026-08-17T22:30:00.000Z",
+  "result": {
+    "formatted": "Tuesday, 2026-08-18 06:30:00 UTC+08:00 (Asia/Shanghai)",
+    "input": "2026-08-18T00:00:00Z + -90 minute",
+    "iso": "2026-08-17T22:30:00.000Z",
+    "offset": "+08:00",
+    "offsetMinutes": 480,
+    "timestamp": 1787005800000,
+    "timezone": "Asia/Shanghai",
+    "zonedIso": "2026-08-18T06:30:00.000+08:00",
+  },
+  "start": {
+    "formatted": "Tuesday, 2026-08-18 08:00:00 UTC+08:00 (Asia/Shanghai)",
+    "input": "2026-08-18T00:00:00Z",
+    "iso": "2026-08-18T00:00:00.000Z",
+    "offset": "+08:00",
+    "offsetMinutes": 480,
+    "timestamp": 1787011200000,
+    "timezone": "Asia/Shanghai",
+    "zonedIso": "2026-08-18T08:00:00.000+08:00",
+  },
+  "timezone": "Asia/Shanghai",
+  "zonedIso": "2026-08-18T06:30:00.000+08:00",
+}
+`;
+
+exports[`golden: time > model text and render info are pinned: add (negative amount) > model text 1`] = `
+"Base: Tuesday, 2026-08-18 08:00:00 UTC+08:00 (Asia/Shanghai)
+Added: -90 minutes
+Result: Tuesday, 2026-08-18 06:30:00 UTC+08:00 (Asia/Shanghai)
+Result zoned ISO: 2026-08-18T06:30:00.000+08:00
+UTC ISO: 2026-08-17T22:30:00.000Z"
+`;
+
+exports[`golden: time > model text and render info are pinned: convert > annotation titles 1`] = `
+[
+  "Converted time to Asia/Tokyo",
+  "Converted time to Asia/Tokyo",
+]
+`;
+
+exports[`golden: time > model text and render info are pinned: convert > final metadata 1`] = `
+{
+  "action": "convert",
+  "formatted": "Tuesday, 2026-08-18 09:00:00 UTC+09:00 (Asia/Tokyo)",
+  "iso": "2026-08-18T00:00:00.000Z",
+  "result": {
+    "formatted": "Tuesday, 2026-08-18 09:00:00 UTC+09:00 (Asia/Tokyo)",
+    "input": "2026-08-18T00:00:00Z",
+    "iso": "2026-08-18T00:00:00.000Z",
+    "offset": "+09:00",
+    "offsetMinutes": 540,
+    "timestamp": 1787011200000,
+    "timezone": "Asia/Tokyo",
+    "zonedIso": "2026-08-18T09:00:00.000+09:00",
+  },
+  "start": {
+    "formatted": "Tuesday, 2026-08-18 08:00:00 UTC+08:00 (Asia/Shanghai)",
+    "input": "2026-08-18T00:00:00Z",
+    "iso": "2026-08-18T00:00:00.000Z",
+    "offset": "+08:00",
+    "offsetMinutes": 480,
+    "timestamp": 1787011200000,
+    "timezone": "Asia/Shanghai",
+    "zonedIso": "2026-08-18T08:00:00.000+08:00",
+  },
+  "timezone": "Asia/Tokyo",
+  "zonedIso": "2026-08-18T09:00:00.000+09:00",
+}
+`;
+
+exports[`golden: time > model text and render info are pinned: convert > model text 1`] = `
+"Source: Tuesday, 2026-08-18 08:00:00 UTC+08:00 (Asia/Shanghai)
+Target: Tuesday, 2026-08-18 09:00:00 UTC+09:00 (Asia/Tokyo)
+Target zoned ISO: 2026-08-18T09:00:00.000+09:00
+UTC ISO: 2026-08-18T00:00:00.000Z"
+`;
+
+exports[`golden: time > model text and render info are pinned: diff > annotation titles 1`] = `
+[
+  "Time difference: 1 day 6 hours 30 minutes",
+  "Time difference: 1 day 6 hours 30 minutes",
+]
+`;
+
+exports[`golden: time > model text and render info are pinned: diff > final metadata 1`] = `
+{
+  "action": "diff",
+  "difference": {
+    "days": 1.2708333333333333,
+    "hours": 30.5,
+    "human": "1 day 6 hours 30 minutes",
+    "milliseconds": 109800000,
+    "minutes": 1830,
+    "requestedUnit": "hour",
+    "requestedValue": 30.5,
+    "seconds": 109800,
+  },
+  "end": {
+    "formatted": "Wednesday, 2026-08-19 14:30:00 UTC+08:00 (Asia/Shanghai)",
+    "input": "2026-08-19T06:30:00Z",
+    "iso": "2026-08-19T06:30:00.000Z",
+    "offset": "+08:00",
+    "offsetMinutes": 480,
+    "timestamp": 1787121000000,
+    "timezone": "Asia/Shanghai",
+    "zonedIso": "2026-08-19T14:30:00.000+08:00",
+  },
+  "start": {
+    "formatted": "Tuesday, 2026-08-18 08:00:00 UTC+08:00 (Asia/Shanghai)",
+    "input": "2026-08-18T00:00:00Z",
+    "iso": "2026-08-18T00:00:00.000Z",
+    "offset": "+08:00",
+    "offsetMinutes": 480,
+    "timestamp": 1787011200000,
+    "timezone": "Asia/Shanghai",
+    "zonedIso": "2026-08-18T08:00:00.000+08:00",
+  },
+}
+`;
+
+exports[`golden: time > model text and render info are pinned: diff > model text 1`] = `
+"Start: Tuesday, 2026-08-18 08:00:00 UTC+08:00 (Asia/Shanghai)
+End: Wednesday, 2026-08-19 14:30:00 UTC+08:00 (Asia/Shanghai)
+Difference (end - start): 1 day 6 hours 30 minutes
+Milliseconds: 109800000
+Seconds: 109800
+Minutes: 1830
+Hours: 30.5
+Days: 1.2708333333333333
+hour: 30.5"
+`;
+
+exports[`golden: time > model text and render info are pinned: now > annotation titles 1`] = `
+[
+  "Current time in Asia/Shanghai",
+  "Current time in Asia/Shanghai",
+]
+`;
+
+exports[`golden: time > model text and render info are pinned: now > final metadata 1`] = `
+{
+  "action": "now",
+  "formatted": "2026-08-18T17:51:43.115+08:00",
+  "iso": "2026-08-18T09:51:43.115Z",
+  "result": {
+    "formatted": "2026-08-18T17:51:43.115+08:00",
+    "input": "now",
+    "iso": "2026-08-18T09:51:43.115Z",
+    "offset": "+08:00",
+    "offsetMinutes": 480,
+    "timestamp": 1787046703115,
+    "timezone": "Asia/Shanghai",
+    "zonedIso": "2026-08-18T17:51:43.115+08:00",
+  },
+  "timestamp": 1787046703115,
+  "timezone": "Asia/Shanghai",
+  "zonedIso": "2026-08-18T17:51:43.115+08:00",
+}
+`;
+
+exports[`golden: time > model text and render info are pinned: now > model text 1`] = `
+"Current time: 2026-08-18T17:51:43.115+08:00
+Zoned ISO: 2026-08-18T17:51:43.115+08:00
+UTC ISO: 2026-08-18T09:51:43.115Z
+Unix milliseconds: 1787046703115"
+`;
+
+exports[`golden: time > reports a failure for a missing required field (diff without start_time) > diff without start_time 1`] = `"start_time is required for action="diff""`;
+
+exports[`golden: time > reports a failure for an unknown timezone > unknown timezone 1`] = `"Invalid timezone "Mars/Olympus". Use an IANA timezone such as "Asia/Shanghai" or a fixed offset such as "UTC+08:00"."`;
+
+exports[`golden: time > spec is pinned (description + JSON schema + effects + concurrency) > description 1`] = `"Timezone-aware time utility: current time (now), timezone conversion (convert), difference between two instants (diff), exact duration arithmetic (add). Prefer IANA timezone names; fixed offsets like UTC+08:00 also work. Provide a *_timezone when a datetime has no explicit offset."`;
+
+exports[`golden: time > spec is pinned (description + JSON schema + effects + concurrency) > input schema 1`] = `
+{
+  "properties": {
+    "action": {
+      "description": "now = current time, convert = change timezone, diff = compare two instants, add = add a duration.",
+      "enum": [
+        "now",
+        "convert",
+        "diff",
+        "add",
+      ],
+      "type": "string",
+    },
+    "amount": {
+      "description": "Duration amount for add. Can be negative.",
+      "type": "number",
+    },
+    "end_time": {
+      "description": "End time for diff. Defaults to now.",
+      "type": "string",
+    },
+    "end_timezone": {
+      "description": "Timezone for end_time when it has no offset.",
+      "type": "string",
+    },
+    "format": {
+      "description": "Output format.",
+      "enum": [
+        "full",
+        "date",
+        "time",
+        "iso",
+        "compact",
+      ],
+      "type": "string",
+    },
+    "from_timezone": {
+      "description": "Source timezone when time has no offset.",
+      "type": "string",
+    },
+    "start_time": {
+      "description": "Start time for diff.",
+      "type": "string",
+    },
+    "start_timezone": {
+      "description": "Timezone for start_time when it has no offset.",
+      "type": "string",
+    },
+    "time": {
+      "description": "Input time for convert/add: ISO with offset, local datetime, epoch ms, or "now".",
+      "type": "string",
+    },
+    "timezone": {
+      "description": "Default timezone for parsing and output. IANA name (Asia/Shanghai) or offset (UTC+08:00). Defaults to system timezone.",
+      "type": "string",
+    },
+    "to_timezone": {
+      "description": "Output timezone for convert/add/now.",
+      "type": "string",
+    },
+    "unit": {
+      "description": "Duration unit for add/diff. Days/weeks are exact 24h/7d.",
+      "enum": [
+        "millisecond",
+        "second",
+        "minute",
+        "hour",
+        "day",
+        "week",
+      ],
+      "type": "string",
+    },
+  },
+  "required": [
+    "action",
+  ],
+  "type": "object",
+}
+`;

@@ -247,12 +247,7 @@ import {
 	type SkillSettings,
 	type SkillSource,
 } from "@onething/runtime/skills";
-import {
-	OnethingToolRegistry,
-	createReadTool,
-	expandOnethingToolSandboxPath,
-	type OnethingToolExecutionResult,
-} from "@onething/runtime/tools";
+import { expandOnethingToolSandboxPath } from "@onething/runtime/tools";
 import {
 	addGrant,
 	clearOnethingPermissionSessionForIpc,
@@ -354,13 +349,25 @@ import type {
 } from "@shared/ipc/acp.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
 import { ownerSandboxRoot } from "@onething/app/rpc/sandbox.js";
-// R3b:开关开且真引擎在跑时,"有哪些工具 / 跑一个工具"由目录 + runner 回答
-// (设计文档 §10.2-④)。降级档的只读注册表本身一个字不动 —— 它服务的是
-// echo/test 那条非真引擎的假路。
-import { isToolkitEnabled } from "@onething/runtime/toolkit/flag";
+/*
+ * "有哪些工具 / 跑一个工具"由目录 + runner 回答(设计文档 §10.2-④)。
+ *
+ * R4b(§15.6 ⑧):echo/test 那条**非真引擎**的假路原本挂着一份本地
+ * `OnethingToolRegistry`(只装一只 read)。那棵树删掉之后它换成
+ * `createReadonlyCatalog()` + 一台本地 runner —— 同一只 read、同一张白名单、
+ * 同一道路径校验,只是册子换成了目录。
+ */
+import { Decision } from "@onething/core/toolkit";
+import type { Catalog, Invocation, Observer } from "@onething/core/toolkit";
 import {
+	combineObservers,
+	createAppToolRunner,
+	createReadonlyCatalog,
+	IpcProjector,
 	runToolkitToolDirectly,
+	toolDefinitionsFromCatalog,
 	toolkitCatalogToolDefinitions,
+	type ToolExecutionResult,
 } from "@onething/app/toolkit/index.js";
 import type {
 	GatewayGetStatusResponse,
@@ -1219,7 +1226,7 @@ export async function createDevelopmentOnethingServerRuntime(
 			? (config: MCPServerConfig) =>
 					new ServerMCPClient(config, { allowStdio: allowMCPStdio })
 			: (config: MCPServerConfig) => new DisabledServerMCPClient(config));
-	const readOnlyToolRegistry = createServerReadOnlyToolRegistry();
+	const readOnlyCatalog = createReadonlyCatalog();
 
 	const isDefaultContext = (context = defaultRequestContext()) =>
 		context.userId === defaultRequestContext().userId &&
@@ -2334,8 +2341,7 @@ export async function createDevelopmentOnethingServerRuntime(
 				| undefined
 		)?.[providerId];
 		const model = session?.lastModel || providerConfig?.model || "local-echo";
-		const tools =
-			(await readOnlyToolRegistry.getAllToolsAsync()) as ToolDefinition[];
+		const tools = toolDefinitionsFromCatalog(readOnlyCatalog) as ToolDefinition[];
 		const enableToolCalls = settings.tools?.enableToolCalls !== false;
 		const enabledTools = tools.filter(
 			(tool) => enableToolCalls && tool.enabled,
@@ -4551,16 +4557,16 @@ export async function createDevelopmentOnethingServerRuntime(
 				context = defaultRequestContext(),
 			): Promise<GetToolsResponse> {
 				// 真引擎在跑时,这台服务器**真的**装了 full / readonly 档的那一份目录;
-				// 报只读注册表那四只是在说谎(旧行为)。开关开时改报目录。
-				const toolkitTools =
-					isToolkitEnabled() && useAppSubsystems(context)
-						? toolkitCatalogToolDefinitions()
-						: undefined;
+				// 报只读那一只是在说谎(R3b 之前的旧行为)。假路(echo/test)报的是
+				// 它自己那份只读目录。
+				const toolkitTools = useAppSubsystems(context)
+					? toolkitCatalogToolDefinitions()
+					: undefined;
 				return {
 					success: true,
 					tools:
 						toolkitTools
-						?? ((await readOnlyToolRegistry.getAllToolsAsync()) as ToolDefinition[]),
+						?? (toolDefinitionsFromCatalog(readOnlyCatalog) as ToolDefinition[]),
 				};
 			},
 			async executeTool(
@@ -4591,24 +4597,25 @@ export async function createDevelopmentOnethingServerRuntime(
 				if (!access.success) return access;
 
 				// 执行面的两道闸(`serverReadOnlyToolIds` 白名单 + 路径校验)在上面,
-				// **一个字不动** —— 换的只是"谁来跑它":开关开且真引擎在跑时走 runner
-				// (两阶段 + 权限 + 统一取消 + 统一截断 + 审计),否则照旧。
-				const toolkitResult =
-					isToolkitEnabled() && useAppSubsystems(context)
-						? await runToolkitToolDirectly(toolId, args, {
-								sessionId,
-								messageId,
-								workingDirectory: session.workingDirectory,
-								workingDirectoryRoots: session.workingDirectoryRoots,
-							} as Parameters<typeof runToolkitToolDirectly>[2])
-						: undefined;
-				const result = (toolkitResult
-					?? (await readOnlyToolRegistry.executeTool(toolId, args, {
-						sessionId,
-						messageId,
-						workingDirectory: session.workingDirectory,
-						workingDirectoryRoots: session.workingDirectoryRoots,
-					}))) as OnethingToolExecutionResult;
+				// **一个字不动** —— 换的只是"谁来跑它":真引擎在跑时走进程内那份目录的
+				// runner(两阶段 + 权限 + 统一取消 + 统一截断 + 审计),假路走它自己
+				// 那份只读目录的 runner。
+				const runContext = {
+					sessionId,
+					messageId,
+					workingDirectory: session.workingDirectory,
+					workingDirectoryRoots: session.workingDirectoryRoots,
+				};
+				const toolkitResult = useAppSubsystems(context)
+					? await runToolkitToolDirectly(
+							toolId,
+							args,
+							runContext as Parameters<typeof runToolkitToolDirectly>[2],
+						)
+					: undefined;
+				const result =
+					toolkitResult
+					?? (await runReadOnlyCatalogTool(readOnlyCatalog, toolId, args, runContext));
 
 				return {
 					success: result.success,
@@ -5398,14 +5405,52 @@ function stripSessionOwnerFields(meta: ServerSessionIndexMeta): SessionMeta {
 	return rest;
 }
 
-function createServerReadOnlyToolRegistry(): OnethingToolRegistry {
-	const registry = new OnethingToolRegistry({ logger: console });
-	registry.registerTool(
-		createReadTool({
-			getDefaultReadRoots: () => [],
-		}),
-	);
-	return registry;
+/**
+ * 假路(echo/test backend、scoped owner)上跑一只只读目录里的工具。
+ *
+ * 授权者恒 allow:这条路上没有人在屏幕前,而它能跑的只有 `serverReadOnlyToolIds`
+ * 白名单里那一只 read,路径已在上游被 `validateServerReadOnlyToolAccess` 夹进会话
+ * 沙箱。把这句话写出来,而不是靠"调的是注册表不是引擎"这种偶然成立。
+ */
+const NOOP_TOOL_OBSERVER: Observer = { on: () => {} };
+
+async function runReadOnlyCatalogTool(
+	catalog: Catalog,
+	toolId: string,
+	args: JsonObject,
+	context: {
+		sessionId: string;
+		messageId: string;
+		workingDirectory?: string;
+		workingDirectoryRoots?: string[];
+	},
+): Promise<ToolExecutionResult> {
+	const tool = catalog.get(toolId);
+	if (!tool) return { success: false, error: `Tool not found: ${toolId}` };
+	await catalog.ensurePrepared(tool.spec.id);
+	const projector = new IpcProjector();
+	const runner = createAppToolRunner({
+		observer: combineObservers(projector, NOOP_TOOL_OBSERVER),
+		authorizer: { decide: async () => Decision.allow() },
+	});
+	const invocation: Invocation = {
+		callId: `server-readonly-${Date.now()}`,
+		toolId,
+		input: args,
+		sessionId: context.sessionId,
+		messageId: context.messageId,
+		principal: undefined as never,
+		...(context.workingDirectory ? { cwd: context.workingDirectory } : {}),
+		...(context.workingDirectory
+			? { workspaceRoot: context.workingDirectory }
+			: {}),
+		...(context.workingDirectoryRoots
+			? { workingDirectoryRoots: context.workingDirectoryRoots }
+			: {}),
+	};
+	return projector.toExecutionResult(
+		await runner.run(tool, invocation),
+	) as ToolExecutionResult;
 }
 
 function validateServerReadOnlyToolAccess(

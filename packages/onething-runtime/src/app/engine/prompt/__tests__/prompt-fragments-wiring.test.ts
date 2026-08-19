@@ -8,10 +8,41 @@
  * gone. Same for a registered fragment and its disposer.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { z } from 'zod'
-import { Tool } from '@onething/runtime/tools'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/core/toolkit'
+import type { Result, ToolSpec } from '@onething/core/toolkit'
 import { promptFragments, registerPromptFragment } from '@onething/runtime/prompts'
-import { registerTool, unregisterTool } from '../../../tools/registry.js'
+import { configureToolkitCatalog } from '@onething/runtime/toolkit'
+
+/**
+ * R4b:工具的那一半读源从旧注册表换成了目录(`toolkitPromptSource`)。钉的语义
+ * 一个字没变 —— 在面上才说话、摘掉就没了。
+ */
+class DemoTool extends ToolkitTool<Record<string, never>, undefined> {
+  readonly spec: ToolSpec = {
+    id: 'demo_tool',
+    title: 'demo_tool',
+    description: 'demo',
+    input: { type: 'object', properties: {} },
+    effects: [],
+    presentation: { kind: 'text', shell: 'default' },
+    concurrency: 'parallel',
+    prompt: {
+      guidelines: ['prefer demo_tool for demos'],
+      sections: [{ content: '# Demo\nThis tool demos things.' }],
+    },
+  }
+
+  async plan(): Promise<Intent<undefined>> {
+    return Intent.none(undefined)
+  }
+
+  async apply(): Promise<Result> {
+    return { content: [{ type: 'text', text: '' }] }
+  }
+}
+
+const catalog = new Catalog()
+configureToolkitCatalog(catalog)
 
 vi.mock('../../../agents/index.js', () => ({
   findAgent: () => undefined,
@@ -40,24 +71,12 @@ const whole = async (toolNames: string[]) => {
 
 afterEach(() => {
   promptFragments.clear()
-  unregisterTool('demo_tool')
+  catalog.unregister('demo_tool')
 })
 
 describe('prompt fragments — assembly wiring', () => {
   it('a registered tool talks only while it is on the surface; unregistering silences it', async () => {
-    registerTool(Tool.define('demo_tool', {
-      name: 'demo_tool',
-      description: 'demo',
-      category: 'custom',
-      parameters: z.object({}),
-      prompt: {
-        guidelines: ['prefer demo_tool for demos'],
-        sections: [{ content: '# Demo\nThis tool demos things.' }],
-      },
-      async execute() {
-        return { title: 'demo', output: '', metadata: {} }
-      },
-    }))
+    catalog.register(new DemoTool())
 
     const on = await whole(['read', 'demo_tool'])
     expect(on).toContain('- prefer demo_tool for demos')
@@ -66,7 +85,7 @@ describe('prompt fragments — assembly wiring', () => {
     const off = await whole(['read'])
     expect(off).not.toContain('demo_tool')
 
-    unregisterTool('demo_tool')
+    catalog.unregister('demo_tool')
     const gone = await whole(['read', 'demo_tool'])
     expect(gone).not.toContain('This tool demos things')
   })

@@ -163,7 +163,6 @@ export interface OnethingLogMonitorStatusApi {
     name: string
     description: string
     parameters: unknown
-    permissionGuard: string
     execute(args: unknown, ctx: { sessionId: string }): Promise<{ title: string; output: string; metadata: unknown }>
   }): void
   status?: {
@@ -182,9 +181,7 @@ export function registerOnethingLogMonitorStatusDemo(
     name: 'scan_log_files',
     description: 'Scan the agent log directory and report per-file sizes.',
     parameters: z.object({}),
-    // 插件注册的工具一律 permission-gated(宿主强制,见 app/plugins/api.ts)。
-    // 这里写什么都不影响判定 —— 留着只是为了让类型对得上。
-    permissionGuard: 'permission-gated',
+    // R4b:`permissionGuard` 已退役,这里不再写它(见 core/plugins/log-monitor.ts)。
     async execute(_args, ctx) {
       const statusId = 'scan'
       api.status?.show(ctx.sessionId, { id: statusId, label: 'Scanning log files…' })

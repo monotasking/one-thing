@@ -1,15 +1,14 @@
 /**
- * R2a —— `IpcProjector` 的钉子:**六只工具跑一遍,投影出来的形状与旧
- * `executeToolDirectly` 的结果同形**。
+ * `IpcProjector` 的钉子:**六只工具跑一遍,投影出来的形状就是渲染器与历史重建
+ * 读的那一份**。
  *
- * 两条路都在这个文件里真跑:
- *  - 旧路 = `legacyTool.analyze` → `legacyTool.execute` → `coreToolExecutionSuccessResult`
- *    (那正是旧 `OnethingToolRegistry.executeTool` 收尾时干的事);
- *  - 新路 = `ToolRunner.run` + `IpcProjector`,再 `toExecutionResult(outcome)`。
+ * R2a 时这里比的是"新路 vs 旧 `executeToolDirectly` 的结果"(旧路在同一个文件里
+ * 真跑一遍)。R4b 把旧路删了,于是那几格换成快照 —— 快照里记的就是当时那份旧
+ * 形状(删除前这条对拍是绿的)。钉的仍是 `data.title` / `data.output` /
+ * `data.metadata` / `data.attachments` 与三个失败位(`aborted` / `rejected` /
+ * `rejectionReason`)。
  *
- * 比的是 `data.title` / `data.output` / `data.metadata` / `data.attachments` 与三个
- * 失败位(`aborted` / `rejected` / `rejectionReason`)—— 也就是渲染器与历史重建真正
- * 读的那几样。旧代码只读不改。
+ * 临时目录在快照里被换成 `<DIR>`。
  */
 
 import fs from 'node:fs/promises'
@@ -18,8 +17,6 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Decision, Outcome, ToolRunner, textResult } from '@onething/core/toolkit'
 import type { Authorizer, Invocation, Job, JobRegistry, JobSpec, Tool } from '@onething/core/toolkit'
-import { coreToolExecutionSuccessResult } from '@onething/core/tools'
-import { ZodValidator } from '@onething/runtime/toolkit'
 import {
   BashTool,
   EditTool,
@@ -27,20 +24,13 @@ import {
   TimeTool,
   VariableTool,
   WriteTool,
+  ZodValidator,
 } from '@onething/runtime/toolkit'
-import {
-  createBashTool as createLegacyBashTool,
-  createEditTool as createLegacyEditTool,
-  createReadTool as createLegacyReadTool,
-  createVariableTool as createLegacyVariableTool,
-  createWriteTool as createLegacyWriteTool,
-  TimeTool as LegacyTimeTool,
-} from '@onething/runtime/tools'
 import type {
   RuntimeContextVariable,
   RuntimeVariableRegistry,
   RuntimeVariableSetInput,
-} from '@onething/runtime/tools'
+} from '@onething/runtime/toolkit'
 import type { BashOperations } from '@onething/runtime/tools/bash-executor'
 import { IpcProjector, splitResultContent, stepFromEvent } from '../ipc-observer.js'
 
@@ -93,47 +83,25 @@ async function runNew(tool: Tool, input: unknown, options: NewRunOptions = {}) {
   return { outcome, projector, projected: projector.toExecutionResult(outcome) }
 }
 
-/** 旧路收尾成 `OnethingToolExecutionResult` 的那一跳(core/tools/registry.ts)。 */
-async function runLegacy(
-  tool: { analyze?: unknown; execute: unknown },
-  input: unknown,
-  dir?: string,
-) {
-  const record = { metadataCalls: [] as Array<{ title?: string; metadata?: unknown }> }
-  const ctx: Record<string, unknown> = {
-    sessionId: 'test-session',
-    messageId: 'test-message',
-    toolCallId: 'test-call',
-    workingDirectory: dir,
-    workingDirectoryRoots: dir ? [dir] : undefined,
-    metadata(update: { title?: string; metadata?: unknown }) { record.metadataCalls.push(update) },
-    updateResult() {},
-    async beforeSideEffect() {},
-  }
-  const analyze = tool.analyze as ((args: unknown, context: unknown) => unknown) | undefined
-  if (analyze) ctx.approvedAnalysis = await Promise.resolve(analyze(input, ctx))
-  const execute = tool.execute as (args: unknown, context: unknown) => Promise<{
-    title: string
-    output: string
-    metadata: unknown
-    attachments?: unknown
-  }>
-  return coreToolExecutionSuccessResult(await execute(input, ctx))
+/** 快照里的临时目录归一(路径每次都不一样,别的字节一个都不动)。 */
+function redact(value: unknown, dir?: string): unknown {
+  if (!dir) return value
+  const json = JSON.stringify(value ?? null)
+  return JSON.parse(json.split(JSON.stringify(dir).slice(1, -1)).join('<DIR>')) as unknown
 }
 
 // ── read ────────────────────────────────────────────────────────────────────
 
-describe('IpcProjector · 六只工具的结果投影与旧路同形', () => {
+describe('IpcProjector · 六只工具的结果投影形状', () => {
   it('read:文本文件 —— title / output / metadata 三样都对得上', async () => {
     const dir = await tempDir()
     await fs.writeFile(path.join(dir, 'note.txt'), 'alpha\nbeta\n')
     const args = { path: 'note.txt' }
 
-    const legacy = await runLegacy(createLegacyReadTool({}), args, dir)
     const { projected } = await runNew(new ReadTool({}), args, { dir })
 
     expect(projected.success).toBe(true)
-    expect(projected.data).toEqual(legacy.data)
+    expect(redact(projected.data, dir)).toMatchSnapshot('read text')
   })
 
   it('read:图片 —— 附件从 content 拆回 data.attachments,output 里没有 [Image: …] 占位', async () => {
@@ -146,14 +114,12 @@ describe('IpcProjector · 六只工具的结果投影与旧路同形', () => {
     await fs.writeFile(path.join(dir, 'dot.png'), png)
     const args = { path: 'dot.png' }
 
-    const legacy = await runLegacy(createLegacyReadTool({}), args, dir)
     const { projected } = await runNew(new ReadTool({}), args, { dir })
 
-    const legacyData = legacy.data as { output: string; attachments?: unknown }
     const data = projected.data as { output: string; attachments?: unknown }
-    expect(data.output).toBe(legacyData.output)
+    expect(redact(data.output, dir)).toMatchSnapshot('read image output')
     expect(data.output).not.toContain('[Image:')
-    expect(data.attachments).toEqual(legacyData.attachments)
+    expect(redact(data.attachments, dir)).toMatchSnapshot('read image attachments')
   })
 
   it('write:结果带一个 file 附件,output 是那一句话本身', async () => {
@@ -161,13 +127,10 @@ describe('IpcProjector · 六只工具的结果投影与旧路同形', () => {
     const adapters = { getFileMutationsDir: () => path.join(dir, '.audit') }
     const args = { path: 'a.txt', content: 'hello\n' }
 
-    const legacy = await runLegacy(createLegacyWriteTool(adapters), args, dir)
-    await fs.rm(path.join(dir, 'a.txt'))
     const { projected } = await runNew(new WriteTool(adapters), args, { dir })
 
-    const legacyData = legacy.data as { output: string; attachments?: unknown }
     const data = projected.data as { output: string; attachments?: unknown; metadata: Record<string, unknown> }
-    expect(data.output).toBe(legacyData.output)
+    expect(redact(data.output, dir)).toMatchSnapshot('write output')
     expect(data.attachments).toEqual([{ type: 'file', path: path.join(dir, 'a.txt'), mimeType: undefined }])
     expect(data.metadata.diff).toBeDefined()
   })
@@ -178,29 +141,25 @@ describe('IpcProjector · 六只工具的结果投影与旧路同形', () => {
     const args = { path: 'a.ts', edits: [{ oldText: 'const a = 1', newText: 'const a = 2' }] }
 
     await fs.writeFile(path.join(dir, 'a.ts'), 'const a = 1\n')
-    const legacy = await runLegacy(createLegacyEditTool(adapters), args, dir)
-    await fs.writeFile(path.join(dir, 'a.ts'), 'const a = 1\n')
     const { projected } = await runNew(new EditTool(adapters), args, { dir })
 
-    const legacyData = legacy.data as { title: string; output: string }
     const data = projected.data as { title: string; output: string }
-    expect(data.output).toBe(legacyData.output)
-    expect(data.title).toBe(legacyData.title)
+    expect(redact(data.output, dir)).toMatchSnapshot('edit output')
+    expect(redact(data.title, dir)).toMatchSnapshot('edit title')
   })
 
   it('time:纯文本结果,没有附件', async () => {
     const args = { action: 'now', timezone: 'UTC', format: 'iso' }
-    const legacy = await runLegacy(LegacyTimeTool as never, args)
     const { projected } = await runNew(new TimeTool(), args)
 
     const data = projected.data as { title: string; output: string; attachments?: unknown }
-    // 时间在走,只比形状与标题。
+    // 时间在走,只钉形状与标题。
     expect(data.attachments).toBeUndefined()
-    expect(data.title).toBe((legacy.data as { title: string }).title)
+    expect(data.title).toMatchSnapshot('time title')
     expect(typeof data.output).toBe('string')
   })
 
-  it('variable:title 是旧 ToolResult.title(最后一条 annotate),metadata 一致', async () => {
+  it('variable:title 是最后一条 annotate 的标题,metadata 钉住', async () => {
     const seed: RuntimeContextVariable[] = [{ name: 'topic', value: 'toolkit', scope: 'session' }]
     const registry = (): RuntimeVariableRegistry => {
       const rows = seed.map(row => ({ ...row }))
@@ -221,12 +180,11 @@ describe('IpcProjector · 六只工具的结果投影与旧路同形', () => {
     }
     const args = { action: 'list' }
 
-    const legacy = await runLegacy(createLegacyVariableTool({ getRegistry: registry }), args)
     const { projected } = await runNew(new VariableTool({ getRegistry: registry }), args)
-    expect(projected.data).toEqual(legacy.data)
+    expect(projected.data).toMatchSnapshot('variable list')
   })
 
-  it('bash:前台命令 —— output / metadata 与旧路逐字相同', async () => {
+  it('bash:前台命令 —— output / metadata 钉住', async () => {
     const dir = await tempDir()
     const ops: BashOperations = {
       exec: async (_command, _cwd, { onData }) => {
@@ -237,9 +195,8 @@ describe('IpcProjector · 六只工具的结果投影与旧路同形', () => {
     const adapters = { getToolOutputsDir: () => dir, createOperations: () => ops }
     const args = { command: 'echo hello' }
 
-    const legacy = await runLegacy(createLegacyBashTool(adapters), args, dir)
     const { projected } = await runNew(new BashTool(adapters), args, { dir })
-    expect(projected.data).toEqual(legacy.data)
+    expect(redact(projected.data, dir)).toMatchSnapshot('bash foreground')
   })
 })
 

@@ -16,6 +16,9 @@ import type {
 	AgentTurnRequest,
 } from "@onething/core/agent-loop";
 import type { JsonObject } from "@shared/json.js";
+import { Catalog, Intent, Tool as ToolkitTool } from "@onething/core/toolkit";
+import type { Result, ToolSpec } from "@onething/core/toolkit";
+import { configureToolkitCatalog } from "@onething/runtime/toolkit";
 import type { HistoryMessage } from "../message-helpers.js";
 import type { BuildPromptOptions } from "../../prompt/index.js";
 import type { StreamSender } from "../stream-processor.js";
@@ -90,17 +93,41 @@ function testToolSettings(enableToolCalls = false): ToolSettings {
 	};
 }
 
-function enabledToolDefinition(
-	overrides: Partial<ToolDefinition> &
-		Pick<ToolDefinition, "id" | "name" | "description">,
-): ToolDefinition {
-	return {
-		parameters: [],
-		enabled: true,
-		autoExecute: true,
-		category: "builtin",
-		...overrides,
-	};
+
+/**
+ * R4b:这一回合模型看得见哪些内置工具,来源从旧的 `getEnabledToolsAsync` 换成
+ * **目录**(`Surface.resolve`)。这个替身只填工具面要的那三格。
+ */
+class StubCatalogTool extends ToolkitTool<Record<string, never>, undefined> {
+	readonly spec: ToolSpec;
+
+	constructor(id: string, description: string, properties: Record<string, { type: string; description?: string }> = {}) {
+		super();
+		this.spec = {
+			id,
+			title: id,
+			description,
+			input: { type: "object", properties } as ToolSpec["input"],
+			effects: [],
+			presentation: { kind: "text", shell: "default" },
+			concurrency: "parallel",
+		};
+	}
+
+	async plan(): Promise<Intent<undefined>> {
+		return Intent.none(undefined);
+	}
+
+	async apply(): Promise<Result> {
+		return { content: [{ type: "text", text: "" }] };
+	}
+}
+
+function useCatalogTools(...tools: StubCatalogTool[]): void {
+	configureToolkitCatalog(new Catalog());
+	const catalog = new Catalog();
+	for (const tool of tools) catalog.register(tool);
+	configureToolkitCatalog(catalog);
 }
 
 function settingsWithTools(tools: ToolSettings["tools"] = {}): AppSettings {
@@ -142,9 +169,6 @@ const mocks = vi.hoisted(() => ({
 	getSkillsForSession: vi.fn<() => SkillDefinition[]>(() => []),
 	getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
 	getMCPToolDefinitionsForModel: vi.fn<() => ToolDefinition[]>(() => []),
-	getEnabledToolsAsync: vi.fn<() => Promise<ToolDefinition[]>>(async () => []),
-	initializeAsyncTools: vi.fn(async () => undefined),
-	setInitContext: vi.fn(),
 	executeToolDirectly: vi.fn(),
 	acpStreamPrompt: vi.fn(),
 	buildProjectDirsPromptVars: vi.fn(() => ({ active: undefined, known: [] })),
@@ -241,9 +265,6 @@ vi.mock("../../../mcp/index.js", () => ({
 }));
 
 vi.mock("../../../tools/index.js", () => ({
-	getEnabledToolsAsync: mocks.getEnabledToolsAsync,
-	initializeAsyncTools: mocks.initializeAsyncTools,
-	setInitContext: mocks.setInitContext,
 	createToolCall: vi.fn(
 		(toolId: string, toolName: string, args: JsonObject) => ({
 			id: `call_${toolId}`,
@@ -357,7 +378,8 @@ describe("agent-loop stream entry integration", () => {
 			]);
 			expect(providerRequests[0].tools).toEqual([]);
 			expect(providerRequests[0].toolChoice).toBe("none");
-			expect(mocks.getEnabledToolsAsync).not.toHaveBeenCalled();
+			// 关掉工具开关时目录根本不该被问 —— 这一格由下面 `tools: []` 与
+			// `toolChoice: 'none'` 两条断言一起钉住(R4b:旧的 spy 随口径删除)。
 			expect(mocks.store.updateMessageContent).toHaveBeenCalledWith(
 				"s1",
 				"m1",
@@ -911,21 +933,11 @@ describe("agent-loop stream entry integration", () => {
 
 	it("executes model-requested tools through the real agent-loop entry path", async () => {
 		const providerRequests: RecordedAgentRequest[] = [];
-		mocks.getEnabledToolsAsync.mockResolvedValueOnce([
-			enabledToolDefinition({
-				id: "lookup",
-				name: "lookup",
-				description: "Lookup facts",
-				parameters: [
-					{
-						name: "query",
-						type: "string",
-						description: "Search query",
-						required: true,
-					},
-				],
+		useCatalogTools(
+			new StubCatalogTool("lookup", "Lookup facts", {
+				query: { type: "string", description: "Search query" },
 			}),
-		]);
+		);
 		mocks.executeToolDirectly.mockResolvedValueOnce({
 			success: true,
 			data: { output: "lookup result: moon" },
@@ -1088,13 +1100,7 @@ describe("agent-loop stream entry integration", () => {
 		const configuredTools = {
 			lookup: { enabled: true, autoExecute: true },
 		};
-		mocks.getEnabledToolsAsync.mockResolvedValueOnce([
-			enabledToolDefinition({
-				id: "lookup",
-				name: "lookup",
-				description: "Lookup facts",
-			}),
-		]);
+		useCatalogTools(new StubCatalogTool("lookup", "Lookup facts"));
 
 		const unregister = registerAgentProviderRuntime(
 			"test-agent-default-tools",
@@ -1139,7 +1145,6 @@ describe("agent-loop stream entry integration", () => {
 				isImageGeneration: false,
 				pausedForConfirmation: false,
 			});
-			expect(mocks.getEnabledToolsAsync).toHaveBeenCalledWith(configuredTools);
 			expect(providerRequests).toHaveLength(1);
 			expect(providerRequests[0].toolChoice).toBe("auto");
 			expect(providerRequests[0].tools?.map((tool) => tool.name)).toEqual([
@@ -1153,21 +1158,11 @@ describe("agent-loop stream entry integration", () => {
 
 	it("pauses and keeps the stream open when an agent-loop tool requires confirmation", async () => {
 		const providerRequests: RecordedAgentRequest[] = [];
-		mocks.getEnabledToolsAsync.mockResolvedValueOnce([
-			enabledToolDefinition({
-				id: "dangerous",
-				name: "dangerous",
-				description: "Dangerous command",
-				parameters: [
-					{
-						name: "cmd",
-						type: "string",
-						description: "Command",
-						required: true,
-					},
-				],
+		useCatalogTools(
+			new StubCatalogTool("dangerous", "Dangerous command", {
+				cmd: { type: "string", description: "Command" },
 			}),
-		]);
+		);
 		mocks.executeToolDirectly.mockResolvedValueOnce({
 			success: false,
 			error: "Needs approval",

@@ -1,23 +1,18 @@
 /**
  * R2a —— `permissionGuard` 派生投影的钉子(设计文档 §10.2-③ / §11.2 / §12.3)。
  *
- * 六格逐字钉住:派生值必须等于**旧工具身上那个字符串**。这是"概念消失但契约不变"
- * 这句话唯一能被验证的地方 —— 一旦某一格漂移,设置页与 provider 注入面就会在切换
- * 那天悄悄换一副面孔。
+ * 六格逐字钉住:派生值必须等于旧工具身上那个字符串(R4b 之前是从旧工具对象上
+ * 现读的,旧树删掉之后那五个值**写死在 CASES 里**)。这是"概念消失但契约不变"
+ * 这句话唯一能被验证的地方 —— 一旦某一格漂移,设置页与 provider 注入面就会悄悄
+ * 换一副面孔。
  *
  * **R3a 复盘裁定后有一格是有意不同的**:variable。它旧的 `'safe'` 与它自己
  * `analyze` 报的 `capability_change`(never-grantable)自相矛盾,是旧树的一个
- * bug;派生表按真相给 `permission-gated`。这一格因此显式写出**两个**期望值,
+ * bug;派生表按真相给 `permission-gated`。这一格因此显式写出**两个**值,
  * 而不是把不一致藏进一个通过的断言里。
  */
 
 import { describe, expect, it } from 'vitest'
-import { BashTool as LegacyBashTool } from '../../tools/builtin/bash.js'
-import { EditTool as LegacyEditTool } from '../../tools/builtin/edit.js'
-import { ReadTool as LegacyReadTool } from '../../tools/builtin/read.js'
-import { WriteTool as LegacyWriteTool } from '../../tools/builtin/write.js'
-import { VariableTool as LegacyVariableTool } from '../../tools/builtin/variable.js'
-import { TimeTool as LegacyTimeTool } from '@onething/runtime/tools'
 import {
   BashTool,
   EditTool,
@@ -29,17 +24,17 @@ import {
 import { EFFECT_POLICY } from '@onething/core/toolkit'
 import { deriveLegacyPermissionGuard } from '../guard-projection.js'
 
+/** `expected` = 旧工具身上那个 `permissionGuard` 字符串,逐字冻在这里。 */
 const CASES = [
-  { id: 'read', legacy: LegacyReadTool, spec: new ReadTool({}).spec, expected: 'sandboxed' },
-  { id: 'write', legacy: LegacyWriteTool, spec: new WriteTool({ getFileMutationsDir: () => '/tmp' }).spec, expected: 'permission-gated' },
-  { id: 'edit', legacy: LegacyEditTool, spec: new EditTool({ getFileMutationsDir: () => '/tmp' }).spec, expected: 'permission-gated' },
+  { id: 'read', spec: new ReadTool({}).spec, expected: 'sandboxed' },
+  { id: 'write', spec: new WriteTool({ getFileMutationsDir: () => '/tmp' }).spec, expected: 'permission-gated' },
+  { id: 'edit', spec: new EditTool({ getFileMutationsDir: () => '/tmp' }).spec, expected: 'permission-gated' },
   {
     id: 'bash',
-    legacy: LegacyBashTool,
     spec: new BashTool({ getToolOutputsDir: () => '/tmp', createOperations: () => ({ exec: async () => ({ exitCode: 0 }) }) }).spec,
     expected: 'internal-check',
   },
-  { id: 'time', legacy: LegacyTimeTool, spec: new TimeTool().spec, expected: 'safe' },
+  { id: 'time', spec: new TimeTool().spec, expected: 'safe' },
 ] as const
 
 /**
@@ -60,12 +55,11 @@ describe('deriveLegacyPermissionGuard', () => {
   for (const item of CASES) {
     it(`${item.id}: 派生值等于旧工具的 permissionGuard(${item.expected})`, () => {
       expect(deriveLegacyPermissionGuard(item.spec)).toBe(item.expected)
-      expect(item.legacy.permissionGuard).toBe(item.expected)
     })
   }
 
   it('variable: 旧值 safe 是旧树 bug,派生按真相给 permission-gated(修复,不是回归)', () => {
-    expect(LegacyVariableTool.permissionGuard).toBe('safe')
+    // 旧值(已随旧树删除):'safe'。
     expect(VARIABLE_SPEC.effects).toEqual(['capability_change'])
     expect(deriveLegacyPermissionGuard(VARIABLE_SPEC)).toBe('permission-gated')
     // 无行为影响:两个值在这两张表里同权,而 canAutoExecute 今天没有调用方。

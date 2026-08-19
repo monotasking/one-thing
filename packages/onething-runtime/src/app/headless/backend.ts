@@ -52,8 +52,6 @@ import {
 // 避开那件事。room-create 只依赖 store 与 agents,两者本来就已经在了。
 import { ensureCollabGroupRoom } from '../collab/room-create.js'
 import { getSettings } from '../stores/settings.js'
-import { getAllToolsAsync } from '../tools/index.js'
-import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
 import { toolkitCatalogToolDefinitions } from '../toolkit/catalog-projection.js'
 import { shutdownEventSystem, getEventBus, getStreamChannel } from '../events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from '../session/index.js'
@@ -516,12 +514,10 @@ export class HeadlessBackend {
     return listOnethingHeadlessProviderModels(getSettings(), providerId)
   }
 
-  async listTools(): Promise<ToolSummary[]> {
-    // R3b:开关开时"有哪些工具"由目录回答(设计文档 §10.2-④)。呈现一个字不改
-    // —— `listOnethingHeadlessToolSummaries` 是同一个投影,换的是入参的来源。
-    const tools = (isToolkitEnabled() ? toolkitCatalogToolDefinitions() : undefined)
-      ?? await getAllToolsAsync()
-    return listOnethingHeadlessToolSummaries(tools)
+  listTools(): ToolSummary[] {
+    // "有哪些工具"由目录回答(设计文档 §10.2-④)。呈现一个字不改 ——
+    // `listOnethingHeadlessToolSummaries` 是同一个投影,换的只是入参的来源。
+    return listOnethingHeadlessToolSummaries(toolkitCatalogToolDefinitions() ?? [])
   }
 
   setTool(toolId: string, update: { enabled?: boolean; autoExecute?: boolean }): void {

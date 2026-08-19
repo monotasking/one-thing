@@ -42,80 +42,49 @@ export type {
 } from './tool-result.js'
 export { AllowAllPolicy, DenyAllPolicy } from './policy.js'
 export type { PermissionPolicy } from './policy.js'
+/**
+ * R4b —— `*WithAdapters` 那一族(旧注册表的注入式壳)与围绕 `ToolInfo` 的那批
+ * 帮手随旧树删除。留下来的只有**新树还在用**的三个纯投影函数,外加 `AgentEngine`
+ * 自己那台最小注册表(`ToolRegistry` + `types.ts` 的 `ToolDefinition` —— 它是
+ * agent-engine 的工具形状,与被删掉的 `ToolInfo` 不是一回事)。
+ */
+export { ToolRegistry } from './registry.js'
 export {
-  analyzeCoreToolWithAdapters,
-  collectCoreProviderToolSchemasWithAdapters,
-  collectCoreToolDefinitionsWithAdapters,
-  HeadlessToolRegistry,
-  ToolRegistry,
-  canCoreToolAutoExecute,
-  createCoreToolCall,
-  coreProviderToolSchemaFromJsonSchema,
-  coreProviderToolSchemaFromParameters,
-  coreProviderToolSchemaProperties,
-  coreToolAnalysisSuccessResult,
   coreToolContextFromHost,
   coreToolDefinitionFromJsonSchema,
-  coreToolExecutionSuccessResult,
   coreToolParameterFromSchema,
-  coreToolParametersFromJsonSchema,
   coreToolValidationFailureMessage,
-  executeCoreToolWithAdapters,
   extractCoreErrorMessage,
-  filterCoreEnabledTools,
-  filterCoreInjectableTools,
-  isCoreToolEnabled,
-  isCoreToolInjectable,
   normalizeCoreToolParameterType,
-  planCoreToolAutoExecute,
-  planCoreToolProviderInjection,
-  resolveCoreToolExecutionMode,
 } from './registry.js'
 export type {
-  CoreProviderToolSchema,
-  AnalyzeCoreToolWithAdaptersOptions,
-  CollectCoreProviderToolSchemasWithAdaptersOptions,
-  CollectCoreToolDefinitionsWithAdaptersOptions,
-  CoreToolAnalysisRuntimeResult,
-  CoreToolAnalysisSuccessResult,
   CoreMaybePromise,
-  CorePendingToolCall,
-  CoreToolAutoExecuteLike,
-  CoreToolCallInput,
   CoreToolDecision,
-  CoreToolEnabledLike,
-  CoreToolExecutionMode,
-  CoreToolExecutionModeLike,
   CoreToolDefinitionFromJsonSchemaInput,
-  CoreToolExecutionSuccessResult,
+  CoreToolFailureResult,
   CoreToolHostExecutionContext,
   CoreToolJsonSchemaLike,
-  CoreProviderToolSchemaFromParametersInput,
   CoreToolParameterDefinition,
   CoreToolParameterType,
-  CoreToolFailureResult,
-  CoreToolRegistryItem,
   CoreToolRegistryKind,
   CoreToolRegistryRegisterResult,
   CoreToolRuntimeContext,
-  CoreToolRuntimeResult,
   CoreToolSettingsLike,
   CoreToolValidationResult,
-  ExecuteCoreToolWithAdaptersOptions,
 } from './registry.js'
 export { executeToolCalls } from './tool-loop.js'
+/**
+ * `permissionGuard` 的概念在新树里已经不存在(它是 `spec.effects` 的派生值,
+ * 见 `app/toolkit/guard-projection.ts`);这两个判据活着,是因为**派生表**要按
+ * 同一套集合给出旧字段的值,而宿主契约里那个字段还在(标了 deprecated)。
+ */
 export {
-  CORE_AUTO_EXECUTE_PERMISSION_GUARDS,
-  CORE_INJECTABLE_PERMISSION_GUARDS,
   isAutoExecutePermissionGuard,
   isInjectablePermissionGuard,
-  planToolPermissionGuardAutoExecute,
-  planToolPermissionGuardInjection,
 } from './permission-guards.js'
 export type {
   CoreToolPermissionGuard,
   CoreToolPermissionGuardLike,
-  CoreToolPermissionGuardPlan,
 } from './permission-guards.js'
 export type {
   ToolCall,

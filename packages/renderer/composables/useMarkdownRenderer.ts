@@ -7,6 +7,9 @@ import {
 } from '@/composables/collabInlineTags'
 import { normalizeStatusEmoji, replaceEmojiShortcodes } from '@/editor/markdown-emoji'
 import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
+import { wholePathReference } from '@/references/autolink'
+import { installReferenceClickHandler } from '@/references/dom'
+import { parseReference } from '@/references/parse'
 import type { MarkdownRenderOptions } from '@/editor/markdown-document'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
@@ -38,6 +41,31 @@ function createMarkdownRenderer(config: MarkdownRendererConfig) {
   // 是一枚中性 span,验真在挂载期做、永不进 HTML 缓存,所以非群聊消息里误写
   // 一个 <card id="…"/> 顶多显示成一段点不动的短 id。
   instance.use(collabInlineTagPlugin)
+
+  // 消息引用(docs/design/message-references-2026-08.md §4.1)。markdown-it 默认
+  // 把 `file:` 打进坏 scheme 名单,于是 `[x](file:///a)` 今天连锚点都渲染不出来;
+  // 裸 `/abs/path` 本来就放行。这里只把 `file:` 放回来,javascript / vbscript /
+  // 非图片 data: 三条拒绝一字不动。
+  instance.validateLink = validateReferenceLink
+
+  // §4.2:分类 + 打标。`file` 类的 href 改写成 `#` —— 一个真 `file://` 锚点会被
+  // 主进程的 `isElectronRendererWindowUrl` 当成 app URL,中键/拖拽就能把整个渲染
+  // 器导航走。原始 target 只留在 data-ref 里。
+  const defaultLinkOpen = instance.renderer.rules.link_open
+  instance.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+    const token = tokens[idx]
+    const href = token.attrGet('href')
+    const ref = href ? parseReference(href) : null
+    if (ref) {
+      token.attrJoin('class', `msg-ref msg-ref--${ref.kind}`)
+      token.attrSet('data-ref-kind', ref.kind)
+      token.attrSet('data-ref', JSON.stringify(ref))
+      if (ref.kind === 'file') token.attrSet('href', '#')
+    }
+    return defaultLinkOpen
+      ? defaultLinkOpen(tokens, idx, options, env, self)
+      : self.renderToken(tokens, idx, options)
+  }
 
   instance.renderer.rules.text = (tokens, idx) => {
     return instance.utils.escapeHtml(normalizeStatusEmoji(replaceEmojiShortcodes(tokens[idx].content)))
@@ -97,10 +125,15 @@ function createMarkdownRenderer(config: MarkdownRendererConfig) {
   </div>`
   }
 
-  // Custom inline code renderer
+  // Custom inline code renderer.
+  // §4.3:整段就是一条路径时,在 <code> **外面**包一层锚点。不拆 code 内的文本 ——
+  // 拆了高亮、复制、say 折叠的行数统计都要跟着乱。
   instance.renderer.rules.code_inline = (tokens, idx) => {
     const token = tokens[idx]
-    return `<code class="inline-code">${instance.utils.escapeHtml(token.content)}</code>`
+    const code = `<code class="inline-code">${instance.utils.escapeHtml(token.content)}</code>`
+    const ref = wholePathReference(token.content)
+    if (!ref) return code
+    return `<a class="msg-ref msg-ref--file" href="#" data-ref-kind="file" data-ref="${escapeHtmlAttribute(JSON.stringify(ref))}">${code}</a>`
   }
 
   // Normalize model-emitted local image paths (sandbox: scheme, bare absolute
@@ -152,6 +185,18 @@ function getMarkdownRenderer(config: MarkdownRendererConfig): MarkdownIt {
 
 function sanitizeCodeLanguage(lang: string): string {
   return (lang || 'text').replace(/[^\w-]/g, '-') || 'text'
+}
+
+/**
+ * markdown-it 默认 `validateLink` 的复刻,只少了 `file:` 一项。
+ * 拒绝面必须逐字保持:javascript / vbscript 一律拒,`data:` 只放行四种图片。
+ */
+const REFERENCE_BAD_PROTO_RE = /^(vbscript|javascript|data):/
+const REFERENCE_GOOD_DATA_RE = /^data:image\/(gif|png|jpeg|webp);/
+
+export function validateReferenceLink(url: string): boolean {
+  const str = url.trim().toLowerCase()
+  return REFERENCE_BAD_PROTO_RE.test(str) ? REFERENCE_GOOD_DATA_RE.test(str) : true
 }
 
 function escapeHtmlAttribute(value: string): string {
@@ -298,6 +343,7 @@ function codeCopyIconMarkup(): string {
 export function ensureMarkdownDomHandlers(): void {
   ensureCodeCopyHandler()
   ensureCollabTagHandler()
+  installReferenceClickHandler()
 }
 
 /**

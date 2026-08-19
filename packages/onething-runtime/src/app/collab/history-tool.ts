@@ -37,7 +37,7 @@ import {
   wrapCollabMessageEnvelope,
   type CollabHandleQuery,
 } from '@onething/runtime/collab'
-import { createHistoryTool, type HistoryToolResult } from '@onething/runtime/tools'
+import type { HistoryToolResult } from '@onething/runtime/toolkit'
 import { scanJsonlLog } from '@onething/core/session'
 import type { ChatMessage, SessionMeta } from '@shared/ipc.js'
 import * as store from '../store.js'
@@ -466,4 +466,3 @@ export async function searchCollabHistory(input: {
   }
 }
 
-export const HistoryTool = createHistoryTool({ search: searchCollabHistory })

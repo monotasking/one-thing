@@ -25,11 +25,6 @@ import { getSkillsForSession } from '../../skills/session-skills.js'
 import { getMCPToolDefinitionsForModel } from '../../mcp/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 import { createAgentProviderFromRuntime } from '../../providers/agent-runtime.js'
-import {
-  getEnabledToolsAsync,
-  initializeAsyncTools,
-  setInitContext,
-} from '../../tools/index.js'
 import type { ChatMessage, ChatSession, SkillDefinition } from '@shared/ipc.js'
 import { toJsonObject } from '@shared/json.js'
 import { buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
@@ -143,16 +138,9 @@ function createAgentLoopRuntimeAdapters(
   return createOnethingAgentLoopRuntimeAdapters({
     getSession: (sessionId: string) => store.getSession(sessionId),
     getSkillsForSession,
-    async initializeTools(skills) {
-      setInitContext({
-        skills,
-      })
-      await initializeAsyncTools()
-    },
     createProvider: createAgentProviderFromRuntime,
     resolveModelContextLength: modelRegistry.getModelContextLength,
     resolveModelMaxOutputTokens: modelRegistry.getModelMaxOutputTokens,
-    getEnabledTools: getEnabledToolsAsync,
     getMCPToolDefinitionsForModel,
     getAgentToolAllowlist: (agentId: string | undefined, session?: unknown) => {
       // Fallback only: a run with a resolved profile reads the snapshot

@@ -45,7 +45,6 @@ import {
 	type CoreAgentLoopRuntimeSettingsLike,
 	type CoreAgentLoopRuntimeToolSettingsLike,
 	type CoreAgentLoopSkillLike,
-	type CoreAgentLoopToolSettings,
 	type CoreBuildPromptOptions,
 	type CoreBuildPromptResult,
 	type CorePendingAgentLoopChatMessage,
@@ -66,13 +65,8 @@ import {
 	DEFAULT_AGENT_MAX_TURNS,
 	type EffectiveAgentProfile,
 } from "../agents/profile.js";
-import {
-	resolveSceneHiddenToolIds,
-	type SceneSurfaceSessionLike,
-} from "../tools/scene-surface.js";
-// R2b 缝 1(切换期;开关关时下面那一段整个不求值)。目录由装配层通过
-// `configureToolkitCatalog` 递进来 —— 产品层不许 import `@onething/app`。
-import { isToolkitEnabled } from "../toolkit/flag.js";
+// 缝 1。目录由装配层通过 `configureToolkitCatalog` 递进来 —— 产品层不许
+// import `@onething/app`。
 import {
 	resolveToolkitSurface,
 	toolkitAgentSourceTools,
@@ -230,9 +224,6 @@ export interface OnethingAgentLoopRuntimeAdapters<
 		model: string,
 		providerId: string,
 	): number | undefined | Promise<number | undefined>;
-	getEnabledTools(
-		toolSettings?: CoreAgentLoopToolSettings["tools"],
-	): Promise<TTool[]>;
 	getMCPRouterToolDefinition?(): TTool | null;
 	/** 决策点 #1 hybrid: mode-resolved MCP tool defs (flat array or router). */
 	getMCPToolDefinitionsForModel?(): TTool[];
@@ -349,9 +340,6 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 		model: string,
 		providerId: string,
 	): number | undefined | Promise<number | undefined>;
-	getEnabledTools(
-		toolSettings?: CoreAgentLoopToolSettings["tools"],
-	): Promise<TTool[]>;
 	getMCPRouterToolDefinition?(): TTool | null;
 	/** 决策点 #1 hybrid: mode-resolved MCP tool defs (flat array or router). */
 	getMCPToolDefinitionsForModel?(): TTool[];
@@ -486,7 +474,6 @@ export function createOnethingAgentLoopRuntimeAdapters<
 		createProvider: host.createProvider,
 		resolveModelContextLength: host.resolveModelContextLength,
 		resolveModelMaxOutputTokens: host.resolveModelMaxOutputTokens,
-		getEnabledTools: host.getEnabledTools,
 		getMCPRouterToolDefinition: host.getMCPRouterToolDefinition,
 		getMCPToolDefinitionsForModel: host.getMCPToolDefinitionsForModel,
 		getAgentToolAllowlist: host.getAgentToolAllowlist,
@@ -778,23 +765,24 @@ export async function buildOnethingAgentLoopStreamRuntime<
 			? ctx.agentProfile.tools
 			: await adapters.getAgentToolAllowlist?.(preparation.agentId, session);
 	/**
-	 * R2b 缝 1 —— 工具面(docs/design/tool-system-oop-2026-08.md §12.5)。
+	 * 缝 1 —— 工具面(docs/design/tool-system-oop-2026-08.md §12.5)。
 	 *
-	 * 开关开时,「这一回合模型看得见哪些内置工具」由 `Surface.resolve` 一次算出
-	 * (目录 × 场景 × agent 白名单 × 设置),取代上面三处口径拼装:
-	 * `resolveSceneHiddenToolIds` 的减法表、`getEnabledTools` 的 enabled 过滤、
-	 * `planAgentLoopTools` 的 allowlist。空白名单的两种读法在
+	 * 「这一回合模型看得见哪些内置工具」由 `Surface.resolve` 一次算出(目录 ×
+	 * 场景 × agent 白名单 × 设置)。R4b 之前这里还并排跑着旧的三处口径拼装
+	 * (`resolveSceneHiddenToolIds` 的集中式减法表、`getEnabledTools` 的 enabled
+	 * 过滤、`planAgentLoopTools` 的 allowlist),现在**只剩这一处** —— 场景判定的
+	 * 唯一事实是 `resolveScene` + 每只工具自己的 `visibleIn`。空白名单的两种读法在
 	 * `normalizeLegacyAllowlist` 那道归一门里对齐(R2a 决定⑤)。
 	 *
 	 * **MCP 与 provider 原生名不走这条**:它们仍旧按老路递给
 	 * `planAgentLoopTools`(flat/router 的互斥、enabled 过滤都在那里),只作为
 	 * `extraNames` 进 `Surface.names()` —— 那一格答的是"这个名字这一回合合法吗",
-	 * 不是"谁来跑它"。于是开关翻开时模型看到的 MCP 面逐字不变。
+	 * 不是"谁来跑它"。
 	 *
-	 * 目录没配上(宿主没走 backend、装配还没到)时 `toolkitSourceTools` 为空,
-	 * 整段落回旧路。
+	 * 目录没配上(宿主没走 backend、装配还没到)时 `toolkitSourceTools` 为空 ——
+	 * 这一回合就没有内置工具,而不是悄悄换一条链。
 	 */
-	const toolkitSurface = isToolkitEnabled() && toolLoadingEnabled
+	const toolkitSurface = toolLoadingEnabled
 		? resolveToolkitSurface({
 			session: session as ToolkitSceneSessionLike | null | undefined,
 			enabledSkillNames: enabledSkills.map(skill => skill.name),
@@ -807,39 +795,9 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	const toolkitSourceTools = toolkitSurface
 		? toolkitAgentSourceTools(toolkitSurface)
 		: null;
-	/**
-	 * 场景工具面(2026-08-18 工具梳理;前身是自举差距审计 P0-3 的会话级屏蔽)。
-	 *
-	 * 与 agent 的 allowlist 是**两件事**:allowlist 答「这个 agent 能用哪些」,
-	 * 而且只有配了 agent 的回合才有;这一条答「这条会话所在的场景决定了哪些工具在
-	 * 这里根本不成立」—— 普通对话看不见协作四件套,没有 active goal 的回合看不见
-	 * `goal`,派工开出来的工作会话看不见 `task`(禁止套娃),skill 带进来的工具只在
-	 * 该 skill 启用时出现。表在 `tools/scene-surface.ts`,一处。
-	 *
-	 * 放在这里而不是在执行时拒绝:摆在工具表里的工具模型会去调,调了被拒是一次纯
-	 * 浪费的往返。执行时的闸(场子门、套娃闸)原样保留 —— 工具面是给模型看的,
-	 * 闸才是不能被绕过的。
-	 */
-	/*
-	 * R3b(§14.4-6 结清):开关开且目录真的答上来了时,旧的两道口径**不再空跑**。
-	 *
-	 * R2b 留着它们是为了"旧路一行不改",代价是每一回合白算一次减法表 + 一次异步
-	 * 注册表列举,结果当场丢弃。判据是 `toolkitSourceTools !== null`(不是开关本身)
-	 * —— 目录没配上时整段仍然要退回旧路,那时这两道口径是唯一的答案。
-	 */
-	const hiddenToolIds = toolkitSourceTools
-		? new Set<string>()
-		: new Set(resolveSceneHiddenToolIds({
-			session: session as SceneSurfaceSessionLike | null | undefined,
-			enabledSkillNames: enabledSkills.map(skill => skill.name),
-		}));
-	const allEnabledTools = toolLoadingEnabled && !toolkitSourceTools
-		? (await adapters.getEnabledTools(effectiveToolSettings?.tools))
-			.filter(tool => !hiddenToolIds.has(tool.id))
-		: [];
 	const toolPlan = planAgentLoopTools({
 		toolLoadingEnabled,
-		allEnabledTools: (toolkitSourceTools ?? allEnabledTools) as typeof allEnabledTools,
+		allEnabledTools: (toolkitSourceTools ?? []) as TTool[],
 		mcpTools: mcpToolDefinitions,
 		toolSettings: effectiveToolSettings,
 		allowedToolIds: agentToolAllowlist,

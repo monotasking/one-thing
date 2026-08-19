@@ -340,6 +340,12 @@ export interface CorePluginToolDefinition<
   description: string
   parameters: TParameters
   execute(args: TArgs, ctx: TContext): Promise<TResult>
+  /**
+   * @deprecated R4b —— 概念已退役,而且插件填什么都不生效:插件工具的权限由
+   * `plugin_exec` 这条效果说出来(恒 ask,"插件不能给自己发免检通行证")。
+   * 字段保留是为了不改插件对外契约;宿主收到非 `permission-gated` 的值时只会
+   * 打一句 warn。
+   */
   permissionGuard?: PluginPermissionGuard
   /**
    * 与同一条 assistant 消息里的兄弟 tool_use 能不能重叠(N3)。

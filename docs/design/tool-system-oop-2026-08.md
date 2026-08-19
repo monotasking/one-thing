@@ -1106,3 +1106,151 @@ degrade-surface、闸落在 `PluginTool.visibleIn`(连败三次把这只工具�
 - `packages/onething-runtime/src/toolkit/flag.ts`:`isToolkitEnabled()` 从 `=== '1'` 改为 `!== '0'`。`ONETHING_TOOLKIT=0` 是杀开关,`=1` 仍接受。
 - 验证:全量 vitest 与翻前逐字相同(仅 `renderer/styles/ui-token-vars` 既有 2 条红);`bun run server:build` + 无环境变量启动 → `/api/tools` 20 个、零 ReferenceError;typecheck 无新增;boundary-gate 无新增;`bun run build` EXIT 0。
 - 桌面真机 soak(§14.6 九条)仍由用户进行;R4b(按 §15 的 9 步删旧树 + 删 flag + 删 `canAutoExecute`/`autoExecute` 死概念 + `external-agent` EffectClass 尾巴)等 soak 与并行会话落地后做。
+
+## 17. R4b 记录(2026-08-19):删旧树
+
+按 §15.6 的九步执行。**旧树没有了**:`Tool.define` / `ToolInfo` / `ToolInfoAsync` /
+`isAsyncTool` / `permissionGuard`(作为概念)/ `autoExecute` / `canAutoExecute` /
+`ONETHING_TOOLKIT` 开关,以及那一整棵注册表与二十只旧工具对象,全部从仓库里消失。
+新树是**唯一**的一条路 —— 不是"默认走新路",是没有第二条路可走。
+
+净删 ≈ 13.2k 行(旧树三个目录:`runtime/src/tools` 9115、`app/tools` 3153、
+`core/tools` 913),103 个文件被删。
+
+### 17.1 九步逐条
+
+| 步 | 做了什么 |
+| --- | --- |
+| ① | (上一位执行者)`app/agent-loop/{runtime,tools}.ts` 死码 + 测试 + barrel 再导出 |
+| ② | 16 处 `isToolkitEnabled()` 分支里的旧那一半全部删掉;`toolkit/flag.ts`、它的 alias 条目、`ONETHING_TOOLKIT_TIER` 兜底一起删。`getOrBuildToolkitCatalog` 的懒建档位写死 full,建不起来时返回 `undefined` 的含义从"退回旧路"变成"这台宿主没有工具" |
+| ③ | `agent-loop/stream-runtime.ts` 的 `resolveSceneHiddenToolIds` / `getEnabledTools` 两处口径 + `tools/scene-surface.ts` 整张减法表。`getEnabledTools` 这个**适配器**本身也从 host 接口上摘掉(两处声明 + 一处透传 + 桌面实现) |
+| ④ | 三处写面:`app/plugins/api.ts` 的 `Tool.define` 段(插件工具只进目录)、`app/features/builtin/self-evolution.ts` 的旧三件套(整个 `mountSelfEvolution` 从 405 行收成 25 行)、`app/mcp/bridge.ts` 对旧 registry 的注册/清扫 |
+| ⑤ | `app/tools/{registry,index,types,toolkit-guard}.ts` + `builtin/` 全部 + `core/tool.ts`;`runtime/src/tools/{tool,registry,tool-execution,direct-tool-execution,tool-refresh}.ts` + `builtin/` 里的旧工具对象 |
+| ⑥ | `core/tools/registry.ts` 的 `*WithAdapters` 族、`HeadlessToolRegistry`、`filterCore*` / `planCoreToolAutoExecute` / `canCoreToolAutoExecute` / `createCoreToolCall` / provider-schema 那几个(803 → 274 行);`core/tools/index.ts` 与 `core/index.ts` 的再导出同步收窄 |
+| ⑦ | `app/engine/stream/tool-execution.ts` 的旧半:`executeOnethingDirectTool` 那条把 ctx 回调翻成 IPC、自己接 MCP 与两条拦截链的管线整段删除,`executeToolDirectly` 只剩一句 `runToolkitToolDirectly` + 一句诚实的 tool-not-found。`tool-orchestrator.ts` 无需改动(它那一半在 R2b 已经收敛) |
+| ⑧ | `apps/server` 的 `createServerReadOnlyToolRegistry` → `createReadonlyCatalog()` + 一台本地 runner(恒 allow 的授权者,理由写在函数头注释里)。**两道安全闸一个字未动**:`serverReadOnlyToolIds` 白名单 + `validateServerReadOnlyToolAccess` 路径校验 |
+| ⑨ | `triggers/skill-review.ts`(产品层)不再 import 旧 `Tool` 与 `zodToJsonSchema` —— 连同 `createOnethingSkillReviewFileToolAdapters` 那个把 `ToolInfo` 包成适配器的工厂一起删;装配层那一份改成唯一来源(三只缺一就整组不给,产品层据此跳过整次审查) |
+
+### 17.2 同一批的三件
+
+1. **`external-agent` 升成 `EffectClass`。** `core/toolkit/effects.ts` 加一行
+   (`policy: 'ask'`、`barrier: true`、卡片文案 `Run an external agent tool`),
+   `guard-projection.ts` 加一条派生(它是唯一**推得出** `external` 的效果)。
+   `app/external-agents/index.ts` 与 `app/acp/permission-bridge.ts` 两处从
+   `enforcePermissionPolicy` / `Permission.ask` 改调 `Authorizer.decide` —— 外部这一步
+   与本地工具从此走同一个授权者。**kind 的字面量逐字沿用连字符的 `'external-agent'`**
+   (与本表其余下划线风格不同):它同时是权限卡的 `type`,渲染器与它的测试按这个
+   字面量分支,改成下划线会是一次悄悄的契约变更。
+2. **`permissionGuard` 的两个读者。** `canAutoExecute` 连同 `planCoreToolAutoExecute` /
+   `CORE_AUTO_EXECUTE_PERMISSION_GUARDS` 一起删;`isInjectablePermissionGuard` /
+   `isAutoExecutePermissionGuard` 留着,因为**派生表**要按同一套集合给出旧字段的值。
+   契约里那四处 `permissionGuard?` 声明(`@shared/ipc` 的 tools/chat、`core/mcp`、
+   `core/plugins`)全部标 `@deprecated` 并写清它是派生值;两个内置插件里那两句
+   `permissionGuard: 'permission-gated'` 删掉(它们本来就不参与任何判定)。
+3. **`tool/audit` 保持一行。** 不拆。
+
+### 17.3 迁移清单(**不是**工具系统内部机制,逐条搬走)
+
+| 语义 | 旧位置 | 新位置 |
+| --- | --- | --- |
+| 工具自带的提示词片段(`ToolInfo.prompt` → 面上工具的 `CorePromptFragment`) | `tools/registry.ts` 的 `getPromptFragments` / `collect`;`app/tools/registry.ts` 的 `toolPromptSource` | **新建** `app/toolkit/prompt-source.ts`(`toolkitPromptFragments` / `toolkitPromptSource`,读 `spec.prompt`)。判据逐字保留:`hasTools` 门、`resolveAIToolName` 还原、排序、每 id 一次。桌面 composer 的那一格换成它 |
+| 一次直调的旧形状(`ToolExecutionContext` / `ToolExecutionResult` / `ToolMetadataUpdate` / `ToolPartialResultUpdate`) | `app/tools/types.ts` | **新建** `app/toolkit/execution-types.ts`(逐字搬,`ToolExecutionContext` 只留投影器真会填的那几格) |
+| `executeCoreToolAndUpdate` 的三行转换器(`toJsonValue` / `toStructured` / `formatFailure`) | `runtime/tools/tool-execution.ts`(整个文件就是这层壳) | 内联进唯一的调用点 `app/engine/stream/tool-execution.ts` |
+| 插件工具的参数校验 | 旧 registry 的 `validateToolArgs` | `app/plugins/tool-call-intercept.ts` 改读目录 + `ZodValidator`(runner 每次调用走的同一个) |
+| `ToolMetadata`(插件对外契约的第二个类型参数,旧值就是 `object`) | `tools/tool.ts` | `app/plugins/types.ts` 就地声明 |
+| 宿主 MCP 递给工具的那格上下文 | `tools/tool.ts` 的 `ToolContext` | `external-agents/host-mcp/tools.ts` 就地声明 `HostMcpToolContext`(它本来只填五格) |
+| 笔记落盘口 `appendNote` | `app/collab/actors/notebook-tool.ts`(私有)+ `app/toolkit/adapters.ts` 里"逐字相同"的第二份 | 原处导出,adapters 直接用 —— 两份变一份 |
+| 自进化三件套的"模型可发现性"(提示词段落 + inspect 恒附契约模板,commit 664f014b) | `app/features/builtin/self-evolution.ts` 的旧三件套 | 已在 `app/toolkit/builtin/feature-{inspect,mount}.ts` + `feature-runtime.ts` 里(R3a 移植时就带过去了,本期核对无缺) |
+
+### 17.4 丢弃清单(为什么可以丢)
+
+| 丢了什么 | 为什么 |
+| --- | --- |
+| `tool-refresh.ts`(`refreshOnethingAsyncTools*`)与 `tools:refresh-async` 的旧实现 | 它刷的是"异步工具"—— 一批要靠 `setInitContext(cwd/skills)` + `initializeAsyncTools()` 才拿得到 schema 的注册表条目。新树没有这个概念(懒初始化是 `Catalog.ensurePrepared`,按工具、按需、只跑一次)。**IPC 通道与返回形状一个字未动**,handler 改成刷 MCP 目录 —— 那是唯一会在运行期变的工具面。全仓没有渲染器调用方 |
+| `initializeTools` 适配器的两处桌面实现(`agent-loop-runtime.ts` / `system-prompt-snapshot.ts`) | 它们的函数体只做一件事:给旧注册表的异步工具灌 init context。适配器本身是 core agent-loop 的可选口,留着未动 |
+| `tool-list-presentation.ts` 的 `setInitContext` / `getSessionsList` / `getSession` / `cwd` 四个入参 | 同上 —— 它们只为"列表之前先给异步工具灌 cwd"而存在。呈现(source 推导 + MCP 合并)一个字未动 |
+| `app/collab/board-tool.ts` 整个文件 | 它只导出一个 `Tool.define` 出来的 `BoardTool`;同一条接线在 `app/toolkit/adapters.ts` 的 `boardAdapters()`(W18 那条"哪间房"的语义连同它的测试一起迁到新路) |
+| `core/tools` 的 provider-schema 投影(`coreProviderToolSchemaFrom*`) | 它服务的是旧 registry 的 `getToolsForAI`。新树的模型面由 `planAgentLoopTools` + `Surface` 组装,不经过它。全仓零调用方 |
+
+**有意保留、写明理由的两处**(§15.6 ⑤ 的"纯逻辑模块保留"):
+
+- `runtime/src/tools/` 里的 `tool-list-presentation` / `tool-execution-context` /
+  `tool-call-state` / `ipc-operations` 四个文件。它们在 §15.6 ⑤ 的字面清单上,但
+  **对工具系统一无所知** —— 全部靠注入的函数工作,答的是"结果怎么摆成宿主契约的
+  形状"。删掉等于把同样的 450 行搬到另一个目录再写一遍;
+- `app/tools/core/`(sandbox / bash-executor / background-jobs / permission-policy /
+  replacers)。它们是 **`configure*Host` 端口**,CLAUDE.md 的端口表逐条指着这些路径。
+  挪一次要改十几处 import 与一张写在 CLAUDE.md 里的表,而这四个文件与新旧哪一棵树
+  都无关。`core/tool.ts`(旧 `Tool` 的再导出)已删。
+
+### 17.5 被删测试 → 新树对应用例
+
+**对拍 suite 全部转成金标。** 十二个 `toolkit/__tests__/parity/*.test.ts` 原本逐条写
+`expect(新).toBe(旧)`,旧实现删除后那种判据在构造上不可能成立。转法:**旧实现删除前
+对拍是绿的**,所以把断言换成快照,快照里记下的就是当时那份旧行为 —— 语义一格没少,
+判据从"和旧的一样"变成"就是这一份"。目录随之改名 `parity/` → `golden/`(220 条全绿,
+含 ~180 张新快照)。临时目录与 store 根在快照里被 `redactText` / `redactPaths` 换成
+`<DIR>`。
+
+| 被删的测试 | 新树对应 |
+| --- | --- |
+| `toolkit/__tests__/parity/{time,read,write,edit,bash,variable,web,life,session-tools,ask-user,collab,external}.test.ts`(对拍) | 同名 `toolkit/__tests__/golden/*.test.ts`(逐条转快照;`external.test.ts` 的 MCP 那一半**一字未改** —— 它比的是两份都还在的权限计划) |
+| `app/toolkit/__tests__/feature-tools.test.ts`(与旧三件套对拍) | 同文件转金标(21 条) |
+| `app/toolkit/__tests__/no-legacy-registry-readers.test.ts`(把旧读面换成"调用即抛") | `app/toolkit/__tests__/single-tool-path.test.ts` —— 那道闸失去意义(模块不存在),但它钉的**三个问题面**(跑一个工具 / 有哪些工具 / schema-描述-guard)一条不少 |
+| `tools/__tests__/tool-prompt-fragments.test.ts`(3 条) | **新建** `app/toolkit/__tests__/prompt-source.test.ts`(6 条:原 3 条 + `hasTools` 门 + 名字还原与排序 + 没有目录时安静返回空) |
+| `tools/__tests__/scene-surface.test.ts`(6 条) | `toolkit/__tests__/scene.test.ts` —— 12 组夹具当年算出的 hidden 集合逐字冻进 fixture,另加一条"夹具里写死的 id 都真的在目录里"(拼错名字不许静悄悄放行) |
+| `triggers/__tests__/skill-review-file-tools.test.ts` | **新建** `app/engine/triggers/__tests__/skill-review-file-tools.test.ts`(3 条:schema/parse/execute 三格 + 真工具的契约校验 + "三只缺一整组不给") |
+| `tools/__tests__/registry.test.ts` / `tool.test.ts` / `tool-execution.test.ts` / `direct-tool-execution.test.ts` / `tool-refresh.test.ts` | 主语已删。执行链路的等价覆盖在 `app/toolkit/__tests__/{runner,ipc-observer,authorizer,single-tool-path}.test.ts` 与 `core/toolkit/__tests__/*` |
+| `app/tools/builtin/__tests__/*`(13 个) | 对应工具的 golden suite + `app/toolkit/__tests__/catalog-tiers.test.ts`(三档清单从"和旧 barrel 一样"改成写死的三张表) |
+| `app/tools/__tests__/registry.test.ts`(门面薄壳) | 门面已删 |
+| `tools/__tests__/{ask-user,history,bash-runtime,bash-background,diff-display}.test.ts` | 对应工具的 golden suite |
+
+**改写(不是删)的测试**:`app/collab/__tests__/{say-tool,dm-tool,board-tool-context}.test.ts`、
+`app/collab/actors/__tests__/notebook-tool.test.ts`、`app/external-agents/__tests__/host-tools.test.ts`、
+`app/features/__tests__/self-evolution.test.ts`、`app/plugins/__tests__/{builtin-teardown,tool-call-intercept}.test.ts`、
+`app/engine/prompt/__tests__/{system-prompt.baseline,system-prompt-snapshot,prompt-fragments-wiring}.test.ts`、
+`app/engine/stream/__tests__/agent-loop-stream-integration.test.ts`、
+`app/engine/triggers/__tests__/skill-review.test.ts`、`tasks/__tests__/task-rules.test.ts`、
+`external-agents/__tests__/host-mcp.test.ts`、`agent-loop/__tests__/stream-runtime.test.ts`、
+`apps/server/src/http.test.ts` —— 一律"同一条语义,换一条链":旧 `Tool.execute(args, ctx)`
+改成 `ToolRunner.run`(生产路径上那一台),旧 `registerTool`/`getTool` 改成
+`configureToolkitCatalog` + `Catalog`。
+
+### 17.6 有意的行为变化(三条,都写在了代码注释里)
+
+1. **`/api/tools` 在 echo/test 假路上从 1 只变成 4 只**(`read` → readonly 档的
+   read/time/web_open/web_search)。那份本地注册表只装了一只 read,而只读档的真实内容
+   是四只零本地副作用的工具。**执行面没有变宽**:白名单与路径校验两道闸一个字未动。
+2. **`tools:refresh-async` 现在刷 MCP 目录**(见 17.4)。契约未动。
+3. **skill review 在拿不到 read/write/edit 时整次跳过**(readonly 档)。旧路会拿半组
+   适配器跑一次注定写不进去的审查。
+
+### 17.7 门
+
+| 门 | 结果 |
+| --- | --- |
+| 全量 `npx vitest run` | 1098 passed / 1 failed / 3 skipped(文件);10537 passed / 2 failed / 8 skipped(条)。唯一失败 = `packages/renderer/styles/__tests__/ui-token-vars.test.ts`,**开工前基线里就是它**(基线 1132 passed / 1 failed / 3 skipped、10640 条;-34 个文件 = 删掉的旧树测试减去新增的三个) |
+| `npx tsc --noEmit -p tsconfig.node.json` | 无新增(既有两处:`spaces/__tests__/provider-dials.test.ts`、`electron.vite.config.ts` 的 TS6307) |
+| `npm run typecheck:web` | 通过 |
+| `node scripts/boundary-gate.mjs` | ok —— 13 known,none new |
+| `app/__tests__/import-side-effect-free.test.ts` + `core/__tests__/architecture-boundaries.test.ts` | 绿(13 条) |
+| eslint `--max-warnings 0`(本期 96 个文件) | **0 error**;剩余 warning 全部是既有的未用符号(`apps/server/src/runtime.ts`、`app/headless/backend.ts`、`app/plugins/types.ts`、`scripts/headless-boundary-check.ts` 的一长串既有 pattern 常量,以及两处本期之前就在的未用参数) |
+| `bun run server:build` + 单文件包真跑 | `/api/sessions` 200;`/api/tools` 200 报 **20 只**(17 内置 + 3 个 `feature_*`),派生 guard 与 §14.6 第 7 条逐格对上(read=sandboxed / write=edit=permission-gated / bash=internal-check / variable=permission-gated / time=safe);`ReferenceError` 计数 **0** |
+| `bun run build` | EXIT 0 |
+| 生产代码 `rg "Tool\.define｜ToolInfoAsync｜isAsyncTool｜permissionGuard:｜isToolkitEnabled｜ONETHING_TOOLKIT"` | 只剩三类,全部是契约面:`core/mcp/tool-definition.ts` 两处给 MCP 定义填那个 deprecated 字段(设置页读它),`apps/server/src/runtime.ts` 与 `prompts/system-prompt-snapshot.ts` 把它透传进快照,`app/toolkit/catalog-projection.ts` 从派生表填它。`Tool.define` / `ToolInfoAsync` / `isAsyncTool` / `isToolkitEnabled` / `ONETHING_TOOLKIT` **零命中** |
+
+### 17.8 剩下的尾巴
+
+- **`permissionGuard` 这个字段本身还在契约上。** 它现在是派生值 + `@deprecated`,
+  但四处声明、三处填写、两处读取仍然存在。真删它要动 `@shared/ipc`、设置页与
+  `SystemPromptPanel.vue`,那是一次渲染层改动,不在 R4b 的范围里。
+- **`core/tools/{types,executor,policy,tool-loop}.ts` 与 `ToolRegistry` 留着。**
+  它们不是旧 onething 工具系统,而是 `core/agent/agent-engine.ts` 自己那台最小工具
+  注册表(`ToolDefinition` = name/description/parameters/execute),消费者是
+  `scripts/smoke-test*.ts`。§15.6 ⑥ 说的 "`types.ts` 的 `ToolDefinition`" 指的是旧
+  `ToolInfo` 那一族,那一族已随 `tools/tool.ts` 消失。
+- **真机走查(§14.6 九条)仍未做** —— 那需要用户在桌面上跑一轮。
+- 本期**没有提交**。工作区里还并行躺着另一条会话的在途改动(message references:
+  `prompts/builder.ts` + `content/references.md` + 渲染器几个文件),
+  `app/engine/prompt/__tests__/__snapshots__/system-prompt.baseline.test.ts.snap` 因此
+  被更新过一次 —— 那次更新的**全部内容**是他们新加的 `references` 段落,与 R4b 无关。

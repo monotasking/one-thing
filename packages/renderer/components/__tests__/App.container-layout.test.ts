@@ -94,8 +94,10 @@ describe('App container layout', () => {
        和搜索 deeplink 那条已成熟的 jumpToMessage。 */
     expect(app).toContain('@jump-to-source="handleWorkbenchJumpToSource"')
     expect(app).toContain('await chatContainerRef.value?.jumpToMessage?.(payload.sessionId, payload.messageId)')
-    expect(app).toContain('async function openFileInRightWorkbench(filePath: string)')
-    expect(app).toContain('await rightWorkbenchRef.value?.openFile(filePath)')
+    // 消息引用带来了行号(docs/design/message-references-2026-08.md §5),
+    // 这条入口从此多一个可选落点参数,`openFile` 原样透传。
+    expect(app).toContain('async function openFileInRightWorkbench(filePath: string, position?: ReferenceFilePosition)')
+    expect(app).toContain('await rightWorkbenchRef.value?.openFile(filePath, position)')
     expect(app).not.toContain('class="inspector-resize-handle"')
     expect(app).not.toContain('edge="left"')
     expect(app).not.toContain('@resize="handleInspectorPixelResize"')
@@ -300,7 +302,7 @@ describe('App container layout', () => {
     expect(workbench).toContain('@tab-add="togglePicker"')
     expect(workbench).toContain(':initial-file-path="tab.filePath"')
     expect(workbench).toContain('@open-file="openFile"')
-    expect(workbench).toContain('async function openFile(filePath: string)')
+    expect(workbench).toContain('async function openFile(filePath: string, position?: WorkbenchFilePosition | null)')
     expect(workbench).toContain("type: 'file'")
     expect(workbench).toContain('title: basename(filePath)')
     expect(workbench).toContain('await editorWorkspace.openFile(filePath)')

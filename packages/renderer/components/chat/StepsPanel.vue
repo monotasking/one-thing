@@ -100,7 +100,7 @@
                     'file-link': getTimelineItemActivity(item).canOpenFile,
                     'file-opened': isFileOpenFlash(getTimelineItemActivity(item)),
                   }"
-                  @click.stop="handleTargetClick(getTimelineItemActivity(item), toggle)"
+                  @click.stop="handleTargetClick(getTimelineItemActivity(item), toggle, $event)"
                 >{{ getTimelineItemActivity(item).target }}</span>
               </span>
               <span
@@ -166,6 +166,7 @@ import FartCallItem from './FartCallItem.vue'
 import LiveToolDuration from './LiveToolDuration.vue'
 import ToolActivityDetails from './ToolActivityDetails.vue'
 import ToolIcon from './ToolIcon.vue'
+import { openReference } from '@/references'
 
 const props = withDefaults(defineProps<{
   steps: Step[]
@@ -626,16 +627,25 @@ function isGroupDefaultExpanded(group: StepGroup): boolean {
     (group.status !== 'completed' && group.status !== 'cancelled')
 }
 
-function handleTargetClick(activity: ToolActivityView, togglePanel?: () => void) {
-  if (activity.hasDetails) {
-    togglePanel?.()
-    return
-  }
+/**
+ * 文件类工具(read/write/edit)的目标名点击 = 打开文件,**不管有没有详情** ——
+ * 折叠/展开由行头其余部分和展开图标负责,目标名不再兼职开关。走消息引用的同一个
+ * 动作口(docs/design/message-references-2026-08.md §3):存在性校验、目录/图片
+ * 分支、⌘-click 系统打开、shift-click Finder 显示都跟着来;edit 还定位到首个 hunk。
+ */
+function handleTargetClick(activity: ToolActivityView, togglePanel?: () => void, event?: MouseEvent) {
   if (activity.canOpenFile) {
-    emit('open-file', activity.filePath)
     flashFileOpen(activity.id)
+    void openReference(
+      { kind: 'file', path: activity.filePath, line: activity.fileLine, raw: activity.filePath },
+      { meta: event?.metaKey, ctrl: event?.ctrlKey, shift: event?.shiftKey, alt: event?.altKey },
+    ).then((result) => {
+      // 没装宿主(测试 / 辅助窗)时退回旧的事件链。
+      if (!result.ok && result.reason === 'no-host') emit('open-file', activity.filePath)
+    })
     return
   }
+  if (activity.hasDetails) togglePanel?.()
 }
 
 function isFileOpenFlash(activity: ToolActivityView): boolean {

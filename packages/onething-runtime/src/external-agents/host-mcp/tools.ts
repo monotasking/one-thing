@@ -42,7 +42,21 @@ import {
   type CollabVenueTool,
 } from '../../collab/tool-surface.js'
 import { resolveAgentToolSurface } from '../../agents/profile.js'
-import type { ToolContext } from '../../tools/tool.js'
+
+/**
+ * 递给宿主工具的那一格上下文。
+ *
+ * R4b:它原本是旧 `tools/tool.ts` 的 `ToolContext`;旧树删掉之后就地写成这张
+ * 结构表 —— 这个文件本来就只填这五格(装配层那一侧的 `toolkitHostTool` 也只读
+ * 这五格),而它现在对两棵树都不认识。
+ */
+export interface HostMcpToolContext {
+  sessionId: string
+  messageId: string
+  workingDirectory?: string
+  abortSignal?: AbortSignal
+  metadata(update: { title?: string; metadata?: Record<string, unknown> }): void
+}
 import { resolveHostToolContext } from './context.js'
 import type { HostToolTurnContext } from './types.js'
 
@@ -104,10 +118,9 @@ export function resolveHostToolSurface(input: HostToolSurfaceInput): CollabVenue
 /**
  * 一只**可注入的宿主工具**。
  *
- * R3b 把这里的入参从旧 `ToolInfo` 放宽成这张结构表:装配层开关关时递的是旧注册表
- * 里那个对象(它逐字满足这张表),开关开时递的是目录里那只工具的一层薄包装
- * (schema 从契约表反查回 zod,执行走 `runToolkitToolDirectly`)。这个文件因此
- * **不再 import 任何一棵注册表**,两条路对它是同一个形状。
+ * R3b 把这里的入参从旧 `ToolInfo` 放宽成这张结构表;装配层递的是目录里那只工具的
+ * 一层薄包装(schema 从契约表反查回 zod,执行走 `runToolkitToolDirectly`)。这个
+ * 文件因此**不 import 任何一棵注册表**。
  *
  * `parameters` 刻意是 `unknown`:这里只会去取它的 `.shape`(见 `rawShapeOf`),
  * 取不到就给一张空表 —— 那条兜底本来就在。
@@ -116,7 +129,7 @@ export interface HostMcpHostTool {
   id: string
   description: string
   parameters: unknown
-  execute(args: Record<string, unknown>, ctx: ToolContext): Promise<{ output: string }>
+  execute(args: Record<string, unknown>, ctx: HostMcpToolContext): Promise<{ output: string }>
 }
 
 /** MCP 的工具结果形状(`CallToolResult` 的我们用得到的那一小块)。 */
@@ -203,7 +216,7 @@ export function toHostMcpToolDefinition(
 }
 
 /**
- * 合成一份 `ToolContext`。
+ * 合成一份 `HostMcpToolContext`。
  *
  * `sessionId` 是**执行会话**——协作执行器认的就是它(`resolveSayContext`、
  * `resolveSelfAgentId`、notebook 的身份推断全从这条会话出发),v3 的验票表也是
@@ -212,7 +225,7 @@ export function toHostMcpToolDefinition(
  * `metadata()` 是空操作:它在本地回合里把标题/元数据推给渲染层,而外部回合的
  * 渲染走的是 connector 翻译出来的那条事件流 —— 这里再推一份会是第二个真相源。
  */
-function hostToolContext(context: HostToolTurnContext): ToolContext {
+function hostToolContext(context: HostToolTurnContext): HostMcpToolContext {
   return {
     sessionId: context.execSessionId,
     messageId: context.messageId ?? '',

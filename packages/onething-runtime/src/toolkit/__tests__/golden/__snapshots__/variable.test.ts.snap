@@ -1,0 +1,125 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: variable > boundary: get on a missing name returns the self-rescue line > missing get output 1`] = `"No variable named "nothing_here". Use action="keys" to see what exists."`;
+
+exports[`golden: variable > boundary: keys projects names only, in the same order > keys output 1`] = `
+"topic [session] [state]
+user_note_dir [global]
+workdir [session] [readonly] - Work directory"
+`;
+
+exports[`golden: variable > error: delete without a name > delete without name 1`] = `"name is required for delete"`;
+
+exports[`golden: variable > error: set without a value > set without value 1`] = `"value is required for set"`;
+
+exports[`golden: variable > normal: list renders and carries no effect > list annotation titles 1`] = `
+[
+  "Listed variables",
+  "Variables",
+]
+`;
+
+exports[`golden: variable > normal: list renders and carries no effect > list metadata 1`] = `
+{
+  "action": "list",
+  "name": undefined,
+  "variables": [
+    {
+      "description": "Work directory",
+      "name": "workdir",
+      "readonly": true,
+      "scope": "session",
+      "state": undefined,
+      "type": undefined,
+      "updatedAt": undefined,
+      "value": "/repo",
+      "values": undefined,
+    },
+    {
+      "description": undefined,
+      "name": "topic",
+      "readonly": undefined,
+      "scope": "session",
+      "state": true,
+      "type": "string",
+      "updatedAt": undefined,
+      "value": "toolkit",
+      "values": undefined,
+    },
+    {
+      "description": undefined,
+      "name": "user_note_dir",
+      "readonly": undefined,
+      "scope": "global",
+      "state": undefined,
+      "type": undefined,
+      "updatedAt": undefined,
+      "value": "/notes",
+      "values": undefined,
+    },
+  ],
+}
+`;
+
+exports[`golden: variable > normal: list renders and carries no effect > list output 1`] = `
+"workdir = /repo [session] [readonly] - Work directory
+topic = toolkit [session] [state]
+user_note_dir = /notes [global]"
+`;
+
+exports[`golden: variable > normal: set writes and renders > set output 1`] = `
+"workdir = /repo [session] [readonly] - Work directory
+topic = r1
+user_note_dir = /notes [global]"
+`;
+
+exports[`golden: variable > permission input: repointing a capability variable reports capability_change > capability effects 1`] = `
+[
+  {
+    "barrier": true,
+    "kind": "capability_change",
+    "metadata": {
+      "action": "set",
+      "value": "/elsewhere",
+      "variable": "user_note_dir",
+    },
+    "resources": [
+      "/elsewhere",
+    ],
+  },
+]
+`;
+
+exports[`golden: variable > permission input: repointing a capability variable reports capability_change > capability preview 1`] = `
+{
+  "metadata": {
+    "value": "/elsewhere",
+    "variable": "user_note_dir",
+  },
+  "title": "Repoint user_note_dir to: /elsewhere",
+}
+`;
+
+exports[`golden: variable > spec 钉住 > description 1`] = `
+"Read and manage context variables — the session's board of named runtime facts and kept settings.
+
+The board is context to read, not a place to park your own working state: write only when the user asks for something to be kept or changed, or when operating a lever the board owns (e.g. workdir) — never for progress, findings or intermediate results. System variables (workdir, note dirs, background_jobs, git_branch, ...) explain themselves via their description in list output.
+
+state=true puts a variable in front of you (it arrives in full in every <context-update>); everything else stays on the board until you read it — keys lists names, get reads one in full. Values are typed (string, number, bool, list, map, set; collections support append/remove) with an optional description, in one of four scopes: session, agent, project, global. Custom names are non-reserved snake_case."
+`;
+
+exports[`golden: variable > spec 钉住 > prompt contribution 1`] = `
+{
+  "sections": [
+    {
+      "content": "<context-variables>
+This session carries a board of context variables — runtime facts the system publishes and settings the user has asked to keep — read through the \`variable\` tool. Nothing on it is shown here — the board arrives in the \`<context-update>\` blocks below.
+</context-variables>",
+      "id": "context-variables",
+    },
+  ],
+  "workspaceRules": [
+    "To change the work directory, call \`variable\` with action="set", name="workdir", value=<directory>.",
+  ],
+}
+`;

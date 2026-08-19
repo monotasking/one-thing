@@ -1,0 +1,130 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: write > boundary: overwriting an existing file yields the pinned diff counts > effects 1`] = `
+[
+  {
+    "barrier": true,
+    "external": false,
+    "kind": "file_write",
+    "metadata": {
+      "additions": 1,
+      "created": false,
+      "deletions": 2,
+      "isExternal": false,
+      "originalContentHash": "9f6575f7ff41f0b5d35fe2255b1a9a587e1b855071ed27c324615c6d1f1395ad",
+      "path": "<DIR>/note.txt",
+    },
+    "resources": [
+      "<DIR>/*",
+    ],
+  },
+]
+`;
+
+exports[`golden: write > boundary: overwriting an existing file yields the pinned diff counts > preview 1`] = `
+{
+  "additions": 1,
+  "deletions": 2,
+  "diff": "Index: <DIR>/note.txt
+===================================================================
+--- <DIR>/note.txt
++++ <DIR>/note.txt
+@@ -1,3 +1,2 @@
+ one
+-two
+-three
++two changed
+",
+  "path": "<DIR>/note.txt",
+  "title": "Overwrite note.txt",
+}
+`;
+
+exports[`golden: write > error: an unwritable target fails in plan > unwritable target 1`] = `"Path is a directory, not a file: <DIR>/blocked"`;
+
+exports[`golden: write > error: illegal arguments reuse the tool-specific wording > validation wording 1`] = `
+"Invalid write parameters:
+- content: Invalid input: expected string, received undefined"
+`;
+
+exports[`golden: write > error: the file changing during approval aborts the write > changed during approval 1`] = `"File changed after permission approval and the resulting write diff changed: <DIR>/note.txt. Please retry the write."`;
+
+exports[`golden: write > normal: creates a file — output / effects / preview / audit metadata > effects 1`] = `
+[
+  {
+    "barrier": true,
+    "external": false,
+    "kind": "file_write",
+    "metadata": {
+      "additions": 1,
+      "created": true,
+      "deletions": 0,
+      "isExternal": false,
+      "originalContentHash": "b7b3aede84b3cb0edbea85abfb62dab3e0d8e43975e68b80a5a411cf67c32ff4",
+      "path": "<DIR>/nested/note.txt",
+    },
+    "resources": [
+      "<DIR>/nested/*",
+    ],
+  },
+]
+`;
+
+exports[`golden: write > normal: creates a file — output / effects / preview / audit metadata > metadata keys 1`] = `
+[
+  "additions",
+  "afterContentHash",
+  "auditId",
+  "auditPath",
+  "bytesWritten",
+  "created",
+  "deletions",
+  "diff",
+  "diffHunks",
+  "lineCount",
+  "originalContentHash",
+  "path",
+]
+`;
+
+exports[`golden: write > normal: creates a file — output / effects / preview / audit metadata > model text 1`] = `"Successfully wrote 6 bytes to nested/note.txt"`;
+
+exports[`golden: write > normal: creates a file — output / effects / preview / audit metadata > preview 1`] = `
+{
+  "additions": 1,
+  "deletions": 0,
+  "diff": "Index: <DIR>/nested/note.txt
+===================================================================
+--- <DIR>/nested/note.txt
++++ <DIR>/nested/note.txt
+@@ -0,0 +1,1 @@
++hello
+",
+  "path": "<DIR>/nested/note.txt",
+  "title": "Create note.txt",
+}
+`;
+
+exports[`golden: write > permission input: an out-of-sandbox target is flagged external > effects 1`] = `
+[
+  {
+    "barrier": true,
+    "external": true,
+    "kind": "file_write",
+    "metadata": {
+      "additions": 1,
+      "boundary": "<DIR0>",
+      "created": true,
+      "deletions": 0,
+      "isExternal": true,
+      "originalContentHash": "b7b3aede84b3cb0edbea85abfb62dab3e0d8e43975e68b80a5a411cf67c32ff4",
+      "path": "<DIR1>/x.txt",
+    },
+    "resources": [
+      "<DIR1>/*",
+    ],
+  },
+]
+`;
+
+exports[`golden: write > spec 钉住 > description 1`] = `"Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories."`;

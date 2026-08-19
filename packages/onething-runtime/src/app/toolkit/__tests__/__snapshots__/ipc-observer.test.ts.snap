@@ -1,0 +1,92 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`IpcProjector · 六只工具的结果投影形状 > bash:前台命令 —— output / metadata 钉住 > bash foreground 1`] = `
+{
+  "metadata": {
+    "command": "echo hello",
+    "exitCode": 0,
+    "output": "hello
+",
+    "workingDirectory": "<DIR>",
+  },
+  "output": "hello
+",
+  "title": "echo hello",
+}
+`;
+
+exports[`IpcProjector · 六只工具的结果投影形状 > edit:同上,外加 title 来自最后一条带标题的 annotate > edit output 1`] = `"Successfully edited <DIR>/a.ts (1 replacement)"`;
+
+exports[`IpcProjector · 六只工具的结果投影形状 > edit:同上,外加 title 来自最后一条带标题的 annotate > edit title 1`] = `"Edited a.ts"`;
+
+exports[`IpcProjector · 六只工具的结果投影形状 > read:图片 —— 附件从 content 拆回 data.attachments,output 里没有 [Image: …] 占位 > read image attachments 1`] = `
+[
+  {
+    "content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "mimeType": "image/png",
+    "path": "<DIR>/dot.png",
+    "type": "image",
+  },
+]
+`;
+
+exports[`IpcProjector · 六只工具的结果投影形状 > read:图片 —— 附件从 content 拆回 data.attachments,output 里没有 [Image: …] 占位 > read image output 1`] = `
+"[Image file: <DIR>/dot.png]
+Size: 70 bytes
+MIME type: image/png
+This image was attached for vision-capable models. Content cannot be displayed as text."
+`;
+
+exports[`IpcProjector · 六只工具的结果投影形状 > read:文本文件 —— title / output / metadata 三样都对得上 > read text 1`] = `
+{
+  "metadata": {
+    "fileSize": 11,
+    "isBinary": false,
+    "limit": 2000,
+    "lineCount": 3,
+    "offset": 1,
+    "path": "<DIR>/note.txt",
+    "truncated": false,
+    "truncation": {
+      "maxBytes": 51200,
+      "maxLines": 2000,
+      "outputLines": 3,
+      "totalLines": 3,
+      "truncated": false,
+      "truncatedBy": null,
+    },
+  },
+  "output": "alpha
+beta
+",
+  "title": "note.txt (3 lines)",
+}
+`;
+
+exports[`IpcProjector · 六只工具的结果投影形状 > time:纯文本结果,没有附件 > time title 1`] = `"Current time in UTC+00:00"`;
+
+exports[`IpcProjector · 六只工具的结果投影形状 > variable:title 是最后一条 annotate 的标题,metadata 钉住 > variable list 1`] = `
+{
+  "metadata": {
+    "action": "list",
+    "name": undefined,
+    "variables": [
+      {
+        "description": undefined,
+        "name": "topic",
+        "readonly": undefined,
+        "scope": "session",
+        "state": undefined,
+        "type": undefined,
+        "updatedAt": undefined,
+        "value": "toolkit",
+        "values": undefined,
+      },
+    ],
+  },
+  "output": "topic = toolkit [session]",
+  "title": "Variables",
+}
+`;
+
+exports[`IpcProjector · 六只工具的结果投影形状 > write:结果带一个 file 附件,output 是那一句话本身 > write output 1`] = `"Successfully wrote 6 bytes to a.txt"`;

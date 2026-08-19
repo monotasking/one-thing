@@ -44,7 +44,7 @@ export const SESSION_EVENT_TYPES = [
    * 它不是第八种"回合事件",而是 `AuditProjector`(`app/toolkit/audit-observer.ts`)
    * 那条投影的落盘口 —— 三条生命周期证词(planned / decided / finished)攒成扁平
    * 的一行:计划里报了哪些效果类、授权结论、人被问过没有、最终结局、拦截器动没
-   * 动手。**只在 `ONETHING_TOOLKIT=1` 时出现**;开关关时这个类型一行都不写。
+   * 动手。
    */
   'tool/audit',
   'request/end',

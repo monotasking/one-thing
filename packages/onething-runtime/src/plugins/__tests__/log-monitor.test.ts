@@ -158,9 +158,15 @@ describe('runtime log-monitor plugin', () => {
     try {
       expect(api.registerTool).toHaveBeenCalledWith(expect.objectContaining({
         name: 'search_agent_logs',
-        // 插件注册的工具一律 permission-gated —— 宿主强制,插件不能自封免检。
-        permissionGuard: 'permission-gated',
       }))
+      /*
+       * R4b:插件不再写 `permissionGuard` —— 那个概念退役了。「插件不能自封免检」
+       * 这句话现在由 `plugin_exec` 这条效果说出来(恒 ask,宿主强制),而它在
+       * `app/plugins/__tests__/builtin-teardown.test.ts` 里被逐个内置插件钉住。
+       */
+      expect(api.registerTool).not.toHaveBeenCalledWith(
+        expect.objectContaining({ permissionGuard: expect.anything() }),
+      )
       expect(commands.has('/log-tail')).toBe(true)
       expect(commands.has('/log-clear')).toBe(true)
       expect(handlers.has('stream:error')).toBe(true)

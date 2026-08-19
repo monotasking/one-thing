@@ -40,7 +40,7 @@ import {
   stripCollabAgentHandles,
   type CollabAgentLike,
 } from '@onething/runtime/collab'
-import { createSayTool, type SayToolResult } from '@onething/runtime/tools'
+import type { SayToolResult } from '@onething/runtime/toolkit'
 import { registerRetiredAgentToolName } from '@onething/core'
 import { type ChatMessage } from '@shared/ipc.js'
 import * as store from '../store.js'
@@ -390,31 +390,6 @@ async function speakThroughCollabLease(
   recentSays.set(fingerprint, { messageId: delivered.messageId, at: now })
   return { ok: true, messageId: delivered.messageId }
 }
-
-/**
- * 合并后的发送面(collab-send-channel-and-wake.md §2.2)。
- *
- * 两个执行器保持为两个函数不变(各自的门与拒绝文案是资产),合并只发生在工具
- * 层:统一入口按 channel 分发。
- *
- * `sendDm` 走**动态 import**:模块图上 `dm-tool → say-tool` 这条边早就存在
- * (私聊落库就是 say 的执行器),反向再加一条静态边就是一个环。动态 import 只
- * 在真的发私聊时解析一次(之后走模块缓存),而环带来的初始化顺序问题是那种
- * 只在打包形态下才现身的 bug。
- */
-export const SayTool = createSayTool({
-  speak: speakIntoCollabRoom,
-  async sendDm(input) {
-    const { sendCollabDm } = await import('./dm-tool.js')
-    return sendCollabDm({
-      sessionId: input.sessionId,
-      to: input.to,
-      message: input.content,
-      ...(input.wake ? { wake: true } : {}),
-      ...(input.wakeRoom ? { wakeRoom: input.wakeRoom } : {}),
-    })
-  },
-})
 
 /**
  * 旧名 `say` / `dm` 的**静默别名**(collab-turn-protocol-and-identity.md A.3 +

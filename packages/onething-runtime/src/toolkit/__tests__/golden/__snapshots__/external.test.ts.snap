@@ -1,0 +1,48 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: PluginTool > 模型文本与渲染信息钉住:正常:一次 echo > annotation titles 1`] = `
+[
+  "echoing…",
+  "Echoed hi",
+]
+`;
+
+exports[`golden: PluginTool > 模型文本与渲染信息钉住:正常:一次 echo > metadata 1`] = `
+{
+  "echoed": "hi",
+}
+`;
+
+exports[`golden: PluginTool > 模型文本与渲染信息钉住:正常:一次 echo > model text 1`] = `"hi"`;
+
+exports[`golden: PluginTool > 模型文本与渲染信息钉住:边界:times 打到上限 > annotation titles 1`] = `
+[
+  "echoing…",
+  "Echoed ab",
+]
+`;
+
+exports[`golden: PluginTool > 模型文本与渲染信息钉住:边界:times 打到上限 > metadata 1`] = `
+{
+  "echoed": "ababab",
+}
+`;
+
+exports[`golden: PluginTool > 模型文本与渲染信息钉住:边界:times 打到上限 > model text 1`] = `"ababab"`;
+
+exports[`golden: PluginTool > 模型文本与渲染信息钉住:边界:插件要求收束本回合(terminate) > annotation titles 1`] = `
+[
+  "echoing…",
+  "Echoed x",
+]
+`;
+
+exports[`golden: PluginTool > 模型文本与渲染信息钉住:边界:插件要求收束本回合(terminate) > metadata 1`] = `
+{
+  "echoed": "x",
+}
+`;
+
+exports[`golden: PluginTool > 模型文本与渲染信息钉住:边界:插件要求收束本回合(terminate) > model text 1`] = `"x"`;
+
+exports[`golden: PluginTool > 错误:插件抛错原样回给模型 > plugin failure 1`] = `"plugin blew up"`;

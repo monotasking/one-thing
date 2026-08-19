@@ -209,3 +209,31 @@ export function normalizeDetails(value: unknown, dropKeys: readonly string[] = [
   }
   return walk(stripped)
 }
+
+/**
+ * R4b —— 金标里的临时目录归一。
+ *
+ * 文件类工具的输出里嵌着 `mkdtemp` 造出来的绝对路径,它每次都不一样。快照要能
+ * 签下来,就得把那一段换成一个稳定的占位符。**只换这一件事** —— 别的字节一个
+ * 都不动。
+ */
+export function redactPaths(value: unknown, ...dirs: string[]): unknown {
+  const json = JSON.stringify(value ?? null)
+  if (json === undefined) return value
+  let out = json
+  dirs.forEach((dir, index) => {
+    if (!dir) return
+    out = out.split(JSON.stringify(dir).slice(1, -1)).join(`<DIR${dirs.length > 1 ? index : ''}>`)
+  })
+  return JSON.parse(out) as unknown
+}
+
+/** 字符串版的 `redactPaths`(模型文本那一格)。 */
+export function redactText(text: string, ...dirs: string[]): string {
+  let out = text
+  dirs.forEach((dir, index) => {
+    if (!dir) return
+    out = out.split(dir).join(`<DIR${dirs.length > 1 ? index : ''}>`)
+  })
+  return out
+}

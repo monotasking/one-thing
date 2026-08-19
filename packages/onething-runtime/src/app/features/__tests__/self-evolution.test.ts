@@ -10,8 +10,8 @@
  * 三处刻意不 mock：
  * - **store 根**：用一个真的临时目录（`ONETHING_STORE_PATH`），因为路径夹紧是
  *   本期的安全线，mock 掉它等于把要守的东西关在门外；
- * - **工具执行器**：走 `executeTool(...)` 而不是直接 `.execute(...)` —— 参数
- *   校验、错误包装都在执行器里，绕过去测的就不是生产路径；
+ * - **工具执行器**：走 `ToolRunner`(生产路径上那一台)而不是直接调 `apply` ——
+ *   参数校验、错误包装、取消都在它里面，绕过去测的就不是生产路径；
  * - **权限判定**：用 core 的 `decidePermission` / `isGrantableType` 真判一次，
  *   而不是断言「我们写了 permissionGuard 这个字段」。字段写对了但判定链接不上，
  *   正是这类接线最常见的失败形态。
@@ -22,34 +22,42 @@ import os from 'node:os'
 import path from 'node:path'
 import { decidePermission, isGrantableType } from '@onething/core/permission'
 import type { JsonObject } from '@shared/json.js'
-import { Tool } from '../../tools/core/tool.js'
-import { z } from 'zod'
-import {
-  executeTool,
-  getTool,
-  hasTool,
-  registerTool,
-  unregisterTool,
-} from '../../tools/registry.js'
+import { Catalog, Decision, Intent, Outcome, Tool as ToolkitTool, ToolRunner } from '@onething/core/toolkit'
+import type { Result, ToolSpec } from '@onething/core/toolkit'
+import { configureToolkitCatalog, ZodValidator } from '@onething/runtime/toolkit'
 import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../rpc/registry.js'
 import { dumpFeatures, hasFeature, mountFeature, resetFeaturesForTests } from '../index.js'
 import { selfEvolutionFeature } from '../builtin/self-evolution.js'
 
 /**
  * 宿主档门的钥匙。三个工具只在「已经有 bash 的宿主」上注册（挂载一个 feature
- * 与跑一条 shell 是同一量级的能力），所以测试也得把这句前提摆成**真的**：注册
- * 一个真的 id 为 `bash` 的工具，而不是去 mock 那道判据。
+ * 与跑一条 shell 是同一量级的能力），所以测试也得把这句前提摆成**真的**：目录里
+ * 放一只真的 id 为 `bash` 的工具，而不是去 mock 那道判据。
  */
-const BashStandIn = Tool.define('bash', {
-  name: 'Bash',
-  description: 'stand-in for the tier gate',
-  category: 'builtin',
-  permissionGuard: 'internal-check',
-  parameters: z.object({}),
-  async execute() {
-    return { title: 'noop', output: '', metadata: {} }
-  },
-})
+class BashStandIn extends ToolkitTool<Record<string, never>, undefined> {
+  readonly spec: ToolSpec = {
+    id: 'bash',
+    title: 'Bash',
+    description: 'stand-in for the tier gate',
+    input: { type: 'object', properties: {} },
+    effects: ['bash'],
+    presentation: { kind: 'bash', shell: 'default' },
+    concurrency: 'sequential',
+  }
+
+  async plan(): Promise<Intent<undefined>> {
+    return Intent.none(undefined)
+  }
+
+  async apply(): Promise<Result> {
+    return { content: [{ type: 'text', text: '' }] }
+  }
+}
+
+/** 这一趟的目录。`hasTool` / `registerTool` 的等价物是它的 `has` / `register`。 */
+let catalog: Catalog
+
+const hasTool = (id: string) => catalog.has(id)
 
 let storeRoot: string
 let previousStorePath: string | undefined
@@ -86,11 +94,27 @@ const toolContext = {
   toolCallId: 'call-1',
 }
 
-/** 经**工具执行器**调用，拿回工具的 output 文本。 */
+/** 经**生产路径上那台 runner** 调用，拿回工具的模型文本。 */
 async function runTool(toolId: string, args: JsonObject = {}): Promise<string> {
-  const result = await executeTool(toolId, args, toolContext)
-  expect(result.success, `tool ${toolId} failed: ${result.error ?? ''}`).toBe(true)
-  return (result.data as { output: string }).output
+  const tool = catalog.get(toolId)
+  expect(tool, `tool ${toolId} is not in the catalog`).toBeDefined()
+  const runner = new ToolRunner({
+    authorizer: { async decide() { return Decision.allow() } },
+    observer: { on: () => {} },
+    validator: new ZodValidator(),
+  })
+  const outcome = await runner.run(tool!, {
+    callId: toolContext.toolCallId,
+    toolId,
+    input: args,
+    sessionId: toolContext.sessionId,
+    messageId: toolContext.messageId,
+    principal: undefined as never,
+  })
+  expect(outcome.kind, `tool ${toolId} failed: ${Outcome.toModelText(outcome)}`).toBe('ok')
+  return outcome.kind === 'ok'
+    ? outcome.result.content.filter(part => part.type === 'text').map(part => part.text ?? '').join('\n')
+    : ''
 }
 
 beforeAll(() => {
@@ -108,14 +132,12 @@ afterAll(() => {
 beforeEach(() => {
   resetFeaturesForTests()
   resetRpcRegistryForTests()
-  registerTool(BashStandIn)
+  catalog = new Catalog().register(new BashStandIn())
+  configureToolkitCatalog(catalog)
 })
 
 afterEach(() => {
-  unregisterTool('bash')
-  unregisterTool('feature_mount')
-  unregisterTool('feature_unmount')
-  unregisterTool('feature_inspect')
+  configureToolkitCatalog(undefined)
   fs.rmSync(path.join(storeRoot, 'features-dev'), { recursive: true, force: true })
 })
 
@@ -128,8 +150,9 @@ describe('self-evolution feature', () => {
     expect(hasTool('feature_inspect')).toBe(true)
     expect(dumpFeatures().find(item => item.id === 'self-evolution')).toEqual({
       id: 'self-evolution',
-      // 三个工具 + 一个动态 feature 清扫器 = 四个 disposer。
-      registrations: { rpcDomain: 0, disposer: 4 },
+      // R4b:三只工具收成**一个** disposer(`handle.unregister()` 整组摘),
+      // 加上动态 feature 的清扫器 = 两个。顺序纪律不变:清扫最后注册、第一个跑。
+      registrations: { rpcDomain: 0, disposer: 2 },
       rpcDomains: [],
     })
 
@@ -141,7 +164,7 @@ describe('self-evolution feature', () => {
   })
 
   it('registers nothing on a host without bash (readonly tier is fail-closed)', async () => {
-    unregisterTool('bash')
+    catalog.unregister('bash')
 
     const unmount = await mountFeature(selfEvolutionFeature)
 
@@ -164,12 +187,14 @@ describe('self-evolution feature', () => {
    */
   it('feature_mount is permission-gated on a never-grantable effect', async () => {
     const unmount = await mountFeature(selfEvolutionFeature)
-    const tool = getTool('feature_mount')!
+    const tool = catalog.get('feature_mount')!
 
-    expect(tool.autoExecute).toBe(false)
-    expect(tool.permissionGuard).toBe('permission-gated')
+    // 旧的 `autoExecute:false` + `permissionGuard:'permission-gated'` 在新树里由
+    // 这一条 never-grantable 的效果说出来(派生表的输入就是它)。
+    expect(tool.spec.effects).toEqual(['capability_change'])
 
-    const analysis = await tool.analyze!({ id: 'demo-echo' }, toolContext as never)
+    const intent = await tool.plan({ id: 'demo-echo' } as never, { cwd: storeRoot } as never)
+    const analysis = { effects: intent.effects, preview: intent.preview }
     expect(analysis.effects).toHaveLength(1)
     const effect = analysis.effects[0]
     expect(effect.kind).toBe('capability_change')
@@ -179,7 +204,7 @@ describe('self-evolution feature', () => {
     expect(analysis.preview?.title).toContain('demo-echo')
 
     // 判定链真的接上了：默认模式下这条 effect 要问，而且永远不能变成常驻授权。
-    expect(decidePermission({ sessionId: 'x', mode: 'normal', effects: [effect] }).decision).toBe('ask')
+    expect(decidePermission({ sessionId: 'x', mode: 'normal', effects: [effect as never] }).decision).toBe('ask')
     expect(isGrantableType(effect.kind)).toBe(false)
 
     // 反例：读类工具的 effect 在同一条判定里是直通的 —— 证明上面那个 'ask'

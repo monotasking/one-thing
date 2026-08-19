@@ -23,7 +23,7 @@
  * 模型不知道能做什么(与 board/history/send_message 同一条纪律)。
  */
 import { COLLAB_NOTEBOOK_INJECT_MAX_CHARS } from '@onething/runtime/collab/actors'
-import { createNotebookTool, type NotebookToolResult } from '@onething/runtime/tools'
+import type { NotebookToolResult } from '@onething/runtime/toolkit'
 
 import * as store from '../../store.js'
 import { collabVenueOf } from '../venue.js'
@@ -39,7 +39,8 @@ export const COLLAB_NOTEBOOK_NO_IDENTITY =
 
 const notebookStore: CollabNotebookStore = createCollabNotebookFileStore()
 
-function appendNote(input: { sessionId: string; note: string }): Promise<NotebookToolResult> {
+/** 笔记落盘口。R4b:`app/toolkit/adapters.ts` 从这里取,不再自己重建一份。 */
+export function appendNote(input: { sessionId: string; note: string }): Promise<NotebookToolResult> {
   const session = store.getSession(input.sessionId)
   const venue = collabVenueOf(session)
   if (venue !== 'agent' && venue !== 'work') {
@@ -67,4 +68,3 @@ function appendNote(input: { sessionId: string; note: string }): Promise<Noteboo
   })
 }
 
-export const NotebookTool = createNotebookTool({ append: appendNote })

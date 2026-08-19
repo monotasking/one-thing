@@ -12,16 +12,14 @@
  *  3. 缝 3 的两半:四个回调 → `IpcProjector`(一个 Observer),两条插件拦截链 →
  *     一个 `Interceptor`。
  *
- * **开关关时这个模块不该被加载**:唯一的调用方(`app/engine/stream/tool-execution.ts`)
- * 用动态 import 进来,`isToolkitEnabled()` 为假时那一行根本不执行。
- *
  * ## 目录里没有的工具怎么办
  *
- * 退回旧路(返回 `undefined`,调用方继续走 `executeOnethingDirectTool`)。
+ * R4b 之前是"退回旧路";旧树删掉之后**没有第二条路** —— `runToolkitToolDirectly`
+ * 仍然返回 `undefined`,但它现在的意思是"这个宿主里没有这个工具",调用方据此报
+ * 一句 tool-not-found,而不是换一条链。
  *
- * **R3b 起插件工具也在目录里**(`app/toolkit/plugin-tools.ts`,由
- * `app/plugins/api.ts` 在注册时装进来),`feature_*` 由 self-evolution feature 自己
- * 装。所以开关开时还会退回旧路的,只剩"目录里真的没有这个名字"这一种。
+ * 插件工具在目录里(`app/toolkit/plugin-tools.ts`,由 `app/plugins/api.ts` 在注册时
+ * 装进来),`feature_*` 由 self-evolution feature 自己装。
  */
 
 import type { Catalog, Decision, Intent, Invocation, Outcome, Result } from '@onething/core/toolkit'
@@ -31,10 +29,8 @@ import type { Principal } from '@onething/core/permission'
 import type { JsonObject } from '@shared/json.js'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
 import { configureToolkitCatalog, getToolkitCatalog } from '@onething/runtime/toolkit'
-import type { OnethingToolExecutionResult } from '@onething/runtime/tools'
+import type { ToolExecutionResult as OnethingToolExecutionResult } from './execution-types.js'
 import { createCatalogForTier, type ToolCatalogTier } from './catalog.js'
-import { deriveLegacyPermissionGuard } from './guard-projection.js'
-import { configureToolkitGuardProjection } from '../tools/toolkit-guard.js'
 import { IpcProjector, type LegacyMetadataUpdate } from './ipc-observer.js'
 import { createPermissionAuthorizer } from './authorizer.js'
 import { createAppToolRunner } from './runner.js'
@@ -64,12 +60,6 @@ export function buildToolkitCatalog(tier: ToolCatalogTier): Catalog {
    * 宿主档门与那张动态挂载表的寿命都跟着挪了过去。
    */
   configureToolkitCatalog(catalog)
-  // §12.3:`permissionGuard` 从此是派生值。读点(设置页列表 / 提示词快照)
-  // 一个字不动,换的是 `getAllTools*` 里那一格的来源。
-  configureToolkitGuardProjection(toolId => {
-    const entry = catalog.get(toolId)
-    return entry ? deriveLegacyPermissionGuard(entry.spec) : undefined
-  })
   built = { catalog, tier }
   return catalog
 }
@@ -83,31 +73,28 @@ export function refreshToolkitMcpTools(): void {
 
 /**
  * 拿到当下这一份目录。`buildToolkitCatalog` 没被调过(单测直接跑引擎、宿主没走
- * backend)时懒建一档 —— 档位由 `ONETHING_TOOLKIT_TIER` 说了算,默认 full。
- * 建不起来就返回 undefined,调用方退回旧路。
+ * backend)时懒建 **full** 档。建不起来就返回 undefined —— R4b 之后没有旧路可退,
+ * 调用方各自据此报"这个宿主没有工具",而不是静悄悄换一条链。
+ *
+ * R4b:`ONETHING_TOOLKIT_TIER` 这个切换期兜底环境变量随开关一起删(§14.5-5)。
+ * 真宿主的档位一律由 `createOnethingBackend` 显式传进 `buildToolkitCatalog`。
  */
 export function getOrBuildToolkitCatalog(): Catalog | undefined {
   if (built) return built.catalog
   const configured = getToolkitCatalog()
   if (configured) return configured
   try {
-    return buildToolkitCatalog(defaultTier())
+    return buildToolkitCatalog('full')
   } catch (error) {
-    console.error('[toolkit] catalog build failed; falling back to the legacy tool path:', error)
+    console.error('[toolkit] catalog build failed; this host has no tools:', error)
     return undefined
   }
-}
-
-function defaultTier(): ToolCatalogTier {
-  const tier = process.env.ONETHING_TOOLKIT_TIER
-  return tier === 'headless' || tier === 'readonly' ? tier : 'full'
 }
 
 /** 测试钩子:摘掉目录,回到"没接线"的状态。 */
 export function resetToolkitCatalogForTests(): void {
   built = undefined
   configureToolkitCatalog(undefined)
-  configureToolkitGuardProjection(null)
 }
 
 /* ── 缝 3:两条插件拦截链 → 一个 Interceptor ───────────────────────────────── */
@@ -242,9 +229,10 @@ function mintCallId(): string {
 }
 
 /**
- * 新路的一次工具调用。
+ * 一次工具调用。
  *
- * 返回 `undefined` = 这个工具不在新树的目录里,调用方**原样退回旧路**。
+ * 返回 `undefined` = 这个工具不在目录里。R4b 之前调用方据此退回旧路;旧树删掉
+ * 之后它的意思变成"这个宿主没有这个工具",调用方各自报 tool-not-found。
  */
 export async function runToolkitToolDirectly(
   toolName: string,
@@ -265,10 +253,16 @@ export async function runToolkitToolDirectly(
   try {
     await catalog.ensurePrepared(tool.spec.id)
   } catch (error) {
-    // 懒初始化失败(MCP 连不上)= 这次调用跑不了。走旧路让它自己报错,而不是
-    // 在这里编一句新的失败文案。
-    console.error(`[toolkit] prepare failed for ${tool.spec.id}; falling back to the legacy path:`, error)
-    return undefined
+    /*
+     * 懒初始化失败(MCP 连不上)= 这次调用跑不了。R4b 之前这里返回 `undefined`
+     * 让旧路自己报错;旧路没了之后返回 `undefined` 会被读成"没有这个工具",那是
+     * 一句假话 —— 工具在,是它的准备失败了。所以如实报一次失败。
+     */
+    console.error(`[toolkit] prepare failed for ${tool.spec.id}:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 
   const invocation: Invocation = {

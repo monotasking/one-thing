@@ -58,17 +58,23 @@ const registry = new CorePluginToolCallInterceptRegistry({
   isDegraded: pluginId => !probePluginSurface(pluginId, PLUGIN_TOOL_CALL_INTERCEPT_SURFACE),
   /**
    * 改写后的参数校验。**动态 import**:这个模块被插件 API 在启动早期引用,
-   * 而工具注册表要等 backend 把工具装完;顶层静态引它会把两者的初始化顺序
-   * 绑死。校验口每次调用现取,与 configure*Host 端口的晚绑定同一个姿势。
+   * 而工具目录要等 backend 装完;顶层静态引它会把两者的初始化顺序绑死。校验口
+   * 每次调用现取,与 configure*Host 端口的晚绑定同一个姿势。
    *
    * 认不出的工具名(MCP 工具、外部 agent 工具)在这里判 `ok:true` ——
    * 它们的校验在别人家(MCP 服务器按自己的 inputSchema 拒绝并回 isError)。
-   * 这一格是本期与"绝不把非法参数喂给工具"之间**唯一**的缝:我们保证的是
+   * 这一格是与"绝不把非法参数喂给工具"之间**唯一**的缝:我们保证的是
    * "过得了本地这份 zod 的才进本地工具",而不是"替远端服务器把关"。
+   *
+   * R4b:读源从旧注册表的 `validateToolArgs` 换成目录 + `ZodValidator`(它就是
+   * runner 每次调用走的那一个,连"认不出的 schema 放行"这条默认都是同一份)。
    */
   async validateInput(toolName, input) {
-    const { validateToolArgs } = await import('../tools/index.js')
-    return await validateToolArgs(toolName, input as JsonObject)
+    const { getToolkitCatalog, ZodValidator } = await import('@onething/runtime/toolkit')
+    const tool = getToolkitCatalog()?.get(toolName)
+    if (!tool) return { ok: true as const }
+    const parsed = new ZodValidator().parse(tool.spec.input, input as JsonObject)
+    return parsed.ok ? { ok: true as const } : { ok: false as const, message: parsed.message }
   },
   /**
    * 注册期违规(空 id / 重复 id)。与 N2 同规:**代码错误**,registration 族

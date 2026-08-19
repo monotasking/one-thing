@@ -21,28 +21,19 @@ import {
 	listOnethingBackgroundJobsForIpc,
 	listOnethingSettingsToolsForIpc,
 	type OnethingToolCallStateLike,
-	refreshOnethingAsyncToolsForIpc,
 	stopOnethingBackgroundJobForIpc,
 } from "@onething/runtime/tools";
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import type { JsonObject } from "@shared/json.js";
-import {
-	getAllToolsAsync,
-	executeTool,
-	initializeToolRegistry,
-	isInitialized,
-	setInitContext,
-	initializeAsyncTools,
-} from "@onething/app/tools/index.js";
 import { getMCPToolDefinitionsForModel } from "@onething/app/mcp/index.js";
 import {
 	listBackgroundJobs,
 	stopBackgroundJob,
 } from "@onething/app/tools/core/background-jobs.js";
 import * as store from "@onething/app/store.js";
-// R3b:开关开时工具列表与直接执行改由目录 / runner 回答(设计文档 §10.2-④)。
-import { isToolkitEnabled } from "@onething/runtime/toolkit/flag";
+// 工具列表与直接执行由目录 / runner 回答(设计文档 §10.2-④)。
 import {
+	refreshToolkitMcpTools,
 	runToolkitToolDirectly,
 	toolkitCatalogToolDefinitions,
 } from "@onething/app/toolkit/index.js";
@@ -51,11 +42,6 @@ import {
  * Register all tool-related IPC handlers
  */
 export function registerToolHandlers() {
-	// Initialize the tool registry
-	if (!isInitialized()) {
-		initializeToolRegistry();
-	}
-
 	registerElectronToolsIpcHandlers({
 		channels: {
 			getTools: IPC_CHANNELS.GET_TOOLS,
@@ -70,22 +56,11 @@ export function registerToolHandlers() {
 			/*
 			 * 呈现一个字不改(`listOnethingSettingsToolsForIpc` 是同一个函数、同一份
 			 * MCP 合并、同一条 source 推导),换的只是"有哪些工具"这一格的来源:
-			 * 开关开时来自 Catalog + 派生 guard,关时来自旧 registry。目录建不起来
-			 * 时 `toolkitCatalogToolDefinitions()` 返回 undefined,原样退回旧路。
+			 * Catalog + 派生 guard。目录建不起来时报空表 —— 这台宿主确实没有工具。
 			 */
-			const toolkitTools = isToolkitEnabled()
-				? toolkitCatalogToolDefinitions()
-				: undefined;
 			return listOnethingSettingsToolsForIpc({
-				getSessionsList: () => store.getSessionsList(),
-				getSession: (sessionId) => store.getSession(sessionId),
-				getAllToolsAsync: toolkitTools
-					? async () => toolkitTools
-					: getAllToolsAsync,
+				getAllToolsAsync: () => toolkitCatalogToolDefinitions() ?? [],
 				getMCPToolDefinitions: getMCPToolDefinitionsForModel,
-				setInitContext: (context) =>
-					setInitContext(context as Parameters<typeof setInitContext>[0]),
-				cwd: () => process.cwd(),
 				logger: console,
 			});
 		},
@@ -103,21 +78,14 @@ export function registerToolHandlers() {
 				messageId,
 				getSession: (id) => store.getSession(id),
 				executeTool: async (id, toolArgs, context) => {
-					// 开关开且目录里有它 —— 走 runner(两阶段 + 统一取消 + 统一截断 +
-					// 审计)。目录里没有就 `undefined`,原样退回旧路。
-					if (isToolkitEnabled()) {
-						const outcome = await runToolkitToolDirectly(
-							id,
-							toolArgs,
-							context as Parameters<typeof runToolkitToolDirectly>[2],
-						);
-						if (outcome) return outcome;
-					}
-					return executeTool(
+					// runner:两阶段 + 统一取消 + 统一截断 + 审计。目录里没有这个
+					// 名字时如实报 tool-not-found(R4b 之后没有第二条路)。
+					const outcome = await runToolkitToolDirectly(
 						id,
 						toolArgs,
-						context as Parameters<typeof executeTool>[2],
+						context as Parameters<typeof runToolkitToolDirectly>[2],
 					);
+					return outcome ?? { success: false, error: `Tool not found: ${id}` };
 				},
 				logger: console,
 			});
@@ -131,14 +99,26 @@ export function registerToolHandlers() {
 		backgroundJobsStop: async ({ jobId }: ElectronBackgroundJobsStopRequest) => {
 			return stopOnethingBackgroundJobForIpc({ jobId, stopJob: stopBackgroundJob });
 		},
-		refreshAsyncTools: async ({ workingDirectory }: ElectronRefreshAsyncToolsRequest) => {
-			return refreshOnethingAsyncToolsForIpc({
-				workingDirectory,
-				setInitContext: (context) =>
-					setInitContext(context as Parameters<typeof setInitContext>[0]),
-				initializeAsyncTools,
-				logger: console,
-			});
+		/*
+		 * R4b:旧路刷的是「异步工具」—— 一批要靠 `setInitContext(cwd/skills)` +
+		 * `initializeAsyncTools()` 才拿得到 schema 的注册表条目。新树里没有这个
+		 * 概念(懒初始化是 `Catalog.ensurePrepared`,按工具、按需、只跑一次),
+		 * 唯一会在运行期改变的工具面是 MCP,所以这条通道现在刷的就是它。
+		 * 契约(通道名与返回形状)一个字未动。
+		 */
+		refreshAsyncTools: async (_request: ElectronRefreshAsyncToolsRequest) => {
+			try {
+				refreshToolkitMcpTools();
+				return { success: true as const };
+			} catch (error) {
+				console.error("[Tools IPC] Error refreshing tools:", error);
+				return {
+					success: false as const,
+					error: error instanceof Error && error.message
+						? error.message
+						: "Failed to refresh tools",
+				};
+			}
 		},
 		updateToolCall: async (request: unknown) => {
 			const { sessionId, messageId, toolCallId, updates } = request as {

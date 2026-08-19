@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentModelCapabilities, AgentProvider } from '@onething/core/agent-loop'
 import type { ToolDefinition } from '@shared/ipc.js'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/core/toolkit'
+import type { Result, ToolSpec } from '@onething/core/toolkit'
+import { configureToolkitCatalog } from '@onething/runtime/toolkit'
 
 const deepseekTextCapabilities: AgentModelCapabilities = {
   capabilities: ['text-input', 'text-output'],
@@ -21,14 +24,25 @@ function deepseekProviderWithCapabilities(capabilities: AgentModelCapabilities):
   }
 }
 
-const readToolDefinition: ToolDefinition = {
-  id: 'read',
-  name: 'Read',
-  description: 'Read files',
-  enabled: true,
-  autoExecute: false,
-  category: 'builtin',
-  parameters: [],
+/** 目录里那只 `read` —— 快照的工具面从这里来。 */
+class SnapshotReadTool extends ToolkitTool<Record<string, never>, undefined> {
+  readonly spec: ToolSpec = {
+    id: 'read',
+    title: 'Read',
+    description: 'Read files',
+    input: { type: 'object', properties: {} },
+    effects: ['read'],
+    presentation: { kind: 'file', shell: 'default' },
+    concurrency: 'parallel',
+  }
+
+  async plan(): Promise<Intent<undefined>> {
+    return Intent.none(undefined)
+  }
+
+  async apply(): Promise<Result> {
+    return { content: [{ type: 'text', text: '' }] }
+  }
 }
 
 const mocks = vi.hoisted(() => ({
@@ -67,9 +81,6 @@ const mocks = vi.hoisted(() => ({
   modelSupportsTools: vi.fn(async () => false),
   getCodexNativeToolsForConfig: vi.fn(async () => []),
   getSkillsForSession: vi.fn(() => []),
-  getEnabledToolsAsync: vi.fn<() => Promise<ToolDefinition[]>>(async () => []),
-  initializeAsyncTools: vi.fn(async () => undefined),
-  setInitContext: vi.fn(),
   getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
   getMCPToolDefinitionsForModel: vi.fn<() => ToolDefinition[]>(() => []),
   createAgentProviderFromRuntime: vi.fn(() => deepseekProviderWithCapabilities(deepseekTextCapabilities)),
@@ -126,12 +137,6 @@ vi.mock('@onething/core/agent-loop', async importOriginal => ({
   agentSupportsTools: mocks.agentSupportsTools,
 }))
 
-vi.mock('../../../tools/index.js', () => ({
-  getEnabledToolsAsync: mocks.getEnabledToolsAsync,
-  initializeAsyncTools: mocks.initializeAsyncTools,
-  setInitContext: mocks.setInitContext,
-}))
-
 vi.mock('../../../variables/index.js', () => ({
 }))
 
@@ -147,6 +152,7 @@ const { buildSystemPromptSnapshot } = await import('../system-prompt-snapshot.js
 
 describe('system prompt snapshot agent-loop route', () => {
   afterEach(() => {
+  configureToolkitCatalog(undefined)
     vi.clearAllMocks()
     vi.unstubAllEnvs()
   })
@@ -214,7 +220,9 @@ describe('system prompt snapshot agent-loop route', () => {
     mocks.createAgentProviderFromRuntime.mockReturnValueOnce(
       deepseekProviderWithCapabilities(deepseekToolCapabilities),
     )
-    mocks.getEnabledToolsAsync.mockResolvedValueOnce([readToolDefinition])
+    // R4b:快照的工具面来自**目录**(`resolveToolkitSurface`),旧的
+    // `getEnabledToolsAsync` 那条口径随旧树删除。
+    configureToolkitCatalog(new Catalog().register(new SnapshotReadTool()))
     mocks.getMCPToolDefinitionsForModel.mockReturnValueOnce([{
       id: 'mcp_search',
       name: 'MCP Search',
@@ -228,7 +236,6 @@ describe('system prompt snapshot agent-loop route', () => {
 
     const snapshot = await buildSystemPromptSnapshot('s1')
 
-    expect(mocks.initializeAsyncTools).toHaveBeenCalled()
     expect(mocks.modelSupportsTools).not.toHaveBeenCalled()
     expect(mocks.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
       hasTools: true,

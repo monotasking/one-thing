@@ -57,15 +57,12 @@ export function toolDefinitionsFromCatalog(catalog: Catalog): ToolDefinition[] {
 }
 
 /**
- * 目录已经装好时的那一份;否则 `undefined`(调用方原样退回旧路)。
+ * 目录已经装好时的那一份;否则 `undefined`(= 这台宿主还没有工具目录)。
  *
  * 走产品层那个晚绑定端口(`getToolkitCatalog`)而**不是** wiring 的懒建口,有两个
  * 理由:一个投影函数不该有"顺手建一档目录"这种副作用;而且那条 import 边会把整棵
  * 装配树(适配器 → 派工 → 引擎 → 提示词)拖进每一个只想列个清单的调用方,在
  * `app/engine/prompt/*` 那种地方直接绕成环。
- *
- * 不在这里判开关:调用方各自有一个 `isToolkitEnabled()` 的分支,判两次会让"开关
- * 关时旧路一个字不改"这句话变成两处口径。
  */
 export function toolkitCatalogToolDefinitions(): ToolDefinition[] | undefined {
   const catalog = getToolkitCatalog()

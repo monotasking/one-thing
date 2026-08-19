@@ -17,6 +17,9 @@ import {
   COLLAB_SEND_MESSAGE_TOOL_NAME,
 } from '@onething/runtime/collab'
 import { clearRetiredAgentToolNames, resolveRetiredAgentToolName } from '@onething/core'
+import { createSendMessageTool, ZodValidator } from '@onething/runtime/toolkit'
+
+const noop = () => { throw new Error('adapter not used in this case') }
 
 interface FakeMessage {
   id: string
@@ -90,7 +93,6 @@ vi.mock('../budget.js', () => ({
 }))
 
 const {
-  SayTool,
   clearCollabSayIdempotence,
   registerCollabSendMessageLegacyAlias,
   speakIntoCollabRoom,
@@ -495,13 +497,17 @@ describe('legacy `dm`:退役名 + 降级', () => {
     // 退役名表原样带着参数转发过去(它只换名字),于是落到 send_message 手里的
     // 就是旧那一套参数名。
     const legacyArgs = { to: '阿明#pm', message: '接口这块想跟你对一下' }
-    const parsed = SayTool.parameters.safeParse(legacyArgs)
+    // R4b:契约从旧 `SayTool.parameters` / `formatValidationError` 换成新树那一份
+    // (`toolkit/builtin/send-message.ts` 的 `SendMessageContract`),同一条判据。
+    const validated = new ZodValidator().parse(
+      createSendMessageTool({ speak: noop as never, sendDm: noop as never }).spec.input,
+      legacyArgs,
+    )
 
     // `to` 是合并面的正式参数,活着;`message` 不是,被 zod strip 掉之后 content
     // 缺席 —— 校验就在这一层失败,执行器一步都没跑。
-    expect(parsed.success).toBe(false)
-    if (parsed.success) return
-    expect(SayTool.formatValidationError?.(parsed.error)).toBe(COLLAB_SAY_REFUSED_EMPTY)
+    expect(validated.ok).toBe(false)
+    expect(!validated.ok && validated.message).toBe(COLLAB_SAY_REFUSED_EMPTY)
 
     expect(says()).toEqual([])
     expect(mocks.createSession).not.toHaveBeenCalled()

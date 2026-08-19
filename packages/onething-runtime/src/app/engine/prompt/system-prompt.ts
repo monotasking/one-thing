@@ -19,7 +19,7 @@ import {
   type BuildOnethingPromptContextOptions,
   type ComposedPrompt,
 } from '@onething/runtime/prompts'
-import { toolPromptSource } from '../../tools/registry.js'
+import { toolkitPromptSource } from '../../toolkit/prompt-source.js'
 import { buildStateVariablesPromptText } from '../../variables/index.js'
 import { pluginPromptSource } from './plugin-context.js'
 import { getMacOSAutomationDocsPath } from '../../stores/paths.js'
@@ -227,9 +227,9 @@ function collabWorkOverrides(
  * The desktop composer — the sources, in tie-break order:
  *
  * 1. `builtinPromptSource` — the product's own section table;
- * 2. `toolPromptSource` — what the tools **on this turn's surface** declared
- *    (`ToolInfo.prompt`), read off the app tool registry per build; a tool
- *    that is registered but off the surface does not talk;
+ * 2. `toolkitPromptSource` — what the tools **on this turn's surface** declared
+ *    (`ToolSpec.prompt`), read off the toolkit catalog per build; a tool that
+ *    is in the catalog but off the surface does not talk;
  * 3. `promptFragments` — what runtime features / hosts registered, with
  *    disposers (they gate themselves with `requiresTools` when they need to);
  * 4. `variableBoardSource` — the session's context-variable board, one `turn`
@@ -245,7 +245,7 @@ const variableBoardSource = new VariableBoardSource({
 
 export const desktopPromptComposer: PromptComposer = new PromptComposer([
   builtinPromptSource,
-  toolPromptSource,
+  toolkitPromptSource,
   promptFragments,
   variableBoardSource,
   pluginPromptSource,

@@ -14,7 +14,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { COLLAB_SAY_REFUSED_EMPTY } from '@onething/runtime/collab'
-import { createSayTool } from '@onething/runtime/tools'
+import { createSendMessageTool, ZodValidator } from '@onething/runtime/toolkit'
+import { Decision, ToolRunner } from '@onething/core/toolkit'
 
 interface FakeSession {
   id: string
@@ -116,12 +117,14 @@ const { sendCollabDm } = await import('../dm-tool.js')
  * 契约层的那一半:合并后的发送面(设计 §2.2)。私聊不再有自己的工具,它是
  * `send_message` 带 `to` 的那一支 —— 回执与拒绝透传只能从这里进。
  *
- * 适配器在这里自己接一次,而不是从 `../say-tool.js` 取现成的 `SayTool`:那个模块
- * 在本文件里被 mock 掉了(挡的是落库那一条),它导出的 `SayTool` 也就跟着是假的。
- * 形状与 `say-tool.ts` 里那一份逐字相同。房间档在这个文件里不该被走到,所以它的
- * 适配器只负责让"走错了链路"变成一个显眼的失败。
+ * 适配器在这里自己接一次,而不是从 `app/toolkit/adapters.ts` 取现成那一份:
+ * `../say-tool.js` 在本文件里被 mock 掉了(挡的是落库那一条)。形状与
+ * `adapters.ts` 里那一份逐字相同。房间档在这个文件里不该被走到,所以它的适配器
+ * 只负责让"走错了链路"变成一个显眼的失败。
  */
-const SendMessageTool = createSayTool({
+const sendMessageTool = createSendMessageTool({
+  sessionKind: (sessionId: string) => (mocks.sessions.get(sessionId) as FakeSession | undefined)?.kind,
+  sessionAgentId: (sessionId: string) => (mocks.sessions.get(sessionId) as FakeSession | undefined)?.agentId,
   speak: async () => ({ ok: false, error: '这个文件只测私聊档' }),
   sendDm: input => sendCollabDm({
     sessionId: input.sessionId,
@@ -132,14 +135,42 @@ const SendMessageTool = createSayTool({
   }),
 })
 
+/**
+ * R4b:旧 `SayTool.execute(args, ctx)` 随旧树删除。同一条链现在走 `ToolRunner`
+ * (与真回合逐字同路),回执文本与 metadata 从 `Outcome` 取。
+ */
+async function send(sessionId: string, input: Record<string, unknown>) {
+  // 标题在新树里走 `annotate` 事件(旧路是 `ToolResult.title`),所以从观察者取。
+  const titles: string[] = []
+  const runner = new ToolRunner({
+    authorizer: { async decide() { return Decision.allow() } },
+    observer: {
+      on: (_invocation, event) => {
+        if (event.type === 'annotate' && event.title !== undefined) titles.push(event.title)
+      },
+    },
+    validator: new ZodValidator(),
+  })
+  const outcome = await runner.run(sendMessageTool, {
+    callId: 'call-1',
+    toolId: 'send_message',
+    input,
+    sessionId,
+    messageId: 'm-1',
+    principal: undefined as never,
+  })
+  if (outcome.kind !== 'ok') throw new Error(`unexpected outcome: ${outcome.kind}`)
+  return {
+    output: outcome.result.content.filter(part => part.type === 'text').map(part => part.text ?? '').join('\n'),
+    metadata: (outcome.result.details ?? {}) as Record<string, unknown>,
+    title: titles.at(-1) ?? '',
+  }
+}
+
 const EXEC = 'agent-exec-fe-room-1'
 const PAIR_ROOM = 'agent-dm-room-fe--pm'
 /** 托管私聊房的 id 从 agentId 派生(`userDmRoomId`),所以这里是常量。 */
 const USER_ROOM = 'agent-dm-fe'
-
-function ctx(sessionId: string) {
-  return { sessionId, messageId: 'm-1', metadata: vi.fn() } as never
-}
 
 beforeEach(() => {
   mocks.sessions.clear()
@@ -208,7 +239,7 @@ describe('成功路径', () => {
   })
 
   it('工具回执点名对方,并说明用户也看得见(D4 透明制)', async () => {
-    const result = await SendMessageTool.execute({ to: 'pm', content: '在吗' }, ctx(EXEC))
+    const result = await send(EXEC, { to: 'pm', content: '在吗' })
     expect(result.output).toContain('阿明')
     expect(result.output).toContain('用户也看得见')
     expect(result.metadata).toMatchObject({ ok: true, roomSessionId: PAIR_ROOM, messageId: 'msg-1' })
@@ -254,7 +285,7 @@ describe('dm 给用户本人', () => {
     expect(result.peerName).toBe('一天')  })
 
   it('回执告诉 agent 不用等回复(防止发完就停轮空等)', async () => {
-    const result = await SendMessageTool.execute({ to: '用户', content: '在吗' }, ctx(EXEC))
+    const result = await send(EXEC, { to: '用户', content: '在吗' })
     expect(result.output).toContain('不一定在线')
     expect(result.output).toContain('不用等')
     expect(result.metadata).toMatchObject({ ok: true, roomSessionId: USER_ROOM })
@@ -390,7 +421,7 @@ describe('拒绝路径:说清是哪一种,而且什么都不留下', () => {
   })
 
   it('工具层把拒绝原样交给模型,并标 ok:false', async () => {
-    const result = await SendMessageTool.execute({ to: 'gone', content: '在吗' }, ctx(EXEC))
+    const result = await send(EXEC, { to: 'gone', content: '在吗' })
     expect(result.title).toContain('未送达')
     expect(result.output).toContain('已注销')
     expect(result.metadata).toEqual({ ok: false })

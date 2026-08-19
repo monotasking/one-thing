@@ -866,6 +866,12 @@ export interface SystemPromptToolSnapshot {
   serverName?: string
   enabled?: boolean
   autoExecute?: boolean
+  /**
+   * @deprecated R4b —— 概念已退役。权限只认 `Intent.effects`(见
+   * `packages/core/toolkit/effects.ts` 的策略表);这个字段活着只是因为契约与
+   * 渲染层还在读它,它的值由 `app/toolkit/guard-projection.ts` 从 `spec.effects`
+   * **派生**。没有任何工具作者再写它,也没有任何判定读它做决定。
+   */
   permissionGuard?: 'safe' | 'sandboxed' | 'internal-check' | 'permission-gated' | 'external'
   executionMode?: ToolExecutionMode
   renderKind?: ToolRenderKind

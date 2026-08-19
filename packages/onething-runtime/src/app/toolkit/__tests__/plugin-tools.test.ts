@@ -36,7 +36,6 @@ const { getOrBuildToolkitCatalog, resetToolkitCatalogForTests } = await import('
 const { registerPluginToolInCatalog, unregisterPluginToolFromCatalog } = await import('../plugin-tools.js')
 const { executeToolDirectly } = await import('../../engine/stream/tool-execution.js')
 const { getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } = await import('../../plugins/health.js')
-const legacyRegistry = await import('../../tools/registry.js')
 const { z } = await import('zod')
 
 const SESSION_ID = 'plugin-tools-session'
@@ -90,7 +89,6 @@ function registerHello(
 }
 
 beforeEach(() => {
-  process.env.ONETHING_TOOLKIT = '1'
   harness.enforce.mockReset()
   harness.enforce.mockResolvedValue(undefined)
   resetPluginRuntimeHealthForTests()
@@ -98,7 +96,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  delete process.env.ONETHING_TOOLKIT
   resetToolkitCatalogForTests()
   vi.restoreAllMocks()
 })
@@ -107,9 +104,8 @@ afterAll(async () => {
   await fsp.rm(harness.root, { recursive: true, force: true })
 })
 
-describe('R3b:插件工具进目录', () => {
-  it('注册之后 executeToolDirectly 走新路 —— 旧 registry 的 executeTool 一次都没被调到', async () => {
-    const legacyExecute = vi.spyOn(legacyRegistry, 'executeTool')
+describe('插件工具进目录', () => {
+  it('注册之后 executeToolDirectly 真的跑到它', async () => {
     expect(registerHello(async args => ({
       title: 'hello',
       output: `hi ${String(args.who)}`,
@@ -121,7 +117,6 @@ describe('R3b:插件工具进目录', () => {
     const data = result.data as { title: string; output: string; metadata: JsonObject }
     expect(data.output).toBe('hi world')
     expect(data.metadata).toEqual({ who: 'world' })
-    expect(legacyExecute).not.toHaveBeenCalled()
     // 权限:一条 `plugin_exec` 效果(恒 ask)——"插件不能给自己发免检通行证"
     // 在新树里由效果说出来,不再是写死的 permissionGuard。
     expect(harness.enforce).toHaveBeenCalledTimes(1)

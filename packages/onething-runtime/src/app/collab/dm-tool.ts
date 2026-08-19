@@ -23,7 +23,7 @@
  * **不搬运上下文**(§3.4 防滥用):这里一个字的群历史都不转运。发起方要交代
  * 背景就自己写进 message —— 工具描述里也是这么说的,两处必须一致。
  */
-import type { CollabDmSendResult } from '@onething/runtime/tools'
+import type { CollabDmSendResult } from '@onething/runtime/toolkit'
 import { isColleague } from '@onething/runtime/agents'
 import {
   COLLAB_SAY_REFUSED_EMPTY,

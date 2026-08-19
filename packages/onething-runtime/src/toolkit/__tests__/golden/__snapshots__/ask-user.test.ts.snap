@@ -1,0 +1,85 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: ask_user > spec 钉住 > description 1`] = `
+"Ask the user a multiple-choice question and wait for their answer. It shows in a panel above the input box; the choice (one, several, or free text when allowed) comes back as the tool result and the panel then closes — restate anything you rely on later.
+
+This blocks until answered; the user may take long or never answer (declined / timeout / aborted), in which case continue on your own judgement and state the assumption. Use it only when the user genuinely must decide (an ambiguous requirement, a fork with real trade-offs, a destructive action with several plausible shapes) — not to confirm work you can verify yourself, to ask permission the permission system already gates, or to narrate progress."
+`;
+
+exports[`golden: ask_user > 模型文本与渲染信息钉住:answered > metadata 1`] = `
+{
+  "answers": [
+    {
+      "freeText": "顺便看看 C",
+      "question": "先修 A 还是 B?",
+      "questionId": "test-call:0",
+      "selected": [
+        "A",
+      ],
+    },
+  ],
+  "interaction": "ask_user",
+  "outcome": "answered",
+}
+`;
+
+exports[`golden: ask_user > 模型文本与渲染信息钉住:answered > model text 1`] = `
+"用户已回答:「先修 A 还是 B?」→ A、顺便看看 C
+
+{
+  "outcome": "answered",
+  "answers": [
+    {
+      "question": "先修 A 还是 B?",
+      "selected": [
+        "A"
+      ],
+      "freeText": "顺便看看 C"
+    }
+  ]
+}"
+`;
+
+exports[`golden: ask_user > 模型文本与渲染信息钉住:answered > title 1`] = `"用户已回答"`;
+
+exports[`golden: ask_user > 模型文本与渲染信息钉住:declined > metadata 1`] = `
+{
+  "answers": [],
+  "interaction": "ask_user",
+  "outcome": "declined",
+  "reason": "declined 了",
+}
+`;
+
+exports[`golden: ask_user > 模型文本与渲染信息钉住:declined > model text 1`] = `
+"declined 了
+
+{
+  "outcome": "declined",
+  "reason": "declined 了",
+  "answers": []
+}"
+`;
+
+exports[`golden: ask_user > 模型文本与渲染信息钉住:declined > title 1`] = `"用户跳过了提问"`;
+
+exports[`golden: ask_user > 模型文本与渲染信息钉住:timeout > metadata 1`] = `
+{
+  "answers": [],
+  "interaction": "ask_user",
+  "outcome": "timeout",
+  "reason": "timeout 了",
+}
+`;
+
+exports[`golden: ask_user > 模型文本与渲染信息钉住:timeout > model text 1`] = `
+"timeout 了
+
+{
+  "outcome": "timeout",
+  "reason": "timeout 了",
+  "answers": []
+}"
+`;
+
+exports[`golden: ask_user > 模型文本与渲染信息钉住:timeout > title 1`] = `"提问超时"`;

@@ -172,8 +172,19 @@ import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import { platformApi } from '@/platform'
 import { markdownApi } from '@/platform/markdown-client'
 
+/**
+ * 消息引用带过来的落点(docs/design/message-references-2026-08.md §5)。
+ * 每次点击都是一个**新对象**,所以同一行再点一次也会重放定位。
+ */
+interface EditorInitialPosition {
+  line?: number
+  endLine?: number
+  col?: number
+}
+
 const props = defineProps<{
   initialFilePath?: string
+  initialPosition?: EditorInitialPosition | null
   workspaceRoot?: string
   active?: boolean
 }>()
@@ -264,12 +275,28 @@ const breadcrumbParts = computed(() => {
   return parts
 })
 
+/**
+ * 落到具体一行。Markdown 走 live-preview,没有源码行可落 —— 直接忽略(设计文档
+ * §5 的明写)。两拍 nextTick:第一拍等 buffer 换过去,第二拍等 MonacoEditor 挂上。
+ */
+async function applyInitialPosition(filePath: string) {
+  const position = props.initialPosition
+  if (!position?.line) return
+  await nextTick()
+  await nextTick()
+  if (currentEditorFilePath() !== filePath) return
+  if (activeBufferForRoot.value?.isMarkdown) return
+  setCursor(filePath, position.line, position.col ?? 1)
+  monacoRef.value?.revealPosition(position.line, position.col ?? 1, position.endLine)
+}
+
 async function bootstrap() {
   if (workspaceRoot.value) {
     await setWorkspaceRoot(workspaceRoot.value).catch(() => {})
   }
   if (props.initialFilePath) {
     await openFile(props.initialFilePath)
+    await applyInitialPosition(props.initialFilePath)
   }
   await nextTick()
   monacoRef.value?.focus()
@@ -399,6 +426,14 @@ onMounted(bootstrap)
 watch(() => props.initialFilePath, async (filePath) => {
   if (!filePath) return
   await openFile(filePath)
+  await applyInitialPosition(filePath)
+})
+
+// 同一个文件、换一个行号(引用点第二次)也要重放 —— 这条 watch 是那次的唯一入口。
+watch(() => props.initialPosition, async () => {
+  const filePath = props.initialFilePath
+  if (!filePath) return
+  await applyInitialPosition(filePath)
 })
 
 watch(workspaceRoot, async (root) => {

@@ -55,7 +55,7 @@ import {
 import type {
   TaskDispatchOutcome,
   TaskDispatchRequest,
-} from '@onething/runtime/tools'
+} from '@onething/runtime/toolkit'
 
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'

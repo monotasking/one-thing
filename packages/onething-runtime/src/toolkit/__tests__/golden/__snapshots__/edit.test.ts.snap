@@ -1,0 +1,114 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: edit > boundary: a large deletion escalates to file_destructive_edit > effects 1`] = `
+[
+  {
+    "barrier": true,
+    "external": false,
+    "kind": "file_destructive_edit",
+    "metadata": {
+      "additions": 1,
+      "deletions": 12,
+      "isExternal": false,
+      "originalContentHash": "1d484be676a89d3d733a7aa4155dc81a1ff70a584d7441ee3b052026a2bf181f",
+      "path": "<DIR>/c.ts",
+      "risk": "large_deletion",
+      "riskReason": "Edit removes 12 lines and adds 1 lines.",
+    },
+    "resources": [
+      "<DIR>/*",
+    ],
+  },
+]
+`;
+
+exports[`golden: edit > boundary: replaceAll across repeated blocks > model text 1`] = `"Successfully edited <DIR>/b.ts (1 replacement)"`;
+
+exports[`golden: edit > error: a missing file > missing file 1`] = `
+"Edit failed: file not found: ghost.ts
+File not found: <DIR>/ghost.ts"
+`;
+
+exports[`golden: edit > error: a non-matching oldText yields the teaching text > no match 1`] = `
+"Edit failed: target text not found in d.ts.
+Re-read d.ts and use its current text as oldText.
+The file at <DIR>/d.ts no longer contains the text you tried to replace."
+`;
+
+exports[`golden: edit > error: illegal arguments reuse the tool-specific wording > validation wording 1`] = `
+"Invalid edit parameters:
+- edits: Too small: expected array to have >=1 items"
+`;
+
+exports[`golden: edit > error: the file changing during approval > changed during approval 1`] = `
+"Edit failed: file changed after approval in e.ts.
+<DIR>/e.ts was modified between permission approval and execution. Re-read the file and retry with its current content as oldText."
+`;
+
+exports[`golden: edit > normal: one replacement — output, effects, preview and file bytes > effects 1`] = `
+[
+  {
+    "barrier": true,
+    "external": false,
+    "kind": "file_edit",
+    "metadata": {
+      "additions": 1,
+      "deletions": 1,
+      "isExternal": false,
+      "originalContentHash": "3baf0b26dd25ca176acc36fce8c448c9e1da22c47b3fee8504c81e9b348036e6",
+      "path": "<DIR>/a.ts",
+    },
+    "resources": [
+      "<DIR>/*",
+    ],
+  },
+]
+`;
+
+exports[`golden: edit > normal: one replacement — output, effects, preview and file bytes > metadata keys 1`] = `
+[
+  "additions",
+  "afterContentHash",
+  "auditId",
+  "auditPath",
+  "deletions",
+  "diff",
+  "diffHunks",
+  "originalContentHash",
+  "path",
+]
+`;
+
+exports[`golden: edit > normal: one replacement — output, effects, preview and file bytes > model text 1`] = `"Successfully edited <DIR>/a.ts (1 replacement)"`;
+
+exports[`golden: edit > normal: one replacement — output, effects, preview and file bytes > preview 1`] = `
+{
+  "additions": 1,
+  "deletions": 1,
+  "diff": "Index: <DIR>/a.ts
+===================================================================
+--- <DIR>/a.ts
++++ <DIR>/a.ts
+@@ -1,2 +1,2 @@
+ const a = 1
+-const b = 2
++const b = 3
+",
+  "path": "<DIR>/a.ts",
+  "title": "Edit a.ts",
+}
+`;
+
+exports[`golden: edit > spec 钉住 > description 1`] = `
+"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file, unless that edit sets replaceAll: true to replace all of its occurrences. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.
+
+Reading the file first with the read tool is recommended so each oldText matches the file's current content, but it is not required."
+`;
+
+exports[`golden: edit > spec 钉住 > prompt contribution 1`] = `
+{
+  "guidelines": [
+    "使用edit来修改文件，禁止使用bash工具来修改文件",
+  ],
+}
+`;

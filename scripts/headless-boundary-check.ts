@@ -902,37 +902,7 @@ const MAIN_TOOL_EDIT_ENGINE_FORBIDDEN_PATTERNS: RegExp[] = [
   /function\s+previewExactEdits/,
 ]
 
-const MAIN_TOOL_REGISTRY_FORBIDDEN_PATTERNS: RegExp[] = [
-  /new\s+HeadlessToolRegistry/,
-  /HeadlessToolRegistry</,
-  /import\s+\{[^}]*HeadlessToolRegistry/,
-  /class\s+OnethingToolRegistry/,
-  /zodToJsonSchema/,
-  /coreToolDefinitionFromJsonSchema/,
-  /coreProviderToolSchemaFromJsonSchema/,
-  /collectCoreToolDefinitionsWithAdapters/,
-  /collectCoreProviderToolSchemasWithAdapters/,
-  /filterCoreInjectableTools/,
-  /filterCoreEnabledTools/,
-  /resolveCoreToolExecutionMode/,
-  /analyzeCoreToolWithAdapters/,
-  /executeCoreToolWithAdapters/,
-  /coreToolContextFromHost/,
-  /isPermissionRejectedError/,
-  /PermissionRejectedError/,
-  /safeParse\(args\)/,
-  /formatValidationError/,
-  /createCoreToolCallShim/,
-]
 
-const MAIN_TOOL_TYPES_SCHEMA_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
-  /JsonSchemaObject/,
-  /export\s+function\s+toAIToolSchema/,
-  /const\s+properties:\s*AIToolSchema/,
-  /for\s*\(\s*const\s+param\s+of\s+tool\.parameters\s*\)/,
-  /properties\[param\.name\]/,
-  /required\.push\(param\.name\)/,
-]
 
 const MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]electron['"]/,
@@ -1170,13 +1140,6 @@ const MAIN_DIRECT_TOOL_EXECUTION_FORBIDDEN_PATTERNS: RegExp[] = [
   /approvedAnalysis:\s*\{/,
 ]
 
-const MAIN_TOOL_UPDATE_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
-  /executeCoreToolAndUpdate/,
-  /toolResultToStructured/,
-  /toStructured:\s*value\s*=>/,
-  /toJsonValue/,
-  /formatFailure:\s*toolFailureText/,
-]
 
 const SHARED_TOOL_FAILURE_PARAMETERS_FORBIDDEN_PATTERNS: RegExp[] = [
   /interface\s+ToolFailureParameterSummary/,
@@ -1565,14 +1528,6 @@ const MAIN_TOOLS_IPC_EXECUTION_CONTEXT_FORBIDDEN_PATTERNS: RegExp[] = [
   /return\s+\{\s*success:\s*false,\s*error:/,
 ]
 
-const MAIN_TOOLS_IPC_REFRESH_ASYNC_FORBIDDEN_PATTERNS: RegExp[] = [
-  /Refreshing async tools/,
-  /setInitContext\(\{\s*workingDirectory/,
-  /await\s+initializeAsyncTools\(\)/,
-  /Failed to refresh async tools/,
-  /Error refreshing async tools/,
-  /return\s+\{\s*success:\s*false,\s*error:/,
-]
 
 const MAIN_TOOLS_IPC_BACKGROUND_JOBS_FORBIDDEN_PATTERNS: RegExp[] = [
   /Cancel tool requested/,
@@ -5976,7 +5931,6 @@ function checkElectronHostOwnsToolsIpcHost(): void {
     'cancelOnethingToolForIpc',
     'listOnethingBackgroundJobsForIpc',
     'stopOnethingBackgroundJobForIpc',
-    'refreshOnethingAsyncToolsForIpc',
     'applyOnethingToolCallUpdateForIpc',
   ]
   const lines = [
@@ -6670,18 +6624,26 @@ function checkCoreToolHelperTestsLiveInCorePackage(): void {
   assertNoMatches('packages/core owns core tool helper tests', lines)
 }
 
+/**
+ * R4b —— 旧的 `coreProviderToolSchemaFromParameters`(provider schema 投影)随
+ * 旧注册表删除。这条规则的意图没变(**JSON Schema → 宿主形状的投影归 core**),
+ * 只是主语换成了新树唯一还在用的那一个:`coreToolDefinitionFromJsonSchema`,
+ * 它的消费者是 `app/toolkit/catalog-projection.ts`。
+ */
 function checkCoreOwnsToolSchemaProjection(): void {
   const coreRegistryFile = path.join(root, 'packages/core/tools/registry.ts')
   const coreIndexFile = path.join(root, 'packages/core/tools/index.ts')
   const coreTestFile = path.join(root, 'packages/core/tools/__tests__/registry.test.ts')
-  const mainTypesFile = path.join(root, 'packages/onething-runtime/src/app/tools/types.ts')
+  const projectionFile = path.join(root, 'packages/onething-runtime/src/app/toolkit/catalog-projection.ts')
   const coreRegistryContent = fs.existsSync(coreRegistryFile) ? fs.readFileSync(coreRegistryFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
-  const mainTypesContent = fs.existsSync(mainTypesFile) ? fs.readFileSync(mainTypesFile, 'utf-8') : ''
+  const projectionContent = fs.existsSync(projectionFile) ? fs.readFileSync(projectionFile, 'utf-8') : ''
   const requiredCoreSymbols = [
-    'CoreProviderToolSchemaFromParametersInput',
-    'coreProviderToolSchemaFromParameters',
+    'CoreToolDefinitionFromJsonSchemaInput',
+    'coreToolDefinitionFromJsonSchema',
+    'coreToolParameterFromSchema',
+    'normalizeCoreToolParameterType',
   ]
   const lines = [
     ...requiredCoreSymbols
@@ -6690,15 +6652,12 @@ function checkCoreOwnsToolSchemaProjection(): void {
     ...requiredCoreSymbols
       .filter(symbol => !coreIndexContent.includes(symbol))
       .map(symbol => `${rel(coreIndexFile)}: missing core tools public export ${symbol}`),
-    ...(!coreTestContent.includes('coreProviderToolSchemaFromParameters')
+    ...(!coreTestContent.includes('coreToolDefinitionFromJsonSchema')
       ? [`${rel(coreTestFile)}: missing core-owned parameter schema projection coverage`]
       : []),
-    ...(!mainTypesContent.includes('coreProviderToolSchemaFromParameters as toAIToolSchema')
-      ? [`${rel(mainTypesFile)}: toAIToolSchema must be a core schema projection facade`]
+    ...(!projectionContent.includes('coreToolDefinitionFromJsonSchema')
+      ? [`${rel(projectionFile)}: catalog projection must reuse the core schema projection`]
       : []),
-    ...(fs.existsSync(mainTypesFile)
-      ? matchingLines(mainTypesFile, MAIN_TOOL_TYPES_SCHEMA_PROJECTION_FORBIDDEN_PATTERNS)
-      : [`${rel(mainTypesFile)}: missing main tools type facade`]),
   ]
 
   assertNoMatches('packages/core owns legacy tool schema projection', lines)
@@ -6788,12 +6747,19 @@ function checkCoreOwnsToolPermissionErrorText(): void {
   assertNoMatches('packages/core owns tool permission error text', lines)
 }
 
+/**
+ * R4b:`bash-runtime.test.ts` / `builtin/__tests__/time.test.ts` 随旧工具对象
+ * 删除,必需清单换成**还活着的那几个纯模块测试**(它们正是新树 import 的那批)。
+ * 规则的意图一个字没变:工具帮手的测试住在产品包里,不许爬进装配树。
+ */
 function checkRuntimeToolHelperTestsLiveInRuntimePackage(): void {
   const requiredRuntimeTests = [
-    'packages/onething-runtime/src/tools/__tests__/bash-runtime.test.ts',
     'packages/onething-runtime/src/tools/__tests__/file-snapshot.test.ts',
     'packages/onething-runtime/src/tools/__tests__/sandbox.test.ts',
-    'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts',
+    'packages/onething-runtime/src/tools/__tests__/edit-engine.test.ts',
+    'packages/onething-runtime/src/tools/__tests__/sensitive-files.test.ts',
+    'packages/onething-runtime/src/toolkit/__tests__/golden/time.test.ts',
+    'packages/onething-runtime/src/toolkit/__tests__/golden/bash.test.ts',
   ]
   const forbiddenMainTests = [
     'packages/onething-runtime/src/app/tools/__tests__/core-bash-runtime.test.ts',
@@ -6801,7 +6767,7 @@ function checkRuntimeToolHelperTestsLiveInRuntimePackage(): void {
     'packages/onething-runtime/src/app/tools/__tests__/core-sandbox.test.ts',
     'packages/onething-runtime/src/app/tools/__tests__/core-time.test.ts',
   ]
-  const timeTest = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts')
+  const timeTest = path.join(root, 'packages/onething-runtime/src/toolkit/__tests__/golden/time.test.ts')
   const timeContent = fs.existsSync(timeTest) ? fs.readFileSync(timeTest, 'utf-8') : ''
   const lines = [
     ...requiredRuntimeTests
@@ -6809,8 +6775,8 @@ function checkRuntimeToolHelperTestsLiveInRuntimePackage(): void {
       .map(file => `${file}: missing runtime package tool helper test`),
     ...forbiddenMainTests
       .filter(file => fs.existsSync(path.join(root, file)))
-      .map(file => `${file}: runtime tool helper tests belong in packages/onething-runtime`),
-    ...(!timeContent.includes('owns fixed offset parsing and core time conversion without host adapters')
+      .map(file => `${file}: tool helper tests belong in packages/onething-runtime`),
+    ...(!timeContent.includes('TimeTool')
       ? [`${rel(timeTest)}: missing runtime-owned direct time engine coverage`]
       : []),
   ]
@@ -8012,44 +7978,54 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
   assertNoMatches('packages/onething-runtime owns ACP client runtime', lines)
 }
 
+/**
+ * R4b —— 旧的 `runtime/tools/direct-tool-execution.ts`(把 ctx 回调翻成 IPC 的那
+ * 约 350 行)随旧树删除,这条规则的意图仍然成立并且更硬了:**每一次工具直调只有
+ * 一个必经点**,而它必须把活儿交出去,不许在装配层就地实现一条管线。
+ */
 function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/direct-tool-execution.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/engine/stream/tool-execution.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'executeOnethingDirectTool',
-    'createOnethingDirectToolExecutionContext',
-    'executeCoreDirectTool',
-  ]
+  const wiringFile = path.join(root, 'packages/onething-runtime/src/app/toolkit/wiring.ts')
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const wiringContent = fs.existsSync(wiringFile) ? fs.readFileSync(wiringFile, 'utf-8') : ''
   const lines = [
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned direct tool execution adapter ${symbol}`),
+    ...(!fs.existsSync(mainFile)
+      ? ['packages/onething-runtime/src/app/engine/stream/tool-execution.ts: missing tool execution facade']
+      : []),
+    ...(!mainContent.includes('runToolkitToolDirectly')
+      ? [`${rel(mainFile)}: executeToolDirectly must delegate to the toolkit runner`]
+      : []),
+    ...(!wiringContent.includes('createAppToolRunner')
+      ? [`${rel(wiringFile)}: the single direct-call seam must build the app tool runner`]
+      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_DIRECT_TOOL_EXECUTION_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/engine/stream/tool-execution.ts: missing tool execution facade']),
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns direct tool execution adapter', lines)
 }
 
+/**
+ * R4b —— `runtime/tools/tool-execution.ts` 只是 `executeCoreToolAndUpdate` 外面
+ * 三行转换器的一层壳,随旧树删除,三行搬到了唯一的调用点。规则的意图不变:
+ * **工具调用状态的编排归 core**,装配层不许自己再写一份。
+ */
 function checkRuntimeOwnsToolUpdateOrchestration(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-execution.ts')
+  const coreFile = path.join(root, 'packages/core/engine/index.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/engine/stream/tool-execution.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'executeOnethingToolAndUpdate',
-    'executeCoreToolAndUpdate',
-    'toolResultToStructured',
-    'toJsonValue',
-  ]
+  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const lines = [
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tool update orchestration ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_TOOL_UPDATE_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/engine/stream/tool-execution.ts: missing tool execution facade']),
+    ...(!coreContent.includes('executeCoreToolAndUpdate')
+      ? [`${rel(coreFile)}: missing core-owned tool update orchestration executeCoreToolAndUpdate`]
+      : []),
+    ...(!fs.existsSync(mainFile)
+      ? ['packages/onething-runtime/src/app/engine/stream/tool-execution.ts: missing tool execution facade']
+      : []),
+    ...(!mainContent.includes('executeCoreToolAndUpdate')
+      ? [`${rel(mainFile)}: tool update orchestration must delegate to core`]
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns tool update orchestration', lines)
@@ -8661,62 +8637,56 @@ function checkRuntimeOwnsToolCallStateProjection(): void {
   assertNoMatches('packages/onething-runtime owns tool call state projection', lines)
 }
 
+/**
+ * R4b —— 旧的 `OnethingToolRegistry` 随旧树删除。它守的那条线仍然在,只是主语换
+ * 成了新工具系统:**工具与目录归产品层**(`runtime/src/toolkit`),装配层只负责
+ * 建一档目录、接端口;宿主只拿投影。
+ */
 function checkRuntimeOwnsToolRegistryRuntime(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/registry.ts')
-  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/registry.test.ts')
-  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/tools/registry.ts')
-  const mainTestFile = path.join(root, 'packages/onething-runtime/src/app/tools/__tests__/registry.test.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
-  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
-  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const mainTestContent = fs.existsSync(mainTestFile) ? fs.readFileSync(mainTestFile, 'utf-8') : ''
-  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
-  const requiredRuntimeSymbols = [
-    'OnethingToolRegistry',
-    'createOnethingToolRegistry',
-    'OnethingToolExecutionContext',
-    'OnethingToolDefinition',
-    'analyzeTool',
-    'executeTool',
-    'getToolsForAI',
-    'canAutoExecute',
-    'initializeToolRegistry',
+  const kernelCatalogFile = path.join(root, 'packages/core/toolkit/catalog.ts')
+  const productHostFile = path.join(root, 'packages/onething-runtime/src/toolkit/host.ts')
+  const productIndexFile = path.join(root, 'packages/onething-runtime/src/toolkit/index.ts')
+  const assemblyCatalogFile = path.join(root, 'packages/onething-runtime/src/app/toolkit/catalog.ts')
+  const assemblyWiringFile = path.join(root, 'packages/onething-runtime/src/app/toolkit/wiring.ts')
+  const productHostContent = fs.existsSync(productHostFile) ? fs.readFileSync(productHostFile, 'utf-8') : ''
+  const productIndexContent = fs.existsSync(productIndexFile) ? fs.readFileSync(productIndexFile, 'utf-8') : ''
+  const assemblyCatalogContent = fs.existsSync(assemblyCatalogFile) ? fs.readFileSync(assemblyCatalogFile, 'utf-8') : ''
+  const assemblyWiringContent = fs.existsSync(assemblyWiringFile) ? fs.readFileSync(assemblyWiringFile, 'utf-8') : ''
+  const requiredProductSymbols = [
+    'configureToolkitCatalog',
+    'getToolkitCatalog',
+    'resolveToolkitSurface',
   ]
-  const requiredRuntimeTestSnippets = [
-    'owns tool definition projection including nested JSON schema',
-    'owns execution mode compatibility and async initialized overrides',
-    'owns permission rejection and ordinary execution error projection',
-    'owns injectable tool filtering and auto-execute permission gates',
+  const requiredTierFactories = [
+    'createDesktopCatalog',
+    'createHeadlessCatalog',
+    'createReadonlyCatalog',
   ]
   const lines = [
-    ...(!fs.existsSync(runtimeFile)
-      ? [`${rel(runtimeFile)}: missing runtime-owned tool registry`]
+    ...(!fs.existsSync(kernelCatalogFile)
+      ? [`${rel(kernelCatalogFile)}: missing kernel-owned Catalog`]
       : []),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime tool registry symbol ${symbol}`),
-    ...(!fs.existsSync(runtimeTestFile)
-      ? [`${rel(runtimeTestFile)}: missing runtime tool registry tests`]
+    ...requiredProductSymbols
+      .filter(symbol => !productHostContent.includes(symbol))
+      .map(symbol => `${rel(productHostFile)}: missing product-owned catalog port ${symbol}`),
+    ...(!productIndexContent.includes('./host.js')
+      ? [`${rel(productIndexFile)}: missing toolkit host public export`]
       : []),
-    ...requiredRuntimeTestSnippets
-      .filter(snippet => !runtimeTestContent.includes(snippet))
-      .map(snippet => `${rel(runtimeTestFile)}: missing runtime registry behavior coverage "${snippet}"`),
-    ...(!runtimeIndexContent.includes('./registry.js')
-      ? [`${rel(runtimeIndexFile)}: missing registry public export`]
+    ...requiredTierFactories
+      .filter(symbol => !assemblyCatalogContent.includes(symbol))
+      .map(symbol => `${rel(assemblyCatalogFile)}: missing tier catalog factory ${symbol}`),
+    ...(!assemblyWiringContent.includes('buildToolkitCatalog')
+      ? [`${rel(assemblyWiringFile)}: the assembly layer must own the single catalog build seam`]
       : []),
-    ...(!mainContent.includes('@onething/runtime/tools')
-      ? [`${rel(mainFile)}: tool registry facade must delegate to runtime tools`]
+    // 旧树不许复活:装配层不得再出现一棵工具注册表。
+    ...(fs.existsSync(path.join(root, 'packages/onething-runtime/src/app/tools/registry.ts'))
+      ? ['packages/onething-runtime/src/app/tools/registry.ts: the legacy tool registry facade was deleted in R4b']
       : []),
-    ...(mainLines.length > 180
-      ? [`${rel(mainFile)}: tool registry facade must stay thin`]
+    ...(fs.existsSync(path.join(root, 'packages/onething-runtime/src/tools/registry.ts'))
+      ? ['packages/onething-runtime/src/tools/registry.ts: the legacy tool registry was deleted in R4b']
       : []),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_TOOL_REGISTRY_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing tool registry main facade`]),
-    ...(!mainTestContent.includes('tool registry main facade')
-      ? [`${rel(mainTestFile)}: main registry test must stay focused on facade behavior`]
+    ...(fs.existsSync(path.join(root, 'packages/onething-runtime/src/tools/tool.ts'))
+      ? ['packages/onething-runtime/src/tools/tool.ts: Tool.define was deleted in R4b']
       : []),
   ]
 
@@ -8761,26 +8731,6 @@ function checkRuntimeOwnsToolsIpcExecutionContext(): void {
   ]
 
   assertNoMatches('packages/onething-runtime owns tool execution context assembly', lines)
-}
-
-function checkRuntimeOwnsToolsIpcAsyncRefresh(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-refresh.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'refreshOnethingAsyncTools',
-    'refreshOnethingAsyncToolsForIpc',
-  ]
-  const lines = [
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned async tool refresh flow ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_TOOLS_IPC_REFRESH_ASYNC_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns async tool refresh flow', lines)
 }
 
 function checkRuntimeOwnsToolsIpcBackgroundJobs(): void {
@@ -10836,12 +10786,23 @@ function checkRuntimeOwnsToolEditEngine(): void {
   assertNoMatches('packages/onething-runtime owns tool edit engine', lines)
 }
 
+/**
+ * R4b —— 具体工具实现归产品层。
+ *
+ * 主语从旧 `runtime/src/tools/builtin/*.ts`(`Tool.define` 那一批)换成新树的
+ * `runtime/src/toolkit/builtin/*.ts`;三档目录的装配住在 `app/toolkit/catalog.ts`。
+ * `removedFiles` 那张长表原样保留 —— 它守的是"这些东西不许再爬回 core / 装配层",
+ * 而 R4b 又给它添了旧 builtin 那一批。
+ */
 function checkRuntimeOwnsConcreteBuiltinTools(): void {
   const removedFiles = [
     'packages/core/tools/time.ts',
     'packages/onething-runtime/src/app/tools/builtin/get-current-time.ts',
     'packages/onething-runtime/src/app/tools/builtin/fart.ts',
     'packages/onething-runtime/src/app/tools/builtin/time.ts',
+    'packages/onething-runtime/src/app/tools/builtin/index.ts',
+    'packages/onething-runtime/src/app/tools/builtin/headless.ts',
+    'packages/onething-runtime/src/app/tools/builtin/readonly.ts',
     'packages/onething-runtime/src/app/tools/core/bash-classifier.ts',
     'packages/onething-runtime/src/app/tools/core/edit-engine.ts',
     'packages/onething-runtime/src/app/tools/core/file-mutation-audit.ts',
@@ -10851,6 +10812,7 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
     'packages/onething-runtime/src/app/tools/core/text-truncation.ts',
     'packages/onething-runtime/src/app/tools/core/tool-effect.ts',
     'packages/onething-runtime/src/app/tools/core/tool-result.ts',
+    'packages/onething-runtime/src/app/tools/core/tool.ts',
     'packages/core/tools/sensitive-files.ts',
     'packages/core/tools/background-jobs.ts',
     'packages/core/tools/bash-executor.ts',
@@ -10863,57 +10825,50 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
     'packages/core/tools/edit-engine.ts',
     'packages/core/tools/replacers.ts',
     'packages/core/tools/bash-classifier.ts',
+    // R4b:旧的 `Tool.define` 工具对象。它们的实现搬进了 `toolkit/builtin/`。
+    'packages/onething-runtime/src/tools/builtin/read.ts',
+    'packages/onething-runtime/src/tools/builtin/write.ts',
+    'packages/onething-runtime/src/tools/builtin/edit.ts',
+    'packages/onething-runtime/src/tools/builtin/bash.ts',
+    'packages/onething-runtime/src/tools/builtin/time.ts',
+    'packages/onething-runtime/src/tools/builtin/variable.ts',
+    'packages/onething-runtime/src/tools/builtin/say.ts',
+    'packages/onething-runtime/src/tools/scene-surface.ts',
   ].filter(file => fs.existsSync(path.join(root, file)))
   const publicExportPaths = [
     path.join(root, 'packages/core/tools/index.ts'),
     path.join(root, 'packages/core/index.ts'),
   ]
-  const runtimeToolsIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
-  const runtimeTimeFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/time.ts')
-  const runtimeTimeRuntimeFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/time-runtime.ts')
-  const runtimeTimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts')
-  const mainBuiltinIndexFile = path.join(root, 'packages/onething-runtime/src/app/tools/builtin/index.ts')
-  const mainHeadlessFile = path.join(root, 'packages/onething-runtime/src/app/tools/builtin/headless.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
-  const runtimeToolsIndexContent = fs.existsSync(runtimeToolsIndexFile) ? fs.readFileSync(runtimeToolsIndexFile, 'utf-8') : ''
-  const runtimeTimeContent = fs.existsSync(runtimeTimeFile) ? fs.readFileSync(runtimeTimeFile, 'utf-8') : ''
-  const runtimeTimeRuntimeContent = fs.existsSync(runtimeTimeRuntimeFile) ? fs.readFileSync(runtimeTimeRuntimeFile, 'utf-8') : ''
-  const mainBuiltinIndexContent = fs.existsSync(mainBuiltinIndexFile) ? fs.readFileSync(mainBuiltinIndexFile, 'utf-8') : ''
-  const mainHeadlessContent = fs.existsSync(mainHeadlessFile) ? fs.readFileSync(mainHeadlessFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
-  const requiredTimeSymbols = [
-    'TimeTool',
-    'executeCoreTimeTool',
-    'resolveCoreTimezone',
-  ]
+  const toolkitIndexFile = path.join(root, 'packages/onething-runtime/src/toolkit/index.ts')
+  const toolkitTimeFile = path.join(root, 'packages/onething-runtime/src/toolkit/builtin/time.ts')
+  const timeRuntimeFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/time-runtime.ts')
+  const timeGoldenFile = path.join(root, 'packages/onething-runtime/src/toolkit/__tests__/golden/time.test.ts')
+  const catalogFile = path.join(root, 'packages/onething-runtime/src/app/toolkit/catalog.ts')
+  const toolkitIndexContent = fs.existsSync(toolkitIndexFile) ? fs.readFileSync(toolkitIndexFile, 'utf-8') : ''
+  const toolkitTimeContent = fs.existsSync(toolkitTimeFile) ? fs.readFileSync(toolkitTimeFile, 'utf-8') : ''
+  const timeRuntimeContent = fs.existsSync(timeRuntimeFile) ? fs.readFileSync(timeRuntimeFile, 'utf-8') : ''
+  const catalogContent = fs.existsSync(catalogFile) ? fs.readFileSync(catalogFile, 'utf-8') : ''
+  const requiredTimeSymbols = ['TimeTool', 'executeCoreTimeTool', 'resolveCoreTimezone']
   const lines = [
-    ...removedFiles.map(file => `${file}: concrete builtin tools belong in packages/onething-runtime`),
+    ...removedFiles.map(file => `${file}: concrete builtin tools belong in packages/onething-runtime/src/toolkit`),
     ...publicExportPaths.flatMap(file => fs.existsSync(file)
       ? matchingLines(file, CORE_TOOL_RUNTIME_FORBIDDEN_PATTERNS)
       : []
     ),
-    ...(!fs.existsSync(runtimeTimeFile)
-      ? [`${rel(runtimeTimeFile)}: missing runtime-owned time tool`]
+    ...(!fs.existsSync(toolkitTimeFile)
+      ? [`${rel(toolkitTimeFile)}: missing runtime-owned time tool`]
       : []),
     ...requiredTimeSymbols
-      .filter(symbol => !`${runtimeTimeContent}\n${runtimeTimeRuntimeContent}`.includes(symbol))
-      .map(symbol => `${rel(runtimeTimeFile)}: missing runtime time symbol ${symbol}`),
-    ...(!fs.existsSync(runtimeTimeTestFile)
-      ? [`${rel(runtimeTimeTestFile)}: missing runtime time tests`]
+      .filter(symbol => !`${toolkitTimeContent}${timeRuntimeContent}`.includes(symbol))
+      .map(symbol => `${rel(toolkitTimeFile)}: missing runtime-owned time symbol ${symbol}`),
+    ...(!fs.existsSync(timeGoldenFile)
+      ? [`${rel(timeGoldenFile)}: missing runtime time tests`]
       : []),
-    ...(!runtimeToolsIndexContent.includes('./builtin/time.js')
-      ? [`${rel(runtimeToolsIndexFile)}: missing time public export`]
+    ...(!toolkitIndexContent.includes('./builtin/time.js')
+      ? [`${rel(toolkitIndexFile)}: missing time public export`]
       : []),
-    ...(!runtimeToolsIndexContent.includes('./builtin/time-runtime.js')
-      ? [`${rel(runtimeToolsIndexFile)}: missing time runtime public export`]
-      : []),
-    ...(!mainBuiltinIndexContent.includes('TimeTool')
-      ? [`${rel(mainBuiltinIndexFile)}: desktop builtins must register TimeTool`]
-      : []),
-    ...(!mainHeadlessContent.includes('TimeTool')
-      ? [`${rel(mainHeadlessFile)}: headless builtins must register TimeTool`]
+    ...(!catalogContent.includes('createTimeTool')
+      ? [`${rel(catalogFile)}: tier catalogs must register the time tool`]
       : []),
   ]
 
@@ -11071,7 +11026,6 @@ checkRuntimeOwnsToolRegistryRuntime()
 checkRuntimeOwnsToolCallStateProjection()
 checkRuntimeOwnsToolsIpcListPresentation()
 checkRuntimeOwnsToolsIpcExecutionContext()
-checkRuntimeOwnsToolsIpcAsyncRefresh()
 checkRuntimeOwnsToolsIpcBackgroundJobs()
 checkRuntimeOwnsSettingsSaveOrchestration()
 checkRuntimeOwnsPluginsIpcListProjection()

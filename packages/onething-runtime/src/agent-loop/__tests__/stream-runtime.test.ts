@@ -6,7 +6,36 @@ import type {
   CoreBuildPromptOptions,
   CorePendingAgentLoopInputMessage,
 } from '@onething/core/engine'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/core/toolkit'
+import type { Result, ToolSpec } from '@onething/core/toolkit'
+import { configureToolkitCatalog } from '../../toolkit/host.js'
 import { buildOnethingAgentLoopStreamRuntime } from '../stream-runtime.js'
+
+/**
+ * R4b:内置工具面的唯一来源是目录(`Surface.resolve`)。这个测试原本靠
+ * `getEnabledTools` 这个适配器喂一只 `bash`,那条口径已随旧树删除。
+ */
+class StubBashTool extends ToolkitTool<Record<string, never>, undefined> {
+  readonly spec: ToolSpec = {
+    id: 'bash',
+    title: 'bash',
+    description: 'Run a command',
+    input: { type: 'object', properties: {} },
+    effects: [],
+    presentation: { kind: 'bash', shell: 'default' },
+    concurrency: 'sequential',
+  }
+
+  async plan(): Promise<Intent<undefined>> {
+    return Intent.none(undefined)
+  }
+
+  async apply(): Promise<Result> {
+    return { content: [{ type: 'text', text: '' }] }
+  }
+}
+
+configureToolkitCatalog(new Catalog().register(new StubBashTool()))
 
 interface TestSettings {
   skills?: { enableSkills?: boolean }
@@ -132,11 +161,6 @@ describe('onething agent-loop stream runtime', () => {
         },
         isProviderSupported: providerId => providerId === 'test-provider',
         createProvider: () => provider,
-        getEnabledTools: async () => [{
-          id: 'bash',
-          description: 'Run a command',
-          parameterSchema: { type: 'object', properties: {} },
-        }],
         getMCPRouterToolDefinition: () => ({
           id: 'mcp_search',
           description: 'Search MCP',

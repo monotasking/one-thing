@@ -24,15 +24,8 @@ import {
   getEffectiveProviderConfig,
   resolveProviderAuth,
 } from '../stream/provider-helpers.js'
-import {
-  getEnabledToolsAsync,
-  initializeAsyncTools,
-  setInitContext,
-} from '../../tools/index.js'
 import { getCodexNativeToolsForConfig } from '../stream/codex-native-tools.js'
-// R3b:工具快照的来源切换(见 getEnabledTools 那一格的注释)。
-import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
-import { getToolkitCatalog, resolveToolkitSurface } from '@onething/runtime/toolkit'
+import { resolveToolkitSurface } from '@onething/runtime/toolkit'
 import { toolDefinitionFromToolkitTool } from '../../toolkit/catalog-projection.js'
 import { resolveAgentLoopStreamRoute } from '../stream/agent-loop-selection.js'
 import { buildPrompt } from './system-prompt.js'
@@ -149,34 +142,25 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     resolveProvider: resolveProviderForSnapshot,
     resolveAgentLoopStreamRoute,
     getSkills: getSkillsForSession,
-    async initializeTools(context) {
-      setInitContext(context)
-      await initializeAsyncTools()
-    },
     /*
-     * R3b:开关开时"这一回合模型看得见哪些工具"由 `Surface` 回答(§10.2-④)。
+     * "这一回合模型看得见哪些工具"由 `Surface` 回答(§10.2-④)。
      *
-     * 比旧路多算一道**场景面**(协作四件套的场子、goal 的 active、task 的套娃闸、
-     * skill 带进来的工具)—— 真回合本来就有那一道,而快照旧路没有,于是它会把
-     * 这条会话里根本调不到的工具报成"已装配"。下游那道 allowlist 过滤原样保留:
-     * `Surface` 已经过过一遍,再过一次是幂等的。
+     * 比 R3b 之前的旧快照多算一道**场景面**(协作四件套的场子、goal 的 active、
+     * task 的套娃闸、skill 带进来的工具)—— 真回合本来就有那一道,而旧快照没有,
+     * 于是它会把这条会话里根本调不到的工具报成"已装配"。下游那道 allowlist 过滤
+     * 原样保留:`Surface` 已经过过一遍,再过一次是幂等的。
      *
-     * 目录没配上时返回 undefined,原样退回旧路。
+     * 目录没装上(宿主没走 backend)时它给空组 —— 这台宿主确实没有工具。
      */
     getEnabledTools: toolSettings => {
-      // 判据是"目录真的装上了",不是开关本身 —— 没装上时下面这几步(会话、技能面、
-      // profile)一步都不该跑,退回旧路才是唯一的答案。
-      if (isToolkitEnabled() && getToolkitCatalog()) {
-        const session = store.getSession(sessionId)
-        const surface = resolveToolkitSurface({
-          session: session as Parameters<typeof resolveToolkitSurface>[0]['session'],
-          enabledSkillNames: enabledSkillNamesForSnapshot(session),
-          allowlist: resolveAgentProfileForSession(sessionId).tools,
-          toolSettings: toolSettings as Readonly<Record<string, { enabled?: boolean; autoExecute?: boolean }>> | undefined,
-        })
-        if (surface) return surface.tools().map(toolDefinitionFromToolkitTool)
-      }
-      return getEnabledToolsAsync(toolSettings)
+      const session = store.getSession(sessionId)
+      const surface = resolveToolkitSurface({
+        session: session as Parameters<typeof resolveToolkitSurface>[0]['session'],
+        enabledSkillNames: enabledSkillNamesForSnapshot(session),
+        allowlist: resolveAgentProfileForSession(sessionId).tools,
+        toolSettings: toolSettings as Readonly<Record<string, { enabled?: boolean; autoExecute?: boolean }>> | undefined,
+      })
+      return surface ? surface.tools().map(toolDefinitionFromToolkitTool) : []
     },
     getMCPToolDefinitions: getMCPToolDefinitionsForModel,
     sourceToolsToModelDefinitions: tools => agentToolDefinitionsFromSourceTools(tools),

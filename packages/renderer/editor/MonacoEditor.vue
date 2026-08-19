@@ -90,6 +90,26 @@ function revealLine(lineNumber: number) {
   editor?.revealLineInCenter(lineNumber)
 }
 
+/**
+ * 定位到某一行(消息引用 `path:12` / `:12-30` / `:12:5` 的落点)。
+ * 与 `revealLine` 分开是因为这条**要动光标**:引用点过去人是要在那儿接着编辑的,
+ * 只滚过去不落光标,下一次按键会跳回原处。
+ */
+function revealPosition(lineNumber: number, column = 1, endLineNumber?: number) {
+  if (!editor) return
+  editor.setPosition({ lineNumber, column })
+  if (endLineNumber && endLineNumber > lineNumber) {
+    const model = editor.getModel()
+    editor.setSelection({
+      startLineNumber: lineNumber,
+      startColumn: column,
+      endLineNumber,
+      endColumn: model?.getLineMaxColumn(endLineNumber) ?? 1,
+    })
+  }
+  editor.revealLineInCenter(lineNumber)
+}
+
 function openFind() {
   editor?.getAction('actions.find')?.run()
 }
@@ -156,6 +176,7 @@ defineExpose({
   focus,
   layout,
   revealLine,
+  revealPosition,
   openFind,
   saveViewState,
 })

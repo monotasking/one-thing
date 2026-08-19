@@ -3,6 +3,7 @@ import {
   getElectronRendererDevUrl,
   isElectronAppWebContents,
   isElectronMainAppWindowUrl,
+  isElectronRendererIndexFileUrl,
   isElectronRendererWindowUrl,
   loadElectronMainWindowContent,
 } from '../renderer-targets.js'
@@ -72,5 +73,25 @@ describe('electron renderer targets', () => {
     expect(isElectronRendererWindowUrl('http://localhost:3000/#/chat', {
       rendererDevUrl: 'http://localhost:3000',
     })).toBe(true)
+  })
+
+  // docs/design/message-references-2026-08.md §5:导航放行要精确到 index 本身。
+  it('matches only the renderer index for file:// navigation', () => {
+    const index = '/dist/renderer/index.html'
+
+    expect(isElectronRendererIndexFileUrl('file:///dist/renderer/index.html', index)).toBe(true)
+    expect(isElectronRendererIndexFileUrl('file:///dist/renderer/index.html#theme=dark', index)).toBe(true)
+    expect(isElectronRendererIndexFileUrl('file:///dist/renderer/index.html?x=1', index)).toBe(true)
+    expect(isElectronRendererIndexFileUrl('file:///dist/renderer/other.html', index)).toBe(false)
+    expect(isElectronRendererIndexFileUrl('file:///Users/me/secret.txt', index)).toBe(false)
+    expect(isElectronRendererIndexFileUrl('https://example.com', index)).toBe(false)
+    expect(isElectronRendererIndexFileUrl('file:///dist/renderer/index.html', '')).toBe(false)
+  })
+
+  it('handles Windows drive paths and percent-encoded segments', () => {
+    expect(isElectronRendererIndexFileUrl(
+      'file:///C:/App%20Files/renderer/index.html',
+      'C:\\App Files\\renderer\\index.html',
+    )).toBe(true)
   })
 })

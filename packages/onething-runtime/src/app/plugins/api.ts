@@ -2,14 +2,7 @@
  * Plugin API — main-process host adapter for the headless core API builder.
  */
 
-import { Tool } from '../tools/core/tool.js'
-import type { ToolMetadata } from '../tools/core/tool.js'
-import {
-  registerTool as registerToolInRegistry,
-  unregisterTool as unregisterToolInRegistry,
-} from '../tools/index.js'
-// R3b:插件工具进目录(见 host.registerTool / disposePlugin 两处的注释)。
-import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
+// 插件工具进目录(见 host.registerTool / disposePlugin 两处的注释)。
 import {
   registerPluginToolInCatalog,
   unregisterPluginToolFromCatalog,
@@ -283,7 +276,7 @@ export function createPluginAPI(
 
   const result = createCorePluginAPI<
     PluginAPI,
-    PluginToolDefinition<z.ZodType, ToolMetadata>,
+    PluginToolDefinition<z.ZodType, object>,
     PluginEventHandler,
     PluginCommandDefinition,
     Omit<PluginCommandDefinition, 'name'>,
@@ -346,13 +339,21 @@ export function createPluginAPI(
             + 'contributes.permissions instead.',
           )
         }
-        registerToolInRegistry(
-          Tool.define(toolId, {
+        /*
+         * 一份定义 → 目录里的一只 `PluginTool`(设计文档 §14.5 第 1 条)。
+         *
+         * R4b:旧 registry 那一半(`Tool.define` + `registerToolInRegistry`)已
+         * 随旧树删除,目录是唯一的册子 —— 它同时答"有哪些工具"与"谁来跑它"。
+         *
+         * `permissionGuard: 'permission-gated'` 那句话在新树里由 `plugin_exec`
+         * 这条效果说出来(§13.3),所以这里不必再传一次。
+         */
+        registerPluginToolInCatalog({
+          toolId,
+          definition: {
             name: tool.name,
             description: tool.description,
-            category: 'custom',
             parameters: tool.parameters,
-            permissionGuard: 'permission-gated',
             /*
              * N3:并发声明原样透传。core 的注册闸已经保证它只可能是
              * 'parallel' / 'sequential' / undefined,所以这里不再兜一层 ——
@@ -360,51 +361,13 @@ export function createPluginAPI(
              * 今天的行为,一字不改。真正读它的只有一处:agent-loop runner
              * 的 `executionMode !== 'parallel'` 判据。
              */
-            executionMode: tool.executionMode,
+            ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
             // 工具自带的提示词原样透传:core 注册闸已经校验过形状。它随工具面
             // 进出 —— 插件禁用/卸载时工具注销,段落随之消失,不另记账。
-            prompt: tool.prompt,
-            async execute(args: unknown, ctx: any) {
-              return executeCorePluginTool(tool, args as any, {
-                sessionId: ctx.sessionId,
-                messageId: ctx.messageId,
-                toolCallId: ctx.toolCallId,
-                // F4:身份透传。ctx.agentId 由回合入口一次解析后一路带下来
-                // (stream-runtime → direct-tool-execution → 这里),插件不必
-                // 也不该自己反查 session.agentId。
-                agentId: ctx.agentId,
-                workingDirectory: ctx.workingDirectory,
-                abortSignal: ctx.abortSignal,
-                metadata(input: { title?: string; metadata?: Partial<ToolMetadata> }) {
-                  ctx.metadata?.(input)
-                },
-              })
-            },
-          }),
-        )
-        /*
-         * R3b:同一个定义**同时**进新树目录(设计文档 §14.5 第 1 条)。
-         *
-         * 旧路那一段一个字不改 —— 开关关时这一句不执行,开关开时两边都注册:
-         * 目录答"谁来跑它"(`runToolkitToolDirectly`),旧 registry 仍然答着那些
-         * 还没改口的读点。R4 删旧树时删的是上面那一段,不是这一句。
-         *
-         * `permissionGuard: 'permission-gated'` 那句话在新树里由 `plugin_exec`
-         * 这条效果说出来(§13.3),所以这里不必再传一次。
-         */
-        if (isToolkitEnabled()) {
-          registerPluginToolInCatalog({
-            toolId,
-            definition: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-              ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
-              ...(tool.prompt ? { prompt: tool.prompt } : {}),
-            },
-            execute: (args, hostContext) => executeCorePluginTool(tool, args as any, hostContext as any),
-          })
-        }
+            ...(tool.prompt ? { prompt: tool.prompt } : {}),
+          },
+          execute: (args, hostContext) => executeCorePluginTool(tool, args as any, hostContext as any),
+        })
       },
       subscribeEvent(id, eventType, handler) {
         // 会话事件走 per-session 环形缓冲,全局事件走 globalHandlers —— 两条投递面
@@ -669,15 +632,11 @@ const storeClosers = new WeakMap<PluginState, () => void>()
 export function disposePlugin(state: PluginState): void {
   disposeCorePluginState(state, {
     /*
-     * R3b:**两侧拆除**。core 按注册过的工具 id 逐个调这个口,所以把"两边都摘"
-     * 收在这一处,注册表足迹与目录足迹不可能漂开(`builtin-teardown.test.ts` 钉的
-     * 就是"停用之后一个字都不剩")。目录没建起来时后一句返回 false,无害。
+     * core 按注册过的工具 id 逐个调这个口(`builtin-teardown.test.ts` 钉的就是
+     * "停用之后一个字都不剩")。R4b 之后只剩目录一侧,不存在"两侧漂开"这种
+     * 失败模式了。目录没建起来时返回 false,无害。
      */
-    unregisterTool: (toolId: string) => {
-      const removed = unregisterToolInRegistry(toolId)
-      const removedFromCatalog = isToolkitEnabled() && unregisterPluginToolFromCatalog(toolId)
-      return removed || removedFromCatalog
-    },
+    unregisterTool: (toolId: string) => unregisterPluginToolFromCatalog(toolId),
   })
   // KV **在 onDispose 回调全部跑完之后**才关 —— 插件在 onDispose 里
   // `api.store.set` 存盘是最自然的收尾写法,提前关掉就是静默丢数据。

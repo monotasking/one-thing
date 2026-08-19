@@ -153,7 +153,6 @@ function contextFor(overrides: Partial<Parameters<typeof executeToolDirectly>[2]
 }
 
 beforeEach(() => {
-  process.env.ONETHING_TOOLKIT = '1'
   harness.enforce.mockReset()
   harness.enforce.mockResolvedValue(undefined)
   harness.callIntercept.mockReset()
@@ -173,7 +172,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  delete process.env.ONETHING_TOOLKIT
   resetToolkitCatalogForTests()
   vi.clearAllMocks()
 })

@@ -38,10 +38,9 @@ export interface DeriveGuardOptions {
   /**
    * 这只工具跑在别处(远程工具、将来的 `ExternalTool`)。
    *
-   * 五个值里 `external` 是唯一**推不出来**的那个:它说的不是"这次调用会产生什么
-   * 效果",而是"执行体不在本进程里",而 `spec.effects` 描述的是前者。生产代码里
-   * 今天没有任何一只工具是 `external`(全仓只有测试在用),所以这里把它留成一个
-   * 显式的开关,而不是编一条假的推导规则。
+   * R4b 之前 `external` 是五个值里唯一推不出来的那个。现在 `external-agent`
+   * 这条效果把它说了出来(见下面那一句),这个开关因此只剩"宿主知道这只工具
+   * 跑在别处,但它的效果表没说"这一种用法。
    */
   readonly external?: boolean
 }
@@ -53,6 +52,12 @@ export function deriveLegacyPermissionGuard(
   if (options.external) return 'external'
 
   const effects = spec.effects
+  /**
+   * R4b:`external-agent` 是唯一一条**推得出** `external` 的效果 —— 它说的正是
+   * "执行体不在本进程里"。所以那个"推不出来"的旧注解从此只对 `options.external`
+   * 那条显式开关成立。
+   */
+  if (effects.includes('external-agent')) return 'external'
   // 零效果 = 旧的 `safe`。time 就是这一格。
   if (effects.length === 0) return 'safe'
 

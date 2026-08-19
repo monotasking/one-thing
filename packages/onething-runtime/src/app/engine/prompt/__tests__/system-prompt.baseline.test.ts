@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { z } from 'zod'
-import { Tool } from '@onething/runtime/tools'
-import { EDIT_TOOL_PROMPT } from '../../../../tools/builtin/edit.js'
-import { VARIABLE_TOOL_PROMPT } from '../../../../tools/builtin/variable.js'
-import { WRITE_TOOL_PROMPT } from '../../../../tools/builtin/write.js'
-import { registerTool, unregisterTool } from '../../../tools/registry.js'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/core/toolkit'
+import type { CoreToolPromptContribution } from '@onething/core/engine'
+import type { Result, ToolSpec } from '@onething/core/toolkit'
+import {
+  configureToolkitCatalog,
+  EDIT_TOOL_PROMPT,
+  VARIABLE_TOOL_PROMPT,
+  WRITE_TOOL_PROMPT,
+} from '@onething/runtime/toolkit'
 import type { BuildPromptContextOptions, PromptRequestMessage } from '../system-prompt.js'
 import { buildPrompt } from '../index.js'
 
@@ -35,12 +38,38 @@ function baseOptions(overrides: Partial<BuildPromptContextOptions> = {}): BuildP
 }
 
 /**
- * The prompt a tool brings along is read off the **registry** for the tools on
- * the turn's surface (`turnFragments`). The baseline registers stand-ins that
- * carry the real declarations of the builtin tools, so the snapshot shows what
- * the desktop sends without dragging the whole builtin barrel (and its host
+ * The prompt a tool brings along is read off the **catalog** for the tools on
+ * the turn's surface (`toolkitPromptSource`). The baseline registers stand-ins
+ * that carry the real declarations of the builtin tools, so the snapshot shows
+ * what the desktop sends without dragging the whole catalog (and its host
  * adapters) into this test.
  */
+class PromptCarrierTool extends ToolkitTool<Record<string, never>, undefined> {
+  readonly spec: ToolSpec
+
+  constructor(id: string, prompt: CoreToolPromptContribution) {
+    super()
+    this.spec = {
+      id,
+      title: id,
+      description: `${id} stand-in`,
+      input: { type: 'object', properties: {} },
+      effects: [],
+      presentation: { kind: 'text', shell: 'default' },
+      concurrency: 'parallel',
+      prompt,
+    }
+  }
+
+  async plan(): Promise<Intent<undefined>> {
+    return Intent.none(undefined)
+  }
+
+  async apply(): Promise<Result> {
+    return { content: [{ type: 'text', text: '' }] }
+  }
+}
+
 const PROMPT_CARRIERS = [
   { id: 'edit', prompt: EDIT_TOOL_PROMPT },
   { id: 'write', prompt: WRITE_TOOL_PROMPT },
@@ -50,22 +79,13 @@ const PROMPT_CARRIERS = [
 beforeAll(() => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-06-09T12:00:00Z'))
-  for (const { id, prompt } of PROMPT_CARRIERS) {
-    registerTool(Tool.define(id, {
-      name: id,
-      description: `${id} stand-in`,
-      category: 'builtin',
-      parameters: z.object({}),
-      prompt,
-      async execute() {
-        return { title: id, output: '', metadata: {} }
-      },
-    }))
-  }
+  const catalog = new Catalog()
+  for (const { id, prompt } of PROMPT_CARRIERS) catalog.register(new PromptCarrierTool(id, prompt))
+  configureToolkitCatalog(catalog)
 })
 afterAll(() => {
   vi.useRealTimers()
-  for (const { id } of PROMPT_CARRIERS) unregisterTool(id)
+  configureToolkitCatalog(undefined)
 })
 
 beforeEach(() => {

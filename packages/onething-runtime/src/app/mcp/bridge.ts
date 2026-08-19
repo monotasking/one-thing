@@ -7,8 +7,7 @@
 
 import { MCPManager } from './manager.js'
 import type { MCPToolInfo, MCPToolCallResult } from './types.js'
-import type { ToolDefinition } from '../tools/types.js'
-import { unregisterTool, getAllTools } from '../tools/registry.js'
+import type { ToolDefinition } from '@shared/ipc.js'
 import { getMCPToolsCatalogPath } from '../stores/paths.js'
 import { z } from 'zod'
 import { type JsonObject, type JsonValue } from '@onething/core'
@@ -163,16 +162,16 @@ export function getMCPToolsForAI(
 }
 
 /**
- * Register all MCP tools with the tool registry
- * This allows them to be managed alongside built-in tools
+ * MCP 连接状态变了之后的收尾。
+ *
+ * R4b:这里原本还做一件事 —— 拿旧 registry 的全表算出「哪些陈旧的 MCP 条目要
+ * 摘」再逐个 `unregisterTool`。那是**旧 registry 对旧 registry 的维护读**,随
+ * 旧树一起删除;目录那一侧由 `app/toolkit/mcp-catalog.ts` 的幂等 diff 管着
+ * (`syncMcpToolsIntoCatalog` / `refreshMcpToolsInCatalog`)。剩下的两件事与注册表
+ * 无关:刷新 flat id 的映射表(每次执行都要解析它),以及 router 档下生成目录文件。
  */
 export async function registerMCPTools(): Promise<void> {
-  const existingTools = getAllTools()
-  const plan = coreMCPBridgeRuntime.planToolRegistration(existingTools)
-
-  for (const toolId of plan.toolIdsToUnregister) {
-    unregisterTool(toolId)
-  }
+  const plan = coreMCPBridgeRuntime.planToolRegistration([])
 
   if (plan.mode === 'none') {
     return

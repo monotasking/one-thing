@@ -1,0 +1,164 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: bash > boundary: a non-zero exit appends the same <bash_metadata> block > model text 1`] = `
+"boom
+
+
+<bash_metadata>
+Exit code: 2
+</bash_metadata>"
+`;
+
+exports[`golden: bash > boundary: output truncation appends the note and spills to a file > truncation tail 1`] = `
+"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+
+<bash_metadata>
+Output truncated (showing last 30000 of 48400 bytes).
+Full output saved to: <path>
+</bash_metadata>"
+`;
+
+exports[`golden: bash > boundary: run_in_background returns the same handle text > handle text 1`] = `
+"Started background job job-parity-1 (unknown).
+
+<bash_metadata>
+Background job: job-parity-1 (pid 4242). Read new output: tail the log file; stop: kill -- -4242
+Log file: /tmp/job-parity-1.log
+</bash_metadata>"
+`;
+
+exports[`golden: bash > error: a forbidden command fails > forbidden command 1`] = `"Command attempts to remove root or home directory"`;
+
+exports[`golden: bash > error: a timeout appends the <bash_metadata> block and exit -1 > metadata 1`] = `
+{
+  "command": "sleep 100",
+  "exitCode": -1,
+  "output": "starting
+
+
+<bash_metadata>
+Command timed out after 50 ms
+</bash_metadata>",
+  "workingDirectory": "<DIR>",
+}
+`;
+
+exports[`golden: bash > error: a timeout appends the <bash_metadata> block and exit -1 > model text 1`] = `
+"starting
+
+
+<bash_metadata>
+Command timed out after 50 ms
+</bash_metadata>"
+`;
+
+exports[`golden: bash > error: illegal arguments reuse the tool-specific wording > validation wording 1`] = `
+"Invalid bash parameters:
+- command: Too small: expected string to have >=1 characters"
+`;
+
+exports[`golden: bash > normal: a successful command — output, title and metadata > annotation titles 1`] = `
+[
+  "echo hello",
+  "echo hello",
+]
+`;
+
+exports[`golden: bash > normal: a successful command — output, title and metadata > metadata 1`] = `
+{
+  "command": "echo hello",
+  "exitCode": 0,
+  "output": "hello
+",
+  "workingDirectory": "<DIR>",
+}
+`;
+
+exports[`golden: bash > normal: a successful command — output, title and metadata > preview 1`] = `
+{
+  "metadata": {
+    "classification": "allow",
+    "command": "echo hello",
+    "workingDirectory": "<DIR>",
+  },
+  "title": "echo hello",
+}
+`;
+
+exports[`golden: bash > permission input: a cd outside the sandbox reports external_directory > effects 1`] = `
+[
+  {
+    "barrier": true,
+    "external": true,
+    "kind": "external_directory",
+    "metadata": {
+      "boundary": "<DIR>",
+      "command": "cd /outside/project && find . -type f",
+      "directories": [
+        "/outside/project",
+      ],
+      "reason": "Command changes directory outside the current work directory list",
+    },
+    "resources": [
+      "/outside/project",
+      "/outside/project/*",
+    ],
+  },
+]
+`;
+
+exports[`golden: bash > permission input: an ask-classified command reports a bash effect > effects 1`] = `
+[
+  {
+    "barrier": true,
+    "kind": "bash",
+    "metadata": {
+      "command": "rm -rf ./dist",
+      "commands": [
+        {
+          "args": [
+            "-rf",
+            "./dist",
+          ],
+          "decision": "ask",
+          "head": "rm",
+          "pattern": "rm *",
+          "reason": "Command "rm" may mutate files, processes, or network state",
+          "text": "rm -rf ./dist",
+        },
+      ],
+      "patterns": [
+        "rm *",
+      ],
+      "reason": "Command "rm" may mutate files, processes, or network state",
+      "workingDirectory": "<DIR>",
+    },
+    "resources": [
+      "rm *",
+    ],
+  },
+]
+`;
+
+exports[`golden: bash > permission input: an ask-classified command reports a bash effect > preview 1`] = `
+{
+  "metadata": {
+    "classification": "ask",
+    "command": "rm -rf ./dist",
+    "reason": "Command "rm" may mutate files, processes, or network state",
+    "workingDirectory": "<DIR>",
+  },
+  "title": "rm -rf ./dist",
+}
+`;
+
+exports[`golden: bash > spec 钉住 > description 1`] = `
+"Execute a bash command in the session work directory; returns stdout+stderr, truncated to the last 2000 lines / 30KB (full output is saved to a temp file when truncated). Also the way to find files and search contents (rg / fd / find / grep).
+
+Long-running services: set run_in_background: true — the call returns at once with a job id, initial output, the log file path and pid. Read the log later with read or \`tail\`; stop it with \`kill -- -<pid>\`.
+
+To change the work directory for bash and file tools, use variable { action: "set", name: "workdir", value: <directory> } first."
+`;

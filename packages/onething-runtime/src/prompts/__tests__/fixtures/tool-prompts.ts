@@ -2,9 +2,11 @@ import {
 	promptFragmentsFromToolContribution,
 	type CoreToolPromptContribution,
 } from "@onething/core/engine";
-import { EDIT_TOOL_PROMPT } from "../../../tools/builtin/edit.js";
-import { WRITE_TOOL_PROMPT } from "../../../tools/builtin/write.js";
-import { VARIABLE_TOOL_PROMPT } from "../../../tools/builtin/variable.js";
+import {
+	EDIT_TOOL_PROMPT,
+	VARIABLE_TOOL_PROMPT,
+	WRITE_TOOL_PROMPT,
+} from "../../../toolkit/index.js";
 import { defaultOnethingPromptComposer } from "../../builder.js";
 import { PromptComposer, StaticPromptSource } from "../../composer.js";
 

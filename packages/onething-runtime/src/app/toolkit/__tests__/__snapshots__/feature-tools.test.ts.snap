@@ -1,0 +1,198 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: feature_inspect > spec 钉住,且无效果(纯读) > description 1`] = `
+"List every mounted feature: its registrations, its live cordis effect labels, and whether it is built-in or was mounted in this session.
+Also lists what sits in <store>/features-dev/ that could be mounted but is not."
+`;
+
+exports[`golden: feature_inspect > 正常:全景文本钉住(已卸干净,动态计数为 0) > model text 1`] = `
+"已挂载的 feature(0 个,顺序即装配顺序):
+
+可挂载的候选(<DIR>/features-dev 下有 feature.mjs 但当前没挂):
+  - <id>    → feature_mount({ id: "<id>" })
+  - id-mismatch    → feature_mount({ id: "id-mismatch" })
+
+契约与起步:
+  - 新建 feature = 在 <DIR>/features-dev/<id>/ 下写 feature.mjs(目录用文件工具创建,本工具不代建),然后 feature_mount({ id })。
+  - 模块默认导出 { id, mount(ctx) };ctx.registerRpcDomain(router, handlers) / ctx.registerDisposer(fn) 都返回 disposer。
+  - 当前边界:feature 只能加后端能力(RPC 域、用 disposer 持有的资源);**改 UI(样式/面板/组件)与注册新工具暂不可用**。
+  - 起步模板(把 <id> 换掉即可):
+      // <DIR>/features-dev/<id>/feature.mjs
+      export default {
+        id: '<id>',
+        mount(ctx) {
+          // 任何副作用都要配一个注销:
+          const timer = setInterval(() => {}, 60_000)
+          ctx.registerDisposer(() => clearInterval(timer))
+      
+          // 也可以注册一个 RPC 域(router 是纯数据,不用 import 任何东西):
+          // ctx.registerRpcDomain(
+          //   { domain: 'demo', channels: { ping: 'demo:ping' }, methods: ['ping'] },
+          //   { async ping(input) { return { pong: input.value } } },
+          // )
+        },
+      }"
+`;
+
+exports[`golden: feature_inspect > 正常:全景文本钉住(已卸干净,动态计数为 0) > title 1`] = `"feature 全景:0 挂载 / 0 动态 / 2 候选"`;
+
+exports[`golden: feature_mount > spec 钉住 > description 1`] = `
+"Mount a feature into the running app from <store>/features-dev/<id>/feature.mjs — it takes effect immediately, no restart.
+The module must default-export { id, mount(ctx) }. ctx offers registerRpcDomain(router, handlers) and registerDisposer(fn), both returning a disposer.
+Mounting executes the code you wrote, so every call asks the user for permission and that answer can never be remembered.
+To change a mounted feature: edit the file, then mount again after feature_unmount — the module cache is bypassed, so you always get the code currently on disk."
+`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:边界:entryPath 给了但是空的 > model text 1`] = `
+"entryPath 给了但是空的。
+下一步:要么省略 entryPath(默认取 feature.mjs),要么给一个相对 <DIR>/features-dev/demo 的文件名。"
+`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:边界:entryPath 给了但是空的 > title 1`] = `"挂载失败:demo"`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:边界:entryPath 越界 > model text 1`] = `
+"entryPath 落在 <DIR>/features-dev/demo 之外(解析结果 <DIR>/features-dev/other/feature.mjs),拒绝加载。
+feature_mount 只从这个 feature 自己的目录里取代码 —— 挂载等于执行任意代码,
+所以加载面是一个白名单目录,不是任意绝对路径。
+下一步:把入口文件放进 <DIR>/features-dev/demo,再用相对文件名调用,例如 entryPath: "index.mjs"。"
+`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:边界:entryPath 越界 > title 1`] = `"挂载失败:demo"`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:边界:非法 id(含分隔符) > model text 1`] = `
+"feature id "a/b" 不合法:它同时是 <DIR>/features-dev 下的目录名,
+所以只接受字母/数字开头、其余为字母数字与 . _ - 的单段名字(不能含 / 或 ..)。
+下一步:换一个合法 id 再调 feature_mount,例如 "demo-echo"。"
+`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:边界:非法 id(含分隔符) > title 1`] = `"挂载失败:a/b"`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:错误:内置 id 被占用 > model text 1`] = `
+"<DIR>/features-dev/self-evolution 不存在。
+
+下一步(工具不会替你建目录 —— 目录不在,说明这个宿主还没开过这件事,这条信息不该被凭空抹掉):
+  1. bash: mkdir -p "<DIR>/features-dev/self-evolution"
+  2. write: <DIR>/features-dev/self-evolution/feature.mjs,内容形如
+
+// <DIR>/features-dev/self-evolution/feature.mjs
+export default {
+  id: 'self-evolution',
+  mount(ctx) {
+    // 任何副作用都要配一个注销:
+    const timer = setInterval(() => {}, 60_000)
+    ctx.registerDisposer(() => clearInterval(timer))
+
+    // 也可以注册一个 RPC 域(router 是纯数据,不用 import 任何东西):
+    // ctx.registerRpcDomain(
+    //   { domain: 'demo', channels: { ping: 'demo:ping' }, methods: ['ping'] },
+    //   { async ping(input) { return { pong: input.value } } },
+    // )
+  },
+}
+
+  3. 再调 feature_mount({ id: "self-evolution" })。"
+`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:错误:内置 id 被占用 > title 1`] = `"挂载失败:self-evolution"`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:错误:目录不存在 > model text 1`] = `
+"<DIR>/features-dev/never-created 不存在。
+
+下一步(工具不会替你建目录 —— 目录不在,说明这个宿主还没开过这件事,这条信息不该被凭空抹掉):
+  1. bash: mkdir -p "<DIR>/features-dev/never-created"
+  2. write: <DIR>/features-dev/never-created/feature.mjs,内容形如
+
+// <DIR>/features-dev/never-created/feature.mjs
+export default {
+  id: 'never-created',
+  mount(ctx) {
+    // 任何副作用都要配一个注销:
+    const timer = setInterval(() => {}, 60_000)
+    ctx.registerDisposer(() => clearInterval(timer))
+
+    // 也可以注册一个 RPC 域(router 是纯数据,不用 import 任何东西):
+    // ctx.registerRpcDomain(
+    //   { domain: 'demo', channels: { ping: 'demo:ping' }, methods: ['ping'] },
+    //   { async ping(input) { return { pong: input.value } } },
+    // )
+  },
+}
+
+  3. 再调 feature_mount({ id: "never-created" })。"
+`;
+
+exports[`golden: feature_mount > 模型文本与渲染信息钉住:错误:目录不存在 > title 1`] = `"挂载失败:never-created"`;
+
+exports[`golden: feature_mount > 正常:真的挂上 > model text 1`] = `
+"feature "<id>" 已挂载并立即生效(第 1 次)。
+入口:<DIR>/features-dev/<id>/feature.mjs
+注册项:rpcDomain 0、disposer 1
+
+改代码后重新生效:feature_unmount({ id: "<id>" }) → 改文件 → feature_mount({ id: "<id>" })。"
+`;
+
+exports[`golden: feature_mount > 边界:同一个 id 挂两次被拒绝(挂载表不做后来者覆盖) > model text 1`] = `
+"feature "<id>" 已经挂载(入口 <DIR>/features-dev/<id>/feature.mjs)。
+同一个 id 两份实现同时在线永远是接线 bug,所以挂载表直接拒绝,而不是后来者覆盖。
+下一步:先 feature_unmount({ id: "<id>" }),再 feature_mount —— 重挂会重新读盘,拿到的是你刚改过的代码。"
+`;
+
+exports[`golden: feature_mount > 边界:目录在但入口文件不在 > model text 1`] = `
+"目录 <DIR>/features-dev/empty-dir 在,但入口文件 <DIR>/features-dev/empty-dir/feature.mjs 不在。
+
+下一步:write 这个文件,内容形如
+
+// <DIR>/features-dev/empty-dir/feature.mjs
+export default {
+  id: 'empty-dir',
+  mount(ctx) {
+    // 任何副作用都要配一个注销:
+    const timer = setInterval(() => {}, 60_000)
+    ctx.registerDisposer(() => clearInterval(timer))
+
+    // 也可以注册一个 RPC 域(router 是纯数据,不用 import 任何东西):
+    // ctx.registerRpcDomain(
+    //   { domain: 'demo', channels: { ping: 'demo:ping' }, methods: ['ping'] },
+    //   { async ping(input) { return { pong: input.value } } },
+    // )
+  },
+}
+
+然后重调 feature_mount({ id: "empty-dir" })。"
+`;
+
+exports[`golden: feature_mount > 错误:模块声明的 id 与调用的 id 对不上 > model text 1`] = `
+"模块声明的 id 是 "other",但 feature_mount 收到的是 "id-mismatch"。
+两者必须一致 —— 否则你会「卸载 A 却发现 B 还在」,而挂载表按模块声明的 id 记账。
+下一步:改一处让它们对上(把模块里的 id 改成 "id-mismatch",或用 feature_mount({ id: "other" }) 调用)。"
+`;
+
+exports[`golden: feature_unmount > spec 钉住,且无效果(卸载不跑模型的代码) > description 1`] = `
+"Unmount a feature that feature_mount put in place. Every registration it made is unwound in reverse order.
+Built-in features (the ones shipped with the app) cannot be unmounted — only what you mounted in this session."
+`;
+
+exports[`golden: feature_unmount > 正常:卸载掉刚挂上的那个 > model text 1`] = `
+"feature "<id>" 已卸载,它的注册项按逆序全部解绕。
+释放:rpcDomain 0、disposer 1
+
+下一步:改完代码直接 feature_mount({ id: "<id>" }) 即可重新挂上 —— 会重新读盘。"
+`;
+
+exports[`golden: feature_unmount > 边界:内置 feature 不归它管 > model text 1`] = `
+"没有名为 "self-evolution" 的动态 feature —— 它没挂过,或者已经卸过了(重复卸载不是错误)。
+
+当前动态挂载的:
+  - <id>
+
+下一步:feature_inspect() 看全景(含内置、动态、以及 features-dev 里可挂而未挂的候选)。"
+`;
+
+exports[`golden: feature_unmount > 边界:没挂过的 id(重复卸载不是错误) > model text 1`] = `
+"没有名为 "never-mounted" 的动态 feature —— 它没挂过,或者已经卸过了(重复卸载不是错误)。
+
+当前动态挂载的:
+  - <id>
+
+下一步:feature_inspect() 看全景(含内置、动态、以及 features-dev 里可挂而未挂的候选)。"
+`;

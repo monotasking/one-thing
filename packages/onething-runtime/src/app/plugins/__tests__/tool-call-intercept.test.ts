@@ -8,11 +8,10 @@
  *
  * 两句话都要有测试钉住,少了后一句,一个坏插件就能永久挡死所有工具。
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CORE_PLUGIN_FAILURE_THRESHOLD, PLUGIN_TOOL_CALL_INTERCEPT_SURFACE } from '@onething/core/plugins'
 
-import { Tool, registerTool, unregisterTool } from '../../tools/index.js'
 import {
   clearPluginRuntimeHealth,
   getPluginRuntimeHealth,
@@ -32,34 +31,26 @@ const run = (input: unknown, toolName = TOOL) =>
   runPluginToolCallIntercept({ sessionId: 's1', toolName, toolCallId: 'call-1', input })
 
 /**
- * 参数 schema 用一个 `safeParse` 替身,而不是真 zod:装配层的测试**不许 import
- * 产品层**(boundary 那条 "plugin logic stays out of the host assembly tree"),
- * 而 zod 正是产品层的依赖。替身覆盖的是这里真正要证的东西 —— **校验口确实被
- * 接上了、失败确实转成 block**;"真 zod 会怎么判"由产品层那份
- * (`packages/onething-runtime/src/tools/__tests__/registry.test.ts` 的
- * validateToolArgs 用例)负责。
+ * R4b:校验口的读源从旧注册表的 `validateToolArgs` 换成**目录 + `ZodValidator`**。
+ *
+ * 目录与校验器都住在产品层(`@onething/runtime/toolkit`),而装配层的测试**不许
+ * import 产品层**(boundary 的 "plugin logic stays out of the host assembly tree"),
+ * 所以这里把那个模块整个替身掉 —— 与它换源之前用一个 `safeParse` 替身是同一条
+ * 理由。替身覆盖的正是这里要证的东西:**校验口确实被接上了、失败确实转成 block**;
+ * "真 zod 会怎么判"由产品层那份契约测试负责。
  */
-const commandSchema = {
-  safeParse(input: unknown) {
-    return typeof (input as { command?: unknown })?.command === 'string'
-      ? { success: true as const, data: input }
-      : { success: false as const, error: new Error('command is required') }
+vi.mock('@onething/runtime/toolkit', () => ({
+  getToolkitCatalog: () => ({
+    get: (id: string) => (id === TOOL ? { spec: { input: { type: 'object' } } } : undefined),
+  }),
+  ZodValidator: class {
+    parse(_schema: unknown, input: unknown) {
+      return typeof (input as { command?: unknown })?.command === 'string'
+        ? { ok: true as const, value: input }
+        : { ok: false as const, message: 'Invalid arguments: command is required' }
+    }
   },
-}
-
-beforeAll(() => {
-  registerTool(Tool.define(TOOL, {
-    name: 'N4 probe',
-    description: 'schema probe for the tool-call intercept chain',
-    category: 'builtin',
-    parameters: commandSchema as never,
-    permissionGuard: 'safe',
-    async execute(args: { command: string }) {
-      return { title: 'probe', output: args.command, metadata: {} }
-    },
-  }) as never)
-  return () => { unregisterTool(TOOL) }
-})
+}))
 
 beforeEach(() => {
   resetPluginToolCallIntercept()

@@ -77,6 +77,15 @@ export {
   syncMcpToolsIntoCatalog,
 } from './mcp-catalog.js'
 
+export { toolkitPromptFragments, toolkitPromptSource } from './prompt-source.js'
+
+export type {
+  ToolExecutionContext,
+  ToolExecutionResult,
+  ToolMetadataUpdate,
+  ToolPartialResultUpdate,
+} from './execution-types.js'
+
 export {
   toolDefinitionFromToolkitTool,
   toolDefinitionsFromCatalog,

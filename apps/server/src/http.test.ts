@@ -2396,8 +2396,14 @@ describe('createOnethingHttpServer', () => {
 
     const tools = await fetchJson(`${baseUrl(server)}/api/tools`, { headers: aliceHeaders })
     expect(tools.success).toBe(true)
-    // glob / grep 于 2026-08-18 随工具梳理摘掉(找文件与找内容走 bash);web 只读档只剩 read。
-    expect(tools.tools.map((tool: { id: string }) => tool.id)).toEqual(['read'])
+    /*
+     * R4b(§15.6 ⑧):假路那份本地注册表(只装一只 read)换成了
+     * `createReadonlyCatalog()` —— 只读档的真实内容是四只零本地副作用的工具。
+     * **执行面没有变宽**:`serverReadOnlyToolIds` 白名单仍然只有 `read`,下面
+     * 那几条断言逐条钉着这件事。
+     */
+    expect(tools.tools.map((tool: { id: string }) => tool.id).sort())
+      .toEqual(['read', 'time', 'web_open', 'web_search'])
 
     const readResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
       method: 'POST',

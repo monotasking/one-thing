@@ -23,7 +23,8 @@ import type { MarkdownSegment } from '@/composables/parseStreamingMarkdown'
 // v5: collab <card>/<file> inline tags render as .collab-tag spans.
 // v6: @mention markers render as neutral .md-mention spans (im-message §A).
 // v7: mention marker field separator | → U+E001 (裸竖线在表格里被当列分隔线切碎)。
-const CACHE_DB_VERSION = 7
+// v8: 消息引用打标 —— link_open / code_inline 产出 .msg-ref 锚点与 data-ref。
+const CACHE_DB_VERSION = 8
 const DB_NAME = 'onething-markdown-cache'
 const STORE_NAME = 'md'
 

@@ -1,15 +1,15 @@
 /**
- * R3a —— 三档目录的**等价测试**(设计文档 §8 R3 的退出判据之一)。
+ * 三档目录的清单(设计文档 §13.5)。
  *
- * 新目录(`app/toolkit/catalog.ts`)与旧三个 barrel
- * (`app/tools/builtin/{index,headless,readonly}.ts`)的 id 集合逐一相等。旧那边把
- * `registerTool` mock 掉收集 id —— 与 `app/tools/builtin/__tests__/tier-registration.test.ts`
- * 同一种做法(那是这张清单今天唯一的护栏)。
+ * R3a 时这里是**等价测试**:与旧三个 barrel
+ * (`app/tools/builtin/{index,headless,readonly}.ts`)的 id 集合逐一相等。R4b 把
+ * 那三个 barrel 删了,于是三档各自的 id 清单**写死在这里** —— 同一份答案,只是
+ * 判据从"和旧 barrel 一样"变成"就是这一份"。改一档就必须改这张表,那正是它存在
+ * 的理由(旧路那张清单也只有这一道护栏)。
  *
- * `feature_*` 不在任何一档里:它们在旧树里也不在那三个 barrel 里(由
- * self-evolution feature 自己注册)。它们的门单独测。
+ * `feature_*` 不在任何一档里(由 self-evolution feature 自己注册),门单独测。
  */
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Catalog } from '@onething/core/toolkit'
 import {
   createDesktopCatalog,
@@ -19,52 +19,33 @@ import {
   registerFeatureTools,
 } from '../catalog.js'
 
-const registered = vi.hoisted(() => ({ ids: [] as string[] }))
+/** 桌面档(full):二十只全在。 */
+const FULL_IDS = [
+  'ask_user', 'bash', 'board', 'edit', 'goal', 'history', 'notebook', 'practice',
+  'radio', 'read', 'send_message', 'task', 'time', 'variable', 'web_open',
+  'web_search', 'write',
+].sort()
 
-vi.mock('../../tools/registry.js', () => ({
-  registerTool: (tool: { id: string }) => {
-    registered.ids.push(tool.id)
-  },
-  toolPromptSource: { name: 'tools', collect: () => [] },
-}))
+/** 无头档:去掉要人在场 / 要桌面外设的那几只(协作三件套仍在)。 */
+const HEADLESS_IDS = [
+  'bash', 'board', 'edit', 'history', 'read', 'send_message', 'time', 'variable',
+  'web_open', 'web_search', 'write',
+].sort()
 
-function idsFrom(register: () => void): string[] {
-  registered.ids = []
-  register()
-  return [...registered.ids].sort()
-}
+/** 只读档(联网 server 的降级形态):零本地副作用。 */
+const READONLY_IDS = ['read', 'time', 'web_open', 'web_search'].sort()
 
-let legacy: { full: () => void; headless: () => void; readonly: () => void }
-
-// 载入旧三档要把整棵旧工具图拖进来(store、collab、web-search…),开销记在这里。
-beforeAll(async () => {
-  const [full, headless, readonly] = await Promise.all([
-    import('../../tools/builtin/index.js'),
-    import('../../tools/builtin/headless.js'),
-    import('../../tools/builtin/readonly.js'),
-  ])
-  legacy = {
-    full: full.registerBuiltinTools,
-    headless: headless.registerHeadlessBuiltinTools,
-    readonly: readonly.registerReadonlyBuiltinTools,
-  }
-}, 60_000)
-
-describe('三档目录与旧 barrel 逐一相等', () => {
-  beforeEach(() => {
-    registered.ids = []
-  })
-
+describe('三档目录的清单', () => {
   it('full', () => {
-    expect(createDesktopCatalog().all().map(tool => tool.spec.id).sort()).toEqual(idsFrom(legacy.full))
+    expect(createDesktopCatalog().all().map(tool => tool.spec.id).sort()).toEqual(FULL_IDS)
   })
 
   it('headless', () => {
-    expect(createHeadlessCatalog().all().map(tool => tool.spec.id).sort()).toEqual(idsFrom(legacy.headless))
+    expect(createHeadlessCatalog().all().map(tool => tool.spec.id).sort()).toEqual(HEADLESS_IDS)
   })
 
   it('readonly', () => {
-    expect(createReadonlyCatalog().all().map(tool => tool.spec.id).sort()).toEqual(idsFrom(legacy.readonly))
+    expect(createReadonlyCatalog().all().map(tool => tool.spec.id).sort()).toEqual(READONLY_IDS)
   })
 
   it('三档之间的包含关系与旧路一致(readonly ⊂ headless ⊂ full)', () => {
@@ -103,7 +84,7 @@ describe('registerFeatureTools 的宿主档门', () => {
     expect(catalog.has('feature_inspect')).toBe(false)
   })
 
-  it('空目录也拒绝 —— 注册表还没起来时 hasTool("bash") 为 false 的那一格', () => {
+  it('空目录也拒绝 —— 目录还没装上时 catalog.has("bash") 为 false 的那一格', () => {
     expect(registerFeatureTools(new Catalog(), new FeatureToolRuntime()).registered).toBe(false)
   })
 })

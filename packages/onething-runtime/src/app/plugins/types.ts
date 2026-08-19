@@ -33,8 +33,12 @@ import type {
   PluginSettings,
   PluginSource,
 } from '@onething/core/plugins'
-import type { ToolMetadata, ToolContext as CoreToolContext } from '../tools/core/tool.js'
-import type { ToolInfo, ToolInfoAsync } from '../tools/core/tool.js'
+/**
+ * R4b:旧 `Tool.Metadata` 就是 `object`(旧 `tools/tool.ts` 的第 20 行)。旧树
+ * 删掉之后这个别名原样留在这里 —— 它是插件对外契约的一部分(`registerTool` 的
+ * 第二个类型参数),与工具系统内部机制无关。
+ */
+export type ToolMetadata = object
 import type { PluginSkillRootProvider } from '../skills/plugin-roots.js'
 import type {
   PluginPromptContext,

@@ -58,7 +58,8 @@ describe('composition', () => {
     const sections = BUILTIN_PROMPT_FRAGMENTS.filter(f => f.slot === 'section').map(f => f.id)
     expect(sections).toEqual([
       'agent', 'voice', 'runtime-context', 'context-update-convention',
-      'active-project', 'known-projects', 'skills', 'os', 'todo', 'agents-md',
+      'references', 'active-project', 'known-projects', 'skills', 'os', 'todo',
+      'agents-md',
     ])
     const orders = BUILTIN_PROMPT_FRAGMENTS.filter(f => f.slot === 'section').map(f => f.order ?? 0)
     expect([...orders].sort((a, b) => a - b)).toEqual(orders)
@@ -72,7 +73,7 @@ describe('composition', () => {
       BUILTIN_PROMPT_FRAGMENTS.filter(f => f.slot === 'section' && (f.channel ?? 'system') === channel)
         .map(f => f.id)
     expect(byChannel('system')).toEqual([
-      'agent', 'runtime-context', 'context-update-convention', 'os',
+      'agent', 'runtime-context', 'context-update-convention', 'references', 'os',
     ])
     expect(byChannel('turn')).toEqual([
       'voice', 'active-project', 'known-projects', 'skills', 'todo', 'agents-md',

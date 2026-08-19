@@ -1,0 +1,194 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: goal > spec 钉住 > description 1`] = `
+"Declare how your work toward the session's active goal proceeds. While a goal is active, end every reply with one call:
+- continue: keep working; "note" = your next concrete step.
+- complete: the objective is fully satisfied; "reason" (delivery summary) and "evidence" (itemized verification per requirement) are required. The first complete call per goal triggers a mandatory self-check instead of completing — verify each requirement with tools, then call complete again.
+- pause: you need the user; "reason" must state exactly what (a decision, missing input, an external blocker). Never pause because the work is hard, slow or long.
+- get: read the objective, status and remaining budget.
+Creating, resuming and re-budgeting goals belong to the user (/goal)."
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:正常:continue 带 note > metadata 1`] = `
+{
+  "action": "continue",
+  "status": "active",
+}
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:正常:continue 带 note > model text 1`] = `"Continue. Next step: 下一步跑测试"`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:正常:continue 带 note > title 1`] = `"Goal — continuing"`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:正常:get 一个 active 目标 > metadata 1`] = `
+{
+  "action": "get",
+  "status": "active",
+}
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:正常:get 一个 active 目标 > model text 1`] = `
+"objective: 把工具系统搬完
+status: active
+tokens_used: 100
+token_budget: unlimited
+remaining_tokens: 900
+time_used_seconds: 42
+auto_continuations: 2"
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:正常:get 一个 active 目标 > title 1`] = `"Goal active"`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:pause 带 reason > metadata 1`] = `
+{
+  "action": "pause",
+  "status": "paused",
+}
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:pause 带 reason > model text 1`] = `
+"Goal marked paused.
+objective: 把工具系统搬完
+status: paused (需要你拍板 A 还是 B)
+tokens_used: 100
+token_budget: unlimited
+remaining_tokens: 900
+time_used_seconds: 42
+auto_continuations: 2"
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:pause 带 reason > title 1`] = `"Goal paused"`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:没有目标时 continue > metadata 1`] = `
+{
+  "action": "continue",
+}
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:没有目标时 continue > model text 1`] = `"No goal is set for this session."`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:没有目标时 continue > title 1`] = `"No goal"`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:没有目标时 get > metadata 1`] = `
+{
+  "action": "get",
+}
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:没有目标时 get > model text 1`] = `"No goal is set for this session."`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:没有目标时 get > title 1`] = `"No goal"`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:目标不是 active 时 continue > metadata 1`] = `
+{
+  "action": "continue",
+  "status": "paused",
+}
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:目标不是 active 时 continue > model text 1`] = `
+"The goal is paused, not active — do not keep working toward it.
+objective: 把工具系统搬完
+status: paused (等用户)
+tokens_used: 100
+token_budget: unlimited
+remaining_tokens: 900
+time_used_seconds: 42
+auto_continuations: 2"
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:目标不是 active 时 continue > title 1`] = `"Goal paused"`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:第一次 complete 触发自检 > metadata 1`] = `
+{
+  "action": "complete",
+  "status": "active",
+}
+`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:第一次 complete 触发自检 > model text 1`] = `"Not completed yet. Before completion is accepted: re-check the objective requirement by requirement against your evidence, and verify with tools where possible (run it, read it, query it). If everything genuinely holds, call complete again to confirm; if anything is unverified, keep working instead."`;
+
+exports[`golden: goal > 模型文本与渲染信息钉住:边界:第一次 complete 触发自检 > title 1`] = `"Goal — self-check required"`;
+
+exports[`golden: goal > 边界:第二次 complete 真的完成(自检通过之后) > second complete 1`] = `
+"Goal marked complete.
+objective: 把工具系统搬完
+status: complete (交付了)
+tokens_used: 100
+token_budget: unlimited
+remaining_tokens: 900
+time_used_seconds: 42
+auto_continuations: 2"
+`;
+
+exports[`golden: goal > 错误:complete 缺 reason > complete without reason 1`] = `"complete requires "reason": what was delivered and what evidence verifies it"`;
+
+exports[`golden: task > spec 钉住(描述 / schema / 并发档) > description 1`] = `
+"Dispatch self-contained work to a BACKGROUND session and keep going. It returns immediately with the new session id — it does NOT wait; when that session finishes (done, failed or stopped) its full closing text is delivered back into THIS conversation on its own, so never poll and never promise to "check back".
+
+The task session is a real session (visible in the session list, the user can open or take it over), starts empty (sees only your prompt), inherits this session's working directory (unless overridden), model and permission mode, and has the normal tools. It may stop on a permission card nobody is watching — prefer work that runs under this session's existing permissions. At most 4 tasks per session run at once (a further dispatch is refused, not queued); a task session may NOT dispatch tasks of its own.
+
+Use it for work that would otherwise eat this conversation (a codebase survey, a long build-and-fix loop, a batch of independent edits) — not to ask a question you could answer here. To stop one, open that session and stop it there."
+`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:正常:带 description / workingDirectory / model > metadata 1`] = `
+{
+  "running": 1,
+  "taskSessionId": "sess-9",
+}
+`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:正常:带 description / workingDirectory / model > model text 1`] = `
+"Task started in session sess-9.
+Working directory: /tmp/x
+Running background tasks for this session: 1/4.
+It will report back here on its own when it finishes — do not wait for it, and do not poll."
+`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:正常:带 description / workingDirectory / model > title 1`] = `"调研"`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:正常:派出去了 > metadata 1`] = `
+{
+  "running": 1,
+  "taskSessionId": "sess-9",
+}
+`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:正常:派出去了 > model text 1`] = `
+"Task started in session sess-9.
+Working directory: /tmp/x
+Running background tasks for this session: 1/4.
+It will report back here on its own when it finishes — do not wait for it, and do not poll."
+`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:正常:派出去了 > title 1`] = `"Task started"`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:边界:空任务书 > metadata 1`] = `
+{
+  "rejected": true,
+}
+`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:边界:空任务书 > model text 1`] = `"Rejected: prompt is empty. A task session starts with nothing but this prompt — write the whole brief."`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:边界:空任务书 > title 1`] = `"Task rejected"`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:错误:工作会话禁止套娃 > metadata 1`] = `
+{
+  "rejected": true,
+}
+`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:错误:工作会话禁止套娃 > model text 1`] = `"Rejected: nested dispatch. This session IS a background task session, and a task session may not dispatch further tasks. Do the work here, or report back and let the session that dispatched you decide."`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:错误:工作会话禁止套娃 > title 1`] = `"Task rejected"`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:错误:并发满了 > metadata 1`] = `
+{
+  "rejected": true,
+}
+`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:错误:并发满了 > model text 1`] = `"Rejected: too many background tasks already running for this session (limit 4). Wait for one to report back before dispatching another."`;
+
+exports[`golden: task > 模型文本与渲染信息钉住:错误:并发满了 > title 1`] = `"Task rejected"`;

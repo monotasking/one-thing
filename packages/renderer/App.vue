@@ -185,6 +185,13 @@ import { useBrowserStore } from '@/stores/browser'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { platformApi } from '@/platform'
+import { toast } from '@/composables/useToast'
+import {
+  isImagePath,
+  setReferenceHost,
+  type ReferenceFilePosition,
+  type ReferenceHost,
+} from '@/references'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import {
   pluginPanelHasPlacement,
@@ -740,11 +747,60 @@ async function openOutlineInRightWorkbench() {
   rightWorkbenchRef.value?.openWorkbenchTab('outline')
 }
 
-async function openFileInRightWorkbench(filePath: string) {
+async function openFileInRightWorkbench(filePath: string, position?: ReferenceFilePosition) {
   if (!filePath) return
   inspectorOpen.value = true
   await nextTick()
-  await rightWorkbenchRef.value?.openFile(filePath)
+  await rightWorkbenchRef.value?.openFile(filePath, position)
+}
+
+/**
+ * 消息引用的宿主(docs/design/message-references-2026-08.md §3)。
+ *
+ * `references/` 不认识 workbench / 浏览器 store / platformApi —— 它只有一张动作
+ * 表,宿主在这里把动作接到**既有**的入口上。多宿主差异也收在这里:web 没有内置
+ * 浏览器,`openUrl` 直接退化成新标签页。
+ */
+function createReferenceHost(): ReferenceHost {
+  return {
+    openFile: (path, position) => openFileInRightWorkbench(path, position),
+    openUrl: async (url) => {
+      if (!platformApi.capabilities.embeddedBrowser) {
+        await platformApi.openExternal(url)
+        return
+      }
+      // 每次点开新 tab 并前置:点消息里的链接是"看一眼",不该覆盖正在看的页面。
+      await browserStore.openTab(url)
+      inspectorOpen.value = true
+      await nextTick()
+      rightWorkbenchRef.value?.openWorkbenchTab('browser')
+    },
+    openExternal: url => void platformApi.openExternal(url),
+    revealPath: path => void platformApi.revealPath(path),
+    openFolder: path => openFolderInRightWorkbench(path),
+    openImage: (path, fileUrl) => void platformApi.openImagePreview(fileUrl, path.split('/').pop() || path),
+    statPath: async (path) => {
+      const res = await platformApi.statPath(path).catch(() => null)
+      if (!res?.success) return { exists: false, isDirectory: false, isImage: false }
+      return {
+        exists: true,
+        isDirectory: res.type === 'directory',
+        isImage: isImagePath(path),
+      }
+    },
+    // 相对路径按**当前会话的工作目录**解析。`~/` 在渲染端没有 home 可展开
+    // (宿主没有这个口),所以按解析不到处理 —— 点了会说"无法解析路径"。
+    resolveRelative: (path) => {
+      if (path.startsWith('~')) return null
+      const root = currentWorkspaceRoot.value
+      if (!root) return null
+      return `${root.replace(/\/+$/, '')}/${path.replace(/^\.\//, '')}`
+    },
+    notify: (message, type) => {
+      if (type === 'error') toast.error(message)
+      else toast.info(message)
+    },
+  }
 }
 
 async function openGoalReviewInRightWorkbench(sessionId: string) {
@@ -923,6 +979,8 @@ async function handlePluginLayout(event: Event) {
 }
 
 onMounted(() => {
+  // 引用宿主只有一份 —— 辅助窗口(设置/搜索/todo)不装,它们没有右栏可落。
+  if (!isAuxiliaryWindow.value) setReferenceHost(createReferenceHost())
   window.addEventListener('onething:plugin-layout', handlePluginLayout)
   window.addEventListener('onething:collab-open-board', () => { void openBoardInRightWorkbench() })
   window.addEventListener('onething:room-workbench', handleRoomWorkbench)
@@ -1273,6 +1331,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (!isAuxiliaryWindow.value) setReferenceHost(null)
   window.removeEventListener('onething:plugin-layout', handlePluginLayout)
   window.removeEventListener('onething:room-workbench', handleRoomWorkbench)
   window.removeEventListener('hashchange', syncCurrentHash)

@@ -1,0 +1,386 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: history > spec 钉住 > description 1`] = `
+"Search the chat history of any room you are in — group rooms and private chats alike.
+
+- Scope is fixed by who you are: every room you are a member of, plus rooms you were removed from (up to the moment you left). Conversations you were never part of do not exist for this tool.
+- Narrow it down: "where" (a room, or a colleague for your private chat with them), "who", "since"/"until" (YYYY-MM-DD), "q".
+- Results are capped (max 30) and come back newest first, in the same <message> form as your room payload. If there are more, pass the returned cursor.
+- Anything this tool leaves out says so in the output — a short result is never silent truncation."
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:正常:两条命中 + 还有更早 > metadata 1`] = `
+{
+  "ok": true,
+  "returned": 2,
+  "scannedRooms": 3,
+  "total": 9,
+}
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:正常:两条命中 + 还有更早 > model text 1`] = `
+"(查了 3 间房。)
+<message>a</message>
+<message>b</message>
+
+还有更早的 —— 再查一次并带上 cursor="c1"(筛选条件要保持一致)。"
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:正常:两条命中 + 还有更早 > title 1`] = `"History · 2 条"`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:where 指到不存在的房 > metadata 1`] = `
+{
+  "ok": true,
+  "returned": 0,
+  "total": 0,
+}
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:where 指到不存在的房 > model text 1`] = `"没有这样一间房。你能查的是:大群、小研。"`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:where 指到不存在的房 > title 1`] = `"History"`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:一间房都没有 > metadata 1`] = `
+{
+  "ok": true,
+  "returned": 0,
+  "total": 0,
+}
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:一间房都没有 > model text 1`] = `"你还没有加入任何房间,没有可查的历史。"`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:一间房都没有 > title 1`] = `"History"`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:关键词没命中,退回范围内最近几条 > metadata 1`] = `
+{
+  "ok": true,
+  "returned": 1,
+  "scannedRooms": 2,
+  "skippedRooms": 4,
+}
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:关键词没命中,退回范围内最近几条 > model text 1`] = `
+"(没有匹配到关键词。以下是这个范围里最近的几条。)
+(查了 2 间房,还有 4 间这次没查到。缩小 where 或时间范围可以覆盖它们。)
+<message>c</message>"
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:关键词没命中,退回范围内最近几条 > title 1`] = `"History · 1 条"`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:带游标翻到尽头 > metadata 1`] = `
+{
+  "ok": true,
+  "returned": 0,
+  "total": 12,
+}
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:带游标翻到尽头 > model text 1`] = `
+"已经翻到最早的一条了,这个范围里没有更早的消息。
+(这个范围里一共 12 条,你已经全部翻过。)"
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:边界:带游标翻到尽头 > title 1`] = `"History"`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:错误:查不了 > metadata 1`] = `
+{
+  "ok": false,
+}
+`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:错误:查不了 > model text 1`] = `"你不在任何房里。"`;
+
+exports[`golden: history > 模型文本与渲染信息钉住:错误:查不了 > title 1`] = `"History — 查不了"`;
+
+exports[`golden: notebook > spec 钉住 > description 1`] = `
+"Your own notebook — the one thing you carry between rooms.
+
+Each room keeps its own history, and you only ever see envelopes of what happened elsewhere ("someone messaged you in that room"), never the words. Anything you want to still know when you are somewhere else has to be written here.
+
+- Append-only, timestamped. There is no edit and no delete.
+- Worth writing: what you promised, what you decided, what you learnt about someone. Not worth writing: what was just said (that is in the room's own history).
+- Only the most recent stretch is shown to you each turn (about 1500 characters), so old notes fade out. Keep entries short."
+`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:场子门:普通对话里被硬调 > metadata 1`] = `
+{
+  "ok": false,
+}
+`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:场子门:普通对话里被硬调 > model text 1`] = `"笔记本只在群聊/私聊的回合与工作台会话里可用 —— 普通对话没有「别的房」,不需要跨房记忆。"`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:场子门:普通对话里被硬调 > title 1`] = `"Notebook — 记不了"`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:正常:记下一条 > metadata 1`] = `
+{
+  "ok": true,
+  "totalChars": 40,
+}
+`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:正常:记下一条 > model text 1`] = `
+"记下了。
+[08-18] 答应了老王"
+`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:正常:记下一条 > title 1`] = `"Notebook"`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:边界:已经超预算 —— 回执要说出来 > metadata 1`] = `
+{
+  "ok": true,
+  "totalChars": 2000,
+}
+`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:边界:已经超预算 —— 回执要说出来 > model text 1`] = `
+"记下了。
+[08-18] x
+(笔记已经超过每轮能带上的 1500 字,更早的那些从下一轮起不再出现在你眼前。)"
+`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:边界:已经超预算 —— 回执要说出来 > title 1`] = `"Notebook"`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:边界:适配层没给 totalChars > metadata 1`] = `
+{
+  "ok": true,
+}
+`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:边界:适配层没给 totalChars > model text 1`] = `
+"记下了。
+[08-18] x"
+`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:边界:适配层没给 totalChars > title 1`] = `"Notebook"`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:错误:认不出身份 > metadata 1`] = `
+{
+  "ok": false,
+}
+`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:错误:认不出身份 > model text 1`] = `"这条会话认不出是哪位同事的,笔记没有可归属的本子。"`;
+
+exports[`golden: notebook > 模型文本与渲染信息钉住:错误:认不出身份 > title 1`] = `"Notebook — 记不了"`;
+
+exports[`golden: send_message > spec 钉住 > description 1`] = `
+"Send a message to the chat, or privately to one person.
+Exactly like pressing send in a chat app: only the text passed as "content" gets delivered. Nothing written anywhere else is visible to anyone.
+
+- One call = one message bubble; send a few short messages the way people do.
+- markdown in "content" renders fine (lists, tables, code).
+- @名字#句柄 addresses someone (handle from the roster); "replyTo" quotes a message.
+- If the chat is paused or out of budget the send FAILS and tells you so.
+
+With "to" it goes to a private chat with that one person instead — opened if it does not exist yet, and they get pulled in to answer.
+- Use it to settle a detail with one person instead of making the whole group read it. Bring the conclusion back with a plain send_message.
+- NOTHING is carried over: they cannot see this conversation, the board, or what you were just asked. Whatever background they need, write it into the message.
+- The user can see and join that private chat — it is a side room, not a back channel.
+- You can write to the user themselves (to: "用户" or their name/handle). They may be away; the message waits with a notification, don't block on a reply.
+- A private chat is for talking. Work that actually changes things goes back to the group as a board card.
+- "wake": after they read it, an @ goes out in the room asking them to respond there. Use it when you need them to show up in the group, not just to read you.
+- Fails (and tells you so) if "to" names no active colleague, if two colleagues share the name you gave (add the handle), or if it is you."
+`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:正常:发进房 > metadata 1`] = `
+{
+  "messageId": "m-1",
+  "ok": true,
+}
+`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:正常:发进房 > model text 1`] = `"已发出(消息 id: m-1)。可以再发一条,或者就此打住。"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:正常:发进房 > title 1`] = `"Send message"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:正常:私聊(有 to) > metadata 1`] = `
+{
+  "messageId": "m-2",
+  "ok": true,
+  "roomSessionId": "dm-1",
+}
+`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:正常:私聊(有 to) > model text 1`] = `"已发给 小研;TA 会在你们的私聊里回复,用户也看得见。"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:正常:私聊(有 to) > title 1`] = `"Send message"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:边界:channel=gateway 目前不接 > metadata 1`] = `
+{
+  "ok": false,
+}
+`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:边界:channel=gateway 目前不接 > model text 1`] = `"远程投递(微信/Telegram)还没接入,channel:"gateway" 现在发不出去。"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:边界:channel=gateway 目前不接 > title 1`] = `"Send message — 未送达"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:边界:显式 room + mentions + replyTo > metadata 1`] = `
+{
+  "messageId": "m-1",
+  "ok": true,
+}
+`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:边界:显式 room + mentions + replyTo > model text 1`] = `"已发出(消息 id: m-1)。可以再发一条,或者就此打住。"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:边界:显式 room + mentions + replyTo > title 1`] = `"Send message"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:边界:给了 to 却写 channel=room(矛盾) > metadata 1`] = `
+{
+  "ok": false,
+}
+`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:边界:给了 to 却写 channel=room(矛盾) > model text 1`] = `"to 是私聊的参数 —— 发给某个人就不要指定 channel:"room";要发进群里就别写 to。"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:边界:给了 to 却写 channel=room(矛盾) > title 1`] = `"Send message — 未送达"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:错误:房冻结 / 超预算 > metadata 1`] = `
+{
+  "ok": false,
+}
+`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:错误:房冻结 / 超预算 > model text 1`] = `"这间房已冻结。"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:错误:房冻结 / 超预算 > title 1`] = `"Send message — 未送达"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:错误:私聊没送达 > metadata 1`] = `
+{
+  "ok": false,
+}
+`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:错误:私聊没送达 > model text 1`] = `"找不到这位同事。"`;
+
+exports[`golden: send_message > 模型文本与渲染信息钉住:错误:私聊没送达 > title 1`] = `"Send message — 未送达"`;
+
+exports[`golden: send_message > 错误:退役名 \`dm\` 的降级出口 —— content 缺席时给那句可操作的拒绝 > retired dm wording 1`] = `"没发出去:content 是空的,没有内容可发。"`;
+
+exports[`parity: board > spec 钉住 > description 1`] = `
+"The room's shared task board (kanban). Columns: backlog → todo → doing → review → done, plus blocked.
+
+- list: read the current board (do this before mutating — you need each task's rev).
+- create: add a task. Give it a title and a description complete enough to execute without asking. Adding "assignee" puts it on that member's todo and tells them — they decide when to start.
+- start: START WORKING on a task, right now, in your own work session (full tools, its own turn budget and a 30-minute wall clock). Use it for anything that needs more than a couple of tool calls or touches several files. Without a taskId it creates the card first, so you never have to leave the work to file paperwork. You can only start a card that is unassigned (you claim it) or already yours. It is also how you RESUME a card that was interrupted — the same work session is reopened with your history intact.
+- assign: put a task on a member (by 名字#句柄, as the roster and this board write them). Assigning is a notification, not a launch: the assignee gets told, and can ask questions, start, or block it.
+- move: change a task's column. Moving an assigned card back to todo (from review, blocked or done) actually re-runs it in a fresh work session — it is a real retry, not a label change.
+- comment: append a note to the task's activity log.
+- complete: (as the assignee, from your work session) declare the task done with a delivery summary — it moves to review, your summary is posted to the room, and the reviewer takes over. Call this exactly once, as your final action.
+- block: mark the task stuck and say why (pass "reason" — it is stored on the card and read by whoever unblocks it). A card that halts twice stops being retried automatically and waits for the user.
+
+State-changing actions (start/assign/move/update/complete/block) take expectedRev from your last read; a stale rev is rejected — re-list and retry."
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:场子门:agent 场子但没有挂着房 > metadata 1`] = `
+{
+  "action": "list",
+}
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:场子门:agent 场子但没有挂着房 > model text 1`] = `"This session has no room board (boards exist only in collab rooms and their work sessions)."`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:场子门:agent 场子但没有挂着房 > title 1`] = `"Board unavailable"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:场子门:普通对话里被硬调 > metadata 1`] = `
+{
+  "action": "list",
+}
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:场子门:普通对话里被硬调 > model text 1`] = `"This session has no room board (boards exist only in collab rooms and their work sessions)."`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:场子门:普通对话里被硬调 > title 1`] = `"Board unavailable"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:正常:list > metadata 1`] = `
+{
+  "action": "list",
+  "taskId": "task-abcdef0123",
+}
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:正常:list > model text 1`] = `
+"list ok: #task-abc「把工具搬完」[doing] rev3
+
+- [doing] #task-abc rev3「把工具搬完」"
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:正常:list > title 1`] = `"Board — list"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:正常:start(卡进 doing → 回执带那条 note) > metadata 1`] = `
+{
+  "action": "start",
+  "taskId": "task-abcdef0123",
+}
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:正常:start(卡进 doing → 回执带那条 note) > model text 1`] = `
+"start ok: #task-abc「把工具搬完」[doing] rev3
+工作会话已在后台开启 —— 这张卡的活在那条会话里做,不用在这一轮里动手。
+
+- [doing] #task-abc rev3「把工具搬完」"
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:正常:start(卡进 doing → 回执带那条 note) > title 1`] = `"Board — start"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:正常:work 场子经由 linked room > metadata 1`] = `
+{
+  "action": "list",
+  "taskId": "task-abcdef0123",
+}
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:正常:work 场子经由 linked room > model text 1`] = `
+"list ok: #task-abc「把工具搬完」[doing] rev3
+
+- [doing] #task-abc rev3「把工具搬完」"
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:正常:work 场子经由 linked room > title 1`] = `"Board — list"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:边界:assign 少了 taskId > metadata 1`] = `
+{
+  "action": "assign",
+}
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:边界:assign 少了 taskId > model text 1`] = `"assign requires taskId"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:边界:assign 少了 taskId > title 1`] = `"Board — invalid call"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:边界:assign 的成员认不出来 > metadata 1`] = `
+{
+  "action": "assign",
+  "taskId": "t1",
+}
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:边界:assign 的成员认不出来 > model text 1`] = `"Unknown member: 张三"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:边界:assign 的成员认不出来 > title 1`] = `"Board — invalid call"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:边界:move 少了 status > metadata 1`] = `
+{
+  "action": "move",
+  "taskId": "t1",
+}
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:边界:move 少了 status > model text 1`] = `"move requires taskId and status"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:边界:move 少了 status > title 1`] = `"Board — invalid call"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:错误:store 拒绝(rev 过期) > metadata 1`] = `
+{
+  "action": "move",
+  "taskId": "t1",
+}
+`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:错误:store 拒绝(rev 过期) > model text 1`] = `"stale rev"`;
+
+exports[`parity: board > 模型文本与渲染信息钉住:错误:store 拒绝(rev 过期) > title 1`] = `"Board — rejected"`;

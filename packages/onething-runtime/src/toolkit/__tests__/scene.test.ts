@@ -1,10 +1,11 @@
 /**
- * R3a —— 场景面的**等价测试**(设计文档 §8 R3 的退出判据之一)。
+ * 场景面 —— `resolveScene` + 每只工具的 `visibleIn(scene)`,由 `Surface.resolve`
+ * 求交(设计文档 §5 SceneResolver)。
  *
- * 旧路是一张集中式减法表(`tools/scene-surface.ts` 的 `resolveSceneHiddenToolIds`,
- * 吐 hidden id);新路是每只工具自己的 `visibleIn(scene)`,由 `Surface.resolve`
- * 求交。两条路对**同一组** session / skill 输入必须给出同一份工具面 ——
- * 这里逐组比"全集减 hidden"与 `Surface.resolve(...).names()`。
+ * R3a 时这里是一张**等价测试**:逐组比新路与旧集中式减法表
+ * (`tools/scene-surface.ts` 的 `resolveSceneHiddenToolIds`)。R4b 把那张表删了,
+ * 于是每一组夹具把它当时算出来的 hidden 集合**写死在 fixture 上** —— 同一组输入、
+ * 同一份答案,只是判据从"和旧表一样"变成"就是这一份"。
  *
  * `feature_*` 三只住在装配层(它们依赖 features 注册表与 store 路径),产品层的
  * 测试碰不到。这里用同一个家族基类(`CapabilityTool` + 同一个 skill 名)造三只
@@ -15,7 +16,6 @@
 import { describe, expect, it } from 'vitest'
 import { Catalog, Surface, Tool } from '@onething/core/toolkit'
 import type { Intent, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
-import { resolveSceneHiddenToolIds } from '../../tools/scene-surface.js'
 import { resolveScene, type SceneSessionLike } from '../scene.js'
 import { CapabilityTool, SELF_EVOLUTION_SKILL_NAME } from '../families/capability.js'
 import { createAskUserTool } from '../builtin/ask-user.js'
@@ -115,54 +115,92 @@ interface Fixture {
   readonly name: string
   readonly session: SceneSessionLike | null
   readonly skills: string[]
+  /** 这一组场景下**摘掉**的工具 id(旧减法表当年给出的那一份,逐字冻在这里)。 */
+  readonly hidden: string[]
 }
 
+const CHAT_HIDDEN = [
+  'board', 'feature_inspect', 'feature_mount', 'feature_unmount',
+  'goal', 'history', 'notebook', 'send_message',
+]
+const FEATURE_HIDDEN = ['feature_inspect', 'feature_mount', 'feature_unmount']
+
 const FIXTURES: Fixture[] = [
-  { name: '普通对话(kind 缺席)', session: null, skills: [] },
-  { name: '普通对话(kind=chat)', session: { id: 's1', kind: 'chat' }, skills: [] },
-  { name: '网关会话(kind 为空字符串)—— 归一化必须算成 chat', session: { id: 's2', kind: '' }, skills: [] },
-  { name: '认不出的 kind', session: { id: 's3', kind: 'whatever' }, skills: [] },
-  { name: '房场子', session: { id: 's4', kind: 'room' }, skills: [] },
-  { name: 'agent 执行会话', session: { id: 's5', kind: 'agent' }, skills: [] },
-  { name: '工作台会话', session: { id: 's6', kind: 'work' }, skills: [] },
-  { name: '有 active 目标', session: { id: 's7', kind: 'chat', goal: { status: 'active' } }, skills: [] },
-  { name: '目标已完成', session: { id: 's8', kind: 'chat', goal: { status: 'complete' } }, skills: [] },
+  { name: '普通对话(kind 缺席)', session: null, skills: [], hidden: CHAT_HIDDEN },
+  { name: '普通对话(kind=chat)', session: { id: 's1', kind: 'chat' }, skills: [], hidden: CHAT_HIDDEN },
+  {
+    name: '网关会话(kind 为空字符串)—— 归一化必须算成 chat',
+    session: { id: 's2', kind: '' },
+    skills: [],
+    hidden: CHAT_HIDDEN,
+  },
+  { name: '认不出的 kind', session: { id: 's3', kind: 'whatever' }, skills: [], hidden: CHAT_HIDDEN },
+  {
+    name: '房场子',
+    session: { id: 's4', kind: 'room' },
+    skills: [],
+    // notebook 只在 agent / work(collab/tool-surface.ts 的场子表)。
+    hidden: [...FEATURE_HIDDEN, 'goal', 'notebook'],
+  },
+  { name: 'agent 执行会话', session: { id: 's5', kind: 'agent' }, skills: [], hidden: [...FEATURE_HIDDEN, 'goal'] },
+  { name: '工作台会话', session: { id: 's6', kind: 'work' }, skills: [], hidden: [...FEATURE_HIDDEN, 'goal'] },
+  {
+    name: '有 active 目标',
+    session: { id: 's7', kind: 'chat', goal: { status: 'active' } },
+    skills: [],
+    hidden: CHAT_HIDDEN.filter(id => id !== 'goal'),
+  },
+  {
+    name: '目标已完成',
+    session: { id: 's8', kind: 'chat', goal: { status: 'complete' } },
+    skills: [],
+    hidden: CHAT_HIDDEN,
+  },
   {
     name: '被派出去的工作会话(禁止套娃)',
     session: { id: 's9', kind: 'chat', task: { callerSessionId: 'c1' } } as SceneSessionLike,
     skills: [],
+    hidden: [...CHAT_HIDDEN, 'task'],
   },
-  { name: '自进化 skill 已启用', session: { id: 's10', kind: 'chat' }, skills: [SELF_EVOLUTION_SKILL_NAME] },
+  {
+    name: '自进化 skill 已启用',
+    session: { id: 's10', kind: 'chat' },
+    skills: [SELF_EVOLUTION_SKILL_NAME],
+    hidden: CHAT_HIDDEN.filter(id => !FEATURE_HIDDEN.includes(id)),
+  },
   {
     name: '房 + active 目标 + 自进化(三条规则同时生效)',
     session: { id: 's11', kind: 'room', goal: { status: 'active' } },
     skills: [SELF_EVOLUTION_SKILL_NAME, 'something-else'],
+    hidden: ['notebook'],
   },
 ]
 
-describe('resolveScene + visibleIn 与旧 scene-surface 表逐组等价', () => {
+describe('resolveScene + visibleIn 逐组给出这一份工具面', () => {
   const catalog = fullCatalog()
   const allIds = catalog.all().map(tool => tool.spec.id).sort()
 
   for (const fixture of FIXTURES) {
     it(fixture.name, () => {
-      const hidden = new Set(resolveSceneHiddenToolIds({
-        session: fixture.session,
-        enabledSkillNames: fixture.skills,
-      }))
-      const legacyVisible = allIds.filter(id => !hidden.has(id))
+      const hidden = new Set(fixture.hidden)
+      const expected = allIds.filter(id => !hidden.has(id))
 
       const scene = resolveScene({ session: fixture.session, enabledSkillNames: fixture.skills })
       const surface = Surface.resolve({ catalog, scene })
 
-      expect([...surface.names()].sort()).toEqual(legacyVisible)
+      expect([...surface.names()].sort()).toEqual(expected)
     })
   }
 
-  it('每一组夹具里至少有一只工具被摘掉 —— 否则这条等价测试什么都没证明', () => {
-    const anyHidden = FIXTURES.some(fixture =>
-      resolveSceneHiddenToolIds({ session: fixture.session, enabledSkillNames: fixture.skills }).length > 0)
-    expect(anyHidden).toBe(true)
+  it('每一组夹具里至少有一只工具被摘掉 —— 否则这组用例什么都没证明', () => {
+    expect(FIXTURES.every(fixture => fixture.hidden.length > 0)).toBe(true)
+  })
+
+  it('夹具里写死的 hidden id 都真的在目录里 —— 拼错一个名字不许静悄悄地放行', () => {
+    const known = new Set(allIds)
+    for (const fixture of FIXTURES) {
+      for (const id of fixture.hidden) expect(known, `${fixture.name} → ${id}`).toContain(id)
+    }
   })
 })
 

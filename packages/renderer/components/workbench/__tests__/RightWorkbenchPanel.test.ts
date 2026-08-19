@@ -114,10 +114,10 @@ vi.mock('../SessionContextWorkbench.vue', () => ({
 vi.mock('@/components/editor/EditorWorkbench.vue', () => ({
   default: {
     name: 'EditorWorkbench',
-    props: ['workspaceRoot', 'initialFilePath', 'active'],
+    props: ['workspaceRoot', 'initialFilePath', 'initialPosition', 'active'],
     emits: ['openFile'],
     template: `
-      <div class="mock-editor-workbench">
+      <div class="mock-editor-workbench" :data-position="initialPosition ? JSON.stringify(initialPosition) : ''">
         {{ workspaceRoot }} {{ initialFilePath }} {{ active }}
         <button class="mock-open-file" @click="$emit('openFile', '/repo/src/b.ts')">open</button>
       </div>
@@ -173,6 +173,50 @@ describe('RightWorkbenchPanel', () => {
     expect(wrapper.find('.mock-editor-workbench').text()).toContain('/repo /repo/src/a.ts true')
     expect(mocks.editorWorkspace.setWorkspaceRoot).toHaveBeenCalledWith('/repo')
     expect(mocks.editorWorkspace.openFile).toHaveBeenCalledWith('/repo/src/a.ts')
+  })
+
+  // docs/design/message-references-2026-08.md §5:行号要透传到编辑器,
+  // 并且**文件已经开着时也得重新落点**(去重分支不能把它吃掉)。
+  it('threads a line position into the editor, on first open and on reopen', async () => {
+    const wrapper = mount(RightWorkbenchPanel, {
+      props: {
+        sessionId: 'session-1',
+        workspaceRoot: '/repo',
+      },
+    })
+    const panel = wrapper.vm as unknown as {
+      openFile: (filePath: string, position?: { line?: number; endLine?: number; col?: number }) => Promise<void>
+    }
+
+    await panel.openFile('/repo/src/a.ts', { line: 12, col: 5 })
+    await settle()
+
+    expect(wrapper.find('.mock-editor-workbench').attributes('data-position'))
+      .toBe(JSON.stringify({ line: 12, col: 5 }))
+
+    // 同一个文件再点一条引用:仍是同一条 tab(不新开),但落点换了。
+    await panel.openFile('/repo/src/a.ts', { line: 40, endLine: 44 })
+    await settle()
+
+    expect(wrapper.findAll('.mock-editor-workbench')).toHaveLength(1)
+    expect(wrapper.find('.mock-editor-workbench').attributes('data-position'))
+      .toBe(JSON.stringify({ line: 40, endLine: 44 }))
+    expect(mocks.editorWorkspace.openFile).toHaveBeenCalledWith('/repo/src/a.ts')
+  })
+
+  it('carries no position when the file is opened without one', async () => {
+    const wrapper = mount(RightWorkbenchPanel, {
+      props: {
+        sessionId: 'session-1',
+        workspaceRoot: '/repo',
+      },
+    })
+
+    await (wrapper.vm as unknown as { openFile: (filePath: string) => Promise<void> })
+      .openFile('/repo/src/a.ts')
+    await settle()
+
+    expect(wrapper.find('.mock-editor-workbench').attributes('data-position')).toBe('')
   })
 
   it('opens files inside additional workdir roots at the project root', async () => {

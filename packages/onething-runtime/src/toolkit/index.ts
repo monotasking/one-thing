@@ -72,7 +72,6 @@ export type {
   PluginToolHostResult,
 } from './families/external.js'
 
-export { isToolkitEnabled, TOOLKIT_FLAG_ENV } from './flag.js'
 export {
   configureToolkitCatalog,
   getToolkitCatalog,

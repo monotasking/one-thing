@@ -25,7 +25,9 @@ import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-hum
 import { getSettings } from '../store.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
 import { getStorePath } from '../stores/paths.js'
-import { enforcePermissionPolicy } from '../tools/core/permission-policy.js'
+import { AbortScope, Intent } from '@onething/core/toolkit'
+import type { Effect, Invocation } from '@onething/core/toolkit'
+import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { publishExternalAgentBackgroundStatus } from './background-status.js'
 import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 
@@ -140,14 +142,22 @@ export function persistExternalAgentSessionLink(link: ExternalAgentSessionLink):
  * 认不出的工具名(Glob / Grep / WebFetch / Task …)**维持现状**,回落到下面这条
  * 工具名粒度的 effect:
  *
- *  - `kind: 'external-agent'` —— 它同时是 `Permission.ask({ type })`,所以卡片
- *    类型与 E4 之前逐字相同,渲染层一个字都不用改;
+ *  - `kind: 'external-agent'`(R4b 起是内核策略表里的一行,不再是一条谁都不认识
+ *    的手搓 kind)—— 它同时是 `Permission.ask({ type })` 的类型,所以卡片类型与
+ *    E4 之前逐字相同,渲染层一个字都不用改;
  *  - `resources: [toolName]` —— grant 的 pattern 是工具名;
  *  - `preview.title` 压过 `titleForEffect`,标题仍是 `Claude Code: <tool>`。
  *
  * 认出来那一支可能给出**空 effects**(白名单命令、界内的普通读),策略门于是直接
  * 放行(`core/permission/permission-policy.ts:171`)—— 这与本地 `ls` 不弹卡是同一
  * 件事,也正是不让用户被无谓的卡逼去点「总是允许 Bash」的前提。
+ *
+ * ## R4b:改调 `Authorizer.decide`(§15.5-7 的那一条)
+ *
+ * 判定链一个字没变(`PermissionAuthorizer` 就是 `enforcePermissionPolicy` 的一层
+ * 薄壳:三座桥、grant 匹配、能力覆盖、`auto-accept-edits` 全在那边)。换掉的是
+ * **入口**:外部这一步与本地工具从此走同一个授权者、拿同一种 `Decision`,于是
+ * "外部 agent 的权限是另一条链"这句话不再成立。
  */
 export async function askExternalAgentPermission(
   ask: ExternalAgentPermissionAsk,
@@ -161,34 +171,47 @@ export async function askExternalAgentPermission(
     input: ask.input,
     cwd: ask.cwd,
   })
-  try {
-    await enforcePermissionPolicy({
-      sessionId: ask.localSessionId,
-      messageId,
-      // G1:卡片按它归位,120s 拒绝桥也按它 + messageId 找 pending。
-      toolCallId: ask.toolCallId,
+  const effects: Effect[] = (described?.effects as Effect[] | undefined) ?? [{
+    kind: 'external-agent',
+    resources: [ask.toolName],
+    barrier: true,
+    external: true,
+    metadata: {
+      connectorId: ask.connectorId,
       toolName: ask.toolName,
-      effects: described?.effects ?? [{
-        kind: 'external-agent',
-        resources: [ask.toolName],
-        external: true,
-        metadata: {
-          connectorId: ask.connectorId,
-          toolName: ask.toolName,
-          input: JSON.parse(JSON.stringify(ask.input ?? null)),
-        },
-      }],
-      preview: {
-        ...(described ? described.preview : { title: `Claude Code: ${ask.toolName}` }),
-        metadata: {
-          // 谁在跑这一步:卡片长得和本地一样之后,这一条就是唯一的出处标记。
-          connectorId: ask.connectorId,
-          externalAgentTool: ask.toolName,
-          ...(described?.preview?.metadata ?? {}),
-        },
+      input: JSON.parse(JSON.stringify(ask.input ?? null)),
+    },
+  }]
+  const intent = Intent.of({
+    payload: undefined,
+    effects,
+    preview: {
+      ...(described?.preview ?? {}),
+      title: described?.preview?.title ?? `Claude Code: ${ask.toolName}`,
+      metadata: {
+        // 谁在跑这一步:卡片长得和本地一样之后,这一条就是唯一的出处标记。
+        connectorId: ask.connectorId,
+        externalAgentTool: ask.toolName,
+        ...(described?.preview?.metadata ?? {}),
       },
-      workspaceRoot: ask.cwd,
-    })
+    },
+  })
+  const invocation: Invocation = {
+    // G1:卡片按它归位,120s 拒绝桥也按它 + messageId 找 pending。
+    callId: ask.toolCallId ?? '',
+    toolId: ask.toolName,
+    input: ask.input,
+    sessionId: ask.localSessionId,
+    ...(messageId ? { messageId } : {}),
+    principal: undefined as never,
+    ...(ask.cwd ? { cwd: ask.cwd, workspaceRoot: ask.cwd } : {}),
+  }
+  try {
+    const decision = await createPermissionAuthorizer()
+      .decide(intent, invocation, new AbortScope())
+    if (decision.kind === 'deny') {
+      return { behavior: 'deny', message: decision.reason }
+    }
     return { behavior: 'allow' }
   } catch (error) {
     // 拒绝理由要**可读地**回到 SDK:超时桥写的那句「无人响应,权限请求在 120 秒后

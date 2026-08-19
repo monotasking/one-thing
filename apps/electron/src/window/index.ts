@@ -42,6 +42,7 @@ import {
   getElectronRendererDevUrl,
   isElectronAppWebContents,
   isElectronMainAppWindowUrl as isMainAppWindowUrl,
+  isElectronRendererIndexFileUrl,
   isElectronRendererWindowUrl,
   loadElectronMainWindowContent,
 } from '@onething/electron-host/window/renderer-targets'
@@ -536,6 +537,7 @@ export function createWindow() {
   setupElectronExternalLinkHandling({
     webContents: mainWindow.webContents,
     isAppUrl: url => isElectronRendererWindowUrl(url, { rendererDevUrl }),
+    isAppFileUrl: url => isElectronRendererIndexFileUrl(url, rendererIndexPath),
   })
 
   attachElectronMainWindowRecovery({ mainWindow, loadMainWindowContent })

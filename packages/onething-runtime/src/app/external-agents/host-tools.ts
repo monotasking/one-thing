@@ -2,7 +2,7 @@
  * 宿主工具面的**装配**(E3,docs/design/claude-code-integration-v2.md §2)。
  *
  * 产品层的 `external-agents/host-mcp/` 只认识「工具对象」与「场子」两个概念;
- * 这里把它接到活的东西上:会话仓库、agent 仓库、工具注册表、v3 回合登记簿。
+ * 这里把它接到活的东西上:会话仓库、agent 仓库、工具目录、v3 回合登记簿。
  *
  * ## 一轮外部回合在这里发生什么
  *
@@ -10,7 +10,7 @@
  * connector.streamTurn(localSessionId=执行会话)
  *   → resolveClaudeCodeHostToolSurface({ localSessionId, messageId, cwd })
  *       ① 会话 / agent / profile  → 这一轮能用哪些工具(venue 门,单点)
- *       ② 注册表取工具对象         → 本地回合调的**同一批**,不是副本
+ *       ② 目录里取工具             → 本地回合调的**同一批**,不是副本
  *       ③ 绑定回合语境             → (agentId, roomSessionId, execSessionId, leaseId)
  *       ④ 起一台进程内 MCP 服务器   → { mcpServers, toolNames, release }
  *   → queryOptions.mcpServers = …   （SDK 侧看到 mcp__onething__send_message …）
@@ -24,11 +24,11 @@
  * 是同一个 Map、句柄出栈与引用快照是同一段代码。这就是「发言权归房间」在外部
  * 通路上的兑现——收养兜底从此退回它该在的位置(真·兜底)。
  *
- * ## 为什么工具从注册表取
+ * ## 为什么工具从目录取
  *
- * 直接 `import { SayTool } from '../collab/say-tool.js'` 也能work,但那是**第二份
- * 名单**:哪几个工具算协作工具,注册表里有一份、这里有一份,而两份名单漂了不会
- * 报错。按名字问注册表,答案只有一处 —— 而且拿到的就是本地回合调的那个对象实例。
+ * 直接 import 四个协作工具对象也能work,但那是**第二份名单**:哪几个工具算协作
+ * 工具,目录里有一份、这里有一份,而两份名单漂了不会报错。按名字问目录,答案只有
+ * 一处 —— 而且拿到的就是本地回合调的那只工具。
  */
 import {
   bindHostToolContext,
@@ -39,14 +39,11 @@ import {
 } from '@onething/runtime/external-agents'
 import type { JsonObject } from '@shared/json.js'
 import type { HostMcpHostTool } from '@onething/runtime/external-agents'
-import type { ToolInfo } from '@onething/runtime/tools'
 import { getSession } from '../stores/sessions.js'
 import { resolveAgentProfileForSession } from '../agents/profile.js'
-import { getTool } from '../tools/registry.js'
 import { collabVenueOf } from '../collab/venue.js'
 import { findCollabV3Turn } from '../collab/actors/turn-context.js'
-// R3b:开关开时宿主工具面改由目录 + runner 回答(设计文档 §10.2-④)。
-import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
+// 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
 
 /**
@@ -71,8 +68,7 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
     description: tool.spec.description,
     parameters: contractForSchema(tool.spec.input)?.zod,
     async execute(args, ctx) {
-      // 动态 import:开关关时这一行不执行,装配层那棵树一个模块都不进这个文件的
-      // 静态图(与 `app/engine/stream/tool-execution.ts` 同一个姿势)。
+      // 动态 import:装配层那棵树不进这个文件的静态图(注入这一轮才需要它)。
       const { runToolkitToolDirectly } = await import('../toolkit/wiring.js')
       const result = await runToolkitToolDirectly(tool.spec.id, args as unknown as JsonObject, {
         sessionId: ctx.sessionId,
@@ -94,7 +90,7 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
  * 发言靠收养兜底):
  *  - 会话查不到 / 没有 agent 身份 —— 这不是一条协作会话;
  *  - 场子门全关(普通对话)—— 协作工具在那里一个都不成立;
- *  - 注册表里一个都取不到 —— 内建工具还没注册(装配顺序问题,日志会说)。
+ *  - 目录里一个都取不到 —— 内建工具还没装(装配顺序问题,日志会说)。
  */
 export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (request) => {
   const execSessionId = request.localSessionId
@@ -117,16 +113,9 @@ export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (r
   const toolIds = filterHostToolSurface({ allowlist: profile.tools, venue })
   if (toolIds.length === 0) return undefined
 
-  // 判据是"目录真的装上了",不是开关本身:没装上时退回旧路(与其余改口点同一条
-  // 兜底),否则一次装配顺序问题会让这一轮悄悄没有宿主工具。
-  const useToolkit = isToolkitEnabled() && Boolean(getToolkitCatalog())
-  const tools: HostMcpHostTool[] = useToolkit
-    ? toolIds
-      .map(id => toolkitHostTool(id))
-      .filter((tool): tool is HostMcpHostTool => Boolean(tool))
-    : toolIds
-      .map(id => getTool(id))
-      .filter((tool): tool is ToolInfo => Boolean(tool)) as unknown as HostMcpHostTool[]
+  const tools: HostMcpHostTool[] = toolIds
+    .map(id => toolkitHostTool(id))
+    .filter((tool): tool is HostMcpHostTool => Boolean(tool))
   if (tools.length === 0) {
     console.warn(
       `[host-mcp] no builtin tool object for [${toolIds.join(', ')}] — host tools not injected`,

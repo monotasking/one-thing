@@ -154,6 +154,7 @@
           v-else-if="tab.type === 'files' || tab.type === 'file'"
           :workspace-root="tab.workspaceRoot || workspaceRoot"
           :initial-file-path="tab.filePath"
+          :initial-position="tab.filePosition"
           :active="activeTabId === tab.id"
           @open-file="openFile"
         />
@@ -418,12 +419,23 @@ import { platformApi } from '@/platform'
 
 type WorkbenchTabType = 'outline' | 'context' | 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling' | 'plugin' | 'workspace'
 
+interface WorkbenchFilePosition {
+  line?: number
+  endLine?: number
+  col?: number
+}
+
 interface WorkbenchTab {
   id: string
   type: WorkbenchTabType
   title: string
   filePath?: string
   workspaceRoot?: string
+  /**
+   * file tabs only:消息引用带来的落点(`path:12` / `:12-30` / `:12:5`)。
+   * 每次 openFile 都换一个**新对象**,所以同一行再点一次也会重放定位。
+   */
+  filePosition?: WorkbenchFilePosition | null
   /**
    * review / thread / members tabs only: the session this tab is bound to.
    * thread tabs 上这一格是**房间会话**(列表层的地基),不是那次执行 ——
@@ -1464,14 +1476,20 @@ function renameReviewTab(tabId: string, objective: string) {
   tab.title = trimmed.length > 24 ? `${trimmed.slice(0, 24)}…` : trimmed || 'Review'
 }
 
-async function openFile(filePath: string) {
+/**
+ * `position` 是消息引用的行号落点(设计文档 §5)。文件已经开着时也要重新落点 ——
+ * 「点第二条引用还是同一个文件」正是它最常见的用法,去重分支不能把它吃掉。
+ */
+async function openFile(filePath: string, position?: WorkbenchFilePosition | null) {
   await refreshVariableRoots()
   const root = resolveFileWorkspaceRoot(filePath)
   filesWorkspaceRoot.value = root
+  const filePosition = position?.line ? { ...position } : null
   const existing = openTabs.value.find(tab => tab.type === 'file' && tab.filePath === filePath)
   if (existing) {
     existing.title = basename(filePath)
     existing.workspaceRoot = root
+    existing.filePosition = filePosition
     activeTabId.value = existing.id
   } else {
     const tab: WorkbenchTab = {
@@ -1480,6 +1498,7 @@ async function openFile(filePath: string) {
       title: basename(filePath),
       filePath,
       workspaceRoot: root,
+      filePosition,
     }
     insertTab(tab)
     activeTabId.value = tab.id

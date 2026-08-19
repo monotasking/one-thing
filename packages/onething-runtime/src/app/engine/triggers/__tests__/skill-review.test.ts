@@ -20,6 +20,13 @@ import {
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
 } from '@onething/runtime/spaces/credentials'
+import { Catalog } from '@onething/core/toolkit'
+import {
+  configureToolkitCatalog,
+  createEditTool,
+  createReadTool,
+  createWriteTool,
+} from '@onething/runtime/toolkit'
 import { createSkillReviewTrigger } from '../skill-review.js'
 import { clearSkillReviewState } from '../skill-review-state.js'
 import type { TriggerContext } from '../index.js'
@@ -93,9 +100,21 @@ beforeEach(() => {
     apiKey: 'deepseek-key',
     baseUrl: 'https://deepseek.test',
   })
+  /*
+   * R4b:三只文件工具从**目录**取(旧路直接 import `ReadTool`/`WriteTool`/
+   * `EditTool` 三个对象,那条路随旧树删除)。三只缺一就整组不给 —— 那正是
+   * readonly 档该有的行为,所以这里必须把它们摆上。
+   */
+  configureToolkitCatalog(
+    new Catalog()
+      .register(createReadTool({}))
+      .register(createWriteTool({ getFileMutationsDir: () => path.join(tmpDir, '.audit') }))
+      .register(createEditTool({ getFileMutationsDir: () => path.join(tmpDir, '.audit') })),
+  )
 })
 
 afterEach(() => {
+  configureToolkitCatalog(undefined)
   invalidateSkillsCache()
   clearSkillReviewState()
   resetSpaceCredentialsCacheForTests()

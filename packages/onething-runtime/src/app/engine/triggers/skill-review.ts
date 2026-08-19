@@ -1,30 +1,23 @@
 import type { AgentToolExecutionContext } from '@onething/core/agent-loop'
 import type {
+  CoreSkillReviewFileToolAdapter,
   CoreSkillReviewManageArgs,
 } from '@onething/runtime/triggers'
-import {
-  createOnethingSkillReviewFileToolAdapters,
-  createOnethingSkillReviewTrigger,
-} from '@onething/runtime/triggers'
+import { createOnethingSkillReviewTrigger } from '@onething/runtime/triggers'
 import { getUserSkillsPath } from '../../skills/index.js'
 import { executeSkillManage, type SkillManageArgs } from '../../skills/manage.js'
 import {
   getSkillsForSession,
   invalidateSessionSkillsCache as invalidateSkillsCache,
 } from '../../skills/session-skills.js'
-import { ReadTool } from '../../tools/builtin/read.js'
-import { WriteTool } from '../../tools/builtin/write.js'
-import { EditTool } from '../../tools/builtin/edit.js'
-import type { ToolContext } from '../../tools/core/tool.js'
 import type { Trigger, TriggerContext } from './index.js'
 import { billSkillUsage } from '../../usage/bill-side-line.js'
 import { createUtilityProvider } from '../../providers/utility-provider.js'
-// R3b:开关开时三只文件工具从**目录**取,执行走 runner(设计文档 §10.2-④)。
+// 三只文件工具从**目录**取,执行走 runner(设计文档 §10.2-④)。
 import { Decision } from '@onething/core/toolkit'
 import type { Invocation, Observer, Tool as ToolkitTool } from '@onething/core/toolkit'
 import { Outcome as OutcomeOps } from '@onething/core/toolkit'
 import { toJsonObject, type JsonObject } from '@shared/json.js'
-import { isToolkitEnabled } from '@onething/runtime/toolkit/flag'
 import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
 import { createAppToolRunner } from '../../toolkit/runner.js'
 
@@ -42,25 +35,8 @@ function getFreshSkillsForSession(workingDirectory?: string): ReturnType<typeof 
   return getSkillsForSession(workingDirectory)
 }
 
-function createToolContext(
-  ctx: TriggerContext,
-  toolCallId: string,
-  mutableRoots: string[],
-): ToolContext {
-  return {
-    sessionId: ctx.sessionId,
-    messageId: `skill-review:${ctx.sessionId}`,
-    toolCallId,
-    workingDirectory: ctx.session.workingDirectory,
-    workingDirectoryRoots: mutableRoots,
-    metadata: () => {},
-    updateResult: () => {},
-    beforeSideEffect: async () => {},
-  }
-}
-
 /**
- * R3b —— 目录里的一只文件工具 → skill review 要的那张适配器。
+ * 目录里的一只文件工具 → skill review 要的那张适配器。
  *
  * **权限口径与旧路逐字相同:不过权限门。** 旧路直调 `ReadTool.execute(...)`
  * (注册表那层的 `enforcePermission` 根本没经过),因为这是一次后台触发,写的是
@@ -72,10 +48,10 @@ function createToolContext(
  * 换来的是新树那几样:统一取消(`AbortScope`)、统一截断(`OutputBudget`)、
  * 两阶段(plan 里那套路径夹紧照跑)。
  */
-function toolkitFileToolAdapter(
+export function toolkitFileToolAdapter(
   tool: ToolkitTool,
   toInvocation: (args: unknown, toolCtx: AgentToolExecutionContext) => Invocation,
-): ReturnType<typeof createOnethingSkillReviewFileToolAdapters>['read'] {
+): CoreSkillReviewFileToolAdapter {
   const contract = contractForSchema(tool.spec.input)
   const schema = tool.spec.input as { properties?: unknown; required?: unknown }
   const noopObserver: Observer = { on: () => {} }
@@ -110,17 +86,17 @@ function toolkitFileToolAdapter(
   }
 }
 
-function createToolkitSkillReviewFileToolAdapters(
+export function createToolkitSkillReviewFileToolAdapters(
   ctx: TriggerContext,
   mutableRoots: string[],
-): ReturnType<typeof createOnethingSkillReviewFileToolAdapters> | undefined {
+): Record<'read' | 'write' | 'edit', CoreSkillReviewFileToolAdapter> | undefined {
   const catalog = getToolkitCatalog()
   if (!catalog) return undefined
   const read = catalog.get('read')
   const write = catalog.get('write')
   const edit = catalog.get('edit')
-  // 三只缺一就整组退回旧路:半新半旧的一组适配器会让"这次审查用的是哪套口径"
-  // 变成一个没人答得上来的问题(readonly 档没有 write/edit,那时本来就该退)。
+  // 三只缺一就整组不给:readonly 档没有 write/edit,那时这个触发器本来就该
+  // 什么都不做,而不是拿半组适配器去跑一次注定写不进去的审查。
   if (!read || !write || !edit) return undefined
   const toInvocation = (toolCtx: AgentToolExecutionContext): Invocation => ({
     callId: toolCtx.toolCallId,
@@ -140,23 +116,16 @@ function createToolkitSkillReviewFileToolAdapters(
   return { read: bind(read), write: bind(write), edit: bind(edit) }
 }
 
+/**
+ * R4b:旧路(直接 import `ReadTool`/`WriteTool`/`EditTool` 三个旧对象再调
+ * `.execute`)已随旧树删除,目录是唯一来源。三只缺一 → `undefined`,产品层的
+ * 触发器据此不装文件工具(它自己接得住这一格)。
+ */
 function createMainSkillReviewFileToolAdapters(
   ctx: TriggerContext,
   mutableRoots: string[],
-): ReturnType<typeof createOnethingSkillReviewFileToolAdapters> {
-  if (isToolkitEnabled()) {
-    const fromCatalog = createToolkitSkillReviewFileToolAdapters(ctx, mutableRoots)
-    if (fromCatalog) return fromCatalog
-  }
-  return createOnethingSkillReviewFileToolAdapters({
-    tools: {
-      read: ReadTool,
-      write: WriteTool,
-      edit: EditTool,
-    },
-    toToolContext: (toolCtx: AgentToolExecutionContext): ToolContext =>
-      createToolContext(ctx, toolCtx.toolCallId, mutableRoots),
-  })
+): Record<'read' | 'write' | 'edit', CoreSkillReviewFileToolAdapter> | undefined {
+  return createToolkitSkillReviewFileToolAdapters(ctx, mutableRoots)
 }
 
 // No fallback to the chat provider on purpose: skill review is background
