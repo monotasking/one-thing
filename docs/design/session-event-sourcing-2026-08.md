@@ -730,3 +730,161 @@ runtime 注入(温度 / maxTokens / thinking / reasoningEffort / toolChoice)。
 | 6 | 老会话(只有 E0 七类)的 surface 是空的 | 同 S1a:它们的消息事实还在 `messages.jsonl` 里,S2 的迁移脚本才把它们变成 `message/imported`。影子对它们返回 `skipped`(不记账,也不误报) |
 | 7 | 影子的模块边界 | `runs.ts → shadow.ts → reads.js → stores/*` 这条边让"只 mock `stores/paths`"的单测炸掉(`session-chunk-packer.test.ts` 因此就地 mock 掉 shadow)。S2 切读时这条边会消失(读门面自己就是投影),现在不为它加一层端口 |
 | 8 | `flushSessionEventLog` 每次开一次文件句柄做 fsync | 量到了:一个 50 工具调用的回合 55 次,而最长阻塞与它无关(fsync 走的是 `fs.promises`,不占主线程)。维持现状 |
+
+---
+
+## 11. S2 规格(2026-08-20):读切换(分两半;前半不改默认行为)
+
+S1a/S1b 已提交(be0a7cb9 / 5a7b875b),真机影子门绿。S2 把读路径建到事件上。**按用户要求夜间只做 S2a**:一切在开关之后,默认仍读 `messages.jsonl`;切默认与真实 store 迁移(S2b)等用户拍。
+
+### 11.1 S2a(开关后,默认关)
+- 开关:`ONETHING_SESSION_READ = 'messages'(默认) | 'events'`,单一入口 `app/session/read-mode.ts`;测试可临时切。
+- **事件倒读 pager**(§3.2):`core/session/storage/events/` 纯函数:从文件尾按 chunk 倒读 → 逐行 decode → 按 surface 规则(先遇 replace 先遮蔽)fold → 攒够 N 条消息边界即停;游标 `{eventSeq, fileOffset}`;`hasMoreBefore = offset > headerEnd`;跳转(按 messageId / eventSeq)首次正向扫建**内存** id→{seq,offset} 索引(每会话一次,不落盘)。app 层 `sessionReads.pageMessages/listUserMarkers/getMessage/...` 在 `events` 模式下走它;`listMessages`(引擎激活全量)在 `events` 模式下 = 全量 fold(复用 S1 的活投影缓存,已在内存就不读文件)。
+- `ChatMessage.seq` → 在 `events` 模式下填 `eventSeq`(投影节点的首个事件 seq),pager 游标/`hasMoreAfter` 语义按 seq 重写;`messages` 模式不变。
+- **`prepare`**(冷加载合成收尾,§3.1 采纳):`app/session/prepare.ts`:打开会话时扫未闭合的 run(有 `run/start` 无 `run/end`)→ 合成 aborted `tool/result`(对无 result 的 call)+ `run/end{outcome:'interrupted'}`,**只提交一次**(幂等:再次 prepare 无事可做);两种模式下都跑(`messages` 模式下它只补事件账本,不动消息——因为 `sanitizeSessionOnStartup` 仍在管消息)。
+- **`sessions:verify <id>|--all`**:全量 fold + surface 校验 + seq 连续 + blob 引用完整 + (有 messages.jsonl 时)canonical 对比,输出报告;只读。
+- **迁移脚本 `scripts/migrate-sessions-events.mjs`,本期只实现 `--dry-run`**:白名单输入(`messages.jsonl`/`meta.json`/`events.jsonl`/`segments.jsonl`/`messages.cleared-*.jsonl`/`legacy-backup/`/`<id>.json` legacy/`agent-dm-*`),未知文件清单,每会话 before/after 字节与事件数估算,合成 `message/imported` 的规则(从 messages.jsonl 逐条 imported,时间戳用消息 timestamp,`synthetic:true`;已有 events.jsonl 的会话:把 imported 插在现有事件**之前**并整体重编号 → 本期只算不写);`StoreLock`/运行中检测(发现文件 + 桌面进程)只检测不执行;`--apply` 明确拒绝("S2b 未拍板")。
+- 门:`events` 模式下跑现有 session/pager 测试套件(参数化两种模式);S0 合同测试的每个场景再加"倒读 pager 分页 N 条 ≡ 全量 fold 取尾 N 条";真机脚本(临时 store,假 provider):5 轮对话后 `events` 模式下 `pageMessages(tail 40)` 与 `messages` 模式结果 canonical 相等;`prepare` 对人为截断的 events.jsonl 合成收尾且二次幂等;`verify --all` 对临时 store 全绿;迁移 `--dry-run` 对**真实 `~/.onething` 只读**跑通并打印汇总(不写任何文件)。
+
+### 11.2 S2b(待用户拍板,本期不做)
+切默认 `ONETHING_SESSION_READ=events`;`--apply` 迁移真实 store(备份到 `legacy-backup/`);`messages.jsonl` 退役为只读遗留;`sanitizeSessionOnStartup` 退役由 `prepare` 接管;性能门(48MB 会话首屏 ±10%、翻页 p95 ≤50ms)。
+
+---
+
+### 11.3 S2a 落地记录(2026-08-20)
+
+**门**(逐字):`bun run typecheck` 只剩 `spaces/__tests__/provider-dials.test.ts`
+的 3 条既有错(`typecheck:web` 单独跑过,零错);
+`ONETHING_SESSION_FREEZE=1 bun run test` **10874 passed / 2 failed**(两条既有
+`ui-token-vars.test.ts`)+ 1 条既有 unhandled rejection
+(`AIProviderTab.interaction.test.ts`);`session:gate` **0**(none new);
+`boundary:gate` 绿(13 known,none new);`lint:ci` **334**(与基线同数,新增文件
+零命中);`server:build` 通过;
+`bun run sessions:shadow-report --min-runs 20` 在**两种读模式下各跑一遍**都是
+**runs 20 / mismatches 0 / appendFailures 0,GATE GREEN**;
+`bun run sessions:verify --all` 对那两个临时 store 全绿。
+
+**默认没变**:`ONETHING_SESSION_READ` 缺省 `messages`,一切新读路径在开关之后。
+
+#### 交付
+
+| 文件 | 角色 |
+|---|---|
+| `packages/core/session/storage/events/pager.ts` | **倒读 pager**(纯函数,fs 由调用方注入):按块倒读/正读逐行、`foldEventPageBackward`/`Forward`、`pageEventMessages`(游标 `{sessionId,seq,includeAnchor,offset}`)、`buildSessionEventJumpIndex`(内存 id→{seq,offset})、`listEventUserMessageMarkers` |
+| `packages/onething-runtime/src/app/session/read-mode.ts` | 开关单一入口(`ONETHING_SESSION_READ`,默认 `messages`,`setSessionReadModeForTesting` 供测试临时切) |
+| `packages/onething-runtime/src/app/session/projection-cache.ts` | 活投影**从 `shadow.ts` 提出来共用**(见下方裁定 1) |
+| `packages/onething-runtime/src/app/session/events-reads.ts` | `events` 模式的七个读实现 + `events.jsonl` 的字节面(fs 适配器)+ 跳转索引缓存 |
+| `packages/onething-runtime/src/app/session/prepare.ts` | 冷加载收尾合成(尾部窗口扫未闭合 run → aborted `tool/result` + `run/end{interrupted}`) |
+| `packages/onething-runtime/src/app/session/reads.ts` | 七个方法各加一行按模式的岔口;`fromEvents()` 出错就退回消息模式(读路径不许因为新路炸掉) |
+| `packages/onething-runtime/src/app/session/event-log.ts` | 写尾巴的闸从"影子开着吗"放大成"内存里有没有消费者"(影子 **或** events 读模式) |
+| `packages/onething-runtime/src/app/session/runs.ts` | `beginSessionRun` 开头调一次 `prepareSessionEventsOnce` |
+| `scripts/session-verify.ts`(`bun run sessions:verify`) | 只读自证:seq 连续 / surface 校验 / 能折出投影 / blob 引用完整 / 未闭合 run(全量)/ 与 messages.jsonl 的 id 序列对照 |
+| `scripts/migrate-sessions-events.mjs`(`bun run migrate:sessions:events`) | **只有 `--dry-run`**;`--apply` 退出码 2("S2b 未拍板") |
+| 测试 | `core/session/__tests__/event-pager.test.ts`(14 条)、`projection-contract.test.ts` 每条场景加一行"倒读一页 ≡ 全量 fold 取尾一页"、`app/session/__tests__/events-reads.test.ts`(10 条,七个读**参数化两种模式**)、`prepare.test.ts`(7 条)、`session-verify.test.ts`(10 条,两个脚本) |
+
+#### 倒读为什么是安全的(这一期最该被读到的一段)
+
+事件日志纯追加,于是有一条铁的时序:**任何"让一条消息不再显示"的事件,一定
+晚于那条消息自己的事件**。所以对任意后缀 `[k, EOF]`,落在后缀里的节点,它的
+全部遮蔽事件也在后缀里 —— 折这一段得到的 `hidden` 与折整份文件**相同**。
+"分页 N 条 ≡ 全量 fold 取尾 N 条"就是从这条不变量来的,不是巧合。
+
+三个例外必须显式处理,否则这条不变量当场破:
+
+1. **`user/message-edited`** 遮蔽的是"被编辑那条(含)到它自己"的一整段,而
+   被编辑那条可能在窗口之外。倒读时遇到它就把 messageId 记进
+   `pendingEditTargets`,**没找到之前不许停**。朴素实现(攒够 N 条就停)会把
+   本该消失的消息照旧显示出来 —— `event-pager.test.ts` 那条"编辑目标远在尾巴
+   之前"就是钉这一条的;
+2. **`session/cleared`** 遮蔽它之前的一切:遇到它就是**头**,收工(再往前读
+   一个字节都没有意义);
+3. **`message/deleted`** 只遮蔽一条,那条若在窗口外,本来也不在这一页里。
+
+#### 口径裁定(原文没写死的地方)
+
+1. **活投影只能有一份**。S1b 的活投影是 `shadow.ts` 的私有物,S2a 的读路径也
+   要它 —— 而写入口那条尾巴(`drainSessionLogEventTail`)是**取走式**的:两份
+   缓存会互相偷走对方的记录,两边的投影都缺一段。所以提成
+   `projection-cache.ts`,`shadow.ts` 只留两个转发名字。
+2. **`totalCount` 只在真的数得出来时才给**。事件坐标不是位置,`hasMoreAfter =
+   seq < totalCount` 那个比较在这里没有意义;而为了一个计数把 48MB 全扫一遍
+   正是 §3.2 拒绝的事。所以:整份文件都折过了(尾页读到头)才填 `totalCount`,
+   否则缺席 —— renderer 本来就以 `hasMoreBefore` 为准(`MessageList.vue:657`
+   的注释原话)。
+3. **`pageMessages` 有冷热两条路**。活投影已经在内存里就直接从它分页(更准也
+   更便宜);没有才走文件 pager,而且**文件 pager 不建活投影** —— 建了的话
+   "不整份加载"这句话当场作废。两条路的结果逐字段相同,测试互比。
+4. **老会话必须原样退回消息模式**。只有 E0 七类的会话折出来是零个节点,那是
+   **对的**(它们的历史事实还在 `messages.jsonl` 里,要等 S2b 的迁移)。所以
+   events 模式的每个入口在"折不出任何消息"时返回 `undefined`,由 `reads.ts`
+   退回原路。不是兜底,是事实所在处不同。
+5. **`prepare` 只扫尾巴,不扫全量**。一次进程死亡只会留下**它最后那条** run
+   未闭合,而 prepare 每次打开会话都跑;全量扫等于每次开会话都读一遍整份日志。
+   倒读因此在**第一条完整闭合的 run**(先遇 `run/end`、再遇它自己的 `run/start`)
+   处收手 —— 那时手上开着的那些 run 都已扫全(它们的 `tool/call` 一定晚于自己
+   的 `run/start`),常见情形下只读约一个半回合;另有 4MB 硬窗口兜底。结果里
+   `stoppedAt: 'head' | 'closed-run' | 'window'` 自报停在哪。窗口/边界之外万一
+   真有更老的残留,`sessions:verify` 会**全量**扫出来并报告 —— 不会静默丢掉。
+6. **`prepare` 不反过来依赖 run 登记处**。它靠的是**调用点**:两个入口
+   (`beginSessionRun` 的开头、活投影第一次建起来之前)都排在这条会话的任何
+   一次执行之前,而 `prepareSessionEventsOnce` 每进程每会话只真的跑一次。
+   依赖 `currentSessionRun` 会把 prepare 拖进 `runs → shadow → reads` 那个环
+   (S1b 缺口 7 记的正是它)。
+7. **进程内还要记得自己刚做过什么**。合成的 `run/end` 是排队异步落盘的,所以
+   紧接着的第二次扫描很可能仍看到那条 run 开着 —— 真机脚本第一版就这样给同一个
+   runId 写了两条 `run/end`。账本的幂等是**跨进程**口径;进程内由
+   `closedRuns` 表兜住。
+8. **写尾巴的闸放大了**:从"影子开着吗"变成"内存里有没有消费者"(影子 **或**
+   events 读模式)。两条都关时尾巴仍然恒空 —— 一条永远没人取的队列只会吃内存。
+9. **迁移 dry-run 只打 stdout**。真实 store 上跑它必须一个字节都不写,连日志
+   都不许落进去(用例 `writes nothing at all` 钉住;真机跑完用
+   `find -newermt` 复核过,零文件被改动)。
+
+#### 性能量测(合成 fixture,字节是真的)
+
+`scripts/__s2a-perf.ts`(临时脚本,已移出仓库):每回合 9 条事件、正文 1.2KB
+× 3 段、带一次工具调用与一份 3.6KB 结果。中位数(3 次):
+
+| fixture | 尾页(40 条) | 再往上翻一页 | 全量 fold | 冷建跳转索引 | 整文件读一遍(基线) |
+|---|---|---|---|---|---|
+| 2000 回合 / 18000 事件 / **19.1MB** / 4000 消息 | **2.1ms** | 1.8ms | 32.0ms | 53.5ms | 3.3ms |
+| 5000 回合 / 45000 事件 / **47.9MB** / 10000 消息 | **1.3ms** | 1.2ms | 67.4ms | 87.1ms | 6.7ms |
+
+两条结论:①尾页与文件大小**无关**(它只读末尾那几个块),48MB 会话上比"把
+文件整读一遍"还快 5 倍;②全量 fold 是 O(文件),67ms/48MB —— 与今天
+`loadJsonl` 同量级(§3.2 的判据),而它每会话只发生一次(活投影缓存)。
+S2b 的性能门(首屏 ±10%、翻页 p95 ≤50ms)按这两行看是宽裕的,但**真机 48MB
+会话的首屏还没量过** —— 上表是合成 fixture。
+
+真机(临时 store + 假 provider,5 轮对话):`messages` 模式 3.9ms /
+`events` 冷路 pager 3.3ms / 全量 fold 2.1ms,三者投影出的尾 40 条
+`canonicalChatMessage` **逐字节相等**。
+
+#### 迁移 `--dry-run` 对真实 `~/.onething` 的一次只读跑(汇总)
+
+- 会话目录 **408** 间,legacy 整文件 **1** 份;
+- 合成 `message/imported` **8563** 条;已有事件 2165 条,其中 **5** 间会话要重编号;
+- `events.jsonl` 字节 **1.1MB → 347.8MB**(`messages.jsonl` 现为 346.0MB);
+- 不认识的文件 **13** 个:1 个 `sessions/.DS_Store` + 12 个
+  `.meta.json.<pid>.<ts>.<n>.tmp` 残留(原子写留下的临时文件)。迁移不会碰它们,
+  但**它们本身是一条既有的清理欠账**;
+- run 检测:`run/backend.lock` 存在但进程已不在(陈旧锁),没有人拿着这个 store;
+- 复核:跑完用 `find ~/.onething -newermt` 查过,**零文件被改动**。
+
+`bun run sessions:verify --all` 对真实 store 也跑过一遍(同样只读,零文件被改动):
+**408 间会话全绿** —— 其中绝大多数是"事件里还没有历史"(只有 E0 七类或空),
+那不是错,是等着 S2b 迁移的状态。
+
+#### S2b 必须决定的事
+
+| # | 待决 | 现状 / 影响 |
+|---|---|---|
+| 1 | **切默认读模式** | `ONETHING_SESSION_READ=events` 变默认 —— 用户拍板项,本期一行没动 |
+| 2 | **`--apply` 迁移真实 store** | 脚本拒绝执行。真跑之前还要定:备份策略(`legacy-backup/`)、迁移期间禁止写入(StoreLock)、347MB 的写入要不要分批 |
+| 3 | **深翻页时"更晚的遮蔽事件"看不见** | 带游标往上翻只扫游标之前的字节,所以"很久以前的消息在今天被删掉了"在深翻页时会照旧显示。首屏(从 EOF 倒读)永远准,活投影在内存里时也准。要么接受,要么让游标带上一个有界的 hidden 集合 |
+| 4 | **`totalCount` 在大会话上缺席** | 见裁定 2。UI 的"上面还有 N 条"在大会话上会退成"已加载条数";要精确就得付一次全量扫 |
+| 5 | **读门面里还有四个方法没路由** | `sliceForHistory` / `findMessage` / `iterateMessages` / `firstUserPreview` 仍走 `getSessionMessages`(§11.1 只点名了七个)。其中 `sliceForHistory` 是模型历史的取数口 —— 它的事件版落点是 `projectModelHistory`,不是"再抄一遍投影",所以留给 S2b 一并接 |
+| 6 | **`pageMessages` 的其它调用点还没走读门面** | `apps/electron/src/main/ipc/sessions.ts` 与 `app/server/runtime.ts` 直接调 `store.getSessionMessagesPage`,不经 `sessionReads` —— 开关对它们无效(这是 P0.2 留下的口子,不是 S2a 新开的)。切默认之前必须收口 |
+| 7 | **图片回合的正文形态** | S1b 缺口 5 原样敞着:messages.jsonl 那条是内嵌 base64 的 markdown,投影是一格 image part。切读之后渲染层认哪一种,是 S2b 的读路径裁定 |
+| 8 | **`sanitizeSessionOnStartup` 的退役** | 今天 `prepare` 只补事件账本,消息那边仍由它管。两者的收尾口径要不要合并成一条 |
+| 9 | **`.meta.json.*.tmp` 残留** | 真实 store 里 12 个(见上)。迁移白名单把它们列为"不认识",但清理它们是另一件事 |

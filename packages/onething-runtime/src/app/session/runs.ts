@@ -18,6 +18,7 @@
 import { randomUUID } from 'node:crypto'
 import type { SessionRunKind } from '@onething/core/session'
 import { appendSurfaceAwareEvent } from './event-surface.js'
+import { prepareSessionEventsOnce } from './prepare.js'
 import { flushSessionEventLog } from './event-log.js'
 import { scheduleSessionRunShadow } from './shadow.js'
 
@@ -86,6 +87,9 @@ const currentRuns = new Map<string, SessionRunHandle>()
  * 历史上占一格(§9.2 的 surface 分类表)。
  */
 export function beginSessionRun(sessionId: string, input: BeginSessionRunInput): SessionRunHandle {
+  // 上一个**进程**没收尾的那些 run 先收掉(S2a `prepare`,每会话一次)。排在
+  // 这里而不是别处:它必须发生在这条会话有任何一次活着的执行之前。
+  prepareSessionEventsOnce(sessionId)
   // 上一次没收尾就走到这里 = 引擎在同一条会话上开了第二次执行。把旧的按
   // `interrupted` 结掉(它确实被打断了),而不是让两条 run/start 悬在那里。
   const stale = currentRuns.get(sessionId)

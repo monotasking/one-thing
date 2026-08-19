@@ -28,18 +28,19 @@ import path from 'node:path'
 import {
   canonicalChatMessage,
   canonicalHistoryMessages,
-  createSessionProjectionState,
   materializeModelHistory,
   materializeNode,
-  reduceSessionProjection,
   resolveHistoryBlobRefs,
   type ProjectionNode,
   type ProjectModelHistoryMeta,
   type ProjectModelHistoryOptions,
-  type SessionProjectionState,
 } from '@onething/core/session'
 import { getLogDir } from '../stores/paths.js'
-import { drainSessionLogEventTail, readSessionLogEventsSync } from './event-log.js'
+import {
+  getLiveSessionProjection,
+  peekSessionProjection,
+  resetSessionProjectionCache,
+} from './projection-cache.js'
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
 import { readSessionBlobText } from './blob-store.js'
 import { sessionReads } from './reads.js'
@@ -209,62 +210,16 @@ function recordMismatch(
 
 // ============ 活投影 ============
 
-interface LiveProjection {
-  state: SessionProjectionState
-  /** 已经折进 state 的最后一条 seq。 */
-  lastSeq: number
-}
-
-const projections = new Map<string, LiveProjection>()
-
 /**
- * 这条会话的活投影,**推进到此刻**。
+ * 活投影搬去了 `projection-cache.ts`(S2a)。
  *
- * 第一次用的时候从文件同步折一遍(冷加载 / 进程重启后的会话);之后每次只
- * 取走写入口挂着的那一小段。尾巴溢出过(见 `event-log.ts`)就重折一次 ——
- * 宁可付一次全量,也不能拿一份缺了一段的投影去比对。
+ * 理由是写入口那条尾巴是**取走式**的:S2a 的读路径也要同一份投影,两份缓存
+ * 会互相偷走对方的记录。这里只留两个转发名字,断言的写法一字未动。
  */
-function liveProjection(sessionId: string): SessionProjectionState {
-  let live = projections.get(sessionId)
-  if (!live) {
-    live = { state: createSessionProjectionState(), lastSeq: 0 }
-    for (const event of readSessionLogEventsSync(sessionId)) {
-      live.state = reduceSessionProjection(live.state, event)
-      live.lastSeq = Math.max(live.lastSeq, event.seq)
-    }
-    projections.set(sessionId, live)
-    // 首次是从文件折的,写入口那条尾巴里的记录已经在文件里(或即将写进去),
-    // 丢掉它以免同一条被折两次。
-    const drained = drainSessionLogEventTail(sessionId)
-    for (const event of drained.records) {
-      if (event.seq <= live.lastSeq) continue
-      live.state = reduceSessionProjection(live.state, event)
-      live.lastSeq = event.seq
-    }
-    return live.state
-  }
+export const resetSessionShadowCache = resetSessionProjectionCache
 
-  const { records, overflowed } = drainSessionLogEventTail(sessionId)
-  if (overflowed) {
-    projections.delete(sessionId)
-    return liveProjection(sessionId)
-  }
-  for (const event of records) {
-    if (event.seq <= live.lastSeq) continue
-    live.state = reduceSessionProjection(live.state, event)
-    live.lastSeq = event.seq
-  }
-  return live.state
-}
-
-/** 会话删除 / 测试:丢掉活投影。 */
-export function resetSessionShadowCache(sessionId?: string): void {
-  if (sessionId) {
-    projections.delete(sessionId)
-    return
-  }
-  projections.clear()
-}
+/** 仅测试:直接看某条会话的活投影(不推进)。 */
+export const peekSessionShadowProjection = peekSessionProjection
 
 // ============ run 断言(kind: 'messages') ============
 
@@ -298,7 +253,7 @@ export function checkSessionRunShadow(
 ): 'match' | 'mismatch' | 'skipped' {
   if (!isSessionShadowEnabled()) return 'skipped'
   try {
-    const state = liveProjection(sessionId)
+    const state = getLiveSessionProjection(sessionId)
     // 这条会话一条事件都没有(legacy 整文件会话)= 没有可比的东西。
     if (state.nodes.length === 0) return 'skipped'
 
@@ -382,7 +337,7 @@ export function checkSessionHistoryShadow(
 ): 'match' | 'mismatch' | 'skipped' {
   if (!isSessionShadowEnabled()) return 'skipped'
   try {
-    const state = liveProjection(sessionId)
+    const state = getLiveSessionProjection(sessionId)
     if (state.nodes.length === 0) return 'skipped'
 
     const projected = materializeModelHistory(state, input.meta ?? {}, {
@@ -407,8 +362,3 @@ export function checkSessionHistoryShadow(
  * S0 的合同测试与这里的影子断言必须用**同一把尺**,各写一份迟早分叉。
  */
 export const canonicalHistory = canonicalHistoryMessages
-
-/** 仅测试:直接看某条会话的活投影(不推进)。 */
-export function peekSessionShadowProjection(sessionId: string): SessionProjectionState | undefined {
-  return projections.get(sessionId)?.state
-}

@@ -32,7 +32,10 @@ import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/hi
 import { buildContextCompactContent } from '../../engine/context-compact.js'
 import { applySessionCommand } from '../commands.js'
 import type { CoreSessionCommandMessage, SessionCommand } from '../commands.js'
+import { encodeSessionLogEventLine } from '../events/index.js'
 import type { SessionLogEventRecord, SessionRunKind } from '../events/index.js'
+import { foldEventPageBackward } from '../storage/events/index.js'
+import type { SessionEventByteReader } from '../storage/events/index.js'
 import {
   canonicalChatMessages,
   canonicalHistoryMessages,
@@ -681,6 +684,29 @@ function historyOf(messages: readonly Record<string, unknown>[], meta: Record<st
   )
 }
 
+/**
+ * S2a:同一条事件流交给**倒读 pager**,取尾 N 条必须与全量 fold 取尾 N 条逐字段
+ * 相同(§11.1 的门)。
+ *
+ * 放在 `expectEquivalent` 里的理由与 S1b 那行历史指纹一样:分页不是"另一种
+ * 投影",而是同一个投影的一个窗口 —— 每条场景都该顺手证一遍,而不是另立一套
+ * 场景(那套迟早和这套分叉)。
+ */
+function expectPagerMatchesFold(events: readonly SessionLogEventRecord[]): void {
+  const buffer = new TextEncoder().encode(events.map(encodeSessionLogEventLine).join(''))
+  const reader: SessionEventByteReader = {
+    size: buffer.length,
+    read: (position, length) => buffer.subarray(position, Math.min(buffer.length, position + length)),
+  }
+  const all = projectChatMessages(events).messages
+  for (const limit of [1, 2, 3, all.length, all.length + 5]) {
+    if (limit <= 0) continue
+    // 小块尺寸是故意的:它逼着倒读走"跨块拼行"的那条路。
+    const page = foldEventPageBackward(reader, { limit, chunkSize: 96 })
+    expect(page.messages, `tail ${limit}`).toEqual(all.slice(Math.max(0, all.length - limit)))
+  }
+}
+
 function expectEquivalent(scenario: Scenario): void {
   const projected = projectChatMessages(scenario.b.events)
   expect(canonicalChatMessages(projected.messages as unknown as Record<string, unknown>[]))
@@ -695,6 +721,7 @@ function expectEquivalent(scenario: Scenario): void {
   // 这一行让 §9.5 的每一条场景同时成为那道断言的合同 —— 判据换了地方,场景不必
   // 各写一遍。
   expect(canonicalHistoryMessages(projectedHistory)).toBe(canonicalHistoryMessages(builtHistory))
+  expectPagerMatchesFold(scenario.b.events)
 }
 
 // ============================================================================

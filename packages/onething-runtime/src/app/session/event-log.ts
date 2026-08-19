@@ -50,6 +50,7 @@ import {
 } from '@onething/runtime/sessions/session-events'
 import { getSessionsDir } from '../stores/paths.js'
 import { countSessionEventFailure, isSessionShadowEnabled } from './event-stats.js'
+import { isSessionEventsReadMode } from './read-mode.js'
 
 export const SESSION_EVENTS_LOG_FILENAME = 'events.jsonl'
 
@@ -66,6 +67,17 @@ const FOREIGN_WRITER_CHECK_INTERVAL_MS = 500
  * 从文件重折一遍,也不能让一条永不消费的队列吃光内存。
  */
 const SHADOW_TAIL_MAX = 200_000
+
+/**
+ * 尾巴要不要攒 —— **有没有内存里的消费者**。
+ *
+ * S1b 时消费者只有影子断言,所以判据是"影子开着吗"。S2a 起活投影同时是
+ * `events` 读模式的取数来源,于是判据放大成两条之一。两条都关时尾巴恒空:
+ * 一条永远没人取的队列只会吃内存。
+ */
+function wantsEventTail(): boolean {
+  return isSessionShadowEnabled() || isSessionEventsReadMode()
+}
 
 interface SessionEventLogState {
   /** false = 这个会话不记事件(legacy 整文件格式),见 resolveEnabled。 */
@@ -234,7 +246,7 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   const line = encodeSessionLogEventLine(record)
   state.expectedBytes += Buffer.byteLength(line, 'utf8')
 
-  if (isSessionShadowEnabled()) {
+  if (wantsEventTail()) {
     if (state.shadowTail.length >= SHADOW_TAIL_MAX) {
       state.shadowTail = []
       state.shadowTailOverflowed = true

@@ -32,7 +32,17 @@ import {
   readSessionTranscriptFile,
 } from '../stores/sessions.js'
 import { getSessionsDir } from '../stores/paths.js'
+import {
+  eventsCountMessages,
+  eventsGetMessage,
+  eventsGetMessageIndex,
+  eventsLastMessageOfRole,
+  eventsListMessages,
+  eventsListUserMarkers,
+  eventsPageMessages,
+} from './events-reads.js'
 import { isSessionFreezeEnabled } from './freeze.js'
+import { isSessionEventsReadMode } from './read-mode.js'
 
 export interface ListMessagesOptions {
   /** 去掉 provider-data part(交给 renderer 的那一份) */
@@ -47,6 +57,23 @@ export interface ListMessagesResult {
 
 function guard<T>(value: T): T {
   return isSessionFreezeEnabled() ? deepFreeze(value) : value
+}
+
+/**
+ * `events` 模式的取数(S2a,§11.1)。
+ *
+ * 七个方法各有一行这样的岔口:开关在 `events` 上、且这条会话的事件里真的有
+ * 历史时,答案从投影来;否则(默认 / 老会话)一字不改地走原来那条路。
+ * **岔口只在这一层**:再往下的仓库、驱动、pager 都不知道有第二种读法。
+ */
+function fromEvents<T>(read: () => T | undefined): T | undefined {
+  if (!isSessionEventsReadMode()) return undefined
+  try {
+    return read()
+  } catch (error) {
+    console.warn('[SessionReads] events-mode read failed, falling back to messages:', error)
+    return undefined
+  }
 }
 
 /**
@@ -70,7 +97,7 @@ export function sessionPreviewText(
 export const sessionReads = {
   /** 一条会话的全部消息。`sanitize` 打开时同时告诉调用方"到底动没动"。 */
   listMessages(sessionId: string, options: ListMessagesOptions = {}): ListMessagesResult {
-    const messages = getSessionMessages(sessionId)
+    const messages = fromEvents(() => eventsListMessages(sessionId)) ?? getSessionMessages(sessionId)
     if (!messages) return { messages: [], changed: false }
     if (!options.sanitize) return { messages: guard(messages), changed: false }
     // F9:`changed` 由 sanitizer 自己带回来,不再靠 `===` 比引用。
@@ -80,15 +107,17 @@ export const sessionReads = {
 
   /** 不加载整会话的分页(pager 走存储驱动)。 */
   pageMessages(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse {
-    return getSessionMessagesPage(request)
+    return fromEvents(() => eventsPageMessages(request)) ?? getSessionMessagesPage(request)
   },
 
   /** 用户消息锚点(会话目录 / 跳转用)。 */
   listUserMarkers(sessionId: string): readonly UserMessageMarker[] | undefined {
-    return getSessionUserMessageMarkers(sessionId);
+    return fromEvents(() => eventsListUserMarkers(sessionId)) ?? getSessionUserMessageMarkers(sessionId);
   },
 
   getMessage(sessionId: string, messageId: string): Readonly<ChatMessage> | undefined {
+    const fromEventLog = fromEvents(() => eventsGetMessage(sessionId, messageId))
+    if (fromEventLog) return guard(fromEventLog)
     const message = getSessionMessages(sessionId)?.find(item => item.id === messageId)
     return message ? guard(message) : undefined
   },
@@ -111,14 +140,20 @@ export const sessionReads = {
   },
 
   getMessageIndex(sessionId: string, messageId: string): number {
+    const fromEventLog = fromEvents(() => eventsGetMessageIndex(sessionId, messageId))
+    if (fromEventLog !== undefined) return fromEventLog
     return getSessionMessages(sessionId)?.findIndex(item => item.id === messageId) ?? -1
   },
 
   countMessages(sessionId: string): number {
+    const fromEventLog = fromEvents(() => eventsCountMessages(sessionId))
+    if (fromEventLog !== undefined) return fromEventLog
     return getSessionMessages(sessionId)?.length ?? 0
   },
 
   lastMessageOfRole(sessionId: string, role: ChatMessage['role']): Readonly<ChatMessage> | undefined {
+    const fromEventLog = fromEvents(() => eventsLastMessageOfRole(sessionId, role))
+    if (fromEventLog) return guard(fromEventLog)
     const messages = getSessionMessages(sessionId)
     if (!messages) return undefined
     for (let index = messages.length - 1; index >= 0; index--) {
