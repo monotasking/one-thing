@@ -6,7 +6,10 @@
  *  1. 每一行都 `JSON.parse` 得动,且带 `time` / `level` / `ns`;
  *  2. 恰好三条 `ns=server.http` 记录,状态码逐条对得上;
  *  3. `[object Object]` 计数 = 0(它是文本行格式的产物,JSONL 之后不该再有);
- *  4. 默认**不写** provider 请求转储(拍板 B:默认关)。
+ *  4. 默认**不写** provider 请求转储(拍板 B:默认关);
+ *  5. **渲染侧日志上行**(L3):打三条 renderer 记录 → `server.jsonl` 里出现三条
+ *     `renderer.*` 且 `src='renderer'`;不带 token 时被 401 挡掉(server 配了
+ *     token 才验这一条,没配就如实跳过)。
  *
  * 绝不碰真 `~/.onething` —— 全程 `ONETHING_STORE_PATH` 指向 mkdtemp 出来的临时目录。
  *
@@ -126,7 +129,60 @@ try {
     'every server.http record carries path + ms',
   )
 
-  const objectObject = (text.match(/\[object Object\]/g) ?? []).length
+  // ── L3:渲染侧日志上行 ─────────────────────────────────────────────
+  // 通道是通用 RPC 信封(`POST /api/rpc`,domain=logs),不是手写的 `/api/logs` ——
+  // 见 packages/shared/ipc/logs.ts 头注:加一个域不动四枚壳。
+  const appendBody = JSON.stringify({
+    domain: 'logs',
+    method: 'append',
+    payload: {
+      records: [
+        { level: 'info', ns: 'chat-store', msg: 'smoke renderer info', fields: { sessionId: 'smoke-1' } },
+        { level: 'warn', ns: 'crash', msg: 'smoke renderer warn' },
+        { level: 'error', ns: 'ipc-hub', msg: 'smoke renderer error', err: { name: 'Error', message: 'smoke boom' } },
+      ],
+    },
+  })
+  const appendResponse = await fetch(`${base}/api/rpc`, {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: appendBody,
+  })
+  const appendResult = await appendResponse.json().catch(() => null)
+  check(appendResponse.status === 200, `log append accepted (HTTP ${appendResponse.status})`)
+  check(appendResult?.ok === true && appendResult?.data?.accepted === 3,
+    `3 records accepted (got ${JSON.stringify(appendResult?.data ?? appendResult)})`)
+
+  if (discovery.token) {
+    const denied = await fetch(`${base}/api/rpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: appendBody,
+    })
+    check(denied.status === 401, `log append without a Bearer token is rejected (got ${denied.status})`)
+  } else {
+    console.log('  skip no ONETHING_SERVER_TOKEN configured — cannot verify the 401 path')
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  const afterAppend = fs.existsSync(serverLog) ? fs.readFileSync(serverLog, 'utf-8') : ''
+  const rendererRecords = afterAppend
+    .split('\n')
+    .filter(Boolean)
+    .map(line => { try { return JSON.parse(line) } catch { return null } })
+    .filter(record => record && typeof record.ns === 'string' && record.ns.startsWith('renderer.'))
+  check(rendererRecords.length === 3, `exactly 3 renderer.* records (got ${rendererRecords.length})`)
+  check(rendererRecords.every(record => record.src === 'renderer'), 'every renderer record carries src=renderer')
+  check(
+    rendererRecords.map(record => record.ns).sort().join(',') === 'renderer.chat-store,renderer.crash,renderer.ipc-hub',
+    `namespaces prefixed correctly: ${rendererRecords.map(record => record.ns).sort().join(',')}`,
+  )
+  check(
+    rendererRecords.some(record => record.err?.message === 'smoke boom'),
+    'the error record kept its normalized err',
+  )
+
+  const objectObject = ((afterAppend || text).match(/\[object Object\]/g) ?? []).length
   check(objectObject === 0, `[object Object] count = 0 (got ${objectObject})`)
 
   const dumpDir = path.join(logDir, 'dumps', 'provider-requests')

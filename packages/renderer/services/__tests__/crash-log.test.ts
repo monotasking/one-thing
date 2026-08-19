@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { LogRecord } from '@onething/core/logging'
+import { createRendererLogHub, resetRendererLogHubForTests, type RendererLogHub } from '../log'
 import {
   recordCrash,
   getCrashLogEntries,
@@ -19,14 +21,27 @@ function createStorageStub(): Storage {
   }
 }
 
+/**
+ * L3:crash-log 不再自打 console,它是 RendererLogHub 的一个 producer。
+ * 测试因此对着 hub 的**内存环**断言 —— 那就是上行的同一批记录。
+ */
+let hub: RendererLogHub
+function hubRecords(): LogRecord[] {
+  return hub.dump()
+}
+
 describe('crash-log', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', createStorageStub())
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'debug').mockImplementation(() => {})
+    hub = createRendererLogHub({ echo: false, level: 'trace' })
+    resetRendererLogHubForTests(hub)
   })
 
   afterEach(() => {
+    resetRendererLogHubForTests(null)
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -70,21 +85,51 @@ describe('crash-log', () => {
     expect(entry.stack).toContain('[truncated]')
   })
 
-  it('emits a single self-contained console line per error', () => {
+  it('emits ONE structured record per error and no console line at all', () => {
     recordCrash('error-boundary', new Error('boom'), { info: 'component event handler' })
-    expect(console.error).toHaveBeenCalledTimes(1)
-    const line = vi.mocked(console.error).mock.calls[0][0] as string
-    expect(line).toContain('[crash-log] #1 error-boundary: boom')
-    expect(line).toContain('info: component event handler')
-    expect(line).toContain('Error: boom')
+
+    expect(console.error).not.toHaveBeenCalled()
+    expect(console.warn).not.toHaveBeenCalled()
+
+    const records = hubRecords()
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      level: 'error',
+      ns: 'crash',
+      msg: 'error boundary caught',
+      src: 'renderer',
+    })
+    expect(records[0].fields).toMatchObject({ source: 'error-boundary', seq: 1, info: 'component event handler' })
+    expect(records[0].err?.message).toBe('boom')
+    expect(records[0].err?.stack).toContain('boom')
   })
 
-  it('dedupes repeated vue warns instead of flooding the buffer', () => {
+  it('maps each capture point to its own stable msg', () => {
+    recordCrash('vue-error-handler', new Error('a'))
+    recordCrash('window-error', new Error('b'))
+    recordCrash('unhandled-rejection', new Error('c'))
+    expect(hubRecords().map(record => record.msg)).toEqual(['vue error', 'window error', 'unhandled rejection'])
+  })
+
+  it('dedupes repeated vue warns — one ring entry AND one log record', () => {
     recordCrash('vue-warn', 'Invalid prop: foo')
     recordCrash('vue-warn', 'Invalid prop: foo')
     recordCrash('vue-warn', 'Invalid prop: foo')
+
     expect(getCrashLogEntries()).toHaveLength(1)
-    expect(console.warn).toHaveBeenCalledTimes(3)
+    const records = hubRecords()
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ level: 'warn', msg: 'vue warn' })
+    expect(records[0].fields).toMatchObject({ message: 'Invalid prop: foo', source: 'vue-warn' })
+    expect(console.warn).not.toHaveBeenCalled()
+  })
+
+  it('puts a Vue warn trace into fields.stack instead of extra lines', () => {
+    recordCrash('vue-warn', 'Invalid prop: bar', { info: 'at <ChatPanel>' })
+    const record = hubRecords()[0]
+    expect(record.fields?.info).toBe('at <ChatPanel>')
+    // 非 Error 没有 err,正文进 fields —— 一条记录,不是多行。
+    expect(record.err).toBeUndefined()
   })
 
   it('dump includes every entry and clear empties the log', () => {

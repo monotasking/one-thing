@@ -1,4 +1,5 @@
 import { app, type WebContents } from 'electron'
+import { RENDERER_LOG_ECHO_MARK } from '@shared/ipc/logs.js'
 
 /**
  * Electron 侧的 renderer **兜底**采集(拍板 C②)。
@@ -10,7 +11,11 @@ import { app, type WebContents } from 'electron'
  *  2. **结构化** —— `fields {webContentsId, sourceId, lineNumber, url}`,不再把
  *     元数据拼进消息字符串;
  *  3. **多行折叠** —— Vue warn 的组件链栈折成**一条**记录,首行是 msg,
- *     其余进 `fields.stack`。
+ *     其余进 `fields.stack`;
+ *  4. **认自己的回声**(L3)—— RendererLogHub 在 dev 下会把记录回显到 console,
+ *     warn/error 的回显同样是 warn+,不滤掉就会同一条落两遍。回显行一律带零宽
+ *     标记 `RENDERER_LOG_ECHO_MARK`,这里见到就丢:那条记录**已经**经 hub 的
+ *     `logs.append` 上行了,兜底不该再抄一遍。
  */
 
 export type ElectronAppLogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -107,6 +112,8 @@ export function createElectronRendererConsoleCapture(
       }
       const message = typeof details.message === 'string' ? details.message : legacyMessage
       if (!message) return
+      // hub 的回声 —— 它自己已经上行过了(见文件头第 4 条)。
+      if (message.startsWith(RENDERER_LOG_ECHO_MARK)) return
 
       const rawLevel = typeof details.level === 'string' ? details.level : legacyLevel
       const level = typeof rawLevel === 'number'

@@ -1,4 +1,5 @@
 import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../../core/channel.js'
+import { resolveGatewayLogger, type Logger } from '../../core/logging.js'
 import {
   DEFAULT_ILINK_BASE_URL,
   getQRCode,
@@ -29,6 +30,8 @@ export type WechatAuthEvent =
 
 export interface WechatChannelOptions {
   accountId?: string
+  /** 构造时注入(L2):不给 = 进程级工厂给的 `gateway.wechat`。 */
+  logger?: Logger
   loadAuthState?: typeof loadAuthState
   saveAuthState?: typeof saveAuthState
   getQRCode?: typeof getQRCode
@@ -40,13 +43,13 @@ export interface WechatChannelOptions {
   sendText?: typeof sendText
   sendTyping?: typeof sendTyping
   delay?: (ms: number) => Promise<void>
-  logger?: Pick<Console, 'log' | 'warn' | 'error'>
   onAuthEvent?: (event: WechatAuthEvent) => void
 }
 
 export class WechatChannel implements Channel {
   readonly accountId: string
   readonly id: string
+  private readonly log: Logger
   private handler: ((msg: InboundMessage) => Promise<void>) | null = null
   private auth: WechatAuthState | null = null
   private poller: WechatPollerLike | null = null
@@ -55,6 +58,7 @@ export class WechatChannel implements Channel {
   constructor(private readonly options: WechatChannelOptions = {}) {
     this.accountId = normalizeWechatAccountId(options.accountId)
     this.id = `wechat:${this.accountId}`
+    this.log = resolveGatewayLogger(options.logger, 'wechat').child({ accountId: this.accountId })
   }
 
   async start(): Promise<void> {
@@ -67,7 +71,7 @@ export class WechatChannel implements Channel {
 
     this.poller = createPoller(this.auth, async (msg) => {
       if (!msg.from_user_id) return
-      logWeixinIdentityMetadata(msg, this.options.logger ?? console)
+      logWeixinIdentityMetadata(msg, this.log)
       const textItem = msg.item_list?.find(item => item.type === 1 && item.text_item?.text)
       if (!textItem?.text_item?.text) return
       const actor = weixinMessageActor(msg)
@@ -98,7 +102,7 @@ export class WechatChannel implements Channel {
     }
 
     if (!isWeixinMessage(msg.raw)) {
-      console.error('[WechatChannel] Cannot send without raw WeixinMessage:', msg.raw)
+      this.log.error('cannot send without a raw WeixinMessage', { conversationId: msg.conversationId })
       return
     }
 
@@ -119,7 +123,7 @@ export class WechatChannel implements Channel {
     const fetchQRCode = this.options.getQRCode ?? getQRCode
     const pollStatus = this.options.pollQRCodeStatus ?? pollQRCodeStatus
     const sleep = this.options.delay ?? delay
-    const logger = this.options.logger ?? console
+    const logger = this.log
     const saved = await load(this.accountId)
     if (saved) {
       this.emitAuthEvent({ type: 'saved-auth', auth: saved })
@@ -131,8 +135,7 @@ export class WechatChannel implements Channel {
       let pollingBaseUrl = DEFAULT_ILINK_BASE_URL
       const qr = await fetchQRCode()
       this.emitAuthEvent({ type: 'qr', qrcode: qr.qrcode, qrUrl: qr.qrcode_img_content })
-      logger.log('[WechatChannel] Scan this QR URL to login:')
-      logger.log(qr.qrcode_img_content)
+      logger.info('scan this QR URL to login', { qrUrl: qr.qrcode_img_content })
 
       while (true) {
         await sleep(2_000)
@@ -157,7 +160,7 @@ export class WechatChannel implements Channel {
         }
 
         if (status.status === 'expired') {
-          logger.warn('[WechatChannel] QR code expired, requesting a new one')
+          logger.warn('QR code expired, requesting a new one')
           this.emitAuthEvent({ type: 'expired' })
           break
         }
@@ -166,10 +169,10 @@ export class WechatChannel implements Channel {
           const redirectBaseUrl = normalizeRedirectBaseUrl(status.redirect_host)
           if (redirectBaseUrl) {
             pollingBaseUrl = redirectBaseUrl
-            logger.log(`[WechatChannel] QR login redirected to ${redirectBaseUrl}`)
+            logger.info('QR login redirected', { baseUrl: redirectBaseUrl })
             this.emitAuthEvent({ type: 'redirect', baseUrl: redirectBaseUrl })
           } else {
-            logger.warn('[WechatChannel] QR login requested redirect without redirect_host')
+            logger.warn('QR login requested redirect without redirect_host')
           }
           continue
         }
@@ -194,7 +197,7 @@ export class WechatChannel implements Channel {
         }
 
         if (status.status === 'verify_code_blocked') {
-          logger.warn('[WechatChannel] WeChat pair-code verification is blocked, requesting a new QR code')
+          logger.warn('pair-code verification blocked, requesting a new QR code')
           break
         }
       }
@@ -291,12 +294,10 @@ function firstStringValue(
   return undefined
 }
 
-function logWeixinIdentityMetadata(
-  msg: WeixinMessage,
-  logger: Pick<Console, 'log'>,
-): void {
+function logWeixinIdentityMetadata(msg: WeixinMessage, logger: Logger): void {
   const identityFields = selectedStringFields(msg, WECHAT_IDENTITY_LOG_KEYS)
-  logger.log('[WechatChannel] inbound identity metadata', {
+  // debug 而不是 info:这是每条入站消息都打的**形状转储**(§2.3 的等级语义)。
+  logger.debug('inbound identity metadata', {
     messageId: msg.message_id ?? msg.seq,
     fromUserId: msg.from_user_id,
     matchedIdentityFields: Object.keys(identityFields),

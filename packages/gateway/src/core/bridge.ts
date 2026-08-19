@@ -15,6 +15,7 @@ import {
   GATEWAY_STREAM_IDLE_MS,
   MarkdownSafeOutboundBuffer,
 } from './markdown-safe-outbound-buffer.js'
+import { resolveGatewayLogger, type Logger } from './logging.js'
 import type { Allowlist } from './middleware/allowlist.js'
 import type { RateLimiter } from './middleware/rate-limiter.js'
 import { GatewayPermissionCoordinator } from './permission-coordinator.js'
@@ -27,6 +28,8 @@ export interface GatewayBridgeOptions {
   runtime: CoreConversationRuntime
   commandProvider?: GatewayCommandProvider
   permissionConfig?: GatewayPermissionConfig
+  /** 构造时注入(L2)。不给 = 进程级工厂,再不给 = 终端 pretty。 */
+  logger?: Logger
 }
 
 export interface GatewayCommandInfo {
@@ -55,19 +58,22 @@ export interface GatewayCommandProvider {
 }
 
 export class GatewayBridge {
+  private readonly log: Logger
   private readonly channels = new Map<string, Channel>()
   private readonly permissionCoordinator?: GatewayPermissionCoordinator
   private readonly conversationQueues = new Map<string, Promise<void>>()
 
   constructor(private readonly options: GatewayBridgeOptions) {
+    this.log = resolveGatewayLogger(options.logger, 'bridge')
     if (options.permissionConfig?.mode === 'remote-approval') {
       if (options.runtime.permissions) {
         this.permissionCoordinator = new GatewayPermissionCoordinator({
           permissions: options.runtime.permissions,
           timeoutMs: options.permissionConfig.timeoutMs,
+          logger: resolveGatewayLogger(undefined, 'permission'),
         })
       } else {
-        console.warn('[GatewayBridge] Remote permission approval configured, but runtime does not expose permissions.')
+        this.log.warn('remote permission approval configured but runtime exposes no permissions')
       }
     }
   }
@@ -83,7 +89,7 @@ export class GatewayBridge {
   async handle(msg: InboundMessage): Promise<void> {
     const channel = this.channels.get(msg.channelId)
     if (!channel) {
-      console.error(`[GatewayBridge] No channel registered for ${msg.channelId}`)
+      this.log.error('no channel registered', { channelId: msg.channelId })
       return
     }
 
@@ -155,7 +161,7 @@ export class GatewayBridge {
       userId: msg.userId,
       raw: msg.raw,
     }).catch(error => {
-      console.warn('[GatewayBridge] Failed to send typing signal:', error)
+      this.log.warn('typing signal failed', { channelId: msg.channelId }, error)
     })
 
     const buffer = new MarkdownSafeOutboundBuffer()
@@ -203,9 +209,9 @@ export class GatewayBridge {
 
     const logAbortSummary = (): void => {
       if (!aborted) return
-      console.error(
-        `[GatewayBridge] Aborted outbound text flush after send failure; `
-        + `dropped ${droppedSegmentCount} segment(s), ${droppedCharCount} char(s).`,
+      this.log.error(
+        'aborted outbound flush after send failure',
+        { channelId: msg.channelId, droppedSegments: droppedSegmentCount, droppedChars: droppedCharCount },
         abortError,
       )
     }
@@ -255,7 +261,7 @@ export class GatewayBridge {
       await sendChain
       logAbortSummary()
     } catch (error) {
-      console.error('[GatewayBridge] Message handling failed:', error)
+      this.log.error('message handling failed', { channelId: msg.channelId }, error)
       await sendChain
       logAbortSummary()
       await this.send(channel, {
@@ -274,7 +280,7 @@ export class GatewayBridge {
         raw: msg.raw,
         status: 'cancel',
       }).catch(error => {
-        console.warn('[GatewayBridge] Failed to cancel typing signal:', error)
+        this.log.warn('cancel typing signal failed', { channelId: msg.channelId }, error)
       })
     }
   }
@@ -331,7 +337,7 @@ export class GatewayBridge {
     try {
       commands = await provider.listCommands()
     } catch (error) {
-      console.warn('[GatewayBridge] Failed to list external commands:', error)
+      this.log.warn('listing external commands failed', { channelId: msg.channelId }, error)
       return null
     }
 
@@ -353,7 +359,7 @@ export class GatewayBridge {
       }
       return { text: result.error || `${command.name} failed` }
     } catch (error) {
-      console.error('[GatewayBridge] External command execution failed:', error)
+      this.log.error('external command execution failed', { channelId: msg.channelId, command: command.name }, error)
       return { text: error instanceof Error && error.message ? error.message : `${command.name} failed` }
     }
   }

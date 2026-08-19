@@ -16,9 +16,12 @@ import {
 import {
   Allowlist,
   type Channel,
+  configureGatewayLogging,
   Gateway,
   GatewayBridge,
   type GatewayCommandProvider,
+  type GatewayLoggerFactory,
+  gatewayLogger,
   GatewaySessionRegistry,
   RateLimiter,
 } from './core/index.js'
@@ -45,10 +48,16 @@ export type {
 } from './config.js'
 export {
   Allowlist,
+  configureGatewayLogging,
   Gateway,
   GatewayBridge,
+  gatewayLogger,
   GatewaySessionRegistry,
   RateLimiter,
+} from './core/index.js'
+export type {
+  GatewayLoggerFactory,
+  Logger as GatewayLoggerInstance,
 } from './core/index.js'
 export type {
   AllowlistConfig,
@@ -77,6 +86,13 @@ export interface StartGatewayOptions {
   channels?: Channel[]
   background?: boolean
   commandProvider?: GatewayCommandProvider
+  /**
+   * 宿主的日志工厂(logging L2)。签名与 `@onething/app/logging` 的
+   * `getLogger(ns)` 一致 —— Electron 宿主直接把它传进来,网关的记录就落进
+   * 宿主的 `app.jsonl`,命名空间是 `gateway.*`。
+   * 不给 = 自带的终端 pretty 实现(独立进程跑网关时的形态)。
+   */
+  getLogger?: GatewayLoggerFactory
 }
 
 export interface StartGatewayFromEnvOptions {
@@ -87,6 +103,8 @@ export interface StartGatewayFromEnvOptions {
 
 export async function startGateway(options: StartGatewayOptions): Promise<GatewayRuntime> {
   const env = options.env ?? process.env
+  // 先装日志:下面每一个构造函数(以及 storage / iLink 里的自由函数)都从这里取。
+  configureGatewayLogging(options.getLogger)
   const allowlist = new Allowlist(readAllowlistConfigFromEnv(env))
   const rateLimiter = new RateLimiter({
     maxPerMinute: readPositiveInteger(env.GATEWAY_RATE_LIMIT, 10),
@@ -110,6 +128,7 @@ export async function startGateway(options: StartGatewayOptions): Promise<Gatewa
   for (const channel of channels) {
     gateway.register(channel)
   }
+  gatewayLogger().info('gateway starting', { channels: channels.map(channel => channel.id) })
 
   const startPromise = gateway.start()
   if (options.background) {
@@ -218,7 +237,7 @@ async function main(): Promise<void> {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   void main().catch((error) => {
-    console.error('[Gateway] Fatal startup error:', error)
+    gatewayLogger().fatal('fatal startup error', {}, error)
     process.exit(1)
   })
 }

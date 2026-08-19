@@ -95,6 +95,7 @@ import { killTrackedDetachedChildren } from "@onething/app/tools/core/bash-execu
 import {
 	configureAppLoggingHost,
 	configureLogging,
+	getLogger,
 	shutdownAppLogging,
 } from "@onething/app/logging/index.js";
 import {
@@ -375,6 +376,8 @@ export function startOnethingElectronMain(): void {
 		getConversationRuntime,
 		getSettings: () => getSettings(),
 		commandProvider: createGatewayPluginCommandProvider(),
+		// L2:网关的记录走主进程这一本账(`gateway.*`),不再自己往终端打。
+		gatewayLogger: getLogger,
 	});
 	configureVoiceTray({
 		getVoiceState: () => getSettings().voice,

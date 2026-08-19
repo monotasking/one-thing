@@ -7,10 +7,22 @@ import type {
 } from '@onething/core/gateway-runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../channel.js'
+import { LoggerRoot, type LogRecord, type LogSink } from '@onething/core/logging'
 import { GatewayBridge, type GatewayCommandProvider } from '../bridge.js'
 import { Allowlist } from '../middleware/allowlist.js'
 import { RateLimiter } from '../middleware/rate-limiter.js'
 import { GatewaySessionRegistry } from '../session-registry.js'
+
+/**
+ * L2:bridge 的失败留痕现在走**构造时注入的 logger**,不再是 console。
+ * 断言因此落在捕获 sink 上 —— 记录形状(msg + fields + err)本身就是契约。
+ */
+function createCaptureLogger(): { logger: ReturnType<LoggerRoot['logger']>; records: LogRecord[] } {
+  const records: LogRecord[] = []
+  const sink: LogSink = { write: record => { records.push(record) } }
+  const root = new LoggerRoot({ level: 'trace', sinks: [sink], src: 'gateway' })
+  return { logger: root.logger('gateway.bridge'), records }
+}
 
 class MockChannel implements Channel {
   readonly id: string
@@ -421,7 +433,7 @@ describe('GatewayBridge', () => {
     const permissions = new MockPermissionSurface()
     const channel = new MockChannel()
     const raw = { from_user_id: 'user-1', context_token: 'token-1' }
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const capture = createCaptureLogger()
     const runtime = new MockRuntime(async (_mockRuntime, options) => {
       permissions.emitRequest(options.sessionId, {
         requestId: 'request-1',
@@ -437,6 +449,7 @@ describe('GatewayBridge', () => {
       registry: new GatewaySessionRegistry(runtime),
       runtime,
       permissionConfig: { mode: 'remote-approval', timeoutMs: 300_000 },
+      logger: capture.logger,
     })
     bridge.register(channel)
 
@@ -460,7 +473,11 @@ describe('GatewayBridge', () => {
     expect(runtime.messages.map(message => message.content)).toEqual(['needs tool'])
     expect(permissions.responses).toEqual([])
     expect(channel.sent.map(message => message.text)).toContain('审批已失效，请重新发送请求。')
-    expect(errorSpy).toHaveBeenCalledWith('[GatewayBridge] Message handling failed:', expect.any(Error))
+    const failure = capture.records.find(record => record.msg === 'message handling failed')
+    expect(failure).toBeDefined()
+    expect(failure).toMatchObject({ level: 'error', ns: 'gateway.bridge' })
+    expect(failure!.fields).toMatchObject({ channelId: 'mock' })
+    expect(failure!.err?.message).toBe('stream aborted')
   })
 
   it('streams soft-sized plain text segments before the final flush', async () => {
@@ -530,12 +547,13 @@ describe('GatewayBridge', () => {
     const channel = new MockChannel()
     channel.failSendAtCall = 1
     const raw = { from_user_id: 'user-1', context_token: 'token-1' }
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const capture = createCaptureLogger()
     const bridge = new GatewayBridge({
       allowlist: new Allowlist({ mode: 'open' }),
       rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
       registry: new GatewaySessionRegistry(runtime),
       runtime,
+      logger: capture.logger,
     })
     bridge.register(channel)
 
@@ -550,10 +568,11 @@ describe('GatewayBridge', () => {
     expect(channel.sendAttempts.map(message => message.text)).toEqual([first, second])
     expect(channel.sent.map(message => message.text)).toEqual([first])
     expect(channel.typingSignals.at(-1)).toEqual({ conversationId: 'user-1', userId: 'user-1', raw, status: 'cancel' })
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Aborted outbound text flush after send failure; dropped 1 segment(s), 2 char(s).'),
-      expect.any(Error),
-    )
+    const aborted = capture.records.find(record => record.msg === 'aborted outbound flush after send failure')
+    expect(aborted).toBeDefined()
+    // 丢了多少不再拼进字符串 —— 它是字段,可聚合(§2.1)。
+    expect(aborted!.fields).toMatchObject({ droppedSegments: 1, droppedChars: 2, channelId: 'mock' })
+    expect(aborted!.err).toBeDefined()
   })
 
   it('handles /new as a channel command and routes following messages to the new session', async () => {

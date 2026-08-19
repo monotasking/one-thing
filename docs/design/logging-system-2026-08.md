@@ -390,3 +390,77 @@ L0–L1 可一天;L2/L3 各半天;L4 是量最大的一期(~800 处),按区派 o
 - janitor 的"已知前缀"名单里 `agent-*` 只被认得、不被治理(插件自管,§2.4)。
 - renderer 仍然只有 `console-message` 兜底,没有自己的 hub —— 那是 L3。
 - `log/memory/` 空目录残留、8 个 `ONETHING_DEBUG_*` 别名未删 —— L5。
+
+---
+
+## 7.4 L2/L3 落地记录(2026-08-20)
+
+> 状态:**L2 剩余(gateway + daemon)与 L3(renderer)已实施**(未提交)。
+> L2 的 server 半边在 L0/L1 那批已落(§7.1);L4(调用点迁移)与 L5(目录收尾)未动。
+
+### 7.4.1 落了什么
+
+| 期 | 件 | 位置 |
+|---|---|---|
+| L3 renderer | `RendererLogHub`:内存环 200 / dev pretty 回显 / 16ms·50 条批量上行 / `beforeunload` + `fatal` 立即冲刷 / 背压丢最旧并计数;`getLogger(ns)`、`installRendererLogging()`、`window.__onethingLog` | `packages/renderer/services/log.ts` |
+| | 上行契约(域 + 记录形状 + 批量上限 + 回声标记) | `packages/shared/ipc/logs.ts` |
+| | 收方 handler(ns 前缀 / `src` / 调用者盖章 / 校验 / 背压留痕) | `packages/onething-runtime/src/app/rpc/domains/logs.ts`(名册第一格 `rpc:logs`) |
+| | 渲染侧客户端(壳外一个模块,四壳零改动) | `packages/renderer/platform/logs-client.ts` |
+| | crash-log 改 producer:四路捕获照旧,出口换成 hub;Vue warn 去重后**一条** `warn`,栈进 `fields.stack`;零 console | `packages/renderer/services/crash-log.ts` |
+| | hub 先于崩溃捕获装 | `packages/renderer/main.ts` |
+| | `console-message` 兜底认自己的回声并丢弃 | `apps/electron/src/logging/console-capture.ts` |
+| L2 gateway | 构造时注入 + 进程级工厂 + 内核 `ConsoleSink` 兜底;`startGateway({ getLogger })` | `packages/gateway/src/core/logging.ts`、`index.ts` |
+| | 28 处裸 console → `gateway.{bridge,permission,storage,wechat,wechat.auth,wechat.poller,wechat.sender,telegram}` | gateway 全树 |
+| | Electron 宿主把自己的 `getLogger` 传进去 | `apps/electron/src/{gateway/lifecycle-controller.ts,app/main-process.ts}` |
+| L2 daemon | `configureDaemonLogging()` → `daemon.jsonl` + janitor + crash hooks;spawn 只重定向 stderr;`daemon logs` 优先读 jsonl | `apps/electron/src/main/cli/{daemon-server,daemon-client,paths,index}.ts` |
+| 顺手修 | `LoggerRoot.src` 改为**可变**并在写入时读取 —— `configureLogging({src})` 从前只喂了 `LegacyConsoleSink`,根 logger 一直是 `main`,`server.jsonl` / `daemon.jsonl` 里的 `src` 是假的 | `packages/core/logging/logger.ts`、`app/logging/index.ts` |
+
+### 7.4.2 与设计文本的偏差(有意,各有理由)
+
+1. **传输不是 `ipc 'log:append'` + `POST /api/logs`,是 RPC 域 `logs`。**
+   §2.5 写的是通道级说法。手写通道要同时改 `channels.ts` / preload / `@main` handler /
+   `web.ts` —— 而那四枚正是 `transport:gate` 的计量面(本仓已经因为别处的手写通道
+   预红)。RPC 域是「一个 router 文件 + 一个 handler 文件 + 名册一行,四壳零改动」,
+   还白拿 web 平价:server 的 `/api/rpc` 与其它路由共用同一道 Bearer 闸(真机脚本
+   实测无 token = 401)。代价:方法不挂在 `platformApi` 上,调用点引
+   `platform/logs-client`;这与 E1 判例(`session-events-client` 等六个域)同形。
+2. **`fields.webContentsId` 换成 `fields.transport`(+ http 面的 `ownerUid`/`workspaceId`)。**
+   `RpcDispatchContext` 不带 webContents id,而给它加字段是「待拍板:RpcRequest 加
+   context 字段」那条线上的事,不该由日志改造顺手拍。现在盖的章仍然全部来自**宿主
+   适配器**、不读信封 —— 这一条比 id 本身更重要。
+3. **`fatal` / `beforeunload` 是「立即发起」,不是「保证送达」。** §5 的缓解写的是
+   `sendSync`,但渲染侧没有同步出口(`rpcInvoke` 是 Promise)。实现做到的是:队列
+   不等窗口、`send()` **同步调用**(不裹微任务)。如实写在文件头,不假装有同步通道。
+4. **Vue warn 的去重是彻底的**:重复的 warn 既不进环、也不再发第二条记录。原文本只
+   说「去重后 warn 一条」;第 2..n 条一个字节的新信息都没有,而它正是 app.log 38%
+   体积的来源。
+5. **`shouldDebugStream` 四份合一未做**(L3 交付栏里的第四项)。它是四个
+   `ONETHING_DEBUG_*` 开关的合并,与 §7.5 里「旧别名一个版本后删」同属 L5 的收尾,
+   放在那一批一起做更省事。本批只保证新代码不再新增开关。
+
+### 7.4.3 门(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run typecheck` | 3 red,全部是既有的 `spaces/__tests__/provider-dials.test.ts`(node 面);web 面全绿 |
+| `ONETHING_SESSION_FREEZE=1 bun run test` | 1135 文件通过 / 1 失败:`ui-token-vars.test.ts` ×2 —— 与本批前的既有红逐条相同 |
+| `bun run boundary:gate` | ok — 13 known, none new |
+| `bun run session:gate` | ok — 0 |
+| `bun run log:gate` | ok — **822**(L1 基线 854;gateway 28 + crash-log 4 已消,hub 的 3 处 dev 回显是新增)。基线文件仍是 854 —— 落库那一批再重录(棘轮脚本要求基线与状态同批) |
+| `bun run ui:gate` | ok — 81 known, none new |
+| `bun run lint:ci` | 404(128 errors / 276 warnings);**本批新增 0**,+70 全在并行会话批的 `TrajectoryPanelContent.vue` |
+| `bun run transport:gate` | 5 个指标预红 —— 本批贡献 **0**(四枚计量壳一行未动;stash 到 HEAD 复测同样 5 红) |
+| `bun run server:build` + `node scripts/log-smoke.mjs` | 16/16:原有 9 条 + L3 新增 7 条(append 200、3 条 accepted、无 token 401、3 条 `renderer.*`、逐条 `src='renderer'`、ns 前缀正确、err 归一化保住) |
+| `bun run build`(electron) | ok |
+
+真机脚本全程 `ONETHING_STORE_PATH` 指向 `mkdtemp` 出来的临时目录,**没有碰过 `~/.onething`**。
+
+### 7.4.4 留给后续期的尾巴
+
+- `log:gate` 基线未重录(见上)。
+- renderer 的 `console.*` 存量(hub 之外)仍在,`stores/chat.ts` 热路径未清 —— L4。
+- `shouldDebugStream` 四份合一、8 个 `ONETHING_DEBUG_*` 别名 —— L5。
+- `daemon.log` 仍在(只接配置前的 stderr);等 daemon 稳定跑一版后可以整只删。
+- gateway 的等级映射按 §2.3 直译(`console.log`→`info` 的两处是生命周期节点,
+  `console.warn/error` 原样),唯一改级的是微信入站身份转储 `info`→`debug` ——
+  它是每条消息都打的形状转储,按 §2.3 就该是 debug。

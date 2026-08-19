@@ -12,6 +12,7 @@ import { StoreLock, LockConflictError, formatCliLockConflict } from '@shared/bac
 import { getCliRuntimePaths, ensureRuntimeDirs, assertSupportedPlatform } from './paths.js'
 import { NdjsonReader, encodeFrame } from './ndjson.js'
 import { HeadlessBackend } from '@onething/app/headless/backend.js'
+import { configureLogging, getLogger, shutdownAppLogging } from '@onething/app/logging/index.js'
 
 interface DaemonServerOptions {
   storePath?: string
@@ -23,6 +24,7 @@ interface ClientRecord {
 }
 
 export class DaemonServer {
+  private readonly log = getLogger('daemon')
   private readonly paths
   private readonly backend = new HeadlessBackend()
   private readonly clients = new Map<Socket, ClientRecord>()
@@ -63,7 +65,7 @@ export class DaemonServer {
       })
     })
 
-    console.log('[Daemon] listening on', this.paths.socketPath)
+    this.log.info('daemon listening', { socketPath: this.paths.socketPath, pid: process.pid })
   }
 
   async stop(reason = 'daemon shutdown'): Promise<void> {
@@ -274,11 +276,28 @@ export class DaemonServer {
   }
 }
 
+export function configureDaemonLogging(storePath?: string): ReturnType<typeof configureLogging> {
+  return configureLogging({
+    fileBaseName: 'daemon',
+    src: 'daemon',
+    // daemon 是**后台进程**:stdout/stderr 被 spawn 重定向到文件,再 pretty 回显
+    // 一份就是同一条记录落两遍。它只写 `daemon.jsonl`。
+    consoleEcho: false,
+    ...(storePath ? { logDir: getCliRuntimePaths(storePath).logDir } : {}),
+  })
+}
+
 export async function runDaemonServer(options: DaemonServerOptions = {}): Promise<void> {
+  // 第一件事:接上日志(L2)。这之前的行只进内存环 —— 但这之前只有参数解析。
+  // `configureLogging` 自带 `installProcessCrashHooks`,所以守护进程的
+  // unhandledRejection / uncaughtException 从此有人听(P7)。
+  configureDaemonLogging(options.storePath)
   const server = new DaemonServer(options)
   await server.start()
   const shutdown = (reason: string) => {
-    void server.stop(reason).finally(() => process.exit(0))
+    void server.stop(reason)
+      .finally(() => shutdownAppLogging())
+      .finally(() => process.exit(0))
   }
   process.once('SIGTERM', () => shutdown('SIGTERM'))
   process.once('SIGINT', () => shutdown('SIGINT'))

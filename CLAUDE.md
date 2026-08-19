@@ -155,12 +155,12 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: core bans electron/`shared/ipc`/better-sqlite3/mcp+acp SDKs/zod/diff/uuid; runtime outside `src/app` bans electron **and** `@shared/ipc`; `src/app` gets a relaxed set — `@shared/ipc` allowed, but electron, `@onething/electron-host`, `@main/`, `@preload/` banned (hosts inject via configure*Host ports).
 - `bun run boundary:gate` — `scripts/boundary-gate.mjs` ratchet: diffs `[boundary] failed:` lines against `docs/audit/boundary-baseline-2026-08-07.txt` (13 known legacy reds). Exits 1 only on NEW failures; prints healed ones so the baseline can be re-tightened.
 - UI 组件与样式规则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),新代码须过 `bun run ui:gate` — `scripts/ui-gate.mjs` ratchet over `scripts/ui-style-check.mjs`'s 12 line-level rules (z-literal / z-fallback / raw-teleport / native-select / native-confirm / title-attr / ui-hex-fallback / transition-literal / shadow-literal-floating / focus-bare / overscroll-contain-chat / surface-literal), baseline `docs/audit/ui-baseline-2026-08-13.txt` (81 条 = 5 条逐条确认过的语义保留 + 76 条 `surface-literal` 区域面迁移待办)。`bun run ui:check` prints the full list.
-- `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854, the pre-migration stock; L4 消它). Whitelist: `scripts/` and the CLI's product-output helper `apps/electron/src/main/cli/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
+- `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/electron/src/main/cli/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
 - `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/app`** (dependency points one way: product ← assembly); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
 
 Notes:
 
-- **Logging** (L0/L1 landed 2026-08-20, `docs/design/logging-system-2026-08.md` §7;
+- **Logging** (L0–L3 landed 2026-08-20, `docs/design/logging-system-2026-08.md` §7;
   current-state audit: `docs/audit/logging-inventory-2026-08-19.md`). One facade, one
   record shape, one governor:
   - `packages/core/logging/` (zero deps, zero node imports) owns `Logger`
@@ -195,11 +195,40 @@ Notes:
   - Process safety: `installProcessCrashHooks` logs `unhandledRejection` /
     `uncaughtException` as `fatal` and `flushSync`s — via `uncaughtExceptionMonitor` by
     default, so Node's own crash behaviour is unchanged.
+  - **Renderer logs ride their own hub, not a console side-effect** (L3):
+    `packages/renderer/services/log.ts` — `getLogger(ns)` over a `RendererLogHub`
+    (memory ring 200, dev-only pretty echo, batched transport every 16ms / 50 records,
+    `beforeunload` + `fatal` flush immediately). It reuses the **same** `packages/core/logging`
+    kernel the main process does — that package is browser-safe. Transport is the generic
+    RPC envelope, **not** a hand-written channel: `logs` is a router domain
+    (`@shared/ipc/logs.ts` + `app/rpc/domains/logs.ts` + `platform/logs-client.ts`), so
+    desktop rides `rpc:invoke` and web rides `POST /api/rpc` behind the same Bearer gate,
+    with zero shell edits. The receiving handler stamps the trust-level fields itself:
+    `ns` prefixed `renderer.`, `src='renderer'`, caller from the dispatch context — a
+    sender never gets to say who it is. `services/crash-log.ts` keeps its four capture
+    points, its localStorage ring and `window.__onethingCrashLog.dump()`, but is now a
+    *producer* on the hub: one structured record per entry, Vue warns deduped to **one**
+    `warn` with `fields.stack`, and no console line at all.
+    `window.__onethingLog.dump()` is the hub's own crash-scene口.
+  - **The gateway takes a logger at construction** (L2): `startGateway({ getLogger })`
+    (same signature as `@onething/app/logging`'s `getLogger`) — the Electron host passes
+    its own, so gateway records land in `app.jsonl` under `gateway.wechat` /
+    `gateway.telegram` / `gateway.bridge` / `gateway.storage`. Classes take an explicit
+    `logger?`; free functions read the process-level factory
+    (`packages/gateway/src/core/logging.ts`). Nothing injected = a `LoggerRoot + ConsoleSink`
+    fallback, so `packages/gateway/src` has **zero** `console.*`.
+  - **The CLI daemon writes `daemon.jsonl`** (L2): `runDaemonServer` calls
+    `configureLogging({ fileBaseName: 'daemon', src: 'daemon' })` before anything else,
+    so it gets the janitor and the crash hooks like every other host. `daemon.log` survives
+    only as the fd the spawn redirects **stderr** to — the pre-configure crash catcher;
+    stdout is no longer redirected (it would double-record). `onething daemon logs` prefers
+    `daemon.jsonl` and falls back to `daemon.log`.
   - Migration-era leftovers: `LegacyConsoleSink` still captures raw `console.*` +
     stdout/stderr as `ns='console'`, `fields.legacy=true`, `fields.callsite` (that stream
     *is* the L4 to-do list); the Electron `console-message` renderer capture is a
     **fallback** only — warn+, structured fields, multi-line Vue warns collapsed into one
-    record with `fields.stack`.
+    record with `fields.stack`, and hub echoes dropped on sight (they carry a zero-width
+    `RENDERER_LOG_ECHO_MARK`, so the fallback never double-records what the hub already sent).
 
 - Session persistence is file-based: new sessions use per-session JSONL dirs
   (`sessions/<id>/meta.json` + `messages.jsonl`, append/suffix writes during streaming);
@@ -228,6 +257,17 @@ Notes:
   measures the cost. `ONETHING_SESSION_SHADOW=0` turns the comparison off (events keep
   being written); it is **on by default**. S2 is what flips the read path over to the
   projection — until then, nothing reads `events.jsonl` for product behavior.
+- **Trace = the read-only query surface over `events.jsonl`** (S3, §12 of the same doc).
+  One pure assembler (`packages/core/session/trace/assemble.ts` → `Session → Run →
+  Request → ToolCall`; timestamps only, no stored durations, no response body) feeds three
+  outlets: `onething trace <sessionId> [--run <id>|--last] [--json] [--response <k>]`
+  (reads the file directly, no daemon, never writes), the `sessionEvents` RPC domain's
+  `getTrace` / `getResponseText` (desktop IPC and web/HTTP alike, the latter over the
+  generic `POST /api/rpc` — there is deliberately **no** dedicated REST route; adding a
+  domain must not add a hand-written channel), and the trajectory panel's run grouping.
+  Response text is materialized on demand from the `assistant/chunks` fold, never carried
+  on the tree.
+  Buildable in shadow mode because the events are already written regardless of read mode.
 - There is no memory subsystem. The soul-memory plugin (SOUL/MEMORY.md + daily notes,
   panel, settings tab, `/api/memory/*`) was retired 2026-08-06 — see
   `docs/audit/soul-memory-retirement-2026-08-06.md`. Nothing reads or writes those files;

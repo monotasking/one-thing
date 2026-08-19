@@ -27,6 +27,8 @@ import { hasRpcDomain, resetRpcRegistryForTests } from '../registry.js'
  * 工具），所以域清单与 feature 清单从这一期起不再是同一张表。
  */
 const EXPECTED_DOMAIN_FEATURES = [
+  // L3:渲染侧日志上行排在最前(零依赖,且它接的是别人出问题时的那条上行路)。
+  ['rpc:logs', 'logs'],
   ['rpc:usage', 'usage'],
   ['rpc:prompts', 'prompts'],
   ['rpc:goal', 'goal'],

@@ -6,6 +6,7 @@ import App from './App.vue'
 // (`features/index.ts` = 一列 import),加一个 feature 不用碰这个文件。
 import './features'
 import { initializeIPCHub } from './services/ipc-hub'
+import { installRendererLogging } from './services/log'
 import { installGlobalCrashCapture } from './services/crash-log'
 import { installGlobalFileDropGuard } from './composables/useFileDrop'
 import { buildFontLoadSpecs, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
@@ -89,6 +90,10 @@ await Promise.race([
 
 const app = createApp(App)
 const pinia = createPinia()
+
+// 日志 hub 先装(L3):崩溃捕获、store、IPC 全都从它出去,
+// `window.__onethingLog.dump()` 也在这一步挂上。
+installRendererLogging()
 
 // Crash log first: capture must be live before any store/IPC init can throw.
 installGlobalCrashCapture(app)

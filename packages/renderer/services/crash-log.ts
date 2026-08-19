@@ -10,11 +10,16 @@
  * readable after recovery.
  *
  * Reading it: `window.__onethingCrashLog.dump()` in DevTools, or the COPY
- * LOG button on the crash screen. Every entry is also emitted as a single
- * formatted console line — on desktop the console-capture bridge mirrors
- * that into the app log file, stack and component chain included.
+ * LOG button on the crash screen.
+ *
+ * L3(2026-08-20):每条记录改为**经 RendererLogHub 上行**,不再"顺带打一条
+ * console 让 Electron 的 console-message 捞走"。那条老路是 app.log 38% 体积的
+ * 来源(多行组件链栈、一行一条记录),且 web 端根本没有捞的人。
+ * 现在四个捕获点一个不少,变的只是出口:`hub.error('vue error', {...}, err)`。
+ * Vue warn 去重后**只发一条** `warn`,栈进 `fields.stack`。
  */
 import type { App, ComponentPublicInstance } from 'vue'
+import { getLogger } from './log'
 
 export type CrashLogSource =
   | 'error-boundary'
@@ -107,14 +112,9 @@ export function recordCrash(source: CrashLogSource, err: unknown, options: Recor
   if (source === 'vue-warn') {
     const message = truncate(asError?.message || String(err))
     const existing = entries.find(e => e.source === 'vue-warn' && e.message === message)
-    if (existing) {
-      try {
-        console.warn(formatEntry(existing))
-      } catch {
-        // Never let logging make a crash worse.
-      }
-      return existing
-    }
+    // 去重是**彻底的**:重复的 warn 既不进环,也不再发一条日志 —— 每次渲染都触发的
+    // prop 警告曾经把日志灌成噪音墙,而第 2..n 条一个字节的新信息都没有。
+    if (existing) return existing
   }
   const entry: CrashLogEntry = {
     ts: new Date().toISOString(),
@@ -127,16 +127,38 @@ export function recordCrash(source: CrashLogSource, err: unknown, options: Recor
   }
   entries.push(entry)
   writeEntries(entries.slice(-MAX_ENTRIES))
+  emitToHub(entry, err)
+  return entry
+}
 
-  // One self-contained line per entry so the desktop console-capture bridge
-  // (which only sees the formatted message string) persists the full trace.
+/** 每个捕获点一句**固定短句**,变量全进 fields —— 可 grep、可聚合(§2.1)。 */
+const CRASH_MESSAGE: Record<CrashLogSource, string> = {
+  'error-boundary': 'error boundary caught',
+  'vue-error-handler': 'vue error',
+  'vue-warn': 'vue warn',
+  'window-error': 'window error',
+  'unhandled-rejection': 'unhandled rejection',
+}
+
+function emitToHub(entry: CrashLogEntry, err: unknown): void {
   try {
-    if (source === 'vue-warn') console.warn(formatEntry(entry))
-    else console.error(formatEntry(entry))
+    const log = getLogger('crash')
+    const fields: Record<string, unknown> = { source: entry.source, seq: entry.seq }
+    if (entry.componentChain) fields.componentChain = entry.componentChain
+    if (entry.info) fields.info = entry.info
+    if (err instanceof Error) {
+      log.error(CRASH_MESSAGE[entry.source], fields, err)
+      return
+    }
+    // 非 Error(Vue warn 的字符串、reject 了一个对象)没有 `err` 可归一化,
+    // 正文进 `fields.message`,栈(Vue 给的组件追踪)进 `fields.stack`。
+    fields.message = entry.message
+    if (entry.stack) fields.stack = entry.stack
+    if (entry.source === 'vue-warn') log.warn(CRASH_MESSAGE[entry.source], fields)
+    else log.error(CRASH_MESSAGE[entry.source], fields)
   } catch {
     // Never let logging make a crash worse.
   }
-  return entry
 }
 
 export function getCrashLogEntries(): CrashLogEntry[] {
@@ -171,8 +193,8 @@ export function installGlobalCrashCapture(app: App): void {
     recordCrash('vue-error-handler', err, { instance, info })
   }
   app.config.warnHandler = (msg, instance, trace) => {
-    // warnHandler replaces Vue's own console output, so re-emit via the
-    // crash log's single-line format (console.warn inside recordCrash).
+    // warnHandler replaces Vue's own console output; the re-emit now goes to
+    // the hub as ONE `warn` record (dedupe + `fields.stack`), not N console lines.
     recordCrash('vue-warn', msg, {
       instance,
       ...(trace ? { info: trace.trim() } : {}),
@@ -201,8 +223,9 @@ export function installGlobalCrashCapture(app: App): void {
 
   const prior = readEntries()
   if (prior.length > 0) {
-    console.info(
-      `[crash-log] ${prior.length} entr${prior.length === 1 ? 'y' : 'ies'} from previous runs — window.__onethingCrashLog.dump() to read, .clear() to reset`,
-    )
+    getLogger('crash').info('crash entries from previous runs', {
+      count: prior.length,
+      hint: 'window.__onethingCrashLog.dump()',
+    })
   }
 }

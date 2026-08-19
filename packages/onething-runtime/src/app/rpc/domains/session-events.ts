@@ -15,20 +15,10 @@ import {
 } from '@shared/ipc/session-events.js'
 import { resolveToolCallInspection } from '@onething/runtime/sessions/session-events'
 import { readSessionEvents } from '../../session/event-log.js'
+// 路径消毒的那道门与轨迹读实现同住一处:S3 之前它是本文件的私有函数,而 S3 把
+// 调用点从 2 个变成 4 个 —— 一道安全门有两份拷贝,迟早只改其中一份。
+import { isSafeSessionId, readSessionTrace, readSessionTraceResponseText } from '../../session/trace.js'
 import { registerRouterHandlers } from '../registry.js'
-
-/**
- * sessionId 直接进了 `path.join(getSessionsDir(), sessionId)`。
- *
- * 信封里的这个字符串在 server 上来自开放网络,`../../` 能把读取器指到会话库
- * 之外的任意 `events.jsonl`。会话 id 本来就是 uuid 形态,这里只放行"不含路径
- * 分隔符、不是 `.`/`..`"的名字 —— 与 `media://` 协议对文件名的处理同一条纪律。
- */
-function isSafeSessionId(value: unknown): value is string {
-  if (typeof value !== 'string' || !value) return false
-  if (value === '.' || value === '..') return false
-  return !/[/\\]/.test(value) && !value.includes('\0')
-}
 
 export const sessionEventsRpcHandlers: RouteHandlers<SessionEventsRoutes> = {
   async list(request) {
@@ -42,6 +32,28 @@ export const sessionEventsRpcHandlers: RouteHandlers<SessionEventsRoutes> = {
     const events = await readSessionEvents(request.sessionId)
     // 找不到就是 null:没有账就是没有账,不抛错、不编。
     return { inspection: resolveToolCallInspection(events, callId) ?? null }
+  },
+  /**
+   * S3 查询面。装配在 core 的纯函数里,这里只做入参消毒 —— 与 `list` 一样,
+   * 这个域**不新建任何投影语义**。
+   */
+  async getTrace(request) {
+    if (!isSafeSessionId(request?.sessionId)) return { trace: null }
+    return {
+      trace: await readSessionTrace(request.sessionId, {
+        ...(typeof request.run === 'string' && request.run ? { run: request.run } : {}),
+        ...(request.last !== undefined ? { last: request.last } : {}),
+      }),
+    }
+  },
+  async getResponseText(request) {
+    if (!isSafeSessionId(request?.sessionId)) return { response: null }
+    const runId = typeof request?.run === 'string' ? request.run : ''
+    if (!runId) return { response: null }
+    const requestIndex = typeof request?.request === 'number' && Number.isFinite(request.request)
+      ? request.request
+      : undefined
+    return { response: await readSessionTraceResponseText(request.sessionId, runId, requestIndex) }
   },
 }
 

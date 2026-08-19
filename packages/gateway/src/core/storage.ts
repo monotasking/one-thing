@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { gatewayLogger } from './logging.js'
 
 const DEFAULT_STORE_DIR_NAME = '.onething'
 
@@ -18,7 +19,7 @@ export function readGatewayJsonFile<T>(filePath: string, fallback: T): T {
     const content = fs.readFileSync(filePath, 'utf-8').trim()
     return content ? JSON.parse(content) as T : fallback
   } catch {
-    console.warn(`[GatewayStorage] Failed to read ${path.basename(filePath)}, using fallback`)
+    gatewayLogger('storage').warn('read failed, using fallback', { file: path.basename(filePath) })
     return fallback
   }
 }
@@ -35,6 +36,6 @@ export function deleteGatewayFile(filePath: string): void {
   try {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
   } catch {
-    console.warn(`[GatewayStorage] Failed to delete ${path.basename(filePath)}`)
+    gatewayLogger('storage').warn('delete failed', { file: path.basename(filePath) })
   }
 }

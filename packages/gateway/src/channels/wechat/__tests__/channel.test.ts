@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { Logger } from '@onething/core/logging'
 import { DEFAULT_ILINK_BASE_URL, type WechatAuthState } from '../ilink/auth.js'
 import { WechatChannel } from '../index.js'
 import type { WeixinMessage } from '../ilink/types.js'
@@ -154,7 +155,7 @@ describe('WechatChannel', () => {
         avatarUrl: 'https://wechat.example/avatar.png',
       },
     })
-    expect(logger.log).toHaveBeenCalledWith('[WechatChannel] inbound identity metadata', expect.objectContaining({
+    expect(logger.debug).toHaveBeenCalledWith('inbound identity metadata', expect.objectContaining({
       fromUserId: 'wechat-user',
       matchedIdentityFields: expect.arrayContaining(['remark_name', 'from_user_name', 'avatar_url']),
       identityFields: expect.objectContaining({
@@ -244,10 +245,21 @@ describe('WechatChannel', () => {
   })
 })
 
-function silentLogger(): Pick<Console, 'log' | 'warn' | 'error'> {
-  return {
-    log: vi.fn(),
+/**
+ * L2:通道现在收的是结构化 `Logger`(不再是 console 形状)。`child()` 返回自身,
+ * 断言才能落在同一组 spy 上 —— 通道构造时会 `.child({ accountId })`。
+ */
+function silentLogger(): Logger {
+  const logger = {
+    ns: 'gateway.wechat',
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-  }
+    fatal: vi.fn(),
+    isLevelEnabled: () => true,
+    child: () => logger,
+  } as unknown as Logger
+  return logger
 }

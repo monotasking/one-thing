@@ -8,6 +8,17 @@ export type {
 export {
   GatewayBridge,
 } from './bridge.js'
+export {
+  configureGatewayLogging,
+  gatewayLogger,
+  GATEWAY_LOG_NS,
+  resetGatewayLoggingForTests,
+  resolveGatewayLogger,
+} from './logging.js'
+export type {
+  GatewayLoggerFactory,
+  Logger,
+} from './logging.js'
 export type {
   GatewayBridgeOptions,
   GatewayCommandExecutionRequest,

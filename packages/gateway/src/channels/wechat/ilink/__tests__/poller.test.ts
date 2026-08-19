@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { LoggerRoot, type LogRecord } from '@onething/core/logging'
+import { configureGatewayLogging } from '../../../../core/logging.js'
 import { ILinkPoller } from '../poller.js'
 import type { GetUpdatesResponse } from '../types.js'
 
@@ -48,7 +50,10 @@ describe('ILinkPoller', () => {
       get_updates_buf: 'updates-cursor',
     }
     const fetchMock = vi.fn(async () => new Response(JSON.stringify(responseBody), { status: 200 }))
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // L2:poller 记的是结构化记录,进程级工厂决定它落哪儿 —— 测试装一个捕获用的。
+    const records: LogRecord[] = []
+    const root = new LoggerRoot({ level: 'trace', sinks: [{ write: record => { records.push(record) } }], src: 'gateway' })
+    const restoreLogging = configureGatewayLogging(ns => root.logger(ns))
     stubFetch(fetchMock)
 
     const poller = new ILinkPoller('bot-token', async () => {}, 'https://ilink.example.test')
@@ -61,7 +66,11 @@ describe('ILinkPoller', () => {
       sync_buf: 'sync-cursor',
       get_updates_buf: 'updates-cursor',
     })
-    expect(consoleError).toHaveBeenCalledWith('[ILinkPoller] Unexpected getupdates response:', responseBody)
+    const record = records.find(entry => entry.msg === 'unexpected getupdates response')
+    expect(record).toBeDefined()
+    expect(record).toMatchObject({ level: 'error', ns: 'gateway.wechat.poller' })
+    expect(record!.fields).toMatchObject({ response: responseBody })
+    restoreLogging()
   })
 })
 

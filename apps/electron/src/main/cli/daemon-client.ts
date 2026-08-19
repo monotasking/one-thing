@@ -108,7 +108,7 @@ export async function ensureDaemon(options: DaemonClientOptions = {}): Promise<D
   const paths = getCliRuntimePaths(options.storePath)
   ensureRuntimeDirs(paths)
   removeStaleSocket(paths.socketPath)
-  spawnDaemon(options.storePath, paths.logPath)
+  spawnDaemon(options.storePath, paths.bootLogPath)
 
   const deadline = Date.now() + READY_TIMEOUT_MS
   while (Date.now() < deadline) {
@@ -132,9 +132,17 @@ export async function tryConnect(options: DaemonClientOptions = {}): Promise<Dae
   }
 }
 
+/**
+ * `bootLogPath` 只接**配置日志之前**的 stderr(L2)。
+ *
+ * 从前这里把 stdout 和 stderr 都重定向到 `daemon.log`,守护进程的每一行都靠 fd
+ * 落盘;现在守护进程一起来就 `configureLogging({fileBaseName:'daemon'})`,自己写
+ * 结构化的 `daemon.jsonl`(轮转 / 保留期由 janitor 管)。stdout 因此改成 `ignore`
+ * —— 再重定向就是同一条记录落两遍;stderr 留着,因为**配置起来之前**炸掉的 Node
+ * 栈只会出现在那里,而那正是最需要看见的一种失败。
+ */
 export function spawnDaemon(storePath: string | undefined, logPath: string): void {
   fs.mkdirSync(path.dirname(logPath), { recursive: true })
-  const out = fs.openSync(logPath, 'a')
   const err = fs.openSync(logPath, 'a')
   const cliEntry = process.argv[1]
   if (!cliEntry) throw new Error('Cannot determine CLI entrypoint for daemon spawn')
@@ -142,7 +150,7 @@ export function spawnDaemon(storePath: string | undefined, logPath: string): voi
   if (storePath) args.push('--store', storePath)
   const child = spawn(process.execPath, args, {
     detached: true,
-    stdio: ['ignore', out, err],
+    stdio: ['ignore', 'ignore', err],
     env: {
       ...process.env,
       ONETHING_HEADLESS: '1',

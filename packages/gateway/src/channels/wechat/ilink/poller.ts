@@ -6,6 +6,7 @@ import {
   readIlinkJson,
   saveGetUpdatesBuf,
 } from './auth.js'
+import { gatewayLogger } from '../../../core/logging.js'
 import type { GetUpdatesResponse, WeixinMessage } from './types.js'
 
 const POLL_TIMEOUT_MS = 40_000
@@ -13,6 +14,7 @@ const ERROR_RETRY_MS = 3_000
 const STALE_TOKEN_ERRCODE = -14
 
 export class ILinkPoller {
+  private readonly log = gatewayLogger('wechat.poller')
   private running = false
   private getUpdatesBuf: string
   private abortController: AbortController | null = null
@@ -51,7 +53,10 @@ export class ILinkPoller {
 
         if (isApiError(response)) {
           if (isStaleToken(response)) {
-            console.error('[ILinkPoller] WeChat token expired; delete ~/.onething/gateway/wechat-token.json and restart to relogin')
+            this.log.error('WeChat token expired — delete the stored token and restart to relogin', {
+              accountId: this.accountId,
+              tokenFile: '<store>/gateway/wechat-token.json',
+            })
             this.running = false
             return
           }
@@ -67,14 +72,14 @@ export class ILinkPoller {
           try {
             await this.onMessage(msg)
           } catch (error) {
-            console.error('[ILinkPoller] Message handler failed:', error)
+            this.log.error('message handler failed', { accountId: this.accountId }, error)
           }
         }
       } catch (error) {
         if (!this.running) return
         if (isAbortError(error)) continue
 
-        console.error('[ILinkPoller] Poll failed:', error)
+        this.log.error('poll failed', { accountId: this.accountId }, error)
         await delay(ERROR_RETRY_MS)
       }
     }
@@ -102,7 +107,7 @@ export class ILinkPoller {
       const data = await readIlinkJson(response, 'getupdates')
 
       if (!isGetUpdatesResponse(data)) {
-        console.error('[ILinkPoller] Unexpected getupdates response:', data)
+        this.log.error('unexpected getupdates response', { accountId: this.accountId, response: data })
         return recoverUnexpectedGetUpdatesResponse(data)
       }
 

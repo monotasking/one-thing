@@ -26,6 +26,7 @@
 import { agentsRouter } from '@shared/ipc/agents.js'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
 import { goalRouter } from '@shared/ipc/goal.js'
+import { logsRouter } from '@shared/ipc/logs.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
@@ -38,6 +39,7 @@ import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../fe
 import { agentsRpcHandlers } from './domains/agents.js'
 import { channelIdentityRpcHandlers } from './domains/channel-identity.js'
 import { goalRpcHandlers } from './domains/goal.js'
+import { logsRpcHandlers } from './domains/logs.js'
 import { markdownRpcHandlers } from './domains/markdown.js'
 import { modelsRpcHandlers } from './domains/models.js'
 import { permissionGrantsRpcHandlers } from './domains/permission-grants.js'
@@ -56,6 +58,9 @@ import { usageRpcHandlers } from './domains/usage.js'
  *    几项、注册什么。迁移一个功能 = 把前者换成后者，位置不动。
  */
 const BUILTIN_FEATURES: FeatureDefinition[] = [
+  // L3:渲染侧日志上行。排在最前 —— 它一个依赖也没有(只喂根 logger,
+  // 而根 logger 在模块求值时就存在),而它接住的是**别人出问题时**的那条上行路。
+  { id: 'rpc:logs', mount: ctx => { ctx.registerRpcDomain(logsRouter, logsRpcHandlers) } },
   { id: 'rpc:usage', mount: ctx => { ctx.registerRpcDomain(usageRouter, usageRpcHandlers) } },
   { id: 'rpc:prompts', mount: ctx => { ctx.registerRpcDomain(promptsRouter, promptsRpcHandlers) } },
   { id: 'rpc:goal', mount: ctx => { ctx.registerRpcDomain(goalRouter, goalRpcHandlers) } },

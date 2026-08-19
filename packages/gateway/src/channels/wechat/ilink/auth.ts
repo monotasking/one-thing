@@ -6,6 +6,7 @@ import {
   readGatewayJsonFile,
   writeGatewayJsonFile,
 } from '../../../core/storage.js'
+import { gatewayLogger } from '../../../core/logging.js'
 
 export const DEFAULT_ILINK_BASE_URL = 'https://ilinkai.weixin.qq.com'
 const ILINK_APP_ID = 'bot'
@@ -95,7 +96,7 @@ export async function getQRCode(): Promise<QRCodeResponse> {
     return data
   }
 
-  console.error('[WechatAuth] Unexpected get_bot_qrcode response:', data)
+  gatewayLogger('wechat.auth').error('unexpected get_bot_qrcode response', { response: data })
   throw new Error('Unexpected get_bot_qrcode response')
 }
 
@@ -112,7 +113,7 @@ export async function pollQRCodeStatus(qrcode: string, baseUrl = DEFAULT_ILINK_B
     return data
   }
 
-  console.error('[WechatAuth] Unexpected get_qrcode_status response:', data)
+  gatewayLogger('wechat.auth').error('unexpected get_qrcode_status response', { response: data })
   throw new Error('Unexpected get_qrcode_status response')
 }
 
@@ -188,14 +189,14 @@ export function loadGetUpdatesBuf(accountId?: string): string {
 export async function readIlinkJson(response: Response, label: string): Promise<unknown> {
   const text = await response.text()
   if (!response.ok) {
-    console.error(`[iLink] ${label} HTTP ${response.status}:`, text)
+    gatewayLogger('wechat.ilink').error('iLink request failed', { label, status: response.status, body: text })
     throw new Error(`iLink ${label} failed with HTTP ${response.status}`)
   }
 
   try {
     return text ? JSON.parse(text) : {}
   } catch (error) {
-    console.error(`[iLink] ${label} returned non-JSON response:`, text)
+    gatewayLogger('wechat.ilink').error('iLink returned a non-JSON response', { label, body: text })
     throw error
   }
 }

@@ -225,6 +225,65 @@ describe('sessionEvents RPC domain', () => {
     expect(response).toEqual({ ok: true, data: { inspection: null } })
   })
 
+  it('getTrace 把同一份日志装配成 run 树(老日志 = 合成组,runId 留空)', async () => {
+    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
+    unregister = registerSessionEventsRpcDomain()
+
+    const response = await dispatchRpc({
+      domain: 'sessionEvents',
+      method: 'getTrace',
+      payload: { sessionId: SESSION_ID },
+    })
+
+    expect(response.ok).toBe(true)
+    const trace = (response as { ok: true; data: { trace: Record<string, unknown> } }).data.trace
+    // 这份 fixture 只有 E0 七类 —— 没有 run/start,所以分组是合成的。
+    expect(trace.hasRunEvents).toBe(false)
+    const runs = trace.runs as Array<Record<string, unknown>>
+    expect(runs.map(run => run.key)).toEqual(['legacy:m1', 'legacy:m2'])
+    expect(runs.every(run => run.runId === '' && run.synthetic === true)).toBe(true)
+
+    const first = (runs[0].requests as Array<Record<string, unknown>>)[0]
+    expect(first.model).toBe('claude-old')
+    expect(first.toolCount).toBe(1)
+    expect((first.toolCalls as Array<Record<string, unknown>>)[0].resultPreview).toBe('ok')
+    // 现算,不存:树上不许有 duration。
+    expect(JSON.stringify(trace)).not.toMatch(/duration/i)
+  })
+
+  it('getTrace 的 run/last 过滤走同一棵树,totalRuns 说全量', async () => {
+    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
+    unregister = registerSessionEventsRpcDomain()
+
+    const response = await dispatchRpc({
+      domain: 'sessionEvents',
+      method: 'getTrace',
+      payload: { sessionId: SESSION_ID, last: true },
+    })
+    const trace = (response as { ok: true; data: { trace: Record<string, unknown> } }).data.trace
+    expect(trace.totalRuns).toBe(2)
+    expect((trace.runs as unknown[]).length).toBe(1)
+  })
+
+  it('getResponseText:没有 chunks 的老日志折出空正文,而不是编一段', async () => {
+    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
+    unregister = registerSessionEventsRpcDomain()
+
+    const response = await dispatchRpc({
+      domain: 'sessionEvents',
+      method: 'getResponseText',
+      payload: { sessionId: SESSION_ID, run: 'legacy:m1', request: 1 },
+    })
+    expect(response).toEqual({ ok: true, data: { response: { text: '', reasoning: '', partCount: 0 } } })
+
+    const noRun = await dispatchRpc({
+      domain: 'sessionEvents',
+      method: 'getResponseText',
+      payload: { sessionId: SESSION_ID },
+    })
+    expect(noRun).toEqual({ ok: true, data: { response: null } })
+  })
+
   it('带路径分隔符的 sessionId 打不穿会话库', async () => {
     // 信封里的 sessionId 在 server 上来自开放网络。写一份"库外"的日志,
     // 确认它读不到 —— 读到了就说明 `../` 能把读取器指到任意 events.jsonl。
@@ -246,5 +305,17 @@ describe('sessionEvents RPC domain', () => {
     })
 
     expect(response).toEqual({ ok: true, data: { events: [] } })
+
+    // 新加的两个方法走同一道门。
+    expect(await dispatchRpc({
+      domain: 'sessionEvents',
+      method: 'getTrace',
+      payload: { sessionId: '../outside' },
+    })).toEqual({ ok: true, data: { trace: null } })
+    expect(await dispatchRpc({
+      domain: 'sessionEvents',
+      method: 'getResponseText',
+      payload: { sessionId: '../outside', run: 'r' },
+    })).toEqual({ ok: true, data: { response: null } })
   })
 })

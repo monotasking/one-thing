@@ -29,7 +29,12 @@ export interface LoggerRootOptions {
 export class LoggerRoot {
   private readonly filter: LevelFilter
   private sinks: LogSink[]
-  private readonly src?: LogSource
+  /**
+   * 记录默认落哪个进程面。**可变**:根 logger 在模块求值时就存在(那时还不知道
+   * 自己是谁),宿主的 `configureLogging({src})` 才把它钉下来 —— 所以子 logger
+   * 在**写入时**读它,而不是构造时快照。
+   */
+  private srcValue?: LogSource
   private readonly baseFields?: Record<string, unknown>
   private readonly onSinkError?: (error: unknown, sink: LogSink) => void
   private readonly now: () => number
@@ -38,7 +43,7 @@ export class LoggerRoot {
   constructor(options: LoggerRootOptions = {}) {
     this.filter = new LevelFilter(options.level)
     this.sinks = [...(options.sinks ?? [])]
-    this.src = options.src
+    this.srcValue = options.src
     this.baseFields = options.baseFields
     this.onSinkError = options.onSinkError
     this.now = options.now ?? Date.now
@@ -46,6 +51,14 @@ export class LoggerRoot {
 
   get levelSpec(): string {
     return this.filter.spec
+  }
+
+  get src(): LogSource | undefined {
+    return this.srcValue
+  }
+
+  setSrc(src: LogSource | undefined): void {
+    this.srcValue = src
   }
 
   setLevelSpec(spec: string | null | undefined): void {
@@ -97,7 +110,7 @@ export class LoggerRoot {
   logger(ns: string): Logger {
     const existing = this.loggers.get(ns)
     if (existing) return existing
-    const logger = new RootBoundLogger(this, ns, undefined, this.src, this.now)
+    const logger = new RootBoundLogger(this, ns, undefined, this.now)
     this.loggers.set(ns, logger)
     return logger
   }
@@ -128,7 +141,6 @@ class RootBoundLogger implements Logger {
     private readonly root: LoggerRoot,
     readonly ns: string,
     private readonly boundFields: Record<string, unknown> | undefined,
-    private readonly src: LogSource | undefined,
     private readonly now: () => number,
   ) {}
 
@@ -141,7 +153,6 @@ class RootBoundLogger implements Logger {
       this.root,
       this.ns,
       { ...this.boundFields, ...fields },
-      this.src,
       this.now,
     )
   }
@@ -191,7 +202,8 @@ class RootBoundLogger implements Logger {
     if (merged && Object.keys(merged).length > 0) record.fields = merged
     const normalized = normalizeError(effectiveError)
     if (normalized) record.err = normalized
-    if (this.src) record.src = this.src
+    const src = this.root.src
+    if (src) record.src = src
     this.root.emit(record)
   }
 }

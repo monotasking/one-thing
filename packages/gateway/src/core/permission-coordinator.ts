@@ -4,10 +4,13 @@ import type {
   CorePermissionSurface,
 } from '@onething/core/gateway-runtime'
 import type { Unsubscribe } from '@onething/core/events'
+import { gatewayLogger, resolveGatewayLogger, type Logger } from './logging.js'
 
 export interface GatewayPermissionCoordinatorOptions {
   permissions: CorePermissionSurface
   timeoutMs: number
+  /** 构造时注入(L2)。 */
+  logger?: Logger
 }
 
 const STALE_PERMISSION_REPLY_TTL_MS = 60_000
@@ -41,7 +44,11 @@ export class GatewayPermissionCoordinator {
   private readonly queues = new Map<string, PendingGatewayPermission[]>()
   private readonly staleReplies = new Map<string, StaleGatewayPermissionReply[]>()
 
-  constructor(private readonly options: GatewayPermissionCoordinatorOptions) {}
+  private readonly log: Logger
+
+  constructor(private readonly options: GatewayPermissionCoordinatorOptions) {
+    this.log = resolveGatewayLogger(options.logger, 'permission')
+  }
 
   watch(input: GatewayPermissionWatchInput): Unsubscribe {
     const ownedPending = new Set<PendingGatewayPermission>()
@@ -176,7 +183,11 @@ export class GatewayPermissionCoordinator {
         rejectReason,
       })
     } catch (error) {
-      console.error('[GatewayPermissionCoordinator] Failed to respond to permission request:', error)
+      this.log.error('permission respond failed', {
+        sessionId: pending.sessionId,
+        requestId: pending.request.requestId,
+        decision,
+      }, error)
     }
     await sendTextSafely(pending, confirmation)
 
@@ -294,7 +305,8 @@ async function sendTextSafely(
   try {
     await pending.sendText(text)
   } catch (error) {
-    console.error('[GatewayPermissionCoordinator] Failed to send permission message:', error)
+    // 自由函数,没有构造注入口 —— 读进程级工厂(见 logging.ts 头注)。
+    gatewayLogger('permission').error('permission message send failed', {}, error)
   }
 }
 

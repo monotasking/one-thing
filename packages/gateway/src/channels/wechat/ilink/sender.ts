@@ -6,6 +6,7 @@ import {
   type WechatAuthState,
 } from './auth.js'
 import { splitMarkdownText, WECHAT_MAX_TEXT_LENGTH } from '../../../core/markdown-safe-outbound-buffer.js'
+import { gatewayLogger } from '../../../core/logging.js'
 
 const RATE_LIMIT_RET = -2
 const ILINK_SEND_MIN_INTERVAL_MS = 1_000
@@ -69,10 +70,12 @@ async function sendTextSegment(
 
     if (data.ret === RATE_LIMIT_RET && attempt < maxAttempts) {
       const delayMs = rateLimitRetryDelayMs(attempt, context.options)
-      console.warn(
-        `[WechatSender] sendmessage rate limited; retrying in ${delayMs}ms `
-        + `(${attempt}/${maxAttempts}) ${formatSegmentContext(response.status, segment, context, data)}`,
-      )
+      gatewayLogger('wechat.sender').warn('sendmessage rate limited, retrying', {
+        delayMs,
+        attempt,
+        maxAttempts,
+        context: formatSegmentContext(response.status, segment, context, data),
+      })
       await sleep(delayMs, context.options)
       continue
     }
@@ -133,7 +136,7 @@ export async function sendTyping(
     const config = await readIlinkJson(configResponse, 'getconfig')
 
     if (!isRecord(config) || typeof config.typing_ticket !== 'string') {
-      console.error('[WechatSender] Unexpected getconfig response:', config)
+      gatewayLogger('wechat.sender').error('unexpected getconfig response', { response: config })
       return
     }
 
@@ -149,7 +152,7 @@ export async function sendTyping(
     })
     await readIlinkJson(typingResponse, 'sendtyping')
   } catch (error) {
-    console.warn('[WechatSender] Failed to send typing:', error)
+    gatewayLogger('wechat.sender').warn('send typing failed', {}, error)
   }
 }
 

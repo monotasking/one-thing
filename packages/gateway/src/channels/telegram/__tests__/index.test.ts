@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { Logger } from '@onething/core/logging'
 import {
   TelegramChannel,
   telegramUpdateToInboundMessage,
@@ -83,10 +84,7 @@ describe('TelegramChannel', () => {
       botToken: 'telegram-token',
       apiBaseUrl: 'https://telegram.example',
       fetch: fetchMock,
-      logger: {
-        error: vi.fn(),
-        warn: vi.fn(),
-      },
+      logger: silentLogger(),
     })
 
     await channel.send({
@@ -120,3 +118,19 @@ describe('TelegramChannel', () => {
     })
   })
 })
+
+/** L2:通道收的是结构化 `Logger`,不再是 console 形状。 */
+function silentLogger(): Logger {
+  const logger = {
+    ns: 'gateway.telegram',
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    isLevelEnabled: () => true,
+    child: () => logger,
+  } as unknown as Logger
+  return logger
+}

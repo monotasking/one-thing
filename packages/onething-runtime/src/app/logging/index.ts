@@ -150,6 +150,9 @@ export function configureLogging(options: ConfigureLoggingOptions = {}): Logging
   initialized = true
 
   root.setLevelSpec(resolveLevelSpec(options.level))
+  // 根 logger 在模块求值时只能假定 `main`;宿主到这一步才说出自己是谁
+  // (server / daemon),从此每条记录的 `src` 都是真的。
+  if (options.src) root.setSrc(options.src)
 
   const logDir = options.logDir ?? getLogDir()
   activeLogDir = logDir
@@ -265,6 +268,7 @@ export async function shutdownAppLogging(): Promise<void> {
   legacyConsole?.uninstall()
   legacyConsole = null
   internalErrorReporter = undefined
+  root.setSrc('main')
   initialized = false
 }
 
@@ -329,6 +333,7 @@ export function resetLoggingForTests(): void {
   legacyConsole?.uninstall()
   legacyConsole = null
   root.setSinks([memoryRing])
+  root.setSrc('main')
   initialized = false
   activeLogDir = ''
 }

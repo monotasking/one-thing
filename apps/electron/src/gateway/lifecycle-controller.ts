@@ -1,6 +1,6 @@
 import type { CoreConversationRuntime } from '@onething/core/gateway-runtime'
 import { isGatewayEnabledFromEnv } from '@onething/gateway/config'
-import type { Channel, GatewayCommandProvider } from '@onething/gateway'
+import type { Channel, GatewayCommandProvider, GatewayLoggerFactory } from '@onething/gateway'
 import type { WechatAuthEvent, WechatChannel } from '@onething/gateway'
 import type {
   AppSettings,
@@ -31,6 +31,11 @@ export interface ElectronGatewayLifecycleOptions {
   getSettings?: () => Pick<AppSettings, 'channels'>
   env?: NodeJS.ProcessEnv
   logger?: Pick<Console, 'log'>
+  /**
+   * 宿主的日志工厂(logging L2)。传进去之后网关的记录落进主进程的
+   * `app.jsonl`,命名空间 `gateway.*`;不传网关就自己往终端打。
+   */
+  gatewayLogger?: GatewayLoggerFactory
   commandProvider?: GatewayCommandProvider
   importGateway?: () => Promise<{
     startGateway(options: {
@@ -39,6 +44,7 @@ export interface ElectronGatewayLifecycleOptions {
       channels?: Channel[]
       background?: boolean
       commandProvider?: GatewayCommandProvider
+      getLogger?: GatewayLoggerFactory
     }): Promise<GatewayRuntime>
     WechatChannel: typeof WechatChannel
     clearWechatAuthState?: (accountId?: string) => Promise<void>
@@ -277,6 +283,7 @@ export function createElectronGatewayLifecycle(
         channels,
         background: true,
         ...(options.commandProvider ? { commandProvider: options.commandProvider } : {}),
+        ...(options.gatewayLogger ? { getLogger: options.gatewayLogger } : {}),
       }
       const runtime = await gatewayModule.startGateway(startOptions)
       gatewayRuntime = runtime

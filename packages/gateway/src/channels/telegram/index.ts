@@ -1,4 +1,5 @@
 import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../../core/channel.js'
+import { resolveGatewayLogger, type Logger } from '../../core/logging.js'
 import type { TelegramApiResponse, TelegramMessage, TelegramUpdate } from './types.js'
 
 export const DEFAULT_TELEGRAM_API_BASE_URL = 'https://api.telegram.org'
@@ -15,10 +16,8 @@ export interface TelegramChannelOptions {
   apiBaseUrl?: string
   pollTimeoutSeconds?: number
   fetch?: FetchLike
-  logger?: {
-    error?: (...args: unknown[]) => void
-    warn?: (...args: unknown[]) => void
-  }
+  /** 构造时注入(L2):不给 = 进程级工厂给的 `gateway.telegram`。 */
+  logger?: Logger
 }
 
 export class TelegramChannel implements Channel {
@@ -26,7 +25,7 @@ export class TelegramChannel implements Channel {
   private readonly apiBaseUrl: string
   private readonly pollTimeoutSeconds: number
   private readonly fetchImpl: FetchLike
-  private readonly logger: Required<NonNullable<TelegramChannelOptions['logger']>>
+  private readonly logger: Logger
   private handler: ((msg: InboundMessage) => Promise<void>) | null = null
   private running = false
   private offset = 0
@@ -40,10 +39,7 @@ export class TelegramChannel implements Channel {
     this.apiBaseUrl = (options.apiBaseUrl || DEFAULT_TELEGRAM_API_BASE_URL).replace(/\/$/, '')
     this.pollTimeoutSeconds = options.pollTimeoutSeconds ?? POLL_TIMEOUT_SECONDS
     this.fetchImpl = options.fetch ?? fetch
-    this.logger = {
-      error: options.logger?.error ?? console.error,
-      warn: options.logger?.warn ?? console.warn,
-    }
+    this.logger = resolveGatewayLogger(options.logger, 'telegram')
   }
 
   async start(): Promise<void> {
@@ -78,7 +74,7 @@ export class TelegramChannel implements Channel {
       chat_id: msg.conversationId,
       action: 'typing',
     }).catch(error => {
-      this.logger.warn('[TelegramChannel] Failed to send typing:', error)
+      this.logger.warn('send typing failed', { conversationId: msg.conversationId }, error)
     })
   }
 
@@ -98,14 +94,14 @@ export class TelegramChannel implements Channel {
           try {
             await this.handler?.(inbound)
           } catch (error) {
-            this.logger.error('[TelegramChannel] Message handler failed:', error)
+            this.logger.error('message handler failed', {}, error)
           }
         }
       } catch (error) {
         if (!this.running) return
         if (isAbortError(error)) continue
 
-        this.logger.error('[TelegramChannel] Poll failed:', error)
+        this.logger.error('poll failed', {}, error)
         await delay(ERROR_RETRY_MS)
       }
     }
