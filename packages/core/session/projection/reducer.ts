@@ -30,7 +30,14 @@ import type {
   SessionResponseUsage,
 } from '../events/types.js'
 import { generateStepTitle } from '../../engine/tool-step.js'
+import { toolResultToStructured } from '../../tools/tool-result.js'
 import { SurfaceIndex } from './surface.js'
+
+/**
+ * 有结局的三态 —— 与 `sessions/session-dehydrate.ts` 的冷加载补算同一张表
+ * (`partialResult` 只在这三态上算得回来)。
+ */
+const TERMINAL_STEP_STATUSES = new Set<ProjectedStepStatus>(['completed', 'failed', 'cancelled'])
 import type {
   ProjectedContentPart,
   ProjectedStep,
@@ -84,6 +91,8 @@ interface ToolState {
   receivedAt?: number
   resultText?: string
   resultBlob?: { hash: string; bytes: number; mime?: string }
+  /** 结构化结局(`tool/result.resultData` 解出来的那一份)。 */
+  resultData?: unknown
   resultTime?: number
   isError?: boolean
   outcome?: 'ok' | 'invalid' | 'denied' | 'aborted' | 'failed'
@@ -100,6 +109,8 @@ export interface AssistantNode extends BaseNode {
   agentId?: string
   provider?: string
   model?: string
+  /** 触发这次执行的命令来源(`run/start.origin`)。 */
+  origin?: Record<string, unknown>
   ended: boolean
   outcome?: 'completed' | 'aborted' | 'error' | 'interrupted'
   errorDetails?: string
@@ -238,7 +249,8 @@ export function reduceSessionProjection(
       const node: AssistantNode = {
         kind: 'assistant',
         eventSeq: event.seq,
-        time: event.time,
+        // 助手消息自己的时刻优先于记账时刻(见 `SessionRunStartEventData.timestamp`)。
+        time: event.data.timestamp ?? event.time,
         hidden: false,
         patch: {},
         runId: event.data.runId,
@@ -246,6 +258,7 @@ export function reduceSessionProjection(
         agentId: event.data.agentId,
         provider: event.data.provider,
         model: event.data.model,
+        origin: event.data.origin,
         ended: false,
         parts: new Map(),
         partOrder: [],
@@ -368,6 +381,8 @@ export function reduceSessionProjection(
       else if (result && 'blob' in result) tool.resultBlob = result.blob
       // 老文件只有 500 字预览。诚实地把它当结果 —— 那**就是**那份账里存下的全部。
       else tool.resultText = event.data.resultPreview
+      const resultData = event.data.resultData
+      if (resultData && 'text' in resultData) tool.resultData = parseJsonSafely(resultData.text)
       break
     }
 
@@ -644,9 +659,37 @@ function stepStatus(status: ProjectedToolCallStatus): ProjectedStepStatus {
 
 /** 结果的两种落法:blob 引用,或正文;失败时正文进 `error` 而不是 `result`。 */
 function toolResultFields(tool: ToolState): Partial<ProjectedToolCall> {
+  // 结构化结局优先:`ToolCall.result` 的正身是它,`result.text` 只是给模型的那段。
+  if (tool.resultData !== undefined && !tool.isError) return { result: tool.resultData }
   if (tool.resultBlob) return { result: { blob: tool.resultBlob } }
   if (tool.resultText === undefined) return {}
   return tool.isError ? { error: tool.resultText } : { result: tool.resultText }
+}
+
+/** `JSON.parse`,坏了就当没有(记账坏掉不该让整份投影塌掉)。 */
+function parseJsonSafely(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 工具执行的三个时刻。
+ *
+ * `startTime` / `endTime` 在引擎那份账里是**执行前后各读一次表**,事件这边是
+ * `tool/call` / `tool/result` 两条记录的时刻 —— 同一件事的两次读表,差一两毫秒。
+ * `canonicalChatMessage` 因此把这三格排除在比较之外(见那边的说明);投影仍然
+ * 产出它们,因为 S2 切读之后工具卡要靠它显示"跑了多久"。
+ */
+function toolTimingFields(tool: ToolState): Partial<ProjectedToolCall> {
+  if (tool.resultTime === undefined) return { startTime: tool.callTime }
+  return {
+    startTime: tool.callTime,
+    endTime: tool.resultTime,
+    durationMs: Math.max(0, tool.resultTime - tool.callTime),
+  }
 }
 
 /** 一次性构造(条件展开),不先建后改 —— 理由见 `chat-messages.ts` 的同款注释。 */
@@ -660,7 +703,11 @@ export function materializeToolCall(run: AssistantNode, tool: ToolState): Projec
     timestamp: tool.callTime,
     ...(tool.receivedAt !== undefined ? { receivedAt: tool.receivedAt } : {}),
     ...(tool.streamingArgs !== undefined ? { streamingArgs: tool.streamingArgs } : {}),
+    ...toolTimingFields(tool),
     ...toolResultFields(tool),
+    // 引擎在收尾那一刻把这一位写死成 false(确认已经不再需要了)。它不是
+    // 事实的一部分,是那条 UI 闸的收场态 —— 有结局就有它。
+    ...(tool.resultTime !== undefined ? { requiresConfirmation: false } : {}),
     ...(tool.outcome === 'denied' ? { rejected: true as const } : {}),
     ...(tool.rejectionReason !== undefined ? { rejectionReason: tool.rejectionReason } : {}),
   }
@@ -674,6 +721,15 @@ export function materializeStep(
   const toolCall = materializeToolCall(run, tool)
   const usage = run.usageByTurn.get(tool.turnIndex)
   const hasResultText = tool.resultText !== undefined
+  const status = stepStatus(toolCall.status)
+  // 工具自己报的标题(`annotate{title}` → 结局里的 `title`)压过派生标题 ——
+  // 引擎那份账的规则逐字相同(`tool-orchestration.ts` 的 `finalTitle`)。
+  const reportedTitle = (tool.resultData as { title?: unknown } | undefined)?.title
+  // 落盘时 `partialResult` 被摘掉,冷加载时由 `rehydrateSessionFromStorage` 从
+  // `toolCall.result` 原样算回来。投影用的是**同一条**派生规则。
+  const structured = tool.resultData !== undefined && TERMINAL_STEP_STATUSES.has(status)
+    ? toolResultToStructured(tool.resultData as Parameters<typeof toolResultToStructured>[0])
+    : undefined
   return {
     // G1(§10.1):事件里**不带** stepId。派生一个确定性的 —— 同一份日志投两次
     // 得到同一个 id,而它与 toolCallId 一一对应;比较时 `canonicalChatMessage`
@@ -682,18 +738,21 @@ export function materializeStep(
     type: 'tool-call',
     // G2(§10.1):标题是**纯派生**,事件不带 title。用的就是引擎实时那一份
     // (`core/engine/tool-step.ts`),不在这里手抄一条规则。
-    title: generateStepTitle(
-      toolCall.toolName,
-      toolCall.arguments as Parameters<typeof generateStepTitle>[1],
-      run.skillUsed,
-    ),
-    status: stepStatus(toolCall.status),
+    title: typeof reportedTitle === 'string' && reportedTitle
+      ? reportedTitle
+      : generateStepTitle(
+        toolCall.toolName,
+        toolCall.arguments as Parameters<typeof generateStepTitle>[1],
+        run.skillUsed,
+      ),
+    status,
     timestamp: tool.callTime,
     turnIndex: tool.turnIndex,
     toolCallId: tool.callId,
     toolCall,
     ...(hasResultText && !tool.isError ? { result: tool.resultText } : {}),
     ...(hasResultText && tool.isError ? { error: tool.resultText } : {}),
+    ...(structured ? { partialResult: structured, partialResultIsPartial: false } : {}),
     ...(toolCall.rejected ? { rejected: true as const } : {}),
     ...(tool.rejectionReason !== undefined ? { rejectionReason: tool.rejectionReason } : {}),
     ...(usage ? { usage } : {}),

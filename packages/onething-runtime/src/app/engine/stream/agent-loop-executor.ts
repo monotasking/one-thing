@@ -29,6 +29,7 @@ import {
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
 import { createSessionCredentialRotator } from "../../providers/credential-rotation.js";
+import { checkSessionHistoryShadowForRequest } from "./history-shadow.js";
 import { resolveAgentProfileForSession } from "../../agents/profile.js";
 import { saveMediaImage } from "../../media/save-image.js";
 import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop/providers";
@@ -188,11 +189,17 @@ async function createNextAssistantWriter(
 	// S1a:steering 的 response-boundary = **两次执行**。旧的按 completed 收尾,
 	// 新的以 kind:'steer' 开张 —— 一条 assistant 消息一个 run 是投影的前提
 	// (`run/start` 就是那条消息在 surface 上的那一格)。
-	rotateSessionRun(state.ctx.sessionId, {
+	const rotated = rotateSessionRun(state.ctx.sessionId, {
 		kind: "steer",
 		assistantMessageId,
 		provider: state.ctx.providerId,
 		model: state.ctx.providerConfig.model,
+		timestamp: now,
+	});
+	sessionCommands.patchMessage(state.ctx.sessionId, {
+		messageId: assistantMessageId,
+		patch: { runId: rotated.runId },
+		hint: "settle",
 	});
 	state.ctx.assistantMessageId = assistantMessageId;
 	state.processor = createStreamProcessor(state.ctx);
@@ -528,12 +535,37 @@ export async function executeAgentLoopStreamGeneration(
 	// 直接调这里,所以 run 在这里也要有一条兜底的入口。`ensureSessionRun` 按
 	// assistantMessageId 判同一次执行:普通发送走到这里时 run 已经开好了,
 	// 这一句是 no-op(`started:false`),也就不会收尾。
+	const resumeAssistantPlaceholder = sessionReads.getMessage(
+		ctx.sessionId,
+		ctx.assistantMessageId,
+	);
+	const resumeAssistantTimestamp = resumeAssistantPlaceholder?.timestamp;
 	const resumeRun = ensureSessionRun(ctx.sessionId, {
 		kind: "resume",
 		assistantMessageId: ctx.assistantMessageId,
 		provider: ctx.providerId,
 		model: ctx.providerConfig.model,
+		...(resumeAssistantTimestamp !== undefined
+			? { timestamp: resumeAssistantTimestamp }
+			: {}),
+		...(resumeAssistantPlaceholder?.origin
+			? {
+					origin: resumeAssistantPlaceholder.origin as unknown as Record<
+						string,
+						unknown
+					>,
+				}
+			: {}),
 	});
+	// 只有真的在这里开张(恢复路径)才盖 runId —— 普通发送那条已经被
+	// `executeMessageStream` 盖过了,再盖一次是同值重写。
+	if (resumeRun.started) {
+		sessionCommands.patchMessage(ctx.sessionId, {
+			messageId: ctx.assistantMessageId,
+			patch: { runId: resumeRun.run.runId },
+			hint: "settle",
+		});
+	}
 	const processor = createStreamProcessor(ctx, options.initialContent);
 	const emitter = createEventOnlyEmitter(ctx);
 	const state: AgentLoopExecutorState = {
@@ -593,6 +625,31 @@ export async function executeAgentLoopStreamGeneration(
 						role: message.role,
 						content: message.content,
 					})),
+				// S1b:发出去之前比一次历史(§10.4 第二条)。
+				onRequestRecipe: (runId) =>
+					checkSessionHistoryShadowForRequest(ctx.sessionId, runId),
+				// S1b 缺口 4:请求参数快照。取的是**定稿后**的 runtime(档位、
+				// 能力门控、per-model 覆盖都已经算完),不是设置里的原始值 ——
+				// recipe 要能回答"这次真的按什么参数发出去的"。
+				getRequestParams: () => {
+					const runtime = prepared.runtime;
+					const params = {
+						...(runtime.temperature !== undefined
+							? { temperature: runtime.temperature }
+							: {}),
+						...(runtime.maxTokens !== undefined
+							? { maxTokens: runtime.maxTokens }
+							: {}),
+						...(runtime.thinking ? { thinking: runtime.thinking } : {}),
+						...(runtime.reasoningEffort
+							? { reasoningEffort: runtime.reasoningEffort }
+							: {}),
+						...(runtime.toolChoice
+							? { toolChoice: String(runtime.toolChoice) }
+							: {}),
+					};
+					return Object.keys(params).length > 0 ? params : undefined;
+				},
 			});
 			// 错误与收尾两条路不经过 onEvent,所以执行器要拿到 recorder 本体。
 			state.eventRecorder = recorded.recorder;

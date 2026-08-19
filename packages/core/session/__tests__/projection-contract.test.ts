@@ -35,6 +35,7 @@ import type { CoreSessionCommandMessage, SessionCommand } from '../commands.js'
 import type { SessionLogEventRecord, SessionRunKind } from '../events/index.js'
 import {
   canonicalChatMessages,
+  canonicalHistoryMessages,
   createSessionProjectionState,
   defaultHistoryMessageContent,
   foldSurface,
@@ -685,9 +686,15 @@ function expectEquivalent(scenario: Scenario): void {
   expect(canonicalChatMessages(projected.messages as unknown as Record<string, unknown>[]))
     .toEqual(canonicalChatMessages(scenario.a.messages))
 
-  expect(projectModelHistory(scenario.b.events, scenario.sessionMeta, {
+  const projectedHistory = projectModelHistory(scenario.b.events, scenario.sessionMeta, {
     buildMessageContent: defaultHistoryMessageContent,
-  })).toEqual(historyOf(scenario.a.messages, scenario.sessionMeta))
+  })
+  const builtHistory = historyOf(scenario.a.messages, scenario.sessionMeta)
+  expect(projectedHistory).toEqual(builtHistory)
+  // S1b:影子期的历史断言用的是**序列化之后的字节**(`canonicalHistoryMessages`)。
+  // 这一行让 §9.5 的每一条场景同时成为那道断言的合同 —— 判据换了地方,场景不必
+  // 各写一遍。
+  expect(canonicalHistoryMessages(projectedHistory)).toBe(canonicalHistoryMessages(builtHistory))
 }
 
 // ============================================================================

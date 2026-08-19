@@ -22,8 +22,20 @@
  * | 空数组 | 丢 | `toolCalls: []` 与没有 toolCalls 是同一件事 |
  * | `steps` / `toolCalls` 顺序 | 按 id 排序 | 数组序是派生物(到达序 vs 落盘序),身份是 id |
  *
- * **不丢**的:`contentParts` 的顺序(那是正文本身)、`timestamp`、`usage`、
- * `thinkingTime`、`errorDetails`。它们不等就是真的不等。
+ * | `thinkingTime` | 丢 | G5:派生量(投影从 chunks 时刻算,消息里常常没有) |
+ * | `data-steps` part | 丢 | G4:步骤面板的**渲染锚点**,位置算得出来,不是正文 |
+ * | step/toolCall 的 `timestamp` `startTime` `endTime` `receivedAt` `durationMs` | 丢 | 同一件事的两次读表(引擎 vs 事件),差 1~2ms |
+ * | toolCall 的 `argsFinalizedBy` | 丢 | 流式层诊断位,事件面上没有采集点(§10.8 公开缺口) |
+ * | step 的 `partialResult` / `partialResultIsPartial` | 丢 | 工具结局的派生缓存:落盘时被摘掉,冷加载重算(重启前后本就不同) |
+ * | `usage.durationMs` | 丢 | 一次流的墙钟量测,不是用量 |
+ *
+ * **不丢**的:`contentParts` 的顺序(那是正文本身)、消息级 `timestamp`、
+ * `usage` 的 token 计数、`errorDetails`、工具的**结构化结局**。它们不等就是
+ * 真的不等。
+ *
+ * 下面这几条 S1b 的裁定都有一个共同判据:**S2 切读之后,拿投影那一份当真相,
+ * 用户看到的东西会不会变?** 会变的一格都不许丢(工具结局的 metadata 就是这么
+ * 补上采集点而不是豁免掉的);不会变的才写进这张表。
  */
 
 export interface CanonicalizeOptions {
@@ -31,13 +43,52 @@ export interface CanonicalizeOptions {
   ignoreKeys?: readonly string[]
 }
 
-const ALWAYS_DROPPED_KEYS = new Set(['seq', 'eventSeq', 'sessionId', 'isThinking', 'thinkingStartTime'])
+const ALWAYS_DROPPED_KEYS = new Set([
+  'seq',
+  'eventSeq',
+  'sessionId',
+  'isThinking',
+  'thinkingStartTime',
+  // G5(§10.1):`thinkingTime` 是**派生**的 —— 投影从 chunks 的时刻算,引擎那份
+  // 账里它是渲染层事后写上的(常常根本没有)。S1b 实测:同一次执行,投影算出
+  // 20ms,messages.jsonl 那条一格都没有。派生量不参与"是不是同一条消息"。
+  'thinkingTime',
+])
+
+/**
+ * step / toolCall 上**不参与比较**的那几格(S1b 实测,§10.8)。
+ *
+ * 全是"同一件事的两次读表":引擎在执行前后各调一次 `Date.now()`,事件账本记的
+ * 是 `tool/call` / `tool/result` 两条记录的时刻 —— 同一个同步路径上的两行代码,
+ * 差 1~2ms。投影**照旧产出**这几格(S2 切读之后工具卡要靠它显示"跑了多久"),
+ * 只是拿它们比"是不是同一条消息"没有意义:那道门会永远红,而红的原因只是时钟。
+ *
+ * `durationMs` 一并排除:它是两次读表的差,继承同一份噪声。
+ */
+const DERIVED_CLOCK_KEYS = new Set(['timestamp', 'startTime', 'endTime', 'receivedAt', 'durationMs'])
+
+/**
+ * step 上的**派生缓存** —— `partialResult` / `partialResultIsPartial`。
+ *
+ * 判据不是我说的,是这条产品线的持久化层自己写的:`session-dehydrate.ts:127`
+ * 落盘时把结算过的 `partialResult` 整格摘掉(注释原话:"A settled
+ * partialResult duplicates toolCall.result"),冷加载再由
+ * `rehydrateSessionFromStorage` 用 `toolResultToStructured(toolCall.result)`
+ * 算回来。也就是说**同一条消息在重启前后本来就不是同一个值** —— 它是工具结局的
+ * 一份派生缓存,不是消息事实。投影按冷加载那条规则产出它(S2 切读之后看到的就是
+ * 那一份),但它不参与"是不是同一条消息"。
+ */
+const DERIVED_STEP_CACHE_KEYS = new Set(['partialResult', 'partialResultIsPartial'])
 
 /** 与 shared 层契约里的 `isTransientPart` 同口径(core 不引 shared,判据抄在这里)。 */
 function isTransientPart(part: unknown): boolean {
   if (!part || typeof part !== 'object') return false
   const record = part as { type?: unknown; durationMs?: unknown }
   if (record.type === 'waiting' || record.type === 'image-loading') return true
+  // G4(§10.1):占位 part 永远住在渲染侧。`data-steps` 是**步骤面板的锚点**,
+  // 位置由"这一轮有没有工具调用"算得出来(`planAgentLoopTurnContentPersistence`),
+  // 事件里没有它也不该有它 —— 它不是正文,是一个渲染坐标。
+  if (record.type === 'data-steps') return true
   return record.type === 'plugin-status' && record.durationMs === undefined
 }
 
@@ -72,11 +123,43 @@ function canonicalStep(step: unknown): unknown {
   const out: Record<string, unknown> = {}
   for (const key of Object.keys(step as Record<string, unknown>).sort()) {
     if (key === 'id') continue
+    if (DERIVED_CLOCK_KEYS.has(key) || DERIVED_STEP_CACHE_KEYS.has(key)) continue
     const value = (step as Record<string, unknown>)[key]
     if (value === undefined) continue
     if (key === 'childSteps') {
       if (!Array.isArray(value) || value.length === 0) continue
       out.childSteps = sortByKey(value, 'toolCallId').map(canonicalStep)
+      continue
+    }
+    if (key === 'toolCall') {
+      out.toolCall = canonicalToolCall(value)
+      continue
+    }
+    if (Array.isArray(value) && value.length === 0) continue
+    out[key] = canonicalValue(value)
+  }
+  return out
+}
+
+/**
+ * toolCall 上的同一条时钟规则,外加 `argsFinalizedBy`。
+ *
+ * `argsFinalizedBy`(`'parse' | 'provider-done'`)记的是**参数流是怎么收尾的** ——
+ * 中途 JSON 补齐,还是等 provider 报完。它是流式层的诊断位,事件账本上没有
+ * 对应的采集点(agent-loop 的 `AgentToolCall` 只有 id/name/arguments),
+ * 也不影响任何一格正文。留作 §10.8 的公开缺口。
+ */
+function canonicalToolCall(toolCall: unknown): unknown {
+  if (!toolCall || typeof toolCall !== 'object') return canonicalValue(toolCall)
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(toolCall as Record<string, unknown>).sort()) {
+    if (DERIVED_CLOCK_KEYS.has(key) || key === 'argsFinalizedBy') continue
+    const value = (toolCall as Record<string, unknown>)[key]
+    if (value === undefined) continue
+    // `requiresConfirmation: false` 与缺席是同一件事(与 `isStreaming` 同一条规则):
+    // 引擎在收尾时把这一位写死成 false,而没走过确认闸的调用上根本没有它。
+    if (key === 'requiresConfirmation') {
+      if (value === true) out.requiresConfirmation = true
       continue
     }
     if (Array.isArray(value) && value.length === 0) continue
@@ -117,7 +200,15 @@ export function canonicalChatMessage(
 
     if (key === 'toolCalls') {
       if (!Array.isArray(value) || value.length === 0) continue
-      out.toolCalls = sortByKey(value, 'id').map(canonicalValue)
+      out.toolCalls = sortByKey(value, 'id').map(canonicalToolCall)
+      continue
+    }
+
+    if (key === 'usage') {
+      // `usage.durationMs` 是一次流的墙钟量测(引擎在收尾时写),不是用量。
+      // 事件账本按 `request/response.usage` 求和,里面没有这一格。
+      const { durationMs: _droppedWallClock, ...rest } = (value ?? {}) as Record<string, unknown>
+      out.usage = canonicalValue(rest)
       continue
     }
 
@@ -134,4 +225,18 @@ export function canonicalChatMessages(
   options: CanonicalizeOptions = {},
 ): Record<string, unknown>[] {
   return messages.map(message => canonicalChatMessage(message, options))
+}
+
+/**
+ * 模型历史的**唯一**比较判据(S1b,§10.4 第二条)。
+ *
+ * 两侧都是 provider 形状的历史数组:一侧是今天 `buildHistoryMessages` 发出去的
+ * 那一份,另一侧是同一条 surface 投影出来的。判据是**序列化之后的字节** ——
+ * 任何一处不同都意味着"S2 切读之后模型会看到另一段历史",没有"不算数"的那一类。
+ *
+ * 归一的只有两件与内容无关的事:键序(一侧是字面量的写法序,另一侧是投影的
+ * 拼装序)与 `undefined`(它与缺席是同一件事)。
+ */
+export function canonicalHistoryMessages(messages: readonly unknown[]): string {
+  return JSON.stringify(messages.map(canonicalValue))
 }

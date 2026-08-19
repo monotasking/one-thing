@@ -163,6 +163,23 @@ Notes:
   `docs/design/session-storage-jsonl.md`; conversion: `scripts/convert-sessions.mjs`.
   Cross-session search/indexing belongs in apps/server — do not add a database to the
   Electron main process.
+- **Session event sourcing is in shadow mode** (S1, `docs/design/session-event-sourcing-2026-08.md`).
+  Every session also writes `sessions/<id>/events.jsonl` — a v2 event log (`session/created`,
+  `user/message`, `run/start|end`, `request/*`, `assistant/chunks|part-end`, `tool/*`,
+  `permission/*`, `session/compacted`, …) plus a content-addressed `sessions/<id>/blobs/`
+  for anything over 64KB. **`messages.jsonl` is still the only truth**; the event log is a
+  shadow that proves itself: at every `run/end` the projection of that run
+  (`projectChatMessages`) is deep-compared against the real messages, and before every
+  provider request the projected model history (`projectModelHistory`) is hash-compared
+  against what `buildHistoryMessages` actually sends. Both sides go through the one judge
+  in `packages/core/session/projection/canonical.ts` — extend that file, never add a
+  local exemption. Mismatches land one summary line each in
+  `<store>/log/session-shadow.jsonl` and count into `session-shadow-stats.json`;
+  `bun run sessions:shadow-report` is the gate (runs ≥ 200 ∧ mismatches = 0 ∧
+  appendFailures = 0), `sessions:shadow-reset` zeroes it, `sessions:shadow-overhead`
+  measures the cost. `ONETHING_SESSION_SHADOW=0` turns the comparison off (events keep
+  being written); it is **on by default**. S2 is what flips the read path over to the
+  projection — until then, nothing reads `events.jsonl` for product behavior.
 - There is no memory subsystem. The soul-memory plugin (SOUL/MEMORY.md + daily notes,
   panel, settings tab, `/api/memory/*`) was retired 2026-08-06 — see
   `docs/audit/soul-memory-retirement-2026-08-06.md`. Nothing reads or writes those files;

@@ -20,7 +20,9 @@ import {
 	buildOnethingHistoryMessages,
 	buildOnethingMessageContent,
 	filterOnethingHistoryForNonToolAPI,
+	onethingHistoryBuildRecipe,
 } from "@onething/runtime/sessions";
+import type { CoreHistoryChatMessage } from "@onething/core/engine";
 import {
 	appendCollabReactionSummary,
 	buildCollabChatRoomPayload,
@@ -118,19 +120,10 @@ export function buildHistoryMessages(
 	},
 ): HistoryMessage[] {
 	return buildOnethingHistoryMessages(
-		collapseSupersededGoalDrives(
-			projectRoomMessagesForModel(messages, session),
-		).map(prepareUserMessageForModel),
+		prepareHistoryInputForModel(messages, session),
 		session,
 		{
-			onImageAttachment: ({ mimeType, base64Length, dataUrlPrefix }) => {
-				console.log("[Chat] Adding image attachment:", {
-					mimeType,
-					base64Length,
-					dataUrlPrefix,
-				});
-			},
-			finalizeContent: applyTurnContextToBuiltContent,
+			...HISTORY_CONTENT_HOOKS,
 			onCompactedHistory: (details) => {
 				logMessageBodyShape(
 					"[buildHistoryMessages] compacted history body",
@@ -165,6 +158,66 @@ export function buildHistoryMessages(
 			},
 		},
 	) as HistoryMessage[];
+}
+
+/**
+ * 正文构造的两个钩子(图片附件日志 + 尾块回放落点)。
+ *
+ * 抽成常量而不是就地字面量:S1b 的历史影子断言要用**同一份**钩子去物化事件
+ * 投影(见 `prepareHistoryInputForModel` 的理由),两处各写一遍迟早分叉。
+ */
+const HISTORY_CONTENT_HOOKS = {
+	onImageAttachment: ({
+		mimeType,
+		base64Length,
+		dataUrlPrefix,
+	}: {
+		mimeType: string;
+		base64Length: number;
+		dataUrlPrefix: string;
+	}) => {
+		console.log("[Chat] Adding image attachment:", {
+			mimeType,
+			base64Length,
+			dataUrlPrefix,
+		});
+	},
+	finalizeContent: applyTurnContextToBuiltContent,
+};
+
+/**
+ * 事件投影侧要用的那份**完整配方**:预处理 + 正文构造 + 工具名 + 失败结果 +
+ * provider-data。交给 `projectModelHistory` / `materializeModelHistory`,让影子
+ * 断言两侧只差"消息从哪来"这一件事。
+ */
+export function historyProjectionRecipe(
+	session?: Parameters<typeof projectRoomMessagesForModel>[1],
+) {
+	return {
+		prepareMessages: (messages: CoreHistoryChatMessage[]) =>
+			prepareHistoryInputForModel(
+				messages as unknown as ChatMessage[],
+				session,
+			) as unknown as CoreHistoryChatMessage[],
+		...onethingHistoryBuildRecipe<CoreHistoryChatMessage>(HISTORY_CONTENT_HOOKS),
+	};
+}
+
+/**
+ * 交给 builder **之前**的那一遍预处理 —— 房投影 / goal drive 折叠 / 用户消息
+ * 上模型面的准备。
+ *
+ * 导出的理由只有一个:S1b 的历史影子断言要用**同一条配方**去物化事件投影
+ * (`projectModelHistory` 的 `prepareMessages`)。少了这一遍,断言比的就是两种
+ * 不同的构造法 —— 永远不等,而且什么也证明不了。
+ */
+export function prepareHistoryInputForModel(
+	messages: ChatMessage[],
+	session?: Parameters<typeof projectRoomMessagesForModel>[1],
+): ChatMessage[] {
+	return collapseSupersededGoalDrives(
+		projectRoomMessagesForModel(messages, session),
+	).map(prepareUserMessageForModel);
 }
 
 /**

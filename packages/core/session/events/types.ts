@@ -161,6 +161,18 @@ export interface SessionToolResultEventData {
   /** 对应 `tool/call` 事件的 seq。因果显式引用,不靠"就近配对"猜。 */
   sourceSeq?: number
   result?: { text: string } | { blob: BlobRef }
+  /**
+   * 工具**结构化**结局的 JSON(`ToolCall.result` 的正身)。
+   *
+   * `result` 是给模型看的那段正文(历史里放的就是它),而工具卡上渲染的是
+   * 结构化的那一份 —— `{title, output, metadata}` 里的 metadata 才是 diff
+   * hunks / 文件路径 / 命令退出码的所在处。只记正文的话,S2 切读之后每张工具卡
+   * 都会退化成一段纯文本,而门却是绿的。
+   *
+   * 与 `result` 同一条 64KB 线(超过走 blob);工具结局本身就是字符串时不写
+   * 这一格(那时两者是同一个东西)。
+   */
+  resultData?: { text: string } | { blob: BlobRef }
   runId?: string
 }
 
@@ -306,6 +318,25 @@ export interface SessionRunStartEventData {
   assistantMessageId: string
   provider?: string
   model?: string
+  /**
+   * 助手消息本身的时刻(`ChatMessage.timestamp`)。
+   *
+   * 事件的 `time` 是**记账时刻**,而助手那条占位消息是在开 run 之前就建好的
+   * (引擎先建消息、再进执行入口)。投影把这一格物化成一条消息,时刻必须跟着
+   * 消息走 —— 否则每一个 run 的投影都比事实晚几毫秒,而影子断言会把它当成
+   * 一次真的不等。缺席时退回 `event.time`(老文件里没有这一格)。
+   */
+  timestamp?: number
+  /**
+   * 触发这次执行的那条命令的来源(`ChatMessage.origin`)。
+   *
+   * 引擎把它**同时**盖在用户消息与助手占位消息上(`core-stream-engine.ts` 的
+   * `origin: cmd.origin`),外发路由靠它回到正确的渠道。助手那条不经翻译器
+   * (它在 surface 上的那一格就是这条 `run/start`),所以它只能住在这里 ——
+   * 从触发消息上"推"是错的:输入被插件改写过时,用户消息那份多一枚
+   * `inputTransformed` 戳,而助手那份没有。
+   */
+  origin?: Record<string, unknown>
 }
 
 export interface SessionRunEndEventData {

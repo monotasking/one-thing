@@ -32,6 +32,10 @@ export interface ProjectedToolCall {
   receivedAt?: number
   startTime?: number
   endTime?: number
+  /** `endTime − startTime`(引擎那份账里是同名字段)。 */
+  durationMs?: number
+  /** 收场时引擎写死的那一位(确认闸已经关上)。 */
+  requiresConfirmation?: boolean
   /** 参数还在流式生成时的原始 JSON 片段;`tool/call` 一到就撤下。 */
   streamingArgs?: string
 }
@@ -68,6 +72,12 @@ export interface ProjectedStep {
   error?: string
   rejected?: boolean
   rejectionReason?: string
+  /**
+   * 结构化结局(工具卡渲染的那一份)。落盘时被摘掉,冷加载由
+   * `rehydrateSessionFromStorage` 从 `toolCall.result` 算回来 —— 投影用同一条规则。
+   */
+  partialResult?: unknown
+  partialResultIsPartial?: boolean
   usage?: ProjectedStepUsage
 }
 

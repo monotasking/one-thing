@@ -598,3 +598,135 @@ S1 仍是影子,所以写失败**不致命**,但必须**可见、可计数**:
 | 6 | `upsertMessage` 命中已有那条 → `message/patched` | 语义上是"整条换掉",投影的叠加层能表达,但**正文字段会被丢掉**(第 5 条裁定)。真有整条换正文的调用点时要重看 |
 | 7 | 老会话(只有 E0 七类)的 surface 是空的 | 对的 —— 它们的消息事实还在 `messages.jsonl` 里,S2 的迁移脚本才把它们变成 `message/imported` |
 | 8 | `flushSessionEventLog` 的 fsync 每次都开一次文件句柄 | 检查点频率下可接受;真机大会话的耗时没量过(S1b 的性能门一起量) |
+
+---
+
+### 10.8 S1b 落地记录(2026-08-20)
+
+**门**(逐字):`bun run typecheck` 只剩 `spaces/__tests__/provider-dials.test.ts`
+的 3 条既有错;`ONETHING_SESSION_FREEZE=1 bun run test` **10787 passed / 2 failed**
+(两条既有 `ui-token-vars.test.ts`)+ 1 条既有 unhandled rejection
+(`AIProviderTab.interaction.test.ts`);`session:gate` **0**(none new);
+`boundary:gate` 绿(13 known,none new);`lint:ci` **334**(与基线同数,新增文件
+零命中);`server:build` 通过;
+`bun run sessions:shadow-report --min-runs 20` → **runs 20 / mismatches 0 /
+appendFailures 0,GATE GREEN**(10 个会话 × 2 个回合,假 provider 真机)。
+
+#### 交付
+
+| 文件 | 角色 |
+|---|---|
+| `packages/onething-runtime/src/app/session/shadow.ts` | **影子断言本体**:活投影缓存(O(新事件))、run 断言(`kind:'messages'`)、历史断言(`kind:'history'`)、字段级 diff 摘要(≤2KB)、`session-shadow.jsonl` 追加 |
+| `packages/onething-runtime/src/app/session/event-stats.ts` | 统计表扩到 `{appendFailures, runs, mismatches, byKind, lastMismatchAt}`;新增总闸 `isSessionShadowEnabled()`(`ONETHING_SESSION_SHADOW=0` 关) |
+| `packages/onething-runtime/src/app/session/event-log.ts` | 写入口挂一条**尾巴**(`drainSessionLogEventTail`):活投影按需取走刚分配 seq 的记录,不重读文件。关闸时尾巴恒空 |
+| `packages/onething-runtime/src/app/session/runs.ts` | `run/end` 的 fsync 检查点**之后**排一次 run 断言(`setTimeout(0)`,不在热路径);`run/start` 带上助手消息的 `timestamp` 与 `origin` |
+| `packages/onething-runtime/src/app/engine/stream/history-shadow.ts` | 历史断言的接线(读门面 + `buildHistoryMessages` + `historyProjectionRecipe`)。**独立成文件**:recorder 只该依赖会话事件那一层,直接 import 会把整棵 store 树拖进它的模块图 |
+| `packages/onething-runtime/src/app/session/assistant-parts.ts` | 缺口 3:图片生成流的 `assistant/part-end{kind:'image', blob}` 生产者 |
+| `packages/onething-runtime/src/app/engine/stream/message-helpers.ts` | 导出 `prepareHistoryInputForModel` / `historyProjectionRecipe` —— 影子两侧走**同一条配方** |
+| `packages/onething-runtime/src/sessions/history-messages.ts` | 导出 `onethingHistoryBuildRecipe`(注入给 core builder 的那四件套) |
+| `packages/core/session/projection/canonical.ts` | S1b 的**判定口径**(见下表)+ `canonicalHistoryMessages`(历史断言的唯一判据,与 `canonicalChatMessage` 并排) |
+| `packages/core/session/projection/{reducer,types,model-history,chat-messages}.ts` | 投影补齐:结构化工具结局、`startTime/endTime/durationMs`、`requiresConfirmation`、工具自报标题、`partialResult`、assistant 的 `origin`;`materializeModelHistory` 新增 `prepareMessages` / `providerDataFromContentPart` 两个宿主口 |
+| `packages/core/session/events/types.ts` | `run/start.{timestamp,origin}`、`tool/result.resultData` |
+| `scripts/session-shadow-report.mjs` / `session-shadow-reset.mjs` / `measure-shadow-overhead.mjs` | 门 / 归零 / 性能量测(三条 npm 脚本) |
+| 测试 | `app/session/__tests__/shadow.test.ts`(10 条)、`shadow-report.test.ts`(4 条)、`event-translator.test.ts` 的 G11 端到端一条、`core/session/__tests__/projection-contract.test.ts` 的每条场景加一行历史指纹断言 |
+
+#### 影子断言长什么样
+
+- **run 断言**(`kind:'messages'`):`run/end` 落盘(fsync)之后排一个宏任务 ——
+  取 `sessionReads.listMessages` 里属于这个 run 的消息(按 `ChatMessage.runId`,
+  加上 `run/start.triggerMessageId` 那条),与活投影里同一批节点物化出来的那几条
+  过 `canonicalChatMessage` 深比较。相等 `runs++`,不等写一行摘要 +
+  `mismatches++` / `byKind.messages++`。
+- **历史断言**(`kind:'history'`):写 `request/recipe` 的同一刻(= 这次请求真正
+  发出之前)同步比一次 —— `buildHistoryMessages(listMessages, session)` vs
+  `materializeModelHistory(活投影, meta, 同一条配方)`,两侧过
+  `canonicalHistoryMessages` 比**字节**。
+- **两条都永不抛进引擎**:全 try/catch 自吞,出错记 warn 并 `skipped`。
+- **活投影**:每会话一份 `SessionProjectionState`。首次用时从文件同步折一遍,
+  之后只折写入口尾巴里的新事件 —— 每次断言 O(新事件),不是 O(会话)。
+
+#### 判定口径:S1b 新写死的"不等但不算数"
+
+判据只有一条:**S2 拿投影那一份当真相之后,用户看到的东西会不会变?** 会变的
+一格都不许豁免(工具结局的 metadata 就是这么补了采集点、而不是被丢掉的)。
+
+| 字段 | 处置 | 证据 |
+|---|---|---|
+| `data-steps` content part | 丢 | G4:步骤面板的**渲染锚点**,位置由"这一轮有没有工具调用"算得出来(`planAgentLoopTurnContentPersistence`),不是正文 |
+| `thinkingTime` | 丢 | G5 已裁定它是派生量。真机实测:投影算出 20ms,messages.jsonl 那条一格都没有 |
+| step / toolCall 的 `timestamp` `startTime` `endTime` `receivedAt` `durationMs` | 丢 | 同一件事的两次读表。实测差 1~2ms(引擎 `Date.now()` vs `tool/call` 事件时刻)。**投影照旧产出**,只是不参与"是不是同一条消息" |
+| toolCall 的 `argsFinalizedBy` | 丢 | 流式层诊断位;agent-loop 的 `AgentToolCall` 只有 `{id,name,arguments}`,事件面上没有采集点(见下方缺口表) |
+| toolCall 的 `requiresConfirmation: false` | 丢(只留 `true`) | 与 `isStreaming` 同一条规则:false 与缺席是同一件事 |
+| step 的 `partialResult` / `partialResultIsPartial` | 丢 | **持久化层自己写的判据**:`session-dehydrate.ts:127` 落盘时整格摘掉(注释原话 "A settled partialResult duplicates toolCall.result"),冷加载再由 `rehydrateSessionFromStorage` 算回来 —— 同一条消息在重启前后本来就不是同一个值 |
+| `usage.durationMs` | 丢 | 一次流的墙钟量测,不是用量;事件侧按 `request/response.usage` 求和 |
+
+#### 真机跑出来的 8 类不等,以及每一类是怎么修的
+
+第一次把影子挂到真机上,一个 run 报了 **8 类** 不等(下表按修法分两组)。这一节
+是这一期最该被读到的部分 —— 它证明这道断言不是恒真的。
+
+**补采集点 / 补投影**(5 类,都是"事件里真的少了东西"):
+
+1. **`toolCall.result` 只有正文,没有结构** —— 引擎那份是
+   `{title, output, metadata}`(工具卡渲染的 diff hunks / 退出码 / 文件路径全在
+   `metadata` 里),事件里只记了给模型看的那段文本。修:`tool/result.resultData`
+   记结构化结局的 JSON(同一条 64KB 线,超过走 blob),投影拿它当
+   `toolCall.result`。**这一格若被豁免掉,S2 切读之后每张工具卡都会退化成一段
+   纯文本,而门是绿的。**
+2. **step 标题不对**(`Tool: time` vs `Current time in Asia/Shanghai`)——
+   工具自己 `annotate{title}` 报的标题压过派生标题(引擎的 `finalTitle` 就是这条
+   规则)。修:投影从 `resultData.title` 取,取不到才 `generateStepTitle`。
+3. **助手消息的 `origin` 丢了** —— 引擎把命令来源**同时**盖在用户消息与助手
+   占位消息上(`core-stream-engine.ts` 的 `origin: cmd.origin`),而占位消息不经
+   翻译器。修:`run/start.origin`。**不能从触发消息上"推"**:输入被插件改写过时
+   用户那份多一枚 `inputTransformed` 戳,助手那份没有。
+4. **助手消息 `timestamp` 差几毫秒** —— 占位消息先建、run 后开,投影却取的是
+   事件写入时刻。修:`run/start.timestamp` 带上消息自己的时刻。
+5. **`startTime` / `endTime` / `durationMs` / `requiresConfirmation` 一格都没有**
+   —— 修:投影从 `tool/call` / `tool/result` 的时刻派生(S2 的工具卡要靠它显示
+   "跑了多久"),同时把这几格写进上面那张"不参与比较"的表(它们是两次读表)。
+
+**写进判定口径**(3 类,见上表):`data-steps` 锚点、`thinkingTime`、
+`partialResult` / `usage.durationMs`。
+
+修完之后同一个脚本 20 个 run 全绿。顺带落下的两条:`upsertMessage` 命中已有
+那条现在走 `fullBody` 档(正文照旧带上;归约器仍对 assistant 节点剥掉正文三件套
+—— 它的正文唯一来源是 chunks),`request/recipe.params` 由执行器从**定稿后**的
+runtime 注入(温度 / maxTokens / thinking / reasoningEffort / toolChoice)。
+
+#### 性能量测(`bun run sessions:shadow-overhead`)
+
+一次回合 50 个工具调用,临时 store + 假 provider,探针是一段临时的 `--require`
+前置脚本(fsync 计数 + 1ms 定时器的迟到量),**产品代码一行没为量测改过**:
+
+| 数 | 影子开 | 影子关(`ONETHING_SESSION_SHADOW=0`) |
+|---|---|---|
+| `events.jsonl` | 154,061 B / 272 行(50 条 `tool/call`) | 154,063 B / 272 行 |
+| fsync 次数 | 55 | 55 |
+| 端到端墙钟 | 425~442 ms | 420~563 ms |
+| 主线程最长阻塞 | 40 / 44 / 58 / 60 ms | 35 / 39 / 43 / 46 / 106 ms |
+
+结论三条:
+
+1. **影子不写 `events.jsonl`、不加 fsync**(两列逐字节相同),墙钟差落在噪声里
+   (多次量测里"关"甚至比"开"慢)。
+2. **影子自己的开销直接量过**(临时打点):run 断言 **5ms**(一个 run 一次,而且
+   排在 `setTimeout(0)` 里),历史断言 **1ms/请求**。
+3. **`< 16ms` 这道门没过,但欠账不是影子的**。关闸那一列同样 35~106ms,而且
+   1 / 5 / 50 个工具调用三档下都是同一个量级(39 / 29 / 44 ms)——
+   不随工具数增长。最长阻塞发生在**回合的尾部**(量测窗口的 +480ms 附近,
+   回合总长 ~430ms),即消息定稿/落盘那一段,与影子无关。这是一条**既有**的
+   引擎账,记在这里等它的主人;S1b 该负的那部分(6ms)已经量清楚了。
+
+#### 仍然敞着的缺口(S2 之前必须有答案)
+
+| # | 缺口 | 现状 |
+|---|---|---|
+| 1 | `tool/call.parentCallId` **仍然没有生产者** | 两条可能的来源都堵着:①工具内部的子步骤走 `onStepStart`(那是**渲染用的 Step**,不是工具调用,事件面上没有它);②Claude Code 子代理的调用带 `parent_tool_use_id`,但连接器按既有约定**整条丢弃**(`claude-code-connector.ts:953`,"父 Task 调用已经代表它了")。要么改这两条之一的行为,要么这一格永远是平铺 —— 属于行为裁定,不在影子期自作主张 |
+| 2 | `argsFinalizedBy` 没有采集点 | agent-loop 的 `AgentToolCall` 只有 `{id, name, arguments}`;这一位住在 `core/engine/stream-processor.ts` 的流式层。已写进"不参与比较" |
+| 3 | `providerResponseId` / `responseModel` 仍然只认 `provider-data` 里的 `responseId`/`id`/`model` | 查过一遍:**没有一家 agent-loop provider 自报响应 id**(`agent-loop/providers/*` 里一处都没有;`providers/codex.ts` 的 `response-metadata` 是另一条老链)。不猜就是不填 —— 要补得先在 provider 适配层加一次上报 |
+| 4 | `contentParts` 里的 `provider-data` part 没有生产者 | 加密推理那一格(claude / codex 会有)。事件的 `SessionAssistantPartKind` 只有 text/reasoning/tool-input/image,加一格是改 §9.2 的定稿事件全集,要先拍板。**在此之前,claude/codex 会话的影子会照实报不等** —— 这是对的,不是 bug |
+| 5 | 图片生成回合的消息断言**会报不等** | `assistant/part-end{kind:'image'}` 已经有生产者(blob + 引用),但 messages.jsonl 那条的正文是**一段内嵌 base64 data URL 的 markdown 文本**(`ContentPart` 里根本没有 image 成员)。于是投影多一格 image part、少那段 markdown。**故意不掩盖**:把它豁免掉等于让 S2 切读之后图片正文凭空消失而门是绿的。收口(记 markdown 正文 vs 让渲染层认 image part)是 S2 的读路径裁定 |
+| 6 | 老会话(只有 E0 七类)的 surface 是空的 | 同 S1a:它们的消息事实还在 `messages.jsonl` 里,S2 的迁移脚本才把它们变成 `message/imported`。影子对它们返回 `skipped`(不记账,也不误报) |
+| 7 | 影子的模块边界 | `runs.ts → shadow.ts → reads.js → stores/*` 这条边让"只 mock `stores/paths`"的单测炸掉(`session-chunk-packer.test.ts` 因此就地 mock 掉 shadow)。S2 切读时这条边会消失(读门面自己就是投影),现在不为它加一层端口 |
+| 8 | `flushSessionEventLog` 每次开一次文件句柄做 fsync | 量到了:一个 50 工具调用的回合 55 次,而最长阻塞与它无关(fsync 走的是 `fs.promises`,不占主线程)。维持现状 |

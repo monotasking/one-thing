@@ -11,6 +11,7 @@ import type { Principal } from '@onething/core/permission'
 import type { SessionRunKind } from '@onething/core/session'
 import { endSessionRun, ensureSessionRun } from '../../session/runs.js'
 import { sessionCommands } from '../../session/commands.js'
+import { sessionReads } from '../../session/reads.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
@@ -142,6 +143,13 @@ export async function executeMessageStream(
   abortController?: AbortController
 ): Promise<StreamExecutionResult> {
   const engine = getStreamEngine()
+  // 助手占位消息在进这扇门之前就建好了 —— 把它的时刻带进 `run/start`,投影
+  // 物化出来的那一条才与事实同一个时刻(S1b 的影子断言按它比)。
+  const assistantPlaceholder = sessionReads.getMessage(
+    params.sessionId,
+    params.assistantMessageId,
+  )
+  const assistantTimestamp = assistantPlaceholder?.timestamp
   const { run, started } = ensureSessionRun(params.sessionId, {
     kind: params.runKind ?? 'send',
     assistantMessageId: params.assistantMessageId,
@@ -149,6 +157,10 @@ export async function executeMessageStream(
     model: params.configWithApiKey.model,
     ...(params.agentId ? { agentId: params.agentId } : {}),
     ...(params.triggerMessageId ? { triggerMessageId: params.triggerMessageId } : {}),
+    ...(assistantTimestamp !== undefined ? { timestamp: assistantTimestamp } : {}),
+    ...(assistantPlaceholder?.origin
+      ? { origin: assistantPlaceholder.origin as unknown as Record<string, unknown> }
+      : {}),
   })
   // 盖在助手消息上(`ChatMessage.runId`):影子期按它把消息切成 run 来比对。
   if (started) {

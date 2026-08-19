@@ -22,14 +22,17 @@ export const SESSION_SHADOW_STATS_FILENAME = 'session-shadow-stats.json'
 export interface SessionShadowStats {
   /** 事件/blob 写失败的总次数。门:必须是 0。 */
   appendFailures: number
-  /** 完成并比对过的 run 数(S1b 填)。 */
+  /** 完成并比对过的 run 数。门:≥ 200(`--min-runs` 可覆盖)。 */
   runs: number
-  /** 投影与消息不等的次数(S1b 填)。门:必须是 0。 */
+  /** 投影与消息不等的次数。门:必须是 0。 */
   mismatches: number
+  /** 按断言种类拆的不等计数(`messages` / `history`)。 */
+  byKind: Record<string, number>
+  lastMismatchAt?: number
   updatedAt?: number
 }
 
-const EMPTY: SessionShadowStats = { appendFailures: 0, runs: 0, mismatches: 0 }
+const EMPTY: SessionShadowStats = { appendFailures: 0, runs: 0, mismatches: 0, byKind: {} }
 const WRITE_THROTTLE_MS = 1000
 
 let cached: SessionShadowStats | undefined
@@ -49,9 +52,11 @@ function load(): SessionShadowStats {
       appendFailures: Number(parsed.appendFailures) || 0,
       runs: Number(parsed.runs) || 0,
       mismatches: Number(parsed.mismatches) || 0,
+      byKind: normalizeByKind(parsed.byKind),
+      ...(Number(parsed.lastMismatchAt) ? { lastMismatchAt: Number(parsed.lastMismatchAt) } : {}),
     }
   } catch {
-    cached = { ...EMPTY }
+    cached = { ...EMPTY, byKind: {} }
   }
   return cached
 }
@@ -83,16 +88,47 @@ function scheduleWrite(): void {
   if (typeof unref === 'function') unref.call(timer)
 }
 
+function normalizeByKind(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object') return {}
+  const out: Record<string, number> = {}
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const count = Number(entry)
+    if (Number.isFinite(count) && count > 0) out[key] = count
+  }
+  return out
+}
+
 export function readSessionShadowStats(): SessionShadowStats {
-  return { ...load() }
+  const stats = load()
+  return { ...stats, byKind: { ...stats.byKind } }
 }
 
 export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void {
   const stats = load()
   if (patch.appendFailures) stats.appendFailures += patch.appendFailures
   if (patch.runs) stats.runs += patch.runs
-  if (patch.mismatches) stats.mismatches += patch.mismatches
+  if (patch.mismatches) {
+    stats.mismatches += patch.mismatches
+    stats.lastMismatchAt = Date.now()
+  }
+  if (patch.byKind) {
+    for (const [kind, count] of Object.entries(patch.byKind)) {
+      if (!count) continue
+      stats.byKind[kind] = (stats.byKind[kind] ?? 0) + count
+    }
+  }
   scheduleWrite()
+}
+
+/**
+ * 影子断言的总闸(S1b,§10.4)。**缺省开**;`ONETHING_SESSION_SHADOW=0` 关。
+ *
+ * 关掉的只是**比对与记账**这一层 —— 事件照旧落盘(S1a 的纪律不受它影响)。
+ * 每次现读环境变量而不是启动时定死:测试要在同一个进程里两种档位各跑一遍,
+ * 而这条判断本身是一次字符串比较,便宜到不值得缓存。
+ */
+export function isSessionShadowEnabled(): boolean {
+  return process.env.ONETHING_SESSION_SHADOW !== '0'
 }
 
 /**

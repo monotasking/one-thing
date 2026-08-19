@@ -18,6 +18,7 @@ import type { StreamSender } from './stream-processor.js'
 import {
   executeOnethingImageGenerationStream,
 } from '@onething/runtime/media'
+import { recordGeneratedImagePart } from '../../session/assistant-parts.js'
 
 export interface ImageStreamParams {
   sender: StreamSender
@@ -80,7 +81,14 @@ export async function processImageGenerationStream(
     },
     generateGeminiImage: input => generateGeminiImage(input.apiKey, input.model, input.prompt),
     generateOpenAIImage: input => generateImage(input.apiKey, input.baseUrl, input.model, input.prompt),
-    saveMediaImage,
+    // S1b 缺口 3:图片本体在这一刻同时进 blob store,事件行留一条
+    // `assistant/part-end{kind:'image'}`。挂在 saveMediaImage 上而不是别处 ——
+    // 这是整条特化流里唯一同时握着 sessionId / messageId / base64 的地方。
+    saveMediaImage: async input => {
+      const item = await saveMediaImage(input)
+      recordGeneratedImagePart(sessionId, assistantMessageId, input.base64)
+      return item
+    },
     store: {
       updateMessageContent: store.updateMessageContent,
       addMessageContentPart: store.addMessageContentPart,

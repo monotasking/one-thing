@@ -40,6 +40,7 @@ import type {
 } from '@onething/core/agent-loop'
 import { detectSkillUsage } from '@onething/core/engine'
 import type {
+  BlobRef,
   SessionAssistantPartKind,
   SessionResponseUsage,
 } from '@onething/core/session'
@@ -99,6 +100,37 @@ export interface SessionEventRecorderContext {
   getHistoryInput?: () => readonly { id: string; role: string; content?: string }[]
   /** 请求参数快照(温度 / maxTokens / thinking …),原样进 recipe。 */
   getRequestParams?: () => Record<string, unknown> | undefined
+  /**
+   * 配方写下去的那一刻(= 这次请求真正发出之前)的旁听口。
+   *
+   * S1b 的历史影子断言挂在这里(`history-shadow.ts`)。留一个回调而不是就地
+   * import:那条断言要用 `buildHistoryMessages` 与读门面,而它们身后是整棵
+   * store 树 —— recorder 只该依赖会话事件那一层。
+   */
+  onRequestRecipe?: (runId: string, requestIndex: number) => void
+}
+
+/**
+ * 工具结局的结构化那一份 → 事件行。
+ *
+ * `AgentToolResult.data` 就是引擎写进 `ToolCall.result` 的那个对象
+ * (`tool-orchestration.ts` 的 `toJsonValue(result.data)`),所以这里存的与那边
+ * 存的是同一份。字符串结局不写(它已经在 `result.text` 里了),序列化失败也不写
+ * —— 少一格账,好过一格坏掉的账。
+ */
+function structuredResultForEvent(
+  sessionId: string,
+  data: unknown,
+): { resultData: { text: string } | { blob: BlobRef } } | Record<string, never> {
+  if (data === undefined || data === null || typeof data !== 'object') return {}
+  let text: string
+  try {
+    text = JSON.stringify(data)
+  } catch {
+    return {}
+  }
+  if (!text) return {}
+  return { resultData: textOrBlobForEvent(sessionId, text) }
 }
 
 function toToolSchemas(tools: readonly AgentTool[] | undefined): SessionEventToolSchema[] {
@@ -279,6 +311,12 @@ export function createSessionEventRecorder(
       messages: messages as unknown as { eventSeq: number; contentHash: string }[],
       ...(params ? { params } : {}),
     })
+    // S1b:配方写下去的同一刻比一次历史 —— 比的就是这次要发出去的那一份。
+    try {
+      ctx.onRequestRecipe?.(id, requestIndex)
+    } catch (error) {
+      console.warn('[SessionEvents] recipe hook failed:', error)
+    }
   }
 
   // ---- delta 攒批 ----
@@ -545,6 +583,11 @@ export function createSessionEventRecorder(
           resultPreview: truncateSessionEventPreview(preview),
           // 正文补上:64KB 以内进事件行,超过走 blob(§9.1)。
           result: textOrBlobForEvent(ctx.sessionId, preview),
+          // S1b:**结构化**结局(`ToolCall.result` 的正身)。工具卡渲染的是它,
+          // 只记正文的话 S2 切读之后每张卡都退化成一段纯文本(diff hunks、
+          // 退出码、文件路径全在 metadata 里)。结局本身是字符串时不写 ——
+          // 那时它与上面那一格是同一个东西。
+          ...structuredResultForEvent(ctx.sessionId, event.result.data),
           ...(sourceSeq !== undefined ? { sourceSeq } : {}),
           ...withRunId(),
         })

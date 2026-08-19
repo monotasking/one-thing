@@ -20,6 +20,15 @@ vi.mock('../../../stores/paths.js', () => ({
   getLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
+// 这条用例只钉打包器。S1b 的影子断言排在 `endSessionRun` 之后,而它身后是读门面
+// 与整棵 store 树 —— 与本文件要证明的事一点关系都没有,所以就地摘掉。
+vi.mock('../../../session/shadow.js', () => ({
+  scheduleSessionRunShadow: () => undefined,
+  checkSessionRunShadow: () => 'skipped',
+  checkSessionHistoryShadow: () => 'skipped',
+  resetSessionShadowCache: () => undefined,
+}))
+
 const { flushSessionEventLog, readSessionLogEvents, resetSessionEventLogCache } = await import(
   '../../../session/event-log.js'
 )

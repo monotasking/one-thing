@@ -52,6 +52,19 @@ export interface ProjectModelHistoryOptions<TContent = unknown> {
    * base64 发出去(那是最难查的一类脏请求:请求发得出去,模型看到一句 JSON)。
    */
   resolveBlob?: (ref: BlobRef) => string | undefined
+  providerDataFromContentPart?: CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>['providerDataFromContentPart']
+  /**
+   * 宿主在**交给 builder 之前**对消息列表做的那一遍预处理。
+   *
+   * 桌面端那条路不是直接 `buildHistoryMessages(messages)`,而是
+   * `collapseSupersededGoalDrives(projectRoomMessagesForModel(…)).map(prepareUserMessageForModel)`
+   * 之后再交给 builder(`app/engine/stream/message-helpers.ts`)。影子断言要比的
+   * 是"同一条配方、两个来源",所以这一遍必须由宿主原样传进来 —— 少了它,
+   * 断言比的就是两种不同的构造法,永远不等而且什么也证明不了。
+   *
+   * 按 surface 上的**连续非压缩段**逐段应用(压缩节点天然是段边界)。
+   */
+  prepareMessages?: (messages: CoreHistoryChatMessage[]) => CoreHistoryChatMessage[]
   /**
    * G9(§10.1):强制压缩后的 per-result 预算。缺省由 surface 上有没有
    * `session/compacted` 节点决定 —— 与今天同口径,不必调用方操心。
@@ -102,6 +115,9 @@ export function materializeModelHistory<TContent = unknown>(
       ?? (defaultHistoryMessageContent as unknown as CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>['buildMessageContent'])),
     ...(options.getAIToolName ? { getAIToolName: options.getAIToolName } : {}),
     ...(options.failureResultForAI ? { failureResultForAI: options.failureResultForAI } : {}),
+    ...(options.providerDataFromContentPart
+      ? { providerDataFromContentPart: options.providerDataFromContentPart }
+      : {}),
     // G9:surface 上有压缩节点 = 这是一份压缩过的历史,尾部按压缩预算。
     forceCompactedToolResults: options.forceCompactedToolResults ?? hasCompacted,
   } as CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>
@@ -114,7 +130,8 @@ export function materializeModelHistory<TContent = unknown>(
     // 有压缩节点时 meta 的摘要**不再参与**:切点已经由 surface 表达,
     // 再让 `buildHistoryMessages` 按锚点切一次就是切两刀。
     const session = hasCompacted ? undefined : meta
-    out.push(...buildHistoryMessages<TContent, CoreHistoryChatMessage>(group, session, buildOptions))
+    const prepared = options.prepareMessages ? options.prepareMessages(group) : group
+    out.push(...buildHistoryMessages<TContent, CoreHistoryChatMessage>(prepared, session, buildOptions))
     group = []
   }
 

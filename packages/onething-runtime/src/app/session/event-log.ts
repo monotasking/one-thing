@@ -49,12 +49,23 @@ import {
   type SessionEventType,
 } from '@onething/runtime/sessions/session-events'
 import { getSessionsDir } from '../stores/paths.js'
-import { countSessionEventFailure } from './event-stats.js'
+import { countSessionEventFailure, isSessionShadowEnabled } from './event-stats.js'
 
 export const SESSION_EVENTS_LOG_FILENAME = 'events.jsonl'
 
 /** G12 守卫的最小间隔:每次 append 都 stat 一遍文件是纯浪费。 */
 const FOREIGN_WRITER_CHECK_INTERVAL_MS = 500
+
+/**
+ * 影子投影的**尾巴**上限(S1b)。
+ *
+ * 影子期的活投影要"每来一条事件推一条"才能做到 O(新事件),而它拿不到写入口的
+ * 回调(装配层禁止 import 期副作用)。于是写入口把刚分配好的记录挂在这条尾巴上,
+ * 消费者(`session/shadow.ts`)按需取走 —— 一次请求 / 一次 run 收尾各取一次。
+ * 上限只是**防呆**:一次请求之内攒满 20 万条事件不可能发生,真发生了宁可让影子
+ * 从文件重折一遍,也不能让一条永不消费的队列吃光内存。
+ */
+const SHADOW_TAIL_MAX = 200_000
 
 interface SessionEventLogState {
   /** false = 这个会话不记事件(legacy 整文件格式),见 resolveEnabled。 */
@@ -69,6 +80,10 @@ interface SessionEventLogState {
    */
   expectedBytes: number
   lastForeignCheckAt: number
+  /** 影子投影还没取走的记录(见 `SHADOW_TAIL_MAX`)。关闸时永远是空的。 */
+  shadowTail: SessionLogEventRecord[]
+  /** 尾巴溢出过 = 这一段事件没进活投影,消费者必须从文件重折。 */
+  shadowTailOverflowed: boolean
 }
 
 const states = new Map<string, SessionEventLogState>()
@@ -137,6 +152,8 @@ function ensureState(sessionId: string): SessionEventLogState {
     queue: Promise.resolve(),
     expectedBytes: 0,
     lastForeignCheckAt: 0,
+    shadowTail: [],
+    shadowTailOverflowed: false,
   }
   tryEnable(state, sessionId)
   states.set(sessionId, state)
@@ -216,6 +233,14 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   } as SessionLogEventRecord
   const line = encodeSessionLogEventLine(record)
   state.expectedBytes += Buffer.byteLength(line, 'utf8')
+
+  if (isSessionShadowEnabled()) {
+    if (state.shadowTail.length >= SHADOW_TAIL_MAX) {
+      state.shadowTail = []
+      state.shadowTailOverflowed = true
+    }
+    state.shadowTail.push(record)
+  }
 
   state.queue = state.queue
     .then(async () => {
@@ -339,6 +364,26 @@ export async function readSessionLogEvents(sessionId: string): Promise<SessionLo
   } catch {
     return []
   }
+}
+
+/**
+ * 取走这个会话**还没被影子投影消费**的那一段事件(S1b)。
+ *
+ * 记录是写入口刚分配 seq 的那一份原件(与写进文件的逐字节同一条),所以消费者
+ * 不必等落盘、也不必重读文件 —— 这就是"每请求 O(新事件)"的来处。
+ *
+ * `overflowed:true` 表示中间断过档(见 `SHADOW_TAIL_MAX`),消费者要从文件重折。
+ */
+export function drainSessionLogEventTail(
+  sessionId: string,
+): { records: SessionLogEventRecord[]; overflowed: boolean } {
+  const state = states.get(sessionId)
+  if (!state) return { records: [], overflowed: false }
+  const records = state.shadowTail
+  const overflowed = state.shadowTailOverflowed
+  state.shadowTail = []
+  state.shadowTailOverflowed = false
+  return { records, overflowed }
 }
 
 /** 同步版:surface 索引首次建表要在同步路径上作答(seq 是同步分配的)。 */

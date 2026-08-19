@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto'
 import type { SessionRunKind } from '@onething/core/session'
 import { appendSurfaceAwareEvent } from './event-surface.js'
 import { flushSessionEventLog } from './event-log.js'
+import { scheduleSessionRunShadow } from './shadow.js'
 
 export interface BeginSessionRunInput {
   kind: SessionRunKind
@@ -29,6 +30,19 @@ export interface BeginSessionRunInput {
   /** 触发这次执行的那条消息(S1 里 eventSeq 通常解不出来,见事件类型注释)。 */
   triggerMessageId?: string
   triggerEventSeq?: number
+  /**
+   * 助手消息自己的时刻(`ChatMessage.timestamp`)。
+   *
+   * S1b 的影子断言按它比:投影把 `run/start` 那一格物化成助手消息,时刻若取
+   * 事件写入时刻,就会与引擎建那条占位消息的时刻差几毫秒 —— 每一个 run 都不等,
+   * 而那个"不等"不说明任何事。占位消息先建、run 后开,所以时刻要跟着消息走。
+   */
+  timestamp?: number
+  /**
+   * 触发这次执行的命令来源(助手占位消息上的 `origin`)。它不经翻译器,
+   * 只能住在 `run/start` 里 —— 理由见事件类型上的注释。
+   */
+  origin?: Record<string, unknown>
 }
 
 export interface SessionRunHandle {
@@ -36,6 +50,8 @@ export interface SessionRunHandle {
   sessionId: string
   assistantMessageId: string
   kind: SessionRunKind
+  /** 触发这次执行的那条用户消息 —— 影子断言按它切"这个 run 的消息"。 */
+  triggerMessageId?: string
   /** `run/start` 的 eventSeq(没记账时 undefined)。 */
   startSeq?: number
   /**
@@ -88,6 +104,8 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
       ...(input.model ? { model: input.model } : {}),
       ...(input.triggerMessageId ? { triggerMessageId: input.triggerMessageId } : {}),
       ...(input.triggerEventSeq !== undefined ? { triggerEventSeq: input.triggerEventSeq } : {}),
+      ...(input.timestamp !== undefined ? { timestamp: input.timestamp } : {}),
+      ...(input.origin ? { origin: input.origin } : {}),
     },
     { surfaceOp: 'append' },
   )
@@ -98,6 +116,7 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
     assistantMessageId: input.assistantMessageId,
     kind: input.kind,
     partCounter: 0,
+    ...(input.triggerMessageId ? { triggerMessageId: input.triggerMessageId } : {}),
     ...(startSeq !== undefined ? { startSeq } : {}),
   }
   currentRuns.set(sessionId, handle)
@@ -154,7 +173,16 @@ export function endSessionRun(
   })
   // 语义检查点:run 结束(§10.3 ③)。不 await —— 收尾路径上不该多一次等待,
   // 队列已经保序,fsync 只是把它推到盘上。
-  void flushSessionEventLog(sessionId)
+  //
+  // 影子断言排在检查点**之后**(§10.4:"`run/end` 落盘后"):比对读的是活投影,
+  // 但一条还没落盘的 run 万一进程当场没了,记下的"相等"就没有对应的账。
+  void flushSessionEventLog(sessionId).then(() => {
+    scheduleSessionRunShadow(sessionId, {
+      runId: handle.runId,
+      assistantMessageId: handle.assistantMessageId,
+      ...(handle.triggerMessageId ? { triggerMessageId: handle.triggerMessageId } : {}),
+    })
+  })
 }
 
 function normalizeRunError(error: unknown): { name?: string; message: string } | undefined {

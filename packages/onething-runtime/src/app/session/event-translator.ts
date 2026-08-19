@@ -98,15 +98,32 @@ export const sessionEventTranslator = {
   },
 
   /**
-   * `upsertMessage` 命中已有的那条 = 整条换掉。翻成 `message/patched`
-   * (投影侧的叠加层就是"整条盖上去");新增走 `appendMessage` 的那条路。
+   * `upsertMessage` 命中已有的那条 = **整条换掉**(S1b 补齐,§10.7 缺口 6)。
+   *
+   * 翻成一条 `message/patched`,但走的是 `fullBody` 档:正文字段
+   * (`content` / `contentParts` / `reasoning`)**照旧带上**。理由是这一条与
+   * 普通 patch 的语义不同 —— 普通 patch 的正文另有来源(assistant 的正文唯一
+   * 来源是 chunks),而 upsert 的语义就是"这条消息现在整条长这样"。
+   *
+   * 安全边界在归约器里而不是这里:`sanitizePatch` 对 **assistant 节点**照旧
+   * 剥掉正文三件套(它的正文来自 chunks,让一条 patch 盖过去就是开了第二个
+   * 正文来源),对消息节点则原样叠加 —— 那正是"整条换掉"。
+   *
+   * 唯一的生产调用点是 server 的 MESSAGE_* 投影(`app/server/runtime.ts` 的
+   * `upsertServerMessage`),它在交给命令面之前已经把 existing 与 incoming 合并
+   * 过了,所以这里拿到的确实是完整的一条。
    */
   upsertMessage(sessionId: string, message: ChatMessage, existed: boolean): void {
     if (!existed) {
       sessionEventTranslator.appendMessage(sessionId, message)
       return
     }
-    sessionEventTranslator.patchMessage(sessionId, message.id, message as Partial<ChatMessage>)
+    sessionEventTranslator.patchMessage(
+      sessionId,
+      message.id,
+      message as Partial<ChatMessage>,
+      { fullBody: true },
+    )
   },
 
   /**
@@ -114,7 +131,12 @@ export const sessionEventTranslator = {
    * `ChatMessage.turnContext` 字段,§9.2);正文与派生字段一律丢弃;
    * 剩下全空就一条都不写。
    */
-  patchMessage(sessionId: string, messageId: string, patch: Partial<ChatMessage>): void {
+  patchMessage(
+    sessionId: string,
+    messageId: string,
+    patch: Partial<ChatMessage>,
+    options: { fullBody?: boolean } = {},
+  ): void {
     if (!isSessionTranslationEnabled(sessionId)) return
     safely('patchMessage', () => {
       const turnContext = (patch as { turnContext?: { set?: Record<string, string>; removed?: string[] } }).turnContext
@@ -129,7 +151,10 @@ export const sessionEventTranslator = {
       const kept: Record<string, unknown> = {}
       for (const [key, value] of Object.entries(patch)) {
         if (key === 'turnContext' || key === 'id') continue
-        if (BODY_KEYS.has(key) || DERIVED_KEYS.has(key)) continue
+        if (DERIVED_KEYS.has(key)) continue
+        // `fullBody`(upsert 的整条替换)是唯一放行正文的档;归约器仍然会对
+        // assistant 节点把这三格剥掉。
+        if (!options.fullBody && BODY_KEYS.has(key)) continue
         if (value === undefined) continue
         kept[key] = key === 'attachments'
           ? attachmentsForEvent(sessionId, value as MessageAttachment[])

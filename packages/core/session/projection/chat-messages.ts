@@ -114,6 +114,7 @@ function materializeAssistantNode(node: AssistantNode): ProjectedChatMessage {
     ...(node.provider ? { provider: node.provider } : {}),
     ...(node.model ? { model: node.model } : {}),
     ...(node.agentId ? { agentId: node.agentId } : {}),
+    ...(node.origin ? { origin: node.origin } : {}),
     ...(contentParts.length > 0 ? { contentParts } : {}),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(steps.length > 0 ? { steps } : {}),

@@ -12,6 +12,11 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '@shared/ipc.js'
 import type { SessionLogEventRecord } from '@onething/core/session'
+import {
+  canonicalChatMessages,
+  projectChatMessages,
+  projectModelHistory,
+} from '@onething/core/session'
 
 const state = vi.hoisted(() => ({
   storeDir: '',
@@ -31,6 +36,9 @@ vi.mock('../reads.js', () => ({
       state.messages.find(message => message.id === messageId),
     findMessage: (_sessionId: string, predicate: (message: ChatMessage) => boolean) =>
       state.messages.find(predicate),
+    // `endSessionRun` 之后会排一次影子断言(S1b),它读的也是这扇门。
+    listMessages: () => ({ messages: state.messages, changed: false }),
+    getSession: () => ({ id: SESSION }),
   },
 }))
 
@@ -198,6 +206,48 @@ describe('command → event translation (§9.3)', () => {
     const before = (await events()).length
     sessionEventTranslator.replaceAll(SESSION, [], 'normalize')
     expect((await events())).toHaveLength(before)
+  })
+
+  /**
+   * G11 端到端(§10.1):collab 的 `MESSAGES_REPLACED` 走的就是
+   * `sessionCommands.replaceAll(reason:'replaced')` 这一扇门。这条用例把它一路
+   * 走到**投影**:事件是 `session/cleared` + 逐条 `message/imported`,而投影出来
+   * 的消息列表必须**逐条等于**替换进去的那一份 —— 不是"看起来差不多",是
+   * `canonicalChatMessage` 判的等。
+   */
+  it('G11 end-to-end: MESSAGES_REPLACED → cleared + imported, and the projection is the replaced list', async () => {
+    sessionEventTranslator.appendMessage(SESSION, userMessage('old1', 'before 1'))
+    sessionEventTranslator.appendMessage(SESSION, userMessage('old2', 'before 2'))
+
+    const replacement: ChatMessage[] = [
+      userMessage('n1', 'after 1'),
+      { id: 'n2', role: 'assistant', content: 'after 2', timestamp: 7, model: 'gpt-4o' },
+      userMessage('n3', 'after 3'),
+    ]
+    sessionEventTranslator.replaceAll(SESSION, replacement, 'replaced')
+
+    const line = await events()
+    expect(line.map(event => event.type)).toEqual([
+      'user/message',
+      'user/message',
+      'session/cleared',
+      'message/imported',
+      'message/imported',
+      'message/imported',
+    ])
+    const cleared = line[2]
+    expect(cleared.data).toEqual({ reason: 'replaced' })
+    // 旧的两格必须**列全**,否则模型历史里它们会原封不动地留着。
+    expect(cleared.surfaceOp).toEqual({ op: 'replace', start: 1, end: 2 })
+    expect(cleared.sourceEventSeqs).toEqual([1, 2])
+
+    const projected = projectChatMessages(line)
+    expect(canonicalChatMessages(projected.messages as unknown as Record<string, unknown>[]))
+      .toEqual(canonicalChatMessages(replacement as unknown as Record<string, unknown>[]))
+
+    // 模型可见历史上只剩新的那三条(surface 的 replace 真的遮蔽了旧的两条)。
+    expect(projectModelHistory(line, { id: SESSION }).map(entry => entry.role))
+      .toEqual(['user', 'assistant', 'user'])
   })
 
   it('patchSession: only agent / model / workdir become events, and only when they change', async () => {

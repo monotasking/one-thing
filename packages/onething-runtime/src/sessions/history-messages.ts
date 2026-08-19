@@ -12,6 +12,7 @@ import {
   filterHistoryForNonToolAPI as filterCoreHistoryForNonToolAPI,
   type BuildMessageContentOptions,
   type CoreAIMessageContent,
+  type CoreBuildHistoryMessagesOptions,
   type CoreCompactedHistoryLogDetails,
   type CoreHistoryChatMessage,
   type CoreHistoryContentPart,
@@ -71,16 +72,36 @@ export function buildOnethingMessageContent(
   return options.finalizeContent ? options.finalizeContent(content, message) : content
 }
 
+/**
+ * 这条产品线的历史构造**配方**(注入给 core builder 的那一份)。
+ *
+ * 单独导出是为了让 S1b 的历史影子断言拿**同一份**去物化事件投影 ——
+ * `projectModelHistory` 与真实请求必须走同一个 `buildMessageContent` /
+ * `getAIToolName` / `failureResultForAI` / `providerDataFromContentPart`,
+ * 否则那道断言比的是两种构造法而不是两个来源。
+ */
+export function onethingHistoryBuildRecipe<TMessage extends CoreHistoryChatMessage>(
+  options: BuildOnethingHistoryMessagesOptions = {},
+): Required<Pick<
+  CoreBuildHistoryMessagesOptions<OnethingHistoryAIMessageContent, TMessage>,
+  'buildMessageContent' | 'getAIToolName' | 'failureResultForAI' | 'providerDataFromContentPart'
+>> {
+  return {
+    buildMessageContent: (message: TMessage) =>
+      buildOnethingMessageContent(message as unknown as CoreMessageContentSource, options),
+    getAIToolName,
+    failureResultForAI: toolCall => toJsonValue(toolFailureResultForAI(toolCall)) ?? null,
+    providerDataFromContentPart: (part: CoreHistoryContentPart) => providerDataFromOnethingContentPart(part),
+  }
+}
+
 export function buildOnethingHistoryMessages<TMessage extends CoreHistoryChatMessage>(
   messages: TMessage[],
   session?: OnethingHistorySessionSummary,
   options: BuildOnethingHistoryMessagesOptions = {},
 ): OnethingHistoryMessage[] {
   return buildCoreHistoryMessages(messages, session, {
-    buildMessageContent: message => buildOnethingMessageContent(message as CoreMessageContentSource, options),
-    getAIToolName,
-    failureResultForAI: toolCall => toJsonValue(toolFailureResultForAI(toolCall)) ?? null,
-    providerDataFromContentPart: (part: CoreHistoryContentPart) => providerDataFromOnethingContentPart(part),
+    ...onethingHistoryBuildRecipe<TMessage>(options),
     onCompactedHistory: options.onCompactedHistory,
     onMissingSummaryAnchor: options.onMissingSummaryAnchor,
   }) as OnethingHistoryMessage[]
