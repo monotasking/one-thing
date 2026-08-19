@@ -28,151 +28,76 @@
  */
 
 import { createHash } from 'node:crypto'
-import type { JsonObject } from '@onething/core'
+import {
+  decodeSessionLogEventLine,
+  encodeSessionLogEventLine,
+  SESSION_LEGACY_EVENT_TYPES,
+} from '@onething/core/session'
+import type {
+  SessionAssistantFirstTokenEvent,
+  SessionAssistantFirstTokenEventData,
+  SessionEventToolSchema,
+  SessionLegacyEventRecord,
+  SessionLogEventRecord,
+  SessionRequestEndEvent,
+  SessionRequestEndEventData,
+  SessionRequestEndUsage,
+  SessionRequestHeaderEvent,
+  SessionRequestHeaderEventData,
+  SessionRequestStartEvent,
+  SessionRequestStartEventData,
+  SessionRequestToolsEvent,
+  SessionRequestToolsEventData,
+  SessionToolAuditEvent,
+  SessionToolAuditEventData,
+  SessionToolCallEvent,
+  SessionToolCallEventData,
+  SessionToolResultEvent,
+  SessionToolResultEventData,
+} from '@onething/core/session'
 
-/** 本期(E0)定义的全部事件类型。扩大这个集合需要单独拍板。 */
-export const SESSION_EVENT_TYPES = [
-  'request/tools',
-  'request/header',
-  'request/start',
-  'assistant/first-token',
-  'tool/call',
-  'tool/result',
-  /**
-   * R2b(工具系统重建):一次工具调用的**审计证词**。
-   *
-   * 它不是第八种"回合事件",而是 `AuditProjector`(`app/toolkit/audit-observer.ts`)
-   * 那条投影的落盘口 —— 三条生命周期证词(planned / decided / finished)攒成扁平
-   * 的一行:计划里报了哪些效果类、授权结论、人被问过没有、最终结局、拦截器动没
-   * 动手。
-   */
-  'tool/audit',
-  'request/end',
-] as const
+/**
+ * ── S0 之后的分工(docs/design/session-event-sourcing-2026-08.md §9)────────
+ *
+ * **类型与行编解码已上移到 `packages/core/session/events/`**(core 零依赖,
+ * renderer 也能直接引)。本文件保留的是:
+ *  - 既有名字的**再导出**(盘上格式与全部消费者逐字不变);
+ *  - 需要 `node:crypto` 的指纹函数(core 里不许有 node 依赖);
+ *  - 轨迹面板的检视工具(`resolveToolCallInspection`)。
+ *
+ * `SessionEventRecord` 在这里**仍然只是 E0 的七类**。v2 的全集叫
+ * `SessionLogEventRecord`,从 `@onething/core/session` 取 —— 这样轨迹面板、
+ * shared 层那个契约面与 rpc 域的类型面一动不动,而 S1 接新事件时
+ * 是显式换类型,不是被联合悄悄放大。
+ */
+
+/** E0 定义的七类。v2 全集见 `SESSION_LOG_EVENT_TYPES`(core)。 */
+export const SESSION_EVENT_TYPES = SESSION_LEGACY_EVENT_TYPES
 
 export type SessionEventType = (typeof SESSION_EVENT_TYPES)[number]
 
-/** 一次请求里模型看到的单个工具条目(name + description + parameters 三件套)。 */
-export interface SessionEventToolSchema {
-  name: string
-  description?: string
-  parameters?: JsonObject
+export type {
+  SessionEventToolSchema,
+  SessionRequestToolsEventData,
+  SessionRequestHeaderEventData,
+  SessionRequestStartEventData,
+  SessionAssistantFirstTokenEventData,
+  SessionToolCallEventData,
+  SessionToolResultEventData,
+  SessionToolAuditEventData,
+  SessionRequestEndUsage,
+  SessionRequestEndEventData,
+  SessionRequestToolsEvent,
+  SessionRequestHeaderEvent,
+  SessionRequestStartEvent,
+  SessionAssistantFirstTokenEvent,
+  SessionToolCallEvent,
+  SessionToolResultEvent,
+  SessionToolAuditEvent,
+  SessionRequestEndEvent,
 }
 
-/**
- * 那一次请求模型看到的**工具目录正文**。
- *
- * 单独成一条事件,因为它大(~40KB)且几乎不变;`header` 只引用它的指纹。
- * `toolsHash` 冗余存在这里:恢复 recorder 的 `lastToolsHash` 时直接读这个字段,
- * 不用把整个大数组读回来重算一遍。
- */
-export interface SessionRequestToolsEventData {
-  requestIndex: number
-  toolsHash: string
-  tools: SessionEventToolSchema[]
-}
-
-export interface SessionRequestHeaderEventData {
-  requestIndex: number
-  provider: string
-  model: string
-  /** system prompt 的 sha256 前 16 位。存指纹不存正文:正文属于别的账本。 */
-  systemPromptHash: string
-  /**
-   * 工具目录的指纹,指向 seq 更小的那条 `request/tools`(同一 turn-start 里
-   * tools 先写、header 后写,所以引用的目录在日志里一定已经有了)。
-   */
-  toolsHash: string
-  /** 会话内首条恒为 initial;之后只有信封变了才追加,reason 记 change。 */
-  reason: 'initial' | 'change'
-}
-
-export interface SessionRequestStartEventData {
-  requestIndex: number
-  messageId: string
-}
-
-export interface SessionAssistantFirstTokenEventData {
-  requestIndex: number
-  messageId: string
-}
-
-export interface SessionToolCallEventData {
-  callId: string
-  /** 模型给的原始 arguments JSON 串 —— 原样存,包括它写坏的时候。 */
-  argumentsRaw: string
-  name: string
-  messageId: string
-}
-
-export interface SessionToolResultEventData {
-  callId: string
-  isError: boolean
-  resultPreview: string
-  /** 对应 `tool/call` 事件的 seq。因果显式引用,不靠"就近配对"猜。 */
-  sourceSeq?: number
-}
-
-/**
- * 一次工具调用的审计行(R2b)。形状 = `ToolAuditRecord` 去掉 `at`(时刻由记录
- * 外层的 `time` 给,不存两份)。
- */
-export interface SessionToolAuditEventData {
-  callId: string
-  toolId: string
-  /** 计划里报的效果类(去重)。资源级细节不进索引 —— 它们在权限卡的 preview 里。 */
-  effects: string[]
-  /** 效果条数(与 `effects` 不同:同一类可以有多条,资源不同)。 */
-  effectCount: number
-  previewTitle?: string
-  decision?: 'allow' | 'deny'
-  /** 人被问过没有。 */
-  asked?: boolean
-  outcome: 'ok' | 'invalid' | 'denied' | 'aborted' | 'failed'
-  intercepted?: { action: 'rewrite' | 'block'; by?: string[] }
-  messageId?: string
-}
-
-export interface SessionRequestEndUsage {
-  inputTokens?: number
-  outputTokens?: number
-  cacheReadTokens?: number
-  cacheWriteTokens?: number
-}
-
-export interface SessionRequestEndEventData {
-  requestIndex: number
-  stopReason?: string
-  usage?: SessionRequestEndUsage
-}
-
-interface SessionEventRecordShape<TType extends SessionEventType, TData> {
-  /** 会话内单调递增,从 1 起。 */
-  seq: number
-  /** Date.now()。只有时刻,没有时长。 */
-  time: number
-  type: TType
-  data: TData
-}
-
-export type SessionRequestToolsEvent = SessionEventRecordShape<'request/tools', SessionRequestToolsEventData>
-export type SessionRequestHeaderEvent = SessionEventRecordShape<'request/header', SessionRequestHeaderEventData>
-export type SessionRequestStartEvent = SessionEventRecordShape<'request/start', SessionRequestStartEventData>
-export type SessionAssistantFirstTokenEvent = SessionEventRecordShape<'assistant/first-token', SessionAssistantFirstTokenEventData>
-export type SessionToolCallEvent = SessionEventRecordShape<'tool/call', SessionToolCallEventData>
-export type SessionToolResultEvent = SessionEventRecordShape<'tool/result', SessionToolResultEventData>
-export type SessionToolAuditEvent = SessionEventRecordShape<'tool/audit', SessionToolAuditEventData>
-export type SessionRequestEndEvent = SessionEventRecordShape<'request/end', SessionRequestEndEventData>
-
-export type SessionEventRecord =
-  | SessionRequestToolsEvent
-  | SessionRequestHeaderEvent
-  | SessionRequestStartEvent
-  | SessionAssistantFirstTokenEvent
-  | SessionToolCallEvent
-  | SessionToolResultEvent
-  | SessionToolAuditEvent
-  | SessionRequestEndEvent
+export type SessionEventRecord = SessionLegacyEventRecord
 
 export type SessionEventDataFor<TType extends SessionEventType> =
   Extract<SessionEventRecord, { type: TType }>['data']
@@ -214,7 +139,7 @@ export function hashSessionEventTools(tools: readonly SessionEventToolSchema[]):
 
 /** 一行一条,永远以 \n 结尾 —— 半行只可能出现在崩溃截断处。 */
 export function encodeSessionEventLine(record: SessionEventRecord): string {
-  return `${JSON.stringify(record)}\n`
+  return encodeSessionLogEventLine(record as SessionLogEventRecord)
 }
 
 function isSessionEventType(value: unknown): value is SessionEventType {
@@ -222,25 +147,17 @@ function isSessionEventType(value: unknown): value is SessionEventType {
 }
 
 /**
- * 解析一行。返回 null 表示"这一行不是本期认识的事件":可能是崩溃截断的半行、
- * 可能是未来版本追加的新类型。两种都跳过,都不导致读取失败。
+ * 解析一行。返回 null 表示"这一行不是**七类**":崩溃截断的半行、形状不对的行,
+ * 以及 v2 新增的类型 —— 后者对这条读路径而言就是"未来版本的新类型",按铁律 4
+ * 跳过。要读全集用 `decodeSessionLogEventLine`(core)。
+ *
+ * 解析本身走 core 的那一份,这里只在出口按七类再筛一道:两个解码器分叉的话,
+ * 同一行在两条路上会得到不同结论,那正是最难查的一类 bug。
  */
 export function decodeSessionEventLine(line: string): SessionEventRecord | null {
-  const trimmed = line.trim()
-  if (!trimmed) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(trimmed)
-  } catch {
-    return null
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-  const record = parsed as Record<string, unknown>
-  if (typeof record.seq !== 'number' || !Number.isFinite(record.seq)) return null
-  if (typeof record.time !== 'number' || !Number.isFinite(record.time)) return null
-  if (!isSessionEventType(record.type)) return null
-  if (!record.data || typeof record.data !== 'object' || Array.isArray(record.data)) return null
-  return record as unknown as SessionEventRecord
+  const record = decodeSessionLogEventLine(line)
+  if (!record) return null
+  return isSessionEventType(record.type) ? (record as SessionEventRecord) : null
 }
 
 /**

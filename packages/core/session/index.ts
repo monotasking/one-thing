@@ -27,6 +27,11 @@ export {
   sanitizeLoadedSession,
   sanitizeSessionOnStartup,
 } from './commands.js'
+
+// 事件溯源 S0(docs/design/session-event-sourcing-2026-08.md §9):
+// 事件词表 + 编解码 + 两个纯投影。core 拥有类型,runtime 与 renderer 都从这里读。
+export * from './events/index.js'
+export * from './projection/index.js'
 export {
   applySessionContextSize,
   applyInheritedSessionWorkingDirectory,

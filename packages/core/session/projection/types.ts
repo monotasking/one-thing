@@ -1,0 +1,108 @@
+/**
+ * 投影输出的形状 —— 与 shared 层契约里的 `ChatMessage` / `Step` / `ToolCall` /
+ * `ContentPart` **结构兼容**,但 core 不引用它们(零依赖层)。
+ *
+ * "结构兼容"的意思是:投影出的对象可以直接当 `ChatMessage` 用(字段名、可选性、
+ * 字面量联合都对得上),但这里只声明投影**会填**的字段 —— 事件里没有的东西
+ * 不出现在类型上,免得下一个人以为投影能给出它。
+ */
+
+export type ProjectedToolCallStatus =
+  | 'pending'
+  | 'queued'
+  | 'received'
+  | 'executing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'input-streaming'
+
+export interface ProjectedToolCall {
+  id: string
+  toolId: string
+  toolName: string
+  arguments: Record<string, unknown>
+  status: ProjectedToolCallStatus
+  result?: unknown
+  error?: string
+  rejected?: boolean
+  rejectionReason?: string
+  timestamp: number
+  /** 参数流收齐的时刻(`assistant/part-end` 的 tool-input part)。 */
+  receivedAt?: number
+  startTime?: number
+  endTime?: number
+  /** 参数还在流式生成时的原始 JSON 片段;`tool/call` 一到就撤下。 */
+  streamingArgs?: string
+}
+
+export type ProjectedStepStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'awaiting-confirmation'
+  | 'cancelled'
+
+export interface ProjectedStepUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
+}
+
+export interface ProjectedStep {
+  id: string
+  type: 'tool-call'
+  title: string
+  status: ProjectedStepStatus
+  timestamp: number
+  turnIndex?: number
+  toolCallId?: string
+  toolCall?: ProjectedToolCall
+  result?: string
+  error?: string
+  rejected?: boolean
+  rejectionReason?: string
+  usage?: ProjectedStepUsage
+}
+
+export type ProjectedContentPart =
+  | { type: 'text'; content: string; turnIndex?: number }
+  | { type: 'reasoning'; content: string; turnIndex?: number }
+  | { type: 'image'; blob: { hash: string; bytes: number; mime?: string }; turnIndex?: number }
+
+export interface ProjectedTurnContext {
+  set?: Record<string, string>
+  removed?: string[]
+}
+
+export interface ProjectedChatMessage {
+  id: string
+  role: 'user' | 'assistant' | 'error' | 'system'
+  content: string
+  timestamp: number
+  isStreaming?: boolean
+  errorDetails?: string
+  reasoning?: string
+  toolCalls?: ProjectedToolCall[]
+  contentParts?: ProjectedContentPart[]
+  model?: string
+  provider?: string
+  agentId?: string
+  steps?: ProjectedStep[]
+  turnContext?: ProjectedTurnContext
+  usage?: ProjectedStepUsage
+  /** 事件坐标:这条消息由哪条事件开头(§3.2 `ChatMessage.seq` 退役后的身份)。 */
+  eventSeq?: number
+  /** 老会话导入 / 用户消息原样带过来的其余字段。 */
+  [key: string]: unknown
+}
+
+export interface ProjectChatMessagesResult {
+  messages: ProjectedChatMessage[]
+  /** 正在生成的那一条(`run/start` 之后、`run/end` 之前)。 */
+  activeRun?: { runId: string; messageId: string }
+}

@@ -214,3 +214,209 @@ S0 可立即开(纯函数,零风险);S1 影子期是**唯一的时间成本**(�
 - ~~拍板 2 重开~~ **已改拍为③全 delta 打包**(见 §3 / §5)。
 - ~~新拍板 6:快照形态~~ **已拍:(b) 无快照**——分页建在事件日志上(§3.2);B6 整条消失,M2 的双份存储消失(事件 ≈ 今天 messages + delta 打包 10–20%)。
 - **新拍板 7:P0 是否先独立落地**(推荐是——它修的是今天就存在的 server/desktop 双写隐患,且是 S 线的硬前置)。
+
+---
+
+## 9. S0 规格(2026-08-19,建在 P0 命令面之上;纯函数,不碰持久化)
+
+P0 已落地(commit 856bc3dc):所有消息变更都经 `sessionCommands` 的 12 命令 + `patchSession`,读经 `sessionReads`。S0 的任务 = 把"命令序列"翻译成"事件序列"的规格定死,并证明**从事件投影出的消息 ≡ 从命令 reducer 算出的消息**。S1 才接真实引擎与落盘。
+
+### 9.1 事件记录形状
+
+```ts
+interface SessionEventRecord<T, D> {
+  seq: number            // 会话内单调递增(eventSeq);身份,不是位置
+  time: number           // Date.now(),只记时刻
+  type: T
+  data: D
+  surfaceOp?: 'append' | { op: 'replace'; start: number; end: number }   // 仅 surface 事件带
+  sourceEventSeqs?: number[]   // 因果/遮蔽引用
+}
+```
+- 既有 7 类(`request/tools|header|start`、`assistant/first-token`、`tool/call|result|audit`、`request/end`)**形状不变**,只是 `data` 里新增可选 `runId`;解码对未知 type 跳过(铁律 4)。
+- **命名**:事件 seq 一律叫 `eventSeq`;`ChatMessage.seq`(位置)在 S2 退役,S0 投影输出的 `ChatMessage` 不再填 `seq`(或填 `eventSeq` 并标注),合同测试比较时忽略该字段。
+- `BlobRef = { hash: string; bytes: number; mime?: string }`:S0 只定义类型与 `isBlobRef`,blob 存储在 S1。附件 `base64Data`、>64KB 的工具结果、图片 part 在事件里只能是 `BlobRef`。
+
+### 9.2 事件全集(S0 定稿;与 §3 表一致,以本节为准)
+
+| 组 | type | data 要点 | surface |
+|---|---|---|---|
+| 会话 | `session/created` | `{sessionId, kind?, agentId?, model?, provider?, workingDirectory?}` | — |
+| | `session/agent-changed` `session/model-changed` `session/workdir-changed` | `{from?, to}` | — |
+| | `session/compacted` | `{summary, model?, provider?}` + `surfaceOp:{replace,start,end}` + `sourceEventSeqs`=被遮蔽全部 | append(它自己是 surface 节点:summary 作为 system 历史) |
+| 用户 | `user/message` | `{message: ChatMessage(user,附件为 BlobRef)}`(一整条用户消息,含 `origin/mentions/replyTo/voice/source/attachments`) | append |
+| | `user/message-edited` | `{messageId, message}` + `surfaceOp:{replace,start:旧 user/message seq,end:当时 surface 末尾}` + `sourceEventSeqs` | append(新节点) |
+| | `message/deleted` | `{messageId}` + `surfaceOp:{replace,start,end}`(只遮蔽该消息对应的节点) | — |
+| | `message/patched` | `{messageId, patch}`(reactions/replyTo/mentions/thinkingTime/skillUsed/errorDetails/steered/collab* 等**非正文**字段) | — |
+| 执行 | `run/start` | `{runId, kind:'send'\|'retry'\|'edit-resend'\|'resume'\|'steer'\|'follow-up', agentId?, triggerEventSeq, assistantMessageId, provider, model}` | append(助手消息节点从这里开始) |
+| | `run/end` | `{runId, outcome:'completed'\|'aborted'\|'error'\|'interrupted', error?{name,message}}` | — |
+| 请求 | 既有 `request/tools` `request/header` `request/start` `assistant/first-token` `request/end` | 各加 `runId?` | — |
+| | `request/recipe` | `{runId, requestIndex, systemPromptHash, toolsHash, messages:[{eventSeq, contentHash}], params?}` | — |
+| | `request/response` | `{runId, requestIndex, messageId, providerResponseId?, responseModel?, finishReason?, usage?, parts:[{partIndex, kind, len, hash}], toolCallIds:[]}`(**不带正文**) | — |
+| | `request/error` | `{runId, requestIndex, error{name,message,status?}, willRetry, attempt}` | — |
+| 助手 | `assistant/chunks` | `{runId, requestIndex, messageId, partIndex, kind:'text'\|'reasoning'\|'tool-input', toolCallId?, time0, dt:number[], text:string[]}`(一行一批 delta,无损) | — |
+| | `assistant/part-end` | `{runId, requestIndex, messageId, partIndex, kind, len, hash, blob?: BlobRef(图片)}` | — |
+| 工具 | 既有 `tool/call` `tool/result` `tool/audit` | `tool/result.result` 改为 `{text}\|{blob: BlobRef}`,保留 `resultPreview`;各加 `runId?` | `tool/result` append(作为 surface 节点:工具结果进模型历史) |
+| 权限/交互 | `permission/asked` `permission/answered` `interaction/asked` `interaction/answered` | `{runId, toolCallId?, requestId, …决定}` | — |
+| 上下文 | `context/turn-update` | `{messageId(最新用户消息), set?, removed?}`(取代 `ChatMessage.turnContext` 字段) | — |
+| 导入 | `message/imported` | `{message: ChatMessage 原样}`;连续 imported 的 user/assistant 节点各 append | append |
+
+**瞬态 part**(`isTransientPart` 三类)不入事件;**流式 `isStreaming`** 不是事件字段,是投影状态(`run/start` 之后、`run/end` 之前 = streaming)。
+
+### 9.3 命令 ↔ 事件对应(S1 的翻译表,S0 先用它写合同测试)
+
+| `sessionCommands` | 事件 |
+|---|---|
+| `appendMessage` user | `user/message` |
+| `appendMessage` assistant(占位,isStreaming) | `run/start`(assistantMessageId = message.id) |
+| `appendMessage` system/error | `user/message` 的 role 变体?—— **否**:system marker 与 error 走 `message/imported`-同形的 `system/message {message}`(新增 type,append 节点,role 原样) |
+| `patchMessage` content/reasoning(hint stream) | **不由命令翻译**:来自 agent-loop 的 delta 流 → `assistant/chunks`;S0 合同测试里用 fixture 直接造 chunks |
+| `patchMessage` 其余字段 | `message/patched` |
+| `appendContentPart` | 图片 → `assistant/part-end{kind:'image',blob}`;文本/推理 part 由 chunks+part-end 表达 |
+| `upsertStep` / `patchStep` / `patchStepsUsageByTurn` / `setToolCalls` | **不翻译**:steps/toolCalls 是投影派生物,来源是 `tool/call|result|audit` + `request/response.usage` |
+| `truncateFrom` | `user/message-edited`(带新 content)或 `message/deleted`(regenerate 的 inclusive 截断) + replace |
+| `deleteMessage` | `message/deleted` |
+| `replaceAll{clear}` | `session/cleared` **新增**:`surfaceOp:{replace,start:1,end:当前末尾}`,`sourceEventSeqs` 全部 |
+| `replaceAll{replaced}` (collab MESSAGES_REPLACED) | `session/cleared` + 逐条 `message/imported` |
+| `repairOnLoad` | 不翻译:冷加载修复 = S2 `prepare` 合成 `run/end{interrupted}` + aborted `tool/result` |
+| `patchSession` agent/model/workdir | `session/*-changed`;其余会话级字段(pin/archived/name/summary 非 compact)留 meta.json |
+| compact(`context-compact.ts`) | `session/compacted` |
+
+### 9.4 投影(core 纯函数,`packages/core/session/projection/`)
+
+- `SurfaceIndex`:增量维护有序 `eventSeq[]`(append / replace splice),`fold(events)` 与 `push(event)` 两个入口,结果相同(测试断言)。
+- `projectChatMessages(events, {upToSeq?}) → { messages: ChatMessage[], activeRun?: {runId, messageId} }`:
+  - user/system/imported 节点 → 原样消息;
+  - `run/start` → 助手消息骨架(`id/role/agentId/provider/model/timestamp=run/start.time`),随后 chunks fold 成 `content/reasoning/contentParts`(按 partIndex 顺序;`tool-input` kind 归到 toolCalls.arguments 流),`tool/call|result|audit` → `toolCalls[]` + `steps[]`(派生形状沿用今天的 `Step`/`ToolCall`,`steps[].result` 取 `tool/result` 全文或 blob 占位),`request/response.usage` 累计到 `message.usage`/`steps[].usage`,`run/end` 决定 `isStreaming=false` 与 `errorDetails`;
+  - `message/patched` 叠加;`message/deleted`/replace 遮蔽的节点不出现;`session/compacted` 不产生 UI 消息(UI 看的是原消息;compact 摘要只进模型历史)——**注意**:今天 UI 会显示一条 compact 消息(`context-compact.ts:100` addMessage),投影要保留这条(作为 `role:'system'` 的派生消息,由 `session/compacted` 生成),合同测试以今天的 UI 形状为准。
+- `projectModelHistory(events, meta, {upToSeq}) → ProviderMessage[]`:只走 surface;`session/compacted` 节点渲染为 summary 系统消息,被遮蔽的节点跳过;`context/turn-update` 以今天 `turnContext` 的落点规则注入;输出须与今天 `buildHistoryMessages(sessionReads.sliceForHistory(...), session)` 等价(合同测试)。
+- `canonicalChatMessage(m)`:剔除瞬态/派生字段(`isThinking/thinkingStartTime/seq/isStreaming` 的中间态、瞬态 part),`contentParts/steps/toolCalls` 内部按稳定键排序后深比较;供合同测试与 S1 影子断言共用。
+
+### 9.5 合同测试(非恒真)
+
+`packages/core/session/__tests__/projection-contract.test.ts`,对每个场景同时跑两条线:
+- A 线:命令序列 → `applySessionCommand` 逐条 → `ChatMessage[]`(今天的真相);
+- B 线:同一场景的事件序列(按 §9.3 翻译,流式部分用 fixture 造 `assistant/chunks`+`part-end`+`request/response`) → `projectChatMessages` → `ChatMessage[]`;
+- 断言 `canonical(A) ≡ canonical(B)`;`projectModelHistory(B)` ≡ `buildHistoryMessages(A)`。
+场景至少:单轮文本;带 reasoning;两轮工具循环(含 denied 权限);中途 abort;regenerate;edit-resend;删除中间消息;compact 后继续;collab 清空;系统 marker 增删;老会话 imported;surface replace 链式(compact 后 edit)。
+外加 `SurfaceIndex` fold≡push、解码容错(未知 type/半行)、`BlobRef` 判定。
+
+### 9.6 S0 明确不做
+不碰 `app/session/event-log.ts` 的落盘、不改 recorder、不改 `sessions/session-events.ts` 既有 7 类的编码(新类型加在同文件或 `session-events-v2.ts`,由实施者定但必须向后兼容读旧文件)、不动 renderer、不动 `messages.jsonl`。
+
+### 9.7 S0 落地记录(2026-08-19)
+
+**门**:`typecheck` 只剩 `spaces/__tests__/provider-dials.test.ts` 的 3 条既有错;
+`ONETHING_SESSION_FREEZE=1 bun run test` 10718 passed / 2 failed(两条既有
+`ui-token-vars.test.ts`)+ 1 条既有 unhandled rejection(`AIProviderTab.interaction.test.ts`);
+`session:gate` **0**(none new);`boundary:gate` 绿(13 known,none new);
+`lint:ci` **334**(与 P0.4 收口后的基线同数,零新增);
+`packages/core/__tests__/architecture-boundaries.test.ts` 10 条全绿(core 仍零依赖:
+新代码不引 node、不引 shared、不引 electron)。
+
+#### 交付
+
+| 文件 | 角色 |
+|---|---|
+| `packages/core/session/events/types.ts` | 事件词表 v2:记录外壳(`{seq,time,type,data,surfaceOp?,sourceEventSeqs?}`)、`BlobRef`+`isBlobRef`、七类原样上移(只加可选 `runId`)、§9.2/§9.3 的全部新类型、双向穷尽守卫 `SESSION_LOG_EVENT_TABLE_IS_EXHAUSTIVE`、正文门 `SESSION_SURFACE_EVENTS_CARRY_NO_MESSAGE_BODY`、surface 节点分类表 |
+| `packages/core/session/events/codec.ts` | `encode/decode/parseSessionLogEventLog` + `isSessionLogEventType`。与 E0 逐字节兼容;半行/未知类型跳过;`surfaceOp`/`sourceEventSeqs` 形状不对**只丢那个字段**,不丢整条 |
+| `packages/core/session/projection/surface.ts` | `SurfaceIndex`(`push` 增量 / `foldSurface` 一次性)+ replace 校验(start/end 在不在面上、`sourceEventSeqs` 有没有列全)→ `SurfaceViolation[]` |
+| `packages/core/session/projection/reducer.ts` | `(state, event) → state` 归约器 + 节点定义 + 工具/步骤/内容 part 的物化算法 |
+| `packages/core/session/projection/chat-messages.ts` | `projectChatMessages` / `foldSessionProjection` / `materializeChatMessages` |
+| `packages/core/session/projection/model-history.ts` | `projectModelHistory(events, meta, opts)` + `defaultHistoryMessageContent` |
+| `packages/core/session/projection/canonical.ts` | `canonicalChatMessage(s)` —— 合同测试与 S1 影子断言共用的比较判据 |
+| `packages/core/session/projection/types.ts` | `ProjectedChatMessage/Step/ToolCall/ContentPart`(与 shared 契约结构兼容,不引用) |
+| `packages/core/engine/history.ts` | 抽出 `compactedHistoryPreamble(summary)` —— 摘要那条 user 消息现在有两个产出口(消息重建 / surface 投影),必须逐字节同源 |
+| `packages/onething-runtime/src/sessions/session-events.ts` | 降为**再导出 + 哈希/检视工具**:`SessionEventRecord` 仍只是七类(轨迹面板、`@shared` 契约面、rpc 域零改动),解码委托给 core 那一份再按七类筛一道 |
+| `packages/core/session/__tests__/projection-contract.test.ts` | §9.5 的 12 场景 + SurfaceIndex fold≡push + 增量逐步等价 |
+| `packages/core/session/__tests__/session-event-codec.test.ts` | 向后兼容(真机文件逐行 decode→encode 回到原文)、半行/未知类型容错、BlobRef、类型级门 |
+| `packages/core/session/__tests__/fixtures/legacy-events.jsonl` | 真机会话 `fd899977…/events.jsonl` 的**逐字节子集**(第 2–33 行,24.9KB,含全部七类);第 1 行那条 39KB 的 `request/tools` 没收进来,子集里另有一条 19KB 的同类 |
+
+#### 口径裁定(原文没写死的地方)
+
+1. **词表放大不动既有联合**。core 里 `SessionLogEventRecord` 是 v2 全集,
+   `SessionLegacyEventRecord` 是七类;runtime 的 `SessionEventRecord` 仍**等于**七类。
+   理由:renderer 的 `trajectory-projection.ts` 与 `@shared` 的 rpc 域都在那个联合上做
+   穷尽分支,悄悄放大它等于让一堆 switch 静默漏掉新类型。S1 接新事件时要显式换类型。
+
+2. **"两种看不见"必须分开**(这是本期最容易写错的一处)。`node.hidden` = UI 上没了
+   (删除 / 清空 / 编辑重发的截断);`SurfaceIndex` 的遮蔽 = 只是不进模型历史。
+   `session/compacted` 走后者 —— 被压缩的消息在聊天记录里**照旧显示**(§9.4 的那条
+   "注意"),混成一个标志位的话压缩一次屏幕上就少半屏。
+
+3. **`surfaceOp: replace` 按位置匹配,不按 seq 大小**。`order` 是呈现序不是升序:
+   compact 之后那个节点排在最前面,seq 却最大。第一版用 `findIndex(seq >= start)`,
+   于是"压缩后再编辑"一条都没遮蔽掉(校验报了 range-missing,而模型历史里旧的一问
+   一答原封不动留着)。合同测试第 12 场景就是钉这一条的。
+
+4. **`steps[]` / `contentParts` 的次序从哪来**:
+   - `contentParts` 按 `partIndex` 升序;`text`/`reasoning` part 各自成一格,
+     `tool-input` part **不进** contentParts(它喂的是 `toolCalls[].arguments` 那一路);
+   - `toolCalls[]` / `steps[]` 按 `tool/call` 的到达序(`toolOrder`),两者一一对应;
+   - `turnIndex` = 该 `requestIndex` 在**这个 run 内**的 1 起序号(事件里的
+     `requestIndex` 是会话级的,直接用会让第二个 run 的第一轮变成 turnIndex=5)。
+
+5. **`tool-input` chunks → `toolCalls[].arguments` 的口径**:
+   `tool/call.argumentsRaw` 是**唯一**的参数真相(它是真正执行的那一份);
+   tool-input 的 delta fold 只喂 `streamingArgs`(参数还在生成时的显示),
+   `tool/call` 一到就撤下。`argumentsRaw` 解不开 JSON 时给 `{}`,原文不丢
+   (铁律 2:模型把 JSON 写坏了就原样记账,不替它修)。
+   顺序坑:参数流**先**收齐(`assistant/part-end{kind:'tool-input'}`),`tool/call`
+   才落账,所以 part-end 到达时那个 tool 还不存在 —— `receivedAt` 由 `tool/call`
+   回头去 part 上取。
+
+6. **`session/compacted` 的 UI 消息长什么样**:`{id: data.messageId, role:'system',
+   content: buildContextCompactContent({status, summary, compactedMessageCount,
+   compactedThroughMessageId}), timestamp: event.time}` —— 正文直接调 core 自己的
+   `buildContextCompactContent`(引擎写出去的就是它),不在投影里手抄一份 JSON。
+   因此事件 data 必须带 `messageId` / `compactedMessageCount` /
+   `compactedThroughMessageId` / `status` / `error`,§9.2 原表只写了 `{summary, model?,
+   provider?}`,**本节以实现为准**。失败的压缩记 `status:'failed'`:它在 UI 上是一张
+   红卡,在模型历史里什么都不是(不发摘要)。
+
+7. **`projectModelHistory` 不自己写一遍物化**。surface 上的节点按"连续的非压缩段"
+   切开,每段交给 `core/engine/history.ts` 的 `buildHistoryMessages`(今天真机走的
+   那一份);压缩节点渲染成 `compactedHistoryPreamble`。有压缩节点时 `meta.summary`
+   **不再参与**(切点已由 surface 表达,再按锚点切一次就是切两刀);没有压缩节点的
+   老会话(全是 `message/imported`)仍把 meta 交给 builder 自己切 —— 那不是兜底,
+   是事实所在处不同。
+
+8. **`tool/result` 是 surface 节点但不单独物化**。它折进所属 run 的那条 assistant
+   消息(今天历史就是 assistant+tool 成对发的)。它在 surface 上占一格是为了
+   "工具结果剪枝"能用同一个 replace 表达:被遮蔽的 `tool/result` 对应的那次调用
+   从模型历史里摘掉,UI 上那张卡照旧在。
+
+9. **归约器是线性持有的**。`reduceSessionProjection` 返回新的 state 对象,但内部的
+   Map/数组/节点是**移动语义**:传进去的那份交出去之后就不该再用。每条事件复制一遍
+   全部节点会让增量维护退化成 O(n²),而这个投影要跑在主线程上(§7.2 M7)。要历史
+   某一刻的快照就 `projectChatMessages(events, {upToSeq})` 重跑一次 —— 那条是纯的,
+   合同测试里"逐条推 ≡ 逐条 upToSeq fold"钉住两者一致。
+
+10. **`canonicalChatMessage` 丢什么**:`seq`/`eventSeq`/`sessionId`/`isThinking`/
+    `thinkingStartTime` 直接丢;`isStreaming` 只保留 `true`(`false` 与缺席同义);
+    瞬态 part(`waiting`/`image-loading`/未结算的 `plugin-status`)丢;`undefined` 值
+    的键与空数组丢;`steps`/`toolCalls` **按 id 排序**后深比较。
+    **`contentParts` 的顺序不排序** —— §9.4 把它和另两个并列写了,但那个顺序**就是
+    正文本身**,排掉等于放过"两段话装反了"这一类错。这是本节对 §9.4 的一处明确偏离。
+
+11. **投影产出的对象一律一次性构造**(条件展开),不"先建后逐字段改"。不只是风格:
+    `session:gate` 规则 B 盯的就是消息形状上的属性赋值,而它盯的理由(投影产物转手
+    就被深冻结交给读门面)在这里同样成立。第一版是先建后补,`session:gate` 当场 +23。
+
+#### S1 必须补的规格缺口
+
+| # | 缺口 | 今天怎么处置的 | S1 要做什么 |
+|---|---|---|---|
+| G1 | **`Step.id` 事件里没有** | 派生 `step-${callId}`(确定性,与 toolCallId 一一对应) | `tool/call` 上补 `stepId`,否则影子期每条 step 的 id 都对不上,`canonical` 的 id 排序也换了键 |
+| G2 | **`Step.title` 事件里没有** | 取 `tool/audit.previewTitle`,缺席退回工具名 | 今天是 `generateStepTitle(toolName, args, skillName)` 算的;要么把它算进 `tool/call`,要么接受"标题是纯派生"并把那个函数搬进 core 供投影调用 |
+| G3 | **子步骤(`childSteps`)** | 不产出 | 事件里没有父子关系(今天靠 `sendStepAdded(subStep)` 的调用栈);需要在 `tool/call` 上补 `parentCallId` |
+| G4 | **`data-steps` / `waiting` / `image-loading` 占位 part** | 不产出(canonical 里当瞬态丢) | 确认它们**永久**是渲染侧的事(推荐),还是要一条 `assistant/part-end{kind:'placeholder'}` |
+| G5 | **`thinkingTime` / `skillUsed` / `steered` / `collab*` / `origin` / `mentions` / `reactions`** | 只能靠 `message/patched` 带过来(合同测试里 imported 场景验了透传) | S1 要逐个确认采集点:哪些是 `message/patched`,哪些该有自己的事件(`skill:activated` 今天是一条流事件) |
+| G6 | **`rejectionReason`** | 两条线都不产出 | `permission/answered.reason` 已经有这一格,但没有"把它接到 toolCall 上"的规则;要定死是投影按 `toolCallId` 关联,还是 `tool/audit` 冗余一份 |
+| G7 | **参数流开了头就被打断**(有 tool-input part,没有 `tool/call`) | 不产出任何 toolCall | 今天 UI 上是一张 `input-streaming` 的卡。要么投影按孤儿 tool-input part 合成占位 toolCall,要么接受它消失 |
+| G8 | **多模态 / 附件** | `defaultHistoryMessageContent` 只处理字符串正文 + 尾块 | 附件的 `base64Data` 必须是 `BlobRef`(类型已就位,存储在 S1);`buildMessageContent` 由宿主注入,S1 要把桌面端那一份接进来并验"落点与回放同一函数" |
+| G9 | **compact 的 `useCompactedToolResults`** | surface 路径统一走非压缩预算 | 今天压缩后的尾部用的是更紧的 per-result 预算(24k/80k vs 200k/600k)。小载荷下两者逐字节相同(合同测试没碰到),但真机大结果会分叉 —— S1 要么在 `session/compacted` 之后的段落切到压缩预算,要么明确改口径 |
+| G10 | **`request/recipe.messages[].eventSeq` 没有生产者** | 类型定义了,投影不读 | 它是"这次请求究竟发了哪些节点"的自证账;S1 采集时要与 `projectModelHistory` 走同一个 surface 快照,否则两者对不上就没有校验价值 |
+| G11 | **`session/cleared{reason:'replaced'}` 的第二半** | 只实现了"全清";§9.3 说 replaced = cleared + 逐条 `message/imported` | 合同测试只验了 `clear`;collab 的 `MESSAGES_REPLACED` 要在 S1 补一条端到端 |
+| G12 | **seq 的跨进程安全** | S0 不落盘,不涉及 | §7.1 B5 + `session-commands-p0-2026-08.md` §10.7(server 的 StoreLock 已按用户裁定撤回):desktop 与 server 共享 `~/.onething` 时两个写者会分配重复 seq,而 `surfaceOp replace` 按 seq 区间遮蔽 → 静默错乱。**S1 开工前必须先解决**,这是 S 线唯一的硬前置 |
+

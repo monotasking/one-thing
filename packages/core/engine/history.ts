@@ -668,6 +668,18 @@ function appendHistoryMessage<
 	});
 }
 
+/**
+ * 压缩摘要在模型历史里的那条 user 消息的正文。
+ *
+ * 抽出来是因为它现在有两个产出口:今天的 `buildHistoryMessages`(按
+ * `session.summary` + 锚点切片)与 S 线的 `projectModelHistory`(按 surface 上
+ * 的 `session/compacted` 节点)。两边必须逐字节相同,否则同一次压缩后
+ * "从消息重建"与"从事件投影"发给模型的第一条就不一样了。
+ */
+export function compactedHistoryPreamble(summary: string): string {
+	return `The conversation history before this point was compacted into the following summary:\n\n<summary>\n${summary}\n</summary>`;
+}
+
 export function buildHistoryMessages<
 	TContent = unknown,
 	TMessage extends CoreHistoryChatMessage = CoreHistoryChatMessage,
@@ -691,7 +703,7 @@ export function buildHistoryMessages<
 				// (packages/onething-runtime/src/agent-loop/providers/)。
 				{
 					role: "user",
-					content: `The conversation history before this point was compacted into the following summary:\n\n<summary>\n${session.summary}\n</summary>`,
+					content: compactedHistoryPreamble(session.summary),
 				},
 			];
 
