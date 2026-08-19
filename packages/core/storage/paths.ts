@@ -29,9 +29,6 @@ export function getDebugDir(options: CoreStorePathOptions = {}): string {
   return path.join(getStorePath(options), 'debug')
 }
 
-export function getLastSystemPromptDebugPath(options: CoreStorePathOptions = {}): string {
-  return path.join(getDebugDir(options), 'last-system-prompt.txt')
-}
 
 export function getSettingsPath(options: CoreStorePathOptions = {}): string {
   return path.join(getStorePath(options), 'settings.json')

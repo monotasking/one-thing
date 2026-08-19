@@ -37,6 +37,7 @@ import {
   RENDERER_LOG_ECHO_MARK,
   type AppendLogRecord,
   type AppendLogsRequest,
+  type LogConfigResponse,
 } from '@shared/ipc/logs.js'
 
 /** 内存环容量(§2.5:200 条)。 */
@@ -224,6 +225,12 @@ export interface RendererLogHub {
   dumpText(): string
   flush(): Promise<void>
   setLevelSpec(spec: string): void
+  /**
+   * 主进程下发的**默认** spec(§2.3:「renderer 侧同一 spec 由主进程下发 +
+   * localStorage 覆写」)。localStorage(`onething:log`)优先级更高:有本地覆写
+   * 时这里一个字不改,并返回 `false` 如实说明没采纳。
+   */
+  setDefaultLevelSpec(spec: string): boolean
   getLevelSpec(): string
   pendingCount(): number
   droppedCount(): number
@@ -266,6 +273,14 @@ export function createRendererLogHub(options: RendererLogHubOptions = {}): Rende
         // 无 localStorage(SSR / 隐私模式)——本次会话内仍然生效。
       }
     },
+    setDefaultLevelSpec: spec => {
+      const value = typeof spec === 'string' ? spec.trim() : ''
+      if (!value) return false
+      // 本地覆写赢:`onething:log` 是人为按下的开关,主进程的默认不该把它顶掉。
+      if (readStoredLevelSpec()) return false
+      root.setLevelSpec(value)
+      return true
+    },
     getLevelSpec: () => root.levelSpec,
     pendingCount: () => transport.pendingCount(),
     droppedCount: () => transport.droppedCount(),
@@ -289,6 +304,52 @@ function loadLogsClient(): Promise<typeof import('../platform/logs-client')> {
 async function sendViaPlatform(request: AppendLogsRequest): Promise<unknown> {
   const { logsApi } = await loadLogsClient()
   return logsApi.append(request)
+}
+
+/**
+ * 把主进程生效的等级 spec 拉下来当**默认**(`logs.config`,§9.2 的那格路由)。
+ *
+ * 为什么是拉不是推:渲染进程可能比 `configureLogging()` 晚起、也可能重载,
+ * 推一次要处理「推的时候没人听」的窗口;拉一次没有这个窗口(收方注释同款理由)。
+ *
+ * 拉不到就**静悄悄**保持默认(`info`):日志系统自己的失败记成 warn/error
+ * 是自喂循环的开端,所以只在 `debug` 留一行。
+ */
+export async function pullLevelSpec(
+  active: RendererLogHub,
+  fetchConfig: () => Promise<LogConfigResponse> = async () => {
+    const { logsApi } = await loadLogsClient()
+    return logsApi.config({})
+  },
+): Promise<boolean> {
+  try {
+    const response = await fetchConfig()
+    return active.setDefaultLevelSpec(response?.levelSpec ?? '')
+  } catch (error) {
+    active.getLogger('log').debug('log level spec fetch failed', undefined, error)
+    return false
+  }
+}
+
+/**
+ * 借已有的设置广播重拉一次 —— 见 `installRendererLogging` 处的理由。
+ * 订阅本身失败(web / 没有宿主桥)就算了:首拉已经给了默认。
+ */
+async function subscribeDiagnosticsRepull(active: RendererLogHub): Promise<void> {
+  try {
+    const { platformApi } = await import('../platform')
+    let lastEnabled: boolean | null = null
+    platformApi.onSettingsChanged(settings => {
+      const enabled = settings?.diagnostics?.enabled === true
+      // 第一条广播时上一次的值未知,按「变了」处理(至多多一次 RPC),
+      // 好过漏掉装机后的第一次翻转。
+      if (lastEnabled !== null && enabled === lastEnabled) return
+      lastEnabled = enabled
+      void pullLevelSpec(active)
+    })
+  } catch (error) {
+    active.getLogger('log').debug('log level spec resubscribe failed', undefined, error)
+  }
 }
 
 export function getRendererLogHub(): RendererLogHub {
@@ -320,6 +381,15 @@ export function installRendererLogging(): RendererLogHub {
 
   // 预热传输模块:`beforeunload` 那一刻再去 import() 就来不及了。
   void loadLogsClient().catch(() => undefined)
+
+  // hub 装好之后拉一次主进程的 spec 当默认(localStorage 覆写仍然赢)。
+  void pullLevelSpec(active)
+  // 主进程改 spec 的**唯一现成信号**:诊断模式开关(设置存盘 →
+  // `applyDiagnosticsMode` → 根 logger 换 spec)。别的改法(`ONETHING_LOG` 环境变量)
+  // 只在启动时生效,首拉已经覆盖。没有新通道:借的是已有的 `onSettingsChanged`
+  // 广播,且只在 `diagnostics.enabled` **真的翻转**时才多发一次 RPC。
+  // web 面上 `onSettingsChanged` 是 noop —— 那边只有首拉,如实记在 §10。
+  void subscribeDiagnosticsRepull(active)
 
   window.addEventListener('beforeunload', () => {
     void active.flush()

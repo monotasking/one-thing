@@ -114,7 +114,7 @@ interface LogRecord {
 | error | 失败但进程继续 | 开 |
 | fatal | 进程要退了 | 开 |
 
-单一开关 `ONETHING_LOG='<default>[,<ns-glob>=<level>]*'`,例:`ONETHING_LOG=info,engine.*=debug,providers.deepseek=trace`。它**替代**现有 8 个 debug 开关(`ONETHING_DEBUG_STREAM` 等映射为别名一个版本后删除)。renderer 侧同一 spec 由主进程下发(`log:config`)+ localStorage 覆写(`onething:log`)。是否在设置页暴露 → 拍板点 E。
+单一开关 `ONETHING_LOG='<default>[,<ns-glob>=<level>]*'`,例:`ONETHING_LOG=info,engine.*=debug,providers.deepseek=trace`。它**替代**现有 8 个 debug 开关(`ONETHING_DEBUG_STREAM` 等映射为别名一个版本后删除)。renderer 侧同一 spec 由主进程下发(落地是 RPC 域 `logs.config`,不是手写通道 `log:config`;见 §10.1)+ localStorage 覆写(`onething:log`,优先级更高)。是否在设置页暴露 → 拍板点 E。
 
 ### 2.4 三类东西的归属(P6)
 
@@ -260,11 +260,11 @@ Session
 | **L1** | 装配 | `app/logging` 重写为 `configureLogging`;`RollingFileLogger`→`JsonlFileSink`;`LegacyConsoleSink`;`installProcessCrashHooks`;`LogDirJanitor` + 策略表;`ONETHING_LOG` 解析;`log:gate` 脚本 + 基线 | L0 | 单测(sink 轮转/janitor 表/总量上限);`bun run log:gate` 绿;boundary 绿;真机脚本:起 electron 30s 后 `app.jsonl` 每行 `JSON.parse` 成功且含 `ns/level/time` |
 | **L2** | 宿主 | server:`configureLogging` + `server.http` 请求日志中间件 + crash hooks + `POST /api/logs`;daemon:同上,`daemon.log`→`daemon.jsonl` 走 sink;gateway:构造注入 Logger,27 处 console 迁移;electron:`ipc 'log:append'` handler + console-message 降级 | L1 | 脚本:起 server 打 3 个请求(200/404/500),`server.jsonl` 出现 3 条 `ns=server.http` 且 status 字段正确;`unhandledRejection` 注入测试落一条 `fatal/error`;gateway 目录 `console.*`=0 |
 | **L3** | renderer | `services/log.ts` + `RendererLogHub` + `platformApi.appendLogs`(electron/web 两实现);crash-log 改 producer;Vue warn 去重单行;`shouldDebugStream` 四份合一(读 `ONETHING_LOG` 下发) | L2 | 单测:批量/背压/环;真机脚本(playwright):触发一次 Vue warn + 一次 vue error,主进程 `app.jsonl` 各恰 1 条结构化记录,`[object Object]` 计数 0;`stores/chat.ts` 热路径 console=0 |
-| **L4** | 调用点迁移 | 按区迁:engine/toolkit/agent-loop(绑 sessionId/messageId/toolCallId 子 logger,`tool-orchestrator` 透传删)→ ipc/ 各域 → stores/components → core 其余;每区迁完开 `no-console: error`;删 app `chat-logger.ts` 8 个死导出与 `last-system-prompt` 写者;`themes/index.ts:400/410`、`EvalsRunsView.vue:494`、`server/main.ts:53 pairing` 三处 dump 处置;collab 中文消息英文化(fields 承载细节);189 处静默 catch 中"值得留痕的"补 `debug` | L3 | `log:gate` 基线 831→≤50(剩余全在白名单);ESLint 绿;抽样:`sessions/*/events.jsonl` 之外的 engine 日志 100% 带 sessionId(脚本统计) |
+| **L4** | 调用点迁移 | 按区迁:engine/toolkit/agent-loop(绑 sessionId/messageId/toolCallId 子 logger,`tool-orchestrator` 透传删)→ ipc/ 各域 → stores/components → core 其余;每区迁完开 `no-console: error`;~~删 app `chat-logger.ts` 8 个死导出与 `last-system-prompt` 写者~~(顺延到 L5-lite,见 §10.2);`themes/index.ts:400/410`、`EvalsRunsView.vue:494`、`server/main.ts:53 pairing` 三处 dump 处置;collab 中文消息英文化(fields 承载细节);189 处静默 catch 中"值得留痕的"补 `debug` | L3 | `log:gate` 基线 831→≤50(剩余全在白名单);ESLint 绿;抽样:`sessions/*/events.jsonl` 之外的 engine 日志 100% 带 sessionId(脚本统计) |
 | **T0** | 追踪键 | `runId` 生成于引擎执行入口并贯穿 agent-loop ctx;`ChatMessage.runId`;`SESSION_EVENT_TYPES` 增 `run/start|end`、`request/response|error`,既有事件加 `runId`;recorder 采集点补齐(响应收齐、错误/重试、run 结束) | L0(logger child 绑键)可并行 | 单测:一次含 2 轮工具循环 + 1 次重试的 run,events.jsonl 出现 1 run/start、3 request/start、1 request/error(willRetry)、3 request/response、1 run/end,全部同 runId;decode 老文件不报错 |
 | **T1** | 正文账本 | `sessions/<id>/io/`:`responses.jsonl` 始终、`requests.jsonl`(配方)始终、`blobs/`(system 去重)始终、`dumps/*.req.json.gz` 诊断模式;`providers/request-dump.ts` 改写到此(删 `log/provider-requests` 路径与 `last-system-prompt`);每会话 20MiB 软上限(只删 dumps);会话删除级联;`trace:stats` | T0 | 单测:上限淘汰只删 dumps;删会话后 io/ 不残留;配方复原+hash 校验对被编辑消息如实标不匹配;真机脚本:发一条消息,`responses.jsonl` 多一行且 `textHash` 与 events `request/response` 一致、`requests.jsonl` 那行的 messageIds 与 messages.jsonl 对得上 |
 | **T2** | 查询面 | `sessions/trace.ts` 装配树;CLI `onething trace`;`GET /api/sessions/:id/trace`;轨迹面板按 run 分组 + 展开 response;`log:tail --session --run` | T1、L1 | 单测:装配树对 T0 的样本会话输出固定快照;HTTP 200 + JSON schema;playwright:面板显示 run 节点数 = events 中 run/start 数 |
-| **L5** | 目录治理收尾 | provider-requests 默认关、搬 `log/dumps/`、janitor 接管;`dev-with-logging.mjs` 只记 runner/stderr,不再复刻主进程 stdout(主进程自己写 app.jsonl);删 `log/memory/`;旧 8 个 `ONETHING_DEBUG_*` 别名一个版本后删;文档:`docs/design/logging-system-2026-08.md` §7 落地记录 + CLAUDE.md 一段 | L1 | 脚本:构造超 512MiB 的假 `log/`,跑 janitor 一轮后 ≤ 上限且账本目录未被碰;`dev.log` 与 `app.jsonl` 零重叠(同一 msg 计数) |
+| **L5** | 目录治理收尾(**渲染侧 spec 下发 + 死码清除已先行落地,见 §10**) | provider-requests 默认关、搬 `log/dumps/`、janitor 接管;`dev-with-logging.mjs` 只记 runner/stderr,不再复刻主进程 stdout(主进程自己写 app.jsonl);删 `log/memory/`;旧 8 个 `ONETHING_DEBUG_*` 别名一个版本后删;文档:`docs/design/logging-system-2026-08.md` §7 落地记录 + CLAUDE.md 一段 | L1 | 脚本:构造超 512MiB 的假 `log/`,跑 janitor 一轮后 ≤ 上限且账本目录未被碰;`dev.log` 与 `app.jsonl` 零重叠(同一 msg 计数) |
 
 L0–L1 可一天;L2/L3 各半天;L4 是量最大的一期(~800 处),按区派 opus 并行,Fable 只做 review;L5 半天。**T0–T2 独立于 L2–L4,可在 L0 后立刻并行开工**——追踪能力是用户明确要的,优先级排在 L4 前。
 
@@ -1064,3 +1064,111 @@ CLI 的用户输出走 `stdout.ts`,不是日志。
 
 - `ONETHING_DEBUG_STREAM` 的 renderer 侧别名要覆盖 `renderer.chat-store` + `renderer.ipc-hub` 两个 ns(见上表);区 ② 的 spec 解析器实现,本区只提需求。
 - `renderer.perf` 这个 ns 不在 §2.2 的表里(表里只有 `renderer.<store|component|service>`)。它是**跨组件的横切面**(chat store / sessions store / App / MessageList / ChatPanel / 两个 Streaming 组件都往里写),按 store 或 component 拆开就没法一句 `renderer.perf=debug` 全开。要么落一行进 §2.2,要么下一批改成 `renderer.<x>` + `fields.perf`。
+
+---
+
+## 10. L5-lite 落地记录(2026-08-20)
+
+> 状态:**已实施(未提交)**。这一批只做 L5 里两件不牵动目录治理的尾巴 ——
+> 渲染侧的等级 spec 下发,与 L4 欠下的死码清除。janitor / dumps 搬家 / `log/memory/`
+> 那半边仍未动,尾巴逐条列在 §10.3。
+
+### 10.1 渲染侧拉主进程的等级 spec(§2.3 的「主进程下发 + localStorage 覆写」)
+
+`logs.config` 这格路由在 L3 就已经落好了(`packages/shared/ipc/logs.ts` 的
+`LogsRoutes.config` + `app/rpc/domains/logs.ts` 的 handler,返回
+`{ levelSpec: getLogLevelSpec() }`),但**没有调用者** —— 于是主进程的
+`ONETHING_LOG`(以及废弃的 `ONETHING_DEBUG_*` 别名展开出来的 `renderer.*=trace`)
+到不了渲染侧,`renderer.chat-store=trace` 这类开法只能靠手改 localStorage。本批把
+调用点接上:
+
+| 件 | 位置 |
+|---|---|
+| `RendererLogHub.setDefaultLevelSpec(spec)` —— 采纳主进程的默认;**有 localStorage(`onething:log`)覆写时一个字不改**,并返回 `false` 如实说明没采纳 | `packages/renderer/services/log.ts` |
+| `pullLevelSpec(hub, fetchConfig?)` —— 装好之后拉一次;失败**静悄悄**保持默认(`info`),只在 `renderer.log` 的 **debug** 留一行 | 同上 |
+| `installRendererLogging()` 里的首拉 + 借 `onSettingsChanged` 的重拉 | 同上 |
+| 用例 3 条(采纳 / 覆写赢 / 拉失败保持默认)+ 空串与空白不采纳 | `packages/renderer/services/__tests__/log-hub.test.ts` |
+
+三条判据,逐条对应上面三格:
+
+1. **优先级**:localStorage > 主进程下发 > `info`。判定放在 `setDefaultLevelSpec`
+   **调用时**读 localStorage,而不是构造时快照 —— 用户在 devtools 里
+   `__onethingLog.level('trace')` 之后(它会写 localStorage),后到的重拉不会把它顶掉。
+2. **失败即沉默**:日志系统自己的失败记成 warn/error 是自喂循环的开端;`debug` 一行
+   足够排障,而默认级本来就看不见它。空串 / 全空白同样不采纳 —— 收方给不出 spec 时
+   不该把过滤器清成空。
+3. **是拉不是推**:与 handler 注释同一条理由 —— 渲染进程可能比 `configureLogging()`
+   晚起、也可能重载,推一次要处理「推的时候没人听」的窗口,拉一次没有这个窗口。
+
+**重拉用的是现成信号,没有新通道。** 主进程运行期唯一会改 spec 的入口是诊断模式
+(设置存盘 → `applyDiagnosticsMode` → 根 logger 换 spec);`ONETHING_LOG` 环境变量只在
+启动时生效,首拉已经覆盖。所以本批借已有的 `platformApi.onSettingsChanged` 广播,
+且**只在 `diagnostics.enabled` 真的翻转时**才多发一次 RPC(第一条广播时上一次的值
+未知,按「变了」处理:至多多一次 RPC,好过漏掉装机后的第一次翻转)。
+**web 面上 `onSettingsChanged` 是 noop**(`platform/web.ts:610`)—— 那边只有首拉,
+诊断模式开关不会即时传到浏览器端的 hub;要即时就得给 SSE 加一个事件,那是新通道,
+不在本批。
+
+### 10.2 死码清除:`chat-logger` 的 8 个死导出 + `last-system-prompt`
+
+2026-08-19 的清点(`docs/audit/logging-inventory-2026-08-19.md` §49)说 app 版
+`chat-logger.ts` 9 个导出里 8 个零外部引用;本批用 rg 复核(L4 之后仍然成立)后删除。
+净 **−520 / +144** 行。
+
+| 删了什么 | 位置 |
+|---|---|
+| `dumpAssembledPrompt` `logRequestStart` `logTurnStart` `logTurnEnd` `logRequestEnd` `logContinuationMessages` `logToolsDetail` `logSkillsDetail`(8 个,全仓零调用点) | `app/engine/stream/chat-logger.ts`(187 → 61 行) |
+| 随之失去全部生产调用者的 core 纯函数:`buildAssembledPromptDump` `buildRequestStartLogLines` `buildRequestEndLogLines` `buildContinuationMessageLogLines` `buildToolsDetailLogLines` `buildSkillsDetailLogLines` `buildTurnEndLogLine` `CoreChatTurnTimer` `formatToolNames` `formatSkillNames` `CHAT_LOG_DOUBLE_LINE` `CHAT_LOG_SINGLE_LINE` + 类型 `CoreToolDefinitionForLog` `CoreSkillDefinitionForLog` | `packages/core/engine/chat-logger.ts`(378 → 139 行)+ `core/engine/index.ts` 的 re-export |
+| 只为上面那批存在的用例 | `app/engine/__tests__/core-chat-logger.test.ts`(6 例 → 2 例) |
+| `getLastSystemPromptDebugPath` 三份(core / app 包装 / runtime `getOnethingLastSystemPromptDebugPath`)+ core 桶的 re-export + 唯一的断言 | `core/storage/{paths,index}.ts`、`app/stores/paths.ts`、`runtime/src/storage/paths.ts`、`app/storage/__tests__/core-storage-manager.test.ts` |
+
+**留下的**:`logMessageBodyShape`(唯一活着的导出,调用点 `app/engine/stream/message-helpers.ts:132`)
+与它依赖的 core 三件 `buildMessageBodyShapePayload` / `chatLogContentTextLength` /
+`chatLogJsonLength` + 六个类型。分层照旧:core 出纯函数,app 出副作用(等级判定 + 落记录)。
+
+判据是「**这些东西观测到的事实已经有更好的账本**」而不是「没人调所以删」:请求起止 /
+逐轮计时 / 续轮消息 / 工具技能清单,S 线的 `sessions/<id>/events.jsonl` 逐条都记;
+`<store>/debug/last-system-prompt.txt` 更是从 L4 之前就没有写者(§2.4 的表里已经标了
+「死写者,直接删」)。
+
+**两处副作用,记在这里免得下次被当 bug**:
+
+- ns `engine.stream.chat` 随文件里的 `log` 一起消失(§9.2.1 的映射表那一行作废);
+  本文件现在只写 `engine.history`。
+- `<store>/debug/` 目录本身还在(`getDebugDir` / `getOnethingDebugDir` 保留,它是通用
+  目录取值口),只是不再有任何代码指向 `last-system-prompt.txt`。真实 store 里的存量
+  文件属于用户数据,清理是 user-land 的事,本批不碰。
+
+### 10.3 L5 还欠什么
+
+- **`ONETHING_DEBUG_*` 8 个别名整表删**(`app/logging/legacy-debug-env.ts` +
+  `composeLevelSpecWithLegacyAliases` + 8 条用例):按 §7.5 的口径「一个版本后删」,
+  这一批不动。删的时候连带 §9.2.3 的映射表与 `chat-logger.ts` 文件头那句注释。
+- **`consolePort()` 过渡件**(§9.1 尾):换成直接传 `getLogger(ns)` 之后,
+  `core/logging/compat.ts` 的鸭子那一半(`LegacyDuckLogger` / `DuckLoggerAdapter`)与
+  14 个 `@deprecated` 别名一起删。
+- **`app/plugins/api-builder.ts` 的鸭子 logger `[Tag]` 字符串**:插件拿到的 `api.log`
+  仍是拼字符串的形状,随上一条一起结构化。
+- **目录治理那半边**(本批一行未动):provider-requests 默认关 + 搬 `log/dumps/`、
+  `LogDirJanitor` 接管、`dev-with-logging.mjs` 不再复刻主进程 stdout、`log/memory/` 删。
+  其中真实 store 里的 `log/memory/` 存量目录是 **user-land 清理**,代码侧只需保证不再
+  写它。
+- **web 面的诊断模式即时性**(§10.1 末):要即时就得给 SSE 加事件,是新通道,待拍板。
+- `renderer.perf` 落进 §2.2 的表(L4 区 ③b 提的,仍未落笔)。
+
+### 10.4 门(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run typecheck` | 3 red,全部是既有的 `spaces/__tests__/provider-dials.test.ts`;`typecheck:web` 全绿 |
+| `bunx vitest run packages/renderer/services packages/onething-runtime/src/app/engine packages/core/engine` | 83 文件 / 624 例全绿 |
+| `ONETHING_SESSION_FREEZE=1 bun run test` | 1136 文件通过 / 1 失败:`ui-token-vars.test.ts` ×2 + `AIProviderTab.interaction.test.ts` 的 unhandled rejection —— 与本批前的既有红逐条相同 |
+| `bun run log:gate` | ok — 4 known, none new |
+| `bun run session:gate` | ok — 0 |
+| `bun run boundary:gate` | ok — 13 known, none new |
+| `bun run ui:gate` | ok — 81 known, none new |
+| `bun run lint:ci` | 334(128 errors / 206 warnings);本批新增 0 |
+| `bun run web:build` | ok |
+| `bun run build`(electron) | ok |
+
+全程没有碰过 `~/.onething`。

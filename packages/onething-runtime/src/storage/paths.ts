@@ -53,11 +53,6 @@ export function getOnethingDebugDir(
 	return path.join(getOnethingStorePath(options), "debug");
 }
 
-export function getOnethingLastSystemPromptDebugPath(
-	options: OnethingStorePathOptions = {},
-): string {
-	return path.join(getOnethingDebugDir(options), "last-system-prompt.txt");
-}
 
 export function getOnethingSettingsPath(
 	options: OnethingStorePathOptions = {},

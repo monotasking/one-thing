@@ -6,7 +6,6 @@ import {
   getOnethingDebugDir,
   getOnethingDocsDir,
   getOnethingFileMutationsDir,
-  getOnethingLastSystemPromptDebugPath,
   getOnethingLogDir,
   getOnethingMCPOAuthCredentialsPath,
   getOnethingMCPToolsCatalogPath,
@@ -74,9 +73,6 @@ export function getDebugDir(options?: OnethingStorePathOptions): string {
   return getOnethingDebugDir(options)
 }
 
-export function getLastSystemPromptDebugPath(options?: OnethingStorePathOptions): string {
-  return getOnethingLastSystemPromptDebugPath(options)
-}
 
 export function getSettingsPath(options?: OnethingStorePathOptions): string {
   return getOnethingSettingsPath(options)

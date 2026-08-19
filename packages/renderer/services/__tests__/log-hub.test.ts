@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { RENDERER_LOG_ECHO_MARK, type AppendLogsRequest } from '@shared/ipc/logs.js'
-import { createRendererLogHub } from '../log'
+import { createRendererLogHub, pullLevelSpec, RENDERER_LOG_LEVEL_KEY } from '../log'
 
 /** 手动时钟:定时器不自己跑,由测试决定"下一帧"什么时候到。 */
 function createManualTimers() {
@@ -169,5 +169,68 @@ describe('RendererLogHub', () => {
     expect(() => hub.getLogger('nowhere').info('ok')).not.toThrow()
     expect(hub.dump()).toHaveLength(1)
     expect(hub.pendingCount()).toBe(0)
+  })
+})
+
+/**
+ * 等级 spec 的单向下发(L5):hub 装好后拉一次 `logs.config`,把主进程说了算的
+ * 那份当**默认**;localStorage(`onething:log`)是本地覆写,优先级更高;拉不到
+ * 就静悄悄保持默认。
+ */
+describe('RendererLogHub level spec handoff', () => {
+  const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+
+  function stubLocalStorage(value: string | null): void {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => (key === RENDERER_LOG_LEVEL_KEY ? value : null),
+        setItem: () => undefined,
+        removeItem: () => undefined,
+      },
+    })
+  }
+
+  afterEach(() => {
+    if (originalLocalStorage) Object.defineProperty(globalThis, 'localStorage', originalLocalStorage)
+    else Reflect.deleteProperty(globalThis as object, 'localStorage')
+  })
+
+  it('applies the fetched spec as the default level spec', () => {
+    stubLocalStorage(null)
+    const hub = createRendererLogHub({ echo: false })
+    expect(hub.getLevelSpec()).toBe('info')
+
+    expect(hub.setDefaultLevelSpec('info,engine.*=trace')).toBe(true)
+    expect(hub.getLevelSpec()).toBe('info,engine.*=trace')
+  })
+
+  it('lets the localStorage override win over the fetched default', () => {
+    stubLocalStorage('debug')
+    const hub = createRendererLogHub({ echo: false })
+    expect(hub.getLevelSpec()).toBe('debug')
+
+    expect(hub.setDefaultLevelSpec('info,engine.*=trace')).toBe(false)
+    expect(hub.getLevelSpec()).toBe('debug')
+  })
+
+  it('pulls the main-process spec and adopts it', async () => {
+    stubLocalStorage(null)
+    const hub = createRendererLogHub({ echo: false })
+    await expect(pullLevelSpec(hub, async () => ({ levelSpec: 'info,engine.*=trace' }))).resolves.toBe(true)
+    expect(hub.getLevelSpec()).toBe('info,engine.*=trace')
+  })
+
+  it('keeps the default (info) silently when the pull fails', async () => {
+    stubLocalStorage(null)
+    const hub = createRendererLogHub({ echo: false })
+    await expect(pullLevelSpec(hub, async () => {
+      throw new Error('offline')
+    })).resolves.toBe(false)
+    expect(hub.getLevelSpec()).toBe('info')
+    // 空串 / 空白同样不采纳 —— 收方给不出 spec 时不该把过滤器清成空。
+    expect(hub.setDefaultLevelSpec('')).toBe(false)
+    expect(hub.setDefaultLevelSpec('   ')).toBe(false)
+    expect(hub.getLevelSpec()).toBe('info')
   })
 })

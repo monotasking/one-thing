@@ -10,7 +10,6 @@ import {
   HeadlessStorageManager,
   getDebugDir,
   getDocsDir,
-  getLastSystemPromptDebugPath,
   getMCPToolsCatalogPath,
   getMacOSAutomationDocsPath,
   getPluginDataDir,
@@ -117,7 +116,6 @@ describe('HeadlessStorageManager', () => {
     expect(getSessionPath('abc', options)).toBe(path.join(storePath, 'sessions', 'abc.json'))
     expect(getSessionDatabasePath(options)).toBe(path.join(storePath, 'sessions.sqlite'))
     expect(getDebugDir(options)).toBe(path.join(storePath, 'debug'))
-    expect(getLastSystemPromptDebugPath(options)).toBe(path.join(storePath, 'debug', 'last-system-prompt.txt'))
     expect(getMCPToolsCatalogPath(options)).toBe(path.join(storePath, 'mcp-tools-catalog.md'))
     expect(getPluginDataDir(options)).toBe(path.join(storePath, 'plugin-data'))
     expect(getStoreDirs(options)).toContain(path.join(storePath, 'permissions'))

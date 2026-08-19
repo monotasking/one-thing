@@ -84,7 +84,6 @@ export {
   getDebugDir,
   getDocsDir,
   getFileMutationsDir,
-  getLastSystemPromptDebugPath,
   getLogDir,
   getMCPToolsCatalogPath,
   getMacOSAutomationDocsPath,
