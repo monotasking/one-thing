@@ -14,6 +14,7 @@ import type {
 	UserMessageMarker,
 } from "@shared/ipc.js";
 import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import {
 	getSessionsDir,
 	getSessionPath,
@@ -26,7 +27,6 @@ import { getCurrentSessionId, setCurrentSessionId } from "./app-state.js";
 import { getSettings } from "./settings.js";
 import { expandPath } from "../tools/core/sandbox.js";
 import {
-	STRUCTURAL_WRITE_PLAN,
 	createHybridSessionStorageDriver,
 	createOnethingSessionMessageRuntime,
 	createOnethingSessionRepository,
@@ -37,6 +37,10 @@ import {
 	DEFAULT_SPACE_ID as DEFAULT_WORKSPACE_ID,
 	isValidSpaceId,
 } from "@onething/runtime/spaces/types";
+import {
+	guardFrozenMessages,
+	guardFrozenSessionMessages,
+} from "../session/freeze.js";
 import {
 	CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID,
 	deriveRetainedContextSize,
@@ -118,6 +122,8 @@ sessionMessageRuntime = createOnethingSessionMessageRuntime<
 		getSession: (sessionId) => sessionRepository.getSession(sessionId),
 		getCachedSession: (sessionId) =>
 			sessionRepository.getCachedSession(sessionId),
+		getCachedSessionMessages: (sessionId) =>
+			sessionRepository.getCachedSessionMessages(sessionId),
 		saveSessionToFile: (sessionId, session, options) =>
 			sessionRepository.saveSessionToFile(sessionId, session, options),
 		syncSessionToSqliteIfReady: (session) =>
@@ -160,25 +166,18 @@ function saveSessionToFile(sessionId: string, session: ChatSession): void {
 }
 
 /**
- * 整会话保存:宿主 facade(如 server HTTP API)对会话对象做原地修改后调用。
- * 刷新 LRU 权威副本 + 节流异步落盘,并同步 index 元数据(列表读只走 index、
- * 不加载消息体,漏盖章会导致列表与会话体不一致)。
+ * 会话级字段补丁(P0.4 命令面 `sessionCommands.patchSession` 的接线口)。
+ *
+ * 取代 `saveSessionSnapshot` 后门:老路把整会话交回来、按 `structural` 写计划
+ * 落盘 —— 而 jsonl 布局里会话级字段全在 `meta.json`,改个名字重写整份消息日志
+ * 是纯浪费(SV12 病根的会话级余量)。这里一律 `{kind:'meta'}`,消息一行不动。
  */
-export function saveSessionSnapshot(
-	session: ChatSession,
-	mutateIndexMeta?: (meta: SessionMeta) => void,
-): void {
-	sessionRepository.saveSessionToFile(session.id, session);
-	sessionRepository.updateSessionsIndexMeta(session.id, (meta) => {
-		meta.name = session.name;
-		meta.updatedAt = session.updatedAt;
-		meta.isPinned = session.isPinned;
-		meta.isArchived = session.isArchived;
-		meta.agentId = session.agentId;
-		meta.messageCount = session.messages.length;
-		mutateIndexMeta?.(meta);
-	});
-	sessionRepository.syncSessionToSqliteIfReady(session);
+export function patchSessionFields(
+	sessionId: string,
+	patch: Partial<ChatSession>,
+	mutateIndexMeta?: (meta: SessionMeta, session: ChatSession) => void,
+): boolean {
+	return sessionRepository.patchSession(sessionId, patch, mutateIndexMeta);
 }
 
 /**
@@ -294,7 +293,7 @@ export function getSessionDetails(
 export function getSessionMessages(
 	sessionId: string,
 ): ChatMessage[] | undefined {
-	return sessionRepository.getSessionMessages(sessionId);
+	return guardFrozenMessages(sessionRepository.getSessionMessages(sessionId));
 }
 
 /**
@@ -328,7 +327,9 @@ export function getSessionRaw(sessionId: string): ChatSession | undefined {
 
 // Get a single session by ID
 export function getSession(sessionId: string): ChatSession | undefined {
-	return sessionRepository.getSession(sessionId);
+	// 开发期深冻结(docs/design/session-commands-p0-2026-08.md §1):交出去的消息
+	// 对象冻住,漏网的就地改当场抛 TypeError。实现在 `app/session/freeze.ts`。
+	return guardFrozenSessionMessages(sessionRepository.getSession(sessionId));
 }
 
 // Create a new session
@@ -623,8 +624,8 @@ export function getSessionTokenUsage(sessionId: string): {
  * choke point — every engine creation site (send / edit / retry / mid-turn
  * follow-up writer) persists through here, so no core change is needed.
  */
-function stampCollabAgentId(sessionId: string, message: ChatMessage): void {
-	if (message.role !== "assistant" || message.agentId) return;
+function stampCollabAgentId(sessionId: string, message: ChatMessage): ChatMessage {
+	if (message.role !== "assistant" || message.agentId) return message;
 	const session = sessionRepository.getSession(sessionId);
 	if (
 		!session ||
@@ -632,8 +633,11 @@ function stampCollabAgentId(sessionId: string, message: ChatMessage): void {
 			session.kind !== "work" &&
 			session.kind !== "agent")
 	)
-		return;
-	if (session.agentId) message.agentId = session.agentId;
+		return message;
+	// P0.1:盖章改为**返回新对象**(COW),不再就地改调用方手里的那条 ——
+	// 命令面的口径是"消息对象一旦交出去就不许再改"。
+	// P0.4:新对象也一次性建成(不再先建后逐字段改)—— 命令面之外任何对
+	// `ChatMessage` 的字段赋值都是 `session:check` 规则 B 的红。
 
 	/**
 	 * W14b 思考与发言分离: in a ROOM the turn's own assistant message is the
@@ -671,33 +675,67 @@ function stampCollabAgentId(sessionId: string, message: ChatMessage): void {
 	 * keep the branch for pre-W18 transcripts (and for any path that still
 	 * creates an assistant message there).
 	 */
-	if (
+	const stampTurnSource =
 		(session.kind === "room" || session.kind === "agent") &&
 		!message.source &&
-		(!message.origin?.source || message.origin.source === COLLAB_MESSAGE_SOURCE)
-	) {
-		message.source = COLLAB_TURN_SOURCE;
+		(!message.origin?.source || message.origin.source === COLLAB_MESSAGE_SOURCE);
+
+	return {
+		...message,
+		...(session.agentId ? { agentId: session.agentId } : {}),
+		...(stampTurnSource ? { source: COLLAB_TURN_SOURCE } : {}),
+	};
+}
+
+/**
+ * P0.1 命令面接线口(docs/design/session-commands-p0-2026-08.md §2)。
+ * `app/session/commands.ts` 用这三样把 `sessionCommands` 装起来 —— 装配方向是
+ * 单向的(commands → stores),这里不反向 import,避免循环。
+ */
+export function getSessionMessageCommandRuntime(): OnethingSessionMessageRuntime<
+	ChatSession,
+	ChatMessage,
+	SessionMeta,
+	Step,
+	ContentPart,
+	ToolCall
+> {
+	return sessionMessageRuntime!;
+}
+
+export function updateSessionsIndexMetaForCommands(
+	sessionId: string,
+	update: (meta: { [key: string]: unknown }) => void,
+): boolean {
+	return sessionRepository.updateSessionsIndexMeta(sessionId, (meta) =>
+		update(meta as unknown as { [key: string]: unknown }),
+	);
+}
+
+/**
+ * 读一条会话的原始 jsonl 抄本(逐行文本)。collab 的两处绕过驱动直接 `readFileSync`
+ * 的读法(history-tool / actors/migrate)在 P0.2 迁到这里 —— 路径拼接只有一处。
+ * legacy 整份 JSON 的会话没有这个文件,返回 undefined 让调用方退回。
+ */
+export function readSessionTranscriptFile(sessionId: string): string | undefined {
+	try {
+		const file = join(getSessionsDir(), sessionId, "messages.jsonl");
+		if (!existsSync(file)) return undefined;
+		return readFileSync(file, "utf-8");
+	} catch {
+		return undefined;
 	}
 }
 
-// Add a message to a session
-export function addMessage(sessionId: string, message: ChatMessage): void {
-	stampCollabAgentId(sessionId, message);
-	sessionMessageRuntime!.addMessage(sessionId, message);
+export function archiveSessionMessages(sessionId: string): string | undefined {
+	return sessionStorageDriver.archiveMessages(sessionId);
 }
 
-// Insert a message after a specific message ID
-// Used for context compacting to insert summary message at the correct position
-export function insertMessageAfter(
-	sessionId: string,
-	afterMessageId: string,
-	message: ChatMessage,
-): boolean {
-	return sessionMessageRuntime!.insertMessageAfter(
-		sessionId,
-		afterMessageId,
-		message,
-	);
+export { stampCollabAgentId };
+
+// Add a message to a session
+export function addMessage(sessionId: string, message: ChatMessage): void {
+	sessionMessageRuntime!.addMessage(sessionId, stampCollabAgentId(sessionId, message));
 }
 
 // Delete a message from a session
@@ -731,18 +769,15 @@ export async function clearSessionMessages(sessionId: string): Promise<{
 }> {
 	const session = sessionRepository.getSession(sessionId);
 	if (!session) return { cleared: false, clearedCount: 0 };
-	const clearedCount = session.messages.length;
+	const clearedCount = sessionRepository.getSessionMessages(sessionId)?.length ?? 0;
 	// 先排空在途的节流写入,再复制:否则留档少的正是最后那几条 —— 留档唯一的
 	// 价值就是"删之前盘上是什么样",差几条就不是那个东西了。
 	await sessionRepository.flushSessionSave(sessionId);
 	const archivePath =
 		clearedCount > 0 ? sessionStorageDriver.archiveMessages(sessionId) : undefined;
-	session.messages = [];
-	session.updatedAt = Date.now();
-	// structural:整份日志重写(后缀写只会从某个 seq 往后追,清空不在它的语义里)
-	sessionRepository.saveSessionToFile(sessionId, session, {
-		plan: STRUCTURAL_WRITE_PLAN,
-	});
+	// structural:整份日志重写(后缀写只会从某个 seq 往后追,清空不在它的语义里)——
+	// 写计划由 replaceAll 命令算出,这里不再自己拼。
+	sessionMessageRuntime!.replaceAllMessages(sessionId, [], "clear");
 	updateSessionsIndexMeta(sessionId, (meta) => {
 		meta.updatedAt = session.updatedAt;
 		meta.messageCount = 0;

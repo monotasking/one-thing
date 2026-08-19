@@ -1,6 +1,6 @@
 import type { ChatMessage, MessageOrigin } from "@shared/ipc.js";
 import { registerPromptContextProvider } from "../engine/prompt/plugin-context.js";
-import * as store from "../store.js";
+import { sessionReads } from "../session/reads.js";
 import {
 	latestRealOrigin,
 	originConnector,
@@ -13,7 +13,7 @@ const PROVIDER_ID = "communication-context";
 
 let unregister: (() => void) | null = null;
 
-function latestOrigin(messages: ChatMessage[]): MessageOrigin | undefined {
+function latestOrigin(messages: readonly ChatMessage[]): MessageOrigin | undefined {
 	return latestRealOrigin(messages);
 }
 
@@ -60,8 +60,7 @@ export function registerChannelPromptContextProvider(): void {
 		PROVIDER_ID,
 		(context) => {
 			if (!context.sessionId) return null;
-			const session = store.getSession(context.sessionId);
-			const origin = session ? latestOrigin(session.messages) : undefined;
+			const origin = latestOrigin(sessionReads.listMessages(context.sessionId).messages);
 			if (!origin) return null;
 			const content = buildCommunicationContext(origin);
 			if (!content) return null;

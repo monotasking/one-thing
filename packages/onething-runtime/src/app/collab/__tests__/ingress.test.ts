@@ -7,6 +7,7 @@
  * the one session kind that has the entry point.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { bindSessionFacadeMock } from '../../session/testing/facade-mock.js'
 import type { ChatMessage } from '@shared/ipc.js'
 
 const mocks = vi.hoisted(() => ({
@@ -15,6 +16,24 @@ const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: { type?: string; message?: ChatMessage } }>,
   agents: new Map<string, { id: string; name: string }>(),
 }))
+
+// P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
+// `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
+// 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
+vi.mock('../../session/reads.js', () => import('../../session/testing/facade-mock.js'))
+vi.mock('../../session/commands.js', async () => {
+  const facade = await import('../../session/testing/facade-mock.js')
+  return {
+    sessionCommands: {
+      ...facade.sessionCommands,
+      // 与迁移前 `store.addMessage` 的假实现逐字同义:只记账,不动假会话的 messages。
+      appendMessage: (sessionId: string, payload: { message: ChatMessage }) => {
+        mocks.added.push({ sessionId, message: payload.message })
+      },
+    },
+  }
+})
+bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
 vi.mock('../../store.js', () => ({
   // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。

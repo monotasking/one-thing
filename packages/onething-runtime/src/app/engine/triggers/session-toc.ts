@@ -11,7 +11,7 @@
  */
 import { collectGoalFileChanges } from "../../goals/file-changes.js";
 import { recordTocTurn } from "../../toc/index.js";
-import * as store from "../../store.js";
+import { sessionReads } from "../../session/reads.js";
 import type { Trigger, TriggerContext } from "./index.js";
 
 /**
@@ -37,13 +37,7 @@ interface PendingTurn {
 function lastAssistantMessage(
 	sessionId: string,
 ): { id?: string; timestamp?: number; reasoning?: string } | undefined {
-	const messages = store.getSession(sessionId)?.messages;
-	if (!Array.isArray(messages)) return undefined;
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const message = messages[i] as { role?: string; id?: string; timestamp?: number; reasoning?: string };
-		if (message?.role === "assistant") return message;
-	}
-	return undefined;
+	return sessionReads.lastMessageOfRole(sessionId, "assistant");
 }
 
 /**
@@ -121,14 +115,11 @@ export function createSessionTocTrigger(): Trigger {
 			// ended — the basis for "how long was the user away", which must be
 			// measured from the agent finishing, not from the previous user
 			// message (an agent can work for hours on one instruction).
-			const messages = (store.getSession(ctx.sessionId)?.messages ?? []) as Array<{
-				role?: string;
-				id?: string;
-				timestamp?: number;
-			}>;
-			const previousAssistant = messages
-				.filter((message) => message.role === "assistant" && message.id !== newest.id)
-				.slice(-1)[0];
+			const previousAssistant = sessionReads.findMessage(
+				ctx.sessionId,
+				(message) => message.role === "assistant" && message.id !== newest.id,
+				{ from: "end" },
+			);
 
 			scheduleTocRun(ctx, {
 				assistantMessageId: newest.id,

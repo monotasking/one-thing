@@ -44,15 +44,18 @@ describe('core tool orchestration helpers', () => {
       status: 'pending',
     }
 
-    expect(markToolCallAbortedBeforeExecution(toolCall, {
+    // COW(P0.2 area ①,F3):返回新对象,入参不动。
+    const aborted = markToolCallAbortedBeforeExecution(toolCall, {
       now: () => 1234,
-    })).toBe(toolCall)
-    expect(toolCall).toEqual({
+    })
+    expect(aborted).not.toBe(toolCall)
+    expect(aborted).toEqual({
       id: 'call-1',
       status: 'failed',
       error: 'Execution cancelled by user',
       endTime: 1234,
     })
+    expect(toolCall.status).toBe('pending')
 
     expect(markToolCallAbortedBeforeExecution(toolCall, {
       error: 'Stopped',
@@ -363,20 +366,18 @@ describe('core tool orchestration helpers', () => {
       logger: { info: vi.fn(), error: vi.fn() },
     })
 
-    expect(toolCall).toMatchObject({
+    // COW(P0.2 area ①,F3):结算态落在工作表的那一格上,手里的 `toolCall` 是旧引用;
+    // 复用的 step 也不再被就地改(标题/changes 只随 step:updated 事件发出去)。
+    expect(allToolCalls[0]).not.toBe(toolCall)
+    expect(allToolCalls[0]).toMatchObject({
       status: 'completed',
       result: 'done',
       requiresConfirmation: false,
       startTime: 102,
       endTime: 103,
     })
-    expect(existingStep.title).toBe('Tool: edit: a.txt')
-    expect(existingStep.toolCall?.changes).toMatchObject({
-      diff: '+hello',
-      filePath: 'a.txt',
-      additions: 1,
-      deletions: 0,
-    })
+    expect(toolCall.status).toBe('pending')
+    expect(existingStep.title).toBe('old')
     expect(events).toEqual([
       'step-update:step-1:Tool: edit: a.txt',
       'exec-start:call-1:step-1:edit',
@@ -656,10 +657,11 @@ describe('core tool orchestration helpers', () => {
         },
       },
     })
-    expect(toolCall.changes?.filePath).toBe('/tmp/a.txt')
+    // COW(F3):`changes` 只落在返回的新对象上。
+    expect(toolCall.changes).toBeUndefined()
   })
 
-  it('builds final tool execution presentation and mutates tool call status in core', () => {
+  it('builds final tool execution presentation as a new tool call (COW)', () => {
     const toJsonValue = (value: unknown) => value
     const toStructured = (value: unknown) => ({ structured: value })
     const formatFailure = (failure: { error?: string; status?: string }) => failure.error || failure.status || 'failed'
@@ -700,8 +702,18 @@ describe('core tool orchestration helpers', () => {
         rejected: undefined,
         rejectionReason: undefined,
       },
+      toolCall: {
+        id: 'call-1',
+        status: 'completed',
+        result: { title: 'Listed files', output: 'ok' },
+        error: undefined,
+        rejected: undefined,
+        rejectionReason: undefined,
+        requiresConfirmation: false,
+      },
     })
-    expect(completed.status).toBe('completed')
+    // COW(F3):入参那条不动。
+    expect(completed.status).toBe('executing')
 
     const pending = { id: 'call-2', status: 'executing' }
     expect(buildToolExecutionFinalPresentation({
@@ -723,8 +735,15 @@ describe('core tool orchestration helpers', () => {
           changes,
         },
       },
+      toolCall: {
+        id: 'call-2',
+        status: 'pending',
+        requiresConfirmation: true,
+        commandType: 'dangerous',
+        error: 'confirm',
+      },
     })
-    expect(pending.status).toBe('pending')
+    expect(pending.status).toBe('executing')
 
     const cancelled = { id: 'call-3', status: 'executing' }
     expect(buildToolExecutionFinalPresentation({
@@ -743,7 +762,8 @@ describe('core tool orchestration helpers', () => {
         status: 'cancelled',
         error: 'cancelled',
       },
+      toolCall: { id: 'call-3', status: 'cancelled' },
     })
-    expect(cancelled.status).toBe('cancelled')
+    expect(cancelled.status).toBe('executing')
   })
 })

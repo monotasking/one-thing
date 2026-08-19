@@ -74,6 +74,7 @@ import {
   type CollabHandEvaluator,
   type CollabRaisedHand,
   type CollabRoomAccount,
+  type CollabRoomEffects,
   type CollabRoomJudgmentRequest,
 } from '@onething/runtime/collab/actors'
 import {
@@ -98,6 +99,8 @@ import { findAgent, listAgents } from '../../agents/index.js'
 import { getEventBus } from '../../events/index.js'
 import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../store.js'
+import { sessionCommands } from '../../session/commands.js'
+import { sessionReads } from '../../session/reads.js'
 import { advanceSeenCursor, ensureCollabAgentSession } from '../agent-session.js'
 import {
   forgetCollabBoardRoom,
@@ -886,16 +889,46 @@ async function speak(input: CollabV3SpeakInput): Promise<CollabV3SpeakResult> {
    *
    * 纯层的 `applyCollabRoomSpeak` 只认协议里那几格(它不认识 store,查不了被引用
    * 的那条消息还在不在);而 `CollabRoomTranscriptMessage` 与 `ChatMessage` 是逐
-   * 字段同形的两个名字,所以补写发生在**同一个对象**上 —— 广播里那条 posted 带
-   * 的就是它的引用,两边不会分家。
+   * 字段同形的两个名字。
+   *
+   * P0.2:补写从「就地改那一个对象」换成 COW —— 消息对象一旦造出来就不许再改
+   * (`session:gate` 规则 B)。旧写法靠的是「转录里那条 = 广播 posted 里那条 =
+   * 同一个引用」,所以换对象时**两处一起换**,两边照旧不分家。
    */
-  const patch = spoken as ChatMessage
   const replyTo = buildCollabV3ReplyTo(input.roomSessionId, input.replyToMessageId)
-  if (replyTo) patch.replyTo = replyTo
-  if (input.chainReset) patch.collabChainReset = true
+  if (replyTo || input.chainReset) {
+    const patched = {
+      ...(spoken as ChatMessage),
+      ...(replyTo ? { replyTo } : {}),
+      ...(input.chainReset ? { collabChainReset: true } : {}),
+    } as unknown as typeof spoken
+    replaceCollabV3EffectMessage(effects, spoken, patched)
+  }
 
   await entry.actor.commit(effects)
   return { ok: true, messageId: spoken.id }
+}
+
+/**
+ * 把 effects 里的某一条消息整体换掉(COW 补写用)。
+ *
+ * 转录清单与 `room:posted` 广播里装的**本来就是同一个对象引用**
+ * (`applyCollabRoomPosted` 把 verb 直接推进 broadcast),所以换对象必须两处同步 ——
+ * 只换一处的下场是「房间里存下来的那条带引用,播出去的那条不带」。
+ */
+function replaceCollabV3EffectMessage(
+  effects: CollabRoomEffects,
+  previous: CollabRoomEffects['messages'][number],
+  next: CollabRoomEffects['messages'][number],
+): void {
+  const index = effects.messages.indexOf(previous)
+  if (index >= 0) effects.messages[index] = next
+  for (let cursor = 0; cursor < effects.broadcast.length; cursor += 1) {
+    const verb = effects.broadcast[cursor]
+    if (verb.type === 'room:posted' && verb.message === previous) {
+      effects.broadcast[cursor] = { ...verb, message: next }
+    }
+  }
 }
 
 /** 引用是一次**拷贝**(W7):被引的那条消息不在了就整格丢掉,绝不编造。 */
@@ -904,8 +937,7 @@ function buildCollabV3ReplyTo(
   replyToMessageId: string | undefined,
 ): ChatMessage['replyTo'] | undefined {
   if (!replyToMessageId) return undefined
-  const messages = (store.getSession(roomSessionId)?.messages ?? []) as ChatMessage[]
-  const target = messages.find(message => message.id === replyToMessageId)
+  const target = sessionReads.getMessage(roomSessionId, replyToMessageId)
   if (!target) return undefined
   const authorLabel = target.role === 'user'
     ? resolveUserIdentity().label
@@ -1407,7 +1439,7 @@ function roomHost(): CollabRoomActorHost {
     openJudgment: scheduleJudgment,
     appendMessage: (roomId, message) => {
       const chat = message as ChatMessage
-      store.addMessage(roomId, chat)
+      sessionCommands.appendMessage(roomId, { message: chat, stampCollab: true })
       // 与 v2 say / ingress 共用同一条广播:房间 UI 与 SSE 镜像不必认新事件。
       void getEventBus().emit(roomId, {
         type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
@@ -1443,7 +1475,7 @@ function agentHost(): CollabAgentActorHost {
     roomLabel: roomId => store.getSession(roomId)?.name,
     speakerLabel: agentId => findAgent(agentId)?.name,
     projectedThrough: roomId => {
-      const messages = store.getSession(roomId)?.messages ?? []
+      const messages = sessionReads.listMessages(roomId).messages
       for (let index = messages.length - 1; index >= 0; index -= 1) {
         const message = messages[index]
         if (!isCollabRoomFact(message as CollabMessageLike)) continue
@@ -1528,7 +1560,7 @@ function formatV3SteerBody(message: CollabMessageLike): string {
 function buildV3RoomContext(input: CollabAgentRoomContextInput): string {
   const room = store.getSession(input.roomId)
   if (room?.kind !== 'room') return ''
-  const messages = room.messages ?? []
+  const messages = sessionReads.listMessages(input.roomId).messages
   const window = planCollabHistoryWindow({
     messages,
     ...(input.seenMessageId ? { seenMessageId: input.seenMessageId } : {}),
@@ -1594,7 +1626,7 @@ function refereeHost(): CollabRefereeActorHost {
       state?.rooms.get(roomId)?.actor.account.hands ?? [],
     members: roomMembersOf,
     recent: roomId => {
-      const messages = (store.getSession(roomId)?.messages ?? []) as CollabMessageLike[]
+      const messages = sessionReads.listMessages(roomId).messages as readonly CollabMessageLike[]
       return messages.filter(isCollabRoomFact).slice(-REFEREE_RECENT_LIMIT)
     },
     roomLabel: roomId => store.getSession(roomId)?.name,
@@ -1621,8 +1653,7 @@ function refereeHost(): CollabRefereeActorHost {
       const account = state?.rooms.get(roomId)?.actor.account
       const sourceMessageId = account?.judgment?.sourceMessageId
       if (!sourceMessageId) return []
-      const messages = (store.getSession(roomId)?.messages ?? []) as ChatMessage[]
-      const source = messages.find(message => message.id === sourceMessageId)
+      const source = sessionReads.getMessage(roomId, sourceMessageId)
       return (source?.mentions ?? [])
         .map(mention => mention.agentId)
         .filter((agentId): agentId is string => typeof agentId === 'string')

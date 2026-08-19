@@ -18,6 +18,9 @@ function createEngine() {
   const runtime = {
     store: {
       getSession: () => ({ id: 's1', messages, workingDirectory: '/repo' }),
+      listMessages: () => messages,
+      getMessage: (_sessionId: string, messageId: string) =>
+        messages.find((message) => (message as { id?: string }).id === messageId),
       getSettings: () => ({}),
       addMessage: vi.fn((_sessionId: string, message: unknown) => { messages.push(message) }),
     },

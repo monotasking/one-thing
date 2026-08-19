@@ -3,6 +3,7 @@ import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from '../providers/index.js'
 import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '../plugins/lifecycle.js'
 import * as store from '../store.js'
+import { sessionReads } from '../session/reads.js'
 import { billCompactUsage } from '../usage/bill-side-line.js'
 import {
   buildContextCompactCompletedContent,
@@ -77,7 +78,12 @@ export async function compactSessionContext(options: {
     return { success: false, error: 'Session not found' }
   }
 
-  const plan = selectCompactPlan(session, options.keepRecentTurns)
+  const plan = selectCompactPlan(
+    session,
+    // C1:读走门面(P0.2);core 不再从 session 上取 messages。
+    sessionReads.listMessages(options.sessionId).messages,
+    options.keepRecentTurns,
+  )
   if (!plan) {
     return {
       success: true,
@@ -244,7 +250,12 @@ async function computeRetainedContextSizeAfterCompact(options: {
     console.warn('[ContextCompact] Failed to resolve model context budget after compact:', error)
   }
 
-  const historyMessages = buildHistoryMessages(session.messages, session)
+  // C1:读走门面,且**在 addMessage / 压缩的那串 await 之后现取** —— 这个函数
+  // 是压缩收尾时才调用的,捕获调用前那一份数组会漏掉压缩标记那条。
+  const historyMessages = buildHistoryMessages(
+    [...sessionReads.listMessages(options.sessionId).messages],
+    session,
+  )
   const usage = buildContextUsageSnapshot({
     session,
     historyMessages,

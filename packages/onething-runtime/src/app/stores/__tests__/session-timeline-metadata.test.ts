@@ -50,7 +50,8 @@ describe('session timeline metadata repair', () => {
     testSession.contextSize = 0
     testSession.lastInputTokens = 0
 
-    expect(repairSessionTimelineMetadata(testSession)).toBe(false)
+    // COW(P0.2 area ①/F4):没改就返回 undefined,入参一个字段都没动。
+    expect(repairSessionTimelineMetadata(testSession, testSession.messages)).toBeUndefined()
     expect(testSession.summary).toBe('Previous summary')
     expect(testSession.summaryUpToMessageId).toBe('assistant-2')
     expect(testSession.contextSize).toBe(0)
@@ -62,12 +63,16 @@ describe('session timeline metadata repair', () => {
     testSession.contextSize = 999
     testSession.lastInputTokens = 999
 
-    expect(repairSessionTimelineMetadata(testSession)).toBe(true)
-    expect(testSession.summary).toBeUndefined()
-    expect(testSession.summaryUpToMessageId).toBeUndefined()
-    expect(testSession.summaryCreatedAt).toBeUndefined()
-    expect(testSession.contextSize).toBe(120)
-    expect(testSession.lastInputTokens).toBe(120)
+    const repaired = repairSessionTimelineMetadata(testSession, testSession.messages)
+    expect(repaired).toBeDefined()
+    expect(repaired!.summary).toBeUndefined()
+    expect(repaired!.summaryUpToMessageId).toBeUndefined()
+    expect(repaired!.summaryCreatedAt).toBeUndefined()
+    expect(repaired!.contextSize).toBe(120)
+    expect(repaired!.lastInputTokens).toBe(120)
+    // 入参不动:COW 的收益就在这一行。
+    expect(testSession.summary).toBe('Previous summary')
+    expect(testSession.contextSize).toBe(999)
   })
 
   it('prefers the latest retained step usage over accumulated assistant usage', () => {
@@ -93,7 +98,8 @@ describe('session timeline metadata repair', () => {
       },
     ]
 
-    expect(deriveRetainedContextSize(session([user(1), assistantMessage]))).toBe(140)
+    const derived = session([user(1), assistantMessage])
+    expect(deriveRetainedContextSize(derived.messages, derived)).toBe(140)
   })
 
   it('does not derive context from accumulated tool-loop assistant usage without step usage', () => {
@@ -112,10 +118,11 @@ describe('session timeline metadata repair', () => {
     testSession.contextSize = 4606545
     testSession.lastInputTokens = 4606545
 
-    expect(deriveRetainedContextSize(testSession)).toBe(0)
-    expect(repairSessionTimelineMetadata(testSession)).toBe(true)
-    expect(testSession.contextSize).toBe(0)
-    expect(testSession.lastInputTokens).toBe(0)
+    expect(deriveRetainedContextSize(testSession.messages, testSession)).toBe(0)
+    const repaired = repairSessionTimelineMetadata(testSession, testSession.messages)
+    expect(repaired!.contextSize).toBe(0)
+    expect(repaired!.lastInputTokens).toBe(0)
+    expect(testSession.contextSize).toBe(4606545)
   })
 
   it('ignores provider usage before a valid summary anchor when recomputing context', () => {
@@ -123,10 +130,10 @@ describe('session timeline metadata repair', () => {
     testSession.contextSize = 999
     testSession.lastInputTokens = 999
 
-    expect(repairSessionTimelineMetadata(testSession, { recomputeContextSize: true })).toBe(true)
-    expect(testSession.summaryUpToMessageId).toBe('assistant-2')
-    expect(testSession.contextSize).toBe(0)
-    expect(testSession.lastInputTokens).toBe(0)
+    const repaired = repairSessionTimelineMetadata(testSession, testSession.messages, { recomputeContextSize: true })
+    expect(repaired!.summaryUpToMessageId).toBe('assistant-2')
+    expect(repaired!.contextSize).toBe(0)
+    expect(repaired!.lastInputTokens).toBe(0)
   })
 
   it('derives context from retained assistant usage after a valid summary anchor', () => {
@@ -138,7 +145,7 @@ describe('session timeline metadata repair', () => {
       user(5),
     ], 'assistant-2')
 
-    expect(deriveRetainedContextSize(testSession)).toBe(180)
+    expect(deriveRetainedContextSize(testSession.messages, testSession)).toBe(180)
   })
 
   it('sets context to zero after truncation when no retained provider usage exists', () => {
@@ -146,9 +153,9 @@ describe('session timeline metadata repair', () => {
     testSession.contextSize = 999
     testSession.lastInputTokens = 999
 
-    expect(repairSessionTimelineMetadata(testSession, { recomputeContextSize: true })).toBe(true)
-    expect(testSession.contextSize).toBe(0)
-    expect(testSession.lastInputTokens).toBe(0)
+    const repaired = repairSessionTimelineMetadata(testSession, testSession.messages, { recomputeContextSize: true })
+    expect(repaired!.contextSize).toBe(0)
+    expect(repaired!.lastInputTokens).toBe(0)
   })
 
   it('clears stale requiresConfirmation on startup so no dead approval card renders', () => {
@@ -179,12 +186,18 @@ describe('session timeline metadata repair', () => {
     }
     const testSession = session([user(1), paused])
 
-    expect(sanitizeSessionOnStartup(testSession)).toBe(true)
-    const toolCall = paused.toolCalls![0]
+    // COW:修好的是新会话里的新消息;手里那条 `paused` 原样不动(F4 的正解 ——
+    // 老写法断言的就是"改的是手里这条",那份依赖本身就是这次要修的 bug)。
+    const repaired = sanitizeSessionOnStartup(testSession)
+    expect(repaired).toBeDefined()
+    const repairedMessage = repaired!.messages.find(message => message.id === 'assistant-paused')!
+    const toolCall = repairedMessage.toolCalls![0]
     expect(toolCall.status).toBe('cancelled')
     expect(toolCall.requiresConfirmation).toBe(false)
     expect(toolCall.error).toContain('permission request was not answered')
-    expect(paused.steps![0].status).toBe('failed')
+    expect(repairedMessage.steps![0].status).toBe('failed')
+    expect(paused.toolCalls![0].status).toBe('pending')
+    expect(paused.toolCalls![0].requiresConfirmation).toBe(true)
   })
 
   it('marks stale context compact markers as failed on startup', () => {
@@ -201,13 +214,17 @@ describe('session timeline metadata repair', () => {
     }
     const testSession = session([user(1), compactingMessage])
 
-    expect(sanitizeSessionOnStartup(testSession)).toBe(true)
-    expect(JSON.parse(compactingMessage.content)).toEqual({
+    const repaired = sanitizeSessionOnStartup(testSession)
+    expect(repaired).toBeDefined()
+    const repairedMessage = repaired!.messages.find(message => message.id === 'compact-1')!
+    expect(JSON.parse(String(repairedMessage.content))).toEqual({
       type: 'context-compact',
       status: 'failed',
       summary: '',
       error: 'Context compact was interrupted before completion.',
       compactedMessageCount: 40,
     })
+    // 入参那条仍是 compacting —— 没有就地改。
+    expect(JSON.parse(compactingMessage.content)).toMatchObject({ status: 'compacting' })
   })
 })

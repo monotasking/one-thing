@@ -1,3 +1,4 @@
+import { coreToolCallSnapshot, findCoreToolCall, patchCoreToolCall, replaceCoreToolCall } from './tool-call-cow.js'
 import type { JsonObject, JsonValue } from '../json.js'
 import { ToolExecutionScheduler } from '../agent-loop/tool-execution-scheduler.js'
 import { coreDiffHunksFromJson, type CoreDiffHunk } from '../tools/diff-hunks.js'
@@ -42,14 +43,17 @@ export interface CoreToolExecutionJob<TToolCall extends CoreMutableToolCallLike 
   barrier: boolean
 }
 
+/** COW(F3):返回新对象,不动入参。 */
 export function markToolCallAbortedBeforeExecution<TToolCall extends CoreMutableToolCallLike>(
   toolCall: TToolCall,
   options: CoreToolCallAbortUpdateOptions = {},
 ): TToolCall {
-  toolCall.status = 'failed'
-  toolCall.error = options.error ?? 'Execution cancelled by user'
-  toolCall.endTime = (options.now ?? Date.now)()
-  return toolCall
+  return {
+    ...toolCall,
+    status: 'failed',
+    error: options.error ?? 'Execution cancelled by user',
+    endTime: (options.now ?? Date.now)(),
+  }
 }
 
 export interface CoreToolCallDataLike {
@@ -218,6 +222,8 @@ export interface CoreToolExecutionEndUpdate<TStructuredResult> {
 export interface CoreToolExecutionFinalPresentation<TToolCall, TStructuredResult> {
   executionEnd?: CoreToolExecutionEndUpdate<TStructuredResult>
   stepUpdate: CoreToolExecutionFinalStepUpdate<TToolCall, TStructuredResult>
+  /** 结算后的**新** toolCall(COW,F3):调用方要拿它换掉工作数组里的那一格 */
+  toolCall: TToolCall
 }
 
 export interface CoreExecutableToolCallLike<TJson extends JsonValue | undefined = JsonValue, TChanges = unknown>
@@ -260,7 +266,10 @@ export interface CoreToolExecutionStore<
   TStep extends CoreExecutableStepLike<TToolCall>,
   TSession extends CoreExecutableSessionLike<TStep> = CoreExecutableSessionLike<TStep>,
 > {
+  /** 只用来读工作目录等会话级字段;消息读走 `getMessage`(P0.2 C1) */
   getSession(sessionId: string): TSession | null | undefined
+  /** 读门面(P0.2 C1):缺席时回落到 `getSession()?.messages.find` 的旧读法 */
+  getMessage?(sessionId: string, messageId: string): CoreExecutableMessageLike<TStep> | undefined
   updateMessageToolCalls(sessionId: string, assistantMessageId: string, toolCalls: TToolCall[]): void
 }
 
@@ -425,12 +434,16 @@ export class CoreToolOrchestrator<
     const doomLoop = this.checkDoomLoop(toolCallData)
     if (doomLoop.detected) {
       this.publishToolCall(toolCall, false)
-      toolCall.status = 'failed'
-      toolCall.error = doomLoop.message
-      toolCall.endTime = this.now()
+      // COW(F3):换出新对象换进工作表,不改已经交给 store 的那一份。
+      const failed = patchCoreToolCall(this.toolCalls, toolCall, {
+        status: 'failed',
+        error: doomLoop.message,
+        endTime: this.now(),
+      } as Partial<TToolCall>)
+      replaceCoreToolCall(this.turnToolCalls, failed)
       this.options.updateToolCalls()
-      this.options.emitToolCall(toolCall)
-      this.options.emitToolResult(toolCall)
+      this.options.emitToolCall(failed)
+      this.options.emitToolResult(failed)
       return
     }
 
@@ -462,11 +475,14 @@ export class CoreToolOrchestrator<
           }
 
           await this.options.executeTool(toolCall, toolCallData, existingStepId)
-          if (shouldStopAfterTool(toolCall)) {
-            this.stoppedByFailedToolCallId = toolCall.id
+          // COW(F3)之后,跨 await 持有的引用一律过期:结算态要按 id 从工作表
+          // 重新取,否则「失败即停链」会看到 executing 而永远不停。
+          const settled = findCoreToolCall(this.toolCalls, toolCall.id) ?? toolCall
+          if (shouldStopAfterTool(settled)) {
+            this.stoppedByFailedToolCallId = settled.id
             this.discardQueuedTailAfter(
-              toolCall.id,
-              toolCall.rejected ? 'rejected' : toolCall.status ?? 'failed',
+              settled.id,
+              settled.rejected ? 'rejected' : settled.status ?? 'failed',
             )
           }
         } catch (err) {
@@ -498,8 +514,9 @@ export class CoreToolOrchestrator<
       this.turnToolCalls.push(toolCall)
     }
     if (emitQueued) {
-      toolCall.status = 'queued'
-      this.options.emitToolCall(toolCall)
+      const queued = patchCoreToolCall(this.toolCalls, toolCall, { status: 'queued' } as Partial<TToolCall>)
+      replaceCoreToolCall(this.turnToolCalls, queued)
+      this.options.emitToolCall(queued)
     }
     this.options.updateToolCalls()
   }
@@ -777,8 +794,8 @@ export function buildToolMetadataStepUpdate<TToolCall extends CoreToolCallWithCh
 
     const changes = changesFromToolMetadata(update.metadata)
     if (changes && toolCall) {
-      toolCall.changes = changes
-      metadataUpdates.toolCall = { ...toolCall }
+      // COW(F3):新对象,不动入参。调用方拿 `metadataUpdates.toolCall` 用。
+      metadataUpdates.toolCall = { ...toolCall, changes }
     }
   }
   return metadataUpdates
@@ -796,14 +813,18 @@ export function buildToolExecutionFinalPresentation<
 >(
   options: BuildToolExecutionFinalPresentationOptions<TToolCall, TStructuredResult, TJson, TChanges>,
 ): CoreToolExecutionFinalPresentation<TToolCall & { changes?: TChanges }, TStructuredResult> {
-  const { toolCall, result } = options
+  const { result } = options
 
   if (result.requiresConfirmation) {
-    toolCall.status = 'pending'
-    toolCall.requiresConfirmation = true
-    toolCall.commandType = result.commandType
-    toolCall.error = result.error
+    const toolCall = {
+      ...options.toolCall,
+      status: 'pending',
+      requiresConfirmation: true,
+      commandType: result.commandType,
+      error: result.error,
+    }
     return {
+      toolCall,
       stepUpdate: {
         status: 'awaiting-confirmation',
         toolCall: { ...toolCall, changes: options.changes },
@@ -823,12 +844,15 @@ export function buildToolExecutionFinalPresentation<
       status: stepStatus,
     })
 
-  toolCall.status = stepStatus
-  toolCall.result = options.toJsonValue(result.data)
-  toolCall.error = finalError
-  toolCall.rejected = result.rejected || undefined
-  toolCall.rejectionReason = result.rejectionReason
-  toolCall.requiresConfirmation = false
+  const toolCall = {
+    ...options.toolCall,
+    status: stepStatus,
+    result: options.toJsonValue(result.data),
+    error: finalError,
+    rejected: result.rejected || undefined,
+    rejectionReason: result.rejectionReason,
+    requiresConfirmation: false,
+  }
 
   const rawTitle = toolResultObject<{ title?: unknown }>(result.data)?.title
   const finalTitle = (typeof rawTitle === 'string' ? rawTitle : null) || options.currentTitle
@@ -837,6 +861,7 @@ export function buildToolExecutionFinalPresentation<
     : undefined
 
   return {
+    toolCall,
     executionEnd: {
       result: structuredResult,
       isError: !result.success,
@@ -881,7 +906,6 @@ export async function executeCoreToolAndUpdate<
 ): Promise<void> {
   const {
     ctx,
-    toolCall,
     toolCallData,
     allToolCalls,
     turnIndex,
@@ -891,11 +915,14 @@ export async function executeCoreToolAndUpdate<
   } = options
   const now = options.now ?? Date.now
   const logger = options.logger ?? console
+  // COW(F3):`toolCall` 是「当前这一版」的游标 —— 每次改都换新对象并写回
+  // `allToolCalls` 的那一格,交给 store 的永远是快照。老对象不动一个字段。
+  let toolCall = options.toolCall
 
   if (ctx.abortSignal?.aborted) {
     logger.info?.(`[Backend] Tool execution aborted before start: ${toolCallData.toolName}`)
-    markToolCallAbortedBeforeExecution(toolCall, { now })
-    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+    toolCall = replaceCoreToolCall(allToolCalls, markToolCallAbortedBeforeExecution(toolCall, { now }))
+    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(allToolCalls))
     emitter.sendToolResult(toolCall)
     return
   }
@@ -907,7 +934,10 @@ export async function executeCoreToolAndUpdate<
   }
 
   const session = store.getSession(ctx.sessionId)
-  const message = session?.messages?.find(item => item.id === ctx.assistantMessageId)
+  // C1(P0.2):消息读走读门面;宿主没接就回落旧读法(测试用的 mock store)。
+  const message = store.getMessage
+    ? store.getMessage(ctx.sessionId, ctx.assistantMessageId)
+    : session?.messages?.find(item => item.id === ctx.assistantMessageId)
   let existingStep: TStep | undefined
 
   if (existingStepId) {
@@ -917,12 +947,16 @@ export async function executeCoreToolAndUpdate<
     existingStep = message?.steps?.find(step => step.toolCallId === toolCall.id)
   }
 
+  // COW(F3):`step` 也是本地游标 —— 复用已存在的那条时**新建一份**再改,
+  // 会话里的那条 step 由 `sendStepUpdated` 走命令面落。
   let step: TStep
   if (existingStep) {
-    step = existingStep
-    step.title = generateStepTitle(toolCall.toolName, toolCallData.args, skillName)
-    step.toolCall = { ...toolCall }
-    step.turnIndex = turnIndex
+    step = {
+      ...existingStep,
+      title: generateStepTitle(toolCall.toolName, toolCallData.args, skillName),
+      toolCall: { ...toolCall },
+      turnIndex,
+    }
 
     emitter.sendStepUpdated(step.id, {
       title: step.title,
@@ -934,12 +968,14 @@ export async function executeCoreToolAndUpdate<
     emitter.sendStepAdded(step)
   }
 
-  toolCall.status = 'executing'
-  toolCall.startTime = now()
+  toolCall = patchCoreToolCall(allToolCalls, toolCall, {
+    status: 'executing',
+    startTime: now(),
+  } as Partial<TToolCall>)
 
   emitter.sendToolExecutionStart(toolCall.id, step.id, toolCallData.toolName, toolCallData.args, toolCall.startTime)
 
-  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(allToolCalls))
   emitter.sendToolCall(toolCall)
 
   const workingDirectory = session?.workingDirectory
@@ -952,10 +988,12 @@ export async function executeCoreToolAndUpdate<
     if (sideEffectStarted) return
     sideEffectStarted = true
 
-    toolCall.status = 'executing'
-    toolCall.requiresConfirmation = false
-    toolCall.startTime = now()
-    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+    toolCall = patchCoreToolCall(allToolCalls, toolCall, {
+      status: 'executing',
+      requiresConfirmation: false,
+      startTime: now(),
+    } as Partial<TToolCall>)
+    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(allToolCalls))
     emitter.sendToolCall(toolCall)
     emitter.sendStepUpdated(step.id, {
       status: 'running',
@@ -977,7 +1015,8 @@ export async function executeCoreToolAndUpdate<
         const metadataToolCall = step.toolCall ?? { ...toolCall }
         const metadataUpdates = buildToolMetadataStepUpdate(metadataToolCall as CoreToolCallWithChanges, update)
         if (metadataUpdates.toolCall) {
-          step.toolCall = metadataUpdates.toolCall as TToolCall
+          // step 是本地游标:换成带 changes 的新版本(不改会话里的那条)。
+          step = { ...step, toolCall: metadataUpdates.toolCall as TToolCall }
         }
         if (Object.keys(metadataUpdates).length > 0) {
           emitter.sendStepUpdated(step.id, metadataUpdates as Partial<TStep>)
@@ -1001,10 +1040,13 @@ export async function executeCoreToolAndUpdate<
     },
   )
 
-  toolCall.endTime = now()
-  if (toolCall.startTime != null) {
-    toolCall.durationMs = Math.max(0, toolCall.endTime - toolCall.startTime)
-  }
+  const endTime = now()
+  toolCall = patchCoreToolCall(allToolCalls, toolCall, {
+    endTime,
+    ...(toolCall.startTime != null
+      ? { durationMs: Math.max(0, endTime - toolCall.startTime) }
+      : {}),
+  } as Partial<TToolCall>)
 
   const presentation = buildToolExecutionFinalPresentation({
     toolCall,
@@ -1028,7 +1070,10 @@ export async function executeCoreToolAndUpdate<
   }
   emitter.sendStepUpdated(step.id, presentation.stepUpdate as Partial<TStep>)
 
-  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+  // 结算后的那一版换进工作数组,再整表快照写回 —— 调用方(orchestrator)之后
+  // 要按 id 重新取才拿得到 status/rejected 的最新值。
+  toolCall = replaceCoreToolCall(allToolCalls, presentation.toolCall as TToolCall)
+  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(allToolCalls))
   emitter.sendToolResult(toolCall)
   logger.info?.('[WaitingGap] tool settled', { tool: toolCall.toolName, status: toolCall.status, t: now() })
 }

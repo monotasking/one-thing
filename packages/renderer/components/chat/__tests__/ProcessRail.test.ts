@@ -38,6 +38,63 @@ describe('ProcessRail expansion', () => {
     expect(isOpen(w)).toBe(false)
   })
 
+  // 2026-08-19 录屏:一个 7 轮的回合里 `streaming`(= isWorkLive)来回翻 —— 工具
+  // 在跑真、答案流出假、又调一轮工具真……每翻一次 rail 就一开一合,贴底的消息列表
+  // 整屏上下弹。auto 只许掀开一次。
+  it('does not auto-reopen after it has auto-collapsed (later tool rounds)', async () => {
+    const w = mountRail(true)
+    await nextTick()
+    expect(isOpen(w)).toBe(true)
+
+    // 第一轮工具结束、答案开始流出 → 自动收起
+    await w.setProps({ streaming: false })
+    await nextTick()
+    expect(isOpen(w)).toBe(false)
+
+    // 模型又调一轮工具 / 又开始思考 → 头翻回 Working,但框子不许自己掀开
+    await w.setProps({ streaming: true })
+    await nextTick()
+    expect(isOpen(w)).toBe(false)
+
+    // 再settled一次也还是收着 —— 不会出现第二次"弹开又弹回"
+    await w.setProps({ streaming: false })
+    await nextTick()
+    expect(isOpen(w)).toBe(false)
+  })
+
+  it('still reports live progress in the header while latched shut', async () => {
+    const w = mountRail(true)
+    await nextTick()
+    await w.setProps({ streaming: false })
+    await nextTick()
+
+    await w.setProps({ streaming: true })
+    await nextTick()
+    expect(isOpen(w)).toBe(false)
+    expect(w.find('.process-rail-header').text()).toContain('Working')
+  })
+
+  it('lets the user open a latched rail, and the latch never takes it back', async () => {
+    const w = mountRail(true)
+    await nextTick()
+    await w.setProps({ streaming: false })
+    await nextTick()
+    expect(isOpen(w)).toBe(false)
+
+    // 用户自己点开:意图一锤定音
+    await w.find('.process-rail-header').trigger('click')
+    await nextTick()
+    expect(isOpen(w)).toBe(true)
+
+    // 后面几轮 streaming 来回翻都不许把它收回去
+    await w.setProps({ streaming: true })
+    await nextTick()
+    expect(isOpen(w)).toBe(true)
+    await w.setProps({ streaming: false })
+    await nextTick()
+    expect(isOpen(w)).toBe(true)
+  })
+
   it('keeps a manual toggle across the stream boundary', async () => {
     const w = mountRail(true)
     await nextTick()
@@ -410,28 +467,34 @@ describe('ProcessRail auto-collapse visibility gate', () => {
     rail.cleanup()
   })
 
-  it('cancels the pending collapse when a new stream re-opens the rail', async () => {
+  // auto 掀开只有一次(见上面的 latch),所以新一轮 streaming 不再"重新展开"这条
+  // rail —— 挂起也就没有作废的理由:它还是眼前那一次自动收起的唯一挂起,滚出视口
+  // 时照常落锤,期间不会因为工具又跑起来而多弹一次框。
+  it('keeps the single pending collapse across later tool rounds', async () => {
     const rail = setupVisibleRail()
     await nextTick()
     await rail.wrapper.setProps({ streaming: false })
     await nextTick()
     expect(isOpen(rail.wrapper)).toBe(true)
+    expect(MockIntersectionObserver.instances).toHaveLength(1)
 
+    // 模型又调一轮工具:框子不弹开,挂起也不重开一次。
     await rail.wrapper.setProps({ streaming: true })
     await nextTick()
     expect(isOpen(rail.wrapper)).toBe(true)
-    expect(MockIntersectionObserver.allDisconnected()).toBe(true)
+    expect(MockIntersectionObserver.instances).toHaveLength(1)
+    expect(MockIntersectionObserver.allDisconnected()).toBe(false)
 
-    // 陈旧的 observer 回调不得把新一轮的 rail 折了。
+    // 滚出视口 —— 那一次自动收起终于落锤。
     MockIntersectionObserver.last.emit(false)
     await nextTick()
-    expect(isOpen(rail.wrapper)).toBe(true)
+    expect(isOpen(rail.wrapper)).toBe(false)
 
-    // 新一轮结束时重新问门 —— 又是一次全新的挂起。
+    // 再来一轮 streaming 也不会重新掀开(不再有第二次挂起)。
     await rail.wrapper.setProps({ streaming: false })
     await nextTick()
-    expect(isOpen(rail.wrapper)).toBe(true)
-    expect(MockIntersectionObserver.instances).toHaveLength(2)
+    expect(isOpen(rail.wrapper)).toBe(false)
+    expect(MockIntersectionObserver.instances).toHaveLength(1)
     rail.cleanup()
   })
 

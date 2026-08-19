@@ -22,21 +22,18 @@ export {
   isTokenUsage,
   repairSessionTimelineMetadata,
   sanitizeInterruptedStepRecursive,
+} from './timeline.js'
+export {
   sanitizeLoadedSession,
   sanitizeSessionOnStartup,
-} from './timeline.js'
+} from './commands.js'
 export {
   applySessionContextSize,
   applyInheritedSessionWorkingDirectory,
-  applySessionAppendMessageWithAdapters,
-  applySessionDeleteMessageWithAdapters,
-  applySessionInsertMessageAfterWithAdapters,
   applySessionAgent,
   applySessionArchiveState,
   applySessionMessageAppendToMeta,
   applySessionIndexMetaMutationWithAdapters,
-  applySessionMessageMutationWithAdapters,
-  applySessionMessageStepsUsageByTurnWithAdapters,
   applySessionMetadataMutationWithAdapters,
   applySessionModel,
   applySessionName,
@@ -46,17 +43,12 @@ export {
   applySessionSideEffectMutationWithAdapters,
   applySessionSummary,
   applySessionTokenUsage,
-  applySessionTruncateMessagesWithAdapters,
   applySessionUpdatedAtToMeta,
-  applySessionUpdateMessageAndTruncateWithAdapters,
   applySessionVariables,
   applySessionWorkingDirectory,
   applySessionWorkingDirectoryRoots,
   applyDefaultAgentIdToSessionMetas,
   CORE_DEFAULT_AGENT_ID,
-  addOrUpdateSessionMessageStep,
-  appendSessionMessage,
-  appendSessionMessageContentPart,
   collectChildSessionIds,
   collectSessionCascadeDeleteIds,
   createBranchSessionWithAdapters,
@@ -64,19 +56,14 @@ export {
   createCoreSessionRecord,
   createSessionWithAdapters,
   deleteSessionWithAdapters,
-  deleteSessionMessage,
   extractSessionMeta,
   findSessionMeta,
-  findSessionMessage,
-  findSessionStepById,
   getSessionTokenUsageSnapshot,
   hasSessionUsageDetails,
-  insertSessionMessageAfter,
   loadSessionWithAdapters,
   mergeSessionDetails,
   normalizeSessionVariables,
   normalizeWorkingDirectoryRoots,
-  patchSessionMessage,
   planSessionCascadeDelete,
   prependSessionMeta,
   resolveSessionDetailsSnapshot,
@@ -84,11 +71,7 @@ export {
   subtractSessionMessageUsage,
   sumSessionMessageUsage,
   syncSessionSideEffectWithReadyAdapters,
-  truncateSessionMessagesFrom,
   updateSessionIndexMeta,
-  updateSessionMessageAndTruncateAfter,
-  updateSessionMessageStep,
-  updateSessionMessageStepsUsageByTurn,
 } from './store-helpers.js'
 export type {
   CoreTimelineMessage,
@@ -100,11 +83,6 @@ export type {
 } from './timeline.js'
 export type {
   CoreSession,
-  ApplySessionDeleteMessageWithAdaptersOptions,
-  ApplySessionAppendMessageWithAdaptersOptions,
-  ApplySessionTruncateMessagesWithAdaptersOptions,
-  ApplySessionUpdateMessageAndTruncateWithAdaptersOptions,
-  ApplySessionInsertMessageAfterWithAdaptersOptions,
   ApplySessionSideEffectMutationWithAdaptersOptions,
   ApplySessionIndexMetaMutationWithAdaptersOptions,
   CoreContextVariableInput,
@@ -115,9 +93,7 @@ export type {
   CoreSessionDetailsWithMessages,
   CoreSessionDeletePlan,
   CoreSessionLastTurnUsage,
-  CoreSessionMessageMutationResult,
   CoreSessionMetadataMutationResult,
-  CoreSessionDeleteMessageResult,
   CoreSessionEditableMessage,
   CoreSessionIndexMessageSource,
   CoreSessionIndexTimestampSource,
@@ -131,9 +107,6 @@ export type {
   CoreSessionTokenUsage,
   CoreSessionWithMessageList,
   CoreSessionWithMessages,
-  CoreSessionTruncateResult,
-  CoreSessionUpdateAndTruncateOptions,
-  CoreSessionUpdateAndTruncateResult,
   CoreSessionUsageFields,
   CoreSessionUsageSnapshot,
   CoreSessionCacheAdapter,
@@ -154,8 +127,6 @@ export type {
   SyncSessionSideEffectWithReadyAdaptersResult,
   SessionMetaExtractOptions,
   ApplySessionMetadataMutationWithAdaptersOptions,
-  ApplySessionMessageMutationWithAdaptersOptions,
-  ApplySessionMessageStepsUsageByTurnWithAdaptersOptions,
 } from './store-helpers.js'
 export {
   buildSessionMessagesPageResponse,
@@ -207,3 +178,34 @@ export type {
   TurnUsage,
   UserMessageMarker,
 } from './storage/index.js'
+
+export {
+  adoptSessionCommandResult,
+  applySessionCommand,
+  CORE_STRUCTURAL_WRITE_PLAN,
+} from './commands.js'
+export type {
+  CoreSessionCommandMessage,
+  CoreSessionCommandSession,
+  CoreSessionCommandStep,
+  CoreSessionWritePlan,
+  SessionCommand,
+  SessionCommandMeta,
+  SessionCommandRepairPatches,
+  SessionCommandResult,
+  SessionCommandWriteHint,
+} from './commands.js'
+export { deepFreeze } from '../freeze.js'
+export {
+  applyTimelineRepair,
+  computeInterruptedStepRepair,
+  computeInterruptedToolCallRepair,
+  computeSessionRepairOnLoad,
+  computeSessionTimelineMetadataRepair,
+  computeStaleContextCompactContent,
+} from './timeline.js'
+export type {
+  CoreSessionRepairMessagePatch,
+  CoreSessionRepairResult,
+  CoreTimelineMetadataRepair,
+} from './timeline.js'

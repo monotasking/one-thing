@@ -46,6 +46,8 @@
     "transport:gate": "node scripts/transport-gate.mjs",
     "ui:check": "node scripts/ui-style-check.mjs",
     "ui:gate": "node scripts/ui-gate.mjs",
+    "session:check": "node scripts/session-check.mjs",
+    "session:gate": "node scripts/session-gate.mjs",
     "lint:ci": "eslint . --max-warnings 200",
     "test": "npm run rebuild:sqlite:node && vitest run",
     "test:streaming-scroll": "node scripts/streaming-scroll-harness.mjs",

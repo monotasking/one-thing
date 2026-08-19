@@ -1,4 +1,9 @@
 import {
+	coreToolCallSnapshot,
+	patchCoreToolCall,
+	replaceCoreToolCall,
+} from "./tool-call-cow.js";
+import {
 	toJsonObject,
 	toJsonValue,
 	type JsonObject,
@@ -945,6 +950,14 @@ export interface CompleteAgentLoopStreamWithAdaptersOptions<
 	lastTurnUsage?: CoreAgentLoopLastTurnUsage;
 	finalize: () => CoreMaybePromise<void>;
 	getSession: (sessionId: string) => TSession | undefined;
+	/** 读门面(P0.2 C1):缺席时回落到 `getSession` 的旧读法 */
+	getMessage?: (sessionId: string, messageId: string) => TMessage | undefined;
+	/** 收尾修复的落盘口(P0.2 F3),见 `EmitAgentLoopFinalMessageUpdateWithAdaptersOptions` */
+	patchMessage?: (
+		sessionId: string,
+		messageId: string,
+		patch: CoreAgentLoopLingeringRepair,
+	) => void;
 	emitMessageUpdated: (event: {
 		type: "message:updated";
 		messageId: string;
@@ -964,6 +977,17 @@ export interface EmitAgentLoopFinalMessageUpdateWithAdaptersOptions<
 	sessionId: string;
 	assistantMessageId: string;
 	getSession: (sessionId: string) => TSession | undefined;
+	/** 读门面(P0.2 C1):缺席时回落到 `getSession` 的旧读法 */
+	getMessage?: (sessionId: string, messageId: string) => TMessage | undefined;
+	/**
+	 * 收尾修复的落盘口(P0.2 F3):`finalizeLingeringAgentLoopToolWork` 不再就地
+	 * 改会话里那条消息,算出来的 patch 必须显式写回。缺席 = 只发事件不落盘。
+	 */
+	patchMessage?: (
+		sessionId: string,
+		messageId: string,
+		patch: CoreAgentLoopLingeringRepair,
+	) => void;
 	emitMessageUpdated: (event: {
 		type: "message:updated";
 		messageId: string;
@@ -1104,42 +1128,76 @@ interface LingeringToolCallLike {
  * confirmation are preserved — that state legitimately survives stream end
  * (resume-after-confirm opens a new stream).
  */
+/**
+ * COW(F3/P0.2 area ①):不再就地改会话里的那条消息 —— 算出 `toolCalls` / `steps`
+ * 的新数组当作一份 patch 返回,`undefined` = 没有需要收尾的活。落盘由调用方
+ * 走命令面(`patchMessage`),而不是靠「对象是同一个」偷偷生效。
+ */
+export interface CoreAgentLoopLingeringRepair {
+	toolCalls?: unknown[];
+	steps?: unknown[];
+}
+
 export function finalizeLingeringAgentLoopToolWork(
 	message: CoreAgentLoopFinalMessageLike,
 	now = Date.now(),
 	errorMessage?: string,
-): void {
+): CoreAgentLoopLingeringRepair | undefined {
 	const error = errorMessage ?? LINGERING_TOOL_ERROR;
-	const cancelToolCall = (toolCall: LingeringToolCallLike): void => {
-		if (toolCall.requiresConfirmation) return;
-		if (!LINGERING_TOOL_CALL_STATUSES.has(toolCall.status ?? "")) return;
-		toolCall.status = "cancelled";
-		toolCall.endTime = toolCall.endTime ?? now;
-		toolCall.error = toolCall.error || error;
+	/** 返回修好的**新** toolCall;undefined = 这条不用动。 */
+	const cancelToolCall = (
+		toolCall: LingeringToolCallLike,
+	): LingeringToolCallLike | undefined => {
+		if (toolCall.requiresConfirmation) return undefined;
+		if (!LINGERING_TOOL_CALL_STATUSES.has(toolCall.status ?? "")) return undefined;
+		return {
+			...toolCall,
+			status: "cancelled",
+			endTime: toolCall.endTime ?? now,
+			error: toolCall.error || error,
+		};
 	};
 
+	const repair: CoreAgentLoopLingeringRepair = {};
+
 	if (Array.isArray(message.toolCalls)) {
-		for (const toolCall of message.toolCalls) {
-			if (toolCall && typeof toolCall === "object")
-				cancelToolCall(toolCall as LingeringToolCallLike);
-		}
+		let changed = false;
+		const nextToolCalls = message.toolCalls.map((toolCall) => {
+			if (!toolCall || typeof toolCall !== "object") return toolCall;
+			const cancelled = cancelToolCall(toolCall as LingeringToolCallLike);
+			if (!cancelled) return toolCall;
+			changed = true;
+			return cancelled;
+		});
+		if (changed) repair.toolCalls = nextToolCalls;
 	}
 
 	if (Array.isArray(message.steps)) {
-		for (const raw of message.steps) {
-			if (!raw || typeof raw !== "object") continue;
+		let changed = false;
+		const nextSteps = message.steps.map((raw) => {
+			if (!raw || typeof raw !== "object") return raw;
 			const step = raw as {
 				status?: string;
 				error?: string;
 				toolCall?: LingeringToolCallLike;
 			};
-			if (!LINGERING_STEP_STATUSES.has(step.status ?? "")) continue;
-			if (step.toolCall?.requiresConfirmation) continue;
-			step.status = "cancelled";
-			step.error = step.error || error;
-			if (step.toolCall) cancelToolCall(step.toolCall);
-		}
+			if (!LINGERING_STEP_STATUSES.has(step.status ?? "")) return raw;
+			if (step.toolCall?.requiresConfirmation) return raw;
+			changed = true;
+			const cancelledToolCall = step.toolCall
+				? cancelToolCall(step.toolCall)
+				: undefined;
+			return {
+				...step,
+				status: "cancelled",
+				error: step.error || error,
+				...(cancelledToolCall ? { toolCall: cancelledToolCall } : {}),
+			};
+		});
+		if (changed) repair.steps = nextSteps;
 	}
+
+	return repair.toolCalls || repair.steps ? repair : undefined;
 }
 
 export async function emitAgentLoopFinalMessageUpdateWithAdapters<
@@ -1151,22 +1209,36 @@ export async function emitAgentLoopFinalMessageUpdateWithAdapters<
 		TSession
 	>,
 ): Promise<boolean> {
-	const updatedSession = options.getSession(options.sessionId);
-	const updatedMessage = updatedSession?.messages.find(
-		(message) => message.id === options.assistantMessageId,
-	);
+	const updatedMessage = options.getMessage
+		? options.getMessage(options.sessionId, options.assistantMessageId)
+		: options
+				.getSession(options.sessionId)
+				?.messages.find(
+					(message) => message.id === options.assistantMessageId,
+				);
 	if (!updatedMessage) return false;
 
-	finalizeLingeringAgentLoopToolWork(
+	const repair = finalizeLingeringAgentLoopToolWork(
 		updatedMessage,
 		undefined,
 		options.errorMessage,
 	);
+	// COW:修好的是新数组 —— 先落盘,再拿修好的那一份发事件。
+	if (repair) {
+		options.patchMessage?.(
+			options.sessionId,
+			options.assistantMessageId,
+			repair,
+		);
+	}
 
 	await options.emitMessageUpdated({
 		type: "message:updated",
 		messageId: options.assistantMessageId,
-		updates: buildAgentLoopFinalMessageUpdate(updatedMessage),
+		updates: buildAgentLoopFinalMessageUpdate({
+			...updatedMessage,
+			...repair,
+		} as TMessage),
 	});
 	return true;
 }
@@ -1425,8 +1497,8 @@ export function applyAgentLoopToolMetadata<
 
 		const changes = changesFromMetadata(update.metadata);
 		if (changes && toolCall) {
-			toolCall.changes = changes;
-			metadataUpdates.toolCall = { ...toolCall };
+			// COW(F3):新对象,不动入参。
+			metadataUpdates.toolCall = { ...toolCall, changes };
 		}
 	}
 	return metadataUpdates;
@@ -1477,6 +1549,7 @@ export function isSkillManageToolCall(
 	return false;
 }
 
+/** COW(F3):返回**新的** toolCall,入参一个字段都不动。 */
 export function settleAgentLoopToolCallResult<
 	TToolCall extends CoreAgentLoopToolCallForSettlement,
 >(
@@ -1489,39 +1562,41 @@ export function settleAgentLoopToolCallResult<
 		result.commandType ??
 		(typeof data.commandType === "string" ? data.commandType : undefined);
 
-	toolCall.endTime = now;
-
 	if (result.requiresConfirmation) {
-		toolCall.status = "pending";
-		toolCall.requiresConfirmation = true;
-		toolCall.commandType = commandType;
-		toolCall.error = result.error;
+		const settled = {
+			...toolCall,
+			endTime: now,
+			status: "pending",
+			requiresConfirmation: true,
+			commandType,
+			error: result.error,
+		};
 		return {
-			toolCall,
+			toolCall: settled,
 			awaitingConfirmation: true,
-			skillManageCalled: isSkillManageToolCall(toolCall),
+			skillManageCalled: isSkillManageToolCall(settled),
 		};
 	}
 
-	toolCall.status = result.error
-		? data.aborted
-			? "cancelled"
-			: "failed"
-		: "completed";
-	if (toolCall.startTime != null) {
-		toolCall.durationMs = Math.max(0, toolCall.endTime - toolCall.startTime);
-	}
-	toolCall.result = toJsonValue(result.data ?? result.content);
-	toolCall.error = result.error;
-	toolCall.rejected = data.rejected === true || undefined;
-	toolCall.rejectionReason =
-		typeof data.rejectionReason === "string" ? data.rejectionReason : undefined;
-	toolCall.requiresConfirmation = false;
+	const settled = {
+		...toolCall,
+		endTime: now,
+		status: result.error ? (data.aborted ? "cancelled" : "failed") : "completed",
+		...(toolCall.startTime != null
+			? { durationMs: Math.max(0, now - toolCall.startTime) }
+			: {}),
+		result: toJsonValue(result.data ?? result.content),
+		error: result.error,
+		rejected: data.rejected === true || undefined,
+		rejectionReason:
+			typeof data.rejectionReason === "string" ? data.rejectionReason : undefined,
+		requiresConfirmation: false,
+	};
 
 	return {
-		toolCall,
+		toolCall: settled,
 		awaitingConfirmation: false,
-		skillManageCalled: isSkillManageToolCall(toolCall),
+		skillManageCalled: isSkillManageToolCall(settled),
 	};
 }
 
@@ -1562,33 +1637,38 @@ export function buildAgentLoopToolResultPresentation<
 	};
 }
 
+/** 返回**开跑后的那一版** toolCall(COW,F3):调用方别再用手里的旧引用。 */
 export function startAgentLoopToolExecution<
 	TToolCall extends CoreAgentLoopToolCallForSettlement,
 	TStepUpdate,
->(options: StartAgentLoopToolExecutionOptions<TToolCall, TStepUpdate>): void {
+>(options: StartAgentLoopToolExecutionOptions<TToolCall, TStepUpdate>): TToolCall {
 	const now = options.now ?? Date.now;
-	options.toolCall.status = "executing";
-	options.toolCall.startTime = options.toolCall.startTime ?? now();
+	// COW(F3):换出新对象换进工作表,交给 store 的是快照。
+	const toolCall = patchCoreToolCall(options.toolCalls, options.toolCall, {
+		status: "executing",
+		startTime: options.toolCall.startTime ?? now(),
+	} as Partial<TToolCall>);
 	options.store.updateMessageToolCalls(
 		options.sessionId,
 		options.assistantMessageId,
-		options.toolCalls,
+		coreToolCallSnapshot(options.toolCalls),
 	);
-	options.emitter.sendToolCall(options.toolCall);
+	options.emitter.sendToolCall(toolCall);
 
-	if (!options.stepId) return;
+	if (!options.stepId) return toolCall;
 
 	options.emitter.sendToolExecutionStart(
-		options.toolCall.id,
+		toolCall.id,
 		options.stepId,
-		options.toolCall.toolId ?? options.toolCall.toolName,
-		toJsonObject(options.toolCall.arguments),
-		options.toolCall.startTime,
+		toolCall.toolId ?? toolCall.toolName,
+		toJsonObject(toolCall.arguments),
+		toolCall.startTime,
 	);
 	options.emitter.sendStepUpdated(
 		options.stepId,
-		buildAgentLoopToolStartStepUpdate(options.toolCall) as TStepUpdate,
+		buildAgentLoopToolStartStepUpdate(toolCall) as TStepUpdate,
 	);
+	return toolCall;
 }
 
 export function settleAgentLoopToolResultWithAdapters<
@@ -1619,28 +1699,30 @@ export function settleAgentLoopToolResultWithAdapters<
 		options.result,
 		(options.now ?? Date.now)(),
 	);
+	// COW(F3):结算后的那一版换进工作表,再整表快照写回。
+	const settled = replaceCoreToolCall(options.toolCalls, settlement.toolCall);
 	options.store.updateMessageToolCalls(
 		options.sessionId,
 		options.assistantMessageId,
-		options.toolCalls,
+		coreToolCallSnapshot(options.toolCalls),
 	);
-	options.emitter.sendToolResult(toolCall);
+	options.emitter.sendToolResult(settled);
 
 	const stepId = options.stepIdsByToolCallId.get(options.toolCallId);
 	if (stepId) {
 		const presentation = buildAgentLoopToolResultPresentation(
-			toolCall,
+			settled,
 			options.result,
 			settlement.awaitingConfirmation,
 		);
 		if (presentation.executionEnd) {
 			options.emitter.sendToolExecutionEnd(
-				toolCall.id,
+				settled.id,
 				stepId,
 				presentation.executionEnd.result as TToolResult | undefined,
 				presentation.executionEnd.isError,
 				presentation.executionEnd.error,
-				toolCall.durationMs,
+				settled.durationMs,
 			);
 		}
 		options.emitter.sendStepUpdated(
@@ -1651,7 +1733,7 @@ export function settleAgentLoopToolResultWithAdapters<
 
 	return {
 		found: true,
-		toolCall,
+		toolCall: settled,
 		toolIterationsDelta: 1,
 		skillManageCalled: settlement.skillManageCalled,
 		awaitingConfirmation: settlement.awaitingConfirmation,
@@ -1721,7 +1803,7 @@ export function applyAgentLoopToolInputEndWithAdapters<
 	if (!toolCall) return { found: false };
 
 	appendAgentLoopTurnToolCallOnce(options.turn.toolCalls, toolCall);
-	startAgentLoopToolExecution<TToolCall, TStepUpdate>({
+	const started = startAgentLoopToolExecution<TToolCall, TStepUpdate>({
 		sessionId: options.sessionId,
 		assistantMessageId: options.assistantMessageId,
 		toolCall,
@@ -1731,7 +1813,8 @@ export function applyAgentLoopToolInputEndWithAdapters<
 		emitter: options.emitter,
 		now: options.now,
 	});
-	return { found: true, toolCall };
+	replaceCoreToolCall(options.turn.toolCalls, started);
+	return { found: true, toolCall: started };
 }
 
 export function applyAgentLoopToolCallFallbackWithAdapters<
@@ -1783,7 +1866,7 @@ export function applyAgentLoopToolCallFallbackWithAdapters<
 				args: plan.args,
 			});
 	appendAgentLoopTurnToolCallOnce(options.turn.toolCalls, created);
-	startAgentLoopToolExecution<TToolCall, TStepUpdate>({
+	const started = startAgentLoopToolExecution<TToolCall, TStepUpdate>({
 		sessionId: options.sessionId,
 		assistantMessageId: options.assistantMessageId,
 		toolCall: created,
@@ -1793,7 +1876,8 @@ export function applyAgentLoopToolCallFallbackWithAdapters<
 		emitter: options.emitter,
 		now: options.now,
 	});
-	return created;
+	replaceCoreToolCall(options.turn.toolCalls, started);
+	return started;
 }
 
 export function applyAgentLoopToolResultWithAdapters<

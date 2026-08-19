@@ -1,4 +1,6 @@
 import * as store from "../../store.js";
+import { sessionCommands } from "../../session/commands.js";
+import { sessionReads } from "../../session/reads.js";
 import {
 	IPC_CHANNELS,
 	type ContentPart,
@@ -335,6 +337,16 @@ async function emitFinalAssistantMessageUpdate(
 				sessionId: state.ctx.sessionId,
 				assistantMessageId: state.ctx.assistantMessageId,
 				getSession: (sessionId) => store.getSession(sessionId),
+				// C1(P0.2):读走门面;F3:收尾修复是 COW 的,必须显式落盘。
+				getMessage: (sessionId, messageId) =>
+					sessionReads.getMessage(sessionId, messageId) as ChatMessage | undefined,
+				patchMessage: (sessionId, messageId, patch) => {
+					sessionCommands.patchMessage(sessionId, {
+						messageId,
+						patch: patch as Partial<ChatMessage>,
+						hint: "settle",
+					});
+				},
 				emitMessageUpdated: async (event) => {
 					await getEventBus().emit(state.ctx.sessionId, event);
 				},
@@ -358,6 +370,16 @@ export async function completeAgentLoopStream(
 		lastTurnUsage: state.lastTurnUsage,
 		finalize: () => state.processor.finalize(),
 		getSession: (sessionId) => store.getSession(sessionId),
+		// C1(P0.2):读走门面;F3:收尾修复是 COW 的,必须显式落盘。
+		getMessage: (sessionId, messageId) =>
+			sessionReads.getMessage(sessionId, messageId) as ChatMessage | undefined,
+		patchMessage: (sessionId, messageId, patch) => {
+			sessionCommands.patchMessage(sessionId, {
+				messageId,
+				patch: patch as Partial<ChatMessage>,
+				hint: "settle",
+			});
+		},
 		emitMessageUpdated: async (event) => {
 			try {
 				await getEventBus().emit(state.ctx.sessionId, event);

@@ -13,7 +13,7 @@
  * Gate: only runs when NODE_ENV !== 'production'.
  */
 
-import * as store from '../store.js'
+import { sessionReads } from './reads.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { Unsubscribe } from '../events/types.js'
 import {
@@ -48,7 +48,7 @@ export function setupValidation(
     const state = session.state
 
     // Get the store's version of the assistant message
-    const storeSession = store.getSession(sessionId)
+    const storeSession = sessionReads.getSession(sessionId)
     if (!storeSession) {
       console.warn(formatSessionValidationResult(validateSessionStateConsistency({
         sessionId,
@@ -58,7 +58,9 @@ export function setupValidation(
       return
     }
 
-    const storeMessage = storeSession.messages.find(m => m.id === state.activeMessageId)
+    const storeMessage = state.activeMessageId
+      ? sessionReads.getMessage(sessionId, state.activeMessageId)
+      : undefined
 
     const result = validateSessionStateConsistency({
       sessionId,

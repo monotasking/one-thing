@@ -20,7 +20,7 @@ afterEach(async () => {
 function adapters(overrides: Partial<OnethingSearchProvidersAdapters> = {}): OnethingSearchProvidersAdapters {
   return {
     getSessionsList: () => [],
-    getSessionRaw: () => undefined,
+    iterateSessionMessages: () => [],
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
     getSettings: () => ({
@@ -39,6 +39,39 @@ function adapters(overrides: Partial<OnethingSearchProvidersAdapters> = {}): One
 }
 
 describe('onething search providers', () => {
+  /**
+   * 全库消息搜索的取数端口(P0.2 区 ②):产品层不再自己从 session 上取
+   * `.messages`,宿主用 `iterateSessionMessages` 交一份 raw 语义的消息流。
+   * P0.4:server 也迁完了,`getSessionRaw` 回落端口已删,这是唯一取数口。
+   */
+  describe('message search reads through the injected port', () => {
+    const sessions = [{ id: 's1', name: 'Room', updatedAt: 1 }]
+
+    it('按会话走 iterateSessionMessages 取数', async () => {
+      const scanned: string[] = []
+      const providers = createOnethingSearchProviders(adapters({
+        getSessionsList: () => sessions,
+        *iterateSessionMessages(sessionId: string) {
+          scanned.push(sessionId)
+          yield { id: 'm1', role: 'user', content: 'deploy the thing', timestamp: 2 }
+        },
+      }))
+
+      const results = await providers.executeSearch('deploy', 'messages', 10)
+      expect(scanned).toEqual(['s1'])
+      expect(results[0]).toMatchObject({ type: 'message', sessionId: 's1', messageId: 'm1' })
+    })
+
+    it('端口交空流时这条会话直接跳过', async () => {
+      const providers = createOnethingSearchProviders(adapters({
+        getSessionsList: () => sessions,
+        iterateSessionMessages: () => [],
+      }))
+
+      expect(await providers.executeSearch('deploy', 'messages', 10)).toEqual([])
+    })
+  })
+
   /**
    * 接入目录(五件套之二:搜索根)。用真实临时目录 + 真实 listFiles,
    * 证据落在「搜得到 / 搜不到」这个用户可见的层面上,而不是内部数组。

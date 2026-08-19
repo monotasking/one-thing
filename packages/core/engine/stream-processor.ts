@@ -1,3 +1,4 @@
+import { coreToolCallSnapshot, patchCoreToolCall } from './tool-call-cow.js'
 import type { JsonObject } from '../json.js'
 import type { CoreReasoningPlacement } from './ipc-emitter.js'
 
@@ -132,12 +133,17 @@ export function applyCoreToolCallChunk<TToolCall extends CoreStreamToolCallLike>
   const existingIndex = toolCalls.findIndex(toolCall => toolCall.id === input.toolCallId)
 
   if (existingIndex >= 0) {
-    const toolCall = toolCalls[existingIndex]
-    toolCall.toolId = input.resolved.toolId
-    toolCall.toolName = input.resolved.displayName
-    toolCall.arguments = input.args
-    toolCall.status = status
-    delete toolCall.streamingArgs
+    // COW(F3):换出新对象换掉这一格 —— 老对象可能已经被交给 store 并冻结。
+    // `streamingArgs` 是「解构掉」而不是 delete:参数已经收全了,占位文本不该留。
+    const { streamingArgs: _finishedStreamingArgs, ...rest } = toolCalls[existingIndex]
+    const toolCall = {
+      ...rest,
+      toolId: input.resolved.toolId,
+      toolName: input.resolved.displayName,
+      arguments: input.args,
+      status,
+    } as TToolCall
+    toolCalls[existingIndex] = toolCall
     return toolCall
   }
 
@@ -442,7 +448,7 @@ export function createCoreStreamProcessor<
       })
 
       if (publish) {
-        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(toolCalls))
         emitter.sendToolCall(toolCall)
       }
 
@@ -456,16 +462,18 @@ export function createCoreStreamProcessor<
     }, completeOptions: { publish?: boolean; finalizedBy?: CoreToolArgsFinalizedBy } = {}): TToolCall {
       const finalizedBy = completeOptions.finalizedBy ?? 'parse'
       const receivedAt = Date.now()
-      const toolCall = this.handleToolCallChunk(toolCallData, {
-        publish: completeOptions.publish,
-        status: 'received',
-      })
-      toolCall.receivedAt = receivedAt
-      toolCall.argsFinalizedBy = finalizedBy
+      const toolCall = patchCoreToolCall(
+        toolCalls,
+        this.handleToolCallChunk(toolCallData, {
+          publish: completeOptions.publish,
+          status: 'received',
+        }),
+        { receivedAt, argsFinalizedBy: finalizedBy } as Partial<TToolCall>,
+      )
 
       const publish = completeOptions.publish !== false
       if (publish) {
-        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(toolCalls))
         emitter.sendToolInputEnd?.(
           toolCallData.toolCallId,
           toolInputBuffers.getStepId(toolCallData.toolCallId),
@@ -499,7 +507,7 @@ export function createCoreStreamProcessor<
       toolInputBuffers.start(toolCallId, toolName, { stepId, visible })
 
       if (visible) {
-        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(toolCalls))
         emitter.sendStepAdded(placeholderStep as TStep)
         emitter.sendToolInputStart(toolCallId, resolved.displayName, placeholderToolCall)
       }
@@ -525,9 +533,9 @@ export function createCoreStreamProcessor<
         // input-streaming forever — the receive state must never lie.
         const placeholder = toolCalls.find(toolCall => toolCall.id === toolCallId)
         if (placeholder && placeholder.status === 'input-streaming') {
-          placeholder.status = 'failed'
-          store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
-          emitter.sendToolCall(placeholder)
+          const failed = patchCoreToolCall(toolCalls, placeholder, { status: 'failed' } as Partial<TToolCall>)
+          store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(toolCalls))
+          emitter.sendToolCall(failed)
         }
         return null
       }

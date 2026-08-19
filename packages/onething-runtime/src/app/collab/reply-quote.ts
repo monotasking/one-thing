@@ -21,6 +21,8 @@ import {
 import type { ChatMessage, ChatMessageReplyTo } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
+import { sessionCommands } from '../session/commands.js'
+import { sessionReads } from '../session/reads.js'
 import { findAgent } from '../agents/index.js'
 import { resolveUserIdentity } from './user-identity.js'
 
@@ -49,7 +51,7 @@ export function attachCollabReplyTo(
   const session = store.getSession(roomSessionId)
   if (!session || session.kind !== 'room') return null
 
-  const messages = (session.messages ?? []) as ChatMessage[]
+  const messages = sessionReads.listMessages(roomSessionId).messages as ChatMessage[]
   const reply = messages.find(message => message.id === replyMessageId)
   const trigger = messages.find(message => message.id === triggerMessageId)
   if (!reply || !trigger) return null
@@ -70,7 +72,7 @@ export function attachCollabReplyTo(
   })
   if (!snapshot) return null
 
-  if (!store.updateMessageReplyTo(roomSessionId, replyMessageId, snapshot)) return null
+  if (!sessionCommands.patchMessage(roomSessionId, { messageId: replyMessageId, patch: { replyTo: snapshot } })) return null
 
   void getEventBus().emit(roomSessionId, {
     type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,

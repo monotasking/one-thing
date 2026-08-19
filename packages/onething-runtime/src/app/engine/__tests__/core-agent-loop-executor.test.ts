@@ -674,20 +674,24 @@ describe('core agent-loop executor helpers', () => {
       toolName: 'read',
       status: 'executing',
     }
-    expect(settleAgentLoopToolCallResult(completed, {
+    // COW(P0.2 area ①,F3):结算返回**新** toolCall,入参那条一个字段都不动。
+    const settlement = settleAgentLoopToolCallResult(completed, {
       content: 'ok',
       data: { output: 'ok' },
-    }, 1234)).toMatchObject({
+    }, 1234)
+    expect(settlement).toMatchObject({
       awaitingConfirmation: false,
       skillManageCalled: false,
     })
-    expect(completed).toMatchObject({
+    expect(settlement.toolCall).not.toBe(completed)
+    expect(settlement.toolCall).toMatchObject({
       status: 'completed',
       result: { output: 'ok' },
       endTime: 1234,
       requiresConfirmation: false,
     })
-    expect(buildAgentLoopToolResultPresentation(completed, {
+    expect(completed.status).toBe('executing')
+    expect(buildAgentLoopToolResultPresentation(settlement.toolCall, {
       content: 'ok',
       data: { output: 'ok' },
     })).toEqual({
@@ -701,7 +705,7 @@ describe('core agent-loop executor helpers', () => {
       },
       stepUpdate: {
         status: 'completed',
-        toolCall: { ...completed },
+        toolCall: { ...settlement.toolCall },
         partialResult: {
           content: [{ type: 'text', text: 'ok' }],
           details: { output: 'ok' },
@@ -720,18 +724,18 @@ describe('core agent-loop executor helpers', () => {
       toolName: 'edit',
       status: 'executing',
     }
-    settleAgentLoopToolCallResult(rejected, {
+    const rejectedSettlement = settleAgentLoopToolCallResult(rejected, {
       error: 'Denied',
       data: { rejected: true, rejectionReason: 'No edits' },
     }, 2345)
-    expect(rejected).toMatchObject({
+    expect(rejectedSettlement.toolCall).toMatchObject({
       status: 'failed',
       rejected: true,
       rejectionReason: 'No edits',
       error: 'Denied',
       endTime: 2345,
     })
-    expect(buildAgentLoopToolResultPresentation(rejected, {
+    expect(buildAgentLoopToolResultPresentation(rejectedSettlement.toolCall, {
       error: 'Denied',
       data: { rejected: true, rejectionReason: 'No edits' },
     })).toMatchObject({
@@ -755,30 +759,31 @@ describe('core agent-loop executor helpers', () => {
       toolName: 'skill_manage',
       status: 'executing',
     }
-    expect(settleAgentLoopToolCallResult(pending, {
+    const pendingSettlement = settleAgentLoopToolCallResult(pending, {
       requiresConfirmation: true,
       error: 'Confirm skill update',
       data: { commandType: 'dangerous' },
-    }, 3456)).toMatchObject({
+    }, 3456)
+    expect(pendingSettlement).toMatchObject({
       awaitingConfirmation: true,
       // skill_manage 工具已移除,没有可识别的专用调用了。
       skillManageCalled: false,
     })
-    expect(pending).toMatchObject({
+    expect(pendingSettlement.toolCall).toMatchObject({
       status: 'pending',
       requiresConfirmation: true,
       commandType: 'dangerous',
       error: 'Confirm skill update',
       endTime: 3456,
     })
-    expect(buildAgentLoopToolResultPresentation(pending, {
+    expect(buildAgentLoopToolResultPresentation(pendingSettlement.toolCall, {
       requiresConfirmation: true,
       error: 'Confirm skill update',
       data: { commandType: 'dangerous' },
     }, true)).toEqual({
       stepUpdate: {
         status: 'awaiting-confirmation',
-        toolCall: { ...pending },
+        toolCall: { ...pendingSettlement.toolCall },
         error: 'Confirm skill update',
       },
     })
@@ -839,7 +844,8 @@ describe('core agent-loop executor helpers', () => {
       },
     }
 
-    startAgentLoopToolExecution({
+    // COW(F3):开跑返回新对象并换进工作表;手里那条不动。
+    const started = startAgentLoopToolExecution({
       sessionId: 's1',
       assistantMessageId: 'm1',
       toolCall,
@@ -849,7 +855,8 @@ describe('core agent-loop executor helpers', () => {
       emitter,
       now: () => 100,
     })
-    expect(toolCall).toMatchObject({ status: 'executing', startTime: 100 })
+    expect(started).toMatchObject({ status: 'executing', startTime: 100 })
+    expect(toolCalls[0]).toBe(started)
 
     expect(applyAgentLoopToolPartialResultWithAdapters({
       toolCallId: 'call_1',
@@ -874,12 +881,9 @@ describe('core agent-loop executor helpers', () => {
       stepIdsByToolCallId: stepIds,
       emitter,
     })).toBe(true)
-    expect(toolCall.changes).toMatchObject({
-      diff: '+hello',
-      filePath: 'a.txt',
-      additions: 1,
-      deletions: 0,
-    })
+    // COW(F3):`changes` 不再写回 toolCall,只随 step 更新发出去。
+    expect(toolCall.changes).toBeUndefined()
+    expect(events.some(event => event.includes('step:step_1:Read a.txt'))).toBe(true)
 
     const settlement = settleAgentLoopToolResultWithAdapters({
       sessionId: 's1',
@@ -898,11 +902,13 @@ describe('core agent-loop executor helpers', () => {
       toolIterationsDelta: 1,
       awaitingConfirmation: false,
     })
-    expect(toolCall).toMatchObject({
+    // COW(F3):结算后的那一版在工作表里,`toolCall` 是旧引用。
+    expect(settlement.toolCall).toMatchObject({
       status: 'completed',
       result: { output: 'done' },
       endTime: 200,
     })
+    expect(toolCalls[0]).toBe(settlement.toolCall)
     expect(events).toEqual([
       'store:executing',
       'tool-call:executing',
@@ -1005,7 +1011,8 @@ describe('core agent-loop executor helpers', () => {
         },
       },
     })
-    expect(toolCall.changes?.filePath).toBe('/tmp/a.txt')
+    // COW(F3):`changes` 落在返回的新对象上,入参那条不动。
+    expect(toolCall.changes).toBeUndefined()
 
     expect(applyAgentLoopToolMetadata(undefined, {
       metadata: { count: 2 },

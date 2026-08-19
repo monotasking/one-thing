@@ -315,7 +315,12 @@ Notes:
 - Store isolation: the store root resolves `ONETHING_STORE_PATH` → `~/.onething`
   (`packages/onething-runtime/src/storage/paths.ts`). All app-layer paths must resolve
   through `getOnethingStorePath()` / its `getOnething*Path` helpers — never hardcode.
-  Single-instance safety via `StoreLock` (`acquire('desktop')` / `'daemon'` / `'server'`).
+  Single-instance safety via `StoreLock` (`acquire('desktop')` / `'daemon'`). The
+  `'server'` owner exists in the type but `apps/server` deliberately does **not** take the
+  lock (2026-08-19 ruling: desktop + dev server share `~/.onething` in `bun run dev`; the
+  two-writer risk — two LRUs + two throttled write queues over the same files — is accepted
+  for now and must be revisited before the session event log becomes the single source of
+  truth).
 - Permission channel affinity gotcha: a permission ask records
   `targetChannel = engine.getChannel(sessionId)` (default `'ipc'`), and core rejects a
   respond whose channel doesn't match. When answering from another transport, adopt the
@@ -535,6 +540,20 @@ packages/shared/               # '@shared'
 **Tools — toolkit (2026-08-18 rebuild; the legacy tree was deleted in R4b, 2026-08-19)**: the tool system is `packages/core/toolkit/` (kernel: `ToolSpec` / `Tool { plan → apply }` / `Intent` / `Outcome` / `AbortScope` / `OutputBudget` / `Job` / `Catalog` / `Surface` / `ToolRunner` + effect policy table) + `packages/onething-runtime/src/toolkit/` (zod contract, family base classes, the builtin tools, `PluginTool`/`McpTool`, `resolveScene`) + `packages/onething-runtime/src/app/toolkit/` (ports: `PermissionAuthorizer` over `enforcePermissionPolicy`, `IpcProjector`, `AuditProjector` → `events.jsonl` `tool/audit`, `BackgroundJobRegistry`, three-tier catalogs, `createAppToolRunner`, `prompt-source.ts`, `wiring.ts`). Every call runs `validate → intercept → plan → effect-based authorize → apply → budget`; permission looks only at `Intent.effects` (`EffectClass` table in `core/toolkit/effects.ts` — external agents ride the `external-agent` row, so ACP and the Claude Code SDK go through the same `Authorizer.decide` as a local tool). There is **no kill switch and no second path**: `Tool.define` / `ToolInfo` / `permissionGuard` / `autoExecute` are gone, and `permissionGuard?` survives only as a deprecated, derived field on the `@shared/ipc` contract (`app/toolkit/guard-projection.ts`). What is left in `packages/onething-runtime/src/tools/` is pure modules only (sandbox, bash executor/classifier, edit engine, replacers, diff hunks, file snapshot/mutation, output accumulation/truncation, sensitive files, background jobs, `builtin/time-runtime.ts`, `builtin/web-search/{page-fetch,providers}`) plus four dependency-injected IPC-shape projections; `packages/onething-runtime/src/app/tools/core/` keeps the host-injection ports (`configureSandboxHost`, bash executor, background jobs, `enforcePermissionPolicy`). Design + per-phase records: `docs/design/tool-system-oop-2026-08.md` (§17 = the R4b deletion record). **Registration is a catalog, the per-turn surface is scene-resolved**: `runtime/src/toolkit/scene.ts` (`resolveScene`) plus each tool's own `visibleIn` decide what a turn actually sends the model — plain chat = bash/read/write/edit/variable/time/web_search/web_open/radio/practice/task/ask_user; `goal` only while the session goal is `active`; collab tools (`send_message`/`board`/`history`/`notebook`) only in their venue (`collab/tool-surface.ts` is the single table); `task` hidden inside task sessions; skill-scene tools only when that skill is enabled — today the self-evolution trio `feature_mount/unmount/inspect` rides the default-off builtin skill `resources/skills/onething-self-evolution` (frontmatter `default-enabled: false`), registered by the self-evolution feature itself (`app/features/builtin/self-evolution.ts`), not by any tier catalog. Retired 2026-08-18: `find`/`grep`/`glob` (use bash rg/fd), `fart`, `bash_output`/`kill_bash` (bash `run_in_background` now reports the log path + pid; tail/kill via bash).
 
 **Permission**: core `Permission` in `packages/core/permission/` (channel-affinity enforcement); app wiring in `packages/onething-runtime/src/app/permission/`.
+
+**会话消息(P0,2026-08-19,`docs/design/session-commands-p0-2026-08.md`)**:唯一写面是
+`sessionCommands`(`packages/onething-runtime/src/app/session/commands.ts`,12 条消息命令 +
+`patchSession` 会话级补丁;纯 reducer 在 `packages/core/session/commands.ts`,负责 COW /
+写计划 / lazy 档),唯一读面是 `sessionReads`(同目录 `reads.ts`,返回值一律 `readonly`)。
+`session.messages` 只允许出现在白名单文件里(命令面 / 读面 / `sessions/storage-driver.ts` /
+`sessions/session-dehydrate.ts` / `sessions/session-repository.ts`,理由逐条写在
+`scripts/session-check.mjs`),对 `ChatMessage`/`Step`/`ToolCall` 的字段赋值只允许在 core 的
+reducer 里;`bun run session:check` 打全表、`bun run session:gate` 是**硬闸**(基线
+`docs/audit/session-gate-baseline-2026-08-19.txt` = 0,任何新命中直接红)。dev/vitest 下从
+store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`app/session/freeze.ts`),漏网的
+就地改当场抛 TypeError。core 引擎仍然通过注入的 store 端口写(那些小接口的形状 P0 不动),
+端口实现走命令面。**一个反复踩的坑**:命令是 COW 的 —— 先捕获 `session.messages`、再
+`await`、再读那个变量会拿到旧数组;await 之后重读。
 
 **MCP / ACP / Skills / Themes**: app wiring under `packages/onething-runtime/src/app/{mcp,acp,skills,themes}/`, product logic under `packages/onething-runtime/src/`.
 

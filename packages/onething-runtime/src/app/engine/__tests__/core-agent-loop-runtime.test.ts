@@ -590,7 +590,8 @@ describe('core agent-loop runtime helpers', () => {
       turn: 2,
       providerId: 'deepseek',
       compactEnabled: true,
-      session: { messages: [], contextSize: 9900 },
+      session: { contextSize: 9900 },
+        sessionMessages: [],
       budget: {
         modelContextLength: 10000,
         reservedOutputTokens: 512,

@@ -54,7 +54,8 @@ function userMessage(over: Partial<ChatMessage> = {}): ChatMessage {
 function fakeStore(messages: ChatMessage[]) {
   return {
     messages,
-    getSession: () => ({ messages }),
+    listMessages: () => messages,
+    getSessionMeta: () => ({}),
     updateMessageTurnContext(
       _sessionId: string,
       messageId: string,

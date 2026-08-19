@@ -11,10 +11,18 @@
  * 单一所有者:除非会话真的一条消息都没有,否则它交出的锚必须在会话里找得到。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { bindSessionFacadeMock } from '../../session/testing/facade-mock.js'
 
 const mocks = vi.hoisted(() => ({
   sessions: new Map<string, { messages: { id: string; role: string }[] }>(),
 }))
+
+// P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
+// `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
+// 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
+vi.mock('../../session/reads.js', () => import('../../session/testing/facade-mock.js'))
+vi.mock('../../session/commands.js', () => import('../../session/testing/facade-mock.js'))
+bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
 vi.mock('../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),

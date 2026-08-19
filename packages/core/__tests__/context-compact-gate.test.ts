@@ -61,6 +61,9 @@ function createHarness(
 		store: {
 			getSettings: () => settings,
 			getSession: () => session,
+			listMessages: () => session.messages,
+			getMessage: (_sessionId: string, messageId: string) =>
+				session.messages.find((message: FakeMessage) => message.id === messageId),
 			addMessage: (_sessionId: string, message: FakeMessage) => {
 				messages.push(message);
 			},

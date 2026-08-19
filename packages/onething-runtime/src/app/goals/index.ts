@@ -34,6 +34,7 @@ import {
 import type { SessionGoal, SessionGoalLimits } from "@onething/runtime/goals";
 import { getEventBus } from "../events/index.js";
 import * as store from "../store.js";
+import { sessionReads } from "../session/reads.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 
@@ -56,8 +57,8 @@ export function goalLimits(): SessionGoalLimits {
 
 /** Last message in the session — the timeline anchor for goal transitions. */
 function lastMessageId(sessionId: string): string | undefined {
-	const messages = store.getSession(sessionId)?.messages;
-	if (!Array.isArray(messages) || messages.length === 0) return undefined;
+	const messages = sessionReads.listMessages(sessionId).messages;
+	if (messages.length === 0) return undefined;
 	return messages[messages.length - 1]?.id;
 }
 

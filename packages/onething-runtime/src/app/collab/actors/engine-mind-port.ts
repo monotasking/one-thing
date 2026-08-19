@@ -37,6 +37,7 @@ import { findAgent } from '../../agents/index.js'
 import { getEventBus } from '../../events/index.js'
 import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../store.js'
+import { sessionReads } from '../../session/reads.js'
 import { noteCollabAdoptedEcho } from '../agent-session.js'
 import { issueCollabDriveToken } from '../drive-guard.js'
 import { emitCollabTurnActive, observeCollabSayTyping } from '../typing-observer.js'
@@ -154,7 +155,7 @@ function harvestTurnMessage(
   execSessionId: string,
   sinceTs: number,
 ): { id?: string; proseChars: number; at?: number; prose: string } | undefined {
-  const messages = store.getSession(execSessionId)?.messages ?? []
+  const messages = sessionReads.listMessages(execSessionId).messages
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
     if (message.timestamp < sinceTs) break
@@ -261,7 +262,7 @@ export function createCollabEngineMindPort(
         abortCollabZombieStream(outcome, request.execSessionId)
 
         // 不论结局都收割:一个被 abort 的半截回合里说出去的话**已经在房间里了**。
-        const roomMessages = store.getSession(request.roomSessionId)?.messages ?? []
+        const roomMessages = sessionReads.listMessages(request.roomSessionId).messages
         const { says } = scanCollabRoomSays(roomMessages, request.agentId, startedAt)
         const turnMessage = harvestTurnMessage(request.execSessionId, startedAt)
         const harvested = says.map(toMindSay)

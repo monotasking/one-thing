@@ -1,6 +1,7 @@
 import {
   getContextCompactReason,
   shouldSkipAutoCompactForProviderUsageMismatch,
+  type CoreCompactMessage,
   type CoreCompactSession,
 } from './context-compact.js'
 import {
@@ -878,7 +879,9 @@ export function getAgentLoopContextBlockReason(options: {
   turn: number
   providerId: string
   compactEnabled: boolean
-  session?: CoreCompactSession
+  session?: Omit<CoreCompactSession, 'messages'>
+  /** 会话消息快照:没给 `inputTokens` 时靠它估算(core 不从 session 上取 messages) */
+  sessionMessages?: readonly CoreCompactMessage[]
   budget: CoreAgentLoopContextBudget
   inputTokens?: number
 }): string | undefined {
@@ -895,6 +898,7 @@ export function getAgentLoopContextBlockReason(options: {
 
   const reason = getContextCompactReason({
     session: options.session,
+    sessionMessages: options.sessionMessages,
     modelContextLength: options.budget.modelContextLength,
     thresholdPercent: options.budget.thresholdPercent,
     reservedOutputTokens: options.budget.reservedOutputTokens,
@@ -1399,6 +1403,10 @@ export async function runAgentLoopBeforeTurnWithAdapters<
   >,
 ): Promise<CoreAgentLoopBeforeTurnResult<TMessage> | undefined> {
   let nextMessages: CoreAgentLoopTurnMessages<TMessage> = options.messages
+  // F9:「这一轮到底换没换消息」用显式标记记,不靠 `nextMessages === options.messages`
+  // 比引用 —— COW 之后身份判断随时可能恒为假(上游换了数组,内容却一字未动),
+  // 那样这条路会把"什么都没发生"报成"重开一条回复"。
+  let changed = false
   const pendingSteeringMessages = options.adapters.drainSteeringMessages?.() ?? []
   const injectedMessages = await injectPendingAgentLoopMessagesWithAdapters({
     messages: nextMessages as TMessage[],
@@ -1408,6 +1416,7 @@ export async function runAgentLoopBeforeTurnWithAdapters<
   const startNewResponse = Boolean(injectedMessages)
   if (injectedMessages) {
     nextMessages = injectedMessages
+    changed = true
   }
 
   const compactAdapters: CoreAgentLoopCompactionAdapters<
@@ -1473,11 +1482,12 @@ export async function runAgentLoopBeforeTurnWithAdapters<
     turn: options.turn,
     adapters: options.adapters,
   })
-  if (withTail) nextMessages = withTail
+  if (withTail) {
+    nextMessages = withTail
+    changed = true
+  }
 
-  return nextMessages === options.messages
-    ? undefined
-    : { messages: nextMessages, startNewResponse }
+  return changed ? { messages: nextMessages, startNewResponse } : undefined
 }
 
 export async function runAgentLoopAfterTurnWithAdapters<

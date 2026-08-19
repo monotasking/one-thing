@@ -6,9 +6,11 @@ import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import type { IPCEmitter } from './ipc-emitter.js'
 import { executeToolAndUpdate } from './tool-execution.js'
 import {
+  coreToolCallSnapshot,
   CoreToolOrchestrator,
   planToolCallArtifactRemoval,
 } from '@onething/core/engine'
+import { sessionReads } from '../../session/reads.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
@@ -106,15 +108,15 @@ export class ToolOrchestrator {
     store.updateMessageToolCalls(
       this.ctx.sessionId,
       this.ctx.assistantMessageId,
-      this.processor.toolCalls,
+      // 快照(P0.2 area ①,F3):命令面会把这个数组**直接挂到消息上**,
+      // 交出去的那份就归会话了,引擎的工作数组不能与它是同一个。
+      coreToolCallSnapshot(this.processor.toolCalls),
     )
   }
 
   private removeToolCallArtifacts(ids: Set<string>): boolean {
-    const session = store.getSession(this.ctx.sessionId)
-    const message = session?.messages.find(
-      (m) => m.id === this.ctx.assistantMessageId,
-    )
+    // C1(P0.2):读走门面。
+    const message = sessionReads.getMessage(this.ctx.sessionId, this.ctx.assistantMessageId)
     const plan = planToolCallArtifactRemoval({
       message,
       ids,

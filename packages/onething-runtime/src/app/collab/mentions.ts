@@ -23,9 +23,10 @@ import {
   type CollabAgentLike,
   type CollabMentionLike,
 } from '@onething/runtime/collab'
-import type { ChatMessage } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
+import { sessionCommands } from '../session/commands.js'
+import { sessionReads } from '../session/reads.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
@@ -43,8 +44,7 @@ export function attachCollabMentions(
   const session = store.getSession(roomSessionId)
   if (!session || session.kind !== 'room') return []
 
-  const messages = (session.messages ?? []) as ChatMessage[]
-  const message = messages.find(entry => entry.id === messageId)
+  const message = sessionReads.getMessage(roomSessionId, messageId)
   if (!message) return []
 
   // Already stamped (a re-drive, a replayed harvest): the first write wins —
@@ -54,7 +54,7 @@ export function attachCollabMentions(
   const mentions = buildCollabMentions(message.content, members)
   if (mentions.length === 0) return []
 
-  if (!store.updateMessageMentions(roomSessionId, messageId, mentions)) return []
+  if (!sessionCommands.patchMessage(roomSessionId, { messageId, patch: { mentions } })) return []
 
   void getEventBus().emit(roomSessionId, {
     type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,

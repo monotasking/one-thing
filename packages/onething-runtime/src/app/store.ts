@@ -44,7 +44,6 @@ export {
   updateMessageStep,
   updateMessageSteps,
   updateStepsUsageByTurn,
-  insertMessageAfter,
   updateSessionSummary,
   updateSessionModel,
   updateSessionAgent,
@@ -71,7 +70,7 @@ export {
   initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
-  saveSessionSnapshot,
+  patchSessionFields,
   invalidateSessionCache,
   getSessionCacheStats,
 

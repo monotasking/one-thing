@@ -21,8 +21,6 @@
  *    会返回一个空页，而空页读起来就是"这个范围里没有任何消息"——一个带确定性的
  *    否定，可消息明明还在。
  */
-import fs from 'node:fs'
-import path from 'node:path'
 import {
   COLLAB_ENVELOPE_TAG,
   COLLAB_SYSTEM_SPEAKER_LABEL,
@@ -41,7 +39,7 @@ import type { HistoryToolResult } from '@onething/runtime/toolkit'
 import { scanJsonlLog } from '@onething/core/session'
 import type { ChatMessage, SessionMeta } from '@shared/ipc.js'
 import * as store from '../store.js'
-import { getSessionsDir } from '../stores/paths.js'
+import { sessionReads } from '../session/reads.js'
 import { findAgent, listAgents } from '../agents/index.js'
 import { resolveDmTarget } from './dm-target.js'
 import { resolveUserIdentity } from './user-identity.js'
@@ -161,20 +159,19 @@ function pickRoom(where: string, candidates: readonly Candidate[]): Candidate | 
  * （当前所有房都已是 jsonl 形态）。
  */
 function readRoomMessages(roomId: string): { messages: ChatMessage[]; bytes: number } {
-  const file = path.join(getSessionsDir(), roomId, 'messages.jsonl')
-  try {
-    const buffer = fs.readFileSync(file)
+  // P0.2 ③:绕驱动直读收进读门面(`readTranscriptBuffer`)。仍然**不进 LRU** ——
+  // 上面那条纪律说的就是这件事,门面只是把"从哪读、怎么算字节"收成一处。
+  const buffer = sessionReads.readTranscriptBuffer(roomId)
+  if (buffer) {
     const scan = scanJsonlLog<ChatMessage>(buffer)
     return { messages: scan.entries.map(entry => entry.message), bytes: buffer.byteLength }
-  } catch {
-    const legacy = store.getSession(roomId)
-    const messages = legacy?.messages ?? []
-    // 这一支也要报字节数。报 0 等于让字节上限对遗留会话失效 —— 而上限存在的理由
-    // (一间超大房把整轮拖垮)跟会话是什么格式无关。正文长度是够用的近似。
-    return {
-      messages,
-      bytes: messages.reduce((total, message) => total + (message.content?.length ?? 0), 0),
-    }
+  }
+  const messages = [...sessionReads.listMessages(roomId).messages]
+  // 这一支也要报字节数。报 0 等于让字节上限对遗留会话失效 —— 而上限存在的理由
+  // (一间超大房把整轮拖垮)跟会话是什么格式无关。正文长度是够用的近似。
+  return {
+    messages,
+    bytes: messages.reduce((total, message) => total + (message.content?.length ?? 0), 0),
   }
 }
 

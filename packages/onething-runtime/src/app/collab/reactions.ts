@@ -15,6 +15,8 @@ import { applyCollabReaction, normalizeCollabReactionEmoji } from '@onething/run
 import type { ChatMessageReaction, ChatMessageReactionActor } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
+import { sessionCommands } from '../session/commands.js'
+import { sessionReads } from '../session/reads.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
@@ -52,7 +54,7 @@ export function reactToCollabMessage(
   if (actor?.type !== 'user' && actor?.type !== 'agent') return { success: false, error: 'Unknown actor' }
   if (actor.type === 'agent' && !actor.agentId) return { success: false, error: 'Agent reaction needs an agentId' }
 
-  const message = session.messages?.find(candidate => candidate.id === messageId)
+  const message = sessionReads.getMessage(roomSessionId, messageId)
   if (!message) return { success: false, error: 'Message not found' }
 
   const next = applyCollabReaction(message.reactions, emoji, actor, {
@@ -62,7 +64,7 @@ export function reactToCollabMessage(
   // the broadcast, so a no-op never reads as an edit in the UI.
   if (!next) return { success: true, reactions: message.reactions ?? [] }
 
-  if (!store.updateMessageReactions(roomSessionId, messageId, next)) {
+  if (!sessionCommands.patchMessage(roomSessionId, { messageId, patch: { reactions: next } })) {
     return { success: false, error: 'Message not found' }
   }
 

@@ -26,6 +26,7 @@ import {
 } from '@onething/runtime/collab'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import * as store from '../store.js'
+import { sessionReads } from '../session/reads.js'
 import { findAgent } from '../agents/index.js'
 import { collabSessionRoomMembers } from './members.js'
 import { generateChatResponse } from '../providers/index.js'
@@ -85,7 +86,7 @@ function roomAgents(session: ChatSession): CollabAgentLike[] {
  * 那几天一定在这个集合里。
  */
 function foldedFactsOfRoom(session: ChatSession, now: number): ChatMessage[] {
-  const messages = session.messages ?? []
+  const messages = sessionReads.listMessages(session.id).messages
   const window = planCollabHistoryWindow({
     messages,
     now,

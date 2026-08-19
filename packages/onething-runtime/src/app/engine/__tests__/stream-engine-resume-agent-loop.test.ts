@@ -56,6 +56,20 @@ vi.mock('../../store.js', () => ({
   deleteMessage: mocks.deleteMessage,
 }))
 
+// 引擎的消息读走读门面(P0.2 C1):这份 mock 与上面的 store mock 是同一个假会话。
+vi.mock('../../session/reads.js', () => ({
+  sessionReads: {
+    listMessages: (sessionId: string) => ({
+      messages: mocks.getSession(sessionId)?.messages ?? [],
+      changed: false,
+    }),
+    getMessage: (sessionId: string, messageId: string) =>
+      mocks.getSession(sessionId)?.messages?.find(
+        (message: { id: string }) => message.id === messageId,
+      ),
+  },
+}))
+
 vi.mock('../stream/provider-helpers.js', () => ({
   getEffectiveProviderConfig: mocks.getEffectiveProviderConfig,
   resolveProviderAuth: mocks.resolveProviderAuth,

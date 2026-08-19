@@ -45,6 +45,7 @@ import type {
 } from "@shared/ipc.js";
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import * as store from "@onething/app/store.js";
+import { sessionReads } from "@onething/app/session/reads.js";
 import { getSkillsForSession } from "@onething/app/skills/session-skills.js";
 import { registerEvalsWorkbenchHandlers } from "./evals-workbench.js";
 import {
@@ -136,7 +137,7 @@ export async function createIncidentForTurn(options: {
 	} = await import("@onething/runtime");
 
 	const session = store.getSession(options.sessionId);
-	const messages = (session?.messages ?? []) as Array<{
+	const messages = [...sessionReads.listMessages(options.sessionId).messages] as Array<{
 		id: string;
 		role: string;
 		content?: unknown;
@@ -318,14 +319,13 @@ export function registerEvalsHandlers(): void {
 				// Build assistantResponse from the DOWNVOTED message (turnId is
 				// its message id) — the user may downvote an older turn, not the
 				// session's latest assistant message.
+				const downvotedMsg = request.turnId
+					? sessionReads.getMessage(request.sessionId, request.turnId)
+					: undefined;
 				const lastAssistantMsg =
-					session?.messages?.find(
-						(m: { id: string; role: string }) =>
-							m.id === request.turnId && m.role === "assistant",
-					) ??
-					session?.messages
-						?.filter((m: { role: string }) => m.role === "assistant")
-						.slice(-1)[0];
+					downvotedMsg?.role === "assistant"
+						? downvotedMsg
+						: sessionReads.lastMessageOfRole(request.sessionId, "assistant");
 				const assistantResponse =
 					lastAssistantMsg?.content != null
 						? {

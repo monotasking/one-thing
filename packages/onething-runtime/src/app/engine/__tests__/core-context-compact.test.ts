@@ -111,7 +111,7 @@ describe('core context compact helpers', () => {
   })
 
   it('selects older messages while keeping the configured recent user turns', () => {
-    const plan = selectCompactPlan(session([
+    const planSession = session([
       message(1, 'user'),
       message(2, 'assistant'),
       message(3, 'user'),
@@ -120,7 +120,8 @@ describe('core context compact helpers', () => {
       message(6, 'assistant'),
       message(7, 'user'),
       message(8, 'assistant'),
-    ]), 2)
+    ])
+    const plan = selectCompactPlan(planSession, planSession.messages, 2)
 
     expect(plan?.cutoffMessage.id).toBe('assistant-4')
     expect(plan?.messagesToSummarize.map(item => item.id)).toEqual([
@@ -136,6 +137,7 @@ describe('core context compact helpers', () => {
 
     await expect(shouldAutoCompactBeforeSend({
       session: testSession,
+      sessionMessages: testSession.messages,
       modelContextLength: 100,
       thresholdPercent: 50,
     })).resolves.toBe(true)
@@ -143,6 +145,7 @@ describe('core context compact helpers', () => {
     testSession.contextSize = 80
     await expect(shouldAutoCompactBeforeSend({
       session: testSession,
+      sessionMessages: testSession.messages,
       modelContextLength: 100,
       thresholdPercent: 85,
       reservedOutputTokens: 25,
@@ -180,7 +183,7 @@ describe('core context compact helpers', () => {
     expect(usage.visibleInputTokens).toBe(estimateTextTokens(JSON.stringify(builtHistory)))
     expect(usage.visibleInputTokens).toBeLessThan(1000)
     expect(usage.triggerReason).toBe('none')
-    expect(estimateSessionInputTokens(testSession)).toBeGreaterThan(usage.visibleInputTokens * 10)
+    expect(estimateSessionInputTokens(testSession, testSession.messages)).toBeGreaterThan(usage.visibleInputTokens * 10)
   })
 
   it('normalizes fenced markdown summaries and formats sanitized tool results', () => {
@@ -205,6 +208,6 @@ describe('core context compact helpers', () => {
     expect(summaryInput).toContain('important finding')
     expect(summaryInput).toContain('[truncated')
     expect(summaryInput).not.toContain('do not include rollback content')
-    expect(estimateSessionInputTokens(session([message(1, 'user')]))).toBeGreaterThan(0)
+    expect(estimateSessionInputTokens(session([message(1, 'user')]), session([message(1, 'user')]).messages)).toBeGreaterThan(0)
   })
 })

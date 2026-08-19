@@ -155,6 +155,7 @@ describe('onething agent-loop stream runtime', () => {
       [{ role: 'user', content: 'hello' }],
       {
         getSession: () => session,
+        listSessionMessages: () => session.messages,
         getSkillsForSession: () => [testSkill()],
         initializeTools: skills => {
           initializedSkills.push(skills.map(skill => skill.id))

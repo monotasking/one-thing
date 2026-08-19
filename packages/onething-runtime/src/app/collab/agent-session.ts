@@ -25,6 +25,7 @@ import {
   collabAgentSessionName,
 } from '@onething/runtime/collab'
 import * as store from '../store.js'
+import { sessionReads } from '../session/reads.js'
 import { findAgent } from '../agents/index.js'
 import { ensureCollabRoomFolder } from './room-folder.js'
 
@@ -123,7 +124,7 @@ export function advanceSeenCursor(agentSessionId: string, seenMessageId: string)
   const current = collab?.seenMessageId
   if (current === seenMessageId) return false
   if (current) {
-    const messages = store.getSession(roomSessionId)?.messages ?? []
+    const messages = sessionReads.listMessages(roomSessionId).messages
     const currentIndex = messages.findIndex(message => message.id === current)
     const nextIndex = messages.findIndex(message => message.id === seenMessageId)
     // 新锚点查无此条(消息被删)→ 不动:一个定位不到的游标会让整段历史变成

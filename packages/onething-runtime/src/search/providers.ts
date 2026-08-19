@@ -44,9 +44,12 @@ export interface OnethingSearchMessage {
   timestamp?: number
 }
 
+/**
+ * `getSession` 的返回:搜索只从会话上要**空间语境**(工作目录),不要消息。
+ * 消息一律走 `iterateSessionMessages`(P0.2 区 ②;P0.4 起是必填端口,raw 回落已删)。
+ */
 export interface OnethingSearchSession {
   workingDirectory?: string
-  messages?: OnethingSearchMessage[]
 }
 
 export interface OnethingSearchPrompt {
@@ -86,7 +89,12 @@ export interface OnethingSearchListFilesOptions {
 
 export interface OnethingSearchProvidersAdapters {
   getSessionsList(): OnethingSearchSessionMeta[]
-  getSessionRaw(sessionId: string): OnethingSearchSession | undefined
+  /**
+   * 全库消息搜索按会话取消息。**raw 语义**:不进 LRU、不 sanitize、不回写
+   * (一次搜索翻 N 间会话,走 `getSession` 会把整个会话库灌进 LRU)。宿主接
+   * `sessionReads.iterateMessagesRaw`。
+   */
+  iterateSessionMessages(sessionId: string): Iterable<OnethingSearchMessage>
   getSession(sessionId: string): OnethingSearchSession | undefined
   getCurrentSessionId(): string | undefined
   getSettings(): OnethingSearchSettings
@@ -203,9 +211,8 @@ function searchMessages(query: string, limit: number, adapters: OnethingSearchPr
     if (results.length >= limit) break
     if (meta.isArchived) continue
 
-    const session = adapters.getSessionRaw(meta.id)
-    if (!session?.messages) continue
-    const messages = session.messages
+    const messages = adapters.iterateSessionMessages(meta.id)
+    if (!messages) continue
 
     for (const msg of messages) {
       if (results.length >= limit) break

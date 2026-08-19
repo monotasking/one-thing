@@ -3,6 +3,7 @@
  * Handles tool detection, execution, and step management
  */
 
+import { sessionReads } from '../../session/reads.js'
 import * as store from '../../store.js'
 import type { Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
@@ -130,6 +131,8 @@ export async function executeToolAndUpdate(
     beforeSideEffect: options.beforeSideEffect,
     store: {
       getSession: store.getSession,
+      // C1(P0.2):消息读走读门面。
+      getMessage: (sessionId, messageId) => sessionReads.getMessage(sessionId, messageId),
       updateMessageToolCalls: store.updateMessageToolCalls,
     },
     emitter,

@@ -110,10 +110,10 @@ describe('estimateSessionInputTokens', () => {
         },
       ],
     }
-    const withBig = estimateSessionInputTokens(session as never)
-    const withoutTools = estimateSessionInputTokens({
-      messages: [{ id: 'm1', role: 'assistant', content: 'done' }],
-    } as never)
+    const withBig = estimateSessionInputTokens(session as never, session.messages as never)
+    const withoutTools = estimateSessionInputTokens({} as never, [
+      { id: 'm1', role: 'assistant', content: 'done' },
+    ] as never)
     // 120K chars ≈ tens of thousands of tokens; the estimate must see it.
     expect(withBig - withoutTools).toBeGreaterThan(10_000)
   })
@@ -137,7 +137,7 @@ describe('estimateSessionInputTokens', () => {
         },
       ],
     }
-    const estimate = estimateSessionInputTokens(session as never)
+    const estimate = estimateSessionInputTokens(session as never, session.messages as never)
     expect(estimate).toBeLessThan(2_000)
   })
 })

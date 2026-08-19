@@ -19,6 +19,7 @@ import {
   type VoiceTranscriptMetadata,
 } from '@shared/ipc.js'
 import * as store from '../store.js'
+import { sessionCommands } from '../session/commands.js'
 import { getEventBus } from '../events/index.js'
 import { collabSessionRoomMembers } from './members.js'
 import {
@@ -138,7 +139,7 @@ export async function handleCollabRoomSendMessage(
     ...(mentions.length > 0 ? { mentions } : {}),
   }
 
-  store.addMessage(sessionId, message)
+  sessionCommands.appendMessage(sessionId, { message, stampCollab: true })
   await getEventBus().emit(sessionId, {
     type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
     message,

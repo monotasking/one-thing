@@ -82,11 +82,20 @@ import {
 	getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers,
 	getSessions as getAppStoreSessions,
 	getSessionsList as getAppStoreSessionsList,
-	saveSessionSnapshot as saveAppStoreSessionSnapshot,
 	setCurrentSessionId as setAppStoreCurrentSessionId,
 	updateSessionWorkingDirectory as updateAppSessionWorkingDirectory,
 	updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots,
 } from "@onething/app/store.js";
+import {
+	createSessionCommands,
+	sessionCommands as appSessionCommands,
+	type SessionCommands,
+} from "@onething/app/session/commands.js";
+import {
+	sessionReads as appSessionReads,
+	sessionPreviewText,
+} from "@onething/app/session/reads.js";
+import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/app/stores/sessions.js";
 import {
 	CorePluginStore,
 	createBuiltinPluginDefinitions,
@@ -326,6 +335,7 @@ import {
 } from "@onething/runtime/storage";
 import { createOnethingSessionRepository } from "@onething/runtime/sessions/session-repository";
 import { createHybridSessionStorageDriver } from "@onething/runtime/sessions/storage-driver";
+import { createOnethingSessionMessageRuntime } from "@onething/runtime/sessions/session-message-runtime";
 import {
 	deleteJsonFile,
 	readJsonFile as readCoreJsonFile,
@@ -409,10 +419,12 @@ import type {
 import type {
 	ChatMessage,
 	ChatSession,
+	ContentPart,
 	GetSessionMessagesPageRequest,
 	GetSessionMessagesPageResponse,
 	SessionDetails,
 	SessionMeta,
+	Step,
 	SystemPromptSnapshot,
 	UserMessageMarker,
 } from "@shared/ipc/chat.js";
@@ -567,6 +579,21 @@ export interface ServerSessionStore {
 		context: RuntimeRequestContext,
 	): ServerChatSession;
 	saveSession(session: ServerChatSession): void;
+	/**
+	 * 只盖 index 元数据,不重写会话体(P0.3)。消息命令已经按写计划落过盘,
+	 * 再走一次 `saveSession` 等于把整份 messages.jsonl 重写一遍。
+	 */
+	saveSessionMeta(session: ServerChatSession): void;
+	/**
+	 * 会话消息的读口(P0.3 / docs/design/session-commands-p0-2026-08.md §3):
+	 * server 不再持有 `session.messages`。app 后端走 `sessionReads`,echo/test
+	 * 后端走自己那只仓库 —— 两只仓库是真的两只,不能合并成一个门面。
+	 */
+	getMessages(sessionId: string): readonly ChatMessage[];
+	/**
+	 * 会话消息的写口(§2 的 12 命令)。写计划 / COW / lazy 档只有命令面算一次。
+	 */
+	messages: SessionCommands;
 	deleteSession(sessionId: string): {
 		deletedIds: string[];
 		parentSessionId?: string;
@@ -1107,7 +1134,9 @@ async function createRealServerBackend(storePath: string): Promise<OnethingServe
 		abortSession(sessionId, reason) {
 			backend.engine.abort(sessionId, reason ?? "server abort");
 		},
-		shutdown: () => backend.shutdown(),
+		shutdown: async () => {
+			await backend.shutdown();
+		},
 	};
 }
 
@@ -1280,7 +1309,7 @@ export async function createDevelopmentOnethingServerRuntime(
 	): ServerChatSession | undefined => {
 		const session = sessionStore.getSession(sessionId);
 		if (!session) return undefined;
-		normalizeStoredServerSession(session);
+		normalizeStoredServerSession(session, sessionStore.getMessages(sessionId));
 		sessions.set(sessionId, session);
 		return session;
 	};
@@ -1329,10 +1358,35 @@ export async function createDevelopmentOnethingServerRuntime(
 			// resident in the working set. Real-engine sessions live in the app
 			// repository — stamping 'local-echo' here would persist into the
 			// store shared with the desktop.
-			normalizeStoredServerSession(session);
+			normalizeStoredServerSession(
+				session,
+				sessionStore.getMessages(session.id),
+			);
 			sessions.set(session.id, session);
 		}
 		sessionStore.saveSession(session);
+	};
+
+	/**
+	 * 消息命令之后的会话级收尾(P0.3)。
+	 *
+	 * 命令面已经按写计划把消息落过盘了,这里只补派生字段与 index 元数据 ——
+	 * 再走一次 `persistSession` 就是把整份 messages.jsonl 重写一遍(SV12 的病根)。
+	 * 例外是自动标题:`name` 住在会话体里,改了才需要整份写。
+	 * 会话对象**重新解析**:命令写的是仓库里那一份,手上那一份可能已经被 LRU 换过。
+	 */
+	const settleMessageCommand = (sessionId: string): void => {
+		const session = resolveSession(sessionId);
+		if (!session) return;
+		const previousName = session.name;
+		refreshSessionMeta(session, sessionStore.getMessages(sessionId), {
+			preserveUpdatedAt: true,
+		});
+		if (session.name !== previousName) {
+			persistSession(session);
+			return;
+		}
+		sessionStore.saveSessionMeta(session);
 	};
 
 	const getSessionForContext = (
@@ -1431,7 +1485,7 @@ export async function createDevelopmentOnethingServerRuntime(
 			// there is no second cache left to invalidate.
 			const session = sessions.get(envelope.sessionId);
 			if (!session) return;
-			applySessionEvent(session, envelope.event);
+			applySessionEvent(sessionStore, session, envelope.event);
 			persistSession(session);
 		}
 	}, "ServerRuntimeStore");
@@ -2130,7 +2184,13 @@ export async function createDevelopmentOnethingServerRuntime(
 
 		return createOnethingSearchProviders({
 			getSessionsList: () => listSessionsForContext(context),
-			getSessionRaw: (sessionId) => getSessionForContext(sessionId, context),
+			// P0.4:全库搜索按会话取消息走读口(`sessionStore.getMessages`),
+			// 不再借 `getSessionRaw` 端口整条会话地拿 —— 那个回落端口已删。
+			// 归属判定仍旧走 `getSessionForContext`(不是本人的会话不进搜索结果)。
+			iterateSessionMessages: (sessionId) =>
+				getSessionForContext(sessionId, context)
+					? sessionStore.getMessages(sessionId)
+					: [],
 			getSession: (sessionId) => getSessionForContext(sessionId, context),
 			getCurrentSessionId: () => getServerCurrentSessionId(context),
 			getSettings: () => settings,
@@ -2547,7 +2607,7 @@ export async function createDevelopmentOnethingServerRuntime(
 				return {
 					success: true,
 					session: toSessionDetails(session),
-					messageCount: session.messages.length,
+					messageCount: sessionStore.getMessages(session.id).length,
 				};
 			},
 			async delete(sessionId: string, context = defaultRequestContext()) {
@@ -2599,7 +2659,8 @@ export async function createDevelopmentOnethingServerRuntime(
 					return { success: false, error: "Parent session not found" };
 				}
 
-				const messageIndex = parentSession.messages.findIndex(
+				const parentMessages = sessionStore.getMessages(parentSessionId);
+				const messageIndex = parentMessages.findIndex(
 					(message) => message.id === branchFromMessageId,
 				);
 				if (messageIndex < 0)
@@ -2607,7 +2668,7 @@ export async function createDevelopmentOnethingServerRuntime(
 
 				const now = Date.now();
 				const branchId = createSessionId();
-				const inheritedMessages = parentSession.messages
+				const inheritedMessages = parentMessages
 					.slice(0, messageIndex + 1)
 					.map((message) => cloneBranchMessage(message, branchId));
 				const branchSession = sessionStore.createBranchSession(
@@ -2629,7 +2690,10 @@ export async function createDevelopmentOnethingServerRuntime(
 					parentSession.workingDirectoryRoots ?? [],
 				);
 				branchSession.variables = cloneJson(parentSession.variables ?? []);
-				refreshSessionMeta(branchSession);
+				refreshSessionMeta(
+					branchSession,
+					sessionStore.getMessages(branchSession.id),
+				);
 				persistSession(branchSession);
 				setServerCurrentSessionId(context, branchSession.id);
 				return { success: true, session: toChatSession(branchSession) };
@@ -2659,7 +2723,7 @@ export async function createDevelopmentOnethingServerRuntime(
 				// Real backends: the app-store session in memory is the truth
 				// (async writes may still be queued) — page from it directly.
 				return backend.persistsMessages || activeStreamSessions.has(request.sessionId)
-					? getMessagePage(session.messages, request)
+					? getMessagePage(sessionStore.getMessages(request.sessionId), request)
 					: sessionStore.getMessagesPage(request);
 			},
 			async userMarkers(sessionId: string, context = defaultRequestContext()) {
@@ -2670,9 +2734,9 @@ export async function createDevelopmentOnethingServerRuntime(
 				return {
 					success: true,
 					markers: backend.persistsMessages || activeStreamSessions.has(sessionId)
-						? getUserMarkers(session.messages)
+						? getUserMarkers(sessionStore.getMessages(sessionId))
 						: (sessionStore.getUserMessageMarkers(sessionId) ??
-							getUserMarkers(session.messages)),
+							getUserMarkers(sessionStore.getMessages(sessionId))),
 				};
 			},
 		},
@@ -2680,7 +2744,7 @@ export async function createDevelopmentOnethingServerRuntime(
 			async getHistory(sessionId: string, context = defaultRequestContext()) {
 				const session = getSessionForContext(sessionId, context);
 				if (!session) return { success: false, error: "Session not found" };
-				return { success: true, messages: session.messages };
+				return { success: true, messages: sessionStore.getMessages(sessionId) };
 			},
 			async generateTitle(message: string) {
 				return { success: true, title: generateTitleFromMessage(message) };
@@ -2688,7 +2752,7 @@ export async function createDevelopmentOnethingServerRuntime(
 			async getMessages(sessionId: string, context = defaultRequestContext()) {
 				const session = getSessionForContext(sessionId, context);
 				if (!session) return { success: false, error: "Session not found" };
-				return { success: true, messages: session.messages };
+				return { success: true, messages: sessionStore.getMessages(sessionId) };
 			},
 			async getTokenUsage(
 				sessionId: string,
@@ -2712,6 +2776,8 @@ export async function createDevelopmentOnethingServerRuntime(
 				persistSession(session);
 				return { success: true };
 			},
+			// SV1–SV4(P0.3):四个写点全部走命令面。会话级收尾走
+			// `settleMessageCommand`(派生字段 + index 元数据),不再整份重写会话体。
 			async addSystemMessage(
 				sessionId: string,
 				message: unknown,
@@ -2719,10 +2785,10 @@ export async function createDevelopmentOnethingServerRuntime(
 			) {
 				const session = getSessionForContext(sessionId, context);
 				if (!session) return { success: false, error: "Session not found" };
-				const systemMessage = normalizeServerSystemMessage(sessionId, message);
-				session.messages.push(systemMessage);
-				refreshSessionMeta(session);
-				persistSession(session);
+				sessionStore.messages.appendMessage(sessionId, {
+					message: normalizeServerSystemMessage(sessionId, message),
+				});
+				settleMessageCommand(sessionId);
 				return { success: true };
 			},
 			async removeSystemMarkerMessage(
@@ -2733,17 +2799,19 @@ export async function createDevelopmentOnethingServerRuntime(
 				const session = getSessionForContext(sessionId, context);
 				if (!session) return { success: false, error: "Session not found" };
 				const marker = `"type":"${markerType}"`;
-				const index = session.messages.findIndex(
-					(message) =>
-						message.role === "system" &&
-						typeof message.content === "string" &&
-						message.content.includes(marker),
-				);
-				if (index < 0) return { success: true, removedId: null };
-				const [removed] = session.messages.splice(index, 1);
-				refreshSessionMeta(session);
-				persistSession(session);
-				return { success: true, removedId: removed?.id ?? null };
+				const matchesMarker = (candidate: ChatMessage): boolean =>
+					candidate.role === "system" &&
+					typeof candidate.content === "string" &&
+					candidate.content.includes(marker);
+				const existing = sessionStore
+					.getMessages(sessionId)
+					.find(matchesMarker);
+				if (!existing) return { success: true, removedId: null };
+				sessionStore.messages.deleteMessage(sessionId, {
+					matchMarker: matchesMarker,
+				});
+				settleMessageCommand(sessionId);
+				return { success: true, removedId: existing.id };
 			},
 			async removeMessage(
 				sessionId: string,
@@ -2752,13 +2820,10 @@ export async function createDevelopmentOnethingServerRuntime(
 			) {
 				const session = getSessionForContext(sessionId, context);
 				if (!session) return { success: false, error: "Session not found" };
-				const index = session.messages.findIndex(
-					(message) => message.id === messageId,
-				);
-				if (index < 0) return { success: false, error: "Message not found" };
-				session.messages.splice(index, 1);
-				refreshSessionMeta(session);
-				persistSession(session);
+				if (!sessionStore.messages.deleteMessage(sessionId, { messageId })) {
+					return { success: false, error: "Message not found" };
+				}
+				settleMessageCommand(sessionId);
 				return { success: true };
 			},
 			async updateMessageThinkingTime(
@@ -2769,13 +2834,16 @@ export async function createDevelopmentOnethingServerRuntime(
 			) {
 				const session = getSessionForContext(sessionId, context);
 				if (!session) return { success: false, error: "Session not found" };
-				const message = session.messages.find(
-					(candidate) => candidate.id === messageId,
-				);
-				if (!message) return { success: false, error: "Message not found" };
-				message.thinkingTime = thinkingTime;
-				refreshSessionMeta(session);
-				persistSession(session);
+				const patched = sessionStore.messages.patchMessage(sessionId, {
+					messageId,
+					patch: { thinkingTime },
+					// `settle` = 不进 5s 懒写档。桌面端那只 mutator 用的是 `stream`(懒写),
+					// 但 server 这条路迁移前是 `persistSession` 立刻排 300ms 队列 ——
+					// 这里按**server 原来的时机**接,不顺手改成懒写。
+					hint: "settle",
+				});
+				if (!patched) return { success: false, error: "Message not found" };
+				settleMessageCommand(sessionId);
 				return { success: true };
 			},
 		},
@@ -3555,11 +3623,13 @@ export async function createDevelopmentOnethingServerRuntime(
 					// 加载会话体,不经 resolveSession,避免把全部会话钉进工作集。
 					listSessions: () =>
 						listOwnedSessionMetas(context)
-							.map((meta) => sessionStore.getSession(meta.id))
-							.filter((session): session is ServerChatSession =>
-								Boolean(session),
-							)
-							.map(toMediaSession),
+							.filter((meta) => Boolean(sessionStore.getSession(meta.id)))
+							.map((meta) =>
+								toMediaSession({
+									id: meta.id,
+									messages: sessionStore.getMessages(meta.id),
+								}),
+							),
 					rebuildFromSessions: (mediaSessions) =>
 						service.rebuildFromSessions(mediaSessions),
 					logger: console,
@@ -4917,10 +4987,18 @@ export async function createDevelopmentOnethingServerRuntime(
 	};
 }
 
+/**
+ * echo/test 后端的事件投影(真引擎自己写库,这条路只在 `persistsMessages === false`
+ * 时跑)。P0.3:消息写全部走命令面 —— 但走的是**这只 store 自己的**命令面
+ * (`store.messages`),不是 app store 那个单例:两只仓库是真的两只。
+ */
 function applySessionEvent(
+	store: ServerSessionStore,
 	session: ServerChatSession,
 	event: AgentEngineSessionEvent,
 ): void {
+	const settle = () =>
+		refreshSessionMeta(session, store.getMessages(session.id));
 	const variablesEvent = readSessionVariablesUpdatedEvent(event);
 	if (variablesEvent) {
 		if (variablesEvent.workingDirectory)
@@ -4928,52 +5006,65 @@ function applySessionEvent(
 		if (variablesEvent.workingDirectoryRoots)
 			session.workingDirectoryRoots = variablesEvent.workingDirectoryRoots;
 		session.variables = variablesEvent.variables;
-		refreshSessionMeta(session);
+		settle();
 		return;
 	}
 
 	if ((event as { type?: string }).type === SESSION_EVENT_TYPES.MESSAGES_REPLACED) {
 		const replaced = event as unknown as { messages: ChatMessage[] };
-		session.messages = replaced.messages.map((message) => ({ ...message }));
-		refreshSessionMeta(session);
+		// `reason:'replaced'` 是同步的(只有 'clear' 会 await 刷盘/留档),
+		// 所以这里 void 掉 promise 不改变执行顺序。
+		void store.messages.replaceAll(session.id, {
+			messages: replaced.messages.map((message) => ({ ...message })),
+			reason: "replaced",
+		});
+		settle();
 		return;
 	}
 
 	switch (event.type) {
 		case SESSION_EVENT_TYPES.MESSAGE_USER_CREATED:
 		case SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED:
-			upsertMessage(session, toChatMessage(session.id, event.message));
+			upsertServerMessage(store, session.id, toChatMessage(session.id, event.message));
 			break;
 		case SESSION_EVENT_TYPES.MESSAGE_UPDATED:
-			updateMessage(
-				session,
+			updateServerMessage(
+				store,
+				session.id,
 				event.messageId,
 				event.updates as Partial<ChatMessage>,
 			);
 			break;
 		case SESSION_EVENT_TYPES.STREAM_START:
-			updateMessage(session, event.messageId || event.assistantMessageId, {
-				isStreaming: true,
-				model: event.model,
-				provider: "local",
-			});
+			updateServerMessage(
+				store,
+				session.id,
+				event.messageId || event.assistantMessageId,
+				{
+					isStreaming: true,
+					model: event.model,
+					provider: "local",
+				},
+			);
 			break;
 		case SESSION_EVENT_TYPES.STREAM_COMPLETE:
-			markStreamingComplete(session);
+			markStreamingComplete(store, session.id);
 			applyServerSessionUsage(session, event.data.usage);
 			break;
 		case SESSION_EVENT_TYPES.STREAM_ERROR:
-			markStreamingComplete(session);
-			session.messages.push({
-				id: `error-${Date.now()}`,
-				role: "error",
-				content: event.data.error,
-				errorDetails: event.data.errorDetails,
-				timestamp: Date.now(),
+			markStreamingComplete(store, session.id);
+			store.messages.appendMessage(session.id, {
+				message: {
+					id: `error-${Date.now()}`,
+					role: "error",
+					content: event.data.error,
+					errorDetails: event.data.errorDetails,
+					timestamp: Date.now(),
+				} as ChatMessage,
 			});
 			break;
 	}
-	refreshSessionMeta(session);
+	settle();
 }
 
 function getServerSessionTokenUsage(session: ServerChatSession): {
@@ -5082,13 +5173,19 @@ function cloneBranchMessage(
 	message: ChatMessage,
 	sessionId: string,
 ): ChatMessage {
-	const cloned = cloneJson(message);
-	cloned.id = randomUUID();
-	cloned.sessionId = sessionId;
-	cloned.isStreaming = false;
-	delete cloned.seq;
-	delete cloned.thinkingStartTime;
-	return cloned;
+	// 一次性构造(P0.3):先深拷再逐字段改写会被检查器认成"改消息",
+	// 而且 seq / thinkingStartTime 靠 `delete` 摘掉本来就比 rest 解构绕。
+	const {
+		seq: _seq,
+		thinkingStartTime: _thinkingStartTime,
+		...rest
+	} = cloneJson(message);
+	return {
+		...rest,
+		id: randomUUID(),
+		sessionId,
+		isStreaming: false,
+	};
 }
 
 function toChatMessage(
@@ -5108,45 +5205,81 @@ function toChatMessage(
 	};
 }
 
-function upsertMessage(session: ServerChatSession, message: ChatMessage): void {
-	const index = session.messages.findIndex((item) => item.id === message.id);
-	if (index >= 0) {
-		session.messages[index] = { ...session.messages[index], ...message };
-	} else {
-		session.messages.push(message);
-	}
+/**
+ * SV7:命令面的 `upsertMessage` 是**整条替换**,而 server 这条投影一直是**合并**
+ * (事件只带 id/role/content,合并才不会把 isStreaming/model 抹掉)。合并在这里
+ * 做完再交给命令,行为一字不改。
+ */
+function upsertServerMessage(
+	store: ServerSessionStore,
+	sessionId: string,
+	message: ChatMessage,
+): void {
+	const existing = store
+		.getMessages(sessionId)
+		.find((item) => item.id === message.id);
+	store.messages.upsertMessage(sessionId, {
+		message: existing ? { ...existing, ...message } : message,
+	});
 }
 
-function updateMessage(
-	session: ServerChatSession,
+/**
+ * SV8:`Object.assign(message, updates)` + content→contentParts 的派生规则。
+ * 派生保留 —— 只是从"改完再补一刀"变成把它算进同一份 patch 里。
+ */
+function updateServerMessage(
+	store: ServerSessionStore,
+	sessionId: string,
 	messageId: string,
 	updates: Partial<ChatMessage>,
 ): void {
-	const message = session.messages.find((item) => item.id === messageId);
-	if (!message) return;
-	Object.assign(message, updates);
-	if (typeof updates.content === "string") {
-		message.contentParts = [{ type: "text", content: updates.content }];
+	const patch: Partial<ChatMessage> =
+		typeof updates.content === "string"
+			? {
+					...updates,
+					contentParts: [{ type: "text", content: updates.content }],
+				}
+			: updates;
+	store.messages.patchMessage(sessionId, { messageId, patch });
+}
+
+/**
+ * SV9:`stream:complete` / `stream:error` 事件**不带 messageId**
+ * (`StreamCompleteEvent` / `StreamErrorEvent` 只有 `data`),所以"最后一条
+ * assistant"的定位保留,只是取数改走 store 的读口。
+ */
+function markStreamingComplete(
+	store: ServerSessionStore,
+	sessionId: string,
+): void {
+	const messages = store.getMessages(sessionId);
+	for (let index = messages.length - 1; index >= 0; index--) {
+		if (messages[index].role !== "assistant") continue;
+		store.messages.patchMessage(sessionId, {
+			messageId: messages[index].id,
+			patch: { isStreaming: false },
+		});
+		return;
 	}
 }
 
-function markStreamingComplete(session: ServerChatSession): void {
-	const lastAssistant = [...session.messages]
-		.reverse()
-		.find((message) => message.role === "assistant");
-	if (lastAssistant) lastAssistant.isStreaming = false;
-}
-
+/**
+ * 会话级派生字段(updatedAt / messageCount / previewText / 自动标题)。
+ *
+ * P0.3:消息不再从 `session.messages` 取,由调用方从读门面递进来
+ * (`sessionStore.getMessages`)—— 命令面之外没有人持有那份数组。
+ * P0.4(用户 2026-08-19 拍板):预览文本从 server 自己的 `slice(0,160)` 换成读门面
+ * 的唯一口径 `sessionPreviewText`(trim / 120 字 / 补 `…` / 空串给 undefined)。
+ * 这是会话列表上肉眼可见的行为变化,已获批准。
+ */
 function refreshSessionMeta(
 	session: ServerChatSession,
+	messages: readonly ChatMessage[],
 	options: { preserveUpdatedAt?: boolean } = {},
 ): void {
 	if (!options.preserveUpdatedAt) session.updatedAt = Date.now();
-	session.messageCount = session.messages.length;
-	session.previewText =
-		session.messages
-			.find((message) => message.role === "user")
-			?.content.slice(0, 160) ?? "";
+	session.messageCount = messages.length;
+	session.previewText = sessionPreviewText(messages);
 	if (session.name === "New Chat" && session.previewText) {
 		session.name = session.previewText.slice(0, 40);
 	}
@@ -5253,7 +5386,9 @@ function toSessionMeta(session: ServerChatSession): SessionMeta {
 	} = session;
 	return {
 		...meta,
-		messageCount: session.messages.length,
+		// P0.3:messageCount 由 normalize* / refreshSessionMeta 盖在会话上,
+		// 这里不再自己数一遍 `session.messages`(两只仓库各有各的取数口)。
+		messageCount: session.messageCount ?? 0,
 		previewText: session.previewText,
 	};
 }
@@ -5276,7 +5411,7 @@ function toSessionDetails(session: ServerChatSession): SessionDetails {
 }
 
 function getMessagePage(
-	messages: ChatMessage[],
+	messages: readonly ChatMessage[],
 	request: GetSessionMessagesPageRequest,
 ): GetSessionMessagesPageResponse {
 	const totalCount = messages.length;
@@ -5323,7 +5458,9 @@ function getMessagePage(
 	};
 }
 
-function getUserMarkers(messages: ChatMessage[]): UserMessageMarker[] {
+function getUserMarkers(
+	messages: readonly ChatMessage[],
+): UserMessageMarker[] {
 	return messages
 		.map((message, index) => ({ message, seq: index + 1 }))
 		.filter(({ message }) => message.role === "user")
@@ -5727,29 +5864,37 @@ export function createAppBackedServerSessionStore(
 	});
 	// 不复刻 echo 侧的 lastProvider/lastModel 兜底:这里的会话对象就是引擎的
 	// 活对象,凭空盖 'local-echo' 会被持久化进共享存储,污染桌面端数据。
+	// P0.3:原来这里还有一句 `session.messages = Array.isArray(...) ? ... : []`。
+	// 那是死代码 —— 走到这里的会话都经过 `getSession` → `sanitizeSessionOnStartup`
+	// → `computeSessionRepairOnLoad(session, session.messages)`,messages 不是数组
+	// 早就在那里 `.map` 崩了;createSession/createBranchSession 也恒建数组。
+	// 派生字段改从读门面取,server 不再持有 `session.messages`。
 	const normalizeAppSession = (
 		session: ServerChatSession,
 	): ServerChatSession => {
-		session.messages = Array.isArray(session.messages) ? session.messages : [];
 		if (!session.agentId) session.agentId = DEFAULT_ONETHING_AGENT_ID;
-		session.messageCount = session.messages.length;
+		const messages = appSessionReads.listMessages(session.id).messages;
+		session.messageCount = messages.length;
 		session.previewText =
-			session.previewText ??
-			session.messages
-				.find((message) => message.role === "user")
-				?.content.slice(0, 160) ??
-			"";
+			session.previewText ?? sessionPreviewText(messages);
 		return session;
 	};
+	// P0.4:`saveSessionSnapshot` 后门退役 —— 会话级字段改走命令面的
+	// `patchSession`。差别不只是门牌:老后门按 `structural` 写计划落盘,等于每次
+	// 改个名字/置顶/归档都把整份 `messages.jsonl` 重写一遍;jsonl 布局里会话级
+	// 字段全住 `meta.json`,`patchSession` 一律 `meta` 计划,消息一行不动。
 	const save = (session: ServerChatSession): void => {
 		const normalized = normalizeAppSession(session);
-		saveAppStoreSessionSnapshot(normalized, (meta) =>
-			Object.assign(meta, toSessionMeta(normalized), {
-				userId: normalized.userId,
-				workspaceId: normalized.workspaceId,
-				ownerVersion: SESSION_INDEX_OWNER_VERSION,
-			}),
-		);
+		const { messages: _messages, ...fields } = normalized;
+		appSessionCommands.patchSession(normalized.id, {
+			patch: fields,
+			mutateIndexMeta: (meta) =>
+				Object.assign(meta, toSessionMeta(normalized), {
+					userId: normalized.userId,
+					workspaceId: normalized.workspaceId,
+					ownerVersion: SESSION_INDEX_OWNER_VERSION,
+				}),
+		});
 	};
 	const stampOwner = (
 		session: ServerChatSession,
@@ -5805,6 +5950,19 @@ export function createAppBackedServerSessionStore(
 				context,
 			),
 		saveSession: save,
+		saveSessionMeta: (session) => {
+			const normalized = normalizeAppSession(session);
+			updateAppStoreSessionsIndexMeta(normalized.id, (meta) =>
+				Object.assign(meta, toSessionMeta(normalized), {
+					userId: normalized.userId,
+					workspaceId: normalized.workspaceId,
+					ownerVersion: SESSION_INDEX_OWNER_VERSION,
+				}),
+			);
+		},
+		getMessages: (sessionId) =>
+			appSessionReads.listMessages(sessionId).messages,
+		messages: appSessionCommands,
 		deleteSession: (sessionId) => deleteAppStoreSession(sessionId),
 		flushSession: (sessionId) => flushAppStoreSessionSave(sessionId),
 		flushAll: () => flushAllAppStorePendingSaves(),
@@ -5868,6 +6026,52 @@ export function createLocalServerSessionStore(
 
 	repository.initializeSessionRepositoryIndex();
 
+	// P0.3:echo/test 后端这只仓库与 `@onething/app` 的那只是**两只**(同一批文件、
+	// 各有各的缓存与写队列),所以命令面也得为它单独装一份 —— `sessionCommands`
+	// 那个单例绑死在 app store 上,借过来用会写到另一份内存真相里去。
+	// 装的是同一个工厂、同一个 reducer,写计划/COW/lazy 档的算法只有那一份。
+	const messageRuntime = createOnethingSessionMessageRuntime<
+		ServerChatSession,
+		ChatMessage,
+		SessionMeta,
+		Step,
+		ContentPart,
+		ToolCall
+	>({
+		repository: {
+			getSession: (sessionId) => repository.getSession(sessionId),
+			getCachedSession: (sessionId) => repository.getCachedSession(sessionId),
+			getCachedSessionMessages: (sessionId) =>
+				repository.getCachedSessionMessages(sessionId),
+			saveSessionToFile: (sessionId, session, options) =>
+				repository.saveSessionToFile(sessionId, session, options),
+			syncSessionToSqliteIfReady: (session) =>
+				repository.syncSessionToSqliteIfReady(session),
+			updateSessionsIndexMeta: (sessionId, update) =>
+				repository.updateSessionsIndexMeta(sessionId, update),
+		},
+		now: Date.now,
+		logger: console,
+	});
+
+	const messageCommands = createSessionCommands({
+		messages: messageRuntime,
+		getSession: (sessionId) => repository.getSession(sessionId),
+		updateSessionsIndexMeta: (sessionId, update) =>
+			repository.updateSessionsIndexMeta(sessionId, (meta) =>
+				update(meta as unknown as { [key: string]: unknown }),
+			),
+		flushSessionSave: (sessionId) => repository.flushSessionSave(sessionId),
+		archiveMessages: (sessionId) => storageDriver.archiveMessages(sessionId),
+		patchSession: (sessionId, patch, mutateIndexMeta) =>
+			repository.patchSession(sessionId, patch, mutateIndexMeta),
+		// 协作署名是桌面/引擎侧的事,server 不盖章(与迁移前 `session.messages.push`
+		// 的行为一致)。
+	});
+
+	const readMessages = (sessionId: string): readonly ChatMessage[] =>
+		repository.getSessionMessages(sessionId) ?? [];
+
 	// 存量 index 条目补齐所有权字段(一次性,ownerVersion 盖章后不再重跑):
 	// 会话列表因此可以只读 index 完成 owner 过滤,不必加载消息体。
 	const backfillSessionIndexOwnership = (): void => {
@@ -5896,7 +6100,10 @@ export function createLocalServerSessionStore(
 	backfillSessionIndexOwnership();
 
 	const saveSessionImmediately = (session: ServerChatSession): void => {
-		const normalized = normalizeStoredServerSession(session);
+		const normalized = normalizeStoredServerSession(
+			session,
+			readMessages(session.id),
+		);
 		repository.saveSessionToFile(normalized.id, normalized);
 		// 同步直写只适用于 legacy 文件;jsonl 会话走 300ms 队列(与 Electron 宿主一致),
 		// 不在这里 fire-and-forget 地 flush——已启动的异步写会与 deleteSession 的目录删除竞态。
@@ -5926,22 +6133,32 @@ export function createLocalServerSessionStore(
 			return saveOnethingUiStateForServer(appStatePath, uiState);
 		},
 		getSessions: () =>
-			repository.getSessions().map(normalizeStoredServerSession),
+			repository
+				.getSessions()
+				.map((session) =>
+					normalizeStoredServerSession(session, readMessages(session.id)),
+				),
 		getSessionsList: () => repository.getSessionsList(),
 		invalidateSession: (sessionId) => {
 			repository.invalidateSessionCache(sessionId);
 		},
 		getSession: (sessionId) => {
 			const session = repository.getSession(sessionId);
-			return session ? normalizeStoredServerSession(session) : undefined;
+			return session
+				? normalizeStoredServerSession(session, readMessages(sessionId))
+				: undefined;
 		},
 		createSession(sessionId, name, context) {
+			const created = repository.createSession(sessionId, name);
 			const session = normalizeStoredServerSession(
-				repository.createSession(sessionId, name),
+				created,
+				readMessages(sessionId),
 			);
 			session.userId = context.userId;
 			session.workspaceId = context.workspaceId;
-			refreshSessionMeta(session, { preserveUpdatedAt: true });
+			refreshSessionMeta(session, readMessages(sessionId), {
+				preserveUpdatedAt: true,
+			});
 			saveSessionImmediately(session);
 			return session;
 		},
@@ -5953,24 +6170,43 @@ export function createLocalServerSessionStore(
 			inheritedMessages,
 			context,
 		) {
+			const created = repository.createBranchSession(
+				sessionId,
+				name,
+				parentSessionId,
+				branchFromMessageId,
+				inheritedMessages,
+			);
 			const session = normalizeStoredServerSession(
-				repository.createBranchSession(
-					sessionId,
-					name,
-					parentSessionId,
-					branchFromMessageId,
-					inheritedMessages,
-				),
+				created,
+				readMessages(sessionId),
 			);
 			session.userId = context.userId;
 			session.workspaceId = context.workspaceId;
-			refreshSessionMeta(session, { preserveUpdatedAt: true });
+			refreshSessionMeta(session, readMessages(sessionId), {
+				preserveUpdatedAt: true,
+			});
 			saveSessionImmediately(session);
 			return session;
 		},
 		saveSession(session) {
 			saveSessionImmediately(session);
 		},
+		saveSessionMeta(session) {
+			const normalized = normalizeStoredServerSession(
+				session,
+				readMessages(session.id),
+			);
+			repository.updateSessionsIndexMeta(normalized.id, (meta) =>
+				Object.assign(meta, toSessionMeta(normalized), {
+					userId: normalized.userId,
+					workspaceId: normalized.workspaceId,
+					ownerVersion: SESSION_INDEX_OWNER_VERSION,
+				}),
+			);
+		},
+		getMessages: readMessages,
+		messages: messageCommands,
 		deleteSession: (sessionId) => repository.deleteSession(sessionId),
 		flushSession: (sessionId) => repository.flushSessionSave(sessionId),
 		flushAll: () => repository.flushAllPendingSaves(),
@@ -5983,20 +6219,20 @@ export function createLocalServerSessionStore(
 	};
 }
 
+/**
+ * P0.3:`session.messages = Array.isArray(...) ? ... : []` 这句删了 —— 它是死代码
+ * (仓库的 `getSession` 里 `sanitizeSessionOnStartup` 先 `.map` 过一遍,不是数组
+ * 早就崩了),而派生字段改由调用方把消息递进来。
+ */
 function normalizeStoredServerSession(
 	session: ServerChatSession,
+	messages: readonly ChatMessage[],
 ): ServerChatSession {
-	session.messages = Array.isArray(session.messages) ? session.messages : [];
 	if (!session.agentId) session.agentId = DEFAULT_ONETHING_AGENT_ID;
 	if (!session.lastProvider) session.lastProvider = "local";
 	if (!session.lastModel) session.lastModel = "local-echo";
-	session.messageCount = session.messages.length;
-	session.previewText =
-		session.previewText ??
-		session.messages
-			.find((message) => message.role === "user")
-			?.content.slice(0, 160) ??
-		"";
+	session.messageCount = messages.length;
+	session.previewText = session.previewText ?? sessionPreviewText(messages);
 	return session;
 }
 
@@ -6978,10 +7214,13 @@ function toServerClientLegacyMediaItem(
 	};
 }
 
-function toMediaSession(session: ServerChatSession) {
+function toMediaSession(input: {
+	id: string;
+	messages: readonly ChatMessage[];
+}) {
 	return {
-		id: session.id,
-		messages: session.messages.map((message) => ({
+		id: input.id,
+		messages: input.messages.map((message) => ({
 			id: message.id,
 			role: message.role,
 			attachments: message.attachments,

@@ -31,6 +31,7 @@ import {
 } from '@onething/runtime/collab'
 import { type ChatMessage, type ChatSession } from '@shared/ipc.js'
 import * as store from '../store.js'
+import { sessionCommands } from '../session/commands.js'
 import { getEventBus } from '../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
 import { getStorePath } from '../stores/paths.js'
@@ -139,7 +140,7 @@ export function postSystemLine(roomSessionId: string, content: string, source: s
     timestamp: Date.now(),
     source,
   }
-  store.addMessage(roomSessionId, message)
+  sessionCommands.appendMessage(roomSessionId, { message, stampCollab: true })
   void getEventBus().emit(roomSessionId, {
     type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
     message,

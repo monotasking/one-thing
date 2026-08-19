@@ -99,8 +99,8 @@ export class OutboundReplyDispatcher {
 
   private async dispatchFromSession(sessionId: string, messageId?: string): Promise<void> {
     if (!messageId) return
-    const { getSession } = await import('../store.js')
-    const message = getSession(sessionId)?.messages.find(item => item.id === messageId)
+    const { sessionReads } = await import('../session/reads.js')
+    const message = sessionReads.getMessage(sessionId, messageId)
     if (!message) return
     await this.dispatchMessage(sessionId, message)
   }

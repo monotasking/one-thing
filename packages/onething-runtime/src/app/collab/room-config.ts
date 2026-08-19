@@ -34,6 +34,7 @@ import {
   type PermissionMode,
 } from '@shared/ipc.js'
 import * as store from '../store.js'
+import { sessionCommands } from '../session/commands.js'
 import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
 import { applyBoardAction, clearCollabBoard } from './board-store.js'
@@ -142,7 +143,7 @@ export async function clearCollabRoomHistory(
   // 句是「这张卡还在不在」——卡先没了,它就一行都贴不出来;反过来先清转录,
   // 那行说明会落进一间已经清空的房。
   const { clearedTaskCount } = await clearCollabBoard(roomSessionId)
-  const room = await store.clearSessionMessages(roomSessionId)
+  const room = await sessionCommands.replaceAll(roomSessionId, { messages: [], reason: 'clear' })
   let clearedSessionCount = 0
   for (const agentId of memberAgentIds) {
     // **只清按房 scoped 的执行会话**(四审 A-4)。全局 legacy 会话
@@ -152,8 +153,8 @@ export async function clearCollabRoomHistory(
     // scoped 会话),清它对记忆卫生零收益,只有跨房代价。
     const execSessionId = collabAgentSessionId(agentId, roomSessionId)
     if (!execSessionId || !store.getSession(execSessionId)) continue
-    const cleared = await store.clearSessionMessages(execSessionId)
-    if (!cleared.cleared) continue
+    const cleared = await sessionCommands.replaceAll(execSessionId, { messages: [], reason: 'clear' })
+    if (!cleared.replaced) continue
     clearedSessionCount += 1
     resetCollabSeenCursor(execSessionId)
     broadcastClearedTranscript(execSessionId)
@@ -202,7 +203,7 @@ export async function clearCollabRoomHistory(
 
   return {
     success: true,
-    clearedMessageCount: room.clearedCount,
+    clearedMessageCount: room.previousCount,
     clearedSessionCount,
     clearedTaskCount: clearedTaskCount + clearedDmTaskCount,
     ...(options.includeMemberDms ? { clearedDmRoomCount } : {}),

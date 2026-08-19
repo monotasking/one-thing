@@ -4,13 +4,12 @@ import {
   executeSearch as executeRuntimeSearch,
   type OnethingSearchCategory,
 } from '@onething/runtime/search'
-import type {
-  SearchResult,
-} from '@shared/ipc/search.js'
+import type { SearchResult } from '@shared/ipc/search.js'
 import { listPrompts } from '../prompts/store.js'
 import { getCurrentSessionId } from '../stores/app-state.js'
 import { getConnectedDirectoriesForSession } from '../stores/connected-directories.js'
-import { getSession, getSessionRaw, getSessionsList } from '../stores/sessions.js'
+import { getSession, getSessionsList } from '../stores/sessions.js'
+import { sessionReads } from '../session/reads.js'
 import { getSettings } from '../stores/settings.js'
 import { listFiles } from '../utils/ripgrep.js'
 import { getVariablesStore } from '../variables/store/index.js'
@@ -26,7 +25,8 @@ export function configureAppSearchProviders(): void {
   searchProvidersConfigured = true
   configureOnethingSearchProviders({
     getSessionsList,
-    getSessionRaw,
+    // 全库消息搜索:raw 语义(不进 LRU、不 sanitize、不回写),P0.2 区 ②。
+    iterateSessionMessages: (sessionId: string) => sessionReads.iterateMessagesRaw(sessionId),
     getSession,
     getCurrentSessionId,
     getSettings,

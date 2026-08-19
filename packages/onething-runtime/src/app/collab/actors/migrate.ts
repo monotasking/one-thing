@@ -56,6 +56,7 @@ import {
   type CollabV3MigrationReport,
 } from '@onething/runtime/collab/actors'
 
+import { sessionReads } from '../../session/reads.js'
 import { getSessionsDir, getStorePath } from '../../stores/paths.js'
 import {
   collabAgentAccountPath,
@@ -432,9 +433,11 @@ function readRoomTranscript(roomId: string): RoomTranscript {
   if (!located) return { messages: [], status: 'absent' }
   try {
     if (located.kind === 'jsonl') {
-      const logPath = path.join(located.path, 'messages.jsonl')
-      if (!pathExists(logPath)) return { messages: [], status: 'ok' }
-      const parsed = parseRoomTranscriptJsonl(fs.readFileSync(logPath, 'utf-8'), roomId)
+      // P0.2 ③:绕驱动直读收进读门面。仍是**只读、零迁移、不进 LRU** —— 门面
+      // 拼的就是同一条 `sessions/<id>/messages.jsonl`,缺文件时同样当空转录。
+      const text = sessionReads.readTranscriptFile(roomId)
+      if (text === undefined) return { messages: [], status: 'ok' }
+      const parsed = parseRoomTranscriptJsonl(text, roomId)
       return { messages: parsed.messages, status: 'ok' }
     }
     const raw = JSON.parse(fs.readFileSync(located.path, 'utf-8')) as { messages?: unknown }

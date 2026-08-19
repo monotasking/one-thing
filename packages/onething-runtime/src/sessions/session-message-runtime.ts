@@ -1,17 +1,12 @@
 import {
-  addOrUpdateSessionMessageStep,
-  appendSessionMessageContentPart,
-  applySessionAppendMessageWithAdapters,
-  applySessionDeleteMessageWithAdapters,
-  applySessionInsertMessageAfterWithAdapters,
-  applySessionMessageMutationWithAdapters,
-  applySessionMessageStepsUsageByTurnWithAdapters,
-  applySessionTruncateMessagesWithAdapters,
-  applySessionUpdateMessageAndTruncateWithAdapters,
-  findSessionMessage,
+  adoptSessionCommandResult,
+  applySessionCommand,
+  applySessionMessageAppendToMeta,
+  applySessionUpdatedAtToMeta,
   getSessionTokenUsageSnapshot,
-  patchSessionMessage,
-  updateSessionMessageStep,
+  type CoreSessionCommandMessage,
+  type CoreSessionCommandSession,
+  type CoreSessionCommandStep,
   type CoreSessionCacheAdapter,
   type CoreSessionEditableMessage,
   type CoreSessionMessageWithId,
@@ -23,6 +18,8 @@ import {
   type CoreSessionTokenUsage,
   type CoreSessionUsageSnapshot,
   type CoreSessionWithMessageList,
+  type SessionCommand,
+  type SessionCommandResult,
 } from '@onething/core/session'
 import type { SessionWritePlan } from './storage-driver.js'
 
@@ -66,6 +63,8 @@ export interface OnethingSessionMessageRuntimeRepository<
 > {
   getSession(sessionId: string): TSession | undefined
   getCachedSession?(sessionId: string): TSession | undefined
+  /** 缓存里那份会话的消息(不触发加载);缺席时流式期的 sqlite 补同步跳过 */
+  getCachedSessionMessages?(sessionId: string): TMessage[] | undefined
   saveSessionToFile(
     sessionId: string,
     session: TSession,
@@ -162,71 +161,120 @@ export class OnethingSessionMessageRuntime<
     return getSessionTokenUsageSnapshot(session)
   }
 
-  addMessage(sessionId: string, message: TMessage): void {
-    applySessionAppendMessageWithAdapters<TSession, TMessage, TMeta>({
-      sessionId,
-      message,
-      now: this.now(),
-      getSession: id => this.options.repository.getSession(id),
-      // 追加 = 从新消息的 seq 起做后缀写
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session, {
-        plan: { kind: 'message', dirtySeq: session.messages.length },
-      }),
-      syncMessage: (session, nextMessage) => this.syncMessageToSqliteIfReady(session, nextMessage),
-      updateIndexMeta: (id, mutate) => this.options.repository.updateSessionsIndexMeta(id, mutate),
+  /**
+   * P0.1 绞杀(docs/design/session-commands-p0-2026-08.md §5):22 个 mutator 不再
+   * 各自算写计划/各自改对象,统一走 `applySessionCommand` —— 语义、COW、写计划、
+   * lazy 档只有那一份。这里剩下的只有"命令之外"的事:落盘、sqlite、index meta。
+   *
+   * 会话容器身份保持不变(`adoptSessionCommandResult`),见那个函数的注释。
+   */
+  private run(
+    sessionId: string,
+    command: SessionCommand<CoreSessionCommandMessage>,
+  ): { session: TSession; result: SessionCommandResult<TSession, CoreSessionCommandMessage> } | undefined {
+    const session = this.options.repository.getSession(sessionId)
+    if (!session) return undefined
+    const result = applySessionCommand(
+      session as unknown as CoreSessionCommandSession,
+      command,
+    ) as unknown as SessionCommandResult<TSession, CoreSessionCommandMessage>
+    if (!result.changed) return undefined
+    adoptSessionCommandResult(session, result)
+    this.options.repository.saveSessionToFile(sessionId, session, {
+      ...(result.lazy ? { lazy: true } : {}),
+      plan: result.writePlan as SessionWritePlan,
     })
+    return { session, result }
   }
 
-  insertMessageAfter(sessionId: string, afterMessageId: string, message: TMessage): boolean {
-    return applySessionInsertMessageAfterWithAdapters<TSession, TMessage>({
-      sessionId,
-      afterMessageId,
-      message,
+  private commandMessage(result: SessionCommandResult<TSession, CoreSessionCommandMessage>): TMessage {
+    return result.meta!.message as unknown as TMessage
+  }
+
+  /**
+   * 单条消息的 seq(1 起)—— 直接取命令自己算出来的写计划,不再回头
+   * `session.messages.findIndex`(那是命令面之外的一次会话读)。写计划不是
+   * `message` 档(结构性写)时返回 0,调用方跳过"同步这一条"。
+   */
+  private commandMessageSeq(result: SessionCommandResult<TSession, CoreSessionCommandMessage>): number {
+    const plan = result.writePlan as SessionWritePlan | undefined
+    return plan?.kind === 'message' ? (plan.dirtySeq ?? 0) : 0
+  }
+
+  addMessage(sessionId: string, message: TMessage): void {
+    const applied = this.run(sessionId, {
+      type: 'appendMessage',
+      message: message as unknown as CoreSessionCommandMessage,
       now: this.now(),
-      getSession: id => this.options.repository.getSession(id),
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session),
-      syncSession: session => this.syncSessionToSqliteIfReady(session),
-    }).applied
+    })
+    if (!applied) return
+    this.syncMessageToSqliteIfReady(applied.session, message, this.commandMessageSeq(applied.result))
+    this.options.repository.updateSessionsIndexMeta(sessionId, meta =>
+      applySessionMessageAppendToMeta(meta, applied.session, message))
   }
 
   deleteMessage(sessionId: string, messageId: string): boolean {
-    return Boolean(applySessionDeleteMessageWithAdapters<TSession, TMessage>({
-      sessionId,
-      messageId,
-      now: this.now(),
-      getSession: id => this.options.repository.getSession(id),
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session),
-      sqlite: {
-        isReady: id => this.isSqliteSessionReady(id),
-        scheduleMigration: id => this.scheduleSessionSqliteMigration(id),
-        syncMetadata: session => this.syncSqliteSessionMetadata(session),
-        deleteMessage: (id, targetMessageId) => this.deleteSqliteMessage(id, targetMessageId),
-      },
-      logger: this.logger,
-    }))
+    return this.runDeleteMessage(sessionId, { type: 'deleteMessage', messageId, now: this.now() })
+  }
+
+  /**
+   * `deleteMessage` 的两种形态(按 id / 按谓词)共用的收尾:sqlite 清一条 + E4 的
+   * index 元数据补盖。被删的那条由 reducer 从 `meta.deletedMessage` 带回来 ——
+   * 谓词形态不再自己先 `find` 一遍(那是命令面之外的一次会话读)。
+   */
+  private runDeleteMessage(
+    sessionId: string,
+    command: SessionCommand<CoreSessionCommandMessage>,
+  ): boolean {
+    const applied = this.run(sessionId, command)
+    if (!applied) return false
+    const deletedId = (applied.result.meta?.deletedMessage as CoreSessionCommandMessage | undefined)?.id
+
+    try {
+      if (this.isSqliteSessionReady(sessionId)) {
+        if (deletedId) this.deleteSqliteMessage(sessionId, deletedId)
+        this.syncSqliteSessionMetadata(applied.session)
+      } else {
+        this.scheduleSessionSqliteMigration(sessionId)
+      }
+    } catch (error) {
+      this.logger.error?.('[Sessions] Failed to delete message from SQLite:', error)
+    }
+
+    // E4:老路径漏了这一步,列表里的 updatedAt 因此停在删除之前。
+    if (applied.result.indexMetaChanged) {
+      this.options.repository.updateSessionsIndexMeta(sessionId, meta =>
+        applySessionUpdatedAtToMeta(meta, applied.session))
+    }
+    return true
   }
 
   deleteMessageAndTruncate(sessionId: string, messageId: string): boolean {
-    const result = applySessionTruncateMessagesWithAdapters<TSession, TMessage>({
-      sessionId,
+    const applied = this.run(sessionId, {
+      type: 'truncateFrom',
       messageId,
+      inclusive: true,
       now: this.now(),
-      getSession: id => this.options.repository.getSession(id),
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session),
-      sqlite: {
-        isReady: id => this.isSqliteSessionReady(id),
-        scheduleMigration: id => this.scheduleSessionSqliteMigration(id),
-        syncMetadata: session => this.syncSqliteSessionMetadata(session),
-        syncUsage: session => this.syncSqliteSessionUsage(session),
-        deleteMessageAndAfter: (id, targetMessageId) => this.deleteSqliteMessageAndAfter(id, targetMessageId),
-      },
-      updateIndexMeta: (id, mutate) => this.options.repository.updateSessionsIndexMeta(id, meta => mutate(meta)),
-      logger: this.logger,
     })
-    if (!result) return false
+    if (!applied) return false
+
+    try {
+      if (this.isSqliteSessionReady(sessionId)) {
+        this.deleteSqliteMessageAndAfter(sessionId, messageId)
+        this.syncSqliteSessionMetadata(applied.session)
+        this.syncSqliteSessionUsage(applied.session)
+      } else {
+        this.scheduleSessionSqliteMigration(sessionId)
+      }
+    } catch (error) {
+      this.logger.error?.('[Sessions] Failed to truncate messages in SQLite:', error)
+    }
+
+    this.options.repository.updateSessionsIndexMeta(sessionId, meta =>
+      applySessionUpdatedAtToMeta(meta, applied.session))
 
     const session = this.options.repository.getSession(sessionId)
-    if (session) this.logSubtractedMessageUsage(session, result.subtractedUsage)
+    if (session) this.logSubtractedMessageUsage(session, applied.result.meta!.subtractedUsage!)
     return true
   }
 
@@ -236,41 +284,49 @@ export class OnethingSessionMessageRuntime<
     newContent: string,
     options?: { contentParts?: TMessage['contentParts'] | null },
   ): boolean {
-    const result = applySessionUpdateMessageAndTruncateWithAdapters<TSession, TMessage>({
-      sessionId,
+    const applied = this.run(sessionId, {
+      type: 'truncateFrom',
       messageId,
+      inclusive: false,
       newContent,
-      options: {
-        hasContentParts: Boolean(options && Object.prototype.hasOwnProperty.call(options, 'contentParts')),
-        contentParts: options?.contentParts,
-      },
+      hasContentParts: Boolean(options && Object.prototype.hasOwnProperty.call(options, 'contentParts')),
+      contentParts: options?.contentParts as unknown[] | null | undefined,
       now: this.now(),
-      getSession: id => this.options.repository.getSession(id),
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session),
-      sqlite: {
-        isReady: id => this.isSqliteSessionReady(id),
-        scheduleMigration: id => this.scheduleSessionSqliteMigration(id),
-        syncMetadata: session => this.syncSqliteSessionMetadata(session),
-        syncUsage: session => this.syncSqliteSessionUsage(session),
-        upsertMessageAndTruncate: (id, message, seq) => this.upsertSqliteMessageAndTruncate(id, message, seq),
-      },
-      updateIndexMeta: (id, mutate) => this.options.repository.updateSessionsIndexMeta(id, meta => mutate(meta)),
-      logger: this.logger,
     })
-    if (!result) return false
+    if (!applied) return false
+
+    const meta = applied.result.meta!
+    try {
+      if (this.isSqliteSessionReady(sessionId)) {
+        this.upsertSqliteMessageAndTruncate(
+          sessionId,
+          meta.updatedMessage as unknown as TMessage,
+          meta.index! + 1,
+        )
+        this.syncSqliteSessionMetadata(applied.session)
+        this.syncSqliteSessionUsage(applied.session)
+      } else {
+        this.scheduleSessionSqliteMigration(sessionId)
+      }
+    } catch (error) {
+      this.logger.error?.('[Sessions] Failed to update+truncate messages in SQLite:', error)
+    }
+
+    this.options.repository.updateSessionsIndexMeta(sessionId, m =>
+      applySessionUpdatedAtToMeta(m, applied.session))
 
     const session = this.options.repository.getSession(sessionId)
-    if (session) this.logSubtractedMessageUsage(session, result.subtractedUsage)
+    if (session) this.logSubtractedMessageUsage(session, meta.subtractedUsage!)
     return true
   }
 
   // 逐 token 高频路径:只更新缓存并用 lazy 档兜底落盘,避免流式期间反复全量写盘。
   updateMessageContent(sessionId: string, messageId: string, newContent: string): boolean {
-    return this.patchMessage(sessionId, messageId, { content: newContent } as Partial<TMessage>, { lazy: true })
+    return this.patchMessage(sessionId, messageId, { content: newContent } as Partial<TMessage>, 'stream')
   }
 
   updateMessageReasoning(sessionId: string, messageId: string, reasoning: string): boolean {
-    return this.patchMessage(sessionId, messageId, { reasoning } as Partial<TMessage>, { lazy: true })
+    return this.patchMessage(sessionId, messageId, { reasoning } as Partial<TMessage>, 'stream')
   }
 
   updateMessageStreaming(sessionId: string, messageId: string, isStreaming: boolean): boolean {
@@ -282,21 +338,29 @@ export class OnethingSessionMessageRuntime<
   }
 
   updateMessageToolCalls(sessionId: string, messageId: string, toolCalls: TToolCall[]): boolean {
-    return this.patchMessage(sessionId, messageId, { toolCalls } as Partial<TMessage>)
+    const applied = this.run(sessionId, {
+      type: 'setToolCalls',
+      messageId,
+      toolCalls: toolCalls as never,
+    })
+    if (!applied) return false
+    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
+    return true
   }
 
   updateMessageContentParts(sessionId: string, messageId: string, contentParts: TMessage['contentParts']): boolean {
-    return this.patchMessage(sessionId, messageId, { contentParts } as Partial<TMessage>, { lazy: true })
+    return this.patchMessage(sessionId, messageId, { contentParts } as Partial<TMessage>, 'stream')
   }
 
   addMessageContentPart(sessionId: string, messageId: string, part: TContentPart): boolean {
-    return this.mutateMessage(sessionId, messageId, (session, targetMessageId) =>
-      appendSessionMessageContentPart<TMessage, TContentPart>(session, targetMessageId, part),
-    )
+    const applied = this.run(sessionId, { type: 'appendContentPart', messageId, part })
+    if (!applied) return false
+    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
+    return true
   }
 
   updateMessageThinkingTime(sessionId: string, messageId: string, thinkingTime: number): boolean {
-    return this.patchMessage(sessionId, messageId, { thinkingTime } as Partial<TMessage>, { lazy: true })
+    return this.patchMessage(sessionId, messageId, { thinkingTime } as Partial<TMessage>, 'stream')
   }
 
   updateMessageSkill(sessionId: string, messageId: string, skillUsed: string): boolean {
@@ -355,22 +419,27 @@ export class OnethingSessionMessageRuntime<
   }
 
   addMessageStep(sessionId: string, messageId: string, step: TStep): boolean {
-    return this.mutateMessage(sessionId, messageId, (session, targetMessageId) => {
-      const message = findSessionMessage(session, targetMessageId)
-      if (!message) return undefined
-      addOrUpdateSessionMessageStep<TMessage, TStep>(message, step)
-      return message
+    const applied = this.run(sessionId, {
+      type: 'upsertStep',
+      messageId,
+      step: step as unknown as CoreSessionCommandStep,
     })
+    if (!applied) return false
+    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
+    return true
   }
 
   updateMessageStep(sessionId: string, messageId: string, stepId: string, updates: Partial<TStep>): boolean {
-    // step 存活期间的活跃计时/部分输出更新是高频的;完成态(status 变更)按边界立即调度。
-    const lazy = updates.status === undefined
-    return this.mutateMessage(sessionId, messageId, (session, targetMessageId) => {
-      const message = findSessionMessage(session, targetMessageId)
-      if (!message) return undefined
-      return updateSessionMessageStep(message, stepId, updates) ? message : undefined
-    }, { lazy })
+    // lazy 档由命令面按 `updates.status === undefined` 决定(完成态立即调度)。
+    const applied = this.run(sessionId, {
+      type: 'patchStep',
+      messageId,
+      stepId,
+      updates: updates as unknown as Partial<CoreSessionCommandStep>,
+    })
+    if (!applied) return false
+    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
+    return true
   }
 
   updateMessageSteps(sessionId: string, messageId: string, steps: TStep[] | undefined): boolean {
@@ -383,64 +452,105 @@ export class OnethingSessionMessageRuntime<
     turnIndex: number,
     usage: CoreSessionTokenUsage,
   ): string[] {
-    return applySessionMessageStepsUsageByTurnWithAdapters<TSession, TMessage, TStep>({
-      sessionId,
+    const applied = this.run(sessionId, {
+      type: 'patchStepsUsageByTurn',
       messageId,
       turnIndex,
       usage,
-      getSession: id => this.options.repository.getSession(id),
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session, {
-        plan: this.messageWritePlan(session, messageId),
-      }),
-      syncMessage: (session, message) => this.syncMessageToSqliteIfReady(session, message),
     })
+    if (!applied) return []
+    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
+    return applied.result.meta?.updatedStepIds ?? []
+  }
+
+  /**
+   * `upsertMessage` 命令:按 id 存在就整条替换(后缀写),不存在就追加(与
+   * `addMessage` 同路)。server 的"写一条已存在的消息"走这里,不再自己拼。
+   */
+  upsertMessage(sessionId: string, message: TMessage): boolean {
+    const applied = this.run(sessionId, {
+      type: 'upsertMessage',
+      message: message as unknown as CoreSessionCommandMessage,
+      now: this.now(),
+    })
+    if (!applied) return false
+    this.syncMessageToSqliteIfReady(applied.session, message, this.commandMessageSeq(applied.result))
+    if (applied.result.indexMetaChanged) {
+      this.options.repository.updateSessionsIndexMeta(sessionId, meta =>
+        applySessionMessageAppendToMeta(meta, applied.session, message))
+    }
+    return true
+  }
+
+  /** `patchMessage` 命令的公开入口(命令面用;老 mutator 走同一条私有路径)。 */
+  patchMessageFields(
+    sessionId: string,
+    messageId: string,
+    patch: Partial<TMessage>,
+    hint?: 'stream' | 'settle',
+  ): boolean {
+    return this.patchMessage(sessionId, messageId, patch, hint)
+  }
+
+  /** `deleteMessage` 命令的"按内容找"形态(system marker 的删除口径)。 */
+  deleteMessageWhere(sessionId: string, matchMarker: (message: TMessage) => boolean): boolean {
+    return this.runDeleteMessage(sessionId, {
+      type: 'deleteMessage',
+      matchMarker: matchMarker as unknown as (message: CoreSessionCommandMessage) => boolean,
+      now: this.now(),
+    })
+  }
+
+  /**
+   * `replaceAll` 命令:整份消息日志换掉(清空 / 归一化 / 协作侧整体替换)。
+   * structural 写 —— 后缀写只会往后追,换整份不在它的语义里。
+   * 留档/刷盘/索引计数由调用方(`sessionCommands.replaceAll`)负责。
+   */
+  replaceAllMessages(
+    sessionId: string,
+    messages: TMessage[],
+    reason: 'clear' | 'replaced' | 'normalize',
+  ): boolean {
+    const applied = this.run(sessionId, {
+      type: 'replaceAll',
+      messages: messages as unknown as CoreSessionCommandMessage[],
+      reason,
+      now: this.now(),
+    })
+    return Boolean(applied)
+  }
+
+  /**
+   * `repairOnLoad` 命令:冷加载/启动期的收尾修复(中断的 step/toolCall、卡死的
+   * compact 消息、isStreaming、summary 元数据)。返回是否有改动。
+   */
+  repairOnLoad(sessionId: string, policy: 'startup' | 'loaded' = 'startup'): boolean {
+    return Boolean(this.run(sessionId, { type: 'repairOnLoad', policy, now: this.now() }))
   }
 
   private patchMessage(
     sessionId: string,
     messageId: string,
     patch: Partial<TMessage>,
-    saveOptions?: { lazy?: boolean },
+    hint: 'stream' | 'settle' = 'settle',
   ): boolean {
-    return this.mutateMessage(sessionId, messageId, (session, targetMessageId) =>
-      patchSessionMessage<TMessage, Partial<TMessage>>(session, targetMessageId, patch),
-    saveOptions)
-  }
-
-  private messageWritePlan(session: TSession, messageId: string): SessionWritePlan {
-    const index = session.messages.findIndex(item => item.id === messageId)
-    return index === -1 ? { kind: 'structural' } : { kind: 'message', dirtySeq: index + 1 }
-  }
-
-  private mutateMessage(
-    sessionId: string,
-    messageId: string,
-    mutateMessage: (
-      session: TSession,
-      messageId: string,
-    ) => TMessage | undefined,
-    saveOptions?: { lazy?: boolean },
-  ): boolean {
-    return applySessionMessageMutationWithAdapters<TSession, TMessage>({
-      sessionId,
+    const applied = this.run(sessionId, {
+      type: 'patchMessage',
       messageId,
-      getSession: id => this.options.repository.getSession(id),
-      mutateMessage,
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session, {
-        ...saveOptions,
-        plan: this.messageWritePlan(session, messageId),
-      }),
-      syncMessage: (session, message) => this.syncMessageToSqliteIfReady(session, message),
-    }).applied
+      patch: patch as unknown as Partial<CoreSessionCommandMessage>,
+      hint,
+    })
+    if (!applied) return false
+    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
+    return true
   }
 
   private syncSessionToSqliteIfReady(session: TSession): void {
     this.options.repository.syncSessionToSqliteIfReady?.(session)
   }
 
-  private syncMessageToSqliteIfReady(session: TSession, message: TMessage): void {
+  private syncMessageToSqliteIfReady(session: TSession, message: TMessage, seq: number): void {
     try {
-      const seq = session.messages.findIndex(item => item.id === message.id) + 1
       if (seq <= 0) return
 
       const syncKey = `${session.id}:${message.id}`
@@ -450,9 +560,11 @@ export class OnethingSessionMessageRuntime<
           this.pendingSqliteMessageSyncs.set(syncKey, setTimeout(() => {
             this.pendingSqliteMessageSyncs.delete(syncKey)
             const latestSession = this.options.repository.getCachedSession?.(session.id)
-            const latestMessage = latestSession?.messages.find(item => item.id === message.id)
-            if (latestSession && latestMessage) {
-              this.syncMessageToSqliteIfReady(latestSession, latestMessage)
+            // 消息从仓库层的取数原语拿(P0.4:不再自己持有 session.messages)
+            const latestMessages = this.options.repository.getCachedSessionMessages?.(session.id)
+            const latestIndex = latestMessages?.findIndex(item => item.id === message.id) ?? -1
+            if (latestSession && latestMessages && latestIndex >= 0) {
+              this.syncMessageToSqliteIfReady(latestSession, latestMessages[latestIndex]!, latestIndex + 1)
             }
           }, this.streamSyncThrottleMs))
         }

@@ -26,6 +26,7 @@ import { getStorePath } from "../stores/paths.js";
 import { getModelCapabilityEntry } from "../providers/model-registry.js";
 import { resolveSessionCredentialId } from "../providers/space-credentials.js";
 import * as store from "../store.js";
+import { sessionReads } from "../session/reads.js";
 
 /**
  * Providers billed as a fixed-price subscription (no per-token invoice).
@@ -74,8 +75,10 @@ function platformForOrigin(origin: MessageOrigin | undefined): string {
 function resolvePlatform(input: RecordUsageInput): string {
 	if (input.platform) return input.platform;
 	if (input.sessionId && input.assistantMessageId) {
-		const session = store.getSession(input.sessionId);
-		const message = session?.messages.find((m) => m.id === input.assistantMessageId);
+		const message = sessionReads.getMessage(
+			input.sessionId,
+			input.assistantMessageId,
+		);
 		return platformForOrigin(message?.origin as MessageOrigin | undefined);
 	}
 	return "electron";

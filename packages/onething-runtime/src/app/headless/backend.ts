@@ -55,6 +55,7 @@ import { getSettings } from '../stores/settings.js'
 import { toolkitCatalogToolDefinitions } from '../toolkit/catalog-projection.js'
 import { shutdownEventSystem, getEventBus, getStreamChannel } from '../events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from '../session/index.js'
+import { sessionReads } from '../session/reads.js'
 import { shutdownStreamEngine, getStreamEngine } from '../engine/index.js'
 import { Permission } from '../permission/index.js'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
@@ -273,8 +274,7 @@ export class HeadlessBackend {
   }
 
   async retryLast(sessionId: string, ownerClientId: string, emit: EmitStreamEvent): Promise<AskResult> {
-    const session = getSession(sessionId)
-    const lastAssistant = [...(session?.messages || [])].reverse().find(message => message.role === 'assistant')
+    const lastAssistant = sessionReads.lastMessageOfRole(sessionId, 'assistant')
     if (!lastAssistant) throw new Error('No assistant message to retry')
 
     const streamId = randomUUID()
@@ -461,7 +461,7 @@ export class HeadlessBackend {
   collabTranscript(roomSessionId: string, limit = 30): Array<{ role: string; agentId?: string; content: string }> {
     const session = getSession(roomSessionId)
     if (session?.kind !== 'room') throw new Error(`Not a room session: ${roomSessionId}`)
-    return session.messages
+    return sessionReads.listMessages(roomSessionId).messages
       .filter(message => message.role === 'user' || message.role === 'assistant' || message.role === 'system')
       .slice(-limit)
       .map(message => ({

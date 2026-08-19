@@ -33,6 +33,9 @@ describe('createOnethingProductStreamRuntime', () => {
       store: {
         getSettings: () => settings,
         getSession: () => session,
+        listMessages: () => session.messages,
+        getMessage: (_id: string, messageId: string) =>
+          session.messages.find((message: { id: string }) => message.id === messageId),
         addMessage: vi.fn(),
         renameSession: vi.fn(),
         updateMessageAndTruncate: vi.fn(() => true),
@@ -121,6 +124,9 @@ describe('createOnethingProductStreamRuntime', () => {
       store: {
         getSettings: () => ({ ai: { provider: 'openai', providers: {} } }),
         getSession: () => session,
+        listMessages: () => session.messages,
+        getMessage: (_id: string, messageId: string) =>
+          session.messages.find((message: { id: string }) => message.id === messageId),
         addMessage: vi.fn(),
         renameSession: vi.fn(),
         updateMessageAndTruncate: vi.fn(() => true),

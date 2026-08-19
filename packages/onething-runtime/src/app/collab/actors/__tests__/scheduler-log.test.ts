@@ -28,6 +28,12 @@ import {
 } from '@onething/runtime/collab/actors'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-scheduler-log-'))
+// P0.2 ③:被测模块改走 `sessionReads` / `sessionCommands`,而它们静态依赖真的
+// `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。换成共用替身,只留
+// 这个用例真正需要的那一口。
+vi.mock('../../../session/reads.js', () => import('../../../session/testing/facade-mock.js'))
+vi.mock('../../../session/commands.js', () => import('../../../session/testing/facade-mock.js'))
+
 vi.mock('../../../stores/paths.js', () => ({ getStorePath: () => storeRoot }))
 
 const {

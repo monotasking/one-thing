@@ -57,6 +57,7 @@ import { findAgent } from '../../agents/index.js'
 import { getEventBus } from '../../events/index.js'
 import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../store.js'
+import { sessionReads } from '../../session/reads.js'
 import { issueCollabDriveToken } from '../drive-guard.js'
 import { collabRoomFolder, ensureCollabRoomFolder } from '../room-folder.js'
 import {
@@ -146,7 +147,7 @@ function toMindSay(message: ChatMessage): CollabMindSay {
  * 一致(那边遍历卡上的全部会话,这边这条会话就是那一串里的当前项)。
  */
 function collectEvidence(workSessionId: string, roomSessionId: string): CollabWorkerEvidenceRef[] {
-  const messages = store.getSession(workSessionId)?.messages ?? []
+  const messages = sessionReads.listMessages(workSessionId).messages
   const calls: CollabWorkerToolCallLike[] = []
   for (const message of messages) {
     for (const call of message.toolCalls ?? []) calls.push(call as CollabWorkerToolCallLike)
@@ -157,7 +158,7 @@ function collectEvidence(workSessionId: string, roomSessionId: string): CollabWo
 
 /** 群聊最近几条真消息 —— 任务书里那一块「这一刻的讨论」。 */
 function roomTail(roomSessionId: string, limit: number): string {
-  const messages = store.getSession(roomSessionId)?.messages ?? []
+  const messages = sessionReads.listMessages(roomSessionId).messages
   const tail: string[] = []
   for (let index = messages.length - 1; index >= 0 && tail.length < limit; index -= 1) {
     const message = messages[index]
@@ -315,7 +316,7 @@ export function createCollabEngineWorkerPort(
         abortCollabZombieStream(outcome, workSessionId)
 
         // 不论结局都收割:一个被 abort 的半截回合里说出去的话**已经在房间里了**。
-        const roomMessages = store.getSession(request.roomSessionId)?.messages ?? []
+        const roomMessages = sessionReads.listMessages(request.roomSessionId).messages
         const { says } = scanCollabRoomSays(roomMessages, request.agentId, startedAt)
         const evidence = collectEvidence(workSessionId, request.roomSessionId)
 

@@ -12,9 +12,8 @@ const mocks = vi.hoisted(() => ({
   collectGoalFileChanges: vi.fn(async () => [] as Array<{ path: string; added: number; removed: number }>),
 }))
 
-vi.mock('../../../store.js', () => ({
-  getSession: (sessionId: string) => mocks.sessions.get(sessionId),
-}))
+// 读走门面(P0.2 区 ②):替身与生产同源,`bindSessionFacadeMock` 装的就是这张假会话表。
+vi.mock('../../../session/reads.js', () => import('../../../session/testing/facade-mock.js'))
 
 vi.mock('../../../toc/index.js', () => ({
   recordTocTurn: mocks.recordTocTurn,
@@ -24,7 +23,10 @@ vi.mock('../../../goals/file-changes.js', () => ({
   collectGoalFileChanges: mocks.collectGoalFileChanges,
 }))
 
+const { bindSessionFacadeMock } = await import('../../../session/testing/facade-mock.js')
 const { createSessionTocTrigger } = await import('../session-toc.js')
+
+bindSessionFacadeMock((sessionId: string) => mocks.sessions.get(sessionId))
 
 const SESSION = 's1'
 

@@ -168,7 +168,8 @@ describe('Set 判定 → 能力查询:行为等价', () => {
         turn: 2,
         providerId,
         compactEnabled: true,
-        session: { messages: [], contextSize: 9900 },
+        session: { contextSize: 9900 },
+        sessionMessages: [],
         budget: { modelContextLength: 10000, reservedOutputTokens: 512, thresholdPercent: 85 },
       })).toBeUndefined()
     }
@@ -184,7 +185,8 @@ describe('Set 判定 → 能力查询:行为等价', () => {
       turn: 2,
       providerId: 'deepseek',
       compactEnabled: true,
-      session: { messages: [], contextSize: 9900 },
+      session: { contextSize: 9900 },
+        sessionMessages: [],
       budget: { modelContextLength: 10000, reservedOutputTokens: 512, thresholdPercent: 85 },
     })).toBeTruthy()
   })

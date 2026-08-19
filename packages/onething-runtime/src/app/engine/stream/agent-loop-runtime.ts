@@ -18,6 +18,8 @@ import {
   getAgentLoopTransientTail,
 } from '@onething/core/engine'
 import * as store from '../../store.js'
+import { sessionCommands } from '../../session/commands.js'
+import { sessionReads } from '../../session/reads.js'
 import { goalRuntimeHooks } from '../../goals/runtime-hooks.js'
 import { scratchpadRuntimeHooks } from '../../scratchpad/index.js'
 import { resolveAgentProfileForSessionObject } from '../../agents/profile.js'
@@ -180,6 +182,9 @@ function createAgentLoopRuntimeAdapters(
     },
     buildHistoryMessages: (messages: ChatMessage[], session: ChatSession) =>
       buildHistoryMessages(messages, session),
+    // C1:回合中重建历史时,消息从读门面现取(产品层不许自己持有 session.messages)。
+    listSessionMessages: (sessionId: string) =>
+      [...sessionReads.listMessages(sessionId).messages],
     resolvePromptReferences(content, input) {
       const resolvedPromptRefs = resolvePromptReferences(content, { skills: input.skills })
       return {
@@ -231,8 +236,22 @@ function withCompactProgressEmit(
   }
 }
 
-/** One per process: it is stateless, the session store holds the record. */
-const sessionTurnContext = new SessionTurnContext(store)
+/**
+ * One per process: it is stateless, the session store holds the record.
+ * 三个端口全部走门面(P0.2 区 ②),且全部**同步** —— `attach()` 是同步的,
+ * 幂等闸靠持久化的 `turnContext` 字段,写档与迁移前的
+ * `store.updateMessageTurnContext`(无 hint → 常规 300ms 档)逐字等价。
+ */
+const sessionTurnContext = new SessionTurnContext({
+  listMessages: (sessionId: string) => sessionReads.listMessages(sessionId).messages,
+  getSessionMeta: (sessionId: string) => sessionReads.getSession(sessionId),
+  updateMessageTurnContext: (sessionId: string, messageId: string, turnContext) =>
+    sessionCommands.patchMessage(sessionId, {
+      messageId,
+      patch: { turnContext },
+      hint: 'settle',
+    }),
+})
 
 async function emitEvent(sessionId: string, event: unknown): Promise<void> {
   await getEventBus().emit(sessionId, event as Parameters<ReturnType<typeof getEventBus>['emit']>[1])

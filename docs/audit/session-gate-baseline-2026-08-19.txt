@@ -1,0 +1,1 @@
+[session] complete: 1966 file(s) scanned, 0 finding(s)

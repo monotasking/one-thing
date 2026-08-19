@@ -1,17 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyInheritedSessionWorkingDirectory,
-  applySessionDeleteMessageWithAdapters,
   applySessionAgent,
   applySessionArchiveState,
-  applySessionAppendMessageWithAdapters,
   applySessionContextSize,
-  applySessionInsertMessageAfterWithAdapters,
   applySessionIndexMetaMutationWithAdapters,
   applySessionModel,
   applySessionMessageAppendToMeta,
-  applySessionMessageMutationWithAdapters,
-  applySessionMessageStepsUsageByTurnWithAdapters,
   applySessionMetadataMutationWithAdapters,
   applySessionName,
   applySessionPermissionMode,
@@ -20,16 +15,11 @@ import {
   applySessionSideEffectMutationWithAdapters,
   applySessionSummary,
   applySessionTokenUsage,
-  applySessionTruncateMessagesWithAdapters,
   applySessionUpdatedAtToMeta,
-  applySessionUpdateMessageAndTruncateWithAdapters,
   applySessionVariables,
   applySessionWorkingDirectory,
   applySessionWorkingDirectoryRoots,
   applyDefaultAgentIdToSessionMetas,
-  addOrUpdateSessionMessageStep,
-  appendSessionMessage,
-  appendSessionMessageContentPart,
   collectSessionCascadeDeleteIds,
   createBranchSessionWithAdapters,
   CORE_DEFAULT_AGENT_ID,
@@ -37,18 +27,14 @@ import {
   createCoreSessionRecord,
   createSessionWithAdapters,
   deleteSessionWithAdapters,
-  deleteSessionMessage,
   extractSessionMeta,
   findSessionMeta,
-  findSessionMessage,
   getSessionTokenUsageSnapshot,
   hasSessionUsageDetails,
-  insertSessionMessageAfter,
   loadSessionWithAdapters,
   mergeSessionDetails,
   normalizeSessionVariables,
   normalizeWorkingDirectoryRoots,
-  patchSessionMessage,
   planSessionCascadeDelete,
   prependSessionMeta,
   resolveSessionDetailsSnapshot,
@@ -56,11 +42,7 @@ import {
   subtractSessionMessageUsage,
   sumSessionMessageUsage,
   syncSessionSideEffectWithReadyAdapters,
-  truncateSessionMessagesFrom,
-  updateSessionMessageAndTruncateAfter,
   updateSessionIndexMeta,
-  updateSessionMessageStep,
-  updateSessionMessageStepsUsageByTurn,
 } from '@onething/core/session'
 
 describe('core session store helpers', () => {
@@ -395,6 +377,7 @@ describe('core session store helpers', () => {
       }],
     ])
     const calls: string[] = []
+    const savedSessions = new Map<string, StartupSession>()
 
     const result = sanitizeSessionsOnStartupWithAdapters({
       loadIndex: () => [
@@ -403,12 +386,22 @@ describe('core session store helpers', () => {
         { id: 'missing' },
       ],
       loadSession: id => sessions.get(id),
-      saveSession: (id, session) => calls.push(`save:${id}:${session.messages[0].isStreaming}`),
+      saveSession: (id, session) => {
+        savedSessions.set(id, session)
+        calls.push(`save:${id}:${session.messages[0].isStreaming}`)
+      },
       syncSession: session => calls.push(`sync:${session.id}`),
     })
 
+    // COW(P0.2 area ①,F4):修好的是**新的**会话对象 —— 落盘/同步拿到的是新的那份,
+    // `loadSession` 手里那份原样不动。
     expect(result).toEqual({ scanned: 3, sanitized: 1, missing: 1 })
     expect(sessions.get('s1')?.messages[0]).toMatchObject({
+      isStreaming: true,
+      steps: [{ status: 'running' }],
+      toolCalls: [{ status: 'executing' }],
+    })
+    expect(savedSessions.get('s1')?.messages[0]).toMatchObject({
       isStreaming: false,
       steps: [{ status: 'failed', error: 'Interrupted: app was closed' }],
       toolCalls: [{ status: 'cancelled' }],
@@ -441,12 +434,17 @@ describe('core session store helpers', () => {
       expandPath: value => value.replace(/^~/, '/home/me'),
     })
 
-    expect(loaded).toMatchObject({ status: 'loaded', session, sanitized: true })
-    expect(session).toMatchObject({
+    // COW(F4):返回/入缓存的是修好的**新**会话;工作目录归一化仍是就地的
+    // (会话级字段不在命令面的管辖里)。
+    expect(loaded).toMatchObject({ status: 'loaded', sanitized: true })
+    expect(loaded.session).not.toBe(session)
+    expect(loaded.session).toMatchObject({
       workingDirectory: '/home/me/project',
       workingDirectoryRoots: ['/home/me/other'],
       messages: [{ isStreaming: false }],
     })
+    expect(session.messages[0].isStreaming).toBe(true)
+    expect(cache.get('s1')).toBe(loaded.session)
     expect(calls).toEqual(['save:s1:false', 'sync:s1', 'cache:s1'])
 
     const cached = loadSessionWithAdapters({
@@ -461,202 +459,12 @@ describe('core session store helpers', () => {
         throw new Error('unreachable')
       },
     })
-    expect(cached).toMatchObject({ status: 'cache-hit', session, sanitized: false })
+    expect(cached).toMatchObject({ status: 'cache-hit', session: loaded.session, sanitized: false })
 
     expect(loadSessionWithAdapters({
       sessionId: 'missing',
       loadSession: () => undefined,
     })).toEqual({ status: 'missing', sanitized: false })
-  })
-
-  it('runs session message mutations through core host adapters', () => {
-    const session = {
-      id: 's1',
-      messages: [
-        {
-          id: 'm1',
-          content: 'old',
-          contentParts: [] as Array<{ type: string; content: string }>,
-        },
-      ],
-    }
-    const calls: string[] = []
-
-    const result = applySessionMessageMutationWithAdapters({
-      sessionId: 's1',
-      messageId: 'm1',
-      getSession: id => id === 's1' ? session : undefined,
-      mutateMessage: (target, messageId) => {
-        const message = patchSessionMessage(target, messageId, { content: 'new' })
-        if (message) appendSessionMessageContentPart(target, messageId, { type: 'text', content: 'part' })
-        return message
-      },
-      saveSession: (sessionId, target) => {
-        calls.push(`save:${sessionId}:${target.messages[0].content}`)
-      },
-      syncMessage: (_target, message) => {
-        calls.push(`sync:${message.id}:${message.contentParts?.length}`)
-      },
-    })
-
-    expect(result).toMatchObject({
-      applied: true,
-      message: {
-        id: 'm1',
-        content: 'new',
-        contentParts: [{ type: 'text', content: 'part' }],
-      },
-    })
-    expect(calls).toEqual(['save:s1:new', 'sync:m1:1'])
-
-    expect(applySessionMessageMutationWithAdapters({
-      sessionId: 's1',
-      messageId: 'missing',
-      getSession: () => session,
-      mutateMessage: (target, messageId) => patchSessionMessage(target, messageId, { content: 'unreachable' }),
-      saveSession: () => {
-        throw new Error('unreachable')
-      },
-    })).toEqual({ applied: false })
-  })
-
-  it('appends messages through core host adapters and updates index metadata', () => {
-    const session = {
-      id: 's1',
-      updatedAt: 1,
-      messages: [] as Array<{ id: string; role: string; provider?: string; model?: string }>,
-      lastProvider: undefined as string | undefined,
-      lastModel: undefined as string | undefined,
-    }
-    const index = [{
-      id: 's1',
-      name: 'Session',
-      createdAt: 1,
-      updatedAt: 1,
-      lastProvider: undefined as string | undefined,
-      lastModel: undefined as string | undefined,
-    }]
-    const calls: string[] = []
-
-    const result = applySessionAppendMessageWithAdapters<typeof session, typeof session.messages[number], typeof index[number]>({
-      sessionId: 's1',
-      message: { id: 'm1', role: 'assistant', provider: 'deepseek', model: 'deepseek-chat' },
-      now: 500,
-      getSession: id => id === session.id ? session : undefined,
-      saveSession: (id, target) => calls.push(`save:${id}:${target.messages.length}`),
-      syncMessage: (_target, message) => calls.push(`sync:${message.id}`),
-      updateIndexMeta: (id, mutate) => {
-        const meta = updateSessionIndexMeta(index, id, mutate)
-        calls.push(`index:${meta?.updatedAt}:${meta?.lastProvider}:${meta?.lastModel}`)
-      },
-    })
-
-    expect(result).toMatchObject({ applied: true, message: { id: 'm1' } })
-    expect(session).toMatchObject({
-      updatedAt: 500,
-      lastProvider: 'deepseek',
-      lastModel: 'deepseek-chat',
-      messages: [{ id: 'm1' }],
-    })
-    expect(index[0]).toMatchObject({
-      updatedAt: 500,
-      lastProvider: 'deepseek',
-      lastModel: 'deepseek-chat',
-    })
-    expect(calls).toEqual([
-      'save:s1:1',
-      'sync:m1',
-      'index:500:deepseek:deepseek-chat',
-    ])
-  })
-
-  it('inserts messages through core host adapters', () => {
-    const session = {
-      id: 's1',
-      updatedAt: 1,
-      messages: [
-        { id: 'm1', role: 'user' },
-        { id: 'm3', role: 'assistant' },
-      ],
-    }
-    const calls: string[] = []
-
-    const result = applySessionInsertMessageAfterWithAdapters<typeof session, typeof session.messages[number]>({
-      sessionId: 's1',
-      afterMessageId: 'm1',
-      message: { id: 'm2', role: 'assistant' },
-      now: 600,
-      getSession: id => id === session.id ? session : undefined,
-      saveSession: (id, target) => calls.push(`save:${id}:${target.messages.map(message => message.id).join(',')}`),
-      syncSession: target => calls.push(`sync:${target.id}:${target.updatedAt}`),
-    })
-
-    expect(result).toMatchObject({ applied: true, message: { id: 'm2' } })
-    expect(session.messages.map(message => message.id)).toEqual(['m1', 'm2', 'm3'])
-    expect(session.updatedAt).toBe(600)
-    expect(calls).toEqual(['save:s1:m1,m2,m3', 'sync:s1:600'])
-
-    expect(applySessionInsertMessageAfterWithAdapters<typeof session, typeof session.messages[number]>({
-      sessionId: 'missing',
-      afterMessageId: 'm1',
-      message: { id: 'never', role: 'user' },
-      getSession: () => undefined,
-      saveSession: () => {
-        throw new Error('unreachable')
-      },
-    })).toEqual({ applied: false })
-  })
-
-  it('updates step usage by turn through core host adapters only when needed', () => {
-    const session: {
-      id: string
-      messages: Array<{
-        id: string
-        steps: Array<{
-          id: string
-          turnIndex: number
-          usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
-        }>
-      }>
-    } = {
-      id: 's1',
-      messages: [{
-        id: 'm1',
-        steps: [
-          { id: 'step-1', turnIndex: 1 },
-          { id: 'step-2', turnIndex: 2 },
-        ],
-      }],
-    }
-    const calls: string[] = []
-
-    expect(applySessionMessageStepsUsageByTurnWithAdapters({
-      sessionId: 's1',
-      messageId: 'm1',
-      turnIndex: 1,
-      usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
-      getSession: id => id === 's1' ? session : undefined,
-      saveSession: (sessionId, target) => {
-        calls.push(`save:${sessionId}:${target.messages[0].steps?.[0].usage?.totalTokens}`)
-      },
-      syncMessage: (_target, message) => {
-        calls.push(`sync:${message.id}`)
-      },
-    })).toEqual(['step-1'])
-    expect(calls).toEqual(['save:s1:5', 'sync:m1'])
-
-    calls.length = 0
-    expect(applySessionMessageStepsUsageByTurnWithAdapters({
-      sessionId: 's1',
-      messageId: 'm1',
-      turnIndex: 99,
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-      getSession: () => session,
-      saveSession: () => {
-        throw new Error('unreachable')
-      },
-    })).toEqual([])
-    expect(calls).toEqual([])
   })
 
   it('applies working directory, variables, and prompt context mutations in core', () => {
@@ -955,367 +763,6 @@ describe('core session store helpers', () => {
     })
   })
 
-  it('appends and inserts session messages without storage access', () => {
-    const session = {
-      updatedAt: 1,
-      messages: [
-        { id: 'm0', role: 'user', content: 'start' },
-      ],
-      lastProvider: undefined as string | undefined,
-      lastModel: undefined as string | undefined,
-    }
-
-    expect(appendSessionMessage(session, {
-      id: 'm1',
-      role: 'assistant',
-      content: 'answer',
-      provider: 'deepseek',
-      model: 'deepseek-chat',
-    }, 100)).toEqual({
-      id: 'm1',
-      role: 'assistant',
-      content: 'answer',
-      provider: 'deepseek',
-      model: 'deepseek-chat',
-    })
-    expect(session.messages.map(message => message.id)).toEqual(['m0', 'm1'])
-    expect(session).toMatchObject({
-      updatedAt: 100,
-      lastProvider: 'deepseek',
-      lastModel: 'deepseek-chat',
-    })
-
-    insertSessionMessageAfter(session, 'm0', {
-      id: 'm2',
-      role: 'user',
-      content: 'inserted',
-    }, 200)
-    expect(session.messages.map(message => message.id)).toEqual(['m0', 'm2', 'm1'])
-    expect(session.updatedAt).toBe(200)
-
-    insertSessionMessageAfter(session, 'missing', {
-      id: 'm3',
-      role: 'user',
-      content: 'fallback append',
-    }, 300)
-    expect(session.messages.map(message => message.id)).toEqual(['m0', 'm2', 'm1', 'm3'])
-    expect(session.updatedAt).toBe(300)
-  })
-
-  it('deletes, truncates, and edits session messages without storage access', () => {
-    const session = {
-      id: 's1',
-      updatedAt: 1,
-      totalInputTokens: 12,
-      totalOutputTokens: 5,
-      totalTokens: 17,
-      lastInputTokens: 100,
-      contextSize: 100,
-      summary: 'summary',
-      summaryUpToMessageId: 'm2',
-      summaryCreatedAt: 50,
-      messages: [
-        { id: 'm1', role: 'user', content: 'one', timestamp: 10, usage: { inputTokens: 3, outputTokens: 0, totalTokens: 3 } },
-        { id: 'm2', role: 'assistant', content: 'two', timestamp: 20, usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } },
-        { id: 'm3', role: 'user', content: 'three', timestamp: 30, usage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 } },
-      ],
-    }
-
-    expect(deleteSessionMessage(session, 'missing', 100)).toBeUndefined()
-    expect(deleteSessionMessage(session, 'm1', 100)).toMatchObject({
-      index: 0,
-      deletedMessage: { id: 'm1' },
-    })
-    expect(session.messages.map(message => message.id)).toEqual(['m2', 'm3'])
-    expect(session.updatedAt).toBe(100)
-    expect(session.totalTokens).toBe(17)
-
-    const truncated = truncateSessionMessagesFrom(session, 'm3', 200)
-    expect(truncated).toMatchObject({
-      index: 1,
-      deletedMessages: [{ id: 'm3' }],
-      subtractedUsage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 },
-    })
-    expect(session.messages.map(message => message.id)).toEqual(['m2'])
-    expect(session).toMatchObject({
-      totalInputTokens: 7,
-      totalOutputTokens: 2,
-      totalTokens: 9,
-      lastInputTokens: 0,
-      contextSize: 0,
-      updatedAt: 200,
-    })
-
-    const edited = updateSessionMessageAndTruncateAfter(session, 'm2', 'updated', {
-      hasContentParts: true,
-      contentParts: [{ type: 'text', content: 'updated' }],
-    }, 300)
-    expect(edited).toMatchObject({
-      index: 0,
-      updatedMessage: {
-        id: 'm2',
-        content: 'updated',
-        timestamp: 300,
-        contentParts: [{ type: 'text', content: 'updated' }],
-      },
-      deletedMessages: [],
-      subtractedUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-    })
-    expect(session.updatedAt).toBe(300)
-
-    expect(updateSessionMessageAndTruncateAfter(session, 'm2', 'plain', {
-      hasContentParts: true,
-      contentParts: [],
-    }, 400)?.updatedMessage.contentParts).toBeUndefined()
-  })
-
-  it('applies message delete through host storage adapters', () => {
-    type TestMessage = { id: string; role: string; provider?: string; model?: string }
-    type TestSession = { id: string; updatedAt: number; messages: TestMessage[] }
-
-    const session: TestSession = {
-      id: 's1',
-      updatedAt: 1,
-      messages: [
-        { id: 'm1', role: 'user' },
-        { id: 'm2', role: 'assistant', provider: 'deepseek', model: 'deepseek-chat' },
-      ],
-    }
-    const calls: string[] = []
-
-    const result = applySessionDeleteMessageWithAdapters<TestSession, TestMessage>({
-      sessionId: 's1',
-      messageId: 'm1',
-      now: 123,
-      getSession: id => id === session.id ? session : undefined,
-      saveSession: (id, savedSession) => calls.push(`save:${id}:${savedSession.updatedAt}`),
-      sqlite: {
-        isReady: id => {
-          calls.push(`ready:${id}`)
-          return true
-        },
-        scheduleMigration: id => calls.push(`schedule:${id}`),
-        syncMetadata: savedSession => calls.push(`metadata:${savedSession.id}:${savedSession.updatedAt}`),
-        deleteMessage: (id, messageId) => calls.push(`delete:${id}:${messageId}`),
-      },
-    })
-
-    expect(result).toMatchObject({ index: 0, deletedMessage: { id: 'm1' } })
-    expect(session.messages.map(message => message.id)).toEqual(['m2'])
-    expect(calls).toEqual([
-      'save:s1:123',
-      'ready:s1',
-      'delete:s1:m1',
-      'metadata:s1:123',
-    ])
-  })
-
-  it('applies truncate and update+truncate through host storage adapters', () => {
-    type TestMessage = {
-      id: string
-      role: string
-      content?: unknown
-      contentParts?: unknown[]
-      timestamp: number
-      provider?: string
-      model?: string
-      usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
-    }
-    type TestSession = {
-      id: string
-      updatedAt: number
-      messages: TestMessage[]
-      totalInputTokens?: number
-      totalOutputTokens?: number
-      totalTokens?: number
-      lastInputTokens?: number
-      contextSize?: number
-    }
-
-    const session: TestSession = {
-      id: 's1',
-      updatedAt: 1,
-      totalInputTokens: 12,
-      totalOutputTokens: 4,
-      totalTokens: 16,
-      lastInputTokens: 8,
-      contextSize: 8,
-      messages: [
-        { id: 'm1', role: 'user', content: 'one', timestamp: 10, usage: { inputTokens: 2, outputTokens: 0, totalTokens: 2 } },
-        { id: 'm2', role: 'assistant', content: 'two', timestamp: 20, usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } },
-        { id: 'm3', role: 'user', content: 'three', timestamp: 30, usage: { inputTokens: 6, outputTokens: 2, totalTokens: 8 } },
-      ],
-    }
-    const calls: string[] = []
-    const meta = { updatedAt: 0 }
-
-    const truncateResult = applySessionTruncateMessagesWithAdapters<TestSession, TestMessage>({
-      sessionId: 's1',
-      messageId: 'm3',
-      now: 200,
-      getSession: id => id === session.id ? session : undefined,
-      saveSession: (id, savedSession) => calls.push(`save:${id}:${savedSession.updatedAt}`),
-      sqlite: {
-        isReady: () => true,
-        scheduleMigration: id => calls.push(`schedule:${id}`),
-        syncMetadata: savedSession => calls.push(`metadata:${savedSession.updatedAt}`),
-        syncUsage: savedSession => calls.push(`usage:${savedSession.totalTokens}`),
-        deleteMessageAndAfter: (id, messageId) => calls.push(`deleteAfter:${id}:${messageId}`),
-      },
-      updateIndexMeta: (_id, mutate) => mutate(meta),
-    })
-
-    expect(truncateResult).toMatchObject({
-      index: 2,
-      deletedMessages: [{ id: 'm3' }],
-      subtractedUsage: { inputTokens: 6, outputTokens: 2, totalTokens: 8 },
-    })
-    expect(session.messages.map(message => message.id)).toEqual(['m1', 'm2'])
-    expect(meta.updatedAt).toBe(200)
-    expect(calls).toEqual([
-      'save:s1:200',
-      'deleteAfter:s1:m3',
-      'metadata:200',
-      'usage:8',
-    ])
-
-    calls.length = 0
-    const updateResult = applySessionUpdateMessageAndTruncateWithAdapters<TestSession, TestMessage>({
-      sessionId: 's1',
-      messageId: 'm1',
-      newContent: 'edited',
-      options: { hasContentParts: true, contentParts: [{ type: 'text', content: 'edited' }] },
-      now: 300,
-      getSession: id => id === session.id ? session : undefined,
-      saveSession: (id, savedSession) => calls.push(`save:${id}:${savedSession.updatedAt}`),
-      sqlite: {
-        isReady: () => true,
-        scheduleMigration: id => calls.push(`schedule:${id}`),
-        syncMetadata: savedSession => calls.push(`metadata:${savedSession.updatedAt}`),
-        syncUsage: savedSession => calls.push(`usage:${savedSession.totalTokens}`),
-        upsertMessageAndTruncate: (id, message, nextSequence) => calls.push(`upsert:${id}:${message.id}:${nextSequence}`),
-      },
-      updateIndexMeta: (_id, mutate) => mutate(meta),
-    })
-
-    expect(updateResult).toMatchObject({
-      index: 0,
-      updatedMessage: { id: 'm1', content: 'edited', timestamp: 300 },
-      deletedMessages: [{ id: 'm2' }],
-      subtractedUsage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 },
-    })
-    expect(session.messages).toHaveLength(1)
-    expect(session.messages[0]?.contentParts).toEqual([{ type: 'text', content: 'edited' }])
-    expect(meta.updatedAt).toBe(300)
-    expect(calls).toEqual([
-      'save:s1:300',
-      'upsert:s1:m1:1',
-      'metadata:300',
-      'usage:2',
-    ])
-  })
-
-  it('patches and appends message content parts without storage access', () => {
-    const session = {
-      messages: [
-        { id: 'm1', role: 'assistant', content: 'old' },
-        { id: 'm2', role: 'user', content: 'hello', contentParts: [{ type: 'text', content: 'hello' }] },
-      ],
-    }
-
-    expect(findSessionMessage(session, 'm1')).toBe(session.messages[0])
-    expect(patchSessionMessage(session, 'm1', {
-      content: 'new',
-      isStreaming: false,
-    })).toBe(session.messages[0])
-    expect(session.messages[0]).toMatchObject({
-      content: 'new',
-      isStreaming: false,
-    })
-
-    expect(appendSessionMessageContentPart(session, 'm1', {
-      type: 'reasoning',
-      content: 'because',
-    })).toBe(session.messages[0])
-    expect(session.messages[0].contentParts).toEqual([
-      { type: 'reasoning', content: 'because' },
-    ])
-
-    expect(appendSessionMessageContentPart(session, 'm2', {
-      type: 'text',
-      content: '!',
-    })?.contentParts).toEqual([
-      { type: 'text', content: 'hello' },
-      { type: 'text', content: '!' },
-    ])
-    expect(patchSessionMessage(session, 'missing', { content: 'nope' })).toBeUndefined()
-  })
-
-  it('mutates top-level message steps without storage access', () => {
-    const message: {
-      id: string
-      role: string
-      steps: Array<{
-        id: string
-        title: string
-        toolCallId?: string
-        status: string
-        turnIndex: number
-        usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
-      }>
-    } = {
-      id: 'm1',
-      role: 'assistant',
-      steps: [
-        { id: 's1', title: 'Old', toolCallId: 'call-1', status: 'running', turnIndex: 1 },
-      ],
-    }
-    type TestStep = (typeof message.steps)[number]
-
-    expect(addOrUpdateSessionMessageStep(message, {
-      id: 's2',
-      title: 'Replacement',
-      toolCallId: 'call-1',
-      status: 'completed',
-      turnIndex: 1,
-    } as TestStep)).toEqual({
-      id: 's2',
-      title: 'Replacement',
-      toolCallId: 'call-1',
-      status: 'completed',
-      turnIndex: 1,
-    })
-    expect(message.steps).toHaveLength(1)
-
-    addOrUpdateSessionMessageStep(message, {
-      id: 's3',
-      title: 'Second',
-      status: 'running',
-      turnIndex: 2,
-    } as TestStep)
-    expect(message.steps).toHaveLength(2)
-
-    expect(updateSessionMessageStep(message, 's3', {
-      status: 'completed',
-      usage: { inputTokens: 3, outputTokens: 1, totalTokens: 4 },
-    })).toMatchObject({
-      id: 's3',
-      status: 'completed',
-    })
-
-    expect(updateSessionMessageStepsUsageByTurn(message, 1, {
-      inputTokens: 10,
-      outputTokens: 2,
-      totalTokens: 12,
-    })).toEqual(['s2'])
-    expect(message.steps[0].usage).toEqual({
-      inputTokens: 10,
-      outputTokens: 2,
-      totalTokens: 12,
-    })
-    expect(updateSessionMessageStep(message, 'missing', { status: 'failed' })).toBeUndefined()
-  })
-
   it('creates session and branch session records without storage access', () => {
     expect(createCoreSessionRecord({
       sessionId: 's1',
@@ -1592,11 +1039,11 @@ describe('core session store helpers', () => {
         name: 'Session',
         createdAt: 1,
         updatedAt: 2,
-        messages: [
-          { role: 'assistant', content: 'not previewed' },
-          { role: 'user', content: 'hello' },
-        ],
       },
+      [
+        { role: 'assistant', content: 'not previewed' },
+        { role: 'user', content: 'hello' },
+      ],
       {
         defaultAgentId: 'default-agent',
         displayContentForMessage: message => `preview:${String(message.content)}`,

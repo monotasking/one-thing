@@ -253,6 +253,15 @@ export class OnethingSessionRepository<
     return this.sessionCache.get(sessionId)
   }
 
+  /**
+   * 缓存里那份会话的消息(不触发加载)。P0.4:`session-message-runtime` 的
+   * sqlite 流式补同步原来自己 `latestSession.messages.find(...)`,那是命令面之外
+   * 的一次会话读;取数原语归位到仓库层(白名单)。
+   */
+  getCachedSessionMessages(sessionId: string): TMessage[] | undefined {
+    return this.sessionCache.get(sessionId)?.messages
+  }
+
   deleteCachedSession(sessionId: string): void {
     this.sessionCache.delete(sessionId)
   }
@@ -679,6 +688,28 @@ export class OnethingSessionRepository<
       syncReady: target => this.options.sqlite?.syncFullSession?.(target),
       logger: this.options.logger,
       errorMessage: '[Sessions] Failed to sync session to SQLite:',
+    })
+  }
+
+  /**
+   * 会话级字段的通用补丁口(P0.4)—— `saveSessionSnapshot` 后门的替代品。
+   *
+   * 关键差别是**写计划**:老后门走 `saveSessionToFile(id, session)`,默认
+   * `structural` = 把整份 messages.jsonl 重写一遍;而 jsonl 布局里所有会话级字段
+   * 都住在 `meta.json`(驱动的 `buildMeta` 就是"除 messages 之外的全部"),
+   * 改名字/置顶/归档/变量根本不该动消息日志。所以这里一律 `{kind:'meta'}`。
+   *
+   * `patch` 里出现 `messages` 会被丢掉:消息只能走命令面。
+   */
+  patchSession(
+    sessionId: string,
+    patch: Partial<TSession>,
+    mutateMeta?: (meta: TMeta, session: TSession) => void,
+  ): boolean {
+    const { messages: _messages, ...fields } = patch as Partial<TSession> & { messages?: unknown }
+    return this.applyMetadataMutation(sessionId, {
+      mutateSession: session => Object.assign(session, fields),
+      ...(mutateMeta ? { mutateMeta } : {}),
     })
   }
 

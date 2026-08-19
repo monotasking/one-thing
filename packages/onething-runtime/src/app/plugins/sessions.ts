@@ -31,7 +31,7 @@
  * 的插件链正在跑时,这一次投递会被算高一跳。在上限 8 之下这是可接受的误差,
  * 而反过来(可被规避的精确值)是不可接受的。
  */
-import type { ChatMessage, MessageOrigin } from '@shared/ipc.js'
+import type { MessageOrigin } from '@shared/ipc.js'
 import { Permission } from '@onething/core/permission'
 import {
   PLUGIN_TRIGGER_MAX_HOP,
@@ -48,6 +48,7 @@ import {
 } from '@onething/core/plugins'
 
 import * as store from '../store.js'
+import { sessionReads } from '../session/reads.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { isCollabCoordinatorDrivenSession } from '../collab/ingress.js'
@@ -343,15 +344,9 @@ function peekState(
  * 从尾部往前扫一小段而不是整条历史:执行中的工具只可能挂在本轮的那条消息上。
  */
 function runningToolName(sessionId: string): string | undefined {
-  const session = store.getSession(sessionId)
-  const messages = (session?.messages ?? []) as ChatMessage[]
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index]
-    if (message?.role !== 'assistant') continue
-    const executing = message.toolCalls?.find(call => call.status === 'executing')
-    return executing?.toolName
-  }
-  return undefined
+  const message = sessionReads.lastMessageOfRole(sessionId, 'assistant')
+  if (!message) return undefined
+  return message.toolCalls?.find(call => call.status === 'executing')?.toolName
 }
 
 /**
@@ -376,7 +371,7 @@ async function contextPercentOf(sessionId: string): Promise<number | undefined> 
 
 function lastMessageOf(sessionId: string): PluginSessionPeek['lastMessage'] {
   // JSONL 尾读一条 —— 不加载全量历史(这是快照,不是转录)。
-  const page = store.getSessionMessagesPage({ sessionId, anchor: 'tail', limit: 1 })
+  const page = sessionReads.pageMessages({ sessionId, anchor: 'tail', limit: 1 })
   const message = page?.messages?.[page.messages.length - 1]
   if (!message) return undefined
   return {

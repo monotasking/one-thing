@@ -39,7 +39,7 @@
  *   人点得进去看结果)。给它落盘等于第二本账,而两本账迟早会漂。
  */
 import { randomUUID } from 'node:crypto'
-import type { ChatMessage, MessageOrigin } from '@shared/ipc.js'
+import type { MessageOrigin } from '@shared/ipc.js'
 // 子路径直取:`TaskSessionRef` 是本期新加的类型,而 `@shared/ipc` 的 index 是一份
 // 逐名再导出的清单 —— 走子路径省掉那次清单改动(其它 app 模块同样这么取)。
 import type { TaskSessionRef } from '@shared/ipc/chat.js'
@@ -58,6 +58,7 @@ import type {
 } from '@onething/runtime/toolkit'
 
 import * as store from '../store.js'
+import { sessionReads } from '../session/reads.js'
 import { getEventBus } from '../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
 import { taskMessageSource } from '../channel/origin.js'
@@ -133,14 +134,14 @@ function waitForTaskTerminalEvent(sessionId: string): Promise<TaskOutcome> {
 
 /** 工作会话留下的最后一条助手正文 —— **整条**。 */
 function lastAssistantText(sessionId: string): string | undefined {
-  const messages = (store.getSession(sessionId)?.messages ?? []) as ChatMessage[]
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message?.role !== 'assistant') continue
-    const content = typeof message.content === 'string' ? message.content.trim() : ''
-    if (content) return content
-  }
-  return undefined
+  const message = sessionReads.findMessage(
+    sessionId,
+    candidate => candidate?.role === 'assistant'
+      && typeof candidate.content === 'string'
+      && candidate.content.trim() !== '',
+    { from: 'end' },
+  )
+  return message ? (message.content as string).trim() : undefined
 }
 
 /* ── 回投 ─────────────────────────────────────────────────────────────────── */

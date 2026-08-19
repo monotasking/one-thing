@@ -599,19 +599,23 @@ function appendHistoryMessage<
 
 			for (const turn of turnGroups) {
 				if (turn.texts.length === 0 && turn.toolCalls.length === 0) continue;
+				// F6:一次性构造,不再先建后改 —— 历史重建产出的是新对象,
+				// 任何「先 push 再补字段」的写法都会诱使人对着会话里的那条改。
+				const reasoning = turn.reasonings.join("\n\n").trim();
 				const assistantMessage: CoreHistoryMessage & { role: "assistant" } = {
 					role: "assistant",
 					content: turn.texts.join("\n\n"),
+					...(reasoning ? { reasoningContent: reasoning } : {}),
+					...(turn.toolCalls.length > 0
+						? {
+								toolCalls: turn.toolCalls.map((toolCall) => ({
+									toolCallId: toolCall.id,
+									toolName: toolNameForAI(toolCall.toolId || toolCall.toolName),
+									args: toolCall.arguments,
+								})),
+							}
+						: {}),
 				};
-				const reasoning = turn.reasonings.join("\n\n").trim();
-				if (reasoning) assistantMessage.reasoningContent = reasoning;
-				if (turn.toolCalls.length > 0) {
-					assistantMessage.toolCalls = turn.toolCalls.map((toolCall) => ({
-						toolCallId: toolCall.id,
-						toolName: toolNameForAI(toolCall.toolId || toolCall.toolName),
-						args: toolCall.arguments,
-					}));
-				}
 				result.push(assistantMessage);
 
 				if (turn.toolCalls.length > 0) {
@@ -627,28 +631,24 @@ function appendHistoryMessage<
 		}
 	}
 
+	const reasoningContent = getMessageReasoningContent(message);
+	const completedToolCalls = completedHistoryToolCalls(message);
+	// F6:同上,一次性构造。
 	const assistantMessage: CoreHistoryMessage & { role: "assistant" } = {
 		role: "assistant",
 		content: options.buildMessageContent(message),
+		...(reasoningContent ? { reasoningContent } : {}),
+		...(providerData.length > 0 ? { providerData } : {}),
+		...(completedToolCalls.length > 0
+			? {
+					toolCalls: completedToolCalls.map((toolCall) => ({
+						toolCallId: toolCall.id,
+						toolName: toolNameForAI(toolCall.toolId || toolCall.toolName),
+						args: toolCall.arguments,
+					})),
+				}
+			: {}),
 	};
-
-	const reasoningContent = getMessageReasoningContent(message);
-	if (reasoningContent) {
-		assistantMessage.reasoningContent = reasoningContent;
-	}
-
-	if (providerData.length > 0) {
-		assistantMessage.providerData = providerData;
-	}
-
-	const completedToolCalls = completedHistoryToolCalls(message);
-	if (completedToolCalls.length > 0) {
-		assistantMessage.toolCalls = completedToolCalls.map((toolCall) => ({
-			toolCallId: toolCall.id,
-			toolName: toolNameForAI(toolCall.toolId || toolCall.toolName),
-			args: toolCall.arguments,
-		}));
-	}
 
 	result.push(assistantMessage);
 

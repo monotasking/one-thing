@@ -257,11 +257,19 @@ export async function summarizeContextInChunks(
 	return summary.trim();
 }
 
+/**
+ * 消息数组是**显式入参**(P0.2 area ①):core 不再从 session 上取 `messages`,
+ * 拿到的永远是调用方递进来的那份快照。
+ */
 export function selectCompactPlan<TMessage extends CoreCompactMessage>(
-	session: CoreCompactSession<TMessage>,
+	session: Pick<
+		CoreCompactSession<TMessage>,
+		"id" | "summary" | "summaryUpToMessageId"
+	>,
+	sessionMessages: readonly TMessage[],
 	keepRecentTurns = DEFAULT_KEEP_RECENT_TURNS,
 ): CompactPlan<TMessage> | null {
-	const messages = session.messages.filter(
+	const messages = sessionMessages.filter(
 		(message) => message.role === "user" || message.role === "assistant",
 	);
 	if (messages.length === 0) return null;
@@ -281,17 +289,17 @@ export function selectCompactPlan<TMessage extends CoreCompactMessage>(
 
 	if (!recentStartMessageId) return null;
 
-	const recentStartIndex = session.messages.findIndex(
+	const recentStartIndex = sessionMessages.findIndex(
 		(message) => message.id === recentStartMessageId,
 	);
 	const cutoffIndex = recentStartIndex - 1;
 	if (cutoffIndex < 0) return null;
 
-	const cutoffMessage = session.messages[cutoffIndex];
+	const cutoffMessage = sessionMessages[cutoffIndex];
 	let previousSummaryIndex = -1;
 	let previousSummary: string | undefined;
 	if (session.summary && session.summaryUpToMessageId) {
-		previousSummaryIndex = session.messages.findIndex(
+		previousSummaryIndex = sessionMessages.findIndex(
 			(message) => message.id === session.summaryUpToMessageId,
 		);
 		if (previousSummaryIndex === -1) {
@@ -306,7 +314,7 @@ export function selectCompactPlan<TMessage extends CoreCompactMessage>(
 
 	if (previousSummaryIndex >= cutoffIndex) return null;
 
-	const messagesToSummarize = session.messages
+	const messagesToSummarize = sessionMessages
 		.slice(previousSummaryIndex + 1, cutoffIndex + 1)
 		.filter(
 			(message) => message.role === "user" || message.role === "assistant",
@@ -325,7 +333,9 @@ export function selectCompactPlan<TMessage extends CoreCompactMessage>(
 export type CoreContextCompactReason = "threshold" | "hard-limit";
 
 export async function shouldAutoCompactBeforeSend(options: {
-	session: CoreCompactSession;
+	session: Omit<CoreCompactSession, "messages">;
+	/** 会话消息快照:只有在没给 `inputTokens` 时才用得上(要靠它估算) */
+	sessionMessages?: readonly CoreCompactMessage[];
 	modelContextLength: number;
 	thresholdPercent: number;
 	reservedOutputTokens?: number;
@@ -335,7 +345,9 @@ export async function shouldAutoCompactBeforeSend(options: {
 }
 
 export function getContextCompactReason(options: {
-	session?: CoreCompactSession;
+	session?: Omit<CoreCompactSession, "messages">;
+	/** 会话消息快照:只有在没给 `inputTokens` 时才用得上(要靠它估算) */
+	sessionMessages?: readonly CoreCompactMessage[];
 	modelContextLength: number;
 	thresholdPercent: number;
 	reservedOutputTokens?: number;
@@ -343,7 +355,9 @@ export function getContextCompactReason(options: {
 }): CoreContextCompactReason | null {
 	const inputContextSize =
 		options.inputTokens ??
-		(options.session ? estimateCurrentInputTokens(options.session) : 0);
+		(options.session
+			? estimateCurrentInputTokens(options.session, options.sessionMessages ?? [])
+			: 0);
 	const reason = getContextUsageTriggerReason({
 		inputTokens: inputContextSize,
 		modelContextLength: options.modelContextLength,
@@ -357,22 +371,21 @@ export function getContextCompactReason(options: {
 }
 
 export function estimateCurrentInputTokens(
-	session: CoreCompactSession,
+	session: Omit<CoreCompactSession, "messages">,
+	messages: readonly CoreCompactMessage[],
 ): number {
 	const providerInputTokens = Math.max(
 		0,
 		session.contextSize ?? 0,
 		session.lastInputTokens ?? 0,
 	);
-	const estimatedInputTokens = estimateSessionInputTokens(session);
+	const estimatedInputTokens = estimateSessionInputTokens(session, messages);
 	return Math.max(providerInputTokens, estimatedInputTokens);
 }
 
 export function estimateSessionInputTokens(
-	session: Pick<
-		CoreCompactSession,
-		"messages" | "summary" | "summaryUpToMessageId"
-	>,
+	session: Pick<CoreCompactSession, "summary" | "summaryUpToMessageId">,
+	sessionMessages: readonly CoreCompactMessage[],
 ): number {
 	const parts: string[] = [];
 
@@ -386,14 +399,14 @@ export function estimateSessionInputTokens(
 
 	const summaryIndex =
 		session.summary && session.summaryUpToMessageId
-			? session.messages.findIndex(
+			? sessionMessages.findIndex(
 					(message) => message.id === session.summaryUpToMessageId,
 				)
 			: -1;
 	const messages =
 		summaryIndex >= 0
-			? session.messages.slice(summaryIndex + 1)
-			: session.messages;
+			? sessionMessages.slice(summaryIndex + 1)
+			: sessionMessages;
 
 	for (const message of messages) {
 		if (message.role !== "user" && message.role !== "assistant") continue;

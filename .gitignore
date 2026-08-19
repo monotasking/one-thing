@@ -57,11 +57,13 @@ tmp.md
 # tool / debug artifacts
 .playwright-mcp/
 .pi/
-/current-state.png
-/e2e-0-loaded.png
-/manual-test.png
-/page-loaded.png
-/test-page.png
+
+# 根目录禁止堆截图/调试图片(走查产物放 TMP/ 下)
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+/*.webp
 
 # design-sync 构建产物（node .design-sync/build-tokens.mjs 重建）
 ds-bundle/

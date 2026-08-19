@@ -8,6 +8,15 @@ export interface StreamEngineStoreAdapter<TSettings = unknown, TSession = unknow
    */
   getSettingsForSession?(sessionId: string): TSettings
   getSession(sessionId: string): TSession | undefined
+  /**
+   * 读门面(P0.2 area ①,C1)—— core 不许再从 session 上取 `messages`
+   * (docs/design/session-commands-p0-2026-08.md §3)。宿主把它接到
+   * `sessionReads.listMessages` / `getMessage` 上。
+   *
+   * 每次用的时候现取:命令面是 COW 的,任何跨 `await` 捏在手里的数组都可能过期。
+   */
+  listMessages(sessionId: string): readonly TMessage[]
+  getMessage(sessionId: string, messageId: string): TMessage | undefined
   addMessage(sessionId: string, message: TMessage): void
   renameSession(sessionId: string, name: string): void
   updateMessageAndTruncate(

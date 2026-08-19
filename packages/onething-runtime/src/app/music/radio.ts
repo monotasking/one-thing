@@ -44,6 +44,7 @@ import { markSessionUnattended } from '../permission/unattended.js'
 import { getStorePath } from '../stores/paths.js'
 import { getSettings } from '../stores/settings.js'
 import * as sessions from '../stores/sessions.js'
+import { sessionReads } from '../session/reads.js'
 import {
   getActiveMusicProvider,
   getMusicNowPlaying,
@@ -152,7 +153,7 @@ function ensureRadioSession(store: OnethingRadioStore): string {
       // the handoff — no summary needed. The old log stays in the sidebar's
       // Music group.
       console.warn(
-        `[radio] rotating dj session ${brief.sessionId} (messages=${existing.messages?.length ?? 0})`,
+        `[radio] rotating dj session ${brief.sessionId} (messages=${sessionReads.countMessages(brief.sessionId)})`,
       )
     }
   }

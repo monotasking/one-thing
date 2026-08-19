@@ -35,6 +35,7 @@ describe('createOnethingAgentLoopRuntimeAdapters', () => {
         messages: [],
       }),
       buildHistoryMessages: () => [],
+      listSessionMessages: () => [],
       resolvePromptReferences: (content: string, input: { skills: unknown[] }) => {
         promptRefCalls.push(input)
         return {

@@ -1,9 +1,9 @@
+import type { CoreTimelineSession } from './timeline.js'
 import {
-  repairSessionTimelineMetadata,
   sanitizeLoadedSession,
   sanitizeSessionOnStartup,
-  type CoreTimelineSession,
-} from './timeline.js'
+  type CoreSessionCommandSession,
+} from './commands.js'
 
 export const CORE_DEFAULT_AGENT_ID = 'default'
 
@@ -69,10 +69,6 @@ export type CoreSessionMetadataMutationResult<TSession> =
   | { applied: false }
   | { applied: true; session: TSession }
 
-export type CoreSessionMessageMutationResult<TSession, TMessage> =
-  | { applied: false }
-  | { applied: true; session: TSession; message: TMessage }
-
 export interface ApplySessionMetadataMutationWithAdaptersOptions<
   TSession extends { id: string },
   TMeta extends { id: string },
@@ -99,62 +95,6 @@ export interface ApplySessionIndexMetaMutationWithAdaptersOptions<TMeta extends 
   loadIndex(): TMeta[]
   saveIndex(index: TMeta[]): void
   mutateMeta(meta: TMeta): void
-}
-
-export interface ApplySessionMessageMutationWithAdaptersOptions<
-  TSession extends { id: string },
-  TMessage extends CoreSessionMessageWithId,
-> {
-  sessionId: string
-  messageId: string
-  getSession: (sessionId: string) => (TSession & CoreSessionWithMessages<TMessage>) | undefined
-  mutateMessage: (
-    session: TSession & CoreSessionWithMessages<TMessage>,
-    messageId: string,
-  ) => TMessage | undefined
-  saveSession: (sessionId: string, session: TSession & CoreSessionWithMessages<TMessage>) => void
-  syncMessage?: (session: TSession & CoreSessionWithMessages<TMessage>, message: TMessage) => void
-}
-
-export interface ApplySessionAppendMessageWithAdaptersOptions<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionMessageWithModelInfo,
-  TMeta extends { updatedAt: number; lastProvider?: string; lastModel?: string },
-> {
-  sessionId: string
-  message: TMessage
-  now?: number
-  getSession: (sessionId: string) => TSession | undefined
-  saveSession: (sessionId: string, session: TSession) => void
-  syncMessage?: (session: TSession, message: TMessage) => void
-  updateIndexMeta?: (sessionId: string, mutate: (meta: TMeta) => void) => void
-}
-
-export interface ApplySessionInsertMessageAfterWithAdaptersOptions<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionMessageWithModelInfo,
-> {
-  sessionId: string
-  afterMessageId: string
-  message: TMessage
-  now?: number
-  getSession: (sessionId: string) => TSession | undefined
-  saveSession: (sessionId: string, session: TSession) => void
-  syncSession?: (session: TSession) => void
-}
-
-export interface ApplySessionMessageStepsUsageByTurnWithAdaptersOptions<
-  TSession extends { id: string },
-  TMessage extends CoreSessionMessageWithSteps<TStep>,
-  TStep extends CoreSessionStepWithId,
-> {
-  sessionId: string
-  messageId: string
-  turnIndex: number
-  usage: unknown
-  getSession: (sessionId: string) => (TSession & CoreSessionWithMessages<TMessage>) | undefined
-  saveSession: (sessionId: string, session: TSession & CoreSessionWithMessages<TMessage>) => void
-  syncMessage?: (session: TSession & CoreSessionWithMessages<TMessage>, message: TMessage) => void
 }
 
 export interface CoreSessionSqliteMutationAdapters<TSession> {
@@ -184,7 +124,8 @@ export interface SanitizeSessionsOnStartupWithAdaptersOptions<
   loadSession(sessionId: string): TSession | undefined
   saveSession(sessionId: string, session: TSession): void
   syncSession?: (session: TSession) => void
-  sanitizeSession?: (session: TSession) => boolean
+  /** COW:改了返回新会话,没改返回 undefined(F4) */
+  sanitizeSession?: (session: TSession) => TSession | undefined
 }
 
 export interface SanitizeSessionsOnStartupWithAdaptersResult {
@@ -210,7 +151,8 @@ export interface LoadSessionWithAdaptersOptions<
   saveSession?(sessionId: string, session: TSession): void
   syncSession?: (session: TSession) => void
   expandPath?: (path: string) => string
-  sanitizeSession?: (session: TSession) => boolean
+  /** COW:改了返回新会话,没改返回 undefined(F4) */
+  sanitizeSession?: (session: TSession) => TSession | undefined
 }
 
 export type LoadSessionWithAdaptersResult<TSession> =
@@ -224,55 +166,6 @@ export type LoadSessionWithAdaptersResult<TSession> =
       session?: undefined
       sanitized: false
     }
-
-export interface ApplySessionDeleteMessageWithAdaptersOptions<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionMessageWithModelInfo,
-> {
-  sessionId: string
-  messageId: string
-  now?: number
-  getSession(sessionId: string): TSession | undefined
-  saveSession(sessionId: string, session: TSession): void
-  sqlite?: CoreSessionSqliteMutationAdapters<TSession> & {
-    deleteMessage(sessionId: string, messageId: string): void
-  }
-  logger?: { error?: (...args: unknown[]) => void }
-}
-
-export interface ApplySessionTruncateMessagesWithAdaptersOptions<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionMessageWithModelInfo & CoreSessionMessageWithUsage,
-> {
-  sessionId: string
-  messageId: string
-  now?: number
-  getSession(sessionId: string): TSession | undefined
-  saveSession(sessionId: string, session: TSession): void
-  sqlite?: CoreSessionSqliteMutationAdapters<TSession> & {
-    deleteMessageAndAfter(sessionId: string, messageId: string): void
-  }
-  updateIndexMeta?: (sessionId: string, mutate: (meta: CoreSessionIndexTimestampSource) => void) => void
-  logger?: { error?: (...args: unknown[]) => void }
-}
-
-export interface ApplySessionUpdateMessageAndTruncateWithAdaptersOptions<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionEditableMessage & CoreSessionMessageWithModelInfo,
-> {
-  sessionId: string
-  messageId: string
-  newContent: string
-  options?: CoreSessionUpdateAndTruncateOptions
-  now?: number
-  getSession(sessionId: string): TSession | undefined
-  saveSession(sessionId: string, session: TSession): void
-  sqlite?: CoreSessionSqliteMutationAdapters<TSession> & {
-    upsertMessageAndTruncate(sessionId: string, message: TMessage, nextSequence: number): void
-  }
-  updateIndexMeta?: (sessionId: string, mutate: (meta: CoreSessionIndexTimestampSource) => void) => void
-  logger?: { error?: (...args: unknown[]) => void }
-}
 
 export interface CoreSessionIndexTimestampSource {
   updatedAt: number
@@ -404,26 +297,6 @@ export interface CoreSessionWithMessageList<TMessage extends CoreSessionMessageW
   summary?: string
   summaryUpToMessageId?: string
   summaryCreatedAt?: number
-}
-
-export interface CoreSessionDeleteMessageResult<TMessage> {
-  index: number
-  deletedMessage: TMessage
-}
-
-export interface CoreSessionTruncateResult<TMessage> {
-  index: number
-  deletedMessages: TMessage[]
-  subtractedUsage: CoreSessionTokenUsage
-}
-
-export interface CoreSessionUpdateAndTruncateOptions {
-  contentParts?: unknown[] | null
-  hasContentParts?: boolean
-}
-
-export interface CoreSessionUpdateAndTruncateResult<TMessage> extends CoreSessionTruncateResult<TMessage> {
-  updatedMessage: TMessage
 }
 
 export interface CreateCoreSessionRecordOptions {
@@ -635,7 +508,9 @@ export function sanitizeSessionsOnStartupWithAdapters<
   options: SanitizeSessionsOnStartupWithAdaptersOptions<TSession, TMeta>,
 ): SanitizeSessionsOnStartupWithAdaptersResult {
   const index = options.loadIndex()
-  const sanitize = options.sanitizeSession ?? sanitizeSessionOnStartup
+  const sanitize: (target: TSession) => TSession | undefined =
+    options.sanitizeSession
+    ?? (target => sanitizeSessionOnStartup(target as unknown as CoreSessionCommandSession) as unknown as TSession | undefined)
   const result: SanitizeSessionsOnStartupWithAdaptersResult = {
     scanned: index.length,
     sanitized: 0,
@@ -649,10 +524,12 @@ export function sanitizeSessionsOnStartupWithAdapters<
       continue
     }
 
-    if (!sanitize(session)) continue
+    // COW:修好的是**新的会话对象**,落盘/同步都得看新的那份(F4)。
+    const repaired = sanitize(session)
+    if (!repaired) continue
 
-    options.saveSession(meta.id, session)
-    options.syncSession?.(session)
+    options.saveSession(meta.id, repaired)
+    options.syncSession?.(repaired)
     result.sanitized += 1
   }
 
@@ -686,15 +563,18 @@ export function loadSessionWithAdapters<
     expandPath: expand,
   })
 
-  const sanitize = options.sanitizeSession ?? sanitizeLoadedSession
-  const sanitized = sanitize(session)
-  if (sanitized) {
-    options.saveSession?.(options.sessionId, session)
-    options.syncSession?.(session)
+  const sanitize: (target: TSession) => TSession | undefined =
+    options.sanitizeSession
+    ?? (target => sanitizeLoadedSession(target as unknown as CoreSessionCommandSession) as unknown as TSession | undefined)
+  const repaired = sanitize(session)
+  const loaded = repaired ?? session
+  if (repaired) {
+    options.saveSession?.(options.sessionId, repaired)
+    options.syncSession?.(repaired)
   }
 
-  options.cache?.set(options.sessionId, session)
-  return { status: 'loaded', session, sanitized }
+  options.cache?.set(options.sessionId, loaded)
+  return { status: 'loaded', session: loaded, sanitized: Boolean(repaired) }
 }
 
 export function applySessionUpdatedAtToMeta<TMeta extends { updatedAt: number }>(
@@ -967,10 +847,11 @@ export function resolveSessionDetailsSnapshot<
 }
 
 export function extractSessionMeta<TMessage extends CoreSessionMessage>(
-  session: CoreSession<TMessage>,
+  session: Omit<CoreSession<TMessage>, 'messages'>,
+  messages: readonly TMessage[],
   options: SessionMetaExtractOptions<TMessage> = {},
 ): CoreSessionMeta {
-  const firstUserMessage = session.messages.find(message => message.role === 'user')
+  const firstUserMessage = messages.find(message => message.role === 'user')
   const previewLength = options.previewLength ?? 100
   const previewText = firstUserMessage
     ? getDisplayContent(firstUserMessage, options).slice(0, previewLength)
@@ -996,7 +877,7 @@ export function extractSessionMeta<TMessage extends CoreSessionMessage>(
     isArchived: session.isArchived,
     archivedAt: session.archivedAt,
     workspaceId: session.workspaceId,
-    messageCount: session.messages.length,
+    messageCount: messages.length,
     previewText,
   }
 }
@@ -1069,234 +950,6 @@ export function subtractSessionMessageUsage<
   session.totalOutputTokens = Math.max(0, (session.totalOutputTokens || 0) - usage.outputTokens)
   session.totalTokens = Math.max(0, (session.totalTokens || 0) - usage.totalTokens)
   return usage
-}
-
-export function appendSessionMessage<
-  TMessage extends CoreSessionMessageWithModelInfo,
->(
-  session: CoreSessionWithMessageList,
-  message: TMessage,
-  now = Date.now(),
-): TMessage {
-  session.messages.push(message)
-  if (message.role === 'assistant') {
-    if (message.provider) {
-      session.lastProvider = message.provider
-    }
-    if (message.model) {
-      session.lastModel = message.model
-    }
-  }
-  session.updatedAt = now
-  return message
-}
-
-export function insertSessionMessageAfter<
-  TMessage extends CoreSessionMessageWithModelInfo,
->(
-  session: CoreSessionWithMessageList,
-  afterMessageId: string,
-  message: TMessage,
-  now = Date.now(),
-): TMessage {
-  const index = session.messages.findIndex(item => item.id === afterMessageId)
-  if (index === -1) {
-    session.messages.push(message)
-  } else {
-    session.messages.splice(index + 1, 0, message)
-  }
-  if (message.role === 'assistant') {
-    if (message.provider) {
-      session.lastProvider = message.provider
-    }
-    if (message.model) {
-      session.lastModel = message.model
-    }
-  }
-  session.updatedAt = now
-  return message
-}
-
-export function deleteSessionMessage<
-  TSession extends CoreSessionWithMessageList<TMessage>,
-  TMessage extends CoreSessionMessageWithModelInfo,
->(
-  session: TSession,
-  messageId: string,
-  now = Date.now(),
-): CoreSessionDeleteMessageResult<TMessage> | undefined {
-  const index = session.messages.findIndex(message => message.id === messageId)
-  if (index === -1) return undefined
-
-  const [deletedMessage] = session.messages.splice(index, 1)
-  session.updatedAt = now
-  return { index, deletedMessage }
-}
-
-export function truncateSessionMessagesFrom<
-  TSession extends CoreSessionWithMessageList<TMessage>,
-  TMessage extends CoreSessionMessageWithModelInfo & CoreSessionMessageWithUsage,
->(
-  session: TSession,
-  messageId: string,
-  now = Date.now(),
-): CoreSessionTruncateResult<TMessage> | undefined {
-  const index = session.messages.findIndex(message => message.id === messageId)
-  if (index === -1) return undefined
-
-  const deletedMessages = session.messages.slice(index)
-  const subtractedUsage = subtractSessionMessageUsage(session, deletedMessages)
-  session.messages = session.messages.slice(0, index)
-  repairSessionTimelineMetadata(session as Parameters<typeof repairSessionTimelineMetadata>[0], {
-    recomputeContextSize: true,
-  })
-  session.updatedAt = now
-  return {
-    index,
-    deletedMessages,
-    subtractedUsage,
-  }
-}
-
-export function updateSessionMessageAndTruncateAfter<
-  TSession extends CoreSessionWithMessageList<TMessage>,
-  TMessage extends CoreSessionEditableMessage & CoreSessionMessageWithModelInfo,
->(
-  session: TSession,
-  messageId: string,
-  newContent: string,
-  options: CoreSessionUpdateAndTruncateOptions = {},
-  now = Date.now(),
-): CoreSessionUpdateAndTruncateResult<TMessage> | undefined {
-  const index = session.messages.findIndex(message => message.id === messageId)
-  if (index === -1) return undefined
-
-  const deletedMessages = session.messages.slice(index + 1)
-  const subtractedUsage = subtractSessionMessageUsage(session, deletedMessages)
-  const updatedMessage = session.messages[index]
-  updatedMessage.content = newContent
-  if (options.hasContentParts) {
-    if (options.contentParts && options.contentParts.length > 0) {
-      updatedMessage.contentParts = options.contentParts
-    } else {
-      delete updatedMessage.contentParts
-    }
-  }
-  updatedMessage.timestamp = now
-
-  session.messages = session.messages.slice(0, index + 1)
-  repairSessionTimelineMetadata(session as Parameters<typeof repairSessionTimelineMetadata>[0], {
-    recomputeContextSize: true,
-  })
-  session.updatedAt = now
-  return {
-    index,
-    updatedMessage,
-    deletedMessages,
-    subtractedUsage,
-  }
-}
-
-export function applySessionDeleteMessageWithAdapters<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionMessageWithModelInfo,
->(
-  options: ApplySessionDeleteMessageWithAdaptersOptions<TSession, TMessage>,
-): CoreSessionDeleteMessageResult<TMessage> | undefined {
-  const session = options.getSession(options.sessionId)
-  if (!session) return undefined
-
-  const result = deleteSessionMessage<TSession, TMessage>(session, options.messageId, options.now)
-  if (!result) return undefined
-
-  options.saveSession(options.sessionId, session)
-
-  try {
-    if (options.sqlite) {
-      if (options.sqlite.isReady(options.sessionId)) {
-        options.sqlite.deleteMessage(options.sessionId, options.messageId)
-        options.sqlite.syncMetadata(session)
-      } else {
-        options.sqlite.scheduleMigration(options.sessionId)
-      }
-    }
-  } catch (error) {
-    options.logger?.error?.('[Sessions] Failed to delete message from SQLite:', error)
-  }
-
-  return result
-}
-
-export function applySessionTruncateMessagesWithAdapters<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionMessageWithModelInfo & CoreSessionMessageWithUsage,
->(
-  options: ApplySessionTruncateMessagesWithAdaptersOptions<TSession, TMessage>,
-): CoreSessionTruncateResult<TMessage> | undefined {
-  const session = options.getSession(options.sessionId)
-  if (!session) return undefined
-
-  const result = truncateSessionMessagesFrom<TSession, TMessage>(session, options.messageId, options.now)
-  if (!result) return undefined
-
-  options.saveSession(options.sessionId, session)
-
-  try {
-    if (options.sqlite) {
-      if (options.sqlite.isReady(options.sessionId)) {
-        options.sqlite.deleteMessageAndAfter(options.sessionId, options.messageId)
-        options.sqlite.syncMetadata(session)
-        options.sqlite.syncUsage?.(session)
-      } else {
-        options.sqlite.scheduleMigration(options.sessionId)
-      }
-    }
-  } catch (error) {
-    options.logger?.error?.('[Sessions] Failed to truncate messages in SQLite:', error)
-  }
-
-  options.updateIndexMeta?.(options.sessionId, meta => applySessionUpdatedAtToMeta(meta, session))
-
-  return result
-}
-
-export function applySessionUpdateMessageAndTruncateWithAdapters<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionEditableMessage & CoreSessionMessageWithModelInfo,
->(
-  options: ApplySessionUpdateMessageAndTruncateWithAdaptersOptions<TSession, TMessage>,
-): CoreSessionUpdateAndTruncateResult<TMessage> | undefined {
-  const session = options.getSession(options.sessionId)
-  if (!session) return undefined
-
-  const result = updateSessionMessageAndTruncateAfter<TSession, TMessage>(
-    session,
-    options.messageId,
-    options.newContent,
-    options.options,
-    options.now,
-  )
-  if (!result) return undefined
-
-  options.saveSession(options.sessionId, session)
-
-  try {
-    if (options.sqlite) {
-      if (options.sqlite.isReady(options.sessionId)) {
-        options.sqlite.upsertMessageAndTruncate(options.sessionId, result.updatedMessage, result.index + 1)
-        options.sqlite.syncMetadata(session)
-        options.sqlite.syncUsage?.(session)
-      } else {
-        options.sqlite.scheduleMigration(options.sessionId)
-      }
-    }
-  } catch (error) {
-    options.logger?.error?.('[Sessions] Failed to update+truncate messages in SQLite:', error)
-  }
-
-  options.updateIndexMeta?.(options.sessionId, meta => applySessionUpdatedAtToMeta(meta, session))
-
-  return result
 }
 
 export function createCoreSessionRecord<TMessage extends CoreSessionMessageWithUsage = CoreSessionMessageWithUsage>(
@@ -1471,182 +1124,6 @@ export function deleteSessionWithAdapters<
   }
 
   return { deletedIds, parentSessionId }
-}
-
-export function findSessionMessage<TMessage extends CoreSessionMessageWithId>(
-  session: CoreSessionWithMessages<TMessage>,
-  messageId: string,
-): TMessage | undefined {
-  return session.messages.find(message => message.id === messageId)
-}
-
-export function patchSessionMessage<
-  TMessage extends CoreSessionMessageWithId,
-  TPatch extends Partial<TMessage>,
->(
-  session: CoreSessionWithMessages<TMessage>,
-  messageId: string,
-  patch: TPatch,
-): TMessage | undefined {
-  const message = findSessionMessage(session, messageId)
-  if (!message) return undefined
-  Object.assign(message, patch)
-  return message
-}
-
-export function applySessionMessageMutationWithAdapters<
-  TSession extends { id: string },
-  TMessage extends CoreSessionMessageWithId,
->(
-  options: ApplySessionMessageMutationWithAdaptersOptions<TSession, TMessage>,
-): CoreSessionMessageMutationResult<TSession & CoreSessionWithMessages<TMessage>, TMessage> {
-  const session = options.getSession(options.sessionId)
-  if (!session) return { applied: false }
-
-  const message = options.mutateMessage(session, options.messageId)
-  if (!message) return { applied: false }
-
-  options.saveSession(options.sessionId, session)
-  options.syncMessage?.(session, message)
-
-  return { applied: true, session, message }
-}
-
-export function applySessionAppendMessageWithAdapters<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionMessageWithModelInfo,
-  TMeta extends { updatedAt: number; lastProvider?: string; lastModel?: string },
->(
-  options: ApplySessionAppendMessageWithAdaptersOptions<TSession, TMessage, TMeta>,
-): CoreSessionMessageMutationResult<TSession, TMessage> {
-  const session = options.getSession(options.sessionId)
-  if (!session) return { applied: false }
-
-  const message = appendSessionMessage(session, options.message, options.now)
-  options.saveSession(options.sessionId, session)
-  options.syncMessage?.(session, message)
-  options.updateIndexMeta?.(options.sessionId, meta => applySessionMessageAppendToMeta(meta, session, message))
-
-  return { applied: true, session, message }
-}
-
-export function applySessionInsertMessageAfterWithAdapters<
-  TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
-  TMessage extends CoreSessionMessageWithModelInfo,
->(
-  options: ApplySessionInsertMessageAfterWithAdaptersOptions<TSession, TMessage>,
-): CoreSessionMessageMutationResult<TSession, TMessage> {
-  const session = options.getSession(options.sessionId)
-  if (!session) return { applied: false }
-
-  const message = insertSessionMessageAfter(session, options.afterMessageId, options.message, options.now)
-  options.saveSession(options.sessionId, session)
-  options.syncSession?.(session)
-
-  return { applied: true, session, message }
-}
-
-export function appendSessionMessageContentPart<
-  TMessage extends CoreSessionMessageWithId & { contentParts?: TPart[] },
-  TPart,
->(
-  session: CoreSessionWithMessages<TMessage>,
-  messageId: string,
-  part: TPart,
-): TMessage | undefined {
-  const message = findSessionMessage(session, messageId)
-  if (!message) return undefined
-  if (!message.contentParts) {
-    message.contentParts = []
-  }
-  message.contentParts.push(part)
-  return message
-}
-
-export function findSessionStepById<TStep extends CoreSessionStepWithId>(
-  steps: TStep[],
-  stepId: string,
-): TStep | undefined {
-  return steps.find(step => step.id === stepId)
-}
-
-export function addOrUpdateSessionMessageStep<
-  TMessage extends CoreSessionMessageWithSteps<TStep>,
-  TStep extends CoreSessionStepWithId,
->(
-  message: TMessage,
-  step: TStep,
-): TStep {
-  if (!message.steps) {
-    message.steps = []
-  }
-
-  const existingIndex = message.steps.findIndex(existing =>
-    Boolean(existing.toolCallId && existing.toolCallId === step.toolCallId),
-  )
-  if (existingIndex >= 0) {
-    message.steps[existingIndex] = { ...message.steps[existingIndex], ...step }
-    return message.steps[existingIndex]
-  }
-
-  message.steps.push(step)
-  return step
-}
-
-export function updateSessionMessageStep<
-  TMessage extends CoreSessionMessageWithSteps<TStep>,
-  TStep extends CoreSessionStepWithId,
->(
-  message: TMessage,
-  stepId: string,
-  updates: Partial<TStep>,
-): TStep | undefined {
-  if (!message.steps) return undefined
-  const step = findSessionStepById(message.steps, stepId)
-  if (!step) return undefined
-  Object.assign(step, updates)
-  return step
-}
-
-export function updateSessionMessageStepsUsageByTurn<
-  TMessage extends CoreSessionMessageWithSteps<TStep>,
-  TStep extends CoreSessionStepWithId,
->(
-  message: TMessage,
-  turnIndex: number,
-  usage: unknown,
-): string[] {
-  if (!message.steps) return []
-  const updatedStepIds: string[] = []
-  for (const step of message.steps) {
-    if (step.turnIndex === turnIndex) {
-      step.usage = usage
-      updatedStepIds.push(step.id)
-    }
-  }
-  return updatedStepIds
-}
-
-export function applySessionMessageStepsUsageByTurnWithAdapters<
-  TSession extends { id: string },
-  TMessage extends CoreSessionMessageWithSteps<TStep>,
-  TStep extends CoreSessionStepWithId,
->(
-  options: ApplySessionMessageStepsUsageByTurnWithAdaptersOptions<TSession, TMessage, TStep>,
-): string[] {
-  const session = options.getSession(options.sessionId)
-  if (!session) return []
-
-  const message = findSessionMessage(session, options.messageId)
-  if (!message) return []
-
-  const updatedStepIds = updateSessionMessageStepsUsageByTurn(message, options.turnIndex, options.usage)
-  if (updatedStepIds.length > 0) {
-    options.saveSession(options.sessionId, session)
-    options.syncMessage?.(session, message)
-  }
-
-  return updatedStepIds
 }
 
 function getDisplayContent<TMessage extends CoreSessionMessage>(

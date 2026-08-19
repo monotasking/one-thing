@@ -18,6 +18,7 @@
  * 这些「认识磁盘的东西」换掉 —— 桥接的正确性正是在这几层之间,mock 掉就什么都没验。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { bindSessionFacadeMock } from '../../session/testing/facade-mock.js'
 import { Interaction } from '@onething/core/interaction'
 import { Permission } from '@onething/core/permission'
 
@@ -42,6 +43,13 @@ const mocks = vi.hoisted(() => ({
   /** 已发出的授权(type + pattern)。P0-4 的粒度断言全靠它。 */
   grants: [] as { type: string; pattern: string }[],
 }))
+
+// P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
+// `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
+// 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
+vi.mock('../../session/reads.js', () => import('../../session/testing/facade-mock.js'))
+vi.mock('../../session/commands.js', () => import('../../session/testing/facade-mock.js'))
+bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
 vi.mock('../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),

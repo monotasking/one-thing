@@ -15,7 +15,6 @@ export {
   onSessionsDeleted,
   renameSession,
   addMessage,
-  insertMessageAfter,
   deleteMessage,
   deleteMessageAndTruncate,
   clearSessionMessages,
@@ -66,7 +65,7 @@ export {
   initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
-  saveSessionSnapshot,
+  patchSessionFields,
   invalidateSessionCache,
   getSessionCacheStats,
 } from './sessions.js'

@@ -30,6 +30,15 @@ vi.mock('../stream/message-helpers.js', () => ({
 
 const sessionRef: { current: ChatSession } = { current: null as unknown as ChatSession }
 
+vi.mock('../../session/reads.js', () => ({
+  // 读门面(P0.2 C1):这份 mock 与下面的 store mock 是同一个假会话
+  // —— compact 的取数改走 `sessionReads.listMessages` 了。
+  sessionReads: {
+    listMessages: () => ({ messages: sessionRef.current?.messages ?? [], changed: false }),
+    getMessage: (_sessionId: string, messageId: string) =>
+      sessionRef.current?.messages.find((message: { id: string }) => message.id === messageId),
+  },
+}))
 vi.mock('../../store.js', () => ({
   getSession: () => sessionRef.current,
   addMessage: (_sessionId: string, message: ChatMessage) => {

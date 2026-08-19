@@ -5,13 +5,14 @@ import {
   createOnethingPermissionRuntime,
 } from '@onething/runtime/permissions'
 import * as store from '../../store.js'
+import { sessionReads } from '../../session/reads.js'
 import { isSystemInternalOrigin, latestRealOrigin } from '../../channel/origin.js'
 import { writeAppLog } from '../../logging/index.js'
 import type {
   EnforcePermissionPolicyInput,
   PermissionPolicyInput,
 } from '@onething/runtime/permissions'
-import type { ChatMessage, MessageOrigin } from '@shared/ipc.js'
+import type { MessageOrigin } from '@shared/ipc.js'
 
 const permissionRuntime = createOnethingPermissionRuntime({
   grantMatcher: PermissionGrants.matchGrant,
@@ -46,8 +47,7 @@ const unattendedBridge = {
  */
 function isUnattendedTurn(sessionId: string): boolean {
   if (!isSessionUnattended(sessionId)) return false
-  const messages = store.getSession(sessionId)?.messages as ChatMessage[] | undefined
-  const lastUser = [...(messages ?? [])].reverse().find(message => message.role === 'user')
+  const lastUser = sessionReads.lastMessageOfRole(sessionId, 'user')
   const origin = lastUser?.origin
   // No origin = an internal drive of unknown provenance — stay unattended.
   return !origin || isSystemInternalOrigin(origin)
@@ -61,8 +61,7 @@ function isUnattendedTurn(sessionId: string): boolean {
  * system-internal origin; normal UI chat (no origin) is untouched.
  */
 function isSystemDrivenTurn(sessionId: string): boolean {
-  const messages = store.getSession(sessionId)?.messages as ChatMessage[] | undefined
-  const lastUser = [...(messages ?? [])].reverse().find(message => message.role === 'user')
+  const lastUser = sessionReads.lastMessageOfRole(sessionId, 'user')
   const origin = lastUser?.origin
   return Boolean(origin && isSystemInternalOrigin(origin))
 }
@@ -190,9 +189,8 @@ function enrichPermissionInput(input: EnforcePermissionPolicyInput): EnforcePerm
 }
 
 function findOriginForPermission(sessionId: string, messageId: string): MessageOrigin | undefined {
-  const session = store.getSession(sessionId)
-  const messages = session?.messages as ChatMessage[] | undefined
-  if (!messages?.length) return undefined
+  const messages = sessionReads.listMessages(sessionId).messages
+  if (!messages.length) return undefined
 
   // Goal-driven runs stamp their messages with an identity-less internal
   // origin; permission scoping must attach to the real user behind the

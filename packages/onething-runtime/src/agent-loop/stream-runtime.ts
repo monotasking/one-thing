@@ -252,6 +252,12 @@ export interface OnethingAgentLoopRuntimeAdapters<
 		messages: TChatMessage[],
 		session: TSession,
 	): THistoryMessage[];
+	/**
+	 * 这条会话当前的消息。产品层不许自己从 session 上取 `.messages`
+	 * (docs/design/session-commands-p0-2026-08.md §3),所以回合中重建历史时
+	 * 由宿主从读门面现取一份交过来 —— 宿主侧接的是 `sessionReads.listMessages`。
+	 */
+	listSessionMessages(sessionId: string): TChatMessage[];
 	resolvePromptReferences(
 		content: string,
 		input: {
@@ -368,6 +374,12 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 		messages: TChatMessage[],
 		session: TSession,
 	): THistoryMessage[];
+	/**
+	 * 这条会话当前的消息。产品层不许自己从 session 上取 `.messages`
+	 * (docs/design/session-commands-p0-2026-08.md §3),所以回合中重建历史时
+	 * 由宿主从读门面现取一份交过来 —— 宿主侧接的是 `sessionReads.listMessages`。
+	 */
+	listSessionMessages(sessionId: string): TChatMessage[];
 	resolvePromptReferences(
 		content: string,
 		input: {
@@ -480,6 +492,7 @@ export function createOnethingAgentLoopRuntimeAdapters<
 		buildProjectPromptVars: host.buildProjectPromptVars,
 		buildPrompt: host.buildPrompt,
 		buildHistoryMessages: host.buildHistoryMessages,
+		listSessionMessages: host.listSessionMessages,
 		resolvePromptReferences(content, input) {
 			const settingsWithSkills = input.settings as {
 				skills?: { enableSkills?: boolean };
@@ -845,7 +858,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		if (!latestSession) return messages;
 
 		const rebuiltHistory = adapters.buildHistoryMessages(
-			latestSession.messages,
+			adapters.listSessionMessages(ctx.sessionId),
 			latestSession,
 		);
 		const rebuiltPrompt = await buildPromptForHistory(rebuiltHistory);

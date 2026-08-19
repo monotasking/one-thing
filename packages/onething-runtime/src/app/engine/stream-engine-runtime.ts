@@ -12,6 +12,7 @@ import {
 import { Permission } from "../permission/index.js";
 import { Interaction } from "../interaction/index.js";
 import * as store from "../store.js";
+import { sessionReads } from "../session/reads.js";
 import { getSkillsForSession } from "../skills/session-skills.js";
 import { mediaLibraryService } from "../media/media-library-service.js";
 import {
@@ -73,6 +74,11 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 			// 的解析点(标题模型)也必须看这条会话所在空间的那一份。
 			getSettingsForSession: (sessionId: string) => getSessionSettings(sessionId),
 			getSession: (sessionId) => store.getSession(sessionId),
+			// C1(P0.2 area ①):core 引擎的会话消息读全部走读门面
+			// (docs/design/session-commands-p0-2026-08.md §3)。
+			listMessages: (sessionId) => sessionReads.listMessages(sessionId).messages,
+			getMessage: (sessionId, messageId) =>
+				sessionReads.getMessage(sessionId, messageId) as ChatMessage | undefined,
 			addMessage: (sessionId, message) => store.addMessage(sessionId, message),
 			renameSession: (sessionId, name) => store.renameSession(sessionId, name),
 			updateMessageAndTruncate: (sessionId, messageId, newContent, options) =>

@@ -44,6 +44,8 @@ import type { SayToolResult } from '@onething/runtime/toolkit'
 import { registerRetiredAgentToolName } from '@onething/core'
 import { type ChatMessage } from '@shared/ipc.js'
 import * as store from '../store.js'
+import { sessionCommands } from '../session/commands.js'
+import { sessionReads } from '../session/reads.js'
 import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
 import { collabRoomMembers } from './members.js'
@@ -140,8 +142,7 @@ function buildReplyToSnapshot(
   replyToMessageId: string | undefined,
 ): ChatMessage['replyTo'] | undefined {
   if (!replyToMessageId) return undefined
-  const messages = (store.getSession(roomSessionId)?.messages ?? []) as ChatMessage[]
-  const target = messages.find(message => message.id === replyToMessageId)
+  const target = sessionReads.getMessage(roomSessionId, replyToMessageId)
   if (!target) return undefined
   return buildCollabReplyToSnapshot({
     messageId: target.id,
@@ -326,7 +327,7 @@ export async function speakIntoCollabRoom(input: {
     ...(input.chainReset ? { collabChainReset: true } : {}),
   }
   recentSays.set(fingerprint, { messageId: message.id, at: now })
-  store.addMessage(context.roomSessionId, message)
+  sessionCommands.appendMessage(context.roomSessionId, { message, stampCollab: true })
   void getEventBus().emit(context.roomSessionId, {
     type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
     message,

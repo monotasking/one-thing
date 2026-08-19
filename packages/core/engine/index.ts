@@ -472,6 +472,12 @@ export {
 	toolCallSignature,
 	toolResultObject,
 } from "./tool-orchestration.js";
+export {
+	coreToolCallSnapshot,
+	findCoreToolCall,
+	patchCoreToolCall,
+	replaceCoreToolCall,
+} from "./tool-call-cow.js";
 export type {
 	CoreRepeatedToolCallResult,
 	CoreContentPartLike,

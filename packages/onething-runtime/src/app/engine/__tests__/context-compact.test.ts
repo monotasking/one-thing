@@ -38,7 +38,7 @@ describe('selectCompactPlan', () => {
       message(4, 'assistant'),
     ]
 
-    expect(selectCompactPlan(session(messages), 3)).toBeNull()
+    expect(selectCompactPlan(session(messages), session(messages).messages, 3)).toBeNull()
   })
 
   it('summarizes older messages and keeps recent turns intact', () => {
@@ -53,7 +53,7 @@ describe('selectCompactPlan', () => {
       message(8, 'assistant'),
     ]
 
-    const plan = selectCompactPlan(session(messages), 2)
+    const plan = selectCompactPlan(session(messages), session(messages).messages, 2)
 
     expect(plan?.cutoffMessage.id).toBe('assistant-4')
     expect(plan?.messagesToSummarize.map(m => m.id)).toEqual([
@@ -74,7 +74,7 @@ describe('selectCompactPlan', () => {
       message(6, 'assistant'),
     ]
 
-    expect(selectCompactPlan(session(messages, 'assistant-4'), 1)).toBeNull()
+    expect(selectCompactPlan(session(messages, 'assistant-4'), session(messages, 'assistant-4').messages, 1)).toBeNull()
   })
 
   it('ignores a stale summary when its anchor is no longer in the timeline', () => {
@@ -89,7 +89,7 @@ describe('selectCompactPlan', () => {
       message(8, 'assistant'),
     ]
 
-    const plan = selectCompactPlan(session(messages, 'missing-message'), 2)
+    const plan = selectCompactPlan(session(messages, 'missing-message'), session(messages, 'missing-message').messages, 2)
 
     expect(plan?.previousSummary).toBeUndefined()
     expect(plan?.messagesToSummarize.map(m => m.id)).toEqual([
@@ -121,7 +121,7 @@ describe('selectCompactPlan', () => {
       message(11, 'assistant'),
     ]
 
-    const plan = selectCompactPlan(session(messages, 'assistant-4'), 2)
+    const plan = selectCompactPlan(session(messages, 'assistant-4'), session(messages, 'assistant-4').messages, 2)
 
     expect(plan?.previousSummary).toBe('Previous summary')
     expect(plan?.messagesToSummarize.map(m => m.id)).toEqual([
@@ -161,6 +161,7 @@ describe('shouldAutoCompactBeforeSend', () => {
 
     await expect(shouldAutoCompactBeforeSend({
       session: testSession,
+      sessionMessages: testSession.messages,
       modelContextLength: 100,
       thresholdPercent: 85,
       reservedOutputTokens: 25,
@@ -186,6 +187,7 @@ describe('shouldAutoCompactBeforeSend', () => {
 
     await expect(shouldAutoCompactBeforeSend({
       session: testSession,
+      sessionMessages: testSession.messages,
       modelContextLength: 100,
       thresholdPercent: 50,
     })).resolves.toBe(true)
@@ -223,7 +225,7 @@ describe('context compact summary helpers', () => {
       content: 'hello '.repeat(100) + '你好'.repeat(50),
     }])
 
-    expect(estimateSessionInputTokens(testSession)).toBeGreaterThan(100)
+    expect(estimateSessionInputTokens(testSession, testSession.messages)).toBeGreaterThan(100)
   })
 
   it('normalizes a six-section summary returned inside a markdown fence', () => {

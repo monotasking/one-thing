@@ -8,6 +8,7 @@
  * listen to, so a quote can never open a willingness round.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { bindSessionFacadeMock } from '../../session/testing/facade-mock.js'
 
 interface FakeMessage {
   id: string
@@ -25,6 +26,28 @@ const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
   updateMessageReplyTo: vi.fn(),
 }))
+
+// P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
+// `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
+// 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
+vi.mock('../../session/reads.js', () => import('../../session/testing/facade-mock.js'))
+vi.mock('../../session/commands.js', async () => {
+  const facade = await import('../../session/testing/facade-mock.js')
+  return {
+    sessionCommands: {
+      ...facade.sessionCommands,
+      // 迁移前这条写走 `store.updateMessageReplyTo`;命令面上它是一次普通 patch。
+      patchMessage: (
+        sessionId: string,
+        payload: { messageId: string; patch: { replyTo?: FakeMessage['replyTo'] } },
+      ) => {
+        mocks.updateMessageReplyTo(sessionId, payload.messageId, payload.patch.replyTo)
+        return facade.sessionCommands.patchMessage(sessionId, payload)
+      },
+    },
+  }
+})
+bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
 vi.mock('../../store.js', () => ({
   updateSessionWorkingDirectory: vi.fn(),

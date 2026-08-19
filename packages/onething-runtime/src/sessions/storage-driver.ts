@@ -168,22 +168,34 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
 
   // ============ jsonl 写入 ============
 
-  function encodeSuffix(sessionId: string, messages: unknown[], fromSeq: number): { text: string; refs: JsonlLineRef[] } {
+  /**
+   * 从 `fromSeq` 起把消息编码成 jsonl 文本,并按 `startOffset` 直接算出每行的
+   * 字节偏移 —— P0.4:偏移一次算准,不再先 `offset: 0` 占位、写完再回头逐行改
+   * (`JsonlLineRef` 恰好带 id/role,`session:check` 的形状判据会把它当成消息,
+   * 那种"先建后改"的写法在这里也确实没必要)。
+   */
+  function encodeSuffix(
+    messages: unknown[],
+    fromSeq: number,
+    startOffset: number,
+  ): { text: string; refs: JsonlLineRef[]; endOffset: number } {
     let text = ''
+    let offset = startOffset
     const refs: JsonlLineRef[] = []
     for (let seq = fromSeq; seq <= messages.length; seq++) {
       const line = encodeJsonlMessageLine(seq, messages[seq - 1])
-      refs.push({ length: Buffer.byteLength(line, 'utf8'), offset: 0, ...messageIdentity(messages[seq - 1]) })
+      const length = Buffer.byteLength(line, 'utf8')
+      refs.push({ length, offset, ...messageIdentity(messages[seq - 1]) })
+      offset += length
       text += line
     }
-    void sessionId
-    return { text, refs }
+    return { text, refs, endOffset: offset }
   }
 
   async function rewriteAll(sessionId: string, session: TSession): Promise<void> {
     const messages = Array.isArray(session.messages) ? session.messages : []
     const header = encodeJsonlHeaderLine(session.id ?? sessionId)
-    const { text, refs } = encodeSuffix(sessionId, messages, 1)
+    const { text, refs, endOffset } = encodeSuffix(messages, 1, Buffer.byteLength(header, 'utf8'))
 
     const dir = sessionDir(sessionId)
     await fs.promises.mkdir(dir, { recursive: true })
@@ -195,12 +207,7 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
     await fs.promises.writeFile(tmp, header + text, 'utf-8')
     await fs.promises.rename(tmp, target)
 
-    let offset = Buffer.byteLength(header, 'utf8')
-    for (const ref of refs) {
-      ref.offset = offset
-      offset += ref.length
-    }
-    states.set(sessionId, { lines: refs, fileSize: offset })
+    states.set(sessionId, { lines: refs, fileSize: endOffset })
   }
 
   async function writeSuffix(sessionId: string, session: TSession, dirtySeq: number): Promise<void> {
@@ -216,7 +223,7 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
     const truncateAt = keepLines < state.lines.length
       ? state.lines[keepLines].offset
       : state.fileSize
-    const { text, refs } = encodeSuffix(sessionId, messages, dirtySeq)
+    const { text, refs, endOffset } = encodeSuffix(messages, dirtySeq, truncateAt)
 
     const handle = await fs.promises.open(logPath(sessionId), 'r+')
     try {
@@ -228,13 +235,8 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
       await handle.close()
     }
 
-    let offset = truncateAt
-    for (const ref of refs) {
-      ref.offset = offset
-      offset += ref.length
-    }
     state.lines = [...state.lines.slice(0, keepLines), ...refs]
-    state.fileSize = offset
+    state.fileSize = endOffset
     state.markers = undefined
     await writeMeta(sessionId, session)
   }

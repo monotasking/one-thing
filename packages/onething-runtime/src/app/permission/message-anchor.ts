@@ -1,5 +1,4 @@
-import { getSession } from '../store.js'
-import type { ChatMessage } from '@shared/ipc.js'
+import { sessionReads } from '../session/reads.js'
 
 /**
  * 审批卡的**消息锚**——一次审批要挂在哪条消息上。
@@ -43,8 +42,8 @@ export function resolvePermissionMessageAnchor(
   sessionId: string,
   preferred?: string,
 ): string {
-  const messages = getSession(sessionId)?.messages as ChatMessage[] | undefined
-  if (!messages?.length) return preferred ?? ''
+  const messages = sessionReads.listMessages(sessionId).messages
+  if (!messages.length) return preferred ?? ''
 
   if (preferred && messages.some(message => message.id === preferred)) return preferred
 

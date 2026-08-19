@@ -600,9 +600,11 @@ export class CoreStreamEngine<
         : this.runtime.skills.getForSession(sessionForRefs?.workingDirectory, sessionForRefs?.agentId)
       const resolvedPromptRefs = this.resolveUserReferences(messageContent, skillsForRefs, cmd.channel)
       const session = sessionForRefs
-      const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
-      const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
-        !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
+      // C1(P0.2):读走 store 的读门面,不再持有 session.messages。
+      const messagesForRefs = this.store.listMessages(sessionId)
+      const isFirstUserMessage = session && messagesForRefs.filter(m => m.role === 'user').length === 0
+      const isBranchFirstMessage = session?.parentSessionId && messagesForRefs.length > 0 &&
+        !messagesForRefs.some(m => m.role === 'user' && m.timestamp > session.createdAt)
 
       /**
        * No turn-context block is computed here any more (prompt-channels
@@ -693,7 +695,10 @@ export class CoreStreamEngine<
       this.log(`Starting stream: session=${sessionId}, provider=${providerId}, model=${configWithApiKey.model}`)
 
       const sessionForHistory = this.store.getSession(sessionId)
-      const historyMessages = this.runtime.history.buildMessages(sessionForHistory?.messages || [], sessionForHistory)
+      const historyMessages = this.runtime.history.buildMessages(
+        this.store.listMessages(sessionId) as TMessage[],
+        sessionForHistory,
+      )
       const sessionName = sessionForHistory?.name
 
       await this.runtime.streams.executeMessageStream({
@@ -811,10 +816,9 @@ export class CoreStreamEngine<
         return
       }
 
-      const sessionAfterTruncate = this.store.getSession(sessionId)
       await this.eventBus?.emit(sessionId, {
         type: 'messages:replaced',
-        messages: sessionAfterTruncate?.messages || [],
+        messages: this.store.listMessages(sessionId) as TMessage[],
       })
 
       const resolved = await this.resolveProvider(
@@ -826,7 +830,8 @@ export class CoreStreamEngine<
 
       if (!await this.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
 
-      const assistantOrigin = cmd.origin ?? sessionAfterTruncate?.messages.find(m => m.id === messageId)?.origin
+      // 现取:上面 await 过压缩,捏在手里的会话/数组都可能过期。
+      const assistantOrigin = cmd.origin ?? this.store.getMessage(sessionId, messageId)?.origin
       const assistantMessageId = this.createMessageId()
       const assistantMessage = {
         id: assistantMessageId,
@@ -850,7 +855,10 @@ export class CoreStreamEngine<
       this.log(`Starting edit/resend stream: session=${sessionId}, provider=${providerId}`)
 
       const session = this.store.getSession(sessionId)
-      const historyMessages = this.runtime.history.buildMessages(session?.messages || [], session)
+      const historyMessages = this.runtime.history.buildMessages(
+        this.store.listMessages(sessionId) as TMessage[],
+        session,
+      )
 
       await this.runtime.streams.executeMessageStream({
         sender, sessionId, assistantMessageId,
@@ -876,8 +884,7 @@ export class CoreStreamEngine<
       // P2 入口闸(见 handleSendMessage)。
       await this.waitForCompactionIdle(sessionId)
 
-      const sessionBeforeTruncate = this.store.getSession(sessionId)
-      const targetMessage = sessionBeforeTruncate?.messages.find(m => m.id === messageId)
+      const targetMessage = this.store.getMessage(sessionId, messageId)
       if (!targetMessage) {
         this.emitStreamError(sessionId, 'Message not found')
         return
@@ -893,10 +900,9 @@ export class CoreStreamEngine<
         return
       }
 
-      const sessionAfterTruncate = this.store.getSession(sessionId)
       await this.eventBus?.emit(sessionId, {
         type: 'messages:replaced',
-        messages: sessionAfterTruncate?.messages || [],
+        messages: this.store.listMessages(sessionId) as TMessage[],
       })
 
       const resolved = await this.resolveProvider(
@@ -932,8 +938,9 @@ export class CoreStreamEngine<
       this.log(`Starting retry stream: session=${sessionId}, provider=${providerId}`)
 
       const session = this.store.getSession(sessionId)
-      const historyMessages = this.runtime.history.buildMessages(session?.messages || [], session)
-      const lastUserMessage = session?.messages.filter(m => m.role === 'user').pop()
+      const messagesForRetry = this.store.listMessages(sessionId)
+      const historyMessages = this.runtime.history.buildMessages(messagesForRetry as TMessage[], session)
+      const lastUserMessage = messagesForRetry.filter(m => m.role === 'user').pop()
       const messageContent = lastUserMessage?.content || ''
 
       await this.runtime.streams.executeMessageStream({
@@ -1010,7 +1017,7 @@ export class CoreStreamEngine<
         this.emitStreamError(sessionId, 'Session not found')
         return
       }
-      const assistantMessage = session.messages.find(m => m.id === messageId)
+      const assistantMessage = this.store.getMessage(sessionId, messageId)
       if (!assistantMessage) {
         this.emitStreamError(sessionId, 'Assistant message not found')
         return
@@ -1027,14 +1034,16 @@ export class CoreStreamEngine<
       if (!resolved) return
       const { configWithApiKey, providerId, settings } = resolved
 
-      const historyMessages = this.runtime.history.buildMessages(session.messages, session)
+      // 现取(await resolveProvider 之后):COW 之后手里的数组随时会过期。
+      const messagesForResume = this.store.listMessages(sessionId)
+      const historyMessages = this.runtime.history.buildMessages(messagesForResume as TMessage[], session)
       const historyWithoutCurrent = historyMessages.filter((_, idx) => {
         const msgCount = historyMessages.length
         const message = historyMessages[idx] as { role?: string }
         return idx !== msgCount - 1 || message.role !== 'assistant'
       })
 
-      const voiceConversation = [...session.messages]
+      const voiceConversation = [...messagesForResume]
         .reverse()
         .find(message => message.role === 'user')?.source === 'voice'
 
@@ -1300,7 +1309,10 @@ export class CoreStreamEngine<
     for (let pass = 1; pass <= configuredKeepTurns; pass++) {
       const latestSession = this.store.getSession(sessionId)
       if (!latestSession) return true
-      const historyMessages = this.runtime.history.buildMessages(latestSession.messages, latestSession)
+      const historyMessages = this.runtime.history.buildMessages(
+        this.store.listMessages(sessionId) as TMessage[],
+        latestSession,
+      )
       const usage = buildContextUsageSnapshot({
         session: latestSession,
         historyMessages: historyMessages as unknown[],
@@ -1408,7 +1420,10 @@ export class CoreStreamEngine<
 
     const latestSession = this.store.getSession(sessionId)
     if (!latestSession) return true
-    const finalHistoryMessages = this.runtime.history.buildMessages(latestSession.messages, latestSession)
+    const finalHistoryMessages = this.runtime.history.buildMessages(
+      this.store.listMessages(sessionId) as TMessage[],
+      latestSession,
+    )
     const finalUsage = buildContextUsageSnapshot({
       session: latestSession,
       historyMessages: finalHistoryMessages as unknown[],

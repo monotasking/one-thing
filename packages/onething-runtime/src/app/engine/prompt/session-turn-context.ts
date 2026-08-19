@@ -30,8 +30,18 @@ import {
 } from '@onething/core/engine'
 import type { ChatMessage } from '@shared/ipc.js'
 
+/**
+ * 这个对象与会话的全部往来:一次读、一次读会话级字段、一次写。P0.2 区 ②
+ * 把它从「整会话 store」收窄成三个具名端口 —— 生产接的是
+ * `sessionReads.listMessages` / `sessionReads.getSession` /
+ * `sessionCommands.patchMessage`,三个都是**同步**的,`attach()` 也因此仍是同步、
+ * 仍然靠持久化的 `turnContext` 字段做幂等闸。
+ */
 export interface SessionTurnContextStore {
-	getSession(sessionId: string): { messages: ChatMessage[]; summaryUpToMessageId?: string } | undefined | null
+	/** 这条会话当前的消息(只读视图) */
+	listMessages(sessionId: string): readonly ChatMessage[]
+	/** 会话级字段;**不含 messages**(消息一律走 `listMessages`) */
+	getSessionMeta(sessionId: string): { summaryUpToMessageId?: string } | undefined | null
 	updateMessageTurnContext(
 		sessionId: string,
 		messageId: string,
@@ -85,10 +95,10 @@ export class SessionTurnContext {
 	): TMessage[] {
 		if (!sessionId) return messages
 		try {
-			const session = this.store.getSession(sessionId)
-			if (!session) return messages
+			const sessionMessages = this.store.listMessages(sessionId)
+			if (sessionMessages.length === 0) return messages
 
-			const target = latestUserMessage(session.messages)
+			const target = latestUserMessage(sessionMessages)
 			// Nothing to hang the block on. Happens on the very first build of a
 			// session whose user message is not persisted yet — the next build
 			// (there always is one, the turn cannot run without a user message)
@@ -104,8 +114,8 @@ export class SessionTurnContext {
 			if (this.decided.has(decidedKey)) return messages
 
 			const visible = visibleMessagesAfterSummary(
-				session.messages,
-				session.summaryUpToMessageId,
+				sessionMessages,
+				this.store.getSessionMeta(sessionId)?.summaryUpToMessageId,
 			) as ReadonlyArray<ChatMessage & TurnContextCarrier>
 			const delta = this.ledger.diff(visible, blocks)
 			this.remember(decidedKey)
