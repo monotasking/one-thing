@@ -24,6 +24,11 @@ import {
 	deleteJsonFile,
 } from "./paths.js";
 import { getCurrentSessionId, setCurrentSessionId } from "./app-state.js";
+import { sessionEventTranslator } from "../session/event-translator.js";
+import { sessionCommands } from "../session/commands.js";
+import { resetSessionEventLogCache } from "../session/event-log.js";
+import { resetSessionSurfaceCache } from "../session/event-surface.js";
+import { resetSessionRuns } from "../session/runs.js";
 import { getSettings } from "./settings.js";
 import { expandPath } from "../tools/core/sandbox.js";
 import {
@@ -338,7 +343,26 @@ export function createSession(
 	name: string,
 	options: { workspaceId?: string } = {},
 ): ChatSession {
-	return sessionRepository.createSession(sessionId, name, options);
+	return recordSessionCreated(
+		sessionRepository.createSession(sessionId, name, options),
+	);
+}
+
+/**
+ * S1a(§10.3 ①):`session/created` 是这份事件日志的**第一条**,而且会话目录
+ * 由事件层建起来 —— 鸡生蛋(B4)因此消失:仓库那边的 `saveSession` 是节流的,
+ * 新会话在那 300ms 窗口里发出的事件从前全丢。
+ *
+ * 三个创建入口(有焦点 / 无焦点 / 分支)各走一次,而不是塞进仓库层:
+ * `session-repository.ts` 是产品层,事件落盘住在装配层,方向不能反过来。
+ */
+function recordSessionCreated(session: ChatSession): ChatSession {
+	try {
+		sessionEventTranslator.sessionCreated(session);
+	} catch (error) {
+		console.warn("[Sessions] session/created not recorded:", error);
+	}
+	return session;
 }
 
 /**
@@ -388,7 +412,9 @@ export function createSessionWithoutFocus(
 	options: { workspaceId?: string } = {},
 ): ChatSession {
 	const previousSessionId = getCurrentSessionId();
-	const session = sessionRepository.createSession(sessionId, name, options);
+	const session = recordSessionCreated(
+		sessionRepository.createSession(sessionId, name, options),
+	);
 	if (previousSessionId !== sessionId) setCurrentSessionId(previousSessionId);
 	return session;
 }
@@ -465,6 +491,14 @@ export function onSessionsDeleted(listener: SessionsDeletedListener): () => void
 // Delete a session and all its child sessions (cascade delete)
 export function deleteSession(sessionId: string): DeleteSessionResult {
 	const result = sessionRepository.deleteSession(sessionId);
+	// 会话目录整棵被 `rmSync(recursive)` 掉(events.jsonl 与 blobs/ 都在里面),
+	// 所以这里只需要把进程内那三张表跟着摘掉 —— 留着的话,同 id 的新会话会接着
+	// 旧的 seq 数下去,而盘上那份已经没了。
+	for (const deletedId of result.deletedIds) {
+		resetSessionEventLogCache(deletedId);
+		resetSessionSurfaceCache(deletedId);
+		resetSessionRuns(deletedId);
+	}
 	for (const listener of sessionsDeletedListeners) {
 		try {
 			listener(result.deletedIds);
@@ -733,14 +767,25 @@ export function archiveSessionMessages(sessionId: string): string | undefined {
 
 export { stampCollabAgentId };
 
-// Add a message to a session
+/**
+ * Add a message to a session.
+ *
+ * S1a:这四条 store 端口(add / delete / truncate 两式)是 **core 引擎**写消息
+ * 的入口 —— 它们与 `sessionCommands` 是同一件事的两个门牌(P0 §6 把端口形状
+ * 冻住了,所以不能直接删)。事件翻译挂在 `sessionCommands` 上,于是这里改成
+ * **转调命令面**:一条消息只可能从一扇门进出,账本才不会漏记引擎写的那半边
+ * (真机脚本第一次跑出来的 events.jsonl 里没有 `user/message`,病根正是这条)。
+ *
+ * 语义逐字不变:`appendMessage{stampCollab:true}` 就是原来的
+ * `stampCollabAgentId(...) → runtime.addMessage(...)`。
+ */
 export function addMessage(sessionId: string, message: ChatMessage): void {
-	sessionMessageRuntime!.addMessage(sessionId, stampCollabAgentId(sessionId, message));
+	sessionCommands.appendMessage(sessionId, { message, stampCollab: true });
 }
 
 // Delete a message from a session
 export function deleteMessage(sessionId: string, messageId: string): boolean {
-	return sessionMessageRuntime!.deleteMessage(sessionId, messageId);
+	return sessionCommands.deleteMessage(sessionId, { messageId });
 }
 
 // Delete a message and all messages after it.
@@ -749,7 +794,7 @@ export function deleteMessageAndTruncate(
 	sessionId: string,
 	messageId: string,
 ): boolean {
-	return sessionMessageRuntime!.deleteMessageAndTruncate(sessionId, messageId);
+	return sessionCommands.truncateFrom(sessionId, { messageId, inclusive: true });
 }
 
 /**
@@ -799,12 +844,14 @@ export function updateMessageAndTruncate(
 	newContent: string,
 	options?: { contentParts?: ChatMessage["contentParts"] | null },
 ): boolean {
-	return sessionMessageRuntime!.updateMessageAndTruncate(
-		sessionId,
+	return sessionCommands.truncateFrom(sessionId, {
 		messageId,
+		inclusive: false,
 		newContent,
-		options,
-	);
+		...(options && Object.prototype.hasOwnProperty.call(options, "contentParts")
+			? { contentParts: options.contentParts }
+			: {}),
+	});
 }
 
 // Update message content (for streaming, does not affect sort order)

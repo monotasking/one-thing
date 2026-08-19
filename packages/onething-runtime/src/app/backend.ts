@@ -31,6 +31,7 @@ import {
   getStreamChannel,
 } from './events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
+import { installSessionPermissionEventRecorders } from './session/permission-events.js'
 import {
   initializeStreamEngine,
   shutdownStreamEngine,
@@ -168,6 +169,10 @@ export async function createOnethingBackend(
     getEventBus(),
     sessionId => getStreamEngine().getChannel(sessionId),
   )
+
+  // S1a(session-event-sourcing §10.2 的"权限/交互层"):两条等待链的时刻与
+  // 决定进会话事件日志。必须在两个 initialize 之后 —— 它接的是同一对单例。
+  installSessionPermissionEventRecorders()
 
   // Variables must precede the tool registry (the variable tool reads a
   // populated registry); goal breakers and project dirs are order-free but

@@ -173,6 +173,7 @@ describe('codec backward compatibility', () => {
       { seq: 23, time: 32, type: 'session/compacted', data: { summary: 's', messageId: 'c1', compactedMessageCount: 2 }, surfaceOp: { op: 'replace', start: 22, end: 22 }, sourceEventSeqs: [22] },
       { seq: 24, time: 33, type: 'session/cleared', data: { reason: 'clear' }, surfaceOp: { op: 'replace', start: 23, end: 23 }, sourceEventSeqs: [23] },
       { seq: 25, time: 34, type: 'message/imported', data: { message: { id: 'old1', role: 'user', content: 'legacy' } }, surfaceOp: 'append' },
+      { seq: 26, time: 35, type: 'skill/activated', data: { runId: 'r1', messageId: 'a1', skill: 'agent-plan' } },
     ]
 
     for (const record of samples) {

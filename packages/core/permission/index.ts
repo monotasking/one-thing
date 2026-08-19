@@ -121,7 +121,29 @@ export namespace Permission {
     promptOrder: string[]
   }
 
+  /**
+   * 审批的**账本旁听席**(session-event-sourcing §10.2 的"权限/交互层")。
+   *
+   * 事件溯源要的是"什么时候问了谁、答了什么、为什么拒",而 `permission:settled`
+   * 那条总线事件只带 allowed/rejected —— 拒绝的**理由**只活在
+   * `RejectedError.reason` 里,而投影正是靠它把 `rejectionReason` 接到 toolCall
+   * 上(G6)。所以这里开一个口子,而不是让装配层去听总线再猜。
+   *
+   * core 仍然零依赖:这只是一个回调,落盘在 `app/session/` 那一侧。
+   */
+  export interface Recorder {
+    onAsked?(info: Info): void
+    onAnswered?(input: {
+      info: Info
+      toolCallIds: string[]
+      approved: boolean
+      scope?: Response
+      reason?: string
+    }): void
+  }
+
   const sessions = new Map<string, SessionState>()
+  let recorder: Recorder | null = null
   let eventBus: PermissionEventBusLike | null = null
   let channelResolver: ((sessionId: string) => string) | null = null
   let modeResolver: ((sessionId: string) => Mode) | null = null
@@ -179,7 +201,11 @@ export namespace Permission {
       .catch(err => console.error('[Permission] EventBus emit error:', err))
   }
 
-  function emitSettled(entry: PendingEntry, decision: 'allowed' | 'rejected'): void {
+  function emitSettled(
+    entry: PendingEntry,
+    decision: 'allowed' | 'rejected',
+    details: { scope?: Response; reason?: string } = {},
+  ): void {
     const toolCallIds = [entry.info.callId, ...entry.followerCallIds]
       .filter((id): id is string => Boolean(id))
     emitPermissionEvent(entry.info.sessionId, {
@@ -188,20 +214,41 @@ export namespace Permission {
       toolCallIds,
       decision,
     })
+    try {
+      recorder?.onAnswered?.({
+        info: entry.info,
+        toolCallIds,
+        approved: decision === 'allowed',
+        ...(details.scope !== undefined ? { scope: details.scope } : {}),
+        ...(details.reason !== undefined ? { reason: details.reason } : {}),
+      })
+    } catch (error) {
+      console.warn('[Permission] recorder onAnswered failed:', error)
+    }
   }
 
-  function settlePendingResolve(session: SessionState, entry: PendingEntry): void {
+  function settlePendingResolve(
+    session: SessionState,
+    entry: PendingEntry,
+    scope?: Response,
+  ): void {
     removePending(session, entry.info.id)
     entry.resolve()
     for (const follower of entry.followers) follower.resolve()
-    emitSettled(entry, 'allowed')
+    emitSettled(entry, 'allowed', scope !== undefined ? { scope } : {})
   }
 
   function settlePendingReject(session: SessionState, entry: PendingEntry, error: Error): void {
     removePending(session, entry.info.id)
     entry.reject(error)
     for (const follower of entry.followers) follower.reject(error)
-    emitSettled(entry, 'rejected')
+    const reason = error instanceof RejectedError ? error.reason : undefined
+    emitSettled(entry, 'rejected', reason !== undefined ? { reason } : {})
+  }
+
+  /** 账本旁听席的接线口。传 null 摘下。 */
+  export function setRecorder(next: Recorder | null): void {
+    recorder = next
   }
 
   function emitNextPrompt(sessionId: string, session: SessionState): void {
@@ -395,6 +442,12 @@ export namespace Permission {
 
     console.log('[Permission] Asking permission:', info.id, info.type, info.pattern, 'targetChannel:', targetChannel)
 
+    try {
+      recorder?.onAsked?.(info)
+    } catch (error) {
+      console.warn('[Permission] recorder onAsked failed:', error)
+    }
+
     return new Promise<void>((resolve, reject) => {
       const entry: PendingEntry = { info, resolve, reject, followers: [], followerCallIds: [], emitted: false }
       session.pending.set(info.id, entry)
@@ -441,7 +494,7 @@ export namespace Permission {
       return true
     }
 
-    settlePendingResolve(session, pending)
+    settlePendingResolve(session, pending, response)
 
     if (
       response === 'workdir' &&

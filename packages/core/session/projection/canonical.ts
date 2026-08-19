@@ -53,12 +53,36 @@ function canonicalValue(value: unknown): unknown {
   return out
 }
 
-function sortById(items: readonly unknown[]): unknown[] {
+function sortByKey(items: readonly unknown[], key: 'id' | 'toolCallId'): unknown[] {
   return [...items].sort((a, b) => {
-    const left = String((a as { id?: unknown })?.id ?? '')
-    const right = String((b as { id?: unknown })?.id ?? '')
+    const left = String((a as Record<string, unknown>)?.[key] ?? (a as { id?: unknown })?.id ?? '')
+    const right = String((b as Record<string, unknown>)?.[key] ?? (b as { id?: unknown })?.id ?? '')
     return left < right ? -1 : left > right ? 1 : 0
   })
+}
+
+/**
+ * G1(§10.1):**step 的 `id` 不参与比较**。事件里从来没有 stepId ——
+ * 引擎实时那一份是 `createCoreId()` 随机生成的,投影那一份是
+ * `step-${callId}` 派生的,两者永远不等而这不说明任何事。身份是
+ * `toolCallId`:排序按它,比较也不看 id。`childSteps` 递归同款。
+ */
+function canonicalStep(step: unknown): unknown {
+  if (!step || typeof step !== 'object') return canonicalValue(step)
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(step as Record<string, unknown>).sort()) {
+    if (key === 'id') continue
+    const value = (step as Record<string, unknown>)[key]
+    if (value === undefined) continue
+    if (key === 'childSteps') {
+      if (!Array.isArray(value) || value.length === 0) continue
+      out.childSteps = sortByKey(value, 'toolCallId').map(canonicalStep)
+      continue
+    }
+    if (Array.isArray(value) && value.length === 0) continue
+    out[key] = canonicalValue(value)
+  }
+  return out
 }
 
 export function canonicalChatMessage(
@@ -85,10 +109,15 @@ export function canonicalChatMessage(
       continue
     }
 
-    if (key === 'steps' || key === 'toolCalls') {
-      if (!Array.isArray(value)) continue
-      if (value.length === 0) continue
-      out[key] = sortById(value).map(canonicalValue)
+    if (key === 'steps') {
+      if (!Array.isArray(value) || value.length === 0) continue
+      out.steps = sortByKey(value, 'toolCallId').map(canonicalStep)
+      continue
+    }
+
+    if (key === 'toolCalls') {
+      if (!Array.isArray(value) || value.length === 0) continue
+      out.toolCalls = sortByKey(value, 'id').map(canonicalValue)
       continue
     }
 

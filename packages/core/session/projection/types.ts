@@ -57,6 +57,8 @@ export interface ProjectedStep {
   id: string
   type: 'tool-call'
   title: string
+  /** G3:父调用之下的子步骤(`tool/call.parentCallId` 建起来的那一层)。 */
+  childSteps?: ProjectedStep[]
   status: ProjectedStepStatus
   timestamp: number
   turnIndex?: number
@@ -93,6 +95,10 @@ export interface ProjectedChatMessage {
   provider?: string
   agentId?: string
   steps?: ProjectedStep[]
+  /** G5:这一轮激活了哪个技能(`skill/activated`)。 */
+  skillUsed?: string
+  /** G5:派生的思考时长(ms) —— 推理段的首尾差,没有推理时是首 token 的等待。 */
+  thinkingTime?: number
   turnContext?: ProjectedTurnContext
   usage?: ProjectedStepUsage
   /** 事件坐标:这条消息由哪条事件开头(§3.2 `ChatMessage.seq` 退役后的身份)。 */

@@ -27,6 +27,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildHistoryMessages } from '../../engine/history.js'
+import { generateStepTitle } from '../../engine/tool-step.js'
 import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
 import { buildContextCompactContent } from '../../engine/context-compact.js'
 import { applySessionCommand } from '../commands.js'
@@ -204,9 +205,11 @@ function stepOf(
   usage?: ProjectedStepUsage,
 ): ProjectedStep {
   const step: ProjectedStep = {
+    // A 线也照引擎实时那一份算标题(`createToolExecutionStep` → `generateStepTitle`)。
+    // 从前这里写死 `spec.name`,于是 G2 的"标题是纯派生"在合同上是空的。
     id: `step-${spec.callId}`,
     type: 'tool-call',
-    title: spec.name,
+    title: generateStepTitle(spec.name, spec.args as Parameters<typeof generateStepTitle>[1]),
     status:
       toolCall.status === 'completed' ? 'completed'
         : toolCall.status === 'failed' ? 'failed'
@@ -998,5 +1001,166 @@ describe('incremental projection', () => {
     expect(live.activeRun).toEqual({ runId: 'r1', messageId: 'a1' })
     expect(live.messages[1].isStreaming).toBe(true)
     expect(projectChatMessages(scenario.b.events).activeRun).toBeUndefined()
+  })
+})
+
+// ============================================================================
+// S1a:投影侧补齐的派生规则(§10.1 G1–G9)
+//
+// 这一组**只跑 B 线**,而且是故意的:G1–G9 补的正是"事件里有、命令线里没有
+// 来源"的那些格(技能、审批理由、孤儿参数流、子步骤、思考时长、压缩预算)。
+// 拿命令线去比它们只会得到一条恒真的等式 —— 那正是审查 B7 点名的病。
+// ============================================================================
+
+function eventLine(): EventLine {
+  return new EventLine()
+}
+
+describe('S1a projection catch-up (G1–G9)', () => {
+  it('G2: the step title is derived, never carried on the event', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2,
+      type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{"command":"npm test"}', messageId: 'a1' },
+    })
+
+    const step = projectChatMessages(line.events).messages[0].steps?.[0]
+    // 与引擎实时那一份(`createToolExecutionStep`)同源:`generateStepTitle`。
+    expect(step?.title).toBe('Run: npm test')
+    // G1:id 是派生的,与 toolCallId 一一对应。
+    expect(step?.id).toBe('step-c1')
+  })
+
+  it('G3: parentCallId builds childSteps instead of a flat list', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({ time: 2, type: 'tool/call', data: { runId: 'r', callId: 'parent', name: 'task', argumentsRaw: '{}', messageId: 'a1' } })
+    line.push({ time: 3, type: 'tool/call', data: { runId: 'r', callId: 'child', name: 'read', argumentsRaw: '{}', messageId: 'a1', parentCallId: 'parent' } })
+
+    const message = projectChatMessages(line.events).messages[0]
+    expect(message.steps?.map(step => step.toolCallId)).toEqual(['parent'])
+    expect(message.steps?.[0].childSteps?.map(step => step.toolCallId)).toEqual(['child'])
+    // 子调用也不在顶层 toolCalls 里重复一格。
+    expect(message.toolCalls?.map(call => call.id)).toEqual(['parent'])
+  })
+
+  it('G5: skill/activated lands on the message, and thinkingTime is derived from the reasoning span', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({ time: 2, type: 'request/start', data: { runId: 'r', requestIndex: 1, messageId: 'a1' } })
+    line.push({
+      time: 3,
+      type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'reasoning', time0: 1000, dt: [0, 250, 900], text: ['a', 'b', 'c'] },
+    })
+    line.push({ time: 4, type: 'skill/activated', data: { runId: 'r', messageId: 'a1', skill: 'agent-plan' } })
+
+    const message = projectChatMessages(line.events).messages[0]
+    expect(message.skillUsed).toBe('agent-plan')
+    // 首尾差:1900 − 1000。只记时刻,时长是消费者算的。
+    expect(message.thinkingTime).toBe(900)
+  })
+
+  it('G5: with no reasoning, thinkingTime falls back to the first-token wait', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({ time: 100, type: 'request/start', data: { runId: 'r', requestIndex: 1, messageId: 'a1' } })
+    line.push({ time: 420, type: 'assistant/first-token', data: { runId: 'r', requestIndex: 1, messageId: 'a1' } })
+
+    expect(projectChatMessages(line.events).messages[0].thinkingTime).toBe(320)
+  })
+
+  it('G6: a denied permission carries its reason onto the tool call and the step', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    // 审批常常**早于** tool/call(权限在 plan 之后、apply 之前问)。
+    line.push({ time: 2, type: 'permission/asked', data: { requestId: 'p1', runId: 'r', toolCallId: 'c1', toolName: 'bash' } })
+    line.push({ time: 3, type: 'permission/answered', data: { requestId: 'p1', runId: 'r', toolCallId: 'c1', approved: false, reason: '太危险了' } })
+    line.push({ time: 4, type: 'tool/call', data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{"command":"rm -rf /"}', messageId: 'a1' } })
+    line.push({ time: 5, type: 'tool/result', data: { runId: 'r', callId: 'c1', isError: true, resultPreview: 'denied', result: { text: 'denied' } } })
+    line.push({ time: 6, type: 'tool/audit', data: { runId: 'r', callId: 'c1', toolId: 'bash', effects: ['bash'], effectCount: 1, outcome: 'denied' } })
+
+    const message = projectChatMessages(line.events).messages[0]
+    expect(message.toolCalls?.[0]).toMatchObject({ rejected: true, rejectionReason: '太危险了' })
+    expect(message.steps?.[0]).toMatchObject({ rejected: true, rejectionReason: '太危险了' })
+  })
+
+  it('G7: an orphan tool-input part becomes an input-streaming placeholder', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2,
+      type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'tool-input', toolCallId: 'c1', time0: 10, dt: [0], text: ['{"path":"'] },
+    })
+
+    const live = projectChatMessages(line.events).messages[0]
+    expect(live.toolCalls).toEqual([
+      expect.objectContaining({ id: 'c1', status: 'input-streaming', streamingArgs: '{"path":"' }),
+    ])
+    // 参数流不进 contentParts —— 它喂的是 toolCalls 那一路。
+    expect(live.contentParts).toBeUndefined()
+
+    // run 非正常收尾之后,那条永远等不到调用的参数流转 cancelled。
+    line.push({ time: 3, type: 'run/end', data: { runId: 'r', outcome: 'aborted' } })
+    expect(projectChatMessages(line.events).messages[0].toolCalls?.[0].status).toBe('cancelled')
+  })
+
+  it('G8: a BlobRef attachment is resolved by the host, and dropped when it cannot be', () => {
+    const line = eventLine()
+    line.push({
+      time: 1,
+      type: 'user/message',
+      data: {
+        message: {
+          id: 'u1', role: 'user', content: 'look',
+          attachments: [{ id: 'att1', fileName: 'a.png', mimeType: 'image/png', base64Data: { hash: 'deadbeef', bytes: 4 } }],
+        },
+      },
+      surfaceOp: 'append',
+    })
+
+    const resolved = projectModelHistory(line.events, {}, {
+      buildMessageContent: (message: CoreHistoryChatMessage) =>
+        JSON.stringify((message as unknown as { attachments?: unknown[] }).attachments ?? []),
+      resolveBlob: () => 'BASE64',
+    })
+    expect(resolved[0].content).toContain('BASE64')
+
+    // 拿不到正文就把那一格**摘掉** —— 绝不让 `{hash,bytes}` 当成 base64 发出去。
+    const dropped = projectModelHistory(line.events, {}, {
+      buildMessageContent: (message: CoreHistoryChatMessage) =>
+        JSON.stringify((message as unknown as { attachments?: unknown[] }).attachments ?? []),
+    })
+    expect(dropped[0].content).toBe('[]')
+  })
+
+  it('G9: a compacted surface switches the tool-result budget to the tighter one', () => {
+    const big = 'x'.repeat(120_000)
+    const build = (withCompact: boolean): CoreHistoryMessage[] => {
+      const line = eventLine()
+      const user = line.push({ time: 1, type: 'user/message', data: { message: { id: 'u1', role: 'user', content: 'go' } }, surfaceOp: 'append' })
+      if (withCompact) {
+        line.push({
+          time: 2,
+          type: 'session/compacted',
+          data: { summary: '## Goal\nx', messageId: 'k1', compactedMessageCount: 1, compactedThroughMessageId: 'u1', status: 'completed' },
+          surfaceOp: { op: 'replace', start: user.seq, end: user.seq },
+          sourceEventSeqs: [user.seq],
+        })
+      }
+      line.push({ time: 3, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+      line.push({ time: 4, type: 'tool/call', data: { runId: 'r', callId: 'c1', name: 'read', argumentsRaw: '{}', messageId: 'a1' } })
+      line.push({ time: 5, type: 'tool/result', data: { runId: 'r', callId: 'c1', isError: false, resultPreview: 'big', result: { text: big } }, surfaceOp: 'append' })
+      line.push({ time: 6, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+      return projectModelHistory(line.events, {}, { buildMessageContent: defaultHistoryMessageContent })
+    }
+
+    const plain = JSON.stringify(build(false)).length
+    const compacted = JSON.stringify(build(true)).length
+    // 压缩之后的尾部走 24k/80k 的紧预算,而不是 200k/600k。
+    expect(compacted).toBeLessThan(plain)
   })
 })

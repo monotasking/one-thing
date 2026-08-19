@@ -20,7 +20,8 @@
 import type { CoreBuildHistoryMessagesOptions, CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
 import { buildHistoryMessages, compactedHistoryPreamble } from '../../engine/history.js'
 import { TurnContextLedger } from '../../engine/turn-context.js'
-import type { SessionLogEventRecord } from '../events/types.js'
+import type { BlobRef, SessionLogEventRecord } from '../events/types.js'
+import { isBlobRef } from '../events/types.js'
 import { foldSessionProjection, materializeNode } from './chat-messages.js'
 import type { AssistantNode, ProjectionNode, SessionProjectionState } from './reducer.js'
 import type { ProjectedChatMessage } from './types.js'
@@ -42,6 +43,20 @@ export interface ProjectModelHistoryOptions<TContent = unknown> {
   buildMessageContent?: CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>['buildMessageContent']
   getAIToolName?: CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>['getAIToolName']
   failureResultForAI?: CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>['failureResultForAI']
+  /**
+   * G8(§10.1):把事件里的 `BlobRef` 换回正文。
+   *
+   * 附件的 `base64Data`、图片 part 的正文在事件行里**只能**是引用(§9.1),
+   * 而 provider 要的是那一坨 base64。宿主(app 层的 blob store)把读取口传进来;
+   * 不传就把带 BlobRef 的附件**摘掉** —— 绝不让一个 `{hash,bytes}` 对象当成
+   * base64 发出去(那是最难查的一类脏请求:请求发得出去,模型看到一句 JSON)。
+   */
+  resolveBlob?: (ref: BlobRef) => string | undefined
+  /**
+   * G9(§10.1):强制压缩后的 per-result 预算。缺省由 surface 上有没有
+   * `session/compacted` 节点决定 —— 与今天同口径,不必调用方操心。
+   */
+  forceCompactedToolResults?: boolean
 }
 
 const turnContextLedger = new TurnContextLedger()
@@ -73,13 +88,6 @@ export function materializeModelHistory<TContent = unknown>(
   meta: ProjectModelHistoryMeta = {},
   options: ProjectModelHistoryOptions<TContent> = {},
 ): CoreHistoryMessage[] {
-  const buildOptions = {
-    buildMessageContent: (options.buildMessageContent
-      ?? (defaultHistoryMessageContent as unknown as CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>['buildMessageContent'])),
-    ...(options.getAIToolName ? { getAIToolName: options.getAIToolName } : {}),
-    ...(options.failureResultForAI ? { failureResultForAI: options.failureResultForAI } : {}),
-  } as CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>
-
   const surface = state.surface.snapshot()
   const nodes: ProjectionNode[] = []
   for (const eventSeq of surface.order) {
@@ -88,6 +96,16 @@ export function materializeModelHistory<TContent = unknown>(
   }
 
   const hasCompacted = nodes.some(node => node.kind === 'compacted')
+
+  const buildOptions = {
+    buildMessageContent: (options.buildMessageContent
+      ?? (defaultHistoryMessageContent as unknown as CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>['buildMessageContent'])),
+    ...(options.getAIToolName ? { getAIToolName: options.getAIToolName } : {}),
+    ...(options.failureResultForAI ? { failureResultForAI: options.failureResultForAI } : {}),
+    // G9:surface 上有压缩节点 = 这是一份压缩过的历史,尾部按压缩预算。
+    forceCompactedToolResults: options.forceCompactedToolResults ?? hasCompacted,
+  } as CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>
+
   const out: CoreHistoryMessage[] = []
   let group: CoreHistoryChatMessage[] = []
 
@@ -113,7 +131,7 @@ export function materializeModelHistory<TContent = unknown>(
       }
       continue
     }
-    group.push(toHistoryMessage(node, state))
+    group.push(resolveHistoryBlobRefs(toHistoryMessage(node, state), options.resolveBlob))
   }
   flush()
 
@@ -133,6 +151,61 @@ function toHistoryMessage(node: ProjectionNode, state: SessionProjectionState): 
   if (node.kind !== 'assistant') return message as unknown as CoreHistoryChatMessage
   const pruned = pruneShadowedToolCalls(node, message, state)
   return pruned as unknown as CoreHistoryChatMessage
+}
+
+/**
+ * G8:一条历史消息里的 `BlobRef` 全部换回正文(拿不到就摘掉那一格)。
+ *
+ * 只动两处 —— 附件的 `base64Data` 与图片 part 的正文。这是"落点与回放同一函数"
+ * 的另一半:落盘时把大正文换成引用的是 blob store,回放时换回来的是这里,
+ * 两边认的是同一个 `isBlobRef` 判据。
+ */
+export function resolveHistoryBlobRefs(
+  message: CoreHistoryChatMessage,
+  resolveBlob: ((ref: BlobRef) => string | undefined) | undefined,
+): CoreHistoryChatMessage {
+  const record = message as unknown as Record<string, unknown>
+  const attachments = record.attachments
+  const contentParts = record.contentParts
+
+  const nextAttachments = Array.isArray(attachments)
+    ? resolveBlobList(attachments, 'base64Data', resolveBlob)
+    : undefined
+  const nextParts = Array.isArray(contentParts)
+    ? resolveBlobList(contentParts, 'blob', resolveBlob)
+    : undefined
+
+  if (nextAttachments === undefined && nextParts === undefined) return message
+  return {
+    ...(record as object),
+    ...(nextAttachments !== undefined ? { attachments: nextAttachments } : {}),
+    ...(nextParts !== undefined ? { contentParts: nextParts } : {}),
+  } as CoreHistoryChatMessage
+}
+
+/** @returns undefined = 这一格没有任何 BlobRef,原样复用(不复制数组)。 */
+function resolveBlobList(
+  items: readonly unknown[],
+  key: string,
+  resolveBlob: ((ref: BlobRef) => string | undefined) | undefined,
+): unknown[] | undefined {
+  let changed = false
+  const out: unknown[] = []
+  for (const item of items) {
+    const ref = (item as Record<string, unknown> | null)?.[key]
+    if (!isBlobRef(ref)) {
+      out.push(item)
+      continue
+    }
+    changed = true
+    const resolved = resolveBlob?.(ref)
+    if (resolved === undefined) continue
+    out.push(key === 'blob'
+      // 图片 part 的正文回到 `data`(与落盘前同名),blob 引用撤下。
+      ? { ...(item as object), blob: undefined, data: resolved }
+      : { ...(item as object), [key]: resolved })
+  }
+  return changed ? out : undefined
 }
 
 function pruneShadowedToolCalls(

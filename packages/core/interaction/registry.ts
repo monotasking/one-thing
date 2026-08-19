@@ -105,7 +105,17 @@ export namespace Interaction {
     pending: Map<string, PendingEntry>
   }
 
+  /**
+   * 提问链的**账本旁听席** —— 与 `Permission.Recorder` 同一条纪律
+   * (session-event-sourcing §10.2)。core 仍零依赖:这只是一个回调。
+   */
+  export interface Recorder {
+    onAsked?(request: InteractionRequest): void
+    onAnswered?(request: InteractionRequest, answer: InteractionAnswer): void
+  }
+
   const sessions = new Map<string, SessionState>()
+  let recorder: Recorder | null = null
   let eventBus: InteractionEventBusLike | null = null
   let channelResolver: ((sessionId: string) => string) | null = null
   let unsubInteractionRespond: (() => void) | null = null
@@ -171,6 +181,16 @@ export namespace Interaction {
       toolCallId: entry.request.toolCallId,
       answer,
     })
+    try {
+      recorder?.onAnswered?.(entry.request, answer)
+    } catch (error) {
+      console.warn('[Interaction] recorder onAnswered failed:', error)
+    }
+  }
+
+  /** 账本旁听席的接线口。传 null 摘下。 */
+  export function setRecorder(next: Recorder | null): void {
+    recorder = next
   }
 
   /**
@@ -270,6 +290,12 @@ export namespace Interaction {
       'targetChannel:', targetChannel,
       'deadlineIn:', `${Math.max(0, deadlineAt - createdAt)}ms`,
     )
+
+    try {
+      recorder?.onAsked?.(request)
+    } catch (error) {
+      console.warn('[Interaction] recorder onAsked failed:', error)
+    }
 
     return new Promise<InteractionAnswer>(resolve => {
       const entry: PendingEntry = { request, settle: resolve, timer: null }

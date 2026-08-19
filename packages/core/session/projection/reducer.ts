@@ -29,6 +29,7 @@ import type {
   SessionLogEventRecord,
   SessionResponseUsage,
 } from '../events/types.js'
+import { generateStepTitle } from '../../engine/tool-step.js'
 import { SurfaceIndex } from './surface.js'
 import type {
   ProjectedContentPart,
@@ -73,6 +74,8 @@ interface ToolState {
   callId: string
   name: string
   toolId?: string
+  /** G3:父调用。有它就挂到父 step 的 `childSteps` 里,没有就平铺。 */
+  parentCallId?: string
   argumentsRaw: string
   callTime: number
   callSeq: number
@@ -100,6 +103,13 @@ export interface AssistantNode extends BaseNode {
   ended: boolean
   outcome?: 'completed' | 'aborted' | 'error' | 'interrupted'
   errorDetails?: string
+  /** G5:`skill/activated` 记下的技能名。 */
+  skillUsed?: string
+  /** G5 派生 `thinkingTime` 的三个时刻(只记时刻,时长是消费者算的)。 */
+  firstRequestStartAt?: number
+  firstTokenAt?: number
+  reasoningFirstAt?: number
+  reasoningLastAt?: number
   parts: Map<number, PartState>
   partOrder: number[]
   tools: Map<string, ToolState>
@@ -136,6 +146,14 @@ export interface SessionProjectionState {
   lastUserMessageId?: string
   /** callId → 该 `tool/result` 事件的 seq(surface 剪枝用)。 */
   toolResultSeqByCallId: Map<string, number>
+  /**
+   * G6:`permission/answered{approved:false, reason}` 按 toolCallId 落到调用上。
+   * 审批常常**早于** `tool/call` 落账(权限在 plan 之后、apply 之前问),所以
+   * 先存这里,`tool/call` 一到就取走 —— 不是补丁,是两条时刻线的汇合。
+   */
+  rejectionReasonByCallId: Map<string, string>
+  /** requestId → toolCallId:`permission/answered` 自己没带 callId 时回头查。 */
+  permissionCallIdByRequestId: Map<string, string>
   lastSeq: number
 }
 
@@ -147,6 +165,8 @@ export function createSessionProjectionState(): SessionProjectionState {
     runs: new Map(),
     surface: new SurfaceIndex(),
     toolResultSeqByCallId: new Map(),
+    rejectionReasonByCallId: new Map(),
+    permissionCallIdByRequestId: new Map(),
     lastSeq: 0,
   }
 }
@@ -276,6 +296,12 @@ export function reduceSessionProjection(
       if (!run) break
       const part = ensurePart(run, event.data.partIndex, event.data.kind, event.data.requestIndex, event.data.toolCallId)
       part.text += event.data.text.join('')
+      if (event.data.kind === 'reasoning' && event.data.dt.length > 0) {
+        const first = event.data.time0 + event.data.dt[0]
+        const last = event.data.time0 + event.data.dt[event.data.dt.length - 1]
+        if (run.reasoningFirstAt === undefined || first < run.reasoningFirstAt) run.reasoningFirstAt = first
+        if (run.reasoningLastAt === undefined || last > run.reasoningLastAt) run.reasoningLastAt = last
+      }
       if (part.kind === 'tool-input' && part.toolCallId) {
         const tool = run.tools.get(part.toolCallId)
         if (tool) tool.streamingArgs = part.text
@@ -313,6 +339,9 @@ export function reduceSessionProjection(
       }
       tool.name = event.data.name
       tool.argumentsRaw = event.data.argumentsRaw
+      if (event.data.parentCallId !== undefined) tool.parentCallId = event.data.parentCallId
+      const pendingReason = state.rejectionReasonByCallId.get(tool.callId)
+      if (pendingReason !== undefined) tool.rejectionReason = pendingReason
       // 参数已经定稿:流式片段撤下(它表达的是"还在生成")。
       tool.streamingArgs = undefined
       if (tool.receivedAt === undefined) {
@@ -363,6 +392,45 @@ export function reduceSessionProjection(
       break
     }
 
+    case 'skill/activated': {
+      const run = resolveRun(state, event.data.runId, event.data.messageId)
+      if (run) run.skillUsed = event.data.skill
+      break
+    }
+
+    case 'request/start': {
+      const run = resolveRun(state, event.data.runId, event.data.messageId)
+      if (run && run.firstRequestStartAt === undefined) run.firstRequestStartAt = event.time
+      break
+    }
+
+    case 'assistant/first-token': {
+      const run = resolveRun(state, event.data.runId, event.data.messageId)
+      if (run && run.firstTokenAt === undefined) run.firstTokenAt = event.time
+      break
+    }
+
+    case 'permission/asked': {
+      if (event.data.toolCallId) {
+        state.permissionCallIdByRequestId.set(event.data.requestId, event.data.toolCallId)
+      }
+      break
+    }
+
+    case 'permission/answered': {
+      if (event.data.approved) break
+      const callId = event.data.toolCallId
+        ?? state.permissionCallIdByRequestId.get(event.data.requestId)
+      if (!callId) break
+      const reason = event.data.reason
+      if (reason === undefined) break
+      state.rejectionReasonByCallId.set(callId, reason)
+      const run = findRunByCallId(state, callId, event.data.runId)
+      const tool = run?.tools.get(callId)
+      if (tool) tool.rejectionReason = reason
+      break
+    }
+
     // 记录在案但不改投影:它们回答的是"什么时候发生了什么",不是"屏幕上有什么"。
     case 'session/created':
     case 'session/agent-changed':
@@ -370,11 +438,7 @@ export function reduceSessionProjection(
     case 'session/workdir-changed':
     case 'request/tools':
     case 'request/header':
-    case 'request/start':
     case 'request/end':
-    case 'assistant/first-token':
-    case 'permission/asked':
-    case 'permission/answered':
     case 'interaction/asked':
     case 'interaction/answered':
     case 'plugin/status':
@@ -602,17 +666,27 @@ export function materializeToolCall(run: AssistantNode, tool: ToolState): Projec
   }
 }
 
-export function materializeStep(run: AssistantNode, tool: ToolState): ProjectedStep {
+export function materializeStep(
+  run: AssistantNode,
+  tool: ToolState,
+  childSteps: ProjectedStep[] = [],
+): ProjectedStep {
   const toolCall = materializeToolCall(run, tool)
   const usage = run.usageByTurn.get(tool.turnIndex)
   const hasResultText = tool.resultText !== undefined
   return {
-    // 事件里没有 stepId(七类里从来没记过)。派生一个确定性的:同一份日志
-    // 投两次得到同一个 id,而它与 toolCallId 一一对应 —— S1 若要保真,
-    // 需要在 `tool/call` 上补 `stepId`(见 §9.7 的缺口清单)。
+    // G1(§10.1):事件里**不带** stepId。派生一个确定性的 —— 同一份日志投两次
+    // 得到同一个 id,而它与 toolCallId 一一对应;比较时 `canonicalChatMessage`
+    // 忽略它并按 toolCallId 排序(那才是身份)。
     id: `step-${tool.callId}`,
     type: 'tool-call',
-    title: tool.previewTitle ?? tool.name,
+    // G2(§10.1):标题是**纯派生**,事件不带 title。用的就是引擎实时那一份
+    // (`core/engine/tool-step.ts`),不在这里手抄一条规则。
+    title: generateStepTitle(
+      toolCall.toolName,
+      toolCall.arguments as Parameters<typeof generateStepTitle>[1],
+      run.skillUsed,
+    ),
     status: stepStatus(toolCall.status),
     timestamp: tool.callTime,
     turnIndex: tool.turnIndex,
@@ -623,7 +697,91 @@ export function materializeStep(run: AssistantNode, tool: ToolState): ProjectedS
     ...(toolCall.rejected ? { rejected: true as const } : {}),
     ...(tool.rejectionReason !== undefined ? { rejectionReason: tool.rejectionReason } : {}),
     ...(usage ? { usage } : {}),
+    ...(childSteps.length > 0 ? { childSteps } : {}),
   }
+}
+
+/**
+ * G3:按 `tool/call.parentCallId` 把调用摊成两层。
+ *
+ * 没有父的(绝大多数)平铺在顶层,顺序仍是到达序;父不在本 run 里的
+ * (跨消息的调用栈)也**平铺**,不凭空造一个父 —— 事件说不出来的东西
+ * 投影不猜。
+ */
+export function materializeSteps(run: AssistantNode): ProjectedStep[] {
+  const childrenByParent = new Map<string, string[]>()
+  for (const callId of run.toolOrder) {
+    const parentCallId = run.tools.get(callId)?.parentCallId
+    if (!parentCallId || !run.tools.has(parentCallId)) continue
+    const bucket = childrenByParent.get(parentCallId)
+    if (bucket) bucket.push(callId)
+    else childrenByParent.set(parentCallId, [callId])
+  }
+
+  const steps: ProjectedStep[] = []
+  for (const callId of run.toolOrder) {
+    const tool = run.tools.get(callId)!
+    if (tool.parentCallId && run.tools.has(tool.parentCallId)) continue
+    const children = (childrenByParent.get(callId) ?? [])
+      .map(childId => materializeStep(run, run.tools.get(childId)!))
+    steps.push(materializeStep(run, tool, children))
+  }
+  return steps
+}
+
+/** 顶层 toolCalls:与 `materializeSteps` 同一条筛法(子调用不再单列一格)。 */
+export function materializeToolCalls(run: AssistantNode): ProjectedToolCall[] {
+  return run.toolOrder
+    .filter(callId => {
+      const parentCallId = run.tools.get(callId)?.parentCallId
+      return !parentCallId || !run.tools.has(parentCallId)
+    })
+    .map(callId => materializeToolCall(run, run.tools.get(callId)!))
+}
+
+/**
+ * G7(§10.1):**孤儿参数流** —— 有 `assistant/chunks{kind:'tool-input'}`,
+ * 却从来没等到 `tool/call`(模型写到一半被打断 / 请求出错)。
+ *
+ * 今天 UI 上那是一张 `input-streaming` 的卡;丢掉它等于把"模型开了个头"
+ * 抹平成"什么都没发生"。run 已经收尾(非 completed)时转 `cancelled` ——
+ * 参数流永远等不到它的调用了。
+ */
+export function materializeOrphanToolCalls(run: AssistantNode): ProjectedToolCall[] {
+  const orphans: ProjectedToolCall[] = []
+  for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
+    const part = run.parts.get(partIndex)!
+    if (part.kind !== 'tool-input') continue
+    if (!part.toolCallId || run.tools.has(part.toolCallId)) continue
+    orphans.push({
+      id: part.toolCallId,
+      toolId: '',
+      toolName: '',
+      arguments: {},
+      status: run.ended && run.outcome !== 'completed' ? 'cancelled' : 'input-streaming',
+      timestamp: run.time,
+      streamingArgs: part.text,
+      ...(part.endedAt !== undefined ? { receivedAt: part.endedAt } : {}),
+    })
+  }
+  return orphans
+}
+
+/**
+ * G5(§10.1):`thinkingTime` 是**派生**的 —— 推理段 chunks 的
+ * `time0+dt` 首尾差;没有推理段就退回"首 token 减请求开始"(那是模型在
+ * 那次请求上真正让人等的时间)。两者都拿不到就没有这一格,不填 0
+ * (0 与"没量到"不是一回事)。
+ */
+export function deriveThinkingTime(run: AssistantNode): number | undefined {
+  const span = run.reasoningFirstAt !== undefined && run.reasoningLastAt !== undefined
+    ? run.reasoningLastAt - run.reasoningFirstAt
+    : run.firstRequestStartAt !== undefined && run.firstTokenAt !== undefined
+      ? run.firstTokenAt - run.firstRequestStartAt
+      : undefined
+  // 0 与"没量到"是同一件事(单条 delta 的推理段没有跨度可言),所以不产出 0 ——
+  // 与 `canonicalChatMessage` 对 `isStreaming:false` 的处置同一条理由。
+  return span !== undefined && span > 0 ? span : undefined
 }
 
 export function materializeContentParts(run: AssistantNode): ProjectedContentPart[] {

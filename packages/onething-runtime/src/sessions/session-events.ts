@@ -123,6 +123,17 @@ export function hashSessionEventSystemPrompt(systemPrompt: string): string {
 }
 
 /**
+ * 任意正文的指纹:sha256 前 16 位。
+ *
+ * 与 `hashSessionEventSystemPrompt` 同一条算法 —— 分成两个名字是因为它们回答
+ * 的是不同的问题(信封变了没有 / 这段正文是哪一段),而调用点看名字就该知道
+ * 自己在问哪一个。
+ */
+export function hashSessionEventContent(text: string): string {
+  return createHash('sha256').update(text).digest('hex').slice(0, 16)
+}
+
+/**
  * 工具目录的指纹:对数组直接 `JSON.stringify` 后取 sha256 前 16 位。
  *
  * **不做键排序,前提写在这里**:目录是从注册表按注册顺序生成的,一次装配内

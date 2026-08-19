@@ -705,6 +705,10 @@ export class CoreStreamEngine<
         sender, sessionId, assistantMessageId, messageContent: resolvedPromptRefs.modelContent,
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName,
+        // S1a(session-event-sourcing §10.2):这次执行**是哪一种**,由四个入口
+        // 各自盖章。宿主拿它写 `run/start.kind`;core 自己不落盘。
+        runKind: 'send',
+        triggerMessageId: userMessage.id,
         voiceConversation: userMessage.source === 'voice',
         speakMode: userMessage.source === 'voice',
         ...(cmd.usageSource ? { usageSource: cmd.usageSource } : {}),
@@ -865,6 +869,8 @@ export class CoreStreamEngine<
         messageContent: resolvedPromptRefs.modelContent,
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName: session?.name,
+        runKind: 'edit-resend',
+        triggerMessageId: cmd.messageId,
       })
     } catch (error) {
       const streamError = this.normalizeStreamError(error)
@@ -947,6 +953,8 @@ export class CoreStreamEngine<
         sender, sessionId, assistantMessageId, messageContent,
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName: session?.name,
+        runKind: 'retry',
+        ...(lastUserMessage?.id ? { triggerMessageId: lastUserMessage.id } : {}),
       })
     } catch (error) {
       const streamError = this.normalizeStreamError(error)

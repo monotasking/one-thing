@@ -38,6 +38,8 @@ import {
   stampCollabAgentId,
   updateSessionsIndexMetaForCommands,
 } from '../stores/sessions.js'
+import { sessionEventTranslator } from './event-translator.js'
+import { sessionReads } from './reads.js'
 
 /** 逐消息命令的执行体(生产实现 = `OnethingSessionMessageRuntime`)。 */
 export interface SessionMessageCommandRuntime {
@@ -165,21 +167,50 @@ export interface SessionCommands {
   patchSession(sessionId: string, payload: PatchSessionPayload): boolean
 }
 
-export function createSessionCommands(ports: SessionCommandsPorts): SessionCommands {
+export interface CreateSessionCommandsOptions {
+  /**
+   * S1a 的影子写(§10.2 第一行采集点):reducer 落定之后把这次命令翻成事件。
+   *
+   * 是**选项**而不是硬接线,因为命令面的单元测试要的是"命令做对了什么",
+   * 不该顺带把一份事件日志写到某个临时目录里去。生产实例默认接上。
+   */
+  translator?: typeof sessionEventTranslator | null
+}
+
+export function createSessionCommands(
+  ports: SessionCommandsPorts,
+  options: CreateSessionCommandsOptions = {},
+): SessionCommands {
+  const translator = options.translator === undefined
+    ? sessionEventTranslator
+    : options.translator
+
   return {
     appendMessage(sessionId, payload) {
       const message = payload.stampCollab && ports.stampCollabAgentId
         ? ports.stampCollabAgentId(sessionId, payload.message)
         : payload.message
       ports.messages.addMessage(sessionId, message)
+      translator?.appendMessage(sessionId, message)
     },
 
     upsertMessage(sessionId, payload) {
-      return ports.messages.upsertMessage(sessionId, payload.message)
+      // 翻译要分清"新增"与"就地换掉",所以先问一次在不在(读门面,不碰数组)。
+      const existed = sessionReads.getMessage(sessionId, payload.message.id) !== undefined
+      const changed = ports.messages.upsertMessage(sessionId, payload.message)
+      if (changed) translator?.upsertMessage(sessionId, payload.message, existed)
+      return changed
     },
 
     patchMessage(sessionId, payload) {
-      return ports.messages.patchMessageFields(sessionId, payload.messageId, payload.patch, payload.hint)
+      const changed = ports.messages.patchMessageFields(
+        sessionId,
+        payload.messageId,
+        payload.patch,
+        payload.hint,
+      )
+      if (changed) translator?.patchMessage(sessionId, payload.messageId, payload.patch)
+      return changed
     },
 
     appendContentPart(sessionId, payload) {
@@ -208,23 +239,43 @@ export function createSessionCommands(ports: SessionCommandsPorts): SessionComma
     },
 
     truncateFrom(sessionId, payload) {
-      if (payload.inclusive) {
-        return ports.messages.deleteMessageAndTruncate(sessionId, payload.messageId)
+      // 翻译要在**截断之前**取 surface range(截断之后那些节点还在 surface 上,
+      // 但"从哪条起"要按当时的位置算)—— 所以先算,后写。
+      const changed = payload.inclusive
+        ? ports.messages.deleteMessageAndTruncate(sessionId, payload.messageId)
+        : ports.messages.updateMessageAndTruncate(
+            sessionId,
+            payload.messageId,
+            payload.newContent ?? '',
+            // 只有显式带了 contentParts 键才动它(与老 mutator 的 hasContentParts 同义)
+            Object.prototype.hasOwnProperty.call(payload, 'contentParts')
+              ? { contentParts: payload.contentParts }
+              : undefined,
+          )
+      if (changed) {
+        translator?.truncateFrom(
+          sessionId,
+          payload,
+          payload.inclusive
+            ? undefined
+            : (sessionReads.getMessage(sessionId, payload.messageId) as ChatMessage | undefined),
+        )
       }
-      return ports.messages.updateMessageAndTruncate(
-        sessionId,
-        payload.messageId,
-        payload.newContent ?? '',
-        // 只有显式带了 contentParts 键才动它(与老 mutator 的 hasContentParts 同义)
-        Object.prototype.hasOwnProperty.call(payload, 'contentParts')
-          ? { contentParts: payload.contentParts }
-          : undefined,
-      )
+      return changed
     },
 
     deleteMessage(sessionId, payload) {
-      if ('messageId' in payload) return ports.messages.deleteMessage(sessionId, payload.messageId)
-      return ports.messages.deleteMessageWhere(sessionId, payload.matchMarker)
+      if ('messageId' in payload) {
+        const changed = ports.messages.deleteMessage(sessionId, payload.messageId)
+        if (changed) translator?.deleteMessage(sessionId, payload.messageId)
+        return changed
+      }
+      // 按 marker 删:命令面不知道删掉的是哪一条,所以先找出来再删
+      // (`deleteMessageWhere` 内部会再找一次 —— 两次 find 换一条能翻译的事件)。
+      const target = sessionReads.findMessage(sessionId, payload.matchMarker)
+      const changed = ports.messages.deleteMessageWhere(sessionId, payload.matchMarker)
+      if (changed && target) translator?.deleteMessage(sessionId, target.id)
+      return changed
     },
 
     /**
@@ -245,6 +296,7 @@ export function createSessionCommands(ports: SessionCommandsPorts): SessionComma
       }
 
       ports.messages.replaceAllMessages(sessionId, payload.messages, payload.reason)
+      translator?.replaceAll(sessionId, payload.messages, payload.reason)
 
       ports.updateSessionsIndexMeta(sessionId, meta => {
         meta.updatedAt = session.updatedAt
@@ -266,7 +318,18 @@ export function createSessionCommands(ports: SessionCommandsPorts): SessionComma
     },
 
     patchSession(sessionId, payload) {
-      return ports.patchSession(sessionId, payload.patch, payload.mutateIndexMeta)
+      const before = ports.getSession(sessionId)
+      const snapshot = before
+        ? {
+            agentId: before.agentId,
+            lastModel: before.lastModel,
+            lastProvider: before.lastProvider,
+            workingDirectory: before.workingDirectory,
+          }
+        : undefined
+      const changed = ports.patchSession(sessionId, payload.patch, payload.mutateIndexMeta)
+      if (changed) translator?.patchSession(sessionId, payload.patch, snapshot)
+      return changed
     },
   }
 }

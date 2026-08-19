@@ -17,29 +17,44 @@ import type {
   AgentTurnStreamEvent,
 } from '@onething/core/agent-loop'
 
-const state = vi.hoisted(() => ({ sessionsDir: '' }))
+const state = vi.hoisted(() => ({ sessionsDir: '', storeDir: '' }))
 
-vi.mock('../../../stores/paths.js', () => ({
-  getSessionsDir: () => state.sessionsDir,
-}))
+// 只替换两条路径(会话目录 / store 根),其余原样 —— 记录器现在会连带把
+// blob store 与统计账单拉进来,那两个模块要的是 `getLogDir` 之类的真实实现。
+vi.mock('../../../stores/paths.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../stores/paths.js')>()
+  return {
+    ...actual,
+    getSessionsDir: () => state.sessionsDir,
+    getLogDir: () => path.join(state.storeDir, 'log'),
+  }
+})
 
-const { flushSessionEventLog, readSessionEvents, resetSessionEventLogCache } = await import(
-  '../../../session/event-log.js'
+const { flushSessionEventLog, readSessionEvents, readSessionLogEvents, resetSessionEventLogCache } =
+  await import('../../../session/event-log.js')
+const { resetSessionSurfaceCache } = await import('../../../session/event-surface.js')
+const { beginSessionRun, endSessionRun, resetSessionRuns } = await import(
+  '../../../session/runs.js'
 )
+const { resetSessionEventStatsCache } = await import('../../../session/event-stats.js')
 const { attachSessionEventRecorder } = await import('../session-event-recorder.js')
 
 const SESSION_ID = 'session-under-test'
 
 beforeEach(() => {
-  state.sessionsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-events-int-'))
+  state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-events-store-'))
+  state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION_ID), { recursive: true })
   fs.writeFileSync(path.join(state.sessionsDir, SESSION_ID, 'meta.json'), '{}')
   resetSessionEventLogCache()
+  resetSessionSurfaceCache()
+  resetSessionRuns()
+  resetSessionEventStatsCache()
 })
 
 afterEach(async () => {
   await flushSessionEventLog()
-  fs.rmSync(state.sessionsDir, { recursive: true, force: true })
+  fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 
 /** 两轮:第一轮吐正文 + 一个工具调用,第二轮吐正文收尾。 */
@@ -91,15 +106,29 @@ async function runLoop(tool: AgentTool, systemPrompt = 'you are a test'): Promis
     sessionId: SESSION_ID,
     messageId: 'assistant-1',
   }
+  // S1a:一次执行(run)是 recorder 记 runId / recipe / chunks 的前提。
+  const run = beginSessionRun(SESSION_ID, {
+    kind: 'send',
+    assistantMessageId: 'assistant-1',
+    provider: 'test-provider',
+    model: 'test-model',
+    triggerMessageId: 'user-1',
+  })
   const recorded = attachSessionEventRecorder(runtime, {
     sessionId: SESSION_ID,
     providerId: 'test-provider',
     model: 'test-model',
     systemPrompt,
     getMessageId: () => 'assistant-1',
+    getHistoryInput: () => [{ id: 'user-1', role: 'user', content: 'hello' }],
   })
-  for await (const _chunk of streamAgentLoopProviderChunks(recorded)) {
-    void _chunk
+  try {
+    for await (const _chunk of streamAgentLoopProviderChunks(recorded.runtime)) {
+      void _chunk
+    }
+  } finally {
+    recorded.recorder.flush()
+    endSessionRun(SESSION_ID, run.runId, { outcome: 'completed' })
   }
   await flushSessionEventLog(SESSION_ID)
 }
@@ -132,23 +161,47 @@ describe('session event recorder (agent loop integration)', () => {
       },
     })
 
-    const events = await readSessionEvents(SESSION_ID)
+    const events = await readSessionLogEvents(SESSION_ID)
     expect(events.map(event => event.type)).toEqual([
+      'run/start',
       // 目录在信封之前:header 引用的 toolsHash 落盘时已经有对应的目录了。
       'request/tools',
       'request/header',
+      'request/recipe',
       'request/start',
       'assistant/first-token',
+      // 工具在正文之前落账:`tool/call` 必须在工具执行**之前**(铁律 2),
+      // 而这个 provider 不发 tool-input 流,所以正文那一段直到请求结束
+      // (turn-end 的那道闸)才收齐。
       'tool/call',
       'tool/result',
+      // 正文的唯一来源:一批 delta 打包成一行,part 收齐再记一条不带正文的
+      // part-end。
+      'assistant/chunks',
+      'assistant/part-end',
+      'request/response',
       'request/end',
+      'request/recipe',
       'request/start',
       'assistant/first-token',
+      'assistant/chunks',
+      'assistant/part-end',
+      'request/response',
       'request/end',
+      'run/end',
     ])
 
     expect(callWasOnDiskBeforeExecution).toBe(true)
-    expect(events.map(event => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    // seq 连续,从 1 起,一个不漏。
+    expect(events.map(event => event.seq)).toEqual(events.map((_, index) => index + 1))
+
+    // 同一个 runId 贯穿整次执行。
+    const runIds = new Set(
+      events
+        .map(event => (event.data as { runId?: string }).runId)
+        .filter((id): id is string => Boolean(id)),
+    )
+    expect(runIds.size).toBe(1)
 
     // 时刻单调,而且没有任何一条事件带 duration/status。
     for (let index = 1; index < events.length; index++) {
@@ -157,7 +210,113 @@ describe('session event recorder (agent loop integration)', () => {
     for (const event of events) {
       expect(Object.keys(event.data)).not.toContain('duration')
       expect(Object.keys(event.data)).not.toContain('durationMs')
-      expect(Object.keys(event.data)).not.toContain('status')
+      if (event.type !== 'session/compacted') {
+        expect(Object.keys(event.data)).not.toContain('status')
+      }
+    }
+  })
+
+  it('folds the packed deltas back into the exact text the model produced', async () => {
+    await runLoop(ECHO_TOOL)
+
+    const events = await readSessionLogEvents(SESSION_ID)
+    const chunks = events.filter(event => event.type === 'assistant/chunks')
+    // 两轮各一段正文。每一批的 dt/text 等长 —— 那是"无损"的定义。
+    expect(chunks).toHaveLength(2)
+    for (const chunk of chunks) {
+      if (chunk.type !== 'assistant/chunks') continue
+      expect(chunk.data.dt).toHaveLength(chunk.data.text.length)
+      expect(chunk.data.dt[0]).toBe(0)
+    }
+    const folded = chunks
+      .map(chunk => (chunk.type === 'assistant/chunks' ? chunk.data.text.join('') : ''))
+      .join('')
+    expect(folded).toBe('let me lookall done')
+
+    // part-end 不带正文,只带 len + hash。
+    const partEnds = events.filter(event => event.type === 'assistant/part-end')
+    expect(partEnds).toHaveLength(2)
+    for (const partEnd of partEnds) {
+      if (partEnd.type !== 'assistant/part-end') continue
+      expect(Object.keys(partEnd.data)).not.toContain('text')
+      expect(partEnd.data.hash).toMatch(/^[0-9a-f]{16}$/)
+    }
+    expect(
+      partEnds.map(event => (event.type === 'assistant/part-end' ? event.data.len : 0)),
+    ).toEqual(['let me look'.length, 'all done'.length])
+  })
+
+  it('records the recipe by message identity + fingerprint, never the body', async () => {
+    await runLoop(ECHO_TOOL)
+
+    const recipe = (await readSessionLogEvents(SESSION_ID)).find(
+      event => event.type === 'request/recipe',
+    )
+    expect(recipe?.type === 'request/recipe' && recipe.data.messages).toEqual([
+      { messageId: 'user-1', contentHash: expect.stringMatching(/^[0-9a-f]{16}$/) },
+    ])
+    expect(recipe?.type === 'request/recipe' && Object.keys(recipe.data)).not.toContain('content')
+  })
+
+  it('records the response envelope without a second copy of the text', async () => {
+    await runLoop(ECHO_TOOL)
+
+    const responses = (await readSessionLogEvents(SESSION_ID)).filter(
+      event => event.type === 'request/response',
+    )
+    expect(responses).toHaveLength(2)
+    const first = responses[0]
+    expect(first.type === 'request/response' && first.data).toMatchObject({
+      requestIndex: 1,
+      messageId: 'assistant-1',
+      finishReason: 'tool_calls',
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      toolCallIds: ['call-1'],
+    })
+    expect(first.type === 'request/response' && first.data.parts).toEqual([
+      { partIndex: 0, kind: 'text', len: 'let me look'.length, hash: expect.any(String) },
+    ])
+    for (const key of ['text', 'content', 'reasoning']) {
+      expect(first.type === 'request/response' && Object.keys(first.data)).not.toContain(key)
+    }
+  })
+
+  it('carries the full tool result in the event, and the preview beside it', async () => {
+    await runLoop({
+      ...ECHO_TOOL,
+      async execute() {
+        return { content: 'x'.repeat(1200) }
+      },
+    })
+
+    const result = (await readSessionLogEvents(SESSION_ID)).find(
+      event => event.type === 'tool/result',
+    )
+    expect(result?.type === 'tool/result' && result.data.resultPreview).toHaveLength(501)
+    expect(result?.type === 'tool/result' && result.data.result).toEqual({ text: 'x'.repeat(1200) })
+  })
+
+  it('spills a >64KB tool result into a blob and leaves only the reference', async () => {
+    const big = 'y'.repeat(70 * 1024)
+    await runLoop({
+      ...ECHO_TOOL,
+      async execute() {
+        return { content: big }
+      },
+    })
+
+    const result = (await readSessionLogEvents(SESSION_ID)).find(
+      event => event.type === 'tool/result',
+    )
+    const payload = result?.type === 'tool/result' ? result.data.result : undefined
+    expect(payload && 'blob' in payload).toBe(true)
+    if (payload && 'blob' in payload) {
+      expect(payload.blob.bytes).toBe(Buffer.byteLength(big, 'utf8'))
+      const onDisk = fs.readFileSync(
+        path.join(state.sessionsDir, SESSION_ID, 'blobs', payload.blob.hash),
+        'utf8',
+      )
+      expect(onDisk).toBe(big)
     }
   })
 
@@ -266,11 +425,11 @@ describe('session event recorder (agent loop integration)', () => {
     resetSessionEventLogCache()
     await runLoop(ECHO_TOOL)
 
-    const events = await readSessionEvents(SESSION_ID)
+    const events = await readSessionLogEvents(SESSION_ID)
     expect(events.filter(event => event.type === 'request/tools')).toHaveLength(1)
     expect(events.filter(event => event.type === 'request/header')).toHaveLength(1)
-    // seq / requestIndex 跨重启继续单调递增,没有回头。
-    expect(events.map(event => event.seq)).toEqual([...events.keys()].map(index => index + 1))
+    // seq 跨重启继续单调递增,没有回头。
+    expect(events.map(event => event.seq)).toEqual(events.map((_, index) => index + 1))
   })
 
   it('carries stop reason and usage on request/end, and nothing derived', async () => {

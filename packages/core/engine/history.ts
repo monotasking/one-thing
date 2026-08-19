@@ -144,6 +144,16 @@ export interface CoreBuildHistoryMessagesOptions<
 		sessionId?: string;
 		summaryUpToMessageId: string;
 	}) => void;
+	/**
+	 * G9(session-event-sourcing §10.1):强制走**压缩后**的 per-result 预算
+	 * (24k/80k,而不是 200k/600k)。
+	 *
+	 * 今天这一位是从 `session.summary + summaryUpToMessageId` 推出来的:命中锚点
+	 * 就是压缩态。事件溯源的 surface 路径上切点由 `session/compacted` 表达,
+	 * `session` 被刻意置空(再按锚点切一次就是切两刀),于是那一位没了来源 ——
+	 * 小载荷下两条路逐字相同,真机大结果才分叉。这个选项就是把它还回来。
+	 */
+	forceCompactedToolResults?: boolean;
 }
 
 function capLongStringForAI(value: string): string {
@@ -758,12 +768,19 @@ export function buildHistoryMessages<
 	}
 
 	const result: CoreHistoryMessage[] = [];
+	const useCompactedToolResults = options.forceCompactedToolResults === true;
 	for (const message of messages) {
 		if (message.role !== "user" && message.role !== "assistant") continue;
 		if (message.isStreaming) continue;
 		const providerData = getHistoryProviderData(message, options);
 		if (!hasHistoryMessageContent(message, providerData)) continue;
-		appendHistoryMessage(result, message, options, providerData, false);
+		appendHistoryMessage(
+			result,
+			message,
+			options,
+			providerData,
+			useCompactedToolResults,
+		);
 	}
 
 	return result;

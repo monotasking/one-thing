@@ -462,6 +462,14 @@ export interface ChatMessage {
    * session's agentId at creation time; absent on ordinary chat sessions.
    */
   agentId?: string
+  /**
+   * 产生这条消息的那一次**执行**(S1a,`docs/design/session-event-sourcing-2026-08.md`
+   * §10.2)。引擎入口 `randomUUID()` 一次,贯穿 agent-loop、recorder、权限与压缩;
+   * 事件账本里的 `run/start` / `run/end` 用的是同一个 id。
+   *
+   * 影子期靠它按 run 切片比对(投影出的那一条 vs 消息里的那一条)。
+   */
+  runId?: string
   /** True for steering messages injected mid-stream (persisted marker for UI) */
   steered?: boolean
   /** IM quote reply: what this message is answering (snapshot, see the type). */

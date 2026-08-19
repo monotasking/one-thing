@@ -19,10 +19,12 @@ import type { SessionLogEventRecord } from '../events/types.js'
 import type { AssistantNode, CompactedNode, MessageNode, ProjectionNode, SessionProjectionState } from './reducer.js'
 import {
   createSessionProjectionState,
+  deriveThinkingTime,
   materializeContentParts,
+  materializeOrphanToolCalls,
   materializePartText,
-  materializeStep,
-  materializeToolCall,
+  materializeSteps,
+  materializeToolCalls,
   reduceSessionProjection,
 } from './reducer.js'
 import type { ProjectChatMessagesResult, ProjectedChatMessage } from './types.js'
@@ -95,10 +97,12 @@ function materializeMessageNode(node: MessageNode): ProjectedChatMessage {
 }
 
 function materializeAssistantNode(node: AssistantNode): ProjectedChatMessage {
-  const toolCalls = node.toolOrder.map(callId => materializeToolCall(node, node.tools.get(callId)!))
-  const steps = node.toolOrder.map(callId => materializeStep(node, node.tools.get(callId)!))
+  // G7:孤儿参数流合成的占位调用排在真调用之后 —— 它们是"还没成为调用"的东西。
+  const toolCalls = [...materializeToolCalls(node), ...materializeOrphanToolCalls(node)]
+  const steps = materializeSteps(node)
   const contentParts = materializeContentParts(node)
   const reasoning = materializePartText(node, 'reasoning')
+  const thinkingTime = deriveThinkingTime(node)
 
   return {
     id: node.messageId,
@@ -114,6 +118,8 @@ function materializeAssistantNode(node: AssistantNode): ProjectedChatMessage {
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(steps.length > 0 ? { steps } : {}),
     ...(node.usage ? { usage: node.usage } : {}),
+    ...(node.skillUsed ? { skillUsed: node.skillUsed } : {}),
+    ...(thinkingTime !== undefined ? { thinkingTime } : {}),
     ...(node.ended ? {} : { isStreaming: true as const }),
     ...(node.errorDetails ? { errorDetails: node.errorDetails } : {}),
     ...node.patch,

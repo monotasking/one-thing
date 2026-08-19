@@ -420,3 +420,181 @@ interface SessionEventRecord<T, D> {
 | G11 | **`session/cleared{reason:'replaced'}` 的第二半** | 只实现了"全清";§9.3 说 replaced = cleared + 逐条 `message/imported` | 合同测试只验了 `clear`;collab 的 `MESSAGES_REPLACED` 要在 S1 补一条端到端 |
 | G12 | **seq 的跨进程安全** | S0 不落盘,不涉及 | §7.1 B5 + `session-commands-p0-2026-08.md` §10.7(server 的 StoreLock 已按用户裁定撤回):desktop 与 server 共享 `~/.onething` 时两个写者会分配重复 seq,而 `surfaceOp replace` 按 seq 区间遮蔽 → 静默错乱。**S1 开工前必须先解决**,这是 S 线唯一的硬前置 |
 
+
+---
+
+## 10. S1 规格(2026-08-19):影子写 —— 事件真正落盘,messages.jsonl 仍是真相
+
+前提:P0(命令面)、S0(事件全集 v2 + 投影 + 合同测试)、one-core A 期(单引擎,G12 消解)均已提交。S1 让真实引擎开始产生 v2 事件并落盘,但**不切读路径**:`messages.jsonl` 仍是唯一真相,事件是影子;每个 run 结束时把两边投影做 canonical 比较,不等就记账。S2 才切读。
+
+### 10.1 G1–G12 裁定
+
+| # | 裁定 |
+|---|---|
+| G1 `Step.id` | 事件不带;投影确定性派生 `step-${callId}`;`canonicalChatMessage` 忽略 `step.id`,steps 按 `toolCallId` 排序比较 |
+| G2 `Step.title` | 纯派生:`generateStepTitle(toolName, args, skillName)` 搬进 core(纯函数),投影调用;事件不带 title |
+| G3 子步骤 | `tool/call.data.parentCallId?`(可选);recorder 能拿到就填,拿不到就平铺;投影按它建 `childSteps` |
+| G4 占位 part | 永久渲染侧,不入事件 |
+| G5 杂字段 | `thinkingTime` = 派生(reasoning 段 chunks 的 `time0+dt` 首尾差;无 reasoning 则 `first-token − request/start`);`skillUsed` → 新事件 `skill/activated {runId, messageId, skill}`;`steered/collab*/origin/mentions/reactions/replyTo` → `message/patched`(origin/mentions/replyTo 在 `user/message` 本体里已有,patched 只管事后改) |
+| G6 `rejectionReason` | 投影按 `toolCallId` 把 `permission/answered{decision:'deny', reason}` 接到 toolCall/step 上;`tool/audit` 不冗余 |
+| G7 孤儿 tool-input | 投影按孤儿 `assistant/chunks{kind:'tool-input'}` 合成 `status:'input-streaming'` 的 toolCall;`run/end` 非 completed 时转 `cancelled` |
+| G8 附件/多模态 | `user/message.message.attachments[].base64Data` → `BlobRef`;blob 存 `sessions/<id>/blobs/<sha256-16>`(app 层 `app/session/blob-store.ts`,内容寻址,同 hash 只写一次);`projectModelHistory` 的 `buildMessageContent` 由宿主注入(desktop 那份),S1 断言"落点与回放同一函数" |
+| G9 compact 预算 | `projectModelHistory`:surface 上存在 `session/compacted` 节点时,其后的工具结果用压缩预算(24k/80k),否则 200k/600k —— 与今天同口径 |
+| G10 recipe | `request/recipe.messages[] = {messageId, contentHash}`(eventSeq 在 S2 由 id→seq 索引解析);采集点 = 今天 history builder 的**输入**(发出去的就是它),hash = 发出的正文 |
+| G11 replaced | collab `MESSAGES_REPLACED` = `session/cleared` + 逐条 `message/imported`,S1 接上并加端到端测试 |
+| G12 跨进程 seq | one-core A 期:一个 store 一个引擎;event-log 仍加**守卫**:首次启用读文件 lastSeq;append 前若文件 lastSeq > 内存 lastSeq(别的进程写过)→ 重新装载并 warn,不盲写 |
+
+### 10.2 采集点(谁产生哪些事件)
+
+| 来源 | 事件 |
+|---|---|
+| `sessionCommands`(P0 命令面,`app/session/commands.ts`)在 reducer 成功后翻译(§9.3 表) | `user/message`、`system/message`、`message/patched`、`message/deleted`、`user/message-edited`、`session/cleared`(+imported)、`session/*-changed`、`context/turn-update` |
+| 引擎 run 生命周期(`stream-engine` handleSendMessage / retry / edit-resend / resume / steer / follow-up) | `run/start`(此处生成 `runId`,放进 agent-loop ctx)、`run/end` |
+| agent-loop recorder(`app/engine/stream/session-event-recorder.ts` 扩展,挂 `onEvent`,执行前记账) | 既有 7 类(+runId)、`request/recipe`、`request/response`、`request/error`、`assistant/chunks`(内存攒批:2s / 64 条 / part 边界 / 请求结束先到者触发)、`assistant/part-end`、`skill/activated` |
+| 权限/交互层(`Permission.ask/respond`、interaction registry) | `permission/asked|answered`、`interaction/asked|answered` |
+| compact(`context-compact.ts`) | `session/compacted`(+surfaceOp replace + sourceEventSeqs) |
+| 冷加载 `prepare`(S2) | 合成收尾(S1 不做) |
+
+`runId` 生成:引擎执行入口 `randomUUID()`;`ChatMessage.runId?` 新增可选字段并持久化(messages.jsonl 仍写),供影子比较按 run 切片。
+
+### 10.3 落盘纪律翻转(B5 的一半,剩下一半在 S3)
+
+S1 仍是影子,所以写失败**不致命**,但必须**可见、可计数**:
+- `app/session/event-log.ts`:①会话目录由事件层创建(`session/created` 是第一条),`storage-driver.jsonlExists` 同时认 `events.jsonl`(B4);②写失败不再 warnOnce 吞掉,计入 `<store>/log/session-shadow-stats.json`(`{appendFailures, runs, mismatches}`)并每会话 warn 一次;③**语义检查点 fsync**:调模型前 / 调工具前 / 响应收齐 / run 结束,`flushSessionEventLog(sessionId)` 等待队列排空并 fsync;④G12 守卫。
+- blob store 同步写(小文件),失败同 ②。
+
+### 10.4 影子断言与报告
+
+- run 结束(`run/end` 落盘后):`projectChatMessages(events of this run)` vs `sessionReads.listMessages` 中属于该 run 的消息(按 `runId`),两边过 `canonicalChatMessage` 深比较;不等 → 追加一行到 `<store>/log/session-shadow.jsonl` `{time, sessionId, runId, diff: 字段级摘要 ≤ 2KB}`,stats.mismatches++;相等 → stats.runs++。
+- `projectModelHistory` 也比:下一次请求前,用同一 surface 投影出的历史 vs 今天 `buildHistoryMessages` 的输出(即 recipe 的输入)做 hash 比较,不等同样记账(`kind:'history'`)。
+- `bun run sessions:shadow-report`:打印 `{runs, mismatches, appendFailures, byKind, top10 sessions}`;**门 = runs ≥ 200 ∧ mismatches = 0 ∧ appendFailures = 0**(按量不按天)。
+- 性能门:CDP 量主线程最长阻塞 < 16ms(一轮 50 工具调用脚本)—— 沿用拖拽量法记忆。
+
+### 10.5 S1 明确不做
+不切读路径;不迁移老会话;不删 messages.jsonl;不改 renderer;不做 `prepare` 合成收尾;不做 trace CLI/API(S3)。
+
+### 10.6 分两批派工
+- **S1a**:命令面翻译 + runId 贯穿 + recorder 扩展(chunks 打包 / recipe / response / error / part-end / skill) + 权限事件 + compact 事件 + blob store + event-log 纪律翻转(mkdir / 计数 / 检查点 fsync / G12 守卫)+ 投影侧 G1–G9 的补齐(core)。门:单测 + 既有合同测试扩展(新场景:孤儿 tool-input、permission deny reason、compact 预算)+ 真机脚本:发一条带工具的消息 → `events.jsonl` 出现完整 run 序列且 seq 连续。
+- **S1b**:影子断言 + shadow.jsonl/stats + `sessions:shadow-report` + 性能量测脚本 + G11 端到端。门:report 跑通,mismatch 列表可读。
+
+---
+
+### 10.7 S1a 落地记录(2026-08-19)
+
+**门**(逐字):`bun run typecheck` 只剩 `spaces/__tests__/provider-dials.test.ts`
+的 3 条既有错;`ONETHING_SESSION_FREEZE=1 bun run test` **10772 passed / 2 failed**
+(两条既有 `ui-token-vars.test.ts`)+ 1 条既有 unhandled rejection
+(`AIProviderTab.interaction.test.ts`);`session:gate` **0**(none new);
+`boundary:gate` 绿(13 known,none new);`lint:ci` **334**(与基线同数,零新增);
+`packages/core/__tests__/architecture-boundaries.test.ts` 10 条全绿;
+`server:build` 通过并**真机起服跑通**(见下);`transport:gate` 仍是 2603c665 那
+4 条既有红,本期一行未加。
+
+#### 交付
+
+| 文件 | 角色 |
+|---|---|
+| `packages/onething-runtime/src/app/session/event-log.ts` | 纪律翻转:`session/created` **建目录**(且只有它有这个权力)、写失败计数不再静默、`flushSessionEventLog` 排空队列**并 fsync**、G12 跨进程守卫;新增 v2 入口 `appendSessionLogEvent` 与 `readSessionLogEvents(Sync)` |
+| `packages/onething-runtime/src/app/session/event-stats.ts` | `<store>/log/session-shadow-stats.json` 的 `{appendFailures, runs, mismatches}`(节流写);每会话一次 warn |
+| `packages/onething-runtime/src/app/session/blob-store.ts` | `sessions/<id>/blobs/<sha256-16>`:内容寻址、写一次、同步写;`textOrBlobForEvent` 是 64KB 线的唯一判点 |
+| `packages/onething-runtime/src/app/session/event-surface.ts` | 每会话的**活 surface**(core `SurfaceIndex` + `messageId→eventSeq` 表,首次同步 fold 建起);`appendSurfaceAwareEvent` 是翻译器唯一的门 |
+| `packages/onething-runtime/src/app/session/runs.ts` | run 登记处:`beginSessionRun`/`ensureSessionRun`/`rotateSessionRun`/`endSessionRun`/`markSessionRunOutcome` + `requestIndex` 与 **partIndex 分配器** |
+| `packages/onething-runtime/src/app/session/event-translator.ts` | §9.3 的翻译表(user/system/patched/deleted/edited/cleared+imported/`session/*-changed`/turn-update/compacted);附件 base64 → `BlobRef` |
+| `packages/onething-runtime/src/app/session/permission-events.ts` | `Permission`/`Interaction` 的记账接线(`backend.ts` 在两个 `initialize` 之后装上) |
+| `packages/onething-runtime/src/app/engine/stream/session-event-recorder.ts` | 扩展:全部事件带 `runId`;新增 `request/recipe`、`request/response`、`request/error`、`assistant/chunks`(攒批)、`assistant/part-end`、`skill/activated`;`tool/result` 带全文/blob |
+| `packages/onething-runtime/src/app/engine/stream/stream-executor.ts` | run 生命周期的**唯一入口**(四条引擎路径 + 图片特化流都过它) |
+| `packages/onething-runtime/src/app/engine/stream/agent-loop-executor.ts` | 恢复路径的 run 兜底、`response-boundary` 换 run、abort/error 的收场预告、recorder 收尾 flush |
+| `packages/onething-runtime/src/app/engine/context-compact.ts` | 成功/失败两条路各记一条 `session/compacted` |
+| `packages/onething-runtime/src/app/stores/sessions.ts` | `session/created` 三个创建入口;删会话摘三张进程内表;**四条 store 端口(add/delete/两式 truncate)改为转调命令面** |
+| `packages/onething-runtime/src/sessions/storage-driver.ts` | `jsonlExists` 认 `events.jsonl`(B4 的鸡生蛋随之消失) |
+| `packages/core/session/events/types.ts` | 新增 `skill/activated`;`tool/call.parentCallId?`;`run/start.triggerMessageId?` |
+| `packages/core/session/projection/{reducer,chat-messages,canonical,model-history,types}.ts` | G1–G9 的投影补齐(见下表) |
+| `packages/core/engine/history.ts` | `forceCompactedToolResults?`(G9 的开关,surface 路径没有 `session.summary` 可推) |
+| `packages/core/permission/index.ts`、`packages/core/interaction/registry.ts` | `setRecorder` 旁听席(core 仍零依赖:只是一个回调) |
+| `packages/shared/ipc/chat.ts` | `ChatMessage.runId?` |
+| 测试 | `app/session/__tests__/{event-log-s1,event-translator}.test.ts`、`app/engine/stream/__tests__/session-chunk-packer.test.ts`、扩写的 `session-event-recorder.test.ts`、`core/session/__tests__/projection-contract.test.ts` 新增 `S1a projection catch-up (G1–G9)` 一组 |
+
+#### G1–G12 的落法
+
+| # | 落法 |
+|---|---|
+| G1 | 事件不带 stepId;投影派生 `step-${callId}`;`canonicalChatMessage` **丢 step.id**,steps 按 `toolCallId` 排序(`childSteps` 递归同款) |
+| G2 | `generateStepTitle` 本来就在 core(`engine/tool-step.ts`),投影直接调;`tool/audit.previewTitle` 不再当标题用。合同测试 A 线同步改成调它 —— 从前那边写死 `spec.name`,等于这一条合同是空的 |
+| G3 | `tool/call.data.parentCallId?` 已在类型与投影上就位(`materializeSteps` 建 `childSteps`,子调用不在顶层重复);**采集侧今天填不出来**(`AgentToolCall` 没有父指针),见"S1b 缺口" |
+| G4 | 占位 part 永久渲染侧,不入事件 —— 未做任何事 |
+| G5 | `skill/activated` 由 recorder 在 `tool-call-done` 用 core 的 `detectSkillUsage` 算出;`thinkingTime` 派生自推理段 chunks 的 `time0+dt` 首尾差,无推理段退回 `first-token − request/start`,**0 不产出**(0 与"没量到"同义) |
+| G6 | `permission/answered{approved:false,reason}` 按 toolCallId 落到 toolCall/step 的 `rejectionReason`;审批**早于** `tool/call` 是常态,所以归约器先存 `rejectionReasonByCallId`,`tool/call` 一到就取走 |
+| G7 | 孤儿 `assistant/chunks{kind:'tool-input'}` 合成 `status:'input-streaming'` 的占位 toolCall,run 非正常收尾后转 `cancelled` |
+| G8 | 附件 `base64Data` → `BlobRef`(翻译器落、`projectModelHistory` 的 `resolveBlob` 回放);**拿不到正文就摘掉那一格**,绝不让 `{hash,bytes}` 当 base64 发出去 |
+| G9 | `projectModelHistory` 在 surface 上看见 `session/compacted` 节点就把 `forceCompactedToolResults` 打开(24k/80k),与今天同口径 |
+| G10 | `request/recipe.messages = {messageId, contentHash}`;采集点是 history builder 的**输入**(带 id 的 `ChatMessage[]`,由执行器用 `sessionReads.listMessages` 注入),不是 provider 收到的 `AgentMessage[]`(那份没有 id)。`eventSeq` 留给 S2 |
+| G11 | `replaceAll{replaced}` = `session/cleared` + 逐条 `message/imported`,翻译器测试里有端到端一条 |
+| G12 | 守卫按**字节数**判:文件比"我们写进去的"还长 = 有第二个写者 → 重装计数器 + warn(500ms 一次的检查间隔,不是每次 append 都 stat) |
+
+#### 口径裁定(原文没写死的地方)
+
+1. **一条 assistant 消息 = 一次 run**。`beginSessionRun` 只在 `executeMessageStream`
+   开;`executeAgentLoopStreamGeneration` 用 `ensureSessionRun` —— 按
+   `assistantMessageId` 判同一次,普通发送走到那里是 no-op,只有"确认后恢复"
+   (它绕过前者直接调)才真的开一条 `kind:'resume'`。谁开的谁收尾。
+2. **`run/end` 的 outcome 不能照 finally 写**。abort / error 在执行器内部就被
+   接住了(翻成 `stream:aborted` / 一条错误消息,不再往上抛),finally 看到的是
+   一次正常返回。所以加了 `markSessionRunOutcome`:接住的那一处留一句,收尾时
+   优先用它,且只认比 `completed` 更坏的结论。
+3. **`store.addMessage` / `deleteMessage` / 两式 truncate 改为转调命令面**。
+   这四条是 core 引擎写消息的端口(P0 §6 冻住了形状),与 `sessionCommands`
+   是同一件事的两个门牌。真机脚本第一次跑出来的 `events.jsonl` **没有
+   `user/message`** —— 病根就是引擎走的是另一扇门。语义逐字不变
+   (`appendMessage{stampCollab:true}` 就是原来的 stamp + runtime.addMessage)。
+4. **助手占位消息不翻译**。`appendMessage` 遇到 `role:'assistant' && isStreaming`
+   直接返回:它在 surface 上的那一格是 `run/start`,翻一条 `system/message`
+   就成了两格。非流式的 assistant / system / error 一律走 `system/message`
+   (role 原样,与 `message/imported` 同形)。
+5. **正文与派生字段永不进 `message/patched`**:`content`/`contentParts`/
+   `reasoning` 来源是 chunks;`isStreaming`/`isThinking`/`thinkingStartTime`/
+   `seq`/`steps`/`toolCalls` 是投影算得出来的。剩下全空就一条都不写。
+6. **失败的压缩不遮蔽任何东西**。它记一条 `status:'failed'` 的
+   `session/compacted`(UI 上那张红卡),但 `surfaceOp` 是 `append` —— 一段没压
+   成功的历史照旧要发给模型。
+7. **partIndex 是 run 级的、跨请求单调**,由 run 登记处统一分配。每次请求各数
+   各的会让第二轮的正文插到第一轮前面(投影按 partIndex 排 `contentParts`)。
+8. **`interaction/answered` 记决定不记正文**:`answer` 存的是 outcome
+   (answered/declined/timeout/aborted)。自由文本答复属于那次工具调用的结果,
+   不属于这条时刻账。
+9. **审批合并(coalescing)时每个 toolCallId 各记一条 `permission/answered`**:
+   投影是按 toolCallId 关联的,只记 head 那一个的话被合并的调用查不到自己的判决。
+
+#### 真机脚本校验(§10.6 的门)
+
+`bun run server:build` 之后,用临时 `ONETHING_STORE_PATH` + 一个本地假 provider
+(OpenAI 兼容 SSE)起 `node dist/server/main.js`,发一条会触发工具调用的消息。
+`sessions/<id>/events.jsonl` 的**实际类型序列**(seq 连续 1..27,全程一个 runId):
+
+```
+ 1 session/created      2 user/message         3 run/start           4 message/patched
+ 5 context/turn-update  6 request/tools        7 request/header      8 request/recipe
+ 9 request/start       10 assistant/first-token 11 assistant/chunks  12 assistant/part-end
+13 tool/call           14 tool/audit          15 tool/result        16 assistant/chunks
+17 assistant/part-end  18 request/response    19 request/end        20 request/recipe
+21 request/start       22 assistant/first-token 23 assistant/chunks 24 assistant/part-end
+25 request/response    26 request/end         27 run/end
+```
+
+两处值得记下来的:①**凭证走 per-space 凭证池**(`workspaces/<id>/credentials.json`,
+明文形态 `encryption:'none'`),`providers.json` 里的 `apiKey` 已经不是起流的来源
+——脚本第一次跑报的是"空间「默认空间」未配置 OpenAI 的凭证";②**标题生成会打同
+一个 provider 端点**,假 provider 要按"这次请求带不带工具目录"把它和真回合分开,
+否则第一轮的工具调用被标题请求吃掉。
+
+#### S1b 必须补的缺口
+
+| # | 缺口 | 现状 |
+|---|---|---|
+| 1 | **影子断言**(§10.4)整条 | 没做:`session-shadow.jsonl`、`stats.runs/mismatches`、`sessions:shadow-report`、性能门都归 S1b |
+| 2 | `tool/call.parentCallId` **没有生产者** | 类型与投影就位,但 `AgentToolCall` 上没有父指针(外部 agent 的 `parent_tool_use_id` 也没接出来)。今天一律平铺 |
+| 3 | `assistant/part-end{kind:'image', blob}` 没有生产者 | 图片正文归媒体库管(`ContentPart` 里根本没有 base64 图片成员),事件侧留着位子 |
+| 4 | `request/recipe.params` 没有生产者 | `getRequestParams` 端口留着,执行器没注入(温度/maxTokens/thinking 快照) |
+| 5 | `providerResponseId` / `responseModel` 只认 `provider-data` 里的 `responseId`/`id`/`model` | 各家 provider 的自报字段没有统一过;认不得的就不填(不猜) |
+| 6 | `upsertMessage` 命中已有那条 → `message/patched` | 语义上是"整条换掉",投影的叠加层能表达,但**正文字段会被丢掉**(第 5 条裁定)。真有整条换正文的调用点时要重看 |
+| 7 | 老会话(只有 E0 七类)的 surface 是空的 | 对的 —— 它们的消息事实还在 `messages.jsonl` 里,S2 的迁移脚本才把它们变成 `message/imported` |
+| 8 | `flushSessionEventLog` 的 fsync 每次都开一次文件句柄 | 检查点频率下可接受;真机大会话的耗时没量过(S1b 的性能门一起量) |

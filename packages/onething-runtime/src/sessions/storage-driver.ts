@@ -141,7 +141,20 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
   const metaPath = (sessionId: string) => path.join(sessionDir(sessionId), 'meta.json')
   const logPath = (sessionId: string) => path.join(sessionDir(sessionId), 'messages.jsonl')
 
-  const jsonlExists = (sessionId: string) => fs.existsSync(metaPath(sessionId)) || fs.existsSync(logPath(sessionId))
+  const eventsPath = (sessionId: string) => path.join(sessionDir(sessionId), 'events.jsonl')
+
+  /**
+   * 这条会话是不是 jsonl 布局。
+   *
+   * S1a(§10.3 ①)起 `events.jsonl` 也算数:会话创建时**事件层先建目录并写
+   * `session/created`**,`meta.json` / `messages.jsonl` 要等那 300ms 节流窗口
+   * 之后才落盘。少认这一格的话,那个窗口里的 `format()` 会把一条崭新的 jsonl
+   * 会话判成 legacy(B4 的鸡生蛋),而删掉快照之后更是整份历史消失。
+   */
+  const jsonlExists = (sessionId: string) =>
+    fs.existsSync(metaPath(sessionId))
+    || fs.existsSync(logPath(sessionId))
+    || fs.existsSync(eventsPath(sessionId))
   const legacyExists = (sessionId: string) => fs.existsSync(options.getLegacySessionPath(sessionId))
 
   function format(sessionId: string): SessionStorageFormat {

@@ -142,6 +142,12 @@ export interface SessionToolCallEventData {
   name: string
   messageId: string
   runId?: string
+  /**
+   * G3(§10.1):父调用的 callId —— 一次工具调用在另一次调用**内部**发生时才有。
+   * 采集点拿得到就填,拿不到就平铺(不猜、不按时间窗配对);投影按它建
+   * `childSteps`。
+   */
+  parentCallId?: string
 }
 
 /**
@@ -288,7 +294,15 @@ export interface SessionRunStartEventData {
   runId: string
   kind: SessionRunKind
   agentId?: string
+  /**
+   * 触发这次执行的那条事件(通常是 `user/message`)。
+   *
+   * S1 里它**经常解不出来**:引擎入口拿到的是 messageId,而 id→eventSeq 的索引
+   * 要到 S2 才有。所以下面那一格是并列的、不是替补 —— 解得出就填 seq,解不出
+   * 就只有 id,两者都没有就说明这次执行不是被某条消息触发的(retry / resume)。
+   */
   triggerEventSeq?: number
+  triggerMessageId?: string
   assistantMessageId: string
   provider?: string
   model?: string
@@ -379,6 +393,18 @@ export interface SessionAssistantPartEndEventData {
   blob?: BlobRef
 }
 
+/**
+ * G5(§10.1):技能被激活。今天它是一条**流事件**(`skill:activated`,
+ * `core/engine/event-only-emitter.ts`),只在内存里活到 renderer 把
+ * `message.skillUsed` 写上为止 —— 重载后那一格从消息字段里读回来,而事件账本
+ * 上没有任何痕迹。这里给它一条自己的账:`skillUsed` 因此是派生的,不是补丁。
+ */
+export interface SessionSkillActivatedEventData {
+  runId?: string
+  messageId: string
+  skill: string
+}
+
 // ============ 权限 / 交互 ============
 
 export interface SessionPermissionAskedEventData {
@@ -467,6 +493,7 @@ export type SessionRequestErrorEvent = SessionEventRecordShape<'request/error', 
 
 export type SessionAssistantChunksEvent = SessionEventRecordShape<'assistant/chunks', SessionAssistantChunksEventData>
 export type SessionAssistantPartEndEvent = SessionEventRecordShape<'assistant/part-end', SessionAssistantPartEndEventData>
+export type SessionSkillActivatedEvent = SessionEventRecordShape<'skill/activated', SessionSkillActivatedEventData>
 
 export type SessionPermissionAskedEvent = SessionEventRecordShape<'permission/asked', SessionPermissionAskedEventData>
 export type SessionPermissionAnsweredEvent = SessionEventRecordShape<'permission/answered', SessionPermissionAnsweredEventData>
@@ -508,6 +535,7 @@ export type SessionLogEventRecord =
   | SessionRequestErrorEvent
   | SessionAssistantChunksEvent
   | SessionAssistantPartEndEvent
+  | SessionSkillActivatedEvent
   | SessionPermissionAskedEvent
   | SessionPermissionAnsweredEvent
   | SessionInteractionAskedEvent
@@ -557,6 +585,7 @@ export const SESSION_LOG_EVENT_TYPES = [
   'request/error',
   'assistant/chunks',
   'assistant/part-end',
+  'skill/activated',
   'permission/asked',
   'permission/answered',
   'interaction/asked',

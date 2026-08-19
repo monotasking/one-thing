@@ -2,6 +2,12 @@ import * as store from "../../store.js";
 import { sessionCommands } from "../../session/commands.js";
 import { sessionReads } from "../../session/reads.js";
 import {
+	endSessionRun,
+	ensureSessionRun,
+	markSessionRunOutcome,
+	rotateSessionRun,
+} from "../../session/runs.js";
+import {
 	IPC_CHANNELS,
 	type ContentPart,
 	type Step,
@@ -50,7 +56,10 @@ import type {
 	CoreRequestMessage,
 } from "@onething/core/engine";
 import { hashSections } from "@onething/runtime";
-import { attachSessionEventRecorder } from "./session-event-recorder.js";
+import {
+	attachSessionEventRecorder,
+	type SessionEventRecorder,
+} from "./session-event-recorder.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 
@@ -108,6 +117,12 @@ export interface AgentLoopExecutorState {
 	skillManageCalled: boolean;
 	latestUserPrompt?: string;
 	createNewAssistantOnNextTurnStart?: boolean;
+	/**
+	 * S1a:本次执行的事件记录器。挂在 state 上而不是闭包里,因为**错误与收尾**
+	 * 两条路(`updateMessageError` / `sendStreamError` / abort)不经过
+	 * `onEvent`,而"请求最终失败"与"最后一批 delta"正是要在那两条路上落账的。
+	 */
+	eventRecorder?: SessionEventRecorder;
 }
 
 export interface AgentLoopStreamGenerationResult {
@@ -170,6 +185,15 @@ async function createNextAssistantWriter(
 	const assistantMessage: ChatMessage = plan.assistantMessage;
 
 	store.addMessage(state.ctx.sessionId, assistantMessage);
+	// S1a:steering 的 response-boundary = **两次执行**。旧的按 completed 收尾,
+	// 新的以 kind:'steer' 开张 —— 一条 assistant 消息一个 run 是投影的前提
+	// (`run/start` 就是那条消息在 surface 上的那一格)。
+	rotateSessionRun(state.ctx.sessionId, {
+		kind: "steer",
+		assistantMessageId,
+		provider: state.ctx.providerId,
+		model: state.ctx.providerConfig.model,
+	});
 	state.ctx.assistantMessageId = assistantMessageId;
 	state.processor = createStreamProcessor(state.ctx);
 	state.emitter = createEventOnlyEmitter(state.ctx);
@@ -500,6 +524,16 @@ export async function executeAgentLoopStreamGeneration(
 	// downstream reads this snapshot instead of re-deriving its own answer, so
 	// an agent edited mid-turn cannot produce a half-new combination.
 	ctx.agentProfile = resolveAgentProfileForSession(ctx.sessionId);
+	// S1a:确认后恢复(`handleResumeAfterConfirm`)**绕过** `executeMessageStream`
+	// 直接调这里,所以 run 在这里也要有一条兜底的入口。`ensureSessionRun` 按
+	// assistantMessageId 判同一次执行:普通发送走到这里时 run 已经开好了,
+	// 这一句是 no-op(`started:false`),也就不会收尾。
+	const resumeRun = ensureSessionRun(ctx.sessionId, {
+		kind: "resume",
+		assistantMessageId: ctx.assistantMessageId,
+		provider: ctx.providerId,
+		model: ctx.providerConfig.model,
+	});
 	const processor = createStreamProcessor(ctx, options.initialContent);
 	const emitter = createEventOnlyEmitter(ctx);
 	const state: AgentLoopExecutorState = {
@@ -514,7 +548,8 @@ export async function executeAgentLoopStreamGeneration(
 		latestUserPrompt: lastUserMessageText(historyMessages),
 	};
 
-	return executeAgentLoopStreamLifecycleWithAdapters<
+	try {
+		return await executeAgentLoopStreamLifecycleWithAdapters<
 		BuildAgentLoopStreamRuntimeResult,
 		Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>
 	>({
@@ -543,15 +578,26 @@ export async function executeAgentLoopStreamGeneration(
 		// E0 采集点:事件日志挂在 runtime 的 onEvent 上(理由见
 		// session-event-recorder.ts 头注释 —— 挂这里才能保证 tool/call 在工具
 		// 执行**之前**落账)。这里除了装配没有任何逻辑。
-		streamChunks: (prepared) =>
-			streamAgentLoopProviderChunks({
-				...attachSessionEventRecorder(prepared.runtime, {
-					sessionId: ctx.sessionId,
-					providerId: ctx.providerId,
-					model: ctx.providerConfig.model,
-					systemPrompt: prepared.systemPrompt,
-					getMessageId: () => state.ctx.assistantMessageId,
-				}),
+		streamChunks: (prepared) => {
+			const recorded = attachSessionEventRecorder(prepared.runtime, {
+				sessionId: ctx.sessionId,
+				providerId: ctx.providerId,
+				model: ctx.providerConfig.model,
+				systemPrompt: prepared.systemPrompt,
+				getMessageId: () => state.ctx.assistantMessageId,
+				// G10:recipe 记的是 history builder 的**输入**(带 id 的那一份),
+				// 不是 provider 收到的 AgentMessage[](那一份没有消息 id)。
+				getHistoryInput: () =>
+					sessionReads.listMessages(ctx.sessionId).messages.map((message) => ({
+						id: message.id,
+						role: message.role,
+						content: message.content,
+					})),
+			});
+			// 错误与收尾两条路不经过 onEvent,所以执行器要拿到 recorder 本体。
+			state.eventRecorder = recorded.recorder;
+			return streamAgentLoopProviderChunks({
+				...recorded.runtime,
 				// per-space 凭证轮换(批 D)。挂在 core 的 turn 级重试边界上,
 				// **不另起重试链**;没有池(默认空间 / 单条)时这里是 undefined,
 				// core 的行为一行不变。
@@ -564,7 +610,8 @@ export async function executeAgentLoopStreamGeneration(
 							logger: console,
 						})
 					: undefined,
-			}),
+			});
+		},
 		applyChunk: (chunk) => applyAgentLoopStreamChunk(state, chunk),
 		finalize: () => state.processor.finalize(),
 		updateUsage(durationMs) {
@@ -591,10 +638,20 @@ export async function executeAgentLoopStreamGeneration(
 				prepared,
 				historyMessages,
 			}),
-		isAbortError: (error) =>
-			error.name === "AbortError" || ctx.abortSignal.aborted,
-		sendStreamAborted: (reason) => state.emitter.sendStreamAborted(reason),
+		isAbortError: (error) => {
+			// 收尾闸:攒着的最后一批 delta 必须落账(abort 也是一种收场)。
+			state.eventRecorder?.flush();
+			return error.name === "AbortError" || ctx.abortSignal.aborted;
+		},
+		sendStreamAborted: (reason) => {
+			// 中断在这里被接住,不再往上抛 —— 不留这一句,`run/end` 会把一次
+			// 中断记成 completed(S1a)。
+			markSessionRunOutcome(ctx.sessionId, "aborted");
+			return state.emitter.sendStreamAborted(reason);
+		},
 		updateMessageError: (errorContent) => {
+			state.eventRecorder?.recordRequestError(new Error(errorContent));
+			markSessionRunOutcome(ctx.sessionId, "error", new Error(errorContent));
 			store.updateMessageError(
 				state.ctx.sessionId,
 				state.ctx.assistantMessageId,
@@ -607,5 +664,20 @@ export async function executeAgentLoopStreamGeneration(
 		sendStreamComplete: (data) => state.emitter.sendStreamComplete(data),
 		getSessionName: () => store.getSession(state.ctx.sessionId)?.name,
 		now: Date.now,
-	});
+		});
+	} catch (error) {
+		if (resumeRun.started) {
+			endSessionRun(ctx.sessionId, resumeRun.run.runId, {
+				outcome: ctx.abortSignal.aborted ? "aborted" : "error",
+				error,
+			});
+		}
+		throw error;
+	} finally {
+		state.eventRecorder?.flush();
+		// 幂等(见 `endSessionRun`);`started:false` 时收尾归 `executeMessageStream`。
+		if (resumeRun.started) {
+			endSessionRun(ctx.sessionId, resumeRun.run.runId, { outcome: "completed" });
+		}
+	}
 }
