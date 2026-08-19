@@ -56,6 +56,10 @@ import { pluginMessageSource } from '../channel/origin.js'
 import * as modelRegistry from '../providers/model-registry.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins.sessions')
+
 
 /* ── 循环闸:跳数账 ───────────────────────────────────────────────────────── */
 
@@ -204,9 +208,12 @@ export async function deliverInternalMessage(
 
   const hop = ambientHop(engine, now) + 1
   if (hop > PLUGIN_TRIGGER_MAX_HOP) {
-    console.warn(
-      `[${actorKey}] sendMessage refused — chain length ${hop} exceeds the limit of ${PLUGIN_TRIGGER_MAX_HOP}`,
-    )
+    log.warn('sendMessage refused: hop limit exceeded', {
+      actorKey,
+      sessionId,
+      hop,
+      limit: PLUGIN_TRIGGER_MAX_HOP,
+    })
     return {
       ok: false,
       reason: 'hop-limit',
@@ -216,10 +223,12 @@ export async function deliverInternalMessage(
     }
   }
   if (rateLimited(actorKey, sessionId, now)) {
-    console.warn(
-      `[${actorKey}] sendMessage refused — more than ${PLUGIN_TRIGGER_RATE_LIMIT} deliveries `
-      + `to ${sessionId.slice(0, 8)} within ${PLUGIN_TRIGGER_RATE_WINDOW_MS}ms`,
-    )
+    log.warn('sendMessage refused: rate limited', {
+      actorKey,
+      sessionId,
+      limit: PLUGIN_TRIGGER_RATE_LIMIT,
+      windowMs: PLUGIN_TRIGGER_RATE_WINDOW_MS,
+    })
     return {
       ok: false,
       reason: 'rate-limited',

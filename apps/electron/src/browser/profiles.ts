@@ -13,6 +13,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { getOnethingStorePath } from '@onething/runtime/storage'
 import { BROWSER_PARTITION } from './session.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('browser')
 
 export interface BrowserProfile {
 	id: string
@@ -72,7 +75,7 @@ function save(): void {
 		mkdirSync(dirname(file), { recursive: true })
 		writeFileSync(file, JSON.stringify(state, null, 2))
 	} catch (err) {
-		console.error('[Browser] failed to persist profiles.json:', err)
+		log.error('persist browser profiles failed', undefined, err)
 	}
 }
 

@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { captureRuntimeLogs } from '../../logging/index.js'
 import {
   buildImportedSpaceCredentials,
   clearSpaceProviderCredentials,
@@ -175,9 +176,10 @@ describe('credentials.json storage', () => {
   it('treats a corrupt file as an empty pool and says so once', async () => {
     await fs.mkdir(path.join(tmpDir, 'work'), { recursive: true })
     await fs.writeFile(path.join(tmpDir, 'work', 'credentials.json'), '{ not json', 'utf-8')
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = captureRuntimeLogs()
     expect(readSpaceCredentials('work')).toEqual({ providers: {} })
-    expect(warn).toHaveBeenCalled()
+    expect(logs.ofLevel('warn').length).toBeGreaterThan(0)
+    logs.restore()
   })
 
   it('treats a schema-invalid file as an empty pool — never a half pool', async () => {
@@ -187,8 +189,9 @@ describe('credentials.json storage', () => {
       JSON.stringify({ providers: { a: { entries: [{ id: 'ok', authType: 'apiKey', source: 'user' }] }, b: 3 } }),
       'utf-8',
     )
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = captureRuntimeLogs()
     expect(readSpaceCredentials('work')).toEqual({ providers: {} })
+    logs.restore()
   })
 
   it('missing file = empty pool = "this space configured nothing"', () => {

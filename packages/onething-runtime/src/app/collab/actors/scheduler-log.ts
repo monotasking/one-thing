@@ -46,6 +46,10 @@ import {
 
 import { getStorePath } from '../../stores/paths.js'
 import { collabRoomActorsDir } from './room-account.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('collab.scheduler')
+
 
 /** 尾读的缺省条数。UI 的「调度」页与 CLI 的 `--tail` 都从它起步。 */
 export const COLLAB_SCHEDULER_LOG_TAIL_DEFAULT = 50
@@ -82,7 +86,7 @@ const deadLetterWarned = new Set<string>()
 function warnOnce(key: string, message: string, error: unknown): void {
   if (warned.has(key)) return
   warned.add(key)
-  console.warn(`[collab-v3] ${message}`, error)
+  log.warn('scheduler log write failed', { detail: message }, error)
 }
 
 /** 测试收摊用:把两把首错闩锁清空。 */
@@ -248,7 +252,7 @@ export interface CollabDeadLetterSinkOptions {
   log: CollabSchedulerLogSink
   /** 首错闩锁。缺省用模块级那一把(进程内全局,与 crash-log 同款)。 */
   warned?: Set<string>
-  /** 告警出口。缺省 `console.warn`。 */
+  /** 告警出口。缺省 `collab.scheduler` 的 `log.warn`。 */
   warn?: (message: string) => void
 }
 
@@ -275,7 +279,7 @@ export function createCollabDeadLetterSink(
   options: CollabDeadLetterSinkOptions,
 ): (deadLetter: ActorDeadLetter<ActorEvent<CollabActorVerb>>) => void {
   const latch = options.warned ?? deadLetterWarned
-  const warn = options.warn ?? ((message: string) => { console.warn(message) })
+  const warn = options.warn ?? ((message: string) => { log.warn('collab dead letter', { detail: message }) })
   return deadLetter => {
     const eventType = deadLetter.event.type
     const roomId = options.roomId ?? collabDeadLetterRoomId(deadLetter.event.payload)

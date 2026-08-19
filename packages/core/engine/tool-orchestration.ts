@@ -3,6 +3,7 @@ import type { JsonObject, JsonValue } from '../json.js'
 import { ToolExecutionScheduler } from '../agent-loop/tool-execution-scheduler.js'
 import { coreDiffHunksFromJson, type CoreDiffHunk } from '../tools/diff-hunks.js'
 import { detectSkillUsage, generateStepTitle } from './tool-step.js'
+import { toLogger, type CompatLogger } from '../logging/index.js'
 
 export interface CoreToolCallLike {
   id: string
@@ -61,10 +62,8 @@ export interface CoreToolCallDataLike {
   args: JsonObject
 }
 
-export interface CoreToolOrchestratorLogger {
-  info?: (...args: unknown[]) => void
-  error?: (...args: unknown[]) => void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CoreToolOrchestratorLogger = CompatLogger
 
 export interface CoreToolOrchestratorOptions<
   TToolCall extends CoreMutableToolCallLike,
@@ -486,7 +485,7 @@ export class CoreToolOrchestrator<
             )
           }
         } catch (err) {
-          this.options.logger?.error?.('[CoreToolOrchestrator] tool execution job error:', err)
+          toLogger(this.options.logger).error('[CoreToolOrchestrator] tool execution job error:', undefined, err)
         } finally {
           job.settled = true
         }
@@ -559,7 +558,7 @@ export class CoreToolOrchestrator<
 
     this.options.updateToolCalls()
     this.options.removeToolCallArtifacts?.(tailIdSet)
-    this.options.logger?.info?.(
+    toLogger(this.options.logger).info(
       `[CoreToolOrchestrator] Discarded ${tailIds.length} queued tool(s) after ${reason} tool ${toolCallId}`,
     )
   }
@@ -914,13 +913,13 @@ export async function executeCoreToolAndUpdate<
     emitter,
   } = options
   const now = options.now ?? Date.now
-  const logger = options.logger ?? console
+  const logger = toLogger(options.logger)
   // COW(F3):`toolCall` 是「当前这一版」的游标 —— 每次改都换新对象并写回
   // `allToolCalls` 的那一格,交给 store 的永远是快照。老对象不动一个字段。
   let toolCall = options.toolCall
 
   if (ctx.abortSignal?.aborted) {
-    logger.info?.(`[Backend] Tool execution aborted before start: ${toolCallData.toolName}`)
+    logger.info(`[Backend] Tool execution aborted before start: ${toolCallData.toolName}`)
     toolCall = replaceCoreToolCall(allToolCalls, markToolCallAbortedBeforeExecution(toolCall, { now }))
     store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(allToolCalls))
     emitter.sendToolResult(toolCall)
@@ -929,7 +928,7 @@ export async function executeCoreToolAndUpdate<
 
   const skillName = detectSkillUsage(toolCallData.toolName, toolCallData.args)
   if (skillName) {
-    logger.info?.(`[Backend] Skill activated: ${skillName}`)
+    logger.info(`[Backend] Skill activated: ${skillName}`)
     emitter.sendSkillActivated(skillName)
   }
 
@@ -1075,5 +1074,5 @@ export async function executeCoreToolAndUpdate<
   toolCall = replaceCoreToolCall(allToolCalls, presentation.toolCall as TToolCall)
   store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(allToolCalls))
   emitter.sendToolResult(toolCall)
-  logger.info?.('[WaitingGap] tool settled', { tool: toolCall.toolName, status: toolCall.status, t: now() })
+  logger.info('[WaitingGap] tool settled', { tool: toolCall.toolName, status: toolCall.status, t: now() })
 }

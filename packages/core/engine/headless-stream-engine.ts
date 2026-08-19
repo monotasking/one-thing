@@ -1,5 +1,9 @@
 import type { Unsubscribe } from '../events/types.js'
 import { PendingMessageQueue } from './message-queue.js'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.engine')
+
 
 export interface CoreCommandEnvelope<TCommand = unknown> {
   sessionId: string
@@ -252,11 +256,11 @@ export abstract class HeadlessStreamEngine<
   protected onShutdown(): void {}
 
   protected log(message: string): void {
-    console.log(`[StreamEngine] ${message}`)
+    log.debug(message)
   }
 
   protected logError(message: string, error: unknown): void {
-    console.error(`[StreamEngine] ${message}`, error)
+    log.error(message, undefined, error)
   }
 
   protected abstract handleSendMessageCommand(

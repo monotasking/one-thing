@@ -20,6 +20,10 @@ import { readJsonSseData } from "./sse.js";
 import { withProviderRetryAfter } from "../provider-error-classification.js";
 import type { AgentProviderRequestDumper } from "./request-dump.js";
 
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('providers.deepseek')
+
 type FetchFn = typeof globalThis.fetch;
 
 export type {
@@ -27,17 +31,6 @@ export type {
 	AgentProviderRequestDumper,
 	AgentProviderRequestDumpValue,
 } from "./request-dump.js";
-
-function shouldDebugDeepSeekStream(): boolean {
-	return (
-		process.env.ONETHING_DEBUG_STREAM === "1" ||
-		process.env.ONETHING_DEBUG_DEEPSEEK_STREAM === "1"
-	);
-}
-
-function logTime(): string {
-	return new Date().toISOString();
-}
 
 function previewText(
 	value: string | null | undefined,
@@ -262,7 +255,7 @@ async function* streamDeepSeekResponse(
 	const toolCalls = new Map<number, ToolCallAccumulator>();
 	let usage: AgentUsage | undefined;
 	let finishReason: AgentFinishReason = "unknown";
-	const debugStream = shouldDebugDeepSeekStream();
+	const debugStream = log.isLevelEnabled("trace");
 	let lastDeltaAt: number | undefined;
 
 	for await (const chunk of readJsonSseData<DeepSeekStreamChunk>(response, {
@@ -282,8 +275,7 @@ async function* streamDeepSeekResponse(
 		if (delta?.reasoning_content) {
 			if (debugStream) {
 				const now = Date.now();
-				console.log("[DeepSeekProvider:SSE] reasoning-delta", {
-					time: logTime(),
+				log.trace("reasoning delta", {
 					gapMs: elapsedSince(lastDeltaAt, now),
 					turn,
 					chars: delta.reasoning_content.length,
@@ -297,8 +289,7 @@ async function* streamDeepSeekResponse(
 		if (delta?.content) {
 			if (debugStream) {
 				const now = Date.now();
-				console.log("[DeepSeekProvider:SSE] text-delta", {
-					time: logTime(),
+				log.trace("text delta", {
 					gapMs: elapsedSince(lastDeltaAt, now),
 					turn,
 					chars: delta.content.length,
@@ -449,7 +440,7 @@ export function createDeepSeekAgentProvider(
 			},
 			requestBody: body,
 		});
-		console.log("[DeepSeekAgentProvider] streamTurn request", {
+		log.debug("stream turn request", {
 			model: request.model,
 			turn: request.turn,
 			messageCount: request.messages.length,

@@ -8,6 +8,9 @@ import { platformApi } from '@/platform'
 import { ref, computed } from 'vue'
 import type { MCPServerConfig, MCPServerState, MCPSettings, MCPTransportType } from '@/types'
 import { v4 as uuidv4 } from 'uuid'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.mcp')
 
 export interface ServerForm {
   name: string
@@ -35,7 +38,7 @@ export function useMCPServers(
         servers.value = response.servers
       }
     } catch (error) {
-      console.error('Failed to load MCP servers:', error)
+      log.error('mcp servers load failed', {}, error)
     }
   }
 
@@ -68,7 +71,7 @@ export function useMCPServers(
         })
       }
     } catch (error) {
-      console.error('Failed to toggle server:', error)
+      log.error('mcp server toggle failed', { serverId }, error)
     }
   }
 
@@ -100,7 +103,7 @@ export function useMCPServers(
     try {
       await platformApi.mcpLogoutServer(serverId)
     } catch (error) {
-      console.error('Failed to log out of MCP server:', error)
+      log.error('mcp server logout failed', { serverId }, error)
     } finally {
       await loadServers()
     }
@@ -119,7 +122,7 @@ export function useMCPServers(
       }
       await loadServers()
     } catch (error) {
-      console.error('Failed to toggle connection:', error)
+      log.error('mcp connection toggle failed', { serverId }, error)
     } finally {
       connectingServers.value.delete(serverId)
     }
@@ -203,7 +206,7 @@ export function useMCPServers(
         return true
       }
     } catch (error) {
-      console.error('Failed to delete server:', error)
+      log.error('mcp server delete failed', { serverId }, error)
     }
     return false
   }

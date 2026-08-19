@@ -357,7 +357,7 @@ describe('core MCP client state helpers', () => {
         return { prompts: [{ name: 'summarize' }] }
       },
     }, {
-      warn: (...args) => warnings.push(args),
+      warn: (...args: unknown[]) => warnings.push(args),
     })
 
     expect(result).toEqual({

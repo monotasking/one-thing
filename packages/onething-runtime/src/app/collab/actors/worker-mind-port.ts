@@ -74,6 +74,10 @@ import type {
 } from './worker-child.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('collab.actors.mind')
+
 
 type TerminalOutcome = 'complete' | 'error' | 'aborted' | 'timeout'
 
@@ -330,7 +334,7 @@ export function createCollabEngineWorkerPort(
         // 会话都备不出来 = 这一轮压根没跑成。抛回给子 actor 会被它记成 `error`,
         // 但这里自己返回更诚实:`workSessionId` 要带回去,不然一次失败的开工会
         // 在盘上留一条没人认领的会话。
-        console.error('[collab-v3] work turn failed:', error)
+        log.error('work turn failed', {}, error)
         return {
           outcome: 'error',
           workSessionId,

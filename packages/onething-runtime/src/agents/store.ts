@@ -10,6 +10,10 @@ import {
 } from '@onething/core/storage'
 import { agentIdentity, agentTombstoneLabel, type OnethingAgentIdentity } from './model.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('agents')
+
 export const DEFAULT_ONETHING_AGENT_ID = 'default'
 export const DEFAULT_ONETHING_AGENT_NAME = 'Default Agent'
 
@@ -513,7 +517,7 @@ export function createOnethingAgentStore(options: CreateOnethingAgentStoreOption
       // 只有真的发生「查无此人→default」fallback 才埋点;空 id 是既有的功能
       // 兜底语义(无 agentId 会话的 persona),不算冒充,不刷屏。
       if (!found && agentId) {
-        console.warn(`[agents] deprecated getAgent fallback hit: ${agentId}`)
+        log.warn('deprecated getAgent fallback hit', { agentId })
       }
       return found ?? defaultAgent()
     },

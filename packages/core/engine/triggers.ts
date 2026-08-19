@@ -1,3 +1,5 @@
+import { toLogger, type CompatLogger, type Logger } from '../logging/index.js'
+
 /** A named prompt section with its content (for hash-based versioning and snapshots). */
 export interface CorePromptSection {
 	name: string;
@@ -94,17 +96,18 @@ export interface CoreTrigger<TContext = CoreTriggerContext> {
 	execute(ctx: TContext): Promise<void>;
 }
 
-export interface CoreTriggerManagerLogger {
-	log(message: string): void;
-	warn(message: string): void;
-	error(message: string, error?: unknown): void;
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CoreTriggerManagerLogger = CompatLogger;
 
 export class CoreTriggerManager<TContext = CoreTriggerContext> {
 	private triggers: Array<CoreTrigger<TContext>> = [];
 	private enabled = true;
 
-	constructor(private readonly logger: CoreTriggerManagerLogger = console) {}
+	private readonly logger: Logger;
+
+	constructor(logger?: CoreTriggerManagerLogger) {
+		this.logger = toLogger(logger);
+	}
 
 	register(trigger: CoreTrigger<TContext>): void {
 		const existing = this.triggers.find((item) => item.id === trigger.id);
@@ -117,7 +120,7 @@ export class CoreTriggerManager<TContext = CoreTriggerContext> {
 
 		this.triggers.push(trigger);
 		this.triggers.sort((a, b) => a.priority - b.priority);
-		this.logger.log(
+		this.logger.debug(
 			`[TriggerManager] Registered trigger: ${trigger.name} (priority: ${trigger.priority})`,
 		);
 	}
@@ -129,13 +132,13 @@ export class CoreTriggerManager<TContext = CoreTriggerContext> {
 		if (index !== -1) {
 			const trigger = this.triggers[index];
 			this.triggers.splice(index, 1);
-			this.logger.log(`[TriggerManager] Unregistered trigger: ${trigger.name}`);
+			this.logger.debug(`[TriggerManager] Unregistered trigger: ${trigger.name}`);
 		}
 	}
 
 	setEnabled(enabled: boolean): void {
 		this.enabled = enabled;
-		this.logger.log(
+		this.logger.debug(
 			`[TriggerManager] Triggers ${enabled ? "enabled" : "disabled"}`,
 		);
 	}
@@ -146,7 +149,7 @@ export class CoreTriggerManager<TContext = CoreTriggerContext> {
 
 	async runPostResponse(ctx: TContext & { sessionId: string }): Promise<void> {
 		if (!this.enabled) {
-			this.logger.log("[TriggerManager] Triggers disabled, skipping");
+			this.logger.debug("[TriggerManager] Triggers disabled, skipping");
 			return;
 		}
 
@@ -154,7 +157,7 @@ export class CoreTriggerManager<TContext = CoreTriggerContext> {
 			return;
 		}
 
-		this.logger.log(
+		this.logger.debug(
 			`[TriggerManager] Running ${this.triggers.length} triggers for session ${ctx.sessionId}`,
 		);
 
@@ -162,18 +165,18 @@ export class CoreTriggerManager<TContext = CoreTriggerContext> {
 			try {
 				const shouldRun = await trigger.shouldTrigger(ctx);
 				if (shouldRun) {
-					this.logger.log(
+					this.logger.debug(
 						`[TriggerManager] Executing trigger: ${trigger.name}`,
 					);
 					await trigger.execute(ctx);
-					this.logger.log(
+					this.logger.debug(
 						`[TriggerManager] Completed trigger: ${trigger.name}`,
 					);
 				}
 			} catch (error) {
 				this.logger.error(
 					`[TriggerManager] Trigger ${trigger.name} failed:`,
-					error,
+					undefined, error,
 				);
 			}
 		}

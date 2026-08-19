@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { captureRuntimeLogs } from '../../logging/index.js'
 import type { Theme } from '../types.js'
 import { generateCSSVariables } from '../css-mapper.js'
 import { colorMeetsContrast } from '../role-mapping.js'
@@ -94,7 +95,7 @@ describe('theme highlight groups', () => {
   })
 
   it('resolves semantic tokens, linked groups, aliases, font styles, and circular fallback', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = captureRuntimeLogs()
     const theme = makeTheme({
       highlights: {
         semanticTokens: {
@@ -131,7 +132,7 @@ describe('theme highlight groups', () => {
     expect(cssVariables['--hg-syntax-keyword-font-style']).toBe('italic')
     expect(cssVariables['--hg-syntax-keyword-font-weight']).toBe('700')
     expect(cssVariables['--hg-syntax-comment-text-decoration']).toBe('underline')
-    expect(warn).toHaveBeenCalled()
-    warn.mockRestore()
+    expect(logs.ofLevel('warn').length).toBeGreaterThan(0)
+    logs.restore()
   })
 })

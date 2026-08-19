@@ -1,5 +1,9 @@
 import { readStateFlag } from "./types.js";
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('variables')
+
 export interface VariablesFileGlobalVariable {
 	name: string;
 	value: string;
@@ -97,9 +101,7 @@ export function parseVariablesFile(raw: unknown): {
 		: [];
 	const globalVariables = globalsRaw.map(parseGlobalVariable);
 	if (globalVariables.some((value) => !value)) {
-		console.warn(
-			"[variables.store] persisted file failed schema validation, falling back to defaults",
-		);
+		log.warn("persisted variables file failed schema validation, using defaults");
 		return { data: createDefaultVariablesFile(), recovered: true };
 	}
 

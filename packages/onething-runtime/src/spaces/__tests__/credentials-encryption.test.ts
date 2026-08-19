@@ -15,6 +15,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { captureRuntimeLogs } from '../../logging/index.js'
 import {
   configureSpaceCredentialsCrypto,
   getSpaceProviderCredentials,
@@ -128,9 +129,10 @@ describe('encrypted round trip', () => {
       encryptString: (text: string) => Buffer.from(text, 'utf-8'),
       decryptString: () => { throw new Error('wrong key') },
     }))
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = captureRuntimeLogs()
     expect(readSpaceCredentials('work')).toEqual({ providers: {} })
-    expect(warn).toHaveBeenCalled()
+    expect(logs.ofLevel('warn').length).toBeGreaterThan(0)
+    logs.restore()
   })
 })
 
@@ -193,10 +195,11 @@ describe('honest degradation when no crypto adapter is available', () => {
       encryptString: (text: string) => text,
       decryptString: (buffer: Buffer) => buffer.toString('utf-8'),
     }))
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = captureRuntimeLogs()
     expect(spaceCredentialsEncryptionAtRest()).toBe('none')
     expect(() => writeSpaceCredentials('work', pool)).not.toThrow()
     expect((await readRawFile('work')).encryption).toBe('none')
+    logs.restore()
   })
 })
 

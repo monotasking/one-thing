@@ -37,6 +37,9 @@ import {
 	runToolkitToolDirectly,
 	toolkitCatalogToolDefinitions,
 } from "@onething/app/toolkit/index.js";
+import { getLogger } from "@onething/app/logging/index.js";
+
+const log = getLogger("ipc.tools");
 
 /**
  * Register all tool-related IPC handlers
@@ -111,7 +114,7 @@ export function registerToolHandlers() {
 				refreshToolkitMcpTools();
 				return { success: true as const };
 			} catch (error) {
-				console.error("[Tools IPC] Error refreshing tools:", error);
+				log.error("refresh MCP tools failed", undefined, error);
 				return {
 					success: false as const,
 					error: error instanceof Error && error.message
@@ -151,5 +154,5 @@ export function registerToolHandlers() {
 		},
 	});
 
-	console.log("[Tools IPC] Handlers registered");
+	log.info("handlers registered");
 }

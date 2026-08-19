@@ -5,6 +5,10 @@ import { sendIMReply } from './connector-registry.js'
 import { writeAppLog } from '../logging/index.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('channel.outbound')
+
 
 function isFinalAssistantMessage(message: ChatMessage): boolean {
   return message.role === 'assistant' && message.isStreaming !== true && Boolean(message.content?.trim())
@@ -50,7 +54,7 @@ export class OutboundReplyDispatcher {
       }
       if (event.updates?.isStreaming !== false) return
       this.dispatchFromSession(envelope.sessionId, event.messageId).catch(error => {
-        console.error('[OutboundReplyDispatcher] dispatch failed:', error)
+        log.error('outbound reply dispatch failed', { sessionId: envelope.sessionId }, error)
       })
     }, 'OutboundReplyDispatcher')
   }

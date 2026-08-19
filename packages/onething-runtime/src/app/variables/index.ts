@@ -46,6 +46,10 @@ import {
 import type { ContextVariable } from "@onething/runtime/variables";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('variables')
+
 
 let bootstrapped = false;
 let unsubscribeBridge: (() => void) | null = null;
@@ -112,7 +116,7 @@ export function bootstrapVariableSystem(): void {
 		scheduleBroadcastRefresh(registry);
 	});
 
-	console.log("[variables] subsystem bootstrapped");
+	log.info("variables subsystem bootstrapped");
 }
 
 function emitVariablesSnapshot(
@@ -130,7 +134,7 @@ function emitVariablesSnapshot(
 				workingDirectoryRoots: workdirRoots,
 				variables: snapshot,
 			})
-			.catch((err) => console.error("[variables] EventBus emit failed:", err));
+			.catch((err) => log.error("variables snapshot emit failed", { sessionId }, err));
 	} catch {
 		// EventBus not initialized (test or pre-bootstrap path) — ignore.
 	}
@@ -156,9 +160,9 @@ function scheduleBroadcastRefresh(
 				.list({ sessionId })
 				.then((snapshot) => emitVariablesSnapshot(sessionId, snapshot))
 				.catch((err) =>
-					console.error(
-						"[variables] broadcast refresh failed for session",
-						sessionId,
+					log.error(
+						"broadcast refresh failed",
+						{ sessionId },
 						err,
 					),
 				);

@@ -29,6 +29,10 @@ import {
 } from '@onething/runtime/collab'
 import { listAgents } from '../agents/index.js'
 import { resolveUserIdentity } from './user-identity.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.identity')
+
 
 /**
  * 当前可被指认的每一个身份:用户本人 + 全体 agent(**含退休**)。
@@ -46,7 +50,7 @@ export function buildCollabIdentityDirectory(): CollabIdentity[] {
     try {
       directory.push(...source())
     } catch (error) {
-      console.warn('[collab] 身份目录的一路来源取不到,句柄剥离按残缺目录进行:', error)
+      log.warn('identity directory source unavailable, handle stripping degraded', {}, error)
     }
   }
   return directory

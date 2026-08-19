@@ -16,10 +16,11 @@ import {
   type AppendLogRecord,
   type AppendLogsRequest,
   type AppendLogsResponse,
+  type LogConfigResponse,
   type LogsRoutes,
 } from '@shared/ipc/logs.js'
 import { isLogLevel, type LogRecord } from '@onething/core/logging'
-import { getRootLogger } from '../../logging/index.js'
+import { getLogLevelSpec, getRootLogger } from '../../logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 
 const RENDERER_NS_PREFIX = 'renderer.'
@@ -114,5 +115,16 @@ export const logsRpcHandlers: RpcRouteHandlers<LogsRoutes> = {
     }
 
     return { accepted: written, rejected }
+  },
+
+  /**
+   * 单向下发:主进程生效的等级 spec。渲染侧的 hub 装好之后拉一次,把它当默认,
+   * localStorage(`onething:log`)仍然是本地覆写。
+   *
+   * 为什么是**拉**而不是推:渲染进程可能比 `configureLogging()` 晚起、也可能重载,
+   * 推一次要处理"推的时候没人听"的窗口;拉一次没有这个窗口。
+   */
+  async config(): Promise<LogConfigResponse> {
+    return { levelSpec: getLogLevelSpec() }
   },
 }

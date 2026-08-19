@@ -20,6 +20,9 @@ import {
   writeJsonFile,
 } from '../storage/index.js'
 import { describeNonSerializable } from './request-channel.js'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.plugins')
 
 /** 归档落点。它自己不是插件目录,孤儿扫描必须跳过它。 */
 export const PLUGIN_DATA_LEGACY_BACKUP_DIR = 'legacy-backup'
@@ -292,10 +295,7 @@ export function createCorePluginStorage(options: CreateCorePluginStorageOptions)
     if (!options.isDisposed?.()) return false
     if (!demolitionWarned) {
       demolitionWarned = true
-      console.warn(
-        `[PluginStorage:${pluginId}] Ignoring storage writes after teardown — `
-        + 'late writes must not resurrect the archived home directory.',
-      )
+      log.warn('ignoring storage writes after teardown', { pluginId })
     }
     return true
   }
@@ -335,7 +335,7 @@ export function createCorePluginStorage(options: CreateCorePluginStorageOptions)
         try {
           fs.renameSync(file, backup)
         } catch (renameError) {
-          console.error(`[PluginStorage] Failed to quarantine "${file}":`, renameError)
+          log.error('quarantine failed', { pluginId, file }, renameError)
         }
         throw new PluginStorageError(
           'io',
@@ -443,9 +443,9 @@ export function createCorePluginMessageStateStore(
           try {
             fs.renameSync(full, `${full}.corrupt-${Date.now()}`)
           } catch (renameError) {
-            console.error(`[PluginMessageState:${pluginId}] Failed to quarantine "${full}":`, renameError)
+            log.error('message-state quarantine failed', { pluginId, file: full }, renameError)
           }
-          console.error(`[PluginMessageState:${pluginId}] Quarantined corrupt record "${full}"`)
+          log.error('corrupt message-state record quarantined', { pluginId, file: full })
         }
       }
     }
@@ -456,10 +456,7 @@ export function createCorePluginMessageStateStore(
     if (!options.isDisposed?.()) return false
     if (!demolitionWarned) {
       demolitionWarned = true
-      console.warn(
-        `[PluginMessageState:${pluginId}] Ignoring message-state writes after teardown — `
-        + 'late writes must not resurrect the archived home directory.',
-      )
+      log.warn('ignoring message-state writes after teardown', { pluginId })
     }
     return true
   }
@@ -515,7 +512,7 @@ export function createCorePluginMessageStateStore(
         try {
           fs.rmSync(fileOf(key), { force: true })
         } catch (error) {
-          console.error(`[PluginMessageState:${pluginId}] Failed to cascade-delete "${key}":`, error)
+          log.error('message-state cascade delete failed', { pluginId, key }, error)
         }
       }
     },
@@ -532,7 +529,7 @@ export function createCorePluginMessageStateStore(
         try {
           fs.rmSync(path.join(rootDir, sid), { recursive: true, force: true })
         } catch (error) {
-          console.error(`[PluginMessageState:${pluginId}] Failed to cascade-delete session "${sid}":`, error)
+          log.error('message-state session cascade delete failed', { pluginId, sessionId: sid }, error)
         }
       }
     },
@@ -661,7 +658,7 @@ export function archiveCorePluginData(
       mergedTo = target
     }
   } catch (error) {
-    console.error(`[PluginStorage] Failed to merge the legacy KV file for "${pluginId}":`, error)
+    log.error('legacy kv merge failed', { pluginId }, error)
     return { archived: false, error: error instanceof Error ? error.message : String(error) }
   }
 
@@ -677,7 +674,7 @@ export function archiveCorePluginData(
       try {
         fs.renameSync(mergedTo, mergedFrom)
       } catch (rollbackError) {
-        console.error(`[PluginStorage] Failed to roll back the legacy KV merge for "${pluginId}":`, rollbackError)
+        log.error('legacy kv merge rollback failed', { pluginId }, rollbackError)
       }
     }
     const nativeCode = (error as { code?: string } | undefined)?.code
@@ -685,7 +682,7 @@ export function archiveCorePluginData(
       // 跨卷 rename 不可用:copy+verify+delete 降级已裁决不做,至少把原因说清楚。
       ? `Cannot archive "${pluginId}": the data directory and the backup folder are on different volumes (EXDEV)`
       : error instanceof Error ? error.message : String(error)
-    console.error(`[PluginStorage] Failed to archive data for "${pluginId}":`, error)
+    log.error('plugin data archive failed', { pluginId }, error)
     return { archived: false, error: message }
   }
 }
@@ -732,7 +729,7 @@ export function findCorePluginDataOrphans(dataRoot: string, knownPluginIds: Iter
     entries = fs.readdirSync(dataRoot, { withFileTypes: true })
   } catch (error) {
     // 读不动就什么都不做 —— 读失败不是"这里没有插件"。
-    console.error(`[PluginStorage] Cannot scan ${dataRoot} for orphaned plugin data:`, error)
+    log.error('orphan scan failed', { dataRoot }, error)
     return []
   }
 
@@ -757,7 +754,7 @@ export function findCorePluginDataOrphans(dataRoot: string, knownPluginIds: Iter
         }
       }
     } catch (error) {
-      console.warn(`[PluginStorage] Skipping unusable plugin-data entry "${entry.name}":`, error)
+      log.warn('skipping unusable plugin-data entry', { entry: entry.name }, error)
     }
   }
 
@@ -789,7 +786,7 @@ export function findCorePluginHomeOrphans(
     entries = fs.readdirSync(pluginsDir, { withFileTypes: true })
   } catch (error) {
     // 与 plugin-data 同一条:读失败不是"这里没有插件"。
-    console.error(`[PluginStorage] Cannot scan ${pluginsDir} for orphaned plugin homes:`, error)
+    log.error('orphan home scan failed', { pluginsDir }, error)
     return []
   }
 
@@ -806,7 +803,7 @@ export function findCorePluginHomeOrphans(
         orphans.push({ pluginId: entry.name, kind: 'directory' })
       }
     } catch (error) {
-      console.warn(`[PluginStorage] Skipping unusable plugins entry "${entry.name}":`, error)
+      log.warn('skipping unusable plugins entry', { entry: entry.name }, error)
     }
   }
 

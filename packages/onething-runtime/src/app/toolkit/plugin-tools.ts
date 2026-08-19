@@ -36,6 +36,10 @@
 import { getToolkitCatalog, PluginTool } from '@onething/runtime/toolkit'
 import type { PluginToolDefinitionLike, PluginToolHostContext, PluginToolHostResult } from '@onething/runtime/toolkit'
 import type { JsonObject } from '@shared/json.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('toolkit')
+
 
 export interface RegisterPluginToolInput {
   toolId: string
@@ -56,7 +60,7 @@ export function registerPluginToolInCatalog(input: RegisterPluginToolInput): boo
   const catalog = getToolkitCatalog()
   if (!catalog) return false
   if (catalog.has(input.toolId)) {
-    console.warn(`[toolkit] plugin tool "${input.toolId}" is already in the catalog; skipping`)
+    log.warn('plugin tool already in the catalog, skipping', { toolId: input.toolId })
     return false
   }
 

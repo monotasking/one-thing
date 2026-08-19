@@ -21,6 +21,9 @@
 import { computed, h, ref } from 'vue'
 import VirtualTable from './VirtualTable.vue'
 import type { VirtualTableColumn, VirtualTableRowKey, VirtualTableSortState } from './virtual-table/types'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.virtual-table-example')
 
 interface OrderRow {
   id: number
@@ -78,7 +81,7 @@ const columns: VirtualTableColumn<OrderRow>[] = [
 ]
 
 function handleSortChange(state: VirtualTableSortState) {
-  console.info('sort changed', state)
+  log.debug('sort changed', { state })
 }
 
 function handleSelectionChange(_rows: OrderRow[], keys: VirtualTableRowKey[]) {

@@ -24,6 +24,10 @@ import {
 } from './role-mapping.js'
 import { selectPrimaryColorSemantics, selectStatusColorSemantics } from './resolver.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('themes')
+
 const BASE46_HIGHLIGHT_ALIASES: Record<string, SemanticHighlightToken> = {
   Normal: 'syntax.plain',
   Comment: 'syntax.comment',
@@ -115,7 +119,7 @@ export function parseBase46Lua(content: string): Base46Theme | null {
 
     // Validate we got at least some colors
     if (Object.keys(base30).length === 0 && Object.keys(base16).length === 0) {
-      console.warn('[Base46Parser] No colors found in theme file')
+      log.warn('no colors found in base46 theme file')
       return null
     }
 
@@ -125,7 +129,7 @@ export function parseBase46Lua(content: string): Base46Theme | null {
       base_16: base16 as Partial<Base46Base16>,
     }
   } catch (err) {
-    console.error('[Base46Parser] Failed to parse Lua content:', err)
+    log.error('base46 lua parse failed', undefined, err)
     return null
   }
 }

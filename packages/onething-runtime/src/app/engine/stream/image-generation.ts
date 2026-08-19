@@ -10,6 +10,12 @@ import {
   normalizeImageModelId,
   type CoreImageGenerationResult,
 } from '@onething/runtime/media'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.stream.image')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export { normalizeImageModelId }
 
@@ -35,7 +41,7 @@ export async function generateImage(
     prompt,
     imageOptions: options,
     fetch: createAppFetch({ policy: 'default' }),
-    logger: console,
+    logger: consoleLog,
   })
 }
 
@@ -52,6 +58,6 @@ export async function generateGeminiImage(
     model,
     prompt,
     fetch: createAppFetch({ policy: 'default' }),
-    logger: console,
+    logger: consoleLog,
   })
 }

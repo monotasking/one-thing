@@ -13,6 +13,9 @@ import {
 	DEFAULT_BROWSER_SEARCH_ENGINE_ID,
 	type BrowserSearchEngineId,
 } from '@shared/ipc.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('browser')
 
 let cached: BrowserSearchEngineId | null = null
 
@@ -46,7 +49,7 @@ export function setSearchEngineId(id: string): boolean {
 		mkdirSync(dirname(file), { recursive: true })
 		writeFileSync(file, JSON.stringify({ engineId: id }, null, 2))
 	} catch (err) {
-		console.error('[Browser] failed to persist search-engine.json:', err)
+		log.error('persist search engine failed', undefined, err)
 	}
 	return true
 }

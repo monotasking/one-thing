@@ -35,6 +35,7 @@
  */
 
 import { sortByPluginCanonicalOrder } from './canonical-order.js'
+import { toLogger, type CompatLogger, type Logger } from '../logging/index.js'
 import { PLUGIN_INPUT_INTERCEPT_SURFACE } from './policy.js'
 import { runWithPluginTimeout } from './runtime-guard.js'
 import {
@@ -212,9 +213,8 @@ interface RegisteredInterceptor {
   handler: PluginInputInterceptHandler
 }
 
-export interface CorePluginInputInterceptLogger {
-  error(message: string, error?: unknown): void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CorePluginInputInterceptLogger = CompatLogger
 
 export interface CorePluginInputInterceptRegistryOptions {
   logger?: CorePluginInputInterceptLogger
@@ -244,10 +244,10 @@ export interface CorePluginInputInterceptRegistryOptions {
  */
 export class CorePluginInputInterceptRegistry {
   private readonly handlers = new Map<string, RegisteredInterceptor>()
-  private readonly logger: CorePluginInputInterceptLogger
+  private readonly logger: Logger
 
   constructor(private readonly options: CorePluginInputInterceptRegistryOptions = {}) {
-    this.logger = options.logger ?? console
+    this.logger = toLogger(options.logger)
   }
 
   /**
@@ -299,7 +299,7 @@ export class CorePluginInputInterceptRegistry {
         )
       } catch (error) {
         // fail-open:抛错 / 超时 = 当它返回 continue。消息照常往下走。
-        this.logger.error(`[PluginInputIntercept] "${label}" failed; treated as continue:`, error)
+        this.logger.error(`[PluginInputIntercept] "${label}" failed; treated as continue:`, undefined, error)
         this.options.onHandlerFailure?.({ pluginId: item.pluginId, hookId: item.hookId, error })
         continue
       }

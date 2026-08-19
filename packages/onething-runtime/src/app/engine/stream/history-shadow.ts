@@ -20,6 +20,10 @@
 import { sessionReads } from '../../session/reads.js'
 import { checkSessionHistoryShadow } from '../../session/shadow.js'
 import { buildHistoryMessages, historyProjectionRecipe } from './message-helpers.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.history')
+
 
 /** 一次请求发出前的历史断言。出错自吞:记账不该影响聊天。 */
 export function checkSessionHistoryShadowForRequest(sessionId: string, runId: string): void {
@@ -43,6 +47,6 @@ export function checkSessionHistoryShadowForRequest(sessionId: string, runId: st
       build: historyProjectionRecipe(session),
     })
   } catch (error) {
-    console.warn(`[SessionShadow] history build failed for ${sessionId}:`, error)
+    log.warn('history shadow build failed', { sessionId }, error)
   }
 }

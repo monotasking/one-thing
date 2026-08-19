@@ -23,6 +23,10 @@ import { DEFAULT_SPACE_ID, isValidSpaceId } from './types.js'
 // 类型-only:`auth/` 反过来 import 本模块(space-token-store),值 import 会成环。
 import type { OnethingTokenCryptoAdapter } from '../auth/token-store.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('spaces')
+
 /** 凭证类型。`oauth` 第一天进 schema,但非 default 空间本切片一律判未配置。 */
 export type SpaceCredentialAuthType = 'apiKey' | 'oauth'
 
@@ -273,7 +277,7 @@ function activeCredentialsCrypto(): OnethingTokenCryptoAdapter | undefined {
     return adapter?.isEncryptionAvailable() ? adapter : undefined
   } catch (err) {
     // 加密器自己炸了(safeStorage 在 app.ready 之前会抛)= 这一次没有加密能力。
-    console.warn('[spaces] credentials crypto adapter unavailable:', err)
+    log.warn('credentials crypto adapter unavailable', undefined, err)
     return undefined
   }
 }
@@ -290,7 +294,7 @@ function decodeCredentialsPayload(
   if (typeof data !== 'string' || !data) return null
   const adapter = activeCredentialsCrypto()
   if (!adapter) {
-    console.warn('[spaces] credentials.json is encrypted but no crypto adapter is available')
+    log.warn('credentials encrypted but no crypto adapter available')
     return null
   }
   try {
@@ -298,7 +302,7 @@ function decodeCredentialsPayload(
     const parsed: unknown = JSON.parse(decrypted)
     return isRecord(parsed) ? { providers: parsed.providers } : null
   } catch (err) {
-    console.warn('[spaces] failed to decrypt credentials.json:', err)
+    log.warn('credentials decrypt failed', undefined, err)
     return null
   }
 }
@@ -357,10 +361,10 @@ export function readSpaceCredentials(spaceId: string | undefined | null): SpaceC
     if (fs.existsSync(filePath)) {
       const parsed = parseSpaceCredentialsDocument(JSON.parse(fs.readFileSync(filePath, 'utf-8')))
       if (parsed) file = parsed
-      else console.warn(`[spaces] ${filePath} failed schema validation, treating as empty`)
+      else log.warn('credentials schema validation failed, treating as empty', { filePath })
     }
   } catch (err) {
-    console.warn(`[spaces] failed to read ${filePath}:`, err)
+    log.warn('credentials read failed', { filePath }, err)
   }
   credentialsCache.set(filePath, file)
   return file

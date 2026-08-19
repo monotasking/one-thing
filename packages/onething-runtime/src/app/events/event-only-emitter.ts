@@ -14,6 +14,7 @@ import type { IPCEmitter, StreamCompleteData, StreamErrorData } from '../engine/
 import { createCoreEventOnlyEmitter } from '@onething/core/engine'
 import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk } from '@onething/core/engine'
 import { getEventBus, getStreamChannel } from './index.js'
+import { getLogger } from '../logging/index.js'
 
 /**
  * core 因边界规则(不得 import `@shared`)把事件与流块的形状重抄了一份,泛型
@@ -43,8 +44,14 @@ void _emittedEventsAreSessionEvents
 const _emittedChunksAreStreamChunks: CoreEventOnlyStreamChunk extends StreamChunk ? true : never = true
 void _emittedChunksAreStreamChunks
 
-function shouldDebugStream(): boolean {
-  return process.env.ONETHING_DEBUG_STREAM === '1' || process.env.ONETHING_DEBUG_CODEX_STREAM === '1'
+/**
+ * core 的 emitter 仍然自带一份形状转储(那半在 area ① 迁移);这里只把"要不要打"
+ * 从旧的 `ONETHING_DEBUG_STREAM` 开关换成等级过滤:`ONETHING_LOG=engine.stream=trace`。
+ */
+const streamLog = getLogger('engine.stream.emitter')
+
+function shouldTraceStream(): boolean {
+  return streamLog.isLevelEnabled('trace')
 }
 
 /**
@@ -85,6 +92,6 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
         store.updateSessionContextSize(targetSessionId, contextSize, 'provider-finish'),
       updateMessageSkill: store.updateMessageSkill,
     },
-    debugStream: shouldDebugStream,
+    debugStream: shouldTraceStream,
   })
 }

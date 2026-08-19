@@ -5,17 +5,17 @@ import {
   type UserPrompt,
 } from '@onething/runtime/prompts'
 import { getPromptsPath, readJsonFile, writeJsonFile } from '../stores/paths.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('prompts')
+
 
 export const promptStore = new OnethingPromptStore({
   getPath: () => getPromptsPath(),
   readJson: readJsonFile,
   writeJson: writeJsonFile,
   warn: (message, details) => {
-    if (details === undefined) {
-      console.warn(message)
-    } else {
-      console.warn(message, details)
-    }
+    log.warn('prompt store', details === undefined ? { detail: message } : { detail: message, details })
   },
 })
 

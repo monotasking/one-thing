@@ -49,6 +49,9 @@ import {
   initializeSessionSkills,
   invalidateSessionSkillsCache,
 } from '@onething/app/skills/session-skills.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.skills')
 
 let skillsIpcInitialized = false
 
@@ -59,7 +62,7 @@ export async function initializeSkills(): Promise<void> {
   if (skillsIpcInitialized) return
   await initializeSessionSkills()
   skillsIpcInitialized = true
-  console.log('[Skills IPC] Initialized')
+  log.info('session skills initialized')
 }
 
 /**
@@ -201,7 +204,7 @@ export function registerSkillHandlers() {
     },
   })
 
-  console.log('[Skills IPC] Handlers registered')
+  log.info('handlers registered')
 }
 
 function validateSkillDirectoryPath(dirPath: string): string | null {
@@ -232,10 +235,7 @@ export function getLoadedSkills(): SkillDefinition[] {
  */
 export function invalidateSkillsCache(workingDirectory?: string): void {
   invalidateSessionSkillsCache(workingDirectory)
-  console.log(workingDirectory
-    ? `[Skills] Cache invalidated for: ${workingDirectory}`
-    : '[Skills] All caches invalidated'
-  )
+  log.debug('skills cache invalidated', { workingDirectory: workingDirectory ?? null })
 }
 
 /**

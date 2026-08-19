@@ -8,6 +8,7 @@ import type { Interface as ReadlineInterface } from 'node:readline/promises'
 import type { AskOutputEvent, DaemonStreamEvent } from '@shared/cli/protocol.js'
 import { ensureDaemon, tryConnect, spawnDaemon } from './daemon-client.js'
 import { assertSupportedPlatform, ensureRuntimeDirs, getCliRuntimePaths } from './paths.js'
+import { stdout, stderr } from './stdout.js'
 
 interface ParsedArgs {
   args: string[]
@@ -99,7 +100,7 @@ async function collabCommand(command = 'list', rest: string[], parsed: ParsedArg
     case 'new': {
       const members = (stringFlag(parsed, 'members') || '').split(',').map(item => item.trim()).filter(Boolean)
       const budgetFlag = stringFlag(parsed, 'budget')
-      console.log(formatJson(await client.request('collab.roomNew', {
+      stdout(formatJson(await client.request('collab.roomNew', {
         name: required(rest.join(' '), 'name'),
         memberAgentIds: members,
         pmAgentId: stringFlag(parsed, 'pm') || undefined,
@@ -110,7 +111,7 @@ async function collabCommand(command = 'list', rest: string[], parsed: ParsedArg
       break
     }
     case 'budget':
-      console.log(formatJson(await client.request('collab.setBudgets', {
+      stdout(formatJson(await client.request('collab.setBudgets', {
         roomSessionId: required(rest[0], 'roomSessionId'),
         dailyCostUSD: Number(required(rest[1], 'dailyCostUSD')),
       })))
@@ -119,7 +120,7 @@ async function collabCommand(command = 'list', rest: string[], parsed: ParsedArg
       // Team settings (W6): only the flags you pass change. --pm '' clears it.
       const membersFlag = stringFlag(parsed, 'members')
       const pmFlag = stringFlag(parsed, 'pm')
-      console.log(formatJson(await client.request('collab.roomUpdate', {
+      stdout(formatJson(await client.request('collab.roomUpdate', {
         roomSessionId: required(rest[0], 'roomSessionId'),
         ...(stringFlag(parsed, 'name') !== undefined ? { name: stringFlag(parsed, 'name') } : {}),
         ...(membersFlag !== undefined
@@ -134,18 +135,18 @@ async function collabCommand(command = 'list', rest: string[], parsed: ParsedArg
       printRows(await client.request<any[]>('collab.roomList'), ['id', 'name', 'pmAgentId', 'frozen'])
       break
     case 'send':
-      console.log(formatJson(await client.request('collab.send', {
+      stdout(formatJson(await client.request('collab.send', {
         roomSessionId: required(rest[0], 'roomSessionId'),
         content: required(rest.slice(1).join(' '), 'content'),
       })))
       break
     case 'board':
-      console.log(formatJson(await client.request('collab.board', {
+      stdout(formatJson(await client.request('collab.board', {
         roomSessionId: required(rest[0], 'roomSessionId'),
       })))
       break
     case 'log':
-      console.log(formatJson(await client.request('collab.transcript', {
+      stdout(formatJson(await client.request('collab.transcript', {
         roomSessionId: required(rest[0], 'roomSessionId'),
         limit: Number(stringFlag(parsed, 'limit') || 30),
       })))
@@ -165,29 +166,29 @@ async function daemonCommand(command = 'status', rest: string[], parsed: ParsedA
     case 'start': {
       const client = await ensureDaemon({ storePath: parsed.storePath })
       const status = await client.request('daemon.status')
-      console.log(formatJson(status))
+      stdout(formatJson(status))
       client.close()
       break
     }
     case 'status': {
       const client = await tryConnect({ storePath: parsed.storePath })
       if (!client) {
-        console.log('daemon stopped')
+        stdout('daemon stopped')
         return
       }
-      console.log(formatJson(await client.request('daemon.status')))
+      stdout(formatJson(await client.request('daemon.status')))
       client.close()
       break
     }
     case 'stop': {
       const client = await tryConnect({ storePath: parsed.storePath })
       if (!client) {
-        console.log('daemon already stopped')
+        stdout('daemon already stopped')
         return
       }
       await client.request('daemon.shutdown')
       client.close()
-      console.log('daemon stopping')
+      stdout('daemon stopping')
       break
     }
     case 'restart': {
@@ -199,7 +200,7 @@ async function daemonCommand(command = 'status', rest: string[], parsed: ParsedA
       }
       spawnDaemon(parsed.storePath, paths.bootLogPath)
       const restarted = await ensureDaemon({ storePath: parsed.storePath })
-      console.log(formatJson(await restarted.request('daemon.status')))
+      stdout(formatJson(await restarted.request('daemon.status')))
       restarted.close()
       break
     }
@@ -208,13 +209,13 @@ async function daemonCommand(command = 'status', rest: string[], parsed: ParsedA
       // 前者不在就退回后者(升级过来的机器上它可能还有历史内容)。
       const logFile = fs.existsSync(paths.logPath) ? paths.logPath : paths.bootLogPath
       if (!fs.existsSync(logFile)) {
-        console.log(`No daemon log found at ${paths.logPath}`)
+        stdout(`No daemon log found at ${paths.logPath}`)
         return
       }
       const text = fs.readFileSync(logFile, 'utf8')
       const lines = text.split(/\r?\n/)
       const count = Number(parsed.flags.n || parsed.flags.lines || 200)
-      console.log(lines.slice(Math.max(0, lines.length - count)).join('\n'))
+      stdout(lines.slice(Math.max(0, lines.length - count)).join('\n'))
       break
     }
     default:
@@ -246,8 +247,8 @@ async function chatCommand(parsed: ParsedArgs): Promise<void> {
   let active = false
   let sawSigint = false
 
-  console.log(`onething chat (${session.name})`)
-  console.log('Type /exit to quit, /new [name], /use <session>, /sessions, /abort, /retry, /cwd [path].')
+  stdout(`onething chat (${session.name})`)
+  stdout('Type /exit to quit, /new [name], /use <session>, /sessions, /abort, /retry, /cwd [path].')
 
   rl.on('SIGINT', () => {
     if (active) {
@@ -287,7 +288,7 @@ async function chatCommand(parsed: ParsedArgs): Promise<void> {
           promptPermission: permission => promptPermission(permission, rl),
         })
       }).catch(error => {
-        if (!sawSigint) console.error(error.message)
+        if (!sawSigint) stderr(error.message)
       }).finally(() => {
         active = false
         process.stdout.write('\n')
@@ -305,42 +306,42 @@ async function sessionCommand(command = 'list', rest: string[], parsed: ParsedAr
       printRows(await client.request<any[]>('session.list'), ['id', 'name', 'updatedAt', 'messageCount'])
       break
     case 'new':
-      console.log(formatJson(await client.request('session.new', { name: rest.join(' ') || 'CLI Chat' })))
+      stdout(formatJson(await client.request('session.new', { name: rest.join(' ') || 'CLI Chat' })))
       break
     case 'use':
-      console.log(formatJson(await client.request('session.use', { sessionId: required(rest[0], 'sessionId') })))
+      stdout(formatJson(await client.request('session.use', { sessionId: required(rest[0], 'sessionId') })))
       break
     case 'show':
-      console.log(formatJson(await client.request('session.show', { sessionId: rest[0] })))
+      stdout(formatJson(await client.request('session.show', { sessionId: rest[0] })))
       break
     case 'rename':
       await client.request('session.rename', { sessionId: required(rest[0], 'sessionId'), name: required(rest.slice(1).join(' '), 'name') })
-      console.log('renamed')
+      stdout('renamed')
       break
     case 'pin':
     case 'unpin':
       await client.request('session.pin', { sessionId: required(rest[0], 'sessionId'), pinned: command === 'pin' })
-      console.log(command === 'pin' ? 'pinned' : 'unpinned')
+      stdout(command === 'pin' ? 'pinned' : 'unpinned')
       break
     case 'archive':
     case 'restore':
       await client.request('session.archive', { sessionId: required(rest[0], 'sessionId'), archived: command === 'archive' })
-      console.log(command === 'archive' ? 'archived' : 'restored')
+      stdout(command === 'archive' ? 'archived' : 'restored')
       break
     case 'delete':
       await client.request('session.delete', { sessionId: required(rest[0], 'sessionId') })
-      console.log('deleted')
+      stdout('deleted')
       break
     case 'cwd': {
       const clear = Boolean(parsed.flags.clear)
       const cwd = clear ? null : rest[1] || rest[0]
       const sessionId = rest.length > 1 ? rest[0] : stringFlag(parsed, 'session')
-      console.log(formatJson(await client.request('session.cwd', Object.prototype.hasOwnProperty.call(parsed.flags, 'clear') || cwd ? { sessionId, cwd } : { sessionId })))
+      stdout(formatJson(await client.request('session.cwd', Object.prototype.hasOwnProperty.call(parsed.flags, 'clear') || cwd ? { sessionId, cwd } : { sessionId })))
       break
     }
     case 'model':
       await client.request('session.model', { sessionId: required(rest[0], 'sessionId'), provider: required(rest[1], 'provider'), model: required(rest[2], 'model') })
-      console.log('model set')
+      stdout('model set')
       break
     default:
       throw new Error(`Unknown session command: ${command}`)
@@ -351,7 +352,7 @@ async function sessionCommand(command = 'list', rest: string[], parsed: ParsedAr
 async function activeCommand(command = 'list', rest: string[], parsed: ParsedArgs): Promise<void> {
   const client = await ensureDaemon({ storePath: parsed.storePath })
   if (command === 'list') printRows(await client.request<any[]>('active.list'), ['streamId', 'sessionId', 'status', 'promptPreview'])
-  else if (command === 'abort') console.log(formatJson(await client.request('active.abort', { streamId: required(rest[0], 'streamId') })))
+  else if (command === 'abort') stdout(formatJson(await client.request('active.abort', { streamId: required(rest[0], 'streamId') })))
   else throw new Error(`Unknown active command: ${command}`)
   client.close()
 }
@@ -363,11 +364,11 @@ async function providerCommand(command = 'list', rest: string[], parsed: ParsedA
       printRows(await client.request<any[]>('provider.list'), ['id', 'model', 'enabled', 'isDefault'])
       break
     case 'use':
-      console.log(formatJson(await client.request('provider.use', { providerId: required(rest[0], 'providerId'), model: rest[1] })))
+      stdout(formatJson(await client.request('provider.use', { providerId: required(rest[0], 'providerId'), model: rest[1] })))
       break
     case 'enable':
     case 'disable':
-      console.log(formatJson(await client.request('provider.enable', { providerId: required(rest[0], 'providerId'), enabled: command === 'enable' })))
+      stdout(formatJson(await client.request('provider.enable', { providerId: required(rest[0], 'providerId'), enabled: command === 'enable' })))
       break
     case 'configure': {
       const providerId = required(rest[0], 'providerId')
@@ -378,11 +379,11 @@ async function providerCommand(command = 'list', rest: string[], parsed: ParsedA
       }
       const selected = stringFlag(parsed, 'selectedModels')
       if (selected) update.selectedModels = selected.split(',').map(item => item.trim()).filter(Boolean)
-      console.log(formatJson(await client.request('provider.configure', update)))
+      stdout(formatJson(await client.request('provider.configure', update)))
       break
     }
     case 'models':
-      console.log((await client.request<string[]>('provider.models', { providerId: required(rest[0], 'providerId') })).join('\n'))
+      stdout((await client.request<string[]>('provider.models', { providerId: required(rest[0], 'providerId') })).join('\n'))
       break
     default:
       throw new Error(`Unknown provider command: ${command}`)
@@ -396,7 +397,7 @@ async function toolsCommand(command = 'list', rest: string[], parsed: ParsedArgs
     printRows(await client.request<any[]>('tools.list'), ['id', 'name', 'enabled', 'autoExecute'])
   } else if (command === 'enable' || command === 'disable') {
     await client.request('tools.set', { toolId: required(rest[0], 'toolId'), enabled: command === 'enable' })
-    console.log(command === 'enable' ? 'enabled' : 'disabled')
+    stdout(command === 'enable' ? 'enabled' : 'disabled')
   } else {
     throw new Error(`Unknown tools command: ${command}`)
   }
@@ -406,7 +407,7 @@ async function toolsCommand(command = 'list', rest: string[], parsed: ParsedArgs
 async function permissionCommand(command: string | undefined, rest: string[], parsed: ParsedArgs): Promise<void> {
   const client = await ensureDaemon({ storePath: parsed.storePath })
   if (command !== 'set') throw new Error('Usage: onething permission set <mode>')
-  console.log(formatJson(await client.request('permission.mode.set', { mode: required(rest[0], 'mode') })))
+  stdout(formatJson(await client.request('permission.mode.set', { mode: required(rest[0], 'mode') })))
   client.close()
 }
 
@@ -492,18 +493,18 @@ async function handleChatSlash(
       return true
     case 'new':
       setSession(await client.request('session.new', { name: rest.join(' ') || 'CLI Chat' }))
-      console.log(`using ${getSession().name}`)
+      stdout(`using ${getSession().name}`)
       return true
     case 'use':
       if (isActive()) {
-        console.error('/use is disabled while a stream is active; /abort first')
+        stderr('/use is disabled while a stream is active; /abort first')
         return true
       }
       setSession(await client.request('session.use', { sessionId: required(rest[0], 'sessionId') }))
-      console.log(`using ${getSession().name}`)
+      stdout(`using ${getSession().name}`)
       return true
     case 'cwd':
-      console.log(formatJson(await client.request('session.cwd', rest[0] ? { sessionId: getSession().id, cwd: rest[0] } : { sessionId: getSession().id })))
+      stdout(formatJson(await client.request('session.cwd', rest[0] ? { sessionId: getSession().id, cwd: rest[0] } : { sessionId: getSession().id })))
       return true
     case 'abort': {
       const streams = await client.request('active.list') as Array<{ sessionId: string; streamId: string }>
@@ -523,7 +524,7 @@ async function handleChatSlash(
       process.stdout.write('\n')
       return true
     default:
-      console.error(`Unknown slash command: /${command}`)
+      stderr(`Unknown slash command: /${command}`)
       return true
   }
 }
@@ -577,13 +578,13 @@ async function readStdin(): Promise<string> {
 
 function printRows(rows: any[], columns: string[]): void {
   if (!Array.isArray(rows) || rows.length === 0) {
-    console.log('(none)')
+    stdout('(none)')
     return
   }
   const widths = columns.map(column => Math.max(column.length, ...rows.map(row => String(row[column] ?? '').length)))
-  console.log(columns.map((column, i) => column.padEnd(widths[i])).join('  '))
+  stdout(columns.map((column, i) => column.padEnd(widths[i])).join('  '))
   for (const row of rows) {
-    console.log(columns.map((column, i) => formatCell(row[column]).padEnd(widths[i])).join('  '))
+    stdout(columns.map((column, i) => formatCell(row[column]).padEnd(widths[i])).join('  '))
   }
 }
 
@@ -606,7 +607,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function printHelp(): void {
-  console.log(`onething CLI
+  stdout(`onething CLI
 
 Usage:
   onething daemon start|stop|restart|status|logs
@@ -639,9 +640,9 @@ Notes:
 main().catch(error => {
   const code = error instanceof Error ? error.name : ''
   if (code === 'ERR_UNSUPPORTED_PLATFORM') {
-    console.error('ERR_UNSUPPORTED_PLATFORM: Windows daemon transport is not supported in v1.')
+    stderr('ERR_UNSUPPORTED_PLATFORM: Windows daemon transport is not supported in v1.')
   } else {
-    console.error(error instanceof Error ? error.message : String(error))
+    stderr(error instanceof Error ? error.message : String(error))
   }
   process.exitCode = 1
 })

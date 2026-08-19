@@ -19,6 +19,10 @@ import { extractNcmCliJson } from './ncm-cli-driver.js'
 import { parseNowPlaying, type OnethingMusicNowPlaying } from './now-playing.js'
 import type { OnethingMusicProcessRunner } from './types.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('music')
+
 /**
  * `start` is for `play`: NON-IDEMPOTENT, so zero retries — a play that
  * "failed" may still make sound seconds later (controller disconnected, slow
@@ -127,9 +131,12 @@ export function createOnethingMusicReliableRunner(
     })
     // Timing probe (slow ⏭ investigation): every call is a fresh CLI process,
     // so this line is the per-command fixed cost, spawn included.
-    console.info(
-      `[music:timing] ${cli.binary} ${args.join(' ')} (${commandClass}): ${Date.now() - spawnedAt}ms`,
-    )
+    log.debug('cli command finished', {
+      binary: cli.binary,
+      args,
+      commandClass,
+      durationMs: Date.now() - spawnedAt,
+    })
     const envelope = cli.parse.envelope(result.stdout)
     if (!envelope.ok) {
       throw new OnethingMusicCommandError(

@@ -13,6 +13,10 @@ import { collectGoalFileChanges } from "../../goals/file-changes.js";
 import { recordTocTurn } from "../../toc/index.js";
 import { sessionReads } from "../../session/reads.js";
 import type { Trigger, TriggerContext } from "./index.js";
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.triggers')
+
 
 /**
  * How long the session must stay quiet before segmenting. Short enough that a
@@ -90,7 +94,7 @@ function scheduleTocRun(ctx: TriggerContext, pending: PendingTurn): void {
 					awayMinutes,
 				});
 			} catch (error) {
-				console.error("[SessionTOC] segmentation failed:", error);
+				log.error("session toc segmentation failed", { sessionId: ctx.sessionId }, error);
 			}
 		})();
 	}, TOC_IDLE_DELAY_MS);

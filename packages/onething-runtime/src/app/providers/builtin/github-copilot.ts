@@ -14,6 +14,10 @@ import {
   modelInfoFromCopilotEntry,
   type OnethingCopilotModelCapabilities,
 } from '@onething/runtime/providers'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('providers.copilot')
+
 
 // Cache for Copilot completion tokens
 interface CopilotToken {
@@ -104,7 +108,7 @@ export async function fetchCopilotModels(githubAccessToken: string): Promise<Mod
 
     if (!response.ok) {
       const error = await response.text()
-      console.error(`[Copilot] Failed to fetch models: ${response.status} ${error}`)
+      log.error('fetch copilot models failed', { status: response.status, body: error })
       throw new Error(`Failed to fetch Copilot models: ${response.status}`)
     }
 
@@ -121,10 +125,10 @@ export async function fetchCopilotModels(githubAccessToken: string): Promise<Mod
       cachedAt: Date.now(),
     }
 
-    console.log(`[Copilot] Fetched ${models.length} models from API`)
+    log.info('copilot models fetched', { count: models.length })
     return models
   } catch (error) {
-    console.error('[Copilot] Failed to fetch models:', error)
+    log.error('fetch copilot models failed', {}, error)
     throw error
   }
 }

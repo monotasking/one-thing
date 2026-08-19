@@ -23,6 +23,10 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
 } from './health.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins')
+
 
 export interface PluginConfigHost {
   /** manifest 的 contributes.settings(schema 单源)。 */
@@ -107,10 +111,10 @@ export function getEffectivePluginConfig(pluginId: string): Record<string, unkno
   const result = coercePluginConfig(fields, stored)
   if (result.warnings.length > 0 && !warnedPlugins.has(pluginId)) {
     warnedPlugins.add(pluginId)
-    console.warn(
-      `[PluginConfig] Stored config for "${pluginId}" has invalid values; using defaults for them:\n  `
-      + result.warnings.join('\n  '),
-    )
+    log.warn('stored plugin config has invalid values, using defaults', {
+      pluginId,
+      warnings: result.warnings,
+    })
   }
   const frozen = deepFreezePluginConfig(result.config)
   effectiveCache.set(pluginId, frozen)
@@ -261,7 +265,7 @@ async function deliverPluginConfigChange(pluginId: string): Promise<void> {
       )
       reportPluginRuntimeSuccess(pluginId, pluginScope.settingsChange())
     } catch (error) {
-      console.error(`[PluginConfig] onChange failed for "${pluginId}":`, error)
+      log.error('plugin settings onChange failed', { pluginId }, error)
       reportPluginRuntimeFailure(pluginId, pluginScope.settingsChange(), error)
     }
   }

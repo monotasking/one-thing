@@ -9,6 +9,10 @@ import {
 } from './types.js'
 import { assertNotReserved, assertValidName, assertValidValue, findDuplicateNames } from './validation.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('variables')
+
 type ChangeListener = (ctx: VariableContext, snapshot: ContextVariable[]) => void
 
 /**
@@ -302,7 +306,7 @@ export class VariableRegistry {
       try {
         listener(ctx, snapshot)
       } catch (error) {
-        console.error('[VariableRegistry] listener error:', error)
+        log.error('variable registry listener failed', undefined, error)
       }
     }
   }

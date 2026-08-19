@@ -34,6 +34,10 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
 } from './health.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins')
+
 
 const registry = new CorePluginToolResultInterceptRegistry({
   // 超时预算走 core 默认(2s):与 N4 同 —— 它同样同步阻塞在一次工具结果回模型
@@ -84,7 +88,7 @@ export async function runPluginToolResultIntercept(
   } catch (error) {
     // 兜底的兜底,判 keep(原结果):这一层的故障不归任何插件,而原始结果原样
     // 交给模型是唯一无害的默认(fail-open 的底色)。
-    console.error('[PluginToolResultIntercept] chain failed; the tool result was left unchanged:', error)
+    log.error('tool result intercept chain failed, result left unchanged', {}, error)
     return emptyPluginToolResultInterceptOutcome(context.result)
   }
 }

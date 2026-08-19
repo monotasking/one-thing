@@ -54,6 +54,7 @@
  */
 
 import { sortByPluginCanonicalOrder } from './canonical-order.js'
+import { toLogger, type CompatLogger, type Logger } from '../logging/index.js'
 import { PLUGIN_TOOL_CALL_INTERCEPT_SURFACE } from './policy.js'
 import { runWithPluginTimeout } from './runtime-guard.js'
 import {
@@ -298,9 +299,8 @@ interface RegisteredToolCallInterceptor {
   handler: PluginToolCallInterceptHandler
 }
 
-export interface CorePluginToolCallInterceptLogger {
-  error(message: string, error?: unknown): void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CorePluginToolCallInterceptLogger = CompatLogger
 
 export interface CorePluginToolCallInterceptRegistryOptions {
   logger?: CorePluginToolCallInterceptLogger
@@ -341,10 +341,10 @@ export interface CorePluginToolCallInterceptRegistryOptions {
  */
 export class CorePluginToolCallInterceptRegistry {
   private readonly handlers = new Map<string, RegisteredToolCallInterceptor>()
-  private readonly logger: CorePluginToolCallInterceptLogger
+  private readonly logger: Logger
 
   constructor(private readonly options: CorePluginToolCallInterceptRegistryOptions = {}) {
-    this.logger = options.logger ?? console
+    this.logger = toLogger(options.logger)
   }
 
   /**
@@ -410,7 +410,7 @@ export class CorePluginToolCallInterceptRegistry {
         // fail-closed:抛错 / 超时 = 阻断这一次。不是放行。
         this.logger.error(
           `[PluginToolCallIntercept] "${label}" failed; the tool call was blocked (fail-closed):`,
-          error,
+          undefined, error,
         )
         this.options.onHandlerFailure?.({ pluginId: item.pluginId, hookId: item.hookId, error })
         return {

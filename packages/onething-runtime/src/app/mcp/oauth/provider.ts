@@ -24,6 +24,10 @@ import type {
   MCPOAuthIssuerContext,
   MCPOAuthTokens,
 } from './types.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('mcp.oauth')
+
 
 export interface MCPOAuthProviderOptions {
   serverId: string
@@ -88,7 +92,7 @@ export class MCPOAuthProvider {
   saveClientInformation(info: MCPOAuthClientInformation, ctx?: MCPOAuthIssuerContext): void {
     const issuer = ctx?.issuer ?? info.issuer
     if (!issuer) {
-      console.warn(`[MCP:${this.options.serverId}] DCR registration arrived without an issuer; not persisted`)
+      log.warn('DCR registration arrived without an issuer, not persisted', { serverId: this.options.serverId })
       return
     }
     this.options.flowState.lastIssuer = issuer
@@ -106,7 +110,7 @@ export class MCPOAuthProvider {
   saveTokens(tokens: MCPOAuthTokens, ctx?: MCPOAuthIssuerContext): void {
     const issuer = ctx?.issuer ?? tokens.issuer
     if (!issuer) {
-      console.warn(`[MCP:${this.options.serverId}] tokens arrived without an issuer; not persisted`)
+      log.warn('tokens arrived without an issuer, not persisted', { serverId: this.options.serverId })
       return
     }
     this.options.flowState.lastIssuer = issuer

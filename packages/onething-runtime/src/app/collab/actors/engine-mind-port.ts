@@ -61,6 +61,10 @@ import {
 } from './turn-context.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('collab.actors.mind')
+
 
 /** 起流的等待上限。没见到 `stream:start` 就是没跑起来。 */
 const TURN_START_TIMEOUT_MS = 20_000
@@ -314,7 +318,7 @@ export function createCollabEngineMindPort(
         void import('../digest-runner.js')
           .then(module => module.ensureCollabDigestsForRoom(request.roomSessionId))
           .catch((error: unknown) => {
-            console.error('[collab] daily digest trigger failed:', error)
+            log.error('daily digest trigger failed', { roomSessionId: request.roomSessionId }, error)
           })
       }
     },
@@ -371,7 +375,7 @@ export function createCollabEngineMindPort(
       try {
         engine.steerMessage(request.execSessionId, body, COLLAB_V3_STEER_SOURCE)
       } catch (error) {
-        console.error('[collab-v3] steer inject failed:', error)
+        log.error('steer inject failed', { execSessionId: request.execSessionId }, error)
         settle?.(false)
         return false
       }
@@ -382,7 +386,7 @@ export function createCollabEngineMindPort(
         try {
           engine.retractSteerMessage(request.execSessionId, queuedMessageId)
         } catch (error) {
-          console.error('[collab-v3] steer retract failed:', error)
+          log.error('steer retract failed', { execSessionId: request.execSessionId, queuedMessageId }, error)
         }
       }
       return false
@@ -421,7 +425,7 @@ async function adoptUnsentProse(
     noteCollabAdoptedEcho(request.execSessionId, delivered.messageId)
     return { content: prose, messageId: delivered.messageId }
   } catch (error) {
-    console.error('[collab-v3] 收养式代发失败:', error)
+    log.error('adopted relay say failed', { execSessionId: request.execSessionId }, error)
     return undefined
   }
 }

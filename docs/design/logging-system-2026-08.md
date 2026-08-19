@@ -98,6 +98,8 @@ interface LogRecord {
 | `sessions` `settings` `usage` `skills` `themes` `variables` `goals` `collab` `mcp` `acp` `plugins` `media` `voice` `music` `spaces` | 各自子系统 |
 | `ipc.<domain>` `server.http` `server.<domain>` `daemon` `gateway.<channel>` | 宿主 |
 | `renderer.<store|component|service>` | renderer,由桥接层自动加 `renderer.` 前缀 |
+| `renderer.perf` | 渲染/切换/首屏计时(debug)。**横切面**:chat store / sessions store / App / MessageList / ChatPanel / 两个 Streaming 组件都往里写 —— 按 store 或 component 拆开就没法一句 `renderer.perf=debug` 全开(L4 区 ③b 提出,§9.2 采纳) |
+| `app.backend` `app.events` | 装配层自身的生命周期(`createOnethingBackend`、事件系统起停) |
 | `console` | LegacyConsoleSink 抓到的未迁移输出(迁移期临时) |
 | `process` | crash hooks / warning |
 
@@ -464,3 +466,601 @@ L0–L1 可一天;L2/L3 各半天;L4 是量最大的一期(~800 处),按区派 o
 - gateway 的等级映射按 §2.3 直译(`console.log`→`info` 的两处是生命周期节点,
   `console.warn/error` 原样),唯一改级的是微信入站身份转储 `info`→`debug` ——
   它是每条消息都打的形状转储,按 §2.3 就该是 debug。
+
+---
+
+## 8. L4 迁移规则(2026-08-20,派工前定死)
+
+目标:非测试源码 `console.*` 调用点 822 → ≤ 50(白名单:`scripts/`、`apps/electron/src/main/cli/stdout.ts`、`LegacyConsoleSink` 自身、少数必须直写 stderr 的启动期 FATAL)。迁完的目录开 ESLint `no-console: error`。
+
+### 8.1 等级映射(机械规则,偏差必须在 PR 里逐条列)
+| 今天 | 迁到 | 说明 |
+|---|---|---|
+| `console.error(msg, err)` | `log.error(msg, fields?, err)` | err 走 `err` 字段,不拼进 msg |
+| `console.warn` | `log.warn` | |
+| `console.info` | `log.info` | |
+| `console.log` — 生命周期节点(启动/监听/加载完成/会话开始结束/插件装载) | `log.info` | |
+| `console.log` — 每请求/每 tool call 的形状与决策 | `log.debug` | |
+| `console.log` — 每 chunk / 每 delta / EventBus 扇出 / Perf 逐帧 | `log.trace` | |
+| `console.debug` | `log.debug` | |
+| 门控在 `ONETHING_DEBUG_*` / `shouldDebugStream()` / `VITE_DEBUG_*` / localStorage debug 之后的 | 去掉门控,直接 `log.trace`/`debug`(等级过滤取代开关);开关常量保留一个版本作别名(L5 删) | `shouldDebugStream` 四份在此合一为 `ONETHING_LOG` 的 `engine.stream=trace` 别名 |
+| 静默 `catch {}` 中值得留痕的 | 补一行 `log.debug('…swallowed', {reason}, err)` | 不改控制流;明显无意义的(如 JSON.parse 探测)不补 |
+
+### 8.2 命名空间与字段
+- `ns` 按 §2.2 表:文件所在模块 → 前缀;模块级 `const log = getLogger('engine.stream')`;会话/run/请求/工具上下文用 `log.child({sessionId, runId, requestIndex, toolCallId})` 绑一次。
+- `msg` 固定短句英文、不拼变量;变量进 `fields`;老的 `[Tag]` 前缀**删除**(ns 取代)。
+- 中文消息(collab 28 条)改英文短句,细节进 fields。
+- 不允许 `log.info(JSON.stringify(x))`;传对象。
+
+### 8.3 分区与所有权(三区并行,文件不相交)
+| 区 | 范围 | `getLogger` 来源 |
+|---|---|---|
+| ① core + runtime 产品层 | `packages/core/**`、`packages/onething-runtime/src/**`(不含 `src/app`) | core:`@onething/core/logging` 的 `createLogger` 需要 root——core 不持有全局 root,**core 模块通过注入的 `logger?: Logger` 参数/选项拿**(已有 8 个 `Core*Logger` 鸭子接口统一为 `Logger`),缺省 `noopLogger`;runtime 产品层同样注入或从 `@onething/runtime/logging`(新增薄模块,持有可被 app 层 `configureLogging` 设置的 root)取 `getLogger(ns)` |
+| ② app 装配层 + server 壳 | `packages/onething-runtime/src/app/**`、`apps/server/src/**` | `@onething/app/logging` `getLogger` |
+| ③ Electron 宿主 + renderer | `apps/electron/src/**`(除 cli/stdout.ts)、`packages/renderer/**` | 主进程 `@onething/app/logging`;renderer `@/services/log` |
+
+### 8.4 门
+每区:`log:check` 该区归零(白名单外);该区目录 ESLint `no-console: error` 开启且 `lint:ci` 错误数不增;`bun run test` 全量;真机 smoke(`log:smoke`)仍绿;每区附映射表(文件 → 迁入 ns、等级偏差清单)。
+
+---
+
+## 9. L4 落地记录(2026-08-20)
+
+> 四区并行,文件不相交(§8.3)。每区一节 §9.x,只写自己那一格。
+
+### 9.1 区 ① — core + runtime 产品层(`packages/core/**`、`packages/shared/**`、`packages/onething-runtime/src/**` 不含 `src/app`)
+
+迁前 `log:check` 该区 **192** 处,迁后 **0**(白名单为空 —— 本区没有一条必须直写 stderr
+的启动期 FATAL)。`packages/shared/**` 本来就是纯契约,一条 console 都没有。
+ESLint `no-console: 'error'` 已对该区三棵目录开启(`eslint.config.js` 的「区 ①」块;
+`src/app/**` 与测试目录 ignore —— 前者是区 ② 自己的格子)。
+
+#### 9.1.1 新增的两个件
+
+| 件 | 位置 | 作用 |
+|---|---|---|
+| `CompatLogger` / `toLogger()` / `noopLogger` / `isLogger()` | `packages/core/logging/compat.ts` | core 里 14 个 `Core*Logger` 鸭子接口的**统一收口**:`CompatLogger = Logger \| LegacyDuckLogger`,`toLogger()` 把两者都收敛成 `Logger`,不给则 `noopLogger`(**不再默认 `console`**) |
+| `configureCoreLogging()` / `getCoreLogger(ns)` | `packages/core/logging/port.ts` | core 的注入端口。core 仍然**不持有 root**(没有 sink、没有等级表),只有一个由装配层填进来的工厂;`getCoreLogger` 返回延迟绑定的 logger(core 模块几乎都在装配之前求值) |
+| `getLogger(ns)` / `setRuntimeLoggerRoot(root)` / `captureRuntimeLogs()` | `packages/onething-runtime/src/logging/index.ts`(新;alias `@onething/runtime/logging` 已登记) | 产品层的门面。产品层不能 import `@onething/app`,所以持有一个**可被装配层替换**的 root;未接线时只挂一个 200 条内存环(不打 console、不污染测试输出) |
+
+接线只有一句:`app/logging/index.ts` 的 `configureLogging()` 开头调
+`setRuntimeLoggerRoot(root)`(放在幂等闸**之前** —— 嵌入式 server 第二次调用同样该指向
+这一个 root)。`setRuntimeLoggerRoot` 自己再顺手 `configureCoreLogging({ getLogger })`,
+所以 core 与产品层是**同一句话**接线的,宿主不必记住第二句。
+
+#### 9.1.2 映射表(文件 → ns → 等级)
+
+`packages/core`(全部走注入 / `getCoreLogger`):
+
+| 文件 | ns | 迁入等级 |
+|---|---|---|
+| `events/event-bus.ts`(20) | `core.events` | emit / 扇出 → `trace`;subscribe / unsubscribe → `debug`;interceptor / handler 失败 → `error` |
+| `permission/index.ts`(14) | `core.permission` | initialize / shutdown → `info`;ask / coalesce / respond → `debug`;其余 warn/error 原级 |
+| `interaction/registry.ts`(11) | `core.interaction` | initialize / shutdown → `info`;ask → `debug`;deadline / 无 pending / 跨通道 → `warn` |
+| `plugins/storage.ts`(14) | `core.plugins` | 原级(warn/error) |
+| `plugins/loader.ts`(11) | `core.plugins` | 原级 |
+| `plugins/store.ts`(3)、`plugins/storage-files.ts`(2)、`plugins/scheduler.ts`(1) | `core.plugins` | 原级 |
+| `mcp/manager.ts`(8) | `core.mcp` | 生命周期 `console.log` → `info`;连接失败 → `error` |
+| `storage/json-file.ts`(3) | `core.storage` | 原级 |
+| `session/timeline.ts`(2) | `core.session` | 摘要元数据清空 → `warn`;contextSize 修复转储 → `debug` |
+| `session/session-manager.ts`(1) | `core.session` | 自动建会话 → `debug` |
+| `session/storage/json-message-page.ts`(1) | `core.session` | 原级 |
+| `events/stream-channel.ts`(2) | `core.events` | 原级 |
+| `engine/headless-stream-engine.ts`(2) | `core.engine` | `log()` → `debug`、`logError()` → `error`(两个 protected 助手的**函数体**换了出口,~40 个调用点一字未动) |
+| `engine/context-compact.ts`(1) | `core.engine` | 原级 |
+
+`packages/onething-runtime/src`(产品层,全部 `getLogger(ns)`):
+
+| 文件 | ns | 迁入等级 |
+|---|---|---|
+| `skills/loader.ts`(21) | `skills` | 加载完成 / 目录创建 / 删除 → `info`;逐根、逐工程路径的转储 → `debug`;其余原级 |
+| `themes/index.ts`(9) | `themes` | 初始化 / 自定义主题加载 → `info`;两条 neutral / primary 语义大转储 → `debug`(原来是**无条件** `console.log(JSON.stringify(…, null, 2))`,每次解析主题都打) |
+| `themes/resolver.ts`(8)、`base46-parser.ts`(2)、`css-mapper.ts`(1) | `themes` | 原级 |
+| `spaces/{credentials,persistence,provider-settings,overlay,store,notifications}.ts`(14) | `spaces` | 原级 |
+| `project-dirs/{persistence,store}.ts`(6) | `projects` | 原级 |
+| `agent-loop/providers/codex.ts`(6) | `providers.codex` | 每 delta / 每 SSE 事件 → `trace`;`streamTurn request` → `debug`;401 刷新 / OAuth 降级 → `warn` |
+| `agent-loop/providers/deepseek.ts`(3) | `providers.deepseek` | 同上 |
+| `acp/{client,manager}.ts`(7) | `acp` | 连上 → `info`;其余 `warn` |
+| `evals/{snapshot,case-file}.ts`(5) | `evals` | 原级 |
+| `toolkit/contract.ts`(2) | `toolkit.contract` | 原级 |
+| `toolkit/families/process.ts`(1) | `toolkit.process` | 原级 |
+| `media/media-library-service.ts`(2) | `media` | 原级 |
+| `variables/{store,schema,registry}.ts`(3) | `variables` | 原级 |
+| `stream-engine.ts`(1) | `engine.stream` | 关停 → `info` |
+| `prompts/builder.ts`(1) | `engine.prompt` | 原级 |
+| `music/reliable-runner.ts`(1) | `music` | `console.info` → **`debug`**(偏差,见下) |
+| `auth/callback-server.ts`(1) | `auth` | 原级 |
+| `agents/{store,profile}.ts`(2) | `agents` | 原级 |
+
+#### 9.1.3 门控开关:去掉的三个,需要的三条别名
+
+按 §8.1「去掉门控,等级过滤取代开关」,本区删掉三个 env 门(常量本身不再有读者):
+
+| 旧开关 | 需要的 `ONETHING_LOG` 别名 | 状态 |
+|---|---|---|
+| `ONETHING_DEBUG_SKILLS=1` | `skills=debug` | ✅ 区 ② 的 `app/logging/legacy-debug-env.ts` 已落 |
+| `ONETHING_DEBUG_STREAM=1` / `ONETHING_DEBUG_CODEX_STREAM=1` | `providers.codex=trace` | ✅ 同上(区 ② 落成 `providers.*=trace`,覆盖) |
+| `ONETHING_DEBUG_STREAM=1` / `ONETHING_DEBUG_DEEPSEEK_STREAM=1` | `providers.deepseek=trace` | ✅ 同上 |
+| `DEBUG=*skills*`(旧 skills 门的第二个入口) | `skills=debug` | ❌ 未覆盖 —— 它本来就是个野生约定,L5 直接删掉即可 |
+
+两个 provider 里 `const debugStream = shouldDebugXxxStream()` 换成
+`log.isLevelEnabled("trace")` —— **不是**把门控原样留着:它是等级检查,而且
+deepseek 的 `lastDeltaAt`(算 delta 间隔用)本来就只在这条路上更新,换成等级检查
+才能保住「gapMs 只在真的打的时候才有意义」这个语义,同时不给每条 delta 白算一次
+`previewText`。`core/engine/event-only-emitter.ts` 里的 `options.debugStream` 同理换成
+`log.isLevelEnabled('trace')`,选项字段标 `@deprecated` 留一个版本。
+
+#### 9.1.4 与 §8 的偏差(逐条)
+
+1. **core 的注入不是「每个模块一个 `logger?` 参数」,是一个进程级端口 `configureCoreLogging`。**
+   §8.3 写的是「core 模块通过注入的 `logger?: Logger` 参数/选项拿」。有天然注入缝的
+   地方照做了(`EventBus` 构造第二参 + `setLogger`、`Permission.setLogger`、
+   `InteractionRegistry.setLogger`);但 core 里写日志的地方**绝大多数是自由函数**
+   (`readPluginSettingsFile`、`repairSessionTimelineMetadata`、`writeJsonFile`…),
+   没有构造函数也没有 options —— 给每个文件发明一个 `setXxxLogger()` 只是把同一个
+   全局换了十几个名字。端口的边界仍然守住了 §8.3 的**实质**:core 不持有 root
+   (没有 sink、没有等级表、没有 node import),只有一个装配层填进来的工厂;
+   不填 = `noopLogger`。
+2. **`music/reliable-runner.ts` 的 `console.info` 迁到 `debug` 而不是 `info`。**
+   §8.1 的机械规则是 `console.info → log.info`。这一行是**每条 ncm 命令**都打的
+   耗时探针(`[music:timing] … 312ms`),按 §2.3 的语义("每请求/每 tool call 的
+   形状与决策")它就是 debug。
+3. **`themes/index.ts` 的两条语义转储从「无条件 info」降到 `debug`。**
+   同 2:它们是每次解析主题都打的整块 JSON,不是生命周期节点。
+4. **14 个 `Core*Logger` 鸭子接口:类型统一了,消息文本没动。**
+   14 个接口全部变成 `CompatLogger` 的 `@deprecated` 别名,注入点统一走
+   `toLogger(...)`(默认 `noopLogger`,不再 `?? console`),方法名按 §8.1 映射
+   (`log→debug` / `log?.()→debug()` / `warn?.()→warn()` / `error?.()→error()`)。
+   **但这些调用点的 `msg` 仍然带着 `[Tag]` 前缀与内插变量** —— 它们本来就不是
+   `console.*` 调用点(不在本区的 192 里),而 §8.2 的 msg 纪律在这里要连着改
+   ~150 条断言字符串的测试(`api-builder.ts` 一个文件就 79 处)。为此
+   `DuckLoggerAdapter` 特意做成**逐字兼容**:不加 ns 前缀、`err` 原样透传不归一化,
+   所以过渡期注入 `console` / 测试替身 / 区 ② 的 `consolePort()` 收到的参数与迁移前
+   一模一样。留给 L5:区 ② 把 `consolePort()` 换成直接传 `getLogger(ns)` 之后,
+   这些 msg 连同 `[Tag]` 前缀一起结构化,`console-port.ts` 与 `compat.ts` 的鸭子那一半同时删。
+5. **默认值从 `console` 变成 `noopLogger` 是可感知的:没人注入的调用点会静音。**
+   这正是 §8.3「缺省 `noopLogger`」要的,而且区 ② 已经在所有装配层注入点喂了
+   `consolePort(getLogger(ns))`,所以生产路径一条都没丢。代价记在这里,不藏。
+6. **静默 catch 一条都没补。** §8.1 允许"值得留痕的补一行"。本区扫下来,静默
+   catch 全是探测型(`JSON.parse` 试解析、`statSync` 探文件、`closeClient` 尽力而为),
+   补了只会造噪音。
+
+#### 9.1.5 测试侧的连带改动(本区文件)
+
+`console.warn` 不再是这些告警的出口,所以 7 个测试文件的 `vi.spyOn(console, 'warn')`
+换成断言**记录**:`captureRuntimeLogs()`(新,`runtime/logging`)把 root 换成一个只挂
+内存环的临时 root,`ofLevel('warn')` 拿到结构化记录,断言从"消息里含某个子串"改成
+"`fields.agentId === 'ghost'`"这种。涉及:`agents/__tests__/{profile,store}.test.ts`、
+`spaces/__tests__/{credentials,credentials-encryption,notifications,overlay}.test.ts`、
+`themes/__tests__/highlight-groups.test.ts`。
+
+另有两个**区 ② 的**测试因为 `CompatLogger` 的 `(...args)` 推断(联合类型上的上下文
+推断给不出参数类型)需要一处 `: unknown[]` 注解:
+`app/mcp/__tests__/core-client-state.test.ts`、`app/plugins/__tests__/core-manager.test.ts`。
+
+#### 9.1.6 门(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run log:check`(本区路径) | **0**(迁前 192) |
+| `bun run log:gate` | ok — 4 known, none new |
+| `bun run typecheck` | 3 red,全部是既有的 `spaces/__tests__/provider-dials.test.ts` |
+| `bun run lint:ci` | 334 problems(128 errors / 206 warnings)—— 与基线逐字相同,本区新增 0 |
+| `bun run boundary:gate` | ok — 13 known, none new |
+| `bun run session:gate` | ok — 0 |
+| `bun run ui:gate` | ok — 81 known, none new |
+| `ONETHING_SESSION_FREEZE=1 bun run test` | 1136 文件通过 / 1 失败:`ui-token-vars.test.ts` ×2 + `AIProviderTab.interaction.test.ts` 的 unhandled rejection —— 与本批前的既有红逐条相同。(并行三区同树,整跑中途出现过 7 个文件红,逐个**单跑全绿** —— 并发抖动 + 别区在途,见 §9.1.7) |
+
+#### 9.1.7 留给后续期 / 交给区 ② 的两条
+
+- **`DEBUG=*skills*` 这个野生入口没有别名**(§9.1.3 表末行)—— L5 连同 `ONETHING_DEBUG_*` 一起删。
+- **`app/{deeplink,providers}/__tests__` 有一个已知的脆弱点**(收尾时已绿,记在这里
+  免得下次再查一遍):它们用 `collectLogRecordsForTests()`(区 ② 新加)去抓
+  `createPluginAPI` 的拒绝理由,而 `load()` 里先 `vi.resetModules()` 再
+  `await import('../../plugins/api.js')` —— 采集器是**静态** import 的
+  `app/logging/index.js`,与 API 拿到的可能不是同一份模块实例(于是不是同一个 root)。
+  稳妥的写法是把 `logging/index.js` 也放进 `load()` 的那批动态 import 里。
+- **区 ② 的 `consolePort()` 是过渡件**:它换成直接传 `getLogger(ns)` 之后,
+  `core/logging/compat.ts` 的鸭子那一半(`LegacyDuckLogger` / `DuckLoggerAdapter`)
+  与 14 个 `@deprecated` 别名一起删,那批 `[Tag] msg` 也在同一批结构化。
+
+### 9.2 区 ② — 装配层 + server 壳(`packages/onething-runtime/src/app/**`、`apps/server/src/**`)
+
+迁前 `log:check` 该区 **245** 处,迁后 **4** —— 全部是 `apps/server/src/main.ts` 里
+**接线之前**的启动期直写(白名单,逐条列在下面)。ESLint `no-console: 'error'` 已对
+该区两棵目录开启(`eslint.config.js` 的「区 ②」块,测试目录 ignore)。
+
+#### 9.2.1 命名空间映射(文件 → ns)
+
+一条规则:**ns 从模块路径推**,`[Tag]` 前缀一律删除。117 个文件拿到模块级 logger,
+落在 40 个命名空间上:
+
+| ns | 文件(同 ns 多文件时列目录) |
+|---|---|
+| `app.backend` | `app/backend.ts` |
+| `app.events` | `app/events/index.ts` |
+| `engine.stream` | `app/engine/index.ts`、`stream-engine.ts`、`stream/{agent-loop-executor,agent-loop-runtime,provider-helpers,stream-executor}.ts` |
+| `engine.stream.chat` | `app/engine/stream/chat-logger.ts`(请求起止 / 每轮计时) |
+| `engine.stream.coalescer` | `app/events/stream-coalescer.ts` |
+| `engine.stream.emitter` | `app/events/event-only-emitter.ts` |
+| `engine.stream.image` | `app/engine/stream/{image-generation,image-stream}.ts` |
+| `engine.history` | `app/engine/stream/{chat-logger,history-shadow,message-helpers}.ts` |
+| `engine.compact` | `app/engine/context-compact.ts` |
+| `engine.prompt` | `app/engine/prompt/plugin-context.ts` |
+| `engine.triggers` | `app/engine/triggers/{session-toc,skill-review,turn-evaluation}.ts` |
+| `toolkit` / `toolkit.runner` | `app/toolkit/{wiring,plugin-tools}.ts` / `app/engine/stream/{tool-orchestrator,tool-execution}.ts` |
+| `sessions` | `app/stores/sessions.ts`、`app/session/{index,reads}.ts` |
+| `sessions.events` | `app/session/{assistant-parts,event-log,event-stats,event-translator,prepare}.ts`、`app/engine/stream/session-event-recorder.ts` |
+| `sessions.shadow` / `sessions.validation` / `sessions.toc` | `app/session/shadow.ts` / `app/session/validation.ts` / `app/toc/index.ts` |
+| `collab.*` | 23 个文件 → `collab.{board,budget,digest,observability,identity,room,wake,runtime,scheduler,referee,actors.{agent,room,mind,turn}}` |
+| `plugins.*` | 15 个文件 → `plugins`、`plugins.{health,loader,manager,market,sessions,log-monitor}` |
+| `providers.*` | `providers`、`providers.{codex,copilot,registry,dump}` |
+| `mcp` / `mcp.oauth` / `server.mcp` | `app/mcp/{bridge,client}.ts` / `app/mcp/oauth/provider.ts` / `app/server/mcp-client.ts` |
+| `ipc.<domain>` | `app/rpc/domains/{agents,models,permission-grants,prompts,providers}.ts` |
+| `server.runtime` / `server` | `app/server/runtime.ts` / `apps/server/src/main.ts` |
+| `music` / `music.radio` | `app/music/service.ts` / `app/music/{radio,dj-voice}.ts` |
+| 其余一对一 | `goals` `variables` `skills` `tasks` `usage` `settings` `storage` `scratchpad` `todo-plan` `prompts` `project-dirs` `interaction` `external-agents` `scheduler` `permission` `channel.outbound` `daemon` `logging` |
+
+#### 9.2.2 等级偏差(§8.1 的机械规则之外,逐条)
+
+| 位置 | 原级 | 迁到 | 理由 |
+|---|---|---|---|
+| `music/radio.ts` 的 `[radio:timing]` ×3、`[music:watch]` ×1、`music/dj-voice.ts` ×2 | `console.info` | `debug` | 每次开台/每次换歌的计时与状态转移,是「每请求的形状」不是生命周期节点 |
+| `providers/model-registry.ts` "Fetching from models.dev" | `console.log` | `debug` | 同上;紧随其后的 "fetched N models" 留 `info`(它是一次真的加载完成) |
+| `mcp/bridge.ts` ×3 | `console.log` | `debug` | 每次构面时的目录/路由决策 |
+| `stores/sessions.ts` 的 `[SessionUsage]` ×2 | `console.log` | `debug` | 每轮用量写入的形状转储(§8.1「每请求/每 tool call」那一行) |
+| `session/validation.ts` 的 consistent 分支 | `console.log` | `debug` | 一致时不该占 info;不一致仍是 `warn` |
+| `engine/stream/chat-logger.ts` 的 `logMessageBodyShape` | `console.log`(带 `ONETHING_DEBUG_HISTORY_SHAPE` 门控) | 摘要 `debug` / 逐行铺开 `trace` | 见 9.2.3 |
+| `server/runtime.ts` "index ownership backfilled" | `console.log` | `info` | 一次性迁移完成 = 生命周期节点 |
+| `plugins/loader.ts` "loaded local dev script(s)" | `console.log` | `info` | 启动可见性(原注释就是这么写的) |
+| `collab/actors/runtime.ts` "migration complete" | `console.info` | `info` | 原级 |
+
+#### 9.2.3 门控开关 → 等级过滤(特殊职责 a)
+
+`ONETHING_DEBUG_*` 的门控**全部拆掉**,判据换成 `log.isLevelEnabled(...)`:
+
+- `app/events/stream-coalescer.ts` 与 `app/events/event-only-emitter.ts` 里两份
+  `shouldDebugStream()` 副本删除(第三份在 `app/providers/builtin/codex.ts` 的
+  `shouldDebugCodexStream()`,同样删)。coalescer 直接 `log.trace`;emitter 与 codex
+  仍要一个布尔(core 的 emitter / SSE 回调吃的是谓词),改成
+  `getLogger('engine.stream.emitter').isLevelEnabled('trace')` 与
+  `getLogger('providers.codex').isLevelEnabled('trace')`。
+- `app/engine/stream/chat-logger.ts` 的 `VERBOSE_HISTORY_SHAPE` 常量删除。
+
+别名层落在**一个**地方:`app/logging/legacy-debug-env.ts`
+(`resolveLegacyDebugAliases` + `composeLevelSpecWithLegacyAliases`),由
+`app/logging/index.ts` 的 `resolveLevelSpec()` 拼进 spec。**它们是废弃的,L5 整表删除**;
+`configureLogging()` 命中时打一条 `warn`(`deprecated debug env aliases applied`,
+带 `switches` / `mappedTo`)。
+
+| 旧开关 | 等价 spec |
+|---|---|
+| `ONETHING_DEBUG_STREAM=1` | `engine.stream=trace,providers.*=trace,renderer.chat-store=trace,renderer.ipc-hub=trace` |
+| `ONETHING_DEBUG_CODEX_STREAM=1` / `ONETHING_DEBUG_DEEPSEEK_STREAM=1` | 同上 |
+| `ONETHING_DEBUG_HISTORY_SHAPE=1` | `engine.history=trace` |
+| `ONETHING_DEBUG_SKILLS=1` | `skills=debug` |
+| `DEBUG=<任意非空>` | `debug`(默认级) |
+
+强弱:显式 `ONETHING_LOG` 永远赢 —— 别名的**默认级**排在 base 之前(后写后赢),
+别名的 **ns 规则**排在 base 之后(同特异性时解析器保持插入序,base 先命中)。
+`applyDiagnosticsMode(false)` 也走同一个 `resolveLevelSpec()`,所以关掉诊断模式不会
+顺手丢掉别名。用例:`app/logging/__tests__/legacy-debug-env.test.ts`(8 条)。
+
+**两处与派工文本的偏差:**
+
+1. `ONETHING_DEBUG_HISTORY_SHAPE` 映射到 `engine.history=**trace**` 而不是 `=debug`。
+   `chat-logger` 现在分两档:摘要 `debug`、逐行铺开(400 条会话 ~2400 行 util.inspect,
+   2026-08-18 实测每次发送 ~300ms 主线程)`trace`。旧开关开的是**逐行铺开**那一档,所以
+   必须映射到 trace;顺带保证「诊断模式 = 全域 debug」不会把那 300ms 请回来。
+   trace 是 debug 的严格超集,派工要的那一档一条不少。
+2. `[EventBus] emit … → Session (onAny)` 那 4820 行**不在本区** —— 它们在
+   `packages/core/events/event-bus.ts`(区 ①)。同理 `[ProviderRequestDump]`
+   (`runtime/src/agent-loop/providers/*`)、`[TriggerManager]`
+   (`core/engine/triggers.ts`)、`[ContextUsage]`(`core/engine/context-usage.ts`)、
+   `[buildHistoryMessages]` 的 core 半边。本区只迁了 `app/events/index.ts`
+   (`app.events`,3 条)与 `buildHistoryMessages` 在装配层的那一半(`engine.history`)。
+
+#### 9.2.4 注入式鸭子 logger 端口(特殊职责 c)
+
+装配层有 **135 处** `logger: console`(它们不是 `console.<method>(` 调用形状,所以
+`log:check` 一条都不数,但同样把命名空间丢给了 `ns='console'`)。core 的 8 个
+`Core*Logger` 鸭子接口还在被区 ① 统一,**现在传真 `Logger` 会因签名不兼容炸掉**
+(`(...args: unknown[]) => void` vs `(msg: string, fields?, err?) => void`)。
+
+落法:新增 `app/logging/console-port.ts` 的 `consolePort(log, plainLevel = 'debug')` ——
+**同形状**替身(调用签名逐字不变,任何吃 `console` 的端口直接换),内部把第一个字符串
+参数当 `msg`(顺手剥 `[Tag] `)、第一个 `Error` 进 `err`、其余进 `fields`。36 个文件的
+`logger: console` 全部换成 `logger: consoleLog`(= `consolePort(getLogger(ns))`)。
+`app/storage/index.ts` 的 `onInitializeError: console.error` 同理。
+**这是过渡件**:区 ① 把 `Core*Logger` 统一到 `Logger` 之后,调用点改传 `getLogger(ns)`,
+本文件删。
+
+`setRuntimeLoggerRoot(getRootLogger())` 由 `configureLogging()` 调用(区 ① 落的那一句
+已在树里,本区只补了 `shutdownAppLogging()` / `resetLoggingForTests()` 里的
+`setRuntimeLoggerRoot(null)` —— 拆线也要拆干净)。
+
+#### 9.2.5 `apps/server/src/main.ts` 的白名单(特殊职责 d)
+
+4 条,全部在 `configureLogging()` **之前**(它必须排在 runtime 装配之后,否则
+`server.jsonl` 会写进另一个 store 的 `log/`,§7.3),逐条带
+`// eslint-disable-next-line no-console` + 一行理由:
+
+| 行 | 内容 |
+|---|---|
+| `main.ts:45` | FATAL:非回环且无 `ONETHING_SERVER_TOKEN`,拒绝启动 |
+| `main.ts:55` | WARNING:`ONETHING_SERVER_ALLOW_INSECURE=1` 时的不安全监听告警 |
+| `main.ts:74` | FATAL:同一 store 已由桌面 core 服务,让位 |
+| `main.ts:92` | FATAL:runtime 装配失败(日志接线在它之后) |
+
+接线**之后**的行全部迁走,包括两条 `EADDRINUSE` / listen 失败 → `log.fatal`
+(`process.on('exit')` 的 `flushSync` 保证落盘)。
+
+**顺手补的一处(必要,不是顺带优化)**:`configureLogging({ consoleEcho: 'pretty' })`。
+server 是独立进程,终端那一侧原本靠 `LegacyConsoleSink` 的**原样透传**;所有 console
+迁走之后没有回显 sink,终端会整只哑掉。同时给回显 sink 加了一道
+`record.ns === LEGACY_CONSOLE_NS` 的跳过 —— 未迁移的行已经透传过一次,再回显就是打两遍。
+
+#### 9.2.6 等级 spec 的单向下发(区 ③b 提出)
+
+渲染侧 hub 的等级只认 localStorage `onething:log`,主进程的 `ONETHING_LOG`(以及别名
+展开出来的 `renderer.*=trace`)到不了那边。本批落了**收方那一半**:`logs` RPC 域新增
+`config` 路由(`packages/shared/ipc/logs.ts` 的 `LogConfigResponse` +
+`app/rpc/domains/logs.ts` 的 handler,返回 `getLogLevelSpec()`)。做成**拉**而不是推:
+渲染进程可能比 `configureLogging()` 晚起、也可能重载,推要处理「推的时候没人听」的窗口。
+
+**尾巴(L5 / 区 ③b)**:渲染侧还没有人调它 —— `installRendererLogging()` 里装完 hub
+之后拉一次 `logsRouter.config()`,把返回的 spec 当默认(localStorage 仍是本地覆写)。
+契约与 handler 已就位,不需要再改一次协议。
+
+#### 9.2.7 顺手改的测试(本区目录内)
+
+10 个测试文件断言的是 `vi.spyOn(console, …)`,而日志已经不走 console。改成断言**记录**:
+
+- 新增 `collectLogRecordsForTests(spec = 'trace')`(`app/logging/index.ts`):把根 logger
+  上发生的记录收进数组,`stop()` 解除订阅并恢复等级。用于装配层自己的输出。
+- 断言来自产品层的输出时用区 ① 的 `captureRuntimeLogs()`(`@onething/runtime/logging`)。
+
+| 文件 | 换成 |
+|---|---|
+| `agents/__tests__/store.test.ts`、`collab/__tests__/agent-session-deleted-agent.test.ts` | `captureRuntimeLogs()`(warn 来自 `runtime/src/agents/store.ts`,区 ①) |
+| `engine/prompt/__tests__/prompt-context.test.ts` | `captureRuntimeLogs()`(warn 来自 `runtime/src/prompts/builder.ts`) |
+| `external-agents/__tests__/{host-tools,permission-and-interaction,steering-delivery}.test.ts` | `collectLogRecordsForTests()` / 给 `vi.mock('../../logging/index.js')` 补 `getLogger` + `consolePort` |
+| `plugins/__tests__/{config,event-routing,local-plugins}.test.ts`、`session/__tests__/{event-log,event-log-s1}.test.ts`、`toc/__tests__/record-turn.test.ts` | `collectLogRecordsForTests()` |
+
+#### 9.2.8 门(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run log:check \| grep '<区 ② 路径>'` | 迁前 **245** → 迁后 **4**(全是 §9.2.5 的白名单) |
+| `bun run log:gate` | ok — 4 known, none new |
+| `bun run typecheck` | 3 red,全部是既有的 `spaces/__tests__/provider-dials.test.ts`;本区 0(过程中另见区 ① 在途的 `core/engine/stream-processor.ts` / `core/plugins/lifecycle.ts` 中间态,收尾时已消) |
+| `bunx vitest run packages/onething-runtime/src/app apps/server` | 291 文件通过 / 1 skipped,**0 失败** |
+| `ONETHING_SESSION_FREEZE=1 bun run test`(全量) | 1136 文件通过 / 1 失败:`ui-token-vars.test.ts` ×2 + `AIProviderTab.interaction.test.ts` 的 unhandled rejection —— 与本批前的既有红逐条相同 |
+| `bun run lint:ci` | 334 problems(**128 errors / 206 warnings**)= 基线,本区新增 **0** |
+| `bun run boundary:gate` | ok — 13 known, none new |
+| `bun run session:gate` | ok — 0 |
+| `bun run server:build` + `node scripts/log-smoke.mjs` | 16/16 通过(`consoleEcho: 'pretty'` 生效后终端可读,`server.jsonl` 逐条对上) |
+
+#### 9.2.9 与区 ① 的两处交界(已协调,记一笔)
+
+1. **core 的 `CorePluginAPILogger` 默认从 console 改成 noop**(区 ① 的
+   `toLogger(undefined) → noopLogger`)之后,`app/plugins/api.ts` 不注入 logger 就等于
+   把 core 的声明门拒绝、storage 拒绝、超时告警**全部静音**。本区补上注入:
+   `logger: options?.logger ?? getLogger('plugins').child({ pluginId })`,并给
+   `CreatePluginAPIOptions` 加了 `logger?: CompatLogger`(测试注入口)。
+2. 因此 `app/deeplink/__tests__/registry.test.ts` 与
+   `app/providers/__tests__/credential-strategy.test.ts` 的 console spy 断言改成
+   **从 `load()` 里那一份 logging 单例**取记录(`vi.resetModules()` 之后模块是新的,
+   静态 import 的捕获器收的是另一个 root —— 这是本批踩过的坑,写在注释里了)。
+
+#### 9.2.10 留给 L5 的尾巴(本区)
+
+- `app/logging/legacy-debug-env.ts` 整表删除(5 个旧开关 + `DEBUG`),连同
+  `configureLogging()` 里那条弃用 warn。
+- `app/logging/console-port.ts` 删除 —— 等区 ① 把 `Core*Logger` 统一到 `Logger`,
+  135 处 `logger: consoleLog` 改传 `getLogger(ns)`。
+- 渲染侧调用 `logs.config`(§9.2.6)。
+- `writeAppLog` 的 `channel/*` 调用点仍是「source 当 ns」的形状(§7.5 的老尾巴,本批
+  未动 —— 它已经是结构化入口,不在 `log:check` 的计数面上)。
+
+### 9.3a 区 ③a — Electron 宿主(`apps/electron/src/**`)
+
+迁前 `log:check` 该区 **155** 处,迁后 **0**(白名单 `apps/electron/src/main/cli/stdout.ts` 除外)。
+主进程一律 `@onething/app/logging` 的 `getLogger(ns)`;preload **零日志**(见下);
+CLI 的用户输出走 `stdout.ts`,不是日志。
+
+#### 映射表(文件 → ns / 去向)
+
+| 文件 | 处 | 去向 |
+|---|---|---|
+| `main/cli/index.ts` | 44 | **全部 → `stdout()` / `stderr()`**(产品输出,非日志) |
+| `main/cli/plugin-command.ts` | 20 | 同上 |
+| `main/ipc/evals.ts` | 24 | `ipc.evals` |
+| `app/main-process.ts` | 16 | `app.boot` |
+| `window/macos-panel.ts` | 6 | `window.macos-panel` |
+| `main/ipc/sessions.ts` | 4 | `ipc.sessions` |
+| `main/bridges/ipc-bridge.ts` | 4 | `ipc.bridge` |
+| `window/index.ts` | 3 | `window` |
+| `main/ipc/themes.ts` | 3 | `ipc.themes` |
+| `main/ipc/skills.ts` | 3 | `ipc.skills` |
+| `main/ipc/plugins.ts` | 3 | `ipc.plugins` |
+| `preload/bridge.ts` | 2 | **删除**(见偏差 3) |
+| `main/ipc/tools.ts` | 2 | `ipc.tools` |
+| `main/ipc/settings.ts` | 2 | `ipc.settings` |
+| `main/ipc/network-proxy.ts` | 2 | `ipc.network-proxy` |
+| `main/ipc/evals-workbench.ts` | 2 | `ipc.evals-workbench` |
+| `main/ipc/evals-provider-adapter.ts` | 2 | `ipc.evals` |
+| `main/bridges/ipc-bridge-lifecycle.ts` | 2 | `ipc.bridge` |
+| `window/todo-plan-window.ts` | 1 | `window.todo-plan` |
+| `window/renderer-targets.ts` | 1 | `window` |
+| `web-preview/web-preview.ts` | 1 | `web-preview` |
+| `search/ipc.ts` | 1 | `search` |
+| `main/ipc/permission.ts` | 1 | `ipc.permission` |
+| `main/ipc/mcp.ts` | 1 | `ipc.mcp` |
+| `main/ipc/interaction.ts` | 1 | `ipc.interaction` |
+| `main/ipc/handlers.ts` | 1 | `ipc` |
+| `browser/widevine.ts` `browser/search-engine.ts` `browser/profiles.ts` | 3 | `browser` |
+
+`[Tag]` 前缀全删,消息改成固定英文短句,变量进 `fields`,`error` 一律走第三参 `err`。
+
+#### 与 §8.1 机械映射的偏差(逐条)
+
+1. **`main/ipc/sessions.ts` 的两处 `console.info('[Perf][SessionPage][ipc]', …)` → `log.debug`。**
+   §8.1 说 `console.info → log.info`,但这两条是**每请求**的形状/耗时读数,按 §2.3
+   的语义就是 debug。级别语义优先于逐字映射。
+2. **`main/ipc/evals.ts` 里 `[Evals] Send-view rebuild failed…` 由 `console.error` 降为 `log.warn`。**
+   它就地降级到 storage view 并继续(`synthesizedContextOrigin = 'synthesized'`),
+   是"可恢复降级",按 §2.3 属 warn 而不是 error。
+3. **`preload/bridge.ts` 的 2 处不是迁移,是删除。**
+   preload 是独立 bundle(esbuild/CJS,contextIsolated),`@onething/app/logging`
+   带 node fs 与整棵装配层,不能进;为两行调试 trace 造一个 preload 本地 shim
+   或走 `logs` RPC 都不成比例。而这两行说的事(`openImagePreview` /
+   `openImageGallery` 被调了)在主进程侧已经有等价且更靠谱的一条 ——
+   `window/index.ts` 的 `log.debug('image preview window requested', …)`,
+   gallery 模式同样经它。删掉后 **preload 的 console 计数 = 0**,不需要白名单。
+4. **`app/main-process.ts` 的六处 `(non-blocking)` 子系统失败统一成一条消息 + `fields.subsystem`。**
+   `log.error('subsystem startup failed', { subsystem: 'plugins' | 'scheduler' | 'mcp' |
+   'acp' | 'model-registry' | 'gateway' | 'skills', blocking: false }, err)` ——
+   msg 稳定、可聚合;`core-http` 的两条挂载/关闭失败另有各自的 msg,同样带
+   `fields.subsystem: 'core-http'`。
+5. **`console.log(formatStartupSummary())` → `log.info('startup summary', { summary })`。**
+   `formatStartupSummary()` 返回的是一行已经拼好的 `[Perf][Startup] …` 文本(它住在
+   区 ① 的 `runtime/src/perf/startup-trace.ts`,本批不动),所以整串进 `fields.summary`
+   而不是 msg。彻底结构化要等区 ① 把那个函数改成返回段落数组。
+
+#### 白名单(该区保留 console 的地方)
+
+**空。** 该区没有一处需要在 logging 配置好之前直写 stderr 的启动期 FATAL ——
+`main.ts` 的启动路径先 `configureLogging()` 再做别的;CLI 的 `stderr()` 是产品
+输出口,不是日志白名单。ESLint 的 `ignores` 只有 `main/cli/stdout.ts`(它就是那个口)
+与测试目录。
+
+#### ESLint
+
+`eslint.config.js` 末尾新增一块,`files: ['apps/electron/src/**/*.ts']`、
+`ignores: ['apps/electron/src/main/cli/stdout.ts', 'apps/electron/src/**/__tests__/**',
+'apps/electron/src/**/*.test.ts']`、`rules: { 'no-console': 'error' }`。
+
+#### 门(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `log:check`(本区) | 迁前 155 → 迁后 **0** |
+| `bun run log:gate` | ok — none new(全仓四区并行下降中) |
+| `bunx eslint apps/electron/src` | `no-console` 错误 **0**;该区仅剩 2 个既有 `no-this-alias`(两个 auth 测试文件) |
+| `bun run lint:ci` | 335(129 errors);**本区贡献 0** —— 逐文件核过,报错文件无一是本批改动的 |
+| `bun run typecheck` | 3 red,全部是既有的 `spaces/__tests__/provider-dials.test.ts` |
+| `bunx vitest run apps/electron` | 78 文件 / 406 测试全过 |
+| `ONETHING_SESSION_FREEZE=1 bun run test` | 本区 0 红;全仓 3 文件红,全在并行区(`app/external-agents/*` ×2、`app/plugins/config`、`renderer/ui-token-vars` ×2 既有) |
+| `bun run boundary:gate` | ok — 13 known, none new |
+| `bun run session:gate` | ok — 0 |
+| `bun run ui:gate` | ok — 81 known, none new |
+| `bun run build`(electron) | ok;`out/main/cli.js` 仍 29KB、**不含 electron**,`node out/main/cli.js --help` 正常出表(证明 `stdout.ts` 换法没把装配层拖进 CLI 图) |
+| `bun run server:build` + `node scripts/log-smoke.mjs` | 16/16 绿 |
+| 结构化自证 | 临时单测(跑完即删):对 `ipc.evals` / `ipc.sessions` / `ipc.bridge` / `app.boot` / `window` / `browser` / `search` 各打一条,root sink 收到的 7 条记录 `ns` 逐一对上、`msg` 不拼变量、`fields` 与归一化后的 `err` 都在 |
+
+#### 留下的尾巴
+
+- **`logger: console` 还有 ~110 处**(`main/ipc/*.ts`、`ipc/*.ts` 把 `console` 当鸭子
+  logger 注入区 ① 的 IPC 投影)。它不是 `console.<method>(` 调用点,`log:check` 与
+  `no-console` 都数不到,但那些投影内部的 `logger.error(...)` 最终仍打到 console
+  (迁移期由 `LegacyConsoleSink` 兜住,记为 `ns='console'`)。换掉它要动区 ① 的
+  投影签名(把鸭子接口统一成 `Logger`),按 §8.3 属区 ① / L5,本批不越界。
+- `app/main-process.ts:436` 的 `hydrateProcessEnvFromLoginShell({ logger: console })` 同上。
+
+---
+
+### 9.3b 区 ③b — renderer(`packages/renderer/**`)
+
+迁前 `log:check` 该区 **230** 处,迁后 **0**(该区无白名单)。全部走
+`@/services/log` 的 `getLogger(ns)`(L3 落的 `RendererLogHub`);`services/crash-log.ts`
+早在 L3 就是 hub 的 producer,本批一行未动。
+
+#### 映射表(文件 → ns / 等级)
+
+| 文件 | ns | 站点 | 等级说明 |
+|---|---|---|---|
+| `stores/chat.ts` | `renderer.chat-store` + `renderer.perf` | 27 | 逐 chunk → `trace`;权限缓存/流完成 → `debug`;`[Perf][SessionPage]` → `renderer.perf` 的 `debug`;其余 warn/error 原级 |
+| `stores/themes.ts` | `renderer.themes` | 20 | 原 `isThemeDebugEnabled()` 门下的 `console.log` → `debug`;error 原级 |
+| `stores/sessions.ts` | `renderer.sessions-store` + `renderer.perf` | 19 | `[Perf][SessionSwitch]` ×2 → `renderer.perf` 的 `debug`;其余 error 原级 |
+| `stores/settings.ts` | `renderer.settings` | 12 | 主题门下的 `console.log` → `debug`;error/warn 原级 |
+| `stores/evals.ts` | `renderer.evals` | 11 | 运行开始/结束 = 生命周期 → `info`;逐事件 → `debug`;**`evalsRunStart failed` 由 `console.log`→`error`(§8.1 的「错误当 log 打」三修之一)** |
+| `services/ipc-hub.ts` | `renderer.ipc-hub` | 11 | 逐 chunk / 逐 stream 事件 → `trace`;监听器注册完成 → `info`;`request:snapshot` → `debug` |
+| `components/settings/skills/useSkills.ts` | `renderer.skills` | 10 | 全 `error`,`err` 走第三参 |
+| `components/ImagePreviewWindow.vue` | `renderer.image-preview` | 10 | `console.log` 全是形状转储 → `debug` |
+| `components/chat/message/markdownRenderCache.ts` | `renderer.markdown-cache` | 10 | IDB 降级 → `warn`;`restored N entries` `info`→`debug`(每次启动都打的形状行) |
+| `App.vue` | `renderer.app` + `renderer.perf` | 8 | `[Perf][Startup]` ×2 → `renderer.perf` 的 `debug`;其余 warn 原级 |
+| `stores/media.ts` | `renderer.media` | 7 | 全 `error` |
+| `utils/stream-scroll-trace.ts` | `renderer.stream-scroll` | 5 | 见下「门控移除」 |
+| `stores/scratchpad.ts` | `renderer.scratchpad` | 5 | 全 `error` |
+| `composables/usePermissionResponder.ts` | `renderer.permission` | 5 | 应答/拒绝的形状行 → `debug`;`canRespond=false` → `warn`;失败 → `error` |
+| `components/SettingsPage.vue` | `renderer.settings-page` | 5 | 原级 |
+| `components/settings/PluginsSettingsTab.vue` | `renderer.plugins` | 5 | 原级 |
+| `components/settings/mcp/useMCPServers.ts` | `renderer.mcp` | 5 | 原级 |
+| `stores/projects.ts` | `renderer.projects` | 4 | 原级 |
+| `stores/collabBoard.ts` | `renderer.collab-board` | 4 | 原级 |
+| `components/settings/provider/useProviderAuth.ts` | `renderer.provider-auth` | 4 | 原级 |
+| `components/chat/message/MessageActions.vue` | `renderer.message-actions` | 4 | 原级 |
+| `components/settings/provider/useProviderSettings.ts` | `renderer.provider-settings` | 3 | 原级 |
+| `components/chat/MessageList.vue` | `renderer.message-list` + `renderer.perf` | 3 | `[Perf][SessionRender]` → `renderer.perf` 的 `debug` |
+| `components/chat/message/DiffView.vue` | `renderer.diff-view` | 3 | 原级 |
+| `stores/interactions.ts` | `renderer.interactions` | 2 | 原级 |
+| `composables/usePickerOrchestration.ts` | `renderer.picker` | 2 | 原级 |
+| `composables/useMarkdownRenderer.ts` | `renderer.markdown` | 2 | 原级 |
+| `components/chat/message/MessageSystem.vue` | `renderer.message-system` | 2 | 原级 |
+| `stores/workspace.ts` | `renderer.workspace-store` | 1 | 原级 |
+| `stores/music.ts` | `renderer.music` | 1 | `[radio:timing]` `info`→`debug`,中文消息改英文短句,毫秒进 `fields` |
+| `platform/web.ts` | `renderer.platform-web` | 1 | 原级 |
+| `main.ts` | `renderer.boot` | 1 | `log`→`debug`(HMR 主题纠偏,不是生命周期节点) |
+| `editor` / 其余单点组件 | `renderer.<component>` | 各 1 | `ChatPanel`/`StreamingMarkdown`/`StreamingHtmlSegment` 的 `[Perf][Markdown]` → `renderer.perf`;`StreamingCodeBlock`、`SelectionToolbar`、`TodoPlanPanel`、`ModelSelector`、`ChannelsSettingsTab`、`BashSettingsPanel`、`PluginAmbientLayer`、`PluginWebviewFrame`、`VirtualTable.example`、`VoiceRuntimeWindow`、`RightWorkbenchPanel`、`CoordinatorStatusBar`、`useCollabReactions`、`useModelLedger`、`EvalsRunsView`、`EvalsFixturesView` 原级 |
+
+#### 门控移除(§8.1 最后两行)
+
+| 原门 | 处置 |
+|---|---|
+| `shouldDebugStream()`(`services/ipc-hub.ts:38`、`stores/chat.ts:1011` 两份拷贝) | **删除**。两处调用点改 `log.trace`;字段计算贵的那两处(`previewText`/`debugGapMs`)前面留 `log.isLevelEnabled('trace')` —— 那是**性能护栏**不是开关(关着时等价于旧代码不进 if)。等价开法:`renderer.chat-store=trace` / `renderer.ipc-hub=trace`。区 ② 若实现 `ONETHING_DEBUG_STREAM` 别名,**renderer 侧需要的是 `renderer.chat-store` + `renderer.ipc-hub` 两个 ns 一起降到 trace**(与主进程的 `engine.stream=trace` 同一次映射里加即可)。 |
+| localStorage `onething:debug-stream` | 同上,已无读者。 |
+| localStorage `onething:debug-theme`(`stores/themes.ts:14`、`stores/settings.ts:34` 两份 `import.meta.env.DEV &&` 拷贝) | **删除**两个 `isThemeDebugEnabled()`。等价开法:`renderer.themes=debug` / `renderer.settings=debug`。 |
+| localStorage `debug:stream-scroll`(`utils/stream-scroll-trace.ts`) | **删除**。`isTraceEnabled()` 保留为导出(唯一消费者 `composables/useFollowScroll.ts` 一行未动),实现改成 `log.isLevelEnabled('trace')`。环形缓冲与 `window.__streamScrollTrace` 取样口原样保留;`printTrace`/`printSummary` 的 `console.table` 改成 `log.debug` + **返回值不变**(devtools 里返回的数组本来就渲染成表)。顺手删掉只为这个门存在的 `refreshEnabled()`。`docs/design/streaming-markdown-rendering.md` §8.3 的开法同步改写。 |
+| `import.meta.env.VITE_DEBUG_TOOL_INPUT`(`stores/chat.ts`)+ 它的 `ImportMetaWithDebugEnv` 类型 | **删除**。`tool_input_*` 那两类 chunk 照旧只在自己的分支里记一条 `trace`(chunk 类型是**内容范围**不是门)。 |
+| `import.meta.env?.DEV`(`stores/chat.ts` 的 plugin-status 丢弃行) | **删除**,改 `log.debug`。 |
+
+#### 与 §8.1 的等级偏差(逐条)
+
+1. **`stores/evals.ts:313` `run-done`/`error` → `info`**(机械规则会给 `debug`)。它是一次 evals 运行的**结束节点**,与同文件的 `startRun` 成对;按 §2.3「生命周期节点 = info」。
+2. **`markdownRenderCache.ts:148` `info` → `debug`**(降级)。`restored N entries from disk` 每次冷启动都打,是缓存的形状转储而不是生命周期节点。
+3. **`stores/music.ts:273` `info` → `debug`**(降级)。`口播收到→出声 Xms` 是每条口播都打的时延转储。
+4. **`main.ts:37` `log` → `debug`**(而非 `info`)。它只在 HMR / 旧值残留时触发,是纠偏而非启动节点。
+5. **所有 `[Perf][*]` 的 `console.info` → `renderer.perf` 的 `debug`**。按 §8.1「Perf 逐帧 → trace」的精神,但这几条是**每会话切换 / 每次慢渲染一条**(不是逐帧),`debug` 更贴 §2.3;逐帧的那一类(`stream-scroll`)确实落在 `trace`。
+6. **三处「错误当 log 打」已修**:`stores/chat.ts` 的 `Stream error:` → `log.error('stream failed', …)`;`stores/evals.ts` 的 `evalsRunStart failed:` → `log.error`;`services/ipc-hub.ts` 的 `session:event stream:error` → 它本身只是**事件到达**的形状转储(真正的错误由 chat store 那条 `error` 记),故留在 `trace`,不当第三处 —— 第三处是 `SettingsPage.vue:785` 的 `openPath` 返回错误串,原本 `warn` 拼字符串,现在 `log.warn('open settings.json reported an error', { result })`。
+
+#### 静默 catch
+
+未新增 `log.debug('…swallowed')`。本区的 `catch {}` 全是 localStorage / JSON 探测(§8.1 明说不补),唯一有诊断价值的两处(`themes.ts` 的 CSS 变量缓存写入、`markdownRenderCache` 的 IDB 事务)本来就已经有 `warn`。
+
+#### 白名单
+
+**空**。该区没有必须直写 console 的启动期 FATAL:hub 在 `main.ts` 的第一行装(早于 `installGlobalCrashCapture`),之前的一切只是模块求值。`services/log.ts` 里 `EchoSink` 的 dev 回显走**动态成员访问**(`this.target[ECHO_METHOD[level]]`),`log:check` 的 `console.<method>(` 形状与 ESLint `no-console` 都不认它 —— 不是绕过,是它本来就是 sink 而不是调用点。
+
+#### ESLint
+
+`eslint.config.js` 新增一格:`files: ['packages/renderer/**/*.ts', 'packages/renderer/**/*.vue']`,
+`ignores` 为 `__tests__` / `*.test.ts` / `*.spec.ts`,`rules: { 'no-console': 'error' }`。
+
+#### 门(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run log:check \| grep packages/renderer` | 迁前 **230** → 迁后 **0** |
+| `bun run log:gate` | ok — 4 known, none new(全仓 822 → 4,四区合并后的数;基线文件待落库那批重录) |
+| `bun run typecheck` | node 面 5 red:3 条既有 `spaces/__tests__/provider-dials.test.ts` + 2 条来自并行区的 `app/plugins/api.ts` / `app/tools/core/permission-policy.ts`(**不在本区**);`typecheck:web` 全绿 |
+| `ONETHING_SESSION_FREEZE=1 bunx vitest run packages/renderer` | 338 文件通过 / 1 失败:`ui-token-vars.test.ts` ×2 + `AIProviderTab.interaction.test.ts` 的 unhandled rejection —— 与本批前的既有红逐条相同 |
+| `bun run lint:ci` | 335(129 errors / 206 warnings)。**本区新增 0**:stash 掉本区改动后单跑 `eslint packages/renderer` 同样是 21 errors / 36 warnings,一条不差;+1 error 来自并行区 |
+| `bun run ui:gate` | ok — 81 known, none new |
+| `bun run boundary:gate` | ok — 13 known, none new |
+| `bun run session:gate` | ok — 0 |
+
+#### 留给 L5 的尾巴(本区)
+
+- `ONETHING_DEBUG_STREAM` 的 renderer 侧别名要覆盖 `renderer.chat-store` + `renderer.ipc-hub` 两个 ns(见上表);区 ② 的 spec 解析器实现,本区只提需求。
+- `renderer.perf` 这个 ns 不在 §2.2 的表里(表里只有 `renderer.<store|component|service>`)。它是**跨组件的横切面**(chat store / sessions store / App / MessageList / ChatPanel / 两个 Streaming 组件都往里写),按 store 或 component 拆开就没法一句 `renderer.perf=debug` 全开。要么落一行进 §2.2,要么下一批改成 `renderer.<x>` + `fields.perf`。

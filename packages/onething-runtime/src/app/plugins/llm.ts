@@ -38,6 +38,10 @@ import { resolveUtilityModel } from '../providers/utility-model.js'
 import { generateChatResponse } from '../providers/index.js'
 import { recordUsage } from '../usage/index.js'
 import type { ProviderConfigWithKey } from '../engine/stream/stream-executor.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins')
+
 
 /* ── 配额:每插件的调用时刻环 ─────────────────────────────────────────────── */
 
@@ -153,7 +157,7 @@ export async function pluginLlmComplete(
             },
           })
         } catch (error) {
-          console.error(`[Plugin:${pluginId}] llm.complete usage billing failed:`, error)
+          log.error('plugin llm.complete usage billing failed', { pluginId }, error)
         }
       },
     })

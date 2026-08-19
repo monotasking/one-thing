@@ -1,4 +1,5 @@
 import type { JsonArray, JsonObject, JsonValue } from '../json.js'
+import { toLogger } from '../logging/index.js'
 import {
   callMCPToolWithTimeout,
   connectMCPClientWithAdapters,
@@ -147,7 +148,7 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
 
   private handleUnexpectedDisconnect(): void {
     const logger = this.adapters.logger
-    logger?.warn?.(`[MCP:${this.id}] Connection lost`)
+    toLogger(logger).warn(`[MCP:${this.id}] Connection lost`)
     this.client = null
     this.transport = null
     this.adapters.onStateChange?.(markMCPServerError(this._state, 'Connection lost'))
@@ -159,7 +160,7 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
   private scheduleNextReconnect(): void {
     if (!this.autoReconnect || this.pendingReconnect) return
     if (this.reconnectAttempts >= MCP_RECONNECT_MAX_ATTEMPTS) {
-      this.adapters.logger?.error?.(
+      toLogger(this.adapters.logger).error(
         `[MCP:${this.id}] Giving up after ${MCP_RECONNECT_MAX_ATTEMPTS} reconnect attempts`,
       )
       this.adapters.onStateChange?.(markMCPServerError(
@@ -173,7 +174,7 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
       Math.min(this.reconnectAttempts, MCP_RECONNECT_DELAYS_MS.length - 1)
     ]
     this.reconnectAttempts += 1
-    this.adapters.logger?.log?.(
+    toLogger(this.adapters.logger).debug(
       `[MCP:${this.id}] Reconnecting in ${delayMs}ms (attempt ${this.reconnectAttempts})`,
     )
     this.pendingReconnect = this.scheduleReconnect(() => {
@@ -239,7 +240,7 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
     const logger = this.adapters.logger
 
     return runMCPConnectedClientOperation(this.client, async client => {
-      logger?.log?.(`[MCP:${this.id}] Calling tool: ${toolName}`, args)
+      toLogger(logger).debug(`[MCP:${this.id}] Calling tool: ${toolName}`, args)
       // P2-5: hand the SDK our cached definition so a 2026-07-28 Streamable
       // HTTP connection mirrors the spec-required Mcp-Method/Mcp-Name
       // (Mcp-Param-*) headers; legacy connections ignore it.
@@ -256,13 +257,13 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
           // P3-1: surface task progress in the logs; the poll budget keeps
           // its own default (10 min) independent of the per-call timeout.
           onTaskStatus: (task, pollIndex) => {
-            logger?.log?.(`[MCP:${this.id}] Task ${task.taskId} poll #${pollIndex}: ${task.status}${task.statusMessage ? ` — ${task.statusMessage}` : ''}`)
+            toLogger(logger).debug(`[MCP:${this.id}] Task ${task.taskId} poll #${pollIndex}: ${task.status}${task.statusMessage ? ` — ${task.statusMessage}` : ''}`)
           },
         },
       )
-      logger?.log?.(`[MCP:${this.id}] Tool result:`, result)
+      toLogger(logger).debug(`[MCP:${this.id}] Tool result:`, undefined, result)
       if (!result.success) {
-        logger?.error?.(`[MCP:${this.id}] Tool call failed:`, result.error)
+        toLogger(logger).error(`[MCP:${this.id}] Tool call failed:`, undefined, result.error)
       }
       return result
     })

@@ -63,6 +63,12 @@ import {
 } from "./session-event-recorder.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.stream')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 /** Strip non-serializable values via JSON round-trip. Survives circular refs. */
 function safeClone<T>(value: T): T {
@@ -347,11 +353,12 @@ export function runAgentLoopPostResponseHooks(options: {
 		},
 		onError(source, error) {
 			if (source === "trigger") {
-				console.error("[AgentLoopExecutor] Trigger execution failed:", error);
+				log.error("trigger execution failed", { sessionId: options.state.ctx.sessionId }, error);
 				return;
 			}
-			console.error(
-				"[AgentLoopExecutor] Plugin after-response hook failed:",
+			log.error(
+				"plugin after-response hook failed",
+				{ sessionId: options.state.ctx.sessionId, source },
 				error,
 			);
 		},
@@ -505,7 +512,7 @@ export async function applyAgentLoopStreamChunk(
 					usage,
 				});
 			} catch (error) {
-				console.error("[AgentLoopExecutor] recordUsage failed:", error);
+				log.error("record usage failed", { sessionId: state.ctx.sessionId }, error);
 			}
 		},
 		updateStepsUsageByTurn: (turnIndex, usage) => {
@@ -664,7 +671,7 @@ export async function executeAgentLoopStreamGeneration(
 							providerId: ctx.providerId,
 							currentEntryId: ctx.providerConfig.spaceCredential?.entryId,
 							reprovision: prepared.reprovision,
-							logger: console,
+							logger: consoleLog,
 						})
 					: undefined,
 			});

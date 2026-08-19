@@ -65,6 +65,10 @@ import {
   nextSessionRunPartIndex,
   setSessionRunRequestIndex,
 } from '../../session/runs.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('sessions.events')
+
 
 /** 攒批的三条闸(第四条是"请求结束",由 turn-end 触发)。 */
 export const SESSION_CHUNK_BATCH_INTERVAL_MS = 2000
@@ -315,7 +319,7 @@ export function createSessionEventRecorder(
     try {
       ctx.onRequestRecipe?.(id, requestIndex)
     } catch (error) {
-      console.warn('[SessionEvents] recipe hook failed:', error)
+      log.warn('request recipe hook failed', { sessionId: ctx.sessionId }, error)
     }
   }
 
@@ -646,7 +650,7 @@ export function createSessionEventRecorder(
         handle(event)
       } catch (error) {
         // 记账绝不打断聊天。
-        console.warn('[SessionEvents] recorder failed:', error)
+        log.warn('event recorder failed', { sessionId: ctx.sessionId }, error)
       }
     },
     recordRequestError(error) {
@@ -671,7 +675,7 @@ export function createSessionEventRecorder(
           attempt: state.attempt,
         })
       } catch (cause) {
-        console.warn('[SessionEvents] recorder error record failed:', cause)
+        log.warn('event recorder error record failed', { sessionId: ctx.sessionId }, cause)
       }
     },
     flush() {
@@ -679,7 +683,7 @@ export function createSessionEventRecorder(
         endAllOpenParts()
         flushAllBatches()
       } catch (error) {
-        console.warn('[SessionEvents] recorder flush failed:', error)
+        log.warn('event recorder flush failed', { sessionId: ctx.sessionId }, error)
       }
     },
   }

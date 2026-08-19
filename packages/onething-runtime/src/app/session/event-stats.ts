@@ -16,6 +16,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getLogDir } from '../stores/paths.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions.events')
+
 
 export const SESSION_SHADOW_STATS_FILENAME = 'session-shadow-stats.json'
 
@@ -141,7 +145,7 @@ export function countSessionEventFailure(sessionId: string, error: unknown, what
   bumpSessionShadowStats({ appendFailures: 1 })
   if (warnedSessions.has(sessionId)) return
   warnedSessions.add(sessionId)
-  console.warn(`[SessionEvents] ${what} for ${sessionId}:`, error)
+  log.warn('session event append failed', { sessionId, what }, error)
 }
 
 /** 把在途统计立刻落盘(关停 / 测试)。 */

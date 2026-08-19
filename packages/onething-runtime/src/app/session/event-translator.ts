@@ -23,6 +23,10 @@ import { putSessionBlob } from './blob-store.js'
 import { appendSurfaceAwareEvent, isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
 import { currentSessionRun } from './runs.js'
 import { sessionReads } from './reads.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions.events')
+
 
 /** 正文字段永远不走命令翻译(它们的来源是 chunks)。 */
 const BODY_KEYS = new Set(['content', 'contentParts', 'reasoning'])
@@ -33,7 +37,7 @@ function safely(what: string, run: () => void): void {
   try {
     run()
   } catch (error) {
-    console.warn(`[SessionEvents] translate ${what} failed:`, error)
+    log.warn('session event translation failed', { what }, error)
   }
 }
 

@@ -40,6 +40,10 @@ import { notifySpaceDataChanged } from './notifications.js'
 import { ensureSpaceDir, spaceDir } from './persistence.js'
 import { DEFAULT_SPACE_ID, isValidSpaceId } from './types.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('spaces')
+
 /** 一个 provider 在这个空间的配置。内容对存储层不透明,只有禁忌键是硬规矩。 */
 export type SpaceProviderConfigRecord = Record<string, unknown>
 
@@ -181,12 +185,12 @@ export function readSpaceProviderSettings(
       else {
         // 坏文件按**空设置**收下,不按缺席:文件在就说明这个空间已经在新形状里,
         // 退回旧形状会让一个坏字节把整台机器拖回迁移前的语义。
-        console.warn(`[spaces] ${filePath} failed schema validation, treating as empty settings`)
+        log.warn('space provider settings schema validation failed, treating as empty', { filePath })
         settings = createEmptySpaceProviderSettings()
       }
     }
   } catch (err) {
-    console.warn(`[spaces] failed to read ${filePath}:`, err)
+    log.warn('space provider settings read failed', { filePath }, err)
     settings = createEmptySpaceProviderSettings()
   }
   cache.set(filePath, settings)

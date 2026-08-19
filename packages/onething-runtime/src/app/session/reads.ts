@@ -43,6 +43,10 @@ import {
 } from './events-reads.js'
 import { isSessionFreezeEnabled } from './freeze.js'
 import { isSessionEventsReadMode } from './read-mode.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions')
+
 
 export interface ListMessagesOptions {
   /** 去掉 provider-data part(交给 renderer 的那一份) */
@@ -71,7 +75,7 @@ function fromEvents<T>(read: () => T | undefined): T | undefined {
   try {
     return read()
   } catch (error) {
-    console.warn('[SessionReads] events-mode read failed, falling back to messages:', error)
+    log.warn('events-mode read failed, falling back to messages', {}, error)
     return undefined
   }
 }

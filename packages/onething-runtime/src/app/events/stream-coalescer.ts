@@ -23,6 +23,9 @@ import type {
 } from '@shared/events/index.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('engine.stream.coalescer')
 
 export type BufferedStreamChunk =
   | { type: 'text-delta'; text: string; turnIndex?: number; voiceSpeakText?: string }
@@ -95,11 +98,9 @@ export function drainStreamBuffer(buffer: StreamBuffer): BufferedStreamChunk[] {
   return chunks
 }
 
-// ── Debug tracing (ONETHING_DEBUG_STREAM=1) ─────────────────────────────
-
-function shouldDebugStream(): boolean {
-  return process.env.ONETHING_DEBUG_STREAM === '1' || process.env.ONETHING_DEBUG_CODEX_STREAM === '1'
-}
+// ── Debug tracing ───────────────────────────────────────────────────────
+// 等级过滤取代了旧的 `ONETHING_DEBUG_STREAM` 开关(它现在是 `engine.stream=trace`
+// 的废弃别名,见 app/logging/legacy-debug-env.ts)。
 
 function streamChunkText(chunk: BufferedStreamChunk): string {
   if (chunk.type === 'text-delta') return chunk.text
@@ -228,11 +229,11 @@ export class SessionStreamCoalescer {
     }
 
     for (const chunk of drainStreamBuffer(buf)) {
-      if (shouldDebugStream()) {
+      if (log.isLevelEnabled('trace')) {
         const text = streamChunkText(chunk)
         const key = `${sessionId}:${state.messageId}:${chunk.type}`
-        console.log(`[${this.debugLabel}] send session:stream`, {
-          time: new Date().toISOString(),
+        log.trace('session stream chunk sent', {
+          label: this.debugLabel,
           gapMs: debugGapMs(key),
           sessionId,
           messageId: state.messageId,

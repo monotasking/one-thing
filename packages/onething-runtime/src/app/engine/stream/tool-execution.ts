@@ -27,6 +27,12 @@ import {
   type ToolResultLike,
 } from '@onething/core'
 import { runToolkitToolDirectly } from '../../toolkit/wiring.js'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('toolkit.runner')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export {
   detectSkillUsage,
@@ -140,7 +146,7 @@ export async function executeToolAndUpdate(
       executeToolDirectly(name, directArgs, directContext as Parameters<typeof executeToolDirectly>[2]),
     createStep,
     now: Date.now,
-    logger: console,
+    logger: consoleLog,
     // R4b:三个转换器原本住在 `runtime/tools/tool-execution.ts` 的
     // `executeOnethingToolAndUpdate` 里(那个文件只是这三行的一层壳)。壳随旧树
     // 删掉,三行原样搬到唯一的调用点。

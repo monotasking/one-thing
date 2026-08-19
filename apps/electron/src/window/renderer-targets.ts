@@ -1,4 +1,7 @@
 import type { BrowserWindow, WebContents } from 'electron'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('window')
 
 export type ElectronThemeMode = 'dark' | 'light'
 
@@ -97,6 +100,6 @@ export function loadElectronMainWindowContent(options: LoadElectronMainWindowCon
     })
 
   Promise.resolve(loadPromise).catch((error) => {
-    console.error(`[Window] Failed to load main window content (${options.reason || 'initial'}):`, error)
+    log.error('main window content load failed', { reason: options.reason || 'initial' }, error)
   })
 }

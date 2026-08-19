@@ -10,6 +10,10 @@ import {
   getEffectivePluginConfig,
   setPluginConfig,
 } from './config.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins')
+
 
 export interface PluginConfigAccess {
   describe(pluginId: string): {
@@ -65,7 +69,7 @@ export function createPluginConfigAccess(): PluginConfigAccess {
         try {
           broadcastConfigChanged?.(pluginId)
         } catch (error) {
-          console.error(`[PluginConfig] Failed to broadcast config change for "${pluginId}":`, error)
+          log.error('broadcast plugin config change failed', { pluginId }, error)
         }
       }
       return result

@@ -10,6 +10,7 @@ import {
 } from '@shared/defaults/ai-settings'
 import { useSpaceProvidersStore } from './spaceProviders'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
 import { modelsApi } from '@/platform/models-client'
 import { providersApi } from '@/platform/providers-client'
 import { getOnethingModelsDevProviderId } from '@onething/runtime/providers/models-dev-catalog'
@@ -29,10 +30,7 @@ function cacheChatFonts(settings: { chat?: { chatFontEn?: string; chatFontZh?: s
   }
 }
 
-function isThemeDebugEnabled(): boolean {
-  if (typeof localStorage?.getItem !== 'function') return false
-  return import.meta.env.DEV && localStorage.getItem('onething:debug-theme') === '1'
-}
+const log = getLogger('renderer.settings')
 
 // Read initial theme from what index.html already set (via URL hash or localStorage)
 // This prevents the flash where Vue overwrites the correct theme with defaults
@@ -40,9 +38,7 @@ function getInitialTheme(): 'light' | 'dark' | 'system' {
   // First check what index.html already set on the document
   const docTheme = document.documentElement.getAttribute('data-theme')
   if (docTheme === 'light' || docTheme === 'dark') {
-    if (isThemeDebugEnabled()) {
-      console.log('[Theme] getInitialTheme: using document data-theme:', docTheme)
-    }
+    log.debug('initial theme from document', { theme: docTheme })
     // We don't know if user setting is 'system' or explicit, so return the effective theme
     // loadSettings() will later update this to the actual setting
     return docTheme
@@ -56,14 +52,10 @@ function getInitialTheme(): 'light' | 'dark' | 'system' {
     ? localStorage.getItem('cached-theme')
     : null
   if (cached === 'light' || cached === 'dark') {
-    if (isThemeDebugEnabled()) {
-      console.log('[Theme] getInitialTheme: using localStorage cache:', cached)
-    }
+    log.debug('initial theme from cache', { theme: cached })
     return cached
   }
-  if (isThemeDebugEnabled()) {
-    console.log('[Theme] getInitialTheme: no cached value, defaulting to dark')
-  }
+  log.debug('initial theme defaulted', { theme: 'dark' })
   return 'dark'
 }
 
@@ -112,7 +104,7 @@ export const useSettingsStore = defineStore('settings', () => {
         systemTheme.value = response.theme
       }
     } catch (error) {
-      console.error('Failed to get system theme:', error)
+      log.error('system theme fetch failed', {}, error)
     }
   }
 
@@ -151,13 +143,13 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const theme = effectiveTheme.value
     const currentTheme = document.documentElement.getAttribute('data-theme')
-    if (isThemeDebugEnabled()) {
-      console.log('[Theme] applyAppearanceFromSettings called:', {
+    if (log.isLevelEnabled('debug')) {
+      log.debug('appearance apply requested', {
         effectiveTheme: theme,
         currentDataTheme: currentTheme,
         settingsTheme: settings.value.theme,
         systemTheme: systemTheme.value,
-        stack: new Error().stack?.split('\n').slice(1, 4).join('\n')
+        stack: new Error().stack?.split('\n').slice(1, 4).join('\n'),
       })
     }
 
@@ -171,8 +163,8 @@ export const useSettingsStore = defineStore('settings', () => {
       document.documentElement.setAttribute('data-theme', theme)
       // Cache effective theme to localStorage for instant startup
       localStorage.setItem('cached-theme', theme)
-    } else if (isThemeDebugEnabled()) {
-      console.log('[Theme] Base theme already correct:', theme)
+    } else {
+      log.debug('base theme already correct', { theme })
     }
 
     // Reapply JSON theme to match the new mode
@@ -196,9 +188,7 @@ export const useSettingsStore = defineStore('settings', () => {
   function applyColorTheme() {
     const colorTheme = settings.value.general?.colorTheme || 'blue'
     const currentColorTheme = document.documentElement.getAttribute('data-color-theme')
-    if (isThemeDebugEnabled()) {
-      console.log('[Theme] applyColorTheme:', { from: currentColorTheme, to: colorTheme })
-    }
+    log.debug('color theme apply requested', { from: currentColorTheme, to: colorTheme })
     if (currentColorTheme === colorTheme) {
       return // Already correct
     }
@@ -337,7 +327,7 @@ export const useSettingsStore = defineStore('settings', () => {
         updateAvailableProviders(response.providers)
       }
     } catch (error) {
-      console.error('Failed to load providers:', error)
+      log.error('providers load failed', {}, error)
     }
   }
 
@@ -418,7 +408,7 @@ export const useSettingsStore = defineStore('settings', () => {
       }
       for (const providerId of catalogMovedProviders) {
         void refreshModelsForProvider(providerId).catch(error => {
-          console.warn(`[SettingsStore] Failed to re-pull models for ${providerId} after endpoint change:`, error)
+          log.warn('model re-pull after endpoint change failed', { providerId }, error)
         })
       }
     } finally {
@@ -685,7 +675,7 @@ export const useSettingsStore = defineStore('settings', () => {
         updateAvailableProviders(response.providers)
       }
     } catch (error) {
-      console.error('Failed to refresh providers:', error)
+      log.error('providers refresh failed', {}, error)
     }
   }
 
@@ -775,7 +765,7 @@ export const useSettingsStore = defineStore('settings', () => {
       providerModels.value.set(providerId, [])
       return []
     } catch (error) {
-      console.error(`[SettingsStore] Failed to fetch models for ${providerId}:`, error)
+      log.error('models fetch failed', { providerId }, error)
       providerModels.value.set(providerId, [])
       return []
     } finally {
@@ -793,7 +783,7 @@ export const useSettingsStore = defineStore('settings', () => {
       try {
         await modelsApi.refreshModelRegistry(providerId)
       } catch (error) {
-        console.warn('[SettingsStore] Failed to refresh model registry:', error)
+        log.warn('model registry refresh failed', { providerId }, error)
       }
     }
     // Clear client-side cache so we re-read from the registry or provider API.

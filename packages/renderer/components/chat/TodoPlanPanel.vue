@@ -815,6 +815,9 @@ import {
 } from './todo-window-drag'
 import { platformApi } from '@/platform'
 import { markdownApi } from '@/platform/markdown-client'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.todo-plan')
 
 const props = defineProps<{
   sessionId?: string
@@ -1769,7 +1772,7 @@ async function revealNotesFolder() {
 async function copyMarkdown() {
   const success = await copyTextToClipboard(draft.value)
   if (!success) {
-    console.warn('[TodoPlanPanel] Failed to copy markdown')
+    log.warn('todo plan markdown copy failed')
   }
 }
 

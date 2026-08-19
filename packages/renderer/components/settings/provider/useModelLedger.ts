@@ -30,6 +30,9 @@ import {
 	formatContextLength,
 	createCustomModel,
 } from "./model-capabilities";
+import { getLogger } from "@/services/log";
+
+const log = getLogger("renderer.model-ledger");
 
 export type StylePreset = "precise" | "balanced" | "creative";
 export type OutputPreset = "lean" | "standard" | "max";
@@ -440,7 +443,7 @@ export function useModelLedger(
 		try {
 			await settingsStore.preloadModels(ids);
 		} catch (err) {
-			console.error("[ModelLedger] Failed to preload model caches:", err);
+			log.error("model cache preload failed", { providerIds: ids }, err);
 		}
 	}
 

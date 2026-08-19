@@ -12,6 +12,10 @@ import {
 	type OnethingStorePathOptions,
 } from "../storage/paths.js";
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('evals')
+
 export interface SnapshotRefs {
 	promptSnapshotRef: string | null;
 	contextSnapshotRef: string | null;
@@ -249,7 +253,7 @@ export function writeCaptureSnapshots(options: {
 			storeOptions: options.storeOptions,
 		});
 	} catch (err) {
-		console.error("[Evals] Failed to write prompt snapshot:", err);
+		log.error("prompt snapshot write failed", undefined, err);
 	}
 
 	try {
@@ -263,7 +267,7 @@ export function writeCaptureSnapshots(options: {
 			});
 		}
 	} catch (err) {
-		console.error("[Evals] Failed to write context snapshot:", err);
+		log.error("context snapshot write failed", undefined, err);
 	}
 
 	try {
@@ -276,7 +280,7 @@ export function writeCaptureSnapshots(options: {
 			});
 		}
 	} catch (err) {
-		console.error("[Evals] Failed to write request snapshot:", err);
+		log.error("request snapshot write failed", undefined, err);
 	}
 
 	try {
@@ -289,7 +293,7 @@ export function writeCaptureSnapshots(options: {
 			});
 		}
 	} catch (err) {
-		console.error("[Evals] Failed to write response snapshot:", err);
+		log.error("response snapshot write failed", undefined, err);
 	}
 
 	return refs;

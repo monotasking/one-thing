@@ -1,4 +1,5 @@
 import type { MarkdownSegment } from '@/composables/parseStreamingMarkdown'
+import { getLogger } from '@/services/log'
 
 /**
  * Markdown render cache.
@@ -16,6 +17,8 @@ import type { MarkdownSegment } from '@/composables/parseStreamingMarkdown'
  * that changes the rendered HTML format ships — the upgrade handler drops the
  * store wholesale so we never serve stale HTML.
  */
+
+const log = getLogger('renderer.markdown-cache')
 
 // v2: status emoji (✅❌⚠️) now normalize to ink glyphs in the text rule.
 // v3: numeric table cells get the md-cell-numeric class (no-wrap).
@@ -67,22 +70,22 @@ function openDb(): Promise<IDBDatabase | null> {
       resolve(database)
     }
     const timeout = setTimeout(() => {
-      console.warn('[markdown-cache] open timed out')
+      log.warn('cache db open timed out')
       finish(null)
     }, INIT_TIMEOUT_MS)
     try {
       request = indexedDB.open(DB_NAME, CACHE_DB_VERSION)
     } catch (e) {
-      console.warn('[markdown-cache] indexedDB.open threw', e)
+      log.warn('cache db open threw', {}, e)
       finish(null)
       return
     }
     request.onerror = () => {
-      console.warn('[markdown-cache] open failed', request.error)
+      log.warn('cache db open failed', {}, request.error)
       finish(null)
     }
     request.onblocked = () => {
-      console.warn('[markdown-cache] open blocked')
+      log.warn('cache db open blocked')
     }
     request.onupgradeneeded = (event) => {
       const upgrading = (event.target as IDBOpenDBRequest).result
@@ -111,7 +114,7 @@ function loadFromDisk(database: IDBDatabase): Promise<void> {
     try {
       tx = database.transaction(STORE_NAME, 'readonly')
     } catch (e) {
-      console.warn('[markdown-cache] read tx failed', e)
+      log.warn('cache read transaction failed', {}, e)
       resolve()
       return
     }
@@ -145,7 +148,7 @@ function loadFromDisk(database: IDBDatabase): Promise<void> {
         // session switch. Leave disk untouched until proper eviction.
       }
       if (count > 0) {
-        console.info('[markdown-cache] restored', count, 'entries from disk')
+        log.debug('cache restored from disk', { entries: count })
       }
       resolve()
     }
@@ -170,7 +173,7 @@ export function ensureCacheReady(): Promise<void> {
         ])
       }
     } catch (e) {
-      console.warn('[markdown-cache] init failed', e)
+      log.warn('cache init failed', {}, e)
       disabled = true
     }
   })()
@@ -194,14 +197,14 @@ function flush() {
   try {
     tx = db.transaction(STORE_NAME, 'readwrite')
   } catch (e) {
-    console.warn('[markdown-cache] write tx failed', e)
+    log.warn('cache write transaction failed', {}, e)
     return
   }
   const store = tx.objectStore(STORE_NAME)
   tx.onerror = () => {
     // Likely a QuotaExceededError. Disable persistence for this session so we
     // stop hammering IDB; memory cache still works.
-    console.warn('[markdown-cache] write failed', tx.error)
+    log.warn('cache write failed', { name: tx.error?.name }, tx.error)
     if (tx.error?.name === 'QuotaExceededError') disabled = true
   }
   for (const [id, value] of writes) {
@@ -280,5 +283,5 @@ export function cacheMarkdownHtml(key: string, value: string) {
 // Kick off IDB connection at module load so it runs in parallel with the rest
 // of app boot. App.vue awaits `ensureCacheReady()` before unhiding the UI.
 if (isIDBAvailable()) {
-  void ensureCacheReady().catch((e) => console.warn('[markdown-cache] init failed', e))
+  void ensureCacheReady().catch((e) => log.warn('cache init failed', {}, e))
 }

@@ -14,6 +14,12 @@ import {
   type OnethingFetchFn,
 } from '@onething/runtime/providers'
 import { getSettings } from '../stores/settings.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('providers')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 type AppFetchOptions = OnethingHttpRequestOptions & {
   proxy?: ProxySettings
@@ -21,7 +27,7 @@ type AppFetchOptions = OnethingHttpRequestOptions & {
 
 const mainProcessNetworkAdapters = {
   getProxySettings: () => getSettings().network?.proxy,
-  logger: console,
+  logger: consoleLog,
 }
 
 export const validateProxyUrl = validateOnethingAppProxyUrl

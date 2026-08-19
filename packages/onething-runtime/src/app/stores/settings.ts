@@ -13,12 +13,18 @@ import {
 } from '../providers/ai-settings-compose.js'
 import { getSettingsPath } from './paths.js'
 import { applyDiagnosticsMode } from '../logging/diagnostics.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('settings')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 const settingsRepository = createOnethingSettingsRepository<AppSettings>({
   filePath: getSettingsPath,
   defaultValue: createDefaultSettings,
   normalize: value => mergeWithDefaults(value as Partial<AppSettings>),
-  logger: console,
+  logger: consoleLog,
 })
 
 // ============================================================================

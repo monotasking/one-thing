@@ -6,6 +6,7 @@ import type {
   InteractionQuestionAnswer,
   InteractionRequest,
 } from './types.js'
+import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/index.js'
 
 /**
  * 交互协议内核(docs/design/claude-code-integration-v2.md §4,E1 期)。
@@ -119,6 +120,13 @@ export namespace Interaction {
   let eventBus: InteractionEventBusLike | null = null
   let channelResolver: ((sessionId: string) => string) | null = null
   let unsubInteractionRespond: (() => void) | null = null
+  /** core 不持有全局 root:装配层注入,缺省 noop(§8.3 区 ①)。 */
+  let log: Logger = getCoreLogger('core.interaction')
+
+  /** 装配层的接线口。传 null 摘下。 */
+  export function setLogger(next: CompatLogger | null): void {
+    log = next ? toLogger(next, 'core.interaction') : getCoreLogger('core.interaction')
+  }
 
   function getSession(sessionId: string): SessionState {
     let session = sessions.get(sessionId)
@@ -131,7 +139,7 @@ export namespace Interaction {
 
   function emitInteractionEvent(sessionId: string, event: InteractionBusEvent): void {
     eventBus?.emit(sessionId, event)
-      .catch(err => console.error('[Interaction] EventBus emit error:', err))
+      .catch(err => log.error('event emit failed', { sessionId, eventType: event.type }, err))
   }
 
   function findPendingByToolCallId(session: SessionState, toolCallId: string): PendingEntry | undefined {
@@ -184,7 +192,7 @@ export namespace Interaction {
     try {
       recorder?.onAnswered?.(entry.request, answer)
     } catch (error) {
-      console.warn('[Interaction] recorder onAnswered failed:', error)
+      log.warn('recorder onAnswered failed', { interactionId: entry.request.id }, error)
     }
   }
 
@@ -204,7 +212,10 @@ export namespace Interaction {
     const timer = setTimeout(() => {
       entry.timer = null
       if (!session.pending.has(entry.request.id)) return
-      console.warn('[Interaction] Deadline reached, settling as timeout:', entry.request.id)
+      log.warn('deadline reached, settling as timeout', {
+        sessionId: entry.request.sessionId,
+        interactionId: entry.request.id,
+      })
       settle(session, entry, 'timeout', {}, DEFAULT_INTERACTION_TIMEOUT_REASON)
     }, delay)
     const unref = (timer as unknown as { unref?: () => void }).unref
@@ -246,7 +257,7 @@ export namespace Interaction {
       'Interaction',
     )
 
-    console.log('[Interaction] Initialized with EventBus')
+    log.info('interaction registry initialized')
   }
 
   export function shutdown(): void {
@@ -256,7 +267,7 @@ export namespace Interaction {
     }
     eventBus = null
     channelResolver = null
-    console.log('[Interaction] Shut down')
+    log.info('interaction registry shut down')
   }
 
   /**
@@ -284,17 +295,19 @@ export namespace Interaction {
       targetChannel,
     }
 
-    console.log(
-      '[Interaction] Asking:', request.id, request.origin,
-      `${request.questions.length} question(s)`,
-      'targetChannel:', targetChannel,
-      'deadlineIn:', `${Math.max(0, deadlineAt - createdAt)}ms`,
-    )
+    log.debug('interaction asked', {
+      sessionId: input.sessionId,
+      interactionId: request.id,
+      origin: request.origin,
+      questionCount: request.questions.length,
+      targetChannel,
+      deadlineInMs: Math.max(0, deadlineAt - createdAt),
+    })
 
     try {
       recorder?.onAsked?.(request)
     } catch (error) {
-      console.warn('[Interaction] recorder onAsked failed:', error)
+      log.warn('recorder onAsked failed', { interactionId: request.id }, error)
     }
 
     return new Promise<InteractionAnswer>(resolve => {
@@ -304,7 +317,10 @@ export namespace Interaction {
       // 相对于「UI 侧倒计时」的全部意义。
       armDeadline(session, entry)
       if (!eventBus) {
-        console.warn('[Interaction] EventBus not initialized; the ask will settle by deadline only')
+        log.warn('event bus not initialized, ask will settle by deadline only', {
+          sessionId: input.sessionId,
+          interactionId: request.id,
+        })
         return
       }
       emitInteractionEvent(input.sessionId, { type: 'interaction:requested', request })
@@ -326,7 +342,11 @@ export namespace Interaction {
     const pending = resolvePending(session, input)
     if (!pending) {
       // 重复应答走到这里:第一次已经把它摘表了,第二次是无害的 no-op(幂等)。
-      console.warn('[Interaction] No pending interaction for respond:', input.interactionId ?? input.toolCallId)
+      log.warn('no pending interaction for respond', {
+        sessionId: input.sessionId,
+        interactionId: input.interactionId,
+        toolCallId: input.toolCallId,
+      })
       return false
     }
     if (!checkChannelAffinity(pending, input.channel)) return false
@@ -346,7 +366,11 @@ export namespace Interaction {
     const session = getSession(input.sessionId)
     const pending = resolvePending(session, input)
     if (!pending) {
-      console.warn('[Interaction] No pending interaction for decline:', input.interactionId ?? input.toolCallId)
+      log.warn('no pending interaction for decline', {
+        sessionId: input.sessionId,
+        interactionId: input.interactionId,
+        toolCallId: input.toolCallId,
+      })
       return false
     }
     if (!checkChannelAffinity(pending, input.channel)) return false
@@ -386,9 +410,12 @@ export namespace Interaction {
     const expectedChannel = pending.request.targetChannel || 'ipc'
     const responseChannel = channel || 'ipc'
     if (expectedChannel !== responseChannel) {
-      console.warn(
-        `[Interaction] Response from wrong channel: expected '${expectedChannel}', got '${responseChannel}'. Ignoring.`,
-      )
+      log.warn('response from wrong channel, ignored', {
+        sessionId: pending.request.sessionId,
+        interactionId: pending.request.id,
+        expectedChannel,
+        responseChannel,
+      })
       return false
     }
     return true

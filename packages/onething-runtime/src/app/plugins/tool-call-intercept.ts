@@ -39,6 +39,10 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
 } from './health.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins')
+
 
 const registry = new CorePluginToolCallInterceptRegistry({
   // 超时预算走 core 默认(2s):高于 N2 的 1.5s(用户此刻在看"正在执行"的转圈,
@@ -111,7 +115,7 @@ export async function runPluginToolCallIntercept(
   } catch (error) {
     // 兜底的兜底,判 allow 而不是 block —— 理由见文件头:这一层的故障不归任何
     // 插件,没有连败账可开逃生口,判阻断就是永久失去所有工具。
-    console.error('[PluginToolCallIntercept] chain failed; the tool call was allowed through:', error)
+    log.error('tool call intercept chain failed, tool call allowed through', {}, error)
     return emptyPluginToolCallInterceptOutcome(context.input)
   }
 }

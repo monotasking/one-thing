@@ -40,6 +40,12 @@ import {
 	getCodexFallbackModels,
 } from "./builtin/codex.js";
 import { detectModelCapabilities } from "./builtin/github-copilot.js";
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('providers.registry')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 // Fallback models for Grok (grok / grok-oauth) when models.dev data is unavailable.
 // These provide at least the default model so users don't see "No models found" on first load.
@@ -369,12 +375,12 @@ export function saveProviderModels(
 	saveOnethingProviderModels(providerId, models as OnethingOpenRouterModel[], {
 		getSettings,
 		saveSettings,
-		logger: console,
+		logger: consoleLog,
 	});
 }
 
 async function fetchModelsDevData(): Promise<OnethingModelsDevResponse> {
-	console.log("[ModelRegistry] Fetching from models.dev...");
+	log.debug("fetching models.dev catalog");
 
 	const data = await fetchOnethingModelsDevData(
 		createRequiredAppFetch({ policy: "default" }),
@@ -389,9 +395,7 @@ async function fetchModelsDevData(): Promise<OnethingModelsDevResponse> {
 		(sum, provider) => sum + Object.keys(provider.models).length,
 		0,
 	);
-	console.log(
-		`[ModelRegistry] Fetched ${modelCount} models from ${providerCount} providers`,
-	);
+	log.info("models.dev catalog fetched", { modelCount, providerCount });
 	return data;
 }
 
@@ -404,7 +408,7 @@ export async function refreshProviderModels(providerId: string): Promise<void> {
 		getSettings,
 		saveSettings,
 		fetchModelsDevData,
-		logger: console,
+		logger: consoleLog,
 	});
 }
 
@@ -427,7 +431,7 @@ export async function refreshAllProviders(): Promise<void> {
 		getSettings: () => settings,
 		saveSettings: (s) => saveSettings(s as any),
 		fetchModelsDevData,
-		logger: console,
+		logger: consoleLog,
 	});
 }
 

@@ -14,6 +14,7 @@
  * 外加装配面的那几道门:场子门现算、工具从注册表取、解绑真的解。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { collectLogRecordsForTests } from '../../logging/index.js'
 import { bindSessionFacadeMock } from '../../session/testing/facade-mock.js'
 import { COLLAB_SAY_SOURCE } from '@onething/runtime/collab'
 import {
@@ -398,16 +399,16 @@ describe('装配面:场子门、注册表、语境绑定', () => {
   it('目录里一个工具都取不到时不注,而且说出来', async () => {
     startTurn()
     configureToolkitCatalog(new Catalog())
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = collectLogRecordsForTests()
     const injection = await resolveClaudeCodeHostToolSurface({
       localSessionId: EXEC,
       cwd: '/tmp',
     })
     expect(injection).toBeUndefined()
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('host tools not injected'))
+    expect(logs.messages()).toContain('no builtin tool object for the requested ids; host tools not injected')
     // 起不来就不该留一份绑定在表里。
     expect(resolveHostToolContext(EXEC)).toBeUndefined()
-    warn.mockRestore()
+    logs.stop()
   })
 
   it('查无此会话 / 没有同事身份时不注', async () => {

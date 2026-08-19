@@ -65,6 +65,10 @@ import { taskMessageSource } from '../channel/origin.js'
 import { deliverInternalMessage } from '../plugins/sessions.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('tasks')
+
 
 /* ── 在飞的账(内存态,单一属主)────────────────────────────────────────────── */
 
@@ -184,9 +188,9 @@ async function reportBack(
     },
   )
   if (!result.ok) {
-    console.warn(
-      `[Task] report for ${taskSessionId.slice(0, 8)} not delivered — ${result.reason}`
-      + `${result.detail ? `: ${result.detail}` : ''}`,
+    log.warn(
+      'task report not delivered',
+      { taskSessionId, reason: result.reason, detail: result.detail },
     )
   }
 }
@@ -291,7 +295,7 @@ export async function dispatchTask(
     // 不 await:工具当场返回,调用方这一回合继续往下走(fire-and-report)。
     void terminal
       .then(outcome => reportBack(taskSessionId, task, outcome))
-      .catch(error => console.error(`[Task] report failed for ${taskSessionId}:`, error))
+      .catch(error => log.error('task report failed', { taskSessionId }, error))
       .finally(() => activeTasks.delete(taskSessionId))
 
     return {

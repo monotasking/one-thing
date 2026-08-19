@@ -49,6 +49,12 @@ import type {
   ProviderConfig,
   ProviderInfo,
 } from './types.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('providers')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 type RuntimeProviderConfig = ProviderConfig & AgentRuntimeProviderConfig & {
   fetchImpl?: typeof globalThis.fetch
@@ -124,7 +130,7 @@ const providerFacade = createOnethingProviderFacade<RuntimeProviderConfig, Agent
   streamACPPrompt: (agentId, request) => ACPManager.streamPrompt(agentId, request),
   defaultWorkingDirectory: () => process.cwd(),
   isACPProvider,
-  logger: console,
+  logger: consoleLog,
 })
 
 

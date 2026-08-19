@@ -10,6 +10,10 @@ import {
 import { getSettings } from '../stores/settings.js'
 import { getStorePath } from '../stores/paths.js'
 import { getCurrentSessionId } from '../stores/app-state.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('todo-plan')
+
 
 /**
  * Host injection points. The Electron host broadcasts changes to its windows
@@ -62,7 +66,7 @@ export const todoPlanStore = new OnethingTodoPlanStore({
 const todoPlanWatcher = new OnethingTodoPlanWatcher({
   store: todoPlanStore,
   notifyChanged: broadcast,
-  onError: error => console.error('[todo-plan] watch failed:', error),
+  onError: error => log.error('todo plan watch failed', {}, error),
 })
 
 export function startTodoPlanWatcher(): Promise<void> {

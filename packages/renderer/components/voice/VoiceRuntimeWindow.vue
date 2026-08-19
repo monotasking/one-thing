@@ -20,6 +20,9 @@ import {
   parseFunASRMessage,
 } from './funasr-streaming'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.voice')
 
 type SpeechRecognitionCtor = new () => SpeechRecognition
 type PorcupineBuiltinKeyword = typeof import('@picovoice/porcupine-web')['BuiltInKeyword']
@@ -521,7 +524,7 @@ async function startRecording(settings: VoiceSettings, sessionId?: string, reaso
       await startSileroRecording(settings, sessionId, reason)
       return
     } catch (error: any) {
-      console.warn('[Voice] Silero VAD failed; falling back to energy VAD:', error?.message || error)
+      log.warn('silero vad failed, falling back to energy vad', {}, error)
       await stopSileroRecording(false)
     }
   }

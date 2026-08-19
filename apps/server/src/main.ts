@@ -39,6 +39,9 @@ const isLoopback = loopbackHosts.has(host)
 const envToken = process.env.ONETHING_SERVER_TOKEN
 if (!envToken && !isLoopback) {
   if (!allowInsecure) {
+    // 启动期 FATAL:`configureLogging()` 还没接线(它必须排在 runtime 之后,见下),
+    // 这一条必须现在就出现在 stderr 上。§8.4 白名单。
+    // eslint-disable-next-line no-console
     console.error(
       `[onething-server] FATAL: refusing to listen on ${host} without ONETHING_SERVER_TOKEN — `
       + 'the API would be reachable from other machines without authentication.\n'
@@ -47,6 +50,8 @@ if (!envToken && !isLoopback) {
     )
     process.exit(1)
   }
+  // 同上:接线之前的启动期告警,必须直写 stderr。
+  // eslint-disable-next-line no-console
   console.warn(
     `[onething-server] WARNING: listening on ${host} without ONETHING_SERVER_TOKEN — `
     + 'the API is reachable from other machines without authentication.',
@@ -64,6 +69,8 @@ const authToken = envToken || (isLoopback ? randomBytes(24).toString('base64url'
 const existing = readHttpDiscovery()
 if (existing && existing.owner !== 'server' && !forced) {
   if (await isHttpDiscoveryAlive(existing)) {
+    // 启动期 FATAL(让位给桌面 core):日志尚未接线,直写 stderr。
+    // eslint-disable-next-line no-console
     console.error(
       `[onething-server] this store is already served by the ${existing.owner} core at `
       + `${httpDiscoveryUrl(existing)} — connect to it instead (pass --force to start anyway)`,
@@ -80,6 +87,8 @@ const serverRuntime = await createDevelopmentOnethingServerRuntime({
   dataRoot,
   settingsRoot,
 }).catch((error: unknown) => {
+  // 启动期 FATAL:装配都没成,日志接线在它之后 —— 直写 stderr。
+  // eslint-disable-next-line no-console
   console.error(`[onething-server] FATAL: ${error instanceof Error ? error.message : String(error)}`)
   process.exit(1)
 })
@@ -88,9 +97,13 @@ const serverRuntime = await createDevelopmentOnethingServerRuntime({
 // 由 runtime 装配时钉死,提前接线会把日志写进另一个 store 的 log/ 目录。
 // 桌面里那只**嵌入式** HTTP 面不会走到这里(它在主进程,`configureLogging` 幂等,
 // 记录进 app.jsonl),所以不存在两个进程抢同一个 server.jsonl 的情况。
-const logging = configureLogging({ fileBaseName: 'server', src: 'server' })
-console.log(`[Perf][Startup] runtime-created in ${Date.now() - runtimeCreateStart}ms`)
-console.log(`[onething-server] logging to ${logging.logPath}`)
+// `consoleEcho: 'pretty'` 是这只**独立进程**的终端那一侧:接线之后所有输出都走
+// logger,没有回显的话终端就哑了(桌面不需要 —— 它的 console 由 LegacyConsoleSink
+// 原样透传)。回显跳过 `ns='console'`,免得未迁移的行打两遍。
+const logging = configureLogging({ fileBaseName: 'server', src: 'server', consoleEcho: 'pretty' })
+const log = logging.getLogger('server')
+log.info('runtime created', { ms: Date.now() - runtimeCreateStart })
+log.info('logging to file', { path: logging.logPath })
 const server = createOnethingHttpServer({
   runtime: serverRuntime.runtime,
   corsOrigin,
@@ -106,12 +119,13 @@ const server = createOnethingHttpServer({
 // 会连到一个它没打算连的实例上。
 server.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EADDRINUSE') {
-    console.error(
-      `[onething-server] FATAL: port ${port} is already in use (ONETHING_SERVER_PORT=${explicitPort}) — `
-      + 'free it, or unset ONETHING_SERVER_PORT to let the core pick a free port.',
-    )
+    log.fatal('port already in use', {
+      port,
+      explicitPort,
+      hint: 'free it, or unset ONETHING_SERVER_PORT to let the core pick a free port',
+    })
   } else {
-    console.error('[onething-server] FATAL: listen failed', error)
+    log.fatal('listen failed', { port, host }, error)
   }
   process.exit(1)
 })
@@ -119,7 +133,7 @@ server.on('error', (error: NodeJS.ErrnoException) => {
 server.listen(port, host, () => {
   const address = server.address()
   const actualPort = typeof address === 'object' && address ? address.port : port
-  console.log(`[onething-server] listening on http://${host}:${actualPort}`)
+  log.info('listening', { url: `http://${host}:${actualPort}` })
   // 发现文件:客户端(web dev 代理 / CLI / B 期 renderer)一律靠它找到这个进程。
   writeHttpDiscovery({
     port: actualPort,
@@ -132,8 +146,8 @@ server.listen(port, host, () => {
   // Pairing line for mobile clients: scan/encode this JSON as a QR code.
   const pairing: Record<string, unknown> = { host, port: actualPort }
   if (authToken) pairing.token = authToken
-  console.log(`[onething-server] pairing ${JSON.stringify(pairing)}`)
-  console.log(`[Perf][Startup] http-listening +${Math.round(process.uptime() * 1000)}ms since process start`)
+  log.info('pairing', pairing)
+  log.info('http listening', { sinceProcessStartMs: Math.round(process.uptime() * 1000) })
 })
 
 /**
@@ -153,12 +167,12 @@ let shuttingDown = false
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) {
-    console.warn(`[onething-server] received ${signal} again while shutting down, exiting now`)
+    log.warn('signal received again while shutting down, exiting now', { signal })
     removeHttpDiscovery()
     process.exit(1)
   }
   shuttingDown = true
-  console.log(`[onething-server] received ${signal}, shutting down`)
+  log.info('signal received, shutting down', { signal })
   // 发现文件先删:它是"我还在服务"的宣告,关端口这一步开始就已经不成立了。
   removeHttpDiscovery()
 
@@ -177,16 +191,15 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
       timer.unref?.()
     }),
   ]).catch(error => {
-    console.error('[onething-server] shutdown failed', error)
+    log.error('shutdown failed', {}, error)
     return true
   })
   if (timer) clearTimeout(timer)
 
   if (timedOut) {
-    console.error(
-      `[onething-server] shutdown did not finish within ${SHUTDOWN_FLUSH_TIMEOUT_MS}ms — `
-      + 'pending session writes may be lost',
-    )
+    log.error('shutdown did not finish in time; pending session writes may be lost', {
+      timeoutMs: SHUTDOWN_FLUSH_TIMEOUT_MS,
+    })
     process.exit(1)
   }
   process.exit(0)

@@ -34,6 +34,10 @@ import {
 import { getCoreSandboxBoundary, getCoreSandboxRoots } from '../../tools/sandbox.js'
 import { fileScopeOf, type FileToolContextLike } from './file.js'
 
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('toolkit.process')
+
 /** 输出刷新的节流窗口。旧 bash 里的同一个常量。 */
 const OUTPUT_UPDATE_THROTTLE_MS = 100
 
@@ -265,7 +269,7 @@ export abstract class ProcessTool<In, Payload> extends Tool<In, Payload> {
     try {
       await this.adapters.prepareForCommand(command)
     } catch (error) {
-      console.warn('[toolkit/process] host could not prepare for the command', error)
+      log.warn('host could not prepare for the command', { command }, error)
     }
   }
 

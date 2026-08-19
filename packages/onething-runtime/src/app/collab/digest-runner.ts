@@ -37,6 +37,10 @@ import {
 import { billCollabDigestUsage } from '../usage/bill-side-line.js'
 import { collabUserPromptFields } from './user-identity.js'
 import { needsCollabDigest, saveCollabDigest } from './digest-store.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.digest')
+
 
 /** 一次摘要调用的死线。它是后台任务,没人在等它,但也不该永远挂着。 */
 const DIGEST_TIMEOUT_MS = 30_000
@@ -173,7 +177,7 @@ async function generateOne(roomSessionId: string, day: string): Promise<void> {
     saveCollabDigest(roomSessionId, digest)
   } catch (error) {
     // 失败就是没摘要 —— 折叠行照旧诚实地说少了多少条,下一个回合会再试一次。
-    console.error('[collab] daily digest failed:', roomSessionId, day, error)
+    log.error('daily digest failed', { roomSessionId, day }, error)
   } finally {
     clearTimeout(timer)
   }

@@ -1,4 +1,8 @@
 import type { CorePluginSchedulerAPI } from './types.js'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.plugins')
+
 
 export interface PluginTaskSnapshotLike {
   id: string
@@ -58,10 +62,7 @@ const lateSchedulerWarned = new Set<string>()
 function warnLateSchedulerCall(pluginId: string, taskId: string): void {
   if (lateSchedulerWarned.has(pluginId)) return
   lateSchedulerWarned.add(pluginId)
-  console.error(
-    `[Plugin:${pluginId}] Ignoring scheduler.register("${taskId}") after dispose — the plugin resumed `
-    + 'past its teardown. Further late scheduler calls are silently dropped.',
-  )
+  log.error('ignoring scheduler.register after dispose', { pluginId, taskId })
 }
 
 export function scopePluginTaskId(pluginId: string, id: string): string {

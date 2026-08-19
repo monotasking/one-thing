@@ -59,6 +59,9 @@ import ContextCompactPanel from './ContextCompactPanel.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.message-system')
 
 interface Props {
   content: string
@@ -121,7 +124,7 @@ function getSessionId(): string | null {
 async function handleClose() {
   const sessionId = getSessionId()
   if (!sessionId || !props.messageId) {
-    console.warn('[MessageSystem] Cannot close: missing sessionId or messageId')
+    log.warn('system message close skipped, missing sessionId or messageId', { sessionId, messageId: props.messageId })
     return
   }
 
@@ -131,7 +134,7 @@ async function handleClose() {
     // Remove from Vue state for immediate UI update
     chatStore.removeMessage(sessionId, props.messageId)
   } catch (error) {
-    console.error('[MessageSystem] Failed to close:', error)
+    log.error('system message close failed', { sessionId, messageId: props.messageId }, error)
   }
 }
 </script>

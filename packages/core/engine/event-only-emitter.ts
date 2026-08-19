@@ -1,4 +1,5 @@
 import type { EventBase, StreamChunkBase } from '../events/index.js'
+import { toLogger, type CompatLogger } from '../logging/index.js'
 import type { JsonObject } from '../json.js'
 import type { CoreIPCEmitter, CoreReasoningPlacement } from './ipc-emitter.js'
 import type { CoreToolArgsFinalizedBy } from './stream-processor.js'
@@ -94,10 +95,8 @@ export interface CoreEventOnlyStoreHooks<TStep = unknown> {
   updateMessageSkill?(sessionId: string, assistantMessageId: string, skillName: string): void
 }
 
-export interface CoreEventOnlyLogger {
-  log(message?: unknown, ...optionalParams: unknown[]): void
-  error(message?: unknown, ...optionalParams: unknown[]): void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CoreEventOnlyLogger = CompatLogger
 
 export interface CreateCoreEventOnlyEmitterOptions<
   TStep = unknown,
@@ -123,6 +122,7 @@ export interface CreateCoreEventOnlyEmitterOptions<
   > | null | undefined
   getStreamChannel?: () => CoreEventOnlyStreamChannelLike<CoreEventOnlyStreamChunk> | null | undefined
   store?: CoreEventOnlyStoreHooks<TStep>
+  /** @deprecated 等级过滤取代开关(§8.1):trace 开了就打。留一个版本的兼容位。 */
   debugStream?: boolean | (() => boolean)
   logger?: CoreEventOnlyLogger
   now?: () => number
@@ -130,10 +130,6 @@ export interface CreateCoreEventOnlyEmitterOptions<
 }
 
 const debugLastPushAt = new Map<string, number>()
-
-function debugEnabled(value: boolean | (() => boolean) | undefined): boolean {
-  return typeof value === 'function' ? value() : Boolean(value)
-}
 
 function previewText(value: string, maxLength = 240): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
@@ -178,10 +174,11 @@ export function createCoreEventOnlyEmitter<
     getEventBus,
     getStreamChannel,
     store,
-    logger = console,
+    logger: injectedLogger,
     now = Date.now,
     nowIso = () => new Date().toISOString(),
   } = options
+  const log = toLogger(injectedLogger)
 
   type EventBusAdapter = CoreEventOnlyEventBusLike<
     CoreEventOnlySessionEvent<
@@ -236,7 +233,7 @@ export function createCoreEventOnlyEmitter<
     // 盖号(见 CoreEventOnlySessionEvent 的注释):事件自己说得清属于哪条消息,
     // 消费者就不必靠「当前活跃流」去猜 —— 那个绑定丢了,整批事件就没了下落。
     eventBus.emit(sessionId, { ...event, messageId: assistantMessageId }).catch(err => {
-      logger.error('[EventOnlyEmitter] EventBus emit error:', err)
+      log.error('[EventOnlyEmitter] EventBus emit error:', err)
     })
   }
 
@@ -248,7 +245,7 @@ export function createCoreEventOnlyEmitter<
       debug?.()
       streamChannel.push(sessionId, chunk)
     } catch (err) {
-      logger.error('[EventOnlyEmitter] StreamChannel error:', err)
+      log.error('[EventOnlyEmitter] StreamChannel error:', undefined, err)
     }
   }
 
@@ -260,9 +257,9 @@ export function createCoreEventOnlyEmitter<
         ...(turnIndex !== undefined ? { turnIndex } : {}),
         ...(voiceSpeakText !== undefined ? { voiceSpeakText } : {}),
       }, () => {
-        if (!debugEnabled(options.debugStream)) return
+        if (!log.isLevelEnabled('trace')) return
         const key = `${sessionId}:${assistantMessageId}:text`
-        logger.log('[EventOnlyEmitter] push text-delta', {
+        log.trace('[EventOnlyEmitter] push text-delta', {
           time: nowIso(),
           gapMs: debugGapMs(key, now()),
           sessionId,
@@ -281,9 +278,9 @@ export function createCoreEventOnlyEmitter<
         ...(turnIndex !== undefined ? { turnIndex } : {}),
         ...(placement ? { placement } : {}),
       }, () => {
-        if (!debugEnabled(options.debugStream)) return
+        if (!log.isLevelEnabled('trace')) return
         const key = `${sessionId}:${assistantMessageId}:reasoning`
-        logger.log('[EventOnlyEmitter] push reasoning-delta', {
+        log.trace('[EventOnlyEmitter] push reasoning-delta', {
           time: nowIso(),
           gapMs: debugGapMs(key, now()),
           sessionId,

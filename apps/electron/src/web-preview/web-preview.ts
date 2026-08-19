@@ -2,6 +2,9 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { app, shell } from 'electron'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('web-preview')
 
 /**
  * 测试用:从 Electron 里启停浏览器端(apps/web)的本地开发服务。
@@ -58,7 +61,7 @@ export function startWebPreview(): { ok: boolean; error?: string } {
       if (child === proc) child = null
     })
     proc.on('error', error => {
-      console.error('[WebPreview] failed to start:', error)
+      log.error('web preview failed to start', undefined, error)
       if (child === proc) child = null
     })
     child = proc

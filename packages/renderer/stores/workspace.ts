@@ -35,6 +35,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
 import { useSessionsStore } from './sessions'
 import {
   SIDEBAR_FORM_MODE_STORAGE_KEY,
@@ -85,6 +86,8 @@ export interface CloseLeafResult {
   /** Sessions that the closed leaf held and no surviving leaf still shows. */
   releasedSessionIds: string[]
 }
+
+const log = getLogger('renderer.workspace-store')
 
 const PERSIST_DEBOUNCE_MS = 150
 
@@ -252,7 +255,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (sessionsStore.isLoading) {
       // Rebuilding needs the session list to validate targets; restoring
       // against a half-loaded list would silently drop sessions.
-      console.error('[workspace] hydrate called while sessions are still loading; starting empty')
+      log.error('hydrate called while sessions are still loading, starting empty')
     }
     // Drafts are never persisted and never in the session list, so plain
     // membership covers them.

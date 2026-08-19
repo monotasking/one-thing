@@ -411,14 +411,17 @@ User messages bypass all markdown parsing:
 
 ### 8.3 Debug Tracing
 
+采样门 = 日志等级(L4 起没有第二个开关,见 `logging-system-2026-08.md` §8.1):
+
 ```javascript
 // Enable in browser console:
-localStorage.setItem('debug:stream-scroll', '1')
+window.__onethingLog.level('info,renderer.stream-scroll=trace')
 
-// Trace output in DevTools:
-// [stream-scroll] f42 StreamingMd:commit len=1234
-// [stream-scroll] f43 CodeBlock:render lines=15 len=456 hl=false complete=false
-// [stream-scroll] f44 CodeBlock:complete false→true lang=js lines=22
+// 结构化记录(ns = renderer.stream-scroll,msg = 'stream scroll event'):
+// { frameId: 42, trigger: 'StreamingMd:commit', detail: 'len=1234' }
+
+// 现场取样(环形缓冲照旧):
+window.__streamScrollTrace.printSummary()
 ```
 
 ---

@@ -20,6 +20,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import * as store from '../store.js'
 import { getStorePath } from '../stores/paths.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.room')
+
 
 /** 自动分配的群 folder 根目录名。 */
 export const COLLAB_ROOMS_DIR = 'rooms'
@@ -50,7 +54,7 @@ export function ensureCollabRoomFolder(roomSessionId: string): string | undefine
   try {
     fs.mkdirSync(folder, { recursive: true })
   } catch (error) {
-    console.error('[collab] room folder create failed:', error)
+    log.error('room folder create failed', { roomSessionId, folder }, error)
     return undefined
   }
   // 自动分配的 folder 落到房间的 workingDirectory 上,一次。

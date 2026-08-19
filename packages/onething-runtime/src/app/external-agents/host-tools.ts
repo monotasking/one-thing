@@ -45,6 +45,12 @@ import { collabVenueOf } from '../collab/venue.js'
 import { findCollabV3Turn } from '../collab/actors/turn-context.js'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('external-agents')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 /**
  * 目录里的一只工具 → 一只可注入的宿主工具。
@@ -117,9 +123,7 @@ export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (r
     .map(id => toolkitHostTool(id))
     .filter((tool): tool is HostMcpHostTool => Boolean(tool))
   if (tools.length === 0) {
-    console.warn(
-      `[host-mcp] no builtin tool object for [${toolIds.join(', ')}] — host tools not injected`,
-    )
+    log.warn('no builtin tool object for the requested ids; host tools not injected', { toolIds })
     return undefined
   }
 
@@ -145,7 +149,7 @@ export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (r
     ...(request.cwd ? { workingDirectory: request.cwd } : {}),
   })
 
-  const server = await createHostMcpServer({ execSessionId, tools, logger: console })
+  const server = await createHostMcpServer({ execSessionId, tools, logger: consoleLog })
   if (!server) {
     release()
     return undefined

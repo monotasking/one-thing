@@ -16,6 +16,12 @@ import {
   type InstallCorePluginPackageResult,
 } from '@onething/core/plugins'
 import { PLUGIN_NPM_INSTALL_TIMEOUT_MS } from './loader.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins.market')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 const NPM_BIN = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 
@@ -98,7 +104,7 @@ export function installPluginPackage(
   pluginsDir: string,
   input: InstallCorePluginPackageInput,
 ): Promise<InstallCorePluginPackageResult> {
-  return installCorePluginPackage(pluginsDir, input, { runNpm: runPluginNpm, logger: console })
+  return installCorePluginPackage(pluginsDir, input, { runNpm: runPluginNpm, logger: consoleLog })
 }
 
 /** host 端口:读账本里某包当前 spec(update 回滚旧版用)。 */
@@ -111,7 +117,7 @@ export function uninstallPluginPackage(
   pluginsDir: string,
   pkg: string,
 ): Promise<{ removed: boolean; error?: string }> {
-  return uninstallCorePluginPackage(pluginsDir, pkg, { runNpm: runPluginNpm, logger: console })
+  return uninstallCorePluginPackage(pluginsDir, pkg, { runNpm: runPluginNpm, logger: consoleLog })
 }
 
 /** definition.dirPath(node_modules/<pkg>)→ 包名(含可能的 scope)。 */
@@ -208,9 +214,9 @@ export async function getPluginMarketIndexSnapshot(input?: { refresh?: boolean }
   } catch (error) {
     marketIndexLastFailureAt = Date.now()
     const message = error instanceof Error ? error.message : String(error)
-    console.warn(
-      `[PluginMarket] Failed to fetch the market index (${marketIndexUrl}):`,
-      message,
+    log.warn(
+      'fetch plugin market index failed',
+      { url: marketIndexUrl, reason: message },
     )
     // 缓存兜底时把失败原因一并给出 —— UI 可以说"为什么过期",
     // 而不是一律猜成断网。

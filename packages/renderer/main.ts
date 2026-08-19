@@ -6,7 +6,7 @@ import App from './App.vue'
 // (`features/index.ts` = 一列 import),加一个 feature 不用碰这个文件。
 import './features'
 import { initializeIPCHub } from './services/ipc-hub'
-import { installRendererLogging } from './services/log'
+import { getLogger, installRendererLogging } from './services/log'
 import { installGlobalCrashCapture } from './services/crash-log'
 import { installGlobalFileDropGuard } from './composables/useFileDrop'
 import { buildFontLoadSpecs, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
@@ -34,7 +34,7 @@ if (currentTheme !== 'light' && currentTheme !== 'dark') {
   // Fall back to cached theme or default
   const cached = localStorage.getItem('cached-theme')
   const fixedTheme = (cached === 'light' || cached === 'dark') ? cached : 'dark'
-  console.log('[Theme] main.ts: Fixing invalid data-theme:', currentTheme, '->', fixedTheme)
+  getLogger('renderer.boot').debug('fixed invalid data-theme', { from: currentTheme, to: fixedTheme })
   html.setAttribute('data-theme', fixedTheme)
 }
 

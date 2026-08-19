@@ -7,6 +7,9 @@ import type {
 } from '@/types'
 import { platformApi } from '@/platform'
 import { agentsApi } from '@/platform/agents-client'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.skills')
 
 export interface UseSkillsEmit {
   (e: 'update:settings', value: SkillSettings): void
@@ -70,7 +73,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
       lastError.value = skillsResult.reason instanceof Error
         ? skillsResult.reason.message
         : 'Failed to load skills'
-      console.error('Failed to load skills:', skillsResult.reason)
+      log.error('skills load failed', {}, skillsResult.reason)
     }
     if (directoriesResult.status === 'fulfilled' && directoriesResult.value.success && directoriesResult.value.directories) {
       directories.value = directoriesResult.value.directories
@@ -93,7 +96,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
       }
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : 'Failed to refresh skills'
-      console.error('Failed to refresh skills:', error)
+      log.error('skills refresh failed', {}, error)
     } finally {
       isLoading.value = false
     }
@@ -109,7 +112,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
       skill.enabled = enabled
       emitSkillEntry(skill.id, { enabled, agentId: skill.agentId ?? undefined })
     } catch (error) {
-      console.error('Failed to toggle skill:', error)
+      log.error('skill toggle failed', { skillId: skill.id, enabled }, error)
     }
   }
 
@@ -123,7 +126,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
       skill.agentId = agentId
       emitSkillEntry(skill.id, { enabled: skill.enabled, agentId })
     } catch (error) {
-      console.error('Failed to assign skill agent:', error)
+      log.error('skill agent assign failed', { skillId: skill.id, agentId }, error)
     }
   }
 
@@ -155,7 +158,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
       emitSettings({ customDirectories: directories.value })
       await refresh()
     } catch (error) {
-      console.error('Failed to update skill directory:', error)
+      log.error('skill directory update failed', { directoryId: input.id }, error)
     }
   }
 
@@ -170,7 +173,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
       emitSettings({ customDirectories: directories.value })
       await refresh()
     } catch (error) {
-      console.error('Failed to remove skill directory:', error)
+      log.error('skill directory remove failed', { directoryId: id }, error)
     }
   }
 
@@ -184,7 +187,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
       skills.value = skills.value.filter(skill => skill.id !== skillId)
       return true
     } catch (error) {
-      console.error('Failed to delete skill:', error)
+      log.error('skill delete failed', { skillId }, error)
       return false
     }
   }
@@ -193,7 +196,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
     try {
       await platformApi.openSkillDirectory(skillId)
     } catch (error) {
-      console.error('Failed to open skill directory:', error)
+      log.error('open skill directory failed', { skillId }, error)
     }
   }
 
@@ -201,7 +204,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
     try {
       await platformApi.openPath(path)
     } catch (error) {
-      console.error('Failed to open path:', error)
+      log.error('open path failed', { path }, error)
     }
   }
 
@@ -216,7 +219,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
         return result.filePaths[0]
       }
     } catch (error) {
-      console.error('Failed to open directory picker:', error)
+      log.error('directory picker failed', {}, error)
     }
     return null
   }

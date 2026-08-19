@@ -30,6 +30,10 @@ import {
 } from './event-log.js'
 import { putSessionBlob } from './blob-store.js'
 import { currentSessionRun, nextSessionRunPartIndex } from './runs.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions.events')
+
 
 /**
  * 记一段生成出来的图片正文。
@@ -64,7 +68,7 @@ export function recordGeneratedImagePart(
     })
     return blob
   } catch (error) {
-    console.warn(`[SessionEvents] image part record failed for ${sessionId}:`, error)
+    log.warn('image part record failed', { sessionId }, error)
     return undefined
   }
 }

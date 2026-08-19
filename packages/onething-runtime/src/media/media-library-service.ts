@@ -12,6 +12,10 @@ import {
   writeJsonFile,
 } from '@onething/core/storage'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('media')
+
 export type OnethingMediaKind = 'image' | 'video' | 'audio' | 'document' | 'file'
 export type OnethingMediaSource = 'user-upload' | 'ai-generated' | 'tool-output' | 'external'
 export type OnethingMediaUsageTag = 'persona-avatar' | 'video-character' | 'chat-reference'
@@ -597,7 +601,7 @@ export class OnethingMediaLibraryService {
           added += 1
         }
       } catch (error) {
-        console.warn('[MediaLibrary] Failed to ingest attachment:', {
+        log.warn('attachment ingest failed', {
           sessionId,
           messageId,
           attachmentId: attachment.id,
@@ -633,7 +637,7 @@ export class OnethingMediaLibraryService {
             if (result.created) added += 1
             else skipped += 1
           } catch (error) {
-            console.warn('[MediaLibrary] Failed to backfill attachment:', {
+            log.warn('attachment backfill failed', {
               sessionId: session.id,
               messageId: message.id,
               attachmentId: attachment.id,

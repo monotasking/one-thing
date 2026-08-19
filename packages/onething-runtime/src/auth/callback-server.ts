@@ -1,6 +1,10 @@
 import http from 'node:http'
 import type { OnethingAuthCallbackRegistration } from './auth-service.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('auth')
+
 interface CallbackRegistration {
   flowId: string
   providerId: string
@@ -121,7 +125,10 @@ export class CallbackServerManager {
       flowId: registration.flowId,
       providerId: registration.providerId,
     }).catch((callbackError) => {
-      console.error('[Auth] OAuth callback processing failed:', callbackError)
+      log.error('oauth callback processing failed', {
+        flowId: registration.flowId,
+        providerId: registration.providerId,
+      }, callbackError)
     })
   }
 

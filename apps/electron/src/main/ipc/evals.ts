@@ -52,6 +52,9 @@ import {
 	createEvalsModelCaller,
 	resolveEvalsCredentials,
 } from "./evals-provider-adapter.js";
+import { getLogger } from "@onething/app/logging/index.js";
+
+const log = getLogger("ipc.evals");
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -218,10 +221,7 @@ export async function createIncidentForTurn(options: {
 				JSON.stringify(sendView),
 			) as Array<Record<string, unknown>>;
 		} catch (error) {
-			console.error(
-				"[Evals] Send-view rebuild failed, falling back to storage view:",
-				error,
-			);
+			log.warn("send-view rebuild failed, using storage view", undefined, error);
 			synthesizedContext = synthesizeContextFromMessages(
 				messages,
 				options.turnId,
@@ -364,7 +364,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] Downvote recording failed:", error);
+				log.error("downvote recording failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -424,7 +424,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] List records failed:", error);
+				log.error("list records failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -459,7 +459,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] List fixtures failed:", error);
+				log.error("list fixtures failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -550,7 +550,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] Read fixture failed:", error);
+				log.error("read fixture failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -592,7 +592,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] List results failed:", error);
+				log.error("list results failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -614,7 +614,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] List cases failed:", error);
+				log.error("list cases failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -643,7 +643,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] Get case failed:", error);
+				log.error("get case failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -657,7 +657,7 @@ export function registerEvalsHandlers(): void {
 			request: EvalsRunStartRequest,
 		): Promise<EvalsRunStartResponse> => {
 			try {
-				console.log("[Evals IPC] evalsRunStart received:", {
+				log.debug("run start received", {
 					provider: request.providerId,
 					model: request.model,
 					runs: request.runs,
@@ -665,16 +665,14 @@ export function registerEvalsHandlers(): void {
 					disabledSections: request.disabledSections,
 				});
 				if (activeRunAbort) {
-					console.warn(
-						"[Evals IPC] evalsRunStart blocked: run already in progress",
-					);
+					log.warn("run start blocked", { reason: "run already in progress" });
 					return { success: false, error: "A run is already in progress" };
 				}
 
 				const repoDir = getRepoDir();
-				console.log("[Evals IPC] repoDir:", repoDir);
+				log.debug("repo dir resolved", { repoDir });
 				if (!repoDir) {
-					console.warn("[Evals IPC] evalsRunStart blocked: no repo dir");
+					log.warn("run start blocked", { reason: "no repo dir" });
 					return { success: false, error: "Evals repo not configured" };
 				}
 
@@ -682,24 +680,24 @@ export function registerEvalsHandlers(): void {
 				// launching a run where every attempt throws and a zero-score
 				// entry pollutes results.jsonl.
 				const credentials = resolveEvalsCredentials(request.providerId);
-				console.log(
-					"[Evals IPC] credentials check:",
-					credentials.ok ? "OK" : credentials.reason,
-				);
+				log.debug("credentials check", {
+					ok: credentials.ok,
+					reason: credentials.ok ? undefined : credentials.reason,
+				});
 				if (!credentials.ok) {
 					return { success: false, error: credentials.reason };
 				}
 
 				const senderWindow = BrowserWindow.fromWebContents(event.sender);
 				if (!senderWindow) {
-					console.warn("[Evals IPC] evalsRunStart blocked: no sender window");
+					log.warn("run start blocked", { reason: "no sender window" });
 					return { success: false, error: "No sender window" };
 				}
 
 				const abortController = new AbortController();
 				activeRunAbort = abortController;
 
-				console.log("[Evals IPC] Launching background run...");
+				log.info("background run launching", { provider: request.providerId, model: request.model });
 				// Fire and forget — progress is sent via push events
 				runEvalsInBackground(
 					repoDir,
@@ -707,15 +705,15 @@ export function registerEvalsHandlers(): void {
 					abortController,
 					senderWindow,
 				).catch((err) => {
-					console.error("[Evals IPC] Background run failed:", err);
+					log.error("background run failed", undefined, err);
 				});
 
-				console.log("[Evals IPC] evalsRunStart returning success");
+				log.debug("run start accepted");
 				return { success: true };
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] Run start failed:", error);
+				log.error("run start failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -833,7 +831,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] Promote fixture failed:", error);
+				log.error("promote fixture failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -867,7 +865,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] Retire case failed:", error);
+				log.error("retire case failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -916,7 +914,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] Generate triage failed:", error);
+				log.error("generate triage failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -943,7 +941,7 @@ export function registerEvalsHandlers(): void {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				console.error("[Evals IPC] Read run detail failed:", error);
+				log.error("read run detail failed", undefined, error);
 				return { success: false, error: message };
 			}
 		},
@@ -951,7 +949,7 @@ export function registerEvalsHandlers(): void {
 
 	registerEvalsWorkbenchHandlers();
 
-	console.log("[Evals IPC] Handlers registered");
+	log.info("handlers registered");
 }
 
 // ── Helper functions ────────────────────────────────────
@@ -1090,7 +1088,7 @@ async function runEvalsInBackground(
 					"utf-8",
 				);
 			} catch (err) {
-				console.error("[Evals IPC] Failed to persist run detail:", err);
+				log.error("persist run detail failed", undefined, err);
 			}
 		}
 

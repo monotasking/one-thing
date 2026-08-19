@@ -57,8 +57,20 @@ export const MAX_LOG_MSG_LENGTH = 4000;
  */
 export const RENDERER_LOG_ECHO_MARK = "\u200B";
 
+/**
+ * 等级 spec 的**单向下发**(L4):渲染侧的 hub 自己只认 localStorage
+ * (`onething:log`),于是主进程的 `ONETHING_LOG`(以及废弃的 `ONETHING_DEBUG_*`
+ * 别名展开出来的 `renderer.*=trace`)到不了渲染侧。这一格让 hub 在装好之后
+ * 拉一次:主进程说了算的那份 spec 是唯一事实,localStorage 是本地覆写。
+ */
+export interface LogConfigResponse {
+	/** 主进程当前生效的 `ONETHING_LOG` 形状 spec。 */
+	levelSpec: string;
+}
+
 export type LogsRoutes = {
 	append: { input: AppendLogsRequest; output: AppendLogsResponse };
+	config: { input: Record<string, never>; output: LogConfigResponse };
 };
 
-export const logsRouter = defineRouter<LogsRoutes>("logs", ["append"]);
+export const logsRouter = defineRouter<LogsRoutes>("logs", ["append", "config"]);

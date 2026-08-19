@@ -19,6 +19,9 @@ import * as store from "@onething/app/store.js";
 import type { EvalModelCaller } from "@onething/runtime";
 import { onethingBaseBuiltinProviders } from "@onething/runtime/providers";
 import { recordUsage } from "@onething/app/usage/index.js";
+import { getLogger } from "@onething/app/logging/index.js";
+
+const log = getLogger("ipc.evals");
 
 interface ResolvedEvalsCredentials {
 	ok: boolean;
@@ -87,9 +90,12 @@ export function createEvalsModelCaller(
 				effectiveProviderId = opts.provider;
 				effectiveModel = opts.model || model;
 			} else {
-				console.warn(
-					`[Evals] Origin provider "${opts.provider}" unavailable (${origin.reason}); falling back to ${providerId}/${model}`,
-				);
+				log.warn("origin provider unavailable, falling back", {
+					originProvider: opts.provider,
+					reason: origin.reason,
+					fallbackProvider: providerId,
+					fallbackModel: model,
+				});
 			}
 		} else if (opts.provider === providerId && opts.model) {
 			// Same provider: honor the scene's exact model.
@@ -201,7 +207,7 @@ export function createEvalsModelCaller(
 					},
 				});
 			} catch (error) {
-				console.error("[Evals] recordUsage failed:", error);
+				log.error("record usage failed", undefined, error);
 			}
 		}
 

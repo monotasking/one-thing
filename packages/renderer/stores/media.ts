@@ -8,6 +8,9 @@ import type {
   MediaQuery,
 } from '@/types'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.media')
 
 export type GeneratedMedia = MediaAsset
 
@@ -60,7 +63,7 @@ export const useMediaStore = defineStore('media', () => {
       await platformApi.rebuildMediaLibrary()
       hasBackfilled.value = true
     } catch (e) {
-      console.error('Failed to rebuild media library:', e)
+      log.error('media library rebuild failed', {}, e)
     } finally {
       isRebuilding.value = false
     }
@@ -87,7 +90,7 @@ export const useMediaStore = defineStore('media', () => {
     try {
       await load
     } catch (e) {
-      console.error('Failed to load media:', e)
+      log.error('media load failed', {}, e)
     } finally {
       if (activeLoad === load) {
         activeLoad = null
@@ -110,7 +113,7 @@ export const useMediaStore = defineStore('media', () => {
       await loadMedia()
       return mediaItems.value.find(asset => asset.id === item.id) || null
     } catch (e) {
-      console.error('Failed to save image:', e)
+      log.error('image save failed', {}, e)
       return null
     }
   }
@@ -152,7 +155,7 @@ export const useMediaStore = defineStore('media', () => {
       if (hasLoaded.value) void loadMedia({ force: true })
       return fileName
     } catch (e) {
-      console.error('Failed to save persona avatar:', e)
+      log.error('persona avatar save failed', {}, e)
       return null
     }
   }
@@ -170,7 +173,7 @@ export const useMediaStore = defineStore('media', () => {
     try {
       return await platformApi.ingestMediaFiles(request)
     } catch (e) {
-      console.error('Failed to ingest media files:', e)
+      log.error('media ingest failed', {}, e)
       return {
         success: false,
         assets: [],
@@ -187,7 +190,7 @@ export const useMediaStore = defineStore('media', () => {
       await platformApi.hideMediaAsset(id)
       mediaItems.value = mediaItems.value.filter(m => m.id !== id)
     } catch (e) {
-      console.error('Failed to remove media from library:', e)
+      log.error('media remove failed', { mediaId: id }, e)
     }
   }
 
@@ -196,7 +199,7 @@ export const useMediaStore = defineStore('media', () => {
       await platformApi.clearAllMedia()
       mediaItems.value = []
     } catch (e) {
-      console.error('Failed to clear media:', e)
+      log.error('media clear failed', {}, e)
     }
   }
 

@@ -36,22 +36,28 @@ import {
   updatePrompt,
 } from '../../prompts/store.js'
 import { registerRouterHandlers } from '../registry.js'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('ipc.prompts')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export const promptsRpcHandlers: RouteHandlers<PromptsRoutes> = {
   async list() {
-    return listOnethingPromptsForIpc({ listPrompts, logger: console })
+    return listOnethingPromptsForIpc({ listPrompts, logger: consoleLog })
   },
   async get(request) {
-    return getOnethingPromptForIpc({ request, getPrompt, logger: console })
+    return getOnethingPromptForIpc({ request, getPrompt, logger: consoleLog })
   },
   async create(request) {
-    return createOnethingPromptForIpc({ request, createPrompt, logger: console })
+    return createOnethingPromptForIpc({ request, createPrompt, logger: consoleLog })
   },
   async update(request) {
-    return updateOnethingPromptForIpc({ request, updatePrompt, logger: console })
+    return updateOnethingPromptForIpc({ request, updatePrompt, logger: consoleLog })
   },
   async delete(request) {
-    return deleteOnethingPromptForIpc({ request, deletePrompt, logger: console })
+    return deleteOnethingPromptForIpc({ request, deletePrompt, logger: consoleLog })
   },
 }
 

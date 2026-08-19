@@ -29,6 +29,10 @@ import {
 import { buildHistoryMessages } from './stream/message-helpers.js'
 import { collectCompactFileOperations } from './compact-file-lists.js'
 import * as modelRegistry from '../providers/model-registry.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('engine.compact')
+
 export {
   estimateCurrentInputTokens,
   estimateSessionInputTokens,
@@ -137,7 +141,7 @@ export async function compactSessionContext(options: {
 
     let summary: string
     if (replacement) {
-      console.log('[ContextCompact] using plugin replacement summary', {
+      log.debug('using plugin replacement summary', {
         sessionId: options.sessionId,
         pluginId: replacement.pluginId,
         hookId: replacement.hookId,
@@ -224,7 +228,7 @@ export async function compactSessionContext(options: {
       retainedContextSize,
     }
   } catch (error) {
-    console.error('[ContextCompact] Failed to compact session:', error)
+    log.error('compact session failed', { sessionId: options.sessionId }, error)
     const errorMessage = normalizeContextCompactError(error)
     const failedContent = buildContextCompactFailedContent(
       errorMessage,
@@ -275,7 +279,7 @@ async function computeRetainedContextSizeAfterCompact(options: {
     const requested = perModelOverride ?? (halfDefault > 0 ? halfDefault : reservedOutputTokens)
     reservedOutputTokens = modelMaxOutputTokens > 0 ? Math.min(requested, modelMaxOutputTokens) : requested
   } catch (error) {
-    console.warn('[ContextCompact] Failed to resolve model context budget after compact:', error)
+    log.warn('resolve model context budget after compact failed', { model: options.configWithApiKey.model, providerId: options.providerId }, error)
   }
 
   // C1:读走门面,且**在 addMessage / 压缩的那串 await 之后现取** —— 这个函数
@@ -294,7 +298,7 @@ async function computeRetainedContextSizeAfterCompact(options: {
     model: options.configWithApiKey.model,
   })
 
-  console.log('[ContextCompact] retained usage after compact', {
+  log.debug('retained usage after compact', {
     sessionId: options.sessionId,
     providerId: options.providerId,
     model: options.configWithApiKey.model,
@@ -320,7 +324,7 @@ async function resolveSummaryMaxTokens(model: string, providerId: string): Promi
   try {
     return await modelRegistry.getKnownModelMaxOutputTokens(model, providerId)
   } catch (error) {
-    console.warn('[ContextCompact] Failed to resolve model max output tokens for summary:', error)
+    log.warn('resolve summary max output tokens failed', { model, providerId }, error)
     return undefined
   }
 }

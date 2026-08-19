@@ -25,8 +25,14 @@ import { getSessionsDir } from "../stores/paths.js";
 import { createUtilityProvider } from "../providers/utility-provider.js";
 import { billTocUsage } from "../usage/bill-side-line.js";
 import { getSettings } from "../stores/settings.js";
+import { consolePort, getLogger } from '../logging/index.js'
 
-const segmentStore = createSessionSegmentStore({ getSessionsDir, logger: console });
+const tocLog = getLogger('sessions.toc')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(tocLog)
+
+
+const segmentStore = createSessionSegmentStore({ getSessionsDir, logger: consoleLog });
 
 /** Ceiling on one segmentation call. */
 const TOC_CALL_TIMEOUT_MS = 60_000;
@@ -37,7 +43,7 @@ const TOC_CALL_TIMEOUT_MS = 60_000;
  * failure is indistinguishable from the feature being switched off.
  */
 function log(message: string): void {
-	console.log(`[SessionTOC] ${message}`);
+	tocLog.debug("session toc", { detail: message });
 }
 
 export function readSessionSegments(sessionId: string): Promise<SessionSegment[]> {

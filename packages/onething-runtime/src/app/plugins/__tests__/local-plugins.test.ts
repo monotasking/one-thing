@@ -11,6 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { collectLogRecordsForTests } from '../../logging/index.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-local-plugins-app-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -79,12 +80,13 @@ describe('scanPlugins —— 轻通道追加在 npm 账本扫描之后', () => {
   it('启动可见性:集合变化时吼一声,列出加载了哪些本地脚本', async () => {
     // 加一个新脚本让本地 id 集合发生变化 —— 日志只在变化时打(热路径不刷屏)。
     writeDevScript('gauge-log-probe.ts')
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const logs = collectLogRecordsForTests()
     const { scanPlugins } = await loader()
     scanPlugins()
-    const line = spy.mock.calls.map(args => String(args[0])).find(msg => msg.includes('local dev script'))
-    expect(line).toBeTruthy()
-    expect(line).toContain('gauge-log-probe')
+    const record = logs.records.find(entry => entry.msg === 'loaded local dev plugin scripts')
+    expect(record).toBeTruthy()
+    expect(record?.fields?.pluginIds).toContain('gauge-log-probe')
+    logs.stop()
   })
 })
 

@@ -9,6 +9,7 @@
  * 装配层的测试不许伸手进产品层(守卫:plugin logic stays out of the host assembly tree)。
  */
 import { describe, expect, it, vi } from 'vitest'
+import { collectLogRecordsForTests } from '../../logging/index.js'
 import {
   configurePluginConfigHost,
   describePluginConfig,
@@ -74,14 +75,14 @@ describe('R3 store — the host owns storage, not the plugin', () => {
   })
 
   it('warns once about stored junk instead of failing the read', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = collectLogRecordsForTests()
     installHost({ stored: { retention: 'seven' } })
     try {
       expect(getEffectivePluginConfig('demo').retention).toBe(7)
       expect(getEffectivePluginConfig('demo').retention).toBe(7)
-      expect(warn).toHaveBeenCalledTimes(1)
+      expect(logs.records.filter(record => record.level === 'warn')).toHaveLength(1)
     } finally {
-      warn.mockRestore()
+      logs.stop()
     }
   })
 
@@ -226,7 +227,7 @@ describe('R3 onChange — plugin code, therefore soft-isolated', () => {
     resetPluginConfigListenersForTests()
     resetPluginRuntimeHealthForTests()
     configurePluginHealthHost({ disablePlugin: () => {}, notify: () => {} })
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const logs = collectLogRecordsForTests()
 
     try {
       subscribePluginConfigChange('demo', () => {
@@ -240,7 +241,7 @@ describe('R3 onChange — plugin code, therefore soft-isolated', () => {
         lastError: 'onChange exploded',
       })
     } finally {
-      error.mockRestore()
+      logs.stop()
       configurePluginHealthHost(null)
       resetPluginRuntimeHealthForTests()
     }
@@ -306,12 +307,12 @@ describe('F1 external root — the host locates it through the schema, not a mag
   })
 
   it('drops a stored relative path (the coercion layer refuses it) rather than resolving it against the CWD', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = collectLogRecordsForTests()
     try {
       installHost({ schema: WIKI_SCHEMA, stored: { wikiRoot: 'notes' } })
       expect(getPluginExternalRoot('demo')).toBeUndefined()
     } finally {
-      warn.mockRestore()
+      logs.stop()
     }
   })
 })

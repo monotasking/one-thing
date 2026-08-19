@@ -120,6 +120,9 @@ import { ref } from 'vue'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import type { AnchorRect } from '@/composables/floating/compute-position'
 import type { FloatingCloseOn, FloatingZLayer } from '@/composables/floating/useFloatingLayer'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.selection-toolbar')
 
 interface Props {
   visible: boolean
@@ -154,7 +157,7 @@ function onOpenChange(open: boolean) {
 async function handleCopy() {
   const success = await copyTextToClipboard(props.selectedText)
   if (!success) {
-    console.warn('Failed to copy selection')
+    log.warn('selection copy failed')
     return
   }
 

@@ -821,6 +821,9 @@ import { toPlainData } from '@/workspace/plain-data'
 import { useConfirm } from '@/composables/useConfirm'
 import { useFileDrop } from '@/composables/useFileDrop'
 import { toast } from '@/composables/useToast'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.plugins')
 
 interface PluginInfo {
   id: string
@@ -1622,7 +1625,7 @@ async function togglePlugin(plugin: PluginInfo) {
         await loadPlugins()
         emit('plugins-changed')
       } else {
-        console.error('Failed to disable plugin:', result?.error)
+        log.error('plugin disable failed', { pluginId: plugin.id, error: result?.error })
       }
     } else {
       const result = await platformApi.enablePlugin(plugin.id)
@@ -1632,11 +1635,11 @@ async function togglePlugin(plugin: PluginInfo) {
         await loadPlugins()
         emit('plugins-changed')
       } else {
-        console.error('Failed to enable plugin:', result?.error)
+        log.error('plugin enable failed', { pluginId: plugin.id, error: result?.error })
       }
     }
   } catch (e: any) {
-    console.error('Toggle plugin error:', e)
+    log.error('plugin toggle failed', { pluginId: plugin.id }, e)
   }
 }
 
@@ -1644,10 +1647,10 @@ async function refreshPlugins() {
   try {
     const result = await platformApi.refreshPlugins()
     if (!result?.success) {
-      console.error('Failed to refresh plugins:', result?.error)
+      log.error('plugin refresh failed', { error: result?.error })
     }
   } catch (e: any) {
-    console.error('Refresh plugins error:', e)
+    log.error('plugin refresh failed', {}, e)
   }
   await loadPlugins()
   emit('plugins-changed')

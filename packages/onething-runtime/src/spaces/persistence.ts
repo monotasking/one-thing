@@ -3,6 +3,10 @@ import * as path from 'node:path'
 import { getOnethingWorkspacesDir } from '../storage/paths.js'
 import { parseSpaceIndex, type SpaceIndex } from './types.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('spaces')
+
 let rootDirOverride: string | null = null
 
 export function setRootDirForTests(dir: string | null): void {
@@ -42,7 +46,7 @@ export function removeSpaceDir(spaceId: string): void {
   try {
     fs.rmSync(spaceDir(spaceId), { recursive: true, force: true })
   } catch (err) {
-    console.warn(`[spaces] failed to remove ${spaceId}/:`, err)
+    log.warn('space directory remove failed', { spaceId }, err)
   }
 }
 
@@ -51,12 +55,12 @@ export function loadIndex(): SpaceIndex {
     if (!fs.existsSync(indexPath())) return { spaces: [] }
     const parsed = parseSpaceIndex(JSON.parse(fs.readFileSync(indexPath(), 'utf-8')))
     if (!parsed) {
-      console.warn('[spaces] index.json failed schema validation, treating as empty')
+      log.warn('space index schema validation failed, treating as empty')
       return { spaces: [] }
     }
     return parsed
   } catch (err) {
-    console.warn('[spaces] failed to read index.json:', err)
+    log.warn('space index read failed', undefined, err)
     return { spaces: [] }
   }
 }

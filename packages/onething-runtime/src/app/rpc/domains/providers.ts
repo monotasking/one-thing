@@ -34,6 +34,12 @@ import { fetchCodexUsage } from '../../providers/builtin/codex.js'
 import { getAvailableProviders } from '../../providers/index.js'
 import { getProviderEnvStatus } from '../../providers/env.js'
 import { registerRouterHandlers } from '../registry.js'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('ipc.providers')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 /** 「这个空间的这个 provider 的 OAuth 账号」→ auth 层的读写目标。 */
 function providerUsageCredentialTarget(spaceId: string | undefined, providerId: string) {
@@ -43,7 +49,7 @@ function providerUsageCredentialTarget(spaceId: string | undefined, providerId: 
 
 export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
   async list() {
-    return listOnethingProvidersForIpc({ getAvailableProviders, logger: console })
+    return listOnethingProvidersForIpc({ getAvailableProviders, logger: consoleLog })
   },
   async usage(request) {
     return getOnethingProviderUsage({
@@ -65,7 +71,7 @@ export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
     return inspectOnethingProviderEnvStatusForIpc({
       providerId: request?.providerId ?? '',
       getProviderEnvStatus,
-      logger: console,
+      logger: consoleLog,
     })
   },
 }

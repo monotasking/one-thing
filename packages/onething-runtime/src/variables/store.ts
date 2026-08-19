@@ -5,6 +5,10 @@ import {
 } from './schema.js'
 import type { ContextVariable } from './types.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('variables')
+
 function toStoredVariable(v: ContextVariable): VariablesFileGlobalVariable {
   return {
     name: v.name,
@@ -120,7 +124,7 @@ export class VariablesStore {
       try {
         cb()
       } catch (err) {
-        console.error('[variables.store] listener error:', err)
+        log.error('variables store listener failed', undefined, err)
       }
     }
   }

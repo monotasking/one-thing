@@ -44,6 +44,10 @@ import {
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
 import { readSessionBlobText } from './blob-store.js'
 import { sessionReads } from './reads.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions.shadow')
+
 
 export const SESSION_SHADOW_LOG_FILENAME = 'session-shadow.jsonl'
 
@@ -286,7 +290,7 @@ export function checkSessionRunShadow(
     recordMismatch(sessionId, 'messages', input.runId, a, b)
     return 'mismatch'
   } catch (error) {
-    console.warn(`[SessionShadow] run assertion failed for ${sessionId}:`, error)
+    log.warn('run assertion failed', { sessionId }, error)
     return 'skipped'
   }
 }
@@ -352,7 +356,7 @@ export function checkSessionHistoryShadow(
     recordMismatch(sessionId, 'history', input.runId, JSON.parse(a), JSON.parse(b))
     return 'mismatch'
   } catch (error) {
-    console.warn(`[SessionShadow] history assertion failed for ${sessionId}:`, error)
+    log.warn('history assertion failed', { sessionId }, error)
     return 'skipped'
   }
 }

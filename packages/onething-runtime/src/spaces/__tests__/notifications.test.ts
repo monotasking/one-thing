@@ -12,6 +12,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { captureRuntimeLogs } from '../../logging/index.js'
 import { writeSpaceCredentials, resetSpaceCredentialsCacheForTests } from '../credentials.js'
 import {
   notifySpaceDataChanged,
@@ -76,7 +77,7 @@ describe('subscribeSpaceDataChanged(批 B9-0)', () => {
   })
 
   it('一个监听器抛错不拖垮其他监听器,也不拖垮那次写入', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = captureRuntimeLogs()
     const seen: string[] = []
     subscribeSpaceDataChanged(() => {
       throw new Error('boom')
@@ -87,7 +88,8 @@ describe('subscribeSpaceDataChanged(批 B9-0)', () => {
     const written = writeSpaceOverlay('work', { connectedDirectories: ['/a'] })
     expect(written.connectedDirectories).toEqual(['/a'])
     expect(seen).toEqual(['overlay'])
-    expect(warn).toHaveBeenCalled()
+    expect(logs.ofLevel('warn').length).toBeGreaterThan(0)
+    logs.restore()
   })
 
   it('notify 是纯广播:没有订阅者时什么也不做', () => {

@@ -1,4 +1,8 @@
 import type { SkillSource } from '@shared/ipc.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('skills')
+
 
 export interface PluginSkillInstructionContextInput {
   skillDir: string
@@ -40,7 +44,7 @@ export function listPluginSkillRoots(): PluginSkillRoot[] {
     try {
       const result = provider()
       if (result instanceof Promise) {
-        console.warn(`[Skills] Plugin skill root provider "${pluginId}" returned a Promise; async roots are ignored`)
+        log.warn('plugin skill root provider returned a Promise; async roots are ignored', { pluginId })
         continue
       }
       for (const root of result) {
@@ -51,7 +55,7 @@ export function listPluginSkillRoots(): PluginSkillRoot[] {
         })
       }
     } catch (err) {
-      console.error(`[Skills] Plugin skill root provider "${pluginId}" failed:`, err)
+      log.error('plugin skill root provider failed', { pluginId }, err)
     }
   }
   return roots

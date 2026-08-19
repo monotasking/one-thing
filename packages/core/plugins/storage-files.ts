@@ -38,6 +38,10 @@
 import fs from 'fs'
 import path from 'path'
 import { describePluginRelativeAssetPathProblem } from './webview.js'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.plugins')
+
 import {
   assertSafePluginFileName,
   getCorePluginScratchDir,
@@ -474,7 +478,7 @@ export function createCorePluginFiles(options: CreateCorePluginFilesOptions): Co
     try {
       options.onQuotaWarning?.({ bytes: cachedBytes, quotaBytes })
     } catch (error) {
-      console.error(`[PluginFiles:${pluginId}] quota warning handler failed:`, error)
+      log.error('quota warning handler failed', { pluginId }, error)
     }
   }
 
@@ -483,10 +487,7 @@ export function createCorePluginFiles(options: CreateCorePluginFilesOptions): Co
     if (!options.isDisposed?.()) return false
     if (!demolitionWarned) {
       demolitionWarned = true
-      console.warn(
-        `[PluginFiles:${pluginId}] Ignoring file writes after teardown — `
-        + 'late writes must not resurrect the archived home directory.',
-      )
+      log.warn('ignoring file writes after teardown', { pluginId })
     }
     return true
   }

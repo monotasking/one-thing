@@ -335,6 +335,9 @@ import EvalsSettingsTab from './settings/evals/EvalsSettingsTab.vue'
 
 // Dialogs
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.settings-page')
 
 const settingsStore = useSettingsStore()
 const spacesStore = useSpacesStore()
@@ -536,7 +539,7 @@ async function loadTools() {
       tools.value = toolsResponse.tools
     }
   } catch (err) {
-    console.error('Failed to load tools:', err)
+    log.error('tools load failed', {}, err)
   }
 }
 
@@ -556,7 +559,7 @@ async function loadSettings() {
 
     loadTools()
   } catch (err) {
-    console.error('Failed to load settings:', err)
+    log.error('settings load failed', {}, err)
   } finally {
     isLoading.value = false
     setTimeout(() => {
@@ -568,7 +571,7 @@ async function loadSettings() {
 // Handle settings update from child components
 function handleSettingsUpdate(newSettings: AppSettings) {
   if (!newSettings) {
-    console.warn('handleSettingsUpdate received null/undefined settings')
+    log.warn('settings update received empty payload')
     return
   }
   localSettings.value = newSettings
@@ -782,10 +785,10 @@ async function openSettingsJson() {
     const normalizedPath = dataPath.endsWith('/') ? dataPath.slice(0, -1) : dataPath
     const result = await platformApi.openPath(`${normalizedPath}/settings.json`)
     if (result) {
-      console.warn('Failed to open settings.json:', result)
+      log.warn('open settings.json reported an error', { result })
     }
   } catch (error) {
-    console.error('Failed to open settings.json:', error)
+    log.error('open settings.json failed', {}, error)
   }
 }
 

@@ -37,6 +37,7 @@ import {
   unscopedPluginIdFromPackageName,
 } from '@onething/core/plugins'
 import type { CorePluginMarketIndex } from '@onething/core/plugins'
+import { stdout, stderr } from './stdout.js'
 
 /** 装完/卸完的提示 —— CLI 不加载插件,桌面那边要自己刷新。 */
 const REFRESH_HINT
@@ -90,30 +91,30 @@ async function installPlugins(targets: string[]): Promise<void> {
       const filePath = path.resolve(target)
       const summary = readPluginTarballSummary(filePath)
       if (!summary.success || !summary.summary) {
-        console.error(`✗ ${target}: ${summary.error ?? 'cannot read the tarball'} [${summary.errorCode ?? 'unknown'}]`)
+        stderr(`✗ ${target}: ${summary.error ?? 'cannot read the tarball'} [${summary.errorCode ?? 'unknown'}]`)
         failures += 1
         continue
       }
       // 包名从 tarball 里读 —— 用户不手输包名,手输的包名和包内 name 不符
       // 会在 core 的装后校验里回滚,那时候钱已经花了。
       const { pkg, version, manifestIssue } = summary.summary
-      if (manifestIssue) console.warn(`! ${pkg}: ${manifestIssue}`)
-      console.log(`Installing ${pkg}@${version} from ${filePath} ...`)
+      if (manifestIssue) stderr(`! ${pkg}: ${manifestIssue}`)
+      stdout(`Installing ${pkg}@${version} from ${filePath} ...`)
       const result = await installPluginPackage(pluginsDir, { pkg, spec: `file:${filePath}` })
       if (!result.ok) {
-        console.error(`✗ ${pkg}: ${result.error ?? 'install failed'}`)
+        stderr(`✗ ${pkg}: ${result.error ?? 'install failed'}`)
         failures += 1
         continue
       }
-      console.log(`✓ installed ${result.pluginId} (${pkg}@${version})`)
-      console.log(`  ${REFRESH_HINT}`)
+      stdout(`✓ installed ${result.pluginId} (${pkg}@${version})`)
+      stdout(`  ${REFRESH_HINT}`)
       continue
     }
 
     // 市场通道:id → 索引条目 → pkg / tarballUrl / integrity。
     if (market === undefined) market = await fetchMarketIndex()
     if (!market) {
-      console.error(`✗ ${target}: the plugin market index is unavailable, so a market id cannot be resolved`)
+      stderr(`✗ ${target}: the plugin market index is unavailable, so a market id cannot be resolved`)
       failures += 1
       continue
     }
@@ -121,30 +122,30 @@ async function installPlugins(targets: string[]): Promise<void> {
     const entry = findMarketIndexEntry(market, wanted)
     if (!entry) {
       const available = market.plugins.map(item => item.id).sort()
-      console.error(
+      stderr(
         `✗ ${target}: no such plugin in the market index. `
         + (available.length > 0 ? `Available ids: ${available.join(', ')}` : 'The index lists no plugins.'),
       )
       failures += 1
       continue
     }
-    console.log(`Installing ${entry.pkg}@${entry.version} from ${entry.tarballUrl} ...`)
+    stdout(`Installing ${entry.pkg}@${entry.version} from ${entry.tarballUrl} ...`)
     const result = await installPluginPackage(pluginsDir, {
       pkg: entry.pkg,
       spec: entry.tarballUrl,
       integrity: entry.integrity,
     })
     if (!result.ok) {
-      console.error(`✗ ${entry.id}: ${result.error ?? 'install failed'}`)
+      stderr(`✗ ${entry.id}: ${result.error ?? 'install failed'}`)
       failures += 1
       continue
     }
-    console.log(`✓ installed ${result.pluginId} (${entry.pkg}@${entry.version})`)
-    console.log(`  ${REFRESH_HINT}`)
+    stdout(`✓ installed ${result.pluginId} (${entry.pkg}@${entry.version})`)
+    stdout(`  ${REFRESH_HINT}`)
   }
 
   if (failures > 0) {
-    console.error(`${failures} of ${targets.length} install(s) failed`)
+    stderr(`${failures} of ${targets.length} install(s) failed`)
     process.exitCode = 1
   }
 }
@@ -176,7 +177,7 @@ function looksLikeLocalTarball(target: string): boolean {
 async function fetchMarketIndex(): Promise<CorePluginMarketIndex | null> {
   configurePluginMarketIndex(PLUGIN_MARKET_INDEX_URL)
   const snapshot = await getPluginMarketIndexSnapshot({ refresh: true })
-  if (!snapshot.index && snapshot.error) console.error(`Market index fetch failed: ${snapshot.error}`)
+  if (!snapshot.index && snapshot.error) stderr(`Market index fetch failed: ${snapshot.error}`)
   return snapshot.index
 }
 
@@ -185,7 +186,7 @@ async function fetchMarketIndex(): Promise<CorePluginMarketIndex | null> {
 async function listPlugins(): Promise<void> {
   const ledger = await readLedger(resolvePluginsDir())
   if (ledger.entries.length === 0) {
-    console.log('(none) — no plugin is installed through the npm ledger')
+    stdout('(none) — no plugin is installed through the npm ledger')
     return
   }
   printRows(
@@ -220,11 +221,11 @@ async function uninstallPlugin(target: string | undefined): Promise<void> {
 
   const result = await uninstallPluginPackage(pluginsDir, pkg)
   if (!result.removed) throw new Error(result.error ?? `npm uninstall failed for ${pkg}`)
-  console.log(`✓ uninstalled ${pkg}`)
-  console.log(`  ${REFRESH_HINT}`)
+  stdout(`✓ uninstalled ${pkg}`)
+  stdout(`  ${REFRESH_HINT}`)
   // 数据家目录(plugins/<id>/)是 PluginManager 卸载链的活儿(归档);CLI 只拆账
   // 与代码,数据原样留在盘上 —— 说清楚,免得用户以为已经清干净了。
-  console.log('  Its data directory was left untouched; uninstall from the desktop Settings page to archive it too.')
+  stdout('  Its data directory was left untouched; uninstall from the desktop Settings page to archive it too.')
 }
 
 // ── 共用 ──
@@ -246,8 +247,8 @@ function printRows(rows: Array<Record<string, string>>, columns: string[]): void
     column.length,
     ...rows.map(row => String(row[column] ?? '').length),
   ))
-  console.log(columns.map((column, i) => column.padEnd(widths[i])).join('  '))
+  stdout(columns.map((column, i) => column.padEnd(widths[i])).join('  '))
   for (const row of rows) {
-    console.log(columns.map((column, i) => String(row[column] ?? '').padEnd(widths[i])).join('  '))
+    stdout(columns.map((column, i) => String(row[column] ?? '').padEnd(widths[i])).join('  '))
   }
 }

@@ -177,6 +177,9 @@ import Switch from '@/components/common/Switch.vue'
 import { computed } from 'vue'
 import type { AppSettings, BashToolSettings } from '@/types'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.settings-bash')
 
 const props = defineProps<{
   settings: AppSettings
@@ -238,7 +241,7 @@ async function browseDirectory(mode: 'default' | 'add') {
       }
     }
   } catch (error) {
-    console.error('Failed to open directory picker:', error)
+    log.error('directory picker failed', {}, error)
   }
 }
 

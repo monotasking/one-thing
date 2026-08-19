@@ -32,6 +32,10 @@
  * overlay / credentials / providers 是三份文件、三条缓存,通知里分得清才不会
  * 互相牵动。`providers` 是 C2 加的那一格(`workspaces/<id>/providers.json`)。
  */
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('spaces')
+
 export type SpaceDataKind = 'credentials' | 'overlay' | 'providers'
 
 export interface SpaceDataChangedEvent {
@@ -60,7 +64,7 @@ export function notifySpaceDataChanged(event: SpaceDataChangedEvent): void {
     try {
       listener(event)
     } catch (err) {
-      console.warn('[spaces] space-data-changed listener failed:', err)
+      log.warn('space-data-changed listener failed', undefined, err)
     }
   }
 }

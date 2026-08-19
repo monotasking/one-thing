@@ -1,6 +1,10 @@
 import type { TriggerContext, Trigger } from "./index.js";
 import { getSkillsForSession } from "../../skills/session-skills.js";
 import * as store from "../../store.js";
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.triggers')
+
 
 /**
  * Distribution-sampling rate for NORMAL turns (settings.evals.sampleRate).
@@ -242,7 +246,7 @@ export function createTurnEvaluationTrigger(): Trigger {
 				});
 			} catch (error) {
 				// Silently ignore evaluation errors - they should never break the chat flow
-				console.error("[TurnEvaluation] Failed to record turn:", error);
+				log.error("record turn evaluation failed", {}, error);
 			}
 		},
 	} as Trigger;

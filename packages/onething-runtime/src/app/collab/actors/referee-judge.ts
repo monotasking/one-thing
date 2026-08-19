@@ -41,6 +41,10 @@ import * as store from '../../store.js'
 import { billCollabPlanUsage } from '../../usage/bill-side-line.js'
 import { collabUserPromptFields } from '../user-identity.js'
 import type { CollabRefereeJudgePort, CollabRefereeJudgeRequest } from './referee-actor.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('collab.referee')
+
 
 /** 裁决的死线。与 v2 判定同档 —— 它是每条房间消息都要付的延迟税。 */
 const REFEREE_TIMEOUT_MS = 8_000
@@ -225,7 +229,7 @@ export function createCollabEngineRefereeJudgePort(
         // 用完即弃的那一格接住了(D8 §3.3):模型名只进时间轴,不进动词。
         return { ...verdict, model }
       } catch (error) {
-        console.error('[collab-referee] 裁决调用失败:', error)
+        log.error('adjudication model call failed', { roomId: request.roomId, model }, error)
         return { ...degraded(request.token, timedOut ? 'timeout' : 'error'), model }
       } finally {
         clearTimeout(timer)

@@ -43,6 +43,9 @@ import {
 	formatContextLength,
 	createCustomModel,
 } from "./model-capabilities";
+import { getLogger } from "@/services/log";
+
+const log = getLogger("renderer.provider-settings");
 
 export type {
 	OAuthStatus,
@@ -749,7 +752,7 @@ export function useProviderSettings(
 				);
 			}
 		} catch (err) {
-			console.error("[ProviderSettings] Failed to load ACP agents:", err);
+			log.error("acp agents load failed", {}, err);
 		}
 	}
 
@@ -884,10 +887,7 @@ export function useProviderSettings(
 				};
 			}
 		} catch (err) {
-			console.error(
-				`[ProviderSettings] Failed to inspect env variables for ${providerId}:`,
-				err,
-			);
+			log.error("provider env inspect failed", { providerId }, err);
 		}
 	}
 
@@ -903,7 +903,7 @@ export function useProviderSettings(
 		try {
 			await settingsStore.fetchModelsForProvider(viewingProvider.value);
 		} catch (err) {
-			console.error("Failed to load models:", err);
+			log.error("cached models load failed", { providerId: viewingProvider.value }, err);
 		}
 	}
 

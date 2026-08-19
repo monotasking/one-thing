@@ -24,12 +24,10 @@ import type {
   MCPToolInfo,
   MCPTransportType,
 } from './types.js'
+import { toLogger, type CompatLogger } from '../logging/index.js'
 
-export interface CoreMCPLogger {
-  log?: (...args: unknown[]) => void
-  warn?: (...args: unknown[]) => void
-  error?: (...args: unknown[]) => void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CoreMCPLogger = CompatLogger
 
 export interface RawMCPTool {
   name?: unknown
@@ -392,11 +390,11 @@ export async function connectMCPClientWithAdapters<TClient, TTransport>(
   options: ConnectMCPClientWithAdaptersOptions<TClient, TTransport>,
 ): Promise<ConnectMCPClientResult<TClient, TTransport>> {
   const { adapters } = options
-  const logger = adapters.logger ?? console
+  const logger = toLogger(adapters.logger)
   const serverId = options.state.config.id
 
   if (options.state.status === 'connected') {
-    logger.log?.(`[MCP:${serverId}] Already connected`)
+    logger.debug(`[MCP:${serverId}] Already connected`)
     return {
       state: options.state,
       client: options.client,
@@ -410,7 +408,7 @@ export async function connectMCPClientWithAdapters<TClient, TTransport>(
 
   try {
     const plan = buildMCPTransportPlan(state.config, options.baseEnv)
-    logger.log?.(`[MCP:${serverId}] ${plan.logMessage}`)
+    logger.debug(`[MCP:${serverId}] ${plan.logMessage}`)
 
     const transport = await adapters.createTransport(plan)
     const client = adapters.createClient()
@@ -431,8 +429,8 @@ export async function connectMCPClientWithAdapters<TClient, TTransport>(
     }, (adapters.now ?? Date.now)())
     adapters.onStateChange?.(state)
 
-    logger.log?.(`[MCP:${serverId}] Connected successfully`)
-    logger.log?.(`[MCP:${serverId}] Tools: ${state.tools.length}, Resources: ${state.resources.length}, Prompts: ${state.prompts.length}`)
+    logger.debug(`[MCP:${serverId}] Connected successfully`)
+    logger.debug(`[MCP:${serverId}] Tools: ${state.tools.length}, Resources: ${state.resources.length}, Prompts: ${state.prompts.length}`)
     return {
       state,
       client,
@@ -442,7 +440,7 @@ export async function connectMCPClientWithAdapters<TClient, TTransport>(
   } catch (error) {
     state = markMCPServerError(state, error)
     adapters.onStateChange?.(state)
-    logger.error?.(`[MCP:${serverId}] Connection failed:`, error)
+    logger.error(`[MCP:${serverId}] Connection failed:`, undefined, error)
     throw error
   }
 }
@@ -499,7 +497,7 @@ export async function probeMCPServerWithAdapters<TClient, TTransport>(
   config: MCPServerConfig,
   baseEnv: Record<string, string | undefined>,
   adapters: CoreMCPProbeAdapters<TClient, TTransport>,
-  logger: CoreMCPLogger = console,
+  injectedLogger?: CoreMCPLogger,
 ): Promise<CoreMCPProbeResult> {
   let client: TClient | undefined
   let transport: TTransport | undefined
@@ -542,7 +540,7 @@ export async function probeMCPServerWithAdapters<TClient, TTransport>(
       // answering "login first" is a SUCCESS of the preflight's real job.
       return { ok: false, error: message, authRequired: true }
     }
-    logger.warn?.(`[MCP:${config.id}] Probe failed:`, error)
+    toLogger(injectedLogger).warn(`[MCP:${config.id}] Probe failed:`, undefined, error)
     return { ok: false, error: message }
   } finally {
     if (client) {
@@ -557,14 +555,14 @@ export async function probeMCPServerWithAdapters<TClient, TTransport>(
 export async function disconnectMCPClientWithAdapters<TClient, TTransport>(
   options: DisconnectMCPClientWithAdaptersOptions<TClient, TTransport>,
 ): Promise<DisconnectMCPClientResult> {
-  const logger = options.adapters.logger ?? console
+  const logger = toLogger(options.adapters.logger)
   const serverId = options.state.config.id
 
   if (options.client) {
     try {
       await options.adapters.closeClient(options.client)
     } catch (error) {
-      logger.warn?.(`[MCP:${serverId}] Error during disconnect:`, error)
+      logger.warn(`[MCP:${serverId}] Error during disconnect:`, undefined, error)
     }
   }
 
@@ -572,12 +570,12 @@ export async function disconnectMCPClientWithAdapters<TClient, TTransport>(
     try {
       await options.adapters.closeTransport(options.transport)
     } catch (error) {
-      logger.warn?.(`[MCP:${serverId}] Error closing transport:`, error)
+      logger.warn(`[MCP:${serverId}] Error closing transport:`, undefined, error)
     }
   }
 
   const state = markMCPServerDisconnected(options.state)
-  logger.log?.(`[MCP:${serverId}] Disconnected`)
+  logger.debug(`[MCP:${serverId}] Disconnected`)
   return {
     state,
     client: null,
@@ -801,21 +799,21 @@ export async function refreshMCPClientCapabilities(
     const toolsResult = await client.listTools()
     tools = normalizeMCPToolInfos(serverId, toolsResult.tools)
   } catch (error) {
-    logger?.warn?.(`[MCP:${serverId}] Failed to list tools:`, error)
+    toLogger(logger).warn(`[MCP:${serverId}] Failed to list tools:`, undefined, error)
   }
 
   try {
     const resourcesResult = await client.listResources()
     resources = normalizeMCPResourceInfos(serverId, resourcesResult.resources)
   } catch (error) {
-    logger?.warn?.(`[MCP:${serverId}] Failed to list resources:`, error)
+    toLogger(logger).warn(`[MCP:${serverId}] Failed to list resources:`, undefined, error)
   }
 
   try {
     const promptsResult = await client.listPrompts()
     prompts = normalizeMCPPromptInfos(serverId, promptsResult.prompts)
   } catch (error) {
-    logger?.warn?.(`[MCP:${serverId}] Failed to list prompts:`, error)
+    toLogger(logger).warn(`[MCP:${serverId}] Failed to list prompts:`, undefined, error)
   }
 
   return { tools, resources, prompts }

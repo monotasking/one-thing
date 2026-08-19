@@ -55,6 +55,10 @@ import { getAuthHostPorts } from '../auth/host-ports.js'
 import { getSettingsPath, getStorePath } from '../stores/paths.js'
 import { getPersistedSettings, savePersistedSettings } from '../stores/settings.js'
 import { getProviderInfo } from './registry.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('providers')
+
 
 /**
  * settings 里那三家的档位字段 → entry 的 `{apiMode, region}`(批 B10)。
@@ -464,7 +468,7 @@ export async function migrateProviderConfigToDefaultSpace(
     for (const space of getSpacesStore().list()) spaceIds.add(space.id)
   } catch (err) {
     // 空间名录读不动不该把迁移拖住:default 那一份是必须的,别的下次再说。
-    console.warn('[spaces] provider-settings migration could not list spaces:', err)
+    log.warn('provider-settings migration could not list spaces', {}, err)
   }
   const providerSettings: string[] = []
   for (const spaceId of spaceIds) {

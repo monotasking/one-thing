@@ -29,13 +29,16 @@ const bus = { emitGlobal: () => {}, onGlobal: () => () => {}, onAnySession: () =
 
 async function load() {
   vi.resetModules()
-  const [api, registry, health] = await Promise.all([
+  const [api, registry, health, logging] = await Promise.all([
     import('../../plugins/api.js'),
     import('../registry.js'),
     import('../../plugins/health.js'),
+    // `vi.resetModules()` 之后每次 load 都是一份新的 logging 单例 —— 捕获必须从
+    // **同一份**里拿,否则收的是别的 root(L4)。
+    import('../../logging/index.js'),
   ])
   registry.resetPluginDeepLinkActionsForTests()
-  return { api, registry, health }
+  return { api, registry, health, logging }
 }
 
 function makeApi(
@@ -72,7 +75,7 @@ describe('H4 deep link actions — 声明门', () => {
 
   it('refuses an undeclared plugin — structured rejection, no breaker', async () => {
     const mods = await load()
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const logs = mods.logging.collectLogRecordsForTests()
     const { api, state } = makeApi(mods, 'sneaky', [])
 
     const release = api.registerDeepLinkAction({
@@ -84,11 +87,12 @@ describe('H4 deep link actions — 声明门', () => {
     expect(mods.registry.listPluginDeepLinkActions()).toEqual([])
     // noop 退订:插件调它不该炸。
     expect(() => release()).not.toThrow()
-    expect(errors.mock.calls.some(call => String(call[0]).includes(PLUGIN_PERMISSION_DEEPLINK_HANDLE)))
+    expect(logs.messages().some(msg => msg.includes(PLUGIN_PERMISSION_DEEPLINK_HANDLE)))
       .toBe(true)
     // **不计熔断** —— manifest 笔误不该连坐插件的工具/命令/面板。
     expect(state.disposing).not.toBe(true)
     expect(mods.health.isPluginSurfaceDegraded('sneaky', 'deeplink:plugin:sneaky:run')).toBe(false)
+    logs.stop()
   })
 
   it('refuses an illegal action name even when declared', async () => {

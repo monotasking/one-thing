@@ -3,6 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import * as fsSync from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { captureRuntimeLogs } from '../../logging/index.js'
 import {
   canonicalizeSpaceDirectory,
   getSpaceOverlayConnectedDirectories,
@@ -107,7 +108,7 @@ describe('space overlay persistence', () => {
   })
 
   it('condemns a corrupt file to an empty overlay instead of throwing', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = captureRuntimeLogs()
     await fs.mkdir(path.join(tmpDir, 'broken'), { recursive: true })
     await fs.writeFile(path.join(tmpDir, 'broken', 'space.json'), '{ not json', 'utf-8')
     expect(readSpaceOverlay('broken')).toEqual({})
@@ -119,7 +120,8 @@ describe('space overlay persistence', () => {
       'utf-8',
     )
     expect(readSpaceOverlay('broken')).toEqual({})
-    expect(warn).toHaveBeenCalled()
+    expect(logs.ofLevel('warn').length).toBeGreaterThan(0)
+    logs.restore()
   })
 
   it('routes an illegal space id to the default space rather than out of the tree', () => {

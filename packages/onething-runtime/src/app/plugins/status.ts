@@ -20,6 +20,10 @@ import {
 import { SESSION_STREAM_TERMINAL_EVENTS } from '@shared/events/session-events.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins')
+
 
 type SessionEventEmitter = (
   sessionId: string,
@@ -49,7 +53,7 @@ let ports: StatusHostPorts | null = null
  */
 const statusRegistry = new CorePluginStatusRegistry({
   isStreaming: sessionId => ports?.isStreaming?.(sessionId) ?? true,
-  warn: message => console.warn(message),
+  warn: message => log.warn('plugin status registry', { detail: message }),
 })
 
 export function getPluginStatusRegistry(): CorePluginStatusRegistry {

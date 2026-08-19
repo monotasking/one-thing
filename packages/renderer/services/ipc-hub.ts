@@ -1,4 +1,5 @@
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
 /**
  * Global IPC Event Hub
  *
@@ -35,13 +36,7 @@ import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
 let initialized = false
 
-function shouldDebugStream(): boolean {
-  try {
-    return localStorage.getItem('onething:debug-stream') === '1'
-  } catch {
-    return false
-  }
-}
+const log = getLogger('renderer.ipc-hub')
 
 function logTime(): string {
   return new Date().toISOString()
@@ -61,7 +56,7 @@ function debugGapMs(key: string, now = Date.now()): number | undefined {
 
 export function initializeIPCHub() {
   if (initialized) {
-    console.log('[IPC Hub] Already initialized, skipping')
+    log.debug('hub already initialized, skipping')
     return
   }
   initialized = true
@@ -75,16 +70,12 @@ export function initializeIPCHub() {
     switch (event.type) {
       // Stream lifecycle
       case SESSION_EVENT_TYPES.STREAM_COMPLETE:
-        if (shouldDebugStream()) {
-          console.log('[IPC Hub] session:event stream:complete', { sessionId, event })
-        }
+        log.trace('session event stream:complete', { sessionId, event })
         store.handleStreamComplete({ sessionId, ...event.data })
         break
 
       case SESSION_EVENT_TYPES.STREAM_ERROR:
-        if (shouldDebugStream()) {
-          console.log('[IPC Hub] session:event stream:error', { sessionId, event })
-        }
+        log.trace('session event stream:error', { sessionId, event })
         store.handleStreamError({ sessionId, ...event.data })
         break
 
@@ -98,13 +89,11 @@ export function initializeIPCHub() {
         break
 
       case SESSION_EVENT_TYPES.STREAM_START:
-        if (shouldDebugStream()) {
-          console.log('[IPC Hub] session:event stream:start', {
-            time: logTime(),
-            sessionId,
-            messageId: event.messageId || event.assistantMessageId,
-          })
-        }
+        log.trace('session event stream:start', {
+          at: logTime(),
+          sessionId,
+          messageId: event.messageId || event.assistantMessageId,
+        })
         store.handleStreamStarted({ sessionId, messageId: event.messageId || event.assistantMessageId })
         break
 
@@ -267,7 +256,7 @@ export function initializeIPCHub() {
         break
 
       case SESSION_EVENT_TYPES.REQUEST_SNAPSHOT:
-        console.log('[IPCHub] request:snapshot', sessionId, event.snapshot?.turn)
+        log.debug('request snapshot received', { sessionId, turn: event.snapshot?.turn })
         store.handleRequestSnapshot({ sessionId, snapshot: event.snapshot })
         break
 
@@ -331,7 +320,9 @@ export function initializeIPCHub() {
   // Already batched by IPCBridge (16ms coalescing), so route directly to store.
   platformApi.onSessionStream(({ sessionId, chunk }: SessionStreamPayload) => {
     const store = useChatStore()
-    if (shouldDebugStream()) {
+    // `isLevelEnabled` 是性能护栏,不是开关:previewText / debugGapMs 不该在
+    // trace 关着的时候还逐 chunk 跑一遍。
+    if (log.isLevelEnabled('trace')) {
       const text = chunk.type === 'text-delta'
         ? chunk.text
         : chunk.type === 'reasoning-delta'
@@ -339,8 +330,8 @@ export function initializeIPCHub() {
           : chunk.type === 'tool-input-delta'
             ? chunk.argsTextDelta
             : ''
-      console.log('[IPC Hub] session:stream chunk', {
-        time: logTime(),
+      log.trace('session stream chunk', {
+        at: logTime(),
         gapMs: debugGapMs(`${sessionId}:${chunk.messageId}:${chunk.type}`),
         sessionId,
         messageId: chunk.messageId,
@@ -419,7 +410,7 @@ export function initializeIPCHub() {
   // 装配完成时 manager 会发 kind:'catalog-changed',那一条负责把它补上。
   void refreshPluginWorkspacePanels()
 
-  console.log('[IPC Hub] Unified listeners registered (session:event + session:stream + plugin notifications)')
+  log.info('ipc hub listeners registered')
 }
 
 /**
@@ -530,7 +521,7 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
     // 用户的总闸 / 每插件静音在 App.vue 那一层叠加,不在这里。
     setPluginAmbient((result as { ambient?: PluginAmbientLayer | null }).ambient ?? null)
   } catch (error) {
-    console.error('[IPC Hub] Failed to refresh plugin workspace panels:', error)
+    log.error('plugin workspace panel refresh failed', {}, error)
   }
 }
 
@@ -557,7 +548,7 @@ function noteReadWatermark(sessionId: string, message: ChatMessage): void {
     if (role === 'user') sessionsStore.markSessionRead(sessionId, at)
     else sessionsStore.noteInboundActivity(sessionId, at)
   }).catch(error => {
-    console.error('[IPC Hub] Failed to update read watermark:', error)
+    log.error('read watermark update failed', { sessionId, role }, error)
   })
 }
 
@@ -619,7 +610,7 @@ function notifyInbound(sessionId: string, message: ChatMessage): void {
       sessionId,
     })
   }).catch(error => {
-    console.error('[IPC Hub] Failed to raise inbound notification:', error)
+    log.error('inbound notification failed', { sessionId }, error)
   })
 }
 
@@ -636,6 +627,6 @@ function refreshSessionListIfUnknown(sessionId: string): void {
     if (sessionsStore.getSessionItem(sessionId)) return
     void sessionsStore.loadSessions()
   }).catch(error => {
-    console.error('[IPC Hub] Failed to refresh session list:', error)
+    log.error('session list refresh failed', { sessionId }, error)
   })
 }

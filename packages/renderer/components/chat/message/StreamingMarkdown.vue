@@ -57,6 +57,9 @@ import {
   getCachedMarkdownHtml,
   getCachedSegments,
 } from './markdownRenderCache'
+import { getLogger } from '@/services/log'
+
+const perfLog = getLogger('renderer.perf')
 
 interface Props {
   content: string
@@ -410,7 +413,7 @@ const segments = computed<MarkdownSegment[]>(() => {
   cacheSegments(cacheKey, parsed)
   const elapsed = performance.now() - started
   if (elapsed > 16) {
-    console.info('[Perf][Markdown][segments]', {
+    perfLog.debug('markdown segment parse slow', {
       elapsedMs: Math.round(elapsed),
       chars: parsedContent.value.length,
       segments: parsed.length,

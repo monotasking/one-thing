@@ -451,6 +451,7 @@ import { copyTextToClipboard } from '@/utils/clipboard'
 import { platformApi } from '@/platform'
 import { useEvalsWorkbenchStore } from '@/stores/evalsWorkbench'
 import { COLLAB_REACTION_EMOJIS } from '@onething/runtime/collab'
+import { getLogger } from '@/services/log'
 import {
   Copy,
   Check,
@@ -480,6 +481,8 @@ interface TokenUsage {
   totalTokens: number
   durationMs?: number
 }
+
+const log = getLogger('renderer.message-actions')
 
 interface Props {
   role: 'user' | 'assistant'
@@ -550,7 +553,7 @@ async function handleSpeak() {
   try {
     await speak(textContent)
   } catch (error) {
-    console.error('TTS error:', error)
+    log.error('tts speak failed', { messageId: props.messageId }, error)
   } finally {
     speakingMessageId.value = null
   }
@@ -562,7 +565,7 @@ const copied = ref(false)
 async function handleCopy() {
   const success = await copyTextToClipboard(props.content)
   if (!success) {
-    console.warn('Failed to copy')
+    log.warn('message copy failed', { messageId: props.messageId })
     return
   }
 
@@ -613,7 +616,7 @@ function focusDownvoteNoteInput() {
 function handleDownvote() {
   if (downvoted.value) return
   if (!props.sessionId) {
-    console.error('Downvote recording failed: no sessionId available for this message')
+    log.error('downvote recording failed, no sessionId on this message', { messageId: props.messageId })
     return
   }
   setDownvoteNote(!showDownvoteNote.value)
@@ -639,7 +642,7 @@ async function submitDownvote(skipNote = false) {
       workbenchStore.notePendingIncident(result.incidentId)
     }
   } catch (error) {
-    console.error('Downvote recording failed:', error)
+    log.error('downvote recording failed', { sessionId: props.sessionId, messageId: props.messageId }, error)
   }
 }
 

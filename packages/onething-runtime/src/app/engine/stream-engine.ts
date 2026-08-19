@@ -40,6 +40,10 @@ import { getSession } from "../stores/sessions.js";
 import { takeExternalAgentSteering } from "../external-agents/index.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('engine.stream')
+
 
 export type StreamSenderPayload = OnethingStreamSenderPayload;
 export type StreamSender = OnethingStreamSender;
@@ -141,10 +145,10 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 				isCollabCoordinatorDrivenSession(sessionId)
 				&& !(command.source === "collab" && isTrustedCollabDrive(command))
 			) {
-				console.warn(
-					`[StreamEngine] internal source '${command.source}' refused on coordinator-driven session`,
+				log.warn("internal source refused on coordinator-driven session", {
 					sessionId,
-				);
+					source: command.source,
+				});
 				return;
 			}
 			await super.handleSendMessage(
@@ -397,19 +401,19 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 
 	protected override onShutdown(): void {
 		super.onShutdown();
-		console.log("[StreamEngine] Shut down");
+		log.info("stream engine shut down");
 	}
 }
 
 async function emitCollabRefusal(sessionId: string, error: string): Promise<void> {
-	console.warn(`[StreamEngine] ${error}`, sessionId);
+	log.warn("collab refusal", { sessionId, reason: error });
 	try {
 		await getEventBus().emit(sessionId, {
 			type: SESSION_EVENT_TYPES.STREAM_ERROR,
 			data: { error },
 		} as Parameters<ReturnType<typeof getEventBus>["emit"]>[1]);
 	} catch (cause) {
-		console.error("[StreamEngine] failed to emit collab refusal:", cause);
+		log.error("emit collab refusal failed", { sessionId }, cause);
 	}
 }
 

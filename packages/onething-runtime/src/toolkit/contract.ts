@@ -27,6 +27,10 @@ import type { z } from 'zod'
 import type { JsonObject, JsonValue } from '@onething/core'
 import type { JsonSchema, ValidationResult, Validator } from '@onething/core/toolkit'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('toolkit.contract')
+
 /**
  * R2a 决定⑥ —— `zodToJsonSchema` 搬进新树。
  *
@@ -78,10 +82,10 @@ export function zodToJsonSchema(schema: z.ZodType): {
       }
     }
 
-    console.warn('[toolkit/contract] Schema does not have toJSONSchema method')
+    log.warn('schema has no toJSONSchema method')
     return { type: 'object', properties: {}, required: [] }
   } catch (error) {
-    console.error('[toolkit/contract] Error converting schema:', error)
+    log.error('schema conversion failed', undefined, error)
     return { type: 'object', properties: {}, required: [] }
   }
 }

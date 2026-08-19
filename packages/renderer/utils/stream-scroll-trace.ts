@@ -1,14 +1,19 @@
 /**
- * Dev-only frame-level trace for diagnosing streaming scroll jitter.
+ * Frame-level trace for diagnosing streaming scroll jitter.
  *
- * Enable:  localStorage.setItem('debug:stream-scroll', '1')
- * Disable: localStorage.removeItem('debug:stream-scroll')
+ * Enable:  `window.__onethingLog.level('info,renderer.stream-scroll=trace')`
+ * Disable: `window.__onethingLog.level('info')`
+ *
+ * 没有第二个开关:采不采样由**日志等级**决定(`renderer.stream-scroll=trace`),
+ * 与全仓一致(docs/design/logging-system-2026-08.md §8.1)。环形缓冲与
+ * `window.__streamScrollTrace` 的取样口原样保留 —— 它们是现场工具,不是日志通路。
  *
  * When enabled, records per-frame snapshots of scroll geometry, virtualizer
  * state, DOM heights, scroll writes, anchor deltas, and the trigger source.
- * On anomaly (isFollowing but distanceToBottom > threshold), dumps the last
- * N frames to console.table.
  */
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.stream-scroll')
 
 export interface TraceFrame {
   frameId: number
@@ -38,7 +43,6 @@ export interface TraceFrame {
 
 const RING_SIZE = 160
 
-let enabled: boolean | null = null
 let globalFrameId = 0
 let rafFrameId = 0
 let lastRafTs = 0
@@ -46,19 +50,9 @@ let lastRafTs = 0
 const ring: TraceFrame[] = []
 let ringIdx = 0
 
+/** 采样门 = 等级门。逐帧快照很贵,所以调用点先问一句。 */
 export function isTraceEnabled(): boolean {
-  if (enabled === null) {
-    try {
-      enabled = localStorage.getItem('debug:stream-scroll') === '1'
-    } catch {
-      enabled = false
-    }
-  }
-  return enabled
-}
-
-export function refreshEnabled(): void {
-  enabled = null
+  return log.isLevelEnabled('trace')
 }
 
 function tickFrame(): void {
@@ -158,7 +152,7 @@ export function traceEvent(
 export function traceLog(trigger: string, msg: string): void {
   if (!isTraceEnabled()) return
   tickFrame()
-  console.log(`[stream-scroll] f${globalFrameId} ${trigger}: ${msg}`)
+  log.trace('stream scroll event', { frameId: globalFrameId, trigger, detail: msg })
 }
 
 export function dumpTrace(): TraceFrame[] {
@@ -221,16 +215,16 @@ export function clearTrace(): void {
   ringIdx = 0
 }
 
+/** 现场取样:返回值就是给 devtools 看的那张表;同时留一条结构化记录。 */
 export function printTrace(): TraceFrame[] {
   const frames = getOrderedFrames()
-  console.table(frames)
+  log.debug('stream scroll frames dumped', { frames })
   return frames
 }
 
 export function printSummary(): TraceSummary {
   const summary = analyzeTrace()
-  console.table(summary.largestWrites)
-  console.log('[stream-scroll] summary', summary)
+  log.debug('stream scroll summary', { ...summary })
   return summary
 }
 
@@ -241,6 +235,5 @@ if (typeof window !== 'undefined') {
     printTrace,
     printSummary,
     clearTrace,
-    refreshEnabled,
   }
 }

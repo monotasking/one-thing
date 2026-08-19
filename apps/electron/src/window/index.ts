@@ -77,6 +77,9 @@ import {
   type ElectronTodoPlanDragRequest,
   type NormalizedElectronTodoPlanWindowActionOptions,
 } from '@onething/electron-host/window/todo-plan-presentation'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('window')
 export { MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS } from '@onething/electron-host/window/main-window-recovery'
 
 function getWindowThemeSelection(): OnethingWindowThemeSelection {
@@ -89,7 +92,7 @@ function getWindowThemeSelection(): OnethingWindowThemeSelection {
     systemShouldUseDarkColors,
   })
 
-  console.log('[Theme] getWindowThemeSelection:', {
+  log.debug('window theme resolved', {
     settingsTheme: settings.theme,
     nativeIsDark: systemShouldUseDarkColors,
     effectiveTheme: selection.mode,
@@ -520,7 +523,7 @@ export function createWindow() {
   const { mode, themeId } = getWindowThemeSelection()
   const backgroundColor = getThemeBackgroundColor(themeId, mode)
 
-  console.log('[Window] Creating main window with theme:', { themeId, effectiveTheme: mode, backgroundColor })
+  log.info('creating main window', { themeId, effectiveTheme: mode, backgroundColor })
 
   const mainWindow = createElectronMainWindow({
     windowState,
@@ -590,7 +593,7 @@ type ImagePreviewData =
  * - Gallery mode: for media images, mediaId passed in URL, component loads data itself
  */
 export function openImagePreviewWindow(data: ImagePreviewData) {
-  console.log('[Window] openImagePreviewWindow called:', data.mode === 'single'
+  log.debug('image preview window requested', data.mode === 'single'
     ? {
         mode: data.mode,
         previewId: data.previewId,
@@ -598,7 +601,7 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
         hasInlineSrc: Boolean(data.src),
         inlineSrcLength: data.src?.length,
       }
-    : data)
+    : { ...data })
 
   const isDevelopment = process.env.NODE_ENV === 'development'
   const isMac = process.platform === 'darwin'

@@ -15,6 +15,10 @@ import {
   type SpaceIndex,
 } from './types.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('spaces')
+
 export class SpacesStore {
   private index: SpaceIndex = { spaces: [] }
   private initialized = false
@@ -145,7 +149,7 @@ export class SpacesStore {
       try {
         cb()
       } catch (err) {
-        console.error('[spaces] listener error:', err)
+        log.error('space store listener failed', undefined, err)
       }
     }
   }

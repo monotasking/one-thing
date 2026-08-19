@@ -18,6 +18,9 @@ import { useChatStore } from './chat'
 import { invalidateCollabTagCards } from '@/composables/collabInlineTags'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.collab-board')
 
 /**
  * Room board mirrors (docs/design/multi-agent-collab.md P1): hydrate via
@@ -165,7 +168,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     } catch (error) {
       // Keep the last known ledger: a failed read is not evidence of an empty
       // queue, and dropping the badge would tell the user the opposite.
-      console.error('[collabBoard] pending reconcile failed:', error)
+      log.error('pending asks reconcile failed', { sessionId }, error)
     }
   }
 
@@ -309,7 +312,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
         applyAgentActivitySnapshot(activity)
       }
     } catch (error) {
-      console.error('[collabBoard] agent activity load failed:', error)
+      log.error('agent activity load failed', {}, error)
     }
   }
 
@@ -394,7 +397,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
         await hydratePendingAsks(response.board)
       }
     } catch (error) {
-      console.error('[collabBoard] load failed:', error)
+      log.error('collab board load failed', {}, error)
     }
   }
 
@@ -523,7 +526,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
         applyCoordinatorSnapshot(roomSessionId, response.state)
       }
     } catch (error) {
-      console.error('[collabBoard] coordinator load failed:', error)
+      log.error('coordinator state load failed', { roomSessionId }, error)
     }
   }
 

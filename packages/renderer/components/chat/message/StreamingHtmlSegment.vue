@@ -9,6 +9,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import { cacheMarkdownHtml, getCachedMarkdownHtml } from './markdownRenderCache'
+import { getLogger } from '@/services/log'
+
+const perfLog = getLogger('renderer.perf')
 
 interface Props {
   segmentKey: string
@@ -55,7 +58,7 @@ const renderedHtml = computed(() => {
   cacheMarkdownHtml(cacheKey, html)
   const elapsed = nowMs() - started
   if (elapsed > 16) {
-    console.info('[Perf][Markdown][html]', {
+    perfLog.debug('markdown html render slow', {
       elapsedMs: Math.round(elapsed),
       chars: content.length,
       isUser: props.isUser,

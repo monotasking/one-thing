@@ -20,6 +20,15 @@ vi.mock('@onething/app/plugins/loader.js', () => ({
   getPluginsDir: () => pluginsDir,
 }))
 
+// CLI 的用户输出走 stdout.ts(不是 console)—— 断言面跟着换到那个口。
+const stdoutLines: string[] = []
+const stderrLines: string[] = []
+vi.mock('../stdout.js', () => ({
+  stdout: (line = '') => { stdoutLines.push(String(line)) },
+  stderr: (line = '') => { stderrLines.push(String(line)) },
+  stdoutRaw: (text: string) => { stdoutLines.push(String(text)) },
+}))
+
 vi.mock('@onething/app/plugins/install.js', () => ({
   probePluginNpmAvailability: vi.fn(async () => true),
   installPluginPackage: vi.fn(async () => ({ ok: true, pluginId: 'stub' })),
@@ -75,11 +84,10 @@ beforeEach(() => {
   installPkg.mockResolvedValue({ ok: true, pluginId: 'stub' })
   uninstallPkg.mockResolvedValue({ removed: true })
   marketSnapshot.mockResolvedValue({ index: null, fetchedAt: null, stale: false, error: 'offline' })
-  logs = []
-  errors = []
-  vi.spyOn(console, 'log').mockImplementation(line => { logs.push(String(line)) })
-  vi.spyOn(console, 'error').mockImplementation(line => { errors.push(String(line)) })
-  vi.spyOn(console, 'warn').mockImplementation(line => { logs.push(String(line)) })
+  stdoutLines.length = 0
+  stderrLines.length = 0
+  logs = stdoutLines
+  errors = stderrLines
   fs.rmSync(pluginsDir, { recursive: true, force: true })
 })
 

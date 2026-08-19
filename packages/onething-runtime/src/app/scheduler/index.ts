@@ -5,6 +5,12 @@ import {
   getOnethingScheduler,
 } from '@onething/runtime/scheduler'
 import { getStorePath } from '../stores/paths.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('scheduler')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 let schedulerConfigured = false
 
@@ -14,7 +20,7 @@ export function configureAppScheduler(): void {
   schedulerConfigured = true
   configureOnethingScheduler({
     stateFilePath: () => path.join(getStorePath(), 'scheduler', 'state.json'),
-    logger: console,
+    logger: consoleLog,
   })
 }
 

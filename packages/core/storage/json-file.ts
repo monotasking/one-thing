@@ -1,6 +1,10 @@
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.storage')
+
 
 export interface CoreDirEntry {
   name: string
@@ -131,7 +135,7 @@ export function readJsonFile<T>(filePath: string, defaultValue: T): T {
       return JSON.parse(content) as T
     }
   } catch {
-    console.warn(`Failed to parse ${path.basename(filePath)}, using defaults`)
+    log.warn('json parse failed, using defaults', { filePath })
   }
   return defaultValue
 }
@@ -216,7 +220,7 @@ export function writeJsonFile<T>(filePath: string, data: T, options?: WriteJsonF
     } catch {
       // 已不存在或无权限,忽略
     }
-    console.error(`Error writing ${filePath}:`, error)
+    log.error('json write failed', { filePath }, error)
     throw error
   }
 }
@@ -290,7 +294,7 @@ export function deleteJsonFile(filePath: string): boolean {
       return true
     }
   } catch (error) {
-    console.error(`Error deleting ${filePath}:`, error)
+    log.error('json delete failed', { filePath }, error)
   }
   return false
 }

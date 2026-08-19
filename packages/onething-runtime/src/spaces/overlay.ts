@@ -23,6 +23,10 @@ import { notifySpaceDataChanged } from './notifications.js'
 import { ensureSpaceDir, spaceDir } from './persistence.js'
 import { DEFAULT_SPACE_ID, isValidSpaceId } from './types.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('spaces')
+
 /**
  * overlay 的字段随切片增长,文件形状不变(始终 `{ overlay: {...} }`)。
  *
@@ -265,10 +269,10 @@ export function readSpaceOverlay(spaceId: string | undefined | null): SpaceOverl
     if (fs.existsSync(filePath)) {
       const parsed = parseSpaceFile(JSON.parse(fs.readFileSync(filePath, 'utf-8')))
       if (parsed) overlay = parsed.overlay
-      else console.warn(`[spaces] ${filePath} failed schema validation, treating as empty overlay`)
+      else log.warn('space overlay schema validation failed, treating as empty', { filePath })
     }
   } catch (err) {
-    console.warn(`[spaces] failed to read ${filePath}:`, err)
+    log.warn('space overlay read failed', { filePath }, err)
   }
   overlayCache.set(filePath, overlay)
   return overlay

@@ -1,6 +1,7 @@
 import { coreToolCallSnapshot, patchCoreToolCall } from './tool-call-cow.js'
 import type { JsonObject } from '../json.js'
 import type { CoreReasoningPlacement } from './ipc-emitter.js'
+import { toLogger, type CompatLogger } from '../logging/index.js'
 
 export interface CoreResolvedTool {
   toolId: string
@@ -320,10 +321,8 @@ export interface CoreStreamProcessorEmitter<
   ): void
 }
 
-export interface CoreStreamProcessorLogger {
-  warn(message?: unknown, ...optionalParams: unknown[]): void
-  error(message?: unknown, ...optionalParams: unknown[]): void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CoreStreamProcessorLogger = CompatLogger
 
 export interface CoreStreamProcessorContext {
   sessionId: string
@@ -397,7 +396,7 @@ export function createCoreStreamProcessor<
     createStepId,
     initialContent,
   } = options
-  const logger = options.logger ?? console
+  const logger = toLogger(options.logger)
   let accumulatedContent = initialContent?.content || ''
   let accumulatedReasoning = initialContent?.reasoning || ''
   const toolCalls: TToolCall[] = []
@@ -528,7 +527,7 @@ export function createCoreStreamProcessor<
       }
 
       if (!result.ok) {
-        logger.error('[StreamProcessor] Failed to parse tool args JSON:', result.error, result.rawArgsText)
+        logger.error('[StreamProcessor] Failed to parse tool args JSON:', { rawArgsText: result.rawArgsText }, result.error)
         // Surface the failure instead of leaving the placeholder card in
         // input-streaming forever — the receive state must never lie.
         const placeholder = toolCalls.find(toolCall => toolCall.id === toolCallId)

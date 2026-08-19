@@ -14,6 +14,9 @@ import type {
   MusicSetupRequest,
 } from '@/types'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.music')
 
 let initialized = false
 
@@ -270,7 +273,7 @@ export const useMusicStore = defineStore('music', () => {
       audio.addEventListener(
         'playing',
         () => {
-          console.info(`[radio:timing] 口播收到→出声: ${Date.now() - receivedAt}ms`)
+          log.debug('dj patter audible', { receivedToAudibleMs: Date.now() - receivedAt })
         },
         { once: true },
       )

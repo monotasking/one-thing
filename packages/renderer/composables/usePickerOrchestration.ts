@@ -13,6 +13,9 @@ import { usePromptsStore } from '@/stores/prompts'
 import { createFileToken, createMemberToken, createPageToken, createPromptToken, createSkillToken, extractMemberTokens, extractPageTokens, FILE_REF_PATTERN, PAGE_REF_PATTERN } from '@shared/prompt-references'
 import { COLLAB_MENTION_ALL_LABELS } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.picker')
 
 export type ComposerExtensionType = 'none' | 'palette' | 'files' | 'paths' | 'pages' | 'members'
 export type ComposerExtensionItemKind = PaletteItemType | 'file' | 'directory' | 'path' | 'browser-page' | 'agent-member'
@@ -298,7 +301,7 @@ export function usePickerOrchestration(
         availableSkills.value = response.skills
       }
     } catch (error) {
-      console.error('Failed to load skills:', error)
+      log.error('skills load failed', {}, error)
     }
   }
 
@@ -461,7 +464,7 @@ export function usePickerOrchestration(
         })
         .sort((a, b) => b.path.length - a.path.length)
     } catch (error) {
-      console.error('[ComposerExtension] Failed to load note roots:', error)
+      log.error('note roots load failed', {}, error)
       variableWorkdir.value = ''
       noteRoots.value = []
     }

@@ -19,6 +19,12 @@ import {
 } from '@onething/app/mcp/client.js'
 import { getMCPOAuthFlowManager } from '@onething/app/mcp/oauth/index.js'
 import { notifyMCPCapabilitiesChanged } from '@onething/app/mcp/capabilities-changed.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('server.mcp')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 type ServerMCPTransport = SSEClientTransport | StdioClientTransport | StreamableHTTPClientTransport
 
@@ -104,7 +110,7 @@ export class ServerMCPClient implements MCPClientLike {
           transport.onclose = report
           transport.onerror = report
         },
-        logger: console,
+        logger: consoleLog,
       },
     })
   }
@@ -124,7 +130,7 @@ export class ServerMCPClient implements MCPClientLike {
       await this.runtime.refreshCapabilities()
       notifyMCPCapabilitiesChanged(this.runtime.id)
     } catch (error) {
-      console.warn?.(`[MCP:${this.runtime.id}] Capability refresh after list-changed failed:`, error)
+      log.warn('capability refresh after list-changed failed', { serverId: this.runtime.id }, error)
     }
   }
 

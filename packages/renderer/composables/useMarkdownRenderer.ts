@@ -14,6 +14,9 @@ import type { MarkdownRenderOptions } from '@/editor/markdown-document'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import mathjax3 from 'markdown-it-mathjax3'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.markdown')
 
 interface MarkdownRendererConfig {
   enableMath: boolean
@@ -109,7 +112,7 @@ function createMarkdownRenderer(config: MarkdownRendererConfig) {
       try {
         highlighted = hljs.highlight(code, { language: rawLang, ignoreIllegals: true }).value
       } catch (e) {
-        console.error('Highlight error:', e)
+        log.error('code highlight failed', { language: rawLang }, e)
         highlighted = instance.utils.escapeHtml(code)
       }
     } else {
@@ -296,7 +299,7 @@ function ensureCodeCopyHandler(): void {
     const encoded = button.getAttribute('data-code') || ''
     const copied = await copyTextToClipboard(decodeURIComponent(encoded))
     if (!copied) {
-      console.warn('Failed to copy code block')
+      log.warn('code block copy failed')
       return
     }
 

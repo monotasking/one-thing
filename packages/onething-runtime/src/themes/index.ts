@@ -23,6 +23,10 @@ import { generateSkinVariables } from './skin.js'
 import { parseBase46Lua, convertBase46ToTheme } from './base46-parser.js'
 import type { ThemeDebugData } from './theme-debug.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('themes')
+
 export type {
   ApplyThemeResponse,
   Base46Theme,
@@ -115,7 +119,7 @@ export function initializeThemes(): void {
     builtinThemeMap.set(theme.id, theme)
   }
 
-  console.log(`[ThemeManager] Initialized ${builtinThemeMap.size} built-in themes [${builtinThemes.map(t => t.id).join(', ')}]`)
+  log.info('builtin themes initialized', { count: builtinThemeMap.size, ids: builtinThemes.map(t => t.id) })
 }
 
 /**
@@ -133,7 +137,7 @@ function loadThemeFile(filePath: string, source: 'user' | 'project'): Theme | nu
 
       // Validate required fields
       if (!theme.id || !theme.name || !theme.theme) {
-        console.warn(`[ThemeManager] Invalid JSON theme file: ${filePath}`)
+        log.warn('invalid json theme file', { filePath })
         return null
       }
 
@@ -147,7 +151,7 @@ function loadThemeFile(filePath: string, source: 'user' | 'project'): Theme | nu
       const base46Theme = parseBase46Lua(content)
 
       if (!base46Theme) {
-        console.warn(`[ThemeManager] Failed to parse Base46 theme: ${filePath}`)
+        log.warn('base46 theme parse failed', { filePath })
         return null
       }
 
@@ -160,7 +164,7 @@ function loadThemeFile(filePath: string, source: 'user' | 'project'): Theme | nu
 
     return null
   } catch (err) {
-    console.error(`[ThemeManager] Failed to load theme file ${filePath}:`, err)
+    log.error('theme file load failed', { filePath }, err)
     return null
   }
 }
@@ -202,12 +206,12 @@ export function loadCustomThemes(projectPath?: string): void {
         }
       }
     } catch (err) {
-      console.error(`[ThemeManager] Failed to read themes directory ${dir}:`, err)
+      log.error('themes directory read failed', { dir }, err)
     }
   }
 
   if (customThemeMap.size > 0) {
-    console.log(`[ThemeManager] Loaded ${customThemeMap.size} custom themes [${Array.from(customThemeMap.keys()).join(', ')}]`)
+    log.info('custom themes loaded', { count: customThemeMap.size, ids: Array.from(customThemeMap.keys()) })
   }
 }
 
@@ -359,7 +363,7 @@ export function applyTheme(
 ): Record<string, string> {
   const theme = getTheme(themeId)
   if (!theme) {
-    console.warn(`[ThemeManager] Theme not found: ${themeId}, using default`)
+    log.warn('theme not found, using default', { themeId, defaultThemeId: DEFAULT_THEME_ID })
     const defaultTheme = getTheme(DEFAULT_THEME_ID)
     if (!defaultTheme) {
       throw new Error(`Default theme ${DEFAULT_THEME_ID} not found`)
@@ -397,23 +401,23 @@ function applyThemeInternal(
   )
   const colorScaleDiagnostics = resolveThemeColorScaleDiagnostics(resolvedColors, mode)
 
-  console.log('[ThemeManager] Neutral text semantics', JSON.stringify({
+  log.debug('neutral text semantics resolved', {
     themeId: theme.id,
     themeName: theme.name,
     mode,
-    'neutral.primaryText': resolvedColors['neutral.primaryText'],
-    'neutral.regularText': resolvedColors['neutral.regularText'],
-    'neutral.secondaryText': resolvedColors['neutral.secondaryText'],
-    'neutral.placeholderText': resolvedColors['neutral.placeholderText'],
-    'neutral.disabledText': resolvedColors['neutral.disabledText'],
-  }, null, 2))
-  console.log('[ThemeManager] Primary/status semantics and scales', JSON.stringify({
+    primaryText: resolvedColors['neutral.primaryText'],
+    regularText: resolvedColors['neutral.regularText'],
+    secondaryText: resolvedColors['neutral.secondaryText'],
+    placeholderText: resolvedColors['neutral.placeholderText'],
+    disabledText: resolvedColors['neutral.disabledText'],
+  })
+  log.debug('primary/status semantics and scales resolved', {
     themeId: theme.id,
     themeName: theme.name,
     mode,
     primary: colorScaleDiagnostics.primary,
     status: colorScaleDiagnostics.status,
-  }, null, 2))
+  })
 
   onDebug?.({ themeId, mode, resolvedUI })
 

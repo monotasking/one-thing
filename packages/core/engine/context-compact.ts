@@ -1,5 +1,9 @@
 import type { JsonObject } from "../json.js";
 import { buildContextCompactPrompt } from "./compact-prompt.js";
+import { getCoreLogger } from "../logging/index.js";
+
+const log = getCoreLogger("core.engine");
+
 import {
 	COMPACTED_HISTORY_RETAINED_PAYLOAD_BUDGET_CHARS,
 	sanitizeHistoryToolResultForAI,
@@ -303,7 +307,7 @@ export function selectCompactPlan<TMessage extends CoreCompactMessage>(
 			(message) => message.id === session.summaryUpToMessageId,
 		);
 		if (previousSummaryIndex === -1) {
-			console.warn("[ContextCompact] Ignoring summary with missing anchor:", {
+			log.warn("ignoring summary with missing anchor", {
 				sessionId: session.id,
 				summaryUpToMessageId: session.summaryUpToMessageId,
 			});

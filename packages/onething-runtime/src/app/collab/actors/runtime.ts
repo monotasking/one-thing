@@ -175,6 +175,10 @@ import { createCollabEngineWorkerPort } from './worker-mind-port.js'
 import { migrateCollabToV3 } from './migrate.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('collab.runtime')
+
 
 /** 预算读数的缓存窗口。与 v2 费用闸同一个数 —— 两代对同一笔钱不该有两种口径。 */
 const BUDGET_CACHE_MS = 60_000
@@ -285,12 +289,12 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
     try {
       const report = await migrateCollabToV3({ dryRun: false })
       if (!report.skipped) {
-        console.info('[collab-v3] 迁移完成:', JSON.stringify(report.totals))
+        log.info('collab v3 migration complete', { totals: report.totals })
       }
     } catch (error) {
       // 迁移炸了不阻断启动:v3 会以空账起跑(房间历史仍在转录里,只是未读水位
       // 从头算)。让整个应用起不来是更贵的失败。
-      console.error('[collab-v3] 迁移失败,以空账继续:', error)
+      log.error('collab v3 migration failed, continuing with empty ledger', {}, error)
     }
   }
 
@@ -346,7 +350,7 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
   try {
     sweepCollabSchedulerLogs()
   } catch (error) {
-    console.warn('[collab-v3] 调度时间轴清老失败(不阻断启动):', error)
+    log.warn('scheduler timeline sweep failed', {}, error)
   }
 
   // ② 令牌:与 v2 同一把锁、同一个门面(`drive-guard.ts`)。引擎的房/exec 两道
@@ -411,7 +415,7 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
   //    折叠信封在下一轮 drive 里读到。
   runtime.disposers.push(onCollabBoardEvent((roomSessionId, event) => {
     void handleBoardEvent(roomSessionId, event).catch((error: unknown) => {
-      console.error('[collab-v3] board event failed:', error)
+      log.error('board event handling failed', { roomSessionId }, error)
     })
   }))
 
@@ -467,12 +471,12 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
   // 一个已经关掉的信箱(`append after close`),而它们本可以被正常处理掉。
   for (const entry of runtime.agents.values()) {
     try { await entry.actor.stop() } catch (error) {
-      console.error('[collab-v3] agent stop failed:', error)
+      log.error('agent stop failed', { agentId: entry.agentId }, error)
     }
   }
   for (const entry of runtime.rooms.values()) {
     try { await entry.actor.stop() } catch (error) {
-      console.error('[collab-v3] room stop failed:', error)
+      log.error('room stop failed', {}, error)
     }
   }
   // 在途的追加写落盘再走。`close()` 只停迭代,不等写链 —— 一封已经排在链上的信
@@ -595,10 +599,10 @@ async function ensureAgent(agentId: string): Promise<AgentEntry | undefined> {
         postResult: verb => postToAgent(agentId, verb, collabActorRef('worker', verb.workerId)),
       },
       onTurnFailure: failure => {
-        console.error(`[collab-v3] ${agentId} 在 ${failure.roomId} 的回合失败:`, failure.error)
+        log.error('agent turn failed', { agentId, roomId: failure.roomId }, failure.error)
       },
       onWorkerFailure: failure => {
-        console.error(`[collab-v3] ${agentId} 的手 ${failure.workerId} 失败:`, failure.error)
+        log.error('agent worker failed', { agentId, workerId: failure.workerId }, failure.error)
       },
       schedulerLog: runtime.schedulerLog,
       onDeadLetter: deadLetterSink(`agent:${agentId}`, undefined, agentId),
@@ -616,7 +620,7 @@ async function ensureAgent(agentId: string): Promise<AgentEntry | undefined> {
     // 重启对账:上一条命里还在跑的手全部标断,卡推回"没人在做"。**不 await**
     // 起循环 —— 对账要写板,而板的写队列是异步的。
     void actor.recoverWorkers().catch((error: unknown) => {
-      console.error(`[collab-v3] ${agentId} 重启对账失败:`, error)
+      log.error('worker recovery after restart failed', { agentId }, error)
     })
     return entry
   })()
@@ -641,7 +645,7 @@ async function resumeKnownRooms(): Promise<void> {
   try {
     metas = store.getSessionsList() as Array<{ id: string; kind?: string }>
   } catch (error) {
-    console.error('[collab-v3] 房间列表读取失败:', error)
+    log.error('sessions list read failed', {}, error)
     return
   }
   for (const meta of metas) {
@@ -649,7 +653,7 @@ async function resumeKnownRooms(): Promise<void> {
     try {
       await ensureRoom(meta.id)
     } catch (error) {
-      console.error(`[collab-v3] 房间 ${meta.id} 开箱失败:`, error)
+      log.error('room resume failed', { roomSessionId: meta.id }, error)
     }
   }
 }
@@ -994,13 +998,13 @@ export function stopCollabV3RoomFloor(sessionId: string): boolean | null {
         }
       })
       .catch((error: unknown) => {
-        console.error('[collab-v3] 外部执行体中断失败:', error)
+        log.error('external agent interrupt failed', {}, error)
       })
   }
 
   const hadFloor = collabRoomActiveLeases(entry.actor.account, Date.now()).length > 0
   void entry.actor.bumpEpoch('epoch-bumped').catch((error: unknown) => {
-    console.error('[collab-v3] 换代失败:', error)
+    log.error('epoch bump failed', {}, error)
   })
   return hadFloor || turns.length > 0
 }
@@ -1078,7 +1082,7 @@ export async function revokeCollabV3RoomLease(
         }
       })
       .catch((error: unknown) => {
-        console.error('[collab-v3] 外部执行体中断失败:', error)
+        log.error('external agent interrupt failed', {}, error)
       })
   }
 
@@ -1229,7 +1233,7 @@ export async function resumeCollabV3RoomWork(roomSessionId: string): Promise<voi
   try {
     board = loadCollabBoard(roomSessionId)
   } catch (error) {
-    console.error('[collab-v3] 恢复看板读取失败:', error)
+    log.error('board read for resume failed', { roomSessionId }, error)
     return
   }
   for (const task of board.tasks) {
@@ -1305,7 +1309,7 @@ function roomOverBudget(roomId: string): boolean {
         return value
       })
       .catch((error: unknown) => {
-        console.error('[collab-v3] budget read failed:', error)
+        log.error('budget read failed', { roomId }, error)
         return cell.spentUSD
       })
       .finally(() => {
@@ -1384,7 +1388,7 @@ function scheduleJudgment(request: CollabRoomJudgmentRequest): void {
     // 起飞:这一拍过完,窗从「防抖」翻成「在飞」—— 钱是从这一刻开始花的。
     broadcastCollabCoordinator(request.roomId, { activity: true })
     void runtime.referee.adjudicate(request).catch((error: unknown) => {
-      console.error('[collab-v3] 裁决失败:', error)
+      log.error('adjudication failed', { roomId: request.roomId }, error)
     })
   }, JUDGMENT_DEBOUNCE_MS)
   timer.unref?.()
@@ -1412,7 +1416,7 @@ async function flushJudgments(): Promise<void> {
     try {
       await runtime.referee.adjudicate(entry.request)
     } catch (error) {
-      console.error('[collab-v3] 裁决失败:', error)
+      log.error('adjudication failed', { roomId: entry.request.roomId }, error)
     }
   }
 }
@@ -1798,7 +1802,7 @@ async function resetRoomAccount(roomSessionId: string): Promise<boolean> {
     await entry.actor.stop()
     await entry.mailbox.flush()
   } catch (error) {
-    console.error('[collab-v3] 清空前停循环失败:', error)
+    log.error('stop room loop before clear failed', { roomSessionId }, error)
   }
   runtime.rooms.delete(roomSessionId)
   runtime.budget.delete(roomSessionId)

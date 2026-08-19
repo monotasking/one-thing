@@ -1,5 +1,8 @@
 import { BrowserWindow } from 'electron'
 import { IPCBridge, type IPCBridgeSender } from './ipc-bridge.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.bridge')
 
 let ipcBridge: IPCBridge | null = null
 
@@ -40,7 +43,7 @@ export function initializeIPCBridge(sender: IPCBridgeSender): void {
     })
   }
   ipcBridge.bind(sender)
-  console.log('[EventSystem] IPCBridge initialized')
+  log.info('IPC bridge initialized')
 }
 
 /**
@@ -58,5 +61,5 @@ export function shutdownIPCBridge(): void {
     ipcBridge.unbind()
     ipcBridge = null
   }
-  console.log('[EventSystem] IPCBridge shut down')
+  log.info('IPC bridge shut down')
 }

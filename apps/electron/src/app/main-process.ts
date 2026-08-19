@@ -136,6 +136,8 @@ import {
 	type ElectronActivateOptions,
 } from "@onething/electron-host/app/bootstrap";
 
+const log = getLogger("app.boot");
+
 /**
  * Refresh model metadata from models.dev on first startup.
  * Only runs if no model data exists yet for any configured provider.
@@ -157,18 +159,16 @@ async function refreshModelsOnFirstStartup(): Promise<void> {
 	}
 
 	if (hasModels) {
-		console.log(
-			"[Models] Model data already exists, skipping first-startup refresh",
-		);
+		log.debug("first-startup model refresh skipped", { reason: "models already present" });
 		return;
 	}
 
-	console.log("[Models] First startup detected, refreshing model registry...");
+	log.info("first-startup model refresh starting");
 	const { refreshAllProviders } = await import(
 		"@onething/app/providers/model-registry.js"
 	);
 	await refreshAllProviders();
-	console.log("[Models] First-startup refresh complete");
+	log.info("first-startup model refresh complete");
 }
 
 type MainBrowserWindow = ReturnType<typeof createWindow>;
@@ -239,13 +239,14 @@ function formatElectronDesktopStoreLockError(error: unknown): string {
 function startEmbeddedCoreHttpSurface(): void {
 	const backend = desktopBackend;
 	if (!backend) {
-		console.error("[core-http] backend is not ready — HTTP surface not mounted");
+		log.error("embedded HTTP surface not mounted", { reason: "backend is not ready" });
 		return;
 	}
 	void startEmbeddedOnethingHttpServer(backend).catch((error) => {
-		console.error(
-			"[core-http] failed to mount the embedded HTTP/SSE surface (non-blocking):",
-			error instanceof Error ? error.message : error,
+		log.error(
+			"embedded HTTP surface mount failed",
+			{ subsystem: "core-http", blocking: false },
+			error,
 		);
 	});
 }
@@ -262,46 +263,43 @@ function startPostWindowServices(): void {
 		configurePluginMarketIndex(PLUGIN_MARKET_INDEX_URL);
 		await bootstrapPluginSystem(getEventBus(), getStreamEngine());
 	})().catch((err) => {
-		console.error("[Plugins] Bootstrap failed (non-blocking):", err);
+		log.error("subsystem startup failed", { subsystem: "plugins", blocking: false }, err);
 	});
 
 	import("@onething/app/scheduler/user-tasks.js")
 		.then(({ initializeUserSchedulerTasks }) => initializeUserSchedulerTasks())
 		.catch((err) => {
-			console.error(
-				"[Scheduler] User task initialization failed (non-blocking):",
-				err,
-			);
+			log.error("subsystem startup failed", { subsystem: "scheduler", blocking: false }, err);
 		});
 
 	// Initialize MCP system asynchronously (don't block startup)
 	initializeMCP().catch((err) => {
-		console.error("[MCP] Initialization failed (non-blocking):", err);
+		log.error("subsystem startup failed", { subsystem: "mcp", blocking: false }, err);
 	});
 
 	try {
 		initializeACP();
 	} catch (err) {
-		console.error("[ACP] Initialization failed (non-blocking):", err);
+		log.error("subsystem startup failed", { subsystem: "acp", blocking: false }, err);
 	}
 
 	// Refresh model registry on first startup (non-blocking)
 	refreshModelsOnFirstStartup().catch((err) => {
-		console.error("[Models] First-startup refresh failed (non-blocking):", err);
+		log.error("subsystem startup failed", { subsystem: "model-registry", blocking: false }, err);
 	});
 
 
 	// Gateway is an Electron-hosted service. Enable from Settings > Channels
 	// or with legacy gateway env vars so IM messages enter the real onething runtime.
 	initializeGateway().catch((err) => {
-		console.error("[Gateway] Initialization failed (non-blocking):", err);
+		log.error("subsystem startup failed", { subsystem: "gateway", blocking: false }, err);
 	});
 
 	// Plugin roots can contribute skills, so load skills after plugin bootstrap
 	// has had a chance to register its roots.
 	pluginsReady.finally(() => {
 		initializeSkills().catch((err) => {
-			console.error("[Skills] Initialization failed (non-blocking):", err);
+			log.error("subsystem startup failed", { subsystem: "skills", blocking: false }, err);
 		});
 	});
 }
@@ -488,19 +486,17 @@ export function startOnethingElectronMain(): void {
 			shutdownPlugins: () => {
 				const manager = getPluginManager();
 				if (!manager) {
-					console.log(
-						"[PluginManager] Shutdown skipped: the plugin system was never bootstrapped",
-					);
+					log.info("plugin shutdown skipped", { reason: "never bootstrapped" });
 					return;
 				}
 				manager.shutdown();
-				console.log("[PluginManager] Shut down");
+				log.info("plugin system shut down");
 			},
 			// 同步段:先摘掉发现文件,关端口 fire-and-forget(before-quit 不被 await)。
 			stopEmbeddedHttpServer: () => {
 				removeHttpDiscovery();
 				void stopEmbeddedOnethingHttpServer().catch((error) => {
-					console.error("[core-http] shutdown failed:", error);
+					log.error("embedded HTTP surface shutdown failed", { subsystem: "core-http" }, error);
 				});
 			},
 			shutdownStreamEngine,
@@ -518,7 +514,7 @@ export function startOnethingElectronMain(): void {
 		onReady: initializeElectronReadyServices,
 		afterMainWindowCreated: () => {
 			markStartup("window-created");
-			console.log(formatStartupSummary());
+			log.info("startup summary", { summary: formatStartupSummary() });
 			getVoiceService().applySettings();
 		},
 		startPostWindowServices,

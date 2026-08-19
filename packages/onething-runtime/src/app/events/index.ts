@@ -10,8 +10,11 @@
  *   bus.emit(sessionId, { type: 'stream:start', assistantMessageId })
  */
 
+import { getLogger } from '../logging/index.js'
 import { EventBus } from './event-bus.js'
 import { StreamChannel } from './stream-channel.js'
+
+const log = getLogger('app.events')
 
 let eventBus: EventBus | null = null
 let streamChannel: StreamChannel | null = null
@@ -43,14 +46,14 @@ export function getStreamChannel(): StreamChannel {
  */
 export function initializeEventSystem(): void {
   if (eventBus) {
-    console.warn('[EventSystem] Already initialized, skipping')
+    log.warn('event system already initialized')
     return
   }
 
   eventBus = new EventBus()
   streamChannel = new StreamChannel()
 
-  console.log('[EventSystem] Initialized (EventBus + StreamChannel)')
+  log.info('event system initialized')
 }
 
 /**
@@ -66,7 +69,7 @@ export function shutdownEventSystem(): void {
     streamChannel = null
   }
 
-  console.log('[EventSystem] Shut down')
+  log.info('event system shut down')
 }
 
 // Re-export classes for direct use in tests

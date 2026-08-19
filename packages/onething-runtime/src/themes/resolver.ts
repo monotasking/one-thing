@@ -36,6 +36,10 @@ import {
   rgbaFromCssColor,
 } from './role-mapping.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('themes')
+
 type ResolvedColorValue = string | { dark: string; light: string }
 
 export interface ResolvedHighlightStyle {
@@ -393,7 +397,7 @@ export function resolveColorValue(
 
     // Prevent infinite recursion (circular references)
     if (visited.has(refName)) {
-      console.warn(`[ThemeResolver] Circular reference detected: ${refName}`)
+      log.warn('circular color reference detected', { refName })
       return '#ff00ff' // Magenta as error indicator
     }
     visited.add(refName)
@@ -409,7 +413,7 @@ export function resolveColorValue(
     }
 
     // Unknown reference - return as-is (might be CSS keyword or variable)
-    console.warn(`[ThemeResolver] Unknown color reference: ${refName}`)
+    log.warn('unknown color reference', { refName })
     return value
   }
 
@@ -1049,7 +1053,7 @@ function resolveHighlightColor(
 function normalizeHighlightFontStyle(value: HighlightFontStyle | undefined): HighlightFontStyle | undefined {
   if (!value) return undefined
   if (VALID_HIGHLIGHT_FONT_STYLES.has(value)) return value
-  console.warn(`[ThemeResolver] Unknown highlight fontStyle: ${value}`)
+  log.warn('unknown highlight fontStyle', { value })
   return undefined
 }
 
@@ -2124,7 +2128,7 @@ export function resolveThemeHighlights(
 
   for (const [token, style] of Object.entries(highlights?.semanticTokens || {})) {
     if (!isSemanticHighlightToken(token)) {
-      console.warn(`[ThemeResolver] Unknown semantic highlight token: ${token}`)
+      log.warn('unknown semantic highlight token', { token })
       continue
     }
     styles.set(token, mergeHighlightStyle(
@@ -2139,7 +2143,7 @@ export function resolveThemeHighlights(
   ): SemanticHighlightToken | null => {
     if (isSemanticHighlightToken(name)) return name
     if (visited.has(name)) {
-      console.warn(`[ThemeResolver] Circular highlight alias detected: ${name}`)
+      log.warn('circular highlight alias detected', { name })
       return null
     }
     visited.add(name)
@@ -2162,7 +2166,7 @@ export function resolveThemeHighlights(
     visited: Set<string> = new Set()
   ): ResolvedHighlightStyle | null => {
     if (visited.has(name)) {
-      console.warn(`[ThemeResolver] Circular highlight group link detected: ${name}`)
+      log.warn('circular highlight group link detected', { name })
       return null
     }
     visited.add(name)
@@ -2193,7 +2197,7 @@ export function resolveThemeHighlights(
     if (!groups[groupName]) continue
     const token = resolveSemanticTarget(targetName)
     if (!token) {
-      console.warn(`[ThemeResolver] Unknown highlight alias target: ${groupName} -> ${targetName}`)
+      log.warn('unknown highlight alias target', { groupName, targetName })
       continue
     }
     const groupStyle = resolveGroupDefinition(groupName)
@@ -2207,7 +2211,7 @@ export function resolveThemeHighlights(
   if (highlightOverrides) {
     for (const [token, fg] of Object.entries(highlightOverrides)) {
       if (!isSemanticHighlightToken(token)) {
-        console.warn(`[ThemeResolver] Unknown highlight override token: ${token}`)
+        log.warn('unknown highlight override token', { token })
         continue
       }
       if (typeof fg !== 'string' || !fg.trim()) continue

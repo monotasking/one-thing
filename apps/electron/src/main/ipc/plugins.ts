@@ -50,6 +50,9 @@ import { readPluginTarballSummary } from '@onething/app/plugins/tarball.js'
 import { getPluginAppVersion } from '@onething/app/plugins/app-version.js'
 import { getEventBus } from '@onething/app/events/index.js'
 import * as store from '@onething/app/store.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.plugins')
 
 export function createGatewayPluginCommandProvider(): GatewayCommandProvider {
   return {
@@ -107,7 +110,7 @@ function executePluginCommand(request: ElectronPluginExecuteCommandRequest) {
       }
     },
     onEmitError(label, error) {
-      console.error(`[PluginIPC] ${label} emit failed:`, error)
+      log.error('plugin event emit failed', { label }, error)
     },
     logger: console,
   })
@@ -199,7 +202,7 @@ export function registerPluginHandlers(): void {
           try {
             sender.send(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, progress)
           } catch (error) {
-            console.warn('[PluginIPC] progress send failed (window likely closed):', error)
+            log.warn('request progress send failed', { likelyCause: 'window closed' }, error)
           }
         },
         logger: console,
@@ -308,5 +311,5 @@ export function registerPluginHandlers(): void {
     },
   })
 
-  console.log('[PluginIPC] handlers registered')
+  log.info('handlers registered')
 }

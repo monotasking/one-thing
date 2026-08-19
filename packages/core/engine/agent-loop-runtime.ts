@@ -22,6 +22,7 @@ import type { Principal } from '../permission/principal.js'
 import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import type { AgentTool } from '../agent-loop/types.js'
 import { toJsonObject, toJsonValue, type JsonObject } from '../json.js'
+import { toLogger, type CompatLogger } from '../logging/index.js'
 
 export interface CoreAgentLoopContextBudget {
   modelContextLength: number
@@ -482,11 +483,8 @@ export interface CoreAgentLoopCompactionContext<TSettings, TProviderConfig exten
   settings: TSettings
 }
 
-export interface CoreAgentLoopCompactLogger {
-  log?: (...args: unknown[]) => void
-  warn?: (...args: unknown[]) => void
-  error?: (...args: unknown[]) => void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CoreAgentLoopCompactLogger = CompatLogger
 
 export interface CoreAgentLoopCompactionAdapters<
   TSettings,
@@ -1055,7 +1053,7 @@ export async function maybeCompactAgentLoopContextWithAdapters<
   options: MaybeCompactAgentLoopContextOptions<TSettings, TProviderConfig, TSession, TMessage, TCompactResult>,
 ): Promise<TMessage[] | undefined> {
   const { ctx, adapters } = options
-  const logger = adapters.logger ?? console
+  const logger = toLogger(adapters.logger)
 
   if (!shouldStartAgentLoopContextCompact({
     turn: options.turn,
@@ -1111,7 +1109,7 @@ export async function maybeCompactAgentLoopContextWithAdapters<
     if (passPlan.kind === 'stop') break
 
     if (passPlan.kind === 'skip-provider-usage-mismatch') {
-      logger.warn?.('[AgentLoopRuntime] Skipping context compact because provider usage exceeds registered model context length:', {
+      logger.warn('[AgentLoopRuntime] Skipping context compact because provider usage exceeds registered model context length:', {
         sessionId: ctx.sessionId,
         providerId: ctx.providerId,
         model: (ctx.providerConfig as { model?: unknown }).model,
@@ -1122,7 +1120,7 @@ export async function maybeCompactAgentLoopContextWithAdapters<
       return undefined
     }
 
-    logger.log?.('[ContextUsage] decision', {
+    logger.debug('[ContextUsage] decision', {
       sessionId: ctx.sessionId,
       providerId: ctx.providerId,
       model: (ctx.providerConfig as { model?: unknown }).model,
@@ -1139,7 +1137,7 @@ export async function maybeCompactAgentLoopContextWithAdapters<
       summaryUsed: usage?.details.summaryUsed,
       turn: options.turn,
     })
-    logger.log?.('[AgentLoopRuntime] Context compact triggered before agent turn', {
+    logger.debug('[AgentLoopRuntime] Context compact triggered before agent turn', {
       sessionId: ctx.sessionId,
       model: (ctx.providerConfig as { model?: unknown }).model,
       turn: options.turn,
@@ -1172,7 +1170,7 @@ export async function maybeCompactAgentLoopContextWithAdapters<
         await adapters.emitEvent(ctx.sessionId, event)
       }
     } catch (error) {
-      logger.error?.('[AgentLoopRuntime] context compact event emit error:', error)
+      logger.error('[AgentLoopRuntime] context compact event emit error:', undefined, error)
     }
 
     const resultPlan = applyAgentLoopContextCompactResult({

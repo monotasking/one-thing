@@ -55,6 +55,10 @@ import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from './acp/index.js'
 import { killTrackedDetachedChildren } from './tools/core/bash-executor.js'
 import { killAllTerminals } from './terminal/service.js'
+import { getLogger } from './logging/index.js'
+
+const log = getLogger('app.backend')
+
 
 /**
  * Wire the runtime-package adapters that used to be import-time side effects.
@@ -135,7 +139,7 @@ export async function createOnethingBackend(
   try {
     await migrateProviderConfigToDefaultSpace()
   } catch (error) {
-    console.error('[Backend] provider config migration failed (will retry next boot):', error)
+    log.error('provider config migration failed, will retry next boot', {}, error)
   }
   // Agents are read on every turn (and once per room member); warm the cache
   // here so nothing downstream pays a synchronous read + normalize.
@@ -155,7 +159,7 @@ export async function createOnethingBackend(
       const { system, developer } = await buildOnethingSystemPrompt({ hasTools: false, skills: [] })
       initPromptVersion([system, ...developer].filter(Boolean).join('\n\n'))
     } catch (error) {
-      console.warn('[Backend] Failed to initialize promptVersion:', error)
+      log.warn('prompt version init failed', {}, error)
     }
   }
 
@@ -248,7 +252,7 @@ export async function createOnethingBackend(
         try {
           await shutdownCollabV3Runtime()
         } catch (error) {
-          console.error('[Backend] collab shutdown error:', error)
+          log.error('collab shutdown failed', {}, error)
         }
       }
       getStreamEngine().abortAll()
@@ -266,7 +270,7 @@ export async function createOnethingBackend(
         const externalAgents = await import('./external-agents/index.js')
         await externalAgents.disposeExternalAgentConnectors()
       } catch (error) {
-        console.error('[Backend] external agent dispose error:', error)
+        log.error('external agent dispose failed', {}, error)
       }
       if (options.mcpAcp) {
         await ACPManager.shutdown()
@@ -285,7 +289,7 @@ export async function createOnethingBackend(
         const plugins = await import('./plugins/manager.js')
         plugins.getPluginManager()?.shutdown()
       } catch (error) {
-        console.error('[Backend] plugin manager shutdown error:', error)
+        log.error('plugin manager shutdown failed', {}, error)
       }
       killTrackedDetachedChildren()
       // No-op unless a host actually created terminals. NOTE: the Electron
@@ -300,7 +304,7 @@ export async function createOnethingBackend(
       try {
         await flushAllPendingSaves()
       } catch (error) {
-        console.error('[Backend] flushAllPendingSaves error:', error)
+        log.error('flush pending saves failed', {}, error)
       }
     },
   }

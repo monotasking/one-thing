@@ -21,6 +21,10 @@ import {
 import { kickGoalRunIfIdle } from "./kick.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('goals')
+
 
 // Wall-clock accounting: seconds between consecutive rounds of the same
 // session approximate active time. Entries are dropped when a run ends.
@@ -53,7 +57,7 @@ function scheduleGoalRetry(sessionId: string, attempt: number): void {
 		try {
 			kickGoalRunIfIdle(sessionId);
 		} catch (error) {
-			console.error("[goals] retry kick failed:", error);
+			log.error("goal retry kick failed", { sessionId }, error);
 		}
 	}, delay);
 	timer.unref?.();
@@ -131,7 +135,7 @@ export function bootstrapGoalStreamBreakers(): void {
 					handleGoalRunSuccess(sessionId);
 				}
 			} catch (error) {
-				console.error("[goals] stream:complete breaker failed:", error);
+				log.error("goal stream:complete breaker failed", { sessionId }, error);
 			}
 		},
 		"goal-breaker",
@@ -144,7 +148,7 @@ export function bootstrapGoalStreamBreakers(): void {
 			try {
 				handleGoalStreamFailure(sessionId, event.data?.error ?? "stream error");
 			} catch (error) {
-				console.error("[goals] stream:error breaker failed:", error);
+				log.error("goal stream:error breaker failed", { sessionId }, error);
 			}
 		},
 		"goal-breaker",
@@ -158,7 +162,7 @@ export function bootstrapGoalStreamBreakers(): void {
 				cancelGoalRetry(sessionId);
 				handleGoalAbort(sessionId);
 			} catch (error) {
-				console.error("[goals] stream:aborted breaker failed:", error);
+				log.error("goal stream:aborted breaker failed", { sessionId }, error);
 			}
 		},
 		"goal-breaker",

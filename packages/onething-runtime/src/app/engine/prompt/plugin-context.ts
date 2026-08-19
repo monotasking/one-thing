@@ -26,6 +26,10 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
 } from '../../plugins/health.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.prompt')
+
 
 function describeError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error)
@@ -80,7 +84,7 @@ export function getPromptContextProviderCount(): number {
  */
 export const pluginPromptContextHealthOptions: CollectOnethingPluginPromptContextOptions = {
   onProviderError(providerRef, error) {
-    console.error(`[PluginPromptContext] Provider "${providerRef}" failed:`, error)
+    log.error('plugin prompt context provider failed', { providerRef }, error)
   },
   onProviderFailure({ pluginId, providerId, error, timedOut }) {
     reportPluginRuntimeFailure(

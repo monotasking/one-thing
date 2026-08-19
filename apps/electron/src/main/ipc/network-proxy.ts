@@ -6,6 +6,9 @@ import {
 import { applyBrowserProxy } from '@onething/electron-host/browser/session'
 import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '@onething/app/providers/bound-fetch.js'
 import { getSettings } from '@onething/app/stores/settings.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.network-proxy')
 
 function normalizeBypassRules(rules?: string): string {
   return (rules || '')
@@ -47,7 +50,7 @@ export async function applyNetworkProxySettings(proxy: ProxySettings = getSettin
         proxyBypassRules: normalizeBypassRules(proxy.bypassRules),
       }
     } catch (error: any) {
-      console.warn('[Network] Invalid proxy settings; Electron proxy was not applied:', error.message)
+      log.warn('proxy settings invalid, Electron proxy not applied', undefined, error)
       config = { enabled: false }
     }
   }
@@ -60,7 +63,7 @@ export async function applyNetworkProxySettings(proxy: ProxySettings = getSettin
   try {
     await applyBrowserProxy(config)
   } catch (error) {
-    console.warn('[Network] Failed to apply proxy to embedded browser partition:', error)
+    log.warn('apply proxy to embedded browser partition failed', undefined, error)
   }
 }
 

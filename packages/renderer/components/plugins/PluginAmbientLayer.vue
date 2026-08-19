@@ -41,6 +41,9 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PLUGIN_AMBIENT_ANCHORS, PLUGIN_AMBIENT_MESSAGE } from '@/workspace/plugin-panel-types'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.plugin-ambient')
 
 const props = defineProps<{
   /** `onething-plugin://<id>/<entry>` —— 胜出氛围层的入口(裁决已在主进程做完)。 */
@@ -230,7 +233,7 @@ function armHandshake(): void {
   handshakeTimer = setTimeout(() => {
     if (handshakeDone) return
     // 装饰层:握手没回来就当它没有,不打扰用户。
-    console.warn('[PluginAmbient] ambient page did not acknowledge the handshake; no effects shown')
+    log.warn('ambient page did not acknowledge the handshake, no effects shown')
   }, HANDSHAKE_BUDGET_MS)
 }
 

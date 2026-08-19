@@ -59,6 +59,10 @@ import {
 import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from './actors/turn-context.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.room')
+
 
 /** 预算/费用的读口从这里转发一次,调用方(say 执行器、设置面板、IPC)只认一个入口。 */
 export {
@@ -241,7 +245,7 @@ export function setCollabRoomFrozen(roomSessionId: string, frozen: boolean): boo
     postSystemLine(roomSessionId, '房间已全部暂停:进行中的执行已中止,恢复后可重新指派')
   } else {
     void resumeCollabV3RoomWork(roomSessionId).catch((error: unknown) => {
-      console.error('[collab] 恢复工作失败:', error)
+      log.error('resume room work failed', { roomSessionId }, error)
     })
   }
   // 暂停/恢复是状态条上最显眼的一格(常驻条直接换成「已暂停 · 恢复」),不推的话
@@ -496,7 +500,7 @@ export function setCollabRoomConfig(
     const joined = nextMembers.filter(id => !previousMembers.includes(id))
     const left = previousMembers.filter(id => !nextMembers.includes(id))
     void postCollabV3MembershipChanged(roomSessionId, joined, left).catch((error: unknown) => {
-      console.error('[collab] 成员变更投递失败:', error)
+      log.error('post membership change failed', { roomSessionId }, error)
     })
   }
 
@@ -515,7 +519,7 @@ export function setCollabRoomConfig(
    */
   if (relayChanged) {
     void syncCollabV3RoomFloorPolicy(roomSessionId).catch((error: unknown) => {
-      console.error('[collab] 发言策略换档失败:', error)
+      log.error('sync floor policy failed', { roomSessionId }, error)
     })
   }
 

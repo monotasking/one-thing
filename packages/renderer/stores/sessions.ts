@@ -7,6 +7,7 @@ import type {
 	SessionGoal,
 } from "@/types";
 import { platformApi } from "@/platform";
+import { getLogger } from "@/services/log";
 import { DEFAULT_AGENT_ID, isColleague } from "@shared/ipc";
 import { isAgentPairDmRoom, isUserDmRoom } from "@onething/runtime/collab";
 // 叶子入口,不是 `@onething/runtime/agents` barrel:那颗 barrel 拖着吃 node:fs
@@ -57,6 +58,9 @@ function caughtErrorMessage(error: object | undefined, fallback: string): string
 	}
 	return fallback;
 }
+
+const log = getLogger("renderer.sessions-store");
+const perfLog = getLogger("renderer.perf");
 
 export const useSessionsStore = defineStore("sessions", () => {
 	// Sessions list stores metadata-only items initially
@@ -697,7 +701,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				return response.session;
 			}
 		} catch (error) {
-			console.error("Failed to create session:", error);
+			log.error("session create failed", {}, error);
 		}
 	}
 
@@ -721,10 +725,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 				return response.session;
 			}
 			if (response.error) {
-				console.error("Failed to create session:", response.error);
+				log.error("session create failed", { sessionId, error: response.error });
 			}
 		} catch (error) {
-			console.error("Failed to create session:", error);
+			log.error("session create failed", { sessionId }, error);
 		}
 	}
 
@@ -790,7 +794,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 			activateMs = performance.now() - activateStart;
 			if (generation !== switchGeneration) return;
 			if (!activateResponse.success || !activateResponse.session) {
-				console.error("Failed to activate session:", activateResponse.error);
+				log.error("session activate failed", {
+					sessionId,
+					error: activateResponse.error,
+				});
 				if (currentSessionId.value === sessionId) {
 					currentSessionId.value = previousSessionId;
 				}
@@ -853,7 +860,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			// they are fetched lazily by the inspector / nav flows instead of during
 			// every switch.
 
-			console.info("[Perf][SessionSwitch]", {
+			perfLog.debug("session switched", {
 				sessionId,
 				totalMs: Math.round(performance.now() - switchStart),
 				activateMs: Math.round(activateMs),
@@ -866,13 +873,13 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 			return sessionDetails;
 		} catch (error) {
-			console.error("Failed to switch session:", error);
+			log.error("session switch failed", { sessionId }, error);
 			if (currentSessionId.value === sessionId) {
 				currentSessionId.value = previousSessionId;
 			}
 			isActive.value = false;
 			useChatStore().setSessionLoading(sessionId, false);
-			console.info("[Perf][SessionSwitch]", {
+			perfLog.debug("session switch failed", {
 				sessionId,
 				totalMs: Math.round(performance.now() - switchStart),
 				activateMs: Math.round(activateMs),
@@ -1000,7 +1007,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				}
 			}
 		} catch (error) {
-			console.error("Failed to archive session:", error);
+			log.error("session archive failed", { sessionId }, error);
 		}
 	}
 
@@ -1035,7 +1042,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				}
 			}
 		} catch (error) {
-			console.error("Failed to restore session:", error);
+			log.error("session restore failed", { sessionId }, error);
 		}
 	}
 
@@ -1069,7 +1076,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				for (const id of allIdsToDelete) void scratchpadStore.remove(id);
 			}
 		} catch (error) {
-			console.error("Failed to permanently delete session:", error);
+			log.error("session delete failed", { sessionId }, error);
 		}
 	}
 
@@ -1084,7 +1091,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				setSessionName(sessionId, newName);
 			}
 		} catch (error) {
-			console.error("Failed to rename session:", error);
+			log.error("session rename failed", { sessionId }, error);
 		}
 	}
 
@@ -1104,7 +1111,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				return response.session;
 			}
 		} catch (error) {
-			console.error("Failed to create branch:", error);
+			log.error("session branch create failed", { parentSessionId, branchFromMessageId }, error);
 		}
 		return null;
 	}
@@ -1122,7 +1129,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				}
 			}
 		} catch (error) {
-			console.error("Failed to update session pin:", error);
+			log.error("session pin update failed", { sessionId }, error);
 		}
 	}
 
@@ -1163,7 +1170,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				error: response.error || "Failed to update working directory",
 			};
 		} catch (error) {
-			console.error("Failed to update session working directory:", error);
+			log.error("session working directory update failed", { sessionId }, error);
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : "Unknown error",
@@ -1198,7 +1205,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			return response;
 		} catch (error) {
 			const errorObject = error && typeof error === "object" ? error : undefined;
-			console.error("Failed to update session agent:", error);
+			log.error("session agent update failed", { sessionId }, error);
 			return {
 				success: false,
 				error: caughtErrorMessage(errorObject, "Failed to update session agent"),
@@ -1233,7 +1240,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			return response;
 		} catch (error) {
 			const errorObject = error && typeof error === "object" ? error : undefined;
-			console.error("Failed to update session permission mode:", error);
+			log.error("session permission mode update failed", { sessionId }, error);
 			return {
 				success: false,
 				error: caughtErrorMessage(errorObject, "Failed to update session permission mode"),
@@ -1276,7 +1283,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			return response;
 		} catch (error) {
 			const errorObject = error && typeof error === "object" ? error : undefined;
-			console.error("Failed to update session model:", error);
+			log.error("session model update failed", { sessionId }, error);
 			return {
 				success: false,
 				error: caughtErrorMessage(errorObject, "Failed to update session model"),
@@ -1488,7 +1495,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			}
 			return goal;
 		} catch (error) {
-			console.error("[Sessions] Failed to fetch goal:", error);
+			log.error("goal fetch failed", { sessionId }, error);
 			return null;
 		}
 	}
@@ -1507,7 +1514,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			sessionVariables.value = new Map(sessionVariables.value);
 			return variables;
 		} catch (error) {
-			console.error("[Sessions] Failed to fetch variables:", error);
+			log.error("variables fetch failed", { sessionId }, error);
 			return [];
 		}
 	}

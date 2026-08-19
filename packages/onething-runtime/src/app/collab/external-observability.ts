@@ -53,6 +53,10 @@ import { broadcastCollabAgentActivity } from './agent-activity.js'
 import { findCollabV3Turn } from './actors/turn-context.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.observability')
+
 
 /* ── 写入口 ───────────────────────────────────────────────────────────────── */
 
@@ -73,7 +77,7 @@ function append(roomSessionId: string, row: CollabSchedulerLogRow): void {
   try {
     sink.append(roomSessionId, row)
   } catch (error) {
-    console.warn('[collab-v3] 外部通路时间轴写入失败(诊断降级):', error)
+    log.warn('external scheduler timeline append failed', { roomSessionId }, error)
   }
 }
 

@@ -34,6 +34,10 @@ import { speakIntoCollabRoom } from './say-tool.js'
 import { noteCollabSchedule } from './inspector.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.wake')
+
 
 /**
  * 等一个回合最多等这么久。与权限降级同一个数字(120s)不是巧合:两处问的是
@@ -140,10 +144,12 @@ async function fulfill(key: string, why: 'settled' | 'timeout'): Promise<void> {
   })
   if (!said.ok || !said.messageId) {
     // 发起回合早就结束了,没有人可以回执(§3.2 失败面):只留痕。
-    console.warn(
-      `[collab-wake] poke 未落群 room=${entry.wakeRoomSessionId.slice(0, 8)} `
-      + `target=${entry.targetAgentId} why=${why}: ${said.error ?? 'unknown'}`,
-    )
+    log.warn('wake poke not delivered to room', {
+      roomSessionId: entry.wakeRoomSessionId,
+      targetAgentId: entry.targetAgentId,
+      why,
+      reason: said.error ?? 'unknown',
+    })
     noteCollabSchedule(entry.wakeRoomSessionId, {
       kind: 'blocked',
       agentId: entry.targetAgentId,

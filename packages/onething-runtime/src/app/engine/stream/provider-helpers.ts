@@ -28,6 +28,12 @@ import {
   resolveOnethingProviderConfigForChat,
   type OnethingProviderErrorDetails,
 } from '@onething/runtime/providers'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.stream')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 /**
  * Extract detailed error information from API responses
@@ -57,7 +63,7 @@ export async function getApiKeyForProvider(providerId: string, providerConfig: P
     refreshOAuthToken: (id, credential) =>
       oauthManager.refreshTokenIfNeeded(id, credentialTargetFromMarker(credential)),
     resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
-    logger: console,
+    logger: consoleLog,
   })
 }
 
@@ -73,7 +79,7 @@ export async function resolveProviderAuth(
     resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
     resolveOAuthAuth: (id, apiKey, credential) => resolveSessionSpaceOAuthAuth(id, apiKey, credential),
     createApiKeyAuth: apiKey => ({ kind: 'api-key', apiKey }),
-    logger: console,
+    logger: consoleLog,
   })
 }
 
@@ -160,7 +166,7 @@ export async function getProviderConfigForChat(
       resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
       resolveOAuthAuth: (id, apiKey, credential) => resolveSessionSpaceOAuthAuth(id, apiKey, credential),
       createApiKeyAuth: apiKey => ({ kind: 'api-key', apiKey }),
-      logger: console,
+      logger: consoleLog,
     },
   })
   return resolved as ResolvedProviderConfig | null

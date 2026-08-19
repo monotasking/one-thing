@@ -1,3 +1,7 @@
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.session')
+
 export interface CoreTokenUsage {
   inputTokens: number
   outputTokens?: number
@@ -190,7 +194,7 @@ export function computeSessionTimelineMetadataRepair<TMessage extends CoreTimeli
   const summaryAnchorExists = hasSummaryAnchor ? messageIds.has(session.summaryUpToMessageId!) : false
 
   if (hasAnySummaryMetadata && (!hasSummary || !hasSummaryAnchor || !summaryAnchorExists)) {
-    console.warn('[Sessions] Cleared invalid summary metadata after timeline repair:', {
+    log.warn('cleared invalid summary metadata after timeline repair', {
       sessionId: session.id,
       summaryUpToMessageId: session.summaryUpToMessageId,
     })
@@ -216,7 +220,7 @@ export function computeSessionTimelineMetadataRepair<TMessage extends CoreTimeli
     if (beforeContextSize !== contextSize || beforeLastInputTokens !== contextSize) {
       patch.contextSize = contextSize
       patch.lastInputTokens = contextSize
-      console.log('[SessionUsage] repairSessionTimelineMetadata contextSize', {
+      log.debug('timeline metadata repaired context size', {
         sessionId: session.id,
         source: options.recomputeContextSize
           ? 'timeline-recompute'

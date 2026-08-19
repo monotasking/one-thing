@@ -8,7 +8,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
+import { collectLogRecordsForTests } from '../../logging/index.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-events-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -102,13 +103,15 @@ describe('plugin event routing over the real EventBus', () => {
     const { EventBus, createPluginAPI, disposePlugin } = await load()
     const bus = new EventBus()
     const plugin = createPluginAPI('sloppy', bus as never, streamEngineStub() as never)
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = collectLogRecordsForTests()
 
     try {
       plugin.api.on('typo-without-namespace', () => {})
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('unrecognized event'))
+      expect(logs.messages()).toContain(
+        'plugin subscribed to an unrecognized event; treating it as a session event',
+      )
     } finally {
-      warn.mockRestore()
+      logs.stop()
       disposePlugin(plugin.state)
     }
   })

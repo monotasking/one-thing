@@ -1,4 +1,8 @@
 import { projectIdFromPath } from './id.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('projects')
+
 import {
   deleteProject,
   loadIndex,
@@ -192,7 +196,7 @@ export class ProjectsStore {
       try {
         cb()
       } catch (err) {
-        console.error('[project-dirs] listener error:', err)
+        log.error('project store listener failed', undefined, err)
       }
     }
   }

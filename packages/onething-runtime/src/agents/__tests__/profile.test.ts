@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { captureRuntimeLogs } from '../../logging/index.js'
 import {
   DEFAULT_AGENT_MAX_TURNS,
   composeAgentPermissionMode,
@@ -133,54 +134,55 @@ describe('composeAgentPermissionMode', () => {
     })
 
     it('warns once per (origin, agent, mode) and names both', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const logs = captureRuntimeLogs()
       try {
         expect(composeAgentPermissionMode('mystery-mode', 'normal', undefined, { agentId: 'agent-a' }))
           .toBe('normal')
         composeAgentPermissionMode('mystery-mode', 'normal', undefined, { agentId: 'agent-a' })
 
-        expect(warn).toHaveBeenCalledTimes(1)
-        const message = String(warn.mock.calls[0][0])
-        expect(message).toContain('mystery-mode')
-        expect(message).toContain('agent-a')
+        const warns = logs.ofLevel('warn')
+        expect(warns).toHaveLength(1)
+        expect(warns[0].fields?.mode).toBe('mystery-mode')
+        expect(warns[0].fields?.agentId).toBe('agent-a')
       } finally {
-        warn.mockRestore()
+        logs.restore()
       }
     })
 
     it('warns for a broken session/settings value too, and falls back', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const logs = captureRuntimeLogs()
       try {
         expect(composeAgentPermissionMode(undefined, 'auto-acept-edits')).toBe('normal')
-        expect(warn).toHaveBeenCalledTimes(1)
-        expect(String(warn.mock.calls[0][0])).toContain('session/settings')
+        const warns = logs.ofLevel('warn')
+        expect(warns).toHaveLength(1)
+        expect(warns[0].fields?.origin).toBe('session/settings')
       } finally {
-        warn.mockRestore()
+        logs.restore()
       }
     })
 
     it('says nothing for the modes it knows', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const logs = captureRuntimeLogs()
       try {
         composeAgentPermissionMode('normal', 'dangerously-allow-all')
         composeAgentPermissionMode(undefined, undefined)
-        expect(warn).not.toHaveBeenCalled()
+        expect(logs.ofLevel('warn')).toHaveLength(0)
       } finally {
-        warn.mockRestore()
+        logs.restore()
       }
     })
 
     it('surfaces the agent id when the profile resolves a typo', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const logs = captureRuntimeLogs()
       try {
         const profile = resolveAgentProfile({
           agent: agent({ id: 'ops', permissionMode: 'dangerously-alow-all' }),
           settings: { tools: { permissionMode: 'auto-accept-edits' } },
         })
         expect(profile.permissionMode).toBe('auto-accept-edits')
-        expect(String(warn.mock.calls[0]?.[0])).toContain('ops')
+        expect(logs.ofLevel('warn')[0]?.fields?.agentId).toBe('ops')
       } finally {
-        warn.mockRestore()
+        logs.restore()
       }
     })
   })

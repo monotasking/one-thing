@@ -12,6 +12,10 @@ import type { EventBus } from '../events/event-bus.js'
 import type { StreamChannel } from '../events/stream-channel.js'
 import type { Unsubscribe } from '../events/types.js'
 import { Session } from './session.js'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.session')
+
 
 export class SessionManager {
   private sessions = new Map<string, Session>()
@@ -27,7 +31,7 @@ export class SessionManager {
     const unsub = eventBus.onAnySession('stream:start', (envelope) => {
       const sessionId = envelope.sessionId
       if (!this.sessions.has(sessionId)) {
-        console.log(`[SessionManager] Auto-creating session: ${sessionId}`)
+        log.debug('auto-creating session', { sessionId })
         const session = new Session(sessionId)
         session.attach(eventBus, streamChannel)
         this.sessions.set(sessionId, session)

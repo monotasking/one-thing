@@ -46,6 +46,10 @@ import {
   type CollabRefereeVerdict,
   type CollabRoomJudgmentRequest,
 } from '@onething/runtime/collab/actors'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('collab.referee')
+
 
 /** 裁判的死线。与 v2 判定同一个档位 —— 裁决是每条房间消息都要付的延迟税。 */
 export const COLLAB_REFEREE_TIMEOUT_MS = 8_000
@@ -332,7 +336,7 @@ export class CollabRefereeActor {
       return { ...verdict, candidates: candidates.map(hand => hand.agentId) }
     } catch (error) {
       if (this.onError) this.onError(error, request)
-      else console.error('[collab-referee] 裁决失败,回落举手 FIFO:', error)
+      else log.error('adjudication failed, falling back to raise-hand FIFO', { roomId: request.roomId }, error)
       this.record({
         roomId: request.roomId,
         token: request.token,
@@ -357,7 +361,7 @@ export class CollabRefereeActor {
     try {
       this.onJudged?.(trace)
     } catch (error) {
-      console.warn('[collab-referee] 裁决记账失败(裁决照走):', error)
+      log.warn('adjudication trace hook failed', { roomId: trace.roomId }, error)
     }
   }
 

@@ -32,10 +32,16 @@ import {
 } from '../../agents/index.js'
 import { getSessionsList } from '../../stores/index.js'
 import { registerRouterHandlers } from '../registry.js'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('ipc.agents')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export const agentsRpcHandlers: RouteHandlers<AgentsRoutes> = {
   async list() {
-    return listOnethingAgentsForIpc({ listAgents, logger: console })
+    return listOnethingAgentsForIpc({ listAgents, logger: consoleLog })
   },
   async create(request) {
     return createOnethingAgentFromRequestForIpc({
@@ -53,7 +59,7 @@ export const agentsRpcHandlers: RouteHandlers<AgentsRoutes> = {
       maxTurns: request?.maxTurns,
       createId: randomUUID,
       createAgent,
-      logger: console,
+      logger: consoleLog,
     })
   },
   async update(request) {
@@ -72,7 +78,7 @@ export const agentsRpcHandlers: RouteHandlers<AgentsRoutes> = {
       permissionMode: request?.permissionMode,
       maxTurns: request?.maxTurns,
       updateAgent,
-      logger: console,
+      logger: consoleLog,
     })
   },
   async delete(request) {
@@ -82,14 +88,14 @@ export const agentsRpcHandlers: RouteHandlers<AgentsRoutes> = {
       listSessions: getSessionsList,
       retireAgent,
       deleteAgent,
-      logger: console,
+      logger: consoleLog,
     })
   },
   async restore(request) {
     return restoreOnethingAgentFromRequestForIpc({
       agentId: request?.agentId,
       restoreAgent,
-      logger: console,
+      logger: consoleLog,
     })
   },
 }

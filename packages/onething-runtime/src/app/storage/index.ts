@@ -7,6 +7,12 @@
 import type { IStorageProvider, StorageConfig, StorageType } from './interfaces.js'
 import { FileStorageProvider } from './file-storage.js'
 import { HeadlessStorageManager } from '@onething/core/storage'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('storage')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 function createStorageProvider(config: StorageConfig): IStorageProvider {
   switch (config.type) {
@@ -24,13 +30,13 @@ export async function initializeStorage(
   const alreadyInitialized = Boolean(storageManager.instance) && storageManager.type === type
   const storage = await storageManager.initializeStorage(type)
   if (!alreadyInitialized) {
-    console.log(`[Storage] Initialized with ${type} backend`)
+    log.info('storage initialized', { backend: type })
   }
   return storage
 }
 
 export function getStorage(): IStorageProvider {
-  return storageManager.getStorage({ onInitializeError: console.error })
+  return storageManager.getStorage({ onInitializeError: consoleLog.error })
 }
 
 export async function closeStorage(): Promise<void> {

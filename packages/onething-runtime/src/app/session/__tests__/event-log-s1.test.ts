@@ -11,6 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { collectLogRecordsForTests } from '../../logging/index.js'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
@@ -79,7 +80,7 @@ describe('event-log discipline flip (§10.3)', () => {
 
   it('counts an append failure into session-shadow-stats.json instead of swallowing it', async () => {
     makeJsonlSession('s1')
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logs = collectLogRecordsForTests()
     vi.spyOn(fs.promises, 'appendFile').mockRejectedValue(new Error('ENOSPC'))
 
     appendSessionLogEvent('s1', 'request/end', { requestIndex: 1 })
@@ -89,8 +90,9 @@ describe('event-log discipline flip (§10.3)', () => {
 
     expect(readSessionShadowStats().appendFailures).toBe(2)
     // 每会话只 warn 一次:一个坏掉的会话会在一个回合里失败几百次。
-    expect(warn.mock.calls.filter(call => String(call[0]).includes('event log write failed')))
+    expect(logs.records.filter(record => record.fields?.what === 'event log write failed'))
       .toHaveLength(1)
+    logs.stop()
     expect(JSON.parse(fs.readFileSync(getSessionShadowStatsPath(), 'utf8')).appendFailures).toBe(2)
   })
 
@@ -116,7 +118,7 @@ describe('event-log discipline flip (§10.3)', () => {
       .join('')
     fs.appendFileSync(getSessionEventsLogPath('s3'), foreign)
 
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logs = collectLogRecordsForTests()
     // 守卫有 500ms 的检查间隔:把表往前拨,让下一次 append 真的去 stat。
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 10_000)
     const seq = appendSessionLogEvent('s3', 'request/end', { requestIndex: 9 })
@@ -126,7 +128,8 @@ describe('event-log discipline flip (§10.3)', () => {
     // 接着别人的 4 往下数,而不是把 2 再写一遍(重复 seq 会让 surfaceOp 的
     // 区间遮蔽静默错乱)。
     expect(seq).toBe(5)
-    expect(warn.mock.calls.some(call => String(call[0]).includes('another writer'))).toBe(true)
+    expect(logs.messages().some(msg => msg.includes('another writer'))).toBe(true)
+    logs.stop()
     const events = await readSessionLogEvents('s3')
     expect(events.map(event => event.seq)).toEqual([1, 2, 3, 4, 5])
   })
@@ -163,7 +166,6 @@ describe('blob store (§10.6 第 6 条)', () => {
 
   it('degrades to undefined and counts the failure when the write fails', () => {
     makeJsonlSession('b3')
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
       throw new Error('EACCES')
     })

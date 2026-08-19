@@ -37,6 +37,10 @@ import { getStreamEngineSafe } from '../engine/index.js'
 import { getStorePath } from '../stores/paths.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.room')
+
 
 /**
  * 一间房同时最多几个人在说话。
@@ -123,7 +127,7 @@ export function emitCollabRoomUpdated(roomSessionId: string): void {
   } catch (error) {
     // 播不出去不是写失败:建房的两条路会在事件系统起来之前跑(daemon 的建房
     // RPC、boot 期的私聊修复),而"房建好了但没人收到通知"远好过"房没建成"。
-    console.error('[collab] room update broadcast failed:', error)
+    log.error('room update broadcast failed', { sessionId: session.id }, error)
   }
 }
 
@@ -185,6 +189,6 @@ export function removeCollabRoomDirectory(roomSessionId: string): void {
   try {
     fs.rmSync(path.join(getStorePath(), 'collab', roomSessionId), { recursive: true, force: true })
   } catch (error) {
-    console.error('[collab] room directory cleanup failed:', error)
+    log.error('room directory cleanup failed', { roomSessionId }, error)
   }
 }

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { captureRuntimeLogs } from '@onething/runtime/logging'
 import { ONETHING_DEFAULT_SYSTEM_PROMPT } from '@onething/runtime/prompts'
 import type { BuildPromptContextOptions } from '../system-prompt.js'
 import {
@@ -245,21 +246,23 @@ describe('Pi-style prompt builder', () => {
   it('injects a 41.7KB discipline file whole and warns only past 64KB', () => {
     const root = makeTempProject()
     fs.mkdirSync(path.join(root, '.git'), { recursive: true })
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // 截断告警已经是一条 `LogRecord`(L4),不再是 console 的副作用。
+    const logs = captureRuntimeLogs()
 
     const tail = 'TAIL-MARKER'
     fs.writeFileSync(path.join(root, 'CLAUDE.md'), `${'x'.repeat(42 * 1024)}\n${tail}`)
     expect(loadAgentsMdInstructions(root)).toContain(tail)
     expect(loadAgentsMdInstructions(root)).not.toContain('truncated')
-    expect(warn).not.toHaveBeenCalled()
+    expect(logs.ofLevel('warn')).toHaveLength(0)
 
     fs.writeFileSync(path.join(root, 'CLAUDE.md'), `${'x'.repeat(70 * 1024)}\n${tail}`)
     const truncated = loadAgentsMdInstructions(root)
     expect(truncated).not.toContain(tail)
     expect(truncated).toContain('AGENTS instructions truncated')
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('project instructions truncated'))
+    expect(logs.ofLevel('warn').map(record => record.msg))
+      .toContain('project instructions truncated')
 
-    warn.mockRestore()
+    logs.restore()
   })
 
   it('uses only the current directory when no project root is found', () => {

@@ -8,6 +8,9 @@ import type {
 import { platformApi } from '@/platform'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.interactions')
 
 /**
  * agent 提问的 renderer 账本(claude-code-integration-v2 §4,E2)。
@@ -84,7 +87,7 @@ export const useInteractionsStore = defineStore('interactions', () => {
       // 读失败不是「没有欠账」的证据 —— 保留上一份,否则等于告诉用户相反的话。
       // web 宿主上这两条是桩(返回 success:false),走的也是这一支:卡片不出现,
       // 提问照旧由内核到点自结算,不会挂住。
-      console.error('[interactions] pending reconcile failed:', error)
+      log.error('pending interactions reconcile failed', { sessionId }, error)
     }
   }
 
@@ -190,7 +193,7 @@ export const useInteractionsStore = defineStore('interactions', () => {
       scheduleReconcile(request.sessionId)
       return Boolean(response?.success)
     } catch (error) {
-      console.error('[interactions] respond failed:', error)
+      log.error('interaction respond failed', { sessionId: request.sessionId }, error)
       return false
     }
   }

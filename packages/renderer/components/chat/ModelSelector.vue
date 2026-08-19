@@ -179,6 +179,9 @@ import type { FloatingCloseReason } from '@/composables/floating/useFloatingLaye
 import type { ComputedPosition } from '@/composables/floating/compute-position'
 import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
 import { useSessionAgentModel } from '@/composables/useSessionAgentModel'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.model-selector')
 
 interface Props {
   sessionId?: string
@@ -563,7 +566,7 @@ async function loadModelsForProvider(providerId: string) {
   try {
     await settingsStore.fetchModelsForProvider(providerId)
   } catch (error) {
-    console.warn('[ModelSelector] failed to load provider models:', error)
+    log.warn('provider models load failed', {}, error)
   }
 }
 

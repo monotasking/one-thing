@@ -42,6 +42,10 @@ import type {
   ACPPromptStreamOptions,
 } from './types.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('acp')
+
 const DEFAULT_CONNECT_TIMEOUT_MS = 30000
 const DEFAULT_PROMPT_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000
@@ -315,7 +319,8 @@ export class ACPClient {
       this.statusValue = 'connected'
       this.connectedAtValue = Date.now()
       this.lastUsedAtValue = Date.now()
-      console.log(`[ACP:${this.id}] Connected`, {
+      log.info('agent connected', {
+        agentId: this.id,
         pid: child.pid,
         protocolVersion: this.initResponse.protocolVersion,
         agent: this.initResponse.agentInfo?.name,
@@ -389,7 +394,7 @@ export class ACPClient {
     if (options.abortSignal) {
       abortListener = () => {
         this.connection?.cancel({ sessionId: session.acpSessionId }).catch(error => {
-          console.warn(`[ACP:${this.id}] cancel failed:`, error)
+          log.warn('cancel failed', { agentId: this.id }, error)
         })
       }
       if (options.abortSignal.aborted) {
@@ -426,7 +431,7 @@ export class ACPClient {
       })
       .catch((error) => {
         this.connection?.cancel({ sessionId: session.acpSessionId }).catch(cancelError => {
-          console.warn(`[ACP:${this.id}] cancel after prompt failure failed:`, cancelError)
+          log.warn('cancel after prompt failure failed', { agentId: this.id }, cancelError)
         })
         queue.error(error instanceof Error ? error : new Error(String(error)))
       })
@@ -503,7 +508,7 @@ export class ACPClient {
     try {
       decision = await bridge(this.buildPermissionContext(params))
     } catch (error) {
-      console.warn(`[ACP:${this.id}] permission bridge failed; rejecting request:`, error)
+      log.warn('permission bridge failed, rejecting request', { agentId: this.id }, error)
       return this.resolvePermissionFromMode('reject', params)
     }
 

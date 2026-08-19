@@ -480,6 +480,12 @@ import type {
 import { ServerMCPClient, probeServerMCPConfig } from "./mcp-client.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('server.runtime')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 type ServerChatSession = ChatSession & {
 	userId?: string;
@@ -1160,9 +1166,9 @@ async function createRealServerBackend(storePath: string): Promise<OnethingBacke
 	const serverToolRegistry =
 		process.env.ONETHING_SERVER_TOOLS === "readonly" ? "readonly" : "full";
 	if (serverToolRegistry === "readonly") {
-		console.log(
-			"[ServerRuntime] ONETHING_SERVER_TOOLS=readonly — degraded tool set (read/time/web only)",
-		);
+		log.info("degraded tool set (read/time/web only)", {
+			reason: "ONETHING_SERVER_TOOLS=readonly",
+		});
 	}
 	return createOnethingBackend({
 		sandboxHost: {
@@ -1505,7 +1511,7 @@ async function createServerRuntimeOverServerBackend(
 		try {
 			mkdirSync(root, { recursive: true });
 		} catch (error) {
-			console.error("[ServerRuntime] Failed to create workspace root:", error);
+			log.error("create workspace root failed", { root }, error);
 		}
 		let session: ServerChatSession;
 		if (backend.persistsMessages) {
@@ -1621,7 +1627,7 @@ async function createServerRuntimeOverServerBackend(
 			? registerAppMCPTools
 			: async () => {},
 		logoutOAuth: (serverId: string) => getMCPOAuthFlowManager().logout(serverId),
-		logger: console,
+		logger: consoleLog,
 	});
 
 	// The engine's MCP bridge is hard-bound to the @onething/app singleton
@@ -1664,7 +1670,7 @@ async function createServerRuntimeOverServerBackend(
 					await appMCPManager.initialize(await getMCPSettingsForContext());
 					await registerAppMCPTools();
 				} catch (error) {
-					console.error("[ServerRuntime] MCP initialization failed:", error);
+					log.error("mcp initialization failed", {}, error);
 				}
 			})();
 		}
@@ -1705,7 +1711,7 @@ async function createServerRuntimeOverServerBackend(
 				manager.updateSettings(acpSettings);
 			},
 			manager,
-			logger: console,
+			logger: consoleLog,
 		};
 	};
 
@@ -1745,7 +1751,7 @@ async function createServerRuntimeOverServerBackend(
 				try {
 					handler(payload);
 				} catch (error) {
-					console.error("[server] todo-plan broadcast failed:", error);
+					log.error("todo-plan broadcast failed", {}, error);
 				}
 			}
 		},
@@ -1759,7 +1765,7 @@ async function createServerRuntimeOverServerBackend(
 				try {
 					handler(payload);
 				} catch (error) {
-					console.error("[server] scratchpad broadcast failed:", error);
+					log.error("scratchpad broadcast failed", {}, error);
 				}
 			}
 		},
@@ -1769,7 +1775,7 @@ async function createServerRuntimeOverServerBackend(
 	// 不重复起,也因此不由这里停。
 	if (ownsProcessPorts) {
 		void startScratchpadWatcher().catch((error) => {
-			console.error("[server] scratchpad watcher failed to start:", error);
+			log.error("scratchpad watcher failed to start", {}, error);
 		});
 	}
 
@@ -1861,8 +1867,10 @@ async function createServerRuntimeOverServerBackend(
 				readJson: readServerRuntimeJsonFile,
 				writeJson: writeServerRuntimeJsonFile,
 				warn: (message, details) => {
-					if (details === undefined) console.warn(message);
-					else console.warn(message, details);
+					log.warn(
+						"prompt store",
+						details === undefined ? { detail: message } : { detail: message, details },
+					);
 				},
 			});
 			promptStoresByOwner.set(key, store);
@@ -1886,10 +1894,10 @@ async function createServerRuntimeOverServerBackend(
 						"oauth",
 						"tokens.json",
 					),
-					logger: console,
+					logger: consoleLog,
 				}),
 				...(options.oauthFetch ? { fetch: options.oauthFetch } : {}),
-				logger: console,
+				logger: consoleLog,
 			});
 			authServicesByOwner.set(key, service);
 		}
@@ -1914,16 +1922,16 @@ async function createServerRuntimeOverServerBackend(
 			agentExists: (agentId) =>
 				getAgentStoreForContext(context).agentExists(agentId),
 			createId: randomUUID,
-			logger: console,
+			logger: consoleLog,
 		});
 		const runHistory = new OnethingSchedulerRunHistory<SchedulerRunDetailDTO>({
 			runsDir: paths.runsDir,
-			logger: console,
+			logger: consoleLog,
 		});
 		const scheduler = new Scheduler({
 			stateFilePath: paths.statePath,
 			createRunId: randomUUID,
-			logger: console,
+			logger: consoleLog,
 		});
 		schedulerRuntime = {
 			scheduler,
@@ -2054,7 +2062,7 @@ async function createServerRuntimeOverServerBackend(
 						detail as SchedulerRunDetailDTO,
 					) as OnethingSchedulerRunDetail,
 				createId: randomUUID,
-				logger: console,
+				logger: consoleLog,
 			});
 
 		for (const task of userTasks.list()) {
@@ -2231,9 +2239,9 @@ async function createServerRuntimeOverServerBackend(
 							emitSessionSnapshot(session, snapshot);
 						})
 						.catch((error) => {
-							console.error(
-								"[server:variables] broadcast refresh failed:",
-								meta.id,
+							log.error(
+								"variables broadcast refresh failed",
+								{ sessionId: meta.id },
 								error,
 							);
 						});
@@ -2252,7 +2260,7 @@ async function createServerRuntimeOverServerBackend(
 					variables: snapshot,
 				} as unknown as AgentEngineSessionEvent)
 				.catch((error) => {
-					console.error("[server:variables] EventBus emit failed:", error);
+					log.error("variables snapshot emit failed", { sessionId: session.id }, error);
 				});
 		};
 		const unsubscribe = registry.subscribe((variableContext, snapshot) => {
@@ -2430,7 +2438,7 @@ async function createServerRuntimeOverServerBackend(
 			watcher = createWatcher(false);
 		}
 		watcher.on("error", (error) => {
-			console.warn("[server:files] Workspace watcher failed:", error);
+			log.warn("workspace watcher failed", { watchRoot }, error);
 		});
 		watchers.set(watchRoot, watcher);
 		return { success: true };
@@ -2478,7 +2486,7 @@ async function createServerRuntimeOverServerBackend(
 			return buildOnethingSystemPromptSnapshotForIpc({
 				sessionId,
 				buildSnapshot: buildAppSystemPromptSnapshot,
-				logger: console,
+				logger: consoleLog,
 			});
 		}
 		// Draft ids are ordinary session ids the server has never seen (the
@@ -3092,7 +3100,7 @@ async function createServerRuntimeOverServerBackend(
 							: Array.from(pendingPermissions.values())
 									.filter((record) => record.sessionId === targetSessionId)
 									.map((record) => record.info),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async clearSession(sessionId: string, context = defaultRequestContext()) {
@@ -3104,7 +3112,7 @@ async function createServerRuntimeOverServerBackend(
 					sessionId,
 					clearSession: (targetSessionId) =>
 						clearSessionPermissions(targetSessionId),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 		},
@@ -3216,7 +3224,7 @@ async function createServerRuntimeOverServerBackend(
 						);
 						return rootPath ? listServerToolFiles({ cwd: rootPath }) : [];
 					},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async listDirs(request: unknown, context = defaultRequestContext()) {
@@ -3267,7 +3275,7 @@ async function createServerRuntimeOverServerBackend(
 							? readdir(resolvedPath, { withFileTypes: true })
 							: [];
 					},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async readContent(
@@ -3689,7 +3697,7 @@ async function createServerRuntimeOverServerBackend(
 						files: [],
 					},
 					ingestFiles: (input) => service.ingestLocalFiles(input),
-					logger: console,
+					logger: consoleLog,
 				});
 				// 出站资产的 filePath 必须重写成 URL:浏览器拿到主机的绝对路径既没用
 				// 也是一次泄露(其余 media 出口同此口径)。
@@ -3731,7 +3739,7 @@ async function createServerRuntimeOverServerBackend(
 							),
 					rebuildFromSessions: (mediaSessions) =>
 						service.rebuildFromSessions(mediaSessions),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async getGallery(
@@ -3826,7 +3834,7 @@ async function createServerRuntimeOverServerBackend(
 				);
 				if (!resolved) throw new Error("Media file not found");
 				return readOnethingImageFileDataUrlForIpc(resolved.path, {
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async openPreview(src: string, alt?: string) {
@@ -3924,7 +3932,7 @@ async function createServerRuntimeOverServerBackend(
 				return listOnethingSchedulerTasksForIpc({
 					listTasks: () =>
 						schedulerRuntime.scheduler.list() as SchedulerTaskSnapshotDTO[],
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async getTask(
@@ -3939,7 +3947,7 @@ async function createServerRuntimeOverServerBackend(
 						schedulerRuntime.scheduler.getStatus(id) as
 							| SchedulerTaskSnapshotDTO
 							| undefined,
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async runTaskNow(
@@ -3960,7 +3968,7 @@ async function createServerRuntimeOverServerBackend(
 							result: toJsonValue((record as SchedulerRunDetailDTO).result),
 						}) as SchedulerRunDetailDTO,
 					saveRunDetail: (detail) => schedulerRuntime.runHistory.save(detail),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async setTaskEnabled(
@@ -3981,7 +3989,7 @@ async function createServerRuntimeOverServerBackend(
 						schedulerRuntime.scheduler.setEnabled(id, enabled) as
 							| SchedulerTaskSnapshotDTO
 							| undefined,
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async createTask(
@@ -3996,7 +4004,7 @@ async function createServerRuntimeOverServerBackend(
 						const task = schedulerRuntime.userTasks.create(taskRequest);
 						return schedulerRuntime.registerUserTask!(task);
 					},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async updateTask(
@@ -4012,7 +4020,7 @@ async function createServerRuntimeOverServerBackend(
 						const task = schedulerRuntime.userTasks.update(taskRequest);
 						return schedulerRuntime.registerUserTask!(task);
 					},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async deleteTask(
@@ -4028,7 +4036,7 @@ async function createServerRuntimeOverServerBackend(
 						schedulerRuntime.userTasks.delete(id);
 						schedulerRuntime.unregisterUserTask?.(id);
 					},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async listRuns(
@@ -4051,7 +4059,7 @@ async function createServerRuntimeOverServerBackend(
 							...(record as SchedulerRunDetailDTO),
 							result: toJsonValue((record as SchedulerRunDetailDTO).result),
 						}) as SchedulerRunDetailDTO,
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async getRun(
@@ -4074,7 +4082,7 @@ async function createServerRuntimeOverServerBackend(
 							...(record as SchedulerRunDetailDTO),
 							result: toJsonValue((record as SchedulerRunDetailDTO).result),
 						}) as SchedulerRunDetailDTO,
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 		},
@@ -4087,7 +4095,7 @@ async function createServerRuntimeOverServerBackend(
 						workingDirectory,
 						ensureInitialized: async () => {},
 						listSkills: (options) => getAppSkillsForDisplay(options),
-						logger: console,
+						logger: consoleLog,
 					});
 				}
 				return listOnethingSkillsForIpc({
@@ -4103,7 +4111,7 @@ async function createServerRuntimeOverServerBackend(
 							settingsStore,
 							options,
 						),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			refresh(context = defaultRequestContext()) {
@@ -4112,7 +4120,7 @@ async function createServerRuntimeOverServerBackend(
 						invalidateSkillsCache: async () =>
 							invalidateAppSessionSkillsCache(),
 						listSkills: (options) => getAppSkillsForDisplay(options),
-						logger: console,
+						logger: consoleLog,
 					});
 				}
 				return refreshOnethingSkillsForIpc({
@@ -4126,7 +4134,7 @@ async function createServerRuntimeOverServerBackend(
 							settingsStore,
 							options,
 						),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			readFile(
@@ -4139,7 +4147,7 @@ async function createServerRuntimeOverServerBackend(
 						skillId,
 						fileName,
 						readSkillFile: readAppSkillFile,
-						logger: console,
+						logger: consoleLog,
 					});
 				}
 				return readOnethingSkillFileForIpc({
@@ -4155,7 +4163,7 @@ async function createServerRuntimeOverServerBackend(
 							targetSkillId,
 							targetFileName,
 						),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async openDirectory() {
@@ -4181,7 +4189,7 @@ async function createServerRuntimeOverServerBackend(
 						createSkill: createAppSkill,
 						invalidateSkillsCache: async () =>
 							invalidateAppSessionSkillsCache(),
-						logger: console,
+						logger: consoleLog,
 					});
 				}
 				return createOnethingSkillForIpc({
@@ -4200,7 +4208,7 @@ async function createServerRuntimeOverServerBackend(
 							source,
 						),
 					invalidateSkillsCache: async () => {},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			delete(skillId: string, context = defaultRequestContext()) {
@@ -4210,7 +4218,7 @@ async function createServerRuntimeOverServerBackend(
 						deleteSkill: deleteAppSkill,
 						invalidateSkillsCache: async () =>
 							invalidateAppSessionSkillsCache(),
-						logger: console,
+						logger: consoleLog,
 					});
 				}
 				return deleteOnethingSkillForIpc({
@@ -4225,7 +4233,7 @@ async function createServerRuntimeOverServerBackend(
 							targetSkillId,
 						),
 					invalidateSkillsCache: async () => {},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			toggleEnabled(
@@ -4251,7 +4259,7 @@ async function createServerRuntimeOverServerBackend(
 							context,
 							settings,
 						),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			async execute() {
@@ -4271,7 +4279,7 @@ async function createServerRuntimeOverServerBackend(
 				);
 				return listOnethingPluginsForIpc({
 					manager,
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			enable(pluginId: string, context = defaultRequestContext()) {
@@ -4284,7 +4292,7 @@ async function createServerRuntimeOverServerBackend(
 				return enableOnethingPluginForIpc({
 					manager,
 					pluginId,
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			disable(pluginId: string, context = defaultRequestContext()) {
@@ -4297,7 +4305,7 @@ async function createServerRuntimeOverServerBackend(
 				return disableOnethingPluginForIpc({
 					manager,
 					pluginId,
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			refresh(context = defaultRequestContext()) {
@@ -4309,7 +4317,7 @@ async function createServerRuntimeOverServerBackend(
 				);
 				return refreshOnethingPluginsForIpc({
 					manager,
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			commands(context = defaultRequestContext()) {
@@ -4321,7 +4329,7 @@ async function createServerRuntimeOverServerBackend(
 				);
 				return listOnethingPluginCommandsForIpc({
 					manager,
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			executeCommand(request: unknown, context = defaultRequestContext()) {
@@ -4364,9 +4372,9 @@ async function createServerRuntimeOverServerBackend(
 						exitCode: 126,
 					}),
 					onEmitError(label, error) {
-						console.error(`[ServerPlugin] ${label} emit failed:`, error);
+						log.error("server plugin emit failed", { label }, error);
 					},
-					logger: console,
+					logger: consolePort(log),
 				});
 			},
 		},
@@ -4376,7 +4384,7 @@ async function createServerRuntimeOverServerBackend(
 				return startOnethingOAuthForIpc({
 					providerId,
 					start: (id) => service.start(id),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			callback(request: unknown, context = defaultRequestContext()) {
@@ -4392,7 +4400,7 @@ async function createServerRuntimeOverServerBackend(
 					state: typedRequest.state || "",
 					completeManualCode: (providerId, code, state) =>
 						service.completeManualCode(providerId, code, state),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			devicePoll(request: unknown, context = defaultRequestContext()) {
@@ -4406,7 +4414,7 @@ async function createServerRuntimeOverServerBackend(
 					flowId: typedRequest.flowId,
 					pollDeviceFlow: (providerId, flowId) =>
 						service.pollDeviceFlow(providerId, flowId),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			refresh(providerId: string, context = defaultRequestContext()) {
@@ -4417,7 +4425,7 @@ async function createServerRuntimeOverServerBackend(
 					notifyTokenExpired: (id, error) => {
 						service.emit("token-expired", { providerId: id, error });
 					},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			status(providerId: string, context = defaultRequestContext()) {
@@ -4425,7 +4433,7 @@ async function createServerRuntimeOverServerBackend(
 				return getOnethingOAuthStatusForIpc({
 					providerId,
 					getStatus: (id) => service.getStatus(id),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			logout(providerId: string, context = defaultRequestContext()) {
@@ -4433,7 +4441,7 @@ async function createServerRuntimeOverServerBackend(
 				return logoutOnethingOAuthForIpc({
 					providerId,
 					deleteToken: (id) => service.deleteToken(id),
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			subscribe(
@@ -4688,14 +4696,14 @@ async function createServerRuntimeOverServerBackend(
 					getSettings: () => getACPSettingsForContext(context),
 					manager: new ServerSafeACPManager(),
 					agentId,
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<ACPConnectAgentResponse>;
 			},
 			disconnectAgent(agentId: string): Promise<ACPDisconnectAgentResponse> {
 				return disconnectOnethingACPAgentForIpc({
 					agentId,
 					disconnectAgent: async () => {},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 			refreshAgent(
@@ -4706,7 +4714,7 @@ async function createServerRuntimeOverServerBackend(
 					getSettings: () => getACPSettingsForContext(context),
 					manager: new ServerSafeACPManager(),
 					agentId,
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<ACPRefreshAgentResponse>;
 			},
 			cancelSession(
@@ -4717,7 +4725,7 @@ async function createServerRuntimeOverServerBackend(
 					sessionId,
 					agentId,
 					cancelSession: async () => {},
-					logger: console,
+					logger: consoleLog,
 				});
 			},
 		},
@@ -4828,7 +4836,7 @@ async function createServerRuntimeOverServerBackend(
 				);
 				return getOnethingMCPServersForIpc({
 					getServerStates: () => sanitizeMCPServerStatesForClient(states),
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<MCPGetServersResponse>;
 			},
 			async addServer(
@@ -4906,7 +4914,7 @@ async function createServerRuntimeOverServerBackend(
 				return probeOnethingMCPServerForIpc({
 					config,
 					probe: candidate => probeServerMCPConfig(candidate, { allowStdio: allowMCPStdio }),
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<MCPProbeServerResponse>;
 			},
 			async refreshServer(
@@ -4931,7 +4939,7 @@ async function createServerRuntimeOverServerBackend(
 				);
 				return listOnethingMCPToolsForIpc({
 					getAllTools: () => manager.getAllTools(),
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<MCPGetToolsResponse>;
 			},
 			async callTool(
@@ -4955,7 +4963,7 @@ async function createServerRuntimeOverServerBackend(
 							targetToolName,
 							targetArgs as JsonObject,
 						),
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<MCPCallToolResponse>;
 			},
 			async getResources(
@@ -4968,7 +4976,7 @@ async function createServerRuntimeOverServerBackend(
 				);
 				return listOnethingMCPResourcesForIpc({
 					getAllResources: () => manager.getAllResources(),
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<MCPGetResourcesResponse>;
 			},
 			async readResource(
@@ -4986,7 +4994,7 @@ async function createServerRuntimeOverServerBackend(
 					uri,
 					readResource: (targetServerId, targetUri) =>
 						manager.readResource(targetServerId, targetUri),
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<MCPReadResourceResponse>;
 			},
 			async getPrompts(
@@ -4999,7 +5007,7 @@ async function createServerRuntimeOverServerBackend(
 				);
 				return listOnethingMCPPromptsForIpc({
 					getAllPrompts: () => manager.getAllPrompts(),
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<MCPGetPromptsResponse>;
 			},
 			async getPrompt(
@@ -5019,7 +5027,7 @@ async function createServerRuntimeOverServerBackend(
 					args,
 					getPrompt: (targetServerId, targetName, targetArgs) =>
 						manager.getPrompt(targetServerId, targetName, targetArgs),
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<MCPGetPromptResponse>;
 			},
 			async readConfigFile(): Promise<MCPReadConfigFileResponse> {
@@ -5027,7 +5035,7 @@ async function createServerRuntimeOverServerBackend(
 					filePath: "",
 					fileExists: () => false,
 					readTextFile: () => "",
-					logger: console,
+					logger: consoleLog,
 				}) as Promise<MCPReadConfigFileResponse>;
 			},
 		},
@@ -5037,7 +5045,7 @@ async function createServerRuntimeOverServerBackend(
 			try {
 				await sessionStore.flushAll();
 			} catch (error) {
-				console.error("[ServerRuntime] Failed to flush local sessions:", error);
+				log.error("flush local sessions failed", {}, error);
 			}
 			await backend.shutdown();
 			for (const manager of mcpManagersByOwner.values()) {
@@ -6099,7 +6107,7 @@ export function createLocalServerSessionStore(
 		readJsonFile: readCoreJsonFile,
 		writeJsonFileAsync: writeSessionJsonFileAsync,
 		deleteJsonFile,
-		logger: console,
+		logger: consoleLog,
 	});
 	const repository = createOnethingSessionRepository<
 		ServerChatSession,
@@ -6124,7 +6132,7 @@ export function createLocalServerSessionStore(
 		getDefaultWorkingDirectory: () =>
 			readLocalDefaultWorkingDirectory(resolvedStorePath),
 		expandPath: expandOnethingToolSandboxPath,
-		logger: console,
+		logger: consoleLog,
 	});
 
 	repository.initializeSessionRepositoryIndex();
@@ -6154,7 +6162,7 @@ export function createLocalServerSessionStore(
 				repository.updateSessionsIndexMeta(sessionId, update),
 		},
 		now: Date.now,
-		logger: console,
+		logger: consoleLog,
 	});
 
 	const messageCommands = createSessionCommands({
@@ -6195,9 +6203,10 @@ export function createLocalServerSessionStore(
 				meta.ownerVersion = SESSION_INDEX_OWNER_VERSION;
 			}
 			repository.saveSessionsIndex(index);
-			console.log(
-				`[Sessions] index ownership backfilled for ${missing.length} sessions in ${Date.now() - start}ms`,
-			);
+			log.info("session index ownership backfilled", {
+				sessions: missing.length,
+				ms: Date.now() - start,
+			});
 		});
 	};
 	backfillSessionIndexOwnership();

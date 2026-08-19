@@ -19,6 +19,12 @@ import {
   type MCPModelFacingToolDefinition as ModelFacingToolDefinition,
 } from '@onething/core/mcp'
 import { pathExists, writeTextFile } from '@onething/core/storage'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('mcp')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 const coreMCPBridgeRuntime = new CoreMCPBridgeRuntime({
   isEnabled: () => MCPManager.isEnabled,
@@ -123,7 +129,7 @@ export function generateToolsCatalog(): void {
   coreMCPBridgeRuntime.writeToolsCatalogWithAdapters({
     getCatalogPath: getMCPToolsCatalogPath,
     writeFile: writeTextFile,
-    logger: console,
+    logger: consoleLog,
   })
 }
 
@@ -154,7 +160,7 @@ export function getMCPToolsForAI(
   const plan = coreMCPBridgeRuntime.buildToolsForAI(toolsSettings)
 
   if (plan.skipReason === 'router-disabled') {
-    console.log(`[MCPBridge] Skipping disabled MCP router tool: ${MCP_ROUTER_TOOL_ID}`)
+    log.debug('skipping disabled MCP router tool', { toolId: MCP_ROUTER_TOOL_ID })
     return plan.tools
   }
 
@@ -187,7 +193,7 @@ export async function registerMCPTools(): Promise<void> {
   if (!plan.shouldGenerateCatalog) {
     coreMCPBridgeRuntime.markToolsCatalogGenerated(false)
     if (plan.logMessage) {
-      console.log(plan.logMessage)
+      log.debug('mcp tools catalog', { detail: plan.logMessage })
     }
     return
   }
@@ -196,7 +202,7 @@ export async function registerMCPTools(): Promise<void> {
   generateToolsCatalog()
 
   if (plan.logMessage) {
-    console.log(plan.logMessage)
+    log.debug('mcp tools catalog', { detail: plan.logMessage })
   }
 }
 

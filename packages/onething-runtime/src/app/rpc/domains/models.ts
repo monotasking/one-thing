@@ -31,6 +31,12 @@ import { fetchCodexModels, getCodexFallbackModels } from '../../providers/builti
 import * as modelRegistry from '../../providers/model-registry.js'
 import { getSettings } from '../../stores/settings.js'
 import { registerRouterHandlers } from '../registry.js'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('ipc.models')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 /** Copilot 的模型表不在注册表里,要拿着 OAuth token 现取。 */
 async function fetchGitHubCopilotModelsRaw(): Promise<{ id: string; name: string; description?: string }[]> {
@@ -65,14 +71,14 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
           codex: [AIProvider.Codex],
           acp: [AIProvider.ACP],
         },
-        logger: console,
+        logger: consoleLog,
       },
     )
   },
   async getAll() {
     return getAllOnethingModelRegistryModelsForIpc({
       getAllModels: () => modelRegistry.getAllModels(),
-      logger: console,
+      logger: consoleLog,
     })
   },
   async search(request) {
@@ -80,7 +86,7 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
       query: request?.query ?? '',
       providerId: request?.providerId,
       searchModels: (query, providerId) => modelRegistry.searchModels(query, providerId),
-      logger: console,
+      logger: consoleLog,
     })
   },
   async refreshRegistry(request) {
@@ -88,20 +94,20 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
     return refreshOnethingModelRegistryForIpc({
       forceRefresh: () =>
         providerId ? modelRegistry.refreshProviderModels(providerId) : modelRegistry.forceRefresh(),
-      logger: console,
+      logger: consoleLog,
     })
   },
   async getNameAliases() {
     return getOnethingModelRegistryNameAliasesForIpc({
       getModelNameAliases: () => modelRegistry.getModelNameAliases(),
-      logger: console,
+      logger: consoleLog,
     })
   },
   async getDisplayName(request) {
     return getOnethingModelRegistryDisplayNameForIpc({
       modelId: request?.modelId ?? '',
       getModelDisplayName: modelId => modelRegistry.getModelDisplayName(modelId),
-      logger: console,
+      logger: consoleLog,
     })
   },
 }

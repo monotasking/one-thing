@@ -9,6 +9,7 @@
  * traceable.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { collectLogRecordsForTests } from '../../logging/index.js'
 
 const mocks = vi.hoisted(() => ({
   runAgentLoop: vi.fn(async (_options: Record<string, unknown>) => ({
@@ -64,21 +65,22 @@ function turn(overrides: Record<string, unknown> = {}) {
   }
 }
 
-let logSpy: ReturnType<typeof vi.spyOn>
+let logs: ReturnType<typeof collectLogRecordsForTests>
 
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.read.mockResolvedValue([])
   mocks.billTocUsage.mockReturnValue(vi.fn())
-  logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+  // 每一次早退都说明理由 —— 迁移后那句理由是 `fields.detail`,不再是 console 行。
+  logs = collectLogRecordsForTests()
 })
 
 afterEach(() => {
-  logSpy.mockRestore()
+  logs.stop()
 })
 
 function loggedLines(): string {
-  return logSpy.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
+  return logs.records.map(record => String(record.fields?.detail ?? record.msg)).join('\n')
 }
 
 describe('recordTocTurn model call', () => {

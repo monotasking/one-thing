@@ -38,6 +38,10 @@ import {
 } from '@onething/core/session'
 import { appendSurfaceAwareEvent } from './event-surface.js'
 import { getSessionEventsLogPath, isSessionEventLogEnabled } from './event-log.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions.events')
+
 
 /** 尾部扫描窗口(见文件头的理由)。 */
 const PREPARE_TAIL_BYTES = 4 * 1024 * 1024
@@ -94,7 +98,7 @@ export function prepareSessionEventsOnce(sessionId: string): void {
   try {
     prepareSessionEvents(sessionId)
   } catch (error) {
-    console.warn(`[SessionPrepare] failed for ${sessionId}:`, error)
+    log.warn('session events prepare failed', { sessionId }, error)
   }
 }
 

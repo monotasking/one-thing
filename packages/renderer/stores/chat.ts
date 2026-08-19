@@ -1,4 +1,5 @@
 import { platformApi } from "@/platform";
+import { getLogger } from "@/services/log";
 /**
  * Chat Store - Centralized state management for all chat sessions
  *
@@ -58,11 +59,9 @@ import {
 } from "./helpers/generation-status";
 
 type RequestSnapshot = RequestSnapshotEvent["snapshot"];
-type ImportMetaWithDebugEnv = ImportMeta & {
-	env?: {
-		VITE_DEBUG_TOOL_INPUT?: string;
-	};
-};
+
+const log = getLogger("renderer.chat-store");
+const perfLog = getLogger("renderer.perf");
 
 // Lazy to avoid a module-init cycle: sessions.ts (via settings.ts) touches
 // document/localStorage at import time, which chat.ts must not force on
@@ -1008,14 +1007,6 @@ export const useChatStore = defineStore("chat", () => {
 		triggerRef(sessionMessages);
 	}
 
-	function shouldDebugStream(): boolean {
-		try {
-			return localStorage.getItem("onething:debug-stream") === "1";
-		} catch {
-			return false;
-		}
-	}
-
 	function logTime(): string {
 		return new Date().toISOString();
 	}
@@ -1080,12 +1071,11 @@ export const useChatStore = defineStore("chat", () => {
 		} as ToolCall);
 		// 已经有一条 step 认领了这个 id 的话,让它指向同一个对象,徽标才跟着走。
 		linkStepsToToolCalls(message);
-		console.warn(
-			"[Chat Store] Permission arrived for an unknown tool call — adopting it so the ask stays answerable:",
-			data.callId,
-			"tool:",
+		log.warn("adopted unknown tool call for permission ask", {
+			sessionId: data.sessionId,
+			callId: data.callId,
 			toolName,
-		);
+		});
 		return adopted;
 	}
 
@@ -1111,10 +1101,11 @@ export const useChatStore = defineStore("chat", () => {
 		if (!message) {
 			if (cacheIfMissing) {
 				cachePendingPermissionRequest(data);
-				console.log(
-					"[Chat Store] Cached permission request until message exists:",
-					data.messageId,
-				);
+				log.debug("permission request cached until message exists", {
+					sessionId: data.sessionId,
+					messageId: data.messageId,
+					requestId: data.requestId,
+				});
 			}
 			return false;
 		}
@@ -1125,10 +1116,11 @@ export const useChatStore = defineStore("chat", () => {
 		if (!toolCall) {
 			if (cacheIfMissing) {
 				cachePendingPermissionRequest(data);
-				console.log(
-					"[Chat Store] Cached permission request until tool call exists:",
-					data.callId,
-				);
+				log.debug("permission request cached until tool call exists", {
+					sessionId: data.sessionId,
+					callId: data.callId,
+					requestId: data.requestId,
+				});
 			}
 			return false;
 		}
@@ -1159,12 +1151,11 @@ export const useChatStore = defineStore("chat", () => {
 		// 那一格(别的事件都走 `setSessionMessages`,换了新数组,自然一路通到底)。
 		// 真机上它表现为:要等下一次消息重建(翻页/补水)才突然冒出来。
 		setSessionMessages(data.sessionId, [...messages]);
-		console.log(
-			"[Chat Store] Updated tool call with permission request:",
-			toolCall.id,
-			"canRespond:",
-			data.canRespond,
-		);
+		log.debug("tool call updated with permission request", {
+			sessionId: data.sessionId,
+			toolCallId: toolCall.id,
+			canRespond: data.canRespond,
+		});
 		return true;
 	}
 
@@ -1427,14 +1418,8 @@ export const useChatStore = defineStore("chat", () => {
 	 * Handle stream chunk event
 	 */
 	function handleStreamChunk(chunk: StreamChunk) {
-		const debugToolInput =
-			(import.meta as ImportMetaWithDebugEnv).env?.VITE_DEBUG_TOOL_INPUT ===
-			"true";
-		if (
-			debugToolInput &&
-			(chunk.type === "tool_input_start" || chunk.type === "tool_input_delta")
-		) {
-			console.log("[Chat Store] handleStreamChunk entry:", {
+		if (chunk.type === "tool_input_start" || chunk.type === "tool_input_delta") {
+			log.trace("tool input chunk received", {
 				type: chunk.type,
 				sessionId: chunk.sessionId,
 				messageId: chunk.messageId,
@@ -1445,7 +1430,7 @@ export const useChatStore = defineStore("chat", () => {
 
 		const sessionId = chunk.sessionId;
 		if (!sessionId) {
-			console.warn("[Chat Store] Stream chunk missing sessionId");
+			log.warn("stream chunk missing sessionId");
 			return;
 		}
 
@@ -1460,12 +1445,10 @@ export const useChatStore = defineStore("chat", () => {
 				chunk.type === "content_part" &&
 				chunk.contentPart?.type === "plugin-status"
 			) {
-				if (import.meta.env?.DEV) {
-					console.debug(
-						"[Chat Store] Dropped an out-of-stream plugin status",
-						{ sessionId, part: chunk.contentPart },
-					);
-				}
+				log.debug("dropped out-of-stream plugin status", {
+					sessionId,
+					part: chunk.contentPart,
+				});
 				return;
 			}
 			queuePendingStreamChunk(sessionId, "", chunk);
@@ -1640,9 +1623,11 @@ export const useChatStore = defineStore("chat", () => {
 
 		messages[messageIndex] = { ...message };
 		setSessionMessages(sessionId, [...messages]);
-		if (shouldDebugStream()) {
-			console.log("[Chat Store] applied stream chunk", {
-				time: logTime(),
+		// 逐 chunk 的形状转储:`isLevelEnabled` 是**性能护栏**而不是开关 ——
+		// previewText / debugGapMs 不该在 trace 关着的时候还跑一遍。
+		if (log.isLevelEnabled("trace")) {
+			log.trace("stream chunk applied", {
+				at: logTime(),
 				gapMs: debugGapMs(`${sessionId}:${resolvedMsgId}:${chunk.type}`),
 				sessionId,
 				messageId: resolvedMsgId,
@@ -1666,11 +1651,11 @@ export const useChatStore = defineStore("chat", () => {
 	async function handleStreamComplete(data: StreamCompleteData) {
 		const sessionId = data.sessionId;
 		if (!sessionId) {
-			console.warn("[Chat Store] Stream complete missing sessionId");
+			log.warn("stream complete missing sessionId");
 			return;
 		}
 
-		console.log("[Chat Store] Stream complete:", sessionId);
+		log.debug("stream complete", { sessionId });
 
 		// Update message
 		const messages = getSessionMessagesRef(sessionId);
@@ -1726,10 +1711,7 @@ export const useChatStore = defineStore("chat", () => {
 					});
 				}
 			} catch (e) {
-				console.warn(
-					"[Chat Store] Failed to fold usage into session stats:",
-					e,
-				);
+				log.warn("usage fold into session stats failed", { sessionId }, e);
 			}
 		}
 
@@ -1752,7 +1734,7 @@ export const useChatStore = defineStore("chat", () => {
 				const sessionsStore = useSessionsStore();
 				sessionsStore.updateSessionNameAnimated(sessionId, data.sessionName);
 			} catch (e) {
-				console.error("[Chat Store] Failed to update session name:", e);
+				log.error("session name update failed", { sessionId }, e);
 			}
 		}
 	}
@@ -1763,11 +1745,15 @@ export const useChatStore = defineStore("chat", () => {
 	function handleStreamError(data: StreamErrorData) {
 		const sessionId = data.sessionId;
 		if (!sessionId) {
-			console.warn("[Chat Store] Stream error missing sessionId");
+			log.warn("stream error missing sessionId");
 			return;
 		}
 
-		console.log("[Chat Store] Stream error:", sessionId, data.error);
+		log.error("stream failed", {
+			sessionId,
+			error: data.error,
+			errorDetails: data.errorDetails,
+		});
 
 		// Set error state
 		sessionError.value.set(sessionId, data.error || "Streaming error");
@@ -2094,7 +2080,7 @@ export const useChatStore = defineStore("chat", () => {
 				setSessionMessages(sessionId, messages);
 			}
 		} catch (error) {
-			console.error("[Chat Store] Failed to load messages:", error);
+			log.error("load messages failed", { sessionId }, error);
 		}
 	}
 
@@ -2117,10 +2103,10 @@ export const useChatStore = defineStore("chat", () => {
 			});
 			ipcMs = performance.now() - ipcStart;
 			if (!response.success) {
-				console.warn(
-					"[Chat Store] Failed to load message page:",
-					response.error,
-				);
+				log.warn("message page load failed", {
+					sessionId,
+					error: response.error,
+				});
 				setSessionMessages(sessionId, []);
 				setSessionPageState(sessionId, response);
 				return false;
@@ -2136,7 +2122,7 @@ export const useChatStore = defineStore("chat", () => {
 			setSessionMessages(sessionId, messages);
 			setSessionPageState(sessionId, response);
 			setStateMs = performance.now() - setStateStart;
-			console.info("[Perf][SessionPage][renderer]", {
+			perfLog.debug("session page loaded", {
 				sessionId,
 				totalMs: Math.round(performance.now() - totalStart),
 				ipcMs: Math.round(ipcMs),
@@ -2148,7 +2134,7 @@ export const useChatStore = defineStore("chat", () => {
 			});
 			return true;
 		} catch (error) {
-			console.error("[Chat Store] Failed to load initial message page:", error);
+			log.error("initial message page load failed", { sessionId }, error);
 			setSessionMessages(sessionId, []);
 			return false;
 		} finally {
@@ -2174,10 +2160,10 @@ export const useChatStore = defineStore("chat", () => {
 				limit,
 			});
 			if (!response.success) {
-				console.warn(
-					"[Chat Store] Failed to load older messages:",
-					response.error,
-				);
+				log.warn("older messages load failed", {
+					sessionId,
+					error: response.error,
+				});
 				return false;
 			}
 
@@ -2193,7 +2179,7 @@ export const useChatStore = defineStore("chat", () => {
 			setSessionPageState(sessionId, response);
 			return older.length > 0;
 		} catch (error) {
-			console.error("[Chat Store] Failed to load older messages:", error);
+			log.error("older messages load failed", { sessionId }, error);
 			return false;
 		} finally {
 			updateSessionPageState(sessionId, { isLoadingOlder: false });
@@ -2217,10 +2203,10 @@ export const useChatStore = defineStore("chat", () => {
 				limit,
 			});
 			if (!response.success) {
-				console.warn(
-					"[Chat Store] Failed to load newer messages:",
-					response.error,
-				);
+				log.warn("newer messages load failed", {
+					sessionId,
+					error: response.error,
+				});
 				return false;
 			}
 
@@ -2236,7 +2222,7 @@ export const useChatStore = defineStore("chat", () => {
 			setSessionPageState(sessionId, response);
 			return newer.length > 0;
 		} catch (error) {
-			console.error("[Chat Store] Failed to load newer messages:", error);
+			log.error("newer messages load failed", { sessionId }, error);
 			return false;
 		} finally {
 			updateSessionPageState(sessionId, { isLoadingOlder: false });
@@ -2257,10 +2243,11 @@ export const useChatStore = defineStore("chat", () => {
 				anchor: { messageId, before, after },
 			});
 			if (!response.success) {
-				console.warn(
-					"[Chat Store] Failed to load message anchor page:",
-					response.error,
-				);
+				log.warn("message anchor page load failed", {
+					sessionId,
+					messageId,
+					error: response.error,
+				});
 				return false;
 			}
 
@@ -2272,7 +2259,7 @@ export const useChatStore = defineStore("chat", () => {
 			setSessionPageState(sessionId, response);
 			return true;
 		} catch (error) {
-			console.error("[Chat Store] Failed to load message anchor page:", error);
+			log.error("message anchor page load failed", { sessionId, messageId }, error);
 			return false;
 		} finally {
 			sessionLoading.value.set(sessionId, false);
@@ -2291,7 +2278,7 @@ export const useChatStore = defineStore("chat", () => {
 			triggerRef(sessionUserMarkers);
 			return markers;
 		} catch (error) {
-			console.error("[Chat Store] Failed to load user message markers:", error);
+			log.error("user message markers load failed", { sessionId }, error);
 			return [];
 		}
 	}
@@ -2523,7 +2510,7 @@ export const useChatStore = defineStore("chat", () => {
 			}
 			return response.success;
 		} catch (error) {
-			console.error("[Chat Store] Failed to stop generation:", error);
+			log.error("stop generation failed", { sessionId }, error);
 			return false;
 		}
 	}
@@ -2819,7 +2806,7 @@ export const useChatStore = defineStore("chat", () => {
 			const sessionsStore = useSessionsStore();
 			sessionsStore.updateSessionNameAnimated(data.sessionId, data.name);
 		} catch (e) {
-			console.error("[Chat Store] Failed to update session name:", e);
+			log.error("session name update failed", { sessionId: data.sessionId }, e);
 		}
 	}
 

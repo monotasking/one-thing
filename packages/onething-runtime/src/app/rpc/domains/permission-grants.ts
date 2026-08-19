@@ -30,6 +30,12 @@ import * as PermissionGrants from '../../permission/permission-grants.js'
 import { getSessionsList } from '../../stores/sessions.js'
 import { resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('ipc.permission')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 const WORKSPACE_ROOT_OUTSIDE_SANDBOX =
   'Workspace root must stay inside the workspace sandbox root.'
@@ -133,7 +139,7 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
       workspaceId: owner.workspaceId,
       listSessionGrants: PermissionGrants.listSessionGrants,
       listWorkspaceGrants: PermissionGrants.listWorkspaceGrants,
-      logger: console,
+      logger: consoleLog,
     })
   },
 
@@ -146,7 +152,7 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
     return revokeOnethingPermissionGrantForIpc({
       id,
       revokeGrant: PermissionGrants.revokeGrant,
-      logger: console,
+      logger: consoleLog,
     })
   },
 
@@ -159,7 +165,7 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
     return clearOnethingSessionPermissionGrantsForIpc({
       sessionId,
       clearSessionGrants: PermissionGrants.clearSessionGrants,
-      logger: console,
+      logger: consoleLog,
     })
   },
 
@@ -175,7 +181,7 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
       userId: owner.userId,
       workspaceId: owner.workspaceId,
       clearWorkspaceGrants: PermissionGrants.clearWorkspaceGrants,
-      logger: console,
+      logger: consoleLog,
     })
   },
 }

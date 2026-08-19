@@ -15,6 +15,10 @@ import {
   type CorePluginRuntimeHealth,
   type PersistedPluginHealth,
 } from '@onething/core/plugins'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins.health')
+
 
 export interface PluginHealthHost {
   /** 熔断时禁用插件(走完整 dispose)。 */
@@ -53,31 +57,31 @@ const tracker = new CorePluginHealthTracker({
    */
   onDegradeSurface(pluginId, surface, health) {
     const reason = health.degradedSurfaces?.find(entry => entry.surface === surface)?.reason ?? 'repeated failures'
-    console.warn(`[PluginHealth] Degrading surface "${surface}" of plugin "${pluginId}": ${reason}`)
+    log.warn('degrading plugin surface', { pluginId, surface, reason })
     try {
       host?.notify(pluginId, `"${pluginId}" — ${surface} is temporarily unavailable: ${reason}`)
     } catch (error) {
-      console.error('[PluginHealth] notify failed:', error)
+      log.error('plugin health notify failed', { pluginId, surface }, error)
     }
   },
   onTrip(pluginId, health) {
     const reason = health.disabledReason ?? health.lastError ?? 'repeated runtime failures'
-    console.error(`[PluginHealth] Auto-disabling plugin "${pluginId}": ${reason}`)
+    log.error('auto-disabling plugin', { pluginId, reason })
     try {
       host?.notify(pluginId, `Plugin "${pluginId}" was disabled automatically: ${reason}`)
     } catch (error) {
-      console.error('[PluginHealth] notify failed:', error)
+      log.error('plugin health notify failed', { pluginId }, error)
     }
     // 原因必须落盘:enabled:false 本来就持久化,原因不落盘的话重启后就成了
     // 一个用户没关过、又没有任何解释的关闭开关。
     try {
       host?.persistHealth?.(pluginId, toPersisted(health))
     } catch (error) {
-      console.error(`[PluginHealth] Failed to persist health for "${pluginId}":`, error)
+      log.error('persist plugin health failed', { pluginId }, error)
     }
     // 熔断禁用必须走完整的 disablePlugin —— 半禁用等于把注册表足迹留在原地。
     Promise.resolve(host?.disablePlugin(pluginId)).catch(error => {
-      console.error(`[PluginHealth] Failed to auto-disable plugin "${pluginId}":`, error)
+      log.error('auto-disable plugin failed', { pluginId }, error)
     })
   },
 })
@@ -158,7 +162,7 @@ export function clearPluginRuntimeHealth(pluginId: string): void {
   try {
     host?.persistHealth?.(pluginId, null)
   } catch (error) {
-    console.error(`[PluginHealth] Failed to clear persisted health for "${pluginId}":`, error)
+    log.error('clear persisted plugin health failed', { pluginId }, error)
   }
 }
 

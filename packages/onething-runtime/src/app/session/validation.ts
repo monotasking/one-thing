@@ -23,6 +23,10 @@ import {
 } from '@onething/core/session'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions.validation')
+
 
 const isDev = process.env.NODE_ENV !== 'production'
 
@@ -38,10 +42,10 @@ export function setupValidation(
     const sessionId = envelope.sessionId
     const session = sessionManager.get(sessionId)
     if (!session) {
-      console.warn(formatSessionValidationResult(validateSessionStateConsistency({
+      log.warn('session state inconsistent', { sessionId, detail: formatSessionValidationResult(validateSessionStateConsistency({
         sessionId,
         storeSessionExists: false,
-      })))
+      })) })
       return
     }
 
@@ -50,11 +54,11 @@ export function setupValidation(
     // Get the store's version of the assistant message
     const storeSession = sessionReads.getSession(sessionId)
     if (!storeSession) {
-      console.warn(formatSessionValidationResult(validateSessionStateConsistency({
+      log.warn('session state inconsistent', { sessionId, detail: formatSessionValidationResult(validateSessionStateConsistency({
         sessionId,
         state,
         storeSessionExists: false,
-      })))
+      })) })
       return
     }
 
@@ -70,9 +74,9 @@ export function setupValidation(
     })
 
     if (result.status === 'consistent') {
-      console.log(formatSessionValidationResult(result))
+      log.debug('session state consistent', { sessionId, detail: formatSessionValidationResult(result) })
     } else {
-      console.warn(formatSessionValidationResult(result))
+      log.warn('session state inconsistent', { sessionId, detail: formatSessionValidationResult(result) })
     }
   }, 'Validation')
 }

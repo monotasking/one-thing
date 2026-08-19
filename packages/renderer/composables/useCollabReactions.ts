@@ -10,6 +10,9 @@
  */
 import { onScopeDispose, ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.collab')
 
 const HINT_LINGER_MS = 4000
 
@@ -41,7 +44,7 @@ export function useCollabReactions(getSessionId: () => string | undefined) {
         showReactionHint(response.error || '这个表情没有记上')
       }
     } catch (error) {
-      console.error('[collab] reaction failed:', error)
+      log.error('reaction send failed', {}, error)
       showReactionHint(error instanceof Error ? error.message : String(error))
     }
   }

@@ -29,6 +29,10 @@ import {
   registerChannelPromptContextProvider,
   unregisterChannelPromptContextProvider,
 } from '../channel/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('engine.stream')
+
 
 export type {
   CoreStreamEngineOptions,
@@ -80,7 +84,7 @@ export function getConversationRuntime(): CoreConversationRuntime<StreamChunk> {
  */
 export function initializeStreamEngine(): void {
   if (streamEngine) {
-    console.warn('[StreamEngine] Already initialized, skipping')
+    log.warn('stream engine already initialized')
     return
   }
 
@@ -121,7 +125,7 @@ export function initializeStreamEngine(): void {
   } catch {
     // EventBus may not be initialized yet in test scenarios
   }
-  console.log('[StreamEngine] Initialized')
+  log.info('stream engine initialized')
 }
 
 /**

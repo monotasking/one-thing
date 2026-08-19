@@ -13,6 +13,10 @@ import type {
   MCPToolCallResult,
   MCPToolInfo,
 } from './types.js'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.mcp')
+
 
 export interface MCPClientLike {
   readonly state: MCPServerState
@@ -58,29 +62,29 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
 
   private async initializeInternal(settings: MCPSettings): Promise<void> {
     if (this.initialized) {
-      console.log('[MCPManager] Already initialized, updating settings')
+      log.info('mcp already initialized, updating settings')
       await this.updateSettingsInternal(settings)
       return
     }
 
-    console.log('[MCPManager] Initializing...')
+    log.info('mcp initializing')
     this.settings = settings
 
     if (!settings.enabled) {
-      console.log('[MCPManager] MCP is disabled')
+      log.info('mcp disabled')
       this.initialized = true
       return
     }
 
     const enabledServers = settings.servers.filter(server => server.enabled)
-    console.log(`[MCPManager] Connecting to ${enabledServers.length} servers...`)
+    log.info('mcp connecting to servers', { count: enabledServers.length })
 
     await Promise.allSettled(
       enabledServers.map(config => this.connectServerInternal(config)),
     )
 
     this.initialized = true
-    console.log('[MCPManager] Initialization complete')
+    log.info('mcp initialized')
   }
 
   async updateSettings(settings: MCPSettings): Promise<void> {
@@ -146,7 +150,7 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
     try {
       await client.connect()
     } catch (error) {
-      console.error(`[MCPManager] Failed to connect server ${config.id}:`, error)
+      log.error('mcp server connect failed', { serverId: config.id }, error)
     }
   }
 
@@ -330,10 +334,10 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
     // Queued so an in-flight connect finishes (and gets torn down) instead of
     // resolving into a map we already cleared.
     return this.enqueue(async () => {
-      console.log('[MCPManager] Shutting down...')
+      log.info('mcp shutting down')
       await this.disconnectAllInternal()
       this.initialized = false
-      console.log('[MCPManager] Shutdown complete')
+      log.info('mcp shut down')
     })
   }
 }

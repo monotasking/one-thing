@@ -66,8 +66,19 @@ vi.mock('../../stores/settings.js', () => ({
   getSettings: () => ({ tools: { tools: {} } }),
 }))
 
+const noopLogger = () => {
+  const logger: Record<string, unknown> = {
+    ns: 'test',
+    trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, fatal: () => {},
+    isLevelEnabled: () => false,
+  }
+  logger.child = () => logger
+  return logger
+}
 vi.mock('../../logging/index.js', () => ({
   writeAppLog: vi.fn(),
+  getLogger: () => noopLogger(),
+  consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
 }))
 
 /**

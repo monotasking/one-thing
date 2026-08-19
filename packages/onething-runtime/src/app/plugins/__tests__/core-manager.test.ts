@@ -43,9 +43,9 @@ function createTestLogger(): CorePluginLoaderLogger & { messages: string[] } {
   const messages: string[] = []
   return {
     messages,
-    log: (...args) => messages.push(args.map(String).join(' ')),
-    warn: (...args) => messages.push(args.map(String).join(' ')),
-    error: (...args) => messages.push(args.map(String).join(' ')),
+    log: (...args: unknown[]) => messages.push(args.map(String).join(' ')),
+    warn: (...args: unknown[]) => messages.push(args.map(String).join(' ')),
+    error: (...args: unknown[]) => messages.push(args.map(String).join(' ')),
   }
 }
 
@@ -263,7 +263,7 @@ describe('CorePluginManager', () => {
         throw new Error('init failed')
       },
       logger: {
-        error: (...args) => errors.push(args),
+        error: (...args: unknown[]) => errors.push(args),
       },
     })
 

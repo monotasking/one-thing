@@ -1,8 +1,13 @@
 import fs from 'fs'
+import { toLogger, type CompatLogger } from '../logging/index.js'
 import os from 'os'
 import path from 'path'
 import { pathToFileURL } from 'url'
 import { writeJsonFile } from '../storage/json-file.js'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.plugins')
+
 import type {
   CorePluginDefinition,
   PersistedPluginHealth,
@@ -66,11 +71,11 @@ export function getCoreLocalPluginsDir(options: CorePluginLoaderPathOptions = {}
 
 export function ensureCorePluginsDir(
   pluginsDir: string,
-  logger: Pick<CorePluginLoaderLogger, 'log'> = console,
+  injectedLogger?: CorePluginLoaderLogger,
 ): void {
   if (!fs.existsSync(pluginsDir)) {
     fs.mkdirSync(pluginsDir, { recursive: true })
-    logger.log?.(`[PluginLoader] Created plugins directory: ${pluginsDir}`)
+    toLogger(injectedLogger).debug(`[PluginLoader] Created plugins directory: ${pluginsDir}`)
   }
 }
 
@@ -90,7 +95,7 @@ export function readPluginSettingsFile(settingsPath: string): PluginSettings {
   try {
     raw = fs.readFileSync(settingsPath, 'utf-8')
   } catch (error) {
-    console.error('[PluginLoader] Failed to read plugin settings:', error)
+    log.error('plugin settings read failed', { settingsPath }, error)
     return {}
   }
 
@@ -104,13 +109,9 @@ export function readPluginSettingsFile(settingsPath: string): PluginSettings {
     const backupPath = `${settingsPath}.corrupt-${Date.now()}`
     try {
       fs.renameSync(settingsPath, backupPath)
-      console.error(
-        `[PluginLoader] plugin-settings.json is unreadable; moved it to ${backupPath} `
-        + 'so the next write starts from a clean file instead of overwriting it:',
-        error,
-      )
+      log.error('plugin settings unreadable, quarantined', { settingsPath, backupPath }, error)
     } catch (renameError) {
-      console.error('[PluginLoader] Failed to quarantine the corrupt plugin settings file:', renameError)
+      log.error('plugin settings quarantine failed', { settingsPath }, renameError)
     }
     return {}
   }
@@ -254,12 +255,12 @@ export function compareCoreSemver(a: string, b: string): number {
 export function checkPluginMinAppVersion(
   manifest: Pick<PluginManifest, 'minAppVersion'>,
   appVersion?: string,
-  logger: Pick<CorePluginLoaderLogger, 'warn'> = console,
+  injectedLogger?: CorePluginLoaderLogger,
 ): string | null {
   const required = manifest.minAppVersion?.trim()
   if (!required) return null
   if (!appVersion) {
-    logger.warn?.(
+    toLogger(injectedLogger).warn(
       `[PluginLoader] Plugin declares minAppVersion "${required}" but the host version is not configured; `
       + 'the version gate is inactive (call configurePluginAppVersion at boot).',
     )
@@ -526,7 +527,7 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
     try {
       manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
     } catch (error) {
-      console.error(`[PluginLoader] Invalid plugin.json in ${input.dirPath}:`, error)
+      log.error('invalid plugin.json', { pluginId: input.id, dirPath: input.dirPath }, error)
     }
   }
 
@@ -538,7 +539,7 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
   const entryPath = path.join(input.dirPath, entryFile)
 
   if (!fs.existsSync(entryPath)) {
-    console.warn(`[PluginLoader] Plugin "${input.id}" has no entry file at ${entryPath}`)
+    log.warn('plugin entry file missing', { pluginId: input.id, entryPath })
     return null
   }
 
@@ -546,7 +547,7 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
   // 判定结果只标记,不抛 —— 一个坏 plugin.json 不该让整轮扫描消失。
   const contributesError = validatePluginContributes((manifest as { contributes?: unknown }).contributes)
   if (contributesError) {
-    console.warn(`[PluginLoader] Plugin "${input.id}" has invalid contributes: ${contributesError}`)
+    log.warn('plugin contributes invalid', { pluginId: input.id, reason: contributesError })
     manifest = { ...manifest, contributes: undefined }
   }
   const versionError = checkPluginMinAppVersion(manifest, input.appVersion)
@@ -637,7 +638,7 @@ export function scanPluginDirectories<TEntry = unknown>(input: {
     }
     if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
     if (seen.has(entry.name)) {
-      console.warn(`[PluginLoader] Skipping user plugin "${entry.name}" because a built-in plugin with the same id exists`)
+      log.warn('user plugin skipped, builtin id collision', { entry: entry.name })
       continue
     }
     const dirPath = path.join(input.pluginsDir, entry.name)
@@ -745,7 +746,7 @@ export function scanPluginLedgerDirectories<TEntry = unknown>(input: {
 }): CorePluginDefinition<TEntry>[] {
   const ledger = readPluginLedger(input.pluginsDir)
   if (!ledger.trusted) {
-    console.warn(`[PluginLoader] ${ledger.reason}; skipping npm-ledger scan this round (nothing is removed).`)
+    log.warn('npm ledger untrusted, scan skipped', { reason: ledger.reason, pluginsDir: input.pluginsDir })
     return []
   }
 
@@ -759,10 +760,7 @@ export function scanPluginLedgerDirectories<TEntry = unknown>(input: {
 
     const id = unscopedPluginIdFromPackageName(dep.name)
     if (seen.has(id)) {
-      console.warn(
-        `[PluginLoader] Skipping npm plugin "${dep.name}": plugin id "${id}" is already taken `
-        + '(two packages resolve to the same plugin id — later one loses)',
-      )
+      log.warn('npm plugin skipped, plugin id already taken', { package: dep.name, pluginId: id })
       continue
     }
     const definition = parsePluginDirectory<TEntry>({
@@ -827,7 +825,7 @@ export function scanLocalPluginFiles<TEntry = unknown>(input: {
     const code = (error as { code?: string }).code
     // ENOENT = 还没建过 plugins-dev,可信的空;其余读失败 = warn,什么都不删。
     if (code && code !== 'ENOENT') {
-      console.warn(`[PluginLoader] cannot read local plugins dir ${input.localPluginsDir} (${code}); skipping local scan.`)
+      log.warn('local plugins dir unreadable, scan skipped', { localPluginsDir: input.localPluginsDir, code })
     }
     return []
   }
@@ -849,10 +847,7 @@ export function scanLocalPluginFiles<TEntry = unknown>(input: {
     const id = localPluginIdFromFilename(entry.name)
     if (!id) continue
     if (seen.has(id)) {
-      console.warn(
-        `[PluginLoader] Skipping local plugin file "${entry.name}": plugin id "${id}" is already taken `
-        + '(a builtin/npm plugin or another local file already claims it — later one loses)',
-      )
+      log.warn('local plugin skipped, plugin id already taken', { entry: entry.name, pluginId: id })
       continue
     }
     plugins.push({
@@ -909,11 +904,8 @@ export function scanCorePlugins<TEntry = unknown>(input: {
   ]
 }
 
-export interface CorePluginLoaderLogger {
-  log?(...args: unknown[]): void
-  warn?(...args: unknown[]): void
-  error?(...args: unknown[]): void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CorePluginLoaderLogger = CompatLogger
 
 /**
  * 热重载:给 ESM 说明符加 cache-buster。
@@ -957,7 +949,7 @@ export async function loadCorePluginEntry<TEntry = unknown>(
     return definition.entry
   }
 
-  const logger = adapters.logger ?? console
+  const logger = toLogger(adapters.logger)
 
   try {
     const mod = await adapters.importEntry(definition.entryPath)
@@ -967,10 +959,10 @@ export async function loadCorePluginEntry<TEntry = unknown>(
       return entry
     }
 
-    logger.warn?.(`[PluginLoader] Plugin "${definition.id}" entry does not export a default function`)
+    logger.warn(`[PluginLoader] Plugin "${definition.id}" entry does not export a default function`)
     return null
   } catch (error) {
-    logger.error?.(`[PluginLoader] Failed to load plugin "${definition.id}":`, error)
+    logger.error(`[PluginLoader] Failed to load plugin "${definition.id}":`, undefined, error)
     return null
   }
 }

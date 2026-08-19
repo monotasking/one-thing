@@ -152,6 +152,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/electron-host/window/window-visibility', replacement: resolve(projectRoot, 'apps/electron/src/window/window-visibility.ts') },
   { find: '@onething/electron-host/window/window-state', replacement: resolve(projectRoot, 'apps/electron/src/window/window-state.ts') },
   { find: '@onething/electron-host/window', replacement: resolve(projectRoot, 'apps/electron/src/window/index.ts') },
+  { find: '@onething/runtime/logging', replacement: resolve(projectRoot, 'packages/onething-runtime/src/logging/index.ts') },
   { find: '@onething/runtime/headless', replacement: resolve(projectRoot, 'packages/onething-runtime/src/headless/index.ts') },
   { find: '@onething/runtime/runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/runtime.ts') },
   { find: '@onething/runtime/product-stream-runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/product-stream-runtime.ts') },

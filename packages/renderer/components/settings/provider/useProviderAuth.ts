@@ -1,5 +1,8 @@
 import { ref, type ComputedRef, type Ref } from 'vue'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.provider-auth')
 
 export interface OAuthStatus {
   isLoggedIn: boolean
@@ -72,7 +75,7 @@ export function useProviderAuth(
         }
       }
     } catch (err) {
-      console.error('Failed to check OAuth status:', err)
+      log.error('oauth status check failed', { providerId: providerId.value }, err)
       oauthStatus.value = { isLoggedIn: false }
     }
   }
@@ -122,7 +125,7 @@ export function useProviderAuth(
         await pollBrowserCallback(response.pollIntervalMs)
       }
     } catch (err: any) {
-      console.error('OAuth login failed:', err)
+      log.error('oauth login failed', { providerId: providerId.value }, err)
       oauthStatus.value = {
         isLoggedIn: false,
         lastError: err?.message || 'OAuth login failed',
@@ -195,7 +198,7 @@ export function useProviderAuth(
           return
         }
       } catch (err) {
-        console.error('Device flow poll error:', err)
+        log.error('device flow poll failed', { providerId: providerId.value }, err)
       }
 
       await wait(pollIntervalMs)
@@ -231,7 +234,7 @@ export function useProviderAuth(
       await platformApi.oauthLogout(providerId.value)
       resetOAuthState()
     } catch (err) {
-      console.error('OAuth logout failed:', err)
+      log.error('oauth logout failed', { providerId: providerId.value }, err)
     }
   }
 

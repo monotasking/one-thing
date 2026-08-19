@@ -16,6 +16,7 @@ import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
 import { parse as parseYaml } from 'yaml'
+import { getLogger } from '../logging/index.js'
 import type {
   PluginSkillRoot,
   SkillConditions,
@@ -24,6 +25,8 @@ import type {
   SkillFile,
   SkillSource,
 } from './types.js'
+
+const log = getLogger('skills')
 
 interface SkillFrontmatter {
   name: string
@@ -83,16 +86,8 @@ function getRuntimeResourcesPath(): string | undefined {
     ?? (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
 }
 
-function isSkillsDebugEnabled(): boolean {
-  return process.env.ONETHING_DEBUG_SKILLS === '1' || Boolean(process.env.DEBUG?.includes('skills'))
-}
-
 function logLoadedSkillRoot(label: string, rootPath: string, skills: SkillDefinition[]): void {
-  if (isSkillsDebugEnabled()) {
-    console.log(`[Skills] ${label}: ${rootPath}, found ${skills.length} skills:`, skills.map(s => s.name))
-    return
-  }
-  console.log(`[Skills] ${label}: ${rootPath}, found ${skills.length} skills`)
+  log.debug('skill root loaded', { label, rootPath, count: skills.length, names: skills.map(s => s.name) })
 }
 
 /**
@@ -141,7 +136,7 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | nu
       }
     }
   } catch (error) {
-    console.warn('[Skills] YAML frontmatter parser failed, falling back to simple parser:', error)
+    log.warn('yaml frontmatter parse failed, falling back to simple parser', undefined, error)
   }
 
   // Simple YAML parsing for our specific use case
@@ -579,7 +574,7 @@ function loadSkillFromDirectory(
     const { frontmatter, body } = parseFrontmatter(content)
 
     if (!frontmatter || !frontmatter.name || !frontmatter.description) {
-      console.warn(`[Skills] Invalid SKILL.md in ${skillDir}: missing required frontmatter fields`)
+      log.warn('skill frontmatter missing required fields', { skillDir })
       return null
     }
 
@@ -588,15 +583,15 @@ function loadSkillFromDirectory(
     const platforms = normalizeStringList(frontmatter.platforms)
 
     // Validate name format
-    if (isSkillsDebugEnabled() && !/^[a-z0-9][a-z0-9._-]*$/.test(name)) {
-      console.warn(`[Skills] Invalid skill name "${name}": recommended format is lowercase letters, numbers, dots, underscores, and hyphens`)
+    if (!/^[a-z0-9][a-z0-9._-]*$/.test(name)) {
+      log.debug('skill name not in recommended format', { name, skillDir })
     }
     if (name.length > MAX_NAME_LENGTH) {
-      console.warn(`[Skills] Invalid skill name "${name}": must be ${MAX_NAME_LENGTH} characters or less`)
+      log.warn('skill name too long', { name, maxLength: MAX_NAME_LENGTH })
       return null
     }
     if (description.length > MAX_DESCRIPTION_LENGTH) {
-      console.warn(`[Skills] Skill "${name}" description is longer than ${MAX_DESCRIPTION_LENGTH} characters and will be truncated`)
+      log.warn('skill description truncated', { name, maxLength: MAX_DESCRIPTION_LENGTH })
     }
     if (!isPlatformSupported(platforms)) {
       return null
@@ -642,7 +637,7 @@ function loadSkillFromDirectory(
 
     return skill
   } catch (error) {
-    console.error(`[Skills] Error loading skill from ${skillDir}:`, error)
+    log.error('skill load failed', { skillDir }, error)
     return null
   }
 }
@@ -719,7 +714,7 @@ function loadSkillsFromPath(
         }
       }
     } catch (error) {
-      console.error(`[Skills] Error scanning ${containerDir}:`, error)
+      log.error('skill directory scan failed', { containerDir }, error)
     }
   }
 
@@ -735,7 +730,7 @@ function loadBuiltinSkills(): SkillDefinition[] {
   const builtinPath = getBuiltinSkillsPath()
 
   if (!fs.existsSync(builtinPath)) {
-    console.log(`[Skills] Builtin skills path does not exist: ${builtinPath}`)
+    log.info('builtin skills path missing', { builtinPath })
     return []
   }
 
@@ -771,7 +766,7 @@ function loadCustomRootSkills(): SkillDefinition[] {
   for (const root of roots) {
     if (root.enabled === false) continue
     if (!root.path || !isExistingDirectory(root.path)) {
-      console.warn(`[Skills] Custom skills root missing or unreadable: ${root.path}`)
+      log.warn('custom skills root unreadable', { rootPath: root.path })
       continue
     }
     const rootSkills = loadSkillsFromPath(root.path, 'custom', {
@@ -795,11 +790,12 @@ function loadProjectSkillsForDirectoryWithPaths(
   const allProjectSkillPaths = findProjectSkillPaths(workingDirectory)
   const projectSkillPaths = allProjectSkillPaths.filter(p => !isSamePath(p, userSkillsPath))
 
-  if (isSkillsDebugEnabled()) {
-    console.log(`[Skills] Project skill paths from ${workingDirectory}:`, projectSkillPaths, `(excluded user path: ${userSkillsPath})`)
-  } else {
-    console.log(`[Skills] Project skill roots from ${workingDirectory}: ${projectSkillPaths.length}`)
-  }
+  log.debug('project skill roots resolved', {
+    workingDirectory,
+    count: projectSkillPaths.length,
+    paths: projectSkillPaths,
+    excludedUserPath: userSkillsPath,
+  })
 
   const seenSkillIds = new Set<string>()
   for (const skillPath of projectSkillPaths) {
@@ -813,7 +809,7 @@ function loadProjectSkillsForDirectoryWithPaths(
     }
   }
 
-  console.log(`[Skills] Found ${projectSkillPaths.length} project skill directories via upward traversal`)
+  log.info('project skill directories found', { count: projectSkillPaths.length, workingDirectory })
   return { projectSkills, projectSkillPaths }
 }
 
@@ -867,12 +863,15 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     return true
   })
 
-  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${customSkills.length} custom, ${pluginSkills.length} plugin skills`)
-  if (isSkillsDebugEnabled()) {
-    console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}, names:`, dedupedSkills.map(s => s.name))
-  } else {
-    console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}`)
-  }
+  log.info('skills loaded', {
+    builtin: builtinSkills.length,
+    user: userSkills.length,
+    project: projectSkills.length,
+    custom: customSkills.length,
+    plugin: pluginSkills.length,
+    total: dedupedSkills.length,
+  })
+  log.debug('skills deduped', { total: dedupedSkills.length, names: dedupedSkills.map(s => s.name) })
 
   return dedupedSkills
 }
@@ -968,10 +967,10 @@ export function deleteSkill(skillId: string): boolean {
 
   try {
     fs.rmSync(skillDir, { recursive: true })
-    console.log(`[Skills] Deleted skill: ${skillId}`)
+    log.info('skill deleted', { skillId })
     return true
   } catch (error) {
-    console.error(`[Skills] Error deleting skill ${skillId}:`, error)
+    log.error('skill delete failed', { skillId }, error)
     return false
   }
 }
@@ -989,7 +988,7 @@ export function readSkillFile(skillId: string, fileName: string): string | null 
   const resolvedPath = path.resolve(resolvedSkillDir, fileName)
   const relativePath = path.relative(resolvedSkillDir, resolvedPath)
   if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-    console.error(`[Skills] Security: attempted to read file outside skill directory`)
+    log.error('skill file read outside skill directory rejected', { skillId, fileName })
     return null
   }
 
@@ -1007,6 +1006,6 @@ export function ensureSkillsDirectories(): void {
   const userSkillsDir = getUserSkillsPath()
   if (!fs.existsSync(userSkillsDir)) {
     fs.mkdirSync(userSkillsDir, { recursive: true })
-    console.log(`[Skills] Created user skills directory: ${userSkillsDir}`)
+    log.info('user skills directory created', { userSkillsDir })
   }
 }

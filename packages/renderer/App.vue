@@ -153,6 +153,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
+import { getLogger } from '@/services/log'
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSpacesStore } from '@/stores/spaces'
@@ -1137,6 +1138,9 @@ async function openSessionFromNotification(sessionId: string): Promise<void> {
 }
 
 let unsubscribeNotifyActivate: (() => void) | null = null
+const log = getLogger('renderer.app')
+const perfLog = getLogger('renderer.perf')
+
 let unsubscribeSettingsChanged: (() => void) | null = null
 let unsubscribeMenuNewChat: (() => void) | null = null
 let unsubscribeMenuCloseChat: (() => void) | null = null
@@ -1144,7 +1148,7 @@ let unsubscribeMenuNewBrowserTab: (() => void) | null = null
 let unsubscribeSearchAction: (() => void) | null = null
 
 onMounted(async () => {
-  console.info(`[Perf][Startup] renderer-mounted +${Math.round(performance.now())}ms since page load`)
+  perfLog.debug('renderer mounted', { sincePageLoadMs: Math.round(performance.now()) })
   window.addEventListener('hashchange', syncCurrentHash)
   window.addEventListener('focus', handleWindowFocused)
   window.addEventListener('blur', handleWindowBlurred)
@@ -1155,10 +1159,10 @@ onMounted(async () => {
   window.addEventListener(TRAJECTORY_OPEN_WORKSPACE_EVENT, handleTrajectoryOpenWorkspace)
 
   const markdownCacheReady = ensureMarkdownCacheReady().catch((e) => {
-    console.warn('[App] markdown cache init failed', e)
+    log.warn('markdown cache init failed', {}, e)
   })
   const appStateReady = platformApi.getAppState().catch((e) => {
-    console.warn('[App] Failed to restore app state:', e)
+    log.warn('app state restore failed', {}, e)
     return null
   })
 
@@ -1170,7 +1174,7 @@ onMounted(async () => {
   ])
   applyInspectorDefaultOnce()
   void voiceStore.initialize().catch((e) => {
-    console.warn('[App] voice init failed', e)
+    log.warn('voice init failed', {}, e)
   })
 
   // Initialize theme system (must be after settings load)
@@ -1214,7 +1218,7 @@ onMounted(async () => {
   }
 
   appReady.value = true
-  console.info(`[Perf][Startup] session-interactive +${Math.round(performance.now())}ms since page load`)
+  perfLog.debug('session interactive', { sincePageLoadMs: Math.round(performance.now()) })
   void markdownCacheReady
 
   // Anchor element mounts with the main-app branch after appReady flips.
@@ -1223,7 +1227,7 @@ onMounted(async () => {
 
   // Listen for settings changes from other windows (e.g., settings window)
   unsubscribeSettingsChanged = platformApi.onSettingsChanged((newSettings) => {
-    console.log('[App] Settings changed from another window')
+    log.debug('settings changed in another window')
 
     void (async () => {
       // Update settings and apply appearance through the same path used by
@@ -1242,10 +1246,10 @@ onMounted(async () => {
       // Re-build `availableProviders` from the new settings so custom providers
       // added in the Settings window appear in the main window immediately.
       settingsStore.loadProviders().catch((err) => {
-        console.warn('[App] Failed to refresh providers after settings change:', err)
+        log.warn('provider refresh after settings change failed', {}, err)
       })
     })().catch((err) => {
-      console.warn('[App] Failed to apply settings change:', err)
+      log.warn('settings change apply failed', {}, err)
     })
   })
 

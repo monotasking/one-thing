@@ -42,6 +42,12 @@ import { resolvePromptReferences } from '../../prompts/resolver.js'
 import type { IPCEmitter } from './ipc-emitter.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.stream')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export {
   buildAgentLoopContextHardLimitError,
@@ -108,7 +114,7 @@ export async function maybeCompactAgentLoopContext(options: {
       compactSessionContext: input => compactSessionContext(withCompactProgressEmit(input)),
       emitEvent,
       shouldSkipProviderUsageMismatch: input => shouldSkipAutoCompactForProviderUsageMismatchSafe(input),
-      logger: console,
+      logger: consoleLog,
     },
   })
 }
@@ -212,7 +218,7 @@ function createAgentLoopRuntimeAdapters(
     }) => shouldSkipAutoCompactForProviderUsageMismatchSafe(input),
     goal: goalRuntimeHooks,
     scratchpad: scratchpadRuntimeHooks,
-    logger: console,
+    logger: consoleLog,
     createId: undefined,
   })
 }

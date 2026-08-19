@@ -11,6 +11,10 @@ import path from 'node:path'
 import { readJsonFile, writeJsonFile } from '@onething/core/storage'
 import type { CollabDayDigest } from '@onething/runtime/collab'
 import { getStorePath } from '../stores/paths.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.digest')
+
 
 interface CollabDigestFile {
   version: 1
@@ -84,7 +88,7 @@ export function forgetCollabDigests(roomSessionId: string): void {
   try {
     fs.rmSync(digestPath(roomSessionId), { force: true })
   } catch (error) {
-    console.error('[collab] digest cleanup failed:', error)
+    log.error('digest cleanup failed', { roomSessionId }, error)
   }
 }
 

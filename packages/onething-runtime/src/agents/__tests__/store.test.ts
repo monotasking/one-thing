@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { captureRuntimeLogs } from '../../logging/index.js'
 import {
   DEFAULT_ONETHING_AGENT_ID,
   createOnethingAgentStore,
@@ -486,20 +487,22 @@ describe('A1 解析纪律(M4 三态 API)', () => {
   it('deprecated getAgent 只在真的发生冒充 fallback 时 warn', () => {
     const store = createStore()
     store.createAgent({ id: 'agent-a', name: 'A' })
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = captureRuntimeLogs()
 
     // 命中:正常路径不刷屏。
     expect(store.getAgent('agent-a').id).toBe('agent-a')
-    expect(warn).not.toHaveBeenCalled()
+    expect(logs.ofLevel('warn')).toHaveLength(0)
 
     // 空 id:既有的功能兜底语义(无 agentId 会话的 persona),不算冒充。
     expect(store.getAgent(undefined).id).toBe(DEFAULT_ONETHING_AGENT_ID)
     expect(store.getAgent('').id).toBe(DEFAULT_ONETHING_AGENT_ID)
-    expect(warn).not.toHaveBeenCalled()
+    expect(logs.ofLevel('warn')).toHaveLength(0)
 
     // 查无此人:这就是要烧掉的那条路,埋点带上 id。
     expect(store.getAgent('ghost').id).toBe(DEFAULT_ONETHING_AGENT_ID)
-    expect(warn).toHaveBeenCalledTimes(1)
-    expect(String(warn.mock.calls[0]?.[0])).toContain('ghost')
+    const warns = logs.ofLevel('warn')
+    expect(warns).toHaveLength(1)
+    expect(warns[0].fields?.agentId).toBe('ghost')
+    logs.restore()
   })
 })

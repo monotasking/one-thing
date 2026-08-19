@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { captureRuntimeLogs } from '@onething/runtime/logging'
 
 interface FakeSession {
   id: string
@@ -135,13 +136,15 @@ describe('collab 执行链:被删掉的 agent 不再被 default 冒充', () => {
 
   it('旧世界的冒充只剩 deprecated 通道能复现,并且带 warn 埋点', () => {
     writeAgents([])
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // 埋点已经不是 console 的副作用,而是一条记录(L4)。
+    const logs = captureRuntimeLogs()
 
     expect(getAgent('fe').id).toBe('default')
-    expect(warn).toHaveBeenCalledTimes(1)
-    expect(String(warn.mock.calls[0]?.[0])).toContain('fe')
+    const warned = logs.ofLevel('warn')
+    expect(warned).toHaveLength(1)
+    expect(warned[0]?.fields?.agentId).toBe('fe')
 
-    warn.mockRestore()
+    logs.restore()
   })
 
   it('渲染侧拿到「已注销」墓碑,而不是 default 的名字头像', () => {

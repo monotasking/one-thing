@@ -30,6 +30,10 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
 } from './health.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins')
+
 
 const registry = new CorePluginInputInterceptRegistry({
   // 超时预算走 core 默认(1.5s,刻意短于生命周期钩子的 5s):这条链挂在用户
@@ -83,7 +87,7 @@ export async function runPluginInputIntercept(
   } catch (error) {
     // 兜底的兜底:registry.run 自己已经逐 handler catch 了,这里只防注册表本身
     // 出意外。fail-open 的最后一格 —— 原样放行。
-    console.error('[PluginInputIntercept] chain failed; input passed through untouched:', error)
+    log.error('input intercept chain failed, input passed through untouched', {}, error)
     return emptyPluginInputInterceptOutcome(context.text)
   }
 }

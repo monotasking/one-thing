@@ -2,6 +2,7 @@ import {
   CORE_PLUGIN_LIFECYCLE_HOOK_TIMEOUT_MS,
   runWithPluginTimeout,
 } from './runtime-guard.js'
+import { toLogger, type CompatLogger, type Logger } from '../logging/index.js'
 
 export interface CoreBeforeContextCompactContext<
   TSettings = unknown,
@@ -92,9 +93,8 @@ interface RegisteredPluginHook<THook> {
   hook: THook
 }
 
-export interface CorePluginLifecycleLogger {
-  error(message: string, error: unknown): void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CorePluginLifecycleLogger = CompatLogger
 
 export interface CorePluginLifecycleRegistryOptions {
   logger?: CorePluginLifecycleLogger
@@ -111,15 +111,15 @@ export class CorePluginLifecycleRegistry<
 > {
   private beforeCompactHooks = new Map<string, RegisteredPluginHook<CoreBeforeContextCompactHook<TBeforeContext>>>()
   private afterResponseHooks = new Map<string, RegisteredPluginHook<CoreAfterAssistantResponseHook<TAfterContext>>>()
-  private readonly logger: CorePluginLifecycleLogger
+  private readonly logger: Logger
   private readonly options: CorePluginLifecycleRegistryOptions
 
-  constructor(loggerOrOptions: CorePluginLifecycleLogger | CorePluginLifecycleRegistryOptions = console) {
-    const options: CorePluginLifecycleRegistryOptions = typeof (loggerOrOptions as CorePluginLifecycleLogger).error === 'function'
+  constructor(loggerOrOptions: CorePluginLifecycleLogger | CorePluginLifecycleRegistryOptions = {}) {
+    const options: CorePluginLifecycleRegistryOptions = typeof (loggerOrOptions as { error?: unknown }).error === 'function'
       ? { logger: loggerOrOptions as CorePluginLifecycleLogger }
       : (loggerOrOptions as CorePluginLifecycleRegistryOptions)
     this.options = options
-    this.logger = options.logger ?? console
+    this.logger = toLogger(options.logger)
   }
 
   registerBeforeContextCompactHook(
@@ -180,7 +180,7 @@ export class CorePluginLifecycleRegistry<
           return { summary, pluginId: item.pluginId, hookId: item.hookId }
         }
       } catch (error) {
-        this.logger.error(`[PluginLifecycle] ${scope} failed for "${label}":`, error)
+        this.logger.error(`[PluginLifecycle] ${scope} failed for "${label}":`, undefined, error)
         this.options.onHookFailure?.({ pluginId: item.pluginId, hookId: item.hookId, scope, error })
       }
     }
@@ -209,7 +209,7 @@ export class CorePluginLifecycleRegistry<
         await runWithPluginTimeout(`${scope}:${label}`, timeoutMs, () => item.hook(context))
         this.options.onHookSuccess?.({ pluginId: item.pluginId, hookId: item.hookId, scope })
       } catch (error) {
-        this.logger.error(`[PluginLifecycle] ${scope} failed for "${label}":`, error)
+        this.logger.error(`[PluginLifecycle] ${scope} failed for "${label}":`, undefined, error)
         this.options.onHookFailure?.({
           pluginId: item.pluginId,
           hookId: item.hookId,

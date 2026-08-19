@@ -9,6 +9,10 @@ import {
   type Project,
   type ProjectIndex,
 } from './types.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('projects')
+
 
 let rootDirOverride: string | null = null
 
@@ -61,12 +65,12 @@ export function loadIndex(spaceId?: string): ProjectIndex {
     if (!fs.existsSync(indexPath(spaceId))) return { projects: [] }
     const parsed = parseProjectIndex(JSON.parse(fs.readFileSync(indexPath(spaceId), 'utf-8')))
     if (!parsed) {
-      console.warn('[project-dirs] index.json failed schema validation, treating as empty')
+      log.warn('project index schema validation failed, treating as empty', { spaceId })
       return { projects: [] }
     }
     return parsed
   } catch (err) {
-    console.warn('[project-dirs] failed to read index.json:', err)
+    log.warn('project index read failed', { spaceId }, err)
     return { projects: [] }
   }
 }
@@ -82,12 +86,12 @@ export function loadProject(id: string, spaceId?: string): Project | null {
     if (!fs.existsSync(file)) return null
     const project = parseProject(JSON.parse(fs.readFileSync(file, 'utf-8')))
     if (!project) {
-      console.warn(`[project-dirs] data/${id}.json failed schema validation, ignoring`)
+      log.warn('project record schema validation failed, ignored', { projectId: id })
       return null
     }
     return project
   } catch (err) {
-    console.warn(`[project-dirs] failed to read data/${id}.json:`, err)
+    log.warn('project record read failed', { projectId: id }, err)
     return null
   }
 }
@@ -106,6 +110,6 @@ export function deleteProject(id: string, spaceId?: string): void {
   try {
     if (fs.existsSync(file)) fs.unlinkSync(file)
   } catch (err) {
-    console.warn(`[project-dirs] failed to delete data/${id}.json:`, err)
+    log.warn('project record delete failed', { projectId: id }, err)
   }
 }

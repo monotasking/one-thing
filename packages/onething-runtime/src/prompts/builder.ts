@@ -24,6 +24,10 @@ import {
 	ONETHING_KNOWN_PROJECTS_INSTRUCTIONS,
 } from "./system-prompt.js";
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('engine.prompt')
+
 export {
 	PROMPT_BLOCK_TOOL_GUIDELINES,
 	PROMPT_BLOCK_TOOL_WORKSPACE_RULES,
@@ -463,10 +467,11 @@ export function loadAgentsMdInstructions(
 		let text: string;
 		if (data.length > AGENTS_MAX_BYTES) {
 			// 截断以前是无声的:模型少看见几节,而没有任何一方知道少了什么。
-			console.warn(
-				`[prompts] project instructions truncated: ${selected} is ${data.length} bytes,`
-					+ ` only the first ${AGENTS_MAX_BYTES} were injected`,
-			);
+			log.warn("project instructions truncated", {
+				file: selected,
+				bytes: data.length,
+				injectedBytes: AGENTS_MAX_BYTES,
+			});
 			text = `${safeUtf8Truncate(data, AGENTS_MAX_BYTES)}\n\n<!-- AGENTS instructions truncated -->`;
 		} else {
 			text = data.toString("utf-8");

@@ -115,6 +115,10 @@ import {
   type CollabWorkerMindPort,
   type CollabWorkerSlotLedger,
 } from './worker-child.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('collab.actors.agent')
+
 
 /** 房间的投递口 —— agent → room 的动词从这里出去。 */
 export interface CollabAgentOutbox {
@@ -927,7 +931,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     try {
       this.schedulerLog.append(roomId, row)
     } catch (error) {
-      console.warn(`[collab-v3] ${this.agentId} 的调度记账失败(照跑):`, error)
+      log.warn('scheduler row append failed', { agentId: this.agentId, roomId }, error)
     }
   }
 

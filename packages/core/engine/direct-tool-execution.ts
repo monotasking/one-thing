@@ -1,4 +1,5 @@
 import type { JsonObject } from '../json.js'
+import { toLogger, type CompatLogger } from '../logging/index.js'
 import type { Principal } from '../permission/principal.js'
 import { isToolAbortError } from '../tools/abort.js'
 import {
@@ -87,10 +88,8 @@ export interface CoreDirectToolMCPExecutionOptions {
   onPartialResult?: (text: string, phase: string) => void
 }
 
-export interface CoreDirectToolLogger {
-  log?: (...args: unknown[]) => void
-  error?: (...args: unknown[]) => void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CoreDirectToolLogger = CompatLogger
 
 /* ── N4:工具调用拦截口 ───────────────────────────────────────────────────── */
 
@@ -291,7 +290,7 @@ export async function executeCoreDirectTool<
       })
       return verdict.action === 'replace' ? applyToolResultVerdict(result, verdict) : result
     } catch (error) {
-      options.logger?.error?.('[DirectExec] tool-result interceptor threw; keeping original result:', error)
+      toLogger(options.logger).error('[DirectExec] tool-result interceptor threw; keeping original result:', undefined, error)
       return result
     }
   }
@@ -329,7 +328,7 @@ export async function executeCoreDirectTool<
         input: args,
       })
       if (verdict.action === 'block') {
-        options.logger?.log?.(`[DirectExec] Tool call blocked by plugin: ${toolName}`)
+        toLogger(options.logger).debug(`[DirectExec] Tool call blocked by plugin: ${toolName}`)
         // 阻断走**工具错误结果**这条既有路径(与工具自己抛错同路),模型据此
         // 改道。不新造一个"被插件挡了"的结果种类:那会要求每一个消费方
         // (UI / 历史重建 / 评估)都学会一个新状态,而它们对 isError 早已有
@@ -343,7 +342,7 @@ export async function executeCoreDirectTool<
     }
 
     if (options.isMCPTool(toolName)) {
-      options.logger?.log?.(`[DirectExec] Executing MCP tool: ${toolName}`)
+      toLogger(options.logger).debug(`[DirectExec] Executing MCP tool: ${toolName}`)
       if (context.abortSignal?.aborted) {
         return cancelledResult<TResult>()
       }
@@ -380,7 +379,7 @@ export async function executeCoreDirectTool<
       return applyResultIntercept({ success: true, data: result } as TResult)
     }
 
-    options.logger?.log?.(`[DirectExec] Executing built-in tool: ${toolName}`)
+    toLogger(options.logger).debug(`[DirectExec] Executing built-in tool: ${toolName}`)
     const execContext = options.createExecutionContext(context)
     const analysis = await options.analyzeTool(toolName, args, execContext)
     if (!analysis.success) {
@@ -415,7 +414,7 @@ export async function executeCoreDirectTool<
     const caught = error instanceof Error ? error : new Error(String(error))
     if (options.isPermissionRejectedError?.(caught) || caught.name === 'PermissionRejectedError') {
       const rejectionReason = options.permissionRejectedReason?.(caught) ?? (caught as { reason?: string }).reason
-      options.logger?.log?.(`[DirectExec] Permission rejected for tool ${toolName}`)
+      toLogger(options.logger).debug(`[DirectExec] Permission rejected for tool ${toolName}`)
       return {
         success: false,
         error: options.formatFailure({ error: caught.message, rejected: true, rejectionReason }),
@@ -424,7 +423,7 @@ export async function executeCoreDirectTool<
       } as TResult
     }
 
-    options.logger?.error?.('[DirectExec] Tool execution error:', caught)
+    toLogger(options.logger).error('[DirectExec] Tool execution error:', caught)
     const errorResult = {
       success: false,
       error: caught.message || 'Unknown error during tool execution',

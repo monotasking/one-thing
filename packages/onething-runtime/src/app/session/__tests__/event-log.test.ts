@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { collectLogRecordsForTests } from '../../logging/index.js'
 
 const state = vi.hoisted(() => ({ sessionsDir: '' }))
 
@@ -137,12 +138,13 @@ describe('appendSessionEvent', () => {
 
   it('swallows write failures instead of breaking the caller', async () => {
     makeJsonlSession('s4')
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logs = collectLogRecordsForTests()
     vi.spyOn(fs.promises, 'appendFile').mockRejectedValue(new Error('disk on fire'))
 
     expect(() => appendSessionEvent('s4', 'request/end', { requestIndex: 1 })).not.toThrow()
     await flushSessionEventLog('s4')
-    expect(warn).toHaveBeenCalledTimes(1)
+    expect(logs.records.filter(record => record.level === 'warn')).toHaveLength(1)
+    logs.stop()
   })
 })
 

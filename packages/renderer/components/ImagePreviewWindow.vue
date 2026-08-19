@@ -323,6 +323,9 @@ import { useSettingsStore } from '@/stores/settings'
 import { matchShortcut } from '@/composables/useShortcuts'
 import type { MediaAsset } from '@/types'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.image-preview')
 
 const settingsStore = useSettingsStore()
 
@@ -564,7 +567,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 // Listen for single image updates from main process
 async function applySingleImagePreview(data: SingleImagePreviewPayload) {
-  console.log('[ImagePreviewWindow] Applying single image data:', {
+  log.debug('single image preview applying', {
     previewId: data.previewId,
     hasInlineSrc: Boolean(data.src),
     inlineSrcLength: data.src?.length,
@@ -583,7 +586,7 @@ async function applySingleImagePreview(data: SingleImagePreviewPayload) {
   }
 
   if (!data.previewId) {
-    console.warn('[ImagePreviewWindow] Single image preview missing previewId and src')
+    log.warn('single image preview missing previewId and src')
     loadError.value = true
     return
   }
@@ -596,13 +599,13 @@ async function applySingleImagePreview(data: SingleImagePreviewPayload) {
     singleImageSrc.value = response.src
     singleImageAlt.value = response.alt || data.alt || ''
   } catch (error) {
-    console.error('[ImagePreviewWindow] Failed to load single image preview:', error)
+    log.error('single image preview load failed', { previewId: data.previewId }, error)
     loadError.value = true
   }
 }
 
 function setupSingleImageListener() {
-  console.log('[ImagePreviewWindow] Setting up single image IPC listener')
+  log.debug('single image listener installed')
   const cleanup = platformApi?.onImagePreviewUpdate?.((data) => {
     void applySingleImagePreview(data)
   })
@@ -614,13 +617,13 @@ function setupSingleImageListener() {
  * Reads mediaId from URL params, loads all media, and finds the target image
  */
 async function loadGalleryFromMedia(mediaId: string) {
-  console.log('[ImagePreviewWindow] Loading gallery for mediaId:', mediaId)
+  log.debug('gallery load requested', { mediaId })
   try {
     const gallery = await platformApi.getMediaGallery(mediaId, { kind: 'image' })
-    console.log('[ImagePreviewWindow] Loaded media gallery:', gallery.images.length)
+    log.debug('media gallery loaded', { count: gallery.images.length })
 
     if (gallery.images.length === 0) {
-      console.warn('[ImagePreviewWindow] No media items found')
+      log.warn('media gallery empty', { mediaId })
       loadError.value = true
       return
     }
@@ -640,10 +643,10 @@ async function loadGalleryFromMedia(mediaId: string) {
     })
     const targetIndex = gallery.currentIndex
 
-    console.log('[ImagePreviewWindow] Gallery loaded:', {
+    log.debug('gallery ready', {
       count: galleryImages.length,
       targetIndex,
-      firstImage: galleryImages[0]?.src
+      firstImage: galleryImages[0]?.src,
     })
 
     isGalleryMode.value = true
@@ -653,7 +656,7 @@ async function loadGalleryFromMedia(mediaId: string) {
     resetView()
     scrollThumbnailIntoView(targetIndex)
   } catch (error) {
-    console.error('[ImagePreviewWindow] Failed to load media:', error)
+    log.error('media gallery load failed', { mediaId }, error)
     loadError.value = true
   }
 }
@@ -670,7 +673,7 @@ onMounted(() => {
   const mediaId = params.mediaId
   const previewId = params.previewId
 
-  console.log('[ImagePreviewWindow] onMounted, mode:', mode, 'mediaId:', mediaId, 'previewId:', previewId)
+  log.debug('image preview window mounted', { mode, mediaId, previewId })
 
   if (mode === 'gallery' && mediaId) {
     // Gallery mode: load media data ourselves (Pull mode - reliable)

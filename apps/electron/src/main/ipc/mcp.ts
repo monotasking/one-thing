@@ -63,6 +63,9 @@ import { MCPManager, probeMCPServerConfig, registerMCPTools } from '@onething/ap
 import { configureMCPCapabilitiesChangedHandler } from '@onething/app/mcp/capabilities-changed.js'
 import { getMCPOAuthFlowManager } from '@onething/app/mcp/oauth/index.js'
 import { getSettings, saveSettings } from '@onething/app/stores/settings.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.mcp')
 
 function getMCPSettings() {
   const settings = getSettings()
@@ -241,7 +244,7 @@ export async function initializeMCP(): Promise<void> {
 
   const serverCount = mcpSettings?.servers?.length || 0
   if (serverCount > 0) {
-    console.log(`[MCP] Initialized with ${serverCount} servers`)
+    log.info('MCP initialized', { serverCount })
   }
 }
 

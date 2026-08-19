@@ -19,6 +19,12 @@ import {
   executeOnethingImageGenerationStream,
 } from '@onething/runtime/media'
 import { recordGeneratedImagePart } from '../../session/assistant-parts.js'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.stream.image')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export interface ImageStreamParams {
   sender: StreamSender
@@ -72,7 +78,7 @@ export async function processImageGenerationStream(
       try {
         await eventBus?.emit(targetSessionId, event)
       } catch (err) {
-        console.error(`[ImageStream] ${event.type} emit error:`, err)
+        log.error('image stream event emit failed', { sessionId: targetSessionId, eventType: event.type }, err)
       }
     },
     pushStreamChunk: (targetSessionId, chunk) => {
@@ -101,6 +107,6 @@ export async function processImageGenerationStream(
         sender.send(IPC_CHANNELS.IMAGE_GENERATED, notification)
       }
     },
-    logger: console,
+    logger: consoleLog,
   })
 }

@@ -22,6 +22,10 @@ import {
   COLLAB_WORK_REQUIRED_TOOLS,
 } from '../collab/tool-surface.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('agents')
+
 /**
  * Capability packs. A grant either REPLACES the agent's own allowlist (the
  * pack IS the surface) or is UNIONed into it (the pack is a floor layered on
@@ -152,11 +156,12 @@ function sanitizePermissionMode(
   const key = `${origin}:${agentId ?? '—'}:${mode}`
   if (!warnedUnknownPermissionModes.has(key)) {
     warnedUnknownPermissionModes.add(key)
-    console.warn(
-      `[agents] unknown permissionMode ${JSON.stringify(mode)} (${origin}`
-        + `${agentId ? `, agent ${agentId}` : ''}) — ignored; known modes: `
-        + AGENT_PERMISSION_MODE_STRICTNESS.join(', '),
-    )
+    log.warn('unknown permissionMode ignored', {
+      mode,
+      origin,
+      agentId,
+      knownModes: AGENT_PERMISSION_MODE_STRICTNESS,
+    })
   }
   return undefined
 }

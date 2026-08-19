@@ -416,6 +416,9 @@ import {
 import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.workbench')
 
 type WorkbenchTabType = 'outline' | 'context' | 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling' | 'plugin' | 'workspace'
 
@@ -1045,7 +1048,7 @@ async function addTerminalTab(): Promise<void> {
     })
     adoptTerminalTab(terminalId, { activate: true })
   } catch (error) {
-    console.error('[Workbench] Failed to create terminal:', error)
+    log.error('terminal create failed', {}, error)
   }
 }
 

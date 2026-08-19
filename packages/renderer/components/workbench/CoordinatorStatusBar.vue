@@ -255,6 +255,9 @@ import {
   formatCoordinatorElapsed,
 } from './coordinator-status'
 import { OPEN_ROOM_SCHEDULE_EVENT, type OpenRoomScheduleDetail } from './room-schedule'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.coordinator')
 
 const props = defineProps<{ roomSessionId: string }>()
 
@@ -364,7 +367,7 @@ async function resume(): Promise<void> {
   try {
     await sessionsStore.setCollabRoomFrozen(props.roomSessionId, false)
   } catch (error) {
-    console.error('[coordinator] resume failed:', error)
+    log.error('coordinator resume failed', {}, error)
   }
 }
 

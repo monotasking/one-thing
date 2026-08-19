@@ -38,6 +38,10 @@ import { toolkitAuditSink } from './audit-sink.js'
 import { refreshMcpToolsInCatalog, syncMcpToolsIntoCatalog } from './mcp-catalog.js'
 import { runPluginToolCallIntercept } from '../plugins/tool-call-intercept.js'
 import { runPluginToolResultIntercept } from '../plugins/tool-result-intercept.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('toolkit')
+
 
 /* ── 缝 4:目录 ───────────────────────────────────────────────────────────── */
 
@@ -86,7 +90,7 @@ export function getOrBuildToolkitCatalog(): Catalog | undefined {
   try {
     return buildToolkitCatalog('full')
   } catch (error) {
-    console.error('[toolkit] catalog build failed; this host has no tools:', error)
+    log.error('toolkit catalog build failed; this host has no tools', {}, error)
     return undefined
   }
 }
@@ -258,7 +262,7 @@ export async function runToolkitToolDirectly(
      * 让旧路自己报错;旧路没了之后返回 `undefined` 会被读成"没有这个工具",那是
      * 一句假话 —— 工具在,是它的准备失败了。所以如实报一次失败。
      */
-    console.error(`[toolkit] prepare failed for ${tool.spec.id}:`, error)
+    log.error('toolkit tool prepare failed', { toolId: tool.spec.id }, error)
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),

@@ -15,6 +15,7 @@
  *    package-lock 该条目的 integrity,不符即回滚拒载。
  */
 import fs from 'fs'
+import { toLogger } from '../logging/index.js'
 import path from 'path'
 import { writeJsonFile } from '../storage/json-file.js'
 import {
@@ -135,7 +136,7 @@ export async function installCorePluginPackage(
   input: InstallCorePluginPackageInput,
   adapters: CorePluginNpmAdapters,
 ): Promise<InstallCorePluginPackageResult> {
-  const logger = adapters.logger ?? console
+  const logger = toLogger(adapters.logger)
   const pluginId = unscopedPluginIdFromPackageName(input.pkg)
 
   // spec 协议白名单(端到端审查 S3):市场 URL 只走 https,开发通道走 file:。
@@ -157,16 +158,16 @@ export async function installCorePluginPackage(
 
   // 装后校验不过关时的回滚:把 npm 状态退回装前,错误原样透传。
   const rollback = async (reason: string): Promise<InstallCorePluginPackageResult> => {
-    logger.warn?.(`[PluginInstall] ${reason} — rolling back npm state for ${input.pkg}`)
+    logger.warn(`[PluginInstall] ${reason} — rolling back npm state for ${input.pkg}`)
     const undo = await adapters.runNpm(['uninstall', input.pkg, ...PLUGIN_NPM_LIFECYCLE_FLAGS], pluginsDir)
     if (undo.code !== 0) {
-      logger.error?.(`[PluginInstall] Rollback npm uninstall failed for ${input.pkg}: ${undo.stderr.trim()}`)
+      logger.error(`[PluginInstall] Rollback npm uninstall failed for ${input.pkg}: ${undo.stderr.trim()}`)
     }
     return { ok: false, pluginId, error: reason }
   }
 
   // 1. npm install <spec>
-  logger.log?.(`[PluginInstall] Installing ${input.pkg} from ${input.spec}...`)
+  logger.debug(`[PluginInstall] Installing ${input.pkg} from ${input.spec}...`)
   const installed = await adapters.runNpm(['install', input.spec, ...PLUGIN_NPM_LIFECYCLE_FLAGS], pluginsDir)
   if (installed.code !== 0) {
     return { ok: false, pluginId, error: npmError(`npm install failed for ${input.pkg}`, installed) }
@@ -209,7 +210,7 @@ export async function installCorePluginPackage(
     }
   }
 
-  logger.log?.(`[PluginInstall] Installed ${input.pkg}`)
+  logger.debug(`[PluginInstall] Installed ${input.pkg}`)
   return { ok: true, pluginId }
 }
 

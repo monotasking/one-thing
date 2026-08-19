@@ -24,6 +24,9 @@ import {
 } from '@onething/runtime/permissions'
 import { Permission } from '@onething/app/permission/index.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.permission')
 
 /**
  * Register all permission-related IPC handlers
@@ -55,5 +58,5 @@ export function registerPermissionHandlers(): void {
     },
   })
 
-  console.log('[Permission IPC] Handlers registered')
+  log.info('handlers registered')
 }

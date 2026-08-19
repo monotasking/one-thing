@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { JsonObject } from '../json.js'
 import type { Principal } from './principal.js'
 import * as PermissionGrants from './permission-grants.js'
+import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/index.js'
 
 export const DEFAULT_PERMISSION_REJECTED_MESSAGE = 'The user rejected permission for this tool.'
 
@@ -148,6 +149,13 @@ export namespace Permission {
   let channelResolver: ((sessionId: string) => string) | null = null
   let modeResolver: ((sessionId: string) => Mode) | null = null
   let unsubPermissionRespond: (() => void) | null = null
+  /** core 不持有全局 root:装配层注入,缺省 noop(§8.3 区 ①)。 */
+  let log: Logger = getCoreLogger('core.permission')
+
+  /** 装配层的接线口。传 null 摘下。 */
+  export function setLogger(next: CompatLogger | null): void {
+    log = next ? toLogger(next, 'core.permission') : getCoreLogger('core.permission')
+  }
 
   function getSession(sessionId: string): SessionState {
     let session = sessions.get(sessionId)
@@ -198,7 +206,7 @@ export namespace Permission {
 
   function emitPermissionEvent(sessionId: string, event: PermissionBusEvent): void {
     eventBus?.emit(sessionId, event)
-      .catch(err => console.error('[Permission] EventBus emit error:', err))
+      .catch(err => log.error('event emit failed', { sessionId, eventType: event.type }, err))
   }
 
   function emitSettled(
@@ -223,7 +231,7 @@ export namespace Permission {
         ...(details.reason !== undefined ? { reason: details.reason } : {}),
       })
     } catch (error) {
-      console.warn('[Permission] recorder onAnswered failed:', error)
+      log.warn('recorder onAnswered failed', { requestId: entry.info.id }, error)
     }
   }
 
@@ -259,7 +267,7 @@ export namespace Permission {
     entry.emitted = true
 
     if (!eventBus) {
-      console.warn('[Permission] EventBus not initialized, permission request will hang')
+      log.warn('event bus not initialized, permission request will hang', { sessionId, requestId: entry.info.id })
       return
     }
     const info = entry.info
@@ -275,7 +283,7 @@ export namespace Permission {
       metadata: info.metadata,
       userId: info.userId,
       workspaceId: info.workspaceId,
-    }).catch(err => console.error('[Permission] EventBus emit error:', err))
+    }).catch(err => log.error('event emit failed', { sessionId, eventType: 'permission:request' }, err))
   }
 
   export function initialize(
@@ -306,20 +314,18 @@ export namespace Permission {
         // for coalesced followers are fine — their request is literally the
         // emitted head's.
         if (byCallId && !byCallId.emitted) {
-          console.warn('[Permission] Response targets a queued prompt, ignoring:', cmd.toolCallId)
+          log.warn('response targets a queued prompt, ignored', { sessionId, toolCallId: cmd.toolCallId })
           return
         }
         const pending = byRequestId ?? byCallId
         if (!pending) {
-          console.warn('[Permission] No pending request for respond:', cmd.requestId ?? cmd.toolCallId)
+          log.warn('no pending request for respond', { sessionId, requestId: cmd.requestId, toolCallId: cmd.toolCallId })
           return
         }
 
         const expectedChannel = pending.info.targetChannel || 'ipc'
         if (expectedChannel !== responseChannel) {
-          console.warn(
-            `[Permission] Response from wrong channel: expected '${expectedChannel}', got '${responseChannel}'. Ignoring.`,
-          )
+          log.warn('response from wrong channel, ignored', { sessionId, expectedChannel, responseChannel })
           return
         }
 
@@ -333,7 +339,7 @@ export namespace Permission {
       'Permission',
     )
 
-    console.log('[Permission] Initialized with EventBus')
+    log.info('permission initialized')
   }
 
   export function shutdown(): void {
@@ -344,7 +350,7 @@ export namespace Permission {
     eventBus = null
     channelResolver = null
     modeResolver = null
-    console.log('[Permission] Shut down')
+    log.info('permission shut down')
   }
 
   export function getPending(sessionId: string): Info[] {
@@ -425,7 +431,12 @@ export namespace Permission {
 
     const equivalent = findEquivalentPending(session, info)
     if (equivalent) {
-      console.log('[Permission] Coalescing permission ask into pending:', equivalent.info.id, info.type, info.pattern)
+      log.debug('permission ask coalesced', {
+        sessionId: input.sessionId,
+        requestId: equivalent.info.id,
+        permissionType: info.type,
+        pattern: info.pattern,
+      })
       return new Promise<void>((resolve, reject) => {
         equivalent.followers.push({ resolve, reject })
         if (info.callId) {
@@ -440,12 +451,18 @@ export namespace Permission {
       })
     }
 
-    console.log('[Permission] Asking permission:', info.id, info.type, info.pattern, 'targetChannel:', targetChannel)
+    log.debug('permission asked', {
+      sessionId: input.sessionId,
+      requestId: info.id,
+      permissionType: info.type,
+      pattern: info.pattern,
+      targetChannel,
+    })
 
     try {
       recorder?.onAsked?.(info)
     } catch (error) {
-      console.warn('[Permission] recorder onAsked failed:', error)
+      log.warn('recorder onAsked failed', { requestId: info.id }, error)
     }
 
     return new Promise<void>((resolve, reject) => {
@@ -474,13 +491,13 @@ export namespace Permission {
     const pending = session.pending.get(input.permissionId)
 
     if (!pending) {
-      console.warn('[Permission] No pending request:', input.permissionId)
+      log.warn('no pending request', { sessionId: input.sessionId, requestId: input.permissionId })
       return false
     }
 
     const response = input.response
 
-    console.log('[Permission] Response:', input.permissionId, response)
+    log.debug('permission responded', { sessionId: input.sessionId, requestId: input.permissionId, response })
 
     if (response === 'reject') {
       settlePendingReject(session, pending, new RejectedError(

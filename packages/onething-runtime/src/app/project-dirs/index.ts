@@ -19,6 +19,10 @@ import {
   type ProjectDirsPromptVars,
 } from '@onething/runtime/project-dirs/prompt'
 import { resolveSessionSpaceId } from '../stores/sessions.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('project-dirs')
+
 
 let bootstrapped = false
 
@@ -26,7 +30,7 @@ export function bootstrapProjectDirs(): void {
   if (bootstrapped) return
   bootstrapped = true
   getProjectsStore().initialize()
-  console.log('[project-dirs] subsystem bootstrapped')
+  log.info('project-dirs subsystem bootstrapped')
 }
 
 /**

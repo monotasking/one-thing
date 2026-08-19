@@ -15,6 +15,10 @@ import * as store from '../store.js'
 import { getUsageLedger } from '../usage/index.js'
 import { loadCollabBoard } from './board-store.js'
 import { postSystemLine } from './room-runtime.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.budget')
+
 
 /** 费用闸(§6.2 第三道闸): 房间日预算,按会话集合(房间+其 work 会话)从
  *  usage 账本累计 costUSD。60s 缓存,超限时激活与新 worker 都被拒。
@@ -197,7 +201,7 @@ export async function isRoomOverBudget(roomSessionId: string): Promise<boolean> 
     try {
       await entry.read
     } catch (error) {
-      console.error('[collab] budget read failed:', error)
+      log.error('budget read failed', {}, error)
       return false // 账本读不了不误杀
     }
   }

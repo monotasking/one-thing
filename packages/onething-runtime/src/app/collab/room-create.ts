@@ -25,6 +25,10 @@ import { isActiveAgent, type ChatSession } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { findAgent } from '../agents/index.js'
 import { emitCollabRoomUpdated } from './room-runtime.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.room')
+
 
 /** 房间配置的落库形状。`RoomConfig` 没进 `@shared/ipc` 的桶,从会话类型上取更稳。 */
 type RoomConfig = NonNullable<ChatSession['room']>
@@ -136,7 +140,7 @@ export function ensureCollabGroupRoom(
     try {
       store.deleteSession(session.id)
     } catch (error) {
-      console.error('[CollabRoomCreate] rollback failed:', error)
+      log.error('room create rollback failed', { sessionId: session.id }, error)
     }
     return { success: false, error: 'Failed to write room config' }
   }

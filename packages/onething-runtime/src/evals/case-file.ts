@@ -17,6 +17,10 @@
 import fs from "node:fs";
 import { KNOWN_EXPECT_KEYS } from "./evaluator.js";
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('evals')
+
 export interface CaseDefinition {
 	id: string;
 	description: string;
@@ -141,9 +145,10 @@ export function parseCaseYaml(content: string): CaseDefinition {
 	for (const eKey of Object.keys(expectObj)) {
 		if (eKey === "notes") continue;
 		if (!KNOWN_EXPECT_KEYS.has(eKey)) {
-			console.warn(
-				`[Evals] Warning: case "${result.id || "(unknown)"}" has unknown expect key: "${eKey}"`,
-			);
+			log.warn("case has unknown expect key", {
+				caseId: result.id || "(unknown)",
+				key: eKey,
+			});
 		}
 	}
 

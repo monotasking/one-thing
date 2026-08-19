@@ -31,6 +31,12 @@ import {
   executeCoreMessageStream,
 } from '@onething/core/engine'
 import type { CoreInitialToolChoice } from '@onething/core/engine'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.stream')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 // Re-export for convenience
 export type { HistoryMessage }
@@ -123,7 +129,7 @@ async function resolveRequestedOutputModalities(
     })
     return nativeTools.includes(CODEX_NATIVE_IMAGE_GENERATION_TOOL) ? ['image'] : undefined
   } catch (error) {
-    console.warn('[StreamExecutor] Failed to resolve native provider tools:', error)
+    log.warn('resolve native provider tools failed', {}, error)
     return undefined
   }
 }
@@ -214,7 +220,7 @@ async function runMessageStream(
     processSpecialStream: input => processImageGenerationStream(input),
     executeTextStream: (ctx, historyMessages, sessionName): Promise<AgentLoopStreamGenerationResult> =>
       executeAgentLoopStreamGeneration(ctx as StreamContext, historyMessages, sessionName),
-    logger: console,
+    logger: consoleLog,
   })
 
   return {

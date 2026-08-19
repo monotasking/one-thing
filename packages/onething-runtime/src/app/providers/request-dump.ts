@@ -4,6 +4,12 @@ import {
   type OnethingProviderRequestDumpPayload,
 } from '@onething/runtime/providers'
 import { getLogDir } from '../stores/paths.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('providers.dump')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export type ProviderRequestDumpMode = OnethingProviderRequestDumpMode
 export type ProviderRequestDumpPayload = OnethingProviderRequestDumpPayload
@@ -17,6 +23,6 @@ export async function dumpProviderRequest(payload: ProviderRequestDumpPayload): 
   return dumpOnethingProviderRequest(payload, {
     getLogDir,
     env: process.env,
-    logger: console,
+    logger: consoleLog,
   })
 }

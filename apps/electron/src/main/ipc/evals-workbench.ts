@@ -43,6 +43,9 @@ import {
 	createEvalsModelCaller,
 	resolveEvalsCredentials,
 } from "./evals-provider-adapter.js";
+import { getLogger } from "@onething/app/logging/index.js";
+
+const log = getLogger("ipc.evals-workbench");
 
 const READ_FILE_MAX_BYTES = 4 * 1024 * 1024;
 
@@ -548,7 +551,7 @@ export function registerEvalsWorkbenchHandlers(): void {
 		},
 	);
 
-	console.log("[Evals Workbench IPC] Handlers registered");
+	log.info("handlers registered");
 }
 
 // ── Background replay executor ─────────────────────────
@@ -676,7 +679,7 @@ export async function analyzeIncidentInBackground(
 		const runtime = await import("@onething/runtime");
 		await analyzeIncidentById(runtime, incidentId);
 	} catch (error) {
-		console.error("[Evals Workbench] Background analysis failed:", error);
+		log.error("background analysis failed", { incidentId }, error);
 	}
 }
 

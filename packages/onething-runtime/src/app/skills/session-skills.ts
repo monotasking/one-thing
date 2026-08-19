@@ -7,13 +7,19 @@ import {
   loadAllSkills,
   loadProjectSkillsForDirectory,
 } from './index.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('skills')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 const sessionSkillsRuntime = createOnethingSessionSkillsRuntime<SkillDefinition>({
   ensureSkillsDirectories,
   loadAllSkills,
   loadProjectSkillsForDirectory,
   getSkillSettings: () => getSettings().skills,
-  logger: console,
+  logger: consoleLog,
 })
 
 export async function initializeSessionSkills(): Promise<void> {

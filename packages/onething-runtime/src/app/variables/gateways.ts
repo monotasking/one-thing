@@ -40,6 +40,10 @@ import type {
 import { findAgent } from '../agents/index.js'
 import { getCollabSelfTaskFacts } from '../collab/board-store.js'
 import { resolveUserIdentity } from '../collab/user-identity.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('variables')
+
 
 // ── Workdir gateway ─────────────────────────────────
 
@@ -72,7 +76,7 @@ export const workdirGateway: WorkdirGateway = {
         }
         syncProjectDerivedRoots(sessionId, project.paths)
       } catch (err) {
-        console.error('[variables.gateway] project-dirs touch failed:', err)
+        log.error('project-dirs touch failed', { sessionId, workdir }, err)
       }
     }
     notifyWorkdirChanged(sessionId)
@@ -118,7 +122,7 @@ function rootSetsEqual(a: readonly string[], b: readonly string[]): boolean {
 export function notifyWorkdirChanged(sessionId: string): void {
   for (const cb of workdirListeners) {
     try { cb(sessionId) } catch (err) {
-      console.error('[variables.gateway] workdir listener error:', err)
+      log.error('workdir listener failed', { sessionId }, err)
     }
   }
 }
@@ -238,7 +242,7 @@ export const projectStoreGateway: KeyedStoreGateway = {
 export function notifySessionVariablesChanged(sessionId: string): void {
   for (const cb of sessionStoreListeners) {
     try { cb(sessionId) } catch (err) {
-      console.error('[variables.gateway] session-store listener error:', err)
+      log.error('session-store listener failed', { sessionId }, err)
     }
   }
 }

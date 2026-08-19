@@ -12,6 +12,10 @@
  */
 import { ONETHING_USAGE_SOURCES } from "@onething/runtime/usage";
 import { recordUsage } from "./index.js";
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('usage')
+
 
 export interface SideLineUsage {
 	inputTokens: number;
@@ -30,7 +34,7 @@ function bill(
 		try {
 			recordUsage({ sessionId, providerId, modelId, source, usage });
 		} catch (error) {
-			console.error(`[usage] recordUsage failed for ${label}:`, error);
+			log.error("record usage failed", { label, providerId, modelId, source, sessionId }, error);
 		}
 	};
 }

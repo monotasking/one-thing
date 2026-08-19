@@ -43,6 +43,10 @@ import {
 import { findAgent } from "../../agents/index.js";
 import { resolveUserIdentity } from "../../collab/user-identity.js";
 import * as store from "../../store.js";
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.history')
+
 
 export { formatMessagesForLog, getTextFromContent, sanitizeToolResultForAI };
 
@@ -52,7 +56,7 @@ export { formatMessagesForLog, getTextFromContent, sanitizeToolResultForAI };
 export function buildMessageContent(message: ChatMessage): AIMessageContent {
 	return buildOnethingMessageContent(prepareUserMessageForModel(message), {
 		onImageAttachment: ({ mimeType, base64Length, dataUrlPrefix }) => {
-			console.log("[Chat] Adding image attachment:", {
+			log.debug("image attachment added", {
 				mimeType,
 				base64Length,
 				dataUrlPrefix,
@@ -126,7 +130,7 @@ export function buildHistoryMessages(
 			...HISTORY_CONTENT_HOOKS,
 			onCompactedHistory: (details) => {
 				logMessageBodyShape(
-					"[buildHistoryMessages] compacted history body",
+					"compacted history body",
 					historyMessagesForLog(details.resultMessages as HistoryMessage[]),
 					{
 						sessionId: details.sessionId,
@@ -148,13 +152,10 @@ export function buildHistoryMessages(
 				);
 			},
 			onMissingSummaryAnchor: (details) => {
-				console.warn(
-					"[buildHistoryMessages] Ignoring summary with missing anchor:",
-					{
-						sessionId: details.sessionId,
-						summaryUpToMessageId: details.summaryUpToMessageId,
-					},
-				);
+				log.warn("ignoring summary with missing anchor", {
+					sessionId: details.sessionId,
+					summaryUpToMessageId: details.summaryUpToMessageId,
+				});
 			},
 		},
 	) as HistoryMessage[];
@@ -176,7 +177,7 @@ const HISTORY_CONTENT_HOOKS = {
 		base64Length: number;
 		dataUrlPrefix: string;
 	}) => {
-		console.log("[Chat] Adding image attachment:", {
+		log.debug("image attachment added", {
 			mimeType,
 			base64Length,
 			dataUrlPrefix,

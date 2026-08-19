@@ -444,6 +444,9 @@ import {
 } from './settings-primitives'
 import { platformApi } from '@/platform'
 import { channelIdentityApi } from '@/platform/channel-identity-client'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.channels')
 
 const props = defineProps<{
   settings: AppSettings
@@ -789,7 +792,7 @@ async function renderQrCode(
       qrRenderingForUrls.delete(accountId)
       qrRenderErrors.value[accountId] = 'Could not render the login QR code. Copy or open the login URL instead.'
     }
-    console.error('[ChannelsSettings] Failed to render WeChat QR code:', error)
+    log.error('wechat qr render failed', {}, error)
   }
 }
 

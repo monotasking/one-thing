@@ -20,6 +20,12 @@ import { getScheduler } from './index.js'
 import type { SchedulerTaskContext, SchedulerTaskHandle } from './types.js'
 import { getSchedulerTasksPath } from '../stores/paths.js'
 import { saveSchedulerRunDetail } from './run-history.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('scheduler')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 const USER_TASK_TIMEOUT_MS = 30 * 60 * 1000
 const userTaskStore = new OnethingSchedulerUserTaskStore({
@@ -27,7 +33,7 @@ const userTaskStore = new OnethingSchedulerUserTaskStore({
   defaultAgentId: DEFAULT_AGENT_ID,
   agentExists,
   createId: uuidv4,
-  logger: console,
+  logger: consoleLog,
 })
 const userTaskHandles = new Map<string, SchedulerTaskHandle>()
 let initialized = false
@@ -125,6 +131,6 @@ async function runAgentTask(taskId: string, context: SchedulerTaskContext): Prom
     saveRunDetail: detail => saveSchedulerRunDetail(detail as SchedulerRunDetailDTO) as OnethingSchedulerRunDetail,
     createId: uuidv4,
     now: nowMs,
-    logger: console,
+    logger: consoleLog,
   })
 }

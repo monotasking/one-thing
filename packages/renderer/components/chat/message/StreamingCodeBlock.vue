@@ -56,6 +56,9 @@ import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { renderTokenSpans } from '@/composables/codeTokenizer'
 import { copyTextToClipboard } from '@/utils/clipboard'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.code-block')
 
 interface Props {
   lang: string
@@ -176,7 +179,7 @@ onBeforeUnmount(() => {
 async function handleCopy() {
   const success = await copyTextToClipboard(props.content)
   if (!success) {
-    console.warn('[StreamingCodeBlock] copy failed')
+    log.warn('code block copy failed')
     return
   }
 

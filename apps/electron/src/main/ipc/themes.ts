@@ -15,14 +15,17 @@ import {
 } from '@onething/app/plugins/theme-overrides.js'
 import { getPluginSkinTiers } from '@onething/app/plugins/skin.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.themes')
 
 /**
  * Initialize the theme system
  */
 export async function initializeThemeSystem(): Promise<void> {
-  console.log('[Theme IPC] Initializing theme system...')
+  log.info('theme system initializing')
   await defaultOnethingThemeRuntime.initialize()
-  console.log('[Theme IPC] Theme system initialized')
+  log.info('theme system initialized')
 }
 
 /**
@@ -85,5 +88,5 @@ export function registerThemeHandlers() {
     },
   })
 
-  console.log('[Theme IPC] Handlers registered')
+  log.info('handlers registered')
 }

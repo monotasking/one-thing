@@ -249,6 +249,10 @@ import { shouldRestoreReadingAnchor, useMessageScrollCoordinator } from '@/compo
 import { buildFontFamily, buildFontLoadSpecs } from '@shared/fonts'
 import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.message-list')
+const perfLog = getLogger('renderer.perf')
 
 interface BranchInfo {
   id: string
@@ -1399,7 +1403,7 @@ onUpdated(() => {
   renderMeasureStart = null
   requestAnimationFrame(() => {
     const rows = messageListContentRef.value?.querySelectorAll('.message-list-row[data-message-id]').length ?? 0
-    console.info('[Perf][SessionRender][MessageList]', {
+    perfLog.debug('message list rendered', {
       sessionId,
       totalToFirstFrameMs: Math.round(performance.now() - start),
       messageCount,
@@ -2533,7 +2537,7 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
       })
     }
   } catch (error) {
-    console.error('Failed to execute tool:', error)
+    log.error('tool execute failed', {}, error)
     const endTime = Date.now()
     if (tc) {
       tc.endTime = endTime
@@ -2596,7 +2600,7 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
     // Persist to backend
     await platformApi.updateMessageThinkingTime(currentSession.id, messageId, thinkingTime)
   } catch (error) {
-    console.error('Failed to update thinking time:', error)
+    log.error('thinking time update failed', { messageId }, error)
   }
 }
 

@@ -22,13 +22,22 @@ import {
 } from '@onething/core/engine'
 import { writeTextFile } from '@onething/core/storage'
 import { getLastSystemPromptDebugPath } from '../../stores/paths.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('engine.stream.chat')
+
 
 export type ChatLogMessageShape = CoreChatLogMessageShape
 
-function logLines(lines: string[]): void {
-  for (const line of lines) {
-    console.log(line)
-  }
+/** 历史形状是自成一格的命名空间 —— 它的逐行铺开单独可开(见下)。 */
+const historyLog = getLogger('engine.history')
+
+/**
+ * 旧口径是"一行一条 console" —— 那是渲染,不是记录。这里折成**一条**结构化记录,
+ * 人眼那一侧交给 `bun run log:tail` 的 pretty renderer。
+ */
+function logLines(msg: string, lines: string[]): void {
+  log.debug(msg, { lines })
 }
 
 /**
@@ -48,7 +57,7 @@ export function dumpAssembledPrompt(ctx: {
       nowIso: new Date().toISOString(),
     }))
   } catch (err) {
-    console.warn('[Chat] dumpAssembledPrompt failed:', err)
+    log.warn('dump assembled prompt failed', { sessionId: ctx.sessionId, providerId: ctx.providerId }, err)
   }
 }
 
@@ -65,7 +74,7 @@ export function logRequestStart(ctx: {
   skills: SkillDefinition[]
   hasTools: boolean
 }): void {
-  logLines(buildRequestStartLogLines(ctx))
+  logLines('chat request start', buildRequestStartLogLines(ctx))
 }
 
 /**
@@ -73,18 +82,21 @@ export function logRequestStart(ctx: {
  * `retainedMessages` list) are opt-in: on a 400-message session they were
  * ~2400 console lines through util.inspect on EVERY send — ~300ms of main
  * thread before the request even left, felt in the composer as a stall
- * (2026-08-18 dev.log). Set ONETHING_DEBUG_HISTORY_SHAPE=1 to get them back.
+ * (2026-08-18 dev.log). 现在由等级过滤决定:摘要 = `engine.history` 的 debug,
+ * 逐行铺开 = 同命名空间的 **trace**(所以"全域 debug"的诊断模式不会把那 300ms
+ * 请回来)。旧开关 `ONETHING_DEBUG_HISTORY_SHAPE=1` 保留为 `engine.history=trace`
+ * 的废弃别名(app/logging/legacy-debug-env.ts,L5 删)。
  */
-const VERBOSE_HISTORY_SHAPE = process.env.ONETHING_DEBUG_HISTORY_SHAPE === '1'
 
 export function logMessageBodyShape(
   label: string,
   messages: ChatLogMessageShape[],
   extra: Record<string, CoreChatLogValue> = {},
 ): void {
+  if (!historyLog.isLevelEnabled('debug')) return
   const payload = buildMessageBodyShapePayload(messages, extra)
-  if (VERBOSE_HISTORY_SHAPE) {
-    console.log(`[Chat] ${label}`, payload)
+  if (historyLog.isLevelEnabled('trace')) {
+    historyLog.trace('message body shape', { label, ...payload })
     return
   }
   const { rows, retainedMessages, degradedMessageIds, droppedMessages, ...summary } = payload as typeof payload & {
@@ -92,9 +104,10 @@ export function logMessageBodyShape(
     degradedMessageIds?: unknown[]
     droppedMessages?: unknown[]
   }
-  console.log(`[Chat] ${label}`, {
+  historyLog.debug('message body shape', {
+    label,
     ...summary,
-    rows: `${rows.length} rows (ONETHING_DEBUG_HISTORY_SHAPE=1 to list)`,
+    rows: rows.length,
     ...(retainedMessages ? { retainedMessages: retainedMessages.length } : {}),
     ...(degradedMessageIds ? { degradedMessageIds: degradedMessageIds.length } : {}),
     ...(droppedMessages ? { droppedMessages: droppedMessages.length } : {}),
@@ -107,7 +120,7 @@ const turnTimer = new CoreChatTurnTimer()
  * Log turn start within a stream.
  */
 export function logTurnStart(turnNumber: number): void {
-  console.log(turnTimer.startTurn(turnNumber))
+  log.debug('turn start', { turnNumber, line: turnTimer.startTurn(turnNumber) })
 }
 
 /**
@@ -118,7 +131,12 @@ export function logTurnEnd(turnNumber: number, usage: {
   outputTokens: number
   totalTokens: number
 }, toolCallCount: number): void {
-  console.log(turnTimer.endTurn(turnNumber, usage, toolCallCount))
+  log.debug('turn end', {
+    turnNumber,
+    toolCallCount,
+    ...usage,
+    line: turnTimer.endTurn(turnNumber, usage, toolCallCount),
+  })
 }
 
 /**
@@ -130,7 +148,7 @@ export function logRequestEnd(
   usage?: { inputTokens: number; outputTokens: number; totalTokens: number },
   lastTurnUsage?: { inputTokens: number; outputTokens: number },
 ): void {
-  logLines(buildRequestEndLogLines(duration, usage, lastTurnUsage))
+  logLines('chat request end', buildRequestEndLogLines(duration, usage, lastTurnUsage))
 }
 
 /**
@@ -151,19 +169,19 @@ export function logContinuationMessages(
     result: CoreChatLogValue
   }>,
 ): void {
-  logLines(buildContinuationMessageLogLines(turnNumber, assistantContent, toolCalls, toolResults))
+  logLines('continuation messages', buildContinuationMessageLogLines(turnNumber, assistantContent, toolCalls, toolResults))
 }
 
 /**
  * Log detailed tool definitions (for debugging).
  */
 export function logToolsDetail(tools: Record<string, CoreToolDefinitionForLog>): void {
-  logLines(buildToolsDetailLogLines(tools))
+  logLines('tool definitions', buildToolsDetailLogLines(tools))
 }
 
 /**
  * Log detailed skills list (for debugging).
  */
 export function logSkillsDetail(skills: SkillDefinition[]): void {
-  logLines(buildSkillsDetailLogLines(skills))
+  logLines('skill definitions', buildSkillsDetailLogLines(skills))
 }

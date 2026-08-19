@@ -20,6 +20,9 @@ import {
 } from '@onething/app/interaction/index.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { InteractionRespondRequest } from '@shared/ipc.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.interaction')
 
 export function registerInteractionHandlers(): void {
   registerElectronInteractionIpcHandlers({
@@ -35,5 +38,5 @@ export function registerInteractionHandlers(): void {
     },
   })
 
-  console.log('[Interaction IPC] Handlers registered')
+  log.info('handlers registered')
 }

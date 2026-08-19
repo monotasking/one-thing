@@ -49,6 +49,7 @@
  */
 
 import { sortByPluginCanonicalOrder } from './canonical-order.js'
+import { toLogger, type CompatLogger, type Logger } from '../logging/index.js'
 import { PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE } from './policy.js'
 import { runWithPluginTimeout } from './runtime-guard.js'
 import {
@@ -248,9 +249,8 @@ interface RegisteredToolResultInterceptor {
   handler: PluginToolResultInterceptHandler
 }
 
-export interface CorePluginToolResultInterceptLogger {
-  error(message: string, error?: unknown): void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CorePluginToolResultInterceptLogger = CompatLogger
 
 export interface CorePluginToolResultInterceptRegistryOptions {
   logger?: CorePluginToolResultInterceptLogger
@@ -288,10 +288,10 @@ export interface CorePluginToolResultInterceptRegistryOptions {
  */
 export class CorePluginToolResultInterceptRegistry {
   private readonly handlers = new Map<string, RegisteredToolResultInterceptor>()
-  private readonly logger: CorePluginToolResultInterceptLogger
+  private readonly logger: Logger
 
   constructor(private readonly options: CorePluginToolResultInterceptRegistryOptions = {}) {
-    this.logger = options.logger ?? console
+    this.logger = toLogger(options.logger)
   }
 
   /**
@@ -356,7 +356,7 @@ export class CorePluginToolResultInterceptRegistry {
         // (与 N2 / N4 同 —— 抛错 / 超时是真的坏了)。
         this.logger.error(
           `[PluginToolResultIntercept] "${label}" failed; the tool result was left unchanged (fail-open):`,
-          error,
+          undefined, error,
         )
         this.options.onHandlerFailure?.({ pluginId: item.pluginId, hookId: item.hookId, error })
         continue

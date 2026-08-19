@@ -12,6 +12,9 @@ import { executeSearch } from '@onething/app/search/providers.js'
 import { closeSearchWindow, setSearchWindowAnchor } from './window.js'
 import { registerElectronSearchIpcHandlers } from './window-actions.js'
 import { executeSearchActionFrom, toggleSearchWindowFrom } from './window-controller.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('search')
 
 export function registerSearchHandlers(): void {
   registerElectronSearchIpcHandlers({
@@ -36,5 +39,5 @@ export function registerSearchHandlers(): void {
     executeAction: (sourceWindow, actionId) => executeSearchActionFrom(sourceWindow, actionId),
   })
 
-  console.log('[Search] IPC handlers registered')
+  log.info('handlers registered')
 }

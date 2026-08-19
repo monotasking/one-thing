@@ -1,4 +1,5 @@
 import type { CorePluginAPIState } from './api-state.js'
+import { toLogger, type CompatLogger } from '../logging/index.js'
 import { describeToolPromptContributionProblem } from '../engine/prompt-fragments.js'
 import {
   clampPluginBackgroundParamsPatch,
@@ -106,10 +107,8 @@ import type {
   CorePluginToolResult,
 } from './types.js'
 
-export interface CorePluginAPILogger {
-  log(message: string): void
-  error(message: string, error?: unknown): void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CorePluginAPILogger = CompatLogger
 
 export interface CorePluginAPIHost<
   TTool extends { name: string },
@@ -434,7 +433,7 @@ export function createCorePluginAPI<
   >,
 ): { api: TApi; state: CorePluginAPIState<TApi, TCommand> } {
   const { pluginId, store, scheduler, host } = options
-  const logger = options.logger ?? console
+  const logger = toLogger(options.logger)
   // **签名收口**:scope 是品牌类型,只能由 pluginScope.* 工厂产出。
   // 写裸字符串在这里就编译不过 —— 这是"新增 scope 必须登记"的执行点,
   // 正则反查只当兜底(R7 第一版只有正则,npm-install 就那样漏了过去)。
@@ -524,10 +523,10 @@ export function createCorePluginAPI<
         || getPluginFilesFaultLane(error) === 'user'
       if (stateRefusal) {
         const label = typeof code === 'string' ? code : 'state'
-        logger.log(`[Plugin:${pluginId}] storage.${what} refused (${label}) — state refusal, not counted`)
+        logger.debug(`[Plugin:${pluginId}] storage.${what} refused (${label}) — state refusal, not counted`)
         throw error
       }
-      logger.error(`[Plugin:${pluginId}] storage.${what} failed:`, error)
+      logger.error(`[Plugin:${pluginId}] storage.${what} failed:`, undefined, error)
       reportFailure(scope, error)
       throw error
     }
@@ -647,7 +646,7 @@ export function createCorePluginAPI<
     } catch (error) {
       // 投递失败是**宿主侧**的故障,不是规则拒绝 —— 但也不该炸掉插件:
       // 与 notify 同规,记一条日志、回一份失败结果。
-      logger.error(`[Plugin:${pluginId}] ui.${verb} failed:`, error)
+      logger.error(`[Plugin:${pluginId}] ui.${verb} failed:`, undefined, error)
       return { ok: false, error: 'unsupported', reason: 'host refused the layout command' }
     }
   }
@@ -660,7 +659,7 @@ export function createCorePluginAPI<
       const peek = await host.peekSession(pluginId, targetId)
       return peek ? deepFreezeCorePluginValue(peek) : null
     } catch (error) {
-      logger.error(`[Plugin:${pluginId}] sessions.peek error:`, error)
+      logger.error(`[Plugin:${pluginId}] sessions.peek error:`, undefined, error)
       return null
     }
   }
@@ -691,9 +690,9 @@ export function createCorePluginAPI<
         if (!toolIds.includes(toolId)) {
           toolIds.push(toolId)
         }
-        logger.log(`[Plugin:${pluginId}] Registered tool: ${tool.name}`)
+        logger.debug(`[Plugin:${pluginId}] Registered tool: ${tool.name}`)
       } catch (error) {
-        logger.error(`[Plugin:${pluginId}] Failed to register tool "${tool.name}":`, error)
+        logger.error(`[Plugin:${pluginId}] Failed to register tool "${tool.name}":`, undefined, error)
       }
     },
 
@@ -701,7 +700,7 @@ export function createCorePluginAPI<
       if (rejectLateCall('on')) return () => {}
       const scope = pluginScope.event(eventType)
       const onHandlerError = (error: unknown): void => {
-        logger.error(`[Plugin:${pluginId}] Event handler error (${eventType}):`, error)
+        logger.error(`[Plugin:${pluginId}] Event handler error (${eventType}):`, undefined, error)
         reportFailure(scope, error)
       }
       const wrappedHandler = ((...args: unknown[]) => {
@@ -733,7 +732,7 @@ export function createCorePluginAPI<
       try {
         host.steer(pluginId, sessionId, content)
       } catch (error) {
-        logger.error(`[Plugin:${pluginId}] steer error:`, error)
+        logger.error(`[Plugin:${pluginId}] steer error:`, undefined, error)
         reportFailure(pluginScope.steer(), error)
       }
     },
@@ -743,7 +742,7 @@ export function createCorePluginAPI<
       try {
         host.followUp(pluginId, sessionId, content)
       } catch (error) {
-        logger.error(`[Plugin:${pluginId}] followUp error:`, error)
+        logger.error(`[Plugin:${pluginId}] followUp error:`, undefined, error)
         reportFailure(pluginScope.followUp(), error)
       }
     },
@@ -805,7 +804,7 @@ export function createCorePluginAPI<
         reportSuccess(scope)
         return result
       } catch (error) {
-        logger.error(`[Plugin:${pluginId}] sendMessage error:`, error)
+        logger.error(`[Plugin:${pluginId}] sendMessage error:`, undefined, error)
         reportFailure(scope, error)
         return {
           ok: false,
@@ -830,7 +829,7 @@ export function createCorePluginAPI<
         try {
           return deepFreezeCorePluginValue(await host.listSessions(pluginId))
         } catch (error) {
-          logger.error(`[Plugin:${pluginId}] sessions.list error:`, error)
+          logger.error(`[Plugin:${pluginId}] sessions.list error:`, undefined, error)
           return []
         }
       },
@@ -890,28 +889,28 @@ export function createCorePluginAPI<
       if (rejectLateCall('registerCommand')) return
       const fullName = name.startsWith('/') ? name : `/${name}`
       commands.set(fullName, { name: fullName, ...options } as unknown as TCommand)
-      logger.log(`[Plugin:${pluginId}] Registered command: ${fullName}`)
+      logger.debug(`[Plugin:${pluginId}] Registered command: ${fullName}`)
     },
 
     registerPromptContextProvider(id: string, provider: TPromptContextProvider): void {
       if (rejectLateCall('registerPromptContextProvider')) return
       const unsub = host.registerPromptContextProvider(pluginId, id, provider)
       promptContextUnsubs.push(unsub)
-      logger.log(`[Plugin:${pluginId}] Registered prompt context provider: ${id}`)
+      logger.debug(`[Plugin:${pluginId}] Registered prompt context provider: ${id}`)
     },
 
     beforeContextCompact(id: string, hook: TBeforeContextCompactHook): void {
       if (rejectLateCall('beforeContextCompact')) return
       const unsub = host.registerBeforeContextCompactHook(pluginId, id, hook)
       lifecycleUnsubs.push(unsub)
-      logger.log(`[Plugin:${pluginId}] Registered beforeContextCompact hook: ${id}`)
+      logger.debug(`[Plugin:${pluginId}] Registered beforeContextCompact hook: ${id}`)
     },
 
     afterAssistantResponse(id: string, hook: TAfterAssistantResponseHook): void {
       if (rejectLateCall('afterAssistantResponse')) return
       const unsub = host.registerAfterAssistantResponseHook(pluginId, id, hook)
       lifecycleUnsubs.push(unsub)
-      logger.log(`[Plugin:${pluginId}] Registered afterAssistantResponse hook: ${id}`)
+      logger.debug(`[Plugin:${pluginId}] Registered afterAssistantResponse hook: ${id}`)
     },
 
     /**
@@ -946,7 +945,7 @@ export function createCorePluginAPI<
       }
       const unsub = host.registerInputInterceptHook(pluginId, id, handler)
       lifecycleUnsubs.push(unsub)
-      logger.log(`[Plugin:${pluginId}] Registered input interceptor: ${id}`)
+      logger.debug(`[Plugin:${pluginId}] Registered input interceptor: ${id}`)
     },
 
     /**
@@ -983,7 +982,7 @@ export function createCorePluginAPI<
       }
       const unsub = host.registerToolCallInterceptHook(pluginId, id, handler)
       lifecycleUnsubs.push(unsub)
-      logger.log(`[Plugin:${pluginId}] Registered tool-call interceptor: ${id}`)
+      logger.debug(`[Plugin:${pluginId}] Registered tool-call interceptor: ${id}`)
     },
 
     /**
@@ -1024,7 +1023,7 @@ export function createCorePluginAPI<
       }
       const unsub = host.registerToolResultInterceptHook(pluginId, id, handler)
       lifecycleUnsubs.push(unsub)
-      logger.log(`[Plugin:${pluginId}] Registered tool-result interceptor: ${id}`)
+      logger.debug(`[Plugin:${pluginId}] Registered tool-result interceptor: ${id}`)
     },
 
     registerSkillRoot(provider: TSkillRootProvider): void {
@@ -1032,7 +1031,7 @@ export function createCorePluginAPI<
       const unsub = host.registerSkillRoot(pluginId, provider)
       skillRootUnsubs.push(unsub)
       Promise.resolve(host.invalidateSkillsCache?.()).catch(() => undefined)
-      logger.log(`[Plugin:${pluginId}] Registered skill root provider`)
+      logger.debug(`[Plugin:${pluginId}] Registered skill root provider`)
     },
 
     /**
@@ -1065,7 +1064,7 @@ export function createCorePluginAPI<
         logger.error(`[Plugin:${pluginId}] Duplicate request handler for action "${normalized}" (replacing)`, undefined)
       }
       requestHandlers.set(normalized, handler)
-      logger.log(`[Plugin:${pluginId}] Registered request handler: ${normalized}`)
+      logger.debug(`[Plugin:${pluginId}] Registered request handler: ${normalized}`)
     },
 
     settings: {
@@ -1172,7 +1171,7 @@ export function createCorePluginAPI<
         return result ?? { refresh: false }
       })
 
-      logger.log(`[Plugin:${pluginId}] Registered workspace panel: ${panelId}`)
+      logger.debug(`[Plugin:${pluginId}] Registered workspace panel: ${panelId}`)
     },
 
     /**
@@ -1276,7 +1275,7 @@ export function createCorePluginAPI<
         return result ?? { refresh: false }
       })
 
-      logger.log(`[Plugin:${pluginId}] Registered ui slot: ${address}`)
+      logger.debug(`[Plugin:${pluginId}] Registered ui slot: ${address}`)
     },
 
     events: {
@@ -1294,14 +1293,14 @@ export function createCorePluginAPI<
         try {
           assertPluginPayloadSerializable(payload, `plugin event "${name}" payload`)
         } catch (error) {
-          logger.error(`[Plugin:${pluginId}] events.emit rejected:`, error)
+          logger.error(`[Plugin:${pluginId}] events.emit rejected:`, undefined, error)
           reportFailure(pluginScope.eventEmit(name), error)
           return
         }
         try {
           host.emitPluginEvent?.(pluginId, name, payload)
         } catch (error) {
-          logger.error(`[Plugin:${pluginId}] events.emit failed:`, error)
+          logger.error(`[Plugin:${pluginId}] events.emit failed:`, undefined, error)
           reportFailure(pluginScope.eventEmit(name), error)
         }
       },
@@ -1494,14 +1493,14 @@ export function createCorePluginAPI<
       try {
         unregister = host.registerIMConnector?.(pluginId, { ...connector, id: connectorId })
       } catch (error) {
-        logger.error(`[Plugin:${pluginId}] registerIMConnector("${connectorId}") failed:`, error)
+        logger.error(`[Plugin:${pluginId}] registerIMConnector("${connectorId}") failed:`, undefined, error)
         reportFailure(pluginScope.registration('IMConnector'), error)
         return () => {}
       }
       if (!unregister) {
         // 宿主没接这条线(headless / server / CLI daemon —— §6 方案 A 下只有
         // 桌面宿主执行插件)。如实告诉插件它被忽略了,而不是假装成功。
-        logger.log(`[Plugin:${pluginId}] IM connectors are not available on this host; "${connectorId}" was ignored`)
+        logger.debug(`[Plugin:${pluginId}] IM connectors are not available on this host; "${connectorId}" was ignored`)
         return () => {}
       }
       let released = false
@@ -1511,12 +1510,12 @@ export function createCorePluginAPI<
         try {
           unregister?.()
         } catch (error) {
-          logger.error(`[Plugin:${pluginId}] Failed to unregister IM connector "${connectorId}":`, error)
+          logger.error(`[Plugin:${pluginId}] Failed to unregister IM connector "${connectorId}":`, undefined, error)
         }
       }
       // 插件自己不调 release 也能拆干净 —— 拆除语义不建立在插件守规矩上。
       disposeCallbacks.push(release)
-      logger.log(`[Plugin:${pluginId}] Registered IM connector: ${connectorId}`)
+      logger.debug(`[Plugin:${pluginId}] Registered IM connector: ${connectorId}`)
       return release
     },
 
@@ -1557,12 +1556,12 @@ export function createCorePluginAPI<
       try {
         unregister = host.registerSearchProvider?.(pluginId, { ...registration, id: providerId, label })
       } catch (error) {
-        logger.error(`[Plugin:${pluginId}] registerSearchProvider("${providerId}") failed:`, error)
+        logger.error(`[Plugin:${pluginId}] registerSearchProvider("${providerId}") failed:`, undefined, error)
         reportFailure(pluginScope.registration('SearchProvider'), error)
         return () => {}
       }
       if (!unregister) {
-        logger.log(
+        logger.debug(
           `[Plugin:${pluginId}] Search providers are not available on this host; "${providerId}" was ignored`,
         )
         return () => {}
@@ -1574,11 +1573,11 @@ export function createCorePluginAPI<
         try {
           unregister?.()
         } catch (error) {
-          logger.error(`[Plugin:${pluginId}] Failed to unregister search provider "${providerId}":`, error)
+          logger.error(`[Plugin:${pluginId}] Failed to unregister search provider "${providerId}":`, undefined, error)
         }
       }
       disposeCallbacks.push(release)
-      logger.log(`[Plugin:${pluginId}] Registered search provider: ${providerId}`)
+      logger.debug(`[Plugin:${pluginId}] Registered search provider: ${providerId}`)
       return release
     },
 
@@ -1631,12 +1630,12 @@ export function createCorePluginAPI<
       try {
         unregister = host.registerDeepLinkAction?.(pluginId, { ...registration, name, title })
       } catch (error) {
-        logger.error(`[Plugin:${pluginId}] registerDeepLinkAction("${address}") failed:`, error)
+        logger.error(`[Plugin:${pluginId}] registerDeepLinkAction("${address}") failed:`, undefined, error)
         reportFailure(pluginScope.registration('DeepLinkAction'), error)
         return () => {}
       }
       if (!unregister) {
-        logger.log(
+        logger.debug(
           `[Plugin:${pluginId}] Deep links are not available on this host; "${address}" was ignored`,
         )
         return () => {}
@@ -1648,11 +1647,11 @@ export function createCorePluginAPI<
         try {
           unregister?.()
         } catch (error) {
-          logger.error(`[Plugin:${pluginId}] Failed to unregister deep link action "${address}":`, error)
+          logger.error(`[Plugin:${pluginId}] Failed to unregister deep link action "${address}":`, undefined, error)
         }
       }
       disposeCallbacks.push(release)
-      logger.log(`[Plugin:${pluginId}] Registered deep link action: ${address}`)
+      logger.debug(`[Plugin:${pluginId}] Registered deep link action: ${address}`)
       return release
     },
 
@@ -1717,12 +1716,12 @@ export function createCorePluginAPI<
       try {
         unregister = host.registerCredentialStrategy?.(pluginId, { ...registration, name, title })
       } catch (error) {
-        logger.error(`[Plugin:${pluginId}] registerCredentialStrategy("${policy}") failed:`, error)
+        logger.error(`[Plugin:${pluginId}] registerCredentialStrategy("${policy}") failed:`, undefined, error)
         reportFailure(pluginScope.registration('CredentialStrategy'), error)
         return () => {}
       }
       if (!unregister) {
-        logger.log(
+        logger.debug(
           `[Plugin:${pluginId}] Credential strategies are not available on this host; `
           + `"${policy}" was ignored`,
         )
@@ -1737,12 +1736,12 @@ export function createCorePluginAPI<
         } catch (error) {
           logger.error(
             `[Plugin:${pluginId}] Failed to unregister credential strategy "${policy}":`,
-            error,
+            undefined, error,
           )
         }
       }
       disposeCallbacks.push(release)
-      logger.log(`[Plugin:${pluginId}] Registered credential strategy: ${policy}`)
+      logger.debug(`[Plugin:${pluginId}] Registered credential strategy: ${policy}`)
       return release
     },
 
@@ -1790,7 +1789,7 @@ export function createCorePluginAPI<
         try {
           host.updatePluginBackground?.(pluginId, clamped)
         } catch (error) {
-          logger.error(`[Plugin:${pluginId}] theme.updateBackground failed:`, error)
+          logger.error(`[Plugin:${pluginId}] theme.updateBackground failed:`, undefined, error)
         }
       },
     },
@@ -1822,7 +1821,7 @@ export function createCorePluginAPI<
         try {
           host.notify(pluginId, message, level, normalized.sound)
         } catch (error) {
-          logger.error(`[Plugin:${pluginId}] notify error:`, error)
+          logger.error(`[Plugin:${pluginId}] notify error:`, undefined, error)
         }
       },
 

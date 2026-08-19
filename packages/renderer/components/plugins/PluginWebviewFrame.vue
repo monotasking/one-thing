@@ -57,6 +57,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import { toPlainData } from '@/workspace/plain-data'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.plugin-webview')
 import {
   PLUGIN_WEBVIEW_MESSAGE,
   pluginWebviewEntryUrl,
@@ -162,10 +165,11 @@ function onMessage(event: MessageEvent): void {
     droppedMessages += 1
     // 一条一条打日志会被恶意页面刷屏;只在第一条与每 100 条时说一次。
     if (droppedMessages === 1 || droppedMessages % 100 === 0) {
-      console.warn(
-        `[PluginWebview] Dropped ${droppedMessages} message(s) without a valid token from `
-        + `"${props.panel.pluginId}:${props.panel.panelId}"`,
-      )
+      log.warn('dropped webview messages without a valid token', {
+        dropped: droppedMessages,
+        pluginId: props.panel.pluginId,
+        panelId: props.panel.panelId,
+      })
     }
     return
   }

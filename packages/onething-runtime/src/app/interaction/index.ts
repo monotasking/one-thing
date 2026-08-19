@@ -37,6 +37,10 @@ import type {
   InteractionRespondRequest,
   InteractionRespondResponse,
 } from '@shared/ipc.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('interaction')
+
 
 /**
  * IPC / HTTP 面的读:把还没答的提问吐给 UI 补水。
@@ -49,7 +53,7 @@ export function getPendingInteractionsForIpc(sessionId: string): InteractionGetP
     return { success: true, pending: Interaction.getPending(sessionId) }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    console.error('[Interaction IPC] getPending failed:', message)
+    log.error('get pending interactions failed', { sessionId, reason: message })
     return { success: false, error: message }
   }
 }
@@ -88,7 +92,7 @@ export function respondInteractionForIpc(
     return { success: true }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    console.error('[Interaction IPC] respond failed:', message)
+    log.error('interaction respond failed', { reason: message })
     return { success: false, error: message }
   }
 }

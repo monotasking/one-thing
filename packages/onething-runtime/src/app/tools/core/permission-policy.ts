@@ -13,6 +13,10 @@ import type {
   PermissionPolicyInput,
 } from '@onething/runtime/permissions'
 import type { MessageOrigin } from '@shared/ipc.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('permission')
+
 
 const permissionRuntime = createOnethingPermissionRuntime({
   grantMatcher: PermissionGrants.matchGrant,
@@ -129,7 +133,7 @@ const collabReminderBridge = {
             `有一个权限请求已等待 30 分钟未处理:${request.title}(从看板任务卡打开工作会话审批)`,
           )
         } catch (error) {
-          console.error('[collab] permission reminder failed:', error)
+          log.error('collab permission reminder failed', { sessionId: request.sessionId }, error)
         }
       })()
     }, COLLAB_ASK_REMINDER_MS)

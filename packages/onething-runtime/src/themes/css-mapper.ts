@@ -13,6 +13,10 @@ import {
 import type { ResolvedHighlightStyle, ResolvedUIStyle, ThemeNeutralColorToken } from './resolver.js'
 import { deriveRegionOverlay, guaranteeMinMixOpacity } from './role-mapping.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('themes')
+
 /**
  * Maps theme property paths to CSS variable names
  * Each theme property can map to multiple CSS variables for compatibility
@@ -590,10 +594,13 @@ function addUICSSVariables(
       for (const cssVar of aliasVars) {
         const previous = aliasWriters.get(cssVar)
         if (previous && previous.value !== value) {
-          console.warn(
-            `[ThemeManager] Conflicting alias CSS variable ${cssVar}: ` +
-            `${previous.token} wrote ${previous.value}, ${token} overwrites with ${value}`
-          )
+          log.warn('conflicting alias css variable', {
+            cssVar,
+            previousToken: previous.token,
+            previousValue: previous.value,
+            token,
+            value,
+          })
         }
         aliasWriters.set(cssVar, { token, value })
         result[cssVar] = value

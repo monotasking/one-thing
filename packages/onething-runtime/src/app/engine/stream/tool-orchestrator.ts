@@ -13,6 +13,10 @@ import {
 import { sessionReads } from '../../session/reads.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { consolePort, getLogger } from '../../logging/index.js'
+
+const log = getLogger('toolkit.runner')
+
 
 interface ToolCallData {
   toolName: string
@@ -73,10 +77,7 @@ export class ToolOrchestrator {
       emitToolResult: (toolCall) => this.emitter.sendToolResult(toolCall),
       removeToolCallArtifacts: (ids) => this.removeToolCallArtifacts(ids),
       emitToolCallRemovalUpdate: () => this.emitToolCallRemovalUpdate(),
-      logger: {
-        info: (...args) => console.log(...args),
-        error: (...args) => console.error(...args),
-      },
+      logger: consolePort(log),
     })
   }
 
@@ -147,10 +148,10 @@ export class ToolOrchestrator {
           updates: plan.updates ?? { toolCalls: [...this.processor.toolCalls] },
         })
         .catch((err) =>
-          console.error('[ToolOrchestrator] message:updated emit error:', err),
+          log.error('message updated emit failed', { sessionId: this.ctx.sessionId }, err),
         )
     } catch (err) {
-      console.error('[ToolOrchestrator] remove artifacts emit error:', err)
+      log.error('remove tool call artifacts emit failed', { sessionId: this.ctx.sessionId }, err)
     }
     return true
   }
@@ -164,10 +165,10 @@ export class ToolOrchestrator {
           updates: { toolCalls: [...this.processor.toolCalls] },
         })
         .catch((err) =>
-          console.error('[ToolOrchestrator] message:updated emit error:', err),
+          log.error('message updated emit failed', { sessionId: this.ctx.sessionId }, err),
         )
     } catch (err) {
-      console.error('[ToolOrchestrator] tool call removal emit error:', err)
+      log.error('tool call removal emit failed', { sessionId: this.ctx.sessionId }, err)
     }
   }
 }

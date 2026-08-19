@@ -20,6 +20,12 @@ import { broadcastVoiceHostMessage } from '../voice/host-ports.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('music')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 let service: MusicSetupService | null = null
 let nowPlayingWatcher: NowPlayingWatcher | null = null
@@ -98,12 +104,12 @@ export function getMusicService(): MusicSetupService {
     backend: provider.createBackend({
       runner: createElectronMusicProcessRunner(),
       writeSecretFile: writeElectronMusicSecretFile,
-      logger: console,
+      logger: consoleLog,
     }),
     emit: emitMusicEvent,
     getSource: (): OnethingMusicRadioSource => getMusicSettings().source,
     tools: provider.descriptor.tools,
-    logger: console,
+    logger: consoleLog,
   })
   return service
 }
@@ -122,7 +128,7 @@ export function stopMusicPlayerKeepalive(): void {
       stdio: 'ignore',
     }).unref()
   } catch (error) {
-    console.warn('[music] could not stop playback', error)
+    log.warn('stop playback failed', {}, error)
   }
 }
 
@@ -149,7 +155,7 @@ function getNowPlayingWatcher(): NowPlayingWatcher {
       })
     },
     onSample: nowPlaying => sampleListener?.(nowPlaying),
-    logger: console,
+    logger: consoleLog,
   })
   return nowPlayingWatcher
 }

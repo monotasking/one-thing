@@ -37,6 +37,10 @@ import * as store from "../store.js";
 import { sessionReads } from "../session/reads.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('goals')
+
 
 const pendingUsage = new Map<string, { tokens: number; seconds: number }>();
 
@@ -97,7 +101,7 @@ function persistGoal(sessionId: string, goal: SessionGoal | null): void {
 	try {
 		getEventBus().emit(sessionId, { type: SESSION_EVENT_TYPES.SESSION_GOAL_UPDATED, goal: settled, goals });
 	} catch (error) {
-		console.error("[goals] Failed to emit goal-updated:", error);
+		log.error("emit goal updated failed", { sessionId }, error);
 	}
 }
 
@@ -114,7 +118,7 @@ function persistGoalRecord(sessionId: string, goal: SessionGoal): void {
 	try {
 		getEventBus().emit(sessionId, { type: SESSION_EVENT_TYPES.SESSION_GOAL_UPDATED, goal, goals });
 	} catch (error) {
-		console.error("[goals] Failed to emit goal-updated:", error);
+		log.error("emit goal updated failed", { sessionId }, error);
 	}
 }
 
@@ -229,7 +233,7 @@ async function enrichCompletedGoalWithFileChanges(
 		if (!record || record.status !== "complete") return;
 		persistGoalRecord(sessionId, { ...record, fileChanges });
 	} catch (error) {
-		console.error("[goals] file-change summary failed:", error);
+		log.error("goal file-change summary failed", { sessionId }, error);
 	}
 }
 

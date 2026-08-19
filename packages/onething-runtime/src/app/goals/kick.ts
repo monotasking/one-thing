@@ -30,6 +30,10 @@ import * as store from "../store.js";
 import { getGoal, goalLimits } from "./index.js";
 
 import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('goals')
+
 
 function goalRunChannel(sessionId: string): string | undefined {
 	const live = getStreamEngineSafe()?.getChannel(sessionId);
@@ -63,7 +67,7 @@ export async function emitGoalDrive(
 			origin: { transport: "api", source: "goal", receivedAt: Date.now() },
 		});
 	} catch (error) {
-		console.error("[goals] Failed to start goal run:", error);
+		log.error("start goal run failed", { sessionId }, error);
 	}
 }
 

@@ -1,4 +1,5 @@
 import path from 'path'
+import { toLogger, type CompatLogger, type Logger } from '../logging/index.js'
 import type { CorePluginDefinition } from './types.js'
 import { describePluginPanelResultProblem } from './panel.js'
 import {
@@ -45,16 +46,14 @@ export interface CorePluginStateLike<TCommand = unknown> {
   requestHandlers?: Map<string, CorePluginRequestHandler>
 }
 
-export interface CorePluginManagerLogger {
-  log(message: string): void
-  error(message: string, error?: unknown): void
-}
+/** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
+export type CorePluginManagerLogger = CompatLogger
 
 export interface CorePluginBootstrapperOptions<TManager, TContext> {
   ensurePluginDirs?(): void
   createManager(): TManager
   initializeManager(manager: TManager, context: TContext): Promise<void>
-  logger?: Pick<CorePluginManagerLogger, 'error'>
+  logger?: CorePluginManagerLogger
 }
 
 export interface CorePluginManagerHost<
@@ -207,9 +206,14 @@ export class CorePluginManager<
 
   constructor(
     private readonly host: CorePluginManagerHost<TDefinition, TEntry, TApi, TState, TCommand, TContext>,
-    private readonly logger: CorePluginManagerLogger = console,
+    private readonly injectedLogger?: CorePluginManagerLogger,
     private readonly options: CorePluginManagerOptions = {},
-  ) {}
+  ) {
+    this.log = toLogger(injectedLogger)
+  }
+
+  /** 注入的 logger 归一化后的样子(缺省 noop —— core 不再默认打 console)。 */
+  private readonly log: Logger
 
   async initialize(context: TContext): Promise<void> {
     // 重新装配:把拆除闩放开,否则 shutdown 之后再 initialize 会一个插件也装不上。
@@ -258,7 +262,7 @@ export class CorePluginManager<
     }
 
     this.host.setPluginEnabled(pluginId, false)
-    this.logger.log(`[PluginManager] Disabled plugin: ${pluginId}`)
+    this.log.debug(`[PluginManager] Disabled plugin: ${pluginId}`)
   }
 
   async enablePlugin(pluginId: string): Promise<void> {
@@ -398,7 +402,7 @@ export class CorePluginManager<
         try {
           assertPluginPayloadSerializable(payload, 'progress payload')
         } catch (error) {
-          this.logger.error(`[PluginManager] Dropping non-serializable progress from "${input.pluginId}":`, error)
+          this.log.error(`[PluginManager] Dropping non-serializable progress from "${input.pluginId}":`, undefined, error)
           return
         }
         input.onProgress?.({ requestId, pluginId: input.pluginId, action, payload })
@@ -432,7 +436,7 @@ export class CorePluginManager<
           settled = true
           this.requests.end(requestId)
           const message = `Plugin request "${input.pluginId}/${action}" exceeded ${timeoutMs}ms`
-          this.logger.error(`[PluginManager] ${message}`, undefined)
+          this.log.error(`[PluginManager] ${message}`, undefined)
           reportFailure(new Error(message))
           resolve(fail(message, { timedOut: true }))
         }, timeoutMs)
@@ -444,7 +448,7 @@ export class CorePluginManager<
       try {
         const result = await handler(input.payload, ctx)
         if (settled || controller.signal.aborted) {
-          this.logger.log(`[PluginManager] Dropping late result for "${input.pluginId}/${action}" (${requestId})`)
+          this.log.debug(`[PluginManager] Dropping late result for "${input.pluginId}/${action}" (${requestId})`)
           return fail(PLUGIN_REQUEST_ABORTED_ERROR, { aborted: true })
         }
         assertPluginPayloadSerializable(result, 'request result')
@@ -456,10 +460,10 @@ export class CorePluginManager<
         return { success: true, requestId, result: result ?? null }
       } catch (error) {
         if (settled || controller.signal.aborted) {
-          this.logger.log(`[PluginManager] Dropping late failure for "${input.pluginId}/${action}" (${requestId})`)
+          this.log.debug(`[PluginManager] Dropping late failure for "${input.pluginId}/${action}" (${requestId})`)
           return fail(PLUGIN_REQUEST_ABORTED_ERROR, { aborted: true })
         }
-        this.logger.error(`[PluginManager] Request "${input.pluginId}/${action}" failed:`, error)
+        this.log.error(`[PluginManager] Request "${input.pluginId}/${action}" failed:`, undefined, error)
         reportFailure(error)
         return fail(pluginRequestErrorMessage(error))
       } finally {
@@ -504,7 +508,7 @@ export class CorePluginManager<
       const archive = this.host.archivePluginData?.(pluginId) ?? { archived: false }
       if (archive.error) {
         // 数据还在原地 —— 报出来,不要接着删源目录造成"代码没了数据还在"。
-        this.logger.error(`[PluginManager] Uninstall aborted for "${pluginId}": ${archive.error}`)
+        this.log.error(`[PluginManager] Uninstall aborted for "${pluginId}": ${archive.error}`)
         const failed = this.plugins.get(pluginId)
         if (failed) failed.error = `Uninstall failed while archiving data: ${archive.error}`
         return { success: false, error: archive.error, archivePath: archive.archivePath }
@@ -512,7 +516,7 @@ export class CorePluginManager<
 
       const removal = (await this.host.removePluginSource?.(definition)) ?? { removed: false }
       if (removal.error) {
-        this.logger.error(`[PluginManager] Uninstall could not remove source for "${pluginId}": ${removal.error}`)
+        this.log.error(`[PluginManager] Uninstall could not remove source for "${pluginId}": ${removal.error}`)
         // 补偿:数据已经搬走但插件还在 —— 把它搬回原位,否则用户看到的是
         // 一个"还装着但数据全没了"的插件。
         let message = `Uninstall failed while removing the plugin directory: ${removal.error}`
@@ -537,7 +541,7 @@ export class CorePluginManager<
       // 删掉只是不再持有;重装时 bumpReloadToken 会从全局计数取一个新号,
       // 不会退回 0(退回 0 = 重装后命中旧模块缓存,曾经的真实 bug)。
       this.reloadTokens.delete(pluginId)
-      this.logger.log(`[PluginManager] Uninstalled plugin: ${pluginId}`)
+      this.log.debug(`[PluginManager] Uninstalled plugin: ${pluginId}`)
 
       return { success: true, archivePath: archive.archivePath }
     })
@@ -747,7 +751,7 @@ export class CorePluginManager<
     this.host.ensurePluginDirs()
     const definitions = this.host.scanPlugins()
 
-    this.logger.log(`[PluginManager] Found ${definitions.length} plugin(s)`)
+    this.log.debug(`[PluginManager] Found ${definitions.length} plugin(s)`)
 
     for (const def of definitions) {
       this.plugins.set(def.id, { definition: def, loaded: false, commands: [] })
@@ -770,16 +774,16 @@ export class CorePluginManager<
         userPluginCount: definitions.filter(def => def.source !== 'builtin').length,
       }) ?? []
       if (archived.length > 0) {
-        this.logger.log(`[PluginManager] Archived orphaned plugin data: ${archived.join(', ')}`)
+        this.log.debug(`[PluginManager] Archived orphaned plugin data: ${archived.join(', ')}`)
       }
       if (!scan.trusted) {
-        this.logger.error(
+        this.log.error(
           `[PluginManager] Plugin directory scan is not trustworthy (${scan.reason ?? 'unknown'}); `
           + 'skipped orphaned-data archiving this round.',
         )
       }
     } catch (error) {
-      this.logger.error('[PluginManager] Orphan plugin data scan failed:', error)
+      this.log.error('[PluginManager] Orphan plugin data scan failed:', undefined, error)
     }
 
     await Promise.all(definitions.map(def => this.loadPlugin(def, generation)))
@@ -839,11 +843,11 @@ export class CorePluginManager<
     /** 旧一轮迟到的加载不许写进新一轮的表。 */
     const stale = (): boolean => {
       if (this.shuttingDown) {
-        this.logger.log(`[PluginManager] Dropping load of "${def.id}": the plugin system is shutting down`)
+        this.log.debug(`[PluginManager] Dropping load of "${def.id}": the plugin system is shutting down`)
         return true
       }
       if (generation === this.generation) return false
-      this.logger.log(`[PluginManager] Dropping stale load of "${def.id}" (generation ${generation} → ${this.generation})`)
+      this.log.debug(`[PluginManager] Dropping stale load of "${def.id}" (generation ${generation} → ${this.generation})`)
       return true
     }
 
@@ -859,7 +863,7 @@ export class CorePluginManager<
 
     // 声明层闸门:非法 contributes / minAppVersion 不满足 —— 一行插件代码都不跑。
     if (def.loadBlockedReason) {
-      this.logger.error(`[PluginManager] Plugin "${def.id}" blocked: ${def.loadBlockedReason}`)
+      this.log.error(`[PluginManager] Plugin "${def.id}" blocked: ${def.loadBlockedReason}`)
       this.plugins.set(def.id, {
         definition: def,
         loaded: false,
@@ -869,7 +873,7 @@ export class CorePluginManager<
       return
     }
 
-    this.logger.log(`[PluginManager] Loading plugin: ${def.id}`)
+    this.log.debug(`[PluginManager] Loading plugin: ${def.id}`)
 
     const entryTimeoutMs = this.options.entryTimeoutMs ?? CORE_PLUGIN_ENTRY_TIMEOUT_MS
     let entry: TEntry | null = null
@@ -890,7 +894,7 @@ export class CorePluginManager<
       )
     } catch (error) {
       if (stale()) return
-      this.logger.error(`[PluginManager] Plugin "${def.id}" module load failed:`, error)
+      this.log.error(`[PluginManager] Plugin "${def.id}" module load failed:`, undefined, error)
       this.plugins.set(def.id, {
         definition: def,
         loaded: false,
@@ -939,7 +943,7 @@ export class CorePluginManager<
       // 被更晚的一次加载超过了:那一次已经(或即将)落表,这一份必须自己拆掉,
       // 否则就是一个谁也不认识、谁也不会 dispose 的孤儿。
       if (this.loadTokens.get(def.id) !== loadToken) {
-        this.logger.log(`[PluginManager] Dropping superseded load of "${def.id}"`)
+        this.log.debug(`[PluginManager] Dropping superseded load of "${def.id}"`)
         this.host.disposePlugin(state)
         return
       }
@@ -948,7 +952,7 @@ export class CorePluginManager<
       // 注意读的是表里那份 info(可能与 def 是同一个对象,也可能已被替换),
       // 不是函数入口处那个已被 TS 收窄为 true 的 def.enabled。
       if (this.plugins.get(def.id)?.definition.enabled === false) {
-        this.logger.log(`[PluginManager] Plugin "${def.id}" was disabled while loading; dropping the load`)
+        this.log.debug(`[PluginManager] Plugin "${def.id}" was disabled while loading; dropping the load`)
         this.host.disposePlugin(state)
         return
       }
@@ -957,11 +961,11 @@ export class CorePluginManager<
       // 的那一份不会有任何人再来 dispose。
       const previous = this.pluginStates.get(def.id)
       if (previous && previous !== state) {
-        this.logger.error(`[PluginManager] Replacing an orphaned state for "${def.id}"`, undefined)
+        this.log.error(`[PluginManager] Replacing an orphaned state for "${def.id}"`, undefined)
         try {
           this.host.disposePlugin(previous)
         } catch (error) {
-          this.logger.error(`[PluginManager] Error disposing orphaned state for "${def.id}":`, error)
+          this.log.error(`[PluginManager] Error disposing orphaned state for "${def.id}":`, undefined, error)
         }
       }
       this.pluginStates.set(def.id, state)
@@ -974,17 +978,17 @@ export class CorePluginManager<
       // 版本进这一行:排障时"装没装上"和"装的是哪一版"是同一个问题,
       // 少了版本号就得回去翻账本才能判断新包到底生效没有。
       const version = def.manifest.version ? `@${def.manifest.version}` : ''
-      this.logger.log(
+      this.log.debug(
         `[PluginManager] Plugin "${def.id}${version}" loaded successfully (${state.commands.size} commands)`,
       )
     } catch (error) {
-      this.logger.error(`[PluginManager] Plugin "${def.id}" failed:`, error)
+      this.log.error(`[PluginManager] Plugin "${def.id}" failed:`, undefined, error)
       // 装到一半的注册要收掉,否则失败的插件仍在工具表/事件总线上留着半截足迹。
       // dispose 同时落下 disposed 闩:超时后恢复的 entry 再注册也进不来了。
       try {
         this.host.disposePlugin(state)
       } catch (disposeError) {
-        this.logger.error(`[PluginManager] Error disposing half-loaded plugin "${def.id}":`, disposeError)
+        this.log.error(`[PluginManager] Error disposing half-loaded plugin "${def.id}":`, undefined, disposeError)
       }
       if (stale()) return
       this.plugins.set(def.id, {
@@ -1002,13 +1006,13 @@ export class CorePluginManager<
     // 这条路径此前是漏的)。
     const aborted = this.requests.abortAll()
     if (aborted > 0) {
-      this.logger.log(`[PluginManager] Aborted ${aborted} in-flight plugin request(s) during teardown`)
+      this.log.debug(`[PluginManager] Aborted ${aborted} in-flight plugin request(s) during teardown`)
     }
     for (const [id, state] of this.pluginStates) {
       try {
         this.host.disposePlugin(state)
       } catch (error) {
-        this.logger.error(`[PluginManager] Error disposing plugin "${id}":`, error)
+        this.log.error(`[PluginManager] Error disposing plugin "${id}":`, undefined, error)
       }
     }
     this.pluginStates.clear()
@@ -1034,7 +1038,7 @@ export class CorePluginBootstrapper<TManager, TContext> {
     try {
       await this.options.initializeManager(manager, context)
     } catch (error) {
-      this.options.logger?.error?.('[PluginManager] Bootstrap failed:', error)
+      this.options.logger?.error?.('[PluginManager] Bootstrap failed:', undefined, error)
     }
 
     return manager

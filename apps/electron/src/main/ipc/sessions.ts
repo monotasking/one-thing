@@ -39,6 +39,9 @@ import {
   getSessionUsage,
   updateSessionUsage,
 } from '@onething/app/session/usage.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.sessions')
 
 export { clearSessionUsage, getSessionUsage, updateSessionUsage } from '@onething/app/session/usage.js'
 
@@ -102,17 +105,17 @@ export function registerSessionHandlers() {
             logger: console,
           })
           if (response.success) {
-            console.info('[Perf][SessionPage][ipc]', {
+            log.debug('session messages page served', {
               sessionId: typedRequest.sessionId,
               totalMs: Math.round(performance.now() - start),
               messages: response.messages?.length ?? 0,
               success: true,
             })
           } else {
-            console.info('[Perf][SessionPage][ipc]', {
+            log.debug('session messages page served', {
               sessionId: typedRequest.sessionId,
               totalMs: Math.round(performance.now() - start),
-              failed: true,
+              success: false,
             })
           }
           return response
@@ -136,7 +139,7 @@ export function registerSessionHandlers() {
           try {
             return { success: true, segments: await readSessionSegments(sessionId) }
           } catch (error) {
-            console.error('[SessionsIPC] Failed to read segments:', error)
+            log.error('read session segments failed', { sessionId }, error)
             return { success: false, segments: [] }
           }
         },
@@ -227,7 +230,7 @@ export function registerSessionHandlers() {
               // — including any children the delete cascaded to.
               for (const deletedId of result.deletedIds) {
                 deleteSessionAiTodo(deletedId).catch(error => {
-                  console.error('[todo-plan] Failed to delete session AI todo:', error)
+                  log.error('delete session AI todo failed', { sessionId: deletedId }, error)
                 })
               }
               return result

@@ -1,5 +1,5 @@
 import { setOnethingProviderRequestDumpEnabled } from '@onething/runtime/providers'
-import { getLogger, setLogLevelSpec } from './index.js'
+import { getLogger, resolveLevelSpec, setLogLevelSpec } from './index.js'
 
 /**
  * 「诊断模式」(拍板 E②):设置页**一个**开关 = 全域 debug + provider 请求正文
@@ -11,7 +11,8 @@ import { getLogger, setLogLevelSpec } from './index.js'
 const DIAGNOSTICS_LEVEL_SPEC = 'debug'
 
 function baseLevelSpec(): string {
-  return process.env.ONETHING_LOG ?? 'info'
+  // 走同一个解析器 —— 关掉诊断模式不该顺手丢掉 `ONETHING_DEBUG_*` 别名。
+  return resolveLevelSpec()
 }
 
 let applied: boolean | undefined

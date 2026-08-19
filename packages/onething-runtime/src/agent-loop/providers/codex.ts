@@ -24,6 +24,10 @@ import type {
 	AgentProviderRequestDumper,
 } from "./request-dump.js";
 
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('providers.codex')
+
 type FetchFn = typeof globalThis.fetch;
 type CodexRawRecord = Record<string, AgentJsonValue | undefined>;
 
@@ -50,17 +54,6 @@ export interface ProviderAuthContext {
 export type CodexAgentProviderRequestDump = AgentProviderRequestDump & {
 	mode: "codex-http";
 };
-
-function shouldDebugCodexStream(): boolean {
-	return (
-		process.env.ONETHING_DEBUG_STREAM === "1" ||
-		process.env.ONETHING_DEBUG_CODEX_STREAM === "1"
-	);
-}
-
-function logTime(): string {
-	return new Date().toISOString();
-}
 
 function previewText(value: string, maxLength = 160): string {
 	return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
@@ -211,8 +204,9 @@ async function resolveCodexTokenForRequest(
 			return await options.refreshOAuthToken(forceRefresh);
 		} catch (error) {
 			if (forceRefresh) throw error;
-			console.warn(
-				"[CodexAgentProvider] Failed to resolve fresh OAuth token; using provided token snapshot:",
+			log.warn(
+				"oauth token refresh failed, using token snapshot",
+				undefined,
 				error,
 			);
 		}
@@ -900,7 +894,7 @@ export function createCodexAgentProvider(
 			},
 			requestBody: body,
 		});
-		console.log("[CodexAgentProvider] streamTurn request", {
+		log.debug("stream turn request", {
 			turn: request.turn,
 			messageCount: request.messages.length,
 			requestDumpPath,
@@ -930,9 +924,7 @@ export function createCodexAgentProvider(
 					refreshedToken?.accessToken &&
 					refreshedToken.accessToken !== token.accessToken
 				) {
-					console.warn(
-						"[CodexAgentProvider] Codex request returned 401; refreshed OAuth token and retrying once.",
-					);
+					log.warn("request returned 401, refreshed oauth token and retrying once");
 					response = await sendRequest(refreshedToken);
 				} else {
 					throw createCodexAgentApiError(
@@ -959,7 +951,7 @@ export function createCodexAgentProvider(
 			throw new Error("Codex request failed: response body is empty");
 		}
 
-		const debugStream = shouldDebugCodexStream();
+		const debugStream = log.isLevelEnabled("trace");
 		let finishReason: AgentFinishReason = "unknown";
 		let usage: AgentUsage | undefined;
 		let completedToolCallCount = 0;
@@ -988,8 +980,7 @@ export function createCodexAgentProvider(
 				`${reasoningSummaryByItem.get(itemId) ?? ""}${delta}`,
 			);
 			if (debugStream) {
-				console.log("[CodexAgentProvider] reasoning-delta", {
-					time: logTime(),
+				log.trace("reasoning delta", {
 					turn: request.turn,
 					chars: delta.length,
 					text: previewText(delta, 240),
@@ -1004,8 +995,7 @@ export function createCodexAgentProvider(
 			if (!delta) return;
 			emittedTextFromDelta = true;
 			if (debugStream) {
-				console.log("[CodexAgentProvider] text-delta", {
-					time: logTime(),
+				log.trace("text delta", {
 					turn: request.turn,
 					chars: delta.length,
 					text: previewText(delta, 240),
@@ -1247,8 +1237,7 @@ export function createCodexAgentProvider(
 
 		for await (const event of parseCodexResponsesSse(response.body)) {
 			if (debugStream) {
-				console.log("[CodexAgentProvider:SSE] event", {
-					time: logTime(),
+				log.trace("sse event", {
 					type: event.type,
 					deltaChars: typeof event.delta === "string" ? event.delta.length : 0,
 					deltaPreview:

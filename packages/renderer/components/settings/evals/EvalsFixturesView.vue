@@ -313,6 +313,9 @@ import { useConfirm } from "@/composables/useConfirm";
 import { SETTINGS_DIALOG_VARS } from "@/components/settings/settings-dialog-vars";
 import { useEvalsStore } from "@/stores/evals";
 import type { EvalFixtureMeta } from "@/stores/evals";
+import { getLogger } from "@/services/log";
+
+const log = getLogger("renderer.evals");
 
 const { confirm, notice } = useConfirm();
 
@@ -517,7 +520,7 @@ function viewSnapshot(type: "prompt" | "context") {
       : promotedFixtureData.value?.contextSnapshotRef;
   if (ref) {
     // For now, just log — full snapshot viewer is a future enhancement
-    console.log(`[Evals] View snapshot: ${ref}`);
+    log.debug("evals snapshot view requested", { type, ref });
   }
 }
 

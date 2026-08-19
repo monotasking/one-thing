@@ -5,6 +5,10 @@ import {
   type ScratchpadDocument,
 } from '@onething/runtime/scratchpad'
 import { getStorePath } from '../stores/paths.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('scratchpad')
+
 
 /**
  * Host injection points. The Electron host broadcasts changes to its windows;
@@ -39,7 +43,7 @@ export const scratchpadStore = new OnethingScratchpadStore({
 const scratchpadWatcher = new OnethingScratchpadWatcher({
   store: scratchpadStore,
   notifyChanged: broadcast,
-  onError: error => console.error('[scratchpad] watch failed:', error),
+  onError: error => log.error('scratchpad watch failed', {}, error),
 })
 
 export function startScratchpadWatcher(): Promise<void> {

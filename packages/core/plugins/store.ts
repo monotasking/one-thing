@@ -4,6 +4,10 @@ import {
   writeJsonFile,
 } from '../storage/index.js'
 import path from 'path'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.plugins')
+
 import {
   PLUGIN_KV_FILE_NAME,
   assertNotInNodeModules,
@@ -72,9 +76,7 @@ export class CorePluginStore {
     // 不抛不落,正是要根除的那种静默丢数据。
     if (this.options.isDisposing?.()) return false
     if (!this.disposed) return false
-    console.error(
-      `[PluginStore:${this.pluginId}] Ignoring store.${what} after dispose — the plugin resumed past its teardown.`,
-    )
+    log.error('ignoring store call after dispose', { pluginId: this.pluginId, call: what })
     return true
   }
 
@@ -103,7 +105,7 @@ export class CorePluginStore {
     try {
       this.data = readJsonFile<Record<string, unknown>>(this.filePath, {})
     } catch (error) {
-      console.error(`[PluginStore:${this.pluginId}] Failed to load store:`, error)
+      log.error('plugin store load failed', { pluginId: this.pluginId }, error)
       this.data = {}
     }
   }
@@ -115,7 +117,7 @@ export class CorePluginStore {
       ensureDir(this.kvDir)
       writeJsonFile(this.filePath, this.data)
     } catch (error) {
-      console.error(`[PluginStore:${this.pluginId}] Failed to save store:`, error)
+      log.error('plugin store save failed', { pluginId: this.pluginId }, error)
     }
   }
 

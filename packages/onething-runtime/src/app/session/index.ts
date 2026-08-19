@@ -18,6 +18,10 @@ import {
   shutdownCoreSessionLayer,
   type SessionState,
 } from '@onething/core/session'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions')
+
 
 let validationUnsub: Unsubscribe | null = null
 
@@ -38,7 +42,7 @@ export function getSessionManager(): SessionManager {
  */
 export function initializeSessionLayer(): void {
   if (isCoreSessionLayerInitialized()) {
-    console.warn('[Session] Already initialized, skipping')
+    log.warn('session layer already initialized')
     return
   }
 
@@ -48,7 +52,7 @@ export function initializeSessionLayer(): void {
   const sessionManager = initializeCoreSessionLayer(eventBus, streamChannel)
   validationUnsub = setupValidation(eventBus, sessionManager)
 
-  console.log('[Session] SessionManager initialized with validation')
+  log.info('session layer initialized')
 }
 
 /**
@@ -61,7 +65,7 @@ export function shutdownSessionLayer(): void {
   }
   shutdownCoreSessionLayer()
 
-  console.log('[Session] Shut down')
+  log.info('session layer shut down')
 }
 
 // Re-export for direct use

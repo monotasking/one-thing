@@ -20,6 +20,9 @@ import { getEventBus, getStreamChannel } from '@onething/app/events/index.js'
 import { SessionStreamCoalescer } from '@onething/app/events/stream-coalescer.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.bridge')
 
 export interface IPCBridgeSender {
   isDestroyed(): boolean
@@ -90,7 +93,7 @@ export class IPCBridge {
       this.unbind()
     })
 
-    console.log('[IPCBridge] Bound to WebContents')
+    log.info('bound to WebContents')
   }
 
   /**
@@ -115,7 +118,7 @@ export class IPCBridge {
     }
 
     this.sender = null
-    console.log('[IPCBridge] Unbound')
+    log.info('unbound')
   }
 
   // ── Safe IPC send ──────────────────────────────
@@ -137,7 +140,7 @@ export class IPCBridge {
     try {
       this.broadcast(channel, payload)
     } catch (err) {
-      console.warn('[IPCBridge] Broadcast failed:', err)
+      log.warn('broadcast failed', undefined, err)
     }
   }
 
@@ -148,7 +151,7 @@ export class IPCBridge {
     try {
       this.sender.send(channel, payload)
     } catch (err) {
-      console.warn('[IPCBridge] Send failed (window likely closed):', err)
+      log.warn('send failed', { likelyCause: 'window closed' }, err)
     }
   }
 

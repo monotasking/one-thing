@@ -83,6 +83,11 @@ import {
 } from '@onething/core/plugins'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import type { CompatLogger } from '@onething/core/logging'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins')
+
 
 export interface PluginState extends CorePluginAPIState<PluginAPI, PluginCommandDefinition> {}
 
@@ -188,6 +193,11 @@ export interface CreatePluginAPIOptions {
   declaredBackground?: boolean
   /** manifest contributes.permissions 原文(N1);同上,参数只为注入/测试留着。 */
   declaredPermissions?: string[]
+  /**
+   * core 的 API builder 自己那条日志出口(声明门拒绝、storage 拒绝、超时…)。
+   * 不传就是 `plugins` 命名空间下按 pluginId 绑好的子 logger;参数只为注入/测试留着。
+   */
+  logger?: CompatLogger
 }
 
 /**
@@ -288,6 +298,11 @@ export function createPluginAPI(
     PluginSchedulerAPI
   >({
     pluginId,
+    // core 的 API builder 自己也有话说(声明门拒绝、storage 拒绝、超时…)。
+    // 不注入的话它拿到的是 noop —— 那些拒绝就再也没人听见了。
+    // core 的 API builder 自己也有话说(声明门拒绝、storage 拒绝、超时…)。
+    // 不注入的话它拿到的是 noop —— 那些拒绝就再也没人听见了。
+    logger: options?.logger ?? getLogger('plugins').child({ pluginId }),
     store,
     // §7.4 拆除闩:卸载后晚到的 storage 写(合流定时器/在飞回调)不重建
     // 刚归档的家目录。闩的时机与 KV 相同 —— 拆除 drain 完之后才落下。
@@ -333,10 +348,9 @@ export function createPluginAPI(
          * 再考虑按声明降级。
          */
         if (tool.permissionGuard && tool.permissionGuard !== 'permission-gated') {
-          console.warn(
-            `[Plugin] Tool "${tool.name}" asked for permissionGuard "${tool.permissionGuard}"; `
-            + 'plugin tools are always permission-gated. Declare capabilities in '
-            + 'contributes.permissions instead.',
+          log.warn(
+            'plugin tool permissionGuard ignored; plugin tools are always permission-gated',
+            { pluginId, tool: tool.name, requested: tool.permissionGuard },
           )
         }
         /*
@@ -380,9 +394,9 @@ export function createPluginAPI(
           return eventBus.onGlobal(eventType as any, handler as any)
         }
         if (!KNOWN_SESSION_EVENT_HINT.test(eventType)) {
-          console.warn(
-            `[Plugin:${id}] Subscribing to unrecognized event "${eventType}"; `
-            + 'treating it as a session event. Global events must be listed in GLOBAL_PLUGIN_EVENT_TYPES.',
+          log.warn(
+            'plugin subscribed to an unrecognized event; treating it as a session event',
+            { pluginId: id, eventType },
           )
         }
         return eventBus.onAnySession(
@@ -545,9 +559,10 @@ export function createPluginAPI(
         // 用 `typeof === 'string'` 而不是 `!== undefined`,是因为这里要分的是
         // "有图 / 无图",不是"提没提这个字段"。
         if (typeof patch.image === 'string' && !pluginStorageImageExists(id, patch.image)) {
-          console.error(
-            `[Plugin:${id}] theme.updateBackground rejected: "${patch.image}" is not in this plugin's storage`,
-          )
+          log.error('theme.updateBackground rejected: image is not in this plugin storage', {
+            pluginId: id,
+            image: patch.image,
+          })
           return
         }
         setPluginBackgroundParams(id, patch)
@@ -643,7 +658,7 @@ export function disposePlugin(state: PluginState): void {
   try {
     storeClosers.get(state)?.()
   } catch (error) {
-    console.error('[Plugin] Failed to close the plugin KV store:', error)
+    log.error('close plugin KV store failed', {}, error)
   }
   // R5 携带项:还没到点的面板刷新补发一并取消 —— 否则一个已停用的插件会在
   // 200ms 后要求重画一个已经不存在的面板。

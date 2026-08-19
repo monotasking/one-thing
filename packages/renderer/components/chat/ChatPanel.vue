@@ -131,6 +131,9 @@ import { isAgentExecutionSession as isAgentExecutionSessionKind } from '@/utils/
 import PermissionLedger from './permission/PermissionLedger.vue'
 import InteractionPrompt from './interaction/InteractionPrompt.vue'
 import type { PermissionResponse } from './permission/permission-ledger'
+import { getLogger } from '@/services/log'
+
+const perfLog = getLogger('renderer.perf')
 
 const props = withDefaults(defineProps<{
   sessionId?: string
@@ -687,7 +690,7 @@ watch(effectiveSessionId, async (newId, oldId) => {
   }
 
   requestAnimationFrame(() => {
-    console.info('[Perf][SessionRender][ChatPanel]', {
+    perfLog.debug('chat panel session rendered', {
       sessionId: newId,
       oldSessionId: oldId,
       totalToFirstFrameMs: Math.round(performance.now() - start),

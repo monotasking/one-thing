@@ -10,10 +10,12 @@ import {
   type Logger,
 } from '@onething/core/logging'
 import { ensureDir, getLogDir } from '../stores/paths.js'
+import { setRuntimeLoggerRoot } from '../../logging/index.js'
 import { JsonlFileSink } from './jsonl-file-sink.js'
-import { LegacyConsoleSink } from './legacy-console-sink.js'
+import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from './legacy-console-sink.js'
 import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode } from './crash-hooks.js'
 import { LogDirJanitor } from './janitor.js'
+import { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from './legacy-debug-env.js'
 import type { AppLogLevel } from './rolling-file-logger.js'
 
 export { JsonlFileSink, readRollingFileEnvOptions } from './jsonl-file-sink.js'
@@ -21,6 +23,10 @@ export { LegacyConsoleSink, LEGACY_CONSOLE_NS, callsiteOf } from './legacy-conso
 export { installProcessCrashHooks } from './crash-hooks.js'
 export { LogDirJanitor, LOG_DIR_POLICY, LOG_JANITOR_INTERVAL_MS } from './janitor.js'
 export { RollingFileLogger } from './rolling-file-logger.js'
+export { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from './legacy-debug-env.js'
+export { consolePort } from './console-port.js'
+export type { ConsoleLikePort } from './console-port.js'
+export type { LegacyDebugAliasSpec } from './legacy-debug-env.js'
 export type { AppLogLevel, AppLogRecord } from './rolling-file-logger.js'
 
 /**
@@ -62,8 +68,16 @@ export function configureAppLoggingHost(ports: AppLoggingHostPorts): void {
 const DEFAULT_LEVEL_SPEC = 'info'
 const MEMORY_RING_SIZE = 400
 
-function resolveLevelSpec(explicit?: string): string {
-  return explicit ?? process.env.ONETHING_LOG ?? DEFAULT_LEVEL_SPEC
+/**
+ * 最终等级 spec = 显式参数 / `ONETHING_LOG` / 兜底 `info`,再拼上**已废弃**的
+ * `ONETHING_DEBUG_*` 别名(见 `legacy-debug-env.ts`,L5 删)。别名永远弱于显式 spec。
+ */
+export function resolveLevelSpec(explicit?: string): string {
+  return composeLevelSpecWithLegacyAliases(
+    explicit ?? process.env.ONETHING_LOG,
+    DEFAULT_LEVEL_SPEC,
+    resolveLegacyDebugAliases(process.env),
+  )
 }
 
 const memoryRing = new MemoryRingSink(MEMORY_RING_SIZE)
@@ -146,6 +160,10 @@ let activeLogDir = ''
  * 绝不第二次劫持 console 或再开一个文件 sink。
  */
 export function configureLogging(options: ConfigureLoggingOptions = {}): LoggingHandle {
+  // 产品层(`@onething/runtime`)与 core 的注入端口:它们不能 import 装配层,
+  // 所以由这一句把**同一个 root** 递过去(§8.3 区 ①)。放在幂等闸之前 ——
+  // 第二次调用是嵌入式 server,它同样该指向这一个 root。
+  setRuntimeLoggerRoot(root)
   if (initialized) return createHandle()
   initialized = true
 
@@ -177,10 +195,18 @@ export function configureLogging(options: ConfigureLoggingOptions = {}): Logging
   }
 
   if (options.consoleEcho) {
-    root.addSink(new ConsoleSink({
+    const echo = new ConsoleSink({
       format: options.consoleEcho,
       target: legacyConsole?.getOriginalConsole() as never,
-    }))
+    })
+    // `ns='console'` 的记录是 `LegacyConsoleSink` 抓来的 —— 它**已经**原样透传给
+    // 终端了。再回显一次就是每行打两遍(一遍原文、一遍 pretty 包装)。
+    root.addSink({
+      write: record => {
+        if (record.ns === LEGACY_CONSOLE_NS) return
+        echo.write(record)
+      },
+    })
   }
 
   for (const sink of options.sinks ?? []) root.addSink(sink)
@@ -208,11 +234,22 @@ export function configureLogging(options: ConfigureLoggingOptions = {}): Logging
   }
   process.on('exit', exitHandler)
 
-  getLogger('logging').info('logging configured', {
+  const loggingLog = getLogger('logging')
+  loggingLog.info('logging configured', {
     logDir,
     file: fileSink?.getActivePath(),
     level: root.levelSpec,
   })
+
+  // 旧开关还有人用 —— 说一声它们已经废弃(L5 删),但不改变行为。
+  const aliases = resolveLegacyDebugAliases(process.env)
+  if (aliases.matched.length > 0) {
+    loggingLog.warn('deprecated debug env aliases applied', {
+      switches: aliases.matched,
+      mappedTo: [...aliases.defaults, ...aliases.rules].join(','),
+      replacement: 'ONETHING_LOG',
+    })
+  }
 
   return createHandle()
 }
@@ -268,6 +305,7 @@ export async function shutdownAppLogging(): Promise<void> {
   legacyConsole?.uninstall()
   legacyConsole = null
   internalErrorReporter = undefined
+  setRuntimeLoggerRoot(null)
   root.setSrc('main')
   initialized = false
 }
@@ -315,6 +353,32 @@ function detachLoggingCapture(): void {
   rendererConsoleCapture = null
 }
 
+/**
+ * 测试用:把根 logger 上发生的记录收进一个数组。
+ *
+ * 迁移之后"有没有说出来"这件事不再由 console spy 见证 —— 它是一条 `LogRecord`。
+ * 返回的函数解除订阅。默认把等级放到 `trace`,收完再恢复(不然 debug/trace 会被
+ * 根过滤掉,而断言想看的往往正是那一档)。
+ */
+export function collectLogRecordsForTests(spec = 'trace'): {
+  records: LogRecord[]
+  messages(): string[]
+  stop(): void
+} {
+  const records: LogRecord[] = []
+  const previousSpec = root.levelSpec
+  root.setLevelSpec(spec)
+  const remove = root.addSink({ write: record => { records.push(record) } })
+  return {
+    records,
+    messages: () => records.map(record => record.msg),
+    stop: () => {
+      remove()
+      root.setLevelSpec(previousSpec)
+    },
+  }
+}
+
 /** 测试用:把模块级单例复位。 */
 export function resetLoggingForTests(): void {
   detachLoggingCapture()
@@ -332,6 +396,7 @@ export function resetLoggingForTests(): void {
   }
   legacyConsole?.uninstall()
   legacyConsole = null
+  setRuntimeLoggerRoot(null)
   root.setSinks([memoryRing])
   root.setSrc('main')
   initialized = false

@@ -27,6 +27,10 @@
  * 于是投递也走端口:同一个零 import 的模块,同一套「装上才生效」。
  */
 import type { ChatMessage } from '@shared/ipc.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('collab.actors.turn')
+
 
 /** 一轮在飞的对话性回合。键是执行会话 id(一条会话同时至多一轮,AgentActor 保证)。 */
 export interface CollabV3TurnContext {
@@ -152,7 +156,7 @@ function notifyTurnObserver(turn: CollabV3TurnContext, phase: 'begin' | 'end'): 
   try {
     turnObserver?.(turn, phase)
   } catch (error) {
-    console.warn('[collab-v3] 回合登记簿的观测口炸了(回合照跑):', error)
+    log.warn('turn observer hook failed', { phase }, error)
   }
 }
 

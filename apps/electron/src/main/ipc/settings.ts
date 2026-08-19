@@ -23,6 +23,9 @@ import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from '@onething/app/acp/index.js'
 import { applyGatewaySettings } from '@onething/electron-host/gateway/lifecycle'
 import { startTodoPlanWatcher } from '@onething/app/todo-plan/store.js'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('ipc.settings')
 
 async function saveSettingsFromIpc(settings: SaveSettingsRequest, event: ElectronSettingsIpcEvent) {
   const result = await saveOnethingSettingsWithRuntimeEffectsForIpc({
@@ -44,13 +47,13 @@ async function saveSettingsFromIpc(settings: SaveSettingsRequest, event: Electro
   if (!result.success) return result
   const normalizedSettings = result.settings
   await applyGatewaySettings(normalizedSettings).catch(error => {
-    console.error('[Gateway] Failed to apply channel settings:', error)
+    log.error('apply gateway channel settings failed', undefined, error)
   })
 
   // The todo directory is a setting; re-point the watcher if it moved. start()
   // is a no-op when the directory is unchanged.
   await startTodoPlanWatcher().catch(error => {
-    console.error('[todo-plan] Failed to restart watcher after settings change:', error)
+    log.error('todo-plan watcher restart failed', undefined, error)
   })
 
   broadcastElectronSettingsChanged({

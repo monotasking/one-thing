@@ -18,6 +18,7 @@ import {
   updateAgent,
 } from '../store.js'
 import { getAgentsPath } from '../../stores/paths.js'
+import { captureRuntimeLogs } from '@onething/runtime/logging'
 
 vi.mock('electron', () => ({
   app: {
@@ -124,12 +125,13 @@ describe('agent store: 解析纪律三态 API', () => {
   })
 
   it('defaultAgent:功能兜底显式化;deprecated getAgent 仍是 find ?? default', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // 埋点已经不是 console 的副作用,而是一条记录(L4)。
+    const logs = captureRuntimeLogs()
 
     expect(defaultAgent().id).toBe(DEFAULT_AGENT_ID)
     expect(getAgent('ghost').id).toBe(DEFAULT_AGENT_ID)
-    expect(warn).toHaveBeenCalled()
+    expect(logs.ofLevel('warn').length).toBeGreaterThan(0)
 
-    warn.mockRestore()
+    logs.restore()
   })
 })

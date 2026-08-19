@@ -51,6 +51,10 @@ import {
   type OnethingCodexStreamPart,
   type OnethingCodexUsage,
 } from '@onething/runtime/providers'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('providers.codex')
+
 
 export const CODEX_PROVIDER_ID = ONETHING_CODEX_PROVIDER_ID
 export const CODEX_BASE_URL = ONETHING_CODEX_BASE_URL
@@ -224,7 +228,7 @@ export function createCodexFetch(baseFetch: typeof globalThis.fetch = createBoun
     const repairedBody = repairCodexRejectedBody(normalizedBody, responseBody)
     if (!repairedBody) return response
 
-    console.warn('[Codex] Retrying request after backend rejected a request parameter:', {
+    log.warn('retrying request after the backend rejected a parameter', {
       status: response.status,
       detail: summarizeCodexErrorBody(responseBody),
     })
@@ -271,12 +275,13 @@ function summarizeCodexErrorBody(body: string): string {
   return summarizeOnethingCodexErrorBody(body)
 }
 
-function shouldDebugCodexStream(): boolean {
-  return process.env.ONETHING_DEBUG_STREAM === '1' || process.env.ONETHING_DEBUG_CODEX_STREAM === '1'
-}
-
-function logTime(): string {
-  return new Date().toISOString()
+/**
+ * 旧的 `ONETHING_DEBUG_STREAM` / `ONETHING_DEBUG_CODEX_STREAM` 开关由等级过滤取代:
+ * `ONETHING_LOG=providers.codex=trace`(旧开关保留为废弃别名,见
+ * `app/logging/legacy-debug-env.ts`,L5 删)。
+ */
+function shouldTraceCodexStream(): boolean {
+  return log.isLevelEnabled('trace')
 }
 
 function previewText(value: unknown, maxLength = 160): string {
@@ -299,11 +304,10 @@ export function createCodexModel(
     },
 
     async doStream(options: CodexCallOptions) {
-      const debugStream = shouldDebugCodexStream()
+      const debugStream = shouldTraceCodexStream()
       const onStreamEvent = debugStream
         ? (event: CodexSseEvent): void => {
-            console.log('[CodexProvider:SSE] event', {
-              time: logTime(),
+            log.trace('codex sse event', {
               type: event.type,
               deltaChars: typeof event.delta === 'string' ? event.delta.length : 0,
               deltaPreview: typeof event.delta === 'string' ? previewText(event.delta, 240) : '',
@@ -333,7 +337,7 @@ export function createCodexModel(
             },
             requestBody: context.body,
           })
-          console.log('[CodexProvider] sending /responses request', {
+          log.debug('sending codex /responses request', {
             ...summarizeOnethingCodexRequestBody(context.body),
             requestDumpPath,
           })

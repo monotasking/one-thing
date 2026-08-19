@@ -1398,10 +1398,6 @@ const electronAPI = {
 
 	// Image preview methods
 	openImagePreview: (src: string, alt?: string) => {
-		console.log("[Preload] openImagePreview called:", {
-			src: src.substring(0, 50),
-			alt,
-		});
 		return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_PREVIEW, { src, alt });
 	},
 
@@ -1427,7 +1423,6 @@ const electronAPI = {
 
 	// Image gallery methods (now uses mediaId - gallery loads its own data)
 	openImageGallery: (mediaId: string) => {
-		console.log("[Preload] openImageGallery called:", { mediaId });
 		return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_GALLERY, { mediaId });
 	},
 

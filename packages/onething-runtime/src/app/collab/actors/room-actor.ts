@@ -71,6 +71,10 @@ import type { CollabCoordinatorJudgment, CollabCoordinatorState } from '@shared/
 
 import { createCollabRoomAccountFileStore, type CollabRoomAccountStore } from './room-account.js'
 import { collabV3TurnsInRoom } from './turn-context.js'
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('collab.actors.room')
+
 
 /** 一个成员的信箱。真身是 `DurableMailbox`,测试与重放用内存版。 */
 export interface CollabRoomMemberMailbox {
@@ -376,7 +380,7 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       })
       for (const row of rows) sink.append(this.roomId, row)
     } catch (error) {
-      console.warn(`[collab-v3] 房间 ${this.roomId} 的调度记账失败(调度照跑):`, error)
+      log.warn('scheduler row append failed', { roomId: this.roomId }, error)
     }
   }
 

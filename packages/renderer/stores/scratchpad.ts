@@ -2,6 +2,9 @@ import { defineStore } from 'pinia'
 import { reactive } from 'vue'
 import type { ScratchpadChangedPayload, ScratchpadDocument } from '@/types'
 import { platformApi } from '@/platform'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.scratchpad')
 
 export interface ScratchpadRecord {
   content: string
@@ -107,7 +110,7 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
           ensureRecord(sessionId).loaded = true
         }
       } catch (error) {
-        console.error('[scratchpad] load failed:', error)
+        log.error('scratchpad load failed', { sessionId }, error)
         ensureRecord(sessionId).loaded = true
       } finally {
         loading.delete(sessionId)
@@ -162,7 +165,7 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
         // flush 期间又打了字 → 还脏,下一拍继续。
         if (record.content === content) record.dirty = false
       } catch (error) {
-        console.error('[scratchpad] flush failed:', error)
+        log.error('scratchpad flush failed', { sessionId }, error)
       } finally {
         inFlight.delete(sessionId)
       }
@@ -243,7 +246,7 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
     try {
       await platformApi.deleteScratchpad({ sessionId })
     } catch (error) {
-      console.error('[scratchpad] delete failed:', error)
+      log.error('scratchpad delete failed', { sessionId }, error)
     }
   }
 
@@ -264,7 +267,7 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
     try {
       await platformApi.adoptScratchpad({ fromSessionId, toSessionId })
     } catch (error) {
-      console.error('[scratchpad] adopt failed:', error)
+      log.error('scratchpad adopt failed', { fromSessionId, toSessionId }, error)
     }
     await load(toSessionId, { force: true })
   }
@@ -311,7 +314,7 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
       platformApi.onScratchpadChanged(payload => applyChanged(payload as ScratchpadChangedPayload))
     }
   } catch (error) {
-    console.error('[scratchpad] subscribe failed:', error)
+    log.error('scratchpad subscribe failed', {}, error)
   }
 
   return {

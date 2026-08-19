@@ -17,6 +17,9 @@ import type { ProjectDirSummary } from '@shared/ipc'
 import { platformApi } from '@/platform'
 import { normalizeProjectDir } from '@/utils/project-dir'
 import { currentSpaceId } from './spaces'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.projects')
 
 export const useProjectsStore = defineStore('projects', () => {
   const entries = ref<ProjectDirSummary[]>([])
@@ -43,7 +46,7 @@ export const useProjectsStore = defineStore('projects', () => {
       }
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : 'Failed to load projects'
-      console.error('Failed to load project dirs:', error)
+      log.error('project dirs load failed', {}, error)
     } finally {
       loading.value = false
     }
@@ -72,7 +75,7 @@ export const useProjectsStore = defineStore('projects', () => {
       return true
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : 'Failed to add project'
-      console.error('Failed to add project dir:', error)
+      log.error('project dir add failed', { path }, error)
       return false
     }
   }
@@ -139,7 +142,7 @@ export const useProjectsStore = defineStore('projects', () => {
       return true
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : 'Failed to update project'
-      console.error('Failed to update project dirs:', error)
+      log.error('project dirs update failed', { primaryPath }, error)
       return false
     }
   }
@@ -171,7 +174,7 @@ export const useProjectsStore = defineStore('projects', () => {
       return true
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : 'Failed to remove project'
-      console.error('Failed to remove project dir:', error)
+      log.error('project dir remove failed', { path }, error)
       return false
     }
   }

@@ -2,6 +2,9 @@ import { app, BrowserWindow } from 'electron'
 import { createRequire } from 'module'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('window.macos-panel')
 
 interface MacOSPanelAddon {
   configureNonActivatingPanel: (nativeWindowHandle: Buffer) => boolean
@@ -41,7 +44,7 @@ function loadAddon(): MacOSPanelAddon | null {
 
   if (!warned) {
     warned = true
-    console.warn('[TodoPanel] macOS non-activating panel native bridge is unavailable')
+    log.warn('native panel bridge unavailable')
   }
   return null
 }
@@ -55,7 +58,7 @@ export function configureNonActivatingPanel(window: BrowserWindow): boolean {
   try {
     return nativeAddon.configureNonActivatingPanel(window.getNativeWindowHandle()) === true
   } catch (error) {
-    console.warn('[TodoPanel] Failed to configure non-activating panel:', error)
+    log.warn('configure non-activating panel failed', undefined, error)
     return false
   }
 }
@@ -69,7 +72,7 @@ export function showNonActivatingPanel(window: BrowserWindow): boolean {
   try {
     return nativeAddon.showNonActivatingPanel(window.getNativeWindowHandle()) === true
   } catch (error) {
-    console.warn('[TodoPanel] Failed to show non-activating panel:', error)
+    log.warn('show non-activating panel failed', undefined, error)
     return false
   }
 }
@@ -83,7 +86,7 @@ export function hideNonActivatingPanel(window: BrowserWindow): boolean {
   try {
     return nativeAddon.hideNonActivatingPanel(window.getNativeWindowHandle()) === true
   } catch (error) {
-    console.warn('[TodoPanel] Failed to hide non-activating panel:', error)
+    log.warn('hide non-activating panel failed', undefined, error)
     return false
   }
 }
@@ -97,7 +100,7 @@ export function isNonActivatingPanelFrontmost(window: BrowserWindow): boolean {
   try {
     return nativeAddon.isNonActivatingPanelFrontmost(window.getNativeWindowHandle()) === true
   } catch (error) {
-    console.warn('[TodoPanel] Failed to inspect non-activating panel ordering:', error)
+    log.warn('inspect non-activating panel ordering failed', undefined, error)
     return false
   }
 }
@@ -111,7 +114,7 @@ export function setNonActivatingPanelPinned(window: BrowserWindow, pinned: boole
   try {
     return nativeAddon.setNonActivatingPanelPinned(window.getNativeWindowHandle(), pinned) === true
   } catch (error) {
-    console.warn('[TodoPanel] Failed to update non-activating panel pin level:', error)
+    log.warn('update non-activating panel pin level failed', undefined, error)
     return false
   }
 }

@@ -45,6 +45,9 @@ import { getEventBus } from "@onething/app/events/index.js";
 import { sanitizeRendererOrigin } from "@onething/app/channel/index.js";
 
 import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
+import { getLogger } from "@onething/app/logging/index.js";
+
+const log = getLogger("ipc");
 
 export function initializeIPC() {
 	registerChatHandlers();
@@ -118,7 +121,7 @@ function registerCommandHandler() {
 			});
 		},
 	});
-	console.log("[IPC] session:command handler registered");
+	log.info("session command handler registered");
 }
 
 function sanitizeRendererCommand(command: unknown): unknown {

@@ -86,6 +86,9 @@ import type {
 } from "./types";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
+import { getLogger } from "@/services/log";
+
+const log = getLogger("renderer.platform-web");
 
 function browserClipboardWriteCapability(): boolean {
 	return (
@@ -296,10 +299,7 @@ function createEventSourceSubscription<T>(
 		try {
 			callback(JSON.parse(event.data) as T);
 		} catch (error) {
-			console.warn(
-				`[Platform:web] Ignored malformed ${eventName} event`,
-				error,
-			);
+			log.warn("ignored malformed sse event", { eventName }, error);
 		}
 	};
 

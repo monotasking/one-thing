@@ -18,6 +18,9 @@ import { platformApi } from '@/platform'
 import type { PermissionResponse } from '@/components/chat/permission/permission-ledger'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.permission')
 
 export type PermissionToolCall = Pick<ToolCall, 'id' | 'permissionId' | 'canRespond'>
 
@@ -45,14 +48,21 @@ export function usePermissionResponder(options: UsePermissionResponderOptions) {
     const step = message?.steps?.find(s => s.toolCallId === toolCall.id)
 
     if (!toolCall.canRespond) {
-      console.warn('[Frontend] Permission response ignored: no live prompt for tool call', toolCall.id)
+      log.warn('permission response ignored, no live prompt', {
+        sessionId,
+        toolCallId: toolCall.id,
+      })
       return
     }
 
     // Use unified command channel to respond (EventBus → Permission validates
     // channel). The tool call id is the durable correlation key — the manager
     // resolves it to the pending prompt; requestId is a hint when we caught it.
-    console.log(`[Frontend] Responding to permission for tool call ${toolCall.id} with ${response}`)
+    log.debug('permission response sending', {
+      sessionId,
+      toolCallId: toolCall.id,
+      decision: response,
+    })
     try {
       await platformApi.emitCommand(sessionId, {
         type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
@@ -72,7 +82,7 @@ export function usePermissionResponder(options: UsePermissionResponderOptions) {
         }
       }
     } catch (error) {
-      console.error('Failed to respond to permission:', error)
+      log.error('permission response failed', { sessionId, toolCallId: toolCall.id }, error)
     }
   }
 
@@ -88,7 +98,11 @@ export function usePermissionResponder(options: UsePermissionResponderOptions) {
     // local UI cleanup below still runs either way.
     if (toolCall.canRespond) {
       // Use unified command channel to reject (EventBus → Permission validates channel)
-      console.log(`[Frontend] Rejecting permission for tool call ${toolCall.id}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
+      log.debug('permission reject sending', {
+        sessionId,
+        toolCallId: toolCall.id,
+        rejectReason: rejectReasonArg,
+      })
       try {
         await platformApi.emitCommand(sessionId, {
           type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
@@ -98,7 +112,7 @@ export function usePermissionResponder(options: UsePermissionResponderOptions) {
           rejectReason: rejectReasonArg,
         })
       } catch (error) {
-        console.error('Failed to respond to permission:', error)
+        log.error('permission reject failed', { sessionId, toolCallId: toolCall.id }, error)
       }
     }
 

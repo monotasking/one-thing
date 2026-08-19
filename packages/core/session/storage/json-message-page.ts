@@ -1,4 +1,8 @@
 import fs from 'node:fs'
+import { getCoreLogger } from '../../logging/index.js'
+
+const log = getCoreLogger('core.session')
+
 import type {
   GetSessionMessagesPageRequest,
   GetSessionMessagesPageResponse,
@@ -434,7 +438,7 @@ export function getMessagesPageFromJson<TMessage extends StoredChatMessage = Sto
 
     return responseFromSlices<TMessage>(request.sessionId, json, allSlices.slice(-limit), totalCount)
   } catch (error) {
-    console.warn('[Sessions] Failed to read message page without full JSON parse:', error)
+    log.warn('message page fast-path read failed', undefined, error)
     return null
   }
 }

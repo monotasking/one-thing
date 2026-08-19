@@ -344,6 +344,9 @@ import type { SelectOptionLike } from "@/components/common/select";
 import { useEvalsStore } from "@/stores/evals";
 import { platformApi } from "@/platform";
 import { providersApi } from "@/platform/providers-client";
+import { getLogger } from "@/services/log";
+
+const log = getLogger("renderer.evals");
 
 const store = useEvalsStore();
 
@@ -491,7 +494,7 @@ async function handleStartRun() {
     providerId: runForm.value.providerId,
     model: runForm.value.model,
   };
-  console.log("[Evals UI] handleStartRun called with:", JSON.stringify(params));
+  log.debug("evals run form submitted", { ...params });
   await store.startRun(params);
 }
 

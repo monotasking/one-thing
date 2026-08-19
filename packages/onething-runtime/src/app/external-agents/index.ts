@@ -30,6 +30,12 @@ import type { Effect, Invocation } from '@onething/core/toolkit'
 import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { publishExternalAgentBackgroundStatus } from './background-status.js'
 import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('external-agents')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 
@@ -314,7 +320,7 @@ export function getExternalAgentConnectors(): Record<string, ExternalAgentConnec
         // 回答的问题("它还在跑吗、跑了多久")是用户在问,不是回查时才问。
         backgroundTasks: input => { publishExternalAgentBackgroundStatus(input) },
       },
-      logger: console,
+      logger: consoleLog,
     }),
   }
   return connectors
@@ -363,9 +369,9 @@ export function takeExternalAgentSteering(localSessionId: string, content: strin
       const outcome = connector.steer(localSessionId, content)
       if (outcome !== 'unavailable') return true
     } catch (error) {
-      console.warn(
-        `[external-agents] steer failed on ${connectorId}:`,
-        error instanceof Error ? error.message : String(error),
+      log.warn(
+        'external agent steer failed',
+        { connectorId, sessionId: localSessionId, reason: error instanceof Error ? error.message : String(error) },
       )
     }
   }

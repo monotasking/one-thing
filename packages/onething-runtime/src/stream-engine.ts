@@ -7,6 +7,10 @@ import {
   type CoreStreamPermissionModeSettings,
 } from '@onething/core/engine'
 
+import { getLogger } from './logging/index.js'
+
+const log = getLogger('engine.stream')
+
 export type OnethingStreamSenderPayload =
   | string
   | number
@@ -62,6 +66,6 @@ export class OnethingStreamEngine<
 
   protected override onShutdown(): void {
     super.onShutdown()
-    console.log('[OnethingStreamEngine] Shut down')
+    log.info('stream engine shut down')
   }
 }

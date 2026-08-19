@@ -51,6 +51,10 @@ import {
 import { getSessionsDir } from '../stores/paths.js'
 import { countSessionEventFailure, isSessionShadowEnabled } from './event-stats.js'
 import { isSessionEventsReadMode } from './read-mode.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions.events')
+
 
 export const SESSION_EVENTS_LOG_FILENAME = 'events.jsonl'
 
@@ -189,9 +193,11 @@ function guardForeignWriter(state: SessionEventLogState, sessionId: string): voi
     if (size <= state.expectedBytes) return
     const before = state.lastSeq
     reloadCounters(state, sessionId)
-    console.warn(
-      `[SessionEvents] another writer appended to ${sessionId} (seq ${before} → ${state.lastSeq}); reloaded counters`,
-    )
+    log.warn('another writer appended to the session event log; reloaded counters', {
+      sessionId,
+      seqBefore: before,
+      seqAfter: state.lastSeq,
+    })
   } catch {
     // 文件还不存在 / stat 失败:什么都不做,append 自己会报错并计数。
   }

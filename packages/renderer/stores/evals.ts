@@ -1,7 +1,10 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { platformApi } from "@/platform";
+import { getLogger } from "@/services/log";
 import type { EvalRunDetail } from "@shared/ipc";
+
+const log = getLogger("renderer.evals");
 
 export interface EvalRecordView {
 	sessionId: string;
@@ -264,7 +267,7 @@ export const useEvalsStore = defineStore("evals", () => {
 		providerId: string;
 		model: string;
 	}) {
-		console.log("[Evals Store] startRun called:", {
+		log.info("evals run start requested", {
 			provider: opts.providerId,
 			model: opts.model,
 			runs: opts.runs,
@@ -272,23 +275,22 @@ export const useEvalsStore = defineStore("evals", () => {
 			disabledSections: opts.disabledSections,
 		});
 		if (runInProgress.value) {
-			console.warn("[Evals Store] startRun blocked: run already in progress");
+			log.warn("evals run start blocked, run already in progress");
 			return;
 		}
 		runInProgress.value = true;
 		runProgress.value = null;
 		runCaseProgress.value = new Map();
 
-		console.log("[Evals Store] Subscribing to progress events...");
+		log.debug("evals progress subscription opened");
 		// Subscribe to progress events
 		runProgressUnsub.value = platformApi.onEvalsRunProgress(
 			async (event: Record<string, unknown>) => {
 				const evt = event as unknown as RunProgress;
-				console.log(
-					"[Evals Store] Progress event:",
-					evt.type,
-					evt.caseId || "",
-				);
+				log.debug("evals progress event", {
+					type: evt.type,
+					caseId: evt.caseId,
+				});
 				runProgress.value = evt;
 
 				if (evt.type === "case-start" && evt.caseId) {
@@ -310,7 +312,7 @@ export const useEvalsStore = defineStore("evals", () => {
 					if (cp) cp.score = evt.score;
 				}
 				if (evt.type === "run-done" || evt.type === "error") {
-					console.log("[Evals Store] Run finished:", evt.type, evt.error || "");
+					log.info("evals run finished", { type: evt.type, error: evt.error });
 					runInProgress.value = false;
 					if (evt.type === "run-done") {
 						await loadResults();
@@ -325,11 +327,11 @@ export const useEvalsStore = defineStore("evals", () => {
 		);
 
 		try {
-			console.log("[Evals Store] Calling evalsRunStart IPC...");
+			log.debug("evals run start dispatching");
 			const res = await platformApi.evalsRunStart(opts);
-			console.log("[Evals Store] evalsRunStart response:", res);
+			log.debug("evals run start responded", { success: res.success, error: res.error });
 			if (!res.success) {
-				console.error("[Evals Store] evalsRunStart failed:", res.error);
+				log.error("evals run start failed", { error: res.error });
 				runInProgress.value = false;
 				runProgress.value = {
 					type: "error",
@@ -337,7 +339,7 @@ export const useEvalsStore = defineStore("evals", () => {
 				};
 			}
 		} catch (e) {
-			console.error("[Evals Store] evalsRunStart threw:", e);
+			log.error("evals run start failed", {}, e);
 			runInProgress.value = false;
 			runProgress.value = {
 				type: "error",
@@ -357,10 +359,10 @@ export const useEvalsStore = defineStore("evals", () => {
 			if (res.success && res.detail) {
 				runDetail.value = res.detail as unknown as EvalRunDetail;
 			} else {
-				console.error("[Evals Store] loadRunDetail failed:", res.error);
+				log.error("evals run detail load failed", { ts, error: res.error });
 			}
 		} catch (e) {
-			console.error("[Evals Store] loadRunDetail error:", e);
+			log.error("evals run detail load failed", { ts }, e);
 		} finally {
 			runDetailLoading.value = false;
 		}

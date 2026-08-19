@@ -46,6 +46,12 @@ import { clearPluginRuntimeHealth } from './health.js'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
 import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins.loader')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export function getPluginsDir(): string {
   return getCorePluginsDir({ storePath: getOnethingStorePath() })
@@ -199,9 +205,9 @@ export function readPluginConfig(pluginId: string): Record<string, unknown> {
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         return parsed as Record<string, unknown>
       }
-      console.error(`[PluginLoader] config.json for "${pluginId}" is not a JSON object; treating it as empty`)
+      log.error('plugin config.json is not a JSON object, treating it as empty', { pluginId, configPath })
     } catch (error) {
-      console.error(`[PluginLoader] Failed to read config for "${pluginId}" from its home dir:`, error)
+      log.error('read plugin config from home dir failed', { pluginId, configPath }, error)
     }
     return {}
   }
@@ -215,7 +221,7 @@ export function readPluginConfig(pluginId: string): Record<string, unknown> {
     writeJsonFile(configPath, central)
     writePluginSettings(setPluginConfigInSettings(readPluginSettings(), pluginId, null))
   } catch (error) {
-    console.error(`[PluginLoader] Failed to migrate config for "${pluginId}" into its home dir:`, error)
+    log.error('migrate plugin config into home dir failed', { pluginId }, error)
   }
   return central
 }
@@ -223,10 +229,7 @@ export function readPluginConfig(pluginId: string): Record<string, unknown> {
 export function writePluginConfig(pluginId: string, config: Record<string, unknown> | null): void {
   // §7.4 拆除闩。
   if (isPluginDemolished(pluginId)) {
-    console.warn(
-      `[PluginLoader] Ignoring a config write for "${pluginId}" — `
-      + 'the plugin was uninstalled and its home directory has been archived.',
-    )
+    log.warn('ignoring plugin config write: plugin uninstalled and home dir archived', { pluginId })
     return
   }
   const configPath = getCorePluginConfigPath(getPluginsDir(), pluginId)
@@ -234,7 +237,7 @@ export function writePluginConfig(pluginId: string, config: Record<string, unkno
     try {
       fs.rmSync(configPath, { force: true })
     } catch (error) {
-      console.error(`[PluginLoader] Failed to remove config for "${pluginId}":`, error)
+      log.error('remove plugin config failed', { pluginId }, error)
     }
   } else {
     assertNotInNodeModules(getPluginsDir(), configPath)
@@ -421,10 +424,10 @@ export function scanPlugins(): PluginDefinition[] {
   if (localIdsSignature !== loggedLocalPluginIds) {
     loggedLocalPluginIds = localIdsSignature
     if (localPluginIds.size > 0) {
-      console.log(
-        `[PluginLoader] Loaded ${localPluginIds.size} local dev script(s) from plugins-dev/: `
-        + [...localPluginIds].sort().join(', '),
-      )
+      log.info('loaded local dev plugin scripts', {
+        count: localPluginIds.size,
+        pluginIds: [...localPluginIds].sort(),
+      })
     }
   }
   // 拆除闩的解除(§7.4):扫描里再现 = 已重装,闩自动放开。
@@ -458,7 +461,7 @@ export async function loadPluginEntry(
 ): Promise<PluginEntry | null> {
   return loadCorePluginEntry(def, {
     importEntry: entryPath => import(buildPluginEntryImportSpecifier(entryPath, reloadToken)),
-    logger: console,
+    logger: consoleLog,
   })
 }
 

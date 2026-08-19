@@ -140,6 +140,9 @@ import type {
   ChangeTypes,
   FileContents
 } from '@pierre/diffs'
+import { getLogger } from '@/services/log'
+
+const log = getLogger('renderer.diff-view')
 
 // Has to happen before the first FileDiff is constructed: the library resolves
 // a theme by name and caches it forever, so it must find ours already there.
@@ -224,7 +227,7 @@ const parsedDiffData = computed<{ hunks: DiffHunk[]; fileName?: string } | null>
     const parsed = parseUnifiedDiffToHunks(props.diff)
     return parsed.hunks.length > 0 ? parsed : null
   } catch (err) {
-    console.error('[DiffView] Failed to parse patch:', err)
+    log.error('patch parse failed', {}, err)
     return null
   }
 })
@@ -397,7 +400,7 @@ async function renderDiff() {
     })
 
   } catch (err) {
-    console.error('[DiffView] Failed to render diff:', err)
+    log.error('diff render failed', {}, err)
   }
 }
 
@@ -413,7 +416,7 @@ async function copyDiffContent() {
 
   const success = await copyTextToClipboard(props.diff)
   if (!success) {
-    console.warn('[DiffView] Failed to copy diff content')
+    log.warn('diff copy failed')
     return
   }
 

@@ -1,5 +1,8 @@
 import { BrowserWindow, screen } from 'electron'
 import { clampElectronWindowStateToDisplays } from './window-state'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('window.todo-plan')
 
 export interface ElectronTodoPlanWindowState {
   width: number
@@ -68,7 +71,7 @@ export function createElectronTodoPlanWindow(options: ElectronTodoPlanWindowOpti
     try {
       todoPlanWindow.setWindowButtonVisibility(false)
     } catch (error) {
-      console.warn('[TodoPanel] Failed to hide native window buttons:', error)
+      log.warn('hide native window buttons failed', undefined, error)
     }
   }
 

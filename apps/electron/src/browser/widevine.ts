@@ -11,6 +11,9 @@
  * Memoized — safe to call on every browser wake-up.
  */
 import { components } from 'electron'
+import { getLogger } from '@onething/app/logging/index.js'
+
+const log = getLogger('browser')
 
 let readyPromise: Promise<void> | null = null
 
@@ -22,7 +25,7 @@ export function ensureWidevineReady(): Promise<void> {
 				.whenReady()
 				.then(() => undefined)
 				.catch((err) => {
-					console.error('[Browser] Widevine components.whenReady() failed (non-fatal):', err)
+					log.error('widevine components not ready', { fatal: false }, err)
 				})
 		: Promise.resolve()
 	return readyPromise

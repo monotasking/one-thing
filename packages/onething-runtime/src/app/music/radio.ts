@@ -56,6 +56,12 @@ import {
 import { prefetchDjPatter, resetDjPatterCache, speakDjPatter } from './dj-voice.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('music.radio')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 let radioStore: OnethingRadioStore | null = null
 let conductor: OnethingRadioConductor | null = null
@@ -75,7 +81,7 @@ function getReliableRunner() {
   const provider = getActiveMusicProvider()
   return createOnethingMusicReliableRunner({
     runner: createElectronMusicProcessRunner(),
-    logger: console,
+    logger: consoleLog,
     cli: {
       binary: provider.descriptor.binary,
       parse: {
@@ -109,7 +115,7 @@ function ensureRadioSession(store: OnethingRadioStore): string {
       // 联系人/roster/AgentSelector 全部按 kind 过滤,不再撒 id 硬编码。
       kind: 'service',
     })
-    console.warn('[radio] radio-dj agent was missing; recreated from the factory persona')
+    log.warn('radio-dj agent was missing, recreated from the factory persona')
   } else {
     // Mandatory disciplines live in the persona, so installed agents must
     // follow factory upgrades: "created once, never touched" froze every DJ
@@ -123,22 +129,23 @@ function ensureRadioSession(store: OnethingRadioStore): string {
     const installedVersion = radioDjFactoryPromptVersion(installed)
     if ((installedVersion ?? 0) < RADIO_DJ_FACTORY_VERSION && installed !== factoryPrompt) {
       updateAgent({ agentId: RADIO_DJ_AGENT_ID, systemPrompt: factoryPrompt })
-      console.warn(
-        `[radio] radio-dj persona upgraded to factory v${RADIO_DJ_FACTORY_VERSION} (was ${installedVersion ?? 'pre-fingerprint'})`,
-      )
+      log.warn('radio-dj persona upgraded to the factory version', {
+        version: RADIO_DJ_FACTORY_VERSION,
+        previousVersion: installedVersion ?? 'pre-fingerprint',
+      })
     }
     // One-time backfill: pre-allowlist installs carried every tool into each
     // DJ turn. An explicit (user-edited) allowlist is left alone.
     if (installedAgent && installedAgent.tools === undefined) {
       updateAgent({ agentId: RADIO_DJ_AGENT_ID, tools: RADIO_DJ_TOOL_ALLOWLIST })
-      console.warn('[radio] radio-dj tool allowlist backfilled (bash only)')
+      log.warn('radio-dj tool allowlist backfilled', { tools: RADIO_DJ_TOOL_ALLOWLIST })
     }
     // One-time backfill: pre-classification installs are plain colleague rows,
     // which would keep the DJ inside every social surface (AgentSelector,
     // room member pickers). The DJ is infrastructure — stamp it service.
     if (installedAgent && installedAgent.kind !== 'service') {
       updateAgent({ agentId: RADIO_DJ_AGENT_ID, kind: 'service' })
-      console.warn('[radio] radio-dj classified as a service agent (agent-domain-model M2)')
+      log.warn('radio-dj classified as a service agent')
     }
   }
 
@@ -152,9 +159,10 @@ function ensureRadioSession(store: OnethingRadioStore): string {
       // (the wake prompt carries intent/history/queue), so a fresh session IS
       // the handoff — no summary needed. The old log stays in the sidebar's
       // Music group.
-      console.warn(
-        `[radio] rotating dj session ${brief.sessionId} (messages=${sessionReads.countMessages(brief.sessionId)})`,
-      )
+      log.warn('rotating dj session', {
+        sessionId: brief.sessionId,
+        messages: sessionReads.countMessages(brief.sessionId),
+      })
     }
   }
 
@@ -274,7 +282,7 @@ async function buildRadioLifeContext(sessionId: string): Promise<string> {
     }
     return lines.join('\n')
   } catch (error) {
-    console.warn('[radio] life context unavailable; opening plain', error)
+    log.warn('life context unavailable, opening plain', {}, error)
     return ''
   }
 }
@@ -386,7 +394,7 @@ function prefetchUpcomingEntry(): void {
     void getLyricLines(next).catch(() => {})
     if (next.say) prefetchDjPatter(next.say, next.title)
   } catch (error) {
-    console.warn('[radio] prefetch for the upcoming entry failed', error)
+    log.warn('prefetch for the upcoming entry failed', {}, error)
   }
 }
 
@@ -498,17 +506,14 @@ function createRadioStartTimer(title: string) {
   gestureStart = null
   const t0 = gesture?.at ?? Date.now()
   let last = Date.now()
-  console.info(
-    gesture
-      ? `[radio:timing] 「${title}」 start requested (${gesture.label} 点击后 +${Date.now() - gesture.at}ms)`
-      : `[radio:timing] 「${title}」 start requested`,
-  )
+  log.debug('radio start requested', {
+    title,
+    ...(gesture ? { gesture: gesture.label, sinceGestureMs: Date.now() - gesture.at } : {}),
+  })
   return {
     mark(phase: string) {
       const now = Date.now()
-      console.info(
-        `[radio:timing] 「${title}」 ${phase}: +${now - last}ms (total ${now - t0}ms)`,
-      )
+      log.debug('radio start phase', { title, phase, ms: now - last, totalMs: now - t0 })
       last = now
     },
   }
@@ -627,12 +632,12 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
         // this stop and left the old song playing under the patter. A stop
         // refusal on an already-silent player is harmless noise by comparison.
         await reliable.run('transport', getActiveMusicProvider().cli.build.stop()).catch(error => {
-          console.warn('[radio] could not stop before patter', error)
+          log.warn('stop before patter failed', {}, error)
         })
         timer.mark('停当前播放')
         patterInFlight = speakDjPatter(entry.say, entry.title)
           .catch(error => {
-            console.warn('[radio] patter before play failed; the song continues', error)
+            log.warn('patter before play failed, the song continues', {}, error)
           })
           .finally(() => {
             patterFinished = true
@@ -650,7 +655,7 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
       // Fire alongside the starting song: with the prefetched synthesis the
       // voice lands right at the top of the intro, before the first vocal.
       void speakDjPatter(entry.say, entry.title).catch(error => {
-        console.warn('[radio] patter over intro failed', error)
+        log.warn('patter over intro failed', {}, error)
       })
     }
     const waitForFreshPlayback = async (
@@ -936,7 +941,7 @@ export async function radioToolClose(): Promise<ReturnType<typeof radioToolStatu
   try {
     await getReliableRunner().run('transport', getActiveMusicProvider().cli.build.stop())
   } catch (error) {
-    console.warn('[radio] stop on close failed', error)
+    log.warn('stop on close failed', {}, error)
   }
   await refreshMusicNowPlaying()
   return radioToolStatus()
@@ -1166,7 +1171,7 @@ async function pushLyricsFor(entry: OnethingRadioProgrammeEntry, playerTitle: st
     currentLyrics = { title: playerTitle, lines }
     broadcastVoiceHostMessage({ channel: IPC_CHANNELS.MUSIC_LYRICS, payload: currentLyrics })
   } catch (error) {
-    console.warn(`[radio] could not fetch lyrics for 「${entry.title}」`, error)
+    log.warn('fetch lyrics failed', { title: entry.title }, error)
   }
 }
 
@@ -1215,7 +1220,7 @@ async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promi
       sample.title,
     )
   } catch (error) {
-    console.warn(`[radio] could not identify 「${sample.title}」`, error)
+    log.warn('identify current track failed', { title: sample.title }, error)
   }
 }
 
@@ -1254,7 +1259,7 @@ function logSampleTransition(sample: OnethingMusicNowPlaying | null): void {
   // "playing → stopped" line carries where playback actually was.
   lastWatchedSample = sample
   if (!changed) return
-  console.info(`[music:watch] ${describeSample(prev)} → ${describeSample(sample)}`)
+  log.debug('player state changed', { from: describeSample(prev), to: describeSample(sample) })
 }
 
 export function startRadioConductor(): void {
@@ -1283,7 +1288,7 @@ export function startRadioConductor(): void {
       if (!onDeck) return
       onSongStarted(onDeck, getMusicNowPlaying()?.title ?? onDeck.title)
     },
-    logger: console,
+    logger: consoleLog,
   })
   setMusicSampleListener(sample => {
     // The master switch, enforced where everything converges: with music

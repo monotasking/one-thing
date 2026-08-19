@@ -8,6 +8,10 @@ import type {
 } from './types.js'
 import { ACPClient } from './client.js'
 
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('acp')
+
 class ACPManagerClass {
   private clients = new Map<string, ACPClient>()
   private settings: ACPSettings = { enabled: true, agents: [] }
@@ -124,7 +128,7 @@ class ACPManagerClass {
     const ids = new Set(configs.map(config => config.id))
     for (const [id, client] of this.clients.entries()) {
       if (!ids.has(id)) {
-        client.disconnect().catch(error => console.warn(`[ACPManager] Failed to disconnect removed agent ${id}:`, error))
+        client.disconnect().catch(error => log.warn('removed agent disconnect failed', { agentId: id }, error))
         this.clients.delete(id)
       }
     }
@@ -135,7 +139,7 @@ class ACPManagerClass {
         const oldConfig = existing.state.config
         existing.updateConfig(config)
         if (JSON.stringify(oldConfig) !== JSON.stringify(config) && existing.status === 'connected') {
-          existing.disconnect().catch(error => console.warn(`[ACPManager] Failed to reconnect changed agent ${config.id}:`, error))
+          existing.disconnect().catch(error => log.warn('changed agent reconnect failed', { agentId: config.id }, error))
         }
       }
     }
@@ -165,7 +169,7 @@ class ACPManagerClass {
         const lastUsedAt = client.lastUsedAt
         if (!lastUsedAt) continue
         if (now - lastUsedAt > client.idleTimeoutMs) {
-          client.disconnect().catch(error => console.warn(`[ACPManager] idle disconnect failed for ${client.id}:`, error))
+          client.disconnect().catch(error => log.warn('idle disconnect failed', { agentId: client.id }, error))
         }
       }
     }, 60 * 1000)

@@ -28,6 +28,10 @@ import { getEventBus } from '../events/index.js'
 import { getStorePath } from '../stores/paths.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('collab.board')
+
 
 export interface CollabBoardActionOutcome {
   task?: CollabTask
@@ -94,7 +98,7 @@ function appendActivity(roomSessionId: string, entry: { at: number; actor: strin
       'utf8',
     )
   } catch (error) {
-    console.error('[collab] activity append failed:', error)
+    log.error('board activity append failed', { roomSessionId }, error)
   }
 }
 
@@ -204,7 +208,7 @@ export async function applyBoardAction(
         try {
           listener(roomSessionId, result.event)
         } catch (error) {
-          console.error('[collab] board event listener failed:', error)
+          log.error('board event listener failed', { roomSessionId }, error)
         }
       }
     }
@@ -236,7 +240,7 @@ export async function clearCollabBoard(roomSessionId: string): Promise<{ cleared
     try {
       fs.rmSync(path.join(boardDir(roomSessionId), 'activity.jsonl'), { force: true })
     } catch (error) {
-      console.error('[collab] activity trail cleanup failed:', error)
+      log.error('board activity trail cleanup failed', { roomSessionId }, error)
     }
     broadcastBoardChanged(roomSessionId, next)
     return { clearedTaskCount }

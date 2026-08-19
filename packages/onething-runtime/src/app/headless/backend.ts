@@ -65,6 +65,10 @@ import { killAllTerminals } from '../terminal/service.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('daemon')
+
 
 type EmitStreamEvent = (event: DaemonStreamEvent) => void
 
@@ -137,7 +141,7 @@ export class HeadlessBackend {
     try {
       await flushAllPendingSaves()
     } catch (error) {
-      console.error('[Headless] flushAllPendingSaves error:', error)
+      log.error('flush pending saves failed', {}, error)
     }
     this.activeStreams.clear()
     this.activeStreamBySession.clear()

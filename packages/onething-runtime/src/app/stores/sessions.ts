@@ -52,6 +52,12 @@ import {
 	repairSessionTimelineMetadata,
 	sanitizeSessionOnStartup,
 } from "@onething/core/session";
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('sessions')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export {
 	deriveRetainedContextSize,
@@ -89,7 +95,7 @@ const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>({
 	readJsonFile,
 	writeJsonFileAsync: writeSessionJsonFileAsync,
 	deleteJsonFile,
-	logger: console,
+	logger: consoleLog,
 });
 
 const sessionRepository = createOnethingSessionRepository<
@@ -112,7 +118,7 @@ const sessionRepository = createOnethingSessionRepository<
 	getDefaultWorkingDirectory: () =>
 		getSettings().tools?.bash?.defaultWorkingDirectory,
 	expandPath,
-	logger: console,
+	logger: consoleLog,
 });
 
 sessionMessageRuntime = createOnethingSessionMessageRuntime<
@@ -137,7 +143,7 @@ sessionMessageRuntime = createOnethingSessionMessageRuntime<
 			sessionRepository.updateSessionsIndexMeta(sessionId, update),
 	},
 	now: Date.now,
-	logger: console,
+	logger: consoleLog,
 });
 
 function updateSessionsIndexMeta(
@@ -360,7 +366,7 @@ function recordSessionCreated(session: ChatSession): ChatSession {
 	try {
 		sessionEventTranslator.sessionCreated(session);
 	} catch (error) {
-		console.warn("[Sessions] session/created not recorded:", error);
+		log.warn("session created event not recorded", { sessionId: session.id }, error);
 	}
 	return session;
 }
@@ -503,7 +509,7 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
 		try {
 			listener(result.deletedIds);
 		} catch (error) {
-			console.error("[Sessions] delete listener failed:", error);
+			log.error("session delete listener failed", { deletedIds: result.deletedIds }, error);
 		}
 	}
 	return result;
@@ -593,7 +599,7 @@ export function updateSessionTokenUsage(
 	const before = sessionMessageRuntime!.getSessionTokenUsage(sessionId);
 	sessionRepository.updateSessionTokenUsage(sessionId, usage, lastTurnUsage);
 	const after = sessionMessageRuntime!.getSessionTokenUsage(sessionId);
-	console.log("[SessionUsage] updateSessionTokenUsage", {
+	log.debug("session token usage updated", {
 		sessionId,
 		source: "stream-final-usage",
 		usageInputTokens: usage.inputTokens,
@@ -621,7 +627,7 @@ export function updateSessionContextSize(
 		contextSize,
 	);
 	const after = sessionMessageRuntime!.getSessionTokenUsage(sessionId);
-	console.log("[SessionUsage] updateSessionContextSize", {
+	log.debug("session context size updated", {
 		sessionId,
 		source,
 		contextSize,

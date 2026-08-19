@@ -66,6 +66,12 @@ import {
   restorePluginRuntimeHealth,
 } from './health.js'
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './types.js'
+import { consolePort, getLogger } from '../logging/index.js'
+
+const log = getLogger('plugins.manager')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
 
 export interface PluginManagerContext {
   eventBus: any
@@ -145,7 +151,7 @@ function createHost(): CorePluginManagerHost<
           scanPlugins().map(definition => definition.id),
         )
       } else {
-        console.warn(`[PluginManager] ${ledger.reason}; skipping the plugin-home orphan scan this round.`)
+        log.warn('skipping plugin-home orphan scan this round', { reason: ledger.reason })
       }
 
       // 自动归档的安全闸:扫描不可信 / 一个用户插件都没有 / 候选超阈值,
@@ -156,11 +162,10 @@ function createHost(): CorePluginManagerHost<
         userPluginCount,
       })
       if (!decision.proceed) {
-        console.warn(
-          `[PluginManager] Refusing to auto-archive ${orphans.length + homeOrphans.length} orphan plugin data candidate(s) `
-          + `(${[...orphans, ...homeOrphans].map(orphan => orphan.pluginId).join(', ')}): ${decision.reason}. `
-          + 'Nothing was moved; please check the plugins directory manually.',
-        )
+        log.warn('refusing to auto-archive orphan plugin data; nothing was moved', {
+          candidates: [...orphans, ...homeOrphans].map(orphan => orphan.pluginId),
+          reason: decision.reason,
+        })
         return []
       }
 
@@ -175,12 +180,13 @@ function createHost(): CorePluginManagerHost<
           clearPluginSettingsKeys(pluginId)
           invalidatePluginConfigCache(pluginId)
           clearPluginRuntimeHealth(pluginId)
-          console.warn(
-            `[PluginManager] "${pluginId}" has plugin data but is no longer installed `
-            + `(${kind}); archived to ${result.archivePath}`,
-          )
+          log.warn('archived plugin data for an uninstalled plugin', {
+            pluginId,
+            kind,
+            archivePath: result.archivePath,
+          })
         } else if (result.error) {
-          console.error(`[PluginManager] Failed to archive orphaned data for "${pluginId}": ${result.error}`)
+          log.error('archive orphaned plugin data failed', { pluginId, reason: result.error })
         }
       }
       for (const orphan of orphans) archiveOne(dataRoot, orphan.pluginId, orphan.kind)
@@ -396,7 +402,7 @@ const pluginBootstrapper = new CorePluginBootstrapper<PluginManager, PluginManag
   ensurePluginDirs,
   createManager: () => new PluginManager(),
   initializeManager: (manager, context) => manager.initialize(context),
-  logger: console,
+  logger: consoleLog,
 })
 
 /**

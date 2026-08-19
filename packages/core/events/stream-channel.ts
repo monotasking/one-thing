@@ -14,6 +14,10 @@
  */
 
 import type { StreamChunkBase, StreamChunkHandler, Unsubscribe } from './types.js'
+import { getCoreLogger } from '../logging/index.js'
+
+const log = getCoreLogger('core.events')
+
 
 export interface StreamChannelPayload<TChunk> {
   sessionId: string
@@ -39,7 +43,7 @@ export class StreamChannel<TChunk extends StreamChunkBase = StreamChunkBase> {
         try {
           handler(chunk)
         } catch (err) {
-          console.error(`[StreamChannel] Handler error for session ${sessionId}:`, err)
+          log.error('handler failed', { sessionId }, err)
         }
       }
     }
@@ -47,7 +51,7 @@ export class StreamChannel<TChunk extends StreamChunkBase = StreamChunkBase> {
       try {
         handler({ sessionId, chunk })
       } catch (err) {
-        console.error(`[StreamChannel] Wildcard handler error for session ${sessionId}:`, err)
+        log.error('wildcard handler failed', { sessionId }, err)
       }
     }
   }

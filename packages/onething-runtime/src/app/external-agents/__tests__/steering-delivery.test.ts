@@ -66,7 +66,20 @@ vi.mock('../../stores/paths.js', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   getStorePath: () => '/tmp/onething-steer-test',
 }))
-vi.mock('../../logging/index.js', () => ({ writeAppLog: vi.fn() }))
+const noopLogger = () => {
+  const logger: Record<string, unknown> = {
+    ns: 'test',
+    trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, fatal: () => {},
+    isLevelEnabled: () => false,
+  }
+  logger.child = () => logger
+  return logger
+}
+vi.mock('../../logging/index.js', () => ({
+  writeAppLog: vi.fn(),
+  getLogger: () => noopLogger(),
+  consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
+}))
 vi.mock('../host-tools.js', () => ({ resolveClaudeCodeHostToolSurface: vi.fn() }))
 
 const { getExternalAgentConnectors, takeExternalAgentSteering } = await import('../index.js')

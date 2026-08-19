@@ -11,6 +11,10 @@ import { broadcastVoiceHostMessage } from '../voice/host-ports.js'
 import { synthesizeSpeech } from '../voice/providers.js'
 import { getSettings } from '../stores/settings.js'
 import { IPC_CHANNELS, type MusicDjSpeak } from '@shared/ipc.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('music.radio')
+
 
 /**
  * Ceiling on how long one line may block the start flow. A lost ack
@@ -88,9 +92,12 @@ function synthesizeDjPatterCached(text: string, title: string): Promise<DjSpeech
           'DJ patter synthesis',
         )
         if (!speech.audioBase64) return null
-        console.info(
-          `[radio:timing] 「${title}」 TTS 合成: ${Date.now() - synthStart}ms (${text.length} 字, 音频 ${Math.round(speech.audioBase64.length / 1024)}KB base64)`,
-        )
+        log.debug('dj patter synthesized', {
+          title,
+          ms: Date.now() - synthStart,
+          chars: text.length,
+          audioKB: Math.round(speech.audioBase64.length / 1024),
+        })
         if (patterCache.size >= PATTER_CACHE_MAX) {
           const oldest = patterCache.keys().next().value
           if (oldest !== undefined) patterCache.delete(oldest)
@@ -98,7 +105,7 @@ function synthesizeDjPatterCached(text: string, title: string): Promise<DjSpeech
         patterCache.set(text, speech)
         return speech
       } catch (error) {
-        console.warn('[radio] DJ patter synthesis failed; skipping', error)
+        log.warn('dj patter synthesis failed, skipping', { title }, error)
         return null
       } finally {
         patterInflight.delete(text)
@@ -153,7 +160,5 @@ export async function speakDjPatter(text: string, title: string): Promise<void> 
     pending.set(id, finish)
     broadcastVoiceHostMessage({ channel: IPC_CHANNELS.MUSIC_DJ_SPEAK, payload })
   })
-  console.info(
-    `[radio:timing] 「${title}」 口播渲染端播放(广播→ack): ${Date.now() - playStart}ms`,
-  )
+  log.debug('dj patter played in renderer', { title, ms: Date.now() - playStart })
 }
