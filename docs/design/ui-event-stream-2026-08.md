@@ -38,7 +38,11 @@ engine(唯一装配点,delta 在源头就带 partIndex/kind/messageId)
 2. **一份 reducer**:renderer 的消息装配 = `@onething/core` 的 `reduceSessionProjection`(同一模块),Pinia 只持有 reducer 状态与派生 `ChatMessage[]`。placement、part 边界、toolCall↔step 关联的推断规则从 renderer **删除**——它们只活在引擎(写侧)与 reducer(读侧)各一份,且被影子持续对账。
 3. **一个恢复语义**:每条 UI 事件带会话内 `eventSeq`(与落盘同源)。断线/切会话回来 = 拉快照(现有分页读)+ 按 `?after=eventSeq` 重放增量——web 重连、桌面窗口重建、多窗口同视,全走这一条路;pending 队列、`resolveMessageId` 兜底大幅缩水。
 
-`message:updated` 快照保留两个用途:非流式字段变更(编辑、reactions、collab 字段)与重连兜底;不再承担流中回填。
+**拍板(2026-08-20 用户):UI 不要快照——`message:updated` 在 U2 整个退役。**
+- 初始态 = 读面拉一页(events 读模式下本就是事件 fold,同源)+ 记 `eventSeq`;之后一切变化只有事件:非流式变更用 P0 命令面在 S1a 已配好的翻译(`message/patched`/`user/message-edited`/`message/deleted`/`session/cleared`/`session/*-changed`),UI 与落盘消费同一批。
+- 断线/漏 seq:**UI 主动重拉**一页并从新 seq 续订——拉是查询,推快照是第二真相,语义不同;这是唯一兜底,没有推送式回填。
+- **临时事件**:plugin-status/waiting 等流内即生即灭的信号在 UI 流上作 `ephemeral: true` 事件发,词汇同构,**永不落盘**。
+- **未知事件类型 = 触发重拉**(与 events.jsonl 解码器"不认识就跳过"同纪律),前向兼容免费。
 
 ## 2. 与既有件的关系
 
@@ -58,7 +62,7 @@ engine(唯一装配点,delta 在源头就带 partIndex/kind/messageId)
 |---|---|---|
 | **U0 源头标注 + 双发** | 引擎 delta 源头带 `partIndex/kind/placement/messageId`(recorder 的边界状态机上提为共享件);coalescer 增加"UI 事件小批"输出,**与旧 chunk 流并行双发**(开关 `ONETHING_UI_STREAM=legacy(默认)\|events`);落盘路径回归不变(events.jsonl 字节与 U0 前相同) | 单测:同一 delta 序列,落盘打包与 UI 小批的 part 边界一致;真机:events.jsonl 与 U0 前逐字节同;双发下旧 UI 全绿 |
 | **U1 renderer fold + 影子** | `stores/chat-projection.ts`:订阅 UI 事件流,跑 core reducer,产出 `ChatMessage[]`;**dev 模式并行装配**:reducer 结果 vs 旧拼装结果每次 settle 后 canonical 比较,失配记 renderer logger(`renderer.ui-shadow`);默认仍走旧路渲染 | 真机(playwright):N 轮含工具/reasoning/abort/regenerate 会话,ui-shadow 零失配;16ms 节奏不变;重渲染次数 ≤ 旧路(CDP 量) |
-| **U2 切换 + 删旧** | 默认 `events`;删 handleStreamChunk 拼装分支/appendOrMerge*/placement 推断/pending 队列/linkSteps;瞬态 part 改装饰;重连走 `?after=eventSeq` | stream-end 稳定性测试、messagelist 测试全绿;web 断线重连脚本(杀 SSE → 重连 → 消息完整);删除行数报告 |
+| **U2 切换 + 删旧** | 默认 `events`;删 handleStreamChunk 拼装分支/appendOrMerge*/placement 推断/pending 队列/linkSteps;**删 `message:updated` 及其合并纠偏/回填约定(chat.ts:2987)**;瞬态 part 改装饰(ephemeral 事件驱动);重连/漏 seq 走重拉+续订 | stream-end 稳定性测试、messagelist 测试全绿;web 断线重连脚本(杀 SSE → 重连 → 消息完整);删除行数报告 |
 | **U3(可选)** | token 级回放(打字机重现,吃 `dt[]`)、TTFT 读数从流内派生 | — |
 
 排期建议:U0 可先行(纯引擎侧,双发无风险);U1/U2 与 one-core B 期合成一个 renderer 改造窗口(B 换管、U 换词,一次动一遍 renderer);全线在 S2b 之后开工。
@@ -67,6 +71,7 @@ engine(唯一装配点,delta 在源头就带 partIndex/kind/messageId)
 
 | # | 问题 | 选项(推荐加粗) |
 |---|---|---|
+| ~~U-d~~ | ~~快照去留~~ | **已拍:不要**(2026-08-20) |
 | U-a | UI 流词汇 | ①**直接用事件词汇(assistant/chunks 等,与落盘同名同形)**②另设 part-open/delta/close 专用词汇(多一套映射,无收益) |
 | U-b | reducer 复用 | ①**renderer 直接 import core 投影 reducer**(已可行,L3 先例)②在 shared 镜像一份(双份漂移,违背本设计初衷) |
 | U-c | 时机 | ①**S2b 后、与 B 期同窗**②立即(与 S2b 争 renderer 回归带宽) |
@@ -74,4 +79,4 @@ engine(唯一装配点,delta 在源头就带 partIndex/kind/messageId)
 ## 5. 不做
 - 不改 provider 层;不动 events.jsonl 格式;不动 S 线影子。
 - 不做多窗口协同编辑类的双向流——UI 流是单向投影。
-- `message:updated` 不删,降级为非流式字段通道 + 重连兜底。
+- ~~`message:updated` 降级保留~~ 已改拍:U2 整个退役(见 §1)。会话级元数据(名称/agent/model)仍走 sessions 域自己的事件,不在本线。
