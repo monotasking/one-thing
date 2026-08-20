@@ -152,6 +152,7 @@ interface ChunkBatch {
   requestIndex: number
   messageId: string
   toolCallId?: string
+  toolName?: string
   time0: number
   dt: number[]
   text: string[]
@@ -165,6 +166,11 @@ interface PartState {
   requestIndex: number
   messageId: string
   toolCallId?: string
+  /**
+   * `tool-input` 段的工具名(`tool-call-start` 那一格)。孤儿参数流永远等不到
+   * `tool/call`,没有这一格就说不出"被打断的那次调用是谁"(§10.14 第 7 类)。
+   */
+  toolName?: string
   text: string
 }
 
@@ -335,6 +341,7 @@ export function createSessionEventRecorder(
   function openPart(
     kind: Exclude<SessionAssistantPartKind, 'image'>,
     toolCallId?: string,
+    toolName?: string,
   ): number | undefined {
     const requestIndex = state.requestIndex
     if (requestIndex === undefined) return undefined
@@ -346,6 +353,7 @@ export function createSessionEventRecorder(
       requestIndex,
       messageId: ctx.getMessageId(),
       ...(toolCallId ? { toolCallId } : {}),
+      ...(toolName ? { toolName } : {}),
       text: '',
     })
     return partIndex
@@ -366,6 +374,7 @@ export function createSessionEventRecorder(
       partIndex: batch.partIndex,
       kind: batch.kind,
       ...(batch.toolCallId ? { toolCallId: batch.toolCallId } : {}),
+      ...(batch.toolName ? { toolName: batch.toolName } : {}),
       time0: batch.time0,
       dt: batch.dt,
       text: batch.text,
@@ -390,6 +399,7 @@ export function createSessionEventRecorder(
         requestIndex: part.requestIndex,
         messageId: part.messageId,
         ...(part.toolCallId ? { toolCallId: part.toolCallId } : {}),
+        ...(part.toolName ? { toolName: part.toolName } : {}),
         time0: now,
         dt: [],
         text: [],
@@ -428,6 +438,7 @@ export function createSessionEventRecorder(
       len: part.text.length,
       hash,
       ...(part.toolCallId ? { toolCallId: part.toolCallId } : {}),
+      ...(part.toolName ? { toolName: part.toolName } : {}),
     })
   }
 
@@ -520,7 +531,7 @@ export function createSessionEventRecorder(
         return
       }
       case 'tool-call-start': {
-        const partIndex = openPart('tool-input', event.toolCallId)
+        const partIndex = openPart('tool-input', event.toolCallId, event.toolName)
         if (partIndex !== undefined) state.toolInputPartByCallId.set(event.toolCallId, partIndex)
         return
       }

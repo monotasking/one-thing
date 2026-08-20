@@ -418,6 +418,8 @@ export type {
 
 export {
   canApplyGeneratedSessionTitle,
+  CORE_ABORTED_TOOL_ERROR,
+  CORE_LINGERING_TOOL_ERROR,
   CoreStreamEngine,
   CoreTriggerManager,
   createCoreId,

@@ -109,6 +109,9 @@ function recordSimpleRun(assistantId: string, text: string): string {
     kind: 'text',
     len: text.length,
   })
+  // 记录器在 `turn-end` 上无条件写这一条 —— 它是"这一轮的 part 落到消息上了"
+  // 的账(§10.14 第 7 类:走不到它的那一轮,contentParts 一格都没有)。
+  appendSessionLogEvent(SESSION, 'request/end', { runId: run.runId, requestIndex: 1 })
   // 真机里这一条由 `stream-executor` 在开 run 之后立刻打上(`ChatMessage.runId`)。
   appendSessionLogEvent(SESSION, 'message/patched', {
     messageId: assistantId,
@@ -250,8 +253,10 @@ function recordTwoPlacementRun(assistantId: string): string {
   }
   part(0, 'reasoning', 1, 'thinking first')
   part(1, 'text', 1, 'looking')
+  appendSessionLogEvent(SESSION, 'request/end', { runId: run.runId, requestIndex: 1 })
   part(2, 'reasoning', 2, 'now I know')
   part(3, 'text', 2, ' done')
+  appendSessionLogEvent(SESSION, 'request/end', { runId: run.runId, requestIndex: 2 })
   appendSessionLogEvent(SESSION, 'message/patched', {
     messageId: assistantId,
     patch: { runId: run.runId },

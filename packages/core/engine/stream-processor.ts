@@ -100,6 +100,17 @@ export function coreStepTypeForToolName(toolName: string): CoreStreamStepType {
   return toolName.toLowerCase() === 'bash' ? 'command' : 'tool-call'
 }
 
+/**
+ * 占位 step 的标题(`tool_input_start` 那一刻)。参数还没到,派生标题无从谈起
+ * —— 引擎写的就是这一句,之后由工具自报的 `annotate{title}` 盖掉。
+ *
+ * 单独成一个函数是因为**投影也要说出同一句话**:一次"参数流到一半被打断"的
+ * 调用永远停在这个标题上(§10.14 第 7 类),投影不许手抄这条字面量。
+ */
+export function coreToolInputStartStepTitle(displayName: string): string {
+  return `调用工具: ${displayName}`
+}
+
 export function createCoreStreamToolCall(input: {
   toolCallId: string
   resolved: Pick<CoreResolvedTool, 'toolId' | 'displayName'>
@@ -193,7 +204,7 @@ export function createCoreToolInputStartArtifacts<TToolCall extends CoreStreamTo
     placeholderStep: {
       id: input.stepId,
       type: stepType,
-      title: `调用工具: ${input.resolved.displayName}`,
+      title: coreToolInputStartStepTitle(input.resolved.displayName),
       status: 'running',
       timestamp,
       toolCallId: input.toolCallId,

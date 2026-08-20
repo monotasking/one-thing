@@ -124,6 +124,7 @@ export {
 	createCoreStreamToolCall,
 	createCoreToolInputStartArtifacts,
 	CoreStreamingToolInputBuffer,
+	coreToolInputStartStepTitle,
 	resolveToolIdentity,
 } from "./stream-processor.js";
 export type {
@@ -232,6 +233,8 @@ export {
 	buildAgentLoopToolResultPresentation,
 	buildAgentLoopToolStartStepUpdate,
 	completeAgentLoopStreamWithAdapters,
+	CORE_ABORTED_TOOL_ERROR,
+	CORE_LINGERING_TOOL_ERROR,
 	createAgentLoopAssistantMessage,
 	createAgentLoopNextAssistantWriterPlan,
 	changesFromMetadata,

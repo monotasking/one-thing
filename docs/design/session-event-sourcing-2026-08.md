@@ -1419,3 +1419,7 @@ step.title      = 最后一条 annotate{title}(stepUpdate 里根本没有 title 
 1. **脚本场景矩阵**(待建,`scripts/shadow-battery.mjs`):起真 server(dist 构建)+ 假 provider,枚举场景 × 变体驱动真引擎——多轮工具循环 / 权限拒绝 / abort / retry / edit-resend / compact / 技能读取 / 业务失败工具 / 图片 / steering / reasoning 双落点 / 同 run 续轮…;每个已修失配类固化为一个场景(§10.9–§10.12 逐条回填)。门:**矩阵 ≥200 run 零失配**,分钟级,修复后一键回归。
 2. **真实使用**:不再要求凑数,负责"未知的未知"——观察期内**零新失配类**即可(脚本模拟不出真实 provider 的流式怪癖 / 真实 skill / 真实工具边界失败;已有六类全部来自真机)。
 S2b 前置 = 两者同时绿。
+
+### 10.15 §10.12 竞态定性(2026-08-20):架构问题,归 U0
+
+用户点破:recorder 领先引擎一个 turn 不是时序 hack 能修的,是**身份在事实下游被分配**——事实(delta/boundary)生于 agent-loop,身份(runId/messageId)定于 executor(隔异步队列),recorder 记账时查的是可能未更新的登记簿。修法与 U0 的'delta 源头带 messageId/partIndex'同一原则:run 轮换上提到 agent-loop 发 boundary 的同步点,事件出生即带 runId;executor 退为消费已盖章事件。归 U0 交付,不单独修。

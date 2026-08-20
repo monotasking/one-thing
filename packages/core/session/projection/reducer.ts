@@ -29,6 +29,8 @@ import type {
   SessionLogEventRecord,
   SessionResponseUsage,
 } from '../events/types.js'
+import { CORE_ABORTED_TOOL_ERROR, CORE_LINGERING_TOOL_ERROR } from '../../engine/agent-loop-executor.js'
+import { coreStepTypeForToolName, coreToolInputStartStepTitle } from '../../engine/stream-processor.js'
 import { detectSkillUsage, generateStepTitle, getStepType } from '../../engine/tool-step.js'
 import { toolResultToStructured } from '../../tools/tool-result.js'
 import { SurfaceIndex } from './surface.js'
@@ -70,6 +72,13 @@ interface PartState {
   kind: SessionAssistantPartKind
   requestIndex: number
   toolCallId?: string
+  /**
+   * `tool-input` 段的工具名(`assistant/chunks|part-end.toolName`)。
+   *
+   * 孤儿参数流(等不到 `tool/call` 的那一段)只有这一格说得出"被打断的是谁" ——
+   * 引擎的占位卡从第一帧起就带着名字,投影不许把它留空(§10.14 第 7 类)。
+   */
+  toolName?: string
   text: string
   ended: boolean
   /** part 收齐的时刻。`tool-input` 的这一格就是 toolCall 的 `receivedAt`。 */
@@ -137,6 +146,15 @@ export interface AssistantNode extends BaseNode {
   turnByRequest: Map<number, number>
   turnCount: number
   usageByTurn: Map<number, ProjectedStepUsage>
+  /**
+   * 收齐了的请求(`request/end` = 记录器在 `turn-end` 那一刻写的)。
+   *
+   * 引擎把这一轮的 part **落到消息上**的唯一时刻就是那一刻
+   * (`applyAgentLoopFinishChunkWithAdapters` → `persistTurnContentParts`):
+   * 被 abort / 出错打断的那一轮,正文与推理只活在流里,`contentParts` 上
+   * 一格都没有。投影按同一条闸(§10.14 第 7 类)。
+   */
+  settledRequests: Set<number>
   /** `run/start.continuesRunId`:这次 run 接着哪一次 run 的执行往下跑。 */
   continuesRunId?: string
   /**
@@ -290,6 +308,9 @@ export function reduceSessionProjection(
         turnByRequest: new Map(continued?.turnByRequest ?? []),
         turnCount: continued?.turnCount ?? 0,
         usageByTurn: new Map(continued?.usageByTurn ?? []),
+        // 与回合号同一条理由:steering 换的是消息不是执行,前一条 run 已经收齐的
+        // 那几轮在接手的这条上照样是"收齐了的"。
+        settledRequests: new Set(continued?.settledRequests ?? []),
         ...(continued?.usage ? { usage: continued.usage } : {}),
         ...(event.data.continuesRunId ? { continuesRunId: event.data.continuesRunId } : {}),
       }
@@ -333,7 +354,10 @@ export function reduceSessionProjection(
     case 'assistant/chunks': {
       const run = state.runs.get(event.data.runId)
       if (!run) break
-      const part = ensurePart(run, event.data.partIndex, event.data.kind, event.data.requestIndex, event.data.toolCallId)
+      const part = ensurePart(
+        run, event.data.partIndex, event.data.kind, event.data.requestIndex,
+        event.data.toolCallId, event.data.toolName,
+      )
       part.text += event.data.text.join('')
       if (event.data.kind === 'reasoning' && event.data.dt.length > 0) {
         const first = event.data.time0 + event.data.dt[0]
@@ -351,7 +375,10 @@ export function reduceSessionProjection(
     case 'assistant/part-end': {
       const run = state.runs.get(event.data.runId)
       if (!run) break
-      const part = ensurePart(run, event.data.partIndex, event.data.kind, event.data.requestIndex, event.data.toolCallId)
+      const part = ensurePart(
+        run, event.data.partIndex, event.data.kind, event.data.requestIndex,
+        event.data.toolCallId, event.data.toolName,
+      )
       part.ended = true
       part.endedAt = event.time
       if (event.data.blob) part.blob = event.data.blob
@@ -473,6 +500,13 @@ export function reduceSessionProjection(
       break
     }
 
+    case 'request/end': {
+      // 这一轮走到了 `turn-end` —— 引擎正是在这一刻把它的 part 落到消息上。
+      const run = resolveRun(state, event.data.runId, undefined)
+      if (run) run.settledRequests.add(event.data.requestIndex)
+      break
+    }
+
     // 记录在案但不改投影:它们回答的是"什么时候发生了什么",不是"屏幕上有什么"。
     case 'session/created':
     case 'session/agent-changed':
@@ -480,7 +514,7 @@ export function reduceSessionProjection(
     case 'session/workdir-changed':
     case 'request/tools':
     case 'request/header':
-    case 'request/end':
+
     case 'interaction/asked':
     case 'interaction/answered':
     case 'plugin/status':
@@ -548,6 +582,7 @@ function ensurePart(
   kind: SessionAssistantPartKind,
   requestIndex: number,
   toolCallId: string | undefined,
+  toolName?: string,
 ): PartState {
   let part = run.parts.get(partIndex)
   if (!part) {
@@ -555,6 +590,8 @@ function ensurePart(
     run.parts.set(partIndex, part)
     run.partOrder.push(partIndex)
   }
+  // 老事件行没有这一格(采集点是本期加的),所以只补不覆盖。
+  if (toolName && part.toolName === undefined) part.toolName = toolName
   turnOf(run, requestIndex)
   return part
 }
@@ -698,6 +735,30 @@ function stepStatus(status: ProjectedToolCallStatus): ProjectedStepStatus {
  * 从前这里在 `isError` 时把结构化那一格整个丢掉,于是真机上 `read` 越界失败的
  * 那次调用在投影里连 `result` 都没有(§10.12 第 6 类)。
  */
+/**
+ * **收尾修复**(§10.14 第 7 类):一次执行收场时,引擎会把所有还没有结局的调用
+ * 就地判死 —— `finalizeLingeringAgentLoopToolWork(message, now, errorMessage)`:
+ *
+ * ```
+ * toolCall.status = 'cancelled'; toolCall.error = 'User cancelled' | LINGERING
+ * step.status     = 'cancelled'; step.error     = 同一句
+ * ```
+ *
+ * 那句话由收场的**方式**决定,不是由调用自己:用户按停止 → `'User cancelled'`
+ * (`emitFinalAssistantMessageUpdate("User cancelled")`),其余两条收场路
+ * (正常收尾 / 请求出错)都不带 errorMessage → 默认那一句。两个常量从引擎
+ * 导出,这里不手抄字面量(§10.10 的规矩)。
+ *
+ * `interrupted` 是**没有**收尾修复的那一档:它是进程没了之后由下一次
+ * `run/start` 补盖的墓碑,当时没有任何代码跑过那次修复,消息上因此什么都没写。
+ */
+function lingeringToolError(run: AssistantNode): string | undefined {
+  if (!run.ended) return undefined
+  if (run.outcome === 'aborted') return CORE_ABORTED_TOOL_ERROR
+  if (run.outcome === 'completed' || run.outcome === 'error') return CORE_LINGERING_TOOL_ERROR
+  return undefined
+}
+
 function toolResultFields(tool: ToolState): Partial<ProjectedToolCall> {
   const error = tool.isError && tool.resultText !== undefined ? { error: tool.resultText } : {}
   // 结构化结局优先:`ToolCall.result` 的正身是它,`result.text` 只是给模型的那段。
@@ -746,6 +807,10 @@ export function materializeToolCall(run: AssistantNode, tool: ToolState): Projec
     ...(tool.streamingArgs !== undefined ? { streamingArgs: tool.streamingArgs } : {}),
     ...toolTimingFields(tool),
     ...toolResultFields(tool),
+    // 没等到结局就收场的那一次:引擎的收尾修复在它身上写了一句话(见上)。
+    ...(tool.resultTime === undefined && lingeringToolError(run)
+      ? { error: lingeringToolError(run) }
+      : {}),
     // 引擎在收尾那一刻把这一位写死成 false(确认已经不再需要了)。它不是
     // 事实的一部分,是那条 UI 闸的收场态 —— 有结局就有它。
     ...(tool.resultTime !== undefined ? { requiresConfirmation: false } : {}),
@@ -811,6 +876,8 @@ export function materializeStep(
     // (`buildAgentLoopToolResultPresentation` 的 `stepUpdate`)。
     ...(hasResultText ? { result: tool.resultText } : {}),
     ...(hasResultText && tool.isError ? { error: tool.resultText } : {}),
+    // 收尾修复把同一句话写在 step 上(`step.error = step.error || 那一句`)。
+    ...(!hasResultText && toolCall.error !== undefined ? { error: toolCall.error } : {}),
     ...(structured ? { partialResult: structured, partialResultIsPartial: false } : {}),
     ...(toolCall.rejected ? { rejected: true as const } : {}),
     ...(tool.rejectionReason !== undefined ? { rejectionReason: tool.rejectionReason } : {}),
@@ -866,23 +933,80 @@ export function materializeToolCalls(run: AssistantNode): ProjectedToolCall[] {
  * 参数流永远等不到它的调用了。
  */
 export function materializeOrphanToolCalls(run: AssistantNode): ProjectedToolCall[] {
-  const orphans: ProjectedToolCall[] = []
+  return orphanToolInputParts(run).map(part => materializeOrphanToolCall(run, part))
+}
+
+/** 孤儿参数流的那几段 part(按 partIndex 排好)。 */
+function orphanToolInputParts(run: AssistantNode): PartState[] {
+  const parts: PartState[] = []
   for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
     const part = run.parts.get(partIndex)!
     if (part.kind !== 'tool-input') continue
     if (!part.toolCallId || run.tools.has(part.toolCallId)) continue
-    orphans.push({
-      id: part.toolCallId,
-      toolId: '',
-      toolName: '',
-      arguments: {},
-      status: run.ended && run.outcome !== 'completed' ? 'cancelled' : 'input-streaming',
-      timestamp: run.time,
-      streamingArgs: part.text,
-      ...(part.endedAt !== undefined ? { receivedAt: part.endedAt } : {}),
-    })
+    parts.push(part)
   }
-  return orphans
+  return parts
+}
+
+/**
+ * 引擎在 `tool_input_start` 那一刻建的**占位调用**
+ * (`createCoreToolInputStartArtifacts`),外加收场时的那次修复。逐格对照:
+ *
+ * | 格 | 引擎 | 这里 |
+ * |---|---|---|
+ * | `toolId` / `toolName` | `resolved.toolId` / `resolved.displayName` | part 上记的工具名(与 `tool/call.name` 同一条口径:那边也只有一个 `name`) |
+ * | `arguments` | `{}` —— 参数永远没定稿 | `{}` |
+ * | `streamingArgs` | **`''`** —— delta 只发给渲染层,一格都没回写进消息 | `''` |
+ * | `status` | `'input-streaming'` → 收场修复判 `'cancelled'` | 同 |
+ * | `error` | 收场修复写的那一句 | `lingeringToolError(run)` |
+ */
+function materializeOrphanToolCall(run: AssistantNode, part: PartState): ProjectedToolCall {
+  const error = lingeringToolError(run)
+  const name = part.toolName ?? ''
+  return {
+    id: part.toolCallId!,
+    toolId: name,
+    toolName: name,
+    arguments: {},
+    // 收场修复只认 `input-streaming` 这一档,而收场的方式与它无关 —— 三条路
+    // (abort / 出错 / 正常收尾)都会把还开着的参数流判死。
+    status: error !== undefined ? 'cancelled' : 'input-streaming',
+    timestamp: run.time,
+    // 参数流的原文**不在**消息上:`streamingArgs` 是渲染层的活文本,引擎写进
+    // 消息的那一格从建卡起就是空串(`createCoreToolInputStartArtifacts`)。
+    // 原文仍在事件里(`part.text`),要用的人自己去取。
+    streamingArgs: '',
+    ...(error !== undefined ? { error } : {}),
+  }
+}
+
+/**
+ * G7 的另一半:孤儿参数流**也有一条 step**。
+ *
+ * 引擎建占位 step 与建占位调用是同一行代码(`createCoreToolInputStartArtifacts`
+ * 一次返回两样),所以"只补 toolCalls 不补 steps"是投影漏了一半 ——
+ * 真机上那条 abort 的消息因此少一条 step(§10.14 第 7 类)。
+ *
+ * 标题与类型都**冻在占位那一刻**:参数还是 `{}`,`getStepType` 无从判起
+ * (bash 一律 `command`),标题是"调用工具: X"(工具自报的标题永远不会来)。
+ * 两者都调引擎自己的函数,不手抄。
+ */
+export function materializeOrphanSteps(run: AssistantNode): ProjectedStep[] {
+  return orphanToolInputParts(run).map(part => {
+    const toolCall = materializeOrphanToolCall(run, part)
+    const turnIndex = run.turnByRequest.get(part.requestIndex)
+    return {
+      id: `step-${toolCall.id}`,
+      type: coreStepTypeForToolName(toolCall.toolName),
+      title: coreToolInputStartStepTitle(toolCall.toolName),
+      status: toolCall.status === 'cancelled' ? 'cancelled' : 'running',
+      timestamp: run.time,
+      ...(turnIndex !== undefined ? { turnIndex } : {}),
+      toolCallId: toolCall.id,
+      toolCall,
+      ...(toolCall.error !== undefined ? { error: toolCall.error } : {}),
+    }
+  })
 }
 
 /**
@@ -941,11 +1065,27 @@ export function materializeTopReasoning(run: AssistantNode): string {
   return out
 }
 
+/**
+ * 这一轮的 part 落到消息上了吗?
+ *
+ * 引擎只有一个落点:`finish` chunk → `persistTurnContentParts`,与记录器写
+ * `request/end` 是同一刻(`turn-end`)。走不到那一刻的那一轮(用户 abort、
+ * 请求出错重试)—— 正文与推理只在流里活过一次,`contentParts` 上一格都没有
+ * (`message.content` / `message.reasoning` 是**另外**两条实时写的路,它们照旧有)。
+ *
+ * 真机 `17b342a2…`:abort 掉的第 3 轮那 272 字推理在事件里齐全,而
+ * `messages.jsonl` 的 contentParts 里根本没有它(§10.14 第 7 类)。
+ */
+function requestSettled(run: AssistantNode, requestIndex: number): boolean {
+  return run.settledRequests.has(requestIndex)
+}
+
 export function materializeContentParts(run: AssistantNode): ProjectedContentPart[] {
   const parts: ProjectedContentPart[] = []
   const topReasoning = topReasoningPartIndexes(run)
   for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
     const part = run.parts.get(partIndex)!
+    if (!requestSettled(run, part.requestIndex)) continue
     const turnIndex = run.turnByRequest.get(part.requestIndex)
     if (part.kind === 'text' && part.text) {
       parts.push({ type: 'text', content: part.text, ...(turnIndex !== undefined ? { turnIndex } : {}) })

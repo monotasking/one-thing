@@ -25,6 +25,7 @@ import {
   createSessionProjectionState,
   deriveThinkingTime,
   materializeContentParts,
+  materializeOrphanSteps,
   materializeOrphanToolCalls,
   materializePartText,
   materializeSteps,
@@ -104,7 +105,10 @@ function materializeMessageNode(node: MessageNode): ProjectedChatMessage {
 function materializeAssistantNode(node: AssistantNode): ProjectedChatMessage {
   // G7:孤儿参数流合成的占位调用排在真调用之后 —— 它们是"还没成为调用"的东西。
   const toolCalls = [...materializeToolCalls(node), ...materializeOrphanToolCalls(node)]
-  const steps = materializeSteps(node)
+  // 占位调用与占位 step 是引擎**同一行代码**建的两样东西
+  // (`createCoreToolInputStartArtifacts`)—— 补一样漏一样就是投影少一条 step
+  // (§10.14 第 7 类)。
+  const steps = [...materializeSteps(node), ...materializeOrphanSteps(node)]
   const contentParts = materializeContentParts(node)
   // `message.reasoning` 只装 `'top'` 那一段 —— 引擎的 `updateMessageReasoning`
   // 只在 placement 是 'top' 时被调用,inline 的那些留在 contentParts 里。
@@ -129,7 +133,15 @@ function materializeAssistantNode(node: AssistantNode): ProjectedChatMessage {
     // `assistantMessageId` 一路带到接手的那条消息上(整次执行的总量落在那里),
     // 被打断的这条从来没被写过用量。step 级的每轮用量照旧有 —— 那是 turn-end
     // 当场按 turnIndex 写进 steps 的,发生在换消息之前(§10.12 第 5 类)。
-    ...(node.usage && !node.continuedByRunId ? { usage: node.usage } : {}),
+    // 用量**只在一次执行正常收尾时写一次**(`executeAgentLoopStreamLifecycle` 的
+    // `updateUsage` 排在 chunk 循环之后、`completeStream` 之前)。abort / 出错
+    // 那两条路是从 catch 里走的,`updateUsage` 一次都没跑 —— 消息上因此**没有**
+    // usage,尽管前面几轮的 `request/response` 各自都带着 token 数(它们照旧
+    // 进 `steps[].usage`,那是 turn-end 当场写的)。真机 `17b342a2…` 的
+    // abort 消息就是这样(§10.14 第 7 类)。
+    ...(node.usage && !node.continuedByRunId && node.outcome === 'completed'
+      ? { usage: node.usage }
+      : {}),
     ...(node.skillUsed ? { skillUsed: node.skillUsed } : {}),
     ...(thinkingTime !== undefined ? { thinkingTime } : {}),
     ...(node.ended ? {} : { isStreaming: true as const }),

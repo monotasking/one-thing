@@ -26,6 +26,11 @@
 
 import { describe, expect, it } from 'vitest'
 
+import {
+  CORE_ABORTED_TOOL_ERROR,
+  finalizeLingeringAgentLoopToolWork,
+} from '../../engine/agent-loop-executor.js'
+import { createCoreToolInputStartArtifacts } from '../../engine/stream-processor.js'
 import { buildHistoryMessages } from '../../engine/history.js'
 import { detectSkillUsage, generateStepTitle, getStepType } from '../../engine/tool-step.js'
 import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
@@ -65,6 +70,13 @@ interface ToolSpec {
   /** 参数是流式来的:多一条 `assistant/chunks{kind:'tool-input'}` + part-end。 */
   streamedArgs?: boolean
   /**
+   * **孤儿参数流**(G7 / §10.14 第 7 类):参数流到一半就收场了,`tool/call`
+   * 永远不会来。引擎留下的是 `createCoreToolInputStartArtifacts` 那一对占位
+   * (调用 + step),收场时由 `finalizeLingeringAgentLoopToolWork` 判死。
+   * A 线直接调那两个引擎函数 —— 派生字段不许在 fixture 里手写(§10.10)。
+   */
+  orphan?: boolean
+  /**
    * 工具的**结构化**结局(`ToolCall.result` 的正身)。成功时是
    * `{title, output, metadata}`,失败时是 `{success:false, error}` —— 两种都写进
    * `toolCall.result`,引擎那一份是 `toJsonValue(result.data ?? result.content)`,
@@ -83,6 +95,15 @@ interface RequestSpec {
   text?: string
   tools?: ToolSpec[]
   usage?: { inputTokens: number; outputTokens: number }
+  /**
+   * 这一轮**没走到** `turn-end`(用户 abort / 请求出错)。
+   *
+   * 引擎只在那一刻把这一轮的 part 落到消息上(`persistTurnContentParts`),
+   * 所以走不到的那一轮:`contentParts` 一格都没有,`request/response` 与
+   * `request/end` 两条事件也都没有。正文与 top 推理照旧有 —— 它们是实时写
+   * 字段的另外两条路(§10.14 第 7 类)。
+   */
+  unfinished?: boolean
 }
 
 interface TurnSpec {
@@ -198,8 +219,12 @@ class EventLine {
 
 function toolCallOf(spec: ToolSpec, timestamp: number, receivedAt?: number): ProjectedToolCall {
   const status: ProjectedToolCall['status'] =
+    // 没有结局的那一次:**执行中**。判死是收场那一刻由
+    // `finalizeLingeringAgentLoopToolWork` 干的事(它连 `error` 一起写),
+    // fixture 直接写 `'cancelled'` 会把那次修复整个跳过 —— 又一处"fixture 抢先
+    // 写下结论"的空转(§10.14 第 7 类)。
     spec.resultText === undefined
-      ? 'cancelled'
+      ? 'executing'
       : spec.isError || spec.outcome === 'denied' || spec.outcome === 'failed'
         ? 'failed'
         : spec.outcome === 'aborted'
@@ -254,7 +279,8 @@ function stepOf(
       toolCall.status === 'completed' ? 'completed'
         : toolCall.status === 'failed' ? 'failed'
           : toolCall.status === 'cancelled' ? 'cancelled'
-            : 'pending',
+            : toolCall.status === 'executing' ? 'running'
+              : 'pending',
     timestamp,
     turnIndex,
     toolCallId: spec.callId,
@@ -296,7 +322,7 @@ function planTurn(turn: TurnSpec, clock: Clock): TurnTimeline {
     ...(request.text !== undefined ? { text: clock.next() } : {}),
     ...(request.usage ? { response: clock.next() } : {}),
     tools: (request.tools ?? []).map(tool => ({
-      ...(tool.streamedArgs ? { inputEnd: clock.next() } : {}),
+      ...(tool.streamedArgs || tool.orphan ? { inputEnd: clock.next() } : {}),
       call: clock.next(),
       ...(tool.resultText !== undefined ? { result: clock.next(), audit: clock.next() } : {}),
     })),
@@ -354,7 +380,9 @@ function applyTurnCommands(
       if (placement === 'top') {
         reasoning += request.reasoning
         line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { reasoning } as never, hint: 'stream' })
-      } else {
+      } else if (!request.unfinished) {
+        // `inline` 的推理只有一个落点:turn-end 的 `persistTurnContentParts`。
+        // 走不到那一刻就一格都没有(top 那一支是实时写字段的,照旧有)。
         line.run({
           type: 'appendContentPart',
           messageId: turn.messageId,
@@ -365,11 +393,13 @@ function applyTurnCommands(
     if (request.text !== undefined) {
       text += request.text
       line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { content: text } as never, hint: 'stream' })
-      line.run({
-        type: 'appendContentPart',
-        messageId: turn.messageId,
-        part: { type: 'text', content: request.text, turnIndex },
-      })
+      if (!request.unfinished) {
+        line.run({
+          type: 'appendContentPart',
+          messageId: turn.messageId,
+          part: { type: 'text', content: request.text, turnIndex },
+        })
+      }
     }
     if (request.usage) {
       const next = normalizedUsage(request.usage)
@@ -388,6 +418,26 @@ function applyTurnCommands(
 
     ;(request.tools ?? []).forEach((tool, toolIndex) => {
       const slots = slot.tools[toolIndex]
+      if (tool.orphan) {
+        // 引擎本人建的那一对占位(`tool_input_start` 那一刻,参数还是 `{}`)。
+        // fixture 不手写它们的 type / title / status —— 那正是 §10.10 立下的规矩。
+        const { placeholderToolCall, placeholderStep } = createCoreToolInputStartArtifacts({
+          toolCallId: tool.callId,
+          resolved: { toolId: tool.toolId ?? tool.name, displayName: tool.name },
+          stepId: `step-${tool.callId}`,
+          rawToolName: tool.name,
+          turnIndex,
+          timestamp: slots.inputEnd ?? slots.call,
+        })
+        toolCalls.push(placeholderToolCall as unknown as ProjectedToolCall)
+        line.run({
+          type: 'setToolCalls',
+          messageId: turn.messageId,
+          toolCalls: toolCalls.map(entry => ({ ...entry })) as never,
+        })
+        line.run({ type: 'upsertStep', messageId: turn.messageId, step: placeholderStep as never })
+        return
+      }
       const call = toolCallOf(tool, slots.call, slots.inputEnd)
       // S3.1(§10.11):技能识别**一个判定点、两个落点**。引擎在参数定稿那一刻认
       // 一次并宣告(`startAgentLoopToolExecution`),宿主同时落消息上的 `skillUsed`
@@ -418,6 +468,24 @@ function applyTurnCommands(
       })
     }
   })
+
+  // 收场修复 —— 引擎本人那一份(`emitAgentLoopFinalMessageUpdateWithAdapters`
+  // 里调的就是这个函数)。abort 那条路带 `'User cancelled'`,其余两条不带
+  // 参数,于是写默认那一句。fixture 不手抄字面量(§10.10)。
+  const settling = line.session.messages.find(message => message.id === turn.messageId)
+  const repair = settling
+    ? finalizeLingeringAgentLoopToolWork(
+      settling as never,
+      timeline.end,
+      turn.outcome === 'aborted' ? CORE_ABORTED_TOOL_ERROR : undefined,
+    )
+    : undefined
+  if (repair?.toolCalls) {
+    line.run({ type: 'setToolCalls', messageId: turn.messageId, toolCalls: repair.toolCalls as never })
+  }
+  for (const step of repair?.steps ?? []) {
+    line.run({ type: 'upsertStep', messageId: turn.messageId, step: step as never })
+  }
 
   line.run({
     type: 'patchMessage',
@@ -503,15 +571,17 @@ function emitTurnEvents(
     ;(request.tools ?? []).forEach((tool, toolIndex) => {
       const slots = slot.tools[toolIndex]
       const argumentsRaw = JSON.stringify(tool.args)
-      if (tool.streamedArgs) {
+      // 孤儿:参数流到一半就没了 —— 事件上只有半截原文,`tool/call` 不来。
+      const streamedText = tool.orphan ? argumentsRaw.slice(0, Math.ceil(argumentsRaw.length / 2)) : argumentsRaw
+      if (tool.streamedArgs || tool.orphan) {
         const at = partIndex++
         line.push({
           time: slots.inputEnd!,
           type: 'assistant/chunks',
           data: {
             runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-            kind: 'tool-input', toolCallId: tool.callId, time0: slots.inputEnd!,
-            dt: [0], text: [argumentsRaw],
+            kind: 'tool-input', toolCallId: tool.callId, toolName: tool.name, time0: slots.inputEnd!,
+            dt: [0], text: [streamedText],
           },
         })
         line.push({
@@ -519,10 +589,11 @@ function emitTurnEvents(
           type: 'assistant/part-end',
           data: {
             runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-            kind: 'tool-input', toolCallId: tool.callId, len: argumentsRaw.length,
+            kind: 'tool-input', toolCallId: tool.callId, toolName: tool.name, len: streamedText.length,
           },
         })
       }
+      if (tool.orphan) return
       const skill = detectSkillUsage(tool.name, tool.args as Parameters<typeof detectSkillUsage>[1])
       if (skill) {
         line.push({
@@ -562,6 +633,7 @@ function emitTurnEvents(
       }
     })
 
+    if (request.unfinished) return
     if (request.usage) {
       line.push({
         time: slot.response!,
@@ -572,6 +644,13 @@ function emitTurnEvents(
         },
       })
     }
+    // 记录器在 `turn-end` 上**无条件**写这一条(有没有 usage 都写)——
+    // 它就是"这一轮收齐了"的账,投影靠它判 contentParts 落没落地。
+    line.push({
+      time: slot.response ?? timeline.end,
+      type: 'request/end',
+      data: { runId: turn.runId, requestIndex },
+    })
   })
 
   line.push({
@@ -666,7 +745,9 @@ class Scenario {
       turns: carried.turns + turn.requests.length,
       ...(result.usage ? { usage: result.usage } : {}),
     })
-    if (result.usage) {
+    // 用量只在执行**正常**收尾时落一次(`updateUsage` 排在 chunk 循环之后)。
+    // abort / 出错是从 catch 里走的,那一格永远没被写过(§10.14 第 7 类)。
+    if (result.usage && turn.outcome === 'completed') {
       this.pendingExecutionUsage = { messageId: turn.messageId, usage: result.usage }
     }
     this.nodeSeq.set(turn.messageId, this.b.events[before].seq)
@@ -1101,6 +1182,58 @@ describe('projection contract: command line ≡ event line', () => {
     expect(message.isStreaming).toBeUndefined()
     expect(message.toolCalls?.[0].status).toBe('cancelled')
     expect(message.steps?.[0].status).toBe('cancelled')
+    // 收尾修复写在两边的同一句话。
+    expect(message.toolCalls?.[0].error).toBe('User cancelled')
+    expect(message.steps?.[0].error).toBe('User cancelled')
+    // abort 掉的执行**没有** usage(`updateUsage` 在 catch 之外,一次都没跑)。
+    expect(message.usage).toBeUndefined()
+  })
+
+  /**
+   * 真机 `17b342a2…`(§10.14 第 7 类)的最小复现:两轮工具跑完,第 3 轮的参数
+   * 流到一半用户按了停止。三处一起验 —— 占位 step、被打断那一轮的 contentParts、
+   * 整条消息的 usage。
+   */
+  it('abort mid tool-input: the orphan placeholder survives, the unfinished turn does not', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: '整理一下' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [
+        {
+          reasoning: '先看看目录', usage: { inputTokens: 100, outputTokens: 10 },
+          tools: [{ callId: 'c1', name: 'bash', args: { command: 'ls' }, resultText: 'a.md', streamedArgs: true }],
+        },
+        {
+          reasoning: '再数一数', usage: { inputTokens: 120, outputTokens: 12 },
+          tools: [{ callId: 'c2', name: 'bash', args: { command: 'wc -l a.md' }, resultText: '3', streamedArgs: true }],
+        },
+        // 第 3 轮:推理流了一段,参数流到一半 —— 两样都没走到 turn-end。
+        { reasoning: '看起来要再查一次', unfinished: true, tools: [{ callId: 'c3', name: 'bash', args: { command: 'grep -r x .' }, orphan: true }] },
+      ],
+      outcome: 'aborted',
+    })
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    const orphanStep = message.steps?.find(step => step.toolCallId === 'c3')
+    expect(orphanStep).toMatchObject({
+      type: 'command',
+      title: '调用工具: bash',
+      status: 'cancelled',
+      error: 'User cancelled',
+      turnIndex: 3,
+    })
+    expect(orphanStep?.toolCall).toMatchObject({
+      toolId: 'bash', toolName: 'bash', arguments: {}, status: 'cancelled',
+      streamingArgs: '', error: 'User cancelled',
+    })
+    // 第 3 轮那段推理在事件里齐全,却从来没落到消息上 —— 前两轮的才在。
+    expect(message.contentParts?.map(part => part.turnIndex)).toEqual([2])
+    expect(message.reasoning).toBe('先看看目录')
+    expect(message.usage).toBeUndefined()
+    // step 级的每轮用量照旧有(turn-end 当场写的)。
+    expect(message.steps?.find(step => step.toolCallId === 'c1')?.usage).toMatchObject({ inputTokens: 100 })
   })
 
   it('regenerate drops the old assistant turn', () => {
@@ -1426,25 +1559,63 @@ describe('S1a projection catch-up (G1–G9)', () => {
     expect(message.steps?.[0]).toMatchObject({ rejected: true, rejectionReason: '太危险了' })
   })
 
-  it('G7: an orphan tool-input part becomes an input-streaming placeholder', () => {
+  it('G7: an orphan tool-input part becomes the engine placeholder — call AND step', () => {
     const line = eventLine()
     line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
     line.push({
       time: 2,
       type: 'assistant/chunks',
-      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'tool-input', toolCallId: 'c1', time0: 10, dt: [0], text: ['{"path":"'] },
+      data: {
+        runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'tool-input',
+        toolCallId: 'c1', toolName: 'bash', time0: 10, dt: [0], text: ['{"command":"ls'],
+      },
     })
 
     const live = projectChatMessages(line.events).messages[0]
+    // 引擎的占位卡:名字从第一帧起就有,参数是 `{}`,`streamingArgs` 在**消息上**
+    // 永远是空串(delta 只发给渲染层,一格都没回写)。
     expect(live.toolCalls).toEqual([
-      expect.objectContaining({ id: 'c1', status: 'input-streaming', streamingArgs: '{"path":"' }),
+      expect.objectContaining({
+        id: 'c1', toolId: 'bash', toolName: 'bash', arguments: {},
+        status: 'input-streaming', streamingArgs: '',
+      }),
+    ])
+    // 占位 step 与占位调用是同一行代码建的两样东西 —— 补一样漏一样就是少一条 step。
+    expect(live.steps).toEqual([
+      expect.objectContaining({
+        toolCallId: 'c1', type: 'command', title: '调用工具: bash', status: 'running', turnIndex: 1,
+      }),
     ])
     // 参数流不进 contentParts —— 它喂的是 toolCalls 那一路。
     expect(live.contentParts).toBeUndefined()
 
-    // run 非正常收尾之后,那条永远等不到调用的参数流转 cancelled。
+    // 收场:引擎的收尾修复把它判死并写上那句话(abort 那条路是 'User cancelled')。
     line.push({ time: 3, type: 'run/end', data: { runId: 'r', outcome: 'aborted' } })
-    expect(projectChatMessages(line.events).messages[0].toolCalls?.[0].status).toBe('cancelled')
+    const settled = projectChatMessages(line.events).messages[0]
+    expect(settled.toolCalls?.[0]).toMatchObject({ status: 'cancelled', error: 'User cancelled' })
+    expect(settled.steps?.[0]).toMatchObject({ status: 'cancelled', error: 'User cancelled' })
+  })
+
+  it('G7: an aborted turn persists no contentParts (the engine only writes them at turn-end)', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    // 第 1 轮走完:part 落地。
+    line.push({
+      time: 2, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 2, dt: [0], text: ['done'] },
+    })
+    line.push({ time: 3, type: 'request/end', data: { runId: 'r', requestIndex: 1 } })
+    // 第 2 轮被打断:同样的 chunks,但没有 `request/end`。
+    line.push({
+      time: 4, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 2, messageId: 'a1', partIndex: 1, kind: 'text', time0: 4, dt: [0], text: ['half'] },
+    })
+    line.push({ time: 5, type: 'run/end', data: { runId: 'r', outcome: 'aborted' } })
+
+    const message = projectChatMessages(line.events).messages[0]
+    // `content` 是实时写的那条路 —— 半截正文照旧在。
+    expect(message.content).toBe('donehalf')
+    expect(message.contentParts).toEqual([{ type: 'text', content: 'done', turnIndex: 1 }])
   })
 
   it('G8: a BlobRef attachment is resolved by the host, and dropped when it cannot be', () => {

@@ -46,10 +46,21 @@ describe('cancelOnethingStreamingStepsForAbort', () => {
     })
 
     expect(updateMessageStep).toHaveBeenCalledTimes(2)
+    // 跑着的那一条:引擎的收尾修复(`finalizeLingeringAgentLoopToolWork`)也会
+    // 筛到它,所以这里照它的字段写 —— 谁先跑到都留下同一份账(§10.14 第 7 类)。
     expect(updateMessageStep).toHaveBeenNthCalledWith(1, 'session-1', 'assistant-1', 'step-1', {
       status: 'cancelled',
-      toolCall: { id: 'tool-1', status: 'cancelled', requiresConfirmation: false, canRespond: false },
+      error: 'User cancelled',
+      toolCall: {
+        id: 'tool-1',
+        status: 'cancelled',
+        requiresConfirmation: false,
+        canRespond: false,
+        endTime: expect.any(Number),
+        error: 'User cancelled',
+      },
     })
+    // 等确认的那一条不写 error:引擎的修复明确放过 `requiresConfirmation` 的调用。
     expect(updateMessageStep).toHaveBeenNthCalledWith(2, 'session-1', 'assistant-1', 'step-2', {
       status: 'cancelled',
       toolCall: {
@@ -117,6 +128,7 @@ describe('cancelOnethingStreamingStepsForAbort', () => {
     expect(clearPermission).toHaveBeenCalledWith('session-1')
     expect(updateMessageStep).toHaveBeenCalledWith('session-1', 'assistant-1', 'step-1', {
       status: 'cancelled',
+      error: 'User cancelled',
       toolCall: undefined,
     })
     expect(updateMessageStreaming).toHaveBeenCalledWith('session-1', 'assistant-1', false)

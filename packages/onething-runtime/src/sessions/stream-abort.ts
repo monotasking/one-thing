@@ -1,3 +1,4 @@
+import { CORE_ABORTED_TOOL_ERROR } from '@onething/core'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
 type MaybePromise<T> = T | Promise<T>
@@ -6,11 +7,14 @@ export interface OnethingAbortToolCallLike {
   status?: string
   requiresConfirmation?: boolean
   canRespond?: boolean
+  error?: string
+  endTime?: number
 }
 
 export interface OnethingAbortStepLike<TToolCall extends OnethingAbortToolCallLike = OnethingAbortToolCallLike> {
   id: string
   status?: string
+  error?: string
   toolCall?: TToolCall
 }
 
@@ -139,20 +143,39 @@ export async function cancelOnethingStreamingStepsForAbort<
   const streamingMessage = session.messages.find(message => message.isStreaming)
   if (!streamingMessage?.steps) return { completed: false, cancelledSteps: 0 }
 
+  const now = Date.now()
   let cancelledSteps = 0
   for (const step of streamingMessage.steps) {
     if (step.status !== 'awaiting-confirmation' && step.status !== 'running') continue
 
+    // 引擎自己的收尾修复(`finalizeLingeringAgentLoopToolWork`)紧接着也会跑一遍
+    // 这条消息。它按 `status ∈ {running, pending}` 且**没在等确认**筛,写的是
+    // `{status:'cancelled', error:'User cancelled'}`(调用上还多一格 `endTime`)。
+    //
+    // 这里比它早一步(停止按钮要立刻有反馈),于是先到的那一份决定了账上留下
+    // 什么 —— 从前这一支不写 `error`,同一次停止在桌面(先到)与网页(engine
+    // 那一份先到)上留下**两种**记录。谁先谁后本来就是竞态,记录不该跟着变:
+    // 引擎的收尾修复筛得到的那些 step,这里照它的字段写(§10.14 第 7 类)。
+    // 等确认的那一支不动 —— 引擎的修复明确放过它(`requiresConfirmation` 的调用
+    // 在恢复流里还要用)。
+    const engineWouldRepair = step.status === 'running' && !step.toolCall?.requiresConfirmation
     const toolCall = step.toolCall
       ? {
           ...step.toolCall,
           status: 'cancelled',
           requiresConfirmation: false,
           canRespond: false,
+          ...(engineWouldRepair
+            ? {
+                endTime: step.toolCall.endTime ?? now,
+                error: step.toolCall.error || CORE_ABORTED_TOOL_ERROR,
+              }
+            : {}),
         } as TToolCall
       : undefined
     const updates = {
       status: 'cancelled',
+      ...(engineWouldRepair ? { error: step.error || CORE_ABORTED_TOOL_ERROR } : {}),
       toolCall,
     } as Partial<TStep>
 

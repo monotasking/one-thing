@@ -1135,8 +1135,17 @@ const LINGERING_TOOL_CALL_STATUSES = new Set([
 	"pending",
 ]);
 const LINGERING_STEP_STATUSES = new Set(["running", "pending"]);
-const LINGERING_TOOL_ERROR =
+/**
+ * 收尾修复写在没结局的调用上的那句话(§10.14 第 7 类)。
+ *
+ * 两个常量都**导出**:投影必须说出与引擎逐字相同的那一句 —— 它是"引擎派生
+ * 字段",按 §10.10 的规矩不许在别处手抄字面量。
+ */
+export const CORE_LINGERING_TOOL_ERROR =
 	"Tool did not report completion before the stream ended.";
+/** 用户按下停止时,收尾修复写在没结局的调用上的那句话。 */
+export const CORE_ABORTED_TOOL_ERROR = "User cancelled";
+const LINGERING_TOOL_ERROR = CORE_LINGERING_TOOL_ERROR;
 
 interface LingeringToolCallLike {
 	status?: string;
@@ -2296,8 +2305,8 @@ export async function executeAgentLoopStreamLifecycleWithAdapters<
 		await options.finalize();
 
 		if (options.isAbortError(caught)) {
-			await options.emitFinalAssistantMessageUpdate("User cancelled");
-			await options.sendStreamAborted("User cancelled");
+			await options.emitFinalAssistantMessageUpdate(CORE_ABORTED_TOOL_ERROR);
+			await options.sendStreamAborted(CORE_ABORTED_TOOL_ERROR);
 			return { pausedForConfirmation: false };
 		}
 

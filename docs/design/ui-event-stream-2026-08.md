@@ -60,7 +60,7 @@ engine(唯一装配点,delta 在源头就带 partIndex/kind/messageId)
 
 | 期 | 交付 | 门 |
 |---|---|---|
-| **U0 源头标注 + 双发** | 引擎 delta 源头带 `partIndex/kind/placement/messageId`(recorder 的边界状态机上提为共享件);coalescer 增加"UI 事件小批"输出,**与旧 chunk 流并行双发**(开关 `ONETHING_UI_STREAM=legacy(默认)\|events`);落盘路径回归不变(events.jsonl 字节与 U0 前相同) | 单测:同一 delta 序列,落盘打包与 UI 小批的 part 边界一致;真机:events.jsonl 与 U0 前逐字节同;双发下旧 UI 全绿 |
+| **U0 源头标注 + 双发** | 引擎 delta 源头带 `partIndex/kind/placement/messageId`(recorder 的边界状态机上提为共享件);**runId 同批上提**(2026-08-20 定性:steering 竞态的根因是'身份在事实下游被分配'——run 轮换从 executor 的异步队列上提到 agent-loop 发出 boundary 的同步点,事件出生即带 runId,recorder 不再查登记簿,§10.12 竞态在结构上消失);coalescer 增加"UI 事件小批"输出,**与旧 chunk 流并行双发**(开关 `ONETHING_UI_STREAM=legacy(默认)\|events`);落盘路径回归不变(events.jsonl 字节与 U0 前相同) | 单测:同一 delta 序列,落盘打包与 UI 小批的 part 边界一致;真机:events.jsonl 与 U0 前逐字节同;双发下旧 UI 全绿 |
 | **U1 renderer fold + 影子** | `stores/chat-projection.ts`:订阅 UI 事件流,跑 core reducer,产出 `ChatMessage[]`;**dev 模式并行装配**:reducer 结果 vs 旧拼装结果每次 settle 后 canonical 比较,失配记 renderer logger(`renderer.ui-shadow`);默认仍走旧路渲染 | 真机(playwright):N 轮含工具/reasoning/abort/regenerate 会话,ui-shadow 零失配;16ms 节奏不变;重渲染次数 ≤ 旧路(CDP 量) |
 | **U2 切换 + 删旧** | 默认 `events`;删 handleStreamChunk 拼装分支/appendOrMerge*/placement 推断/pending 队列/linkSteps;**删 `message:updated` 及其合并纠偏/回填约定(chat.ts:2987)**;瞬态 part 改装饰(ephemeral 事件驱动);重连/漏 seq 走重拉+续订 | stream-end 稳定性测试、messagelist 测试全绿;web 断线重连脚本(杀 SSE → 重连 → 消息完整);删除行数报告 |
 | **U3(可选)** | token 级回放(打字机重现,吃 `dt[]`)、TTFT 读数从流内派生 | — |

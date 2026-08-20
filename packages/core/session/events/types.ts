@@ -432,6 +432,13 @@ export interface SessionAssistantChunksEventData {
   partIndex: number
   kind: Exclude<SessionAssistantPartKind, 'image'>
   toolCallId?: string
+  /**
+   * `tool-input` part 的工具名(provider 的 `tool-call-start` 那一格)。
+   *
+   * 有它才说得出"参数流到一半被打断"的那次调用**是谁**:`tool/call` 永远不会
+   * 来,而引擎的占位卡从第一帧起就带着名字(§10.14 第 7 类)。
+   */
+  toolName?: string
   time0: number
   dt: number[]
   text: string[]
@@ -446,6 +453,8 @@ export interface SessionAssistantPartEndEventData {
   len: number
   hash?: string
   toolCallId?: string
+  /** 同 `assistant/chunks`:`tool-input` part 的工具名。 */
+  toolName?: string
   /** 图片 part:正文在 blob 里,事件行只有引用。 */
   blob?: BlobRef
 }

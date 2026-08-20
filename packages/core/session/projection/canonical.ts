@@ -28,6 +28,7 @@
  * | toolCall 的 `argsFinalizedBy` | 丢 | 流式层诊断位,事件面上没有采集点(§10.8 公开缺口) |
  * | step 的 `partialResult` / `partialResultIsPartial` | 丢 | 工具结局的派生缓存:落盘时被摘掉,冷加载重算(重启前后本就不同) |
  * | `usage.durationMs` | 丢 | 一次流的墙钟量测,不是用量 |
+ * | toolCall 的 `requiresConfirmation: false` / `canRespond: false` | 与缺席同义 | 确认闸的收场态,不是事实的一部分 |
  *
  * **不丢**的:`contentParts` 的顺序(那是正文本身)、消息级 `timestamp`、
  * `usage` 的 token 计数、`errorDetails`、工具的**结构化结局**。它们不等就是
@@ -160,6 +161,13 @@ function canonicalToolCall(toolCall: unknown): unknown {
     // 引擎在收尾时把这一位写死成 false,而没走过确认闸的调用上根本没有它。
     if (key === 'requiresConfirmation') {
       if (value === true) out.requiresConfirmation = true
+      continue
+    }
+    // `canRespond: false` 同理 —— 它是"这张卡还能不能按"的 UI 闸,收场时被写死
+    // 成 false(桌面的停止按钮走 `cancelOnethingStreamingStepsForAbort`),而
+    // 从来没开过闸的调用上根本没有它。`true` 才是一件事。
+    if (key === 'canRespond') {
+      if (value === true) out.canRespond = true
       continue
     }
     if (Array.isArray(value) && value.length === 0) continue
