@@ -38,6 +38,7 @@ import {
   stampCollabAgentId,
   updateSessionsIndexMetaForCommands,
 } from '../stores/sessions.js'
+import { assertContentPartIsCarriable } from './content-part-guard.js'
 import { sessionEventTranslator } from './event-translator.js'
 import { sessionReads } from './reads.js'
 
@@ -214,6 +215,7 @@ export function createSessionCommands(
     },
 
     appendContentPart(sessionId, payload) {
+      assertContentPartIsCarriable(sessionId, payload.part)
       return ports.messages.addMessageContentPart(sessionId, payload.messageId, payload.part)
     },
 

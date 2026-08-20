@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { materializeChatMessages } from '@onething/core/session'
+import { CORE_INTERRUPTED_TOOL_ERROR, materializeChatMessages } from '@onething/core/session'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
@@ -107,7 +107,15 @@ describe('prepare: 未闭合的 run', () => {
     const messages = materializeChatMessages(getLiveSessionProjection(SESSION)).messages
     const assistant = messages.find(message => message.id === 'a1')
     expect(assistant?.isStreaming).toBeUndefined()
-    expect(assistant?.toolCalls?.map(call => call.status)).toEqual(['completed', 'failed'])
+    // R-a(§13.6):合成的中断结局 = **cancelled**(它没有失败,是没跑完),
+    // 与消息侧 `sanitizeSessionOnStartup` 那次修复逐字同口径。
+    expect(assistant?.toolCalls?.map(call => call.status)).toEqual(['completed', 'cancelled'])
+    const interrupted = assistant?.toolCalls?.[1]
+    expect(interrupted?.error).toBe(CORE_INTERRUPTED_TOOL_ERROR)
+    // 合成的那条结局**不进** `result` —— 消息侧那次修复只写 status + error。
+    expect(interrupted?.result).toBeUndefined()
+    expect(assistant?.steps?.[1]).toMatchObject({ status: 'cancelled', error: CORE_INTERRUPTED_TOOL_ERROR })
+    expect(assistant?.steps?.[1].result).toBeUndefined()
   })
 
   it('is idempotent — the second prepare writes nothing', async () => {

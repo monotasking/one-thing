@@ -173,7 +173,19 @@ export function planSession(sessionsDir, sessionId, options = {}) {
   }
 }
 
-/** 现在有人在用这个 store 吗(只检测,不动)。 */
+/**
+ * 现在有人在用这个 store 吗(只检测,不动)。
+ *
+ * R-c(2026-08-20 用户裁定,§13.6):**这是硬前置,不是提示。**
+ *
+ * server 撤锁的裁定还成立(不复活常驻锁),但那条裁定与"迁移/切读"是两件事:
+ * 迁移要重编号整份 `events.jsonl`(现有事件整体 +N,内部引用同步平移),
+ * 而活着的 core 正拿着**内存里的 seq 计数器**在往同一个文件追加 —— 两个写者
+ * 铸同一个 seq,replace 遮蔽的就是错的区间,而校验会照样放行(surface 上确实
+ * 有那个 seq)。所以有活的 core 就**拒绝运行**,没有 `--force` 之类的绕过口。
+ *
+ * "活"的判据与 `server:start` 那条让位逻辑同口径:pid 还在 **且** 端口连得上。
+ */
 export function detectLiveness(store) {
   const runDir = path.join(store, 'run')
   const result = { lock: undefined, http: undefined, alive: false }
@@ -200,6 +212,41 @@ export function detectLiveness(store) {
     }
   } catch { /* 没有发现文件 */ }
   return result
+}
+
+/**
+ * 发现文件上那个端口连得上吗(pid 活着还不够 —— pid 可能被复用)。
+ *
+ * 连不上就当它不在:那是一份陈旧的发现文件。
+ */
+export async function httpDiscoveryPortIsOpen(http) {
+  if (!http || typeof http.port !== 'number' || http.port <= 0) return false
+  const net = await import('node:net')
+  return await new Promise(resolve => {
+    const socket = net.connect({ port: http.port, host: '127.0.0.1' })
+    const done = value => {
+      socket.destroy()
+      resolve(value)
+    }
+    socket.setTimeout(500)
+    socket.once('connect', () => done(true))
+    socket.once('timeout', () => done(false))
+    socket.once('error', () => done(false))
+  })
+}
+
+/**
+ * 迁移的硬前置(R-c)。@returns 拦下的理由,`undefined` = 可以往下走。
+ */
+export async function blockingLivenessReason(liveness) {
+  if (!liveness) return undefined
+  const portOpen = await httpDiscoveryPortIsOpen(liveness.http)
+  if (liveness.alive && (portOpen || !liveness.http)) {
+    return liveness.http
+      ? `这个 store 正在被 ${liveness.http.pid ?? liveness.lock?.pid} 号进程服务(http :${liveness.http.port} 连得上)`
+      : `这个 store 被 ${liveness.lock?.owner ?? '某个进程'}(pid ${liveness.lock?.pid})占着`
+  }
+  return undefined
 }
 
 export function buildPlan(store, options = {}) {
@@ -285,7 +332,7 @@ function parseArgs(argv) {
   return args
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2))
 
   if (args.apply) {
@@ -299,6 +346,17 @@ function main() {
   }
 
   const plan = buildPlan(resolveStorePath(args.store), { limit: args.limit })
+
+  // R-c:**先拦,再算账**。dry-run 也拦 —— 它读的那份 events.jsonl 正在被人写,
+  // 算出来的重编号计划下一秒就过期了,而人会照着它做决定。
+  const blocked = await blockingLivenessReason(plan.liveness)
+  if (blocked) {
+    console.error(`[migrate] 拒绝运行:${blocked}。`)
+    console.error('[migrate] 迁移会重编号整份 events.jsonl,而活着的 core 正在往同一个文件追加 ——')
+    console.error('[migrate] 两个写者会铸出同一个 seq,replace 遮蔽错区间而校验照样放行。')
+    console.error('[migrate] 先让它退出(退出时会删掉 run/http.json),再跑这条命令。没有绕过开关。')
+    process.exit(3)
+  }
 
   if (args.json) {
     console.log(JSON.stringify(plan, null, 2))
@@ -333,10 +391,7 @@ function main() {
   }
 
   const live = plan.liveness
-  if (live.alive) {
-    console.log(`[migrate] ⚠ 这个 store 正在被使用(lock pid=${live.lock?.pid} owner=${live.lock?.owner}${live.http ? `, http :${live.http.port}` : ''})——`)
-    console.log('[migrate]   真要迁移必须先让它退出;本次是 dry-run,什么都没做。')
-  } else if (live.lock || live.http) {
+  if (live.lock || live.http) {
     console.log(`[migrate] 发现陈旧的 run 文件(进程已不在):${JSON.stringify(live)}`)
   } else {
     console.log('[migrate] 没有人拿着这个 store(run/ 下没有活着的锁或发现文件)')
@@ -346,5 +401,8 @@ function main() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  main()
+  main().catch(error => {
+    console.error('[migrate] 失败:', error)
+    process.exit(1)
+  })
 }

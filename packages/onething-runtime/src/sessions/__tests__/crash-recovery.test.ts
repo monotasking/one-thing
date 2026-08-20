@@ -164,13 +164,15 @@ describe('crash recovery via cold load', () => {
     expect(assistant.isStreaming).toBe(false)
     expect(assistant.toolCalls?.map(toolCall => toolCall.status)).toEqual(['cancelled', 'cancelled'])
 
+    // R-a(§13.6):崩溃收口以 prepare 为准 —— `cancelled` + 共用常量那一句,
+    // 标题**原样留着**(那次改写在事件账本里没有来源,投影重建不出来)。
     const step = assistant.steps![0]
-    expect(step.status).toBe('failed')
-    expect(step.title).toBe('Interrupted: bash')
+    expect(step.status).toBe('cancelled')
+    expect(step.title).toBe('Running: bash')
     expect(step.error).toBeTruthy()
     expect(step.toolCall?.status).toBe('cancelled')
     expect(step.childSteps![0]).toMatchObject({
-      status: 'failed',
+      status: 'cancelled',
       error: 'Interrupted: permission request was not answered',
     })
 

@@ -1,4 +1,9 @@
 import { getCoreLogger } from '../logging/index.js'
+import {
+  CORE_INTERRUPTED_PERMISSION_ERROR,
+  CORE_INTERRUPTED_TOOL_ERROR,
+  CORE_INTERRUPTED_TOOL_STATUS,
+} from './interrupted.js'
 
 const log = getCoreLogger('core.session')
 
@@ -296,7 +301,13 @@ const INTERRUPTED_TOOL_CALL_STATUSES = new Set([
   'input-streaming',
 ])
 
-/** 纯计算:返回修好的新 toolCall;undefined = 这个不用动。 */
+/**
+ * 纯计算:返回修好的新 toolCall;undefined = 这个不用动。
+ *
+ * R-a(§13.6):口径以 `prepare` 为准 —— `cancelled` + `CORE_INTERRUPTED_TOOL_ERROR`。
+ * 从前这里只改状态、不写 error,而账本侧合成的那条结局是带话的,于是投影上有
+ * `error` 而消息上没有(四格打架里的一格)。
+ */
 export function computeInterruptedToolCallRepair<TToolCall extends CoreToolCallState>(
   toolCall: TToolCall,
 ): TToolCall | undefined {
@@ -307,17 +318,26 @@ export function computeInterruptedToolCallRepair<TToolCall extends CoreToolCallS
   if (!interrupted && !stalePermission) return undefined
   return {
     ...toolCall,
-    ...(interrupted ? { status: 'cancelled' } : {}),
+    ...(interrupted ? { status: CORE_INTERRUPTED_TOOL_STATUS } : {}),
     ...(stalePermission
       ? {
           requiresConfirmation: false,
-          error: toolCall.error || 'Interrupted: permission request was not answered',
+          error: toolCall.error || CORE_INTERRUPTED_PERMISSION_ERROR,
         }
-      : {}),
+      : { error: toolCall.error || CORE_INTERRUPTED_TOOL_ERROR }),
   }
 }
 
-/** 纯计算:返回修好的新 step(含 childSteps 递归);undefined = 这个不用动。 */
+/**
+ * 纯计算:返回修好的新 step(含 childSteps 递归);undefined = 这个不用动。
+ *
+ * R-a(§13.6)改了三格,理由见 `interrupted.ts`:
+ *  - `failed` → `cancelled`(它没有失败,是没跑完);
+ *  - `Interrupted: app was closed` → `CORE_INTERRUPTED_TOOL_ERROR`(与 prepare 合成的
+ *    那条结局逐字相同);
+ *  - **标题不再改写**。那次改写在事件账本里没有任何来源 —— 投影重建不出来,
+ *    于是每一条崩溃修复过的消息都必然与投影不等。占位标题原样留着。
+ */
 export function computeInterruptedStepRepair<TStep extends CoreTimelineStep>(
   step: TStep,
 ): TStep | undefined {
@@ -325,16 +345,13 @@ export function computeInterruptedStepRepair<TStep extends CoreTimelineStep>(
   let changed = false
 
   if (step.status === 'running' || step.status === 'pending') {
-    patch.status = 'failed'
-    patch.error = step.error || 'Interrupted: app was closed'
-    if (step.title.startsWith('Running:') || step.title.startsWith('调用工具:')) {
-      patch.title = step.title.replace(/^(Running:|调用工具:)\s*/, 'Interrupted: ')
-    }
+    patch.status = CORE_INTERRUPTED_TOOL_STATUS
+    patch.error = step.error || CORE_INTERRUPTED_TOOL_ERROR
     changed = true
   }
   if (step.status === 'awaiting-confirmation') {
-    patch.status = 'failed'
-    patch.error = 'Interrupted: permission request was not answered'
+    patch.status = CORE_INTERRUPTED_TOOL_STATUS
+    patch.error = step.error || CORE_INTERRUPTED_PERMISSION_ERROR
     changed = true
   }
   if (step.toolCall) {

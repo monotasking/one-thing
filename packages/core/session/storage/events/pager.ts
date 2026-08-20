@@ -43,6 +43,7 @@
 import { decodeSessionLogEventLine } from '../../events/codec.js'
 import type { SessionLogEventRecord, SessionLogEventType } from '../../events/types.js'
 import { foldSessionProjection, materializeChatMessages } from '../../projection/chat-messages.js'
+import type { ProjectionMaterializeOptions } from '../../projection/blobs.js'
 import type { ProjectedChatMessage } from '../../projection/types.js'
 import { clampSessionMessagesPageLimit, encodeMessagePageCursor } from '../pagination.js'
 import type {
@@ -200,6 +201,13 @@ export interface EventPageFoldOptions {
   /** 倒读从这个偏移(不含)开始;正读从这个偏移(含)开始。 */
   fromOffset?: number
   chunkSize?: number
+  /**
+   * A8/A9(§13.6):物化时把 `BlobRef` 换回正文的那个口。
+   *
+   * 分页与整会话读**必须给同一份**:少给它,翻上去的那一页里附件就没有 base64
+   * (而当前页有)—— 同一条消息在两个入口下不是同一条。
+   */
+  materialize?: ProjectionMaterializeOptions
 }
 
 export interface EventPageFoldResult {
@@ -227,8 +235,14 @@ function offsetsOf(
   return map
 }
 
-function foldVisible(collected: readonly ScannedSessionEvent[]): ProjectedChatMessage[] {
-  return materializeChatMessages(foldSessionProjection(collected.map(entry => entry.record))).messages
+function foldVisible(
+  collected: readonly ScannedSessionEvent[],
+  materialize: ProjectionMaterializeOptions = {},
+): ProjectedChatMessage[] {
+  return materializeChatMessages(
+    foldSessionProjection(collected.map(entry => entry.record)),
+    materialize,
+  ).messages
 }
 
 /**
@@ -288,7 +302,7 @@ export function foldEventPageBackward(
 
       if (candidates < target || pendingEditTargets.size > 0 || pendingContinuedRuns.size > 0) return undefined
 
-      visible = foldVisible([...collected].reverse())
+      visible = foldVisible([...collected].reverse(), options.materialize)
       if (visible.length > limit) return true
       // 攒够了节点却不够可见消息(中间有被删/被遮蔽的):把门槛抬高再读一段。
       target = candidates + Math.max(4, limit)
@@ -298,7 +312,7 @@ export function foldEventPageBackward(
   )
 
   const ordered = [...collected].reverse()
-  if (!visible) visible = foldVisible(ordered)
+  if (!visible) visible = foldVisible(ordered, options.materialize)
 
   const head = reachedHead || clearedBoundary
   const hasMoreBefore = visible.length > limit || (!head && visible.length >= limit)
@@ -339,7 +353,7 @@ export function foldEventPageForward(
       collected.push(entry)
       if (isSessionEventNodeStart(entry.record.type)) candidates += 1
       if (candidates < target) return undefined
-      visible = foldVisible(collected)
+      visible = foldVisible(collected, options.materialize)
       if (visible.length > limit) return true
       target = candidates + Math.max(4, limit)
       visible = undefined
@@ -347,7 +361,7 @@ export function foldEventPageForward(
     },
   )
 
-  if (!visible) visible = foldVisible(collected)
+  if (!visible) visible = foldVisible(collected, options.materialize)
 
   const hasMoreAfter = visible.length > limit || (!reachedTail && visible.length >= limit)
   const page = visible.length > limit ? visible.slice(0, limit) : visible
@@ -423,6 +437,8 @@ function nodeMessageIdOf(record: SessionLogEventRecord): string | undefined {
 
 export interface PageEventMessagesOptions {
   chunkSize?: number
+  /** 见 `EventPageFoldOptions.materialize`。 */
+  materialize?: ProjectionMaterializeOptions
   /** 锚点解析(`anchor.messageId` / `anchor.seq`)—— app 层用跳转索引喂。 */
   resolveAnchor?(anchor: { messageId?: string; seq?: number }): { seq: number; offset: number } | undefined
 }
@@ -496,7 +512,10 @@ export function pageEventMessages(
   options: PageEventMessagesOptions = {},
 ): GetSessionMessagesPageResponse {
   const limit = clampSessionMessagesPageLimit(request.limit)
-  const chunk = options.chunkSize !== undefined ? { chunkSize: options.chunkSize } : {}
+  const chunk = {
+    ...(options.chunkSize !== undefined ? { chunkSize: options.chunkSize } : {}),
+    ...(options.materialize ? { materialize: options.materialize } : {}),
+  }
 
   if (request.cursor) {
     const cursor = decodeEventCursor(request.cursor, request.sessionId)

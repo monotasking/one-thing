@@ -44,6 +44,22 @@ export interface SessionShadowStats {
    * 一次。它不进门也不写 `shadow.jsonl` —— 记一个数只是为了让"折叠了多少"看得见。
    */
   duplicateMismatches: number
+  /**
+   * F6(§13.2):投影**退化**的次数(blob 读不到 / 回合重放掉回 collapsed)。
+   *
+   * 它不是不等 —— 退化的那一格两侧常常仍然相等(两边都短了同一截),所以它进不了
+   * `mismatches`,而这正是它危险的地方:S2b 之后附件会凭空变短而门是绿的。
+   * 不进门(它是**历史数据**的毛病,不是这次改动的),但报告与 `sessions:verify`
+   * 都把它打出来。
+   */
+  projectionIssues: number
+  /**
+   * F13(§13.2):记录器**丢掉**的 part / 批次数。
+   *
+   * `openPart` 拿不到 partIndex(run 已经收账)时从前是纯静默的 return ——
+   * 那一段正文在账本上整格消失,而没有任何计数说它消失过。
+   */
+  droppedParts: number
   /** 按断言种类拆的不等计数(`messages` / `history`)。 */
   byKind: Record<string, number>
   /**
@@ -65,6 +81,8 @@ const EMPTY: SessionShadowStats = {
   historyChecks: 0,
   mismatches: 0,
   duplicateMismatches: 0,
+  projectionIssues: 0,
+  droppedParts: 0,
   byKind: {},
   skipped: {},
 }
@@ -89,6 +107,9 @@ function load(): SessionShadowStats {
       historyChecks: Number(parsed.historyChecks) || 0,
       mismatches: Number(parsed.mismatches) || 0,
       duplicateMismatches: Number(parsed.duplicateMismatches) || 0,
+      // 老账单缺这两格读成 0(而不是读崩)。
+      projectionIssues: Number(parsed.projectionIssues) || 0,
+      droppedParts: Number(parsed.droppedParts) || 0,
       byKind: normalizeByKind(parsed.byKind),
       skipped: normalizeByKind(parsed.skipped),
       ...(Number(parsed.lastMismatchAt) ? { lastMismatchAt: Number(parsed.lastMismatchAt) } : {}),
@@ -147,6 +168,8 @@ export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void
   if (patch.runs) stats.runs += patch.runs
   if (patch.historyChecks) stats.historyChecks += patch.historyChecks
   if (patch.duplicateMismatches) stats.duplicateMismatches += patch.duplicateMismatches
+  if (patch.projectionIssues) stats.projectionIssues += patch.projectionIssues
+  if (patch.droppedParts) stats.droppedParts += patch.droppedParts
   if (patch.mismatches) {
     stats.mismatches += patch.mismatches
     stats.lastMismatchAt = Date.now()
@@ -188,6 +211,14 @@ export function countSessionEventFailure(sessionId: string, error: unknown, what
   if (warnedSessions.has(sessionId)) return
   warnedSessions.add(sessionId)
   log.warn('session event append failed', { sessionId, what }, error)
+}
+
+/**
+ * F13:记录器丢了一段 part / 一批 delta。只计数,不 warn —— 它发生在收尾竞态上,
+ * 一次执行可能连丢几段,刷屏没有意义;总数在账单里,报告会打印。
+ */
+export function countSessionEventDroppedPart(_sessionId: string): void {
+  bumpSessionShadowStats({ droppedParts: 1 })
 }
 
 /** 把在途统计立刻落盘(关停 / 测试)。 */

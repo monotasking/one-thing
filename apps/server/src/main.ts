@@ -15,6 +15,7 @@ import {
   writeHttpDiscovery,
 } from '@onething/app/server/discovery.js'
 import { configureLogging } from '@onething/app/logging/index.js'
+import { warnOnForeignCoreForEventsRead } from '@onething/app/session/read-mode.js'
 import { randomBytes } from 'node:crypto'
 
 const forced = process.argv.includes('--force')
@@ -67,15 +68,30 @@ const authToken = envToken || (isLoopback ? randomBytes(24).toString('base64url'
  * 活着且不是自己人就拒绝启动,`--force` 可以绕过(自负后果)。
  */
 const existing = readHttpDiscovery()
-if (existing && existing.owner !== 'server' && !forced) {
+if (existing && existing.owner !== 'server') {
   if (await isHttpDiscoveryAlive(existing)) {
-    // 启动期 FATAL(让位给桌面 core):日志尚未接线,直写 stderr。
+    if (!forced) {
+      // 启动期 FATAL(让位给桌面 core):日志尚未接线,直写 stderr。
+      // eslint-disable-next-line no-console
+      console.error(
+        `[onething-server] this store is already served by the ${existing.owner} core at `
+        + `${httpDiscoveryUrl(existing)} — connect to it instead (pass --force to start anyway)`,
+      )
+      process.exit(1)
+    }
+    // R-c(2026-08-20 裁定,§13.6):`--force` 不是"自负后果"这么轻。
+    // 两个 core 同时开着 = 两个写者往同一份 `events.jsonl` 追加,而 seq 是各自
+    // 内存里数出来的 —— 撞号之后 `surfaceOp: replace` 遮蔽的是**别人的**区间,
+    // 而校验会照样放行(surface 上确实有那个 seq)。这不是"可能不一致",
+    // 是会把事件账本写坏,而且坏得看不出来。
     // eslint-disable-next-line no-console
     console.error(
-      `[onething-server] this store is already served by the ${existing.owner} core at `
-      + `${httpDiscoveryUrl(existing)} — connect to it instead (pass --force to start anyway)`,
+      `[onething-server] --force: starting a SECOND core on a store already served by the `
+      + `${existing.owner} core at ${httpDiscoveryUrl(existing)}.\n`
+      + '[onething-server] WARNING: two writers mint the same event seq in sessions/*/events.jsonl — '
+      + 'replace ops will shadow the wrong range and validation will not catch it. '
+      + 'The event ledger can be silently corrupted. Stop the other core instead.',
     )
-    process.exit(1)
   }
 }
 
@@ -102,6 +118,14 @@ const serverRuntime = await createDevelopmentOnethingServerRuntime({
 // 原样透传)。回显跳过 `ns='console'`,免得未迁移的行打两遍。
 const logging = configureLogging({ fileBaseName: 'server', src: 'server', consoleEcho: 'pretty' })
 const log = logging.getLogger('server')
+// R-c(§13.6):切读之后还有别的 core 拿着这个 store,喊一声(不崩)。
+// 拦是迁移脚本的事;这里只让"两个写者"这件事在日志里留下一行。
+warnOnForeignCoreForEventsRead(
+  log,
+  existing && existing.owner !== 'server'
+    ? { owner: existing.owner, pid: existing.pid, port: existing.port }
+    : undefined,
+)
 log.info('runtime created', { ms: Date.now() - runtimeCreateStart })
 log.info('logging to file', { path: logging.logPath })
 const server = createOnethingHttpServer({

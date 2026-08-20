@@ -1820,3 +1820,148 @@ P 批在途文件,不是本批);`server:build` 通过;
    (逐条求值 providerData),而投影仍按 `hasCompacted` 走 last-only。那条路上两侧
    本来就已经因为 surface 遮蔽而大幅分叉(F3 点名的 `indexOf === -1` 静默退化),
    归 F3 一起收口。
+
+### 13.6 Q2+R 批落地记录(2026-08-20):收口、可见性、崩溃口径
+
+§13.3 的 R 批 + Q 批剩下的两项(A8+A9),外加用户 2026-08-20 的三条裁定
+(R-a 崩溃收口以 prepare 为准、R-b 图片正文进 chunks+blob、R-c 切读/迁移前硬检查)。
+
+#### 三条裁定各自落成了什么
+
+**R-a —— 崩溃收口只有一份口径,以 `prepare` 为准。**
+新文件 `packages/core/session/interrupted.ts` 是那份口径的**唯一**住处
+(`CORE_INTERRUPTED_TOOL_ERROR` / `CORE_INTERRUPTED_PERMISSION_ERROR` /
+`CORE_INTERRUPTED_TOOL_STATUS`),三个消费者共用:`app/session/prepare.ts` 的合成、
+core 的 `computeInterruptedStepRepair` / `computeInterruptedToolCallRepair`、
+投影的 `lingeringToolError`。收口后的四格:
+
+| 格 | 从前(消息侧) | 现在(三处一致) |
+|---|---|---|
+| `step.status` / `toolCall.status` | `failed` / `cancelled` 各说各的 | **`cancelled`** |
+| `step.error` / `toolCall.error` | `Interrupted: app was closed` | **`CORE_INTERRUPTED_TOOL_ERROR`** |
+| `step.title` | 改写成 `Interrupted: X` | **不动**(占位标题原样留着) |
+| 等审批时被打断 | 只在 toolCall 上写一句 | 两格都写 `CORE_INTERRUPTED_PERMISSION_ERROR` |
+
+标题那一格是这条裁定的关键:那次改写在事件账本里**没有任何来源**,投影永远重建
+不出来 —— 留着它就等于让每一条崩溃修复过的消息永远不等。投影侧另外两处跟着改:
+`lingeringToolError` 认了 `interrupted` 这一档(从前返回 undefined,于是每条崩溃过
+的消息在投影里都少一句话),`prepare` 合成的那条 `tool/result` 被认出来
+(判据是那句话本身)之后判 `cancelled` 且**不进** `step.result` / `toolCall.result`
+—— 消息侧那次修复只写 status + error。**这是一次用户可感知的变化**(已获批准)。
+
+**R-b —— 生图正文进 `assistant/chunks`,base64 走 blob 占位符。**
+`![Generated Image](data:image/png;base64,…)` 那一整段 data URL 落进 blob store,
+事件行里留 `onething-blob://<hash>`(`core/session/projection/blobs.ts` 的
+`projectionBlobUrl`),投影按同一张表换回去 —— `content` 与 `contentParts` 两格
+与 `messages.jsonl` **逐字节相同**。采集口是 `assistant-parts.ts` 的
+`recordSynthesizedAssistantText`(会话级,不是 run 级:生图流没有 agent-loop,
+但它有 run),挂在**正文落到消息上的那一刻**(`image-stream.ts` 包住注入的
+`addMessageContentPart`,而不是 `saveMediaImage`)——两侧因此天然对齐。
+
+`assistant/part-end` 加一格 `synthetic`:这一格是引擎直接落到消息上的,
+**不受"这一轮收齐了吗"那道闸管**(它没有 `turn-end`),也**不派生 `turnIndex`**
+(消息上那一格就没有,凭空补一个就每次生图都不等)。
+
+`recordGeneratedImagePart`(S1b 缺口 3 记的那条 `kind:'image'` part)**退役**:
+它产出的是一格产品里根本不存在的 `ContentPart`(§9.2 那条"故意不掩盖的偏差"
+说的就是它),而真正的正文整段缺席。老账本里的那些 image part 照旧按 A2 的豁免
+物化(修复前的事实,一个字节不改)。
+
+**R-c —— 切读/迁移前硬检查,不复活锁。**
+- `scripts/migrate-sessions-events.mjs`:活的 core(pid 活着 **且** 发现文件上那个
+  端口连得上)= **拒绝运行**,退出码 3,dry-run 与 --apply 两条路都拦,**没有绕过
+  开关**。理由写在函数注释里:迁移要重编号整份 `events.jsonl`,而活着的 core 正
+  拿着内存里的 seq 计数器往同一个文件追加 —— 撞号之后 `surfaceOp: replace` 遮蔽的
+  是别人的区间,而校验会照样放行。
+- `app/session/read-mode.ts` 加 `warnOnForeignCoreForEventsRead`:`events` 读模式
+  下发现另一个活 core 就**喊一声**(不崩 —— 已经开着的桌面不该因为一个环境变量
+  挂掉)。`apps/server/src/main.ts` 在 `configureLogging` 之后调它。
+- `server:start --force` 的警告升级成明说:两个写者会铸出同一个 seq,
+  **事件账本会被悄悄写坏**(replace 遮错区间而校验放行),不再只是"自负后果"。
+
+#### 静态审计其余各项
+
+| # | 落成了什么 |
+|---|---|
+| **A8** | `tool/result` 的 `{blob}`(正文与 `resultData` 两支)在物化时经注入的 `resolveBlob` 换回**全文**:`steps[].result` / `toolCall.result` / 结构化结局与标题全都跟着回来。换不回来就照实留引用 + 一条 issue |
+| **A9** | `user/message` 附件的 `base64Data` 同一条路回填(消息路上换不回来**照实留引用**,模型历史路上仍然摘掉 —— `{hash,bytes}` 当 base64 发出去是最难查的一类脏请求) |
+| **F6** | 每一次退化产出一条 `ProjectionIssue`(`blob-missing` / `turn-split-fallback`)。宿主端 `app/session/projection-blobs.ts` 是**唯一**装配处:计进 `session-shadow-stats.json` 的 `projectionIssues`、每会话 warn 一次;`sessions:verify` 单独打印一段(**不进门** —— 它说的是历史数据缺了什么,不是新代码弄坏了旧文件) |
+| **A12** | 投影 join `permission/asked`(无 `answered`、无结局)→ `toolCall.status='pending'` + `requiresConfirmation:true`、`step.status='awaiting-confirmation'`,逐字镜像引擎的 awaiting 分支。**批准与拒绝都**收掉这个状态(修之前归约器对批准那一条整条跳过) |
+| **A11** | `tool/call` 加 `hidden?`,值来自引擎那一个判定点(`stream-processor.ts` 的 `rememberVisibility`,`publish` 这个入参从此只在那一处被解释),经注入端口 `isToolCallHidden` 回传给记录器;投影把 hidden 的调用从 `toolCalls[]` / `steps[]` 摘掉,**轨迹与审计照旧看得见** |
+| **F3** | `prepareMessages` 对**整份保留序列**跑一次(切段发生在 prepare 之后,按每条消息在原序列里的位置归段);成功的压缩却什么都没遮蔽 = 新的 surface 违规 `compact-anchor-unresolved`(写侧同时 warn 一句) |
+| **F8** | 回合重放的硬条件由引擎导出(`canSplitHistoryTurnGroups`,判定点仍只有一个),投影在**自己**那份物化消息上算一遍:多回合消息掉回 collapsed 时记一条 issue。字节一个没改 —— 要的是"退化看得见" |
+| **F13** | ①攒着的批与开着的段在**开它的时候**就记下自己的 runId(2 秒定时器晚于 `endSessionRun` 也不再丢账);②`endPart` 的 `finishedParts.push` 挪到 `if (!id)` 之后(从前写不出去的段仍然进了 `request/response.parts` 的指纹表);③开不出段计一个 `droppedParts`;④`findLastSessionEventSync` **先问这个进程刚写过什么**(`event-log.ts` 的 `lastByType`),文件读退回冷启动兜底 |
+| **翻译器守卫** | `app/session/content-part-guard.ts`:进消息的 part 分三档(承载 / 判据豁免 / 红)。开关与深冻结同一个(`ONETHING_SESSION_FREEZE`,vitest 下默认开)——开发期当场抛,生产期每种类 warn 一次。两个调用点(命令面 + store 面)共用一个判定函数,因为引擎的 `persistTurnContentParts` 走的是后者 |
+| **F4** | 模型历史的宿主配方合同搬进 `app/session/__tests__/projection-contract-host.test.ts`(core 的测试不许 import 装配层)。第一条用例就是 F4 点名的那格:老会话的裸 `contextUpdate` 在宿主配方下逐字渲染,而 core 缺省配方根本不认识它 —— 用例里连"两者不同字节"一起钉住 |
+
+#### 新字段的旧文件兜底(§10.16 逐条)
+
+| 新字段 | 缺席时 | 合同测试 |
+|---|---|---|
+| `tool/call.hidden` | 可见(= 修复前的事实) | `A11: without the port the event keeps exactly the old shape` / `A11: … its absence means visible` |
+| `assistant/part-end.synthetic` | 照旧按收齐闸判、照旧派生 turnIndex | `R-b: an image turn …`(尾部那段 legacy 断言) |
+| 正文里的 `onething-blob://` | 老账本里不存在;换不回来时**原样留占位符** + 一条 issue | `R-b: an unresolvable image blob keeps the placeholder and reports it` |
+| 未注入 `resolveBlob` | 引用照实留着(消息)/ 摘掉那一格(模型历史),两条路都记 issue | `A8` / `A9` 两条的后半段 |
+| 未注入 `isToolCallHidden` | `tool/call` 逐字保持老形状 | 同上 |
+
+#### 合同测试:每一条都验过"不修就红"
+
+新增 `describe('Q2+R: …')` 12 条 + 宿主配方 3 条 + 采集点/守卫/迁移 8 条。
+**逐条做过反证**(把修复就地改回旧写法再跑,脚本化):
+
+| 改回旧写法 | 变红的用例 |
+|---|---|
+| 结果 blob 不回填 | A8 |
+| 附件不回填 / blob 缺失不记 issue | A9(两条) |
+| `hidden` 不生效 | A11 |
+| 不 join `permission/asked` | A12 |
+| `interrupted` 不给话 / 合成结局当 failed | R-a 投影、A12×R-a |
+| 消息侧改回 `failed` + 标题改写 | R-a(两侧对齐那条) |
+| `synthetic` 不豁免闸 / 正文占位符不回放 / 采集点不换占位符 | R-b(三条) |
+| `prepareMessages` 分段跑 | F3(一次) |
+| 压缩锚点解不出不报违规 | F3(违规) |
+| 不算回合重放硬条件 | F8 |
+| `findLastSessionEventSync` 不问内存 | F13(内存优先) |
+| `openPart` 静默丢账 | F13(计数) |
+| 守卫什么都放行 | 翻译器守卫 |
+| 宿主配方换回 core 缺省 | F4 |
+| 迁移不拦活 core | R-c |
+
+影子电池加一条 `permission-approved`:审批**批准**之后那条消息两侧仍要逐字相同
+(修之前归约器对 `approved:true` 整条跳过,而 A12 之后那条事件是收掉"等确认"
+状态的唯一来源)。**明确没进电池的两条**:崩溃中断(要杀掉进程再对同一个 store
+重启,电池驱的是一个活 server,不可驱动)与生图(假 provider 说的是 SSE 文本流,
+生图走的是 provider 的 image API + apiKey)—— 两者都由单测覆盖:
+`prepare.test.ts` + 合同 `A12 × R-a` / `synthesized-text.test.ts` + 合同 `R-b`。
+
+#### 门(全部实跑,数字见提交说明)
+
+`typecheck`(3 条老红 provider-dials)/ 全量 `ONETHING_SESSION_FREEZE=1 bun run test` /
+`session:gate` / `boundary:gate` / `log:gate` / `lint:ci` / `server:build` /
+`sessions:shadow-battery` / `sessions:verify:gate`。
+
+**`sessions:verify:gate` 的基线会动**:R-a 改了 sanitize 的输出,而**已经被旧代码
+修复过**的那些历史会话上写着旧口径(`failed` / `Interrupted: app was closed` /
+被改写过的标题),它们不会被再修一次(修复只认 running/pending)。所以那些会话
+的投影(新口径)与磁盘(旧口径)从此不等 —— 这是**一次性的、历史数据侧的**位移,
+不是新代码弄坏了旧文件。S2b 的迁移对这类会话按 §10.16 的既有做法处理:
+`message/imported` 快照压过修复前的缺陷事件段。
+
+#### 明确没做的(留给后续)
+
+1. **F9 的第二半**:`request/recipe` 从第 2 轮起记的不是实际发出的那一份 ——
+   归 recipe 采集形状本身的重设计(§13.4 已列)。
+2. **孤儿参数流的工具身份**仍是 provider 原始名(§13.5 尾巴第 2 条,未变)。
+3. **A11 的采集时机**:记录器跑在 provider 流上、比消费 chunk 的执行器早一步,
+   所以对"参数流从没开过头"的补位调用,藏与不藏的决定与 `tool/call` 落账几乎同刻,
+   答不上来时按可见记。今天生产里 `publish:false` **没有产地**(agent-loop 那条路
+   一次都不传),所以这一格是给将来的守卫,不是在描述现状。
+4. **A12 的 `toolCall.error`**:引擎在 awaiting 那一刻写的是工具返回的那句
+   `result.error`,而事件账本上没有它(那条路根本没有 `tool/result`),投影因此
+   不产出这一格。
+5. **生图的错误分支**:失败时只 `updateMessageContent`、不写 contentPart,
+   账本上因此没有那段正文(采集口挂在 `addMessageContentPart` 上)。
+6. **S2b 归属的项**:切默认读模式、迁移脚本的 `--apply`、W-A/W-E 两个崩溃窗口。
+
+**剩下的 §13 项**:F9 第二半(recipe 采集形状)、孤儿 × MCP 的工具身份归一、
+以及 S2b 名下的那几项(切读、迁移 apply、W-A/W-E)。A/F 两系的其余全部收口。

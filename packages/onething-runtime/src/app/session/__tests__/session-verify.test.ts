@@ -16,7 +16,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 const scriptsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../../scripts')
 const { verifySession, listSessionIds } = await import(path.join(scriptsDir, 'session-verify.ts'))
-const { buildPlan, planSession, detectLiveness } = await import(path.join(scriptsDir, 'migrate-sessions-events.mjs'))
+const { buildPlan, planSession, detectLiveness, blockingLivenessReason } =
+  await import(path.join(scriptsDir, 'migrate-sessions-events.mjs'))
 
 let store = ''
 let sessionsDir = ''
@@ -167,5 +168,29 @@ describe('migrate --dry-run', () => {
     // 一个几乎不可能存在的 pid = 陈旧的锁。
     fs.writeFileSync(path.join(store, 'run', 'backend.lock'), JSON.stringify({ pid: 999_999, owner: 'desktop', acquiredAt: 1 }))
     expect(detectLiveness(store).alive).toBe(false)
+  })
+
+  /**
+   * R-c(2026-08-20 裁定,§13.6):活的 core = **硬拦**,没有绕过开关。
+   *
+   * 理由不是洁癖:迁移要重编号整份 `events.jsonl`,而活着的 core 正拿着内存里的
+   * seq 计数器往同一个文件追加 —— 撞号之后 replace 遮蔽的是别人的区间,而校验
+   * 会照样放行。
+   */
+  it('R-c: a live core blocks the migration outright', async () => {
+    fs.mkdirSync(path.join(store, 'run'), { recursive: true })
+    fs.writeFileSync(
+      path.join(store, 'run', 'backend.lock'),
+      JSON.stringify({ pid: process.pid, owner: 'desktop', acquiredAt: 1 }),
+    )
+    const reason = await blockingLivenessReason(detectLiveness(store))
+    expect(reason).toBeTruthy()
+
+    // 陈旧的发现文件(pid 不在)拦不住 —— 那不是"有人在用"。
+    fs.writeFileSync(
+      path.join(store, 'run', 'backend.lock'),
+      JSON.stringify({ pid: 999_999, owner: 'desktop', acquiredAt: 1 }),
+    )
+    expect(await blockingLivenessReason(detectLiveness(store))).toBeUndefined()
   })
 })

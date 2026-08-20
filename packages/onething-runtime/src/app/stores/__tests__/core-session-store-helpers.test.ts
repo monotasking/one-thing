@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { CORE_INTERRUPTED_TOOL_ERROR } from '@onething/core/session'
 import {
   applyInheritedSessionWorkingDirectory,
   applySessionAgent,
@@ -403,8 +404,9 @@ describe('core session store helpers', () => {
     })
     expect(savedSessions.get('s1')?.messages[0]).toMatchObject({
       isStreaming: false,
-      steps: [{ status: 'failed', error: 'Interrupted: app was closed' }],
-      toolCalls: [{ status: 'cancelled' }],
+      // R-a(§13.6):口径以 prepare 为准 —— cancelled + 共用常量那一句。
+      steps: [{ status: 'cancelled', error: CORE_INTERRUPTED_TOOL_ERROR }],
+      toolCalls: [{ status: 'cancelled', error: CORE_INTERRUPTED_TOOL_ERROR }],
     })
     expect(calls).toEqual(['save:s1:false', 'sync:s1'])
   })

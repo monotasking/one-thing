@@ -18,13 +18,20 @@
  */
 
 import type { CoreBuildHistoryMessagesOptions, CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
-import { buildHistoryMessages, compactedHistoryPreamble } from '../../engine/history.js'
+import {
+  buildHistoryMessages,
+  canSplitHistoryTurnGroups,
+  compactedHistoryPreamble,
+  completedHistoryToolCalls,
+} from '../../engine/history.js'
 import { TurnContextLedger } from '../../engine/turn-context.js'
 import type { BlobRef, SessionLogEventRecord } from '../events/types.js'
-import { isBlobRef } from '../events/types.js'
 import { foldSessionProjection, materializeNode } from './chat-messages.js'
+import { resolveHistoryBlobRefs, type ProjectionIssue, type ProjectionMaterializeOptions } from './blobs.js'
 import type { AssistantNode, ProjectionNode, SessionProjectionState } from './reducer.js'
 import type { ProjectedChatMessage } from './types.js'
+
+export { resolveHistoryBlobRefs } from './blobs.js'
 
 export interface ProjectModelHistoryMeta {
   id?: string
@@ -52,6 +59,8 @@ export interface ProjectModelHistoryOptions<TContent = unknown> {
    * base64 发出去(那是最难查的一类脏请求:请求发得出去,模型看到一句 JSON)。
    */
   resolveBlob?: (ref: BlobRef) => string | undefined
+  /** F6(§13.2):blob 读不到时的留痕口。见 `blobs.ts`。 */
+  onIssue?: (issue: ProjectionIssue) => void
   providerDataFromContentPart?: CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>['providerDataFromContentPart']
   /**
    * 宿主在**交给 builder 之前**对消息列表做的那一遍预处理。
@@ -133,36 +142,81 @@ export function materializeModelHistory<TContent = unknown>(
     providerDataLastMessageOnly: hasCompacted,
   } as CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>
 
-  const out: CoreHistoryMessage[] = []
-  let group: CoreHistoryChatMessage[] = []
-
-  const flush = (): void => {
-    if (group.length === 0) return
-    // 有压缩节点时 meta 的摘要**不再参与**:切点已经由 surface 表达,
-    // 再让 `buildHistoryMessages` 按锚点切一次就是切两刀。
-    const session = hasCompacted ? undefined : meta
-    const prepared = options.prepareMessages ? options.prepareMessages(group) : group
-    out.push(...buildHistoryMessages<TContent, CoreHistoryChatMessage>(prepared, session, buildOptions))
-    group = []
+  // F3(§13.2):**`prepareMessages` 对整份保留序列跑一次**,而不是每段跑一次。
+  //
+  // 宿主那条路是 `buildHistoryMessages(prepare(全部消息), session, …)` —— prepare
+  // 里的房投影会把整间房塌成一条消息,goal drive 折叠会跨消息比对"谁被谁取代了"。
+  // 按段各跑一次的话,一次成功压缩就足以让它们各看半份:房投影出两条房消息、
+  // 被取代的 drive 因为落在另一段而躲过折叠。从前 F2 只堵住了"失败压缩也切段"
+  // 那一半,这里堵的是剩下那一半。
+  //
+  // 切段仍然存在(压缩前缀要插在中间),但它发生在 prepare **之后**:按每条
+  // 消息在原序列里的位置归段,prepare 凭空造出来的消息(房投影的那一条)归当前段。
+  const materializeOptions: ProjectionMaterializeOptions = {
+    ...(options.resolveBlob ? { resolveBlob: options.resolveBlob } : {}),
+    ...(options.onIssue ? { onIssue: options.onIssue } : {}),
   }
+  const retained: CoreHistoryChatMessage[] = []
+  /** 第 i 段的边界:retained 里下标 < boundary 的归上一段。 */
+  const boundaries: Array<{ atRetainedIndex: number; preamble: CoreHistoryMessage }> = []
 
   for (const node of nodes) {
     if (node.kind === 'compacted') {
       // F2:失败的压缩**连段都不切**。它在引擎那边是一条被角色过滤掉的 system
-      // 消息 —— 零影响,而不是"零摘要"。从前这里照旧 `flush()`,于是 `prepareMessages`
-      // 与 last-only 之类的整份规则被劈成两段各跑一次(F3 的同一条病根)。
+      // 消息 —— 零影响,而不是"零摘要"。
       if (node.status !== 'completed') continue
-      flush()
-      out.push({ role: 'user', content: buildOptions.buildMessageContent({
-        id: node.messageId,
-        role: 'user',
-        content: compactedHistoryPreamble(node.summary),
-      } as CoreHistoryChatMessage) })
+      boundaries.push({
+        atRetainedIndex: retained.length,
+        preamble: { role: 'user', content: buildOptions.buildMessageContent({
+          id: node.messageId,
+          role: 'user',
+          content: compactedHistoryPreamble(node.summary),
+        } as CoreHistoryChatMessage) },
+      })
       continue
     }
-    group.push(resolveHistoryBlobRefs(toHistoryMessage(node, state), options.resolveBlob))
+    retained.push(resolveHistoryBlobRefs(
+      toHistoryMessage(node, state, materializeOptions),
+      options.resolveBlob,
+      options.onIssue,
+    ))
+  }
+
+  const indexOfInput = new Map<string, number>()
+  retained.forEach((message, index) => {
+    const id = (message as unknown as { id?: unknown }).id
+    if (typeof id === 'string' && !indexOfInput.has(id)) indexOfInput.set(id, index)
+  })
+  const prepared = options.prepareMessages ? options.prepareMessages(retained) : retained
+
+  // 有压缩节点时 meta 的摘要**不再参与**:切点已经由 surface 表达,
+  // 再让 `buildHistoryMessages` 按锚点切一次就是切两刀。
+  const session = hasCompacted ? undefined : meta
+
+  const out: CoreHistoryMessage[] = []
+  let boundaryAt = 0
+  let group: CoreHistoryChatMessage[] = []
+  const flush = (): void => {
+    if (group.length === 0) return
+    out.push(...buildHistoryMessages<TContent, CoreHistoryChatMessage>(group, session, buildOptions))
+    group = []
+  }
+
+  for (const message of prepared) {
+    const id = (message as unknown as { id?: unknown }).id
+    const position = typeof id === 'string' ? indexOfInput.get(id) : undefined
+    while (boundaryAt < boundaries.length
+      && position !== undefined
+      && position >= boundaries[boundaryAt].atRetainedIndex) {
+      flush()
+      out.push(boundaries[boundaryAt].preamble)
+      boundaryAt += 1
+    }
+    group.push(message)
   }
   flush()
+  // 压缩之后一条消息都没有(刚压完还没说话):前缀照旧要在。
+  for (; boundaryAt < boundaries.length; boundaryAt++) out.push(boundaries[boundaryAt].preamble)
 
   return out
 }
@@ -175,66 +229,54 @@ export function materializeModelHistory<TContent = unknown>(
  * 那一格)就是这么表达的 —— 结果事件被一条 replace 遮蔽,UI 上那张卡还在,
  * 下一次请求里没有它。
  */
-function toHistoryMessage(node: ProjectionNode, state: SessionProjectionState): CoreHistoryChatMessage {
-  const message = materializeNode(node) as ProjectedChatMessage
+function toHistoryMessage(
+  node: ProjectionNode,
+  state: SessionProjectionState,
+  materializeOptions: ProjectionMaterializeOptions,
+): CoreHistoryChatMessage {
+  const message = materializeNode(node, materializeOptions) as ProjectedChatMessage
   if (node.kind !== 'assistant') return message as unknown as CoreHistoryChatMessage
   const pruned = pruneShadowedToolCalls(node, message, state)
+  checkTurnSplitFallback(pruned as unknown as CoreHistoryChatMessage, materializeOptions)
   return pruned as unknown as CoreHistoryChatMessage
 }
 
 /**
- * G8:一条历史消息里的 `BlobRef` 全部换回正文(拿不到就摘掉那一格)。
+ * F8(§13.2):**回合重放的硬条件在这份物化消息上成立吗?**
  *
- * 只动两处 —— 附件的 `base64Data` 与图片 part 的正文。这是"落点与回放同一函数"
- * 的另一半:落盘时把大正文换成引用的是 blob store,回放时换回来的是这里,
- * 两边认的是同一个 `isBlobRef` 判据。
+ * `buildHistoryMessages` 里那条判据是 all-or-nothing:任何一格 text/reasoning
+ * part 少了 `turnIndex`、任何一次被重放的调用查不到回合号,整条消息就退回
+ * "合并成一段独白"的老口径 —— 连 reasoning 怎么进历史都跟着变。投影这边
+ * `turnIndex` 是**可选字段**,于是这次退化在这条路上是完全静默的。
+ *
+ * 判据不抄:调的是引擎导出的那一个函数(`canSplitHistoryTurnGroups`)。
+ * 这里不改任何字节 —— 退化本身是对的(两侧同一份数据、同一个函数),
+ * 要的是**看得见**:多回合的消息一旦掉进 collapsed,留一条 issue。
  */
-export function resolveHistoryBlobRefs(
+function checkTurnSplitFallback(
   message: CoreHistoryChatMessage,
-  resolveBlob: ((ref: BlobRef) => string | undefined) | undefined,
-): CoreHistoryChatMessage {
-  const record = message as unknown as Record<string, unknown>
-  const attachments = record.attachments
-  const contentParts = record.contentParts
-
-  const nextAttachments = Array.isArray(attachments)
-    ? resolveBlobList(attachments, 'base64Data', resolveBlob)
-    : undefined
-  const nextParts = Array.isArray(contentParts)
-    ? resolveBlobList(contentParts, 'blob', resolveBlob)
-    : undefined
-
-  if (nextAttachments === undefined && nextParts === undefined) return message
-  return {
-    ...(record as object),
-    ...(nextAttachments !== undefined ? { attachments: nextAttachments } : {}),
-    ...(nextParts !== undefined ? { contentParts: nextParts } : {}),
-  } as CoreHistoryChatMessage
-}
-
-/** @returns undefined = 这一格没有任何 BlobRef,原样复用(不复制数组)。 */
-function resolveBlobList(
-  items: readonly unknown[],
-  key: string,
-  resolveBlob: ((ref: BlobRef) => string | undefined) | undefined,
-): unknown[] | undefined {
-  let changed = false
-  const out: unknown[] = []
-  for (const item of items) {
-    const ref = (item as Record<string, unknown> | null)?.[key]
-    if (!isBlobRef(ref)) {
-      out.push(item)
-      continue
-    }
-    changed = true
-    const resolved = resolveBlob?.(ref)
-    if (resolved === undefined) continue
-    out.push(key === 'blob'
-      // 图片 part 的正文回到 `data`(与落盘前同名),blob 引用撤下。
-      ? { ...(item as object), blob: undefined, data: resolved }
-      : { ...(item as object), [key]: resolved })
+  options: ProjectionMaterializeOptions,
+): void {
+  if (!options.onIssue) return
+  const parts = message.contentParts ?? []
+  const turns = new Set<number>()
+  let missing = false
+  for (const part of parts) {
+    if (part.type !== 'text' && part.type !== 'reasoning') continue
+    if (!part.content) continue
+    if (typeof part.turnIndex === 'number') turns.add(part.turnIndex)
+    else missing = true
   }
-  return changed ? out : undefined
+  // 单回合的消息本来就走 collapsed —— 那不是退化。
+  if (!missing && turns.size <= 1) return
+  if (canSplitHistoryTurnGroups(message, completedHistoryToolCalls(message))) return
+  options.onIssue({
+    kind: 'turn-split-fallback',
+    where: 'history.turnGroups',
+    ...(typeof (message as { id?: unknown }).id === 'string'
+      ? { messageId: (message as { id: string }).id }
+      : {}),
+  })
 }
 
 function pruneShadowedToolCalls(

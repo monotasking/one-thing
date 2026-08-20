@@ -161,6 +161,8 @@ export interface StreamProcessor {
   handleToolInputEnd(toolCallId: string): ToolCall | null
   /** Get step ID for a tool call (if placeholder was created during streaming) */
   getStepIdForToolCall(toolCallId: string): string | undefined
+  /** A11(§13.1):这次调用被藏起来了吗(`publish:false`)—— 会话事件账本要记同一件事。 */
+  isToolCallHidden(toolCallId: string): boolean
   /** Mark message as no longer streaming and force-flush pending async writes */
   finalize(): Promise<void>
 }

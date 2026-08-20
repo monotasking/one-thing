@@ -481,7 +481,8 @@ export function getMessageReasoningContent(
 	return fragments.length > 0 ? fragments.join("\n\n") : undefined;
 }
 
-function completedHistoryToolCalls(
+/** F8:投影侧要用同一条筛法算"哪些调用参与回合重放"(见 `canSplitHistoryTurnGroups`)。 */
+export function completedHistoryToolCalls(
 	message: CoreHistoryChatMessage,
 ): CoreHistoryToolCall[] {
 	return (
@@ -525,6 +526,22 @@ interface HistoryTurnGroup {
  * completion. Old messages persisted before turnIndex existed fall back
  * automatically, so this never guesses.
  */
+/**
+ * F8(§13.2):上面那条**硬条件**的唯一判定点。
+ *
+ * 投影侧要在**自己**那份物化消息上算同一遍(算不出分裂 = 整条消息的重建口径
+ * 变了,连 reasoning 怎么呈现都跟着变),所以判据必须导出而不是抄一份 ——
+ * 抄一份就是第二个判定点,而这条规则恰恰是"两侧必须一致"才有意义。
+ *
+ * @returns true = 这份数据完整到可以按回合忠实重放。
+ */
+export function canSplitHistoryTurnGroups(
+	message: CoreHistoryChatMessage,
+	toolCalls: CoreHistoryToolCall[],
+): boolean {
+	return splitAssistantMessageIntoTurnGroups(message, toolCalls) !== undefined;
+}
+
 function splitAssistantMessageIntoTurnGroups(
 	message: CoreHistoryChatMessage,
 	toolCalls: CoreHistoryToolCall[],

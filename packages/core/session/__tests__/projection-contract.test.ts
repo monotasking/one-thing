@@ -39,6 +39,11 @@ import { detectSkillUsage, getStepType } from '../../engine/tool-step.js'
 import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
 import { buildContextCompactContent } from '../../engine/context-compact.js'
 import { applySessionCommand } from '../commands.js'
+import {
+  CORE_INTERRUPTED_PERMISSION_ERROR,
+  CORE_INTERRUPTED_TOOL_ERROR,
+} from '../interrupted.js'
+import { computeInterruptedStepRepair, computeSessionRepairOnLoad } from '../timeline.js'
 import type { CoreSessionCommandMessage, SessionCommand } from '../commands.js'
 import { encodeSessionLogEventLine } from '../events/index.js'
 import type { SessionLogEventRecord, SessionRunKind } from '../events/index.js'
@@ -2116,5 +2121,429 @@ describe('Q1: provider-data / 图片闸 / 工具身份 / 中段截断 / 压缩�
     const plain = eventLine()
     plain.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
     expect(projectChatMessages(plain.events).messages[0].agentId).toBeUndefined()
+  })
+})
+
+// ============================================================================
+// Q2+R 批(§13.6):blob 回填 / 等确认三格 / 可见性 / 崩溃收口 / 生图正文
+//
+// 这一组的判据全部落在**同一句话**上:S2b 拿投影那一份当真相之后,用户看到的
+// 东西会不会变?会变的一格都不许静默丢掉(F6 的 issue 就是"不许静默"的实现)。
+// ============================================================================
+
+describe('Q2+R: blob 回填 / 等确认 / 可见性 / 崩溃收口 / 生图正文', () => {
+  /** 一次工具调用 + 一条结局(结局的正文/结构化都可以走 blob)。 */
+  function toolLine(result: {
+    text?: string
+    blob?: { hash: string; bytes: number }
+    data?: { text: string } | { blob: { hash: string; bytes: number } }
+  }): EventLine {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'read', argumentsRaw: '{"path":"big.md"}', messageId: 'a1' },
+    })
+    line.push({
+      time: 3, type: 'tool/result',
+      data: {
+        runId: 'r', callId: 'c1', isError: false,
+        resultPreview: 'preview…',
+        ...(result.blob ? { result: { blob: result.blob } } : { result: { text: result.text ?? '' } }),
+        ...(result.data ? { resultData: result.data } : {}),
+      },
+      surfaceOp: 'append',
+    })
+    line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+    return line
+  }
+
+  /**
+   * A8(§13.1):**>64KB 的工具结局在事件行里只有引用**。
+   *
+   * 引擎那份账里 `steps[].result` 是全文,而投影从前在 blob 那一支上整格缺席 ——
+   * 一次 read 大文件就是一条必然的不等,而且 S2b 之后工具卡会直接变空。
+   */
+  it('A8: a blobbed tool result is materialized in full through the injected resolver', () => {
+    const big = 'x'.repeat(70_000)
+    const line = toolLine({ blob: { hash: 'aaaa1111', bytes: big.length } })
+
+    const resolved = projectChatMessages(line.events, { resolveBlob: () => big }).messages[0]
+    expect(resolved.steps?.[0].result).toBe(big)
+    expect(resolved.toolCalls?.[0].result).toBe(big)
+
+    // 没有 resolver:照实留引用,**而且**记一条 issue —— 从前这里是静默的。
+    const issues: unknown[] = []
+    const degraded = projectChatMessages(line.events, { onIssue: issue => issues.push(issue) }).messages[0]
+    expect(degraded.toolCalls?.[0].result).toEqual({ blob: { hash: 'aaaa1111', bytes: big.length } })
+    expect(degraded.steps?.[0].result).toBeUndefined()
+    expect(issues).toContainEqual(expect.objectContaining({ kind: 'blob-missing', hash: 'aaaa1111' }))
+  })
+
+  it('A8: the structured outcome rides the same resolver (the tool card lives on it)', () => {
+    const structured = { title: 'Read big.md', output: 'x'.repeat(70_000), metadata: { lines: 900 } }
+    const line = toolLine({ text: 'ok', data: { blob: { hash: 'bbbb2222', bytes: 70_000 } } })
+
+    const resolved = projectChatMessages(line.events, {
+      resolveBlob: () => JSON.stringify(structured),
+    }).messages[0]
+    expect(resolved.toolCalls?.[0].result).toEqual(structured)
+    // 结构化结局在场时 step 的标题跟着它走(与引擎同一条规则)。
+    expect(resolved.steps?.[0].title).toBe('Read big.md')
+  })
+
+  /**
+   * A9(§13.1):**附件的 base64 是单向的** —— 翻译器把它换成 BlobRef,
+   * 投影从前不回填,于是每一条带图的用户消息都必红。
+   */
+  it('A9: an attachment base64 comes back byte-for-byte, and its absence is reported', () => {
+    const line = eventLine()
+    line.push({
+      time: 1, type: 'user/message',
+      data: {
+        message: {
+          id: 'u1', role: 'user', content: 'look', timestamp: 1,
+          attachments: [{ id: 'att1', fileName: 'a.png', mimeType: 'image/png', base64Data: { hash: 'cccc3333', bytes: 4 } }],
+        },
+      },
+      surfaceOp: 'append',
+    })
+
+    const resolved = projectChatMessages(line.events, { resolveBlob: () => 'QUJDRA==' }).messages[0]
+    expect((resolved.attachments as Array<{ base64Data: unknown }>)[0].base64Data).toBe('QUJDRA==')
+
+    const issues: unknown[] = []
+    const degraded = projectChatMessages(line.events, { onIssue: issue => issues.push(issue) }).messages[0]
+    // 消息这条路上换不回来就**照实留引用**(摘掉等于让消息凭空变短)。
+    expect((degraded.attachments as Array<{ base64Data: unknown }>)[0].base64Data)
+      .toEqual({ hash: 'cccc3333', bytes: 4 })
+    expect(issues).toContainEqual(expect.objectContaining({ kind: 'blob-missing', where: 'attachments.base64Data' }))
+  })
+
+  /**
+   * A12(§13.1):**等确认的三格**。账本里这件事早就有(`permission/asked` 有、
+   * `permission/answered` 没有),只是从前没人 join。引擎那一刻写的是
+   * `toolCall.status='pending' + requiresConfirmation:true`、
+   * `step.status='awaiting-confirmation'`(`settleAgentLoopToolCallResult` /
+   * `buildAgentLoopToolResultPresentation` 的 awaiting 分支)。
+   */
+  it('A12: an unanswered permission ask projects the awaiting-confirmation triple', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{"command":"rm -rf x"}', messageId: 'a1' },
+    })
+    line.push({ time: 3, type: 'permission/asked', data: { requestId: 'p1', runId: 'r', toolCallId: 'c1', toolName: 'bash' } })
+
+    const message = projectChatMessages(line.events).messages[0]
+    expect(message.toolCalls?.[0]).toMatchObject({ status: 'pending', requiresConfirmation: true })
+    expect(message.steps?.[0].status).toBe('awaiting-confirmation')
+
+    // 答复之后回到普通轨道(批准与否都结束"在等"这个状态)。
+    line.push({ time: 4, type: 'permission/answered', data: { requestId: 'p1', runId: 'r', toolCallId: 'c1', approved: true } })
+    const answered = projectChatMessages(line.events).messages[0]
+    expect(answered.toolCalls?.[0].requiresConfirmation).toBeUndefined()
+    expect(answered.steps?.[0].status).not.toBe('awaiting-confirmation')
+  })
+
+  /**
+   * A12 × R-a 的交汇:**等审批时进程没了**。
+   *
+   * 账本上是 `permission/asked` + prepare 合成的中断结局 + `run/end{interrupted}`;
+   * 消息侧 `sanitizeSessionOnStartup` 那次修复写的是
+   * `cancelled` + `CORE_INTERRUPTED_PERMISSION_ERROR`(权限那一句压过通用那一句)。
+   * 两侧必须逐字相同 —— 这正是 A10 那四格打架的收口。
+   */
+  it('A12 × R-a: a crash while awaiting projects exactly what the message-side repair writes', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1' },
+    })
+    line.push({ time: 3, type: 'permission/asked', data: { requestId: 'p1', runId: 'r', toolCallId: 'c1' } })
+    // prepare 合成的那两条(`app/session/prepare.ts`)。
+    line.push({
+      time: 4, type: 'tool/result',
+      data: {
+        runId: 'r', callId: 'c1', isError: true,
+        resultPreview: CORE_INTERRUPTED_TOOL_ERROR,
+        result: { text: CORE_INTERRUPTED_TOOL_ERROR },
+      },
+      surfaceOp: 'append',
+    })
+    line.push({ time: 5, type: 'run/end', data: { runId: 'r', outcome: 'interrupted' } })
+
+    const projected = projectChatMessages(line.events).messages[0]
+    expect(projected.steps?.[0]).toMatchObject({
+      status: 'cancelled',
+      error: CORE_INTERRUPTED_PERMISSION_ERROR,
+    })
+    expect(projected.toolCalls?.[0]).toMatchObject({
+      status: 'cancelled',
+      error: CORE_INTERRUPTED_PERMISSION_ERROR,
+    })
+
+    // A 线:引擎留在盘上的那条消息,过一次真的启动期修复(不手写字面量)。
+    const crashed = {
+      id: 'a1', role: 'assistant', content: '', isStreaming: true,
+      steps: [{ id: 's1', title: '调用工具: bash', status: 'awaiting-confirmation', toolCallId: 'c1', toolCall: { id: 'c1', status: 'pending', requiresConfirmation: true } }],
+      toolCalls: [{ id: 'c1', status: 'pending', requiresConfirmation: true }],
+    }
+    const repaired = computeSessionRepairOnLoad(
+      { id: 's1' },
+      [crashed as never],
+      'startup',
+    ).messages[0] as unknown as { steps: Array<{ status: string; error?: string; title: string }> }
+    expect(repaired.steps[0].status).toBe(projected.steps?.[0].status)
+    expect(repaired.steps[0].error).toBe(projected.steps?.[0].error)
+    // 标题也一致 —— R-a 取消了那次改写,占位标题两侧都留着。
+    expect(repaired.steps[0].title).toBe(projected.steps?.[0].title)
+  })
+
+  /**
+   * R-a(§13.6):**没等到结局就崩了**的调用 —— 收尾修复的那一句话。
+   *
+   * `interrupted` 从前是"没有收尾修复"的一档,于是每条崩溃过的消息在投影里都
+   * 少一句话;现在三处(prepare 合成 / 消息侧修复 / 投影)共用同一个常量。
+   */
+  it('R-a: an interrupted run leaves the same sentence on both lines', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1' },
+    })
+    line.push({ time: 3, type: 'run/end', data: { runId: 'r', outcome: 'interrupted' } })
+
+    const message = projectChatMessages(line.events).messages[0]
+    expect(message.toolCalls?.[0]).toMatchObject({ status: 'cancelled', error: CORE_INTERRUPTED_TOOL_ERROR })
+    expect(message.steps?.[0]).toMatchObject({ status: 'cancelled', error: CORE_INTERRUPTED_TOOL_ERROR })
+
+    const repaired = computeInterruptedStepRepair({
+      title: '调用工具: bash',
+      status: 'running',
+      error: undefined as string | undefined,
+      toolCall: { status: 'executing' },
+    })
+    expect(repaired?.status).toBe(message.steps?.[0].status)
+    expect(repaired?.error).toBe(message.steps?.[0].error)
+    expect(repaired?.title).toBe('调用工具: bash')
+  })
+
+  /**
+   * A11(§13.1):**引擎藏起来的调用不进消息**。老文件没有这一格 = 可见。
+   */
+  it('A11: a hidden tool call leaves toolCalls/steps alone, and its absence means visible', () => {
+    const build = (hidden: boolean): EventLine => {
+      const line = eventLine()
+      line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+      line.push({
+        time: 2, type: 'tool/call',
+        data: {
+          runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1',
+          ...(hidden ? { hidden: true } : {}),
+        },
+      })
+      line.push({
+        time: 3, type: 'tool/result',
+        data: { runId: 'r', callId: 'c1', isError: false, resultPreview: 'ok', result: { text: 'ok' } },
+        surfaceOp: 'append',
+      })
+      line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+      return line
+    }
+
+    const hidden = projectChatMessages(build(true).events).messages[0]
+    expect(hidden.toolCalls).toBeUndefined()
+    expect(hidden.steps).toBeUndefined()
+
+    // §10.16:老文件缺这一格 = 可见(修复前的事实)。
+    const legacy = projectChatMessages(build(false).events).messages[0]
+    expect(legacy.toolCalls).toHaveLength(1)
+    expect(legacy.steps).toHaveLength(1)
+  })
+
+  /**
+   * R-b(§13.6):**生图那一轮的正文**。
+   *
+   * markdown 里那段 data URL 换成 `onething-blob://<hash>` 落进账本,投影按同一
+   * 张表换回去 —— `content` 与 `contentParts` 两格都与消息侧逐字节相同。
+   * 那一格还带着 `synthetic`:它没有 `turn-end`(不受收齐闸管),也没有回合号。
+   */
+  it('R-b: an image turn projects the exact markdown the message carries', () => {
+    const dataUrl = `data:image/png;base64,${'A'.repeat(4000)}`
+    const markdown = `**优化后的提示词:** a cat\n\n![Generated Image|mediaId:m1](${dataUrl})`
+    const stored = markdown.replace(dataUrl, 'onething-blob://dddd4444')
+
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 2, dt: [0], text: [stored] },
+    })
+    line.push({
+      time: 3, type: 'assistant/part-end',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', len: stored.length, synthetic: true },
+    })
+    line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+
+    const projected = projectChatMessages(line.events, { resolveBlob: () => dataUrl }).messages[0]
+    // A 线:引擎写进消息的那两格(`updateMessageContent` + `addMessageContentPart`)。
+    expect(projected.content).toBe(markdown)
+    expect(projected.contentParts).toEqual([{ type: 'text', content: markdown }])
+    // 没有 `request/end` —— 收齐闸对 `synthetic` 豁免(A2 的同一条理由)。
+    expect(projected.contentParts?.[0]).not.toHaveProperty('turnIndex')
+
+    // §10.16:老文件没有 `synthetic` = 照旧按闸判(这一轮没收齐 → 一格都没有)。
+    const legacy = eventLine()
+    legacy.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    legacy.push({
+      time: 2, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 2, dt: [0], text: [stored] },
+    })
+    legacy.push({
+      time: 3, type: 'assistant/part-end',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', len: stored.length },
+    })
+    legacy.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+    expect(projectChatMessages(legacy.events, { resolveBlob: () => dataUrl }).messages[0].contentParts)
+      .toBeUndefined()
+  })
+
+  it('R-b: an unresolvable image blob keeps the placeholder and reports it', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 2, dt: [0], text: ['see onething-blob://eeee5555 here'] },
+    })
+    line.push({
+      time: 3, type: 'assistant/part-end',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', len: 10, synthetic: true },
+    })
+    line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+
+    const issues: unknown[] = []
+    const message = projectChatMessages(line.events, { onIssue: issue => issues.push(issue) }).messages[0]
+    expect(message.content).toContain('onething-blob://eeee5555')
+    expect(issues).toContainEqual(expect.objectContaining({ kind: 'blob-missing', where: 'part.text' }))
+  })
+
+  /**
+   * F3(§13.2):**`prepareMessages` 对整份保留序列跑一次**。
+   *
+   * 探针是一个只在数组末尾盖戳的 prepare:跑一次就只有一个戳,被切成两段各跑
+   * 一次就会有两个 —— 从前一次成功压缩就足以让房投影 / goal drive 折叠各看半份。
+   */
+  it('F3: prepareMessages runs once over the whole retained sequence', () => {
+    // 压缩节点插在**中间**(它遮蔽的是第二条,第一条留在它前面)—— 这是唯一
+    // 能长出两段的形状,也正是 F3 点名的那一种:按段各跑一次 prepare,房投影
+    // 与 goal drive 折叠就各看半份。
+    const line = eventLine()
+    line.push({
+      time: 1, type: 'user/message',
+      data: { message: { id: 'u1', role: 'user', content: 'one', timestamp: 1 } }, surfaceOp: 'append',
+    })
+    const second = line.push({
+      time: 2, type: 'user/message',
+      data: { message: { id: 'u2', role: 'user', content: 'two', timestamp: 2 } }, surfaceOp: 'append',
+    })
+    line.push({
+      time: 3, type: 'session/compacted',
+      data: { messageId: 'k1', summary: 'S', compactedMessageCount: 1, status: 'completed' },
+      surfaceOp: { op: 'replace', start: second.seq, end: second.seq },
+      sourceEventSeqs: [second.seq],
+    })
+    line.push({
+      time: 4, type: 'user/message',
+      data: { message: { id: 'u3', role: 'user', content: 'three', timestamp: 4 } }, surfaceOp: 'append',
+    })
+
+    let calls = 0
+    const history = projectModelHistory(line.events, {}, {
+      prepareMessages: messages => {
+        calls += 1
+        return messages.map((message, index) => index === messages.length - 1
+          ? { ...message, content: `${message.content}[LAST]` }
+          : message)
+      },
+    })
+    expect(calls).toBe(1)
+    // 整份只盖一个戳:切成两段各跑一次的话会有两个(F3 的病根)。
+    expect(JSON.stringify(history).match(/\[LAST\]/g)).toHaveLength(1)
+    // 压缩前缀仍然插在它该在的位置(第一条保留消息之后)。
+    expect((history[0] as { content: string }).content).toContain('one')
+    expect((history[1] as { content: string }).content).toContain('S')
+  })
+
+  /**
+   * F3 的另一半:**成功的压缩没遮蔽任何东西 = 切点没解出来**,读侧要认得出来。
+   * 从前这条路是完全静默的(replace 退化成 append,而模型同时看到摘要和原文)。
+   */
+  it('F3: a completed compaction that shadowed nothing is a surface violation', () => {
+    const line = eventLine()
+    line.push({
+      time: 1, type: 'user/message',
+      data: { message: { id: 'u1', role: 'user', content: 'one', timestamp: 1 } }, surfaceOp: 'append',
+    })
+    line.push({
+      time: 2, type: 'session/compacted',
+      data: { messageId: 'k1', summary: 'S', compactedMessageCount: 1, status: 'completed' },
+      surfaceOp: 'append',
+    })
+    expect(foldSurface(line.events).violations)
+      .toContainEqual(expect.objectContaining({ reason: 'compact-anchor-unresolved' }))
+
+    // 失败的压缩本来就该 append —— 它不遮蔽任何东西,不算违规。
+    const failed = eventLine()
+    failed.push({
+      time: 1, type: 'user/message',
+      data: { message: { id: 'u1', role: 'user', content: 'one', timestamp: 1 } }, surfaceOp: 'append',
+    })
+    failed.push({
+      time: 2, type: 'session/compacted',
+      data: { messageId: 'k1', summary: '', compactedMessageCount: 0, status: 'failed', error: 'empty' },
+      surfaceOp: 'append',
+    })
+    expect(failed.events.length).toBe(2)
+    expect(foldSurface(failed.events).violations).toEqual([])
+  })
+
+  /**
+   * F8(§13.2):**回合重放的硬条件**在投影这份物化消息上算一遍。
+   *
+   * 判据是引擎导出的那一个函数;这里不改字节,要的是"退化看得见" ——
+   * 一条多回合的助手消息一旦掉回 collapsed,reasoning 的口径跟着变。
+   */
+  it('F8: a turn-split fallback on a multi-turn message is reported', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    // 第 1 轮:一段正文 + 一次调用(调用没有回合号来源时硬条件不成立)。
+    line.push({
+      time: 2, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 2, dt: [0], text: ['one'] },
+    })
+    line.push({
+      time: 3, type: 'assistant/part-end',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', len: 3, synthetic: true },
+    })
+    line.push({
+      time: 4, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 2, messageId: 'a1', partIndex: 1, kind: 'text', time0: 4, dt: [0], text: ['two'] },
+    })
+    line.push({
+      time: 5, type: 'assistant/part-end',
+      data: { runId: 'r', requestIndex: 2, messageId: 'a1', partIndex: 1, kind: 'text', len: 3 },
+    })
+    line.push({ time: 6, type: 'request/end', data: { runId: 'r', requestIndex: 1 } })
+    line.push({ time: 7, type: 'request/end', data: { runId: 'r', requestIndex: 2 } })
+    line.push({ time: 8, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+
+    const issues: unknown[] = []
+    projectModelHistory(line.events, {}, { onIssue: issue => issues.push(issue) })
+    // 一格 `synthetic`(没有 turnIndex)+ 一格有 turnIndex = 硬条件不成立。
+    expect(issues).toContainEqual(expect.objectContaining({ kind: 'turn-split-fallback' }))
   })
 })

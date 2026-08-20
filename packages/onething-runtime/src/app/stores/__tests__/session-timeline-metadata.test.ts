@@ -195,7 +195,8 @@ describe('session timeline metadata repair', () => {
     expect(toolCall.status).toBe('cancelled')
     expect(toolCall.requiresConfirmation).toBe(false)
     expect(toolCall.error).toContain('permission request was not answered')
-    expect(repairedMessage.steps![0].status).toBe('failed')
+    // R-a(§13.6):cancelled(它没有失败,是没跑完)。
+    expect(repairedMessage.steps![0].status).toBe('cancelled')
     expect(paused.toolCalls![0].status).toBe('pending')
     expect(paused.toolCalls![0].requiresConfirmation).toBe(true)
   })

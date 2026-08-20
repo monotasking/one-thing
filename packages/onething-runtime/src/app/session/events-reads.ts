@@ -26,14 +26,13 @@ import {
   buildSessionEventJumpIndex,
   materializeChatMessages,
   pageEventMessages,
-  resolveHistoryBlobRefs,
   userMarkersFromProjected,
   type ProjectedChatMessage,
   type SessionEventByteReader,
   type SessionEventJumpIndex,
 } from '@onething/core/session'
-import { readSessionBlobText } from './blob-store.js'
 import { getSessionEventsLogPath } from './event-log.js'
+import { sessionProjectionOptions } from './projection-blobs.js'
 import { getLiveSessionProjection, hasLiveSessionProjection } from './projection-cache.js'
 
 // ============ 字节面(core 的 fs 适配器) ============
@@ -102,17 +101,16 @@ export function resetSessionEventReadCache(sessionId?: string): void {
 // ============ 投影 → ChatMessage ============
 
 /**
- * 投影出的消息 → 交给上层的 `ChatMessage`:`seq` 填 **eventSeq**(§11.1),
- * `BlobRef` 换回正文(G8:落点与回放同一函数)。
+ * 投影出的消息 → 交给上层的 `ChatMessage`:`seq` 填 **eventSeq**(§11.1)。
+ *
+ * A8/A9(§13.6):`BlobRef` 的回放**搬进了投影本身**(物化时就换好了),这里
+ * 不再补第二刀 —— 从前每个消费者各记得一次,于是工具大结果那条新落点补上时
+ * 补一处漏一处。物化选项由 `sessionProjectionOptions` 统一给。
  */
-function toChatMessage(sessionId: string, message: ProjectedChatMessage): ChatMessage {
-  const resolved = resolveHistoryBlobRefs(
-    message as never,
-    ref => readSessionBlobText(sessionId, ref.hash),
-  ) as unknown as ProjectedChatMessage
+function toChatMessage(_sessionId: string, message: ProjectedChatMessage): ChatMessage {
   return {
-    ...resolved,
-    ...(resolved.eventSeq !== undefined ? { seq: resolved.eventSeq } : {}),
+    ...message,
+    ...(message.eventSeq !== undefined ? { seq: message.eventSeq } : {}),
   } as unknown as ChatMessage
 }
 
@@ -120,7 +118,7 @@ function toChatMessage(sessionId: string, message: ProjectedChatMessage): ChatMe
 export function eventsListMessages(sessionId: string): ChatMessage[] | undefined {
   const state = getLiveSessionProjection(sessionId)
   if (state.nodes.length === 0) return undefined
-  const messages = materializeChatMessages(state).messages
+  const messages = materializeChatMessages(state, sessionProjectionOptions(sessionId)).messages
   if (messages.length === 0) return undefined
   return messages.map(message => toChatMessage(sessionId, message))
 }
@@ -162,7 +160,7 @@ export function eventsLastMessageOfRole(
 export function eventsListUserMarkers(sessionId: string): UserMessageMarker[] | undefined {
   const state = getLiveSessionProjection(sessionId)
   if (state.nodes.length === 0) return undefined
-  return userMarkersFromProjected(materializeChatMessages(state).messages)
+  return userMarkersFromProjected(materializeChatMessages(state, sessionProjectionOptions(sessionId)).messages)
 }
 
 /**
@@ -181,6 +179,8 @@ export function eventsPageMessages(
   }
 
   const paged = withEventReader(request.sessionId, reader => pageEventMessages(reader, request, {
+    // A8/A9:分页与整会话读用**同一份**物化选项(见 pager 里那条注释)。
+    materialize: sessionProjectionOptions(request.sessionId),
     resolveAnchor: anchor => {
       const index = jumpIndexOf(request.sessionId)
       if (!index) return undefined

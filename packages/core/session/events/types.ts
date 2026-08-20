@@ -163,6 +163,19 @@ export interface SessionToolCallEventData {
   messageId: string
   runId?: string
   /**
+   * A11(§13.1):这次调用**不在消息上**(引擎的 `publish:false`)。
+   *
+   * 呈现层的可见性由引擎那一个判定点决定(`stream-processor.ts` 的 `visible`:
+   * 占位卡、`toolCalls.push`、step 三样一起不做),而记录器挂在 agent-loop 的
+   * 事件流上,看不见那个决定 —— 于是账本无条件记、投影无条件产出,一次不可见
+   * 的补位调用在投影里凭空多出一张卡。可见性经**注入端口**回传给记录器
+   * (与 `resolveToolIdentity` 同一条路数),记在这里。
+   *
+   * **成对交付**(§10.16):老文件没有这一格 = 可见(修复前的事实)。
+   * 轨迹与审计**不看它** —— 它们记的是"发生过什么",不是"屏幕上有什么"。
+   */
+  hidden?: boolean
+  /**
    * G3(§10.1):父调用的 callId —— 一次工具调用在另一次调用**内部**发生时才有。
    * 采集点拿得到就填,拿不到就平铺(不猜、不按时间窗配对);投影按它建
    * `childSteps`。
@@ -493,6 +506,16 @@ export interface SessionAssistantPartEndEventData {
   toolName?: string
   /** 图片 part:正文在 blob 里,事件行只有引用。 */
   blob?: BlobRef
+  /**
+   * R-b(§13.6):这一格是引擎**直接落到消息上**的,不是模型某一轮的产出。
+   *
+   * 今天唯一的产地是生图那条特化流:正文(一段带 data URL 的 markdown)一写
+   * 就落在消息上,既没有 `turn-end`(所以不受"这一轮收齐了吗"那道闸管),
+   * 也没有回合号(消息上那一格就没有 `turnIndex`,投影不许凭空补一个)。
+   *
+   * **成对交付**(§10.16):老文件没有这一格 = 照旧按闸判、照旧派生 turnIndex。
+   */
+  synthetic?: boolean
   /**
    * `provider-data` part 的载荷(A1,§13.1)。
    *

@@ -50,6 +50,14 @@ export interface SessionVerifyReport {
   /** 混合覆盖会话:事件覆盖到的后缀占比(legacy 前缀不算错)。 */
   coverage?: string
   issues: SessionVerifyIssue[]
+  /**
+   * F6(§13.2):投影**退化**的清单(`blob-missing:…` / `turn-split-fallback:…`)。
+   *
+   * 与 `issues` 分开:退化说的是这份历史数据本身缺了什么(blob 丢了、老消息
+   * 没有回合号),不是"新代码弄坏了旧文件"—— 后者才是 `sessions:verify:gate`
+   * 那道棘轮盯的东西。打印,但不进门。
+   */
+  degraded?: string[]
 }
 
 export function resolveStorePath(explicit?: string): string {
@@ -120,15 +128,36 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
   }
 
   // 3. 投影
+  //
+  // F6(§13.2):投影**退化**(blob 换不回来 / 回合重放掉回 collapsed)从前是
+  // 静默的 —— 附件凭空变短而两边的账都是绿的。这里把 blob 读口接上(它就在
+  // 会话目录里),再把每一次退化按类别数出来。
   let messages: Array<{ id: string; role: string }> = []
   let nodes = 0
+  const degraded = new Map<string, number>()
   try {
-    const projected = projectChatMessages(events)
+    const projected = projectChatMessages(events, {
+      resolveBlob: ref => {
+        try {
+          return fs.readFileSync(path.join(dir, 'blobs', ref.hash), 'utf8')
+        } catch {
+          return undefined
+        }
+      },
+      onIssue: issue => {
+        const key = `${issue.kind}:${issue.where}`
+        degraded.set(key, (degraded.get(key) ?? 0) + 1)
+      },
+    })
     messages = projected.messages as unknown as Array<{ id: string; role: string }>
     nodes = messages.length
   } catch (error) {
     issues.push({ kind: 'projection', detail: String(error) })
   }
+  // 退化**不进 issues**:它说的是这份历史数据本身缺了什么(blob 丢了、老消息
+  // 没有回合号),不是"这次改动弄坏了旧文件" —— 后者才是那道棘轮盯的东西。
+  // 打印出来,让人看得见;门不受它影响。
+  const degradedLines = [...degraded].sort().map(([key, count]) => `${key} ×${count}`)
 
   // 4. blob 引用
   for (const hash of collectBlobHashes(events)) {
@@ -197,6 +226,7 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
     bytes: Buffer.byteLength(eventsText, 'utf8'),
     noEventHistory: !hasEventHistory,
     coverage,
+    ...(degradedLines.length > 0 ? { degraded: degradedLines } : {}),
     issues,
   }
 }
@@ -252,6 +282,19 @@ function main(): void {
         console.log(`       ${issue.kind}: ${issue.detail}`)
       }
       if (report.issues.length > 10) console.log(`       … ${report.issues.length - 10} more`)
+    }
+    // F6:退化清单单独打一段(不进门,理由见 `SessionVerifyReport.degraded`)。
+    const degradedTotals = new Map<string, number>()
+    for (const report of reports) {
+      for (const line of report.degraded ?? []) {
+        const [key, count] = line.split(' ×')
+        degradedTotals.set(key, (degradedTotals.get(key) ?? 0) + (Number(count) || 0))
+      }
+    }
+    if (degradedTotals.size > 0) {
+      const sessions = reports.filter(report => report.degraded?.length).length
+      console.log(`[verify] 投影退化(不进门,F6):${sessions} 间会话`)
+      for (const [key, count] of [...degradedTotals].sort()) console.log(`       ${key} ×${count}`)
     }
     console.log(failed.length === 0 ? '[verify] GATE GREEN' : `[verify] GATE RED (${failed.length} session(s))`)
   }

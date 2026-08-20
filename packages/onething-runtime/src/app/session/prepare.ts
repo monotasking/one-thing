@@ -32,6 +32,7 @@
 
 import fs from 'node:fs'
 import {
+  CORE_INTERRUPTED_TOOL_ERROR,
   scanEventsBackward,
   type SessionEventByteReader,
   type SessionLogEventRecord,
@@ -46,8 +47,14 @@ const log = getLogger('sessions.events')
 /** 尾部扫描窗口(见文件头的理由)。 */
 const PREPARE_TAIL_BYTES = 4 * 1024 * 1024
 
-/** 合成的中断结果给模型看的那句话 —— 与引擎中断工具时的口径同义。 */
-const INTERRUPTED_RESULT_TEXT = 'Tool call interrupted: the session ended before the tool returned.'
+/**
+ * 合成的中断结果给模型看的那句话。
+ *
+ * R-a(§13.6):它现在是**三处共用**的那一个常量(`core/session/interrupted.ts`)——
+ * 消息侧的崩溃修复(`computeInterruptedStepRepair`)与投影的
+ * `lingeringToolError` 说的是同一句话,不再各写各的。
+ */
+const INTERRUPTED_RESULT_TEXT = CORE_INTERRUPTED_TOOL_ERROR
 
 export interface PrepareSessionEventsResult {
   status: 'disabled' | 'no-events' | 'clean' | 'repaired'

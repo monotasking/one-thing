@@ -100,7 +100,20 @@ interface SessionEventLogState {
   shadowTail: SessionLogEventRecord[]
   /** 尾巴溢出过 = 这一段事件没进活投影,消费者必须从文件重折。 */
   shadowTailOverflowed: boolean
+  /**
+   * F13(§13.2):**这个进程刚写下的信封**(只记 `findLastSessionEventSync`
+   * 真正被问到的那两类)。
+   *
+   * 那个函数读的是**文件**,而这里的写是排队异步落盘的 —— 刚写下的
+   * `request/tools` 很可能还不在盘上,于是下一次询问读回上一次的指纹,那 40KB
+   * 的工具目录被原样再写一遍。内存这一份是权威,文件读退回冷启动兜底。
+   * 只记两类是为了不把 40KB 的目录按会话数留在内存里。
+   */
+  lastByType: Map<string, SessionLogEventRecord>
 }
+
+/** 会记在内存里的类型(见 `lastByType`)。 */
+const REMEMBERED_LAST_EVENT_TYPES = new Set<string>(['request/tools', 'request/header'])
 
 const states = new Map<string, SessionEventLogState>()
 
@@ -170,6 +183,7 @@ function ensureState(sessionId: string): SessionEventLogState {
     lastForeignCheckAt: 0,
     shadowTail: [],
     shadowTailOverflowed: false,
+    lastByType: new Map(),
   }
   tryEnable(state, sessionId)
   states.set(sessionId, state)
@@ -249,6 +263,7 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
     ...(options.surfaceOp !== undefined ? { surfaceOp: options.surfaceOp } : {}),
     ...(options.sourceEventSeqs !== undefined ? { sourceEventSeqs: options.sourceEventSeqs } : {}),
   } as SessionLogEventRecord
+  if (REMEMBERED_LAST_EVENT_TYPES.has(type)) state.lastByType.set(type, record)
   const line = encodeSessionLogEventLine(record)
   state.expectedBytes += Buffer.byteLength(line, 'utf8')
 
@@ -320,6 +335,9 @@ export function findLastSessionEventSync<TType extends SessionEventType>(
   sessionId: string,
   type: TType,
 ): Extract<SessionEventRecord, { type: TType }> | undefined {
+  // F13:**先问这个进程自己刚写过什么**(见 `lastByType`),文件是冷启动兜底。
+  const remembered = states.get(sessionId)?.lastByType.get(type)
+  if (remembered) return remembered as Extract<SessionEventRecord, { type: TType }>
   try {
     const logPath = getSessionEventsLogPath(sessionId)
     if (!fs.existsSync(logPath)) return undefined

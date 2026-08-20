@@ -111,6 +111,7 @@ function testProcessor(toolCalls: ToolCall[]): StreamProcessor {
     handleToolInputDelta: vi.fn(),
     handleToolInputEnd: vi.fn(() => toolCalls[0] ?? null),
     getStepIdForToolCall: vi.fn(() => undefined),
+    isToolCallHidden: () => false,
     finalize: vi.fn(async () => undefined),
   }
 }

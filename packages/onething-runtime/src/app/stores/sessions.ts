@@ -52,6 +52,7 @@ import {
 	repairSessionTimelineMetadata,
 	sanitizeSessionOnStartup,
 } from "@onething/core/session";
+import { assertContentPartIsCarriable } from '../session/content-part-guard.js'
 import { consolePort, getLogger } from '../logging/index.js'
 
 const log = getLogger('sessions')
@@ -947,6 +948,10 @@ export function addMessageContentPart(
 	messageId: string,
 	part: ContentPart,
 ): boolean {
+	// §13.6 第 9 条:这一格在事件账本上有落点吗?开发/测试期当场抛,生产期 warn。
+	// 引擎的 `persistTurnContentParts` 走的是这条路(不是命令面),所以守卫必须
+	// 也站在这里 —— 两个调用点,一个判定函数。
+	assertContentPartIsCarriable(sessionId, part)
 	return sessionMessageRuntime!.addMessageContentPart(
 		sessionId,
 		messageId,

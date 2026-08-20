@@ -658,6 +658,10 @@ export async function executeAgentLoopStreamGeneration(
 				// 自己实现一遍别名表 / MCP 折叠 —— 一个判定点,两处落点。
 				resolveToolIdentity: (toolName, args) =>
 					resolveToolIdentity(toolName, args as AgentJsonObject),
+				// A11(§13.1):可见性也只有引擎那一个判定点(处理器的
+				// `rememberVisibility`)。记录器问它,不自己判第二遍。
+				isToolCallHidden: (toolCallId) =>
+					state.processor.isToolCallHidden(toolCallId),
 				// S1b 缺口 4:请求参数快照。取的是**定稿后**的 runtime(档位、
 				// 能力门控、per-model 覆盖都已经算完),不是设置里的原始值 ——
 				// recipe 要能回答"这次真的按什么参数发出去的"。

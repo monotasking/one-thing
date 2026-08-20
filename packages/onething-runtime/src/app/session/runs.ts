@@ -184,6 +184,12 @@ export function endSessionRun(
   const handle = currentRuns.get(sessionId)
   if (!handle) return
   if (runId !== undefined && handle.runId !== runId) return
+  // F13(§13.2):清账之后再落盘的东西**不会**因此丢账 —— 记录器攒的每一批
+  // delta / 每一段 part 都在**开它的时候**就记下了自己的 runId
+  // (`ChunkBatch.runId` / `PartState.runId`),不再落盘时现取"当前是哪次执行"。
+  // 那正是 2 秒定时器晚于这一行触发时整批 delta 静默消失的病根;调用方仍然
+  // 应当先 `recorder.flush()` 再收尾(执行器的 finally 就是这个顺序),
+  // 但顺序现在只影响**什么时候**落盘,不影响**落不落得下**。
   currentRuns.delete(sessionId)
 
   const outcome = input.outcome === 'completed' && handle.pendingOutcome

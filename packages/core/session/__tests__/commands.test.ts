@@ -5,6 +5,7 @@ import {
   type CoreSessionCommandMessage,
   type CoreSessionCommandSession,
 } from '../commands.js'
+import { CORE_INTERRUPTED_TOOL_ERROR } from '../interrupted.js'
 
 type Message = CoreSessionCommandMessage & {
   reasoning?: string
@@ -374,9 +375,15 @@ describe('applySessionCommand — repairOnLoad', () => {
       status: 'cancelled',
       requiresConfirmation: false,
     })
-    expect(repairedAssistant.steps![0]).toMatchObject({ status: 'failed' })
-    expect(repairedAssistant.steps![0].title).toBe('Interrupted: bash')
-    expect(repairedAssistant.steps![0].childSteps![0].status).toBe('failed')
+    // R-a(§13.6):崩溃收口以 prepare 为准 —— `cancelled` + 那一句共用常量,
+    // 标题不再被改写(投影重建不出一次标题改写)。
+    expect(repairedAssistant.steps![0]).toMatchObject({
+      status: 'cancelled',
+      error: CORE_INTERRUPTED_TOOL_ERROR,
+    })
+    // 标题**原样留着**:那次改写在事件账本里没有来源,投影重建不出来。
+    expect(repairedAssistant.steps![0].title).toBe('Running: bash')
+    expect(repairedAssistant.steps![0].childSteps![0].status).toBe('cancelled')
     expect(JSON.parse(result.session.messages[2].content as string).status).toBe('failed')
     expect('summary' in result.session).toBe(false)
 

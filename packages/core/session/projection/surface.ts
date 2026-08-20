@@ -26,6 +26,18 @@ export interface SurfaceViolation {
     | 'replace-end-missing'
     | 'replace-range-inverted'
     | 'source-seqs-incomplete'
+    /**
+     * F3(§13.2):一次**成功**的压缩落在 surface 上却什么都没遮蔽。
+     *
+     * 写侧(`event-translator.ts` 的 `sessionCompacted`)按
+     * `order.indexOf(throughSeq)` 找切点,找不到就 `covered = []` —— replace
+     * 静默退化成 append。后果不是"少遮了一段",是**整份历史多出被压掉的那一段**:
+     * 模型同时看到摘要和原文,预算翻倍而两边的账都是绿的。
+     *
+     * 读侧认得出来:completed 的压缩 + `append` + surface 上本来有东西 = 那次
+     * 切点没解出来。失败的压缩本来就该 append(它不遮蔽任何东西),不算。
+     */
+    | 'compact-anchor-unresolved'
 }
 
 export interface SurfaceSnapshot {
@@ -53,6 +65,7 @@ export class SurfaceIndex {
     }
 
     if (op === 'append') {
+      this.checkCompactAnchor(event)
       if (isNode) this.order.push(event.seq)
       return
     }
@@ -61,6 +74,18 @@ export class SurfaceIndex {
     if (isNode) {
       this.order.splice(at, 0, event.seq)
     }
+  }
+
+  /**
+   * F3:一次成功的压缩以 `append` 落账 = 切点没解出来(见 `SurfaceViolation`)。
+   *
+   * 空 surface 上的压缩不算(那是迁移/老会话的第一条事件,本来就没得遮)。
+   */
+  private checkCompactAnchor(event: SessionLogEventRecord): void {
+    if (event.type !== 'session/compacted') return
+    if ((event.data.status ?? 'completed') !== 'completed') return
+    if (this.order.length === 0) return
+    this.violations.push({ eventSeq: event.seq, type: event.type, reason: 'compact-anchor-unresolved' })
   }
 
   /**

@@ -338,6 +338,17 @@ export const sessionEventTranslator = {
       // 失败的压缩**不遮蔽任何东西**:一段没压成功的历史照旧要发给模型。
       // 它仍然记一条(UI 上是一张红卡),只是 surfaceOp 是 append。
       const covered = data.status === 'completed' && at >= 0 ? order.slice(0, at + 1) : []
+      // F3(§13.2):一次**成功**的压缩没找到切点 = replace 静默退化成 append,
+      // 后果是模型同时看到摘要和被压掉的原文(预算翻倍,两边的账还都是绿的)。
+      // 写侧只能照实记(切点确实解不出来),但不能一声不吭 —— 读侧的
+      // `SurfaceIndex` 会把同一件事记成一条 `compact-anchor-unresolved`。
+      if (data.status === 'completed' && covered.length === 0 && order.length > 0) {
+        log.warn('compaction anchor did not resolve on the surface', {
+          sessionId,
+          compactedThroughMessageId: data.compactedThroughMessageId,
+          surfaceNodes: order.length,
+        })
+      }
 
       appendSurfaceAwareEvent(
         sessionId,

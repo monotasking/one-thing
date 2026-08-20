@@ -587,6 +587,53 @@ const SCENARIOS = [
   },
 
   {
+    /**
+     * A12(§13.6):**审批批准之后那条消息还对得上吗。**
+     *
+     * 投影现在会 join `permission/asked` 出"等确认"三格,而
+     * `permission/answered{approved:true}` 是把那个状态收掉的唯一事件 ——
+     * 修之前归约器对批准那一条**整条跳过**(它只关心拒绝的理由)。
+     * 挂起的那一刻不进影子断言(断言在 run/end 比一次),这条场景钉的是
+     * "批准之后收场的那一份两侧仍然逐字相同"。
+     */
+    name: 'permission-approved',
+    covers: ['A12:审批挂起 → 批准 → 收场,等确认三格不许留在消息上'],
+    permissionMode: 'normal',
+    provider: ({ turn, variant, workdir }) => (turn === 1
+      ? [
+        F.sleep(variant.firstByteMs),
+        ...F.tool('call_approved', 'bash', { command: `mkdir -p ${workdir}/approved-${variant.tag}`, description: 'needs approval' }, 2),
+        F.callTools(usageOf(variant, 1)),
+      ]
+      : [F.sleep(variant.firstByteMs), F.text(`建好了:${variant.body}`), F.stop(usageOf(variant, 2))]),
+    async drive(d) {
+      await d.send('跑个要审批的命令,这次批准')
+      const deadline = Date.now() + 30_000
+      let pending
+      while (Date.now() < deadline) {
+        const result = await d.api('GET', `/api/sessions/${d.sessionId}/permissions/pending`)
+        const list = result?.prompts ?? result?.pending ?? result?.data ?? []
+        pending = Array.isArray(list) ? list.find(item => (item.callId ?? item.toolCallId) === 'call_approved') : undefined
+        if (pending) break
+        await sleep(60)
+      }
+      assert(pending, 'no pending permission prompt appeared')
+      await d.command({
+        type: 'command:permission-respond',
+        toolCallId: 'call_approved',
+        decision: 'allow',
+        scope: 'once',
+      })
+      const messages = await d.waitIdle(1)
+      const assistant = d.lastAssistant(messages)
+      const call = (assistant?.toolCalls ?? []).find(c => c.id === 'call_approved')
+      assert(call, 'approved tool call missing')
+      // 收场之后确认闸必须是关的(引擎在那一刻把它写死成 false)。
+      assert(call.requiresConfirmation !== true, `approved call still awaits confirmation: ${call.status}`)
+    },
+  },
+
+  {
     name: 'abort-mid-text',
     covers: ['§10.14 第7类:被打断那一轮的 contentParts 从来没落地 + 中止的执行没有 usage'],
     provider: ({ turn, variant }) => (turn === 1

@@ -32,6 +32,8 @@ export {
 // 事件词表 + 编解码 + 两个纯投影。core 拥有类型,runtime 与 renderer 都从这里读。
 export * from './events/index.js'
 export * from './projection/index.js'
+// R-a(§13.6):崩溃收口的单一口径(prepare / sanitize / 投影三处共用)。
+export * from './interrupted.js'
 // S3 只读查询面(§12):事件 → 轨迹树的纯装配器。CLI / HTTP / 轨迹面板同源。
 export * from './trace/index.js'
 export {

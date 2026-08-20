@@ -65,6 +65,7 @@ import {
   nextSessionRequestIndex,
 } from '../../session/event-log.js'
 import { textOrBlobForEvent } from '../../session/blob-store.js'
+import { countSessionEventDroppedPart } from '../../session/event-stats.js'
 import {
   currentSessionRunId,
   nextSessionRunPartIndex,
@@ -133,6 +134,23 @@ export interface SessionEventRecorderContext {
     toolName: string,
     args: Record<string, unknown>,
   ) => { toolId: string; displayName: string }
+  /**
+   * A11(§13.1):这次调用**在消息上吗**?
+   *
+   * 可见性的判定点只有一个,在引擎(`stream-processor.ts` 的 `visible`:
+   * 占位卡、`toolCalls.push`、step 三样一起做或一起不做)。记录器挂在 agent-loop
+   * 的事件流上,看不见那个决定,所以由宿主经这个端口回传 —— 与
+   * `resolveToolIdentity` 同一条路数(记录器不实现第二遍规则)。
+   *
+   * 不注入 / 答不上来 = 可见(= 修复前的行为,老文件也是这么读的)。
+   *
+   * **已知边界**:记录器跑在 provider 流上,比消费 chunk 的执行器**早**一步 ——
+   * 对"参数流从没开过头"的补位调用(fallback),藏与不藏的决定与
+   * `tool/call` 落账几乎同刻,答不上来时按可见记。今天生产里
+   * `publish:false` 没有产地(agent-loop 那条路一次都不传),所以这一格是
+   * 给将来的守卫,不是在描述现状。
+   */
+  isToolCallHidden?: (toolCallId: string) => boolean
 }
 
 /**
@@ -175,6 +193,14 @@ function toToolSchemas(tools: readonly AgentTool[] | undefined): SessionEventToo
 
 /** 一段还在攒的 delta 批次。 */
 interface ChunkBatch {
+  /**
+   * F13:**开这一批时的 run**。
+   *
+   * 从前落盘时现取 `currentSessionRunId()` —— 而 2 秒定时器完全可能晚于
+   * `endSessionRun` 清账才响,那时取回 undefined,整批 delta 静默消失。
+   * 一批 delta 属于开它的那次执行,这是事实,不是"当前值"。
+   */
+  runId: string
   partIndex: number
   kind: SessionAssistantDeltaPartKind
   requestIndex: number
@@ -189,6 +215,8 @@ interface ChunkBatch {
 
 /** 一个 part 的累计状态(part-end 的 len/hash 从这里来)。 */
 interface PartState {
+  /** F13:开这一段时的 run(理由同 `ChunkBatch.runId`)。 */
+  runId: string
   partIndex: number
   kind: SessionAssistantDeltaPartKind
   requestIndex: number
@@ -308,6 +336,9 @@ export function createSessionEventRecorder(
   function maybeWriteTools(requestIndex: number): string {
     const { tools, hash } = toolCatalog()
     if (!state.lastToolsHashLoaded) {
+      // F13:`findLastSessionEventSync` 现在**先问这个进程刚写过什么**
+      // (`event-log.ts` 的 `lastByType`),文件读退回冷启动兜底 —— 写是排队异步
+      // 落盘的,读文件会读到上一次的指纹,于是那 40KB 的目录被再写一遍。
       state.lastToolsHash = findLastSessionEventSync(ctx.sessionId, 'request/tools')?.data.toolsHash
       state.lastToolsHashLoaded = true
     }
@@ -340,6 +371,7 @@ export function createSessionEventRecorder(
 
   function maybeWriteHeader(requestIndex: number, toolsHash: string): void {
     if (!state.lastHeaderLoaded) {
+      // F13:同上 —— 内存里那一份是权威,文件读是冷启动兜底。
       state.lastHeader = findLastSessionEventSync(ctx.sessionId, 'request/header')?.data
       state.lastHeaderLoaded = true
     }
@@ -385,10 +417,19 @@ export function createSessionEventRecorder(
     toolName?: string,
   ): number | undefined {
     const requestIndex = state.requestIndex
-    if (requestIndex === undefined) return undefined
-    const partIndex = nextSessionRunPartIndex(ctx.sessionId)
-    if (partIndex === undefined) return undefined
+    const id = runId()
+    const partIndex = requestIndex === undefined || !id
+      ? undefined
+      : nextSessionRunPartIndex(ctx.sessionId)
+    if (requestIndex === undefined || !id || partIndex === undefined) {
+      // F13(§13.2):开不出段 = 这一段正文在账本上**整格消失**。从前这是三个
+      // 纯静默的 `return undefined`;现在它至少是账单上的一个数
+      // (`sessions:shadow-report` 打印它)。仍然不抛:记账不打断聊天。
+      countSessionEventDroppedPart(ctx.sessionId)
+      return undefined
+    }
     state.openParts.set(partIndex, {
+      runId: id,
       partIndex,
       kind,
       requestIndex,
@@ -406,10 +447,10 @@ export function createSessionEventRecorder(
     state.batches.delete(partIndex)
     if (batch.timer) clearTimeout(batch.timer)
     if (batch.text.length === 0) return
-    const id = runId()
-    if (!id) return
+    // F13:落的是**开这一批时**的那次执行,不是"此刻是哪次执行"——
+    // 2 秒定时器完全可能晚于 `endSessionRun` 才响。
     appendSessionLogEvent(ctx.sessionId, 'assistant/chunks', {
-      runId: id,
+      runId: batch.runId,
       requestIndex: batch.requestIndex,
       messageId: batch.messageId,
       partIndex: batch.partIndex,
@@ -435,6 +476,7 @@ export function createSessionEventRecorder(
     let batch = state.batches.get(partIndex)
     if (!batch) {
       batch = {
+        runId: part.runId,
         partIndex,
         kind: part.kind,
         requestIndex: part.requestIndex,
@@ -466,10 +508,16 @@ export function createSessionEventRecorder(
     const part = state.openParts.get(partIndex)
     if (!part) return
     state.openParts.delete(partIndex)
-    const id = runId()
+    // F13:**账不能先记后丢**。从前 `finishedParts.push` 排在 `if (!id) return`
+    // 之前,于是写不出去的那一段仍然进了 `request/response.parts` 的指纹表 ——
+    // 一份说"有这一段"的账,配一条根本不存在的 part。
+    const id = part.runId || runId()
+    if (!id) {
+      countSessionEventDroppedPart(ctx.sessionId)
+      return
+    }
     const hash = hashSessionEventContent(part.text)
     state.finishedParts.push({ partIndex, kind: part.kind, len: part.text.length, hash })
-    if (!id) return
     appendSessionLogEvent(ctx.sessionId, 'assistant/part-end', {
       runId: id,
       requestIndex: part.requestIndex,
@@ -649,9 +697,13 @@ export function createSessionEventRecorder(
           event.toolCall.name,
           safeParseAgentToolArguments(event.toolCall.arguments),
         )
+        // A11:引擎藏起来的调用在账本上带一格 `hidden` —— 投影据此不产出
+        // toolCalls/steps(轨迹与审计照旧看得见)。答不上来 = 可见。
+        const hidden = ctx.isToolCallHidden?.(event.toolCall.id) === true
         const seq = appendSessionLogEvent(ctx.sessionId, 'tool/call', {
           callId: event.toolCall.id,
           name: event.toolCall.name,
+          ...(hidden ? { hidden: true } : {}),
           ...(resolved ? { resolvedToolId: resolved.toolId, displayName: resolved.displayName } : {}),
           argumentsRaw: event.toolCall.arguments,
           messageId: ctx.getMessageId(),

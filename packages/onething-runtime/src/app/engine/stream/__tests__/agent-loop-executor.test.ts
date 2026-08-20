@@ -177,6 +177,7 @@ function createState(): AgentLoopExecutorState {
       return toolCall
     }),
     getStepIdForToolCall: vi.fn(toolCallId => stepIds.get(toolCallId)),
+    isToolCallHidden: () => false,
     finalize: vi.fn(),
   }
 

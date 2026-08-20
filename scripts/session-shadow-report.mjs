@@ -57,6 +57,9 @@ export function readStats(logDir) {
       historyChecks: Number(parsed.historyChecks) || 0,
       mismatches: Number(parsed.mismatches) || 0,
       duplicateMismatches: Number(parsed.duplicateMismatches) || 0,
+      // F6/F13(§13.6):退化与丢账各一个数。老账单缺这两格读成 0,不读崩。
+      projectionIssues: Number(parsed.projectionIssues) || 0,
+      droppedParts: Number(parsed.droppedParts) || 0,
       appendFailures: Number(parsed.appendFailures) || 0,
       byKind: parsed.byKind && typeof parsed.byKind === 'object' ? parsed.byKind : {},
       skipped: parsed.skipped && typeof parsed.skipped === 'object' ? parsed.skipped : {},
@@ -69,6 +72,8 @@ export function readStats(logDir) {
       historyChecks: 0,
       mismatches: 0,
       duplicateMismatches: 0,
+      projectionIssues: 0,
+      droppedParts: 0,
       appendFailures: 0,
       byKind: {},
       skipped: {},
@@ -145,6 +150,11 @@ function main() {
     console.log(`[shadow] mismatches     : ${stats.mismatches}`)
     // 同 run 同一处不等在后续每轮请求上重复出现 —— 折叠掉的次数(F9)。不进门。
     console.log(`[shadow] duplicates     : ${stats.duplicateMismatches}   (同 run 同一处,已折叠)`)
+    // F6:投影退化(blob 换不回来 / 回合重放掉回 collapsed)。**不进门** ——
+    // 它常常两侧同时退化因而仍然相等,而那正是它危险的地方。
+    console.log(`[shadow] projectionIssues: ${stats.projectionIssues}   (投影退化,不进门)`)
+    // F13:记录器丢掉的 part/批次。同样只打印。
+    console.log(`[shadow] droppedParts    : ${stats.droppedParts}   (采集点丢账,不进门)`)
     console.log(`[shadow] appendFailures : ${stats.appendFailures}`)
     console.log(`[shadow] byKind         : ${JSON.stringify(stats.byKind)}`)
     // 跳过 ≠ 不等:门只看 mismatches。列出来是为了让"这条会话为什么没被比"看得见

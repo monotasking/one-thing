@@ -33,6 +33,16 @@ import { CORE_ABORTED_TOOL_ERROR, CORE_LINGERING_TOOL_ERROR } from '../../engine
 import { coreStepTypeForToolName, coreToolInputStartStepTitle } from '../../engine/stream-processor.js'
 import { getStepType } from '../../engine/tool-step.js'
 import { toolResultToStructured } from '../../tools/tool-result.js'
+import {
+  CORE_INTERRUPTED_PERMISSION_ERROR,
+  CORE_INTERRUPTED_TOOL_ERROR,
+  isCoreInterruptedToolResultText,
+} from '../interrupted.js'
+import {
+  resolveProjectionBlobRef,
+  resolveProjectionBlobText,
+  type ProjectionMaterializeOptions,
+} from './blobs.js'
 import { SurfaceIndex } from './surface.js'
 
 /**
@@ -83,6 +93,14 @@ interface PartState {
   ended: boolean
   /** part 收齐的时刻。`tool-input` 的这一格就是 toolCall 的 `receivedAt`。 */
   endedAt?: number
+  /**
+   * R-b(§13.6):这一格是引擎**直接落到消息上**的,不是模型某一轮的产出。
+   *
+   * 生图那条特化流一条 delta 都不经 agent-loop:正文一写就落在消息上,
+   * 既没有 `turn-end`(所以不受 `settledRequests` 那道闸管),也没有回合号
+   * (所以不派生 `turnIndex` —— 消息上那一格就没有它)。缺席 = 老文件 = 照旧。
+   */
+  synthetic?: boolean
   blob?: { hash: string; bytes: number; mime?: string }
   /**
    * `provider-data` part 的载荷,已经解回对象(A1,§13.1)。
@@ -121,6 +139,8 @@ interface ToolState {
   resultBlob?: { hash: string; bytes: number; mime?: string }
   /** 结构化结局(`tool/result.resultData` 解出来的那一份)。 */
   resultData?: unknown
+  /** 结构化结局超了 64KB 那一支 —— 物化时由 resolver 换回来(A8)。 */
+  resultDataBlob?: { hash: string; bytes: number; mime?: string }
   resultTime?: number
   isError?: boolean
   outcome?: 'ok' | 'invalid' | 'denied' | 'aborted' | 'failed'
@@ -130,6 +150,26 @@ interface ToolState {
   rejectionReason?: string
   /** `tool/result` 事件的 seq —— surface 剪枝按它判定。 */
   resultSeq?: number
+  /**
+   * A11(§13.1):引擎把这次调用**藏起来了**(`publish:false`)。
+   *
+   * 藏起来的调用不进 `message.toolCalls`,也没有 step —— 而记录器是无条件记的
+   * (它挂在 agent-loop 的事件流上,看不见呈现层的决定)。所以可见性由引擎那
+   * 一个判定点(`stream-processor.ts` 的 `visible`)经端口回传,记在
+   * `tool/call.hidden` 上;投影据此从 `toolCalls[]` / `steps[]` 里摘掉它。
+   * **轨迹与审计照旧看得见**(它们读事件,不读投影)。
+   * 老文件没有这一格 = 可见(修复前的事实)。
+   */
+  hidden?: boolean
+  /**
+   * A12(§13.1):这次调用问过审批,而审批**还没有答复**。
+   *
+   * 引擎那一刻的消息是 `toolCall.status='pending' + requiresConfirmation:true`、
+   * `step.status='awaiting-confirmation'`(`settleAgentLoopToolCallResult` /
+   * `buildAgentLoopToolResultPresentation` 的 awaiting 分支)。账本里这件事早就
+   * 有:`permission/asked` 有、`permission/answered` 没有 —— 只是从前没人 join。
+   */
+  awaitingPermission?: boolean
 }
 
 export interface AssistantNode extends BaseNode {
@@ -219,6 +259,14 @@ export interface SessionProjectionState {
   rejectionReasonByCallId: Map<string, string>
   /** requestId → toolCallId:`permission/answered` 自己没带 callId 时回头查。 */
   permissionCallIdByRequestId: Map<string, string>
+  /**
+   * A12:问过审批、还没答复的那些 callId。
+   *
+   * 与 `rejectionReasonByCallId` 同一条理由:两条时刻线的汇合处不一定按顺序到 ——
+   * 审批问在 `tool/call` 之后(plan 之后、apply 之前),但老文件的 `tool/call`
+   * 可能整条不在(只有七类的那段历史),所以先记在会话级,`tool/call` 一到就取。
+   */
+  awaitingPermissionCallIds: Set<string>
   lastSeq: number
 }
 
@@ -232,6 +280,7 @@ export function createSessionProjectionState(): SessionProjectionState {
     toolResultSeqByCallId: new Map(),
     rejectionReasonByCallId: new Map(),
     permissionCallIdByRequestId: new Map(),
+    awaitingPermissionCallIds: new Set(),
     lastSeq: 0,
   }
 }
@@ -416,6 +465,8 @@ export function reduceSessionProjection(
       part.ended = true
       part.endedAt = event.time
       if (event.data.blob) part.blob = event.data.blob
+      // R-b:引擎直接落到消息上的那一格(生图正文)。缺席 = 老文件 = 照旧。
+      if (event.data.synthetic === true) part.synthetic = true
       // A1:provider-data 的载荷一次到齐(它没有 delta)。
       const payload = event.data.providerData
       if (payload && 'text' in payload) part.providerData = parseJsonSafely(payload.text)
@@ -444,10 +495,13 @@ export function reduceSessionProjection(
       tool.name = event.data.name
       if (event.data.resolvedToolId !== undefined) tool.resolvedToolId = event.data.resolvedToolId
       if (event.data.displayName !== undefined) tool.displayName = event.data.displayName
+      // A11:老文件没有这一格 → 可见(缺席 = 修复前的事实)。
+      if (event.data.hidden === true) tool.hidden = true
       tool.argumentsRaw = event.data.argumentsRaw
       if (event.data.parentCallId !== undefined) tool.parentCallId = event.data.parentCallId
       const pendingReason = state.rejectionReasonByCallId.get(tool.callId)
       if (pendingReason !== undefined) tool.rejectionReason = pendingReason
+      if (state.awaitingPermissionCallIds.has(tool.callId)) tool.awaitingPermission = true
       // 参数已经定稿:流式片段撤下(它表达的是"还在生成")。
       tool.streamingArgs = undefined
       if (tool.receivedAt === undefined) {
@@ -476,6 +530,9 @@ export function reduceSessionProjection(
       else tool.resultText = event.data.resultPreview
       const resultData = event.data.resultData
       if (resultData && 'text' in resultData) tool.resultData = parseJsonSafely(resultData.text)
+      // A8:结构化结局也可能走了 blob(与正文同一条 64KB 线)。从前这一支被整格
+      // 丢掉 —— 大结果的工具卡在投影里连 metadata 都没有。
+      else if (resultData && 'blob' in resultData) tool.resultDataBlob = resultData.blob
       if (event.data.reportedTitle) tool.reportedTitle = event.data.reportedTitle
       break
     }
@@ -522,14 +579,27 @@ export function reduceSessionProjection(
     case 'permission/asked': {
       if (event.data.toolCallId) {
         state.permissionCallIdByRequestId.set(event.data.requestId, event.data.toolCallId)
+        // A12:从这一刻起这次调用在等确认,直到 `permission/answered` 到达。
+        state.awaitingPermissionCallIds.add(event.data.toolCallId)
+        const asked = findRunByCallId(state, event.data.toolCallId, event.data.runId)
+        const tool = asked?.tools.get(event.data.toolCallId)
+        if (tool) tool.awaitingPermission = true
       }
       break
     }
 
     case 'permission/answered': {
-      if (event.data.approved) break
-      const callId = event.data.toolCallId
+      // A12:**批准与否都**结束"等确认"那个状态 —— 下面那段只管拒绝的理由。
+      const answeredCallId = event.data.toolCallId
         ?? state.permissionCallIdByRequestId.get(event.data.requestId)
+      if (answeredCallId) {
+        state.awaitingPermissionCallIds.delete(answeredCallId)
+        const answeredRun = findRunByCallId(state, answeredCallId, event.data.runId)
+        const answeredTool = answeredRun?.tools.get(answeredCallId)
+        if (answeredTool) answeredTool.awaitingPermission = false
+      }
+      if (event.data.approved) break
+      const callId = answeredCallId
       if (!callId) break
       const reason = event.data.reason
       if (reason === undefined) break
@@ -765,11 +835,38 @@ export function parseToolArguments(argumentsRaw: string): Record<string, unknown
   return {}
 }
 
+/**
+ * R-a(§13.6):这次调用的结局是 `prepare` 崩溃收尾**合成**出来的吗?
+ *
+ * 判据是那一句话本身(全仓唯一产地是 `interrupted.ts` 的常量)。合成的结局在
+ * 事件账本里是一条 `isError` 的 `tool/result`,但消息侧那次修复写的是
+ * `cancelled`(它没有失败,是没跑完)—— 不认出来就每一条崩溃过的会话都不等。
+ */
+function isSynthesizedInterrupt(tool: ToolState): boolean {
+  return tool.isError === true && isCoreInterruptedToolResultText(tool.resultText)
+}
+
+/**
+ * A12:等确认的那一格 —— 问过审批、没有答复、也还没有结局。
+ *
+ * 有结局(包括 prepare 合成的那条)就不是"在等"了:进程已经不在,消息侧那次
+ * 修复把确认闸关掉了(`computeInterruptedToolCallRepair` 的 stalePermission 分支)。
+ */
+function isAwaitingConfirmation(tool: ToolState): boolean {
+  return tool.awaitingPermission === true && tool.resultTime === undefined
+}
+
 function toolCallStatus(tool: ToolState, run: AssistantNode): ProjectedToolCallStatus {
   if (tool.resultTime === undefined) {
+    // A12:引擎那一刻写的是 `status:'pending' + requiresConfirmation:true`
+    // (`settleAgentLoopToolCallResult` 的 requiresConfirmation 分支)——
+    // `awaiting-confirmation` 只是 step 上的说法,调用那一格是 pending。
+    if (isAwaitingConfirmation(tool) && !run.ended) return 'pending'
     if (run.ended) return 'cancelled'
     return tool.receivedAt !== undefined ? 'executing' : 'input-streaming'
   }
+  // R-a:合成的中断结局 = cancelled,与 `computeInterruptedToolCallRepair` 同口径。
+  if (isSynthesizedInterrupt(tool)) return 'cancelled'
   if (tool.outcome === 'aborted') return 'cancelled'
   if (tool.isError || tool.outcome === 'denied' || tool.outcome === 'failed' || tool.outcome === 'invalid') {
     return 'failed'
@@ -815,23 +912,70 @@ function stepStatus(status: ProjectedToolCallStatus): ProjectedStepStatus {
  * (正常收尾 / 请求出错)都不带 errorMessage → 默认那一句。两个常量从引擎
  * 导出,这里不手抄字面量(§10.10 的规矩)。
  *
- * `interrupted` 是**没有**收尾修复的那一档:它是进程没了之后由下一次
- * `run/start` 补盖的墓碑,当时没有任何代码跑过那次修复,消息上因此什么都没写。
+ * `interrupted` 那一档 **R-a 之后也有了话**(§13.6):崩溃重启时消息侧的
+ * `sanitizeSessionOnStartup` 会把还挂着的 step / toolCall 判成
+ * `cancelled` + `CORE_INTERRUPTED_TOOL_ERROR`(等审批的那些是权限那句),
+ * 而账本侧 `prepare` 合成的结局逐字相同 —— 三处共用 `interrupted.ts` 那组常量。
+ * 从前这里返回 undefined,于是每一条崩溃过的消息在投影里都少一句话。
  */
-function lingeringToolError(run: AssistantNode): string | undefined {
+function lingeringToolError(run: AssistantNode, tool?: ToolState): string | undefined {
   if (!run.ended) return undefined
   if (run.outcome === 'aborted') return CORE_ABORTED_TOOL_ERROR
   if (run.outcome === 'completed' || run.outcome === 'error') return CORE_LINGERING_TOOL_ERROR
+  if (run.outcome === 'interrupted') {
+    return tool?.awaitingPermission ? CORE_INTERRUPTED_PERMISSION_ERROR : CORE_INTERRUPTED_TOOL_ERROR
+  }
   return undefined
 }
 
-function toolResultFields(tool: ToolState): Partial<ProjectedToolCall> {
-  const error = tool.isError && tool.resultText !== undefined ? { error: tool.resultText } : {}
+function toolResultFields(
+  tool: ToolState,
+  options: ProjectionMaterializeOptions,
+  messageId: string,
+): Partial<ProjectedToolCall> {
+  // R-a:合成的中断结局在消息上**什么都没写** —— 它是账本侧为了闭合 run 记的一笔,
+  // 不是工具真的返回了那句话。消息侧那次修复只写 status + error(见 timeline.ts)。
+  if (isSynthesizedInterrupt(tool)) {
+    return { error: tool.awaitingPermission ? CORE_INTERRUPTED_PERMISSION_ERROR : CORE_INTERRUPTED_TOOL_ERROR }
+  }
+  const resultText = resolveToolText(tool, options, messageId)
+  const error = tool.isError && resultText !== undefined ? { error: resultText } : {}
   // 结构化结局优先:`ToolCall.result` 的正身是它,`result.text` 只是给模型的那段。
-  if (tool.resultData !== undefined) return { result: tool.resultData, ...error }
-  if (tool.resultBlob) return { result: { blob: tool.resultBlob }, ...error }
-  if (tool.resultText === undefined) return {}
-  return tool.isError ? error : { result: tool.resultText }
+  const structured = resolveToolResultData(tool, options, messageId)
+  if (structured !== undefined) return { result: structured, ...error }
+  if (resultText === undefined) {
+    // A8 + F6:blob 换不回来时**照实留引用**(退化,但不静默:issue 已经记了)。
+    return tool.resultBlob ? { result: { blob: tool.resultBlob } } : {}
+  }
+  return tool.isError ? error : { result: resultText }
+}
+
+/** 结构化结局:事件行里的 `{text}`,或 blob 换回来再解一次(A8)。 */
+function resolveToolResultData(
+  tool: ToolState,
+  options: ProjectionMaterializeOptions,
+  messageId: string,
+): unknown {
+  if (tool.resultData !== undefined) return tool.resultData
+  if (!tool.resultDataBlob) return undefined
+  const resolved = resolveProjectionBlobRef(tool.resultDataBlob, options, 'toolCall.result', messageId)
+  return resolved === undefined ? undefined : parseJsonSafely(resolved)
+}
+
+/**
+ * 这次调用的结局正文(A8):事件行里的 `{text}`,或 blob 换回来的那一份。
+ *
+ * `steps[].result` 与 `toolCall.error` 都读它 —— 引擎那份账里它们是同一段全文,
+ * 投影从前在 blob 那一支上整格缺席(大结果的每一次调用都不等)。
+ */
+function resolveToolText(
+  tool: ToolState,
+  options: ProjectionMaterializeOptions,
+  messageId: string,
+): string | undefined {
+  if (tool.resultText !== undefined) return tool.resultText
+  if (!tool.resultBlob) return undefined
+  return resolveProjectionBlobRef(tool.resultBlob, options, 'step.result', messageId)
 }
 
 /** `JSON.parse`,坏了就当没有(记账坏掉不该让整份投影塌掉)。 */
@@ -870,7 +1014,12 @@ function lastRunId(state: SessionProjectionState): string | undefined {
   return best?.runId
 }
 
-function materializeToolCall(run: AssistantNode, tool: ToolState): ProjectedToolCall {
+function materializeToolCall(
+  run: AssistantNode,
+  tool: ToolState,
+  options: ProjectionMaterializeOptions = {},
+): ProjectedToolCall {
+  const awaiting = isAwaitingConfirmation(tool) && !run.ended
   return {
     id: tool.callId,
     // A6:引擎写的是 `resolved.toolId`。`tool/audit.toolId`(工具包那一侧的
@@ -884,14 +1033,17 @@ function materializeToolCall(run: AssistantNode, tool: ToolState): ProjectedTool
     ...(tool.receivedAt !== undefined ? { receivedAt: tool.receivedAt } : {}),
     ...(tool.streamingArgs !== undefined ? { streamingArgs: tool.streamingArgs } : {}),
     ...toolTimingFields(tool),
-    ...toolResultFields(tool),
+    ...toolResultFields(tool, options, run.messageId),
     // 没等到结局就收场的那一次:引擎的收尾修复在它身上写了一句话(见上)。
-    ...(tool.resultTime === undefined && lingeringToolError(run)
-      ? { error: lingeringToolError(run) }
+    ...(tool.resultTime === undefined && lingeringToolError(run, tool)
+      ? { error: lingeringToolError(run, tool) }
       : {}),
-    // 引擎在收尾那一刻把这一位写死成 false(确认已经不再需要了)。它不是
+    // A12:等确认的那一刻,引擎把这一位写成 **true**(那张卡还等着人按)。
+    // 引擎在收尾那一刻把它写死成 false(确认已经不再需要了)。它不是
     // 事实的一部分,是那条 UI 闸的收场态 —— 有结局就有它。
-    ...(tool.resultTime !== undefined ? { requiresConfirmation: false } : {}),
+    ...(awaiting
+      ? { requiresConfirmation: true as const }
+      : tool.resultTime !== undefined ? { requiresConfirmation: false } : {}),
     ...(tool.outcome === 'denied' ? { rejected: true as const } : {}),
     ...(tool.rejectionReason !== undefined ? { rejectionReason: tool.rejectionReason } : {}),
   }
@@ -901,23 +1053,34 @@ export function materializeStep(
   run: AssistantNode,
   tool: ToolState,
   childSteps: ProjectedStep[] = [],
+  options: ProjectionMaterializeOptions = {},
 ): ProjectedStep {
-  const toolCall = materializeToolCall(run, tool)
+  const toolCall = materializeToolCall(run, tool, options)
   const usage = run.usageByTurn.get(tool.turnIndex)
-  const hasResultText = tool.resultText !== undefined
-  const status = stepStatus(toolCall.status)
+  const resultText = isSynthesizedInterrupt(tool)
+    // R-a:合成的中断结局不进 `step.result` —— 消息侧那次修复只写 status + error。
+    ? undefined
+    : resolveToolText(tool, options, run.messageId)
+  const hasResultText = resultText !== undefined
+  // A12:step 那一格的说法是 `awaiting-confirmation`(调用那一格是 pending)。
+  const status: ProjectedStepStatus = isAwaitingConfirmation(tool) && !run.ended
+    ? 'awaiting-confirmation'
+    : stepStatus(toolCall.status)
   // 工具自己报的标题压过派生标题 —— 引擎那份账的规则逐字相同:每一条带 title 的
   // `annotate` 当场盖掉 step 标题(`applyAgentLoopToolMetadata`),旧编排器那条路
   // 收尾时也是 `resultData.title || currentTitle`(`finalTitle`)。
   // `reportedTitle` 是那条 annotate 的直接记录,`resultData.title` 是成功结局里
   // 抄的那一份 —— 失败的调用只有前者(§10.12 第 6 类)。
+  // A8:结构化结局可能住在 blob 里 —— 标题与 partialResult 都读**换回来的**
+  // 那一份(手写 `tool.resultData` 会让大结果的工具卡退回派生标题)。
+  const structuredResult = resolveToolResultData(tool, options, run.messageId)
   const reportedTitle = tool.reportedTitle
-    ?? (tool.resultData as { title?: unknown } | undefined)?.title
+    ?? (structuredResult as { title?: unknown } | undefined)?.title
   // 落盘时 `partialResult` 被摘掉,冷加载时由 `rehydrateSessionFromStorage` 从
   // `toolCall.result` 原样算回来。投影用的是**同一条**派生规则。
   // 失败的调用没有这一格:引擎写的是 `partialResult: result.error ? undefined : …`。
-  const structured = tool.resultData !== undefined && !tool.isError && TERMINAL_STEP_STATUSES.has(status)
-    ? toolResultToStructured(tool.resultData as Parameters<typeof toolResultToStructured>[0])
+  const structured = structuredResult !== undefined && !tool.isError && TERMINAL_STEP_STATUSES.has(status)
+    ? toolResultToStructured(structuredResult as Parameters<typeof toolResultToStructured>[0])
     : undefined
   return {
     // G1(§10.1):事件里**不带** stepId。派生一个确定性的 —— 同一份日志投两次
@@ -953,8 +1116,8 @@ export function materializeStep(
     // 与 `toolCall` 那两格同一条规则:`Step.result` 是 `resultText(result)`
     // (失败时它**就是** error 那句话),`error` 只有失败才有 —— 两格并存,不是二选一
     // (`buildAgentLoopToolResultPresentation` 的 `stepUpdate`)。
-    ...(hasResultText ? { result: tool.resultText } : {}),
-    ...(hasResultText && tool.isError ? { error: tool.resultText } : {}),
+    ...(hasResultText ? { result: resultText } : {}),
+    ...(hasResultText && tool.isError ? { error: resultText } : {}),
     // 收尾修复把同一句话写在 step 上(`step.error = step.error || 那一句`)。
     ...(!hasResultText && toolCall.error !== undefined ? { error: toolCall.error } : {}),
     ...(structured ? { partialResult: structured, partialResultIsPartial: false } : {}),
@@ -972,9 +1135,12 @@ export function materializeStep(
  * (跨消息的调用栈)也**平铺**,不凭空造一个父 —— 事件说不出来的东西
  * 投影不猜。
  */
-export function materializeSteps(run: AssistantNode): ProjectedStep[] {
+export function materializeSteps(
+  run: AssistantNode,
+  options: ProjectionMaterializeOptions = {},
+): ProjectedStep[] {
   const childrenByParent = new Map<string, string[]>()
-  for (const callId of run.toolOrder) {
+  for (const callId of visibleToolOrder(run)) {
     const parentCallId = run.tools.get(callId)?.parentCallId
     if (!parentCallId || !run.tools.has(parentCallId)) continue
     const bucket = childrenByParent.get(parentCallId)
@@ -983,24 +1149,40 @@ export function materializeSteps(run: AssistantNode): ProjectedStep[] {
   }
 
   const steps: ProjectedStep[] = []
-  for (const callId of run.toolOrder) {
+  for (const callId of visibleToolOrder(run)) {
     const tool = run.tools.get(callId)!
     if (tool.parentCallId && run.tools.has(tool.parentCallId)) continue
     const children = (childrenByParent.get(callId) ?? [])
-      .map(childId => materializeStep(run, run.tools.get(childId)!))
-    steps.push(materializeStep(run, tool, children))
+      .map(childId => materializeStep(run, run.tools.get(childId)!, [], options))
+    steps.push(materializeStep(run, tool, children, options))
   }
   return steps
 }
 
+/**
+ * A11(§13.1):**引擎藏起来的调用不进消息**。
+ *
+ * `publish:false` 那条路上引擎连 `toolCalls.push` 都没做过(占位卡与 step 一并
+ * 不建),而记录器是无条件记的 —— 它挂在 agent-loop 的事件流上,看不见呈现层的
+ * 决定。所以 `toolCalls[]` / `steps[]` 这两格按事件里的 `hidden` 摘;
+ * **轨迹与审计不受影响**(它们读的是事件本身)。
+ * 老文件没有这一格 = 全部可见,与修复前逐字相同。
+ */
+function visibleToolOrder(run: AssistantNode): string[] {
+  return run.toolOrder.filter(callId => run.tools.get(callId)?.hidden !== true)
+}
+
 /** 顶层 toolCalls:与 `materializeSteps` 同一条筛法(子调用不再单列一格)。 */
-export function materializeToolCalls(run: AssistantNode): ProjectedToolCall[] {
-  return run.toolOrder
+export function materializeToolCalls(
+  run: AssistantNode,
+  options: ProjectionMaterializeOptions = {},
+): ProjectedToolCall[] {
+  return visibleToolOrder(run)
     .filter(callId => {
       const parentCallId = run.tools.get(callId)?.parentCallId
       return !parentCallId || !run.tools.has(parentCallId)
     })
-    .map(callId => materializeToolCall(run, run.tools.get(callId)!))
+    .map(callId => materializeToolCall(run, run.tools.get(callId)!, options))
 }
 
 /**
@@ -1142,11 +1324,31 @@ export function topReasoningPartIndexes(run: AssistantNode): Set<number> {
 }
 
 /** `message.reasoning` 字段 = **只有** `'top'` 那一段(见上)。 */
-export function materializeTopReasoning(run: AssistantNode): string {
+export function materializeTopReasoning(
+  run: AssistantNode,
+  options: ProjectionMaterializeOptions = {},
+): string {
   const top = topReasoningPartIndexes(run)
   let out = ''
-  for (const partIndex of [...top].sort((a, b) => a - b)) out += run.parts.get(partIndex)!.text
+  for (const partIndex of [...top].sort((a, b) => a - b)) {
+    out += partText(run.parts.get(partIndex)!, options, run.messageId)
+  }
   return out
+}
+
+/**
+ * 一段 part 的正文,占位符换回正身(R-b)。
+ *
+ * 生图那条特化流的正文里有一段几百 KB 的 data URL,事件行装不下 —— 采集点把它
+ * 换成 `onething-blob://<hash>`,这里换回来。其余正文一个字节都不动(热路径上
+ * 先做一次 `includes` 短路)。
+ */
+function partText(
+  part: PartState,
+  options: ProjectionMaterializeOptions,
+  messageId: string,
+): string {
+  return resolveProjectionBlobText(part.text, options, 'part.text', messageId)
 }
 
 /**
@@ -1182,17 +1384,34 @@ function isSettleExemptPartKind(kind: SessionAssistantPartKind): boolean {
   return kind === 'image'
 }
 
-export function materializeContentParts(run: AssistantNode): ProjectedContentPart[] {
+/**
+ * 这一格豁免"这一轮收齐了吗"那道闸吗?
+ *
+ * 两种豁免,同一条理由 —— **它的落盘不由 `persistTurnContentParts` 决定**:
+ *  - `kind:'image'`(A2,老文件里生图留下的那一格);
+ *  - `synthetic`(R-b,引擎直接落到消息上的正文,今天只有生图正文一条产地)。
+ */
+function partIsSettleExempt(part: PartState): boolean {
+  return part.synthetic === true || isSettleExemptPartKind(part.kind)
+}
+
+export function materializeContentParts(
+  run: AssistantNode,
+  options: ProjectionMaterializeOptions = {},
+): ProjectedContentPart[] {
   const parts: ProjectedContentPart[] = []
   const topReasoning = topReasoningPartIndexes(run)
   for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
     const part = run.parts.get(partIndex)!
-    if (!isSettleExemptPartKind(part.kind) && !requestSettled(run, part.requestIndex)) continue
-    const turnIndex = run.turnByRequest.get(part.requestIndex)
-    if (part.kind === 'text' && part.text) {
-      parts.push({ type: 'text', content: part.text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
-    } else if (part.kind === 'reasoning' && part.text && !topReasoning.has(partIndex)) {
-      parts.push({ type: 'reasoning', content: part.text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
+    if (!partIsSettleExempt(part) && !requestSettled(run, part.requestIndex)) continue
+    // R-b:`synthetic` 那一格没有回合 —— 它不是模型某一轮的产出,消息上那一格
+    // 也就没有 `turnIndex`。凭空补一个会让每一次生图都不等。
+    const turnIndex = part.synthetic ? undefined : run.turnByRequest.get(part.requestIndex)
+    const text = partText(part, options, run.messageId)
+    if (part.kind === 'text' && text) {
+      parts.push({ type: 'text', content: text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
+    } else if (part.kind === 'reasoning' && text && !topReasoning.has(partIndex)) {
+      parts.push({ type: 'reasoning', content: text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
     } else if (part.kind === 'image' && part.blob) {
       parts.push({ type: 'image', blob: part.blob, ...(turnIndex !== undefined ? { turnIndex } : {}) })
     } else if (part.kind === 'provider-data') {
@@ -1215,11 +1434,15 @@ export function materializeContentParts(run: AssistantNode): ProjectedContentPar
   return parts
 }
 
-export function materializePartText(run: AssistantNode, kind: 'text' | 'reasoning'): string {
+export function materializePartText(
+  run: AssistantNode,
+  kind: 'text' | 'reasoning',
+  options: ProjectionMaterializeOptions = {},
+): string {
   let out = ''
   for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
     const part = run.parts.get(partIndex)!
-    if (part.kind === kind) out += part.text
+    if (part.kind === kind) out += partText(part, options, run.messageId)
   }
   return out
 }

@@ -179,4 +179,21 @@ describe('findLastSessionEventSync', () => {
     expect(findLastSessionEventSync('s5', 'request/tools')?.data.toolsHash).toBe('catalog-one')
     expect(findLastSessionEventSync('missing', 'request/header')).toBeUndefined()
   })
+
+  /**
+   * F13(§13.2):**先问这个进程刚写过什么**,文件读是冷启动兜底。
+   *
+   * 写是排队异步落盘的 —— 还没 flush 时读文件读到的是**上一条**,于是记录器
+   * 会把那 40KB 的工具目录原样再写一遍(每次重开会话来一遍)。
+   */
+  it('answers from what this process just wrote, before it hits disk', async () => {
+    makeJsonlSession('s6')
+    appendSessionEvent('s6', 'request/tools', {
+      requestIndex: 1, toolsHash: 'fresh-catalog', tools: [{ name: 'read' }],
+    })
+    // **没有 flush**:文件里还没有这一条。
+    expect(findLastSessionEventSync('s6', 'request/tools')?.data.toolsHash).toBe('fresh-catalog')
+    await flushSessionEventLog('s6')
+    expect(findLastSessionEventSync('s6', 'request/tools')?.data.toolsHash).toBe('fresh-catalog')
+  })
 })

@@ -36,8 +36,8 @@ const { resetSessionSurfaceCache } = await import('../../../session/event-surfac
 const { beginSessionRun, endSessionRun, resetSessionRuns, rotateSessionRun } = await import(
   '../../../session/runs.js'
 )
-const { resetSessionEventStatsCache } = await import('../../../session/event-stats.js')
-const { attachSessionEventRecorder } = await import('../session-event-recorder.js')
+const { readSessionShadowStats, resetSessionEventStatsCache } = await import('../../../session/event-stats.js')
+const { attachSessionEventRecorder, createSessionEventRecorder } = await import('../session-event-recorder.js')
 
 const SESSION_ID = 'session-under-test'
 
@@ -95,7 +95,11 @@ function testProvider(): AgentProvider {
   }
 }
 
-async function runLoop(tool: AgentTool, systemPrompt = 'you are a test'): Promise<void> {
+async function runLoop(
+  tool: AgentTool,
+  options: { systemPrompt?: string; isToolCallHidden?: (toolCallId: string) => boolean } = {},
+): Promise<void> {
+  const systemPrompt = options.systemPrompt ?? 'you are a test'
   const runtime: AgentLoopOptions = {
     provider: testProvider(),
     model: 'test-model',
@@ -121,6 +125,7 @@ async function runLoop(tool: AgentTool, systemPrompt = 'you are a test'): Promis
     systemPrompt,
     getMessageId: () => 'assistant-1',
     getHistoryInput: () => [{ id: 'user-1', role: 'user', content: 'hello' }],
+    ...(options.isToolCallHidden ? { isToolCallHidden: options.isToolCallHidden } : {}),
   })
   try {
     for await (const _chunk of streamAgentLoopProviderChunks(recorded.runtime)) {
@@ -146,6 +151,8 @@ async function runLoopWithProvider(
     ) => { toolId: string; displayName: string }
     /** 在流**进行中**调一次(合成正文是引擎在消费 chunk 时产生的)。 */
     onRecorderReady?: (recorder: { recordSynthesizedText(text: string): void }) => void
+    /** A11:引擎藏起来的调用 —— 端口答"这次在不在消息上"。 */
+    isToolCallHidden?: (toolCallId: string) => boolean
   } = {},
 ): Promise<void> {
   const runtime: AgentLoopOptions = {
@@ -171,6 +178,7 @@ async function runLoopWithProvider(
     systemPrompt: 'you are a test',
     getMessageId: () => 'assistant-1',
     ...(options.resolveToolIdentity ? { resolveToolIdentity: options.resolveToolIdentity } : {}),
+    ...(options.isToolCallHidden ? { isToolCallHidden: options.isToolCallHidden } : {}),
   })
   let notified = false
   try {
@@ -439,8 +447,8 @@ describe('session event recorder (agent loop integration)', () => {
    * 工具目录不变。拆事件之前,每变一次 system 就陪葬一份没变的 40KB 目录。
    */
   it('writes only a new header when the system prompt changed but the catalog did not', async () => {
-    await runLoop(ECHO_TOOL, 'you are a test')
-    await runLoop(ECHO_TOOL, 'you are a test — now with a fresh variable block')
+    await runLoop(ECHO_TOOL, { systemPrompt: 'you are a test' })
+    await runLoop(ECHO_TOOL, { systemPrompt: 'you are a test — now with a fresh variable block' })
 
     const events = await readSessionEvents(SESSION_ID)
     expect(events.filter(event => event.type === 'request/tools')).toHaveLength(1)
@@ -691,6 +699,42 @@ describe('session event recorder (agent loop integration)', () => {
       .join('')
     // 修复前这段 markdown 在账本上**根本不存在**,`content` 的 fold 因此永远短一截。
     expect(text).toBe('here: ![img](media://x.png)')
+  })
+
+  /**
+   * A11(§13.1):**引擎藏起来的调用**。可见性的判定点在引擎(处理器的
+   * `rememberVisibility`),记录器只**问**;老文件没有这一格 = 可见。
+   */
+  it('A11: tool/call carries hidden when the engine kept the call off the message', async () => {
+    await runLoop(ECHO_TOOL, { isToolCallHidden: () => true })
+    const hidden = (await readSessionLogEvents(SESSION_ID)).find(event => event.type === 'tool/call')
+    expect(hidden?.type === 'tool/call' && hidden.data.hidden).toBe(true)
+  })
+
+  it('A11: without the port the event keeps exactly the old shape', async () => {
+    await runLoop(ECHO_TOOL)
+    const call = (await readSessionLogEvents(SESSION_ID)).find(event => event.type === 'tool/call')
+    const data = call?.type === 'tool/call' ? call.data : undefined
+    expect(data && 'hidden' in data).toBe(false)
+  })
+
+  /**
+   * F13(§13.2):**开不出段就丢账**从前是三个静默的 `return undefined`。
+   * 现在它至少是账单上的一个数(`sessions:shadow-report` 打印它)。
+   */
+  it('F13: a part that cannot be opened is counted instead of vanishing silently', async () => {
+    const before = readSessionShadowStats().droppedParts
+    // 没有活跃 run = 分不到 partIndex(收尾之后迟到的那一段就是这个处境)。
+    resetSessionRuns()
+    const recorder = createSessionEventRecorder({
+      sessionId: SESSION_ID,
+      providerId: 'test-provider',
+      model: 'test-model',
+      getMessageId: () => 'assistant-1',
+    })
+    recorder.handle({ type: 'turn-start', turn: 1 } as never)
+    recorder.handle({ type: 'text-delta', turn: 1, delta: 'lost' } as never)
+    expect(readSessionShadowStats().droppedParts).toBeGreaterThan(before)
   })
 
   it('truncates a long result preview to 500 chars', async () => {

@@ -36,7 +36,6 @@ import {
   canonicalHistoryMessages,
   materializeModelHistory,
   materializeNode,
-  resolveHistoryBlobRefs,
   type ProjectionNode,
   type ProjectModelHistoryMeta,
   type ProjectModelHistoryOptions,
@@ -48,7 +47,7 @@ import {
   resetSessionProjectionCache,
 } from './projection-cache.js'
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
-import { readSessionBlobText } from './blob-store.js'
+import { sessionProjectionOptions } from './projection-blobs.js'
 import { sessionReads } from './reads.js'
 import { getLogger } from '../logging/index.js'
 
@@ -341,14 +340,6 @@ function nodeMessageId(node: ProjectionNode): string {
   return node.messageId
 }
 
-/** 把投影出的消息里的 `BlobRef` 换回正文 —— 落点与回放同一函数(G8)。 */
-function resolveBlobs(sessionId: string, message: Record<string, unknown>): Record<string, unknown> {
-  return resolveHistoryBlobRefs(
-    message as never,
-    ref => readSessionBlobText(sessionId, ref.hash),
-  ) as unknown as Record<string, unknown>
-}
-
 /**
  * 一个 run 收尾时的消息断言。**同步**执行(调用方负责把它挪出热路径)。
  *
@@ -392,8 +383,11 @@ export function checkSessionRunShadow(
     if (actual.length === 0 && projected.length === 0) return 'skipped'
 
     const a = actual.map(message => canonicalChatMessage(message as unknown as Record<string, unknown>))
+    // A8/A9(§13.6):blob 回放已经在物化里了(附件 base64、工具大结果、生图
+    // 正文全走同一份选项),这里不再补第二刀。
+    const materialize = sessionProjectionOptions(sessionId)
     const b = projected.map(node =>
-      canonicalChatMessage(resolveBlobs(sessionId, materializeNode(node) as unknown as Record<string, unknown>)),
+      canonicalChatMessage(materializeNode(node, materialize) as unknown as Record<string, unknown>),
     )
 
     if (deepEqual(a, b)) {
@@ -479,7 +473,7 @@ export function checkSessionHistoryShadow(
 
     const projected = materializeModelHistory(state, input.meta ?? {}, {
       ...(input.build ?? {}),
-      resolveBlob: ref => readSessionBlobText(sessionId, ref.hash),
+      ...sessionProjectionOptions(sessionId),
     })
 
     const a = canonicalHistory(input.actual)

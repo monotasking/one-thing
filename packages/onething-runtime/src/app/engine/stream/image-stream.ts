@@ -18,7 +18,7 @@ import type { StreamSender } from './stream-processor.js'
 import {
   executeOnethingImageGenerationStream,
 } from '@onething/runtime/media'
-import { recordGeneratedImagePart } from '../../session/assistant-parts.js'
+import { recordSynthesizedAssistantText } from '../../session/assistant-parts.js'
 import { consolePort, getLogger } from '../../logging/index.js'
 
 const log = getLogger('engine.stream.image')
@@ -87,17 +87,20 @@ export async function processImageGenerationStream(
     },
     generateGeminiImage: input => generateGeminiImage(input.apiKey, input.model, input.prompt),
     generateOpenAIImage: input => generateImage(input.apiKey, input.baseUrl, input.model, input.prompt),
-    // S1b 缺口 3:图片本体在这一刻同时进 blob store,事件行留一条
-    // `assistant/part-end{kind:'image'}`。挂在 saveMediaImage 上而不是别处 ——
-    // 这是整条特化流里唯一同时握着 sessionId / messageId / base64 的地方。
-    saveMediaImage: async input => {
-      const item = await saveMediaImage(input)
-      recordGeneratedImagePart(sessionId, assistantMessageId, input.base64)
-      return item
-    },
+    saveMediaImage,
     store: {
       updateMessageContent: store.updateMessageContent,
-      addMessageContentPart: store.addMessageContentPart,
+      // R-b(§13.6):**正文落到消息上的那一刻**,同一段正文也进事件账本
+      // (data URL 换成 blob 占位符)。挂在这一格而不是 `saveMediaImage` 上:
+      // 这里才是"消息上多了一格 contentPart"的那一刻,两侧因此逐字节对得上
+      // (错误分支不写 contentPart,账本上也就没有那一格)。
+      addMessageContentPart: async (targetSessionId, messageId, part) => {
+        const applied = await store.addMessageContentPart(targetSessionId, messageId, part)
+        if (part.type === 'text' && typeof part.content === 'string') {
+          recordSynthesizedAssistantText(targetSessionId, messageId, part.content)
+        }
+        return applied
+      },
       updateMessageStreaming: store.updateMessageStreaming,
       flushSessionSave: store.flushSessionSave,
     },

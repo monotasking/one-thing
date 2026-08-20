@@ -390,6 +390,15 @@ export interface CoreStreamProcessor<
   handleToolInputDelta(toolCallId: string, argsTextDelta: string): void
   handleToolInputEnd(toolCallId: string, options?: { finalizedBy?: CoreToolArgsFinalizedBy }): TToolCall | null
   getStepIdForToolCall(toolCallId: string): string | undefined
+  /**
+   * A11(§13.1):这次调用被藏起来了吗(`publish:false`)。
+   *
+   * 藏 = 占位卡、`toolCalls.push`、step 三样一起不做,消息上因此**没有**它。
+   * 会话事件账本要记同一件事(不然投影会凭空多出一张卡),而记录器挂在
+   * provider 流上、看不见呈现层的决定 —— 所以判定点仍然只有一个(下面那个
+   * `rememberVisibility`),外面只能**问**。
+   */
+  isToolCallHidden(toolCallId: string): boolean
   finalize(): Promise<void>
 }
 
@@ -412,6 +421,21 @@ export function createCoreStreamProcessor<
   let accumulatedReasoning = initialContent?.reasoning || ''
   const toolCalls: TToolCall[] = []
   const toolInputBuffers = new CoreStreamingToolInputBuffer()
+  /**
+   * A11:被藏起来的调用 id。`toolInputBuffers` 的那一格会在参数收齐时被删掉,
+   * 而"这次调用在不在消息上"要一直答得出来(工具结果、收尾都会回头问)。
+   */
+  const hiddenToolCallIds = new Set<string>()
+  /**
+   * `publish` 这个入参**只在这里被解释一次**:返回可见性,顺便记下不可见的那些。
+   * 三个入口(`handleToolCallChunk` / `handleToolCallComplete` /
+   * `handleToolInputStart`)都走它 —— 各判各的就是三个判定点。
+   */
+  function rememberVisibility(toolCallId: string, publish: boolean | undefined): boolean {
+    const visible = publish !== false
+    if (!visible) hiddenToolCallIds.add(toolCallId)
+    return visible
+  }
 
   return {
     get accumulatedContent() { return accumulatedContent },
@@ -447,7 +471,7 @@ export function createCoreStreamProcessor<
       toolName: string
       args: JsonObject
     }, handleOptions: { publish?: boolean; status?: CoreStreamToolCallStatus } = {}): TToolCall {
-      const publish = handleOptions.publish !== false
+      const publish = rememberVisibility(toolCallData.toolCallId, handleOptions.publish)
       const resolved = options.resolveToolIdentity(toolCallData.toolName, toolCallData.args)
       const toolCall = applyCoreToolCallChunk(toolCalls, {
         toolCallId: toolCallData.toolCallId,
@@ -481,7 +505,7 @@ export function createCoreStreamProcessor<
         { receivedAt, argsFinalizedBy: finalizedBy } as Partial<TToolCall>,
       )
 
-      const publish = completeOptions.publish !== false
+      const publish = rememberVisibility(toolCallData.toolCallId, completeOptions.publish)
       if (publish) {
         store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, coreToolCallSnapshot(toolCalls))
         emitter.sendToolInputEnd?.(
@@ -497,7 +521,7 @@ export function createCoreStreamProcessor<
     },
 
     handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number, handleOptions: { publish?: boolean } = {}): void {
-      const visible = handleOptions.publish !== false
+      const visible = rememberVisibility(toolCallId, handleOptions.publish)
       const resolved = options.resolveToolIdentity(toolName)
       const stepId = createStepId()
       const {
@@ -555,6 +579,10 @@ export function createCoreStreamProcessor<
         toolName: result.toolName,
         args: result.args,
       }, { publish: result.visible, finalizedBy: endOptions.finalizedBy })
+    },
+
+    isToolCallHidden(toolCallId: string): boolean {
+      return hiddenToolCallIds.has(toolCallId)
     },
 
     getStepIdForToolCall(toolCallId: string): string | undefined {

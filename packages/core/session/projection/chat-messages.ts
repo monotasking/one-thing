@@ -20,6 +20,7 @@
 
 import { buildContextCompactContent } from '../../engine/context-compact.js'
 import type { SessionLogEventRecord } from '../events/types.js'
+import { resolveHistoryBlobRefs, type ProjectionMaterializeOptions } from './blobs.js'
 import type { AssistantNode, CompactedNode, MessageNode, ProjectionNode, SessionProjectionState } from './reducer.js'
 import {
   createSessionProjectionState,
@@ -35,7 +36,7 @@ import {
 } from './reducer.js'
 import type { ProjectChatMessagesResult, ProjectedChatMessage } from './types.js'
 
-export interface ProjectChatMessagesOptions {
+export interface ProjectChatMessagesOptions extends ProjectionMaterializeOptions {
   /** 只看到这条 seq(含)为止 —— 时间旅行/分页用。 */
   upToSeq?: number
 }
@@ -57,14 +58,17 @@ export function projectChatMessages(
   events: readonly SessionLogEventRecord[],
   options: ProjectChatMessagesOptions = {},
 ): ProjectChatMessagesResult {
-  return materializeChatMessages(foldSessionProjection(events, options))
+  return materializeChatMessages(foldSessionProjection(events, options), options)
 }
 
-export function materializeChatMessages(state: SessionProjectionState): ProjectChatMessagesResult {
+export function materializeChatMessages(
+  state: SessionProjectionState,
+  options: ProjectionMaterializeOptions = {},
+): ProjectChatMessagesResult {
   const messages: ProjectedChatMessage[] = []
   for (const node of state.nodes) {
     if (node.hidden) continue
-    messages.push(materializeNode(node))
+    messages.push(materializeNode(node, options))
   }
   return {
     messages,
@@ -72,10 +76,13 @@ export function materializeChatMessages(state: SessionProjectionState): ProjectC
   }
 }
 
-export function materializeNode(node: ProjectionNode): ProjectedChatMessage {
+export function materializeNode(
+  node: ProjectionNode,
+  options: ProjectionMaterializeOptions = {},
+): ProjectedChatMessage {
   switch (node.kind) {
-    case 'message': return materializeMessageNode(node)
-    case 'assistant': return materializeAssistantNode(node)
+    case 'message': return materializeMessageNode(node, options)
+    case 'assistant': return materializeAssistantNode(node, options)
     case 'compacted': return materializeCompactedNode(node)
   }
 }
@@ -87,38 +94,54 @@ export function materializeNode(node: ProjectionNode): ProjectedChatMessage {
  * 而它盯的理由(P0 §4)在这里同样成立 —— 投影产出的对象转手就会被深冻结
  * 交给读门面,任何"建完再补一刀"的写法迟早会挪到冻结之后。
  */
-function materializeMessageNode(node: MessageNode): ProjectedChatMessage {
+/**
+ * A9(§13.1):附件的 `base64Data` 在事件行里是 `BlobRef` —— 交出去之前换回正文
+ * (`resolveHistoryBlobRefs`,与模型历史那条路**同一个函数**)。换不回来时
+ * 照实留引用并记一条 issue(F6),不静默变短。
+ */
+function materializeMessageNode(
+  node: MessageNode,
+  options: ProjectionMaterializeOptions,
+): ProjectedChatMessage {
   const {
     // `ChatMessage.seq` 是位置,事件坐标是身份(§3.2 它在 S2 退役)。
     // 投影不再产出位置,避免下一个人拿它当身份。
     seq: _droppedPositionSeq,
     ...carried
   } = node.message as Record<string, unknown>
-  return {
+  return resolveHistoryBlobRefs({
     ...carried,
     ...(node.turnContext ? { turnContext: node.turnContext } : {}),
     ...node.patch,
     eventSeq: node.eventSeq,
-  } as ProjectedChatMessage
+    // 消息这条路上换不回来的引用**照实留着**(A2 / provider-data 的既有口径),
+    // 不像模型历史那样摘掉 —— 屏幕上那一格是个占位,而那就是事实。
+  } as ProjectedChatMessage, options.resolveBlob, options.onIssue, 'keep')
 }
 
-function materializeAssistantNode(node: AssistantNode): ProjectedChatMessage {
+function materializeAssistantNode(
+  node: AssistantNode,
+  options: ProjectionMaterializeOptions,
+): ProjectedChatMessage {
   // G7:孤儿参数流合成的占位调用排在真调用之后 —— 它们是"还没成为调用"的东西。
-  const toolCalls = [...materializeToolCalls(node), ...materializeOrphanToolCalls(node)]
+  const toolCalls = [...materializeToolCalls(node, options), ...materializeOrphanToolCalls(node)]
   // 占位调用与占位 step 是引擎**同一行代码**建的两样东西
   // (`createCoreToolInputStartArtifacts`)—— 补一样漏一样就是投影少一条 step
   // (§10.14 第 7 类)。
-  const steps = [...materializeSteps(node), ...materializeOrphanSteps(node)]
-  const contentParts = materializeContentParts(node)
+  const steps = [...materializeSteps(node, options), ...materializeOrphanSteps(node)]
+  const contentParts = materializeContentParts(node, options)
   // `message.reasoning` 只装 `'top'` 那一段 —— 引擎的 `updateMessageReasoning`
   // 只在 placement 是 'top' 时被调用,inline 的那些留在 contentParts 里。
-  const reasoning = materializeTopReasoning(node)
+  const reasoning = materializeTopReasoning(node, options)
   const thinkingTime = deriveThinkingTime(node)
 
-  return {
+  // 图片 / provider-data part 的正文也住在 blob 里 —— 与附件同一个函数换回来
+  // (`{blob}` → `{data}`)。宿主从前在投影**之外**补这一刀,于是每个消费者
+  // 各记得一次;现在物化出去的那一份就已经是完整的。
+  return resolveHistoryBlobRefs({
     id: node.messageId,
     role: 'assistant',
-    content: materializePartText(node, 'text'),
+    content: materializePartText(node, 'text', options),
     timestamp: node.time,
     eventSeq: node.eventSeq,
     ...(reasoning ? { reasoning } : {}),
@@ -147,7 +170,9 @@ function materializeAssistantNode(node: AssistantNode): ProjectedChatMessage {
     ...(node.ended ? {} : { isStreaming: true as const }),
     ...(node.errorDetails ? { errorDetails: node.errorDetails } : {}),
     ...node.patch,
-  }
+    // 消息这条路上换不回来的引用**照实留着**(A2 / provider-data 的既有口径),
+    // 不像模型历史那样摘掉 —— 屏幕上那一格是个占位,而那就是事实。
+  } as ProjectedChatMessage, options.resolveBlob, options.onIssue, 'keep')
 }
 
 /**
