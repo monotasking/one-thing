@@ -506,6 +506,15 @@ export interface CoreImageStreamStoreAdapter {
     messageId: string,
     part: { type: 'text'; content: string },
   ): CoreMaybePromise<unknown>
+  /**
+   * 失败分支的正文落点:只写 `content`,**不建** contentPart —— 与成功分支
+   * (两格都写)不是同一件事。
+   *
+   * 单独一格是为了让宿主能在**这一刻**把同一段正文记进事件账本(§13.8 第二类):
+   * `updateMessageContent` 在成功分支也会被调用一次,挂在它上面会把同一段正文
+   * 记两遍。缺席时退回 `updateMessageContent`(行为一字不变)。
+   */
+  updateMessageErrorContent?(sessionId: string, messageId: string, content: string): CoreMaybePromise<unknown>
   updateMessageStreaming(sessionId: string, messageId: string, streaming: boolean): CoreMaybePromise<unknown>
   flushSessionSave(sessionId: string): CoreMaybePromise<unknown>
 }
@@ -646,7 +655,12 @@ export async function executeCoreImageGenerationStream(
   }
 
   const errorPlan = buildImageStreamErrorEventPlan(result.error)
-  await store.updateMessageContent(sessionId, assistantMessageId, errorPlan.errorContent)
+  await (store.updateMessageErrorContent ?? store.updateMessageContent).call(
+    store,
+    sessionId,
+    assistantMessageId,
+    errorPlan.errorContent,
+  )
   await store.updateMessageStreaming(sessionId, assistantMessageId, false)
   await store.flushSessionSave(sessionId)
   await emitEvent?.(sessionId, errorPlan.errorEvent)

@@ -95,6 +95,18 @@ interface ToolSpec {
    */
   orphan?: boolean
   /**
+   * §13.8 第一类:**派工出去了,结局却是收场修复写的** —— 用户按停止 / 请求
+   * 最终出错时,工具永远不会报 `tool-result`。但它在执行途中已经在 step 上留下
+   * 了东西:这一格就是那时的 `step.result`(工具的 `annotate{metadata}` 变成
+   * `JSON.stringify(metadata)`,或最后一次 partial 的正文),而 `reportedTitle`
+   * 是它自报的标题。两格在真机上都存在(`sleep 20` / `提问已取消`),而账本上
+   * 从前一个字都没有。
+   *
+   * 与 `orphan` 的分界:那一条是**参数流没写完**(`tool/call` 都不会来),
+   * 这一条是参数定稿、工具已经在跑。
+   */
+  inFlightResult?: string
+  /**
    * 工具的**结构化**结局(`ToolCall.result` 的正身)。成功时是
    * `{title, output, metadata}`,失败时是 `{success:false, error}` —— 两种都写进
    * `toolCall.result`,引擎那一份是 `toJsonValue(result.data ?? result.content)`,
@@ -313,6 +325,8 @@ function stepOf(
   // 引擎的 `stepUpdate`:`result: resultText(result)`(失败时它**就是** error 那句
   // 话)、`error: result.error`。两格并存,不是二选一。
   if (spec.resultText !== undefined) step.result = spec.resultText
+  // §13.8 第一类:执行途中已经写下的那一格(收场修复不动它,只加 status + error)。
+  else if (spec.inFlightResult !== undefined) step.result = spec.inFlightResult
   if (spec.isError && spec.resultText !== undefined) step.error = spec.resultText
   if (toolCall.rejected) step.rejected = true
   if (usage) step.usage = usage
@@ -742,6 +756,34 @@ function emitTurnEvents(
       data: { runId: turn.runId, requestIndex },
     })
   })
+
+  // §13.8 第一类:收场那一刻,引擎把写在消息上的取消结局记成一条 `tool/result`
+  // (采集点 `captureCancelledToolResults` → `recordCancelledToolResults`)。
+  // 它排在 `run/end` **之前** —— 收场修复先落盘,run 才收掉。
+  // 判据与采集点相同:收场修复判死的那些 step(= 派工出去、没等到结局的调用),
+  // 无论它有没有留下正文 —— 什么都没留下时那条事件也照记(账上多一个结局时刻,
+  // 投影的每一格都不变)。孤儿不在其中:它连 `tool/call` 都没有。
+  if (turn.outcome === 'aborted' || turn.outcome === 'error') {
+    for (const request of turn.requests) {
+      for (const tool of request.tools ?? []) {
+        if (tool.orphan || tool.resultText !== undefined) continue
+        line.push({
+          time: timeline.end,
+          type: 'tool/result',
+          data: {
+            runId: turn.runId,
+            callId: tool.callId,
+            isError: false,
+            cancelled: true,
+            resultPreview: tool.inFlightResult ?? '',
+            ...(tool.inFlightResult !== undefined ? { result: { text: tool.inFlightResult } } : {}),
+            ...(tool.reportedTitle ? { reportedTitle: tool.reportedTitle } : {}),
+          },
+          surfaceOp: 'append',
+        })
+      }
+    }
+  }
 
   line.push({
     time: timeline.end,
@@ -2545,5 +2587,175 @@ describe('Q2+R: blob 回填 / 等确认 / 可见性 / 崩溃收口 / 生图正�
     projectModelHistory(line.events, {}, { onIssue: issue => issues.push(issue) })
     // 一格 `synthetic`(没有 turnIndex)+ 一格有 turnIndex = 硬条件不成立。
     expect(issues).toContainEqual(expect.objectContaining({ kind: 'turn-split-fallback' }))
+  })
+})
+
+/**
+ * §13.8(2026-08-20 真机第六批):**修完之后还差的两格**。
+ *
+ * 第一类 —— 中止时工具已经在跑:账本上只有 `tool/call`,而引擎在消息上写了
+ * 结局正文与自报标题;第二类 —— 生图**失败**的那句正文只落在 `content` 上,
+ * R-b 挂在 contentPart 上的采集点看不见它。
+ */
+describe('§13.8: 中止时在飞的工具 / 生图失败正文', () => {
+  /**
+   * 真机 `web-7abaca68`(`sleep 20`)与 `fd899977`(`提问已取消`)的最小复现。
+   *
+   * A 线走的是引擎本人那一个收场函数(`finalizeLingeringAgentLoopToolWork`):
+   * 它只加 `status` + `error`,执行途中写下的 `result` 与 `title` 原样留着。
+   * B 线因此必须有一条**收场记的** `tool/result` 才对得上。
+   */
+  it('§13.8-1: an aborted in-flight tool carries its outcome and self-reported title', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: '跑一下 sleep 20' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        reasoning: '先跑起来',
+        tools: [{
+          callId: 'c1', name: 'bash', args: { command: 'sleep 20' },
+          // 执行途中工具已经报过标题、也落过一次 partial —— 两格都在 step 上。
+          reportedTitle: 'sleep 20',
+          inFlightResult: '{"content":[]}',
+        }],
+      }],
+      outcome: 'aborted',
+    })
+    expectEquivalent(scenario)
+
+    const step = projectChatMessages(scenario.b.events).messages[1].steps?.[0]
+    expect(step).toMatchObject({
+      status: 'cancelled',
+      // 工具自报的标题压过占位标题 —— 修复前这里是 `调用工具: bash`。
+      title: 'sleep 20',
+      // 执行途中写下的结局正文 —— 修复前这一格整个缺席。
+      result: '{"content":[]}',
+      // 收场那句话仍然由 run 的收场方式派生,不是工具报的错。
+      error: CORE_ABORTED_TOOL_ERROR,
+    })
+    // 调用那一格**没有**结局对象:那次修复只写 status + error。
+    expect(step?.toolCall).toMatchObject({ status: 'cancelled', error: CORE_ABORTED_TOOL_ERROR })
+    expect(step?.toolCall).not.toHaveProperty('result')
+  })
+
+  /** ask_user 那一支:结局是工具 `annotate{metadata}` 的 JSON,标题是它自报的。 */
+  it('§13.8-1: an aborted host-tool interaction keeps its structured outcome text', () => {
+    const outcome = '{"interaction":"ask_user","outcome":"aborted","answers":[]}'
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: '问我一句' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        text: '我先问一下。',
+        tools: [{
+          callId: 'c1', name: 'ask_user', args: { questions: [] },
+          reportedTitle: '提问已取消', inFlightResult: outcome,
+        }],
+      }],
+      outcome: 'aborted',
+    })
+    expectEquivalent(scenario)
+
+    const step = projectChatMessages(scenario.b.events).messages[1].steps?.[0]
+    expect(step).toMatchObject({ title: '提问已取消', result: outcome, status: 'cancelled' })
+  })
+
+  /**
+   * §10.16 的成对交付:**老账本没有这条事件**。
+   *
+   * 那些调用在盘上根本没有 `tool/result` —— 投影照旧走"没等到结局"那一支
+   * (占位标题、没有结局正文)。这正是修复前的事实,一个字节都不该改。
+   */
+  it('§13.8-1 fallback: an old ledger without the cancellation result keeps the placeholder', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{"command":"sleep 20"}', messageId: 'a1' },
+    })
+    line.push({ time: 3, type: 'run/end', data: { runId: 'r', outcome: 'aborted' } })
+
+    const step = projectChatMessages(line.events).messages[0].steps?.[0]
+    expect(step?.title).toBe(coreToolInputStartStepTitle('bash'))
+    expect(step).not.toHaveProperty('result')
+    expect(step?.status).toBe('cancelled')
+    expect(step?.error).toBe(CORE_ABORTED_TOOL_ERROR)
+  })
+
+  /**
+   * 什么都没留下的那次调用:事件照记(账上多一个结局时刻),而投影的每一格
+   * 与"没有这条事件"逐字相同 —— 采集点因此不必先问"引擎写过东西没有"。
+   */
+  it('§13.8-1: a cancellation result with nothing on it changes not one projected cell', () => {
+    const build = (withResult: boolean): EventLine => {
+      const line = eventLine()
+      line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+      line.push({
+        time: 2, type: 'tool/call',
+        data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{"command":"x"}', messageId: 'a1' },
+      })
+      if (withResult) {
+        line.push({
+          time: 3, type: 'tool/result',
+          data: { runId: 'r', callId: 'c1', isError: false, cancelled: true, resultPreview: '' },
+          surfaceOp: 'append',
+        })
+      }
+      line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'aborted' } })
+      return line
+    }
+    const withResult = projectChatMessages(build(true).events).messages
+    const without = projectChatMessages(build(false).events).messages
+    expect(canonicalChatMessages(withResult as unknown as Record<string, unknown>[]))
+      .toEqual(canonicalChatMessages(without as unknown as Record<string, unknown>[]))
+  })
+
+  /**
+   * §13.8 第二类:**生图失败那句正文**只落在 `content` 上。
+   *
+   * 成功分支写两格(R-b),失败分支只写 `content` —— 形状由 `contentOnly` 说清楚,
+   * 不然投影会凭空多出一格 contentPart(那是新的不等,不是修好)。
+   */
+  it('§13.8-2: a content-only synthesized body lands on content and not on contentParts', () => {
+    const body = '图片生成失败: fetch failed'
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 2, dt: [0], text: [body] },
+    })
+    line.push({
+      time: 3, type: 'assistant/part-end',
+      data: {
+        runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0,
+        kind: 'text', len: body.length, synthetic: true, contentOnly: true,
+      },
+    })
+    line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+
+    const projected = projectChatMessages(line.events).messages[0]
+    // 引擎写的正是这两格:`content` 有话,`contentParts` 一格都没有。
+    expect(projected.content).toBe(body)
+    expect(projected.contentParts).toBeUndefined()
+  })
+
+  /** §10.16:老文件没有这一格 = 照旧两格都产出(生图成功那条路本来就有 part)。 */
+  it('§13.8-2 fallback: without the flag the body still becomes a contentPart', () => {
+    const body = '图片生成失败: fetch failed'
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 2, dt: [0], text: [body] },
+    })
+    line.push({
+      time: 3, type: 'assistant/part-end',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', len: body.length, synthetic: true },
+    })
+    line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+
+    const projected = projectChatMessages(line.events).messages[0]
+    expect(projected.content).toBe(body)
+    expect(projected.contentParts).toEqual([{ type: 'text', content: body }])
   })
 })

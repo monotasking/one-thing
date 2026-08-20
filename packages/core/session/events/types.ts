@@ -217,6 +217,27 @@ export interface SessionToolResultEventData {
    * 就是这么从 "Reading X.md" 变成 "Tool: read: X.md" 的。
    */
   reportedTitle?: string
+  /**
+   * 这条结局是**收场修复**记下的,不是工具自己报的(§13.8 第一类)。
+   *
+   * 用户按下停止(或请求最终出错)时,已经派工出去的调用永远等不到
+   * `tool-result` 那条流事件 —— 账本上只剩一条 `tool/call`。而引擎那一刻在
+   * **消息上**是有话说的:`finalizeLingeringAgentLoopToolWork` 把调用与 step
+   * 判成 `cancelled` + 一句话,而 step 上还留着这次执行途中已经写下的结局
+   * (工具的 `annotate{metadata}` 或最后一次 partial)与自报标题。采集点因此
+   * 挂在**那一个收场点**上,把引擎真的写下的东西记成一条 `tool/result`,
+   * 这一格说明它的来路。
+   *
+   * 投影据此复刻消息侧的四格:状态 `cancelled`、`toolCall` 上**没有**结局对象
+   * (那次修复只写 status + error)、`step.result` = 记下的那段正文、
+   * `step.error` / `toolCall.error` = 收场那句话(由 run 的收场方式派生,
+   * 见 `lingeringToolError`)。
+   *
+   * **成对交付**(§10.16):老文件没有这一格 —— 那些调用在账本上根本没有
+   * `tool/result`,投影照旧走"没等到结局"那一支(占位标题、没有结局正文),
+   * 那正是修复前的事实。
+   */
+  cancelled?: true
   runId?: string
 }
 
@@ -516,6 +537,19 @@ export interface SessionAssistantPartEndEventData {
    * **成对交付**(§10.16):老文件没有这一格 = 照旧按闸判、照旧派生 turnIndex。
    */
   synthetic?: boolean
+  /**
+   * 这段正文只落在 `message.content` 上,引擎**没有**给它建 contentPart
+   * (§13.8 第二类)。
+   *
+   * 产地是生图的**失败分支**:成功那条路写两格(`updateMessageContent` +
+   * `addMessageContentPart`),失败那条路只写 `content`(一句"图片生成失败:
+   * …")。两条路都要进账本 —— 不然投影那条消息的正文整段缺席 —— 但形状不同,
+   * 所以由这一格说清楚:`content` 的 fold 收它,`contentParts` 不收它。
+   *
+   * **成对交付**(§10.16):老文件没有这一格 = 照旧两格都产出(修复前写进
+   * 账本的合成正文只有生图成功那一种,它本来就有 contentPart)。
+   */
+  contentOnly?: boolean
   /**
    * `provider-data` part 的载荷(A1,§13.1)。
    *

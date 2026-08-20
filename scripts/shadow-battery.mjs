@@ -148,6 +148,15 @@ function usageOf(variant, turn) {
  */
 function startMockProvider(port, scenariosByName) {
   const server = http.createServer((req, res) => {
+    // 生图走的是 provider 的 image REST API,不是 SSE 聊天口。矩阵里它**必然
+    // 失败**(这里就是那格场景要的东西:`image-generation-failure`)——
+    // 明确回一个错误体,而不是让 JSON 解析在 SSE 上炸出一句随机的话。
+    if (String(req.url ?? '').includes('/images/generations')) {
+      req.resume()
+      res.writeHead(500, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ error: { message: 'battery: image API unavailable' } }))
+      return
+    }
     let body = ''
     req.on('data', chunk => { body += chunk })
     req.on('end', async () => {
@@ -261,6 +270,11 @@ class Driver {
 
   abort() {
     return this.api('POST', '/api/streams/abort', { sessionId: this.sessionId })
+  }
+
+  /** 把这条会话钉在另一个模型上(生图那一格靠模型名走上特化流)。 */
+  model(provider, model) {
+    return this.api('POST', `/api/sessions/${this.sessionId}/model`, { provider, model })
   }
 
   async messages() {
@@ -702,6 +716,77 @@ const SCENARIOS = [
       assert(step.status === 'cancelled', `orphan step status = ${step.status}`)
       assert(step.title === '调用工具: bash', `orphan step title = ${step.title}`)
       assert(assistant.usage === undefined, 'an aborted execution must not carry usage')
+    },
+  },
+
+  {
+    name: 'abort-tool-in-flight',
+    covers: [
+      '§13.8 第一类:工具**已经派工**时按停止 —— 收场修复写下的结局与自报标题要进账本',
+    ],
+    /**
+     * 与 `abort-mid-tool-input` 的分界:那一格停在**参数流**上(`tool/call`
+     * 都不会来),这一格参数已经定稿、工具正在跑 —— 账本上有 `tool/call`、
+     * 有 `tool/audit{outcome:'aborted'}`,唯独没有 `tool/result`。
+     */
+    provider: ({ turn, variant }) => (turn === 1
+      ? [
+        F.sleep(variant.firstByteMs),
+        F.reasoning(`先跑起来 ${variant.body}`),
+        // 真的跑一条慢命令:停止按下去时它正在执行。
+        ...F.tool('call_inflight', 'bash', { command: 'sleep 20', description: 'slow step' }, 2),
+        F.callTools(usageOf(variant, 1)),
+      ]
+      : [F.text('unreachable'), F.stop()]),
+    async drive(d) {
+      await d.send('跑个慢的')
+      await d.until('tool executing', messages => {
+        const assistant = d.lastAssistant(messages)
+        return (assistant?.toolCalls ?? []).some(c => c.id === 'call_inflight' && c.status === 'executing')
+      })
+      await d.abort()
+      const messages = await d.waitIdle(1)
+      const assistant = d.lastAssistant(messages)
+      const call = (assistant?.toolCalls ?? []).find(c => c.id === 'call_inflight')
+      assert(call, 'in-flight tool call missing from the message')
+      assert(call.status === 'cancelled', `in-flight call status = ${call.status}`)
+      assert(call.error === 'User cancelled', `in-flight call error = ${call.error}`)
+      const step = (assistant.steps ?? []).find(s => s.toolCallId === 'call_inflight')
+      assert(step, 'in-flight step missing')
+      assert(step.status === 'cancelled', `in-flight step status = ${step.status}`)
+      assert(step.error === 'User cancelled', `in-flight step error = ${step.error}`)
+      // 工具自报的标题(bash 报的是命令本身)—— 修复前账本上一个字都没有,
+      // 投影只能给占位标题,影子当场记一条 `steps.0.title`。
+      assert(step.title === 'sleep 20', `in-flight step title = ${step.title}`)
+      assert(assistant.usage === undefined, 'an aborted execution must not carry usage')
+    },
+  },
+
+  {
+    name: 'image-generation-failure',
+    covers: [
+      '§13.8 第二类:生图**失败**那句正文只落在 `content` 上(没有 contentPart)',
+    ],
+    /**
+     * 生图不走 SSE 聊天口:模型名带 `dall-e` 就转进特化流,请求打到假 provider
+     * 的 `/v1/images/generations`(那里固定回 500)。所以这一格的 `provider`
+     * 永远不会被调用 —— 留一句兜底,别让路由表缺一格。
+     */
+    provider: () => [F.text('unreachable'), F.stop()],
+    async drive(d) {
+      await d.model('deepseek', 'dall-e-3')
+      await d.send('画一只猫')
+      const messages = await d.waitIdle(1)
+      const assistant = d.lastAssistant(messages)
+      assert(
+        assistant?.content?.startsWith('图片生成失败:'),
+        `image failure body = ${JSON.stringify(assistant?.content)}`,
+      )
+      // 失败分支只写 `content` —— 多出一格 contentPart 就是新的不等。
+      assert(
+        (assistant.contentParts ?? []).length === 0,
+        `image failure must not persist contentParts: ${JSON.stringify(assistant.contentParts)}`,
+      )
     },
   },
 

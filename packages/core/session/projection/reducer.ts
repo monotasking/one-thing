@@ -101,6 +101,12 @@ interface PartState {
    * (所以不派生 `turnIndex` —— 消息上那一格就没有它)。缺席 = 老文件 = 照旧。
    */
   synthetic?: boolean
+  /**
+   * §13.8 第二类:这段正文只落在 `message.content` 上,引擎没有给它建
+   * contentPart(生图的失败分支)。`content` 的 fold 收它,`contentParts` 不收。
+   * 缺席 = 老文件 = 两格都产出。
+   */
+  contentOnly?: boolean
   blob?: { hash: string; bytes: number; mime?: string }
   /**
    * `provider-data` part 的载荷,已经解回对象(A1,§13.1)。
@@ -143,6 +149,15 @@ interface ToolState {
   resultDataBlob?: { hash: string; bytes: number; mime?: string }
   resultTime?: number
   isError?: boolean
+  /**
+   * §13.8 第一类:这条结局是**收场修复**记下的(`tool/result.cancelled`),
+   * 不是工具自己报的 —— 用户按了停止 / 请求最终出错,而这次调用已经派工出去了。
+   *
+   * 与 `isSynthesizedInterrupt` 是**两回事**:那一条是崩溃重启后 `prepare` 在
+   * 账本上补的一笔(消息侧什么都没写),这一条记的正是引擎当场写在消息上的
+   * 东西(结局正文 + 自报标题)。老文件没有它 = 那些调用根本没有 `tool/result`。
+   */
+  cancelled?: boolean
   outcome?: 'ok' | 'invalid' | 'denied' | 'aborted' | 'failed'
   previewTitle?: string
   /** 工具自报的标题(`tool/result.reportedTitle`)—— 引擎的 step 标题就是它。 */
@@ -467,6 +482,8 @@ export function reduceSessionProjection(
       if (event.data.blob) part.blob = event.data.blob
       // R-b:引擎直接落到消息上的那一格(生图正文)。缺席 = 老文件 = 照旧。
       if (event.data.synthetic === true) part.synthetic = true
+      // §13.8 第二类:只落在 `content` 上的那一段(生图失败分支)。
+      if (event.data.contentOnly === true) part.contentOnly = true
       // A1:provider-data 的载荷一次到齐(它没有 delta)。
       const payload = event.data.providerData
       if (payload && 'text' in payload) part.providerData = parseJsonSafely(payload.text)
@@ -522,12 +539,16 @@ export function reduceSessionProjection(
       tool.isError = event.data.isError
       tool.resultTime = event.time
       tool.resultSeq = event.seq
+      // §13.8 第一类:收场修复记下的那条结局。
+      if (event.data.cancelled === true) tool.cancelled = true
       state.toolResultSeqByCallId.set(tool.callId, event.seq)
       const result = event.data.result
       if (result && 'text' in result) tool.resultText = result.text
       else if (result && 'blob' in result) tool.resultBlob = result.blob
       // 老文件只有 500 字预览。诚实地把它当结果 —— 那**就是**那份账里存下的全部。
-      else tool.resultText = event.data.resultPreview
+      // 收场修复那条例外:引擎在消息上**什么都没写**时这一格就是空的,退回预览
+      // 会凭空造出一格 `step.result: ''`(消息上根本没有这一格)。
+      else if (!event.data.cancelled) tool.resultText = event.data.resultPreview
       const resultData = event.data.resultData
       if (resultData && 'text' in resultData) tool.resultData = parseJsonSafely(resultData.text)
       // A8:结构化结局也可能走了 blob(与正文同一条 64KB 线)。从前这一支被整格
@@ -865,6 +886,9 @@ function toolCallStatus(tool: ToolState, run: AssistantNode): ProjectedToolCallS
     if (run.ended) return 'cancelled'
     return tool.receivedAt !== undefined ? 'executing' : 'input-streaming'
   }
+  // §13.8 第一类:收场修复记下的那条结局 —— 引擎写的就是 `cancelled`
+  // (`finalizeLingeringAgentLoopToolWork`),这里说同一句话。
+  if (tool.cancelled) return 'cancelled'
   // R-a:合成的中断结局 = cancelled,与 `computeInterruptedToolCallRepair` 同口径。
   if (isSynthesizedInterrupt(tool)) return 'cancelled'
   if (tool.outcome === 'aborted') return 'cancelled'
@@ -938,6 +962,10 @@ function toolResultFields(
   if (isSynthesizedInterrupt(tool)) {
     return { error: tool.awaitingPermission ? CORE_INTERRUPTED_PERMISSION_ERROR : CORE_INTERRUPTED_TOOL_ERROR }
   }
+  // §13.8 第一类:收场修复在**调用**上只写 status + error —— 它没有结局对象
+  // (工具从来没返回过)。记下来的那段正文是 step 上的那一格,见
+  // `materializeStep`;这里那句话由 `lingeringToolError` 派生(见调用点)。
+  if (tool.cancelled) return {}
   const resultText = resolveToolText(tool, options, messageId)
   const error = tool.isError && resultText !== undefined ? { error: resultText } : {}
   // 结构化结局优先:`ToolCall.result` 的正身是它,`result.text` 只是给模型的那段。
@@ -1035,7 +1063,9 @@ function materializeToolCall(
     ...toolTimingFields(tool),
     ...toolResultFields(tool, options, run.messageId),
     // 没等到结局就收场的那一次:引擎的收尾修复在它身上写了一句话(见上)。
-    ...(tool.resultTime === undefined && lingeringToolError(run, tool)
+    // §13.8 第一类:那次收场现在**自己记了一条** `tool/result`(账本上因此有
+    // 结局时刻),那句话仍然由这里派生 —— 它由 run 的收场方式决定,不是工具说的。
+    ...((tool.resultTime === undefined || tool.cancelled) && lingeringToolError(run, tool)
       ? { error: lingeringToolError(run, tool) }
       : {}),
     // A12:等确认的那一刻,引擎把这一位写成 **true**(那张卡还等着人按)。
@@ -1117,9 +1147,13 @@ export function materializeStep(
     // (失败时它**就是** error 那句话),`error` 只有失败才有 —— 两格并存,不是二选一
     // (`buildAgentLoopToolResultPresentation` 的 `stepUpdate`)。
     ...(hasResultText ? { result: resultText } : {}),
-    ...(hasResultText && tool.isError ? { error: resultText } : {}),
+    ...(hasResultText && tool.isError && !tool.cancelled ? { error: resultText } : {}),
     // 收尾修复把同一句话写在 step 上(`step.error = step.error || 那一句`)。
-    ...(!hasResultText && toolCall.error !== undefined ? { error: toolCall.error } : {}),
+    // §13.8 第一类:被收场判死的那次调用**两格并存** —— `result` 是执行途中已经
+    // 写下的那一份,`error` 是收场那句话(引擎写的正是这两格)。
+    ...((!hasResultText || tool.cancelled) && toolCall.error !== undefined
+      ? { error: toolCall.error }
+      : {}),
     ...(structured ? { partialResult: structured, partialResultIsPartial: false } : {}),
     ...(toolCall.rejected ? { rejected: true as const } : {}),
     ...(tool.rejectionReason !== undefined ? { rejectionReason: tool.rejectionReason } : {}),
@@ -1403,6 +1437,9 @@ export function materializeContentParts(
   const topReasoning = topReasoningPartIndexes(run)
   for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
     const part = run.parts.get(partIndex)!
+    // §13.8 第二类:这一段引擎只写进了 `content`,消息上没有对应的 contentPart
+    // (生图失败分支)。`materializePartText` 照旧 fold 它 —— 那才是它的落点。
+    if (part.contentOnly) continue
     if (!partIsSettleExempt(part) && !requestSettled(run, part.requestIndex)) continue
     // R-b:`synthetic` 那一格没有回合 —— 它不是模型某一轮的产出,消息上那一格
     // 也就没有 `turnIndex`。凭空补一个会让每一次生图都不等。

@@ -108,6 +108,35 @@ describe('R-b:生图正文进账本', () => {
   it('records nothing when there is no live run (and says so instead of pretending)', () => {
     expect(recordSynthesizedAssistantText(SESSION, 'a1', MARKDOWN)).toBe(false)
   })
+
+  /**
+   * §13.8 第二类:**失败分支**的正文。
+   *
+   * 引擎那条路只写 `content`(`updateMessageContent`),没有 contentPart ——
+   * 真机 `web-40232e65` / `web-da46cc33` 两条不等差的正是这一格。记账的形状
+   * 因此也只能有 `content` 那一格,不然投影会凭空多出一格 part。
+   */
+  it('records the image-failure body as content only (§13.8-2)', async () => {
+    const body = '图片生成失败: fetch failed'
+    appendSessionLogEvent(SESSION, 'user/message', {
+      message: { id: 'u1', role: 'user', content: 'draw a cat', timestamp: 1 },
+    } as never, { surfaceOp: 'append' })
+    appendSessionLogEvent(SESSION, 'run/start', {
+      runId: 'r1', kind: 'send', assistantMessageId: 'a1', timestamp: 2,
+    } as never, { surfaceOp: 'append' })
+    state.run = { runId: 'r1', partCounter: 0 }
+    expect(recordSynthesizedAssistantText(SESSION, 'a1', body, { contentOnly: true })).toBe(true)
+    appendSessionLogEvent(SESSION, 'run/end', { runId: 'r1', outcome: 'completed' } as never)
+    await flushSessionEventLog(SESSION)
+    resetSessionProjectionCache()
+
+    const assistant = materializeChatMessages(
+      getLiveSessionProjection(SESSION),
+      sessionProjectionOptions(SESSION),
+    ).messages.find(message => message.id === 'a1')
+    expect(assistant?.content).toBe(body)
+    expect(assistant?.contentParts).toBeUndefined()
+  })
 })
 
 describe('翻译器守卫:进消息的 part 事件账本承载得了吗', () => {

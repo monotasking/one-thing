@@ -2082,3 +2082,149 @@ bug 的症状恰恰是那条 run 永远没有收尾。实测:同一套电池,修
 3. **F9 第二半**不变:history 断言的 A 侧从第 2 轮起是一次**重建**,不是当时真正
    发出去的字节 —— 这三条不等说明的是"投影与抄本的重建不一致",不是"模型看到了
    另一段历史"。
+
+### 13.8 真机第六批(2026-08-21):**收场那一刻引擎写了什么**,与生图失败的正文
+
+`session-shadow.jsonl` 在 §13.7 修完之后又长了四行,两两成对:
+
+| 会话 | kind | 差在哪 |
+|---|---|---|
+| `web-7abaca68`(bash `sleep 20`) | messages | `steps.0.result` A=`{"content":[]}` B 缺席;`steps.0.title` A=`sleep 20` B=`调用工具: bash` |
+| `fd899977`(ask_user) | messages | `steps.1.result` A=那段 `{"interaction":"ask_user","outcome":"aborted",…}` B 缺席;`steps.1.title` A=`提问已取消` B=`调用工具: ask_user` |
+| `web-40232e65` / `web-da46cc33` | messages | `content` A=`图片生成失败: fetch failed` B=`""` |
+
+两条都是**采集缺口**,不是投影说错了话。
+
+#### 第一类 —— 工具**已经派工**时按下停止
+
+与 §10.14 第 7 类(`abort-mid-tool-input`)差一步:那一格停在参数流上,`tool/call`
+根本不会来;这一格参数已经定稿、工具正在跑。账本上因此有 `tool/call`、有
+`tool/audit{outcome:'aborted'}`,**唯独没有 `tool/result`** —— agent-loop 的那条
+`tool-result` 流事件永远不会到。
+
+而**消息上**引擎那一刻是有话说的,三样东西并存:
+
+- `step.result` —— 执行途中已经落下的结局正文。两个产地都是引擎的既有代码:
+  `applyAgentLoopToolMetadata`(工具的 `annotate{metadata}` → `JSON.stringify(metadata)`,
+  ask_user 那段 aborted 结局就是它)与 `buildAgentLoopToolPartialStepUpdate`
+  (最后一次 partial 的正文,被杀的 bash 那句 `{"content":[]}` 就是它);
+- `step.title` —— 工具自报的 `annotate{title}`(`sleep 20` / `提问已取消`);
+- `status:'cancelled'` + `error:'User cancelled'` —— 收场修复
+  (`finalizeLingeringAgentLoopToolWork`)加的那两格,它**不动**上面两格。
+
+**修法:在那一个收场点采一次。** 采集点是
+`app/engine/stream/agent-loop-executor.ts` 的 `captureCancelledToolResults`,排在
+`emitAgentLoopFinalMessageUpdateWithAdapters` **之后**(收场修复经命令面落盘之后
+才读得到,COW 的老坑)。它从消息上读 `status === 'cancelled'` 的那些 step,把
+`{callId, result}` 交给记录器的新口 `recordCancelledToolResults` —— **不在这里第二次
+派生任何一格**(§10.10)。哪几次调用还没有结局由记录器自己说了算
+(`callSeqByCallId` 就是那张表,报过结局的调用一个字都不会被重写);标题取
+`reportedTitleByCallId`,与正常那条 `tool/result` 同源。
+
+事件上多一格词汇:`tool/result.cancelled: true` —— "这条结局是收场修复记下的,
+不是工具自己报的"。投影据此复刻消息侧的四格(全部在 `projection/reducer.ts`):
+
+| 格 | 规则 |
+|---|---|
+| `toolCall.status` / `step.status` | `tool.cancelled` → `cancelled`(引擎写的就是它) |
+| `toolCall.result` | **没有** —— 那次修复只写 status + error(`toolResultFields` 短路) |
+| `toolCall.error` / `step.error` | 仍由 `lingeringToolError` 从 run 的收场方式派生;判据从"没有结局时刻"放宽成"没有结局时刻**或**这条结局是收场记的" |
+| `step.result` / `step.title` | 记下来的那段正文 / `reportedTitle` |
+
+`isError` 照实写 `false`:收场判死不是"工具失败",那句话不是工具报的错。
+**什么都没留下**的那次调用也照记一条(账上多一个结局时刻),而投影的每一格与
+"没有这条事件"逐字相同 —— 合同里有一条用例专门钉这个等式,所以采集点不必先问
+"引擎写过东西没有"。为此 reducer 多一条例外:`cancelled` 的结局**不走**
+`resultPreview` 那条老文件兜底(退回预览会凭空造出一格 `step.result: ''`)。
+
+两处交汇都验过:①`prepare` 的悬空扫描判据是"这次调用有没有 `tool/result`",
+真的有了就既不再合成中断结局、也不会因此多写什么(`prepare.test.ts` 新用例);
+②R-a 的 `lingeringToolError` 不会被这条真结局盖掉 —— 它本来就是从 run 的收场
+方式派生的,与结局正文无关。
+
+#### 第二类 —— 生图**失败**分支的正文没有落点
+
+R-b(§13.6)把生图正文接进了账本,采集点挂在 `addMessageContentPart` 上 ——
+而**失败分支根本不写 contentPart**:`image-generation.ts` 只
+`updateMessageContent('图片生成失败: …')`,然后 `streaming=false`、flush。
+`event-translator` 的 `sanitizePatch` 又按设计把 assistant 的正文从
+`message/patched` 里剥掉,于是账本上那条消息的正文整段缺席。
+
+**修法:同一条路照记,形状说清楚。** `CoreImageStreamStoreAdapter` 多一格
+`updateMessageErrorContent`(缺席时退回 `updateMessageContent`,行为一字不变)——
+单独一格是必须的:`updateMessageContent` 在**成功**分支也会被调用一次,挂在它
+上面会把同一段正文记两遍。宿主在 `image-stream.ts` 把它接到
+`recordSynthesizedAssistantText(…, { contentOnly: true })`,位置与 R-b 的成功
+分支一样(正文落到消息上的那一刻,早于 `streaming=false` 与 run 收尾)。
+
+`assistant/part-end` 因此多一格 `contentOnly`:这一段只落在 `message.content`
+上,引擎没有给它建 contentPart。投影里 `materializePartText`(content 的 fold)
+照收,`materializeContentParts` 跳过 —— 只写一格是这条分支的**事实**,补一格
+contentPart 就是新的不等。
+
+#### 新字段的旧文件兜底(§10.16 逐条)
+
+| 新字段 | 缺席时 | 合同测试 |
+|---|---|---|
+| `tool/result.cancelled` | 老账本里那些调用**根本没有** `tool/result` → 投影照旧走"没等到结局"那一支(占位标题、没有结局正文)= 修复前的事实 | `§13.8-1 fallback: an old ledger without the cancellation result keeps the placeholder` |
+| `assistant/part-end.contentOnly` | 照旧两格都产出(修复前进账本的合成正文只有生图**成功**那一种,它本来就有 contentPart) | `§13.8-2 fallback: without the flag the body still becomes a contentPart` |
+
+#### 合同测试:每一条都验过"不修就红"
+
+`projection-contract.test.ts` 新增一个 `describe('§13.8: …')` 6 条(A 线走的是
+引擎本人那个收场函数 `finalizeLingeringAgentLoopToolWork`,fixture 只描述"工具
+在飞时留下了什么"),外加采集点 2 条(`session-event-recorder.test.ts`)、
+生图失败 1 条(`synthesized-text.test.ts`)、prepare 交汇 1 条(`prepare.test.ts`)。
+**逐条做过反证**(脚本化,把每一处改回旧写法再跑):
+
+| 改回旧写法 | 变红的用例数 |
+|---|---|
+| B 线不记那条收场 `tool/result` | 2 |
+| `toolResultFields` 不为 cancelled 短路(结局对象又爬回 `toolCall.result`) | 2 |
+| `step.error` 不认 cancelled(有结局正文时那句收场话被吞) | 2 |
+| `toolCallStatus` 不认 cancelled | 4 |
+| `lingeringToolError` 的判据不放宽 | 4 |
+| `resultPreview` 兜底不排除 cancelled(凭空多一格 `step.result: ''`) | 2 |
+| `materializeContentParts` 不跳过 `contentOnly` | 1 |
+
+#### 影子电池:两格新场景,都验过反向
+
+- **`abort-tool-in-flight`** —— 假 provider 派一条真的慢命令(`bash sleep 20`),
+  驱动方等到调用 `executing` 再按停止。断言除了 `cancelled` / `User cancelled`
+  之外,专钉 `step.title === 'sleep 20'`(修复前这里是占位标题,影子当场记一条)。
+  与既有的 `abort-mid-tool-input` 补位:那一格是参数流,这一格是派工之后。
+- **`image-generation-failure`** —— 会话钉在 `dall-e-3` 上就转进生图特化流,
+  请求打到假 provider 的 `/v1/images/generations`(那里固定回 500),失败分支
+  因此天然发生。断言 `content` 以"图片生成失败:"开头 **且 `contentParts` 为空**。
+
+反证实跑:把两处采集点各注释掉一行重建 bundle,同一套电池
+`abort-tool-in-flight` 与 `image-generation-failure` 各记 2 条 mismatch,门 RED;
+装回去 GREEN。
+
+#### 门(全部实跑)
+
+`typecheck` 3 条老红(provider-dials);`ONETHING_SESSION_FREEZE=1 bun run test`
+1143 文件通过 / 2 条老红(`ui-token-vars` ×2)+ AIProviderTab 老 flake;
+`session:gate` 0 / `boundary:gate` 13 / `log:gate` 4 / `lint:ci` 335 —— 全部无新增;
+`server:build` 通过;`sessions:shadow-battery` **GREEN**(21 场景 × 8 pass,
+224 runs / 320 historyChecks / 0 mismatch)。
+
+`sessions:verify:gate` 的基线**加了 4 行**(9 → 13):就是上表那四条真机残余。
+它们是**修复前的代码**昨夜写死在盘上的,与本次改动无关 —— 反证做过:把整批改动
+`git stash` 之后跑同一道门,这 4 条一字不差地照样在。理由逐条写在基线文件的
+注释里(与 §13.7 的 `2bf9d289` 同类)。
+
+#### 明确没做的
+
+1. **正常收尾那条路上的未结调用**:采集点挂在 `emitFinalAssistantMessageUpdate`
+   (中止 / 请求最终出错两条路)。`completeAgentLoopStreamWithAdapters` 那条成功
+   收尾的路没有挂 —— 那里出现未结调用意味着 agent-loop 自己漏了一次结局,今天
+   没有已知产地。要挂的话是同一个函数,一行。
+2. **等确认时被中止**:桌面的 `cancelOnethingStreamingStepsForAbort` 会把
+   `awaiting-confirmation` 的 step 也改成 `cancelled`,而它**不写** `error`
+   (`engineWouldRepair` 只认 `running`);投影那边 `lingeringToolError` 照给一句。
+   这一格两侧本来就不等,与本批无关,采集点只是照样记一条空结局(不改变任何
+   一格投影)。归 A12 的尾巴。
+3. **`step.partialResult` / `partialResultIsPartial`**:判据表里它们是派生缓存
+   (§9.4),两侧不比,所以这条收场结局不写 `resultData` —— 写了反而会让
+   `toolCall.result` 凭空长出来。

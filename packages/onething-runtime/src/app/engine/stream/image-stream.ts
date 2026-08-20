@@ -101,6 +101,14 @@ export async function processImageGenerationStream(
         }
         return applied
       },
+      // §13.8 第二类:失败分支的正文只落在 `content` 上(没有 contentPart),
+      // 所以它有自己的落点 —— 挂在 `updateMessageContent` 上会把成功分支的
+      // 那段正文记两遍(那边先写 content、再写 part)。
+      updateMessageErrorContent: async (targetSessionId, messageId, content) => {
+        const applied = await store.updateMessageContent(targetSessionId, messageId, content)
+        recordSynthesizedAssistantText(targetSessionId, messageId, content, { contentOnly: true })
+        return applied
+      },
       updateMessageStreaming: store.updateMessageStreaming,
       flushSessionSave: store.flushSessionSave,
     },

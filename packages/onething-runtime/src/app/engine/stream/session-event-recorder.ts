@@ -290,8 +290,36 @@ export interface SessionEventRecorder {
    * 不写 `assistant/first-token` —— 那一条记的是"模型第一次吐字",这段不是。
    */
   recordSynthesizedText(text: string): void
+  /**
+   * §13.8 第一类:一次执行**收场**时,把引擎写在消息上的取消结局记成
+   * `tool/result`。
+   *
+   * 中止(或请求最终出错)时,已经派工出去的工具永远等不到那条 `tool-result`
+   * 流事件 —— 账本上只剩一条 `tool/call`,而**消息上**引擎是有话说的:
+   * `finalizeLingeringAgentLoopToolWork` 把调用与 step 判成 `cancelled` + 一句
+   * 收场话,而 step 上还留着执行途中已经写下的结局(工具的
+   * `annotate{metadata}` 或最后一次 partial)与它自报的标题。真机上那两条不等
+   * (`web-7abaca68` 的 `sleep 20`、`fd899977` 的 `提问已取消`)差的正是这两格。
+   *
+   * 调用方交的是**引擎真的写下的那一份**(从收场之后的消息上读),不是这里
+   * 第二次派生出来的东西(§10.10)。哪几次调用还没有结局由记录器自己说了算
+   * (`callSeqByCallId` 就是那张表)—— 已经报过结局的调用一个字都不会被重写。
+   *
+   * @returns 实际落账的条数。
+   */
+  recordCancelledToolResults(calls: readonly SessionCancelledToolResult[]): number
   /** 把还在攒的批全部落盘(执行器收尾时调,防止最后一批被丢)。 */
   flush(): void
+}
+
+/** 收场那一刻,引擎写在一次未结调用上的东西(§13.8 第一类)。 */
+export interface SessionCancelledToolResult {
+  callId: string
+  /**
+   * 引擎写在 `step.result` 上的那一格 —— 执行途中已经落下的结局正文。
+   * 没有就是没有:这里不造一段话(那会在投影里凭空多出一格 `result`)。
+   */
+  result?: string
 }
 
 export function createSessionEventRecorder(
@@ -872,6 +900,37 @@ export function createSessionEventRecorder(
       } catch (error) {
         log.warn('event recorder synthesized text failed', { sessionId: ctx.sessionId }, error)
       }
+    },
+    recordCancelledToolResults(calls) {
+      let written = 0
+      try {
+        for (const call of calls) {
+          // 已经报过结局的调用不在这张表里 —— 一次都不会被重写。
+          const sourceSeq = state.callSeqByCallId.get(call.callId)
+          if (sourceSeq === undefined) continue
+          state.callSeqByCallId.delete(call.callId)
+          // 标题与正常那条路同源(工具自报的最后一条 `annotate{title}`)。
+          const reportedTitle = state.reportedTitleByCallId.get(call.callId)
+          state.reportedTitleByCallId.delete(call.callId)
+          const text = call.result ?? ''
+          appendSessionLogEvent(ctx.sessionId, 'tool/result', {
+            callId: call.callId,
+            // 收场判死不是"工具失败":引擎写的是 `cancelled`,那句收场话由 run
+            // 的收场方式派生(投影的 `lingeringToolError`),不是工具报的错。
+            isError: false,
+            cancelled: true,
+            resultPreview: truncateSessionEventPreview(text),
+            ...(text ? { result: textOrBlobForEvent(ctx.sessionId, text) } : {}),
+            ...(reportedTitle ? { reportedTitle } : {}),
+            sourceSeq,
+            ...withRunId(),
+          })
+          written += 1
+        }
+      } catch (error) {
+        log.warn('event recorder cancelled tool result record failed', { sessionId: ctx.sessionId }, error)
+      }
+      return written
     },
     flush() {
       try {

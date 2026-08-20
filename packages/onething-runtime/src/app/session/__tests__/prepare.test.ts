@@ -118,6 +118,38 @@ describe('prepare: 未闭合的 run', () => {
     expect(assistant?.steps?.[1].result).toBeUndefined()
   })
 
+  /**
+   * §13.8 第一类的交汇:**收场记下的那条 `tool/result` 满足 prepare 的悬空扫描**。
+   *
+   * 中止之后账本上那次调用已经有结局了(`cancelled: true` 的那一条),
+   * prepare 因此既不会再合成一条中断结局,也不会因为它而多写什么 ——
+   * 两处判据是同一件事:"这次调用有没有 `tool/result`"。
+   */
+  it('§13.8-1: a cancellation result satisfies the dangling-call scan', async () => {
+    appendSessionLogEvent(SESSION, 'run/start', {
+      runId: 'r1', kind: 'send', assistantMessageId: 'a1', timestamp: 2,
+    } as never, { surfaceOp: 'append' })
+    appendSessionLogEvent(SESSION, 'tool/call', {
+      runId: 'r1', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1',
+    } as never)
+    // 收场采集点写下的那一条(引擎中止时的结局 + 自报标题)。
+    appendSessionLogEvent(SESSION, 'tool/result', {
+      runId: 'r1', callId: 'c1', isError: false, cancelled: true,
+      resultPreview: '{"content":[]}', result: { text: '{"content":[]}' }, reportedTitle: 'sleep 20',
+    } as never, { surfaceOp: 'append' })
+    // …而进程在写 `run/end` 之前就没了。
+    await flushSessionEventLog(SESSION)
+    resetSessionEventLogCache()
+    resetSessionSurfaceCache()
+    resetSessionProjectionCache()
+    resetSessionPrepareCache()
+
+    // 悬空调用 0 条:那条 run 只补一个 `run/end`,不再合成第二条结局。
+    expect(prepareSessionEvents(SESSION)).toMatchObject({ status: 'repaired', runs: 1, toolResults: 0 })
+    await flushSessionEventLog(SESSION)
+    expect(lines().map(line => JSON.parse(line).type).filter(type => type === 'tool/result')).toHaveLength(1)
+  })
+
   it('is idempotent — the second prepare writes nothing', async () => {
     await crashedMidTool()
     prepareSessionEvents(SESSION)

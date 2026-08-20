@@ -752,4 +752,57 @@ describe('session event recorder (agent loop integration)', () => {
     expect(preview).toHaveLength(501)
     expect(preview.endsWith('…')).toBe(true)
   })
+  /**
+   * §13.8 第一类:**收场那一刻记下引擎写在消息上的取消结局**。
+   *
+   * 中止时工具永远不会报 `tool-result` —— 账本上只剩 `tool/call`,而消息上
+   * 引擎写着执行途中已经落下的结局与工具自报的标题(真机 `sleep 20` /
+   * `提问已取消` 那两条)。采集点交的是**引擎写下的那一份**,记录器只负责
+   * "哪几次调用还没有结局"与那条自报标题(与正常那条路同源)。
+   */
+  it('§13.8-1: records what the engine wrote onto a call that never reported a result', async () => {
+    const run = beginSessionRun(SESSION_ID, { kind: 'send', assistantMessageId: 'assistant-1' })
+    const recorder = createSessionEventRecorder({
+      sessionId: SESSION_ID,
+      providerId: 'test-provider',
+      model: 'test-model',
+      getMessageId: () => 'assistant-1',
+    })
+    const toolCall = { id: 'call-1', name: 'bash', arguments: '{"command":"sleep 20"}' }
+    recorder.handle({ type: 'turn-start', turn: 1 } as never)
+    recorder.handle({ type: 'tool-call-done', turn: 1, toolCall } as never)
+    recorder.handle({ type: 'tool-metadata', turn: 1, toolCall, update: { title: 'sleep 20' } } as never)
+
+    expect(recorder.recordCancelledToolResults([{ callId: 'call-1', result: '{"content":[]}' }])).toBe(1)
+    endSessionRun(SESSION_ID, run.runId, { outcome: 'aborted' })
+    await flushSessionEventLog(SESSION_ID)
+
+    const result = (await readSessionEvents(SESSION_ID)).find(event => event.type === 'tool/result')
+    expect(result?.type === 'tool/result' && result.data).toMatchObject({
+      callId: 'call-1',
+      cancelled: true,
+      // 收场判死不是"工具失败" —— 那句话由 run 的收场方式派生,不写在这里。
+      isError: false,
+      reportedTitle: 'sleep 20',
+      result: { text: '{"content":[]}' },
+    })
+    // 因果引用照旧:它指向自己那条 `tool/call`。
+    const call = (await readSessionEvents(SESSION_ID)).find(event => event.type === 'tool/call')
+    expect(result?.type === 'tool/result' && result.data.sourceSeq).toBe(call?.seq)
+  })
+
+  it('§13.8-1: a call that already reported a result is never rewritten', async () => {
+    await runLoop(ECHO_TOOL)
+    const before = (await readSessionEvents(SESSION_ID)).filter(event => event.type === 'tool/result').length
+    const recorder = createSessionEventRecorder({
+      sessionId: SESSION_ID,
+      providerId: 'test-provider',
+      model: 'test-model',
+      getMessageId: () => 'assistant-1',
+    })
+    expect(recorder.recordCancelledToolResults([{ callId: 'call-1', result: 'late' }])).toBe(0)
+    await flushSessionEventLog(SESSION_ID)
+    const after = (await readSessionEvents(SESSION_ID)).filter(event => event.type === 'tool/result').length
+    expect(after).toBe(before)
+  })
 })

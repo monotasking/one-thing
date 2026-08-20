@@ -72,12 +72,20 @@ export function inlineDataUrlsToBlobs(sessionId: string, text: string): string {
  * 一次 agent-loop 执行上(run 级),这一个只需要"这条会话现在跑的是哪次执行"
  * (会话级)—— 生图流没有 agent-loop,但它照样有 run(`beginSessionRun` 先开)。
  *
+ * ## §13.8 第二类:失败分支也有正文
+ *
+ * 生图**失败**时引擎只写 `content`(一句"图片生成失败: …"),不建 contentPart
+ * —— 于是 R-b 挂在 `addMessageContentPart` 上的采集点看不见它,投影那条消息的
+ * 正文整段缺席(真机 `web-40232e65` / `web-da46cc33` 两条)。同一条路照记,
+ * 形状由 `contentOnly` 说清楚:`content` 的 fold 收它,`contentParts` 不收。
+ *
  * @returns 记下了就 true。没有活跃 run / 分不到 partIndex 时 false(不抛)。
  */
 export function recordSynthesizedAssistantText(
   sessionId: string,
   messageId: string,
   text: string,
+  options: { contentOnly?: boolean } = {},
 ): boolean {
   try {
     if (!text) return false
@@ -110,6 +118,7 @@ export function recordSynthesizedAssistantText(
       kind: 'text',
       len: payload.length,
       synthetic: true,
+      ...(options.contentOnly ? { contentOnly: true } : {}),
     })
     return true
   } catch (error) {

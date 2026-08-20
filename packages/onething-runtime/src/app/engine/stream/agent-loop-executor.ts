@@ -60,6 +60,7 @@ import type { AgentJsonObject } from "@onething/core/agent-loop";
 import { hashSections } from "@onething/runtime";
 import {
 	attachSessionEventRecorder,
+	type SessionCancelledToolResult,
 	type SessionEventRecorder,
 } from "./session-event-recorder.js";
 
@@ -375,6 +376,51 @@ export function runAgentLoopPostResponseHooks(options: {
 	});
 }
 
+/**
+ * §13.8 第一类:收场之后,把引擎写在**未结调用**上的东西记进账本。
+ *
+ * 中止 / 请求最终出错这两条收场路上,已经派工出去的工具永远等不到那条
+ * `tool-result` 流事件 —— 账本上只剩 `tool/call`。而消息上引擎是有话说的:
+ * 收尾修复判死了调用与 step(`cancelled` + 收场那句话),step 上还留着执行
+ * 途中已经写下的结局(工具的 `annotate{metadata}` / 最后一次 partial)与
+ * 自报标题。这里读**收场之后**的那份消息(修复已经落盘),把它交给记录器 ——
+ * 不在这里第二次派生任何一格(§10.10)。
+ *
+ * 判据是 `status === 'cancelled'`:那正是收尾修复的口径。等确认的那些 step
+ * 停在 `awaiting-confirmation`(引擎明确放过它们,恢复流还要用),因此天然
+ * 不在这张表里。
+ */
+function captureCancelledToolResults(state: AgentLoopExecutorState): void {
+	const recorder = state.eventRecorder;
+	if (!recorder) return;
+	try {
+		// COW:收尾修复刚刚经命令面落过盘,这里必须**重读**(P0 的那个坑)。
+		const message = sessionReads.getMessage(
+			state.ctx.sessionId,
+			state.ctx.assistantMessageId,
+		) as ChatMessage | undefined;
+		if (!message) return;
+		const calls: SessionCancelledToolResult[] = [];
+		for (const step of message.steps ?? []) {
+			if (step.status !== "cancelled") continue;
+			if (!step.toolCallId) continue;
+			calls.push({
+				callId: step.toolCallId,
+				...(typeof step.result === "string" && step.result
+					? { result: step.result }
+					: {}),
+			});
+		}
+		if (calls.length > 0) recorder.recordCancelledToolResults(calls);
+	} catch (error) {
+		log.warn(
+			"cancelled tool result capture failed",
+			{ sessionId: state.ctx.sessionId },
+			error,
+		);
+	}
+}
+
 async function emitFinalAssistantMessageUpdate(
 	state: AgentLoopExecutorState,
 	errorMessage?: string,
@@ -404,6 +450,9 @@ async function emitFinalAssistantMessageUpdate(
 	} catch {
 		// Event system may not be initialized in tests.
 	}
+	// 修复落盘之后才读得到它 —— 采集点排在这里,不在上面那个 try 里(事件系统
+	// 没起来不该让账本少一笔)。
+	captureCancelledToolResults(state);
 }
 
 export async function completeAgentLoopStream(

@@ -13,3 +13,18 @@ fe5261d9-c523-4077-be9d-c47e693a0b54 messages: canonical differs for message 184
 fe5261d9-c523-4077-be9d-c47e693a0b54 messages: canonical differs for message 36c6a8f5-3c0e-49c9-9290-ede652f3b425
 fe5261d9-c523-4077-be9d-c47e693a0b54 messages: canonical differs for message a8848dee-0ef9-4730-ba4b-4c7ea8c925af
 fe5261d9-c523-4077-be9d-c47e693a0b54 messages: canonical differs for message d792a8a2-0e0e-40ca-9632-a52d26fa4404
+# 2026-08-21 追加 4 条(§13.8 两类,与上面 2bf9d289 同类):真机 08-20 夜里写死在盘上的
+# **修复前**残余。两类各两条,产地都是当晚那个版本的引擎,与本次改动无关 ——
+# 反证做过:把本次改动整体 stash 之后跑同一道门,这 4 条一字不差地照样在。
+#   ① 中止时工具已经派工(§13.8 第一类):账本上只有 tool/call,引擎写在消息上的
+#      结局正文(`{"content":[]}` / ask_user 的 aborted 结局)与自报标题
+#      (`sleep 20` / `提问已取消`)当年一个字都没记 —— 投影因此给占位标题、没有结局。
+#      web-7abaca68 = 被杀的 bash;fd899977 = 被取消的 ask_user。
+#   ② 生图失败正文(§13.8 第二类):失败分支只 `updateMessageContent`,采集点当年
+#      挂在 contentPart 上看不见它 —— 投影那条消息的 `content` 是空的。
+#      web-40232e65 / web-da46cc33 各一条("图片生成失败: fetch failed")。
+# 修好之后不再新增(影子电池新增 abort-tool-in-flight / image-generation-failure 两格盯着)。
+fd899977-cbf1-4c9d-b09d-ee71090f1769 messages: canonical differs for message 1522fb97-28bd-45e2-ad68-4331275895d3
+web-40232e65-badd-46cd-a8fe-dfff5cba7d74 messages: canonical differs for message 02eb9a63-e2b3-4296-8fa7-e0625915548b
+web-7abaca68-dcb8-4db9-adca-f78e53ab81dd messages: canonical differs for message 023c934c-be72-4a2c-b565-7ab137dae970
+web-da46cc33-854c-496d-87cb-d91dee731b55 messages: canonical differs for message b7b6558c-25b3-4b19-b775-fa00eb4f27e2
