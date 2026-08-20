@@ -2,7 +2,7 @@ import { coreToolCallSnapshot, findCoreToolCall, patchCoreToolCall, replaceCoreT
 import type { JsonObject, JsonValue } from '../json.js'
 import { ToolExecutionScheduler } from '../agent-loop/tool-execution-scheduler.js'
 import { coreDiffHunksFromJson, type CoreDiffHunk } from '../tools/diff-hunks.js'
-import { detectSkillUsage, generateStepTitle } from './tool-step.js'
+import { detectSkillUsage, generateStepTitle, getStepType, type CoreStepType } from './tool-step.js'
 import { toLogger, type CompatLogger } from '../logging/index.js'
 
 export interface CoreToolCallLike {
@@ -234,6 +234,7 @@ export interface CoreExecutableToolCallLike<TJson extends JsonValue | undefined 
 
 export interface CoreExecutableStepLike<TToolCall> {
   id: string
+  type?: CoreStepType
   title: string
   status?: string
   toolCallId?: string
@@ -952,12 +953,16 @@ export async function executeCoreToolAndUpdate<
   if (existingStep) {
     step = {
       ...existingStep,
+      // S3.1(§10.11):`title` 一直是按最终参数重算的,`type` 却停在占位那一刻
+      // (`tool_input_start` 时参数还是 `{}`)。两格同源同时算,别再一半新一半旧。
+      type: getStepType(toolCallData.toolName, toolCallData.args),
       title: generateStepTitle(toolCall.toolName, toolCallData.args, skillName),
       toolCall: { ...toolCall },
       turnIndex,
     }
 
     emitter.sendStepUpdated(step.id, {
+      type: step.type,
       title: step.title,
       toolCall: step.toolCall,
       turnIndex: step.turnIndex,

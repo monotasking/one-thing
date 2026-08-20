@@ -38,7 +38,6 @@ import type {
   AgentStreamEvent,
   AgentTool,
 } from '@onething/core/agent-loop'
-import { detectSkillUsage } from '@onething/core/engine'
 import type {
   BlobRef,
   SessionAssistantPartKind,
@@ -530,17 +529,11 @@ export function createSessionEventRecorder(
           endPart(partIndex)
           state.toolInputPartByCallId.delete(event.toolCall.id)
         }
-        const skill = detectSkillUsage(
-          event.toolCall.name,
-          safeParseArgs(event.toolCall.arguments),
-        )
-        if (skill) {
-          appendSessionLogEvent(ctx.sessionId, 'skill/activated', {
-            messageId: ctx.getMessageId(),
-            skill,
-            ...withRunId(),
-          })
-        }
+        // S3.1(§10.11):`skill/activated` **不在这里认**。记录器认一遍、引擎再认
+        // 一遍 = 两个判定点,真机上就出现过"账本有 skill/activated 而消息上没有
+        // skillUsed"。现在唯一的判定点在引擎(`startAgentLoopToolExecution` /
+        // `executeCoreToolAndUpdate`),这条事件由那一次宣告经 emitter 落账
+        // (`app/events/event-only-emitter.ts`)—— 记录器只记引擎宣告过的事。
         const seq = appendSessionLogEvent(ctx.sessionId, 'tool/call', {
           callId: event.toolCall.id,
           name: event.toolCall.name,
@@ -687,18 +680,6 @@ export function createSessionEventRecorder(
       }
     },
   }
-}
-
-function safeParseArgs(argumentsRaw: string): Record<string, never> {
-  try {
-    const parsed = JSON.parse(argumentsRaw || '{}')
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, never>
-    }
-  } catch {
-    // 模型把 JSON 写坏了:技能探测拿空对象,不替它修(铁律 2)。
-  }
-  return {} as Record<string, never>
 }
 
 /**

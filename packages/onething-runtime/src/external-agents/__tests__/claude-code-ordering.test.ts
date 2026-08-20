@@ -159,6 +159,7 @@ async function runThroughExecutor(messages: ClaudeCodeSdkMessage[]): Promise<Run
     sendToolExecutionUpdate: () => {},
     sendToolExecutionEnd: () => {},
     sendStepUpdated: () => {},
+    sendSkillActivated: () => {},
     sendContextSizeUpdate: () => {},
     sendContinuation: () => {},
   }

@@ -1177,3 +1177,79 @@ run 下面。两份解析会在"哪个请求属于哪次执行"上分叉,所以�
 ### 10.10 真机第二批:steps[].type 写死(2026-08-20)
 
 第三类 mismatch(3 条,`fe5261d9` 等):`steps[].type` A=command / B=tool-call。引擎按 `getStepType(toolName, args)` 派生 step 类型(bash 按命令内容分 command/file-read/skill-read/file-write,`core/engine/tool-step.ts:56`;实时调用点 `app/engine/stream/tool-execution.ts`),投影 reducer 写死 `'tool-call'`(`reducer.ts:738`)。合同测试没抓到的原因与 title/reasoning 两案相同:**A 线 fixture 也写死了 `'tool-call'`**(`stepOf`,又一处空转)。修复:reducer 与 A 线 fixture 都改调 `getStepType`(参数以 argumentsRaw 解析结果为准);`ProjectedStep.type` 放宽为 `CoreStepType`。规律至此确立:**凡"引擎派生字段",合同 A 线必须调用引擎同一个函数,禁止在 fixture 里手写字面量** —— 已有三案(title/G2、reasoning 落点、step type)。
+
+### 10.11 真机第三批:引擎的两个缺陷 —— step.type 冻在占位、skillUsed 从未落到消息(2026-08-20)
+
+第四、五类 mismatch(`fe5261d9`,3 行影子日志):
+
+| # | 路径 | A(`messages.jsonl`) | B(投影) |
+| --- | --- | --- | --- |
+| 4 | `steps[].type` | `command` | `file-write` / `skill-read` |
+| 5 | `skillUsed` | (缺席) | `lenovo-scripts` |
+
+**裁定:修引擎,不供养怪癖。** 与 §10.10 是**反过来**的一次:那次是投影写死了字面量,
+这次 A 线(投影已经按 `getStepType(最终参数)` 派生,§10.10 刚改对)是对的,**是引擎在说谎**。
+
+#### 缺陷 1 —— step.type 冻在占位创建那一刻
+
+占位 step 建于 `tool_input_start`(`core/engine/stream-processor.ts` 的
+`createCoreToolInputStartArtifacts`),那一刻参数还是 `{}`,类型只能由
+`coreStepTypeForToolName(toolName)` 给出 —— bash 一律 `command`。参数定稿、工具开跑时:
+
+- **agent-loop 这条路**(生产唯一活着的那条,`startAgentLoopToolExecution` →
+  `buildAgentLoopToolStartStepUpdate`)只发 `{status:'running', toolCall}` —— `type` 一个字都不改。
+- **旧编排器那条**(`executeCoreToolAndUpdate` 的 `existingStep` 分支)重算了 `title` 却没重算 `type`
+  —— 一半新一半旧。
+
+于是 `cat …/SKILL.md` 在账上永远写着 `command`。修复:两条路都在**参数定稿那一刻**
+重算 `type: getStepType(toolName, finalArgs)`,并把它带进 `sendStepUpdated` 的补丁里。
+
+#### 缺陷 2 —— skillUsed 从未落到消息上(两个判定点)
+
+`skill/activated` 事件由**事件记录器自己**跑一遍 `detectSkillUsage`
+(`session-event-recorder.ts` 的 `tool-call-done` 分支)写出来;而 agent-loop 这条路上
+**引擎根本没认过技能** —— `detectSkillUsage` 只在旧编排器 `executeCoreToolAndUpdate` 里有。
+结果就是账本上有 `skill/activated`、消息上没有 `skillUsed`。
+
+**一个判定点、两个落点**(本期的设计裁定):
+
+```
+引擎(参数定稿那一刻)detectSkillUsage → emitter.sendSkillActivated(skill)
+        ├─ store.updateMessageSkill   → message.skillUsed      (产品事实)
+        └─ appendSessionLogEvent      → skill/activated 事件行  (那条 run 的账)
+```
+
+- 判定点唯一,在 core:`startAgentLoopToolExecution`(agent-loop)与
+  `executeCoreToolAndUpdate`(旧编排器)。`sendSkillActivated` 因此进了
+  `CoreAgentLoopToolExecutionEmitter` 契约(不是可选的 —— 引擎必须announce得出去)。
+- 两个落点都挂在宿主侧的同一次宣告上(`app/events/event-only-emitter.ts` 的
+  `updateMessageSkill` 端口),异常自吞(记账坏了不许影响聊天)。
+- 记录器**不再认技能**;它只记引擎宣告过的事。`safeParseArgs` 随之删除(死码)。
+- 事件行的 `runId` 由 `currentSessionRunId(sessionId)` 现取,拿不到就只带 messageId
+  —— 投影的 `resolveRun` 本来就按 runId → messageId → 活跃 run 三级回落。
+
+#### 顺带修掉的投影缺陷:run 级技能名串到别的 step 上
+
+`materializeStep` 原来把 **run 级**的 `run.skillUsed` 传进 `generateStepTitle`,于是同一回合里
+**每一条** step 的派生标题都变成"Reading X skill documentation"。引擎那一份是**逐调用**判的
+(`createToolExecutionStep(toolCall, { skillName })`)。改成 `detectSkillUsage(这次调用自己的参数)`。
+真机上一直没暴露,只是因为 bash / read / write 都自报标题(`annotate{title}`),派生标题根本没被用到 —— 新加的合同用例(同回合 skill-read + file-write)当场把它抓了出来。
+
+#### 门(全部实跑)
+
+| 门 | 结果 |
+| --- | --- |
+| `bun run typecheck` | 只剩 3 条既存红(`spaces/__tests__/provider-dials.test.ts`) |
+| `ONETHING_SESSION_FREEZE=1 bun run test` | 10960 passed;红的只有既存的 `ui-token-vars` ×2 与 `AIProviderTab.interaction` 的既存 unhandled rejection |
+| `bun run session:gate` / `boundary:gate` / `log:gate` / `lint:ci` | 0 / 13 / 4 / 334,none new |
+| `bun run server:build` | 绿 |
+| 真机(临时 store + 假 provider,参数流式的 `cat …/SKILL.md` + `mkdir`) | `steps[0].type='skill-read'`、`steps[1].type='file-write'`、`message.skillUsed='lenovo-scripts'`、**恰好一条** `skill/activated`;`sessions:shadow-report --min-runs 1` **GREEN**,shadow.jsonl 0 行 |
+| 反向对照(把引擎那一处改动 stash 掉再跑同一个脚本) | 复现真机原样的 mismatch:`1.steps.0.type A:command B:skill-read` / `1.steps.1.type A:command B:file-write`,且 skillUsed 五条断言全红 —— 证明这套验证咬得住 |
+
+#### 留下的尾巴
+
+| # | 事项 |
+| --- | --- |
+| 1 | **step.title 在 agent-loop 这条路上从不按 `generateStepTitle` 派生**:占位是"调用工具: X",之后由工具自报的 `annotate{title}` 覆盖。今天所有内建工具都自报标题,所以与投影(`reportedTitle ?? generateStepTitle`)对得上;哪天来一个不自报标题的工具,这就是第六类 mismatch。属于"用户可感知的标题变化",没有裁定不动 |
+| 2 | `session-shadow-stats.json` 是 1s 节流写、`unref` 的定时器,**关停时没人 flush** —— 进程立刻退出会丢最后一次计数(真机脚本里靠 sleep 2.5s 绕开)。要么在 shutdown 链上调 `flushSessionEventStats()`,要么接受它 |
+| 3 | 旧编排器那条路(`ToolOrchestrator` / `executeCoreToolAndUpdate`)在生产里已经**没有构造点**(只有测试构造它)。本期照样修了它的同款不对称,但它是否该退役是另一次裁定 |

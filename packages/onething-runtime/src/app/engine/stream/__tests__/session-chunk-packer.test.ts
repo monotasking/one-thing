@@ -206,7 +206,15 @@ describe('assistant/chunks packer', () => {
     ])
   })
 
-  it('records skill activation as its own event', async () => {
+  /**
+   * S3.1(§10.11):记录器**不认技能**。
+   *
+   * 它以前自己跑一遍 `detectSkillUsage`,于是判定点有两个 —— 账本上写着
+   * `skill/activated` 而消息上没有 `skillUsed`(真机影子第二类 mismatch)。
+   * 现在唯一的判定点在引擎:引擎宣告一次,emitter 同时落消息字段与这条事件。
+   * 这条用例钉的就是"记录器这条路上没有第二个判定点"。
+   */
+  it('does not detect skills itself — that judgement belongs to the engine', async () => {
     const target = recorder()
     target.handle({ type: 'turn-start', turn: 1 })
     target.handle({
@@ -215,10 +223,9 @@ describe('assistant/chunks packer', () => {
       toolCall: { id: 'c1', name: 'bash', arguments: JSON.stringify({ command: 'cat skills/agent-plan/SKILL.md' }) },
     })
 
-    const skill = (await all()).find(event => event.type === 'skill/activated')
-    expect(skill?.type === 'skill/activated' && skill.data).toMatchObject({
-      messageId: 'a1',
-      skill: 'agent-plan',
-    })
+    const events = await all()
+    expect(events.some(event => event.type === 'skill/activated')).toBe(false)
+    // 工具那一行照旧落账,只是不再顺手替引擎认技能。
+    expect(events.some(event => event.type === 'tool/call')).toBe(true)
   })
 })

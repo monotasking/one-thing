@@ -27,7 +27,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildHistoryMessages } from '../../engine/history.js'
-import { generateStepTitle, getStepType } from '../../engine/tool-step.js'
+import { detectSkillUsage, generateStepTitle, getStepType } from '../../engine/tool-step.js'
 import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
 import { buildContextCompactContent } from '../../engine/context-compact.js'
 import { applySessionCommand } from '../commands.js'
@@ -214,8 +214,16 @@ function stepOf(
     id: `step-${spec.callId}`,
     // A 线也照引擎实时那一份算 type(`tool-execution.ts` → `getStepType`)。
     // 从前这里写死 'tool-call',于是 bash 的 command/file-read/skill-read 在合同上是空的。
+    //
+    // S3.1(§10.11):算的是**最终参数**。引擎那一份从前把它冻在占位时刻
+    // (`tool_input_start` 参数还是 `{}`,bash 只能是 command),真机影子第一类
+    // mismatch 就是它 —— 已按"修引擎不供养怪癖"在引擎侧改口,合同这一格不动。
     type: getStepType(spec.name, spec.args as Parameters<typeof getStepType>[1]),
-    title: generateStepTitle(spec.name, spec.args as Parameters<typeof generateStepTitle>[1]),
+    title: generateStepTitle(
+      spec.name,
+      spec.args as Parameters<typeof generateStepTitle>[1],
+      detectSkillUsage(spec.name, spec.args as Parameters<typeof detectSkillUsage>[1]),
+    ),
     status:
       toolCall.status === 'completed' ? 'completed'
         : toolCall.status === 'failed' ? 'failed'
@@ -335,6 +343,13 @@ function applyTurnCommands(line: CommandLine, turn: TurnSpec, timeline: TurnTime
     ;(request.tools ?? []).forEach((tool, toolIndex) => {
       const slots = slot.tools[toolIndex]
       const call = toolCallOf(tool, slots.call, slots.inputEnd)
+      // S3.1(§10.11):技能识别**一个判定点、两个落点**。引擎在参数定稿那一刻认
+      // 一次并宣告(`startAgentLoopToolExecution`),宿主同时落消息上的 `skillUsed`
+      // 与账本上的 `skill/activated`。A 线落前者,B 线落后者 —— 判据是同一个函数。
+      const skill = detectSkillUsage(tool.name, tool.args as Parameters<typeof detectSkillUsage>[1])
+      if (skill) {
+        line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { skillUsed: skill } as never, hint: 'settle' })
+      }
       toolCalls.push(call)
       line.run({
         type: 'setToolCalls',
@@ -450,6 +465,14 @@ function emitTurnEvents(line: EventLine, turn: TurnSpec, timeline: TurnTimeline)
             runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
             kind: 'tool-input', toolCallId: tool.callId, len: argumentsRaw.length,
           },
+        })
+      }
+      const skill = detectSkillUsage(tool.name, tool.args as Parameters<typeof detectSkillUsage>[1])
+      if (skill) {
+        line.push({
+          time: slots.call,
+          type: 'skill/activated',
+          data: { runId: turn.runId, messageId: turn.messageId, skill },
         })
       }
       line.push({
@@ -830,6 +853,39 @@ describe('projection contract: command line ≡ event line', () => {
     expect(message.toolCalls?.[0].receivedAt).toBeDefined()
     expect(message.usage).toEqual({ inputTokens: 30, outputTokens: 8, totalTokens: 38 })
     expect(message.steps?.map(step => step.turnIndex)).toEqual([1, 1])
+  })
+
+  /**
+   * S3.1(§10.11):真机 fe5261d9 那一回合的最小复现 —— 参数是流式来的 bash,
+   * 命令是 `cat …/SKILL.md`。两个缺陷都在这一条里:
+   *   - step.type 必须是 `skill-read`(占位那一刻只能算出 `command`)
+   *   - message.skillUsed 必须落上(以前只有事件账本有)
+   */
+  it('streamed bash reading a SKILL.md lands skill-read + skillUsed on both lines', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: '按 lenovo-scripts 来' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [
+        {
+          text: 'reading the skill',
+          tools: [
+            {
+              callId: 'c1', name: 'bash',
+              args: { command: 'cat ~/.onething/skills/lenovo-scripts/SKILL.md' },
+              resultText: '# lenovo-scripts', outcome: 'ok', streamedArgs: true,
+            },
+            { callId: 'c2', name: 'bash', args: { command: 'mkdir -p out' }, resultText: '', outcome: 'ok' },
+          ],
+        },
+      ],
+      outcome: 'completed',
+    })
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    expect(message.skillUsed).toBe('lenovo-scripts')
+    expect(message.steps?.map(step => step.type)).toEqual(['skill-read', 'file-write'])
   })
 
   it('abort mid-turn leaves the running tool cancelled', () => {

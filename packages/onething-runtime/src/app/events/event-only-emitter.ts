@@ -14,6 +14,8 @@ import type { IPCEmitter, StreamCompleteData, StreamErrorData } from '../engine/
 import { createCoreEventOnlyEmitter } from '@onething/core/engine'
 import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk } from '@onething/core/engine'
 import { getEventBus, getStreamChannel } from './index.js'
+import { appendSessionLogEvent } from '../session/event-log.js'
+import { currentSessionRunId } from '../session/runs.js'
 import { getLogger } from '../logging/index.js'
 
 /**
@@ -90,7 +92,30 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
       updateMessageStep: store.updateMessageStep,
       updateSessionContextSize: (targetSessionId, contextSize) =>
         store.updateSessionContextSize(targetSessionId, contextSize, 'provider-finish'),
-      updateMessageSkill: store.updateMessageSkill,
+      /*
+       * S3.1(§10.11):技能宣告的**两个落点挂在同一次宣告上** —— 消息上的
+       * `skillUsed`(产品事实)与事件账本的 `skill/activated`(那条 run 的账)。
+       * 判定点只有一个,在引擎里;这里只负责把它宣告过的事记两处,所以两处
+       * 永远同源。以前 `skill/activated` 是记录器自己认出来写的,与引擎那一份
+       * 各认各的,真机上就出现过"账本有、消息没有"。
+       *
+       * 记账坏了绝不能影响聊天:自吞异常,与记录器同一条规矩。
+       */
+      updateMessageSkill: (targetSessionId, targetMessageId, skillName) => {
+        store.updateMessageSkill(targetSessionId, targetMessageId, skillName)
+        try {
+          const runId = currentSessionRunId(targetSessionId)
+          appendSessionLogEvent(targetSessionId, 'skill/activated', {
+            messageId: targetMessageId,
+            skill: skillName,
+            ...(runId ? { runId } : {}),
+          })
+        } catch (error) {
+          streamLog.warn('skill activated event append failed', {
+            sessionId: targetSessionId,
+          }, error)
+        }
+      },
     },
     debugStream: shouldTraceStream,
   })

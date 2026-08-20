@@ -29,7 +29,7 @@ import type {
   SessionLogEventRecord,
   SessionResponseUsage,
 } from '../events/types.js'
-import { generateStepTitle, getStepType } from '../../engine/tool-step.js'
+import { detectSkillUsage, generateStepTitle, getStepType } from '../../engine/tool-step.js'
 import { toolResultToStructured } from '../../tools/tool-result.js'
 import { SurfaceIndex } from './surface.js'
 
@@ -741,12 +741,19 @@ export function materializeStep(
     type: getStepType(toolCall.toolName, toolCall.arguments as Parameters<typeof getStepType>[1]),
     // G2(§10.1):标题是**纯派生**,事件不带 title。用的就是引擎实时那一份
     // (`core/engine/tool-step.ts`),不在这里手抄一条规则。
+    // S3.1(§10.11):技能名取的是**这一次调用自己**的判定,不是 run 上那一格。
+    // `run.skillUsed` 是回合级的(整条消息只有一格),拿它去给每一条 step 起标题
+    // 会把"读技能"的标题串到同回合里别的工具上 —— 引擎那一份是逐调用判的
+    // (`createToolExecutionStep(toolCall, { skillName })`)。
     title: typeof reportedTitle === 'string' && reportedTitle
       ? reportedTitle
       : generateStepTitle(
         toolCall.toolName,
         toolCall.arguments as Parameters<typeof generateStepTitle>[1],
-        run.skillUsed,
+        detectSkillUsage(
+          toolCall.toolName,
+          toolCall.arguments as Parameters<typeof detectSkillUsage>[1],
+        ),
       ),
     status,
     timestamp: tool.callTime,

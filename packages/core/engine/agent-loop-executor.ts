@@ -21,6 +21,11 @@ import {
 	getTextFromContent,
 	type CoreAIMessageContent,
 } from "./message-content.js";
+import {
+	detectSkillUsage,
+	getStepType,
+	type CoreStepType,
+} from "./tool-step.js";
 
 export interface CoreAgentLoopExecutorContentAccumulator {
 	value: string;
@@ -369,6 +374,15 @@ export interface CoreAgentLoopToolPartialStepUpdate<TPartialResult> {
 
 export interface CoreAgentLoopToolStartStepUpdate<TToolCall> {
 	status: "running";
+	/**
+	 * S3.1(§10.11):**参数定稿之后**重算的 step 类型。
+	 *
+	 * 占位那一条是在 `tool_input_start` 建的 —— 那时参数还是 `{}`,
+	 * `coreStepTypeForToolName('bash')` 只能给出 `command`。执行开跑这一刻参数
+	 * 已经是最终值,类型必须跟着改口:`cat x/SKILL.md` 是 `skill-read`,
+	 * `mkdir tmp` 是 `file-write`。写死在占位值上就是"账上写的不是真发生的事"。
+	 */
+	type: CoreStepType;
 	toolCall: TToolCall;
 }
 
@@ -445,6 +459,12 @@ export interface CoreAgentLoopToolExecutionEmitter<
 		durationMs?: number,
 	): void;
 	sendStepUpdated(stepId: string, updates: TStepUpdate): void;
+	/**
+	 * S3.1(§10.11):技能识别的**唯一宣告口**。引擎认出来一次,宿主那一侧同时
+	 * 落两处(消息上的 `skillUsed` 与事件账本的 `skill/activated`)—— 两处永远
+	 * 同源,影子门比的就是这个一致性。
+	 */
+	sendSkillActivated(skillName: string): void;
 }
 
 export interface CoreAgentLoopToolInputProcessor<
@@ -572,7 +592,10 @@ export interface StartAgentLoopToolExecutionOptions<
 	store: CoreAgentLoopToolExecutionStore<TToolCall>;
 	emitter: Pick<
 		CoreAgentLoopToolExecutionEmitter<TToolCall, TStepUpdate>,
-		"sendToolCall" | "sendToolExecutionStart" | "sendStepUpdated"
+		| "sendToolCall"
+		| "sendToolExecutionStart"
+		| "sendStepUpdated"
+		| "sendSkillActivated"
 	>;
 	now?: () => number;
 }
@@ -1515,11 +1538,12 @@ export function buildAgentLoopToolPartialStepUpdate<
 	};
 }
 
-export function buildAgentLoopToolStartStepUpdate<TToolCall>(
-	toolCall: TToolCall,
-): CoreAgentLoopToolStartStepUpdate<TToolCall> {
+export function buildAgentLoopToolStartStepUpdate<
+	TToolCall extends { toolName: string; arguments?: JsonObject },
+>(toolCall: TToolCall): CoreAgentLoopToolStartStepUpdate<TToolCall> {
 	return {
 		status: "running",
+		type: getStepType(toolCall.toolName, toJsonObject(toolCall.arguments)),
 		toolCall: { ...toolCall },
 	};
 }
@@ -1654,6 +1678,18 @@ export function startAgentLoopToolExecution<
 		coreToolCallSnapshot(options.toolCalls),
 	);
 	options.emitter.sendToolCall(toolCall);
+
+	/*
+	 * S3.1(§10.11):技能识别的**唯一落点**就在这里 —— 参数定稿、工具还没跑的
+	 * 这一刻。以前 agent-loop 这条路上根本没有这一步,只有事件记录器自己认了一遍,
+	 * 于是账本上有 `skill/activated` 而消息上没有 `skillUsed`(真机影子第二类
+	 * mismatch)。现在引擎认一次、宣告一次,两处落点都挂在这一次宣告上。
+	 */
+	const skillName = detectSkillUsage(
+		toolCall.toolName,
+		toJsonObject(toolCall.arguments),
+	);
+	if (skillName) options.emitter.sendSkillActivated(skillName);
 
 	if (!options.stepId) return toolCall;
 

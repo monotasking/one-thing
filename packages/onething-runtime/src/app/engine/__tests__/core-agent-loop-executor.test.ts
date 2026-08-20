@@ -382,6 +382,9 @@ describe('core agent-loop executor helpers', () => {
       sendStepUpdated(stepId: string, update: { status?: string }) {
         events.push(`step:${stepId}:${update.status}`)
       },
+      sendSkillActivated(skillName: string) {
+        events.push(`skill:${skillName}`)
+      },
       sendContextSizeUpdate(inputTokens: number) {
         events.push(`context:${inputTokens}`)
       },
@@ -661,10 +664,33 @@ describe('core agent-loop executor helpers', () => {
       content: [{ type: 'text', text: '{"output":"ok"}' }],
       details: { output: 'ok' },
     })
-    expect(buildAgentLoopToolStartStepUpdate({ id: 'call_1', status: 'executing' })).toEqual({
+    // S3.1(§10.11):开跑那一刻按**最终参数**重算 type —— 占位那条建在
+    // `tool_input_start`,参数还是 `{}`,bash 只能算出 `command`。
+    expect(buildAgentLoopToolStartStepUpdate({
+      id: 'call_1',
+      toolName: 'bash',
+      arguments: { command: 'cat skills/lenovo-scripts/SKILL.md' },
+      status: 'executing',
+    })).toEqual({
       status: 'running',
-      toolCall: { id: 'call_1', status: 'executing' },
+      type: 'skill-read',
+      toolCall: {
+        id: 'call_1',
+        toolName: 'bash',
+        arguments: { command: 'cat skills/lenovo-scripts/SKILL.md' },
+        status: 'executing',
+      },
     })
+    expect(buildAgentLoopToolStartStepUpdate({
+      id: 'call_2',
+      toolName: 'bash',
+      arguments: { command: 'mkdir tmp' },
+    }).type).toBe('file-write')
+    expect(buildAgentLoopToolStartStepUpdate({
+      id: 'call_3',
+      toolName: 'read',
+      arguments: { path: 'README.md' },
+    }).type).toBe('tool-call')
   })
 
   it('settles agent-loop tool calls without store or emitter access', () => {
@@ -841,6 +867,9 @@ describe('core agent-loop executor helpers', () => {
       },
       sendStepUpdated: (stepId: string, updates: { status?: string; title?: string; result?: string }) => {
         events.push(`step:${stepId}:${updates.status ?? updates.title ?? updates.result}`)
+      },
+      sendSkillActivated: (skillName: string) => {
+        events.push(`skill:${skillName}`)
       },
     }
 
@@ -1084,6 +1113,9 @@ describe('core agent-loop executor helpers', () => {
       },
       sendStepUpdated: (stepId: string, update: { status?: string }) => {
         events.push(`step:${stepId}:${update.status}`)
+      },
+      sendSkillActivated: (skillName: string) => {
+        events.push(`skill:${skillName}`)
       },
     }
     const stepIdsByToolCallId = new Map<string, string>()
