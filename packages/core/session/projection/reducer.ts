@@ -283,9 +283,14 @@ export function reduceSessionProjection(
     case 'run/start': {
       // steering:换的是助手消息,不是执行。回合号与用量累加器都从被接手的那条
       // run 上接着走(引擎侧就是同一个 agent-loop 在跑)。
-      const continued = event.data.continuesRunId
-        ? state.runs.get(event.data.continuesRunId)
-        : undefined
+      // 兜底(2026-08-20,词汇演进):`continuesRunId` 是 9dde092d 才有的字段,
+      // 修复前的 recorder 写出的 steer run 没有它。`kind:'steer'` 的 run/start
+      // **只有** `rotateSessionRun` 一个产地(必然延续上一条 run),所以旧事件按
+      // "账本里最近开张的那条 run"推断 —— 推出来的正是当年该写的值。新事件仍以
+      // 显式字段为准,只在缺席时兜底。
+      const continuesRunId = event.data.continuesRunId
+        ?? (event.data.kind === 'steer' ? lastRunId(state) : undefined)
+      const continued = continuesRunId ? state.runs.get(continuesRunId) : undefined
       const node: AssistantNode = {
         kind: 'assistant',
         eventSeq: event.seq,
@@ -312,7 +317,7 @@ export function reduceSessionProjection(
         // 那几轮在接手的这条上照样是"收齐了的"。
         settledRequests: new Set(continued?.settledRequests ?? []),
         ...(continued?.usage ? { usage: continued.usage } : {}),
-        ...(event.data.continuesRunId ? { continuesRunId: event.data.continuesRunId } : {}),
+        ...(continuesRunId ? { continuesRunId } : {}),
       }
       if (continued) continued.continuedByRunId = node.runId
       register(state, node)
@@ -794,7 +799,16 @@ function toolTimingFields(tool: ToolState): Partial<ProjectedToolCall> {
 }
 
 /** 一次性构造(条件展开),不先建后改 —— 理由见 `chat-messages.ts` 的同款注释。 */
-export function materializeToolCall(run: AssistantNode, tool: ToolState): ProjectedToolCall {
+export /** 账本里最近开张的 run(按 eventSeq)。只作旧词汇(无 continuesRunId 的 steer)兜底用。 */
+function lastRunId(state: SessionProjectionState): string | undefined {
+  let best: { seq: number; runId: string } | undefined
+  for (const [runId, node] of state.runs) {
+    if (!best || node.eventSeq > best.seq) best = { seq: node.eventSeq, runId }
+  }
+  return best?.runId
+}
+
+function materializeToolCall(run: AssistantNode, tool: ToolState): ProjectedToolCall {
   return {
     id: tool.callId,
     toolId: tool.toolId ?? tool.name,

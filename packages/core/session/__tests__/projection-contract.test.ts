@@ -1065,6 +1065,44 @@ describe('projection contract: command line ≡ event line', () => {
     expect(continued.usage).toEqual({ inputTokens: 600, outputTokens: 90, totalTokens: 690 })
   })
 
+  it('pre-fix vocabulary: a steer run without continuesRunId infers continuation (2026-08-20 兜底)', () => {
+    // 9dde092d 之前的 recorder 写出的 steer run/start 没有 continuesRunId。
+    // kind:'steer' 只有 rotateSessionRun 一个产地,投影按"最近开张的 run"兜底 ——
+    // 结果必须与显式字段逐字节相同。构造:同上个场景,但 B 线剥掉字段。
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'write it down' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        reasoning: 'first I plan',
+        tools: [{ callId: 'c1', name: 'read', args: { path: '/skill' }, resultText: 'body', outcome: 'ok' }],
+        usage: { inputTokens: 100, outputTokens: 30 },
+      }],
+      outcome: 'completed',
+    })
+    scenario.user({ id: 'u2', content: 'be thorough' })
+    scenario.turn({
+      runId: 'r2', messageId: 'a2', kind: 'steer', continuesRunId: 'r1',
+      requests: [
+        {
+          reasoning: 'now with the steer in mind',
+          tools: [{ callId: 'c2', name: 'write', args: { path: '/out' }, resultText: 'wrote', outcome: 'ok' }],
+          usage: { inputTokens: 200, outputTokens: 50 },
+        },
+        { text: 'done', usage: { inputTokens: 300, outputTokens: 10 } },
+      ],
+      outcome: 'completed',
+    })
+    const legacyEvents = scenario.b.events.map(event => {
+      if (event.type !== 'run/start') return event
+      const { continuesRunId: _dropped, ...data } = event.data as unknown as Record<string, unknown>
+      return { ...event, data } as unknown as typeof event
+    })
+    const withField = projectChatMessages(scenario.b.events).messages
+    const inferred = projectChatMessages(legacyEvents as typeof scenario.b.events).messages
+    expect(canonicalChatMessages(inferred)).toEqual(canonicalChatMessages(withField))
+  })
+
   /**
    * 真机第四批(§10.12 第 6 类):**一次失败但跑完了的调用**。
    *
