@@ -1561,4 +1561,6 @@ bun run sessions:shadow-battery --seed 7 --passes 3 --concurrency 2
 
 真机重现第五类签名,但根因已变:9dde092d 只修了**新事件**,`5e4d2cea` 里修复前写的 steer `run/start` 没有 `continuesRunId`,history 断言每请求比全量历史 → 该会话每轮一报。修:投影加**词汇演进兜底**——`kind:'steer'` 只有 `rotateSessionRun` 一个产地(必然延续上一条 run),缺字段时按"账本里最近开张的 run"推断(`lastRunId`),推出的正是当年该写的值;显式字段仍优先。合同新增"pre-fix vocabulary"场景(剥字段 ≡ 带字段)。真实会话只读回放:reasoningContent 差异消失。
 
+**两条从复发学到的规矩**:①词汇演进成对交付——事件加新字段必须同时回答"旧文件缺它时投影怎么办",读侧兜底不是可选项(9dde092d 只交付了写侧,故同一症状二次出现);②回放验证用文件原字节——§10.12 批次的验证曾把缺字段补进内存流再验,验证方法掩盖了验证对象。
+
 **已知残余(不影响门,归 S2b)**:该旧 steer run 的 `run/end` 是 prepare 补的 `interrupted`(当年没收尾),投影按"completed 才计 usage"给不出 usage,而真实消息上有(执行实际完成)——信息当年未被记录,不可重建。S2b 迁移对**混合覆盖会话**须让 `message/imported` 快照压过修复前的缺陷事件段(surfaceOp replace 遮蔽旧段是自然做法)。
