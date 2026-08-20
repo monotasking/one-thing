@@ -843,14 +843,49 @@ export function deriveThinkingTime(run: AssistantNode): number | undefined {
   return span !== undefined && span > 0 ? span : undefined
 }
 
+/**
+ * 推理段的**两个落点**(引擎侧的判据是 `core/engine/agent-loop-executor.ts` 的
+ * `getAgentLoopReasoningPlacement`,这里是它在事件上的复刻):
+ *
+ *  - `'top'` —— 第 1 轮请求**开头**那一段(此前这次执行还没产出过任何正文 /
+ *    工具调用 / 可见 part)。它只进 `message.reasoning` 字段(`updateMessageReasoning`),
+ *    **不进 `contentParts`**;
+ *  - `'inline'` —— 其余一律进 `contentParts`(`appendOrderedPart`),字段不再动。
+ *
+ * 因为 `partIndex` 在一次执行里单调、且同类连续 delta 归同一段,"turn 1 开头
+ * 那一段"就等价于**按 partIndex 排序后开头那一串连续的 reasoning 段**。
+ *
+ * 真机第一天(§10.9)这里曾把两个落点合成一个:投影把 top 段也物化成
+ * contentPart,于是每条带推理的助手消息都比事实多一格,后面的 part 整体错位。
+ */
+export function topReasoningPartIndexes(run: AssistantNode): Set<number> {
+  const top = new Set<number>()
+  for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
+    const part = run.parts.get(partIndex)!
+    if (part.kind !== 'reasoning') break
+    if (run.turnByRequest.get(part.requestIndex) !== 1) break
+    top.add(partIndex)
+  }
+  return top
+}
+
+/** `message.reasoning` 字段 = **只有** `'top'` 那一段(见上)。 */
+export function materializeTopReasoning(run: AssistantNode): string {
+  const top = topReasoningPartIndexes(run)
+  let out = ''
+  for (const partIndex of [...top].sort((a, b) => a - b)) out += run.parts.get(partIndex)!.text
+  return out
+}
+
 export function materializeContentParts(run: AssistantNode): ProjectedContentPart[] {
   const parts: ProjectedContentPart[] = []
+  const topReasoning = topReasoningPartIndexes(run)
   for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
     const part = run.parts.get(partIndex)!
     const turnIndex = run.turnByRequest.get(part.requestIndex)
     if (part.kind === 'text' && part.text) {
       parts.push({ type: 'text', content: part.text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
-    } else if (part.kind === 'reasoning' && part.text) {
+    } else if (part.kind === 'reasoning' && part.text && !topReasoning.has(partIndex)) {
       parts.push({ type: 'reasoning', content: part.text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
     } else if (part.kind === 'image' && part.blob) {
       parts.push({ type: 'image', blob: part.blob, ...(turnIndex !== undefined ? { turnIndex } : {}) })

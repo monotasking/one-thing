@@ -733,6 +733,139 @@ runtime 注入(温度 / maxTokens / thinking / reasoningEffort / toolChoice)。
 
 ---
 
+### 10.9 真机第一天:两类 mismatch 的修复(2026-08-20)
+
+**门**(逐字):`bun run typecheck` 只剩 `spaces/__tests__/provider-dials.test.ts`
+的 3 条既有错;`ONETHING_SESSION_FREEZE=1 bun run test`(按目录分四批跑,合计
+1141 个文件)**10957 passed / 2 failed / 8 skipped** —— 2 条是既有的
+`ui-token-vars.test.ts`,外加 1 条既有 unhandled rejection
+(`AIProviderTab.interaction.test.ts`);`session:gate` **0**(none new);
+`boundary:gate` 绿(13 known,none new);`log:gate` 绿(4 known,none new);
+`lint:ci` **334**(与基线同数);`server:build` 通过;
+`sessions:shadow-report --min-runs 1`(**临时 store**)→ `runs 3 / mismatches 0 /
+appendFailures 0 / skipped {"legacyPartial":2}`,**GATE GREEN**。
+
+影子开着跑完第一天,`~/.onething/log/session-shadow.jsonl` 攒下 **12 行不等**
+(`runs: 0`,`byKind: {history: 10, messages: 2}`)。两类,**一类是断言问的问题不对,
+一类是投影真的错了**。
+
+#### 类别 1(10 行,`kind:'history'`):断言问了一个老会话答不上来的问题
+
+全部来自同一条会话 `fd899977…`,diff 永远是同一句:`.length` **A 101 / B 1**,
+后面 100 条清一色 `b: "(absent)"`。
+
+这条会话建于 S1a 之前。它的 `events.jsonl` 第一条是 `request/tools`(不是
+`session/created`)—— 事件日志是从升级那一刻才开始写的,**只覆盖了历史的一段
+尾巴**。拿它去比"整段模型历史",投影侧当然只有今天这一轮:那不是投影错了,
+是**没有可比的东西**。§10.7 缺口表第 6 条已经预判过"老会话 surface 是空的",
+但只处理了 `nodes.length === 0` 这个极端;**部分覆盖**这一档漏了。
+
+**改法**(`app/session/shadow.ts`):历史断言在比之前先问一句"这条会话的事件覆盖
+全吗" —— 判据是 **messages.jsonl 里有、投影的 `byMessageId` 不认识的消息 id**
+(比"第一条事件是不是 `session/created`"更直接:后者只认得出"从中间开始",
+认不出"中间掉了一段")。覆盖不全就跳过,计一次
+`skipped.legacyPartial`。判定每会话只做一次并缓存 `true`(事件只增不减,一条
+会话一旦覆盖不全就永远是);判成完整的每次重算 —— 那正是这道断言要盯的东西,
+不能缓存掉。
+
+**run 断言照常跑**:一个 run 自己的那几条消息**是**事件覆盖的(用户刚发的那条
+和这次生成的那条都在今天的事件里),老会话上它一样有效 —— 真机上那 2 行
+`kind:'messages'` 里就有一行来自这条老会话,而它抓到的是下面的类别 2,是真 bug。
+唯一的例外是**触发消息比事件还老**(对一条老消息 retry / edit-resend):事实侧
+有它、投影侧没有,同样按 `legacyPartial` 跳过。
+
+`skipped` 是 `session-shadow-stats.json` 的新一格(`Record<string, number>`),
+`sessions:shadow-report` 打印它。**跳过 ≠ 不等**:门(`runs ≥ 200 ∧ mismatches = 0
+∧ appendFailures = 0`)一格不动 —— 跳过的是"没有可比的东西",不是"比出来不等"。
+
+> **老会话在迁移之前不进历史影子。** 它们的消息事实仍在 `messages.jsonl` 里,
+> S2b 的迁移脚本把它们变成 `message/imported` 之后,这道断言自然重新覆盖它们
+> (那时 `byMessageId` 就认识全部消息了,不需要再改代码)。
+
+#### 类别 2(2 行,`kind:'messages'`):投影把 reasoning 多物化了一格 —— 真 bug
+
+diff 是 `contentParts.length` **A 1 / B 2**,且 B 的第 0 格是推理正文、后面每一格
+整体后移一位(A 的 11 格 vs B 的 12 格,`turnIndex` 跟着错位)。
+
+根因:**引擎的推理有两个落点,投影只认得一个**。判据在
+`core/engine/agent-loop-executor.ts` 的 `getAgentLoopReasoningPlacement`:
+
+| placement | 条件 | 引擎的落点 |
+|---|---|---|
+| `'top'` | 第 1 轮请求、且此前这次执行还没产出过正文 / 工具调用 / 可见 part | `updateMessageReasoning` → **`message.reasoning` 字段**,不进 contentParts |
+| `'inline'` | 其余全部(工具回来之后的第 2 轮推理、turn 1 里正文之后又冒出来的推理) | `appendOrderedPart` → **`contentParts` 里一格 `reasoning`** |
+
+投影侧 `materializeContentParts` 把**所有** reasoning part 都物化成 contentPart,
+`materializePartText(node,'reasoning')` 又把**所有** reasoning 文本塞进
+`message.reasoning` 字段 —— 两个落点合成了一个,于是每条带推理的助手消息都比
+事实多一格,后面的 part 整体错位。
+
+**改法**(`core/session/projection/`):
+
+- `reducer.ts` 新增 `topReasoningPartIndexes(run)`:按 `partIndex` 排序后**开头
+  那一串连续的 reasoning 段**(且 `turnIndex === 1`)就是 `'top'`。这条等价成立
+  是因为 recorder 的 `deltaInto` **换 kind 就换段**(`session-event-recorder.ts`):
+  turn 1 里正文之后又冒出来的推理会拿到一个**新的、更大的** partIndex,不会跟
+  开头那段合并;
+- `materializeContentParts` 跳过这些 partIndex;
+- 新增 `materializeTopReasoning(run)`,`chat-messages.ts` 的 `reasoning` 字段改用它
+  (从前是全部推理的 fold —— 多轮推理的会话那一格也是错的,只是被 diff 的
+  `DIFF_MAX_ENTRIES` 截掉没露头)。
+
+**recorder 与 partIndex 复核过,没有问题**:真机 `8b74a9f7…` 那一轮的事件是
+`partIndex 0 = reasoning` / `partIndex 1 = text`,`request/response.parts` 逐格对得上;
+排掉 top 那一格之后,投影的 contentParts 下标与引擎的逐格一致。S1a 的采集面
+不用改。
+
+#### 合同测试为什么没抓到:fixture 和投影一起错
+
+§9.5 的"带 reasoning"场景一直是绿的 —— 因为 A 线的构造器
+(`projection-contract.test.ts` 的 `applyTurnCommands`)**每段推理都同时**
+`patchMessage{reasoning}` **和** `appendContentPart{type:'reasoning'}`。
+两边错成同一个样子,合同测试就成了恒真。
+
+修法是让 A 线照抄引擎的落点规则(而不是让 B 线迁就 A 线):按
+`turnIndex === 1 && text.length === 0 && toolCalls.length === 0` 分流,`'top'` 只写
+字段、`'inline'` 只写 part。另加一条场景
+**`reasoning has two landing spots`**(turn 1 推理→正文→工具,turn 2 推理→正文)
+—— 这正是 `fd899977…` 那条 diff 的最小复现。回退投影的修复,这两条当场变红。
+
+`canonicalChatMessage` 没有遮盖:它从来不丢 `reasoning`,也不排序 `contentParts`
+(§9.7 判例 10 明确写死"contentParts 的顺序就是正文本身")—— 所以错位一露头就
+被抓住了。真正掩盖它的是 fixture。
+
+#### 门(真机自证,临时 store)
+
+`scratchpad/s1b-mismatch-fix.mjs`:临时 store + 会吐 `reasoning_content` 的假
+provider,两个场景各跑一遍。
+
+- **(a) 全新会话**:parts = `0:reasoning 2:tool-input 1:text 3:reasoning 4:text`;
+  `message.reasoning = "first I think about it"`(top),
+  `contentParts = [text, data-steps, reasoning, text]`(inline 那格在)——
+  **两个落点都走到**,`mismatches: 0`,`runs: 1`。
+- **(b) 模拟老会话**:先正常跑一个回合,停机,往 `messages.jsonl` **前面**塞 4 条
+  "升级之前"的老消息(events.jsonl 一条都不覆盖它们),重启再发一个回合 ——
+  6 条消息全部读回,历史断言 `skipped.legacyPartial: 2`,run 断言照常
+  `runs 2 → 3`,`mismatches: 0`。
+- `sessions:shadow-report --min-runs 1` → `runs 3 / mismatches 0 /
+  appendFailures 0 / skipped {"legacyPartial":2}`,**GATE GREEN**。
+
+真实 store 的 `session-shadow.jsonl` / `-stats.json` **没有动**(只读)。
+`sessions:shadow-reset` 归零由用户自己决定什么时候跑 —— 那 12 行是这次修复的证据。
+
+#### 交付
+
+| 文件 | 改动 |
+|---|---|
+| `packages/core/session/projection/reducer.ts` | 新增 `topReasoningPartIndexes` / `materializeTopReasoning`;`materializeContentParts` 跳过 top 推理段 |
+| `packages/core/session/projection/chat-messages.ts` | `reasoning` 字段改用 `materializeTopReasoning` |
+| `packages/onething-runtime/src/app/session/shadow.ts` | `sessionEventCoverageIsPartial`(+ 每会话缓存与 `resetSessionShadowCoverageCache`);历史断言与"触发消息更老"两处按 `legacyPartial` 跳过 |
+| `packages/onething-runtime/src/app/session/event-stats.ts` | `SessionShadowStats.skipped: Record<string, number>` |
+| `scripts/session-shadow-report.mjs` | 读并打印 `skipped`(不进门) |
+| `packages/core/session/__tests__/projection-contract.test.ts` | A 线按引擎的落点规则分流;"带 reasoning" 加断 contentParts;新增场景 `reasoning has two landing spots` |
+| `packages/onething-runtime/src/app/session/__tests__/shadow.test.ts` | 新增两组:真机形状的两落点 run(class 2)、老会话的跳过/不跳过三条(class 1) |
+---
+
 ## 11. S2 规格(2026-08-20):读切换(分两半;前半不改默认行为)
 
 S1a/S1b 已提交(be0a7cb9 / 5a7b875b),真机影子门绿。S2 把读路径建到事件上。**按用户要求夜间只做 S2a**:一切在开关之后,默认仍读 `messages.jsonl`;切默认与真实 store 迁移(S2b)等用户拍。

@@ -225,6 +225,53 @@ export const resetSessionShadowCache = resetSessionProjectionCache
 /** 仅测试:直接看某条会话的活投影(不推进)。 */
 export const peekSessionShadowProjection = peekSessionProjection
 
+// ============ 事件覆盖面(老会话的豁免) ============
+
+/**
+ * 这条会话的 `events.jsonl` **覆盖不全**吗?
+ *
+ * S1a 之前就存在的会话,事件日志是从升级那一刻才开始写的 —— 它只覆盖了历史的
+ * 一段尾巴。对这种会话跑历史断言,比出来的永远是"事实 101 条 / 投影 1 条",
+ * 那不是投影错了,是**没有可比的东西**(真机第一天 12 次不等里有 10 次是它,
+ * 见 §10.9)。
+ *
+ * 判据是**消息侧有、事件侧不认识的 id**:messages.jsonl 里那些消息,投影的
+ * `byMessageId` 一个都不该少。少了就说明前面那段历史没有对应的事件。
+ * (比"第一条事件是不是 `session/created`"更直接:后者只认得出"从中间开始",
+ * 认不出"中间掉了一段"。)
+ *
+ * 判定**每会话只做一次并缓存 `true`**:事件只增不减,一条会话一旦是"覆盖不全"
+ * 就永远是。判成完整的则每次重算 —— 那正是这道断言要盯的东西,不能缓存掉。
+ */
+const legacyPartialSessions = new Set<string>()
+
+export function sessionEventCoverageIsPartial(
+  sessionId: string,
+  state: { byMessageId: Map<string, unknown> },
+): boolean {
+  if (legacyPartialSessions.has(sessionId)) return true
+  const { messages } = sessionReads.listMessages(sessionId)
+  for (const message of messages) {
+    if (!state.byMessageId.has(message.id)) {
+      legacyPartialSessions.add(sessionId)
+      return true
+    }
+  }
+  return false
+}
+
+/** 会话删除 / 测试:忘掉"覆盖不全"的判定。 */
+export function resetSessionShadowCoverageCache(sessionId?: string): void {
+  if (sessionId) legacyPartialSessions.delete(sessionId)
+  else legacyPartialSessions.clear()
+}
+
+/** 一次跳过:只记账,不进 `mismatches`(门不受影响)。 */
+function countSkip(reason: 'legacyPartial'): 'skipped' {
+  bumpSessionShadowStats({ skipped: { [reason]: 1 } })
+  return 'skipped'
+}
+
 // ============ run 断言(kind: 'messages') ============
 
 export interface SessionRunShadowInput {
@@ -268,6 +315,15 @@ export function checkSessionRunShadow(
       message => selected.has(message.id) || message.runId === input.runId,
     )
     for (const message of actual) selected.add(message.id)
+
+    // run 断言在老会话上照常跑 —— 这个 run 自己的消息**是**事件覆盖的。
+    // 唯一的例外是触发消息比事件还老(对一条老消息 retry / edit-resend):
+    // 事实侧有它、投影侧没有,比出来是"少一条"而不是"投影错了"。
+    if (input.triggerMessageId
+      && !state.byMessageId.has(input.triggerMessageId)
+      && actual.some(message => message.id === input.triggerMessageId)) {
+      return countSkip('legacyPartial')
+    }
 
     const projected = state.nodes.filter(node => {
       if (node.hidden) return false
@@ -343,6 +399,8 @@ export function checkSessionHistoryShadow(
   try {
     const state = getLiveSessionProjection(sessionId)
     if (state.nodes.length === 0) return 'skipped'
+    // 老会话的事件只覆盖了历史的尾巴 —— 迁移之前这道断言对它没有意义。
+    if (sessionEventCoverageIsPartial(sessionId, state)) return countSkip('legacyPartial')
 
     const projected = materializeModelHistory(state, input.meta ?? {}, {
       ...(input.build ?? {}),

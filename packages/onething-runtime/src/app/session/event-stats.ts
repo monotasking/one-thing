@@ -32,11 +32,20 @@ export interface SessionShadowStats {
   mismatches: number
   /** 按断言种类拆的不等计数(`messages` / `history`)。 */
   byKind: Record<string, number>
+  /**
+   * 按原因拆的**跳过**计数。跳过 ≠ 不等:门只看 `mismatches`,这里只是让
+   * "为什么这条会话没被比"看得见。
+   *
+   * - `legacyPartial` —— 会话的 `events.jsonl` 只覆盖了历史的一段尾巴(S1a
+   *   之前就存在的老会话),投影里根本没有前面那些消息,比出来的必然是
+   *   "少了 100 条"而不是"投影错了"。迁移之前这类会话不进历史断言(§10.9)。
+   */
+  skipped: Record<string, number>
   lastMismatchAt?: number
   updatedAt?: number
 }
 
-const EMPTY: SessionShadowStats = { appendFailures: 0, runs: 0, mismatches: 0, byKind: {} }
+const EMPTY: SessionShadowStats = { appendFailures: 0, runs: 0, mismatches: 0, byKind: {}, skipped: {} }
 const WRITE_THROTTLE_MS = 1000
 
 let cached: SessionShadowStats | undefined
@@ -57,10 +66,11 @@ function load(): SessionShadowStats {
       runs: Number(parsed.runs) || 0,
       mismatches: Number(parsed.mismatches) || 0,
       byKind: normalizeByKind(parsed.byKind),
+      skipped: normalizeByKind(parsed.skipped),
       ...(Number(parsed.lastMismatchAt) ? { lastMismatchAt: Number(parsed.lastMismatchAt) } : {}),
     }
   } catch {
-    cached = { ...EMPTY, byKind: {} }
+    cached = { ...EMPTY, byKind: {}, skipped: {} }
   }
   return cached
 }
@@ -104,7 +114,7 @@ function normalizeByKind(value: unknown): Record<string, number> {
 
 export function readSessionShadowStats(): SessionShadowStats {
   const stats = load()
-  return { ...stats, byKind: { ...stats.byKind } }
+  return { ...stats, byKind: { ...stats.byKind }, skipped: { ...stats.skipped } }
 }
 
 export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void {
@@ -119,6 +129,12 @@ export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void
     for (const [kind, count] of Object.entries(patch.byKind)) {
       if (!count) continue
       stats.byKind[kind] = (stats.byKind[kind] ?? 0) + count
+    }
+  }
+  if (patch.skipped) {
+    for (const [reason, count] of Object.entries(patch.skipped)) {
+      if (!count) continue
+      stats.skipped[reason] = (stats.skipped[reason] ?? 0) + count
     }
   }
   scheduleWrite()

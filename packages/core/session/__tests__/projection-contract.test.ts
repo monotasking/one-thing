@@ -291,13 +291,23 @@ function applyTurnCommands(line: CommandLine, turn: TurnSpec, timeline: TurnTime
     const slot = timeline.requests[index]
 
     if (request.reasoning !== undefined) {
-      reasoning += request.reasoning
-      line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { reasoning } as never, hint: 'stream' })
-      line.run({
-        type: 'appendContentPart',
-        messageId: turn.messageId,
-        part: { type: 'reasoning', content: request.reasoning, turnIndex },
-      })
+      // 引擎的落点规则(`core/engine/agent-loop-executor.ts` 的
+      // `getAgentLoopReasoningPlacement`):第 1 轮请求开头、此前没产出过正文/
+      // 工具调用的那一段是 `'top'` —— `updateMessageReasoning` 写**字段**,不进
+      // contentParts;其余一律 `'inline'` —— `appendOrderedPart` 写 contentParts,
+      // 字段不再动。A 线必须照抄这条,不然它和投影一起错、合同测试白跑
+      // (真机第一天正是这么漏过去的,§10.9)。
+      const placement = turnIndex === 1 && text.length === 0 && toolCalls.length === 0 ? 'top' : 'inline'
+      if (placement === 'top') {
+        reasoning += request.reasoning
+        line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { reasoning } as never, hint: 'stream' })
+      } else {
+        line.run({
+          type: 'appendContentPart',
+          messageId: turn.messageId,
+          part: { type: 'reasoning', content: request.reasoning, turnIndex },
+        })
+      }
     }
     if (request.text !== undefined) {
       text += request.text
@@ -750,7 +760,44 @@ describe('projection contract: command line ≡ event line', () => {
       outcome: 'completed',
     })
     expectEquivalent(scenario)
-    expect(projectChatMessages(scenario.b.events).messages[1].reasoning).toBe('thinking hard')
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    // 单轮:整段推理走 `'top'` —— 进字段,**不进** contentParts。
+    expect(message.reasoning).toBe('thinking hard')
+    expect(message.contentParts).toEqual([{ type: 'text', content: 'because', turnIndex: 1 }])
+  })
+
+  /**
+   * 真机第一天(§10.9)那两次 `kind:'messages'` 不等的最小复现:一次执行里推理
+   * 有**两个落点** —— 第 1 轮开头那段进 `message.reasoning` 字段,工具回来之后
+   * 第 2 轮那段进 `contentParts`。投影从前把两段都物化成 part,于是 part 整体
+   * 错位一格(事实 11 格 / 投影 12 格)。
+   */
+  it('reasoning has two landing spots: top goes to the field, post-tool reasoning goes inline', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'check it' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [
+        {
+          reasoning: 'let me think first',
+          text: 'looking',
+          tools: [{ callId: 'c1', name: 'read', args: { path: '/a' }, resultText: 'body', outcome: 'ok' }],
+        },
+        { reasoning: 'now I know', text: ' done' },
+      ],
+      outcome: 'completed',
+    })
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    expect(message.reasoning).toBe('let me think first')
+    expect(message.contentParts).toEqual([
+      { type: 'text', content: 'looking', turnIndex: 1 },
+      { type: 'reasoning', content: 'now I know', turnIndex: 2 },
+      { type: 'text', content: ' done', turnIndex: 2 },
+    ])
+    // 正文本身不受落点影响:两轮 text 仍然按 partIndex fold。
+    expect(message.content).toBe('looking done')
   })
 
   it('two-request tool loop including a denied permission', () => {

@@ -12,6 +12,9 @@
  * `--min-runs` 只放宽第一条 —— 分批验证时用得着(S1b 自证跑的是 20)。另外两条
  * 不给开关:一次不等就是一次"S2 切读之后会看到另一段历史",没有"少量可接受"。
  *
+ * `skipped` 只打印、**不进门**:跳过的是"没有可比的东西"(如老会话事件只覆盖
+ * 历史尾巴 = `legacyPartial`),不是"比出来不等"。
+ *
  * store 的解析与产品代码同口径:`--store` → `ONETHING_STORE_PATH` → `~/.onething`。
  */
 import fs from 'node:fs'
@@ -46,11 +49,12 @@ export function readStats(logDir) {
       mismatches: Number(parsed.mismatches) || 0,
       appendFailures: Number(parsed.appendFailures) || 0,
       byKind: parsed.byKind && typeof parsed.byKind === 'object' ? parsed.byKind : {},
+      skipped: parsed.skipped && typeof parsed.skipped === 'object' ? parsed.skipped : {},
       lastMismatchAt: Number(parsed.lastMismatchAt) || undefined,
       updatedAt: Number(parsed.updatedAt) || undefined,
     }
   } catch {
-    return { runs: 0, mismatches: 0, appendFailures: 0, byKind: {}, missing: true }
+    return { runs: 0, mismatches: 0, appendFailures: 0, byKind: {}, skipped: {}, missing: true }
   }
 }
 
@@ -121,6 +125,9 @@ function main() {
     console.log(`[shadow] mismatches     : ${stats.mismatches}`)
     console.log(`[shadow] appendFailures : ${stats.appendFailures}`)
     console.log(`[shadow] byKind         : ${JSON.stringify(stats.byKind)}`)
+    // 跳过 ≠ 不等:门只看 mismatches。列出来是为了让"这条会话为什么没被比"看得见
+    // —— `legacyPartial` = 老会话的 events.jsonl 只覆盖了历史尾巴(§10.9)。
+    console.log(`[shadow] skipped        : ${JSON.stringify(stats.skipped)}`)
     if (stats.lastMismatchAt) {
       console.log(`[shadow] lastMismatchAt : ${new Date(stats.lastMismatchAt).toISOString()}`)
     }

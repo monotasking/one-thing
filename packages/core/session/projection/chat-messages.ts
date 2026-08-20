@@ -6,8 +6,11 @@
  * 而不必重跑整份日志。
  *
  * 派生规则(事件里没有的东西一律**派生**,不猜、不回填):
- *  - `content` / `reasoning` = 该 run 全部 text / reasoning part 的 fold(按 partIndex);
- *  - `contentParts` = 同一批 part 按 partIndex 排出来(`tool-input` 不进);
+ *  - `content` = 该 run 全部 text part 的 fold(按 partIndex);
+ *  - `reasoning` = **只有** `'top'` 那一段推理(turn 1 开头那串);其余推理段是
+ *    `contentParts` 里的 `reasoning` 格 —— 两个落点由引擎的
+ *    `getAgentLoopReasoningPlacement` 划分,投影按 `topReasoningPartIndexes` 复刻;
+ *  - `contentParts` = 同一批 part 按 partIndex 排出来(`tool-input` 与 top 推理不进);
  *  - `toolCalls` / `steps` = `tool/call|result|audit` 按到达序;
  *  - `usage` = 该 run 全部 `request/response.usage` 之和;
  *  - `isStreaming` = `run/start` 之后、`run/end` 之前(它不是事件字段,是状态);
@@ -25,6 +28,7 @@ import {
   materializePartText,
   materializeSteps,
   materializeToolCalls,
+  materializeTopReasoning,
   reduceSessionProjection,
 } from './reducer.js'
 import type { ProjectChatMessagesResult, ProjectedChatMessage } from './types.js'
@@ -101,7 +105,9 @@ function materializeAssistantNode(node: AssistantNode): ProjectedChatMessage {
   const toolCalls = [...materializeToolCalls(node), ...materializeOrphanToolCalls(node)]
   const steps = materializeSteps(node)
   const contentParts = materializeContentParts(node)
-  const reasoning = materializePartText(node, 'reasoning')
+  // `message.reasoning` 只装 `'top'` 那一段 —— 引擎的 `updateMessageReasoning`
+  // 只在 placement 是 'top' 时被调用,inline 的那些留在 contentParts 里。
+  const reasoning = materializeTopReasoning(node)
   const thinkingTime = deriveThinkingTime(node)
 
   return {
