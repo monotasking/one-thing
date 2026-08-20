@@ -56,7 +56,7 @@ function writeJsonFile(filePath: string, data: unknown): void {
   fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8')
 }
 
-function createRepository(sessionsDir: string) {
+function createRepository(sessionsDir: string, cacheSize?: number) {
   const storageDriver = createHybridSessionStorageDriver<TestSession>({
     getSessionsDir: () => sessionsDir,
     getLegacySessionPath: sessionId => path.join(sessionsDir, `${sessionId}.json`),
@@ -76,6 +76,7 @@ function createRepository(sessionsDir: string) {
     UserMessageMarker
   >({
     defaultAgentId: 'default-agent',
+    ...(cacheSize !== undefined ? { cacheSize } : {}),
     getSessionsDir: () => sessionsDir,
     getSessionPath: sessionId => path.join(sessionsDir, `${sessionId}.json`),
     readJsonFile,
@@ -214,5 +215,71 @@ describe('crash recovery via cold load', () => {
     expect(session?.messages[1].steps?.[0].status).toBe('completed')
     const after = fs.readFileSync(path.join(sessionsDir, 'clean', 'messages.jsonl'), 'utf-8')
     expect(after).toBe(before)
+  })
+
+  /**
+   * §13.7:真机 `5e4d2cea` 的两条 history 影子不等的病根。
+   *
+   * 崩溃修复修的是**上一个进程**的残留,而它从前挂在"每一次冷加载"上。LRU 默认
+   * 只有 10 条:一次活着的执行中途被挤出去,下一次 `getSession` 就把**正在跑的
+   * 那条消息**当成崩溃残留修了 —— `isStreaming` 被抹掉(那条消息从此进自己的
+   * 模型历史重建,而事件投影仍按 `run/start…run/end` 说它在流式,两侧从这一刻起
+   * 每次请求都不等)、正在执行的 step / toolCall 被改写成 cancelled,并且这一份
+   * 还被写回盘。消息形状取自那条会话(内容已洗)。
+   */
+  it('does not crash-repair a live session this process evicted mid-run (§13.7)', async () => {
+    const sessionsDir = createTempSessionsDir()
+    const repository = createRepository(sessionsDir, 2)
+
+    const live = repository.createSession('live', '正在跑的会话')
+    live.messages.push(
+      { id: 'u1', role: 'user', content: '写一个 skill', timestamp: 1 } as TestMessage,
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '',
+        timestamp: 2,
+        isStreaming: true,
+        toolCalls: [
+          { id: 'call_read_1', status: 'completed' },
+          { id: 'call_bash_2', status: 'executing' },
+        ],
+        steps: [
+          { title: 'Read site-inventory.md', status: 'completed' },
+          { title: 'Running: bash', status: 'running', toolCall: { status: 'executing' } },
+        ],
+      } as TestMessage,
+    )
+    repository.saveSessionToFile('live', live)
+    await repository.flushSessionSave('live')
+
+    // 同一个进程里挤掉它(cacheSize=2),再读回来 —— 引擎在真机上就是这样接着写的。
+    repository.createSession('other-a', 'a')
+    repository.createSession('other-b', 'b')
+    expect(repository.getSessionCacheStats().cachedSessionIds).not.toContain('live')
+
+    const reloaded = repository.getSession('live')
+    const assistant = reloaded?.messages.find(message => message.id === 'a1')
+    expect(assistant?.isStreaming).toBe(true)
+    expect(assistant?.toolCalls?.map(toolCall => toolCall.status)).toEqual(['completed', 'executing'])
+    expect(assistant?.steps?.map(step => step.status)).toEqual(['completed', 'running'])
+
+    // 盘上那一份也不该被改写(修复从前是连带 saveSession 一起落盘的)。
+    await repository.flushSessionSave('live')
+    const raw = createRepository(sessionsDir).getSessionRaw('live')
+    expect(raw?.messages.find(message => message.id === 'a1')?.isStreaming).toBe(true)
+  })
+
+  it('still repairs on the first touch, even if the previous process wrote the file', async () => {
+    const sessionsDir = createTempSessionsDir()
+    const now = Date.now()
+    const seeder = createRepository(sessionsDir)
+    seeder.saveSessionToFile('crashed', makeCrashedSession(now))
+    await seeder.flushSessionSave('crashed')
+
+    // 新进程 = 新仓库实例:第一次接手照旧修(上面那条豁免只认"本进程接手过")。
+    const assistant = createRepository(sessionsDir).getSession('crashed')?.messages[1]
+    expect(assistant?.isStreaming).toBe(false)
+    expect(assistant?.toolCalls?.map(toolCall => toolCall.status)).toEqual(['cancelled', 'cancelled'])
   })
 })

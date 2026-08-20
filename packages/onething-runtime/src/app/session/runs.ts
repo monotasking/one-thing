@@ -93,6 +93,18 @@ export interface SessionRunHandle {
    */
   pendingOutcome?: EndSessionRunInput['outcome']
   pendingError?: unknown
+  /**
+   * 这**同一次执行**在轮换之前用过的 runId(steering:`rotateSessionRun`)。
+   *
+   * 收尾的调用方(`executeMessageStream` / resume 入口)记着的是**进门时**那个
+   * runId,而 steering 在执行中途把 run 换掉了。`endSessionRun` 的归属判据只认
+   * `handle.runId === runId` 时,收尾那一下就会被当成"别人的 run"直接返回 ——
+   * 于是 steer run 一直挂着,直到下一条用户消息进 `beginSessionRun` 被当成
+   * 陈旧 run 按 `interrupted` 结掉(真机 `5e4d2cea` 的 d55cf1bd:13:53:50 正常
+   * 收流,run/end 却是 13:56:03 的 interrupted,投影因此扣掉整条消息的 usage,
+   * §13.7)。轮换是"同一次执行换了消息锚点",所以旧 id 仍然是这次执行的凭据。
+   */
+  continuedRunIds: Set<string>
 }
 
 /** 会话 → 当前执行。一个会话同一时刻只有一次执行(引擎的 activeStreams 保证)。 */
@@ -140,6 +152,7 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
     assistantMessageId: input.assistantMessageId,
     kind: input.kind,
     partCounter: 0,
+    continuedRunIds: new Set<string>(),
     ...(input.triggerMessageId ? { triggerMessageId: input.triggerMessageId } : {}),
     ...(startSeq !== undefined ? { startSeq } : {}),
   }
@@ -183,7 +196,9 @@ export function endSessionRun(
 ): void {
   const handle = currentRuns.get(sessionId)
   if (!handle) return
-  if (runId !== undefined && handle.runId !== runId) return
+  // 归属判据 = "这次执行的 run",不是"这一个 runId":steering 轮换之后当前 run 是
+  // 新的那一条,而收尾的人手里还是进门时那个 id(见 `continuedRunIds`)。
+  if (runId !== undefined && handle.runId !== runId && !handle.continuedRunIds.has(runId)) return
   // F13(§13.2):清账之后再落盘的东西**不会**因此丢账 —— 记录器攒的每一批
   // delta / 每一段 part 都在**开它的时候**就记下了自己的 runId
   // (`ChunkBatch.runId` / `PartState.runId`),不再落盘时现取"当前是哪次执行"。
@@ -279,10 +294,17 @@ export function rotateSessionRun(
 ): SessionRunHandle {
   const previous = currentRuns.get(sessionId)
   if (previous) endSessionRun(sessionId, previous.runId, { outcome: 'completed' })
-  return beginSessionRun(sessionId, {
+  const handle = beginSessionRun(sessionId, {
     ...input,
     ...(previous ? { continuesRunId: previous.runId } : {}),
   })
+  // 轮换只换消息锚点,执行还是同一次 —— 旧 id 从此也是这条 handle 的凭据,
+  // 否则执行收尾时按进门那个 id 找不到自己(见 `continuedRunIds`)。
+  if (previous) {
+    for (const id of previous.continuedRunIds) handle.continuedRunIds.add(id)
+    handle.continuedRunIds.add(previous.runId)
+  }
+  return handle
 }
 
 /** 仅测试 / 会话删除。 */

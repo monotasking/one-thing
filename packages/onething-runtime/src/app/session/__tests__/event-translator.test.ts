@@ -47,7 +47,7 @@ const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCach
   '../event-log.js'
 )
 const { resetSessionSurfaceCache } = await import('../event-surface.js')
-const { beginSessionRun, endSessionRun, resetSessionRuns } = await import('../runs.js')
+const { beginSessionRun, endSessionRun, rotateSessionRun, resetSessionRuns } = await import('../runs.js')
 const { resetSessionEventStatsCache } = await import('../event-stats.js')
 
 const SESSION = 's1'
@@ -297,5 +297,65 @@ describe('command → event translation (§9.3)', () => {
   it('writes nothing at all for a session that is not on the event ledger', async () => {
     sessionEventTranslator.appendMessage('legacy-session', userMessage('u1'))
     expect(fs.existsSync(path.join(state.sessionsDir, 'legacy-session'))).toBe(false)
+  })
+})
+
+/**
+ * §13.7:steering 轮换之后,**这次执行**必须还收得掉自己的 run。
+ *
+ * 收尾的人(`executeMessageStream` 的 finally / resume 入口)手里记着的是进门时
+ * 那个 runId,而轮换在执行中途换了一条。归属判据只认 `handle.runId === runId` 时,
+ * 那一下直接返回:steer run 一直挂着,直到下一条用户消息进 `beginSessionRun` 被
+ * 当成陈旧 run 按 `interrupted` 结掉 —— 真机 `5e4d2cea` 的 d55cf1bd 就是这样:
+ * 13:53:50 正常收流(finishReason `stop`、引擎照常写了整次执行的 usage),
+ * `run/end` 却是两分钟后那条用户消息带来的 `interrupted`,于是投影按
+ * "completed 才计 usage" 扣掉了那条消息的用量(kind:messages 的 `0.usage` 不等)。
+ */
+describe('run 生命周期:steering 轮换与收尾归属(§13.7)', () => {
+  it('closes the rotated run — with the runId the execution walked in with', async () => {
+    const first = beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
+    const steered = rotateSessionRun(SESSION, { kind: 'steer', assistantMessageId: 'a2' })
+    expect(steered.runId).not.toBe(first.runId)
+
+    // 执行收尾:手里还是 `first.runId`(轮换是引擎内部的事,收尾的人不知道)。
+    endSessionRun(SESSION, first.runId, { outcome: 'completed' })
+
+    const ends = (await events()).filter(event => event.type === 'run/end')
+    expect(ends.map(event => [event.data.runId, event.data.outcome])).toEqual([
+      [first.runId, 'completed'],
+      [steered.runId, 'completed'],
+    ])
+
+    // 而且下一次执行开张时,账本上没有留一条被当成"陈旧 run"的 interrupted。
+    beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a3' })
+    const outcomes = (await events())
+      .filter(event => event.type === 'run/end')
+      .map(event => event.data.outcome)
+    expect(outcomes).toEqual(['completed', 'completed'])
+  })
+
+  it('a worse outcome still wins after a rotation', async () => {
+    const first = beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
+    const steered = rotateSessionRun(SESSION, { kind: 'steer', assistantMessageId: 'a2' })
+    endSessionRun(SESSION, first.runId, { outcome: 'aborted' })
+    const ends = (await events()).filter(event => event.type === 'run/end')
+    expect(ends.map(event => [event.data.runId, event.data.outcome])).toEqual([
+      [first.runId, 'completed'],
+      [steered.runId, 'aborted'],
+    ])
+  })
+
+  it('still refuses to close a run that belongs to another execution', async () => {
+    const first = beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
+    endSessionRun(SESSION, first.runId, { outcome: 'completed' })
+    const second = beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a2' })
+
+    // 迟到的一句"我收 first" 不该把别人的 run 收掉(轮换的凭据不跨执行传递)。
+    endSessionRun(SESSION, first.runId, { outcome: 'completed' })
+    const ends = (await events()).filter(event => event.type === 'run/end')
+    expect(ends.map(event => event.data.runId)).toEqual([first.runId])
+
+    endSessionRun(SESSION, second.runId, { outcome: 'completed' })
+    expect((await events()).filter(event => event.type === 'run/end')).toHaveLength(2)
   })
 })

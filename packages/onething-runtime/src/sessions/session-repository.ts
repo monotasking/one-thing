@@ -143,6 +143,13 @@ export class OnethingSessionRepository<
   private readonly pendingWritePlans = new Map<string, SessionWritePlan>()
   /** 已删除但文件清理仍在排队的会话:读路径的同步屏障,防止从盘上复活 */
   private readonly deletionTombstones = new Set<string>()
+  /**
+   * 这个进程已经接手过的会话(读过一次 or 写过一次)。
+   *
+   * 崩溃收尾修复的唯一判据 —— 见 `repairOnFirstTouch`。只存 id,随触碰过的会话数
+   * 增长(几百条 uuid 字符串的量级),删除会话时释放。
+   */
+  private readonly processOwnedSessions = new Set<string>()
 
   constructor(private readonly options: OnethingSessionRepositoryOptions<TSession, TMessage, TMeta, TDetails, TMarker>) {
     this.sessionCache = new LRUCache<string, TSession>(options.cacheSize ?? 10)
@@ -190,6 +197,8 @@ export class OnethingSessionRepository<
     options?: { lazy?: boolean; plan?: SessionWritePlan },
   ): void {
     this.sessionCache.set(sessionId, session)
+    // 本进程写过 = 本进程接手过:此后冷加载回来的都不是崩溃残留(见 `repairOnFirstTouch`)。
+    this.processOwnedSessions.add(sessionId)
     // 保留强引用,直至该写入成功落盘(见 getLatest / write 回调),防止淘汰后丢写。
     this.pendingSessionValues.set(sessionId, session)
     this.mergePendingWritePlan(sessionId, options?.plan ?? STRUCTURAL_WRITE_PLAN)
@@ -247,6 +256,8 @@ export class OnethingSessionRepository<
 
   clearAllSessionCache(): void {
     this.sessionCache.clear()
+    // "全部忘掉"包括"这个进程接手过谁":下一次读又是第一次接手(测试 / 换 store)。
+    this.processOwnedSessions.clear()
   }
 
   getCachedSession(sessionId: string): TSession | undefined {
@@ -593,9 +604,33 @@ export class OnethingSessionRepository<
       saveSession: (id, session) => this.saveSessionToFile(id, session),
       syncSession: session => this.syncSessionToSqliteIfReady(session),
       // 启动不再全量扫描;冷加载时做完整修复(含中断的 step/toolCall),替代原 sanitizeAllSessionsOnStartup。
-      sanitizeSession: session => sanitizeSessionOnStartup(session),
+      sanitizeSession: session => this.repairOnFirstTouch(sessionId, session),
       expandPath: this.options.expandPath,
     }).session
+  }
+
+  /**
+   * 崩溃收尾修复**只对这个进程第一次接手的会话**做一次。
+   *
+   * 它修的是"上一个进程没收尾的残留"(`isStreaming` 挂着、step/toolCall 停在
+   * running/pending)。这类残留只可能出现在**本进程第一次**读到这条会话的那一刻:
+   * 此后盘上写的每一个字节都是本进程自己写的。
+   *
+   * 从前没有这个条件,于是 LRU(默认 10 条)在一次**活着的执行**中途把这条会话
+   * 淘汰掉、下一次 `getSession` 冷加载回来时,修复就落在了**正在跑的那条消息**上:
+   * `isStreaming` 被抹掉(于是它开始进自己的模型历史重建 —— 2026-08-20 真机
+   * `5e4d2cea` 的两条 history 影子不等就是这么来的,§13.7)、正在执行的 step 与
+   * toolCall 被当成"被打断"改写成 cancelled,而且这一份还被 `saveSession` 写回盘。
+   *
+   * 判据用"接手过没有"而不是"有没有活跃 run":读侧不该为了这件事去认识引擎,
+   * 而且这条更宽 —— 一条本进程写过的会话,任何时候再被冷加载回来都不该被当成
+   * 崩溃残留。写路径(`saveSessionToFile`)也记账,因为新建 / 只写过没读过的
+   * 会话同样是本进程的。
+   */
+  private repairOnFirstTouch(sessionId: string, session: TSession): TSession | undefined {
+    if (this.processOwnedSessions.has(sessionId)) return undefined
+    this.processOwnedSessions.add(sessionId)
+    return sanitizeSessionOnStartup(session)
   }
 
   createSession(sessionId: string, name: string, options: { workspaceId?: string } = {}): TSession {
@@ -660,6 +695,7 @@ export class OnethingSessionRepository<
       // 否则 rm 目录会与正在落盘的 meta/log 写入竞态(ENOTEMPTY);
       // tombstone 保证清理完成前读路径不会把会话从盘上复活。
       deleteSessionFile: id => {
+        this.processOwnedSessions.delete(id)
         this.deletionTombstones.add(id)
         void this.sessionSaveQueue.runExclusive(id, () => {
           if (this.options.storageDriver) {

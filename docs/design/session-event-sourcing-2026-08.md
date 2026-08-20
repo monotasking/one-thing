@@ -1965,3 +1965,120 @@ core 的 `computeInterruptedStepRepair` / `computeInterruptedToolCallRepair`、
 
 **剩下的 §13 项**:F9 第二半(recipe 采集形状)、孤儿 × MCP 的工具身份归一、
 以及 S2b 名下的那几项(切读、迁移 apply、W-A/W-E)。A/F 两系的其余全部收口。
+
+### 13.7 真机第五批(2026-08-20 深夜):三条**修完之后**新长出来的不等
+
+背景与前四批都不同:桌面在 21:48 起来(HEAD `fd351702`,P/Q1/Q2+R 全在里面),
+21:49 之后 `session-shadow.jsonl` 又长了三行 —— 全在 `5e4d2cea`。所以这三条不是
+"旧文件的历史残余",是**今天的代码在今天的执行上**记下的。
+
+诊断法与 §13 同一条:不猜,把那条会话拷到临时目录只读回放
+(`foldSessionProjection` + 宿主配方 `historyProjectionRecipe`),
+拿投影与账本逐字节对。
+
+#### 0 号发现:影子**没有**跳过,而且它跳得对
+
+报告里 `skipped: {}`,第一反应是 P 批把 `sessionEventCoverageIsPartial` 改坏了。
+不是:这条会话的 `events.jsonl` 从 `seq 1 = session/created` 开始,41 条消息
+**一条不缺**地在 `state.byMessageId` 里(回放实测 missing = 0)。它不是混合覆盖
+会话 —— `legacyPartial` 沉默是因为**没有可豁免的东西**,三条不等全是真的。
+
+#### 第一/二条(kind:history,run `b1e3c4d9`):投影少了整整一条助手消息
+
+现象:A 187 条 / B 181 条,缺的 6 条正是这个 run 自己那条助手消息
+(`d4b669fa`)按回合拆出来的 assistant/tool 段;而它后面那条 steering 用户消息
+两边都在。**判据是字节级的**:把投影那条消息的 `isStreaming` 摘掉再物化,
+长度与每一格的字节数逐一对上影子日志记下的 A(184/187 条,
+230 / 7952 / 2072 / 8217 / 10307 / 4519 / 59)—— 两侧唯一的差别就是这一格。
+
+- 投影侧:`chat-messages.ts:170` —— `run/start`…`run/end` 之间的助手节点带
+  `isStreaming: true`,而 `buildHistoryMessages`(`core/engine/history.ts:812`)
+  **跳过 isStreaming 的消息**。投影说的是实话:那次执行当时确实还在跑。
+- 抄本侧:那条消息**当时已经不是 streaming 了**。全仓能在 run 中途清掉这一格的
+  只有一条路 —— `session-repository.ts` 的 `getSession()` 冷加载修复:
+  LRU 默认 10 条(`cacheSize ?? 10`),一次活着的执行中途被挤出去,下一次
+  `getSession` 从盘上读回来时 `sanitizeSessionOnStartup` 把**正在跑的那条消息**
+  当成上一个进程的崩溃残留修了(清 `isStreaming`、把 running/pending 的
+  step / toolCall 改写成 cancelled),而且 `loadSessionWithAdapters` 还会把这一份
+  `saveSession` 写回盘。真机现场吻合:那一分钟里(turn 2 请求 13:49:26 与 turn 3
+  请求 13:49:42 之间)设置窗口刚被打开(app.jsonl 13:49:29/30 有它的 renderer 引导),
+  而 turn 2 的那次请求两侧还是相等的 —— 分岔正好发生在这中间。
+
+**裁定:修引擎(§10.10 那条规矩的又一次应用)。** 投影没有说谎,是那条修复落错了
+对象。影子只是最先看见它的人:同一次误修还会让"停止"找不到那条流式消息
+(`stream-abort.ts` 按 `find(m => m.isStreaming)` 定位)、让正在执行的工具在 UI 上
+变成 cancelled、让半条助手消息进入任何一次历史重建。
+
+**修法**:崩溃修复只在**这个进程第一次接手**这条会话时做一次
+(`session-repository.ts` 的 `repairOnFirstTouch` + `processOwnedSessions`)。
+判据用"接手过没有"而不是"有没有活跃 run":读侧不该为了这件事去认识引擎,
+而且这条更宽 —— 本进程写过的会话,任何时候再冷加载回来都不是崩溃残留。
+写路径(`saveSessionToFile`)也记账(新建 / 只写过没读过的会话同样是本进程的),
+`clearAllSessionCache` 清空、删除会话时释放。
+
+#### 第三条(kind:messages,run `d55cf1bd`):steer run 的 `usage` 被扣掉
+
+现象:A 的助手消息带 `usage {cacheRead 1588480 / input 1617045 / output 16284 /
+total 1633329}`,B 没有。B 没有是**对的推理配上错的账本**:投影只在
+`outcome === 'completed'` 时给 usage(`chat-messages.ts:165`),而账本上这条 run
+写着 `interrupted`。
+
+账本为什么是 `interrupted`:那次执行 13:53:50 以 `finishReason: 'stop'` 正常收流
+(引擎照常写了整次执行的 usage),但 `run/end` 是 **13:56:03** 才出现的,由下一条
+用户消息进 `beginSessionRun` 时按"陈旧 run"补的(`runs.ts:126`)。根因在收尾的
+归属判据:`executeMessageStream` 的 finally 拿的是**进门时**那个 runId
+(`stream-executor.ts:196`),而 steering 在执行中途 `rotateSessionRun` 换了一条;
+`endSessionRun` 只认 `handle.runId === runId`,于是那一下直接 return —— 这次执行
+**从来没有收掉自己的 run**。
+
+**修法**(`runs.ts`):`SessionRunHandle` 记住这次执行轮换之前用过的 runId
+(`continuedRunIds`,`rotateSessionRun` 传承),`endSessionRun` 的归属判据改成
+"**这次执行的 run**"而不是"这一个 runId"。跨执行不传递:一次迟到的收尾仍然收不掉
+别人的 run(用例钉着)。
+
+**只读回放实证**(文件原字节,§10.16):把那条 run 的 `run/end.outcome` 换成修好
+之后会写的 `completed` 再跑一次 run 断言 —— `equal: true`;不换就是影子日志上那条
+`0.usage`。usage 的数字也对得上:`b1e3c4d9` + `d55cf1bd` 两条 run 的
+`request/response.usage` 求和 = 消息上那一份,一个 token 不差。
+
+#### 机器测试为什么又没拦住(§10.17 的同一个问题,这次答案更难看)
+
+`sessions:shadow-battery` 里**有** steering 场景,而且一直是绿的 —— 因为
+**bug 自己把能抓到它的那道断言关掉了**:run 断言排在 `endSessionRun` 里,而这个
+bug 的症状恰恰是那条 run 永远没有收尾。实测:同一套电池,修之前
+`runs = 216`,修之后 `runs = 234` —— **18 次 run 断言从来没跑过**(而且补跑之后
+全绿)。教训记在这里:一个"永远不发生的收尾"在计数上表现为"少了 18 次比对",
+而门只看 `runs ≥ 200` 与 `mismatches = 0`,两个数都没喊。
+
+#### 门(全部实跑)
+
+`typecheck` 3 条老红(provider-dials);`ONETHING_SESSION_FREEZE=1 bun run test`
+1142 文件通过 / 2 条老红(`ui-token-vars` ×2)+ AIProviderTab 老 flake;
+`session:gate` 0 / `boundary:gate` 13 / `log:gate` 4 / `lint:ci` 335 —— 全部无新增;
+`sessions:shadow-battery` **GREEN**(234 runs / 351 historyChecks / 0 mismatch)。
+
+`sessions:verify:gate` 的基线**加了一行**(`5e4d2cea` 的 `2bf9d289`):它是
+**修复前的代码**昨晚写死在盘上的那条 `interrupted`,与既有的 `03e1006d`
+(§10.16 那条 prepare 补的)同类不同产地。修好之后不再新增。
+
+#### 回归用例(逐条做过反证)
+
+| 用例 | 改回旧写法 |
+|---|---|
+| `crash-recovery.test.ts`:`does not crash-repair a live session this process evicted mid-run` | 修复恒真 → 当场红(`isStreaming` 被抹) |
+| `crash-recovery.test.ts`:`still repairs on the first touch…` | 保底:新进程第一次接手照旧修 |
+| `event-translator.test.ts`:`closes the rotated run — with the runId the execution walked in with` | 归属判据只认 runId → 红(账本上只剩一条 `run/end`,下一次开张补一条 `interrupted`) |
+| `event-translator.test.ts`:`a worse outcome still wins after a rotation` | 同上 → 红 |
+| `event-translator.test.ts`:`still refuses to close another execution's run` | 守住旧保证(轮换的凭据不跨执行) |
+
+#### 明确没做的
+
+1. **冷加载本身的"陈旧读"**:被淘汰的活会话再读回来,读到的是盘上那一份 ——
+   300ms 节流窗口内还没落盘的写入不在里面(`pendingSessionValues` 只兜底
+   `getLatest`,没接读路径)。这次只堵住了"把活的当死的修",没有堵住"读回来的
+   可能比内存里旧"。归 LRU/丢写那条老线(07-11 审计)。
+2. **两写者**:另一个进程崩在流式中途、而本进程已经接手过这条会话时,这一格
+   `isStreaming` 要等下次启动才被清掉。两写者本来就是已知的接受风险区间。
+3. **F9 第二半**不变:history 断言的 A 侧从第 2 轮起是一次**重建**,不是当时真正
+   发出去的字节 —— 这三条不等说明的是"投影与抄本的重建不一致",不是"模型看到了
+   另一段历史"。
