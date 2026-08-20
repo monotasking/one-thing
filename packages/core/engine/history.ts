@@ -154,6 +154,14 @@ export interface CoreBuildHistoryMessagesOptions<
 	 * 小载荷下两条路逐字相同,真机大结果才分叉。这个选项就是把它还回来。
 	 */
 	forceCompactedToolResults?: boolean;
+	/**
+	 * F1(session-event-sourcing §13.2):`providerData` 只取**最后一条**保留消息。
+	 *
+	 * 与 `forceCompactedToolResults` 同一条来路:摘要分支里那条 last-only 规则
+	 * 在事件溯源的 surface 路径上没了来源(那条路走的是非摘要分支)。缺省 false
+	 * = 今天非摘要分支的行为一个字不变。
+	 */
+	providerDataLastMessageOnly?: boolean;
 }
 
 function capLongStringForAI(value: string): string {
@@ -769,10 +777,26 @@ export function buildHistoryMessages<
 
 	const result: CoreHistoryMessage[] = [];
 	const useCompactedToolResults = options.forceCompactedToolResults === true;
+	// F1(session-event-sourcing §13.2):压缩之后 providerData 只取**最后一条**
+	// 保留消息 —— 上面那条摘要分支里写死的规则
+	// (`message === recentMessages[recentMessages.length - 1]`)。
+	//
+	// 这条分支平时逐条求值,两者一直不同而没人发现,是因为在 A1 补上采集点之前
+	// 事件侧根本没有 provider-data 的生产者。投影在压缩之后走的正是这条分支
+	// (摘要切点已经由 surface 表达,`session` 传 undefined),所以它必须能表达
+	// 同一条规则,否则 codex/claude 的加密推理会被重复发 N 份。
+	//
+	// 判据与摘要分支逐字相同:比的是**数组最后一个元素**,不是"最后一条被采纳的
+	// 消息" —— 末尾那条若被角色过滤或 isStreaming 挡掉,那一轮就一条都不带。
+	const providerDataLastOnly = options.providerDataLastMessageOnly === true;
+	const lastMessage = messages[messages.length - 1];
 	for (const message of messages) {
 		if (message.role !== "user" && message.role !== "assistant") continue;
 		if (message.isStreaming) continue;
-		const providerData = getHistoryProviderData(message, options);
+		const providerData =
+			providerDataLastOnly && message !== lastMessage
+				? []
+				: getHistoryProviderData(message, options);
 		if (!hasHistoryMessageContent(message, providerData)) continue;
 		appendHistoryMessage(
 			result,

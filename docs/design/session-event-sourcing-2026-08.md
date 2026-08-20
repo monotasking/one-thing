@@ -1621,3 +1621,202 @@ bun run sessions:shadow-battery --seed 7 --passes 3 --concurrency 2
 - **Q 批(日常必现的采集/投影缺口)**:A1+A13+A14(provider-data 词汇 + 分段对齐)、A2(图片闸回归)、A6+A7(工具身份归一进事件)、A8+A9(blob 回填,投影注入 resolver)、A5(truncateFrom 遮全段)、A4(agentId 贯通)、F2(hasCompacted 看 status)、F1(providerData last-only)。
 - **R 批(收口与约定)**:A10+F12-W-C(prepare/sanitize 单一口径——需拍板)、A12(permission join 出 awaiting 状态)、A11(可见性)、F3、F8、F13、F6(blob 缺失报错)、A3(图片 content 表示——需拍板:进 chunks 还是专用事件)、translator 五命令守卫、F4(合同改跑宿主配方)。
 - **S 批(裁定)**:F14 server 双写者——撤锁裁定与 S2b 前提冲突,选项:①迁移脚本+切读前置"无活 core 硬检查"(不复活常驻锁)②仅 events.jsonl 追加时文件锁 ③复活 server StoreLock。
+
+### 13.4 P 批落地记录(2026-08-20):判据先行
+
+**一句话**:这一批一行采集点都没动 —— 修的全是**尺子**。F11 之前那道门可以在读模式一切就变成"投影跟投影比",F9 让"200 个干净 run"读起来比实际覆盖面大一个数量级,F10a 承认了一类判等但 wire 不同字节的格,F5 让整份配方靠 spread 吊着命。四条都属于"门不真,其余修了也无从证明"。
+
+#### F11:真相侧强制走抄本(判据污染)
+
+- `sessionReads` 加了 **`listMessagesFromTranscript(sessionId)`**(`app/session/reads.ts`):永远 `getSessionMessages` → `messages.jsonl`,**故意不经过 `fromEvents`**。它不是 `listMessages` 的便利别名,注释里把理由和"改我之前先回答什么问题"逐条钉着。
+- 三个真相侧取数点改用它:`shadow.ts` 的 run 断言、`sessionEventCoverageIsPartial`(legacyPartial 判定)、`engine/stream/history-shadow.ts` 的历史断言输入。
+- **裁定:切读之后影子照跑**。这道比对的口径与"谁在给产品供数"无关,始终是**抄本 vs 投影**;S2b 之后它就是那本回头看的迁移账,而不是自动退役。`SessionHistoryShadowInput.actual` 的注释也照此改写(它不再敢自称"今天真正发出去的那一份")。
+- 门:新用例 `app/session/__tests__/shadow-read-mode.test.ts` —— 跑**真的** `reads.ts`(只替身最底下的会话仓库),把读模式钉在 `events` 上,让抄本与事件故意分岔。**回归实证**:把真相侧改回 `listMessages` 再跑,events 档当场 `expected 'match' to be 'mismatch'` —— 修之前它就是这么绿的。另外 `shadow.test.ts` 的 `reads.js` 替身里 `listMessages` 现在**直接抛**,谁把它接回去谁当场红。
+
+#### F9:统计口径(run 粒度 ≠ 请求粒度)
+
+- **历史断言仍然每次请求跑一遍**(那正是它的正确性所在:第 2 轮发出去的历史与第 1 轮不是同一份),但**同一个 run 里同一处不等只记一次**:指纹 = `kind` + 那份 ≤2KB 的字段级摘要,`shadow.ts` 里一个上限 200 个 run 的插入序 Map。折叠的是**重复**,不是不等 —— 同一个 run 里换一处不等照记。
+- 账单加两格(`event-stats.ts`):`historyChecks`(请求粒度,一个 run 可有十几次)与 `duplicateMismatches`(被折叠掉的重复数)。`runs` 的语义一字未改并复核过:只有 run 断言判等时 +1,由 `runs.ts` 在 `run/end` 之后排一次 —— **每个 run 一次**,没有通胀。
+- `scripts/session-shadow-report.mjs` 同步:两个新数只打印、**不进门**(门仍是 `runs ≥ 200 ∧ mismatches = 0 ∧ appendFailures = 0`),老账单缺这两格读成 0 而不是读崩。
+- **明确不在本批**:F9 的第二半 —— `request/recipe` 从第 2 轮起记的不是**实际发出的**那一份(agent-loop 的内存演进、瞬态尾块、steering 注入都不在它里面),于是 G10 的自证账只对第 1 轮严格成立。那是 recipe 采集形状本身的问题,归未来的 recipe 重设计,**不在 P 批**。
+
+#### F10a:wire 字节 vs 对象形状
+
+- 判等器对对象**排序键**,而工具结局与工具参数在 wire 上是整个被 `JSON.stringify` 成一串字节的(`JSON.stringify` 保留插入序)。于是存在一类"判等但不等价":影子绿,provider 拿到两段不同的前缀,prompt cache 全失效。
+- 一份实现,两个消费者:`stringifyToolResult` / `toolCallArguments` 从 `agent-loop/messages.ts` 的私有函数搬进新的 **`packages/core/agent-loop/wire-format.ts`**,`messages.ts` 改成 import(行为一字未改),`canonicalHistoryMessages` 用**同一把尺**把 `role:'tool'` 的 `content[].result` 与 assistant 的 `toolCalls[].args|arguments` 换成那一串再比。抄一份到判等器里等于埋一个"wire 改了而判据没跟上"的洞。
+- 其余一切照旧排序(它们在 wire 上是逐字段映射的,键序是拼装顺序的副产物)。`args` 与 `arguments` 两种写法归一到同一串 —— 它们本来就是同一件事。
+- 门:`packages/core/session/__tests__/canonical-history.test.ts` 6 例(键序不同 → 不等;逐字相同 → 相等;信封与 content part 的键序仍然忽略)。
+
+#### F5:类型洞
+
+- `SessionHistoryShadowInput.build` 的 `Pick` 补上 `prepareMessages` 与 `providerDataFromContentPart` —— 它们原来只是**顺着 spread 活下来的**。危险在于:按类型重构一次入参,那两格静默消失,而**两侧同时少了同一遍预处理时结果仍然相等**,门照绿。
+- 门:`app/session/__tests__/shadow-recipe-contract.test.ts` 双保险 —— 编译期 `recipe satisfies NonNullable<build>`(`bun run typecheck` 把关),运行期断言配方键集 = 类型认领的五格(将来长出第六格而类型没跟上,当场红)。
+
+#### 门(P 批实跑)
+
+`typecheck` 3 红全是既有的 `provider-dials`;`bunx vitest run app/session core/session` 21 文件 212 例全绿;全量 `ONETHING_SESSION_FREEZE=1 bun run test` = 1141/1145 文件绿,2 红全是既有的 `ui-token-vars` + 1 个既有的 `AIProviderTab` 悬挂拒绝;`session:gate` 0 / `boundary:gate` 13 / `log:gate` 4 均无新增;`lint:ci` 335(把 P 批全部改动 stash 掉再跑仍是 335 —— 差额来自同窗的 Q 批在途文件,P 批净增 0)。
+
+`bun run sessions:shadow-battery` **GREEN**,20 个场景全 PASS,并且第一次把 F9 的通胀量在真跑里摆了出来:
+
+```
+[shadow] runs           : 207   (run 粒度 —— 门只看它)
+[shadow] historyChecks  : 333   (请求粒度,一个 run 可有多次)
+[shadow] mismatches     : 0
+[shadow] duplicates     : 0   (同 run 同一处,已折叠)
+```
+
+207 个 run 对 333 次历史比对 —— 场景矩阵里多轮 run 只占一部分就已经是 1.6 倍;真机上多工具长 run 的比例更高,"200 个干净 run ≈ 比过 200 次"从来不成立。两个数从此各说各的。
+
+### 13.5 Q1 批落地记录(2026-08-20):日常必现的采集/投影缺口
+
+§13.3 的 Q 批做掉八项里的六组:A1+A13+A14、A2、A6+A7、A5、A4、F2、F1。
+(A8+A9 的 blob 回填不在本批。)每一项的规矩都是同两条:**引擎派生的字段只许调
+引擎那个函数**(§10.10),**新字段与读侧兜底成对交付**(§10.16)。
+
+#### 各项选了什么
+
+**A1+A13 —— provider-data 有了词汇,而且它是一条分段边界。**
+`SessionAssistantPartKind` 加一格 `'provider-data'`(同时抽出
+`SessionAssistantDeltaPartKind` = 有 delta 的那几种,`assistant/chunks` 只认它们),
+`assistant/part-end` 加一格 `providerData?: {text} | {blob}`。载荷与工具结局同一条
+64KB 线(`textOrBlobForEvent`)—— 真机 410 个会话实测 p50 1.2KB / p99 12KB /
+max 37KB / 超 64KB 的 0 条,所以 blob 那一支是上限保护而不是常态。
+
+采集点(`session-event-recorder.ts`)做两件事,少一件就错位:**先把正在攒的
+正文/推理段收了**(引擎的 `appendOrderedPart` 只合并相邻同类,一格 provider-data
+夹进去就把前后两段正文切成两格),**再占一个 partIndex**。
+"这一条会不会变成一格 part"由**引擎与采集点共用的一张表**回答 ——
+`planOnethingProviderDataPart`(`agent-loop/providers/provider-data.ts`),
+`applyOnethingAgentLoopProviderData` 自己也改用它,不是两处各判一遍。
+
+投影侧:`materializeContentParts` 物化成 `{type:'provider-data', providerData,
+turnIndex}`(与引擎逐字同形);`topReasoningPartIndexes` 遇到 provider-data
+**跳过而不是中断** —— 引擎判"可见产出"的那一行写着
+`orderedParts.some(part => part.type !== 'provider-data')`。
+
+**A14 —— codex 内联生图的正文:确认为真·未承载,已补。**
+`provider-data.ts:113-127` 那段 markdown 是引擎调 `handleTextChunk` **合成**的,
+provider 流里没有对应的 `text-delta`,`onEvent` 上一条都不会出现,所以采集点确实
+看不见它(不是"其实已经记了")。补法是一个回传口:
+`ApplyOnethingAgentLoopProviderDataOptions.onSynthesizedText` → 宿主
+(`app/engine/stream/agent-loop-executor.ts`)→ `recorder.recordSynthesizedText()`,
+走的是与 `text-delta` **同一条** `deltaInto('text')`,合并规则天然一致;
+回传的是**落定的那一份** `displayContent`,不是合成前的原文。
+不写 `assistant/first-token`(那一条记的是"模型第一次吐字",这段不是)。
+**已知残留**:这段合成正文产生在**消费 chunk 的那一刻**,而 recorder 挂在 onEvent
+上跑在队列前面 —— turn-end 若已经先到,这段会落进下一个 partIndex。正文的 fold
+永远是对的,part 边界在这一条路上不保证;修复前它整段不存在,现在最差是分段偏差。
+
+**A2 —— 图片 part 的闸:改成 kind 豁免,而不是给图片流补记一对 request 事件。**
+`isSettleExemptPartKind(kind) === 'image'`。理由写在 reducer 里:图片生成不是
+agent-loop 产的,它没有发生过"向模型发一次请求、收齐一次响应"那件事,补记一条就是
+往账本里写一件没发生的事,还会连带派生出引擎那边没有的 `firstRequestStartAt` /
+`thinkingTime`。`app/session/assistant-parts.ts` 的过时头注释同步改掉。
+
+**A6+A7 —— 工具身份归一进账本,一个判定点。**
+`tool/call` 加 `resolvedToolId?` / `displayName?`,值取自**引擎那一个函数**
+(`app/engine/stream/stream-processor.ts` 的 `resolveToolIdentity`,身后是别名表 +
+MCP 服务器名)。记录器不 import 它(那个函数身后挂着 MCP 管理器与整棵 store 树,
+会撑爆记录器的模块图,单测当场炸),而是走**注入端口**
+`SessionEventRecorderContext.resolveToolIdentity`,由宿主在 `attachSessionEventRecorder`
+那一处接上 —— 与 `onRequestRecipe` 同一条路数。参数解析用 agent-loop 自己的
+`safeParseAgentToolArguments`(引擎解出来的 args 正是它的产物,而 MCP 短名补全会看参数)。
+投影侧 `toolName = displayName ?? name`、`toolId = resolvedToolId ?? audit.toolId ?? name`,
+`steps[].type`(`getStepType`)因此自动跟着显示名走 —— 引擎读的就是 `toolCall.toolName`。
+`skillUsed` 不动:它的唯一判定点已经在引擎(§10.11 S3.1),事件只是记录那次宣告。
+
+**A5 —— 中段截断遮一整段。**
+`truncateFrom{inclusive:true}` 那条 `message/deleted` 早就带着覆盖整段的 replace 与
+`sourceEventSeqs`(翻译器一个字没改),错的是归约器只 hide 目标那一格。现在
+`hideEventCoveredNodes` 按事件的账本层字段隐藏整段(`sourceEventSeqs` 优先,退回
+[start,end])。**只给 `message/deleted` 用** —— 压缩带的也是一段 replace,但那是另一种
+"看不见"(被压掉的消息在 UI 上照旧显示),所以这段代码没有做成通用规则。
+
+**A4 —— agentId 从占位消息上取,不另立规则。**
+不在 `beginSessionRun` 里重写一遍"哪种会话才盖章":`session.agentId` 是**每条会话都有**
+的,照它盖章会让普通聊天的投影凭空多出一格;真正的事实是
+`stampCollabAgentId`(`stores/sessions.ts`)在 `addMessage` 那一刻按 room/work/agent
+三形态盖在**助手占位消息**上的那一格。所以三个 run 入口各自把它递进来 —— 与
+`timestamp` / `origin` 完全同一条路数,而且那两格本来就在同几行读同一条消息:
+`stream-executor.ts`(send/edit-resend/retry 的交汇点)、
+`agent-loop-executor.ts` 的 resume 入口、`rotateSessionRun`(steering;读的是
+**落库之后**的那一条,不是 plan 里还没盖章的对象)。
+`runs.ts` 因此没有多出任何模块边 —— 它一旦 import 读门面,两个刻意把 store 树挡在
+外面的单测(session-chunk-packer / skill-activation-landing)会当场炸。
+
+**F2 —— `hasCompacted` 只认成功的压缩。**
+一次失败的压缩在引擎那边就是一条 `role:'system'` 的消息,被角色过滤直接跳过,
+**整份历史零影响**。三处一起改:`hasCompacted` 判据加 `status === 'completed'`
+(它同时管 `forceCompactedToolResults` 与 `session = undefined`),循环里失败节点
+**连 `flush()` 都不做**(否则宿主的 `prepareMessages` 会被劈成两段各跑一次 —— F3 的
+同一条病根)。
+
+**F1 —— 压缩之后 providerData 只跟最后一条保留消息走。**
+摘要分支里那条规则(`message === recentMessages[last]`)在 surface 路径上没了来源。
+`buildHistoryMessages` 加选项 `providerDataLastMessageOnly`(缺省 false = 今天的非摘要
+分支一个字不变),判据与摘要分支**逐字相同**(比的是数组最后一个元素,不是"最后一条
+被采纳的消息");`materializeModelHistory` 在 `hasCompacted` 时打开它。A1 一补上生产者,
+不修这一条就是 codex/claude 压缩后每条消息各带一份加密推理。
+
+#### 新字段的旧文件兜底(§10.16 逐条)
+
+| 新字段 | 缺席时 | 合同测试 |
+|---|---|---|
+| `assistant/part-end.providerData` | 不产出任何 part(= 修复前的事实) | `A1 fallback: an old part-end without the payload projects no provider-data part` |
+| `assistant/part-end.kind:'provider-data'` | 老文件里不存在这个 kind | 同上 |
+| `tool/call.resolvedToolId` | 退回 `tool/audit.toolId`,再退回 `name` | `A6+A7 fallback: an old tool/call without the resolved identity keeps the raw name` |
+| `tool/call.displayName` | 退回 `name`(= 修复前的 `toolName`) | 同上 |
+| `run/start.agentId` | 缺席仍是缺席,不猜 | `A4: run/start carries the agent, and its absence stays an absence` |
+| 采集侧不注入 `resolveToolIdentity` | `tool/call` 逐字保持老形状 | `A6+A7: without the resolver the event keeps exactly the old shape` |
+
+A2 / A5 / F1 / F2 **不引入新字段** —— 它们读的都是老文件里早就写着的东西
+(part kind、`surfaceOp`/`sourceEventSeqs`、`session/compacted.status`、contentParts),
+所以旧账本立刻享受修复,没有第二条兜底路。
+
+#### 合同测试:每一条都验过"不修就红"
+
+新增 `describe('Q1: …')` 8 条 + 采集点集成 4 条。**逐条做过反证**(把修复就地改回旧
+写法再跑):
+
+| 改回旧写法 | 变红的用例 |
+|---|---|
+| 投影不认 provider-data part | A1 分段 / A1 top-推理 / F1 |
+| `isSettleExemptPartKind` 恒 false | A2 |
+| `message/deleted` 只 hide 一格 | A5 |
+| `toolName` 用原始名 | A6+A7 |
+| `providerDataLastMessageOnly: false` | F1 |
+| `hasCompacted` 不看 status | F2 |
+| 失败压缩照旧 `flush()` | F2(靠 `prepareMessages` 探针:切了段就会打两个 `[LAST]` 标记) |
+| 采集点不写 provider-data part / 不先收正文段 | 采集点 A1 |
+| 采集点不写归一身份 | 采集点 A6+A7 |
+| `recordSynthesizedText` 不落 delta | 采集点 A14 |
+
+F2 那条的判据是**字节差**不是口头承诺:场景里挂了一个 40k 的工具结果(压缩口径
+per-result 上限 24k,普通口径 200k,正好夹在中间),口径切错当场就是两条线不等。
+
+#### 门(全部实跑)
+
+`typecheck` 3 条老红(provider-dials);`session:gate` 0;`boundary:gate` 13;
+`log:gate` 4;`lint:ci` 335 —— **与摘掉本批改动后的数字相同**(那多出来的 1 条来自
+P 批在途文件,不是本批);`server:build` 通过;
+`ONETHING_SESSION_FREEZE=1 bun run test` = 1141 文件通过 / 2 条老红
+(`ui-token-vars` ×2)+ AIProviderTab 的老 flake;
+`sessions:shadow-battery` GREEN(207 runs / 333 historyChecks / 0 mismatch);
+`sessions:verify:gate` **8 条,基线未动** —— 老会话没有因为新词汇多出任何一条红。
+
+#### 明确没做的(留给后续批)
+
+1. **影子电池没有 provider-data 场景**:电池的假 provider 说的是
+   deepseek/openai-compatible 那套 SSE,而 provider-data 只有 `claude.ts` 与
+   `codex.ts` 两条产地 —— 要覆盖就得再起一个说 Anthropic Messages 线格式的假
+   provider(另一套端点/鉴权/事件名),不是本批的量级。provider-data 目前由合同
+   测试的 A/B 两线 + 采集点集成测试(真 agent-loop + 会 yield provider-data 的
+   provider)覆盖。
+2. **孤儿参数流的工具身份仍是原始名**:引擎的占位卡用的是
+   `resolved.displayName`(而 step type 用 `rawToolName`),而
+   `assistant/chunks|part-end.toolName` 记的是 provider 原始名。要对齐得再加一格
+   (改现有字段的含义会违反 §10.16),而"孤儿 × MCP"是罕见交集,留作公开缺口。
+3. **`onMissingSummaryAnchor` 那条路**:摘要锚点找不到时引擎退回非摘要分支
+   (逐条求值 providerData),而投影仍按 `hasCompacted` 走 last-only。那条路上两侧
+   本来就已经因为 surface 遮蔽而大幅分叉(F3 点名的 `indexOf === -1` 静默退化),
+   归 F3 一起收口。

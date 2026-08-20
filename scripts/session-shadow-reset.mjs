@@ -38,7 +38,17 @@ if (fs.existsSync(logPath)) {
 fs.writeFileSync(
   statsPath,
   `${JSON.stringify(
-    { appendFailures: 0, runs: 0, mismatches: 0, byKind: {}, updatedAt: Date.now() },
+    {
+      appendFailures: 0,
+      runs: 0,
+      // F9(§13.4):请求粒度与被折叠的重复 —— 与 run 粒度分开记,归零也一起。
+      historyChecks: 0,
+      mismatches: 0,
+      duplicateMismatches: 0,
+      byKind: {},
+      skipped: {},
+      updatedAt: Date.now(),
+    },
     null,
     2,
   )}\n`,

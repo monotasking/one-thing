@@ -22,7 +22,7 @@ import {
 } from "@onething/core/agent-loop";
 import type { HistoryMessage } from "./message-helpers.js";
 import type { StreamContext, StreamProcessor } from "./stream-processor.js";
-import { createStreamProcessor } from "./stream-processor.js";
+import { createStreamProcessor, resolveToolIdentity } from "./stream-processor.js";
 import type { IPCEmitter } from "./ipc-emitter.js";
 import {
 	buildAgentLoopRuntimeFromStreamContext,
@@ -56,6 +56,7 @@ import type {
 	CoreEvalRawResponse,
 	CoreRequestMessage,
 } from "@onething/core/engine";
+import type { AgentJsonObject } from "@onething/core/agent-loop";
 import { hashSections } from "@onething/runtime";
 import {
 	attachSessionEventRecorder,
@@ -195,12 +196,21 @@ async function createNextAssistantWriter(
 	// S1a:steering 的 response-boundary = **两次执行**。旧的按 completed 收尾,
 	// 新的以 kind:'steer' 开张 —— 一条 assistant 消息一个 run 是投影的前提
 	// (`run/start` 就是那条消息在 surface 上的那一格)。
+	// A4(§13.1):盖章发生在 `addMessage` 里(`stampCollabAgentId`),所以读的是
+	// **落库之后**的那一条,不是上面 plan 里那个还没盖章的对象。
+	const storedAssistantMessage = sessionReads.getMessage(
+		state.ctx.sessionId,
+		assistantMessageId,
+	);
 	const rotated = rotateSessionRun(state.ctx.sessionId, {
 		kind: "steer",
 		assistantMessageId,
 		provider: state.ctx.providerId,
 		model: state.ctx.providerConfig.model,
 		timestamp: now,
+		...(storedAssistantMessage?.agentId
+			? { agentId: storedAssistantMessage.agentId }
+			: {}),
 	});
 	sessionCommands.patchMessage(state.ctx.sessionId, {
 		messageId: assistantMessageId,
@@ -464,6 +474,11 @@ export async function applyAgentLoopStreamChunk(
 			applyOnethingAgentLoopProviderData({
 				...options,
 				saveMediaImage,
+				// A14(§13.1):codex 内联生图那段 markdown 是**引擎合成的**,
+				// provider 流里没有对应的 text-delta —— 采集点只能由这里告知,
+				// 否则那段正文在会话事件账本上不存在。
+				onSynthesizedText: (text) =>
+					state.eventRecorder?.recordSynthesizedText(text),
 				notifyImageGenerated: (notification) => {
 					if (!state.ctx.sender.isDestroyed()) {
 						state.ctx.sender.send(IPC_CHANNELS.IMAGE_GENERATED, notification);
@@ -555,6 +570,10 @@ export async function executeAgentLoopStreamGeneration(
 		...(resumeAssistantTimestamp !== undefined
 			? { timestamp: resumeAssistantTimestamp }
 			: {}),
+		// A4(§13.1):与 timestamp / origin 同一条路数 —— 占位消息上盖过的那一格。
+		...(resumeAssistantPlaceholder?.agentId
+			? { agentId: resumeAssistantPlaceholder.agentId }
+			: {}),
 		...(resumeAssistantPlaceholder?.origin
 			? {
 					origin: resumeAssistantPlaceholder.origin as unknown as Record<
@@ -635,6 +654,10 @@ export async function executeAgentLoopStreamGeneration(
 				// S1b:发出去之前比一次历史(§10.4 第二条)。
 				onRequestRecipe: (runId) =>
 					checkSessionHistoryShadowForRequest(ctx.sessionId, runId),
+				// A6+A7(§13.1):工具身份归一交给**引擎那一个函数**。记录器不再
+				// 自己实现一遍别名表 / MCP 折叠 —— 一个判定点,两处落点。
+				resolveToolIdentity: (toolName, args) =>
+					resolveToolIdentity(toolName, args as AgentJsonObject),
 				// S1b 缺口 4:请求参数快照。取的是**定稿后**的 runtime(档位、
 				// 能力门控、per-model 覆盖都已经算完),不是设置里的原始值 ——
 				// recipe 要能回答"这次真的按什么参数发出去的"。

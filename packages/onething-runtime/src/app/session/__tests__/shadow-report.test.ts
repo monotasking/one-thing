@@ -63,7 +63,26 @@ describe('shadow report', () => {
 
   it('treats a missing stats file as zero, not as green', () => {
     const stats = readStats(logDir)
-    expect(stats).toMatchObject({ runs: 0, mismatches: 0, appendFailures: 0, missing: true })
+    expect(stats).toMatchObject({
+      runs: 0,
+      historyChecks: 0,
+      mismatches: 0,
+      duplicateMismatches: 0,
+      appendFailures: 0,
+      missing: true,
+    })
+  })
+
+  /**
+   * F9(§13.2/§13.4):run 粒度与请求粒度是两个数。老账单里没有这两格,读成 0
+   * 而不是读崩 —— 门只看 `runs`,它们只负责让口径看得见。
+   */
+  it('carries the run-grained and request-grained counters apart', () => {
+    writeStats({ runs: 42, historyChecks: 311, mismatches: 0, duplicateMismatches: 7, appendFailures: 0 })
+    expect(readStats(logDir)).toMatchObject({ runs: 42, historyChecks: 311, duplicateMismatches: 7 })
+
+    writeStats({ runs: 42, mismatches: 0, appendFailures: 0 })
+    expect(readStats(logDir)).toMatchObject({ runs: 42, historyChecks: 0, duplicateMismatches: 0 })
   })
 
   it('tolerates a truncated last line in the jsonl', () => {

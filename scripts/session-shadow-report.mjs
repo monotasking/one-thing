@@ -15,6 +15,12 @@
  * `skipped` 只打印、**不进门**:跳过的是"没有可比的东西"(如老会话事件只覆盖
  * 历史尾巴 = `legacyPartial`),不是"比出来不等"。
  *
+ * `historyChecks` / `duplicates` 同样只打印(F9,§13.2/§13.4):
+ *   - `runs` 是 **run 粒度**(每个 run 收尾比一次消息),门数的是它;
+ *   - `historyChecks` 是**请求粒度**(每轮请求比一次历史),一个 run 能有十几次
+ *     —— 两个数分开摆着,免得"200 个干净 run"被当成"比过 200 次历史";
+ *   - `duplicates` 是同一个 run 里**同一处**不等在后续每轮请求上的重复,已折叠。
+ *
  * store 的解析与产品代码同口径:`--store` → `ONETHING_STORE_PATH` → `~/.onething`。
  */
 import fs from 'node:fs'
@@ -46,7 +52,11 @@ export function readStats(logDir) {
     const parsed = JSON.parse(fs.readFileSync(path.join(logDir, 'session-shadow-stats.json'), 'utf8'))
     return {
       runs: Number(parsed.runs) || 0,
+      // F9(§13.2):历史断言是**每次请求**跑的,次数与 run 数不是一回事。
+      // 分开打印,免得"200 个干净 run"被读成"比过 200 次历史"。
+      historyChecks: Number(parsed.historyChecks) || 0,
       mismatches: Number(parsed.mismatches) || 0,
+      duplicateMismatches: Number(parsed.duplicateMismatches) || 0,
       appendFailures: Number(parsed.appendFailures) || 0,
       byKind: parsed.byKind && typeof parsed.byKind === 'object' ? parsed.byKind : {},
       skipped: parsed.skipped && typeof parsed.skipped === 'object' ? parsed.skipped : {},
@@ -54,7 +64,16 @@ export function readStats(logDir) {
       updatedAt: Number(parsed.updatedAt) || undefined,
     }
   } catch {
-    return { runs: 0, mismatches: 0, appendFailures: 0, byKind: {}, skipped: {}, missing: true }
+    return {
+      runs: 0,
+      historyChecks: 0,
+      mismatches: 0,
+      duplicateMismatches: 0,
+      appendFailures: 0,
+      byKind: {},
+      skipped: {},
+      missing: true,
+    }
   }
 }
 
@@ -121,8 +140,11 @@ function main() {
   } else {
     console.log(`[shadow] store: ${store}`)
     if (stats.missing) console.log('[shadow] stats file absent — nothing has been recorded yet')
-    console.log(`[shadow] runs           : ${stats.runs}`)
+    console.log(`[shadow] runs           : ${stats.runs}   (run 粒度 —— 门只看它)`)
+    console.log(`[shadow] historyChecks  : ${stats.historyChecks}   (请求粒度,一个 run 可有多次)`)
     console.log(`[shadow] mismatches     : ${stats.mismatches}`)
+    // 同 run 同一处不等在后续每轮请求上重复出现 —— 折叠掉的次数(F9)。不进门。
+    console.log(`[shadow] duplicates     : ${stats.duplicateMismatches}   (同 run 同一处,已折叠)`)
     console.log(`[shadow] appendFailures : ${stats.appendFailures}`)
     console.log(`[shadow] byKind         : ${JSON.stringify(stats.byKind)}`)
     // 跳过 ≠ 不等:门只看 mismatches。列出来是为了让"这条会话为什么没被比"看得见

@@ -22,6 +22,17 @@
  * 豁免掉才是错的:那等于让 S2 切读之后图片正文凭空消失,而门却是绿的。
  * 收口方案(把 markdown 正文也记成 chunks,还是让渲染层认 image part)属于 S2
  * 的读路径裁定,不在影子期自作主张。
+ *
+ * ## A2:那一格曾经被另一道闸吃掉(2026-08-20,§13.1 / §13.5)
+ *
+ * 上面那句"投影有一格 image part"一度**不成立**:§10.14 给 contentParts 加了
+ * "这一轮收齐了吗"的闸(`settledRequests`,来源是 agent-loop 的 `request/end`),
+ * 而图片流从来不发那条事件 —— 于是这里辛苦记下的 part 在投影里一格都不剩,
+ * 头注释描述的偏差变成了"整格消失",而且没人看得见。
+ *
+ * 现在 `materializeContentParts` 对 `kind:'image'` **豁免**那道闸
+ * (`isSettleExemptPartKind`)。豁免而不是"让图片流补记一对 request 事件":
+ * 那两条事件说的是"向模型发了一次请求、收齐了一次响应",这条路没有发生过那件事。
  */
 
 import {

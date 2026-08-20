@@ -139,7 +139,27 @@ export interface SessionToolCallEventData {
   callId: string
   /** 模型给的原始 arguments JSON 串 —— 原样存,包括它写坏的时候。 */
   argumentsRaw: string
+  /** provider 给的**原始**工具名。归一后的身份在下面两格。 */
   name: string
+  /**
+   * A6(§13.1):引擎归一之后的工具 id(`resolveToolIdentity().toolId`)。
+   *
+   * 消息上那一格是 `toolCall.toolId = resolved.toolId`,而 `name` 是模型写的
+   * 那个字符串 —— 两者在别名表命中或 MCP 短名补全时并不相等。投影从前只有
+   * `name`,于是装了 MCP 的机器上每条工具卡的身份都对不上。
+   *
+   * **成对交付**(§10.16):老文件没有这一格,投影退回 `name` = 修复前的行为。
+   */
+  resolvedToolId?: string
+  /**
+   * A7(§13.1):引擎归一之后的**显示名**(`resolveToolIdentity().displayName`)。
+   *
+   * 消息上那一格是 `toolCall.toolName`,而 `steps[].type`(`getStepType`)与
+   * `skillUsed`(`detectSkillUsage`)在引擎里读的都是它,不是 provider 原始名。
+   * MCP 的完整 id 会被折成**服务器名**,所以少了这一格,投影连 step 的类型都
+   * 可能判错。老文件缺席时退回 `name`。
+   */
+  displayName?: string
   messageId: string
   runId?: string
   /**
@@ -416,7 +436,23 @@ export interface SessionRequestErrorEventData {
 
 // ============ 助手 ============
 
-export type SessionAssistantPartKind = 'text' | 'reasoning' | 'tool-input' | 'image'
+/**
+ * 助手输出的分段种类。
+ *
+ * `provider-data`(A1,§13.1)是**引擎自己就在产的那一格**:Claude 的 thinking
+ * 签名块、codex 的加密推理都由 `applyAgentLoopProviderDataWithAdapters` 落成
+ * `contentParts` 里的 `{type:'provider-data', providerData, turnIndex}`。它同时
+ * 是一条**分段边界** —— `appendOrderedPart` 只合并相邻同类,一段 provider-data
+ * 夹在两段正文之间就把它们切成两格。词汇里没有它的时候,采集点把两段正文攒成
+ * 一段,投影因此永远比事实少一格。
+ *
+ * 它没有 delta(`assistant/chunks` 里不会出现这个 kind):载荷是一个结构化对象,
+ * 一次到齐,所以只有 `assistant/part-end` 那一条带 `providerData`。
+ */
+export type SessionAssistantPartKind = 'text' | 'reasoning' | 'tool-input' | 'image' | 'provider-data'
+
+/** 有 delta 的那几种 —— `assistant/chunks` 只认它们。 */
+export type SessionAssistantDeltaPartKind = Exclude<SessionAssistantPartKind, 'image' | 'provider-data'>
 
 /**
  * 一批 delta(§9.2 助手行)。**一行就是一个事件** —— dsh 那边打包行要在逻辑层
@@ -430,7 +466,7 @@ export interface SessionAssistantChunksEventData {
   requestIndex: number
   messageId: string
   partIndex: number
-  kind: Exclude<SessionAssistantPartKind, 'image'>
+  kind: SessionAssistantDeltaPartKind
   toolCallId?: string
   /**
    * `tool-input` part 的工具名(provider 的 `tool-call-start` 那一格)。
@@ -457,6 +493,18 @@ export interface SessionAssistantPartEndEventData {
   toolName?: string
   /** 图片 part:正文在 blob 里,事件行只有引用。 */
   blob?: BlobRef
+  /**
+   * `provider-data` part 的载荷(A1,§13.1)。
+   *
+   * 与工具结局同一条 64KB 线:小的进事件行(`{text}` = 那个对象的 JSON),
+   * 大的走 blob。真机上这一格的分布是 p50 1.2KB / p99 12KB / max 37KB
+   * (410 个会话的实测),所以 blob 那一支是**上限保护**,不是常态。
+   *
+   * 为什么不是"正文的第二个来源":它不是模型说的话,是 provider 让我们
+   * **原样带回**的一块不透明数据(思考签名 / 加密推理)。`assistant/chunks`
+   * 承载不了它(没有 delta,也不该被 fold 成文本)。
+   */
+  providerData?: { text: string } | { blob: BlobRef }
 }
 
 /**

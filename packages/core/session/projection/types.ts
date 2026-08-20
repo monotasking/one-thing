@@ -88,6 +88,13 @@ export type ProjectedContentPart =
   | { type: 'text'; content: string; turnIndex?: number }
   | { type: 'reasoning'; content: string; turnIndex?: number }
   | { type: 'image'; blob: { hash: string; bytes: number; mime?: string }; turnIndex?: number }
+  /**
+   * A1:provider 让我们原样带回的那块不透明数据(Claude 的 thinking 签名 /
+   * codex 的加密推理)。引擎那一格逐字是 `{type, providerData, turnIndex}`;
+   * 载荷超 64KB 走了 blob 而当前没有 resolver 时,留 `blob` 引用(与 image 同款)。
+   */
+  | { type: 'provider-data'; providerData: unknown; turnIndex?: number }
+  | { type: 'provider-data'; blob: { hash: string; bytes: number; mime?: string }; turnIndex?: number }
 
 export interface ProjectedTurnContext {
   set?: Record<string, string>

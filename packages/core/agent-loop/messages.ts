@@ -15,6 +15,9 @@ import {
 	agentToolResultIsErrorFromHistoryResult,
 } from "./tool-results.js";
 import { agentSupportsInputModality } from "./capabilities.js";
+// wire 形态的两把尺搬去了 `wire-format.ts` —— 影子断言的判等器要用**同一份**
+// (F10a):判等器对键排序,而这两个函数的输出对键序敏感。
+import { stringifyToolResult, toolCallArguments } from "./wire-format.js";
 
 export type AgentHistoryContent =
 	| string
@@ -63,29 +66,6 @@ export type AgentHistoryMessage =
 						result?: AgentJsonValue;
 				  }>;
 	  };
-
-function stringifyToolResult(result: AgentJsonValue | undefined): string {
-	if (result == null) return "";
-	if (typeof result === "string") return result;
-	try {
-		return JSON.stringify(result);
-	} catch {
-		return String(result);
-	}
-}
-
-function toolCallArguments(
-	call: NonNullable<
-		Extract<AgentHistoryMessage, { role: "assistant" }>["toolCalls"]
-	>[number],
-): string {
-	if (typeof call.arguments === "string") return call.arguments;
-	try {
-		return JSON.stringify(call.args ?? {});
-	} catch {
-		return "{}";
-	}
-}
 
 function agentRoleFromHistory(
 	role: "system" | "developer" | "user",

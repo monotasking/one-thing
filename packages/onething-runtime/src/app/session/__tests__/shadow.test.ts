@@ -27,7 +27,12 @@ vi.mock('../../stores/paths.js', () => ({
 
 vi.mock('../reads.js', () => ({
   sessionReads: {
-    listMessages: () => ({ messages: state.messages, changed: false }),
+    // F11:影子只许走抄本这一口。`listMessages` 在这里故意**抛** —— 哪天有人
+    // 把真相侧改回它,这一整套用例当场红,而不是安静地自己跟自己比。
+    listMessages: () => {
+      throw new Error('shadow must read the transcript (F11), not the read-mode-aware listMessages')
+    },
+    listMessagesFromTranscript: () => state.messages,
     getMessage: (_sessionId: string, messageId: string) =>
       state.messages.find(message => message.id === messageId),
     getSession: () => state.session,
@@ -419,6 +424,84 @@ describe('history assertion (kind: history)', () => {
   it('canonicalHistory ignores key order and undefined values', () => {
     expect(canonicalHistory([{ role: 'user', content: 'x', extra: undefined }]))
       .toBe(canonicalHistory([{ content: 'x', role: 'user' }]))
+  })
+})
+
+/**
+ * F9(§13.2/§13.4):统计口径。
+ *
+ * 历史断言每轮请求跑一遍 —— 一个真实的不等在 12 轮的 run 里从前会被记 12 次
+ * (`mismatches` 通胀 12 倍,日志里 12 行一模一样的摘要)。折叠的是**重复**,
+ * 不是不等:同一个 run 里换一处不等照记。
+ */
+describe('mismatch accounting (F9)', () => {
+  it('collapses a repeated identical diff inside one run and counts every check', async () => {
+    const runId = recordSimpleRun('a1', 'hello')
+    endSessionRun(SESSION, runId, { outcome: 'completed' })
+    await settleScheduledShadow()
+
+    const wrong = [{ role: 'user', content: 'something else entirely' }]
+    expect(checkSessionHistoryShadow(SESSION, { runId, actual: wrong })).toBe('mismatch')
+    // 第 2 轮请求,同一处不等 —— 仍然是 mismatch(它确实不等),但不再记第二笔账。
+    expect(checkSessionHistoryShadow(SESSION, { runId, actual: wrong })).toBe('mismatch')
+    expect(checkSessionHistoryShadow(SESSION, { runId, actual: wrong })).toBe('mismatch')
+
+    flushSessionEventStats()
+    const stats = readSessionShadowStats()
+    expect(stats).toMatchObject({
+      mismatches: 1,
+      duplicateMismatches: 2,
+      byKind: { history: 1 },
+      // 请求粒度的次数照实记 —— 它与 run 数不是一回事。
+      historyChecks: 3,
+    })
+    expect(shadowLines()).toHaveLength(1)
+  })
+
+  it('still records a *different* diff inside the same run', async () => {
+    const runId = recordSimpleRun('a1', 'hello')
+    endSessionRun(SESSION, runId, { outcome: 'completed' })
+    await settleScheduledShadow()
+
+    expect(checkSessionHistoryShadow(SESSION, { runId, actual: [{ role: 'user', content: 'A' }] }))
+      .toBe('mismatch')
+    expect(checkSessionHistoryShadow(SESSION, { runId, actual: [{ role: 'user', content: 'B' }] }))
+      .toBe('mismatch')
+
+    flushSessionEventStats()
+    expect(readSessionShadowStats()).toMatchObject({ mismatches: 2, duplicateMismatches: 0 })
+    expect(shadowLines()).toHaveLength(2)
+  })
+
+  it('counts runs once per run — not once per request', async () => {
+    const runId = recordSimpleRun('a1', 'hello')
+    endSessionRun(SESSION, runId, { outcome: 'completed' })
+    await settleScheduledShadow()
+    state.messages = [
+      userMessage('u1', 'hi'),
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'hello',
+        timestamp: 2000,
+        provider: 'openai',
+        model: 'gpt-4o',
+        runId,
+        contentParts: [{ type: 'text', content: 'hello', turnIndex: 1 }],
+      } as unknown as ChatMessage,
+    ]
+
+    const { readSessionLogEventsSync } = await import('../event-log.js')
+    const expected = projectModelHistory(readSessionLogEventsSync(SESSION), { id: SESSION })
+    // 三轮请求 + 一次 run 收尾。
+    expect(checkSessionHistoryShadow(SESSION, { runId, actual: expected })).toBe('match')
+    expect(checkSessionHistoryShadow(SESSION, { runId, actual: expected })).toBe('match')
+    expect(checkSessionHistoryShadow(SESSION, { runId, actual: expected })).toBe('match')
+    expect(checkSessionRunShadow(SESSION, { runId, assistantMessageId: 'a1', triggerMessageId: 'u1' }))
+      .toBe('match')
+
+    flushSessionEventStats()
+    expect(readSessionShadowStats()).toMatchObject({ runs: 1, historyChecks: 3, mismatches: 0 })
   })
 })
 

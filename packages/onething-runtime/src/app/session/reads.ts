@@ -109,6 +109,23 @@ export const sessionReads = {
     return { messages: guard(sanitized.value ?? messages), changed: sanitized.changed }
   },
 
+  /**
+   * **抄本侧**的那一份消息 —— 永远来自 `messages.jsonl`,与读模式无关(F11)。
+   *
+   * 这不是 `listMessages` 的一个便利别名,而是影子断言唯一合法的**真相侧**取数。
+   * `listMessages` 自 S2a 起带着 `ONETHING_SESSION_READ=events` 的岔口:开关一开,
+   * 它返回的就是事件投影本身 —— 影子拿它当"事实"去比"投影",两侧同源,门以
+   * 错误的理由变绿(F11:判据污染)。所以这里**故意不经过 `fromEvents`**。
+   *
+   * 改动这个方法的人请先回答一个问题:影子的两侧还是两个来源吗?一旦这里也接上
+   * 事件读法,`sessions:shadow-battery` 会在 `shadow-read-mode.test.ts` 上当场红
+   * —— 那条用例把读模式钉在 `events` 上,故意让抄本与事件分岔,断言影子**必须**
+   * 报出来。
+   */
+  listMessagesFromTranscript(sessionId: string): readonly ChatMessage[] {
+    return guard(getSessionMessages(sessionId) ?? [])
+  },
+
   /** 不加载整会话的分页(pager 走存储驱动)。 */
   pageMessages(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse {
     return fromEvents(() => eventsPageMessages(request)) ?? getSessionMessagesPage(request)

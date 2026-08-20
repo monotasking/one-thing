@@ -63,7 +63,17 @@ import type { ProjectedStep, ProjectedStepUsage, ProjectedToolCall } from '../pr
 
 interface ToolSpec {
   callId: string
+  /**
+   * 引擎**归一之后**的显示名(`resolveToolIdentity().displayName`)。消息上那一格
+   * (`toolCall.toolName`)就是它,`getStepType` / `detectSkillUsage` 读的也是它。
+   */
   name: string
+  /**
+   * A6+A7(§13.1):模型写在 wire 上的那个名字。与 `name` 不同就说明中间过了
+   * 一次归一(别名表 / MCP 折成服务器名)—— 账本上两格并列,投影必须取归一后
+   * 的那一格。缺省 = 与 `name` 相同(绝大多数工具)。
+   */
+  rawName?: string
   toolId?: string
   args: Record<string, unknown>
   /** 结果正文;缺席 = 这次调用没有结果(abort / 还在跑)。 */
@@ -96,6 +106,14 @@ interface ToolSpec {
 interface RequestSpec {
   reasoning?: string
   text?: string
+  /**
+   * A1(§13.1):这一轮中途来了一块 provider-data(Claude 的思考签名 / codex 的
+   * 加密推理)。引擎把它落成 `contentParts` 的一格,**并且它是一条分段边界** ——
+   * `appendOrderedPart` 只合并相邻同类,所以 `text` 与 `textAfter` 会被切成两格。
+   */
+  providerData?: Record<string, unknown>
+  /** provider-data 之后的那一段正文(验分段:text → provider-data → text = 3 格)。 */
+  textAfter?: string
   tools?: ToolSpec[]
   usage?: { inputTokens: number; outputTokens: number }
   /**
@@ -310,6 +328,8 @@ interface TurnTimeline {
   requests: Array<{
     reasoning?: number
     text?: number
+    providerData?: number
+    textAfter?: number
     response?: number
     tools: Array<{ inputEnd?: number; call: number; result?: number; audit?: number }>
   }>
@@ -321,6 +341,8 @@ function planTurn(turn: TurnSpec, clock: Clock): TurnTimeline {
   const requests = turn.requests.map(request => ({
     ...(request.reasoning !== undefined ? { reasoning: clock.next() } : {}),
     ...(request.text !== undefined ? { text: clock.next() } : {}),
+    ...(request.providerData !== undefined ? { providerData: clock.next() } : {}),
+    ...(request.textAfter !== undefined ? { textAfter: clock.next() } : {}),
     ...(request.usage ? { response: clock.next() } : {}),
     tools: (request.tools ?? []).map(tool => ({
       ...(tool.streamedArgs || tool.orphan ? { inputEnd: clock.next() } : {}),
@@ -399,6 +421,26 @@ function applyTurnCommands(
           type: 'appendContentPart',
           messageId: turn.messageId,
           part: { type: 'text', content: request.text, turnIndex },
+        })
+      }
+    }
+    if (request.providerData !== undefined && !request.unfinished) {
+      // 引擎:`applyAgentLoopProviderDataWithAdapters` → `appendOrderedPart`。
+      // 它不进 `message.content`(不是正文),只占 contentParts 的一格。
+      line.run({
+        type: 'appendContentPart',
+        messageId: turn.messageId,
+        part: { type: 'provider-data', providerData: request.providerData, turnIndex },
+      })
+    }
+    if (request.textAfter !== undefined) {
+      text += request.textAfter
+      line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { content: text } as never, hint: 'stream' })
+      if (!request.unfinished) {
+        line.run({
+          type: 'appendContentPart',
+          messageId: turn.messageId,
+          part: { type: 'text', content: request.textAfter, turnIndex },
         })
       }
     }
@@ -568,6 +610,39 @@ function emitTurnEvents(
         },
       })
     }
+    if (request.providerData !== undefined) {
+      // A1:一格 part,一次到齐(没有 delta)。载荷与工具结局同一条 64KB 线,
+      // 这里当然走 `{text}` 那一支。
+      const at = partIndex++
+      const payload = JSON.stringify(request.providerData)
+      line.push({
+        time: slot.providerData!,
+        type: 'assistant/part-end',
+        data: {
+          runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
+          kind: 'provider-data', len: payload.length, providerData: { text: payload },
+        },
+      })
+    }
+    if (request.textAfter !== undefined) {
+      const at = partIndex++
+      line.push({
+        time: slot.textAfter!,
+        type: 'assistant/chunks',
+        data: {
+          runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
+          kind: 'text', time0: slot.textAfter!, dt: [0], text: [request.textAfter],
+        },
+      })
+      line.push({
+        time: slot.textAfter!,
+        type: 'assistant/part-end',
+        data: {
+          runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
+          kind: 'text', len: request.textAfter.length,
+        },
+      })
+    }
 
     ;(request.tools ?? []).forEach((tool, toolIndex) => {
       const slots = slot.tools[toolIndex]
@@ -606,7 +681,16 @@ function emitTurnEvents(
       line.push({
         time: slots.call,
         type: 'tool/call',
-        data: { runId: turn.runId, callId: tool.callId, name: tool.name, argumentsRaw, messageId: turn.messageId },
+        data: {
+          runId: turn.runId, callId: tool.callId,
+          // A6+A7:wire 上的原始名 + 引擎归一之后的两格。归一没改变什么时
+          // (`rawName` 缺席)采集点照旧只记一个名字 —— 那正是老文件的形状。
+          name: tool.rawName ?? tool.name,
+          ...(tool.rawName
+            ? { resolvedToolId: tool.toolId ?? tool.name, displayName: tool.name }
+            : {}),
+          argumentsRaw, messageId: turn.messageId,
+        },
       })
       if (tool.resultText !== undefined) {
         line.push({
@@ -875,6 +959,48 @@ class Scenario {
       },
       surfaceOp: { op: 'replace', start: range[0], end: range[range.length - 1] },
       sourceEventSeqs: range,
+    })
+    this.nodeSeq.set(options.messageId, event.seq)
+  }
+
+  /**
+   * F2(§13.2):**失败**的压缩。
+   *
+   * 三件事一件都不发生:不写 `session.summary`、不遮蔽任何 surface 节点、
+   * 模型历史一个字节不变(那条卡是 role:'system',builder 直接跳过)。UI 上
+   * 它是一张红卡,所以 A 线照旧追加那条消息。
+   */
+  failedCompact(options: { messageId: string; error: string; throughMessageId: string }): void {
+    const time = this.clock.next()
+    const count = this.a.session.messages.findIndex(message => message.id === options.throughMessageId) + 1
+    this.a.run({
+      type: 'appendMessage',
+      now: time,
+      message: {
+        id: options.messageId,
+        role: 'system',
+        content: buildContextCompactContent({
+          status: 'failed',
+          compactedMessageCount: count,
+          error: options.error,
+          compactedThroughMessageId: options.throughMessageId,
+        }),
+        timestamp: time,
+      } as CoreSessionCommandMessage,
+    })
+    // 翻译器对失败的压缩写的是 `surfaceOp: 'append'` —— 它不遮蔽任何东西。
+    const event = this.b.push({
+      time,
+      type: 'session/compacted',
+      data: {
+        summary: '',
+        messageId: options.messageId,
+        compactedMessageCount: count,
+        compactedThroughMessageId: options.throughMessageId,
+        status: 'failed',
+        error: options.error,
+      },
+      surfaceOp: 'append',
     })
     this.nodeSeq.set(options.messageId, event.seq)
   }
@@ -1721,5 +1847,274 @@ describe('S1a projection catch-up (G1–G9)', () => {
     const compacted = JSON.stringify(build(true)).length
     // 压缩之后的尾部走 24k/80k 的紧预算,而不是 200k/600k。
     expect(compacted).toBeLessThan(plain)
+  })
+})
+
+// ============================================================================
+// Q1 批(§13.5):静态审计挖出的日常必现缺口
+// ============================================================================
+
+describe('Q1: provider-data / 图片闸 / 工具身份 / 中段截断 / 压缩口径', () => {
+  /**
+   * A1+A13(§13.1):**provider-data 是一条分段边界**。
+   *
+   * 引擎的 `appendOrderedPart` 只合并**相邻**同类,一块 Claude 思考签名夹在两段
+   * 正文之间就把它们切成两格。采集点从前没有这个词汇,于是两段正文攒成了一段 ——
+   * 投影出来的 contentParts 永远比事实少一格,而且后面每一格全部错位。
+   */
+  it('A1: provider-data cuts the text run in two and materializes as its own part', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'think about it' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        text: 'before',
+        providerData: { provider: 'anthropic', type: 'thinking-signature', signature: 'sig-abc' },
+        textAfter: 'after',
+        usage: { inputTokens: 8, outputTokens: 3 },
+      }],
+      outcome: 'completed',
+    })
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    expect(message.contentParts).toEqual([
+      { type: 'text', content: 'before', turnIndex: 1 },
+      { type: 'provider-data', providerData: { provider: 'anthropic', type: 'thinking-signature', signature: 'sig-abc' }, turnIndex: 1 },
+      { type: 'text', content: 'after', turnIndex: 1 },
+    ])
+    // 正文本身照旧是两段的 fold —— provider-data 不是正文。
+    expect(message.content).toBe('beforeafter')
+  })
+
+  /**
+   * A1 的另一半:provider-data **不算"可见产出"**,所以它不打断 top 推理的判定。
+   * 引擎的判据逐字是 `orderedParts.some(part => part.type !== 'provider-data')`。
+   */
+  it('A1: a provider-data part does not turn the opening reasoning into an inline one', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'why' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        reasoning: 'weighing it',
+        providerData: { provider: 'anthropic', type: 'thinking-signature', signature: 'sig' },
+        textAfter: 'because',
+      }],
+      outcome: 'completed',
+    })
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    expect(message.reasoning).toBe('weighing it')
+    expect(message.contentParts?.map(part => part.type)).toEqual(['provider-data', 'text'])
+  })
+
+  /** 老文件兜底(§10.16):没有 `providerData` 那一格的 part-end 不产出任何东西。 */
+  it('A1 fallback: an old part-end without the payload projects no provider-data part', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 2, dt: [0], text: ['hi'] },
+    })
+    line.push({ time: 3, type: 'request/end', data: { runId: 'r', requestIndex: 1 } })
+    line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+
+    expect(projectChatMessages(line.events).messages[0].contentParts)
+      .toEqual([{ type: 'text', content: 'hi', turnIndex: 1 }])
+  })
+
+  /**
+   * A2(§13.1):**图片 part 不受"这一轮收齐了吗"那道闸管**。
+   *
+   * 图片生成是引擎里的一条特化流,一条 delta 都不经 agent-loop,`request/end`
+   * 永远不会来 —— §10.14 引入 `settledRequests` 时把它一并圈了进去,于是 S1b
+   * 缺口 3 补上的采集成果被闸吃掉,一次生图在投影里连一格 part 都没有。
+   */
+  it('A2: an image part materializes even though its request never settles', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2,
+      type: 'assistant/part-end',
+      data: {
+        runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'image',
+        len: 12, hash: 'cafe', blob: { hash: 'cafe', bytes: 12, mime: 'image/png' },
+      },
+    })
+    line.push({ time: 3, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+
+    expect(projectChatMessages(line.events).messages[0].contentParts).toEqual([
+      { type: 'image', blob: { hash: 'cafe', bytes: 12, mime: 'image/png' }, turnIndex: 1 },
+    ])
+  })
+
+  /**
+   * A6+A7(§13.1):**工具身份归一进账本**。
+   *
+   * 模型写的是 wire 上那个名字,引擎当场归一(别名表 / MCP 折成服务器名)并把
+   * 归一后的两格写在消息上。账本从前只有原始名,于是装了 MCP 的机器上每张工具卡
+   * 的身份都对不上 —— 连带 `steps[].type`(`getStepType` 读的是 `toolName`)。
+   */
+  it('A6+A7: the resolved identity rides the event and drives steps[].type', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'read the skill' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        text: 'looking',
+        tools: [{
+          callId: 'c1',
+          // 归一之后是 `bash`,模型写的是别名 `Bash`。
+          name: 'bash', rawName: 'Bash',
+          args: { command: 'cat skills/demo/SKILL.md' },
+          resultText: '# demo', outcome: 'ok',
+        }],
+      }],
+      outcome: 'completed',
+    })
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    expect(message.toolCalls?.[0]).toMatchObject({ toolId: 'bash', toolName: 'bash' })
+    // 归一之后才判得出来:`Bash` 会被 `getStepType` 判成 'tool-call'。
+    expect(message.steps?.[0].type).toBe('skill-read')
+    expect(message.skillUsed).toBe('demo')
+  })
+
+  /** 老文件兜底(§10.16):没有归一那两格时,投影退回原始名 = 修复前的行为。 */
+  it('A6+A7 fallback: an old tool/call without the resolved identity keeps the raw name', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({ time: 2, type: 'tool/call', data: { runId: 'r', callId: 'c1', name: 'mcp__docs__search', argumentsRaw: '{}', messageId: 'a1' } })
+
+    expect(projectChatMessages(line.events).messages[0].toolCalls?.[0])
+      .toMatchObject({ toolId: 'mcp__docs__search', toolName: 'mcp__docs__search' })
+  })
+
+  /**
+   * A5(§13.1):**中段 retry 的截断遮的是一整段**。
+   *
+   * `truncateFrom{inclusive:true}` 删的是目标**以及它后面的一切**,而翻译出来的
+   * 是一条 `message/deleted` —— 遮蔽范围写在它的账本层字段上。从前归约器只 hide
+   * 目标那一格,于是投影比事实多出整段(surface 半对:历史绿、消息红)。
+   */
+  it('A5: regenerating a middle assistant message hides everything after it too', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'one' })
+    scenario.turn({ runId: 'r1', messageId: 'a1', kind: 'send', requests: [{ text: 'reply one' }], outcome: 'completed' })
+    scenario.user({ id: 'u2', content: 'two' })
+    scenario.turn({ runId: 'r2', messageId: 'a2', kind: 'send', requests: [{ text: 'reply two' }], outcome: 'completed' })
+    // 中段:a1 之后还有 u2 / a2 两条。
+    scenario.regenerateFrom('a1')
+    scenario.turn({ runId: 'r3', messageId: 'a3', kind: 'retry', requests: [{ text: 'reply again' }], outcome: 'completed' })
+
+    expectEquivalent(scenario)
+    expect(projectChatMessages(scenario.b.events).messages.map(m => m.id)).toEqual(['u1', 'a3'])
+  })
+
+  /**
+   * F2(§13.2):**一次失败的压缩对模型历史零影响**。
+   *
+   * 真机上发生过(deepseek 返回空摘要)。从前投影只看"有没有 compacted 节点",
+   * 于是一次失败就让整份历史切换压缩口径:per-result 预算掉 8 倍、老摘要锚点
+   * 失效整段重放、消息组在那一点被劈成两段各 build 一次。
+   */
+  it('F2: a failed compaction leaves the model history exactly as the engine builds it', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'one' })
+    scenario.turn({ runId: 'r1', messageId: 'a1', kind: 'send', requests: [{ text: 'reply one' }], outcome: 'completed' })
+    scenario.failedCompact({ messageId: 'k1', error: 'empty summary', throughMessageId: 'a1' })
+    scenario.user({ id: 'u2', content: 'two' })
+    scenario.turn({
+      runId: 'r2', messageId: 'a2', kind: 'send',
+      // 大结果是这条用例的**判据**:压缩口径把 per-result 预算从 200k 收到 24k,
+      // 所以"一次失败的压缩有没有切口径"在这里是可见的字节差,不是口头承诺。
+      requests: [{
+        text: 'reply two',
+        // 40k:压缩口径的 per-result 上限是 24k,普通口径是 200k —— 正好夹在中间。
+        tools: [{ callId: 'c1', name: 'read', args: { path: '/big' }, resultText: 'x'.repeat(40_000), outcome: 'ok' }],
+      }],
+      outcome: 'completed',
+    })
+
+    // A ≡ B 两条线都在这里比一遍(消息 + 历史 + 历史字节)。
+    expectEquivalent(scenario)
+
+    // UI 上那张红卡还在,模型历史里一格都没有它。
+    expect(projectChatMessages(scenario.b.events).messages.map(m => m.id))
+      .toEqual(['u1', 'a1', 'k1', 'u2', 'a2'])
+    const history = projectModelHistory(scenario.b.events, scenario.sessionMeta, {
+      buildMessageContent: defaultHistoryMessageContent,
+    })
+    expect(history.map(message => message.role)).toEqual(['user', 'assistant', 'user', 'assistant', 'tool'])
+    expect(JSON.stringify(history)).not.toContain('<summary>')
+
+    // 而且它**连段都没切**:宿主的预处理(`prepareMessages`)是对整份消息列表
+    // 应用一次的,一次失败的压缩若还在那里 `flush()`,这一遍就会被劈成两段各跑
+    // 一次 —— 下面这个只认"最后一条"的探针会因此打两个标记。
+    const marked = projectModelHistory(scenario.b.events, scenario.sessionMeta, {
+      buildMessageContent: defaultHistoryMessageContent,
+      prepareMessages: messages => messages.map((message, index) =>
+        index === messages.length - 1
+          ? ({ ...message, content: `${message.content ?? ''}[LAST]` } as CoreHistoryChatMessage)
+          : message),
+    })
+    expect(JSON.stringify(marked).split('[LAST]').length - 1).toBe(1)
+  })
+
+  /**
+   * F1(§13.2):**压缩之后 providerData 只跟最后一条保留消息走**。
+   *
+   * 摘要分支里那条规则(`message === recentMessages[last]`)在 surface 路径上没了
+   * 来源 —— 投影压缩后走的是非摘要分支,而那一支逐条求值。A1 一补上生产者,
+   * codex/claude 的加密推理就会在压缩后的每一条消息上各带一份。
+   */
+  it('F1: after a compaction only the last retained message carries providerData', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'one' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{ text: 'first', providerData: { provider: 'codex', type: 'encrypted-reasoning', encryptedContent: 'E1' } }],
+      outcome: 'completed',
+    })
+    scenario.compact({ messageId: 'k1', summary: '## Goal\nship', throughMessageId: 'u1' })
+    scenario.user({ id: 'u2', content: 'two' })
+    scenario.turn({
+      runId: 'r2', messageId: 'a2', kind: 'send',
+      requests: [{ text: 'second', providerData: { provider: 'codex', type: 'encrypted-reasoning', encryptedContent: 'E2' } }],
+      outcome: 'completed',
+    })
+
+    // 两条线逐字节相同(历史比较在 `expectEquivalent` 里)。
+    expectEquivalent(scenario)
+
+    const history = projectModelHistory(scenario.b.events, scenario.sessionMeta, {
+      buildMessageContent: defaultHistoryMessageContent,
+    })
+    const carriers = history.filter(message => (message as { providerData?: unknown[] }).providerData?.length)
+    expect(carriers).toHaveLength(1)
+    expect(JSON.stringify(carriers[0])).toContain('E2')
+    expect(JSON.stringify(history)).not.toContain('E1')
+  })
+
+  /**
+   * A4(§13.1):`run/start.agentId` —— collab 工作会话里"这条助手消息是哪个
+   * agent 说的"。来源是**占位消息上盖过的那一格**,所以两条线天然同源;
+   * 老文件没有这一格,投影也就没有(不猜)。
+   */
+  it('A4: run/start carries the agent, and its absence stays an absence', () => {
+    const line = eventLine()
+    line.push({
+      time: 1, type: 'run/start',
+      data: { runId: 'r', kind: 'send', assistantMessageId: 'a1', agentId: 'researcher' },
+      surfaceOp: 'append',
+    })
+    expect(projectChatMessages(line.events).messages[0].agentId).toBe('researcher')
+
+    const plain = eventLine()
+    plain.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    expect(projectChatMessages(plain.events).messages[0].agentId).toBeUndefined()
   })
 })

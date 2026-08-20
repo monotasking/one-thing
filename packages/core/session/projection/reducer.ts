@@ -84,11 +84,30 @@ interface PartState {
   /** part 收齐的时刻。`tool-input` 的这一格就是 toolCall 的 `receivedAt`。 */
   endedAt?: number
   blob?: { hash: string; bytes: number; mime?: string }
+  /**
+   * `provider-data` part 的载荷,已经解回对象(A1,§13.1)。
+   *
+   * 事件行里是 `{text}`(那个对象的 JSON)或 `{blob}`;解不开就没有这一格,
+   * 而 blob 那一支留在 `blob` 里 —— 与图片 part 走同一个坑口,将来注入
+   * resolver(G8)时一处修好两处。
+   */
+  providerData?: unknown
 }
 
 interface ToolState {
   callId: string
+  /** provider 给的原始工具名(`tool/call.name`)。 */
   name: string
+  /**
+   * A6+A7:引擎归一之后的身份(`tool/call.resolvedToolId` / `displayName`)。
+   *
+   * 消息上那两格就是它们(`applyCoreToolCallChunk`:`toolId = resolved.toolId`、
+   * `toolName = resolved.displayName`),而 `getStepType` / `detectSkillUsage`
+   * 在引擎里读的都是 `toolName`。老文件没有这两格 → 退回 `name`(= 修复前的
+   * 行为,§10.16)。
+   */
+  resolvedToolId?: string
+  displayName?: string
   toolId?: string
   /** G3:父调用。有它就挂到父 step 的 `childSteps` 里,没有就平铺。 */
   parentCallId?: string
@@ -247,6 +266,16 @@ export function reduceSessionProjection(
     case 'message/deleted': {
       const node = state.byMessageId.get(event.data.messageId)
       if (node) node.hidden = true
+      // A5(§13.1):一条 `message/deleted` 可以遮蔽**一整段**。
+      //
+      // `truncateFrom{inclusive:true}`(regenerate / 中段 retry)翻译出来的就是
+      // 这一条,而它的 replace 区间是"这条到末尾" —— 引擎那边删的是目标**以及
+      // 它后面的一切**。从前这里只 hide 目标那一格,于是对非末尾消息 retry 时
+      // 投影比事实多出整段(surface 半对:历史绿、消息红)。
+      //
+      // 遮蔽范围写在事件的**账本层**字段上,不靠投影猜:`deleteMessage` 那条的
+      // 区间就是它自己一格(start === end),两条命令因此共用同一段代码。
+      hideEventCoveredNodes(state, event)
       break
     }
 
@@ -387,6 +416,10 @@ export function reduceSessionProjection(
       part.ended = true
       part.endedAt = event.time
       if (event.data.blob) part.blob = event.data.blob
+      // A1:provider-data 的载荷一次到齐(它没有 delta)。
+      const payload = event.data.providerData
+      if (payload && 'text' in payload) part.providerData = parseJsonSafely(payload.text)
+      else if (payload && 'blob' in payload) part.blob = payload.blob
       if (part.kind === 'tool-input' && part.toolCallId) {
         // 参数流**先**收齐,`tool/call` 才落账(铁律 2:执行前记账在参数定稿之后)。
         // 所以这里通常还没有 tool —— 有就补,没有就等 `tool/call` 回头来取。
@@ -409,6 +442,8 @@ export function reduceSessionProjection(
         turnIndex: run.turnCount || 1,
       }
       tool.name = event.data.name
+      if (event.data.resolvedToolId !== undefined) tool.resolvedToolId = event.data.resolvedToolId
+      if (event.data.displayName !== undefined) tool.displayName = event.data.displayName
       tool.argumentsRaw = event.data.argumentsRaw
       if (event.data.parentCallId !== undefined) tool.parentCallId = event.data.parentCallId
       const pendingReason = state.rejectionReasonByCallId.get(tool.callId)
@@ -553,6 +588,33 @@ function addMessageNode(
   }
   register(state, node)
   if (message.role === 'user') state.lastUserMessageId = message.id
+}
+
+/**
+ * 把这条事件**遮蔽到的节点**在 UI 上一并隐藏(A5)。
+ *
+ * 只给 `message/deleted` 用。压缩(`session/compacted`)带的也是一段 replace,
+ * 但那是另一种"看不见"——被压掉的消息在聊天记录里照旧显示,只有下一次请求
+ * 看不到它们(文件头那条"两种看不见是两回事")。所以这段代码**不**放在
+ * `state.surface.push` 旁边当成通用规则。
+ *
+ * `sourceEventSeqs` 优先:它是翻译时从活 surface 上取下来的**确切名单**;
+ * 只有 replace 区间时按 [start, end] 圈(两者由同一个采集点写出,恒等)。
+ */
+function hideEventCoveredNodes(state: SessionProjectionState, event: SessionLogEventRecord): void {
+  const seqs = event.sourceEventSeqs
+  if (seqs && seqs.length > 0) {
+    for (const seq of seqs) {
+      const node = state.byEventSeq.get(seq)
+      if (node) node.hidden = true
+    }
+    return
+  }
+  const op = event.surfaceOp
+  if (!op || op === 'append') return
+  for (const node of state.nodes) {
+    if (node.eventSeq >= op.start && node.eventSeq <= op.end) node.hidden = true
+  }
 }
 
 /** 从 `node`(含)开始把后面的全部隐藏 —— 编辑重发的截断语义。 */
@@ -811,8 +873,11 @@ function lastRunId(state: SessionProjectionState): string | undefined {
 function materializeToolCall(run: AssistantNode, tool: ToolState): ProjectedToolCall {
   return {
     id: tool.callId,
-    toolId: tool.toolId ?? tool.name,
-    toolName: tool.name,
+    // A6:引擎写的是 `resolved.toolId`。`tool/audit.toolId`(工具包那一侧的
+    // spec id)是次选 —— 它在没有别名/MCP 折叠时与前者相等,老文件只有它。
+    toolId: tool.resolvedToolId ?? tool.toolId ?? tool.name,
+    // A7:引擎写的是 `resolved.displayName`(MCP 会折成服务器名)。
+    toolName: tool.displayName ?? tool.name,
     arguments: parseToolArguments(tool.argumentsRaw),
     status: toolCallStatus(tool, run),
     timestamp: tool.callTime,
@@ -1064,6 +1129,11 @@ export function topReasoningPartIndexes(run: AssistantNode): Set<number> {
   const top = new Set<number>()
   for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
     const part = run.parts.get(partIndex)!
+    // A1:`provider-data` 不算"可见产出" —— 引擎的判据
+    // (`hasAgentLoopVisibleTurnActivity`)逐字写着
+    // `orderedParts.some(part => part.type !== 'provider-data')`。Claude 的签名块
+    // 就夹在推理段中间,把它当边界会让本该 `'top'` 的那一段判成 `'inline'`。
+    if (part.kind === 'provider-data') continue
     if (part.kind !== 'reasoning') break
     if (run.turnByRequest.get(part.requestIndex) !== 1) break
     top.add(partIndex)
@@ -1094,12 +1164,30 @@ function requestSettled(run: AssistantNode, requestIndex: number): boolean {
   return run.settledRequests.has(requestIndex)
 }
 
+/**
+ * 这条闸**只管 agent-loop 那条路**(A2,§13.1)。
+ *
+ * `image` part 不是 agent-loop 产的:图片生成是引擎里的一条特化流,正文一写就
+ * 落在消息上,根本没有 `turn-end` 这一刻,`request/end` 也永远不会来。§10.14
+ * 引入 `settledRequests` 时把它一并圈了进去,于是 S1b 缺口 3 补上的采集成果被
+ * 闸吃掉:事件里有那一格 image part,投影里一格都没有。
+ *
+ * 为什么是"豁免"而不是"让图片流补记一对 request/start+end":那两条事件说的是
+ * "向模型发了一次请求、收齐了一次响应",图片流没有发生过那件事 —— 记一条就是
+ * 往账本里写一件没发生的事,而且会连带派生出 `firstRequestStartAt` /
+ * `thinkingTime`(引擎那边没有)。豁免表达的是事实本身:这一格的落盘不由
+ * `persistTurnContentParts` 决定。
+ */
+function isSettleExemptPartKind(kind: SessionAssistantPartKind): boolean {
+  return kind === 'image'
+}
+
 export function materializeContentParts(run: AssistantNode): ProjectedContentPart[] {
   const parts: ProjectedContentPart[] = []
   const topReasoning = topReasoningPartIndexes(run)
   for (const partIndex of [...run.partOrder].sort((a, b) => a - b)) {
     const part = run.parts.get(partIndex)!
-    if (!requestSettled(run, part.requestIndex)) continue
+    if (!isSettleExemptPartKind(part.kind) && !requestSettled(run, part.requestIndex)) continue
     const turnIndex = run.turnByRequest.get(part.requestIndex)
     if (part.kind === 'text' && part.text) {
       parts.push({ type: 'text', content: part.text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
@@ -1107,6 +1195,20 @@ export function materializeContentParts(run: AssistantNode): ProjectedContentPar
       parts.push({ type: 'reasoning', content: part.text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
     } else if (part.kind === 'image' && part.blob) {
       parts.push({ type: 'image', blob: part.blob, ...(turnIndex !== undefined ? { turnIndex } : {}) })
+    } else if (part.kind === 'provider-data') {
+      // A1:引擎那一格是 `{type:'provider-data', providerData, turnIndex}`
+      // (`applyAgentLoopProviderDataWithAdapters`)。载荷解不回来(超 64KB 走了
+      // blob 而这里没有 resolver)时**照实留引用**,与 image part 同一个坑口 ——
+      // 静默丢掉一整格才是错的。
+      if (part.providerData !== undefined) {
+        parts.push({
+          type: 'provider-data',
+          providerData: part.providerData,
+          ...(turnIndex !== undefined ? { turnIndex } : {}),
+        })
+      } else if (part.blob) {
+        parts.push({ type: 'provider-data', blob: part.blob, ...(turnIndex !== undefined ? { turnIndex } : {}) })
+      }
     }
     // `tool-input` 不进 contentParts:它喂的是 toolCalls[].arguments 那一路。
   }

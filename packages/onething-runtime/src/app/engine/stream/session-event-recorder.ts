@@ -40,9 +40,15 @@ import type {
 } from '@onething/core/agent-loop'
 import type {
   BlobRef,
+  SessionAssistantDeltaPartKind,
   SessionAssistantPartKind,
   SessionResponseUsage,
 } from '@onething/core/session'
+import { safeParseAgentToolArguments } from '@onething/core/agent-loop'
+// 直接引那一个纯文件而不是 providers 的 barrel:barrel 会把六个 provider 实现
+// 一并拖进记录器的模块图,而这里要的只是一张判定表(见文件头"本模块只依赖
+// 会话事件那一层"的同一条理由)。
+import { planOnethingProviderDataPart } from '../../../agent-loop/providers/provider-data.js'
 import {
   hashSessionEventContent,
   hashSessionEventSystemPrompt,
@@ -111,6 +117,22 @@ export interface SessionEventRecorderContext {
    * store 树 —— recorder 只该依赖会话事件那一层。
    */
   onRequestRecipe?: (runId: string, requestIndex: number) => void
+  /**
+   * A6+A7(§13.1):工具身份归一 —— **引擎那一个函数**,由宿主注入。
+   *
+   * 消息上那两格是 `toolCall.toolId = resolved.toolId` /
+   * `toolCall.toolName = resolved.displayName`,而账本上从前只有 provider 给的
+   * 原始名。记录器不自己再实现一遍别名表与 MCP 折叠(那就是第二个判定点):
+   * 宿主把 `app/engine/stream/stream-processor.ts` 的 `resolveToolIdentity`
+   * 传进来。用端口而不是 import 的理由与 `onRequestRecipe` 同一条 —— 那个函数
+   * 身后挂着 MCP 管理器与整棵 store 树,记录器的模块图不该被它撑开。
+   *
+   * 不注入时不写这两格,投影退回原始名(= 修复前的行为)。
+   */
+  resolveToolIdentity?: (
+    toolName: string,
+    args: Record<string, unknown>,
+  ) => { toolId: string; displayName: string }
 }
 
 /**
@@ -154,7 +176,7 @@ function toToolSchemas(tools: readonly AgentTool[] | undefined): SessionEventToo
 /** 一段还在攒的 delta 批次。 */
 interface ChunkBatch {
   partIndex: number
-  kind: Exclude<SessionAssistantPartKind, 'image'>
+  kind: SessionAssistantDeltaPartKind
   requestIndex: number
   messageId: string
   toolCallId?: string
@@ -168,7 +190,7 @@ interface ChunkBatch {
 /** 一个 part 的累计状态(part-end 的 len/hash 从这里来)。 */
 interface PartState {
   partIndex: number
-  kind: Exclude<SessionAssistantPartKind, 'image'>
+  kind: SessionAssistantDeltaPartKind
   requestIndex: number
   messageId: string
   toolCallId?: string
@@ -227,6 +249,19 @@ export interface SessionEventRecorder {
    * `willRetry:true` 的那几次,这一条记的是收场 —— 由执行器的 catch 调。
    */
   recordRequestError(error: unknown): void
+  /**
+   * A14(§13.1):引擎**自己合成**的一段正文,不经 provider 流。
+   *
+   * codex 内联生图把一段 markdown 交给 `handleTextChunk`,消息上它与模型吐的
+   * 正文没有区别 —— 但 `onEvent` 上一条 `text-delta` 都没有,所以采集点看不见。
+   * 宿主在那一格落定之后回传给这里,`assistant/chunks` 才对得上事实。
+   *
+   * 走的是与 `text-delta` **同一条** `deltaInto('text')`:引擎那边也是同一个
+   * `appendOrderedPart('text')`,合并规则因此天然一致。
+   *
+   * 不写 `assistant/first-token` —— 那一条记的是"模型第一次吐字",这段不是。
+   */
+  recordSynthesizedText(text: string): void
   /** 把还在攒的批全部落盘(执行器收尾时调,防止最后一批被丢)。 */
   flush(): void
 }
@@ -345,7 +380,7 @@ export function createSessionEventRecorder(
   // ---- delta 攒批 ----
 
   function openPart(
-    kind: Exclude<SessionAssistantPartKind, 'image'>,
+    kind: SessionAssistantDeltaPartKind,
     toolCallId?: string,
     toolName?: string,
   ): number | undefined {
@@ -455,6 +490,54 @@ export function createSessionEventRecorder(
     state.toolInputPartByCallId.clear()
   }
 
+  /**
+   * A1(§13.1):`provider-data` 落成**一格 part**,一次到齐。
+   *
+   * 两件事必须同时做,少一件投影就与事实错位:
+   *
+   *  1. **先把正在攒的正文/推理段收了**。引擎那边 `appendOrderedPart` 只合并
+   *     **相邻**同类,一格 provider-data 夹进去就把前后两段正文切成两格;记录器
+   *     若继续往同一个 partIndex 里塞 delta,投影出来就是合并成一段的那一格。
+   *  2. **占一个 partIndex**。partIndex 是"这次执行的第几段输出",投影按它排
+   *     contentParts —— 不占号,provider-data 与它后面那段正文的先后就没了。
+   *
+   * 载荷与工具结局同一条 64KB 线(`textOrBlobForEvent`)。
+   */
+  function recordProviderDataPart(providerData: unknown): void {
+    const requestIndex = state.requestIndex
+    if (requestIndex === undefined) return
+    const id = runId()
+    if (!id) return
+    let text: string
+    try {
+      text = JSON.stringify(providerData)
+    } catch {
+      // 序列化不了的载荷:少一格账,好过一格坏掉的账(与结构化工具结局同款)。
+      return
+    }
+    if (!text) return
+
+    endPart(state.currentTextPart)
+    state.currentTextPart = undefined
+    endPart(state.currentReasoningPart)
+    state.currentReasoningPart = undefined
+
+    const partIndex = nextSessionRunPartIndex(ctx.sessionId)
+    if (partIndex === undefined) return
+    const hash = hashSessionEventContent(text)
+    state.finishedParts.push({ partIndex, kind: 'provider-data', len: text.length, hash })
+    appendSessionLogEvent(ctx.sessionId, 'assistant/part-end', {
+      runId: id,
+      requestIndex,
+      messageId: ctx.getMessageId(),
+      partIndex,
+      kind: 'provider-data',
+      len: text.length,
+      hash,
+      providerData: textOrBlobForEvent(ctx.sessionId, text),
+    })
+  }
+
   /** 换 kind 就换段:一段 text 与一段 reasoning 不能共用一个 partIndex。 */
   function deltaInto(kind: 'text' | 'reasoning', delta: string): void {
     const slot = kind === 'text' ? 'currentTextPart' : 'currentReasoningPart'
@@ -559,9 +642,17 @@ export function createSessionEventRecorder(
         // skillUsed"。现在唯一的判定点在引擎(`startAgentLoopToolExecution` /
         // `executeCoreToolAndUpdate`),这条事件由那一次宣告经 emitter 落账
         // (`app/events/event-only-emitter.ts`)—— 记录器只记引擎宣告过的事。
+        // A6+A7:归一后的身份与原始名并列记账。参数解析用的是 agent-loop 自己
+        // 那一个函数(`safeParseAgentToolArguments`)—— 引擎解析出来的 args 正是
+        // 它的产物,而 `findMCPToolIdByShortName` 会看参数。
+        const resolved = ctx.resolveToolIdentity?.(
+          event.toolCall.name,
+          safeParseAgentToolArguments(event.toolCall.arguments),
+        )
         const seq = appendSessionLogEvent(ctx.sessionId, 'tool/call', {
           callId: event.toolCall.id,
           name: event.toolCall.name,
+          ...(resolved ? { resolvedToolId: resolved.toolId, displayName: resolved.displayName } : {}),
           argumentsRaw: event.toolCall.arguments,
           messageId: ctx.getMessageId(),
           ...withRunId(),
@@ -588,6 +679,13 @@ export function createSessionEventRecorder(
         const responseId = data.responseId ?? data.id
         if (typeof responseId === 'string') state.providerResponseId = responseId
         if (typeof data.model === 'string') state.responseModel = data.model
+        // A1:这一条在**消息上**留下哪一格,由引擎与采集点共用的那张表说了算
+        // (`planOnethingProviderDataPart`)—— 记录器不自己判第二遍。
+        // `'text'`(codex 内联生图)那一支的正文是引擎合成的,由宿主经
+        // `recordSynthesizedText` 回传,不在这里凭空造。
+        if (planOnethingProviderDataPart(event.providerData) === 'provider-data') {
+          recordProviderDataPart(event.providerData)
+        }
         return
       }
       case 'auto-retry': {
@@ -712,6 +810,15 @@ export function createSessionEventRecorder(
         })
       } catch (cause) {
         log.warn('event recorder error record failed', { sessionId: ctx.sessionId }, cause)
+      }
+    },
+    recordSynthesizedText(text) {
+      try {
+        if (!text) return
+        if (state.requestIndex === undefined) return
+        deltaInto('text', text)
+      } catch (error) {
+        log.warn('event recorder synthesized text failed', { sessionId: ctx.sessionId }, error)
       }
     },
     flush() {

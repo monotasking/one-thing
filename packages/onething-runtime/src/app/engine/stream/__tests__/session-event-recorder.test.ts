@@ -133,6 +133,62 @@ async function runLoop(tool: AgentTool, systemPrompt = 'you are a test'): Promis
   await flushSessionEventLog(SESSION_ID)
 }
 
+/**
+ * 同一条跑法,但换一个 provider、并允许接上 Q1 批新加的两个口
+ * (`resolveToolIdentity` 端口 / 引擎合成正文的回传)。
+ */
+async function runLoopWithProvider(
+  provider: AgentProvider,
+  options: {
+    resolveToolIdentity?: (
+      toolName: string,
+      args: Record<string, unknown>,
+    ) => { toolId: string; displayName: string }
+    /** 在流**进行中**调一次(合成正文是引擎在消费 chunk 时产生的)。 */
+    onRecorderReady?: (recorder: { recordSynthesizedText(text: string): void }) => void
+  } = {},
+): Promise<void> {
+  const runtime: AgentLoopOptions = {
+    provider,
+    model: 'test-model',
+    messages: [{ role: 'user', content: 'hello' }],
+    tools: [ECHO_TOOL],
+    toolPolicy: { enabled: true },
+    maxTurns: 4,
+    sessionId: SESSION_ID,
+    messageId: 'assistant-1',
+  }
+  const run = beginSessionRun(SESSION_ID, {
+    kind: 'send',
+    assistantMessageId: 'assistant-1',
+    provider: 'test-provider',
+    model: 'test-model',
+  })
+  const recorded = attachSessionEventRecorder(runtime, {
+    sessionId: SESSION_ID,
+    providerId: 'test-provider',
+    model: 'test-model',
+    systemPrompt: 'you are a test',
+    getMessageId: () => 'assistant-1',
+    ...(options.resolveToolIdentity ? { resolveToolIdentity: options.resolveToolIdentity } : {}),
+  })
+  let notified = false
+  try {
+    for await (const chunk of streamAgentLoopProviderChunks(recorded.runtime)) {
+      // 引擎合成的正文是在**消费 chunk 的那一刻**产生的(applyProviderData 就在
+      // 那条路上),所以这里也在同一个位置回传。
+      if (!notified && chunk.type === 'text') {
+        notified = true
+        options.onRecorderReady?.(recorded.recorder)
+      }
+    }
+  } finally {
+    recorded.recorder.flush()
+    endSessionRun(SESSION_ID, run.runId, { outcome: 'completed' })
+  }
+  await flushSessionEventLog(SESSION_ID)
+}
+
 const ECHO_TOOL: AgentTool = {
   name: 'echo',
   description: 'Echo the input back',
@@ -520,6 +576,121 @@ describe('session event recorder (agent loop integration)', () => {
     expect(starts).toHaveLength(2)
     expect(starts[0].type === 'run/start' && starts[0].data.continuesRunId).toBeUndefined()
     expect(starts[1].type === 'run/start' && starts[1].data.continuesRunId).toBe(first.runId)
+  })
+
+  /**
+   * A1(§13.1):**provider-data 是一格 part,而且是一条分段边界**。
+   *
+   * 引擎的 `appendOrderedPart` 只合并相邻同类,一块 Claude 思考签名夹在两段正文
+   * 之间就把它们切成两格。采集点从前没有这个词汇(`provider-data` 那一支只嗅了
+   * responseId/model 就 return),于是两段正文攒进同一个 partIndex —— 投影出来
+   * 的 contentParts 永远比事实少一格。
+   */
+  it('A1: a provider-data event opens its own part and cuts the text run', async () => {
+    const provider: AgentProvider = {
+      ...testProvider(),
+      async *streamTurn(): AsyncIterable<AgentTurnStreamEvent> {
+        yield { type: 'text-delta', turn: 1, delta: 'before' }
+        yield {
+          type: 'provider-data',
+          turn: 1,
+          providerData: { provider: 'anthropic', type: 'thinking-signature', signature: 'sig-abc' },
+        }
+        yield { type: 'text-delta', turn: 1, delta: 'after' }
+        yield { type: 'finish', turn: 1, finishReason: 'stop' }
+      },
+    }
+    await runLoopWithProvider(provider)
+
+    const events = await readSessionLogEvents(SESSION_ID)
+    const parts = events.filter(event => event.type === 'assistant/part-end')
+    expect(parts.map(event => event.type === 'assistant/part-end' && event.data.kind))
+      .toEqual(['text', 'provider-data', 'text'])
+    // partIndex 单调:provider-data 占了中间那一号,两段正文因此各自成段。
+    expect(parts.map(event => event.type === 'assistant/part-end' && event.data.partIndex))
+      .toEqual([0, 1, 2])
+    const payload = parts[1].type === 'assistant/part-end' ? parts[1].data.providerData : undefined
+    expect(payload && 'text' in payload && JSON.parse(payload.text)).toEqual({
+      provider: 'anthropic', type: 'thinking-signature', signature: 'sig-abc',
+    })
+    // 正文照旧只有两段 delta,分别落在两个 partIndex 上。
+    const chunks = events.filter(event => event.type === 'assistant/chunks')
+    expect(chunks.map(event => event.type === 'assistant/chunks' && event.data.partIndex)).toEqual([0, 2])
+  })
+
+  /**
+   * A6+A7(§13.1):工具身份归一进账本。原始名照旧记(它是 wire 上的事实),
+   * 归一后的两格与消息上那两格同源 —— 判定点只有一个,由宿主注入。
+   */
+  it('A6+A7: tool/call carries the resolved identity beside the raw name', async () => {
+    const provider: AgentProvider = {
+      ...testProvider(),
+      async *streamTurn(request): AsyncIterable<AgentTurnStreamEvent> {
+        if (request.turn === 1) {
+          yield {
+            type: 'tool-call-done',
+            turn: 1,
+            toolCall: { id: 'call-1', name: 'echo', arguments: '{"text":"hi"}' },
+          }
+          yield { type: 'finish', turn: 1, finishReason: 'tool_calls' }
+          return
+        }
+        yield { type: 'text-delta', turn: 2, delta: 'done' }
+        yield { type: 'finish', turn: 2, finishReason: 'stop' }
+      },
+    }
+    await runLoopWithProvider(provider, {
+      resolveToolIdentity: (toolName, args) => {
+        expect(toolName).toBe('echo')
+        // 引擎那一份会看参数(`findMCPToolIdByShortName`),所以端口也拿得到。
+        expect(args).toEqual({ text: 'hi' })
+        return { toolId: 'mcp__docs__echo', displayName: 'docs' }
+      },
+    })
+
+    const call = (await readSessionLogEvents(SESSION_ID)).find(event => event.type === 'tool/call')
+    expect(call?.type === 'tool/call' && call.data).toMatchObject({
+      name: 'echo',
+      resolvedToolId: 'mcp__docs__echo',
+      displayName: 'docs',
+    })
+  })
+
+  /** 不注入端口 = 老形状:只有原始名,投影退回它(§10.16 的成对交付另一半)。 */
+  it('A6+A7: without the resolver the event keeps exactly the old shape', async () => {
+    await runLoop(ECHO_TOOL)
+
+    const call = (await readSessionLogEvents(SESSION_ID)).find(event => event.type === 'tool/call')
+    const data = call?.type === 'tool/call' ? call.data : undefined
+    expect(data?.name).toBe('echo')
+    expect(data && 'resolvedToolId' in data).toBe(false)
+    expect(data && 'displayName' in data).toBe(false)
+  })
+
+  /**
+   * A14(§13.1):codex 内联生图那段 markdown 是**引擎合成的** —— provider 流里
+   * 没有对应的 text-delta,所以采集点只能由宿主告知。走的是与 text-delta 同一条
+   * `deltaInto('text')`,于是它与前后正文的合并规则天然一致。
+   */
+  it('A14: engine-synthesized text lands in assistant/chunks like any other delta', async () => {
+    const provider: AgentProvider = {
+      ...testProvider(),
+      async *streamTurn(): AsyncIterable<AgentTurnStreamEvent> {
+        yield { type: 'text-delta', turn: 1, delta: 'here: ' }
+        yield { type: 'finish', turn: 1, finishReason: 'stop' }
+      },
+    }
+    await runLoopWithProvider(provider, {
+      onRecorderReady: recorder => recorder.recordSynthesizedText('![img](media://x.png)'),
+    })
+
+    const chunks = (await readSessionLogEvents(SESSION_ID))
+      .filter(event => event.type === 'assistant/chunks')
+    const text = chunks
+      .flatMap(event => (event.type === 'assistant/chunks' ? event.data.text : []))
+      .join('')
+    // 修复前这段 markdown 在账本上**根本不存在**,`content` 的 fold 因此永远短一截。
+    expect(text).toBe('here: ![img](media://x.png)')
   })
 
   it('truncates a long result preview to 500 chars', async () => {

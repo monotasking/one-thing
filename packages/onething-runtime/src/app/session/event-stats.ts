@@ -26,10 +26,24 @@ export const SESSION_SHADOW_STATS_FILENAME = 'session-shadow-stats.json'
 export interface SessionShadowStats {
   /** 事件/blob 写失败的总次数。门:必须是 0。 */
   appendFailures: number
-  /** 完成并比对过的 run 数。门:≥ 200(`--min-runs` 可覆盖)。 */
+  /** 完成并比对过的 run 数。门:≥ 200(`--min-runs` 可覆盖)。**每个 run 一次**。 */
   runs: number
-  /** 投影与消息不等的次数。门:必须是 0。 */
+  /**
+   * 历史断言跑过的次数(F9,§13.2)。
+   *
+   * 它**不是** `runs` 的另一种说法:历史断言每次请求跑一遍,一个 12 轮的 run 会
+   * 跑 12 次。从前这两件事共用一个"比过多少次"的直觉,于是"200 个干净 run"这道
+   * 门被读成了远比实际大的覆盖面。分开记之后,报告里 `runs`(run 粒度)与
+   * `historyChecks`(请求粒度)各说各的,门仍然只认 `runs`。
+   */
+  historyChecks: number
+  /** 投影与消息不等的次数(同 run 同一处只计一次)。门:必须是 0。 */
   mismatches: number
+  /**
+   * 被折叠掉的**重复**不等(F9):同一个 run 里同一处不等在后续每轮请求上又出现
+   * 一次。它不进门也不写 `shadow.jsonl` —— 记一个数只是为了让"折叠了多少"看得见。
+   */
+  duplicateMismatches: number
   /** 按断言种类拆的不等计数(`messages` / `history`)。 */
   byKind: Record<string, number>
   /**
@@ -45,7 +59,15 @@ export interface SessionShadowStats {
   updatedAt?: number
 }
 
-const EMPTY: SessionShadowStats = { appendFailures: 0, runs: 0, mismatches: 0, byKind: {}, skipped: {} }
+const EMPTY: SessionShadowStats = {
+  appendFailures: 0,
+  runs: 0,
+  historyChecks: 0,
+  mismatches: 0,
+  duplicateMismatches: 0,
+  byKind: {},
+  skipped: {},
+}
 const WRITE_THROTTLE_MS = 1000
 
 let cached: SessionShadowStats | undefined
@@ -64,7 +86,9 @@ function load(): SessionShadowStats {
     cached = {
       appendFailures: Number(parsed.appendFailures) || 0,
       runs: Number(parsed.runs) || 0,
+      historyChecks: Number(parsed.historyChecks) || 0,
       mismatches: Number(parsed.mismatches) || 0,
+      duplicateMismatches: Number(parsed.duplicateMismatches) || 0,
       byKind: normalizeByKind(parsed.byKind),
       skipped: normalizeByKind(parsed.skipped),
       ...(Number(parsed.lastMismatchAt) ? { lastMismatchAt: Number(parsed.lastMismatchAt) } : {}),
@@ -121,6 +145,8 @@ export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void
   const stats = load()
   if (patch.appendFailures) stats.appendFailures += patch.appendFailures
   if (patch.runs) stats.runs += patch.runs
+  if (patch.historyChecks) stats.historyChecks += patch.historyChecks
+  if (patch.duplicateMismatches) stats.duplicateMismatches += patch.duplicateMismatches
   if (patch.mismatches) {
     stats.mismatches += patch.mismatches
     stats.lastMismatchAt = Date.now()

@@ -161,7 +161,11 @@ export async function executeMessageStream(
     assistantMessageId: params.assistantMessageId,
     provider: params.providerId,
     model: params.configWithApiKey.model,
-    ...(params.agentId ? { agentId: params.agentId } : {}),
+    // A4(§13.1):占位消息上盖过的那一格就是事实(`stampCollabAgentId`)。
+    // core 的入口从不传 `params.agentId`,所以在此之前这一格从来没有产地。
+    ...(params.agentId ?? assistantPlaceholder?.agentId
+      ? { agentId: (params.agentId ?? assistantPlaceholder?.agentId) as string }
+      : {}),
     ...(params.triggerMessageId ? { triggerMessageId: params.triggerMessageId } : {}),
     ...(assistantTimestamp !== undefined ? { timestamp: assistantTimestamp } : {}),
     ...(assistantPlaceholder?.origin

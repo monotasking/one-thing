@@ -108,7 +108,14 @@ export function materializeModelHistory<TContent = unknown>(
     if (node) nodes.push(node)
   }
 
-  const hasCompacted = nodes.some(node => node.kind === 'compacted')
+  // F2(§13.2):**只有成功的压缩**才把这份历史切进压缩口径。
+  //
+  // 一次失败的压缩(真机发生过:deepseek 返回空摘要)在 UI 上是一张红卡,在模型
+  // 历史里**什么都不是** —— 引擎那边它就是一条 role:'system' 的消息,被角色过滤
+  // 直接跳过,整份历史一个字节不变。从前这里只看"有没有 compacted 节点",于是
+  // 一次失败让:per-result 预算掉 8 倍、`session` 被置空(老摘要锚点失效整段重放)、
+  // 消息组在那一点被劈成两段各自 build 一次。
+  const hasCompacted = nodes.some(node => node.kind === 'compacted' && node.status === 'completed')
 
   const buildOptions = {
     buildMessageContent: (options.buildMessageContent
@@ -120,6 +127,10 @@ export function materializeModelHistory<TContent = unknown>(
       : {}),
     // G9:surface 上有压缩节点 = 这是一份压缩过的历史,尾部按压缩预算。
     forceCompactedToolResults: options.forceCompactedToolResults ?? hasCompacted,
+    // F1:压缩之后 providerData 只跟**最后一条**保留消息走 —— 摘要分支里那条
+    // 规则,在这条路上必须由这个选项还回来(否则 codex/claude 的加密推理在
+    // 压缩后的每一条消息上各带一份)。
+    providerDataLastMessageOnly: hasCompacted,
   } as CoreBuildHistoryMessagesOptions<TContent, CoreHistoryChatMessage>
 
   const out: CoreHistoryMessage[] = []
@@ -137,15 +148,16 @@ export function materializeModelHistory<TContent = unknown>(
 
   for (const node of nodes) {
     if (node.kind === 'compacted') {
+      // F2:失败的压缩**连段都不切**。它在引擎那边是一条被角色过滤掉的 system
+      // 消息 —— 零影响,而不是"零摘要"。从前这里照旧 `flush()`,于是 `prepareMessages`
+      // 与 last-only 之类的整份规则被劈成两段各跑一次(F3 的同一条病根)。
+      if (node.status !== 'completed') continue
       flush()
-      // 失败的压缩没有摘要可发 —— 它在 UI 上是一张红卡,在模型历史里什么都不是。
-      if (node.status === 'completed') {
-        out.push({ role: 'user', content: buildOptions.buildMessageContent({
-          id: node.messageId,
-          role: 'user',
-          content: compactedHistoryPreamble(node.summary),
-        } as CoreHistoryChatMessage) })
-      }
+      out.push({ role: 'user', content: buildOptions.buildMessageContent({
+        id: node.messageId,
+        role: 'user',
+        content: compactedHistoryPreamble(node.summary),
+      } as CoreHistoryChatMessage) })
       continue
     }
     group.push(resolveHistoryBlobRefs(toHistoryMessage(node, state), options.resolveBlob))

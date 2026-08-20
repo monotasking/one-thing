@@ -39,6 +39,8 @@
  * 补上采集点而不是豁免掉的);不会变的才写进这张表。
  */
 
+import { stringifyToolResult, toolCallArguments } from '../../agent-loop/wire-format.js'
+
 export interface CanonicalizeOptions {
   /** 额外忽略的顶层字段(S1 影子期用来临时豁免还没接上的采集点)。 */
   ignoreKeys?: readonly string[]
@@ -236,6 +238,70 @@ export function canonicalChatMessages(
 }
 
 /**
+ * F10a(§13.2):**wire 上是一整串字节的那两格,按字节比,不按对象比。**
+ *
+ * `canonicalValue` 对对象键排序 —— 对绝大多数格这是对的:它们在 wire 上被
+ * **逐字段映射**成 provider 的形状,键序是拼装顺序的副产物。但有两格例外,
+ * 它们整个被 `JSON.stringify` 成一个字符串塞进请求:
+ *
+ *   - 工具结局(`role:'tool'` 的 `content[].result` → `stringifyToolResult`)
+ *   - 工具参数(assistant 的 `toolCalls[].args` → `toolCallArguments`)
+ *
+ * `JSON.stringify` 保留键的插入序,所以 `{"a":1,"b":2}` 与 `{"b":2,"a":1}` 在
+ * 判等器眼里一样、在 provider 眼里是两段不同的前缀(prompt cache 直接失效)。
+ * 这是全表唯一"判等但不等价"的格 —— 判据这里改成拿**同一个序列化器**(core
+ * 的 `wire-format.ts`,messages.ts 用的就是它)算出字符串再比。
+ */
+function canonicalHistoryToolCall(call: unknown): unknown {
+  if (!call || typeof call !== 'object' || Array.isArray(call)) return canonicalValue(call)
+  const record = call as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(record).sort()) {
+    // `args` / `arguments` 是同一件事的两种写法,归一成 wire 的那一串。
+    if (key === 'args' || key === 'arguments') continue
+    const value = record[key]
+    if (value === undefined) continue
+    out[key] = canonicalValue(value)
+  }
+  out.arguments = toolCallArguments(record)
+  return out
+}
+
+function canonicalHistoryToolResultEntry(entry: unknown): unknown {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return canonicalValue(entry)
+  const record = entry as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(record).sort()) {
+    if (key === 'result') continue
+    const value = record[key]
+    if (value === undefined) continue
+    out[key] = canonicalValue(value)
+  }
+  out.result = stringifyToolResult(record.result)
+  return out
+}
+
+function canonicalHistoryMessage(message: unknown): unknown {
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return canonicalValue(message)
+  const record = message as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(record).sort()) {
+    const value = record[key]
+    if (value === undefined) continue
+    if (key === 'content' && record.role === 'tool' && Array.isArray(value)) {
+      out.content = value.map(canonicalHistoryToolResultEntry)
+      continue
+    }
+    if (key === 'toolCalls' && Array.isArray(value)) {
+      out.toolCalls = value.map(canonicalHistoryToolCall)
+      continue
+    }
+    out[key] = canonicalValue(value)
+  }
+  return out
+}
+
+/**
  * 模型历史的**唯一**比较判据(S1b,§10.4 第二条)。
  *
  * 两侧都是 provider 形状的历史数组:一侧是今天 `buildHistoryMessages` 发出去的
@@ -243,8 +309,9 @@ export function canonicalChatMessages(
  * 任何一处不同都意味着"S2 切读之后模型会看到另一段历史",没有"不算数"的那一类。
  *
  * 归一的只有两件与内容无关的事:键序(一侧是字面量的写法序,另一侧是投影的
- * 拼装序)与 `undefined`(它与缺席是同一件事)。
+ * 拼装序)与 `undefined`(它与缺席是同一件事)。**例外见上面的 F10a**:
+ * 工具结局与工具参数在 wire 上是一整串字节,它们按那一串比。
  */
 export function canonicalHistoryMessages(messages: readonly unknown[]): string {
-  return JSON.stringify(messages.map(canonicalValue))
+  return JSON.stringify(messages.map(canonicalHistoryMessage))
 }

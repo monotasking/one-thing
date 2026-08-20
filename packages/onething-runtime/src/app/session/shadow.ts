@@ -17,6 +17,12 @@
  * 3. **不许调绿**。`canonicalChatMessage` 是唯一判据(它把"不等但不算数"的那
  *    部分一次性写死);这里不再额外豁免字段。真的不等就是真的不等 —— 那正是
  *    这道门存在的理由。
+ * 4. **真相侧永远是抄本**(F11,§13.2)。取数只走
+ *    `sessionReads.listMessagesFromTranscript` —— 它无视 `ONETHING_SESSION_READ`。
+ *    走 `listMessages` 的话,读模式一切到 `events`,两侧就都是投影:自己跟自己
+ *    比,永远相等,门以**错误的理由**变绿。切了读模式之后这道比对**照跑不误**
+ *    (它比的始终是"抄本 vs 投影",与谁在给产品供数无关)——S2b 之后它就是
+ *    那道回头看的迁移账。
  *
  * ## 关闸
  *
@@ -193,6 +199,48 @@ function appendShadowLine(record: SessionShadowRecord): void {
   }
 }
 
+/**
+ * F9(§13.2):**同一个 run 里同一处不等只记一次。**
+ *
+ * 历史断言是**每次请求**跑的(那正是它的正确性所在:第 2 轮发出去的历史和第 1 轮
+ * 不是同一份)。但一个真实的不等——比如某条老消息的附件没回填——在一个 12 轮的
+ * run 里会被原样记 12 次:`mismatches` 通胀 12 倍,`shadow.jsonl` 里 12 行一模一样
+ * 的摘要,报告的 top10 变成"谁的回合多"排行榜。
+ *
+ * 指纹 = `kind` + 摘要本身(摘要已经是 ≤2KB 的字段级差异)。**同一个 run 里出现
+ * 另一处不等照记不误** —— 折叠的是重复,不是不等。
+ */
+const RUN_DEDUPE_MAX_RUNS = 200
+const seenRunMismatches = new Map<string, Set<string>>()
+
+function dedupeKey(sessionId: string, runId: string | undefined): string {
+  return `${sessionId}|${runId ?? '-'}`
+}
+
+/** @returns 这条不等是不是**新的**(旧的只计 `duplicateMismatches`,不进门)。 */
+function rememberMismatch(sessionId: string, runId: string | undefined, signature: string): boolean {
+  const key = dedupeKey(sessionId, runId)
+  let seen = seenRunMismatches.get(key)
+  if (!seen) {
+    seen = new Set()
+    seenRunMismatches.set(key, seen)
+    // Map 是插入序的:满了就丢最老的那个 run(它早就收尾了)。
+    while (seenRunMismatches.size > RUN_DEDUPE_MAX_RUNS) {
+      const oldest = seenRunMismatches.keys().next()
+      if (oldest.done) break
+      seenRunMismatches.delete(oldest.value)
+    }
+  }
+  if (seen.has(signature)) return false
+  seen.add(signature)
+  return true
+}
+
+/** 会话删除 / 测试:忘掉"这个 run 记过什么"。 */
+export function resetSessionShadowDedupe(): void {
+  seenRunMismatches.clear()
+}
+
 function recordMismatch(
   sessionId: string,
   kind: SessionShadowKind,
@@ -201,6 +249,11 @@ function recordMismatch(
   b: unknown,
 ): void {
   const { diff, truncated } = summarizeShadowDiff(a, b)
+  const signature = `${kind}|${JSON.stringify(diff)}|${truncated}`
+  if (!rememberMismatch(sessionId, runId, signature)) {
+    bumpSessionShadowStats({ duplicateMismatches: 1 })
+    return
+  }
   appendShadowLine({
     time: Date.now(),
     sessionId,
@@ -250,7 +303,9 @@ export function sessionEventCoverageIsPartial(
   state: { byMessageId: Map<string, unknown> },
 ): boolean {
   if (legacyPartialSessions.has(sessionId)) return true
-  const { messages } = sessionReads.listMessages(sessionId)
+  // F11:真相侧只认抄本。走 `listMessages` 的话,`ONETHING_SESSION_READ=events`
+  // 一开这份"事实"就是投影自己 —— 每条 id 当然都认得,永远判成"覆盖完整"。
+  const messages = sessionReads.listMessagesFromTranscript(sessionId)
   for (const message of messages) {
     if (!state.byMessageId.has(message.id)) {
       legacyPartialSessions.add(sessionId)
@@ -260,10 +315,11 @@ export function sessionEventCoverageIsPartial(
   return false
 }
 
-/** 会话删除 / 测试:忘掉"覆盖不全"的判定。 */
+/** 会话删除 / 测试:忘掉"覆盖不全"的判定(顺带清掉这条会话的不等指纹)。 */
 export function resetSessionShadowCoverageCache(sessionId?: string): void {
   if (sessionId) legacyPartialSessions.delete(sessionId)
   else legacyPartialSessions.clear()
+  resetSessionShadowDedupe()
 }
 
 /** 一次跳过:只记账,不进 `mismatches`(门不受影响)。 */
@@ -311,7 +367,8 @@ export function checkSessionRunShadow(
     const selected = new Set<string>([input.assistantMessageId])
     if (input.triggerMessageId) selected.add(input.triggerMessageId)
 
-    const actual = sessionReads.listMessages(sessionId).messages.filter(
+    // F11:真相侧永远是 `messages.jsonl`(见 `listMessagesFromTranscript` 的注释)。
+    const actual = sessionReads.listMessagesFromTranscript(sessionId).filter(
       message => selected.has(message.id) || message.runId === input.runId,
     )
     for (const message of actual) selected.add(message.id)
@@ -370,17 +427,35 @@ export function scheduleSessionRunShadow(sessionId: string, input: SessionRunSha
 
 export interface SessionHistoryShadowInput {
   runId?: string
-  /** 今天真正发出去的那一份(recipe 的输入过 `buildHistoryMessages`)。 */
+  /**
+   * **抄本侧**的那一份历史(`messages.jsonl` 的消息过 `buildHistoryMessages`)。
+   *
+   * 默认读模式下它就是"今天真正发出去的那一份";切到 `events` 读模式之后产品线
+   * 发的是投影那一份,而这道断言的两侧口径**不变**(F11):始终是"抄本 vs 投影"。
+   */
   actual: readonly unknown[]
   /** 老会话的摘要锚点(没有 `session/compacted` 事件时投影才读它)。 */
   meta?: ProjectModelHistoryMeta
   /**
-   * 宿主注入的三件套 —— 必须与真实请求走**同一个函数**(G8 的"落点与回放同一
-   * 函数")。传别的进来,这道断言就只是在比两份不同的构造法。
+   * 宿主注入的**整份配方** —— 必须与真实请求走**同一组函数**(G8 的"落点与
+   * 回放同一函数")。传别的进来,这道断言就只是在比两份不同的构造法。
+   *
+   * F5(§13.2):这里原来只声明了三格(`buildMessageContent` / `getAIToolName` /
+   * `failureResultForAI`),而宿主配方 `historyProjectionRecipe` 还带着
+   * `prepareMessages`(房投影 / goal drive 折叠 / 用户消息上模型面)与
+   * `providerDataFromContentPart`——它们只是**顺着 spread 活下来的**,类型上
+   * 一格都没记着。哪天有人按类型重构一次这个入参,那两格会静默消失:两侧从此
+   * 比的是两种构造法,而门照绿(不等的那一份被 `legacyPartial` 之外的任何理由
+   * 掩盖不掉,但"两侧同时少了同一遍预处理"恰恰仍然相等)。所以类型必须把
+   * 配方的**全集**写出来。
    */
   build?: Pick<
     ProjectModelHistoryOptions<unknown>,
-    'buildMessageContent' | 'getAIToolName' | 'failureResultForAI'
+    | 'buildMessageContent'
+    | 'getAIToolName'
+    | 'failureResultForAI'
+    | 'prepareMessages'
+    | 'providerDataFromContentPart'
   >
 }
 
@@ -409,6 +484,9 @@ export function checkSessionHistoryShadow(
 
     const a = canonicalHistory(input.actual)
     const b = canonicalHistory(projected as readonly unknown[])
+    // F9(b):历史断言**每次请求**跑一遍,它的次数与 `runs`(每个 run 一次)
+    // 不是一回事 —— 分开记,报告里两个数都看得见,谁也别替谁说话。
+    bumpSessionShadowStats({ historyChecks: 1 })
     if (a === b) return 'match'
 
     recordMismatch(sessionId, 'history', input.runId, JSON.parse(a), JSON.parse(b))

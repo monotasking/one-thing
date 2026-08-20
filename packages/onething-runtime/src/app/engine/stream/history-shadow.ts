@@ -29,7 +29,10 @@ const log = getLogger('engine.history')
 export function checkSessionHistoryShadowForRequest(sessionId: string, runId: string): void {
   try {
     const session = sessionReads.getSession(sessionId)
-    const messages = [...sessionReads.listMessages(sessionId).messages]
+    // F11(§13.2):真相侧只能是抄本。`listMessages` 自 S2a 起带着
+    // `ONETHING_SESSION_READ=events` 的岔口 —— 读模式一开,这一份"今天真的发出去
+    // 的历史"其实就是投影自己,断言变成自比。
+    const messages = [...sessionReads.listMessagesFromTranscript(sessionId)]
     checkSessionHistoryShadow(sessionId, {
       runId,
       actual: buildHistoryMessages(messages, session),

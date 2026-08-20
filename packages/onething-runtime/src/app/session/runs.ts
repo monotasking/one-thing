@@ -25,6 +25,18 @@ import { scheduleSessionRunShadow } from './shadow.js'
 export interface BeginSessionRunInput {
   kind: SessionRunKind
   assistantMessageId: string
+  /**
+   * 这条助手消息归哪个 agent(A4,§13.1)。
+   *
+   * core 的三个入口(send / edit-resend / retry)一个都不传,于是 collab 工作
+   * 会话里"这条是哪个 agent 说的"在账本上一直是空的,而**消息上有** ——
+   * `stampCollabAgentId` 在 `addMessage` 那一刻按会话形态盖的章。
+   *
+   * 所以来源就是**那条占位消息本身**,不在这里重写一遍"哪种会话才盖章"的规则
+   * (那会立刻变成第二个判定点,而普通聊天会话的 `session.agentId` 是恒有值的
+   * —— 照它盖章会让投影凭空多出一格)。与 `timestamp` / `origin` 同一条路数:
+   * 谁读到那条占位消息,谁把这一格递进来。
+   */
   agentId?: string
   provider?: string
   model?: string
@@ -102,6 +114,7 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
   if (stale) endSessionRun(sessionId, stale.runId, { outcome: 'interrupted' })
 
   const runId = randomUUID()
+  const agentId = input.agentId
   const startSeq = appendSurfaceAwareEvent(
     sessionId,
     'run/start',
@@ -109,7 +122,7 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
       runId,
       kind: input.kind,
       assistantMessageId: input.assistantMessageId,
-      ...(input.agentId ? { agentId: input.agentId } : {}),
+      ...(agentId ? { agentId } : {}),
       ...(input.provider ? { provider: input.provider } : {}),
       ...(input.model ? { model: input.model } : {}),
       ...(input.triggerMessageId ? { triggerMessageId: input.triggerMessageId } : {}),
