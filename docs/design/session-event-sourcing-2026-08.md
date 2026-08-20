@@ -1571,3 +1571,53 @@ bun run sessions:shadow-battery --seed 7 --passes 3 --concurrency 2
 1. verify 覆盖感知:磁盘消息先按存储驱动同一函数补水(`rehydrateSessionFromStorage`),再对事件覆盖到的消息逐条 canonical 比较(stableStringify 免键序假阳性);legacy 前缀只计数不算错。
 2. `bun run sessions:verify:gate` 棘轮(基线 `docs/audit/session-verify-baseline-2026-08-20.txt` = 8 条已知残余:steps.type×4 占位冻结、usage×2 §10.16、skillUsed×1 断链、fd899977 content/order 待归类)——**任何新增 = 新代码弄坏旧文件,当场红**。
 3. 门口径更新:S 线任何投影/词汇/recorder 改动,必跑三件套 = 合同测试 + shadow-battery(新文件)+ **sessions:verify:gate(旧文件)**。这次复发若有第三件,当场即被拦下。
+
+---
+
+## 13. 静态审计(2026-08-20,用户要求"别再测了,从代码逻辑上看"):两路逐字段对读,28 项发现
+
+方法:一路逐字段对"引擎写什么 vs 事件带什么 vs 投影算什么"(消息侧 A1–A20),一路对模型历史 builder 全规则集 + 影子盲区 + 崩溃窗口 + 多写者(F1–F14)。不跑测试,纯读。已修的 8 类不重复计入。**结论:真分歧 19 项,其中日常必现 5 项——影子攒 run 的策略在这些面前是低效的,静态对读一次挖穿。**
+
+### 13.1 消息侧真分歧(A 系)
+
+| # | 内容 | 判定 | 触发 |
+|---|---|---|---|
+| A1+A13+A14 | **provider-data part 无采集点**:引擎把 Claude thinking 签名块/codex 加密推理落成 `contentParts` 的 provider-data 格(且会切断 text 分段),recorder 无此词汇;codex 内联生图正文同路无声 | 必现(Claude 开思考即触发) | 日常 |
+| A2 | **图片 part-end 被 `settledRequests` 闸吃掉**:§10.14 引入的闸把 S1b 缺口 3 的采集成果废了(图片流不经 agent-loop,requestIndex 永不 settled),`assistant-parts.ts` 头注释已过时 | 回归 | 一次生图 |
+| A3 | 图片消息 `content`(内嵌 base64 markdown)无事件:`appendContentPart`/图片路径不经 translator | UNCARRIED | 一次生图 |
+| A4 | `agentId` 无承载:core 三入口(send/edit-resend/retry)不传 `params.agentId`,collab 工作会话的助手消息 A 有 B 缺 | UNCARRIED | agent 执行会话 |
+| A5 | **retry 中段截断只遮一条**:`truncateFrom{inclusive:true}` 翻译成单条 `message/deleted`,reducer 只 hide 目标;对非末尾消息 retry 时 B 面整段多出来(surface 半对 → 历史绿、消息红) | 条件必现 | 中段 retry |
+| A6+A7 | **工具身份未归一**:`tool/call.name` 是 provider 原始名,引擎 `resolveToolIdentity` 归一(MCP→服务器名、别名表);steps.type/skillUsed 连带 | 必现(装了 MCP) | 日常 |
+| A8 | **>64KB 工具结果**:事件侧换 BlobRef,投影 `steps[].result` 整格缺席(A 是全文) | 必现(大结果) | read 大文件 |
+| A9 | **附件 base64 单向**:`user/message` 落成 BlobRef,投影不回填,canonical 必红 | 必现(带图消息) | 日常 |
+| A10 | **prepare(补账本)与 sanitize(补消息)口径从未对齐**:崩溃重启后 title/error/result/status 四格打架(§11.3 待决 8 的实证) | 每次非正常退出 | 崩溃 |
+| A11 | `publish:false` 的不可见工具调用:recorder 无条件记,投影无条件产出 | 条件 | fallback 补位路径 |
+| A12 | `awaiting-confirmation`/`requiresConfirmation:true`/等确认 error 三格无来源(permission/asked 其实已有,投影没 join 出状态) | 条件 | 权限挂起时退出 |
+| 结构 | `appendContentPart`/`upsertStep`/`patchStep`/`patchStepsUsageByTurn`/`setToolCalls` 五命令无 translator 且无守卫;`repairOnLoad` 改字段却无事件(translator 跳过理由"集合没变"套不上它) | 缺口之源 | — |
+
+等价确认:runId/steered/source/voice/replyTo/mentions/reactions/collab*/contextUpdate/turnContext/errorDetails/图片 usage(A15–A18、A20);canonical 既有豁免全部仍成立(A19)。**`ignoreKeys` 生产零使用——凡分歧必红,没有静默豁免档。**
+
+### 13.2 历史侧 + 时序 + 多写者(F 系)
+
+| # | 内容 | 判定 |
+|---|---|---|
+| F1 | 压缩分支 providerData **last-only** 规则未被 G9 还原(投影压缩后走非摘要分支逐条求值);今天被 A1 无生产者掩盖,A1 一补即成 codex/claude 压缩后确定性错误(重复 N 份加密推理) | 定时炸弹 |
+| F2 | **`hasCompacted` 不看 status**:一次失败压缩(真机发生过:deepseek 空摘要)让整份历史切换压缩口径——预算掉 8 倍、旧摘要锚点失效整段重放、消息组劈两段 | 最小改动最大爆炸 |
+| F3 | `prepareMessages` 按 surface 分段应用 vs 引擎整份应用一次(goal drive 折叠/房投影会出两份);还有 `indexOf(throughSeq)===-1` 时 replace 静默退化为 append 且零 violation | 条件 |
+| F4 | **合同测试验的是生产从不走的 core 缺省配方**;宿主配方(`historyProjectionRecipe`)只有真机影子在验;core 缺省对 legacy `contextUpdate` 的渲染与宿主铁律不同字节 | 覆盖洞 |
+| F5 | 影子的 `build` Pick 类型漏了 `prepareMessages`/`providerDataFromContentPart`,重构一次就静默丢配方且门照绿 | 类型洞 |
+| F6 | blob 读不到时投影**整格摘掉且无错**(附件静默变短) | S2b 数据丢失面 |
+| F8 | turn 分裂重建的**硬条件**(每 part 有 turnIndex)被投影镜像成**可选字段**,解不出就整条掉 collapsed 且 reasoning 口径随之改变 | 条件 |
+| F9 | **影子统计通胀**:每 turn 重跑一次同一比较,"200 run"实为 200÷平均轮数个独立比较;`request/recipe` 第 2 轮起记的不是实际发出的(agent-loop 内存演进、瞬态尾块、steering 注入都不在);G10 自证账只对第 1 轮成立 | 门口径 |
+| F10a | **canonical 键序盲区**:判等对键排序,而 `stringifyToolResult`/arguments 对键序敏感——影子判等但 wire 可以不同字节(cache miss);全表唯一"判等但不等价" | 盲区 |
+| F11 | **`ONETHING_SESSION_READ=events` 下影子变自比**:真相侧 `sessionReads.listMessages` 已有 events 岔口,两侧同源,legacyPartial 判定失效,门以错误理由变绿 | **判据污染,必须先修** |
+| F12 | 崩溃窗口表:W-B(正文,消息侧 300ms 粒度赢,事件侧丢最多一个 turn,无人收口)/W-C(prepare 把真跑完的工具**伪造成失败**)/W-D(turnContext 两侧各错一半 → 必然一次 cache 全失效)/W-A、W-E 为 S2b 后翻转项 | 无人收口 |
+| F13 | recorder 三处"身份查不到就静默丢账"(flushBatch/endPart/openPart,2s 定时器晚于 endSessionRun 清账即触发);`findLastSessionEventSync` 读过期文件可能重写 40KB 工具目录;权限事件 rotate 后归属错 run(结局仍按 toolCallId 接得上) | 小洞群 |
+| F14 | **server:start 无 StoreLock(用户裁定撤销)+ `--force` 绕过发现文件 = 双写者铸同 seq → replace 遮错区间且校验放行**;§11.3 迁移待决预设的锁不存在 | 与撤锁裁定冲突,须重议 |
+
+### 13.3 裁决与分批(待用户拍)
+
+- **P 批(判据先行,必须最先)**:F11(影子真相侧强制走 messages 读法)、F9 统计口径(按 run 去重计数)、F5 类型洞、F10a(结局/参数比较改为对记录字符串而非解析对象)。——门不真,其余修了也无从证明。
+- **Q 批(日常必现的采集/投影缺口)**:A1+A13+A14(provider-data 词汇 + 分段对齐)、A2(图片闸回归)、A6+A7(工具身份归一进事件)、A8+A9(blob 回填,投影注入 resolver)、A5(truncateFrom 遮全段)、A4(agentId 贯通)、F2(hasCompacted 看 status)、F1(providerData last-only)。
+- **R 批(收口与约定)**:A10+F12-W-C(prepare/sanitize 单一口径——需拍板)、A12(permission join 出 awaiting 状态)、A11(可见性)、F3、F8、F13、F6(blob 缺失报错)、A3(图片 content 表示——需拍板:进 chunks 还是专用事件)、translator 五命令守卫、F4(合同改跑宿主配方)。
+- **S 批(裁定)**:F14 server 双写者——撤锁裁定与 S2b 前提冲突,选项:①迁移脚本+切读前置"无活 core 硬检查"(不复活常驻锁)②仅 events.jsonl 追加时文件锁 ③复活 server StoreLock。
