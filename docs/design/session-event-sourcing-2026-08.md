@@ -1253,3 +1253,169 @@ run 下面。两份解析会在"哪个请求属于哪次执行"上分叉,所以�
 | 1 | **step.title 在 agent-loop 这条路上从不按 `generateStepTitle` 派生**:占位是"调用工具: X",之后由工具自报的 `annotate{title}` 覆盖。今天所有内建工具都自报标题,所以与投影(`reportedTitle ?? generateStepTitle`)对得上;哪天来一个不自报标题的工具,这就是第六类 mismatch。属于"用户可感知的标题变化",没有裁定不动 |
 | 2 | `session-shadow-stats.json` 是 1s 节流写、`unref` 的定时器,**关停时没人 flush** —— 进程立刻退出会丢最后一次计数(真机脚本里靠 sleep 2.5s 绕开)。要么在 shutdown 链上调 `flushSessionEventStats()`,要么接受它 |
 | 3 | 旧编排器那条路(`ToolOrchestrator` / `executeCoreToolAndUpdate`)在生产里已经**没有构造点**(只有测试构造它)。本期照样修了它的同款不对称,但它是否该退役是另一次裁定 |
+
+### 10.12 真机第四批:steering 把一次执行劈成两条消息 + 失败工具的结局(2026-08-20)
+
+真机 `session-shadow.jsonl` 攒下 **16 行**(`runs 10 / mismatches 16 /
+byKind {history: 13, messages: 3}`),全部来自同一条会话 `5e4d2cea…`。**两类**,
+病根各一个,**没有一格需要豁免** —— 16 行里的每一条路径都变成了一处修复。
+
+#### 逐路径的账(16 行全展开)
+
+先把三行 `kind:'messages'` 与十三行 `kind:'history'` 摊平(影子的 diff 摘要有
+`DIFF_MAX_ENTRIES` 截断,下表是拿真机 `events.jsonl` 原地重放投影得到的**完整**
+差异,不是日志里那一份被截过的):
+
+| 路径 | A(`messages.jsonl`) | B(投影) | 归属 |
+| --- | --- | --- | --- |
+| `steps[].result`(失败的 `read`) | `Offset 330 is beyond end of file (205 lines total)` | 缺席 | 第 6 类 |
+| `steps[].title` | `Reading 0820 EMEA FAC ….md` | `Tool: read: 0820 EMEA FAC ….md` | 第 6 类 |
+| `steps[].toolCall.result` / `toolCalls[].result` | `{"error":"…","success":false}` | 缺席 | 第 6 类 |
+| `usage`(被 steering 打断的那条消息) | 缺席 | `{in 137813, out 3012, …}` | 第 5 类 |
+| `contentParts.length` / `[0..3].content` / `[2].type` / `reasoning` | 4 格,开头是推理 part,`reasoning` 字段空 | 3 格,推理搬进了 `reasoning` 字段 | 第 5 类 |
+| `steps[].turnIndex` ×3 | 4 / 2 / 3 | 3 / 1 / 2 | 第 5 类 |
+| `usage.{cacheRead,input,output,total}Tokens` | 含第 1 轮 | 不含第 1 轮 | 第 5 类 |
+| `130.reasoningContent` ×13(`kind:'history'`) | 8470 字推理 | 缺席 | 第 5 类(同一条消息的下游) |
+
+那 13 行历史不等是**第 5 类的下游**,不是独立的一类:`contentParts` 里少了那格
+推理,`buildHistoryMessages` 的多轮拆分(`splitAssistantMessageIntoTurnGroups`)
+就拆不出那一轮的 `reasoningContent`;而那条消息之后每一次请求的历史里都有它,
+于是同一句话报了 13 遍。
+
+#### 第 5 类 —— 一条 assistant 消息 = 一次 run,但**一次执行 ≠ 一次 run**
+
+`5e4d2cea…` 里有一次 steering:第 1 轮流着的时候用户插了一句话,
+`beforeTurn` 把它注进历史并发 `response-boundary`,引擎换了一条助手消息、
+`rotateSessionRun` 换了一条 run。账本上于是有两条 run;**引擎那边只有一次
+agent-loop 执行**,而它的两个计数器一格都不重置:
+
+| 引擎侧 | 事实 | 投影从前的猜法 |
+| --- | --- | --- |
+| `turnIndex` | 接着数(新消息的第一次请求是第 **2** 轮) | 每条 run 从 1 数起 |
+| `accumulatedUsage` | 接着加,收尾时**一次性**写进 `ctx.assistantMessageId`(= 接手的那条消息) | 每条 run 各算各的和 |
+
+两个后果串成一条:回合号一错,`getAgentLoopReasoningPlacement` 的
+`turnIndex === 1` 判据(§10.9 的两个落点)就跟着错 —— 新消息开头那段推理在
+引擎那里是 `'inline'`(进 `contentParts`),投影却当成 `'top'`(进
+`message.reasoning`),于是后面每一格整体错位,历史里那一轮的 `reasoningContent`
+也随之消失。用量则是**两头都错**:被打断的那条凭空多出第 1 轮的用量,接手的那条
+少了它。
+
+**修法:让账本说出"这条 run 接着那条 run"**,其余全是派生。
+
+- `run/start.continuesRunId`(`core/session/events/types.ts`)—— **只有**
+  `rotateSessionRun` 填它(它手里正好有被接手的那条 run 的 id);
+- 归约器在 `run/start` 上把被接手那条的 `turnByRequest` / `turnCount` /
+  `usageByTurn` / `usage` **抄一份**过来,并给被接手的那条盖上
+  `continuedByRunId`;
+- `materializeAssistantNode` 见到 `continuedByRunId` 就**不产出 `usage`** ——
+  与引擎的 `updateUsage` 落点逐字相同(它只在整次执行收尾时写一次,落在那一刻
+  的助手消息上)。step 级的每轮用量照旧有:那是 `updateStepsUsageByTurn` 在
+  turn-end 当场写的,发生在换消息之前。
+
+**没有存派生值**:抄过去的是"执行到此为止的计数器状态",与 `partIndex`
+是同一类东西 —— 事件说得出来的事实,不是从别处算出来的和。
+
+**倒读分页的第 4 个例外**(`storage/events/pager.ts`):后缀里只有接手那条 run 的
+话,这一页里那条消息的三样又全错了。与 `user/message-edited` 同一条治法 ——
+`pendingContinuedRuns` 没清空之前不许停。合同测试里 `expectPagerMatchesFold`
+当场抓到了这一条(每条场景都跑它,所以这不是补一条测试补出来的,是那道断言
+自己报的)。
+
+#### 第 6 类 —— 一次**失败但跑完了**的工具
+
+真机上是一次 `read` 越过文件末尾。引擎那份账(`agent-loop-executor.ts` 的
+`settleAgentLoopToolResult` / `buildAgentLoopToolResultPresentation`,即生产里
+唯一活着的那条路)的口径是:
+
+```
+toolCall.result = toJsonValue(result.data ?? result.content)   // 成败都写
+toolCall.error  = result.error                                  // 失败才有
+step.result     = resultText(result)   // 失败时它就是 error 那句话
+step.error      = result.error
+step.partialResult = result.error ? undefined : structured
+step.title      = 最后一条 annotate{title}(stepUpdate 里根本没有 title 这一格)
+```
+
+也就是说 **`result` 与 `error` 不是二选一**,而投影从前把 `isError` 当成
+"没有结果":结构化结局整个丢掉、`result` 也不写。工具卡上于是只剩一句错误
+文本,`ToolCall.result` 里的 `{success:false,error}` 消失。
+
+标题是另一半:`executionResultFromOutcome`(`app/toolkit/ipc-observer.ts`)
+**只在成功那一支**把累积的标题抄进 `data.title`;失败那一支返回的是
+`{success:false, error}`,一格标题都没有。而引擎的 step 标题在**过程中**就被
+`applyAgentLoopToolMetadata` 盖成了工具自报的那一个("Reading X.md")。于是
+账本上那格标题凭空消失,投影退回 `generateStepTitle` 的 "Tool: read: X.md"。
+—— 这正是 §10.11 尾巴第 1 条预告过的"第六类",只是它先从**失败**那一支冒出来。
+
+**修法:补采集点 + 按引擎口径改投影。**
+
+- 记录器认 `tool-metadata` 事件(agent-loop 的 `onEvent` 上本来就有,只是从前
+  落到了 `default:` 里),按引擎同一条规则(非空字符串才覆盖)记住最后一个标题,
+  写进 `tool/result.reportedTitle`;
+- `toolResultFields`:结构化结局**不再看成败**,`error` 与它并存;
+- `materializeStep`:`result` 无条件产出,`error` 失败时并存,`partialResult`
+  失败时不产出;标题取 `reportedTitle ?? resultData.title ?? generateStepTitle`
+  (中间那一格留给本期之前写的老文件)。
+
+#### 交付
+
+| 文件 | 改动 |
+| --- | --- |
+| `packages/core/session/events/types.ts` | `run/start.continuesRunId`、`tool/result.reportedTitle` |
+| `packages/onething-runtime/src/app/session/runs.ts` | `rotateSessionRun` 把被接手的 runId 带进 `run/start` |
+| `packages/onething-runtime/src/app/engine/stream/session-event-recorder.ts` | 认 `tool-metadata`,把工具自报的标题记到 `tool/result.reportedTitle` |
+| `packages/core/session/projection/reducer.ts` | run 节点按 `continuesRunId` 承接回合号/用量;`toolResultFields` 与 `materializeStep` 改按引擎口径(result/error 并存、失败无 partialResult、标题优先 `reportedTitle`) |
+| `packages/core/session/projection/chat-messages.ts` | 被接手的那条消息不产出 `usage` |
+| `packages/core/session/storage/events/pager.ts` | 倒读的第 4 个例外:`pendingContinuedRuns` |
+| `packages/core/session/__tests__/projection-contract.test.ts` | `TurnSpec.continuesRunId` / `ToolSpec.{resultData,reportedTitle}`;A 线按引擎口径(回合号跨 run 接着数、消息 usage 只在执行收尾写一次、step 的 result/error 并存、标题优先自报);两条新场景 |
+| `packages/onething-runtime/src/app/engine/stream/__tests__/session-event-recorder.test.ts` | 两条:失败结局带自报标题、`rotateSessionRun` 盖 `continuesRunId` |
+
+#### 门(全部实跑)
+
+| 门 | 结果 |
+| --- | --- |
+| 真机**只读重放**(拿 `~/.onething` 的 `events.jsonl` 投影,与 `messages.jsonl` 逐字段比) | 修复前:那 16 行逐条复现(外加 diff 摘要截掉的 3 条);修复后(把两格新采集面按本期规则补进内存里的事件流)**13 条 assistant 消息全部 0 差异** |
+| 合同测试 | 30 条全绿(新增 2 条场景) |
+| 反向对照 ×7 | 逐个撤掉:归约器的承接播种 / `continuedByRunId` 抑制 usage / `toolResultFields` 在失败时丢结构化结局 / step 的 result 与 error 二选一 / 标题不看 `reportedTitle` / 倒读第 4 例外 / `rotateSessionRun` 不盖 `continuesRunId` —— **每一处当场变红** |
+| 真机(临时 store + 假 provider,`scratchpad/s1b-class56-verify.mjs`) | (a) steering:两条 run、`continuesRunId` 对、被打断那条无 usage、接手那条推理在 `contentParts{turnIndex:2}`、usage 130+250=380;(b) 失败的 `read`:`reportedTitle` 落账、step.title 用它、`step.result` 与 `step.error` 并存、`toolCall.result` 是结构化结局。两个场景 `shadow.jsonl` **零行** |
+| `sessions:shadow-report --min-runs 1`(两个临时 store) | 各 **GATE GREEN**(runs 1 / mismatches 0 / appendFailures 0) |
+| 反向对照(把本期产品侧改动整体 stash 掉再跑同一个脚本) | 复现真机原样:(b) `steps.0.result` / `steps.0.title`("Reading notes.md" vs "Tool: read: notes.md")/ `steps.0.toolCall.result` / `toolCalls.0.result` 四条,(a) `1.usage` 一条 |
+| `typecheck` / `ONETHING_SESSION_FREEZE=1 test` / `session:gate` / `boundary:gate` / `log:gate` / `lint:ci` / `server:build` | 见本节末 |
+
+真实 `~/.onething` 的 `session-shadow.jsonl` / `-stats.json` **一个字节没动**(只读)。
+
+#### 新发现:记录器可以跑赢引擎整整一个回合(未修,待裁定)
+
+写真机脚本时撞上的:`response-boundary` 是引擎在 **chunk 队列**那一侧处理的
+(`createNextAssistantWriter` → `rotateSessionRun`),而记录器挂在 provider 的
+`onEvent` 上、**同步**。零延迟的假 provider 下,记录器把第 2 轮**整段**
+(recipe / start / chunks / response / end)都用**旧的 runId 与旧的 messageId**
+写完了,`run/start(steer)` 才姗姗落在 `run/end` 之后 —— 账本上那一轮整个记错了
+消息,而 `messages.jsonl` 是对的(引擎按队列顺序处理,先换消息再收正文)。
+
+真机 `5e4d2cea…` 没踩到:模型第 2 轮的首字节延迟(~1.5s)天然把这一段盖住了,
+`run/start(seq 1772)` 排在第 2 轮的 first-token(1774)之前。脚本里按同样的量级
+补了 800ms 延迟复现真机次序,并钉了一条断言:**第 2 轮的正文不许落在旧 run 名下**
+(`request/recipe` / `request/start` 落在旧 run 上是无害的 —— 回合号正是靠它们
+在旧 run 上的编号接上的)。
+
+这是**采集面的次序风险**,不是引擎缺陷(用户看到的消息一直是对的),但它能让
+一次 steering 的账整段记错。三条可能的修法(改任何一条都动引擎的时序,按
+"行为裁定须先问"没有自作主张):① 让 `response-boundary` 在 `onEvent` 那一侧就
+把 run 换掉(要把新助手消息的 id 提前铸出来);② 记录器在 `response-boundary`
+之后挂起,等引擎宣告新锚点再落账;③ 给 chunk 队列加背压。留待裁定。
+
+#### 留下的尾巴
+
+| # | 事项 |
+| --- | --- |
+| 1 | **孤儿工具调用(G7)不进 `steps`**:观察期里新冒出来的一条真机消息(`17b342a2…`,用户中途 abort)显示,引擎给"参数流到一半被打断"的那次调用建了一条 step(标题是占位的"调用工具: bash"、`status:'cancelled'`、`toolCall.error:'User cancelled'`),而投影的 `materializeOrphanToolCalls` 只把它补进 `toolCalls`、不补进 `steps`,且 `toolId`/`toolName` 是空的、没有 error。同一条消息上 abort 的那条 run 还有"引擎不写 usage 而投影写了"。**这是第 7 类**,不在本期这 16 行里,证据已留在 `~/.onething` 那条会话上 |
+| 2 | `session/compacted` 之外,`continuesRunId` 目前只有 steering 一个生产者。"确认后恢复"(`kind:'resume'`)开的是一次**新**执行(回合号从 1 起),真机上没有反例;哪天它也接着数,这一格照样能表达 |
+
+### 10.13 影子门改混合制(2026-08-20 用户拍板)
+
+原门"真机 runs ≥ 200 ∧ mismatch = 0"全靠人肉使用攒量,慢且每次修复后要重攒。改为:
+1. **脚本场景矩阵**(待建,`scripts/shadow-battery.mjs`):起真 server(dist 构建)+ 假 provider,枚举场景 × 变体驱动真引擎——多轮工具循环 / 权限拒绝 / abort / retry / edit-resend / compact / 技能读取 / 业务失败工具 / 图片 / steering / reasoning 双落点 / 同 run 续轮…;每个已修失配类固化为一个场景(§10.9–§10.12 逐条回填)。门:**矩阵 ≥200 run 零失配**,分钟级,修复后一键回归。
+2. **真实使用**:不再要求凑数,负责"未知的未知"——观察期内**零新失配类**即可(脚本模拟不出真实 provider 的流式怪癖 / 真实 skill / 真实工具边界失败;已有六类全部来自真机)。
+S2b 前置 = 两者同时绿。

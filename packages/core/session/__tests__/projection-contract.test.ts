@@ -64,6 +64,18 @@ interface ToolSpec {
   outcome?: 'ok' | 'denied' | 'failed' | 'aborted'
   /** 参数是流式来的:多一条 `assistant/chunks{kind:'tool-input'}` + part-end。 */
   streamedArgs?: boolean
+  /**
+   * 工具的**结构化**结局(`ToolCall.result` 的正身)。成功时是
+   * `{title, output, metadata}`,失败时是 `{success:false, error}` —— 两种都写进
+   * `toolCall.result`,引擎那一份是 `toJsonValue(result.data ?? result.content)`,
+   * 不看成败(§10.12 第 6 类)。
+   */
+  resultData?: Record<string, unknown>
+  /**
+   * 工具自报的标题(`annotate{title}` 的最后一条)。引擎当场拿它盖掉 step 标题,
+   * 所以两条线都以它为准 —— **失败的调用只有它**(结局对象里没有 title)。
+   */
+  reportedTitle?: string
 }
 
 interface RequestSpec {
@@ -82,6 +94,13 @@ interface TurnSpec {
   requests: RequestSpec[]
   outcome: 'completed' | 'aborted' | 'error'
   error?: string
+  /**
+   * steering:这条 run **接着**那条 run 的执行往下跑(§10.12 第 5 类)。
+   *
+   * 换的是助手消息、不是执行 —— 回合号接着数(所以新消息开头那段推理是
+   * `inline` 不是 `top`),用量累加器接着加,而总量只落在**接手的**这条消息上。
+   */
+  continuesRunId?: string
 }
 
 // ============================================================================
@@ -195,7 +214,10 @@ function toolCallOf(spec: ToolSpec, timestamp: number, receivedAt?: number): Pro
     timestamp,
   }
   if (receivedAt !== undefined) call.receivedAt = receivedAt
-  if (spec.resultText !== undefined && !spec.isError) call.result = spec.resultText
+  // 引擎:`result: toJsonValue(result.data ?? result.content)` —— 成败都写,
+  // 结构化那一份优先;`error` 只有失败才有,两格并存(§10.12 第 6 类)。
+  if (spec.resultData !== undefined) call.result = spec.resultData
+  else if (spec.resultText !== undefined && !spec.isError) call.result = spec.resultText
   if (spec.isError && spec.resultText !== undefined) call.error = spec.resultText
   if (spec.outcome === 'denied') call.rejected = true
   return call
@@ -219,11 +241,15 @@ function stepOf(
     // (`tool_input_start` 参数还是 `{}`,bash 只能是 command),真机影子第一类
     // mismatch 就是它 —— 已按"修引擎不供养怪癖"在引擎侧改口,合同这一格不动。
     type: getStepType(spec.name, spec.args as Parameters<typeof getStepType>[1]),
-    title: generateStepTitle(
-      spec.name,
-      spec.args as Parameters<typeof generateStepTitle>[1],
-      detectSkillUsage(spec.name, spec.args as Parameters<typeof detectSkillUsage>[1]),
-    ),
+    // 工具自报的标题压过派生标题(`applyAgentLoopToolMetadata` 当场盖 step 标题;
+    // 旧编排器收尾时是 `resultData.title || currentTitle`)。派生只是兜底。
+    title: spec.reportedTitle
+      ?? (typeof spec.resultData?.title === 'string' ? spec.resultData.title : undefined)
+      ?? generateStepTitle(
+        spec.name,
+        spec.args as Parameters<typeof generateStepTitle>[1],
+        detectSkillUsage(spec.name, spec.args as Parameters<typeof detectSkillUsage>[1]),
+      ),
     status:
       toolCall.status === 'completed' ? 'completed'
         : toolCall.status === 'failed' ? 'failed'
@@ -234,7 +260,9 @@ function stepOf(
     toolCallId: spec.callId,
     toolCall,
   }
-  if (spec.resultText !== undefined && !spec.isError) step.result = spec.resultText
+  // 引擎的 `stepUpdate`:`result: resultText(result)`(失败时它**就是** error 那句
+  // 话)、`error: result.error`。两格并存,不是二选一。
+  if (spec.resultText !== undefined) step.result = spec.resultText
   if (spec.isError && spec.resultText !== undefined) step.error = spec.resultText
   if (toolCall.rejected) step.rejected = true
   if (usage) step.usage = usage
@@ -276,7 +304,21 @@ function planTurn(turn: TurnSpec, clock: Clock): TurnTimeline {
   return { start, requests, end: clock.next() }
 }
 
-function applyTurnCommands(line: CommandLine, turn: TurnSpec, timeline: TurnTimeline): void {
+/**
+ * 一次**执行**跨到这条 run 上时带过来的东西(steering,§10.12 第 5 类)。
+ * `turns` = 被接手的那条 run 已经跑过几轮请求,`usage` = 累加器当时的值。
+ */
+interface CarriedExecution {
+  turns: number
+  usage?: ProjectedStepUsage
+}
+
+function applyTurnCommands(
+  line: CommandLine,
+  turn: TurnSpec,
+  timeline: TurnTimeline,
+  carried: CarriedExecution = { turns: 0 },
+): { usage?: ProjectedStepUsage } {
   line.run({
     type: 'appendMessage',
     now: timeline.start,
@@ -294,10 +336,11 @@ function applyTurnCommands(line: CommandLine, turn: TurnSpec, timeline: TurnTime
   let text = ''
   let reasoning = ''
   const toolCalls: ProjectedToolCall[] = []
-  let usage: ProjectedStepUsage | undefined
+  let usage: ProjectedStepUsage | undefined = carried.usage
 
   turn.requests.forEach((request, index) => {
-    const turnIndex = index + 1
+    // 回合号是**执行**级的:steering 换消息时接着数(引擎的 turnIndex 一格不重置)。
+    const turnIndex = carried.turns + index + 1
     const slot = timeline.requests[index]
 
     if (request.reasoning !== undefined) {
@@ -337,7 +380,10 @@ function applyTurnCommands(line: CommandLine, turn: TurnSpec, timeline: TurnTime
             totalTokens: usage.totalTokens + next.totalTokens,
           }
         : next
-      line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { usage } as never, hint: 'settle' })
+      // 注意:**这里不写消息上的 usage**。引擎只在整次执行收尾时写一次
+      // (`updateUsage` → `store.updateMessageUsage(ctx.assistantMessageId, 累加器)`),
+      // 落点是那一刻的助手消息 —— steering 之后就是接手的那条。由 `Scenario`
+      // 在执行真正收尾时补(`flushPendingExecutionUsage`)。
     }
 
     ;(request.tools ?? []).forEach((tool, toolIndex) => {
@@ -382,9 +428,16 @@ function applyTurnCommands(line: CommandLine, turn: TurnSpec, timeline: TurnTime
     } as never,
     hint: 'settle',
   })
+
+  return usage ? { usage } : {}
 }
 
-function emitTurnEvents(line: EventLine, turn: TurnSpec, timeline: TurnTimeline): void {
+function emitTurnEvents(
+  line: EventLine,
+  turn: TurnSpec,
+  timeline: TurnTimeline,
+  requestIndexBase = 0,
+): void {
   line.push({
     time: timeline.start,
     type: 'run/start',
@@ -394,13 +447,16 @@ function emitTurnEvents(line: EventLine, turn: TurnSpec, timeline: TurnTimeline)
       assistantMessageId: turn.messageId,
       ...(turn.provider ? { provider: turn.provider } : {}),
       ...(turn.model ? { model: turn.model } : {}),
+      ...(turn.continuesRunId ? { continuesRunId: turn.continuesRunId } : {}),
     },
     surfaceOp: 'append',
   })
 
   let partIndex = 0
   turn.requests.forEach((request, index) => {
-    const requestIndex = index + 1
+    // `requestIndex` 是**会话级**的(`nextSessionRequestIndex`),不是 run 级 ——
+    // steering 之后接着往下发号,投影靠它把回合号接上。
+    const requestIndex = requestIndexBase + index + 1
     const slot = timeline.requests[index]
 
     if (request.reasoning !== undefined) {
@@ -487,6 +543,10 @@ function emitTurnEvents(line: EventLine, turn: TurnSpec, timeline: TurnTimeline)
           data: {
             runId: turn.runId, callId: tool.callId, isError: Boolean(tool.isError),
             resultPreview: tool.resultText, result: { text: tool.resultText },
+            ...(tool.resultData !== undefined
+              ? { resultData: { text: JSON.stringify(tool.resultData) } }
+              : {}),
+            ...(tool.reportedTitle ? { reportedTitle: tool.reportedTitle } : {}),
           },
           surfaceOp: 'append',
         })
@@ -578,12 +638,51 @@ class Scenario {
     this.nodeSeq.set(String(message.id), event.seq)
   }
 
+  /** 会话级的请求号(`nextSessionRequestIndex`)—— 与真机同口径,跨 run 单调。 */
+  private requestIndex = 0
+  /** runId → 这条 run 跑完时执行的状态(steering 接手时从这里取)。 */
+  private readonly executionByRun = new Map<string, CarriedExecution>()
+  /**
+   * 还没落地的那一次执行的用量。引擎只在执行收尾时写一次消息上的 `usage`,
+   * 落点是那一刻的助手消息 —— steering 把执行接走时,被打断的那条一格都没有。
+   */
+  private pendingExecutionUsage?: { messageId: string; usage: ProjectedStepUsage }
+
   turn(turn: TurnSpec): void {
+    const carried = turn.continuesRunId
+      ? this.executionByRun.get(turn.continuesRunId) ?? { turns: 0 }
+      : { turns: 0 }
+    // 接手的话,上一条消息的用量从来没落地过;不接手就说明上一次执行到此为止。
+    if (!turn.continuesRunId) this.flushPendingExecutionUsage()
+    else this.pendingExecutionUsage = undefined
+
     const timeline = planTurn(turn, this.clock)
-    applyTurnCommands(this.a, turn, timeline)
+    const requestIndexBase = this.requestIndex
+    const result = applyTurnCommands(this.a, turn, timeline, carried)
     const before = this.b.events.length
-    emitTurnEvents(this.b, turn, timeline)
+    emitTurnEvents(this.b, turn, timeline, requestIndexBase)
+    this.requestIndex += turn.requests.length
+    this.executionByRun.set(turn.runId, {
+      turns: carried.turns + turn.requests.length,
+      ...(result.usage ? { usage: result.usage } : {}),
+    })
+    if (result.usage) {
+      this.pendingExecutionUsage = { messageId: turn.messageId, usage: result.usage }
+    }
     this.nodeSeq.set(turn.messageId, this.b.events[before].seq)
+  }
+
+  /** 执行真正收尾:把累加器写到**那一刻**的助手消息上(引擎的 `updateUsage`)。 */
+  flushPendingExecutionUsage(): void {
+    const pending = this.pendingExecutionUsage
+    if (!pending) return
+    this.pendingExecutionUsage = undefined
+    this.a.run({
+      type: 'patchMessage',
+      messageId: pending.messageId,
+      patch: { usage: pending.usage } as never,
+      hint: 'settle',
+    })
   }
 
   deleteMessage(messageId: string): void {
@@ -743,6 +842,8 @@ function expectPagerMatchesFold(events: readonly SessionLogEventRecord[]): void 
 }
 
 function expectEquivalent(scenario: Scenario): void {
+  // 最后一次执行的用量在这里落地(引擎的 `updateUsage` 在收尾时写一次)。
+  scenario.flushPendingExecutionUsage()
   const projected = projectChatMessages(scenario.b.events)
   expect(canonicalChatMessages(projected.messages as unknown as Record<string, unknown>[]))
     .toEqual(canonicalChatMessages(scenario.a.messages))
@@ -823,6 +924,105 @@ describe('projection contract: command line ≡ event line', () => {
     ])
     // 正文本身不受落点影响:两轮 text 仍然按 partIndex fold。
     expect(message.content).toBe('looking done')
+  })
+
+  /**
+   * 真机第四批(§10.12 第 5 类)的最小复现:**steering 把一次执行劈成两条消息**。
+   *
+   * 账本上是两条 run(一条 assistant 消息一条 run),引擎那边只有一次执行 ——
+   * `turnIndex` 与 `accumulatedUsage` 一格都不重置。于是接手的那条消息:
+   *  - 开头那段推理是第 2 轮,落点是 `inline`(**不是** `top`);
+   *  - step 的 `turnIndex` 从 2 起;
+   *  - 整次执行的用量落在它身上,被打断的那条**一格都没有**。
+   *
+   * 投影从前按"每个 run 从第 1 轮数起"猜,三样全错(真机 17 行不等)。
+   */
+  it('steering splits one execution across two assistant messages', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'write it down' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        reasoning: 'first I plan',
+        tools: [{ callId: 'c1', name: 'read', args: { path: '/skill' }, resultText: 'body', outcome: 'ok' }],
+        usage: { inputTokens: 100, outputTokens: 30 },
+      }],
+      outcome: 'completed',
+    })
+    scenario.user({ id: 'u2', content: 'be thorough' })
+    scenario.turn({
+      runId: 'r2', messageId: 'a2', kind: 'steer', continuesRunId: 'r1',
+      requests: [
+        {
+          reasoning: 'now with the steer in mind',
+          tools: [{ callId: 'c2', name: 'write', args: { path: '/out' }, resultText: 'wrote', outcome: 'ok' }],
+          usage: { inputTokens: 200, outputTokens: 50 },
+        },
+        { text: 'done', usage: { inputTokens: 300, outputTokens: 10 } },
+      ],
+      outcome: 'completed',
+    })
+    expectEquivalent(scenario)
+
+    const messages = projectChatMessages(scenario.b.events).messages
+    const steeredAway = messages.find(message => message.id === 'a1')!
+    const continued = messages.find(message => message.id === 'a2')!
+    // 被打断的那条:自己那一轮的推理照旧是 top,但**没有** usage。
+    expect(steeredAway.reasoning).toBe('first I plan')
+    expect(steeredAway.usage).toBeUndefined()
+    // step 级的每轮用量照旧有 —— 那是 turn-end 当场写的,发生在换消息之前。
+    expect(steeredAway.steps?.[0].usage).toEqual({ inputTokens: 100, outputTokens: 30, totalTokens: 130 })
+    // 接手的那条:开头那段推理是**第 2 轮**,所以在 contentParts 里,字段是空的。
+    expect(continued.reasoning).toBeUndefined()
+    expect(continued.contentParts).toEqual([
+      { type: 'reasoning', content: 'now with the steer in mind', turnIndex: 2 },
+      { type: 'text', content: 'done', turnIndex: 3 },
+    ])
+    expect(continued.steps?.[0].turnIndex).toBe(2)
+    // 整次执行的用量(三次请求)落在它身上。
+    expect(continued.usage).toEqual({ inputTokens: 600, outputTokens: 90, totalTokens: 690 })
+  })
+
+  /**
+   * 真机第四批(§10.12 第 6 类):**一次失败但跑完了的调用**。
+   *
+   * 引擎那份账里 `toolCall.result` 是结构化结局(失败时是 `{success:false,error}`)、
+   * `step.result` 与 `step.error` **两格并存**、标题是工具自报的那一个(失败的结局
+   * 对象里没有 title,只有过程中的 `annotate` 记得住)。投影从前在 `isError` 时把
+   * 结构化结局与 `result` 一起丢掉,标题退回派生的 "Tool: read: …"。
+   */
+  it('a failed-but-completed tool keeps its structured result and its self-reported title', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'read it' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        text: 'oops',
+        tools: [{
+          callId: 'c1', name: 'read', args: { path: '/notes/a.md', offset: 330 },
+          resultText: 'Offset 330 is beyond end of file (205 lines total)',
+          isError: true,
+          outcome: 'failed',
+          resultData: { success: false, error: 'Offset 330 is beyond end of file (205 lines total)' },
+          reportedTitle: 'Reading a.md',
+        }],
+      }],
+      outcome: 'completed',
+    })
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    const step = message.steps![0]
+    expect(step.title).toBe('Reading a.md')
+    expect(step.status).toBe('failed')
+    expect(step.result).toBe('Offset 330 is beyond end of file (205 lines total)')
+    expect(step.error).toBe('Offset 330 is beyond end of file (205 lines total)')
+    expect(step.toolCall?.result).toEqual({
+      success: false,
+      error: 'Offset 330 is beyond end of file (205 lines total)',
+    })
+    // 失败的调用没有 partialResult(引擎写的是 `result.error ? undefined : …`)。
+    expect(step.partialResult).toBeUndefined()
   })
 
   it('two-request tool loop including a denied permission', () => {

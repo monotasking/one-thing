@@ -44,6 +44,12 @@ export interface BeginSessionRunInput {
    * 只能住在 `run/start` 里 —— 理由见事件类型上的注释。
    */
   origin?: Record<string, unknown>
+  /**
+   * 这次 run 接着哪一次 run 的**执行**往下跑。只有 `rotateSessionRun` 填 ——
+   * 换的是助手消息,不是执行:agent-loop 的回合计数器与用量累加器都不重置。
+   * 理由与后果见 `SessionRunStartEventData.continuesRunId`。
+   */
+  continuesRunId?: string
 }
 
 export interface SessionRunHandle {
@@ -110,6 +116,7 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
       ...(input.triggerEventSeq !== undefined ? { triggerEventSeq: input.triggerEventSeq } : {}),
       ...(input.timestamp !== undefined ? { timestamp: input.timestamp } : {}),
       ...(input.origin ? { origin: input.origin } : {}),
+      ...(input.continuesRunId ? { continuesRunId: input.continuesRunId } : {}),
     },
     { surfaceOp: 'append' },
   )
@@ -240,8 +247,12 @@ export function nextSessionRunPartIndex(sessionId: string): number | undefined {
 /**
  * 换助手消息锚点(steering 的 `response-boundary`:当前响应结束、新响应开始)。
  *
- * 这是**两次**执行:旧的按 completed 收尾,新的以 `kind:'steer'` 开张 ——
+ * 账本上这是**两条 run**:旧的按 completed 收尾,新的以 `kind:'steer'` 开张 ——
  * 一条 assistant 消息一个 run 是投影的前提(`run/start` 就是那条消息的节点)。
+ *
+ * 但引擎那边**只有一次执行**:agent-loop 的 turnIndex 与 accumulatedUsage
+ * 跨过这个边界继续走。所以新 run 必须把旧 run 的 id 带上(`continuesRunId`),
+ * 否则投影只能按"每个 run 从第 1 轮数起"猜 —— 见事件类型上的注释。
  */
 export function rotateSessionRun(
   sessionId: string,
@@ -249,7 +260,10 @@ export function rotateSessionRun(
 ): SessionRunHandle {
   const previous = currentRuns.get(sessionId)
   if (previous) endSessionRun(sessionId, previous.runId, { outcome: 'completed' })
-  return beginSessionRun(sessionId, input)
+  return beginSessionRun(sessionId, {
+    ...input,
+    ...(previous ? { continuesRunId: previous.runId } : {}),
+  })
 }
 
 /** 仅测试 / 会话删除。 */

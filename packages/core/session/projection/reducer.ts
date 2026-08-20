@@ -97,6 +97,8 @@ interface ToolState {
   isError?: boolean
   outcome?: 'ok' | 'invalid' | 'denied' | 'aborted' | 'failed'
   previewTitle?: string
+  /** 工具自报的标题(`tool/result.reportedTitle`)—— 引擎的 step 标题就是它。 */
+  reportedTitle?: string
   rejectionReason?: string
   /** `tool/result` 事件的 seq —— surface 剪枝按它判定。 */
   resultSeq?: number
@@ -126,10 +128,25 @@ export interface AssistantNode extends BaseNode {
   tools: Map<string, ToolState>
   toolOrder: string[]
   usage?: ProjectedStepUsage
-  /** requestIndex → 该 run 内第几次请求(1 起),即 `turnIndex`。 */
+  /**
+   * requestIndex → 这次**执行**里的第几轮请求(1 起),即引擎的 `turnIndex`。
+   *
+   * 一次执行通常就是一个 run,但 steering 会让它跨两条 run(`continuesRunId`):
+   * 那时这张表是从被接手的那条 run **抄过来**的,回合号接着往下数。
+   */
   turnByRequest: Map<number, number>
   turnCount: number
   usageByTurn: Map<number, ProjectedStepUsage>
+  /** `run/start.continuesRunId`:这次 run 接着哪一次 run 的执行往下跑。 */
+  continuesRunId?: string
+  /**
+   * 反向:哪一次 run 接手了这次执行(steering 换消息时由后来者盖上)。
+   *
+   * 被接手的那条消息**没有 usage** —— 引擎的累加器一路带到接手的那条消息上
+   * (`state.ctx.accumulatedUsage` 跟着 `assistantMessageId` 走),被打断的那条
+   * 从来没被写过用量。step 级的每轮用量照旧有(那是 turn-end 当场写的)。
+   */
+  continuedByRunId?: string
 }
 
 export interface CompactedNode extends BaseNode {
@@ -246,6 +263,11 @@ export function reduceSessionProjection(
     }
 
     case 'run/start': {
+      // steering:换的是助手消息,不是执行。回合号与用量累加器都从被接手的那条
+      // run 上接着走(引擎侧就是同一个 agent-loop 在跑)。
+      const continued = event.data.continuesRunId
+        ? state.runs.get(event.data.continuesRunId)
+        : undefined
       const node: AssistantNode = {
         kind: 'assistant',
         eventSeq: event.seq,
@@ -264,10 +286,14 @@ export function reduceSessionProjection(
         partOrder: [],
         tools: new Map(),
         toolOrder: [],
-        turnByRequest: new Map(),
-        turnCount: 0,
-        usageByTurn: new Map(),
+        // 抄一份而不是共享:接手之后两条 run 各自还会往里写。
+        turnByRequest: new Map(continued?.turnByRequest ?? []),
+        turnCount: continued?.turnCount ?? 0,
+        usageByTurn: new Map(continued?.usageByTurn ?? []),
+        ...(continued?.usage ? { usage: continued.usage } : {}),
+        ...(event.data.continuesRunId ? { continuesRunId: event.data.continuesRunId } : {}),
       }
+      if (continued) continued.continuedByRunId = node.runId
       register(state, node)
       state.runs.set(node.runId, node)
       state.activeRun = { runId: node.runId, messageId: node.messageId }
@@ -383,6 +409,7 @@ export function reduceSessionProjection(
       else tool.resultText = event.data.resultPreview
       const resultData = event.data.resultData
       if (resultData && 'text' in resultData) tool.resultData = parseJsonSafely(resultData.text)
+      if (event.data.reportedTitle) tool.reportedTitle = event.data.reportedTitle
       break
     }
 
@@ -657,13 +684,27 @@ function stepStatus(status: ProjectedToolCallStatus): ProjectedStepStatus {
   }
 }
 
-/** 结果的两种落法:blob 引用,或正文;失败时正文进 `error` 而不是 `result`。 */
+/**
+ * `ToolCall` 上的结局两格,与引擎逐字同规则
+ * (`agent-loop-executor.ts` 的 `settleAgentLoopToolResult`):
+ *
+ * ```
+ * result: toJsonValue(result.data ?? result.content)   // 成功失败都写
+ * error:  result.error                                  // 失败才有
+ * ```
+ *
+ * 也就是说 **`result` 与 `error` 不是二选一**:一次失败的调用两格都有 ——
+ * `result` 是结构化结局(`{success:false, error}`),`error` 是给人看的那句话。
+ * 从前这里在 `isError` 时把结构化那一格整个丢掉,于是真机上 `read` 越界失败的
+ * 那次调用在投影里连 `result` 都没有(§10.12 第 6 类)。
+ */
 function toolResultFields(tool: ToolState): Partial<ProjectedToolCall> {
+  const error = tool.isError && tool.resultText !== undefined ? { error: tool.resultText } : {}
   // 结构化结局优先:`ToolCall.result` 的正身是它,`result.text` 只是给模型的那段。
-  if (tool.resultData !== undefined && !tool.isError) return { result: tool.resultData }
-  if (tool.resultBlob) return { result: { blob: tool.resultBlob } }
+  if (tool.resultData !== undefined) return { result: tool.resultData, ...error }
+  if (tool.resultBlob) return { result: { blob: tool.resultBlob }, ...error }
   if (tool.resultText === undefined) return {}
-  return tool.isError ? { error: tool.resultText } : { result: tool.resultText }
+  return tool.isError ? error : { result: tool.resultText }
 }
 
 /** `JSON.parse`,坏了就当没有(记账坏掉不该让整份投影塌掉)。 */
@@ -722,12 +763,17 @@ export function materializeStep(
   const usage = run.usageByTurn.get(tool.turnIndex)
   const hasResultText = tool.resultText !== undefined
   const status = stepStatus(toolCall.status)
-  // 工具自己报的标题(`annotate{title}` → 结局里的 `title`)压过派生标题 ——
-  // 引擎那份账的规则逐字相同(`tool-orchestration.ts` 的 `finalTitle`)。
-  const reportedTitle = (tool.resultData as { title?: unknown } | undefined)?.title
+  // 工具自己报的标题压过派生标题 —— 引擎那份账的规则逐字相同:每一条带 title 的
+  // `annotate` 当场盖掉 step 标题(`applyAgentLoopToolMetadata`),旧编排器那条路
+  // 收尾时也是 `resultData.title || currentTitle`(`finalTitle`)。
+  // `reportedTitle` 是那条 annotate 的直接记录,`resultData.title` 是成功结局里
+  // 抄的那一份 —— 失败的调用只有前者(§10.12 第 6 类)。
+  const reportedTitle = tool.reportedTitle
+    ?? (tool.resultData as { title?: unknown } | undefined)?.title
   // 落盘时 `partialResult` 被摘掉,冷加载时由 `rehydrateSessionFromStorage` 从
   // `toolCall.result` 原样算回来。投影用的是**同一条**派生规则。
-  const structured = tool.resultData !== undefined && TERMINAL_STEP_STATUSES.has(status)
+  // 失败的调用没有这一格:引擎写的是 `partialResult: result.error ? undefined : …`。
+  const structured = tool.resultData !== undefined && !tool.isError && TERMINAL_STEP_STATUSES.has(status)
     ? toolResultToStructured(tool.resultData as Parameters<typeof toolResultToStructured>[0])
     : undefined
   return {
@@ -760,7 +806,10 @@ export function materializeStep(
     turnIndex: tool.turnIndex,
     toolCallId: tool.callId,
     toolCall,
-    ...(hasResultText && !tool.isError ? { result: tool.resultText } : {}),
+    // 与 `toolCall` 那两格同一条规则:`Step.result` 是 `resultText(result)`
+    // (失败时它**就是** error 那句话),`error` 只有失败才有 —— 两格并存,不是二选一
+    // (`buildAgentLoopToolResultPresentation` 的 `stepUpdate`)。
+    ...(hasResultText ? { result: tool.resultText } : {}),
     ...(hasResultText && tool.isError ? { error: tool.resultText } : {}),
     ...(structured ? { partialResult: structured, partialResultIsPartial: false } : {}),
     ...(toolCall.rejected ? { rejected: true as const } : {}),
@@ -867,6 +916,11 @@ export function deriveThinkingTime(run: AssistantNode): number | undefined {
  *
  * 真机第一天(§10.9)这里曾把两个落点合成一个:投影把 top 段也物化成
  * contentPart,于是每条带推理的助手消息都比事实多一格,后面的 part 整体错位。
+ *
+ * 真机第四批(§10.12)则是 `turnIndex` 本身错了:steering 换出来的那条消息
+ * partIndex 从 0 重新数,但引擎的回合号是 2 —— 判成 `'top'` 就把一段本该在
+ * `contentParts` 里的推理搬进了 `message.reasoning`,后面每一格再次整体错位。
+ * 现在 `turnByRequest` 由 `continuesRunId` 接着上一条 run 数,这里一个字没改。
  */
 export function topReasoningPartIndexes(run: AssistantNode): Set<number> {
   const top = new Set<number>()

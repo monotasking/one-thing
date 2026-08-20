@@ -181,6 +181,13 @@ interface RecorderState {
   lastToolsHash?: string
   lastToolsHashLoaded: boolean
   callSeqByCallId: Map<string, number>
+  /**
+   * callId → 工具自报的**最后一个**标题(`tool-metadata` 里带 title 的那几条)。
+   *
+   * 与引擎同一条规则:`applyAgentLoopToolMetadata` 只在 `update.title` 是非空
+   * 字符串时覆盖 step 标题,收尾时只带 metadata 的那条 annotate 不清空标题。
+   */
+  reportedTitleByCallId: Map<string, string>
   /** 正在攒的批(每个 part 至多一个)。 */
   batches: Map<number, ChunkBatch>
   /** 还没收齐的 part。 */
@@ -220,6 +227,7 @@ export function createSessionEventRecorder(
     lastHeaderLoaded: false,
     lastToolsHashLoaded: false,
     callSeqByCallId: new Map(),
+    reportedTitleByCallId: new Map(),
     batches: new Map(),
     openParts: new Map(),
     toolInputPartByCallId: new Map(),
@@ -547,6 +555,16 @@ export function createSessionEventRecorder(
         void flushSessionEventLog(ctx.sessionId)
         return
       }
+      case 'tool-metadata': {
+        // 工具自报的标题(`annotate{title}`)。引擎拿它**当场**盖掉 step 标题
+        // (`applyAgentLoopToolMetadata`),而结局对象里只有成功时才抄了一份 ——
+        // 失败的调用没有结局对象,标题就只剩这一条路能记下来(§10.12 第 6 类)。
+        const title = event.update.title
+        if (typeof title === 'string' && title) {
+          state.reportedTitleByCallId.set(event.toolCall.id, title)
+        }
+        return
+      }
       case 'provider-data': {
         // provider 自报的响应身份。名字各家不同,认得的就记,认不得的不猜。
         const data = event.providerData as Record<string, unknown>
@@ -573,6 +591,8 @@ export function createSessionEventRecorder(
         const preview = event.result.error ?? event.result.content ?? ''
         const sourceSeq = state.callSeqByCallId.get(event.toolCall.id)
         state.callSeqByCallId.delete(event.toolCall.id)
+        const reportedTitle = state.reportedTitleByCallId.get(event.toolCall.id)
+        state.reportedTitleByCallId.delete(event.toolCall.id)
         appendSessionLogEvent(ctx.sessionId, 'tool/result', {
           callId: event.toolCall.id,
           isError,
@@ -585,6 +605,9 @@ export function createSessionEventRecorder(
           // 退出码、文件路径全在 metadata 里)。结局本身是字符串时不写 ——
           // 那时它与上面那一格是同一个东西。
           ...structuredResultForEvent(ctx.sessionId, event.result.data),
+          // 工具自报的标题:引擎的 step 标题就是它。成功时它同时在
+          // `resultData.title` 里,失败时那里没有 —— 所以这一格是独立的一份账。
+          ...(reportedTitle ? { reportedTitle } : {}),
           ...(sourceSeq !== undefined ? { sourceSeq } : {}),
           ...withRunId(),
         })

@@ -12,7 +12,8 @@
  *    `getAgentLoopReasoningPlacement` 划分,投影按 `topReasoningPartIndexes` 复刻;
  *  - `contentParts` = 同一批 part 按 partIndex 排出来(`tool-input` 与 top 推理不进);
  *  - `toolCalls` / `steps` = `tool/call|result|audit` 按到达序;
- *  - `usage` = 该 run 全部 `request/response.usage` 之和;
+ *  - `usage` = 这次**执行**全部 `request/response.usage` 之和(steering 跨 run 时
+ *    接着累加,总量只落在接手的那条消息上);
  *  - `isStreaming` = `run/start` 之后、`run/end` 之前(它不是事件字段,是状态);
  *  - `message/patched` 最后叠加(assistant 上的正文字段会被剥掉,见 reducer)。
  */
@@ -124,7 +125,11 @@ function materializeAssistantNode(node: AssistantNode): ProjectedChatMessage {
     ...(contentParts.length > 0 ? { contentParts } : {}),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(steps.length > 0 ? { steps } : {}),
-    ...(node.usage ? { usage: node.usage } : {}),
+    // 被 steering 接手的那条消息**没有 usage**:引擎的累加器跟着
+    // `assistantMessageId` 一路带到接手的那条消息上(整次执行的总量落在那里),
+    // 被打断的这条从来没被写过用量。step 级的每轮用量照旧有 —— 那是 turn-end
+    // 当场按 turnIndex 写进 steps 的,发生在换消息之前(§10.12 第 5 类)。
+    ...(node.usage && !node.continuedByRunId ? { usage: node.usage } : {}),
     ...(node.skillUsed ? { skillUsed: node.skillUsed } : {}),
     ...(thinkingTime !== undefined ? { thinkingTime } : {}),
     ...(node.ended ? {} : { isStreaming: true as const }),

@@ -22,7 +22,11 @@
  *     `pendingEditTargets`,**没找到之前不许停**;
  *  2. `session/cleared` 遮蔽它之前的一切 —— 遇到它就是头(再往前读没有任何
  *     可见消息),直接收工;
- *  3. `message/deleted` 只遮蔽一条,那条若在后缀之外,本来也不在这一页里。
+ *  3. `message/deleted` 只遮蔽一条,那条若在后缀之外,本来也不在这一页里;
+ *  4. `run/start.continuesRunId`(steering)—— 接手的那条 run 的回合号与用量
+ *     累加器都**接着**被接手那条走(§10.12 第 5 类)。被接手的 `run/start`
+ *     不在后缀里,这一页里那条消息的 `turnIndex` / 推理落点 / usage 就都是错的。
+ *     同 1 的治法:`pendingContinuedRuns` 没清空之前不许停。
  *
  * ## 游标
  *
@@ -240,6 +244,13 @@ export function foldEventPageBackward(
   const limit = Math.max(0, options.limit)
   const collected: ScannedSessionEvent[] = []
   const pendingEditTargets = new Set<string>()
+  /**
+   * 例外 4(§10.12 第 5 类):steering 接手的那条 run 要**接着**被接手那条数
+   * 回合号、接着加用量。被接手的 `run/start` 还没进窗口就停,这一页里那条消息的
+   * `turnIndex` / 推理落点 / usage 三样全错 —— 与 `pendingEditTargets` 同一条
+   * 治法:记下来,没找到之前不许停。
+   */
+  const pendingContinuedRuns = new Set<string>()
   let candidates = 0
   let target = limit + 1
   let clearedBoundary = false
@@ -261,7 +272,11 @@ export function foldEventPageBackward(
         pendingEditTargets.delete(record.data.message.id)
       }
       if (record.type === 'session/compacted') pendingEditTargets.delete(record.data.messageId)
-      if (record.type === 'run/start') pendingEditTargets.delete(record.data.assistantMessageId)
+      if (record.type === 'run/start') {
+        pendingEditTargets.delete(record.data.assistantMessageId)
+        pendingContinuedRuns.delete(record.data.runId)
+        if (record.data.continuesRunId) pendingContinuedRuns.add(record.data.continuesRunId)
+      }
 
       if (isSessionEventNodeStart(record.type)) candidates += 1
 
@@ -271,7 +286,7 @@ export function foldEventPageBackward(
         return true
       }
 
-      if (candidates < target || pendingEditTargets.size > 0) return undefined
+      if (candidates < target || pendingEditTargets.size > 0 || pendingContinuedRuns.size > 0) return undefined
 
       visible = foldVisible([...collected].reverse())
       if (visible.length > limit) return true

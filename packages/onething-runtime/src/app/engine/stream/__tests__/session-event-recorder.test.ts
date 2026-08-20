@@ -33,7 +33,7 @@ vi.mock('../../../stores/paths.js', async importOriginal => {
 const { flushSessionEventLog, readSessionEvents, readSessionLogEvents, resetSessionEventLogCache } =
   await import('../../../session/event-log.js')
 const { resetSessionSurfaceCache } = await import('../../../session/event-surface.js')
-const { beginSessionRun, endSessionRun, resetSessionRuns } = await import(
+const { beginSessionRun, endSessionRun, resetSessionRuns, rotateSessionRun } = await import(
   '../../../session/runs.js'
 )
 const { resetSessionEventStatsCache } = await import('../../../session/event-stats.js')
@@ -472,6 +472,54 @@ describe('session event recorder (agent loop integration)', () => {
       isError: true,
       resultPreview: 'boom',
     })
+  })
+
+  /**
+   * §10.12 第 6 类:**失败的调用没有结局对象**,标题只剩过程中那条 `annotate`
+   * 记得住。引擎当场拿它盖掉 step 标题(`applyAgentLoopToolMetadata`),所以
+   * 账本上也必须有 —— 否则投影只能退回派生标题("Tool: read: …")。
+   */
+  it('carries the tool self-reported title onto a failed result', async () => {
+    await runLoop({
+      name: 'echo',
+      description: 'Echo the input back',
+      parameters: { type: 'object', properties: { text: { type: 'string' } } },
+      async execute(_args, context) {
+        context?.onMetadata?.({ title: 'Reading a.md' })
+        // 收尾只带 metadata 的那条不该把标题清空(与 `IpcProjector` 同规则)。
+        context?.onMetadata?.({ metadata: { phase: 'done' } })
+        return { content: '', error: 'Offset 330 is beyond end of file', data: { success: false, error: 'Offset 330 is beyond end of file' } }
+      },
+    })
+
+    const result = (await readSessionEvents(SESSION_ID)).find(event => event.type === 'tool/result')
+    expect(result?.type === 'tool/result' && result.data).toMatchObject({
+      callId: 'call-1',
+      isError: true,
+      reportedTitle: 'Reading a.md',
+    })
+    const data = result?.type === 'tool/result' ? result.data.resultData : undefined
+    expect(data && 'text' in data ? JSON.parse(data.text) : undefined).toEqual({
+      success: false,
+      error: 'Offset 330 is beyond end of file',
+    })
+  })
+
+  /**
+   * §10.12 第 5 类:steering 换的是助手消息、不是执行。账本上两条 run,
+   * 新的那条必须把被接手的 runId 带上,否则投影只能按"每条 run 从第 1 轮数起"
+   * 猜 —— 回合号、推理落点、usage 三样全错。
+   */
+  it('stamps continuesRunId when a steer rotates the run', async () => {
+    const first = beginSessionRun(SESSION_ID, { kind: 'send', assistantMessageId: 'assistant-1' })
+    const second = rotateSessionRun(SESSION_ID, { kind: 'steer', assistantMessageId: 'assistant-2' })
+    endSessionRun(SESSION_ID, second.runId, { outcome: 'completed' })
+    await flushSessionEventLog(SESSION_ID)
+
+    const starts = (await readSessionLogEvents(SESSION_ID)).filter(event => event.type === 'run/start')
+    expect(starts).toHaveLength(2)
+    expect(starts[0].type === 'run/start' && starts[0].data.continuesRunId).toBeUndefined()
+    expect(starts[1].type === 'run/start' && starts[1].data.continuesRunId).toBe(first.runId)
   })
 
   it('truncates a long result preview to 500 chars', async () => {

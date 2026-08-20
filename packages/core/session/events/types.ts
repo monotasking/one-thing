@@ -173,6 +173,17 @@ export interface SessionToolResultEventData {
    * 这一格(那时两者是同一个东西)。
    */
   resultData?: { text: string } | { blob: BlobRef }
+  /**
+   * 工具**自报**的标题(`annotate{title}` 的最后一条,§10.12 第 6 类)。
+   *
+   * 引擎的 step 标题就是它:每一条带标题的 `tool-metadata` 都会
+   * `sendStepUpdated({title})` 覆盖一次(`applyAgentLoopToolMetadata`)。
+   * 成功的调用里它同时被抄进结局的 `resultData.title`,所以从前只读 resultData
+   * 也对得上;**失败的调用没有结局对象**(`{success:false, error}` 里没有 title),
+   * 于是账本上那一格凭空消失,投影退回派生标题 —— 真机上 `read` 越界失败的那条
+   * 就是这么从 "Reading X.md" 变成 "Tool: read: X.md" 的。
+   */
+  reportedTitle?: string
   runId?: string
 }
 
@@ -337,6 +348,21 @@ export interface SessionRunStartEventData {
    * `inputTransformed` 戳,而助手那份没有。
    */
   origin?: Record<string, unknown>
+  /**
+   * 这次 run **接着**哪一次 run 的执行往下跑(§10.12 第 5 类)。
+   *
+   * "一条 assistant 消息 = 一次 run"(§10.7 口径 1)是投影的前提,而引擎那边的
+   * **一次执行**可以跨两条消息:steering 打断时 `response-boundary` 换助手消息、
+   * `rotateSessionRun` 换 run,但 agent-loop 的**回合计数器与用量累加器一格都不
+   * 重置** —— 新消息的第一段推理是 `turnIndex 2`(所以是 `inline` 落点,不是
+   * `top`),整次执行的 usage 最后落在**接手的那条消息**上,被打断的那条一格都
+   * 没有。
+   *
+   * 只有 `rotateSessionRun` 填这一格。没有它,投影只能按"每个 run 从第 1 轮数起"
+   * 猜,于是 steering 之后每一条消息的推理落点、turnIndex 与 usage 三样全错
+   * (真机第四批 17 行不等的唯一病根)。
+   */
+  continuesRunId?: string
 }
 
 export interface SessionRunEndEventData {
