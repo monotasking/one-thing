@@ -29,7 +29,7 @@ import type {
   SessionLogEventRecord,
   SessionResponseUsage,
 } from '../events/types.js'
-import { generateStepTitle } from '../../engine/tool-step.js'
+import { generateStepTitle, getStepType } from '../../engine/tool-step.js'
 import { toolResultToStructured } from '../../tools/tool-result.js'
 import { SurfaceIndex } from './surface.js'
 
@@ -735,7 +735,10 @@ export function materializeStep(
     // 得到同一个 id,而它与 toolCallId 一一对应;比较时 `canonicalChatMessage`
     // 忽略它并按 toolCallId 排序(那才是身份)。
     id: `step-${tool.callId}`,
-    type: 'tool-call',
+    // 与引擎同一条规则(`tool-execution.ts` → `getStepType`):bash 按命令内容分
+    // command/file-read/skill-read/file-write,其余工具 tool-call。参数以
+    // argumentsRaw 的解析结果为准(唯一参数真相),解析失败为 {} 与引擎同行为。
+    type: getStepType(toolCall.toolName, toolCall.arguments as Parameters<typeof getStepType>[1]),
     // G2(§10.1):标题是**纯派生**,事件不带 title。用的就是引擎实时那一份
     // (`core/engine/tool-step.ts`),不在这里手抄一条规则。
     title: typeof reportedTitle === 'string' && reportedTitle

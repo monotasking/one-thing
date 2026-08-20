@@ -27,7 +27,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildHistoryMessages } from '../../engine/history.js'
-import { generateStepTitle } from '../../engine/tool-step.js'
+import { generateStepTitle, getStepType } from '../../engine/tool-step.js'
 import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
 import { buildContextCompactContent } from '../../engine/context-compact.js'
 import { applySessionCommand } from '../commands.js'
@@ -212,7 +212,9 @@ function stepOf(
     // A 线也照引擎实时那一份算标题(`createToolExecutionStep` → `generateStepTitle`)。
     // 从前这里写死 `spec.name`,于是 G2 的"标题是纯派生"在合同上是空的。
     id: `step-${spec.callId}`,
-    type: 'tool-call',
+    // A 线也照引擎实时那一份算 type(`tool-execution.ts` → `getStepType`)。
+    // 从前这里写死 'tool-call',于是 bash 的 command/file-read/skill-read 在合同上是空的。
+    type: getStepType(spec.name, spec.args as Parameters<typeof getStepType>[1]),
     title: generateStepTitle(spec.name, spec.args as Parameters<typeof generateStepTitle>[1]),
     status:
       toolCall.status === 'completed' ? 'completed'

@@ -7,6 +7,8 @@
  * 不出现在类型上,免得下一个人以为投影能给出它。
  */
 
+import type { CoreStepType } from '../../engine/tool-step.js'
+
 export type ProjectedToolCallStatus =
   | 'pending'
   | 'queued'
@@ -59,7 +61,8 @@ export interface ProjectedStepUsage {
 
 export interface ProjectedStep {
   id: string
-  type: 'tool-call'
+  /** 与引擎同一条派生规则(getStepType):bash 按命令内容分 command/file-read/skill-read。 */
+  type: CoreStepType
   title: string
   /** G3:父调用之下的子步骤(`tool/call.parentCallId` 建起来的那一层)。 */
   childSteps?: ProjectedStep[]

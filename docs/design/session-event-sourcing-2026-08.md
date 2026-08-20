@@ -1173,3 +1173,7 @@ run 下面。两份解析会在"哪个请求属于哪次执行"上分叉,所以�
 | 3 | `SessionTraceRequest.params`(`request/recipe.params`)原样透传,没有裁剪策略。今天它只有采样参数那几格,大了再说 |
 | 4 | 面板的 run 层没有折叠。`LedgerGroupHeader` 支持 `collapsible`,但折叠状态该记在哪(每会话?每窗口?)是一次呈现裁定,没有先斩 |
 | 5 | `getTrace` **没有分页**:一条几百个 run 的会话会一次返回整棵树。`last` 是唯一的减法。真要分页应该按 run 而不是按事件 |
+
+### 10.10 真机第二批:steps[].type 写死(2026-08-20)
+
+第三类 mismatch(3 条,`fe5261d9` 等):`steps[].type` A=command / B=tool-call。引擎按 `getStepType(toolName, args)` 派生 step 类型(bash 按命令内容分 command/file-read/skill-read/file-write,`core/engine/tool-step.ts:56`;实时调用点 `app/engine/stream/tool-execution.ts`),投影 reducer 写死 `'tool-call'`(`reducer.ts:738`)。合同测试没抓到的原因与 title/reasoning 两案相同:**A 线 fixture 也写死了 `'tool-call'`**(`stepOf`,又一处空转)。修复:reducer 与 A 线 fixture 都改调 `getStepType`(参数以 argumentsRaw 解析结果为准);`ProjectedStep.type` 放宽为 `CoreStepType`。规律至此确立:**凡"引擎派生字段",合同 A 线必须调用引擎同一个函数,禁止在 fixture 里手写字面量** —— 已有三案(title/G2、reasoning 落点、step type)。
