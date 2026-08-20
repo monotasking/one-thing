@@ -169,6 +169,10 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/gateway', replacement: resolve(projectRoot, 'packages/onething-runtime/src/gateway-runtime.ts') },
   { find: '@onething/runtime/acp', replacement: resolve(projectRoot, 'packages/onething-runtime/src/acp/index.ts') },
   { find: '@onething/runtime/external-agents', replacement: resolve(projectRoot, 'packages/onething-runtime/src/external-agents/index.ts') },
+  // 会话删除的轨迹级联要的只是 trace-store 这一片叶子(`deleteSessionTraces`)。
+  // 故意**不**登记 `@onething/runtime/evals` 那颗 barrel:它把整套评估台
+  // (runner / judge / replay …)拖进每个宿主的包,而删会话只需要一个 rm。
+  { find: '@onething/runtime/evals/trace-store', replacement: resolve(projectRoot, 'packages/onething-runtime/src/evals/trace-store.ts') },
   // Agent 身份/在场的**叶子**入口:renderer 要现算履历(agent-im-dm.md D8)就得
   // 吃 identity/presence 这两支纯函数,而 `agents` 那颗 barrel 拖着吃 node:fs 的
   // store.ts —— 走 barrel 会把文件系统拽进浏览器包。长前缀必须站在短前缀之上

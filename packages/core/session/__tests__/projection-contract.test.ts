@@ -54,6 +54,7 @@ import {
   canonicalHistoryMessages,
   createSessionProjectionState,
   defaultHistoryMessageContent,
+  foldSessionProjection,
   foldSurface,
   projectChatMessages,
   projectModelHistory,
@@ -1099,16 +1100,25 @@ class Scenario {
 
     // A 线 = 今天 `context-compact.ts` 的三步:追加标记消息、写会话摘要、把
     // 标记消息改成 completed 正文。
+    const marker = {
+      id: options.messageId,
+      role: 'system',
+      content: buildContextCompactContent({ status: 'compacting', compactedMessageCount: count, compactedThroughMessageId: options.throughMessageId }),
+      timestamp: time,
+    }
     this.a.run({
       type: 'appendMessage',
       now: time,
-      message: {
-        id: options.messageId,
-        role: 'system',
-        content: buildContextCompactContent({ status: 'compacting', compactedMessageCount: count, compactedThroughMessageId: options.throughMessageId }),
-        timestamp: time,
-      } as CoreSessionCommandMessage,
+      message: marker as CoreSessionCommandMessage,
     })
+    // §13.10 M3:`store.addMessage(标记消息)` 在 B 线上**确实**记了一条
+    // `system/message`(翻译器的 appendMessage:role 不是 user、也不是流式助手)。
+    // 从前这个 fixture 只写 `session/compacted` —— 又一处"fixture 写下结论"的
+    // 空转(§10.10),真机上那两条一起进账本就多出一条消息。
+    const markerEvent = this.b.push({ time, type: 'system/message', data: { message: marker }, surfaceOp: 'append' })
+    // 标记那一格是 surface 上的一个节点 —— 先登记,下面的 `surfaceGroupEnd`
+    // 才不会把它当成"挂在切点后面的附属事件"一起圈进遮蔽区间。
+    this.nodeSeq.set(options.messageId, markerEvent.seq)
     this.a.session = {
       ...this.a.session,
       summary: options.summary,
@@ -1132,7 +1142,9 @@ class Scenario {
     const groupEnd = this.b.surfaceGroupEnd(throughSeq, new Set(this.nodeSeq.values()))
     const range = this.b.surfaceThrough(groupEnd)
     const event = this.b.push({
-      time,
+      // 收尾那条事件晚于标记消息自己的 timestamp(摘要要等模型回来),
+      // 投影必须沿用**消息**那一格 —— 见 M3。
+      time: this.clock.next(),
       type: 'session/compacted',
       data: {
         summary: options.summary,
@@ -1157,24 +1169,43 @@ class Scenario {
   failedCompact(options: { messageId: string; error: string; throughMessageId: string }): void {
     const time = this.clock.next()
     const count = this.a.session.messages.findIndex(message => message.id === options.throughMessageId) + 1
+    // 引擎那边这是**两步**:先追加一条 `status:'compacting'` 的占位,失败之后
+    // `updateMessageContent` 把它改成 failed 正文(§13.10 M3)。
+    const marker = {
+      id: options.messageId,
+      role: 'system',
+      content: buildContextCompactContent({
+        status: 'compacting',
+        compactedMessageCount: count,
+        compactedThroughMessageId: options.throughMessageId,
+      }),
+      timestamp: time,
+    }
     this.a.run({
       type: 'appendMessage',
       now: time,
-      message: {
-        id: options.messageId,
-        role: 'system',
+      message: marker as CoreSessionCommandMessage,
+    })
+    // B 线记的正是那条占位(翻译器的 `appendMessage`);正文补丁不进账本。
+    this.b.push({ time, type: 'system/message', data: { message: marker }, surfaceOp: 'append' })
+    this.a.run({
+      type: 'patchMessage',
+      messageId: options.messageId,
+      hint: 'settle',
+      patch: {
         content: buildContextCompactContent({
           status: 'failed',
           compactedMessageCount: count,
           error: options.error,
           compactedThroughMessageId: options.throughMessageId,
         }),
-        timestamp: time,
-      } as CoreSessionCommandMessage,
+      } as never,
     })
     // 翻译器对失败的压缩写的是 `surfaceOp: 'append'` —— 它不遮蔽任何东西。
+    // 时刻用 `clock.next()`:收尾那条事件晚于消息自己的 timestamp(真机上差
+    // 5–9ms),投影必须沿用**消息**那一格,否则每次失败压缩都差一个时刻。
     const event = this.b.push({
-      time,
+      time: this.clock.next(),
       type: 'session/compacted',
       data: {
         summary: '',
@@ -3047,5 +3078,116 @@ describe('§13.9: 外部执行器的内轮分界 / 用量归属 / 协作回合�
     plain.flushPendingExecutionUsage()
     expectEquivalent(plain)
     expect(projectChatMessages(plain.b.events).messages[1]).not.toHaveProperty('source')
+  })
+})
+
+// ============================================================================
+// §13.10:压缩收尾换掉占位那一格 / 会话换 agent 记一条账
+// ============================================================================
+
+describe('§13.10: 压缩标记只有一格 / agent 切换进账本', () => {
+  /**
+   * M3(真机第三轮):一次**失败**的压缩在投影上多出一条消息。
+   *
+   * 账本上是两条事件、一条消息:`system/message`(占位,`status:'compacting'`)
+   * 与 `session/compacted`(收尾,failed)。归约器从前对后者无条件再登记一格,
+   * 于是 `projectChatMessages` 比 `messages.jsonl` 多 N 条(每次尝试一条),
+   * 而活下来的那条冻在 `compacting`、时刻还是**记账时刻**(真机差 5–9ms)。
+   */
+  it('§13.10 M3: a failed compaction projects exactly one marker, settled and stamped by the message', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'one' })
+    scenario.turn({ runId: 'r1', messageId: 'a1', kind: 'send', requests: [{ text: 'reply one' }], outcome: 'completed' })
+    scenario.user({ id: 'u2', content: 'two' })
+    scenario.turn({ runId: 'r2', messageId: 'a2', kind: 'send', requests: [{ text: 'reply two' }], outcome: 'completed' })
+    scenario.failedCompact({ messageId: 'k1', error: 'Context compact returned an empty summary.', throughMessageId: 'a1' })
+
+    expectEquivalent(scenario)
+
+    const messages = projectChatMessages(scenario.b.events).messages
+    expect(messages.map(message => message.id)).toEqual(['u1', 'a1', 'u2', 'a2', 'k1'])
+    const marker = messages[messages.length - 1]
+    // 正文是 failed(不是冻在 compacting 的占位),时刻是**消息自己**那一格。
+    expect(JSON.parse(String(marker.content)).status).toBe('failed')
+    expect(marker.timestamp).toBe(scenario.a.messages[4].timestamp)
+  })
+
+  /** 同一条病在**成功**的压缩上一样成立(真机第三轮没驱动起来,判据在这里)。 */
+  it('§13.10 M3: a completed compaction projects exactly one marker too', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'one' })
+    scenario.turn({ runId: 'r1', messageId: 'a1', kind: 'send', requests: [{ text: 'reply one' }], outcome: 'completed' })
+    scenario.user({ id: 'u2', content: 'two' })
+    scenario.turn({ runId: 'r2', messageId: 'a2', kind: 'send', requests: [{ text: 'reply two' }], outcome: 'completed' })
+    scenario.compact({ messageId: 'k1', summary: '## Goal\nship it', throughMessageId: 'a1' })
+
+    expectEquivalent(scenario)
+
+    const messages = projectChatMessages(scenario.b.events).messages
+    expect(messages.filter(message => message.id === 'k1')).toHaveLength(1)
+    expect(JSON.parse(String(messages[messages.length - 1].content)).status).toBe('completed')
+  })
+
+  /**
+   * 一次压缩失败、再压一次成功:两条标记消息各自一格,不是四格。
+   * (真机上"多出 N 条"里的 N 正是尝试次数。)
+   */
+  it('§13.10 M3: a retried compaction keeps one node per attempt', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'one' })
+    scenario.turn({ runId: 'r1', messageId: 'a1', kind: 'send', requests: [{ text: 'reply one' }], outcome: 'completed' })
+    scenario.user({ id: 'u2', content: 'two' })
+    scenario.turn({ runId: 'r2', messageId: 'a2', kind: 'send', requests: [{ text: 'reply two' }], outcome: 'completed' })
+    scenario.failedCompact({ messageId: 'k1', error: 'empty summary', throughMessageId: 'a1' })
+    scenario.compact({ messageId: 'k2', summary: '## Goal\nship it', throughMessageId: 'a1' })
+
+    expectEquivalent(scenario)
+    expect(projectChatMessages(scenario.b.events).messages.map(message => message.id))
+      .toEqual(['u1', 'a1', 'u2', 'a2', 'k1', 'k2'])
+  })
+
+  /**
+   * 旧文件兜底(§10.16):账本里只有 `session/compacted`、没有那条占位
+   * `system/message`(迁移/导入出来的会话)—— 照旧追加一格,那正是修复前的事实。
+   */
+  it('§13.10 M3 fallback: a compacted event without its placeholder still appends a node', () => {
+    const events: SessionLogEventRecord[] = [
+      { seq: 1, time: 1, type: 'user/message', data: { message: { id: 'u1', role: 'user', content: 'hi', timestamp: 1 } }, surfaceOp: 'append' },
+      {
+        seq: 2, time: 2, type: 'session/compacted',
+        data: { messageId: 'k1', summary: '## Goal\nx', compactedMessageCount: 1, status: 'completed' },
+        surfaceOp: 'append',
+      },
+    ] as unknown as SessionLogEventRecord[]
+    const messages = projectChatMessages(events).messages
+    expect(messages.map(message => message.id)).toEqual(['u1', 'k1'])
+    // 时刻退回记账时刻(账本里没有第二个来源可问)。
+    expect(messages[1].timestamp).toBe(2)
+  })
+
+  /**
+   * M7:换 agent 记一条 `session/agent-changed`,投影把它折成**会话级**元数据
+   * (不是一条消息 —— 屏幕上什么都没多出来)。
+   */
+  it('§13.10 M7: switching the agent folds into session-level meta, not a message', () => {
+    const events: SessionLogEventRecord[] = [
+      { seq: 1, time: 1, type: 'session/created', data: { sessionId: 's1', agentId: 'onething', model: 'm1', provider: 'p1' } },
+      { seq: 2, time: 2, type: 'user/message', data: { message: { id: 'u1', role: 'user', content: 'hi', timestamp: 2 } }, surfaceOp: 'append' },
+      { seq: 3, time: 3, type: 'session/agent-changed', data: { from: 'onething', to: 'claude-code-agent' } },
+    ] as unknown as SessionLogEventRecord[]
+
+    const state = foldSessionProjection(events)
+    expect(state.sessionMeta).toEqual({ agentId: 'claude-code-agent', model: 'm1', provider: 'p1' })
+    // 屏幕上只有那条用户消息。
+    expect(projectChatMessages(events).messages.map(message => message.id)).toEqual(['u1'])
+  })
+
+  /** 旧文件:没有 `session/agent-changed` 就是没有 —— 会话级元数据停在建会话那一刻。 */
+  it('§13.10 M7 fallback: an old ledger without the event keeps the created agent', () => {
+    const events: SessionLogEventRecord[] = [
+      { seq: 1, time: 1, type: 'session/created', data: { sessionId: 's1', agentId: 'onething' } },
+      { seq: 2, time: 2, type: 'user/message', data: { message: { id: 'u1', role: 'user', content: 'hi', timestamp: 2 } }, surfaceOp: 'append' },
+    ] as unknown as SessionLogEventRecord[]
+    expect(foldSessionProjection(events).sessionMeta).toEqual({ agentId: 'onething' })
   })
 })

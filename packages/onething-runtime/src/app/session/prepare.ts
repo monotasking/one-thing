@@ -12,11 +12,20 @@
  *    已闭合的 run —— 幂等不是靠标记位,是靠事件本身(账本的自然性质)。
  * 2. **两种读模式都跑**。`messages` 模式下它只补事件账本、不动消息
  *    (那边仍由 `sanitizeSessionOnStartup` 管),所以默认行为一字不变。
- * 3. **不碰活着的 run**。靠的不是运行时判断,而是**调用点**:两个入口
- *    (`beginSessionRun` 的开头、活投影第一次建起来之前)都排在这条会话的任何
- *    一次执行**之前**,而 `prepareSessionEventsOnce` 每进程每会话只真的跑一次。
+ * 3. **不碰活着的 run**。靠的不是运行时判断,而是**调用点**:三个入口
+ *    (`appendSurfaceAwareEvent` 的开头、`beginSessionRun` 的开头、活投影第一次
+ *    建起来之前)都排在这条会话的任何一次执行**之前**,而
+ *    `prepareSessionEventsOnce` 每进程每会话只真的跑一次。
  *    等到有 run 活着的时候,这条会话早已 prepare 过了。这样 prepare 就不必反过来
  *    依赖 run 登记处 —— 那条依赖会把它拖进 `runs → shadow → reads` 那个环里。
+ *
+ *    §13.10 M6:第一个入口是本期补的,而且它才是那条硬口径 ——
+ *    **这个进程往这份账本写第一个字之前**。从前只有后两个,于是崩溃重开之后
+ *    用户说的第一句话(`handleSendMessage` 先 `store.addMessage` 才
+ *    `beginSessionRun`)排在合成的收尾**前面**:真机读到
+ *    `tool/call | user/message | tool/result(interrupted) | run/end`。
+ *    内容一直是对的(结局按 callId / runId 归位,与物理位置无关),错的是次序,
+ *    而次序正是历史按回合切段时要看的东西。
  *
  * ## 为什么是**尾部**扫描而不是全量
  *

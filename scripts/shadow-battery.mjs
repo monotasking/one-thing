@@ -203,10 +203,16 @@ function startMockProvider(port, scenariosByName) {
         if (isCompactSummary) {
           // 宿主校验摘要的格式(C5 六节 Markdown,必须有 `## Goal`);
           // 缺了它压缩会走失败路径,卡片是 `status:"failed"`。
-          await write([
-            F.text('## Goal\nthe shadow battery compacted this session.\n\n## Progress\n- one turn\n\n## Next\n- keep going\n'),
-            F.stop(),
-          ])
+          //
+          // 摘要请求自己不带场景标记,但它把**被压掉的那段历史**原样喂了进来
+          // ——`compact-failure` 那条会话的标记因此就在 `flat` 里,这是驱动
+          // "真机上那条必现的失败路径"唯一的抓手(§13.10 M3)。
+          await write(marker?.[1]?.toLowerCase() === 'compact-failure'
+            ? [F.text('抱歉,我没法总结。'), F.stop()]
+            : [
+              F.text('## Goal\nthe shadow battery compacted this session.\n\n## Progress\n- one turn\n\n## Next\n- keep going\n'),
+              F.stop(),
+            ])
         } else if (!scenario) {
           // 没有标记的请求(标题生成之类)——给一句短回答,别让它卡住。
           await write([F.text('ok'), F.stop()])
@@ -248,11 +254,12 @@ function makeApi(port, token) {
 }
 
 class Driver {
-  constructor(api, sessionId, scenarioName, variant) {
+  constructor(api, sessionId, scenarioName, variant, store) {
     this.api = api
     this.sessionId = sessionId
     this.name = scenarioName
     this.variant = variant
+    this.store = store
     this.marker = `@@bat:${scenarioName}:${Buffer.from(JSON.stringify(variant), 'utf8').toString('base64url')}@@`
   }
 
@@ -275,6 +282,30 @@ class Driver {
   /** 把这条会话钉在另一个模型上(生图那一格靠模型名走上特化流)。 */
   model(provider, model) {
     return this.api('POST', `/api/sessions/${this.sessionId}/model`, { provider, model })
+  }
+
+  /** 换 agent —— `session/agent-changed` 的那条产地(§13.10 M7)。 */
+  agent(agentId) {
+    return this.api('POST', `/api/sessions/${this.sessionId}/agent`, { agentId })
+  }
+
+  /**
+   * 这条会话的事件账本(逐行 parse)。
+   *
+   * 写入口是排队的,所以按类型等 —— 场景要断言"某件事**记下来了**"时用它。
+   */
+  async ledgerUntil(type, { timeoutMs = 10_000, everyMs = 60 } = {}) {
+    const file = path.join(this.store, 'sessions', this.sessionId, 'events.jsonl')
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const hit = fs.existsSync(file)
+        ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
+          .map(line => JSON.parse(line)).filter(event => event.type === type)
+        : []
+      if (hit.length > 0) return hit
+      await sleep(everyMs)
+    }
+    throw new Error(`[${this.name}] the ledger never got a ${type}`)
   }
 
   async messages() {
@@ -951,6 +982,66 @@ const SCENARIOS = [
   },
 
   {
+    name: 'compact-failure',
+    covers: ['§13.10 M3:压缩**失败**(摘要没有 `## Goal`)—— 标记消息只有一条,红卡不是第二格'],
+    provider: ({ turn, variant }) => [
+      F.sleep(variant.firstByteMs),
+      F.text(`第 ${turn} 段:${variant.body}`),
+      F.stop(usageOf(variant, turn)),
+    ],
+    async drive(d) {
+      await d.send('第一段')
+      await d.waitIdle(1)
+      await d.send('第二段')
+      await d.waitIdle(2)
+      await d.command({ type: 'command:compact-context', manual: true })
+      const messages = await d.until('failed compact card', list =>
+        list.some(m => m.role === 'system' && typeof m.content === 'string'
+          && m.content.includes('"type":"context-compact"') && m.content.includes('"status":"failed"')),
+        { timeoutMs: 45_000 })
+      // 一次尝试 = **一条**标记消息。真机上投影比它多一条(占位一格 + 收尾一格),
+      // 而事实侧从来就只有这一条 —— 这里钉住事实侧的口径。
+      const cards = messages.filter(m => typeof m.content === 'string'
+        && m.content.includes('"type":"context-compact"'))
+      assert(cards.length === 1, `expected exactly one compact marker, got ${cards.length}`)
+      // 账本上那一条**不遮蔽任何东西**(失败的压缩没压掉一句话)。
+      const compacted = await d.ledgerUntil('session/compacted')
+      assert(compacted.length === 1, `expected one session/compacted, got ${compacted.length}`)
+      assert(compacted[0].data?.status === 'failed', 'the ledger did not record the failure')
+      assert(compacted[0].surfaceOp === 'append', 'a failed compaction must not shadow the surface')
+      // 失败的压缩什么都没遮蔽:接着说话照旧是完整历史。
+      await d.send('压缩失败之后再问一句')
+      const after = await d.waitIdle(3, { timeoutMs: 45_000 })
+      assert(after.length > messages.length, 'nothing was written after the failed compaction')
+    },
+  },
+
+  {
+    name: 'agent-switch',
+    covers: ['§13.10 M7:换 agent 记一条 `session/agent-changed`,而且下一轮照旧对得上'],
+    provider: ({ turn, variant }) => [
+      F.sleep(variant.firstByteMs),
+      F.text(`第 ${turn} 段:${variant.body}`),
+      F.stop(usageOf(variant, turn)),
+    ],
+    async drive(d) {
+      await d.send('切换之前')
+      await d.waitIdle(1)
+      // 换 agent 不是一条消息:切完之后消息条数一个不多。
+      const before = await d.messages()
+      await d.agent('onething')
+      const after = await d.messages()
+      assert(after.length === before.length, 'switching the agent must not add a message')
+      // …但账本上**必须**有那一行(修复前 `POST /api/sessions/:id/agent` 是无声的)。
+      const changed = await d.ledgerUntil('session/agent-changed')
+      assert(changed.length === 1, `expected one session/agent-changed, got ${changed.length}`)
+      assert(changed[0].data?.to === 'onething', `wrong agent recorded: ${JSON.stringify(changed[0].data)}`)
+      await d.send('切换之后')
+      await d.waitIdle(2)
+    },
+  },
+
+  {
     name: 'long-multipart-text',
     covers: ['多段长正文(part 边界 + 攒批闸)'],
     provider: ({ variant }) => {
@@ -1130,7 +1221,7 @@ async function main() {
         await api('POST', `/api/sessions/${sessionId}/permission-mode`, {
           permissionMode: scenario.permissionMode ?? 'dangerously-allow-all',
         })
-        const driver = new Driver(api, sessionId, scenario.name, variant)
+        const driver = new Driver(api, sessionId, scenario.name, variant, store)
         await scenario.drive(driver)
         results.push({ label, scenario: scenario.name, sessionId, ok: true })
       } catch (error) {

@@ -2381,7 +2381,7 @@ RED**,如实记在这里:`tool-args-truncated` 那一格出了 2 条 mismatch(�
 那两条会话今夜已经从 `~/.onething/sessions/` 上消失了(目录不存在),没有会话就没有比对。
 基线里那两行原样留着,等真机稳定之后再统一重录。
 
-#### 顺手记两张票(只诊断,不修)
+#### 顺手记两张票(诊断于 2026-08-21;**连同压缩日志那张共三张,当日已修**,收口见本节末)
 
 1. **删会话不级联 `evals/traces/<sessionId>/`**。轨迹目录的写侧是
    `packages/onething-runtime/src/evals/trace-store.ts:58`(`getTracesDir`)/ `:62`
@@ -2409,3 +2409,196 @@ RED**,如实记在这里:`tool-args-truncated` 那一格出了 2 条 mismatch(�
    失效,于是 `enabled:false` 的空壳连同被翻掉的 `ai.provider` 一起写进
    `workspaces/<id>/providers.json`(`app/stores/settings.ts:114-129` 的 `prepareSave`
    → `writeSpaceProviderSettings`)。
+
+#### 三张票的收口(2026-08-21):都是**产品行为**,不是影子
+
+上面两张票加上压缩日志那张,共三处,当日全部修掉。三处都不在影子链路上 ——
+影子只是把它们照出来了。
+
+1. **`provider use` 不再拿一个没开的 provider 去翻空间默认**
+   (`packages/onething-runtime/src/headless/cli-projections.ts` 的
+   `useOnethingHeadlessProvider`)。病根不在拆分那一侧:`isBlankProviderRecord`
+   区分「没表达过」与「表达成关」是对的,把 `{model:'x', enabled:false}` 当成
+   「表达过」也是对的 —— 用户完全可以配好模型再把 provider 关掉,那份 model
+   必须留着。真正错的是**先改状态、后不校验**:`providers[id]` 在,只说明它
+   在目录里有个名字(合成会给每个目录里认识的 provider 补一条全灭壳),不说明
+   这个空间配过它。现在 `enabled !== true` 直接抛
+   `Provider is not enabled: <id>`,`ai.provider` 与那条壳一个字不动 ——
+   选一个没开的 provider 是错误,不是一次静默降级。
+   判据:`headless/__tests__/cli-projections.test.ts` 里合成 → 调用 → 拆分
+   走一遍,钉住「默认没翻、壳没长出 model、`space.providers` 里没有它」。
+2. **删会话级联轨迹目录**。`evals/trace-store.ts` 新出
+   `getSessionTraceDir` / `deleteSessionTraces`(id → 目录名的清洗函数收敛成
+   `safeTraceSegment` 一处),`app/stores/sessions.ts` 的 `deleteSession` 在清
+   三张进程内表的同一个循环里按 id 调它。**不走 `onSessionsDeleted` 那个观察者
+   接缝**:那个接缝是给装配层子系统留的(直接引会把层反过来),而 trace-store
+   是一片没有回边的产品叶子,直接调既不反层,又让每个宿主(桌面 / server /
+   CLI)天然都有,不需要各自注册。别名只登记了叶子
+   `@onething/runtime/evals/trace-store`,**故意不登记 `evals` 那颗 barrel** ——
+   删会话只需要一个 `rm`,不值得把整套评估台拖进每个宿主的包。
+   判据:`app/stores/__tests__/sessions-delete-cascade.test.ts`(会话目录与轨迹
+   目录一起消失 / 只收自己那一份 / 没有轨迹也不炸)。
+   **孤儿清扫(`pruneTraceRing` 顺手删掉"会话已不存在"的目录)故意没做**:
+   轨迹的 sessionId 不保证对应一个盘上的会话文件(评估台与回放跑的是合成 id),
+   按「`sessions/<id>` 不在就删」扫一遍,第一个被误删的就是排障时最想要的那份。
+   环形淘汰按年龄/体积赶人,定点级联按 id 收 —— 两条各管各的,不互相猜。
+3. **压缩失败不再是一句"failed"**。`app/engine/context-compact.ts` 的两道闸
+   (空摘要 / 无 `## Goal`)此前只有 `catch` 里那一句
+   `compact session failed`,模型到底回了什么一个字不落,失败的压缩因此无法排障。
+   现在两道闸各记一条 `log.warn`(`engine.compact`),字段里带
+   `providerId` / `model` / 长度,以及返回文本的 **400 字截断预览**(全文可能上万字,
+   不进日志)。仍然是 `getLogger` + 结构化字段,没有 `console.*`。
+
+### 13.10 真机第三轮(2026-08-21):压缩标记的第二格 / 收尾排在下一句话后面 / 换 agent 无声
+
+临时 store + `claude-code-agent` 那一轮找出的三条,病根各不相同,但都是
+**"两个来源说同一件事"没被收口**。
+
+| # | 症状 | 病根 |
+|---|---|---|
+| M3 | 一次(失败的)压缩之后投影比 `messages.jsonl` **多 N 条**(N = 尝试次数),活下来的那条冻在 `compacting`,时刻还差 5–9ms | `session/compacted` 无条件再登记一格,而那条标记消息在账本上早已有 `system/message` 那一格 |
+| M6 | 冷启动读到 `tool/call \| user/message \| tool/result(interrupted) \| run/end` | prepare 的入口只排在"任何一次**执行**之前",而账本上先落地的是那条**用户消息** |
+| M7 | `POST /api/sessions/:id/agent` 在账本上一个字都没有 | 桌面那条路绕开命令面;server 那条路**快照取晚了**(改完才问改之前) |
+
+#### M3 —— 收尾那一格是**换掉占位**,不是再来一格
+
+`context-compact.ts` 是三步:`store.addMessage(标记消息)`(翻译器记成一条
+`system/message`,正文 `status:'compacting'`)→ 可选的进度刷新 →
+`updateMessageContent(completed|failed)` + `sessionEventTranslator.sessionCompacted`。
+正文补丁按 §9.2 不进账本(正文只有一个来源),所以那条 `system/message` 永远停在
+`compacting`;而归约器对 `session/compacted` 又 `register` 了一格。两格、一条消息。
+
+**裁定:病在归约器,不在翻译器,也不在采集点。** 两条事件记的都是**真事**
+(消息建出来了 / 压缩有了结局),账本没有多写;错的是投影把"同一条消息的第二次
+陈述"当成了第二个节点。修法:
+
+- `state.byMessageId` 里已有那条占位 → **隐藏它**,新节点**插在它后面**
+  (占位隐藏之后,可见位置正是它原来那一格;两条事件之间登记过的节点仍排在后面,
+  与 `messages.jsonl` 同序);
+- 新节点的 `time` 取**占位那条消息自己的时刻**(与 `run/start.timestamp` 同一条
+  道理:记账时刻晚几毫秒,而消息的 timestamp 才是事实);
+- 找不到占位(迁移 / 导入出来的会话)→ 照旧追加,那正是修复前的事实(§10.16)。
+
+**成功的压缩犯的是同一条病。**真机第三轮没驱动起来(摘要必须有 `## Goal`),
+判据补在合同里。
+
+**为什么合同测试当年没抓到:B 线 fixture 从来没写那条 `system/message`。**
+与 §10.10 的 `stepOf` 同一类空转 —— fixture 自己写下了结论。本批把 `compact()` /
+`failedCompact()` 两个 fixture 都改成**照抄翻译器**:先 `system/message`(占位正文)、
+再 `session/compacted`(晚一个时钟刻度),失败那条还补上了 A 线的
+`compacting → failed` 正文补丁。
+
+#### M6 —— prepare 的口径是"写第一个字之前",不是"执行之前"
+
+prepare 从前两个入口:`beginSessionRun` 的开头、活投影第一次建起来之前。而崩溃
+重开之后,`handleSendMessage` 是**先** `store.addMessage`(账本上就是 `user/message`)
+**才** `beginSessionRun` —— 于是用户新说的那句话把上一条 run 的合成收尾挤到了自己
+后面。内容一直是对的(结局按 callId / runId 归位,与物理位置无关),错的是次序,
+而次序正是历史按回合切段时要看的东西。
+
+修法是**加第三个入口,并且它才是那条硬口径**:`appendSurfaceAwareEvent` 的开头 ——
+**这个进程往这份账本写第一个字之前**。翻译器与 run 登记处都只走这一扇门,所以它
+是唯一一个"覆盖得住"的位置。递归安全靠 `prepareSessionEventsOnce` 自己:它在真跑
+之前就把会话记进 `prepared`,合成出来的那几条事件走回这扇门时是一次 `Set.has`。
+"不碰活着的 run"照旧由调用点保证 —— 这个入口比另外两个都早。
+
+#### M7 —— 两个产地,两处修,一条规矩
+
+`session/agent-changed` 这个词汇 §9.2 早就有了,翻译器的 `patchSession` 也早就会
+写它(`event-translator.ts:275`)。缺的是**产地**:
+
+1. **桌面 / IPC**:`store.updateSessionAgent` 直接走仓库的
+   `applyMetadataMutation`(agent 那一格带着"空值回落默认 agent"的规范化,所以当年
+   没走命令面),命令面因此从头到尾没被叫到。修:写成功之后调翻译器,`to` 取
+   **落库之后**那一格(规范化在仓库里发生,记入参就会记下一个没存进去的值)。
+2. **server / HTTP**(`POST /api/sessions/:id/agent` → `sessions.update`):
+   `applySessionPatch` **就地改**那只会话对象,而真后端上它正是 app store 里的
+   那一份 —— 等 `persistSession` → `sessionCommands.patchSession` 再回头问
+   "改之前是什么",问到的已经是改之后的值。修:快照在 `applySessionPatch`
+   **之前**取(`sessionMetaFieldsOf`,取快照与取新值用同一个函数),写成功之后
+   连同新值一起交给翻译器。agent / model / workdir 三格因此**一起**回来了 ——
+   它们本来就是同一条无声。
+
+投影侧:三条 `session/*-changed` 与 `session/created` 折进
+`SessionProjectionState.sessionMeta`(`{agentId, model, provider, workingDirectory}`)。
+**它不是一条消息** —— 换 agent 在屏幕上什么都不多出来,`materializeChatMessages`
+一个字节没改。旧文件缺这条事件就是缺:会话级元数据停在建会话那一刻。
+
+#### 新字段的旧文件兜底(§10.16 逐条)
+
+| 新字段 / 新行为 | 缺席时 | 合同测试 |
+|---|---|---|
+| `session/compacted` 之前的那条 `system/message` 占位 | 照旧追加一格、时刻退回记账时刻(= 修复前的事实) | `§13.10 M3 fallback: a compacted event without its placeholder still appends a node` |
+| `session/agent-changed` | 会话级元数据停在 `session/created` 那一格,不猜 | `§13.10 M7 fallback: an old ledger without the event keeps the created agent` |
+
+M3 / M6 都**不引入新字段**:M3 读的是老账本里早就写着的那条 `system/message`,
+M6 只改合成事件的**落账时机** —— 所以旧账本立刻享受修复,没有第二条兜底路。
+
+#### 合同测试:每一条都验过"不修就红"
+
+`projection-contract.test.ts` 新增 `describe('§13.10: …')` 6 条;
+`prepare.test.ts` 新增 1 条;新文件
+`app/stores/__tests__/session-agent-switch.test.ts`(桌面产地)3 条、
+`app/server/__tests__/session-agent-event.test.ts`(HTTP 产地)2 条。
+**逐条脚本化反证**:
+
+| 改回旧写法 | 变红的用例 |
+|---|---|
+| 归约器对 `session/compacted` 照旧无条件 `register` | **7 条**:`compact keeps the UI messages…` / `pushing events one at a time equals folding them all` / `F2` / `F1` / §13.10 M3 三条 |
+| `appendSurfaceAwareEvent` 不先 prepare | `§13.10 M6` |
+| `store.updateSessionAgent` 不叫翻译器 | 桌面产地 2 条 |
+| server 的快照在 `applySessionPatch` 之后取 | HTTP 产地 1 条 + 电池 `agent-switch` |
+
+#### 影子电池:两条新场景,和一处**电池表达不了**的空白
+
+新增两条(全量 23 × 8 = **264 runs / 0 mismatch**,GREEN):
+
+- `compact-failure` —— 假 provider 现在会**故意压失败**:摘要请求自己不带场景标记,
+  但它把被压掉的那段历史原样喂了进来,所以 `flat` 里有 `@@bat:compact-failure:…@@`,
+  这是驱动那条真机必现路径唯一的抓手。断言:红卡出现、**恰好一条**标记消息、
+  账本上 `session/compacted{status:'failed', surfaceOp:'append'}`(失败的压缩不遮蔽
+  任何东西)、之后照旧能继续说话。
+- `agent-switch` —— 走真的 `POST /api/sessions/:id/agent`,断言消息一条不多、
+  账本上**恰好一条** `session/agent-changed{to}`。反证过:摘掉 server 那处修复,
+  这一格当场 `the ledger never got a session/agent-changed`。
+
+为此给 `Driver` 加了 `ledgerUntil(type)`(电池自己建的临时 store,场景因此能断言
+"这件事**记下来了**",不只是"屏幕上对")。
+
+**空白如实记:电池**结构上**看不见 M3。**影子的 run 断言只比
+`assistantMessageId` / `triggerMessageId` / `runId === 本 run` 那几条消息
+(`shadow.ts:358-380`),而压缩标记既不属于任何 run,也不是谁的触发消息 ——
+所以它永远不进比对窗口。实测:把归约器改回旧写法再跑 `--only compact`,电池
+照样 GREEN。**看得见 M3 的是 `sessions:verify`**(整份文件逐条 canonical 比),
+见下。
+
+#### 门(全部实跑)
+
+`typecheck` 3 条老红(`provider-dials`);`session:gate` 0 / `boundary:gate` 13 /
+`log:gate` 4,全部无新增;`lint:ci` **335**(与基线相同;本批改到的文件逐个跑
+eslint 是 0 error);`server:build` 通过 —— 顺带证明了
+`event-surface ↔ prepare` 那个新的模块环在**单文件包**里没有 TDZ 问题
+(电池起的就是 `dist/server/main.js`)。
+`ONETHING_SESSION_FREEZE=1 bun run test` = 1146 文件通过 / 2 条老红
+(`ui-token-vars` ×2)+ AIProviderTab 的老 unhandled rejection,11063 例通过。
+`sessions:shadow-battery` **GREEN**(23 场景 × 8,264 runs / 0 mismatch,一次跑过)。
+
+**`sessions:verify:gate` ok —— 11 条已知,无新增,并且 healed 了 3 条。**
+其中 `fd899977… messages: covered message order differs` 正是 **M3 在真历史文件上
+的反证**:把归约器改回旧写法再跑一次,这一行立刻回来(12 条),修好就消失(11 条)——
+§10.17 基线里那条"待归类"的 order 差异,病根就是压缩标记的第二格。
+另外两条(`web-7abaca68` / `web-da46cc33`)是 §13.9 记过的"会话已从盘上消失",
+不是本批修好的。**基线不动**,按 §13.9 的既有做法等真机稳定之后统一重录。
+
+#### 留下的尾巴
+
+1. **影子的 run 窗口挡住了整类"不属于任何 run 的消息"**(压缩标记是第一例,
+   系统标记消息是第二类)。今天靠 `sessions:verify` 兜住,但那是**旧文件**的门 ——
+   一条新写出来的会话要等它被 verify 扫到才会暴露。要不要给影子加一道"整会话
+   canonical"的低频断言,是另一次裁定。
+2. **`session/model-changed` / `session/workdir-changed` 的桌面产地仍然缺席**:
+   本批只补了 agent 那一格的桌面产地(`updateSessionModel` /
+   `updateSessionWorkingDirectory` 走的是同一条绕过命令面的仓库路)。HTTP 那条路
+   三格一起修好了。同类不同产地,归下一批。
+3. **`sessionMeta` 今天没有消费者**:它是 M7 要求的"投影承载会话级事实"的落点,
+   轨迹面板 / 归因要用它得再接一次。

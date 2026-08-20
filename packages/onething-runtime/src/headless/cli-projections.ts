@@ -162,6 +162,23 @@ export function useOnethingHeadlessProvider<
 ): OnethingHeadlessProviderSummary {
   const provider = settings.ai.providers[providerId]
   if (!provider) throw new Error(`Provider not found: ${providerId}`)
+  // **目录里认识 ≠ 这个空间配过**。合成(`composeEffectiveAISettings`)会给每个
+  // 目录里有缓存的 provider 补一条「全灭壳」`{model:'', selectedModels:[],
+  // enabled:false}`,所以 `providers[id]` 在,只说明它有个名字。
+  //
+  // 此前这里不看 `enabled` 就两件事一起做:(1) 把 `ai.provider` 翻过去、
+  // (2) 把 `model` 盖到那条壳上。而 `model` 一非空就骗过 `isBlankProviderRecord`
+  // (`@shared/defaults/ai-settings.ts`),于是 `splitEffectiveAISettings` 把这条
+  // 本该被摘掉的展示壳连同翻掉的 `ai.provider` 一起写进了
+  // `workspaces/<id>/providers.json` —— 真机上表现为「实际用的模型 ≠ 界面显示的
+  // 模型」,而且空间的默认 provider 被静默改掉。
+  //
+  // 选一个没开的 provider 是**错误**,不是一次静默降级:先校验,后改状态。
+  if (provider.enabled !== true) {
+    throw new Error(
+      `Provider is not enabled: ${providerId}. Enable it first (\`provider enable ${providerId}\`).`,
+    )
+  }
   settings.ai.provider = providerId
   if (model) provider.model = model
   return projectOnethingHeadlessProviderSummary(providerId, provider, settings.ai.provider)

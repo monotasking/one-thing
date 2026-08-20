@@ -95,6 +95,7 @@ import {
 	sessionReads as appSessionReads,
 	sessionPreviewText,
 } from "@onething/app/session/reads.js";
+import { sessionEventTranslator } from "@onething/app/session/event-translator.js";
 import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/app/stores/sessions.js";
 import {
 	CorePluginStore,
@@ -2812,9 +2813,24 @@ async function createServerRuntimeOverServerBackend(
 			) {
 				const session = getSessionForContext(sessionId, context);
 				if (!session) return { success: false, error: "Session not found" };
+				// §13.10 M7:快照必须**在 applySessionPatch 之前**取。
+				//
+				// `applySessionPatch` 就地改这只对象,而真后端上它正是 app store
+				// 里那一份 —— 等 `persistSession` → `sessionCommands.patchSession`
+				// 再去问"改之前是什么",问到的已经是改之后的值,三格
+				// (agent / model / workdir)于是一条事件都写不出来。
+				// `POST /api/sessions/:id/agent` 从此在账本上是无声的。
+				const beforeMeta = sessionMetaFieldsOf(session);
 				const patchResult = applySessionPatch(session, patch, workspaceRoot);
 				if (!patchResult.success) return patchResult;
 				persistSession(session);
+				// 翻译排在写成功之后(翻译器的纪律 1)。三格里没变的那些由翻译器
+				// 自己按 before 逐格比对丢掉,这里不预筛。
+				sessionEventTranslator.patchSession(
+					sessionId,
+					sessionMetaFieldsOf(session),
+					beforeMeta,
+				);
 				return { success: true, session: toSessionDetails(session) };
 			},
 		},
@@ -5394,6 +5410,30 @@ function refreshSessionMeta(
 	if (session.name === "New Chat" && session.previewText) {
 		session.name = session.previewText.slice(0, 40);
 	}
+}
+
+/**
+ * §13.10 M7:进事件账本的那三格会话级字段(agent / model+provider / workdir)。
+ *
+ * 它们就是翻译器 `patchSession` 认识的那一张表 —— 其余会话级字段是 UI 偏好,
+ * 留在 `meta.json`(§2)。取快照与取新值用**同一个函数**,前后两份因此永远同形。
+ */
+function sessionMetaFieldsOf(session: ServerChatSession): {
+	agentId?: string;
+	lastModel?: string;
+	lastProvider?: string;
+	workingDirectory?: string;
+} {
+	return {
+		...(session.agentId !== undefined ? { agentId: session.agentId } : {}),
+		...(session.lastModel !== undefined ? { lastModel: session.lastModel } : {}),
+		...(session.lastProvider !== undefined
+			? { lastProvider: session.lastProvider }
+			: {}),
+		...(session.workingDirectory !== undefined
+			? { workingDirectory: session.workingDirectory }
+			: {}),
+	};
 }
 
 function applySessionPatch(

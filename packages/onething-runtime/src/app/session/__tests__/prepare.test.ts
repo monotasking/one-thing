@@ -20,7 +20,7 @@ vi.mock('../../stores/paths.js', () => ({
 const { appendSessionLogEvent, flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache } =
   await import('../event-log.js')
 const { resetSessionEventStatsCache } = await import('../event-stats.js')
-const { resetSessionSurfaceCache } = await import('../event-surface.js')
+const { appendSurfaceAwareEvent, resetSessionSurfaceCache } = await import('../event-surface.js')
 const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../projection-cache.js')
 const { prepareSessionEvents, prepareSessionEventsOnce, resetSessionPrepareCache, scanUnclosedRuns } =
   await import('../prepare.js')
@@ -211,6 +211,36 @@ describe('prepare: 未闭合的 run', () => {
     // 进同一份投影 —— 所以第一眼看到的就已经是收尾之后的样子。
     const messages = materializeChatMessages(getLiveSessionProjection(SESSION)).messages
     expect(messages.find(message => message.id === 'a1')?.isStreaming).toBeUndefined()
+  })
+
+  /**
+   * §13.10 M6:崩溃重开之后**用户说的第一句话**不该把合成的收尾挤到后面。
+   *
+   * 真机第三轮读到的次序是
+   * `tool/call | user/message | tool/result(interrupted) | run/end` ——
+   * 因为 `handleSendMessage` 先 `store.addMessage`(账本上就是那条
+   * `user/message`)才 `beginSessionRun`(prepare 从前的入口)。收尾属于**上一条
+   * run**,它必须排在下一条用户消息之前。
+   */
+  it('§13.10 M6: the synthesized close lands before the next user message', async () => {
+    await crashedMidTool()
+
+    // 冷启动之后**第一件事**就是翻译器写那条用户消息(没有任何人先打开会话、
+    // 也没有 beginSessionRun)。
+    appendSurfaceAwareEvent(SESSION, 'user/message', {
+      message: { id: 'u2', role: 'user', content: 'again', timestamp: 9 },
+    } as never, { surfaceOp: 'append' })
+    await flushSessionEventLog(SESSION)
+
+    const records = lines().map(line => JSON.parse(line) as { type: string; data: Record<string, unknown> })
+    const at = (type: string): number => records.findIndex(record => record.type === type && record.data.callId === 'c2')
+    const userAt = records.findIndex(record => record.data.message !== undefined && (record.data.message as { id: string }).id === 'u2')
+    const endAt = records.findIndex(record => record.type === 'run/end')
+    expect(at('tool/result')).toBeGreaterThan(-1)
+    expect(at('tool/result')).toBeLessThan(userAt)
+    expect(endAt).toBeLessThan(userAt)
+    // 幂等照旧:再写一条不会再合成一次。
+    expect(prepareSessionEvents(SESSION)).toMatchObject({ status: 'clean', runs: 0 })
   })
 
   it('reports a truncated scan instead of pretending it saw the whole log', async () => {

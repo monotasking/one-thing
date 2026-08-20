@@ -297,6 +297,20 @@ export interface SessionProjectionState {
    * 可能整条不在(只有七类的那段历史),所以先记在会话级,`tool/call` 一到就取。
    */
   awaitingPermissionCallIds: Set<string>
+  /**
+   * §13.10 M7:会话级元数据的**当前值** —— `session/created` 与三条
+   * `session/{agent,model,workdir}-changed` 的折叠。
+   *
+   * 它不是一条消息:换 agent 在屏幕上什么都不多出来(`materializeChatMessages`
+   * 一个字节不变)。它回答的是"这条会话此刻挂在谁名下" —— 从前账本里连这件事
+   * 都没有产地,轨迹既归因不了过去那些 run,也说不出切换发生过。
+   */
+  sessionMeta: {
+    agentId?: string
+    model?: string
+    provider?: string
+    workingDirectory?: string
+  }
   lastSeq: number
 }
 
@@ -311,6 +325,7 @@ export function createSessionProjectionState(): SessionProjectionState {
     rejectionReasonByCallId: new Map(),
     permissionCallIdByRequestId: new Map(),
     awaitingPermissionCallIds: new Set(),
+    sessionMeta: {},
     lastSeq: 0,
   }
 }
@@ -371,10 +386,26 @@ export function reduceSessionProjection(
     }
 
     case 'session/compacted': {
+      // §13.10 M3:压缩标记消息在账本上有**两个**产地,说的却是**同一条消息**。
+      //
+      //   `context-compact.ts` 先 `store.addMessage(标记消息)` —— 翻译器把它记成
+      //   一条 `system/message`(正文是 `status:'compacting'` 的占位);收尾时再
+      //   `updateMessageContent` 改成 completed/failed(正文补丁不进账本,§9.2)
+      //   并写这一条 `session/compacted`。
+      //
+      // 从前这里无条件再 `register` 一格,于是投影比 `messages.jsonl` 多一条:
+      // 活下来的那条冻在 `compacting`,新加的那条又带着**记账时刻**(比消息自己的
+      // timestamp 晚几毫秒)。所以这一条不是"再来一格",是**把占位那一格换掉**:
+      // 占位隐藏、新节点插在它原来的位置、时刻沿用消息自己的。
+      //
+      // 老文件兜底(§10.16):账本里找不到那条占位(迁移/导入的会话)就照旧追加
+      // —— 那正是修复前的事实。
+      const placeholder = state.byMessageId.get(event.data.messageId)
       const node: CompactedNode = {
         kind: 'compacted',
         eventSeq: event.seq,
-        time: event.time,
+        // 消息自己的时刻优先于记账时刻(与 `run/start.timestamp` 同一条道理)。
+        time: placeholder?.time ?? event.time,
         hidden: false,
         patch: {},
         messageId: event.data.messageId,
@@ -384,7 +415,16 @@ export function reduceSessionProjection(
         status: event.data.status ?? 'completed',
         error: event.data.error,
       }
-      register(state, node)
+      if (placeholder) {
+        placeholder.hidden = true
+        // 插在占位那一格**之后** —— 占位已经隐藏,可见位置因此正是它原来的位置,
+        // 而在它与这条事件之间登记过的节点仍然排在后面(与 `messages.jsonl` 同序)。
+        state.nodes.splice(state.nodes.indexOf(placeholder) + 1, 0, node)
+        state.byEventSeq.set(node.eventSeq, node)
+        state.byMessageId.set(node.messageId, node)
+      } else {
+        register(state, node)
+      }
       break
     }
 
@@ -663,11 +703,37 @@ export function reduceSessionProjection(
       break
     }
 
-    // 记录在案但不改投影:它们回答的是"什么时候发生了什么",不是"屏幕上有什么"。
+    // §13.10 M7:会话级元数据 —— **不产出任何消息**,只折进 `state.sessionMeta`。
+    // 屏幕上一个字节不多(`materializeChatMessages` 只走 `state.nodes`)。
     case 'session/created':
+      state.sessionMeta = {
+        ...state.sessionMeta,
+        ...(event.data.agentId !== undefined ? { agentId: event.data.agentId } : {}),
+        ...(event.data.model !== undefined ? { model: event.data.model } : {}),
+        ...(event.data.provider !== undefined ? { provider: event.data.provider } : {}),
+        ...(event.data.workingDirectory !== undefined
+          ? { workingDirectory: event.data.workingDirectory }
+          : {}),
+      }
+      break
+
     case 'session/agent-changed':
+      state.sessionMeta = { ...state.sessionMeta, agentId: event.data.to }
+      break
+
     case 'session/model-changed':
+      state.sessionMeta = {
+        ...state.sessionMeta,
+        model: event.data.to,
+        ...(event.data.provider !== undefined ? { provider: event.data.provider } : {}),
+      }
+      break
+
     case 'session/workdir-changed':
+      state.sessionMeta = { ...state.sessionMeta, workingDirectory: event.data.to }
+      break
+
+    // 记录在案但不改投影:它们回答的是"什么时候发生了什么",不是"屏幕上有什么"。
     case 'request/tools':
     case 'request/header':
     case 'interaction/asked':

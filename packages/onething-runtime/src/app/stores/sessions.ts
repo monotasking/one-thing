@@ -38,6 +38,7 @@ import {
 	type OnethingSessionMessageRuntime,
 } from "@onething/runtime/sessions";
 import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/runtime/collab";
+import { deleteSessionTraces } from "@onething/runtime/evals/trace-store";
 import {
 	DEFAULT_SPACE_ID as DEFAULT_WORKSPACE_ID,
 	isValidSpaceId,
@@ -505,6 +506,10 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
 		resetSessionEventLogCache(deletedId);
 		resetSessionSurfaceCache(deletedId);
 		resetSessionRuns(deletedId);
+		// 轮次轨迹住在会话目录**外面**(`evals/traces/<sessionId>/`),所以
+		// `rmSync(sessions/<id>)` 收不掉它。环形淘汰只按年龄/体积赶人,永远不会
+		// 因为「这个会话没了」而赶 —— 不在这里级联,删掉的会话会把轨迹永远留在盘上。
+		deleteSessionTraces(deletedId);
 	}
 	for (const listener of sessionsDeletedListeners) {
 		try {
@@ -1133,9 +1138,31 @@ export function updateSessionModel(
 	return sessionRepository.updateSessionModel(sessionId, provider, model, options);
 }
 
+/**
+ * 换 agent。
+ *
+ * §13.10 M7:这条路**绕开了命令面**(它走的是仓库的 `applyMetadataMutation`,
+ * 因为 agent 那一格还带着"空值回落默认 agent"的规范化),于是从前账本上一条
+ * `session/agent-changed` 都没有 —— `run/start.agentId` 只记得每次执行**当时**
+ * 挂在谁名下,投影既归因不了过去的 run,也说不出切换发生过。
+ *
+ * 翻译照旧排在写成功之后(翻译器的纪律 1),而 `to` 取的是**落库之后**那一格:
+ * 规范化(空 → 默认 agent)发生在仓库里,记入参就会记下一个没存进去的值。
+ */
 export function updateSessionAgent(
 	sessionId: string,
 	agentId: string,
 ): boolean {
-	return sessionRepository.updateSessionAgent(sessionId, agentId);
+	const before = getSession(sessionId)?.agentId;
+	const changed = sessionRepository.updateSessionAgent(sessionId, agentId);
+	if (!changed) return false;
+	const after = getSession(sessionId)?.agentId;
+	if (after !== undefined && after !== before) {
+		sessionEventTranslator.patchSession(
+			sessionId,
+			{ agentId: after },
+			before !== undefined ? { agentId: before } : undefined,
+		);
+	}
+	return changed;
 }

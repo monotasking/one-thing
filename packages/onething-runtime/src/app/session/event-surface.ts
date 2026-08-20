@@ -30,6 +30,7 @@ import {
   isSessionEventLogEnabled,
   readSessionLogEventsSync,
 } from './event-log.js'
+import { prepareSessionEventsOnce } from './prepare.js'
 
 interface SessionSurfaceState {
   index: SurfaceIndex
@@ -123,6 +124,16 @@ export function sessionSurface(sessionId: string): SessionSurfaceView {
  *
  * 翻译器只走这一扇门:直接调 `appendSessionLogEvent` 的话索引就漏了那一条,
  * 下一次 `rangeFrom` 会少遮蔽一格(而那种错是静默的)。
+ *
+ * §13.10 M6:**上一个进程留下的未闭合 run 在这里收尾**。从前 prepare 的两个
+ * 入口是 `beginSessionRun` 与活投影第一次建起来 —— 都排在"这条会话的任何一次
+ * **执行**之前",而账本上先落地的不是执行,是那条**用户消息**
+ * (`handleSendMessage` 先 `store.addMessage` 再 `beginSessionRun`)。于是崩溃
+ * 之后重开说的第一句话把合成的收尾挤到了自己后面:真机上读到
+ * `tool/call | user/message | tool/result(interrupted) | run/end`。
+ * 正确的口径不是"任何一次执行之前",是**这个进程往这份账本写第一个字之前** ——
+ * 而那扇门就是这里。递归安全:`prepareSessionEventsOnce` 在真跑之前就把会话记进
+ * 了 `prepared`,它自己合成的那几条走回这里时是一次 `Set.has`。
  */
 export function appendSurfaceAwareEvent<TType extends SessionLogEventType>(
   sessionId: string,
@@ -130,6 +141,7 @@ export function appendSurfaceAwareEvent<TType extends SessionLogEventType>(
   data: SessionLogEventDataFor<TType>,
   options: { surfaceOp?: SessionSurfaceOp; sourceEventSeqs?: number[] } = {},
 ): number | undefined {
+  prepareSessionEventsOnce(sessionId)
   const seq = appendSessionLogEvent(sessionId, type, data, options)
   if (seq === undefined) return undefined
   applyToState(ensureState(sessionId), {

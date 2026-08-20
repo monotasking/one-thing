@@ -181,11 +181,31 @@ export async function compactSessionContext(options: {
     // 空/无 Goal 一律抛错走既有失败路径:marker failed、旧摘要原样保留。
     // 插件替换摘要(N7-a)的格式不归宿主 prompt 管,只校非空;宿主自压的
     // 才按 C5 六节格式校 ## Goal。
+    // 两个闸是**两种**失败(空 vs 格式不合),而 catch 那里只有一句
+    // 「compact session failed」,模型到底回了什么一个字都不落 —— 失败的压缩因此
+    // 无法排障。各自记一条,并带上返回文本的截断预览(全文可能上万字,不进日志)。
     const summaryBody = stripCompactFileOperations(summary).trim()
+    const summaryPreview = (text: string) =>
+      text.length > 400 ? `${text.slice(0, 400)}…` : text
     if (!summaryBody) {
+      log.warn('compact rejected: model returned an empty summary', {
+        sessionId: options.sessionId,
+        providerId: options.providerId,
+        model: options.configWithApiKey.model,
+        fromPluginReplacement: Boolean(replacement),
+        rawLength: summary.length,
+        rawPreview: summaryPreview(summary),
+      })
       throw new Error('Context compact returned an empty summary.')
     }
     if (!replacement && !/^##\s+Goal\b/m.test(summaryBody)) {
+      log.warn('compact rejected: summary has no "## Goal" section', {
+        sessionId: options.sessionId,
+        providerId: options.providerId,
+        model: options.configWithApiKey.model,
+        summaryLength: summaryBody.length,
+        summaryPreview: summaryPreview(summaryBody),
+      })
       throw new Error('Context compact returned a summary without a "## Goal" section.')
     }
     summary = `${summaryBody}${formatCompactFileOperations(fileOperations)}`

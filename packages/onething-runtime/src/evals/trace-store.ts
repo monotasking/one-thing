@@ -59,13 +59,50 @@ export function getTracesDir(options?: OnethingStorePathOptions): string {
 	return path.join(getOnethingEvalsDir(options), "traces");
 }
 
+/** The one place a session/turn id becomes a directory name. */
+function safeTraceSegment(value: string): string {
+	return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+export function getSessionTraceDir(
+	sessionId: string,
+	options?: OnethingStorePathOptions,
+): string {
+	return path.join(getTracesDir(options), safeTraceSegment(sessionId));
+}
+
 export function getTurnTraceDir(
 	sessionId: string,
 	turnId: string,
 	options?: OnethingStorePathOptions,
 ): string {
-	const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "_");
-	return path.join(getTracesDir(options), safe(sessionId), safe(turnId));
+	return path.join(
+		getSessionTraceDir(sessionId, options),
+		safeTraceSegment(turnId),
+	);
+}
+
+/**
+ * Drop every trace this session ever wrote.
+ *
+ * Traces are per-session state living OUTSIDE `sessions/<id>/`, so deleting a
+ * session used to leave `evals/traces/<id>/` behind forever — the ring only
+ * ever evicts by age/size, never by "this session is gone". Called from the
+ * session delete cascade; best-effort by design (diagnostic data must never
+ * turn a delete into a failure).
+ */
+export function deleteSessionTraces(
+	sessionId: string,
+	options?: OnethingStorePathOptions,
+): void {
+	try {
+		fs.rmSync(getSessionTraceDir(sessionId, options), {
+			recursive: true,
+			force: true,
+		});
+	} catch {
+		// Already gone, or the store is not writable — never surface.
+	}
 }
 
 // ── Recorder (one per turn, held by the loop wiring) ───
