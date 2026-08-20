@@ -30,9 +30,12 @@ import {
   CORE_ABORTED_TOOL_ERROR,
   finalizeLingeringAgentLoopToolWork,
 } from '../../engine/agent-loop-executor.js'
-import { createCoreToolInputStartArtifacts } from '../../engine/stream-processor.js'
+import {
+  coreToolInputStartStepTitle,
+  createCoreToolInputStartArtifacts,
+} from '../../engine/stream-processor.js'
 import { buildHistoryMessages } from '../../engine/history.js'
-import { detectSkillUsage, generateStepTitle, getStepType } from '../../engine/tool-step.js'
+import { detectSkillUsage, getStepType } from '../../engine/tool-step.js'
 import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
 import { buildContextCompactContent } from '../../engine/context-compact.js'
 import { applySessionCommand } from '../commands.js'
@@ -266,15 +269,13 @@ function stepOf(
     // (`tool_input_start` 参数还是 `{}`,bash 只能是 command),真机影子第一类
     // mismatch 就是它 —— 已按"修引擎不供养怪癖"在引擎侧改口,合同这一格不动。
     type: getStepType(spec.name, spec.args as Parameters<typeof getStepType>[1]),
-    // 工具自报的标题压过派生标题(`applyAgentLoopToolMetadata` 当场盖 step 标题;
-    // 旧编排器收尾时是 `resultData.title || currentTitle`)。派生只是兜底。
+    // 生产里活着的那条路只有两步:占位标题(`调用工具: X`),外加工具自报的
+    // `annotate{title}` 当场盖掉它。**没有** `generateStepTitle` 这一步 ——
+    // 它只在旧编排器里,而旧编排器在生产里已经没有构造点(§10.11 尾巴第 3 条)。
+    // 一个不自报标题的工具因此永远停在占位标题(§10.14 第 8 类)。
     title: spec.reportedTitle
       ?? (typeof spec.resultData?.title === 'string' ? spec.resultData.title : undefined)
-      ?? generateStepTitle(
-        spec.name,
-        spec.args as Parameters<typeof generateStepTitle>[1],
-        detectSkillUsage(spec.name, spec.args as Parameters<typeof detectSkillUsage>[1]),
-      ),
+      ?? coreToolInputStartStepTitle(spec.name),
     status:
       toolCall.status === 'completed' ? 'completed'
         : toolCall.status === 'failed' ? 'failed'
@@ -1489,7 +1490,7 @@ function eventLine(): EventLine {
 }
 
 describe('S1a projection catch-up (G1–G9)', () => {
-  it('G2: the step title is derived, never carried on the event', () => {
+  it('G2: the step title is derived — the placeholder unless the tool reported one', () => {
     const line = eventLine()
     line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
     line.push({
@@ -1499,10 +1500,20 @@ describe('S1a projection catch-up (G1–G9)', () => {
     })
 
     const step = projectChatMessages(line.events).messages[0].steps?.[0]
-    // 与引擎实时那一份(`createToolExecutionStep`)同源:`generateStepTitle`。
-    expect(step?.title).toBe('Run: npm test')
+    // 引擎在生产里只有占位标题这一档兜底(`createCoreToolInputStartArtifacts`)——
+    // `generateStepTitle` 那一份只活在旧编排器里(§10.14 第 8 类)。
+    expect(step?.title).toBe('调用工具: bash')
     // G1:id 是派生的,与 toolCallId 一一对应。
     expect(step?.id).toBe('step-c1')
+
+    // 工具自报的标题当场盖掉它。
+    line.push({
+      time: 3,
+      type: 'tool/result',
+      data: { runId: 'r', callId: 'c1', isError: false, resultPreview: 'ok', result: { text: 'ok' }, reportedTitle: 'Run: npm test' },
+      surfaceOp: 'append',
+    })
+    expect(projectChatMessages(line.events).messages[0].steps?.[0].title).toBe('Run: npm test')
   })
 
   it('G3: parentCallId builds childSteps instead of a flat list', () => {

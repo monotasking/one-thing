@@ -1420,6 +1420,139 @@ step.title      = 最后一条 annotate{title}(stepUpdate 里根本没有 title 
 2. **真实使用**:不再要求凑数,负责"未知的未知"——观察期内**零新失配类**即可(脚本模拟不出真实 provider 的流式怪癖 / 真实 skill / 真实工具边界失败;已有六类全部来自真机)。
 S2b 前置 = 两者同时绿。
 
+### 10.14 第 7 / 8 类 + 场景矩阵落地(2026-08-20)
+
+两件事一起交:**abort 那一路的三处失配**(§10.12 尾巴第 1 条预告的第 7 类)与
+**`scripts/shadow-battery.mjs`**(§10.13 第 1 条)。矩阵一建起来就当场又抓到一类
+(第 8 类)和两处采集缺口 —— 那正是它存在的理由:六类失配全靠人肉聊天撞出来,
+现在 44 秒撞 200 个 run。
+
+#### 第 7 类 —— 用户按下停止的那一瞬间,引擎写了什么
+
+真机证据是 `5e4d2cea…` 会话里的消息 `17b342a2…`(§10.12 尾巴留的那条)。把
+`events.jsonl` 原地重放、与 `messages.jsonl` 逐字段比,**四处**不等,病根是同一句话:
+**投影没有复刻引擎的收场动作**。
+
+| 路径 | A(`messages.jsonl`) | B(投影,修复前) | 引擎那一侧的出处 |
+| --- | --- | --- | --- |
+| `steps` 少一条 | 有占位 step(`type:'command'`、`title:'调用工具: bash'`、`status:'cancelled'`) | 缺席 | 占位调用与占位 step 是**同一行代码**建的两样(`createCoreToolInputStartArtifacts`),投影只补了前者 |
+| `toolCalls[].toolId/toolName` | `bash` | `''` | 事件面上没有采集点 —— `tool/call` 永远不会来 |
+| `toolCalls[].error` / `streamingArgs` | `'User cancelled'` / `''` | 缺席 / 半截参数原文 | `finalizeLingeringAgentLoopToolWork` 写的那句话;`streamingArgs` 在**消息上**从建卡起就是空串(delta 只发渲染层) |
+| `contentParts` 多一格 | 被打断那一轮的推理**不在** | 在 | 引擎只在 `finish` chunk 上 `persistTurnContentParts`,走不到就一格都不落 |
+| `usage` | 缺席 | 有(前两轮之和) | `updateUsage` 排在 chunk 循环之后,abort 从 catch 里走,一次都没跑 |
+
+**修法(四处,全部是"照引擎那一份说话")**:
+
+- **采集面补一格** `toolName`:`assistant/chunks` 与 `assistant/part-end` 的
+  `tool-input` part 上带工具名(`tool-call-start` 那一格本来就有)。没有它,
+  投影说不出"被打断的那次调用是谁"。
+- **`materializeOrphanSteps`**(新):孤儿参数流也产出 step,`type` 调
+  `coreStepTypeForToolName`、标题调新导出的 `coreToolInputStartStepTitle` ——
+  引擎的两个函数,不手抄字面量(§10.10 的规矩)。
+- **收场修复进投影**:`lingeringToolError(run)` = 引擎那三条收场路各自写的那句话
+  (`aborted → CORE_ABORTED_TOOL_ERROR`、`completed`/`error → CORE_LINGERING_TOOL_ERROR`,
+  两个常量从 `agent-loop-executor` 导出;`interrupted` **没有**收尾修复,那是进程
+  没了之后补的墓碑)。它同时盖在**所有**没结局的调用上,不只是孤儿 —— "abort 时
+  正在跑的那个工具"是同一件事。
+- **`settledRequests`**:`request/end`(记录器在 `turn-end` 写的那条,从前在归约器
+  里是空分支)= "这一轮的 part 落到消息上了"。没走到它的那一轮不产出 contentParts。
+- **usage 只在 `outcome === 'completed'` 时产出**。
+
+#### 第 8 类 —— 不自报标题的工具(§10.11 尾巴第 1 条,矩阵当场抓到)
+
+生产里活着的那条路(agent-loop)上,step 标题只有两步:占位 `调用工具: X`,
+之后被工具自报的 `annotate{title}` 盖掉。**没有第三步** —— `generateStepTitle`
+只在旧编排器里,而它在生产里已经没有构造点(§10.11 尾巴第 3 条)。于是一个
+**参数校验就失败**的调用(模型把 `path` 写成 `file_path`,天天发生)在账上永远停在
+占位标题,而投影退回 `generateStepTitle` 给出 `Tool: read`。
+
+**裁定:改投影,不改引擎 —— 理由与 §10.11 相反的那次一样,是"谁在说谎"。**
+这次说谎的是投影:引擎写下的就是占位标题,用户今天看到的也是它。让投影说
+`Tool: read`,才是"S2 切读之后用户看到的东西变了"。所以 `materializeStep` 的兜底
+从 `generateStepTitle` 换成 `coreToolInputStartStepTitle`,A 线 fixture 同步。
+
+> **仍然待裁定的是引擎那一侧**:按 §10.11 缺陷 1 的先例(`step.type` 冻在占位 →
+> 参数定稿时重算),标题也该在参数定稿时按 `generateStepTitle` 重算。那是一次
+> **用户可感知的标题变化**,按"行为裁定须先问"不自作主张。真要那么改,投影这一格
+> 跟着改回去即可(一行)。
+
+#### 顺带补的两处
+
+| # | 事情 | 修法 |
+| --- | --- | --- |
+| 1 | **失败工具的字符串结局丢了一格**:参数 JSON 断在半路时 `result.data` 缺席、`result.content` 是空串,引擎写 `toolCall.result = toJsonValue(data ?? content)` = `""`,而记录器只记 `data` 且"字符串结局不写" | `structuredResultForEvent` 改取**引擎那一行的同一个表达式**(`data ?? content`),并且**失败时字符串也记**(那时 `result.text` 装的是错误话,两者不是同一个东西) |
+| 2 | **桌面的停止按钮与网页留下两种账**:`cancelOnethingStreamingStepsForAbort`(只有桌面 IPC 走)抢在引擎的收尾修复之前把 step 判死,却不写 `error`;网页走 `/api/streams/abort`,由引擎自己修,写 `error`。谁先跑到本来就是竞态,记录不该跟着变 | 引擎的修复**筛得到**的那些 step(`running` 且不在等确认),桌面这一支照它的字段写;等确认的那一支一个字没动(引擎的修复明确放过 `requiresConfirmation` 的调用)。另:`canRespond: false` 与缺席同义,写进 `canonicalChatMessage`(与 `requiresConfirmation` 同一条理由) |
+
+#### `scripts/shadow-battery.mjs` —— 场景矩阵
+
+```
+bun run sessions:shadow-battery            # 默认:18 场景 × 9 遍 ≈ 207 run,44 秒
+bun run sessions:shadow-battery --only abort-mid-tool-input --keep-store
+bun run sessions:shadow-battery --seed 7 --passes 3 --concurrency 2
+```
+
+它做的事:`server:build` → 临时 store + 假 provider(本地 SSE,零成本)→
+真 server(`dist/server/main.js`)→ 按场景表用 HTTP 驱动**真引擎** →
+`sessions:shadow-report --min-runs 200` 当门。三条纪律写在文件头:不碰真实 store、
+**变体只由 `--seed` 决定**(没有一处不带种子的 `Math.random`)、假 provider 零成本。
+
+| 场景 | 盯的那一类 |
+| --- | --- |
+| `plain-text` | 基线:一轮纯文本 |
+| `reasoning-top` / `reasoning-two-spots` | §10.9 类别 2(推理的两个落点) |
+| `tool-loop` | 多轮工具循环(同 run 续轮) |
+| `bash-step-types` | §10.10(`steps[].type` 写死)+ §10.11 缺陷 1(type 冻在占位) |
+| `skill-activation` | §10.11 缺陷 2(skillUsed)+ 同期那处"技能名串标题" |
+| `tool-failure` | §10.12 第 6 类(失败但跑完了:result 与 error 并存 + 自报标题) |
+| `tool-invalid-args` | §10.14 第 8 类(不自报标题的工具) |
+| `permission-denied` | G6:拒绝 + reason |
+| `abort-mid-text` | 第 7 类:被打断那一轮的 contentParts 不落地 + 无 usage |
+| `abort-mid-tool-input` | 第 7 类:孤儿参数流的占位 step / 占位调用 / `User cancelled` |
+| `tool-args-truncated` | 参数流没写完就 stop —— 引擎兜底照样执行(**不是**孤儿) |
+| `steering` | §10.12 第 5 类(一次执行劈成两条消息)。第 2 轮**故意**留 800ms 首字节延迟 —— 零延迟下记录器会跑赢引擎的 chunk 队列(§10.12 末 / §10.15,已定性为架构问题归 U0),矩阵不在这里替它打补丁,也不假装它不存在 |
+| `edit-and-resend` / `retry-message` / `delete-message` | surface replace 的三条路 |
+| `compact` | `session/compacted` |
+| `long-multipart-text` | part 边界与攒批闸 |
+
+**两条"矩阵造不出来"的诚实交代**:
+1. **真正的孤儿只有 abort / 请求出错**。"provider 开了参数流却直接 stop"造不出孤儿
+   —— 核心的 `agent-loop/stream.ts` 会在收尾时**补一条** `tool-call-start` 并拿半截
+   参数执行(`tool-args-truncated` 那一格钉的就是这个事实)。
+2. **会话清空进不了矩阵**:后端 `clearSessionMessages` 今天没有 HTTP/命令出口
+   (桌面直接调 store 函数,web 端只清渲染层),脚本尾部按 TODO 打印。
+
+写脚本时踩到并写进注释的三个坑(以后别再踩):
+
+- **忘了重建 bundle**:矩阵验的是 `packages/**`,跑的是 `dist/server/main.js`。
+  现在**默认每次都重建**(`--no-build` 只给反向对照用)。
+- **`isStreaming:false` 不等于收干净了**:它由 `processor.finalize()` 写下,而收尾
+  修复排在它后面一行。驱动方还要等"没有活状态的调用"。
+- **引擎释放会话又比 `stream:complete` 晚一步**:那一步里发过去的下一条消息会被
+  当成 **steering** 排队,而不是开一轮新的。`waitIdle` 因此还要看
+  `/api/streams/active`,并在之后再确认一次。
+
+#### 门(全部实跑)
+
+| 门 | 结果 |
+| --- | --- |
+| `bun run sessions:shadow-battery` | 18/18 场景 PASS,`runs 207 / mismatches 0 / appendFailures 0`,**GATE GREEN**,44 秒 |
+| 反向对照(把第 7 类那三处 stash 掉重跑 abort 两格) | `runs 0 / mismatches 2`,**GATE RED**:`steps.length A:2 B:1`、缺席的占位 step、`contentParts` 多出被打断那一轮、`usage` 凭空多出来 —— 逐条复现真机 `17b342a2…` 的那四处 |
+| 合同测试 | 33 条全绿(新增:`abort mid tool-input`、G7 的两条、G2 改口径) |
+| `bun run typecheck` | 只剩 3 条既存红(`spaces/__tests__/provider-dials.test.ts`) |
+| `ONETHING_SESSION_FREEZE=1 bun run test` | 10969 passed;红的只有既存的 `ui-token-vars` ×2 与 `AIProviderTab.interaction` 的既存 unhandled rejection |
+| `session:gate` / `boundary:gate` / `log:gate` / `lint:ci` | 0 / 13 / 4 / 334,none new |
+| `bun run server:build` | 绿 |
+
+真实 `~/.onething` 的 `session-shadow.jsonl` / `-stats.json` **一个字节没动**(只读)。
+
+#### 留下的尾巴
+
+| # | 事项 |
+| --- | --- |
+| 1 | **等确认时按停止**还没有口径:引擎的收尾修复明确放过 `requiresConfirmation` 的调用,而桌面那一支把它判死;投影两边都对不上(`requiresConfirmation:true` 在事件面上也没有采集点)。矩阵**有意不造**这一格 —— 它需要一次裁定,不是一次修补 |
+| 2 | 第 8 类的**引擎侧**裁定(标题要不要在参数定稿时重算)见上,待拍板 |
+| 3 | `session/cleared` 至今没有端到端场景(见上"矩阵造不出来"第 2 条)。要么给 `clearSessionMessages` 一个命令面出口,要么承认它只有单测覆盖 |
+
 ### 10.15 §10.12 竞态定性(2026-08-20):架构问题,归 U0
 
 用户点破:recorder 领先引擎一个 turn 不是时序 hack 能修的,是**身份在事实下游被分配**——事实(delta/boundary)生于 agent-loop,身份(runId/messageId)定于 executor(隔异步队列),recorder 记账时查的是可能未更新的登记簿。修法与 U0 的'delta 源头带 messageId/partIndex'同一原则:run 轮换上提到 agent-loop 发 boundary 的同步点,事件出生即带 runId;executor 退为消费已盖章事件。归 U0 交付,不单独修。

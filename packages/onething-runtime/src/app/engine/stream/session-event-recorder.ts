@@ -118,14 +118,20 @@ export interface SessionEventRecorderContext {
  *
  * `AgentToolResult.data` 就是引擎写进 `ToolCall.result` 的那个对象
  * (`tool-orchestration.ts` 的 `toJsonValue(result.data)`),所以这里存的与那边
- * 存的是同一份。字符串结局不写(它已经在 `result.text` 里了),序列化失败也不写
- * —— 少一格账,好过一格坏掉的账。
+ * 存的是同一份。序列化失败不写 —— 少一格账,好过一格坏掉的账。
+ *
+ * **字符串结局分两种**(§10.14):成功时它与 `result.text` 是同一个东西,不必
+ * 存两遍;**失败**时 `result.text` 装的是那句错误话,而 `ToolCall.result` 装的
+ * 仍是 data —— 两者不是同一个东西,不写就等于把它丢了(矩阵在
+ * `tool-args-truncated` 那一格抓到:参数 JSON 断在半路,data 是空串)。
  */
 function structuredResultForEvent(
   sessionId: string,
   data: unknown,
+  isError = false,
 ): { resultData: { text: string } | { blob: BlobRef } } | Record<string, never> {
-  if (data === undefined || data === null || typeof data !== 'object') return {}
+  if (data === undefined || data === null) return {}
+  if (typeof data !== 'object' && !isError) return {}
   let text: string
   try {
     text = JSON.stringify(data)
@@ -613,9 +619,12 @@ export function createSessionEventRecorder(
           result: textOrBlobForEvent(ctx.sessionId, preview),
           // S1b:**结构化**结局(`ToolCall.result` 的正身)。工具卡渲染的是它,
           // 只记正文的话 S2 切读之后每张卡都退化成一段纯文本(diff hunks、
-          // 退出码、文件路径全在 metadata 里)。结局本身是字符串时不写 ——
-          // 那时它与上面那一格是同一个东西。
-          ...structuredResultForEvent(ctx.sessionId, event.result.data),
+          // 退出码、文件路径全在 metadata 里)。**成功**时字符串结局不写 ——
+          // 那时它与上面那一格是同一个东西;失败时两者不是同一个东西(见函数注释)。
+          // 取的是引擎那一行的**同一个表达式**:`toJsonValue(result.data ?? result.content)`
+          // (`settleAgentLoopToolResult`)。只记 `data` 的话,一次 `data` 缺席、
+          // `content` 是空串的失败(参数 JSON 断在半路)在账上就少一格 `result`。
+          ...structuredResultForEvent(ctx.sessionId, event.result.data ?? event.result.content, isError),
           // 工具自报的标题:引擎的 step 标题就是它。成功时它同时在
           // `resultData.title` 里,失败时那里没有 —— 所以这一格是独立的一份账。
           ...(reportedTitle ? { reportedTitle } : {}),

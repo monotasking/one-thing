@@ -57,6 +57,7 @@
     "sessions:shadow-report": "node scripts/session-shadow-report.mjs",
     "sessions:shadow-reset": "node scripts/session-shadow-reset.mjs",
     "sessions:shadow-overhead": "node scripts/measure-shadow-overhead.mjs",
+    "sessions:shadow-battery": "node scripts/shadow-battery.mjs",
     "lint:ci": "eslint . --max-warnings 200",
     "test": "npm run rebuild:sqlite:node && vitest run",
     "test:streaming-scroll": "node scripts/streaming-scroll-harness.mjs",

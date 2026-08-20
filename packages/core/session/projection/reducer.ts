@@ -31,7 +31,7 @@ import type {
 } from '../events/types.js'
 import { CORE_ABORTED_TOOL_ERROR, CORE_LINGERING_TOOL_ERROR } from '../../engine/agent-loop-executor.js'
 import { coreStepTypeForToolName, coreToolInputStartStepTitle } from '../../engine/stream-processor.js'
-import { detectSkillUsage, generateStepTitle, getStepType } from '../../engine/tool-step.js'
+import { getStepType } from '../../engine/tool-step.js'
 import { toolResultToStructured } from '../../tools/tool-result.js'
 import { SurfaceIndex } from './surface.js'
 
@@ -514,7 +514,6 @@ export function reduceSessionProjection(
     case 'session/workdir-changed':
     case 'request/tools':
     case 'request/header':
-
     case 'interaction/asked':
     case 'interaction/answered':
     case 'plugin/status':
@@ -850,22 +849,23 @@ export function materializeStep(
     // command/file-read/skill-read/file-write,其余工具 tool-call。参数以
     // argumentsRaw 的解析结果为准(唯一参数真相),解析失败为 {} 与引擎同行为。
     type: getStepType(toolCall.toolName, toolCall.arguments as Parameters<typeof getStepType>[1]),
-    // G2(§10.1):标题是**纯派生**,事件不带 title。用的就是引擎实时那一份
-    // (`core/engine/tool-step.ts`),不在这里手抄一条规则。
-    // S3.1(§10.11):技能名取的是**这一次调用自己**的判定,不是 run 上那一格。
-    // `run.skillUsed` 是回合级的(整条消息只有一格),拿它去给每一条 step 起标题
-    // 会把"读技能"的标题串到同回合里别的工具上 —— 引擎那一份是逐调用判的
-    // (`createToolExecutionStep(toolCall, { skillName })`)。
+    // G2(§10.1):标题是**派生**的,事件不带 title —— 但派生规则是引擎那一份,
+    // 不是"最好看的那一份"。生产里活着的那条路(agent-loop)只有两步:
+    //
+    //   ① `tool_input_start` 建占位 → `调用工具: X`(`createCoreToolInputStartArtifacts`);
+    //   ② 工具自报的 `annotate{title}` 当场盖掉它(`applyAgentLoopToolMetadata`)。
+    //
+    // **没有第三步**:`generateStepTitle` 只在旧编排器里被调用过,而它在生产里
+    // 已经没有构造点(§10.11 尾巴第 3 条)。所以一个**不自报标题**的工具
+    // (参数校验就失败的那种,模型写错参数名时天天发生)在账上永远停在占位标题,
+    // 而投影从前退回 `generateStepTitle` —— 这正是 §10.11 尾巴第 1 条预告的
+    // "不自报标题的工具",矩阵在 `tool-invalid-args` 那一格当场抓到(§10.14)。
+    //
+    // `resultData.title` 夹在中间:本期之前写的事件行没有 `reportedTitle`,
+    // 成功结局里抄的那一份是它们唯一的标题来源。
     title: typeof reportedTitle === 'string' && reportedTitle
       ? reportedTitle
-      : generateStepTitle(
-        toolCall.toolName,
-        toolCall.arguments as Parameters<typeof generateStepTitle>[1],
-        detectSkillUsage(
-          toolCall.toolName,
-          toolCall.arguments as Parameters<typeof detectSkillUsage>[1],
-        ),
-      ),
+      : coreToolInputStartStepTitle(toolCall.toolName),
     status,
     timestamp: tool.callTime,
     turnIndex: tool.turnIndex,

@@ -254,7 +254,13 @@ Notes:
   `<store>/log/session-shadow.jsonl` and count into `session-shadow-stats.json`;
   `bun run sessions:shadow-report` is the gate (runs ≥ 200 ∧ mismatches = 0 ∧
   appendFailures = 0), `sessions:shadow-reset` zeroes it, `sessions:shadow-overhead`
-  measures the cost. `ONETHING_SESSION_SHADOW=0` turns the comparison off (events keep
+  measures the cost. **`bun run sessions:shadow-battery` earns that gate in ~45s**
+  (§10.13/§10.14): it rebuilds `dist/server/main.js`, boots the real server on a throwaway
+  store behind a seeded fake provider, drives ~18 scenarios (one per fixed mismatch class)
+  × 9 passes over HTTP, and runs the report at the end — red on any scenario failure or
+  any mismatch line. Real usage is still the other half of the gate: it owns the unknown
+  unknowns (every fixed class so far came from a real machine, not from the matrix).
+  `ONETHING_SESSION_SHADOW=0` turns the comparison off (events keep
   being written); it is **on by default**. S2 is what flips the read path over to the
   projection — until then, nothing reads `events.jsonl` for product behavior.
 - **Trace = the read-only query surface over `events.jsonl`** (S3, §12 of the same doc).
