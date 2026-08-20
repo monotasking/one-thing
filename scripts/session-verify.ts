@@ -30,8 +30,10 @@ import {
   isBlobRef,
   parseSessionLogEventLog,
   projectChatMessages,
+  canonicalChatMessage,
   type SessionLogEventRecord,
 } from '@onething/core/session'
+import { rehydrateSessionFromStorage } from '@onething/runtime/sessions/session-dehydrate'
 
 export interface SessionVerifyIssue {
   kind: 'seq' | 'surface' | 'projection' | 'blob' | 'unclosed-run' | 'messages'
@@ -45,6 +47,8 @@ export interface SessionVerifyReport {
   bytes: number
   /** 只有 E0 七类(没有节点)= 事件里还没有这条会话的历史,不是错。 */
   noEventHistory: boolean
+  /** 混合覆盖会话:事件覆盖到的后缀占比(legacy 前缀不算错)。 */
+  coverage?: string
   issues: SessionVerifyIssue[]
 }
 
@@ -75,15 +79,24 @@ function collectBlobHashes(events: readonly SessionLogEventRecord[]): Set<string
   return hashes
 }
 
-function messageIdsFromTranscript(text: string): string[] | undefined {
-  const ids: string[] = []
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value as object).sort().map(key => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'undefined'
+}
+
+function messagesFromTranscript(text: string): Array<{ id: string } & Record<string, unknown>> | undefined {
+  const out: Array<{ id: string } & Record<string, unknown>> = []
   for (const line of text.split('\n')) {
     if (!line) continue
     const decoded = decodeJsonlLine<{ id?: string }>(line)
     if (!decoded) return undefined
-    if (decoded.t === 'm' && decoded.message?.id) ids.push(decoded.message.id)
+    if (decoded.t === 'm' && decoded.message?.id) out.push(decoded.message as { id: string } & Record<string, unknown>)
   }
-  return ids
+  return out
 }
 
 export function verifySession(sessionsDir: string, sessionId: string): SessionVerifyReport {
@@ -140,15 +153,40 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
   // 6. 与 messages.jsonl 对一遍(有的话)
   const transcript = readTextIfExists(path.join(dir, 'messages.jsonl'))
   const hasEventHistory = nodes > 0
+  let coverage: string | undefined
   if (transcript && hasEventHistory) {
-    const ids = messageIdsFromTranscript(transcript)
-    if (!ids) {
+    const real = messagesFromTranscript(transcript)
+    if (!real) {
       issues.push({ kind: 'messages', detail: 'messages.jsonl is corrupt (undecodable line)' })
-    } else if (ids.join(',') !== messages.map(message => message.id).join(',')) {
-      issues.push({
-        kind: 'messages',
-        detail: `id sequence differs: messages.jsonl ${ids.length} vs projection ${messages.length}`,
-      })
+    } else {
+      // 覆盖感知(2026-08-20,§10.16 的教训):未迁移的混合覆盖会话,事件只认识
+      // 历史的后缀 —— 全量长度对比对它们恒 FAIL,反而淹没真正的投影回归。
+      // 改为:投影认识的消息逐条按 id 对齐做 canonical 比较;投影不认识的
+      // (事件账本开记之前的)只计数为 uncovered,不算错。
+      // 磁盘上的消息是脱水形态(step.toolCall 被摘、partialResult 待重算);
+      // shadow/读面比较的是补水后的形状,这里走同一个函数。
+      const hydrated = (rehydrateSessionFromStorage({ messages: real }) as { messages: typeof real }).messages
+      const realById = new Map(hydrated.map(message => [message.id, message]))
+      let unknownProjected = 0
+      for (const projected of messages) {
+        const counterpart = realById.get(projected.id)
+        if (!counterpart) { unknownProjected += 1; continue }
+        const a = stableStringify(canonicalChatMessage(counterpart as never))
+        const b = stableStringify(canonicalChatMessage(projected as never))
+        if (a !== b) {
+          issues.push({ kind: 'messages', detail: `canonical differs for message ${projected.id}` })
+        }
+      }
+      if (unknownProjected > 0) {
+        issues.push({ kind: 'messages', detail: `projection has ${unknownProjected} message(s) unknown to messages.jsonl` })
+      }
+      const uncovered = hydrated.length - (messages.length - unknownProjected)
+      coverage = uncovered > 0 ? `covered ${messages.length}/${hydrated.length} (legacy prefix ${uncovered} uncovered)` : undefined
+      // 顺序:被覆盖的后缀在两边必须同序
+      const coveredIds = hydrated.filter(message => messages.some(p => p.id === message.id)).map(message => message.id)
+      if (coveredIds.join(',') !== messages.filter(p => realById.has(p.id)).map(p => p.id).join(',')) {
+        issues.push({ kind: 'messages', detail: 'covered message order differs' })
+      }
     }
   }
 
@@ -158,6 +196,7 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
     messages: nodes,
     bytes: Buffer.byteLength(eventsText, 'utf8'),
     noEventHistory: !hasEventHistory,
+    coverage,
     issues,
   }
 }

@@ -1,0 +1,10 @@
+# session-verify 基线(2026-08-20)—— legacy 会话里"修复前引擎 bug 已写死在盘上"的已知残余
+# 分类:steps.type=占位冻结(7e7fff8d 修前)、usage=§10.16 interrupted 补收尾、skillUsed=断链(修前)、content/order=fd899977 最老混合会话待归类
+5e4d2cea-eb27-4c49-9aaa-fa7cfa3fa270 messages: canonical differs for message 03518c17-6f96-45a7-8a22-0424dc124994
+5e4d2cea-eb27-4c49-9aaa-fa7cfa3fa270 messages: canonical differs for message 03e1006d-9f47-41a9-8acf-dac8de000a09
+fd899977-cbf1-4c9d-b09d-ee71090f1769 messages: canonical differs for message 977b78fc-b6a8-4ad3-b367-ba00802ee5ed
+fd899977-cbf1-4c9d-b09d-ee71090f1769 messages: covered message order differs
+fe5261d9-c523-4077-be9d-c47e693a0b54 messages: canonical differs for message 1841ed4f-2bc1-4ed3-b7ff-134ccfb0c811
+fe5261d9-c523-4077-be9d-c47e693a0b54 messages: canonical differs for message 36c6a8f5-3c0e-49c9-9290-ede652f3b425
+fe5261d9-c523-4077-be9d-c47e693a0b54 messages: canonical differs for message a8848dee-0ef9-4730-ba4b-4c7ea8c925af
+fe5261d9-c523-4077-be9d-c47e693a0b54 messages: canonical differs for message d792a8a2-0e0e-40ca-9632-a52d26fa4404
