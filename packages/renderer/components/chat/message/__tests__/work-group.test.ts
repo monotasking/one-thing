@@ -183,6 +183,58 @@ describe('work group', () => {
     expect(rail.find('.process-rail-body').text()).toContain('interim')
   })
 
+  // 2026-08-19 用户拍板(方案 B):框子的票是**整条流**(`isStreaming`),不是
+  // 工作组自己那面来回翻的旗。这条钉的是喂票的那一层:多轮工具的一个回合里,
+  // 头上的 Working/Worked 该翻多少次翻多少次,rail 的 is-open 一次都不许抖。
+  it('keeps the rail open across every round of a multi-round turn', async () => {
+    const running = toolCall({ id: 'tc1', status: 'executing', endTime: undefined, durationMs: undefined })
+    const w = mountBubble({
+      contentParts: [{ type: 'tool-call', toolCalls: [running] }],
+      steps: [],
+      isStreaming: true,
+    })
+    await nextTick()
+    const rail = () => w.find('.process-rail')
+    expect(rail().classes()).toContain('is-open')
+
+    const states = [rail().classes().includes('is-open')]
+    const labels = [rail().find('.process-rail-title').text().includes('Working')]
+    const parts: ContentPart[] = [{ type: 'tool-call', toolCalls: [toolCall({ id: 'tc1' })] }]
+
+    for (let round = 2; round <= 4; round++) {
+      // 这一轮的工具结束、过渡叙述流出 → 头翻 Worked
+      parts.push({ type: 'text', content: `interim ${round}`, turnIndex: round })
+      await w.setProps({ contentParts: [...parts], isStreaming: true })
+      await nextTick()
+      states.push(rail().classes().includes('is-open'))
+      labels.push(rail().find('.process-rail-title').text().includes('Working'))
+
+      // 下一轮工具开跑 → 头翻回 Working
+      parts.push({
+        type: 'tool-call',
+        toolCalls: [toolCall({ id: `tc${round}`, status: 'executing', endTime: undefined, durationMs: undefined })],
+      })
+      await w.setProps({ contentParts: [...parts], isStreaming: true })
+      await nextTick()
+      states.push(rail().classes().includes('is-open'))
+      labels.push(rail().find('.process-rail-title').text().includes('Working'))
+    }
+
+    // 头确实来回翻过(否则这条测试什么都没证明)……
+    expect(new Set(labels).size).toBe(2)
+    // ……而框子从头到尾一次没抖。
+    expect(states.every(Boolean)).toBe(true)
+
+    // 回合真正结束才折一次。
+    await w.setProps({
+      contentParts: [...parts.slice(0, -1), { type: 'text', content: 'final answer', turnIndex: 5 }],
+      steps: [step()],
+      isStreaming: false,
+    })
+    await nextTick()
+    expect(rail().classes()).not.toContain('is-open')
+  })
+
   it('has no header for a thought-only turn (no tool round)', async () => {
     const w = mountBubble({
       contentParts: [{ type: 'text', content: 'plain answer', turnIndex: 1 }],

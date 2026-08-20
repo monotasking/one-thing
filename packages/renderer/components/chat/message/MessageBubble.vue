@@ -70,7 +70,8 @@
           :solo="!hasWorkGroup"
           :summary="workSummary"
           :duration="workDuration"
-          :streaming="isWorkLive"
+          :streaming="isTurnLive"
+          :work-live="isWorkLive"
           :failed-count="workFailedCount"
           :intent-key="workIntentKey"
         >
@@ -377,9 +378,11 @@ const LIVE_TOOL_STATUSES = new Set(['pending', 'queued', 'executing', 'input-str
  * The group is live while its OWN work is in flight: a tool still running,
  * or a streaming turn whose newest part is still process (thinking / about
  * to call the next tool). The moment the answer starts streaming after the
- * last round the header settles to "Worked" and the group folds — even
- * though the message as a whole is still streaming. Another tool call after
- * that flips it live again (and the rail re-opens).
+ * last round the header settles to "Worked" — even though the message as a
+ * whole is still streaming. Another tool call after that flips it live again.
+ *
+ * This is the HEADER's vote only (`workLive`): it flips several times inside
+ * one turn, and the frame must not flip with it (see `isTurnLive`).
  */
 const isWorkLive = computed(() => {
   if (!props.isStreaming || !hasWorkGroup.value) return false
@@ -394,6 +397,17 @@ const isWorkLive = computed(() => {
   }
   return tailEntries.value.every(({ part }) => !isAnchorPart(part))
 })
+
+/**
+ * The FRAME's vote (2026-08-19 用户拍板,方案 B):工作组在**整个回合**里保持
+ * 展开,回合真正结束(整条流结束)才自动折叠一次。用 `isWorkLive` 喂框子会让
+ * 它在一个回合里一开一合(工具 → 答案 → 又一轮工具),几百 px 的 rail 每翻一次
+ * 就把贴底的消息列表整屏弹一下。
+ *
+ * 没有工作组时(solo,无头无框)这一票恒假 —— 那条 rail 没有"展开"可言,也就
+ * 不该在流结束时触发折叠补偿与可见性门。
+ */
+const isTurnLive = computed(() => Boolean(props.isStreaming) && hasWorkGroup.value)
 
 // ---- Work duration: ticking while live, frozen at the moment work ended ----
 // Live: elapsed since the turn started (`startedAt`, the message timestamp).

@@ -33,7 +33,7 @@
         :label="headerLabel"
         :meta="duration"
         :detail="summary"
-        :live="streaming"
+        :live="headerLive"
       />
       <span
         v-if="failedCount > 0"
@@ -79,13 +79,15 @@ import ThoughtHeader from './ThoughtHeader.vue'
  * tool details) expresses hierarchy with indent + tinted surfaces, enforced
  * by the :deep overrides below.
  *
- * Auto-open while streaming, auto-collapse when the stream ends — ONCE: the
- * `streaming` flag flips back and forth within a turn (tool → answer → tool),
- * and re-opening the frame each time makes the whole message list jump. The
- * header keeps reporting live progress; the frame stays folded. A manual
- * toggle wins permanently from then on — neither the stream boundary nor the
- * latch may undo what the user asked for. `solo` (single-step process) skips
- * the summary header entirely and always shows the row.
+ * Auto-open for the WHOLE turn, auto-collapse once when it ends (2026-08-19
+ * 用户拍板,方案 B): the frame follows the turn, not the work group's own
+ * live flag — the latter flips back and forth within a turn (tool → answer →
+ * tool) and folding/unfolding a several-hundred-px frame on every flip makes
+ * the message list jump. The header still reports every flip (`workLive`);
+ * the frame simply stays open until the stream is really over. A manual
+ * toggle wins permanently from then on — the stream boundary may not undo
+ * what the user asked for. `solo` (single-step process) skips the summary
+ * header entirely and always shows the row.
  */
 interface Props {
   /** Detail behind the middot: what the work consisted of (tool tally). */
@@ -95,7 +97,17 @@ interface Props {
   settledLabel?: string
   /** Meta behind the label: elapsed / total work time. */
   duration?: string
+  /**
+   * 回合是否还在进行(整条流还没结束)。**框子只看这一票**:一票为真就展开,
+   * 翻假就自动收起一次。
+   */
   streaming?: boolean
+  /**
+   * 头上 Working/Worked 与脉冲这一票:工作组**自己**是否还在动(工具在跑 /
+   * 最新 part 仍是过程)。它在一个回合里会来回翻,所以只喂文案,不喂框子。
+   * 不传 = 跟 `streaming` 同一票。
+   */
+  workLive?: boolean
   solo?: boolean
   failedCount?: number
   /**
@@ -113,13 +125,17 @@ const props = withDefaults(defineProps<Props>(), {
   settledLabel: 'Worked',
   duration: '',
   streaming: false,
+  // 显式 undefined:Boolean 缺省会被 Vue 铸成 false,这里要的是"没传"这一档
+  // (没传就跟 `streaming` 同一票)。
+  workLive: undefined,
   solo: false,
   failedCount: 0,
   intentKey: '',
 })
 
 const rootRef = ref<HTMLElement | null>(null)
-const headerLabel = computed(() => (props.streaming ? props.liveLabel : props.settledLabel))
+const headerLive = computed(() => props.workLive ?? Boolean(props.streaming))
+const headerLabel = computed(() => (headerLive.value ? props.liveLabel : props.settledLabel))
 const userToggled = ref<boolean | null>(null)
 let manualToggle = false
 
@@ -130,19 +146,15 @@ let manualToggle = false
 const deferredOpen = ref(false)
 
 /**
- * 自动展开是**一次性**的(2026-08-19 录屏修):`streaming` 这一票在一个回合里
- * 会来回翻 —— 工具在跑 → 真;答案开始流出 → 假;模型又调一轮工具 / 又开始思考
- * → 真。头上的 Working/Worked 该跟着翻(那是文案),但**框子不该**:一条几百 px
- * 的 rail 一开一合,贴底的消息列表就整屏上下弹,用户刚读到一半的那段字被卷回
- * 组里再吐出来。7 轮的回合弹 7 次。
+ * 自动展开这一票**整个回合都为真**(2026-08-19 用户拍板,方案 B):喂进来的
+ * `streaming` 是"整条流还没结束",不是工作组自己那面来回翻的旗 —— 后者一个
+ * 回合里翻好几次(工具在跑 → 答案流出 → 又调一轮工具),框子跟着一开一合,
+ * 贴底的消息列表就整屏上下弹,7 轮的回合弹 7 次。
  *
- * 所以 auto 只负责把它掀开一次;自动收起落锤之后就闩上,后续轮次由头上的
- * 「Working · 47s · bash ×5」继续报进度,要看细节用户自己点开(点开即 intent,
- * 一锤定音,闩不回去)。
+ * 所以:回合期间保持展开,回合真正结束才自动收起**一次**(可见性门照旧)。
+ * 头上的「Working · 47s · bash ×5」由 `workLive` 独立报,和框子无关。
  */
-const autoLatchedShut = ref(false)
-
-const autoOpen = computed(() => Boolean(props.streaming) && !autoLatchedShut.value)
+const autoOpen = computed(() => Boolean(props.streaming))
 
 // 用户 intent > deferredOpen > auto —— 合成本身在 `resolveDeferredExpanded`,
 // 与 StepsPanel 的受控集合共用同一份判定。
@@ -177,14 +189,12 @@ function autoOwnsExpansion(): boolean {
  */
 watch(autoOpen, (streaming, prev) => {
   if (streaming) {
-    // auto 掀开的那一刻:上一轮的挂起作废(闩上之后这条路只走一次)。
+    // 新一轮(或同一条 rail 被复用)掀开的那一刻:上一次的挂起作废。
     autoCollapseGate.cancel(RAIL_GATE_KEY)
     deferredOpen.value = false
     return
   }
   if (!prev) return
-  // 落锤即闩:后续轮次的 streaming 不再自动掀开(见 autoLatchedShut)。
-  autoLatchedShut.value = true
   if (!autoOwnsExpansion()) return
   autoCollapseGate.request(RAIL_GATE_KEY, rootRef.value)
 }, { flush: 'sync' })
