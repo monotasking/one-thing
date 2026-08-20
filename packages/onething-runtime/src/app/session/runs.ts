@@ -38,6 +38,16 @@ export interface BeginSessionRunInput {
    * 谁读到那条占位消息,谁把这一格递进来。
    */
   agentId?: string
+  /**
+   * 助手占位消息上的 `source`(§13.9)—— 与 `agentId` **同一格章**:
+   * `stampCollabAgentId` 在 `addMessage` 那一刻按会话形态(room / agent)同时盖
+   * `agentId` 与 `source: 'collab-turn'`。A4 只接了前一格,于是 agent 执行会话
+   * 里每条助手消息在投影上都少一格 `source`(真机 `agent-exec-…`)。
+   *
+   * 与 `agentId` 逐字同一条路数:谁读到那条占位消息,谁把这一格递进来 ——
+   * 不在这里重写一遍"哪种会话才盖章"的规则。
+   */
+  messageSource?: string
   provider?: string
   model?: string
   /** 触发这次执行的那条消息(S1 里 eventSeq 通常解不出来,见事件类型注释)。 */
@@ -135,6 +145,7 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
       kind: input.kind,
       assistantMessageId: input.assistantMessageId,
       ...(agentId ? { agentId } : {}),
+      ...(input.messageSource ? { messageSource: input.messageSource } : {}),
       ...(input.provider ? { provider: input.provider } : {}),
       ...(input.model ? { model: input.model } : {}),
       ...(input.triggerMessageId ? { triggerMessageId: input.triggerMessageId } : {}),

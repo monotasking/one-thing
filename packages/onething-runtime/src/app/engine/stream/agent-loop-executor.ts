@@ -212,6 +212,10 @@ async function createNextAssistantWriter(
 		...(storedAssistantMessage?.agentId
 			? { agentId: storedAssistantMessage.agentId }
 			: {}),
+		// §13.9:与 agentId 同一刻盖的那格 `source`(collab 回合思考记录标记)。
+		...(storedAssistantMessage?.source
+			? { messageSource: storedAssistantMessage.source }
+			: {}),
 	});
 	sessionCommands.patchMessage(state.ctx.sessionId, {
 		messageId: assistantMessageId,
@@ -622,6 +626,10 @@ export async function executeAgentLoopStreamGeneration(
 		// A4(§13.1):与 timestamp / origin 同一条路数 —— 占位消息上盖过的那一格。
 		...(resumeAssistantPlaceholder?.agentId
 			? { agentId: resumeAssistantPlaceholder.agentId }
+			: {}),
+		// §13.9:与 agentId 同一刻盖的那格 `source`。
+		...(resumeAssistantPlaceholder?.source
+			? { messageSource: resumeAssistantPlaceholder.source }
 			: {}),
 		...(resumeAssistantPlaceholder?.origin
 			? {

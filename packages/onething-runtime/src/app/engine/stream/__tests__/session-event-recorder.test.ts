@@ -805,4 +805,81 @@ describe('session event recorder (agent loop integration)', () => {
     const after = (await readSessionEvents(SESSION_ID)).filter(event => event.type === 'tool/result').length
     expect(after).toBe(before)
   })
+
+  /**
+   * §13.9:**外部执行器的形状** —— 一次请求,里面好几个回合。
+   *
+   * Claude Code SDK 连接器把一整段多轮会话装进一次 `streamTurn`:工具由它自己
+   * 执行(`externallyExecuted`),工具结果到齐后发一条 `finish(tool_calls)` 当轮
+   * 分界,runner **当场转发**(`agent-loop/runner.ts` 那段 2026-08-11 的注释)。
+   * 这里跑的是**真的** agent-loop + 真的记录器,provider 说的就是那套话。
+   */
+  function externalRoundBoundaryProvider(): AgentProvider {
+    const toolCall = {
+      id: 'call-1',
+      name: 'echo',
+      arguments: '{"text":"hi"}',
+      externallyExecuted: true,
+    }
+    return {
+      ...testProvider(),
+      async *streamTurn(): AsyncIterable<AgentTurnStreamEvent> {
+        yield { type: 'text-delta', turn: 1, delta: '先算一下' }
+        yield { type: 'tool-call-start', turn: 1, toolCallId: toolCall.id, toolName: toolCall.name }
+        yield { type: 'tool-call-done', turn: 1, toolCall }
+        yield { type: 'tool-result', turn: 1, toolCall, result: { content: 'echoed hi' } }
+        // 轮分界:不带 usage(SDK 只在最后那条 result 消息里报总量)。
+        yield { type: 'finish', turn: 1, finishReason: 'tool_calls' }
+        yield { type: 'text-delta', turn: 1, delta: '答案是 391' }
+        yield {
+          type: 'finish',
+          turn: 1,
+          finishReason: 'stop',
+          usage: { inputTokens: 4, outputTokens: 93, totalTokens: 97 },
+        }
+      },
+    }
+  }
+
+  it('§13.9: an inner round boundary cuts the part and advances the recorded turn', async () => {
+    await runLoopWithProvider(externalRoundBoundaryProvider())
+
+    const events = await readSessionLogEvents(SESSION_ID)
+    // 账本上**只有一次请求** —— 分界不是 turn-start。
+    expect(events.filter(event => event.type === 'request/start')).toHaveLength(1)
+
+    const textParts = events.filter(
+      event => event.type === 'assistant/part-end' && event.data.kind === 'text',
+    )
+    // 分界前后各自成段(不收段的话两段正文会折进同一个 partIndex),
+    // 回合号跟着引擎走:1 → 2。
+    expect(textParts.map(event => event.type === 'assistant/part-end' && event.data.turnIndex))
+      .toEqual([1, 2])
+    expect(new Set(textParts.map(
+      event => event.type === 'assistant/part-end' && event.data.partIndex,
+    )).size).toBe(2)
+
+    const call = events.find(event => event.type === 'tool/call')
+    expect(call?.type === 'tool/call' && call.data.turnIndex).toBe(1)
+
+    // 用量归属:带 usage 的是**最后**那条 finish —— 那时回合号已经是 2。
+    const response = events.find(event => event.type === 'request/response')
+    expect(response?.type === 'request/response' && response.data.usageTurnIndex).toBe(2)
+    expect(response?.type === 'request/response' && response.data.usage?.outputTokens).toBe(93)
+  })
+
+  /** 普通 provider(一次请求一条 finish):两格新词汇照旧是 1,一个字节不变。 */
+  it('§13.9: an ordinary two-request loop stamps the turn the request already implied', async () => {
+    await runLoop(ECHO_TOOL)
+
+    const events = await readSessionLogEvents(SESSION_ID)
+    const call = events.find(event => event.type === 'tool/call')
+    expect(call?.type === 'tool/call' && call.data.turnIndex).toBe(1)
+    const responses = events.filter(event => event.type === 'request/response')
+    expect(responses.map(event => event.type === 'request/response' && event.data.usageTurnIndex))
+      .toEqual([1, 2])
+    const parts = events.filter(event => event.type === 'assistant/part-end')
+    expect(parts.map(event => event.type === 'assistant/part-end' && event.data.turnIndex))
+      .toEqual([1, 2])
+  })
 })

@@ -148,6 +148,9 @@ function materializeAssistantNode(
     ...(node.provider ? { provider: node.provider } : {}),
     ...(node.model ? { model: node.model } : {}),
     ...(node.agentId ? { agentId: node.agentId } : {}),
+    // §13.9:协作回合的思考记录标记(`stampCollabAgentId` 与 agentId 同一刻盖的)。
+    // 它决定这条消息在房间里是"发言"还是"思考痕迹",链闸与收割都读它。
+    ...(node.messageSource ? { source: node.messageSource } : {}),
     ...(node.origin ? { origin: node.origin } : {}),
     ...(contentParts.length > 0 ? { contentParts } : {}),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),

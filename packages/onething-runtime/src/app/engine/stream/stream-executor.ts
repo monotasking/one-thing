@@ -166,6 +166,10 @@ export async function executeMessageStream(
     ...(params.agentId ?? assistantPlaceholder?.agentId
       ? { agentId: (params.agentId ?? assistantPlaceholder?.agentId) as string }
       : {}),
+    // §13.9:同一刻盖的另一格(`stampCollabAgentId` 的 `source: 'collab-turn'`)。
+    ...(assistantPlaceholder?.source
+      ? { messageSource: assistantPlaceholder.source }
+      : {}),
     ...(params.triggerMessageId ? { triggerMessageId: params.triggerMessageId } : {}),
     ...(assistantTimestamp !== undefined ? { timestamp: assistantTimestamp } : {}),
     ...(assistantPlaceholder?.origin

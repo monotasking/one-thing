@@ -45,6 +45,10 @@ import type {
   SessionResponseUsage,
 } from '@onething/core/session'
 import { safeParseAgentToolArguments } from '@onething/core/agent-loop'
+// §13.9:回合号的判定规则只有一份,住在引擎那边。引那**一个叶子文件**而不是
+// `@onething/core/engine` barrel —— barrel 会把整棵执行器模块图拖进记录器
+// (与上面 provider-data 那条 import 同一条理由)。
+import { nextAgentLoopTurnIndexAfterFinish } from '@onething/core/engine/agent-loop-turn'
 // 直接引那一个纯文件而不是 providers 的 barrel:barrel 会把六个 provider 实现
 // 一并拖进记录器的模块图,而这里要的只是一张判定表(见文件头"本模块只依赖
 // 会话事件那一层"的同一条理由)。
@@ -207,6 +211,8 @@ interface ChunkBatch {
   messageId: string
   toolCallId?: string
   toolName?: string
+  /** §13.9:开这一段时引擎的回合号(与 `PartState.turnIndex` 同一个值)。 */
+  turnIndex: number
   time0: number
   dt: number[]
   text: string[]
@@ -227,11 +233,37 @@ interface PartState {
    * `tool/call`,没有这一格就说不出"被打断的那次调用是谁"(§10.14 第 7 类)。
    */
   toolName?: string
+  /**
+   * §13.9:**开这一段时**引擎的回合号。
+   *
+   * 引擎给 contentPart 盖章是在消费每一条 chunk 的那一刻(`state.turnIndex`),
+   * 而一段 part 里的每条 delta 必然同回合 —— 回合一换,分界那条 finish 就把这
+   * 一段收了(见 `handle` 的 `finish` 分支)。
+   */
+  turnIndex: number
   text: string
 }
 
 interface RecorderState {
   requestIndex?: number
+  /**
+   * §13.9:引擎的回合号(`CoreAgentLoopExecutorState.turnIndex`)的镜像。
+   *
+   * 为什么不是 `requestIndex`:`requestIndex` 在 `turn-start` 上发号(一次请求
+   * 一个),而引擎的回合号还会在**每一条 tool-calls finish** 上 +1 ——
+   * 外部执行器(Claude Code SDK)把多轮装进一次请求,靠的正是那条中途 finish。
+   *
+   * 镜像是可靠的:记录器与执行器消费的是**同一条**有序事件流(记录器挂在
+   * `onEvent` 上、执行器消费由它派生的 chunk 队列),而推进规则调的是引擎那
+   * 一个函数(§10.10),不在这里手抄。
+   */
+  turnIndex: number
+  /**
+   * §13.9:最近一条 finish 的**推进之前**那个回合号 —— 引擎把这次请求的 usage
+   * 记到 step 上时用的就是它(`updateStepsUsageByTurn` 排在推进之前)。
+   * 一条 finish 都没见过时退回当前值。
+   */
+  usageTurnIndex?: number
   firstTokenWritten: boolean
   /** 上一条已写入的 header 信封;首次从文件恢复(跨重启也不重复写)。 */
   lastHeader?: SessionRequestHeaderEventData
@@ -326,6 +358,8 @@ export function createSessionEventRecorder(
   ctx: SessionEventRecorderContext,
 ): SessionEventRecorder {
   const state: RecorderState = {
+    // 引擎那边同一格的初值也是 1(`agent-loop-executor.ts` 的 `turnIndex: 1`)。
+    turnIndex: 1,
     firstTokenWritten: false,
     lastHeaderLoaded: false,
     lastToolsHashLoaded: false,
@@ -464,6 +498,7 @@ export function createSessionEventRecorder(
       messageId: ctx.getMessageId(),
       ...(toolCallId ? { toolCallId } : {}),
       ...(toolName ? { toolName } : {}),
+      turnIndex: state.turnIndex,
       text: '',
     })
     return partIndex
@@ -485,6 +520,7 @@ export function createSessionEventRecorder(
       kind: batch.kind,
       ...(batch.toolCallId ? { toolCallId: batch.toolCallId } : {}),
       ...(batch.toolName ? { toolName: batch.toolName } : {}),
+      turnIndex: batch.turnIndex,
       time0: batch.time0,
       dt: batch.dt,
       text: batch.text,
@@ -511,6 +547,7 @@ export function createSessionEventRecorder(
         messageId: part.messageId,
         ...(part.toolCallId ? { toolCallId: part.toolCallId } : {}),
         ...(part.toolName ? { toolName: part.toolName } : {}),
+        turnIndex: part.turnIndex,
         time0: now,
         dt: [],
         text: [],
@@ -556,6 +593,7 @@ export function createSessionEventRecorder(
       hash,
       ...(part.toolCallId ? { toolCallId: part.toolCallId } : {}),
       ...(part.toolName ? { toolName: part.toolName } : {}),
+      turnIndex: part.turnIndex,
     })
   }
 
@@ -610,6 +648,7 @@ export function createSessionEventRecorder(
       kind: 'provider-data',
       len: text.length,
       hash,
+      turnIndex: state.turnIndex,
       providerData: textOrBlobForEvent(ctx.sessionId, text),
     })
   }
@@ -654,6 +693,10 @@ export function createSessionEventRecorder(
         if (requestIndex === undefined) return
         state.requestIndex = requestIndex
         setSessionRunRequestIndex(ctx.sessionId, requestIndex)
+        // §13.9:引擎那一行是 `state.turnIndex = options.turn`
+        // (`applyAgentLoopTurnStartWithAdapters`)—— 照抄,不按请求数自己数。
+        state.turnIndex = event.turn
+        state.usageTurnIndex = undefined
         state.firstTokenWritten = false
         state.finishedParts = []
         state.toolCallIds = []
@@ -672,6 +715,28 @@ export function createSessionEventRecorder(
         })
         // 语义检查点:调模型之前,这次请求的配方必须已经在盘上(§10.3 ③)。
         void flushSessionEventLog(ctx.sessionId)
+        return
+      }
+      case 'finish': {
+        // §13.9:**引擎的回合号在这里动**,而不是在 `turn-start`。
+        //
+        // 普通 provider 一次请求一条 finish,推进之后紧接着就是 turn-end + 下一条
+        // turn-start —— 账本一个字节都不变。外部执行器(Claude Code SDK 连接器)
+        // 则在一次请求里发好几条 `finish(tool_calls)` 当轮分界(runner 当场转发),
+        // 那才是这一格的产地。
+        //
+        // 用量归属取**推进之前**那个值:引擎的 `updateStepsUsageByTurn` 排在
+        // `state.turnIndex = plan.nextTurnIndex` 之前。
+        state.usageTurnIndex = state.turnIndex
+        const next = nextAgentLoopTurnIndexAfterFinish(state.turnIndex, event.finishReason)
+        if (next !== state.turnIndex) {
+          // 引擎在这一刻把这一轮的 part 落到消息上、换一份 turn state
+          // (`persistTurnContentParts` + `resetTurn`)—— 于是分界之后的正文是
+          // **新的一格** contentPart。记录器照做:不收段的话,分界前后的正文
+          // 会折进同一个 partIndex,投影出来就少一格。
+          endAllOpenParts()
+          state.turnIndex = next
+        }
         return
       }
       case 'response-boundary': {
@@ -735,6 +800,9 @@ export function createSessionEventRecorder(
           ...(resolved ? { resolvedToolId: resolved.toolId, displayName: resolved.displayName } : {}),
           argumentsRaw: event.toolCall.arguments,
           messageId: ctx.getMessageId(),
+          // §13.9:引擎给 step 盖的回合号就是这一格(`tool-execution.ts` 的
+          // `turnIndex: state.turnIndex`)。投影从前按"这条 run 跑过几次请求"推。
+          turnIndex: state.turnIndex,
           ...withRunId(),
         })
         if (seq !== undefined) state.callSeqByCallId.set(event.toolCall.id, seq)
@@ -826,6 +894,9 @@ export function createSessionEventRecorder(
             ...(state.responseModel ? { responseModel: state.responseModel } : {}),
             ...(event.finishReason ? { finishReason: event.finishReason } : {}),
             ...(usage ? { usage } : {}),
+            // §13.9:这份 usage 被引擎记到哪个回合的 step 上 —— 带 usage 的那条
+            // finish **推进之前**的回合号。没有 usage 就没有归属可言,不写。
+            ...(usage ? { usageTurnIndex: state.usageTurnIndex ?? state.turnIndex } : {}),
             ...(state.finishedParts.length > 0 ? { parts: [...state.finishedParts] } : {}),
             ...(state.toolCallIds.length > 0 ? { toolCallIds: [...state.toolCallIds] } : {}),
           })

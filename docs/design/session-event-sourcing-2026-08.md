@@ -2228,3 +2228,184 @@ contentPart 就是新的不等。
 3. **`step.partialResult` / `partialResultIsPartial`**:判据表里它们是派生缓存
    (§9.4),两侧不比,所以这条收场结局不写 `resultData` —— 写了反而会让
    `toolCall.result` 凭空长出来。
+
+### 13.9 真机第七批(2026-08-21):**外部执行器**那条路上,一次请求不等于一个回合
+
+三条不等,一条误报,外加一条从 2026-08-19 起就躺在 `session-shadow.jsonl` 第一行、
+从未诊断过的老账。
+
+| 会话 | kind | 差在哪 |
+|---|---|---|
+| `web-14d8bc3f`(provider `claude-code-agent`,一次工具调用) | messages | `1.contentParts.0.turnIndex` / `1.contentParts.1.turnIndex` a=2 b=1;`1.steps.0.usage` a=(absent) b={cacheRead 62254, cacheWrite 10800, input 4, output 93, total 97} |
+| `agent-exec-…`(Iris 的 agent 执行会话,`lastMismatchAt` 1787242767681) | messages | `1.source` a=`collab-turn` b=(absent) |
+
+#### 0 号发现:"5 条 `assistant/part-end` 都没有 `kind`"是**误报**
+
+工单里的第三条不成立。逐字节读那五行,`kind` 一格不少:
+`tool-input` / `text` / `provider-data` / `text` / `provider-data`。产生误报的是**读法**——
+一个把长字符串截断的转储脚本把 `'provider-data'`(13 字符)截成了 `'provider'`,看起来
+像另一个词汇,顺手也让人以为整格缺席。采集点这条路一个字都不用改。
+(教训与 §10.16 第二条同源:**看文件原字节**,别看自己写的摘要。)
+
+#### 病根(前两条是同一条):账本的回合词汇只有 `requestIndex`
+
+引擎的 `turnIndex` 只在两处动:
+① `turn-start` —— `state.turnIndex = turn`(`applyAgentLoopTurnStartWithAdapters`);
+② **每一条 finish chunk** —— finishReason 属于 tool-calls 那一族时 +1
+(`planAgentLoopFinishChunk`)。而记录器给 `requestIndex` 发号只在 `turn-start`。
+
+平时两者恒等(一次请求 = 一条 finish = 一个回合),于是投影一直靠
+`turnOf(requestIndex)` 推回合号,并且推得对。**外部执行器**(Claude Code SDK 连接器)
+把一整段多轮会话装进一次 `streamTurn`:每当"工具结果到齐、新一轮正文开始",它就发一条
+`finish(tool_calls)` 当轮分界(`external-agents/claude-code-connector.ts` 的
+`withRoundBoundary`),而 `agent-loop/runner.ts:448-456` 那段 2026-08-11 的判据
+(有调用、且一个都没进本地执行队列 = 外部执行)**当场转发**它。于是:
+
+- 引擎的回合号在一次请求里从 1 涨到 2 —— 工具之后的正文与 provider-data 是第 2 回合
+  (真机 `contentParts.*.turnIndex` a=2),投影推出来是 1;
+- 带 usage 的是**最后**那条 finish(轮分界那几条不带 usage),引擎的
+  `updateStepsUsageByTurn` 因此把这次请求的用量记在第 2 回合上,第 1 回合那个工具 step
+  **一格 usage 都没有**(a=absent);投影按 `turnOf(requestIndex)=1` 发下去,凭空多一格。
+
+回合号不只影响这两格:`turnIndex !== 1` 是"开头那段推理算不算 `top`"的判据,而模型历史
+按它把一条消息拆成 assistant/tool 交替段(`buildHistoryMessages`)。这条路上多轮工具是
+常态,所以它必现于每一次 claude-code-agent 的工具回合。
+
+#### 修法:判定点搬出来,采集点照抄,投影只读不推
+
+1. **一个判定点**(§10.10):`isAgentLoopToolCallsFinishReason` 与新的
+   `nextAgentLoopTurnIndexAfterFinish` 搬进 **`packages/core/engine/agent-loop-turn.ts`**
+   (44 行、零依赖的叶子文件),`agent-loop-executor.ts` 改成 import + 原样再导出
+   (导出路径一字未改),`planAgentLoopFinishChunk` 自己也改调它。单独立文件的理由是
+   记录器要读它:引 `@onething/core/engine` barrel 会把整棵执行器模块图拖进记录器的
+   单测(与 A6+A7 当年不 import `resolveToolIdentity` 同一条理由)。别名表加一行
+   `@onething/core/engine/agent-loop-turn`(排在 barrel 之上)。
+2. **采集点镜像引擎的回合号**(`session-event-recorder.ts`):`state.turnIndex` 在
+   `turn-start` 上取 `event.turn`、在**新增的 `finish` 分支**上调上面那个函数推进,
+   并记下推进**之前**那个值(`usageTurnIndex` —— 引擎的 `updateStepsUsageByTurn` 正是
+   排在推进之前)。镜像是可靠的:记录器挂在 `onEvent` 上、执行器消费的是由同一条
+   有序事件流派生的 chunk 队列,两边看到同一条 finish 的相对位置相同。
+   分界那一下**还要收段**(`endAllOpenParts`)—— 引擎在那一刻
+   `persistTurnContentParts` + 换一份 turn state,不收段的话分界前后的正文会折进同一个
+   `partIndex`,投影出来比事实少一格。
+3. **四格新词汇**,全部是"引擎盖过的章"的抄本,投影只读不推:
+   `assistant/chunks.turnIndex` / `assistant/part-end.turnIndex`(开段时的回合号)、
+   `tool/call.turnIndex`(这次调用的回合号)、`request/response.usageTurnIndex`
+   (这份 usage 被记到哪个回合的 step 上)。投影侧:`partTurnIndex()` 一个函数收口
+   (contentParts、`topReasoningPartIndexes` 的 `!== 1` 判据、孤儿 step 三处共用),
+   `tool/call` 的 `turnIndex` 直接读,`usageByTurn` 按 `usageTurnIndex` 落键。
+4. **Iris 那条(第三项):A4 少接了同一刻盖的另一格。**
+   `stampCollabAgentId`(`app/stores/sessions.ts:719-728`)在建助手占位消息那一刻按
+   room / agent 形态**同时**盖 `agentId` 与 `source: 'collab-turn'`;§13.5 的 A4 只把
+   前一格接进了 `run/start`。修法与 A4 逐字同一条路数:`run/start.messageSource`
+   (名字不叫 `source` —— `run/start` 已经有 `origin.source`,那是入站渠道,两件事),
+   三个 run 入口各自从**那条占位消息**上取(`stream-executor.ts` / resume 入口 /
+   `rotateSessionRun` 走的同一个 `BeginSessionRunInput`),投影物化成 `message.source`。
+   **同类不同产地**:与 A4 是一个批次的漏项,不是新病。
+
+#### 新字段的旧文件兜底(§10.16 逐条)
+
+| 新字段 | 缺席时 | 合同测试 |
+|---|---|---|
+| `assistant/chunks|part-end.turnIndex` | 退回 `turnOf(requestIndex)`(= 修复前的答案,也是普通 provider 上的同一个数) | `§13.9-1 fallback: an old ledger without the turn stamp derives it from the request` |
+| `tool/call.turnIndex` | 退回 `run.turnCount || 1`(= 修复前的写法) | 同上 |
+| `request/response.usageTurnIndex` | 退回 `turnOf(requestIndex)` —— 于是用量照旧落回第 1 回合的 step | 同上 |
+| `run/start.messageSource` | 缺席仍是缺席,不猜(与 A4 的 `agentId` 同一条) | `§13.9-3: run/start carries the collab turn marker, and its absence stays an absence` |
+
+另有一条"新旧同值"的正面证据:`§13.9-1: without a boundary the stamp and the derivation
+agree byte for byte` —— 没有分界的场景把两格新词汇剥掉再投一次,canonical 逐字节相同。
+§10.16 那条老的 `pre-fix vocabulary` 用例也顺手改成**连回合号一起剥**(那一代的账本本来
+就两样都没有),否则新字段会把 `continuesRunId` 兜底那条断言遮成空转。
+
+#### 合同测试:每一条都验过"不修就红"
+
+`projection-contract.test.ts` 新增 `describe('§13.9: …')` 4 条,采集点集成
+(`session-event-recorder.test.ts`,**真的** agent-loop + 一个说外部执行器那套话的假
+provider:`externallyExecuted` 的调用 + 中途 `finish(tool_calls)` + 收尾
+`finish(stop, usage)`)2 条。fixture 侧多了一格 `RequestSpec.roundBoundary`
+(分界之后的工具 / 正文 / provider-data),两条线各写各的。**逐条脚本化反证**:
+
+| 改回旧写法 | 变红的用例数 |
+|---|---|
+| 采集点不在 finish 上推进回合号 | 1 |
+| 采集点分界处不收段(两段正文折进一个 partIndex) | 1 |
+| `tool/call` 不带回合号 | 2 |
+| `request/response` 不写 `usageTurnIndex` | 2 |
+| 投影不认 part 的回合号 | 1 |
+| 投影不认 `usageTurnIndex` | 1 |
+| 投影不认 `tool/call.turnIndex` | 1 |
+| 投影不产出 `source` | 1 |
+
+第 7 行值得记一笔:第一版场景里工具只在分界**之前**调过一次,`run.turnCount` 推出来的
+1 与事实相等 —— 那条反证当场是**绿**的。补上"分界之后又调一次工具"(外部执行器多轮
+工具的常态)才把它逼红。**一条修复没有反证 = 那条修复今天没有判据**。
+
+#### 影子电池:这条路**表达不了**,如实记在这里
+
+`sessions:shadow-battery` 的假 provider 说的是 deepseek / openai-compatible 那套 HTTP+SSE,
+而"一次请求里发好几条 finish 当轮分界"是**外部执行器**(Claude Code SDK 连接器,不走
+HTTP 那条路)独有的形状:要在电池里表达,就得把整个 SDK 连接器换成一个假实现,那不是
+本批的量级。所以这一批的机器判据是**合同测试 + 采集点集成测试**(真 agent-loop、真
+记录器、provider 说的就是那套话),电池只负责证明"普通 provider 上一个字节没变"。
+与 §13.5 尾巴第 1 条(provider-data 也无法进电池)同一类空白。
+
+#### 门(全部实跑)
+
+`typecheck` 3 条老红(`provider-dials`);`session:gate` 0 / `boundary:gate` 13 /
+`log:gate` 4 —— 全部无新增;`server:build` 通过;
+`bunx vitest run app/session core/session app/engine` 全绿。
+`lint:ci` **335**(与基线相同;本批改到的 11 个文件逐个跑 eslint 是 0 problem)。
+中途曾读到 337 —— 那两条来自同窗真机走查在仓库根目录留下的临时脚本 `scratch-diff.ts`,
+它跑完自删之后数字自己回到 335。
+
+`ONETHING_SESSION_FREEZE=1 bun run test` = 1143 文件通过 / 2 条老红(`ui-token-vars` ×2),
+11047 例通过。
+
+`sessions:shadow-battery` **GREEN**(21 场景 × 8,224 runs / 0 mismatch)—— 但**第一次跑是
+RED**,如实记在这里:`tool-args-truncated` 那一格出了 2 条 mismatch(兜底那一轮的正文
+"参数没写完:…" 在抄本上落在引擎新开的第二条助手消息上,在投影上还留在第一条)。之后
+之后同一颗种子又跑了 4 次全量、外加该场景单独跑 8 遍,全绿 —— 复现率 1/5 全量跑。
+**判定为 §10.15 那条已知未修的身份竞态**,不是本批:
+① 这一格的两条 finish 都是 `stop`,`nextAgentLoopTurnIndexAfterFinish` 返回原值 ——
+本批新增的 finish 分支在这条路上**既不推进回合号也不收段**,只多写两格数字;
+② 消息归属来自 `openPart` 那一刻的 `ctx.getMessageId()` / `currentSessionRunId()`,
+本批一个字没动它们;而 `createNextAssistantWriter` 是 `await` 的 —— 记录器赢下这一步就
+把段记在上一条消息上,正是 §10.15 定性的"事实在上游、身份在下游"。
+③ 修复前后这条 mismatch 的形状逐字相同(那一格 `turnIndex: 2` 两条口径都给 2)。
+电池里第一次抓到它,值得单开一张票(§10.15 / U0 的实证之一),但本批不改。
+
+`sessions:verify:gate` 基线**加了 1 行**并附理由(见基线文件注释):真机今夜写下的
+`agent-exec-…` 那条 `source` 残余 —— 它的 events 是**修复前**的代码写的,投影走
+"缺席仍是缺席"的兜底,改动前后逐字节相同。同一次跑里另有 **2 条 healed**
+(`web-7abaca68` / `web-da46cc33`,§13.8 的两条):它们**不是被本批修好的** ——
+那两条会话今夜已经从 `~/.onething/sessions/` 上消失了(目录不存在),没有会话就没有比对。
+基线里那两行原样留着,等真机稳定之后再统一重录。
+
+#### 顺手记两张票(只诊断,不修)
+
+1. **删会话不级联 `evals/traces/<sessionId>/`**。轨迹目录的写侧是
+   `packages/onething-runtime/src/evals/trace-store.ts:58`(`getTracesDir`)/ `:62`
+   (`getTurnTraceDir`)/ `:97`(`createTurnTraceRecorder`),而删除只删会话目录:
+   `packages/onething-runtime/src/app/stores/sessions.ts:499`(`deleteSession`,只清三张
+   进程内表 + 通知监听器)→ `packages/onething-runtime/src/sessions/session-repository.ts:697`
+   (`deleteSessionFile`,`storageDriver.delete(id)` 只管 `sessions/<id>/`)。
+   于是每删一条会话,`evals/traces/<sessionId>/` 整棵留在盘上(`pruneTraceRing`
+   `trace-store.ts:296` 只按环大小裁,不认"会话没了")。
+2. **`POST /api/sessions/:id/model` 会改写空间的 `providers.json` —— 报告的路由说错了,
+   但缺陷是真的,在隔壁那条命令上**。逐函数读过:`handleUpdateSessionModel`
+   (`app/server/http.ts:1643`)→ `updateSession`(`:1661`)→ 服务端 `sessions.update`
+   (`app/server/runtime.ts:2808`)→ `applySessionPatch`(`:5399-5489`)→ `persistSession`
+   (`:1442`)全程**不碰** settings,只写会话文件 —— 那条路是干净的 setter。
+   真正会写盘的是 CLI 守护进程的 `provider.use`(`apps/electron/src/main/cli/daemon-server.ts:210`)
+   → `HeadlessBackend.useProvider`(`packages/onething-runtime/src/app/headless/backend.ts:510-515`,
+   `getSettings()` → 改 → `saveSettings(settings)`)→
+   `useOnethingHeadlessProvider`(`packages/onething-runtime/src/headless/cli-projections.ts:156-168`:
+   `settings.ai.provider = providerId` **不看 `enabled`**,再把 `model` 写进那个
+   provider 记录)。拿到的 `settings` 是**合成过的有效设置**:
+   `composeEffectiveAISettings`(`packages/shared/defaults/ai-settings.ts:82-102`)给每个
+   目录里认识的 provider 都填一个 `{model:'', selectedModels:[], enabled:false}` 空壳
+   (只为显示),而落盘时 `splitEffectiveAISettings`(`:111-156`)本该用
+   `isBlankProviderRecord`(`:56-74`)把空壳丢掉 —— 一旦 `model` 被写成非空,这道闸就
+   失效,于是 `enabled:false` 的空壳连同被翻掉的 `ai.provider` 一起写进
+   `workspaces/<id>/providers.json`(`app/stores/settings.ts:114-129` 的 `prepareSave`
+   → `writeSpaceProviderSettings`)。

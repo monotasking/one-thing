@@ -142,6 +142,27 @@ interface RequestSpec {
    * 字段的另外两条路(§10.14 第 7 类)。
    */
   unfinished?: boolean
+  /**
+   * §13.9:这一次请求里的**轮分界**(外部执行器 = Claude Code SDK 连接器)。
+   *
+   * 连接器把一整段多轮会话装进一次 `streamTurn`:工具结果到齐、新一轮正文开始
+   * 时它发一条 `finish(tool_calls)`,runner 当场转发,引擎于是
+   * ① 把这一轮的 part 落到消息上、换一份 turn state,② **回合号 +1** ——
+   * 而 `requestIndex` 一动不动(`turn-start` 只来过一次)。
+   *
+   * 所以这一格描述的是"工具之后的那几段输出属于下一个回合",而这一次请求的
+   * usage(带 usage 的是**最后**那条 finish)也落在下一个回合上 —— 工具那个
+   * 回合的 step 因此一格 usage 都没有。真机 `web-14d8bc3f` 逐格如此。
+   *
+   * 只写在**最后一次**请求上:一次请求里有分界、后面还有第二次请求这种组合在
+   * 生产里不存在(外部执行器一次执行只发一次请求),fixture 不去描述它。
+   */
+  roundBoundary?: {
+    text?: string
+    providerData?: Record<string, unknown>
+    /** 分界之后**又**调了工具(外部执行器多轮工具的常态):同一次请求,下一个回合。 */
+    tools?: ToolSpec[]
+  }
 }
 
 interface TurnSpec {
@@ -153,6 +174,11 @@ interface TurnSpec {
   requests: RequestSpec[]
   outcome: 'completed' | 'aborted' | 'error'
   error?: string
+  /**
+   * §13.9:助手占位消息上的 `source`(`stampCollabAgentId` 在 room / agent 形态的
+   * 会话上盖的那格 `'collab-turn'`)。A 线盖在消息上,B 线记在 `run/start` 里。
+   */
+  messageSource?: string
   /**
    * steering:这条 run **接着**那条 run 的执行往下跑(§10.12 第 5 类)。
    *
@@ -351,6 +377,10 @@ interface TurnTimeline {
     textAfter?: number
     response?: number
     tools: Array<{ inputEnd?: number; call: number; result?: number; audit?: number }>
+    /** §13.9:轮分界之后那几段的时刻(它们排在工具之后)。 */
+    boundaryTools?: Array<{ inputEnd?: number; call: number; result?: number; audit?: number }>
+    boundaryText?: number
+    boundaryProviderData?: number
   }>
   end: number
 }
@@ -368,6 +398,20 @@ function planTurn(turn: TurnSpec, clock: Clock): TurnTimeline {
       call: clock.next(),
       ...(tool.resultText !== undefined ? { result: clock.next(), audit: clock.next() } : {}),
     })),
+    // 分界之后 —— 时刻当然排在工具之后。
+    ...(request.roundBoundary?.tools
+      ? {
+          boundaryTools: request.roundBoundary.tools.map(tool => ({
+            ...(tool.streamedArgs || tool.orphan ? { inputEnd: clock.next() } : {}),
+            call: clock.next(),
+            ...(tool.resultText !== undefined ? { result: clock.next(), audit: clock.next() } : {}),
+          })),
+        }
+      : {}),
+    ...(request.roundBoundary?.text !== undefined ? { boundaryText: clock.next() } : {}),
+    ...(request.roundBoundary?.providerData !== undefined
+      ? { boundaryProviderData: clock.next() }
+      : {}),
   }))
   return { start, requests, end: clock.next() }
 }
@@ -398,6 +442,7 @@ function applyTurnCommands(
       isStreaming: true,
       ...(turn.provider ? { provider: turn.provider } : {}),
       ...(turn.model ? { model: turn.model } : {}),
+      ...(turn.messageSource ? { source: turn.messageSource } : {}),
     } as CoreSessionCommandMessage,
   })
 
@@ -478,8 +523,12 @@ function applyTurnCommands(
       // 在执行真正收尾时补(`flushPendingExecutionUsage`)。
     }
 
-    ;(request.tools ?? []).forEach((tool, toolIndex) => {
-      const slots = slot.tools[toolIndex]
+    const runTools = (
+      tools: readonly ToolSpec[],
+      slotsList: TurnTimeline['requests'][number]['tools'],
+      toolTurnIndex: number,
+    ): void => tools.forEach((tool, toolIndex) => {
+      const slots = slotsList[toolIndex]
       if (tool.orphan) {
         // 引擎本人建的那一对占位(`tool_input_start` 那一刻,参数还是 `{}`)。
         // fixture 不手写它们的 type / title / status —— 那正是 §10.10 立下的规矩。
@@ -488,7 +537,7 @@ function applyTurnCommands(
           resolved: { toolId: tool.toolId ?? tool.name, displayName: tool.name },
           stepId: `step-${tool.callId}`,
           rawToolName: tool.name,
-          turnIndex,
+          turnIndex: toolTurnIndex,
           timestamp: slots.inputEnd ?? slots.call,
         })
         toolCalls.push(placeholderToolCall as unknown as ProjectedToolCall)
@@ -517,15 +566,46 @@ function applyTurnCommands(
       line.run({
         type: 'upsertStep',
         messageId: turn.messageId,
-        step: stepOf(tool, call, slots.call, turnIndex) as never,
+        step: stepOf(tool, call, slots.call, toolTurnIndex) as never,
       })
     })
+
+    runTools(request.tools ?? [], slot.tools, turnIndex)
+
+    // §13.9:轮分界之后的那几段属于**下一个**回合(引擎在那条 finish 上
+    // `persistTurnContentParts` + `resetTurn`,回合号 +1)。
+    const boundaryTurnIndex = request.roundBoundary ? turnIndex + 1 : turnIndex
+    // 分界之后的工具:**同一次请求**,下一个回合 —— 外部执行器多轮工具的常态。
+    runTools(request.roundBoundary?.tools ?? [], slot.boundaryTools ?? [], boundaryTurnIndex)
+    if (request.roundBoundary?.text !== undefined && !request.unfinished) {
+      text += request.roundBoundary.text
+      line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { content: text } as never, hint: 'stream' })
+      line.run({
+        type: 'appendContentPart',
+        messageId: turn.messageId,
+        part: { type: 'text', content: request.roundBoundary.text, turnIndex: boundaryTurnIndex },
+      })
+    }
+    if (request.roundBoundary?.providerData !== undefined && !request.unfinished) {
+      line.run({
+        type: 'appendContentPart',
+        messageId: turn.messageId,
+        part: {
+          type: 'provider-data',
+          providerData: request.roundBoundary.providerData,
+          turnIndex: boundaryTurnIndex,
+        },
+      })
+    }
 
     if (request.usage) {
       line.run({
         type: 'patchStepsUsageByTurn',
         messageId: turn.messageId,
-        turnIndex,
+        // 引擎写 usage 的时刻是**带 usage 的那条 finish**,记的是那一刻的回合号。
+        // 外部执行器那条路上分界的 finish 不带 usage,所以用量落在分界之后 ——
+        // 工具那个回合的 step 于是没有 usage(真机如此)。
+        turnIndex: boundaryTurnIndex,
         usage: normalizedUsage(request.usage),
       })
     }
@@ -567,6 +647,7 @@ function emitTurnEvents(
   turn: TurnSpec,
   timeline: TurnTimeline,
   requestIndexBase = 0,
+  turnIndexBase = 0,
 ): void {
   line.push({
     time: timeline.start,
@@ -578,6 +659,7 @@ function emitTurnEvents(
       ...(turn.provider ? { provider: turn.provider } : {}),
       ...(turn.model ? { model: turn.model } : {}),
       ...(turn.continuesRunId ? { continuesRunId: turn.continuesRunId } : {}),
+      ...(turn.messageSource ? { messageSource: turn.messageSource } : {}),
     },
     surfaceOp: 'append',
   })
@@ -588,6 +670,11 @@ function emitTurnEvents(
     // steering 之后接着往下发号,投影靠它把回合号接上。
     const requestIndex = requestIndexBase + index + 1
     const slot = timeline.requests[index]
+    // §13.9:回合号是**引擎盖的章**,采集点照抄一份进事件行。平时它与
+    // `requestIndex` 推出来的那个数相同 —— 分界(下面的 `roundBoundary`)才让
+    // 两者分家。A 线用的是同一个表达式(`carried.turns + index + 1`)。
+    const turnIndex = turnIndexBase + index + 1
+    const boundaryTurnIndex = request.roundBoundary ? turnIndex + 1 : turnIndex
 
     if (request.reasoning !== undefined) {
       const at = partIndex++
@@ -596,7 +683,7 @@ function emitTurnEvents(
         type: 'assistant/chunks',
         data: {
           runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-          kind: 'reasoning', time0: slot.reasoning!, dt: [0], text: [request.reasoning],
+          kind: 'reasoning', turnIndex, time0: slot.reasoning!, dt: [0], text: [request.reasoning],
         },
       })
       line.push({
@@ -604,7 +691,7 @@ function emitTurnEvents(
         type: 'assistant/part-end',
         data: {
           runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-          kind: 'reasoning', len: request.reasoning.length,
+          kind: 'reasoning', turnIndex, len: request.reasoning.length,
         },
       })
     }
@@ -617,7 +704,7 @@ function emitTurnEvents(
         type: 'assistant/chunks',
         data: {
           runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-          kind: 'text', time0: slot.text!, dt: halves.map((_, i) => i * 3), text: halves,
+          kind: 'text', turnIndex, time0: slot.text!, dt: halves.map((_, i) => i * 3), text: halves,
         },
       })
       line.push({
@@ -625,7 +712,7 @@ function emitTurnEvents(
         type: 'assistant/part-end',
         data: {
           runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-          kind: 'text', len: request.text.length,
+          kind: 'text', turnIndex, len: request.text.length,
         },
       })
     }
@@ -639,7 +726,7 @@ function emitTurnEvents(
         type: 'assistant/part-end',
         data: {
           runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-          kind: 'provider-data', len: payload.length, providerData: { text: payload },
+          kind: 'provider-data', turnIndex, len: payload.length, providerData: { text: payload },
         },
       })
     }
@@ -650,7 +737,7 @@ function emitTurnEvents(
         type: 'assistant/chunks',
         data: {
           runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-          kind: 'text', time0: slot.textAfter!, dt: [0], text: [request.textAfter],
+          kind: 'text', turnIndex, time0: slot.textAfter!, dt: [0], text: [request.textAfter],
         },
       })
       line.push({
@@ -658,13 +745,17 @@ function emitTurnEvents(
         type: 'assistant/part-end',
         data: {
           runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-          kind: 'text', len: request.textAfter.length,
+          kind: 'text', turnIndex, len: request.textAfter.length,
         },
       })
     }
 
-    ;(request.tools ?? []).forEach((tool, toolIndex) => {
-      const slots = slot.tools[toolIndex]
+    const emitTools = (
+      tools: readonly ToolSpec[],
+      slotsList: TurnTimeline['requests'][number]['tools'],
+      toolTurnIndex: number,
+    ): void => tools.forEach((tool, toolIndex) => {
+      const slots = slotsList[toolIndex]
       const argumentsRaw = JSON.stringify(tool.args)
       // 孤儿:参数流到一半就没了 —— 事件上只有半截原文,`tool/call` 不来。
       const streamedText = tool.orphan ? argumentsRaw.slice(0, Math.ceil(argumentsRaw.length / 2)) : argumentsRaw
@@ -675,8 +766,8 @@ function emitTurnEvents(
           type: 'assistant/chunks',
           data: {
             runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-            kind: 'tool-input', toolCallId: tool.callId, toolName: tool.name, time0: slots.inputEnd!,
-            dt: [0], text: [streamedText],
+            kind: 'tool-input', toolCallId: tool.callId, toolName: tool.name, turnIndex: toolTurnIndex,
+            time0: slots.inputEnd!, dt: [0], text: [streamedText],
           },
         })
         line.push({
@@ -684,7 +775,8 @@ function emitTurnEvents(
           type: 'assistant/part-end',
           data: {
             runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
-            kind: 'tool-input', toolCallId: tool.callId, toolName: tool.name, len: streamedText.length,
+            kind: 'tool-input', toolCallId: tool.callId, toolName: tool.name, turnIndex: toolTurnIndex,
+            len: streamedText.length,
           },
         })
       }
@@ -708,7 +800,7 @@ function emitTurnEvents(
           ...(tool.rawName
             ? { resolvedToolId: tool.toolId ?? tool.name, displayName: tool.name }
             : {}),
-          argumentsRaw, messageId: turn.messageId,
+          argumentsRaw, messageId: turn.messageId, turnIndex: toolTurnIndex,
         },
       })
       if (tool.resultText !== undefined) {
@@ -737,6 +829,46 @@ function emitTurnEvents(
       }
     })
 
+    emitTools(request.tools ?? [], slot.tools, turnIndex)
+
+    // §13.9:轮分界之后的那几段 —— 同一个 `requestIndex`,**下一个**回合号。
+    // 采集点在那条 finish 上把开着的段收了(引擎的 `resetTurn`),所以它们是
+    // 各自独立的 part,不会与分界之前的正文折进同一格。
+    emitTools(request.roundBoundary?.tools ?? [], slot.boundaryTools ?? [], boundaryTurnIndex)
+    if (request.roundBoundary?.text !== undefined && !request.unfinished) {
+      const at = partIndex++
+      line.push({
+        time: slot.boundaryText!,
+        type: 'assistant/chunks',
+        data: {
+          runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
+          kind: 'text', turnIndex: boundaryTurnIndex, time0: slot.boundaryText!,
+          dt: [0], text: [request.roundBoundary.text],
+        },
+      })
+      line.push({
+        time: slot.boundaryText!,
+        type: 'assistant/part-end',
+        data: {
+          runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
+          kind: 'text', turnIndex: boundaryTurnIndex, len: request.roundBoundary.text.length,
+        },
+      })
+    }
+    if (request.roundBoundary?.providerData !== undefined && !request.unfinished) {
+      const at = partIndex++
+      const payload = JSON.stringify(request.roundBoundary.providerData)
+      line.push({
+        time: slot.boundaryProviderData!,
+        type: 'assistant/part-end',
+        data: {
+          runId: turn.runId, requestIndex, messageId: turn.messageId, partIndex: at,
+          kind: 'provider-data', turnIndex: boundaryTurnIndex, len: payload.length,
+          providerData: { text: payload },
+        },
+      })
+    }
+
     if (request.unfinished) return
     if (request.usage) {
       line.push({
@@ -745,6 +877,9 @@ function emitTurnEvents(
         data: {
           runId: turn.runId, requestIndex, messageId: turn.messageId,
           usage: { inputTokens: request.usage.inputTokens, outputTokens: request.usage.outputTokens },
+          // 引擎把这份 usage 记到哪个回合的 step 上(带 usage 的那条 finish
+          // **推进之前**的回合号)。没有分界时它就是这次请求的回合号。
+          usageTurnIndex: boundaryTurnIndex,
         },
       })
     }
@@ -871,7 +1006,9 @@ class Scenario {
     const requestIndexBase = this.requestIndex
     const result = applyTurnCommands(this.a, turn, timeline, carried)
     const before = this.b.events.length
-    emitTurnEvents(this.b, turn, timeline, requestIndexBase)
+    // 回合号的基数与 A 线同一个(`carried.turns`)—— 两条线各写各的,但数的是
+    // 同一件事:引擎的 `state.turnIndex`。
+    emitTurnEvents(this.b, turn, timeline, requestIndexBase, carried.turns)
     this.requestIndex += turn.requests.length
     this.executionByRun.set(turn.runId, {
       turns: carried.turns + turn.requests.length,
@@ -1266,9 +1403,15 @@ describe('projection contract: command line ≡ event line', () => {
       ],
       outcome: 'completed',
     })
+    // 剥的不只是 `continuesRunId`:那一代的账本连 §13.9 的回合号都没有,靠的
+    // 全是"按 requestIndex 推"。两样一起剥,这条兜底才是真的老文件。
     const legacyEvents = scenario.b.events.map(event => {
-      if (event.type !== 'run/start') return event
-      const { continuesRunId: _dropped, ...data } = event.data as unknown as Record<string, unknown>
+      const {
+        continuesRunId: _dropped,
+        turnIndex: _turn,
+        usageTurnIndex: _usageTurn,
+        ...data
+      } = event.data as unknown as Record<string, unknown>
       return { ...event, data } as unknown as typeof event
     })
     const withField = projectChatMessages(scenario.b.events).messages
@@ -2757,5 +2900,152 @@ describe('§13.8: 中止时在飞的工具 / 生图失败正文', () => {
     const projected = projectChatMessages(line.events).messages[0]
     expect(projected.content).toBe(body)
     expect(projected.contentParts).toEqual([{ type: 'text', content: body }])
+  })
+})
+
+describe('§13.9: 外部执行器的内轮分界 / 用量归属 / 协作回合标记', () => {
+  /**
+   * 真机 `web-14d8bc3f`(provider `claude-code-agent`,一次工具调用)的最小复现。
+   *
+   * 账本上**一次请求**(`request/start` 只有一条),而引擎的回合号在中途 +1:
+   * 连接器在工具结果之后发了一条 `finish(tool_calls)` 当轮分界。于是
+   *  - 工具之后的正文 / provider-data 是**第 2 回合**(投影从前按请求数推 = 1);
+   *  - 带 usage 的是**最后**那条 finish,用量落在第 2 回合 —— 第 1 回合那个工具
+   *    step 因此一格 usage 都没有(投影从前照旧给它 = 凭空多一格)。
+   */
+  it('§13.9-1: an inner round boundary moves the post-tool body onto the next turn', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: '17*23?' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      provider: 'claude-code-agent', model: 'claude-sonnet-5',
+      requests: [{
+        tools: [{
+          callId: 'c1', name: 'Bash', args: { command: 'echo 391' },
+          resultText: '391', outcome: 'ok', streamedArgs: true,
+        }],
+        roundBoundary: {
+          // 分界之后 SDK 又调了一次工具(多轮工具在这条路上是常态),再吐正文。
+          tools: [{
+            callId: 'c2', name: 'read', args: { path: '/x' },
+            resultText: 'body', outcome: 'ok', streamedArgs: true,
+          }],
+          text: '17 × 23 = 391',
+          providerData: { provider: 'claude-code-agent', type: 'cost', costUSD: 0.016 },
+        },
+        usage: { inputTokens: 4, outputTokens: 93 },
+      }],
+      outcome: 'completed',
+    })
+    scenario.flushPendingExecutionUsage()
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    // 分界之后的两格都是第 2 回合 —— 真机影子日志上那两行 `a=2 b=1`。
+    expect(message.contentParts).toEqual([
+      { type: 'text', content: '17 × 23 = 391', turnIndex: 2 },
+      {
+        type: 'provider-data',
+        providerData: { provider: 'claude-code-agent', type: 'cost', costUSD: 0.016 },
+        turnIndex: 2,
+      },
+    ])
+    // 第一次调用还在第 1 回合、分界之后那次是第 2 回合(投影从前按"这条 run
+    // 跑到第几次请求"推,两次调用会一起塌到 1)。
+    expect(message.steps?.map(step => step.turnIndex)).toEqual([1, 2])
+    // 用量落在第 2 回合:第 1 回合那个 step 一格都没有,第 2 回合那个才有。
+    expect(message.steps?.[0]).not.toHaveProperty('usage')
+    expect(message.steps?.[1].usage).toEqual({ inputTokens: 4, outputTokens: 93, totalTokens: 97 })
+    // 消息级用量照旧是整次执行的那一份(它与回合归属无关)。
+    expect(message.usage).toEqual({ inputTokens: 4, outputTokens: 93, totalTokens: 97 })
+  })
+
+  /**
+   * §10.16 的成对交付:**老账本没有回合号那一格**。
+   *
+   * 投影退回按 `requestIndex` 推 —— 那正是修复前的答案(也是普通 provider 上的
+   * 同一个数)。构造用同一个场景,B 线剥掉两格新词汇。
+   */
+  it('§13.9-1 fallback: an old ledger without the turn stamp derives it from the request', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: '17*23?' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        tools: [{ callId: 'c1', name: 'Bash', args: { command: 'echo 391' }, resultText: '391', outcome: 'ok' }],
+        roundBoundary: { text: '17 × 23 = 391' },
+        usage: { inputTokens: 4, outputTokens: 93 },
+      }],
+      outcome: 'completed',
+    })
+    const legacy = scenario.b.events.map(event => {
+      const { turnIndex: _turn, usageTurnIndex: _usageTurn, ...data } =
+        event.data as unknown as Record<string, unknown>
+      return { ...event, data } as unknown as typeof event
+    })
+
+    const message = projectChatMessages(legacy as typeof scenario.b.events).messages[1]
+    // 修复前的事实:回合号按请求数推(1),用量也就落回第 1 回合的 step 上。
+    expect(message.contentParts).toEqual([{ type: 'text', content: '17 × 23 = 391', turnIndex: 1 }])
+    expect(message.steps?.[0].usage).toEqual({ inputTokens: 4, outputTokens: 93, totalTokens: 97 })
+  })
+
+  /**
+   * 没有分界时两条口径**逐字节相同** —— 新词汇不改变普通 provider 上的任何一格。
+   * (剥掉再投一次,与带着字段投出来的那一份 canonical 相等。)
+   */
+  it('§13.9-1: without a boundary the stamp and the derivation agree byte for byte', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'read it' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [
+        {
+          reasoning: 'let me look',
+          tools: [{ callId: 'c1', name: 'read', args: { path: '/x' }, resultText: 'body', outcome: 'ok' }],
+          usage: { inputTokens: 10, outputTokens: 5 },
+        },
+        { text: 'done', usage: { inputTokens: 20, outputTokens: 6 } },
+      ],
+      outcome: 'completed',
+    })
+    const legacy = scenario.b.events.map(event => {
+      const { turnIndex: _turn, usageTurnIndex: _usageTurn, ...data } =
+        event.data as unknown as Record<string, unknown>
+      return { ...event, data } as unknown as typeof event
+    })
+    expect(canonicalChatMessages(projectChatMessages(legacy as typeof scenario.b.events).messages))
+      .toEqual(canonicalChatMessages(projectChatMessages(scenario.b.events).messages))
+  })
+
+  /**
+   * 真机 `agent-exec-…`(Iris 的执行会话):`1.source` a=collab-turn b=(absent)。
+   *
+   * `stampCollabAgentId` 在建占位消息那一刻同时盖 `agentId` 与 `source` 两格,
+   * A4 只把前一格接进了账本。与 A4 逐字同一条规矩:**缺席仍是缺席,不猜**。
+   */
+  it('§13.9-3: run/start carries the collab turn marker, and its absence stays an absence', () => {
+    const marked = new Scenario()
+    marked.user({ id: 'u1', content: '干活' })
+    marked.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      messageSource: 'collab-turn',
+      requests: [{ text: '好的', usage: { inputTokens: 1, outputTokens: 1 } }],
+      outcome: 'completed',
+    })
+    marked.flushPendingExecutionUsage()
+    expectEquivalent(marked)
+    expect(projectChatMessages(marked.b.events).messages[1].source).toBe('collab-turn')
+
+    const plain = new Scenario()
+    plain.user({ id: 'u1', content: '干活' })
+    plain.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{ text: '好的', usage: { inputTokens: 1, outputTokens: 1 } }],
+      outcome: 'completed',
+    })
+    plain.flushPendingExecutionUsage()
+    expectEquivalent(plain)
+    expect(projectChatMessages(plain.b.events).messages[1]).not.toHaveProperty('source')
   })
 })

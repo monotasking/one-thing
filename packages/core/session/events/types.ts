@@ -181,6 +181,17 @@ export interface SessionToolCallEventData {
    * `childSteps`。
    */
   parentCallId?: string
+  /**
+   * §13.9:这次调用发生在引擎的**第几个回合**(`state.turnIndex`)。
+   *
+   * 从前投影按 `run.turnCount`(= 这条 run 到目前为止的**请求**数)推。一次请求
+   * 一个回合时两者相等,而外部执行器(Claude Code SDK)一次请求里可以有好几个
+   * 回合 —— 那时推出来的号比事实小,而 `steps[].turnIndex` 与"这一轮的 usage 落到
+   * 哪几个 step 上"都挂在它身上。
+   *
+   * **成对交付**(§10.16):老文件没有这一格 → 退回按请求数推(= 修复前的行为)。
+   */
+  turnIndex?: number
 }
 
 /**
@@ -417,6 +428,21 @@ export interface SessionRunStartEventData {
    * (真机第四批 17 行不等的唯一病根)。
    */
   continuesRunId?: string
+  /**
+   * 助手占位消息上的 `ChatMessage.source`(§13.9,与 A4 的 `agentId` 同一个产地)。
+   *
+   * `stampCollabAgentId`(`app/stores/sessions.ts`)在 `addMessage` 那一刻同时盖
+   * **两**格:`agentId` 与 `source: 'collab-turn'`(room / agent 形态的会话)。
+   * A4 只把前一格接进了账本,于是 agent 执行会话每条助手消息在投影里都少一格
+   * (真机 `agent-exec-…` 的 `1.source` a=collab-turn b=(absent))。
+   *
+   * 名字不叫 `source`:`run/start` 上已经有一格 `origin`,而它自己也有一个
+   * `origin.source`(入站渠道)—— 那是两件事,一格是"从哪条渠道来的",这格是
+   * "这条消息是不是一次协作回合的思考记录"。
+   *
+   * **成对交付**(§10.16):老文件没有这一格 → 缺席仍是缺席,不猜。
+   */
+  messageSource?: string
 }
 
 export interface SessionRunEndEventData {
@@ -458,6 +484,19 @@ export interface SessionRequestResponseEventData {
   /** 各 part 的**指纹**,不是正文。正文唯一来源是 `assistant/chunks`。 */
   parts?: Array<{ partIndex: number; kind: SessionAssistantPartKind; len: number; hash?: string }>
   toolCallIds?: string[]
+  /**
+   * §13.9:上面那份 `usage` 被引擎记到**哪个回合**的 step 上。
+   *
+   * 引擎那一行是 `updateStepsUsageByTurn(state.turnIndex, plan.lastTurnUsage)` ——
+   * 在 finish chunk 上、**推进回合号之前**跑的。普通 provider 上它就是这次请求
+   * 的回合号(投影从前按 `requestIndex` 推,答案相同);外部执行器那条路上,
+   * 带 usage 的那条 finish 是**最后**一条(轮分界那几条不带 usage),于是用量落
+   * 在最后一个回合上,而第一个回合的工具 step **一格 usage 都没有** ——
+   * 真机 `web-14d8bc3f` 的 `1.steps.0.usage` a=(absent) b={…}。
+   *
+   * **成对交付**(§10.16):老文件没有这一格 → 退回按 `requestIndex` 推。
+   */
+  usageTurnIndex?: number
 }
 
 export interface SessionRequestErrorEventData {
@@ -512,6 +551,11 @@ export interface SessionAssistantChunksEventData {
   time0: number
   dt: number[]
   text: string[]
+  /**
+   * §13.9:开这一段时引擎的回合号(`state.turnIndex`)。理由见
+   * `SessionAssistantPartEndEventData.turnIndex`。
+   */
+  turnIndex?: number
 }
 
 export interface SessionAssistantPartEndEventData {
@@ -562,6 +606,23 @@ export interface SessionAssistantPartEndEventData {
    * 承载不了它(没有 delta,也不该被 fold 成文本)。
    */
   providerData?: { text: string } | { blob: BlobRef }
+  /**
+   * §13.9:开这一段时引擎的回合号(`state.turnIndex`)。
+   *
+   * `contentParts[].turnIndex` 就是它 —— 引擎在**消费 chunk 的那一刻**盖的章
+   * (`applyAgentLoopTextChunkWithAdapters` 的 `turnIndex: state.turnIndex`)。
+   * 投影从前只能按 `requestIndex` 推,而**外部执行器**(Claude Code SDK 连接器)
+   * 一次请求里会发好几条 `finish(tool_calls)` 当轮分界:引擎的回合号跟着涨,
+   * 账本上的 `requestIndex` 一动不动,于是工具之后那几段正文的回合号全部少 1
+   * (真机 `web-14d8bc3f` 的 `1.contentParts.*.turnIndex` a=2 b=1)。
+   *
+   * 回合号决定的不只是这一格:`turnIndex !== 1` 是"开头那段推理算不算 top"的判据,
+   * 而模型历史按它把一条消息拆成 assistant/tool 交替段(`buildHistoryMessages`)。
+   *
+   * **成对交付**(§10.16):老文件没有这一格 → 退回按 `requestIndex` 推
+   * (= 修复前的行为,普通 provider 上两者恒等)。
+   */
+  turnIndex?: number
 }
 
 /**

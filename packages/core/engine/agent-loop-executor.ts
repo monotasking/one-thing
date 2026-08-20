@@ -26,6 +26,10 @@ import {
 	getStepType,
 	type CoreStepType,
 } from "./tool-step.js";
+import {
+	isAgentLoopToolCallsFinishReason,
+	nextAgentLoopTurnIndexAfterFinish,
+} from "./agent-loop-turn.js";
 
 export interface CoreAgentLoopExecutorContentAccumulator {
 	value: string;
@@ -2566,8 +2570,12 @@ export function planAgentLoopFinishChunk(input: {
 		contextSizeInputTokens = usage.inputTokens;
 	}
 
-	if (isAgentLoopToolCallsFinishReason(input.finishReason)) {
-		const continuationTurnIndex = input.turnIndex + 1;
+	const nextTurnIndex = nextAgentLoopTurnIndexAfterFinish(
+		input.turnIndex,
+		input.finishReason,
+	);
+	if (nextTurnIndex !== input.turnIndex) {
+		const continuationTurnIndex = nextTurnIndex;
 		return {
 			accumulatedUsage,
 			lastTurnUsage,
@@ -2589,16 +2597,14 @@ export function planAgentLoopFinishChunk(input: {
 	};
 }
 
-export function isAgentLoopToolCallsFinishReason(
-	finishReason: string | undefined,
-): boolean {
-	return (
-		finishReason === "tool-calls" ||
-		finishReason === "tool_calls" ||
-		finishReason === "tool-use" ||
-		finishReason === "tool_use"
-	);
-}
+export {
+	/**
+	 * §13.9:判定点搬进 `agent-loop-turn.ts`(采集点也要读它,而这个模块的模块图
+	 * 太大)。导出路径一字未改 —— 这里只是把它再放出去。
+	 */
+	isAgentLoopToolCallsFinishReason,
+	nextAgentLoopTurnIndexAfterFinish,
+};
 
 export function applyAgentLoopFinishChunkWithAdapters<TTurn>(
 	options: ApplyAgentLoopFinishChunkWithAdaptersOptions<TTurn>,

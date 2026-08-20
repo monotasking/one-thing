@@ -28,3 +28,11 @@ fd899977-cbf1-4c9d-b09d-ee71090f1769 messages: canonical differs for message 152
 web-40232e65-badd-46cd-a8fe-dfff5cba7d74 messages: canonical differs for message 02eb9a63-e2b3-4296-8fa7-e0625915548b
 web-7abaca68-dcb8-4db9-adca-f78e53ab81dd messages: canonical differs for message 023c934c-be72-4a2c-b565-7ab137dae970
 web-da46cc33-854c-496d-87cb-d91dee731b55 messages: canonical differs for message b7b6558c-25b3-4b19-b775-fa00eb4f27e2
+# 2026-08-21 追加 1 条(§13.9 第三项,与上面几条同类):真机今夜(HEAD 0200e02b)写下的
+# **修复前**残余 —— agent 执行会话的助手消息上有 `source: 'collab-turn'`
+# (`stampCollabAgentId` 与 `agentId` 同一刻盖的),而当时的 `run/start` 只带 `agentId`
+# (A4 少接了这一格),投影因此给不出 `source`。这条会话的 events 是**修复之前**写的,
+# 所以修好之后它照旧红 —— 与本次改动无关:新词汇 `run/start.messageSource` 在这份账本里
+# 根本不存在,投影走的是"缺席仍是缺席"那条兜底(逐字节验过:改动前后这条 diff 一字不差)。
+# 修好之后不再新增(合同测试 `§13.9-3` 两面钉着)。
+agent-exec-agent-eba0c4b7-46b7-46a3-a495-671c94cc340c-agent-dm-agent-eba0c4b7-46b7-46a3-a495-671c94cc340c messages: canonical differs for message 2b0cdcad-a62d-429a-80e3-227a96e2ce63

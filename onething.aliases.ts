@@ -29,6 +29,9 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   // engine barrel so the renderer never drags node:crypto into the bundle.
   { find: '@onething/core/engine/attachment-mime', replacement: resolve(projectRoot, 'packages/core/engine/attachment-mime.ts') },
   { find: '@onething/core/engine/streaming-args', replacement: resolve(projectRoot, 'packages/core/engine/streaming-args.ts') },
+  // §13.9:引擎回合号的那一条判定规则。采集点要读它,而引擎 barrel(以及
+  // agent-loop-executor 本体)会把整棵执行器模块图拖进记录器的单测。
+  { find: '@onething/core/engine/agent-loop-turn', replacement: resolve(projectRoot, 'packages/core/engine/agent-loop-turn.ts') },
   { find: '@onething/core/engine', replacement: resolve(projectRoot, 'packages/core/engine/index.ts') },
   { find: '@onething/core/events', replacement: resolve(projectRoot, 'packages/core/events/index.ts') },
   { find: '@onething/core/gateway-runtime', replacement: resolve(projectRoot, 'packages/core/gateway-runtime.ts') },

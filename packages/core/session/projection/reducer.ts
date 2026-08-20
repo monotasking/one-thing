@@ -89,6 +89,14 @@ interface PartState {
    * 引擎的占位卡从第一帧起就带着名字,投影不许把它留空(§10.14 第 7 类)。
    */
   toolName?: string
+  /**
+   * §13.9:开这一段时**引擎的回合号**(`assistant/chunks|part-end.turnIndex`)。
+   *
+   * 老文件没有这一格 → 退回按 `requestIndex` 推(`turnOf`)= 修复前的行为。
+   * 两者在普通 provider 上恒等;外部执行器一次请求里有好几个回合时,推出来的
+   * 那个数比事实小(§13.9 第一类)。
+   */
+  turnIndex?: number
   text: string
   ended: boolean
   /** part 收齐的时刻。`tool-input` 的这一格就是 toolCall 的 `receivedAt`。 */
@@ -192,6 +200,13 @@ export interface AssistantNode extends BaseNode {
   runId: string
   messageId: string
   agentId?: string
+  /**
+   * §13.9:助手消息上的 `source`(`run/start.messageSource`)。
+   *
+   * 与 `agentId` 同一个产地(`stampCollabAgentId` 在建占位消息那一刻盖的两格),
+   * 只在 room / agent 形态的会话上有值。缺席 = 没盖过章,不猜。
+   */
+  messageSource?: string
   provider?: string
   model?: string
   /** 触发这次执行的命令来源(`run/start.origin`)。 */
@@ -394,6 +409,7 @@ export function reduceSessionProjection(
         runId: event.data.runId,
         messageId: event.data.assistantMessageId,
         agentId: event.data.agentId,
+        messageSource: event.data.messageSource,
         provider: event.data.provider,
         model: event.data.model,
         origin: event.data.origin,
@@ -444,7 +460,14 @@ export function reduceSessionProjection(
       if (event.type === 'request/response' && event.data.usage) {
         const usage = normalizeUsage(event.data.usage)
         run.usage = addUsage(run.usage, usage)
-        run.usageByTurn.set(turnOf(run, event.data.requestIndex), usage)
+        // §13.9:引擎把这份 usage 记到哪个回合的 step 上,由账本说 —— 老文件
+        // 没有那一格时退回按请求数推(= 修复前的行为,也是普通 provider 上的
+        // 同一个数)。外部执行器那条路上带 usage 的是**最后**一条 finish,
+        // 所以第一个回合的工具 step 本来就一格 usage 都没有。
+        run.usageByTurn.set(
+          event.data.usageTurnIndex ?? turnOf(run, event.data.requestIndex),
+          usage,
+        )
       }
       break
     }
@@ -454,7 +477,7 @@ export function reduceSessionProjection(
       if (!run) break
       const part = ensurePart(
         run, event.data.partIndex, event.data.kind, event.data.requestIndex,
-        event.data.toolCallId, event.data.toolName,
+        event.data.toolCallId, event.data.toolName, event.data.turnIndex,
       )
       part.text += event.data.text.join('')
       if (event.data.kind === 'reasoning' && event.data.dt.length > 0) {
@@ -475,7 +498,7 @@ export function reduceSessionProjection(
       if (!run) break
       const part = ensurePart(
         run, event.data.partIndex, event.data.kind, event.data.requestIndex,
-        event.data.toolCallId, event.data.toolName,
+        event.data.toolCallId, event.data.toolName, event.data.turnIndex,
       )
       part.ended = true
       part.endedAt = event.time
@@ -507,7 +530,9 @@ export function reduceSessionProjection(
         argumentsRaw: event.data.argumentsRaw,
         callTime: event.time,
         callSeq: event.seq,
-        turnIndex: run.turnCount || 1,
+        // §13.9:引擎盖的那个回合号(`turnIndex: state.turnIndex`)。老文件没有
+        // 这一格 → 退回"这条 run 跑到第几次请求"(= 修复前的行为)。
+        turnIndex: event.data.turnIndex ?? (run.turnCount || 1),
       }
       tool.name = event.data.name
       if (event.data.resolvedToolId !== undefined) tool.resolvedToolId = event.data.resolvedToolId
@@ -740,6 +765,7 @@ function ensurePart(
   requestIndex: number,
   toolCallId: string | undefined,
   toolName?: string,
+  turnIndex?: number,
 ): PartState {
   let part = run.parts.get(partIndex)
   if (!part) {
@@ -749,8 +775,19 @@ function ensurePart(
   }
   // 老事件行没有这一格(采集点是本期加的),所以只补不覆盖。
   if (toolName && part.toolName === undefined) part.toolName = toolName
+  if (turnIndex !== undefined && part.turnIndex === undefined) part.turnIndex = turnIndex
   turnOf(run, requestIndex)
   return part
+}
+
+/**
+ * 这一段属于第几个回合。
+ *
+ * 事件带了就用事件的(§13.9:引擎盖的那个章);老文件没有 → 按 `requestIndex`
+ * 推,那是修复前唯一的答案,也是普通 provider 上的同一个数。
+ */
+function partTurnIndex(run: AssistantNode, part: PartState): number | undefined {
+  return part.turnIndex ?? run.turnByRequest.get(part.requestIndex)
 }
 
 /** 这次调用的参数流是什么时候收齐的(`tool/call` 迟到时回头取)。 */
@@ -1289,7 +1326,7 @@ function materializeOrphanToolCall(run: AssistantNode, part: PartState): Project
 export function materializeOrphanSteps(run: AssistantNode): ProjectedStep[] {
   return orphanToolInputParts(run).map(part => {
     const toolCall = materializeOrphanToolCall(run, part)
-    const turnIndex = run.turnByRequest.get(part.requestIndex)
+    const turnIndex = partTurnIndex(run, part)
     return {
       id: `step-${toolCall.id}`,
       type: coreStepTypeForToolName(toolCall.toolName),
@@ -1351,7 +1388,7 @@ export function topReasoningPartIndexes(run: AssistantNode): Set<number> {
     // 就夹在推理段中间,把它当边界会让本该 `'top'` 的那一段判成 `'inline'`。
     if (part.kind === 'provider-data') continue
     if (part.kind !== 'reasoning') break
-    if (run.turnByRequest.get(part.requestIndex) !== 1) break
+    if (partTurnIndex(run, part) !== 1) break
     top.add(partIndex)
   }
   return top
@@ -1443,7 +1480,7 @@ export function materializeContentParts(
     if (!partIsSettleExempt(part) && !requestSettled(run, part.requestIndex)) continue
     // R-b:`synthetic` 那一格没有回合 —— 它不是模型某一轮的产出,消息上那一格
     // 也就没有 `turnIndex`。凭空补一个会让每一次生图都不等。
-    const turnIndex = part.synthetic ? undefined : run.turnByRequest.get(part.requestIndex)
+    const turnIndex = part.synthetic ? undefined : partTurnIndex(run, part)
     const text = partText(part, options, run.messageId)
     if (part.kind === 'text' && text) {
       parts.push({ type: 'text', content: text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
