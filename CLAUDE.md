@@ -587,7 +587,7 @@ Note: `apps/electron/src/ipc/*` is a second, portable tree (`register*IpcHandler
 
 ### Alias Registry
 
-`onething.aliases.ts` (repo root) is the **single source of truth** for all `@onething/*` resolution, consumed by all four build/test configs: `electron.vite.config.ts`, `vitest.config.ts`, `apps/web/vite.config.ts`, `apps/server/vite.config.ts`. Families: `@onething/app` (ONE prefix entry — do not add per-file entries), `@onething/core` + explicit subpaths, `@onething/gateway`, `@onething/runtime` (~110 explicit subpaths), `@onething/electron-host/*` (per-file entries → `apps/electron/src/<domain>/<file>.ts`). `@shared`/`@main`/`@renderer`/`@`/`@preload` are declared per-config, not here. Package.json "exports" maps are dead (no npm workspaces).
+`onething.aliases.ts` (repo root) is the **single source of truth** for all `@onething/*` resolution, consumed by all four build/test configs: `electron.vite.config.ts`, `vitest.config.ts`, `apps/web/vite.config.ts`, `apps/server/vite.config.ts`. Families: `@onething/app` (ONE prefix entry — do not add per-file entries), `@onething/core` + explicit subpaths, `@onething/gateway`, `@onething/runtime` (~110 explicit subpaths). `@onething/electron-host/*` is **not** in that table — it is apps/electron's internal path family, not a package, so it lives in a separate `electronHostAliases` export (2 regex entries: the `window` barrel anchored above a `apps/electron/src/$1.ts` catch-all) that only `electron.vite.config.ts` and `vitest.config.ts` spread. `@shared`/`@main`/`@renderer`/`@`/`@preload` are declared per-config, not here. Package.json "exports" maps are dead (no npm workspaces).
 
 **Adding a new runtime subpath:**
 

@@ -290,6 +290,43 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
    (electron-builder 对 workspace 包的收集是 07-29 旧伤所在;打包过不去 → 回退到原"正则塌缩"方案,
    本期目标降级为删除 alias 表中的冗余条目)。
 5. 门禁移交:boundary-check 的"登记即门禁"副作用改为"枚举全仓 `@onething/*` import → 逐条实际解析"。
+6. **08-21 可行性调研结论**(只读,源码级证据):
+   - **不会卡在 electron-builder**。三证:`externalizeDepsPlugin` 读的是根 `package.json.dependencies`
+     (`electron-vite/dist/chunks/lib-*.js` `loadPackageData()` 无参 = 仓库根),根里没有 `@onething/*`,
+     所以它们今天就是被 bundle 进 `out/main/index.js` 的,加 `workspaces` 不改变这一点;app-builder-lib 的
+     `npmNodeModulesCollector.isProdDependency` 按根 `_dependencies` 过滤,`@onething/*` 不进 production graph
+     不进 asar;`scripts/run-electron-builder.mjs` preflight 闭包只 walk 根 deps,包数不变。
+   - **两条红线**:① 根 `package.json.dependencies` 里**不许出现** `@onething/*`(一出现就被 externalize,
+     而 exports 指向 `.ts` 源,asar 里没有可执行文件 → 运行时 `Cannot find module`);② workspaces **不许写
+     `apps/*`** glob(会拖进 `apps/mobile` 的 expo + react-native),逐个列包。
+   - **唯一须实测的风险**:vite SSR(`apps/server` 与 electron main 段)对 symlink 包的 linked-package 判定;
+     兜底一行 `ssr.noExternal: [/^@onething\//]`。脚本级验收:`rg -c "@onething/" dist/server/main.js` 与
+     `rg -c "@onething" out/main/index.js` 必须为 0;preflight 包数与今天一致。
+   - **exports 不是要新写,是要救活**:core 24 / runtime 74(32 通配)/ gateway 5 / electron-host 73 条已在,
+     与 alias 表漂移 38 条(core 7 / runtime 19 / electron-host 12)——两年没人同步,正是"exports 是死的"的量化。
+     `moduleResolution` 三份 tsconfig 全是 `bundler`,`.js` 后缀(`@onething/app/**` 142 条)用
+     `"./app/*.js": "./src/app/*.ts"` 同位模式吃下,**零 import 改写**。真正的收益不是删 241 行,是消灭一类 bug:
+     前缀匹配的"叶子必须排在 barrel 之上"顺序陷阱在精确匹配的 exports 下不存在,缺条目从"只在 build/run 炸"
+     变成"typecheck 就红"。
+   - **不动的**:`@shared`(不是合法 npm scope 名,542 处 import;只是 4 条单行声明,不是债)、`@`/`@main`/`@preload`;
+     顺手删 `@renderer` 死别名(0 处 import)。**`@onething/electron-host` 不包化**:它是 `apps/electron/src/<d>/<f>.ts`
+     的内部路径别名(83 条 per-file),tsconfig 已是一条通配,vite 侧 2 条(正则 + `window` 走 index 的例外)即可,
+     收进 `electron.vite.config.ts` 局部 alias,与 workspace 化完全解耦。
+   - **boundary checker:退役不移植**。74 个函数 / 158 条 "missing X alias" 断言 / 149 处文件引用,本质是
+     "exports 死了"的代偿;exports 活过来后缺条目 typecheck 即红,门禁职能被语言接管。删 `checkAliasTargetsExist()`
+     与基线 ok 行。
+   - **分期**:P1'-0 electron-host 83→2(0.5d,独立验证)→ P1'-1 最小切片 core + gateway 变真包(0.5d;
+     根 workspaces 只列这两个、core exports 补 7 条、删 alias 32 行 + tsconfig 8 条、`npm install` 生成
+     `node_modules/@onething/{core,gateway}` symlink、改 6 条 checker 断言;验收见上)→ P1'-2 runtime 变真包
+     (124 条 alias → ~40 条 exports,1–1.5d)→ P1'-3 checker 退役 + 基线(0.5–1d)。合计 3–4d。
+   - **P1'-0 落地记录(08-21)**:`onething.aliases.ts` 304→242 行,electron-host 83 条 → 独立导出
+     `electronHostAliases()` 2 条(`window` barrel **锚定正则**在上——字符串 find 是前缀匹配,会把
+     `…/window/types` 吞成 `…/window/index.ts/types`;`apps/electron/src/$1.ts` catch-all 在下),只有
+     `electron.vite.config.ts`(三段)与 `vitest.config.ts` spread;`headless-boundary-check.ts` −637 行
+     (60 个 `checkElectronHostOwns*` 里 133 条"missing … alias"登记断言 + 238 条空声明),ok 行数 192 与基线一致、
+     13 红无变化无 healed;`out/main|preload/index.js` 零 `@onething/electron-host` 残留,`build`/`server:build`/
+     `web:build` 全绿。CLAUDE.md Alias Registry 段同步。遗留:`sessions-delete-cascade.test.ts` 全量跑偶发
+     1s 超时(fs 级联时序 flake,单跑 3/3 过)——与本线无关,记一笔。
 
 ### P2 boundary 清偿 + parity 测试(2–3 天)
 
@@ -333,6 +370,25 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
 3. 批次顺序:
    - P4a 六个裸写域(collab / evals+workbench / practice / notify / deeplink / music 混搭部分)
      ——无工厂层,纯增益,先趟模板;
+     **08-21 逐通道盘点结果**(68 invoke + 10 push;A 纯数据面 / B 需宿主端口 / C 窗口系 / D 推送):
+
+     | 域 | invoke | push | A | B | C | D | 顺序 |
+     | --- | --- | --- | --- | --- | --- | --- | --- |
+     | practice | 10 | 1 | 10 | 0 | 0 | 1(已是端口) | **1**(纯改善:web 桩原来回假 idle) |
+     | collab | 15 | 0 | 15 | 0 | 0 | 0 | **2**(web 有 `collabRooms` 能力位,迁时不动它 → 零行为变化;放开列拍板 #12) |
+     | music | 8 裸 + 6 工厂 | 4 | 14 | 0 | 0 | 4(已是端口) | **3**(web 会能遥控桌面播放器,拍板 #13 后再动;顺手删 `apps/electron/src/music/ipc.ts` 工厂与其 alias) |
+     | evals + workbench | 14 + 11 | 1 + 2 | 15 | 9(`app.isPackaged` 传染) | 1(`EVALS_RUN_START` 取 sender 窗推进度) | 3 | **4**(要新开 `configure*Host` 端口 + 先把定向推送改全窗;大 payload;"server 上跑 evals"是未答的产品问题) |
+     | notify | 2 | 1 | 0 | 0 | 2(Notification + sender 窗 + dock) | 1 | 不迁;**渲染侧零调用点,疑为死码**(拍板 #14) |
+     | deeplink | 2 | 1 | 0 | 0 | 2(OS scheme,`@onething/electron-host`) | 1 | 不迁(窗口系残留集) |
+
+     **落地记录**:practice 已迁(`practiceRouter` 10 方法 + `app/rpc/domains/practice.ts` +
+     `renderer/platform/practice-client.ts`;`main/ipc/practice.ts` 98→18 行只剩广播注入;web 从"永远 idle 的
+     说谎桩"变为真状态;transport 基线收紧 channels 329→319 / bridge 1855→1816 / web 1707→1681)。
+     模板已被两个域验证,每域 ~1 小时 opus 执行 + review。
+     横向观察:10 条推送里 **6 条已是注入端口形状**(practice 1 + music 4 + spaces 的 `SPACES_CHANGED`),
+     只有 evals 3 + notify/deeplink 2 真绑 BrowserWindow —— router 补推送面时照这个形状抄即可,不必从零设计。
+     纪律一条:`COLLAB_MESSAGE_REACT` 的 actor 由主进程钉死 `{type:'user'}`、忽略 wire 值,router 的 context 没有
+     "我是谁",handler 必须继续硬编码。
    - P4b todo-plan 窗口面收尾(消灭骑墙);
    - P4c 其余 ~24 工厂域按"低风险→高风险"排(建议:themes/scratchpad/app-state 等小域先,
      sessions/chat/media 等大域后)。
@@ -388,6 +444,9 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 9 | **(新)薄壳接线的落位形态**:`<d>/*.wiring.ts` 后缀 vs `<d>/wiring/` 子目录 | 后缀(一两个文件时不值得开目录;≥3 个文件再开 `wiring/`) | 待拍 |
 | 10 | **(新)窗口系通道的典型形态**(todo-plan minimize/zoom/drag 等操作 BrowserWindow 的通道):宿主壳自己的 `shell`/`window` 路由 + sender 上下文 vs 维持手写 | P4 终态前统一成一个宿主壳路由;transport 门区分"域通道"(禁增)与"窗口系"(白名单) | 待拍 |
 | 11 | **(新)spaces 迁 router 后 web 端从"必然降级"变为"真拿到空间"** | 按 agents/models 收敛判例接受,不人为关闭 | 已按默认执行,待知会确认 |
+| 12 | **(新)collab 迁 router 后,web 的 `collabRooms` 能力位是否放开**(放开 = 浏览器里能用协作房间) | 迁移时**不动**能力位(零行为变化);放开另议 | 待拍 |
+| 13 | **(新)music 迁 router 后 web 能遥控桌面播放器**(今天 web 桩回"仅桌面可用") | 符合"一个 core 任何 UI",但用户可感知 → 先拍再迁 | 待拍,music 迁移暂缓 |
+| 14 | **(新)notify 域(`NOTIFY_SHOW/BADGE/ACTIVATE`)渲染侧零调用点,疑为死码** | 确认无主进程外调用后整域删除(不是迁移) | 待拍 |
 
 08-21 已拍:组织原则 = 包按环境/依赖等级、包内按领域、文件名带角色(§0b.2);`app` 改名 `backend` 并瘦身;
 P1→P1'、P3→P3'、新增 P0.5、P4a 前移(§0b.4)。

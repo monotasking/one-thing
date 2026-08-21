@@ -71,89 +71,6 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/gateway/telegram', replacement: resolve(projectRoot, 'packages/gateway/src/channels/telegram/index.ts') },
   { find: '@onething/gateway/wechat', replacement: resolve(projectRoot, 'packages/gateway/src/channels/wechat/index.ts') },
   { find: '@onething/gateway', replacement: resolve(projectRoot, 'packages/gateway/src/index.ts') },
-  { find: '@onething/electron-host/accessibility/permissions', replacement: resolve(projectRoot, 'apps/electron/src/accessibility/permissions.ts') },
-  { find: '@onething/electron-host/app/activate', replacement: resolve(projectRoot, 'apps/electron/src/app/activate.ts') },
-  { find: '@onething/electron-host/app/before-quit', replacement: resolve(projectRoot, 'apps/electron/src/app/before-quit.ts') },
-  { find: '@onething/electron-host/app/bootstrap', replacement: resolve(projectRoot, 'apps/electron/src/app/bootstrap.ts') },
-  { find: '@onething/electron-host/app/did-become-active', replacement: resolve(projectRoot, 'apps/electron/src/app/did-become-active.ts') },
-  { find: '@onething/electron-host/app/login-shell-env', replacement: resolve(projectRoot, 'apps/electron/src/app/login-shell-env.ts') },
-  { find: '@onething/electron-host/app/main-process', replacement: resolve(projectRoot, 'apps/electron/src/app/main-process.ts') },
-  { find: '@onething/electron-host/app/ready', replacement: resolve(projectRoot, 'apps/electron/src/app/ready.ts') },
-  { find: '@onething/electron-host/app/window-all-closed', replacement: resolve(projectRoot, 'apps/electron/src/app/window-all-closed.ts') },
-  { find: '@onething/electron-host/auth/auth-fetch', replacement: resolve(projectRoot, 'apps/electron/src/auth/auth-fetch.ts') },
-  { find: '@onething/electron-host/auth/electron-auth', replacement: resolve(projectRoot, 'apps/electron/src/auth/electron-auth.ts') },
-  { find: '@onething/electron-host/auth/token-store', replacement: resolve(projectRoot, 'apps/electron/src/auth/token-store.ts') },
-  { find: '@onething/electron-host/browser/chromium-flags', replacement: resolve(projectRoot, 'apps/electron/src/browser/chromium-flags.ts') },
-  { find: '@onething/electron-host/browser/service', replacement: resolve(projectRoot, 'apps/electron/src/browser/service.ts') },
-  { find: '@onething/electron-host/browser/session', replacement: resolve(projectRoot, 'apps/electron/src/browser/session.ts') },
-  { find: '@onething/electron-host/browser/tab-state', replacement: resolve(projectRoot, 'apps/electron/src/browser/tab-state.ts') },
-  { find: '@onething/electron-host/deeplink/protocol', replacement: resolve(projectRoot, 'apps/electron/src/deeplink/protocol.ts') },
-  { find: '@onething/electron-host/deeplink/service', replacement: resolve(projectRoot, 'apps/electron/src/deeplink/service.ts') },
-  { find: '@onething/electron-host/gateway/lifecycle', replacement: resolve(projectRoot, 'apps/electron/src/gateway/lifecycle.ts') },
-  { find: '@onething/electron-host/ipc/acp', replacement: resolve(projectRoot, 'apps/electron/src/ipc/acp.ts') },
-  { find: '@onething/electron-host/ipc/app-state', replacement: resolve(projectRoot, 'apps/electron/src/ipc/app-state.ts') },
-  { find: '@onething/electron-host/ipc/browser', replacement: resolve(projectRoot, 'apps/electron/src/ipc/browser.ts') },
-  { find: '@onething/electron-host/ipc/chat', replacement: resolve(projectRoot, 'apps/electron/src/ipc/chat.ts') },
-  { find: '@onething/electron-host/ipc/files', replacement: resolve(projectRoot, 'apps/electron/src/ipc/files.ts') },
-  { find: '@onething/electron-host/ipc/gateway', replacement: resolve(projectRoot, 'apps/electron/src/ipc/gateway.ts') },
-  { find: '@onething/electron-host/ipc/interaction', replacement: resolve(projectRoot, 'apps/electron/src/ipc/interaction.ts') },
-  { find: '@onething/electron-host/ipc/media', replacement: resolve(projectRoot, 'apps/electron/src/ipc/media.ts') },
-  { find: '@onething/electron-host/ipc/mcp', replacement: resolve(projectRoot, 'apps/electron/src/ipc/mcp.ts') },
-  { find: '@onething/electron-host/ipc/oauth', replacement: resolve(projectRoot, 'apps/electron/src/ipc/oauth.ts') },
-  { find: '@onething/electron-host/ipc/permission', replacement: resolve(projectRoot, 'apps/electron/src/ipc/permission.ts') },
-  { find: '@onething/electron-host/ipc/plugins', replacement: resolve(projectRoot, 'apps/electron/src/ipc/plugins.ts') },
-  { find: '@onething/electron-host/ipc/project-dirs', replacement: resolve(projectRoot, 'apps/electron/src/ipc/project-dirs.ts') },
-  { find: '@onething/electron-host/ipc/scheduler', replacement: resolve(projectRoot, 'apps/electron/src/ipc/scheduler.ts') },
-  { find: '@onething/electron-host/ipc/scratchpad', replacement: resolve(projectRoot, 'apps/electron/src/ipc/scratchpad.ts') },
-  { find: '@onething/electron-host/ipc/shell', replacement: resolve(projectRoot, 'apps/electron/src/ipc/shell.ts') },
-  { find: '@onething/electron-host/ipc/session-command', replacement: resolve(projectRoot, 'apps/electron/src/ipc/session-command.ts') },
-  { find: '@onething/electron-host/ipc/sessions', replacement: resolve(projectRoot, 'apps/electron/src/ipc/sessions.ts') },
-  { find: '@onething/electron-host/ipc/skills', replacement: resolve(projectRoot, 'apps/electron/src/ipc/skills.ts') },
-  { find: '@onething/electron-host/ipc/terminal', replacement: resolve(projectRoot, 'apps/electron/src/ipc/terminal.ts') },
-  { find: '@onething/electron-host/ipc/themes', replacement: resolve(projectRoot, 'apps/electron/src/ipc/themes.ts') },
-  { find: '@onething/electron-host/ipc/todo-plan', replacement: resolve(projectRoot, 'apps/electron/src/ipc/todo-plan.ts') },
-  { find: '@onething/electron-host/ipc/tools', replacement: resolve(projectRoot, 'apps/electron/src/ipc/tools.ts') },
-  { find: '@onething/electron-host/ipc/window', replacement: resolve(projectRoot, 'apps/electron/src/ipc/window.ts') },
-  { find: '@onething/electron-host/ipc/variables', replacement: resolve(projectRoot, 'apps/electron/src/ipc/variables.ts') },
-  { find: '@onething/electron-host/logging/console-capture', replacement: resolve(projectRoot, 'apps/electron/src/logging/console-capture.ts') },
-  { find: '@onething/electron-host/menu/application-menu', replacement: resolve(projectRoot, 'apps/electron/src/menu/application-menu.ts') },
-  { find: '@onething/electron-host/web-preview/web-preview', replacement: resolve(projectRoot, 'apps/electron/src/web-preview/web-preview.ts') },
-  { find: '@onething/electron-host/media/protocol', replacement: resolve(projectRoot, 'apps/electron/src/media/protocol.ts') },
-  { find: '@onething/electron-host/network/proxy', replacement: resolve(projectRoot, 'apps/electron/src/network/proxy.ts') },
-  { find: '@onething/electron-host/oauth/events', replacement: resolve(projectRoot, 'apps/electron/src/oauth/events.ts') },
-  { find: '@onething/electron-host/plugins/file-pick', replacement: resolve(projectRoot, 'apps/electron/src/plugins/file-pick.ts') },
-  { find: '@onething/electron-host/power/resume', replacement: resolve(projectRoot, 'apps/electron/src/power/resume.ts') },
-  { find: '@onething/electron-host/search/ipc', replacement: resolve(projectRoot, 'apps/electron/src/search/ipc.ts') },
-  { find: '@onething/electron-host/search/window-actions', replacement: resolve(projectRoot, 'apps/electron/src/search/window-actions.ts') },
-  { find: '@onething/electron-host/search/window-controller', replacement: resolve(projectRoot, 'apps/electron/src/search/window-controller.ts') },
-  { find: '@onething/electron-host/search/window', replacement: resolve(projectRoot, 'apps/electron/src/search/window.ts') },
-  { find: '@onething/electron-host/settings/ipc-host', replacement: resolve(projectRoot, 'apps/electron/src/settings/ipc-host.ts') },
-  { find: '@onething/electron-host/shell/operations', replacement: resolve(projectRoot, 'apps/electron/src/shell/operations.ts') },
-  { find: '@onething/electron-host/skills/environment', replacement: resolve(projectRoot, 'apps/electron/src/skills/environment.ts') },
-  { find: '@onething/electron-host/shortcuts/global-shortcuts', replacement: resolve(projectRoot, 'apps/electron/src/shortcuts/global-shortcuts.ts') },
-  { find: '@onething/electron-host/todo-plan/notifications', replacement: resolve(projectRoot, 'apps/electron/src/todo-plan/notifications.ts') },
-  { find: '@onething/electron-host/music/ipc', replacement: resolve(projectRoot, 'apps/electron/src/music/ipc.ts') },
-  { find: '@onething/electron-host/voice/events', replacement: resolve(projectRoot, 'apps/electron/src/voice/events.ts') },
-  { find: '@onething/electron-host/voice/ipc', replacement: resolve(projectRoot, 'apps/electron/src/voice/ipc.ts') },
-  { find: '@onething/electron-host/voice/runtime-window', replacement: resolve(projectRoot, 'apps/electron/src/voice/runtime-window.ts') },
-  { find: '@onething/electron-host/voice/tray', replacement: resolve(projectRoot, 'apps/electron/src/voice/tray.ts') },
-  { find: '@onething/electron-host/window/activation', replacement: resolve(projectRoot, 'apps/electron/src/window/activation.ts') },
-  { find: '@onething/electron-host/window/external-links', replacement: resolve(projectRoot, 'apps/electron/src/window/external-links.ts') },
-  { find: '@onething/electron-host/window/image-preview-window', replacement: resolve(projectRoot, 'apps/electron/src/window/image-preview-window.ts') },
-  { find: '@onething/electron-host/window/macos-panel', replacement: resolve(projectRoot, 'apps/electron/src/window/macos-panel.ts') },
-  { find: '@onething/electron-host/window/main-window', replacement: resolve(projectRoot, 'apps/electron/src/window/main-window.ts') },
-  { find: '@onething/electron-host/window/main-window-recovery', replacement: resolve(projectRoot, 'apps/electron/src/window/main-window-recovery.ts') },
-  { find: '@onething/electron-host/window/renderer-targets', replacement: resolve(projectRoot, 'apps/electron/src/window/renderer-targets.ts') },
-  { find: '@onething/electron-host/window/search-window', replacement: resolve(projectRoot, 'apps/electron/src/window/search-window.ts') },
-  { find: '@onething/electron-host/window/search-window-layout', replacement: resolve(projectRoot, 'apps/electron/src/window/search-window-layout.ts') },
-  { find: '@onething/electron-host/window/settings-window', replacement: resolve(projectRoot, 'apps/electron/src/window/settings-window.ts') },
-  { find: '@onething/electron-host/window/session-security', replacement: resolve(projectRoot, 'apps/electron/src/window/session-security.ts') },
-  { find: '@onething/electron-host/window/todo-plan-presentation', replacement: resolve(projectRoot, 'apps/electron/src/window/todo-plan-presentation.ts') },
-  { find: '@onething/electron-host/window/todo-plan-window', replacement: resolve(projectRoot, 'apps/electron/src/window/todo-plan-window.ts') },
-  { find: '@onething/electron-host/window/types', replacement: resolve(projectRoot, 'apps/electron/src/window/types.ts') },
-  { find: '@onething/electron-host/window/window-visibility', replacement: resolve(projectRoot, 'apps/electron/src/window/window-visibility.ts') },
-  { find: '@onething/electron-host/window/window-state', replacement: resolve(projectRoot, 'apps/electron/src/window/window-state.ts') },
-  { find: '@onething/electron-host/window', replacement: resolve(projectRoot, 'apps/electron/src/window/index.ts') },
   { find: '@onething/runtime/logging', replacement: resolve(projectRoot, 'packages/onething-runtime/src/logging/index.ts') },
   { find: '@onething/runtime/headless', replacement: resolve(projectRoot, 'packages/onething-runtime/src/headless/index.ts') },
   { find: '@onething/runtime/runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/runtime.ts') },
@@ -301,4 +218,25 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/perf', replacement: resolve(projectRoot, 'packages/onething-runtime/src/perf/index.ts') },
   { find: '@onething/runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/index.ts') },
 ]
+}
+
+/**
+ * apps/electron 自己的内部路径别名:`@onething/electron-host/<domain>/<file>`
+ * → `apps/electron/src/<domain>/<file>.ts`。它不是一个包,只是 Electron 宿主
+ * 内部的一套路径写法 —— 所以不进上面那张跨宿主的包表,只有真正需要它的两个配置
+ * spread 它:electron.vite.config.ts(三段构建)和 vitest.config.ts
+ * (apps/electron 的测试、以及装配层里 mock 宿主模块的测试要能解析)。
+ * apps/web / apps/server 不 import 这个族,也不应该拿到它。
+ *
+ * 两条就够,顺序有讲究:
+ * 1. barrel(唯一走 index.ts 的 `window`)用**锚定正则**放在最前 —— 写成字符串
+ *    的话 vite 的 string find 是前缀匹配,`@onething/electron-host/window` 会把
+ *    `…/window/types` 一起吞成 `…/window/index.ts/types`;
+ * 2. 叶子模块的 catch-all 正则在后,`$1` 直接落到 `<domain>/<file>.ts`。
+ */
+export function electronHostAliases(projectRoot: string): OnethingAliasEntry[] {
+  return [
+    { find: /^@onething\/electron-host\/window$/, replacement: resolve(projectRoot, 'apps/electron/src/window/index.ts') },
+    { find: /^@onething\/electron-host\/(.+)$/, replacement: resolve(projectRoot, 'apps/electron/src/$1.ts') },
+  ]
 }

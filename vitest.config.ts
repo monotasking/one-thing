@@ -1,13 +1,15 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
-import { onethingPackageAliases } from './onething.aliases'
+import { onethingPackageAliases, electronHostAliases } from './onething.aliases'
 
 export default defineConfig({
   plugins: [vue()],
   resolve: {
     // @onething/* resolution comes from the single shared table.
-    alias: onethingPackageAliases(__dirname),
+    // electron-host 是 apps/electron 的内部路径族(不是包),单独 spread —— 测试
+    // 里 apps/electron 和装配层的 mock 都要解析它。
+    alias: [...onethingPackageAliases(__dirname), ...electronHostAliases(__dirname)],
   },
   test: {
     globals: true,

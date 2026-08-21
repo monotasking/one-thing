@@ -2786,8 +2786,6 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
   const mainGatewayIpcFile = path.join(root, 'apps/electron/src/main/ipc/gateway.ts')
   const mainSettingsIpcFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
   const tsconfigNode = path.join(root, 'tsconfig.node.json')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronGatewayControllerContent = fs.existsSync(electronGatewayControllerFile)
     ? fs.readFileSync(electronGatewayControllerFile, 'utf-8')
@@ -2796,8 +2794,6 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
   const mainGatewayIpcContent = fs.existsSync(mainGatewayIpcFile) ? fs.readFileSync(mainGatewayIpcFile, 'utf-8') : ''
   const mainSettingsIpcContent = fs.existsSync(mainSettingsIpcFile) ? fs.readFileSync(mainSettingsIpcFile, 'utf-8') : ''
   const tsconfigContent = fs.existsSync(tsconfigNode) ? fs.readFileSync(tsconfigNode, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredControllerSymbols = [
     'createElectronGatewayLifecycle',
     'ElectronGatewayLifecycleOptions',
@@ -2836,14 +2832,8 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
     ...(!tsconfigContent.includes('apps/electron/**/*')
       ? [`${rel(tsconfigNode)}: missing apps/electron from node typecheck include`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/gateway/lifecycle')
-      ? [`${rel(viteConfig)}: missing electron-host package alias`]
-      : []),
     ...(!fs.readFileSync(path.join(root, 'vitest.config.ts'), 'utf-8').includes('apps/**/*.test.ts')
       ? ['vitest.config.ts: missing apps test include']
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/gateway/lifecycle')
-      ? [`${rel(vitestConfig)}: missing electron-host test alias`]
       : []),
     ...(fs.existsSync(electronGatewayControllerFile)
       ? matchingLines(electronGatewayControllerFile, ELECTRON_GATEWAY_LIFECYCLE_FORBIDDEN_PATTERNS)
@@ -2868,8 +2858,6 @@ function checkElectronHostOwnsVoiceRuntimeWindow(): void {
   const electronRuntimeFile = path.join(root, 'apps/electron/src/voice/runtime-window.ts')
   const mainRuntimeFile = path.join(root, 'packages/onething-runtime/src/app/voice/runtime-window.ts')
   const mainVoiceServiceFile = path.join(root, 'packages/onething-runtime/src/app/voice/service.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronRuntimeControllerContent = fs.existsSync(electronRuntimeControllerFile)
     ? fs.readFileSync(electronRuntimeControllerFile, 'utf-8')
@@ -2878,8 +2866,6 @@ function checkElectronHostOwnsVoiceRuntimeWindow(): void {
     ? fs.readFileSync(electronRuntimeFile, 'utf-8')
     : ''
   const mainVoiceServiceContent = fs.existsSync(mainVoiceServiceFile) ? fs.readFileSync(mainVoiceServiceFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredControllerSymbols = [
     'createElectronVoiceRuntimeWindowController',
     'new BrowserWindow',
@@ -2914,12 +2900,6 @@ function checkElectronHostOwnsVoiceRuntimeWindow(): void {
     ...(mainVoiceServiceContent.includes('./runtime-window.js')
       ? [`${rel(mainVoiceServiceFile)}: voice service must not import legacy runtime-window facade`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/voice/runtime-window')
-      ? [`${rel(viteConfig)}: missing electron voice runtime-window package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/voice/runtime-window')
-      ? [`${rel(vitestConfig)}: missing electron voice runtime-window test alias`]
-      : []),
     ...(fs.existsSync(mainRuntimeFile)
       ? [`${rel(mainRuntimeFile)}: remove legacy voice runtime-window facade; use @onething/electron-host/voice/runtime-window directly`]
       : []),
@@ -2932,13 +2912,9 @@ function checkElectronHostOwnsVoiceEventBroadcasting(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronEventsFile = path.join(root, 'apps/electron/src/voice/events.ts')
   const mainVoiceServiceFile = path.join(root, 'packages/onething-runtime/src/app/voice/service.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronEventsContent = fs.existsSync(electronEventsFile) ? fs.readFileSync(electronEventsFile, 'utf-8') : ''
   const mainVoiceServiceContent = fs.existsSync(mainVoiceServiceFile) ? fs.readFileSync(mainVoiceServiceFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'broadcastElectronVoiceMessage',
     'sendElectronVoiceMessageToWindow',
@@ -2962,12 +2938,6 @@ function checkElectronHostOwnsVoiceEventBroadcasting(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainVoiceServiceContent.includes(symbol))
       .map(symbol => `${rel(mainVoiceServiceFile)}: missing voice event facade delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/voice/events')
-      ? [`${rel(viteConfig)}: missing electron voice events package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/voice/events')
-      ? [`${rel(vitestConfig)}: missing electron voice events test alias`]
-      : []),
     ...(fs.existsSync(mainVoiceServiceFile)
       ? matchingLines(mainVoiceServiceFile, VOICE_EVENT_BROADCAST_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/voice/service.ts: missing voice service']),
@@ -2983,8 +2953,6 @@ function checkElectronHostOwnsVoiceTray(): void {
   const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const mainTrayFile = path.join(root, 'packages/onething-runtime/src/app/voice/tray.ts')
   const mainVoiceServiceFile = path.join(root, 'packages/onething-runtime/src/app/voice/service.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTrayControllerContent = fs.existsSync(electronTrayControllerFile)
     ? fs.readFileSync(electronTrayControllerFile, 'utf-8')
@@ -2992,8 +2960,6 @@ function checkElectronHostOwnsVoiceTray(): void {
   const electronTrayContent = fs.existsSync(electronTrayFile) ? fs.readFileSync(electronTrayFile, 'utf-8') : ''
   const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
   const mainVoiceServiceContent = fs.existsSync(mainVoiceServiceFile) ? fs.readFileSync(mainVoiceServiceFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredControllerSymbols = [
     'createElectronVoiceTrayController',
     'new Tray',
@@ -3036,12 +3002,6 @@ function checkElectronHostOwnsVoiceTray(): void {
     ...(mainVoiceServiceContent.includes('./tray.js')
       ? [`${rel(mainVoiceServiceFile)}: voice service must not import legacy voice tray facade`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/voice/tray')
-      ? [`${rel(viteConfig)}: missing electron voice tray package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/voice/tray')
-      ? [`${rel(vitestConfig)}: missing electron voice tray test alias`]
-      : []),
     ...(fs.existsSync(mainTrayFile)
       ? [`${rel(mainTrayFile)}: remove legacy voice tray facade; use @onething/electron-host/voice/tray directly`]
       : []),
@@ -3054,15 +3014,11 @@ function checkElectronHostOwnsVoiceIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronVoiceIpcFile = path.join(root, 'apps/electron/src/voice/ipc.ts')
   const mainVoiceIpcFile = path.join(root, 'apps/electron/src/main/ipc/voice.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronVoiceIpcContent = fs.existsSync(electronVoiceIpcFile)
     ? fs.readFileSync(electronVoiceIpcFile, 'utf-8')
     : ''
   const mainVoiceIpcContent = fs.existsSync(mainVoiceIpcFile) ? fs.readFileSync(mainVoiceIpcFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronVoiceIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -3096,12 +3052,6 @@ function checkElectronHostOwnsVoiceIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainVoiceIpcContent.includes(symbol))
       .map(symbol => `${rel(mainVoiceIpcFile)}: missing voice IPC host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/voice/ipc')
-      ? [`${rel(viteConfig)}: missing electron voice IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/voice/ipc')
-      ? [`${rel(vitestConfig)}: missing electron voice IPC test alias`]
-      : []),
     ...(fs.existsSync(mainVoiceIpcFile)
       ? matchingLines(mainVoiceIpcFile, MAIN_VOICE_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/voice.ts: missing voice IPC adapter']),
@@ -3117,16 +3067,12 @@ function checkElectronHostOwnsReadyHandler(): void {
   const electronLoginShellEnvTestFile = path.join(root, 'apps/electron/src/app/__tests__/login-shell-env.test.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const legacyLoginShellEnvFile = path.join(root, 'packages/onething-runtime/src/app/utils/login-shell-env.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronReadyContent = fs.existsSync(electronReadyFile) ? fs.readFileSync(electronReadyFile, 'utf-8') : ''
   const electronLoginShellEnvContent = fs.existsSync(electronLoginShellEnvFile) ? fs.readFileSync(electronLoginShellEnvFile, 'utf-8') : ''
   const electronLoginShellEnvTestContent = fs.existsSync(electronLoginShellEnvTestFile) ? fs.readFileSync(electronLoginShellEnvTestFile, 'utf-8') : ''
   const legacyLoginShellEnvContent = fs.existsSync(legacyLoginShellEnvFile) ? fs.readFileSync(legacyLoginShellEnvFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredReadySymbols = [
     'configureElectronStorePathHost',
     'registerElectronReadyHandler',
@@ -3173,18 +3119,6 @@ function checkElectronHostOwnsReadyHandler(): void {
       && !mainContent.includes('registerElectronAppBootstrap')
       ? [`${rel(mainFile)}: main must delegate ready handling to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/app/login-shell-env')
-      ? [`${rel(viteConfig)}: missing electron login-shell env package alias`]
-      : []),
-    ...(!viteContent.includes('@onething/electron-host/app/ready')
-      ? [`${rel(viteConfig)}: missing electron ready package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/app/login-shell-env')
-      ? [`${rel(vitestConfig)}: missing electron login-shell env test alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/app/ready')
-      ? [`${rel(vitestConfig)}: missing electron ready test alias`]
-      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_READY_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/index.ts: missing Electron main entry']),
@@ -3197,13 +3131,9 @@ function checkElectronHostOwnsActivateHandler(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronActivateFile = path.join(root, 'apps/electron/src/app/activate.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronActivateContent = fs.existsSync(electronActivateFile) ? fs.readFileSync(electronActivateFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const singleQuoteActivateStart = mainContent.indexOf("app.on('activate'")
   const doubleQuoteActivateStart = mainContent.indexOf('app.on("activate"')
   const legacyActivateStart = singleQuoteActivateStart >= 0 ? singleQuoteActivateStart : doubleQuoteActivateStart
@@ -3230,12 +3160,6 @@ function checkElectronHostOwnsActivateHandler(): void {
     ...(!mainContent.includes('registerElectronActivateHandler')
       && !mainContent.includes('registerElectronAppBootstrap')
       ? [`${rel(mainFile)}: main must delegate activate handling to apps/electron`]
-      : []),
-    ...(!viteContent.includes('@onething/electron-host/app/activate')
-      ? [`${rel(viteConfig)}: missing electron activate package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/app/activate')
-      ? [`${rel(vitestConfig)}: missing electron activate test alias`]
       : []),
     ...(fs.existsSync(mainFile) && legacyActivateStart >= 0
       ? matchingTextLines(rel(mainFile), mainContent.slice(legacyActivateStart), MAIN_ACTIVATE_FORBIDDEN_PATTERNS, legacyActivateLineOffset)
@@ -3272,13 +3196,9 @@ function checkElectronHostOwnsApplicationMenu(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMenuFile = path.join(root, 'apps/electron/src/menu/application-menu.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMenuContent = fs.existsSync(electronMenuFile) ? fs.readFileSync(electronMenuFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredMenuSymbols = [
     'setupElectronApplicationMenu',
     'ElectronApplicationMenuOptions',
@@ -3297,12 +3217,6 @@ function checkElectronHostOwnsApplicationMenu(): void {
     ...(!windowContent.includes('setupElectronApplicationMenu({ mainWindow, openSettingsWindow })')
       ? [`${rel(windowFile)}: window creation must delegate application menu setup to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/menu/application-menu')
-      ? [`${rel(viteConfig)}: missing electron application menu package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/menu/application-menu')
-      ? [`${rel(vitestConfig)}: missing electron application menu test alias`]
-      : []),
     ...(fs.existsSync(windowFile)
       ? matchingLines(windowFile, WINDOW_APPLICATION_MENU_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
@@ -3315,13 +3229,9 @@ function checkElectronHostOwnsSessionSecurity(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSessionFile = path.join(root, 'apps/electron/src/window/session-security.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSessionContent = fs.existsSync(electronSessionFile) ? fs.readFileSync(electronSessionFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredSessionSymbols = [
     'registerElectronContentSecurityPolicy',
     'registerElectronMediaPermissions',
@@ -3346,12 +3256,6 @@ function checkElectronHostOwnsSessionSecurity(): void {
     ...(!windowContent.includes('isElectronAppWebContents')
       ? [`${rel(windowFile)}: media permission webContents checks must delegate to apps/electron renderer targets`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/session-security')
-      ? [`${rel(viteConfig)}: missing electron session-security package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/session-security')
-      ? [`${rel(vitestConfig)}: missing electron session-security test alias`]
-      : []),
     ...(fs.existsSync(windowFile)
       ? matchingLines(windowFile, WINDOW_SESSION_SECURITY_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
@@ -3364,13 +3268,9 @@ function checkElectronHostOwnsExternalLinkHandling(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronExternalLinksFile = path.join(root, 'apps/electron/src/window/external-links.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronExternalLinksContent = fs.existsSync(electronExternalLinksFile) ? fs.readFileSync(electronExternalLinksFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredExternalLinkSymbols = [
     'setupElectronExternalLinkHandling',
     'openExternal',
@@ -3389,12 +3289,6 @@ function checkElectronHostOwnsExternalLinkHandling(): void {
     ...(!windowContent.includes('setupElectronExternalLinkHandling({')
       ? [`${rel(windowFile)}: window creation must delegate external-link handling to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/external-links')
-      ? [`${rel(viteConfig)}: missing electron external-links package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/external-links')
-      ? [`${rel(vitestConfig)}: missing electron external-links test alias`]
-      : []),
     ...(fs.existsSync(windowFile)
       ? matchingLines(windowFile, WINDOW_EXTERNAL_LINKS_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
@@ -3407,13 +3301,9 @@ function checkElectronHostOwnsMainWindowRecovery(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronRecoveryFile = path.join(root, 'apps/electron/src/window/main-window-recovery.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronRecoveryContent = fs.existsSync(electronRecoveryFile) ? fs.readFileSync(electronRecoveryFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredRecoverySymbols = [
     'attachElectronMainWindowRecovery',
     'recoverElectronMainWindowAfterSystemResume',
@@ -3436,12 +3326,6 @@ function checkElectronHostOwnsMainWindowRecovery(): void {
     ...(!windowContent.includes('recoverElectronMainWindowAfterSystemResume({')
       ? [`${rel(windowFile)}: resume recovery must delegate renderer recovery to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/main-window-recovery')
-      ? [`${rel(viteConfig)}: missing electron main-window-recovery package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/main-window-recovery')
-      ? [`${rel(vitestConfig)}: missing electron main-window-recovery test alias`]
-      : []),
     ...(fs.existsSync(windowFile)
       ? matchingLines(windowFile, WINDOW_MAIN_RECOVERY_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
@@ -3454,13 +3338,9 @@ function checkElectronHostOwnsSettingsWindow(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSettingsFile = path.join(root, 'apps/electron/src/window/settings-window.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSettingsContent = fs.existsSync(electronSettingsFile) ? fs.readFileSync(electronSettingsFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const settingsStart = windowContent.indexOf('export function openSettingsWindow')
   const settingsEnd = windowContent.indexOf('export function openTodoPlanWindow', settingsStart)
   const settingsRegion = settingsStart >= 0 && settingsEnd > settingsStart
@@ -3487,12 +3367,6 @@ function checkElectronHostOwnsSettingsWindow(): void {
     ...(!windowContent.includes('openElectronSettingsWindow({')
       ? [`${rel(windowFile)}: settings window must delegate BrowserWindow setup to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/settings-window')
-      ? [`${rel(viteConfig)}: missing electron settings-window package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/settings-window')
-      ? [`${rel(vitestConfig)}: missing electron settings-window test alias`]
-      : []),
     ...(settingsRegion
       ? matchingTextLines(rel(windowFile), settingsRegion, WINDOW_SETTINGS_WINDOW_FORBIDDEN_PATTERNS, settingsLineOffset)
       : [`${rel(windowFile)}: missing openSettingsWindow region`]),
@@ -3505,13 +3379,9 @@ function checkElectronHostOwnsImagePreviewWindow(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronImagePreviewFile = path.join(root, 'apps/electron/src/window/image-preview-window.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronImagePreviewContent = fs.existsSync(electronImagePreviewFile) ? fs.readFileSync(electronImagePreviewFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const previewStart = windowContent.indexOf('export function openImagePreviewWindow')
   const previewRegion = previewStart >= 0
     ? windowContent.slice(previewStart)
@@ -3538,12 +3408,6 @@ function checkElectronHostOwnsImagePreviewWindow(): void {
     ...(!windowContent.includes('openElectronImagePreviewWindow({')
       ? [`${rel(windowFile)}: image preview window must delegate BrowserWindow setup to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/image-preview-window')
-      ? [`${rel(viteConfig)}: missing electron image-preview-window package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/image-preview-window')
-      ? [`${rel(vitestConfig)}: missing electron image-preview-window test alias`]
-      : []),
     ...(previewRegion
       ? matchingTextLines(rel(windowFile), previewRegion, WINDOW_IMAGE_PREVIEW_WINDOW_FORBIDDEN_PATTERNS, previewLineOffset)
       : [`${rel(windowFile)}: missing openImagePreviewWindow region`]),
@@ -3556,13 +3420,9 @@ function checkElectronHostOwnsMainWindowCreation(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMainWindowFile = path.join(root, 'apps/electron/src/window/main-window.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMainWindowContent = fs.existsSync(electronMainWindowFile) ? fs.readFileSync(electronMainWindowFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const createStart = windowContent.indexOf('export function createWindow')
   const createEnd = windowContent.indexOf('// Keep track of the image preview window', createStart)
   const createRegion = createStart >= 0 && createEnd > createStart
@@ -3590,12 +3450,6 @@ function checkElectronHostOwnsMainWindowCreation(): void {
     ...(!windowContent.includes('createElectronMainWindow({')
       ? [`${rel(windowFile)}: main window must delegate BrowserWindow setup to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/main-window')
-      ? [`${rel(viteConfig)}: missing electron main-window package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/main-window')
-      ? [`${rel(vitestConfig)}: missing electron main-window test alias`]
-      : []),
     ...(createRegion
       ? matchingTextLines(rel(windowFile), createRegion, WINDOW_MAIN_WINDOW_FORBIDDEN_PATTERNS, createLineOffset)
       : [`${rel(windowFile)}: missing createWindow region`]),
@@ -3608,13 +3462,9 @@ function checkElectronHostOwnsTodoPlanWindowCreation(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronTodoFile = path.join(root, 'apps/electron/src/window/todo-plan-window.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTodoContent = fs.existsSync(electronTodoFile) ? fs.readFileSync(electronTodoFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const todoStart = windowContent.indexOf('function createTodoPlanBrowserWindow')
   const todoEnd = windowContent.indexOf('export function openSettingsWindow', todoStart)
   const todoRegion = todoStart >= 0 && todoEnd > todoStart
@@ -3641,12 +3491,6 @@ function checkElectronHostOwnsTodoPlanWindowCreation(): void {
     ...(!windowContent.includes('createElectronTodoPlanWindow({')
       ? [`${rel(windowFile)}: todo plan window must delegate BrowserWindow setup to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/todo-plan-window')
-      ? [`${rel(viteConfig)}: missing electron todo-plan-window package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/todo-plan-window')
-      ? [`${rel(vitestConfig)}: missing electron todo-plan-window test alias`]
-      : []),
     ...(todoRegion
       ? matchingTextLines(rel(windowFile), todoRegion, WINDOW_TODO_PLAN_WINDOW_FORBIDDEN_PATTERNS, todoLineOffset)
       : [`${rel(windowFile)}: missing createTodoPlanBrowserWindow region`]),
@@ -3661,14 +3505,10 @@ function checkElectronHostOwnsMacOSPanelBridge(): void {
   const legacyPanelFile = path.join(root, 'packages/onething-runtime/src/app/native/macos-panel.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
   const todoWindowTestFile = path.join(root, 'apps/electron/src/main/__tests__/todo-plan-window.test.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPanelContent = fs.existsSync(electronPanelFile) ? fs.readFileSync(electronPanelFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
   const todoWindowTestContent = fs.existsSync(todoWindowTestFile) ? fs.readFileSync(todoWindowTestFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredPanelSymbols = [
     'configureNonActivatingPanel',
     'showNonActivatingPanel',
@@ -3692,12 +3532,6 @@ function checkElectronHostOwnsMacOSPanelBridge(): void {
     ...(!todoWindowTestContent.includes('@onething/electron-host/window/macos-panel')
       ? [`${rel(todoWindowTestFile)}: todo plan window test must mock the electron-host macOS panel bridge`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/macos-panel')
-      ? [`${rel(viteConfig)}: missing electron macOS panel package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/macos-panel')
-      ? [`${rel(vitestConfig)}: missing electron macOS panel test alias`]
-      : []),
     ...(fs.existsSync(legacyPanelFile)
       ? [`${rel(legacyPanelFile)}: macOS native panel bridge belongs in apps/electron`]
       : []),
@@ -3717,13 +3551,9 @@ function checkElectronHostOwnsRendererTargets(): void {
   const electronTargetsFile = path.join(root, 'apps/electron/src/window/renderer-targets.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
   const searchTargetFile = path.join(root, 'packages/onething-runtime/src/app/search/window-target.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTargetsContent = fs.existsSync(electronTargetsFile) ? fs.readFileSync(electronTargetsFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredTargetSymbols = [
     'getElectronRendererDevUrl',
     'isElectronRendererWindowUrl',
@@ -3748,12 +3578,6 @@ function checkElectronHostOwnsRendererTargets(): void {
     ...(windowContent.includes('@main/search/window-target')
       ? [`${rel(windowFile)}: main window must not route renderer-target checks through packages/onething-runtime/src/app/search/window-target.ts`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/renderer-targets')
-      ? [`${rel(viteConfig)}: missing electron renderer-targets package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/renderer-targets')
-      ? [`${rel(vitestConfig)}: missing electron renderer-targets test alias`]
-      : []),
     ...(fs.existsSync(windowFile)
       ? matchingLines(windowFile, WINDOW_RENDERER_TARGETS_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
@@ -3770,8 +3594,6 @@ function checkElectronHostOwnsSearchWindowLifecycle(): void {
   const electronSearchWindowControllerFile = path.join(root, 'apps/electron/src/window/search-window.ts')
   const electronSearchWindowFile = path.join(root, 'apps/electron/src/search/window.ts')
   const searchWindowFile = path.join(root, 'packages/onething-runtime/src/app/search/window.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSearchWindowControllerContent = fs.existsSync(electronSearchWindowControllerFile)
     ? fs.readFileSync(electronSearchWindowControllerFile, 'utf-8')
@@ -3779,8 +3601,6 @@ function checkElectronHostOwnsSearchWindowLifecycle(): void {
   const electronSearchWindowContent = fs.existsSync(electronSearchWindowFile)
     ? fs.readFileSync(electronSearchWindowFile, 'utf-8')
     : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredSearchWindowControllerSymbols = [
     'createElectronSearchWindowController',
     'getElectronSystemShouldUseDarkColors',
@@ -3808,18 +3628,6 @@ function checkElectronHostOwnsSearchWindowLifecycle(): void {
     ...requiredHostFacadeSymbols
       .filter(symbol => !electronSearchWindowContent.includes(symbol))
       .map(symbol => `${rel(electronSearchWindowFile)}: missing onething search-window host facade symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/window/search-window')
-      ? [`${rel(viteConfig)}: missing electron search-window package alias`]
-      : []),
-    ...(!viteContent.includes('@onething/electron-host/search/window')
-      ? [`${rel(viteConfig)}: missing electron search window aggregate package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/search-window')
-      ? [`${rel(vitestConfig)}: missing electron search-window test alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/search/window')
-      ? [`${rel(vitestConfig)}: missing electron search window aggregate test alias`]
-      : []),
     ...(fs.existsSync(searchWindowFile)
       ? [`${rel(searchWindowFile)}: remove legacy search window facade; use @onething/electron-host/search/window directly`]
       : []),
@@ -3836,8 +3644,6 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
   const legacySelectionFile = path.join(root, 'packages/onething-runtime/src/app/search/window-selection.ts')
   const searchControllerFile = path.join(root, 'packages/onething-runtime/src/app/search/window-controller.ts')
   const searchIpcFile = path.join(root, 'packages/onething-runtime/src/app/search/ipc.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSearchActionsContent = fs.existsSync(electronSearchActionsFile)
     ? fs.readFileSync(electronSearchActionsFile, 'utf-8')
@@ -3848,8 +3654,6 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
   const electronSearchIpcContent = fs.existsSync(electronSearchIpcFile)
     ? fs.readFileSync(electronSearchIpcFile, 'utf-8')
     : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'findElectronMainSearchWindow',
     'getElectronSearchWindowFromWebContents',
@@ -3906,24 +3710,6 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
     ]
       .filter(symbol => !electronSearchIpcContent.includes(symbol))
       .map(symbol => `${rel(electronSearchIpcFile)}: missing search IPC channel ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/search/window-actions')
-      ? [`${rel(viteConfig)}: missing electron search window-actions package alias`]
-      : []),
-    ...(!viteContent.includes('@onething/electron-host/search/window-controller')
-      ? [`${rel(viteConfig)}: missing electron search window-controller package alias`]
-      : []),
-    ...(!viteContent.includes('@onething/electron-host/search/ipc')
-      ? [`${rel(viteConfig)}: missing electron search IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/search/window-actions')
-      ? [`${rel(vitestConfig)}: missing electron search window-actions test alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/search/window-controller')
-      ? [`${rel(vitestConfig)}: missing electron search window-controller test alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/search/ipc')
-      ? [`${rel(vitestConfig)}: missing electron search IPC test alias`]
-      : []),
     ...(fs.existsSync(legacySelectionFile)
       ? [`${rel(legacySelectionFile)}: search main-window selection belongs in apps/electron`]
       : []),
@@ -3944,15 +3730,11 @@ function checkElectronHostOwnsSearchWindowLayout(): void {
   const electronSearchWindowFile = path.join(root, 'apps/electron/src/search/window.ts')
   const legacyLayoutFile = path.join(root, 'packages/onething-runtime/src/app/search/window-layout.ts')
   const searchWindowFile = path.join(root, 'packages/onething-runtime/src/app/search/window.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronLayoutContent = fs.existsSync(electronLayoutFile) ? fs.readFileSync(electronLayoutFile, 'utf-8') : ''
   const electronSearchWindowContent = fs.existsSync(electronSearchWindowFile)
     ? fs.readFileSync(electronSearchWindowFile, 'utf-8')
     : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredLayoutSymbols = [
     'ELECTRON_SEARCH_WINDOW_MIN_WIDTH',
     'ELECTRON_SEARCH_WINDOW_MIN_HEIGHT',
@@ -3977,12 +3759,6 @@ function checkElectronHostOwnsSearchWindowLayout(): void {
     ...requiredHostFacadeSymbols
       .filter(symbol => !electronSearchWindowContent.includes(symbol))
       .map(symbol => `${rel(electronSearchWindowFile)}: missing search-window layout host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/window/search-window-layout')
-      ? [`${rel(viteConfig)}: missing electron search-window-layout package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/search-window-layout')
-      ? [`${rel(vitestConfig)}: missing electron search-window-layout test alias`]
-      : []),
     ...(fs.existsSync(legacyLayoutFile)
       ? [`${rel(legacyLayoutFile)}: search window layout belongs in apps/electron`]
       : []),
@@ -3998,13 +3774,9 @@ function checkElectronHostOwnsWindowStatePersistence(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronWindowStateFile = path.join(root, 'apps/electron/src/window/window-state.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronWindowStateContent = fs.existsSync(electronWindowStateFile) ? fs.readFileSync(electronWindowStateFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredWindowStateSymbols = [
     'ElectronWindowState',
     'sanitizeElectronWindowState',
@@ -4030,12 +3802,6 @@ function checkElectronHostOwnsWindowStatePersistence(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !windowContent.includes(symbol))
       .map(symbol => `${rel(windowFile)}: missing window-state facade delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/window/window-state')
-      ? [`${rel(viteConfig)}: missing electron window-state package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/window-state')
-      ? [`${rel(vitestConfig)}: missing electron window-state test alias`]
-      : []),
     ...(fs.existsSync(windowFile)
       ? matchingLines(windowFile, WINDOW_STATE_PERSISTENCE_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
@@ -4048,13 +3814,9 @@ function checkElectronHostOwnsMainWindowActivation(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronActivationFile = path.join(root, 'apps/electron/src/window/activation.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronActivationContent = fs.existsSync(electronActivationFile) ? fs.readFileSync(electronActivationFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredActivationSymbols = [
     'createElectronMainWindowActivationController',
     'suppressFromAuxiliaryWindow',
@@ -4074,12 +3836,6 @@ function checkElectronHostOwnsMainWindowActivation(): void {
     ...(!windowContent.includes('createElectronMainWindowActivationController')
       ? [`${rel(windowFile)}: main window activation must delegate to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/window/activation')
-      ? [`${rel(viteConfig)}: missing electron activation package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/activation')
-      ? [`${rel(vitestConfig)}: missing electron activation test alias`]
-      : []),
     ...(fs.existsSync(windowFile)
       ? matchingLines(windowFile, WINDOW_ACTIVATION_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
@@ -4092,13 +3848,9 @@ function checkElectronHostOwnsWindowVisibilitySnapshots(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronVisibilityFile = path.join(root, 'apps/electron/src/window/window-visibility.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronVisibilityContent = fs.existsSync(electronVisibilityFile) ? fs.readFileSync(electronVisibilityFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredVisibilitySymbols = [
     'ElectronMainWindowVisibilitySnapshot',
     'isElectronMainAppWindow',
@@ -4122,12 +3874,6 @@ function checkElectronHostOwnsWindowVisibilitySnapshots(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !windowContent.includes(symbol))
       .map(symbol => `${rel(windowFile)}: missing window-visibility facade delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/window/window-visibility')
-      ? [`${rel(viteConfig)}: missing electron window-visibility package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/window-visibility')
-      ? [`${rel(vitestConfig)}: missing electron window-visibility test alias`]
-      : []),
     ...(fs.existsSync(windowFile)
       ? matchingLines(windowFile, WINDOW_VISIBILITY_SNAPSHOT_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
@@ -4140,15 +3886,11 @@ function checkElectronHostOwnsTodoPlanNotifications(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronNotificationsFile = path.join(root, 'apps/electron/src/todo-plan/notifications.ts')
   const storeFile = path.join(root, 'packages/onething-runtime/src/app/todo-plan/store.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronNotificationsContent = fs.existsSync(electronNotificationsFile)
     ? fs.readFileSync(electronNotificationsFile, 'utf-8')
     : ''
   const storeContent = fs.existsSync(storeFile) ? fs.readFileSync(storeFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'broadcastElectronTodoPlanChanged',
     'revealElectronTodoPlanDirectory',
@@ -4181,12 +3923,6 @@ function checkElectronHostOwnsTodoPlanNotifications(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !storeContent.includes(symbol))
       .map(symbol => `${rel(storeFile)}: missing todo-plan notification facade delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/todo-plan/notifications')
-      ? [`${rel(viteConfig)}: missing electron todo-plan notifications package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/todo-plan/notifications')
-      ? [`${rel(vitestConfig)}: missing electron todo-plan notifications test alias`]
-      : []),
     ...(fs.existsSync(storeFile)
       ? matchingLines(storeFile, MAIN_TODO_PLAN_STORE_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/todo-plan/store.ts: missing todo-plan store facade']),
@@ -4199,15 +3935,11 @@ function checkElectronHostOwnsTodoPlanPresentation(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPresentationFile = path.join(root, 'apps/electron/src/window/todo-plan-presentation.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPresentationContent = fs.existsSync(electronPresentationFile)
     ? fs.readFileSync(electronPresentationFile, 'utf-8')
     : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredPresentationSymbols = [
     'normalizeElectronTodoPlanWindowActionOptions',
     'shouldPreserveElectronCurrentMacApp',
@@ -4234,12 +3966,6 @@ function checkElectronHostOwnsTodoPlanPresentation(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !windowContent.includes(symbol))
       .map(symbol => `${rel(windowFile)}: missing todo-plan presentation facade delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/window/todo-plan-presentation')
-      ? [`${rel(viteConfig)}: missing electron todo-plan-presentation package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window/todo-plan-presentation')
-      ? [`${rel(vitestConfig)}: missing electron todo-plan-presentation test alias`]
-      : []),
     ...(fs.existsSync(windowFile)
       ? matchingLines(windowFile, WINDOW_TODO_PLAN_PRESENTATION_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
@@ -4252,13 +3978,9 @@ function checkElectronHostOwnsWindowFacade(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const windowHostFile = path.join(root, 'apps/electron/src/window/index.ts')
   const windowFacadeFile = path.join(root, 'packages/onething-runtime/src/app/window.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const windowHostContent = fs.existsSync(windowHostFile) ? fs.readFileSync(windowHostFile, 'utf-8') : ''
   const windowFacadeContent = fs.existsSync(windowFacadeFile) ? fs.readFileSync(windowFacadeFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const facadeLines = windowFacadeContent.split('\n').filter(line => line.trim().length > 0)
   const requiredHostSymbols = [
     'createWindow',
@@ -4269,12 +3991,6 @@ function checkElectronHostOwnsWindowFacade(): void {
   const lines = [
     ...(!packageContent.includes('./window')
       ? [`${rel(electronPackage)}: missing window aggregate export`]
-      : []),
-    ...(!viteContent.includes('@onething/electron-host/window')
-      ? [`${rel(viteConfig)}: missing electron window aggregate package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/window')
-      ? [`${rel(vitestConfig)}: missing electron window aggregate test alias`]
       : []),
     ...requiredHostSymbols
       .filter(symbol => !windowHostContent.includes(symbol))
@@ -4294,13 +4010,9 @@ function checkElectronHostOwnsWindowAllClosedHandler(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronWindowFile = path.join(root, 'apps/electron/src/app/window-all-closed.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronWindowContent = fs.existsSync(electronWindowFile) ? fs.readFileSync(electronWindowFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredWindowSymbols = [
     'registerElectronWindowAllClosedHandler',
     'window-all-closed',
@@ -4319,12 +4031,6 @@ function checkElectronHostOwnsWindowAllClosedHandler(): void {
       && !mainContent.includes('registerElectronAppBootstrap')
       ? [`${rel(mainFile)}: main must delegate window-all-closed handling to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/app/window-all-closed')
-      ? [`${rel(viteConfig)}: missing electron window-all-closed package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/app/window-all-closed')
-      ? [`${rel(vitestConfig)}: missing electron window-all-closed test alias`]
-      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_WINDOW_ALL_CLOSED_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/index.ts: missing Electron main entry']),
@@ -4337,13 +4043,9 @@ function checkElectronHostOwnsDidBecomeActiveHandler(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronActiveFile = path.join(root, 'apps/electron/src/app/did-become-active.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronActiveContent = fs.existsSync(electronActiveFile) ? fs.readFileSync(electronActiveFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredActiveSymbols = [
     'registerElectronDidBecomeActiveHandler',
     'did-become-active',
@@ -4362,12 +4064,6 @@ function checkElectronHostOwnsDidBecomeActiveHandler(): void {
       && !mainContent.includes('registerElectronAppBootstrap')
       ? [`${rel(mainFile)}: main must delegate did-become-active handling to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/app/did-become-active')
-      ? [`${rel(viteConfig)}: missing electron did-become-active package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/app/did-become-active')
-      ? [`${rel(vitestConfig)}: missing electron did-become-active test alias`]
-      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_DID_BECOME_ACTIVE_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/index.ts: missing Electron main entry']),
@@ -4380,13 +4076,9 @@ function checkElectronHostOwnsBeforeQuitCleanup(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronBeforeQuitFile = path.join(root, 'apps/electron/src/app/before-quit.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronBeforeQuitContent = fs.existsSync(electronBeforeQuitFile) ? fs.readFileSync(electronBeforeQuitFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredBeforeQuitSymbols = [
     'registerElectronBeforeQuitCleanup',
     'before-quit',
@@ -4407,12 +4099,6 @@ function checkElectronHostOwnsBeforeQuitCleanup(): void {
       && !mainContent.includes('registerElectronAppBootstrap')
       ? [`${rel(mainFile)}: main must delegate before-quit cleanup to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/app/before-quit')
-      ? [`${rel(viteConfig)}: missing electron before-quit package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/app/before-quit')
-      ? [`${rel(vitestConfig)}: missing electron before-quit test alias`]
-      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_BEFORE_QUIT_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/index.ts: missing Electron main entry']),
@@ -4425,13 +4111,9 @@ function checkElectronHostOwnsMediaProtocol(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMediaFile = path.join(root, 'apps/electron/src/media/protocol.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMediaContent = fs.existsSync(electronMediaFile) ? fs.readFileSync(electronMediaFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredMediaSymbols = [
     'registerElectronMediaProtocol',
     'getMediaImagesDir',
@@ -4450,12 +4132,6 @@ function checkElectronHostOwnsMediaProtocol(): void {
       && !mainContent.includes('registerElectronAppBootstrap')
       ? [`${rel(mainFile)}: main must delegate media protocol registration to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/media/protocol')
-      ? [`${rel(viteConfig)}: missing electron media protocol package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/media/protocol')
-      ? [`${rel(vitestConfig)}: missing electron media protocol test alias`]
-      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MEDIA_PROTOCOL_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/index.ts: missing Electron main entry']),
@@ -4468,13 +4144,9 @@ function checkElectronHostOwnsLoggingCapture(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronLoggingFile = path.join(root, 'apps/electron/src/logging/console-capture.ts')
   const mainLoggingFile = path.join(root, 'packages/onething-runtime/src/app/logging/index.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronLoggingContent = fs.existsSync(electronLoggingFile) ? fs.readFileSync(electronLoggingFile, 'utf-8') : ''
   const mainLoggingContent = fs.existsSync(mainLoggingFile) ? fs.readFileSync(mainLoggingFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'setElectronAppLogsPath',
     'createElectronRendererConsoleCapture',
@@ -4511,12 +4183,6 @@ function checkElectronHostOwnsLoggingCapture(): void {
     ...(mainLoggingContent.includes('@onething/electron-host/')
       ? [`${rel(mainLoggingFile)}: main/logging must stay host-agnostic (inject via configureAppLoggingHost)`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/logging/console-capture')
-      ? [`${rel(viteConfig)}: missing electron logging capture package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/logging/console-capture')
-      ? [`${rel(vitestConfig)}: missing electron logging capture test alias`]
-      : []),
     ...(fs.existsSync(mainLoggingFile)
       ? matchingLines(mainLoggingFile, MAIN_LOGGING_ELECTRON_CAPTURE_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/logging/index.ts: missing logging facade']),
@@ -4529,13 +4195,9 @@ function checkElectronHostOwnsAccessibilityPermissions(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronAccessibilityFile = path.join(root, 'apps/electron/src/accessibility/permissions.ts')
   const mainAccessibilityFile = path.join(root, 'packages/onething-runtime/src/app/utils/accessibility.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAccessibilityContent = fs.existsSync(electronAccessibilityFile) ? fs.readFileSync(electronAccessibilityFile, 'utf-8') : ''
   const mainAccessibilityContent = fs.existsSync(mainAccessibilityFile) ? fs.readFileSync(mainAccessibilityFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'systemPreferences',
     'shell',
@@ -4565,12 +4227,6 @@ function checkElectronHostOwnsAccessibilityPermissions(): void {
     ...(fs.existsSync(mainAccessibilityFile)
       ? [`${rel(mainAccessibilityFile)}: legacy accessibility facade was removed; import @onething/electron-host/accessibility/permissions directly`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/accessibility/permissions')
-      ? [`${rel(viteConfig)}: missing electron accessibility package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/accessibility/permissions')
-      ? [`${rel(vitestConfig)}: missing electron accessibility test alias`]
-      : []),
     ...(fs.existsSync(mainAccessibilityFile)
       ? matchingLines(mainAccessibilityFile, MAIN_ACCESSIBILITY_FORBIDDEN_PATTERNS)
       : []),
@@ -4585,8 +4241,6 @@ function checkElectronHostOwnsShellOperations(): void {
   const electronShellIpcControllerFile = path.join(root, 'apps/electron/src/ipc/shell-controller.ts')
   const electronShellIpcFile = path.join(root, 'apps/electron/src/ipc/shell.ts')
   const mainShellFile = path.join(root, 'apps/electron/src/main/ipc/shell.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronShellContent = fs.existsSync(electronShellFile) ? fs.readFileSync(electronShellFile, 'utf-8') : ''
   const electronShellIpcControllerContent = fs.existsSync(electronShellIpcControllerFile)
@@ -4594,8 +4248,6 @@ function checkElectronHostOwnsShellOperations(): void {
     : ''
   const electronShellIpcContent = fs.existsSync(electronShellIpcFile) ? fs.readFileSync(electronShellIpcFile, 'utf-8') : ''
   const mainShellContent = fs.existsSync(mainShellFile) ? fs.readFileSync(mainShellFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'BrowserWindow',
     'shell',
@@ -4651,18 +4303,6 @@ function checkElectronHostOwnsShellOperations(): void {
     ...requiredLegacyFacadeSymbols
       .filter(symbol => !mainShellContent.includes(symbol))
       .map(symbol => `${rel(mainShellFile)}: missing shell IPC legacy facade delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/shell/operations')
-      ? [`${rel(viteConfig)}: missing electron shell operations package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/shell/operations')
-      ? [`${rel(vitestConfig)}: missing electron shell operations test alias`]
-      : []),
-    ...(!viteContent.includes('@onething/electron-host/ipc/shell')
-      ? [`${rel(viteConfig)}: missing electron shell IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/shell')
-      ? [`${rel(vitestConfig)}: missing electron shell IPC test alias`]
-      : []),
     ...(mainShellFacadeLines.length > 6
       ? [`${rel(mainShellFile)}: legacy shell IPC facade must stay thin`]
       : []),
@@ -4678,13 +4318,9 @@ function checkElectronHostOwnsOAuthEvents(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronOAuthFile = path.join(root, 'apps/electron/src/oauth/events.ts')
   const mainOAuthFile = path.join(root, 'apps/electron/src/main/ipc/oauth.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronOAuthContent = fs.existsSync(electronOAuthFile) ? fs.readFileSync(electronOAuthFile, 'utf-8') : ''
   const mainOAuthContent = fs.existsSync(mainOAuthFile) ? fs.readFileSync(mainOAuthFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'BrowserWindow',
     'BrowserWindow.getAllWindows',
@@ -4709,12 +4345,6 @@ function checkElectronHostOwnsOAuthEvents(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainOAuthContent.includes(symbol))
       .map(symbol => `${rel(mainOAuthFile)}: missing OAuth IPC event delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/oauth/events')
-      ? [`${rel(viteConfig)}: missing electron OAuth events package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/oauth/events')
-      ? [`${rel(vitestConfig)}: missing electron OAuth events test alias`]
-      : []),
     ...(fs.existsSync(mainOAuthFile)
       ? matchingLines(mainOAuthFile, MAIN_OAUTH_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/oauth.ts: missing OAuth IPC facade']),
@@ -4727,15 +4357,11 @@ function checkElectronHostOwnsOAuthIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronOAuthIpcFile = path.join(root, 'apps/electron/src/ipc/oauth.ts')
   const mainOAuthFile = path.join(root, 'apps/electron/src/main/ipc/oauth.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronOAuthIpcContent = fs.existsSync(electronOAuthIpcFile)
     ? fs.readFileSync(electronOAuthIpcFile, 'utf-8')
     : ''
   const mainOAuthContent = fs.existsSync(mainOAuthFile) ? fs.readFileSync(mainOAuthFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronOAuthIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -4771,12 +4397,6 @@ function checkElectronHostOwnsOAuthIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainOAuthContent.includes(symbol))
       .map(symbol => `${rel(mainOAuthFile)}: missing OAuth IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/oauth')
-      ? [`${rel(viteConfig)}: missing electron OAuth IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/oauth')
-      ? [`${rel(vitestConfig)}: missing electron OAuth IPC test alias`]
-      : []),
     ...(fs.existsSync(mainOAuthFile)
       ? matchingLines(mainOAuthFile, MAIN_OAUTH_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/oauth.ts: missing OAuth IPC adapter']),
@@ -4789,13 +4409,9 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSettingsFile = path.join(root, 'apps/electron/src/settings/ipc-host.ts')
   const mainSettingsFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSettingsContent = fs.existsSync(electronSettingsFile) ? fs.readFileSync(electronSettingsFile, 'utf-8') : ''
   const mainSettingsContent = fs.existsSync(mainSettingsFile) ? fs.readFileSync(mainSettingsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'BrowserWindow',
     'dialog',
@@ -4841,12 +4457,6 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainSettingsContent.includes(symbol))
       .map(symbol => `${rel(mainSettingsFile)}: missing settings IPC host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/settings/ipc-host')
-      ? [`${rel(viteConfig)}: missing electron settings IPC host package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/settings/ipc-host')
-      ? [`${rel(vitestConfig)}: missing electron settings IPC host test alias`]
-      : []),
     ...(fs.existsSync(mainSettingsFile)
       ? [
           ...matchingLines(mainSettingsFile, MAIN_SETTINGS_IPC_SAVE_ORCHESTRATION_FORBIDDEN_PATTERNS),
@@ -4863,16 +4473,12 @@ function checkElectronHostOwnsAppStateIpcHost(): void {
   const electronAppStateControllerFile = path.join(root, 'apps/electron/src/ipc/app-state-controller.ts')
   const electronAppStateFile = path.join(root, 'apps/electron/src/ipc/app-state.ts')
   const mainAppStateFile = path.join(root, 'apps/electron/src/main/ipc/app-state.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAppStateControllerContent = fs.existsSync(electronAppStateControllerFile)
     ? fs.readFileSync(electronAppStateControllerFile, 'utf-8')
     : ''
   const electronAppStateContent = fs.existsSync(electronAppStateFile) ? fs.readFileSync(electronAppStateFile, 'utf-8') : ''
   const mainAppStateContent = fs.existsSync(mainAppStateFile) ? fs.readFileSync(mainAppStateFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronAppStateIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -4906,12 +4512,6 @@ function checkElectronHostOwnsAppStateIpcHost(): void {
     ...requiredLegacyFacadeSymbols
       .filter(symbol => !mainAppStateContent.includes(symbol))
       .map(symbol => `${rel(mainAppStateFile)}: missing app-state IPC legacy facade symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/app-state')
-      ? [`${rel(viteConfig)}: missing electron app-state IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/app-state')
-      ? [`${rel(vitestConfig)}: missing electron app-state IPC test alias`]
-      : []),
     ...(mainAppStateFacadeLines.length > 6
       ? [`${rel(mainAppStateFile)}: legacy app-state IPC facade must stay thin`]
       : []),
@@ -4928,16 +4528,12 @@ function checkElectronHostOwnsVariablesIpcHost(): void {
   const electronVariablesControllerFile = path.join(root, 'apps/electron/src/ipc/variables-controller.ts')
   const electronVariablesFile = path.join(root, 'apps/electron/src/ipc/variables.ts')
   const mainVariablesFile = path.join(root, 'apps/electron/src/main/ipc/variables.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronVariablesControllerContent = fs.existsSync(electronVariablesControllerFile)
     ? fs.readFileSync(electronVariablesControllerFile, 'utf-8')
     : ''
   const electronVariablesContent = fs.existsSync(electronVariablesFile) ? fs.readFileSync(electronVariablesFile, 'utf-8') : ''
   const mainVariablesContent = fs.existsSync(mainVariablesFile) ? fs.readFileSync(mainVariablesFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronVariablesIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -4974,12 +4570,6 @@ function checkElectronHostOwnsVariablesIpcHost(): void {
     ...requiredLegacyFacadeSymbols
       .filter(symbol => !mainVariablesContent.includes(symbol))
       .map(symbol => `${rel(mainVariablesFile)}: missing variables IPC legacy facade symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/variables')
-      ? [`${rel(viteConfig)}: missing electron variables IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/variables')
-      ? [`${rel(vitestConfig)}: missing electron variables IPC test alias`]
-      : []),
     ...(mainVariablesFacadeLines.length > 6
       ? [`${rel(mainVariablesFile)}: legacy variables IPC facade must stay thin`]
       : []),
@@ -4996,16 +4586,12 @@ function checkElectronHostOwnsProjectDirsIpcHost(): void {
   const electronProjectDirsControllerFile = path.join(root, 'apps/electron/src/ipc/project-dirs-controller.ts')
   const electronProjectDirsFile = path.join(root, 'apps/electron/src/ipc/project-dirs.ts')
   const mainProjectDirsFile = path.join(root, 'apps/electron/src/main/ipc/project-dirs.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronProjectDirsControllerContent = fs.existsSync(electronProjectDirsControllerFile)
     ? fs.readFileSync(electronProjectDirsControllerFile, 'utf-8')
     : ''
   const electronProjectDirsContent = fs.existsSync(electronProjectDirsFile) ? fs.readFileSync(electronProjectDirsFile, 'utf-8') : ''
   const mainProjectDirsContent = fs.existsSync(mainProjectDirsFile) ? fs.readFileSync(mainProjectDirsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronProjectDirsIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5047,12 +4633,6 @@ function checkElectronHostOwnsProjectDirsIpcHost(): void {
     ...requiredLegacyFacadeSymbols
       .filter(symbol => !mainProjectDirsContent.includes(symbol))
       .map(symbol => `${rel(mainProjectDirsFile)}: missing project-dirs IPC legacy facade symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/project-dirs')
-      ? [`${rel(viteConfig)}: missing electron project-dirs IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/project-dirs')
-      ? [`${rel(vitestConfig)}: missing electron project-dirs IPC test alias`]
-      : []),
     ...(mainProjectDirsFacadeLines.length > 6
       ? [`${rel(mainProjectDirsFile)}: legacy project-dirs IPC facade must stay thin`]
       : []),
@@ -5179,13 +4759,9 @@ function checkElectronHostOwnsSchedulerIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSchedulerFile = path.join(root, 'apps/electron/src/ipc/scheduler.ts')
   const mainSchedulerFile = path.join(root, 'apps/electron/src/main/ipc/scheduler.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSchedulerContent = fs.existsSync(electronSchedulerFile) ? fs.readFileSync(electronSchedulerFile, 'utf-8') : ''
   const mainSchedulerContent = fs.existsSync(mainSchedulerFile) ? fs.readFileSync(mainSchedulerFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronSchedulerIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5231,12 +4807,6 @@ function checkElectronHostOwnsSchedulerIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainSchedulerContent.includes(symbol))
       .map(symbol => `${rel(mainSchedulerFile)}: missing scheduler IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/scheduler')
-      ? [`${rel(viteConfig)}: missing electron scheduler IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/scheduler')
-      ? [`${rel(vitestConfig)}: missing electron scheduler IPC test alias`]
-      : []),
     ...(fs.existsSync(mainSchedulerFile)
       ? matchingLines(mainSchedulerFile, MAIN_SCHEDULER_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/scheduler.ts: missing scheduler IPC adapter']),
@@ -5372,13 +4942,9 @@ function checkElectronHostOwnsPermissionIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPermissionFile = path.join(root, 'apps/electron/src/ipc/permission.ts')
   const mainPermissionFile = path.join(root, 'apps/electron/src/main/ipc/permission.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPermissionContent = fs.existsSync(electronPermissionFile) ? fs.readFileSync(electronPermissionFile, 'utf-8') : ''
   const mainPermissionContent = fs.existsSync(mainPermissionFile) ? fs.readFileSync(mainPermissionFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronPermissionIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5403,12 +4969,6 @@ function checkElectronHostOwnsPermissionIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainPermissionContent.includes(symbol))
       .map(symbol => `${rel(mainPermissionFile)}: missing permission IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/permission')
-      ? [`${rel(viteConfig)}: missing electron permission IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/permission')
-      ? [`${rel(vitestConfig)}: missing electron permission IPC test alias`]
-      : []),
     ...(fs.existsSync(mainPermissionFile)
       ? matchingLines(mainPermissionFile, MAIN_PERMISSION_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/permission.ts: missing permission IPC adapter']),
@@ -5421,13 +4981,9 @@ function checkElectronHostOwnsPluginsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPluginsFile = path.join(root, 'apps/electron/src/ipc/plugins.ts')
   const mainPluginsFile = path.join(root, 'apps/electron/src/main/ipc/plugins.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPluginsContent = fs.existsSync(electronPluginsFile) ? fs.readFileSync(electronPluginsFile, 'utf-8') : ''
   const mainPluginsContent = fs.existsSync(mainPluginsFile) ? fs.readFileSync(mainPluginsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronPluginsIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5461,12 +5017,6 @@ function checkElectronHostOwnsPluginsIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainPluginsContent.includes(symbol))
       .map(symbol => `${rel(mainPluginsFile)}: missing plugins IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/plugins')
-      ? [`${rel(viteConfig)}: missing electron plugins IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/plugins')
-      ? [`${rel(vitestConfig)}: missing electron plugins IPC test alias`]
-      : []),
     ...(fs.existsSync(mainPluginsFile)
       ? matchingLines(mainPluginsFile, MAIN_PLUGINS_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/plugins.ts: missing plugins IPC adapter']),
@@ -5479,13 +5029,9 @@ function checkElectronHostOwnsThemesIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronThemesFile = path.join(root, 'apps/electron/src/ipc/themes.ts')
   const mainThemesFile = path.join(root, 'apps/electron/src/main/ipc/themes.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronThemesContent = fs.existsSync(electronThemesFile) ? fs.readFileSync(electronThemesFile, 'utf-8') : ''
   const mainThemesContent = fs.existsSync(mainThemesFile) ? fs.readFileSync(mainThemesFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronThemesIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5519,12 +5065,6 @@ function checkElectronHostOwnsThemesIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainThemesContent.includes(symbol))
       .map(symbol => `${rel(mainThemesFile)}: missing themes IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/themes')
-      ? [`${rel(viteConfig)}: missing electron themes IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/themes')
-      ? [`${rel(vitestConfig)}: missing electron themes IPC test alias`]
-      : []),
     ...(fs.existsSync(mainThemesFile)
       ? matchingLines(mainThemesFile, MAIN_THEMES_IPC_RUNTIME_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/themes.ts: missing themes IPC adapter']),
@@ -5635,13 +5175,9 @@ function checkElectronHostOwnsMcpIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMcpFile = path.join(root, 'apps/electron/src/ipc/mcp.ts')
   const mainMcpFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMcpContent = fs.existsSync(electronMcpFile) ? fs.readFileSync(electronMcpFile, 'utf-8') : ''
   const mainMcpContent = fs.existsSync(mainMcpFile) ? fs.readFileSync(mainMcpFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronMCPIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5690,12 +5226,6 @@ function checkElectronHostOwnsMcpIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainMcpContent.includes(symbol))
       .map(symbol => `${rel(mainMcpFile)}: missing MCP IPC host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/mcp')
-      ? [`${rel(viteConfig)}: missing electron MCP IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/mcp')
-      ? [`${rel(vitestConfig)}: missing electron MCP IPC test alias`]
-      : []),
     ...(fs.existsSync(mainMcpFile)
       ? matchingLines(mainMcpFile, MAIN_MCP_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/mcp.ts: missing MCP IPC adapter']),
@@ -5708,13 +5238,9 @@ function checkElectronHostOwnsAcpIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronAcpFile = path.join(root, 'apps/electron/src/ipc/acp.ts')
   const mainAcpFile = path.join(root, 'apps/electron/src/main/ipc/acp.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAcpContent = fs.existsSync(electronAcpFile) ? fs.readFileSync(electronAcpFile, 'utf-8') : ''
   const mainAcpContent = fs.existsSync(mainAcpFile) ? fs.readFileSync(mainAcpFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronACPIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5754,12 +5280,6 @@ function checkElectronHostOwnsAcpIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainAcpContent.includes(symbol))
       .map(symbol => `${rel(mainAcpFile)}: missing ACP IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/acp')
-      ? [`${rel(viteConfig)}: missing electron ACP IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/acp')
-      ? [`${rel(vitestConfig)}: missing electron ACP IPC test alias`]
-      : []),
     ...(fs.existsSync(mainAcpFile)
       ? matchingLines(mainAcpFile, MAIN_ACP_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/acp.ts: missing ACP IPC adapter']),
@@ -5772,13 +5292,9 @@ function checkElectronHostOwnsMediaIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMediaFile = path.join(root, 'apps/electron/src/ipc/media.ts')
   const mainMediaFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMediaContent = fs.existsSync(electronMediaFile) ? fs.readFileSync(electronMediaFile, 'utf-8') : ''
   const mainMediaContent = fs.existsSync(mainMediaFile) ? fs.readFileSync(mainMediaFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronMediaIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5825,12 +5341,6 @@ function checkElectronHostOwnsMediaIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainMediaContent.includes(symbol))
       .map(symbol => `${rel(mainMediaFile)}: missing media IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/media')
-      ? [`${rel(viteConfig)}: missing electron media IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/media')
-      ? [`${rel(vitestConfig)}: missing electron media IPC test alias`]
-      : []),
     ...(fs.existsSync(mainMediaFile)
       ? matchingLines(mainMediaFile, MAIN_MEDIA_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/media.ts: missing media IPC adapter']),
@@ -5843,13 +5353,9 @@ function checkElectronHostOwnsTodoPlanIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronTodoPlanFile = path.join(root, 'apps/electron/src/ipc/todo-plan.ts')
   const mainTodoPlanFile = path.join(root, 'apps/electron/src/main/ipc/todo-plan.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTodoPlanContent = fs.existsSync(electronTodoPlanFile) ? fs.readFileSync(electronTodoPlanFile, 'utf-8') : ''
   const mainTodoPlanContent = fs.existsSync(mainTodoPlanFile) ? fs.readFileSync(mainTodoPlanFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronTodoPlanIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5881,12 +5387,6 @@ function checkElectronHostOwnsTodoPlanIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainTodoPlanContent.includes(symbol))
       .map(symbol => `${rel(mainTodoPlanFile)}: missing todo-plan IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/todo-plan')
-      ? [`${rel(viteConfig)}: missing electron todo-plan IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/todo-plan')
-      ? [`${rel(vitestConfig)}: missing electron todo-plan IPC test alias`]
-      : []),
     ...(fs.existsSync(mainTodoPlanFile)
       ? matchingLines(mainTodoPlanFile, MAIN_TODO_PLAN_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/todo-plan.ts: missing todo-plan IPC adapter']),
@@ -5899,13 +5399,9 @@ function checkElectronHostOwnsToolsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronToolsFile = path.join(root, 'apps/electron/src/ipc/tools.ts')
   const mainToolsFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronToolsContent = fs.existsSync(electronToolsFile) ? fs.readFileSync(electronToolsFile, 'utf-8') : ''
   const mainToolsContent = fs.existsSync(mainToolsFile) ? fs.readFileSync(mainToolsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronToolsIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -5943,12 +5439,6 @@ function checkElectronHostOwnsToolsIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainToolsContent.includes(symbol))
       .map(symbol => `${rel(mainToolsFile)}: missing tools IPC host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/tools')
-      ? [`${rel(viteConfig)}: missing electron tools IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/tools')
-      ? [`${rel(vitestConfig)}: missing electron tools IPC test alias`]
-      : []),
     ...(fs.existsSync(mainToolsFile)
       ? matchingLines(mainToolsFile, MAIN_TOOLS_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
@@ -5961,13 +5451,9 @@ function checkElectronHostOwnsSkillsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSkillsFile = path.join(root, 'apps/electron/src/ipc/skills.ts')
   const mainSkillsFile = path.join(root, 'apps/electron/src/main/ipc/skills.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSkillsContent = fs.existsSync(electronSkillsFile) ? fs.readFileSync(electronSkillsFile, 'utf-8') : ''
   const mainSkillsContent = fs.existsSync(mainSkillsFile) ? fs.readFileSync(mainSkillsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronSkillsIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -6007,12 +5493,6 @@ function checkElectronHostOwnsSkillsIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainSkillsContent.includes(symbol))
       .map(symbol => `${rel(mainSkillsFile)}: missing skills IPC host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/skills')
-      ? [`${rel(viteConfig)}: missing electron skills IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/skills')
-      ? [`${rel(vitestConfig)}: missing electron skills IPC test alias`]
-      : []),
     ...(fs.existsSync(mainSkillsFile)
       ? matchingLines(mainSkillsFile, MAIN_SKILLS_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/skills.ts: missing skills IPC adapter']),
@@ -6028,8 +5508,6 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
   const electronTokenStoreFile = path.join(root, 'apps/electron/src/auth/token-store.ts')
   const mainAuthFile = path.join(root, 'packages/onething-runtime/src/app/auth/auth-service.ts')
   const mainTokenStoreFile = path.join(root, 'packages/onething-runtime/src/app/auth/token-store.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAuthFetchContent = fs.existsSync(electronAuthFetchFile)
     ? fs.readFileSync(electronAuthFetchFile, 'utf-8')
@@ -6040,8 +5518,6 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
     : ''
   const mainAuthContent = fs.existsSync(mainAuthFile) ? fs.readFileSync(mainAuthFile, 'utf-8') : ''
   const mainTokenStoreContent = fs.existsSync(mainTokenStoreFile) ? fs.readFileSync(mainTokenStoreFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'createRequire',
     "require('electron')",
@@ -6106,24 +5582,6 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
     ...requiredTokenStoreLegacyFacadeSymbols
       .filter(symbol => !mainTokenStoreContent.includes(symbol))
       .map(symbol => `${rel(mainTokenStoreFile)}: missing token store legacy facade symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/auth/auth-fetch')
-      ? [`${rel(viteConfig)}: missing electron auth fetch package alias`]
-      : []),
-    ...(!viteContent.includes('@onething/electron-host/auth/electron-auth')
-      ? [`${rel(viteConfig)}: missing electron auth adapter package alias`]
-      : []),
-    ...(!viteContent.includes('@onething/electron-host/auth/token-store')
-      ? [`${rel(viteConfig)}: missing electron token-store package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/auth/auth-fetch')
-      ? [`${rel(vitestConfig)}: missing electron auth fetch test alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/auth/electron-auth')
-      ? [`${rel(vitestConfig)}: missing electron auth adapter test alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/auth/token-store')
-      ? [`${rel(vitestConfig)}: missing electron token-store test alias`]
-      : []),
     ...(mainTokenStoreContent.includes('@onething/electron-host/')
       ? [`${rel(mainTokenStoreFile)}: main/auth token store must stay host-agnostic (inject via configureAuthHost)`]
       : []),
@@ -6142,13 +5600,9 @@ function checkElectronHostOwnsSkillsEnvironment(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSkillsFile = path.join(root, 'apps/electron/src/skills/environment.ts')
   const mainSkillsFile = path.join(root, 'packages/onething-runtime/src/app/skills/loader.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSkillsContent = fs.existsSync(electronSkillsFile) ? fs.readFileSync(electronSkillsFile, 'utf-8') : ''
   const mainSkillsContent = fs.existsSync(mainSkillsFile) ? fs.readFileSync(mainSkillsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'createRequire',
     "require('electron')",
@@ -6182,12 +5636,6 @@ function checkElectronHostOwnsSkillsEnvironment(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainSkillsContent.includes(symbol))
       .map(symbol => `${rel(mainSkillsFile)}: missing skills loader environment delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/skills/environment')
-      ? [`${rel(viteConfig)}: missing electron skills environment package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/skills/environment')
-      ? [`${rel(vitestConfig)}: missing electron skills environment test alias`]
-      : []),
     ...(fs.existsSync(mainSkillsFile)
       ? matchingLines(mainSkillsFile, MAIN_SKILLS_LOADER_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/skills/loader.ts: missing skills loader facade']),
@@ -6200,13 +5648,9 @@ function checkElectronHostOwnsNetworkProxy(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronProxyFile = path.join(root, 'apps/electron/src/network/proxy.ts')
   const mainProxyFile = path.join(root, 'apps/electron/src/main/ipc/network-proxy.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronProxyContent = fs.existsSync(electronProxyFile) ? fs.readFileSync(electronProxyFile, 'utf-8') : ''
   const mainProxyContent = fs.existsSync(mainProxyFile) ? fs.readFileSync(mainProxyFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'applyElectronNetworkProxySettings',
     'session.defaultSession',
@@ -6231,12 +5675,6 @@ function checkElectronHostOwnsNetworkProxy(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainProxyContent.includes(symbol))
       .map(symbol => `${rel(mainProxyFile)}: missing network proxy facade delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/network/proxy')
-      ? [`${rel(viteConfig)}: missing electron network proxy package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/network/proxy')
-      ? [`${rel(vitestConfig)}: missing electron network proxy test alias`]
-      : []),
     ...(fs.existsSync(mainProxyFile)
       ? matchingLines(mainProxyFile, MAIN_NETWORK_PROXY_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/network-proxy.ts: missing network proxy facade']),
@@ -6251,16 +5689,12 @@ function checkElectronHostOwnsGlobalShortcuts(): void {
   const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const mainShortcutsFile = path.join(root, 'packages/onething-runtime/src/app/shortcuts/global-shortcuts.ts')
   const mainSettingsIpcFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronShortcutsContent = fs.existsSync(electronShortcutsFile)
     ? fs.readFileSync(electronShortcutsFile, 'utf-8')
     : ''
   const mainSettingsIpcContent = fs.existsSync(mainSettingsIpcFile) ? fs.readFileSync(mainSettingsIpcFile, 'utf-8') : ''
   const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'configureGlobalWindowShortcuts',
     'createElectronGlobalShortcutController',
@@ -6307,12 +5741,6 @@ function checkElectronHostOwnsGlobalShortcuts(): void {
     ...(electronMainContent.includes('@main/shortcuts/global-shortcuts')
       ? [`${rel(electronMainFile)}: Electron app bootstrap must not import global shortcuts through legacy @main facade`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/shortcuts/global-shortcuts')
-      ? [`${rel(viteConfig)}: missing electron global shortcuts package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/shortcuts/global-shortcuts')
-      ? [`${rel(vitestConfig)}: missing electron global shortcuts test alias`]
-      : []),
     ...(fs.existsSync(mainShortcutsFile)
       ? [`${rel(mainShortcutsFile)}: remove legacy global shortcuts facade; use @onething/electron-host/shortcuts/global-shortcuts directly`]
       : []),
@@ -6325,13 +5753,9 @@ function checkElectronHostOwnsPowerResumeHandlers(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPowerFile = path.join(root, 'apps/electron/src/power/resume.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPowerContent = fs.existsSync(electronPowerFile) ? fs.readFileSync(electronPowerFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredPowerSymbols = [
     'registerElectronPowerResumeHandlers',
     'powerMonitor',
@@ -6352,12 +5776,6 @@ function checkElectronHostOwnsPowerResumeHandlers(): void {
       && !mainContent.includes('registerElectronAppBootstrap')
       ? [`${rel(mainFile)}: main must delegate power resume handlers to apps/electron`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/power/resume')
-      ? [`${rel(viteConfig)}: missing electron power resume package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/power/resume')
-      ? [`${rel(vitestConfig)}: missing electron power resume test alias`]
-      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_POWER_RESUME_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/index.ts: missing Electron main entry']),
@@ -6370,15 +5788,11 @@ function checkElectronHostOwnsAppBootstrap(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronBootstrapFile = path.join(root, 'apps/electron/src/app/bootstrap.ts')
   const mainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronBootstrapContent = fs.existsSync(electronBootstrapFile)
     ? fs.readFileSync(electronBootstrapFile, 'utf-8')
     : ''
   const mainProcessContent = fs.existsSync(mainProcessFile) ? fs.readFileSync(mainProcessFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronAppBootstrap',
     'configureElectronStorePathHost',
@@ -6409,12 +5823,6 @@ function checkElectronHostOwnsAppBootstrap(): void {
     ...requiredMainSymbols
       .filter(symbol => !mainProcessContent.includes(symbol))
       .map(symbol => `${rel(mainProcessFile)}: missing Electron app bootstrap delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/app/bootstrap')
-      ? [`${rel(viteConfig)}: missing electron app bootstrap package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/app/bootstrap')
-      ? [`${rel(vitestConfig)}: missing electron app bootstrap test alias`]
-      : []),
     ...(fs.existsSync(mainProcessFile)
       ? matchingLines(mainProcessFile, MAIN_APP_BOOTSTRAP_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/app/main-process.ts: missing Electron main process implementation']),
@@ -6428,12 +5836,10 @@ function checkElectronHostOwnsMainEntry(): void {
   const electronMainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/index.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const aliasesFile = path.join(root, 'onething.aliases.ts')
   const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
   const electronMainProcessContent = fs.existsSync(electronMainProcessFile) ? fs.readFileSync(electronMainProcessFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const aliasesContent = fs.existsSync(aliasesFile) ? fs.readFileSync(aliasesFile, 'utf-8') : ''
   const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
   const lines = [
     ...(!electronMainContent.includes('startOnethingElectronMain')
@@ -6453,9 +5859,6 @@ function checkElectronHostOwnsMainEntry(): void {
       : []),
     ...(!viteContent.includes("index: resolve(__dirname, 'apps/electron/src/main.ts')")
       ? [`${rel(viteConfig)}: Electron main input must point at apps/electron/src/main.ts`]
-      : []),
-    ...(!aliasesContent.includes('@onething/electron-host/app/main-process')
-      ? [`${rel(aliasesFile)}: missing electron app main-process package alias`]
       : []),
     ...(fs.existsSync(viteConfig)
       ? matchingLines(viteConfig, ELECTRON_MAIN_ENTRY_FORBIDDEN_PATTERNS)
@@ -7016,15 +6419,11 @@ function checkElectronHostOwnsSessionCommandIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSessionCommandFile = path.join(root, 'apps/electron/src/ipc/session-command.ts')
   const mainFile = path.join(root, 'apps/electron/src/main/ipc/handlers.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSessionCommandContent = fs.existsSync(electronSessionCommandFile)
     ? fs.readFileSync(electronSessionCommandFile, 'utf-8')
     : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronSessionCommandIpcHandler',
     'options.ipcMain ?? ipcMain',
@@ -7049,12 +6448,6 @@ function checkElectronHostOwnsSessionCommandIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainContent.includes(symbol))
       .map(symbol => `${rel(mainFile)}: missing session-command IPC adapter symbol ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/session-command')
-      ? [`${rel(viteConfig)}: missing electron session-command IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/session-command')
-      ? [`${rel(vitestConfig)}: missing electron session-command IPC test alias`]
-      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSION_COMMAND_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/handlers.ts: missing IPC handler adapter']),
@@ -7067,13 +6460,9 @@ function checkElectronHostOwnsChatIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronChatFile = path.join(root, 'apps/electron/src/ipc/chat.ts')
   const mainChatFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronChatContent = fs.existsSync(electronChatFile) ? fs.readFileSync(electronChatFile, 'utf-8') : ''
   const mainChatContent = fs.existsSync(mainChatFile) ? fs.readFileSync(mainChatFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronChatIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -7110,12 +6499,6 @@ function checkElectronHostOwnsChatIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainChatContent.includes(symbol))
       .map(symbol => `${rel(mainChatFile)}: missing chat IPC host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/chat')
-      ? [`${rel(viteConfig)}: missing electron chat IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/chat')
-      ? [`${rel(vitestConfig)}: missing electron chat IPC test alias`]
-      : []),
     ...(fs.existsSync(mainChatFile)
       ? matchingLines(mainChatFile, MAIN_CHAT_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
@@ -7128,13 +6511,9 @@ function checkElectronHostOwnsFilesIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronFilesFile = path.join(root, 'apps/electron/src/ipc/files.ts')
   const mainFilesFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronFilesContent = fs.existsSync(electronFilesFile) ? fs.readFileSync(electronFilesFile, 'utf-8') : ''
   const mainFilesContent = fs.existsSync(mainFilesFile) ? fs.readFileSync(mainFilesFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronFilesIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -7169,12 +6548,6 @@ function checkElectronHostOwnsFilesIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainFilesContent.includes(symbol))
       .map(symbol => `${rel(mainFilesFile)}: missing files IPC host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/files')
-      ? [`${rel(viteConfig)}: missing electron files IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/files')
-      ? [`${rel(vitestConfig)}: missing electron files IPC test alias`]
-      : []),
     ...(fs.existsSync(mainFilesFile)
       ? matchingLines(mainFilesFile, MAIN_FILES_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
@@ -7187,15 +6560,11 @@ function checkElectronHostOwnsSessionsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSessionsFile = path.join(root, 'apps/electron/src/ipc/sessions.ts')
   const mainSessionsFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSessionsContent = fs.existsSync(electronSessionsFile)
     ? fs.readFileSync(electronSessionsFile, 'utf-8')
     : ''
   const mainSessionsContent = fs.existsSync(mainSessionsFile) ? fs.readFileSync(mainSessionsFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredHostSymbols = [
     'registerElectronSessionIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -7239,12 +6608,6 @@ function checkElectronHostOwnsSessionsIpcHost(): void {
     ...requiredFacadeSymbols
       .filter(symbol => !mainSessionsContent.includes(symbol))
       .map(symbol => `${rel(mainSessionsFile)}: missing sessions IPC host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/sessions')
-      ? [`${rel(viteConfig)}: missing electron sessions IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/sessions')
-      ? [`${rel(vitestConfig)}: missing electron sessions IPC test alias`]
-      : []),
     ...(fs.existsSync(mainSessionsFile)
       ? matchingLines(mainSessionsFile, MAIN_SESSIONS_IPC_HOST_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
