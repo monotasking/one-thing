@@ -61,7 +61,7 @@ This is **onething**, an AI chat app with multi-provider support, tool calling, 
 
 - **packages/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
 - **packages/onething-runtime/src** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree. **The one exception is a `*.wiring.ts` file** (I3, P3'a-1): the role is in the filename, so a module that has to speak the cross-process vocabulary may import `@shared/ipc` / `@shared/events` — and nothing but another `*.wiring.ts` (or the assembly layer) may import it back. All other bans still apply to it.
-- **packages/backend** — the assembly layer, a real workspace package (`@onething/backend`; it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/` and the one not-yet-merged thick twin plugins/); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (27 dirs: acp / agent-loop / agents / auth / collab / deeplink / external-agents / goals / headless / interaction / logging / markdown / music / permission / project-dirs / providers / scheduler / search / skills / tasks / toc / todo-plan / toolkit / tools / usage / variables / voice). The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1).
+- **packages/backend** — the assembly layer, a real workspace package (`@onething/backend`; it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (28 dirs: acp / agent-loop / agents / auth / collab / deeplink / external-agents / goals / headless / interaction / logging / markdown / music / permission / plugins / project-dirs / providers / scheduler / search / skills / tasks / toc / todo-plan / toolkit / tools / usage / variables / voice). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1).
 - **apps/\*** — thin sockets: Electron (window/IPC/native panel), server (HTTP/SSE), web (browser build of the renderer), CLI daemon.
 
 ```
@@ -95,8 +95,8 @@ Dependency direction is one-way: product ← assembly ← hosts. Product code ne
 
 ```
 packages/core/               # Bottom layer, zero deps. No src/ — files at package root:
-                             # agent-loop/ (provider-agnostic loop), engine/ (CoreStreamEngine,
-                             # HeadlessStreamEngine), events/, session/ (+storage/jsonl),
+                             # agent-loop/ (provider-agnostic loop), engine/ (CoreStreamEngine),
+                             # events/, session/ (+storage/jsonl),
                              # permission/, tools/, plugins/, mcp/, storage/ primitives.
 packages/onething-runtime/   # src/ = the product (prompts, sessions, agent-loop
                              # providers, tools, themes, voice, music, …). Electron-free.
@@ -163,7 +163,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - `bun run boundary:gate` — `scripts/boundary-gate.mjs`, a **zero-baseline hard gate**: any `[boundary] failed:` line exits 1. The ratchet and `docs/audit/boundary-baseline-2026-08-07.txt` (13 known legacy reds) were retired 2026-08-21 by 结构债方案 P2 — 4 reds were fixed in source, the other 9 were stale/false-positive assertions and were fixed in the checker. Two anti-footgun guards survive: no `[boundary] complete:` marker (checker crashed mid-run) or no `[boundary] ok:` line at all (output shape changed) is red, not green.
 - UI 组件与样式规则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),新代码须过 `bun run ui:gate` — `scripts/ui-gate.mjs` ratchet over `scripts/ui-style-check.mjs`'s 12 line-level rules (z-literal / z-fallback / raw-teleport / native-select / native-confirm / title-attr / ui-hex-fallback / transition-literal / shadow-literal-floating / focus-bare / overscroll-contain-chat / surface-literal), baseline `docs/audit/ui-baseline-2026-08-13.txt` (81 条 = 5 条逐条确认过的语义保留 + 76 条 `surface-literal` 区域面迁移待办)。`bun run ui:check` prints the full list.
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/electron/src/main/cli/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
-- `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; 9 thick twins are on a shrink-only allowlist until P3'b merges them); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
+- `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; the thick-twin allowlist is **empty** since P3'c, and the assertion stays as a ratchet against a new root directory growing back); **I2 — inside a shared domain name, `packages/core/<d>/x.ts` and `packages/onething-runtime/src/<d>/x.ts` must not both exist** (`index.ts` / `types.ts` / `__tests__/**` and a built-in plugin's `plugins/<id>.ts` — whose name is pinned to the plugin id — are structurally exempt; 4 shrink-only allowlist entries: `mcp/manager.ts`, `storage/{file-storage,paths}.ts`, `tools/diff-hunks.ts`); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
 
 Notes:
 
@@ -290,7 +290,25 @@ Notes:
   leftover data is archived via `scripts/archive-soul-memory.mjs`. `usage` still accepts
   `source: 'memory'` so historical ledger rows resolve.
 - Plugin system (R0–R7 complete, 2026-08-07). The plugin's entire power is the injected
-  `api` object. Current surface:
+  `api` object.
+  **Where the code lives (P3'c, 2026-08-21 — three homes, no fourth):**
+  `packages/core/plugins/` = the **contract + kernel** (37 files: manifest/api shape,
+  the `Core*` registries for lifecycle / input-intercept / tool-call-intercept /
+  tool-result-intercept / status / sessions / storage, the policy + breaker tables,
+  `ui-anchor.ts`, `file-pick.ts`, `canonical-order.ts` — zero deps);
+  `packages/onething-runtime/src/plugins/` = the **product half** (19 files: the two
+  built-in plugins `log-monitor` / `note-skills`, the config store + schema projection,
+  npm-tarball reading, runtime health, the IPC-shape projections, and the
+  process-singleton bindings of the core kernels — `status-bound.ts`,
+  `input-intercept-bound.ts`, `tool-call-intercept-bound.ts`,
+  `tool-result-intercept-bound.ts`, plus `lifecycle.wiring.ts` / `tarball.wiring.ts`
+  which speak `@shared/ipc`);
+  `packages/backend/wiring/plugins/` = the **assembly half** (17 files: `loader` /
+  `manager` / `api` / `install` / `store` / `sessions` / `llm` / `skin` /
+  `theme-overrides` / `webview` / `background` / `file-import` / `notify-sound` /
+  `types` + `builtin/` 插座 — everything whose import closure hits the backend spine).
+  A file's name says which half it is; nothing about plugins lives anywhere else.
+  Current surface:
   - **AI capabilities**: tools, slash commands, events (+ plugin-namespaced custom events),
     prompt-context providers, skill roots, lifecycle hooks, scheduler.
     A registered tool may declare `executionMode: 'parallel' | 'sequential'` (N3,
@@ -611,7 +629,7 @@ Failure mode of the alias table: a missing entry fails only at build/run time, n
 ```
 packages/core/                 # no src/ — files at the package root
 │   ├── agent-loop/            # provider-agnostic loop: runner, stream, retry, scheduler
-│   ├── engine/                # CoreStreamEngine, HeadlessStreamEngine, context-compact, history
+│   ├── engine/                # CoreStreamEngine, context-compact, history
 │   ├── events/                # event-bus, ring-buffer, stream-channel, stream-chunks
 │   ├── session/               # Session class, manager, state, storage/ (jsonl codec+pager)
 │   ├── permission/            # capability-registry, permission-grants, permission-policy
@@ -652,11 +670,11 @@ packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared 
 │   ├── features/  utils/      # feature mounts (self-evolution, trajectory…); ripgrep/fuzzy/wildcard
 │   ├── provider-binding/      # bound-fetch / request-dump / ai-settings-compose —— 把 runtime
 │   │                          # provider 绑到设置缓存与日志的三件脊柱件(P3'b-B 从 providers/ 改名)
-│   ├── plugins/               # 最后一个厚孪生 —— 与 runtime/plugins 同名,I1 allowlist 豁免中,P3'c 并回
 │   └── wiring/<domain>/       # 薄接线:acp agent-loop agents auth collab deeplink external-agents
 │                              # goals headless(HeadlessBackend) interaction
 │                              # logging(configureLogging) markdown music permission
-│                              # project-dirs providers scheduler search skills tasks toc
+│                              # plugins(loader/manager/api/内置插件插座) project-dirs
+│                              # providers scheduler search skills tasks toc
 │                              # todo-plan toolkit tools usage variables voice
 │
 apps/electron/src/

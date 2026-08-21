@@ -1,8 +1,9 @@
-import {
-  HeadlessStreamEngine,
-  type CoreEventBusLike,
-} from './headless-stream-engine.js'
+import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
+import type { SessionCommandType } from '../events/session-command-types.js'
+import type { Unsubscribe } from '../events/types.js'
+import { PendingMessageQueue } from './message-queue.js'
 import type { PendingMessage } from './message-queue.js'
+import { getCoreLogger } from '../logging/index.js'
 import type { CoreInitialToolChoice } from './stream-executor.js'
 import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import { expandFileMentions, isFileMentionTrustedChannel } from './file-mentions.js'
@@ -36,6 +37,38 @@ import {
   buildContextUsageSnapshot,
 } from './context-usage.js'
 import { resolveContextCompactTotalBudgetMs } from './context-compact.js'
+
+const log = getCoreLogger('core.engine')
+
+export interface CoreCommandEnvelope<TCommand = unknown> {
+  sessionId: string
+  event: TCommand
+}
+
+export interface CoreEventBusLike {
+  onAnySession(
+    eventType: string,
+    handler: (envelope: CoreCommandEnvelope) => void,
+    label?: string
+  ): Unsubscribe
+}
+
+export interface AbortLikeCommand {
+  type?: string
+  reason?: string
+}
+
+export interface InjectMessageCommand {
+  type?: string
+  content: string
+  source?: string
+  origin?: unknown
+}
+
+export interface RetractSteeringLikeCommand {
+  type?: string
+  messageId: string
+}
 
 export interface CoreEventBusEmitterLike extends CoreEventBusLike {
   emit(sessionId: string, event: any): Promise<unknown>
@@ -332,6 +365,20 @@ function normalizeErrorDefault(error: Error): CoreStreamErrorInfo {
   return normalizeCoreStreamError(error)
 }
 
+/**
+ * CoreStreamEngine 是引擎在 core 里的**唯一一层**(2026-08-21 两层合一):
+ * 命令订阅与派发表、命令目标绑定、活跃流生命周期、steering / follow-up 队列
+ * (原 `HeadlessStreamEngine`,已删),加上会话/消息/工具/压缩的业务本体。
+ *
+ * 合并前这里是 `CoreStreamEngine extends HeadlessStreamEngine`,中间隔着 5 个
+ * `handleXxxCommand` 抽象转发(每个函数体只有一行 `command as XxxCommandLike`),
+ * 从派发表按 F12 要跳两次才到本体。现在派发表直接调 `handleSendMessage` 等本体,
+ * 一跳到位;宿主(OnethingStreamEngine → backend StreamEngine)照旧 override 本体。
+ *
+ * 平台相关的部分仍由宿主提供:命令目标由 `bindCommandTarget` 注入,
+ * `onSessionAbort` / `onSessionCleared` / `onShutdown` / `log` / `logError`
+ * 都是留给子类 override 的钩子。
+ */
 export class CoreStreamEngine<
   TEventBus extends CoreEventBusEmitterLike = CoreEventBusEmitterLike,
   TCommandTarget = unknown,
@@ -347,7 +394,220 @@ export class CoreStreamEngine<
   THistoryMessage = unknown,
   TStreamResult extends CoreStreamResultLike = CoreStreamResultLike,
   TCompactResult extends CoreContextCompactResultLike = CoreContextCompactResultLike,
-> extends HeadlessStreamEngine<TEventBus, TCommandTarget> {
+> {
+  protected activeStreams = new Map<string, AbortController>()
+  protected sessionChannels = new Map<string, string>()
+  protected eventBus: TEventBus | null = null
+  protected commandTarget: TCommandTarget | null = null
+  protected unsubs: Unsubscribe[] = []
+
+  protected steeringQueues = new Map<string, PendingMessageQueue>()
+  protected followUpQueues = new Map<string, PendingMessageQueue>()
+
+  getChannel(sessionId: string): string {
+    return this.sessionChannels.get(sessionId) || 'ipc'
+  }
+
+  getSteeringQueue(sessionId: string): PendingMessageQueue {
+    let queue = this.steeringQueues.get(sessionId)
+    if (!queue) {
+      queue = new PendingMessageQueue('one-at-a-time')
+      this.steeringQueues.set(sessionId, queue)
+    }
+    return queue
+  }
+
+  getFollowUpQueue(sessionId: string): PendingMessageQueue {
+    let queue = this.followUpQueues.get(sessionId)
+    if (!queue) {
+      queue = new PendingMessageQueue('all')
+      this.followUpQueues.set(sessionId, queue)
+    }
+    return queue
+  }
+
+  followUpMessage(sessionId: string, content: string, source = 'api', origin?: unknown): void {
+    const queue = this.getFollowUpQueue(sessionId)
+    queue.enqueue({
+      content,
+      source,
+      timestamp: Date.now(),
+      ...(origin !== undefined ? { origin } : {}),
+    })
+    this.log(`Follow-up queued for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
+  }
+
+  setEventBus(eventBus: TEventBus): void {
+    this.unsubscribeCommands()
+    this.eventBus = eventBus
+    this.subscribeToCommands(eventBus)
+  }
+
+  bindCommandTarget(target: TCommandTarget, onDestroyed?: (clear: () => void) => void): void {
+    this.commandTarget = target
+    onDestroyed?.(() => {
+      if (this.commandTarget === target) {
+        this.commandTarget = null
+      }
+    })
+  }
+
+  hasCommandTarget(isAlive?: (target: TCommandTarget) => boolean): boolean {
+    if (!this.commandTarget) return false
+    return isAlive ? isAlive(this.commandTarget) : true
+  }
+
+  handleAbort(sessionId: string, command: AbortLikeCommand = { type: SESSION_COMMAND_TYPES.ABORT }): boolean {
+    return this.abort(sessionId, command.reason)
+  }
+
+  getActiveSessionIds(): string[] {
+    return Array.from(this.activeStreams.keys())
+  }
+
+  getController(sessionId: string): AbortController | undefined {
+    return this.activeStreams.get(sessionId)
+  }
+
+  registerController(sessionId: string, controller: AbortController): void {
+    const existing = this.activeStreams.get(sessionId)
+    if (existing) {
+      this.log(`Aborting previous stream for session: ${sessionId}`)
+      existing.abort()
+      this.onSessionAbort(sessionId, 'Superseded by a new stream')
+    }
+    this.activeStreams.set(sessionId, controller)
+  }
+
+  removeController(sessionId: string): void {
+    this.activeStreams.delete(sessionId)
+    this.sessionChannels.delete(sessionId)
+  }
+
+  abort(sessionId: string, reason = 'User cancelled'): boolean {
+    const controller = this.activeStreams.get(sessionId)
+    if (controller) {
+      this.log(`Aborting stream for session: ${sessionId} (${reason})`)
+      controller.abort()
+      this.activeStreams.delete(sessionId)
+      this.onSessionAbort(sessionId, reason)
+    }
+    this.sessionChannels.delete(sessionId)
+    this.steeringQueues.get(sessionId)?.clear()
+    this.followUpQueues.get(sessionId)?.clear()
+    this.onSessionCleared(sessionId)
+    return Boolean(controller)
+  }
+
+  abortAll(): void {
+    if (this.activeStreams.size > 0) {
+      this.log(`Aborting ${this.activeStreams.size} active stream(s)`)
+      for (const [sessionId, controller] of this.activeStreams) {
+        controller.abort()
+        this.onSessionAbort(sessionId, 'Abort all')
+        this.onSessionCleared(sessionId)
+      }
+      this.activeStreams.clear()
+      this.sessionChannels.clear()
+    }
+  }
+
+  shutdown(): void {
+    this.abortAll()
+    this.unsubscribeCommands()
+    this.steeringQueues.clear()
+    this.followUpQueues.clear()
+    this.commandTarget = null
+    this.onShutdown()
+  }
+
+  /**
+   * 命令订阅表:键是 `SESSION_COMMAND_TYPES` 里的常量,不是再抄一遍的字面量 ——
+   * 渲染层 `emitCommand(…, { type: SESSION_COMMAND_TYPES.SEND_MESSAGE })` 上按
+   * F12 能直接跳到这张表的那一行,再一跳就是下面的 `handleSendMessage` 本体
+   * (2026-08-21 两层合一之前,中间还隔着一层 `handleSendMessageCommand` 抽象转发)。
+   *
+   * 类型是 `Partial<Record<SessionCommandType, …>>` 而不是 `Record`:12 条命令里
+   * 引擎只订阅 9 条,另外三条各有自己的订阅者,不在这里硬造处理者 ——
+   *   - `PERMISSION_RESPOND` → `packages/core/permission/index.ts`(Permission 自己订)
+   *   - `INTERACTION_RESPOND` → `packages/core/interaction/registry.ts`(交互注册表自己订)
+   *   - `CONFIRM_TOOL` → **全仓无订阅者**(只剩契约形状,没有任何 `onAnySession`
+   *     消费它;发它等于丢进空气)。
+   */
+  protected buildCommandHandlers(): Partial<
+    Record<SessionCommandType, (envelope: CoreCommandEnvelope) => void>
+  > {
+    return {
+      [SESSION_COMMAND_TYPES.SEND_MESSAGE]: (envelope) => {
+        const target = this.commandTarget
+        if (!target) return
+        this.handleSendMessage(envelope.sessionId, envelope.event as SendMessageCommandLike, target)
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.SEND_MESSAGE} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.EDIT_AND_RESEND]: (envelope) => {
+        const target = this.commandTarget
+        if (!target) return
+        this.handleEditAndResend(envelope.sessionId, envelope.event as EditAndResendCommandLike, target)
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.EDIT_AND_RESEND} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.RETRY_MESSAGE]: (envelope) => {
+        const target = this.commandTarget
+        if (!target) return
+        this.handleRetryMessage(envelope.sessionId, envelope.event as RetryMessageCommandLike, target)
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.RETRY_MESSAGE} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.COMPACT_CONTEXT]: (envelope) => {
+        this.handleCompactContext(envelope.sessionId, envelope.event as CompactContextCommandLike)
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.COMPACT_CONTEXT} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.ABORT]: (envelope) => {
+        this.handleAbort(envelope.sessionId, envelope.event as AbortLikeCommand)
+      },
+      [SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM]: (envelope) => {
+        const target = this.commandTarget
+        if (!target) return
+        this.handleResumeAfterConfirm(envelope.sessionId, envelope.event as ResumeAfterConfirmCommandLike, target)
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.INJECT_STEERING]: (envelope) => {
+        const command = envelope.event as InjectMessageCommand
+        this.steerMessage(envelope.sessionId, command.content, command.source || 'eventbus', command.origin)
+      },
+      [SESSION_COMMAND_TYPES.RETRACT_STEERING]: (envelope) => {
+        const command = envelope.event as RetractSteeringLikeCommand
+        this.retractSteerMessage(envelope.sessionId, command.messageId)
+      },
+      [SESSION_COMMAND_TYPES.INJECT_FOLLOWUP]: (envelope) => {
+        const command = envelope.event as InjectMessageCommand
+        this.followUpMessage(envelope.sessionId, command.content, command.source || 'eventbus', command.origin)
+      },
+    }
+  }
+
+  protected subscribeToCommands(eventBus: TEventBus): void {
+    for (const [commandType, handler] of Object.entries(this.buildCommandHandlers())) {
+      if (!handler) continue
+      this.unsubs.push(eventBus.onAnySession(commandType, handler, 'StreamEngine'))
+    }
+  }
+
+  protected unsubscribeCommands(): void {
+    for (const unsubscribe of this.unsubs) {
+      unsubscribe()
+    }
+    this.unsubs = []
+  }
+
+  protected onSessionAbort(_sessionId: string, _reason: string): void {}
+
+  protected log(message: string): void {
+    log.debug(message)
+  }
+
+  protected logError(message: string, error: unknown): void {
+    log.error(message, undefined, error)
+  }
+
   private activeCompactions = new Set<string>()
   /**
    * P2(2026-08-14):per-session 压缩闸。压缩开跑时放进一个 promise,收尾时
@@ -375,9 +635,7 @@ export class CoreStreamEngine<
       TCompactResult
     >,
     private readonly options: CoreStreamEngineOptions = {},
-  ) {
-    super()
-  }
+  ) {}
 
   protected get store(): StreamEngineStoreAdapter<TSettings, TSession, TMessage> {
     return this.runtime.store
@@ -391,7 +649,7 @@ export class CoreStreamEngine<
     return this.runtime.clock.now()
   }
 
-  override steerMessage(sessionId: string, content: string, source = 'api', origin?: unknown): void {
+  steerMessage(sessionId: string, content: string, source = 'api', origin?: unknown): void {
     const queue = this.getSteeringQueue(sessionId)
     const timestamp = this.now()
 
@@ -453,8 +711,11 @@ export class CoreStreamEngine<
    * delete the eagerly-persisted chat message. A message already drained
    * into a model turn stays — retraction only wins while it is pending.
    */
-  override retractSteerMessage(sessionId: string, messageId: string): boolean {
-    const removed = super.retractSteerMessage(sessionId, messageId)
+  retractSteerMessage(sessionId: string, messageId: string): boolean {
+    const removed = this.steeringQueues.get(sessionId)?.removeById(messageId)
+    if (removed) {
+      this.log(`Steering retracted for ${sessionId.slice(0, 8)}: ${messageId}`)
+    }
     if (!removed) return false
 
     if (!this.store.deleteMessage(sessionId, messageId)) {
@@ -471,52 +732,13 @@ export class CoreStreamEngine<
     return true
   }
 
-  protected override onSessionCleared(sessionId: string): void {
+  protected onSessionCleared(sessionId: string): void {
     this.sessionTitleGenerations.delete(sessionId)
     this.runtime.permission.clearSession(sessionId)
   }
 
-  protected override onShutdown(): void {
+  protected onShutdown(): void {
     this.sessionTitleGenerations.clear()
-  }
-
-  protected override async handleSendMessageCommand(
-    sessionId: string,
-    command: unknown,
-    target: TCommandTarget,
-  ): Promise<void> {
-    await this.handleSendMessage(sessionId, command as SendMessageCommandLike, target)
-  }
-
-  protected override async handleEditAndResendCommand(
-    sessionId: string,
-    command: unknown,
-    target: TCommandTarget,
-  ): Promise<void> {
-    await this.handleEditAndResend(sessionId, command as EditAndResendCommandLike, target)
-  }
-
-  protected override async handleRetryMessageCommand(
-    sessionId: string,
-    command: unknown,
-    target: TCommandTarget,
-  ): Promise<void> {
-    await this.handleRetryMessage(sessionId, command as RetryMessageCommandLike, target)
-  }
-
-  protected override async handleResumeAfterConfirmCommand(
-    sessionId: string,
-    command: unknown,
-    target: TCommandTarget,
-  ): Promise<void> {
-    await this.handleResumeAfterConfirm(sessionId, command as ResumeAfterConfirmCommandLike, target)
-  }
-
-  protected override async handleCompactContextCommand(
-    sessionId: string,
-    command: unknown,
-  ): Promise<void> {
-    await this.handleCompactContext(sessionId, command as CompactContextCommandLike)
   }
 
   /**

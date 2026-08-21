@@ -168,8 +168,11 @@ export {
 	resolveStreamPermissionMode,
 } from "./core-stream-engine.js";
 export type {
+	AbortLikeCommand,
+	CoreCommandEnvelope,
 	CoreContextCompactResultLike,
 	CoreEventBusEmitterLike,
+	CoreEventBusLike,
 	CoreProviderConfigWithKeyLike,
 	CoreStreamEngineOptions,
 	CoreStreamEngineRuntime,
@@ -180,15 +183,8 @@ export type {
 	CoreStreamResultLike,
 	CoreStreamSession,
 	CoreStreamSettings,
-} from "./core-stream-engine.js";
-
-export { HeadlessStreamEngine } from "./headless-stream-engine.js";
-export type {
-	AbortLikeCommand,
-	CoreCommandEnvelope,
-	CoreEventBusLike,
 	InjectMessageCommand,
-} from "./headless-stream-engine.js";
+} from "./core-stream-engine.js";
 
 export { PendingMessageQueue } from "./message-queue.js";
 export type {

@@ -425,7 +425,6 @@ export {
   createCoreId,
   createCoreEventOnlyEmitter,
   generateTitleFromMessage,
-  HeadlessStreamEngine,
   normalizeSessionTitle,
   PendingMessageQueue,
   resolveToolCallModel,

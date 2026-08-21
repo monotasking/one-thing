@@ -22,7 +22,7 @@ import type { SessionCommandType } from '@onething/core/events'
  * —— core 禁 import `@shared`,表留在这里就意味着引擎订阅点只能再手抄一份字面量,
  * 词汇分成两份、find-references 断在中间。表搬过去之后这里只做再导出:所有
  * `import { SESSION_COMMAND_TYPES } from '@shared/events/session-commands'` 一字不改,
- * 但它们和 `HeadlessStreamEngine` 的订阅表用的是同一个标识符。
+ * 但它们和 `CoreStreamEngine` 的订阅表用的是同一个标识符。
  *
  * (做法与 `shared/tool-errors.ts` 从 `@onething/core/permission`、
  * `shared/ipc/interaction.ts` 从 `@onething/core/interaction` 再导出同一条。)

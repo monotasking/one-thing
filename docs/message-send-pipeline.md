@@ -87,7 +87,7 @@ const result = await options.eventBus.emit(options.sessionId, options.command)
 
 ### 2.4 StreamEngine 订阅命令
 
-`HeadlessStreamEngine`（`packages/core/engine/headless-stream-engine.ts:197`）通过
+`CoreStreamEngine`（`packages/core/engine/core-stream-engine.ts`,2026-08-21 前是它的基类 `HeadlessStreamEngine`）通过
 `onAnySession()` 跨 session 订阅所有命令：
 
 ```ts
