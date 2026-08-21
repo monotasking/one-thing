@@ -168,6 +168,7 @@ export function registerFilesHandlers() {
       const typedRequest = request as { path: string }
       return await statOnethingPath({
         path: typedRequest.path,
+        homeDir: os.homedir(),
         stat: targetPath => fs.stat(targetPath),
       })
     },

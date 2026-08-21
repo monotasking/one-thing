@@ -187,6 +187,7 @@ import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { platformApi } from '@/platform'
 import { toast } from '@/composables/useToast'
+import { getToolFilePath } from '@/stores/helpers/tool-step-view'
 import {
   isImagePath,
   setReferenceHost,
@@ -770,11 +771,15 @@ function createReferenceHost(): ReferenceHost {
         await platformApi.openExternal(url)
         return
       }
+      // 先把浏览器面板亮出来并等它完成 hydrate,再建 tab —— 反过来的话 BrowserPanel
+      // 挂载时看到的 store 还是空的,会自己再开一个空 tab 盖在上面。
       // 每次点开新 tab 并前置:点消息里的链接是"看一眼",不该覆盖正在看的页面。
-      await browserStore.openTab(url)
       inspectorOpen.value = true
       await nextTick()
       rightWorkbenchRef.value?.openWorkbenchTab('browser')
+      await browserStore.ensureLoaded()
+      const tabId = await browserStore.openTab(url)
+      if (tabId) await browserStore.selectTab(tabId)
     },
     openExternal: url => void platformApi.openExternal(url),
     revealPath: path => void platformApi.revealPath(path),
@@ -786,16 +791,35 @@ function createReferenceHost(): ReferenceHost {
       return {
         exists: true,
         isDirectory: res.type === 'directory',
-        isImage: isImagePath(path),
+        isImage: isImagePath(res.path || path),
+        // `~` 由主进程展开,渲染端没有 home。
+        path: res.path || undefined,
       }
     },
-    // 相对路径按**当前会话的工作目录**解析。`~/` 在渲染端没有 home 可展开
-    // (宿主没有这个口),所以按解析不到处理 —— 点了会说"无法解析路径"。
+    // 相对路径 / 裸文件名的候选:① 会话的每个工作目录根;② 本会话里工具(write/edit/
+    // read)碰过、且以该相对路径结尾的文件 —— 模型说"我生成了 `summary.md`"时,
+    // 它指的几乎总是自己刚写的那个。候选顺序即优先级,open.ts 逐个 stat。
     resolveRelative: (path) => {
-      if (path.startsWith('~')) return null
-      const root = currentWorkspaceRoot.value
-      if (!root) return null
-      return `${root.replace(/\/+$/, '')}/${path.replace(/^\.\//, '')}`
+      const rel = path.replace(/^\.\//, '')
+      const candidates: string[] = []
+      for (const root of currentWorkspaceRoots.value) {
+        candidates.push(`${root.replace(/\/+$/, '')}/${rel}`)
+      }
+      const sessionId = sessionsStore.currentSessionId
+      if (sessionId) {
+        const messages = chatStore.getSessionState(sessionId).messages.value
+        const suffix = `/${rel}`
+        // 后写的在前:同名文件以最近一次为准。
+        for (let i = messages.length - 1; i >= 0; i--) {
+          for (const step of messages[i].steps || []) {
+            const filePath = step.toolCall ? getToolFilePath(step.toolCall, null, null, step) : ''
+            if (filePath && (filePath === rel || filePath.endsWith(suffix)) && !candidates.includes(filePath)) {
+              candidates.push(filePath)
+            }
+          }
+        }
+      }
+      return candidates
     },
     notify: (message, type) => {
       if (type === 'error') toast.error(message)

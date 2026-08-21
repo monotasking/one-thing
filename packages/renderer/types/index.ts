@@ -2025,6 +2025,8 @@ export interface ElectronAPI {
 		type?: "file" | "directory";
 		size?: number;
 		mtimeMs?: number;
+		/** 实际 stat 的绝对路径(`~` 已由主进程展开)。 */
+		path?: string;
 		error?: string;
 	}>;
 	revealPath: (

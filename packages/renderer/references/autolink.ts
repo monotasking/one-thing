@@ -46,6 +46,7 @@ function looksLikeCandidate(token: string): boolean {
   if (token.startsWith('//')) return false
   if (token.startsWith('~/')) return true
   if (/^[A-Za-z]:[\\/]/.test(token)) return true
+  // 裸文件名不链接(与域名同形,见 parse.ts 的裁定);至少要有一层目录。
   if (!token.includes('/')) return false
   if (token.startsWith('./') || token.startsWith('../')) return true
   const withoutPosition = token.replace(/(:\d+(:\d+|-\d+)?|#L\d+(-L?\d+)?)$/i, '')

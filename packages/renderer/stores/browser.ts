@@ -61,8 +61,10 @@ export const useBrowserStore = defineStore('browser', () => {
     return hydrated
   }
 
-  async function openTab(url?: string): Promise<void> {
-    await platformApi.createBrowserTab?.({ url })
+  /** 返回新 tab 的 id(主进程已将其置为活动 tab);调用方需要时可再显式 selectTab。 */
+  async function openTab(url?: string): Promise<string | null> {
+    const res = await platformApi.createBrowserTab?.({ url })
+    return res?.success && res.tab ? res.tab.id : null
   }
   async function closeTab(tabId: string): Promise<void> {
     await platformApi.closeBrowserTab?.(tabId)

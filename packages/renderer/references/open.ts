@@ -18,6 +18,8 @@ export interface ReferenceStat {
   exists: boolean
   isDirectory: boolean
   isImage: boolean
+  /** 宿主实际 stat 到的绝对路径(`~` 已由主进程展开);有就用它替换原 path。 */
+  path?: string
 }
 
 export interface ReferenceFilePosition {
@@ -39,8 +41,11 @@ export interface ReferenceHost {
   openFolder?(path: string): void | Promise<void>
   /** 图片引用:灯箱。 */
   openImage?(path: string, fileUrl: string): void | Promise<void>
-  /** 非绝对路径(相对 / `~/`)按会话工作目录解析;解析不到返回 null。 */
-  resolveRelative?(path: string): string | null
+  /**
+   * 相对路径 / 裸文件名的候选绝对路径(按会话工作目录、本会话工具碰过的文件…),
+   * 调用方逐个 stat,第一个存在的胜出。空 / null = 无从解析。
+   */
+  resolveRelative?(path: string): string[] | string | null | Promise<string[] | string | null>
   notify?(message: string, type?: 'error' | 'info'): void
 }
 
@@ -74,11 +79,28 @@ async function openFileReference(
   const current = host
   if (!current) return fail('no-host')
 
+  // `~/x` 与相对路径都不能直接交给 workbench:先落成绝对路径。`~` 的展开在宿主
+  // (主进程 stat 返回展开后的 path),相对路径由宿主给候选、这里逐个 stat 挑第一个存在的。
   let path = ref.path
-  if (!isAbsoluteReferencePath(path)) {
-    const resolved = current.resolveRelative?.(path)
-    if (!resolved) return fail('missing', `无法解析路径:${ref.path}`)
-    path = resolved
+  let stat: ReferenceStat | null = null
+  if (path.startsWith('~')) {
+    stat = current.statPath ? await current.statPath(path) : null
+    if (!stat?.exists || !stat.path) return fail('missing', `无法解析路径:${ref.path}`)
+    path = stat.path
+  } else if (!isAbsoluteReferencePath(path)) {
+    const resolved = await current.resolveRelative?.(path)
+    const candidates = (Array.isArray(resolved) ? resolved : resolved ? [resolved] : []).filter(Boolean)
+    if (candidates.length === 0) return fail('missing', `无法解析路径:${ref.path}`)
+    let hit: { path: string; stat: ReferenceStat } | null = null
+    for (const candidate of candidates) {
+      const probe = current.statPath ? await current.statPath(candidate) : null
+      // 宿主没有 stat 能力时只能信第一个候选。
+      if (!current.statPath) { hit = { path: candidate, stat: { exists: true, isDirectory: false, isImage: false } }; break }
+      if (probe?.exists) { hit = { path: probe.path || candidate, stat: probe }; break }
+    }
+    if (!hit) return fail('missing', `文件不存在:${ref.path}`)
+    path = hit.path
+    stat = hit.stat
   }
 
   if (modifiers.shift) {
@@ -92,8 +114,9 @@ async function openFileReference(
     return { ok: true }
   }
 
-  const stat = current.statPath ? await current.statPath(path) : null
+  if (!stat) stat = current.statPath ? await current.statPath(path) : null
   if (stat && !stat.exists) return fail('missing', `文件不存在:${path}`)
+  if (stat?.path) path = stat.path
 
   if (stat?.isDirectory) {
     if (current.openFolder) {

@@ -46,6 +46,12 @@ describe('findPathSpans', () => {
     expect(findPathSpans('/x/y/z:12')).toHaveLength(1)
   })
 
+  it('never links a bare filename — it is indistinguishable from a domain', () => {
+    for (const name of ['summary.md', 'main.py:12', 'package.json', 'example.com', 'node.js']) {
+      expect(findPathSpans(name), name).toHaveLength(0)
+    }
+  })
+
   it('never matches URLs', () => {
     expect(findPathSpans('https://example.com/a/b.ts')).toHaveLength(0)
     expect(findPathSpans('file:///a/b.ts')).toHaveLength(0)

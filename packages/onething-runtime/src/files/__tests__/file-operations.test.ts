@@ -144,7 +144,21 @@ describe('file operations runtime adapters', () => {
       type: 'directory',
       size: 50,
       mtimeMs: 6,
+      path: '/repo',
     })
+  })
+
+  it('expands a leading ~ when the host provides homeDir and reports the resolved path', async () => {
+    const seen: string[] = []
+    await expect(statOnethingPath({
+      path: '~/notes/a.md',
+      homeDir: '/Users/me',
+      stat: async (target) => { seen.push(target); return stat({ size: 1, mtimeMs: 2 }) },
+    })).resolves.toMatchObject({ success: true, path: '/Users/me/notes/a.md' })
+    expect(seen).toEqual(['/Users/me/notes/a.md'])
+    // 没给 homeDir 就原样 stat(server 侧自己已按沙箱根展开过)。
+    await expect(statOnethingPath({ path: '~/x', stat: async () => stat({}) }))
+      .resolves.toMatchObject({ path: '~/x' })
   })
 
   it('wraps create, mkdir, rename, and delete file actions', async () => {

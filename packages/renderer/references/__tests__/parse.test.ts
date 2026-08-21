@@ -74,7 +74,8 @@ const cases: Case[] = [
   { name: 'relative allowed with ctx', href: 'src/foo.ts', ctx: RELATIVE, expected: { kind: 'file', path: 'src/foo.ts' } },
   { name: 'relative with line allowed with ctx', href: 'src/foo.ts:12', ctx: RELATIVE, expected: { kind: 'file', path: 'src/foo.ts', line: 12 } },
   { name: 'dot-slash relative', href: './a/b.ts', ctx: RELATIVE, expected: { kind: 'file', path: './a/b.ts' } },
-  { name: 'single segment relative rejected', href: 'foo.ts', ctx: RELATIVE, expected: null },
+  { name: 'bare filename rejected (indistinguishable from a domain)', href: 'foo.ts', ctx: RELATIVE, expected: null },
+  { name: 'bare filename with line is neither file nor external', href: 'main.py:12', ctx: RELATIVE, expected: null },
   { name: 'hostname-looking first segment rejected', href: 'example.com/page', ctx: RELATIVE, expected: null },
 
   // ── 编码 ────────────────────────────────────────────────────────────────

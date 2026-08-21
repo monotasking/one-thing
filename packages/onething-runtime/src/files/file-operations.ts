@@ -61,6 +61,8 @@ export interface OnethingFileStatResponse {
   type?: 'file' | 'directory'
   size?: number
   mtimeMs?: number
+  /** 实际 stat 的绝对路径(`~` 已展开);调用方后续读/开/显示都该用它。 */
+  path?: string
   error?: string
 }
 
@@ -87,7 +89,16 @@ export interface ListOnethingDirectoryOptions {
 
 export interface StatOnethingPathOptions {
   path: string
+  /** 给了 homeDir 才展开前导 `~`;渲染端没有 home,靠这一跳把 `~/x` 变成绝对路径。 */
+  homeDir?: string
   stat(path: string): MaybePromise<OnethingFileStatLike>
+}
+
+export function expandOnethingHomePath(input: string, homeDir?: string): string {
+  if (!homeDir) return input
+  if (input === '~') return homeDir
+  if (input.startsWith('~/') || input.startsWith('~\\')) return `${homeDir}${input.slice(1)}`
+  return input
 }
 
 export interface CreateOnethingFileOptions {
@@ -251,13 +262,15 @@ export async function listOnethingDirectory(
 export async function statOnethingPath(
   options: StatOnethingPathOptions,
 ): Promise<OnethingFileStatResponse> {
+  const targetPath = expandOnethingHomePath(options.path, options.homeDir)
   try {
-    const stats = await options.stat(options.path)
+    const stats = await options.stat(targetPath)
     return {
       success: true,
       type: stats.isDirectory() ? 'directory' : 'file',
       size: stats.size,
       mtimeMs: stats.mtimeMs,
+      path: targetPath,
     }
   } catch (error) {
     return { success: false, error: errorMessage(error, 'Failed to stat path') }

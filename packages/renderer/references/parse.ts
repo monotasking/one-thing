@@ -115,7 +115,11 @@ export function isWindowsPath(value: string): boolean {
   return WINDOWS_PATH_RE.test(value)
 }
 
-/** 相对路径的保守判据:至少两段、不像域名、不含 scheme。 */
+/**
+ * 相对路径的保守判据:至少两段、不像域名、不含 scheme。
+ * 裸文件名(`foo.md`)**不算**:它和域名(`foo.md` 也是摩尔多瓦的网站)在形状上
+ * 分不开,用户裁定(2026-08-19)宁可不链接、由提示词强制模型写绝对路径。
+ */
 function relativeLooksLikePath(value: string): boolean {
   if (!value || value.startsWith('/') || value.includes('://')) return false
   if (!value.includes('/')) return false
@@ -185,7 +189,9 @@ export function parseReference(href: string, ctx?: ParseReferenceContext): Refer
   // 盘符要先判:`C:\Users\me` 也能被 scheme 正则吃掉。
   if (isWindowsPath(raw)) return fileReference(raw, decodePath(raw), ctx)
 
-  const scheme = SCHEME_RE.exec(raw)?.[1]?.toLowerCase()
+  let scheme = SCHEME_RE.exec(raw)?.[1]?.toLowerCase()
+  // `main.py:12` 的 `main.py:` 会被 scheme 正则吃掉 —— 冒号后面只有行号/列号的不是 scheme。
+  if (scheme && /^:\d+(?::\d+|-\d+)?$/.test(raw.slice(scheme.length))) scheme = undefined
   if (scheme) {
     // 光秃秃一个 scheme(`C:`、`mailto:`)不指向任何东西。
     if (raw.length === scheme.length + 1) return null
