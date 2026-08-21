@@ -32,7 +32,7 @@ import {
   type ACPUpdateAgentRequest,
   type ACPUpdateAgentResponse,
 } from '@shared/ipc.js'
-import { ACPManager } from '@onething/app/acp/index.js'
+import { ACPManager } from '@onething/runtime/acp'
 import { registerACPPermissionBridge } from '@onething/app/acp/permission-bridge.js'
 import { disposeExternalAgentConnectors } from '@onething/app/external-agents/index.js'
 import { getSettings, saveSettings } from '@onething/app/stores/settings.js'

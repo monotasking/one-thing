@@ -2520,6 +2520,27 @@ const APP_ASSEMBLY_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]@preload\//,
 ]
 
+/**
+ * I3(§0b.3):**角色写在文件名里**。P3'a 起,产品层里跨进程契约的接线不再靠
+ * "住在 src/app 那棵树"来表达,而是靠 `*.wiring.ts` 这个文件名后缀 —— 它是
+ * `packages/onething-runtime/src`(app 之外)唯一允许 import `@shared/ipc` /
+ * `@shared/events` 的文件形态。其余禁令(electron / @main / @preload / cordis)
+ * 对 wiring 文件照旧生效:它只是被允许说跨进程词汇,不是被允许认识宿主。
+ */
+const SHARED_CONTRACT_PATTERN_SOURCES = new Set([
+  String(/src\/shared/),
+  String(/shared\/ipc/),
+  String(/\.\.\/\.\.\/shared/),
+  String(/\.\.\/\.\.\/\.\.\/shared/),
+])
+
+const RUNTIME_WIRING_FORBIDDEN_PATTERNS: RegExp[] = HOST_BOUNDARY_FORBIDDEN_PATTERNS
+  .filter(pattern => !SHARED_CONTRACT_PATTERN_SOURCES.has(String(pattern)))
+
+function isRuntimeWiringFile(file: string): boolean {
+  return file.endsWith('.wiring.ts') || file.endsWith('.wiring.tsx')
+}
+
 function checkRuntimeHostBoundary(): void {
   const appRoot = path.join(root, 'packages/onething-runtime/src/app')
   const lines = walkFiles(path.join(root, 'packages/onething-runtime'))
@@ -2528,9 +2549,32 @@ function checkRuntimeHostBoundary(): void {
       // src/app 是唯一可以 import cordis 的地方；产品层不感知底座。
       file.startsWith(appRoot)
         ? APP_ASSEMBLY_FORBIDDEN_PATTERNS
-        : [...HOST_BOUNDARY_FORBIDDEN_PATTERNS, ...CORDIS_FORBIDDEN_PATTERNS],
+        : [
+            ...(isRuntimeWiringFile(file) ? RUNTIME_WIRING_FORBIDDEN_PATTERNS : HOST_BOUNDARY_FORBIDDEN_PATTERNS),
+            ...CORDIS_FORBIDDEN_PATTERNS,
+          ],
     ))
   assertNoMatches('packages/onething-runtime has no Electron/main/shared IPC forbidden imports', lines)
+}
+
+/**
+ * I3 的另一半:`*.wiring.ts` 是**出口**,不是可以随便被产品逻辑拿来用的库。
+ * 非 wiring 文件 import 一个 wiring 模块 = 跨进程词汇从后门渗回产品层,和
+ * 直接 import `@shared/ipc` 等价 —— 所以同样禁掉。app 装配层不受此限
+ * (它本来就可以说 `@shared/ipc`,接 wiring 出口正是它的工作)。
+ */
+const RUNTIME_WIRING_IMPORT_PATTERN = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"][^'"]*\.wiring(?:\.js)?['"]/
+
+function checkRuntimeWiringModulesStayAtTheEdge(): void {
+  const appRoot = path.join(root, 'packages/onething-runtime/src/app')
+  const lines = walkFiles(path.join(root, 'packages/onething-runtime/src'))
+    .filter(file => !file.startsWith(appRoot)
+      && !isRuntimeWiringFile(file)
+      // 测试是那个模块的**验证**,不是产品逻辑对它的依赖 —— 允许直接 import。
+      && !file.includes(`${path.sep}__tests__${path.sep}`)
+      && !/\.(?:test|spec)\.tsx?$/.test(file))
+    .flatMap(file => matchingLines(file, [RUNTIME_WIRING_IMPORT_PATTERN]))
+  assertNoMatches('packages/onething-runtime product layer does not import *.wiring modules', lines)
 }
 
 function checkGatewayHostBoundary(): void {
@@ -5225,7 +5269,7 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
   const electronAuthFile = path.join(root, 'apps/electron/src/auth/electron-auth.ts')
   const electronTokenStoreFile = path.join(root, 'apps/electron/src/auth/token-store.ts')
   const mainAuthFile = path.join(root, 'packages/onething-runtime/src/app/auth/auth-service.ts')
-  const mainTokenStoreFile = path.join(root, 'packages/onething-runtime/src/app/auth/token-store.ts')
+  const mainTokenStoreFile = path.join(root, 'packages/onething-runtime/src/auth/token-store.wiring.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAuthFetchContent = fs.existsSync(electronAuthFetchFile)
     ? fs.readFileSync(electronAuthFetchFile, 'utf-8')
@@ -5308,7 +5352,7 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
       : ['packages/onething-runtime/src/app/auth/auth-service.ts: missing auth service facade']),
     ...(fs.existsSync(mainTokenStoreFile)
       ? matchingLines(mainTokenStoreFile, MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/auth/token-store.ts: missing token store facade']),
+      : ['packages/onething-runtime/src/auth/token-store.wiring.ts: missing token store facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron auth adapters', lines)
@@ -6428,7 +6472,7 @@ function checkRuntimeOwnsPermissionSessionIpcPresentation(): void {
 
 function checkRuntimeOwnsAuthTokenStorage(): void {
   const runtimeFile = 'packages/onething-runtime/src/auth/token-store.ts'
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/auth/token-store.ts')
+  const mainFile = path.join(root, 'packages/onething-runtime/src/auth/token-store.wiring.ts')
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const mainFacadeLines = mainContent.split('\n').filter(line => line.trim().length > 0)
   const lines = [
@@ -6443,7 +6487,7 @@ function checkRuntimeOwnsAuthTokenStorage(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/auth/token-store.ts: missing Electron safeStorage adapter facade']),
+      : ['packages/onething-runtime/src/auth/token-store.wiring.ts: missing Electron safeStorage adapter facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns OAuth token storage layout', lines)
@@ -6491,7 +6535,6 @@ function checkRuntimeOwnsAuthCallbackServer(): void {
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const mainFacadeLines = mainContent.split('\n').filter(line => line.trim().length > 0)
   const requiredRuntimeSymbols = [
     'CallbackServerManager',
     'callbackServerManager',
@@ -6501,11 +6544,6 @@ function checkRuntimeOwnsAuthCallbackServer(): void {
     'unregisterState',
     'cleanup',
     'writeCallbackPage',
-  ]
-  const requiredMainFacadeSymbols = [
-    '@onething/runtime/auth',
-    'CallbackServerManager',
-    'callbackServerManager',
   ]
   const lines = [
     ...(!fs.existsSync(runtimeFile)
@@ -6517,15 +6555,15 @@ function checkRuntimeOwnsAuthCallbackServer(): void {
     ...(!runtimeIndexContent.includes('callbackServerManager')
       ? [`${rel(runtimeIndexFile)}: missing auth callback server public export`]
       : []),
-    ...requiredMainFacadeSymbols
-      .filter(symbol => !mainContent.includes(symbol))
-      .map(symbol => `${rel(mainFile)}: missing callback server legacy facade symbol ${symbol}`),
-    ...(mainFacadeLines.length > 6
-      ? [`${rel(mainFile)}: legacy auth callback-server facade must stay thin`]
-      : []),
+    // P3'a-1(I2):`app/auth/callback-server.ts` 只是 `export … from
+    // '@onething/runtime/auth'` 的转发,与 runtime 同名文件重复同一概念,已删除;
+    // 调用方直接 import `@onething/runtime/auth`。**它回来才算红。**
     ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_AUTH_CALLBACK_SERVER_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/auth/callback-server.ts: missing callback server legacy facade']),
+      ? [
+          `${rel(mainFile)}: auth callback-server legacy facade should be removed; import @onething/runtime/auth directly`,
+          ...matchingLines(mainFile, MAIN_AUTH_CALLBACK_SERVER_FORBIDDEN_PATTERNS),
+        ]
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns OAuth callback server', lines)
@@ -6961,19 +6999,17 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
     'ACPPromptStreamEvent',
     'ACPPromptStreamOptions',
   ]
-  const mainFacadeLines = mainFiles.flatMap(file => {
-    const content = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : ''
-    const lines = content.split('\n').filter(line => line.trim().length > 0)
-    return [
-      ...(!content.includes('@onething/runtime/acp')
-        ? [`${rel(file)}: ACP legacy facade must delegate to @onething/runtime/acp`]
-        : []),
-      ...(lines.length > 12
-        ? [`${rel(file)}: ACP legacy facade must stay thin`]
-        : []),
-      ...matchingLines(file, MAIN_ACP_RUNTIME_FORBIDDEN_PATTERNS),
-    ]
-  })
+  // P3'a-1(I2):这四个 app 门面本来就只是 `export … from '@onething/runtime/acp'`
+  // 的转发,和 runtime 里同名文件一字不差地重复着同一个概念。归位后它们被删除,
+  // 调用方直接 import `@onething/runtime/acp` —— 所以断言反过来:**它们回来才算红**
+  // (同 checkRuntimeOwnsThemeRuntime 的 mainHelperFiles 判例)。文件真回来了,照旧
+  // 扫一遍禁令模式,双保险不变。
+  const mainFacadeLines = mainFiles.flatMap(file => fs.existsSync(file)
+    ? [
+        `${rel(file)}: ACP legacy facade should be removed; import @onething/runtime/acp directly`,
+        ...matchingLines(file, MAIN_ACP_RUNTIME_FORBIDDEN_PATTERNS),
+      ]
+    : [])
   const lines = [
     ...(!fs.existsSync(runtimeClientFile)
       ? [`${rel(runtimeClientFile)}: missing runtime ACP client`]
@@ -8508,6 +8544,9 @@ function checkRuntimeOwnsThemeRuntime(): void {
     path.join(root, 'packages/onething-runtime/src/app/themes/css-mapper.ts'),
     path.join(root, 'packages/onething-runtime/src/app/themes/resolver.ts'),
     path.join(root, 'packages/onething-runtime/src/app/themes/role-mapping.ts'),
+    // P3'a-1:`app/themes/builtin/` 是 runtime 同名目录的逐字副本(index.ts 一字不差,
+    // 两个 json 还停在旧版),且全仓零 import —— 已删。它回来才算红。
+    path.join(root, 'packages/onething-runtime/src/app/themes/builtin/index.ts'),
   ]
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(path.join(root, file)) ? fs.readFileSync(path.join(root, file), 'utf-8') : '')
@@ -9805,6 +9844,7 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
 
 checkCoreForbiddenImports()
 checkRuntimeHostBoundary()
+checkRuntimeWiringModulesStayAtTheEdge()
 checkGatewayHostBoundary()
 checkCoreOwnsGatewayConversationRuntimeProtocol()
 checkGatewayLoadsRuntimeFromHostBoundary()

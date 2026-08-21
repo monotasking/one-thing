@@ -20,7 +20,7 @@ import { registerGlobalWindowShortcuts } from '@onething/electron-host/shortcuts
 import { getVoiceServiceSafe } from '@onething/app/voice/service.js'
 import { MCPManager, registerMCPTools } from '@onething/app/mcp/index.js'
 import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
-import { ACPManager } from '@onething/app/acp/index.js'
+import { ACPManager } from '@onething/runtime/acp'
 import { applyGatewaySettings } from '@onething/electron-host/gateway/lifecycle'
 import { startTodoPlanWatcher } from '@onething/app/todo-plan/store.js'
 import { getLogger } from '@onething/app/logging/index.js'

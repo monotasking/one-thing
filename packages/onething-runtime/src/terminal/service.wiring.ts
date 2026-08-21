@@ -29,7 +29,7 @@ import type {
   TerminalOutputChunk,
 } from '@shared/ipc.js'
 import { createNodePtyBackend, type PtyBackend, type PtyHandle } from './pty-backend.js'
-import { buildSpawnProfile } from './spawn-profile.js'
+import { buildSpawnProfile } from './spawn-profile.wiring.js'
 
 export interface TerminalBroadcaster {
   sendData(event: TerminalDataEvent): void

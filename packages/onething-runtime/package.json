@@ -75,6 +75,7 @@
     "./spaces": "./src/spaces/index.ts",
     "./spaces/*": "./src/spaces/*.ts",
     "./tasks": "./src/tasks/index.ts",
+    "./terminal/*": "./src/terminal/*.ts",
     "./tasks/*": "./src/tasks/*.ts",
     "./toc": "./src/toc/index.ts",
     "./toc/*": "./src/toc/*.ts",

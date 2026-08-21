@@ -52,9 +52,9 @@ import { registerAppRpcDomains } from './rpc/index.js'
 import { initializeSessionSkills } from './skills/session-skills.js'
 import { MCPManager, registerMCPTools } from './mcp/index.js'
 import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
-import { ACPManager } from './acp/index.js'
+import { ACPManager } from '@onething/runtime/acp'
 import { killTrackedDetachedChildren } from './tools/core/bash-executor.js'
-import { killAllTerminals } from './terminal/service.js'
+import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
 import { getLogger } from './logging/index.js'
 
 const log = getLogger('app.backend')

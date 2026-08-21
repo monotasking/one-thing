@@ -9,8 +9,8 @@
 import type { OAuthToken } from '@shared/ipc.js'
 import type { OnethingCredentialTarget } from '@onething/runtime/auth'
 import { authService } from '../../auth/auth-service.js'
-import { generatePKCE } from '../../auth/auth-registry.js'
-import type { AuthProviderDefinition } from '../../auth/types.js'
+import { generatePKCE } from '@onething/runtime/auth'
+import type { AuthProviderDefinition } from '@onething/runtime/auth/types.wiring'
 
 export type OAuthProviderConfig = AuthProviderDefinition
 

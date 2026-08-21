@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { generatePKCE, getAuthProviderDefinition } from '../auth-registry.js'
+import { generatePKCE, getAuthProviderDefinition } from '../index.js'
 
-describe('auth registry', () => {
+describe('auth registry (codex callback flow)', () => {
   it('generates S256 PKCE material', () => {
     const pkce = generatePKCE()
 

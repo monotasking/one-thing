@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalDataEvent, TerminalExitEvent } from '@shared/ipc.js'
 import type { PtyBackend, PtyExitEvent, PtyHandle, PtySpawnRequest } from '../pty-backend.js'
-import { TerminalService, type TerminalBroadcaster } from '../service.js'
+import { TerminalService, type TerminalBroadcaster } from '../service.wiring.js'
 
 class FakePty implements PtyHandle {
   pid = 4242

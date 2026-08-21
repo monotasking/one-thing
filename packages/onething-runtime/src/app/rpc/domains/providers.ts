@@ -11,7 +11,7 @@
  *    宿主都跑**,所以 server 迁完拿到的是真注册表,不是降级。
  * 2. `usage` —— server 原本无条件抛 "Provider usage requires OAuth in the
  *    desktop host."。那句话在 auth 主机端口未注入时是实话,但 headless 宿主的
- *    token store 有 plaintext 回退(见 `app/auth/host-ports.ts` 的契约),
+ *    token store 有 plaintext 回退(见 `runtime/auth/host-ports.ts` 的契约),
  *    凭证在同一个 store 里。所以这里不再假装不支持,照 desktop 走真链路 ——
  *    与第一批 `goal` 补齐 web 桩同类:顺带补齐,不是等价搬迁。
  */

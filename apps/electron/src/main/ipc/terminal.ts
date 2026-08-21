@@ -8,7 +8,7 @@ import {
 	configureTerminalBroadcaster,
 	getTerminalService,
 	markAllTerminalsDetached,
-} from "@onething/app/terminal/service.js";
+} from "@onething/runtime/terminal/service.wiring";
 import { registerElectronTerminalIpcHandlers } from "@onething/electron-host/ipc/terminal";
 import { getIPCBridge } from "../bridges/ipc-bridge-lifecycle.js";
 

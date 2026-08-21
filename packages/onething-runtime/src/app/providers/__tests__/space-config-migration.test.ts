@@ -34,7 +34,7 @@ vi.mock('../registry.js', () => ({
   getProviderInfo: (id: string) => ({ id, name: id.toUpperCase() }),
 }))
 
-vi.mock('../../auth/host-ports.js', () => ({
+vi.mock('@onething/runtime/auth/host-ports', () => ({
   getAuthHostPorts: () => ({}),
 }))
 

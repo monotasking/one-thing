@@ -58,7 +58,7 @@ import { shutdownSessionLayer } from "@onething/app/session/index.js";
 import { Permission } from "@onething/app/permission/index.js";
 import { disposeMusicService } from "@onething/app/music/service.js";
 import { disposeRadioConductor } from "@onething/app/music/radio.js";
-import { killAllTerminals } from "@onething/app/terminal/service.js";
+import { killAllTerminals } from "@onething/runtime/terminal/service.wiring";
 import {
 	configureBrowserWindowProvider,
 	killAllBrowserTabs,
@@ -108,7 +108,7 @@ import {
 	getElectronAppVersion,
 	getElectronResourcesPath,
 } from "@onething/electron-host/skills/environment";
-import { configureAuthHost } from "@onething/app/auth/host-ports.js";
+import { configureAuthHost } from "@onething/runtime/auth/host-ports";
 import { configureVoiceHost } from "@onething/app/voice/host-ports.js";
 import { broadcastElectronVoiceMessage } from "@onething/electron-host/voice/events";
 import { createElectronAuthFetch } from "@onething/electron-host/auth/auth-fetch";

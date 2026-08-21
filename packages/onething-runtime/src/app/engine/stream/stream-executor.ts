@@ -25,7 +25,7 @@ import {
 import { type StreamContext, type StreamSender } from './stream-processor.js'
 import { getStreamEngine } from '../index.js'
 import type { HistoryMessage } from './message-helpers.js'
-import type { ProviderAuthContext } from '../../auth/types.js'
+import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import type { AgentOutputModality } from '@onething/core/agent-loop'
 import {
   executeCoreMessageStream,

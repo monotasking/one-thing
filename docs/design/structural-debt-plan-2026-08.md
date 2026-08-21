@@ -502,6 +502,79 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
 
 ### P3' 归位:src/app → packages/backend + 领域折回(原"拆包",3–5 天;08-21 改拍)
 
+> **08-21 开工前量测,修正 P3'a 前提(拍板 #25)**:25 个"薄壳"目录里 **17 个依赖后端脊柱**
+> (`app/stores` 设置缓存、`app/store`、`app/logging`、`app/session`、`app/events`、`app/rpc`),
+> 只有 themes / practice / acp / auth / agent-loop / terminal(/ utils / deeplink)脊柱零依赖。
+> 整目录折进 runtime 会造出 runtime→backend 反向边,P3'd 拆包成环——原 `app` 树"接线依赖脊柱"是有
+> 依赖学理由的,不是纯历史。**修正**:原则不变(包按依赖等级、包内按领域、角色进路径/文件名),
+> 归位单位从"目录"改为"**文件**":一个文件 import 了脊柱或宿主端口 → 接线,归 `backend/wiring/<d>/`
+> (路径自带角色,不与 `runtime/<d>` 同名;P3'd 前暂住 `src/app/wiring/<d>/`);不 import 脊柱 → 逻辑,
+> 归 `runtime/<d>/`(其中 import `@shared/ipc|events` 的文件按 I3 带 `.wiring.ts` 后缀)。
+> "哪一个"的答案固定三句:**契约在 `core/<d>`,逻辑在 `runtime/<d>`,接进后端在 `backend/wiring/<d>`**。
+> I1 相应改写为"**逻辑**一领域一家":`runtime/<d>` 之外不得再有同名逻辑目录,`backend/wiring/<d>` 只许
+> 接线(断言:其下每个文件至少 import 一个脊柱模块或 `@onething/runtime/<d>`;不得被 runtime 反向 import)。
+> 执行分两拨:P3'a-1 六个脊柱零依赖目录 → runtime(验证机制);P3'a-2 其余按文件分拣。
+
+#### P3'a-1 落地记录(2026-08-21,六个"脊柱零依赖"目录,未提交)
+
+**先证伪了前提**。开工第一步逐文件重算依赖(直接 import + app 内传递闭包),六个目录里
+**真正零 app 依赖的只有 terminal 一个**;08-21 的量测只数了"直接 import 脊柱",漏掉了
+"经 app 同级目录传递到脊柱":
+
+| 目录 | 复核结论 |
+| --- | --- |
+| themes | `app/themes/builtin/` 是 `runtime/src/themes/builtin/` 的逐字副本(index.ts 一字不差,两个 json 还停在旧版),**全仓零 import** —— 不是"要搬的逻辑",是死副本 |
+| practice | `index.ts` import `../stores/paths.js` = **脊柱**(`app/stores`),按规则留在 app |
+| acp | 5 文件里 4 个是 `export … from '@onething/runtime/acp'` 的转发门面(I2 同名重复);`permission-bridge.ts` 传递依赖 `app/{permission,toolkit,session,stores,logging,channel}`,留 app |
+| auth | 6 文件里 2 个是转发门面;`auth-service.ts` 经 `app/providers/bound-fetch.ts` 依赖 `app/{stores,logging}`,留 app;其余 3 个真零依赖 |
+| agent-loop | 8 个实现文件里 **7 个**经 `app/providers/bound-fetch.ts` / `app/auth/auth-service.ts` / `app/external-agents` 依赖脊柱,留 app;只有 `providers/acp.ts` 在 acp 门面删掉后变成零依赖 |
+| terminal | 3 文件 + 2 测试全零 app 依赖,整目录搬走 ✅ |
+
+**实际动作**(按文件,不按目录):
+
+- **搬进 runtime**(7 个实现 + 3 个测试):
+  `app/terminal/{pty-backend.ts, service.ts→service.wiring.ts, spawn-profile.ts→spawn-profile.wiring.ts}`
+  + 两个测试 → `runtime/src/terminal/`;
+  `app/auth/host-ports.ts` → `runtime/src/auth/host-ports.ts`;
+  `app/auth/token-store.ts` → `runtime/src/auth/token-store.wiring.ts`(I2 改名:runtime 已有
+  `token-store.ts`,搬来的是 `OAuthToken` 具化的宿主端口子类 + 单例,且 import `@shared/ipc` → 走 I3 后缀);
+  `app/auth/types.ts` → `runtime/src/auth/types.wiring.ts`(同上);
+  `app/agent-loop/providers/acp.ts` → `runtime/src/agent-loop/providers/acp-manager-bound.ts`
+  (I2 改名:runtime 已有参数化的 `acp.ts`,搬来的是"绑定到进程内 ACPManager 单例"的默认绑定,
+  不是 wiring,所以用角色名);测试 `acp-provider.test.ts` → `agent-loop/__tests__/acp-manager-bound.test.ts`,
+  `auth/__tests__/auth-registry.test.ts` → `runtime/src/auth/__tests__/registry-codex-flow.test.ts`。
+- **删除**(I2 同一概念合并,调用点直接 import 真身):`app/themes/`(整目录)、
+  `app/acp/{client,manager,types,index}.ts`、`app/auth/{auth-registry,callback-server}.ts` —— 共 7 个文件 + 15 个 json。
+- **留在 app**:`app/practice/index.ts`、`app/acp/permission-bridge.ts`、`app/auth/auth-service.ts`、
+  `app/agent-loop/{index.ts, providers/{claude,codex,deepseek,factory,gemini,openai-compatible}.ts}` + 17 个测试。
+  themes / terminal 两个目录消失,其余四个只剩接线。
+- **调用点 import 改写 30 处**(app 层 24 / apps/electron 4 / 测试 mock 2),另有被搬文件内部相对 import 5 处、注释引用 3 处;
+  `packages/onething-runtime/package.json` 新增一条 exports:`"./terminal/*"`
+  (`./auth/*`、`./agent-loop/providers/*`、`./acp` 已有)。**坑**:runtime 子路径写法**不带 `.js`**
+  (`"./auth/*": "./src/auth/*.ts"` 对 `…/host-ports.js` 会解析成 `host-ports.js.ts`,typecheck 直接红)。
+
+**checker(I3 落地)**:`checkRuntimeHostBoundary` 从"按目录(`startsWith(appRoot)`)"改为**按文件名**——
+`packages/onething-runtime/src` 里 `*.wiring.ts` 用 `RUNTIME_WIRING_FORBIDDEN_PATTERNS`
+(= `HOST_BOUNDARY_FORBIDDEN_PATTERNS` 减掉 shared 契约那四条),electron / `@main` / `@preload` / cordis
+照旧禁;新增 `checkRuntimeWiringModulesStayAtTheEdge`:非 wiring 的产品文件不得 import `*.wiring` 模块
+(`__tests__` 与 `*.test.ts` 豁免 —— 测试是那个模块的验证,不是产品对它的依赖)。两条都用探针文件验过会真红。
+另外三处路径断言随搬家改指:auth token-store 两处指向 `runtime/src/auth/token-store.wiring.ts`;
+acp 四个门面、`app/auth/callback-server.ts`、`app/themes/builtin/index.ts` 从"必须存在且要瘦"翻成
+"**回来才算红**"(沿用 `checkRuntimeOwnsThemeRuntime` 的 mainHelperFiles 判例)。
+`architecture-boundaries.test.ts` **不用改** —— 它对 runtime 只禁 electron/宿主,从来没有 `@shared/ipc` 那一条。
+
+**验收**(全绿):`typecheck` 0 错;`test` 1149/1153 文件通过,唯一红是
+`app/stores/__tests__/sessions-delete-cascade.test.ts` 的 `waitGone` 在满负载下超时,**单跑即过**,与本批无关;
+`boundary` 199 ok / 0 failed、`boundary:gate` 0 failures、`transport:gate`(279 常量 / 5521 行)、
+`ui:gate` 81、`log:gate` 4、`session:gate` 0 全部 none new;`build` / `server:build` / `web:build` 三宿主打包绿。
+
+**留给 P3'a-2 的判断题**:`app/practice/index.ts` 唯一的脊柱边是 `getStorePath`,而
+`app/stores/paths.ts` 里它就是 `getOnethingStorePath` 的一行转发 —— 改 import 指向
+`@onething/runtime/storage` 即可整只搬成 `runtime/src/practice/service.wiring.ts`。
+本批按"import 脊柱就留下"的机械规则没动它;`app/stores/paths.ts` 整个文件都是这种转发,
+**它到底算不算脊柱**要先拍。同理 `app/providers/{bound-fetch,request-dump}.ts` 是 agent-loop
+六个 provider 包装留在 app 的唯一原因,它们真依赖设置缓存与日志,是真脊柱。
+
 原 P3 的"零纠缠、1–2 天机械活"前提是**原样搬**;P3' 要归位(§0b.3 I1/I2/I3),不再是机械活。分四批,每批独立 commit:
 
 1. **P3'a 薄壳折回**:app 层 32 个 ≤800 行的领域目录(themes / media / prompts / acp / auth / todo-plan /
@@ -655,6 +728,7 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 | 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
 | 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
+| 25 | **(新,P3')归位单位从"目录"改为"文件":依赖脊柱的接线归 `backend/wiring/<d>/`,逻辑归 `runtime/<d>/`;I1 改为"逻辑一领域一家"**(量测:25 薄目录 17 个依赖脊柱,整目录折回会成环) | 按修正执行;P3'a-1 先做 6 个脊柱零依赖目录验证机制 | 已按默认开工,待知会 |
 
 08-21 已拍:组织原则 = 包按环境/依赖等级、包内按领域、文件名带角色(§0b.2);`app` 改名 `backend` 并瘦身;
 P1→P1'、P3→P3'、新增 P0.5、P4a 前移(§0b.4)。

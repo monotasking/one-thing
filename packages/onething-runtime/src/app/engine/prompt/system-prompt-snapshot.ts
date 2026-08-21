@@ -6,7 +6,7 @@ import type {
   SystemPromptSnapshot,
   ToolDefinition,
 } from '@shared/ipc.js'
-import type { ProviderAuthContext } from '../../auth/types.js'
+import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import * as store from '../../store.js'
 import {
   createAgentProviderFromRuntime,

@@ -8,7 +8,7 @@ import type {
   OnethingAuthRequestContext,
   OnethingAuthStateStrategy,
   OnethingProviderAuthContext,
-} from '@onething/runtime/auth'
+} from './types.js'
 
 export type AuthFlowKind = OnethingAuthFlowKind
 export type AuthBodyFormat = OnethingAuthBodyFormat

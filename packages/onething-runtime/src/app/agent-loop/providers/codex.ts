@@ -6,7 +6,7 @@ import {
 } from '@onething/runtime/agent-loop/providers'
 import type { OAuthToken } from '@shared/ipc.js'
 import { authService } from '../../auth/auth-service.js'
-import type { ProviderAuthContext } from '../../auth/types.js'
+import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
 import { CODEX_PROVIDER_ID } from '../../providers/builtin/codex.js'
 import { dumpProviderRequest } from '../../providers/request-dump.js'

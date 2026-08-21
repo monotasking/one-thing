@@ -4,7 +4,7 @@ import type {
 	ChatSession,
 	ProviderConfig,
 } from "@shared/ipc.js";
-import type { ProviderAuthContext } from "../auth/types.js";
+import type { ProviderAuthContext } from "@onething/runtime/auth/types.wiring";
 import {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	type OnethingProductStreamRuntime,

@@ -7,7 +7,7 @@ import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/ipc.js'
 import { requiresOAuth } from '../../providers/index.js'
 import { oauthManager } from '../../providers/auth/oauth-manager.js'
-import type { ProviderAuthContext } from '../../auth/types.js'
+import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { resolveProviderApiKey } from '../../providers/env.js'
 import {
   applySessionSpaceCredentials,

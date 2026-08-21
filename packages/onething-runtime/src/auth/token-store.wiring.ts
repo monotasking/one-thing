@@ -1,7 +1,7 @@
 import {
   getDefaultOnethingTokenFilePath,
   OnethingTokenStore,
-} from '@onething/runtime/auth'
+} from './token-store.js'
 import type { OAuthToken } from '@shared/ipc.js'
 import { getAuthHostPorts } from './host-ports.js'
 

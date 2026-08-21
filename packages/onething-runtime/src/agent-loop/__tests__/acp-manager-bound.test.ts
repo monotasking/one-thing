@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ACPPromptStreamEvent, ACPPromptStreamOptions } from '../../acp/index.js'
-import { createACPAgentProvider } from '../providers/acp.js'
+import type { ACPPromptStreamEvent, ACPPromptStreamOptions } from '@onething/runtime/acp'
+import { createACPAgentProvider } from '../providers/acp-manager-bound.js'
 import type { AgentTurnStreamEvent } from '@onething/core/agent-loop'
 
 interface ACPStreamCall {
@@ -12,7 +12,7 @@ const acpMocks = vi.hoisted(() => ({
   streamPrompt: vi.fn(),
 }))
 
-vi.mock('../../acp/index.js', () => ({
+vi.mock('@onething/runtime/acp', () => ({
   ACPManager: {
     streamPrompt: acpMocks.streamPrompt,
   },

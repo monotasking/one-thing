@@ -1,7 +1,7 @@
 import {
   createACPAgentProvider as createCoreACPAgentProvider,
   type CoreACPAgentProviderOptions,
-} from '@onething/runtime/agent-loop/providers'
+} from './acp.js'
 import { ACPManager } from '../../acp/index.js'
 import type { AgentProvider } from '@onething/core/agent-loop'
 

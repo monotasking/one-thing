@@ -17,7 +17,7 @@ import {
   type OnethingProviderFacadeToolCall,
   type OnethingToolChatMessage,
 } from '@onething/runtime/providers'
-import { ACPManager } from '../acp/index.js'
+import { ACPManager } from '@onething/runtime/acp'
 import type {
   AgentProvider,
 } from '@onething/core/agent-loop'

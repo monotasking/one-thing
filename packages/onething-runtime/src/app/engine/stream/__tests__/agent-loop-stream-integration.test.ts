@@ -299,7 +299,7 @@ vi.mock("../../../prompts/resolver.js", () => ({
 	})),
 }));
 
-vi.mock("../../../acp/index.js", () => ({
+vi.mock("@onething/runtime/acp", () => ({
 	ACPManager: {
 		streamPrompt: mocks.acpStreamPrompt,
 	},

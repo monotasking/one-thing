@@ -1,5 +1,5 @@
 import type { OAuthToken, ToolSettings } from '@shared/ipc.js'
-import type { ProviderAuthContext } from '../../auth/types.js'
+import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import * as modelRegistry from '../../providers/model-registry.js'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,

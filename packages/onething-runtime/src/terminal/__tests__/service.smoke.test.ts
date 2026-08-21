@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createNodePtyBackend } from '../pty-backend.js'
-import { TerminalService } from '../service.js'
+import { TerminalService } from '../service.wiring.js'
 
 // The spawned shell is a REAL interactive login zsh. Left alone it would
 // source the developer's ~/.zshrc and append the marker commands below to

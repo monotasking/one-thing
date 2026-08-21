@@ -11,7 +11,7 @@
  * 多一份会分家的判据。
  */
 
-import { getAuthHostPorts } from '../auth/host-ports.js'
+import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
 import {
   applySpaceProviderCredential,
   resolveSpaceProviderCredential,
@@ -70,7 +70,7 @@ import type {
 } from '@onething/runtime/providers'
 import { getSpacesStore } from '@onething/runtime/spaces/store'
 import { authService } from '../auth/auth-service.js'
-import type { ProviderAuthContext } from '../auth/types.js'
+import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { resolveSessionSpaceId } from '../stores/sessions.js'
 import { getProviderInfo, requiresOAuth } from './registry.js'
 import { getProviderEnvStatus } from './env.js'

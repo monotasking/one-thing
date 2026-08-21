@@ -9,14 +9,14 @@ import {
 } from '@onething/runtime/agent-loop/providers'
 import type { OAuthToken } from '@shared/ipc.js'
 import { credentialTargetFromSpaceMarker } from '@onething/runtime/auth'
-import { ACPManager } from '../../acp/index.js'
+import { ACPManager } from '@onething/runtime/acp'
 import {
   getExternalAgentConnectors,
   persistExternalAgentSessionLink,
   resolveExternalAgentSessionLink,
 } from '../../external-agents/index.js'
 import { authService } from '../../auth/auth-service.js'
-import type { ProviderAuthContext } from '../../auth/types.js'
+import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
 import { dumpProviderRequest } from '../../providers/request-dump.js'
 import type { AgentProvider } from '@onething/core/agent-loop'

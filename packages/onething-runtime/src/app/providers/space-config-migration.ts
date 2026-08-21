@@ -51,7 +51,7 @@ import {
 } from '@onething/runtime/spaces/provider-settings'
 import { getSpacesStore } from '@onething/runtime/spaces/store'
 import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
-import { getAuthHostPorts } from '../auth/host-ports.js'
+import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
 import { getSettingsPath, getStorePath } from '../stores/paths.js'
 import { getPersistedSettings, savePersistedSettings } from '../stores/settings.js'
 import { getProviderInfo } from './registry.js'
