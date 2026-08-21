@@ -3,6 +3,7 @@ import {
   emitCoreSessionCommandForIpc,
   emitCoreSessionEventSafely,
 } from '../ipc-operations.js'
+import { SESSION_COMMAND_TYPES } from '../session-command-types.js'
 
 describe('core event IPC operations', () => {
   it('emits a session command through the provided event bus adapter', async () => {
@@ -10,14 +11,14 @@ describe('core event IPC operations', () => {
 
     await expect(emitCoreSessionCommandForIpc({
       sessionId: 'session-1',
-      command: { type: 'command:test' },
+      command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE },
       eventBus: { emit },
     })).resolves.toEqual({
       success: true,
       result: { envelope: { sequence: 1 } },
     })
 
-    expect(emit).toHaveBeenCalledWith('session-1', { type: 'command:test' })
+    expect(emit).toHaveBeenCalledWith('session-1', { type: SESSION_COMMAND_TYPES.SEND_MESSAGE })
   })
 
   it('normalizes event bus failures for IPC callers', async () => {
@@ -25,7 +26,7 @@ describe('core event IPC operations', () => {
 
     await expect(emitCoreSessionCommandForIpc({
       sessionId: 'session-1',
-      command: { type: 'command:test' },
+      command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE },
       eventBus: {
         emit: () => {
           throw new Error('emit failed')

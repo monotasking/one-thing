@@ -1,3 +1,5 @@
+import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
+import type { SessionCommandType } from '../events/session-command-types.js'
 import type { Unsubscribe } from '../events/types.js'
 import { PendingMessageQueue } from './message-queue.js'
 import { getCoreLogger } from '../logging/index.js'
@@ -132,7 +134,7 @@ export abstract class HeadlessStreamEngine<
     return isAlive ? isAlive(this.commandTarget) : true
   }
 
-  handleAbort(sessionId: string, command: AbortLikeCommand = { type: 'command:abort' }): boolean {
+  handleAbort(sessionId: string, command: AbortLikeCommand = { type: SESSION_COMMAND_TYPES.ABORT }): boolean {
     return this.abort(sessionId, command.reason)
   }
 
@@ -196,52 +198,73 @@ export abstract class HeadlessStreamEngine<
     this.onShutdown()
   }
 
-  protected subscribeToCommands(eventBus: TEventBus): void {
-    this.unsubs.push(
-      eventBus.onAnySession('command:send-message', (envelope) => {
+  /**
+   * 命令订阅表:键是 `SESSION_COMMAND_TYPES` 里的常量,不是再抄一遍的字面量 ——
+   * 渲染层 `emitCommand(…, { type: SESSION_COMMAND_TYPES.SEND_MESSAGE })` 上按
+   * F12 能直接跳到这张表的那一行。
+   *
+   * 类型是 `Partial<Record<SessionCommandType, …>>` 而不是 `Record`:12 条命令里
+   * 引擎只订阅 9 条,另外三条各有自己的订阅者,不在这里硬造处理者 ——
+   *   - `PERMISSION_RESPOND` → `packages/core/permission/index.ts`(Permission 自己订)
+   *   - `INTERACTION_RESPOND` → `packages/core/interaction/registry.ts`(交互注册表自己订)
+   *   - `CONFIRM_TOOL` → **全仓无订阅者**(只剩契约形状,没有任何 `onAnySession`
+   *     消费它;发它等于丢进空气)。
+   */
+  protected buildCommandHandlers(): Partial<
+    Record<SessionCommandType, (envelope: CoreCommandEnvelope) => void>
+  > {
+    return {
+      [SESSION_COMMAND_TYPES.SEND_MESSAGE]: (envelope) => {
         const target = this.commandTarget
         if (!target) return
         this.handleSendMessageCommand(envelope.sessionId, envelope.event, target)
-          .catch(err => this.logError('command:send-message error:', err))
-      }, 'StreamEngine'),
-      eventBus.onAnySession('command:edit-and-resend', (envelope) => {
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.SEND_MESSAGE} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.EDIT_AND_RESEND]: (envelope) => {
         const target = this.commandTarget
         if (!target) return
         this.handleEditAndResendCommand(envelope.sessionId, envelope.event, target)
-          .catch(err => this.logError('command:edit-and-resend error:', err))
-      }, 'StreamEngine'),
-      eventBus.onAnySession('command:retry-message', (envelope) => {
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.EDIT_AND_RESEND} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.RETRY_MESSAGE]: (envelope) => {
         const target = this.commandTarget
         if (!target) return
         this.handleRetryMessageCommand(envelope.sessionId, envelope.event, target)
-          .catch(err => this.logError('command:retry-message error:', err))
-      }, 'StreamEngine'),
-      eventBus.onAnySession('command:compact-context', (envelope) => {
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.RETRY_MESSAGE} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.COMPACT_CONTEXT]: (envelope) => {
         this.handleCompactContextCommand(envelope.sessionId, envelope.event)
-          .catch(err => this.logError('command:compact-context error:', err))
-      }, 'StreamEngine'),
-      eventBus.onAnySession('command:abort', (envelope) => {
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.COMPACT_CONTEXT} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.ABORT]: (envelope) => {
         this.handleAbort(envelope.sessionId, envelope.event as AbortLikeCommand)
-      }, 'StreamEngine'),
-      eventBus.onAnySession('command:resume-after-confirm', (envelope) => {
+      },
+      [SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM]: (envelope) => {
         const target = this.commandTarget
         if (!target) return
         this.handleResumeAfterConfirmCommand(envelope.sessionId, envelope.event, target)
-          .catch(err => this.logError('command:resume-after-confirm error:', err))
-      }, 'StreamEngine'),
-      eventBus.onAnySession('command:inject-steering', (envelope) => {
+          .catch(err => this.logError(`${SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM} error:`, err))
+      },
+      [SESSION_COMMAND_TYPES.INJECT_STEERING]: (envelope) => {
         const command = envelope.event as InjectMessageCommand
         this.steerMessage(envelope.sessionId, command.content, command.source || 'eventbus', command.origin)
-      }, 'StreamEngine'),
-      eventBus.onAnySession('command:retract-steering', (envelope) => {
+      },
+      [SESSION_COMMAND_TYPES.RETRACT_STEERING]: (envelope) => {
         const command = envelope.event as RetractSteeringLikeCommand
         this.retractSteerMessage(envelope.sessionId, command.messageId)
-      }, 'StreamEngine'),
-      eventBus.onAnySession('command:inject-followup', (envelope) => {
+      },
+      [SESSION_COMMAND_TYPES.INJECT_FOLLOWUP]: (envelope) => {
         const command = envelope.event as InjectMessageCommand
         this.followUpMessage(envelope.sessionId, command.content, command.source || 'eventbus', command.origin)
-      }, 'StreamEngine'),
-    )
+      },
+    }
+  }
+
+  protected subscribeToCommands(eventBus: TEventBus): void {
+    for (const [commandType, handler] of Object.entries(this.buildCommandHandlers())) {
+      if (!handler) continue
+      this.unsubs.push(eventBus.onAnySession(commandType, handler, 'StreamEngine'))
+    }
   }
 
   protected unsubscribeCommands(): void {

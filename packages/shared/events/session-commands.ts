@@ -12,32 +12,27 @@
 import type { ChatMessageMention, ChatMessageReplyTo, MessageAttachment } from '../ipc/chat.js'
 import type { VoiceTranscriptMetadata } from '../ipc/voice.js'
 import type { MessageOrigin } from '../ipc/channel-identity.js'
+import { SESSION_COMMAND_TYPES } from '@onething/core/events'
+import type { SessionCommandType } from '@onething/core/events'
 
 // ── Type registry ───────────────────────────────
 
 /**
- * 命令 type 字面量的**单一权威** —— 与 `SESSION_EVENT_TYPES` 同一条理由、同一套
- * 双向断言,只是分两张表:事件和命令是两个联合(批 4 之后 `SessionEvent` 已不含
- * 命令),合成一张表就等于把它们又搅回一起。
+ * 命令 type 字面量的**单一权威**现在在 core(`packages/core/events/session-command-types.ts`)
+ * —— core 禁 import `@shared`,表留在这里就意味着引擎订阅点只能再手抄一份字面量,
+ * 词汇分成两份、find-references 断在中间。表搬过去之后这里只做再导出:所有
+ * `import { SESSION_COMMAND_TYPES } from '@shared/events/session-commands'` 一字不改,
+ * 但它们和 `HeadlessStreamEngine` 的订阅表用的是同一个标识符。
  *
- * 键上不再重复 `COMMAND_` —— 表名已经说了它是命令。值与线上格式逐字相同。
+ * (做法与 `shared/tool-errors.ts` 从 `@onething/core/permission`、
+ * `shared/ipc/interaction.ts` 从 `@onething/core/interaction` 再导出同一条。)
+ *
+ * 命令的**载荷形状**仍然留在本文件 —— 它们要引用 `@shared/ipc/*` 的附件 / 语音 /
+ * 身份类型,core 够不着。下面那条双向穷尽断言因此仍是真闸:core 那张表多一条 /
+ * 少一条,这里都编译不过。
  */
-export const SESSION_COMMAND_TYPES = {
-  SEND_MESSAGE: 'command:send-message',
-  EDIT_AND_RESEND: 'command:edit-and-resend',
-  ABORT: 'command:abort',
-  CONFIRM_TOOL: 'command:confirm-tool',
-  RESUME_AFTER_CONFIRM: 'command:resume-after-confirm',
-  PERMISSION_RESPOND: 'command:permission-respond',
-  INTERACTION_RESPOND: 'command:interaction-respond',
-  RETRY_MESSAGE: 'command:retry-message',
-  COMPACT_CONTEXT: 'command:compact-context',
-  INJECT_STEERING: 'command:inject-steering',
-  RETRACT_STEERING: 'command:retract-steering',
-  INJECT_FOLLOWUP: 'command:inject-followup',
-} as const satisfies Record<string, SessionCommand['type']>
-
-export type SessionCommandType = (typeof SESSION_COMMAND_TYPES)[keyof typeof SESSION_COMMAND_TYPES]
+export { SESSION_COMMAND_TYPES } from '@onething/core/events'
+export type { SessionCommandType } from '@onething/core/events'
 
 // 双向穷尽:多一个 / 少一个都在这里编译不过。
 const _commandTableIsExhaustive: SessionCommandType extends SessionCommand['type']
@@ -46,7 +41,7 @@ const _commandTableIsExhaustive: SessionCommandType extends SessionCommand['type
 void _commandTableIsExhaustive
 
 export interface SendMessageCommand {
-  type: 'command:send-message'
+  type: typeof SESSION_COMMAND_TYPES.SEND_MESSAGE
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   content: string
@@ -108,7 +103,7 @@ export interface SendMessageCommand {
 }
 
 export interface EditAndResendCommand {
-  type: 'command:edit-and-resend'
+  type: typeof SESSION_COMMAND_TYPES.EDIT_AND_RESEND
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   messageId: string
@@ -120,14 +115,14 @@ export interface EditAndResendCommand {
 }
 
 export interface AbortCommand {
-  type: 'command:abort'
+  type: typeof SESSION_COMMAND_TYPES.ABORT
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   reason?: string
 }
 
 export interface ConfirmToolCommand {
-  type: 'command:confirm-tool'
+  type: typeof SESSION_COMMAND_TYPES.CONFIRM_TOOL
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   toolCallId: string
@@ -135,14 +130,14 @@ export interface ConfirmToolCommand {
 }
 
 export interface ResumeAfterConfirmCommand {
-  type: 'command:resume-after-confirm'
+  type: typeof SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   messageId: string
 }
 
 export interface PermissionRespondCommand {
-  type: 'command:permission-respond'
+  type: typeof SESSION_COMMAND_TYPES.PERMISSION_RESPOND
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   /** Live request id, when the responder caught the permission:request event. */
@@ -166,7 +161,7 @@ export interface PermissionRespondCommand {
  * 与之相等。跨通道冒批在提问上同样被挡住。
  */
 export interface InteractionRespondCommand {
-  type: 'command:interaction-respond'
+  type: typeof SESSION_COMMAND_TYPES.INTERACTION_RESPOND
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   /** 活的请求 id(应答方接到了 interaction:requested 事件时用它)。 */
@@ -185,7 +180,7 @@ export interface InteractionRespondCommand {
 }
 
 export interface RetryMessageCommand {
-  type: 'command:retry-message'
+  type: typeof SESSION_COMMAND_TYPES.RETRY_MESSAGE
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   messageId: string
@@ -195,7 +190,7 @@ export interface RetryMessageCommand {
 }
 
 export interface CompactContextCommand {
-  type: 'command:compact-context'
+  type: typeof SESSION_COMMAND_TYPES.COMPACT_CONTEXT
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   requestId?: string
@@ -204,7 +199,7 @@ export interface CompactContextCommand {
 
 /** Inject a steering message mid-stream (after current turn ends) */
 export interface InjectSteeringCommand {
-  type: 'command:inject-steering'
+  type: typeof SESSION_COMMAND_TYPES.INJECT_STEERING
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   content: string
@@ -218,7 +213,7 @@ export interface InjectSteeringCommand {
  * drained into a model request it can no longer be withdrawn.
  */
 export interface RetractSteeringCommand {
-  type: 'command:retract-steering'
+  type: typeof SESSION_COMMAND_TYPES.RETRACT_STEERING
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   messageId: string
@@ -226,7 +221,7 @@ export interface RetractSteeringCommand {
 
 /** Inject a follow-up message (only after agent would stop) */
 export interface InjectFollowUpCommand {
-  type: 'command:inject-followup'
+  type: typeof SESSION_COMMAND_TYPES.INJECT_FOLLOWUP
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   content: string

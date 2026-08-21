@@ -1,3 +1,4 @@
+import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
 import { randomUUID } from 'node:crypto'
 import type { JsonObject } from '../json.js'
 import type { Principal } from './principal.js'
@@ -298,7 +299,7 @@ export namespace Permission {
     modeResolver = permissionModeResolver ?? null
 
     unsubPermissionRespond = bus.onAnySession(
-      'command:permission-respond',
+      SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
       (envelope) => {
         const cmd = envelope.event as PermissionRespondCommandLike
         const sessionId = envelope.sessionId

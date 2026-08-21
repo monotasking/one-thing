@@ -1,3 +1,4 @@
+import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
 import { randomUUID } from 'node:crypto'
 import type {
   InteractionAnswer,
@@ -233,7 +234,7 @@ export namespace Interaction {
     channelResolver = resolver
 
     unsubInteractionRespond = bus.onAnySession(
-      'command:interaction-respond',
+      SESSION_COMMAND_TYPES.INTERACTION_RESPOND,
       (envelope) => {
         const cmd = envelope.event as InteractionRespondCommandLike
         if (cmd.decline) {

@@ -1,3 +1,4 @@
+import { SESSION_COMMAND_TYPES } from './events/session-command-types.js'
 import type { JsonObject } from './json.js'
 import type {
   StreamChunkBase,
@@ -93,7 +94,7 @@ export interface CoreConversationEventBusLike {
 }
 
 export interface CoreConversationSendMessageCommand {
-  type: 'command:send-message'
+  type: typeof SESSION_COMMAND_TYPES.SEND_MESSAGE
   channel?: string
   content: string
   source?: string

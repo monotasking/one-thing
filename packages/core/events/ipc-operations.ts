@@ -1,9 +1,19 @@
+import type { SessionCommandType } from './session-command-types.js'
 import type { EventBase } from './types.js'
 
 type MaybePromise<T> = T | Promise<T>
 
+/**
+ * 命令的最小形状。`EventBase` 的 `type: string` 对**命令**来说太松 —— 任何字符串
+ * 都能过,词汇表就管不住这条出口了。这里收紧到 `SessionCommandType`:能进这个
+ * 函数的 `type`,只能是 `SESSION_COMMAND_TYPES` 里那 12 条之一。
+ */
+export interface SessionCommandLike extends EventBase {
+  type: SessionCommandType
+}
+
 export interface CoreSessionCommandEmitterLike<
-  TCommand extends EventBase = EventBase,
+  TCommand extends SessionCommandLike = SessionCommandLike,
   TResult = unknown,
 > {
   emit(sessionId: string, command: TCommand): MaybePromise<TResult>
@@ -17,12 +27,16 @@ export interface CoreSessionEventEmitterLike<
 }
 
 export interface EmitCoreSessionCommandForIpcOptions<
-  TCommand extends EventBase = EventBase,
+  TCommand extends SessionCommandLike = SessionCommandLike,
   TResult = unknown,
 > {
   sessionId: string
   command: TCommand
-  eventBus: CoreSessionCommandEmitterLike<TCommand, TResult>
+  /**
+   * `NoInfer`:`TCommand` 由 `command` 一处决定。总线的 `emit` 收的是事件 ∪ 命令
+   * 的并集,让它也参与推断会把 `TCommand` 拽回并集(或直接退回约束默认值)。
+   */
+  eventBus: CoreSessionCommandEmitterLike<NoInfer<TCommand>, TResult>
   logger?: {
     error?: (...args: unknown[]) => void
   }
@@ -46,7 +60,7 @@ export interface EmitCoreSessionEventSafelyOptions<
 }
 
 export async function emitCoreSessionCommandForIpc<
-  TCommand extends EventBase,
+  TCommand extends SessionCommandLike,
   TResult,
 >(
   options: EmitCoreSessionCommandForIpcOptions<TCommand, TResult>,

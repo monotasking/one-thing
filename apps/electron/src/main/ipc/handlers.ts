@@ -4,6 +4,7 @@ import {
 	type ElectronSessionCommandRequest,
 } from "@onething/electron-host/ipc/session-command";
 import { IPC_CHANNELS } from "@shared/ipc.js";
+import type { SessionCommand } from "@shared/events/index.js";
 import { registerChatHandlers } from "./chat.js";
 import { registerSessionHandlers } from "./sessions.js";
 import { registerSettingsHandlers } from "./settings.js";
@@ -101,9 +102,9 @@ function registerCommandHandler() {
 			const safeCommand = sanitizeRendererCommand(command);
 			return emitCoreSessionCommandForIpc({
 				sessionId,
-				command: safeCommand as Parameters<
-					ReturnType<typeof getEventBus>["emit"]
-				>[1],
+				// 命令面的形状是 `SessionCommand`(12 条 `SESSION_COMMAND_TYPES` 之一),
+				// 不是总线的事件 ∪ 命令并集 —— `emitCoreSessionCommandForIpc` 现在也这么要求。
+				command: safeCommand as SessionCommand,
 				eventBus: getEventBus(),
 				logger: console,
 			});
