@@ -49,6 +49,10 @@ bun run evals              # bun evals/run.mjs
 bun run evals:diagnose     # scripts/diagnose-weekly.mjs
 ```
 
+**两份锁文件,各有权威**:`package-lock.json` 是打包 / rebuild 的权威——package.json scripts 全走 npm、
+`npm rebuild better-sqlite3` 是 test/postinstall 硬依赖、electron-builder 的 node-module-collector 按锁文件探测包管理器
+(07-29 "bun collector 打包缺依赖"的变通);`bun.lock` 只服务日常 dev/test 执行。两份都提交,不是误跑残留。
+
 Dev ports: Electron renderer dev server **5173**, web frontend **5174**. The core HTTP/SSE port is **dynamic** since A 期 (`docs/design/one-core-2026-08.md`): whoever serves the store writes `<store>/run/http.json`, and apps/web's dev `/api` proxy (`apps/web/dev-api-proxy.ts`, a plugin — vite's built-in proxy pins its target at creation) re-reads that file per request and injects the Bearer token, falling back to `ONETHING_API_URL` || `http://127.0.0.1:8787`. `bun run dev` with the electron lane does NOT start a second server process — the desktop is the core.
 
 ## Architecture Overview
