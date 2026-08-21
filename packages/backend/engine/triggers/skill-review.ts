@@ -20,7 +20,7 @@ import { Outcome as OutcomeOps } from '@onething/core/toolkit'
 import { toJsonObject, type JsonObject } from '@shared/json.js'
 import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
 import { createAppToolRunner } from '../../toolkit/runner.js'
-import { consolePort, getLogger } from '../../logging/index.js'
+import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('engine.triggers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

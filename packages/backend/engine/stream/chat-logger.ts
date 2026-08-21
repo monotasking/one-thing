@@ -16,7 +16,7 @@ import {
   type CoreChatLogMessageShape,
   type CoreChatLogValue,
 } from '@onething/core/engine'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 export type ChatLogMessageShape = CoreChatLogMessageShape
 

@@ -10,7 +10,7 @@ import {
   getEffectivePluginConfig,
   setPluginConfig,
 } from './config.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('plugins')
 

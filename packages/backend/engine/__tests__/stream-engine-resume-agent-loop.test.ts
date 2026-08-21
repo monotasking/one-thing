@@ -130,7 +130,7 @@ vi.mock('../../wiring/tools/index.js', () => ({
   setInitContext: mocks.setInitContext,
 }))
 
-vi.mock('../../mcp/index.js', () => ({
+vi.mock('@onething/runtime/mcp/index.wiring', () => ({
   getMCPToolsForAI: mocks.getMCPToolsForAI,
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))

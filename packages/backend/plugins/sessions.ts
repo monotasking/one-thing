@@ -56,7 +56,7 @@ import { pluginMessageSource } from '../channel/origin.js'
 import * as modelRegistry from '../providers/model-registry.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('plugins.sessions')
 

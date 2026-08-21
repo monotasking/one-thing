@@ -10,7 +10,7 @@ import type { MCPToolInfo, MCPToolCallResult } from './types.js'
 import type { ToolDefinition } from '@shared/ipc.js'
 import {
   getOnethingMCPToolsCatalogPath,
-} from '@onething/runtime/storage'
+} from '../storage/index.js'
 import { z } from 'zod'
 import { type JsonObject, type JsonValue } from '@onething/core'
 import {

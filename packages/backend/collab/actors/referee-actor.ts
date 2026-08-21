@@ -46,7 +46,7 @@ import {
   type CollabRefereeVerdict,
   type CollabRoomJudgmentRequest,
 } from '@onething/runtime/collab/actors'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('collab.referee')
 

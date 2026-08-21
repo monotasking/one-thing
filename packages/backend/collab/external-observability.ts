@@ -53,7 +53,7 @@ import { broadcastCollabAgentActivity } from './agent-activity.js'
 import { findCollabV3Turn } from './actors/turn-context.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('collab.observability')
 

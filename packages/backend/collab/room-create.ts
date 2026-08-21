@@ -25,7 +25,7 @@ import { isActiveAgent, type ChatSession } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { findAgent } from '../wiring/agents/index.js'
 import { emitCollabRoomUpdated } from './room-runtime.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('collab.room')
 

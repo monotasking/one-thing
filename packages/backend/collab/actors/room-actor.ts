@@ -71,7 +71,7 @@ import type { CollabCoordinatorJudgment, CollabCoordinatorState } from '@shared/
 
 import { createCollabRoomAccountFileStore, type CollabRoomAccountStore } from './room-account.js'
 import { collabV3TurnsInRoom } from './turn-context.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('collab.actors.room')
 

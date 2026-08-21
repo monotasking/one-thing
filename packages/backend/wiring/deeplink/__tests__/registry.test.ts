@@ -35,7 +35,7 @@ async function load() {
     import('../../../plugins/health.js'),
     // `vi.resetModules()` 之后每次 load 都是一份新的 logging 单例 —— 捕获必须从
     // **同一份**里拿,否则收的是别的 root(L4)。
-    import('../../../logging/index.js'),
+    import('../../logging/index.js'),
   ])
   registry.resetPluginDeepLinkActionsForTests()
   return { api, registry, health, logging }

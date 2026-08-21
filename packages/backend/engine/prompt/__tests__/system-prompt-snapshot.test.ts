@@ -122,7 +122,7 @@ vi.mock('../../stream/codex-native-tools.js', () => ({
   getCodexNativeToolsForConfig: mocks.getCodexNativeToolsForConfig,
 }))
 
-vi.mock('../../../mcp/index.js', () => ({
+vi.mock('@onething/runtime/mcp/index.wiring', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))

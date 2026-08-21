@@ -16,7 +16,7 @@ import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk } from '@oneth
 import { getEventBus, getStreamChannel } from './index.js'
 import { appendSessionLogEvent } from '../session/event-log.js'
 import { currentSessionRunId } from '../session/runs.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 /**
  * core 因边界规则(不得 import `@shared`)把事件与流块的形状重抄了一份,泛型

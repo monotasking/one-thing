@@ -46,7 +46,7 @@ import {
 import type { ContextVariable } from "@onething/runtime/variables";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('variables')
 

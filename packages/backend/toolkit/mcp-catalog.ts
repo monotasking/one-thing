@@ -24,7 +24,7 @@ import {
   executeMCPTool,
   getMCPToolDefinitionsForModel,
   resolveMCPServerIdForToolRef,
-} from '../mcp/index.js'
+} from '@onething/runtime/mcp/index.wiring'
 
 /** 本模块登记过的 id。不碰目录里别人注册的东西 —— 摘只摘自己挂上去的。 */
 const registered = new Map<Catalog, Set<string>>()

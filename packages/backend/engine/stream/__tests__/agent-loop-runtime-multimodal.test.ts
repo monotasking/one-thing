@@ -171,7 +171,7 @@ vi.mock('../../../store.js', () => ({
   addMessage: mocks.addMessage,
 }))
 
-vi.mock('../../../mcp/index.js', () => ({
+vi.mock('@onething/runtime/mcp/index.wiring', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))

@@ -20,7 +20,7 @@
 import { sessionReads } from '../../session/reads.js'
 import { checkSessionHistoryShadow } from '../../session/shadow.js'
 import { buildHistoryMessages, historyProjectionRecipe } from './message-helpers.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('engine.history')
 

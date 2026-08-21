@@ -253,7 +253,7 @@ vi.mock("../../../wiring/skills/session-skills.js", () => ({
 	getSkillsForSession: mocks.getSkillsForSession,
 }));
 
-vi.mock("../../../mcp/index.js", () => ({
+vi.mock("@onething/runtime/mcp/index.wiring", () => ({
 	getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 	getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 	isMCPTool: vi.fn(() => false),

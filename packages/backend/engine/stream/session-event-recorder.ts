@@ -75,7 +75,7 @@ import {
   nextSessionRunPartIndex,
   setSessionRunRequestIndex,
 } from '../../session/runs.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
 

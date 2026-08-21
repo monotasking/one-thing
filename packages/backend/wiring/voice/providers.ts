@@ -10,8 +10,8 @@ import {
   type OnethingVoiceSpeechResult,
   type OnethingVoiceTranscriptionResult,
 } from '@onething/runtime/voice/providers'
-import { createRequiredAppFetch } from '../providers/bound-fetch.js'
-import { getSettings } from '../stores/settings.js'
+import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
+import { getSettings } from '../../stores/settings.js'
 import type { VoiceSettings, VoiceSubmitUtteranceRequest, VoiceTTSModel } from '@shared/ipc.js'
 
 type TranscriptionResult = OnethingVoiceTranscriptionResult

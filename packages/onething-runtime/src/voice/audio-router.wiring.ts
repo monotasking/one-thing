@@ -1,6 +1,6 @@
 import {
   OnethingDoubaoASRSession,
-} from '@onething/runtime/voice/volcano/asr-session'
+} from './volcano/asr-session.js'
 import type { VoiceAudioChunkPayload, VoiceSettings } from '@shared/ipc.js'
 
 export interface VoiceAudioRouterHooks {

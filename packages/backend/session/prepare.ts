@@ -48,7 +48,7 @@ import {
 } from '@onething/core/session'
 import { appendSurfaceAwareEvent } from './event-surface.js'
 import { getSessionEventsLogPath, isSessionEventLogEnabled } from './event-log.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
 

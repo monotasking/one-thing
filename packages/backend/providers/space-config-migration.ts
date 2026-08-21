@@ -58,7 +58,7 @@ import {
 } from '@onething/runtime/storage'
 import { getPersistedSettings, savePersistedSettings } from '../stores/settings.js'
 import { getProviderInfo } from './registry.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('providers')
 

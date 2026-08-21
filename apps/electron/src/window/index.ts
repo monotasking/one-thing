@@ -81,7 +81,7 @@ import {
   type ElectronTodoPlanDragRequest,
   type NormalizedElectronTodoPlanWindowActionOptions,
 } from '@onething/electron-host/window/todo-plan-presentation'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('window')
 export { MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS } from '@onething/electron-host/window/main-window-recovery'

@@ -22,7 +22,7 @@ vi.mock('@onething/electron-host/logging/console-capture', () => ({
   setElectronAppLogsPath: mocks.setElectronAppLogsPath,
 }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/runtime/storage/index', () => ({
   ensureDir: mocks.ensureDir,
   getOnethingLogDir: () => mocks.logDir,
 }))
@@ -217,7 +217,7 @@ describe('diagnostics mode', () => {
   })
 
   it('flips the level spec and the provider request dump together', async () => {
-    vi.doMock('@onething/runtime/providers', () => ({
+    vi.doMock('@onething/runtime/providers/index', () => ({
       setOnethingProviderRequestDumpEnabled: (enabled: boolean | undefined) => { dumpState.enabled = enabled },
     }))
     const logging = await import('../index.js')
@@ -237,6 +237,6 @@ describe('diagnostics mode', () => {
     expect(dumpState.enabled).toBeUndefined()
 
     await logging.shutdownAppLogging()
-    vi.doUnmock('@onething/runtime/providers')
+    vi.doUnmock('@onething/runtime/providers/index')
   })
 })

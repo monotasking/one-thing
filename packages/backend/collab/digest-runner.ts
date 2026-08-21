@@ -37,7 +37,7 @@ import {
 import { billCollabDigestUsage } from '../wiring/usage/bill-side-line.js'
 import { collabUserPromptFields } from './user-identity.js'
 import { needsCollabDigest, saveCollabDigest } from './digest-store.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('collab.digest')
 

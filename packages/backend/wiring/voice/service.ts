@@ -17,16 +17,16 @@ import {
   type VoiceSubmitUtteranceRequest,
   type VoiceSynthesizeRequest,
 } from '@shared/ipc.js'
-import { VoiceAudioRouter } from './audio-router.js'
-import { WakeWordEngine } from './kws.js'
-import { getEventBus, getStreamChannel } from '../events/index.js'
+import { VoiceAudioRouter } from '@onething/runtime/voice/audio-router.wiring'
+import { WakeWordEngine } from '@onething/runtime/voice/kws/engine.wiring'
+import { getEventBus, getStreamChannel } from '../../events/index.js'
 import type { StreamChunk } from '@shared/events/index.js'
-import type { Unsubscribe } from '../events/types.js'
-import { getStreamEngineSafe } from '../engine/index.js'
-import { getCurrentSessionId } from '../stores/app-state.js'
-import { getSettings, saveSettings } from '../stores/settings.js'
-import { agentExists } from '../wiring/agents/index.js'
-import { updateSessionAgent } from '../stores/sessions.js'
+import type { Unsubscribe } from '../../events/types.js'
+import { getStreamEngineSafe } from '../../engine/index.js'
+import { getCurrentSessionId } from '../../stores/app-state.js'
+import { getSettings, saveSettings } from '../../stores/settings.js'
+import { agentExists } from '../agents/index.js'
+import { updateSessionAgent } from '../../stores/sessions.js'
 import { getVoiceInputConfigurationError, streamSynthesizeSpeech, transcribeUtterance } from './providers.js'
 import {
   applyOnethingVoiceRuntimeError,
@@ -39,14 +39,14 @@ import {
   isOnethingMissingCloudTTSConfiguration,
   normalizeOnethingVoiceError,
   splitOnethingSpeakableSentences,
-} from '@onething/runtime/voice'
+} from '@onething/runtime/voice/index'
 import {
   broadcastVoiceHostMessage,
   getVoiceHostPorts,
   sendVoiceHostMessageToWindow,
   type VoiceHostWebContents,
   type VoiceHostWindow,
-} from './host-ports.js'
+} from '@onething/runtime/voice/host-ports.wiring'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 

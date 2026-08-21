@@ -2,10 +2,10 @@ import type { ChatMessage, ChannelReplyDeliveryRecord, MessageOrigin } from '@sh
 import type { EventBus } from '../events/event-bus.js'
 import { getChannelIdentityStore } from './identity-store.js'
 import { sendIMReply } from './connector-registry.js'
-import { writeAppLog } from '../logging/index.js'
+import { writeAppLog } from '../wiring/logging/index.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('channel.outbound')
 

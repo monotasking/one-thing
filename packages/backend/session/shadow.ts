@@ -51,7 +51,7 @@ import {
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
 import { sessionProjectionOptions } from './projection-blobs.js'
 import { sessionReads } from './reads.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.shadow')
 

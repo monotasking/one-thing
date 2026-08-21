@@ -14,7 +14,7 @@ import {
   removeHttpDiscovery,
   writeHttpDiscovery,
 } from '@onething/backend/server/discovery.js'
-import { configureLogging } from '@onething/backend/logging/index.js'
+import { configureLogging } from '@onething/backend/wiring/logging/index.js'
 import { warnOnForeignCoreForEventsRead } from '@onething/backend/session/read-mode.js'
 import { randomBytes } from 'node:crypto'
 

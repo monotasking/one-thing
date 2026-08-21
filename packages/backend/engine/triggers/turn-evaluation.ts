@@ -1,7 +1,7 @@
 import type { TriggerContext, Trigger } from "./index.js";
 import { getSkillsForSession } from "../../wiring/skills/session-skills.js";
 import * as store from "../../store.js";
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('engine.triggers')
 

@@ -41,7 +41,7 @@ import * as store from '../../store.js'
 import { billCollabPlanUsage } from '../../wiring/usage/bill-side-line.js'
 import { collabUserPromptFields } from '../user-identity.js'
 import type { CollabRefereeJudgePort, CollabRefereeJudgeRequest } from './referee-actor.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('collab.referee')
 

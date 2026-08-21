@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EventBus, StreamChannel } from '@onething/core'
-import { MCPManager as appMCPManager } from '@onething/backend/mcp/index.js'
+import { MCPManager as appMCPManager } from '@onething/runtime/mcp/index.wiring'
 import {
   createMCPServerState,
   markMCPServerConnected,

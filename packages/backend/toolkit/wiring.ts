@@ -38,7 +38,7 @@ import { toolkitAuditSink } from './audit-sink.js'
 import { refreshMcpToolsInCatalog, syncMcpToolsIntoCatalog } from './mcp-catalog.js'
 import { runPluginToolCallIntercept } from '../plugins/tool-call-intercept.js'
 import { runPluginToolResultIntercept } from '../plugins/tool-result-intercept.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('toolkit')
 

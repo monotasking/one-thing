@@ -23,7 +23,7 @@ import { putSessionBlob } from './blob-store.js'
 import { appendSurfaceAwareEvent, isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
 import { currentSessionRun } from './runs.js'
 import { sessionReads } from './reads.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
 

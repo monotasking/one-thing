@@ -573,7 +573,8 @@ const MAIN_CORE_SYSTEM_DIRS = [
 const MAIN_FILE_IO_SYSTEM_DIRS = [
   'packages/backend/session',
   'packages/backend/stores',
-  'packages/backend/mcp',
+  // P3'b-A:`backend/mcp/` 整域归位 `runtime/src/mcp/`(闭包零脊柱边),
+  // 装配层不再有 mcp 目录 —— 这一条随之退役。
   'packages/backend/plugins',
 ]
 
@@ -600,9 +601,9 @@ const MAIN_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
   ...MAIN_FILE_IO_FORBIDDEN_IMPORT_PATTERNS,
 ]
 
-const MAIN_ADAPTER_ALLOWLIST = new Map<string, RegExp[]>([
-  ['packages/backend/mcp/client.ts', [/@modelcontextprotocol\/(sdk|client)/]],
-])
+// P3'b-A:唯一一条豁免曾是 `backend/mcp/client.ts`(MCP SDK 适配器)。mcp 整域
+// 归位产品层后,装配层已经没有任何目录需要豁免 —— 表留着,内容为空。
+const MAIN_ADAPTER_ALLOWLIST = new Map<string, RegExp[]>([])
 
 const CORE_PROMPT_ASSEMBLY_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]node:fs['"]/,
@@ -2893,8 +2894,8 @@ function checkElectronHostOwnsVoiceRuntimeWindow(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronRuntimeControllerFile = path.join(root, 'apps/electron/src/voice/runtime-window-controller.ts')
   const electronRuntimeFile = path.join(root, 'apps/electron/src/voice/runtime-window.ts')
-  const mainRuntimeFile = path.join(root, 'packages/backend/voice/runtime-window.ts')
-  const mainVoiceServiceFile = path.join(root, 'packages/backend/voice/service.ts')
+  const mainRuntimeFile = path.join(root, 'packages/backend/wiring/voice/runtime-window.ts')
+  const mainVoiceServiceFile = path.join(root, 'packages/backend/wiring/voice/service.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronRuntimeControllerContent = fs.existsSync(electronRuntimeControllerFile)
     ? fs.readFileSync(electronRuntimeControllerFile, 'utf-8')
@@ -2948,7 +2949,7 @@ function checkElectronHostOwnsVoiceRuntimeWindow(): void {
 function checkElectronHostOwnsVoiceEventBroadcasting(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronEventsFile = path.join(root, 'apps/electron/src/voice/events.ts')
-  const mainVoiceServiceFile = path.join(root, 'packages/backend/voice/service.ts')
+  const mainVoiceServiceFile = path.join(root, 'packages/backend/wiring/voice/service.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronEventsContent = fs.existsSync(electronEventsFile) ? fs.readFileSync(electronEventsFile, 'utf-8') : ''
   const mainVoiceServiceContent = fs.existsSync(mainVoiceServiceFile) ? fs.readFileSync(mainVoiceServiceFile, 'utf-8') : ''
@@ -2977,7 +2978,7 @@ function checkElectronHostOwnsVoiceEventBroadcasting(): void {
       .map(symbol => `${rel(mainVoiceServiceFile)}: missing voice event facade delegation ${symbol}`),
     ...(fs.existsSync(mainVoiceServiceFile)
       ? matchingLines(mainVoiceServiceFile, VOICE_EVENT_BROADCAST_FORBIDDEN_PATTERNS)
-      : ['packages/backend/voice/service.ts: missing voice service']),
+      : ['packages/backend/wiring/voice/service.ts: missing voice service']),
   ]
 
   assertNoMatches('apps/electron owns Electron voice event broadcasting', lines)
@@ -2988,8 +2989,8 @@ function checkElectronHostOwnsVoiceTray(): void {
   const electronTrayControllerFile = path.join(root, 'apps/electron/src/voice/tray-controller.ts')
   const electronTrayFile = path.join(root, 'apps/electron/src/voice/tray.ts')
   const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const mainTrayFile = path.join(root, 'packages/backend/voice/tray.ts')
-  const mainVoiceServiceFile = path.join(root, 'packages/backend/voice/service.ts')
+  const mainTrayFile = path.join(root, 'packages/backend/wiring/voice/tray.ts')
+  const mainVoiceServiceFile = path.join(root, 'packages/backend/wiring/voice/service.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTrayControllerContent = fs.existsSync(electronTrayControllerFile)
     ? fs.readFileSync(electronTrayControllerFile, 'utf-8')
@@ -4186,7 +4187,7 @@ function checkElectronHostOwnsMediaProtocol(): void {
 function checkElectronHostOwnsLoggingCapture(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronLoggingFile = path.join(root, 'apps/electron/src/logging/console-capture.ts')
-  const mainLoggingFile = path.join(root, 'packages/backend/logging/index.ts')
+  const mainLoggingFile = path.join(root, 'packages/backend/wiring/logging/index.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronLoggingContent = fs.existsSync(electronLoggingFile) ? fs.readFileSync(electronLoggingFile, 'utf-8') : ''
   const mainLoggingContent = fs.existsSync(mainLoggingFile) ? fs.readFileSync(mainLoggingFile, 'utf-8') : ''
@@ -4228,7 +4229,7 @@ function checkElectronHostOwnsLoggingCapture(): void {
       : []),
     ...(fs.existsSync(mainLoggingFile)
       ? matchingLines(mainLoggingFile, MAIN_LOGGING_ELECTRON_CAPTURE_FORBIDDEN_PATTERNS)
-      : ['packages/backend/logging/index.ts: missing logging facade']),
+      : ['packages/backend/wiring/logging/index.ts: missing logging facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron logging capture', lines)
@@ -8689,7 +8690,7 @@ function checkRuntimeOwnsVoiceProviderRuntime(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/providers.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
   const runtimePackage = path.join(root, 'packages/onething-runtime/package.json')
-  const mainFile = path.join(root, 'packages/backend/voice/providers.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/voice/providers.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const runtimePackageContent = fs.existsSync(runtimePackage) ? fs.readFileSync(runtimePackage, 'utf-8') : ''
@@ -8724,7 +8725,7 @@ function checkRuntimeOwnsVoiceProviderRuntime(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_VOICE_PROVIDER_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['packages/backend/voice/providers.ts: missing voice providers facade']),
+      : ['packages/backend/wiring/voice/providers.ts: missing voice providers facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns voice provider runtime', lines)
@@ -8734,7 +8735,7 @@ function checkRuntimeOwnsVoiceServicePolicy(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/service-runtime.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/voice/__tests__/service-runtime.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
-  const mainFile = path.join(root, 'packages/backend/voice/service.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/voice/service.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
@@ -8782,7 +8783,7 @@ function checkRuntimeOwnsVoiceServicePolicy(): void {
       .map(symbol => `${rel(mainFile)}: main voice service must delegate ${symbol} to runtime voice service policy`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_VOICE_SERVICE_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['packages/backend/voice/service.ts: missing voice service adapter']),
+      : ['packages/backend/wiring/voice/service.ts: missing voice service adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns voice service policy', lines)
@@ -8792,7 +8793,7 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/text.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/voice/__tests__/text.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
-  const mainFile = path.join(root, 'packages/backend/voice/service.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/voice/service.ts')
   const sharedFiles = [
     path.join(root, 'packages/shared/voice/segmenter.ts'),
     path.join(root, 'packages/shared/voice/tts-stream.ts'),
@@ -8923,7 +8924,7 @@ function checkRuntimeOwnsSearchIpcOperations(): void {
 
 function checkRuntimeOwnsHeadlessCliProjections(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/headless/cli-projections.ts')
-  const mainFile = path.join(root, 'packages/backend/headless/backend.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/headless/backend.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingHeadlessSessionSummaries',
@@ -8944,7 +8945,7 @@ function checkRuntimeOwnsHeadlessCliProjections(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned headless CLI projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_HEADLESS_CLI_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/headless/backend.ts: missing headless backend adapter']),
+      : ['packages/backend/wiring/headless/backend.ts: missing headless backend adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns headless CLI projections', lines)

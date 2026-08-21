@@ -10,7 +10,7 @@
 
 import {
   getOnethingMCPOAuthCredentialsPath,
-} from '@onething/runtime/storage'
+} from '../../storage/index.js'
 import { MCPOAuthFlowManager } from './flow-manager.js'
 
 export { MCPOAuthFlowManager, MCP_OAUTH_CALLBACK_PORTS } from './flow-manager.js'

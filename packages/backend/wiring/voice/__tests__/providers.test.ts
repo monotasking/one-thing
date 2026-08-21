@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { getOpenRouterTTSModels, getVoiceInputConfigurationError, streamSynthesizeSpeech, synthesizeSpeech, transcribeUtterance } from '../providers.js'
 
-vi.mock('../../stores/settings.js', () => ({
+vi.mock('../../../stores/settings.js', () => ({
   getSettings: () => ({
     ai: {
       providers: {

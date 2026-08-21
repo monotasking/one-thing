@@ -36,7 +36,7 @@
 import { getToolkitCatalog, PluginTool } from '@onething/runtime/toolkit'
 import type { PluginToolDefinitionLike, PluginToolHostContext, PluginToolHostResult } from '@onething/runtime/toolkit'
 import type { JsonObject } from '@shared/json.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('toolkit')
 

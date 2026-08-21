@@ -29,9 +29,9 @@ import {
   updateOnethingHeadlessToolSetting,
   upsertOnethingHeadlessProviderConfig,
   useOnethingHeadlessProvider,
-} from '@onething/runtime/headless'
-import { createOnethingBackend } from '../backend.js'
-import { flushAllPendingSaves } from '../store.js'
+} from '@onething/runtime/headless/index'
+import { createOnethingBackend } from '../../backend.js'
+import { flushAllPendingSaves } from '../../store.js'
 import {
   createSession,
   deleteSession,
@@ -46,20 +46,20 @@ import {
   updateSessionPermissionMode,
   updateSessionPin,
   updateSessionWorkingDirectory,
-} from '../store.js'
+} from '../../store.js'
 // 建房走 app 层那一本规则书。直接指到 room-create 而不是 collab 桶:这条口是
 // 同步的,而桶会把协调器整棵树一起拉起来 —— 邻居们的 `await import` 就是为了
 // 避开那件事。room-create 只依赖 store 与 agents,两者本来就已经在了。
-import { ensureCollabGroupRoom } from '../collab/room-create.js'
-import { getSettings } from '../stores/settings.js'
-import { toolkitCatalogToolDefinitions } from '../toolkit/catalog-projection.js'
-import { shutdownEventSystem, getEventBus, getStreamChannel } from '../events/index.js'
-import { initializeSessionLayer, shutdownSessionLayer } from '../session/index.js'
-import { sessionReads } from '../session/reads.js'
-import { shutdownStreamEngine, getStreamEngine } from '../engine/index.js'
-import { Permission } from '../wiring/permission/index.js'
-import { MCPManager, registerMCPTools } from '../mcp/index.js'
-import { ACPManager } from '@onething/runtime/acp'
+import { ensureCollabGroupRoom } from '../../collab/room-create.js'
+import { getSettings } from '../../stores/settings.js'
+import { toolkitCatalogToolDefinitions } from '../../toolkit/catalog-projection.js'
+import { shutdownEventSystem, getEventBus, getStreamChannel } from '../../events/index.js'
+import { initializeSessionLayer, shutdownSessionLayer } from '../../session/index.js'
+import { sessionReads } from '../../session/reads.js'
+import { shutdownStreamEngine, getStreamEngine } from '../../engine/index.js'
+import { Permission } from '../permission/index.js'
+import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
+import { ACPManager } from '@onething/runtime/acp/index'
 import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
@@ -433,7 +433,7 @@ export class HeadlessBackend {
   }
 
   async collabBoard(roomSessionId: string): Promise<unknown> {
-    const { loadCollabBoard } = await import('../collab/board-store.js')
+    const { loadCollabBoard } = await import('../../collab/board-store.js')
     return loadCollabBoard(roomSessionId)
   }
 
@@ -442,7 +442,7 @@ export class HeadlessBackend {
     roomSessionId: string,
     budgets: CollabRoomBudgetsPatch,
   ): Promise<{ ok: boolean }> {
-    const { setCollabRoomBudgets } = await import('../collab/index.js')
+    const { setCollabRoomBudgets } = await import('../../collab/index.js')
     return { ok: setCollabRoomBudgets(roomSessionId, budgets) }
   }
 
@@ -455,7 +455,7 @@ export class HeadlessBackend {
   async collabRoomUpdate(
     input: CollabRoomUpdatePatch & { roomSessionId: string },
   ): Promise<{ ok: boolean; error?: string }> {
-    const { setCollabRoomConfig } = await import('../collab/index.js')
+    const { setCollabRoomConfig } = await import('../../collab/index.js')
     const { roomSessionId, ...patch } = input
     const result = setCollabRoomConfig(roomSessionId, patch)
     if (!result.success) throw new Error(result.error || 'Failed to update room')

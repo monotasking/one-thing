@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { collectLogRecordsForTests } from '../../logging/index.js'
+import { collectLogRecordsForTests } from '../../wiring/logging/index.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-events-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH

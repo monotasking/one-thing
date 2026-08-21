@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   settings: { music: {} } as { music: Record<string, unknown> },
 }))
 
-vi.mock('../process-runner.js', () => ({
+vi.mock('@onething/runtime/music/process-runner', () => ({
   createElectronMusicProcessRunner: () => ({
     run: async (options: { args: string[]; env?: Record<string, string | undefined> }) => {
       mocks.runs.push({ args: options.args, env: options.env })
@@ -49,14 +49,14 @@ vi.mock('../process-runner.js', () => ({
   }),
 }))
 
-vi.mock('../../voice/host-ports.js', () => ({
+vi.mock('@onething/runtime/voice/host-ports.wiring', () => ({
   broadcastVoiceHostMessage: vi.fn(),
   configureVoiceHost: vi.fn(),
   getVoiceHostPorts: () => ({}),
 }))
 
 vi.mock('../service.js', async () => {
-  const { ncmMusicProvider } = await import('@onething/runtime/music')
+  const { ncmMusicProvider } = await import('@onething/runtime/music/index')
   return {
     // The real active-provider resolution (settings → registry) collapses to
     // ncm here: these tests exercise the founding provider's behavior.
@@ -73,7 +73,7 @@ vi.mock('../service.js', async () => {
 })
 
 // 注意:vi.mock 的相对路径按【本测试文件】解析,不是按被测模块解析。这里在
-// music/__tests__/ 下,radio.ts 的 '@onething/runtime/storage' 对本文件是 '@onething/runtime/storage'。
+// music/__tests__/ 下,radio.ts 的 '@onething/runtime/storage/index' 对本文件是 '@onething/runtime/storage/index'。
 // 曾因少写一层目录,paths mock 静默失效、getOnethingStorePath 走真实实现,7 个夹具把
 // ~/.onething/music/ 的真实电台状态反复清空(2026-07-17 事故),而测试自读自写全绿。
 vi.mock('../dj-voice.js', () => ({ speakDjPatter: vi.fn().mockResolvedValue(undefined) }))
@@ -83,14 +83,14 @@ vi.mock('@onething/runtime/agents/store-bound.wiring', () => ({
   findAgent: () => ({ systemPrompt: '' }),
   updateAgent: vi.fn(),
 }))
-vi.mock('../../stores/sessions.js', () => ({
+vi.mock('../../../stores/sessions.js', () => ({
   getSession: vi.fn(),
   getSessionsList: vi.fn(() => []),
   createSession: vi.fn(),
   updateSessionAgent: vi.fn(),
 }))
-vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => mocks.dir }))
-vi.mock('../../stores/settings.js', () => ({ getSettings: () => mocks.settings }))
+vi.mock('@onething/runtime/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
+vi.mock('../../../stores/settings.js', () => ({ getSettings: () => mocks.settings }))
 
 const HEX = 'D71F6E90EA704F1C44183933E7E0F19'
 const entry = (n: number) => ({ encryptedId: HEX + n, originalId: String(n), title: `song ${n}` })

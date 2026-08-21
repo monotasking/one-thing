@@ -31,7 +31,7 @@ import {
   getOnethingPendingPermissionsForIpc,
 } from '@onething/runtime/permissions'
 import { permissionRouter, type PermissionRoutes } from '@shared/ipc/permissions.js'
-import { consolePort, getLogger } from '../../logging/index.js'
+import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
 import { registerRouterHandlers } from '../registry.js'
 

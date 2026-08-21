@@ -3,7 +3,7 @@ import os from 'os'
 import path from 'path'
 import { execFileSync } from 'child_process'
 import { describe, expect, it } from 'vitest'
-import { getSettings } from '../../stores/settings.js'
+import { getSettings } from '../../../stores/settings.js'
 import { transcribeUtterance } from '../providers.js'
 
 const runLiveASR = process.env.ONETHING_LIVE_ASR_TEST === '1'

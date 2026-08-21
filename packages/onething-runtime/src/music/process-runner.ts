@@ -14,7 +14,7 @@ import type {
   OnethingMusicProcessResult,
   OnethingMusicProcessRunner,
   OnethingMusicProcessStreamOptions,
-} from '@onething/runtime/music'
+} from './index.js'
 
 /**
  * GUI apps inherit a login shell's PATH only when launched from a terminal, so

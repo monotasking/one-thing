@@ -51,7 +51,7 @@ import {
   type OnethingCodexStreamPart,
   type OnethingCodexUsage,
 } from '@onething/runtime/providers'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('providers.codex')
 

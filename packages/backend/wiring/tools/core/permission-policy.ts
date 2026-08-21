@@ -7,13 +7,13 @@ import {
 import * as store from '../../../store.js'
 import { sessionReads } from '../../../session/reads.js'
 import { isSystemInternalOrigin, latestRealOrigin } from '../../../channel/origin.js'
-import { writeAppLog } from '../../../logging/index.js'
+import { writeAppLog } from '../../logging/index.js'
 import type {
   EnforcePermissionPolicyInput,
   PermissionPolicyInput,
 } from '@onething/runtime/permissions'
 import type { MessageOrigin } from '@shared/ipc.js'
-import { getLogger } from '../../../logging/index.js'
+import { getLogger } from '../../logging/index.js'
 
 const log = getLogger('permission')
 

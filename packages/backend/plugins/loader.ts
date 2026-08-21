@@ -46,7 +46,7 @@ import { clearPluginRuntimeHealth } from './health.js'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
 import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
-import { consolePort, getLogger } from '../logging/index.js'
+import { consolePort, getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('plugins.loader')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

@@ -40,7 +40,7 @@ import {
 	getCodexFallbackModels,
 } from "./builtin/codex.js";
 import { detectModelCapabilities } from "./builtin/github-copilot.js";
-import { consolePort, getLogger } from '../logging/index.js'
+import { consolePort, getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('providers.registry')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

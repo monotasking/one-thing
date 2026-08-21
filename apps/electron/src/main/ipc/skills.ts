@@ -49,7 +49,7 @@ import {
   initializeSessionSkills,
   invalidateSessionSkillsCache,
 } from '@onething/backend/wiring/skills/session-skills.js'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('ipc.skills')
 

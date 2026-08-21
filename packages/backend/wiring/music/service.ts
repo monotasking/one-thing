@@ -11,15 +11,15 @@ import {
   type OnethingMusicNowPlaying,
   type OnethingMusicRadioSource,
   type NowPlayingWatcher,
-} from '@onething/runtime/music'
+} from '@onething/runtime/music/index'
 import {
   createElectronMusicProcessRunner,
   writeElectronMusicSecretFile,
-} from './process-runner.js'
-import { broadcastVoiceHostMessage } from '../voice/host-ports.js'
+} from '@onething/runtime/music/process-runner'
+import { broadcastVoiceHostMessage } from '@onething/runtime/voice/host-ports.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
-import { getSettings, saveSettings } from '../stores/settings.js'
+import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../logging/index.js'
 
 const log = getLogger('music')

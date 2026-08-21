@@ -21,7 +21,7 @@ vi.mock('@onething/runtime/storage', () => ({
   },
 }))
 
-vi.mock('../../logging/index.js', () => ({
+vi.mock('../../wiring/logging/index.js', () => ({
   writeAppLog: vi.fn(),
 }))
 

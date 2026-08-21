@@ -40,7 +40,7 @@ import {
   getSessionUsage,
   updateSessionUsage,
 } from '@onething/backend/session/usage.js'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('ipc.sessions')
 

@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { getOnethingStorePath } from '@onething/runtime/storage'
 import { BROWSER_PARTITION } from './session.js'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('browser')
 

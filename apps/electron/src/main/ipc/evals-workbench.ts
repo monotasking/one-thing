@@ -43,7 +43,7 @@ import {
 	createEvalsModelCaller,
 	resolveEvalsCredentials,
 } from "./evals-provider-adapter.js";
-import { getLogger } from "@onething/backend/logging/index.js";
+import { getLogger } from "@onething/backend/wiring/logging/index.js";
 
 const log = getLogger("ipc.evals-workbench");
 

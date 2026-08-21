@@ -8,7 +8,7 @@ import type { AppSettings, ProviderConfig, ToolSettings, Step } from '@shared/ip
 import type { Principal } from '@onething/core/permission'
 import type { ToolCall } from '@shared/ipc.js'
 import type { ReasoningPlacement } from '@shared/events/index.js'
-import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../../mcp/index.js'
+import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/runtime/mcp/index.wiring'
 import { resolveAIToolName } from '../../providers/tool-name-alias.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import type { PendingMessageQueue } from './message-queue.js'

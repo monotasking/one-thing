@@ -65,7 +65,7 @@ import { taskMessageSource } from '../../channel/origin.js'
 import { deliverInternalMessage } from '../../plugins/sessions.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('tasks')
 

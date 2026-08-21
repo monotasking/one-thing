@@ -52,7 +52,7 @@ import { readPluginTarballSummary } from '@onething/backend/plugins/tarball.js'
 import { getPluginAppVersion } from '@onething/backend/plugins/app-version.js'
 import { getEventBus } from '@onething/backend/events/index.js'
 import * as store from '@onething/backend/store.js'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('ipc.plugins')
 

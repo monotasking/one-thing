@@ -14,7 +14,7 @@
  * 外加装配面的那几道门:场子门现算、工具从注册表取、解绑真的解。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { collectLogRecordsForTests } from '../../../logging/index.js'
+import { collectLogRecordsForTests } from '../../logging/index.js'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
 import { COLLAB_SAY_SOURCE } from '@onething/runtime/collab'
 import {

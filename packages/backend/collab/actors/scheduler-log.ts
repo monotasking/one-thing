@@ -48,7 +48,7 @@ import {
   getOnethingStorePath,
 } from '@onething/runtime/storage'
 import { collabRoomActorsDir } from './room-account.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('collab.scheduler')
 

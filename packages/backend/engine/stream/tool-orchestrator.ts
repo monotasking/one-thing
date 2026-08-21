@@ -13,7 +13,7 @@ import {
 import { sessionReads } from '../../session/reads.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { consolePort, getLogger } from '../../logging/index.js'
+import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('toolkit.runner')
 

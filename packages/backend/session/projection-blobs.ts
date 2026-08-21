@@ -18,7 +18,7 @@
 import type { ProjectionIssue, ProjectionMaterializeOptions } from '@onething/core/session'
 import { readSessionBlobText } from './blob-store.js'
 import { bumpSessionShadowStats } from './event-stats.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
 

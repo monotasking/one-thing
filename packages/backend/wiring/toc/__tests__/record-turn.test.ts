@@ -9,7 +9,7 @@
  * traceable.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { collectLogRecordsForTests } from '../../../logging/index.js'
+import { collectLogRecordsForTests } from '../../logging/index.js'
 
 const mocks = vi.hoisted(() => ({
   runAgentLoop: vi.fn(async (_options: Record<string, unknown>) => ({

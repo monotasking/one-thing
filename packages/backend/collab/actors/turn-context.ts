@@ -27,7 +27,7 @@
  * 于是投递也走端口:同一个零 import 的模块,同一套「装上才生效」。
  */
 import type { ChatMessage } from '@shared/ipc.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('collab.actors.turn')
 

@@ -24,7 +24,7 @@ import { goalRuntimeHooks } from '../../wiring/goals/runtime-hooks.js'
 import { scratchpadRuntimeHooks } from '@onething/runtime/scratchpad/service-bound'
 import { resolveAgentProfileForSessionObject } from '../../wiring/agents/profile.js'
 import { getSkillsForSession } from '../../wiring/skills/session-skills.js'
-import { getMCPToolDefinitionsForModel } from '../../mcp/index.js'
+import { getMCPToolDefinitionsForModel } from '@onething/runtime/mcp/index.wiring'
 import * as modelRegistry from '../../providers/model-registry.js'
 import { createAgentProviderFromRuntime } from '../../providers/agent-runtime.js'
 import type { ChatMessage, ChatSession, SkillDefinition } from '@shared/ipc.js'
@@ -42,7 +42,7 @@ import { resolvePromptReferences } from '@onething/runtime/prompts/resolver.wiri
 import type { IPCEmitter } from './ipc-emitter.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { consolePort, getLogger } from '../../logging/index.js'
+import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

@@ -1,6 +1,6 @@
 import type { ChatSession, MessageOrigin } from '@shared/ipc.js'
 import * as store from '../store.js'
-import { writeAppLog } from '../logging/index.js'
+import { writeAppLog } from '../wiring/logging/index.js'
 import { getSessionManager } from '../session/index.js'
 import { getChannelIdentityService } from './identity-service.js'
 import {

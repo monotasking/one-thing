@@ -14,7 +14,7 @@ import {
   modelInfoFromCopilotEntry,
   type OnethingCopilotModelCapabilities,
 } from '@onething/runtime/providers'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('providers.copilot')
 

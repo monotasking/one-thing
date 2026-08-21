@@ -12,14 +12,14 @@ import {
   type MCPToolCallResult,
 } from '@onething/core/mcp'
 import type { JsonArray, JsonObject, JsonValue } from '@onething/core'
-import { getMCPClientIdentity } from '@onething/backend/mcp/identity.js'
+import { getMCPClientIdentity } from '@onething/runtime/mcp/identity'
 import {
   ONETHING_MCP_CLIENT_CAPABILITIES,
   OnethingMCPClient,
-} from '@onething/backend/mcp/client.js'
-import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/index.js'
-import { notifyMCPCapabilitiesChanged } from '@onething/backend/mcp/capabilities-changed.js'
-import { consolePort, getLogger } from '../logging/index.js'
+} from '@onething/runtime/mcp/client'
+import { getMCPOAuthFlowManager } from '@onething/runtime/mcp/oauth/index'
+import { notifyMCPCapabilitiesChanged } from '@onething/runtime/mcp/capabilities-changed'
+import { consolePort, getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('server.mcp')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

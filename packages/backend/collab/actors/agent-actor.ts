@@ -115,7 +115,7 @@ import {
   type CollabWorkerMindPort,
   type CollabWorkerSlotLedger,
 } from './worker-child.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('collab.actors.agent')
 

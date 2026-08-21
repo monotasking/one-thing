@@ -7,9 +7,9 @@
  * what unblocks a 停止电台 pressed mid-sentence).
  */
 import { randomUUID } from 'node:crypto'
-import { broadcastVoiceHostMessage } from '../voice/host-ports.js'
+import { broadcastVoiceHostMessage } from '@onething/runtime/voice/host-ports.wiring'
 import { synthesizeSpeech } from '../voice/providers.js'
-import { getSettings } from '../stores/settings.js'
+import { getSettings } from '../../stores/settings.js'
 import { IPC_CHANNELS, type MusicDjSpeak } from '@shared/ipc.js'
 import { getLogger } from '../logging/index.js'
 

@@ -123,7 +123,7 @@ export class MemoryRingSink implements LogSink {
 }
 
 /**
- * 文件 sink 的**接口**。实现住在装配层(`@onething/backend/logging/jsonl-file-sink.ts`)
+ * 文件 sink 的**接口**。实现住在装配层(`@onething/runtime/logging/jsonl-file-sink.ts`)
  * —— core 不碰 fs。
  */
 export interface JsonlFileSink extends LogSink {

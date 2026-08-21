@@ -45,7 +45,7 @@ import { collabVenueOf } from '../../collab/venue.js'
 import { findCollabV3Turn } from '../../collab/actors/turn-context.js'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
-import { consolePort, getLogger } from '../../logging/index.js'
+import { consolePort, getLogger } from '../logging/index.js'
 
 const log = getLogger('external-agents')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

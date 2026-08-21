@@ -31,7 +31,7 @@ import { fetchCodexModels, getCodexFallbackModels } from '../../providers/builti
 import * as modelRegistry from '../../providers/model-registry.js'
 import { getSettings } from '../../stores/settings.js'
 import { registerRouterHandlers } from '../registry.js'
-import { consolePort, getLogger } from '../../logging/index.js'
+import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('ipc.models')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

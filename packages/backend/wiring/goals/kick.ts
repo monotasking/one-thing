@@ -30,7 +30,7 @@ import * as store from "../../store.js";
 import { getGoal, goalLimits } from "./index.js";
 
 import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('goals')
 

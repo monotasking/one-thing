@@ -53,7 +53,7 @@ import {
 } from '@onething/runtime/storage'
 import { countSessionEventFailure, isSessionShadowEnabled } from './event-stats.js'
 import { isSessionEventsReadMode } from './read-mode.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
 

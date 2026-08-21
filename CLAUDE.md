@@ -61,7 +61,7 @@ This is **onething**, an AI chat app with multi-provider support, tool calling, 
 
 - **packages/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
 - **packages/onething-runtime/src** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree. **The one exception is a `*.wiring.ts` file** (I3, P3'a-1): the role is in the filename, so a module that has to speak the cross-process vocabulary may import `@shared/ipc` / `@shared/events` — and nothing but another `*.wiring.ts` (or the assembly layer) may import it back. All other bans still apply to it.
-- **packages/backend** — the assembly layer, a real workspace package (`@onething/backend`; it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ headless/ features/ utils/ + the not-yet-merged thick twins collab/ plugins/ providers/ toolkit/ mcp/ music/ voice/ logging/); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (20 dirs: acp / agent-loop / agents / auth / deeplink / external-agents / goals / interaction / markdown / permission / project-dirs / scheduler / search / skills / tasks / toc / todo-plan / tools / usage / variables). The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1).
+- **packages/backend** — the assembly layer, a real workspace package (`@onething/backend`; it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + the not-yet-merged thick twins collab/ plugins/ providers/ toolkit/); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (24 dirs: acp / agent-loop / agents / auth / deeplink / external-agents / goals / headless / interaction / logging / markdown / music / permission / project-dirs / scheduler / search / skills / tasks / toc / todo-plan / tools / usage / variables / voice). The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1).
 - **apps/\*** — thin sockets: Electron (window/IPC/native panel), server (HTTP/SSE), web (browser build of the renderer), CLI daemon.
 
 ```
@@ -141,7 +141,7 @@ Host call sites:
 | --- | --- | --- |
 | Electron desktop | `apps/electron/src/app/main-process.ts` | `toolRegistry: 'full'`, `promptVersion: true`, hooks: shortcuts+proxy / `initializeIPC()`+todo watcher; engine binds to window later via `getStreamEngine().bind(webContents)`. **Also mounts the HTTP/SSE surface** over that same backend post-window (`startEmbeddedOnethingHttpServer`, non-blocking) |
 | Headless server | `packages/backend/server/runtime.ts` (`createRealServerBackend` → `createOnethingServerRuntimeOverBackend`) | `toolRegistry: ONETHING_SERVER_TOOLS === 'readonly' ? 'readonly' : 'full'` (desktop parity by default), `sessionSkills: true`, noop sender (SSE observes the bus directly) |
-| CLI daemon | `packages/backend/headless/backend.ts` (`HeadlessBackend`, used by `apps/electron/src/main/cli/daemon-server.ts`) | `toolRegistry: 'headless'`, `sessionSkills: true`, `mcpAcp: true`, noop sender |
+| CLI daemon | `packages/backend/wiring/headless/backend.ts` (`HeadlessBackend`, used by `apps/electron/src/main/cli/daemon-server.ts`) | `toolRegistry: 'headless'`, `sessionSkills: true`, `mcpAcp: true`, noop sender |
 
 Note: `backend.ts` carries static `import './tools/builtin/{index,headless,readonly}.js'` edges purely so single-file bundlers order the tool barrels before the factory's top-level await (the registry itself dynamic-imports them for test mocks). Do not remove them.
 
@@ -152,8 +152,8 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 | `configureStorePathHost` | `backend/stores/docs-paths.ts` |
 | `configureSandboxHost` | `backend/wiring/tools/core/sandbox.ts` |
 | `configureAuthHost` | `auth/host-ports.ts` (product layer since P3'a-1 — zero spine deps) |
-| `configureVoiceHost` | `backend/voice/host-ports.ts` |
-| `configureAppLoggingHost` | `backend/logging/index.ts` |
+| `configureVoiceHost` | `runtime/src/voice/host-ports.wiring.ts` |
+| `configureAppLoggingHost` | `backend/wiring/logging/index.ts` |
 | `configureSkillsEnvironmentHost` | `backend/wiring/skills/loader.ts` |
 | `configureTodoPlanHost` | `backend/wiring/todo-plan/store.ts` |
 
@@ -173,7 +173,10 @@ Notes:
   - `packages/core/logging/` (zero deps, zero node imports) owns `Logger`
     (`trace/debug/info/warn/error/fatal/child(fields)`), `LogRecord
     {time, level, ns, msg, fields?, err?, src?}`, `LevelFilter`, `ConsoleSink(pretty|json)`,
-    `MemoryRingSink`, `normalizeError`. `packages/backend/logging/`
+    `MemoryRingSink`, `normalizeError`. The **mechanism** (JsonlFileSink /
+    RollingFileLogger / LegacyConsoleSink / janitor / crash-hooks / legacy-debug-env)
+    is Electron-free and lives in `packages/onething-runtime/src/logging/` next to the
+    `getLogger` facade; `packages/backend/wiring/logging/`
     assembles it: **`configureLogging()` is the single wiring point** (idempotent — the
     desktop's embedded HTTP face never double-configures), and product code only ever
     calls `getLogger('engine.stream')`. `msg` is a fixed short sentence; variables go in
@@ -218,7 +221,7 @@ Notes:
     `warn` with `fields.stack`, and no console line at all.
     `window.__onethingLog.dump()` is the hub's own crash-scene口.
   - **The gateway takes a logger at construction** (L2): `startGateway({ getLogger })`
-    (same signature as `@onething/backend/logging`'s `getLogger`) — the Electron host passes
+    (same signature as `@onething/backend/wiring/logging`'s `getLogger`) — the Electron host passes
     its own, so gateway records land in `app.jsonl` under `gateway.wechat` /
     `gateway.telegram` / `gateway.bridge` / `gateway.storage`. Classes take an explicit
     `logger?`; free functions read the process-level factory
@@ -646,14 +649,14 @@ packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared 
 │   │                          # (OnethingRuntimeFacade + session/settings/permission facades),
 │   │                          # discovery.ts (<store>/run/http.json), embed.ts (host mounting)
 │   ├── channel/               # gateway identity, session-router, outbound dispatch
-│   ├── headless/backend.ts    # HeadlessBackend for the CLI daemon
 │   ├── features/  utils/      # feature mounts (self-evolution, trajectory…); ripgrep/fuzzy/wildcard
-│   ├── logging/               # configureLogging + JsonlFileSink/LegacyConsoleSink/janitor/crash-hooks
-│   ├── collab/ plugins/ providers/ toolkit/ mcp/ music/ voice/
-│   │                          # 厚孪生 —— 与 runtime/<d> 同名,I1 allowlist 豁免中,P3'b 逐个并回
+│   ├── collab/ plugins/ providers/ toolkit/
+│   │                          # 厚孪生 —— 与 runtime/<d> 同名,I1 allowlist 豁免中,P3'c/b-B 并回
 │   └── wiring/<domain>/       # 薄接线:acp agent-loop agents auth deeplink external-agents
-│                              # goals interaction markdown permission project-dirs scheduler
-│                              # search skills tasks toc todo-plan tools usage variables
+│                              # goals headless(HeadlessBackend) interaction
+│                              # logging(configureLogging) markdown music permission
+│                              # project-dirs scheduler search skills tasks toc todo-plan
+│                              # tools usage variables voice
 │
 apps/electron/src/
 │   ├── main/                  # '@main' — ONLY: ipc/ (per-domain handlers + handlers.ts),
@@ -710,7 +713,7 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 端口实现走命令面。**一个反复踩的坑**:命令是 COW 的 —— 先捕获 `session.messages`、再
 `await`、再读那个变量会拿到旧数组;await 之后重读。
 
-**MCP / ACP / Skills**: assembly wiring in `packages/backend/mcp/` and `packages/backend/wiring/{acp,skills}/`; themes are product-only now (`packages/onething-runtime/src/themes/`), as is the rest of the product logic.
+**MCP / ACP / Skills**: MCP is product-layer since P3'b-A (`packages/onething-runtime/src/mcp/` — client / manager / OAuth / identity, plus the `@shared/ipc`-speaking `bridge.wiring.ts` reachable through `index.wiring.ts`); ACP / skills assembly wiring in `packages/backend/wiring/{acp,skills}/`; themes are product-only now (`packages/onething-runtime/src/themes/`), as is the rest of the product logic.
 
 **CLI daemon**: `bin/onething.mjs` → `out/main/cli.js` (built from `apps/electron/src/main/cli/index.ts`). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
 

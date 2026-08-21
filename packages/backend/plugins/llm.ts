@@ -38,7 +38,7 @@ import { resolveUtilityModel } from '../providers/utility-model.js'
 import { generateChatResponse } from '../providers/index.js'
 import { recordUsage } from '../wiring/usage/index.js'
 import type { ProviderConfigWithKey } from '../engine/stream/stream-executor.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('plugins')
 

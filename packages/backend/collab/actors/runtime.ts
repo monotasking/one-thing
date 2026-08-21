@@ -175,7 +175,7 @@ import { createCollabEngineWorkerPort } from './worker-mind-port.js'
 import { migrateCollabToV3 } from './migrate.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('collab.runtime')
 

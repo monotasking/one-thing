@@ -22,9 +22,9 @@ import {
   testOnethingVoiceASRForIpc,
   testOnethingVoiceTTSForIpc,
 } from '@onething/runtime/voice'
-import { getVoiceService } from '@onething/backend/voice/service.js'
+import { getVoiceService } from '@onething/backend/wiring/voice/service.js'
 import { getSettings } from '@onething/backend/stores/settings.js'
-import { getOpenRouterTTSModels, transcribeUtterance } from '@onething/backend/voice/providers.js'
+import { getOpenRouterTTSModels, transcribeUtterance } from '@onething/backend/wiring/voice/providers.js'
 
 export function registerVoiceHandlers(): void {
   type VoiceRuntimeSender = Parameters<ReturnType<typeof getVoiceService>['handleRuntimeReady']>[0]

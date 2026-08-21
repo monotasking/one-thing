@@ -28,8 +28,8 @@ import type { SessionStoreGateway } from '@onething/runtime/variables/providers/
 import type { WorkdirGateway } from '@onething/runtime/variables/providers/core'
 import type { NoteVarName, NotesGateway } from '@onething/runtime/variables/providers/notes'
 import { getGoal, goalLimits } from '../goals/index.js'
-import { getMusicNowPlaying } from '../../music/service.js'
-import { getRadioStore } from '../../music/radio.js'
+import { getMusicNowPlaying } from '../music/service.js'
+import { getRadioStore } from '../music/radio.js'
 import { computeAgentPresence } from '@onething/runtime/agents'
 import { isAgentPairDmRoom } from '@onething/runtime/collab'
 import type {
@@ -40,7 +40,7 @@ import type {
 import { findAgent } from '../agents/index.js'
 import { getCollabSelfTaskFacts } from '../../collab/board-store.js'
 import { resolveUserIdentity } from '../../collab/user-identity.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('variables')
 

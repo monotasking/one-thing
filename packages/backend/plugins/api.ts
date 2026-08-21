@@ -84,7 +84,7 @@ import {
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import type { CompatLogger } from '@onething/core/logging'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('plugins')
 

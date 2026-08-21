@@ -12,8 +12,8 @@ import {
   splitEffectiveAISettings,
 } from '../providers/ai-settings-compose.js'
 import { getOnethingSettingsPath } from '@onething/runtime/storage'
-import { applyDiagnosticsMode } from '../logging/diagnostics.js'
-import { consolePort, getLogger } from '../logging/index.js'
+import { applyDiagnosticsMode } from '../wiring/logging/diagnostics.js'
+import { consolePort, getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('settings')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

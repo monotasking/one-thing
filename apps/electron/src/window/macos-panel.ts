@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { createRequire } from 'module'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('window.macos-panel')
 

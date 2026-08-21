@@ -15,7 +15,7 @@ import {
 } from '@onething/backend/plugins/theme-overrides.js'
 import { getPluginSkinTiers } from '@onething/backend/plugins/skin.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('ipc.themes')
 

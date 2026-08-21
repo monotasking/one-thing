@@ -32,7 +32,7 @@ import type { Effect, Invocation } from '@onething/core/toolkit'
 import { createPermissionAuthorizer } from '../../toolkit/authorizer.js'
 import { publishExternalAgentBackgroundStatus } from './background-status.js'
 import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
-import { consolePort, getLogger } from '../../logging/index.js'
+import { consolePort, getLogger } from '../logging/index.js'
 
 const log = getLogger('external-agents')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

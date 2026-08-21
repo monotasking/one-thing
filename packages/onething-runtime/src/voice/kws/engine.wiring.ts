@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { encodeOnethingKeywordPhrase } from '@onething/runtime/voice/kws/text2token'
+import { encodeOnethingKeywordPhrase } from './text2token.js'
 import type { VoiceWakeSensitivity } from '@shared/ipc.js'
 
 const require = createRequire(import.meta.url)

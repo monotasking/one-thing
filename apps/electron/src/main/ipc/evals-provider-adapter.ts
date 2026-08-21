@@ -19,7 +19,7 @@ import * as store from "@onething/backend/store.js";
 import type { EvalModelCaller } from "@onething/runtime";
 import { onethingBaseBuiltinProviders } from "@onething/runtime/providers";
 import { recordUsage } from "@onething/backend/wiring/usage/index.js";
-import { getLogger } from "@onething/backend/logging/index.js";
+import { getLogger } from "@onething/backend/wiring/logging/index.js";
 
 const log = getLogger("ipc.evals");
 

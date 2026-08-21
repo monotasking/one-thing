@@ -20,7 +20,7 @@ import { startTodoPlanWatcher } from "@onething/backend/wiring/todo-plan/store.j
 import { startScratchpadWatcher } from "@onething/runtime/scratchpad/service-bound";
 import { configureSandboxHost } from "@onething/backend/wiring/tools/core/sandbox.js";
 import { configurePluginAppVersion } from "@onething/backend/plugins/app-version.js";
-import { configureMCPClientIdentity } from "@onething/backend/mcp/identity.js";
+import { configureMCPClientIdentity } from "@onething/runtime/mcp/identity";
 import { getPluginManager } from "@onething/backend/plugins/manager.js";
 import {
 	resolvePluginStorageRoot,
@@ -58,8 +58,8 @@ import {
 } from "@main/bridges/ipc-bridge-lifecycle.js";
 import { shutdownSessionLayer } from "@onething/backend/session/index.js";
 import { Permission } from "@onething/backend/wiring/permission/index.js";
-import { disposeMusicService } from "@onething/backend/music/service.js";
-import { disposeRadioConductor } from "@onething/backend/music/radio.js";
+import { disposeMusicService } from "@onething/backend/wiring/music/service.js";
+import { disposeRadioConductor } from "@onething/backend/wiring/music/radio.js";
 import { killAllTerminals } from "@onething/runtime/terminal/service.wiring";
 import {
 	configureBrowserWindowProvider,
@@ -78,7 +78,7 @@ import {
 	registerGlobalWindowShortcuts,
 	unregisterGlobalWindowShortcuts,
 } from "@onething/electron-host/shortcuts/global-shortcuts";
-import { getVoiceService, getVoiceServiceSafe } from "@onething/backend/voice/service.js";
+import { getVoiceService, getVoiceServiceSafe } from "@onething/backend/wiring/voice/service.js";
 import {
 	attachVoiceTrayMainWindow,
 	configureVoiceTray,
@@ -99,7 +99,7 @@ import {
 	configureLogging,
 	getLogger,
 	shutdownAppLogging,
-} from "@onething/backend/logging/index.js";
+} from "@onething/backend/wiring/logging/index.js";
 import {
 	createElectronRendererConsoleCapture,
 	setElectronAppLogsPath,
@@ -111,7 +111,7 @@ import {
 	getElectronResourcesPath,
 } from "@onething/electron-host/skills/environment";
 import { configureAuthHost } from "@onething/runtime/auth/host-ports";
-import { configureVoiceHost } from "@onething/backend/voice/host-ports.js";
+import { configureVoiceHost } from "@onething/runtime/voice/host-ports.wiring";
 import { broadcastElectronVoiceMessage } from "@onething/electron-host/voice/events";
 import { createElectronAuthFetch } from "@onething/electron-host/auth/auth-fetch";
 import { getElectronSafeStorage } from "@onething/electron-host/auth/electron-auth";

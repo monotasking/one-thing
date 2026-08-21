@@ -11,8 +11,8 @@ import type {
 import { StoreLock, LockConflictError, formatCliLockConflict } from '@shared/backend/store-lock.js'
 import { getCliRuntimePaths, ensureRuntimeDirs, assertSupportedPlatform } from './paths.js'
 import { NdjsonReader, encodeFrame } from './ndjson.js'
-import { HeadlessBackend } from '@onething/backend/headless/backend.js'
-import { configureLogging, getLogger, shutdownAppLogging } from '@onething/backend/logging/index.js'
+import { HeadlessBackend } from '@onething/backend/wiring/headless/backend.js'
+import { configureLogging, getLogger, shutdownAppLogging } from '@onething/backend/wiring/logging/index.js'
 
 interface DaemonServerOptions {
   storePath?: string

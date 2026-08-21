@@ -666,7 +666,8 @@ P3'a-2 点名的那**一个**解锁点,以及它解锁的东西。收尾批,`src
    `import-side-effect-free.test.ts` 的范围改为 wiring 文件。
 2. **P3'b 厚孪生合并**:collab(rt 16k / app 14k)、providers、toolkit、music、logging、mcp、voice 按 I1 并回
    `runtime/<d>`,同名文件(collab 的 `agent-session/mentions/reactions/reply-quote.ts`)按 I2 合并或带角色改名。
-   collab 最大,单独 commit。
+   collab 最大,单独 commit。**2026-08-21:P3'b-A 已落地**(logging / headless / mcp / voice / music 五个,
+   记录见下),剩 collab / providers / toolkit 归 P3'b-B、plugins 归 P3'c。
 3. **P3'c plugins 三合一**(单独一批):core 15k / rt 3k / app 5k,core 与 app 同名文件逐个判定"契约还是实现"
    ——契约留 core,实现全部进 `runtime/plugins`,不允许第三处;I2 断言在此批落地。
 4. **P3'd backend 成包**(P3'a-3 收工后重述为现在的形状;**2026-08-21 已落地,记录见下**):`src/app` → `packages/backend`
@@ -786,6 +787,76 @@ P3'a-2 点名的那**一个**解锁点,以及它解锁的东西。收尾批,`src
 最厚的一个,是否还算"薄接线"值得在 P3'b 一并复核;④第三方依赖只写了**静态** import 的 6 条,
 `voice/kws.ts` 里那句惰性 `require('sherpa-onnx-node')` 没进 backend 的 deps(靠根 hoist),
 与迁移前行为一致。
+
+#### P3'b-A 落地记录(2026-08-21,五个厚孪生按文件分拣,未提交)
+
+P3'b 的第一拨:**logging / headless / mcp / voice / music** 五个目录从 `packages/backend` 包根
+消失。判据与 P3'a 相同 —— 逐文件算 import 传递闭包,**闭包不碰脊柱 → `runtime/src/<d>/`,
+碰脊柱 → `backend/wiring/<d>/`**;两种去向都离开包根,I1 allowlist 相应删五行。
+
+**一条新判例(本批最重要的一条)**:`backend/logging/index.ts` 的 `getLogger` **不算脊柱边**。
+CLAUDE.md 早就写着"产品层只调 `getLogger`",而 `configureLogging()` 会
+`setRuntimeLoggerRoot(getRootLogger())` 把两边接到同一套 sink —— 所以一个文件仅仅为了
+`getLogger` 而 import 装配层日志,是**可改指的边**(改成 `@onething/runtime/logging`),不是
+"它属于装配层"的证据。沿用 P3'a-3 `consolePort` 的思路:假脊柱不该钉住产品层。本批据此
+改指 3 处(`mcp/{bridge,client}`、`mcp/oauth/provider`),其余凡是真撞
+`stores/settings` / `providers/bound-fetch` / `engine` / `session` 的一律进 wiring。
+
+**逐目录去向**:
+
+| 目录 | → `runtime/src/<d>/` | → `backend/wiring/<d>/` | 合并 / 改名 |
+| --- | --- | --- | --- |
+| logging(14 文件) | 机制 6 + 测试 6:`janitor` / `jsonl-file-sink` / `rolling-file-logger` / `crash-hooks` / `legacy-console-sink` / `legacy-debug-env`(闭包只到 `@onething/core/logging` + node 内置) | 真装配 2 + 测试 1:`index.ts`(`configureLogging` / `configureAppLoggingHost` / `getRootLogger`)、`diagnostics.ts`、`__tests__/index.test.ts`(它 import `@onething/electron-host/logging/console-capture`) | 无同名;`runtime/src/logging/index.ts` 的 `getLogger` 门面**不动** |
+| headless(1 文件) | — | `backend.ts`(`HeadlessBackend` 调 `createOnethingBackend`,闭包吃掉半个后端) | `runtime/src/headless/` 原样保留 |
+| mcp(19 文件) | **整域**:`types` / `identity` / `capabilities-changed` / `client` / `manager` / `oauth/{credential-store,flow-manager,index,provider,types}` + 7 个测试;`bridge.ts` → `bridge.wiring.ts`(I3:说 `ToolDefinition` 这个跨进程词汇) | — | `index.ts` 与 runtime 的 barrel **同概念合并**(零重名,已逐符号核对);新增 `index.wiring.ts` = `export * from './index.js'` + 桥的 11 个符号 —— 因为 checker 的 `checkRuntimeWiringModulesStayAtTheEdge` 禁止非 wiring 的产品文件 import `*.wiring`,桥只能从一个 wiring 门面出去,老调用点拿到的符号集合逐个不变 |
+| voice(8 文件) | 3:`host-ports.ts` → `host-ports.wiring.ts`(判例 `runtime/src/auth/host-ports.ts`)、`audio-router.ts` → `audio-router.wiring.ts`、`kws.ts` → `kws/engine.wiring.ts` | 2 + 3 个测试:`providers.ts`、`service.ts`(撞 `stores/settings` / `providers/bound-fetch` / `engine` / `events` / `stores/sessions`) | `kws.ts` 放进已有的 `kws/` 目录并改名 `engine`(异角色:runtime 那边是 `text2token.ts`);`providers.ts` 因进 wiring 而天然避开与 `runtime/src/voice/providers.ts` 的重名 |
+| music(5 文件) | 1:`process-runner.ts`(只认 node 内置 + `@onething/runtime/music`) | 3 + 1 个测试:`service.ts` / `dj-voice.ts` / `radio.ts`(`radio.ts` 一只就吃到 engine / session / collab / toolkit 全脊柱) | 无同名 |
+
+**说明符改写 294 处 / 188 文件**(脚本按"旧位置解析 → 走搬家表 → 从新位置重算"生成),另有 6 处
+手工:3 处 `getLogger` 改指、1 处 core 注释改指、`mcp/index.wiring.ts` 的自引用、
+`crash-hooks.fixture.mjs` 的 `../crash-hooks.ts`(**坑**:那是给 `node` 直接跑的夹具,靠 Node
+原生剥类型,后缀必须保持 `.ts`;机械改写把它改成 `.js` 会让子进程 `ERR_MODULE_NOT_FOUND`,
+而 `typecheck` 一声不吭)。
+
+**exports**:`packages/backend/package.json` 删掉 14 条 `./{headless,logging,mcp,music,voice}/*`
+显式条,新增 7 条 `./wiring/{headless,logging,music,voice}/*`;`mcp` 的 5 条与
+`music/process-runner` / `voice/host-ports` 直接消失(去了 runtime,走已有的
+`"./mcp/*"` / `"./music/*"` / `"./voice/*"` / `"./logging/*"` 通配)。runtime 的 exports
+**一条没加** —— 四个领域的通配早就在。
+
+**checker**:①`MAIN_FILE_IO_SYSTEM_DIRS` 删 `packages/backend/mcp`(整域走了);
+②`MAIN_ADAPTER_ALLOWLIST` 唯一一条(`backend/mcp/client.ts` 的 MCP SDK 豁免)随之作废,表清空;
+③路径串批量改指 `packages/backend/{voice → wiring/voice}`(含 `runtime-window.ts` / `tray.ts`
+两条"回来才算红")、`logging/index.ts → wiring/logging/index.ts`、
+`headless/backend.ts → wiring/headless/backend.ts` —— 共 39 行,**语义一行没变**。
+另有一个非代码的坑:`checkRuntimeHostBoundary` 不剥注释,`runtime/src/mcp/index.ts` 注释里
+写一句 `@shared/ipc` 就会真红,措辞改掉即可。
+
+**I1 allowlist**:`collab / plugins / providers / toolkit / mcp / music / voice / logging / headless`
+**9 → 4**(只剩 collab / plugins / providers / toolkit)。
+
+**验收**(全绿):`typecheck` 0 错;`test` **11126 通过 / 1148 文件**,两条红都是满负载抖动、
+单跑即过(`backend/stores/__tests__/sessions-delete-cascade.test.ts` 的 `waitGone`,P3'a 起就记在案;
+`runtime/src/terminal/__tests__/service.smoke.test.ts` 的真 PTY 冒烟);`boundary` **199 ok / 0 failed**;
+`boundary:gate` 0 / `transport:gate` 279 常量 5521 行 / `ui:gate` 81 / `log:gate` 4 / `session:gate` 0
+全部 none new;`build` / `server:build` / `web:build` 三宿主绿;`ls packages/backend/` 包根只剩
+脊柱 + 4 个厚孪生 + `wiring/`。
+
+**遗留(给 P3'b-B / P3'c)**:
+
+- **闭包撞脊柱的具体边**(下一拨的参考):`radio.ts` / `voice/service.ts` 撞的是
+  `stores/settings` + `stores/sessions` + `engine/index` + `events/index` + `session/*`,
+  一条都绕不开 —— 它们是真接线;`voice/providers.ts` / `music/{service,dj-voice}.ts` 撞的
+  只有 `stores/settings` + `providers/{bound-fetch,ai-settings-compose}` **三个点**,
+  等 P4b/c 把"设置读取 + 带凭证的 fetch"做成产品层可注入的端口(与
+  `runtime/src/auth/host-ports.ts` 同形),这 4 个文件还能再往 runtime 走一步。
+- `@modelcontextprotocol/client` 的 deps 声明仍挂在 `packages/backend/package.json`,
+  而静态 import 现在同时在 `runtime/src/mcp/client.ts` 和 `backend/server/mcp-client.ts`;
+  两包都靠根 hoist 解析,行为与迁移前一致,**没动 lock**(runtime 早就有 `zod` 用而不声明的
+  同类情况)。要收口就与 P3'c 的依赖账一起做。
+- `runtime/src/mcp/index.wiring.ts` 是个门面,不是新概念 —— 它存在的唯一理由是
+  `bridge.wiring.ts` 的 I3 后缀与"产品文件不许 import `*.wiring`"这条 checker 规则相撞。
+  若将来把 `ToolDefinition` 那一句挪进 core 契约,`bridge` 就能去掉后缀,这个门面随之删除。
 
 ### P4 传输面 router 迁移(主线,1–2 周,逐域可暂停;08-21:**P4a 前移到 P1' 之前**)
 

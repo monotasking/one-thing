@@ -9,7 +9,7 @@
  * 装配层的测试不许伸手进产品层(守卫:plugin logic stays out of the host assembly tree)。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { collectLogRecordsForTests } from '../../logging/index.js'
+import { collectLogRecordsForTests } from '../../wiring/logging/index.js'
 import {
   configurePluginConfigHost,
   describePluginConfig,

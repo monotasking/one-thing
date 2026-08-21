@@ -11,7 +11,7 @@
  */
 import { initializeStores, flushAllPendingSaves } from './store.js'
 import { getSettings, initializeSettings } from './stores/settings.js'
-import { applyDiagnosticsMode } from './logging/diagnostics.js'
+import { applyDiagnosticsMode } from './wiring/logging/diagnostics.js'
 import { initializeAgents } from './wiring/agents/index.js'
 import { configureSandboxHost, configureAppToolSandbox } from './wiring/tools/core/sandbox.js'
 import { configureAppBackgroundJobs } from '@onething/runtime/tools/background-jobs-bound'
@@ -46,16 +46,16 @@ import { Interaction } from '@onething/core/interaction'
 import { bootstrapVariableSystem } from './wiring/variables/index.js'
 import { bootstrapGoalStreamBreakers } from './wiring/goals/runtime-hooks.js'
 import { bootstrapProjectDirs } from './wiring/project-dirs/index.js'
-import { configureToolkitMCPCapabilitiesChangedHandler } from './mcp/capabilities-changed.js'
+import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/runtime/mcp/capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './toolkit/wiring.js'
 import { registerAppRpcDomains } from './rpc/index.js'
 import { initializeSessionSkills } from './wiring/skills/session-skills.js'
-import { MCPManager, registerMCPTools } from './mcp/index.js'
+import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
 import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from '@onething/runtime/acp'
 import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
-import { getLogger } from './logging/index.js'
+import { getLogger } from './wiring/logging/index.js'
 
 const log = getLogger('app.backend')
 

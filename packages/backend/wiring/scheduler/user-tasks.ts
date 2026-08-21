@@ -22,7 +22,7 @@ import {
   getOnethingSchedulerTasksPath,
 } from '@onething/runtime/storage'
 import { saveSchedulerRunDetail } from '@onething/runtime/scheduler/run-history-bound.wiring'
-import { consolePort, getLogger } from '../../logging/index.js'
+import { consolePort, getLogger } from '../logging/index.js'
 
 const log = getLogger('scheduler')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

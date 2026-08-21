@@ -30,7 +30,7 @@ import {
 import { buildHistoryMessages } from './stream/message-helpers.js'
 import { collectCompactFileOperations } from './compact-file-lists.js'
 import * as modelRegistry from '../providers/model-registry.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('engine.compact')
 

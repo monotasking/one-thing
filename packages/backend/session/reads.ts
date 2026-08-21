@@ -45,7 +45,7 @@ import {
 } from './events-reads.js'
 import { isSessionFreezeEnabled } from './freeze.js'
 import { isSessionEventsReadMode } from './read-mode.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions')
 

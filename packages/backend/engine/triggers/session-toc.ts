@@ -13,7 +13,7 @@ import { collectGoalFileChanges } from "../../wiring/goals/file-changes.js";
 import { recordTocTurn } from "../../wiring/toc/index.js";
 import { sessionReads } from "../../session/reads.js";
 import type { Trigger, TriggerContext } from "./index.js";
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('engine.triggers')
 

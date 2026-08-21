@@ -15,7 +15,7 @@ import * as store from '../store.js'
 import { getUsageLedger } from '../wiring/usage/index.js'
 import { loadCollabBoard } from './board-store.js'
 import { postSystemLine } from './room-runtime.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('collab.budget')
 

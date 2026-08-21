@@ -20,7 +20,7 @@ import {
 } from '@onething/runtime/interaction/ipc-operations.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { InteractionRespondRequest } from '@shared/ipc.js'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('ipc.interaction')
 

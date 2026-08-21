@@ -75,7 +75,7 @@ const noopLogger = () => {
   logger.child = () => logger
   return logger
 }
-vi.mock('../../../logging/index.js', () => ({
+vi.mock('../../logging/index.js', () => ({
   writeAppLog: vi.fn(),
   getLogger: () => noopLogger(),
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),

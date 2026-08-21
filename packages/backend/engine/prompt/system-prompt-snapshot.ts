@@ -14,7 +14,7 @@ import {
 import { defaultAgent, findAgent } from '../../wiring/agents/index.js'
 import { resolveAgentProfileForSession } from '../../wiring/agents/profile.js'
 import { getSkillsForSession } from '../../wiring/skills/session-skills.js'
-import { getMCPToolDefinitionsForModel } from '../../mcp/index.js'
+import { getMCPToolDefinitionsForModel } from '@onething/runtime/mcp/index.wiring'
 import { buildProjectDirsPromptVars } from '../../wiring/project-dirs/index.js'
 import {
   isProviderSupported,

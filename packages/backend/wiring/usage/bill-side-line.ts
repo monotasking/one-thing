@@ -12,7 +12,7 @@
  */
 import { ONETHING_USAGE_SOURCES } from "@onething/runtime/usage";
 import { recordUsage } from "./index.js";
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('usage')
 

@@ -37,7 +37,7 @@ import * as store from "../../store.js";
 import { sessionReads } from "../../session/reads.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('goals')
 

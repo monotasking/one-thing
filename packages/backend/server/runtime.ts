@@ -66,10 +66,10 @@ import {
 	MCPManager as appMCPManager,
 	configureMCPClientHost,
 	registerMCPTools as registerAppMCPTools,
-} from "@onething/backend/mcp/index.js";
-import { getMCPOAuthFlowManager } from "@onething/backend/mcp/oauth/index.js";
-import { configureMCPClientIdentity } from "@onething/backend/mcp/identity.js";
-import { configureMCPCapabilitiesChangedHandler } from "@onething/backend/mcp/capabilities-changed.js";
+} from "@onething/runtime/mcp/index.wiring";
+import { getMCPOAuthFlowManager } from "@onething/runtime/mcp/oauth/index";
+import { configureMCPClientIdentity } from "@onething/runtime/mcp/identity";
+import { configureMCPCapabilitiesChangedHandler } from "@onething/runtime/mcp/capabilities-changed";
 import {
 	createBranchSession as createAppStoreBranchSession,
 	createSession as createAppStoreSession,
@@ -445,7 +445,7 @@ import type {
 import { ServerMCPClient, probeServerMCPConfig } from "./mcp-client.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
-import { consolePort, getLogger } from '../logging/index.js'
+import { consolePort, getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('server.runtime')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

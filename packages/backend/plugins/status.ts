@@ -20,7 +20,7 @@ import {
 import { SESSION_STREAM_TERMINAL_EVENTS } from '@shared/events/session-events.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('plugins')
 

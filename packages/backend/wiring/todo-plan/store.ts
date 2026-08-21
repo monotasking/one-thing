@@ -12,7 +12,7 @@ import {
   getOnethingStorePath,
 } from '@onething/runtime/storage'
 import { getCurrentSessionId } from '../../stores/app-state.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('todo-plan')
 

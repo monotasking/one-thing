@@ -25,7 +25,7 @@ import {
 } from "@onething/runtime/tools";
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import type { JsonObject } from "@shared/json.js";
-import { getMCPToolDefinitionsForModel } from "@onething/backend/mcp/index.js";
+import { getMCPToolDefinitionsForModel } from "@onething/runtime/mcp/index.wiring";
 import {
 	listBackgroundJobs,
 	stopBackgroundJob,
@@ -37,7 +37,7 @@ import {
 	runToolkitToolDirectly,
 	toolkitCatalogToolDefinitions,
 } from "@onething/backend/toolkit/index.js";
-import { getLogger } from "@onething/backend/logging/index.js";
+import { getLogger } from "@onething/backend/wiring/logging/index.js";
 
 const log = getLogger("ipc.tools");
 

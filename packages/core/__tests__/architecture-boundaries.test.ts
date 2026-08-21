@@ -69,10 +69,10 @@ describe('architecture boundaries', () => {
    */
   it('I1: keeps one home per domain — backend package root does not shadow a runtime domain', () => {
     // P3'b 逐个摘除(厚孪生:两边都有真代码,合并要逐文件判定契约/实现/接线)。
+    // P3'b-A(2026-08-21)摘掉 logging / headless / mcp / voice / music 五个:
+    // 逻辑归 `runtime/<d>`,撞脊柱的接线归 `backend/wiring/<d>`,两种去向都离开包根。
     const pendingThickTwins = new Set([
-      'collab', 'plugins', 'providers', 'toolkit', 'mcp', 'music', 'voice', 'logging',
-      // 单文件孪生(backend/headless/backend.ts 对 runtime/headless/),同批处理。
-      'headless',
+      'collab', 'plugins', 'providers', 'toolkit',
     ])
     const runtimeDomains = new Set(topLevelDirectories('packages/onething-runtime/src'))
     const collisions = topLevelDirectories('packages/backend')

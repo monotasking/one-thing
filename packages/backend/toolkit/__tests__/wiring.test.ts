@@ -62,7 +62,7 @@ vi.mock('../../plugins/tool-result-intercept.js', () => ({
   runPluginToolResultIntercept: harness.resultIntercept,
 }))
 
-vi.mock('../../mcp/index.js', () => ({
+vi.mock('@onething/runtime/mcp/index.wiring', () => ({
   isMCPTool: (id: string) => id.startsWith('mcp:'),
   executeMCPTool: harness.mcpExecute,
   resolveMCPServerIdForToolRef: () => 'server-1',

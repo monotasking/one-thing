@@ -15,7 +15,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { callbackServerManager } from '@onething/runtime/auth/callback-server'
+import { callbackServerManager } from '../../auth/callback-server.js'
 import { MCPOAuthCredentialStore } from './credential-store.js'
 import { MCPOAuthProvider } from './provider.js'
 import type { MCPOAuthFlowState, MCPServerOAuthSurface } from './types.js'

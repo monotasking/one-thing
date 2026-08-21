@@ -31,7 +31,7 @@ import {
   executeCoreMessageStream,
 } from '@onething/core/engine'
 import type { CoreInitialToolChoice } from '@onething/core/engine'
-import { consolePort, getLogger } from '../../logging/index.js'
+import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

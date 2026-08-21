@@ -23,16 +23,16 @@ vi.mock('electron', () => ({
   },
 }))
 
-vi.mock('../../stores/settings.js', () => ({
+vi.mock('../../../stores/settings.js', () => ({
   getSettings: () => mocks.settings,
   saveSettings: vi.fn(),
 }))
 
-vi.mock('../../stores/app-state.js', () => ({
+vi.mock('../../../stores/app-state.js', () => ({
   getCurrentSessionId: () => 'session-1',
 }))
 
-vi.mock('../../events/index.js', () => ({
+vi.mock('../../../events/index.js', () => ({
   getEventBus: () => ({
     emit: vi.fn(),
     onAny: vi.fn((_sessionId: string, handler: any) => {
@@ -48,21 +48,21 @@ vi.mock('../../events/index.js', () => ({
   }),
 }))
 
-vi.mock('../../engine/index.js', () => ({
+vi.mock('../../../engine/index.js', () => ({
   getStreamEngineSafe: () => null,
 }))
 
-vi.mock('../../wiring/agents/index.js', () => ({
+vi.mock('../../agents/index.js', () => ({
   agentExists: () => false,
 }))
 
-vi.mock('../../stores/sessions.js', () => ({
+vi.mock('../../../stores/sessions.js', () => ({
   updateSessionAgent: vi.fn(),
 }))
 
 // The service reaches the runtime window/tray through late-bound host ports —
 // configure the real port module with test doubles instead of module mocks.
-import { configureVoiceHost } from '../host-ports.js'
+import { configureVoiceHost } from '@onething/runtime/voice/host-ports.wiring'
 
 configureVoiceHost({
   broadcastMessage: ({ channel, payload, exceptWebContentsId }) => {

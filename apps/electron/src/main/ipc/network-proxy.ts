@@ -6,7 +6,7 @@ import {
 import { applyBrowserProxy } from '@onething/electron-host/browser/session'
 import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '@onething/backend/providers/bound-fetch.js'
 import { getSettings } from '@onething/backend/stores/settings.js'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('ipc.network-proxy')
 

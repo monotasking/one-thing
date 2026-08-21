@@ -23,7 +23,7 @@ vi.mock('../manager.js', () => ({
   },
 }))
 
-import { executeMCPTool, getMCPToolsForAI, mcpToolToToolDefinition, parseMCPToolId } from '../bridge.js'
+import { executeMCPTool, getMCPToolsForAI, mcpToolToToolDefinition, parseMCPToolId } from '../bridge.wiring.js'
 
 function addMockServer(serverId: string, name: string, tools: Array<Pick<MCPToolInfo, 'name' | 'inputSchema' | 'description'>>): void {
   const mcpTools = tools.map(tool => ({

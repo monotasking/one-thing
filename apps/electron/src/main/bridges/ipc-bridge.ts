@@ -20,7 +20,7 @@ import { getEventBus, getStreamChannel } from '@onething/backend/events/index.js
 import { SessionStreamCoalescer } from '@onething/backend/events/stream-coalescer.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('ipc.bridge')
 

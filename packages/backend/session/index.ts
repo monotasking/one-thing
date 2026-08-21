@@ -18,7 +18,7 @@ import {
   shutdownCoreSessionLayer,
   type SessionState,
 } from '@onething/core/session'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions')
 

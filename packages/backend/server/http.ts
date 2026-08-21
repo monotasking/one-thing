@@ -15,7 +15,7 @@ import { SessionStreamCoalescer } from '@onething/backend/events/stream-coalesce
 import { dispatchRpc } from '@onething/backend/rpc/registry.js'
 import { RPC_ERROR_CODES, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
 import { createServerRpcDispatchContext } from './runtime.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 
 /**
  * 访问日志(logging L1 §2.2 的 `server.http`)。在它之前这个 1900 行的文件里

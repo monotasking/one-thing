@@ -10,7 +10,7 @@
  *   bus.emit(sessionId, { type: 'stream:start', assistantMessageId })
  */
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../wiring/logging/index.js'
 import { EventBus } from './event-bus.js'
 import { StreamChannel } from './stream-channel.js'
 

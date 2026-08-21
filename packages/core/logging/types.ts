@@ -2,7 +2,8 @@
  * 日志内核的形状(docs/design/logging-system-2026-08.md §2.1)。
  *
  * 零依赖、零 node import —— 这一层只定义"记录长什么样"和"谁能接收它",
- * 落盘 / 轮转 / 目录治理全部住在装配层(`@onething/backend/logging`)。
+ * 落盘 / 轮转 / 目录治理的机制住在产品层(`@onething/runtime/logging`),
+ * 由装配层的 `@onething/backend/wiring/logging` 组装。
  */
 
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal'

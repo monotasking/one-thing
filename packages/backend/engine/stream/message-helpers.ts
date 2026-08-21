@@ -43,7 +43,7 @@ import {
 import { findAgent } from "../../wiring/agents/index.js";
 import { resolveUserIdentity } from "../../collab/user-identity.js";
 import * as store from "../../store.js";
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('engine.history')
 

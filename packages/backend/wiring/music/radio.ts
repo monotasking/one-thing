@@ -32,21 +32,21 @@ import {
   type OnethingRadioConductor,
   type OnethingRadioProgrammeEntry,
   type OnethingRadioStore,
-} from '@onething/runtime/music'
-import { broadcastVoiceHostMessage } from '../voice/host-ports.js'
+} from '@onething/runtime/music/index'
+import { broadcastVoiceHostMessage } from '@onething/runtime/voice/host-ports.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
-import { createElectronMusicProcessRunner } from './process-runner.js'
+import { createElectronMusicProcessRunner } from '@onething/runtime/music/process-runner'
 import { addGrant } from '@onething/core'
 import { writeJsonFile } from '@onething/core/storage'
 import { agentExists, createAgent, findAgent, updateAgent } from '@onething/runtime/agents/store-bound.wiring'
 import { markSessionUnattended } from '@onething/runtime/permissions/unattended'
 import {
   getOnethingStorePath,
-} from '@onething/runtime/storage'
-import { getSettings } from '../stores/settings.js'
-import * as sessions from '../stores/sessions.js'
-import { sessionReads } from '../session/reads.js'
+} from '@onething/runtime/storage/index'
+import { getSettings } from '../../stores/settings.js'
+import * as sessions from '../../stores/sessions.js'
+import { sessionReads } from '../../session/reads.js'
 import {
   getActiveMusicProvider,
   getMusicNowPlaying,
@@ -315,8 +315,8 @@ async function wakeRadioDj(): Promise<void> {
   // a static engine import would drag the whole provider stack into every
   // module graph that touches variables (which broke unrelated tests).
   const [{ getStreamEngineSafe }, { getEventBus }] = await Promise.all([
-    import('../engine/index.js'),
-    import('../events/index.js'),
+    import('../../engine/index.js'),
+    import('../../events/index.js'),
   ])
 
   // A run already active in the radio session IS the DJ working — kicking
