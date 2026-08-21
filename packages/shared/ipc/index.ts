@@ -453,6 +453,7 @@ export type {
 	SkillReferenceSnapshot,
 	SkillFile,
 	SkillSettings,
+	GetSkillsRequest,
 	GetSkillsResponse,
 	RefreshSkillsResponse,
 	ReadSkillFileRequest,
@@ -461,6 +462,10 @@ export type {
 	OpenSkillDirectoryResponse,
 	CreateSkillRequest,
 	CreateSkillResponse,
+	DeleteSkillRequest,
+	DeleteSkillResponse,
+	ToggleSkillEnabledRequest,
+	ToggleSkillEnabledResponse,
 	SkillDirectoryConfig,
 	ListSkillDirectoriesResponse,
 	AddSkillDirectoryRequest,
@@ -471,7 +476,9 @@ export type {
 	RemoveSkillDirectoryResponse,
 	SetSkillAgentRequest,
 	SetSkillAgentResponse,
+	SkillsRoutes,
 } from "./skills.js";
+export { skillsRouter } from "./skills.js";
 
 // Plugin types
 export type {

@@ -33,7 +33,6 @@
     "./ipc/shell": "./src/ipc/shell.ts",
     "./ipc/session-command": "./src/ipc/session-command.ts",
     "./ipc/sessions": "./src/ipc/sessions.ts",
-    "./ipc/skills": "./src/ipc/skills.ts",
     "./ipc/themes": "./src/ipc/themes.ts",
     "./ipc/todo-plan": "./src/ipc/todo-plan.ts",
     "./ipc/tools": "./src/ipc/tools.ts",

@@ -153,6 +153,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 | `configureSandboxHost` | `backend/wiring/tools/core/sandbox.ts` |
 | `configureAuthHost` | `auth/host-ports.ts` (product layer since P3'a-1 — zero spine deps) |
 | `configureVoiceHost` | `runtime/src/voice/host-ports.wiring.ts` |
+| `configureShellHost` | `runtime/src/shell/host-ports.ts` (P4c 第二批 —— 打开路径 / 打开外链 / 在文件管理器里定位;未注入即结构化降级,今天的消费者只有 skills 域的 `openDirectory`) |
 | `configureAppLoggingHost` | `backend/wiring/logging/index.ts` |
 | `configureSkillsEnvironmentHost` | `backend/wiring/skills/loader.ts` |
 | `configureTodoPlanHost` | `backend/wiring/todo-plan/store.ts` |
@@ -649,11 +650,11 @@ packages/onething-runtime/src/ # PRODUCT layer ('@onething/runtime')
 │   ├── tools/  skills/  plugins/  providers/  themes/  variables/  goals/  voice/  music/
 │   │                          # (tools/ = pure modules only since R4b: sandbox, bash, edit engine, …)
 │   ├── mcp/  acp/  external-agents/  files/  search/  usage/  evals/  headless/  …
-│   └── stream-engine.ts       # OnethingStreamEngine over CoreStreamEngine
+│   └── stream-sender.ts       # 命令目标(sender)形状:产品层的公开类型
 │
 packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared allowed)
 │   ├── backend.ts  store.ts   # createOnethingBackend — the single assembly recipe
-│   ├── engine/                # StreamEngine (extends OnethingStreamEngine) + stream/
+│   ├── engine/                # StreamEngine (extends CoreStreamEngine) + stream/
 │   │   ├── stream/            # stream-executor, stream-processor, tool-execution(+scheduler,
 │   │   │                      # +order), tool-orchestrator, agent-loop-*, message-helpers,
 │   │   │                      # provider-helpers, resume-history, image-generation/stream

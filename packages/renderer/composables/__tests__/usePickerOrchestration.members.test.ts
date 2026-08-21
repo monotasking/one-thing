@@ -18,6 +18,12 @@ import {
 import { createMemberToken } from '@shared/prompt-references'
 import type { EditorCursorLineInfo, EditorHandle, EditorSelection } from '@/editor'
 
+// skills 域已迁到通用 RPC 通道(结构债 P4c 第二批):取技能表走壳外客户端。
+vi.mock('@/platform/skills-client', () => ({
+  skillsApi: { getAll: vi.fn().mockResolvedValue({ success: true, skills: [] }) },
+}))
+
+
 interface TestAgent { id: string; name: string; title?: string }
 
 const storeMocks = vi.hoisted(() => ({
@@ -102,7 +108,6 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.stubGlobal('window', {
     electronAPI: {
-      getSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
       getPluginCommands: vi.fn().mockResolvedValue({ success: true, commands: [] }),
       listVariables: vi.fn().mockResolvedValue({ success: true, variables: [] }),
       listPrompts: vi.fn().mockResolvedValue({ success: true, prompts: [] }),

@@ -152,12 +152,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'GET' && pathname === '/api/themes') return handleGetThemes
   if (method === 'POST' && pathname === '/api/themes/refresh') return handleRefreshThemes
   if (method === 'POST' && pathname === '/api/themes/open-folder') return handleOpenThemesFolder
-  if (method === 'GET' && pathname === '/api/skills') return handleListSkills
-  if (method === 'POST' && pathname === '/api/skills') return handleCreateSkill
-  if (method === 'POST' && pathname === '/api/skills/refresh') return handleRefreshSkills
-  if (method === 'POST' && pathname === '/api/skills/read-file') return handleReadSkillFile
-  if (method === 'POST' && pathname === '/api/skills/open-directory') return handleOpenSkillDirectory
-  if (method === 'POST' && pathname === '/api/skills/execute') return handleExecuteSkill
   if (method === 'GET' && pathname === '/api/plugins') return handleListPlugins
   if (method === 'POST' && pathname === '/api/plugins/enable') return handleEnablePlugin
   if (method === 'POST' && pathname === '/api/plugins/disable') return handleDisablePlugin
@@ -264,13 +258,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/streams/abort') return handleAbortStream
   if (method === 'GET' && pathname === '/api/streams/active') return handleGetActiveStreams
 
-  const skillMatch = pathname.match(/^\/api\/skills\/([^/]+)(?:\/([^/]+))?$/)
-  if (skillMatch) {
-    const action = skillMatch[2]
-    if (method === 'DELETE' && !action) return withSkillId(skillMatch[1], handleDeleteSkill)
-    if (method === 'POST' && action === 'toggle') return withSkillId(skillMatch[1], handleToggleSkillEnabled)
-  }
-
   const sessionMatch = pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
   if (sessionMatch) {
     const action = sessionMatch[2]
@@ -374,13 +361,6 @@ function withBackgroundJobId(encodedJobId: string, handler: RouteHandler): Route
 function withThemeId(encodedThemeId: string, handler: RouteHandler): RouteHandler {
   return (context) => {
     context.url.searchParams.set('themeId', decodeURIComponent(encodedThemeId))
-    return handler(context)
-  }
-}
-
-function withSkillId(encodedSkillId: string, handler: RouteHandler): RouteHandler {
-  return (context) => {
-    context.url.searchParams.set('skillId', decodeURIComponent(encodedSkillId))
     return handler(context)
   }
 }
@@ -795,64 +775,6 @@ async function handleGetSystemPromptSnapshot(context: RouteContext): Promise<voi
     await adapter.getSystemPromptSnapshot(readSessionId(context), context.requestContext),
     context.corsOrigin,
   )
-}
-
-async function handleListSkills(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.skills
-  if (!adapter?.list) return sendNotImplemented(context, 'skills.list')
-  const workingDirectory = context.url.searchParams.get('workingDirectory') || undefined
-  sendJson(context.response, 200, await adapter.list(workingDirectory, context.requestContext), context.corsOrigin)
-}
-
-async function handleRefreshSkills(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.skills
-  if (!adapter?.refresh) return sendNotImplemented(context, 'skills.refresh')
-  sendJson(context.response, 200, await adapter.refresh(context.requestContext), context.corsOrigin)
-}
-
-async function handleReadSkillFile(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.skills
-  if (!adapter?.readFile) return sendNotImplemented(context, 'skills.readFile')
-  const body = await readJson<{ skillId?: string; fileName?: string }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.readFile(body?.skillId || '', body?.fileName || '', context.requestContext),
-    context.corsOrigin,
-  )
-}
-
-async function handleOpenSkillDirectory(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.skills
-  if (!adapter?.openDirectory) return sendNotImplemented(context, 'skills.openDirectory')
-  const body = await readJson<{ skillId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.openDirectory(body?.skillId, context.requestContext), context.corsOrigin)
-}
-
-async function handleCreateSkill(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.skills
-  if (!adapter?.create) return sendNotImplemented(context, 'skills.create')
-  sendJson(context.response, 200, await adapter.create(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleDeleteSkill(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.skills
-  if (!adapter?.delete) return sendNotImplemented(context, 'skills.delete')
-  sendJson(context.response, 200, await adapter.delete(readSkillId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleToggleSkillEnabled(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.skills
-  if (!adapter?.toggleEnabled) return sendNotImplemented(context, 'skills.toggleEnabled')
-  const body = await readJson<{ enabled?: boolean }>(context.request)
-  sendJson(context.response, 200, await adapter.toggleEnabled(readSkillId(context), Boolean(body?.enabled), context.requestContext), context.corsOrigin)
-}
-
-async function handleExecuteSkill(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.skills
-  if (!adapter?.execute) return sendNotImplemented(context, 'skills.execute')
-  const body = await readJson<{ skillId?: string; options?: unknown }>(context.request)
-  sendJson(context.response, 200, await adapter.execute(body?.skillId || '', body?.options, context.requestContext), context.corsOrigin)
 }
 
 async function handleListPlugins(context: RouteContext): Promise<void> {
@@ -1724,10 +1646,6 @@ function readBackgroundJobId(context: RouteContext): string {
 
 function readThemeId(context: RouteContext): string {
   return context.url.searchParams.get('themeId') || ''
-}
-
-function readSkillId(context: RouteContext): string {
-  return context.url.searchParams.get('skillId') || ''
 }
 
 function readMediaQuery(context: RouteContext): Record<string, unknown> {

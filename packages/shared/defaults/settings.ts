@@ -680,7 +680,7 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
 /**
  * 接入目录清单的归一。挡住四种脏值:非数组、数组里的非字符串、空白串、重复项。
  *
- * **只收绝对路径**,判据与 `apps/electron/src/main/ipc/skills.ts` 的
+ * **只收绝对路径**,判据与 `packages/backend/rpc/domains/skills.ts` 的
  * `validateSkillDirectoryPath` 同款。理由不是洁癖:这份清单会进
  * `getCoreSandboxRoots`,而 `isCorePathContained` 是纯前缀比对 —— 相对路径
  * 在那里既不会报错也不会匹配,只会变成一条永远不生效的授权,用户以为加上了。

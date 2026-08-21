@@ -88,7 +88,7 @@ const GATEWAY_STANDALONE_AGENT_FORBIDDEN_PATTERNS: RegExp[] = [
   /AgentEngine/,
   /createOnethingRuntime/,
   /createOnethingRuntimeFromStreamRuntime/,
-  /new\s+OnethingStreamEngine/,
+  /new\s+CoreStreamEngine/,
   /Standalone Gateway no longer creates its own AgentEngine/,
 ]
 
@@ -1754,12 +1754,6 @@ const MAIN_SKILLS_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
   /success:\s*false/,
   /settings\.skills\s*=\s*\{\s*enableSkills:\s*true,\s*skills:\s*\{\}\s*\}/,
   /settings\.skills\.skills\[skillId\]\s*=\s*\{\s*enabled\s*\}/,
-]
-
-const MAIN_SKILLS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
 ]
 
 const MAIN_SKILL_MANAGE_FORBIDDEN_PATTERNS: RegExp[] = [
@@ -4285,6 +4279,12 @@ function checkElectronHostOwnsShellOperations(): void {
   const electronShellIpcControllerFile = path.join(root, 'apps/electron/src/ipc/shell-controller.ts')
   const electronShellIpcFile = path.join(root, 'apps/electron/src/ipc/shell.ts')
   const mainShellFile = path.join(root, 'apps/electron/src/main/ipc/shell.ts')
+  // P4c 第二批:外壳能力从此有一个产品层端口(`@onething/runtime/shell`),
+  // 装配层与产品层通过它要能力,而不是各自直连 `@onething/electron-host/shell/operations`。
+  const shellHostPortFile = path.join(root, 'packages/onething-runtime/src/shell/host-ports.ts')
+  const mainProcessWiringFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const shellHostPortContent = fs.existsSync(shellHostPortFile) ? fs.readFileSync(shellHostPortFile, 'utf-8') : ''
+  const mainProcessWiringContent = fs.existsSync(mainProcessWiringFile) ? fs.readFileSync(mainProcessWiringFile, 'utf-8') : ''
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronShellContent = fs.existsSync(electronShellFile) ? fs.readFileSync(electronShellFile, 'utf-8') : ''
   const electronShellIpcControllerContent = fs.existsSync(electronShellIpcControllerFile)
@@ -4354,6 +4354,12 @@ function checkElectronHostOwnsShellOperations(): void {
     ...(fs.existsSync(mainShellFile)
       ? matchingLines(mainShellFile, MAIN_SHELL_OPERATIONS_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/shell.ts: missing shell IPC facade']),
+    ...['configureShellHost', 'getShellHost', 'SHELL_HOST_UNAVAILABLE']
+      .filter(symbol => !shellHostPortContent.includes(symbol))
+      .map(symbol => `${rel(shellHostPortFile)}: missing shell host port symbol ${symbol}`),
+    ...(!mainProcessWiringContent.includes('configureShellHost')
+      ? [`${rel(mainProcessWiringFile)}: Electron host must wire configureShellHost`]
+      : []),
   ]
 
   assertNoMatches('apps/electron owns Electron shell operations', lines)
@@ -4731,8 +4737,8 @@ function checkPermissionGrantsDomainRidesTheRpcChannel(): void {
     ...(!registryIndexContent.includes('permissionGrantsRpcHandlers')
       ? [`${rel(registryIndexFile)}: permissionGrants domain is not listed in the RPC assembly point`]
       : []),
-    // `resolveServerWorkspaceGrantRoot` 故意不列:它还在给 skills 用(skills 未迁,
-    // 见「不可迁清单」)。只守授权归属那一个 —— 它没有第二个消费者。
+    // `resolveServerWorkspaceGrantRoot` 已随 P4c 第二批(skills 整域迁 router)一起删 ——
+    // skills 是它最后一个消费者。这里只守授权归属那一个。
     ...(/canRevokePermissionGrant/.test(serverRuntimeContent)
       ? [`${rel(serverRuntimeFile)}: the server-side grant ownership helper is back — the guard lives in @onething/backend now`]
       : []),
@@ -5210,60 +5216,6 @@ function checkElectronHostOwnsToolsIpcHost(): void {
   ]
 
   assertNoMatches('apps/electron owns Electron tools IPC host operations', lines)
-}
-
-function checkElectronHostOwnsSkillsIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronSkillsFile = path.join(root, 'apps/electron/src/ipc/skills.ts')
-  const mainSkillsFile = path.join(root, 'apps/electron/src/main/ipc/skills.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronSkillsContent = fs.existsSync(electronSkillsFile) ? fs.readFileSync(electronSkillsFile, 'utf-8') : ''
-  const mainSkillsContent = fs.existsSync(mainSkillsFile) ? fs.readFileSync(mainSkillsFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronSkillsIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronSkillsIpcChannels',
-    'ElectronSkillsGetAllRequest',
-    'ElectronSkillReadFileRequest',
-    'ElectronSkillOpenDirectoryRequest',
-    'ElectronSkillDeleteRequest',
-    'ElectronSkillToggleEnabledRequest',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/skills',
-    'registerElectronSkillsIpcHandlers',
-    'IPC_CHANNELS.SKILLS_GET_ALL',
-    'IPC_CHANNELS.SKILLS_REFRESH',
-    'IPC_CHANNELS.SKILLS_READ_FILE',
-    'IPC_CHANNELS.SKILLS_OPEN_DIRECTORY',
-    'IPC_CHANNELS.SKILLS_CREATE',
-    'IPC_CHANNELS.SKILLS_DELETE',
-    'IPC_CHANNELS.SKILLS_TOGGLE_ENABLED',
-    'listOnethingSkillsForIpc',
-    'refreshOnethingSkillsForIpc',
-    'readOnethingSkillFileForIpc',
-    'openOnethingSkillDirectoryForIpc',
-    'createOnethingSkillForIpc',
-    'deleteOnethingSkillForIpc',
-    'toggleOnethingSkillEnabledForIpc',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/skills')
-      ? [`${rel(electronPackage)}: missing skills IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronSkillsContent.includes(symbol))
-      .map(symbol => `${rel(electronSkillsFile)}: missing Electron skills IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainSkillsContent.includes(symbol))
-      .map(symbol => `${rel(mainSkillsFile)}: missing skills IPC host delegation ${symbol}`),
-    ...(fs.existsSync(mainSkillsFile)
-      ? matchingLines(mainSkillsFile, MAIN_SKILLS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/skills.ts: missing skills IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron skills IPC host operations', lines)
 }
 
 function checkElectronHostOwnsAuthElectronAdapters(): void {
@@ -8298,7 +8250,8 @@ function checkPluginsOnlyUseInjectedApi(): void {
 
 function checkRuntimeOwnsSkillsRuntimeCache(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/session-skills.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/skills.ts')
+  // P4c 第二批:skills 整域迁 router,`@main` 那层壳适配已删 —— 判据改指域文件。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/skills.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('OnethingSessionSkillsRuntime')
@@ -8306,7 +8259,7 @@ function checkRuntimeOwnsSkillsRuntimeCache(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SKILLS_IPC_RUNTIME_CACHE_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/skills.ts: missing skills IPC adapter']),
+      : ['packages/backend/rpc/domains/skills.ts: missing skills RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns skills runtime cache and settings projection', lines)
@@ -8314,7 +8267,8 @@ function checkRuntimeOwnsSkillsRuntimeCache(): void {
 
 function checkRuntimeOwnsSkillsIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/ipc-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/skills.ts')
+  // P4c 第二批:同上,消费投影的是 skills RPC 域而不再是 `@main` 的壳适配。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/skills.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingSkillsForIpc',
@@ -8334,7 +8288,7 @@ function checkRuntimeOwnsSkillsIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned skills IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SKILLS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/skills.ts: missing skills IPC adapter']),
+      : ['packages/backend/rpc/domains/skills.ts: missing skills RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns skills IPC operations', lines)
@@ -9926,7 +9880,6 @@ checkElectronHostOwnsAcpIpcHost()
 checkElectronHostOwnsMediaIpcHost()
 checkElectronHostOwnsTodoPlanIpcHost()
 checkElectronHostOwnsToolsIpcHost()
-checkElectronHostOwnsSkillsIpcHost()
 checkElectronHostOwnsAuthElectronAdapters()
 checkElectronHostOwnsSkillsEnvironment()
 checkElectronHostOwnsNetworkProxy()

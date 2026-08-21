@@ -26,6 +26,19 @@ export async function initializeSessionSkills(): Promise<void> {
   await sessionSkillsRuntime.initialize()
 }
 
+let sessionSkillsInitialized = false
+
+/**
+ * 幂等启动闩。P4c 第二批从 `@main/ipc/skills.ts` 搬来 —— 宿主启动序列(插件根注册完
+ * 之后那一发)与 skills RPC 域的每一次 `getAll` 共用同一把闩,所以谁先到都只初始化一次。
+ */
+export async function initializeSkills(): Promise<void> {
+  if (sessionSkillsInitialized) return
+  await initializeSessionSkills()
+  sessionSkillsInitialized = true
+  log.info('session skills initialized')
+}
+
 export function getSkillsForSession(workingDirectory?: string, agentId?: string): SkillDefinition[] {
   // Sessions without an explicit agent run on the default agent, so skills
   // bound to it must still load for them.
@@ -42,4 +55,10 @@ export function getAllSkillsForDisplay(options: {
 
 export function invalidateSessionSkillsCache(workingDirectory?: string): void {
   sessionSkillsRuntime.invalidateCache(workingDirectory)
+}
+
+/** 带一行日志的失效入口(P4c 第二批从 `@main/ipc/skills.ts` 搬来)。 */
+export function invalidateSkillsCache(workingDirectory?: string): void {
+  invalidateSessionSkillsCache(workingDirectory)
+  log.debug('skills cache invalidated', { workingDirectory: workingDirectory ?? null })
 }

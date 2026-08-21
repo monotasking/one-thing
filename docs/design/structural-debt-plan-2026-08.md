@@ -1136,6 +1136,18 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
   ok=8,两连绿**;旧脚本复现 28 失配(`messages` 22 / `history` 6)全部是两个 permission 场景卡审批 30s 超时造成的
   并发串扰,**产品侧零改动、影子判据未动、无需二分**——今天的 28 个结构提交没有引入任何投影/写侧真失配。
   其它脚本(measure-shadow-overhead / log-smoke / session-shadow-report)路由逐条核对全部仍在。
+- **A1 落地记录(08-21,待提交)**:`runtime/src/stream-engine.ts` 删除,sender 三件套原样搬 `runtime/src/stream-sender.ts`
+  (runtime 内部有消费者,不能进 backend);backend `StreamEngine extends CoreStreamEngine` 直接;`getPermissionMode`
+  两层合一保持"先 core 链后 agent 严格度"顺序、`session` 只取一次(同一符号 `stores/sessions.getSession`);
+  `bind` 合一、`onShutdown` 只剩一条日志(修掉真机每次退出两条一样的 `stream engine shut down`);
+  `emitCollabRefusal` → `this.emitStreamError`(事件名/形状逐字同;非逐字差别三处:总线 `getEventBus()`→`this.eventBus`
+  生产同一单例、`await`→fire-and-forget 不可观测、emit 抛错时日志 ns `engine.stream`→`core.engine`——接受);
+  `getSession` 直取 store → 端口;`runtime.ts:148` 死默认改 `new CoreStreamEngine`(改必填要动两个公开接口);
+  两个 backend 测试 mock 改指 `@onething/core/engine`(保留其余真导出);checker 仅改网关禁令正则
+  `/new\s+CoreStreamEngine/`。SEND_MESSAGE:派发表键 → backend override → super,**跨树 2**。
+  验收:typecheck 0、全量(worktree)与 pristine HEAD 逐条相同、boundary 0、battery 264/0 两连绿(第一次 2 条 steering
+  失配为并发抖动:pristine 同 worktree 绿、带改动复跑两次绿)、build/server:build 绿。遗留:`bindStatic` 成死码(保留公开面)。
+  **下一步 A2**:10 条依赖端口化 + `backend/engine` → `wiring/engine` + I2 10 对改名 + 6 门面删。
 
 ### P4 传输面 router 迁移(主线,1–2 周,逐域可暂停;08-21:**P4a 前移到 P1' 之前**)
 
@@ -1200,6 +1212,13 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      **语义变化两处(拍板 #23/#24)**:permission.getPending/clearSession 在 server 上失去 per-owner 护栏(桌面线从来
      没有;server 单用户、owner 头是脚手架,但这是本批唯一安全语义削弱);app-state web 将 hydrate 桌面真实页签树
      (与 #11 同型)。variables / scheduler 从 server 自有 per-owner 实例换成引擎真正在用的 app 单例(修正)。
+     **第二批落地记录(08-21)**:`configureShellHost({openPath, openExternal, revealPath})` 端口立在
+     `runtime/src/shell/host-ports.ts`(产品层零依赖、late-bound、未注入降级 `shell host not available`;`main-process.ts`
+     注入 electron shell 三件;CLAUDE.md 端口表 +1);skills 12 方法迁完(`openDirectory` 走端口;server 删 6 路由 + 正则块 +
+     整个 skills facade adapter 与 per-owner 第二份技能实现 → 拍板 #27;`executeSkill` 从未实现的链删除);checker 整删
+     `checkElectronHostOwnsSkillsIpcHost`、两条改指 rpc 域、新增 shell 端口两断言;transport channels 279→**267**、bridge
+     1631→1575、http 1839→1757、web 1577→1532;battery 264/0;全量 11139 绿。**files / themes / oauth 三处仍直连
+     electron-host**(各一行可换 `getShellHost()`),随 #19/#20 拍板后批。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。
@@ -1271,6 +1290,7 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 | 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
 | 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
+| 27 | **(新,P4c-2 已发生)skills 迁 router 后 web/server 不再扫 `owners/<uid>/<wid>/skills` 的第二份技能表,改读桌面 core 同一份**;`executeSkill` 从未实现的整条链(web 桩 + `/api/skills/execute` + adapter)删除 | 与 agents/models/#20 同判例接受 | 已按默认执行,待知会 |
 | 26 | **(新,词汇统一时查出)`command:confirm-tool`(`CONFIRM_TOOL`)全仓零订阅者**——shared 有 `ConfirmToolCommand` 形状、core 有常量,但没有任何 `onAnySession` 消费它,发这条命令等于丢进空气 | 删契约(shared 接口 + core 常量)并清渲染层发送点;若确有未完成的设计意图再补订阅 | 待拍 |
 | 25 | **(新,P3')归位单位从"目录"改为"文件":依赖脊柱的接线归 `backend/wiring/<d>/`,逻辑归 `runtime/<d>/`;I1 改为"逻辑一领域一家"**(量测:25 薄目录 17 个依赖脊柱,整目录折回会成环) | 按修正执行;P3'a-1 先做 6 个脊柱零依赖目录验证机制 | 已按默认开工,待知会 |
 

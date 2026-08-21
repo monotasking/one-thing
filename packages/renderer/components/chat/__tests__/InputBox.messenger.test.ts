@@ -16,6 +16,12 @@ import InputBox from "../InputBox.vue";
 import { createDefaultSettings } from "@shared/defaults/settings";
 import { executeCommand, findCommand } from "@/services/commands";
 
+// skills 域已迁到通用 RPC 通道(结构债 P4c 第二批):取技能表走壳外客户端。
+vi.mock('@/platform/skills-client', () => ({
+  skillsApi: { getAll: vi.fn().mockResolvedValue({ success: true, skills: [] }) },
+}))
+
+
 const mocks = vi.hoisted(() => ({
 	settingsStore: null as any,
 	sessionsStore: null as any,
@@ -341,7 +347,6 @@ beforeEach(() => {
 		"window",
 		Object.assign(window, {
 			electronAPI: {
-				getSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
 				listVariables: vi
 					.fn()
 					.mockResolvedValue({ success: true, variables: [] }),

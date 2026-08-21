@@ -10,7 +10,6 @@ import { registerSessionHandlers } from "./sessions.js";
 import { registerSettingsHandlers } from "./settings.js";
 import { registerToolHandlers } from "./tools.js";
 import { registerMCPHandlers, initializeMCP, shutdownMCP } from "./mcp.js";
-import { registerSkillHandlers, initializeSkills } from "./skills.js";
 import { registerShellHandlers } from "./shell.js";
 import { registerMediaHandlers } from "./media.js";
 import { registerInteractionHandlers } from "./interaction.js";
@@ -50,7 +49,6 @@ export function initializeIPC() {
 	registerSettingsHandlers();
 	registerToolHandlers();
 	registerMCPHandlers();
-	registerSkillHandlers();
 	registerShellHandlers();
 	registerMediaHandlers();
 	registerInteractionHandlers();
@@ -198,7 +196,6 @@ function sanitizeRendererCommand(command: unknown): unknown {
 export {
 	initializeMCP,
 	shutdownMCP,
-	initializeSkills,
 	cleanupOAuth,
 	initializeThemeSystem,
 	initializeACP,

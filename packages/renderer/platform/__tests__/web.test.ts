@@ -1319,38 +1319,6 @@ describe('createWebPlatformApi', () => {
       success: true,
       rpc: { domain: 'todo-plan', method: 'revealDirectory', payload: {} },
     })
-    await expect(api.getSkills('/workspace')).resolves.toEqual({
-      success: true,
-      url: '/api/skills?workingDirectory=%2Fworkspace',
-    })
-    await expect(api.refreshSkills()).resolves.toEqual({
-      success: true,
-      url: '/api/skills/refresh',
-    })
-    await expect(api.readSkillFile('user:demo', 'SKILL.md')).resolves.toEqual({
-      success: true,
-      url: '/api/skills/read-file',
-    })
-    await expect(api.openSkillDirectory('user:demo')).resolves.toEqual({
-      success: true,
-      url: '/api/skills/open-directory',
-    })
-    await expect(api.createSkill('demo', 'Demo skill', 'Use demo.', 'user')).resolves.toEqual({
-      success: true,
-      url: '/api/skills',
-    })
-    await expect(api.toggleSkillEnabled('user:demo', false)).resolves.toEqual({
-      success: true,
-      url: '/api/skills/user%3Ademo/toggle',
-    })
-    await expect(api.deleteSkill('user:demo')).resolves.toEqual({
-      success: true,
-      url: '/api/skills/user%3Ademo',
-    })
-    await expect(api.executeSkill('user:demo', { sessionId: 'session-1', input: 'hi' })).resolves.toEqual({
-      success: true,
-      url: '/api/skills/execute',
-    })
     await expect(api.getPlugins()).resolves.toEqual({
       success: true,
       url: '/api/plugins',
@@ -1581,14 +1549,10 @@ describe('createWebPlatformApi', () => {
     // 不再有 /api/scheduler/* 的镜像,server 的九条 REST 路由也一并删了。
     // agents / providers / models 已迁到通用 RPC 通道(主线 T1 第二批):
     // web 壳上不再有它们的方法,客户端在 platform/{agents,providers,models}-client.ts。
+    // skills 十二条同样迁走了(结构债 P4c 第二批,`@/platform/skills-client`):
+    // web 壳上不再有 /api/skills* 的镜像,server 的六条 REST 路由与那个正则块也删了。
 
     expect(fetchMock).toHaveBeenCalledWith('/api/sessions/session-1/system-prompt-snapshot', expect.any(Object))
-    expect(fetchMock).toHaveBeenCalledWith('/api/skills/read-file', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/skills/user%3Ademo', expect.objectContaining({
-      method: 'DELETE',
-    }))
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/enable', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ pluginId: 'note-skills' }),

@@ -18,8 +18,9 @@
 # 2026-08-21(续):practice 域迁 router 后收紧 —— channels 329→319、bridge 1855→1816、web 1707→1681、channels.ts 541→533。
 # 2026-08-21(续):collab 域迁 router 后收紧 —— channels 319→304、bridge 1816→1736(已低于 08-14 起点 1737)、web 1681→1666、channels.ts 533→499。
 # 2026-08-21(续):P4c 第一批六域(scheduler/variables/app-state/permission/scratchpad/project-dirs)迁 router + 删 server 镜像路由后收紧 —— channels 304→279、bridge 1736→1631、http 2028→1839、web 1666→1577、channels.ts 499→474。
-channels:IPC_CHANNELS 279
-lines:apps/electron/src/preload/bridge.ts 1631
-lines:packages/backend/server/http.ts 1839
-lines:packages/renderer/platform/web.ts 1577
-lines:packages/shared/ipc/channels.ts 474
+# 2026-08-21(续):P4c 第二批 skills 整域迁 router(+configureShellHost 端口)后收紧 —— channels 279→267、bridge 1631→1575、http 1839→1757、web 1577→1532、channels.ts 474→460。
+channels:IPC_CHANNELS 267
+lines:apps/electron/src/preload/bridge.ts 1575
+lines:packages/backend/server/http.ts 1757
+lines:packages/renderer/platform/web.ts 1532
+lines:packages/shared/ipc/channels.ts 460

@@ -1002,62 +1002,6 @@ const electronAPI = {
 	acpCancelSession: (sessionId: string, agentId?: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.ACP_CANCEL_SESSION, { sessionId, agentId }),
 
-	// Skills methods (Official Claude Code Skills)
-	getSkills: (workingDirectory?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_GET_ALL, { workingDirectory }),
-
-	refreshSkills: () => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_REFRESH),
-
-	readSkillFile: (skillId: string, fileName: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_READ_FILE, { skillId, fileName }),
-
-	openSkillDirectory: (skillId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_OPEN_DIRECTORY, { skillId }),
-
-	createSkill: (
-		name: string,
-		description: string,
-		instructions: string,
-		source: "user" | "project",
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_CREATE, {
-			name,
-			description,
-			instructions,
-			source,
-		}),
-
-	deleteSkill: (skillId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_DELETE, { skillId }),
-
-	toggleSkillEnabled: (skillId: string, enabled: boolean) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_TOGGLE_ENABLED, {
-			skillId,
-			enabled,
-		}),
-
-	listSkillDirectories: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_LIST_DIRECTORIES),
-
-	addSkillDirectory: (request: {
-		path: string;
-		label?: string;
-		agentId?: string | null;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_ADD_DIRECTORY, request),
-
-	updateSkillDirectory: (request: {
-		id: string;
-		enabled?: boolean;
-		label?: string;
-		agentId?: string | null;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_UPDATE_DIRECTORY, request),
-
-	removeSkillDirectory: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_REMOVE_DIRECTORY, { id }),
-
-	setSkillAgent: (skillId: string, agentId: string | null) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SET_AGENT, { skillId, agentId }),
-
 	// Message update methods
 	updateMessageThinkingTime: (
 		sessionId: string,

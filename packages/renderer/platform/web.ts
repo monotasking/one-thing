@@ -568,51 +568,6 @@ const webApi = {
 		),
 	// User prompt snippets 走通用 RPC(promptsRouter),见文件末尾的域客户端一行区。
 
-	getSkills: (workingDirectory?: string) => {
-		const query = workingDirectory
-			? `?workingDirectory=${encodeURIComponent(workingDirectory)}`
-			: "";
-		return requestJson(`/api/skills${query}`);
-	},
-	refreshSkills: () => postJson("/api/skills/refresh"),
-	readSkillFile: (skillId: string, fileName: string) =>
-		postJson("/api/skills/read-file", { skillId, fileName }),
-	openSkillDirectory: (skillId?: string) =>
-		postJson("/api/skills/open-directory", { skillId }),
-	createSkill: (
-		name: string,
-		description: string,
-		instructions: string,
-		source: string,
-	) => postJson("/api/skills", { name, description, instructions, source }),
-	deleteSkill: (skillId: string) =>
-		requestJson(`/api/skills/${encodeURIComponent(skillId)}`, {
-			method: "DELETE",
-		}),
-	toggleSkillEnabled: (skillId: string, enabled: boolean) =>
-		postJson(`/api/skills/${encodeURIComponent(skillId)}/toggle`, { enabled }),
-	listSkillDirectories: () => requestJson("/api/skills/directories"),
-	addSkillDirectory: (request: {
-		path: string;
-		label?: string;
-		agentId?: string | null;
-	}) => postJson("/api/skills/directories", request),
-	updateSkillDirectory: (request: { id: string }) =>
-		postJson(
-			`/api/skills/directories/${encodeURIComponent(request.id)}/update`,
-			request,
-		),
-	removeSkillDirectory: (id: string) =>
-		requestJson(`/api/skills/directories/${encodeURIComponent(id)}`, {
-			method: "DELETE",
-		}),
-	setSkillAgent: (skillId: string, agentId: string | null) =>
-		postJson(`/api/skills/${encodeURIComponent(skillId)}/agent`, { agentId }),
-	executeSkill: (
-		skillId: string,
-		options: { sessionId: string; input: string },
-	) => postJson("/api/skills/execute", { skillId, options }),
-
 	getPlugins: () => requestJson("/api/plugins"),
 	enablePlugin: (pluginId: string) =>
 		postJson("/api/plugins/enable", { pluginId }),

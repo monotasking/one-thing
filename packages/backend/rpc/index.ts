@@ -38,6 +38,7 @@ import { promptsRouter } from '@shared/ipc/prompts.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { schedulerRouter } from '@shared/ipc/scheduler.js'
 import { scratchpadRouter } from '@shared/ipc/scratchpad.js'
+import { skillsRouter } from '@shared/ipc/skills.js'
 import { spacesRouter } from '@shared/ipc/spaces.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 import { usageRouter } from '@shared/ipc/usage.js'
@@ -61,6 +62,7 @@ import { promptsRpcHandlers } from './domains/prompts.js'
 import { providersRpcHandlers } from './domains/providers.js'
 import { schedulerRpcHandlers } from './domains/scheduler.js'
 import { scratchpadRpcHandlers } from './domains/scratchpad.js'
+import { skillsRpcHandlers } from './domains/skills.js'
 import { spacesRpcHandlers } from './domains/spaces.js'
 import { todoPlanRpcHandlers } from './domains/todo-plan.js'
 import { usageRpcHandlers } from './domains/usage.js'
@@ -129,6 +131,12 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 收下就丢,浏览器里切空间等于没切 —— 走 router 之后它真的传到
   // `getProjectsStore(workspaceId)` 了。
   { id: 'rpc:project-dirs', mount: ctx => { ctx.registerRpcDomain(projectDirsRouter, projectDirsRpcHandlers) } },
+  // P4c 第二批唯一的域(skills)。它是本仓第一个**要宿主能力**的迁移域 ——
+  // `openDirectory` 走新立的 `configureShellHost` 端口(`@onething/runtime/shell`),
+  // 未注入即结构化降级,所以 server / CLI 不再需要那份「不支持」的空实现。
+  // 顺带删掉了 server 侧那套 per-owner 的第二份技能实现(十三个 `*ServerSkill*` 助手):
+  // 一个 store 一份技能表,web 与桌面从此读同一份。
+  { id: 'rpc:skills', mount: ctx => { ctx.registerRpcDomain(skillsRouter, skillsRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

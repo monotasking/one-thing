@@ -13,6 +13,7 @@ import { usePromptsStore } from '@/stores/prompts'
 import { createFileToken, createMemberToken, createPageToken, createPromptToken, createSkillToken, extractMemberTokens, extractPageTokens, FILE_REF_PATTERN, PAGE_REF_PATTERN } from '@shared/prompt-references'
 import { COLLAB_MENTION_ALL_LABELS } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
+import { skillsApi } from '@/platform/skills-client'
 import { variablesApi } from '@/platform/variables-client'
 import { getLogger } from '@/services/log'
 
@@ -297,7 +298,7 @@ export function usePickerOrchestration(
 
   async function loadSkills() {
     try {
-      const response = await platformApi.getSkills(workingDirectory.value || undefined)
+      const response = await skillsApi.getAll({ workingDirectory: workingDirectory.value || undefined })
       if (response.success && response.skills) {
         availableSkills.value = response.skills
       }

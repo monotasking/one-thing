@@ -95,13 +95,19 @@ async function settleWatchers() {
   await nextTick()
 }
 
+// skills 域已迁到通用 RPC 通道(结构债 P4c 第二批):取技能表的是壳外客户端
+// `@/platform/skills-client`,不再是 `electronAPI.getSkills`。
+const skillsApi = vi.hoisted(() => ({
+  getAll: vi.fn(),
+}))
+vi.mock('@/platform/skills-client', () => ({ skillsApi }))
+
 describe('usePickerOrchestration', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    skillsApi.getAll.mockReset().mockResolvedValue({ success: true, skills: [] })
     vi.stubGlobal('window', {
       electronAPI: {
-        getSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
-        executeSkill: vi.fn(),
         getPluginCommands: vi.fn().mockResolvedValue({ success: true, commands: [] }),
         listVariables: vi.fn().mockResolvedValue({ success: true, variables: [] }),
         listFiles: vi.fn().mockResolvedValue({ success: true, files: ['/repo/src/editor/TextEditor.vue'] }),
@@ -181,7 +187,7 @@ describe('usePickerOrchestration', () => {
   })
 
   it('completes slash-selected skills into skill reference tokens', async () => {
-    vi.mocked(window.electronAPI.getSkills).mockResolvedValue({
+    skillsApi.getAll.mockResolvedValue({
       success: true,
       skills: [{
         id: 'user:skill-development',
@@ -208,12 +214,11 @@ describe('usePickerOrchestration', () => {
     await harness.api.confirmActiveExtension()
 
     expect(harness.input.value).toBe(`${createSkillToken('user:skill-development')} `)
-    expect(window.electronAPI.executeSkill).not.toHaveBeenCalled()
     harness.scope.stop()
   })
 
   it('replaces @skills triggers with skill reference tokens', async () => {
-    vi.mocked(window.electronAPI.getSkills).mockResolvedValue({
+    skillsApi.getAll.mockResolvedValue({
       success: true,
       skills: [{
         id: 'plugin:note-skills:daily',
@@ -239,7 +244,6 @@ describe('usePickerOrchestration', () => {
     await harness.api.confirmActiveExtension()
 
     expect(harness.input.value).toBe(`use ${createSkillToken('plugin:note-skills:daily')} `)
-    expect(window.electronAPI.executeSkill).not.toHaveBeenCalled()
     harness.scope.stop()
   })
 
@@ -574,7 +578,7 @@ describe('usePickerOrchestration', () => {
   })
 
   it('supports absolute and paged command palette navigation', async () => {
-    vi.mocked(window.electronAPI.getSkills).mockResolvedValue({
+    skillsApi.getAll.mockResolvedValue({
       success: true,
       skills: Array.from({ length: 6 }, (_, index) => ({
         id: `user:skill-${index}`,

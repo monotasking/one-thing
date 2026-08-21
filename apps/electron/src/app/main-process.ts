@@ -10,10 +10,12 @@ import {
 	initializeIPC,
 	initializeMCP,
 	shutdownMCP,
-	initializeSkills,
 	initializeACP,
 	shutdownACP,
 } from "@main/ipc/handlers.js";
+// 结构债 P4c 第二批:skills 整域迁 router 之后,启动闩住在装配层的 skills 接线里
+// (从前它挂在 `@main/ipc/skills.ts` 的适配上,而那个适配已经没有了)。
+import { initializeSkills } from "@onething/backend/wiring/skills/session-skills.js";
 import { flushAllPendingSaves } from "@onething/backend/store.js";
 import { getSettings } from "@onething/backend/stores/settings.js";
 import { startTodoPlanWatcher } from "@onething/backend/wiring/todo-plan/store.js";
@@ -111,6 +113,12 @@ import {
 	getElectronResourcesPath,
 } from "@onething/electron-host/skills/environment";
 import { configureAuthHost } from "@onething/runtime/auth/host-ports";
+import { configureShellHost } from "@onething/runtime/shell/host-ports";
+import {
+	openElectronExternal,
+	openElectronPath,
+	revealElectronPath,
+} from "@onething/electron-host/shell/operations";
 import { configureVoiceHost } from "@onething/runtime/voice/host-ports.wiring";
 import { broadcastElectronVoiceMessage } from "@onething/electron-host/voice/events";
 import { createElectronAuthFetch } from "@onething/electron-host/auth/auth-fetch";
@@ -391,6 +399,15 @@ export function startOnethingElectronMain(): void {
 	configureSkillsEnvironmentHost({
 		isPackaged: getElectronAppIsPackaged,
 		getResourcesPath: getElectronResourcesPath,
+	});
+	// 「用系统的方式打开一个东西」的宿主能力(结构债 P4c 第二批)。产品层只声明要,
+	// 能力由这里给 —— 桌面有文件管理器和默认浏览器,server / CLI 没有,于是那两个
+	// 宿主拿到的是结构化降级而不是一份写死的「不支持」文案。本批的消费者只有
+	// skills 域的 openDirectory;files / themes / oauth 三处留给后批。
+	configureShellHost({
+		openPath: (targetPath) => openElectronPath(targetPath),
+		openExternal: (url) => openElectronExternal(url),
+		revealPath: (targetPath) => revealElectronPath(targetPath),
 	});
 	configureAuthHost({
 		authFetch: createElectronAuthFetch({

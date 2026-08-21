@@ -8,21 +8,29 @@ import { destroyUiOverlayHost } from '@/services/ui-overlay-host'
 import type { SkillSettings } from '@/types'
 
 const electronAPI = {
-  getSkills: vi.fn(),
-  refreshSkills: vi.fn(),
-  listSkillDirectories: vi.fn(),
   // agents 域走通用 RPC 通道(主线 T1 第二批):打的是那一条通道。
   rpcInvoke: vi.fn(),
-  toggleSkillEnabled: vi.fn(),
-  setSkillAgent: vi.fn(),
-  addSkillDirectory: vi.fn(),
-  updateSkillDirectory: vi.fn(),
-  removeSkillDirectory: vi.fn(),
-  deleteSkill: vi.fn(),
-  openSkillDirectory: vi.fn(),
   openPath: vi.fn(),
   showOpenDialog: vi.fn(),
 }
+
+// skills 域整只迁到通用 RPC 通道(结构债 P4c 第二批):面板引的是壳外客户端
+// `@/platform/skills-client`,十二条从前的 electronAPI 包装已经不存在了。
+const skillsApi = vi.hoisted(() => ({
+  getAll: vi.fn(),
+  refresh: vi.fn(),
+  readFile: vi.fn(),
+  openDirectory: vi.fn(),
+  create: vi.fn(),
+  delete: vi.fn(),
+  toggleEnabled: vi.fn(),
+  listDirectories: vi.fn(),
+  addDirectory: vi.fn(),
+  updateDirectory: vi.fn(),
+  removeDirectory: vi.fn(),
+  setAgent: vi.fn(),
+}))
+vi.mock('@/platform/skills-client', () => ({ skillsApi }))
 
 function skillFixture(overrides: Record<string, unknown> = {}) {
   return {
@@ -53,7 +61,7 @@ describe('SkillsSettingsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(window as unknown as { electronAPI: typeof electronAPI }).electronAPI = electronAPI
-    electronAPI.getSkills.mockResolvedValue({
+    skillsApi.getAll.mockResolvedValue({
       success: true,
       skills: [
         skillFixture(),
@@ -66,7 +74,7 @@ describe('SkillsSettingsPanel', () => {
         }),
       ],
     })
-    electronAPI.listSkillDirectories.mockResolvedValue({
+    skillsApi.listDirectories.mockResolvedValue({
       success: true,
       directories: [
         { id: 'dir-1', path: '/team/skills', label: 'Team', agentId: 'writer', enabled: true },
@@ -87,10 +95,10 @@ describe('SkillsSettingsPanel', () => {
       }
       return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
     })
-    electronAPI.toggleSkillEnabled.mockResolvedValue({ success: true })
-    electronAPI.setSkillAgent.mockResolvedValue({ success: true })
-    electronAPI.refreshSkills.mockResolvedValue({ success: true, skills: [] })
-    electronAPI.removeSkillDirectory.mockResolvedValue({ success: true })
+    skillsApi.toggleEnabled.mockResolvedValue({ success: true })
+    skillsApi.setAgent.mockResolvedValue({ success: true })
+    skillsApi.refresh.mockResolvedValue({ success: true, skills: [] })
+    skillsApi.removeDirectory.mockResolvedValue({ success: true })
   })
 
   afterEach(() => {
@@ -129,7 +137,7 @@ describe('SkillsSettingsPanel', () => {
     await wrapper.find('.skill-rows .enable-dot').trigger('click')
     await settle()
 
-    expect(electronAPI.toggleSkillEnabled).toHaveBeenCalledWith('user:demo', false)
+    expect(skillsApi.toggleEnabled).toHaveBeenCalledWith({ skillId: 'user:demo', enabled: false })
     const emitted = wrapper.emitted('update:settings')
     expect(emitted).toBeTruthy()
     const lastPayload = emitted![emitted!.length - 1][0] as SkillSettings
@@ -157,7 +165,7 @@ describe('SkillsSettingsPanel', () => {
     option.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
 
-    expect(electronAPI.setSkillAgent).toHaveBeenCalledWith('user:demo', 'writer')
+    expect(skillsApi.setAgent).toHaveBeenCalledWith({ skillId: 'user:demo', agentId: 'writer' })
   })
 
   it('removes a custom directory after confirmation', async () => {
@@ -179,7 +187,7 @@ describe('SkillsSettingsPanel', () => {
     confirmButton.click()
     await settle()
 
-    expect(electronAPI.removeSkillDirectory).toHaveBeenCalledWith('dir-1')
+    expect(skillsApi.removeDirectory).toHaveBeenCalledWith({ id: 'dir-1' })
     const emitted = wrapper.emitted('update:settings')
     const lastPayload = emitted![emitted!.length - 1][0] as SkillSettings
     expect(lastPayload.customDirectories).toEqual([])

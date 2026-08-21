@@ -233,19 +233,7 @@ import type {
 	SkillFile,
 	SkillSource,
 	SkillSettings,
-	GetSkillsResponse,
-	RefreshSkillsResponse,
-	ReadSkillFileResponse,
-	OpenSkillDirectoryResponse,
-	CreateSkillResponse,
 	SkillDirectoryConfig,
-	ListSkillDirectoriesResponse,
-	AddSkillDirectoryRequest,
-	AddSkillDirectoryResponse,
-	UpdateSkillDirectoryRequest,
-	UpdateSkillDirectoryResponse,
-	RemoveSkillDirectoryResponse,
-	SetSkillAgentResponse,
 	PluginCommandInfo,
 	GetPluginCommandsResponse,
 	ExecutePluginCommandResponse,
@@ -1530,38 +1518,6 @@ export interface ElectronAPI {
 		agentId?: string,
 	) => Promise<ACPCancelSessionResponse>;
 
-	// Skills methods (Official Claude Code Skills)
-	getSkills: (workingDirectory?: string) => Promise<GetSkillsResponse>;
-	refreshSkills: () => Promise<RefreshSkillsResponse>;
-	readSkillFile: (
-		skillId: string,
-		fileName: string,
-	) => Promise<ReadSkillFileResponse>;
-	openSkillDirectory: (skillId?: string) => Promise<OpenSkillDirectoryResponse>;
-	createSkill: (
-		name: string,
-		description: string,
-		instructions: string,
-		source: SkillSource,
-	) => Promise<CreateSkillResponse>;
-	deleteSkill: (
-		skillId: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	toggleSkillEnabled: (
-		skillId: string,
-		enabled: boolean,
-	) => Promise<{ success: boolean; error?: string }>;
-	listSkillDirectories: () => Promise<ListSkillDirectoriesResponse>;
-	addSkillDirectory: (request: AddSkillDirectoryRequest) =>
-		Promise<AddSkillDirectoryResponse>;
-	updateSkillDirectory: (request: UpdateSkillDirectoryRequest) =>
-		Promise<UpdateSkillDirectoryResponse>;
-	removeSkillDirectory: (id: string) => Promise<RemoveSkillDirectoryResponse>;
-	setSkillAgent: (
-		skillId: string,
-		agentId: string | null,
-	) => Promise<SetSkillAgentResponse>;
-
 	// Message update methods
 	updateMessageThinkingTime: (
 		sessionId: string,
@@ -1973,15 +1929,6 @@ export interface ElectronAPI {
 	switchBrowserProfile: (profileId: string) => Promise<BrowserProfilesResponse>;
 	onBrowserTabsChanged: (callback: (event: BrowserTabsChangedEvent) => void) => () => void;
 
-	// Skill execution
-	executeSkill: (
-		skillId: string,
-		options: { sessionId: string; input: string },
-	) => Promise<{
-		success: boolean;
-		result?: { output: string };
-		error?: string;
-	}>;
 
 	// Plugin management
 	getPlugins: () => Promise<{

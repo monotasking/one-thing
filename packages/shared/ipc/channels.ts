@@ -213,20 +213,6 @@ export const IPC_CHANNELS = {
 	IMAGE_PREVIEW_UPDATE: "image-preview:update",
 	IMAGE_GALLERY_UPDATE: "image-gallery:update",
 
-	// Skills related
-	SKILLS_GET_ALL: "skills:get-all",
-	SKILLS_REFRESH: "skills:refresh",
-	SKILLS_READ_FILE: "skills:read-file",
-	SKILLS_OPEN_DIRECTORY: "skills:open-directory",
-	SKILLS_CREATE: "skills:create",
-	SKILLS_DELETE: "skills:delete",
-	SKILLS_TOGGLE_ENABLED: "skills:toggle-enabled",
-	SKILLS_LIST_DIRECTORIES: "skills:list-directories",
-	SKILLS_ADD_DIRECTORY: "skills:add-directory",
-	SKILLS_UPDATE_DIRECTORY: "skills:update-directory",
-	SKILLS_REMOVE_DIRECTORY: "skills:remove-directory",
-	SKILLS_SET_AGENT: "skills:set-agent",
-
 	// Theme related
 	THEME_GET_ALL: "themes:get-all",
 	THEME_GET: "themes:get",

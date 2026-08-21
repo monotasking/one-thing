@@ -7,6 +7,7 @@ import type {
 } from '@/types'
 import { platformApi } from '@/platform'
 import { agentsApi } from '@/platform/agents-client'
+import { skillsApi } from '@/platform/skills-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.skills')
@@ -63,8 +64,8 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
     // Settled independently: a host that lacks one endpoint (e.g. the web
     // build without directory management) must not blank the whole page.
     const [skillsResult, directoriesResult, agentsResult] = await Promise.allSettled([
-      platformApi.getSkills(),
-      platformApi.listSkillDirectories(),
+      skillsApi.getAll({}),
+      skillsApi.listDirectories({}),
       agentsApi.listAgents(),
     ])
     if (skillsResult.status === 'fulfilled' && skillsResult.value.success && skillsResult.value.skills) {
@@ -88,7 +89,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
     isLoading.value = true
     lastError.value = null
     try {
-      const response = await platformApi.refreshSkills()
+      const response = await skillsApi.refresh({})
       if (response.success && response.skills) {
         skills.value = response.skills
       } else if (response.error) {
@@ -104,7 +105,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
 
   async function toggleSkillEnabled(skill: SkillDefinition, enabled: boolean) {
     try {
-      const response = await platformApi.toggleSkillEnabled(skill.id, enabled)
+      const response = await skillsApi.toggleEnabled({ skillId: skill.id, enabled })
       if (!response.success) {
         lastError.value = response.error ?? 'Failed to toggle skill'
         return
@@ -118,7 +119,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
 
   async function setSkillAgent(skill: SkillDefinition, agentId: string | null) {
     try {
-      const response = await platformApi.setSkillAgent(skill.id, agentId)
+      const response = await skillsApi.setAgent({ skillId: skill.id, agentId })
       if (!response.success) {
         lastError.value = response.error ?? 'Failed to assign agent'
         return
@@ -132,7 +133,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
 
   async function addDirectory(input: { path: string; label?: string; agentId?: string | null }): Promise<string | null> {
     try {
-      const response = await platformApi.addSkillDirectory(input)
+      const response = await skillsApi.addDirectory(input)
       if (!response.success || !response.directory) {
         return response.error ?? 'Failed to add skill directory'
       }
@@ -147,7 +148,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
 
   async function updateDirectory(input: { id: string; enabled?: boolean; label?: string; agentId?: string | null }) {
     try {
-      const response = await platformApi.updateSkillDirectory(input)
+      const response = await skillsApi.updateDirectory(input)
       if (!response.success || !response.directory) {
         lastError.value = response.error ?? 'Failed to update skill directory'
         return
@@ -164,7 +165,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
 
   async function removeDirectory(id: string) {
     try {
-      const response = await platformApi.removeSkillDirectory(id)
+      const response = await skillsApi.removeDirectory({ id })
       if (!response.success) {
         lastError.value = response.error ?? 'Failed to remove skill directory'
         return
@@ -179,7 +180,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
 
   async function deleteSkill(skillId: string): Promise<boolean> {
     try {
-      const response = await platformApi.deleteSkill(skillId)
+      const response = await skillsApi.delete({ skillId })
       if (!response.success) {
         lastError.value = response.error ?? 'Failed to delete skill'
         return false
@@ -194,7 +195,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
 
   async function openSkillDirectory(skillId?: string) {
     try {
-      await platformApi.openSkillDirectory(skillId)
+      await skillsApi.openDirectory({ skillId })
     } catch (error) {
       log.error('open skill directory failed', { skillId }, error)
     }

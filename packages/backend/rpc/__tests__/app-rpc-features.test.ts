@@ -59,6 +59,8 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:scratchpad', 'scratchpad'],
   // P4c 第六个域:project-dirs。
   ['rpc:project-dirs', 'projectDirs'],
+  // P4c 第二批唯一的域:skills(十二条,openDirectory 走 configureShellHost 端口)。
+  ['rpc:skills', 'skills'],
 ] as const
 
 /**

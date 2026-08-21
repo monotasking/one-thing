@@ -235,17 +235,6 @@ export interface RuntimeScratchpadAdapter<TChangedPayload = unknown> {
   ): RuntimeUnsubscribe
 }
 
-export interface RuntimeSkillsAdapter {
-  list?(workingDirectory?: string, context?: RuntimeRequestContext): Promise<unknown>
-  refresh?(context?: RuntimeRequestContext): Promise<unknown>
-  readFile?(skillId: string, fileName: string, context?: RuntimeRequestContext): Promise<unknown>
-  openDirectory?(skillId?: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  create?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  delete?(skillId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  toggleEnabled?(skillId: string, enabled: boolean, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  execute?(skillId: string, options: unknown, context?: RuntimeRequestContext): Promise<unknown>
-}
-
 export interface RuntimePluginsAdapter {
   list?(context?: RuntimeRequestContext): Promise<unknown>
   enable?(pluginId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
@@ -430,7 +419,6 @@ export interface OnethingRuntimeFacadeOptions<
   media?: RuntimeMediaAdapter
   todoPlan?: RuntimeTodoPlanAdapter
   scratchpad?: RuntimeScratchpadAdapter
-  skills?: RuntimeSkillsAdapter
   plugins?: RuntimePluginsAdapter
   oauth?: RuntimeOAuthAdapter
   gateway?: RuntimeGatewayAdapter
@@ -506,7 +494,6 @@ export interface OnethingRuntimeFacade<
   readonly media?: RuntimeMediaAdapter
   readonly todoPlan?: RuntimeTodoPlanAdapter
   readonly scratchpad?: RuntimeScratchpadAdapter
-  readonly skills?: RuntimeSkillsAdapter
   readonly plugins?: RuntimePluginsAdapter
   readonly oauth?: RuntimeOAuthAdapter
   readonly gateway?: RuntimeGatewayAdapter
@@ -653,7 +640,6 @@ export function createOnethingRuntimeFacade<
     media: options.media ? Object.freeze({ ...options.media }) : undefined,
     todoPlan: options.todoPlan ? Object.freeze({ ...options.todoPlan }) : undefined,
     scratchpad: options.scratchpad ? Object.freeze({ ...options.scratchpad }) : undefined,
-    skills: options.skills ? Object.freeze({ ...options.skills }) : undefined,
     plugins: options.plugins ? Object.freeze({ ...options.plugins }) : undefined,
     oauth: options.oauth ? Object.freeze({ ...options.oauth }) : undefined,
     gateway: options.gateway ? Object.freeze({ ...options.gateway }) : undefined,
