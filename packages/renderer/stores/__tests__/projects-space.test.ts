@@ -33,6 +33,17 @@ const { electronApi, store: memory } = vi.hoisted(() => {
   }
 })
 
+// project-dirs 域已迁到通用 RPC 通道(结构债 P4c):store 引的是壳外客户端,
+// 入参从位置参数变成信封 —— `workspaceId` 从此是信封里的一个键。
+vi.mock('@/platform/project-dirs-client', () => ({
+  projectDirsApi: {
+    list: electronApi.projectDirsList,
+    add: electronApi.projectDirsAdd,
+    update: electronApi.projectDirsUpdate,
+    remove: electronApi.projectDirsRemove,
+  },
+}))
+
 const ROSTERS: Record<string, Array<{ path: string; paths: string[] }>> = {
   default: [{ path: '/home-repo', paths: ['/home-repo'] }],
   work: [{ path: '/work-repo', paths: ['/work-repo', '/work-docs'] }],
@@ -43,9 +54,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   memory.clear()
   Object.defineProperty(window, 'electronAPI', { configurable: true, value: electronApi })
-  electronApi.projectDirsList.mockImplementation(async (workspaceId?: string) => ({
+  electronApi.projectDirsList.mockImplementation(async (request?: { workspaceId?: string }) => ({
     success: true,
-    entries: (ROSTERS[workspaceId ?? DEFAULT_SPACE_ID] ?? []).map(entry => ({
+    entries: (ROSTERS[request?.workspaceId ?? DEFAULT_SPACE_ID] ?? []).map(entry => ({
       ...entry,
       description: '',
       lastUsedAt: 0,
@@ -62,7 +73,7 @@ describe('projects store × space', () => {
     const projects = useProjectsStore()
 
     await projects.load()
-    expect(electronApi.projectDirsList).toHaveBeenLastCalledWith(DEFAULT_SPACE_ID)
+    expect(electronApi.projectDirsList).toHaveBeenLastCalledWith({ workspaceId: DEFAULT_SPACE_ID })
     expect(projects.entries.map(entry => entry.path)).toEqual(['/home-repo'])
     expect(projects.loadedSpaceId).toBe(DEFAULT_SPACE_ID)
 
@@ -70,7 +81,7 @@ describe('projects store × space', () => {
     spaces.switchTo('work')
     await projects.load()
 
-    expect(electronApi.projectDirsList).toHaveBeenLastCalledWith('work')
+    expect(electronApi.projectDirsList).toHaveBeenLastCalledWith({ workspaceId: 'work' })
     // 上一个空间的项目一条都不该留下 —— 这就是用户报的那个症状。
     expect(projects.entries.map(entry => entry.path)).toEqual(['/work-repo'])
     expect(projects.loadedSpaceId).toBe('work')
@@ -83,35 +94,34 @@ describe('projects store × space', () => {
     await projects.load()
 
     await projects.add('/new-dir', '说明')
-    expect(electronApi.projectDirsAdd).toHaveBeenCalledWith(
-      '/new-dir',
-      '说明',
-      undefined,
-      'work',
-    )
+    expect(electronApi.projectDirsAdd).toHaveBeenCalledWith({
+      path: '/new-dir',
+      description: '说明',
+      workspaceId: 'work',
+    })
 
     await projects.addRoot('/work-repo', '/extra')
-    expect(electronApi.projectDirsUpdate).toHaveBeenLastCalledWith(
-      '/work-repo',
-      { paths: ['/work-repo', '/work-docs', '/extra'] },
-      'work',
-    )
+    expect(electronApi.projectDirsUpdate).toHaveBeenLastCalledWith({
+      path: '/work-repo',
+      paths: ['/work-repo', '/work-docs', '/extra'],
+      workspaceId: 'work',
+    })
 
     await projects.setPrimaryRoot('/work-repo', '/work-docs')
-    expect(electronApi.projectDirsUpdate).toHaveBeenLastCalledWith(
-      '/work-repo',
-      { paths: ['/work-docs', '/work-repo'] },
-      'work',
-    )
+    expect(electronApi.projectDirsUpdate).toHaveBeenLastCalledWith({
+      path: '/work-repo',
+      paths: ['/work-docs', '/work-repo'],
+      workspaceId: 'work',
+    })
 
     await projects.removeRoot('/work-repo', '/work-docs')
-    expect(electronApi.projectDirsUpdate).toHaveBeenLastCalledWith(
-      '/work-repo',
-      { paths: ['/work-repo'] },
-      'work',
-    )
+    expect(electronApi.projectDirsUpdate).toHaveBeenLastCalledWith({
+      path: '/work-repo',
+      paths: ['/work-repo'],
+      workspaceId: 'work',
+    })
 
     await projects.remove('/work-repo')
-    expect(electronApi.projectDirsRemove).toHaveBeenCalledWith('/work-repo', 'work')
+    expect(electronApi.projectDirsRemove).toHaveBeenCalledWith({ path: '/work-repo', workspaceId: 'work' })
   })
 })

@@ -418,6 +418,7 @@ import {
 import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
+import { variablesApi } from '@/platform/variables-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.workbench')
@@ -1230,11 +1231,11 @@ function applyVariableRoots(variables: ContextVariable[]) {
 
 async function refreshVariableRoots(): Promise<void> {
   const sessionId = props.sessionId
-  if (!sessionId || !platformApi?.listVariables) return
+  if (!sessionId) return
 
   const requestId = ++variableRequestId
   try {
-    const response = await platformApi.listVariables(sessionId)
+    const response = await variablesApi.list({ sessionId })
     if (requestId !== variableRequestId || sessionId !== props.sessionId) return
     if (!response.success || !response.variables) return
     applyVariableRoots(response.variables)

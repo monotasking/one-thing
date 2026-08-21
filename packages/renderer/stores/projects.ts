@@ -14,7 +14,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ProjectDirSummary } from '@shared/ipc'
-import { platformApi } from '@/platform'
+import { projectDirsApi } from '@/platform/project-dirs-client'
 import { normalizeProjectDir } from '@/utils/project-dir'
 import { currentSpaceId } from './spaces'
 import { getLogger } from '@/services/log'
@@ -37,7 +37,7 @@ export const useProjectsStore = defineStore('projects', () => {
     loadedSpaceId.value = spaceId
     loading.value = true
     try {
-      const response = await platformApi.projectDirsList(spaceId)
+      const response = await projectDirsApi.list({ workspaceId: spaceId })
       if (response.success) {
         entries.value = response.entries ?? []
         lastError.value = null
@@ -61,12 +61,11 @@ export const useProjectsStore = defineStore('projects', () => {
     const normalized = normalizeProjectDir(path)
     if (!normalized) return false
     try {
-      const response = await platformApi.projectDirsAdd(
-        normalized,
+      const response = await projectDirsApi.add({
+        path: normalized,
         description,
-        undefined,
-        currentSpaceId(),
-      )
+        workspaceId: currentSpaceId(),
+      })
       if (!response.success) {
         lastError.value = response.error || 'Failed to add project'
         return false
@@ -129,11 +128,11 @@ export const useProjectsStore = defineStore('projects', () => {
 
   async function updatePaths(primaryPath: string, paths: string[]): Promise<boolean> {
     try {
-      const response = await platformApi.projectDirsUpdate(
-        primaryPath,
-        { paths },
-        currentSpaceId(),
-      )
+      const response = await projectDirsApi.update({
+        path: primaryPath,
+        paths,
+        workspaceId: currentSpaceId(),
+      })
       if (!response.success) {
         lastError.value = response.error || 'Failed to update project'
         return false
@@ -163,7 +162,7 @@ export const useProjectsStore = defineStore('projects', () => {
     const normalized = normalizeProjectDir(path)
     if (!normalized) return false
     try {
-      const response = await platformApi.projectDirsRemove(normalized, currentSpaceId())
+      const response = await projectDirsApi.remove({ path: normalized, workspaceId: currentSpaceId() })
       if (!response.success) {
         lastError.value = response.error || 'Failed to remove project'
         return false

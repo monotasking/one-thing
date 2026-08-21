@@ -859,44 +859,12 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/files/delete',
     })
-    await expect(api.listVariables('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/variables/list',
-    })
-    await expect(api.setVariable('session-1', 'topic', 'web runtime', 'Current topic', 'session')).resolves.toEqual({
-      success: true,
-      url: '/api/variables/set',
-    })
-    await expect(api.deleteVariable('session-1', 'topic')).resolves.toEqual({
-      success: true,
-      url: '/api/variables/delete',
-    })
-    await expect(api.projectDirsList()).resolves.toEqual({
-      success: true,
-      url: '/api/project-dirs',
-    })
-    await expect(api.projectDirsGet('/workspace')).resolves.toEqual({
-      success: true,
-      url: '/api/project-dirs/get',
-    })
-    await expect(api.projectDirsAdd('/workspace', 'Main project')).resolves.toEqual({
-      success: true,
-      url: '/api/project-dirs',
-    })
-    await expect(api.projectDirsUpdate('/workspace', { description: 'Updated' })).resolves.toEqual({
-      success: true,
-      url: '/api/project-dirs/update',
-    })
-    await expect(
-      api.projectDirsUpdate('/workspace', { paths: ['/workspace', '/workspace-docs'] }),
-    ).resolves.toEqual({
-      success: true,
-      url: '/api/project-dirs/update',
-    })
-    await expect(api.projectDirsRemove('/workspace')).resolves.toEqual({
-      success: true,
-      url: '/api/project-dirs/remove',
-    })
+    // variables 域的三条已整只迁到通用 RPC 通道(P4c,`@shared/ipc/variables.ts` 的
+    // variablesRouter + `@/platform/variables-client` 的 variablesApi):web 壳上
+    // 不再有 /api/variables/* 的镜像。
+    // project-dirs 域的五条同样迁走了(P4c,`projectDirsRouter` +
+    // `@/platform/project-dirs-client`)。顺带修掉一处说谎:旧 web 壳把
+    // `workspaceId` 收下就丢,浏览器里切空间等于没切;走 router 之后它真的传下去。
     await expect(api.saveImage({
       base64: 'aW1hZ2U=',
       prompt: 'Image',
@@ -955,15 +923,6 @@ describe('createWebPlatformApi', () => {
       body: JSON.stringify({ root: '/workspace' }),
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/files/rename', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/variables/set', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/project-dirs/get', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/project-dirs/update', expect.objectContaining({
       method: 'POST',
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/media/gallery', expect.objectContaining({
@@ -1064,35 +1023,10 @@ describe('createWebPlatformApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/tools/background-jobs?includeInactive=true', expect.any(Object))
   })
 
-  it('maps permission platform methods to server REST endpoints', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url === '/api/capabilities') {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(JSON.stringify({ success: true, url }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('navigator', {})
-
-    const { createWebPlatformApi } = await import('../web.js')
-    const api = createWebPlatformApi()
-
-    await expect(api.getPendingPermissions('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/sessions/session-1/permissions/pending',
-    })
-    await expect(api.clearSessionPermissions('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/sessions/session-1/permissions/clear',
-    })
-  })
+  // permission(活询问)域的两条已整只迁到通用 RPC 通道(P4c,`permissionRouter` +
+  // `@/platform/permission-client`):web 壳上不再有
+  // `/api/sessions/:id/permissions/{pending,clear}` 的镜像,server 那条正则路由的
+  // 两个分支也一并删了(`/api/permissions/:id/respond` 不动 —— 那是命令面)。
 
   it('maps chat and session message platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -1642,47 +1576,9 @@ describe('createWebPlatformApi', () => {
       method: 'POST',
       body: JSON.stringify({ sessionId: 'session-1', agentId: 'web-acp' }),
     }))
-    await expect(api.listSchedulerTasks()).resolves.toEqual({
-      success: true,
-      url: '/api/scheduler/tasks',
-    })
-    await expect(api.getSchedulerTask({ id: 'task-1' })).resolves.toEqual({
-      success: true,
-      url: '/api/scheduler/tasks/get',
-    })
-    await expect(api.runSchedulerTaskNow({ id: 'task-1', force: true })).resolves.toEqual({
-      success: true,
-      url: '/api/scheduler/tasks/run-now',
-    })
-    await expect(api.setSchedulerTaskEnabled({ id: 'task-1', enabled: false })).resolves.toEqual({
-      success: true,
-      url: '/api/scheduler/tasks/enabled',
-    })
-    await expect(api.createSchedulerTask({
-      name: 'Daily check',
-      prompt: 'Summarize today',
-      agentId: 'default',
-      schedule: { kind: 'interval', everyMs: 60000 },
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/scheduler/tasks',
-    })
-    await expect(api.updateSchedulerTask({ id: 'task-1', name: 'Updated' })).resolves.toEqual({
-      success: true,
-      url: '/api/scheduler/tasks/update',
-    })
-    await expect(api.deleteSchedulerTask({ id: 'task-1' })).resolves.toEqual({
-      success: true,
-      url: '/api/scheduler/tasks/delete',
-    })
-    await expect(api.listSchedulerRuns({ taskId: 'task-1', limit: 10 })).resolves.toEqual({
-      success: true,
-      url: '/api/scheduler/runs',
-    })
-    await expect(api.getSchedulerRun({ taskId: 'task-1', runId: 'run-1' })).resolves.toEqual({
-      success: true,
-      url: '/api/scheduler/runs/get',
-    })
+    // scheduler 域的九条已整只迁到通用 RPC 通道(P4c,`@shared/ipc/scheduler.ts` 的
+    // schedulerRouter + `@/platform/scheduler-client` 的 schedulerApi):web 壳上
+    // 不再有 /api/scheduler/* 的镜像,server 的九条 REST 路由也一并删了。
     // agents / providers / models 已迁到通用 RPC 通道(主线 T1 第二批):
     // web 壳上不再有它们的方法,客户端在 platform/{agents,providers,models}-client.ts。
 
@@ -1702,12 +1598,6 @@ describe('createWebPlatformApi', () => {
       body: JSON.stringify({ pluginId: 'note-skills' }),
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/commands', expect.any(Object))
-    expect(fetchMock).toHaveBeenCalledWith('/api/scheduler/tasks/update', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/scheduler/runs/get', expect.objectContaining({
-      method: 'POST',
-    }))
   })
 })
 

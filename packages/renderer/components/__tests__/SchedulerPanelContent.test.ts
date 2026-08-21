@@ -51,6 +51,23 @@ vi.mock('@/stores/agents', () => ({
   useAgentsStore: () => agentsStore,
 }))
 
+const schedulerApi = vi.hoisted(() => ({
+  list: vi.fn(),
+  get: vi.fn(),
+  runNow: vi.fn(),
+  setEnabled: vi.fn(),
+  createTask: vi.fn(),
+  updateTask: vi.fn(),
+  deleteTask: vi.fn(),
+  listRuns: vi.fn(),
+  getRun: vi.fn(),
+}))
+
+// scheduler 域已迁到通用 RPC 通道(结构债 P4c):面板引的是壳外客户端
+// `@/platform/scheduler-client`,不再是 platformApi 上的九个方法 —— 所以桩打这个
+// 模块。会话那两条(归档 / 切换)仍在 platformApi 上,继续走 electronAPI。
+vi.mock('@/platform/scheduler-client', () => ({ schedulerApi }))
+
 describe('SchedulerPanelContent', () => {
   // The teleported editor outlives the wrapper unless the body is swept.
   afterEach(() => {
@@ -60,83 +77,82 @@ describe('SchedulerPanelContent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     agentsStore.loadAgents.mockResolvedValue(agentsStore.agents)
+    schedulerApi.list.mockResolvedValue({
+      success: true,
+      tasks: [
+        {
+          id: 'user:task-1',
+          name: 'Morning news',
+          kind: 'agent',
+          source: 'user',
+          readonly: false,
+          agentId: 'default',
+          prompt: 'Check the news',
+          promptPreview: 'Check the news',
+          enabled: true,
+          schedule: { kind: 'cron', expr: '0 9 * * *' },
+          tags: ['agent'],
+          inFlight: false,
+          runCount: 1,
+          successCount: 1,
+          failureCount: 0,
+        },
+      ],
+    })
+    schedulerApi.listRuns.mockResolvedValue({
+      success: true,
+      runs: [
+        {
+          runId: 'run-1',
+          taskId: 'user:task-1',
+          reason: 'manual',
+          scheduledFor: 1,
+          startedAt: 1,
+          finishedAt: 1001,
+          durationMs: 1000,
+          ok: true,
+          status: 'succeeded',
+          resultPreview: 'Done',
+          timeline: [{ id: 't1', timestamp: 1, type: 'run:finish', title: 'Done' }],
+        },
+      ],
+    })
+    schedulerApi.runNow.mockResolvedValue({ success: true })
+    schedulerApi.setEnabled.mockResolvedValue({ success: true })
+    schedulerApi.createTask.mockResolvedValue({
+      success: true,
+      task: {
+        id: 'user:new-task',
+        name: 'Morning digest',
+        kind: 'agent',
+        source: 'user',
+        readonly: false,
+        enabled: true,
+        tags: ['agent'],
+        inFlight: false,
+        runCount: 0,
+        successCount: 0,
+        failureCount: 0,
+      },
+    })
+    schedulerApi.updateTask.mockResolvedValue({
+      success: true,
+      task: {
+        id: 'user:task-1',
+        name: 'Morning news updated',
+        kind: 'agent',
+        source: 'user',
+        readonly: false,
+        enabled: true,
+        tags: ['agent'],
+        inFlight: false,
+        runCount: 1,
+        successCount: 1,
+        failureCount: 0,
+      },
+    })
     Object.defineProperty(window, 'electronAPI', {
       value: {
-        listSchedulerTasks: vi.fn().mockResolvedValue({
-          success: true,
-          tasks: [
-            {
-              id: 'user:task-1',
-              name: 'Morning news',
-              kind: 'agent',
-              source: 'user',
-              readonly: false,
-              agentId: 'default',
-              prompt: 'Check the news',
-              promptPreview: 'Check the news',
-              enabled: true,
-              schedule: { kind: 'cron', expr: '0 9 * * *' },
-              tags: ['agent'],
-              inFlight: false,
-              runCount: 1,
-              successCount: 1,
-              failureCount: 0,
-            },
-          ],
-        }),
-        listSchedulerRuns: vi.fn().mockResolvedValue({
-          success: true,
-          runs: [
-            {
-              runId: 'run-1',
-              taskId: 'user:task-1',
-              reason: 'manual',
-              scheduledFor: 1,
-              startedAt: 1,
-              finishedAt: 1001,
-              durationMs: 1000,
-              ok: true,
-              status: 'succeeded',
-              resultPreview: 'Done',
-              timeline: [{ id: 't1', timestamp: 1, type: 'run:finish', title: 'Done' }],
-            },
-          ],
-        }),
-        runSchedulerTaskNow: vi.fn().mockResolvedValue({ success: true }),
-        setSchedulerTaskEnabled: vi.fn().mockResolvedValue({ success: true }),
-        createSchedulerTask: vi.fn().mockResolvedValue({
-          success: true,
-          task: {
-            id: 'user:new-task',
-            name: 'Morning digest',
-            kind: 'agent',
-            source: 'user',
-            readonly: false,
-            enabled: true,
-            tags: ['agent'],
-            inFlight: false,
-            runCount: 0,
-            successCount: 0,
-            failureCount: 0,
-          },
-        }),
-        updateSchedulerTask: vi.fn().mockResolvedValue({
-          success: true,
-          task: {
-            id: 'user:task-1',
-            name: 'Morning news updated',
-            kind: 'agent',
-            source: 'user',
-            readonly: false,
-            enabled: true,
-            tags: ['agent'],
-            inFlight: false,
-            runCount: 1,
-            successCount: 1,
-            failureCount: 0,
-          },
-        }),
-        deleteSchedulerTask: vi.fn(),
         updateSessionArchived: vi.fn(),
         switchSession: vi.fn(),
       },
@@ -153,7 +169,7 @@ describe('SchedulerPanelContent', () => {
     // P4: 列表头换成共享的 LedgerGroupHeader,分的是"我写的 / 系统内置"这条
     // 列表本来就在按 `readonly` 排的分界(启用状态那一维归控制条的筛选下拉)。
     expect(wrapper.find('.task-list-title').text()).toContain('我的任务')
-    expect(window.electronAPI.listSchedulerRuns).not.toHaveBeenCalled()
+    expect(schedulerApi.listRuns).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('Run detail')
 
     await wrapper.find('.history-toggle').trigger('click')
@@ -174,11 +190,11 @@ describe('SchedulerPanelContent', () => {
     await vi.waitFor(() => {
       expect(agentsStore.loadAgents).toHaveBeenCalled()
     })
-    expect(window.electronAPI.listSchedulerTasks).not.toHaveBeenCalled()
+    expect(schedulerApi.list).not.toHaveBeenCalled()
 
     await wrapper.setProps({ active: true })
     await vi.waitFor(() => {
-      expect(window.electronAPI.listSchedulerTasks).toHaveBeenCalledTimes(1)
+      expect(schedulerApi.list).toHaveBeenCalledTimes(1)
       expect(wrapper.text()).toContain('Morning news')
     })
   })
@@ -213,9 +229,9 @@ describe('SchedulerPanelContent', () => {
     editorButton('create task').click()
 
     await vi.waitFor(() => {
-      expect(window.electronAPI.createSchedulerTask).toHaveBeenCalled()
+      expect(schedulerApi.createTask).toHaveBeenCalled()
     })
-    expect(window.electronAPI.createSchedulerTask).toHaveBeenCalledWith(expect.objectContaining({
+    expect(schedulerApi.createTask).toHaveBeenCalledWith(expect.objectContaining({
       agentId: 'default',
       enabled: true,
       name: 'Morning digest',
@@ -244,9 +260,9 @@ describe('SchedulerPanelContent', () => {
     editorButton('save changes').click()
 
     await vi.waitFor(() => {
-      expect(window.electronAPI.updateSchedulerTask).toHaveBeenCalled()
+      expect(schedulerApi.updateTask).toHaveBeenCalled()
     })
-    expect(window.electronAPI.updateSchedulerTask).toHaveBeenCalledWith(expect.objectContaining({
+    expect(schedulerApi.updateTask).toHaveBeenCalledWith(expect.objectContaining({
       id: 'user:task-1',
       name: 'Morning news updated',
       prompt: 'Check the news',
@@ -270,7 +286,7 @@ describe('SchedulerPanelContent', () => {
 
     await morningSwitch.trigger('click')
     await vi.waitFor(() => {
-      expect(window.electronAPI.setSchedulerTaskEnabled).toHaveBeenCalledWith({
+      expect(schedulerApi.setEnabled).toHaveBeenCalledWith({
         id: 'user:task-1',
         enabled: false,
       })

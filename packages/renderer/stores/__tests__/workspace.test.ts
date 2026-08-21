@@ -14,7 +14,6 @@ import {
   type PersistedWorkspaceV5,
 } from '../workspace-persistence'
 import type { WorkspaceSplit } from '../workspace-tree'
-import { platformApi } from '@/platform'
 
 const mocks = vi.hoisted(() => ({
   sessionsStore: {
@@ -36,14 +35,20 @@ const mocks = vi.hoisted(() => ({
     clearCurrentSession: vi.fn(),
     isNewChatDraftId: (sessionId: string) => sessionId.startsWith('draft:'),
   },
+  appStateApi: {
+    get: vi.fn().mockResolvedValue({ currentSessionId: '', currentWorkspaceId: null }),
+    saveUiState: vi.fn().mockResolvedValue({ success: true }),
+  },
 }))
 
 vi.mock('@/platform', () => ({
   platformApi: {
     capabilities: { collabRooms: true },
-    saveUIState: vi.fn().mockResolvedValue({ success: true }),
   },
 }))
+
+// app-state 域已迁到通用 RPC 通道(P4c):落盘走壳外客户端,不再是 platformApi。
+vi.mock('@/platform/app-state-client', () => ({ appStateApi: mocks.appStateApi }))
 
 vi.mock('../sessions', () => ({
   useSessionsStore: () => mocks.sessionsStore,
@@ -596,7 +601,7 @@ describe('workspace store: 切空间 = 换树', () => {
     store.setFormMode('chat')
     store.openSession('session-1')
 
-    const saveUIState = vi.mocked(platformApi.saveUIState!)
+    const saveUIState = mocks.appStateApi.saveUiState
     // debounce 还挂着 —— 这时候换树,不 flush 就写成新空间的树了。
     saveUIState.mockClear()
     store.setSpace('work')

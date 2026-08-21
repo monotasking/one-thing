@@ -45,6 +45,13 @@ export interface RuntimeCapabilitiesAdapter<TCapabilities = RuntimeHostCapabilit
   get(context?: RuntimeRequestContext): Promise<TCapabilities>
 }
 
+/**
+ * 结构债 P4c 之后**没有实现者也没有读者**:app-state 域整只迁到了通用 RPC 通道
+ * (`appStateRouter` + `app/rpc/domains/app-state.ts`),server 的两条 REST 路由与
+ * 它们背后的 facade adapter 一起删了。这一格之所以留着,是因为 `TAppState` /
+ * `TUIState` 是 `OnethingRuntimeFacade` 的**位置泛型参数** —— 摘掉它们会让所有
+ * 调用点的位置实参整体错位,那是另一次收口(与 C5 的名册收口同批),不是这次搬家。
+ */
 export interface RuntimeAppStateAdapter<TAppState = unknown, TUIState = unknown> {
   get(context?: RuntimeRequestContext): Promise<TAppState>
   saveUIState?(uiState: TUIState, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
@@ -116,13 +123,12 @@ export interface RuntimeStreamsAdapter<TChunk = unknown> {
 }
 
 export interface RuntimePermissionsAdapter<TPermissionResponse = unknown> {
+  /**
+   * 结构债 P4c:活询问的读/清(`getPending` / `clearSession`)已整只迁到
+   * `permission` RPC 域,这里只剩应答 —— 它服务的是 `/api/permissions/:id/respond`,
+   * 走命令总线,不是一次 RPC。
+   */
   respond(requestId: string, response: TPermissionResponse, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  getPending?(sessionId: string, context?: RuntimeRequestContext): Promise<{
-    success: boolean
-    pending?: unknown[]
-    error?: string
-  }>
-  clearSession?(sessionId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
 }
 
 export interface RuntimeSettingsAdapter<TSettings = unknown, TSettingsUpdateResult = TSettings> {
@@ -176,24 +182,6 @@ export interface RuntimeFilesAdapter {
   ): RuntimeUnsubscribe
 }
 
-export interface RuntimeProjectDirsAdapter {
-  list?(context?: RuntimeRequestContext): Promise<unknown>
-  get?(path: string, context?: RuntimeRequestContext): Promise<unknown>
-  add?(path: string, description?: string, context?: RuntimeRequestContext, paths?: string[]): Promise<unknown>
-  update?(path: string, patch: { description?: string; paths?: string[] }, context?: RuntimeRequestContext): Promise<unknown>
-  remove?(path: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-}
-
-export interface RuntimeVariablesAdapter<
-  TListRequest = unknown,
-  TSetRequest = unknown,
-  TDeleteRequest = unknown,
-> {
-  list(request: TListRequest, context?: RuntimeRequestContext): Promise<unknown>
-  set?(request: TSetRequest, context?: RuntimeRequestContext): Promise<unknown>
-  delete?(request: TDeleteRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-}
-
 export interface RuntimeMediaAdapter {
   saveImage?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
   loadAll?(context?: RuntimeRequestContext): Promise<unknown>
@@ -235,42 +223,16 @@ export interface RuntimeTodoPlanAdapter<
  * ordinary file tools), so `subscribeChanged` is what keeps a browser client
  * in sync — the desktop host uses its own IPC broadcast instead.
  */
-export interface RuntimeScratchpadAdapter<
-  TGetRequest = unknown,
-  TUpdateRequest = unknown,
-  TDeleteRequest = unknown,
-  TAdoptRequest = unknown,
-  TChangedPayload = unknown,
-> {
-  get(request: TGetRequest, context?: RuntimeRequestContext): Promise<unknown>
-  update(request: TUpdateRequest, context?: RuntimeRequestContext): Promise<unknown>
-  delete(request: TDeleteRequest, context?: RuntimeRequestContext): Promise<unknown>
-  adopt(request: TAdoptRequest, context?: RuntimeRequestContext): Promise<unknown>
+/**
+ * 结构债 P4c:草稿纸的四条数据面(get / update / delete / adopt)已整只迁到
+ * `scratchpad` RPC 域,这里只剩**推送面** —— `GET /api/scratchpad/events` 的 SSE 源。
+ * router 今天没有推送面,所以这一格还得有个主。
+ */
+export interface RuntimeScratchpadAdapter<TChangedPayload = unknown> {
   subscribeChanged?(
     handler: (payload: TChangedPayload) => void,
     context?: RuntimeRequestContext,
   ): RuntimeUnsubscribe
-}
-
-export interface RuntimeSchedulerAdapter<
-  TGetRequest = unknown,
-  TRunNowRequest = unknown,
-  TSetEnabledRequest = unknown,
-  TCreateTaskRequest = unknown,
-  TUpdateTaskRequest = unknown,
-  TDeleteTaskRequest = unknown,
-  TListRunsRequest = unknown,
-  TGetRunRequest = unknown,
-> {
-  listTasks(context?: RuntimeRequestContext): Promise<unknown>
-  getTask?(request: TGetRequest, context?: RuntimeRequestContext): Promise<unknown>
-  runTaskNow?(request: TRunNowRequest, context?: RuntimeRequestContext): Promise<unknown>
-  setTaskEnabled?(request: TSetEnabledRequest, context?: RuntimeRequestContext): Promise<unknown>
-  createTask?(request: TCreateTaskRequest, context?: RuntimeRequestContext): Promise<unknown>
-  updateTask?(request: TUpdateTaskRequest, context?: RuntimeRequestContext): Promise<unknown>
-  deleteTask?(request: TDeleteTaskRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  listRuns?(request: TListRunsRequest, context?: RuntimeRequestContext): Promise<unknown>
-  getRun?(request: TGetRunRequest, context?: RuntimeRequestContext): Promise<unknown>
 }
 
 export interface RuntimeSkillsAdapter {
@@ -465,12 +427,9 @@ export interface OnethingRuntimeFacadeOptions<
   themes?: RuntimeThemesAdapter
   prompts?: RuntimePromptsAdapter
   files?: RuntimeFilesAdapter
-  projectDirs?: RuntimeProjectDirsAdapter
-  variables?: RuntimeVariablesAdapter
   media?: RuntimeMediaAdapter
   todoPlan?: RuntimeTodoPlanAdapter
   scratchpad?: RuntimeScratchpadAdapter
-  scheduler?: RuntimeSchedulerAdapter
   skills?: RuntimeSkillsAdapter
   plugins?: RuntimePluginsAdapter
   oauth?: RuntimeOAuthAdapter
@@ -544,12 +503,9 @@ export interface OnethingRuntimeFacade<
   readonly themes?: RuntimeThemesAdapter
   readonly prompts?: RuntimePromptsAdapter
   readonly files?: RuntimeFilesAdapter
-  readonly projectDirs?: RuntimeProjectDirsAdapter
-  readonly variables?: RuntimeVariablesAdapter
   readonly media?: RuntimeMediaAdapter
   readonly todoPlan?: RuntimeTodoPlanAdapter
   readonly scratchpad?: RuntimeScratchpadAdapter
-  readonly scheduler?: RuntimeSchedulerAdapter
   readonly skills?: RuntimeSkillsAdapter
   readonly plugins?: RuntimePluginsAdapter
   readonly oauth?: RuntimeOAuthAdapter
@@ -694,12 +650,9 @@ export function createOnethingRuntimeFacade<
     themes: options.themes ? Object.freeze({ ...options.themes }) : undefined,
     prompts: options.prompts ? Object.freeze({ ...options.prompts }) : undefined,
     files: options.files ? Object.freeze({ ...options.files }) : undefined,
-    projectDirs: options.projectDirs ? Object.freeze({ ...options.projectDirs }) : undefined,
-    variables: options.variables ? Object.freeze({ ...options.variables }) : undefined,
     media: options.media ? Object.freeze({ ...options.media }) : undefined,
     todoPlan: options.todoPlan ? Object.freeze({ ...options.todoPlan }) : undefined,
     scratchpad: options.scratchpad ? Object.freeze({ ...options.scratchpad }) : undefined,
-    scheduler: options.scheduler ? Object.freeze({ ...options.scheduler }) : undefined,
     skills: options.skills ? Object.freeze({ ...options.skills }) : undefined,
     plugins: options.plugins ? Object.freeze({ ...options.plugins }) : undefined,
     oauth: options.oauth ? Object.freeze({ ...options.oauth }) : undefined,

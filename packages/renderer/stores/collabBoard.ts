@@ -13,6 +13,7 @@ import type {
 } from '@shared/ipc.js'
 import { platformApi } from '@/platform'
 import { collabApi } from '@/platform/collab-client'
+import { permissionApi } from '@/platform/permission-client'
 // 静态引没有环:chat 对 sessions 的依赖是**动态** import,所以静态图上
 // sessions → collabBoard → chat 是一条直线。
 import { useChatStore } from './chat'
@@ -160,7 +161,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
   async function reconcilePending(sessionId: string): Promise<void> {
     const generation = nextReconcileGeneration(sessionId)
     try {
-      const response = await platformApi.getPendingPermissions(sessionId)
+      const response = await permissionApi.getPending({ sessionId })
       // 更新的一问已经在路上(或已经答完),这份答案不再是真相。
       if (reconcileGenerations.get(sessionId) !== generation) return
       const prompts = response?.success && response.pending ? response.pending : []

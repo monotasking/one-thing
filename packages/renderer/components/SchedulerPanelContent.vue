@@ -561,6 +561,7 @@ import type {
   SchedulerTaskSnapshotDTO,
 } from '@/types'
 import { platformApi } from '@/platform'
+import { schedulerApi } from '@/platform/scheduler-client'
 
 const agentsStore = useAgentsStore()
 const { confirm } = useConfirm()
@@ -571,10 +572,6 @@ const props = withDefaults(defineProps<{
 }>(), {
   active: true,
 })
-
-function getSchedulerApi() {
-  return platformApi
-}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
@@ -816,10 +813,9 @@ async function saveTask(): Promise<void> {
       schedule: buildSchedule(),
       workingDirectory: form.value.workingDirectory.trim() || undefined,
     }
-    const schedulerApi = getSchedulerApi()
     const response = editingId.value
-      ? await schedulerApi.updateSchedulerTask({ id: editingId.value, ...payload })
-      : await schedulerApi.createSchedulerTask(payload)
+      ? await schedulerApi.updateTask({ id: editingId.value, ...payload })
+      : await schedulerApi.createTask(payload)
     if (!response.success || !response.task) throw new Error(response.error || 'Failed to save scheduled task')
     editing.value = false
     editingId.value = ''
@@ -836,7 +832,7 @@ async function loadAll(nextSelectedId = selectedTaskId.value): Promise<void> {
   error.value = ''
   try {
     const response = await withTimeout(
-      getSchedulerApi().listSchedulerTasks(),
+      schedulerApi.list({}),
       TASK_LOAD_TIMEOUT_MS,
       'Loading scheduled tasks timed out. Please refresh again.',
     )
@@ -861,7 +857,7 @@ async function loadRuns(taskId: string): Promise<void> {
   selectedRun.value = null
   runs.value = []
   try {
-    const response = await getSchedulerApi().listSchedulerRuns({ taskId, limit: 50 })
+    const response = await schedulerApi.listRuns({ taskId, limit: 50 })
     if (!response.success || !response.runs) throw new Error(response.error || 'Failed to load run history')
     runs.value = response.runs
   } catch (err) {
@@ -891,7 +887,7 @@ async function runNow(taskId: string): Promise<void> {
   actionId.value = taskId
   error.value = ''
   try {
-    const response = await getSchedulerApi().runSchedulerTaskNow({ id: taskId, force: true })
+    const response = await schedulerApi.runNow({ id: taskId, force: true })
     if (!response.success) throw new Error(response.error || 'Failed to run task')
     await loadAll(taskId)
   } catch (err) {
@@ -905,7 +901,7 @@ async function setEnabled(taskId: string, enabled: boolean): Promise<void> {
   actionId.value = taskId
   error.value = ''
   try {
-    const response = await getSchedulerApi().setSchedulerTaskEnabled({ id: taskId, enabled })
+    const response = await schedulerApi.setEnabled({ id: taskId, enabled })
     if (!response.success) throw new Error(response.error || 'Failed to update task')
     await loadAll(taskId)
   } catch (err) {
@@ -930,7 +926,7 @@ async function deleteTask(taskId: string): Promise<void> {
   if (!accepted) return
   error.value = ''
   try {
-    const response = await getSchedulerApi().deleteSchedulerTask({ id: taskId })
+    const response = await schedulerApi.deleteTask({ id: taskId })
     if (!response.success) throw new Error(response.error || 'Failed to delete task')
     await loadAll('')
   } catch (err) {
@@ -939,9 +935,8 @@ async function deleteTask(taskId: string): Promise<void> {
 }
 
 async function openRunSession(sessionId: string): Promise<void> {
-  const schedulerApi = getSchedulerApi()
-  await schedulerApi.updateSessionArchived(sessionId, false, null)
-  await schedulerApi.switchSession(sessionId)
+  await platformApi.updateSessionArchived(sessionId, false, null)
+  await platformApi.switchSession(sessionId)
 }
 
 function formatSchedule(schedule?: SchedulerSchedule): string {

@@ -26,11 +26,6 @@ import type {
 	MediaUsageTag,
 	MarkdownResolveAssetRequest,
 	MarkdownSaveAttachmentsRequest,
-	SchedulerCreateTaskRequest,
-	SchedulerDeleteTaskRequest,
-	SchedulerGetRunRequest,
-	SchedulerListRunsRequest,
-	SchedulerUpdateTaskRequest,
 	SearchRequest,
 	SearchWindowAnchor,
 	SpacesChangedEvent,
@@ -100,11 +95,7 @@ import type {
 	MCPServerConfig,
 	ACPAgentConfig,
 	TodoPlanChangedPayload,
-	ScratchpadAdoptRequest,
 	ScratchpadChangedPayload,
-	ScratchpadDeleteRequest,
-	ScratchpadGetRequest,
-	ScratchpadUpdateRequest,
 	EvalsDiagnoseProgressEvent,
 	EvalsReplayProgressEvent,
 	EvalsRunProgressEvent,
@@ -470,26 +461,7 @@ const electronAPI = {
 	// ── Variables subsystem ─────────────────────────────────────
 	// Live updates arrive through the existing session:variables-updated
 	// event; these RPCs are for explicit fetches and writes.
-	listVariables: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_LIST, { sessionId }),
-
-	setVariable: (
-		sessionId: string,
-		name: string,
-		value: string,
-		description?: string,
-		scope?: "global" | "session" | "agent" | "project",
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_SET, {
-			sessionId,
-			name,
-			value,
-			description,
-			scope,
-		}),
-
-	deleteVariable: (sessionId: string, name: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_DELETE, { sessionId, name }),
+	// ── Variables:已走通用 RPC 通道(variablesRouter),本文件不再暴露。──
 
 	// ── Session goals:三条 RPC 已走通用通道(goalRouter),本文件不再暴露。
 	// 实时变化仍从 session:goal-updated 事件来。──────────────────
@@ -597,34 +569,7 @@ const electronAPI = {
 
 	// Project directories — independent module.
 	// `workspaceId` 缺省 = default 空间(批 B4:名册 per-space)。
-	projectDirsList: (workspaceId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_LIST, { workspaceId }),
-
-	projectDirsGet: (path: string, workspaceId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_GET, { path, workspaceId }),
-
-	projectDirsAdd: (
-		path: string,
-		description?: string,
-		paths?: string[],
-		workspaceId?: string,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_ADD, {
-			path,
-			description,
-			paths,
-			workspaceId,
-		}),
-
-	projectDirsUpdate: (
-		path: string,
-		patch: { description?: string; paths?: string[] },
-		workspaceId?: string,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_UPDATE, { path, ...patch, workspaceId }),
-
-	projectDirsRemove: (path: string, workspaceId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_REMOVE, { path, workspaceId }),
+	// ── Project Dirs:已走通用 RPC 通道(projectDirsRouter),本文件不再暴露。──
 
 	getSessionTokenUsage: (sessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, sessionId),
@@ -1264,11 +1209,7 @@ const electronAPI = {
 	// Permission methods. Responses go through emitCommand() with
 	// type: 'command:permission-respond' (EventBus channel affinity validation).
 	// Permission requests arrive via session:event channel as 'permission:request'.
-	getPendingPermissions: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_GET_PENDING, sessionId),
-
-	clearSessionPermissions: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_CLEAR_SESSION, sessionId),
+	// ── Permission(活询问):已走通用 RPC 通道(permissionRouter),本文件不再暴露。──
 
 	// Interaction methods (agent 提问 → 用户应答). 请求整体透传,不逐字段手抄。
 	// 提问事件从 session:event 通道以 'interaction:requested' 到达;
@@ -1450,47 +1391,12 @@ const electronAPI = {
 			sessionId,
 		}),
 
-	listSchedulerTasks: () => ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_LIST),
-
-	getSchedulerTask: (request: { id: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_GET, request),
-
-	runSchedulerTaskNow: (request: { id: string; force?: boolean }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_RUN_NOW, request),
-
-	setSchedulerTaskEnabled: (request: { id: string; enabled: boolean }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_SET_ENABLED, request),
-
-	createSchedulerTask: (request: SchedulerCreateTaskRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_CREATE_TASK, request),
-
-	updateSchedulerTask: (request: SchedulerUpdateTaskRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_UPDATE_TASK, request),
-
-	deleteSchedulerTask: (request: SchedulerDeleteTaskRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_DELETE_TASK, request),
-
-	listSchedulerRuns: (request: SchedulerListRunsRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_LIST_RUNS, request),
-
-	getSchedulerRun: (request: SchedulerGetRunRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_GET_RUN, request),
+	// ── Scheduler:已走通用 RPC 通道(schedulerRouter),本文件不再暴露。──
 
 	// ── User Prompts:已走通用 RPC 通道(promptsRouter),本文件不再暴露。──
 
 	// ── App State (restore on startup) ─────────────
-	getAppState: () => ipcRenderer.invoke(IPC_CHANNELS.GET_APP_STATE),
-
-	saveUIState: (uiState: {
-		openTabs?: Array<{
-			type: string;
-			sessionId?: string;
-			filePath?: string;
-			title?: string;
-		}>;
-		activeTabIndex?: number;
-		sidebarCollapsed?: boolean;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.SAVE_UI_STATE, uiState),
+	// ── App State:已走通用 RPC 通道(appStateRouter),本文件不再暴露。──
 
 	// ── Search Everywhere ──────────────────────────
 	toggleSearchWindow: (options?: SearchWindowOpenOptions) =>
@@ -1563,19 +1469,8 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.TODO_PLAN_CHANGED, listener);
 	},
 
-	// Scratchpad (per-session draft paper)
-	getScratchpad: (request: ScratchpadGetRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_GET, request),
-
-	updateScratchpad: (request: ScratchpadUpdateRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_UPDATE, request),
-
-	deleteScratchpad: (request: ScratchpadDeleteRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_DELETE, request),
-
-	adoptScratchpad: (request: ScratchpadAdoptRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SCRATCHPAD_ADOPT, request),
-
+	// Scratchpad(草稿纸):四条数据面已走通用 RPC 通道(scratchpadRouter),
+	// 本文件只剩下面那条 SCRATCHPAD_CHANGED 推送订阅。
 	onScratchpadChanged: (callback: (data: ScratchpadChangedPayload) => void) => {
 		const listener = (_event: IpcRendererEvent, data: ScratchpadChangedPayload) =>
 			callback(data);

@@ -1038,104 +1038,6 @@ describe('createOnethingHttpServer', () => {
     expect(commands.success).toBe(true)
   })
 
-  it('routes scheduler requests through the runtime facade with owner context', async () => {
-    const listTasks = vi.fn(async () => ({ success: true, tasks: [] }))
-    const getTask = vi.fn(async request => ({ success: true, task: { id: request.id } }))
-    const runTaskNow = vi.fn(async request => ({ success: true, record: { taskId: request.id } }))
-    const setTaskEnabled = vi.fn(async request => ({ success: true, task: { id: request.id, enabled: request.enabled } }))
-    const createTask = vi.fn(async request => ({ success: true, task: { id: 'task-1', ...request } }))
-    const updateTask = vi.fn(async request => ({ success: true, task: request }))
-    const deleteTask = vi.fn(async () => ({ success: true }))
-    const listRuns = vi.fn(async () => ({ success: true, runs: [] }))
-    const getRun = vi.fn(async request => ({ success: true, run: { runId: request.runId } }))
-    const runtime = createOnethingRuntimeFacade({
-      sessions: {
-        list: async () => ({ success: true, sessions: [] }),
-        create: async (name: string) => ({ id: 'session-1', name }),
-      },
-      commands: {
-        emit: async () => ({ success: true }),
-      },
-      events: {
-        subscribe: () => () => {},
-      },
-      scheduler: {
-        listTasks,
-        getTask,
-        runTaskNow,
-        setTaskEnabled,
-        createTask,
-        updateTask,
-        deleteTask,
-        listRuns,
-        getRun,
-      },
-    })
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
-    const baseUrlValue = baseUrl(server)
-    const headers = contextHeaders('alice', 'scheduler-workspace')
-    const jsonHeaders = { ...headers, 'content-type': 'application/json' }
-
-    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks`, { headers })).resolves.toEqual({
-      success: true,
-      tasks: [],
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/get`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ id: 'task-1' }),
-    })).resolves.toEqual({ success: true, task: { id: 'task-1' } })
-    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/run-now`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ id: 'task-1', force: true }),
-    })).resolves.toEqual({ success: true, record: { taskId: 'task-1' } })
-    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/enabled`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ id: 'task-1', enabled: false }),
-    })).resolves.toEqual({ success: true, task: { id: 'task-1', enabled: false } })
-    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ name: 'Task' }),
-    })).resolves.toEqual({ success: true, task: { id: 'task-1', name: 'Task' } })
-    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/update`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ id: 'task-1', name: 'Updated' }),
-    })).resolves.toEqual({ success: true, task: { id: 'task-1', name: 'Updated' } })
-    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/delete`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ id: 'task-1' }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/scheduler/runs`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ taskId: 'task-1', limit: 10 }),
-    })).resolves.toEqual({ success: true, runs: [] })
-    await expect(fetchJson(`${baseUrlValue}/api/scheduler/runs/get`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ taskId: 'task-1', runId: 'run-1' }),
-    })).resolves.toEqual({ success: true, run: { runId: 'run-1' } })
-
-    expect(listTasks).toHaveBeenCalledWith(expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'scheduler-workspace',
-    }))
-    expect(createTask).toHaveBeenCalledWith({ name: 'Task' }, expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'scheduler-workspace',
-    }))
-    expect(getRun).toHaveBeenCalledWith({ taskId: 'task-1', runId: 'run-1' }, expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'scheduler-workspace',
-    }))
-  })
-
   it('routes chat requests through the runtime facade with owner context', async () => {
     const getHistory = vi.fn(async (sessionId: string) => ({
       success: true,
@@ -1850,176 +1752,89 @@ describe('createOnethingHttpServer', () => {
     disposeDomain()
   })
 
-  it('exposes owner-scoped variables and emits session variable updates', async () => {
-    const workspaceRoot = await createTempDir('onething-server-variables-')
-    const serverRuntime = await createTestServerRuntime({ workspaceRoot })
-    runtimes.push(serverRuntime)
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN,
-      runtime: serverRuntime.runtime,
-    }))
-    const baseUrlValue = baseUrl(server)
-    const aliceHeaders = contextHeaders('alice', 'variables-workspace')
-    const bobHeaders = contextHeaders('bob', 'variables-workspace')
-    const created = await createSession(baseUrlValue, 'Variables session', aliceHeaders)
-    const sessionId = created.session?.id
-    expect(sessionId).toBeTruthy()
-
-    const events = await fetch(`${baseUrlValue}/api/events`, { headers: aliceHeaders })
-    expect(events.status).toBe(200)
-
-    await expect(fetchJson(`${baseUrlValue}/api/variables/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      variables: expect.arrayContaining([
-        expect.objectContaining({ name: 'workdir', scope: 'session' }),
-        expect.objectContaining({ name: 'user_note_dir', scope: 'global' }),
-      ]),
-    }))
-
-    await expect(fetchJson(`${baseUrlValue}/api/variables/set`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        sessionId,
-        name: 'topic',
-        value: 'web variables',
-        description: 'Current topic',
-        scope: 'session',
-      }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      variable: expect.objectContaining({
-        name: 'topic',
-        value: 'web variables',
-        scope: 'session',
-      }),
-    }))
-
-    const eventText = await readUntil(events, text => text.includes('session:variables-updated'))
-    expect(eventText).toContain('session:variables-updated')
-
-    await expect(fetchJson(`${baseUrlValue}/api/variables/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      variables: expect.arrayContaining([
-        expect.objectContaining({ name: 'topic', value: 'web variables', scope: 'session' }),
-      ]),
-    }))
-
-    await expect(fetchJson(`${baseUrlValue}/api/variables/list`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })).resolves.toEqual({
-      success: false,
-      variables: [],
-      error: 'Session not found',
-      code: 'NOT_FOUND',
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/variables/delete`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId, name: 'topic' }),
-    })).resolves.toEqual({ success: true })
-  })
-
-  it('manages owner-scoped project directories inside the web workspace sandbox', async () => {
+  /**
+   * 结构债 P4c:project-dirs 的五条 REST 路由与 server 自己那套 per-owner
+   * `ServerProjectDirsStore`(`owners/<uid>/<wid>/project-dirs.json`)一起删了,名册从此
+   * 是 app 层那一份(per-**space**,不是 per-owner)。这条断言因此改了两处:
+   *  - 走 `POST /api/rpc`(与授权账页同一条判例),不再走 REST;
+   *  - 「bob 看不见 alice 的名册」这一句退役 —— 分家的维度从 owner 换成了
+   *    `workspaceId`(信封里的键),而不是请求头里的身份。
+   * **没退役的是沙箱护栏**:联网宿主上路径仍要夹进 `<workspaceRoot>/<uid>/<wid>`,
+   * 夹不住照旧回 `{ success:false, code:'WORKSPACE_PATH' }` —— 实现从 server adapter
+   * 搬到了 `app/rpc/sandbox.ts`,桌面(transport:'ipc')不夹,与迁移前逐字同义。
+   */
+  it('clamps project directories to the web workspace sandbox over the generic RPC route', async () => {
     const workspaceRoot = await createTempDir('onething-server-project-dirs-')
     const dataRoot = await createTempDir('onething-server-project-dirs-data-')
+    // 名册落在 app store 上,所以这条用例必须把 store 根指到临时目录 ——
+    // 否则它会写进跑测试那台机器的 `~/.onething`。
+    const storeRoot = await createTempDir('onething-server-project-dirs-store-')
+    const originalStorePath = process.env.ONETHING_STORE_PATH
+    process.env.ONETHING_STORE_PATH = storeRoot
     const serverRuntime = await createTestServerRuntime({ workspaceRoot, dataRoot })
     runtimes.push(serverRuntime)
+    const { registerProjectDirsRpcDomain } = await import('../../rpc/domains/project-dirs.js')
+    const disposeDomain = registerProjectDirsRpcDomain()
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
+      workspaceRoot: serverRuntime.workspaceRoot,
     }))
     const baseUrlValue = baseUrl(server)
     const aliceHeaders = contextHeaders('alice', 'project-workspace')
-    const bobHeaders = contextHeaders('bob', 'project-workspace')
-    const created = await createSession(baseUrlValue, 'Project dirs session', aliceHeaders)
-    const workspaceDir = created.session?.workingDirectory
-    expect(workspaceDir).toBeTruthy()
+    // 名册按 space 分家(批 B4);这条用例用一个自己的 space,免得撞上别人。
+    const workspaceId = 'project-rpc'
+    const projectDirsRpc = async (method: string, payload: unknown) => {
+      const response = await fetchJson(`${baseUrlValue}/api/rpc`, {
+        method: 'POST',
+        headers: { ...aliceHeaders, 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: 'projectDirs', method, payload }),
+      })
+      expect(response.ok).toBe(true)
+      return response.data
+    }
 
-    const projectPath = join(workspaceDir!, 'project-a')
-    await mkdir(projectPath, { recursive: true })
+    try {
+      const created = await createSession(baseUrlValue, 'Project dirs session', aliceHeaders)
+      const workspaceDir = created.session?.workingDirectory
+      expect(workspaceDir).toBeTruthy()
+      const projectPath = join(workspaceDir!, 'project-a')
+      await mkdir(projectPath, { recursive: true })
 
-    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: projectPath, description: 'Alpha project' }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      project: expect.objectContaining({
+      await expect(projectDirsRpc('add', {
         path: projectPath,
         description: 'Alpha project',
-      }),
-    }))
-    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
-      headers: aliceHeaders,
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      entries: [
-        expect.objectContaining({
-          path: projectPath,
-          description: 'Alpha project',
-        }),
-      ],
-    }))
-    await expect(fetchJson(`${baseUrlValue}/api/project-dirs/get`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: projectPath }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      project: expect.objectContaining({
-        path: projectPath,
-        description: 'Alpha project',
-      }),
-    }))
-    await expect(fetchJson(`${baseUrlValue}/api/project-dirs/update`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: projectPath, description: 'Updated project' }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      project: expect.objectContaining({
-        path: projectPath,
-        description: 'Updated project',
-      }),
-    }))
-    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
-      headers: bobHeaders,
-    })).resolves.toEqual({
-      success: true,
-      entries: [],
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: '../outside', description: 'Outside' }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Project directory path must stay inside the workspace sandbox root.',
-      code: 'WORKSPACE_PATH',
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/project-dirs/remove`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: projectPath }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
-      headers: aliceHeaders,
-    })).resolves.toEqual({
-      success: true,
-      entries: [],
-    })
+        workspaceId,
+      })).resolves.toEqual(expect.objectContaining({
+        success: true,
+        project: expect.objectContaining({ path: projectPath, description: 'Alpha project' }),
+      }))
+
+      await expect(projectDirsRpc('list', { workspaceId })).resolves.toEqual(expect.objectContaining({
+        success: true,
+        entries: [expect.objectContaining({ path: projectPath, description: 'Alpha project' })],
+      }))
+
+      // 越界的那一条:护栏搬家之后答案一个字没变。
+      await expect(projectDirsRpc('add', {
+        path: '../outside',
+        description: 'Outside',
+        workspaceId,
+      })).resolves.toEqual({
+        success: false,
+        error: 'Project directory path must stay inside the workspace sandbox root.',
+        code: 'WORKSPACE_PATH',
+      })
+
+      await expect(projectDirsRpc('remove', { path: projectPath, workspaceId }))
+        .resolves.toEqual(expect.objectContaining({ success: true }))
+      await expect(projectDirsRpc('list', { workspaceId }))
+        .resolves.toEqual(expect.objectContaining({ success: true, entries: [] }))
+    } finally {
+      disposeDomain()
+      if (originalStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+      else process.env.ONETHING_STORE_PATH = originalStorePath
+    }
   })
 
   it('manages owner-scoped media assets and serves web-safe media files', async () => {
@@ -2685,9 +2500,21 @@ describe('createOnethingHttpServer', () => {
       }))
       const baseUrlValue = baseUrl(server)
 
-      await expect(fetchJson(`${baseUrlValue}/api/app-state`)).resolves.toEqual(expect.objectContaining({
-        currentSessionId: session.id,
+      // app-state 域已迁到通用 RPC 通道(P4c),`GET /api/app-state` 不再存在;
+      // 同一份 `app-state.json` 现在经 `POST /api/rpc` 的 appState.get 读出来。
+      // 这个 fixture 的 runtime 是手搭的,不走 `registerAppRpcDomains`,所以域要
+      // 自己挂一下 —— 挂的是**真** handler,读的正是 ONETHING_STORE_PATH 那份。
+      const { registerAppStateRpcDomain } = await import('../../rpc/domains/app-state.js')
+      const disposeAppStateDomain = registerAppStateRpcDomain()
+      await expect(fetchJson(`${baseUrlValue}/api/rpc`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: 'appState', method: 'get', payload: {} }),
+      })).resolves.toEqual(expect.objectContaining({
+        ok: true,
+        data: expect.objectContaining({ currentSessionId: session.id }),
       }))
+      disposeAppStateDomain()
 
       const list = await fetchJson(`${baseUrlValue}/api/sessions`)
       expect(list.sessions).toEqual([
@@ -3521,65 +3348,18 @@ describe('createOnethingHttpServer', () => {
     unsubscribe()
   })
 
-  it('exposes pending permissions through the runtime facade with ownership checks', async () => {
-    const serverRuntime = await createTestServerRuntime()
-    runtimes.push(serverRuntime)
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN,
-      runtime: serverRuntime.runtime,
-    }))
-
-    const aliceHeaders = contextHeaders('alice', 'workspace-pending')
-    const bobHeaders = contextHeaders('bob', 'workspace-pending')
-    const created = await createSession(baseUrl(server), 'Pending permission session', aliceHeaders)
-    const sessionId = created.session?.id
-    expect(sessionId).toBeTruthy()
-
-    await (serverRuntime.eventBus as any).emit(sessionId!, {
-      type: 'permission:request',
-      requestId: 'permission-pending-1',
-      targetChannel: 'api',
-      toolCallId: 'tool-1',
-      messageId: 'message-1',
-      permissionType: 'bash',
-      title: 'Run command',
-      pattern: 'git status',
-      metadata: { command: 'git status' },
-    })
-
-    const alicePending = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/permissions/pending`, {
-      headers: aliceHeaders,
-    })
-    expect(alicePending).toEqual({
-      success: true,
-      pending: [
-        expect.objectContaining({
-          id: 'permission-pending-1',
-          type: 'bash',
-          sessionId,
-          title: 'Run command',
-          userId: 'alice',
-          workspaceId: 'workspace-pending',
-        }),
-      ],
-    })
-
-    const bobPending = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/permissions/pending`, {
-      headers: bobHeaders,
-    })
-    expect(bobPending).toEqual({ success: false, pending: [], error: 'Session not found' })
-
-    const cleared = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/permissions/clear`, {
-      method: 'POST',
-      headers: aliceHeaders,
-    })
-    expect(cleared).toEqual({ success: true })
-
-    const emptyPending = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/permissions/pending`, {
-      headers: aliceHeaders,
-    })
-    expect(emptyPending).toEqual({ success: true, pending: [] })
-  })
+  /**
+   * 结构债 P4c:活询问的读/清整只迁到 `permission` RPC 域,
+   * `/api/sessions/:id/permissions/{pending,clear}` 两条路由与它们背后的
+   * `permissions.getPending` / `permissions.clearSession` adapter 一起删了 ——
+   * 这条端到端断言随之退役。它测的两件事都随实现消失:
+   *  - server 自己维护的 `pendingPermissions` 镜像(只在 `persistsMessages` 为假的
+   *    回声后端上有读者,真引擎那侧一直是 `Permission.getPendingPrompts`);
+   *  - adapter 里那道「会话不属于这个 owner → Session not found」的归属护栏 ——
+   *    桌面那条实现从来没有它,搬家取的是桌面的形状(见
+   *    `app/rpc/domains/permission.ts` 的文件头,那里逐条记了这两处差异)。
+   * 新路的用例在 `app/rpc/__tests__/permission-domain.test.ts`。
+   */
 
   /**
    * 主线 T 批 3：授权账页迁到通用 RPC 通道，这条端到端断言跟着改走

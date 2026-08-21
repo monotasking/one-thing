@@ -30,10 +30,15 @@ vi.mock('@/platform', () => ({
       mocks.handlers.push(handler)
       return () => {}
     },
-    getPendingPermissions: mocks.getPendingPermissions,
     updateToolCall: vi.fn().mockResolvedValue({ success: true }),
     updateMessageThinkingTime: vi.fn().mockResolvedValue({ success: true }),
   },
+}))
+
+// permission(活询问)域已迁到通用 RPC 通道(P4c):store 引的是壳外客户端
+// `@/platform/permission-client`,入参是信封而不是位置参数。
+vi.mock('@/platform/permission-client', () => ({
+  permissionApi: { getPending: mocks.getPendingPermissions },
 }))
 
 vi.mock('@/platform/collab-client', () => ({
@@ -181,7 +186,7 @@ describe('待审批账本:收敛前后的四个等价场景', () => {
 
     await board.ensurePendingForSession('s1')
 
-    expect(mocks.getPendingPermissions).toHaveBeenCalledWith('s1')
+    expect(mocks.getPendingPermissions).toHaveBeenCalledWith({ sessionId: 's1' })
     expect(toolCallOf()).toMatchObject({ permissionId: 'p1', requiresConfirmation: true })
   })
 })

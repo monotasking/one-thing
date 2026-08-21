@@ -35,6 +35,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { platformApi } from '@/platform'
+import { appStateApi } from '@/platform/app-state-client'
 import { getLogger } from '@/services/log'
 import { useSessionsStore } from './sessions'
 import {
@@ -219,16 +220,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function writeArchiveNow(): void {
-    if (!platformApi?.saveUIState) return
-    platformApi
-      .saveUIState({ workspace: serializeWorkspaceArchive(snapshotArchive()) })
+    appStateApi
+      .saveUiState({ workspace: serializeWorkspaceArchive(snapshotArchive()) })
       .catch(() => {})
   }
 
   function persist() {
     // Before hydration finishes there is nothing worth writing (and writing
     // would clobber the saved state we are about to restore from).
-    if (!hydrated.value || !platformApi?.saveUIState) return
+    if (!hydrated.value) return
     if (persistTimer) clearTimeout(persistTimer)
     persistTimer = setTimeout(() => {
       persistTimer = null

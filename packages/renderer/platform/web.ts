@@ -16,19 +16,7 @@ import type {
 	MediaUsageTag,
 	PermissionMode,
 	ProxySettings,
-	SchedulerCreateTaskRequest,
-	SchedulerDeleteTaskRequest,
-	SchedulerGetRequest,
-	SchedulerGetRunRequest,
-	SchedulerListRunsRequest,
-	SchedulerRunNowRequest,
-	SchedulerSetEnabledRequest,
-	SchedulerUpdateTaskRequest,
-	ScratchpadAdoptRequest,
 	ScratchpadChangedPayload,
-	ScratchpadDeleteRequest,
-	ScratchpadGetRequest,
-	ScratchpadUpdateRequest,
 	SearchRequest,
 	Step,
 	TodoPlanChangedPayload,
@@ -538,12 +526,6 @@ const webApi = {
 	capabilities: webCapabilities,
 	getCapabilities: refreshWebCapabilities,
 
-	getAppState: () => requestJson("/api/app-state"),
-	saveUIState: (uiState: {
-		workspace?: import("@/stores/workspace-persistence").PersistedWorkspace;
-		sidebarCollapsed?: boolean;
-		sessionReadMarks?: import("@/stores/session-read-marks").PersistedSessionReadMarks;
-	}) => postJson("/api/app-state/ui", uiState),
 
 	getSettings: () => requestJson("/api/settings"),
 	saveSettings: (settings: AppSettings) => postJson("/api/settings", settings),
@@ -747,14 +729,6 @@ const webApi = {
 	acpCancelSession: (sessionId: string, agentId?: string) =>
 		postJson("/api/acp/sessions/cancel", { sessionId, agentId }),
 
-	getScratchpad: (request: ScratchpadGetRequest) =>
-		postJson("/api/scratchpad/get", request),
-	updateScratchpad: (request: ScratchpadUpdateRequest) =>
-		postJson("/api/scratchpad/update", request),
-	deleteScratchpad: (request: ScratchpadDeleteRequest) =>
-		postJson("/api/scratchpad/delete", request),
-	adoptScratchpad: (request: ScratchpadAdoptRequest) =>
-		postJson("/api/scratchpad/adopt", request),
 
 	// Todo / plan 数据面走通用 RPC(todoPlanRouter);窗口面在 web 是本地 DOM 事件。
 	openTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => {
@@ -1028,24 +1002,6 @@ const webApi = {
 		success: false,
 		error: "Evals is not supported in the web build",
 	}),
-	listVariables: (sessionId: string) =>
-		postJson("/api/variables/list", { sessionId }),
-	setVariable: (
-		sessionId: string,
-		name: string,
-		value: string,
-		description?: string,
-		scope?: "global" | "session" | "agent" | "project",
-	) =>
-		postJson("/api/variables/set", {
-			sessionId,
-			name,
-			value,
-			description,
-			scope,
-		}),
-	deleteVariable: (sessionId: string, name: string) =>
-		postJson("/api/variables/delete", { sessionId, name }),
 
 	// ── Generic RPC(主线 T0)。域客户端各占一行,传输面只有这一条。──
 	rpcInvoke,
@@ -1266,24 +1222,6 @@ const webApi = {
 	}),
 	onPluginRequestProgress: () => () => {},
 
-	// 名册 per-space 是桌面宿主的维度:apps/server 没有 space,`workspaceId` 在这里
-	// 收下即丢 —— 传给一个不认识它的宿主只会造成「以为分家了」的假象(批 B4)。
-	projectDirsList: (_workspaceId?: string) => requestJson("/api/project-dirs"),
-	projectDirsGet: (path: string, _workspaceId?: string) =>
-		postJson("/api/project-dirs/get", { path }),
-	projectDirsAdd: (
-		path: string,
-		description?: string,
-		paths?: string[],
-		_workspaceId?: string,
-	) => postJson("/api/project-dirs", { path, description, paths }),
-	projectDirsUpdate: (
-		path: string,
-		patch: { description?: string; paths?: string[] },
-		_workspaceId?: string,
-	) => postJson("/api/project-dirs/update", { path, ...patch }),
-	projectDirsRemove: (path: string, _workspaceId?: string) =>
-		postJson("/api/project-dirs/remove", { path }),
 
 	saveImage: (data: {
 		url?: string;
@@ -1440,15 +1378,6 @@ const webApi = {
 		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/max-tokens`, {
 			maxTokens,
 		}),
-	getPendingPermissions: (sessionId: string) =>
-		requestJson(
-			`/api/sessions/${encodeURIComponent(sessionId)}/permissions/pending`,
-		),
-	clearSessionPermissions: (sessionId: string) =>
-		postJson(
-			`/api/sessions/${encodeURIComponent(sessionId)}/permissions/clear`,
-		),
-
 	getSessionMessagesPage: (request: GetSessionMessagesPageRequest) =>
 		postJson("/api/session-messages/page", request),
 	getSessionUserMarkers: (sessionId: string) =>
@@ -1603,24 +1532,6 @@ const webApi = {
 			"scratchpad:changed",
 			callback,
 		),
-
-	listSchedulerTasks: () => requestJson("/api/scheduler/tasks"),
-	getSchedulerTask: (request: SchedulerGetRequest) =>
-		postJson("/api/scheduler/tasks/get", request),
-	runSchedulerTaskNow: (request: SchedulerRunNowRequest) =>
-		postJson("/api/scheduler/tasks/run-now", request),
-	setSchedulerTaskEnabled: (request: SchedulerSetEnabledRequest) =>
-		postJson("/api/scheduler/tasks/enabled", request),
-	createSchedulerTask: (request: SchedulerCreateTaskRequest) =>
-		postJson("/api/scheduler/tasks", request),
-	updateSchedulerTask: (request: SchedulerUpdateTaskRequest) =>
-		postJson("/api/scheduler/tasks/update", request),
-	deleteSchedulerTask: (request: SchedulerDeleteTaskRequest) =>
-		postJson("/api/scheduler/tasks/delete", request),
-	listSchedulerRuns: (request: SchedulerListRunsRequest) =>
-		postJson("/api/scheduler/runs", request),
-	getSchedulerRun: (request: SchedulerGetRunRequest) =>
-		postJson("/api/scheduler/runs/get", request),
 
 	// Browsers never expose local file paths.
 	getPathForFile: () => "",

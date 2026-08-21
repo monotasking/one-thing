@@ -1162,19 +1162,6 @@ export interface ElectronAPI {
 		edited?: boolean;
 		error?: string;
 	}>;
-	// Variables subsystem (scalar variables)
-	listVariables: (sessionId: string) => Promise<VariablesListResponse>;
-	setVariable: (
-		sessionId: string,
-		name: string,
-		value: string,
-		description?: string,
-		scope?: "global" | "session" | "agent" | "project",
-	) => Promise<VariablesSetResponse>;
-	deleteVariable: (
-		sessionId: string,
-		name: string,
-	) => Promise<VariablesDeleteResponse>;
 	// Session goals:走通用 RPC(goalRouter),方法在 platformApi 上,不在这里。
 	/**
 	 * 通用 RPC 出口(主线 T0)。router 域(usage 起)全走这一条,不再逐域加方法;
@@ -1270,28 +1257,8 @@ export interface ElectronAPI {
 	respondDeepLink: (
 		request: DeepLinkRespondRequest,
 	) => Promise<DeepLinkRespondResponse>;
-	// Project directories — independent module.
-	// 末位 `workspaceId` 缺省 = default 空间(批 B4:名册 per-space)。
-	projectDirsList: (workspaceId?: string) => Promise<ProjectDirsListResponse>;
-	projectDirsGet: (
-		path: string,
-		workspaceId?: string,
-	) => Promise<ProjectDirsGetResponse>;
-	projectDirsAdd: (
-		path: string,
-		description?: string,
-		paths?: string[],
-		workspaceId?: string,
-	) => Promise<ProjectDirsAddResponse>;
-	projectDirsUpdate: (
-		path: string,
-		patch: { description?: string; paths?: string[] },
-		workspaceId?: string,
-	) => Promise<ProjectDirsUpdateResponse>;
-	projectDirsRemove: (
-		path: string,
-		workspaceId?: string,
-	) => Promise<ProjectDirsRemoveResponse>;
+	// Project directories:已走通用 RPC 通道(projectDirsRouter +
+	// `@/platform/project-dirs-client`)。
 	getSessionTokenUsage: (sessionId: string) => Promise<{
 		success: boolean;
 		usage?: {
@@ -1501,15 +1468,8 @@ export interface ElectronAPI {
 		messageId: string,
 	) => Promise<{ success: boolean; error?: string }>;
 
-	// Permission methods
-	clearSessionPermissions: (
-		sessionId: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	getPendingPermissions: (sessionId: string) => Promise<{
-		success: boolean;
-		pending?: PermissionInfo[];
-		error?: string;
-	}>;
+	// Permission(活询问):已走通用 RPC 通道(permissionRouter +
+	// `@/platform/permission-client`)。应答仍走命令总线。
 
 	// Interaction methods (agent 提问 → 用户应答). 提问事件走 session:event 通道
 	// ('interaction:requested' / 'interaction:settled'),这两条只管补水和写回。
@@ -2054,58 +2014,7 @@ export interface ElectronAPI {
 		sessionId: string,
 	) => Promise<ExecutePluginCommandResponse>;
 
-	listSchedulerTasks: () => Promise<SchedulerListResponse>;
-	getSchedulerTask: (
-		request: SchedulerGetRequest,
-	) => Promise<SchedulerGetResponse>;
-	runSchedulerTaskNow: (
-		request: SchedulerRunNowRequest,
-	) => Promise<SchedulerRunNowResponse>;
-	setSchedulerTaskEnabled: (
-		request: SchedulerSetEnabledRequest,
-	) => Promise<SchedulerSetEnabledResponse>;
-	createSchedulerTask: (
-		request: SchedulerCreateTaskRequest,
-	) => Promise<SchedulerWriteTaskResponse>;
-	updateSchedulerTask: (
-		request: SchedulerUpdateTaskRequest,
-	) => Promise<SchedulerWriteTaskResponse>;
-	deleteSchedulerTask: (
-		request: SchedulerDeleteTaskRequest,
-	) => Promise<SchedulerDeleteTaskResponse>;
-	listSchedulerRuns: (
-		request: SchedulerListRunsRequest,
-	) => Promise<SchedulerListRunsResponse>;
-	getSchedulerRun: (
-		request: SchedulerGetRunRequest,
-	) => Promise<SchedulerGetRunResponse>;
-
-	// App State
-	// `openTabs`/`activeTabIndex` are the legacy (v1) flat tab list, read-only
-	// for migration; `workspace` is the v2 whole-tree format written by the
-	// workspace store.
-	getAppState: () => Promise<{
-		currentSessionId: string;
-		currentWorkspaceId: string | null;
-		openTabs?: Array<{
-			type: string;
-			sessionId?: string;
-			filePath?: string;
-			initialFilePath?: string;
-			activeFilePath?: string;
-			workspaceRoot?: string;
-			title?: string;
-		}>;
-		activeTabIndex?: number;
-		workspace?: import("@/stores/workspace-persistence").PersistedWorkspace;
-		sidebarCollapsed?: boolean;
-		sessionReadMarks?: import("@/stores/session-read-marks").PersistedSessionReadMarks;
-	}>;
-	saveUIState: (uiState: {
-		workspace?: import("@/stores/workspace-persistence").PersistedWorkspace;
-		sidebarCollapsed?: boolean;
-		sessionReadMarks?: import("@/stores/session-read-marks").PersistedSessionReadMarks;
-	}) => Promise<{ success: boolean }>;
+	// App State:已走通用 RPC 通道(appStateRouter + `@/platform/app-state-client`)。
 
 	// Search Everywhere
 	toggleSearchWindow: (
@@ -2148,19 +2057,8 @@ export interface ElectronAPI {
 		callback: (data: TodoPlanChangedPayload) => void,
 	) => () => void;
 
-	// Scratchpad (per-session draft paper)
-	getScratchpad: (
-		request: ScratchpadGetRequest,
-	) => Promise<ScratchpadGetResponse>;
-	updateScratchpad: (
-		request: ScratchpadUpdateRequest,
-	) => Promise<ScratchpadUpdateResponse>;
-	deleteScratchpad: (
-		request: ScratchpadDeleteRequest,
-	) => Promise<ScratchpadDeleteResponse>;
-	adoptScratchpad: (
-		request: ScratchpadAdoptRequest,
-	) => Promise<ScratchpadAdoptResponse>;
+	// Scratchpad(草稿纸):四条数据面已走通用 RPC 通道(scratchpadRouter +
+	// `@/platform/scratchpad-client`)。壳面只剩下面那条推送订阅。
 	onScratchpadChanged: (
 		callback: (data: ScratchpadChangedPayload) => void,
 	) => () => void;

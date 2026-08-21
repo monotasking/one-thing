@@ -4466,190 +4466,7 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
   assertNoMatches('apps/electron owns Electron settings IPC host operations', lines)
 }
 
-function checkElectronHostOwnsAppStateIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronAppStateControllerFile = path.join(root, 'apps/electron/src/ipc/app-state-controller.ts')
-  const electronAppStateFile = path.join(root, 'apps/electron/src/ipc/app-state.ts')
-  const mainAppStateFile = path.join(root, 'apps/electron/src/main/ipc/app-state.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronAppStateControllerContent = fs.existsSync(electronAppStateControllerFile)
-    ? fs.readFileSync(electronAppStateControllerFile, 'utf-8')
-    : ''
-  const electronAppStateContent = fs.existsSync(electronAppStateFile) ? fs.readFileSync(electronAppStateFile, 'utf-8') : ''
-  const mainAppStateContent = fs.existsSync(mainAppStateFile) ? fs.readFileSync(mainAppStateFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronAppStateIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'getAppState',
-    'saveUiState',
-    'OnethingUiStatePatch',
-  ]
-  const requiredHostFacadeSymbols = [
-    'registerAppStateHandlers',
-    'registerElectronAppStateIpcHandlers',
-    'IPC_CHANNELS.GET_APP_STATE',
-    'IPC_CHANNELS.SAVE_UI_STATE',
-    'saveOnethingUiStateForIpc',
-  ]
-  const requiredLegacyFacadeSymbols = [
-    '@onething/electron-host/ipc/app-state',
-    'registerAppStateHandlers',
-  ]
-  const mainAppStateFacadeLines = mainAppStateContent.split('\n').filter(line => line.trim().length > 0)
-  const lines = [
-    ...(!packageContent.includes('./ipc/app-state')
-      ? [`${rel(electronPackage)}: missing app-state IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronAppStateControllerContent.includes(symbol))
-      .map(symbol => `${rel(electronAppStateControllerFile)}: missing Electron app-state IPC controller symbol ${symbol}`),
-    ...requiredHostFacadeSymbols
-      .filter(symbol => !electronAppStateContent.includes(symbol))
-      .map(symbol => `${rel(electronAppStateFile)}: missing Electron app-state IPC host facade symbol ${symbol}`),
-    ...requiredLegacyFacadeSymbols
-      .filter(symbol => !mainAppStateContent.includes(symbol))
-      .map(symbol => `${rel(mainAppStateFile)}: missing app-state IPC legacy facade symbol ${symbol}`),
-    ...(mainAppStateFacadeLines.length > 6
-      ? [`${rel(mainAppStateFile)}: legacy app-state IPC facade must stay thin`]
-      : []),
-    ...(fs.existsSync(mainAppStateFile)
-      ? matchingLines(mainAppStateFile, MAIN_APP_STATE_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/app-state.ts: missing app-state IPC adapter']),
-  ]
 
-  assertNoMatches('apps/electron owns Electron app-state IPC host operations', lines)
-}
-
-function checkElectronHostOwnsVariablesIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronVariablesControllerFile = path.join(root, 'apps/electron/src/ipc/variables-controller.ts')
-  const electronVariablesFile = path.join(root, 'apps/electron/src/ipc/variables.ts')
-  const mainVariablesFile = path.join(root, 'apps/electron/src/main/ipc/variables.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronVariablesControllerContent = fs.existsSync(electronVariablesControllerFile)
-    ? fs.readFileSync(electronVariablesControllerFile, 'utf-8')
-    : ''
-  const electronVariablesContent = fs.existsSync(electronVariablesFile) ? fs.readFileSync(electronVariablesFile, 'utf-8') : ''
-  const mainVariablesContent = fs.existsSync(mainVariablesFile) ? fs.readFileSync(mainVariablesFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronVariablesIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'VariablesListRequest',
-    'VariablesSetRequest',
-    'VariablesDeleteRequest',
-  ]
-  const requiredHostFacadeSymbols = [
-    'registerVariableHandlers',
-    'registerElectronVariablesIpcHandlers',
-    'IPC_CHANNELS.VARIABLES_LIST',
-    'IPC_CHANNELS.VARIABLES_SET',
-    'IPC_CHANNELS.VARIABLES_DELETE',
-    'listOnethingVariablesForIpc',
-    'setOnethingVariableForIpc',
-    'deleteOnethingVariableForIpc',
-  ]
-  const requiredLegacyFacadeSymbols = [
-    '@onething/electron-host/ipc/variables',
-    'registerVariableHandlers',
-  ]
-  const mainVariablesFacadeLines = mainVariablesContent.split('\n').filter(line => line.trim().length > 0)
-  const lines = [
-    ...(!packageContent.includes('./ipc/variables')
-      ? [`${rel(electronPackage)}: missing variables IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronVariablesControllerContent.includes(symbol))
-      .map(symbol => `${rel(electronVariablesControllerFile)}: missing Electron variables IPC controller symbol ${symbol}`),
-    ...requiredHostFacadeSymbols
-      .filter(symbol => !electronVariablesContent.includes(symbol))
-      .map(symbol => `${rel(electronVariablesFile)}: missing Electron variables IPC host facade symbol ${symbol}`),
-    ...requiredLegacyFacadeSymbols
-      .filter(symbol => !mainVariablesContent.includes(symbol))
-      .map(symbol => `${rel(mainVariablesFile)}: missing variables IPC legacy facade symbol ${symbol}`),
-    ...(mainVariablesFacadeLines.length > 6
-      ? [`${rel(mainVariablesFile)}: legacy variables IPC facade must stay thin`]
-      : []),
-    ...(fs.existsSync(mainVariablesFile)
-      ? matchingLines(mainVariablesFile, MAIN_VARIABLES_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/variables.ts: missing variables IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron variables IPC host operations', lines)
-}
-
-function checkElectronHostOwnsProjectDirsIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronProjectDirsControllerFile = path.join(root, 'apps/electron/src/ipc/project-dirs-controller.ts')
-  const electronProjectDirsFile = path.join(root, 'apps/electron/src/ipc/project-dirs.ts')
-  const mainProjectDirsFile = path.join(root, 'apps/electron/src/main/ipc/project-dirs.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronProjectDirsControllerContent = fs.existsSync(electronProjectDirsControllerFile)
-    ? fs.readFileSync(electronProjectDirsControllerFile, 'utf-8')
-    : ''
-  const electronProjectDirsContent = fs.existsSync(electronProjectDirsFile) ? fs.readFileSync(electronProjectDirsFile, 'utf-8') : ''
-  const mainProjectDirsContent = fs.existsSync(mainProjectDirsFile) ? fs.readFileSync(mainProjectDirsFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronProjectDirsIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ProjectDirsGetRequest',
-    'ProjectDirsAddRequest',
-    'ProjectDirsUpdateRequest',
-    'ProjectDirsRemoveRequest',
-  ]
-  const requiredHostFacadeSymbols = [
-    'registerProjectDirsHandlers',
-    'registerElectronProjectDirsIpcHandlers',
-    'IPC_CHANNELS.PROJECT_DIRS_LIST',
-    'IPC_CHANNELS.PROJECT_DIRS_GET',
-    'IPC_CHANNELS.PROJECT_DIRS_ADD',
-    'IPC_CHANNELS.PROJECT_DIRS_UPDATE',
-    'IPC_CHANNELS.PROJECT_DIRS_REMOVE',
-    'listOnethingProjectDirsForIpc',
-    'getOnethingProjectDirForIpc',
-    'addOnethingProjectDirForIpc',
-    'updateOnethingProjectDirForIpc',
-    'removeOnethingProjectDirForIpc',
-  ]
-  const requiredLegacyFacadeSymbols = [
-    '@onething/electron-host/ipc/project-dirs',
-    'registerProjectDirsHandlers',
-  ]
-  const mainProjectDirsFacadeLines = mainProjectDirsContent.split('\n').filter(line => line.trim().length > 0)
-  const lines = [
-    ...(!packageContent.includes('./ipc/project-dirs')
-      ? [`${rel(electronPackage)}: missing project-dirs IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronProjectDirsControllerContent.includes(symbol))
-      .map(symbol => `${rel(electronProjectDirsControllerFile)}: missing Electron project-dirs IPC controller symbol ${symbol}`),
-    ...requiredHostFacadeSymbols
-      .filter(symbol => !electronProjectDirsContent.includes(symbol))
-      .map(symbol => `${rel(electronProjectDirsFile)}: missing Electron project-dirs IPC host facade symbol ${symbol}`),
-    ...requiredLegacyFacadeSymbols
-      .filter(symbol => !mainProjectDirsContent.includes(symbol))
-      .map(symbol => `${rel(mainProjectDirsFile)}: missing project-dirs IPC legacy facade symbol ${symbol}`),
-    ...(mainProjectDirsFacadeLines.length > 6
-      ? [`${rel(mainProjectDirsFile)}: legacy project-dirs IPC facade must stay thin`]
-      : []),
-    ...(fs.existsSync(mainProjectDirsFile)
-      ? matchingLines(mainProjectDirsFile, MAIN_PROJECT_DIRS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/project-dirs.ts: missing project-dirs IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron project-dirs IPC host operations', lines)
-}
-
-/**
- * Agent 档案 CRUD 域已整体迁到通用 RPC 通道(主线 T1 第二批)。
- *
- * 与 prompts 同形,这条检查是**反向**的:守的不是"Electron 那侧还在",而是
- * "Electron 那侧已经不在,而且没人偷偷把它加回来"。旧线只要复活一处(重建
- * @main handler / `src/ipc/agents.ts` 工厂、重新往 channels.ts 加 AGENTS_* 常量),
- * 这里就红。
- */
 function checkAgentsDomainRidesTheRpcChannel(): void {
   const retiredFiles = [
     'apps/electron/src/ipc/agents.ts',
@@ -4753,65 +4570,6 @@ function checkPromptsDomainRidesTheRpcChannel(): void {
   assertNoMatches('prompts domain rides the generic RPC channel', lines)
 }
 
-function checkElectronHostOwnsSchedulerIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronSchedulerFile = path.join(root, 'apps/electron/src/ipc/scheduler.ts')
-  const mainSchedulerFile = path.join(root, 'apps/electron/src/main/ipc/scheduler.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronSchedulerContent = fs.existsSync(electronSchedulerFile) ? fs.readFileSync(electronSchedulerFile, 'utf-8') : ''
-  const mainSchedulerContent = fs.existsSync(mainSchedulerFile) ? fs.readFileSync(mainSchedulerFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronSchedulerIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronSchedulerGetRequest',
-    'ElectronSchedulerRunNowRequest',
-    'ElectronSchedulerSetEnabledRequest',
-    'ElectronSchedulerCreateTaskRequest',
-    'ElectronSchedulerUpdateTaskRequest',
-    'ElectronSchedulerDeleteTaskRequest',
-    'ElectronSchedulerListRunsRequest',
-    'ElectronSchedulerGetRunRequest',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/scheduler',
-    'registerElectronSchedulerIpcHandlers',
-    'IPC_CHANNELS.SCHEDULER_LIST',
-    'IPC_CHANNELS.SCHEDULER_GET',
-    'IPC_CHANNELS.SCHEDULER_RUN_NOW',
-    'IPC_CHANNELS.SCHEDULER_SET_ENABLED',
-    'IPC_CHANNELS.SCHEDULER_CREATE_TASK',
-    'IPC_CHANNELS.SCHEDULER_UPDATE_TASK',
-    'IPC_CHANNELS.SCHEDULER_DELETE_TASK',
-    'IPC_CHANNELS.SCHEDULER_LIST_RUNS',
-    'IPC_CHANNELS.SCHEDULER_GET_RUN',
-    'listOnethingSchedulerTasksForIpc',
-    'getOnethingSchedulerTaskForIpc',
-    'runOnethingSchedulerTaskNowForIpc',
-    'setOnethingSchedulerTaskEnabledForIpc',
-    'createOnethingUserSchedulerTaskForIpc',
-    'updateOnethingUserSchedulerTaskForIpc',
-    'deleteOnethingUserSchedulerTaskForIpc',
-    'listOnethingSchedulerRunsForIpc',
-    'getOnethingSchedulerRunForIpc',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/scheduler')
-      ? [`${rel(electronPackage)}: missing scheduler IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronSchedulerContent.includes(symbol))
-      .map(symbol => `${rel(electronSchedulerFile)}: missing Electron scheduler IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainSchedulerContent.includes(symbol))
-      .map(symbol => `${rel(mainSchedulerFile)}: missing scheduler IPC adapter symbol ${symbol}`),
-    ...(fs.existsSync(mainSchedulerFile)
-      ? matchingLines(mainSchedulerFile, MAIN_SCHEDULER_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/scheduler.ts: missing scheduler IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron scheduler IPC host operations', lines)
-}
 
 function checkMarkdownDomainRidesTheRpcChannel(): void {
   // 主线 T 批 3：markdown 整只迁到通用 RPC 通道。守的还是同一件事 ——
@@ -4936,44 +4694,6 @@ function checkPermissionGrantsDomainRidesTheRpcChannel(): void {
   assertNoMatches('permissionGrants domain rides the generic RPC channel', lines)
 }
 
-function checkElectronHostOwnsPermissionIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronPermissionFile = path.join(root, 'apps/electron/src/ipc/permission.ts')
-  const mainPermissionFile = path.join(root, 'apps/electron/src/main/ipc/permission.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronPermissionContent = fs.existsSync(electronPermissionFile) ? fs.readFileSync(electronPermissionFile, 'utf-8') : ''
-  const mainPermissionContent = fs.existsSync(mainPermissionFile) ? fs.readFileSync(mainPermissionFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronPermissionIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronPermissionSessionId',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/permission',
-    'registerElectronPermissionIpcHandlers',
-    'IPC_CHANNELS.PERMISSION_GET_PENDING',
-    'IPC_CHANNELS.PERMISSION_CLEAR_SESSION',
-    'getOnethingPendingPermissionsForIpc',
-    'clearOnethingPermissionSessionForIpc',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/permission')
-      ? [`${rel(electronPackage)}: missing permission IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronPermissionContent.includes(symbol))
-      .map(symbol => `${rel(electronPermissionFile)}: missing Electron permission IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainPermissionContent.includes(symbol))
-      .map(symbol => `${rel(mainPermissionFile)}: missing permission IPC adapter symbol ${symbol}`),
-    ...(fs.existsSync(mainPermissionFile)
-      ? matchingLines(mainPermissionFile, MAIN_PERMISSION_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/permission.ts: missing permission IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron permission IPC host operations', lines)
-}
 
 function checkElectronHostOwnsPluginsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
@@ -6674,7 +6394,9 @@ function checkRuntimeOwnsPermissionGrantsIpcPresentation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PERMISSION_IPC_GRANTS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/permission.ts: missing permission IPC adapter']),
+      // 结构债 P4c:该域已整只迁到通用 RPC 通道,旧的 `@main/ipc/<域>.ts` 适配文件
+      // 不存在了 —— 「文件缺席 = 红」这一支随之退役,上面「runtime 拥有实现」的断言照旧。
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns permission grants IPC presentation', lines)
@@ -6696,7 +6418,9 @@ function checkRuntimeOwnsPermissionSessionIpcPresentation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PERMISSION_IPC_SESSION_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/permission.ts: missing permission IPC adapter']),
+      // 结构债 P4c:该域已整只迁到通用 RPC 通道,旧的 `@main/ipc/<域>.ts` 适配文件
+      // 不存在了 —— 「文件缺席 = 红」这一支随之退役,上面「runtime 拥有实现」的断言照旧。
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns permission session IPC presentation', lines)
@@ -9302,7 +9026,9 @@ function checkRuntimeOwnsProjectDirsStore(): void {
     ),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_PROJECT_DIRS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/project-dirs.ts: missing project-dirs IPC adapter']),
+      // 结构债 P4c:该域已整只迁到通用 RPC 通道,旧的 `@main/ipc/<域>.ts` 适配文件
+      // 不存在了 —— 「文件缺席 = 红」这一支随之退役,上面「runtime 拥有实现」的断言照旧。
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns project-dirs store and prompt helpers', lines)
@@ -9373,7 +9099,9 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
     ),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_VARIABLES_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/variables.ts: missing variables IPC adapter']),
+      // 结构债 P4c:该域已整只迁到通用 RPC 通道,旧的 `@main/ipc/<域>.ts` 适配文件
+      // 不存在了 —— 「文件缺席 = 红」这一支随之退役,上面「runtime 拥有实现」的断言照旧。
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns variables store and pure helpers', lines)
@@ -9449,7 +9177,9 @@ function checkRuntimeOwnsAppStateUiSave(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_APP_STATE_IPC_UI_SAVE_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/app-state.ts: missing app-state IPC adapter']),
+      // 结构债 P4c:该域已整只迁到通用 RPC 通道,旧的 `@main/ipc/<域>.ts` 适配文件
+      // 不存在了 —— 「文件缺席 = 红」这一支随之退役,上面「runtime 拥有实现」的断言照旧。
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns app-state UI save flow', lines)
@@ -9485,7 +9215,9 @@ function checkRuntimeOwnsSchedulerIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SCHEDULER_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/scheduler.ts: missing scheduler IPC adapter']),
+      // 结构债 P4c:该域已整只迁到通用 RPC 通道,旧的 `@main/ipc/<域>.ts` 适配文件
+      // 不存在了 —— 「文件缺席 = 红」这一支随之退役,上面「runtime 拥有实现」的断言照旧。
+      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns scheduler IPC operations', lines)
@@ -9646,7 +9378,9 @@ function checkRuntimeOwnsSchedulerRunDetailProjection(): void {
   const runtimeRunnerFile = path.join(root, 'packages/onething-runtime/src/scheduler/agent-task-runner.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
   const mainUserTasksFile = path.join(root, 'packages/onething-runtime/src/app/scheduler/user-tasks.ts')
-  const mainIpcFile = path.join(root, 'apps/electron/src/main/ipc/scheduler.ts')
+  // 结构债 P4c:定时任务的传输面从 `@main/ipc/scheduler.ts` 换成了 RPC 域文件。
+  // 断言本身不变 —— 传输面必须把运行详情的投影**委托**给 runtime,而不是自己拼。
+  const mainIpcFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/scheduler.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeRunnerContent = fs.existsSync(runtimeRunnerFile) ? fs.readFileSync(runtimeRunnerFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
@@ -10115,15 +9849,10 @@ checkElectronHostOwnsShellOperations()
 checkElectronHostOwnsOAuthEvents()
 checkElectronHostOwnsOAuthIpcHost()
 checkElectronHostOwnsSettingsIpcHost()
-checkElectronHostOwnsAppStateIpcHost()
-checkElectronHostOwnsVariablesIpcHost()
-checkElectronHostOwnsProjectDirsIpcHost()
 checkAgentsDomainRidesTheRpcChannel()
 checkPromptsDomainRidesTheRpcChannel()
-checkElectronHostOwnsSchedulerIpcHost()
 checkMarkdownDomainRidesTheRpcChannel()
 checkPermissionGrantsDomainRidesTheRpcChannel()
-checkElectronHostOwnsPermissionIpcHost()
 checkElectronHostOwnsPluginsIpcHost()
 checkElectronHostOwnsThemesIpcHost()
 checkProvidersDomainRidesTheRpcChannel()

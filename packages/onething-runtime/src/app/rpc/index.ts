@@ -24,22 +24,29 @@
  * 了半格 —— 改它要动 `backend.ts`，留给 C5 收口一起做。）
  */
 import { agentsRouter } from '@shared/ipc/agents.js'
+import { appStateRouter } from '@shared/ipc/app-state.js'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
 import { collabRouter } from '@shared/ipc/collab.js'
 import { goalRouter } from '@shared/ipc/goal.js'
 import { logsRouter } from '@shared/ipc/logs.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
+import { permissionRouter } from '@shared/ipc/permissions.js'
 import { practiceRouter } from '@shared/ipc/practice.js'
+import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
+import { schedulerRouter } from '@shared/ipc/scheduler.js'
+import { scratchpadRouter } from '@shared/ipc/scratchpad.js'
 import { spacesRouter } from '@shared/ipc/spaces.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 import { usageRouter } from '@shared/ipc/usage.js'
+import { variablesRouter } from '@shared/ipc/variables.js'
 import { selfEvolutionFeature } from '../features/builtin/self-evolution.js'
 import { trajectoryFeature } from '../features/builtin/trajectory.js'
 import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../features/index.js'
 import { agentsRpcHandlers } from './domains/agents.js'
+import { appStateRpcHandlers } from './domains/app-state.js'
 import { channelIdentityRpcHandlers } from './domains/channel-identity.js'
 import { collabRpcHandlers } from './domains/collab.js'
 import { goalRpcHandlers } from './domains/goal.js'
@@ -47,12 +54,17 @@ import { logsRpcHandlers } from './domains/logs.js'
 import { markdownRpcHandlers } from './domains/markdown.js'
 import { modelsRpcHandlers } from './domains/models.js'
 import { permissionGrantsRpcHandlers } from './domains/permission-grants.js'
+import { permissionRpcHandlers } from './domains/permission.js'
 import { practiceRpcHandlers } from './domains/practice.js'
+import { projectDirsRpcHandlers } from './domains/project-dirs.js'
 import { promptsRpcHandlers } from './domains/prompts.js'
 import { providersRpcHandlers } from './domains/providers.js'
+import { schedulerRpcHandlers } from './domains/scheduler.js'
+import { scratchpadRpcHandlers } from './domains/scratchpad.js'
 import { spacesRpcHandlers } from './domains/spaces.js'
 import { todoPlanRpcHandlers } from './domains/todo-plan.js'
 import { usageRpcHandlers } from './domains/usage.js'
+import { variablesRpcHandlers } from './domains/variables.js'
 
 /**
  * 内置 feature 的名册。**顺序即装配顺序**，与 K0 之前逐行调用的顺序逐字一致
@@ -93,6 +105,30 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // agent 的实时更新和表情回灌走的是会话事件,不是这个域的通道。所以搬完之后
   // `@main/ipc/collab.ts` 整只删掉,而不是像 spaces / practice 那样留一条广播。
   { id: 'rpc:collab', mount: ctx => { ctx.registerRpcDomain(collabRouter, collabRpcHandlers) } },
+  // P4c 第一个域(scheduler)。旧线是三处镜像:手写 IPC 工厂 + 主进程壳、
+  // 渲染侧九条 REST 桩(**零调用点**)、server 九条 REST 路由背后**自己那台**
+  // per-owner Scheduler。搬完之后 server 与桌面吃的是同一台
+  // `@onething/app/scheduler` —— 一个 store 一台调度器。
+  { id: 'rpc:scheduler', mount: ctx => { ctx.registerRpcDomain(schedulerRouter, schedulerRpcHandlers) } },
+  // P4c 第二个域(variables)。旧线同样是三处镜像;与 scheduler 的差别是
+  // server adapter 有一道桌面没有的「会话不存在 → NOT_FOUND」前置检查,搬家取的是
+  // 桌面的形状 —— web 从此读的也是引擎真正在用的那台注册表(见域文件头)。
+  { id: 'rpc:variables', mount: ctx => { ctx.registerRpcDomain(variablesRouter, variablesRpcHandlers) } },
+  // P4c 第三个域(app-state)。这一个**不是零行为变化**:旧的 server adapter 现场
+  // 拼一份最小状态(恒定的单页签 + 侧栏不折叠),搬到桌面那条实现之后 web 读的是
+  // 同一个 store 的真 `app-state.json` —— 与 A 期「一个 store 一台 core」同向。
+  { id: 'rpc:app-state', mount: ctx => { ctx.registerRpcDomain(appStateRouter, appStateRpcHandlers) } },
+  // P4c 第四个域(permission,活询问的读/清)。应答不在这里 —— 那是命令总线上的
+  // `command:permission-respond`;账页也不在这里 —— 那是 `permissionGrants` 域。
+  { id: 'rpc:permission', mount: ctx => { ctx.registerRpcDomain(permissionRouter, permissionRpcHandlers) } },
+  // P4c 第五个域(scratchpad)。与 spaces / practice 同型:四条数据面搬走,
+  // `SCRATCHPAD_CHANGED` 那条推送留在原地(它早就是 `configureScratchpadHost` 端口,
+  // 而 router 没有推送面),server 的 `/api/scratchpad/events` SSE 同样保留。
+  { id: 'rpc:scratchpad', mount: ctx => { ctx.registerRpcDomain(scratchpadRouter, scratchpadRpcHandlers) } },
+  // P4c 第六个域(project-dirs)。搬完顺带修掉一处说谎:web 壳原来把 `workspaceId`
+  // 收下就丢,浏览器里切空间等于没切 —— 走 router 之后它真的传到
+  // `getProjectsStore(workspaceId)` 了。
+  { id: 'rpc:project-dirs', mount: ctx => { ctx.registerRpcDomain(projectDirsRouter, projectDirsRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

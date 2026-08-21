@@ -13,6 +13,7 @@ import { usePromptsStore } from '@/stores/prompts'
 import { createFileToken, createMemberToken, createPageToken, createPromptToken, createSkillToken, extractMemberTokens, extractPageTokens, FILE_REF_PATTERN, PAGE_REF_PATTERN } from '@shared/prompt-references'
 import { COLLAB_MENTION_ALL_LABELS } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
+import { variablesApi } from '@/platform/variables-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.picker')
@@ -441,7 +442,7 @@ export function usePickerOrchestration(
     }
 
     try {
-      const result = await platformApi.listVariables(sid)
+      const result = await variablesApi.list({ sessionId: sid })
       if (!result.success || !result.variables) {
         variableWorkdir.value = ''
         noteRoots.value = []

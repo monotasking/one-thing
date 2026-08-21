@@ -77,21 +77,12 @@ describe('createOnethingRuntimeFacade', () => {
           return unsubscribe
         }),
       },
-      projectDirs: {
-        list: vi.fn(async () => ({ success: true, entries: [] })),
-      },
-      variables: {
-        list: vi.fn(async request => ({ success: true, variables: [], request })),
-      },
       media: {
         listAssets: vi.fn(async () => []),
         subscribeImageGenerated: vi.fn((handler) => {
           handler({ id: 'image-1' })
           return unsubscribe
         }),
-      },
-      scheduler: {
-        listTasks: vi.fn(async () => ({ success: true, tasks: [] })),
       },
       plugins: {
         list: vi.fn(async () => ({ success: true, plugins: [] })),
@@ -224,17 +215,10 @@ describe('createOnethingRuntimeFacade', () => {
       eventType: 'change',
     })
     offWorkspace?.()
-    await expect(runtime.projectDirs?.list?.()).resolves.toEqual({ success: true, entries: [] })
-    await expect(runtime.variables?.list({ sessionId: 'session-1' })).resolves.toEqual({
-      success: true,
-      variables: [],
-      request: { sessionId: 'session-1' },
-    })
     await expect(runtime.media?.listAssets?.()).resolves.toEqual([])
     const offMedia = runtime.media?.subscribeImageGenerated?.(eventHandler)
     expect(eventHandler).toHaveBeenCalledWith({ id: 'image-1' })
     offMedia?.()
-    await expect(runtime.scheduler?.listTasks()).resolves.toEqual({ success: true, tasks: [] })
     await expect(runtime.plugins?.list?.()).resolves.toEqual({ success: true, plugins: [] })
     await expect(runtime.plugins?.enable?.('demo')).resolves.toEqual({ success: true, pluginId: 'demo' })
     await expect(runtime.plugins?.commands?.()).resolves.toEqual({ success: true, commands: [] })
@@ -361,10 +345,7 @@ describe('createOnethingRuntimeFacade', () => {
     expect(runtime.search).toBeUndefined()
     expect(runtime.streams).toBeUndefined()
     expect(runtime.files).toBeUndefined()
-    expect(runtime.projectDirs).toBeUndefined()
-    expect(runtime.variables).toBeUndefined()
     expect(runtime.media).toBeUndefined()
-    expect(runtime.scheduler).toBeUndefined()
     expect(runtime.plugins).toBeUndefined()
     expect(runtime.oauth).toBeUndefined()
     expect(runtime.gateway).toBeUndefined()

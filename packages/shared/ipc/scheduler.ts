@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from '../json.js'
+import { defineRouter } from './router.js'
 
 export type SchedulerRunReason = 'startup' | 'scheduled' | 'manual'
 export type SchedulerTaskKind = 'agent' | 'plugin'
@@ -221,3 +222,40 @@ export interface SchedulerGetRunResponse {
   run?: SchedulerRunDetailDTO
   error?: string
 }
+
+/**
+ * scheduler(定时任务:内置任务 + 用户任务 + 运行历史)域 —— 结构债 P4c 第一域。
+ *
+ * 九个方法全是**纯数据面**:列任务 / 读一个 / 立刻跑 / 开关 / 用户任务的增改删 /
+ * 运行历史的列与读。判定与降级(`{ success, error }` 的包法)住在
+ * `@onething/runtime/scheduler` 的那批依赖注入投影(`*ForIpc`)里,传输面只把
+ * 端口接上去 —— 这也是它能整只搬进 `app/rpc/domains/scheduler.ts` 的原因。
+ *
+ * **无入参的方法一律 `Record<string, never>`**,调用处传 `{}`(spaces 的
+ * `list({})` 判例):router 的 payload 是一个信封,位置参数在这条通道上没有位置。
+ *
+ * 这个域**一条推送都没有** —— 任务状态的变化今天不往渲染层推,面板是拉的。
+ */
+export type SchedulerRoutes = {
+  list: { input: Record<string, never>; output: SchedulerListResponse }
+  get: { input: SchedulerGetRequest; output: SchedulerGetResponse }
+  runNow: { input: SchedulerRunNowRequest; output: SchedulerRunNowResponse }
+  setEnabled: { input: SchedulerSetEnabledRequest; output: SchedulerSetEnabledResponse }
+  createTask: { input: SchedulerCreateTaskRequest; output: SchedulerWriteTaskResponse }
+  updateTask: { input: SchedulerUpdateTaskRequest; output: SchedulerWriteTaskResponse }
+  deleteTask: { input: SchedulerDeleteTaskRequest; output: SchedulerDeleteTaskResponse }
+  listRuns: { input: SchedulerListRunsRequest; output: SchedulerListRunsResponse }
+  getRun: { input: SchedulerGetRunRequest; output: SchedulerGetRunResponse }
+}
+
+export const schedulerRouter = defineRouter<SchedulerRoutes>('scheduler', [
+  'list',
+  'get',
+  'runNow',
+  'setEnabled',
+  'createTask',
+  'updateTask',
+  'deleteTask',
+  'listRuns',
+  'getRun',
+])

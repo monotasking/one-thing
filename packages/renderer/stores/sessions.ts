@@ -8,6 +8,8 @@ import type {
 } from "@/types";
 import { platformApi } from "@/platform";
 import { collabApi } from "@/platform/collab-client";
+import { variablesApi } from "@/platform/variables-client";
+import { appStateApi } from "@/platform/app-state-client";
 import { getLogger } from "@/services/log";
 import { DEFAULT_AGENT_ID, isColleague } from "@shared/ipc";
 import { isAgentPairDmRoom, isUserDmRoom } from "@onething/runtime/collab";
@@ -313,12 +315,12 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	function persistReadMarks(): void {
 		// 水位在 hydrate 之前是空的;这时候写回去等于把上次的阅读状态抹平。
-		if (!readMarksHydrated || !platformApi?.saveUIState) return;
+		if (!readMarksHydrated) return;
 		if (readMarksPersistTimer) clearTimeout(readMarksPersistTimer);
 		readMarksPersistTimer = setTimeout(() => {
 			readMarksPersistTimer = null;
-			platformApi
-				.saveUIState({
+			appStateApi
+				.saveUiState({
 					sessionReadMarks: serializeReadMarks(
 						readMarks.value,
 						isKnownSessionId,
@@ -1508,7 +1510,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 */
 	async function fetchVariables(sessionId: string): Promise<ContextVariable[]> {
 		try {
-			const response = await platformApi.listVariables(sessionId);
+			const response = await variablesApi.list({ sessionId });
 			const variables =
 				response.success && response.variables ? response.variables : [];
 			sessionVariables.value.set(sessionId, variables);
@@ -1532,13 +1534,13 @@ export const useSessionsStore = defineStore("sessions", () => {
 		description?: string,
 		scope?: "global" | "session" | "agent" | "project",
 	): Promise<{ success: boolean; error?: string; code?: string }> {
-		const response = await platformApi.setVariable(
+		const response = await variablesApi.set({
 			sessionId,
 			name,
 			value,
 			description,
 			scope,
-		);
+		});
 		return {
 			success: response.success,
 			error: response.error,
@@ -1550,7 +1552,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		sessionId: string,
 		name: string,
 	): Promise<{ success: boolean; error?: string; code?: string }> {
-		const response = await platformApi.deleteVariable(sessionId, name);
+		const response = await variablesApi.delete({ sessionId, name });
 		return {
 			success: response.success,
 			error: response.error,

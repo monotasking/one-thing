@@ -144,8 +144,6 @@ async function handleRequest(context: RouteContext): Promise<void> {
 
 function matchRoute(method: string, pathname: string): RouteHandler | undefined {
   if (method === 'GET' && pathname === '/api/capabilities') return handleGetCapabilities
-  if (method === 'GET' && pathname === '/api/app-state') return handleGetAppState
-  if (method === 'POST' && pathname === '/api/app-state/ui') return handleSaveUiState
   if (method === 'GET' && pathname === '/api/settings') return handleGetSettings
   if (method === 'POST' && pathname === '/api/settings') return handleUpdateSettings
   if (method === 'POST' && pathname === '/api/network/test-proxy') return handleTestProxy
@@ -203,20 +201,7 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/acp/agents/refresh') return handleACPRefreshAgent
   if (method === 'POST' && pathname === '/api/acp/sessions/cancel') return handleACPCancelSession
   if (method === 'GET' && pathname === '/api/todo-plan/events') return handleTodoPlanEvents
-  if (method === 'POST' && pathname === '/api/scratchpad/get') return handleGetScratchpad
-  if (method === 'POST' && pathname === '/api/scratchpad/update') return handleUpdateScratchpad
-  if (method === 'POST' && pathname === '/api/scratchpad/delete') return handleDeleteScratchpad
-  if (method === 'POST' && pathname === '/api/scratchpad/adopt') return handleAdoptScratchpad
   if (method === 'GET' && pathname === '/api/scratchpad/events') return handleScratchpadEvents
-  if (method === 'GET' && pathname === '/api/scheduler/tasks') return handleListSchedulerTasks
-  if (method === 'POST' && pathname === '/api/scheduler/tasks/get') return handleGetSchedulerTask
-  if (method === 'POST' && pathname === '/api/scheduler/tasks/run-now') return handleRunSchedulerTaskNow
-  if (method === 'POST' && pathname === '/api/scheduler/tasks/enabled') return handleSetSchedulerTaskEnabled
-  if (method === 'POST' && pathname === '/api/scheduler/tasks') return handleCreateSchedulerTask
-  if (method === 'POST' && pathname === '/api/scheduler/tasks/update') return handleUpdateSchedulerTask
-  if (method === 'POST' && pathname === '/api/scheduler/tasks/delete') return handleDeleteSchedulerTask
-  if (method === 'POST' && pathname === '/api/scheduler/runs') return handleListSchedulerRuns
-  if (method === 'POST' && pathname === '/api/scheduler/runs/get') return handleGetSchedulerRun
   if (method === 'GET' && pathname === '/api/tools') return handleGetTools
   if (method === 'POST' && pathname === '/api/tools/execute') return handleExecuteTool
   if (method === 'POST' && pathname === '/api/tools/cancel') return handleCancelTool
@@ -246,9 +231,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/files/rename') return handleRenamePath
   if (method === 'POST' && pathname === '/api/files/delete') return handleDeletePath
   if (method === 'POST' && pathname === '/api/files/reveal') return handleRevealPath
-  if (method === 'POST' && pathname === '/api/variables/list') return handleListVariables
-  if (method === 'POST' && pathname === '/api/variables/set') return handleSetVariable
-  if (method === 'POST' && pathname === '/api/variables/delete') return handleDeleteVariable
   if (method === 'POST' && pathname === '/api/chat/history') return handleChatHistory
   if (method === 'POST' && pathname === '/api/chat/title') return handleGenerateTitle
   if (method === 'POST' && pathname === '/api/chat/messages') return handleChatMessages
@@ -260,11 +242,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/chat/remove-system-marker') return handleRemoveSystemMarkerMessage
   if (method === 'POST' && pathname === '/api/chat/remove-message') return handleRemoveMessage
   if (method === 'POST' && pathname === '/api/chat/update-thinking-time') return handleUpdateMessageThinkingTime
-  if (method === 'GET' && pathname === '/api/project-dirs') return handleProjectDirsList
-  if (method === 'POST' && pathname === '/api/project-dirs/get') return handleProjectDirsGet
-  if (method === 'POST' && pathname === '/api/project-dirs') return handleProjectDirsAdd
-  if (method === 'POST' && pathname === '/api/project-dirs/update') return handleProjectDirsUpdate
-  if (method === 'POST' && pathname === '/api/project-dirs/remove') return handleProjectDirsRemove
   if (method === 'GET' && pathname === '/api/media/assets') return handleListMediaAssets
   if (method === 'POST' && pathname === '/api/media/ingest') return handleIngestMediaFiles
   if (method === 'POST' && pathname === '/api/media/assets/hide') return handleHideMediaAsset
@@ -286,13 +263,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'GET' && pathname === '/api/events') return handleEvents
   if (method === 'POST' && pathname === '/api/streams/abort') return handleAbortStream
   if (method === 'GET' && pathname === '/api/streams/active') return handleGetActiveStreams
-
-  const sessionPermissionMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/permissions\/([^/]+)$/)
-  if (sessionPermissionMatch) {
-    const action = sessionPermissionMatch[2]
-    if (method === 'GET' && action === 'pending') return withSessionId(sessionPermissionMatch[1], handleGetPendingPermissions)
-    if (method === 'POST' && action === 'clear') return withSessionId(sessionPermissionMatch[1], handleClearSessionPermissions)
-  }
 
   const skillMatch = pathname.match(/^\/api\/skills\/([^/]+)(?:\/([^/]+))?$/)
   if (skillMatch) {
@@ -434,12 +404,6 @@ function withMediaFileName(encodedFileName: string, handler: RouteHandler): Rout
   }
 }
 
-async function handleGetAppState(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.appState
-  if (!adapter) return sendNotImplemented(context, 'appState.get')
-  sendJson(context.response, 200, await adapter.get(context.requestContext), context.corsOrigin)
-}
-
 async function handleGetCapabilities(context: RouteContext): Promise<void> {
   const adapter = context.runtime.capabilities
   if (!adapter) return sendNotImplemented(context, 'capabilities.get')
@@ -544,24 +508,6 @@ async function handleRevealPath(context: RouteContext): Promise<void> {
   if (!adapter?.revealPath) return sendNotImplemented(context, 'files.revealPath')
   const body = await readJson<{ path?: string }>(context.request)
   sendJson(context.response, 200, await adapter.revealPath(body?.path ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleListVariables(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.variables
-  if (!adapter) return sendNotImplemented(context, 'variables.list')
-  sendJson(context.response, 200, await adapter.list(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleSetVariable(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.variables
-  if (!adapter?.set) return sendNotImplemented(context, 'variables.set')
-  sendJson(context.response, 200, await adapter.set(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleDeleteVariable(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.variables
-  if (!adapter?.delete) return sendNotImplemented(context, 'variables.delete')
-  sendJson(context.response, 200, await adapter.delete(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
 async function handleChatHistory(context: RouteContext): Promise<void> {
@@ -672,45 +618,6 @@ async function handleUpdateMessageThinkingTime(context: RouteContext): Promise<v
   )
 }
 
-async function handleProjectDirsList(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.projectDirs
-  if (!adapter?.list) return sendNotImplemented(context, 'projectDirs.list')
-  sendJson(context.response, 200, await adapter.list(context.requestContext), context.corsOrigin)
-}
-
-async function handleProjectDirsGet(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.projectDirs
-  if (!adapter?.get) return sendNotImplemented(context, 'projectDirs.get')
-  const body = await readJson<{ path?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.get(body?.path ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleProjectDirsAdd(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.projectDirs
-  if (!adapter?.add) return sendNotImplemented(context, 'projectDirs.add')
-  const body = await readJson<{ path?: string; description?: string; paths?: string[] }>(context.request)
-  sendJson(context.response, 200, await adapter.add(body?.path ?? '', body?.description, context.requestContext, body?.paths), context.corsOrigin)
-}
-
-async function handleProjectDirsUpdate(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.projectDirs
-  if (!adapter?.update) return sendNotImplemented(context, 'projectDirs.update')
-  const body = await readJson<{ path?: string; description?: string; paths?: string[] }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.update(body?.path ?? '', { description: body?.description, paths: body?.paths }, context.requestContext),
-    context.corsOrigin,
-  )
-}
-
-async function handleProjectDirsRemove(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.projectDirs
-  if (!adapter?.remove) return sendNotImplemented(context, 'projectDirs.remove')
-  const body = await readJson<{ path?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.remove(body?.path ?? '', context.requestContext), context.corsOrigin)
-}
-
 async function handleListMediaAssets(context: RouteContext): Promise<void> {
   const adapter = context.runtime.media
   if (!adapter?.listAssets) return sendNotImplemented(context, 'media.listAssets')
@@ -812,12 +719,6 @@ async function handleReadMediaFile(context: RouteContext): Promise<void> {
     'cache-control': 'private, max-age=300',
   })
   createReadStream(result.path).pipe(context.response)
-}
-
-async function handleSaveUiState(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.appState
-  if (!adapter?.saveUIState) return sendNotImplemented(context, 'appState.saveUIState')
-  sendJson(context.response, 200, await adapter.saveUIState(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
 async function handleGetSettings(context: RouteContext): Promise<void> {
@@ -1288,84 +1189,6 @@ async function handleACPCancelSession(context: RouteContext): Promise<void> {
   )
 }
 
-async function handleGetScratchpad(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scratchpad
-  if (!adapter) return sendNotImplemented(context, 'scratchpad.get')
-  sendJson(context.response, 200, await adapter.get(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleUpdateScratchpad(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scratchpad
-  if (!adapter?.update) return sendNotImplemented(context, 'scratchpad.update')
-  sendJson(context.response, 200, await adapter.update(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleDeleteScratchpad(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scratchpad
-  if (!adapter?.delete) return sendNotImplemented(context, 'scratchpad.delete')
-  sendJson(context.response, 200, await adapter.delete(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleAdoptScratchpad(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scratchpad
-  if (!adapter?.adopt) return sendNotImplemented(context, 'scratchpad.adopt')
-  sendJson(context.response, 200, await adapter.adopt(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleListSchedulerTasks(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scheduler
-  if (!adapter) return sendNotImplemented(context, 'scheduler')
-  sendJson(context.response, 200, await adapter.listTasks(context.requestContext), context.corsOrigin)
-}
-
-async function handleGetSchedulerTask(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scheduler
-  if (!adapter?.getTask) return sendNotImplemented(context, 'scheduler.getTask')
-  sendJson(context.response, 200, await adapter.getTask(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleRunSchedulerTaskNow(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scheduler
-  if (!adapter?.runTaskNow) return sendNotImplemented(context, 'scheduler.runTaskNow')
-  sendJson(context.response, 200, await adapter.runTaskNow(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleSetSchedulerTaskEnabled(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scheduler
-  if (!adapter?.setTaskEnabled) return sendNotImplemented(context, 'scheduler.setTaskEnabled')
-  sendJson(context.response, 200, await adapter.setTaskEnabled(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleCreateSchedulerTask(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scheduler
-  if (!adapter?.createTask) return sendNotImplemented(context, 'scheduler.createTask')
-  sendJson(context.response, 200, await adapter.createTask(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleUpdateSchedulerTask(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scheduler
-  if (!adapter?.updateTask) return sendNotImplemented(context, 'scheduler.updateTask')
-  sendJson(context.response, 200, await adapter.updateTask(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleDeleteSchedulerTask(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scheduler
-  if (!adapter?.deleteTask) return sendNotImplemented(context, 'scheduler.deleteTask')
-  sendJson(context.response, 200, await adapter.deleteTask(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleListSchedulerRuns(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scheduler
-  if (!adapter?.listRuns) return sendNotImplemented(context, 'scheduler.listRuns')
-  sendJson(context.response, 200, await adapter.listRuns(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleGetSchedulerRun(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.scheduler
-  if (!adapter?.getRun) return sendNotImplemented(context, 'scheduler.getRun')
-  sendJson(context.response, 200, await adapter.getRun(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
 async function handleGetTools(context: RouteContext): Promise<void> {
   const adapter = context.runtime.tools
   if (!adapter) return sendNotImplemented(context, 'tools.getTools')
@@ -1699,18 +1522,6 @@ async function handlePermissionResponse(context: RouteContext): Promise<void> {
     await adapter.respond(readRequestId(context), await readJson(context.request), context.requestContext),
     context.corsOrigin,
   )
-}
-
-async function handleGetPendingPermissions(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.permissions
-  if (!adapter?.getPending) return sendNotImplemented(context, 'permissions.getPending')
-  sendJson(context.response, 200, await adapter.getPending(readSessionId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleClearSessionPermissions(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.permissions
-  if (!adapter?.clearSession) return sendNotImplemented(context, 'permissions.clearSession')
-  sendJson(context.response, 200, await adapter.clearSession(readSessionId(context), context.requestContext), context.corsOrigin)
 }
 
 async function handleAbortStream(context: RouteContext): Promise<void> {

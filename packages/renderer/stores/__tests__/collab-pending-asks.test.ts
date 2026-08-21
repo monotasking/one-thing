@@ -25,8 +25,13 @@ vi.mock('@/platform', () => ({
       mocks.handlers.push(handler)
       return () => {}
     },
-    getPendingPermissions: mocks.getPendingPermissions,
   },
+}))
+
+// permission(活询问)域已迁到通用 RPC 通道(P4c):store 引的是壳外客户端
+// `@/platform/permission-client`,入参是信封而不是位置参数。
+vi.mock('@/platform/permission-client', () => ({
+  permissionApi: { getPending: mocks.getPendingPermissions },
 }))
 
 vi.mock('@/platform/collab-client', () => ({
@@ -79,7 +84,7 @@ describe('collabBoard store: 审批徽标对账 (P1-3)', () => {
     const store = useCollabBoardStore()
     await store.load('room-1')
 
-    expect(mocks.getPendingPermissions).toHaveBeenCalledWith('work-1')
+    expect(mocks.getPendingPermissions).toHaveBeenCalledWith({ sessionId: 'work-1' })
     expect(store.hasPendingAsk('work-1')).toBe(true)
   })
 
@@ -100,7 +105,7 @@ describe('collabBoard store: 审批徽标对账 (P1-3)', () => {
     await store.load('room-1')
 
     expect(mocks.getPendingPermissions).toHaveBeenCalledTimes(1)
-    expect(mocks.getPendingPermissions).toHaveBeenCalledWith('work-doing')
+    expect(mocks.getPendingPermissions).toHaveBeenCalledWith({ sessionId: 'work-doing' })
   })
 
   it('counts queued prompts too — a session behind its own queue still waits on you', async () => {

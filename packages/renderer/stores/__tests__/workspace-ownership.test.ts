@@ -37,7 +37,9 @@ describe('workspace state ownership', () => {
     const offenders = rendererSourceFiles()
       .filter((file) => {
         const source = readFileSync(file, 'utf8')
-        return /saveUIState\s*\(\s*\{[^}]*openTabs/s.test(source)
+        // P4c 之后写面叫 `appStateApi.saveUiState`;两种拼法都盯着,
+        // 免得这道栅栏被一次改名变成永远空跑。
+        return /save[Uu][Ii]State\s*\(\s*\{[^}]*openTabs/s.test(source)
       })
       .map(file => relative(RENDERER_ROOT, file))
 

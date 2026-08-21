@@ -164,8 +164,6 @@ export const IPC_CHANNELS = {
 
 	// Permission related
 	PERMISSION_REQUEST: "permission:request",
-	PERMISSION_GET_PENDING: "permission:get-pending",
-	PERMISSION_CLEAR_SESSION: "permission:clear-session",
 
 	// Interaction related (agent 提问 → 用户应答)
 	INTERACTION_RESPOND: "interaction:respond",
@@ -275,18 +273,10 @@ export const IPC_CHANNELS = {
 	SESSION_COMMAND: "session:command",
 
 	// Variables subsystem (scalar-only)
-	VARIABLES_LIST: "variables:list",
-	VARIABLES_SET: "variables:set",
-	VARIABLES_DELETE: "variables:delete",
 
 	// Session goals:已迁到通用 RPC 通道(goalRouter)。实时变化仍走 session:goal-updated。
 
 	// Project directories — independent module
-	PROJECT_DIRS_LIST: "project-dirs:list",
-	PROJECT_DIRS_GET: "project-dirs:get",
-	PROJECT_DIRS_ADD: "project-dirs:add",
-	PROJECT_DIRS_UPDATE: "project-dirs:update",
-	PROJECT_DIRS_REMOVE: "project-dirs:remove",
 
 	// Spaces (workspaces):请求/响应面已整只迁到通用 RPC 通道(结构债 P0.3,
 	// `@shared/ipc/spaces.ts` 的 `spacesRouter` + `app/rpc/domains/spaces.ts`)。
@@ -344,22 +334,11 @@ export const IPC_CHANNELS = {
 	PLUGINS_PICK_FILE: "plugins:pick-file",
 
 	// Generic scheduler
-	SCHEDULER_LIST: "scheduler:list",
-	SCHEDULER_GET: "scheduler:get",
-	SCHEDULER_RUN_NOW: "scheduler:run-now",
-	SCHEDULER_SET_ENABLED: "scheduler:set-enabled",
-	SCHEDULER_CREATE_TASK: "scheduler:create-task",
-	SCHEDULER_UPDATE_TASK: "scheduler:update-task",
-	SCHEDULER_DELETE_TASK: "scheduler:delete-task",
-	SCHEDULER_LIST_RUNS: "scheduler:list-runs",
-	SCHEDULER_GET_RUN: "scheduler:get-run",
 
 	// Window
 	WINDOW_CLOSE: "window:close",
 
 	// App State (restore on startup)
-	GET_APP_STATE: "app-state:get",
-	SAVE_UI_STATE: "app-state:save-ui",
 
 	// Search Everywhere
 	SEARCH_WINDOW_TOGGLE: "search-window:toggle",
@@ -393,10 +372,6 @@ export const IPC_CHANNELS = {
 	TODO_PLAN_CHANGED: "todo-plan:changed",
 
 	// Scratchpad (per-session draft paper the AI silently perceives)
-	SCRATCHPAD_GET: "scratchpad:get",
-	SCRATCHPAD_UPDATE: "scratchpad:update",
-	SCRATCHPAD_DELETE: "scratchpad:delete",
-	SCRATCHPAD_ADOPT: "scratchpad:adopt",
 	SCRATCHPAD_CHANGED: "scratchpad:changed",
 
 	// Practice (kegel / pomodoro / exercise log)

@@ -15,8 +15,12 @@ const mocks = vi.hoisted(() => ({
     setWorkspaceRoot: vi.fn().mockResolvedValue(undefined),
     openFile: vi.fn().mockResolvedValue(undefined),
   },
+  // variables 域已迁到通用 RPC 通道(P4c):面板引的是壳外客户端,不再是
+  // platformApi 上的 listVariables。
+  variablesApi: {
+    list: vi.fn(),
+  },
   electronAPI: {
-    listVariables: vi.fn(),
     listTerminals: vi.fn(),
     createTerminal: vi.fn(),
     killTerminal: vi.fn(),
@@ -26,6 +30,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/composables/useEditorWorkspace', () => ({
   useEditorWorkspace: () => mocks.editorWorkspace,
 }))
+
+vi.mock('@/platform/variables-client', () => ({ variablesApi: mocks.variablesApi }))
 
 // The real TerminalView opens an xterm instance — meaningless (and crash-prone)
 // under happy-dom. The panel contract is just "render a view for terminalId".
@@ -135,7 +141,7 @@ describe('RightWorkbenchPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
-    mocks.electronAPI.listVariables.mockResolvedValue({ success: true, variables: [] })
+    mocks.variablesApi.list.mockResolvedValue({ success: true, variables: [] })
     mocks.electronAPI.listTerminals.mockResolvedValue({ success: true, terminals: [] })
     mocks.electronAPI.createTerminal.mockResolvedValue({
       success: true,
@@ -238,7 +244,7 @@ describe('RightWorkbenchPanel', () => {
   })
 
   it('opens note files at the configured note directory', async () => {
-    mocks.electronAPI.listVariables.mockResolvedValue({
+    mocks.variablesApi.list.mockResolvedValue({
       success: true,
       variables: [
         { name: 'workdir', value: '/repo', values: ['/repo'], scope: 'session' },

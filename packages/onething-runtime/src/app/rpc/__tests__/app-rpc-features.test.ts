@@ -46,6 +46,19 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:practice', 'practice'],
   // P4a 第三个域:collab。十五条,一条推送都没有 —— 旧的手写 IPC 文件整只删掉。
   ['rpc:collab', 'collab'],
+  // P4c 第一个域:scheduler。旧线是三处镜像(手写 IPC 工厂 + 主进程壳、web REST 桩、
+  // server 自己那台 per-owner Scheduler),搬完之后只剩这一格。
+  ['rpc:scheduler', 'scheduler'],
+  // P4c 第二个域:variables。
+  ['rpc:variables', 'variables'],
+  // P4c 第三个域:app-state。
+  ['rpc:app-state', 'appState'],
+  // P4c 第四个域:permission(活询问)。
+  ['rpc:permission', 'permission'],
+  // P4c 第五个域:scratchpad(四条数据面;推送留在手写 IPC 上)。
+  ['rpc:scratchpad', 'scratchpad'],
+  // P4c 第六个域:project-dirs。
+  ['rpc:project-dirs', 'projectDirs'],
 ] as const
 
 /**

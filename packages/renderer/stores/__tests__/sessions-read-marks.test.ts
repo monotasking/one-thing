@@ -42,7 +42,15 @@ vi.hoisted(() => {
 vi.mock('@/platform', () => ({
   platformApi: {
     capabilities: { collabRooms: true },
-    saveUIState: (patch: Record<string, unknown>) => saveUIState(patch),
+  },
+}))
+
+// app-state 域已迁到通用 RPC 通道(P4c):水位落盘走壳外客户端 `appStateApi`,
+// 不再是 platformApi 上的 saveUIState。
+vi.mock('@/platform/app-state-client', () => ({
+  appStateApi: {
+    get: vi.fn(async () => ({ currentSessionId: '', currentWorkspaceId: null })),
+    saveUiState: (patch: Record<string, unknown>) => saveUIState(patch),
   },
 }))
 

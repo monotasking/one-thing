@@ -577,6 +577,16 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
      | 残留集 C | browser(19+1)/ shell(4 条**字面量**通道,不在 `IPC_CHANNELS`)/ todo-plan 窗口(7+1)/ window(1)/ search 窗口 3 条 | C | — | — |
      | 不是迁移对象 | session-command(命令总线入口;web=`POST /api/sessions/:id/commands`) | 总线 | — | — |
 
+     **第一批落地记录(08-21)**:六域 25 方法迁完;`http.ts` 2028→1839(−189:24 条路由 + 1 正则块 +
+     只服务它们的 handler)、`runtime.ts` 删 scheduler 整台 per-owner `Scheduler` / `ServerProjectDirsStore` 类 /
+     variables·app-state·permission·scratchpad adapter;`core/runtime-facade.ts` 删三个 Adapter 接口、两个砍到只剩
+     respond/subscribeChanged(`RuntimeAppStateAdapter` 因位置泛型暂留空格);checker 整删 5 条
+     `checkElectronHostOwns<域>IpcHost`、6 条退掉"旧文件缺席=红"分支、1 条改指 `app/rpc/domains/scheduler.ts`
+     → boundary 198 ok / 0 failed;transport channels 304→279、bridge 1736→1631、web 1666→1577;全量 11127 用例绿。
+     project-dirs 做成"带 context 的安全域"(`resolveRpcSandbox`:ipc 不夹、http 夹 sandboxRoot)。
+     **语义变化两处(拍板 #23/#24)**:permission.getPending/clearSession 在 server 上失去 per-owner 护栏(桌面线从来
+     没有;server 单用户、owner 头是脚手架,但这是本批唯一安全语义削弱);app-state web 将 hydrate 桌面真实页签树
+     (与 #11 同型)。variables / scheduler 从 server 自有 per-owner 实例换成引擎真正在用的 app 单例(修正)。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。
@@ -643,6 +653,8 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 20 | **(新,P4c)acp / mcp / gateway / oauth / themes 迁 router = 删 server facade 自有的那份镜像实现,web 改吃桌面同一套**(themes 还让 server 获得插件主题 override) | 这正是"五重镜像"要消的债,按 agents/models 判例逐域接受 | 待拍(可一次性拍) |
 | 21 | **(新,P4c)chat 的 `resumeAfterToolConfirm` invoke 往引擎递 sender;web 同名方法早已走命令总线** | 不迁 router,删 invoke、桌面也走命令总线 | 待拍 |
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
+| 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
+| 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
 
 08-21 已拍:组织原则 = 包按环境/依赖等级、包内按领域、文件名带角色(§0b.2);`app` 改名 `backend` 并瘦身;
 P1→P1'、P3→P3'、新增 P0.5、P4a 前移(§0b.4)。

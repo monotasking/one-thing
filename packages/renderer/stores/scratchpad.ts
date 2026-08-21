@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { reactive } from 'vue'
 import type { ScratchpadChangedPayload, ScratchpadDocument } from '@/types'
 import { platformApi } from '@/platform'
+import { scratchpadApi } from '@/platform/scratchpad-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.scratchpad')
@@ -102,7 +103,7 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
     if (pending) return pending
     const task = (async () => {
       try {
-        const response = await platformApi.getScratchpad({ sessionId })
+        const response = await scratchpadApi.get({ sessionId })
         if (response?.success && response.document) {
           // 装载期间用户已经动过纸 —— 本地是更新的事实,不许被回填盖掉。
           if (!records[sessionId]?.dirty) applyDocument(sessionId, response.document)
@@ -156,7 +157,7 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
     const content = record.content
     const task = (async () => {
       try {
-        const response = await platformApi.updateScratchpad({ sessionId, content })
+        const response = await scratchpadApi.update({ sessionId, content })
         if (response?.success && response.document) {
           record.version = response.document.version
           record.filePath = response.document.filePath
@@ -244,7 +245,7 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
     versionRings.delete(sessionId)
     delete records[sessionId]
     try {
-      await platformApi.deleteScratchpad({ sessionId })
+      await scratchpadApi.delete({ sessionId })
     } catch (error) {
       log.error('scratchpad delete failed', { sessionId }, error)
     }
@@ -265,7 +266,7 @@ export const useScratchpadStore = defineStore('scratchpad', () => {
       versionRings.delete(fromSessionId)
     }
     try {
-      await platformApi.adoptScratchpad({ fromSessionId, toSessionId })
+      await scratchpadApi.adopt({ fromSessionId, toSessionId })
     } catch (error) {
       log.error('scratchpad adopt failed', { fromSessionId, toSessionId }, error)
     }

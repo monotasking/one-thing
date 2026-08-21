@@ -155,7 +155,8 @@
 import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
 import { getLogger } from '@/services/log'
 import { useSessionsStore } from '@/stores/sessions'
-import { useWorkspaceStore } from '@/stores/workspace'
+import { useWorkspaceStore, type WorkspaceHydrationSource } from '@/stores/workspace'
+import type { PersistedSessionReadMarks } from '@/stores/session-read-marks'
 import { useSpacesStore } from '@/stores/spaces'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
@@ -186,6 +187,7 @@ import { useBrowserStore } from '@/stores/browser'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { platformApi } from '@/platform'
+import { appStateApi } from '@/platform/app-state-client'
 import { toast } from '@/composables/useToast'
 import { getToolFilePath } from '@/stores/helpers/tool-step-view'
 import {
@@ -1185,7 +1187,7 @@ onMounted(async () => {
   const markdownCacheReady = ensureMarkdownCacheReady().catch((e) => {
     log.warn('markdown cache init failed', {}, e)
   })
-  const appStateReady = platformApi.getAppState().catch((e) => {
+  const appStateReady = appStateApi.get({}).catch((e) => {
     log.warn('app state restore failed', {}, e)
     return null
   })
@@ -1209,7 +1211,10 @@ onMounted(async () => {
   // session list. The initial session activation follows from the restored
   // active tab.
   const appState = await appStateReady
-  workspaceStore.hydrate(appState)
+  // `workspace` / `sessionReadMarks` 在传输契约上是不透明载荷(形状归渲染层,
+  // 见 `@shared/ipc/app-state.ts` 的文件头)—— 收窄就在这一处,两个 store 各自
+  // 还会再校验一遍结构。
+  workspaceStore.hydrate(appState as WorkspaceHydrationSource | null)
   const restoredSessionId = workspaceStore.activeSessionId
   if (restoredSessionId) {
     await sessionsStore.switchSession(restoredSessionId)
@@ -1227,7 +1232,9 @@ onMounted(async () => {
   // 同样收得到全量 session 事件,却一个会话都"看不见" —— 让它们跟着写,就是拿一份
   // 只涨不消的 inbound 去盖掉主窗口刚推进的 readAt,红点会诈尸。
   if (!isAuxiliaryWindow.value) {
-    sessionsStore.hydrateReadMarks(appState?.sessionReadMarks)
+    sessionsStore.hydrateReadMarks(
+      appState?.sessionReadMarks as PersistedSessionReadMarks | undefined,
+    )
     // dock 墨点与通知点击同样只由主窗口驱动 —— 与水位「只主窗口 hydrate/落盘」
     // 同一条纪律:副窗口收得到全量事件却看不见任何会话,让它们也画徽标就是
     // 两扇窗抢着写同一个 dock。

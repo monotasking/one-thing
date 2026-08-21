@@ -22,11 +22,18 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/platform', () => ({
   platformApi: {
-    getScratchpad: mocks.getScratchpad,
-    updateScratchpad: mocks.updateScratchpad,
-    deleteScratchpad: mocks.deleteScratchpad,
-    adoptScratchpad: mocks.adoptScratchpad,
+    // 推送订阅仍在壳上:router 没有推送面(结构债 P4c)。
     onScratchpadChanged: mocks.onScratchpadChanged,
+  },
+}))
+
+// 四条数据面已迁到通用 RPC 通道(P4c):store 引的是壳外客户端。
+vi.mock('@/platform/scratchpad-client', () => ({
+  scratchpadApi: {
+    get: mocks.getScratchpad,
+    update: mocks.updateScratchpad,
+    delete: mocks.deleteScratchpad,
+    adopt: mocks.adoptScratchpad,
   },
 }))
 

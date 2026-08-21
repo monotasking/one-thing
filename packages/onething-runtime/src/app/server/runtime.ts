@@ -282,28 +282,6 @@ import {
 	getTodoPlanHostPorts,
 } from "@onething/app/todo-plan/store.js";
 import {
-	OnethingSchedulerRunHistory,
-	OnethingSchedulerUserTaskStore,
-	Scheduler,
-	createOnethingSchedulerRunDetailFromRecord,
-	createOnethingUserSchedulerTaskForIpc,
-	deleteOnethingUserSchedulerTaskForIpc,
-	getOnethingSchedulerRunForIpc,
-	getOnethingSchedulerTaskForIpc,
-	listOnethingSchedulerRunsForIpc,
-	listOnethingSchedulerTasksForIpc,
-	nextCronRunAt,
-	previewOnethingSchedulerPrompt,
-	runOnethingSchedulerAgentTask,
-	runOnethingSchedulerTaskNowForIpc,
-	setOnethingSchedulerTaskEnabledForIpc,
-	updateOnethingUserSchedulerTaskForIpc,
-	type OnethingSchedulerRunDetail,
-	type OnethingSchedulerUserTask,
-	type SchedulerTaskContext,
-	type SchedulerTaskHandle,
-} from "@onething/runtime/scheduler";
-import {
 	VariableRegistry,
 	VariablesStore,
 	registerStandardVariableProviders,
@@ -326,9 +304,6 @@ import {
 	getOnethingMediaFilesDir,
 	getOnethingMediaImagesDir,
 	getOnethingMediaIndexPath,
-	getOnethingSchedulerDir,
-	getOnethingSchedulerRunsDir,
-	getOnethingSchedulerTasksPath,
 	getOnethingSessionPath,
 	getOnethingSessionsDir,
 	getOnethingSettingsPath,
@@ -454,17 +429,6 @@ import type {
 	MCPSettings,
 	MCPUpdateServerResponse,
 } from "@shared/ipc/mcp.js";
-import type {
-	SchedulerCreateTaskRequest,
-	SchedulerGetRequest,
-	SchedulerGetRunRequest,
-	SchedulerListRunsRequest,
-	SchedulerRunDetailDTO,
-	SchedulerRunNowRequest,
-	SchedulerSetEnabledRequest,
-	SchedulerTaskSnapshotDTO,
-	SchedulerUpdateTaskRequest,
-} from "@shared/ipc/scheduler.js";
 import type {
 	AppSettings,
 	ProxySettings,
@@ -645,16 +609,6 @@ type StreamPayloadHandler = (
 ) => void;
 type TodoPlanChangedHandler = (payload: TodoPlanChangedPayload) => void;
 type PendingPermissionRecord = { sessionId: string; info: PermissionInfo };
-type ServerSchedulerRuntime = {
-	scheduler: Scheduler;
-	userTasks: OnethingSchedulerUserTaskStore;
-	runHistory: OnethingSchedulerRunHistory<SchedulerRunDetailDTO>;
-	taskHandles: Map<string, SchedulerTaskHandle>;
-	registerUserTask?: (
-		task: OnethingSchedulerUserTask,
-	) => SchedulerTaskSnapshotDTO;
-	unregisterUserTask?: (id: string) => void;
-};
 type ServerVariablesRuntime = {
 	registry: VariableRegistry;
 	store: VariablesStore;
@@ -717,171 +671,6 @@ class ServerStreamChannel extends StreamChannel<AgentEngineStreamChunk> {
 		this.wildcardHandlers.clear();
 		super.shutdown();
 	}
-}
-
-interface ServerProjectDirsFile {
-	projects: Project[];
-}
-
-class ServerProjectDirsStore {
-	private projects: Project[] | null = null;
-
-	constructor(private readonly filePath: string) {}
-
-	list(): ProjectIndexEntry[] {
-		return this.readProjects()
-			.map((project) => ({
-				id: project.id,
-				path: project.path,
-				paths: [...project.paths],
-				lastUsedAt: project.lastUsedAt,
-			}))
-			.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
-	}
-
-	get(path: string): Project | null {
-		return (
-			this.readProjects().find((project) =>
-				projectRootsInclude(project.paths, path),
-			) ?? null
-		);
-	}
-
-	add(input: ProjectDirsAddRequest): Project {
-		const roots = normalizeProjectRoots(input.path, input.paths ?? []);
-		if (!roots) throw new Error("project requires a non-empty path");
-
-		const now = Date.now();
-		const projects = this.readProjects();
-		const existing =
-			projects.find((project) =>
-				roots.some((root) => projectRootsInclude(project.paths, root)),
-			) ?? null;
-		const project: Project = existing
-			? {
-					...existing,
-					paths:
-						normalizeProjectRoots(existing.path, [
-							...existing.paths,
-							...roots,
-						]) ?? existing.paths,
-					description: input.description ?? existing.description,
-					lastUsedAt: now,
-				}
-			: {
-					id: projectIdFromPath(roots[0]),
-					path: roots[0],
-					paths: roots,
-					description: input.description ?? "",
-					addedAt: now,
-					lastUsedAt: now,
-				};
-		project.path = project.paths[0];
-
-		this.projects = existing
-			? projects.map((item) => (item.id === project.id ? project : item))
-			: [...projects, project];
-		this.save();
-		return project;
-	}
-
-	update(
-		path: string,
-		patch: { description?: string; paths?: string[] },
-	): Project | null {
-		const projects = this.readProjects();
-		const existing = projects.find((project) =>
-			projectRootsInclude(project.paths, path),
-		);
-		if (!existing) return null;
-		let nextPaths = existing.paths;
-		if (patch.paths) {
-			const normalized = normalizeProjectRoots(
-				patch.paths[0] ?? "",
-				patch.paths.slice(1),
-			);
-			if (!normalized)
-				throw new Error("project requires at least one non-empty root");
-			nextPaths = normalized;
-		}
-		const project: Project = {
-			...existing,
-			path: nextPaths[0],
-			paths: nextPaths,
-			description: patch.description ?? existing.description,
-		};
-		this.projects = projects.map((item) =>
-			item.id === existing.id ? project : item,
-		);
-		this.save();
-		return project;
-	}
-
-	remove(path: string): boolean {
-		const projects = this.readProjects();
-		const existing = projects.find((project) =>
-			projectRootsInclude(project.paths, path),
-		);
-		if (!existing) return false;
-		this.projects = projects.filter((project) => project.id !== existing.id);
-		this.save();
-		return true;
-	}
-
-	private readProjects(): Project[] {
-		if (this.projects) return this.projects;
-		try {
-			if (!existsSync(this.filePath)) {
-				this.projects = [];
-				return this.projects;
-			}
-			const parsed = JSON.parse(
-				readFileSync(this.filePath, "utf-8"),
-			) as ServerProjectDirsFile;
-			this.projects = Array.isArray(parsed.projects)
-				? parsed.projects
-						.filter(isServerProjectDirProject)
-						.map(normalizeServerProjectDirRecord)
-				: [];
-			return this.projects;
-		} catch {
-			this.projects = [];
-			return this.projects;
-		}
-	}
-
-	private save(): void {
-		mkdirSync(dirname(this.filePath), { recursive: true });
-		writeFileSync(
-			this.filePath,
-			JSON.stringify({ projects: this.projects ?? [] }, null, 2),
-			"utf-8",
-		);
-	}
-}
-
-// Legacy rows carry only `path`; `paths` is normalized in afterwards.
-function isServerProjectDirProject(value: unknown): value is Project {
-	if (!value || typeof value !== "object") return false;
-	const project = value as Partial<Project>;
-	return (
-		typeof project.id === "string" &&
-		typeof project.path === "string" &&
-		typeof project.description === "string" &&
-		typeof project.addedAt === "number" &&
-		typeof project.lastUsedAt === "number"
-	);
-}
-
-function normalizeServerProjectDirRecord(project: Project): Project {
-	const paths =
-		normalizeProjectRoots(
-			project.path,
-			Array.isArray(project.paths)
-				? project.paths.filter((p): p is string => typeof p === "string")
-				: [],
-		) ?? [project.path];
-	return { ...project, path: paths[0], paths };
 }
 
 type ServerPluginCatalogEntry = () => void | Promise<void>;
@@ -1270,7 +1059,6 @@ async function createServerRuntimeOverServerBackend(
 		ReturnType<typeof createOnethingAgentStore>
 	>();
 	const promptStoresByOwner = new Map<string, OnethingPromptStore>();
-	const projectDirStoresByOwner = new Map<string, ServerProjectDirsStore>();
 	const pluginCatalogManagersByOwner = new Map<
 		string,
 		ServerPluginCatalogManager
@@ -1280,7 +1068,6 @@ async function createServerRuntimeOverServerBackend(
 		string,
 		Set<(payload: unknown) => void>
 	>();
-	const schedulerRuntimesByOwner = new Map<string, ServerSchedulerRuntime>();
 	const variableRuntimesByOwner = new Map<string, ServerVariablesRuntime>();
 	const workspaceWatchersByOwner = new Map<string, Map<string, FSWatcher>>();
 	const workspaceFileChangedHandlersByOwner = new Map<
@@ -1354,17 +1141,6 @@ async function createServerRuntimeOverServerBackend(
 	// backends and scoped owners keep the server-local implementations.
 	const useAppSubsystems = (context = defaultRequestContext()) =>
 		backend.persistsMessages && isDefaultContext(context);
-
-	// Project dirs feed the engine's prompt vars — the app store is the one it
-	// reads, so web-side edits must land there to be visible in prompts.
-	const projectDirsStoreForContext = (context = defaultRequestContext()) =>
-		useAppSubsystems(context)
-			? getAppProjectsStore()
-			: getServerProjectDirsStoreForContext(
-					projectDirStoresByOwner,
-					dataRoot,
-					context,
-				);
 
 	const ownerDataRootForContext = (
 		context = defaultRequestContext(),
@@ -1903,183 +1679,6 @@ async function createServerRuntimeOverServerBackend(
 			authServicesByOwner.set(key, service);
 		}
 		return service;
-	};
-
-	const getSchedulerRuntimeForContext = (
-		context = defaultRequestContext(),
-	): ServerSchedulerRuntime => {
-		const key = ownerKey(context);
-		let schedulerRuntime = schedulerRuntimesByOwner.get(key);
-		if (schedulerRuntime) return schedulerRuntime;
-
-		const paths = serverSchedulerPaths(
-			dataRoot,
-			context,
-			isDefaultContext(context) ? storePath : undefined,
-		);
-		const userTasks = new OnethingSchedulerUserTaskStore({
-			tasksFilePath: paths.tasksPath,
-			defaultAgentId: DEFAULT_ONETHING_AGENT_ID,
-			agentExists: (agentId) =>
-				getAgentStoreForContext(context).agentExists(agentId),
-			createId: randomUUID,
-			logger: consoleLog,
-		});
-		const runHistory = new OnethingSchedulerRunHistory<SchedulerRunDetailDTO>({
-			runsDir: paths.runsDir,
-			logger: consoleLog,
-		});
-		const scheduler = new Scheduler({
-			stateFilePath: paths.statePath,
-			createRunId: randomUUID,
-			logger: consoleLog,
-		});
-		schedulerRuntime = {
-			scheduler,
-			userTasks,
-			runHistory,
-			taskHandles: new Map(),
-		};
-		schedulerRuntimesByOwner.set(key, schedulerRuntime);
-
-		const registerUserTask = (
-			task: OnethingSchedulerUserTask,
-		): SchedulerTaskSnapshotDTO => {
-			schedulerRuntime.taskHandles.get(task.id)?.unregister();
-			const handle = scheduler.register({
-				id: task.id,
-				name: task.name,
-				kind: "agent",
-				source: "user",
-				readonly: false,
-				agentId: task.agentId,
-				prompt: task.prompt,
-				promptPreview: previewOnethingSchedulerPrompt(task.prompt),
-				workingDirectory: task.workingDirectory,
-				tags: ["agent", "user"],
-				enabled: () => task.enabled,
-				schedule: () => task.schedule,
-				timeoutMs: 30 * 60 * 1000,
-				run: (taskContext) =>
-					runServerSchedulerAgentTask(
-						task.id,
-						taskContext,
-						context,
-						schedulerRuntime!,
-					),
-			});
-			schedulerRuntime.taskHandles.set(task.id, handle);
-			const snapshot = handle.getStatus() as
-				| SchedulerTaskSnapshotDTO
-				| undefined;
-			if (!snapshot) throw new Error("Failed to register scheduled task");
-			return snapshot;
-		};
-
-		const unregisterUserTask = (id: string): void => {
-			schedulerRuntime?.taskHandles.get(id)?.unregister();
-			schedulerRuntime?.taskHandles.delete(id);
-		};
-
-		const runServerSchedulerAgentTask = async (
-			taskId: string,
-			taskContext: SchedulerTaskContext,
-			ownerContext: RuntimeRequestContext,
-			ownerSchedulerRuntime: ServerSchedulerRuntime,
-		): Promise<Record<string, unknown>> =>
-			runOnethingSchedulerAgentTask(taskId, taskContext, {
-				getTask: (targetTaskId) =>
-					ownerSchedulerRuntime.userTasks.get(targetTaskId),
-				getStreamHost: () => ({
-					hasBoundSender: () => true,
-					abort: (sessionId) => {
-						backend.abortSession(sessionId, "scheduler abort");
-					},
-				}),
-				eventBus: {
-					onAny: (sessionId, handler, label) =>
-						eventBus.onAny(
-							sessionId,
-							handler as unknown as Parameters<typeof eventBus.onAny>[1],
-							label,
-						),
-					emit: async (sessionId, event) => {
-						if (event.type === SESSION_COMMAND_TYPES.SEND_MESSAGE) {
-							const session = getSessionForContext(sessionId, ownerContext);
-							if (!session) {
-								throw new Error("Session not found");
-							}
-						}
-						return eventBus.emit(
-							sessionId,
-							event as unknown as AgentEngineSessionEvent,
-						);
-					},
-				},
-				sessions: {
-					getCurrentSessionId: () => getServerCurrentSessionId(ownerContext),
-					createSession: (sessionId, name) => {
-						const session = ensureSession(ownerContext, sessionId);
-						session.name = name;
-						session.updatedAt = Date.now();
-						persistSession(session);
-						return session;
-					},
-					updateSessionAgent: (sessionId, agentId) => {
-						const session = getSessionForContext(sessionId, ownerContext);
-						if (session) {
-							session.agentId = agentId;
-							persistSession(session);
-						}
-					},
-					updateSessionWorkingDirectory: (sessionId, workingDirectory) => {
-						const session = getSessionForContext(sessionId, ownerContext);
-						const resolvedPath = resolveServerWorkspaceFilePath(
-							workspaceRoot,
-							ownerContext,
-							workingDirectory,
-						);
-						if (session && resolvedPath) {
-							session.workingDirectory = resolvedPath;
-							persistSession(session);
-						}
-					},
-					updateSessionArchived: (sessionId, isArchived, archivedAt) => {
-						const session = getSessionForContext(sessionId, ownerContext);
-						if (session) {
-							session.isArchived = isArchived;
-							session.archivedAt = archivedAt ?? undefined;
-							persistSession(session);
-						}
-					},
-					setCurrentSessionId: (sessionId) =>
-						setServerCurrentSessionId(ownerContext, sessionId),
-					getSession: (sessionId) => {
-						return getSessionForContext(sessionId, ownerContext);
-					},
-				},
-				saveRunDetail: (detail) =>
-					ownerSchedulerRuntime.runHistory.save(
-						detail as SchedulerRunDetailDTO,
-					) as OnethingSchedulerRunDetail,
-				createId: randomUUID,
-				logger: consoleLog,
-			});
-
-		for (const task of userTasks.list()) {
-			registerUserTask(task);
-		}
-
-		schedulerRuntime.registerUserTask = registerUserTask;
-		schedulerRuntime.unregisterUserTask = unregisterUserTask;
-		return schedulerRuntime;
-	};
-
-	const getSchedulerRuntimeWithSettingsForContext = async (
-		context = defaultRequestContext(),
-	): Promise<ServerSchedulerRuntime> => {
-		await getOwnerSettings(settingsByOwner, settingsStore, context);
-		return getSchedulerRuntimeForContext(context);
 	};
 
 	const getVariableRuntimeForContext = (
@@ -2648,24 +2247,6 @@ async function createServerRuntimeOverServerBackend(
 				return webServerCapabilities;
 			},
 		},
-		appState: {
-			async get(context = defaultRequestContext()) {
-				const currentSessionId = getServerCurrentSessionId(context);
-				return {
-					currentSessionId,
-					currentWorkspaceId: context.workspaceId,
-					openTabs: currentSessionId
-						? [{ type: "chat", sessionId: currentSessionId }]
-						: [],
-					activeTabIndex: 0,
-					sidebarCollapsed: false,
-				};
-			},
-			async saveUIState(uiState: unknown, context = defaultRequestContext()) {
-				if (!isDefaultContext(context)) return { success: true };
-				return sessionStore.saveUIState(uiState);
-			},
-		},
 		sessions: {
 			async list(context = defaultRequestContext()) {
 				return {
@@ -3097,40 +2678,6 @@ async function createServerRuntimeOverServerBackend(
 			async respond(requestId, response, context = defaultRequestContext()) {
 				return respondToPermission(requestId, response, context);
 			},
-			async getPending(sessionId: string, context = defaultRequestContext()) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) {
-					return { success: false, pending: [], error: "Session not found" };
-				}
-				return getOnethingPendingPermissionsForIpc({
-					sessionId,
-					// Real engine: core Permission is the source of truth — same
-					// wiring as the desktop IPC handler, including promptState
-					// (actionable/queued) so a reloading client rebuilds queued
-					// cards. The event-driven mirror only serves echo backends.
-					getPending: (targetSessionId) =>
-						backend.persistsMessages
-							? (Permission.getPendingPrompts(
-									targetSessionId,
-								) as unknown as PermissionInfo[])
-							: Array.from(pendingPermissions.values())
-									.filter((record) => record.sessionId === targetSessionId)
-									.map((record) => record.info),
-					logger: consoleLog,
-				});
-			},
-			async clearSession(sessionId: string, context = defaultRequestContext()) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) {
-					return { success: false, error: "Session not found" };
-				}
-				return clearOnethingPermissionSessionForIpc({
-					sessionId,
-					clearSession: (targetSessionId) =>
-						clearSessionPermissions(targetSessionId),
-					logger: consoleLog,
-				});
-			},
 		},
 		settings: {
 			async get(context = defaultRequestContext()) {
@@ -3526,167 +3073,6 @@ async function createServerRuntimeOverServerBackend(
 					context,
 				),
 		},
-		projectDirs: {
-			async list(context = defaultRequestContext()) {
-				const store = projectDirsStoreForContext(context);
-				return listOnethingProjectDirsForIpc({
-					listEntries: () => store.list(),
-					getProject: (path) => store.get(path),
-				});
-			},
-			async get(path: string, context = defaultRequestContext()) {
-				const resolvedPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!resolvedPath) return serverProjectDirsPathError();
-				const store = projectDirsStoreForContext(context);
-				return getOnethingProjectDirForIpc({
-					request: { path: resolvedPath },
-					getProject: (targetPath) => store.get(targetPath),
-				});
-			},
-			async add(
-				path: string,
-				description?: string,
-				context = defaultRequestContext(),
-				paths?: string[],
-			) {
-				const resolvedPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!resolvedPath) return serverProjectDirsPathError();
-				let resolvedExtraPaths: string[] | undefined;
-				if (paths && paths.length > 0) {
-					resolvedExtraPaths = [];
-					for (const extra of paths) {
-						const resolvedExtra = resolveServerWorkspaceFilePath(
-							workspaceRoot,
-							context,
-							extra,
-						);
-						if (!resolvedExtra) return serverProjectDirsPathError();
-						resolvedExtraPaths.push(resolvedExtra);
-					}
-				}
-				const store = projectDirsStoreForContext(context);
-				return addOnethingProjectDirForIpc({
-					request: { path: resolvedPath, paths: resolvedExtraPaths, description },
-					addProject: (input) => store.add(input),
-				});
-			},
-			async update(
-				path: string,
-				patch: { description?: string; paths?: string[] },
-				context = defaultRequestContext(),
-			) {
-				const resolvedPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!resolvedPath) return serverProjectDirsPathError();
-				let resolvedPaths: string[] | undefined;
-				if (patch.paths) {
-					resolvedPaths = [];
-					for (const root of patch.paths) {
-						const resolvedRoot = resolveServerWorkspaceFilePath(
-							workspaceRoot,
-							context,
-							root,
-						);
-						if (!resolvedRoot) return serverProjectDirsPathError();
-						resolvedPaths.push(resolvedRoot);
-					}
-				}
-				const store = projectDirsStoreForContext(context);
-				return updateOnethingProjectDirForIpc({
-					request: {
-						path: resolvedPath,
-						description: patch.description,
-						paths: resolvedPaths,
-					},
-					updateProject: (targetPath, targetPatch) =>
-						store.update(targetPath, targetPatch),
-				});
-			},
-			async remove(path: string, context = defaultRequestContext()) {
-				const resolvedPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!resolvedPath) return serverProjectDirsPathError();
-				const store = projectDirsStoreForContext(context);
-				return removeOnethingProjectDirForIpc({
-					request: { path: resolvedPath },
-					removeProject: (targetPath) => store.remove(targetPath),
-				});
-			},
-		},
-		variables: {
-			async list(
-				request: VariablesListRequest,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(request.sessionId, context);
-				if (!session) {
-					return {
-						success: false,
-						variables: [],
-						error: "Session not found",
-						code: "NOT_FOUND",
-					};
-				}
-				const variableRuntime = getVariableRuntimeForContext(context);
-				return listOnethingVariablesForIpc({
-					request,
-					listVariables: (variableContext) =>
-						variableRuntime.registry.list(variableContext),
-				});
-			},
-			async set(
-				request: VariablesSetRequest,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(request.sessionId, context);
-				if (!session) {
-					return {
-						success: false,
-						error: "Session not found",
-						code: "NOT_FOUND",
-					};
-				}
-				const variableRuntime = getVariableRuntimeForContext(context);
-				return setOnethingVariableForIpc({
-					request,
-					setVariable: (variableContext, input) =>
-						variableRuntime.registry.set(variableContext, input),
-				});
-			},
-			async delete(
-				request: VariablesDeleteRequest,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(request.sessionId, context);
-				if (!session) {
-					return {
-						success: false,
-						error: "Session not found",
-						code: "NOT_FOUND",
-					};
-				}
-				const variableRuntime = getVariableRuntimeForContext(context);
-				return deleteOnethingVariableForIpc({
-					request,
-					deleteVariable: (variableContext, name, scope) =>
-						variableRuntime.registry.delete(variableContext, name, scope),
-				});
-			},
-		},
 		media: {
 			async listAssets(query: unknown, context = defaultRequestContext()) {
 				const service = getServerMediaServiceForContext(
@@ -3901,206 +3287,9 @@ async function createServerRuntimeOverServerBackend(
 		// 草稿纸没有 per-owner 分表:server 是单用户,而且**引擎在同一个进程里
 		// 读同一张纸**(beforeTurn 尾块注入)。第二个仓等于把事实分叉。
 		scratchpad: {
-			async get(request: ScratchpadGetRequest) {
-				try {
-					const document = await readAppScratchpad(request.sessionId);
-					return { success: true, document };
-				} catch (error) {
-					return { success: false, error: describeRuntimeError(error) };
-				}
-			},
-			async update(request: ScratchpadUpdateRequest) {
-				try {
-					const document = await updateAppScratchpad(
-						request.sessionId,
-						request.content,
-					);
-					return { success: true, document };
-				} catch (error) {
-					return { success: false, error: describeRuntimeError(error) };
-				}
-			},
-			async delete(request: ScratchpadDeleteRequest) {
-				try {
-					await removeAppScratchpad(request.sessionId);
-					return { success: true };
-				} catch (error) {
-					return { success: false, error: describeRuntimeError(error) };
-				}
-			},
-			async adopt(request: ScratchpadAdoptRequest) {
-				try {
-					await adoptAppScratchpad(
-						request.fromSessionId,
-						request.toSessionId,
-					);
-					return { success: true };
-				} catch (error) {
-					return { success: false, error: describeRuntimeError(error) };
-				}
-			},
+			// 结构债 P4c:四条数据面已迁到 `scratchpad` RPC 域。这里只剩推送面 ——
+			// `GET /api/scratchpad/events` 的 SSE 源,router 今天没有推送面。
 			subscribeChanged: subscribeScratchpadChanged,
-		},
-		scheduler: {
-			async listTasks(context = defaultRequestContext()) {
-				const schedulerRuntime =
-					await getSchedulerRuntimeWithSettingsForContext(context);
-				return listOnethingSchedulerTasksForIpc({
-					listTasks: () =>
-						schedulerRuntime.scheduler.list() as SchedulerTaskSnapshotDTO[],
-					logger: consoleLog,
-				});
-			},
-			async getTask(
-				request: SchedulerGetRequest,
-				context = defaultRequestContext(),
-			) {
-				const schedulerRuntime =
-					await getSchedulerRuntimeWithSettingsForContext(context);
-				return getOnethingSchedulerTaskForIpc({
-					id: request.id,
-					getTaskStatus: (id) =>
-						schedulerRuntime.scheduler.getStatus(id) as
-							| SchedulerTaskSnapshotDTO
-							| undefined,
-					logger: consoleLog,
-				});
-			},
-			async runTaskNow(
-				request: SchedulerRunNowRequest,
-				context = defaultRequestContext(),
-			) {
-				const schedulerRuntime =
-					await getSchedulerRuntimeWithSettingsForContext(context);
-				return runOnethingSchedulerTaskNowForIpc({
-					id: request.id,
-					force: request.force,
-					runNow: (id, options) =>
-						schedulerRuntime.scheduler.runNow(id, options),
-					isUserTask: (id) => isServerUserSchedulerTask(schedulerRuntime, id),
-					toRunDetail: (record) =>
-						createOnethingSchedulerRunDetailFromRecord({
-							...(record as SchedulerRunDetailDTO),
-							result: toJsonValue((record as SchedulerRunDetailDTO).result),
-						}) as SchedulerRunDetailDTO,
-					saveRunDetail: (detail) => schedulerRuntime.runHistory.save(detail),
-					logger: consoleLog,
-				});
-			},
-			async setTaskEnabled(
-				request: SchedulerSetEnabledRequest,
-				context = defaultRequestContext(),
-			) {
-				const schedulerRuntime =
-					await getSchedulerRuntimeWithSettingsForContext(context);
-				return setOnethingSchedulerTaskEnabledForIpc({
-					id: request.id,
-					enabled: request.enabled,
-					isUserTask: (id) => isServerUserSchedulerTask(schedulerRuntime, id),
-					setUserTaskEnabled: (id, enabled) => {
-						const task = schedulerRuntime.userTasks.setEnabled(id, enabled);
-						return schedulerRuntime.registerUserTask!(task);
-					},
-					setSchedulerTaskEnabled: (id, enabled) =>
-						schedulerRuntime.scheduler.setEnabled(id, enabled) as
-							| SchedulerTaskSnapshotDTO
-							| undefined,
-					logger: consoleLog,
-				});
-			},
-			async createTask(
-				request: SchedulerCreateTaskRequest,
-				context = defaultRequestContext(),
-			) {
-				const schedulerRuntime =
-					await getSchedulerRuntimeWithSettingsForContext(context);
-				return createOnethingUserSchedulerTaskForIpc({
-					request,
-					createUserTask: (taskRequest) => {
-						const task = schedulerRuntime.userTasks.create(taskRequest);
-						return schedulerRuntime.registerUserTask!(task);
-					},
-					logger: consoleLog,
-				});
-			},
-			async updateTask(
-				request: SchedulerUpdateTaskRequest,
-				context = defaultRequestContext(),
-			) {
-				const schedulerRuntime =
-					await getSchedulerRuntimeWithSettingsForContext(context);
-				return updateOnethingUserSchedulerTaskForIpc({
-					request,
-					isUserTask: (id) => isServerUserSchedulerTask(schedulerRuntime, id),
-					updateUserTask: (taskRequest) => {
-						const task = schedulerRuntime.userTasks.update(taskRequest);
-						return schedulerRuntime.registerUserTask!(task);
-					},
-					logger: consoleLog,
-				});
-			},
-			async deleteTask(
-				request: { id: string },
-				context = defaultRequestContext(),
-			) {
-				const schedulerRuntime =
-					await getSchedulerRuntimeWithSettingsForContext(context);
-				return deleteOnethingUserSchedulerTaskForIpc({
-					id: request.id,
-					isUserTask: (id) => isServerUserSchedulerTask(schedulerRuntime, id),
-					deleteUserTask: (id) => {
-						schedulerRuntime.userTasks.delete(id);
-						schedulerRuntime.unregisterUserTask?.(id);
-					},
-					logger: consoleLog,
-				});
-			},
-			async listRuns(
-				request: SchedulerListRunsRequest,
-				context = defaultRequestContext(),
-			) {
-				const schedulerRuntime =
-					await getSchedulerRuntimeWithSettingsForContext(context);
-				return listOnethingSchedulerRunsForIpc({
-					taskId: request.taskId,
-					limit: request.limit,
-					listSavedRuns: (taskId, limit) =>
-						schedulerRuntime.runHistory.list(taskId, limit),
-					getTaskStatus: (taskId) =>
-						schedulerRuntime.scheduler.getStatus(taskId) as
-							| SchedulerTaskSnapshotDTO
-							| undefined,
-					toRunDetail: (record) =>
-						createOnethingSchedulerRunDetailFromRecord({
-							...(record as SchedulerRunDetailDTO),
-							result: toJsonValue((record as SchedulerRunDetailDTO).result),
-						}) as SchedulerRunDetailDTO,
-					logger: consoleLog,
-				});
-			},
-			async getRun(
-				request: SchedulerGetRunRequest,
-				context = defaultRequestContext(),
-			) {
-				const schedulerRuntime =
-					await getSchedulerRuntimeWithSettingsForContext(context);
-				return getOnethingSchedulerRunForIpc({
-					taskId: request.taskId,
-					runId: request.runId,
-					getSavedRun: (taskId, runId) =>
-						schedulerRuntime.runHistory.get(taskId, runId),
-					getTaskStatus: (taskId) =>
-						schedulerRuntime.scheduler.getStatus(taskId) as
-							| SchedulerTaskSnapshotDTO
-							| undefined,
-					toRunDetail: (record) =>
-						createOnethingSchedulerRunDetailFromRecord({
-							...(record as SchedulerRunDetailDTO),
-							result: toJsonValue((record as SchedulerRunDetailDTO).result),
-						}) as SchedulerRunDetailDTO,
-					logger: consoleLog,
-				});
-			},
 		},
 		skills: {
 			list(workingDirectory?: string, context = defaultRequestContext()) {
@@ -5079,10 +4268,6 @@ async function createServerRuntimeOverServerBackend(
 				service.cleanup();
 			}
 			authServicesByOwner.clear();
-			for (const schedulerRuntime of schedulerRuntimesByOwner.values()) {
-				schedulerRuntime.scheduler.dispose();
-			}
-			schedulerRuntimesByOwner.clear();
 			for (const variableRuntime of variableRuntimesByOwner.values()) {
 				variableRuntime.unsubscribe();
 				variableRuntime.registry.reset();
@@ -7261,28 +6446,6 @@ function resolveServerWorkspaceFilePath(
 	return isPathInside(candidate, sandboxRoot) ? candidate : null;
 }
 
-function getServerProjectDirsStoreForContext(
-	stores: Map<string, ServerProjectDirsStore>,
-	dataRoot: string,
-	context: RuntimeRequestContext,
-): ServerProjectDirsStore {
-	const key = ownerKey(context);
-	let store = stores.get(key);
-	if (!store) {
-		store = new ServerProjectDirsStore(
-			join(
-				dataRoot,
-				"owners",
-				safePathSegment(context.userId),
-				safePathSegment(context.workspaceId),
-				"project-dirs.json",
-			),
-		);
-		stores.set(key, store);
-	}
-	return store;
-}
-
 function getServerPluginCatalogManagerForContext(
 	managers: Map<string, ServerPluginCatalogManager>,
 	dataRoot: string,
@@ -7539,47 +6702,6 @@ function normalizePermissionResponse(
 		channel,
 		rejectReason,
 	};
-}
-
-function serverSchedulerPaths(
-	dataRoot: string,
-	context = defaultRequestContext(),
-	desktopStorePath?: string,
-): {
-	statePath: string;
-	tasksPath: string;
-	runsDir: string;
-} {
-	if (desktopStorePath && isDefaultServerRequestContext(context)) {
-		return {
-			statePath: join(
-				getOnethingSchedulerDir({ storePath: desktopStorePath }),
-				"state.json",
-			),
-			tasksPath: getOnethingSchedulerTasksPath({ storePath: desktopStorePath }),
-			runsDir: getOnethingSchedulerRunsDir({ storePath: desktopStorePath }),
-		};
-	}
-
-	const schedulerRoot = join(
-		dataRoot,
-		"owners",
-		safePathSegment(context.userId),
-		safePathSegment(context.workspaceId),
-		"scheduler",
-	);
-	return {
-		statePath: join(schedulerRoot, "state.json"),
-		tasksPath: join(schedulerRoot, "tasks.json"),
-		runsDir: join(schedulerRoot, "runs"),
-	};
-}
-
-function isServerUserSchedulerTask(
-	schedulerRuntime: ServerSchedulerRuntime,
-	id: string,
-): boolean {
-	return id.startsWith("user:") || Boolean(schedulerRuntime.userTasks.get(id));
 }
 
 function serverVariablesFilePath(
