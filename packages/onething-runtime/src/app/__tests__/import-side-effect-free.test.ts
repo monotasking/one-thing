@@ -19,7 +19,10 @@ vi.mock('@onething/runtime/tools/background-jobs', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureCoreBackgroundJobs: () => { spy.calls.push('background-jobs') },
 }))
-vi.mock('@onething/runtime/scheduler', async (importOriginal) => ({
+// P3'a-3:绑定件归位后从 `./scheduler.js` 直取(runtime 源码不自引用包名),所以
+// 打在 barrel 上的桩够不着了 —— 换成打在**具体模块**上。barrel 的 `export *` 同样
+// 解析到这一个 id,走 barrel 的调用方照旧拿到桩。
+vi.mock('@onething/runtime/scheduler/scheduler', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingScheduler: () => { spy.calls.push('scheduler') },
 }))
@@ -61,7 +64,7 @@ describe('src/app import purity', () => {
     await import('@onething/runtime/tools/background-jobs-bound')
     await import('@onething/runtime/tools/bash-executor')
     await import('../providers/index.js')
-    await import('../scheduler/index.js')
+    await import('@onething/runtime/scheduler/scheduler-bound')
     await import('../utils/ripgrep.js')
     await import('../search/providers.js')
     await import('../skills/manage.js')

@@ -563,7 +563,8 @@ const MAIN_CORE_SYSTEM_DIRS = [
   'packages/onething-runtime/src/app/agent-loop',
   'packages/onething-runtime/src/app/engine',
   'packages/onething-runtime/src/app/events',
-  'packages/onething-runtime/src/app/storage',
+  // P3'a-3:`app/storage/` 已整只归位 `runtime/src/storage/storage-manager-bound.ts`
+  // (除 consolePort 外零脊柱边),目录不复存在。
   'packages/onething-runtime/src/app/permission',
   'packages/onething-runtime/src/app/tools',
 ]
@@ -9272,7 +9273,9 @@ function checkRuntimeOwnsSchedulerCore(): void {
   const runtimeCronFile = path.join(root, 'packages/onething-runtime/src/scheduler/cron.ts')
   const runtimeTypesFile = path.join(root, 'packages/onething-runtime/src/scheduler/types.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
-  const mainSchedulerFile = path.join(root, 'packages/onething-runtime/src/app/scheduler/index.ts')
+  // P3'a-3:绑定件从 `app/scheduler/index.ts` 归位到 `runtime/src/scheduler/scheduler-bound.ts`
+  // —— 它配的是 store 路径 + `./scheduler.js`,唯一的装配层边 `consolePort` 也已归位。
+  const mainSchedulerFile = path.join(root, 'packages/onething-runtime/src/scheduler/scheduler-bound.ts')
   const mainCronFile = path.join(root, 'packages/onething-runtime/src/app/scheduler/cron.ts')
   const mainTypesFile = path.join(root, 'packages/onething-runtime/src/app/scheduler/types.ts')
   const runtimeSchedulerContent = fs.existsSync(runtimeSchedulerFile) ? fs.readFileSync(runtimeSchedulerFile, 'utf-8') : ''
@@ -9322,9 +9325,12 @@ function checkRuntimeOwnsSchedulerCore(): void {
         : []
     ),
     ...(
-      mainSchedulerContent.includes('@onething/runtime/scheduler') && mainSchedulerContent.includes('configureOnethingScheduler')
+      // 归位之后它是包内文件,说的是相对路径 `./scheduler.js`(同 runtime 其余源码的
+      // 惯例:只有测试用 `@onething/runtime/*` 自引用)。断言的语义不变:**绑定件必须
+      // 去配 runtime 拥有的那台调度器,而不是自己长一台**。
+      mainSchedulerContent.includes('./scheduler.js') && mainSchedulerContent.includes('configureOnethingScheduler')
         ? []
-        : [`${rel(mainSchedulerFile)}: main scheduler facade must configure @onething/runtime/scheduler`]
+        : [`${rel(mainSchedulerFile)}: bound scheduler facade must configure the runtime-owned scheduler`]
     ),
     // P3'a-2(I2):`app/scheduler/{cron,types}.ts` 本来就只是 `export … from
     // '@onething/runtime/scheduler'` 的转发,与 runtime 里同名文件重复着同一个概念。
@@ -9335,7 +9341,7 @@ function checkRuntimeOwnsSchedulerCore(): void {
       : []),
     ...(fs.existsSync(mainSchedulerFile)
       ? matchingLines(mainSchedulerFile, MAIN_SCHEDULER_CORE_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/scheduler/index.ts: missing scheduler core adapter']),
+      : ['packages/onething-runtime/src/scheduler/scheduler-bound.ts: missing scheduler core adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns scheduler core runtime', lines)
@@ -9344,7 +9350,10 @@ function checkRuntimeOwnsSchedulerCore(): void {
 function checkRuntimeOwnsSchedulerRunHistory(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/run-history.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/scheduler/run-history.ts')
+  // P3'a-3:绑定件从 `app/scheduler/run-history.ts` 归位到
+  // `runtime/src/scheduler/run-history-bound.wiring.ts` —— 带 `.wiring` 是因为它吃
+  // `@shared/ipc` 的 `SchedulerRunDetailDTO`(I3:角色写在文件名里)。
+  const mainFile = path.join(root, 'packages/onething-runtime/src/scheduler/run-history-bound.wiring.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -9363,13 +9372,13 @@ function checkRuntimeOwnsSchedulerRunHistory(): void {
       ? [`${rel(runtimeIndexFile)}: missing scheduler run-history public export`]
       : []),
     ...(
-      mainContent.includes('@onething/runtime/scheduler') && mainContent.includes('OnethingSchedulerRunHistory')
+      mainContent.includes('./run-history.js') && mainContent.includes('OnethingSchedulerRunHistory')
         ? []
-        : [`${rel(mainFile)}: main scheduler run-history facade must use @onething/runtime/scheduler`]
+        : [`${rel(mainFile)}: bound scheduler run-history facade must use the runtime-owned run history`]
     ),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SCHEDULER_RUN_HISTORY_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/scheduler/run-history.ts: missing scheduler run-history adapter']),
+      : ['packages/onething-runtime/src/scheduler/run-history-bound.wiring.ts: missing scheduler run-history adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns scheduler run-history storage', lines)

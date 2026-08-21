@@ -575,6 +575,86 @@ acp 四个门面、`app/auth/callback-server.ts`、`app/themes/builtin/index.ts`
 **它到底算不算脊柱**要先拍。同理 `app/providers/{bound-fetch,request-dump}.ts` 是 agent-loop
 六个 provider 包装留在 app 的唯一原因,它们真依赖设置缓存与日志,是真脊柱。
 
+#### P3'a-2 落地记录(2026-08-21,其余薄目录按文件分拣,commit `37089393`)
+
+P3'a-1 只验了机制;本批把剩下的 25 个薄目录按"**一个文件 import 了脊柱就是接线**"逐个过筛。
+
+**动作**(180 文件改动,+601 / −765):
+
+- **整目录进 runtime**:practice / media / prompts / scratchpad —— 落成
+  `service.wiring.ts` / `library-service-bound.ts` / `store-bound.ts` / `resolver.wiring.ts` /
+  `service-bound.ts`(角色写在文件名里,I2/I3)。
+- **各搬出零脊柱文件**:storage / interaction / permission / agents / scheduler / skills / tools /
+  variables,共 **25 个文件(含 10 个测试)**归位。
+- **删掉 8 个纯转发门面**(I2:同一概念不留第二处),调用点直指真身。
+- **`app/stores/paths.ts` 整个拆除**:那 38 条转发的 **108 处调用点**改指
+  `@onething/runtime/storage` 的真名 —— 顺手消掉了 core / runtime / app **三个来路同名
+  `getStorePath`** 的陷阱。该文件只余 `configureStorePathHost` + docs 路径,改名
+  `app/stores/docs-paths.ts`。(这正是 P3'a-1 留下的那道判断题:转发门面不算脊柱。)
+- **说明符改写 74 处 / 55 文件**;`packages/onething-runtime/package.json` 新增 `"./interaction/*"`。
+- **checker**:5 处路径断言改指;scheduler 的两个门面断言按 P3'a-1 的判例翻成"**回来才算红**"。
+
+**验收**(全绿):`typecheck` 0 错;`test` **11127** 通过;`boundary` 199 ok / **0 failed**;
+五门 none new;electron / server / web 三宿主构建绿。
+
+**结论(本批最重要的一条)**:留在 `src/app` 的 **34 个文件实测是真接线** —— 它们撞的是
+engine / rpc / toolkit / store 这些**真脊柱**,不是历史包袱。它们等 P3'd 迁进
+`backend/wiring/<d>/`,不该再被硬折。唯一还能拆的解锁点只剩一个:
+`app/logging/console-port.ts`(纯适配器,却把一批产品层文件钉在 app 里)。
+
+#### P3'a-3 落地记录(2026-08-21,consolePort 解锁点 + 三个文件,未提交)
+
+P3'a-2 点名的那**一个**解锁点,以及它解锁的东西。收尾批,`src/app` 的薄壳分拣到此为止。
+
+**动作**:
+
+- **`app/logging/console-port.ts` → `runtime/src/logging/console-port.ts`**。先证实它确实是纯适配器:
+  全文件只有一条 `import type { LogLevel, Logger } from '@onething/core/logging'`,零装配层依赖。
+  从 `runtime/src/logging/index.ts` 再导出;`app/logging/index.ts` 的两行 export 改成从
+  `../../logging/index.js` 转发。
+  **调用点 0 处改写**(38 个 app 文件 / 41 处 `consolePort(...)` 保持原样),这是**刻意的**:
+  它们写的是 `import { consolePort, getLogger } from '../logging/index.js'`,而 `getLogger` 这半边
+  在两个模块里**不是同一个函数** —— 装配层的是 `createLogger(root, ns)` 直绑 app root,产品层的是
+  延迟绑定的 `DeferredLogger`(接线前落回自己的兜底环)。把整条 import 换源会顺手换掉 40 个文件的
+  logger 语义,还会打穿一批 `vi.mock('../logging/index.js')`;只换 `consolePort` 一个名字则要把
+  每处拆成两条 import,更脏。装配层再导出是这里唯一不改变任何行为的写法。
+- **它解锁的 3 个文件**(重算传递闭包后确认:除 `consolePort` 外零脊柱):
+  - `app/storage/index.ts` → `runtime/src/storage/storage-manager-bound.ts`(I2 改名:同目录已有
+    `file-storage.ts`/`index.ts`;搬来的是**绑定到文件 provider 的进程级单例**)。其测试
+    `core-storage-manager.test.ts` 随行(该测试只 import `@onething/core/storage`,零改动)。
+    **`app/storage/` 目录随之删除。**顺带查明:这个模块**全仓零 import**,是搬完才敢说的死码线索。
+  - `app/scheduler/index.ts` → `runtime/src/scheduler/scheduler-bound.ts`(同上,同目录已有 `index.ts`)。
+  - `app/scheduler/run-history.ts` → `runtime/src/scheduler/run-history-bound.wiring.ts`。
+    **带 `.wiring` 是因为它确实还有一条脊柱之外的边**:`import type { SchedulerRunDetailDTO } from
+    '@shared/ipc.js'`。按 I3 的规矩这不是"留下"的理由 —— 产品层里说跨进程词汇的文件把角色写进文件名
+    即可(沿用 `agents/store-bound.wiring.ts` 的判例),checker 的 `RUNTIME_WIRING_FORBIDDEN_PATTERNS`
+    正是为此而设。
+  - 搬走的文件内部 import 从 `@onething/runtime/*` 自引用改成相对路径(runtime 源码的惯例:
+    只有测试用包名自引用)。
+- **`app/scheduler/` 只剩 `user-tasks.ts` + 其测试**(真接线,撞 rpc/store);`app/interaction/` 只剩
+  `no-human.ts`(依赖 `app/store.ts`),按规则**不动**。
+- **调用点改写 11 处 / 7 文件**:`app/backend.ts`、`app/plugins/api.ts`、
+  `app/rpc/domains/scheduler.ts`(2)、`app/scheduler/user-tasks.ts`(2)、
+  测试 4 处(`builtin-teardown` / `import-side-effect-free` / `scheduler-domain` mock 2 /
+  `scheduler/__tests__/user-tasks` 2)。
+  **坑**:`import-side-effect-free.test.ts` 的桩原来打在 barrel `@onething/runtime/scheduler` 上,
+  绑定件改走 `./scheduler.js` 之后**桩够不着了**(测试红在"少了一次 configure")。改成打在具体模块
+  `@onething/runtime/scheduler/scheduler` 上 —— barrel 的 `export *` 解析到同一个 id,走 barrel 的
+  调用方照旧拿到桩。
+- **checker**:`MAIN_CORE_SYSTEM_DIRS` 摘掉已删的 `app/storage`;scheduler core / run-history 两处
+  断言的 `mainFile` 改指新位置,内容判据从 `includes('@onething/runtime/scheduler')` 改为
+  `includes('./scheduler.js')` / `includes('./run-history.js')`(**语义不变**:绑定件必须去配
+  runtime 拥有的那一台,而不是自己长一台)。
+
+**验收**(全绿):`typecheck` 0 错;`test` **11126 通过 / 1153 文件**,唯一红是 P3'a-1 记过的同一条
+`app/stores/__tests__/sessions-delete-cascade.test.ts` `waitGone` 满负载超时,**单跑即过**(3/3),与本批无关;
+`boundary` **0 failed**;`boundary:gate` 0 / `transport:gate` 279 常量 5521 行 / `ui:gate` 81 /
+`log:gate` 4 / `session:gate` 0 全部 none new;`build` / `server:build` / `web:build` 三宿主绿。
+
+**遗留**:`consolePort` 本身仍是 L4 过渡件(区 ① 把 core 的 8 个 `Core*Logger` 鸭子接口统一成
+`Logger` 之后整文件删,见 `logging-system-2026-08.md` §9.1);本批只是把它挪到了正确的层,没有减少它。
+`src/app` 现存的薄壳到此全部判定完毕 —— 剩下的都是真接线,归 P3'd。
+
 原 P3 的"零纠缠、1–2 天机械活"前提是**原样搬**;P3' 要归位(§0b.3 I1/I2/I3),不再是机械活。分四批,每批独立 commit:
 
 1. **P3'a 薄壳折回**:app 层 32 个 ≤800 行的领域目录(themes / media / prompts / acp / auth / todo-plan /
@@ -589,10 +669,17 @@ acp 四个门面、`app/auth/callback-server.ts`、`app/themes/builtin/index.ts`
    collab 最大,单独 commit。
 3. **P3'c plugins 三合一**(单独一批):core 15k / rt 3k / app 5k,core 与 app 同名文件逐个判定"契约还是实现"
    ——契约留 core,实现全部进 `runtime/plugins`,不允许第三处;I2 断言在此批落地。
-4. **P3'd backend 成包**:剩下的脊柱(`backend.ts` / engine / server / rpc / stores / events / channel /
-   session / headless)→ `packages/backend`(name `@onething/backend`);引擎三层继承链保留但路径变为
-   `core/engine`(内核)/ `runtime/stream-engine.ts`(产品)/ `backend/engine`(后端)。
-   三条新断言进 `architecture-boundaries.test.ts`:I1 领域名交集为空、I2 跨包相对路径唯一、产品层不 import backend。
+4. **P3'd backend 成包**(P3'a-3 收工后重述为现在的形状):`src/app` → `packages/backend`
+   (name `@onething/backend`)。**脊柱**(`backend.ts` / `store.ts` / stores / session / events / rpc /
+   engine / server / channel / headless / features / logging / providers / collab / plugins / toolkit /
+   mcp / music / voice 等 —— 厚孪生在 P3'b 前一律**暂按脊柱处理**)放**包根**;剩余薄接线目录迁
+   `backend/wiring/<d>/`。宿主 **163 处 `@onething/app/*` import 改 `@onething/backend/*`**
+   (接线的改 `@onething/backend/wiring/<d>`;08-21 P3'a-3 复量:`apps/` 下 **170** 条、其中非测试 **153**,
+   全仓含装配层自引用 **205** 条);删掉最后一条 `@onething/app` alias 与 tsconfig 两条 paths;
+   checker 里 **~240 处 `src/app` 路径串**(复量 **254**)批量替换。引擎三层继承链保留但路径变为 `core/engine`(内核)/
+   `runtime/stream-engine.ts`(产品)/ `backend/engine`(后端)。
+   **I1 断言落地**:runtime 顶层目录名 ∩ backend 包根目录名 = ∅(`wiring/` 下不算)。
+   另两条新断言进 `architecture-boundaries.test.ts`:I2 跨包相对路径唯一、产品层不 import backend。
 5. 文档提及(~140 处)只改 CLAUDE.md 与活跃设计文档,历史 audit 不动。
 6. 验收门:`build:check` + `test` + `boundary` 全绿;三条新断言通过;electron / server / web 三宿主冒烟;
    `for d in runtime/src/*/; do test ! -d backend/$d; done` 式的 I1 检查为空。

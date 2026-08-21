@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getOnethingSchedulerTasksPath,
 } from '@onething/runtime/storage'
-import { getScheduler } from '../index.js'
+import { getScheduler } from '@onething/runtime/scheduler/scheduler-bound'
 import {
   createUserSchedulerTask,
   deleteUserSchedulerTask,
@@ -15,7 +15,7 @@ import {
   getSchedulerRunDetail,
   listSchedulerRunDetails,
   saveSchedulerRunDetail,
-} from '../run-history.js'
+} from '@onething/runtime/scheduler/run-history-bound.wiring'
 
 vi.mock('electron', () => ({
   app: {

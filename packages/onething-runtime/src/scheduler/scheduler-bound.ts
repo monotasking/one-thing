@@ -1,16 +1,25 @@
+/**
+ * 进程级调度器的绑定接线:把 `Scheduler` 配到 `<store>/scheduler/state.json` 上,
+ * 并给出一个自保证的取用口。
+ *
+ * P3'a-3 从 `src/app/scheduler/index.ts` 归位 —— 它读的是本包的 store 路径、配的是
+ * `./scheduler.js`,唯一一条装配层的边是 `consolePort`,而那个已经归位到
+ * `../logging/` 了。文件名带 `-bound`:barrel(`./index.js`)只出纯模块,这里出的是
+ * **单例**,所以不进 barrel(进了会和 barrel 的 `export *` 撞名)。
+ */
 import path from 'node:path'
-import type { Scheduler } from '@onething/runtime/scheduler'
+import type { Scheduler } from './scheduler.js'
 import {
   configureOnethingScheduler,
   getOnethingScheduler,
-} from '@onething/runtime/scheduler'
+} from './scheduler.js'
 import {
   getOnethingStorePath,
-} from '@onething/runtime/storage'
+} from '../storage/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
 
 const log = getLogger('scheduler')
-/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+/** 注入式鸭子 logger 端口的过渡替身(logging/console-port.ts,area ① 统一后删)。 */
 const consoleLog = consolePort(log)
 
 
@@ -36,7 +45,7 @@ export {
   configureOnethingScheduler,
   getOnethingScheduler,
   Scheduler,
-} from '@onething/runtime/scheduler'
+} from './scheduler.js'
 export type {
   SchedulerOptions,
   SchedulerRunOptions,
@@ -47,14 +56,14 @@ export type {
   SchedulerTaskHandle,
   SchedulerTaskRegistration,
   SchedulerTaskSnapshot,
-} from '@onething/runtime/scheduler'
+} from './index.js'
 export {
   cronRunKey,
   currentCronRunAt,
   isValidTimezone,
   nextCronRunAt,
   parseCronExpression,
-} from '@onething/runtime/scheduler'
+} from './cron.js'
 
 export function getScheduler(): Scheduler {
   return getOnethingScheduler()

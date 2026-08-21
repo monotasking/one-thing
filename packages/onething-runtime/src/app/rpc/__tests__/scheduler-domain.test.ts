@@ -37,9 +37,9 @@ const runHistory = vi.hoisted(() => ({
   saveSchedulerRunDetail: vi.fn(),
 }))
 
-vi.mock('../../scheduler/index.js', () => ({ getScheduler: () => scheduler }))
+vi.mock('@onething/runtime/scheduler/scheduler-bound', () => ({ getScheduler: () => scheduler }))
 vi.mock('../../scheduler/user-tasks.js', () => userTasks)
-vi.mock('../../scheduler/run-history.js', () => runHistory)
+vi.mock('@onething/runtime/scheduler/run-history-bound.wiring', () => runHistory)
 
 const TASK = {
   id: 'user:task-1',

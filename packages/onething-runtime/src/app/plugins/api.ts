@@ -62,7 +62,7 @@ import {
 import { registerPluginInputInterceptHook } from './input-intercept.js'
 import { registerPluginToolCallInterceptHook } from './tool-call-intercept.js'
 import { registerPluginToolResultInterceptHook } from './tool-result-intercept.js'
-import { getScheduler } from '../scheduler/index.js'
+import { getScheduler } from '@onething/runtime/scheduler/scheduler-bound'
 import type {
   AfterAssistantResponseHook,
   BeforeContextCompactHook,

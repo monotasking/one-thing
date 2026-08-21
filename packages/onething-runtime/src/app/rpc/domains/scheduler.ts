@@ -45,12 +45,12 @@ import type {
 } from '@shared/ipc/scheduler.js'
 import { toJsonValue } from '@shared/json.js'
 import { consolePort, getLogger } from '../../logging/index.js'
-import { getScheduler } from '../../scheduler/index.js'
+import { getScheduler } from '@onething/runtime/scheduler/scheduler-bound'
 import {
   getSchedulerRunDetail,
   listSchedulerRunDetails,
   saveSchedulerRunDetail,
-} from '../../scheduler/run-history.js'
+} from '@onething/runtime/scheduler/run-history-bound.wiring'
 import type { SchedulerRunRecord } from '@onething/runtime/scheduler'
 import {
   createUserSchedulerTask,

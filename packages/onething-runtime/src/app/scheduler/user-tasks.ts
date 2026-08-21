@@ -16,12 +16,12 @@ import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
 import { getEventBus } from '../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
 import * as store from '../store.js'
-import { getScheduler } from './index.js'
+import { getScheduler } from '@onething/runtime/scheduler/scheduler-bound'
 import type { SchedulerTaskContext, SchedulerTaskHandle } from '@onething/runtime/scheduler'
 import {
   getOnethingSchedulerTasksPath,
 } from '@onething/runtime/storage'
-import { saveSchedulerRunDetail } from './run-history.js'
+import { saveSchedulerRunDetail } from '@onething/runtime/scheduler/run-history-bound.wiring'
 import { consolePort, getLogger } from '../logging/index.js'
 
 const log = getLogger('scheduler')

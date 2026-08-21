@@ -30,7 +30,7 @@ async function loadModules() {
     import('../input-intercept.js'),
     import('../tool-call-intercept.js'),
     import('../tool-result-intercept.js'),
-    import('../../scheduler/index.js'),
+    import('@onething/runtime/scheduler/scheduler-bound'),
     import('../../variables/index.js'),
     import('../../channel/connector-registry.js'),
     import('../../deeplink/registry.js'),

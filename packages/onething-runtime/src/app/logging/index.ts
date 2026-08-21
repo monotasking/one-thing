@@ -27,8 +27,11 @@ export { installProcessCrashHooks } from './crash-hooks.js'
 export { LogDirJanitor, LOG_DIR_POLICY, LOG_JANITOR_INTERVAL_MS } from './janitor.js'
 export { RollingFileLogger } from './rolling-file-logger.js'
 export { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from './legacy-debug-env.js'
-export { consolePort } from './console-port.js'
-export type { ConsoleLikePort } from './console-port.js'
+// P3'a-3:`consolePort` 是纯适配器,已归位 `@onething/runtime/logging`。装配层
+// 原样再导出 —— 34 个 `import { consolePort, getLogger } from '../logging/index.js'`
+// 调用点一行不改(`getLogger` 这半边仍是装配层自己的那一个,不能一起换源)。
+export { consolePort } from '../../logging/index.js'
+export type { ConsoleLikePort } from '../../logging/index.js'
 export type { LegacyDebugAliasSpec } from './legacy-debug-env.js'
 export type { AppLogLevel, AppLogRecord } from './rolling-file-logger.js'
 
