@@ -366,6 +366,61 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
      既有漂移应单独立一条治,别夹带在结构债线里 —— `npm ci --dry-run` 在**未改动的树上**就已经
      ERESOLVE 红(已 stash 实证),不是本切片弄红的。**
    - 遗留同 P1'-0:`sessions-delete-cascade.test.ts` 全量跑偶发失败(单跑 3/3 过),与本线无关。
+   - **P1'-2 落地记录(08-21)**:`packages/onething-runtime` 变**真 workspace 包**。根 `package.json`
+     的 `workspaces` 追加 `"packages/onething-runtime"`(逐个列包,红线②);根 `dependencies` 依旧一个
+     `@onething/*` 都没有(红线①)。`packages/onething-runtime/package.json` exports **74 → 92**:补
+     22 条(`./collab` `./collab/actors` `./collab/*`、`./spaces` `./spaces/*`、`./toolkit` `./toolkit/*`、
+     `./tasks` `./tasks/*`、`./toc` `./toc/*`、`./scratchpad` `./scratchpad/*`、`./logging` `./logging/*`、
+     `./agent-loop/*`、`./goals/*`、`./practice/*`、`./variables/providers`、`./evals/trace-store`),删
+     2 条死条目(`./memory` / `./memory/*` —— soul-memory 2026-08-06 退役后目录早就不在);
+     `dependencies["@onething/core"]` `file:../core` → `"*"`。**`./evals` 那颗 barrel 仍然不开**:
+     alias 表里当初的注释说得对(整套评估台会被拖进每个宿主的包),只开 `./evals/trace-store` 这一片叶子。
+     判据是脚本枚举全仓 226 条 `@onething/{runtime,app}` 字面量 import(含 `vi.mock`)逐条按 node
+     exports 语义解析 —— **0 条落空**。
+   - **`@onething/app` 不能进 exports(调研前提的一处错)**:任务书假设它是 runtime 的子族、
+     `"./app/*.js": "./src/app/*.ts"` 能吃下那 142 处带 `.js` 后缀的 import。实测 `require.resolve` 直接
+     打脸:`@onething/app` 是一个**包名**,node 解析 `@onething/app/x` 只看
+     `node_modules/@onething/app/package.json`,`@onething/runtime` 的 exports 写多少 `"./app/*"` 都够不着。
+     出路只有两条:(a) 往 `packages/onething-runtime/src/app/` 里塞一份 package.json,把 src 的一个子目录
+     变成嵌套包;(b) 等 P3' 把 `src/app` 整体搬到 `packages/backend`,那时它自然就是真包。(a) 是 P3' 上来
+     就要删的临时物,且会在 vite SSR 的 linked-package 判定上再开一个未测风险面,**所以 P1'-2 不做** ——
+     `onething.aliases.ts` 保留这**唯一一条**前缀 alias(`@onething/app` → `src/app`)+ tsconfig 两条
+     paths,理由写进文件头。`@onething/runtime/app` 的两条 exports 保持原样(无人使用,不新增)。
+   - **表与配置**:`onething.aliases.ts` **202 → 53 行**,`find:` **129 → 4 条**(app 1 + electron-host 2
+     + 接口声明里的 1 处 `find` 字段)—— runtime 族 124 条 + `sessions` 那条正则 + `@onething/app` 之外
+     全删。`tsconfig.json` 删 `@onething/runtime` / `@onething/runtime/*` / `@onething/app/*` 三条、改回
+     显式两条 `@onething/app` + `@onething/app/*`(bare specifier 之前没有 paths,靠 exports 兜不住,补上);
+     `tsconfig.web.json` 删 2 条(renderer 不吃 `@onething/app`)。四份配置里 `apps/web/vite.config.ts`
+     **整条 import 删掉**(renderer 一处 `@onething/app` 都不 import),`apps/server` / `vitest` /
+     `electron.vite`(只 main + preload 两段,renderer 段不再 spread)保留。
+   - **checker**:`checkRuntimeSubpathAliasesCoverSourceImports()` **整函数删**(36 行 + 调用 1 行 ——
+     它的职能被 exports + typecheck 接管);7 个 `checkRuntimeOwns*` 里的 **14 条**"missing … alias"
+     登记断言删(voice-providers / voice-text / search-protocol / headless / ripgrep / sandbox-runtime /
+     edit-engine,各 vite + vitest 两条),连带 28 条随之变死的 `viteConfig`/`vitestConfig`/`viteContent`/
+     `vitestContent` 声明 —— 共 **−107 行**。查 `package.json` exports 的断言(如 `"./voice/*"`)**保留**,
+     那才是新的事实源;`checkAliasTargetsExist()` **保留**(表里还剩 3 条 resolve() 条目,`count===0`
+     的"could not be parsed"分支不会触发)。基线文件未动。
+   - **验收(原始数字)**:`typecheck` 绿;`bun run test` **1149 文件 / 11106 通过 / 8 skipped,0 失败**
+     (48.9s);`web:build` 绿;`server:build` 绿且 `rg -c "@onething/" dist/server/main.js` = **0**;
+     `build` 绿且 `out/main/index.js` = **0**、`out/preload/index.js` = **0** —— **不需要
+     `ssr.noExternal` 兜底**(与 P1'-1 同结论);`run-electron-builder.mjs --dir` preflight 改前改后都是
+     **286 个包(采集器 = npm)**,asar 里 `@onething` = **0** 条。门禁:`boundary` 改前 ok **196**/failed
+     **9** → 改后 ok **195**/failed **9**,**healed 0、new 0**,ok −1 正是被删掉的那一条 check;
+     `boundary:gate` / `transport:gate`(IPC_CHANNELS 304 / 四壳 5929 行)/ `ui:gate`(81)/ `log:gate`(4)
+     / `session:gate`(0)全绿。`ls node_modules/@onething/` = core / gateway / runtime 三条 symlink,
+     `packages/onething-runtime/node_modules` **未被创建**。
+   - **锁文件**:同 P1'-1 的手法(`npm install` 依旧不能跑)——`package-lock.json` 手工补 3 处
+     (根 entry 的 `workspaces` 加一行、`node_modules/@onething/runtime` 的 `link: true`、
+     `packages/onething-runtime` 节点连 7 条 dependencies),净 **+18 行 0 删除**;
+     `node_modules/@onething/runtime → ../../packages/onething-runtime` symlink 手工建。
+     **`bun.lock` 这次必须动**:在临时目录(根 package.json + bun.lock + 三个子包 package.json)跑
+     `bun install --lockfile-only`,只多 2 处(`packages/onething-runtime` 节点 + workspace 解析行,
+     **+15 行**),拷回后在同一临时目录 `bun install --frozen-lockfile --dry-run` 复验 —— **不再报
+     "lockfile had changes"**。
+   - **遗留**:① `@onething/app` 那一条 alias(等 P3');② 根 package.json ↔ package-lock.json 的既有漂移
+     (P1'-1 已立,未动);③ 本切片执行期间工作树里有另一条 P2 线的在途改动(`apps/electron/src/{app,
+     window,main/ipc}`、`packages/gateway/src`、runtime 的 `{plugins,sessions}/ipc-operations.ts`),
+     boundary 的 failed 因此从基线的 13 掉到 9 —— **与本切片无关**,前后对比已用 `git stash` 隔离实证。
 
 ### P2 boundary 清偿 + parity 测试(2–3 天)
 
@@ -374,6 +429,20 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
 2. 清零后简化 `boundary-gate.mjs`(删基线 diff 机制),删除基线文件;CLAUDE.md 同步。
 3. 补 core↔shared session-events 注册表 parity 测试(core 内联字面量 ⊆ shared 注册表)。
 4. 验收门:`bun run boundary` 0 failed;gate 退化为零基线模式;全量测试绿。
+5. **08-21 A/B/C 落地记录**:13 → 9 failed(gate "4 healed, none new"),4 条以改源修绿、行为逐字不变——
+   A 组 gateway 三处改走 `gateway-runtime` 唯一入口(再导出 `Unsubscribe` / slash-commands 四符号三类型 /
+   `ConsoleSink`/`LoggerRoot`/`Logger`/`LogLevel`/`LogRecord`);B 组待办窗预热策略收进 `window/index.ts`
+   `warmTodoPlanWindowForStartup()`;C 组会话创建请求校验(UUID / 不认领已存在 / kind 只认 room)下沉
+   `runtime/sessions/ipc-operations.ts` `describeInvalidOnethingCreateSessionRequestForIpc`,插件"未装配→空命令表"
+   降级与生命周期载荷下沉 `runtime/plugins/ipc-operations.ts`。
+   **余 9 条全部判定为断言过期 / 假阳性,归 D 组改 checker**(处方):#3 应用菜单逐字字面量拆三段;
+   #4/#10 `GET_NETWORK_INTERFACES` / `listOnethingNetworkInterfacesForIpc` 全仓 0 命中(603582d9 删),两符号断言删;
+   #5 "runtime/src/app/index.ts 再导出 @onething/electron-host/app/main-process" 与 `checkRuntimeHostBoundary`
+   的禁令互斥,删;#6/#7 "via public entrypoints" 15 条命中全是注释/路径串(src/app 本就住在
+   packages/onething-runtime/src 下,自指必须豁免),改为只匹配 import/require 说明符;#8 `MAIN_CORE_SYSTEM_DIRS`
+   摘掉 `apps/electron/src/main/bridges`(Electron 桥禁 electron 是反的),fs/path 禁令只留真无 IO 目录;
+   #12/#13 SQLite 三文件 072e96b4 后不存在、会话存储 07 月已 jsonl,整条删。D 组在 P1'-2 的 checker 改动入库后做,
+   同时删基线 diff 机制与基线文件。
 
 ### P3' 归位:src/app → packages/backend + 领域折回(原"拆包",3–5 天;08-21 改拍)
 
@@ -424,6 +493,14 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
      `renderer/platform/practice-client.ts`;`main/ipc/practice.ts` 98→18 行只剩广播注入;web 从"永远 idle 的
      说谎桩"变为真状态;transport 基线收紧 channels 329→319 / bridge 1855→1816 / web 1707→1681)。
      模板已被两个域验证,每域 ~1 小时 opus 执行 + review。
+     collab 已迁(`collabRouter` 15 方法;`main/ipc/collab.ts` 整文件删除、449 行旧测试搬进域测试 48 例;
+     `messageReact` actor 仍由处理者钉死;结构化克隆防线从 preload 桥挪到调用点;web `collabRooms` 能力位保持
+     false —— 放开只需 `web.ts:97` 一行,拍板 #12;transport 收紧 channels 319→304、**bridge 1816→1736 已低于
+     08-14 起点 1737**、web 1681→1666、channels.ts 533→499)。P4a 剩余:music(拍板 #13)、evals(拍板 #15:
+     web 端 evals 桩删除后浏览器将真能跑 evals,"server 上跑 evals"是产品问题;技术上需 `configureEvalsHost`
+     端口承 `app.isPackaged` + 三条推送改注入广播)。**推送面裁定(代码级,Fable 拍)**:router 暂不开推送面,
+     main→renderer 推送统一用已被 practice/music/spaces 验证的注入广播端口形状(`configureXxxBroadcaster`),
+     宿主决定送往哪个窗口;evals 的定向推送改全窗广播。
      横向观察:10 条推送里 **6 条已是注入端口形状**(practice 1 + music 4 + spaces 的 `SPACES_CHANGED`),
      只有 evals 3 + notify/deeplink 2 真绑 BrowserWindow —— router 补推送面时照这个形状抄即可,不必从零设计。
      纪律一条:`COLLAB_MESSAGE_REACT` 的 actor 由主进程钉死 `{type:'user'}`、忽略 wire 值,router 的 context 没有
@@ -431,6 +508,22 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
    - P4b todo-plan 窗口面收尾(消灭骑墙);
    - P4c 其余 ~24 工厂域按"低风险→高风险"排(建议:themes/scratchpad/app-state 等小域先,
      sessions/chat/media 等大域后)。
+     **08-21 逐通道盘点**(25 工厂域 ≈208 invoke + 8 push;A ≈134 / C 残留 ≈42 / 需拍板 ≈32):
+
+     | 批 | 域(invoke) | 类 | web 变化 | server 镜像可删 |
+     | --- | --- | --- | --- | --- |
+     | **1 零行为变化,已派** | scheduler(9,渲染侧 0 调用点)/ variables(3)/ app-state(2)/ permission(2,respond 走命令总线不碰)/ scratchpad(4,push 已端口)/ project-dirs(5,web 开始真传 workspaceId=变对) | A | 否 | 24 条 + 1 正则 |
+     | **前置:`configureShellHost({openPath, openExternal, revealPath})`** | 解锁 files(14)/ skills(12)/ themes(5)/ oauth(6+2 push)共 37 条 | B→A | themes:server 顺带获得插件主题 override(`main/ipc/themes.ts:71-81` 在 @main 拼);oauth 换到桌面 authService | 是 |
+     | 2 换实现(server facade 自有一套 → 同一 backend) | acp(8)/ mcp(16)/ gateway(8,需 `configureGatewayHost`) | A/B | ⚠️ web 从 server 那套切到桌面同一套 | 是(`runtime.ts:3944/4288/4489/4672` 四份 adapter) |
+     | 3 权限面 | tools(7:`executeTool` 直跑)/ files(13 条 fs) | A | ⚠️ `DESKTOP_RPC_CONTEXT` unconfined vs server `RpcContext` sandbox root——**安全面不是传输面** | 是 |
+     | 4 大域 | sessions(26,含 4 条字面量通道)/ media(14,含 5 条字面量、3 条 C)/ chat(7:`resumeAfterToolConfirm` 递 sender,web 早走命令总线——应删 invoke 改总线而非迁 router) | A | 否 | 是 |
+     | 需拍板 | plugins(19+1:web 长出 install/uninstall/config/market 全套写能力,与"插件只在桌面执行"方案 A 冲突;server 写路由改的是 `owners/<uid>/<wid>/plugin-store` 另一棵树)/ interaction(2:web 从"桩掉靠 deadline"变"真能应答")/ terminal(7+2:内核在 app 层,技术可迁,政策冻结 `terminal:false`) | — | ⚠️⚠️ | — |
+     | 残留集 C | browser(19+1)/ shell(4 条**字面量**通道,不在 `IPC_CHANNELS`)/ todo-plan 窗口(7+1)/ window(1)/ search 窗口 3 条 | C | — | — |
+     | 不是迁移对象 | session-command(命令总线入口;web=`POST /api/sessions/:id/commands`) | 总线 | — | — |
+
+     另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
+     `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
+     (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。
 4. 每域验收门:该域全部通道走 RPC_INVOKE;工厂/适配文件删除;bridge.ts/web.ts 无该域手写段;
    `transport:gate` 棘轮下降;desktop+web 双端该域功能冒烟。
 5. 终态:`main/ipc/` 仅剩 rpc.ts 与少数真窗口系 handler;`src/ipc/` 目录删除;
@@ -486,6 +579,14 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 12 | **(新)collab 迁 router 后,web 的 `collabRooms` 能力位是否放开**(放开 = 浏览器里能用协作房间) | 迁移时**不动**能力位(零行为变化);放开另议 | 待拍 |
 | 13 | **(新)music 迁 router 后 web 能遥控桌面播放器**(今天 web 桩回"仅桌面可用") | 符合"一个 core 任何 UI",但用户可感知 → 先拍再迁 | 待拍,music 迁移暂缓 |
 | 14 | **(新)notify 域(`NOTIFY_SHOW/BADGE/ACTIVATE`)渲染侧零调用点,疑为死码** | 确认无主进程外调用后整域删除(不是迁移) | 待拍 |
+| 15 | **(新)evals 迁 router 后 web 端从"Evals is not supported in the web build"桩变为真能跑 evals**(repoDir 在服务器机器上解析) | 先拍再迁;若不想放开,迁移时保留一颗 `evals` 能力位关 UI | 待拍,evals 迁移暂缓 |
+| 16 | **(新,P4c)plugins 迁 router = web 长出 install/uninstall/config 写/market 全套真能力**,与"插件只在桌面执行(方案 A)"冲突;server 现有 enable/disable 写路由改的是 `owners/<uid>/<wid>/plugin-store` 另一棵树 | 不迁写面;只迁只读面(list/commands)并保留桌面专属写面,或整域留到方案 A 重议 | 待拍 |
+| 17 | **(新,P4c)interaction 迁 router = web 从"桩掉靠 deadline 超时"变为"真能应答 agent 提问"** | 这是 `web.ts:461-465` 注释里的待办,建议放开 | 待拍 |
+| 18 | **(新,P4c)terminal 内核已在 app 层,技术上可迁,但 `terminal:false` 政策冻结** | 维持冻结,不迁 | 待拍 |
+| 19 | **(新,P4c)tools(`executeTool` 直跑)/ files(13 条 fs)迁 router 后权限边界从 `DESKTOP_RPC_CONTEXT`(unconfined)变为 server `RpcContext` sandbox root 语义** | 安全面:迁前先把 sandbox root 语义逐条对清,桌面保持 unconfined | 待拍 |
+| 20 | **(新,P4c)acp / mcp / gateway / oauth / themes 迁 router = 删 server facade 自有的那份镜像实现,web 改吃桌面同一套**(themes 还让 server 获得插件主题 override) | 这正是"五重镜像"要消的债,按 agents/models 判例逐域接受 | 待拍(可一次性拍) |
+| 21 | **(新,P4c)chat 的 `resumeAfterToolConfirm` invoke 往引擎递 sender;web 同名方法早已走命令总线** | 不迁 router,删 invoke、桌面也走命令总线 | 待拍 |
+| 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 
 08-21 已拍:组织原则 = 包按环境/依赖等级、包内按领域、文件名带角色(§0b.2);`app` 改名 `backend` 并瘦身;
 P1→P1'、P3→P3'、新增 P0.5、P4a 前移(§0b.4)。

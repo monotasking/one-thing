@@ -6,6 +6,8 @@ import {
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 
+// `@onething/{core,gateway,runtime}` 一条 alias 都不需要 —— 真 workspace 包,走各自
+// package.json 的 exports。表里只剩装配层 `@onething/app`(包名不是 runtime 子路径)。
 const onethingPackageAliases = createOnethingPackageAliases(__dirname)
 // apps/electron 的内部路径别名(@onething/electron-host/*)只在这份配置和 vitest
 // 里出现 —— 它是宿主自己的目录写法,不是一个跨宿主的包,不该躺在包表里。
@@ -74,7 +76,6 @@ export default defineConfig({
     },
     resolve: {
       alias: [
-        ...onethingPackageAliases,
         ...electronHostAliases,
         { find: '@', replacement: resolve(__dirname, 'packages/renderer') },
         { find: '@renderer', replacement: resolve(__dirname, 'packages/renderer') },

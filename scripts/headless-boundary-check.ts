@@ -5879,42 +5879,6 @@ function checkMainUsesRuntimePackageImports(): void {
   assertNoMatches('Electron main and tests import onething-runtime via package public entrypoints', lines)
 }
 
-function checkRuntimeSubpathAliasesCoverSourceImports(): void {
-  const sourceRoots = [
-    path.join(root, 'packages/onething-runtime/src/app'),
-    path.join(root, 'packages/renderer'),
-    path.join(root, 'apps/electron/src'),
-    path.join(root, 'packages/gateway/src'),
-  ]
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
-  const specifiers = new Set<string>()
-
-  for (const sourceRoot of sourceRoots) {
-    for (const file of walkFiles(sourceRoot)) {
-      const content = fs.readFileSync(file, 'utf-8')
-      for (const match of content.matchAll(/@onething\/runtime\/[A-Za-z0-9_/-]+/g)) {
-        specifiers.add(match[0])
-      }
-    }
-  }
-
-  const lines = [...specifiers].sort().flatMap(specifier => {
-    const missing = []
-    if (!viteContent.includes(`find: '${specifier}'`)) {
-      missing.push(`${rel(viteConfig)}: missing Vite alias for ${specifier}`)
-    }
-    if (!vitestContent.includes(`'${specifier}'`)) {
-      missing.push(`${rel(vitestConfig)}: missing Vitest alias for ${specifier}`)
-    }
-    return missing
-  })
-
-  assertNoMatches('Vite/Vitest aliases cover used @onething/runtime subpaths', lines)
-}
-
 function checkMainFacadesUseElectronHostImports(): void {
   const lines = walkFiles(path.join(root, 'packages/onething-runtime/src/app'))
     .flatMap(file => matchingLines(file, MAIN_DIRECT_ELECTRON_IMPORT_FORBIDDEN_PATTERNS))
@@ -8955,14 +8919,10 @@ function checkRuntimeOwnsVoiceProviderRuntime(): void {
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
   const runtimePackage = path.join(root, 'packages/onething-runtime/package.json')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/voice/providers.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const runtimePackageContent = fs.existsSync(runtimePackage) ? fs.readFileSync(runtimePackage, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
   const requiredRuntimeSymbols = [
     'transcribeOnethingUtterance',
@@ -8987,12 +8947,6 @@ function checkRuntimeOwnsVoiceProviderRuntime(): void {
       : []),
     ...(!mainContent.includes('@onething/runtime/voice/providers')
       ? [`${rel(mainFile)}: main voice providers facade must delegate to runtime voice providers`]
-      : []),
-    ...(!viteContent.includes('@onething/runtime/voice/providers')
-      ? [`${rel(viteConfig)}: missing runtime voice providers package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/runtime/voice/providers')
-      ? [`${rel(vitestConfig)}: missing runtime voice providers test alias`]
       : []),
     ...(mainLines.length > 70
       ? [`${rel(mainFile)}: main voice providers facade must stay thin`]
@@ -9068,8 +9022,6 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/voice/__tests__/text.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/voice/service.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const sharedFiles = [
     path.join(root, 'packages/shared/voice/segmenter.ts'),
     path.join(root, 'packages/shared/voice/tts-stream.ts'),
@@ -9079,8 +9031,6 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
   const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const sharedContent = sharedFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -9119,12 +9069,6 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
     ...(/from\s+['"]@onething\/runtime\/voice['"]/.test(sharedContent)
       ? ['packages/shared/voice: renderer-facing voice text facades must not import Node-capable runtime voice entrypoint']
       : []),
-    ...(!viteContent.includes('@onething/runtime/voice/text')
-      ? [`${rel(viteConfig)}: missing browser-safe @onething/runtime/voice/text build alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/runtime/voice/text')
-      ? [`${rel(vitestConfig)}: missing browser-safe @onething/runtime/voice/text test alias`]
-      : []),
     ...sharedFiles.flatMap(file => fs.existsSync(file)
       ? matchingLines(file, SHARED_VOICE_TEXT_RUNTIME_FORBIDDEN_PATTERNS)
       : [`${rel(file)}: missing legacy voice text facade`]),
@@ -9144,14 +9088,10 @@ function checkRuntimeOwnsSearchIpcOperations(): void {
   const mainProviderFile = path.join(root, 'packages/onething-runtime/src/app/search/providers.ts')
   const sharedSearchFile = path.join(root, 'packages/shared/ipc/search.ts')
   const sharedSearchTestFile = path.join(root, 'packages/shared/ipc/__tests__/search.test.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const mainProviderContent = fs.existsSync(mainProviderFile) ? fs.readFileSync(mainProviderFile, 'utf-8') : ''
   const mainProviderLines = mainProviderContent.split('\n').filter(line => line.trim().length > 0)
   const sharedSearchContent = fs.existsSync(sharedSearchFile) ? fs.readFileSync(sharedSearchFile, 'utf-8') : ''
   const sharedSearchTestContent = fs.existsSync(sharedSearchTestFile) ? fs.readFileSync(sharedSearchTestFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -9199,12 +9139,6 @@ function checkRuntimeOwnsSearchIpcOperations(): void {
     ...(/from\s+['"]@onething\/runtime\/search['"]/.test(sharedSearchContent)
       ? [`${rel(sharedSearchFile)}: renderer-facing search IPC facade must not import Node-only runtime search entrypoint`]
       : []),
-    ...(!viteContent.includes('@onething/runtime/search/protocol')
-      ? [`${rel(viteConfig)}: missing browser-safe @onething/runtime/search/protocol build alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/runtime/search/protocol')
-      ? [`${rel(vitestConfig)}: missing browser-safe @onething/runtime/search/protocol test alias`]
-      : []),
     ...(fs.existsSync(sharedSearchFile)
       ? matchingLines(sharedSearchFile, SHARED_SEARCH_CATEGORY_FORBIDDEN_PATTERNS)
       : [`${rel(sharedSearchFile)}: missing legacy search IPC facade`]),
@@ -9219,11 +9153,7 @@ function checkRuntimeOwnsSearchIpcOperations(): void {
 function checkRuntimeOwnsHeadlessCliProjections(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/headless/cli-projections.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/headless/backend.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingHeadlessSessionSummaries',
     'listOnethingHeadlessProviderSummaries',
@@ -9241,12 +9171,6 @@ function checkRuntimeOwnsHeadlessCliProjections(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned headless CLI projection ${symbol}`),
-    ...(!viteContent.includes('@onething/runtime/headless')
-      ? [`${rel(viteConfig)}: missing runtime headless package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/runtime/headless')
-      ? [`${rel(vitestConfig)}: missing runtime headless test alias`]
-      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_HEADLESS_CLI_PROJECTION_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/headless/backend.ts: missing headless backend adapter']),
@@ -9943,13 +9867,9 @@ function checkRuntimeOwnsRipgrepFileSearchRuntime(): void {
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/files/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/files/__tests__/ripgrep.test.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/utils/ripgrep.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
   const requiredRuntimeSymbols = [
     'configureOnethingRipgrepRuntime',
@@ -9982,12 +9902,6 @@ function checkRuntimeOwnsRipgrepFileSearchRuntime(): void {
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_RIPGREP_UTIL_FORBIDDEN_PATTERNS)
       : [`${rel(mainFile)}: missing ripgrep main facade`]),
-    ...(!viteContent.includes('@onething/runtime/files/ripgrep')
-      ? [`${rel(viteConfig)}: missing ripgrep runtime alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/runtime/files/ripgrep')
-      ? [`${rel(vitestConfig)}: missing ripgrep runtime test alias`]
-      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns ripgrep file search runtime', lines)
@@ -9998,13 +9912,9 @@ function checkRuntimeOwnsToolSandboxRuntime(): void {
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/sandbox-runtime.test.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/tools/core/sandbox.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
   const requiredRuntimeSymbols = [
     'configureOnethingToolSandboxRuntime',
@@ -10036,12 +9946,6 @@ function checkRuntimeOwnsToolSandboxRuntime(): void {
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOL_SANDBOX_FORBIDDEN_PATTERNS)
       : [`${rel(mainFile)}: missing sandbox main facade`]),
-    ...(!viteContent.includes('@onething/runtime/tools/sandbox-runtime')
-      ? [`${rel(viteConfig)}: missing sandbox-runtime alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/runtime/tools/sandbox-runtime')
-      ? [`${rel(vitestConfig)}: missing sandbox-runtime test alias`]
-      : []),
   ]
 
   assertNoMatches('packages/onething-runtime owns tool sandbox runtime', lines)
@@ -10052,12 +9956,8 @@ function checkRuntimeOwnsToolEditEngine(): void {
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/edit-engine.test.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/tools/core/edit-engine.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'ExactEditPreviewResult',
     'applyExactEditsToNormalizedContent',
@@ -10082,12 +9982,6 @@ function checkRuntimeOwnsToolEditEngine(): void {
           `${rel(mainFile)}: edit-engine facade should be removed; import @onething/runtime/tools/edit-engine directly`,
           ...matchingLines(mainFile, MAIN_TOOL_EDIT_ENGINE_FORBIDDEN_PATTERNS),
         ]
-      : []),
-    ...(!viteContent.includes('@onething/runtime/tools/edit-engine')
-      ? [`${rel(viteConfig)}: missing edit-engine runtime alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/runtime/tools/edit-engine')
-      ? [`${rel(vitestConfig)}: missing edit-engine runtime test alias`]
       : []),
   ]
 
@@ -10257,7 +10151,6 @@ checkElectronHostOwnsAppBootstrap()
 checkElectronHostOwnsMainEntry()
 checkElectronHostOwnsPreloadEntry()
 checkMainUsesRuntimePackageImports()
-checkRuntimeSubpathAliasesCoverSourceImports()
 checkMainFacadesUseElectronHostImports()
 checkMainUsesCorePackageImports()
 checkMainUsesGatewayPackageImports()

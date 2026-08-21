@@ -1,7 +1,6 @@
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { onethingPackageAliases } from '../../onething.aliases'
 import { onethingDevApiProxy } from './dev-api-proxy'
 
 const projectRoot = resolve(__dirname, '../..')
@@ -16,11 +15,12 @@ export default defineConfig({
   // 两件事 vite 内置 proxy 都做不了 —— 见 apps/web/dev-api-proxy.ts。
   plugins: [vue(), onethingDevApiProxy()],
   resolve: {
+    // @onething/* 一条 alias 都没有:core / gateway / runtime 都是真 workspace 包,
+    // vite 走 node 解析 + 各自 package.json 的 exports。
     alias: [
       { find: '@', replacement: resolve(projectRoot, 'packages/renderer') },
       { find: '@renderer', replacement: resolve(projectRoot, 'packages/renderer') },
       { find: '@shared', replacement: resolve(projectRoot, 'packages/shared') },
-      ...onethingPackageAliases(projectRoot),
     ],
   },
   server: {

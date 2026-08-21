@@ -6,9 +6,10 @@ import { onethingPackageAliases, electronHostAliases } from './onething.aliases'
 export default defineConfig({
   plugins: [vue()],
   resolve: {
-    // @onething/* resolution comes from the single shared table.
-    // electron-host 是 apps/electron 的内部路径族(不是包),单独 spread —— 测试
-    // 里 apps/electron 和装配层的 mock 都要解析它。
+    // @onething/{core,gateway,runtime} 由 workspace symlink + 各自 package.json 的
+    // exports 解析,这里不登记;表里只剩装配层 @onething/app。electron-host 是
+    // apps/electron 的内部路径族(不是包),单独 spread —— 测试里 apps/electron 和
+    // 装配层的 mock 都要解析它。
     alias: [...onethingPackageAliases(__dirname), ...electronHostAliases(__dirname)],
   },
   test: {

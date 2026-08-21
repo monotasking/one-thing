@@ -16,8 +16,7 @@
     "baseUrl": ".",
     "paths": {
       "@onething/electron-host/*": ["apps/electron/src/*"],
-      "@onething/runtime": ["packages/onething-runtime/src/index.ts"],
-      "@onething/runtime/*": ["packages/onething-runtime/src/*"],
+      "@onething/app": ["packages/onething-runtime/src/app/backend.ts"],
       "@onething/app/*": ["packages/onething-runtime/src/app/*"],
       "@/*": ["packages/renderer/*"],
       "@main/*": ["apps/electron/src/main/*"],

@@ -120,6 +120,19 @@
         "@onething/core": "*",
       },
     },
+    "packages/onething-runtime": {
+      "name": "@onething/runtime",
+      "version": "0.0.0",
+      "dependencies": {
+        "@onething/core": "*",
+        "@zip.js/zip.js": "^2.8.11",
+        "diff": "^8.0.2",
+        "pinyin-pro": "^3.28.1",
+        "undici": "^8.1.0",
+        "ws": "^8.20.0",
+        "yaml": "^2.8.2",
+      },
+    },
   },
   "trustedDependencies": [
     "electron",
@@ -400,6 +413,8 @@
     "@onething/core": ["@onething/core@workspace:packages/core"],
 
     "@onething/gateway": ["@onething/gateway@workspace:packages/gateway"],
+
+    "@onething/runtime": ["@onething/runtime@workspace:packages/onething-runtime"],
 
     "@openrouter/sdk": ["@openrouter/sdk@0.3.10", "", { "dependencies": { "zod": "^3.25.0 || ^4.0.0" } }, ""],
 
