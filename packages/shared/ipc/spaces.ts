@@ -1,3 +1,4 @@
+import { defineRouter } from "./router.js";
 import type { SpaceProviderSettings } from "./providers.js";
 
 /**
@@ -328,3 +329,78 @@ export interface SpacesChangedEvent {
 	spaceId: string;
 	kind: "credentials" | "overlay" | "providers";
 }
+
+/**
+ * space(工作空间)域 —— 结构债 P0.3 的第一个模板域。
+ *
+ * 十三个方法全是**纯数据面**:spaces store / overlay / providers.json /
+ * credentials.json 的读写,零窗口、零流式。判定(默认空间不许删、只删空的、
+ * 只对已登记的空间开放、默认空间不许导入)全在 runtime 的 `*ForIpc` 一族里,
+ * 传输面只递不判 —— 这也是它能整只搬进 `app/rpc/domains/spaces.ts` 的原因。
+ *
+ * **单 id 参数一律包成对象**(`{ id }`):router 的 payload 是一个信封,
+ * 位置参数在这条通道上没有位置。渲染侧的 `spaces-client.ts` **不再包一层旧签名**——
+ * 方法名就是这十三个动词、入参就是信封(`spacesApi.getOverlay({ id })`),
+ * 两个调用点(`stores/spaces.ts`、`ConnectedDirectoriesPanel.vue`)随之改写。
+ *
+ * 不在这条路上的:`SPACES_CHANGED` 广播。router 今天只有请求/响应面,没有推送面,
+ * 所以那条通道常量与 `SpacesChangedEvent` 原样留在手写 IPC 上。
+ */
+export type SpacesRoutes = {
+	list: { input: Record<string, never>; output: SpacesListResponse };
+	create: { input: SpacesCreateRequest; output: SpacesCreateResponse };
+	update: { input: SpacesUpdateRequest; output: SpacesUpdateResponse };
+	remove: { input: SpacesRemoveRequest; output: SpacesRemoveResponse };
+	getOverlay: {
+		input: SpacesGetOverlayRequest;
+		output: SpacesGetOverlayResponse;
+	};
+	setOverlay: {
+		input: SpacesSetOverlayRequest;
+		output: SpacesSetOverlayResponse;
+	};
+	getProviderSettings: {
+		input: SpacesGetProviderSettingsRequest;
+		output: SpacesGetProviderSettingsResponse;
+	};
+	setProviderSettings: {
+		input: SpacesSetProviderSettingsRequest;
+		output: SpacesSetProviderSettingsResponse;
+	};
+	getCredentials: {
+		input: SpacesGetCredentialsRequest;
+		output: SpacesGetCredentialsResponse;
+	};
+	setCredential: {
+		input: SpacesSetCredentialRequest;
+		output: SpacesSetCredentialResponse;
+	};
+	setCredentialPool: {
+		input: SpacesSetCredentialPoolRequest;
+		output: SpacesSetCredentialPoolResponse;
+	};
+	clearCredential: {
+		input: SpacesClearCredentialRequest;
+		output: SpacesClearCredentialResponse;
+	};
+	importCredentials: {
+		input: SpacesImportCredentialsRequest;
+		output: SpacesImportCredentialsResponse;
+	};
+};
+
+export const spacesRouter = defineRouter<SpacesRoutes>("spaces", [
+	"list",
+	"create",
+	"update",
+	"remove",
+	"getOverlay",
+	"setOverlay",
+	"getProviderSettings",
+	"setProviderSettings",
+	"getCredentials",
+	"setCredential",
+	"setCredentialPool",
+	"clearCredential",
+	"importCredentials",
+]);

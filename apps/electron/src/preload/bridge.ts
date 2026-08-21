@@ -37,13 +37,6 @@ import type {
 	SearchRequest,
 	SearchWindowAnchor,
 	SpacesChangedEvent,
-	SpacesCreateRequest,
-	SpacesClearCredentialRequest,
-	SpacesSetCredentialPoolRequest,
-	SpacesSetCredentialRequest,
-	SpacesSetOverlayRequest,
-	SpacesSetProviderSettingsRequest,
-	SpacesUpdateRequest,
 	SearchWindowGuideState,
 	SearchWindowOpenOptions,
 	SearchWindowShownPayload,
@@ -751,45 +744,6 @@ const electronAPI = {
 
 	projectDirsRemove: (path: string, workspaceId?: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_REMOVE, { path, workspaceId }),
-
-	// Spaces (workspaces) — independent module
-	spacesList: () => ipcRenderer.invoke(IPC_CHANNELS.SPACES_LIST),
-
-	spacesCreate: (request: SpacesCreateRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_CREATE, request),
-
-	spacesUpdate: (request: SpacesUpdateRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_UPDATE, request),
-
-	spacesRemove: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_REMOVE, { id }),
-
-	spacesGetOverlay: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_GET_OVERLAY, { id }),
-
-	spacesSetOverlay: (request: SpacesSetOverlayRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_OVERLAY, request),
-
-	// 整套 provider 设置(C2)—— `workspaces/<id>/providers.json`。
-	spacesGetProviderSettings: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_GET_PROVIDER_SETTINGS, { id }),
-
-	spacesSetProviderSettings: (request: SpacesSetProviderSettingsRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_PROVIDER_SETTINGS, request),
-
-	spacesGetCredentials: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_GET_CREDENTIALS, { id }),
-
-	spacesSetCredential: (request: SpacesSetCredentialRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_CREDENTIAL, request),
-
-	spacesSetCredentialPool: (request: SpacesSetCredentialPoolRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_SET_CREDENTIAL_POOL, request),
-	spacesClearCredential: (request: SpacesClearCredentialRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_CLEAR_CREDENTIAL, request),
-
-	spacesImportCredentials: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SPACES_IMPORT_CREDENTIALS, { id }),
 
 	getSessionTokenUsage: (sessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, sessionId),

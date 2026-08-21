@@ -3,13 +3,6 @@ import type {
 	AppSettings,
 	PracticeConfigResponse,
 	PracticeSummaryRequest,
-	SpacesCreateRequest,
-	SpacesClearCredentialRequest,
-	SpacesSetCredentialPoolRequest,
-	SpacesSetCredentialRequest,
-	SpacesSetOverlayRequest,
-	SpacesSetProviderSettingsRequest,
-	SpacesUpdateRequest,
 	ACPAgentConfig,
 	GatewayStartRequest,
 	GatewayWechatAddAccountRequest,
@@ -204,33 +197,6 @@ const usageApi = createRouterClient(usageRouter, rpcInvoke);
 const promptsApi = createRouterClient(promptsRouter, rpcInvoke);
 const goalApi = createRouterClient(goalRouter, rpcInvoke);
 const todoPlanApi = createRouterClient(todoPlanRouter, rpcInvoke);
-
-/**
- * 请求失败不抛,回一份结构化的 `{ success:false }`(可带补充字段)。
- *
- * 给「server 还没有这条路由,但渲染层必须活下去」的能力用 —— spaces(批 B1)
- * 就是这一档:web 端拿不到空间列表就退成只有 default,而不是把左栏整片带塌。
- */
-async function softJson<T extends object>(
-	path: string,
-	fallbackPayload?: object,
-	init?: { method?: string; body?: unknown },
-): Promise<T> {
-	try {
-		const value = await requestJson<T>(path, {
-			method: init?.method,
-			body: init?.body === undefined ? undefined : JSON.stringify(init.body),
-		});
-		return value;
-	} catch (error) {
-		return {
-			success: false,
-			error: error instanceof Error ? error.message : "Request failed",
-			code: "UNAVAILABLE",
-			...fallbackPayload,
-		} as unknown as T;
-	}
-}
 
 function booleanProperty(
 	value: unknown,
@@ -1357,67 +1323,6 @@ const webApi = {
 		patch: { description?: string; paths?: string[] },
 		_workspaceId?: string,
 	) => postJson("/api/project-dirs/update", { path, ...patch }),
-	// Spaces(workspace)—— server 端本切片没有 /api/spaces 路由,请求必然失败。
-	// 这里**不抛**:store 拿不到列表就降级成「只有 default 空间、切换器不画」,
-	// 而不是让整个左栏跟着炸(优雅降级,见 workspace-spaces-2026-08.md 批 B1)。
-	spacesList: () => softJson("/api/spaces", { spaces: [] }),
-	spacesCreate: (request: SpacesCreateRequest) =>
-		softJson("/api/spaces", undefined, { method: "POST", body: request }),
-	spacesUpdate: (request: SpacesUpdateRequest) =>
-		softJson(`/api/spaces/${encodeURIComponent(request.id)}`, undefined, {
-			method: "POST",
-			body: request,
-		}),
-	spacesRemove: (id: string) =>
-		softJson(`/api/spaces/${encodeURIComponent(id)}`, undefined, {
-			method: "DELETE",
-		}),
-	// overlay(批 B2)同样没有 server 路由:读退成空 overlay(= 只有全局层),
-	// 写退成 `{success:false}`,设置页据此把 space 段标成不可用。
-	spacesGetOverlay: (id: string) =>
-		softJson(`/api/spaces/${encodeURIComponent(id)}/overlay`, { overlay: {} }),
-	spacesSetOverlay: (request: SpacesSetOverlayRequest) =>
-		softJson(`/api/spaces/${encodeURIComponent(request.id)}/overlay`, undefined, {
-			method: "POST",
-			body: request,
-		}),
-	// 整套 provider 设置(C2):同样没有 server 路由。读退成「这个空间是空的」,
-	// 写退成 `{success:false}` —— 渲染层据此落回 `/api/settings` 那一份(web 端
-	// 只有一个空间,那份就是 default 的生效设置)。
-	spacesGetProviderSettings: (id: string) =>
-		softJson(`/api/spaces/${encodeURIComponent(id)}/provider-settings`, undefined),
-	spacesSetProviderSettings: (request: SpacesSetProviderSettingsRequest) =>
-		softJson(
-			`/api/spaces/${encodeURIComponent(request.id)}/provider-settings`,
-			undefined,
-			{ method: "POST", body: request },
-		),
-	// 凭证池(批 B3):server 侧没有这些路由,一律走 softJson 降级 —— 空凭证表
-	// 即「这个宿主管不了空间凭证」,设置页那一段自然不画。
-	spacesGetCredentials: (id: string) =>
-		softJson(`/api/spaces/${encodeURIComponent(id)}/credentials`, {
-			credentials: { providers: {} },
-		}),
-	spacesSetCredential: (request: SpacesSetCredentialRequest) =>
-		softJson(`/api/spaces/${encodeURIComponent(request.id)}/credentials`, undefined, {
-			method: "POST",
-			body: request,
-		}),
-	spacesSetCredentialPool: (request: SpacesSetCredentialPoolRequest) =>
-		softJson(`/api/spaces/${encodeURIComponent(request.id)}/credentials/pool`, undefined, {
-			method: "POST",
-			body: request,
-		}),
-	spacesClearCredential: (request: SpacesClearCredentialRequest) =>
-		softJson(`/api/spaces/${encodeURIComponent(request.id)}/credentials/clear`, undefined, {
-			method: "POST",
-			body: request,
-		}),
-	spacesImportCredentials: (id: string) =>
-		softJson(`/api/spaces/${encodeURIComponent(id)}/credentials/import`, undefined, {
-			method: "POST",
-			body: { id },
-		}),
 	projectDirsRemove: (path: string, _workspaceId?: string) =>
 		postJson("/api/project-dirs/remove", { path }),
 

@@ -35,12 +35,12 @@ const memory = vi.hoisted(() => {
 })
 
 const platform = vi.hoisted(() => ({
-  spacesList: vi.fn(),
-  spacesGetCredentials: vi.fn(),
-  spacesGetOverlay: vi.fn(),
-  spacesSetOverlay: vi.fn(),
-  spacesGetProviderSettings: vi.fn(),
-  spacesSetProviderSettings: vi.fn(),
+  list: vi.fn(),
+  getCredentials: vi.fn(),
+  getOverlay: vi.fn(),
+  setOverlay: vi.fn(),
+  getProviderSettings: vi.fn(),
+  setProviderSettings: vi.fn(),
   // 批 B9-0:跨窗口广播的收件口。测试里把回调抓在手上,自己扮演主进程。
   onSpacesChanged: vi.fn((cb: (event: { spaceId: string; kind: string }) => void) => {
     spacesChangedListeners.push(cb)
@@ -63,6 +63,9 @@ function emitSpacesChanged(spaceId: string, kind: 'credentials' | 'overlay' | 'p
 }
 
 vi.mock('@/platform', () => ({ platformApi: platform }))
+// spaces 域已迁到通用 RPC 通道(结构债 P0.3):组件/store 引的是壳外客户端,
+// 不再是 platformApi 上的方法,所以打桩打这个模块(方法名与签名沿用旧的)。
+vi.mock('@/platform/spaces-client', () => ({ spacesApi: platform }))
 
 const SPACES = [
   { id: 'default', name: '默认空间', createdAt: 0 },
@@ -167,21 +170,21 @@ beforeEach(async () => {
   vi.clearAllMocks()
   memory.clear()
   spacesChangedListeners.length = 0
-  platform.spacesList.mockResolvedValue({ success: true, spaces: SPACES })
-  platform.spacesGetCredentials.mockImplementation(async (id: string) => ({
+  platform.list.mockResolvedValue({ success: true, spaces: SPACES })
+  platform.getCredentials.mockImplementation(async ({ id }: { id: string }) => ({
     success: true,
     credentials: POOLS[id] ?? { providers: {} },
   }))
-  platform.spacesGetOverlay.mockImplementation(async () => ({ success: true, overlay: {} }))
-  platform.spacesSetOverlay.mockImplementation(async (request: any) => ({
+  platform.getOverlay.mockImplementation(async () => ({ success: true, overlay: {} }))
+  platform.setOverlay.mockImplementation(async (request: any) => ({
     success: true,
     overlay: request.overlay,
   }))
-  platform.spacesGetProviderSettings.mockImplementation(async (id: string) => ({
+  platform.getProviderSettings.mockImplementation(async ({ id }: { id: string }) => ({
     success: true,
     ai: JSON.parse(JSON.stringify(PROVIDER_SETTINGS[id] ?? { provider: '', providers: {}, customProviders: [] })),
   }))
-  platform.spacesSetProviderSettings.mockImplementation(async (request: any) => ({
+  platform.setProviderSettings.mockImplementation(async (request: any) => ({
     success: true,
     ai: request.ai,
   }))
@@ -199,8 +202,8 @@ describe('当前空间的 provider 视图(批 B7)', () => {
     expect(view.credentialOf('deepseek').summary).toBe('sk-glo••••7890')
     expect(view.selectedModelsOf('deepseek')).toEqual(['deepseek-chat', 'deepseek-reasoner'])
     // C1 之前这两句是 `not.toHaveBeenCalled()` —— 那条短路正是两套形状的入口。
-    expect(platform.spacesGetCredentials).toHaveBeenCalledWith('default')
-    expect(platform.spacesGetProviderSettings).toHaveBeenCalledWith('default')
+    expect(platform.getCredentials).toHaveBeenCalledWith({ id: 'default' })
+    expect(platform.getProviderSettings).toHaveBeenCalledWith({ id: 'default' })
   })
 
   it('env key 机器级、全空间可见(C1 拍板 1):池空也算配好,摘要是 Env', async () => {
@@ -239,7 +242,7 @@ describe('当前空间的 provider 视图(批 B7)', () => {
     await useSpaceProvidersStore().refresh()
     const view = makeView()
 
-    expect(platform.spacesGetCredentials).toHaveBeenCalledWith('work')
+    expect(platform.getCredentials).toHaveBeenCalledWith({ id: 'work' })
     expect(view.isConfigured('deepseek')).toBe(true)
     expect(view.credentialOf('deepseek').summary).toBe('sk-wor••••4321')
   })
@@ -316,16 +319,16 @@ describe('当前空间的 provider 视图(批 B7)', () => {
 
     // default 也写自己的那一份 —— C1 之前这条通道对它是关的。
     expect(await store.writeSelectedModels('deepseek', ['x'])).toBe(true)
-    expect(platform.spacesSetProviderSettings.mock.calls[0][0].id).toBe('default')
+    expect(platform.setProviderSettings.mock.calls[0][0].id).toBe('default')
     expect(store.configOf('deepseek')?.selectedModels).toEqual(['x'])
     // 同一个 provider 的别的格没被这次写抹掉(整层写由这里先读后并)。
     expect(store.configOf('deepseek')?.model).toBe('deepseek-chat')
-    platform.spacesSetProviderSettings.mockClear()
+    platform.setProviderSettings.mockClear()
 
     spaces.switchTo('work')
     await store.refresh()
     expect(await store.writeSelectedModels('deepseek', ['deepseek-chat'])).toBe(true)
-    expect(platform.spacesSetProviderSettings.mock.calls[0][0].id).toBe('work')
+    expect(platform.setProviderSettings.mock.calls[0][0].id).toBe('work')
     expect(makeView().selectedModelsOf('deepseek')).toEqual(['deepseek-chat'])
   })
 
@@ -338,7 +341,7 @@ describe('当前空间的 provider 视图(批 B7)', () => {
 
     // Electron 的 ipcRenderer.invoke 走结构化克隆:Proxy 一律 "could not be cloned"。
     // mock 里照样克隆一遍,把这条边界规则搬进单测。
-    platform.spacesSetProviderSettings.mockImplementation(async (request: any) => {
+    platform.setProviderSettings.mockImplementation(async (request: any) => {
       structuredClone(request)
       return { success: true, ai: request.ai }
     })
@@ -360,7 +363,7 @@ describe('当前空间的 provider 视图(批 B7)', () => {
     const store = useSpaceProvidersStore()
     await store.refresh()
 
-    platform.spacesSetProviderSettings.mockResolvedValue({ success: false, error: '磁盘满了' })
+    platform.setProviderSettings.mockResolvedValue({ success: false, error: '磁盘满了' })
     expect(await store.writeSelectedModels('deepseek', ['deepseek-chat'])).toBe(false)
     expect(makeView().selectedModelsOf('deepseek')).toEqual(['deepseek-reasoner'])
   })
@@ -399,7 +402,7 @@ describe('当前空间的 provider 视图(批 B7)', () => {
     // 跟随之后视图自己去拉新空间那一份,不必等谁来手动刷新。
     await Promise.resolve()
     await Promise.resolve()
-    expect(platform.spacesGetCredentials).toHaveBeenCalledWith('work')
+    expect(platform.getCredentials).toHaveBeenCalledWith({ id: 'work' })
     expect(store.spaceId).toBe('work')
   })
 })
@@ -436,12 +439,12 @@ describe('空间默认 provider/model(批 B9)', () => {
     await store.refresh()
 
     expect(await view.setDefaultSelection('codex', 'gpt-5.2-codex')).toBe(true)
-    platform.spacesSetProviderSettings.mockClear()
+    platform.setProviderSettings.mockClear()
 
     spaces.switchTo('work')
     await store.refresh()
     expect(await view.setDefaultSelection('codex', 'gpt-5.2-codex')).toBe(true)
-    const payload = platform.spacesSetProviderSettings.mock.calls[0][0]
+    const payload = platform.setProviderSettings.mock.calls[0][0]
     expect(payload.id).toBe('work')
     // 先读后并:这个空间原有的 selectedModels 必须还在。
     expect(payload.ai.providers.deepseek.selectedModels).toEqual(['deepseek-reasoner'])
@@ -458,7 +461,7 @@ describe('空间默认 provider/model(批 B9)', () => {
     spaces.switchTo('work')
     await store.refresh()
 
-    platform.spacesSetProviderSettings.mockResolvedValue({ success: false, error: '磁盘满了' })
+    platform.setProviderSettings.mockResolvedValue({ success: false, error: '磁盘满了' })
     expect(await store.writeDefaultSelection('codex', 'gpt-5.2-codex')).toBe(false)
     expect(makeView().spaceDefault.value).toEqual({ provider: 'deepseek', model: 'deepseek-chat' })
   })
@@ -473,7 +476,7 @@ describe('空间 provider 开关(批 B9)', () => {
 
     expect(view.isProviderEnabled('deepseek')).toBe(true)
     expect(await view.setProvidersEnabled(['deepseek'], false)).toBe(true)
-    const payload = platform.spacesSetProviderSettings.mock.calls[0][0]
+    const payload = platform.setProviderSettings.mock.calls[0][0]
     expect(payload.id).toBe('default')
     expect(payload.ai.providers.deepseek.enabled).toBe(false)
     expect(view.isProviderEnabled('deepseek')).toBe(false)
@@ -489,7 +492,7 @@ describe('空间 provider 开关(批 B9)', () => {
 
     expect(view.isProviderEnabled('deepseek')).toBe(true)
     expect(await view.setProvidersEnabled(['deepseek'], false)).toBe(true)
-    const payload = platform.spacesSetProviderSettings.mock.calls[0][0]
+    const payload = platform.setProviderSettings.mock.calls[0][0]
     expect(payload.id).toBe('work')
     expect(payload.ai.providers.deepseek).toMatchObject({
       enabled: false,
@@ -566,11 +569,11 @@ describe('跨窗口缓存过期(批 B9-0)', () => {
     const store = useSpaceProvidersStore()
     spaces.switchTo('side')
     await store.refresh()
-    platform.spacesGetCredentials.mockClear()
+    platform.getCredentials.mockClear()
 
     emitSpacesChanged('work')
     await flush()
-    expect(platform.spacesGetCredentials).not.toHaveBeenCalled()
+    expect(platform.getCredentials).not.toHaveBeenCalled()
   })
 
   it('C1:default 空间也在广播里 —— 它同样有池和 providers.json', async () => {
@@ -578,10 +581,10 @@ describe('跨窗口缓存过期(批 B9-0)', () => {
     await spaces.load()
     const store = useSpaceProvidersStore()
     await store.refresh()
-    platform.spacesGetCredentials.mockClear()
+    platform.getCredentials.mockClear()
 
     emitSpacesChanged('default')
     await flush()
-    expect(platform.spacesGetCredentials).toHaveBeenCalledWith('default')
+    expect(platform.getCredentials).toHaveBeenCalledWith({ id: 'default' })
   })
 })

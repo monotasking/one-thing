@@ -20,6 +20,14 @@ vi.mock('@/platform', () => ({
   },
 }))
 
+// spaces 域已迁到通用 RPC 通道(结构债 P0.3):组件/store 引的是壳外客户端,
+// 不再是 platformApi 上的方法,所以打桩打这个模块(方法名与签名沿用旧的)。
+vi.mock('@/platform/spaces-client', () => ({
+  get spacesApi() {
+    return mocks.platformApi
+  },
+}))
+
 async function settle() {
   await nextTick()
   await Promise.resolve()
@@ -65,8 +73,8 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
       // 真 store 的 `patchOverlay` 是**先读后并**(批 B7):后端那条通道整层写,
       // 只递一格会把 overlay 的其他字段抹掉。这里照抄同一个形状。
       patchOverlay: vi.fn(async (id: string, patch: Record<string, unknown>) => {
-        const current = await mocks.platformApi.spacesGetOverlay(id)
-        const response = await mocks.platformApi.spacesSetOverlay({
+        const current = await mocks.platformApi.getOverlay({ id })
+        const response = await mocks.platformApi.setOverlay({
           id,
           overlay: { ...(current.overlay ?? {}), ...patch },
         })
@@ -80,10 +88,10 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
     mocks.platformApi = {
       capabilities: { localFileSystem: true },
       statPath: vi.fn().mockResolvedValue({ success: true, type: 'directory' }),
-      spacesGetOverlay: vi
+      getOverlay: vi
         .fn()
         .mockResolvedValue({ success: true, overlay: { connectedDirectories: ['/work-only'] } }),
-      spacesSetOverlay: vi.fn(async (request: any) => ({
+      setOverlay: vi.fn(async (request: any) => ({
         success: true,
         overlay: request.overlay,
       })),
@@ -96,7 +104,7 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
     await settle()
 
     expect(wrapper.text()).toContain('/global')
-    expect(mocks.platformApi.spacesGetOverlay).not.toHaveBeenCalled()
+    expect(mocks.platformApi.getOverlay).not.toHaveBeenCalled()
     // 设置窗是独立 window,自己拉一次空间列表。
     expect(mocks.spacesStore.load).toHaveBeenCalled()
   })
@@ -108,7 +116,7 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
     await wrapper.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'work')
     await settle()
 
-    expect(mocks.platformApi.spacesGetOverlay).toHaveBeenCalledWith('work')
+    expect(mocks.platformApi.getOverlay).toHaveBeenCalledWith({ id: 'work' })
     expect(wrapper.text()).toContain('/work-only')
     expect(wrapper.find('.directory-item.is-inherited').text()).toContain('/global')
     expect(wrapper.text()).toContain('来自全局')
@@ -123,7 +131,7 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
     await wrapper.find('.directory-list .remove-btn').trigger('click')
     await settle()
 
-    expect(mocks.platformApi.spacesSetOverlay).toHaveBeenCalledWith({
+    expect(mocks.platformApi.setOverlay).toHaveBeenCalledWith({
       id: 'work',
       overlay: { connectedDirectories: [] },
     })
@@ -131,7 +139,7 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
   })
 
   it('改目录不会顺手抹掉 overlay 里的模型选择(整层写的陷阱)', async () => {
-    mocks.platformApi.spacesGetOverlay = vi.fn().mockResolvedValue({
+    mocks.platformApi.getOverlay = vi.fn().mockResolvedValue({
       success: true,
       overlay: { connectedDirectories: ['/work-only'], selectedModels: { deepseek: ['m1'] } },
     })
@@ -143,7 +151,7 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
     await wrapper.find('.directory-list .remove-btn').trigger('click')
     await settle()
 
-    expect(mocks.platformApi.spacesSetOverlay).toHaveBeenCalledWith({
+    expect(mocks.platformApi.setOverlay).toHaveBeenCalledWith({
       id: 'work',
       overlay: { connectedDirectories: [], selectedModels: { deepseek: ['m1'] } },
     })
@@ -159,11 +167,11 @@ describe('ConnectedDirectoriesPanel —— 接入目录的两层编辑面(批 B2
     expect(wrapper.emitted('update:settings')?.[0]?.[0]).toMatchObject({
       tools: { connectedDirectories: [] },
     })
-    expect(mocks.platformApi.spacesSetOverlay).not.toHaveBeenCalled()
+    expect(mocks.platformApi.setOverlay).not.toHaveBeenCalled()
   })
 
   it('写失败回滚到写之前那份,不留下界面上有、盘上没有的目录', async () => {
-    mocks.platformApi.spacesSetOverlay = vi
+    mocks.platformApi.setOverlay = vi
       .fn()
       .mockResolvedValue({ success: false, error: '磁盘满了' })
     const wrapper = mountPanel(['/global'])

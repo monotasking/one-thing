@@ -288,26 +288,9 @@ export const IPC_CHANNELS = {
 	PROJECT_DIRS_UPDATE: "project-dirs:update",
 	PROJECT_DIRS_REMOVE: "project-dirs:remove",
 
-	// Spaces (workspaces) — 独立模块,与 project-dirs 同形态
-	SPACES_LIST: "spaces:list",
-	SPACES_CREATE: "spaces:create",
-	SPACES_UPDATE: "spaces:update",
-	SPACES_REMOVE: "spaces:remove",
-	// per-space overlay(批 B2):身份改 update,配置层走这两条
-	SPACES_GET_OVERLAY: "spaces:get-overlay",
-	SPACES_SET_OVERLAY: "spaces:set-overlay",
-	// per-space provider 凭证池(批 B3):落盘在 workspaces/<id>/credentials.json,
-	// 与 overlay 分文件 —— 整空间导出默认剔除凭证
-	/** 整套 provider 设置(C2)—— `workspaces/<id>/providers.json`。 */
-	SPACES_GET_PROVIDER_SETTINGS: "spaces:get-provider-settings",
-	SPACES_SET_PROVIDER_SETTINGS: "spaces:set-provider-settings",
-	SPACES_GET_CREDENTIALS: "spaces:get-credentials",
-	SPACES_SET_CREDENTIAL: "spaces:set-credential",
-	SPACES_CLEAR_CREDENTIAL: "spaces:clear-credential",
-	SPACES_IMPORT_CREDENTIALS: "spaces:import-credentials",
-	// 多条目管理(批 D):排序 + 删除 + 策略一次整池写。密钥原文永远走
-	// set-credential 那条路 —— 渲染层拿不到原文,它能回传的只有 id 与顺序。
-	SPACES_SET_CREDENTIAL_POOL: "spaces:set-credential-pool",
+	// Spaces (workspaces):请求/响应面已整只迁到通用 RPC 通道(结构债 P0.3,
+	// `@shared/ipc/spaces.ts` 的 `spacesRouter` + `app/rpc/domains/spaces.ts`)。
+	// 这里只剩下面这条**广播** —— router 今天没有推送面。
 	/**
 	 * 空间数据变更广播(批 B9-0,主进程 → 所有窗口)。
 	 *

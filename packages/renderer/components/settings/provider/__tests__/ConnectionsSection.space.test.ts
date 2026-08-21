@@ -38,17 +38,20 @@ const mocks = vi.hoisted(() => ({
   providerSettings: null as any,
   providerUsage: null as any,
   platform: {
-    spacesList: vi.fn(),
-    spacesGetCredentials: vi.fn(),
-    spacesGetOverlay: vi.fn(),
-    spacesSetOverlay: vi.fn(),
-    spacesSetCredential: vi.fn(),
-    spacesSetCredentialPool: vi.fn(),
-    spacesClearCredential: vi.fn(),
+    list: vi.fn(),
+    getCredentials: vi.fn(),
+    getOverlay: vi.fn(),
+    setOverlay: vi.fn(),
+    setCredential: vi.fn(),
+    setCredentialPool: vi.fn(),
+    clearCredential: vi.fn(),
   },
 }))
 
 vi.mock('@/platform', () => ({ platformApi: mocks.platform }))
+// spaces 域已迁到通用 RPC 通道(结构债 P0.3):组件/store 引的是壳外客户端,
+// 不再是 platformApi 上的方法,所以打桩打这个模块(方法名与签名沿用旧的)。
+vi.mock('@/platform/spaces-client', () => ({ spacesApi: mocks.platform }))
 vi.mock('../useProviderSettings', () => ({
   useProviderSettings: () => mocks.providerSettings,
 }))
@@ -232,7 +235,7 @@ beforeEach(async () => {
     error: ref(''),
     refresh: vi.fn(),
   }
-  mocks.platform.spacesList.mockResolvedValue({
+  mocks.platform.list.mockResolvedValue({
     success: true,
     spaces: [
       { id: 'default', name: '默认空间', createdAt: 0 },
@@ -240,12 +243,12 @@ beforeEach(async () => {
       { id: 'side', name: '副业', createdAt: 2 },
     ],
   })
-  mocks.platform.spacesGetCredentials.mockImplementation(async (id: string) => ({
+  mocks.platform.getCredentials.mockImplementation(async ({ id }: { id: string }) => ({
     success: true,
     // C1:default 也是普通空间 —— 迁移把 settings 里那把 key 搬进了它的池。
     credentials: id === 'work' ? WORK_POOL : id === 'default' ? DEFAULT_POOL : { providers: {} },
   }))
-  mocks.platform.spacesGetOverlay.mockResolvedValue({ success: true, overlay: {} })
+  mocks.platform.getOverlay.mockResolvedValue({ success: true, overlay: {} })
 })
 
 describe('ConnectionsSection —— 当前空间口径(批 B7)', () => {
@@ -298,7 +301,7 @@ describe('ConnectionsSection —— 当前空间口径(批 B7)', () => {
   })
 
   it('后端答不上话(web 降级):整条空间支路等于不存在,退回默认空间那支', async () => {
-    mocks.platform.spacesList.mockResolvedValue({ success: false })
+    mocks.platform.list.mockResolvedValue({ success: false })
     const spaces = useSpacesStore()
     await spaces.load()
     // 列表降级时 store 会把当前空间拨回 default —— 这里再显式确认一次口径。

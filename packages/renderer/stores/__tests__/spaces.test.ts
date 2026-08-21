@@ -22,18 +22,22 @@ const { electronApi, store: memory } = vi.hoisted(() => {
   return {
     store,
     electronApi: {
-      spacesList: vi.fn(),
-      spacesCreate: vi.fn(),
-      spacesUpdate: vi.fn(),
-      spacesRemove: vi.fn(),
-      spacesGetCredentials: vi.fn(),
-      spacesSetCredential: vi.fn(),
-      spacesClearCredential: vi.fn(),
-      spacesImportCredentials: vi.fn(),
+      list: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      remove: vi.fn(),
+      getCredentials: vi.fn(),
+      setCredential: vi.fn(),
+      clearCredential: vi.fn(),
+      importCredentials: vi.fn(),
       onSystemThemeChanged: vi.fn(() => vi.fn()),
     },
   }
 })
+
+// spaces 域已迁到通用 RPC 通道(结构债 P0.3):组件/store 引的是壳外客户端,
+// 不再是 platformApi 上的方法,所以打桩打这个模块(方法名与签名沿用旧的)。
+vi.mock('@/platform/spaces-client', () => ({ spacesApi: electronApi }))
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -44,7 +48,7 @@ beforeEach(() => {
 
 describe('spaces store', () => {
   it('starts on the default space and degrades to it when the host has no spaces API', async () => {
-    electronApi.spacesList.mockResolvedValue({ success: false, error: 'no route' })
+    electronApi.list.mockResolvedValue({ success: false, error: 'no route' })
     const store = useSpacesStore()
     await store.load()
 
@@ -56,7 +60,7 @@ describe('spaces store', () => {
   })
 
   it('loads the real list and shows the switcher', async () => {
-    electronApi.spacesList.mockResolvedValue({
+    electronApi.list.mockResolvedValue({
       success: true,
       spaces: [
         { id: DEFAULT_SPACE_ID, name: '默认空间', createdAt: 1 },
@@ -72,7 +76,7 @@ describe('spaces store', () => {
   })
 
   it('persists the current space to localStorage — window 级状态,不进后端', async () => {
-    electronApi.spacesList.mockResolvedValue({
+    electronApi.list.mockResolvedValue({
       success: true,
       spaces: [
         { id: DEFAULT_SPACE_ID, name: '默认空间', createdAt: 1 },
@@ -110,7 +114,7 @@ describe('spaces store', () => {
   it('falls back to default when the stored space is gone', async () => {
     memory.set('onething:current-space', 'ghost')
     setActivePinia(createPinia())
-    electronApi.spacesList.mockResolvedValue({
+    electronApi.list.mockResolvedValue({
       success: true,
       spaces: [{ id: DEFAULT_SPACE_ID, name: '默认空间', createdAt: 1 }],
     })
@@ -121,39 +125,39 @@ describe('spaces store', () => {
   })
 
   it('auto-names new spaces and reloads after create/rename/remove', async () => {
-    electronApi.spacesList.mockResolvedValue({
+    electronApi.list.mockResolvedValue({
       success: true,
       spaces: [{ id: DEFAULT_SPACE_ID, name: '默认空间', createdAt: 1 }],
     })
     const store = useSpacesStore()
     await store.load()
 
-    electronApi.spacesCreate.mockResolvedValue({
+    electronApi.create.mockResolvedValue({
       success: true,
       space: { id: 'space-2', name: '空间 2', createdAt: 5 },
     })
     const created = await store.create()
-    expect(electronApi.spacesCreate).toHaveBeenCalledWith({ name: '空间 2' })
+    expect(electronApi.create).toHaveBeenCalledWith({ name: '空间 2' })
     expect(created?.space.id).toBe('space-2')
     // 没选「导入凭证」就一次导入都不发 —— 空白开始必须真的空白。
-    expect(electronApi.spacesImportCredentials).not.toHaveBeenCalled()
+    expect(electronApi.importCredentials).not.toHaveBeenCalled()
 
-    electronApi.spacesUpdate.mockResolvedValue({ success: true, space: {} })
+    electronApi.update.mockResolvedValue({ success: true, space: {} })
     expect(await store.rename('space-2', '  改名  ')).toBe(true)
-    expect(electronApi.spacesUpdate).toHaveBeenCalledWith({ id: 'space-2', name: '改名' })
+    expect(electronApi.update).toHaveBeenCalledWith({ id: 'space-2', name: '改名' })
     // 空名字是撤销,不是清空。
     expect(await store.rename('space-2', '   ')).toBe(false)
   })
 
   it('keeps the backend refusal reason on lastError', async () => {
-    electronApi.spacesList.mockResolvedValue({
+    electronApi.list.mockResolvedValue({
       success: true,
       spaces: [{ id: DEFAULT_SPACE_ID, name: '默认空间', createdAt: 1 }],
     })
     const store = useSpacesStore()
     await store.load()
 
-    electronApi.spacesRemove.mockResolvedValue({
+    electronApi.remove.mockResolvedValue({
       success: false,
       error: '空间里还有 3 条会话,先清空再删',
       code: 'NOT_EMPTY',

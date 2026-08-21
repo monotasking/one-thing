@@ -8,8 +8,9 @@
  * 不进后端(设计盲点 4 —— 给「两个窗口开两个 space」留路)。后端所有操作显式
  * 带 id,没有「当前空间」的概念。
  *
- * 降级:拿不到列表(web 端本切片没有 /api/spaces)就只剩 default,
- * `available` 为 false,切换器整行不画。
+ * 降级:拿不到列表就只剩 default,`available` 为 false,切换器整行不画。
+ * (P0.3 起本域走通用 RPC 通道,web 端与桌面同一条 `POST /api/rpc` —— 降级路径
+ * 留着兜底,但不再是 web 端的必经之路。)
  */
 
 import { defineStore } from 'pinia'
@@ -21,7 +22,7 @@ import type {
   SpaceProviderSettings,
   SpaceRecord,
 } from '@shared/ipc'
-import { platformApi } from '@/platform'
+import { spacesApi } from '@/platform/spaces-client'
 
 /** 导入结果:失败也如实带回来 —— 建空间成功、导入失败是一个合法的中间态。 */
 export interface SpaceCredentialImportOutcome {
@@ -117,7 +118,7 @@ export const useSpacesStore = defineStore('spaces', () => {
   async function load(): Promise<void> {
     loading.value = true
     try {
-      const response = await platformApi.spacesList()
+      const response = await spacesApi.list({})
       if (response.success && response.spaces?.length) {
         spaces.value = response.spaces
         available.value = true
@@ -157,7 +158,7 @@ export const useSpacesStore = defineStore('spaces', () => {
     options: { importCredentials?: boolean } = {},
   ): Promise<CreateSpaceResult | null> {
     try {
-      const response = await platformApi.spacesCreate({ name: name?.trim() || nextSpaceName() })
+      const response = await spacesApi.create({ name: name?.trim() || nextSpaceName() })
       if (!response.success || !response.space) {
         lastError.value = response.error || 'Failed to create space'
         return null
@@ -180,7 +181,7 @@ export const useSpacesStore = defineStore('spaces', () => {
     const trimmed = name.trim()
     if (!trimmed) return false
     try {
-      const response = await platformApi.spacesUpdate({ id, name: trimmed })
+      const response = await spacesApi.update({ id, name: trimmed })
       if (!response.success) {
         lastError.value = response.error || 'Failed to rename space'
         return false
@@ -196,7 +197,7 @@ export const useSpacesStore = defineStore('spaces', () => {
   /** 只删得掉空的、非 default 的空间;后端拒绝时把理由留在 lastError 上。 */
   async function remove(id: string): Promise<boolean> {
     try {
-      const response = await platformApi.spacesRemove(id)
+      const response = await spacesApi.remove({ id })
       if (!response.success) {
         lastError.value = response.error || 'Failed to remove space'
         return false
@@ -223,7 +224,7 @@ export const useSpacesStore = defineStore('spaces', () => {
 
   async function getOverlay(spaceId: string): Promise<SpaceOverlayPayload> {
     try {
-      const response = await platformApi.spacesGetOverlay(spaceId)
+      const response = await spacesApi.getOverlay({ id: spaceId })
       if (response.success) return response.overlay ?? {}
       lastError.value = response.error || null
       return {}
@@ -252,7 +253,7 @@ export const useSpacesStore = defineStore('spaces', () => {
       // cloned" —— 症状是第一次勾选成功、之后每次都回滚闪烁。overlay 本身就是
       // JSON 形状,这一步无损。
       const overlay = JSON.parse(JSON.stringify({ ...current, ...patch })) as SpaceOverlayPayload
-      const response = await platformApi.spacesSetOverlay({ id: spaceId, overlay })
+      const response = await spacesApi.setOverlay({ id: spaceId, overlay })
       if (!response.success) {
         lastError.value = response.error || 'Failed to save overlay'
         return null
@@ -274,7 +275,7 @@ export const useSpacesStore = defineStore('spaces', () => {
    */
   async function getProviderSettings(spaceId: string): Promise<SpaceProviderSettings | null> {
     try {
-      const response = await platformApi.spacesGetProviderSettings(spaceId)
+      const response = await spacesApi.getProviderSettings({ id: spaceId })
       if (response.success && response.ai) return response.ai
       lastError.value = response.error || null
       return null
@@ -293,7 +294,7 @@ export const useSpacesStore = defineStore('spaces', () => {
       // 过线前拆成 plain JSON:调用侧递进来的往往是从 reactive 树上展开的,
       // Vue Proxy 过不了 Electron 的结构化克隆(见 patchOverlay 的同一句)。
       const payload = JSON.parse(JSON.stringify(ai)) as SpaceProviderSettings
-      const response = await platformApi.spacesSetProviderSettings({ id: spaceId, ai: payload })
+      const response = await spacesApi.setProviderSettings({ id: spaceId, ai: payload })
       if (!response.success) {
         lastError.value = response.error || 'Failed to save provider settings'
         return null
@@ -310,7 +311,7 @@ export const useSpacesStore = defineStore('spaces', () => {
   /** 摘要读:密钥原文永不出后端,这里拿到的只有 hasApiKey + 预览。 */
   async function getCredentials(spaceId: string): Promise<SpaceCredentialsSummary> {
     try {
-      const response = await platformApi.spacesGetCredentials(spaceId)
+      const response = await spacesApi.getCredentials({ id: spaceId })
       if (response.success && response.credentials) return response.credentials
       lastError.value = response.error || null
       return { providers: {} }
@@ -339,7 +340,7 @@ export const useSpacesStore = defineStore('spaces', () => {
     },
   ): Promise<SpaceCredentialsSummary | null> {
     try {
-      const response = await platformApi.spacesSetCredential(request)
+      const response = await spacesApi.setCredential(request)
       if (!response.success) {
         lastError.value = response.error || 'Failed to save credential'
         return null
@@ -359,7 +360,7 @@ export const useSpacesStore = defineStore('spaces', () => {
     request: { id: string; providerId: string; entryIds: string[]; policy?: string },
   ): Promise<SpaceCredentialsSummary | null> {
     try {
-      const response = await platformApi.spacesSetCredentialPool(request)
+      const response = await spacesApi.setCredentialPool(request)
       if (!response.success) {
         lastError.value = response.error || 'Failed to update credential pool'
         return null
@@ -375,7 +376,7 @@ export const useSpacesStore = defineStore('spaces', () => {
     request: { id: string; providerId: string },
   ): Promise<SpaceCredentialsSummary | null> {
     try {
-      const response = await platformApi.spacesClearCredential(request)
+      const response = await spacesApi.clearCredential(request)
       if (!response.success) {
         lastError.value = response.error || 'Failed to clear credential'
         return null
@@ -390,7 +391,7 @@ export const useSpacesStore = defineStore('spaces', () => {
   /** 从默认空间导入凭证快照(copy 不引用)。OAuth 型跳过,原样报回给调用方。 */
   async function importCredentials(spaceId: string): Promise<SpaceCredentialImportOutcome> {
     try {
-      const response = await platformApi.spacesImportCredentials(spaceId)
+      const response = await spacesApi.importCredentials({ id: spaceId })
       if (!response.success) {
         lastError.value = response.error || 'Failed to import credentials'
         return { ok: false, imported: [], skipped: [], error: response.error }

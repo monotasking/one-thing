@@ -1,4 +1,3 @@
-import { registerSpacesHandlers as registerHostSpacesHandlers } from '@onething/electron-host/ipc/spaces'
 import { subscribeSpaceDataChanged } from '@onething/runtime/spaces/notifications'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { broadcastToAllWindows } from '../bridges/ipc-bridge-lifecycle.js'
@@ -24,7 +23,11 @@ function registerSpacesChangedBroadcast(): void {
   })
 }
 
+/**
+ * 本文件在 P0.3 之后**只剩广播**:13 条 spaces invoke 通道已整只迁到通用 RPC 通道
+ * (`@shared/ipc/spaces.ts` 的 `spacesRouter` + `app/rpc/domains/spaces.ts`),
+ * 桌面和 web 走同一条 dispatch。router 没有推送面,所以 `SPACES_CHANGED` 留在这里。
+ */
 export function registerSpacesHandlers(): void {
-  registerHostSpacesHandlers()
   registerSpacesChangedBroadcast()
 }

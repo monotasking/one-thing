@@ -37,12 +37,12 @@ const memory = vi.hoisted(() => {
 
 const mocks = vi.hoisted(() => ({
   platform: {
-    spacesList: vi.fn(),
-    spacesGetCredentials: vi.fn(),
-    spacesGetOverlay: vi.fn(),
-    spacesSetOverlay: vi.fn(),
-    spacesGetProviderSettings: vi.fn(),
-    spacesSetProviderSettings: vi.fn(),
+    list: vi.fn(),
+    getCredentials: vi.fn(),
+    getOverlay: vi.fn(),
+    setOverlay: vi.fn(),
+    getProviderSettings: vi.fn(),
+    setProviderSettings: vi.fn(),
     onSpacesChanged: vi.fn(() => () => {}),
     getProviderEnvStatus: vi.fn(async () => ({ success: true })),
   },
@@ -50,6 +50,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/platform', () => ({ platformApi: mocks.platform }))
+// spaces 域已迁到通用 RPC 通道(结构债 P0.3):组件/store 引的是壳外客户端,
+// 不再是 platformApi 上的方法,所以打桩打这个模块(方法名与签名沿用旧的)。
+vi.mock('@/platform/spaces-client', () => ({ spacesApi: mocks.platform }))
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => ({
     getCachedModels: (providerId: string) => mocks.cachedModels[providerId] ?? [],
@@ -132,8 +135,8 @@ beforeEach(async () => {
     customProviders: [],
   }
   mocks.cachedModels = {}
-  mocks.platform.spacesList.mockResolvedValue({ success: true, spaces: SPACES })
-  mocks.platform.spacesGetCredentials.mockResolvedValue({
+  mocks.platform.list.mockResolvedValue({ success: true, spaces: SPACES })
+  mocks.platform.getCredentials.mockResolvedValue({
     success: true,
     credentials: {
       providers: {
@@ -144,12 +147,12 @@ beforeEach(async () => {
       },
     },
   })
-  mocks.platform.spacesGetOverlay.mockImplementation(async () => ({ success: true, overlay: {} }))
-  mocks.platform.spacesSetOverlay.mockImplementation(async (request: { overlay: unknown }) =>
+  mocks.platform.getOverlay.mockImplementation(async () => ({ success: true, overlay: {} }))
+  mocks.platform.setOverlay.mockImplementation(async (request: { overlay: unknown }) =>
     ({ success: true, overlay: request.overlay }))
-  mocks.platform.spacesGetProviderSettings.mockImplementation(async () =>
+  mocks.platform.getProviderSettings.mockImplementation(async () =>
     ({ success: true, ai: JSON.parse(JSON.stringify(SPACE_AI)) }))
-  mocks.platform.spacesSetProviderSettings.mockImplementation(async (request: { ai: unknown }) =>
+  mocks.platform.setProviderSettings.mockImplementation(async (request: { ai: unknown }) =>
     ({ success: true, ai: request.ai }))
 })
 
@@ -163,7 +166,7 @@ describe('模型总账的 ★(useModelLedger.setDefault,批 B9)', () => {
     await flush()
 
     expect(updates).toEqual([])
-    const payload = mocks.platform.spacesSetProviderSettings.mock.calls[0][0] as {
+    const payload = mocks.platform.setProviderSettings.mock.calls[0][0] as {
       id: string
       ai: { provider: string; providers: Record<string, { model?: string }> }
     }
@@ -181,7 +184,7 @@ describe('模型总账的 ★(useModelLedger.setDefault,批 B9)', () => {
     await flush()
 
     expect(updates).toEqual([])
-    const payload = mocks.platform.spacesSetProviderSettings.mock.calls[0][0] as {
+    const payload = mocks.platform.setProviderSettings.mock.calls[0][0] as {
       id: string
       ai: { provider: string; providers: Record<string, { model?: string }> }
     }
@@ -231,7 +234,7 @@ describe('provider 卡上的启用开关(useProviderSettings.setProvidersEnabled
     await flush()
 
     expect(updates).toEqual([])
-    const payload = mocks.platform.spacesSetProviderSettings.mock.calls[0][0] as {
+    const payload = mocks.platform.setProviderSettings.mock.calls[0][0] as {
       id: string
       ai: { providers: Record<string, { enabled?: boolean }> }
     }
@@ -248,7 +251,7 @@ describe('provider 卡上的启用开关(useProviderSettings.setProvidersEnabled
     await flush()
 
     expect(updates).toEqual([])
-    const payload = mocks.platform.spacesSetProviderSettings.mock.calls[0][0] as {
+    const payload = mocks.platform.setProviderSettings.mock.calls[0][0] as {
       id: string
       ai: { providers: Record<string, { enabled?: boolean; selectedModels?: string[] }> }
     }
@@ -265,7 +268,7 @@ describe('provider 卡上的启用开关(useProviderSettings.setProvidersEnabled
     ps.setProvidersEnabled(['kimi', 'kimi-code'], false)
     await flush()
 
-    const payload = mocks.platform.spacesSetProviderSettings.mock.calls[0][0] as {
+    const payload = mocks.platform.setProviderSettings.mock.calls[0][0] as {
       id: string
       ai: { providers: Record<string, { enabled?: boolean }> }
     }

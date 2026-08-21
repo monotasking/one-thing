@@ -38,18 +38,21 @@ const memory = vi.hoisted(() => {
 
 const mocks = vi.hoisted(() => ({
   platform: {
-    spacesList: vi.fn(),
-    spacesGetCredentials: vi.fn(),
-    spacesGetOverlay: vi.fn(),
-    spacesSetOverlay: vi.fn(),
-    spacesGetProviderSettings: vi.fn(),
-    spacesSetProviderSettings: vi.fn(),
+    list: vi.fn(),
+    getCredentials: vi.fn(),
+    getOverlay: vi.fn(),
+    setOverlay: vi.fn(),
+    getProviderSettings: vi.fn(),
+    setProviderSettings: vi.fn(),
     onSpacesChanged: vi.fn(() => () => {}),
   },
   settingsStore: null as any,
 }))
 
 vi.mock('@/platform', () => ({ platformApi: mocks.platform }))
+// spaces 域已迁到通用 RPC 通道(结构债 P0.3):组件/store 引的是壳外客户端,
+// 不再是 platformApi 上的方法,所以打桩打这个模块(方法名与签名沿用旧的)。
+vi.mock('@/platform/spaces-client', () => ({ spacesApi: mocks.platform }))
 vi.mock('@/stores/settings', () => ({ useSettingsStore: () => mocks.settingsStore }))
 vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => ({ getSessionItem: () => null }),
@@ -162,23 +165,23 @@ beforeEach(() => {
     fetchModelsForProvider: vi.fn(async () => {}),
     saveAIProviderDefault: vi.fn(async () => {}),
   }
-  mocks.platform.spacesList.mockResolvedValue({
+  mocks.platform.list.mockResolvedValue({
     success: true,
     spaces: [
       { id: 'default', name: '默认空间', createdAt: 0 },
       { id: 'work', name: '工作', createdAt: 1 },
     ],
   })
-  mocks.platform.spacesGetCredentials.mockImplementation(async (id: string) => ({
+  mocks.platform.getCredentials.mockImplementation(async ({ id }: { id: string }) => ({
     success: true,
     credentials: id === 'work' ? WORK_POOL : id === 'default' ? DEFAULT_POOL : { providers: {} },
   }))
-  mocks.platform.spacesGetOverlay.mockImplementation(async () => ({ success: true, overlay: {} }))
-  mocks.platform.spacesSetOverlay.mockImplementation(async (request: any) =>
+  mocks.platform.getOverlay.mockImplementation(async () => ({ success: true, overlay: {} }))
+  mocks.platform.setOverlay.mockImplementation(async (request: any) =>
     ({ success: true, overlay: request.overlay }))
-  mocks.platform.spacesGetProviderSettings.mockImplementation(async () =>
+  mocks.platform.getProviderSettings.mockImplementation(async () =>
     ({ success: true, ai: JSON.parse(JSON.stringify(SPACE_AI)) }))
-  mocks.platform.spacesSetProviderSettings.mockImplementation(async (request: any) =>
+  mocks.platform.setProviderSettings.mockImplementation(async (request: any) =>
     ({ success: true, ai: request.ai }))
 })
 
@@ -266,7 +269,7 @@ describe('ModelSelector —— 默认与开关按空间(批 B9)', () => {
     await nextTick()
 
     expect(mocks.settingsStore.saveAIProviderDefault).not.toHaveBeenCalled()
-    const payload = mocks.platform.spacesSetProviderSettings.mock.calls[0][0]
+    const payload = mocks.platform.setProviderSettings.mock.calls[0][0]
     expect(payload.id).toBe('work')
     expect(payload.ai.provider).toBe('deepseek')
     expect(payload.ai.providers.deepseek.model).toBe('deepseek-reasoner')
@@ -285,7 +288,7 @@ describe('ModelSelector —— 默认与开关按空间(批 B9)', () => {
     await nextTick()
 
     expect(mocks.settingsStore.saveAIProviderDefault).not.toHaveBeenCalled()
-    const payload = mocks.platform.spacesSetProviderSettings.mock.calls[0][0]
+    const payload = mocks.platform.setProviderSettings.mock.calls[0][0]
     expect(payload.id).toBe('default')
     expect(payload.ai.provider).toBe('deepseek')
     expect(payload.ai.providers.deepseek.model).toBe('deepseek-reasoner')
@@ -297,7 +300,7 @@ describe('ModelSelector —— 默认与开关按空间(批 B9)', () => {
    * provider 从选择器消失(它本来就发不出去)。
    */
   it('C1:默认空间也吃 configured 闸 —— 没钥匙的 provider 不再列出来', async () => {
-    mocks.platform.spacesGetCredentials.mockImplementation(async (id: string) => ({
+    mocks.platform.getCredentials.mockImplementation(async ({ id }: { id: string }) => ({
       success: true,
       credentials: id === 'default' ? WORK_POOL : { providers: {} },
     }))
@@ -323,7 +326,7 @@ describe('ModelSelector —— 默认与开关按空间(批 B9)', () => {
       customProviders: [],
     }
     // 这一次两个 provider 在 work 空间都有钥匙 —— 把凭证这道闸让开,单看开关。
-    mocks.platform.spacesGetCredentials.mockImplementation(async () => ({
+    mocks.platform.getCredentials.mockImplementation(async () => ({
       success: true,
       credentials: {
         providers: {

@@ -40,6 +40,8 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:models', 'models'],
   ['rpc:markdown', 'markdown'],
   ['rpc:permission-grants', 'permissionGrants'],
+  // P0.3:第一个从手写 IPC 工厂整只搬过来的域。
+  ['rpc:spaces', 'spaces'],
 ] as const
 
 /**

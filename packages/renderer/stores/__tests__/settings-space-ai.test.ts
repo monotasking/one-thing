@@ -58,12 +58,26 @@ function installElectronAPI() {
   }
   const api = {
     getSettings: vi.fn().mockResolvedValue({ success: true, settings: globalSettings }),
-    rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
+    rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
       if (request.domain === 'providers' && request.method === 'list') {
         return { ok: true, data: { success: true, providers: [] } }
       }
       if (request.domain === 'models' && request.method === 'getNameAliases') {
         return { ok: true, data: { success: true, aliases: {} } }
+      }
+      // spaces 域已迁到通用 RPC 通道(结构债 P0.3):渲染侧走
+      // `platform/spaces-client.ts` → `rpcInvoke`,所以桩要在这里接住,
+      // 转派给下面那几个同名 mock(断言仍然对着它们)。
+      if (request.domain === 'spaces') {
+        const payload = (request as { payload?: { id?: string } }).payload ?? {}
+        const spacesRoutes: Record<string, () => Promise<unknown>> = {
+          list: () => api.list(),
+          getCredentials: () => api.getCredentials(payload as never),
+          getProviderSettings: () => api.getProviderSettings(payload as never),
+          setProviderSettings: () => api.setProviderSettings(payload as never),
+        }
+        const route = spacesRoutes[request.method]
+        if (route) return { ok: true, data: await route() }
       }
       return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
     }),
@@ -75,19 +89,19 @@ function installElectronAPI() {
     onSystemThemeChanged: vi.fn(),
     onSpacesChanged: vi.fn(() => () => {}),
     applyTheme: vi.fn().mockResolvedValue({ success: true, cssVariables: {} }),
-    spacesList: vi.fn().mockResolvedValue({
+    list: vi.fn().mockResolvedValue({
       success: true,
       spaces: [
         { id: 'default', name: '默认空间', createdAt: 0 },
         { id: 'work', name: '工作', createdAt: 1 },
       ],
     }),
-    spacesGetCredentials: vi.fn().mockResolvedValue({ success: true, credentials: { providers: {} } }),
-    spacesGetProviderSettings: vi.fn(async (id: string) => ({
+    getCredentials: vi.fn().mockResolvedValue({ success: true, credentials: { providers: {} } }),
+    getProviderSettings: vi.fn(async ({ id }: { id: string }) => ({
       success: true,
       ai: JSON.parse(JSON.stringify(SPACE_AI[id] ?? { provider: '', providers: {}, customProviders: [] })),
     })),
-    spacesSetProviderSettings: vi.fn(async (request: { id: string; ai: SpaceProviderSettings }) => ({
+    setProviderSettings: vi.fn(async (request: { id: string; ai: SpaceProviderSettings }) => ({
       success: true,
       ai: request.ai,
     })),
@@ -156,7 +170,7 @@ describe('settings store —— per-space provider 设置的换源(C2)', () => {
     next.ai.providers.deepseek.selectedModels = ['deepseek-chat', 'deepseek-reasoner']
     await store.saveSettings(next)
 
-    const spacePayload = api.spacesSetProviderSettings.mock.calls.at(-1)![0]
+    const spacePayload = api.setProviderSettings.mock.calls.at(-1)![0]
     expect(spacePayload.id).toBe('default')
     expect(spacePayload.ai.providers.deepseek.selectedModels)
       .toEqual(['deepseek-chat', 'deepseek-reasoner'])

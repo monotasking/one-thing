@@ -142,6 +142,7 @@ import Select from '@/components/common/Select.vue'
 import type { SelectOptionLike } from '@/components/common/select'
 import type { AppSettings } from '@/types'
 import { platformApi } from '@/platform'
+import { spacesApi } from '@/platform/spaces-client'
 import { useSpacesStore } from '@/stores/spaces'
 import { SettingsGroup, SettingsSection } from './settings-primitives'
 
@@ -249,7 +250,7 @@ async function loadOverlay(spaceId: string): Promise<void> {
   overlayLoading.value = true
   overlayError.value = null
   try {
-    const response = await platformApi.spacesGetOverlay(spaceId)
+    const response = await spacesApi.getOverlay({ id: spaceId })
     if (response.success) {
       overlayDirectories.value = response.overlay?.connectedDirectories ?? []
     } else {

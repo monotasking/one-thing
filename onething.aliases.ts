@@ -109,7 +109,6 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/electron-host/ipc/session-command', replacement: resolve(projectRoot, 'apps/electron/src/ipc/session-command.ts') },
   { find: '@onething/electron-host/ipc/sessions', replacement: resolve(projectRoot, 'apps/electron/src/ipc/sessions.ts') },
   { find: '@onething/electron-host/ipc/skills', replacement: resolve(projectRoot, 'apps/electron/src/ipc/skills.ts') },
-  { find: '@onething/electron-host/ipc/spaces', replacement: resolve(projectRoot, 'apps/electron/src/ipc/spaces.ts') },
   { find: '@onething/electron-host/ipc/terminal', replacement: resolve(projectRoot, 'apps/electron/src/ipc/terminal.ts') },
   { find: '@onething/electron-host/ipc/themes', replacement: resolve(projectRoot, 'apps/electron/src/ipc/themes.ts') },
   { find: '@onething/electron-host/ipc/todo-plan', replacement: resolve(projectRoot, 'apps/electron/src/ipc/todo-plan.ts') },

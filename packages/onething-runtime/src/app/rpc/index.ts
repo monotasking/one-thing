@@ -31,6 +31,7 @@ import { markdownRouter } from '@shared/ipc/markdown.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
+import { spacesRouter } from '@shared/ipc/spaces.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 import { usageRouter } from '@shared/ipc/usage.js'
 import { selfEvolutionFeature } from '../features/builtin/self-evolution.js'
@@ -45,6 +46,7 @@ import { modelsRpcHandlers } from './domains/models.js'
 import { permissionGrantsRpcHandlers } from './domains/permission-grants.js'
 import { promptsRpcHandlers } from './domains/prompts.js'
 import { providersRpcHandlers } from './domains/providers.js'
+import { spacesRpcHandlers } from './domains/spaces.js'
 import { todoPlanRpcHandlers } from './domains/todo-plan.js'
 import { usageRpcHandlers } from './domains/usage.js'
 
@@ -76,6 +78,9 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 的 sandboxRoot / owner 判定，不再由 server 壳自己抄一份。
   { id: 'rpc:markdown', mount: ctx => { ctx.registerRpcDomain(markdownRouter, markdownRpcHandlers) } },
   { id: 'rpc:permission-grants', mount: ctx => { ctx.registerRpcDomain(permissionGrantsRouter, permissionGrantsRpcHandlers) } },
+  // P0.3:第一个从「手写 IPC 工厂 + 壳适配」整只搬过来的域(spaces)。搬完之后
+  // server 侧一行没改 —— 域挂上 router 就经 `POST /api/rpc` 自动可达。
+  { id: 'rpc:spaces', mount: ctx => { ctx.registerRpcDomain(spacesRouter, spacesRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

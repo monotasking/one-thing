@@ -1386,44 +1386,6 @@ export interface ElectronAPI {
 		path: string,
 		workspaceId?: string,
 	) => Promise<ProjectDirsRemoveResponse>;
-	// Spaces (workspaces) — independent module
-	spacesList: () => Promise<SpacesListResponse>;
-	spacesCreate: (request: SpacesCreateRequest) => Promise<SpacesCreateResponse>;
-	spacesUpdate: (request: SpacesUpdateRequest) => Promise<SpacesUpdateResponse>;
-	spacesRemove: (id: string) => Promise<SpacesRemoveResponse>;
-	/** per-space overlay(批 B2)。整层写入:传什么就是什么。 */
-	spacesGetOverlay: (id: string) => Promise<SpacesGetOverlayResponse>;
-	spacesSetOverlay: (
-		request: SpacesSetOverlayRequest,
-	) => Promise<SpacesSetOverlayResponse>;
-	/**
-	 * per-space **整套 provider 设置**(C2)—— `workspaces/<id>/providers.json`。
-	 * 整层写入:传什么就是什么。无回落:这个空间没表达过的就是没有。
-	 */
-	spacesGetProviderSettings: (
-		id: string,
-	) => Promise<SpacesGetProviderSettingsResponse>;
-	spacesSetProviderSettings: (
-		request: SpacesSetProviderSettingsRequest,
-	) => Promise<SpacesSetProviderSettingsResponse>;
-	/**
-	 * per-space provider 凭证池(批 B3)。摘要出、原文进 —— 读回来永远只有
-	 * `hasApiKey` + 预览,密钥原文不出后端。默认空间走 settings.ai,这四条
-	 * 对它一律拒绝。
-	 */
-	spacesGetCredentials: (id: string) => Promise<SpacesGetCredentialsResponse>;
-	spacesSetCredential: (
-		request: SpacesSetCredentialRequest,
-	) => Promise<SpacesSetCredentialResponse>;
-	spacesSetCredentialPool: (
-		request: SpacesSetCredentialPoolRequest,
-	) => Promise<SpacesSetCredentialPoolResponse>;
-	spacesClearCredential: (
-		request: SpacesClearCredentialRequest,
-	) => Promise<SpacesClearCredentialResponse>;
-	spacesImportCredentials: (
-		id: string,
-	) => Promise<SpacesImportCredentialsResponse>;
 	getSessionTokenUsage: (sessionId: string) => Promise<{
 		success: boolean;
 		usage?: {
