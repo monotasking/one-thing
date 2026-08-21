@@ -17,8 +17,8 @@ import {
 } from '../../external-agents/index.js'
 import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
-import { createRequiredAppFetch } from '../../../providers/bound-fetch.js'
-import { dumpProviderRequest } from '../../../providers/request-dump.js'
+import { createRequiredAppFetch } from '../../../provider-binding/bound-fetch.js'
+import { dumpProviderRequest } from '../../../provider-binding/request-dump.js'
 import type { AgentProvider } from '@onething/core/agent-loop'
 
 export {

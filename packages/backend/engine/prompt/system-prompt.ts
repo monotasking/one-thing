@@ -19,7 +19,7 @@ import {
   type BuildOnethingPromptContextOptions,
   type ComposedPrompt,
 } from '@onething/runtime/prompts'
-import { toolkitPromptSource } from '../../toolkit/prompt-source.js'
+import { toolkitPromptSource } from '@onething/runtime/toolkit/prompt-source'
 import { buildStateVariablesPromptText } from '../../wiring/variables/index.js'
 import { pluginPromptSource } from './plugin-context.js'
 import {
@@ -34,8 +34,8 @@ import {
   isAgentPairDmRoom,
   isUserDmRoom,
 } from '@onething/runtime/collab'
-import { collabRoomMembers } from '../../collab/members.js'
-import { collabUserPromptFields } from '../../collab/user-identity.js'
+import { collabRoomMembers } from '../../wiring/collab/members.js'
+import { collabUserPromptFields } from '../../wiring/collab/user-identity.js'
 import type { PromptProviderConfig } from './plugin-context.js'
 import type { PromptActiveProject, PromptKnownProjects } from './types.js'
 

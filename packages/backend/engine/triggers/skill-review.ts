@@ -12,14 +12,14 @@ import {
 } from '../../wiring/skills/session-skills.js'
 import type { Trigger, TriggerContext } from './index.js'
 import { billSkillUsage } from '../../wiring/usage/bill-side-line.js'
-import { createUtilityProvider } from '../../providers/utility-provider.js'
+import { createUtilityProvider } from '../../wiring/providers/utility-provider.js'
 // 三只文件工具从**目录**取,执行走 runner(设计文档 §10.2-④)。
 import { Decision } from '@onething/core/toolkit'
 import type { Invocation, Observer, Tool as ToolkitTool } from '@onething/core/toolkit'
 import { Outcome as OutcomeOps } from '@onething/core/toolkit'
 import { toJsonObject, type JsonObject } from '@shared/json.js'
 import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
-import { createAppToolRunner } from '../../toolkit/runner.js'
+import { createAppToolRunner } from '../../wiring/toolkit/runner.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('engine.triggers')

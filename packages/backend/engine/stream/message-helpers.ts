@@ -6,7 +6,7 @@
 import type { ChatMessage } from "@shared/ipc.js";
 import type { AgentProviderData } from "@onething/core/agent-loop";
 import type { JsonObject, JsonValue } from "@shared/json.js";
-import type { AIMessageContent } from "../../providers/index.js";
+import type { AIMessageContent } from "../../wiring/providers/index.js";
 import { logMessageBodyShape } from "./chat-logger.js";
 import {
 	formatMessagesForLog,
@@ -41,7 +41,7 @@ import {
 	type CollabAgentLike,
 } from "@onething/runtime/collab";
 import { findAgent } from "../../wiring/agents/index.js";
-import { resolveUserIdentity } from "../../collab/user-identity.js";
+import { resolveUserIdentity } from "../../wiring/collab/user-identity.js";
 import * as store from "../../store.js";
 import { getLogger } from '../../wiring/logging/index.js'
 

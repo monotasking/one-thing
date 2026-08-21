@@ -27,8 +27,8 @@ import {
 	handleCollabRoomSendMessage,
 	isCollabCoordinatorDrivenSession,
 	isCollabRoomSession,
-} from "../collab/ingress.js";
-import { isTrustedCollabDrive } from "../collab/drive-guard.js";
+} from "../wiring/collab/ingress.js";
+import { isTrustedCollabDrive } from "@onething/runtime/collab/drive-guard";
 import { runPluginInputIntercept } from "../plugins/input-intercept.js";
 import { pluginPostInterceptReply } from "../plugins/sessions.js";
 import { mintTurnPrincipal } from "./turn-principal.js";

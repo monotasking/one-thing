@@ -77,7 +77,7 @@ vi.mock('../stream/provider-helpers.js', () => ({
   getProviderApiType: vi.fn(() => 'chat'),
 }))
 
-vi.mock('../../providers/index.js', () => ({
+vi.mock('../../wiring/providers/index.js', () => ({
   isProviderSupported: vi.fn(() => true),
   requiresOAuth: vi.fn(() => false),
   convertToolDefinitionsForProvider: vi.fn(() => ({})),
@@ -135,7 +135,7 @@ vi.mock('@onething/runtime/mcp/index.wiring', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))
 
-vi.mock('../../providers/model-registry.js', () => ({
+vi.mock('../../wiring/providers/model-registry.js', () => ({
   modelSupportsTools: mocks.modelSupportsTools,
 }))
 

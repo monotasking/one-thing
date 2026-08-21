@@ -3,7 +3,8 @@
  * 子清单账、evidence 采集、回投素材、任务书。
  *
  * 与 `mind-rules.ts`/`room-rules.ts` 同一条分工:带 IO 的那一半(派生子 actor、
- * 驱动工作会话、写看板)在 `@onething/backend` 的 `collab/actors/`,这里只有同步纯
+ * 驱动工作会话、写看板)在隔壁的 `worker-child.ts`(P3'b-B 起同目录;撞后端脊柱的
+ * `worker-mind-port` 留在 `@onething/backend/wiring/collab/actors/`),这里只有同步纯
  * 函数。理由也一样 —— 金重放与真机必须走同一行代码,而重放没有磁盘、没有引擎、
  * 没有时钟。
  *

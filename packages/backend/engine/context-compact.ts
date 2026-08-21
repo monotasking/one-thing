@@ -1,6 +1,6 @@
 import type { AppSettings, ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
-import { generateChatResponse } from '../providers/index.js'
+import { generateChatResponse } from '../wiring/providers/index.js'
 import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '../plugins/lifecycle.js'
 import * as store from '../store.js'
 import { sessionReads } from '../session/reads.js'
@@ -29,7 +29,7 @@ import {
 } from '@onething/core/engine'
 import { buildHistoryMessages } from './stream/message-helpers.js'
 import { collectCompactFileOperations } from './compact-file-lists.js'
-import * as modelRegistry from '../providers/model-registry.js'
+import * as modelRegistry from '../wiring/providers/model-registry.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('engine.compact')

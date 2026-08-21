@@ -101,13 +101,13 @@ vi.mock('../../agents/profile.js', () => ({
   }),
 }))
 
-vi.mock('../../../collab/budget.js', () => ({
+vi.mock('../../collab/budget.js', () => ({
   isRoomOverBudget: async () => false,
 }))
 
 const { resolveClaudeCodeHostToolSurface } = await import('../host-tools.js')
 const { clearCollabSayIdempotence, speakIntoCollabRoom }
-  = await import('../../../collab/say-tool.js')
+  = await import('../../collab/say-tool.js')
 const { Catalog, Decision, ToolRunner } = await import('@onething/core/toolkit')
 const {
   configureToolkitCatalog,
@@ -163,7 +163,7 @@ const {
   beginCollabV3Turn,
   clearCollabV3Turns,
   configureCollabV3SpeakPort,
-} = await import('../../../collab/actors/turn-context.js')
+} = await import('@onething/runtime/collab/actors/turn-context.wiring')
 
 const ROOM = 'room-1'
 const EXEC = 'agent-exec-fe-room-1'

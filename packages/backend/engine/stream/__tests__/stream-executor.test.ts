@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   executeAgentLoopStreamGeneration: vi.fn(async () => ({ pausedForConfirmation: false })),
 }))
 
-vi.mock('../../../providers/model-registry.js', () => ({
+vi.mock('../../../wiring/providers/model-registry.js', () => ({
   modelSupportsImageGeneration: mocks.modelSupportsImageGeneration,
   modelSupportsTools: mocks.modelSupportsTools,
   getModelById: mocks.getModelById,

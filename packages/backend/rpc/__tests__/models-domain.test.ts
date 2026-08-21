@@ -47,7 +47,7 @@ vi.mock('../../wiring/auth/auth-service.js', () => ({
   },
 }))
 
-vi.mock('../../providers/model-registry.js', () => ({
+vi.mock('../../wiring/providers/model-registry.js', () => ({
   forceRefresh: mocks.forceRefresh,
   refreshProviderModels: mocks.refreshProviderModels,
   getAllModels: vi.fn(),
@@ -58,12 +58,12 @@ vi.mock('../../providers/model-registry.js', () => ({
   searchModels: vi.fn(),
 }))
 
-vi.mock('../../providers/builtin/codex.js', () => ({
+vi.mock('../../wiring/providers/builtin/codex.js', () => ({
   fetchCodexModels: mocks.fetchCodexModels,
   getCodexFallbackModels: mocks.getCodexFallbackModels,
 }))
 
-vi.mock('../../providers/builtin/github-copilot.js', () => ({
+vi.mock('../../wiring/providers/builtin/github-copilot.js', () => ({
   detectModelCapabilities: vi.fn(() => ({
     contextLength: 128000,
     hasImageGeneration: false,

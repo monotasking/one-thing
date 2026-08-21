@@ -5769,7 +5769,7 @@ function checkCoreOwnsToolSchemaProjection(): void {
   const coreRegistryFile = path.join(root, 'packages/core/tools/registry.ts')
   const coreIndexFile = path.join(root, 'packages/core/tools/index.ts')
   const coreTestFile = path.join(root, 'packages/core/tools/__tests__/registry.test.ts')
-  const projectionFile = path.join(root, 'packages/backend/toolkit/catalog-projection.ts')
+  const projectionFile = path.join(root, 'packages/onething-runtime/src/toolkit/catalog-projection.wiring.ts')
   const coreRegistryContent = fs.existsSync(coreRegistryFile) ? fs.readFileSync(coreRegistryFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
@@ -6703,14 +6703,14 @@ function checkCoreOwnsAgentLoopPureFacades(): void {
 
 function checkRuntimeOwnsProviderRequestDump(): void {
   const runtimeFile = 'packages/onething-runtime/src/providers/request-dump.ts'
-  const mainFile = path.join(root, 'packages/backend/providers/request-dump.ts')
+  const mainFile = path.join(root, 'packages/backend/provider-binding/request-dump.ts')
   const lines = [
     ...(!fs.existsSync(path.join(root, runtimeFile))
       ? [`${runtimeFile}: missing runtime-owned provider request dump implementation`]
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_REQUEST_DUMP_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/request-dump.ts: missing main provider request dump facade']),
+      : ['packages/backend/provider-binding/request-dump.ts: missing main provider request dump facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider request dump implementation', lines)
@@ -6718,7 +6718,7 @@ function checkRuntimeOwnsProviderRequestDump(): void {
 
 function checkRuntimeOwnsProviderRegistry(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/registry.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/registry.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/providers/registry.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
@@ -6746,7 +6746,7 @@ function checkRuntimeOwnsProviderRegistry(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_REGISTRY_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/registry.ts: missing provider registry facade']),
+      : ['packages/backend/wiring/providers/registry.ts: missing provider registry facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider registry', lines)
@@ -6755,7 +6755,7 @@ function checkRuntimeOwnsProviderRegistry(): void {
 function checkRuntimeOwnsProviderDefinitionTypes(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-definition.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/providers/index.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/types.ts')
+  const mainFile = path.join(root, 'packages/onething-runtime/src/providers/types.wiring.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -6776,12 +6776,14 @@ function checkRuntimeOwnsProviderDefinitionTypes(): void {
     ...(!runtimeIndexContent.includes('./provider-definition.js')
       ? [`${rel(runtimeIndexFile)}: missing provider definition public export`]
       : []),
-    ...(!mainContent.includes('@onething/runtime/providers')
-      ? [`${rel(mainFile)}: provider type facade must delegate to @onething/runtime/providers`]
+    // P3'b-B:这张 `@shared/ipc` 口味的类型面搬进了 `runtime/src/providers/`
+    // (闭包零脊柱边),所以"委派给 runtime"现在写成同包相对的 `./index.js`。
+    ...(!mainContent.includes('./index.js')
+      ? [`${rel(mainFile)}: provider type facade must delegate to the runtime provider barrel`]
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TYPES_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/types.ts: missing provider type facade']),
+      : ['packages/onething-runtime/src/providers/types.wiring.ts: missing provider type facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider definition types', lines)
@@ -6789,7 +6791,7 @@ function checkRuntimeOwnsProviderDefinitionTypes(): void {
 
 function checkRuntimeOwnsProviderOauthConfigResolution(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/oauth-config.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/index.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'resolveOnethingOAuthProviderConfig',
@@ -6802,7 +6804,7 @@ function checkRuntimeOwnsProviderOauthConfigResolution(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider OAuth config resolution ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_OAUTH_CONFIG_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/index.ts: missing provider facade']),
+      : ['packages/backend/wiring/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider OAuth config resolution', lines)
@@ -6812,7 +6814,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-facade.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/providers/__tests__/provider-facade.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/providers/index.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/index.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -6844,7 +6846,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_FACADE_LOW_LEVEL_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/index.ts: missing provider facade']),
+      : ['packages/backend/wiring/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider facade orchestration', lines)
@@ -6852,7 +6854,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
 
 function checkRuntimeOwnsProviderTitleOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/index.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'generateOnethingProviderChatTitle',
@@ -6865,7 +6867,7 @@ function checkRuntimeOwnsProviderTitleOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider title orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TITLE_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/index.ts: missing provider facade']),
+      : ['packages/backend/wiring/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider title orchestration', lines)
@@ -6873,7 +6875,7 @@ function checkRuntimeOwnsProviderTitleOrchestration(): void {
 
 function checkRuntimeOwnsProviderTextResponseProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/index.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   // streamOnethingTextChatResponse was deleted in P0 (zero callers); the
   // generate-side projection is still the live one.
@@ -6886,7 +6888,7 @@ function checkRuntimeOwnsProviderTextResponseProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider text response projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TEXT_RESPONSE_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/index.ts: missing provider facade']),
+      : ['packages/backend/wiring/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider text response projection', lines)
@@ -6894,7 +6896,7 @@ function checkRuntimeOwnsProviderTextResponseProjection(): void {
 
 function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/index.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'generateOnethingChatResponseWithReasoning',
@@ -6908,7 +6910,7 @@ function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider generate-with-reasoning orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_GENERATE_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/index.ts: missing provider facade']),
+      : ['packages/backend/wiring/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider generate-with-reasoning orchestration', lines)
@@ -6918,7 +6920,7 @@ function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
 
 function checkRuntimeOwnsProviderAcpStreamProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/index.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'streamOnethingACPChatResponseWithTools',
@@ -6932,7 +6934,7 @@ function checkRuntimeOwnsProviderAcpStreamProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ACP stream projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_ACP_STREAM_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/index.ts: missing provider facade']),
+      : ['packages/backend/wiring/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider ACP stream projection', lines)
@@ -7051,7 +7053,7 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
  */
 function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
   const mainFile = path.join(root, 'packages/backend/engine/stream/tool-execution.ts')
-  const wiringFile = path.join(root, 'packages/backend/toolkit/wiring.ts')
+  const wiringFile = path.join(root, 'packages/backend/wiring/toolkit/wiring.ts')
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const wiringContent = fs.existsSync(wiringFile) ? fs.readFileSync(wiringFile, 'utf-8') : ''
   const lines = [
@@ -7183,7 +7185,7 @@ function checkRuntimeOwnsNetworkPolicy(): void {
   const runtimeBoundFetchFile = 'packages/onething-runtime/src/providers/bound-fetch.ts'
   const runtimeBoundFetchTestFile = 'packages/onething-runtime/src/providers/__tests__/bound-fetch.test.ts'
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/providers/index.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/bound-fetch.ts')
+  const mainFile = path.join(root, 'packages/backend/provider-binding/bound-fetch.ts')
   const runtimeBoundFetchContent = fs.existsSync(path.join(root, runtimeBoundFetchFile))
     ? fs.readFileSync(path.join(root, runtimeBoundFetchFile), 'utf-8')
     : ''
@@ -7215,7 +7217,7 @@ function checkRuntimeOwnsNetworkPolicy(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_BOUND_FETCH_POLICY_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/bound-fetch.ts: missing main network fetch adapter']),
+      : ['packages/backend/provider-binding/bound-fetch.ts: missing main network fetch adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider network policy and bound fetch runtime', lines)
@@ -7223,7 +7225,7 @@ function checkRuntimeOwnsNetworkPolicy(): void {
 
 function checkRuntimeOwnsModelRegistryRefresh(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/model-registry.ts')
-  const mainFile = path.join(root, 'packages/backend/providers/model-registry.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/providers/model-registry.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'saveOnethingProviderModels',
@@ -7236,7 +7238,7 @@ function checkRuntimeOwnsModelRegistryRefresh(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MODEL_REGISTRY_REFRESH_FORBIDDEN_PATTERNS)
-      : ['packages/backend/providers/model-registry.ts: missing main model registry facade']),
+      : ['packages/backend/wiring/providers/model-registry.ts: missing main model registry facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns model registry refresh orchestration', lines)
@@ -7712,8 +7714,8 @@ function checkRuntimeOwnsToolRegistryRuntime(): void {
   const kernelCatalogFile = path.join(root, 'packages/core/toolkit/catalog.ts')
   const productHostFile = path.join(root, 'packages/onething-runtime/src/toolkit/host.ts')
   const productIndexFile = path.join(root, 'packages/onething-runtime/src/toolkit/index.ts')
-  const assemblyCatalogFile = path.join(root, 'packages/backend/toolkit/catalog.ts')
-  const assemblyWiringFile = path.join(root, 'packages/backend/toolkit/wiring.ts')
+  const assemblyCatalogFile = path.join(root, 'packages/backend/wiring/toolkit/catalog.ts')
+  const assemblyWiringFile = path.join(root, 'packages/backend/wiring/toolkit/wiring.ts')
   const productHostContent = fs.existsSync(productHostFile) ? fs.readFileSync(productHostFile, 'utf-8') : ''
   const productIndexContent = fs.existsSync(productIndexFile) ? fs.readFileSync(productIndexFile, 'utf-8') : ''
   const assemblyCatalogContent = fs.existsSync(assemblyCatalogFile) ? fs.readFileSync(assemblyCatalogFile, 'utf-8') : ''
@@ -9833,7 +9835,7 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
   const toolkitTimeFile = path.join(root, 'packages/onething-runtime/src/toolkit/builtin/time.ts')
   const timeRuntimeFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/time-runtime.ts')
   const timeGoldenFile = path.join(root, 'packages/onething-runtime/src/toolkit/__tests__/golden/time.test.ts')
-  const catalogFile = path.join(root, 'packages/backend/toolkit/catalog.ts')
+  const catalogFile = path.join(root, 'packages/backend/wiring/toolkit/catalog.ts')
   const toolkitIndexContent = fs.existsSync(toolkitIndexFile) ? fs.readFileSync(toolkitIndexFile, 'utf-8') : ''
   const toolkitTimeContent = fs.existsSync(toolkitTimeFile) ? fs.readFileSync(toolkitTimeFile, 'utf-8') : ''
   const timeRuntimeContent = fs.existsSync(timeRuntimeFile) ? fs.readFileSync(timeRuntimeFile, 'utf-8') : ''

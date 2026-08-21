@@ -26,9 +26,9 @@ import {
   type OnethingConfiguredModelSelection,
 } from '@onething/runtime/providers'
 import { authService } from '../../wiring/auth/auth-service.js'
-import { fetchCopilotModels } from '../../providers/builtin/github-copilot.js'
-import { fetchCodexModels, getCodexFallbackModels } from '../../providers/builtin/codex.js'
-import * as modelRegistry from '../../providers/model-registry.js'
+import { fetchCopilotModels } from '../../wiring/providers/builtin/github-copilot.js'
+import { fetchCodexModels, getCodexFallbackModels } from '../../wiring/providers/builtin/codex.js'
+import * as modelRegistry from '../../wiring/providers/model-registry.js'
 import { getSettings } from '../../stores/settings.js'
 import { registerRouterHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'

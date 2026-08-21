@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@onething/core/agent-loop', () => ({ runAgentLoop: mocks.runAgentLoop }))
-vi.mock('../../../providers/utility-provider.js', () => ({
+vi.mock('../../providers/utility-provider.js', () => ({
   createUtilityProvider: mocks.createUtilityProvider,
 }))
 vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ({}) }))

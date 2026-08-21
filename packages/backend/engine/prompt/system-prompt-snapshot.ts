@@ -10,7 +10,7 @@ import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import * as store from '../../store.js'
 import {
   createAgentProviderFromRuntime,
-} from '../../providers/agent-runtime.js'
+} from '../../wiring/providers/agent-runtime.js'
 import { defaultAgent, findAgent } from '../../wiring/agents/index.js'
 import { resolveAgentProfileForSession } from '../../wiring/agents/profile.js'
 import { getSkillsForSession } from '../../wiring/skills/session-skills.js'
@@ -18,15 +18,15 @@ import { getMCPToolDefinitionsForModel } from '@onething/runtime/mcp/index.wirin
 import { buildProjectDirsPromptVars } from '../../wiring/project-dirs/index.js'
 import {
   isProviderSupported,
-} from '../../providers/index.js'
-import * as modelRegistry from '../../providers/model-registry.js'
+} from '../../wiring/providers/index.js'
+import * as modelRegistry from '../../wiring/providers/model-registry.js'
 import {
   getEffectiveProviderConfig,
   resolveProviderAuth,
 } from '../stream/provider-helpers.js'
 import { getCodexNativeToolsForConfig } from '../stream/codex-native-tools.js'
 import { resolveToolkitSurface } from '@onething/runtime/toolkit'
-import { toolDefinitionFromToolkitTool } from '../../toolkit/catalog-projection.js'
+import { toolDefinitionFromToolkitTool } from '@onething/runtime/toolkit/catalog-projection.wiring'
 import { resolveAgentLoopStreamRoute } from '../stream/agent-loop-selection.js'
 import { buildPrompt } from './system-prompt.js'
 import {

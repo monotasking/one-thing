@@ -24,18 +24,18 @@ vi.mock('../../wiring/auth/auth-service.js', () => ({
   authService: { refreshTokenIfNeeded: mocks.refreshTokenIfNeeded },
 }))
 
-vi.mock('../../providers/builtin/codex.js', () => ({
+vi.mock('../../wiring/providers/builtin/codex.js', () => ({
   fetchCodexUsage: mocks.fetchCodexUsage,
 }))
 
-vi.mock('../../providers/index.js', () => ({
+vi.mock('../../wiring/providers/index.js', () => ({
   getAvailableProviders: mocks.getAvailableProviders,
 }))
 
 // C1:用量按**哪个空间的 codex 账号**查。这里只 mock 解析那一格 —— 真实模块会
 // 顺着 registry 把整棵 provider 树拖进来(builtin/codex 的默认导出正是那样漏进
 // 这条测试的)。
-vi.mock('../../providers/space-credentials.js', () => ({
+vi.mock('../../wiring/providers/space-credentials.js', () => ({
   resolveSpaceProviderCredentialForSpace: mocks.resolveSpaceCredential,
   credentialTargetFromMarker: (marker: unknown) => marker,
 }))

@@ -1,7 +1,7 @@
 import { AbortScope, Intent } from '@onething/core/toolkit'
 import type { Effect, Invocation } from '@onething/core/toolkit'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
-import { createPermissionAuthorizer } from '../../toolkit/authorizer.js'
+import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { ACPManager } from '@onething/runtime/acp'
 import type { ACPPermissionBridge, ACPPermissionRequestContext } from '@onething/runtime/acp'
 import type { JsonObject } from '@shared/json.js'

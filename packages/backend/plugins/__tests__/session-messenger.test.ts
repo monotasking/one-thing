@@ -59,11 +59,11 @@ vi.mock('../../store.js', () => ({
   },
 }))
 
-vi.mock('../../collab/ingress.js', () => ({
+vi.mock('../../wiring/collab/ingress.js', () => ({
   isCollabCoordinatorDrivenSession: (sessionId: string) => coordinatorDriven.has(sessionId),
 }))
 
-vi.mock('../../providers/model-registry.js', () => ({
+vi.mock('../../wiring/providers/model-registry.js', () => ({
   getModelContextLength: async (model: string) => (model === 'known-model' ? 200_000 : 0),
 }))
 

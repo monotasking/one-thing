@@ -6,7 +6,7 @@ import {
   type OnethingAuthTokenStore,
 } from '@onething/runtime/auth'
 import type { OAuthToken } from '@shared/ipc.js'
-import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
+import { createRequiredAppFetch } from '../../provider-binding/bound-fetch.js'
 import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
 import { tokenStore } from '@onething/runtime/auth/token-store.wiring'
 

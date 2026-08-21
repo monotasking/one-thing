@@ -7,9 +7,9 @@ import {
 import type { OAuthToken } from '@shared/ipc.js'
 import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
-import { createRequiredAppFetch } from '../../../providers/bound-fetch.js'
-import { CODEX_PROVIDER_ID } from '../../../providers/builtin/codex.js'
-import { dumpProviderRequest } from '../../../providers/request-dump.js'
+import { createRequiredAppFetch } from '../../../provider-binding/bound-fetch.js'
+import { CODEX_PROVIDER_ID } from '../../providers/builtin/codex.js'
+import { dumpProviderRequest } from '../../../provider-binding/request-dump.js'
 import type { AgentProvider } from '@onething/core/agent-loop'
 
 export interface CodexAgentProviderOptions extends Omit<

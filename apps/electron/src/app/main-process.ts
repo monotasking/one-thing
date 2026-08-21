@@ -115,7 +115,7 @@ import { configureVoiceHost } from "@onething/runtime/voice/host-ports.wiring";
 import { broadcastElectronVoiceMessage } from "@onething/electron-host/voice/events";
 import { createElectronAuthFetch } from "@onething/electron-host/auth/auth-fetch";
 import { getElectronSafeStorage } from "@onething/electron-host/auth/electron-auth";
-import { createRequiredAppFetch } from "@onething/backend/providers/bound-fetch.js";
+import { createRequiredAppFetch } from "@onething/backend/provider-binding/bound-fetch.js";
 import { hydrateProcessEnvFromLoginShell } from "@onething/electron-host/app/login-shell-env";
 import {
 	StoreLock,
@@ -167,7 +167,7 @@ async function refreshModelsOnFirstStartup(): Promise<void> {
 
 	log.info("first-startup model refresh starting");
 	const { refreshAllProviders } = await import(
-		"@onething/backend/providers/model-registry.js"
+		"@onething/backend/wiring/providers/model-registry.js"
 	);
 	await refreshAllProviders();
 	log.info("first-startup model refresh complete");

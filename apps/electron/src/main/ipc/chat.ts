@@ -17,14 +17,14 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import {
   generateChatTitle,
   isProviderSupported,
-} from '@onething/backend/providers/index.js'
+} from '@onething/backend/wiring/providers/index.js'
 import { Permission } from '@onething/backend/wiring/permission/index.js'
 import {
   resolveProviderAuth,
   getProviderApiType,
 } from '@onething/backend/engine/stream/provider-helpers.js'
 import { getStreamEngine } from '@onething/backend/engine/index.js'
-import { abortCollabRoomTurnForStop } from '@onething/backend/collab/index.js'
+import { abortCollabRoomTurnForStop } from '@onething/backend/wiring/collab/index.js'
 import {
   abortOnethingStreamsForIpc,
   getOnethingChatHistoryForIpc,

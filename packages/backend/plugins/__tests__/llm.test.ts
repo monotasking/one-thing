@@ -15,10 +15,10 @@ const recordUsage = vi.fn()
 vi.mock('../../stores/settings.js', () => ({
   getSettings: () => settingsRef.current,
 }))
-vi.mock('../../providers/env.js', () => ({
+vi.mock('@onething/runtime/providers/env.wiring', () => ({
   resolveProviderApiKey: (_id: string, config: { apiKey?: string }) => config?.apiKey ?? 'resolved-key',
 }))
-vi.mock('../../providers/index.js', () => ({
+vi.mock('../../wiring/providers/index.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
 vi.mock('../../wiring/usage/index.js', () => ({

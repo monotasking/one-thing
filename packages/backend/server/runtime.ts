@@ -357,7 +357,7 @@ import {
 	toolDefinitionsFromCatalog,
 	toolkitCatalogToolDefinitions,
 	type ToolExecutionResult,
-} from "@onething/backend/toolkit/index.js";
+} from "../wiring/toolkit/index.js";
 import type {
 	GatewayGetStatusResponse,
 	GatewayStartRequest,

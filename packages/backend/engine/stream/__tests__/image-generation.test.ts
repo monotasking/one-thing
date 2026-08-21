@@ -6,7 +6,7 @@ const { fetchHolder } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('../../../providers/bound-fetch.js', () => ({
+vi.mock('../../../provider-binding/bound-fetch.js', () => ({
   createAppFetch: () => fetchHolder.current,
 }))
 

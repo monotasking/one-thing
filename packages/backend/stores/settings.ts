@@ -10,7 +10,7 @@ import {
   hasSpaceProviderSettingsMigrated,
   resolveEffectiveAppSettings,
   splitEffectiveAISettings,
-} from '../providers/ai-settings-compose.js'
+} from '../provider-binding/ai-settings-compose.js'
 import { getOnethingSettingsPath } from '@onething/runtime/storage'
 import { applyDiagnosticsMode } from '../wiring/logging/diagnostics.js'
 import { consolePort, getLogger } from '../wiring/logging/index.js'

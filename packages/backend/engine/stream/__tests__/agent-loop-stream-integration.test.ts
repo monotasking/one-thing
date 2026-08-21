@@ -213,13 +213,13 @@ vi.mock("../../../store.js", () => ({
 	...mocks.store,
 }));
 
-vi.mock("../../../providers/model-registry.js", () => ({
+vi.mock("../../../wiring/providers/model-registry.js", () => ({
 	modelSupportsImageGeneration: mocks.modelSupportsImageGeneration,
 	getModelContextLength: mocks.getModelContextLength,
 	getModelMaxOutputTokens: mocks.getModelMaxOutputTokens,
 }));
 
-vi.mock("../../../providers/bound-fetch.js", () => ({
+vi.mock("../../../provider-binding/bound-fetch.js", () => ({
 	createRequiredAppFetch: () => mocks.requiredAppFetch,
 }));
 

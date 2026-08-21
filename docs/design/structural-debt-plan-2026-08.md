@@ -266,6 +266,14 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
 
 1. ~~`CoreStreamEngine` 显式派发表~~ —— **撤销**(08-21 开工时查实:字面量订阅点已在
    `headless-stream-engine.ts:201`,断点 A 的真相是四类三树的 override 链,见 §0b.1;归 P3'd)。
+   **08-21 再纠正(用户实测仍追不动)**:上面那条"grep 得到"是对着字符串值说的;用户手里是
+   `SESSION_COMMAND_TYPES.SEND_MESSAGE`(shared 常量),订阅点是 core 字面量 `'command:send-message'`,
+   core 禁 import shared,两边各一份词汇 → find-references / 按常量名 grep 都到不了订阅点。
+   **修法(代码级,已派)**:词汇只一份放 core(`core/events/session-command-types.ts`),shared 再导出
+   (shared import core 有 11 文件判例);引擎九条订阅改为以常量为键的显式表 + `satisfies Record<SessionCommandType,…>`
+   (其它订阅者 Permission / Interaction 同样改用常量);`emitCoreSessionCommandForIpc` 泛型收紧。
+   结果:渲染层那一行 F12 → core 常量 → Shift+F12 直接列出处理者。链的七跳里 Proxy / contextBridge /
+   跨进程一条通道是 Electron 结构性的,只此一条不再增;第七跳四类三树归 P3'b/c engine 归位。
 2. ~~`transport:gate` 改硬红~~ —— 查实它**本来就是增即红**(`compare()` 上升即 regression → exit 1,
    `--self-test` 用例 2 就是这条)。真正的缺口在别处:**CI(`.github/workflows/test.yml`)只跑
    `bun run test`,boundary / ui / log / session / transport 五道门一道都不在 CI 里**——门红两天没人理,
@@ -666,8 +674,9 @@ P3'a-2 点名的那**一个**解锁点,以及它解锁的东西。收尾批,`src
    `import-side-effect-free.test.ts` 的范围改为 wiring 文件。
 2. **P3'b 厚孪生合并**:collab(rt 16k / app 14k)、providers、toolkit、music、logging、mcp、voice 按 I1 并回
    `runtime/<d>`,同名文件(collab 的 `agent-session/mentions/reactions/reply-quote.ts`)按 I2 合并或带角色改名。
-   collab 最大,单独 commit。**2026-08-21:P3'b-A 已落地**(logging / headless / mcp / voice / music 五个,
-   记录见下),剩 collab / providers / toolkit 归 P3'b-B、plugins 归 P3'c。
+   collab 最大,单独 commit。**2026-08-21:P3'b-A 已落地**(logging / headless / mcp / voice / music 五个)
+   ,**P3'b-B 也已落地**(collab / providers / toolkit 三个;providers 的三件绑定件留在包根、
+   目录改名 `provider-binding/`)—— 记录均见下。P3'b 到此收工,只剩 plugins 归 P3'c。
 3. **P3'c plugins 三合一**(单独一批):core 15k / rt 3k / app 5k,core 与 app 同名文件逐个判定"契约还是实现"
    ——契约留 core,实现全部进 `runtime/plugins`,不允许第三处;I2 断言在此批落地。
 4. **P3'd backend 成包**(P3'a-3 收工后重述为现在的形状;**2026-08-21 已落地,记录见下**):`src/app` → `packages/backend`
@@ -858,6 +867,97 @@ CLAUDE.md 早就写着"产品层只调 `getLogger`",而 `configureLogging()` 会
   `bridge.wiring.ts` 的 I3 后缀与"产品文件不许 import `*.wiring`"这条 checker 规则相撞。
   若将来把 `ToolDefinition` 那一句挪进 core 契约,`bridge` 就能去掉后缀,这个门面随之删除。
 
+#### P3'b-B 落地记录(2026-08-21,collab / providers / toolkit 三个厚孪生,未提交)
+
+P3'b 的第二拨,也是最后一拨厚孪生(除 plugins 外)。判据与 P3'b-A 逐字相同 —— 逐文件算
+import 传递闭包,**闭包不碰脊柱 → `runtime/src/<d>/`,碰脊柱 → `backend/wiring/<d>/`**;
+`backend/wiring/logging` 的 `getLogger` 沿用 P3'b-A 判例,**不算脊柱边**(本批据此改指 7 处)。
+三个目录从 `packages/backend` 包根消失,**I1 allowlist 4 → 1(只剩 `plugins`,归 P3'c)**。
+
+**逐目录去向**:
+
+| 目录 | → `runtime/src/<d>/` | → `backend/wiring/<d>/` | 其它 |
+| --- | --- | --- | --- |
+| collab(92 文件) | **24**:纯模型/纯算法 3(`digest-store` / `drive-guard` / `snapshot-throttle`)+ actor 本体 10(`agent-actor` / `agent-mailbox` / `mind-port` / `notebook-store` / `referee-actor` / `room-account` / `scheduler-log` / `worker-child` …)+ 4 个带 `.wiring.ts`(`room-actor` / `turn-context` 直接说 `@shared/ipc`;`agent-replay` / `room-replay` 因 import 前者而传染)+ 9 个测试 | **68**:凡是撞 `stores/{settings,sessions}` / `engine` / `session/*` / `events` / `store.ts` 的 —— 房间运行时、ingress、say/dm/history/board 工具、身份目录、宿主端口(`engine-mind-port` / `worker-mind-port`)、`runtime.ts`、`migrate` 与它们的 31 个测试 | 同名 4 文件见下 |
+| providers(37 文件) | **4**,全带 `.wiring.ts`(直接说 `@shared/ipc`):`types` / `env` / `utility-model` + `__tests__/env.wiring.test.ts`(`env.ts` 与 `env.wiring.ts`、`env.test.ts` 与 `env.wiring.test.ts` 靠后缀天然错开,不必再改名) | **25**:`index` / `registry` / `model-registry` / `agent-runtime` / `credential-*` / `space-*` / `utility-provider` / `auth/oauth-manager` / `builtin/{index,codex,github-copilot}` + 10 个测试 | **`provider-binding/` 3 件**(见下)+ **删 5 件**(见下) |
+| toolkit(34 文件) | **13**:纯投影 4(`audit-observer` / `guard-projection` / `plugin-tools` / `prompt-source`)+ 4 个带 `.wiring.ts`(`catalog-projection` / `execution-types` / `ipc-observer` / `mcp-catalog`)+ 4 个测试 + 1 个快照 | **21**:`index` / `catalog` / `wiring` / `runner` / `authorizer` / `adapters` / `audit-sink` / `jobs` / `builtin/feature-{mount,unmount,inspect,runtime}` + 8 个测试 + 1 个快照 | 无同名 |
+
+**`provider-binding/` 的裁定**:`bound-fetch.ts` / `request-dump.ts` / `ai-settings-compose.ts`
+是"把 runtime provider 绑到**设置缓存**与**日志**上"的三件绑定件。它们被 `wiring/agent-loop`、
+`wiring/auth`、`wiring/music`、`wiring/voice`、`engine/*` 广泛 import —— 是**被依赖的脊柱件**,
+不是"接进后端"的接线,放 `backend/wiring/providers/` 语义是反的。所以按 P3'b-A 的同一条
+思路(角色写在路径里)留在包根、目录改名 **`packages/backend/provider-binding/`**:名字直说
+它们干什么,也就天然不再与 `runtime/providers` 同名,I1 那条棘轮照样过。
+
+**删掉的 5 个纯别名门面**(P3'a-2「转发门面不算脊柱」的推论:**一个门面若只是把它自己
+将要搬进去的那个包原样再导出一遍,它就不是文件,是一条别名**)——
+`providers/tool-result-content.ts`(12 行,全仓 0 个 import)、`providers/builtin/{acp,grok,grok-oauth}.ts`
+(1–4 行,全仓 0 个 import;`builtin/index.ts` 早就直接从 `@onething/runtime/providers`
+取 `acpBuiltinProvider`)、`providers/tool-name-alias.ts`(5 行,把 `@onething/core/agent-loop`
+的三个符号**同名**再导出一次,唯一调用点 `engine/stream/stream-processor.ts` 改成直接
+import core)。搬进 runtime 会得到"`runtime/providers/x.ts` 从 `runtime/providers` 再导出"
+这种自指文件,那是把噪音换个地方放。
+
+**collab 的 4 组同名文件**(`agent-session` / `mentions` / `reactions` / `reply-quote`):逐个比对
+的结论一致 —— 都是**同概念的两半、零符号重叠**:runtime 那半是纯规则(解析 @、聚合表情、
+引用快照与"值不值得挂"、会话 id 派生),backend 那半是**写入与广播**(落盘、`message:updated`
+广播、调度器可见性),后者 import 前者。四个 backend 半边闭包都撞 `stores/sessions` /
+`engine` / `events`,一律进 `backend/wiring/collab/` —— **`wiring/collab` 与 `runtime/collab`
+本来就不同名,重名问题随分拣自然消失,既不需要合并也不需要改名**。`actors/` 两边都有,
+逐文件看下来也零重名(runtime 那边是 `*-rules.ts` / `protocol` / `replay` / `envelope-fold` /
+`floor-policy`,搬过去的是 actor 本体)。
+
+**说明符改写 650 处 / 214 文件**(脚本按"旧位置解析 → 走搬家表 → 从新位置重算";同包内
+一律相对 `.js`,跨包 `@onething/backend/<sub>.js` 带后缀、`@onething/runtime/<sub>` 不带)。
+另有手工 6 类:①脚本把 `packages/core/index.ts` 算成了 `@onething/core/index`(该包 exports
+里 `.` 才是根),8 处改回 `@onething/core`;②`stream-processor.ts` 改指 core;
+③`rpc/domains/collab.ts` 的注释;④`agent-replay` / `room-replay` 补 `.wiring.ts` 后缀 + 8 处引用
+(**坑**:`.wiring` 传染是**传递**的 —— 产品文件不许 import `*.wiring`,所以 room-actor 一加后缀,
+两个 replay 就跟着加,得靠 `boundary` 迭代到不动点,静态分类脚本的一次判定不够);
+⑤7 处 `getLogger` 改指 `runtime/logging`;⑥4 个金重放测试里的 `GOLDEN_DIR` 字面量
+(**坑**:它们原来写的是 `join(__dirname, '../../../../onething-runtime/src/collab/actors/__tests__/golden')`
+—— 跨包相对**路径字面量**,不是 import,机械改写看不见它;测试搬进 golden 目录的父目录后
+直接写 `join(__dirname, 'golden')`。`typecheck` 对此一声不吭,只有跑测试才炸)。
+
+**exports**:`packages/backend/package.json` 删 6 条(`./collab/index.js`、
+`./providers/{index,registry,model-registry,bound-fetch}.js`、`./toolkit/index.js`),
+新增 7 条(`./provider-binding/bound-fetch.js`、`./wiring/collab/{index,actors/migrate}.js`、
+`./wiring/providers/{index,registry,model-registry}.js`、`./wiring/toolkit/index.js`)。
+runtime 的 exports **一条没加** —— `./collab/*` / `./providers/*` / `./toolkit/*` 三条通配早就在,
+`collab/actors/*` 也走同一条(exports 的 `*` 跨路径分隔符匹配)。
+
+**checker**:`MAIN_CORE_SYSTEM_DIRS` / `MAIN_FILE_IO_SYSTEM_DIRS` 里**本来就没有**这三个目录,
+两张表未动;路径串 27 行改指(`providers/{index,registry,model-registry}` → `wiring/providers/…`、
+`providers/{bound-fetch,request-dump}` → `provider-binding/…`、`toolkit/{catalog,wiring}` →
+`wiring/toolkit/…`、`providers/types.ts` → `runtime/src/providers/types.wiring.ts`、
+`toolkit/catalog-projection.ts` → `runtime/src/toolkit/catalog-projection.wiring.ts`),
+**语义只改了一条**:`checkRuntimeOwnsProviderDefinitionTypes` 原来断言那张类型面
+"必须委派给 `@onething/runtime/providers`",搬进 runtime 之后同包相对,断言改成 `./index.js`。
+另外仍是 P3'b-A 记过的那个坑:`checkRuntimeHostBoundary` 不剥注释 ——
+`runtime/src/toolkit/guard-projection.ts` 的注释里写了一句 `shared/ipc/tools.ts` 就真红,措辞改掉即可。
+
+**验收**(全绿):`typecheck` 0 错;`test` **11128 通过 / 1150 文件 / 3 skipped,0 红**
+(P3'a 起记在案的 `sessions-delete-cascade` 抖动本轮也过了);`boundary` **199 ok / 0 failed**;
+`boundary:gate` 0 / `transport:gate` 279 常量 5521 行 / `ui:gate` 81 / `log:gate` 4 /
+`session:gate` 0 全部 none new;`build` / `server:build` / `web:build` 三宿主绿;
+`ls packages/backend/` 包根 = `backend.ts store.ts types.d.ts package.json __tests__/ channel/
+engine/ events/ features/ plugins/ provider-binding/ rpc/ server/ session/ stores/ utils/ wiring/`
+—— 厚孪生只剩 `plugins/`,`wiring/` 27 个目录。
+
+**遗留(给 P3'c / P4b/c)**:
+
+- 进 runtime 的 4 个 `providers/*.wiring.ts` 与 8 个 `toolkit/*` 里,好几件的**唯一消费者**是
+  隔壁 `backend/wiring/<d>/index.ts`。这是分拣规则的忠实结果(闭包零脊柱边就该在产品层),
+  但也说明这些"投影件"更像是**契约适配**而不是产品逻辑;若将来把 `ToolDefinition` /
+  `ProviderInfo` 这类跨进程词汇下沉进 core 契约,它们的 `.wiring` 后缀和这层 hop 就能一起消失
+  (与 P3'b-A 记的 `mcp/index.wiring.ts` 是同一笔账)。
+- `providers/{index,registry,model-registry,space-*,credential-*}` 撞的仍然只有
+  `stores/settings` + `stores/sessions` + `provider-binding/*` 这几个点,和 P3'b-A 记的
+  `voice/providers.ts` / `music/{service,dj-voice}.ts` 是同一类:等 P4b/c 把"设置读取 +
+  带凭证的 fetch"做成产品层可注入的端口,这一批还能再往 runtime 走一步。
+- `backend/wiring/toolkit/wiring.ts` 的路径读起来是 `wiring/toolkit/wiring.ts` —— 冗余但不是
+  重名,本批不动;真要改名(`install.ts`?)属于命名整理,和 P3'c 一起做更划算。
+
 ### P4 传输面 router 迁移(主线,1–2 周,逐域可暂停;08-21:**P4a 前移到 P1' 之前**)
 
 0. 08-21 改拍:P4a(六裸写域)紧跟 P0.5 做——它治的是"读"(断点 B),是用户每天撞的墙;
@@ -989,6 +1089,7 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 | 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
 | 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
+| 26 | **(新,词汇统一时查出)`command:confirm-tool`(`CONFIRM_TOOL`)全仓零订阅者**——shared 有 `ConfirmToolCommand` 形状、core 有常量,但没有任何 `onAnySession` 消费它,发这条命令等于丢进空气 | 删契约(shared 接口 + core 常量)并清渲染层发送点;若确有未完成的设计意图再补订阅 | 待拍 |
 | 25 | **(新,P3')归位单位从"目录"改为"文件":依赖脊柱的接线归 `backend/wiring/<d>/`,逻辑归 `runtime/<d>/`;I1 改为"逻辑一领域一家"**(量测:25 薄目录 17 个依赖脊柱,整目录折回会成环) | 按修正执行;P3'a-1 先做 6 个脊柱零依赖目录验证机制 | 已按默认开工,待知会 |
 
 08-21 已拍:组织原则 = 包按环境/依赖等级、包内按领域、文件名带角色(§0b.2);`app` 改名 `backend` 并瘦身;

@@ -20,7 +20,7 @@ import type { InteractionAnswer } from '@onething/core/interaction'
 import {
   recordExternalAgentTool,
   recordExternalAgentTurn,
-} from '../../collab/external-observability.js'
+} from '../collab/external-observability.js'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
 import { getSettings } from '../../store.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
@@ -29,7 +29,7 @@ import {
 } from '@onething/runtime/storage'
 import { AbortScope, Intent } from '@onething/core/toolkit'
 import type { Effect, Invocation } from '@onething/core/toolkit'
-import { createPermissionAuthorizer } from '../../toolkit/authorizer.js'
+import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { publishExternalAgentBackgroundStatus } from './background-status.js'
 import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 import { consolePort, getLogger } from '../logging/index.js'

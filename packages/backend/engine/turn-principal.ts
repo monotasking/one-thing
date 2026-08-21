@@ -27,7 +27,7 @@ import {
   type Principal,
 } from '@onething/core/permission'
 import { isSystemInternalSource } from '../channel/origin.js'
-import { isTrustedCollabDrive } from '../collab/drive-guard.js'
+import { isTrustedCollabDrive } from '@onething/runtime/collab/drive-guard'
 
 const COLLAB_MESSAGE_SOURCE = 'collab'
 

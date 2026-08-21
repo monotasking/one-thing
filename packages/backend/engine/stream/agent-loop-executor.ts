@@ -28,7 +28,7 @@ import {
 	buildAgentLoopRuntimeFromStreamContext,
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
-import { createSessionCredentialRotator } from "../../providers/credential-rotation.js";
+import { createSessionCredentialRotator } from "../../wiring/providers/credential-rotation.js";
 import { checkSessionHistoryShadowForRequest } from "./history-shadow.js";
 import { resolveAgentProfileForSession } from "../../wiring/agents/profile.js";
 import { saveMediaImage } from "@onething/runtime/media/save-image";

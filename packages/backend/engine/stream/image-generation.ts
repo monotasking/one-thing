@@ -3,7 +3,7 @@
  * Handles OpenAI DALL-E and Gemini image generation
  */
 
-import { createAppFetch } from '../../providers/bound-fetch.js'
+import { createAppFetch } from '../../provider-binding/bound-fetch.js'
 import {
   generateCoreGeminiImage,
   generateCoreOpenAIImage,

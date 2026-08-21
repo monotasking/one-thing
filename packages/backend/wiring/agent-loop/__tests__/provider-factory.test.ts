@@ -5,7 +5,7 @@ import {
 	isAgentProviderRuntimeSupported,
 	registerAgentProviderRuntime,
 } from "../providers/factory.js";
-import { builtinProviders } from "../../../providers/builtin/index.js";
+import { builtinProviders } from "../../providers/builtin/index.js";
 import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
 import { resolveAgentModelCapabilities } from "@onething/core/agent-loop";
 

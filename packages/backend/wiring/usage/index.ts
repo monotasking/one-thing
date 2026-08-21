@@ -25,8 +25,8 @@ import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
 import {
   getOnethingStorePath,
 } from '@onething/runtime/storage'
-import { getModelCapabilityEntry } from "../../providers/model-registry.js";
-import { resolveSessionCredentialId } from "../../providers/space-credentials.js";
+import { getModelCapabilityEntry } from "../providers/model-registry.js";
+import { resolveSessionCredentialId } from "../providers/space-credentials.js";
 import * as store from "../../store.js";
 import { sessionReads } from "../../session/reads.js";
 

@@ -7,7 +7,7 @@ import { sessionReads } from '../../session/reads.js'
 import * as store from '../../store.js'
 import type { Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
-import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '../../toolkit/execution-types.js'
+import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '@onething/runtime/toolkit/execution-types.wiring'
 import type { Principal } from '@onething/core/permission'
 import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
@@ -26,7 +26,7 @@ import {
   type JsonValue,
   type ToolResultLike,
 } from '@onething/core'
-import { runToolkitToolDirectly } from '../../toolkit/wiring.js'
+import { runToolkitToolDirectly } from '../../wiring/toolkit/wiring.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('toolkit.runner')

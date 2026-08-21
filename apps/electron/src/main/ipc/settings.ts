@@ -14,7 +14,7 @@ import {
 import { IPC_CHANNELS, type SaveSettingsRequest, type TestProxyRequest } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { openSettingsWindow } from '@onething/electron-host/window'
-import { invalidateProviderCache } from '@onething/backend/providers/registry.js'
+import { invalidateProviderCache } from '@onething/backend/wiring/providers/registry.js'
 import { applyNetworkProxySettings, testProxy } from './network-proxy.js'
 import { registerGlobalWindowShortcuts } from '@onething/electron-host/shortcuts/global-shortcuts'
 import { getVoiceServiceSafe } from '@onething/backend/wiring/voice/service.js'

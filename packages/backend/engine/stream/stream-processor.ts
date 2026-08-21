@@ -9,11 +9,11 @@ import type { Principal } from '@onething/core/permission'
 import type { ToolCall } from '@shared/ipc.js'
 import type { ReasoningPlacement } from '@shared/events/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/runtime/mcp/index.wiring'
-import { resolveAIToolName } from '../../providers/tool-name-alias.js'
+import { resolveAIToolName } from '@onething/core/agent-loop'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import type { PendingMessageQueue } from './message-queue.js'
 import type { AgentJsonObject, AgentOutputModality } from '@onething/core/agent-loop'
-import type { AgentRuntimeProviderConfig } from '../../providers/agent-runtime.js'
+import type { AgentRuntimeProviderConfig } from '../../wiring/providers/agent-runtime.js'
 import {
   resolveToolIdentity as resolveCoreToolIdentity,
 } from '@onething/core/engine'

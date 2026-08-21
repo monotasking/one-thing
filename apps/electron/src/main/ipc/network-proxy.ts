@@ -4,7 +4,7 @@ import {
   type ElectronProxyConfig,
 } from '@onething/electron-host/network/proxy'
 import { applyBrowserProxy } from '@onething/electron-host/browser/session'
-import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '@onething/backend/providers/bound-fetch.js'
+import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '@onething/backend/provider-binding/bound-fetch.js'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 

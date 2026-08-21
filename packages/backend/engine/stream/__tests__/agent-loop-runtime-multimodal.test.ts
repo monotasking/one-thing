@@ -176,7 +176,7 @@ vi.mock('@onething/runtime/mcp/index.wiring', () => ({
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
 
-vi.mock('../../../providers/model-registry.js', () => ({
+vi.mock('../../../wiring/providers/model-registry.js', () => ({
   getModelContextLength: mocks.getModelContextLength,
   getModelMaxOutputTokens: mocks.getModelMaxOutputTokens,
   getModelCapabilityEntry: vi.fn(() => undefined),
@@ -208,7 +208,7 @@ vi.mock('../../../wiring/project-dirs/index.js', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 
-vi.mock('../../../providers/agent-runtime.js', () => {
+vi.mock('../../../wiring/providers/agent-runtime.js', () => {
   const createAgentProviderFromRuntime = vi.fn(
     (_providerId?: string, _config?: unknown) => mocks.visionProvider,
   )
@@ -245,7 +245,7 @@ vi.mock('@onething/runtime/prompts/resolver.wiring', () => ({
 }))
 
 const { buildAgentLoopRuntimeFromStreamContext } = await import('../agent-loop-runtime.js')
-const { createAgentProviderFromRuntime } = await import('../../../providers/agent-runtime.js')
+const { createAgentProviderFromRuntime } = await import('../../../wiring/providers/agent-runtime.js')
 
 function ctx(): StreamContext {
   return {

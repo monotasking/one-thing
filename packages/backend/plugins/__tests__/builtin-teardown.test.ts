@@ -34,7 +34,7 @@ async function loadModules() {
     import('../../wiring/variables/index.js'),
     import('../../channel/connector-registry.js'),
     import('../../wiring/deeplink/registry.js'),
-    import('../../providers/credential-strategy.js'),
+    import('../../wiring/providers/credential-strategy.js'),
   ])
   return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks, credentialStrategies }
 }

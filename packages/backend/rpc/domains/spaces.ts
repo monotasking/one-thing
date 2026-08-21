@@ -54,7 +54,7 @@ import {
   importDefaultSpaceCredentials,
   setSpaceProviderCredential,
   setSpaceProviderCredentialPoolForRequest,
-} from '../../providers/space-credentials.js'
+} from '../../wiring/providers/space-credentials.js'
 import { countSessionsInWorkspace } from '../../stores/sessions.js'
 import { registerRouterHandlers } from '../registry.js'
 

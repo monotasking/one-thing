@@ -16,10 +16,10 @@ const summaryWrites: Array<{ summary: string; cutoff: string }> = []
 vi.mock('../../plugins/lifecycle.js', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
-vi.mock('../../providers/index.js', () => ({
+vi.mock('../../wiring/providers/index.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
-vi.mock('../../providers/model-registry.js', () => ({
+vi.mock('../../wiring/providers/model-registry.js', () => ({
   getModelContextLength: async () => 200_000,
   getModelMaxOutputTokens: async () => 8_192,
   getKnownModelMaxOutputTokens: async () => 8_192,

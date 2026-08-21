@@ -3,7 +3,8 @@
  * 举手评估、drive 组装。
  *
  * 与 `room-rules.ts` 同一条分工:带 IO 的那一半(mailbox、笔记落盘、回合执行)
- * 在 `@onething/backend` 的 `collab/actors/`,这里只有同步纯函数。理由也一样 ——
+ * 在隔壁的 `agent-actor.ts` / `agent-mailbox.ts`(P3'b-B 起同目录;真撞后端脊柱的
+ * 宿主端口在 `@onething/backend/wiring/collab/actors/`),这里只有同步纯函数。理由也一样 ——
  * **金重放与真机必须走同一行代码**,而重放没有磁盘、没有引擎、没有时钟。
  *
  * ## 账里为什么有两个游标

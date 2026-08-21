@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { MessageOrigin } from '@shared/ipc.js'
 import { principalId } from '@onething/core/permission'
-import { configureCollabDriveGuard } from '../../collab/drive-guard.js'
+import { configureCollabDriveGuard } from '@onething/runtime/collab/drive-guard'
 import { mintTurnPrincipal } from '../turn-principal.js'
 
 const TOKEN = 'test-drive-token'

@@ -27,12 +27,12 @@ import { authService } from '../../wiring/auth/auth-service.js'
 import {
   credentialTargetFromMarker,
   resolveSpaceProviderCredentialForSpace,
-} from '../../providers/space-credentials.js'
+} from '../../wiring/providers/space-credentials.js'
 import { toSpaceCredentialMarker } from '@onething/runtime/spaces/provider-credentials'
 import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
-import { fetchCodexUsage } from '../../providers/builtin/codex.js'
-import { getAvailableProviders } from '../../providers/index.js'
-import { getProviderEnvStatus } from '../../providers/env.js'
+import { fetchCodexUsage } from '../../wiring/providers/builtin/codex.js'
+import { getAvailableProviders } from '../../wiring/providers/index.js'
+import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
 import { registerRouterHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 

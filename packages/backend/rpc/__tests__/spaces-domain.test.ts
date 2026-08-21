@@ -45,7 +45,7 @@ const sessions = vi.hoisted(() => ({ countSessionsInWorkspace: vi.fn() }))
 vi.mock('@onething/runtime/spaces/store', () => ({ getSpacesStore: () => store }))
 vi.mock('@onething/runtime/spaces/overlay', () => overlay)
 vi.mock('@onething/runtime/spaces/provider-settings', () => providerSettings)
-vi.mock('../../providers/space-credentials.js', () => credentials)
+vi.mock('../../wiring/providers/space-credentials.js', () => credentials)
 vi.mock('../../stores/sessions.js', () => sessions)
 
 const SPACE = { id: 'work', name: '工作', createdAt: 1 }

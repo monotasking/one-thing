@@ -41,8 +41,8 @@ import type { JsonObject } from '@shared/json.js'
 import type { HostMcpHostTool } from '@onething/runtime/external-agents'
 import { getSession } from '../../stores/sessions.js'
 import { resolveAgentProfileForSession } from '../agents/profile.js'
-import { collabVenueOf } from '../../collab/venue.js'
-import { findCollabV3Turn } from '../../collab/actors/turn-context.js'
+import { collabVenueOf } from '../collab/venue.js'
+import { findCollabV3Turn } from '@onething/runtime/collab/actors/turn-context.wiring'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
 import { consolePort, getLogger } from '../logging/index.js'
@@ -75,7 +75,7 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
     parameters: contractForSchema(tool.spec.input)?.zod,
     async execute(args, ctx) {
       // 动态 import:装配层那棵树不进这个文件的静态图(注入这一轮才需要它)。
-      const { runToolkitToolDirectly } = await import('../../toolkit/wiring.js')
+      const { runToolkitToolDirectly } = await import('../toolkit/wiring.js')
       const result = await runToolkitToolDirectly(tool.spec.id, args as unknown as JsonObject, {
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,

@@ -1,7 +1,7 @@
 import {
   configureOnethingRipgrepRuntime,
 } from '@onething/runtime/files/ripgrep'
-import { createRequiredAppFetch } from '../providers/bound-fetch.js'
+import { createRequiredAppFetch } from '../provider-binding/bound-fetch.js'
 
 let ripgrepConfigured = false
 

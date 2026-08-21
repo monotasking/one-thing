@@ -24,13 +24,13 @@ const contentWrites: Array<{ messageId: string; content: string }> = []
 vi.mock('../../plugins/lifecycle.js', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
-vi.mock('../../providers/index.js', () => ({
+vi.mock('../../wiring/providers/index.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
 // 块大小随模型窗口走(2026-08-21):窗口大 → 单块;想逼出多块就把窗口调小。
 let modelContextLength = 200_000
 
-vi.mock('../../providers/model-registry.js', () => ({
+vi.mock('../../wiring/providers/model-registry.js', () => ({
   getModelContextLength: async () => modelContextLength,
   getModelMaxOutputTokens: async () => 8_192,
   getKnownModelMaxOutputTokens: async () => 8_192,

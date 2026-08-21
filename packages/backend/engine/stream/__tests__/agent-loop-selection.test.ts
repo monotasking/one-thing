@@ -3,7 +3,7 @@ import {
   resolveAgentLoopStreamRoute,
   shouldUseAgentLoopStream,
 } from '../agent-loop-selection.js'
-import { builtinProviders } from '../../../providers/builtin/index.js'
+import { builtinProviders } from '../../../wiring/providers/builtin/index.js'
 
 describe('agent loop stream selection', () => {
   afterEach(() => {

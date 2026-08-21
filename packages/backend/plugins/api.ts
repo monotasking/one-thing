@@ -6,7 +6,7 @@
 import {
   registerPluginToolInCatalog,
   unregisterPluginToolFromCatalog,
-} from '../toolkit/plugin-tools.js'
+} from '@onething/runtime/toolkit/plugin-tools'
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
@@ -27,7 +27,7 @@ import { pluginStorageImageExists } from './file-import.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
 import { registerPluginDeepLinkAction } from '../wiring/deeplink/registry.js'
 import { registerPluginSearchProvider } from '../wiring/search/plugin-search-registry.js'
-import { registerPluginCredentialStrategy } from '../providers/credential-strategy.js'
+import { registerPluginCredentialStrategy } from '../wiring/providers/credential-strategy.js'
 import {
   forgetUiActionGestures,
   PLUGIN_FILES_QUOTA_WARNING_EVENT,

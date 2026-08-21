@@ -359,7 +359,7 @@ export const COLLAB_SCHEDULER_LOG_CARRIES_NO_TRANSCRIPT: [CollabSchedulerLeakedK
  * 时间轴的写入口。**只写不读** —— 记账的那几个 actor 不回查自己的账。
  *
  * 定义在纯层是因为它是**契约**:房间、裁判、agent 三个产生点各自持有一个,而落盘
- * 那一份(`@onething/backend` 的 `scheduler-log.ts`)只是它的一个实现。不配 = 不记账,
+ * 那一份(`@onething/backend` 的 `wiring/collab/scheduler-log.ts`)只是它的一个实现。不配 = 不记账,
  * 那正是金重放与纯测试跑的那一档 —— 观测是旁路,有没有账本不该让同一份剧本跑出
  * 两个结果。
  */

@@ -19,15 +19,15 @@ import {
 	generateChatTitle,
 	isProviderSupported,
 	requiresOAuth,
-} from "../providers/index.js";
-import { resolveProviderApiKey } from "../providers/env.js";
+} from "../wiring/providers/index.js";
+import { resolveProviderApiKey } from "@onething/runtime/providers/env.wiring";
 import {
 	applySessionSpaceCredentials,
 	resolveSessionSpaceOAuthAuth,
-} from "../providers/space-credentials.js";
-import { resolveSessionSpaceDefaultSelection } from "../providers/space-defaults.js";
-import { getSessionSettings } from "../providers/space-ai-settings.js";
-import * as modelRegistry from "../providers/model-registry.js";
+} from "../wiring/providers/space-credentials.js";
+import { resolveSessionSpaceDefaultSelection } from "../wiring/providers/space-defaults.js";
+import { getSessionSettings } from "../wiring/providers/space-ai-settings.js";
+import * as modelRegistry from "../wiring/providers/model-registry.js";
 import { resolvePromptReferences } from "@onething/runtime/prompts/resolver.wiring";
 import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";

@@ -33,9 +33,9 @@ import {
 } from '@onething/core/plugins'
 
 import { getSettings } from '../stores/settings.js'
-import { resolveProviderApiKey } from '../providers/env.js'
-import { resolveUtilityModel } from '../providers/utility-model.js'
-import { generateChatResponse } from '../providers/index.js'
+import { resolveProviderApiKey } from '@onething/runtime/providers/env.wiring'
+import { resolveUtilityModel } from '@onething/runtime/providers/utility-model.wiring'
+import { generateChatResponse } from '../wiring/providers/index.js'
 import { recordUsage } from '../wiring/usage/index.js'
 import type { ProviderConfigWithKey } from '../engine/stream/stream-executor.js'
 import { getLogger } from '../wiring/logging/index.js'

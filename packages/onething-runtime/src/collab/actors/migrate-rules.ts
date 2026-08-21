@@ -3,7 +3,7 @@
  *
  * 这里只做两件事:**映射**(v2 的一格 → v3 的哪一格)与**对账计算**(这一格是怎么
  * 来的、近似了多少、截断了多少)。读盘、备份、写盘、marker 全在装配层的
- * `@onething/backend` `collab/actors/migrate.ts` —— 迁移是一趟单向门,而单向门上的
+ * `@onething/backend` `wiring/collab/actors/migrate.ts` —— 迁移是一趟单向门,而单向门上的
  * 每一条判断都必须能在没有磁盘的情况下被逐条问一遍。
  *
  * ## 迁移面有多大(§1.2 的 D2 实施勘误之后)

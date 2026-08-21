@@ -50,9 +50,9 @@ import {
 // 建房走 app 层那一本规则书。直接指到 room-create 而不是 collab 桶:这条口是
 // 同步的,而桶会把协调器整棵树一起拉起来 —— 邻居们的 `await import` 就是为了
 // 避开那件事。room-create 只依赖 store 与 agents,两者本来就已经在了。
-import { ensureCollabGroupRoom } from '../../collab/room-create.js'
+import { ensureCollabGroupRoom } from '../collab/room-create.js'
 import { getSettings } from '../../stores/settings.js'
-import { toolkitCatalogToolDefinitions } from '../../toolkit/catalog-projection.js'
+import { toolkitCatalogToolDefinitions } from '@onething/runtime/toolkit/catalog-projection.wiring'
 import { shutdownEventSystem, getEventBus, getStreamChannel } from '../../events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from '../../session/index.js'
 import { sessionReads } from '../../session/reads.js'
@@ -433,7 +433,7 @@ export class HeadlessBackend {
   }
 
   async collabBoard(roomSessionId: string): Promise<unknown> {
-    const { loadCollabBoard } = await import('../../collab/board-store.js')
+    const { loadCollabBoard } = await import('../collab/board-store.js')
     return loadCollabBoard(roomSessionId)
   }
 
@@ -442,7 +442,7 @@ export class HeadlessBackend {
     roomSessionId: string,
     budgets: CollabRoomBudgetsPatch,
   ): Promise<{ ok: boolean }> {
-    const { setCollabRoomBudgets } = await import('../../collab/index.js')
+    const { setCollabRoomBudgets } = await import('../collab/index.js')
     return { ok: setCollabRoomBudgets(roomSessionId, budgets) }
   }
 
@@ -455,7 +455,7 @@ export class HeadlessBackend {
   async collabRoomUpdate(
     input: CollabRoomUpdatePatch & { roomSessionId: string },
   ): Promise<{ ok: boolean; error?: string }> {
-    const { setCollabRoomConfig } = await import('../../collab/index.js')
+    const { setCollabRoomConfig } = await import('../collab/index.js')
     const { roomSessionId, ...patch } = input
     const result = setCollabRoomConfig(roomSessionId, patch)
     if (!result.success) throw new Error(result.error || 'Failed to update room')

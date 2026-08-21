@@ -7,7 +7,7 @@
  * `packages/renderer/platform/web.ts` 里那批 `unsupported()` 名单条目一起删掉。
  * **server 侧零改动**:域挂上 router 之后就经 `POST /api/rpc` 自动可达。
  *
- * 这里只做一件事:**把请求原样递给 `@onething/backend/collab` 的服务函数**。判定
+ * 这里只做一件事:**把请求原样递给 `@onething/backend/wiring/collab` 的服务函数**。判定
  * 全在那边 —— 看板动作合不合法是纯 reducer 的事、`expectedEpoch` 那道乐观并发
  * 前置是 v3 房账的事、表情在不在调色板里是 reactions 的事、私聊房开不开得成是
  * user-dm-room 的事。传输面不许自己加分支;逐条对着旧文件抄的正是这几处形状:
@@ -39,7 +39,7 @@ import {
   type CollabRoutes,
   type CollabSchedulerLogEntry,
 } from '@shared/ipc/collab.js'
-import { loadCollabBoard } from '../../collab/board-store.js'
+import { loadCollabBoard } from '../../wiring/collab/board-store.js'
 import {
   applyUserCollabBoardAction,
   clearCollabRoomHistory,
@@ -56,7 +56,7 @@ import {
   setCollabRoomFrozen,
   stopCollabTaskWork,
   type CollabSchedulerLogTailOptions,
-} from '../../collab/index.js'
+} from '../../wiring/collab/index.js'
 import { registerRouterHandlers } from '../registry.js'
 
 /** 时间轴过滤的类型表属主在纯层;这里只是把 wire 上那串裸字符串接回去。 */

@@ -47,11 +47,11 @@ const mocks = vi.hoisted(() => ({
   ),
 }))
 
-vi.mock('../../collab/board-store.js', () => ({
+vi.mock('../../wiring/collab/board-store.js', () => ({
   loadCollabBoard: (...args: unknown[]) => mocks.loadCollabBoard(...(args as [])),
 }))
 
-vi.mock('../../collab/index.js', () => ({
+vi.mock('../../wiring/collab/index.js', () => ({
   applyUserCollabBoardAction: (...args: unknown[]) => mocks.applyUserCollabBoardAction(...(args as [])),
   clearCollabRoomHistory: (...args: unknown[]) => mocks.clearCollabRoomHistory(...(args as [])),
   ensureUserDmRoom: (...args: unknown[]) => mocks.ensureUserDmRoom(...(args as [string])),

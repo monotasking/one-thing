@@ -43,7 +43,7 @@ vi.mock('@onething/runtime/permissions', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingPermissionGrantStorage: () => { spy.calls.push('permission-grants') },
 }))
-vi.mock('../providers/registry.js', async (importOriginal) => ({
+vi.mock('../wiring/providers/registry.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   initializeRegistry: () => { spy.calls.push('provider-registry') },
 }))
@@ -63,15 +63,15 @@ describe('@onething/backend import purity', () => {
     await import('../wiring/tools/core/sandbox.js')
     await import('@onething/runtime/tools/background-jobs-bound')
     await import('@onething/runtime/tools/bash-executor')
-    await import('../providers/index.js')
+    await import('../wiring/providers/index.js')
     await import('@onething/runtime/scheduler/scheduler-bound')
     await import('../utils/ripgrep.js')
     await import('../wiring/search/providers.js')
     await import('../wiring/skills/manage.js')
     await import('../wiring/skills/loader.js')
     await import('../wiring/permission/permission-grants.js')
-    await import('../providers/space-credentials.js')
-    await import('../providers/credential-strategy.js')
+    await import('../wiring/providers/space-credentials.js')
+    await import('../wiring/providers/credential-strategy.js')
 
     expect(spy.calls).toEqual([])
   })

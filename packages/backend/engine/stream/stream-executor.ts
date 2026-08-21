@@ -12,7 +12,7 @@ import type { SessionRunKind } from '@onething/core/session'
 import { endSessionRun, ensureSessionRun } from '../../session/runs.js'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionReads } from '../../session/reads.js'
-import * as modelRegistry from '../../providers/model-registry.js'
+import * as modelRegistry from '../../wiring/providers/model-registry.js'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
   getCodexNativeToolsForConfig,

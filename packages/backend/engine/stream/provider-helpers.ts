@@ -5,17 +5,17 @@
 
 import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/ipc.js'
-import { requiresOAuth } from '../../providers/index.js'
-import { oauthManager } from '../../providers/auth/oauth-manager.js'
+import { requiresOAuth } from '../../wiring/providers/index.js'
+import { oauthManager } from '../../wiring/providers/auth/oauth-manager.js'
 import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
-import { resolveProviderApiKey } from '../../providers/env.js'
+import { resolveProviderApiKey } from '@onething/runtime/providers/env.wiring'
 import {
   applySessionSpaceCredentials,
   credentialTargetFromMarker,
   resolveSessionSpaceOAuthAuth,
-} from '../../providers/space-credentials.js'
-import { resolveSessionSpaceDefaultSelection } from '../../providers/space-defaults.js'
-import { getSessionSettings } from '../../providers/space-ai-settings.js'
+} from '../../wiring/providers/space-credentials.js'
+import { resolveSessionSpaceDefaultSelection } from '../../wiring/providers/space-defaults.js'
+import { getSessionSettings } from '../../wiring/providers/space-ai-settings.js'
 import {
   extractOnethingProviderErrorDetails,
   getEffectiveOnethingProviderConfig,

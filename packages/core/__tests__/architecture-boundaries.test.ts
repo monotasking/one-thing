@@ -71,8 +71,11 @@ describe('architecture boundaries', () => {
     // P3'b 逐个摘除(厚孪生:两边都有真代码,合并要逐文件判定契约/实现/接线)。
     // P3'b-A(2026-08-21)摘掉 logging / headless / mcp / voice / music 五个:
     // 逻辑归 `runtime/<d>`,撞脊柱的接线归 `backend/wiring/<d>`,两种去向都离开包根。
+    // P3'b-B(2026-08-21)摘掉 collab / providers / toolkit 三个;providers 的
+    // 三件绑定件(bound-fetch / request-dump / ai-settings-compose)留在包根,
+    // 但目录改名 `provider-binding/` —— 它们是被依赖的脊柱件,不是接线。
     const pendingThickTwins = new Set([
-      'collab', 'plugins', 'providers', 'toolkit',
+      'plugins',
     ])
     const runtimeDomains = new Set(topLevelDirectories('packages/onething-runtime/src'))
     const collisions = topLevelDirectories('packages/backend')

@@ -36,7 +36,7 @@ import {
 	refreshToolkitMcpTools,
 	runToolkitToolDirectly,
 	toolkitCatalogToolDefinitions,
-} from "@onething/backend/toolkit/index.js";
+} from "@onething/backend/wiring/toolkit/index.js";
 import { getLogger } from "@onething/backend/wiring/logging/index.js";
 
 const log = getLogger("ipc.tools");

@@ -24,7 +24,7 @@ import {
 import {
   getOnethingSessionsDir,
 } from '@onething/runtime/storage'
-import { createUtilityProvider } from "../../providers/utility-provider.js";
+import { createUtilityProvider } from "../providers/utility-provider.js";
 import { billTocUsage } from "../usage/bill-side-line.js";
 import { getSettings } from "../../stores/settings.js";
 import { consolePort, getLogger } from '../logging/index.js'

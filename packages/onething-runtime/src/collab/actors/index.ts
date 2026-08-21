@@ -5,8 +5,11 @@
  * 房间的账与三道闸(D1 `room-rules.ts`)、发言策略族(D1 `floor-policy.ts`)、
  * agent 的账与举手/drive 组装(D2 `mind-rules.ts`)、mailbox 折叠信封(D2
  * `envelope-fold.ts`)、跨房笔记(D2 `notebook-rules.ts`)。
- * 带 IO 的那一半(落盘、mailbox、宿主端口)在 `@onething/backend` 的
- * `collab/actors/`。设计:docs/design/collab-actor-v3.md。
+ * P3'b-B 起,带 IO 的 actor 本体(`agent-actor` / `referee-actor` / `room-actor.wiring`
+ * / `worker-child` / `mind-port` / `notebook-store` / `room-account` / `agent-mailbox`)
+ * 也住在这个目录 —— 它们的闭包零脊柱边。只有真撞后端脊柱的宿主端口与装配
+ * (`engine-mind-port` / `worker-mind-port` / `runtime.ts` / `stop-door` / `migrate`)
+ * 留在 `@onething/backend/wiring/collab/actors/`。设计:docs/design/collab-actor-v3.md。
  */
 export {
   COLLAB_ACTOR_VERB_TABLE_IS_EXHAUSTIVE,
