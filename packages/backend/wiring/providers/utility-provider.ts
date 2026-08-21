@@ -18,7 +18,7 @@ import { pickOnethingProviderOptions } from "@onething/runtime/providers";
 import {
 	getProviderApiType,
 	resolveProviderAuth,
-} from "../../engine/stream/provider-helpers.js";
+} from "../engine/stream/provider-helpers.js";
 import { resolveUtilityModel } from "@onething/runtime/providers/utility-model.wiring";
 import { applySessionSpaceCredentials } from "./space-credentials.js";
 

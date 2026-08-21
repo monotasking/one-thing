@@ -48,7 +48,7 @@ import {
 	type RuntimeUnsubscribe,
 } from "@onething/core";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
-import { buildSystemPromptSnapshot as buildAppSystemPromptSnapshot } from "@onething/backend/engine/prompt/system-prompt-snapshot.js";
+import { buildSystemPromptSnapshot as buildAppSystemPromptSnapshot } from "@onething/backend/wiring/engine/prompt/system-prompt-snapshot.js";
 import { buildOnethingSystemPromptSnapshotForIpc } from "@onething/runtime/prompts";
 import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/stores/settings.js";
 import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/backend/wiring/agents/index.js";

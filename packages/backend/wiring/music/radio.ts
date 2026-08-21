@@ -315,7 +315,7 @@ async function wakeRadioDj(): Promise<void> {
   // a static engine import would drag the whole provider stack into every
   // module graph that touches variables (which broke unrelated tests).
   const [{ getStreamEngineSafe }, { getEventBus }] = await Promise.all([
-    import('../../engine/index.js'),
+    import('../engine/index.js'),
     import('../../events/index.js'),
   ])
 

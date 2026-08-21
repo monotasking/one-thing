@@ -35,7 +35,7 @@ import type { ChatMessage } from '@shared/ipc.js'
 
 import { findAgent } from '../../agents/index.js'
 import { getEventBus } from '../../../events/index.js'
-import { getStreamEngineSafe } from '../../../engine/index.js'
+import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../../store.js'
 import { sessionReads } from '../../../session/reads.js'
 import { noteCollabAdoptedEcho } from '../agent-session.js'

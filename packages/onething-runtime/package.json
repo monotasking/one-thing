@@ -11,6 +11,8 @@
     "./agent-loop/*": "./src/agent-loop/*.ts",
     "./acp": "./src/acp/index.ts",
     "./acp/*": "./src/acp/*.ts",
+    "./engine": "./src/engine/index.ts",
+    "./engine/*": "./src/engine/*.ts",
     "./external-agents": "./src/external-agents/index.ts",
     "./external-agents/*": "./src/external-agents/*.ts",
     "./auth": "./src/auth/index.ts",

@@ -48,7 +48,7 @@ vi.mock('../../../events/index.js', () => ({
   }),
 }))
 
-vi.mock('../../../engine/index.js', () => ({
+vi.mock('../../engine/index.js', () => ({
   getStreamEngineSafe: () => null,
 }))
 

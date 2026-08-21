@@ -33,7 +33,7 @@ import { generateChatResponse } from '../providers/index.js'
 import {
   getEffectiveProviderConfig,
   resolveProviderAuth,
-} from '../../engine/stream/provider-helpers.js'
+} from '../engine/stream/provider-helpers.js'
 import { billCollabDigestUsage } from '../usage/bill-side-line.js'
 import { collabUserPromptFields } from './user-identity.js'
 import { needsCollabDigest, saveCollabDigest } from '@onething/runtime/collab/digest-store'

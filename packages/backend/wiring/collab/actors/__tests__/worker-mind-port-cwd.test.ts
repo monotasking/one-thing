@@ -29,7 +29,7 @@ vi.mock('../../../agents/index.js', () => ({
   findAgent: (agentId: string) => ({ id: agentId, name: agentId, isActive: true }),
 }))
 
-vi.mock('../../../../engine/index.js', () => ({
+vi.mock('../../../engine/index.js', () => ({
   getStreamEngineSafe: () => ({
     hasCommandTarget: () => true,
     getChannel: () => 'ipc',

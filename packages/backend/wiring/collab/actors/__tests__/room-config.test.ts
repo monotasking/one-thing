@@ -100,12 +100,12 @@ vi.mock('../../../providers/index.js', () => ({
   generateChatResponse: async () => '',
 }))
 
-vi.mock('../../../../engine/stream/provider-helpers.js', () => ({
+vi.mock('../../../engine/stream/provider-helpers.js', () => ({
   getEffectiveProviderConfig: () => ({ providerId: '', providerConfig: null, model: '' }),
   resolveProviderAuth: async () => null,
 }))
 
-vi.mock('../../../../engine/index.js', () => ({
+vi.mock('../../../engine/index.js', () => ({
   getStreamEngine: () => engineStub(),
   getStreamEngineSafe: () => engineStub(),
 }))

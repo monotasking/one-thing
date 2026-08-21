@@ -50,7 +50,7 @@ import {
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import type { EventBus } from '../../events/event-bus.js'
-import type { StreamEngine } from '../../engine/stream-engine.js'
+import type { StreamEngine } from '../engine/stream-engine-bound.js'
 import { isCollabCoordinatorDrivenSession } from '../collab/ingress.js'
 import { pluginMessageSource } from '../../channel/origin.js'
 import * as modelRegistry from '../providers/model-registry.js'

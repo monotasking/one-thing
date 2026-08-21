@@ -22,8 +22,8 @@ import { Permission } from '@onething/backend/wiring/permission/index.js'
 import {
   resolveProviderAuth,
   getProviderApiType,
-} from '@onething/backend/engine/stream/provider-helpers.js'
-import { getStreamEngine } from '@onething/backend/engine/index.js'
+} from '@onething/backend/wiring/engine/stream/provider-helpers.js'
+import { getStreamEngine } from '@onething/backend/wiring/engine/index.js'
 import { abortCollabRoomTurnForStop } from '@onething/backend/wiring/collab/index.js'
 import {
   abortOnethingStreamsForIpc,
@@ -38,7 +38,7 @@ import {
   getOnethingCaughtErrorMessage,
 } from '@onething/runtime/providers'
 import { buildOnethingSystemPromptSnapshotForIpc } from '@onething/runtime/prompts'
-import { buildSystemPromptSnapshot } from '@onething/backend/engine/prompt/system-prompt-snapshot.js'
+import { buildSystemPromptSnapshot } from '@onething/backend/wiring/engine/prompt/system-prompt-snapshot.js'
 import { getEventBus } from '@onething/backend/events/index.js'
 import { billTitleUsage } from '@onething/backend/wiring/usage/bill-side-line.js'
 

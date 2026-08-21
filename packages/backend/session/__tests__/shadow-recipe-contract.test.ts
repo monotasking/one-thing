@@ -14,7 +14,7 @@
  *    改类型,这里当场红。
  */
 import { describe, expect, it } from 'vitest'
-import { historyProjectionRecipe } from '../../engine/stream/message-helpers.js'
+import { historyProjectionRecipe } from '../../wiring/engine/stream/message-helpers.js'
 import type { SessionHistoryShadowInput } from '../shadow.js'
 
 /** 入参类型认领的那几格 —— 与 `SessionHistoryShadowInput['build']` 逐字对齐。 */

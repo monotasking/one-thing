@@ -97,7 +97,7 @@ import {
 } from '../external-observability.js'
 import { findAgent, listAgents } from '../../agents/index.js'
 import { getEventBus } from '../../../events/index.js'
-import { getStreamEngineSafe } from '../../../engine/index.js'
+import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../../store.js'
 import { sessionCommands } from '../../../session/commands.js'
 import { sessionReads } from '../../../session/reads.js'

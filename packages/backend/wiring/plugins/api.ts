@@ -8,7 +8,7 @@ import {
   unregisterPluginToolFromCatalog,
 } from '@onething/runtime/toolkit/plugin-tools'
 import type { EventBus } from '../../events/event-bus.js'
-import type { StreamEngine } from '../../engine/stream-engine.js'
+import type { StreamEngine } from '../engine/stream-engine-bound.js'
 import { z } from 'zod'
 import { PluginStore, createPluginFiles, createPluginMessageState, createPluginStorage } from './store.js'
 import {
@@ -54,7 +54,7 @@ import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
 } from '@onething/runtime/skills/plugin-roots.wiring'
-import { registerPromptContextProvider } from '../../engine/prompt/plugin-context.js'
+import { registerPromptContextProvider } from '../engine/prompt/plugin-context.js'
 import {
   registerAfterAssistantResponseHook,
   registerBeforeContextCompactHook,

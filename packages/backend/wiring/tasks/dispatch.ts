@@ -60,7 +60,7 @@ import type {
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import { getEventBus } from '../../events/index.js'
-import { getStreamEngineSafe } from '../../engine/index.js'
+import { getStreamEngineSafe } from '../engine/index.js'
 import { taskMessageSource } from '../../channel/origin.js'
 import { deliverInternalMessage } from '../plugins/sessions.js'
 

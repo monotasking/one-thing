@@ -33,7 +33,7 @@ import {
 	getStreamEngine,
 	getStreamEngineSafe,
 	shutdownStreamEngine,
-} from "@onething/backend/engine/index.js";
+} from "@onething/backend/wiring/engine/index.js";
 import {
     createOnethingBackend,
     type OnethingBackend,

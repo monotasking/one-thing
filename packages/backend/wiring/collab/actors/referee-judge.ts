@@ -35,7 +35,7 @@ import {
 import { isActiveAgent } from '@shared/ipc.js'
 
 import { findAgent } from '../../agents/index.js'
-import { getEffectiveProviderConfig, resolveProviderAuth } from '../../../engine/stream/provider-helpers.js'
+import { getEffectiveProviderConfig, resolveProviderAuth } from '../../engine/stream/provider-helpers.js'
 import { generateChatResponse } from '../../providers/index.js'
 import * as store from '../../../store.js'
 import { billCollabPlanUsage } from '../../usage/bill-side-line.js'

@@ -33,7 +33,7 @@ import { type ChatMessage, type ChatSession } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
 import { getEventBus } from '../../events/index.js'
-import { getStreamEngineSafe } from '../../engine/index.js'
+import { getStreamEngineSafe } from '../engine/index.js'
 import {
   getOnethingStorePath,
 } from '@onething/runtime/storage'

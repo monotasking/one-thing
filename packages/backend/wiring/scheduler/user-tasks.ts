@@ -14,7 +14,7 @@ import type {
 } from '@shared/ipc.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
 import { getEventBus } from '../../events/index.js'
-import { getStreamEngineSafe } from '../../engine/index.js'
+import { getStreamEngineSafe } from '../engine/index.js'
 import * as store from '../../store.js'
 import { getScheduler } from '@onething/runtime/scheduler/scheduler-bound'
 import type { SchedulerTaskContext, SchedulerTaskHandle } from '@onething/runtime/scheduler'

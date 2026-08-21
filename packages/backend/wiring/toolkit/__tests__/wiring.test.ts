@@ -77,7 +77,7 @@ const { configureToolkitCatalog } = await import('@onething/runtime/toolkit')
 const { createDesktopCatalog } = await import('../catalog.js')
 const { resetToolkitCatalogForTests } = await import('../wiring.js')
 const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/runtime/toolkit/mcp-catalog.wiring')
-const { executeToolDirectly } = await import('../../../engine/stream/tool-execution.js')
+const { executeToolDirectly } = await import('../../engine/stream/tool-execution.js')
 
 const SESSION_ID = 'wiring-session'
 const workspace = path.join(harness.root, 'workspace')

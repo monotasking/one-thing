@@ -56,7 +56,7 @@ import { toolkitCatalogToolDefinitions } from '@onething/runtime/toolkit/catalog
 import { shutdownEventSystem, getEventBus, getStreamChannel } from '../../events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from '../../session/index.js'
 import { sessionReads } from '../../session/reads.js'
-import { shutdownStreamEngine, getStreamEngine } from '../../engine/index.js'
+import { shutdownStreamEngine, getStreamEngine } from '../engine/index.js'
 import { Permission } from '../permission/index.js'
 import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
 import { ACPManager } from '@onething/runtime/acp/index'

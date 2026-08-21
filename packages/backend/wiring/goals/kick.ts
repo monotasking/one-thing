@@ -24,7 +24,7 @@
  */
 import { renderGoalContinuationPrompt } from "@onething/runtime/goals";
 import type { SessionGoal } from "@onething/runtime/goals";
-import { getStreamEngineSafe } from "../../engine/index.js";
+import { getStreamEngineSafe } from "../engine/index.js";
 import { getEventBus } from "../../events/index.js";
 import * as store from "../../store.js";
 import { getGoal, goalLimits } from "./index.js";

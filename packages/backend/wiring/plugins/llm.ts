@@ -37,7 +37,7 @@ import { resolveProviderApiKey } from '@onething/runtime/providers/env.wiring'
 import { resolveUtilityModel } from '@onething/runtime/providers/utility-model.wiring'
 import { generateChatResponse } from '../providers/index.js'
 import { recordUsage } from '../usage/index.js'
-import type { ProviderConfigWithKey } from '../../engine/stream/stream-executor.js'
+import type { ProviderConfigWithKey } from '../engine/stream/stream-executor.js'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('plugins')

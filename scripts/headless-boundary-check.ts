@@ -561,7 +561,7 @@ const SEARCH_IPC_WINDOW_SOURCE_FORBIDDEN_PATTERNS: RegExp[] = [
  */
 const MAIN_CORE_SYSTEM_DIRS = [
   'packages/backend/wiring/agent-loop',
-  'packages/backend/engine',
+  'packages/backend/wiring/engine',
   'packages/backend/events',
   // P3'a-3:`app/storage/` 已整只归位 `runtime/src/storage/storage-manager-bound.ts`
   // (除 consolePort 外零脊柱边),目录不复存在。
@@ -2597,7 +2597,7 @@ function checkCoreOwnsGatewayConversationRuntimeProtocol(): void {
   const gatewayAndHostFiles = [
     ...walkFiles(path.join(root, 'packages/gateway')),
     path.join(root, 'apps/electron/src/gateway/lifecycle-controller.ts'),
-    path.join(root, 'packages/backend/engine/index.ts'),
+    path.join(root, 'packages/backend/wiring/engine/index.ts'),
   ].filter(file => fs.existsSync(file))
   const requiredCoreSymbols = [
     'CoreConversationRuntime',
@@ -6556,7 +6556,7 @@ function checkRuntimeOwnsOAuthIpcOperations(): void {
 function checkRuntimeOwnsStreamRuntimeWiring(): void {
   const runtimeFile = 'packages/onething-runtime/src/product-stream-runtime.ts'
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/index.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/stream-engine-runtime.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream-engine-runtime.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -6581,7 +6581,7 @@ function checkRuntimeOwnsStreamRuntimeWiring(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_STREAM_RUNTIME_WIRING_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/stream-engine-runtime.ts: missing Electron stream runtime adapter facade']),
+      : ['packages/backend/wiring/engine/stream-engine-runtime.ts: missing Electron stream runtime adapter facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns stream runtime wiring', lines)
@@ -6589,8 +6589,8 @@ function checkRuntimeOwnsStreamRuntimeWiring(): void {
 
 function checkRuntimeOwnsHistoryHelperWiring(): void {
   const mainFiles = [
-    path.join(root, 'packages/backend/engine/stream/message-helpers.ts'),
-    path.join(root, 'packages/backend/engine/stream/resume-history.ts'),
+    path.join(root, 'packages/backend/wiring/engine/stream/message-helpers.ts'),
+    path.join(root, 'packages/backend/wiring/engine/stream/resume-history.ts'),
   ]
   const lines = mainFiles.flatMap(file => fs.existsSync(file)
     ? matchingLines(file, MAIN_HISTORY_HELPER_CORE_WIRING_FORBIDDEN_PATTERNS)
@@ -6601,7 +6601,7 @@ function checkRuntimeOwnsHistoryHelperWiring(): void {
 }
 
 function checkRuntimeOwnsAgentLoopRuntimeWiring(): void {
-  const file = path.join(root, 'packages/backend/engine/stream/agent-loop-runtime.ts')
+  const file = path.join(root, 'packages/backend/wiring/engine/stream/agent-loop-runtime.ts')
   const lines = fs.existsSync(file)
     ? matchingLines(file, MAIN_AGENT_LOOP_RUNTIME_WIRING_FORBIDDEN_PATTERNS)
     : []
@@ -6611,14 +6611,14 @@ function checkRuntimeOwnsAgentLoopRuntimeWiring(): void {
 
 function checkRuntimeOwnsAgentLoopSelection(): void {
   const runtimeFile = 'packages/onething-runtime/src/agent-loop/selection.ts'
-  const mainFile = path.join(root, 'packages/backend/engine/stream/agent-loop-selection.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/agent-loop-selection.ts')
   const lines = [
     ...(!fs.existsSync(path.join(root, runtimeFile))
       ? [`${runtimeFile}: missing runtime-owned onething agent-loop stream selection`]
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_AGENT_LOOP_SELECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/stream/agent-loop-selection.ts: missing Electron selection facade']),
+      : ['packages/backend/wiring/engine/stream/agent-loop-selection.ts: missing Electron selection facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns onething agent-loop stream selection', lines)
@@ -7003,13 +7003,13 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
  * 一个必经点**,而它必须把活儿交出去,不许在装配层就地实现一条管线。
  */
 function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
-  const mainFile = path.join(root, 'packages/backend/engine/stream/tool-execution.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/tool-execution.ts')
   const wiringFile = path.join(root, 'packages/backend/wiring/toolkit/wiring.ts')
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const wiringContent = fs.existsSync(wiringFile) ? fs.readFileSync(wiringFile, 'utf-8') : ''
   const lines = [
     ...(!fs.existsSync(mainFile)
-      ? ['packages/backend/engine/stream/tool-execution.ts: missing tool execution facade']
+      ? ['packages/backend/wiring/engine/stream/tool-execution.ts: missing tool execution facade']
       : []),
     ...(!mainContent.includes('runToolkitToolDirectly')
       ? [`${rel(mainFile)}: executeToolDirectly must delegate to the toolkit runner`]
@@ -7032,7 +7032,7 @@ function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
  */
 function checkRuntimeOwnsToolUpdateOrchestration(): void {
   const coreFile = path.join(root, 'packages/core/engine/index.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/stream/tool-execution.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/tool-execution.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const lines = [
@@ -7040,7 +7040,7 @@ function checkRuntimeOwnsToolUpdateOrchestration(): void {
       ? [`${rel(coreFile)}: missing core-owned tool update orchestration executeCoreToolAndUpdate`]
       : []),
     ...(!fs.existsSync(mainFile)
-      ? ['packages/backend/engine/stream/tool-execution.ts: missing tool execution facade']
+      ? ['packages/backend/wiring/engine/stream/tool-execution.ts: missing tool execution facade']
       : []),
     ...(!mainContent.includes('executeCoreToolAndUpdate')
       ? [`${rel(mainFile)}: tool update orchestration must delegate to core`]
@@ -7052,7 +7052,7 @@ function checkRuntimeOwnsToolUpdateOrchestration(): void {
 
 function checkRuntimeOwnsStreamProcessorAdapter(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/stream-processor.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/stream/stream-processor.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/stream-processor.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'createOnethingStreamProcessor',
@@ -7065,7 +7065,7 @@ function checkRuntimeOwnsStreamProcessorAdapter(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned stream processor adapter ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_STREAM_PROCESSOR_ADAPTER_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/stream/stream-processor.ts: missing stream processor facade']),
+      : ['packages/backend/wiring/engine/stream/stream-processor.ts: missing stream processor facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns stream processor adapter', lines)
@@ -7073,7 +7073,7 @@ function checkRuntimeOwnsStreamProcessorAdapter(): void {
 
 function checkRuntimeOwnsImageStreamEntryPoint(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/image-generation.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/stream/image-stream.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/image-stream.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'executeOnethingImageGenerationStream',
@@ -7085,7 +7085,7 @@ function checkRuntimeOwnsImageStreamEntryPoint(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned image stream entry point ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_IMAGE_STREAM_ENTRY_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/stream/image-stream.ts: missing image stream facade']),
+      : ['packages/backend/wiring/engine/stream/image-stream.ts: missing image stream facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns image stream entry point', lines)
@@ -8959,7 +8959,7 @@ function checkRuntimeOwnsSystemPromptSnapshot(): void {
     path.join(root, 'packages/onething-runtime/src/prompts/system-prompt-snapshot.ts'),
     path.join(root, 'packages/onething-runtime/src/prompts/index.ts'),
   ]
-  const mainFile = path.join(root, 'packages/backend/engine/prompt/system-prompt-snapshot.ts')
+  const mainFile = path.join(root, 'packages/backend/wiring/engine/prompt/system-prompt-snapshot.ts')
   const chatIpcFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')

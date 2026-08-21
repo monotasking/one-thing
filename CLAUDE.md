@@ -507,7 +507,7 @@ Notes:
   (`promptFragments` / `registerPromptFragment` with a disposer, for runtime features /
   hosts) and `PluginPromptContextSource` (`api.registerPromptContextProvider`; plugin
   tools carry `prompt` like builtins). Hosts assemble their own composer:
-  `desktopPromptComposer` (`backend/engine/prompt/system-prompt.ts`) = builtin + tools +
+  `desktopPromptComposer` (`backend/wiring/engine/prompt/system-prompt.ts`) = builtin + tools +
   registry + plugins-with-breaker; `defaultOnethingPromptComposer` has no tool source
   (evals / prompt version / tests add a `StaticPromptSource`). The composer only
   filters → sorts → renders; `disabledSections` matches fragment ids plus the composite
@@ -521,7 +521,7 @@ Notes:
   the `Current date:` line and the `# Work Directory` section are gone (the `datetime`
   and `workdir` variables carry them). `TurnContextLedger` (core, pure) dedupes per block
   against the visible history and `SessionTurnContext` (app, hooked into the `buildPrompt`
-  wrapper in `backend/engine/stream/agent-loop-runtime.ts`) persists the delta on the message
+  wrapper in `backend/wiring/engine/stream/agent-loop-runtime.ts`) persists the delta on the message
   as `ChatMessage.turnContext`, so a rebuild replays identical bytes.
 - Media library: drag-and-drop ingest and export run over `media:ingest-files` /
   `media:save-as` (`packages/shared/ipc/channels.ts` → `apps/electron/src/main/ipc/media.ts`
@@ -571,7 +571,7 @@ renderer chatStore → platformApi.emitCommand(sessionId, { type: 'command:send-
   web:     POST /api/sessions/:id/commands → server forwards the command WHOLE
            (only command:abort is handled locally; no field is destructured away)
 → EventBus (packages/backend/events/, per-session ring buffers)
-→ StreamEngine.handleSendMessage (packages/backend/engine/stream-engine.ts)
+→ ProductStreamEngine.handleSendMessage (packages/onething-runtime/src/engine/stream-engine.ts)
   → persist messages → emit events + stream chunks
 → desktop: IPCBridge → 'session:event' / 'session:stream' to WebContents
   web:     GET /api/events SSE (same event names; ?after= replays from ring buffers)
@@ -649,17 +649,13 @@ packages/onething-runtime/src/ # PRODUCT layer ('@onething/runtime')
 │   ├── toolkit/               # the tool system's product half: families, builtin tools, contract, scene
 │   ├── tools/  skills/  plugins/  providers/  themes/  variables/  goals/  voice/  music/
 │   │                          # (tools/ = pure modules only since R4b: sandbox, bash, edit engine, …)
+│   ├── engine/                # ProductStreamEngine(路由/房间闸/插件旁路/agent 绑定)
+│   │                          # + ports.ts(五个可选端口)/ turn-principal / message-sources
 │   ├── mcp/  acp/  external-agents/  files/  search/  usage/  evals/  headless/  …
 │   └── stream-sender.ts       # 命令目标(sender)形状:产品层的公开类型
 │
 packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared allowed)
 │   ├── backend.ts  store.ts   # createOnethingBackend — the single assembly recipe
-│   ├── engine/                # StreamEngine (extends CoreStreamEngine) + stream/
-│   │   ├── stream/            # stream-executor, stream-processor, tool-execution(+scheduler,
-│   │   │                      # +order), tool-orchestrator, agent-loop-*, message-helpers,
-│   │   │                      # provider-helpers, resume-history, image-generation/stream
-│   │   ├── prompt/            # prompt building & management
-│   │   └── triggers/          # post-chat triggers
 │   ├── events/                # event-bus, stream-channel, ring-buffer, stream-coalescer
 │   ├── stores/                # sessions (repository wiring), settings cache, app-state, docs-paths
 │   ├── session/               # sessionCommands / sessionReads / event-log / trace / freeze
@@ -671,6 +667,13 @@ packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared 
 │   ├── features/  utils/      # feature mounts (self-evolution, trajectory…); ripgrep/fuzzy/wildcard
 │   ├── provider-binding/      # bound-fetch / request-dump / ai-settings-compose —— 把 runtime
 │   │                          # provider 绑到设置缓存与日志的三件脊柱件(P3'b-B 从 providers/ 改名)
+│   ├── wiring/engine/         # 引擎的宿主接线(P3'e-A2a):stream-engine-bound.ts(端口装配)、
+│   │   │                      # stream-engine-runtime.ts(12 槽)、index.ts(单例与生命周期)
+│   │   ├── stream/            # stream-executor, stream-processor, tool-execution(+scheduler,
+│   │   │                      # +order), tool-orchestrator, agent-loop-*, message-helpers,
+│   │   │                      # provider-helpers, resume-history, image-generation/stream
+│   │   ├── prompt/            # prompt building & management
+│   │   └── triggers/          # post-chat triggers
 │   └── wiring/<domain>/       # 薄接线:acp agent-loop agents auth collab deeplink external-agents
 │                              # goals headless(HeadlessBackend) interaction
 │                              # logging(configureLogging) markdown music permission
@@ -709,7 +712,7 @@ packages/shared/               # '@shared'
 
 ### Key Systems
 
-**StreamEngine** (`packages/backend/engine/stream-engine.ts`): Single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact.
+**StreamEngine** — the engine itself is product code: `ProductStreamEngine` in `packages/onething-runtime/src/engine/stream-engine.ts` (extends `CoreStreamEngine`), single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact. Everything it needs from the assembly layer rides **five optional ports** (`runtime/src/engine/ports.ts`: `router` / `roomIngress` / `pluginIntercept` / `agentBinding` / `steeringDelivery`) — **an absent port means that capability does not exist** (no routing / no room refusal / no plugin post-reply / no agent binding / steering queues as before), never a substitute implementation. The assembly layer's whole share is `packages/backend/wiring/engine/stream-engine-bound.ts`: it fills all five ports from the backend spine (`channel/`, `wiring/collab`, `wiring/plugins`, `wiring/agents`, `wiring/external-agents`) and calls `new ProductStreamEngine(streamRuntime, ports)`; `wiring/engine/index.ts` owns the singleton. The 12-slot product runtime (`CoreStreamEngineRuntime`) is assembled next to it in `wiring/engine/stream-engine-runtime.ts`.
 
 **EventBus** (`packages/backend/events/`): Central pub/sub with per-session ring buffers, sequence counters, typed and wildcard handlers; primitives in `packages/core/events/`.
 

@@ -199,7 +199,7 @@ export async function createIncidentForTurn(options: {
 	if (!capture?.requestMessages?.length && anchorIdx >= 0) {
 		try {
 			const { buildHistoryMessages } = await import(
-				"@onething/backend/engine/stream/message-helpers.js"
+				"@onething/backend/wiring/engine/stream/message-helpers.js"
 			);
 			// History up to and including the turn's user message — mirrors
 			// what the live request carried.

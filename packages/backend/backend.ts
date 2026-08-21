@@ -37,9 +37,10 @@ import {
   initializeStreamEngine,
   shutdownStreamEngine,
   getStreamEngine,
-} from './engine/index.js'
-import type { BindableStreamSender } from './engine/stream-engine.js'
-import { registerBuiltinTriggers } from './engine/triggers/index.js'
+} from './wiring/engine/index.js'
+import type { PermissionMode } from '@shared/ipc.js'
+import type { BindableStreamSender } from './wiring/engine/stream-engine-bound.js'
+import { registerBuiltinTriggers } from './wiring/engine/triggers/index.js'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from './wiring/collab/index.js'
 import { Permission } from './wiring/permission/index.js'
 import { Interaction } from '@onething/core/interaction'
@@ -168,7 +169,9 @@ export async function createOnethingBackend(
   Permission.initialize(
     getEventBus(),
     sessionId => getStreamEngine().getChannel(sessionId),
-    sessionId => getStreamEngine().getPermissionMode(sessionId),
+    // 引擎归位到产品层之后返回裸 `string`(产品层读不到 @shared 的 `PermissionMode`
+    // 联合);跨进程词汇的收敛点就在装配层这一行。
+    sessionId => getStreamEngine().getPermissionMode(sessionId) as PermissionMode,
   )
 
   // 提问链与审批链是两条并列的等待链,同一个接入点、同一个通道解析器

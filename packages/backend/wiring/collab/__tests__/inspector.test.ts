@@ -65,7 +65,7 @@ vi.mock('../../../events/index.js', () => ({
   }),
 }))
 
-vi.mock('../../../engine/index.js', () => ({ getStreamEngineSafe: () => undefined }))
+vi.mock('../../engine/index.js', () => ({ getStreamEngineSafe: () => undefined }))
 vi.mock('../../agents/index.js', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
 
 const {
