@@ -12,6 +12,7 @@ import type {
   PermissionInfo,
 } from '@shared/ipc.js'
 import { platformApi } from '@/platform'
+import { collabApi } from '@/platform/collab-client'
 // 静态引没有环:chat 对 sessions 的依赖是**动态** import,所以静态图上
 // sessions → collabBoard → chat 是一条直线。
 import { useChatStore } from './chat'
@@ -24,7 +25,7 @@ const log = getLogger('renderer.collab-board')
 
 /**
  * Room board mirrors (docs/design/multi-agent-collab.md P1): hydrate via
- * COLLAB_BOARD_GET, then follow 'collab:board-changed' session events —
+ * `collabApi.boardGet`, then follow 'collab:board-changed' session events —
  * the main-process store broadcasts a full (small) snapshot per change.
  */
 /** A 'typing: true' with no matching false is forgotten after this long. The
@@ -302,9 +303,10 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
   async function loadAgentActivity(agentIds?: readonly string[]): Promise<void> {
     try {
       ensureSubscribed()
-      // 数组在 IPC 边界上重建成裸字符串:Vue 的响应式代理过不了 structured clone。
-      const response = await platformApi.getCollabAgentActivity?.(
-        agentIds ? agentIds.map(id => String(id)) : undefined,
+      // 数组在过线前重建成裸字符串:Vue 的响应式代理过不了 structured clone
+      // (W7 血教训)。从前这一手在 preload 桥上也做过一遍,桥没了之后只剩这里。
+      const response = await collabApi.agentActivityGet(
+        agentIds ? { agentIds: agentIds.map(id => String(id)) } : {},
       )
       if (!response?.success || !response.activities) return
       for (const activity of response.activities) {
@@ -388,7 +390,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     // 读的都是它,而它们分布在几个不打开看板的界面上。
     ensureCoordinator(roomSessionId)
     try {
-      const response = await platformApi.getCollabBoard(roomSessionId)
+      const response = await collabApi.boardGet({ roomSessionId })
       if (response.success && response.board) {
         applySnapshot(roomSessionId, response.board)
         // Cold start: nothing replayed the permission events this window missed,
@@ -450,7 +452,12 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     roomSessionId: string,
     action: CollabBoardAction,
   ): Promise<CollabBoardActResponse> {
-    const response = await platformApi.actCollabBoard(roomSessionId, action)
+    // 动作在过线前快照一次:Vue 的响应式代理过不了 structured clone,而且会把
+    // 整棵组件树带下去(W7 血教训)。这一手从前在 preload 桥上,桥没了就落在这里。
+    const response = await collabApi.boardAct({
+      roomSessionId,
+      action: JSON.parse(JSON.stringify(action)) as CollabBoardAction,
+    })
     if (response?.board) applySnapshot(roomSessionId, response.board)
     return response
   }
@@ -466,7 +473,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     roomSessionId: string,
     taskId: string,
   ): Promise<CollabTaskStopResponse> {
-    const response = await platformApi.stopCollabTask(roomSessionId, taskId)
+    const response = await collabApi.taskStop({ roomSessionId, taskId })
     const board = (response as { board?: CollabBoard })?.board
     if (board) applySnapshot(roomSessionId, board)
     return response
@@ -521,7 +528,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     hydratedCoordinators.add(roomSessionId)
     try {
       ensureSubscribed()
-      const response = await platformApi.getCollabCoordinator?.(roomSessionId)
+      const response = await collabApi.coordinatorGet({ roomSessionId })
       if (response?.success && response.state) {
         applyCoordinatorSnapshot(roomSessionId, response.state)
       }
@@ -552,12 +559,13 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     roomSessionId: string,
     leaseId: string,
   ): Promise<CollabRoomRevokeLeaseResult> {
-    if (!platformApi.revokeCollabRoomLease) {
-      return { ok: false, reason: 'not-a-room' }
-    }
     const epoch = coordinatorFor(roomSessionId)?.floorEpoch
     if (epoch === undefined) return { ok: false, reason: 'not-a-room' }
-    const response = await platformApi.revokeCollabRoomLease(roomSessionId, leaseId, epoch)
+    const response = await collabApi.roomRevokeLease({
+      roomSessionId,
+      leaseId,
+      expectedEpoch: epoch,
+    })
     if (!response?.success || !response.result) {
       return { ok: false, reason: 'not-a-room' }
     }

@@ -15,7 +15,7 @@ import { useCollabBoardStore } from '../collabBoard'
 
 const mocks = vi.hoisted(() => ({
   handlers: [] as Array<(envelope: { sessionId: string; event: unknown }) => void>,
-  getCollabBoard: vi.fn(),
+  boardGet: vi.fn(),
   getPendingPermissions: vi.fn(),
 }))
 
@@ -25,9 +25,12 @@ vi.mock('@/platform', () => ({
       mocks.handlers.push(handler)
       return () => {}
     },
-    getCollabBoard: mocks.getCollabBoard,
     getPendingPermissions: mocks.getPendingPermissions,
   },
+}))
+
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: { boardGet: mocks.boardGet },
 }))
 
 function emit(sessionId: string, event: unknown): void {
@@ -52,7 +55,7 @@ function task(overrides: Record<string, unknown> = {}): Record<string, unknown> 
 
 beforeEach(() => {
   mocks.handlers.length = 0
-  mocks.getCollabBoard.mockReset()
+  mocks.boardGet.mockReset()
   mocks.getPendingPermissions.mockReset()
   mocks.getPendingPermissions.mockResolvedValue({ success: true, pending: [] })
   setActivePinia(createPinia())
@@ -64,7 +67,7 @@ afterEach(() => {
 
 describe('collabBoard store: 审批徽标对账 (P1-3)', () => {
   it('rebuilds the badge on a cold open — the events this window never saw', async () => {
-    mocks.getCollabBoard.mockResolvedValue({
+    mocks.boardGet.mockResolvedValue({
       success: true,
       board: { version: 1, seq: 3, tasks: [task()] },
     })
@@ -81,7 +84,7 @@ describe('collabBoard store: 审批徽标对账 (P1-3)', () => {
   })
 
   it('only asks about the workers that can actually be waiting', async () => {
-    mocks.getCollabBoard.mockResolvedValue({
+    mocks.boardGet.mockResolvedValue({
       success: true,
       board: {
         version: 1,

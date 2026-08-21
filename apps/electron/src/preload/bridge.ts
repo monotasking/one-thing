@@ -18,9 +18,6 @@ import type {
 } from "@shared/ipc/deeplink.js";
 import type {
 	CreateSessionOptions,
-	CollabBoardAction,
-	CollabRoomBudgetsPatch,
-	CollabRoomUpdatePatch,
 	GetSessionMessagesPageRequest,
 	MediaIngestFilesRequest,
 	MediaQuery,
@@ -351,87 +348,10 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_PICK_CANCEL, { tabId }),
 	getBrowserSearchEngine: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_GET_SEARCH_ENGINE),
 
-	// Collab (multi-agent rooms)
-	getCollabBoard: (roomSessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_BOARD_GET, { roomSessionId }),
-	actCollabBoard: (roomSessionId: string, action: CollabBoardAction) =>
-		// Snapshotted at the boundary rather than forwarded as-is: a Vue reactive
-		// proxy cannot survive structured clone and takes the whole component tree
-		// down with it (W7 血教训, same reason the reaction actor below is rebuilt).
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_BOARD_ACT, {
-			roomSessionId,
-			action: JSON.parse(JSON.stringify(action)) as CollabBoardAction,
-		}),
-	stopCollabTask: (roomSessionId: string, taskId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_TASK_STOP, { roomSessionId, taskId }),
-	setCollabRoomFrozen: (roomSessionId: string, frozen: boolean) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SET_FROZEN, { roomSessionId, frozen }),
-	setCollabRoomBudgets: (roomSessionId: string, budgets: CollabRoomBudgetsPatch) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SET_BUDGETS, { roomSessionId, ...budgets }),
-	getCollabRoomSpend: (roomSessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SPEND_GET, { roomSessionId }),
-		// 人级停止(E5)。三个字段都是**地址**:哪间房、哪张牌、界面看见它时是第几代。
-		revokeCollabRoomLease: (roomSessionId: string, leaseId: string, expectedEpoch: number) =>
-			ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_REVOKE_LEASE, {
-				roomSessionId,
-				leaseId,
-				expectedEpoch,
-			}),
-	getCollabCoordinator: (roomSessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_COORDINATOR_GET, { roomSessionId }),
-	// Agent 活动快照的冷启动补水(D8 §3.1)。不带 agentIds = 此刻开着心智循环的
-	// 全部同事;带上则逐个都有回答(没在跑的回一份空闲快照,不是被跳过)。
-	// 数组在边界上重建成裸字符串:Vue 的响应式代理过不了 structured clone,
-	// 而调用方没有可靠办法知道自己手里正握着一个(W7 血教训)。
-	getCollabAgentActivity: (agentIds?: string[]) =>
-		ipcRenderer.invoke(
-			IPC_CHANNELS.COLLAB_AGENT_ACTIVITY_GET,
-			agentIds ? { agentIds: agentIds.map((id) => String(id)) } : {},
-		),
-	// 调度时间轴尾读(D8 §3.3)。只读:账由记账的那几个 actor 单点写,渲染层
-	// 连一个写口都不该看得见。`types` 原样递过去(整体透传)。
-	getCollabSchedulerLog: (
-		roomSessionId: string,
-		options?: { limit?: number; types?: string[] },
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_SCHEDULER_LOG_TAIL, {
-			roomSessionId,
-			...(typeof options?.limit === 'number' ? { limit: options.limit } : {}),
-			...(options?.types?.length ? { types: options.types.map((type) => String(type)) } : {}),
-		}),
-	updateCollabRoom: (roomSessionId: string, update: CollabRoomUpdatePatch) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_UPDATE, { roomSessionId, ...update }),
-	// 清空聊天记录(危险区):房间转录 + 每位成员的执行会话与已读游标 + 看板一起归零;
-	// includeMemberDms 连带成员两两之间的私聊房(跨群共享,须显式勾选)。
-	clearCollabRoomHistory: (roomSessionId: string, includeMemberDms?: boolean) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_CLEAR_HISTORY, {
-			roomSessionId,
-			...(includeMemberDms ? { includeMemberDms: true } : {}),
-		}),
-	// 群 folder 的只读列目录(agent-im-chat-ui.md §3.2「文件」块)。
-	listCollabRoomFolder: (roomSessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_FOLDER_LIST, { roomSessionId }),
-	// 托管私聊房(agent-im-dm.md D1):幂等 get-or-create,联系人点开即调。
-	ensureCollabDmRoom: (agentId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_DM_ROOM_ENSURE, { agentId: String(agentId) }),
-	reactToCollabMessage: (
-		roomSessionId: string,
-		messageId: string,
-		emoji: string,
-		actor: { type: "user" | "agent"; agentId?: string },
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_MESSAGE_REACT, {
-			roomSessionId,
-			messageId,
-			emoji,
-			// Rebuilt from primitives AT the boundary: a Vue reactive proxy cannot
-			// survive structured clone and takes the component tree down with it,
-			// and a caller has no reliable way to know it is holding one (W7 血教训).
-			actor: {
-				type: String(actor?.type) as "user" | "agent",
-				...(actor?.agentId ? { agentId: String(actor.agentId) } : {}),
-			},
-		}),
+	// collab(多 agent 协作房)的十五条 invoke 已整只迁到通用 RPC 通道(P4a,
+	// `@shared/ipc/collab.ts` 的 collabRouter + `@/platform/collab-client` 的 collabApi)。
+	// 这个域一条推送也没有(看板/协调器/agent 的实时更新走会话事件),所以壳面
+	// 上什么也不剩 —— 与 spaces / practice 各留一条广播不同。
 	setBrowserSearchEngine: (engineId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_SEARCH_ENGINE, { engineId }),
 	listBrowserProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_LIST_PROFILES),

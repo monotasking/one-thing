@@ -5,6 +5,7 @@
  * 'collab:board-changed' session events on the room session.
  */
 
+import { defineRouter } from './router.js'
 import type { ChatMessageReaction, ChatMessageReactionActor } from './chat.js'
 import type { PermissionMode } from './tools.js'
 
@@ -385,7 +386,7 @@ export interface CollabCoordinatorGetRequest {
  * 人级停止(E5):点名把某一张在外的牌收回来。
  *
  * 三级停止的第三级。房级是 `stopRoomFloor`(换代,全场清空)、卡级是
- * `COLLAB_TASK_STOP`(停一张卡上的那只手),而「停下 TA」在此之前**不可达** ——
+ * `taskStop`(停一张卡上的那只手),而「停下 TA」在此之前**不可达** ——
  * 界面上只能拿房级喊停冒充,而那会把同房其他人一起打断。
  */
 export interface CollabRoomRevokeLeaseRequest {
@@ -752,3 +753,67 @@ export interface CollabMessageReactResponse {
   /** The message's reactions after the write (aggregated per emoji). */
   reactions?: ChatMessageReaction[]
 }
+
+/**
+ * collab(多 agent 协作房:看板 / 房间设置 / 协调器 / 观测)域 —— 结构债 P4a
+ * 的第三个域(前两个是 spaces、practice)。
+ *
+ * 十五个方法全是**纯数据面**:看板的读/写、卡级与人级停止、房间配置(改名 /
+ * 名册 / PM / 权限档 / 预算 / 冻结)、协调器与 agent 活动快照的冷启动补水、
+ * 调度时间轴尾读、清空转录、托管私聊房的 get-or-create、群 folder 列目录、
+ * 表情回应。旧线是主进程里那十五条裸 handle —— 零 electron 原生、零 sender、
+ * 零 fs,所以整只搬得进 `app/rpc/domains/collab.ts`,旧文件随之整只删掉。
+ *
+ * **一条纪律必须随着搬过去**:`messageReact` 的 `actor` **被刻意忽略**,处理者
+ * 把它钉死成 `{ type: 'user' }`。表情回应是**归属**(§3.5 B:一位沉默成员的
+ * emoji 就是它的回答),渲染层能指定 actor 就等于能替别人表态。router 的
+ * dispatch context 里没有「我是谁」,所以这颗钉子留在 handler 里,和从前一样;
+ * `actor?` 只为线上兼容留在类型上 —— 我们自己的调用点不再填它。
+ *
+ * **没有无入参的方法**:十五条每一条都至少带一个地址(房间 id / agent id)。
+ * `agentActivityGet` 是唯一一个所有键都可选的(`agentIds` 缺席 = app 层决定
+ * 「全要」),信封仍然要给,写 `{}`。
+ *
+ * 不在这条路上的:表情写完之后的回灌走既有的 `message:updated` 会话事件,
+ * 看板 / 协调器 / agent 的实时更新走 `collab:*-changed` 会话事件 —— 都是**推送
+ * 面**,而 router 今天只有请求/响应面。所以这十五条**一条推送都不带**,手写 IPC
+ * 那一侧迁完什么也不剩(与 spaces / practice 各留一条广播不同)。
+ *
+ * (本文件从此不再是「纯类型模块」—— 多了 `collabRouter` 这一个 const。
+ * `import type` 的引用点仍然被完全擦除,只有真正要动词表的地方才会带上它。)
+ */
+export type CollabRoutes = {
+  boardGet: { input: CollabBoardGetRequest; output: CollabBoardGetResponse }
+  boardAct: { input: CollabBoardActRequest; output: CollabBoardActResponse }
+  taskStop: { input: CollabTaskStopRequest; output: CollabTaskStopResponse }
+  roomRevokeLease: { input: CollabRoomRevokeLeaseRequest; output: CollabRoomRevokeLeaseResponse }
+  coordinatorGet: { input: CollabCoordinatorGetRequest; output: CollabCoordinatorGetResponse }
+  agentActivityGet: { input: CollabAgentActivityGetRequest; output: CollabAgentActivityGetResponse }
+  schedulerLogTail: { input: CollabSchedulerLogTailRequest; output: CollabSchedulerLogTailResponse }
+  roomSetFrozen: { input: CollabRoomFrozenRequest; output: CollabRoomFrozenResponse }
+  roomSetBudgets: { input: CollabRoomBudgetsRequest; output: CollabRoomBudgetsResponse }
+  roomSpendGet: { input: CollabRoomSpendRequest; output: CollabRoomSpendResponse }
+  roomUpdate: { input: CollabRoomUpdateRequest; output: CollabRoomUpdateResponse }
+  roomClearHistory: { input: CollabRoomClearHistoryRequest; output: CollabRoomClearHistoryResponse }
+  dmRoomEnsure: { input: CollabDmRoomEnsureRequest; output: CollabDmRoomEnsureResponse }
+  roomFolderList: { input: CollabRoomFolderListRequest; output: CollabRoomFolderListResponse }
+  messageReact: { input: CollabMessageReactRequest; output: CollabMessageReactResponse }
+}
+
+export const collabRouter = defineRouter<CollabRoutes>('collab', [
+  'boardGet',
+  'boardAct',
+  'taskStop',
+  'roomRevokeLease',
+  'coordinatorGet',
+  'agentActivityGet',
+  'schedulerLogTail',
+  'roomSetFrozen',
+  'roomSetBudgets',
+  'roomSpendGet',
+  'roomUpdate',
+  'roomClearHistory',
+  'dmRoomEnsure',
+  'roomFolderList',
+  'messageReact',
+])

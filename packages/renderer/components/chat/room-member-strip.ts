@@ -4,7 +4,7 @@
  *
  * The strip is the IM-side entry to membership: a row of chips, a ＋ that pulls
  * somebody in, a right-click that pushes somebody out or hands over the lead.
- * Every write goes through W6's existing COLLAB_ROOM_UPDATE channel, so the
+ * Every write goes through W6's existing room update (`collabApi.roomUpdate`), so the
  * only thing this module decides is WHAT the next roster should be — the
  * dialog does the same via room-settings-form. Kept DOM-free so the roster
  * arithmetic (unknown ids, the last-member floor, PM hand-over) is testable.

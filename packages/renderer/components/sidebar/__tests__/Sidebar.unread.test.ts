@@ -44,7 +44,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/platform', () => ({
   platformApi: {
     get capabilities() { return mocks.capabilities },
-    ensureCollabDmRoom: vi.fn(async () => ({ success: true, roomSessionId: 'agent-dm-fe' })),
+  },
+}))
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: {
+    dmRoomEnsure: vi.fn(async () => ({ success: true, roomSessionId: 'agent-dm-fe' })),
   },
 }))
 vi.mock('@/stores/sessions', () => ({

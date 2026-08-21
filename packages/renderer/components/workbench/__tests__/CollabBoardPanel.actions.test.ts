@@ -17,15 +17,18 @@ import { useCollabBoardStore } from '@/stores/collabBoard'
 
 const mocks = vi.hoisted(() => ({
   platformApi: {
-    getCollabBoard: vi.fn(),
-    actCollabBoard: vi.fn(),
-    setCollabRoomFrozen: vi.fn(),
-    setCollabRoomBudgets: vi.fn(),
     onSessionEvent: vi.fn(() => () => {}),
     openPath: vi.fn(),
     getPendingPermissions: vi.fn(),
+  },
+  // collab 域已迁到通用 RPC 通道(P4a):方法名是 router 上的动词,入参是信封。
+  collabApi: {
+    boardGet: vi.fn(),
+    boardAct: vi.fn(),
+    roomSetFrozen: vi.fn(),
+    roomSetBudgets: vi.fn(),
     // 群 folder 的根由后端答(F2):面板不读会话的 workingDirectory,也不拼路径。
-    listCollabRoomFolder: vi.fn(),
+    roomFolderList: vi.fn(),
   },
 }))
 
@@ -34,6 +37,7 @@ const mocks = vi.hoisted(() => ({
 const agentsApiMock = vi.hoisted(() => ({ listAgents: vi.fn() }))
 
 vi.mock('@/platform', () => ({ platformApi: mocks.platformApi }))
+vi.mock('@/platform/collab-client', () => ({ collabApi: mocks.collabApi }))
 vi.mock('@/platform/agents-client', () => ({ agentsApi: agentsApiMock }))
 
 const ROSTER = [
@@ -74,11 +78,11 @@ async function settle() {
  * `roomFolder: null` 模拟 web 端 stub / 通道失败(降级:入口隐身)。
  */
 async function mountPanel(tasks: CollabTask[], options: { roomFolder?: string | null } = {}) {
-  mocks.platformApi.getCollabBoard.mockResolvedValue({ success: true, board: board(tasks) })
+  mocks.collabApi.boardGet.mockResolvedValue({ success: true, board: board(tasks) })
   const folder = options.roomFolder === undefined ? '/repo' : options.roomFolder
-  mocks.platformApi.listCollabRoomFolder.mockResolvedValue(
+  mocks.collabApi.roomFolderList.mockResolvedValue(
     folder === null
-      ? { success: false, error: 'Platform method "listCollabRoomFolder" is not available in the web host yet.' }
+      ? { success: false, error: 'Not a room session' }
       : { success: true, folder, entries: [] },
   )
   const sessions = useSessionsStore()
@@ -118,48 +122,57 @@ describe('CollabBoardPanel card actions (W16)', () => {
     // overwrite the seeded names and every menu row would fall back to the id.
     agentsApiMock.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
     mocks.platformApi.onSessionEvent.mockReturnValue(() => {})
-    mocks.platformApi.actCollabBoard.mockResolvedValue({ success: true, board: board([]) })
+    mocks.collabApi.boardAct.mockResolvedValue({ success: true, board: board([]) })
     mocks.platformApi.getPendingPermissions.mockResolvedValue({ success: true, pending: [] })
-    mocks.platformApi.setCollabRoomFrozen.mockResolvedValue({ success: true })
-    mocks.platformApi.setCollabRoomBudgets.mockResolvedValue({ success: true })
+    mocks.collabApi.roomSetFrozen.mockResolvedValue({ success: true })
+    mocks.collabApi.roomSetBudgets.mockResolvedValue({ success: true })
   })
 
   it('moves a card through the IPC with the rev the user saw', async () => {
     const wrapper = await mountPanel([card()])
     await pick(wrapper, '移到 完成')
-    expect(mocks.platformApi.actCollabBoard).toHaveBeenCalledWith('room-1', {
-      action: 'move',
-      taskId: 'task-1',
-      status: 'done',
-      expectedRev: 3,
+    expect(mocks.collabApi.boardAct).toHaveBeenCalledWith({
+      roomSessionId: 'room-1',
+      action: {
+        action: 'move',
+        taskId: 'task-1',
+        status: 'done',
+        expectedRev: 3,
+      },
     })
   })
 
   it('assigns to a room member picked by name', async () => {
     const wrapper = await mountPanel([card()])
     await pick(wrapper, '指派给 🔧 小李')
-    expect(mocks.platformApi.actCollabBoard).toHaveBeenCalledWith('room-1', {
-      action: 'assign',
-      taskId: 'task-1',
-      assigneeAgentId: 'fe',
-      expectedRev: 3,
+    expect(mocks.collabApi.boardAct).toHaveBeenCalledWith({
+      roomSessionId: 'room-1',
+      action: {
+        action: 'assign',
+        taskId: 'task-1',
+        assigneeAgentId: 'fe',
+        expectedRev: 3,
+      },
     })
   })
 
   it('re-queues a blocked card back to todo (the W9b.1 requeue signal)', async () => {
     const wrapper = await mountPanel([card({ status: 'blocked', assigneeAgentId: 'fe', rev: 5 })])
     await pick(wrapper, '重新排队')
-    expect(mocks.platformApi.actCollabBoard).toHaveBeenCalledWith('room-1', {
-      action: 'move',
-      taskId: 'task-1',
-      status: 'todo',
-      expectedRev: 5,
+    expect(mocks.collabApi.boardAct).toHaveBeenCalledWith({
+      roomSessionId: 'room-1',
+      action: {
+        action: 'move',
+        taskId: 'task-1',
+        status: 'todo',
+        expectedRev: 5,
+      },
     })
   })
 
   it('repaints from the returned board and says so on a rev conflict', async () => {
     const wrapper = await mountPanel([card()])
-    mocks.platformApi.actCollabBoard.mockResolvedValue({
+    mocks.collabApi.boardAct.mockResolvedValue({
       success: false,
       error: 'Task task-1 changed (rev 7) — re-read the board (action:"list") and retry with the current rev',
       board: board([card({ rev: 7, title: '写登录页(已被改名)', status: 'doing' })]),
@@ -171,7 +184,7 @@ describe('CollabBoardPanel card actions (W16)', () => {
 
   it('shows a non-conflict refusal verbatim instead of the refresh line', async () => {
     const wrapper = await mountPanel([card()])
-    mocks.platformApi.actCollabBoard.mockResolvedValue({ success: false, error: 'Not a room session' })
+    mocks.collabApi.boardAct.mockResolvedValue({ success: false, error: 'Not a room session' })
     await pick(wrapper, '移到 完成')
     expect(wrapper.find('.board-hint').text()).toBe('Not a room session')
   })
@@ -196,7 +209,7 @@ describe('CollabBoardPanel card actions (W16)', () => {
       status: 'done',
       expectedRev: 3,
     })
-    expect(mocks.platformApi.actCollabBoard).not.toHaveBeenCalled()
+    expect(mocks.collabApi.boardAct).not.toHaveBeenCalled()
   })
 
   it('stops a running card through the board store action', async () => {
@@ -378,7 +391,7 @@ describe('CollabBoardPanel 群 folder 入口 (F2)', () => {
     const wrapper = await mountPanel([card()], { roomFolder: '/store/rooms/room-1' })
     // 会话上没有 workingDirectory —— 这正是默认房。根来自通道的回答。
     expect(useSessionsStore().sessions[0].workingDirectory).toBeUndefined()
-    expect(mocks.platformApi.listCollabRoomFolder).toHaveBeenCalledWith('room-1')
+    expect(mocks.collabApi.roomFolderList).toHaveBeenCalledWith({ roomSessionId: 'room-1' })
     const button = folderButton(wrapper)
     expect(button).toBeTruthy()
     // 路径写在按钮的 Tooltip 上(P5:原生 title 已下线)。
@@ -418,7 +431,7 @@ describe('CollabBoardPanel 刹车反馈 (P1-4)', () => {
   })
 
   it('says so when the freeze is refused, and does not reload as if it worked', async () => {
-    mocks.platformApi.setCollabRoomFrozen.mockResolvedValue({
+    mocks.collabApi.roomSetFrozen.mockResolvedValue({
       success: false,
       error: 'Not a room session',
     })
@@ -434,7 +447,7 @@ describe('CollabBoardPanel 刹车反馈 (P1-4)', () => {
   })
 
   it('surfaces a thrown bridge error rather than swallowing it', async () => {
-    mocks.platformApi.setCollabRoomFrozen.mockRejectedValue(new Error('bridge down'))
+    mocks.collabApi.roomSetFrozen.mockRejectedValue(new Error('bridge down'))
     const wrapper = await mountPanel([card()])
 
     await wrapper.find('.board-freeze').trigger('click')
@@ -451,7 +464,7 @@ describe('CollabBoardPanel 刹车反馈 (P1-4)', () => {
    * 会话表是这次收敛拆掉的七处之一,而这里正是其中之一。
    */
   it('leaves no hint and does NOT reload the session list when the freeze lands', async () => {
-    mocks.platformApi.setCollabRoomFrozen.mockResolvedValue({ success: true })
+    mocks.collabApi.roomSetFrozen.mockResolvedValue({ success: true })
     const wrapper = await mountPanel([card()])
     const sessions = useSessionsStore()
     const loadSessions = vi.spyOn(sessions, 'loadSessions').mockResolvedValue(undefined as never)
@@ -464,7 +477,7 @@ describe('CollabBoardPanel 刹车反馈 (P1-4)', () => {
   })
 
   it('reports a refused budget write on the same line', async () => {
-    mocks.platformApi.setCollabRoomBudgets.mockResolvedValue({
+    mocks.collabApi.roomSetBudgets.mockResolvedValue({
       success: false,
       error: 'Not a room session',
     })
@@ -477,7 +490,7 @@ describe('CollabBoardPanel 刹车反馈 (P1-4)', () => {
     await input.trigger('blur')
     await settle()
 
-    expect(mocks.platformApi.setCollabRoomBudgets).toHaveBeenCalledWith('room-1', { dailyCostUSD: 12 })
+    expect(mocks.collabApi.roomSetBudgets).toHaveBeenCalledWith({ roomSessionId: 'room-1', dailyCostUSD: 12 })
     expect(wrapper.find('.board-hint').text()).toContain('Not a room session')
   })
 })

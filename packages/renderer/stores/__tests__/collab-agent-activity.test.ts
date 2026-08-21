@@ -15,7 +15,7 @@ import { useCollabBoardStore } from '../collabBoard'
 
 const mocks = vi.hoisted(() => ({
   handlers: [] as Array<(envelope: { sessionId: string; event: unknown }) => void>,
-  getCollabAgentActivity: vi.fn(async (_agentIds?: string[]) => ({ success: false }) as {
+  agentActivityGet: vi.fn(async (_request: { agentIds?: string[] }) => ({ success: false }) as {
     success: boolean
     activities?: CollabAgentActivitySnapshot[]
   }),
@@ -27,9 +27,16 @@ vi.mock('@/platform', () => ({
       mocks.handlers.push(handler)
       return () => {}
     },
-    getCollabBoard: vi.fn().mockResolvedValue({ success: false }),
-    getCollabCoordinator: vi.fn().mockResolvedValue({ success: false }),
-    getCollabAgentActivity: (agentIds?: string[]) => mocks.getCollabAgentActivity(agentIds),
+  },
+}))
+
+// collab 域走通用 RPC 通道(P4a):方法名是 router 上的动词,入参是信封 ——
+// `agentIds` 缺席时发的是 `{}`,而不是一个位置上的 undefined。
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: {
+    boardGet: vi.fn().mockResolvedValue({ success: false }),
+    coordinatorGet: vi.fn().mockResolvedValue({ success: false }),
+    agentActivityGet: (request: { agentIds?: string[] }) => mocks.agentActivityGet(request),
   },
 }))
 
@@ -61,8 +68,8 @@ describe('collabBoard 的 agents 账', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     mocks.handlers = []
-    mocks.getCollabAgentActivity.mockReset()
-    mocks.getCollabAgentActivity.mockResolvedValue({ success: false })
+    mocks.agentActivityGet.mockReset()
+    mocks.agentActivityGet.mockResolvedValue({ success: false })
   })
 
   afterEach(() => {
@@ -109,7 +116,7 @@ describe('collabBoard 的 agents 账', () => {
   })
 
   it('冷启动补水每人只问一次,之后跟着广播走', async () => {
-    mocks.getCollabAgentActivity.mockResolvedValue({
+    mocks.agentActivityGet.mockResolvedValue({
       success: true,
       activities: [activity('ana', { seq: 2 }), activity('bo', { seq: 2 })],
     })
@@ -120,28 +127,28 @@ describe('collabBoard 的 agents 账', () => {
 
     store.ensureAgentActivity(['ana', 'bo'])
     store.ensureAgentActivity(['ana'])
-    expect(mocks.getCollabAgentActivity).toHaveBeenCalledTimes(1)
+    expect(mocks.agentActivityGet).toHaveBeenCalledTimes(1)
 
     // 没问过的人照旧要问。
     store.ensureAgentActivity(['cy'])
-    expect(mocks.getCollabAgentActivity).toHaveBeenCalledTimes(2)
-    expect(mocks.getCollabAgentActivity).toHaveBeenLastCalledWith(['cy'])
+    expect(mocks.agentActivityGet).toHaveBeenCalledTimes(2)
+    expect(mocks.agentActivityGet).toHaveBeenLastCalledWith({ agentIds: ['cy'] })
   })
 
   it('广播先到的人不再补水 —— 事件已经把那一格填满了', async () => {
-    mocks.getCollabAgentActivity.mockResolvedValue({ success: true, activities: [] })
+    mocks.agentActivityGet.mockResolvedValue({ success: true, activities: [] })
     const store = useCollabBoardStore()
     store.ensureSubscribed()
 
     emit('room-1', activity('ana', { seq: 4 }))
     store.ensureAgentActivity(['ana'])
-    expect(mocks.getCollabAgentActivity).not.toHaveBeenCalled()
+    expect(mocks.agentActivityGet).not.toHaveBeenCalled()
   })
 
   it('补水的答案同样走去序 —— 迟到的 GET 顶不掉更新的广播', async () => {
     type GetResolver = (value: { success: boolean; activities?: CollabAgentActivitySnapshot[] }) => void
     const pending: GetResolver[] = []
-    mocks.getCollabAgentActivity.mockImplementation(
+    mocks.agentActivityGet.mockImplementation(
       () => new Promise(resolve => { pending.push(resolve as GetResolver) }),
     )
     const store = useCollabBoardStore()
@@ -157,13 +164,13 @@ describe('collabBoard 的 agents 账', () => {
   })
 
   it('不带 agentIds 就是「全要」,而且不进每人一次的去重表', () => {
-    mocks.getCollabAgentActivity.mockResolvedValue({ success: true, activities: [] })
+    mocks.agentActivityGet.mockResolvedValue({ success: true, activities: [] })
     const store = useCollabBoardStore()
 
     store.ensureAgentActivity()
     store.ensureAgentActivity()
-    expect(mocks.getCollabAgentActivity).toHaveBeenCalledTimes(2)
-    expect(mocks.getCollabAgentActivity).toHaveBeenLastCalledWith(undefined)
+    expect(mocks.agentActivityGet).toHaveBeenCalledTimes(2)
+    expect(mocks.agentActivityGet).toHaveBeenLastCalledWith({})
   })
 
   it('陈旧的一份读作没有 —— 兜底挂在快照的 at 上,读的时候判', () => {

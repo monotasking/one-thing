@@ -30,11 +30,14 @@ vi.mock('@/platform', () => ({
       mocks.handlers.push(handler)
       return () => {}
     },
-    getCollabBoard: vi.fn().mockResolvedValue({ success: false }),
     getPendingPermissions: mocks.getPendingPermissions,
     updateToolCall: vi.fn().mockResolvedValue({ success: true }),
     updateMessageThinkingTime: vi.fn().mockResolvedValue({ success: true }),
   },
+}))
+
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: { boardGet: vi.fn().mockResolvedValue({ success: false }) },
 }))
 
 /** 一条正在流式生成、并且已经开了一个 bash 工具调用的助手消息。 */

@@ -68,15 +68,15 @@ export { ensureAgentDmRoom } from './agent-dm-room.js'
 /**
  * 卡级停止的读口与停口(D6-b:v2 `worker.ts` 删除后改由 v3 运行时供数)。
  *
- * 对外的名字保持不变 —— `apps/electron/src/main/ipc/collab.ts` 的
- * `COLLAB_TASK_STOP` 通道与「停止执行」菜单项的显示条件都吃这两个名字。
+ * 对外的名字保持不变 —— collab 域的 `taskStop` 方法与「停止执行」菜单项的显示
+ * 条件都吃这两个名字。
  */
 export {
   hasActiveCollabV3Work as hasActiveCollabWork,
   stopCollabV3TaskWork as stopCollabTaskWork,
 } from './actors/runtime.js'
 /**
- * 人级停止(E5)—— 三级停止的第三级,`COLLAB_ROOM_REVOKE_LEASE` 通道吃这个名字。
+ * 人级停止(E5)—— 三级停止的第三级,collab 域的 `roomRevokeLease` 吃这个名字。
  *
  * 房级在 `stop-door.ts`(界面语义与运行时语义分家的那一层),卡级在上面那条,
  * 这一条直接对外:它没有"不是 v3 房就回落 v2"的第二条路可走 —— v2 从来没有过

@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
   workspaceStore: null as any,
   boardStore: null as any,
   getTools: vi.fn().mockResolvedValue({ success: true, tools: [] }),
-  ensureCollabDmRoom: vi.fn(),
+  dmRoomEnsure: vi.fn(),
 }))
 
 vi.mock('@/stores/agents', () => ({
@@ -41,7 +41,12 @@ vi.mock('@/stores/collabBoard', () => ({ useCollabBoardStore: () => mocks.boardS
 vi.mock('@/platform', () => ({
   platformApi: {
     get getTools() { return mocks.getTools },
-    ensureCollabDmRoom: (agentId: string) => mocks.ensureCollabDmRoom(agentId),
+  },
+}))
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: {
+    dmRoomEnsure: (request: { agentId: string }) => mocks.dmRoomEnsure(request),
+    roomFolderList: vi.fn(async () => ({ success: true, entries: [] })),
   },
 }))
 
@@ -133,7 +138,7 @@ beforeEach(() => {
 
   setActivePinia(createPinia())
   mocks.getTools = vi.fn().mockResolvedValue({ success: true, tools: [] })
-  mocks.ensureCollabDmRoom = vi.fn().mockResolvedValue({ success: true, roomSessionId: 'agent-dm-fe' })
+  mocks.dmRoomEnsure = vi.fn().mockResolvedValue({ success: true, roomSessionId: 'agent-dm-fe' })
 
   mocks.agentsStore = reactive({
     agents: [AGENT],
@@ -264,7 +269,7 @@ describe('会话面 · 空态与跳转', () => {
     expect(wrapper.emitted('close')).toBeTruthy()
   })
 
-  it('一条都没有:「还没和小李聊过 → 发起对话」,走 ensureCollabDmRoom 链路', async () => {
+  it('一条都没有:「还没和小李聊过 → 发起对话」,走 collabApi.dmRoomEnsure 链路', async () => {
     mocks.sessionsStore.agentPresence = vi.fn(() => EMPTY_PRESENCE)
     mocks.sessionsStore.agentDirectChatSessions = vi.fn(() => [])
     const wrapper = await mountPanel()
@@ -277,7 +282,7 @@ describe('会话面 · 空态与跳转', () => {
     await start.trigger('click')
     await flushPromises()
 
-    expect(mocks.ensureCollabDmRoom).toHaveBeenCalledWith('fe')
+    expect(mocks.dmRoomEnsure).toHaveBeenCalledWith({ agentId: 'fe' })
     // 新建的房要先进列表,openSession 才认得它(侧栏联系人行同款动线)。
     expect(mocks.sessionsStore.loadSessions).toHaveBeenCalled()
     expect(mocks.workspaceStore.openSession).toHaveBeenCalledWith('agent-dm-fe')
@@ -286,7 +291,7 @@ describe('会话面 · 空态与跳转', () => {
   it('建房被拒:一行墨说出来,绝不静默无反应', async () => {
     mocks.sessionsStore.agentPresence = vi.fn(() => EMPTY_PRESENCE)
     mocks.sessionsStore.agentDirectChatSessions = vi.fn(() => [])
-    mocks.ensureCollabDmRoom = vi.fn().mockResolvedValue({ success: false, error: '这个 agent 已退休' })
+    mocks.dmRoomEnsure = vi.fn().mockResolvedValue({ success: false, error: '这个 agent 已退休' })
     const wrapper = await mountPanel()
     await openHistory(wrapper)
 

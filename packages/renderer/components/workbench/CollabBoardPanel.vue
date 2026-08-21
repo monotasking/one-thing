@@ -238,6 +238,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { CollabTask, CollabTaskStatus } from '@shared/ipc.js'
 import { platformApi } from '@/platform'
+import { collabApi } from '@/platform/collab-client'
 import { isActiveAgent } from '@shared/ipc'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import { AGENT_AVATAR_FALLBACK } from '@/components/common/agent-avatar'
@@ -481,9 +482,8 @@ const roomFolder = ref('')
 async function loadRoomFolder(roomSessionId: string): Promise<void> {
   roomFolder.value = ''
   if (!roomSessionId) return
-  if (typeof platformApi.listCollabRoomFolder !== 'function') return
   try {
-    const response = await platformApi.listCollabRoomFolder(roomSessionId)
+    const response = await collabApi.roomFolderList({ roomSessionId })
     // 迟到的回复不许盖掉已经换过的房。
     if (selectedRoomId.value !== roomSessionId) return
     if (response?.success && response.folder) roomFolder.value = response.folder

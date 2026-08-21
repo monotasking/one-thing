@@ -17,7 +17,6 @@ vi.mock('@/platform', () => ({
       mocks.handlers.push(handler)
       return () => {}
     },
-    getCollabBoard: vi.fn().mockResolvedValue({ success: false }),
     // 域已迁到通用 RPC 通道(主线 T1 第二批):打那一条通道,按 domain.method 分发。
     rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
       if (request.domain === 'agents' && request.method === 'list') {
@@ -29,6 +28,9 @@ vi.mock('@/platform', () => ({
       if (request.domain === 'models' && request.method === 'getNameAliases') {
         return { ok: true, data: { success: true, aliases: {} } }
       }
+      // collab 也走这条通道(P4a):看板/协调器补水在这些用例里一律读不到 ——
+      // 打字名单的唯一来源是广播,不是这两次 GET。
+      if (request.domain === 'collab') return { ok: true, data: { success: false } }
       return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
     }),
   },

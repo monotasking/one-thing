@@ -491,42 +491,8 @@ export const IPC_CHANNELS = {
 	// Push main→renderer:用户点了通知,带上要打开的会话。
 	NOTIFY_ACTIVATE: "notify:activate",
 
-	// Collab (multi-agent rooms) — board snapshot + room pause switch;
-	// board mutations flow through the board tool / coordinator, updates
-	// arrive as 'collab:board-changed' session events on the room session.
-	COLLAB_BOARD_GET: "collab:board-get",
-	// W16: the USER's door into the same reducer the board tool uses — the
-	// panel was read-only, so a card could not be moved by hand at all.
-	COLLAB_BOARD_ACT: "collab:board-act",
-	COLLAB_TASK_STOP: "collab:task-stop",
-	COLLAB_ROOM_SET_FROZEN: "collab:room-set-frozen",
-	COLLAB_ROOM_SET_BUDGETS: "collab:room-set-budgets",
-	COLLAB_ROOM_UPDATE: "collab:room-update",
-	// 清空一间房的对话记忆(房间转录 + 每位成员的执行会话与已读游标 + 协调器
-	// 状态/摘要/运行时)。看板、房间设置、已花预算一概不动。
-	COLLAB_ROOM_CLEAR_HISTORY: "collab:room-clear-history",
-	COLLAB_ROOM_SPEND_GET: "collab:room-spend-get",
-	// 人级停止(E5):点名收回某一张在外的牌 —— 三级停止里唯一此前不可达的一级。
-	// 带 leaseId + expectedEpoch(乐观并发,仿看板的 expectedRev):代数换过就拒绝
-	// 并回报当前代数,免得撤到上一轮那位无辜的人。
-	COLLAB_ROOM_REVOKE_LEASE: "collab:room-revoke-lease",
-	// 协调器状态条的冷启动读取;实时更新走 'collab:coordinator-changed' 会话事件
-	// (与看板同一条链路)。
-	COLLAB_COORDINATOR_GET: "collab:coordinator-get",
-	// Agent 活动快照的冷启动补水(D8 观测体系 §3.1);实时更新走
-	// 'collab:agent-changed' 会话事件。与协调器那扇门是**两本互不派生的账**:
-	// 大脑、信箱、工作卡是跨房的,任何一份房间快照里都没有它们的位置。
-	COLLAB_AGENT_ACTIVITY_GET: "collab:agent-activity-get",
-	// 调度时间轴的尾读(D8 观测体系 §3.3)。回答四个必答问题里的最后一个 ——
-	// 「**刚才**为什么是那样」。前三个问的是此刻,快照答得了;这一个问的是过去,
-	// 而过去只在盘上的 scheduler-log.jsonl 里。**只读**,没有写口。
-	COLLAB_SCHEDULER_LOG_TAIL: "collab:scheduler-log-tail",
-	COLLAB_MESSAGE_REACT: "collab:message-react",
-	// 用户 ↔ agent 托管私聊房的 get-or-create(docs/design/agent-im-dm.md D1)。
-	// 幂等:id 从 agentId 派生,同一个 agent 永远同一间房。
-	COLLAB_DM_ROOM_ENSURE: "collab:dm-room-ensure",
-	// 群 folder 的只读列目录(agent-im-chat-ui.md §3.2「文件」块)。folder 的
-	// 位置只有主进程算得出(workingDirectory ?? <store>/rooms/<id>),所以不能
-	// 让渲染进程拿 file:list-directory 去猜路径。
-	COLLAB_ROOM_FOLDER_LIST: "collab:room-folder-list",
+	// collab(多 agent 协作房)的十五条请求/响应通道已整只迁到通用 RPC 通道
+	// (P4a,`./collab.ts` 的 collabRouter)。这个域一条推送也没有 —— 看板 /
+	// 协调器 / agent 的实时更新与表情回灌走的是 `collab:*-changed` /
+	// `message:updated` 会话事件,不是这张表上的通道。
 } as const;

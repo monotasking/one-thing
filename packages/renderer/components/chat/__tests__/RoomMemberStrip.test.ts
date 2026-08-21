@@ -8,8 +8,11 @@ import { useAgentsStore } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
 import { OPEN_MEMBERS_EVENT } from '@/components/workbench/room-members'
 
+const collab = vi.hoisted(() => ({
+  roomUpdate: vi.fn(async () => ({ success: true }) as { success: boolean; error?: string }),
+}))
+
 const api = vi.hoisted(() => ({
-  updateCollabRoom: vi.fn(async () => ({ success: true }) as { success: boolean; error?: string }),
   // 域已迁到通用 RPC 通道(主线 T1 第二批):打那一条通道,按 domain.method 分发。
   rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
     if (request.domain === 'agents' && request.method === 'list') {
@@ -27,6 +30,7 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('@/platform', () => ({ platformApi: api }))
+vi.mock('@/platform/collab-client', () => ({ collabApi: collab }))
 
 const AGENTS = [
   { id: 'pm', name: '阿明', title: '产品经理', avatar: '📋', systemPrompt: '', createdAt: 0, updatedAt: 0 },
@@ -62,8 +66,8 @@ async function open(memberAgentIds?: string[], pmAgentId?: string, dm = false) {
 beforeEach(() => {
   setActivePinia(createPinia())
   document.body.innerHTML = ''
-  api.updateCollabRoom.mockClear()
-  api.updateCollabRoom.mockResolvedValue({ success: true })
+  collab.roomUpdate.mockClear()
+  collab.roomUpdate.mockResolvedValue({ success: true })
 })
 
 describe('RoomMemberStrip', () => {
@@ -93,9 +97,8 @@ describe('RoomMemberStrip', () => {
 
     await items[0].trigger('click')
     await nextTick()
-    expect(api.updateCollabRoom.mock.calls[0]).toEqual([
-      'room-1',
-      { memberAgentIds: ['pm', 'fe', 'research'] },
+    expect(collab.roomUpdate.mock.calls[0]).toEqual([
+      { roomSessionId: 'room-1', memberAgentIds: ['pm', 'fe', 'research'] },
     ])
     wrapper.unmount()
   })
@@ -109,9 +112,8 @@ describe('RoomMemberStrip', () => {
 
     await items[0].trigger('click')
     await nextTick()
-    expect(api.updateCollabRoom.mock.calls[0]).toEqual([
-      'room-1',
-      { memberAgentIds: ['fe'], pmAgentId: null },
+    expect(collab.roomUpdate.mock.calls[0]).toEqual([
+      { roomSessionId: 'room-1', memberAgentIds: ['fe'], pmAgentId: null },
     ])
     wrapper.unmount()
   })
@@ -124,7 +126,7 @@ describe('RoomMemberStrip', () => {
 
     await items[0].trigger('click')
     await nextTick()
-    expect(api.updateCollabRoom.mock.calls[0]).toEqual(['room-1', { pmAgentId: 'fe' }])
+    expect(collab.roomUpdate.mock.calls[0]).toEqual([{ roomSessionId: 'room-1', pmAgentId: 'fe' }])
     wrapper.unmount()
   })
 
@@ -133,7 +135,7 @@ describe('RoomMemberStrip', () => {
     await wrapper.findAll('.member-chip:not(.member-add)')[0].trigger('contextmenu')
     await wrapper.findAll('.app-context-item').at(-1)!.trigger('click')
     await nextTick()
-    expect(api.updateCollabRoom).not.toHaveBeenCalled()
+    expect(collab.roomUpdate).not.toHaveBeenCalled()
     expect(wrapper.find('.member-error').text()).toBe('房间至少需要一名成员')
     wrapper.unmount()
   })
@@ -159,7 +161,7 @@ describe('RoomMemberStrip', () => {
       await wrapper.findAll('.member-chip')[0].trigger('contextmenu')
       await nextTick()
       expect(wrapper.findAll('.app-context-item')).toHaveLength(0)
-      expect(api.updateCollabRoom).not.toHaveBeenCalled()
+      expect(collab.roomUpdate).not.toHaveBeenCalled()
       wrapper.unmount()
     })
 
@@ -224,7 +226,7 @@ describe('RoomMemberStrip', () => {
   })
 
   it('surfaces a refusal that only the app layer can make', async () => {
-    api.updateCollabRoom.mockResolvedValue({ success: false, error: '负责人必须是房间成员' })
+    collab.roomUpdate.mockResolvedValue({ success: false, error: '负责人必须是房间成员' })
     const wrapper = await open()
     await wrapper.find('.member-add').trigger('click')
     await wrapper.findAll('.app-context-item')[0].trigger('click')
@@ -250,7 +252,7 @@ describe('RoomMemberStrip', () => {
     await nextTick()
 
     expect(updateCollabRoom).toHaveBeenCalledWith('room-1', { pmAgentId: 'fe' })
-    expect(api.updateCollabRoom).not.toHaveBeenCalled()
+    expect(collab.roomUpdate).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

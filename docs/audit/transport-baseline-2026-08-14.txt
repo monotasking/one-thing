@@ -13,8 +13,9 @@
 #  lines:channels.ts 535→541(+6):+3 todo-plan 窗口常量 +1 SPACES_CHANGED + 注释;−13 spaces。
 # 此后基线不再手改;只由 `--write-baseline` 在指标下降时收紧。任何上升 = 红,CI 的 gates job 会拦。
 # 2026-08-21(续):practice 域迁 router 后收紧 —— channels 329→319、bridge 1855→1816、web 1707→1681、channels.ts 541→533。
-channels:IPC_CHANNELS 319
-lines:apps/electron/src/preload/bridge.ts 1816
+# 2026-08-21(续):collab 域迁 router 后收紧 —— channels 319→304、bridge 1816→1736(已低于 08-14 起点 1737)、web 1681→1666、channels.ts 533→499。
+channels:IPC_CHANNELS 304
+lines:apps/electron/src/preload/bridge.ts 1736
 lines:packages/onething-runtime/src/app/server/http.ts 2028
-lines:packages/renderer/platform/web.ts 1681
-lines:packages/shared/ipc/channels.ts 533
+lines:packages/renderer/platform/web.ts 1666
+lines:packages/shared/ipc/channels.ts 499

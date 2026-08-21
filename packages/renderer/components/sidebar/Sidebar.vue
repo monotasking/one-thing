@@ -783,6 +783,7 @@ import {
   type SidebarRecentEntry,
 } from './sidebar-recent'
 import { platformApi } from '@/platform'
+import { collabApi } from '@/platform/collab-client'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useProjectsStore } from '@/stores/projects'
 import {
@@ -1191,7 +1192,7 @@ async function openContact(contact: SidebarContact): Promise<void> {
   openingContactId.value = contact.id
   showContactError('')
   try {
-    const response = await platformApi.ensureCollabDmRoom(contact.id)
+    const response = await collabApi.dmRoomEnsure({ agentId: String(contact.id) })
     if (!response?.success || !response.roomSessionId) {
       showContactError(response?.error || '打不开私聊')
       return

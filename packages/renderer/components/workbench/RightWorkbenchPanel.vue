@@ -37,7 +37,9 @@
           :key="group.domain"
           class="picker-group"
         >
-          <div class="picker-group-title">{{ group.title }}</div>
+          <div class="picker-group-title">
+            {{ group.title }}
+          </div>
           <Button
             v-for="option in group.options"
             :key="option.key"

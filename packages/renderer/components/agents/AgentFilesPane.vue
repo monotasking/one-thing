@@ -115,7 +115,7 @@
  * 数据,不新增账)。列表不是文件管理器:只读,点开交给宿主(`open-file`)。
  */
 import { computed, ref, toRef, watch } from 'vue'
-import { platformApi } from '@/platform'
+import { collabApi } from '@/platform/collab-client'
 import type { CollabRoomFolderEntry } from '@shared/ipc'
 import { useSessionsStore } from '@/stores/sessions'
 import { useCollabBoardStore } from '@/stores/collabBoard'
@@ -151,14 +151,9 @@ async function loadRoomFiles(): Promise<void> {
   filesMissing.value = false
   filesError.value = ''
   if (!roomSessionId) return
-  if (typeof platformApi.listCollabRoomFolder !== 'function') {
-    filesError.value = '这个平台读不到群 folder。'
-    return
-  }
-
   filesLoading.value = true
   try {
-    const response = await platformApi.listCollabRoomFolder(roomSessionId)
+    const response = await collabApi.roomFolderList({ roomSessionId })
     if (!response?.success) {
       filesError.value = response?.error || '读不到私聊房的文件'
       return

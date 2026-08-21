@@ -6,7 +6,7 @@
  * 放了什么(文件)、找什么(搜索)。Q5 拍板后中间那张联系人小卡退役,它的两个
  * 动作由资料块承接 —— 所以这一页要能顶得住:
  *
- *  - 资料块:大头像 + 名字 + 职位 + 说明,「发消息」走 ensureCollabDmRoom(与
+ *  - 资料块:大头像 + 名字 + 职位 + 说明,「发消息」走 collabApi.dmRoomEnsure(与
  *    联系人区同一条链路),退休的人禁用并挂墓碑;
  *  - 文件:私聊房 folder 走主进程列目录(folder 的位置只有它算得出),交付物
  *    读看板既有 evidence,还原不出绝对路径的行不给点;
@@ -26,8 +26,8 @@ const mocks = vi.hoisted(() => ({
   workspaceStore: null as any,
   boardStore: null as any,
   getTools: vi.fn(),
-  ensureCollabDmRoom: vi.fn(),
-  listCollabRoomFolder: vi.fn(),
+  dmRoomEnsure: vi.fn(),
+  roomFolderList: vi.fn(),
 }))
 
 vi.mock('@/stores/agents', () => ({
@@ -41,8 +41,12 @@ vi.mock('@/stores/collabBoard', () => ({ useCollabBoardStore: () => mocks.boardS
 vi.mock('@/platform', () => ({
   platformApi: {
     get getTools() { return mocks.getTools },
-    get listCollabRoomFolder() { return mocks.listCollabRoomFolder },
-    ensureCollabDmRoom: (agentId: string) => mocks.ensureCollabDmRoom(agentId),
+  },
+}))
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: {
+    get roomFolderList() { return mocks.roomFolderList },
+    dmRoomEnsure: (request: { agentId: string }) => mocks.dmRoomEnsure(request),
   },
 }))
 
@@ -137,8 +141,8 @@ beforeEach(() => {
 
   setActivePinia(createPinia())
   mocks.getTools = vi.fn().mockResolvedValue({ success: true, tools: [] })
-  mocks.ensureCollabDmRoom = vi.fn().mockResolvedValue({ success: true, roomSessionId: 'agent-dm-fe' })
-  mocks.listCollabRoomFolder = vi.fn().mockResolvedValue({
+  mocks.dmRoomEnsure = vi.fn().mockResolvedValue({ success: true, roomSessionId: 'agent-dm-fe' })
+  mocks.roomFolderList = vi.fn().mockResolvedValue({
     success: true,
     folder: '/store/rooms/agent-dm-fe',
     entries: FOLDER_ENTRIES,
@@ -214,13 +218,13 @@ describe('空间页 · 资料块', () => {
     expect(wrapper.find('.profile-description').text()).toContain('爱把东西做小')
   })
 
-  it('「发消息」走 ensureCollabDmRoom —— 与联系人区同一条链路', async () => {
+  it('「发消息」走 collabApi.dmRoomEnsure —— 与联系人区同一条链路', async () => {
     const wrapper = await mountPanel()
     const send = wrapper.findAll('.agent-profile .text-action').find((b: any) => b.text() === '发消息')!
     await send.trigger('click')
     await flushPromises()
 
-    expect(mocks.ensureCollabDmRoom).toHaveBeenCalledWith('fe')
+    expect(mocks.dmRoomEnsure).toHaveBeenCalledWith({ agentId: 'fe' })
     expect(mocks.sessionsStore.loadSessions).toHaveBeenCalled()
     expect(mocks.workspaceStore.openSession).toHaveBeenCalledWith('agent-dm-fe')
     expect(wrapper.emitted('close')).toBeTruthy()
@@ -306,7 +310,7 @@ describe('空间页 · 文件面', () => {
     const wrapper = await mountPanel()
     await openTab(wrapper, '文件')
 
-    expect(mocks.listCollabRoomFolder).toHaveBeenCalledWith('agent-dm-fe')
+    expect(mocks.roomFolderList).toHaveBeenCalledWith({ roomSessionId: 'agent-dm-fe' })
     const rows = column(wrapper, '私聊文件')!.findAll('.history-line')
     expect(rows.map((row: any) => row.find('.history-name').text()))
       .toEqual(['方案.md', 'notes/草稿.txt'])
@@ -332,7 +336,7 @@ describe('空间页 · 文件面', () => {
   })
 
   it('目录还没建过是空态,不是错误', async () => {
-    mocks.listCollabRoomFolder = vi.fn().mockResolvedValue({
+    mocks.roomFolderList = vi.fn().mockResolvedValue({
       success: true, folder: '/store/rooms/agent-dm-fe', entries: [], missing: true, truncated: false,
     })
     const wrapper = await mountPanel()
@@ -342,7 +346,7 @@ describe('空间页 · 文件面', () => {
   })
 
   it('列不到就说一句,绝不静默空白', async () => {
-    mocks.listCollabRoomFolder = vi.fn().mockResolvedValue({ success: false, error: '不支持' })
+    mocks.roomFolderList = vi.fn().mockResolvedValue({ success: false, error: '不支持' })
     const wrapper = await mountPanel()
     await openTab(wrapper, '文件')
 

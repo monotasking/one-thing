@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   coordinator: null as CollabCoordinatorState | null,
   revokeLease: vi.fn(),
   loadCoordinator: vi.fn(),
-  getCollabSchedulerLog: vi.fn(),
+  schedulerLogTail: vi.fn(),
 }))
 
 vi.mock('@/stores/agents', () => ({
@@ -45,8 +45,8 @@ vi.mock('@/stores/collabBoard', () => ({
   }),
 }))
 
-vi.mock('@/platform', () => ({
-  platformApi: { getCollabSchedulerLog: mocks.getCollabSchedulerLog },
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: { schedulerLogTail: mocks.schedulerLogTail },
 }))
 
 function coordinator(floorEpoch = 5): CollabCoordinatorState {
@@ -91,7 +91,7 @@ async function mountPanel() {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.coordinator = coordinator()
-  mocks.getCollabSchedulerLog.mockResolvedValue({ success: true, rows: [] })
+  mocks.schedulerLogTail.mockResolvedValue({ success: true, rows: [] })
   mocks.revokeLease.mockResolvedValue({ ok: true, revoked: true, agentId: 'pm' })
 })
 

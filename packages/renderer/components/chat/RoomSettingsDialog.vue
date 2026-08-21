@@ -359,7 +359,7 @@ import Checkbox from '@/components/common/Checkbox.vue'
 import Dialog from '@/components/common/Dialog.vue'
 import Select from '@/components/common/Select.vue'
 import type { SelectOptionLike } from '@/components/common/select'
-import { platformApi } from '@/platform'
+import { collabApi } from '@/platform/collab-client'
 import { isActiveAgent, isColleague } from '@shared/ipc'
 import { useAgentsStore } from '@/stores/agents'
 import { useCollabBoardStore } from '@/stores/collabBoard'
@@ -493,7 +493,7 @@ watch(() => props.visible, async visible => {
 /** One shot, no live refresh (W13.5) — the panel is a form, not a dashboard. */
 async function loadSpentToday(): Promise<void> {
   try {
-    const response = await platformApi.getCollabRoomSpend?.(props.sessionId)
+    const response = await collabApi.roomSpendGet({ roomSessionId: props.sessionId })
     if (!response?.success || typeof response.spentTodayUSD !== 'number') return
     spentTodayText.value = `今日已用 $${response.spentTodayUSD.toFixed(2)}`
   } catch {

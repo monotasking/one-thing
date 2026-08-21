@@ -7,11 +7,14 @@ import RoomSettingsDialog from '../RoomSettingsDialog.vue'
 import { useAgentsStore } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
 
+const collab = vi.hoisted(() => ({
+  roomUpdate: vi.fn(async () => ({ success: true })),
+  roomSetBudgets: vi.fn(async () => ({ success: true })),
+  roomSetFrozen: vi.fn(async () => ({ success: true })),
+  roomSpendGet: vi.fn(async () => ({ success: true, spentTodayUSD: 1.234, dailyCostUSD: 5 })),
+}))
+
 const api = vi.hoisted(() => ({
-  updateCollabRoom: vi.fn(async () => ({ success: true })),
-  setCollabRoomBudgets: vi.fn(async () => ({ success: true })),
-  setCollabRoomFrozen: vi.fn(async () => ({ success: true })),
-  getCollabRoomSpend: vi.fn(async () => ({ success: true, spentTodayUSD: 1.234, dailyCostUSD: 5 })),
   // 域已迁到通用 RPC 通道(主线 T1 第二批):打那一条通道,按 domain.method 分发。
   rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
     if (request.domain === 'agents' && request.method === 'list') {
@@ -29,6 +32,7 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('@/platform', () => ({ platformApi: api }))
+vi.mock('@/platform/collab-client', () => ({ collabApi: collab }))
 
 const AGENTS = [
   { id: 'pm', name: '阿明', title: '产品经理', avatar: '📋', systemPrompt: '', createdAt: 0, updatedAt: 0 },
@@ -67,11 +71,11 @@ async function open(room?: Record<string, unknown>) {
 beforeEach(() => {
   setActivePinia(createPinia())
   document.body.innerHTML = ''
-  api.updateCollabRoom.mockClear()
-  api.setCollabRoomBudgets.mockClear()
-  api.setCollabRoomFrozen.mockClear()
-  api.getCollabRoomSpend.mockClear()
-  api.getCollabRoomSpend.mockResolvedValue({ success: true, spentTodayUSD: 1.234, dailyCostUSD: 5 })
+  collab.roomUpdate.mockClear()
+  collab.roomSetBudgets.mockClear()
+  collab.roomSetFrozen.mockClear()
+  collab.roomSpendGet.mockClear()
+  collab.roomSpendGet.mockResolvedValue({ success: true, spentTodayUSD: 1.234, dailyCostUSD: 5 })
 })
 
 // W13.5: 预算面板最小形态 — what the room cost today, taken once on open.
@@ -86,21 +90,21 @@ describe('RoomSettingsDialog 花费行', () => {
 
   it('reads spend once and prints it to the cent', async () => {
     const wrapper = await openWithSpend()
-    expect(api.getCollabRoomSpend).toHaveBeenCalledTimes(1)
-    expect(api.getCollabRoomSpend).toHaveBeenCalledWith('room-1')
+    expect(collab.roomSpendGet).toHaveBeenCalledTimes(1)
+    expect(collab.roomSpendGet).toHaveBeenCalledWith({ roomSessionId: 'room-1' })
     expect(wrapper.find('.spend-line').text()).toBe('今日已用 $1.23')
     wrapper.unmount()
   })
 
   it('still shows the spend when the room has no cap (0 = 不限额)', async () => {
-    api.getCollabRoomSpend.mockResolvedValue({ success: true, spentTodayUSD: 0.5, dailyCostUSD: 0 })
+    collab.roomSpendGet.mockResolvedValue({ success: true, spentTodayUSD: 0.5, dailyCostUSD: 0 })
     const wrapper = await openWithSpend()
     expect(wrapper.find('.spend-line').text()).toBe('今日已用 $0.50')
     wrapper.unmount()
   })
 
   it('says nothing rather than something wrong when the read fails', async () => {
-    api.getCollabRoomSpend.mockResolvedValue({ success: false, error: 'ledger down' } as never)
+    collab.roomSpendGet.mockResolvedValue({ success: false, error: 'ledger down' } as never)
     const wrapper = await openWithSpend()
     expect(wrapper.find('.spend-line').exists()).toBe(false)
     expect(wrapper.find('.room-error').exists()).toBe(false)
@@ -127,12 +131,13 @@ describe('RoomSettingsDialog', () => {
     await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click') // 保存
     await nextTick()
 
-    expect(api.updateCollabRoom).toHaveBeenCalledTimes(1)
-    expect(api.updateCollabRoom.mock.calls[0]).toEqual(['room-1', {
+    expect(collab.roomUpdate).toHaveBeenCalledTimes(1)
+    expect(collab.roomUpdate.mock.calls[0]).toEqual([{
+      roomSessionId: 'room-1',
       memberAgentIds: ['pm', 'fe', 'research'],
     }])
-    expect(api.setCollabRoomBudgets).not.toHaveBeenCalled()
-    expect(api.setCollabRoomFrozen).not.toHaveBeenCalled()
+    expect(collab.roomSetBudgets).not.toHaveBeenCalled()
+    expect(collab.roomSetFrozen).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -157,8 +162,8 @@ describe('RoomSettingsDialog', () => {
       memberAgentIds: ['pm', 'fe', 'research'],
     })
     expect(setFrozen).toHaveBeenCalledWith('room-1', true)
-    expect(api.updateCollabRoom).not.toHaveBeenCalled()
-    expect(api.setCollabRoomFrozen).not.toHaveBeenCalled()
+    expect(collab.roomUpdate).not.toHaveBeenCalled()
+    expect(collab.roomSetFrozen).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -168,7 +173,8 @@ describe('RoomSettingsDialog', () => {
     await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()
 
-    expect(api.updateCollabRoom.mock.calls[0]).toEqual(['room-1', {
+    expect(collab.roomUpdate.mock.calls[0]).toEqual([{
+      roomSessionId: 'room-1',
       memberAgentIds: ['fe'],
       pmAgentId: null,
     }])
@@ -180,14 +186,14 @@ describe('RoomSettingsDialog', () => {
     await wrapper.findAll('.member-line')[3].trigger('click') // 暂停房间
     await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()
-    expect(api.setCollabRoomFrozen).toHaveBeenCalledWith('room-1', true)
-    expect(api.updateCollabRoom).not.toHaveBeenCalled()
+    expect(collab.roomSetFrozen).toHaveBeenCalledWith({ roomSessionId: 'room-1', frozen: true })
+    expect(collab.roomUpdate).not.toHaveBeenCalled()
     wrapper.unmount()
 
     const untouched = await open()
     await untouched.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()
-    expect(api.updateCollabRoom).not.toHaveBeenCalled()
+    expect(collab.roomUpdate).not.toHaveBeenCalled()
     expect(untouched.emitted('close')).toBeTruthy()
     untouched.unmount()
   })
@@ -198,10 +204,10 @@ describe('RoomSettingsDialog', () => {
     await wrapper.findAll('.member-line')[1].trigger('click')
     await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()
-    expect(api.updateCollabRoom).not.toHaveBeenCalled()
+    expect(collab.roomUpdate).not.toHaveBeenCalled()
     expect(wrapper.find('.room-error').text()).toBe('房间至少需要一名成员')
 
-    api.updateCollabRoom.mockResolvedValueOnce({ success: false, error: 'Unknown agent: ghost' } as never)
+    collab.roomUpdate.mockResolvedValueOnce({ success: false, error: 'Unknown agent: ghost' } as never)
     await wrapper.findAll('.member-line')[2].trigger('click')
     await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()

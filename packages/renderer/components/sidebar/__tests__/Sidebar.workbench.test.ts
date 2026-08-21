@@ -44,7 +44,11 @@ vi.mock('@/platform', () => ({
   platformApi: {
     get capabilities() { return mocks.capabilities },
     get environment() { return 'test' },
-    ensureCollabDmRoom: vi.fn(async () => ({ success: true, roomSessionId: 'agent-dm-fe' })),
+  },
+}))
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: {
+    dmRoomEnsure: vi.fn(async () => ({ success: true, roomSessionId: 'agent-dm-fe' })),
   },
 }))
 vi.mock('@/stores/sessions', () => ({

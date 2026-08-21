@@ -150,27 +150,25 @@ describe('createWebPlatformApi', () => {
   })
 
   /**
-   * Agent 活动快照(D8 观测体系 §3.1)在 web 上是 desktop-only —— 供数在主进程的
-   * v3 运行时里,与协调器那扇门同一条边界。
+   * collab 域整只迁到通用 RPC 通道之后(P4a),web 上不再有那批说谎的桩 ——
+   * 十五条走的是同一条 `POST /api/rpc`,技术上真能拿到桌面那台引擎的房间。
    *
-   * 钉的是「**降级成一句明确的失败**」而不是 `undefined`:后者会让调用方在
-   * `response.success` 上炸掉,而那个栈离成因很远(渲染层不该知道自己跑在哪个宿主
-   * 上,它只该读得懂回答)。
+   * 挡在前面的是**能力位**,不是通道:`collabRooms` 在 web 上仍然是 false,
+   * 协作 UI 照旧关着。放开它是独立的一次拍板,所以这里钉的就是那颗 false ——
+   * 它一旦被人顺手改掉,web 端会突然长出一整套没走查过的协作界面。
    */
-  it('degrades getCollabAgentActivity to an explicit refusal on web', async () => {
+  it('keeps the collab UI shut on web through the capability, not through stubs', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('server unavailable')
     }))
     vi.stubGlobal('navigator', {})
 
     const { createWebPlatformApi, WEB_DESKTOP_ONLY_PLATFORM_METHODS } = await import('../web.js')
-    expect(WEB_DESKTOP_ONLY_PLATFORM_METHODS).toContain('getCollabAgentActivity')
+    // 名单里一条 collab 方法都不该再有(它们随 platformApi 上的方法一起消失)。
+    expect(WEB_DESKTOP_ONLY_PLATFORM_METHODS.filter(name => name.includes('Collab'))).toEqual([])
 
     const api = createWebPlatformApi()
-    await expect(api.getCollabAgentActivity(['iris'])).resolves.toEqual({
-      success: false,
-      error: 'Platform method "getCollabAgentActivity" is not available in the web host yet.',
-    })
+    expect(api.capabilities.collabRooms).toBe(false)
   })
 
   it('opens settings in the current browser tab', async () => {

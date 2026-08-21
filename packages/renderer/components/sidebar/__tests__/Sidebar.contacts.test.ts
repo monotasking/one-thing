@@ -3,7 +3,7 @@
  * 侧栏「联系人」区(docs/design/agent-im-dm.md §4.1 / D1)。
  *
  * 通讯录取的是名册(社交面 `colleagues`)而不是会话列表 —— 没聊过的同事也得
- * 站在那儿,不然"第一次找小李"就没有入口。点一下 = `ensureCollabDmRoom`
+ * 站在那儿,不然"第一次找小李"就没有入口。点一下 = `collabApi.dmRoomEnsure`
  * 幂等建房 + 打开;失败(退休 / service / web 端没有 rooms)必须看得见。
  */
 import { flushPromises, mount } from '@vue/test-utils'
@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => {
   return {
     capabilities: { collabRooms: true },
     formMode: 'collab' as string,
-    ensureCollabDmRoom: vi.fn(async (_agentId: string): Promise<{
+    dmRoomEnsure: vi.fn(async (_request: { agentId: string }): Promise<{
       success: boolean
       roomSessionId?: string
       error?: string
@@ -59,7 +59,11 @@ const mocks = vi.hoisted(() => {
 vi.mock('@/platform', () => ({
   platformApi: {
     get capabilities() { return mocks.capabilities },
-    ensureCollabDmRoom: (agentId: string) => mocks.ensureCollabDmRoom(agentId),
+  },
+}))
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: {
+    dmRoomEnsure: (request: { agentId: string }) => mocks.dmRoomEnsure(request),
   },
 }))
 vi.mock('@/stores/sessions', () => ({
@@ -192,8 +196,8 @@ beforeEach(() => {
   railStore.set(RAIL_KEY, 'contacts')
   mocks.capabilities.collabRooms = true
   mocks.formMode = 'collab'
-  mocks.ensureCollabDmRoom.mockReset()
-  mocks.ensureCollabDmRoom.mockResolvedValue({ success: true, roomSessionId: 'agent-dm-fe' })
+  mocks.dmRoomEnsure.mockReset()
+  mocks.dmRoomEnsure.mockResolvedValue({ success: true, roomSessionId: 'agent-dm-fe' })
   mocks.openSession.mockReset()
   mocks.loadSessions.mockReset()
   mocks.requestAgentDetail.mockReset()
@@ -268,7 +272,7 @@ describe('Sidebar 联系人区', () => {
     await wrapper.findAll('.sidebar-contact-item')[1].trigger('click')
     await flushPromises()
 
-    expect(mocks.ensureCollabDmRoom).toHaveBeenCalledWith('fe')
+    expect(mocks.dmRoomEnsure).toHaveBeenCalledWith({ agentId: 'fe' })
     // 新建的房要先进列表,openSession 才认得它(RoomCreateDialog 同款动线)。
     expect(mocks.loadSessions).toHaveBeenCalled()
     expect(mocks.openSession).toHaveBeenCalledWith('agent-dm-fe')
@@ -276,7 +280,7 @@ describe('Sidebar 联系人区', () => {
   })
 
   it('建房被拒:一行墨说出来,绝不静默无反应', async () => {
-    mocks.ensureCollabDmRoom.mockResolvedValue({ success: false, error: '这个 agent 已退休' })
+    mocks.dmRoomEnsure.mockResolvedValue({ success: false, error: '这个 agent 已退休' })
     const wrapper = mountSidebar()
     await wrapper.findAll('.sidebar-contact-item')[1].trigger('click')
     await flushPromises()

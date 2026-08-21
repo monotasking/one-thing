@@ -69,8 +69,8 @@
  * ＋ pulls somebody in; a click (or right-click) on a chip offers 移出群聊 /
  * 设为负责人.
  *
- * Every write goes through W6's existing COLLAB_ROOM_UPDATE — the settings
- * dialog and this strip are two doors into one channel, not two channels. The
+ * Every write goes through W6's existing room update (`collabApi.roomUpdate`)
+ * — the settings dialog and this strip are two doors into one method, not two. The
  * app layer validates atomically and posts the 群公告 lines; a refusal
  * (the last member, a vanished agent) comes back as text and lands here as one
  * line of ink, never as a silent no-op.

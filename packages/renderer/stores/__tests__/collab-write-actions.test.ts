@@ -17,22 +17,27 @@ import { useChatStore } from '../chat'
 
 const api = vi.hoisted(() => ({
   onSessionEvent: vi.fn(() => () => {}),
-  getCollabBoard: vi.fn(),
   getPendingPermissions: vi.fn(),
-  actCollabBoard: vi.fn(),
-  stopCollabTask: vi.fn(),
-  updateCollabRoom: vi.fn(),
-  setCollabRoomBudgets: vi.fn(),
-  setCollabRoomFrozen: vi.fn(),
-  clearCollabRoomHistory: vi.fn(),
   createSession: vi.fn(),
   getSessionsList: vi.fn(),
-  reactToCollabMessage: vi.fn(),
-  revokeCollabRoomLease: vi.fn(),
-  getCollabCoordinator: vi.fn(),
+}))
+
+/** collab 域走通用 RPC 通道(P4a):方法名是 router 上的动词,入参是信封。 */
+const collab = vi.hoisted(() => ({
+  boardGet: vi.fn(),
+  boardAct: vi.fn(),
+  taskStop: vi.fn(),
+  roomUpdate: vi.fn(),
+  roomSetBudgets: vi.fn(),
+  roomSetFrozen: vi.fn(),
+  roomClearHistory: vi.fn(),
+  messageReact: vi.fn(),
+  roomRevokeLease: vi.fn(),
+  coordinatorGet: vi.fn(),
 }))
 
 vi.mock('@/platform', () => ({ platformApi: api }))
+vi.mock('@/platform/collab-client', () => ({ collabApi: collab }))
 
 function board(seq: number, title: string): CollabBoard {
   return {
@@ -62,7 +67,7 @@ beforeEach(() => {
 describe('collabBoard 写 action:回填约定 = 回复带的那份快照', () => {
   it('写成功当场落账,不用等 30ms 合并广播', async () => {
     const store = useCollabBoardStore()
-    api.actCollabBoard.mockResolvedValue({ success: true, board: board(2, '写登录页(已移动)') })
+    collab.boardAct.mockResolvedValue({ success: true, board: board(2, '写登录页(已移动)') })
 
     const response = await store.actBoard('room-1', {
       action: 'move',
@@ -71,7 +76,10 @@ describe('collabBoard 写 action:回填约定 = 回复带的那份快照', () =>
       expectedRev: 1,
     } as never)
 
-    expect(api.actCollabBoard).toHaveBeenCalledWith('room-1', expect.objectContaining({ action: 'move' }))
+    expect(collab.boardAct).toHaveBeenCalledWith({
+      roomSessionId: 'room-1',
+      action: expect.objectContaining({ action: 'move' }),
+    })
     expect(response.success).toBe(true)
     expect(store.boardFor('room-1')?.tasks[0].title).toBe('写登录页(已移动)')
   })
@@ -79,7 +87,7 @@ describe('collabBoard 写 action:回填约定 = 回复带的那份快照', () =>
   it('被拒但带板的回复照样重画 —— 冲突提示的底气', async () => {
     const store = useCollabBoardStore()
     store.applySnapshot('room-1', board(1, '写登录页'))
-    api.actCollabBoard.mockResolvedValue({
+    collab.boardAct.mockResolvedValue({
       success: false,
       error: 'Task task-1 changed (rev 7)',
       board: board(7, '写登录页(已被他人改名)'),
@@ -94,7 +102,7 @@ describe('collabBoard 写 action:回填约定 = 回复带的那份快照', () =>
   it('不带板的失败不动账本 —— 屏幕上还是刚才那份', async () => {
     const store = useCollabBoardStore()
     store.applySnapshot('room-1', board(3, '写登录页'))
-    api.actCollabBoard.mockResolvedValue({ success: false, error: 'Not a room session' })
+    collab.boardAct.mockResolvedValue({ success: false, error: 'Not a room session' })
 
     await store.actBoard('room-1', { action: 'move' } as never)
 
@@ -104,17 +112,17 @@ describe('collabBoard 写 action:回填约定 = 回复带的那份快照', () =>
 
   it('桥抛错不吞:错抛给调用方,提示语归 UI', async () => {
     const store = useCollabBoardStore()
-    api.actCollabBoard.mockRejectedValue(new Error('bridge down'))
+    collab.boardAct.mockRejectedValue(new Error('bridge down'))
     await expect(store.actBoard('room-1', { action: 'move' } as never)).rejects.toThrow('bridge down')
   })
 
   it('停止执行:卡的收敛跟着广播回来,回复带板也照收', async () => {
     const store = useCollabBoardStore()
-    api.stopCollabTask.mockResolvedValue({ success: true, stopped: true })
+    collab.taskStop.mockResolvedValue({ success: true, stopped: true })
 
     const response = await store.stopTask('room-1', 'task-1')
 
-    expect(api.stopCollabTask).toHaveBeenCalledWith('room-1', 'task-1')
+    expect(collab.taskStop).toHaveBeenCalledWith({ roomSessionId: 'room-1', taskId: 'task-1' })
     expect(response.stopped).toBe(true)
   })
 })
@@ -146,62 +154,66 @@ describe('collabBoard 人级停止(E5):epoch 由 store 现取', () => {
   it('撤牌带上快照里的代数,结果原样回给 UI', async () => {
     const store = useCollabBoardStore()
     seedCoordinator(store, 5)
-    api.revokeCollabRoomLease.mockResolvedValue({
+    collab.roomRevokeLease.mockResolvedValue({
       success: true,
       result: { ok: true, revoked: true, agentId: 'fe', epoch: 5 },
     })
 
     const result = await store.revokeLease('room-1', 'room-1#L2')
 
-    expect(api.revokeCollabRoomLease).toHaveBeenCalledWith('room-1', 'room-1#L2', 5)
+    expect(collab.roomRevokeLease).toHaveBeenCalledWith({
+      roomSessionId: 'room-1',
+      leaseId: 'room-1#L2',
+      expectedEpoch: 5,
+    })
     expect(result).toMatchObject({ ok: true, revoked: true, agentId: 'fe' })
   })
 
   it('epoch-stale 时顺手重取一次快照 —— 那正是「你这一屏过时了」的定义', async () => {
     const store = useCollabBoardStore()
     seedCoordinator(store, 5)
-    api.revokeCollabRoomLease.mockResolvedValue({
+    collab.roomRevokeLease.mockResolvedValue({
       success: true,
       result: { ok: false, reason: 'epoch-stale', epoch: 6 },
     })
-    api.getCollabCoordinator.mockResolvedValue({ success: true, state: null })
+    collab.coordinatorGet.mockResolvedValue({ success: true, state: null })
 
     const result = await store.revokeLease('room-1', 'room-1#L2')
 
     expect(result.reason).toBe('epoch-stale')
     await vi.waitFor(() => {
-      expect(api.getCollabCoordinator).toHaveBeenCalledWith('room-1')
+      expect(collab.coordinatorGet).toHaveBeenCalledWith({ roomSessionId: 'room-1' })
     })
   })
 
   it('快照上没有代数(读不到这间房)就不发请求 —— 不拿一个猜的数去撤牌', async () => {
     const store = useCollabBoardStore()
     expect(await store.revokeLease('room-1', 'room-1#L2')).toEqual({ ok: false, reason: 'not-a-room' })
-    expect(api.revokeCollabRoomLease).not.toHaveBeenCalled()
+    expect(collab.roomRevokeLease).not.toHaveBeenCalled()
   })
 })
 
 describe('sessions 房间配置 action:回填约定 = session:collab-updated', () => {
   it('写完不重拉会话表 —— 镜像等事件推回来', async () => {
     const sessions = useSessionsStore()
-    api.updateCollabRoom.mockResolvedValue({ success: true })
-    api.setCollabRoomBudgets.mockResolvedValue({ success: true })
-    api.setCollabRoomFrozen.mockResolvedValue({ success: true })
+    collab.roomUpdate.mockResolvedValue({ success: true })
+    collab.roomSetBudgets.mockResolvedValue({ success: true })
+    collab.roomSetFrozen.mockResolvedValue({ success: true })
 
     await sessions.updateCollabRoom('room-1', { pmAgentId: 'fe' })
     await sessions.setCollabRoomBudgets('room-1', { dailyCostUSD: 8 })
     await sessions.setCollabRoomFrozen('room-1', true)
 
-    expect(api.updateCollabRoom).toHaveBeenCalledWith('room-1', { pmAgentId: 'fe' })
-    expect(api.setCollabRoomBudgets).toHaveBeenCalledWith('room-1', { dailyCostUSD: 8 })
-    expect(api.setCollabRoomFrozen).toHaveBeenCalledWith('room-1', true)
+    expect(collab.roomUpdate).toHaveBeenCalledWith({ roomSessionId: 'room-1', pmAgentId: 'fe' })
+    expect(collab.roomSetBudgets).toHaveBeenCalledWith({ roomSessionId: 'room-1', dailyCostUSD: 8 })
+    expect(collab.roomSetFrozen).toHaveBeenCalledWith({ roomSessionId: 'room-1', frozen: true })
     // 这就是 C4-α 的成果:七处全量重拉换成一条就地增量事件。
     expect(api.getSessionsList).not.toHaveBeenCalled()
   })
 
   it('失败原样返回,store 不替谁决定怎么说话', async () => {
     const sessions = useSessionsStore()
-    api.updateCollabRoom.mockResolvedValue({ success: false, error: '负责人必须是房间成员' })
+    collab.roomUpdate.mockResolvedValue({ success: false, error: '负责人必须是房间成员' })
     await expect(sessions.updateCollabRoom('room-1', { pmAgentId: 'x' }))
       .resolves.toEqual({ success: false, error: '负责人必须是房间成员' })
   })
@@ -229,11 +241,11 @@ describe('sessions 房间配置 action:回填约定 = session:collab-updated', (
 
   it('清空转录动的不是配置,所以那一次重拉也在 action 里', async () => {
     const sessions = useSessionsStore()
-    api.clearCollabRoomHistory.mockResolvedValue({ success: true })
+    collab.roomClearHistory.mockResolvedValue({ success: true })
 
     await sessions.clearCollabRoomHistory('room-1', true)
 
-    expect(api.clearCollabRoomHistory).toHaveBeenCalledWith('room-1', true)
+    expect(collab.roomClearHistory).toHaveBeenCalledWith({ roomSessionId: 'room-1', includeMemberDms: true })
     expect(api.getSessionsList).toHaveBeenCalled()
   })
 })
@@ -241,18 +253,23 @@ describe('sessions 房间配置 action:回填约定 = session:collab-updated', (
 describe('chat 表情 action:回填约定 = message:updated 广播', () => {
   it('过桥的每个参数都是原始值,一个字都不乐观写', async () => {
     const chat = useChatStore()
-    api.reactToCollabMessage.mockResolvedValue({ success: true })
+    collab.messageReact.mockResolvedValue({ success: true })
 
     await chat.reactToCollabMessage('room-1', 'msg-1', '👍', { type: 'user' })
 
-    expect(api.reactToCollabMessage).toHaveBeenCalledWith('room-1', 'msg-1', '👍', { type: 'user' })
+    expect(collab.messageReact).toHaveBeenCalledWith({
+      roomSessionId: 'room-1',
+      messageId: 'msg-1',
+      emoji: '👍',
+      actor: { type: 'user' },
+    })
     // 乐观写会让被拒的那一次留下痕迹;这里没有本地状态可查,正是"不写"的证据。
     expect(chat.sessionMessages.get('room-1')).toBeUndefined()
   })
 
   it('被拒的回复原样返回,由调用方留下失败痕迹', async () => {
     const chat = useChatStore()
-    api.reactToCollabMessage.mockResolvedValue({ success: false, error: '这个表情不在调色板里' })
+    collab.messageReact.mockResolvedValue({ success: false, error: '这个表情不在调色板里' })
     await expect(chat.reactToCollabMessage('room-1', 'msg-1', '🦄', { type: 'user' }))
       .resolves.toEqual({ success: false, error: '这个表情不在调色板里' })
   })

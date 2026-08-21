@@ -12,7 +12,7 @@ import AgentSpace from '../AgentSpace.vue'
 
 const mocks = vi.hoisted(() => ({
   openAgentSpace: vi.fn(),
-  ensureCollabDmRoom: vi.fn(async () => ({ success: true, roomSessionId: 'agent-dm-lin' })),
+  dmRoomEnsure: vi.fn(async () => ({ success: true, roomSessionId: 'agent-dm-lin' })),
   loadSessions: vi.fn(async () => {}),
   /** 主区此刻看得见的会话 —— 私聊已经摊在主区时,就地那一层不再画第二遍。 */
   visibleSessionIds: new Set<string>(),
@@ -82,9 +82,13 @@ vi.mock('@/stores/collabBoard', () => ({
 
 vi.mock('@/platform', () => ({
   platformApi: {
-    ensureCollabDmRoom: mocks.ensureCollabDmRoom,
     getTools: vi.fn(async () => ({ success: true, tools: [] })),
-    listCollabRoomFolder: vi.fn(async () => ({ success: true, entries: [] })),
+  },
+}))
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: {
+    dmRoomEnsure: mocks.dmRoomEnsure,
+    roomFolderList: vi.fn(async () => ({ success: true, entries: [] })),
   },
 }))
 
@@ -158,7 +162,7 @@ describe('AgentSpace — 右栏的空间页', () => {
     await send.trigger('click')
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(mocks.ensureCollabDmRoom).toHaveBeenCalledWith('lin')
+    expect(mocks.dmRoomEnsure).toHaveBeenCalledWith({ agentId: 'lin' })
     expect(wrapper.emitted('open-session')).toBeUndefined()
     expect(wrapper.find('.mock-dm').attributes('data-session')).toBe('agent-dm-lin')
     expect(wrapper.find('.mock-dm').attributes('data-tag')).toBe('私聊')

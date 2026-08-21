@@ -456,27 +456,12 @@ function isSubscriptionMethod(method: string): boolean {
 }
 
 export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
-	// Collab rooms (P0-P2 desktop-only; collabRooms capability gates the UI)
-	"getCollabBoard",
-	"actCollabBoard",
-	"stopCollabTask",
-	"setCollabRoomFrozen",
-	"setCollabRoomBudgets",
-	"getCollabRoomSpend",
-	"getCollabCoordinator",
-	// 人级停止(E5):撤牌的落点在主进程的 v3 房账里,与协调器同一条边界
-	"revokeCollabRoomLease",
-	// Agent 活动快照(D8 §3.1):供数在主进程的 v3 运行时里,与协调器同一条边界
-	"getCollabAgentActivity",
-	// 调度时间轴(D8 §3.3):账文件在主进程的 store 里,与 room folder 同一条理由
-	"getCollabSchedulerLog",
-	"updateCollabRoom",
-	"clearCollabRoomHistory",
-	"reactToCollabMessage",
-	// 托管私聊房也是 room(agent-im-dm.md §7 开放问题:rooms 上服务器是独立议题)
-	"ensureCollabDmRoom",
-	// 群 folder 列目录同理:folder 是主进程 store 里的路径
-	"listCollabRoomFolder",
+	// collab 域的十五条已整只迁到通用 RPC 通道(P4a,`@shared/ipc/collab.ts` 的
+	// collabRouter + `@/platform/collab-client` 的 collabApi),所以这份名单里
+	// 不再有它们 —— web 走的是同一条 `POST /api/rpc`。
+	//
+	// **能力位没动**:`collabRooms` 在 web 上仍然是 false(见上方 capabilities),
+	// 协作 UI 照旧关着。放开它是独立的一次拍板,不搭这次搬家的便车。
 	// Interaction(agent 提问 → 用户应答,E1)。内核在主进程的 InteractionRegistry
 	// 里,web 侧要接得起来得先有 /api/interactions/* 两条路由 —— 那是 apps/server
 	// 的活,不在 E1 范围。**桩掉不会把提问挂住**:deadline 由内核自结算,web 端

@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { IPC_CHANNELS } from '../channels.js'
+import { collabRouter } from '../collab.js'
 import type {
   CollabAgentActivityGetRequest,
   CollabAgentActivityGetResponse,
@@ -153,13 +153,14 @@ describe('D8 观测契约', () => {
   /**
    * 补水通道:一扇门 + 两个形状。
    *
-   * 通道常量单独断言一次是刻意的 —— 一个只在 `channels.ts` 里存在、渲染层与主进程
-   * 各自用字面量拼出来的通道名,是"改一处漏一处"最经典的现场。
+   * 通道常量那一条断言随 P4a 一起退休 —— collab 域整只搬到了通用 RPC 通道,
+   * 门的名字现在是 `collabRouter` 上的一个动词,而动词表本身就是白名单
+   * (`registerRouterHandlers` 只绑表上有的方法)。改一处漏一处的那个现场没了。
    */
-  it('GET 补水的请求/回应字段表是穷尽的,通道常量在册(§3.1)', () => {
+  it('GET 补水的请求/回应字段表是穷尽的,动词在册(§3.1)', () => {
     expect(ACTIVITY_GET_REQUEST_IS_EXHAUSTIVE).toBe(true)
     expect(ACTIVITY_GET_RESPONSE_IS_EXHAUSTIVE).toBe(true)
-    expect(IPC_CHANNELS.COLLAB_AGENT_ACTIVITY_GET).toBe('collab:agent-activity-get')
+    expect(collabRouter.methods).toContain('agentActivityGet')
     // 地址(要问谁)是可选的:缺席 = 此刻开着心智循环的全部。
     const all: CollabAgentActivityGetRequest = {}
     const some: CollabAgentActivityGetRequest = { agentIds: ['iris'] }
@@ -175,8 +176,10 @@ describe('D8 观测契约', () => {
    * 14 类的表进来,就要在每次加一类行时记得改两处 —— 漏掉哪一处都不报错,只是
    * 那一类行在界面上静默地长成一个空白。所以这一条验的是**透传没有丢格**。
    */
-  it('时间轴是只读的一扇门:通道在册、两格恒有、其余整体透传(§3.3)', () => {
-    expect(IPC_CHANNELS.COLLAB_SCHEDULER_LOG_TAIL).toBe('collab:scheduler-log-tail')
+  it('时间轴是只读的一扇门:动词在册、两格恒有、其余整体透传(§3.3)', () => {
+    expect(collabRouter.methods).toContain('schedulerLogTail')
+    // **只读**:这个域的动词表里没有一个往时间轴写的口。
+    expect(collabRouter.methods.filter(m => m.startsWith('schedulerLog'))).toEqual(['schedulerLogTail'])
 
     // 一行 judge-verdict:`why` / `elapsedMs` / `model` 三格是这一行存在的全部
     // 理由(「刚才为什么没人理我」),它们必须原样过得来。

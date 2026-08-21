@@ -7,7 +7,6 @@ import { IPC_CHANNELS } from "@shared/ipc.js";
 import { registerChatHandlers } from "./chat.js";
 import { registerSessionHandlers } from "./sessions.js";
 import { registerSettingsHandlers } from "./settings.js";
-import { registerCollabHandlers } from "./collab.js";
 import { registerToolHandlers } from "./tools.js";
 import { registerMCPHandlers, initializeMCP, shutdownMCP } from "./mcp.js";
 import { registerSkillHandlers, initializeSkills } from "./skills.js";
@@ -53,7 +52,6 @@ export function initializeIPC() {
 	registerChatHandlers();
 	registerSessionHandlers();
 	registerSettingsHandlers();
-	registerCollabHandlers();
 	registerToolHandlers();
 	registerMCPHandlers();
 	registerSkillHandlers();

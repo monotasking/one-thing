@@ -928,95 +928,9 @@ export interface ElectronAPI {
 		name: string,
 		options?: CreateSessionOptions,
 	) => Promise<CreateSessionResponse>;
-	getCollabBoard: (
-		roomSessionId: string,
-	) => Promise<import("@shared/ipc.js").CollabBoardGetResponse>;
-	/** User board mutation (W16): the action rides to the reducer untouched. */
-	actCollabBoard: (
-		roomSessionId: string,
-		action: import("@shared/ipc.js").CollabBoardAction,
-	) => Promise<import("@shared/ipc.js").CollabBoardActResponse>;
-	/** 停止一张卡正在跑的执行(collab-team-v2 §5.1 入口②)。 */
-	stopCollabTask: (
-		roomSessionId: string,
-		taskId: string,
-	) => Promise<import("@shared/ipc.js").CollabTaskStopResponse>;
-	setCollabRoomFrozen: (
-		roomSessionId: string,
-		frozen: boolean,
-	) => Promise<import("@shared/ipc.js").CollabRoomFrozenResponse>;
-	setCollabRoomBudgets: (
-		roomSessionId: string,
-		budgets: import("@shared/ipc.js").CollabRoomBudgetsPatch,
-	) => Promise<import("@shared/ipc.js").CollabRoomBudgetsResponse>;
-	/** Room spend today (W13.5): read-only, one shot when the panel opens. */
-	getCollabRoomSpend: (
-		roomSessionId: string,
-	) => Promise<import("@shared/ipc.js").CollabRoomSpendResponse>;
-	/**
-	 * 人级停止(E5):点名收回某一张在外的牌 —— 三级停止的第三级。
-	 *
-	 * `expectedEpoch` 是乐观并发的前置条件(仿看板的 `expectedRev`):界面看见这张
-	 * 牌时房间是第几代,取自协调器快照的 `floorEpoch`。对不上就拒绝并回报当前代数。
-	 */
-	revokeCollabRoomLease: (
-		roomSessionId: string,
-		leaseId: string,
-		expectedEpoch: number,
-	) => Promise<import("@shared/ipc.js").CollabRoomRevokeLeaseResponse>;
-	/** 协调器状态条的冷启动读取;实时更新走 'collab:coordinator-changed' 会话事件。 */
-	getCollabCoordinator: (
-		roomSessionId: string,
-	) => Promise<import("@shared/ipc.js").CollabCoordinatorGetResponse>;
-	/**
-	 * Agent 活动快照的冷启动补水(D8 观测体系 §3.1);实时更新走
-	 * 'collab:agent-changed' 会话事件。`agentIds` 缺席 = 此刻开着心智循环的全部。
-	 * desktop-only。
-	 */
-	getCollabAgentActivity: (
-		agentIds?: string[],
-	) => Promise<import("@shared/ipc.js").CollabAgentActivityGetResponse>;
-	/**
-	 * 调度时间轴的尾读(D8 观测体系 §3.3)——「刚才为什么是那样」的读口。
-	 * **只读**,新在前;读的是账文件,不经运行时。desktop-only。
-	 */
-	getCollabSchedulerLog: (
-		roomSessionId: string,
-		options?: { limit?: number; types?: string[] },
-	) => Promise<import("@shared/ipc.js").CollabSchedulerLogTailResponse>;
-	/** Team settings (W6): only provided fields change; pmAgentId null clears. */
-	updateCollabRoom: (
-		roomSessionId: string,
-		update: import("@shared/ipc.js").CollabRoomUpdatePatch,
-	) => Promise<import("@shared/ipc.js").CollabRoomUpdateResponse>;
-	/** 清空这间房的对话记忆(含每位成员的执行会话与已读游标、看板卡片)。不可恢复。
-	 *  includeMemberDms 连带成员两两之间的私聊房(跨群共享,须显式勾选)。 */
-	clearCollabRoomHistory: (
-		roomSessionId: string,
-		includeMemberDms?: boolean,
-	) => Promise<import("@shared/ipc.js").CollabRoomClearHistoryResponse>;
-	/**
-	 * 群 folder 的只读列目录(agent-im-chat-ui.md §3.2「文件」块)。folder 的位置
-	 * 只有主进程算得出,所以按房间 id 问。desktop-only。
-	 */
-	listCollabRoomFolder: (
-		roomSessionId: string,
-	) => Promise<import("@shared/ipc.js").CollabRoomFolderListResponse>;
-	/**
-	 * 托管私聊房的 get-or-create(agent-im-dm.md D1)。幂等——同一个 agent 永远同一
-	 * 间房,所以"打开"与"创建"是同一个调用。失败 = 这个 agent 不该有私聊
-	 * (退休 / service / 查无此人)。desktop-only。
-	 */
-	ensureCollabDmRoom: (
-		agentId: string,
-	) => Promise<import("@shared/ipc.js").CollabDmRoomEnsureResponse>;
-	/** IM emoji reaction (W8): toggle semantics, palette-validated in the app layer. */
-	reactToCollabMessage: (
-		roomSessionId: string,
-		messageId: string,
-		emoji: string,
-		actor: import("@shared/ipc.js").ChatMessageReactionActor,
-	) => Promise<import("@shared/ipc.js").CollabMessageReactResponse>;
+	// Collab(多 agent 协作房)—— 十五条 invoke 已整只迁到通用 RPC 通道(P4a,
+	// `@shared/ipc/collab.ts` 的 collabRouter + `@/platform/collab-client` 的
+	// collabApi)。这个域一条推送也没有,所以壳面上什么也不剩。
 	switchSession: (sessionId: string) => Promise<SwitchSessionResponse>;
 	getSession: (sessionId: string) => Promise<SwitchSessionResponse>;
 	deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>;

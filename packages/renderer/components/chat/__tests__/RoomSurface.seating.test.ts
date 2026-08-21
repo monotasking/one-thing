@@ -27,7 +27,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/platform', () => ({
-  platformApi: { emitCommand: vi.fn(), reactToCollabMessage: vi.fn() },
+  platformApi: { emitCommand: vi.fn() },
+}))
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: { messageReact: vi.fn() },
 }))
 
 // 房面只在 workbench 下挂载;这里给排版退让闸(shouldUseSayTypography)喂一份

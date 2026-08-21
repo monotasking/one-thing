@@ -215,7 +215,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useSessionsStore } from '@/stores/sessions'
 import Tooltip from '@/components/common/Tooltip.vue'
-import { platformApi } from '@/platform'
+import { collabApi } from '@/platform/collab-client'
 import type { CollabSchedulerLogEntry } from '@shared/ipc'
 import {
   buildCoordinatorJudgment,
@@ -344,15 +344,11 @@ async function reload(): Promise<void> {
   loading.value = true
   logError.value = ''
   try {
-    const response = await platformApi.getCollabSchedulerLog?.(props.roomSessionId, {
+    const response = await collabApi.schedulerLogTail({
+      roomSessionId: props.roomSessionId,
       limit: ROOM_SCHEDULE_LOG_ROWS * 2,
     })
-    if (!response) {
-      logError.value = '这个宿主读不到调度账本(桌面端专属)。'
-      log.value = []
-      return
-    }
-    if (!response.success) {
+    if (!response?.success) {
       logError.value = response.error || '读不到调度账本。'
       log.value = []
       return

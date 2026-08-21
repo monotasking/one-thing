@@ -7,6 +7,7 @@ import type {
 	SessionGoal,
 } from "@/types";
 import { platformApi } from "@/platform";
+import { collabApi } from "@/platform/collab-client";
 import { getLogger } from "@/services/log";
 import { DEFAULT_AGENT_ID, isColleague } from "@shared/ipc";
 import { isAgentPairDmRoom, isUserDmRoom } from "@onething/runtime/collab";
@@ -1402,18 +1403,18 @@ export const useSessionsStore = defineStore("sessions", () => {
 		sessionId: string,
 		update: import("@shared/ipc.js").CollabRoomUpdatePatch,
 	) {
-		return platformApi.updateCollabRoom(sessionId, update);
+		return collabApi.roomUpdate({ roomSessionId: sessionId, ...update });
 	}
 
 	function setCollabRoomBudgets(
 		sessionId: string,
 		budgets: import("@shared/ipc.js").CollabRoomBudgetsPatch,
 	) {
-		return platformApi.setCollabRoomBudgets(sessionId, budgets);
+		return collabApi.roomSetBudgets({ roomSessionId: sessionId, ...budgets });
 	}
 
 	function setCollabRoomFrozen(sessionId: string, frozen: boolean) {
-		return platformApi.setCollabRoomFrozen(sessionId, frozen);
+		return collabApi.roomSetFrozen({ roomSessionId: sessionId, frozen });
 	}
 
 	/**
@@ -1455,10 +1456,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 		sessionId: string,
 		includeMemberDms?: boolean,
 	) {
-		const response = await platformApi.clearCollabRoomHistory(
-			sessionId,
-			includeMemberDms,
-		);
+		const response = await collabApi.roomClearHistory({
+			roomSessionId: sessionId,
+			...(includeMemberDms ? { includeMemberDms: true } : {}),
+		});
 		if (response?.success) {
 			await loadSessions();
 		}

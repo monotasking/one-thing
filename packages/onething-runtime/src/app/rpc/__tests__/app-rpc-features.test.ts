@@ -44,6 +44,8 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:spaces', 'spaces'],
   // P4a 第二个域:practice。旧线是十条裸 `ipcMain.handle`,没有工厂也没有壳适配。
   ['rpc:practice', 'practice'],
+  // P4a 第三个域:collab。十五条,一条推送都没有 —— 旧的手写 IPC 文件整只删掉。
+  ['rpc:collab', 'collab'],
 ] as const
 
 /**

@@ -21,7 +21,7 @@ function readRendererFile(relativePath: string): string {
 
 const mocks = vi.hoisted(() => ({
   handlers: [] as Array<(envelope: { sessionId: string; event: unknown }) => void>,
-  getCollabCoordinator: vi.fn(async (_roomSessionId: string) => ({ success: false }) as {
+  coordinatorGet: vi.fn(async (_request: { roomSessionId: string }) => ({ success: false }) as {
     success: boolean
     state?: CollabCoordinatorState
   }),
@@ -33,8 +33,14 @@ vi.mock('@/platform', () => ({
       mocks.handlers.push(handler)
       return () => {}
     },
-    getCollabBoard: vi.fn().mockResolvedValue({ success: false }),
-    getCollabCoordinator: (roomSessionId: string) => mocks.getCollabCoordinator(roomSessionId),
+  },
+}))
+
+// collab 域走通用 RPC 通道(P4a):方法名是 router 上的动词,入参是信封。
+vi.mock('@/platform/collab-client', () => ({
+  collabApi: {
+    boardGet: vi.fn().mockResolvedValue({ success: false }),
+    coordinatorGet: (request: { roomSessionId: string }) => mocks.coordinatorGet(request),
   },
 }))
 
@@ -76,8 +82,8 @@ function emitSnapshot(sessionId: string, patch: Partial<CollabCoordinatorState> 
 
 beforeEach(() => {
   mocks.handlers.length = 0
-  mocks.getCollabCoordinator.mockReset()
-  mocks.getCollabCoordinator.mockResolvedValue({ success: false })
+  mocks.coordinatorGet.mockReset()
+  mocks.coordinatorGet.mockResolvedValue({ success: false })
   seq = 0
   setActivePinia(createPinia())
   vi.useFakeTimers()
@@ -228,7 +234,7 @@ describe('collabBoard store: 停止按钮与 hasLiveTurn 的同一格(C4 §1)', 
 
   it('冷启动补水:窗口重载后 GET 一次,停止按钮的账不再丢(每间房只问一次)', async () => {
     const store = useCollabBoardStore()
-    mocks.getCollabCoordinator.mockResolvedValue({
+    mocks.coordinatorGet.mockResolvedValue({
       success: true,
       state: snapshot({ speaking: ['agent-li'], typing: ['agent-li'] }),
     })
@@ -236,13 +242,13 @@ describe('collabBoard store: 停止按钮与 hasLiveTurn 的同一格(C4 §1)', 
     store.ensureCoordinator('room-1')
     await vi.runAllTimersAsync()
 
-    expect(mocks.getCollabCoordinator).toHaveBeenCalledWith('room-1')
+    expect(mocks.coordinatorGet).toHaveBeenCalledWith({ roomSessionId: 'room-1' })
     expect(store.isRoomTurnActive('room-1')).toBe(true)
     expect(store.typingAgents('room-1')).toEqual(['agent-li'])
 
     store.ensureCoordinator('room-1')
     await vi.runAllTimersAsync()
-    expect(mocks.getCollabCoordinator).toHaveBeenCalledTimes(1)
+    expect(mocks.coordinatorGet).toHaveBeenCalledTimes(1)
   })
 })
 

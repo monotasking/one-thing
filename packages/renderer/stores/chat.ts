@@ -1,4 +1,5 @@
 import { platformApi } from "@/platform";
+import { collabApi } from "@/platform/collab-client";
 import { getLogger } from "@/services/log";
 /**
  * Chat Store - Centralized state management for all chat sessions
@@ -2998,12 +2999,19 @@ export const useChatStore = defineStore("chat", () => {
 		emoji: string,
 		actor: ChatMessageReactionActor,
 	) {
-		return platformApi.reactToCollabMessage(
-			String(sessionId),
-			String(messageId),
-			String(emoji),
-			actor,
-		);
+		// `actor` 一路带到 wire 上,但**主进程刻意无视它**并把归属钉死成用户
+		// (表情是归属:一位沉默成员的 emoji 就是它的回答)。参数留着是因为调用点
+		// 读起来该说清"这一下是谁按的",而不是因为它能决定什么。
+		return collabApi.messageReact({
+			roomSessionId: String(sessionId),
+			messageId: String(messageId),
+			emoji: String(emoji),
+			// 从原始值重建:响应式代理过不了结构化克隆(W7 血教训)。
+			actor: {
+				type: String(actor?.type) as "user" | "agent",
+				...(actor?.agentId ? { agentId: String(actor.agentId) } : {}),
+			},
+		});
 	}
 
 	return {

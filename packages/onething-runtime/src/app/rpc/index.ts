@@ -25,6 +25,7 @@
  */
 import { agentsRouter } from '@shared/ipc/agents.js'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
+import { collabRouter } from '@shared/ipc/collab.js'
 import { goalRouter } from '@shared/ipc/goal.js'
 import { logsRouter } from '@shared/ipc/logs.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
@@ -40,6 +41,7 @@ import { trajectoryFeature } from '../features/builtin/trajectory.js'
 import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../features/index.js'
 import { agentsRpcHandlers } from './domains/agents.js'
 import { channelIdentityRpcHandlers } from './domains/channel-identity.js'
+import { collabRpcHandlers } from './domains/collab.js'
 import { goalRpcHandlers } from './domains/goal.js'
 import { logsRpcHandlers } from './domains/logs.js'
 import { markdownRpcHandlers } from './domains/markdown.js'
@@ -87,6 +89,10 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 壳适配」都没有 —— 旧线就是主进程里那十条裸 handle,所以搬完 `@main/ipc/practice.ts`
   // 只剩 PRACTICE_EVENT 的广播注入(router 没有推送面)。
   { id: 'rpc:practice', mount: ctx => { ctx.registerRpcDomain(practiceRouter, practiceRpcHandlers) } },
+  // P4a 第三个域(collab)。与前两个的差别是它**一条推送都没有** —— 看板/协调器/
+  // agent 的实时更新和表情回灌走的是会话事件,不是这个域的通道。所以搬完之后
+  // `@main/ipc/collab.ts` 整只删掉,而不是像 spaces / practice 那样留一条广播。
+  { id: 'rpc:collab', mount: ctx => { ctx.registerRpcDomain(collabRouter, collabRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //
