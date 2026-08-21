@@ -29,6 +29,7 @@ import { goalRouter } from '@shared/ipc/goal.js'
 import { logsRouter } from '@shared/ipc/logs.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
+import { practiceRouter } from '@shared/ipc/practice.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { spacesRouter } from '@shared/ipc/spaces.js'
@@ -44,6 +45,7 @@ import { logsRpcHandlers } from './domains/logs.js'
 import { markdownRpcHandlers } from './domains/markdown.js'
 import { modelsRpcHandlers } from './domains/models.js'
 import { permissionGrantsRpcHandlers } from './domains/permission-grants.js'
+import { practiceRpcHandlers } from './domains/practice.js'
 import { promptsRpcHandlers } from './domains/prompts.js'
 import { providersRpcHandlers } from './domains/providers.js'
 import { spacesRpcHandlers } from './domains/spaces.js'
@@ -81,6 +83,10 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // P0.3:第一个从「手写 IPC 工厂 + 壳适配」整只搬过来的域(spaces)。搬完之后
   // server 侧一行没改 —— 域挂上 router 就经 `POST /api/rpc` 自动可达。
   { id: 'rpc:spaces', mount: ctx => { ctx.registerRpcDomain(spacesRouter, spacesRpcHandlers) } },
+  // P4a 第二个域(practice)。与 spaces 同一条搬法,差别只在它连「手写 IPC 工厂 +
+  // 壳适配」都没有 —— 旧线就是主进程里那十条裸 handle,所以搬完 `@main/ipc/practice.ts`
+  // 只剩 PRACTICE_EVENT 的广播注入(router 没有推送面)。
+  { id: 'rpc:practice', mount: ctx => { ctx.registerRpcDomain(practiceRouter, practiceRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

@@ -7,6 +7,7 @@ import type {
   PracticeSnapshot,
 } from '@/types'
 import { platformApi } from '@/platform'
+import { practiceApi } from '@/platform/practice-client'
 import { playPracticeCue } from '@/services/practice-sound'
 
 /**
@@ -48,8 +49,8 @@ export const usePracticeStore = defineStore('practice', () => {
     unsubscribe = platformApi.onPracticeEvent(handleEvent)
     try {
       const [state, cfg] = await Promise.all([
-        platformApi.practiceGetState(),
-        platformApi.practiceGetConfig(),
+        practiceApi.getState({}),
+        practiceApi.getConfig({}),
       ])
       snapshot.value = state.snapshot
       config.value = cfg.config
@@ -59,39 +60,39 @@ export const usePracticeStore = defineStore('practice', () => {
   }
 
   async function startKegel(): Promise<void> {
-    const { snapshot: next } = await platformApi.practiceStart({ kind: 'kegel' })
+    const { snapshot: next } = await practiceApi.start({ kind: 'kegel' })
     snapshot.value = next
     lastRunningKind = 'kegel'
   }
 
   async function startPomodoro(category: string, label?: string): Promise<void> {
-    const { snapshot: next } = await platformApi.practiceStart({ kind: 'pomodoro', category, label })
+    const { snapshot: next } = await practiceApi.start({ kind: 'pomodoro', category, label })
     snapshot.value = next
     lastRunningKind = 'pomodoro'
   }
 
   async function pause(): Promise<void> {
-    snapshot.value = (await platformApi.practicePause()).snapshot
+    snapshot.value = (await practiceApi.pause({})).snapshot
   }
 
   async function resume(): Promise<void> {
-    snapshot.value = (await platformApi.practiceResume()).snapshot
+    snapshot.value = (await practiceApi.resume({})).snapshot
   }
 
   async function stop(): Promise<void> {
-    snapshot.value = (await platformApi.practiceStop()).snapshot
+    snapshot.value = (await practiceApi.stop({})).snapshot
   }
 
   /** Aborts the session without settling a ledger record. */
   async function cancel(): Promise<void> {
-    snapshot.value = (await platformApi.practiceStop({ discard: true })).snapshot
+    snapshot.value = (await practiceApi.stop({ discard: true })).snapshot
   }
 
   async function saveConfig(partial: {
     kegel?: Partial<PracticeConfig['kegel']>
     pomodoro?: Partial<PracticeConfig['pomodoro']>
   }): Promise<void> {
-    const { config: next } = await platformApi.practiceSetConfig({ config: partial })
+    const { config: next } = await practiceApi.setConfig({ config: partial })
     config.value = next
   }
 
@@ -102,7 +103,7 @@ export const usePracticeStore = defineStore('practice', () => {
     durationMin?: number
     note?: string
   }): Promise<PracticeLedgerRecord> {
-    const { record } = await platformApi.practiceLog({
+    const { record } = await practiceApi.log({
       name: input.name,
       source: 'manual',
       note: input.note,

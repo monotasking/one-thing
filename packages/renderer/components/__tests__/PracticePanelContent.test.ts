@@ -19,9 +19,9 @@ const practiceStore = vi.hoisted(() => ({
   startKegel: vi.fn(),
 }))
 
-const platformApi = vi.hoisted(() => ({
-  practiceSummary: vi.fn(),
-  practiceRecent: vi.fn(),
+const practiceApi = vi.hoisted(() => ({
+  summary: vi.fn(),
+  recent: vi.fn(),
 }))
 
 vi.mock('@/stores/practice', async () => {
@@ -35,7 +35,7 @@ vi.mock('@/stores/practice', async () => {
   return { usePracticeStore: () => practiceStore }
 })
 
-vi.mock('@/platform', () => ({ platformApi }))
+vi.mock('@/platform/practice-client', () => ({ practiceApi }))
 
 function bucket(key: string, records: number) {
   return {
@@ -86,10 +86,10 @@ describe('PracticePanelContent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     practiceStore.isRunning = false
-    platformApi.practiceSummary.mockResolvedValue({
+    practiceApi.summary.mockResolvedValue({
       buckets: [bucket('wk-11', 1), bucket('wk-12', 2), bucket('wk-13', 3)],
     })
-    platformApi.practiceRecent.mockResolvedValue({ records: RECORDS })
+    practiceApi.recent.mockResolvedValue({ records: RECORDS })
   })
 
   it('draws a 3px progress bar and a right-aligned mono count for ratio records', async () => {
@@ -164,14 +164,14 @@ describe('PracticePanelContent', () => {
 
   it('pulls a separate day summary when the ledger is on a coarser granularity', async () => {
     const wrapper = await mountPanel()
-    expect(platformApi.practiceSummary).toHaveBeenCalledTimes(1)
+    expect(practiceApi.summary).toHaveBeenCalledTimes(1)
 
     const pills = wrapper.findAll('.segmented-pill-item')
     await pills[2].trigger('click')
 
     await vi.waitFor(() => {
-      expect(platformApi.practiceSummary).toHaveBeenCalledWith({ granularity: 'month' })
-      expect(platformApi.practiceSummary).toHaveBeenCalledWith({ granularity: 'day' })
+      expect(practiceApi.summary).toHaveBeenCalledWith({ granularity: 'month' })
+      expect(practiceApi.summary).toHaveBeenCalledWith({ granularity: 'day' })
     })
   })
 })

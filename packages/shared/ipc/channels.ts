@@ -400,16 +400,8 @@ export const IPC_CHANNELS = {
 	SCRATCHPAD_CHANGED: "scratchpad:changed",
 
 	// Practice (kegel / pomodoro / exercise log)
-	PRACTICE_START: "practice:start",
-	PRACTICE_PAUSE: "practice:pause",
-	PRACTICE_RESUME: "practice:resume",
-	PRACTICE_STOP: "practice:stop",
-	PRACTICE_GET_STATE: "practice:get-state",
-	PRACTICE_LOG: "practice:log",
-	PRACTICE_SUMMARY: "practice:summary",
-	PRACTICE_RECENT: "practice:recent",
-	PRACTICE_GET_CONFIG: "practice:get-config",
-	PRACTICE_SET_CONFIG: "practice:set-config",
+	// 十条请求/响应通道已整只迁到通用 RPC 通道(P4a,`@shared/ipc/practice.ts`
+	// 的 practiceRouter)。只剩这一条**推送** —— router 没有推送面。
 	PRACTICE_EVENT: "practice:event",
 
 	// Evals (prompt evaluation) related

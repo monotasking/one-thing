@@ -42,6 +42,8 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:permission-grants', 'permissionGrants'],
   // P0.3:第一个从手写 IPC 工厂整只搬过来的域。
   ['rpc:spaces', 'spaces'],
+  // P4a 第二个域:practice。旧线是十条裸 `ipcMain.handle`,没有工厂也没有壳适配。
+  ['rpc:practice', 'practice'],
 ] as const
 
 /**

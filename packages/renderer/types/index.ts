@@ -1267,17 +1267,9 @@ export interface ElectronAPI {
 	 * 对外方法名由 `platformApi` 上的 router client 提供。
 	 */
 	rpcInvoke: (request: RpcRequest) => Promise<RpcResponse>;
-	// Practice (kegel / pomodoro / exercise log)
-	practiceStart: (request: PracticeStartRequest) => Promise<PracticeStateResponse>;
-	practicePause: () => Promise<PracticeStateResponse>;
-	practiceResume: () => Promise<PracticeStateResponse>;
-	practiceStop: (request?: PracticeStopRequest) => Promise<PracticeStateResponse>;
-	practiceGetState: () => Promise<PracticeStateResponse>;
-	practiceLog: (request: PracticeLogRequest) => Promise<PracticeLogResponse>;
-	practiceSummary: (request: PracticeSummaryRequest) => Promise<PracticeSummaryResult>;
-	practiceRecent: (request: PracticeRecentRequest) => Promise<PracticeRecentResponse>;
-	practiceGetConfig: () => Promise<PracticeConfigResponse>;
-	practiceSetConfig: (request: PracticeSetConfigRequest) => Promise<PracticeConfigResponse>;
+	// Practice (kegel / pomodoro / exercise log) —— 十条 invoke 已整只迁到通用
+	// RPC 通道(P4a,`@shared/ipc/practice.ts` 的 practiceRouter +
+	// `@/platform/practice-client` 的 practiceApi)。壳面只剩推送订阅。
 	onPracticeEvent: (callback: (payload: PracticeEventPayload) => void) => () => void;
 
 	/**

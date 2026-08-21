@@ -226,7 +226,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { PracticeLedgerRecord, PracticeSummaryGranularity, PracticeSummaryResult } from '@/types'
-import { platformApi } from '@/platform'
+import { practiceApi } from '@/platform/practice-client'
 import { usePracticeStore } from '@/stores/practice'
 import FilterSearchInput from '@/components/common/FilterSearchInput.vue'
 import SegmentedPill from '@/components/common/SegmentedPill.vue'
@@ -445,11 +445,11 @@ const statusText = computed(() => {
 async function refresh(): Promise<void> {
   try {
     const [summaryResult, dayResult, recentResult] = await Promise.all([
-      platformApi.practiceSummary({ granularity: granularity.value }),
+      practiceApi.summary({ granularity: granularity.value }),
       granularity.value === 'day'
         ? Promise.resolve(null)
-        : platformApi.practiceSummary({ granularity: 'day' }),
-      platformApi.practiceRecent({ days: 7, limit: 10 }),
+        : practiceApi.summary({ granularity: 'day' }),
+      practiceApi.recent({ days: 7, limit: 10 }),
     ])
     summary.value = summaryResult
     daySummary.value = dayResult ?? summaryResult

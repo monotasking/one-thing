@@ -1,8 +1,6 @@
 import type {
 	CreateSessionOptions,
 	AppSettings,
-	PracticeConfigResponse,
-	PracticeSummaryRequest,
 	ACPAgentConfig,
 	GatewayStartRequest,
 	GatewayWechatAddAccountRequest,
@@ -1085,34 +1083,10 @@ const webApi = {
 	deleteTodoPlanNote: todoPlanApi.delete,
 	revealTodoPlanDirectory: () => todoPlanApi.revealDirectory({}),
 
-	// Practice runs on the Electron main process; the web build has no engine.
-	// Values mirror ONETHING_PRACTICE_DEFAULT_CONFIG (no value import: the
-	// runtime practice module pulls node:fs into the bundle).
-	practiceStart: async () => ({ snapshot: { status: "idle" as const } }),
-	practicePause: async () => ({ snapshot: { status: "idle" as const } }),
-	practiceResume: async () => ({ snapshot: { status: "idle" as const } }),
-	practiceStop: async () => ({ snapshot: { status: "idle" as const } }),
-	practiceGetState: async () => ({ snapshot: { status: "idle" as const } }),
-	practiceLog: async () => {
-		throw new Error("Practice logging is not supported in the web build");
-	},
-	practiceSummary: async (request: PracticeSummaryRequest) => ({
-		granularity: request.granularity,
-		buckets: [],
-	}),
-	practiceRecent: async () => ({ records: [] }),
-	practiceGetConfig: async (): Promise<PracticeConfigResponse> => ({
-		config: {
-			kegel: { holdSec: 10, relaxSec: 5, reps: 20, sets: 3, setRestSec: 60, sound: true },
-			pomodoro: { minutes: 25, categories: ["学习", "看视频", "写作", "其他"] },
-		},
-	}),
-	practiceSetConfig: async (): Promise<PracticeConfigResponse> => ({
-		config: {
-			kegel: { holdSec: 10, relaxSec: 5, reps: 20, sets: 3, setRestSec: 60, sound: true },
-			pomodoro: { minutes: 25, categories: ["学习", "看视频", "写作", "其他"] },
-		},
-	}),
+	// practice 域已整只迁到通用 RPC 通道（P4a）—— 从前这里是一排**说谎的桩**
+	// （永远 idle 的 snapshot、直接 throw 的 log、空桶的 summary），web 端现在经
+	// `POST /api/rpc` 拿的是真实引擎状态。`onPracticeEvent` 留在下面的推送面：
+	// router 没有推送面，web 壳也确实收不到 PRACTICE_EVENT。
 	onPracticeEvent: () => () => {},
 
 	// 插件仅在 Electron 桌面宿主执行(设计文档 §6 已拍板的方案 A):apps/server

@@ -42,18 +42,7 @@ import type {
 	SearchWindowShownPayload,
 	TodoPlanWindowActionRequest,
 	TodoPlanWindowDragRequest,
-	PracticeConfigResponse,
 	PracticeEventPayload,
-	PracticeLogRequest,
-	PracticeLogResponse,
-	PracticeRecentRequest,
-	PracticeRecentResponse,
-	PracticeSetConfigRequest,
-	PracticeStartRequest,
-	PracticeStateResponse,
-	PracticeStopRequest,
-	PracticeSummaryRequest,
-	PracticeSummaryResult,
 	PermissionMode,
 	InteractionRespondRequest,
 	AbortPluginRequestResult,
@@ -586,36 +575,8 @@ const electronAPI = {
 	// 实时变化仍从 session:goal-updated 事件来。──────────────────
 
 	// ── Practice (kegel / pomodoro / exercise log) ──────────────
-	practiceStart: (request: PracticeStartRequest): Promise<PracticeStateResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_START, request),
-
-	practicePause: (): Promise<PracticeStateResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_PAUSE),
-
-	practiceResume: (): Promise<PracticeStateResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_RESUME),
-
-	practiceStop: (request?: PracticeStopRequest): Promise<PracticeStateResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_STOP, request),
-
-	practiceGetState: (): Promise<PracticeStateResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_GET_STATE),
-
-	practiceLog: (request: PracticeLogRequest): Promise<PracticeLogResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_LOG, request),
-
-	practiceSummary: (request: PracticeSummaryRequest): Promise<PracticeSummaryResult> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_SUMMARY, request),
-
-	practiceRecent: (request: PracticeRecentRequest): Promise<PracticeRecentResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_RECENT, request),
-
-	practiceGetConfig: (): Promise<PracticeConfigResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_GET_CONFIG),
-
-	practiceSetConfig: (request: PracticeSetConfigRequest): Promise<PracticeConfigResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_SET_CONFIG, request),
-
+	// 十条 invoke 已整只迁到通用 RPC 通道（P4a，`practiceRouter`）。留在这里的
+	// 只有推送面：router 没有推送面，PRACTICE_EVENT 仍走这条订阅。
 	onPracticeEvent: (callback: (payload: PracticeEventPayload) => void) => {
 		const listener = (_event: IpcRendererEvent, payload: PracticeEventPayload) => callback(payload);
 		ipcRenderer.on(IPC_CHANNELS.PRACTICE_EVENT, listener);
