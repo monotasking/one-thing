@@ -35,11 +35,6 @@ import { getLogger } from '../logging/index.js'
 const log = getLogger('engine.stream')
 
 
-export type {
-  CoreStreamEngineOptions,
-  CoreStreamEngineRuntime,
-} from '@onething/core/engine'
-
 let streamEngine: StreamEngine | null = null
 let onethingRuntime: MainOnethingRuntime | null = null
 
@@ -141,9 +136,6 @@ export function shutdownStreamEngine(): void {
   }
   onethingRuntime = null
 }
-
-// Re-export for direct use
-export type { StreamEngine } from './stream-engine-bound.js'
 
 function ensurePersistentGatewaySession(sessionId: string): void {
   if (!sessionId.startsWith('gateway:') || store.getSession(sessionId)) return

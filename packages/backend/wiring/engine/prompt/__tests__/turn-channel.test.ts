@@ -41,7 +41,7 @@ vi.mock('../../../variables/index.js', () => ({
 }))
 
 const { buildPrompt } = await import('../system-prompt.js')
-const { SessionTurnContext } = await import('../session-turn-context.js')
+const { SessionTurnContext } = await import('@onething/runtime/engine/session-turn-context.wiring')
 const { buildMessageContent } = await import('../../stream/message-helpers.js')
 
 const SESSION = 'sess-1'

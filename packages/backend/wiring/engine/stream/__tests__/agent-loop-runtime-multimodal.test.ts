@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAgentLoop } from '@onething/core/agent-loop'
-import { PendingMessageQueue } from '../message-queue.js'
+import { PendingMessageQueue } from '@onething/core/engine'
 import {
   createDefaultSettings,
 } from '@shared/defaults/settings.js'
@@ -14,9 +14,9 @@ import type {
   AgentTurnRequest,
   AgentTurnStreamEvent,
 } from '@onething/core/agent-loop'
-import type { BuildPromptOptions } from '../../prompt/index.js'
+import type { BuildPromptOptions } from '../../prompt/system-prompt.js'
 import type { HistoryMessage } from '../message-helpers.js'
-import type { IPCEmitter } from '../ipc-emitter.js'
+import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
 import type { StreamContext, StreamProviderConfig, StreamSender } from '../stream-processor.js'
 
 interface SeenRequest {
@@ -188,7 +188,7 @@ vi.mock('../../../wiring/tools/index.js', () => ({
   setInitContext: mocks.setInitContext,
 }))
 
-vi.mock('../../prompt/index.js', () => ({
+vi.mock('../../prompt/system-prompt.js', () => ({
   buildPrompt: vi.fn(async (input) => {
     mocks.promptInputs.push(input)
     return {

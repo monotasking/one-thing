@@ -43,7 +43,7 @@ import type { PluginSkillRootProvider } from '@onething/runtime/skills/plugin-ro
 import type {
   PluginPromptContext,
   PluginPromptContextProvider,
-} from '../engine/prompt/plugin-context.js'
+} from '@onething/runtime/prompts/plugin-context.wiring'
 import type {
   BeforeContextCompactContext,
   BeforeContextCompactHook,

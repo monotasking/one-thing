@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   OrderedSideEffectQueue,
   needsOrderedSideEffectGate,
-} from '../stream/tool-execution-order'
+} from '@onething/core/agent-loop'
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void

@@ -1148,6 +1148,31 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
   验收:typecheck 0、全量(worktree)与 pristine HEAD 逐条相同、boundary 0、battery 264/0 两连绿(第一次 2 条 steering
   失配为并发抖动:pristine 同 worktree 绿、带改动复跑两次绿)、build/server:build 绿。遗留:`bindStatic` 成死码(保留公开面)。
   **下一步 A2**:10 条依赖端口化 + `backend/engine` → `wiring/engine` + I2 10 对改名 + 6 门面删。
+- **A2a 落地记录(08-21)**:`backend/engine` 整目录 `git mv` → `backend/wiring/engine`(100 文件;268 处相对说明符按
+  "移动前后绝对路径映射"重算而非盲加 `../`,脚本另有 9 处尾斜杠目录字面量误命中需人工还原——**这类批量改写必须人工过 diff**);
+  `StreamEngine` → `runtime/src/engine/stream-engine.ts` `ProductStreamEngine`(零 backend 依赖、不带 `.wiring`:命令面
+  结构化重声明 `ProductSendMessageCommand` 等,不需要 `@shared/ipc`);**五个可选端口**(`runtime/src/engine/ports.ts`):
+  `router.route` / `roomIngress.{isRoomSession,isCoordinatorDrivenSession,handleRoomSendMessage}` /
+  `pluginIntercept.postReply` / `agentBinding.{resolveModelForSession,resolvePermissionDeclaration}` / `steeringDelivery.take`,
+  缺席 = 不路由 / 没有房间 / 不回投 / 没有 agent / 追话照旧入队;`turn-principal` 与 `isSystemInternalSource`
+  (`engine/message-sources.ts`,`channel/origin.ts` 再导出)随引擎进 runtime;backend 只留 `wiring/engine/stream-engine-bound.ts`
+  `createBoundStreamEngine` 填端口(单例 `wiring/engine/index.ts`)。两个引擎测试改注入桩端口,不再 mock 三个装配层模块。
+  I1 为空、I2 allowlist 4 条**不变**。验收 typecheck 0 / 11139 绿 / boundary 198 ok 0 / battery 264/0 / 三宿主绿。
+  SEND_MESSAGE:core 派发表 → `ProductStreamEngine.handleSendMessage`(端口)→ super,**跨树 2**。
+  **A2b 清单**:`wiring/engine/` 余 36 件分拣(准 PURE 进 runtime 并按 I2 带角色改名,9–10 对;`stream-engine-runtime.ts`
+  与 `index.ts` 留 wiring)、6 门面删、`channel/origin.ts` 再导出过渡件、`pluginPostInterceptReply` 收窄成 `{steer}`。
+- **A2b 落地记录(08-21/22)**:`wiring/engine` 34 件非测试逐个分拣——**7 件进 runtime**(`compact-file-lists`、
+  `chat-logger-bound`(I2 撞 core → `-bound`)、`ipc-emitter.wiring`(I2 撞 core → `.wiring`;它不是再导出而是
+  `CoreIPCEmitter` 七参实例化,删了会让 7 个消费者各写一遍,故移而不删——与清单的唯一偏离)、`session-turn-context.wiring`、
+  `prompts/plugin-context.wiring`、`triggers/skill-review-state.wiring`),**7 门面删**(`prompt/types`、`prompt/index`、
+  `stream/message-queue`、`tool-execution-order`、`tool-execution-scheduler`、`agent-loop-selection` + executor 里一行再导出),
+  **23 件留 wiring/engine**(每件的脊柱边已列:store / session / events / wiring:providers·agents·collab·skills·goals·
+  toolkit·usage / provider-binding);三项收口(`channel/origin.ts` 再导出删、`pluginPostInterceptReply` 收窄成
+  `PluginInterceptSteerPort {steer}`、`wiring/engine/index.ts` 两条纯转发删);`runtime/agent-loop/selection.ts` 泛型化
+  吃掉装配层薄适配。I1 空、**I2 allowlist 仍 4 条零新增**;exports 零改动;battery 264/0;全量 11139 绿;三宿主绿。
+  **engine 归位四步(C/A1/A2a/A2b)全部落地**:四类三树 → core 内核 + runtime 产品引擎(五端口)+ backend 薄接线;
+  SEND_MESSAGE 8 跳跨 3 树 → 5 跳跨 2 树。遗留:`codex-native-tools`(一条 model-registry 边)、`message-helpers`(4 边,
+  端口化可带走 `resume-history`)、`skill-review-state.wiring` 生产消费者为零可退役。
 
 ### P4 传输面 router 迁移(主线,1–2 周,逐域可暂停;08-21:**P4a 前移到 P1' 之前**)
 

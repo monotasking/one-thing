@@ -313,6 +313,10 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       // P3'c:health / 四个 `*-bound` / `lifecycle.wiring` 的判决路径搬进了产品层,
       // 三棵树一起扫才还是同一条判据。
       path.join(REPO_ROOT, 'packages/onething-runtime/src/plugins'),
+      // P3'e-A2b:`prompt-context` 家族的判决路径(插件提示词 provider 的
+      // 超时/异常记一次失败)随 `prompt/plugin-context.ts` 进了产品层的
+      // `prompts/plugin-context.wiring.ts`,不加这一棵它会被误报成死规则。
+      path.join(REPO_ROOT, 'packages/onething-runtime/src/prompts'),
     ])
 
     /*

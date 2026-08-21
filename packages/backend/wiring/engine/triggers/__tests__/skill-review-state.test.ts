@@ -4,7 +4,7 @@ import {
   clearSkillReviewState,
   getSkillReviewCounter,
   recordSkillReviewCounter,
-} from '../skill-review-state.js'
+} from '@onething/runtime/triggers/skill-review-state.wiring'
 
 function settings(interval?: number): AppSettings {
   return {

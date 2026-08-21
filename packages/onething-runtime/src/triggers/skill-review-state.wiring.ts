@@ -1,3 +1,7 @@
+/**
+ * 角色后缀 `.wiring`(I2,P3'e-A2b):同目录 `skill-review-state.ts` 的
+ * `@shared/ipc` 具体化 —— 把泛型的 `TSettings` 钉成 `AppSettings`,别的什么都不做。
+ */
 import {
   DEFAULT_SKILL_REVIEW_INTERVAL,
   clearSkillReviewState,
@@ -8,7 +12,7 @@ import {
   recordOnethingSkillReviewCounter,
   resetSkillReviewCounter,
   type OnethingSkillReviewCounterInput,
-} from '@onething/runtime/triggers'
+} from './skill-review-state.js'
 import type { AppSettings } from '@shared/ipc.js'
 
 export {

@@ -5,14 +5,14 @@ import {
   applyAgentLoopStreamChunk,
   completeAgentLoopStream,
   runAgentLoopPostResponseHooks,
-  shouldUseAgentLoopStream,
   type AgentLoopExecutorState,
 } from '../agent-loop-executor.js'
+import { shouldUseOnethingAgentLoopStream as shouldUseAgentLoopStream } from '@onething/runtime/agent-loop'
 import { triggerManager } from '../../triggers/index.js'
 import { runAfterAssistantResponseHooks } from '@onething/runtime/plugins/lifecycle.wiring'
 import type { saveMediaImage } from '@onething/runtime/media/save-image'
 import type { BuildAgentLoopStreamRuntimeResult } from '../agent-loop-runtime.js'
-import type { IPCEmitter } from '../ipc-emitter.js'
+import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
 import type { StreamProcessor, StreamSender } from '../stream-processor.js'
 
 type SaveMediaImageInput = Parameters<typeof saveMediaImage>[0]

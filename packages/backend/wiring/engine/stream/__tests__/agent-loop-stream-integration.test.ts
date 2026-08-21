@@ -20,7 +20,7 @@ import { Catalog, Intent, Tool as ToolkitTool } from "@onething/core/toolkit";
 import type { Result, ToolSpec } from "@onething/core/toolkit";
 import { configureToolkitCatalog } from "@onething/runtime/toolkit";
 import type { HistoryMessage } from "../message-helpers.js";
-import type { BuildPromptOptions } from "../../prompt/index.js";
+import type { BuildPromptOptions } from "../../prompt/system-prompt.js";
 import type { StreamSender } from "../stream-processor.js";
 import type {
 	ProviderConfigWithKey,
@@ -231,7 +231,7 @@ vi.mock("../tool-execution.js", () => ({
 	executeToolDirectly: mocks.executeToolDirectly,
 }));
 
-vi.mock("../../prompt/index.js", () => ({
+vi.mock("../../prompt/system-prompt.js", () => ({
 	buildPrompt: mocks.buildPrompt,
 }));
 

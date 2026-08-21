@@ -9,7 +9,7 @@ import {
   WRITE_TOOL_PROMPT,
 } from '@onething/runtime/toolkit'
 import type { BuildPromptContextOptions, PromptRequestMessage } from '../system-prompt.js'
-import { buildPrompt } from '../index.js'
+import { buildPrompt } from '../system-prompt.js'
 
 // Baseline snapshot lock: captures the exact assembled prompt TEXT for a range
 // of scenarios so the single-file refactor can be proven byte-identical.

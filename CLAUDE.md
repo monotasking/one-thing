@@ -520,7 +520,8 @@ Notes:
   skills, todo, AGENTS.md, plugin providers, the variable board (`VariableBoardSource`);
   the `Current date:` line and the `# Work Directory` section are gone (the `datetime`
   and `workdir` variables carry them). `TurnContextLedger` (core, pure) dedupes per block
-  against the visible history and `SessionTurnContext` (app, hooked into the `buildPrompt`
+  against the visible history and `SessionTurnContext` (product layer since P3'e-A2b,
+  `runtime/src/engine/session-turn-context.wiring.ts`, hooked into the `buildPrompt`
   wrapper in `backend/wiring/engine/stream/agent-loop-runtime.ts`) persists the delta on the message
   as `ChatMessage.turnContext`, so a rebuild replays identical bytes.
 - Media library: drag-and-drop ingest and export run over `media:ingest-files` /
@@ -651,6 +652,8 @@ packages/onething-runtime/src/ # PRODUCT layer ('@onething/runtime')
 │   │                          # (tools/ = pure modules only since R4b: sandbox, bash, edit engine, …)
 │   ├── engine/                # ProductStreamEngine(路由/房间闸/插件旁路/agent 绑定)
 │   │                          # + ports.ts(五个可选端口)/ turn-principal / message-sources
+│   │                          # + P3'e-A2b:compact-file-lists / chat-logger-bound /
+│   │                          # ipc-emitter.wiring / session-turn-context.wiring
 │   ├── mcp/  acp/  external-agents/  files/  search/  usage/  evals/  headless/  …
 │   └── stream-sender.ts       # 命令目标(sender)形状:产品层的公开类型
 │
@@ -667,12 +670,15 @@ packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared 
 │   ├── features/  utils/      # feature mounts (self-evolution, trajectory…); ripgrep/fuzzy/wildcard
 │   ├── provider-binding/      # bound-fetch / request-dump / ai-settings-compose —— 把 runtime
 │   │                          # provider 绑到设置缓存与日志的三件脊柱件(P3'b-B 从 providers/ 改名)
-│   ├── wiring/engine/         # 引擎的宿主接线(P3'e-A2a):stream-engine-bound.ts(端口装配)、
-│   │   │                      # stream-engine-runtime.ts(12 槽)、index.ts(单例与生命周期)
-│   │   ├── stream/            # stream-executor, stream-processor, tool-execution(+scheduler,
-│   │   │                      # +order), tool-orchestrator, agent-loop-*, message-helpers,
-│   │   │                      # provider-helpers, resume-history, image-generation/stream
-│   │   ├── prompt/            # prompt building & management
+│   ├── wiring/engine/         # 引擎的宿主接线(P3'e-A2a/A2b):stream-engine-bound.ts(端口装配)、
+│   │   │                      # stream-engine-runtime.ts(12 槽)、index.ts(单例与生命周期);
+│   │   │                      # 余下 23 件每一件都吃脊柱(store/session/events/wiring/<d>),
+│   │   │                      # 不吃的已进 runtime(见下),纯再导出门面已删
+│   │   ├── stream/            # stream-executor, stream-processor, tool-execution,
+│   │   │                      # tool-orchestrator, agent-loop-{executor,runtime}, message-helpers,
+│   │   │                      # provider-helpers, resume-history, image-generation/stream,
+│   │   │                      # history-shadow, session-event-recorder, codex-native-tools
+│   │   ├── prompt/            # system-prompt(desktopPromptComposer)+ system-prompt-snapshot
 │   │   └── triggers/          # post-chat triggers
 │   └── wiring/<domain>/       # 薄接线:acp agent-loop agents auth collab deeplink external-agents
 │                              # goals headless(HeadlessBackend) interaction

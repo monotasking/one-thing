@@ -6,6 +6,12 @@ import type {
   ResolvedIdentity,
 } from '@shared/ipc.js'
 
+/**
+ * 「什么是 system-internal」的定义住在产品层(`runtime/src/engine/message-sources.ts`,
+ * P3'e-A2a):引擎本体归位之后,路由旁路与 principal 铸造两处判据都在那边,而判据
+ * 本身零依赖。这里只**用**它(`isSystemInternalOrigin` 是 origin 形状的那一层),
+ * 不再原样再导出 —— 想要那些常量/构造器的调用点直接读产品层(P3'e-A2b)。
+ */
 import { isSystemInternalSource } from '@onething/runtime/engine/message-sources'
 
 export const LOCAL_CLIENT_USER_ID = 'local-owner'
@@ -70,20 +76,6 @@ export function sanitizeRendererOrigin(command: Record<string, unknown>): Messag
     ? createVoiceOrigin()
     : createDesktopOrigin({ source })
 }
-
-/**
- * 「什么是 system-internal」的定义住在产品层(`runtime/src/engine/message-sources.ts`,
- * P3'e-A2a):引擎本体归位之后,路由旁路与 principal 铸造两处判据都在那边,而判据
- * 本身零依赖。这里原样再导出,所以 `channel/origin.js` 仍是装配层读它的那个门。
- */
-export {
-  SYSTEM_INTERNAL_MESSAGE_SOURCES,
-  PLUGIN_MESSAGE_SOURCE_PREFIX,
-  pluginMessageSource,
-  TASK_MESSAGE_SOURCE_PREFIX,
-  taskMessageSource,
-  isSystemInternalSource,
-} from '@onething/runtime/engine/message-sources'
 
 /**
  * System-internal injections persist an origin so the renderer can fold

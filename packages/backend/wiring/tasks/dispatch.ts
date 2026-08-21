@@ -61,7 +61,7 @@ import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import { getEventBus } from '../../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
-import { taskMessageSource } from '../../channel/origin.js'
+import { taskMessageSource } from '@onething/runtime/engine/message-sources'
 import { deliverInternalMessage } from '../plugins/sessions.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'

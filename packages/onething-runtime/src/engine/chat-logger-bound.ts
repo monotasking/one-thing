@@ -1,4 +1,10 @@
 /**
+ * 角色后缀 `-bound`(I2,P3'e-A2b):它与 `packages/core/engine/chat-logger.ts` 同概念
+ * 两半 —— core 那半出纯函数(形状分析),这一半把结果**绑到进程级 logger 单例**上。
+ * 同名会让搜 `chat-logger.ts` 的人拿到两个结果且看不出哪个是契约,所以进产品层的
+ * 这一半按角色改名。
+ */
+/**
  * 历史消息形状的诊断记录(logging §9.2.3)。
  *
  * 这个文件曾经是「chat 请求的全套 console 渲染」——请求起止、逐轮计时、续轮消息、
@@ -16,7 +22,7 @@ import {
   type CoreChatLogMessageShape,
   type CoreChatLogValue,
 } from '@onething/core/engine'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../logging/index.js'
 
 export type ChatLogMessageShape = CoreChatLogMessageShape
 

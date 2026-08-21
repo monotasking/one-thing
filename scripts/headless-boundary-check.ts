@@ -6611,14 +6611,20 @@ function checkRuntimeOwnsAgentLoopRuntimeWiring(): void {
 
 function checkRuntimeOwnsAgentLoopSelection(): void {
   const runtimeFile = 'packages/onething-runtime/src/agent-loop/selection.ts'
-  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/agent-loop-selection.ts')
+  // P3'e-A2b 删掉了装配层那个换名薄适配(`wiring/engine/stream/agent-loop-selection.ts`,
+  // 28 行、只把三个 `Onething*` 符号改回短名):调用点直接读产品层。所以这条断言
+  // 从「门面必须在」翻成「门面**回来**才算红」—— 它一旦重新出现,就说明有人又在
+  // 装配层复制了一份选路判据。
+  const retiredFacade = 'packages/backend/wiring/engine/stream/agent-loop-selection.ts'
   const lines = [
     ...(!fs.existsSync(path.join(root, runtimeFile))
       ? [`${runtimeFile}: missing runtime-owned onething agent-loop stream selection`]
       : []),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_AGENT_LOOP_SELECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/wiring/engine/stream/agent-loop-selection.ts: missing Electron selection facade']),
+    ...(fs.existsSync(path.join(root, retiredFacade))
+      ? [`${retiredFacade}: retired selection facade came back (P3'e-A2b)`]
+      : []),
+    ...matchingLines(path.join(root, 'packages/backend/wiring/engine/prompt/system-prompt-snapshot.ts'),
+      MAIN_AGENT_LOOP_SELECTION_FORBIDDEN_PATTERNS),
   ]
 
   assertNoMatches('packages/onething-runtime owns onething agent-loop stream selection', lines)

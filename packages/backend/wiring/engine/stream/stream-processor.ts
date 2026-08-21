@@ -11,7 +11,7 @@ import type { ReasoningPlacement } from '@shared/events/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/runtime/mcp/index.wiring'
 import { resolveAIToolName } from '@onething/core/agent-loop'
 import { createEventOnlyEmitter } from '../../../events/event-only-emitter.js'
-import type { PendingMessageQueue } from './message-queue.js'
+import type { PendingMessageQueue } from '@onething/core/engine'
 import type { AgentJsonObject, AgentOutputModality } from '@onething/core/agent-loop'
 import type { AgentRuntimeProviderConfig } from '../../providers/agent-runtime.js'
 import {

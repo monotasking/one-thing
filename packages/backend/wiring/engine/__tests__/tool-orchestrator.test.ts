@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatSession, ToolCall } from '@shared/ipc'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import type { JsonObject } from '@shared/json.js'
-import type { IPCEmitter } from '../stream/ipc-emitter.js'
+import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
 import type { StreamContext, StreamProcessor } from '../stream/stream-processor.js'
 
 const mockBus = {

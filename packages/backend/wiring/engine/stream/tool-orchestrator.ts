@@ -3,7 +3,7 @@ import { getEventBus } from '../../../events/index.js'
 import type { SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
-import type { IPCEmitter } from './ipc-emitter.js'
+import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
 import { executeToolAndUpdate } from './tool-execution.js'
 import {
   coreToolCallSnapshot,

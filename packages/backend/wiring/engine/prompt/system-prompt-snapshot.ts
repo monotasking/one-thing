@@ -27,7 +27,7 @@ import {
 import { getCodexNativeToolsForConfig } from '../stream/codex-native-tools.js'
 import { resolveToolkitSurface } from '@onething/runtime/toolkit'
 import { toolDefinitionFromToolkitTool } from '@onething/runtime/toolkit/catalog-projection.wiring'
-import { resolveAgentLoopStreamRoute } from '../stream/agent-loop-selection.js'
+import { resolveOnethingAgentLoopStreamRoute } from '@onething/runtime/agent-loop'
 import { buildPrompt } from './system-prompt.js'
 import {
   agentSupportsTools,
@@ -140,7 +140,7 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     getSession: id => store.getSession(id),
     getSettings: () => store.getSettings(),
     resolveProvider: resolveProviderForSnapshot,
-    resolveAgentLoopStreamRoute,
+    resolveAgentLoopStreamRoute: resolveOnethingAgentLoopStreamRoute,
     getSkills: getSkillsForSession,
     /*
      * "这一回合模型看得见哪些工具"由 `Surface` 回答(§10.2-④)。

@@ -116,7 +116,7 @@ vi.mock('../stream-engine-runtime.js', async importOriginal => {
   }
 })
 
-vi.mock('../prompt/index.js', () => ({
+vi.mock('../prompt/system-prompt.js', () => ({
   buildPrompt: mocks.buildPrompt,
 }))
 

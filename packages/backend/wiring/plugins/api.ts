@@ -54,7 +54,7 @@ import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
 } from '@onething/runtime/skills/plugin-roots.wiring'
-import { registerPromptContextProvider } from '../engine/prompt/plugin-context.js'
+import { registerPromptContextProvider } from '@onething/runtime/prompts/plugin-context.wiring'
 import {
   registerAfterAssistantResponseHook,
   registerBeforeContextCompactHook,

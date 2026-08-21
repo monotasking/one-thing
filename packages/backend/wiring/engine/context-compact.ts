@@ -28,7 +28,7 @@ import {
   summarizeContextInChunks,
 } from '@onething/core/engine'
 import { buildHistoryMessages } from './stream/message-helpers.js'
-import { collectCompactFileOperations } from './compact-file-lists.js'
+import { collectCompactFileOperations } from '@onething/runtime/engine/compact-file-lists'
 import * as modelRegistry from '../providers/model-registry.js'
 import { getLogger } from '../logging/index.js'
 

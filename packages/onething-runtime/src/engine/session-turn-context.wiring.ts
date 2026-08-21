@@ -1,4 +1,9 @@
 /**
+ * 角色后缀 `.wiring`(P3'e-A2b):形状里嵌着 `@shared/ipc` 的 `ChatMessage` ——
+ * 回合尾块**写在消息上**,那个消息就是跨进程的那一个。逻辑本身零装配依赖
+ * (三个具名端口由装配层填),所以它住产品层。
+ */
+/**
  * `SessionTurnContext` — delivery and persistence for the turn channel.
  *
  * The composer says *what* this turn's blocks are; `TurnContextLedger` says

@@ -28,7 +28,7 @@ import {
   createWriteTool,
 } from '@onething/runtime/toolkit'
 import { createSkillReviewTrigger } from '../skill-review.js'
-import { clearSkillReviewState } from '../skill-review-state.js'
+import { clearSkillReviewState } from '@onething/runtime/triggers/skill-review-state.wiring'
 import type { TriggerContext } from '../index.js'
 
 vi.mock('electron', () => ({

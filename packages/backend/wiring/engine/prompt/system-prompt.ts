@@ -21,7 +21,7 @@ import {
 } from '@onething/runtime/prompts'
 import { toolkitPromptSource } from '@onething/runtime/toolkit/prompt-source'
 import { buildStateVariablesPromptText } from '../../variables/index.js'
-import { pluginPromptSource } from './plugin-context.js'
+import { pluginPromptSource } from '@onething/runtime/prompts/plugin-context.wiring'
 import {
   getMacOSAutomationDocsPath,
 } from '../../../stores/docs-paths.js'
@@ -36,8 +36,11 @@ import {
 } from '@onething/runtime/collab'
 import { collabRoomMembers } from '../../collab/members.js'
 import { collabUserPromptFields } from '../../collab/user-identity.js'
-import type { PromptProviderConfig } from './plugin-context.js'
-import type { PromptActiveProject, PromptKnownProjects } from './types.js'
+import type { PromptProviderConfig } from '@onething/runtime/prompts/plugin-context.wiring'
+import type {
+  CorePromptActiveProject as PromptActiveProject,
+  CorePromptKnownProjects as PromptKnownProjects,
+} from '@onething/core/engine'
 
 export interface BuildPromptContextOptions extends Omit<CoreBuildPromptContextOptions, 'settings' | 'skills' | 'activeProject' | 'knownProjects'> {
   settings?: AppSettings

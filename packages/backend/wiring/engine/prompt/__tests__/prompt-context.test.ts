@@ -8,8 +8,8 @@ import type { BuildPromptContextOptions } from '../system-prompt.js'
 import {
   buildPrompt,
   loadAgentsMdInstructions,
-  registerPromptContextProvider,
-} from '../index.js'
+} from '../system-prompt.js'
+import { registerPromptContextProvider } from '@onething/runtime/prompts/plugin-context.wiring'
 
 const agentStoreMock = vi.hoisted(() => ({
   findAgent: vi.fn(),

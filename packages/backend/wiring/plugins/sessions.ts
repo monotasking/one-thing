@@ -52,7 +52,7 @@ import { sessionReads } from '../../session/reads.js'
 import type { EventBus } from '../../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine-bound.js'
 import { isCollabCoordinatorDrivenSession } from '../collab/ingress.js'
-import { pluginMessageSource } from '../../channel/origin.js'
+import { pluginMessageSource } from '@onething/runtime/engine/message-sources'
 import * as modelRegistry from '../providers/model-registry.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
@@ -301,16 +301,28 @@ export async function pluginSendMessage(
  *  2. **hop 记 0**。N1 的口径里"第一次由插件发起的投递是 1";0 如实表示
  *     "这不是插件发起的链,是对用户输入的即答"。
  */
+/**
+ * 这条投递用得上的引擎能力**只有一个动作**:把文本作为追话交给会话。
+ *
+ * 收窄到这一个动作(P3'e-A2b)而不是整个 `StreamEngine`,是因为调用点在
+ * **引擎内部** —— 让引擎为了回调自己而先把自己整只递进来,是一个会诱人再多用
+ * 一格的循环引用;写成动作端口之后,`stream-engine-bound.ts` 那边的惰性引用
+ * 收在一个箭头函数里,`if (!engine) return` 的空档判断也随之消失。
+ */
+export interface PluginInterceptSteerPort {
+  steer(sessionId: string, content: string, source: string, origin: MessageOrigin): void
+}
+
 export function pluginPostInterceptReply(
   /**
-   * 刻意只要 `streamEngine`,不要整个 `PluginSessionHostDeps`。
+   * 刻意只要 `steer`,不要整个 `PluginSessionHostDeps`。
    *
    * 这条投递不碰事件总线,而调用点在**引擎内部** —— 在那里现取
    * `getEventBus()` 只为把它塞进一个用不上的字段,而它在总线未初始化的宿主上
    * 会抛;那一抛发生在 core 的 try 之外,后果是整条发送 reject。
-   * 依赖收窄成实际用到的那一个,这个失败模式在类型上就不存在了。
+   * 依赖收窄成实际用到的那一个动作,这个失败模式在类型上就不存在了。
    */
-  deps: Pick<PluginSessionHostDeps, 'streamEngine' | 'now'>,
+  deps: PluginInterceptSteerPort & Pick<PluginSessionHostDeps, 'now'>,
   pluginId: string,
   sessionId: string,
   content: string,
@@ -319,7 +331,7 @@ export function pluginPostInterceptReply(
   if (!text) return
   const now = deps.now?.() ?? Date.now()
   const origin = pluginOrigin(pluginId, 0, now)
-  deps.streamEngine.steerMessage(sessionId, text, origin.source, origin)
+  deps.steer(sessionId, text, origin.source, origin)
 }
 
 /* ── 感知快照 ─────────────────────────────────────────────────────────────── */

@@ -1,3 +1,10 @@
+/**
+ * 角色后缀 `.wiring`(I2,P3'e-A2b):与同目录的 `plugin-context.ts` 是同概念两半 ——
+ * 那半是泛型的产品实现(注册表 + 超时 + 收集),这半把它钉成 `@shared/ipc` 的具体
+ * 形状(`AppSettings` / `SkillDefinition` / `PromptContextRole`)并接上**桌面那套
+ * 断路器记账**(每次超时/异常记一次 `promptContext` 失败,成功即清零)。
+ * 只有装配层与别的 `.wiring` 读它;`prompts/index.ts` 刻意不再导出它。
+ */
 import { pluginScope } from '@onething/core/plugins'
 import {
   PluginPromptContextSource,
@@ -11,7 +18,7 @@ import {
   type OnethingPluginPromptContextProvider,
   type OnethingPromptProviderConfig,
   type OnethingPromptProviderConfigValue,
-} from '@onething/runtime/prompts'
+} from './plugin-context.js'
 import type {
   AppSettings,
   PromptContextFragment,
@@ -19,14 +26,14 @@ import type {
   SkillDefinition,
 } from '@shared/ipc.js'
 import type {
-  PromptActiveProject,
-  PromptKnownProjects,
-} from './types.js'
+  CorePromptActiveProject as PromptActiveProject,
+  CorePromptKnownProjects as PromptKnownProjects,
+} from '@onething/core/engine'
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/runtime/plugins/health'
-import { getLogger } from '../../logging/index.js'
+} from '../plugins/health.js'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('engine.prompt')
 

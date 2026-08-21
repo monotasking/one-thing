@@ -23,7 +23,7 @@ import {
 import type { HistoryMessage } from "./message-helpers.js";
 import type { StreamContext, StreamProcessor } from "./stream-processor.js";
 import { createStreamProcessor, resolveToolIdentity } from "./stream-processor.js";
-import type { IPCEmitter } from "./ipc-emitter.js";
+import type { IPCEmitter } from "@onething/runtime/engine/ipc-emitter.wiring";
 import {
 	buildAgentLoopRuntimeFromStreamContext,
 	type BuildAgentLoopStreamRuntimeResult,
@@ -89,7 +89,6 @@ function isCollabSession(sessionId: string): boolean {
 	return kind === "room" || kind === "work" || kind === "agent";
 }
 
-export { shouldUseAgentLoopStream } from "./agent-loop-selection.js";
 
 export interface AgentLoopExecutorTurnState {
 	toolCalls: ToolCall[];
