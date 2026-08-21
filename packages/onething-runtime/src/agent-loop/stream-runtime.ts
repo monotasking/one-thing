@@ -66,7 +66,7 @@ import {
 	type EffectiveAgentProfile,
 } from "../agents/profile.js";
 // 缝 1。目录由装配层通过 `configureToolkitCatalog` 递进来 —— 产品层不许
-// import `@onething/app`。
+// import `@onething/backend`。
 import {
 	resolveToolkitSurface,
 	toolkitAgentSourceTools,
@@ -180,7 +180,7 @@ export interface OnethingAgentLoopGoalHooks {
  * 草稿纸(scratchpad · AI 静默感知)。宿主没接 = 一个字节都不变。
  *
  * 这里只问一句"本 turn 的尾块是什么" —— 纸住在哪、怎么读、超长怎么截,全在
- * 装配层。产品层读不到 `@onething/app`(依赖单向:产品 ← 装配),所以它必须
+ * 装配层。产品层读不到 `@onething/backend`(依赖单向:产品 ← 装配),所以它必须
  * 以回调的形式**注入进来**,而不是被 import 进来。
  */
 export interface OnethingAgentLoopScratchpadHooks {

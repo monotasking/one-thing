@@ -3,7 +3,7 @@
  *
  * 这一层守的是**形状**:枚举本体、非法值降级、以及 `api.ui.notify` 的两种第二参
  * 长相。"响不响"由装配层判(静音 / 限频),那条线在
- * `packages/onething-runtime/src/app/plugins/__tests__/notify-sound.test.ts`。
+ * `packages/backend/plugins/__tests__/notify-sound.test.ts`。
  */
 import { describe, it, expect, vi } from 'vitest'
 import {

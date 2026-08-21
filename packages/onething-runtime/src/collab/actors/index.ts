@@ -5,7 +5,7 @@
  * 房间的账与三道闸(D1 `room-rules.ts`)、发言策略族(D1 `floor-policy.ts`)、
  * agent 的账与举手/drive 组装(D2 `mind-rules.ts`)、mailbox 折叠信封(D2
  * `envelope-fold.ts`)、跨房笔记(D2 `notebook-rules.ts`)。
- * 带 IO 的那一半(落盘、mailbox、宿主端口)在 `@onething/app` 的
+ * 带 IO 的那一半(落盘、mailbox、宿主端口)在 `@onething/backend` 的
  * `collab/actors/`。设计:docs/design/collab-actor-v3.md。
  */
 export {

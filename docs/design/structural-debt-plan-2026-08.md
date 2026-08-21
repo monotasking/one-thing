@@ -669,7 +669,7 @@ P3'a-2 点名的那**一个**解锁点,以及它解锁的东西。收尾批,`src
    collab 最大,单独 commit。
 3. **P3'c plugins 三合一**(单独一批):core 15k / rt 3k / app 5k,core 与 app 同名文件逐个判定"契约还是实现"
    ——契约留 core,实现全部进 `runtime/plugins`,不允许第三处;I2 断言在此批落地。
-4. **P3'd backend 成包**(P3'a-3 收工后重述为现在的形状):`src/app` → `packages/backend`
+4. **P3'd backend 成包**(P3'a-3 收工后重述为现在的形状;**2026-08-21 已落地,记录见下**):`src/app` → `packages/backend`
    (name `@onething/backend`)。**脊柱**(`backend.ts` / `store.ts` / stores / session / events / rpc /
    engine / server / channel / headless / features / logging / providers / collab / plugins / toolkit /
    mcp / music / voice 等 —— 厚孪生在 P3'b 前一律**暂按脊柱处理**)放**包根**;剩余薄接线目录迁
@@ -683,6 +683,109 @@ P3'a-2 点名的那**一个**解锁点,以及它解锁的东西。收尾批,`src
 5. 文档提及(~140 处)只改 CLAUDE.md 与活跃设计文档,历史 audit 不动。
 6. 验收门:`build:check` + `test` + `boundary` 全绿;三条新断言通过;electron / server / web 三宿主冒烟;
    `for d in runtime/src/*/; do test ! -d backend/$d; done` 式的 I1 检查为空。
+
+#### P3'd 落地记录(2026-08-21,`src/app` → `packages/backend` 成包,未提交)
+
+**动作**(全部 `git mv`,rename 检测 100%):
+
+- `packages/onething-runtime/src/app/` → `packages/backend/`(629 文件)。**脊柱进包根**:
+  `backend.ts` / `store.ts` / `types.d.ts` + `engine/ server/ rpc/ stores/ session/ events/
+  channel/ headless/ features/ utils/ __tests__/`,加上 P3'b 待并的 **8 个厚孪生**
+  `collab/ plugins/ providers/ toolkit/ mcp/ music/ voice/ logging/`。
+  **20 个薄接线目录进 `wiring/<d>/`**:acp / agent-loop / agents / auth / deeplink /
+  external-agents / goals / interaction / markdown / permission / project-dirs / scheduler /
+  search / skills / tasks / toc / todo-plan / tools / usage / variables。
+  `utils/`(fuzzy / ripgrep / wildcard)有 4 个调用点(`backend.ts`、`wiring/search/providers.ts`、
+  `server/runtime.ts`、`apps/electron` 的 files IPC),按"不止一两处 → 放包根"留在包根。
+- **`packages/backend/package.json`**:`@onething/backend`,`private` + `type: module`。
+  `exports` **88 条 = 85 条显式 + `"."` + 2 条通配兜底**(`"./*.js"` / `"./*"` → `"./*.ts"`)。
+  85 条是**扫全仓实际 import 说明符集合**生成的(含 `.js` 后缀与 `vi.mock` 字符串),
+  逐条按"`<sub>.ts` 存在 → 指它,否则 `<sub>/index.ts`"解析,**0 条落空**。
+  依赖:`@onething/core` / `@onething/runtime` 写 `"*"`(workspace),第三方按实际静态
+  import 写 6 条(cordis / mcp client / diff / uuid / yaml / zod,版本与根一致,全部 hoist)。
+- **锁文件**:根 `workspaces` 追加 `"packages/backend"`(逐个列,根 deps 里仍然没有任何
+  `@onething/*`);`package-lock.json` 手工补 `packages/backend` 与
+  `node_modules/@onething/backend`(`link:true`)两条记录;`ln -s ../../packages/backend
+  node_modules/@onething/backend`;`bun.lock` 在临时目录(拷 package.json + bun.lock +
+  四个子包 package.json)`bun install --lockfile-only` 生成后拷回,同目录
+  `bun install --frozen-lockfile --dry-run` **不报 frozen**(净增 16 行)。
+- **import 改写 285 处 / 111 文件**:`@onething/app/*` → `@onething/backend/*`(接线的加
+  `wiring/<d>`)。按区:**apps/electron 163、apps/server 14、packages/backend 自引用 63、
+  packages/onething-runtime 12、packages/shared 8、packages/renderer 6、packages/core 3、
+  packages/gateway 3、apps/web 1**,加四个配置文件 9 处。
+- **相对路径层级修正 385 处 / 180 文件**(逐文件按"旧绝对目标 → 新位置"重算,不靠猜):
+  其中 **20 处**原本指向 `runtime/src` 里 app 之外的模块,跨包后改成
+  `@onething/runtime/<sub>` 包说明符(themes / plugins / auth / agent-loop / logging /
+  toolkit 测试桩);其余是 `../x` → `../wiring/x`(或反向 `../../x`)这类同包内层级变化。
+  另有 **10 处非 import 的路径字面量**手工核过并修正:仓库根锚点
+  (`plugins/__tests__/policy.test.ts` 的 `../../../../../..` → `../../../..`、
+  `server/runtime.ts` 读根 `package.json`、两处 `scripts/` 锚点、`sample-plugins` 锚点)、
+  collab golden fixture 的四处跨包锚点、`plugins/__tests__/status.test.ts` 的三处跨包
+  源码路径。沙箱逃逸测试里的 `../escape` / `../../etc/passwd` 这类**临时目录**相对串
+  逐条确认过与仓库布局无关,不动。
+- **alias 表清零**:`onething.aliases.ts` 删掉 `onethingPackageAliases()` 整个函数
+  (242 → 202 → 53 → **38 行**,只剩 `electronHostAliases`),`electron.vite.config.ts`
+  (main + preload)/ `vitest.config.ts` / `apps/server/vite.config.ts` 删掉对它的
+  import 与 spread;`tsconfig.json` 删 `@onething/app` 两条 paths;
+  `tsconfig.node.json` 的 include 补 `packages/backend/**/*`;
+  `packages/onething-runtime/package.json` 删 `"./app"` / `"./app/*"` 两条 exports(92 → 90)。
+- **checker / 脚本 / 测试**:
+  - `scripts/headless-boundary-check.ts` **224 处路径串**批量改指(接线的带 `wiring/<d>`),
+    另有 6 处注释重写。`checkRuntimeHostBoundary` 的 `appRoot`(子目录前缀)改成
+    **两棵树遍历 + `backendRoot` 判据**(语义不变:backend 包可 `@shared/ipc` + cordis,
+    禁 electron / `@onething/electron-host` / `@main` / `@preload`);
+    `checkRuntimeWiringModulesStayAtTheEdge` 的 appRoot 过滤直接删掉(backend 已不在
+    被遍历的树里)。`APP_ASSEMBLY_FORBIDDEN_PATTERNS` 等名字保留。
+  - **两条 check 因为拆包而暴露了旧口子,各修一次**:①「Electron preload build must resolve
+    onething package aliases」守的是一张已经不存在的表 —— 按 P1' 的先例退役,改守剩下的
+    `electronHostAliases`;②「plugin logic stays out of the host assembly tree」原本是**行级**
+    判据且**相对 import 整行免检**,于是同一个文件里顺手写的 `../../../plugins/x.js`(产品层)
+    也免检了;拆包把这些相对写法逼成包说明符,行级判据当场判红 6 个文件。改成**文件级**:
+    先问"这个文件 import 了装配层模块吗"(是 → 它测的是接线,住这里是对的),
+    再对**纯产品层**的停车文件报红 —— 这正是这条规则一直想说、而相对路径口子没让它说出口
+    的那句话。按新判据只剩 `plugins/__tests__/ui-slots.test.ts` 一个真·停车文件
+    (只 import vitest + core + `runtime/plugins/plugin-list`),**搬到
+    `runtime/src/plugins/__tests__/`** 并改成相对 import。
+  - `scripts/session-check.mjs`:白名单两条路径改指,扫描根补 `packages/backend/`
+    (不补就等于把整个后端从棘轮里摘出去)。
+  - `scripts/log-check.mjs`:`ROOTS` 补 `packages/backend`(同上),补完仍是 4。
+  - `scripts/transport-gate.mjs`:`SHELL_FILES` 的 http.ts 路径改指;
+    `docs/audit/transport-baseline-2026-08-14.txt` 里 `lines:` 键名**手工改名、数值不变**,
+    并在文件头注释块加了一行说明这是 P3'd 的路径改名而非收紧/放松。
+  - `packages/core/__tests__/architecture-boundaries.test.ts`:「产品层不得 import 装配层」
+    改成 `importOf('@onething/backend')`(旧的那条 `/\/app\/(engine|stores|…)\//` 正则
+    随树消失,连同它的 filter 一起删);**新增 I1 断言**——`packages/backend` 包根目录名
+    ∩ `packages/onething-runtime/src` 顶层目录名 = ∅,`wiring/` 与 `__tests__/` 不参与。
+    **allowlist 9 条**:8 个厚孪生 + `headless`(单文件孪生
+    `backend/headless/backend.ts` 对 `runtime/headless/`),注明"P3'b 逐个摘除、只许缩"。
+    (原计划写 8 条;`headless` 是量出来的第 9 个同名目录,按同一批处理并在注释里点名。)
+- **文档**:CLAUDE.md 改了分层三段(含 ASCII 分层图)、Monorepo Layout、
+  `createOnethingBackend` 路径与三个宿主调用点表、Host injection ports 表 7 行、
+  Guardrails 两条(boundary 规则集 + architecture-boundaries 加 I1)、
+  Alias Registry 整节(从"一张表还剩一条"改写为"四个包全是真 workspace 包,表里零 `@onething/*`")、
+  Directory Structure 的 backend 子树(改成"脊柱在包根 / 厚孪生标注 / wiring 一览")、
+  以及 StreamEngine / EventBus / Providers / Permission / MCP·ACP·Skills / State Management
+  等散落提法,共 40 处路径与说明符 + 8 处手工重写。历史 audit 文档不动。
+
+**验收**(逐条实跑):`typecheck` node + web 各 0 错;`test` **11128 通过 / 8 skipped,
+1150 文件通过 / 3 skipped**(`import-side-effect-free`、`architecture-boundaries` 含新 I1 断言全绿);
+`boundary` **0 failed / 199 ok**;`boundary:gate` 0 failures、`transport:gate` 279 常量 5521 行无上升、
+`ui:gate` 81 none new、`log:gate` 4 none new、`session:gate` 0 none new;
+`build` 绿且 `out/main/index.js` / `out/preload/index.js` **各 0 处 `@onething`**;
+`server:build` 绿,`dist/server/main.js` 只剩 **1 处** `@onething/`——是一行**注释**
+(`// @onething/backend/wiring/scheduler …`),不是模块说明符;`web:build` 绿;
+`electron-builder --dir` preflight **286 个包不变**,asar 里 `node_modules/@onething` **0**;
+临时目录 `--frozen-lockfile --dry-run` 通过;
+`grep -rn "src/app\b\|@onething/app"`(排除 docs / node_modules / `apps/electron/src/app`)
+只剩**注释里的历史叙述**(架构测试、aliases 表头、checker 三处、P3'a-3 的四条归位记录),
+无任何可执行引用。
+
+**遗留**:①`packages/backend` 包根仍有 9 个与 runtime 同名的目录,靠 I1 的 allowlist 豁免着
+—— 这是 P3'b/P3'c 的工作,allowlist 只许缩;②`dist/server/main.js` 那一处注释残留是 vite ssr
+不剥注释所致,无功能影响;③`backend/wiring/agent-loop/` 有 24 个文件,是 20 个 wiring 目录里
+最厚的一个,是否还算"薄接线"值得在 P3'b 一并复核;④第三方依赖只写了**静态** import 的 6 条,
+`voice/kws.ts` 里那句惰性 `require('sherpa-onnx-node')` 没进 backend 的 deps(靠根 hoist),
+与迁移前行为一致。
 
 ### P4 传输面 router 迁移(主线,1–2 周,逐域可暂停;08-21:**P4a 前移到 P1' 之前**)
 

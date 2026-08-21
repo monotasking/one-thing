@@ -87,7 +87,7 @@ export interface StartGatewayOptions {
   background?: boolean
   commandProvider?: GatewayCommandProvider
   /**
-   * 宿主的日志工厂(logging L2)。签名与 `@onething/app/logging` 的
+   * 宿主的日志工厂(logging L2)。签名与 `@onething/backend/logging` 的
    * `getLogger(ns)` 一致 —— Electron 宿主直接把它传进来,网关的记录就落进
    * 宿主的 `app.jsonl`,命名空间是 `gateway.*`。
    * 不给 = 自带的终端 pretty 实现(独立进程跑网关时的形态)。

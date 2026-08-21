@@ -38,7 +38,7 @@ import type {
   OAuthStatusRequest,
   OAuthStatusResponse,
 } from '@shared/ipc.js'
-import { authService } from '@onething/app/auth/auth-service.js'
+import { authService } from '@onething/backend/wiring/auth/auth-service.js'
 
 /**
  * 请求里的目标字段 → 归一后的写回目标(批 B6)。缺席/非法/默认空间一律 settings,

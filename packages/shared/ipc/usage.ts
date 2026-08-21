@@ -43,7 +43,7 @@ export interface GetSessionUsageResponse {
 /**
  * Token usage / billing domain — the T0 pilot for the generic RPC channel.
  *
- * The router is the whole contract: `@onething/app` registers handlers against
+ * The router is the whole contract: `@onething/backend` registers handlers against
  * it, the renderer builds a client from it. `router.channels` is unused on this
  * path (everything rides `IPC_CHANNELS.RPC_INVOKE` / `POST /api/rpc`); it stays
  * only because `defineRouter` generates it.

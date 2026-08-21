@@ -25,19 +25,19 @@ import {
 } from "@onething/runtime/tools";
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import type { JsonObject } from "@shared/json.js";
-import { getMCPToolDefinitionsForModel } from "@onething/app/mcp/index.js";
+import { getMCPToolDefinitionsForModel } from "@onething/backend/mcp/index.js";
 import {
 	listBackgroundJobs,
 	stopBackgroundJob,
 } from "@onething/runtime/tools/background-jobs-bound";
-import * as store from "@onething/app/store.js";
+import * as store from "@onething/backend/store.js";
 // 工具列表与直接执行由目录 / runner 回答(设计文档 §10.2-④)。
 import {
 	refreshToolkitMcpTools,
 	runToolkitToolDirectly,
 	toolkitCatalogToolDefinitions,
-} from "@onething/app/toolkit/index.js";
-import { getLogger } from "@onething/app/logging/index.js";
+} from "@onething/backend/toolkit/index.js";
+import { getLogger } from "@onething/backend/logging/index.js";
 
 const log = getLogger("ipc.tools");
 

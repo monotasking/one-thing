@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { app, shell } from 'electron'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('web-preview')
 

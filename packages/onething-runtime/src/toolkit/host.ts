@@ -2,7 +2,7 @@
  * R2b —— 目录端口 + 工具面投影(缝 1 的产品层那一半)。
  *
  * 缝 1 落在 `agent-loop/stream-runtime.ts`,而那里是**产品层** —— 它不许 import
- * `@onething/app`(架构栅栏逐字扫这条边)。所以三档目录由装配层建好之后,通过
+ * `@onething/backend`(架构栅栏逐字扫这条边)。所以三档目录由装配层建好之后,通过
  * 这个晚绑定端口递进来,与 `configure*Host` 那一族同一个姿势:import 这个模块
  * 不做任何配置,配置发生在 `createOnethingBackend` 的装配序列里。
  *

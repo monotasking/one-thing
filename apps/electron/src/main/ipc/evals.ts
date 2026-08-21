@@ -44,15 +44,15 @@ import type {
 	EvalsReadRunDetailResponse,
 } from "@shared/ipc.js";
 import { IPC_CHANNELS } from "@shared/ipc.js";
-import * as store from "@onething/app/store.js";
-import { sessionReads } from "@onething/app/session/reads.js";
-import { getSkillsForSession } from "@onething/app/skills/session-skills.js";
+import * as store from "@onething/backend/store.js";
+import { sessionReads } from "@onething/backend/session/reads.js";
+import { getSkillsForSession } from "@onething/backend/wiring/skills/session-skills.js";
 import { registerEvalsWorkbenchHandlers } from "./evals-workbench.js";
 import {
 	createEvalsModelCaller,
 	resolveEvalsCredentials,
 } from "./evals-provider-adapter.js";
-import { getLogger } from "@onething/app/logging/index.js";
+import { getLogger } from "@onething/backend/logging/index.js";
 
 const log = getLogger("ipc.evals");
 
@@ -199,7 +199,7 @@ export async function createIncidentForTurn(options: {
 	if (!capture?.requestMessages?.length && anchorIdx >= 0) {
 		try {
 			const { buildHistoryMessages } = await import(
-				"@onething/app/engine/stream/message-helpers.js"
+				"@onething/backend/engine/stream/message-helpers.js"
 			);
 			// History up to and including the turn's user message — mirrors
 			// what the live request carried.

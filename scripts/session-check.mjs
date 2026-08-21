@@ -36,8 +36,8 @@ const RULE_A_ALLOWED = new Set([
   // 纯 reducer:12 命令唯一的实现处
   'packages/core/session/commands.ts',
   // 装配层写面 / 读面:设计文档 §1 的两扇门
-  'packages/onething-runtime/src/app/session/commands.ts',
-  'packages/onething-runtime/src/app/session/reads.ts',
+  'packages/backend/session/commands.ts',
+  'packages/backend/session/reads.ts',
   // 存储形状:驱动与脱水看的是"盘上长什么样",不是会话语义
   'packages/onething-runtime/src/sessions/storage-driver.ts',
   'packages/onething-runtime/src/sessions/session-dehydrate.ts',
@@ -66,6 +66,7 @@ function shouldScan(rel) {
   return (
     rel.startsWith('packages/core/') ||
     rel.startsWith('packages/onething-runtime/') ||
+    rel.startsWith('packages/backend/') ||
     rel.startsWith('packages/gateway/') ||
     rel.startsWith('packages/shared/') ||
     rel.startsWith('apps/')

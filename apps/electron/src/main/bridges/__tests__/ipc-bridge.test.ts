@@ -5,7 +5,7 @@ import {
   appendStreamBufferChunk,
   createStreamBuffer,
   drainStreamBuffer,
-} from '@onething/app/events/stream-coalescer.js'
+} from '@onething/backend/events/stream-coalescer.js'
 
 describe('IPCBridge stream buffer', () => {
   it('preserves reasoning before text while merging adjacent reasoning chunks', () => {
@@ -170,7 +170,7 @@ describe('IPCBridge notification fan-out', () => {
   }
 
   it('broadcasts plugin notifications to every window, not just the bound one', async () => {
-    const events = await import('@onething/app/events/index.js')
+    const events = await import('@onething/backend/events/index.js')
     const stub = globalBusStub()
     vi.spyOn(events, 'getEventBus').mockReturnValue(stub.bus as never)
 
@@ -187,7 +187,7 @@ describe('IPCBridge notification fan-out', () => {
   })
 
   it('falls back to the bound sender when no broadcaster is wired (headless/tests)', async () => {
-    const events = await import('@onething/app/events/index.js')
+    const events = await import('@onething/backend/events/index.js')
     const stub = globalBusStub()
     vi.spyOn(events, 'getEventBus').mockReturnValue(stub.bus as never)
 

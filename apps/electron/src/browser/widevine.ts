@@ -11,7 +11,7 @@
  * Memoized — safe to call on every browser wake-up.
  */
 import { components } from 'electron'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('browser')
 

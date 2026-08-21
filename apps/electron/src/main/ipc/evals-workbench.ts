@@ -38,12 +38,12 @@ import type {
 	EvalsIncidentRunSummary,
 } from "@shared/ipc.js";
 import { IPC_CHANNELS } from "@shared/ipc.js";
-import * as store from "@onething/app/store.js";
+import * as store from "@onething/backend/store.js";
 import {
 	createEvalsModelCaller,
 	resolveEvalsCredentials,
 } from "./evals-provider-adapter.js";
-import { getLogger } from "@onething/app/logging/index.js";
+import { getLogger } from "@onething/backend/logging/index.js";
 
 const log = getLogger("ipc.evals-workbench");
 

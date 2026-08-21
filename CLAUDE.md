@@ -61,7 +61,7 @@ This is **onething**, an AI chat app with multi-provider support, tool calling, 
 
 - **packages/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
 - **packages/onething-runtime/src** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree. **The one exception is a `*.wiring.ts` file** (I3, P3'a-1): the role is in the filename, so a module that has to speak the cross-process vocabulary may import `@shared/ipc` / `@shared/events` — and nothing but another `*.wiring.ts` (or the assembly layer) may import it back. All other bans still apply to it.
-- **packages/onething-runtime/src/app** — the assembly layer (`@onething/app`). All migrated main-process glue (engine, events, stores, tool/provider/permission wiring). `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe.
+- **packages/backend** — the assembly layer, a real workspace package (`@onething/backend`; it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ headless/ features/ utils/ + the not-yet-merged thick twins collab/ plugins/ providers/ toolkit/ mcp/ music/ voice/ logging/); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (20 dirs: acp / agent-loop / agents / auth / deeplink / external-agents / goals / interaction / markdown / permission / project-dirs / scheduler / search / skills / tasks / toc / todo-plan / tools / usage / variables). The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1).
 - **apps/\*** — thin sockets: Electron (window/IPC/native panel), server (HTTP/SSE), web (browser build of the renderer), CLI daemon.
 
 ```
@@ -73,21 +73,23 @@ apps/*  (thin sockets)
 └──────┬────────┴───────┬────────┴──────┬───────┴──────────┬──────────┘
        │ createOnethingBackend(...)     │ /api → server    │
 ┌──────┴────────────────┴───────────────┴──────────────────┴──────────┐
-│ packages/onething-runtime/src/app        ASSEMBLY ('@onething/app') │
-│  backend.ts (factory) + engine/ events/ stores/ tools/ providers/   │
-│  permission/ mcp/ …  — @shared allowed; hosts inject surfaces via   │
-│  configure*Host ports (never imports electron/@main/@preload)       │
+│ packages/backend                        ASSEMBLY ('@onething/backend')│
+│  spine at the package root: backend.ts (factory) + engine/ server/   │
+│  rpc/ stores/ session/ events/ channel/ headless/ features/ …        │
+│  wiring/<d>/ = thin wiring into runtime domains                      │
+│  @shared allowed; hosts inject surfaces via configure*Host ports     │
+│  (never imports electron/@main/@preload)                             │
 ├──────────────────────────────────────────────────────────────────────┤
 │ packages/onething-runtime/src/*          PRODUCT ('@onething/runtime')│
 │  prompts, sessions, agent-loop providers, tools, themes, …          │
-│  Electron-free; no @shared/ipc; MUST NOT import @onething/app        │
+│  Electron-free; no @shared/ipc; MUST NOT import @onething/backend    │
 ├──────────────────────────────────────────────────────────────────────┤
 │ packages/core                            SKELETON ('@onething/core') │
 │  engine, events, session, permission, tools, storage. Zero deps.     │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-Dependency direction is one-way: product ← assembly ← hosts. Product code never imports `@onething/app`.
+Dependency direction is one-way: product ← assembly ← hosts. Product code never imports `@onething/backend`.
 
 ### Monorepo Layout
 
@@ -98,8 +100,9 @@ packages/core/               # Bottom layer, zero deps. No src/ — files at pac
                              # permission/, tools/, plugins/, mcp/, storage/ primitives.
 packages/onething-runtime/   # src/ = the product (prompts, sessions, agent-loop
                              # providers, tools, themes, voice, music, …). Electron-free.
-                             # src/app/ = assembly layer: createOnethingBackend + all
-                             # migrated main-process glue ('@onething/app').
+packages/backend/            # Assembly layer ('@onething/backend'): createOnethingBackend
+                             # + the backend spine at the package root, thin wiring under
+                             # wiring/<domain>/. @shared allowed, electron never.
 packages/gateway/            # WeChat/Telegram channel gateway. Depends on core only.
                              # Remote permission approval (reply 1/2/3), markdown-safe streaming.
 packages/shared/             # Shared IPC/event contracts + defaults ('@shared'). Also
@@ -111,7 +114,7 @@ apps/electron/               # Electron host. src/main ('@main') = ipc/bridges/c
                              # the '@onething/electron-host/*' alias family.
 apps/server/                 # Process shell only (main.ts + index.ts). The HTTP/SSE surface
                              # and the server runtime live in the assembly layer
-                             # (packages/onething-runtime/src/app/server/), so the Electron
+                             # (packages/backend/server/), so the Electron
                              # desktop mounts the SAME code over its own backend.
 apps/web/                    # Browser build of packages/renderer; talks to whatever core
                              # serves this store (desktop or server:start) via /api.
@@ -119,7 +122,7 @@ apps/web/                    # Browser build of packages/renderer; talks to what
 
 ### createOnethingBackend — the single assembly recipe
 
-`packages/onething-runtime/src/app/backend.ts`. Every host boots through this function; ordering constraints (variables before tools, engine before Permission) live here and nowhere else. **Importing `@onething/app` modules performs no configuration** — enforced by `packages/onething-runtime/src/app/__tests__/import-side-effect-free.test.ts`.
+`packages/backend/backend.ts`. Every host boots through this function; ordering constraints (variables before tools, engine before Permission) live here and nowhere else. **Importing `@onething/backend` modules performs no configuration** — enforced by `packages/backend/__tests__/import-side-effect-free.test.ts`.
 
 Options (`OnethingBackendOptions`):
 
@@ -137,30 +140,30 @@ Host call sites:
 | Host | Call site | Config |
 | --- | --- | --- |
 | Electron desktop | `apps/electron/src/app/main-process.ts` | `toolRegistry: 'full'`, `promptVersion: true`, hooks: shortcuts+proxy / `initializeIPC()`+todo watcher; engine binds to window later via `getStreamEngine().bind(webContents)`. **Also mounts the HTTP/SSE surface** over that same backend post-window (`startEmbeddedOnethingHttpServer`, non-blocking) |
-| Headless server | `packages/onething-runtime/src/app/server/runtime.ts` (`createRealServerBackend` → `createOnethingServerRuntimeOverBackend`) | `toolRegistry: ONETHING_SERVER_TOOLS === 'readonly' ? 'readonly' : 'full'` (desktop parity by default), `sessionSkills: true`, noop sender (SSE observes the bus directly) |
-| CLI daemon | `packages/onething-runtime/src/app/headless/backend.ts` (`HeadlessBackend`, used by `apps/electron/src/main/cli/daemon-server.ts`) | `toolRegistry: 'headless'`, `sessionSkills: true`, `mcpAcp: true`, noop sender |
+| Headless server | `packages/backend/server/runtime.ts` (`createRealServerBackend` → `createOnethingServerRuntimeOverBackend`) | `toolRegistry: ONETHING_SERVER_TOOLS === 'readonly' ? 'readonly' : 'full'` (desktop parity by default), `sessionSkills: true`, noop sender (SSE observes the bus directly) |
+| CLI daemon | `packages/backend/headless/backend.ts` (`HeadlessBackend`, used by `apps/electron/src/main/cli/daemon-server.ts`) | `toolRegistry: 'headless'`, `sessionSkills: true`, `mcpAcp: true`, noop sender |
 
 Note: `backend.ts` carries static `import './tools/builtin/{index,headless,readonly}.js'` edges purely so single-file bundlers order the tool barrels before the factory's top-level await (the registry itself dynamic-imports them for test mocks). Do not remove them.
 
-**Host injection ports** (`configure*Host`, all in `src/app` except where noted, late-bound and consulted per call — how hosts contribute Electron-only surfaces without the assembly layer importing electron):
+**Host injection ports** (`configure*Host`, in `packages/backend` except where noted, late-bound and consulted per call — how hosts contribute Electron-only surfaces without the assembly layer importing electron):
 
 | Port | File |
 | --- | --- |
-| `configureStorePathHost` | `app/stores/docs-paths.ts` |
-| `configureSandboxHost` | `app/tools/core/sandbox.ts` |
+| `configureStorePathHost` | `backend/stores/docs-paths.ts` |
+| `configureSandboxHost` | `backend/wiring/tools/core/sandbox.ts` |
 | `configureAuthHost` | `auth/host-ports.ts` (product layer since P3'a-1 — zero spine deps) |
-| `configureVoiceHost` | `app/voice/host-ports.ts` |
-| `configureAppLoggingHost` | `app/logging/index.ts` |
-| `configureSkillsEnvironmentHost` | `app/skills/loader.ts` |
-| `configureTodoPlanHost` | `app/todo-plan/store.ts` |
+| `configureVoiceHost` | `backend/voice/host-ports.ts` |
+| `configureAppLoggingHost` | `backend/logging/index.ts` |
+| `configureSkillsEnvironmentHost` | `backend/wiring/skills/loader.ts` |
+| `configureTodoPlanHost` | `backend/wiring/todo-plan/store.ts` |
 
 ### Guardrails
 
-- `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: core bans electron/`shared/ipc`/better-sqlite3/mcp+acp SDKs/zod/diff/uuid; runtime outside `src/app` bans electron **and** `@shared/ipc` — except `*.wiring.ts` files, which may import `@shared/ipc`/`@shared/events` and which no non-wiring product file may import (`checkRuntimeWiringModulesStayAtTheEdge`); `src/app` gets a relaxed set — `@shared/ipc` allowed, but electron, `@onething/electron-host`, `@main/`, `@preload/` banned (hosts inject via configure*Host ports).
+- `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: core bans electron/`shared/ipc`/better-sqlite3/mcp+acp SDKs/zod/diff/uuid; `packages/onething-runtime` bans electron **and** `@shared/ipc` — except `*.wiring.ts` files, which may import `@shared/ipc`/`@shared/events` and which no non-wiring product file may import (`checkRuntimeWiringModulesStayAtTheEdge`); `packages/backend` gets a relaxed set — `@shared/ipc` allowed, but electron, `@onething/electron-host`, `@main/`, `@preload/` banned (hosts inject via configure*Host ports).
 - `bun run boundary:gate` — `scripts/boundary-gate.mjs`, a **zero-baseline hard gate**: any `[boundary] failed:` line exits 1. The ratchet and `docs/audit/boundary-baseline-2026-08-07.txt` (13 known legacy reds) were retired 2026-08-21 by 结构债方案 P2 — 4 reds were fixed in source, the other 9 were stale/false-positive assertions and were fixed in the checker. Two anti-footgun guards survive: no `[boundary] complete:` marker (checker crashed mid-run) or no `[boundary] ok:` line at all (output shape changed) is red, not green.
 - UI 组件与样式规则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),新代码须过 `bun run ui:gate` — `scripts/ui-gate.mjs` ratchet over `scripts/ui-style-check.mjs`'s 12 line-level rules (z-literal / z-fallback / raw-teleport / native-select / native-confirm / title-attr / ui-hex-fallback / transition-literal / shadow-literal-floating / focus-bare / overscroll-contain-chat / surface-literal), baseline `docs/audit/ui-baseline-2026-08-13.txt` (81 条 = 5 条逐条确认过的语义保留 + 76 条 `surface-literal` 区域面迁移待办)。`bun run ui:check` prints the full list.
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/electron/src/main/cli/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
-- `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/app`** (dependency points one way: product ← assembly); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
+- `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; 9 thick twins are on a shrink-only allowlist until P3'b merges them); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
 
 Notes:
 
@@ -170,7 +173,7 @@ Notes:
   - `packages/core/logging/` (zero deps, zero node imports) owns `Logger`
     (`trace/debug/info/warn/error/fatal/child(fields)`), `LogRecord
     {time, level, ns, msg, fields?, err?, src?}`, `LevelFilter`, `ConsoleSink(pretty|json)`,
-    `MemoryRingSink`, `normalizeError`. `packages/onething-runtime/src/app/logging/`
+    `MemoryRingSink`, `normalizeError`. `packages/backend/logging/`
     assembles it: **`configureLogging()` is the single wiring point** (idempotent — the
     desktop's embedded HTTP face never double-configures), and product code only ever
     calls `getLogger('engine.stream')`. `msg` is a fixed short sentence; variables go in
@@ -205,7 +208,7 @@ Notes:
     `beforeunload` + `fatal` flush immediately). It reuses the **same** `packages/core/logging`
     kernel the main process does — that package is browser-safe. Transport is the generic
     RPC envelope, **not** a hand-written channel: `logs` is a router domain
-    (`@shared/ipc/logs.ts` + `app/rpc/domains/logs.ts` + `platform/logs-client.ts`), so
+    (`@shared/ipc/logs.ts` + `backend/rpc/domains/logs.ts` + `platform/logs-client.ts`), so
     desktop rides `rpc:invoke` and web rides `POST /api/rpc` behind the same Bearer gate,
     with zero shell edits. The receiving handler stamps the trust-level fields itself:
     `ns` prefixed `renderer.`, `src='renderer'`, caller from the dispatch context — a
@@ -215,7 +218,7 @@ Notes:
     `warn` with `fields.stack`, and no console line at all.
     `window.__onethingLog.dump()` is the hub's own crash-scene口.
   - **The gateway takes a logger at construction** (L2): `startGateway({ getLogger })`
-    (same signature as `@onething/app/logging`'s `getLogger`) — the Electron host passes
+    (same signature as `@onething/backend/logging`'s `getLogger`) — the Electron host passes
     its own, so gateway records land in `app.jsonl` under `gateway.wechat` /
     `gateway.telegram` / `gateway.bridge` / `gateway.storage`. Classes take an explicit
     `logger?`; free functions read the process-level factory
@@ -427,7 +430,7 @@ Notes:
   drag & drop → L3 webview (H line, not built); taking over the composer or the message
   list → **never**.
 - **One core per store** (A 期, `docs/design/one-core-2026-08.md`). The HTTP/SSE surface is
-  assembly-layer code (`packages/onething-runtime/src/app/server/{http,runtime,discovery,embed}.ts`);
+  assembly-layer code (`packages/backend/server/{http,runtime,discovery,embed}.ts`);
   `apps/server/src/main.ts` is a process shell around it and the Electron desktop mounts the
   **same** code over its own backend, so a browser at :5174 subscribes to the desktop's event
   stream rather than a second engine's. The seam is
@@ -449,7 +452,7 @@ Notes:
   binding non-loopback without it; loopback launches mint their own token into the discovery
   file). Tools ship with desktop parity by default;
   `ONETHING_SERVER_TOOLS=readonly` degrades to zero-side-effect tools (read/time/web only).
-  The server's HTTP session store is backed by the same `@onething/app` store the engine
+  The server's HTTP session store is backed by the same `@onething/backend` store the engine
   uses in-process — a second repository over the same files would fork the in-memory truth.
 - Store isolation: the store root resolves `ONETHING_STORE_PATH` → `~/.onething`
   (`packages/onething-runtime/src/storage/paths.ts`). All app-layer paths must resolve
@@ -482,7 +485,7 @@ Notes:
   (`promptFragments` / `registerPromptFragment` with a disposer, for runtime features /
   hosts) and `PluginPromptContextSource` (`api.registerPromptContextProvider`; plugin
   tools carry `prompt` like builtins). Hosts assemble their own composer:
-  `desktopPromptComposer` (`app/engine/prompt/system-prompt.ts`) = builtin + tools +
+  `desktopPromptComposer` (`backend/engine/prompt/system-prompt.ts`) = builtin + tools +
   registry + plugins-with-breaker; `defaultOnethingPromptComposer` has no tool source
   (evals / prompt version / tests add a `StaticPromptSource`). The composer only
   filters → sorts → renders; `disabledSections` matches fragment ids plus the composite
@@ -496,7 +499,7 @@ Notes:
   the `Current date:` line and the `# Work Directory` section are gone (the `datetime`
   and `workdir` variables carry them). `TurnContextLedger` (core, pure) dedupes per block
   against the visible history and `SessionTurnContext` (app, hooked into the `buildPrompt`
-  wrapper in `app/engine/stream/agent-loop-runtime.ts`) persists the delta on the message
+  wrapper in `backend/engine/stream/agent-loop-runtime.ts`) persists the delta on the message
   as `ChatMessage.turnContext`, so a rebuild replays identical bytes.
 - Media library: drag-and-drop ingest and export run over `media:ingest-files` /
   `media:save-as` (`packages/shared/ipc/channels.ts` → `apps/electron/src/main/ipc/media.ts`
@@ -528,7 +531,7 @@ Notes:
 │  Main Process (Node.js)                                         │
 │  apps/electron/src/main/ ('@main': ipc/ bridges/ cli/ only)     │
 │  - boots createOnethingBackend (engine/events live in           │
-│    packages/onething-runtime/src/app/)                          │
+│    packages/backend/)                          │
 │  - IPCBridge: single unified IPC exit point                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -545,14 +548,14 @@ renderer chatStore → platformApi.emitCommand(sessionId, { type: 'command:send-
            → apps/electron/src/main/ipc/handlers.ts → emitCoreSessionCommandForIpc
   web:     POST /api/sessions/:id/commands → server forwards the command WHOLE
            (only command:abort is handled locally; no field is destructured away)
-→ EventBus (packages/onething-runtime/src/app/events/, per-session ring buffers)
-→ StreamEngine.handleSendMessage (packages/onething-runtime/src/app/engine/stream-engine.ts)
+→ EventBus (packages/backend/events/, per-session ring buffers)
+→ StreamEngine.handleSendMessage (packages/backend/engine/stream-engine.ts)
   → persist messages → emit events + stream chunks
 → desktop: IPCBridge → 'session:event' / 'session:stream' to WebContents
   web:     GET /api/events SSE (same event names; ?after= replays from ring buffers)
 ```
 
-Both fan-outs share **`SessionStreamCoalescer`** (`packages/onething-runtime/src/app/events/stream-coalescer.ts`): text/reasoning/tool-input deltas batched on a 16ms ordered buffer, active stream's `messageId` stamped onto every chunk, and pending deltas flushed before any session event goes out. Consumers: `apps/electron/src/main/bridges/ipc-bridge.ts` and `packages/onething-runtime/src/app/server/http.ts` (per-SSE-connection instance).
+Both fan-outs share **`SessionStreamCoalescer`** (`packages/backend/events/stream-coalescer.ts`): text/reasoning/tool-input deltas batched on a 16ms ordered buffer, active stream's `messageId` stamped onto every chunk, and pending deltas flushed before any session event goes out. Consumers: `apps/electron/src/main/bridges/ipc-bridge.ts` and `packages/backend/server/http.ts` (per-SSE-connection instance).
 
 **Tool Call + Permission Flow:**
 
@@ -589,16 +592,16 @@ Note: `apps/electron/src/ipc/*` is a second, portable tree (`register*IpcHandler
 
 Two mechanisms, and which one a package uses is a fact about that package, not a style choice.
 
-**Real workspace packages (node resolves them).** Root `package.json` declares `"workspaces": ["packages/core", "packages/gateway", "packages/onething-runtime"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` links them at `node_modules/@onething/{core,gateway,runtime}`, so `@onething/core` / `@onething/gateway` / `@onething/runtime` (92 export keys, mostly `"./x/*": "./src/x/*.ts"` wildcards) resolve through **their own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` in all three tsconfigs honours exports pointing straight at `.ts` sources). There is no alias entry and no tsconfig `paths` entry for them: **add a new subpath to that package's `package.json` "exports"**, and a missing one now fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` — electron-vite's `externalizeDepsPlugin` reads that list and would externalize them, and the asar has no built `.js` behind those exports (`workspaces` and `dependencies` are unrelated fields).
+**Every `@onething/*` is a real workspace package (node resolves them).** Root `package.json` declares `"workspaces": ["packages/core", "packages/gateway", "packages/onething-runtime", "packages/backend"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` links them at `node_modules/@onething/{core,gateway,runtime,backend}`, so `@onething/core` / `@onething/gateway` / `@onething/runtime` (90 export keys) / `@onething/backend` (88: 85 explicit subpaths generated from the repo's actual import specifiers, `"."` → `./backend.ts`, plus the two fallbacks `"./*.js"` and `"./*"` → `./*.ts`) resolve through **their own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` in all three tsconfigs honours exports pointing straight at `.ts` sources). There is no alias entry and no tsconfig `paths` entry for them: **add a new subpath to that package's `package.json` "exports"**, and a missing one now fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` — electron-vite's `externalizeDepsPlugin` reads that list and would externalize them, and the asar has no built `.js` behind those exports (`workspaces` and `dependencies` are unrelated fields).
 
-**Alias table (everything not yet a package).** `onething.aliases.ts` (repo root) is down to **one** package entry: `@onething/app` (ONE prefix entry — do not add per-file entries), spread by `electron.vite.config.ts` (main + preload only — the renderer does not import it), `vitest.config.ts` and `apps/server/vite.config.ts`; `apps/web` no longer imports the table at all. It cannot become an exports key: `@onething/app` is a **package name**, and node resolves `@onething/app/x` by reading `node_modules/@onething/app`'s own `package.json` — no amount of `"./app/*"` in `@onething/runtime`'s exports can reach it. It goes away when P3' moves `src/app` out to `packages/backend`. `@onething/electron-host/*` is **not** in that table — it is apps/electron's internal path family, not a package, so it lives in a separate `electronHostAliases` export (2 regex entries: the `window` barrel anchored above a `apps/electron/src/$1.ts` catch-all) that only `electron.vite.config.ts` and `vitest.config.ts` spread. `@shared`/`@main`/`@renderer`/`@`/`@preload` are declared per-config, not here.
+**Alias table (what is not a package).** `onething.aliases.ts` (repo root) no longer carries a single `@onething/*` package entry — the last one, `@onething/app`, died with P3'd (it could never be an exports key: a package name is not a subpath of `@onething/runtime`, so it needed a real package to disappear). `@onething/electron-host/*` is **not** a package — it is apps/electron's internal path family, so it lives in a separate `electronHostAliases` export (2 regex entries: the `window` barrel anchored above a `apps/electron/src/$1.ts` catch-all) that only `electron.vite.config.ts` and `vitest.config.ts` spread. `@shared`/`@main`/`@renderer`/`@`/`@preload` are declared per-config, not here.
 
-**Adding a new runtime subpath:**
+**Adding a new runtime or backend subpath:**
 
-1. Add the key to `packages/onething-runtime/package.json` `"exports"`. Prefer the family wildcard (`"./x/*": "./src/x/*.ts"`) that is usually already there — a whole new family needs the pair `"./x": "./src/x/index.ts"` + `"./x/*": "./src/x/*.ts"`, and a nested directory barrel (`src/x/y/index.ts`) needs its own exact key `"./x/y"` because `*` cannot express "directory index". Exact keys win over wildcards; keep them above their wildcard sibling anyway.
+1. Add the key to that package's `package.json` `"exports"` (`packages/onething-runtime` or `packages/backend`). Prefer the family wildcard (`"./x/*": "./src/x/*.ts"`) that is usually already there — a whole new family needs the pair `"./x": "./src/x/index.ts"` + `"./x/*": "./src/x/*.ts"`, and a nested directory barrel (`src/x/y/index.ts`) needs its own exact key `"./x/y"` because `*` cannot express "directory index". Exact keys win over wildcards; keep them above their wildcard sibling anyway.
 2. No alias edit, no tsconfig edit, no config edit — all four build/test configs and tsc go through the same exports map, and a missing key fails at **typecheck**.
 
-Failure mode of the alias table: a missing entry fails only at build/run time, never at typecheck. Only `@onething/app` still has that failure mode; the workspace packages do not — that is the point of moving families over.
+Failure mode of the alias table: a missing entry fails only at build/run time, never at typecheck. No `@onething/*` family has that failure mode any more — they are all workspace packages, and a missing exports key fails at typecheck.
 
 ### Directory Structure
 
@@ -627,8 +630,8 @@ packages/onething-runtime/src/ # PRODUCT layer ('@onething/runtime')
 │   ├── mcp/  acp/  external-agents/  files/  search/  usage/  evals/  headless/  …
 │   └── stream-engine.ts       # OnethingStreamEngine over CoreStreamEngine
 │
-packages/onething-runtime/src/app/  # ASSEMBLY layer ('@onething/app'; @shared allowed)
-│   ├── backend.ts             # createOnethingBackend — the single assembly recipe
+packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared allowed)
+│   ├── backend.ts  store.ts   # createOnethingBackend — the single assembly recipe
 │   ├── engine/                # StreamEngine (extends OnethingStreamEngine) + stream/
 │   │   ├── stream/            # stream-executor, stream-processor, tool-execution(+scheduler,
 │   │   │                      # +order), tool-orchestrator, agent-loop-*, message-helpers,
@@ -637,17 +640,20 @@ packages/onething-runtime/src/app/  # ASSEMBLY layer ('@onething/app'; @shared a
 │   │   └── triggers/          # post-chat triggers
 │   ├── events/                # event-bus, stream-channel, ring-buffer, stream-coalescer
 │   ├── stores/                # sessions (repository wiring), settings cache, app-state, docs-paths
-│   ├── toolkit/               # tool assembly: tier catalogs, ports, projections, wiring
-│   ├── tools/core/            # host-injection ports only (sandbox, permission-policy)
-│   ├── providers/  permission/  mcp/  acp/  skills/  plugins/  variables/  goals/
-│   ├── media/  music/  voice/  search/  scheduler/ (user-tasks only)  agents/  external-agents/
+│   ├── session/               # sessionCommands / sessionReads / event-log / trace / freeze
+│   ├── rpc/                   # router registry + domains/ (the only new-transport surface)
 │   ├── server/                # the core HTTP/SSE surface: http.ts (routes/SSE), runtime.ts
 │   │                          # (OnethingRuntimeFacade + session/settings/permission facades),
 │   │                          # discovery.ts (<store>/run/http.json), embed.ts (host mounting)
 │   ├── channel/               # gateway identity, session-router, outbound dispatch
 │   ├── headless/backend.ts    # HeadlessBackend for the CLI daemon
-│   └── logging/               # configureLogging + JsonlFileSink/LegacyConsoleSink/janitor/crash-hooks
-│       auth/  session/  usage/  toc/  todo-plan/  practice/  …
+│   ├── features/  utils/      # feature mounts (self-evolution, trajectory…); ripgrep/fuzzy/wildcard
+│   ├── logging/               # configureLogging + JsonlFileSink/LegacyConsoleSink/janitor/crash-hooks
+│   ├── collab/ plugins/ providers/ toolkit/ mcp/ music/ voice/
+│   │                          # 厚孪生 —— 与 runtime/<d> 同名,I1 allowlist 豁免中,P3'b 逐个并回
+│   └── wiring/<domain>/       # 薄接线:acp agent-loop agents auth deeplink external-agents
+│                              # goals interaction markdown permission project-dirs scheduler
+│                              # search skills tasks toc todo-plan tools usage variables
 │
 apps/electron/src/
 │   ├── main/                  # '@main' — ONLY: ipc/ (per-domain handlers + handlers.ts),
@@ -659,7 +665,7 @@ apps/electron/src/
 │   └── voice/ music/ menu/ search/ gateway/ auth/ shell/ …   # '@onething/electron-host/*'
 │
 apps/server/src/               # process shell only: main.ts (env, discovery-file refusal,
-│                              # listen, SIGTERM flush) + index.ts (re-exports @onething/app/server/*)
+│                              # listen, SIGTERM flush) + index.ts (re-exports @onething/backend/server/*)
 apps/web/                      # package.json + vite.config.ts + dev-api-proxy.ts (dynamic
 │                              # /api proxy via the discovery file); builds packages/renderer
 │
@@ -680,18 +686,18 @@ packages/shared/               # '@shared'
 
 ### Key Systems
 
-**StreamEngine** (`packages/onething-runtime/src/app/engine/stream-engine.ts`): Single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact.
+**StreamEngine** (`packages/backend/engine/stream-engine.ts`): Single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact.
 
-**EventBus** (`packages/onething-runtime/src/app/events/`): Central pub/sub with per-session ring buffers, sequence counters, typed and wildcard handlers; primitives in `packages/core/events/`.
+**EventBus** (`packages/backend/events/`): Central pub/sub with per-session ring buffers, sequence counters, typed and wildcard handlers; primitives in `packages/core/events/`.
 
-**Providers**: registry wiring in `packages/onething-runtime/src/app/providers/`; the hand-rolled fetch/SSE implementations live in `packages/onething-runtime/src/agent-loop/providers/` (Vercel AI SDK was removed). New providers implement `ProviderDefinition`.
+**Providers**: registry wiring in `packages/backend/providers/`; the hand-rolled fetch/SSE implementations live in `packages/onething-runtime/src/agent-loop/providers/` (Vercel AI SDK was removed). New providers implement `ProviderDefinition`.
 
-**Tools — toolkit (2026-08-18 rebuild; the legacy tree was deleted in R4b, 2026-08-19)**: the tool system is `packages/core/toolkit/` (kernel: `ToolSpec` / `Tool { plan → apply }` / `Intent` / `Outcome` / `AbortScope` / `OutputBudget` / `Job` / `Catalog` / `Surface` / `ToolRunner` + effect policy table) + `packages/onething-runtime/src/toolkit/` (zod contract, family base classes, the builtin tools, `PluginTool`/`McpTool`, `resolveScene`) + `packages/onething-runtime/src/app/toolkit/` (ports: `PermissionAuthorizer` over `enforcePermissionPolicy`, `IpcProjector`, `AuditProjector` → `events.jsonl` `tool/audit`, `BackgroundJobRegistry`, three-tier catalogs, `createAppToolRunner`, `prompt-source.ts`, `wiring.ts`). Every call runs `validate → intercept → plan → effect-based authorize → apply → budget`; permission looks only at `Intent.effects` (`EffectClass` table in `core/toolkit/effects.ts` — external agents ride the `external-agent` row, so ACP and the Claude Code SDK go through the same `Authorizer.decide` as a local tool). There is **no kill switch and no second path**: `Tool.define` / `ToolInfo` / `permissionGuard` / `autoExecute` are gone, and `permissionGuard?` survives only as a deprecated, derived field on the `@shared/ipc` contract (`app/toolkit/guard-projection.ts`). What is left in `packages/onething-runtime/src/tools/` is pure modules only (sandbox, bash executor/classifier, edit engine, replacers, diff hunks, file snapshot/mutation, output accumulation/truncation, sensitive files, background jobs, `builtin/time-runtime.ts`, `builtin/web-search/{page-fetch,providers}`) plus four dependency-injected IPC-shape projections; `packages/onething-runtime/src/app/tools/core/` keeps just two host-injection ports now — `configureSandboxHost` (`sandbox.ts`) and `enforcePermissionPolicy` (`permission-policy.ts`); the bash-executor and replacers facades were deleted (callers import `@onething/runtime/tools/*` directly) and background jobs moved to `runtime/src/tools/background-jobs-bound.ts` (P3'a-2). Design + per-phase records: `docs/design/tool-system-oop-2026-08.md` (§17 = the R4b deletion record). **Registration is a catalog, the per-turn surface is scene-resolved**: `runtime/src/toolkit/scene.ts` (`resolveScene`) plus each tool's own `visibleIn` decide what a turn actually sends the model — plain chat = bash/read/write/edit/variable/time/web_search/web_open/radio/practice/task/ask_user; `goal` only while the session goal is `active`; collab tools (`send_message`/`board`/`history`/`notebook`) only in their venue (`collab/tool-surface.ts` is the single table); `task` hidden inside task sessions; skill-scene tools only when that skill is enabled — today the self-evolution trio `feature_mount/unmount/inspect` rides the default-off builtin skill `resources/skills/onething-self-evolution` (frontmatter `default-enabled: false`), registered by the self-evolution feature itself (`app/features/builtin/self-evolution.ts`), not by any tier catalog. Retired 2026-08-18: `find`/`grep`/`glob` (use bash rg/fd), `fart`, `bash_output`/`kill_bash` (bash `run_in_background` now reports the log path + pid; tail/kill via bash).
+**Tools — toolkit (2026-08-18 rebuild; the legacy tree was deleted in R4b, 2026-08-19)**: the tool system is `packages/core/toolkit/` (kernel: `ToolSpec` / `Tool { plan → apply }` / `Intent` / `Outcome` / `AbortScope` / `OutputBudget` / `Job` / `Catalog` / `Surface` / `ToolRunner` + effect policy table) + `packages/onething-runtime/src/toolkit/` (zod contract, family base classes, the builtin tools, `PluginTool`/`McpTool`, `resolveScene`) + `packages/backend/toolkit/` (ports: `PermissionAuthorizer` over `enforcePermissionPolicy`, `IpcProjector`, `AuditProjector` → `events.jsonl` `tool/audit`, `BackgroundJobRegistry`, three-tier catalogs, `createAppToolRunner`, `prompt-source.ts`, `wiring.ts`). Every call runs `validate → intercept → plan → effect-based authorize → apply → budget`; permission looks only at `Intent.effects` (`EffectClass` table in `core/toolkit/effects.ts` — external agents ride the `external-agent` row, so ACP and the Claude Code SDK go through the same `Authorizer.decide` as a local tool). There is **no kill switch and no second path**: `Tool.define` / `ToolInfo` / `permissionGuard` / `autoExecute` are gone, and `permissionGuard?` survives only as a deprecated, derived field on the `@shared/ipc` contract (`backend/toolkit/guard-projection.ts`). What is left in `packages/onething-runtime/src/tools/` is pure modules only (sandbox, bash executor/classifier, edit engine, replacers, diff hunks, file snapshot/mutation, output accumulation/truncation, sensitive files, background jobs, `builtin/time-runtime.ts`, `builtin/web-search/{page-fetch,providers}`) plus four dependency-injected IPC-shape projections; `packages/backend/wiring/tools/core/` keeps just two host-injection ports now — `configureSandboxHost` (`sandbox.ts`) and `enforcePermissionPolicy` (`permission-policy.ts`); the bash-executor and replacers facades were deleted (callers import `@onething/runtime/tools/*` directly) and background jobs moved to `runtime/src/tools/background-jobs-bound.ts` (P3'a-2). Design + per-phase records: `docs/design/tool-system-oop-2026-08.md` (§17 = the R4b deletion record). **Registration is a catalog, the per-turn surface is scene-resolved**: `runtime/src/toolkit/scene.ts` (`resolveScene`) plus each tool's own `visibleIn` decide what a turn actually sends the model — plain chat = bash/read/write/edit/variable/time/web_search/web_open/radio/practice/task/ask_user; `goal` only while the session goal is `active`; collab tools (`send_message`/`board`/`history`/`notebook`) only in their venue (`collab/tool-surface.ts` is the single table); `task` hidden inside task sessions; skill-scene tools only when that skill is enabled — today the self-evolution trio `feature_mount/unmount/inspect` rides the default-off builtin skill `resources/skills/onething-self-evolution` (frontmatter `default-enabled: false`), registered by the self-evolution feature itself (`backend/features/builtin/self-evolution.ts`), not by any tier catalog. Retired 2026-08-18: `find`/`grep`/`glob` (use bash rg/fd), `fart`, `bash_output`/`kill_bash` (bash `run_in_background` now reports the log path + pid; tail/kill via bash).
 
-**Permission**: core `Permission` in `packages/core/permission/` (channel-affinity enforcement); app wiring in `packages/onething-runtime/src/app/permission/`.
+**Permission**: core `Permission` in `packages/core/permission/` (channel-affinity enforcement); assembly wiring in `packages/backend/wiring/permission/`.
 
 **会话消息(P0,2026-08-19,`docs/design/session-commands-p0-2026-08.md`)**:唯一写面是
-`sessionCommands`(`packages/onething-runtime/src/app/session/commands.ts`,12 条消息命令 +
+`sessionCommands`(`packages/backend/session/commands.ts`,12 条消息命令 +
 `patchSession` 会话级补丁;纯 reducer 在 `packages/core/session/commands.ts`,负责 COW /
 写计划 / lazy 档),唯一读面是 `sessionReads`(同目录 `reads.ts`,返回值一律 `readonly`)。
 `session.messages` 只允许出现在白名单文件里(命令面 / 读面 / `sessions/storage-driver.ts` /
@@ -699,12 +705,12 @@ packages/shared/               # '@shared'
 `scripts/session-check.mjs`),对 `ChatMessage`/`Step`/`ToolCall` 的字段赋值只允许在 core 的
 reducer 里;`bun run session:check` 打全表、`bun run session:gate` 是**硬闸**(基线
 `docs/audit/session-gate-baseline-2026-08-19.txt` = 0,任何新命中直接红)。dev/vitest 下从
-store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`app/session/freeze.ts`),漏网的
+store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session/freeze.ts`),漏网的
 就地改当场抛 TypeError。core 引擎仍然通过注入的 store 端口写(那些小接口的形状 P0 不动),
 端口实现走命令面。**一个反复踩的坑**:命令是 COW 的 —— 先捕获 `session.messages`、再
 `await`、再读那个变量会拿到旧数组;await 之后重读。
 
-**MCP / ACP / Skills / Themes**: app wiring under `packages/onething-runtime/src/app/{mcp,acp,skills,themes}/`, product logic under `packages/onething-runtime/src/`.
+**MCP / ACP / Skills**: assembly wiring in `packages/backend/mcp/` and `packages/backend/wiring/{acp,skills}/`; themes are product-only now (`packages/onething-runtime/src/themes/`), as is the rest of the product logic.
 
 **CLI daemon**: `bin/onething.mjs` → `out/main/cli.js` (built from `apps/electron/src/main/cli/index.ts`). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
 
@@ -714,7 +720,7 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`app/session/fre
 
 ### State Management
 
-- **Backend**: app-layer stores in `packages/onething-runtime/src/app/stores/` (sessions repository with LRU + 300ms throttled async saves, settings cache with sync hot path, app-state)
+- **Backend**: app-layer stores in `packages/backend/stores/` (sessions repository with LRU + 300ms throttled async saves, settings cache with sync hot path, app-state)
 - **Renderer**: Pinia stores in `packages/renderer/stores/`
 - **Cross-process sync**: EventBus → IPCBridge/SSE events + explicit IPC/HTTP fetch calls
 

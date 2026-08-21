@@ -2,7 +2,7 @@
  * Todo / plan 的**窗口面**（主线 T1 第一批之后剩下的部分）。
  *
  * 数据面（读快照 / 增删改重命名 / 在文件管理器里显示目录）已迁到通用 RPC 通道
- * （`todoPlanRouter` → `@onething/app/rpc/domains/todo-plan.ts`）。这里只剩两样
+ * （`todoPlanRouter` → `@onething/backend/rpc/domains/todo-plan.ts`）。这里只剩两样
  * 东西，都是宿主原生、迁不走的：
  *
  *  1. 四条窗口动作 —— 直接操作 BrowserWindow；
@@ -34,7 +34,7 @@ import {
   runOnethingTodoPlanWindowActionForIpc,
   setOnethingTodoPlanWindowPinnedForIpc,
 } from '@onething/runtime/todo-plan'
-import { configureTodoPlanHost } from '@onething/app/todo-plan/store.js'
+import { configureTodoPlanHost } from '@onething/backend/wiring/todo-plan/store.js'
 
 export function registerTodoPlanHandlers(): void {
   configureTodoPlanHost({

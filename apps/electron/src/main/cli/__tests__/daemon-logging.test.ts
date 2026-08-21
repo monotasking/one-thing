@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * `HeadlessBackend` 被替身掉:本测试问的是"守护进程起来之后写不写
  * `daemon.jsonl`",而不是"后端能不能装配"—— 真把后端拉进来会顺带跑整棵工具树。
  */
-vi.mock('@onething/app/headless/backend.js', () => ({
+vi.mock('@onething/backend/headless/backend.js', () => ({
   HeadlessBackend: class {
     async start(): Promise<void> {}
     async shutdown(): Promise<void> {}
@@ -25,14 +25,14 @@ describe('daemon logging (L2)', () => {
   })
 
   afterEach(async () => {
-    const logging = await import('@onething/app/logging/index.js')
+    const logging = await import('@onething/backend/logging/index.js')
     await logging.shutdownAppLogging()
     fs.rmSync(storePath, { recursive: true, force: true })
   })
 
   it('writes daemon.jsonl into the store log dir, one JSON record per line', async () => {
     const { configureDaemonLogging } = await import('../daemon-server.js')
-    const logging = await import('@onething/app/logging/index.js')
+    const logging = await import('@onething/backend/logging/index.js')
 
     const handle = configureDaemonLogging(storePath)
     logging.getLogger('daemon').info('daemon listening', { socketPath: '/tmp/x.sock', pid: 4242 })

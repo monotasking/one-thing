@@ -2,20 +2,20 @@
  * `server:start` 的进程壳。
  *
  * A 期(docs/design/one-core-2026-08.md §3)之后 HTTP/SSE 面与 server runtime 的
- * **实现**都在 `@onething/app/server/*`,这个文件只剩三件事:读环境、决定要不要
+ * **实现**都在 `@onething/backend/server/*`,这个文件只剩三件事:读环境、决定要不要
  * 让位给桌面 core 服务、以及进程生命周期(监听 / 发现文件 / 退出刷盘)。
  */
-import { createOnethingHttpServer } from '@onething/app/server/http.js'
-import { createDevelopmentOnethingServerRuntime } from '@onething/app/server/runtime.js'
+import { createOnethingHttpServer } from '@onething/backend/server/http.js'
+import { createDevelopmentOnethingServerRuntime } from '@onething/backend/server/runtime.js'
 import {
   httpDiscoveryUrl,
   isHttpDiscoveryAlive,
   readHttpDiscovery,
   removeHttpDiscovery,
   writeHttpDiscovery,
-} from '@onething/app/server/discovery.js'
-import { configureLogging } from '@onething/app/logging/index.js'
-import { warnOnForeignCoreForEventsRead } from '@onething/app/session/read-mode.js'
+} from '@onething/backend/server/discovery.js'
+import { configureLogging } from '@onething/backend/logging/index.js'
+import { warnOnForeignCoreForEventsRead } from '@onething/backend/session/read-mode.js'
 import { randomBytes } from 'node:crypto'
 
 const forced = process.argv.includes('--force')

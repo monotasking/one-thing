@@ -14,52 +14,52 @@ import {
 	initializeACP,
 	shutdownACP,
 } from "@main/ipc/handlers.js";
-import { flushAllPendingSaves } from "@onething/app/store.js";
-import { getSettings } from "@onething/app/stores/settings.js";
-import { startTodoPlanWatcher } from "@onething/app/todo-plan/store.js";
+import { flushAllPendingSaves } from "@onething/backend/store.js";
+import { getSettings } from "@onething/backend/stores/settings.js";
+import { startTodoPlanWatcher } from "@onething/backend/wiring/todo-plan/store.js";
 import { startScratchpadWatcher } from "@onething/runtime/scratchpad/service-bound";
-import { configureSandboxHost } from "@onething/app/tools/core/sandbox.js";
-import { configurePluginAppVersion } from "@onething/app/plugins/app-version.js";
-import { configureMCPClientIdentity } from "@onething/app/mcp/identity.js";
-import { getPluginManager } from "@onething/app/plugins/manager.js";
+import { configureSandboxHost } from "@onething/backend/wiring/tools/core/sandbox.js";
+import { configurePluginAppVersion } from "@onething/backend/plugins/app-version.js";
+import { configureMCPClientIdentity } from "@onething/backend/mcp/identity.js";
+import { getPluginManager } from "@onething/backend/plugins/manager.js";
 import {
 	resolvePluginStorageRoot,
 	resolvePluginWebviewStaticRoot,
-} from "@onething/app/plugins/webview.js";
+} from "@onething/backend/plugins/webview.js";
 import {
 	getConversationRuntime,
 	getStreamEngine,
 	getStreamEngineSafe,
 	shutdownStreamEngine,
-} from "@onething/app/engine/index.js";
+} from "@onething/backend/engine/index.js";
 import {
     createOnethingBackend,
     type OnethingBackend,
-} from "@onething/app/backend.js";
+} from "@onething/backend/backend.js";
 import {
     startEmbeddedOnethingHttpServer,
     stopEmbeddedOnethingHttpServer,
-} from "@onething/app/server/embed.js";
-import { removeHttpDiscovery } from "@onething/app/server/discovery.js";
+} from "@onething/backend/server/embed.js";
+import { removeHttpDiscovery } from "@onething/backend/server/discovery.js";
 import {
   getOnethingMediaFilesDir,
   getOnethingMediaImagesDir,
 } from '@onething/runtime/storage'
 import {
   configureStorePathHost,
-} from '@onething/app/stores/docs-paths.js'
+} from '@onething/backend/stores/docs-paths.js'
 import {
 	shutdownEventSystem,
 	getEventBus,
-} from "@onething/app/events/index.js";
+} from "@onething/backend/events/index.js";
 import {
 	initializeIPCBridge,
 	shutdownIPCBridge,
 } from "@main/bridges/ipc-bridge-lifecycle.js";
-import { shutdownSessionLayer } from "@onething/app/session/index.js";
-import { Permission } from "@onething/app/permission/index.js";
-import { disposeMusicService } from "@onething/app/music/service.js";
-import { disposeRadioConductor } from "@onething/app/music/radio.js";
+import { shutdownSessionLayer } from "@onething/backend/session/index.js";
+import { Permission } from "@onething/backend/wiring/permission/index.js";
+import { disposeMusicService } from "@onething/backend/music/service.js";
+import { disposeRadioConductor } from "@onething/backend/music/radio.js";
 import { killAllTerminals } from "@onething/runtime/terminal/service.wiring";
 import {
 	configureBrowserWindowProvider,
@@ -78,7 +78,7 @@ import {
 	registerGlobalWindowShortcuts,
 	unregisterGlobalWindowShortcuts,
 } from "@onething/electron-host/shortcuts/global-shortcuts";
-import { getVoiceService, getVoiceServiceSafe } from "@onething/app/voice/service.js";
+import { getVoiceService, getVoiceServiceSafe } from "@onething/backend/voice/service.js";
 import {
 	attachVoiceTrayMainWindow,
 	configureVoiceTray,
@@ -99,23 +99,23 @@ import {
 	configureLogging,
 	getLogger,
 	shutdownAppLogging,
-} from "@onething/app/logging/index.js";
+} from "@onething/backend/logging/index.js";
 import {
 	createElectronRendererConsoleCapture,
 	setElectronAppLogsPath,
 } from "@onething/electron-host/logging/console-capture";
-import { configureSkillsEnvironmentHost } from "@onething/app/skills/loader.js";
+import { configureSkillsEnvironmentHost } from "@onething/backend/wiring/skills/loader.js";
 import {
 	getElectronAppIsPackaged,
 	getElectronAppVersion,
 	getElectronResourcesPath,
 } from "@onething/electron-host/skills/environment";
 import { configureAuthHost } from "@onething/runtime/auth/host-ports";
-import { configureVoiceHost } from "@onething/app/voice/host-ports.js";
+import { configureVoiceHost } from "@onething/backend/voice/host-ports.js";
 import { broadcastElectronVoiceMessage } from "@onething/electron-host/voice/events";
 import { createElectronAuthFetch } from "@onething/electron-host/auth/auth-fetch";
 import { getElectronSafeStorage } from "@onething/electron-host/auth/electron-auth";
-import { createRequiredAppFetch } from "@onething/app/providers/bound-fetch.js";
+import { createRequiredAppFetch } from "@onething/backend/providers/bound-fetch.js";
 import { hydrateProcessEnvFromLoginShell } from "@onething/electron-host/app/login-shell-env";
 import {
 	StoreLock,
@@ -145,7 +145,7 @@ const log = getLogger("app.boot");
  * Only runs if no model data exists yet for any configured provider.
  */
 async function refreshModelsOnFirstStartup(): Promise<void> {
-	const { getSettings } = await import("@onething/app/stores/settings.js");
+	const { getSettings } = await import("@onething/backend/stores/settings.js");
 	const settings = getSettings();
 	const providers = settings?.ai?.providers;
 	if (!providers) return;
@@ -167,7 +167,7 @@ async function refreshModelsOnFirstStartup(): Promise<void> {
 
 	log.info("first-startup model refresh starting");
 	const { refreshAllProviders } = await import(
-		"@onething/app/providers/model-registry.js"
+		"@onething/backend/providers/model-registry.js"
 	);
 	await refreshAllProviders();
 	log.info("first-startup model refresh complete");
@@ -257,10 +257,10 @@ function startPostWindowServices(): void {
 	startEmbeddedCoreHttpSurface();
 
 	const pluginsReady = (async () => {
-		const { bootstrapPluginSystem } = await import("@onething/app/plugins/index.js");
+		const { bootstrapPluginSystem } = await import("@onething/backend/plugins/index.js");
 		// P3:市场索引 URL(共享层死常量,裁决"纯硬编码")——装配期注入,
 		// 更新通道与市场区同这一条供给线;测试经 configurePluginMarketIndex 覆盖。
-		const { configurePluginMarketIndex } = await import("@onething/app/plugins/install.js");
+		const { configurePluginMarketIndex } = await import("@onething/backend/plugins/install.js");
 		const { PLUGIN_MARKET_INDEX_URL } = await import("@shared/ipc/plugins.js");
 		configurePluginMarketIndex(PLUGIN_MARKET_INDEX_URL);
 		await bootstrapPluginSystem(getEventBus(), getStreamEngine());
@@ -268,7 +268,7 @@ function startPostWindowServices(): void {
 		log.error("subsystem startup failed", { subsystem: "plugins", blocking: false }, err);
 	});
 
-	import("@onething/app/scheduler/user-tasks.js")
+	import("@onething/backend/wiring/scheduler/user-tasks.js")
 		.then(({ initializeUserSchedulerTasks }) => initializeUserSchedulerTasks())
 		.catch((err) => {
 			log.error("subsystem startup failed", { subsystem: "scheduler", blocking: false }, err);

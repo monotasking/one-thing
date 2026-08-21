@@ -12,11 +12,14 @@
 #  lines:http.ts 1989→2028(+39):L0/L1 server 请求日志(91ab846e),非通道。
 #  lines:channels.ts 535→541(+6):+3 todo-plan 窗口常量 +1 SPACES_CHANGED + 注释;−13 spaces。
 # 此后基线不再手改;只由 `--write-baseline` 在指标下降时收紧。任何上升 = 红,CI 的 gates job 会拦。
+# 2026-08-21(P3'd 路径改名,数值不变):`src/app` 整体成包 `packages/backend`,
+#   指标键 `lines:packages/onething-runtime/src/app/server/http.ts` 手工改名为
+#   `lines:packages/backend/server/http.ts`;同一个文件、同一个数值,不是收紧也不是放松。
 # 2026-08-21(续):practice 域迁 router 后收紧 —— channels 329→319、bridge 1855→1816、web 1707→1681、channels.ts 541→533。
 # 2026-08-21(续):collab 域迁 router 后收紧 —— channels 319→304、bridge 1816→1736(已低于 08-14 起点 1737)、web 1681→1666、channels.ts 533→499。
 # 2026-08-21(续):P4c 第一批六域(scheduler/variables/app-state/permission/scratchpad/project-dirs)迁 router + 删 server 镜像路由后收紧 —— channels 304→279、bridge 1736→1631、http 2028→1839、web 1666→1577、channels.ts 499→474。
 channels:IPC_CHANNELS 279
 lines:apps/electron/src/preload/bridge.ts 1631
-lines:packages/onething-runtime/src/app/server/http.ts 1839
+lines:packages/backend/server/http.ts 1839
 lines:packages/renderer/platform/web.ts 1577
 lines:packages/shared/ipc/channels.ts 474

@@ -45,15 +45,40 @@ describe('architecture boundaries', () => {
     ])).toEqual([])
   })
 
-  it('keeps the runtime product layer off the assembly tree', () => {
-    // src/app is the product assembly (the former Electron main glue). The
-    // rest of the runtime package is host-independent product logic and must
-    // never depend on how it gets assembled — the dependency points one way.
-    const violations = findForbiddenReferences('packages/onething-runtime/src', [
-      importOf('@onething/app'),
-      /from\s+['"][^'"]*\/app\/(engine|stores|tools|providers|channel)\//,
-    ]).filter(reference => !reference.includes('packages/onething-runtime/src/app/'))
-    expect(violations).toEqual([])
+  it('keeps the runtime product layer off the assembly package', () => {
+    // P3'd: the assembly layer is its own workspace package
+    // (`@onething/backend`, the former `runtime/src/app`). The runtime package
+    // is host-independent product logic and must never depend on how it gets
+    // assembled — the dependency points one way: product ← assembly ← hosts.
+    expect(findForbiddenReferences('packages/onething-runtime/src', [
+      importOf('@onething/backend'),
+    ])).toEqual([])
+  })
+
+  /**
+   * I1(docs/design/structural-debt-plan-2026-08.md §0b.3):**一个领域一个家**。
+   *
+   * 病根是"一个领域被横切成三片,其中一片叫 app" —— 读代码的人看见 `plugins/`
+   * 出现在三棵树里,不知道该找哪一个。P3'd 把装配层变成 `packages/backend` 之后,
+   * 这条不变量可以被机械地守住:**backend 包根的目录名不得与 runtime 顶层目录名
+   * 重名**。`wiring/` 下不算 —— 那里放的是"接进后端"的薄接线,路径自带角色
+   * (`backend/wiring/<d>` 与 `runtime/<d>` 天然不同名)。
+   *
+   * 当前豁免的是 P3'b 待合并的厚孪生。**这是棘轮:只许缩,不许长。**
+   * 每摘掉一个就从这张表里删一行,表空了就把整张表删掉。
+   */
+  it('I1: keeps one home per domain — backend package root does not shadow a runtime domain', () => {
+    // P3'b 逐个摘除(厚孪生:两边都有真代码,合并要逐文件判定契约/实现/接线)。
+    const pendingThickTwins = new Set([
+      'collab', 'plugins', 'providers', 'toolkit', 'mcp', 'music', 'voice', 'logging',
+      // 单文件孪生(backend/headless/backend.ts 对 runtime/headless/),同批处理。
+      'headless',
+    ])
+    const runtimeDomains = new Set(topLevelDirectories('packages/onething-runtime/src'))
+    const collisions = topLevelDirectories('packages/backend')
+      .filter(name => name !== 'wiring')
+      .filter(name => runtimeDomains.has(name) && !pendingThickTwins.has(name))
+    expect(collisions).toEqual([])
   })
 
   it('keeps packages/gateway depending on core only', () => {
@@ -152,6 +177,14 @@ describe('architecture boundaries', () => {
 
 /** Matches import/require/export-from of `src/main|renderer|preload` from any relative depth. */
 const appSourceImportPattern = /(?:from\s+['"]|import\s*\(\s*['"]|require\s*\(\s*['"])[^'"]*src\/(?:main|renderer|preload)\//
+
+/** 顶层目录名(领域名)。`__tests__` 不是领域,不参与 I1 的比对。 */
+function topLevelDirectories(relativeDirectory: string): string[] {
+  return readdirSync(join(projectRoot, relativeDirectory), { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .filter(name => name !== '__tests__' && !skippedDirectories.has(name))
+}
 
 function importOf(packageName: string): RegExp {
   const escaped = packageName.replace(/[/\\^$.*+?()[\]{}|]/g, '\\$&')

@@ -59,11 +59,11 @@ import {
   type MCPUpdateServerRequest,
   type MCPUpdateServerResponse,
 } from '@shared/ipc.js'
-import { MCPManager, probeMCPServerConfig, registerMCPTools } from '@onething/app/mcp/index.js'
-import { configureMCPCapabilitiesChangedHandler } from '@onething/app/mcp/capabilities-changed.js'
-import { getMCPOAuthFlowManager } from '@onething/app/mcp/oauth/index.js'
-import { getSettings, saveSettings } from '@onething/app/stores/settings.js'
-import { getLogger } from '@onething/app/logging/index.js'
+import { MCPManager, probeMCPServerConfig, registerMCPTools } from '@onething/backend/mcp/index.js'
+import { configureMCPCapabilitiesChangedHandler } from '@onething/backend/mcp/capabilities-changed.js'
+import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/index.js'
+import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('ipc.mcp')
 

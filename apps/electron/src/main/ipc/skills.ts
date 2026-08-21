@@ -41,15 +41,15 @@ import {
   deleteSkill,
   readSkillFile,
   getUserSkillsPath,
-} from '@onething/app/skills/index.js'
-import { getSettings, saveSettings } from '@onething/app/stores/settings.js'
+} from '@onething/backend/wiring/skills/index.js'
+import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'
 import {
   getAllSkillsForDisplay,
   getSkillsForSession as getRuntimeSkillsForSession,
   initializeSessionSkills,
   invalidateSessionSkillsCache,
-} from '@onething/app/skills/session-skills.js'
-import { getLogger } from '@onething/app/logging/index.js'
+} from '@onething/backend/wiring/skills/session-skills.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('ipc.skills')
 

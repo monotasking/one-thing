@@ -242,7 +242,7 @@ export interface ChannelDeliveryListResponse {
  * 渠道身份域(主线 T1 第二批)。
  *
  * 迁移前这个域在 server 上是一份**平行实现**:`createServerChannelIdentityApi`
- * 自己读写 `<dataRoot>/channel-identity.json`,而 `@onething/app` 的
+ * 自己读写 `<dataRoot>/channel-identity.json`,而 `@onething/backend` 的
  * `ChannelIdentityStore`(会话路由、出站回投都吃它)读的是 `<store>/channel-identity.json`。
  * 也就是说 server 的 HTTP 面和 server 自己的引擎面看的是两本账。迁到通用 RPC
  * 通道后两侧共用同一个 store —— 这不是等价搬迁,是**顺带修好一处分账**。

@@ -13,7 +13,7 @@ import {
 	DEFAULT_BROWSER_SEARCH_ENGINE_ID,
 	type BrowserSearchEngineId,
 } from '@shared/ipc.js'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('browser')
 

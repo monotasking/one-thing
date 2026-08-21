@@ -19,7 +19,7 @@ import {
   readSessionTrace,
   readSessionTraceResponseText,
   type ReadSessionTraceOptions,
-} from '@onething/app/session/trace.js'
+} from '@onething/backend/session/trace.js'
 import type {
   SessionTrace,
   SessionTraceRequest,

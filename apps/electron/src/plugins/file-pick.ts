@@ -14,7 +14,7 @@
  */
 import { BrowserWindow, dialog } from 'electron'
 import { resolvePluginFilePickAccept } from '@onething/core/plugins'
-import { importPluginFile } from '@onething/app/plugins/file-import.js'
+import { importPluginFile } from '@onething/backend/plugins/file-import.js'
 import type { PickPluginFileRequest, PickPluginFileResponse } from '@shared/ipc/plugins.js'
 
 export interface PickPluginFileDeps {

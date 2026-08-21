@@ -1,5 +1,5 @@
 import type { BrowserWindow, WebContents } from 'electron'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('window')
 

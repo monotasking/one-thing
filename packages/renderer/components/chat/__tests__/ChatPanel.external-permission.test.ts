@@ -23,11 +23,11 @@ import type { ChatMessage } from '@/types'
  *
  * ## 与后端那一半的接缝
  *
- * 装配层(`@onething/app`)对渲染侧是**不可见**的 —— `tsconfig.web.json` 故意不给
- * `@onething/app` 路径,渲染侧不许看见主进程装配。所以这条测试只负责后半程,
+ * 装配层(`@onething/backend`)对渲染侧是**不可见**的 —— `tsconfig.web.json` 故意不给
+ * `@onething/backend` 路径,渲染侧不许看见主进程装配。所以这条测试只负责后半程,
  * 前半程(`askExternalAgentPermission` 在"没有 assistant 消息"时交出的锚必须是会话里
  * 真的有的那条消息)由
- * `onething-runtime/src/app/external-agents/__tests__/permission-and-interaction.test.ts`
+ * `packages/backend/wiring/external-agents/__tests__/permission-and-interaction.test.ts`
  * 用真的策略门验。
  *
  * 接缝上传递的就是下面这一个对象:core 的 `PermissionInfo`。两半都对**同一个不变式**

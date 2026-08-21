@@ -1,8 +1,8 @@
 /**
  * 产品层的日志门面(docs/design/logging-system-2026-08.md §8.3 区 ①)。
  *
- * 产品层(`packages/onething-runtime/src/**`,不含 `src/app`)不能 import
- * `@onething/app` —— 依赖方向是单向的(product ← assembly ← hosts)。所以这里
+ * 产品层(`packages/onething-runtime/src/**`)不能 import
+ * `@onething/backend` —— 依赖方向是单向的(product ← assembly ← hosts)。所以这里
  * 放一个**薄**模块:持有一个可被装配层替换的 root,导出 `getLogger(ns)`。
  *
  * - 装配层的 `configureLogging()` 调一次 `setRuntimeLoggerRoot(getRootLogger())`,
@@ -43,7 +43,7 @@ let currentRoot: LoggerRoot = fallbackRoot
 let generation = 0
 
 /**
- * 装配层的接线口。`@onething/app/logging` 的 `configureLogging()` 调它一次。
+ * 装配层的接线口。`@onething/backend/logging` 的 `configureLogging()` 调它一次。
  * 幂等地重复调用是安全的(只换引用 + 递增 generation)。
  */
 export function setRuntimeLoggerRoot(root: LoggerRoot | null | undefined): void {
@@ -155,7 +155,7 @@ export type { Logger, LogLevel, LogRecord } from '@onething/core/logging'
  * P3'a-3 从 `src/app/logging/` 搬到这里:它是 `Logger → console` 的**纯适配器**,
  * 只认识 `@onething/core/logging` 的类型,一条装配层的边都没有。留在 app 里就成了
  * 一根假脊柱 —— 任何用得上它的产品层模块都会因为这一条 import 被钉死在 `src/app`。
- * 装配层的 `@onething/app/logging` 原样再导出,老调用点一行不改。
+ * 装配层的 `@onething/backend/logging` 原样再导出,老调用点一行不改。
  */
 export { consolePort } from './console-port.js'
 export type { ConsoleLikePort } from './console-port.js'

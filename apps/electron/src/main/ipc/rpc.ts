@@ -3,7 +3,7 @@
  *
  * One `ipcMain.handle` for every domain, forever. This is meant to be the LAST
  * new handler file `@main` gets: a new domain registers its handlers in the
- * assembly layer (`src/app/rpc/`) and reaches the renderer through here without
+ * assembly layer (`packages/backend/rpc/`) and reaches the renderer through here without
  * a single line landing in this directory.
  *
  * `dispatchRpc` never rejects — it returns `{ ok:false, error }` — so the
@@ -12,7 +12,7 @@
  */
 import { ipcMain } from "electron";
 import { DESKTOP_RPC_CONTEXT, IPC_CHANNELS, type RpcRequest } from "@shared/ipc.js";
-import { dispatchRpc } from "@onething/app/rpc/registry.js";
+import { dispatchRpc } from "@onething/backend/rpc/registry.js";
 
 export function registerRpcHandler(): void {
 	// The context is minted HERE, never read off the envelope (主线 T 批 3).

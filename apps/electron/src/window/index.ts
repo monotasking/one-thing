@@ -5,7 +5,7 @@ import {
   readJsonFile,
   writeJsonFile,
 } from '@onething/runtime/storage'
-import { getSettings } from '@onething/app/stores/settings.js'
+import { getSettings } from '@onething/backend/stores/settings.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { TodoPlanWindowActionRequest } from '@shared/ipc.js'
 import { DEFAULT_GENERAL_SETTINGS } from '@shared/defaults/settings.js'
@@ -81,7 +81,7 @@ import {
   type ElectronTodoPlanDragRequest,
   type NormalizedElectronTodoPlanWindowActionOptions,
 } from '@onething/electron-host/window/todo-plan-presentation'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('window')
 export { MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS } from '@onething/electron-host/window/main-window-recovery'

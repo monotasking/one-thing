@@ -27,7 +27,7 @@ import { ConsoleSink, LoggerRoot, type Logger } from '@onething/core/gateway-run
 
 export type { Logger } from '@onething/core/gateway-runtime'
 
-/** 宿主注入的形状 —— 与 `@onething/app/logging` 的 `getLogger` 同签名。 */
+/** 宿主注入的形状 —— 与 `@onething/backend/logging` 的 `getLogger` 同签名。 */
 export type GatewayLoggerFactory = (ns: string) => Logger
 
 /** 网关命名空间的根:`gateway`、`gateway.wechat`、`gateway.bridge`… */

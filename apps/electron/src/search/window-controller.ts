@@ -9,7 +9,7 @@ import {
   createDailyNote,
   invokePluginSearchAction,
   PLUGIN_SEARCH_ACTION_PREFIX,
-} from '@onething/app/search/providers.js'
+} from '@onething/backend/wiring/search/providers.js'
 import { closeSearchWindow, toggleSearchWindow } from './window.js'
 
 const CREATE_DAILY_NOTE_PREFIX = 'create-daily-note:'

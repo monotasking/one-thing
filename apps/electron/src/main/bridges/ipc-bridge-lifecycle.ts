@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { IPCBridge, type IPCBridgeSender } from './ipc-bridge.js'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('ipc.bridge')
 

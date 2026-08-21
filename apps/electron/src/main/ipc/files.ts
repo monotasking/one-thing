@@ -42,10 +42,10 @@ import {
 } from '@onething/runtime/files'
 import { applyFileMutationUndo } from '@onething/runtime/tools'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { listFiles } from '@onething/app/utils/ripgrep.js'
+import { listFiles } from '@onething/backend/utils/ripgrep.js'
 import { getVariablesStore } from '@onething/runtime/variables/store-bound'
-import { getConnectedDirectoriesForSession } from '@onething/app/stores/connected-directories.js'
-import { getDownloadsDirectory } from '@onething/app/tools/core/sandbox.js'
+import { getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
+import { getDownloadsDirectory } from '@onething/backend/wiring/tools/core/sandbox.js'
 
 export interface ListFilesRequest extends OnethingListFilesRequest {}
 export type FileSearchEntryType = OnethingFileSearchEntryType

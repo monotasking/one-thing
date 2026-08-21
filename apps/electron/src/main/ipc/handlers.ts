@@ -24,8 +24,8 @@ import { registerTodoPlanHandlers } from "./todo-plan.js";
 import { registerScratchpadHandlers } from "./scratchpad.js";
 import { registerVoiceHandlers } from "./voice.js";
 import { registerMusicHandlers } from "./music.js";
-import { startMusicNowPlayingWatch } from "@onething/app/music/service.js";
-import { startRadioConductor } from "@onething/app/music/radio.js";
+import { startMusicNowPlayingWatch } from "@onething/backend/music/service.js";
+import { startRadioConductor } from "@onething/backend/music/radio.js";
 import { registerACPHandlers, initializeACP, shutdownACP } from "./acp.js";
 import { registerGatewayHandlers } from "./gateway.js";
 import { registerEvalsHandlers } from "./evals.js";
@@ -35,11 +35,11 @@ import { registerTerminalHandlers } from "./terminal.js";
 import { registerBrowserHandlers } from "./browser.js";
 import { registerDeepLinkHandlers } from "./deeplink.js";
 import { registerNotifyHandlers } from "./notify.js";
-import { getEventBus } from "@onething/app/events/index.js";
-import { sanitizeRendererOrigin } from "@onething/app/channel/index.js";
+import { getEventBus } from "@onething/backend/events/index.js";
+import { sanitizeRendererOrigin } from "@onething/backend/channel/index.js";
 
 import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
-import { getLogger } from "@onething/app/logging/index.js";
+import { getLogger } from "@onething/backend/logging/index.js";
 
 const log = getLogger("ipc");
 

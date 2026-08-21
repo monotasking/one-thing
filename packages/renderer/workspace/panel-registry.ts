@@ -49,7 +49,7 @@
  *
  * ── 注册时机:模块求值即注册(与 app 层的"import 零副作用"纪律不同域)──────
  *
- * `@onething/app` 那一层禁止 import 副作用,因为它有一条显式装配序列
+ * `@onething/backend` 那一层禁止 import 副作用,因为它有一条显式装配序列
  * (`createOnethingBackend`),顺序问题必须留在那一处可读。renderer **没有**
  * 装配序列 —— 组件树自己就是装配,谁先 import 由打包器决定。所以这一层的合法
  * 形态正好相反:**模块求值时注册**,于是"import 到了就一定可用"。

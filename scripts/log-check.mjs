@@ -2,7 +2,7 @@
 // 日志迁移棘轮的检查器:数**非测试源码**里的 `console.*` 调用点。
 //
 // 口径(docs/design/logging-system-2026-08.md §2.6):
-//   - 扫 packages/{core,onething-runtime/src,renderer,gateway/src,shared} 与
+//   - 扫 packages/{core,onething-runtime/src,backend,renderer,gateway/src,shared} 与
 //     apps/{electron,server,web}/src(以及 apps/web 的少量根文件);
 //   - 跳过测试(`__tests__/`、`*.test.*`、`*.spec.*`)、类型声明、构建产物;
 //   - 白名单:`scripts/`(本来就是给人看的终端输出)与
@@ -21,6 +21,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const ROOTS = [
   'packages/core',
   'packages/onething-runtime/src',
+  'packages/backend',
   'packages/renderer',
   'packages/gateway/src',
   'packages/shared',

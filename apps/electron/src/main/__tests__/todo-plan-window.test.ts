@@ -192,7 +192,7 @@ vi.mock('@onething/runtime/storage', async (importOriginal) => {
   }
 })
 
-vi.mock('@onething/app/stores/settings.js', () => ({
+vi.mock('@onething/backend/stores/settings.js', () => ({
   getSettings: mocks.getSettings,
 }))
 

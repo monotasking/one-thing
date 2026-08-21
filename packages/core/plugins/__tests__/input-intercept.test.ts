@@ -6,7 +6,7 @@
  * 跳过、重复 id 拒绝,以及 `api.interceptInput` 的声明门。
  *
  * 引擎挂点(哪些入口进链、系统内部源豁免、transform 痕迹、reply 投递)在
- * `packages/onething-runtime/src/app/engine/__tests__/stream-engine-input-intercept.test.ts`。
+ * `packages/backend/engine/__tests__/stream-engine-input-intercept.test.ts`。
  */
 import { describe, expect, it } from 'vitest'
 

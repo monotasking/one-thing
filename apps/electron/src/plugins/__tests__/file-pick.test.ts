@@ -14,7 +14,7 @@ vi.mock('electron', () => ({
   dialog: { showOpenDialog: vi.fn() },
 }))
 
-vi.mock('@onething/app/plugins/file-import.js', () => ({
+vi.mock('@onething/backend/plugins/file-import.js', () => ({
   importPluginFile: vi.fn(),
 }))
 

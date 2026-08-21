@@ -6,7 +6,7 @@
  * 音量比 practice 的节拍器略高一点(那是闭眼练习用的敲点,这是通知),但仍然克制。
  *
  * **要不要响不在这里判**。静音开关、每插件静音、限频三道闸全在主进程
- * (`@onething/app` 的 `plugins/notify-sound.ts`)。这里只做两件事:按名字查配方、
+ * (`@onething/backend` 的 `plugins/notify-sound.ts`)。这里只做两件事:按名字查配方、
  * 挡掉副窗重复播。
  */
 // 叶子路径,不走桶:桶 re-export 的 loader.ts 带 node:url,一进浏览器包就在求值

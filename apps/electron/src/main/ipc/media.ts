@@ -28,7 +28,7 @@ import {
   rebuildOnethingMediaLibraryForIpc,
   type OnethingMediaIngestLocalFilesInput,
 } from '@onething/runtime/media'
-import { getSessions } from '@onething/app/stores/index.js'
+import { getSessions } from '@onething/backend/stores/index.js'
 import { openImagePreviewWindow } from '@onething/electron-host/window'
 import { mediaLibraryService } from '@onething/runtime/media/library-service-bound'
 import { saveMediaImage, type MediaItem } from '@onething/runtime/media/save-image'

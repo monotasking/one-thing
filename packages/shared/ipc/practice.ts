@@ -88,7 +88,7 @@ export interface PracticeEventPayload {
  *
  * 十个方法全是**纯数据面**:节奏引擎的开始/暂停/继续/停止/读态、账本的
  * 记一笔/汇总/最近、配置的读写。引擎本身(1Hz 定时器 + 结算)住在
- * `@onething/app/practice`,传输面只递不判 —— 这也是它能整只搬进
+ * `@onething/runtime/practice`,传输面只递不判 —— 这也是它能整只搬进
  * `app/rpc/domains/practice.ts` 的原因。
  *
  * **无入参的方法一律 `Record<string, never>`**,调用处传 `{}`(spaces 的

@@ -15,12 +15,12 @@
 
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
-import type { Unsubscribe } from '@onething/app/events/types.js'
-import { getEventBus, getStreamChannel } from '@onething/app/events/index.js'
-import { SessionStreamCoalescer } from '@onething/app/events/stream-coalescer.js'
+import type { Unsubscribe } from '@onething/backend/events/types.js'
+import { getEventBus, getStreamChannel } from '@onething/backend/events/index.js'
+import { SessionStreamCoalescer } from '@onething/backend/events/stream-coalescer.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('ipc.bridge')
 

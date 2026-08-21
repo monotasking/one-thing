@@ -12,10 +12,10 @@ import { defaultOnethingThemeRuntime } from '@onething/runtime/themes/theme-runt
 import {
   getPluginThemeKnobVariables,
   getPluginThemeOverrideTokenValues,
-} from '@onething/app/plugins/theme-overrides.js'
-import { getPluginSkinTiers } from '@onething/app/plugins/skin.js'
+} from '@onething/backend/plugins/theme-overrides.js'
+import { getPluginSkinTiers } from '@onething/backend/plugins/skin.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('ipc.themes')
 

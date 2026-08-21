@@ -380,7 +380,7 @@ export interface GetProviderEnvStatusResponse {
 //
 // providers 与 models 都是纯查询/注册表读写:零窗口、零流式、零事件推送。
 // 迁移前 desktop 走 `models:*` / `providers:*` 手写通道,web 走 `/api/models*`
-// 与 `/api/providers*`;两侧各一份实现。现在两侧共用 `@onething/app` 的
+// 与 `/api/providers*`;两侧各一份实现。现在两侧共用 `@onething/backend` 的
 // provider 注册表与 model registry。
 
 export interface ModelsListResponse {

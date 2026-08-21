@@ -1,14 +1,14 @@
 /**
  * 轨迹 feature 的 renderer 半（C2，`docs/design/cordis-adoption-2026-08.md` §2）。
  *
- * 后端半在 `packages/onething-runtime/src/app/features/builtin/trajectory.ts`
+ * 后端半在 `packages/backend/features/builtin/trajectory.ts`
  * （一个 cordis plugin，注册 `sessionEvents` RPC 域）；这一半注册它的工作区
  * 面板。两半是**同一件功能的两端**，但接的不是同一个基座 —— 下面这条纪律
  * 就是它们唯一的差别。
  *
  * ── 模块求值即注册（K1 判例，不是疏忽）───────────────────────────────────
  *
- * `@onething/app` 那一层禁止 import 副作用，因为它有一条显式装配序列
+ * `@onething/backend` 那一层禁止 import 副作用，因为它有一条显式装配序列
  * （`createOnethingBackend`），顺序问题必须留在那一处可读。renderer **没有**
  * 装配序列 —— 组件树自己就是装配，谁先 import 由打包器决定。所以这一层的
  * 正确语义正好相反：**import 到了就一定可用**。

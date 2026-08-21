@@ -11,7 +11,7 @@ import type {
   InstallPluginRequest,
   UpdatePluginRequest,
 } from '@shared/ipc/plugins.js'
-import { createPluginConfigAccess } from '@onething/app/plugins/config-access.js'
+import { createPluginConfigAccess } from '@onething/backend/plugins/config-access.js'
 import {
   registerElectronPluginsIpcHandlers,
   type ElectronPluginAbortRequestPayload,
@@ -43,16 +43,16 @@ import {
 import type { GatewayCommandProvider } from '@onething/gateway'
 import { pickPluginFileOnDesktop } from '@onething/electron-host/plugins/file-pick'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { getPluginManager } from '@onething/app/plugins/index.js'
-import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
-import { getPluginFootprint } from '@onething/app/plugins/loader.js'
-import { getPluginBackgroundParams } from '@onething/app/plugins/background.js'
-import { getPluginMarketIndexSnapshot, probePluginNpmAvailability } from '@onething/app/plugins/install.js'
-import { readPluginTarballSummary } from '@onething/app/plugins/tarball.js'
-import { getPluginAppVersion } from '@onething/app/plugins/app-version.js'
-import { getEventBus } from '@onething/app/events/index.js'
-import * as store from '@onething/app/store.js'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getPluginManager } from '@onething/backend/plugins/index.js'
+import { clearPluginRuntimeHealth } from '@onething/backend/plugins/health.js'
+import { getPluginFootprint } from '@onething/backend/plugins/loader.js'
+import { getPluginBackgroundParams } from '@onething/backend/plugins/background.js'
+import { getPluginMarketIndexSnapshot, probePluginNpmAvailability } from '@onething/backend/plugins/install.js'
+import { readPluginTarballSummary } from '@onething/backend/plugins/tarball.js'
+import { getPluginAppVersion } from '@onething/backend/plugins/app-version.js'
+import { getEventBus } from '@onething/backend/events/index.js'
+import * as store from '@onething/backend/store.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('ipc.plugins')
 

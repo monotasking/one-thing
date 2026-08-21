@@ -24,7 +24,7 @@
  *    行,绝不回写"清理"文件;遇到崩溃截断的半行就丢弃那半行,前面的照常读出。
  *
  * 本文件是纯逻辑(无 fs、无路径、无会话状态),写入口与路径解析在装配层
- * (`packages/onething-runtime/src/app/session/event-log.ts`)。
+ * (`packages/backend/session/event-log.ts`)。
  */
 
 import { createHash } from 'node:crypto'

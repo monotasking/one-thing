@@ -29,7 +29,7 @@ import { parseDeepLink, type DeepLinkIntent } from '@onething/core/plugins/deep-
 import {
   buildDeepLinkCard,
   invokePluginDeepLinkAction,
-} from '@onething/app/deeplink/index.js'
+} from '@onething/backend/wiring/deeplink/index.js'
 
 /** 同时最多压几张未答的卡。超出丢最旧。 */
 export const DEEPLINK_PENDING_MAX = 5

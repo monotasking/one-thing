@@ -18,7 +18,7 @@ const baselinePath = path.join(root, 'docs/audit/transport-baseline-2026-08-14.t
 
 /** 四个壳文件：加一个域时历史上必须逐个改的那四处。 */
 const SHELL_FILES = [
-  'packages/onething-runtime/src/app/server/http.ts',
+  'packages/backend/server/http.ts',
   'apps/electron/src/preload/bridge.ts',
   'packages/renderer/platform/web.ts',
   'packages/shared/ipc/channels.ts',
@@ -266,7 +266,7 @@ function main() {
     for (const item of regressions) {
       console.error(`  + ${item.key}: ${item.baseline} → ${item.current} (+${item.current - item.baseline})`)
     }
-    console.error('  加功能请走 router 域（src/app/rpc/domains/），不要再加手写通道。')
+    console.error('  加功能请走 router 域（packages/backend/rpc/domains/），不要再加手写通道。')
     process.exit(1)
   }
 

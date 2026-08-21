@@ -15,7 +15,8 @@
 	"workspaces": [
 		"packages/core",
 		"packages/gateway",
-		"packages/onething-runtime"
+		"packages/onething-runtime",
+		"packages/backend"
 	],
 	"scripts": {
 		"dev": "node scripts/dev-unified.mjs",

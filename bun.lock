@@ -109,6 +109,20 @@
         "vue-tsc": "^3.1.8",
       },
     },
+    "packages/backend": {
+      "name": "@onething/backend",
+      "version": "0.0.0",
+      "dependencies": {
+        "@deepseek-ai/cordis": "4.0.1",
+        "@modelcontextprotocol/client": "^2.0.0",
+        "@onething/core": "*",
+        "@onething/runtime": "*",
+        "diff": "^8.0.2",
+        "uuid": "^13.0.0",
+        "yaml": "^2.8.2",
+        "zod": "^4.2.0",
+      },
+    },
     "packages/core": {
       "name": "@onething/core",
       "version": "0.0.0",
@@ -409,6 +423,8 @@
     "@npmcli/fs": ["@npmcli/fs@4.0.0", "", { "dependencies": { "semver": "^7.3.5" } }, ""],
 
     "@one-ini/wasm": ["@one-ini/wasm@0.1.1", "", {}, "sha512-XuySG1E38YScSJoMlqovLru4KTUNSjgVTIjyh7qMX6aNN5HY5Ct5LhRJdxO79JtTzKfzV/bnWpz+zquYrISsvw=="],
+
+    "@onething/backend": ["@onething/backend@workspace:packages/backend"],
 
     "@onething/core": ["@onething/core@workspace:packages/core"],
 

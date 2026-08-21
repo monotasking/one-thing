@@ -4,7 +4,7 @@
  * 这一份打的是 core 说了算的那一半:三态矩阵的纯函数、两道声明门(未声明即拒,
  * 且**不计熔断**)、拒绝的结构化形状、以及"宿主没接这条线"时的诚实降级。
  * 真实投递链路与循环闸在装配层那一份
- * (`packages/onething-runtime/src/app/plugins/__tests__/session-messenger.test.ts`)。
+ * (`packages/backend/plugins/__tests__/session-messenger.test.ts`)。
  */
 import { describe, expect, it } from 'vitest'
 

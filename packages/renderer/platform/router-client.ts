@@ -8,7 +8,7 @@
  * one-line client construction.
  *
  * This file imports the router *definition* from `@shared/ipc` and nothing
- * else: the renderer must never reach into `@onething/app` (tsconfig.web.json
+ * else: the renderer must never reach into `@onething/backend` (tsconfig.web.json
  * has no path for it, and the architecture test guards the direction).
  *
  * `RpcResponse.ok === false` becomes a thrown `Error` here — the single place

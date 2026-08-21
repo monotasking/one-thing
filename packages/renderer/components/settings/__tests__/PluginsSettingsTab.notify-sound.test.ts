@@ -3,7 +3,7 @@
  * M1 提示音的**用户主权面**:设置页两个控件真的落到 app settings 里。
  *
  * 这一层只验交互 → 落盘形状。"落盘之后响不响"由主进程裁决,那条线在
- * `packages/onething-runtime/src/app/plugins/__tests__/notify-sound.test.ts`;
+ * `packages/backend/plugins/__tests__/notify-sound.test.ts`;
  * "静音时横幅还在不在"在 `services/__tests__/ipc-hub-plugin-notify-sound.test.ts`。
  */
 import { flushPromises, mount } from '@vue/test-utils'

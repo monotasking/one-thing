@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { registerElectronMusicIpcHandlers } from '@onething/electron-host/music/ipc'
-import { createElectronMusicProcessRunner } from '@onething/app/music/process-runner.js'
+import { createElectronMusicProcessRunner } from '@onething/backend/music/process-runner.js'
 import {
   getOnethingMusicStateForIpc,
   listMusicProviderDescriptors,
@@ -11,7 +11,7 @@ import {
   type OnethingMusicSetupRequest,
 } from '@onething/runtime/music'
 import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
-import { getSettings, saveSettings } from '@onething/app/stores/settings.js'
+import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type {
   MusicCommand,
@@ -26,7 +26,7 @@ import {
   refreshMusicNowPlaying,
   resetMusicServiceForProviderSwitch,
   stopMusicPlayerKeepalive,
-} from '@onething/app/music/service.js'
+} from '@onething/backend/music/service.js'
 import {
   applyProgrammeAction,
   disposeRadioConductor,
@@ -45,8 +45,8 @@ import {
   resumeRadioPlayback,
   skipToNextRadioSong,
   startRadioConductor,
-} from '@onething/app/music/radio.js'
-import { resolveDjSpeakDone } from '@onething/app/music/dj-voice.js'
+} from '@onething/backend/music/radio.js'
+import { resolveDjSpeakDone } from '@onething/backend/music/dj-voice.js'
 
 /**
  * Music IPC serves the settings tab and the composer's music bar. Choosing what

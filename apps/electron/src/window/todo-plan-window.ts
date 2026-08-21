@@ -1,6 +1,6 @@
 import { BrowserWindow, screen } from 'electron'
 import { clampElectronWindowStateToDisplays } from './window-state'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('window.todo-plan')
 

@@ -26,25 +26,25 @@ import {
   updateOnethingSessionWorkingDirectory,
 } from '@onething/runtime/sessions'
 import { isValidSpaceId } from '@onething/runtime/spaces/types'
-import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '@onething/app/todo-plan/store.js'
+import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '@onething/backend/wiring/todo-plan/store.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest } from '@shared/ipc.js'
-import * as store from '@onething/app/store.js'
-import { DEFAULT_AGENT_ID, agentExists } from '@onething/app/agents/index.js'
-import { ensureCollabGroupRoom, type CollabGroupRoomInput } from '@onething/app/collab/index.js'
+import * as store from '@onething/backend/store.js'
+import { DEFAULT_AGENT_ID, agentExists } from '@onething/backend/wiring/agents/index.js'
+import { ensureCollabGroupRoom, type CollabGroupRoomInput } from '@onething/backend/collab/index.js'
 import type { PermissionMode } from '@shared/ipc.js'
-import { workdirGateway } from '@onething/app/variables/gateways.js'
-import { readSessionSegments } from '@onething/app/toc/index.js'
+import { workdirGateway } from '@onething/backend/wiring/variables/gateways.js'
+import { readSessionSegments } from '@onething/backend/wiring/toc/index.js'
 import {
   clearSessionUsage,
   getSessionUsage,
   updateSessionUsage,
-} from '@onething/app/session/usage.js'
-import { getLogger } from '@onething/app/logging/index.js'
+} from '@onething/backend/session/usage.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('ipc.sessions')
 
-export { clearSessionUsage, getSessionUsage, updateSessionUsage } from '@onething/app/session/usage.js'
+export { clearSessionUsage, getSessionUsage, updateSessionUsage } from '@onething/backend/session/usage.js'
 
 export function registerSessionHandlers() {
   registerElectronSessionIpcHandlers({

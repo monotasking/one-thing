@@ -65,8 +65,6 @@
     "./search/*": "./src/search/*.ts",
     "./sessions": "./src/sessions/index.ts",
     "./sessions/*": "./src/sessions/*.ts",
-    "./app": "./src/app/backend.ts",
-    "./app/*": "./src/app/*.ts",
     "./agents": "./src/agents/index.ts",
     "./agents/*": "./src/agents/*.ts",
     "./scheduler": "./src/scheduler/index.ts",

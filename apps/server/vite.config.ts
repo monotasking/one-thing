@@ -1,6 +1,5 @@
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
-import { onethingPackageAliases } from '../../onething.aliases'
 
 const projectRoot = resolve(__dirname, '../..')
 
@@ -8,11 +7,10 @@ export default defineConfig({
   root: projectRoot,
   cacheDir: resolve(projectRoot, 'node_modules/.vite/server'),
   resolve: {
-    // core / gateway / runtime 都是真 workspace 包,vite 走 node 解析 + 各自
-    // package.json 的 exports;表里只剩装配层 @onething/app(server 挂的就是它)。
+    // core / gateway / runtime / backend 都是真 workspace 包,vite 走 node 解析 +
+    // 各自 package.json 的 exports —— 这里一条 @onething/* alias 都不需要。
     alias: [
       { find: '@shared', replacement: resolve(projectRoot, 'packages/shared') },
-      ...onethingPackageAliases(projectRoot),
     ],
   },
   build: {

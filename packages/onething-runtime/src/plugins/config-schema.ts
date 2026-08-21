@@ -5,7 +5,7 @@
  * 实现也不划算。
  *
  * **住在产品层而不是装配层**:它是纯函数(没有宿主依赖),而设置页需要同一份
- * 归约结果 —— renderer 可以吃 @onething/runtime/plugins,吃不到 @onething/app。
+ * 归约结果 —— renderer 可以吃 @onething/runtime/plugins,吃不到 @onething/backend。
  * 两边各写一份 schema→控件 的解析器,就是形状漂移的开始。
  *
  * **支持的子集 = 设置 UI 能渲染的控件集**。这两件事必须是同一份清单:能校验

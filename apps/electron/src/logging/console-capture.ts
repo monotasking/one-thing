@@ -20,7 +20,7 @@ import { RENDERER_LOG_ECHO_MARK } from '@shared/ipc/logs.js'
 
 export type ElectronAppLogLevel = 'debug' | 'info' | 'warn' | 'error'
 
-/** 与 `@onething/app/logging` 的 `RendererCaptureLogEntry` 对齐。 */
+/** 与 `@onething/backend/logging` 的 `RendererCaptureLogEntry` 对齐。 */
 export interface ElectronAppLogEntry {
   level: ElectronAppLogLevel
   /** 命名空间;renderer 兜底一律 `renderer`。 */

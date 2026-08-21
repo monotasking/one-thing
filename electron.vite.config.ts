@@ -1,14 +1,10 @@
 import { resolve } from 'path'
-import {
-  onethingPackageAliases as createOnethingPackageAliases,
-  electronHostAliases as createElectronHostAliases
-} from './onething.aliases'
+import { electronHostAliases as createElectronHostAliases } from './onething.aliases'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 
-// `@onething/{core,gateway,runtime}` 一条 alias 都不需要 —— 真 workspace 包,走各自
-// package.json 的 exports。表里只剩装配层 `@onething/app`(包名不是 runtime 子路径)。
-const onethingPackageAliases = createOnethingPackageAliases(__dirname)
+// `@onething/{core,gateway,runtime,backend}` 一条 alias 都不需要 —— 全是真 workspace
+// 包,走各自 package.json 的 exports。
 // apps/electron 的内部路径别名(@onething/electron-host/*)只在这份配置和 vitest
 // 里出现 —— 它是宿主自己的目录写法,不是一个跨宿主的包,不该躺在包表里。
 const electronHostAliases = createElectronHostAliases(__dirname)
@@ -35,7 +31,6 @@ export default defineConfig({
     },
     resolve: {
       alias: [
-        ...onethingPackageAliases,
         ...electronHostAliases,
         { find: '@main', replacement: resolve(__dirname, 'apps/electron/src/main') },
         { find: '@shared', replacement: resolve(__dirname, 'packages/shared') }
@@ -58,7 +53,6 @@ export default defineConfig({
     },
     resolve: {
       alias: [
-        ...onethingPackageAliases,
         ...electronHostAliases,
         { find: '@shared', replacement: resolve(__dirname, 'packages/shared') }
       ]

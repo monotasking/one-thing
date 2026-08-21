@@ -16,7 +16,7 @@ import path from 'node:path'
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-cli-plugin-'))
 const pluginsDir = path.join(tmpRoot, 'plugins')
 
-vi.mock('@onething/app/plugins/loader.js', () => ({
+vi.mock('@onething/backend/plugins/loader.js', () => ({
   getPluginsDir: () => pluginsDir,
 }))
 
@@ -29,7 +29,7 @@ vi.mock('../stdout.js', () => ({
   stdoutRaw: (text: string) => { stdoutLines.push(String(text)) },
 }))
 
-vi.mock('@onething/app/plugins/install.js', () => ({
+vi.mock('@onething/backend/plugins/install.js', () => ({
   probePluginNpmAvailability: vi.fn(async () => true),
   installPluginPackage: vi.fn(async () => ({ ok: true, pluginId: 'stub' })),
   uninstallPluginPackage: vi.fn(async () => ({ removed: true })),
@@ -42,13 +42,13 @@ vi.mock('@onething/app/plugins/install.js', () => ({
   })),
 }))
 
-vi.mock('@onething/app/plugins/tarball.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/app/plugins/tarball.js')>()
+vi.mock('@onething/backend/plugins/tarball.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/plugins/tarball.js')>()
   return { ...actual, readPluginTarballSummary: vi.fn() }
 })
 
-const install = await import('@onething/app/plugins/install.js')
-const tarball = await import('@onething/app/plugins/tarball.js')
+const install = await import('@onething/backend/plugins/install.js')
+const tarball = await import('@onething/backend/plugins/tarball.js')
 const { pluginCommand } = await import('../plugin-command.js')
 
 const probeNpm = vi.mocked(install.probePluginNpmAvailability)

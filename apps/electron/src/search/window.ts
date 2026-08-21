@@ -12,7 +12,7 @@ import {
   readJsonFile,
   writeJsonFile,
 } from '@onething/runtime/storage'
-import { getSettings } from '@onething/app/stores/settings.js'
+import { getSettings } from '@onething/backend/stores/settings.js'
 import {
   getThemeBackgroundColor,
   resolveOnethingWindowThemeSelection,

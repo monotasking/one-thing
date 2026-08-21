@@ -8,11 +8,11 @@ import {
   closeOnethingSearchWindowForIpc,
   executeOnethingSearchForIpc,
 } from '@onething/runtime/search'
-import { executeSearch } from '@onething/app/search/providers.js'
+import { executeSearch } from '@onething/backend/wiring/search/providers.js'
 import { closeSearchWindow, setSearchWindowAnchor } from './window.js'
 import { registerElectronSearchIpcHandlers } from './window-actions.js'
 import { executeSearchActionFrom, toggleSearchWindowFrom } from './window-controller.js'
-import { getLogger } from '@onething/app/logging/index.js'
+import { getLogger } from '@onething/backend/logging/index.js'
 
 const log = getLogger('search')
 

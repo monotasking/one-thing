@@ -3,7 +3,7 @@
  *
  * 与其它 scope 的关键差别:**不经 daemon**。插件只在 Electron 桌面宿主执行
  * (plan A),CLI daemon 根本不装配插件系统,所以这里也不走 PluginManager,
- * 直接调 `@onething/app/plugins/install.js` 那层宿主无关的安装机器 ——
+ * 直接调 `@onething/backend/plugins/install.js` 那层宿主无关的安装机器 ——
  * 它只动账本(`<store>/plugins/package.json`)与 `node_modules/`,不加载任何
  * 插件代码。代价是装完不会热生效,每次成功后都得把这句话说给用户听。
  *
@@ -28,9 +28,9 @@ import {
   installPluginPackage,
   probePluginNpmAvailability,
   uninstallPluginPackage,
-} from '@onething/app/plugins/install.js'
-import { PLUGIN_PACKAGE_SCOPE, readPluginTarballSummary } from '@onething/app/plugins/tarball.js'
-import { getPluginsDir } from '@onething/app/plugins/loader.js'
+} from '@onething/backend/plugins/install.js'
+import { PLUGIN_PACKAGE_SCOPE, readPluginTarballSummary } from '@onething/backend/plugins/tarball.js'
+import { getPluginsDir } from '@onething/backend/plugins/loader.js'
 import {
   findMarketIndexEntry,
   readPluginLedger,

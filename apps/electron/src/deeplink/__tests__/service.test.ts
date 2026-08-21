@@ -18,7 +18,7 @@ const { invokePluginDeepLinkAction, describePluginDeepLinkAction } = vi.hoisted(
   describePluginDeepLinkAction: vi.fn(),
 }))
 
-vi.mock('@onething/app/deeplink/index.js', () => {
+vi.mock('@onething/backend/wiring/deeplink/index.js', () => {
   // buildDeepLinkCard 的真实实现要查 agent 库与插件清单(装配层),那些在这个
   // 测试里没有意义 —— 但**卡的判定逻辑本身**是真的:它决定了哪些链接会弹窗。
   // 所以这里保留真解析 + 真"该不该弹"的形状,只把两处产品查询换成桩。

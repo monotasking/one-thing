@@ -17,7 +17,7 @@ class CaptureSink implements LogSink {
   }
 }
 
-/** 宿主注入的形状:与 `@onething/app/logging` 的 `getLogger(ns)` 同签名。 */
+/** 宿主注入的形状:与 `@onething/backend/logging` 的 `getLogger(ns)` 同签名。 */
 function createHostLoggerFactory(): { getLogger: (ns: string) => Logger; sink: CaptureSink } {
   const sink = new CaptureSink()
   const root = new LoggerRoot({ level: 'trace', sinks: [sink], src: 'gateway' })
