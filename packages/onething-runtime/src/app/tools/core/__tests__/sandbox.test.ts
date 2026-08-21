@@ -25,8 +25,10 @@ import { configureAppToolSandbox } from '../sandbox'
 // Adapter wiring is an explicit assembly step now (no import-time config).
 configureAppToolSandbox()
 
-import { getToolOutputsDir } from '../../../stores/paths.js'
-import { resetVariablesStoreForTests } from '../../../variables/store/index.js'
+import {
+  getOnethingToolOutputsDir,
+} from '@onething/runtime/storage'
+import { resetVariablesStoreForTests } from '@onething/runtime/variables/store-bound'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 
 describe('sandbox', () => {
@@ -201,7 +203,7 @@ describe('sandbox', () => {
         '/notes/work',
         // App-generated artifacts (bash overflow logs): re-reading a tool
         // result already adjudicated by the permission system.
-        getToolOutputsDir(),
+        getOnethingToolOutputsDir(),
         getDownloadsDirectory(),
       ])
     })

@@ -25,7 +25,7 @@ async function loadModules() {
     import('../api.js'),
     import('@onething/runtime/toolkit'),
     import('../../engine/prompt/plugin-context.js'),
-    import('../../skills/plugin-roots.js'),
+    import('@onething/runtime/skills/plugin-roots.wiring'),
     import('../lifecycle.js'),
     import('../input-intercept.js'),
     import('../tool-call-intercept.js'),

@@ -8,7 +8,9 @@ import {
   type TodoPlanUpdateRequest,
 } from '@onething/runtime/todo-plan'
 import { getSettings } from '../stores/settings.js'
-import { getStorePath } from '../stores/paths.js'
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { getCurrentSessionId } from '../stores/app-state.js'
 import { getLogger } from '../logging/index.js'
 
@@ -56,7 +58,7 @@ function broadcast(payload: TodoPlanChangedPayload): void {
 
 export const todoPlanStore = new OnethingTodoPlanStore({
   getConfiguredDirectory: () => getSettings().general?.todoPlan?.directory,
-  getDefaultStorePath: () => getStorePath(),
+  getDefaultStorePath: () => getOnethingStorePath(),
   notifyChanged: broadcast,
   revealDirectory: directory => hostPorts.revealDirectory?.(directory),
 })

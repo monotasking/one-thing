@@ -146,7 +146,7 @@ vi.mock('../../project-dirs/index.js', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 
-vi.mock('../../media/media-library-service.js', () => ({
+vi.mock('@onething/runtime/media/library-service-bound', () => ({
   mediaLibraryService: {
     ingestMessageAttachments: vi.fn(),
   },
@@ -157,7 +157,7 @@ vi.mock('../context-compact.js', () => ({
   getContextCompactReason: vi.fn(() => null),
 }))
 
-vi.mock('../../prompts/resolver.js', () => ({
+vi.mock('@onething/runtime/prompts/resolver.wiring', () => ({
   resolvePromptReferences: vi.fn((content: string) => ({
     modelContent: content,
     displayContent: content,

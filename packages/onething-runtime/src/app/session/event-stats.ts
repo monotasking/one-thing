@@ -15,7 +15,9 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { getLogDir } from '../stores/paths.js'
+import {
+  getOnethingLogDir,
+} from '@onething/runtime/storage'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('sessions.events')
@@ -94,7 +96,7 @@ let timer: ReturnType<typeof setTimeout> | null = null
 const warnedSessions = new Set<string>()
 
 export function getSessionShadowStatsPath(): string {
-  return path.join(getLogDir(), SESSION_SHADOW_STATS_FILENAME)
+  return path.join(getOnethingLogDir(), SESSION_SHADOW_STATS_FILENAME)
 }
 
 function load(): SessionShadowStats {
@@ -124,7 +126,7 @@ function writeNow(): void {
   if (!dirty || !cached) return
   dirty = false
   try {
-    fs.mkdirSync(getLogDir(), { recursive: true })
+    fs.mkdirSync(getOnethingLogDir(), { recursive: true })
     fs.writeFileSync(
       getSessionShadowStatsPath(),
       `${JSON.stringify({ ...cached, updatedAt: Date.now() }, null, 2)}\n`,

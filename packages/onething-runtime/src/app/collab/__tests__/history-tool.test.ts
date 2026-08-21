@@ -44,8 +44,8 @@ vi.mock('../user-identity.js', () => ({
 }))
 // 直接读盘那一支在测试里没有真实文件 —— 让它落到 store 兜底分支，
 // 转录数据仍然由上面的 store mock 提供（读盘与否是性能问题，不是语义问题）。
-vi.mock('../../stores/paths.js', () => ({
-  getSessionsDir: () => '/nonexistent-for-tests',
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => '/nonexistent-for-tests',
 }))
 
 const { searchCollabHistory } = await import('../history-tool.js')

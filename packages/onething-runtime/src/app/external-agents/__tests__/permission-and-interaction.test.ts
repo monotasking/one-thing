@@ -56,10 +56,10 @@ vi.mock('../../store.js', () => ({
   getSettings: () => ({ network: {} }),
 }))
 
-vi.mock('../../stores/paths.js', () => ({
-  getStorePath: () => '/tmp/onething-e4-test',
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingStorePath: () => '/tmp/onething-e4-test',
   // R4b:授权入口换成 `Authorizer.decide` 之后,设置仓库进了这条路的静态图。
-  getSettingsPath: () => '/tmp/onething-e4-test/settings.json',
+  getOnethingSettingsPath: () => '/tmp/onething-e4-test/settings.json',
 }))
 
 vi.mock('../../stores/settings.js', () => ({

@@ -33,7 +33,7 @@ vi.mock('../../providers/utility-provider.js', () => ({
   createUtilityProvider: mocks.createUtilityProvider,
 }))
 vi.mock('../../stores/settings.js', () => ({ getSettings: () => ({}) }))
-vi.mock('../../stores/paths.js', () => ({ getSessionsDir: () => '/tmp/toc-test' }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingSessionsDir: () => '/tmp/toc-test' }))
 vi.mock('../../usage/bill-side-line.js', () => ({ billTocUsage: mocks.billTocUsage }))
 vi.mock('@onething/runtime/toc', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()

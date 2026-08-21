@@ -31,7 +31,9 @@ import {
   getSessions,
   readSessionTranscriptFile,
 } from '../stores/sessions.js'
-import { getSessionsDir } from '../stores/paths.js'
+import {
+  getOnethingSessionsDir,
+} from '@onething/runtime/storage'
 import {
   eventsCountMessages,
   eventsGetMessage,
@@ -253,7 +255,7 @@ export const sessionReads = {
    */
   readTranscriptBuffer(sessionId: string): Uint8Array | undefined {
     try {
-      return fs.readFileSync(path.join(getSessionsDir(), sessionId, 'messages.jsonl'))
+      return fs.readFileSync(path.join(getOnethingSessionsDir(), sessionId, 'messages.jsonl'))
     } catch {
       return undefined
     }

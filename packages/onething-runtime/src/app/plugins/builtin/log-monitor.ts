@@ -3,7 +3,9 @@ import {
   registerOnethingLogMonitorPlugin,
 } from '@onething/runtime/plugins'
 import type { PluginAPI } from '../types.js'
-import { getLogDir } from '../../stores/paths.js'
+import {
+  getOnethingLogDir,
+} from '@onething/runtime/storage'
 import { consolePort, getLogger } from '../../logging/index.js'
 
 const log = getLogger('plugins.log-monitor')
@@ -15,7 +17,7 @@ export const logMonitorManifest = ONETHING_LOG_MONITOR_MANIFEST
 
 export default function logMonitorPlugin(api: PluginAPI): void {
   registerOnethingLogMonitorPlugin(api, {
-    getLogDir,
+    getLogDir: getOnethingLogDir,
     logger: consoleLog,
   })
 }

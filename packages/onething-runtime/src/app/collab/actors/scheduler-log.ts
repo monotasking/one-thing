@@ -44,7 +44,9 @@ import {
   type CollabSchedulerLogType,
 } from '@onething/runtime/collab/actors'
 
-import { getStorePath } from '../../stores/paths.js'
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { collabRoomActorsDir } from './room-account.js'
 import { getLogger } from '../../logging/index.js'
 
@@ -163,7 +165,7 @@ export function sweepCollabSchedulerLogs(
 ): number {
   const now = options.now ?? Date.now()
   const retentionDays = options.retentionDays ?? COLLAB_SCHEDULER_LOG_RETENTION_DAYS
-  const collabDir = path.join(getStorePath(), 'collab')
+  const collabDir = path.join(getOnethingStorePath(), 'collab')
   let removed = 0
   let roomIds: string[] = []
   try {

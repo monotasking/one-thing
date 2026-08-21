@@ -52,7 +52,10 @@ import {
 import { getSpacesStore } from '@onething/runtime/spaces/store'
 import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
-import { getSettingsPath, getStorePath } from '../stores/paths.js'
+import {
+  getOnethingSettingsPath,
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { getPersistedSettings, savePersistedSettings } from '../stores/settings.js'
 import { getProviderInfo } from './registry.js'
 import { getLogger } from '../logging/index.js'
@@ -123,7 +126,7 @@ export interface ProviderConfigMigrationReport {
 }
 
 function backupsDir(): string {
-  return path.join(getStorePath(), 'backups')
+  return path.join(getOnethingStorePath(), 'backups')
 }
 
 /** ISO 时间戳做文件名:冒号在 Windows 上不能进路径,换成 `-`。 */
@@ -346,7 +349,7 @@ async function migrateOAuthTokens(
   // 生产里指向同一个文件,但后者是模块级的 `getOnethingStorePath()`,隔离测试
   // 把 store 根挪走时它照旧指着 `~/.onething` —— 而这个函数会**写**那个文件。
   // 2026-08-18 的实测教训:一次单测把真实 `oauth-tokens.json` 清成了 `{}`。
-  const tokenFilePath = path.join(getStorePath(), 'oauth-tokens.json')
+  const tokenFilePath = path.join(getOnethingStorePath(), 'oauth-tokens.json')
   if (!fs.existsSync(tokenFilePath)) return { file, providers: [] }
 
   let raw: unknown
@@ -435,7 +438,7 @@ export async function migrateProviderConfigToDefaultSpace(
   if (typeof storage?.spaceProviderSettingsMigratedAt === 'number') return empty
 
   const secondStageOnly = typeof storage?.providerConfigMigratedAt === 'number'
-  const settingsBackup = copyFileToBackup(getSettingsPath(), 'settings', now)
+  const settingsBackup = copyFileToBackup(getOnethingSettingsPath(), 'settings', now)
 
   let credentials: string[] = []
   let oauthTokens: string[] = []

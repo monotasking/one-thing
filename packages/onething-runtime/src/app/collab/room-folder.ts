@@ -19,7 +19,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import * as store from '../store.js'
-import { getStorePath } from '../stores/paths.js'
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('collab.room')
@@ -39,7 +41,7 @@ export function collabRoomFolder(roomSessionId: string): string | undefined {
   if (session?.kind !== 'room') return undefined
   const configured = session.workingDirectory?.trim()
   if (configured) return configured
-  return path.join(getStorePath(), COLLAB_ROOMS_DIR, roomSessionId)
+  return path.join(getOnethingStorePath(), COLLAB_ROOMS_DIR, roomSessionId)
 }
 
 /**

@@ -58,8 +58,8 @@ vi.mock('../permission/capabilities.js', async (importOriginal) => ({
 describe('src/app import purity', () => {
   it('importing the formerly side-effectful modules configures nothing', { timeout: 60_000 }, async () => {
     await import('../tools/core/sandbox.js')
-    await import('../tools/core/background-jobs.js')
-    await import('../tools/core/bash-executor.js')
+    await import('@onething/runtime/tools/background-jobs-bound')
+    await import('@onething/runtime/tools/bash-executor')
     await import('../providers/index.js')
     await import('../scheduler/index.js')
     await import('../utils/ripgrep.js')

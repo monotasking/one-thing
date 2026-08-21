@@ -4,7 +4,9 @@ import {
   configureOnethingScheduler,
   getOnethingScheduler,
 } from '@onething/runtime/scheduler'
-import { getStorePath } from '../stores/paths.js'
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { consolePort, getLogger } from '../logging/index.js'
 
 const log = getLogger('scheduler')
@@ -19,7 +21,7 @@ export function configureAppScheduler(): void {
   if (schedulerConfigured) return
   schedulerConfigured = true
   configureOnethingScheduler({
-    stateFilePath: () => path.join(getStorePath(), 'scheduler', 'state.json'),
+    stateFilePath: () => path.join(getOnethingStorePath(), 'scheduler', 'state.json'),
     logger: consoleLog,
   })
 }

@@ -388,7 +388,7 @@ import {
 	startScratchpadWatcher,
 	stopScratchpadWatcher,
 	updateScratchpad as updateAppScratchpad,
-} from "@onething/app/scratchpad/index.js";
+} from "@onething/runtime/scratchpad/service-bound";
 import type {
 	ScratchpadAdoptRequest,
 	ScratchpadChangedPayload,

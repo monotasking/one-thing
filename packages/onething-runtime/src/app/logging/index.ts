@@ -9,7 +9,10 @@ import {
   type LogSource,
   type Logger,
 } from '@onething/core/logging'
-import { ensureDir, getLogDir } from '../stores/paths.js'
+import {
+  ensureDir,
+  getOnethingLogDir,
+} from '@onething/runtime/storage'
 import { setRuntimeLoggerRoot } from '../../logging/index.js'
 import { JsonlFileSink } from './jsonl-file-sink.js'
 import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from './legacy-console-sink.js'
@@ -172,7 +175,7 @@ export function configureLogging(options: ConfigureLoggingOptions = {}): Logging
   // (server / daemon),从此每条记录的 `src` 都是真的。
   if (options.src) root.setSrc(options.src)
 
-  const logDir = options.logDir ?? getLogDir()
+  const logDir = options.logDir ?? getOnethingLogDir()
   activeLogDir = logDir
   ensureDir(logDir)
   hostPorts = options.hostPorts ?? hostPorts
@@ -261,7 +264,7 @@ export function initializeAppLogging(): void {
 
 function createHandle(): LoggingHandle {
   return {
-    logDir: activeLogDir || getLogDir(),
+    logDir: activeLogDir || getOnethingLogDir(),
     logPath: fileSink?.getActivePath(),
     getLogger,
     setLevelSpec: setLogLevelSpec,
@@ -279,7 +282,7 @@ export function getLogLevelSpec(): string {
 }
 
 export function getAppLogDir(): string {
-  return activeLogDir || getLogDir()
+  return activeLogDir || getOnethingLogDir()
 }
 
 export function getAppLogPath(): string {

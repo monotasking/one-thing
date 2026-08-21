@@ -19,7 +19,7 @@ const scratchpad = vi.hoisted(() => ({
   adoptScratchpad: vi.fn(),
 }))
 
-vi.mock('../../scratchpad/index.js', () => scratchpad)
+vi.mock('@onething/runtime/scratchpad/service-bound', () => scratchpad)
 
 const DOC = {
   sessionId: 's1',

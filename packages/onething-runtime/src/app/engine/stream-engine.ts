@@ -34,7 +34,7 @@ import { pluginPostInterceptReply } from "../plugins/sessions.js";
 import { mintTurnPrincipal } from "./turn-principal.js";
 import { getEventBus } from "../events/index.js";
 import { composeAgentPermissionMode } from "@onething/runtime/agents";
-import { defaultAgent, findAgent } from "../agents/store.js";
+import { defaultAgent, findAgent } from "@onething/runtime/agents/store-bound.wiring";
 import { resolveAgentProfileForSession } from "../agents/profile.js";
 import { getSession } from "../stores/sessions.js";
 import { takeExternalAgentSteering } from "../external-agents/index.js";

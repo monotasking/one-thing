@@ -2,7 +2,7 @@
  * 一个 agent 的 v3 家当落在盘上的形状:信箱、账、笔记。
  *
  * 两条纪律在这里被钉住:
- *  - **路径全部经 `getStorePath()` 家族解析**,一个硬编码的字面量都没有;
+ *  - **路径全部经 `getOnethingStorePath()` 家族解析**,一个硬编码的字面量都没有;
  *  - **账跨重启活得下来**,而且是同步原子写(崩溃点不会开出「决定了但没记下」的窗口)。
  */
 import fs from 'node:fs'
@@ -20,7 +20,7 @@ import {
 } from '@onething/runtime/collab/actors'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-agent-mailbox-'))
-vi.mock('../../../stores/paths.js', () => ({ getStorePath: () => storeRootRef.value }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => storeRootRef.value }))
 const storeRootRef = { value: storeRoot }
 
 const {

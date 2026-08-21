@@ -19,7 +19,7 @@ import {
 import { isPathInside, resolveInsideSandbox, type RpcSandbox } from '../rpc/sandbox.js'
 import { getSettings } from '../stores/settings.js'
 import { getConnectedDirectories } from '../stores/connected-directories.js'
-import { getVariablesStore } from '../variables/store/index.js'
+import { getVariablesStore } from '@onething/runtime/variables/store-bound'
 
 /**
  * **停留在全局层**(批 B2)。markdown 附件根服务的是笔记编辑器:它的请求坐标是

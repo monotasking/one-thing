@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../stores/paths.js', () => {
+vi.mock('@onething/runtime/storage', () => {
   let data: any = { grants: [] }
   return {
-    getPermissionsDir: () => '/tmp/onething-permissions-test',
-    getSettingsPath: () => '/tmp/onething-permissions-test/settings.json',
-    getFileMutationsDir: () => '/tmp/onething-permissions-test/file-mutations',
-    getToolOutputsDir: () => '/tmp/onething-permissions-test/tool-outputs',
-    getMCPToolsCatalogPath: () => '/tmp/onething-permissions-test/mcp-tools.json',
+    getOnethingPermissionsDir: () => '/tmp/onething-permissions-test',
+    getOnethingSettingsPath: () => '/tmp/onething-permissions-test/settings.json',
+    getOnethingFileMutationsDir: () => '/tmp/onething-permissions-test/file-mutations',
+    getOnethingToolOutputsDir: () => '/tmp/onething-permissions-test/tool-outputs',
+    getOnethingMCPToolsCatalogPath: () => '/tmp/onething-permissions-test/mcp-tools.json',
     ensureDir: () => undefined,
     readJsonFile: (_path: string, defaultValue: any) => _path.endsWith('workspace-grants.json') ? data : defaultValue,
     writeJsonFile: (_path: string, next: any) => { if (_path.endsWith('workspace-grants.json')) data = next },

@@ -79,13 +79,13 @@ vi.mock('../../store.js', () => ({
 const { ensureCollabAgentSession } = await import('../agent-session.js')
 const { displayAgent, findAgent, getAgent, invalidateAgentsCache } =
   await import('../../agents/index.js')
-const { getAgentsPath } = await import('../../stores/paths.js')
+const { getOnethingAgentsPath } = await import('@onething/runtime/storage')
 
 let previousStorePath: string | undefined
 let tempStore: string
 
 function writeAgents(agents: Array<{ id: string; name: string }>): void {
-  const agentsPath = getAgentsPath()
+  const agentsPath = getOnethingAgentsPath()
   fs.mkdirSync(path.dirname(agentsPath), { recursive: true })
   fs.writeFileSync(agentsPath, JSON.stringify({
     version: 1,

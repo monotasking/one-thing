@@ -8,7 +8,9 @@
 import { MCPManager } from './manager.js'
 import type { MCPToolInfo, MCPToolCallResult } from './types.js'
 import type { ToolDefinition } from '@shared/ipc.js'
-import { getMCPToolsCatalogPath } from '../stores/paths.js'
+import {
+  getOnethingMCPToolsCatalogPath,
+} from '@onething/runtime/storage'
 import { z } from 'zod'
 import { type JsonObject, type JsonValue } from '@onething/core'
 import {
@@ -127,7 +129,7 @@ function validationPlanToZod(plan: CoreMCPJsonSchemaValidationPlan, applyOptiona
  */
 export function generateToolsCatalog(): void {
   coreMCPBridgeRuntime.writeToolsCatalogWithAdapters({
-    getCatalogPath: getMCPToolsCatalogPath,
+    getCatalogPath: getOnethingMCPToolsCatalogPath,
     writeFile: writeTextFile,
     logger: consoleLog,
   })
@@ -138,7 +140,7 @@ export function generateToolsCatalog(): void {
  */
 export function getToolsCatalogPath(): string | null {
   if (!coreMCPBridgeRuntime.isToolsCatalogGenerated()) return null
-  const path = getMCPToolsCatalogPath()
+  const path = getOnethingMCPToolsCatalogPath()
   return pathExists(path) ? path : null
 }
 

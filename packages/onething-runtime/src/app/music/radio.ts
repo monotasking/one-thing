@@ -39,9 +39,11 @@ import type { MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
 import { createElectronMusicProcessRunner } from './process-runner.js'
 import { addGrant } from '@onething/core'
 import { writeJsonFile } from '@onething/core/storage'
-import { agentExists, createAgent, findAgent, updateAgent } from '../agents/store.js'
-import { markSessionUnattended } from '../permission/unattended.js'
-import { getStorePath } from '../stores/paths.js'
+import { agentExists, createAgent, findAgent, updateAgent } from '@onething/runtime/agents/store-bound.wiring'
+import { markSessionUnattended } from '@onething/runtime/permissions/unattended'
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { getSettings } from '../stores/settings.js'
 import * as sessions from '../stores/sessions.js'
 import { sessionReads } from '../session/reads.js'
@@ -70,7 +72,7 @@ const grantedSessions = new Set<string>()
 
 export function getRadioStore(): OnethingRadioStore {
   const provider = getActiveMusicProvider()
-  radioStore ??= createOnethingRadioStore(path.join(getStorePath(), 'music'), {
+  radioStore ??= createOnethingRadioStore(path.join(getOnethingStorePath(), 'music'), {
     ids: provider.ids,
     providerId: provider.descriptor.id,
   })

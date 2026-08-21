@@ -2,7 +2,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSchedulerTasksPath } from '../../stores/paths.js'
+import {
+  getOnethingSchedulerTasksPath,
+} from '@onething/runtime/storage'
 import { getScheduler } from '../index.js'
 import {
   createUserSchedulerTask,
@@ -63,7 +65,7 @@ describe('user scheduler tasks', () => {
 
     expect(updated.name).toBe('Daily news')
     expect(updated.enabled).toBe(false)
-    expect(JSON.parse(fs.readFileSync(getSchedulerTasksPath(), 'utf-8')).tasks[0]).toMatchObject({
+    expect(JSON.parse(fs.readFileSync(getOnethingSchedulerTasksPath(), 'utf-8')).tasks[0]).toMatchObject({
       id: created.id,
       name: 'Daily news',
       enabled: false,

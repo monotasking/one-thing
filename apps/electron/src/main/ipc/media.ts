@@ -30,8 +30,8 @@ import {
 } from '@onething/runtime/media'
 import { getSessions } from '@onething/app/stores/index.js'
 import { openImagePreviewWindow } from '@onething/electron-host/window'
-import { mediaLibraryService } from '@onething/app/media/media-library-service.js'
-import { saveMediaImage, type MediaItem } from '@onething/app/media/save-image.js'
+import { mediaLibraryService } from '@onething/runtime/media/library-service-bound'
+import { saveMediaImage, type MediaItem } from '@onething/runtime/media/save-image'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type {
   MediaAsset,
@@ -40,7 +40,7 @@ import type {
   MediaSaveAsRequest,
 } from '@shared/ipc.js'
 
-export { saveMediaImage, type MediaItem } from '@onething/app/media/save-image.js'
+export { saveMediaImage, type MediaItem } from '@onething/runtime/media/save-image'
 
 const imagePreviewRegistry = new OnethingImagePreviewRegistry({
   createId: uuidv4,

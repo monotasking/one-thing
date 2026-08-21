@@ -22,7 +22,7 @@ interface FakeSession {
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-notebook-tool-'))
 const mocks = vi.hoisted(() => ({ sessions: new Map<string, unknown>() }))
 
-vi.mock('../../../stores/paths.js', () => ({ getStorePath: () => storeRootRef.value }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => storeRootRef.value }))
 const storeRootRef = { value: storeRoot }
 vi.mock('../../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),

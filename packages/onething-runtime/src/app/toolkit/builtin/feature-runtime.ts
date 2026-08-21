@@ -16,7 +16,9 @@
 import { readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import { isPathInside } from '../../rpc/sandbox.js'
-import { getStorePath } from '../../stores/paths.js'
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import type { FeatureDefinition, FeatureUnmount } from '../../features/index.js'
 
 /** 模型能挂东西的唯一目录,相对 store 根。 */
@@ -34,7 +36,7 @@ export const FEATURE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
 
 /** `<store>/features-dev`。 */
 export function featuresDevRoot(): string {
-  return join(getStorePath(), FEATURES_DEV_DIR_NAME)
+  return join(getOnethingStorePath(), FEATURES_DEV_DIR_NAME)
 }
 
 export function isDirectory(path: string): boolean {

@@ -12,9 +12,9 @@ import { CORE_INTERRUPTED_TOOL_ERROR, materializeChatMessages } from '@onething/
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('../../stores/paths.js', () => ({
-  getSessionsDir: () => state.sessionsDir,
-  getLogDir: () => path.join(state.storeDir, 'log'),
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => state.sessionsDir,
+  getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
 const { appendSessionLogEvent, flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache } =

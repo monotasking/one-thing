@@ -34,8 +34,9 @@ import * as store from '../store.js'
 import { sessionCommands } from '../session/commands.js'
 import { getEventBus } from '../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
-import { getStorePath } from '../stores/paths.js'
-
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'
 
@@ -187,7 +188,7 @@ export function deleteRoomRuntime(_roomSessionId: string): void {
  */
 export function removeCollabRoomDirectory(roomSessionId: string): void {
   try {
-    fs.rmSync(path.join(getStorePath(), 'collab', roomSessionId), { recursive: true, force: true })
+    fs.rmSync(path.join(getOnethingStorePath(), 'collab', roomSessionId), { recursive: true, force: true })
   } catch (error) {
     log.error('room directory cleanup failed', { roomSessionId }, error)
   }

@@ -26,7 +26,7 @@ const practice = vi.hoisted(() => ({
   writePracticeConfig: vi.fn(),
 }))
 
-vi.mock('../../practice/index.js', () => practice)
+vi.mock('@onething/runtime/practice/service.wiring', () => practice)
 
 const IDLE = { status: 'idle' as const }
 const RUNNING = { status: 'running' as const, kind: 'kegel' as const }

@@ -3,7 +3,9 @@ import {
   getSchedulerRunHistoryPath,
   safeSchedulerRunTaskFileName,
 } from '@onething/runtime/scheduler'
-import { getSchedulerRunsDir } from '../stores/paths.js'
+import {
+  getOnethingSchedulerRunsDir,
+} from '@onething/runtime/storage'
 import type { SchedulerRunDetailDTO } from '@shared/ipc.js'
 import { consolePort, getLogger } from '../logging/index.js'
 
@@ -13,7 +15,7 @@ const consoleLog = consolePort(log)
 
 
 const runHistory = new OnethingSchedulerRunHistory<SchedulerRunDetailDTO>({
-  runsDir: getSchedulerRunsDir,
+  runsDir: getOnethingSchedulerRunsDir,
   logger: consoleLog,
 })
 

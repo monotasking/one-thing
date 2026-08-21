@@ -34,14 +34,14 @@ let tempHome: string
 let loadedSessions: typeof import('../sessions.js') | null = null
 
 async function loadIsolatedStores(): Promise<{
-  paths: typeof import('../paths.js')
+  paths: typeof import('@onething/runtime/storage')
   sessions: typeof import('../sessions.js')
 }> {
   vi.resetModules()
-  const paths = await import('../paths.js')
+  const paths = await import('@onething/runtime/storage')
   const sessions = await import('../sessions.js')
   loadedSessions = sessions
-  paths.ensureStoreDirs()
+  paths.ensureOnethingStoreDirs()
   return { paths, sessions }
 }
 
@@ -69,9 +69,9 @@ afterEach(async () => {
 
 
 // 默认格式已切到 jsonl:会话级字段落在 <id>/meta.json;legacy 格式仍兼容
-function readStoredSessionMeta(paths: { getSessionPath(id: string): string; getSessionsDir(): string }, sessionId: string): { agentId?: string } {
-  const metaPath = path.join(paths.getSessionsDir(), sessionId, 'meta.json')
-  const target = fs.existsSync(metaPath) ? metaPath : paths.getSessionPath(sessionId)
+function readStoredSessionMeta(paths: { getOnethingSessionPath(id: string): string; getOnethingSessionsDir(): string }, sessionId: string): { agentId?: string } {
+  const metaPath = path.join(paths.getOnethingSessionsDir(), sessionId, 'meta.json')
+  const target = fs.existsSync(metaPath) ? metaPath : paths.getOnethingSessionPath(sessionId)
   return JSON.parse(fs.readFileSync(target, 'utf-8'))
 }
 

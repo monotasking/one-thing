@@ -173,18 +173,18 @@ vi.mock('electron', () => ({
   },
 }))
 
-vi.mock('@onething/app/stores/paths.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@onething/app/stores/paths.js')>()
+vi.mock('@onething/runtime/storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/runtime/storage')>()
   return {
     ...actual,
-    getWindowStatePath: vi.fn(() => '/tmp/window-state.json'),
-    getMediaIndexPath: vi.fn(() => '/tmp/media/index.json'),
-    getMediaImagesDir: vi.fn(() => '/tmp/media/images'),
-    getMediaFilesDir: vi.fn(() => '/tmp/media/files'),
-    getPermissionsDir: vi.fn(() => '/tmp/permissions'),
-    getSessionsDir: vi.fn(() => '/tmp/sessions'),
-    getSessionPath: vi.fn((sessionId: string) => `/tmp/sessions/${sessionId}.json`),
-    getSessionDatabasePath: vi.fn(() => '/tmp/sessions.sqlite'),
+    getOnethingWindowStatePath: vi.fn(() => '/tmp/window-state.json'),
+    getOnethingMediaIndexPath: vi.fn(() => '/tmp/media/index.json'),
+    getOnethingMediaImagesDir: vi.fn(() => '/tmp/media/images'),
+    getOnethingMediaFilesDir: vi.fn(() => '/tmp/media/files'),
+    getOnethingPermissionsDir: vi.fn(() => '/tmp/permissions'),
+    getOnethingSessionsDir: vi.fn(() => '/tmp/sessions'),
+    getOnethingSessionPath: vi.fn((sessionId: string) => `/tmp/sessions/${sessionId}.json`),
+    getOnethingSessionDatabasePath: vi.fn(() => '/tmp/sessions.sqlite'),
     readJsonFile: mocks.readJsonFile,
     writeJsonFile: mocks.writeJsonFile,
     writeJsonFileAsync: vi.fn(async () => undefined),

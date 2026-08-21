@@ -26,6 +26,7 @@
     "./stream-runtime": "./src/stream-runtime.ts",
     "./gateway": "./src/gateway-runtime.ts",
     "./goals": "./src/goals/index.ts",
+    "./interaction/*": "./src/interaction/*.ts",
     "./goals/*": "./src/goals/*.ts",
     "./headless": "./src/headless/index.ts",
     "./headless/*": "./src/headless/*.ts",

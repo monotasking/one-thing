@@ -12,9 +12,9 @@ import { materializeChatMessages } from '@onething/core/session'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '', run: undefined as undefined | { runId: string; requestIndex?: number; partCounter: number } }))
 
-vi.mock('../../stores/paths.js', () => ({
-  getSessionsDir: () => state.sessionsDir,
-  getLogDir: () => path.join(state.storeDir, 'log'),
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => state.sessionsDir,
+  getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
 /**

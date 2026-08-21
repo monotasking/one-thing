@@ -5,11 +5,11 @@ import type {
 import {
   getMessagesPageFromJsonFilePath,
 } from '@onething/core/session'
-import { getSessionPath } from '../paths.js'
+import { getOnethingSessionPath } from '@onething/runtime/storage'
 
 export function getMessagesPageFromJsonFile(
   request: GetSessionMessagesPageRequest,
 ): GetSessionMessagesPageResponse | null {
-  const sessionPath = getSessionPath(request.sessionId)
+  const sessionPath = getOnethingSessionPath(request.sessionId)
   return getMessagesPageFromJsonFilePath(request, sessionPath) as GetSessionMessagesPageResponse | null
 }

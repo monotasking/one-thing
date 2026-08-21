@@ -25,9 +25,9 @@ bindSessionFacadeMock({
   },
 })
 
-vi.mock('../../../stores/paths.js', () => ({
-  getStorePath: () => storeRootRef.value,
-  getSessionsDir: () => path.join(storeRootRef.value, 'sessions'),
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingStorePath: () => storeRootRef.value,
+  getOnethingSessionsDir: () => path.join(storeRootRef.value, 'sessions'),
 }))
 
 const {

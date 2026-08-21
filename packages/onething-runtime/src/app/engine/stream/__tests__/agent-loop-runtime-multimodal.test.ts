@@ -236,7 +236,7 @@ vi.mock('../../../events/index.js', () => ({
   getEventBus: () => ({ emit: mocks.emit }),
 }))
 
-vi.mock('../../../prompts/resolver.js', () => ({
+vi.mock('@onething/runtime/prompts/resolver.wiring', () => ({
   resolvePromptReferences: vi.fn((content: string) => ({
     modelContent: content,
     displayContent: content,

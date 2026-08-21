@@ -24,7 +24,9 @@ import type { RouteHandlers } from '@onething/core/ipc'
 import { saveOnethingUiStateForIpc, type OnethingUiStatePatch } from '@onething/runtime/storage'
 import { appStateRouter, type AppStateRoutes } from '@shared/ipc/app-state.js'
 import { getAppState } from '../../stores/app-state.js'
-import { getAppStatePath } from '../../stores/paths.js'
+import {
+  getOnethingAppStatePath,
+} from '@onething/runtime/storage'
 import { registerRouterHandlers } from '../registry.js'
 
 export const appStateRpcHandlers: RouteHandlers<AppStateRoutes> = {
@@ -35,7 +37,7 @@ export const appStateRpcHandlers: RouteHandlers<AppStateRoutes> = {
   // `workspace` / `sessionReadMarks` 在契约上是不透明载荷(形状归渲染层),
   // 主进程这一侧在这里收窄一次 —— 存储层只按键名整块写,不解释内容。
   async saveUiState(request) {
-    return saveOnethingUiStateForIpc(getAppStatePath(), request as OnethingUiStatePatch)
+    return saveOnethingUiStateForIpc(getOnethingAppStatePath(), request as OnethingUiStatePatch)
   },
 }
 

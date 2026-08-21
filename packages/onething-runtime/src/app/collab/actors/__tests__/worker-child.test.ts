@@ -24,7 +24,7 @@ import {
 } from '@onething/runtime/collab/actors'
 import type { FloorLease } from '@onething/core/actors'
 
-vi.mock('../../../stores/paths.js', () => ({ getStorePath: () => '/tmp/onething-worker-child-test' }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-worker-child-test' }))
 
 const { CollabAgentActor } = await import('../agent-actor.js')
 const { createCollabAgentAccountMemoryStore } = await import('../agent-mailbox.js')

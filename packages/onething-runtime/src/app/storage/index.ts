@@ -4,8 +4,12 @@
  * Simplified after memory system removal.
  */
 
-import type { IStorageProvider, StorageConfig, StorageType } from './interfaces.js'
-import { FileStorageProvider } from './file-storage.js'
+import type {
+  CoreStorageConfig as StorageConfig,
+  CoreStorageProvider as IStorageProvider,
+  CoreStorageType as StorageType,
+} from '@onething/core/storage'
+import { FileStorageProvider } from '@onething/runtime/storage/file-storage'
 import { HeadlessStorageManager } from '@onething/core/storage'
 import { consolePort, getLogger } from '../logging/index.js'
 
@@ -43,5 +47,5 @@ export async function closeStorage(): Promise<void> {
   await storageManager.closeStorage()
 }
 
-export * from './interfaces.js'
-export { FileStorageProvider } from './file-storage.js'
+export * from '@onething/core/storage'
+export { FileStorageProvider } from '@onething/runtime/storage/file-storage'

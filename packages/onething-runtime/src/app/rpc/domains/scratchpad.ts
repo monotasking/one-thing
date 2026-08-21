@@ -26,7 +26,7 @@ import {
   readScratchpad,
   removeScratchpad,
   updateScratchpad,
-} from '../../scratchpad/index.js'
+} from '@onething/runtime/scratchpad/service-bound'
 import { registerRouterHandlers } from '../registry.js'
 
 function errorMessage(error: unknown): string {

@@ -15,8 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ sessionsDir: '' }))
 
-vi.mock('../../stores/paths.js', () => ({
-  getSessionsDir: () => state.sessionsDir,
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => state.sessionsDir,
 }))
 
 const { readSessionTrace, readSessionTraceResponseText, isSafeSessionId } = await import('../trace.js')

@@ -34,7 +34,7 @@ import {
   getPrompt,
   listPrompts,
   updatePrompt,
-} from '../../prompts/store.js'
+} from '@onething/runtime/prompts/store-bound'
 import { registerRouterHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../logging/index.js'
 

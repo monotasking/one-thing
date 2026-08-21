@@ -15,9 +15,9 @@ import type { SessionAssistantChunksEvent, SessionLogEventRecord } from '@onethi
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('../../../stores/paths.js', () => ({
-  getSessionsDir: () => state.sessionsDir,
-  getLogDir: () => path.join(state.storeDir, 'log'),
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => state.sessionsDir,
+  getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
 // 这条用例只钉打包器。S1b 的影子断言排在 `endSessionRun` 之后,而它身后是读门面

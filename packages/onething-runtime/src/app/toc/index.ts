@@ -21,7 +21,9 @@ import {
 	type SessionSegment,
 	type SessionSegmentFile,
 } from "@onething/runtime/toc";
-import { getSessionsDir } from "../stores/paths.js";
+import {
+  getOnethingSessionsDir,
+} from '@onething/runtime/storage'
 import { createUtilityProvider } from "../providers/utility-provider.js";
 import { billTocUsage } from "../usage/bill-side-line.js";
 import { getSettings } from "../stores/settings.js";
@@ -32,7 +34,7 @@ const tocLog = getLogger('sessions.toc')
 const consoleLog = consolePort(tocLog)
 
 
-const segmentStore = createSessionSegmentStore({ getSessionsDir, logger: consoleLog });
+const segmentStore = createSessionSegmentStore({ getSessionsDir: getOnethingSessionsDir, logger: consoleLog });
 
 /** Ceiling on one segmentation call. */
 const TOC_CALL_TIMEOUT_MS = 60_000;

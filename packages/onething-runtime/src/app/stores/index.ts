@@ -1,8 +1,8 @@
-import { ensureStoreDirs } from './paths.js'
+import { ensureOnethingStoreDirs } from '@onething/runtime/storage'
 import { initializeSessionRepositoryIndex } from './sessions.js'
 
 // Re-export all store modules
-export { ensureStoreDirs, getStorePath } from './paths.js'
+export { ensureOnethingStoreDirs, getOnethingStorePath } from '@onething/runtime/storage'
 export { getSettings, saveSettings } from './settings.js'
 export { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
 export {
@@ -72,6 +72,6 @@ export {
 
 // Ensure all necessary directories exist on startup
 export function initializeStores(): void {
-  ensureStoreDirs()
+  ensureOnethingStoreDirs()
   initializeSessionRepositoryIndex()
 }

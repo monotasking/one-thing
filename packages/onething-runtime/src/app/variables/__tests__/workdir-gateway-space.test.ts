@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   variableBuckets: new Map<string, unknown[]>(),
 }))
 
-vi.mock('../store/index.js', () => ({
+vi.mock('@onething/runtime/variables/store-bound', () => ({
   getVariablesStore: () => ({
     initialize: () => undefined,
     getGlobalVariables: () => mocks.variableBuckets.get('global') ?? [],

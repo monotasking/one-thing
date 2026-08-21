@@ -15,7 +15,7 @@ import {
   type CollabActorReplayTranscript,
 } from '@onething/runtime/collab/actors'
 
-vi.mock('../../../stores/paths.js', () => ({ getStorePath: () => '/tmp/onething-agent-duet-test' }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-agent-duet-test' }))
 
 const { replayCollabDuet } = await import('../agent-replay.js')
 type CollabDuetReplayResult = import('../agent-replay.js').CollabDuetReplayResult

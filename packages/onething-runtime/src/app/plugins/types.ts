@@ -39,7 +39,7 @@ import type {
  * 第二个类型参数),与工具系统内部机制无关。
  */
 export type ToolMetadata = object
-import type { PluginSkillRootProvider } from '../skills/plugin-roots.js'
+import type { PluginSkillRootProvider } from '@onething/runtime/skills/plugin-roots.wiring'
 import type {
   PluginPromptContext,
   PluginPromptContextProvider,
@@ -56,7 +56,7 @@ import type {
   SchedulerTaskHandle,
   SchedulerTaskRegistration,
   SchedulerTaskSnapshot,
-} from '../scheduler/types.js'
+} from '@onething/runtime/scheduler'
 
 export type {
   CorePluginDefinition,

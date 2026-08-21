@@ -3,7 +3,7 @@ import {
     IPC_CHANNELS,
     type ScratchpadChangedPayload,
 } from "@shared/ipc.js";
-import { configureScratchpadHost } from "@onething/app/scratchpad/index.js";
+import { configureScratchpadHost } from "@onething/runtime/scratchpad/service-bound";
 
 /**
  * 结构债 P4c:草稿纸的四条数据面(get / update / delete / adopt)已整只迁到通用

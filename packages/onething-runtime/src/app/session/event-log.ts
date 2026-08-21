@@ -48,7 +48,9 @@ import {
   type SessionEventRecord,
   type SessionEventType,
 } from '@onething/runtime/sessions/session-events'
-import { getSessionsDir } from '../stores/paths.js'
+import {
+  getOnethingSessionsDir,
+} from '@onething/runtime/storage'
 import { countSessionEventFailure, isSessionShadowEnabled } from './event-stats.js'
 import { isSessionEventsReadMode } from './read-mode.js'
 import { getLogger } from '../logging/index.js'
@@ -118,7 +120,7 @@ const REMEMBERED_LAST_EVENT_TYPES = new Set<string>(['request/tools', 'request/h
 const states = new Map<string, SessionEventLogState>()
 
 function sessionDirPath(sessionId: string): string {
-  return path.join(getSessionsDir(), sessionId)
+  return path.join(getOnethingSessionsDir(), sessionId)
 }
 
 export function getSessionEventsLogPath(sessionId: string): string {

@@ -5,14 +5,14 @@ import {
   type OnethingSearchCategory,
 } from '@onething/runtime/search'
 import type { SearchResult } from '@shared/ipc/search.js'
-import { listPrompts } from '../prompts/store.js'
+import { listPrompts } from '@onething/runtime/prompts/store-bound'
 import { getCurrentSessionId } from '../stores/app-state.js'
 import { getConnectedDirectoriesForSession } from '../stores/connected-directories.js'
 import { getSession, getSessionsList } from '../stores/sessions.js'
 import { sessionReads } from '../session/reads.js'
 import { getSettings } from '../stores/settings.js'
 import { listFiles } from '../utils/ripgrep.js'
-import { getVariablesStore } from '../variables/store/index.js'
+import { getVariablesStore } from '@onething/runtime/variables/store-bound'
 import { appendPluginSearchResults } from './plugin-search-registry.js'
 
 export { invokePluginSearchAction, PLUGIN_SEARCH_ACTION_PREFIX } from './plugin-search-registry.js'

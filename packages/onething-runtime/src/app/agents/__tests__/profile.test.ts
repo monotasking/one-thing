@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
 }))
 
-vi.mock('../store.js', () => ({
+vi.mock('@onething/runtime/agents/store-bound.wiring', () => ({
   // 生产代码走 findAgent ?? defaultAgent();夹具用同一个 state.agent 顶两个口,
   // 与旧 getAgent mock(忽略入参直接回 state.agent)行为一致。
   findAgent: () => state.agent,

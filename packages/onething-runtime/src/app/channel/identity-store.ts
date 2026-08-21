@@ -5,10 +5,10 @@ import type {
   ChannelUserLink,
 } from '@shared/ipc.js'
 import {
-  getStorePath,
+  getOnethingStorePath,
   readJsonFile,
   writeJsonFile,
-} from '../stores/paths.js'
+} from '@onething/runtime/storage'
 import { LOCAL_CLIENT_USER_ID } from './origin.js'
 
 interface ChannelIdentityStoreData {
@@ -24,7 +24,7 @@ const DEFAULT_DATA: ChannelIdentityStoreData = {
 }
 
 function storePath(): string {
-  return path.join(getStorePath(), 'channel-identity.json')
+  return path.join(getOnethingStorePath(), 'channel-identity.json')
 }
 
 function normalizeWorkspaceId(workspaceId?: string): string | undefined {

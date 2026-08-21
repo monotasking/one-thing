@@ -17,8 +17,10 @@ import { getEventBus } from '../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
 import * as store from '../store.js'
 import { getScheduler } from './index.js'
-import type { SchedulerTaskContext, SchedulerTaskHandle } from './types.js'
-import { getSchedulerTasksPath } from '../stores/paths.js'
+import type { SchedulerTaskContext, SchedulerTaskHandle } from '@onething/runtime/scheduler'
+import {
+  getOnethingSchedulerTasksPath,
+} from '@onething/runtime/storage'
 import { saveSchedulerRunDetail } from './run-history.js'
 import { consolePort, getLogger } from '../logging/index.js'
 
@@ -29,7 +31,7 @@ const consoleLog = consolePort(log)
 
 const USER_TASK_TIMEOUT_MS = 30 * 60 * 1000
 const userTaskStore = new OnethingSchedulerUserTaskStore({
-  tasksFilePath: getSchedulerTasksPath,
+  tasksFilePath: getOnethingSchedulerTasksPath,
   defaultAgentId: DEFAULT_AGENT_ID,
   agentExists,
   createId: uuidv4,

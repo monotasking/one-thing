@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { resetVariablesStoreForTests } from '../../variables/store/index.js'
+import { resetVariablesStoreForTests } from '@onething/runtime/variables/store-bound'
 import { updateSettingsInMemory } from '../../stores/settings.js'
 import { markdownRpcHandlers } from '../domains/markdown.js'
 

@@ -18,10 +18,10 @@ const mocks = vi.hoisted(() => ({
 
 // 只覆盖两条取路径的口子,其余原样透传 —— `space-credentials` 那条链上还有
 // 别的路径函数(会话目录等),整份替换会在动态 import 时炸成「没有这个导出」。
-vi.mock('../../stores/paths.js', async importOriginal => ({
+vi.mock('@onething/runtime/storage', async importOriginal => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  getStorePath: () => mocks.storeRoot,
-  getSettingsPath: () => path.join(mocks.storeRoot, 'settings.json'),
+  getOnethingStorePath: () => mocks.storeRoot,
+  getOnethingSettingsPath: () => path.join(mocks.storeRoot, 'settings.json'),
 }))
 
 vi.mock('../../stores/sessions.js', async () => {

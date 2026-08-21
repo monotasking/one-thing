@@ -51,7 +51,7 @@ import {
   listSchedulerRunDetails,
   saveSchedulerRunDetail,
 } from '../../scheduler/run-history.js'
-import type { SchedulerRunRecord } from '../../scheduler/types.js'
+import type { SchedulerRunRecord } from '@onething/runtime/scheduler'
 import {
   createUserSchedulerTask,
   deleteUserSchedulerTask,

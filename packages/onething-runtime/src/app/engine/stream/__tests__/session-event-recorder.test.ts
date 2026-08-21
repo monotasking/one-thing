@@ -20,13 +20,13 @@ import type {
 const state = vi.hoisted(() => ({ sessionsDir: '', storeDir: '' }))
 
 // 只替换两条路径(会话目录 / store 根),其余原样 —— 记录器现在会连带把
-// blob store 与统计账单拉进来,那两个模块要的是 `getLogDir` 之类的真实实现。
-vi.mock('../../../stores/paths.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../stores/paths.js')>()
+// blob store 与统计账单拉进来,那两个模块要的是 `getOnethingLogDir` 之类的真实实现。
+vi.mock('@onething/runtime/storage', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/runtime/storage')>()
   return {
     ...actual,
-    getSessionsDir: () => state.sessionsDir,
-    getLogDir: () => path.join(state.storeDir, 'log'),
+    getOnethingSessionsDir: () => state.sessionsDir,
+    getOnethingLogDir: () => path.join(state.storeDir, 'log'),
   }
 })
 

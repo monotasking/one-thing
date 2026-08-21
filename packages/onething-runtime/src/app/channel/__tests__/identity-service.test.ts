@@ -6,8 +6,8 @@ import type { MessageOrigin } from '@shared/ipc.js'
 
 let tempDir = ''
 
-vi.mock('../../stores/paths.js', () => ({
-  getStorePath: () => tempDir,
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingStorePath: () => tempDir,
   readJsonFile: <T>(filePath: string, defaultValue: T): T => {
     try {
       return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T

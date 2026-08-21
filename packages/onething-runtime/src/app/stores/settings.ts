@@ -11,7 +11,7 @@ import {
   resolveEffectiveAppSettings,
   splitEffectiveAISettings,
 } from '../providers/ai-settings-compose.js'
-import { getSettingsPath } from './paths.js'
+import { getOnethingSettingsPath } from '@onething/runtime/storage'
 import { applyDiagnosticsMode } from '../logging/diagnostics.js'
 import { consolePort, getLogger } from '../logging/index.js'
 
@@ -21,7 +21,7 @@ const consoleLog = consolePort(log)
 
 
 const settingsRepository = createOnethingSettingsRepository<AppSettings>({
-  filePath: getSettingsPath,
+  filePath: getOnethingSettingsPath,
   defaultValue: createDefaultSettings,
   normalize: value => mergeWithDefaults(value as Partial<AppSettings>),
   logger: consoleLog,

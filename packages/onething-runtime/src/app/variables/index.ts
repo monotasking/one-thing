@@ -25,9 +25,9 @@ import * as appStore from "../store.js";
 import { enforcePermissionPolicy } from "../tools/core/permission-policy.js";
 import { getVariableRegistry } from "@onething/runtime/variables/registry";
 import { registerStandardVariableProviders } from "@onething/runtime/variables/bootstrap";
-import { getVariablesStore } from "./store/index.js";
+import { getVariablesStore } from "@onething/runtime/variables/store-bound";
 import type { SetInput, VariableProvider } from "@onething/runtime/variables";
-import { createChannelSessionGuard } from "./channel-guard.js";
+import { createChannelSessionGuard } from "@onething/runtime/variables/channel-guard";
 import {
 	notesGateway,
 	globalStoreGateway,
@@ -194,7 +194,7 @@ export async function listContextVariables(
 	);
 }
 
-// Channel-session trust guard — see ./channel-guard.ts for the rules.
+// Channel-session trust guard — see runtime/variables/channel-guard.ts for the rules.
 const channelGuard = createChannelSessionGuard((sessionId) =>
 	appStore.getSession(sessionId),
 );
@@ -311,4 +311,4 @@ export {
 	notifySessionVariablesChanged,
 	notifyWorkdirChanged,
 } from "./gateways.js";
-export { getVariablesStore } from "./store/index.js";
+export { getVariablesStore } from "@onething/runtime/variables/store-bound";

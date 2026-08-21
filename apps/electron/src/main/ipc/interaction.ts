@@ -17,7 +17,7 @@ import {
 import {
   getPendingInteractionsForIpc,
   respondInteractionForIpc,
-} from '@onething/app/interaction/index.js'
+} from '@onething/runtime/interaction/ipc-operations.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { InteractionRespondRequest } from '@shared/ipc.js'
 import { getLogger } from '@onething/app/logging/index.js'

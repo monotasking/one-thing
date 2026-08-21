@@ -17,7 +17,9 @@ import {
 	type GoalFileMutationRecordLike,
 } from "@onething/runtime/goals";
 import type { GoalFileDiff } from "@shared/ipc.js";
-import { getFileMutationsDir } from "../stores/paths.js";
+import {
+  getOnethingFileMutationsDir,
+} from '@onething/runtime/storage'
 import * as store from "../store.js";
 
 /**
@@ -42,7 +44,7 @@ async function readRecordsForWindow(
 	sinceMs: number,
 	untilMs: number,
 ): Promise<GoalFileMutationRecordLike[]> {
-	const auditRoot = getFileMutationsDir();
+	const auditRoot = getOnethingFileMutationsDir();
 	const records: GoalFileMutationRecordLike[] = [];
 	for (const dateKey of dateKeysBetween(sinceMs, untilMs)) {
 		const dir = path.join(auditRoot, dateKey);

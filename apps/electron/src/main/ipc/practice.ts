@@ -7,7 +7,7 @@
  * 加运行中 ~1Hz 往渲染层推一次快照,`settled` 每个会话恰好出现一次(落账那一刻)。
  * 见 docs/design/practice-system.md。
  */
-import { configurePracticeEventBroadcaster } from "@onething/app/practice/index.js";
+import { configurePracticeEventBroadcaster } from "@onething/runtime/practice/service.wiring";
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import { getIPCBridge } from "../bridges/ipc-bridge-lifecycle.js";
 

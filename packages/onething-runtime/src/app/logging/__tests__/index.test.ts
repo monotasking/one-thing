@@ -22,9 +22,9 @@ vi.mock('@onething/electron-host/logging/console-capture', () => ({
   setElectronAppLogsPath: mocks.setElectronAppLogsPath,
 }))
 
-vi.mock('../../stores/paths.js', () => ({
+vi.mock('@onething/runtime/storage', () => ({
   ensureDir: mocks.ensureDir,
-  getLogDir: () => mocks.logDir,
+  getOnethingLogDir: () => mocks.logDir,
 }))
 
 function readRecords(): Array<Record<string, any>> {

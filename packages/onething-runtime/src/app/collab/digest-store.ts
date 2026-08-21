@@ -10,7 +10,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { readJsonFile, writeJsonFile } from '@onething/core/storage'
 import type { CollabDayDigest } from '@onething/runtime/collab'
-import { getStorePath } from '../stores/paths.js'
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('collab.digest')
@@ -29,7 +31,7 @@ interface CollabDigestFile {
 const DIGEST_RETAIN_DAYS = 60
 
 function digestPath(roomSessionId: string): string {
-  return path.join(getStorePath(), 'collab', roomSessionId, 'digests.json')
+  return path.join(getOnethingStorePath(), 'collab', roomSessionId, 'digests.json')
 }
 
 function load(roomSessionId: string): CollabDigestFile {

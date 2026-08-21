@@ -29,7 +29,7 @@ import { getMCPToolDefinitionsForModel } from "@onething/app/mcp/index.js";
 import {
 	listBackgroundJobs,
 	stopBackgroundJob,
-} from "@onething/app/tools/core/background-jobs.js";
+} from "@onething/runtime/tools/background-jobs-bound";
 import * as store from "@onething/app/store.js";
 // 工具列表与直接执行由目录 / runner 回答(设计文档 §10.2-④)。
 import {

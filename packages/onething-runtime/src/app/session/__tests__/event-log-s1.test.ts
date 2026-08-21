@@ -15,9 +15,9 @@ import { collectLogRecordsForTests } from '../../logging/index.js'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('../../stores/paths.js', () => ({
-  getSessionsDir: () => state.sessionsDir,
-  getLogDir: () => path.join(state.storeDir, 'log'),
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => state.sessionsDir,
+  getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
 const {

@@ -84,8 +84,7 @@ vi.mock('../../../session/commands.js', async () => {
 })
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('../../../stores/paths.js', () => ({
-  getStorePath: () => mocks.storePath,
+vi.mock('@onething/runtime/storage', () => ({
   getOnethingStorePath: () => mocks.storePath,
 }))
 

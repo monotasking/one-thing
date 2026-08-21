@@ -40,7 +40,9 @@ import {
   type ProjectModelHistoryMeta,
   type ProjectModelHistoryOptions,
 } from '@onething/core/session'
-import { getLogDir } from '../stores/paths.js'
+import {
+  getOnethingLogDir,
+} from '@onething/runtime/storage'
 import {
   getLiveSessionProjection,
   peekSessionProjection,
@@ -89,7 +91,7 @@ export interface SessionShadowRecord {
 }
 
 export function getSessionShadowLogPath(): string {
-  return path.join(getLogDir(), SESSION_SHADOW_LOG_FILENAME)
+  return path.join(getOnethingLogDir(), SESSION_SHADOW_LOG_FILENAME)
 }
 
 // ============ 差异摘要 ============
@@ -191,7 +193,7 @@ export function summarizeShadowDiff(
 
 function appendShadowLine(record: SessionShadowRecord): void {
   try {
-    fs.mkdirSync(getLogDir(), { recursive: true })
+    fs.mkdirSync(getOnethingLogDir(), { recursive: true })
     fs.appendFileSync(getSessionShadowLogPath(), `${JSON.stringify(record)}\n`, 'utf8')
   } catch {
     // 影子日志写不进去不该再制造第二条错误路径(计数仍然进了 stats)。

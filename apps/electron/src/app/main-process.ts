@@ -17,7 +17,7 @@ import {
 import { flushAllPendingSaves } from "@onething/app/store.js";
 import { getSettings } from "@onething/app/stores/settings.js";
 import { startTodoPlanWatcher } from "@onething/app/todo-plan/store.js";
-import { startScratchpadWatcher } from "@onething/app/scratchpad/index.js";
+import { startScratchpadWatcher } from "@onething/runtime/scratchpad/service-bound";
 import { configureSandboxHost } from "@onething/app/tools/core/sandbox.js";
 import { configurePluginAppVersion } from "@onething/app/plugins/app-version.js";
 import { configureMCPClientIdentity } from "@onething/app/mcp/identity.js";
@@ -42,10 +42,12 @@ import {
 } from "@onething/app/server/embed.js";
 import { removeHttpDiscovery } from "@onething/app/server/discovery.js";
 import {
-	configureStorePathHost,
-	getMediaFilesDir,
-	getMediaImagesDir,
-} from "@onething/app/stores/paths.js";
+  getOnethingMediaFilesDir,
+  getOnethingMediaImagesDir,
+} from '@onething/runtime/storage'
+import {
+  configureStorePathHost,
+} from '@onething/app/stores/docs-paths.js'
 import {
 	shutdownEventSystem,
 	getEventBus,
@@ -91,7 +93,7 @@ import {
 	markVoiceRuntimeReady,
 	sendVoiceRuntimeCommand,
 } from "@onething/electron-host/voice/runtime-window";
-import { killTrackedDetachedChildren } from "@onething/app/tools/core/bash-executor.js";
+import { killTrackedDetachedChildren } from "@onething/runtime/tools/bash-executor";
 import {
 	configureAppLoggingHost,
 	configureLogging,
@@ -437,7 +439,10 @@ export function startOnethingElectronMain(): void {
 		},
 		// files/ 与 images/ 并列供给:非图片资产(拖放进来的 PDF/音视频)也要能被
 		// `media://` 取到,否则面板里只有图片有预览。
-		mediaProtocol: { getMediaImagesDir, getMediaFilesDir },
+		mediaProtocol: {
+			getMediaImagesDir: getOnethingMediaImagesDir,
+			getMediaFilesDir: getOnethingMediaFilesDir,
+		},
 		// 插件 webview 静态协议(C 期):供给线是装配层的静态根解析器 ——
 		// 协议 handler 自己不认识插件系统,未装/停用/没声明 webview 一律 404。
 		// 第二条供给线(B 期,用户壁纸)是**数据区**根:`__storage__/…` 的请求

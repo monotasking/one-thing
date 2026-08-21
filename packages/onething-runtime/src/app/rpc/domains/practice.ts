@@ -34,7 +34,7 @@ import {
   startPractice,
   stopPractice,
   writePracticeConfig,
-} from '../../practice/index.js'
+} from '@onething/runtime/practice/service.wiring'
 import { registerRouterHandlers } from '../registry.js'
 
 export const practiceRpcHandlers: RouteHandlers<PracticeRoutes> = {

@@ -57,7 +57,10 @@ import {
 } from '@onething/runtime/collab/actors'
 
 import { sessionReads } from '../../session/reads.js'
-import { getSessionsDir, getStorePath } from '../../stores/paths.js'
+import {
+  getOnethingSessionsDir,
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import {
   collabAgentAccountPath,
   collabAgentActorDir,
@@ -69,7 +72,7 @@ import { collabRoomBroadcastRecipients } from './room-actor.js'
 
 /** `<store>/collab/`。v2 的账根,也是 v3 房间账与 marker 的家。 */
 export function collabStoreDir(): string {
-  return path.join(getStorePath(), 'collab')
+  return path.join(getOnethingStorePath(), 'collab')
 }
 
 /** `<store>/collab/v3-migrated.json`。存在 = 这台机器迁过了。 */
@@ -79,7 +82,7 @@ export function collabV3MigrationMarkerPath(): string {
 
 /** `<store>/backup/collab-v2-<timestamp>/`。 */
 export function collabV2BackupDir(stamp: string): string {
-  return path.join(getStorePath(), 'backup', `${COLLAB_V2_BACKUP_DIR_PREFIX}${stamp}`)
+  return path.join(getOnethingStorePath(), 'backup', `${COLLAB_V2_BACKUP_DIR_PREFIX}${stamp}`)
 }
 
 /** v2 房间账文件:`<store>/collab/<roomId>/state.json`(只读,永不改写)。 */
@@ -127,7 +130,7 @@ export async function migrateCollabToV3(
   const dryRun = options.dryRun ?? true
   const now = options.now ?? Date.now
   const at = now()
-  const storePath = getStorePath()
+  const storePath = getOnethingStorePath()
 
   const base = {
     version: COLLAB_V3_MIGRATION_VERSION,
@@ -476,9 +479,9 @@ interface LocatedSession {
 }
 
 function locateSession(sessionId: string): LocatedSession | null {
-  const dir = path.join(getSessionsDir(), sessionId)
+  const dir = path.join(getOnethingSessionsDir(), sessionId)
   if (pathExists(path.join(dir, 'meta.json'))) return { kind: 'jsonl', path: dir }
-  const legacy = path.join(getSessionsDir(), `${sessionId}.json`)
+  const legacy = path.join(getOnethingSessionsDir(), `${sessionId}.json`)
   if (pathExists(legacy)) return { kind: 'legacy', path: legacy }
   return null
 }
@@ -494,7 +497,7 @@ function readSessionMeta(sessionId: string): unknown {
 
 /** `<store>/sessions/` 下的会话 id(两种形态并集)。备份目录不算。 */
 function listSessionIds(): string[] {
-  const dir = getSessionsDir()
+  const dir = getOnethingSessionsDir()
   if (!pathExists(dir)) return []
   const ids: string[] = []
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

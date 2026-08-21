@@ -24,9 +24,9 @@ const state = vi.hoisted(() => ({
   messages: new Map<string, unknown[]>(),
 }))
 
-vi.mock('../../stores/paths.js', () => ({
-  getSessionsDir: () => state.sessionsDir,
-  getLogDir: () => path.join(state.storeDir, 'log'),
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => state.sessionsDir,
+  getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
 vi.mock('../../stores/sessions.js', () => ({

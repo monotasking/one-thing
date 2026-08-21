@@ -43,7 +43,7 @@ import {
 import { applyFileMutationUndo } from '@onething/runtime/tools'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { listFiles } from '@onething/app/utils/ripgrep.js'
-import { getVariablesStore } from '@onething/app/variables/store/index.js'
+import { getVariablesStore } from '@onething/runtime/variables/store-bound'
 import { getConnectedDirectoriesForSession } from '@onething/app/stores/connected-directories.js'
 import { getDownloadsDirectory } from '@onething/app/tools/core/sandbox.js'
 

@@ -34,7 +34,7 @@ import {
   type CollabActorVerb,
 } from '@onething/runtime/collab/actors'
 
-vi.mock('../../../stores/paths.js', () => ({ getStorePath: () => '/tmp/onething-worker-golden-test' }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-worker-golden-test' }))
 
 const { CollabAgentActor } = await import('../agent-actor.js')
 const { createCollabAgentAccountMemoryStore } = await import('../agent-mailbox.js')

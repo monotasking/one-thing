@@ -8,7 +8,7 @@
 
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import * as store from '../../store.js'
-import { saveMediaImage } from '../../media/save-image.js'
+import { saveMediaImage } from '@onething/runtime/media/save-image'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
 import {
   generateImage,

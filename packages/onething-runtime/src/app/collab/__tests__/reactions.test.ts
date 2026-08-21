@@ -72,7 +72,7 @@ vi.mock('@onething/core/storage', () => ({
   writeJsonFile: () => {},
 }))
 
-vi.mock('../../stores/paths.js', () => ({ getStorePath: () => '/tmp/onething-collab-reactions-test' }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-collab-reactions-test' }))
 
 vi.mock('../../usage/index.js', () => ({
   getUsageLedger: () => ({ readRecordsInRange: async () => [] }),

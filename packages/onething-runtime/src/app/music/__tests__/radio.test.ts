@@ -73,11 +73,11 @@ vi.mock('../service.js', async () => {
 })
 
 // 注意:vi.mock 的相对路径按【本测试文件】解析,不是按被测模块解析。这里在
-// music/__tests__/ 下,radio.ts 的 '../stores/paths.js' 对本文件是 '../../stores/paths.js'。
-// 曾因少写一层目录,paths mock 静默失效、getStorePath 走真实实现,7 个夹具把
+// music/__tests__/ 下,radio.ts 的 '@onething/runtime/storage' 对本文件是 '@onething/runtime/storage'。
+// 曾因少写一层目录,paths mock 静默失效、getOnethingStorePath 走真实实现,7 个夹具把
 // ~/.onething/music/ 的真实电台状态反复清空(2026-07-17 事故),而测试自读自写全绿。
 vi.mock('../dj-voice.js', () => ({ speakDjPatter: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../agents/store.js', () => ({
+vi.mock('@onething/runtime/agents/store-bound.wiring', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
   findAgent: () => ({ systemPrompt: '' }),
@@ -89,7 +89,7 @@ vi.mock('../../stores/sessions.js', () => ({
   createSession: vi.fn(),
   updateSessionAgent: vi.fn(),
 }))
-vi.mock('../../stores/paths.js', () => ({ getStorePath: () => mocks.dir }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => mocks.dir }))
 vi.mock('../../stores/settings.js', () => ({ getSettings: () => mocks.settings }))
 
 const HEX = 'D71F6E90EA704F1C44183933E7E0F19'

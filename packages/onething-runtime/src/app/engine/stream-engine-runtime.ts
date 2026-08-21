@@ -10,11 +10,11 @@ import {
 	type OnethingProductStreamRuntime,
 } from "@onething/runtime/product-stream-runtime";
 import { Permission } from "../permission/index.js";
-import { Interaction } from "../interaction/index.js";
+import { Interaction } from '@onething/core/interaction';
 import * as store from "../store.js";
 import { sessionReads } from "../session/reads.js";
 import { getSkillsForSession } from "../skills/session-skills.js";
-import { mediaLibraryService } from "../media/media-library-service.js";
+import { mediaLibraryService } from "@onething/runtime/media/library-service-bound";
 import {
 	generateChatTitle,
 	isProviderSupported,
@@ -28,7 +28,7 @@ import {
 import { resolveSessionSpaceDefaultSelection } from "../providers/space-defaults.js";
 import { getSessionSettings } from "../providers/space-ai-settings.js";
 import * as modelRegistry from "../providers/model-registry.js";
-import { resolvePromptReferences } from "../prompts/resolver.js";
+import { resolvePromptReferences } from "@onething/runtime/prompts/resolver.wiring";
 import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";
 import { executeMessageStream } from "./stream/stream-executor.js";

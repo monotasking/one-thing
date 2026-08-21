@@ -4319,7 +4319,8 @@ function checkElectronHostOwnsShellOperations(): void {
   const requiredHostFacadeSymbols = [
     'registerShellHandlers',
     'registerElectronShellIpcHandlers',
-    'getStorePath',
+    // P3'a-2:`app/stores/paths.ts` 的同名转发层已删,宿主直取 runtime 的真名。
+    'getOnethingStorePath',
   ]
   const requiredLegacyFacadeSymbols = [
     '@onething/electron-host/ipc/shell',
@@ -8439,7 +8440,8 @@ function checkRuntimeOwnsMediaLegacyList(): void {
 
 function checkRuntimeOwnsMediaGeneratedImageLegacySave(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/media-library-service.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/media/save-image.ts')
+  // P3'a-2:整文件归位 `runtime/media/save-image.ts`(闭包只碰 stores/paths 转发)。
+  const mainFile = path.join(root, 'packages/onething-runtime/src/media/save-image.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('saveGeneratedImageAsLegacyItem')
@@ -8447,7 +8449,7 @@ function checkRuntimeOwnsMediaGeneratedImageLegacySave(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MEDIA_SAVE_IMAGE_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/media/save-image.ts: missing media save adapter']),
+      : ['packages/onething-runtime/src/media/save-image.ts: missing media save adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns generated image legacy save projection', lines)
@@ -8937,7 +8939,8 @@ function checkRuntimeOwnsHeadlessCliProjections(): void {
 function checkRuntimeOwnsPromptsStore(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/prompts/store.ts')
   const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/prompts/ipc-operations.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/prompts/store.ts')
+  // P3'a-2:归位 `runtime/prompts/store-bound.ts`(与 runtime 的 `store.ts` 同概念异角色,故带 -bound)。
+  const mainFile = path.join(root, 'packages/onething-runtime/src/prompts/store-bound.ts')
   // 迁移后调用 ipc-operations 的是 RPC 域,不再是 @main 的 handler。
   const mainIpcFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/prompts.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
@@ -8972,7 +8975,7 @@ function checkRuntimeOwnsPromptsStore(): void {
       .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned prompts IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROMPTS_STORE_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/prompts/store.ts: missing prompts store facade']),
+      : ['packages/onething-runtime/src/prompts/store-bound.ts: missing prompts store facade']),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_PROMPTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/rpc/domains/prompts.ts: missing prompts RPC domain']),
@@ -9088,7 +9091,8 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
     path.join(root, 'packages/onething-runtime/src/variables/providers/global-store.ts'),
     path.join(root, 'packages/onething-runtime/src/variables/providers/index.ts'),
   ]
-  const mainStoreFile = path.join(root, 'packages/onething-runtime/src/app/variables/store/index.ts')
+  // P3'a-2:归位 `runtime/variables/store-bound.ts`(盘上 IO 在同批的 store-persistence.ts)。
+  const mainStoreFile = path.join(root, 'packages/onething-runtime/src/variables/store-bound.ts')
   const removedMainFacadeFiles = [
     path.join(root, 'packages/onething-runtime/src/app/variables/store/schema.ts'),
     path.join(root, 'packages/onething-runtime/src/app/variables/format.ts'),
@@ -9131,7 +9135,7 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
       .map(symbol => `packages/onething-runtime/src/variables: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainStoreFile)
       ? matchingLines(mainStoreFile, MAIN_VARIABLES_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/variables/store/index.ts: missing variables store host adapter']),
+      : ['packages/onething-runtime/src/variables/store-bound.ts: missing variables store host adapter']),
     ...removedMainFacadeFiles.flatMap(file => fs.existsSync(file)
       ? [`${rel(file)}: variables facade should be removed; import @onething/runtime/variables directly`]
       : []
@@ -9169,7 +9173,8 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
 function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
   const runtimeStoreFile = path.join(root, 'packages/onething-runtime/src/agents/store.ts')
   const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/agents/ipc-operations.ts')
-  const mainStoreFile = path.join(root, 'packages/onething-runtime/src/app/agents/store.ts')
+  // P3'a-2:归位 `runtime/agents/store-bound.wiring.ts`(吃 @shared/ipc 的 AgentDefinition,故带 .wiring)。
+  const mainStoreFile = path.join(root, 'packages/onething-runtime/src/agents/store-bound.wiring.ts')
   const adapterFile = path.join(root, 'packages/onething-runtime/src/app/rpc/domains/agents.ts')
   const runtimeContent = [
     fs.existsSync(runtimeStoreFile) ? fs.readFileSync(runtimeStoreFile, 'utf-8') : '',
@@ -9192,7 +9197,7 @@ function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
       .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainStoreFile)
       ? matchingLines(mainStoreFile, MAIN_AGENTS_STORE_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/agents/store.ts: missing agent store adapter']),
+      : ['packages/onething-runtime/src/agents/store-bound.wiring.ts: missing agent store adapter']),
     ...(fs.existsSync(adapterFile)
       ? matchingLines(adapterFile, MAIN_AGENTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
       : [`${rel(adapterFile)}: missing agents RPC domain`]),
@@ -9275,8 +9280,6 @@ function checkRuntimeOwnsSchedulerCore(): void {
   const runtimeTypesContent = fs.existsSync(runtimeTypesFile) ? fs.readFileSync(runtimeTypesFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainSchedulerContent = fs.existsSync(mainSchedulerFile) ? fs.readFileSync(mainSchedulerFile, 'utf-8') : ''
-  const mainCronContent = fs.existsSync(mainCronFile) ? fs.readFileSync(mainCronFile, 'utf-8') : ''
-  const mainTypesContent = fs.existsSync(mainTypesFile) ? fs.readFileSync(mainTypesFile, 'utf-8') : ''
   const requiredRuntimeSchedulerSymbols = [
     'export class Scheduler',
     'SchedulerOptions',
@@ -9323,16 +9326,13 @@ function checkRuntimeOwnsSchedulerCore(): void {
         ? []
         : [`${rel(mainSchedulerFile)}: main scheduler facade must configure @onething/runtime/scheduler`]
     ),
-    ...(
-      mainCronContent.includes('@onething/runtime/scheduler')
-        ? []
-        : [`${rel(mainCronFile)}: main scheduler cron facade must re-export @onething/runtime/scheduler`]
-    ),
-    ...(
-      mainTypesContent.includes('@onething/runtime/scheduler')
-        ? []
-        : [`${rel(mainTypesFile)}: main scheduler types facade must re-export @onething/runtime/scheduler`]
-    ),
+    // P3'a-2(I2):`app/scheduler/{cron,types}.ts` 本来就只是 `export … from
+    // '@onething/runtime/scheduler'` 的转发,与 runtime 里同名文件重复着同一个概念。
+    // 已删,调用方直接 import `@onething/runtime/scheduler` —— 断言反过来:
+    // **它们回来才算红**(同 checkRuntimeOwnsAcpRuntime 的 mainFacadeLines 判例)。
+    ...[mainCronFile, mainTypesFile].flatMap(file => fs.existsSync(file)
+      ? [`${rel(file)}: scheduler legacy facade should be removed; import @onething/runtime/scheduler directly`]
+      : []),
     ...(fs.existsSync(mainSchedulerFile)
       ? matchingLines(mainSchedulerFile, MAIN_SCHEDULER_CORE_FORBIDDEN_PATTERNS)
       : ['packages/onething-runtime/src/app/scheduler/index.ts: missing scheduler core adapter']),

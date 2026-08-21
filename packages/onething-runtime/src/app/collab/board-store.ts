@@ -25,8 +25,9 @@ import {
   type CollabTask,
 } from '@onething/runtime/collab'
 import { getEventBus } from '../events/index.js'
-import { getStorePath } from '../stores/paths.js'
-
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'
 
@@ -45,7 +46,7 @@ const listeners = new Set<BoardEventListener>()
 const writeQueues = new Map<string, Promise<unknown>>()
 
 function boardDir(roomSessionId: string): string {
-  return path.join(getStorePath(), 'collab', roomSessionId)
+  return path.join(getOnethingStorePath(), 'collab', roomSessionId)
 }
 
 function boardPath(roomSessionId: string): string {

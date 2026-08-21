@@ -8,7 +8,9 @@
  * (which would close an import cycle through client.ts).
  */
 
-import { getMCPOAuthCredentialsPath } from '../../stores/paths.js'
+import {
+  getOnethingMCPOAuthCredentialsPath,
+} from '@onething/runtime/storage'
 import { MCPOAuthFlowManager } from './flow-manager.js'
 
 export { MCPOAuthFlowManager, MCP_OAUTH_CALLBACK_PORTS } from './flow-manager.js'
@@ -33,7 +35,7 @@ export function configureMCPOAuthAuthorizedHandler(handler: (serverId: string) =
 export function getMCPOAuthFlowManager(): MCPOAuthFlowManager {
   if (!flowManager) {
     flowManager = new MCPOAuthFlowManager({
-      credentialStorePath: getMCPOAuthCredentialsPath(),
+      credentialStorePath: getOnethingMCPOAuthCredentialsPath(),
       onAuthorized: serverId => authorizedHandler?.(serverId),
     })
   }

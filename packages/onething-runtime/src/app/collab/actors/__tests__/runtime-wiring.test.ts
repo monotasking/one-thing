@@ -78,8 +78,7 @@ vi.mock('../../../external-agents/index.js', () => ({
   },
 }))
 
-vi.mock('../../../stores/paths.js', () => ({
-  getStorePath: () => mocks.storePath,
+vi.mock('@onething/runtime/storage', () => ({
   getOnethingStorePath: () => mocks.storePath,
 }))
 

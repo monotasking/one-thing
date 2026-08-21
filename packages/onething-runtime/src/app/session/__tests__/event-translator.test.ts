@@ -24,9 +24,9 @@ const state = vi.hoisted(() => ({
   messages: [] as ChatMessage[],
 }))
 
-vi.mock('../../stores/paths.js', () => ({
-  getSessionsDir: () => state.sessionsDir,
-  getLogDir: () => path.join(state.storeDir, 'log'),
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => state.sessionsDir,
+  getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
 // 翻译器只从读门面取消息(`session:gate` 的那条纪律),所以测试替的也是它。

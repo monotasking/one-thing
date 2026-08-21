@@ -25,9 +25,9 @@ vi.mock('../../stores/settings.js', () => ({
   },
 }))
 
-vi.mock('../../stores/paths.js', () => ({
-  getStorePath: () => mocks.storeRoot,
-  getSettingsPath: () => path.join(mocks.storeRoot, 'settings.json'),
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingStorePath: () => mocks.storeRoot,
+  getOnethingSettingsPath: () => path.join(mocks.storeRoot, 'settings.json'),
 }))
 
 vi.mock('../registry.js', () => ({

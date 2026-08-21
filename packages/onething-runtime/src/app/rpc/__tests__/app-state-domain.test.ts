@@ -17,7 +17,7 @@ const store = vi.hoisted(() => ({
 }))
 
 const paths = vi.hoisted(() => ({
-  getAppStatePath: vi.fn(() => '/store/app-state.json'),
+  getOnethingAppStatePath: vi.fn(() => '/store/app-state.json'),
 }))
 
 const storage = vi.hoisted(() => ({
@@ -25,8 +25,7 @@ const storage = vi.hoisted(() => ({
 }))
 
 vi.mock('../../stores/app-state.js', () => store)
-vi.mock('../../stores/paths.js', () => paths)
-vi.mock('@onething/runtime/storage', () => storage)
+vi.mock('@onething/runtime/storage', () => ({ ...paths, ...storage }))
 
 const STATE = {
   currentSessionId: 'session-1',
@@ -47,7 +46,7 @@ describe('app-state RPC domain', () => {
   beforeEach(async () => {
     store.getAppState.mockReset().mockReturnValue(STATE)
     storage.saveOnethingUiStateForIpc.mockReset().mockReturnValue({ success: true, state: STATE })
-    paths.getAppStatePath.mockClear()
+    paths.getOnethingAppStatePath.mockClear()
 
     const { resetRpcRegistryForTests, registerAppStateRpcDomain } = await loadDomain()
     resetRpcRegistryForTests()

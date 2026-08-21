@@ -19,8 +19,8 @@ const paths = vi.hoisted(() => ({ sessionsDir: '' }))
 
 // 与 event-log.ts 引的是同一个模块 —— 路径差一层就等于什么都没 mock,
 // 测试会转而去读用户真实的 ~/.onething/sessions。
-vi.mock('../../stores/paths.js', () => ({
-  getSessionsDir: () => paths.sessionsDir,
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => paths.sessionsDir,
 }))
 
 const SESSION_ID = 'session-under-test'

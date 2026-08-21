@@ -10,7 +10,7 @@ import {
 } from '../agent-loop-executor.js'
 import { triggerManager } from '../../triggers/index.js'
 import { runAfterAssistantResponseHooks } from '../../../plugins/lifecycle.js'
-import type { saveMediaImage } from '../../../media/save-image.js'
+import type { saveMediaImage } from '@onething/runtime/media/save-image'
 import type { BuildAgentLoopStreamRuntimeResult } from '../agent-loop-runtime.js'
 import type { IPCEmitter } from '../ipc-emitter.js'
 import type { StreamProcessor, StreamSender } from '../stream-processor.js'
@@ -63,7 +63,7 @@ vi.mock('../../../plugins/lifecycle.js', () => ({
   runAfterAssistantResponseHooks: vi.fn(() => Promise.resolve()),
 }))
 
-vi.mock('../../../media/save-image.js', () => ({
+vi.mock('@onething/runtime/media/save-image', () => ({
   saveMediaImage: mediaMocks.saveMediaImage,
 }))
 

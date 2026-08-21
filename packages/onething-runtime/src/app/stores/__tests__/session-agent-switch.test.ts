@@ -16,13 +16,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('../paths.js', async () => {
-  const actual = await vi.importActual<typeof import('../paths.js')>('../paths.js')
+vi.mock('@onething/runtime/storage', async () => {
+  const actual = await vi.importActual<typeof import('@onething/runtime/storage')>('@onething/runtime/storage')
   return {
     ...actual,
-    getSessionsDir: () => state.sessionsDir,
-    getSessionPath: (sessionId: string) => path.join(state.sessionsDir, `${sessionId}.json`),
-    getLogDir: () => path.join(state.storeDir, 'log'),
+    getOnethingSessionsDir: () => state.sessionsDir,
+    getOnethingSessionPath: (sessionId: string) => path.join(state.sessionsDir, `${sessionId}.json`),
+    getOnethingLogDir: () => path.join(state.storeDir, 'log'),
   }
 })
 

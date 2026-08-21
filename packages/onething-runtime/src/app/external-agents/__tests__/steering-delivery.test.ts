@@ -62,9 +62,9 @@ vi.mock('../../store.js', () => ({
   getSession: () => undefined,
   getSettings: () => ({ network: {} }),
 }))
-vi.mock('../../stores/paths.js', async importOriginal => ({
+vi.mock('@onething/runtime/storage', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
-  getStorePath: () => '/tmp/onething-steer-test',
+  getOnethingStorePath: () => '/tmp/onething-steer-test',
 }))
 const noopLogger = () => {
   const logger: Record<string, unknown> = {

@@ -24,8 +24,8 @@ vi.mock('../../stores/settings.js', () => ({
   }),
 }))
 
-vi.mock('../../stores/paths.js', () => ({
-  getStorePath: () => root,
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingStorePath: () => root,
 }))
 
 let activeSessionId = ''

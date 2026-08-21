@@ -16,13 +16,13 @@ import type {
 import { join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import {
-	getSessionsDir,
-	getSessionPath,
+	getOnethingSessionsDir,
+	getOnethingSessionPath,
 	readJsonFile,
 	writeJsonFile,
 	writeJsonFileAsync,
 	deleteJsonFile,
-} from "./paths.js";
+} from '@onething/runtime/storage';
 import { getCurrentSessionId, setCurrentSessionId } from "./app-state.js";
 import { sessionEventTranslator } from "../session/event-translator.js";
 import { sessionCommands } from "../session/commands.js";
@@ -89,8 +89,8 @@ const writeSessionJsonFileAsync = (filePath: string, data: unknown) =>
 	writeJsonFileAsync(filePath, data, { pretty: false });
 
 const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>({
-	getSessionsDir,
-	getLegacySessionPath: getSessionPath,
+	getSessionsDir: getOnethingSessionsDir,
+	getLegacySessionPath: getOnethingSessionPath,
 	// flag 只决定"新建会话"的格式(也是惰性迁移的开关);已有会话跟随盘上格式,
 	// settings.storage.sessionFormat 设为 legacy-json 即回滚
 	newSessionFormat: () => getSettings().storage?.sessionFormat ?? "jsonl",
@@ -108,8 +108,8 @@ const sessionRepository = createOnethingSessionRepository<
 	UserMessageMarker
 >({
 	defaultAgentId: DEFAULT_AGENT_ID,
-	getSessionsDir,
-	getSessionPath,
+	getSessionsDir: getOnethingSessionsDir,
+	getSessionPath: getOnethingSessionPath,
 	readJsonFile,
 	writeJsonFile,
 	writeJsonFileAsync: writeSessionJsonFileAsync,
@@ -251,7 +251,7 @@ let sessionWorkdirBackfilled = false;
 
 function readPersistedWorkdir(sessionId: string): string {
 	const meta = readJsonFile<{ workingDirectory?: string }>(
-		join(getSessionsDir(), sessionId, "meta.json"),
+		join(getOnethingSessionsDir(), sessionId, "meta.json"),
 		{},
 	);
 	return typeof meta.workingDirectory === "string" ? meta.workingDirectory : "";
@@ -765,7 +765,7 @@ export function updateSessionsIndexMetaForCommands(
  */
 export function readSessionTranscriptFile(sessionId: string): string | undefined {
 	try {
-		const file = join(getSessionsDir(), sessionId, "messages.jsonl");
+		const file = join(getOnethingSessionsDir(), sessionId, "messages.jsonl");
 		if (!existsSync(file)) return undefined;
 		return readFileSync(file, "utf-8");
 	} catch {

@@ -1,4 +1,4 @@
-import { getAppStatePath } from './paths.js'
+import { getOnethingAppStatePath } from '@onething/runtime/storage'
 import {
   getOnethingCurrentSessionId,
   getOnethingCurrentWorkspaceId,
@@ -14,25 +14,25 @@ export interface SerializedTab extends OnethingSerializedTab {}
 export interface AppState extends OnethingAppState {}
 
 export function getAppState(): AppState {
-  return readOnethingAppState(getAppStatePath()) as AppState
+  return readOnethingAppState(getOnethingAppStatePath()) as AppState
 }
 
 export function saveAppState(state: AppState): void {
-  writeOnethingAppState(getAppStatePath(), state)
+  writeOnethingAppState(getOnethingAppStatePath(), state)
 }
 
 export function getCurrentSessionId(): string {
-  return getOnethingCurrentSessionId(getAppStatePath())
+  return getOnethingCurrentSessionId(getOnethingAppStatePath())
 }
 
 export function setCurrentSessionId(sessionId: string): void {
-  setOnethingCurrentSessionId(getAppStatePath(), sessionId)
+  setOnethingCurrentSessionId(getOnethingAppStatePath(), sessionId)
 }
 
 export function getCurrentWorkspaceId(): string | null {
-  return getOnethingCurrentWorkspaceId(getAppStatePath())
+  return getOnethingCurrentWorkspaceId(getOnethingAppStatePath())
 }
 
 export function setCurrentWorkspaceId(workspaceId: string | null): void {
-  setOnethingCurrentWorkspaceId(getAppStatePath(), workspaceId)
+  setOnethingCurrentWorkspaceId(getOnethingAppStatePath(), workspaceId)
 }

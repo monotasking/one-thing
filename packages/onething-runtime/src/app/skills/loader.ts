@@ -7,10 +7,10 @@ import {
 } from '@onething/runtime/music'
 import {
   listPluginSkillRoots,
-} from './plugin-roots.js'
+} from '@onething/runtime/skills/plugin-roots.wiring'
 import {
-  getStorePath,
-} from '../stores/paths.js'
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import {
   getSettings,
 } from '../stores/settings.js'
@@ -47,7 +47,7 @@ export function configureAppSkillsLoader(): void {
   if (skillsLoaderConfigured) return
   skillsLoaderConfigured = true
   configureOnethingSkillsLoaderRuntime({
-    getStorePath,
+    getStorePath: getOnethingStorePath,
     listPluginSkillRoots,
     // 技能页手工加的自定义目录 + 接入目录(后者投影成同款根,复用同一条
     // 扫描/去重/id 链路,不另起一套)。技能设置页读的是 settings 原始值,

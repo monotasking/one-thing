@@ -46,7 +46,7 @@ vi.mock('@onething/core/storage', () => ({
   writeJsonFile: () => {},
 }))
 
-vi.mock('../../stores/paths.js', () => ({ getStorePath: () => '/tmp/onething-collab-inspector' }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-collab-inspector' }))
 
 vi.mock('../../store.js', () => ({
   // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。

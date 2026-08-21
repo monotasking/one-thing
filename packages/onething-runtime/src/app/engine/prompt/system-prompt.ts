@@ -22,7 +22,9 @@ import {
 import { toolkitPromptSource } from '../../toolkit/prompt-source.js'
 import { buildStateVariablesPromptText } from '../../variables/index.js'
 import { pluginPromptSource } from './plugin-context.js'
-import { getMacOSAutomationDocsPath } from '../../stores/paths.js'
+import {
+  getMacOSAutomationDocsPath,
+} from '../../stores/docs-paths.js'
 import { getTodoPlanDirectory } from '../../todo-plan/store.js'
 import { defaultAgent, findAgent } from '../../agents/index.js'
 import * as store from '../../store.js'

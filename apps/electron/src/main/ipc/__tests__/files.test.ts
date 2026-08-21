@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getDownloadsDirectory } from '@onething/app/tools/core/sandbox.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
-import { resetVariablesStoreForTests } from '@onething/app/variables/store/index.js'
+import { resetVariablesStoreForTests } from '@onething/runtime/variables/store-bound'
 import { registerFilesHandlers } from '../files.js'
 
 const mocks = vi.hoisted(() => {

@@ -24,8 +24,9 @@ import {
   type CollabRoomAccount,
 } from '@onething/runtime/collab/actors'
 
-import { getStorePath } from '../../stores/paths.js'
-
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 /** v3 的一切都落在房间目录的这个子目录下。 */
 export const COLLAB_ACTORS_DIR = 'actors'
 /** 房间账文件名。 */
@@ -33,7 +34,7 @@ export const COLLAB_ROOM_ACCOUNT_FILE = 'room.json'
 
 /** `<store>/collab/<roomId>/actors/`。 */
 export function collabRoomActorsDir(roomId: string): string {
-  return path.join(getStorePath(), 'collab', roomId, COLLAB_ACTORS_DIR)
+  return path.join(getOnethingStorePath(), 'collab', roomId, COLLAB_ACTORS_DIR)
 }
 
 /** `<store>/collab/<roomId>/actors/room.json`。 */

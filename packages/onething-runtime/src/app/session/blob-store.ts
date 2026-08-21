@@ -30,7 +30,9 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import type { BlobRef } from '@onething/core/session'
 import { SESSION_EVENT_BLOB_THRESHOLD_BYTES } from '@onething/core/session'
-import { getSessionsDir } from '../stores/paths.js'
+import {
+  getOnethingSessionsDir,
+} from '@onething/runtime/storage'
 import { countSessionEventFailure } from './event-stats.js'
 
 export const SESSION_BLOBS_DIRNAME = 'blobs'
@@ -41,7 +43,7 @@ export function hashSessionBlob(data: Buffer): string {
 }
 
 export function getSessionBlobsDir(sessionId: string): string {
-  return path.join(getSessionsDir(), sessionId, SESSION_BLOBS_DIRNAME)
+  return path.join(getOnethingSessionsDir(), sessionId, SESSION_BLOBS_DIRNAME)
 }
 
 export function getSessionBlobPath(sessionId: string, hash: string): string {

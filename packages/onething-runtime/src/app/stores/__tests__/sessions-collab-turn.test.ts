@@ -22,10 +22,10 @@ let loadedSessions: typeof import('../sessions.js') | null = null
 
 async function loadIsolatedStores(): Promise<typeof import('../sessions.js')> {
   vi.resetModules()
-  const paths = await import('../paths.js')
+  const paths = await import('@onething/runtime/storage')
   const sessions = await import('../sessions.js')
   loadedSessions = sessions
-  paths.ensureStoreDirs()
+  paths.ensureOnethingStoreDirs()
   return sessions
 }
 

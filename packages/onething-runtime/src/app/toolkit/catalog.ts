@@ -56,9 +56,12 @@ import {
 } from '@onething/runtime/toolkit'
 import { getSettings } from '../stores/settings.js'
 import { getConnectedDirectoriesForSession } from '../stores/connected-directories.js'
-import { getFileMutationsDir, getToolOutputsDir } from '../stores/paths.js'
+import {
+  getOnethingFileMutationsDir,
+  getOnethingToolOutputsDir,
+} from '@onething/runtime/storage'
 import { getDefaultReadRoots } from '../tools/core/sandbox.js'
-import { createLocalBashOperations } from '../tools/core/bash-executor.js'
+import { createLocalBashOperations } from '@onething/runtime/tools/bash-executor'
 import { getGuardedVariableRegistryForTools, VariableError } from '../variables/index.js'
 import {
   askUserAdapters,
@@ -109,7 +112,7 @@ export function readAdapters(): ReadToolAdapters {
 export function mutatingFileAdapters(): MutatingFileToolAdapters {
   return {
     getDefaultWorkingDirectory: defaultWorkingDirectory,
-    getFileMutationsDir,
+    getFileMutationsDir: getOnethingFileMutationsDir,
     // per-space:按**会话归属**取,不是当前空间(批 B2 / 设计盲点 1)。
     getConnectedDirectories: sessionId => getConnectedDirectoriesForSession(sessionId),
   }
@@ -118,7 +121,7 @@ export function mutatingFileAdapters(): MutatingFileToolAdapters {
 export function bashAdapters(): BashToolAdapters {
   return {
     getDefaultWorkingDirectory: defaultWorkingDirectory,
-    getToolOutputsDir,
+    getToolOutputsDir: getOnethingToolOutputsDir,
     getShellPath: configuredShellPath,
     getConnectedDirectories: sessionId => getConnectedDirectoriesForSession(sessionId),
     createOperations: options => createLocalBashOperations({

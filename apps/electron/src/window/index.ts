@@ -1,6 +1,10 @@
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { getWindowStatePath, readJsonFile, writeJsonFile } from '@onething/app/stores/paths.js'
+import {
+  getOnethingWindowStatePath,
+  readJsonFile,
+  writeJsonFile,
+} from '@onething/runtime/storage'
 import { getSettings } from '@onething/app/stores/settings.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { TodoPlanWindowActionRequest } from '@shared/ipc.js'
@@ -139,7 +143,7 @@ interface TodoPlanWindowActionOptions extends TodoPlanWindowActionRequest {
 
 function getWindowStateOptions(): ElectronWindowStateOptions {
   return {
-    path: getWindowStatePath(),
+    path: getOnethingWindowStatePath(),
     readJsonFile,
     writeJsonFile,
   }

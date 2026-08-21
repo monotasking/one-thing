@@ -1,6 +1,6 @@
 import * as PermissionGrants from '../../permission/permission-grants.js'
 import { Permission } from '../../permission/index.js'
-import { isSessionUnattended } from '../../permission/unattended.js'
+import { isSessionUnattended } from '@onething/runtime/permissions/unattended'
 import {
   createOnethingPermissionRuntime,
 } from '@onething/runtime/permissions'

@@ -1,5 +1,9 @@
 import { configureOnethingPermissionGrantStorage } from '@onething/runtime/permissions'
-import { getPermissionsDir, readJsonFile, writeJsonFile } from '../stores/paths.js'
+import {
+  getOnethingPermissionsDir,
+  readJsonFile,
+  writeJsonFile,
+} from '@onething/runtime/storage'
 import { registerBuiltinCapabilities } from './capabilities.js'
 
 let permissionGrantsConfigured = false
@@ -9,7 +13,7 @@ export function configureAppPermissionGrants(): void {
   if (permissionGrantsConfigured) return
   permissionGrantsConfigured = true
   configureOnethingPermissionGrantStorage({
-    getPermissionsDir,
+    getPermissionsDir: getOnethingPermissionsDir,
     readJsonFile,
     writeJsonFile,
   })

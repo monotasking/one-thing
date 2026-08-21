@@ -25,7 +25,9 @@ import { classifySensitiveFile } from '@onething/runtime/tools/sensitive-files'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import * as store from '../store.js'
-import { getToolOutputsDir } from '../stores/paths.js'
+import {
+  getOnethingToolOutputsDir,
+} from '@onething/runtime/storage'
 import {
   getSandboxBoundary,
   isPathContained,
@@ -36,12 +38,12 @@ import { AuditProjector, combineObservers, type ToolAuditSink } from './audit-ob
 import { BackgroundJobRegistry } from './jobs.js'
 
 /**
- * 溢出落盘。目录就是 bash 的输出累积器今天用的那一个(`getToolOutputsDir()`)——
+ * 溢出落盘。目录就是 bash 的输出累积器今天用的那一个(`getOnethingToolOutputsDir()`)——
  * 一个目录意味着**一条清扫路径**(§11.1 第 2 条),而不是每个工具一个。
  */
 export function createToolOutputSpill(): SpillPort {
   return request => {
-    const dir = getToolOutputsDir()
+    const dir = getOnethingToolOutputsDir()
     mkdirSync(dir, { recursive: true })
     const name = `spill-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${request.toolId ?? 'tool'}.txt`
     const path = join(dir, name)

@@ -24,7 +24,9 @@ import {
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
 import { getSettings } from '../store.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
-import { getStorePath } from '../stores/paths.js'
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { AbortScope, Intent } from '@onething/core/toolkit'
 import type { Effect, Invocation } from '@onething/core/toolkit'
 import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
@@ -76,7 +78,7 @@ export function findClaudeExecutable(): string | undefined {
 type SessionLinkStore = Record<string, ExternalAgentSessionLink>
 
 function sessionLinksPath(): string {
-  return join(getStorePath(), 'external-agents', 'session-links.json')
+  return join(getOnethingStorePath(), 'external-agents', 'session-links.json')
 }
 
 function linkKey(connectorId: string, localSessionId: string): string {

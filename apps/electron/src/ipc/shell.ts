@@ -1,4 +1,6 @@
-import { getStorePath } from '@onething/app/stores/paths.js'
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { registerElectronShellIpcHandlers } from './shell-controller.js'
 
 export { registerElectronShellIpcHandlers } from './shell-controller.js'
@@ -12,6 +14,6 @@ export type {
 
 export function registerShellHandlers(): void {
   registerElectronShellIpcHandlers({
-    getDataPath: () => getStorePath(),
+    getDataPath: () => getOnethingStorePath(),
   })
 }

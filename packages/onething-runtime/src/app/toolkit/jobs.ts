@@ -28,7 +28,7 @@ import {
   type BackgroundJob,
 } from '@onething/runtime/tools/background-jobs'
 import type { BashOperations } from '@onething/runtime/tools/bash-executor'
-import { createLocalBashOperations } from '../tools/core/bash-executor.js'
+import { createLocalBashOperations } from '@onething/runtime/tools/bash-executor'
 import { getSettings } from '../stores/settings.js'
 
 /** 轮询间隔:`events()` 靠它把"日志长长了 / 进程没了"变成一条流。 */

@@ -53,7 +53,7 @@ import {
 import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
-} from '../skills/plugin-roots.js'
+} from '@onething/runtime/skills/plugin-roots.wiring'
 import { registerPromptContextProvider } from '../engine/prompt/plugin-context.js'
 import {
   registerAfterAssistantResponseHook,

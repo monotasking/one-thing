@@ -15,8 +15,10 @@ import {
 } from '@onething/runtime/tools/sandbox-runtime'
 import { getSettings } from '../../stores/settings.js'
 import { getConnectedDirectories } from '../../stores/connected-directories.js'
-import { getToolOutputsDir } from '../../stores/paths.js'
-import { getVariablesStore } from '../../variables/store/index.js'
+import {
+  getOnethingToolOutputsDir,
+} from '@onething/runtime/storage'
+import { getVariablesStore } from '@onething/runtime/variables/store-bound'
 
 interface SandboxHost {
   getPath?: (name: string) => string
@@ -47,7 +49,7 @@ export function configureAppToolSandbox(): void {
   getConnectedDirectories,
   // The bash tool's overflow logs ("full output saved to …"): re-reading a
   // tool result already adjudicated by the permission system — never prompt.
-  getAppArtifactDirectories: () => [getToolOutputsDir()],
+  getAppArtifactDirectories: () => [getOnethingToolOutputsDir()],
   })
 }
 

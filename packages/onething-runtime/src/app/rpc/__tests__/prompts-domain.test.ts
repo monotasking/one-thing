@@ -18,7 +18,7 @@ const store = vi.hoisted(() => ({
 
 // 这个 specifier 必须解析到 handler 自己 import 的那个模块（src/app/prompts/store.ts）。
 // 差一级目录就等于什么都没 mock，测试会安静地去写用户真实的 prompts.json。
-vi.mock('../../prompts/store.js', () => store)
+vi.mock('@onething/runtime/prompts/store-bound', () => store)
 
 const PROMPT = {
   id: 'prompt-1',

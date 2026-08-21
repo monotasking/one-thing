@@ -26,8 +26,8 @@ vi.mock('../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
   updateSessionWorkingDirectory: vi.fn(),
 }))
-vi.mock('../../stores/paths.js', () => ({
-  getStorePath: () => mocks.storePath,
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingStorePath: () => mocks.storePath,
 }))
 
 const { listCollabRoomFolder } = await import('../room-folder.js')

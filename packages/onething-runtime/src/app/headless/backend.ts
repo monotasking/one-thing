@@ -60,7 +60,7 @@ import { shutdownStreamEngine, getStreamEngine } from '../engine/index.js'
 import { Permission } from '../permission/index.js'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
 import { ACPManager } from '@onething/runtime/acp'
-import { killTrackedDetachedChildren } from '../tools/core/bash-executor.js'
+import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 

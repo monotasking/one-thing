@@ -40,8 +40,9 @@ import {
   type CollabAgentAccount,
 } from '@onething/runtime/collab/actors'
 
-import { getStorePath } from '../../stores/paths.js'
-
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 /** v3 的 agent 家当都落在 store 根的这个目录下。 */
 export const COLLAB_AGENTS_V3_DIR = 'agents-v3'
 /** 账文件名。 */
@@ -53,7 +54,7 @@ export const COLLAB_AGENT_MAILBOX_NAME = 'inbox'
 
 /** `<store>/agents-v3/<agentId>/`。 */
 export function collabAgentActorDir(agentId: string): string {
-  return path.join(getStorePath(), COLLAB_AGENTS_V3_DIR, agentId)
+  return path.join(getOnethingStorePath(), COLLAB_AGENTS_V3_DIR, agentId)
 }
 
 /** `<store>/agents-v3/<agentId>/state.json`。 */

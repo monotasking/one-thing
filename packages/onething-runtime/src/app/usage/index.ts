@@ -22,7 +22,9 @@ import {
 } from "@onething/runtime/usage";
 import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
-import { getStorePath } from "../stores/paths.js";
+import {
+  getOnethingStorePath,
+} from '@onething/runtime/storage'
 import { getModelCapabilityEntry } from "../providers/model-registry.js";
 import { resolveSessionCredentialId } from "../providers/space-credentials.js";
 import * as store from "../store.js";
@@ -100,7 +102,7 @@ let ledgerInstance: OnethingUsageLedger | null = null;
 export function getUsageLedger(): OnethingUsageLedger {
 	if (!ledgerInstance) {
 		ledgerInstance = new OnethingUsageLedger({
-			ledgerDir: () => path.join(getStorePath(), "usage"),
+			ledgerDir: () => path.join(getOnethingStorePath(), "usage"),
 		});
 	}
 	return ledgerInstance;

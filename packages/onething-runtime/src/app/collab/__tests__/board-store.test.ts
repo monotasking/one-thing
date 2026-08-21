@@ -31,7 +31,7 @@ vi.mock('node:fs', () => ({
   },
 }))
 
-vi.mock('../../stores/paths.js', () => ({ getStorePath: () => '/tmp/onething-board-test' }))
+vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-board-test' }))
 
 vi.mock('../../events/index.js', () => ({
   getEventBus: () => ({
