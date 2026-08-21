@@ -443,6 +443,62 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
    摘掉 `apps/electron/src/main/bridges`(Electron 桥禁 electron 是反的),fs/path 禁令只留真无 IO 目录;
    #12/#13 SQLite 三文件 072e96b4 后不存在、会话存储 07 月已 jsonl,整条删。D 组在 P1'-2 的 checker 改动入库后做,
    同时删基线 diff 机制与基线文件。
+6. **08-21 D 组 + P1'-3 落地记录**(HEAD `a34f12fc` 之上;不改任何产品源文件,只改 checker / gate / 基线 / 文档):
+   9 条断言过期红逐条改在 `scripts/headless-boundary-check.ts`,**干净 worktree 上 boundary 从 9 failed / 192 ok
+   → 0 failed / 203 ok**(9 条转绿;#12/#13 两条 check 整条删,所以 ok 净 +7;全绿时检查器多打一行
+   `headless core boundary checks passed` 汇总,+1),checker 10295 → 10285 行。
+   - #3 `checkElectronHostOwnsApplicationMenu`:逐字断言 `setupElectronApplicationMenu({ mainWindow, openSettingsWindow })`
+     → 三段 `includes`(`setupElectronApplicationMenu(` / `mainWindow,` / `openSettingsWindow`)。真实调用早已是多行
+     形态且多传 browser / webPreview 两组回调,断言语义收窄为"调用存在且传了这两个参数"。
+   - #4 `checkElectronHostOwnsSettingsIpcHost`:`requiredFacadeSymbols` 摘掉 `IPC_CHANNELS.GET_NETWORK_INTERFACES`
+     (603582d9 退役,全仓 0 命中);同函数其余 17 条 host + 8 条 facade 断言原样保留。
+   - #10 `checkRuntimeOwnsSettingsSaveOrchestration`:`requiredRuntimeIpcSymbols` 摘掉
+     `listOnethingNetworkInterfacesForIpc`(同上),其余三条保留。
+   - #5 `checkElectronHostOwnsMainEntry`:删两条 legacy facade 断言(`packages/onething-runtime/src/app/index.ts`
+     须再导出 `@onething/electron-host/app/main-process`、且须 ≤5 行)。该文件早已不存在,且断言与
+     `checkRuntimeHostBoundary` 的 `APP_ASSEMBLY_FORBIDDEN_PATTERNS`(装配层禁 import electron-host)
+     互斥。宿主侧三条真断言(`startOnethingElectronMain` / `./app/main-process.js` /
+     `export function startOnethingElectronMain`)与 vite 入口断言保留。
+   - #6/#7 `checkMainUsesRuntimePackageImports` / `checkMainUsesCorePackageImports`(顺手 #Gateway 那条同类):
+     新增 `matchingImportSpecifierLines()` + `importSpecifiersInCode()`,先剥注释(复用 `codeOnlyLines`)再抠
+     `from '…'` / `import('…')` / `import '…'` / `require('…')` 的说明符,**只拿说明符过模式**。15 条命中全是
+     注释交叉引用与 `path.join(REPO_ROOT, 'packages/core/plugins')` 这类静态扫描测试的工作对象;`src/app`
+     的相对自指天然不含这串字面量,自动豁免。断言语义回到"不许深路径 import,要走包公开入口"。
+   - #8 `checkMainCoreSystemAdapters`:一张名单拆两级。`MAIN_CORE_SYSTEM_DIRS`(全套禁令:electron + fs/path +
+     better-sqlite3 + MCP/ACP SDK)**最终名单 6 个** —— `app/{agent-loop,engine,events,storage,permission,tools}`;
+     新增 `MAIN_FILE_IO_SYSTEM_DIRS`(只禁宿主与原生 SDK,fs/path 放行)**4 个** —— `app/{session,stores,mcp,plugins}`,
+     它们本职就是文件 IO(会话事件日志 + blob 仓、会话仓储、MCP OAuth 凭证盘存、插件 loader/tarball/install/webview)。
+     `apps/electron/src/main/bridges` **整个摘除**:那是 Electron 宿主自己的桥,禁它 import electron 是反的。
+     `MAIN_ADAPTER_ALLOWLIST`(`app/mcp/client.ts` 放行 MCP SDK)保留。
+   - #12/#13 `checkRuntimeOwnsSqliteSessionRepository` / `checkRuntimeOwnsSessionSqliteFailoverPolicy` **整条删除**
+     (含 `MAIN_SQLITE_REPOSITORY_FORBIDDEN_PATTERNS` 24 条与 `MAIN_SESSIONS_SQLITE_FAILOVER_FORBIDDEN_PATTERNS`
+     6 条两张死表、两处调用),原址留一段注释说明为什么删。
+   - **P1'-3**:复核后"missing … alias"登记断言**余量为 0** —— 133 条已随 P1'-0 删、14 条已随 P1'-2 删,本期无可删。
+     `checkAliasTargetsExist()` **保留**:alias 表虽只剩 3 条,但 `@onething/electron-host` 不是包而是路径别名,
+     tsconfig 通配符对任何子路径都放行,死目标只在 build/run 炸、typecheck 永远不报,这条 check 是它唯一的门。
+     顺手把 P1'-2 删断言时遗留在 `checkNoRawControlCharacters` 头上的孤儿注释块搬回它本主并按现状重写。
+     `package.json` 的 `exports` 断言按拍板保留。
+   - **基线机制退役**:`scripts/boundary-gate.mjs` 87 → 76 行,删掉整套基线读取 + fresh/healed diff,退化为
+     "任一 `[boundary] failed:` 行即 exit 1";保留两道防呆——缺 `[boundary] complete:` 标记(检查器半程崩)
+     与一条 `[boundary] ok:` 都解析不出(输出格式变了)都判红。删除 `docs/audit/boundary-baseline-2026-08-07.txt`
+     (237 行)。`package.json` 的两条 script 无基线相关参数,不需改。CLAUDE.md Guardrails 段与命令表同步为"零基线硬门"。
+     `.github/workflows/test.yml` 的 gates job 仍跑 `bun run boundary:gate`,无需改。
+   - **验收**(在 `git worktree` 干净副本 + 重接 `node_modules/@onething/*` symlink 到副本自身的 packages 上跑,
+     避开 P4c 在途改动):`bun run boundary` = **0 failed / 203 ok**、`bun run boundary:gate` 绿、
+     `vitest run` 全量 **1146 passed / 3 skipped**,`packages/core/__tests__/architecture-boundaries.test.ts`
+     10 tests 全过;副本里另有 3 个文件红,全是副本环境自身的产物(`apps/mobile` 没有它自己的
+     `node_modules`,解析不到 `expo/tsconfig.base`;system-prompt 基线快照里烤死了仓库绝对路径),
+     这 3 个文件在主仓单跑 3/3 过。gate 的三条路径逐个打桩验过(缺 complete → 红、无 ok 行 → 红、
+     有 failed 行(含 ANSI 上色)→ 红)。
+     主仓工作树里另有 5 条红全部来自 P4c 在途的 scheduler / variables 域 router 迁移
+     (`apps/electron/src/{ipc,main/ipc}/{scheduler,variables}.ts` 正被删除),不属本期,不修。
+   - **遗留(交给 P4)**:门变硬之后,**P4 每迁一个域都必须在同一个 commit 里退掉该域的 checker 断言**。
+     checker 里有一批 `checkElectronHostOwns<域>IpcHost` / `checkRuntimeOwns<域>IpcOperations`,断言的是
+     "`apps/electron/src/ipc/<域>.ts` + `apps/electron/src/main/ipc/<域>.ts` 这条旧路存在且形状正确" ——
+     那正是 P4 要删的东西。旧路一删,断言必红;以前有基线兜着,现在没有了。这不是坏事,是把
+     "迁移必须连门一起改"变成硬约束,但排期上要算进 P4 每一域的工作量里。
+   - 另有 23 条 `@typescript-eslint/no-unused-vars` 警告(P1'-0 / P1'-2 删断言时留下的空模式表),
+     本期前后数量一致,未动。
 
 ### P3' 归位:src/app → packages/backend + 领域折回(原"拆包",3–5 天;08-21 改拍)
 

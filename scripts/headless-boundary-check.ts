@@ -101,6 +101,12 @@ const GATEWAY_CHANNEL_SELECTION_FORBIDDEN_PATTERNS: RegExp[] = [
   /gateway\.register\(new WechatChannel\(\)\)/,
 ]
 
+/**
+ * 这三张表只喂 `matchingImportSpecifierLines` —— 匹配的是 import/require 的说明符,
+ * 不是整行。注释里的交叉引用、静态扫描测试里的 `path.join(REPO_ROOT, 'packages/core/…')`
+ * 都不算命中;`src/app` 自己就住在 `packages/onething-runtime/src` 下,它的相对
+ * 自指(`../../sessions/x.js`)天然不含这串字面量,因此也自动豁免。
+ */
 const MAIN_RUNTIME_SOURCE_IMPORT_FORBIDDEN_PATTERNS: RegExp[] = [
   /packages\/onething-runtime\/src/,
 ]
@@ -541,33 +547,56 @@ const SEARCH_IPC_WINDOW_SOURCE_FORBIDDEN_PATTERNS: RegExp[] = [
   /BrowserWindow\.fromWebContents/,
 ]
 
+/**
+ * 装配目录的两级禁令(08-21 P2/D 组重订)。
+ *
+ * 原来只有一张名单,禁的是 electron + fs/path + sqlite/MCP+ACP SDK。两处过期:
+ * 1. `apps/electron/src/main/bridges` 在名单里 —— 那是 **Electron 宿主自己的桥**,
+ *    禁它 import electron 是反的(`ipc-bridge-lifecycle.ts` 就要 `BrowserWindow`);
+ * 2. 会话事件日志 / blob 仓、插件 loader+tarball+install、MCP OAuth 凭证盘存、
+ *    会话仓储这些目录**本职就是文件 IO**,fs/path 是它们的工作而不是越界。
+ *
+ * 所以拆成两级:真该无宿主、无文件 IO 的目录走全套禁令;确有 IO 职责的目录只保留
+ * "不碰 electron、不直连 better-sqlite3 / MCP+ACP SDK" 这一半。
+ */
 const MAIN_CORE_SYSTEM_DIRS = [
   'packages/onething-runtime/src/app/agent-loop',
   'packages/onething-runtime/src/app/engine',
   'packages/onething-runtime/src/app/events',
-  'apps/electron/src/main/bridges',
-  'packages/onething-runtime/src/app/session',
   'packages/onething-runtime/src/app/storage',
-  'packages/onething-runtime/src/app/stores',
   'packages/onething-runtime/src/app/permission',
-  'packages/onething-runtime/src/app/mcp',
-  'packages/onething-runtime/src/app/plugins',
   'packages/onething-runtime/src/app/tools',
 ]
 
-const MAIN_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
+/** 有真实文件 IO 职责的装配目录:只禁宿主与原生 SDK,不禁 fs/path。 */
+const MAIN_FILE_IO_SYSTEM_DIRS = [
+  'packages/onething-runtime/src/app/session',
+  'packages/onething-runtime/src/app/stores',
+  'packages/onething-runtime/src/app/mcp',
+  'packages/onething-runtime/src/app/plugins',
+]
+
+const MAIN_HOST_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
   /from\s+['"]electron['"]/,
   /require\(['"]electron['"]\)/,
+  /better-sqlite3/,
+  /@modelcontextprotocol\/sdk/,
+  /@modelcontextprotocol\/client/,
+  /@agentclientprotocol\/sdk/,
+]
+
+const MAIN_FILE_IO_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
   /from\s+['"]node:fs['"]/,
   /from\s+['"]node:fs\/promises['"]/,
   /from\s+['"]node:path['"]/,
   /from\s+['"]fs['"]/,
   /from\s+['"]fs\/promises['"]/,
   /from\s+['"]path['"]/,
-  /better-sqlite3/,
-  /@modelcontextprotocol\/sdk/,
-  /@modelcontextprotocol\/client/,
-  /@agentclientprotocol\/sdk/,
+]
+
+const MAIN_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
+  ...MAIN_HOST_FORBIDDEN_IMPORT_PATTERNS,
+  ...MAIN_FILE_IO_FORBIDDEN_IMPORT_PATTERNS,
 ]
 
 const MAIN_ADAPTER_ALLOWLIST = new Map<string, RegExp[]>([
@@ -1769,41 +1798,6 @@ const MAIN_SKILLS_LOADER_FORBIDDEN_PATTERNS: RegExp[] = [
   /ONETHING_SKILLS_CONFIG_FILENAME/,
 ]
 
-const MAIN_SQLITE_REPOSITORY_FORBIDDEN_PATTERNS: RegExp[] = [
-  /better-sqlite3/,
-  /createSessionDatabaseConnection/,
-  /CoreSqliteSessionMigrationTracker/,
-  /applySqliteSchemaMigrationsWithAdapters/,
-  /runSqliteSessionMigrationWithAdapters/,
-  /applySqliteFullSessionWritePlanWithAdapters/,
-  /importSqliteSessionIndexWithAdapters/,
-  /sqliteFullSessionWritePlan/,
-  /sqliteMessageParams/,
-  /sqliteSessionMetadataParams/,
-  /sqliteSessionInsertParams/,
-  /sqliteSessionUsageParams/,
-  /syncSqliteMessageWithReadyAdapters/,
-  /upsertSqliteMessageAndTruncateWithAdapters/,
-  /SQLITE_[A-Z0-9_]+_SQL/,
-  /SESSION_REPOSITORY_MIGRATIONS/,
-  /interface\s+MessageRow/,
-  /interface\s+SessionRow/,
-  /const\s+migrationTracker/,
-  /database\.prepare/,
-  /database\.transaction/,
-  /rowToMessage/,
-  /rowToSessionDetails/,
-]
-
-const MAIN_SESSIONS_SQLITE_FAILOVER_FORBIDDEN_PATTERNS: RegExp[] = [
-  /sqliteDisabledAfterError/,
-  /function\s+isSessionSqliteEnabled/,
-  /function\s+handleSqliteError/,
-  /function\s+runSqliteSideEffect/,
-  /SQLite unavailable during/,
-  /falling back to JSON sessions/,
-]
-
 const MAIN_MEDIA_PREVIEW_REGISTRY_FORBIDDEN_PATTERNS: RegExp[] = [
   /imagePreviewRecords\s*=\s*new Map/,
   /IMAGE_PREVIEW_TTL_MS/,
@@ -2450,6 +2444,34 @@ function codeOnlyLines(content: string): Array<{ raw: string; code: string; line
 function matchingCodeLines(filePath: string, patterns: RegExp[]): string[] {
   return codeOnlyLines(fs.readFileSync(filePath, 'utf-8'))
     .filter(({ code }) => code.trim().length > 0 && patterns.some(pattern => pattern.test(code)))
+    .map(({ raw, lineNo }) => `${rel(filePath)}:${lineNo}: ${raw.trim()}`)
+}
+
+/**
+ * 只在 **import / require 说明符** 上匹配,不在整行上匹配。
+ *
+ * 起因(08-21 P2/D 组):"必须走包公开入口"那几条 check 拿 `packages/core/` 之类
+ * 的裸字符串扫全行,15 条命中全是注释里的交叉引用(`见 packages/core/plugins/…`)
+ * 和静态扫描测试里的路径串(`path.join(REPO_ROOT, 'packages/core/plugins')`)——
+ * 前者是文档,后者是那些测试的**工作对象**,都不是 import。而 `src/app` 本身就住在
+ * `packages/onething-runtime/src` 下,自指路径更没有被禁的道理。
+ *
+ * 这里先剥注释(`codeOnlyLines`),再从代码里抠出 `from '…'` / `import('…')` /
+ * `import '…'` / `require('…')` 的说明符,只拿说明符去过模式 —— 断言语义回到它
+ * 本来要说的那句话:**不许用深路径 import,要走包的公开入口**。
+ */
+function importSpecifiersInCode(code: string): string[] {
+  const specifiers: string[] = []
+  const pattern = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)(['"])([^'"]+)\1/g
+  for (const match of code.matchAll(pattern)) specifiers.push(match[2])
+  return specifiers
+}
+
+function matchingImportSpecifierLines(filePath: string, patterns: RegExp[]): string[] {
+  return codeOnlyLines(fs.readFileSync(filePath, 'utf-8'))
+    .filter(({ code }) =>
+      importSpecifiersInCode(code).some(specifier => patterns.some(pattern => pattern.test(specifier))),
+    )
     .map(({ raw, lineNo }) => `${rel(filePath)}:${lineNo}: ${raw.trim()}`)
 }
 
@@ -3177,6 +3199,12 @@ function checkElectronHostOwnsApplicationMenu(): void {
     'openSettingsWindow',
     'menu:new-chat',
   ]
+  // 08-21:原断言要求 `window/index.ts` 里逐字出现
+  // `setupElectronApplicationMenu({ mainWindow, openSettingsWindow })`。真实调用早已
+  // 是多行形态(还传 browser / webPreview 两组回调),字面量断言过期。语义收窄为
+  // "调用存在,且 mainWindow / openSettingsWindow 这两个参数确实传了进去"。
+  const menuDelegationFragments = ['setupElectronApplicationMenu(', 'mainWindow,', 'openSettingsWindow']
+  const menuDelegationMissing = menuDelegationFragments.some(fragment => !windowContent.includes(fragment))
   const lines = [
     ...(!packageContent.includes('./menu/application-menu')
       ? [`${rel(electronPackage)}: missing application menu export`]
@@ -3184,7 +3212,7 @@ function checkElectronHostOwnsApplicationMenu(): void {
     ...requiredMenuSymbols
       .filter(symbol => !electronMenuContent.includes(symbol))
       .map(symbol => `${rel(electronMenuFile)}: missing Electron application-menu symbol ${symbol}`),
-    ...(!windowContent.includes('setupElectronApplicationMenu({ mainWindow, openSettingsWindow })')
+    ...(menuDelegationMissing
       ? [`${rel(windowFile)}: window creation must delegate application menu setup to apps/electron`]
       : []),
     ...(fs.existsSync(windowFile)
@@ -4412,7 +4440,7 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
     'IPC_CHANNELS.GET_SYSTEM_THEME',
     'IPC_CHANNELS.SAVE_SETTINGS',
     'IPC_CHANNELS.TEST_PROXY',
-    'IPC_CHANNELS.GET_NETWORK_INTERFACES',
+    // `GET_NETWORK_INTERFACES` 于 603582d9 随网卡枚举一起退役,全仓 0 命中 —— 断言删除。
     'IPC_CHANNELS.SHOW_OPEN_DIALOG',
     'IPC_CHANNELS.SYSTEM_THEME_CHANGED',
     'IPC_CHANNELS.SETTINGS_CHANGED',
@@ -5804,13 +5832,15 @@ function checkElectronHostOwnsAppBootstrap(): void {
 function checkElectronHostOwnsMainEntry(): void {
   const electronMainFile = path.join(root, 'apps/electron/src/main.ts')
   const electronMainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/index.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
   const electronMainProcessContent = fs.existsSync(electronMainProcessFile) ? fs.readFileSync(electronMainProcessFile, 'utf-8') : ''
-  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  // 08-21:两条 "legacy Electron main facade" 断言(`packages/onething-runtime/src/app/index.ts`
+  // 必须再导出 `@onething/electron-host/app/main-process`、且必须保持 ≤5 行)已删。
+  // 该文件早已不存在,而且断言与 `checkRuntimeHostBoundary` 的
+  // `APP_ASSEMBLY_FORBIDDEN_PATTERNS`(装配层禁 import `@onething/electron-host`)
+  // 直接互斥 —— 一条要求装配层引宿主,另一条禁止它。留下的是宿主侧那三条真断言。
   const lines = [
     ...(!electronMainContent.includes('startOnethingElectronMain')
       ? [`${rel(electronMainFile)}: missing Electron-hosted main entry startup call`]
@@ -5820,12 +5850,6 @@ function checkElectronHostOwnsMainEntry(): void {
       : []),
     ...(!electronMainProcessContent.includes('export function startOnethingElectronMain')
       ? [`${rel(electronMainProcessFile)}: missing callable onething Electron main process export`]
-      : []),
-    ...(!mainContent.includes('@onething/electron-host/app/main-process')
-      ? [`${rel(mainFile)}: legacy Electron main facade must re-export app/main-process`]
-      : []),
-    ...(mainLines.length > 5
-      ? [`${rel(mainFile)}: legacy Electron main facade must stay thin`]
       : []),
     ...(!viteContent.includes("index: resolve(__dirname, 'apps/electron/src/main.ts')")
       ? [`${rel(viteConfig)}: Electron main input must point at apps/electron/src/main.ts`]
@@ -5875,7 +5899,7 @@ function checkElectronHostOwnsPreloadEntry(): void {
 
 function checkMainUsesRuntimePackageImports(): void {
   const lines = walkFiles(path.join(root, 'packages/onething-runtime/src/app'), [], { includeTests: true })
-    .flatMap(file => matchingLines(file, MAIN_RUNTIME_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
+    .flatMap(file => matchingImportSpecifierLines(file, MAIN_RUNTIME_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
   assertNoMatches('Electron main and tests import onething-runtime via package public entrypoints', lines)
 }
 
@@ -5887,13 +5911,13 @@ function checkMainFacadesUseElectronHostImports(): void {
 
 function checkMainUsesCorePackageImports(): void {
   const lines = walkFiles(path.join(root, 'packages/onething-runtime/src/app'), [], { includeTests: true })
-    .flatMap(file => matchingLines(file, MAIN_CORE_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
+    .flatMap(file => matchingImportSpecifierLines(file, MAIN_CORE_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
   assertNoMatches('Electron main and tests import headless core via package public entrypoints', lines)
 }
 
 function checkMainUsesGatewayPackageImports(): void {
   const lines = walkFiles(path.join(root, 'packages/onething-runtime/src/app'), [], { includeTests: true })
-    .flatMap(file => matchingLines(file, MAIN_GATEWAY_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
+    .flatMap(file => matchingImportSpecifierLines(file, MAIN_GATEWAY_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
   assertNoMatches('Electron main and tests import gateway via package public entrypoints', lines)
 }
 
@@ -5912,10 +5936,14 @@ function checkCorePackageDependencies(): void {
 }
 
 function checkMainCoreSystemAdapters(): void {
-  const lines = MAIN_CORE_SYSTEM_DIRS
-    .flatMap(dir => walkFiles(path.join(root, dir)))
-    .flatMap(file => matchingLines(file, MAIN_FORBIDDEN_IMPORT_PATTERNS))
-    .filter(line => !isAllowedMainAdapterLine(line))
+  const lines = [
+    ...MAIN_CORE_SYSTEM_DIRS
+      .flatMap(dir => walkFiles(path.join(root, dir)))
+      .flatMap(file => matchingLines(file, MAIN_FORBIDDEN_IMPORT_PATTERNS)),
+    ...MAIN_FILE_IO_SYSTEM_DIRS
+      .flatMap(dir => walkFiles(path.join(root, dir)))
+      .flatMap(file => matchingLines(file, MAIN_HOST_FORBIDDEN_IMPORT_PATTERNS)),
+  ].filter(line => !isAllowedMainAdapterLine(line))
   assertNoMatches('main core-system directories only keep explicit adapter imports', lines)
 }
 
@@ -8038,7 +8066,7 @@ function checkRuntimeOwnsSettingsSaveOrchestration(): void {
     'getOnethingSettingsForIpc',
     'saveOnethingSettingsWithRuntimeEffectsForIpc',
     'getOnethingSystemThemeForIpc',
-    'listOnethingNetworkInterfacesForIpc',
+    // `listOnethingNetworkInterfacesForIpc` 于 603582d9 随网卡枚举一起退役 —— 断言删除。
   ]
   const lines = [
     ...(!runtimeContent.includes('saveOnethingSettingsWithRuntimeEffects')
@@ -8365,13 +8393,6 @@ function checkCoreKnowsNoConcreteFeatures(): void {
 }
 
 /**
- * onething.aliases.ts 每条 alias 的目标必须真实存在。
- *
- * tsconfig 的通配符(`@onething/runtime/*` 之类)对任何子路径都放行,所以
- * typecheck 永远不会报死 alias —— 10 条死 alias 就是这么潜伏下来的,只在
- * build/run 时才炸。
- */
-/**
  * 源码里不许出现**裸控制字符**(0x00-0x08 / 0x0b / 0x0c / 0x0e-0x1f)。
  *
  * 起因是一次真事故:R6 的状态账本用了一个裸 NUL 做 Map 键的分隔符,git 据此把
@@ -8404,6 +8425,18 @@ function checkNoRawControlCharacters(): void {
   assertNoMatches('source files carry no raw control characters', offenders)
 }
 
+/**
+ * `onething.aliases.ts` 每条 alias 的目标必须真实存在。
+ *
+ * P1'-3 复核(08-21):这张表已经从 241 条缩到 3 条 —— `@onething/app` 前缀一条
+ * (等 P3' backend 成包后消失)、`@onething/electron-host` 正则两条。三族包
+ * (core / gateway / runtime)全部走 package.json `"exports"`,缺子路径 typecheck
+ * 就红,"登记即门禁"那 158 条 `missing … alias` 断言随 P1'-0 / P1'-2 已全部退役。
+ *
+ * 但这一条 check 留着:electron-host **不是包**,是 `apps/electron/src/<域>/<文件>.ts`
+ * 的路径别名,tsconfig 那条通配符对任何子路径都放行 —— 死目标只会在 build/run 时炸,
+ * typecheck 永远不报。三条表几秒就扫完,留着不亏。
+ */
 function checkAliasTargetsExist(): void {
   const aliasFile = path.join(root, 'onething.aliases.ts')
   if (!fs.existsSync(aliasFile)) {
@@ -8574,55 +8607,14 @@ function checkRuntimeOwnsSkillsLoader(): void {
   assertNoMatches('packages/onething-runtime owns skills loader operations', lines)
 }
 
-function checkRuntimeOwnsSqliteSessionRepository(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/sqlite-repository.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/stores/session-repository/sqlite-repository.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'configureOnethingSqliteSessionRepositoryRuntime',
-    'initializeSqliteSessionRepository',
-    'syncFullSessionToSqlite',
-    'migrateSessionToSqliteNow',
-  ]
-  const lines = [
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
-    ...(!mainContent.includes('@onething/runtime/sessions')
-      ? ['packages/onething-runtime/src/app/stores/session-repository/sqlite-repository.ts: missing runtime sqlite repository adapter import']
-      : []),
-    ...(fs.existsSync(path.join(root, 'packages/onething-runtime/src/app/stores/session-repository/sqlite-driver.ts'))
-      ? ['packages/onething-runtime/src/app/stores/session-repository/sqlite-driver.ts: SQLite driver implementation belongs in packages/onething-runtime']
-      : []),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SQLITE_REPOSITORY_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/stores/session-repository/sqlite-repository.ts: missing sqlite repository runtime adapter']),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns SQLite session repository operations', lines)
-}
-
-function checkRuntimeOwnsSessionSqliteFailoverPolicy(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/resilient-sqlite-adapters.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/stores/sessions.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'createOnethingResilientSessionSqliteAdapters',
-    'disabledAfterError',
-    'falling back to JSON sessions',
-  ]
-  const lines = [
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned SQLite failover policy ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SESSIONS_SQLITE_FAILOVER_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/stores/sessions.ts: missing session store adapter']),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns session SQLite failover policy', lines)
-}
+/*
+ * 08-21 P2/D 组:两条 SQLite 会话仓储 check(`checkRuntimeOwnsSqliteSessionRepository`
+ * 与 `checkRuntimeOwnsSessionSqliteFailoverPolicy`)整条删除。它们盯的三个文件
+ * (`sessions/sqlite-repository.ts`、`sessions/resilient-sqlite-adapters.ts`、
+ * `app/stores/session-repository/sqlite-repository.ts`)在 072e96b4 之后已经不存在,
+ * 会话存储 07 月起就是 per-session JSONL(见 docs/design/session-storage-jsonl.md),
+ * 断言只剩下对一段不存在历史的怀念。
+ */
 
 function checkRuntimeOwnsMediaPreviewRegistry(): void {
   const runtimeFile = 'packages/onething-runtime/src/media/image-preview-registry.ts'
@@ -10242,8 +10234,6 @@ checkRuntimeOwnsSkillsRuntimeCache()
 checkRuntimeOwnsSkillsIpcOperations()
 checkRuntimeOwnsSkillManageOperations()
 checkRuntimeOwnsSkillsLoader()
-checkRuntimeOwnsSqliteSessionRepository()
-checkRuntimeOwnsSessionSqliteFailoverPolicy()
 checkRuntimeOwnsMediaPreviewRegistry()
 checkRuntimeOwnsMediaImageDataUrl()
 checkRuntimeOwnsMediaLegacyList()
