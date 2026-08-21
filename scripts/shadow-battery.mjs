@@ -267,6 +267,19 @@ class Driver {
     return this.api('POST', `/api/sessions/${this.sessionId}/commands`, command)
   }
 
+  /**
+   * 通用 RPC 信封(`POST /api/rpc`,`{ domain, method, payload }` 入、
+   * `RpcResponse` 出)—— 结构债 P4c 把 permission 等域迁进 router 之后就**删掉了**
+   * 对应的 REST 镜像,这是唯一的路。解包 `data`;`ok:false` 直接抛,不静默降级。
+   */
+  async rpc(domain, method, payload) {
+    const res = await this.api('POST', '/api/rpc', { domain, method, payload })
+    if (!res || res.ok !== true) {
+      throw new Error(`rpc ${domain}.${method} failed: ${JSON.stringify(res?.error ?? res)}`)
+    }
+    return res.data
+  }
+
   send(text = 'go') {
     return this.command({
       type: 'command:send-message',
@@ -609,8 +622,8 @@ const SCENARIOS = [
       const deadline = Date.now() + 30_000
       let pending
       while (Date.now() < deadline) {
-        const result = await d.api('GET', `/api/sessions/${d.sessionId}/permissions/pending`)
-        const list = result?.prompts ?? result?.pending ?? result?.data ?? []
+        const result = await d.rpc('permission', 'getPending', { sessionId: d.sessionId })
+        const list = result?.pending ?? []
         pending = Array.isArray(list) ? list.find(item => (item.callId ?? item.toolCallId) === 'call_denied') : undefined
         if (pending) break
         await sleep(60)
@@ -656,8 +669,8 @@ const SCENARIOS = [
       const deadline = Date.now() + 30_000
       let pending
       while (Date.now() < deadline) {
-        const result = await d.api('GET', `/api/sessions/${d.sessionId}/permissions/pending`)
-        const list = result?.prompts ?? result?.pending ?? result?.data ?? []
+        const result = await d.rpc('permission', 'getPending', { sessionId: d.sessionId })
+        const list = result?.pending ?? []
         pending = Array.isArray(list) ? list.find(item => (item.callId ?? item.toolCallId) === 'call_approved') : undefined
         if (pending) break
         await sleep(60)

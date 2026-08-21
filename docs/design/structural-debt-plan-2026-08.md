@@ -1125,6 +1125,17 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
   (30 真接线 + `stream-engine-bound.wiring.ts`)、6 门面删、8 准 PURE 改 `.wiring.ts` 进 runtime、10 对 I2 改名清零;
   跨树 3→2。A2 是唯一有真行为风险的一批。
 - 每批验收口径固定:typecheck 0 → 全量绿 → boundary:gate → **`sessions:shadow-battery` 0 mismatch** → 三宿主构建。
+- **C 落地记录(08-21,`6141786b`)**:`HeadlessStreamEngine` 并入 `CoreStreamEngine`(删 `headless-stream-engine.ts`),
+  5 个 abstract + 5 个一行转发删除、转发体内联进常量键派发表,基类死码 `steerMessage` / 空钩子消失;
+  `SEND_MESSAGE`:派发表键(`core-stream-engine.ts:541`)→ `handleSendMessage`(:782)→ backend override(:81)→ super,
+  **8→6 跳**;全量 11136 绿、boundary 0。**battery 当时在 HEAD 就红(27 失配)**,A/B 证明 C 零新增失配类——
+  根因是 P4c-1(`d3ef70a1`)删了 `/api/sessions/:id/permissions/pending` REST 镜像而 `scripts/shadow-battery.mjs:612/659`
+  仍在打它(两个 permission 场景硬失败);**教训:P4 每域的验收清单必须含 `sessions:shadow-battery`**,删 server 路由前
+  grep `scripts/*.mjs`。**修复 + 归因结果**:`scripts/shadow-battery.mjs` 新增 `Driver.rpc()` 走 `POST /api/rpc`
+  (`permission.getPending`),两处取数改指;干净 worktree 重跑 **264 runs / 0 mismatch / 0 appendFailures,23/23 场景
+  ok=8,两连绿**;旧脚本复现 28 失配(`messages` 22 / `history` 6)全部是两个 permission 场景卡审批 30s 超时造成的
+  并发串扰,**产品侧零改动、影子判据未动、无需二分**——今天的 28 个结构提交没有引入任何投影/写侧真失配。
+  其它脚本(measure-shadow-overhead / log-smoke / session-shadow-report)路由逐条核对全部仍在。
 
 ### P4 传输面 router 迁移(主线,1–2 周,逐域可暂停;08-21:**P4a 前移到 P1' 之前**)
 
@@ -1193,7 +1204,10 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。
 4. 每域验收门:该域全部通道走 RPC_INVOKE;工厂/适配文件删除;bridge.ts/web.ts 无该域手写段;
-   `transport:gate` 棘轮下降;desktop+web 双端该域功能冒烟。
+   `transport:gate` 棘轮下降;desktop+web 双端该域功能冒烟;**(08-21 补)同 commit 退掉该域的 checker 断言
+   (boundary 已是零基线硬门);删 server REST 镜像前 `grep -rn '/api/<路径>' scripts/` ——
+   `sessions:shadow-battery` / `log:smoke` / `measure-shadow-overhead` 等验收脚本打的是 REST,P4c-1 删 permissions
+   pending 路由后 battery 红了一整天才被发现;`bun run sessions:shadow-battery` 0 mismatch 进每域验收清单。**
 5. 终态:`main/ipc/` 仅剩 rpc.ts 与少数真窗口系 handler;`src/ipc/` 目录删除;
    CLAUDE.md 的"添加 IPC 通道五步"改写为"defineRouter 一步"。
 
