@@ -12,8 +12,8 @@ import { defaultOnethingThemeRuntime } from '@onething/runtime/themes/theme-runt
 import {
   getPluginThemeKnobVariables,
   getPluginThemeOverrideTokenValues,
-} from '@onething/backend/plugins/theme-overrides.js'
-import { getPluginSkinTiers } from '@onething/backend/plugins/skin.js'
+} from '@onething/backend/wiring/plugins/theme-overrides.js'
+import { getPluginSkinTiers } from '@onething/backend/wiring/plugins/skin.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 

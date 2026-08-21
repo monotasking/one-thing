@@ -11,7 +11,7 @@ import type {
   InstallPluginRequest,
   UpdatePluginRequest,
 } from '@shared/ipc/plugins.js'
-import { createPluginConfigAccess } from '@onething/backend/plugins/config-access.js'
+import { createPluginConfigAccess } from '@onething/runtime/plugins/config-access'
 import {
   registerElectronPluginsIpcHandlers,
   type ElectronPluginAbortRequestPayload,
@@ -43,13 +43,13 @@ import {
 import type { GatewayCommandProvider } from '@onething/gateway'
 import { pickPluginFileOnDesktop } from '@onething/electron-host/plugins/file-pick'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { getPluginManager } from '@onething/backend/plugins/index.js'
-import { clearPluginRuntimeHealth } from '@onething/backend/plugins/health.js'
-import { getPluginFootprint } from '@onething/backend/plugins/loader.js'
-import { getPluginBackgroundParams } from '@onething/backend/plugins/background.js'
-import { getPluginMarketIndexSnapshot, probePluginNpmAvailability } from '@onething/backend/plugins/install.js'
-import { readPluginTarballSummary } from '@onething/backend/plugins/tarball.js'
-import { getPluginAppVersion } from '@onething/backend/plugins/app-version.js'
+import { getPluginManager } from '@onething/backend/wiring/plugins/index.js'
+import { clearPluginRuntimeHealth } from '@onething/runtime/plugins/health'
+import { getPluginFootprint } from '@onething/backend/wiring/plugins/loader.js'
+import { getPluginBackgroundParams } from '@onething/backend/wiring/plugins/background.js'
+import { getPluginMarketIndexSnapshot, probePluginNpmAvailability } from '@onething/backend/wiring/plugins/install.js'
+import { readPluginTarballSummary } from '@onething/runtime/plugins/tarball.wiring'
+import { getPluginAppVersion } from '@onething/runtime/plugins/app-version'
 import { getEventBus } from '@onething/backend/events/index.js'
 import * as store from '@onething/backend/store.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'

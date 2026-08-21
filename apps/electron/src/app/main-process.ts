@@ -19,13 +19,13 @@ import { getSettings } from "@onething/backend/stores/settings.js";
 import { startTodoPlanWatcher } from "@onething/backend/wiring/todo-plan/store.js";
 import { startScratchpadWatcher } from "@onething/runtime/scratchpad/service-bound";
 import { configureSandboxHost } from "@onething/backend/wiring/tools/core/sandbox.js";
-import { configurePluginAppVersion } from "@onething/backend/plugins/app-version.js";
+import { configurePluginAppVersion } from "@onething/runtime/plugins/app-version";
 import { configureMCPClientIdentity } from "@onething/runtime/mcp/identity";
-import { getPluginManager } from "@onething/backend/plugins/manager.js";
+import { getPluginManager } from "@onething/backend/wiring/plugins/manager.js";
 import {
 	resolvePluginStorageRoot,
 	resolvePluginWebviewStaticRoot,
-} from "@onething/backend/plugins/webview.js";
+} from "@onething/backend/wiring/plugins/webview.js";
 import {
 	getConversationRuntime,
 	getStreamEngine,
@@ -257,10 +257,10 @@ function startPostWindowServices(): void {
 	startEmbeddedCoreHttpSurface();
 
 	const pluginsReady = (async () => {
-		const { bootstrapPluginSystem } = await import("@onething/backend/plugins/index.js");
+		const { bootstrapPluginSystem } = await import("@onething/backend/wiring/plugins/index.js");
 		// P3:市场索引 URL(共享层死常量,裁决"纯硬编码")——装配期注入,
 		// 更新通道与市场区同这一条供给线;测试经 configurePluginMarketIndex 覆盖。
-		const { configurePluginMarketIndex } = await import("@onething/backend/plugins/install.js");
+		const { configurePluginMarketIndex } = await import("@onething/backend/wiring/plugins/install.js");
 		const { PLUGIN_MARKET_INDEX_URL } = await import("@shared/ipc/plugins.js");
 		configurePluginMarketIndex(PLUGIN_MARKET_INDEX_URL);
 		await bootstrapPluginSystem(getEventBus(), getStreamEngine());

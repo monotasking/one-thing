@@ -52,11 +52,11 @@ vi.mock('../../channel/index.js', () => ({
   getChannelSessionRouter: () => ({ route: mocks.route }),
 }))
 
-vi.mock('../../plugins/input-intercept.js', () => ({
+vi.mock('@onething/runtime/plugins/input-intercept-bound', () => ({
   runPluginInputIntercept: mocks.runIntercept,
 }))
 
-vi.mock('../../plugins/sessions.js', () => ({
+vi.mock('../../wiring/plugins/sessions.js', () => ({
   pluginPostInterceptReply: mocks.postReply,
 }))
 

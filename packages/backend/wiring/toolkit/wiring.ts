@@ -36,8 +36,8 @@ import { createPermissionAuthorizer } from './authorizer.js'
 import { createAppToolRunner } from './runner.js'
 import { toolkitAuditSink } from './audit-sink.js'
 import { refreshMcpToolsInCatalog, syncMcpToolsIntoCatalog } from '@onething/runtime/toolkit/mcp-catalog.wiring'
-import { runPluginToolCallIntercept } from '../../plugins/tool-call-intercept.js'
-import { runPluginToolResultIntercept } from '../../plugins/tool-result-intercept.js'
+import { runPluginToolCallIntercept } from '@onething/runtime/plugins/tool-call-intercept-bound'
+import { runPluginToolResultIntercept } from '@onething/runtime/plugins/tool-result-intercept-bound'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('toolkit')

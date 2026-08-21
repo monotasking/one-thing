@@ -11,8 +11,8 @@ process.env.ONETHING_STORE_PATH = storeRoot
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CorePluginSearchProviderRegistration } from '@onething/core/plugins'
-import { createPluginAPI } from '../../../plugins/api.js'
-import { resetPluginRuntimeHealthForTests } from '../../../plugins/health.js'
+import { createPluginAPI } from '../../plugins/api.js'
+import { resetPluginRuntimeHealthForTests } from '@onething/runtime/plugins/health'
 import {
   decodePluginSearchAction,
   invokePluginSearchAction,

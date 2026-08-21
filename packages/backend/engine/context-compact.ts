@@ -1,7 +1,7 @@
 import type { AppSettings, ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from '../wiring/providers/index.js'
-import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '../plugins/lifecycle.js'
+import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/runtime/plugins/lifecycle.wiring'
 import * as store from '../store.js'
 import { sessionReads } from '../session/reads.js'
 import { sessionEventTranslator } from '../session/event-translator.js'

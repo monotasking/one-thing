@@ -65,7 +65,7 @@ import {
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '../../plugins/health.js'
+} from '@onething/runtime/plugins/health'
 import { getUsageLedger } from '../usage/index.js'
 
 /**

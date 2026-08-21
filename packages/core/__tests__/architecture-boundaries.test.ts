@@ -74,14 +74,72 @@ describe('architecture boundaries', () => {
     // P3'b-B(2026-08-21)摘掉 collab / providers / toolkit 三个;providers 的
     // 三件绑定件(bound-fetch / request-dump / ai-settings-compose)留在包根,
     // 但目录改名 `provider-binding/` —— 它们是被依赖的脊柱件,不是接线。
-    const pendingThickTwins = new Set([
-      'plugins',
-    ])
+    // P3'c(2026-08-21)摘掉最后一个 `plugins`:10 件进 `runtime/src/plugins/`
+    // (与 core 同名的按 I2 带角色改名),17 件进 `backend/wiring/plugins/`。
+    //
+    // **表空了,但断言留着** —— 它现在守的是"不许再长回来":任何新的包根目录
+    // 只要与 runtime 顶层同名就直接红,想豁免必须先在这里写一行理由。
+    const pendingThickTwins = new Set<string>([])
     const runtimeDomains = new Set(topLevelDirectories('packages/onething-runtime/src'))
     const collisions = topLevelDirectories('packages/backend')
       .filter(name => name !== 'wiring')
       .filter(name => runtimeDomains.has(name) && !pendingThickTwins.has(name))
     expect(collisions).toEqual([])
+  })
+
+  /**
+   * I2(docs/design/structural-debt-plan-2026-08.md §0b.3):**一个概念一个文件名**。
+   *
+   * I1 守的是目录,I2 守的是目录里的文件:同一个领域名下,`packages/core/<d>/x.ts`
+   * 与 `packages/onething-runtime/src/<d>/x.ts` 同时存在,读代码的人搜 `x.ts` 会拿到
+   * 两个结果、且看不出哪个是契约哪个是实现。判例(P3'a / P3'b / P3'c):进产品层的
+   * 那一半按**角色**改名 —— 绑到进程内单例的叫 `<name>-bound.ts`,说跨进程词汇的叫
+   * `<name>.wiring.ts`;两者同时成立时 `.wiring` 优先(不叠后缀)。
+   *
+   * 三条豁免不参与比对:`index.ts`(每个目录都有一个 barrel,同名是结构而非碰撞)、
+   * `types.ts`(同上,类型面)、`__tests__/**`(测试跟着被测者走,两棵树各测各的)。
+   *
+   * **这是棘轮:allowlist 只许缩。** 每条都注明归哪一期清理。
+   */
+  it('I2: keeps one file name per concept — core and runtime do not shadow each other inside a domain', () => {
+    const allowed = new Set([
+      // mcp 归位的尾巴(P3'b-A):core 那半是 `CoreMcp*` 的连接账本,runtime 那半是
+      // 产品侧的服务器管理器。两边都叫 manager,等 mcp 契约下沉时一并改名。
+      'mcp/manager.ts',
+      // storage 归位(P4b/c):core 那半是零依赖的存储原语,runtime 那半是产品的
+      // store 路径与文件存储。两边同名两次。
+      'storage/file-storage.ts',
+      'storage/paths.ts',
+      // tools/toolkit 归位的尾巴(R4b 删旧树时留下的):core 那半是 diff hunk 的
+      // 数据结构,runtime 那半是产品侧的生成器。
+      'tools/diff-hunks.ts',
+    ])
+    // 第四条豁免,是**规则**而不是名字:内置插件的产品层实现文件名 = 插件 id
+    // (`scripts/headless-boundary-check.ts` 的 `checkPluginLogicStaysOutOfHostAssembly`
+    // 按 `backend/wiring/plugins/builtin/<id>.ts` 逐个反查
+    // `runtime/src/plugins/<id>.ts`)。那个名字不是自由变量,所以它不参与 I2 ——
+    // 一个插件的 core 侧内核与它的产品侧实现同名,是那条硬判据的直接后果。
+    // 这里从插座目录现算,不写死任何插件名。
+    const builtinPluginFiles = new Set(
+      readdirSync(join(projectRoot, 'packages/backend/wiring/plugins/builtin'), { withFileTypes: true })
+        .filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
+        .map(entry => `plugins/${entry.name}`),
+    )
+    const coreDomains = new Set(topLevelDirectories('packages/core'))
+    const collisions: string[] = []
+    for (const domain of topLevelDirectories('packages/onething-runtime/src')) {
+      if (!coreDomains.has(domain)) continue
+      const coreFiles = new Set(domainSourceFiles(join('packages/core', domain)))
+      for (const file of domainSourceFiles(join('packages/onething-runtime/src', domain))) {
+        if (!coreFiles.has(file)) continue
+        const base = file.split('/').pop()
+        if (base === 'index.ts' || base === 'types.ts') continue
+        const key = `${domain}/${file}`
+        if (allowed.has(key) || builtinPluginFiles.has(key)) continue
+        collisions.push(key)
+      }
+    }
+    expect(collisions.sort()).toEqual([])
   })
 
   it('keeps packages/gateway depending on core only', () => {
@@ -180,6 +238,21 @@ describe('architecture boundaries', () => {
 
 /** Matches import/require/export-from of `src/main|renderer|preload` from any relative depth. */
 const appSourceImportPattern = /(?:from\s+['"]|import\s*\(\s*['"]|require\s*\(\s*['"])[^'"]*src\/(?:main|renderer|preload)\//
+
+/** 领域目录下的源文件相对路径。`__tests__` 不参与 I2 的比对。 */
+function domainSourceFiles(relativeDirectory: string): string[] {
+  const out: string[] = []
+  const walk = (absolute: string, prefix: string): void => {
+    for (const entry of readdirSync(absolute, { withFileTypes: true })) {
+      if (skippedDirectories.has(entry.name)) continue
+      const next = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) walk(join(absolute, entry.name), next)
+      else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) out.push(next)
+    }
+  }
+  walk(join(projectRoot, relativeDirectory), '')
+  return out
+}
 
 /** 顶层目录名(领域名)。`__tests__` 不是领域,不参与 I1 的比对。 */
 function topLevelDirectories(relativeDirectory: string): string[] {

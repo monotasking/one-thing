@@ -21,7 +21,7 @@ const generateChatResponse = vi.fn()
 const summaryWrites: Array<{ summary: string; cutoff: string }> = []
 const contentWrites: Array<{ messageId: string; content: string }> = []
 
-vi.mock('../../plugins/lifecycle.js', () => ({
+vi.mock('@onething/runtime/plugins/lifecycle.wiring', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
 vi.mock('../../wiring/providers/index.js', () => ({

@@ -25,7 +25,7 @@ import type {
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '../../plugins/health.js'
+} from '@onething/runtime/plugins/health'
 import { getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('engine.prompt')

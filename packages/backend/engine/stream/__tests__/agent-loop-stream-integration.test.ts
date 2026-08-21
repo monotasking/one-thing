@@ -245,7 +245,7 @@ vi.mock("../../triggers/index.js", () => ({
 	},
 }));
 
-vi.mock("../../../plugins/lifecycle.js", () => ({
+vi.mock("@onething/runtime/plugins/lifecycle.wiring", () => ({
 	runAfterAssistantResponseHooks: mocks.runAfterAssistantResponseHooks,
 }));
 

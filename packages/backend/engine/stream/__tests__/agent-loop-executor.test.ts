@@ -9,7 +9,7 @@ import {
   type AgentLoopExecutorState,
 } from '../agent-loop-executor.js'
 import { triggerManager } from '../../triggers/index.js'
-import { runAfterAssistantResponseHooks } from '../../../plugins/lifecycle.js'
+import { runAfterAssistantResponseHooks } from '@onething/runtime/plugins/lifecycle.wiring'
 import type { saveMediaImage } from '@onething/runtime/media/save-image'
 import type { BuildAgentLoopStreamRuntimeResult } from '../agent-loop-runtime.js'
 import type { IPCEmitter } from '../ipc-emitter.js'
@@ -59,7 +59,7 @@ vi.mock('../../triggers/index.js', () => ({
   },
 }))
 
-vi.mock('../../../plugins/lifecycle.js', () => ({
+vi.mock('@onething/runtime/plugins/lifecycle.wiring', () => ({
   runAfterAssistantResponseHooks: vi.fn(() => Promise.resolve()),
 }))
 

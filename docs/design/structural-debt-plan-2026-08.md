@@ -677,8 +677,12 @@ P3'a-2 点名的那**一个**解锁点,以及它解锁的东西。收尾批,`src
    collab 最大,单独 commit。**2026-08-21:P3'b-A 已落地**(logging / headless / mcp / voice / music 五个)
    ,**P3'b-B 也已落地**(collab / providers / toolkit 三个;providers 的三件绑定件留在包根、
    目录改名 `provider-binding/`)—— 记录均见下。P3'b 到此收工,只剩 plugins 归 P3'c。
-3. **P3'c plugins 三合一**(单独一批):core 15k / rt 3k / app 5k,core 与 app 同名文件逐个判定"契约还是实现"
-   ——契约留 core,实现全部进 `runtime/plugins`,不允许第三处;I2 断言在此批落地。
+3. **P3'c plugins 三合一**(单独一批;**2026-08-21 已落地,记录见下**):core 15k / rt 3k / app 5k,
+   core 与 app 同名文件逐个判定"契约还是实现" —— 契约留 core,实现全部进 `runtime/plugins`,
+   不允许第三处;I2 断言在此批落地。**实际落地时修正了一处前提**:app 侧 27 件里有 17 件的
+   import 闭包真撞脊柱,它们进 `backend/wiring/plugins/`(与 P3'a / P3'b 同一条判据),
+   而不是"实现全部进 runtime" —— 但 `wiring/plugins` 与 `runtime/plugins` 路径不同名,
+   I1 照样清零,"一个领域一个家"仍然成立。
 4. **P3'd backend 成包**(P3'a-3 收工后重述为现在的形状;**2026-08-21 已落地,记录见下**):`src/app` → `packages/backend`
    (name `@onething/backend`)。**脊柱**(`backend.ts` / `store.ts` / stores / session / events / rpc /
    engine / server / channel / headless / features / logging / providers / collab / plugins / toolkit /
@@ -957,6 +961,170 @@ engine/ events/ features/ plugins/ provider-binding/ rpc/ server/ session/ store
   带凭证的 fetch"做成产品层可注入的端口,这一批还能再往 runtime 走一步。
 - `backend/wiring/toolkit/wiring.ts` 的路径读起来是 `wiring/toolkit/wiring.ts` —— 冗余但不是
   重名,本批不动;真要改名(`install.ts`?)属于命名整理,和 P3'c 一起做更划算。
+
+#### P3'c 落地记录(2026-08-21,plugins 三合一 —— I1 allowlist 清零 + I2 断言落地,未提交)
+
+P3'b 之后 `packages/backend` 包根只剩最后一个厚孪生 `plugins/`,而它是"三处同名且**文件名**
+也同名"的最坏案例:core 37 件 / runtime 9 件 / backend 27 件,backend 与 core **同名 16 个**、
+与 runtime **同名 3 个**。判据与 P3'a / P3'b 逐字相同 —— 逐文件算 import 传递闭包,
+**闭包不碰脊柱 → `runtime/src/plugins/`,碰脊柱 → `backend/wiring/plugins/`**;
+`backend/wiring/logging` 的 `getLogger` 沿用 P3'b-A 判例不算脊柱边(本批据此改指 8 处)。
+**`packages/backend` 包根从此没有任何厚孪生,I1 allowlist 1 → 0。**
+
+**backend/plugins 27 件非测试文件的去向**:
+
+| → `runtime/src/plugins/`(10) | 唯一的非脊柱边 | I2 改名 |
+| --- | --- | --- |
+| `app-version.ts` | 零 import | 不改(core / runtime 均无同名) |
+| `tarball.ts` | 零(只有 `@shared/ipc/plugins`) | **`tarball.wiring.ts`**(说 `@shared/ipc`) |
+| `health.ts` | `getLogger` | 不改 |
+| `config.ts` | `getLogger` + `runtime/plugins` | 不改(改指 `./config-schema.js`) |
+| `config-access.ts` | `./config.js` + `getLogger` | 不改(同上) |
+| `lifecycle.ts` | `./health.js` + `@shared/ipc` | **`lifecycle.wiring.ts`** |
+| `status.ts` | `getLogger` + `@shared/events` | **`status-bound.ts`** |
+| `input-intercept.ts` | `./health.js` + `getLogger` | **`input-intercept-bound.ts`** |
+| `tool-call-intercept.ts` | `./health.js` + `getLogger` + `@shared/json` | **`tool-call-intercept-bound.ts`** |
+| `tool-result-intercept.ts` | `./health.js` + `getLogger` | **`tool-result-intercept-bound.ts`** |
+
+| → `backend/wiring/plugins/`(17) | 撞到的脊柱 |
+| --- | --- |
+| `api.ts` / `manager.ts` / `index.ts` / `background.ts` / `skin.ts` / `theme-overrides.ts` / `webview.ts` | `events/event-bus` + `engine/stream-engine` + `channel/connector-registry` + `wiring/{deeplink,search,providers}` |
+| `sessions.ts` | `store.ts` + `session/reads` + `events` + `engine` + `wiring/collab/ingress` + `channel/origin` + `wiring/providers/model-registry` |
+| `llm.ts` | `stores/settings` + `wiring/providers` + `wiring/usage` + `engine/stream/stream-executor` |
+| `notify-sound.ts` | `stores/settings` |
+| `types.ts` | `engine/prompt/plugin-context`(**type-only,仍算边** —— 那两个类型是 `@shared/ipc` 味的后端形状) |
+| `loader.ts` / `install.ts` / `file-import.ts` / `store.ts` | 经 `builtin/note-skills.ts` 撞 `wiring/{variables,skills}` + `stores/settings`;经 `types.ts` 撞 `engine/prompt` |
+| `builtin/note-skills.ts` / `builtin/log-monitor.ts` | 插座本身就是注入脊柱能力的地方 |
+
+**40 个测试按被测者走**:18 进 `runtime/src/plugins/__tests__/`(其中 11 个是纯 core 契约测试
+—— 只 import `@onething/core/plugins`,闭包零脊柱边,按同一条机械判据落在产品层;它们其实更该
+住 `core/plugins/__tests__/`,那是**遗留**,见文末)、22 留 `backend/wiring/plugins/__tests__/`
+(含 `builtin/__tests__/note-skills.test.ts`),4 个测试随被测者改名(`tarball.wiring.test.ts` /
+三个 `*-bound.test.ts`,判例同 P3'b-B 的 `env.wiring.test.ts`)。
+**`config.test.ts` 来回搬了一趟**,值得记:它原来靠装配层的 `collectLogRecordsForTests` 见证
+"junk 只警告一次",而 `config.ts` 搬进产品层后 `getLogger` 走的是 **runtime 那本 root**
+(本测试不跑 `configureLogging()`,两本 root 没被接到一起),断言收不到记录 —— 换成产品层
+同形的 `captureRuntimeLogs()` 之后,这个测试就一条装配层的边都没有了,于是
+`checkPluginLogicStaysOutOfHostAssembly` 第 3 条("装配树里的测试不许伸手进产品层")
+当场判红。**这条 checker 规则替我做了归属裁定**:它最终落在 `runtime/src/plugins/__tests__/`。
+
+**与 core 同名的 16 个怎么散掉的**:5 个跟着进 runtime、按 I2 带角色改名(见上表);
+另外 11 个(`api` 之外的 `background` / `index` / `install` / `llm` / `loader` / `manager` /
+`notify-sound` / `sessions` / `store` / `types` / `webview`)进了 `wiring/plugins/`,
+**路径自带角色,重名随分拣自然消失** —— 与 P3'b-B 处理 collab 那 4 组同名文件的结论一致。
+与 runtime 同名的 3 个(`index` / `skin` / `theme-overrides`)同理,全部进 wiring,零合并。
+**本批没有做任何文件合并**:逐符号核对下来,core / runtime / backend 三侧同名文件全是
+"协议 / 产品 / 接线"三段式的不同段,没有一对是"同概念被切成两半"。
+
+**`-bound` 的判例**(P3'a 的 `acp-manager-bound.ts` / `store-bound.ts` 的直接沿用):这 4 个
+文件的文件头自己写着"**一个进程一本注册表**",core 那半是 `CorePluginXxxRegistry` 协议类 ——
+把内核类绑到进程内单例,就叫 `<name>-bound.ts`。`lifecycle.ts` 同时满足 `-bound` 与 `.wiring`
+(它 import `@shared/ipc` 的 `AppSettings / ChatMessage / ChatSession / ProviderConfig`),
+按"不叠两个后缀、`.wiring` 优先"取 `lifecycle.wiring.ts` —— 理由是 `.wiring` 是**被 checker
+执行**的后缀(`isRuntimeWiringFile` 决定它能不能说跨进程词汇、谁能 import 它),
+`-bound` 只是给人看的角色标注;两者冲突时让机器判据赢。
+
+**I2 断言落地**(`packages/core/__tests__/architecture-boundaries.test.ts` 新增一条):
+对每个共享领域名 `<d>`,`core/<d>/**` 与 `runtime/src/<d>/**` 的相对路径集合不得相交。
+三条结构性豁免:`index.ts`(每个目录都有 barrel)、`types.ts`(同理的类型面)、`__tests__/**`
+(测试跟着被测者走)。**第四条豁免是规则不是名字**:内置插件的产品层实现文件名 = 插件 id
+(`checkPluginLogicStaysOutOfHostAssembly` 按 `backend/wiring/plugins/builtin/<id>.ts` 反查
+`runtime/src/plugins/<id>.ts`),那个名字不是自由变量,所以从插座目录**现算**一张豁免集,
+不写死任何插件名 —— 这条恰好是被 checker 逼出来的:第一版把 `'plugins/log-monitor.ts'`
+写成 allowlist 字面量,`checkCoreKnowsNoConcreteFeatures` 立刻判红("core 不许认识具体功能名"),
+而 `core/plugins/log-monitor.ts` 的 40 个 `CoreLogMonitor*` 符号说明这笔账要动的是 core 侧命名,
+不是分拣。**allowlist 全表(4 条,只许缩)**:
+
+| 条目 | 两侧各是什么 | 归哪一期 |
+| --- | --- | --- |
+| `mcp/manager.ts` | core = `CoreMcp*` 连接账本;runtime = 产品侧服务器管理器 | mcp 契约下沉 |
+| `storage/file-storage.ts` | core = 零依赖存储原语;runtime = 产品文件存储 | storage 归位(P4b/c) |
+| `storage/paths.ts` | 同上 | storage 归位(P4b/c) |
+| `tools/diff-hunks.ts` | core = hunk 数据结构;runtime = 产品侧生成器 | tools/toolkit 归位尾巴 |
+
+顺带把 **I1 的 allowlist 从"表非空"改成"空集 + 断言保留"**:它现在守的不再是"还剩几个没摘",
+而是"**不许再长回来**" —— 任何新的包根目录只要与 runtime 顶层同名就直接红,想豁免得先写理由。
+
+**说明符改写 156 处 / 67 文件**(脚本按"旧位置解析 → 走搬家表 → 从新位置重算";只改
+"目标搬了或自己搬了"的边,不做风格归一 —— 第一版没加这道闸,把 98 处无关说明符
+一并"规范化"了,那是纯噪音)。同包内相对 `.js`、跨包 `@onething/backend/<sub>.js` 带后缀 /
+`@onething/runtime/<sub>` 不带,与 P3'b-B 同规。另有手工 6 类:①`config.ts` / `config-access.ts`
+从 `@onething/runtime/plugins` 改指同包 `./config-schema.js`(搬进 runtime 后再走包名就是自指);
+②8 处 `getLogger` 改指 `runtime/logging`;③`config.test.ts` 的日志见证换 `captureRuntimeLogs`;
+④`policy.test.ts` 的 `readSourceFiles` 补上第三棵树 `packages/onething-runtime/src/plugins`
+(`health` 与四个 `*-bound` 的判决路径搬走了,不补就等于悄悄放松了那条"每个 scope 都得抵达
+recordFailure"的判据);⑤**跨包相对路径字面量 5 处**(P3'b-B 记过的同一个坑,这次又踩了两遍:
+`policy.test.ts` 的 `REPO_ROOT`、`p1-acceptance.test.ts` 的 `sample-plugins` 锚点是
+`__dirname` 语义、`status.test.ts` 三处是 `new URL(x, import.meta.url)` 语义 —— **两者深度差一级**
+(`__dirname` 从目录起算,`import.meta.url` 从文件起算),一律按 `../` 数**只有跑测试才炸**);
+⑥`apps/electron/src/main/cli/plugin-command.ts` 注释里的说明符。
+
+**exports**:`packages/backend/package.json` 删 13 条 `./plugins/*.js`、新增 9 条
+`./wiring/plugins/*.js`(82 → **78**);去掉的 4 条(`app-version` / `config-access` /
+`health` / `tarball`)进了 runtime,走 `"./plugins/*"` 那条早就在的通配。
+`packages/onething-runtime/package.json` **一条没改**。
+
+**checker**:4 处路径串改指 —— `MAIN_FILE_IO_SYSTEM_DIRS` 的 `packages/backend/plugins` →
+`packages/backend/wiring/plugins`、`BUILTIN_PLUGIN_FACADE_DIR` / `BUILTIN_PLUGIN_LOADER_FILE`
+两个常量、以及插座那段注释。`checkPluginLogicStaysOutOfHostAssembly` 的**判据一个字没改**:
+它检的是"产品层插件测试不许停在装配树里",而装配树现在是 `backend/wiring/plugins`,
+两个 `__tests__` 目录由那两个常量推出来,自动跟着走。另有 4 处跨文件注释引用改指。
+
+**验收**(逐条实跑):`typecheck` node + web 各 0 错;`test` **11136 通过 / 8 skipped,
+1151 文件通过 / 3 skipped,0 红**(基线是同一棵树上的 11133 通过 + 2 条满负载抖动
+`sessions-delete-cascade` / `server/http`,本轮两条都过了;+3 = I2 新断言 1 条 + 抖动那 2 条);
+`boundary` **199 ok / 0 failed**;`boundary:gate` 0 / `transport:gate` 279 常量 5521 行 /
+`ui:gate` 81 / `log:gate` 4 / `session:gate` 0 全部 none new;`build` / `server:build` /
+`web:build` 三宿主绿,`out/main/index.js` 与 `out/preload/index.js` 各 0 处 `@onething`,
+`dist/server/main.js` 仍是 P3'd 记过的那一处**注释**残留;
+`ls packages/backend/` 包根 = `backend.ts store.ts types.d.ts package.json __tests__/ channel/
+engine/ events/ features/ provider-binding/ rpc/ server/ session/ stores/ utils/ wiring/`
+—— **零厚孪生**,`wiring/` 28 个目录。
+
+**遗留(给 P3'e / P4b/c)**:
+
+- 进 `runtime/src/plugins/__tests__/` 的 18 个里有 **11 个只 import `@onething/core/plugins`**
+  (`core-manager` / `core-plugin-scheduler` / `core-log-monitor` / `panel-v2` /
+  `data-lifecycle` / `message-state` / `request-channel` / `npm-ledger` / `plugin-home` /
+  `install-lifecycle` / `lifecycle-races`)。按闭包判据它们该在产品层,
+  按**被测者**判据它们该在 `packages/core/plugins/__tests__/`。本批不动是因为搬测试等于改
+  `core` 包的测试面,与"分拣 backend 的 27 个文件"不是同一件事;真要收口,与 P3'e 的
+  `core/engine` 同名账一起做。
+- `plugins/log-monitor.ts` 的 core↔runtime 同名(见上)是 I2 的**结构性豁免**而不是 allowlist
+  条目 —— 它随"core 不认识具体功能"那笔账一起清:core 那半有 40 个 `CoreLogMonitor*` 符号,
+  改文件名而不改符号名是块遮羞布。checker 自己的注释早把它记成"文件布局问题"。
+- `backend/wiring/plugins/types.ts` 唯一的脊柱边是 `engine/prompt/plugin-context.ts` 里
+  **两个类型**(`PluginPromptContext` / `PluginPromptContextProvider`,形状里嵌了 `@shared/ipc`
+  的 `AppSettings` / `SkillDefinition`)。若把那两个形状下沉进 core 契约,`types.ts` 连同它拽住的
+  `loader` / `install` / `file-import` / `store` 四件就能再往 runtime 走一步 —— 和 P3'b 两批记的
+  "设置读取 + 带凭证 fetch 端口化"是同一类账。
+- `backend/wiring/toolkit/wiring.ts` 那个"`wiring/toolkit/wiring.ts`"的冗余路径,P3'b-B 说
+  "和 P3'c 一起做更划算",本批**没做** —— 它是纯命名整理,与本批的分拣判据无关,
+  混进来只会让 diff 更难审。
+
+### P3'e engine 归位(08-21 调研后新增;跟在 P3'c 之后)
+
+调研结论(只读,file:line 见 agent 报告摘要):**四类三树不是分层,是单链单叶**——`HeadlessStreamEngine`(317 行 abstract,
+5 个 abstract `handleXxxCommand`)→ `CoreStreamEngine`(1628 行;5 个 abstract 的实现全是一行强转 + 转调)→
+`OnethingStreamEngine`(runtime,**71 行、零产品依赖**,sender 形状 + 一行日志,在 send-message 路径上完全透明)→
+backend `StreamEngine`(447 行,唯一真接线层:172 行 `handleSendMessage` 加闸/路由/插件 intercept/模型绑定后 super)。
+每层只有一个子类,生产只 `new` 一个实例(`backend/engine/index.ts:93`),三宿主同一个类;产品语义早已走端口
+(`CoreStreamEngineRuntime` 12 槽,`runtime/src/product-stream-runtime.ts`),继承链与端口重复。
+backend `StreamEngine` 的 11 条脊柱/wiring 依赖里 10 条可端口化(2 条纯重复可删)。
+I2 碰撞:`core/engine` vs `backend/engine/**` 同名 10 对(agent-loop-executor / agent-loop-runtime / context-compact /
+stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-selection / ipc-emitter / message-queue),
+另 6 个纯再导出门面可删。`SEND_MESSAGE` 现状 8 跳跨 3 树。
+
+**拍定顺序 C → A1 → A2,跳过 B(B 只搬路径不减跳数)**:
+- **C** core 两层合一(2 源 + 3 测试;删 5 abstract + 5 转发;8→6 跳;零路径/checker 改动)——已派。
+- **A1** `OnethingStreamEngine` 71 行并入 backend `StreamEngine`(路径先不动;2 测试的 `vi.mock('@onething/runtime/stream-engine')`
+  改 mock core 或改注入桩;顺带修三处冗余:重复 shutdown 日志、`emitCollabRefusal` vs `emitStreamError`、
+  `getSession` 直取 store 与 `runtime.store.getSession` 重复;6→5 跳)。
+- **A2** 10 条依赖端口化(`router / roomIngress / pluginIntercept / agentBinding / steeringDelivery` 五槽,optional,缺席=旧行为)
+  + 合并后的产品引擎搬 `runtime/src/engine/stream-engine.ts`、`backend/engine` → `backend/wiring/engine/`
+  (30 真接线 + `stream-engine-bound.wiring.ts`)、6 门面删、8 准 PURE 改 `.wiring.ts` 进 runtime、10 对 I2 改名清零;
+  跨树 3→2。A2 是唯一有真行为风险的一批。
+- 每批验收口径固定:typecheck 0 → 全量绿 → boundary:gate → **`sessions:shadow-battery` 0 mismatch** → 三宿主构建。
 
 ### P4 传输面 router 迁移(主线,1–2 周,逐域可暂停;08-21:**P4a 前移到 P1' 之前**)
 

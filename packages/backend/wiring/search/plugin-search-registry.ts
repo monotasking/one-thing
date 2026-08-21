@@ -27,7 +27,7 @@ import {
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '../../plugins/health.js'
+} from '@onething/runtime/plugins/health'
 
 /** 一次聚合里,全体插件结果的总预算 —— 再多也不让插件淹没内置结果。 */
 export const PLUGIN_SEARCH_TOTAL_BUDGET = 12

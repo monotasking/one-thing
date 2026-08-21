@@ -29,8 +29,8 @@ import {
 	isCollabRoomSession,
 } from "../wiring/collab/ingress.js";
 import { isTrustedCollabDrive } from "@onething/runtime/collab/drive-guard";
-import { runPluginInputIntercept } from "../plugins/input-intercept.js";
-import { pluginPostInterceptReply } from "../plugins/sessions.js";
+import { runPluginInputIntercept } from "@onething/runtime/plugins/input-intercept-bound";
+import { pluginPostInterceptReply } from "../wiring/plugins/sessions.js";
 import { mintTurnPrincipal } from "./turn-principal.js";
 import { getEventBus } from "../events/index.js";
 import { composeAgentPermissionMode } from "@onething/runtime/agents";

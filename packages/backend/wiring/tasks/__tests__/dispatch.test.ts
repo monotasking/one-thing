@@ -108,7 +108,7 @@ const delivered: Array<{
   origin: unknown
 }> = []
 
-vi.mock('../../../plugins/sessions.js', () => ({
+vi.mock('../../plugins/sessions.js', () => ({
   deliverInternalMessage: async (
     _deps: unknown,
     request: {

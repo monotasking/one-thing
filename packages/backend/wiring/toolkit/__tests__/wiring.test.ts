@@ -54,11 +54,11 @@ vi.mock('../../tools/core/permission-policy.js', () => ({
   enforcePermissionPolicy: harness.enforce,
 }))
 
-vi.mock('../../../plugins/tool-call-intercept.js', () => ({
+vi.mock('@onething/runtime/plugins/tool-call-intercept-bound', () => ({
   runPluginToolCallIntercept: harness.callIntercept,
 }))
 
-vi.mock('../../../plugins/tool-result-intercept.js', () => ({
+vi.mock('@onething/runtime/plugins/tool-result-intercept-bound', () => ({
   runPluginToolResultIntercept: harness.resultIntercept,
 }))
 

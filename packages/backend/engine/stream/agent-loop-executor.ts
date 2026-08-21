@@ -36,7 +36,7 @@ import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop
 import { updateSessionUsage } from "../../session/usage.js";
 import { recordUsage } from "../../wiring/usage/index.js";
 import { triggerManager } from "../triggers/index.js";
-import { runAfterAssistantResponseHooks } from "../../plugins/lifecycle.js";
+import { runAfterAssistantResponseHooks } from "@onething/runtime/plugins/lifecycle.wiring";
 import type { ChatMessage, ChatSession } from "@shared/ipc.js";
 import {
 	applyAgentLoopStreamChunkWithAdapters as coreApplyAgentLoopStreamChunkWithAdapters,

@@ -286,7 +286,7 @@ export async function createOnethingBackend(
        * 不兑现的契约往上挪了一层。
        */
       try {
-        const plugins = await import('./plugins/manager.js')
+        const plugins = await import('./wiring/plugins/manager.js')
         plugins.getPluginManager()?.shutdown()
       } catch (error) {
         log.error('plugin manager shutdown failed', {}, error)
