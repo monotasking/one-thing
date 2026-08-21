@@ -373,7 +373,7 @@ function normalizeErrorDefault(error: Error): CoreStreamErrorInfo {
  * 合并前这里是 `CoreStreamEngine extends HeadlessStreamEngine`,中间隔着 5 个
  * `handleXxxCommand` 抽象转发(每个函数体只有一行 `command as XxxCommandLike`),
  * 从派发表按 F12 要跳两次才到本体。现在派发表直接调 `handleSendMessage` 等本体,
- * 一跳到位;宿主(OnethingStreamEngine → backend StreamEngine)照旧 override 本体。
+ * 一跳到位;宿主(backend StreamEngine)照旧 override 本体。
  *
  * 平台相关的部分仍由宿主提供:命令目标由 `bindCommandTarget` 注入,
  * `onSessionAbort` / `onSessionCleared` / `onShutdown` / `log` / `logError`

@@ -239,7 +239,7 @@ describe('createOnethingRuntime', () => {
   it('binds the supplied event bus for command-driven hosts', async () => {
     const { eventBus, executeMessageStream, runtime, session } = createHarness()
 
-    runtime.engine.bindStatic(runtime.sender)
+    runtime.engine.bindCommandTarget(runtime.sender)
     await eventBus.emit(session.id, {
       type: 'command:send-message',
       content: 'from-event-bus',

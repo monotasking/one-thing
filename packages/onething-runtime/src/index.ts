@@ -1,12 +1,9 @@
-export {
-	NoopOnethingStreamSender,
-	OnethingStreamEngine,
-} from "./stream-engine.js";
+export { NoopOnethingStreamSender } from "./stream-sender.js";
 export type {
 	BindableOnethingStreamSender,
 	OnethingStreamSender,
 	OnethingStreamSenderPayload,
-} from "./stream-engine.js";
+} from "./stream-sender.js";
 export { createOnethingStreamEngineRuntime } from "./stream-runtime.js";
 export type {
 	OnethingStreamRuntime,

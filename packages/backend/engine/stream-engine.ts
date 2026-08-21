@@ -7,15 +7,18 @@ import type {
 } from "@shared/ipc.js";
 import type { MessageOrigin } from "@shared/ipc.js";
 import {
+	CoreStreamEngine,
+	resolveStreamPermissionMode,
 	type CoreInitialToolChoice,
 	type CoreStreamEngineRuntime,
+	type CoreStreamPermissionModeSession,
+	type CoreStreamPermissionModeSettings,
 } from "@onething/core/engine";
-import {
-	OnethingStreamEngine,
-	type BindableOnethingStreamSender,
-	type OnethingStreamSender,
-	type OnethingStreamSenderPayload,
-} from "@onething/runtime/stream-engine";
+import type {
+	BindableOnethingStreamSender,
+	OnethingStreamSender,
+	OnethingStreamSenderPayload,
+} from "@onething/runtime/stream-sender";
 import type { EventBus } from "../events/event-bus.js";
 import {
 	createMainStreamEngineRuntime,
@@ -32,14 +35,10 @@ import { isTrustedCollabDrive } from "@onething/runtime/collab/drive-guard";
 import { runPluginInputIntercept } from "@onething/runtime/plugins/input-intercept-bound";
 import { pluginPostInterceptReply } from "../wiring/plugins/sessions.js";
 import { mintTurnPrincipal } from "./turn-principal.js";
-import { getEventBus } from "../events/index.js";
 import { composeAgentPermissionMode } from "@onething/runtime/agents";
 import { defaultAgent, findAgent } from "@onething/runtime/agents/store-bound.wiring";
 import { resolveAgentProfileForSession } from "../wiring/agents/profile.js";
-import { getSession } from "../stores/sessions.js";
 import { takeExternalAgentSteering } from "../wiring/external-agents/index.js";
-
-import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('engine.stream')
@@ -49,7 +48,7 @@ export type StreamSenderPayload = OnethingStreamSenderPayload;
 export type StreamSender = OnethingStreamSender;
 export type BindableStreamSender = BindableOnethingStreamSender;
 
-export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
+export class StreamEngine extends CoreStreamEngine<EventBus, StreamSender> {
 	constructor(
 		private readonly mainRuntime: MainStreamEngineRuntime = createMainStreamEngineRuntime(),
 	) {
@@ -66,16 +65,28 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 	 * via the callback wired in backend.ts, and permissions go strict-and-fresh.
 	 */
 	getPermissionMode(sessionId: string): PermissionMode {
-		const base = super.getPermissionMode(sessionId);
+		const session = this.mainRuntime.store.getSession(sessionId);
+		const base = resolveStreamPermissionMode(
+			session as CoreStreamPermissionModeSession | undefined,
+			this.mainRuntime.store.getSettings() as CoreStreamPermissionModeSettings | undefined,
+		);
 		// persona/能力功能兜底(域模型 §3.3),与 profile.ts 同一条规则。
-		const agent = findAgent(getSession(sessionId)?.agentId) ?? defaultAgent();
+		const agent = findAgent(session?.agentId) ?? defaultAgent();
 		return composeAgentPermissionMode(agent?.permissionMode, base, undefined, {
 			agentId: agent?.id,
 		}) as PermissionMode;
 	}
 
 	bind(sender: BindableStreamSender): void {
-		super.bind(sender);
+		this.bindCommandTarget(sender, clear => sender.on("destroyed", clear));
+	}
+
+	bindStatic(sender: StreamSender): void {
+		this.bindCommandTarget(sender);
+	}
+
+	hasBoundSender(): boolean {
+		return this.hasCommandTarget(sender => !sender.isDestroyed());
 	}
 
 	override async handleSendMessage(
@@ -303,7 +314,7 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 		// and it must be OBSERVABLE: the renderer latches sessionLoading before
 		// emitting, so a silent return would wedge the composer.
 		if (isCollabRoomSession(sessionId)) {
-			await emitCollabRefusal(sessionId, "群聊房间不支持编辑重发");
+			this.refuseCollab(sessionId, "群聊房间不支持编辑重发");
 			return;
 		}
 		const routed = getChannelSessionRouter().route({
@@ -323,11 +334,11 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 
 	override async handleRetryMessage(
 		sessionId: string,
-		command: Parameters<OnethingStreamEngine<EventBus, StreamSender>["handleRetryMessage"]>[1],
+		command: Parameters<CoreStreamEngine<EventBus, StreamSender>["handleRetryMessage"]>[1],
 		sender: StreamSender,
 	): Promise<void> {
 		if (isCollabRoomSession(sessionId)) {
-			await emitCollabRefusal(sessionId, "群聊房间不支持重试");
+			this.refuseCollab(sessionId, "群聊房间不支持重试");
 			return;
 		}
 		await super.handleRetryMessage(sessionId, command, sender);
@@ -399,21 +410,19 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 		return takeExternalAgentSteering(sessionId, content);
 	}
 
+	/**
+	 * 房间里没有定义的编辑/重试:落一条 `stream:error`,渲染层据此解掉
+	 * sessionLoading。事件本体走继承来的 `emitStreamError`(同一个 `stream:error`
+	 * + `data.error` 形状),这里只多留那一行 warn。
+	 */
+	private refuseCollab(sessionId: string, error: string): void {
+		log.warn("collab refusal", { sessionId, reason: error });
+		this.emitStreamError(sessionId, error);
+	}
+
 	protected override onShutdown(): void {
 		super.onShutdown();
 		log.info("stream engine shut down");
-	}
-}
-
-async function emitCollabRefusal(sessionId: string, error: string): Promise<void> {
-	log.warn("collab refusal", { sessionId, reason: error });
-	try {
-		await getEventBus().emit(sessionId, {
-			type: SESSION_EVENT_TYPES.STREAM_ERROR,
-			data: { error },
-		} as Parameters<ReturnType<typeof getEventBus>["emit"]>[1]);
-	} catch (cause) {
-		log.error("emit collab refusal failed", { sessionId }, cause);
 	}
 }
 

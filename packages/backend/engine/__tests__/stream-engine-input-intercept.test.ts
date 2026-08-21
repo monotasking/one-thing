@@ -28,8 +28,11 @@ const mocks = vi.hoisted(() => ({
   steerMessage: vi.fn(() => {}),
 }))
 
-vi.mock('@onething/runtime/stream-engine', () => ({
-  OnethingStreamEngine: class {
+// P3'e A1:`OnethingStreamEngine` 那层已并进 backend 的 `StreamEngine`,基类
+// 直接就是 core 的 `CoreStreamEngine` —— 桩就打在它身上(其余导出保留真身)。
+vi.mock('@onething/core/engine', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/core/engine')>()),
+  CoreStreamEngine: class {
     constructor(_runtime: unknown) {
       void _runtime
     }

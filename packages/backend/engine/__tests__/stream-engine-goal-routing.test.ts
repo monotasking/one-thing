@@ -15,8 +15,10 @@ const mocks = vi.hoisted(() => ({
   })),
 }))
 
-vi.mock('@onething/runtime/stream-engine', () => ({
-  OnethingStreamEngine: class {
+// P3'e A1:基类现在直接是 core 的 `CoreStreamEngine`(中间那层已并入)。
+vi.mock('@onething/core/engine', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/core/engine')>()),
+  CoreStreamEngine: class {
     constructor(_runtime: unknown) {
       void _runtime
     }

@@ -1,6 +1,7 @@
-import type {
-  CoreEventBusEmitterLike,
-  CoreStreamEngineRuntime,
+import {
+  CoreStreamEngine,
+  type CoreEventBusEmitterLike,
+  type CoreStreamEngineRuntime,
 } from '@onething/core/engine'
 import type { StreamChunkBase } from '@onething/core/events'
 import type {
@@ -13,9 +14,8 @@ import {
 } from './gateway-runtime.js'
 import {
   NoopOnethingStreamSender,
-  OnethingStreamEngine,
   type OnethingStreamSender,
-} from './stream-engine.js'
+} from './stream-sender.js'
 import {
   createOnethingStreamEngineRuntime,
   type OnethingStreamRuntimeOptions,
@@ -25,7 +25,7 @@ export interface OnethingRuntime<
   TEventBus extends CoreEventBusEmitterLike = CoreEventBusEmitterLike,
   TSender extends OnethingStreamSender = OnethingStreamSender,
   TChunk extends StreamChunkBase = StreamChunkBase,
-  TEngine extends OnethingStreamEngine<TEventBus, TSender> = OnethingStreamEngine<TEventBus, TSender>,
+  TEngine extends CoreStreamEngine<TEventBus, TSender> = CoreStreamEngine<TEventBus, TSender>,
 > {
   eventBus: TEventBus
   streamChannel: CoreStreamChannelLike<TChunk>
@@ -40,7 +40,7 @@ export interface OnethingRuntimeFromStreamRuntimeOptions<
   TEventBus extends CoreEventBusEmitterLike = CoreEventBusEmitterLike,
   TSender extends OnethingStreamSender = OnethingStreamSender,
   TChunk extends StreamChunkBase = StreamChunkBase,
-  TEngine extends OnethingStreamEngine<TEventBus, TSender> = OnethingStreamEngine<TEventBus, TSender>,
+  TEngine extends CoreStreamEngine<TEventBus, TSender> = CoreStreamEngine<TEventBus, TSender>,
 > {
   streamRuntime: CoreStreamEngineRuntime
   eventBus: TEventBus
@@ -66,7 +66,7 @@ export interface OnethingRuntimeOptions<
   TEventBus extends CoreEventBusEmitterLike = CoreEventBusEmitterLike,
   TSender extends OnethingStreamSender = OnethingStreamSender,
   TChunk extends StreamChunkBase = StreamChunkBase,
-  TEngine extends OnethingStreamEngine<TEventBus, TSender> = OnethingStreamEngine<TEventBus, TSender>,
+  TEngine extends CoreStreamEngine<TEventBus, TSender> = CoreStreamEngine<TEventBus, TSender>,
 > extends OnethingStreamRuntimeOptions<
     TSettings,
     TMessage,
@@ -103,7 +103,7 @@ export function createOnethingRuntime<
   TEventBus extends CoreEventBusEmitterLike = CoreEventBusEmitterLike,
   TSender extends OnethingStreamSender = OnethingStreamSender,
   TChunk extends StreamChunkBase = StreamChunkBase,
-  TEngine extends OnethingStreamEngine<TEventBus, TSender> = OnethingStreamEngine<TEventBus, TSender>,
+  TEngine extends CoreStreamEngine<TEventBus, TSender> = CoreStreamEngine<TEventBus, TSender>,
 >(
   options: OnethingRuntimeOptions<
     TSettings,
@@ -139,13 +139,13 @@ export function createOnethingRuntimeFromStreamRuntime<
   TEventBus extends CoreEventBusEmitterLike = CoreEventBusEmitterLike,
   TSender extends OnethingStreamSender = OnethingStreamSender,
   TChunk extends StreamChunkBase = StreamChunkBase,
-  TEngine extends OnethingStreamEngine<TEventBus, TSender> = OnethingStreamEngine<TEventBus, TSender>,
+  TEngine extends CoreStreamEngine<TEventBus, TSender> = CoreStreamEngine<TEventBus, TSender>,
 >(
   options: OnethingRuntimeFromStreamRuntimeOptions<TEventBus, TSender, TChunk, TEngine>,
 ): OnethingRuntime<TEventBus, TSender, TChunk, TEngine> {
   const streamRuntime = options.streamRuntime
   const engine = options.createEngine?.(streamRuntime)
-    ?? new OnethingStreamEngine<TEventBus, TSender>(streamRuntime) as TEngine
+    ?? new CoreStreamEngine<TEventBus, TSender>(streamRuntime) as TEngine
   const sender = options.sender ?? new NoopOnethingStreamSender() as unknown as TSender
 
   if (options.bindEventBus !== false) {
