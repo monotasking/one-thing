@@ -31,6 +31,7 @@ import {
   applySpaceProviderCredential,
   resolveSpaceProviderCredential,
 } from '../provider-credentials.js'
+import type { CoreProviderConfigLike } from '../../providers/provider-config.js'
 import { withResolvedProviderBaseUrl } from '../../providers/provider-config.js'
 import {
   ONETHING_ZHIPU_CODING_PLAN_BASE_URL,
@@ -135,12 +136,19 @@ describe('patch 语义:缺席 = 沿用旧值', () => {
   })
 })
 
+/**
+ * 全局那一份 provider 配置的类型。`applySpaceProviderCredential` 是泛型透传的,
+ * 直接丢字面量进去会把 `TProvider` 收窄成字面量自己的键集,返回值上就没有
+ * `baseUrl` / `providerOptions` 可读了 —— 这里显式标注,别让 fixture 决定契约。
+ */
+type GlobalProviderConfig = CoreProviderConfigLike & { apiKey?: string }
+
 describe('覆盖注入 → baseUrl 派生', () => {
   it('zhipu coding-plan:空间那条 entry 的档位派生出 coding 端点', () => {
     upsertSpaceProviderApiKey('work', 'zhipu', { apiKey: 'sk-work', apiMode: 'coding-plan' })
-    const scoped = applySpaceProviderCredential(
+    const scoped = applySpaceProviderCredential<GlobalProviderConfig>(
       // 全局是 standard —— 空间那条说了算。
-      { model: 'glm-5', apiKey: 'sk-global', zhipuApiMode: 'standard' as const },
+      { model: 'glm-5', apiKey: 'sk-global', zhipuApiMode: 'standard' },
       resolveFor('work', 'zhipu'),
       'zhipu',
     )
@@ -156,8 +164,8 @@ describe('覆盖注入 → baseUrl 派生', () => {
       apiMode: 'standard',
       region: 'intl',
     })
-    const scoped = applySpaceProviderCredential(
-      { model: 'k2', apiKey: 'sk-global', kimiApiMode: 'standard' as const, kimiRegion: 'cn' as const },
+    const scoped = applySpaceProviderCredential<GlobalProviderConfig>(
+      { model: 'k2', apiKey: 'sk-global', kimiApiMode: 'standard', kimiRegion: 'cn' },
       resolveFor('work', 'kimi'),
       'kimi',
     )

@@ -52,6 +52,11 @@ vi.mock('@/stores/spaceProviders', () => ({
     poolOf: () => undefined,
     applyCredentials: vi.fn(),
     writeSelectedModels: vi.fn(async () => false),
+    // ★ 与 ✓ 走的是同一个 store 的两支写面(`useSpaceProviderView`
+    // 的 setDefaultSelection / setProvidersEnabled)。少一支,点「设为默认」
+    // 就是一条 unhandled rejection —— 断言全绿、整跑退出码却是 1。
+    writeDefaultSelection: vi.fn(async () => false),
+    writeProvidersEnabled: vi.fn(async () => false),
     ensureLoaded: vi.fn(async () => {}),
     refresh: vi.fn(async () => {}),
   }),

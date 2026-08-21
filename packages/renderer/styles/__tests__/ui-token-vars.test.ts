@@ -15,6 +15,9 @@ const directColorAllowedFiles = new Set([
   // Provider identity palette for the usage chart (brand-adjacent series colors
   // that must stay theme-independent) — same category as ProviderIcon above.
   'components/settings/UsageSettingsPanel.vue',
+  // Todo 窗自己的纸面 token 层,刻意脱离主题冷暖;色值只允许出现在该文件,
+  // 2603c665 用户拍板。
+  'components/chat/todo-paper.css',
 ])
 const styleFileExtensions = new Set(['.vue', '.ts', '.css'])
 const legacyColorVars = new Set([
@@ -480,8 +483,11 @@ describe('renderer UI semantic variables', () => {
     expect(dropdownMenu).toContain('var(--ui-surface-tooltip-shadow')
     expect(dropdownMenu).toContain('var(--ui-status-danger-fg')
     expect(todoPlanWindow).toContain('var(--ui-surface-elevated-bg')
-    expect(todoPlanPanel).toContain('var(--ui-surface-elevated-bg')
-    expect(todoPlanPanel).toContain('var(--ui-border-default-border')
+    // Todo 窗的两级面与边框自 2603c665 起落这扇窗自己的纸面色板
+    // (`components/chat/todo-paper.css`),不再走应用主题的 `--ui-surface-*`;
+    // 窗壳(TodoPlanWindow)仍是主题面,所以上面那条断言保持不动。
+    expect(todoPlanPanel).toContain('var(--paper-main')
+    expect(todoPlanPanel).toContain('var(--paper-border')
     expect(todoPlanPanel).toContain('var(--ui-status-danger-fg')
     expect(todoPlanPanel).toContain('--todo-popover-content-height')
     expect(todoPlanPanel).toContain('--todo-popover-height')
