@@ -236,6 +236,22 @@
             @update:model-value="updateContextCompactKeepRecentTurns"
           />
         </SettingRow>
+
+        <SettingRow
+          label="Summary timeout"
+          description="Seconds to wait for each summary request before the compact fails. Raise this for slow providers or very long histories."
+        >
+          <InputNumber
+            :model-value="contextCompactChunkTimeoutSeconds"
+            :min="30"
+            :max="1800"
+            :step="30"
+            suffix="s"
+            :disabled="!contextCompactEnabled"
+            aria-label="compact summary timeout seconds"
+            @update:model-value="updateContextCompactChunkTimeoutSeconds"
+          />
+        </SettingRow>
       </SettingsGroup>
     </SettingsSection>
 
@@ -552,6 +568,7 @@ const contextCompactEnabled = computed(() => props.settings.chat?.contextCompact
 const diagnosticsEnabled = computed(() => props.settings.diagnostics?.enabled === true)
 const contextCompactThreshold = computed(() => props.settings.chat?.contextCompactThreshold ?? 85)
 const contextCompactKeepRecentTurns = computed(() => props.settings.chat?.contextCompactKeepRecentTurns ?? 6)
+const contextCompactChunkTimeoutSeconds = computed(() => props.settings.chat?.contextCompactChunkTimeoutSeconds ?? 300)
 const maxTurns = computed(() => props.settings.chat?.maxTurns ?? 100)
 const canChooseLocalDirectory = computed(() => platformApi.capabilities.localFileSystem)
 const dailyNotes = computed<DailyNoteSettings>(() => ({
@@ -734,6 +751,16 @@ function updateContextCompactKeepRecentTurns(turns: number) {
     chat: {
       ...props.settings.chat!,
       contextCompactKeepRecentTurns: Math.max(1, Math.min(20, turns)),
+    },
+  })
+}
+
+function updateContextCompactChunkTimeoutSeconds(seconds: number) {
+  emit('update:settings', {
+    ...props.settings,
+    chat: {
+      ...props.settings.chat!,
+      contextCompactChunkTimeoutSeconds: Math.max(30, Math.min(1800, Math.round(seconds))),
     },
   })
 }

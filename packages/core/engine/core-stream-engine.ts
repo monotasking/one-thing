@@ -35,7 +35,7 @@ import {
 import {
   buildContextUsageSnapshot,
 } from './context-usage.js'
-import { CONTEXT_COMPACT_TOTAL_BUDGET_MS } from './context-compact.js'
+import { resolveContextCompactTotalBudgetMs } from './context-compact.js'
 
 export interface CoreEventBusEmitterLike extends CoreEventBusLike {
   emit(sessionId: string, event: any): Promise<unknown>
@@ -89,6 +89,7 @@ export interface CoreStreamSettings {
   }
   chat?: {
     contextCompactKeepRecentTurns?: number
+    contextCompactChunkTimeoutSeconds?: number
     contextCompactEnabled?: boolean
     maxTokens?: number
     contextCompactThreshold?: number
@@ -1503,9 +1504,18 @@ export class CoreStreamEngine<
     const gate = this.compactionGates.get(sessionId)
     if (!gate) return
 
+    // 预算随设置里的单块超时走(默认 300s × 5);设置读不到就用默认。
+    let budgetMs = resolveContextCompactTotalBudgetMs(undefined)
+    try {
+      budgetMs = resolveContextCompactTotalBudgetMs(
+        this.store.getSettings()?.chat?.contextCompactChunkTimeoutSeconds,
+      )
+    } catch {
+      /* settings unavailable — keep the default budget */
+    }
     let timer: ReturnType<typeof setTimeout> | undefined
     const timedOut = new Promise<'timeout'>(resolve => {
-      timer = setTimeout(() => resolve('timeout'), CONTEXT_COMPACT_TOTAL_BUDGET_MS)
+      timer = setTimeout(() => resolve('timeout'), budgetMs)
       ;(timer as unknown as { unref?: () => void }).unref?.()
     })
 

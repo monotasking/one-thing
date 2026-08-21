@@ -1,4 +1,8 @@
-export { buildContextCompactPrompt } from "./compact-prompt.js";
+export {
+	buildContextCompactMergePrompt,
+	buildContextCompactPrompt,
+} from "./compact-prompt.js";
+export type { ContextCompactPromptPart } from "./compact-prompt.js";
 
 export { createCoreId } from "./ids.js";
 
@@ -556,7 +560,15 @@ export {
 	COMPACT_MODIFIED_FILES_TAG,
 	COMPACT_READ_FILES_TAG,
 	CONTEXT_COMPACT_CHUNK_TIMEOUT_MS,
+	CONTEXT_COMPACT_CHUNK_TIMEOUT_MIN_SECONDS,
+	CONTEXT_COMPACT_CHUNK_TIMEOUT_MAX_SECONDS,
+	COMPACT_CHUNK_FILL_RATIO,
+	COMPACT_PROMPT_OVERHEAD_TOKENS,
+	CONTEXT_COMPACT_MAX_CONCURRENCY,
+	CONTEXT_COMPACT_TOTAL_BUDGET_CHUNKS,
 	CONTEXT_COMPACT_TOTAL_BUDGET_MS,
+	resolveContextCompactChunkTimeoutMs,
+	resolveContextCompactTotalBudgetMs,
 	createContextCompactMessage,
 	DEFAULT_KEEP_RECENT_TURNS,
 	estimateCurrentInputTokens,
@@ -568,8 +580,10 @@ export {
 	stripCompactFileOperations,
 	getContextCompactReason,
 	MAX_CHUNK_CHARS,
+	MIN_CHUNK_CHARS,
 	normalizeContextCompactError,
 	normalizeContextSummaryOutput,
+	resolveCompactChunkChars,
 	selectCompactPlan,
 	shouldAutoCompactBeforeSend,
 	shouldSkipAutoCompactForProviderUsageMismatch,
@@ -615,7 +629,10 @@ export type {
 	CoreCompactMessage,
 	CoreCompactSession,
 	CoreCompactToolCall,
+	CoreContextCompactChunkPlan,
 	CoreContextSummaryChunkInput,
+	CoreContextSummaryMergeInput,
+	CoreContextSummaryRequest,
 	SummarizeContextInChunksOptions,
 } from "./context-compact.js";
 

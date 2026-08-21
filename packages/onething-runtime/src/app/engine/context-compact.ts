@@ -12,7 +12,6 @@ import {
   buildContextCompactFailedContent,
   buildContextCompactSummaryMessages,
   buildContextUsageSnapshot,
-  CONTEXT_COMPACT_CHUNK_TIMEOUT_MS,
   createCoreId,
   createContextCompactMessage,
   DEFAULT_KEEP_RECENT_TURNS,
@@ -21,6 +20,8 @@ import {
   formatMessagesForSummary,
   mergeCompactFileOperations,
   normalizeContextCompactError,
+  resolveCompactChunkChars,
+  resolveContextCompactChunkTimeoutMs,
   selectCompactPlan,
   stripCompactFileOperations,
   shouldSkipAutoCompactForProviderUsageMismatch as shouldSkipAutoCompactForProviderUsageMismatchByUsage,
@@ -359,25 +360,78 @@ async function summarizeInChunks(options: {
   onChunkComplete?: (progress: { chunk: number; totalChunks: number }) => Promise<void>
 }): Promise<string> {
   const maxTokens = await resolveSummaryMaxTokens(options.configWithApiKey.model, options.providerId)
+  // 单块超时来自设置(默认 300s,夹在 [30s, 30min]);总预算闸在 core 引擎里同源计算。
+  const chunkTimeoutMs = resolveContextCompactChunkTimeoutMs(
+    options.settings.chat?.contextCompactChunkTimeoutSeconds,
+  )
+
+  // 块大小随模型窗口走(2026-08-21):200k 窗口下多数会话就此退回单块,
+  // 不再被一个写死的 80k 硬切成好几段。注册表查不到窗口就退回 80k。
+  let modelContextLength: number | undefined
+  try {
+    modelContextLength = await modelRegistry.getModelContextLength(
+      options.configWithApiKey.model,
+      options.providerId,
+    )
+  } catch (error) {
+    log.warn(
+      'resolve model context length for compact chunking failed',
+      { model: options.configWithApiKey.model, providerId: options.providerId },
+      error,
+    )
+    modelContextLength = undefined
+  }
+  const maxChunkChars = resolveCompactChunkChars({
+    transcript: options.messages,
+    modelContextLength,
+    reservedOutputTokens: maxTokens ?? 8_192,
+  })
+
+  // 批级中止:任一块失败就把在途的其余块一起掐掉 —— map-reduce 里剩下的块
+  // 已经没有用武之地了,让它们跑完只是白烧 token 和时间。
+  const batchController = new AbortController()
+
   return summarizeContextInChunks({
     messages: options.messages,
     previousSummary: options.previousSummary,
+    maxChunkChars,
+    onPlanned: ({ totalChunks, maxChunkChars: plannedChunkChars }) => {
+      log.debug('compact chunking', {
+        sessionId: options.sessionId,
+        transcriptChars: options.messages.length,
+        modelContextLength,
+        maxChunkChars: plannedChunkChars,
+        chunks: totalChunks,
+      })
+    },
     onChunkComplete: options.onChunkComplete,
-    summarizeChunk: async ({ chunk, previousSummary }) => {
+    summarizeChunk: async (request) => {
       // P3:压缩的生死时限归后端。每块摘要请求挂一个 AbortSignal 超时 ——
       // 从前后端分块摘要无时限,长会话必然撞上前端的墙钟假超时。超时抛错,
       // 由上层既有的 catch 走失败路径(marker 改 failed + completed(false))。
       const controller = new AbortController()
+      const abortFromBatch = () => {
+        controller.abort((batchController.signal as { reason?: unknown }).reason)
+      }
+      if (batchController.signal.aborted) abortFromBatch()
+      else batchController.signal.addEventListener('abort', abortFromBatch, { once: true })
+
+      // 超时和"被批中止"必须分得清:被别的块拖垮的块报成"超时"是在说谎,
+      // 用户会照着这条去调一个根本不相干的超时设置。
+      let timedOut = false
       const timer = setTimeout(
-        () => controller.abort(new Error('Context compact chunk timed out')),
-        CONTEXT_COMPACT_CHUNK_TIMEOUT_MS,
+        () => {
+          timedOut = true
+          controller.abort(new Error('Context compact chunk timed out'))
+        },
+        chunkTimeoutMs,
       )
       let finishReason: string | undefined
       try {
         const text = await generateChatResponse(
           options.providerId,
           options.configWithApiKey,
-          buildContextCompactSummaryMessages({ chunk, previousSummary }),
+          buildContextCompactSummaryMessages(request),
           {
             temperature: 0,
             ...(maxTokens !== undefined ? { maxTokens } : {}),
@@ -408,14 +462,16 @@ async function summarizeInChunks(options: {
         }
         return text
       } catch (error) {
-        if (controller.signal.aborted) {
-          throw new Error(
-            `Context compact timed out after ${Math.round(CONTEXT_COMPACT_CHUNK_TIMEOUT_MS / 1000)}s while summarizing.`,
-          )
-        }
-        throw error
+        const failure = timedOut
+          ? new Error(
+              `Context compact timed out after ${Math.round(chunkTimeoutMs / 1000)}s while summarizing.`,
+            )
+          : error
+        batchController.abort(failure)
+        throw failure
       } finally {
         clearTimeout(timer)
+        batchController.signal.removeEventListener('abort', abortFromBatch)
       }
     },
   })

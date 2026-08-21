@@ -238,6 +238,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   contextCompactEnabled: true,
   contextCompactThreshold: 85,
   contextCompactKeepRecentTurns: 6,
+  contextCompactChunkTimeoutSeconds: 300,
   agentLoopStream: true,
 }
 
@@ -608,6 +609,12 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         1,
         20,
         DEFAULT_CHAT_SETTINGS.contextCompactKeepRecentTurns ?? 6,
+      ),
+      contextCompactChunkTimeoutSeconds: clampNumber(
+        settings.chat?.contextCompactChunkTimeoutSeconds,
+        30,
+        1800,
+        DEFAULT_CHAT_SETTINGS.contextCompactChunkTimeoutSeconds ?? 300,
       ),
       agentLoopStream: true,
     },

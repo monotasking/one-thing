@@ -182,6 +182,7 @@ export interface ChatSettings {
 	contextCompactEnabled?: boolean; // Enable automatic context compacting, default true
 	contextCompactThreshold?: number; // Context usage % to trigger compacting, 50-100, default 85
 	contextCompactKeepRecentTurns?: number; // Recent user/assistant turns to keep verbatim, default 6
+	contextCompactChunkTimeoutSeconds?: number; // Per-chunk summary request timeout in seconds, 30-1800, default 300
 	agentLoopStream?: boolean; // Legacy compatibility flag; supported providers always use the agent-loop stream runtime
 	maxTurns?: number; // Max agent-loop model round-trips per chat run before finishReason 'max_turns', default 100
 	goalContinuationLimit?: number; // Max automatic goal continuations per resume, default 10

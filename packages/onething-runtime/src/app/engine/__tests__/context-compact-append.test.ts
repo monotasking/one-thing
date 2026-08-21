@@ -27,8 +27,11 @@ vi.mock('../../plugins/lifecycle.js', () => ({
 vi.mock('../../providers/index.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
+// 块大小随模型窗口走(2026-08-21):窗口大 → 单块;想逼出多块就把窗口调小。
+let modelContextLength = 200_000
+
 vi.mock('../../providers/model-registry.js', () => ({
-  getModelContextLength: async () => 200_000,
+  getModelContextLength: async () => modelContextLength,
   getModelMaxOutputTokens: async () => 8_192,
   getKnownModelMaxOutputTokens: async () => 8_192,
 }))
@@ -111,6 +114,7 @@ beforeEach(() => {
   generateChatResponse.mockResolvedValue('## Goal\nHOST SUMMARY')
   summaryWrites.length = 0
   contentWrites.length = 0
+  modelContextLength = 200_000
   sessionRef.current = makeSession()
 })
 
@@ -208,6 +212,33 @@ describe('P3 后端时限与进度', () => {
     expect(content.compactedThroughMessageId).toBe('assistant-4')
   })
 
+  it('超时可配:settings.chat.contextCompactChunkTimeoutSeconds 决定单块时限(默认 300s 不到不超时)', async () => {
+    generateChatResponse.mockImplementation(
+      (_providerId: string, _config: unknown, _messages: unknown, options: { abortSignal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          options.abortSignal?.addEventListener('abort', () => reject(new Error('aborted')))
+        }),
+    )
+
+    vi.useFakeTimers()
+    const settings = baseOptions.settings as { chat?: Record<string, unknown> }
+    const pending = compactSessionContext({
+      ...baseOptions,
+      settings: { ...settings, chat: { ...settings.chat, contextCompactChunkTimeoutSeconds: 600 } } as typeof baseOptions.settings,
+    })
+    // 默认 300s 已过、配置的 600s 未到:仍在等。
+    await vi.advanceTimersByTimeAsync(CONTEXT_COMPACT_CHUNK_TIMEOUT_MS + 1)
+    let settled = false
+    void pending.then(() => { settled = true })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(300_000)
+    const result = await pending
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('timed out after 600s')
+  })
+
   it('单块摘要不刷进度(不多发一条 message:updated)', async () => {
     const updates: Array<{ messageId: string; content: string }> = []
     await compactSessionContext({
@@ -223,11 +254,25 @@ describe('P3 后端时限与进度', () => {
     expect(parseContent(updates[0].content).progress).toBeUndefined()
   })
 
-  it('C6:多块摘要每块完成后 onProgress 各回调一次;单块不回调', async () => {
+  it('200k 窗口下 120k 字符仍是单块(块大小随窗口走,不再被写死的 80k 硬切)', async () => {
+    sessionRef.current.messages[0].content = 'x'.repeat(120_000)
+    const progress: Array<{ chunk: number; totalChunks: number }> = []
+
+    const result = await compactSessionContext({ ...baseOptions, onProgress: p => { progress.push(p) } })
+
+    expect(result.success).toBe(true)
+    expect(generateChatResponse).toHaveBeenCalledTimes(1)
+    expect(progress).toEqual([])
+  })
+
+  it('C6:多块摘要每步完成后 onProgress 各回调一次(N 块 + 1 次合并);单块不回调', async () => {
     const single: Array<{ chunk: number; totalChunks: number }> = []
     await compactSessionContext({ ...baseOptions, onProgress: p => { single.push(p) } })
     expect(single).toEqual([])
 
+    // 窗口调小 → 同一份内容被切成多块。
+    modelContextLength = 20_000
+    generateChatResponse.mockClear()
     sessionRef.current = makeSession()
     sessionRef.current.messages[0].content = 'x'.repeat(120_000)
     const many: Array<{ chunk: number; totalChunks: number }> = []
@@ -236,11 +281,14 @@ describe('P3 后端时限与进度', () => {
     expect(many.length).toBeGreaterThan(1)
     expect(many.map(p => p.chunk)).toEqual(many.map((_, index) => index + 1))
     expect(new Set(many.map(p => p.totalChunks)).size).toBe(1)
+    // 最后一步 = 合并,总步数 = 块数 + 1。
     expect(many[many.length - 1].chunk).toBe(many[0].totalChunks)
+    expect(generateChatResponse).toHaveBeenCalledTimes(many[0].totalChunks)
   })
 
-  it('多块摘要每块完成后刷一次带 progress 的 compacting 内容', async () => {
-    // 把待压内容撑到超过 MAX_CHUNK_CHARS(80000),逼出多块。
+  it('多块摘要每步完成后刷一次带 progress 的 compacting 内容', async () => {
+    // 窗口调小,把待压内容逼成多块。
+    modelContextLength = 20_000
     sessionRef.current.messages[0].content = 'x'.repeat(120_000)
 
     const updates: Array<{ status: string; progress?: { chunk: number; totalChunks: number } }> = []
@@ -261,6 +309,34 @@ describe('P3 后端时限与进度', () => {
       .toEqual(progressUpdates.map((_, index) => index + 1))
     // 最后一条一定是 completed。
     expect(updates[updates.length - 1].status).toBe('completed')
+  })
+
+  it('一块失败 → 其余在途块被批中止,错误原样冒出(不报成超时)', async () => {
+    modelContextLength = 20_000
+    sessionRef.current.messages[0].content = 'x'.repeat(120_000)
+
+    const signals: AbortSignal[] = []
+    let calls = 0
+    generateChatResponse.mockImplementation(
+      (_providerId: string, _config: unknown, _messages: unknown, options: { abortSignal?: AbortSignal }) => {
+        if (options.abortSignal) signals.push(options.abortSignal)
+        calls += 1
+        // 第一块直接炸,其余块挂着等批中止。
+        if (calls === 1) return Promise.reject(new Error('provider exploded'))
+        return new Promise((_resolve, reject) => {
+          options.abortSignal?.addEventListener('abort', () => reject(new Error('aborted')))
+        })
+      },
+    )
+
+    const result = await compactSessionContext(baseOptions)
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('provider exploded')
+    expect(result.error).not.toContain('timed out')
+    // 同批在途的其余块都被掐掉了。
+    expect(signals.length).toBeGreaterThan(1)
+    expect(signals.slice(1).every(signal => signal.aborted)).toBe(true)
   })
 })
 

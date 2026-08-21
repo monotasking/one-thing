@@ -157,3 +157,31 @@ export class AgentProviderError extends Error {
 - C2 的 raw 字段只进日志:错误文案给用户的通道仍走 `error-details.ts` 的人话化,不把响应体泼到 UI。
 - C3 的重试与 turn 级 auto-retry(`MAX_TURN_RETRIES`)是两个独立计数,溢出压缩重试不占用瞬时错误的 3 次配额;实现时在 runner 里分支清楚,测试锁死。
 - 全程不动 renderer(C0 的 trigger 字段对 ipc-hub 是可选新字段);P5 呈现届时直接受益(started 事件带 trigger,可区分"手动压缩中"与"自动整理中"文案)。
+
+### C7 分块策略与并行(2026-08-21 裁定,先于 C0-C4 单独实施)
+
+真机上多块压缩又慢又容易超时,拆开是三件事叠在一起:单块时限太短、块被写死切太碎、多块串行把墙钟时间乘上块数。三条一并裁定。
+
+1. **单块超时 120s → 300s,且可配**。`CONTEXT_COMPACT_CHUNK_TIMEOUT_MS` 默认值改 300_000,新增设置项 `settings.chat.contextCompactChunkTimeoutSeconds`(General → Chat,范围 30–1800s,越界夹住)。运行时一律经 `resolveContextCompactChunkTimeoutMs` 取值,常量只是默认。引擎总预算闸同源计算(`resolveContextCompactTotalBudgetMs` = 单块超时 × 5),不再有第二处写死的墙钟。
+
+2. **块大小随模型窗口走**。`MAX_CHUNK_CHARS`(80k)降级为**窗口未知时的回退值**;真正的块大小由 core 的纯函数 `resolveCompactChunkChars({ transcript, modelContextLength, reservedOutputTokens })` 算:
+
+   ```
+   usableTokens = modelContextLength − reservedOutputTokens − COMPACT_PROMPT_OVERHEAD_TOKENS(4_000)
+   usableTokens <= 0 或窗口未知 → MAX_CHUNK_CHARS
+   ratio       = transcript.length / estimateTextTokens(transcript)      // 实测,空转录取 4
+   chars       = floor(usableTokens × ratio × COMPACT_CHUNK_FILL_RATIO(0.8))
+   下限 MIN_CHUNK_CHARS(20_000),**不设上限**
+   ```
+
+   ratio 必须实测而不能写死 4:中英混排的 chars/token 比能差一倍,写死会让中文块超窗口。不设上限是明确取舍 —— 块越少,分块摘要的信息损耗越少;那一头的护栏是可配的单块超时,不是一个凭空的字符数。app 层 `summarizeInChunks` 从 `modelRegistry.getModelContextLength` 取窗口(失败 → undefined + `log.warn`,退回 80k),`reservedOutputTokens` 用摘要请求的 `maxTokens`(未知取 8_192)。效果:200k 窗口下块 ≈ 600k 字符,**多数会话就此退回单块**。
+
+3. **多块从串行滚动改 map-reduce 并行**。旧算法第 k 块带着第 k−1 块的摘要再请求,墙钟 = N 块之和,而且越靠后的块越容易被越滚越长的那份摘要挤掉细节。新算法:
+
+   - **map**:N 块**互不相干地并发**(`CONTEXT_COMPACT_MAX_CONCURRENCY = 4`)各出一份部分摘要,结果保持块顺序;`previousSummary` **不喂给部分摘要**(N 份摘要各自去改写同一份旧摘要没有意义)。每块的请求带 `<part index="k" total="N">` 一行,告诉模型它只看到了一段 —— 否则它会把中途截断的转录当成完整对话。
+   - **reduce**:一次 `kind:'merge'` 请求,把按序装进 `<partial-summaries>` 的 N 份部分摘要合成一份独立成立的摘要;指令正文在 `content/compact-merge.md`(六节模板照抄 compact.md,加"后面的部分反映更晚的状态、冲突时以它为准"和同一事项只留一次的规则)。有 `previousSummary` 时合并指令里额外套用 compact-update.md 的 PRESERVE / 移动 / 重写 Next Steps 规则。
+   - **进度是 N + 1 步**:`context:compact-progress { chunk, totalChunks }` 的字段名和消费者都不动,`totalChunks` 变成"块数 + 1 次合并",最后一步是合并完成。
+   - **fail-fast + 批中止**:任一块失败立即抛出、不再派发新块(core 侧 `mapWithConcurrency`),app 侧一个批级 `AbortController` 把在途的其余块一起掐掉 —— 剩下的块已无用武之地,跑完只是白烧 token。超时与批中止**必须分清**:用 `timedOut` 标志位判断,被别的块拖垮的块报成"超时"是在说谎,用户会去调一个不相干的设置。
+   - **单块路径逐字不变**:一次请求、不带 `part`、不报进度、提示词字节与从前完全相同。
+
+`## Goal` 的格式校验仍只校最终摘要(部分摘要不合格由 merge 兜);`billCompactUsage` 每次 provider 调用照记,merge 也算一次。
