@@ -2527,17 +2527,11 @@ function checkCoreOwnsGatewayConversationRuntimeProtocol(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/gateway-runtime.ts')
   const runtimeEntrypointFile = path.join(root, 'packages/onething-runtime/src/runtime.ts')
   const gatewayPackageFile = path.join(root, 'packages/gateway/package.json')
-  const tsconfigFile = path.join(root, 'tsconfig.json')
-  const viteConfigFile = path.join(root, 'onething.aliases.ts')
-  const vitestConfigFile = path.join(root, 'onething.aliases.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeEntrypointContent = fs.existsSync(runtimeEntrypointFile) ? fs.readFileSync(runtimeEntrypointFile, 'utf-8') : ''
   const gatewayPackageContent = fs.existsSync(gatewayPackageFile) ? fs.readFileSync(gatewayPackageFile, 'utf-8') : ''
-  const tsconfigContent = fs.existsSync(tsconfigFile) ? fs.readFileSync(tsconfigFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfigFile) ? fs.readFileSync(viteConfigFile, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfigFile) ? fs.readFileSync(vitestConfigFile, 'utf-8') : ''
   const gatewayAndHostFiles = [
     ...walkFiles(path.join(root, 'packages/gateway')),
     path.join(root, 'apps/electron/src/gateway/lifecycle-controller.ts'),
@@ -2586,15 +2580,6 @@ function checkCoreOwnsGatewayConversationRuntimeProtocol(): void {
       : []),
     ...(!gatewayPackageContent.includes('"@onething/core"')
       ? [`${rel(gatewayPackageFile)}: gateway package must depend on core protocol types`]
-      : []),
-    ...(!tsconfigContent.includes('"@onething/core/gateway-runtime"')
-      ? [`${rel(tsconfigFile)}: missing @onething/core/gateway-runtime TS path`]
-      : []),
-    ...(!viteContent.includes('@onething/core/gateway-runtime')
-      ? [`${rel(viteConfigFile)}: missing @onething/core/gateway-runtime Vite alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/core/gateway-runtime')
-      ? [`${rel(vitestConfigFile)}: missing @onething/core/gateway-runtime Vitest alias`]
       : []),
     ...gatewayAndHostFiles.flatMap(file => matchingLines(file, [
       /@onething\/runtime\/gateway/,
@@ -2735,12 +2720,6 @@ function checkGatewayOwnsEnablementConfig(): void {
   const gatewayConfigContent = fs.existsSync(gatewayConfigFile) ? fs.readFileSync(gatewayConfigFile, 'utf-8') : ''
   const gatewayPackageContent = fs.existsSync(gatewayPackageFile) ? fs.readFileSync(gatewayPackageFile, 'utf-8') : ''
   const electronGatewayContent = fs.existsSync(electronGatewayFile) ? fs.readFileSync(electronGatewayFile, 'utf-8') : ''
-  const tsconfigFile = path.join(root, 'tsconfig.json')
-  const viteConfigFile = path.join(root, 'onething.aliases.ts')
-  const vitestConfigFile = path.join(root, 'onething.aliases.ts')
-  const tsconfigContent = fs.existsSync(tsconfigFile) ? fs.readFileSync(tsconfigFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfigFile) ? fs.readFileSync(viteConfigFile, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfigFile) ? fs.readFileSync(vitestConfigFile, 'utf-8') : ''
   const requiredGatewaySymbols = [
     'isGatewayEnabledFromEnv',
     'ONETHING_GATEWAY',
@@ -2757,15 +2736,6 @@ function checkGatewayOwnsEnablementConfig(): void {
       : []),
     ...(!gatewayPackageContent.includes('"./config": "./src/config.ts"')
       ? [`${rel(gatewayPackageFile)}: missing @onething/gateway/config export`]
-      : []),
-    ...(!tsconfigContent.includes('"@onething/gateway/config"')
-      ? [`${rel(tsconfigFile)}: missing @onething/gateway/config TS path`]
-      : []),
-    ...(!viteContent.includes('@onething/gateway/config')
-      ? [`${rel(viteConfigFile)}: missing @onething/gateway/config Vite alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/gateway/config')
-      ? [`${rel(vitestConfigFile)}: missing @onething/gateway/config Vitest alias`]
       : []),
     ...(!electronGatewayContent.includes('@onething/gateway/config')
       ? [`${rel(electronGatewayFile)}: Electron gateway lifecycle must delegate enablement to @onething/gateway/config`]
@@ -6227,12 +6197,10 @@ function checkCoreOwnsStreamChunkProtocol(): void {
   const coreIndexFile = path.join(root, 'packages/core/events/index.ts')
   const coreTestFile = path.join(root, 'packages/core/events/__tests__/stream-chunks.test.ts')
   const sharedFile = path.join(root, 'packages/shared/events/stream-chunks.ts')
-  const webTsconfigFile = path.join(root, 'tsconfig.web.json')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
   const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
-  const webTsconfigContent = fs.existsSync(webTsconfigFile) ? fs.readFileSync(webTsconfigFile, 'utf-8') : ''
   const requiredSymbols = [
     'TextDeltaChunk',
     'ReasoningPlacement',
@@ -6259,9 +6227,6 @@ function checkCoreOwnsStreamChunkProtocol(): void {
     ...(!sharedContent.includes('@onething/core/events')
       ? [`${rel(sharedFile)}: legacy shared stream chunks must re-export core event protocol`]
       : []),
-    ...(!webTsconfigContent.includes('"@onething/core/*"')
-      ? [`${rel(webTsconfigFile)}: web typecheck must resolve @onething/core event protocol imports`]
-      : []),
     ...(fs.existsSync(sharedFile)
       ? matchingLines(sharedFile, SHARED_STREAM_CHUNK_PROTOCOL_FORBIDDEN_PATTERNS)
       : [`${rel(sharedFile)}: missing legacy stream chunk facade`]),
@@ -6276,15 +6241,11 @@ function checkCoreOwnsJsonProtocol(): void {
   const corePackageFile = path.join(root, 'packages/core/package.json')
   const coreTestFile = path.join(root, 'packages/core/__tests__/json.test.ts')
   const sharedFile = path.join(root, 'packages/shared/json.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
   const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
   const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredSymbols = [
     'JsonPrimitive',
     'JsonValue',
@@ -6323,12 +6284,6 @@ function checkCoreOwnsJsonProtocol(): void {
     ...(/from\s+['"]@onething\/core['"]/.test(sharedContent)
       ? [`${rel(sharedFile)}: legacy shared JSON protocol must not import broad core root entrypoint`]
       : []),
-    ...(!viteContent.includes('@onething/core/json')
-      ? [`${rel(viteConfig)}: missing @onething/core/json build alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/core/json')
-      ? [`${rel(vitestConfig)}: missing @onething/core/json test alias`]
-      : []),
     ...(fs.existsSync(sharedFile)
       ? matchingLines(sharedFile, SHARED_JSON_PROTOCOL_FORBIDDEN_PATTERNS)
       : [`${rel(sharedFile)}: missing legacy JSON protocol facade`]),
@@ -6345,16 +6300,12 @@ function checkCoreOwnsIpcRouterProtocol(): void {
   const sharedFile = path.join(root, 'packages/shared/ipc/router.ts')
   const legacySharedTestFile = path.join(root, 'packages/shared/ipc/__tests__/router.test.ts')
   const preloadCreateApiFile = path.join(root, 'apps/electron/src/preload/create-api.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
   const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
   const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
   const preloadCreateApiContent = fs.existsSync(preloadCreateApiFile) ? fs.readFileSync(preloadCreateApiFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const requiredSymbols = [
     'RoutePayload',
     'RouteConfig',
@@ -6403,12 +6354,6 @@ function checkCoreOwnsIpcRouterProtocol(): void {
       : []),
     ...(preloadCreateApiContent.includes('packages/shared/ipc/router') || preloadCreateApiContent.includes('../../shared/ipc/router')
       ? [`${rel(preloadCreateApiFile)}: Electron preload API factory must not import legacy shared IPC router protocol`]
-      : []),
-    ...(!viteContent.includes("'@onething/core/ipc'") && !viteContent.includes('"@onething/core/ipc"')
-      ? [`${rel(viteConfig)}: missing @onething/core/ipc build alias`]
-      : []),
-    ...(!vitestContent.includes("'@onething/core/ipc'") && !vitestContent.includes('"@onething/core/ipc"')
-      ? [`${rel(vitestConfig)}: missing @onething/core/ipc test alias`]
       : []),
   ]
 

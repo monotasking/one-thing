@@ -11,6 +11,6 @@
     "./telegram": "./src/channels/telegram/index.ts"
   },
   "dependencies": {
-    "@onething/core": "file:../core"
+    "@onething/core": "*"
   }
 }

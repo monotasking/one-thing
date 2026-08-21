@@ -587,14 +587,18 @@ Note: `apps/electron/src/ipc/*` is a second, portable tree (`register*IpcHandler
 
 ### Alias Registry
 
-`onething.aliases.ts` (repo root) is the **single source of truth** for all `@onething/*` resolution, consumed by all four build/test configs: `electron.vite.config.ts`, `vitest.config.ts`, `apps/web/vite.config.ts`, `apps/server/vite.config.ts`. Families: `@onething/app` (ONE prefix entry — do not add per-file entries), `@onething/core` + explicit subpaths, `@onething/gateway`, `@onething/runtime` (~110 explicit subpaths). `@onething/electron-host/*` is **not** in that table — it is apps/electron's internal path family, not a package, so it lives in a separate `electronHostAliases` export (2 regex entries: the `window` barrel anchored above a `apps/electron/src/$1.ts` catch-all) that only `electron.vite.config.ts` and `vitest.config.ts` spread. `@shared`/`@main`/`@renderer`/`@`/`@preload` are declared per-config, not here. Package.json "exports" maps are dead (no npm workspaces).
+Two mechanisms, and which one a package uses is a fact about that package, not a style choice.
+
+**Real workspace packages (node resolves them).** Root `package.json` declares `"workspaces": ["packages/core", "packages/gateway"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` links them at `node_modules/@onething/{core,gateway}`, so `@onething/core` / `@onething/gateway` resolve through **their own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` in all three tsconfigs honours exports pointing straight at `.ts` sources). There is no alias entry and no tsconfig `paths` entry for them: **add a new subpath to `packages/core/package.json` "exports"**, and a missing one now fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` — electron-vite's `externalizeDepsPlugin` reads that list and would externalize them, and the asar has no built `.js` behind those exports (`workspaces` and `dependencies` are unrelated fields).
+
+**Alias table (everything not yet a package).** `onething.aliases.ts` (repo root) still resolves `@onething/app` (ONE prefix entry — do not add per-file entries) and `@onething/runtime` (~110 explicit subpaths), consumed by all four build/test configs: `electron.vite.config.ts`, `vitest.config.ts`, `apps/web/vite.config.ts`, `apps/server/vite.config.ts`. `@onething/electron-host/*` is **not** in that table — it is apps/electron's internal path family, not a package, so it lives in a separate `electronHostAliases` export (2 regex entries: the `window` barrel anchored above a `apps/electron/src/$1.ts` catch-all) that only `electron.vite.config.ts` and `vitest.config.ts` spread. `@shared`/`@main`/`@renderer`/`@`/`@preload` are declared per-config, not here.
 
 **Adding a new runtime subpath:**
 
 1. Add the entry in `onething.aliases.ts`, keeping longer prefixes above shorter siblings (string finds are prefix matchers, first match wins). That single edit propagates to all four configs.
 2. tsconfig wildcards (`@onething/runtime/*` etc. in `tsconfig.json`) already accept any subpath — no tsconfig edit for a subpath. Only a brand-new top-level family needs a `paths` entry in `tsconfig.json` (and `tsconfig.web.json` if renderer-visible — it redeclares its own paths and has no `@onething/app`).
 
-Failure mode: a missing aliases entry fails only at build/run time, never at typecheck (the wildcards accept everything).
+Failure mode of the alias table: a missing entry fails only at build/run time, never at typecheck (the wildcards accept everything). The workspace packages do not have that failure mode — that is the point of moving families over.
 
 ### Directory Structure
 

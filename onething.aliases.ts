@@ -1,12 +1,19 @@
 /**
- * The single source of truth for @onething/* module resolution.
+ * Module resolution for the @onething/* families that are NOT yet real
+ * workspace packages — today that is `@onething/app` + `@onething/runtime`
+ * (P1'-2 will move them to `packages/onething-runtime/package.json` exports).
  *
- * package.json "exports" maps are dead here (no npm workspaces — everything
- * resolves from source via these aliases), and four configs used to carry
- * hand-synced copies of this table (electron-vite, vitest, apps/server,
- * apps/web). Missing an entry fails only at build/run time, never at
- * typecheck (tsconfig wildcards accept any subpath) — so keep exactly one
- * table and spread it everywhere.
+ * `@onething/core` and `@onething/gateway` are gone from this table: since
+ * P1'-1 they are real npm workspaces (root package.json `workspaces`), so
+ * node/vite/vitest/tsc all resolve them through their own package.json
+ * "exports" — one table, and a missing subpath now fails at typecheck
+ * instead of only at build/run time. Add new core/gateway subpaths there,
+ * never here.
+ *
+ * For what remains: four configs used to carry hand-synced copies of this
+ * table (electron-vite, vitest, apps/server, apps/web). Missing an entry
+ * fails only at build/run time, never at typecheck (tsconfig wildcards
+ * accept any subpath) — so keep exactly one table and spread it everywhere.
  *
  * Ordering matters: string finds are prefix matchers, first match wins —
  * keep longer prefixes before their shorter siblings within each family.
@@ -23,54 +30,6 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   // Product assembly tree (the former apps/electron/src/main). One prefix
   // entry covers every subpath — do NOT add per-file entries for it.
   { find: '@onething/app', replacement: resolve(projectRoot, 'packages/onething-runtime/src/app') },
-  { find: '@onething/core/actors', replacement: resolve(projectRoot, 'packages/core/actors/index.ts') },
-  { find: '@onething/core/agent-loop', replacement: resolve(projectRoot, 'packages/core/agent-loop/index.ts') },
-  // Browser-safe leaf module (no node deps) — must be registered BEFORE the
-  // engine barrel so the renderer never drags node:crypto into the bundle.
-  { find: '@onething/core/engine/attachment-mime', replacement: resolve(projectRoot, 'packages/core/engine/attachment-mime.ts') },
-  { find: '@onething/core/engine/streaming-args', replacement: resolve(projectRoot, 'packages/core/engine/streaming-args.ts') },
-  // §13.9:引擎回合号的那一条判定规则。采集点要读它,而引擎 barrel(以及
-  // agent-loop-executor 本体)会把整棵执行器模块图拖进记录器的单测。
-  { find: '@onething/core/engine/agent-loop-turn', replacement: resolve(projectRoot, 'packages/core/engine/agent-loop-turn.ts') },
-  { find: '@onething/core/engine', replacement: resolve(projectRoot, 'packages/core/engine/index.ts') },
-  { find: '@onething/core/events', replacement: resolve(projectRoot, 'packages/core/events/index.ts') },
-  { find: '@onething/core/gateway-runtime', replacement: resolve(projectRoot, 'packages/core/gateway-runtime.ts') },
-  { find: '@onething/core/http', replacement: resolve(projectRoot, 'packages/core/http/index.ts') },
-  { find: '@onething/core/interaction', replacement: resolve(projectRoot, 'packages/core/interaction/index.ts') },
-  { find: '@onething/core/ipc', replacement: resolve(projectRoot, 'packages/core/ipc/index.ts') },
-  { find: '@onething/core/json', replacement: resolve(projectRoot, 'packages/core/json.ts') },
-  { find: '@onething/core/logging', replacement: resolve(projectRoot, 'packages/core/logging/index.ts') },
-  { find: '@onething/core/mcp', replacement: resolve(projectRoot, 'packages/core/mcp/index.ts') },
-  { find: '@onething/core/permission', replacement: resolve(projectRoot, 'packages/core/permission/index.ts') },
-  // Browser-safe leaf module (zero imports, pure serialization logic) — must be
-  // registered BEFORE the plugins barrel so the renderer never drags loader.ts
-  // (node:url 的 pathToFileURL) into the bundle;桶一进浏览器包就在求值时炸。
-  { find: '@onething/core/plugins/request-channel', replacement: resolve(projectRoot, 'packages/core/plugins/request-channel.ts') },
-  // Same reason as request-channel: a zero-import leaf (N1 的会话动词协议:枚举 +
-  // 常量 + 纯函数),披露文案要在设置页复用同一份口径,所以它必须排在桶前面。
-  { find: '@onething/core/plugins/sessions', replacement: resolve(projectRoot, 'packages/core/plugins/sessions.ts') },
-  // 同理的第三片叶子(M1 通知音效集):枚举 + 常量 + 纯函数,零 import。
-  // 音效名的事实源要被 renderer 的合成配方表引用(exhaustive Record),所以它
-  // 必须排在桶前面 —— 走桶会把 loader.ts 拖进浏览器包。
-  { find: '@onething/core/plugins/notify-sound', replacement: resolve(projectRoot, 'packages/core/plugins/notify-sound.ts') },
-  // 第四片叶子(H4 深链协议):枚举 + 常量 + 纯解析函数,零 import。确认卡要在
-  // renderer 侧复用同一份口径(长度上限、可见拒绝),所以它必须排在桶前面。
-  { find: '@onething/core/plugins/deep-link', replacement: resolve(projectRoot, 'packages/core/plugins/deep-link.ts') },
-  { find: '@onething/core/plugins', replacement: resolve(projectRoot, 'packages/core/plugins/index.ts') },
-  { find: '@onething/core/session/storage', replacement: resolve(projectRoot, 'packages/core/session/storage/index.ts') },
-  { find: '@onething/core/session', replacement: resolve(projectRoot, 'packages/core/session/index.ts') },
-  { find: '@onething/core/slash-commands', replacement: resolve(projectRoot, 'packages/core/slash-commands.ts') },
-  { find: '@onething/core/storage', replacement: resolve(projectRoot, 'packages/core/storage/index.ts') },
-  // 工具系统内核(docs/design/tool-system-oop-2026-08.md §3)。与下面的 tools 互不
-  // 为前缀('toolk' ≠ 'tools'),但仍按字典序排在它前面,别让人以为顺序无所谓。
-  { find: '@onething/core/toolkit', replacement: resolve(projectRoot, 'packages/core/toolkit/index.ts') },
-  { find: '@onething/core/tools', replacement: resolve(projectRoot, 'packages/core/tools/index.ts') },
-  { find: '@onething/core', replacement: resolve(projectRoot, 'packages/core/index.ts') },
-  { find: '@onething/gateway/config', replacement: resolve(projectRoot, 'packages/gateway/src/config.ts') },
-  { find: '@onething/gateway/core', replacement: resolve(projectRoot, 'packages/gateway/src/core/index.ts') },
-  { find: '@onething/gateway/telegram', replacement: resolve(projectRoot, 'packages/gateway/src/channels/telegram/index.ts') },
-  { find: '@onething/gateway/wechat', replacement: resolve(projectRoot, 'packages/gateway/src/channels/wechat/index.ts') },
-  { find: '@onething/gateway', replacement: resolve(projectRoot, 'packages/gateway/src/index.ts') },
   { find: '@onething/runtime/logging', replacement: resolve(projectRoot, 'packages/onething-runtime/src/logging/index.ts') },
   { find: '@onething/runtime/headless', replacement: resolve(projectRoot, 'packages/onething-runtime/src/headless/index.ts') },
   { find: '@onething/runtime/runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/runtime.ts') },

@@ -15,12 +15,6 @@
     "allowSyntheticDefaultImports": true,
     "baseUrl": ".",
     "paths": {
-      "@onething/core": ["packages/core/index.ts"],
-      "@onething/core/gateway-runtime": ["packages/core/gateway-runtime.ts"],
-      "@onething/core/*": ["packages/core/*/index.ts", "packages/core/*"],
-      "@onething/gateway": ["packages/gateway/src/index.ts"],
-      "@onething/gateway/config": ["packages/gateway/src/config.ts"],
-      "@onething/gateway/*": ["packages/gateway/src/*/index.ts", "packages/gateway/src/*"],
       "@onething/electron-host/*": ["apps/electron/src/*"],
       "@onething/runtime": ["packages/onething-runtime/src/index.ts"],
       "@onething/runtime/*": ["packages/onething-runtime/src/*"],

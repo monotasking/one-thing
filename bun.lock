@@ -109,6 +109,17 @@
         "vue-tsc": "^3.1.8",
       },
     },
+    "packages/core": {
+      "name": "@onething/core",
+      "version": "0.0.0",
+    },
+    "packages/gateway": {
+      "name": "@onething/gateway",
+      "version": "0.0.0",
+      "dependencies": {
+        "@onething/core": "*",
+      },
+    },
   },
   "trustedDependencies": [
     "electron",
@@ -385,6 +396,10 @@
     "@npmcli/fs": ["@npmcli/fs@4.0.0", "", { "dependencies": { "semver": "^7.3.5" } }, ""],
 
     "@one-ini/wasm": ["@one-ini/wasm@0.1.1", "", {}, "sha512-XuySG1E38YScSJoMlqovLru4KTUNSjgVTIjyh7qMX6aNN5HY5Ct5LhRJdxO79JtTzKfzV/bnWpz+zquYrISsvw=="],
+
+    "@onething/core": ["@onething/core@workspace:packages/core"],
+
+    "@onething/gateway": ["@onething/gateway@workspace:packages/gateway"],
 
     "@openrouter/sdk": ["@openrouter/sdk@0.3.10", "", { "dependencies": { "zod": "^3.25.0 || ^4.0.0" } }, ""],
 

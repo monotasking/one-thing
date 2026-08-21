@@ -11,6 +11,11 @@
 		"onething": "./bin/onething.mjs"
 	},
 	"type": "module",
+	"//workspaces": "逐个列包,绝不写 packages/* 或 apps/* glob(apps/mobile 带 expo + react-native 全套依赖)。且 @onething/* 永不进本文件的 dependencies —— 一进去 electron-vite 的 externalizeDepsPlugin 就会把它们 externalize,而 exports 指向 .ts 源,asar 里没有可执行文件。",
+	"workspaces": [
+		"packages/core",
+		"packages/gateway"
+	],
 	"scripts": {
 		"dev": "node scripts/dev-unified.mjs",
 		"dev:electron": "node scripts/dev-unified.mjs electron",

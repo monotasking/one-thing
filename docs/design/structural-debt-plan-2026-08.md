@@ -327,6 +327,45 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
      13 红无变化无 healed;`out/main|preload/index.js` 零 `@onething/electron-host` 残留,`build`/`server:build`/
      `web:build` 全绿。CLAUDE.md Alias Registry 段同步。遗留:`sessions-delete-cascade.test.ts` 全量跑偶发
      1s 超时(fs 级联时序 flake,单跑 3/3 过)——与本线无关,记一笔。
+   - **P1'-1 落地记录(08-21)**:`packages/core` + `packages/gateway` 变**真 workspace 包**。根
+     `package.json` 加 `"workspaces": ["packages/core","packages/gateway"]`(逐个列包,不写 glob);
+     根 `dependencies` 一个 `@onething/*` 都没加(红线①)。`packages/core/package.json` exports 24 → 31,
+     补齐与 alias 表漂移的 7 条:`./engine/agent-loop-turn`、`./interaction`、`./toolkit`、
+     `./plugins/{deep-link,notify-sound,request-channel,sessions}`;gateway 5 条 exports 与 alias 0 缺口,
+     只把 `dependencies["@onething/core"]` 从 `file:../core` 改成 `"*"`(npm 不认 `workspace:` 协议)。
+     `onething.aliases.ts` 242 → 194 行(core 27 + gateway 5 条连注释块整片删除),`tsconfig.json` 删 6 条
+     paths、`tsconfig.web.json` 删 2 条;`headless-boundary-check.ts` −55 行(11 条查 aliases.ts/tsconfig
+     "登记"的断言:gateway-runtime 3、gateway/config 3、web tsconfig `@onething/core/*` 1、core/json 2、
+     core/ipc 2 —— 查 `package.json` exports 的那几条**保留**,那才是新的事实源;外加随之变死的 11 条
+     变量声明,eslint 该文件告警 25 → 23)。
+     `.js` 后缀零命中(`rg "@onething/(core|gateway)/[^']*\.js"` = 0),core 不需要 `"./*.js"` 通配。
+   - **锁文件(Fable 复核纠正)**:`package-lock.json` 因根 package.json 早已漂移(`npm ci` 在 HEAD 就 ERESOLVE,
+     `--legacy-peer-deps` 会 removed 120),执行者按 npm 11.9 lockfileVersion 3 的 workspace 记录格式手工补写
+     4 条(+23 行 0 删),`require.resolve` 八子路径全通;**但 `bun.lock` 不能不动**——执行者判断"bun 会自愈",
+     Fable 在临时目录复现 `bun install --frozen-lockfile` → **"lockfile had changes, but lockfile is frozen"**,
+     而 CI 三条 workflow 都以 `bun install`(test.yml 带 `--frozen-lockfile`)起步,不改即 CI 红。
+     用 `bun install --lockfile-only` 在临时目录生成后拷回:只多 4 条 workspace 记录(+15 行),frozen 通过。
+     **遗留单独立项**:根 package.json ↔ package-lock.json 的既有漂移(与结构债无关,`npm ci` 已红)。
+   - **零 import 改写、零 `noExternal` 兜底**:`dist/server/main.js` 的 `@onething/` = **0**,
+     `out/main/index.js` / `out/preload/index.js` 的 `@onething` = **0 / 0** —— vite SSR 与 electron main
+     都把 symlink 包当 linked package 走源码,那条"唯一须实测的风险"实测不存在。
+   - **打包判据**:`run-electron-builder.mjs --dir` 改动前后 preflight 都是 **286 个包(采集器 = npm)**,
+     asar 里 `node_modules/@onething` = 0 条。electron-builder 26.4 新打一行
+     `detected workspace root for project`,但闭包不变 —— 调研结论(`isProdDependency` 按根 `_dependencies`
+     过滤)得到实证。
+   - **门禁**:`boundary` ok **192**、failed **13**,与改动前逐字一致(删的是 check 内部的断言、不是整条
+     check,所以 ok 行数没变);`boundary:gate` 绿;`transport:gate` 无上升。
+   - **锁文件的坑**:本仓 `package.json` 与 `package-lock.json` 早已漂移 —— 在**未改动**的树上
+     `npm install --dry-run` 直接 ERESOLVE(tiptap peer 冲突),`--legacy-peer-deps` 会 removed 120、
+     `--force` 会 removed 30 / changed 39,全是与 workspace 化无关的既有漂移。为了不把这坨 churn 混进本
+     切片,workspace 的四条 lock 记录(`node_modules/@onething/{core,gateway}` link + `packages/{core,
+     gateway}` + 根 entry 的 `workspaces`)按 npm 11.9 的 lockfileVersion 3 格式逐条补写(格式先在 /tmp
+     用一个最小 offline workspace 跑真 `npm install` 取到,不是手编),symlink 手工建;`package-lock.json`
+     净 +23 行 0 删除。`bun.lock` 未变(bun 从 `package.json` 直接认出
+     `@onething/core@workspace:packages/core`,会自愈)。**遗留:根 package.json ↔ package-lock.json 的
+     既有漂移应单独立一条治,别夹带在结构债线里 —— `npm ci --dry-run` 在**未改动的树上**就已经
+     ERESOLVE 红(已 stash 实证),不是本切片弄红的。**
+   - 遗留同 P1'-0:`sessions-delete-cascade.test.ts` 全量跑偶发失败(单跑 3/3 过),与本线无关。
 
 ### P2 boundary 清偿 + parity 测试(2–3 天)
 

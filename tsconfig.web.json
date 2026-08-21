@@ -11,8 +11,6 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "baseUrl": ".",
     "paths": {
-      "@onething/core": ["packages/core/index.ts"],
-      "@onething/core/*": ["packages/core/*/index.ts", "packages/core/*"],
       "@onething/runtime": ["packages/onething-runtime/src/index.ts"],
       "@onething/runtime/*": ["packages/onething-runtime/src/*"],
       "@/*": ["packages/renderer/*"],
