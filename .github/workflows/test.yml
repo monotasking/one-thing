@@ -22,3 +22,34 @@ jobs:
 
       - name: Run tests
         run: bun run test
+
+  # 结构门禁(docs/design/structural-debt-plan-2026-08.md §2 P0.5):五道棘轮只在有人手动跑时
+  # 才说话,transport 门红了两天无人理。进 CI 后任一红则 PR 红。
+  # sessions:verify:gate 依赖本机 store,不在这里跑。
+  gates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: boundary:gate
+        run: bun run boundary:gate
+
+      - name: transport:gate
+        run: bun run transport:gate
+
+      - name: ui:gate
+        run: bun run ui:gate
+
+      - name: log:gate
+        run: bun run log:gate
+
+      - name: session:gate
+        run: bun run session:gate

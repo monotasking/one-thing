@@ -1,8 +1,19 @@
 # transport ratchet baseline (主线 T1)
 # 只许降不许升。降了之后跑 `bun run transport:gate --write-baseline` 收紧。
 # 生成于 2026-08-14；每一行是 `<指标名> <数值>`。
-channels:IPC_CHANNELS 337
-lines:apps/electron/src/preload/bridge.ts 1737
-lines:packages/onething-runtime/src/app/server/http.ts 1989
-lines:packages/renderer/platform/web.ts 1718
-lines:packages/shared/ipc/channels.ts 535
+# ---- 2026-08-21 按项重写(结构债 P0.3/P0.5,docs/design/structural-debt-plan-2026-08.md §2)----
+# 起点=08-14 基线(channels 337 / bridge 1737 / http 1989 / web 1718 / channels.ts 535)。
+# 08-19 `2603c665` 一笔 dump 提交越过了本门;08-21 spaces 整域迁 router 后重测,差额逐项如下:
+#  channels:IPC_CHANNELS 337→329:spaces 13 条 invoke 已删(−13);+3 todo-plan 窗口(minimize/zoom/drag,
+#    BrowserWindow 操作,属 P4 终态"窗口系残留集",拍板 #10)+ SPACES_CHANGED 广播(router 无推送面)+1;净 −8。
+#  lines:web.ts 1718→1707:删 13 条 /api/spaces soft-fail 桩与 softJson;净 −11。
+#  lines:bridge.ts 1737→1855(+118):import/type 块 +51、注释 +20、其它包装体 +63(onSpacesChanged 订阅、
+#    todo-plan 窗口 3 条、withPlainCommandMentions 展开、OAuth 包装重排),通道引用净 −9 —— 不是新增手写通道。
+#  lines:http.ts 1989→2028(+39):L0/L1 server 请求日志(91ab846e),非通道。
+#  lines:channels.ts 535→541(+6):+3 todo-plan 窗口常量 +1 SPACES_CHANGED + 注释;−13 spaces。
+# 此后基线不再手改;只由 `--write-baseline` 在指标下降时收紧。任何上升 = 红,CI 的 gates job 会拦。
+channels:IPC_CHANNELS 329
+lines:apps/electron/src/preload/bridge.ts 1855
+lines:packages/onething-runtime/src/app/server/http.ts 2028
+lines:packages/renderer/platform/web.ts 1707
+lines:packages/shared/ipc/channels.ts 541

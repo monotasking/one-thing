@@ -70,8 +70,13 @@
   `CoreStreamEngine → OnethingStreamEngine → StreamEngine`。路径和文件名都不携带角色,所以"不知道找哪一个"。
 - 支撑 app 树存在的规则("只有 app 可 import `@shared/ipc`")只覆盖 138/359 文件;215 个 app 文件根本不碰
   `@shared`,住在 app 只是树的规定不是依赖;runtime 产品层碰 `@shared` 的只有 8 个文件。
-- 两个追踪断点:**A** 命令总线按约定派发(`command:send-message` → `handleSendMessageCommand`),字面量 grep
-  与 go-to-definition 同时失效;**B** 旧路 IPC 六跳两次字符串键跨进程(platformApi → platform/electron → preload
+- 两个追踪断点:**A** 命令总线——(08-21 开工时纠正:字面量订阅点是存在的,
+  `core/engine/headless-stream-engine.ts:201` `eventBus.onAnySession('command:send-message', …)`,
+  grep 落得到;真正的摩擦是之后的 **四类三树 override 链**:`HeadlessStreamEngine.handleSendMessageCommand`(抽象)
+  → `CoreStreamEngine.handleSendMessageCommand` → `handleSendMessage` → `runtime/stream-engine.ts OnethingStreamEngine`
+  → `app/engine/stream-engine.ts StreamEngine.handleSendMessage`(override + super),每一跳换一棵树——
+  这是 I1/I2 的问题,归 P3'd 引擎归位,**不是派发表问题**,原 P0.5 第 1 项撤销);
+  **B** 旧路 IPC 六跳两次字符串键跨进程(platformApi → platform/electron → preload
   bridge `invoke(IPC_CHANNELS.X)` → `ipcMain.handle(IPC_CHANNELS.X)` → src/ipc 工厂 → 实现),bridge.ts 375 处
   `IPC_CHANNELS.`、main/ipc 64 个 handle;router 域(12 个)是 3 跳且类型贯通,追起来明显顺。
 
@@ -109,7 +114,7 @@ apps/
 | I1 | **一个领域一个家**:领域目录名在 `core` 之外只出现一次;`core/<d>` 是契约,`runtime/<d>` 是全部实现 | `architecture-boundaries.test.ts` 新断言:枚举 runtime/backend 顶层目录名,交集为空 |
 | I2 | **相对路径不得跨包重复**:`core/plugins/loader.ts` 与 `runtime/plugins/loader.ts` 不得并存(`index.ts`/`types.ts` 除外);要么合并,要么名字带角色 | 同上,新断言 |
 | I3 | **角色在文件名**:`*.wiring.ts` 才能 import `@shared/ipc`;非 wiring 文件不得 import wiring 文件 | `checkRuntimeHostBoundary` 从 `startsWith(appRoot)` 改为文件名模式 |
-| I4 | **间接层可被字面量 grep / IDE 穿透**:命令总线显式派发表;IPC 只剩 router 三件套(`shared/ipc/<d>.ts` + `backend/rpc/domains/<d>.ts` + `rpc.<d>`,同名);alias 由真 workspace 解析 | 派发表 `satisfies Record<SessionCommand['type'], …>`;`transport:gate` 改硬红;alias 表删除 |
+| I4 | **间接层可被字面量 grep / IDE 穿透**:命令总线字面量订阅点已有(`headless-stream-engine.ts`),其后的引擎 override 链由 I1/I2 归位;IPC 只剩 router 三件套(`shared/ipc/<d>.ts` + `backend/rpc/domains/<d>.ts` + `rpc.<d>`,同名);alias 由真 workspace 解析 | `transport:gate` 改硬红;alias 表删除;引擎链归 P3'd |
 
 读代码的固定路线(由上面四条保证走得通):自顶向下 `apps/electron → backend/backend.ts → backend/engine →
 runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组件 → platform/rpc.<d>.m() → shared/ipc/<d>.ts
@@ -242,17 +247,36 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
    - 迁完 spaces 重测;若 bridge/web 行数仍高于 08-14 基线(`2603c665` 还带入了 import 块与注释重排),
      **允许按项重写基线,但基线文件里必须逐项注明差额来源**(todo-plan 窗口 3 条 + 重排行数),
      之后由 P0.5 改硬红。http.ts +39 是 server 请求日志,同样注明。
+   - **08-21 落地记录**:spaces 整域迁完(`shared/ipc/spaces.ts` `spacesRouter` 13 方法 +
+     `app/rpc/domains/spaces.ts` + `renderer/platform/spaces-client.ts`;删 `apps/electron/src/ipc/spaces*.ts`、
+     bridge 13 条、web 13 条桩 + `softJson`、channels 13 常量;`main/ipc/spaces.ts` 只剩广播;server 零改动)。
+     重测:channels 337→329、web 1718→1707 **跌破基线**;bridge 1737→1855 经逐行归类 = import/type 块 +51、
+     注释 +20、包装体 +63、**通道引用净 −9**(净新增手写通道引用只有 `SPACES_CHANGED` 广播 + todo-plan 窗口 3 条);
+     http +39 = 日志;channels.ts +6 = 3 窗口常量 + 广播 + 注释。基线已按项注明重写(见基线文件头),门绿。
+     **拍板 #11(行为变化,按判例处理但须知会)**:web 端原来的 13 条 `/api/spaces*` 桩打的是 server 上不存在的路由,
+     必然失败 → 降级"只有默认空间";迁 router 后 web 经 `POST /api/rpc` **真的拿到空间列表与 per-space provider 设置**。
+     与 agents / models 迁移时"server 收敛到同一份 store"同一判例,桌面行为零变化;若要保持 web 降级需人为关闭,
+     默认不做。另:`getProviderSettings`/`setProviderSettings` 两处 `as` 强转是把 runtime(`Record<string, unknown>`,
+     存储层故意不透明)与契约(`Record<string, ProviderConfig>`)之间原本藏在 controller `unknown` 里的缝写到明面,
+     根治要两侧共用一份形状——另一个决定,未自行裁定。
 4. 验收门:`git status` 干净;`bun run test` + `boundary:gate` + `ui:gate` + `session:gate` +
    `log:gate` + **`transport:gate`** 全绿。
 
-### P0.5 断点 A 派发表 + transport 硬门(小,半天;08-21 新增)
+### P0.5 transport 硬门(小;08-21 新增,同日收窄)
 
-1. `CoreStreamEngine` 的命令派发从按约定(`command:x` → `handleXCommand`)改为显式表
-   `{ 'command:send-message': …, … } satisfies Record<SessionCommand['type'], Handler>`——
-   字面量 grep 直接落在处理者上,类型穷尽顺带把 shared / core 的命令集对齐(I4)。
-2. `transport:gate` 从"只许不升"改为**硬红**:`channels.ts` / `bridge.ts` / `web.ts` / `http.ts` 的手写段
-   只许减不许增,任何新增直接 exit 1(棘轮基线仍保留作为下降的度量)。
-3. 验收门:全量测试绿;`grep "'command:send-message'"` 在 core 引擎命中派发表;`transport:gate` 绿。
+1. ~~`CoreStreamEngine` 显式派发表~~ —— **撤销**(08-21 开工时查实:字面量订阅点已在
+   `headless-stream-engine.ts:201`,断点 A 的真相是四类三树的 override 链,见 §0b.1;归 P3'd)。
+2. ~~`transport:gate` 改硬红~~ —— 查实它**本来就是增即红**(`compare()` 上升即 regression → exit 1,
+   `--self-test` 用例 2 就是这条)。真正的缺口在别处:**CI(`.github/workflows/test.yml`)只跑
+   `bun run test`,boundary / ui / log / session / transport 五道门一道都不在 CI 里**——门红两天没人理,
+   是因为它只在有人手动跑时才说话。
+3. **把五道门进 CI**:test.yml 加一个 `gates` job(`boundary:gate` / `ui:gate` / `log:gate` / `session:gate` /
+   `transport:gate`,有 `sessions:verify:gate` 也加),任一红则 PR 红。
+4. transport 基线按 P0.3 的规矩逐项注明差额来源后重写一次,此后不再手改,只由 `--write-baseline` 在下降时收紧。
+5. 验收门:五道门本地全绿;CI 配置里能看到五条 run;人为加一条 `IPC_CHANNELS` 常量(不提交)本地门能红。
+6. **08-21 落地记录**:`test.yml` 新增 `gates` job(boundary / transport / ui / log / session 五道;
+   `sessions:verify:gate` 依赖本机 store 不进 CI);transport 基线按项注明重写一次后门绿
+   (`IPC_CHANNELS 329,四壳 6131 行`);"升即红"由脚本 `--self-test` 用例 2 保证,不另验。
 
 ### P1' workspace 化(原"alias 塌缩",1 天;08-21 改拍)
 
@@ -362,6 +386,8 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 7 | **(新)P1' workspace 化是否接受 electron-builder 打包风险** | 接受,`build:mac` 冒烟守;过不去退回正则塌缩 | 待拍 |
 | 8 | **(新)plugins 三合一(P3'c)放 P3' 内还是单独一期** | 放 P3' 内单独一批;若 core/app 同名文件判定拖长则拆出 | 待拍 |
 | 9 | **(新)薄壳接线的落位形态**:`<d>/*.wiring.ts` 后缀 vs `<d>/wiring/` 子目录 | 后缀(一两个文件时不值得开目录;≥3 个文件再开 `wiring/`) | 待拍 |
+| 10 | **(新)窗口系通道的典型形态**(todo-plan minimize/zoom/drag 等操作 BrowserWindow 的通道):宿主壳自己的 `shell`/`window` 路由 + sender 上下文 vs 维持手写 | P4 终态前统一成一个宿主壳路由;transport 门区分"域通道"(禁增)与"窗口系"(白名单) | 待拍 |
+| 11 | **(新)spaces 迁 router 后 web 端从"必然降级"变为"真拿到空间"** | 按 agents/models 收敛判例接受,不人为关闭 | 已按默认执行,待知会确认 |
 
 08-21 已拍:组织原则 = 包按环境/依赖等级、包内按领域、文件名带角色(§0b.2);`app` 改名 `backend` 并瘦身;
 P1→P1'、P3→P3'、新增 P0.5、P4a 前移(§0b.4)。
@@ -373,7 +399,7 @@ P1→P1'、P3→P3'、新增 P0.5、P4a 前移(§0b.4)。
 - P3':不再是单 commit——四批(a 薄壳 / b 厚孪生 / c plugins / d backend)各自独立 commit,任一批出问题单独
   revert。最大风险在 P3'c:core 与 app 同名文件的"契约 vs 实现"判定是人工判断,可能拖长;拖长就按拍板 #8 拆出。
   I3 把 `@shared/ipc` 准入从"按树"降到"按文件名",checker 规则变细但不变弱:非 wiring 文件 import wiring = 红。
-- P0.5:派发表改造只动 core 引擎一处,类型穷尽检查会在编译期暴露 shared/core 命令集不一致——那是收益不是风险。
+- P0.5:只剩硬门一项;风险是基线重写那一次必须逐项注明,否则就是"抬基线"。
 - P4:逐域独立 commit,任一域出问题单独 revert,不影响已迁域;
   `transport:gate` 棘轮防新增手写通道。
 - 已知工期陷阱:server 单文件包对动态 import 的 TDZ 坑(toolkit 重建时踩过),
