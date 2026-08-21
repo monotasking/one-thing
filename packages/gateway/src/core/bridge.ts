@@ -1,13 +1,11 @@
 import {
-  isCoreTextStreamChunk,
-  type CoreConversationRuntime,
-} from '@onething/core/gateway-runtime'
-import {
   CHANGE_DIRECTORY_SLASH_COMMAND,
   COMPACT_CONTEXT_SLASH_COMMAND,
   NEW_SESSION_SLASH_COMMAND,
+  isCoreTextStreamChunk,
   parseSharedSlashCommand,
-} from '@onething/core/slash-commands'
+  type CoreConversationRuntime,
+} from '@onething/core/gateway-runtime'
 import type { GatewayPermissionConfig } from '../config.js'
 import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from './channel.js'
 import {

@@ -7,6 +7,7 @@ import {
   createOnethingBranchSessionForIpc,
   createOnethingSessionForIpc,
   deleteOnethingSessionForIpc,
+  describeInvalidOnethingCreateSessionRequestForIpc,
   getOnethingSessionForIpc,
   getOnethingSessionMessagesForIpc,
   getOnethingSessionMessagesPageForIpc,
@@ -44,10 +45,6 @@ import { getLogger } from '@onething/app/logging/index.js'
 const log = getLogger('ipc.sessions')
 
 export { clearSessionUsage, getSessionUsage, updateSessionUsage } from '@onething/app/session/usage.js'
-
-// Renderer-supplied session ids (draft ids that materialize in place) must be
-// plain v4 UUIDs — they end up as session storage directory names.
-const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export function registerSessionHandlers() {
   registerElectronSessionIpcHandlers({
@@ -157,23 +154,14 @@ export function registerSessionHandlers() {
           // workspaceId 进 `workspaces/<id>/` 的路径片段,字符集卡死;非法值
           // 不报错、直接当没带(缺席 = default),不给它拖垮建会话这条路。
           const resolvedWorkspaceId = isValidSpaceId(workspaceId) ? workspaceId : undefined
-          // Client-supplied ids keep session identity stable from the renderer's
-          // draft phase onwards (the draft id *is* the future session id). The
-          // id becomes a storage path segment, so accept only the exact UUID
-          // format the renderer generates, and never adopt an existing session.
-          if (sessionId !== undefined) {
-            if (!UUID_V4_RE.test(sessionId)) {
-              return { success: false, error: 'Invalid session id' }
-            }
-            if (await store.getSession(sessionId)) {
-              return { success: false, error: 'Session id already exists' }
-            }
-          }
-          // Multi-agent rooms (docs/design/multi-agent-collab.md): 'work'
-          // sessions are coordinator-internal and never created over IPC.
-          if (kind !== undefined && kind !== 'room') {
-            return { success: false, error: 'Invalid session kind' }
-          }
+          // 建会话请求的三条规矩(自带 id 的格式、不认领已存在的会话、kind 只认
+          // 'room')连同失败文案都在运行时里;这里只把请求递过去、把判定原样递回。
+          const invalidRequest = await describeInvalidOnethingCreateSessionRequestForIpc({
+            sessionId,
+            kind,
+            getSession: id => store.getSession(id),
+          })
+          if (invalidRequest) return invalidRequest
           if (kind === 'room') {
             // 建房的规则书只有一本,在 app 层(collab/room-create.ts)—— 成员过滤、
             // 查无此人、退休拒收、PM 在册、budgets 归一、dm 字面 true,连文案都与

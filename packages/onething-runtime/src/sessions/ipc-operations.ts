@@ -186,6 +186,45 @@ export async function listOnethingSessionUserMarkersForIpc<TMarker>(
   }
 }
 
+/** renderer 生成的草稿 id 就是未来的会话 id;它会成为存储路径片段,字符集卡死。 */
+const ONETHING_SESSION_UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+export const ONETHING_INVALID_SESSION_ID = 'Invalid session id'
+export const ONETHING_SESSION_ID_ALREADY_EXISTS = 'Session id already exists'
+export const ONETHING_INVALID_SESSION_KIND = 'Invalid session kind'
+
+/**
+ * 建会话请求的合法性判定 —— 三条规矩,连同它们的失败载荷一起住在运行时:
+ *
+ *  1. 客户端自带的 id 必须是 renderer 那种 UUID v4(它会成为存储路径片段);
+ *  2. 永不认领已经存在的会话;
+ *  3. `kind` 只认 `'room'` —— 'work' 会话是协调器内部的,从不走 IPC 建出来。
+ *
+ * 合法返回 `null`,非法直接返回可以原样 `return` 出去的失败载荷 —— 宿主因此
+ * 只递形状、不留规则(boundary:`packages/onething-runtime owns session branch
+ * creation orchestration`)。
+ */
+export async function describeInvalidOnethingCreateSessionRequestForIpc(
+  options: {
+    sessionId?: string
+    kind?: string
+    getSession(sessionId: string): MaybePromise<unknown>
+  },
+): Promise<{ success: false; error: string } | null> {
+  if (options.sessionId !== undefined) {
+    if (!ONETHING_SESSION_UUID_V4_RE.test(options.sessionId)) {
+      return { success: false, error: ONETHING_INVALID_SESSION_ID }
+    }
+    if (await options.getSession(options.sessionId)) {
+      return { success: false, error: ONETHING_SESSION_ID_ALREADY_EXISTS }
+    }
+  }
+  if (options.kind !== undefined && options.kind !== 'room') {
+    return { success: false, error: ONETHING_INVALID_SESSION_KIND }
+  }
+  return null
+}
+
 export async function createOnethingSessionForIpc<
   TSession extends OnethingRendererSessionLike<TMessage>,
   TMessage extends OnethingRendererMessageLike,

@@ -443,6 +443,37 @@ export type ListOnethingPluginCommandsForIpcResult =
   | { success: true; commands: OnethingRendererPluginCommandInfo[] }
   | { success: false; error: string }
 
+/**
+ * 网关侧的"列命令":插件系统还没装配起来时,网关要的答案是"这台机器没有插件
+ * 命令",不是一条错误 —— 这条降级判定同样属于 IPC 操作层,不留在宿主里
+ * (boundary:`packages/onething-runtime owns plugin IPC operations`)。
+ */
+export async function listOnethingPluginCommandsForIpcAllowingUninitialized<
+  TPlugin extends OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext>,
+>(
+  options: OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand>,
+): Promise<ListOnethingPluginCommandsForIpcResult> {
+  if (!options.manager) return { success: true, commands: [] }
+  return listOnethingPluginCommandsForIpc(options)
+}
+
+export interface GetOnethingPluginLifecycleInfoForIpcResult {
+  success: true
+  npmAvailable: boolean
+}
+
+/**
+ * 裁决 8:v1 的插件生命周期依赖本机 npm —— 能力面先行,设置页据此置灰并说明。
+ * 探针由宿主注入(它才知道自己那台机器怎么找 npm),载荷形状归运行时。
+ */
+export async function getOnethingPluginLifecycleInfoForIpc(
+  options: { probeNpmAvailability(): Promise<boolean> | boolean },
+): Promise<GetOnethingPluginLifecycleInfoForIpcResult> {
+  return { success: true, npmAvailable: await options.probeNpmAvailability() }
+}
+
 export async function listOnethingPluginCommandsForIpc<
   TPlugin extends OnethingPluginListItemLike,
   TCommandInfo extends OnethingPluginCommandLike,

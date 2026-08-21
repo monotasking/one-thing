@@ -409,6 +409,20 @@ export function warmTodoPlanWindow(options: TodoPlanWindowActionOptions = {}) {
   }, false)
 }
 
+/**
+ * 启动/激活时的"预热"策略:把窗口建出来但不抢前台、也不动主窗可见性。
+ *
+ * 这条策略属于待办窗自己(只有它知道 present / hide / 可见性快照的语义),
+ * 不属于引导文件 —— 主窗绑定那条路(`app/activate.ts` 的 options)因此只递
+ * 一个函数引用,boot 文件里不再出现窗口动作的参数。
+ */
+export function warmTodoPlanWindowForStartup() {
+  return warmTodoPlanWindow({
+    activation: 'preserve-current-app',
+    preserveMainWindowVisibility: true,
+  })
+}
+
 export function hideTodoPlanWindow(options: TodoPlanWindowActionOptions = {}): boolean {
   if (!todoPlanWindow || todoPlanWindow.isDestroyed() || !todoPlanWindow.isVisible()) {
     return false

@@ -4,7 +4,7 @@ import {
 	isTodoPlanBrowserWindow,
 	recoverMainWindowAfterSystemResume,
 	shouldSuppressMainWindowActivation,
-	warmTodoPlanWindow,
+	warmTodoPlanWindowForStartup,
 } from "@onething/electron-host/window";
 import {
 	initializeIPC,
@@ -326,11 +326,7 @@ function createElectronMainWindowOptions(): ElectronActivateOptions {
 		attachVoiceMainWindow: (window) =>
 			getVoiceService().attachMainWindow(window),
 		warmSearchWindow,
-		warmTodoPlanWindow: () =>
-			warmTodoPlanWindow({
-				activation: "preserve-current-app",
-				preserveMainWindowVisibility: true,
-			}),
+		warmTodoPlanWindow: warmTodoPlanWindowForStartup,
 		activateMainWindow,
 	};
 }

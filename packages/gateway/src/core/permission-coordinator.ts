@@ -3,7 +3,7 @@ import type {
   CorePermissionRequestEvent,
   CorePermissionSurface,
 } from '@onething/core/gateway-runtime'
-import type { Unsubscribe } from '@onething/core/events'
+import type { Unsubscribe } from '@onething/core/gateway-runtime'
 import { gatewayLogger, resolveGatewayLogger, type Logger } from './logging.js'
 
 export interface GatewayPermissionCoordinatorOptions {

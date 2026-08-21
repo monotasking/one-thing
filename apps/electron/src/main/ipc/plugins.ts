@@ -33,8 +33,10 @@ import {
   enableOnethingPluginForIpc,
   handleOnethingPluginRequestForIpc,
   executeOnethingPluginCommandForIpc,
+  getOnethingPluginLifecycleInfoForIpc,
   type ListOnethingPluginCommandsForIpcResult,
   listOnethingPluginCommandsForIpc,
+  listOnethingPluginCommandsForIpcAllowingUninitialized,
   listOnethingPluginsForIpc,
   refreshOnethingPluginsForIpc,
 } from '@onething/runtime/plugins'
@@ -71,10 +73,8 @@ export function createGatewayPluginCommandProvider(): GatewayCommandProvider {
 }
 
 async function listPluginCommandsForGateway(): Promise<ListOnethingPluginCommandsForIpcResult> {
-  const manager = getPluginManager()
-  if (!manager) return { success: true, commands: [] }
-  return listOnethingPluginCommandsForIpc({
-    manager,
+  return listOnethingPluginCommandsForIpcAllowingUninitialized({
+    manager: getPluginManager(),
     logger: console,
   })
 }
@@ -281,8 +281,10 @@ export function registerPluginHandlers(): void {
       })
     },
     // 裁决 8:v1 依赖本机 npm —— 能力面先行,设置页据此置灰并说明。
-    getPluginLifecycleInfo: async () => {
-      return { success: true as const, npmAvailable: await probePluginNpmAvailability() }
+    getPluginLifecycleInfo: () => {
+      return getOnethingPluginLifecycleInfoForIpc({
+        probeNpmAvailability: probePluginNpmAvailability,
+      })
     },
     // 装前清单预读:包名与声明都在 tarball 里,宿主自己读出来。
     // 纯读取,不落任何盘 —— 安装闸一条不松(预读不是信任来源)。
