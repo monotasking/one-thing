@@ -1244,6 +1244,14 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      `checkElectronHostOwnsSkillsIpcHost`、两条改指 rpc 域、新增 shell 端口两断言;transport channels 279→**267**、bridge
      1631→1575、http 1839→1757、web 1577→1532;battery 264/0;全量 11139 绿。**files / themes / oauth 三处仍直连
      electron-host**(各一行可换 `getShellHost()`),随 #19/#20 拍板后批。
+     **第三批落地记录(08-22)**:media 11 方法迁完(5 条契约表外的字面量通道 `media:save-image|load-all|delete|clear-all|
+     read-image-base64` 随之消失;`saveAs`/`openPreview`/`openGallery` 3 条窗口系留宿主;预览登记簿劈成宿主写/RPC 读两半,
+     新立 `runtime/media/image-preview-registry-bound.ts` 单例);server 删 13 条路由 + media adapter 14→2 方法 +
+     per-owner 第二份媒体库调用面(保留 `/api/media/file/:name` 字节面与 `/api/media/events` SSE);web 取图 URL 规则单源于
+     `renderer/services/media-src.ts`(桌面 `media://`、web `/api/media/file/`);transport channels 267→**261**、bridge
+     1575→1532、http 1757→1647、web 1532→1488;battery 264/0;全量 11145 绿。**语义变化(拍板 #28)**:`filePath` 现以
+     绝对路径出到浏览器(旧 server 壳改写兼有遮蔽之效;单用户 + loopback + Bearer 下与 project-dirs/skills 口径一致);
+     listAssets 等从 per-owner 第二库改读同一份(同 #27);`/api/media/events` 成零生产者订阅面(归 T2)。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。
@@ -1315,6 +1323,7 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 | 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
 | 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
+| 28 | **(新,P4c-3 已发生)media 迁 router 后 `filePath`/`thumbnailPath` 以 store 绝对路径出到浏览器**(旧 server 壳改写为 `/api/media/file/<name>` 兼有遮蔽之效;取文件 URL 规则改由渲染侧 `services/media-src.ts` 按 environment 决定) | 单用户 + loopback + Bearer 下与 project-dirs/skills 口径一致,接受;多租户前在 RpcContext 层统一处理 | 已按默认执行,待知会 |
 | 27 | **(新,P4c-2 已发生)skills 迁 router 后 web/server 不再扫 `owners/<uid>/<wid>/skills` 的第二份技能表,改读桌面 core 同一份**;`executeSkill` 从未实现的整条链(web 桩 + `/api/skills/execute` + adapter)删除 | 与 agents/models/#20 同判例接受 | 已按默认执行,待知会 |
 | 26 | **(新,词汇统一时查出)`command:confirm-tool`(`CONFIRM_TOOL`)全仓零订阅者**——shared 有 `ConfirmToolCommand` 形状、core 有常量,但没有任何 `onAnySession` 消费它,发这条命令等于丢进空气 | 删契约(shared 接口 + core 常量)并清渲染层发送点;若确有未完成的设计意图再补订阅 | 待拍 |
 | 25 | **(新,P3')归位单位从"目录"改为"文件":依赖脊柱的接线归 `backend/wiring/<d>/`,逻辑归 `runtime/<d>/`;I1 改为"逻辑一领域一家"**(量测:25 薄目录 17 个依赖脊柱,整目录折回会成环) | 按修正执行;P3'a-1 先做 6 个脊柱零依赖目录验证机制 | 已按默认开工,待知会 |

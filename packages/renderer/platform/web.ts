@@ -10,10 +10,6 @@ import type {
 	GatewayWechatStopAccountRequest,
 	GetSessionMessagesPageRequest,
 	MCPServerConfig,
-	MediaIngestFilesRequest,
-	MediaQuery,
-	MediaSource,
-	MediaUsageTag,
 	PermissionMode,
 	ProxySettings,
 	ScratchpadChangedPayload,
@@ -1178,40 +1174,6 @@ const webApi = {
 	onPluginRequestProgress: () => () => {},
 
 
-	saveImage: (data: {
-		url?: string;
-		base64?: string;
-		prompt: string;
-		revisedPrompt?: string;
-		model: string;
-		sessionId: string;
-		messageId: string;
-		source?: MediaSource;
-		usageTags?: MediaUsageTag[];
-	}) => postJson("/api/media/save-image", data),
-	loadAllMedia: () => requestJson("/api/media/legacy-images"),
-	deleteMedia: (id: string) => postJson("/api/media/delete", { id }),
-	clearAllMedia: () => postJson("/api/media/clear-all"),
-	readImageBase64: (filePath: string) =>
-		postJson("/api/media/read-image", { filePath }),
-	listMediaAssets: (query?: {
-		kind?: string;
-		source?: string;
-		search?: string;
-		includeHidden?: boolean;
-	}) => {
-		const params = new URLSearchParams();
-		if (query?.kind) params.set("kind", query.kind);
-		if (query?.source) params.set("source", query.source);
-		if (query?.search) params.set("search", query.search);
-		if (query?.includeHidden) params.set("includeHidden", "true");
-		const suffix = params.toString() ? `?${params.toString()}` : "";
-		return requestJson(`/api/media/assets${suffix}`);
-	},
-	// 浏览器没有本地路径可给,所以 body 里一定是 base64(桌面才走 filePath)。
-	// 请求整体透传:字段是共享契约,这里不逐个手抄。
-	ingestMediaFiles: (request: MediaIngestFilesRequest) =>
-		postJson("/api/media/ingest", request),
 	/**
 	 * 「另存为」在浏览器里不是一次宿主对话框,而是一次下载 —— 沙箱里页面自发的
 	 * 下载会被拦,所以这里只**承认做不到**并让调用方退回 `<a download>`。
@@ -1220,10 +1182,6 @@ const webApi = {
 		success: false,
 		error: "Saving a copy is not available in the browser.",
 	}),
-	hideMediaAsset: (id: string) => postJson("/api/media/assets/hide", { id }),
-	rebuildMediaLibrary: () => postJson("/api/media/rebuild"),
-	getMediaGallery: (assetId: string, query?: MediaQuery) =>
-		postJson("/api/media/gallery", { assetId, query }),
 	onImageGenerated: (
 		callback: (payload: {
 			id: string;
@@ -1242,26 +1200,24 @@ const webApi = {
 			"media:image-generated",
 			callback,
 		),
+	/**
+	 * 浏览器里「开预览」不是开一个宿主窗口,而是**就地**把这张图交给页内的
+	 * `ImagePreviewWindow`。P4c 第三批之前它先 POST 一次 `/api/media/preview/open`
+	 * 把 src 存进 server 的登记簿、再把同一个 src 原样广播出去 —— 那趟往返
+	 * 从来没有人读(页内订阅拿到的就是 src 本身,`getImagePreview` 在 web 上零调用),
+	 * 所以这里只留广播。用户看到的东西一格没变。
+	 */
 	openImagePreview: async (src: string, alt?: string) => {
-		const response = await postJson<{ success?: boolean; previewId?: string }>(
-			"/api/media/preview/open",
-			{ src, alt },
-		);
-		if (response.success) {
-			emitImagePreviewUpdate({
-				mode: "single",
-				previewId: response.previewId,
-				src,
-				alt,
-			});
-		}
-		return response;
+		emitImagePreviewUpdate({ mode: "single", src, alt });
+		return { success: true };
 	},
-	getImagePreview: (previewId: string) =>
-		postJson("/api/media/preview/get", { previewId }),
 	onImagePreviewUpdate: subscribeImagePreviewUpdate,
-	openImageGallery: (mediaId: string) =>
-		postJson("/api/media/gallery/open", { mediaId }),
+	/**
+	 * 「开画廊窗」同样要宿主(桌面开的是第二个 BrowserWindow)。旧的 web 桩 POST
+	 * 一次 `/api/media/gallery/open`,而那条路由的实现就是 `return { success: true }` ——
+	 * 一次不改变任何东西的往返。这里如实地在本地承认同一件事。
+	 */
+	openImageGallery: async () => ({ success: true }),
 
 	getSessionsList: () => requestJson("/api/sessions"),
 	// 会话列表一律元数据(与 Electron IPC GET_SESSIONS 行为一致);消息经

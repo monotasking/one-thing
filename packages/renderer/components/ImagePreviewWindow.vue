@@ -323,6 +323,8 @@ import { useSettingsStore } from '@/stores/settings'
 import { matchShortcut } from '@/composables/useShortcuts'
 import type { MediaAsset } from '@/types'
 import { platformApi } from '@/platform'
+import { mediaApi } from '@/platform/media-client'
+import { resolveMediaFileSrc } from '@/services/media-src'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.image-preview')
@@ -592,7 +594,7 @@ async function applySingleImagePreview(data: SingleImagePreviewPayload) {
   }
 
   try {
-    const response = await platformApi?.getImagePreview?.(data.previewId)
+    const response = await mediaApi.getPreview({ previewId: data.previewId })
     if (!response?.success || !response.src) {
       throw new Error(response?.error || 'Image preview was not found')
     }
@@ -619,7 +621,7 @@ function setupSingleImageListener() {
 async function loadGalleryFromMedia(mediaId: string) {
   log.debug('gallery load requested', { mediaId })
   try {
-    const gallery = await platformApi.getMediaGallery(mediaId, { kind: 'image' })
+    const gallery = await mediaApi.getGallery({ assetId: mediaId, query: { kind: 'image' } })
     log.debug('media gallery loaded', { count: gallery.images.length })
 
     if (gallery.images.length === 0) {
@@ -629,11 +631,9 @@ async function loadGalleryFromMedia(mediaId: string) {
     }
 
     const galleryImages: GalleryImage[] = gallery.images.map((item: MediaAsset) => {
-      const filePath = item.filePath || ''
-      const filename = filePath.split('/').pop() || item.fileName
-      const src = /^(https?:)?\/\//.test(filePath) || filePath.startsWith('/api/')
-        ? filePath
-        : `media://${filename}`
+      // 与媒体面板同一条规则(`services/media-src`):桌面 `media://`,web 走
+      // `/api/media/file/<name>` —— P4c 第三批之前 web 那一半是 server 壳替它改写的。
+      const src = resolveMediaFileSrc(item.filePath, platformApi.environment, item.fileName)
       return {
         id: item.id,
         src,

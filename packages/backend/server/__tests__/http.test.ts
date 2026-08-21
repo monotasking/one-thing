@@ -1837,7 +1837,13 @@ describe('createOnethingHttpServer', () => {
     }
   })
 
-  it('manages owner-scoped media assets and serves web-safe media files', async () => {
+  /**
+   * 媒体域的**数据面**已迁到通用 `POST /api/rpc`(P4c 第三批,`mediaRouter` 十一条,
+   * 由 `packages/backend/rpc/__tests__/media-domain.test.ts` 钉)。server 壳上只剩两条
+   * **不是 RPC 形状**的:按文件名交出字节的那条,和一条 SSE。这条用例守的正是它们 ——
+   * 尤其是**按 owner 隔离**:一个 owner 不该能拿到另一个 owner 的媒体文件。
+   */
+  it('serves owner-scoped media file bytes and keeps the media SSE face', async () => {
     const dataRoot = await createTempDir('onething-server-media-')
     const serverRuntime = await createTestServerRuntime({ dataRoot })
     runtimes.push(serverRuntime)
@@ -1848,87 +1854,37 @@ describe('createOnethingHttpServer', () => {
     const baseUrlValue = baseUrl(server)
     const aliceHeaders = contextHeaders('alice', 'media-workspace')
     const bobHeaders = contextHeaders('bob', 'media-workspace')
-    const created = await createSession(baseUrlValue, 'Media session', aliceHeaders)
-    const sessionId = created.session?.id
-    expect(sessionId).toBeTruthy()
 
     const mediaEvents = await fetch(`${baseUrlValue}/api/media/events`, { headers: aliceHeaders })
     expect(mediaEvents.status).toBe(200)
 
-    const saved = await fetchJson(`${baseUrlValue}/api/media/save-image`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        base64: Buffer.from('image-bytes').toString('base64'),
-        prompt: 'A saved image',
-        model: 'local-image',
-        sessionId,
-        messageId: 'message-1',
-      }),
+    // 直接往 alice 那份 owner 媒体库里存一张图 —— 从前这一步走
+    // `POST /api/media/save-image`,那条路由随数据面一起迁走了,而它写的是
+    // 同一台 `MediaLibraryService`、同一个目录布局。
+    const { MediaLibraryService } = await import('@onething/runtime/media')
+    const aliceMediaRoot = join(dataRoot, 'owners', 'alice', 'media-workspace', 'media')
+    const aliceLibrary = new MediaLibraryService({
+      indexPath: join(aliceMediaRoot, 'index.json'),
+      imagesDir: join(aliceMediaRoot, 'images'),
+      filesDir: join(aliceMediaRoot, 'files'),
     })
-    expect(saved).toEqual(expect.objectContaining({
-      id: expect.any(String),
-      filePath: expect.stringMatching(/^\/api\/media\/file\//),
+    const saved = await aliceLibrary.saveGeneratedImageAsLegacyItem({
+      base64: Buffer.from('image-bytes').toString('base64'),
       prompt: 'A saved image',
-    }))
-    const eventText = await readUntil(
-      mediaEvents,
-      text => text.includes('media:image-generated') && text.includes(saved.id),
-    )
-    expect(eventText).toContain('media:image-generated')
-    expect(eventText).toContain('/api/media/file/')
-
-    await expect(fetchJson(`${baseUrlValue}/api/media/assets?kind=image`, {
-      headers: aliceHeaders,
-    })).resolves.toEqual([
-      expect.objectContaining({
-        id: saved.id,
-        filePath: saved.filePath,
-        kind: 'image',
-        metadata: expect.objectContaining({ prompt: 'A saved image' }),
-      }),
-    ])
-    await expect(fetchJson(`${baseUrlValue}/api/media/gallery`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ assetId: saved.id, query: { kind: 'image' } }),
-    })).resolves.toEqual({
-      images: [
-        expect.objectContaining({
-          id: saved.id,
-          filePath: saved.filePath,
-        }),
-      ],
-      currentIndex: 0,
+      model: 'local-image',
+      sessionId: 'session-1',
+      messageId: 'message-1',
     })
-    await expect(fetchJson(`${baseUrlValue}/api/media/preview/open`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ src: saved.filePath, alt: 'Preview' }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      previewId: expect.any(String),
-    }))
+    const fileUrl = `/api/media/file/${encodeURIComponent(saved.filePath.split('/').pop() ?? '')}`
 
-    const mediaFileResponse = await fetch(`${baseUrlValue}${saved.filePath}`, { headers: aliceHeaders })
+    const mediaFileResponse = await fetch(`${baseUrlValue}${fileUrl}`, { headers: aliceHeaders })
     expect(mediaFileResponse.status).toBe(200)
     expect(mediaFileResponse.headers.get('content-type')).toBe('image/png')
     expect(await mediaFileResponse.text()).toBe('image-bytes')
 
-    await expect(fetchJson(`${baseUrlValue}/api/media/assets?kind=image`, {
-      headers: bobHeaders,
-    })).resolves.toEqual([])
-    const bobFileResponse = await fetch(`${baseUrlValue}${saved.filePath}`, { headers: bobHeaders })
+    // 换一个 owner 就查无此文件 —— 这条隔离是这条路由存在的全部理由。
+    const bobFileResponse = await fetch(`${baseUrlValue}${fileUrl}`, { headers: bobHeaders })
     expect(bobFileResponse.status).toBe(404)
-
-    await expect(fetchJson(`${baseUrlValue}/api/media/assets/hide`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ id: saved.id }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/media/assets?kind=image`, {
-      headers: aliceHeaders,
-    })).resolves.toEqual([])
   })
 
   it('routes command POSTs through the runtime facade', async () => {

@@ -310,7 +310,12 @@ export type {
 	MediaSaveAsResponse,
 	MediaGalleryResponse,
 	MediaRebuildResponse,
+	MediaLegacyItem,
+	MediaSaveImageRequest,
+	MediaPreviewLookupResponse,
+	MediaRoutes,
 } from "./media.js";
+export { mediaRouter } from "./media.js";
 
 // Markdown asset / attachment types
 export type {

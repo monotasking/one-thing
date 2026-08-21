@@ -18,40 +18,24 @@
  * rather than the place they live.
  */
 import type { PlatformEnvironment } from '@/platform'
+import { resolveMediaFileSrc } from '@/services/media-src'
 
 /** The one stamp an agent with no mark of its own wears. */
 export const AGENT_AVATAR_FALLBACK = '🤖'
 
 /**
- * Already a usable image reference? Anything with a scheme, a protocol-relative
- * host or a server route is passed through untouched — a stored value that
- * predates the bare-name form (or one a future importer writes) must still
- * render rather than be mangled into `media://https://…`.
- */
-function isResolvedImageReference(reference: string): boolean {
-  return /^[a-z][a-z0-9+.-]*:/i.test(reference)
-    || reference.startsWith('//')
-    || reference.startsWith('/')
-}
-
-/**
  * `avatarImage` → an `<img src>` for this host.
  *
- * Desktop serves the media store over the `media://` protocol; the headless
- * server serves it at `/api/media/file/<name>` (the same shape it rewrites
- * every asset's `filePath` into). Returns '' for an absent reference so a
- * caller can treat "no picture" and "picture, no URL" as one branch.
+ * 规则本身不在这里 —— 它是**整个媒体库**的同一条规则(桌面走 `media://`,web 走
+ * `/api/media/file/<name>`),自 P4c 第三批起单源于 `services/media-src.ts`。这里
+ * 只保留这个名字:调用方与测试都按它称呼这件事,而头像的引用形态(裸文件名)
+ * 是那条规则的一个特例。
  */
 export function resolveAgentAvatarSrc(
   reference: string | undefined | null,
   environment: PlatformEnvironment,
 ): string {
-  const trimmed = (reference || '').trim()
-  if (!trimmed) return ''
-  if (isResolvedImageReference(trimmed)) return trimmed
-  return environment === 'web'
-    ? `/api/media/file/${encodeURIComponent(trimmed)}`
-    : `media://${encodeURIComponent(trimmed)}`
+  return resolveMediaFileSrc(reference, environment)
 }
 
 /**

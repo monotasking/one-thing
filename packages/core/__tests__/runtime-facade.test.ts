@@ -78,7 +78,6 @@ describe('createOnethingRuntimeFacade', () => {
         }),
       },
       media: {
-        listAssets: vi.fn(async () => []),
         subscribeImageGenerated: vi.fn((handler) => {
           handler({ id: 'image-1' })
           return unsubscribe
@@ -215,7 +214,6 @@ describe('createOnethingRuntimeFacade', () => {
       eventType: 'change',
     })
     offWorkspace?.()
-    await expect(runtime.media?.listAssets?.()).resolves.toEqual([])
     const offMedia = runtime.media?.subscribeImageGenerated?.(eventHandler)
     expect(eventHandler).toHaveBeenCalledWith({ id: 'image-1' })
     offMedia?.()

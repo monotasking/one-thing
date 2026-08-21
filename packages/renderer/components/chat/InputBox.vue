@@ -583,6 +583,7 @@ import { useVoiceStore } from '@/stores/voice'
 import { useMusicStore } from '@/stores/music'
 import { usePromptsStore } from '@/stores/prompts'
 import { platformApi } from '@/platform'
+import { mediaApi } from '@/platform/media-client'
 // Sub-components
 import QuotedContext from './QuotedContext.vue'
 import CommandPicker from './CommandPicker.vue'
@@ -1915,7 +1916,7 @@ async function scratchpadVisionAttachments(text: string): Promise<MessageAttachm
   const attachments: MessageAttachment[] = []
   for (const ref of refs) {
     try {
-      const dataUrl = await platformApi.readImageBase64(ref.absolutePath)
+      const dataUrl = await mediaApi.readImageBase64({ filePath: ref.absolutePath })
       const base64Data = typeof dataUrl === 'string' ? dataUrl.split(',')[1] : ''
       if (!base64Data) continue
       attachments.push({

@@ -182,21 +182,11 @@ export interface RuntimeFilesAdapter {
   ): RuntimeUnsubscribe
 }
 
+/**
+ * 数据面(十一条)已迁到通用 RPC 通道(mediaRouter);留在 facade 上的两条都
+ * **不是 RPC 形状**:一条按文件名交出字节,一条是事件下行的订阅(归主线 T2)。
+ */
 export interface RuntimeMediaAdapter {
-  saveImage?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  loadAll?(context?: RuntimeRequestContext): Promise<unknown>
-  delete?(id: string, context?: RuntimeRequestContext): Promise<unknown>
-  clearAll?(context?: RuntimeRequestContext): Promise<unknown>
-  readImageBase64?(filePath: string, context?: RuntimeRequestContext): Promise<unknown>
-  listAssets?(query?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  /** Put arbitrary files in the library. Optional: a host without it degrades to 501. */
-  ingestFiles?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  hideAsset?(id: string, context?: RuntimeRequestContext): Promise<unknown>
-  rebuildLibrary?(context?: RuntimeRequestContext): Promise<unknown>
-  getGallery?(assetId: string, query?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  openPreview?(src: string, alt?: string, context?: RuntimeRequestContext): Promise<unknown>
-  getPreview?(previewId: string, context?: RuntimeRequestContext): Promise<unknown>
-  openGallery?(mediaId: string, context?: RuntimeRequestContext): Promise<unknown>
   resolveFile?(fileName: string, context?: RuntimeRequestContext): Promise<{ success: boolean; path?: string; mimeType?: string; error?: string }>
   subscribeImageGenerated?(
     handler: (payload: unknown) => void,

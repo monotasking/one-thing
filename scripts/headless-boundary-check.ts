@@ -5066,41 +5066,27 @@ function checkElectronHostOwnsMediaIpcHost(): void {
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMediaContent = fs.existsSync(electronMediaFile) ? fs.readFileSync(electronMediaFile, 'utf-8') : ''
   const mainMediaContent = fs.existsSync(mainMediaFile) ? fs.readFileSync(mainMediaFile, 'utf-8') : ''
+  // P4c 第三批:十一条数据面已迁 `mediaRouter`(域测试
+  // `packages/backend/rpc/__tests__/media-domain.test.ts` 钉它们)。这只工厂只剩
+  // **要宿主本体**的三条,断言随之收窄 —— 断言的是「这三条仍然由 apps/electron 拥有」,
+  // 不再是「那十四条都还在」。
   const requiredHostSymbols = [
     'registerElectronMediaIpcHandlers',
     'options.ipcMain ?? ipcMain',
     'host.handle',
     'ElectronMediaIpcChannels',
-    'ElectronMediaGalleryRequest',
-    'ElectronMediaSaveImageRequest',
     'ElectronImagePreviewRequest',
     'ElectronImageGalleryRequest',
+    'saveElectronMediaFileAs',
   ]
   const requiredFacadeSymbols = [
     '@onething/electron-host/ipc/media',
     'registerElectronMediaIpcHandlers',
-    'IPC_CHANNELS.LIST_MEDIA_ASSETS',
-    'IPC_CHANNELS.HIDE_MEDIA_ASSET',
-    'IPC_CHANNELS.REBUILD_MEDIA_LIBRARY',
-    'IPC_CHANNELS.GET_MEDIA_GALLERY',
+    'IPC_CHANNELS.SAVE_MEDIA_AS',
     'IPC_CHANNELS.OPEN_IMAGE_PREVIEW',
-    'IPC_CHANNELS.GET_IMAGE_PREVIEW',
     'IPC_CHANNELS.OPEN_IMAGE_GALLERY',
-    'media:save-image',
-    'media:load-all',
-    'media:delete',
-    'media:clear-all',
-    'media:read-image-base64',
-    'listOnethingMediaAssets',
-    'hideOnethingMediaAsset',
-    'rebuildOnethingMediaLibraryForIpc',
-    'getOnethingMediaGallery',
-    'listOnethingLegacyMediaImages',
-    'deleteOnethingMediaItem',
-    'clearOnethingMediaLibrary',
     'openOnethingImagePreviewForIpc',
     'openOnethingImageGalleryForIpc',
-    'readOnethingImageFileDataUrlForIpc',
   ]
   const lines = [
     ...(!packageContent.includes('./ipc/media')
@@ -8355,6 +8341,7 @@ function checkRuntimeOwnsSkillsLoader(): void {
 
 function checkRuntimeOwnsMediaPreviewRegistry(): void {
   const runtimeFile = 'packages/onething-runtime/src/media/image-preview-registry.ts'
+  const boundRegistryFile = 'packages/onething-runtime/src/media/image-preview-registry-bound.ts'
   const mainFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
@@ -8369,6 +8356,11 @@ function checkRuntimeOwnsMediaPreviewRegistry(): void {
     ...(!runtimeContent.includes('openOnethingImageGalleryForIpc')
       ? [`${runtimeFile}: missing runtime-owned image gallery IPC opener`]
       : []),
+    // P4c 第三批:登记簿的两半从此不在同一个包里(写在宿主的开预览窗,读在 RPC 域),
+    // 所以**绑好的那一本**必须只有一处 —— 否则两半各拿一本簿子,预览永远查不到。
+    ...(!fs.existsSync(path.join(root, boundRegistryFile))
+      ? [`${boundRegistryFile}: missing the one process-wide image preview registry`]
+      : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MEDIA_PREVIEW_REGISTRY_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/media.ts: missing media IPC adapter']),
@@ -8379,7 +8371,9 @@ function checkRuntimeOwnsMediaPreviewRegistry(): void {
 
 function checkRuntimeOwnsMediaImageDataUrl(): void {
   const runtimeFile = 'packages/onething-runtime/src/media/image-file-data-url.ts'
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
+  // P4c 第三批:`readImageBase64` 的调用点从 `@main` 壳适配搬到了 RPC 域,
+  // 「不许在调用点重实现一遍」这条禁令跟着改指到新家。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/media.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -8400,7 +8394,8 @@ function checkRuntimeOwnsMediaImageDataUrl(): void {
 
 function checkRuntimeOwnsMediaLegacyList(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/media-library-service.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
+  // P4c 第三批:`loadAll` 的调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/media.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('listLegacyImages')
@@ -8433,7 +8428,8 @@ function checkRuntimeOwnsMediaGeneratedImageLegacySave(): void {
 
 function checkRuntimeOwnsMediaLibraryIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/media-library-presentation.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
+  // P4c 第三批:媒体库那八条投影的调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/media.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingMediaAssets',

@@ -526,6 +526,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
+import { mediaApi } from '@/platform/media-client'
 
 type KindFilter = 'all' | 'image' | 'file' | 'audio' | 'video'
 type SourceFilter = 'all' | 'user-upload' | 'ai-generated'
@@ -1209,7 +1210,7 @@ async function insertAssetIntoChat(asset: MediaAsset | null) {
 
   if (asset.kind === 'image' && asset.filePath) {
     try {
-      const dataUrl = await platformApi.readImageBase64(asset.filePath)
+      const dataUrl = await mediaApi.readImageBase64({ filePath: asset.filePath })
       const base64 = String(dataUrl || '').split(',')[1]
       if (base64) attachment.base64Data = base64
     } catch {

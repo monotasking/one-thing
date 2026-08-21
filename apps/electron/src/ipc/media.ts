@@ -1,12 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import type {
-  MediaSaveAsRequest,
-  MediaSaveAsResponse,
-  MediaSource,
-  MediaUsageTag,
-} from '@shared/ipc.js'
+import type { MediaSaveAsRequest, MediaSaveAsResponse } from '@shared/ipc.js'
 
 export interface ElectronIpcMainLike {
   handle<TArgs extends unknown[]>(
@@ -15,40 +10,15 @@ export interface ElectronIpcMainLike {
   ): void
 }
 
+/**
+ * 媒体域**留在宿主侧的三条**(结构债 P4c 第三批)。十一条数据面已迁到通用
+ * `rpc:invoke` / `POST /api/rpc`(`mediaRouter`);这里只剩要宿主本体的那三件:
+ * 一次原生保存对话框 + 两个 `BrowserWindow`。
+ */
 export interface ElectronMediaIpcChannels {
-  listAssets: string
-  ingestFiles: string
   saveAs: string
-  hideAsset: string
-  rebuildLibrary: string
-  getGallery: string
-  saveImage: string
-  loadAll: string
-  delete: string
-  clearAll: string
   openPreview: string
-  getPreview: string
   openGallery: string
-  readImageBase64: string
-}
-
-export interface ElectronMediaGalleryRequest {
-  assetId: string
-  query?: unknown
-}
-
-export interface ElectronMediaSaveImageRequest {
-  url?: string
-  base64?: string
-  prompt: string
-  revisedPrompt?: string
-  model: string
-  sessionId: string
-  messageId: string
-  /** Where the bytes came from. Defaults to 'ai-generated' on the service side. */
-  source?: MediaSource
-  /** What the image is for, e.g. 'persona-avatar'. */
-  usageTags?: MediaUsageTag[]
 }
 
 export interface ElectronImagePreviewRequest {
@@ -113,20 +83,9 @@ export async function saveElectronMediaFileAs(
 
 export interface RegisterElectronMediaIpcHandlersOptions {
   channels: ElectronMediaIpcChannels
-  listAssets(query?: unknown): unknown
-  ingestFiles(request: unknown): unknown
   saveAs(request: MediaSaveAsRequest): unknown
-  hideAsset(id: string): unknown
-  rebuildLibrary(): unknown
-  getGallery(request: ElectronMediaGalleryRequest): unknown
-  saveImage(request: ElectronMediaSaveImageRequest): unknown
-  loadAll(): unknown
-  delete(id: string): unknown
-  clearAll(): unknown
   openPreview(request: ElectronImagePreviewRequest): unknown
-  getPreview(previewId: string): unknown
   openGallery(request: ElectronImageGalleryRequest): unknown
-  readImageBase64(filePath: string): unknown
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -135,59 +94,15 @@ export function registerElectronMediaIpcHandlers(
 ): void {
   const host = options.ipcMain ?? ipcMain
 
-  host.handle(options.channels.listAssets, (_event, query?: unknown) => {
-    return options.listAssets(query)
-  })
-
-  host.handle(options.channels.ingestFiles, (_event, request?: unknown) => {
-    return options.ingestFiles(request)
-  })
-
   host.handle(options.channels.saveAs, (_event, request: MediaSaveAsRequest) => {
     return options.saveAs(request)
-  })
-
-  host.handle(options.channels.hideAsset, (_event, id: string) => {
-    return options.hideAsset(id)
-  })
-
-  host.handle(options.channels.rebuildLibrary, () => {
-    return options.rebuildLibrary()
-  })
-
-  host.handle(options.channels.getGallery, (_event, request: ElectronMediaGalleryRequest) => {
-    return options.getGallery(request)
-  })
-
-  host.handle(options.channels.saveImage, (_event, request: ElectronMediaSaveImageRequest) => {
-    return options.saveImage(request)
-  })
-
-  host.handle(options.channels.loadAll, () => {
-    return options.loadAll()
-  })
-
-  host.handle(options.channels.delete, (_event, id: string) => {
-    return options.delete(id)
-  })
-
-  host.handle(options.channels.clearAll, () => {
-    return options.clearAll()
   })
 
   host.handle(options.channels.openPreview, (_event, request: ElectronImagePreviewRequest) => {
     return options.openPreview(request)
   })
 
-  host.handle(options.channels.getPreview, (_event, previewId: string) => {
-    return options.getPreview(previewId)
-  })
-
   host.handle(options.channels.openGallery, (_event, request: ElectronImageGalleryRequest) => {
     return options.openGallery(request)
-  })
-
-  host.handle(options.channels.readImageBase64, (_event, filePath: string) => {
-    return options.readImageBase64(filePath)
   })
 }

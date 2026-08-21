@@ -48,6 +48,18 @@ const storeState = vi.hoisted(() => ({
   },
 }))
 
+/**
+ * media 域走通用 RPC 通道之后(P4c 第三批),「读一张图的 base64」不再挂在壳上 ——
+ * 它是 `mediaApi.readImageBase64({ filePath })`。
+ */
+const mediaClientState = vi.hoisted(() => ({
+  mediaApi: {
+    readImageBase64: vi.fn(async () => 'data:image/png;base64,QUJD'),
+  },
+}))
+
+vi.mock('@/platform/media-client', () => mediaClientState)
+
 const platformState = vi.hoisted(() => ({
   platformApi: {
     onImageGenerated: vi.fn(() => vi.fn()),
@@ -67,7 +79,6 @@ const platformState = vi.hoisted(() => ({
       error?: string
     }> => ({ success: true, path: '/tmp/copy.png' })),
     writeClipboardImage: vi.fn(async () => ({ success: true })),
-    readImageBase64: vi.fn(async () => 'data:image/png;base64,QUJD'),
   },
 }))
 
@@ -162,7 +173,7 @@ describe('MediaPanelContent', () => {
     platformState.platformApi.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
     platformState.platformApi.saveMediaAs.mockResolvedValue({ success: true, path: '/tmp/copy.png' })
     platformState.platformApi.writeClipboardImage.mockResolvedValue({ success: true })
-    platformState.platformApi.readImageBase64.mockResolvedValue('data:image/png;base64,QUJD')
+    mediaClientState.mediaApi.readImageBase64.mockResolvedValue('data:image/png;base64,QUJD')
   })
 
   afterEach(() => {

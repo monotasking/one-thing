@@ -156,24 +156,8 @@ import {
 	type OnethingSearchRequest,
 } from "@onething/runtime/search";
 import {
-	clearOnethingMediaLibrary,
-	deleteOnethingMediaItem,
-	getOnethingMediaGallery,
-	hideOnethingMediaAsset,
-	ingestOnethingMediaFilesForIpc,
-	listOnethingLegacyMediaImages,
-	listOnethingMediaAssets,
 	MediaLibraryService,
-	OnethingImagePreviewRegistry,
-	readOnethingImageFileDataUrlForIpc,
-	rebuildOnethingMediaLibraryForIpc,
-	type OnethingImagePreviewWindowRequest,
-	type OnethingLegacyMediaItem,
-	type OnethingMediaAsset,
-	type OnethingMediaIngestGeneratedImageInput,
-	type OnethingMediaIngestLocalFilesInput,
 	type OnethingMediaLibraryPaths,
-	type OnethingMediaQuery,
 } from "@onething/runtime/media";
 import {
 	ONETHING_LOG_MONITOR_MANIFEST,
@@ -1054,9 +1038,6 @@ async function createServerRuntimeOverServerBackend(
 		string,
 		Set<WorkspaceFileChangedHandler>
 	>();
-	const imagePreviewRegistry = new OnethingImagePreviewRegistry({
-		createId: randomUUID,
-	});
 	const workspaceRoot = resolve(
 		options.workspaceRoot ??
 			process.env.ONETHING_SERVER_WORKSPACE_ROOT ??
@@ -1470,15 +1451,6 @@ async function createServerRuntimeOverServerBackend(
 			manager,
 			logger: consoleLog,
 		};
-	};
-
-	const notifyMediaImageGenerated = (
-		context: RuntimeRequestContext,
-		payload: unknown,
-	): void => {
-		const handlers = mediaImageGeneratedHandlersByOwner.get(ownerKey(context));
-		if (!handlers) return;
-		for (const handler of handlers) handler(payload);
 	};
 
 	/**
@@ -3053,182 +3025,27 @@ async function createServerRuntimeOverServerBackend(
 					context,
 				),
 		},
+		/**
+		 * media —— **只剩两条不是 RPC 形状的**(结构债 P4c 第三批)。
+		 *
+		 * 十一条数据面已整只迁到通用 `POST /api/rpc`(`mediaRouter` +
+		 * `backend/rpc/domains/media.ts`),连同它们背后那套 per-owner 的第二台
+		 * `MediaLibraryService`——一个 store 一份媒体库,web 与桌面从此读同一份
+		 * (拍板 #27 同 agents / models / skills 判例)。随之消失的还有
+		 * `toServerClientMediaAsset` / `toServerClientLegacyMediaItem` 那层
+		 * 「把 `filePath` 改写成 `/api/media/file/…`」的投影:该用哪种 URL 去取
+		 * 一个媒体文件,现在由渲染侧按 environment 判断(`services/media-src.ts`)。
+		 *
+		 * 留下的两条:
+		 *  - `resolveFile` —— `/api/media/file/<name>` 按文件名取**字节**,不是 JSON,
+		 *    router 上没有它的位置;浏览器渲染每一张图都靠它。
+		 *  - `subscribeImageGenerated` —— `/api/media/events` 那条 SSE。router 没有
+		 *    推送面,所以订阅面照旧留在 adapter 上(与 scratchpad / todo-plan 同型)。
+		 *    注意它现在**没有生产者**:唯一那个(server 自己的 `saveImage`)随数据面
+		 *    走了,而桌面那条真通知走的是引擎的 `IPC_CHANNELS.IMAGE_GENERATED`
+		 *    (server 的 sender 是 noop)—— 事件下行的收敛是主线 T2 的事。
+		 */
 		media: {
-			async listAssets(query: unknown, context = defaultRequestContext()) {
-				const service = getServerMediaServiceForContext(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				const assets = await listOnethingMediaAssets({
-					query: (query as OnethingMediaQuery | undefined) || {},
-					listAssets: (mediaQuery) => service.listAssets(mediaQuery),
-				});
-				return assets.map(toServerClientMediaAsset);
-			},
-			async ingestFiles(request: unknown, context = defaultRequestContext()) {
-				const service = getServerMediaServiceForContext(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				const result = await ingestOnethingMediaFilesForIpc({
-					request: (request as OnethingMediaIngestLocalFilesInput | undefined) || {
-						files: [],
-					},
-					ingestFiles: (input) => service.ingestLocalFiles(input),
-					logger: consoleLog,
-				});
-				// 出站资产的 filePath 必须重写成 URL:浏览器拿到主机的绝对路径既没用
-				// 也是一次泄露(其余 media 出口同此口径)。
-				return {
-					...result,
-					assets: result.assets.map(toServerClientMediaAsset),
-				};
-			},
-			async hideAsset(id: string, context = defaultRequestContext()) {
-				const service = getServerMediaServiceForContext(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				return hideOnethingMediaAsset({
-					id,
-					hideAsset: (assetId) => service.hideAsset(assetId),
-				});
-			},
-			async rebuildLibrary(context = defaultRequestContext()) {
-				const service = getServerMediaServiceForContext(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				return rebuildOnethingMediaLibraryForIpc({
-					// 媒体库重建语义上需要扫描全部消息附件:按 owned 元数据逐个瞬时
-					// 加载会话体,不经 resolveSession,避免把全部会话钉进工作集。
-					listSessions: () =>
-						listOwnedSessionMetas(context)
-							.filter((meta) => Boolean(sessionStore.getSession(meta.id)))
-							.map((meta) =>
-								toMediaSession({
-									id: meta.id,
-									messages: sessionStore.getMessages(meta.id),
-								}),
-							),
-					rebuildFromSessions: (mediaSessions) =>
-						service.rebuildFromSessions(mediaSessions),
-					logger: consoleLog,
-				});
-			},
-			async getGallery(
-				assetId: string,
-				query: unknown,
-				context = defaultRequestContext(),
-			) {
-				const service = getServerMediaServiceForContext(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				const gallery = await getOnethingMediaGallery({
-					assetId,
-					query: (query as OnethingMediaQuery | undefined) || {},
-					getGallery: (targetAssetId, mediaQuery) =>
-						service.getGallery(targetAssetId, mediaQuery),
-				});
-				return {
-					...gallery,
-					images: gallery.images.map(toServerClientMediaAsset),
-				};
-			},
-			async saveImage(request: unknown, context = defaultRequestContext()) {
-				const input = request as OnethingMediaIngestGeneratedImageInput;
-				if (input.sessionId) {
-					const session = getSessionForContext(input.sessionId, context);
-					if (!session) {
-						throw new Error("Session not found");
-					}
-				}
-				const service = getServerMediaServiceForContext(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				const item = await service.saveGeneratedImageAsLegacyItem(input);
-				const clientItem = toServerClientLegacyMediaItem(item);
-				notifyMediaImageGenerated(context, {
-					...clientItem,
-					url: clientItem.filePath,
-				});
-				return clientItem;
-			},
-			async loadAll(context = defaultRequestContext()) {
-				const service = getServerMediaServiceForContext(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				const items = await listOnethingLegacyMediaImages({
-					listLegacyImages: () => service.listLegacyImages(),
-				});
-				return items.map(toServerClientLegacyMediaItem);
-			},
-			async delete(id: string, context = defaultRequestContext()) {
-				const service = getServerMediaServiceForContext(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				return deleteOnethingMediaItem({
-					id,
-					hideAsset: (assetId) => service.hideAsset(assetId),
-				});
-			},
-			async clearAll(context = defaultRequestContext()) {
-				const service = getServerMediaServiceForContext(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				await clearOnethingMediaLibrary({
-					hideAllAssets: () => service.hideAllAssets(),
-				});
-			},
-			async readImageBase64(
-				filePath: string,
-				context = defaultRequestContext(),
-			) {
-				const resolved = resolveServerMediaFilePath(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					filePath,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				if (!resolved) throw new Error("Media file not found");
-				return readOnethingImageFileDataUrlForIpc(resolved.path, {
-					logger: consoleLog,
-				});
-			},
-			async openPreview(src: string, alt?: string) {
-				const previewId = imagePreviewRegistry.create(src, alt);
-				return { success: true, previewId };
-			},
-			async getPreview(previewId: string) {
-				return imagePreviewRegistry.get(previewId);
-			},
-			async openGallery(mediaId: string) {
-				return { success: true, mediaId };
-			},
 			async resolveFile(fileName: string, context = defaultRequestContext()) {
 				const resolved = resolveServerMediaFilePath(
 					mediaServicesByOwner,
@@ -5940,44 +5757,6 @@ function serverMediaLibraryPaths(
 		indexPath: join(root, "index.json"),
 		imagesDir: join(root, "images"),
 		filesDir: join(root, "files"),
-	};
-}
-
-function serverMediaFileUrl(filePath?: string): string | undefined {
-	if (!filePath) return undefined;
-	return `/api/media/file/${encodeURIComponent(basename(filePath))}`;
-}
-
-function toServerClientMediaAsset(
-	asset: OnethingMediaAsset,
-): OnethingMediaAsset {
-	return {
-		...asset,
-		filePath: serverMediaFileUrl(asset.filePath),
-		thumbnailPath: serverMediaFileUrl(asset.thumbnailPath),
-	};
-}
-
-function toServerClientLegacyMediaItem(
-	item: OnethingLegacyMediaItem,
-): OnethingLegacyMediaItem {
-	return {
-		...item,
-		filePath: serverMediaFileUrl(item.filePath) || "",
-	};
-}
-
-function toMediaSession(input: {
-	id: string;
-	messages: readonly ChatMessage[];
-}) {
-	return {
-		id: input.id,
-		messages: input.messages.map((message) => ({
-			id: message.id,
-			role: message.role,
-			attachments: message.attachments,
-		})),
 	};
 }
 

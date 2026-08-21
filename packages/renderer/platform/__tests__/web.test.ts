@@ -354,7 +354,7 @@ describe('createWebPlatformApi', () => {
   })
 
   it('emits image preview updates after opening a web preview', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       return new Response(JSON.stringify({
         success: true,
@@ -364,7 +364,8 @@ describe('createWebPlatformApi', () => {
         status: 200,
         headers: { 'content-type': 'application/json' },
       })
-    }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
     vi.stubGlobal('navigator', {})
 
     const { createWebPlatformApi } = await import('../web.js')
@@ -372,18 +373,23 @@ describe('createWebPlatformApi', () => {
     const callback = vi.fn()
     const cleanup = api.onImagePreviewUpdate(callback)
 
+    // P4c 第三批:开预览不再往 server 走一趟。旧线先 POST /api/media/preview/open
+    // 把 src 存进 server 的登记簿、再把**同一个 src** 原样广播出去 —— 那趟往返
+    // 从来没有人读(页内订阅拿到的就是 src 本身)。现在只留广播,用户看到的一格没变。
     await expect(api.openImagePreview('data:image/png;base64,aW1hZ2U=', 'Image')).resolves.toEqual({
       success: true,
-      previewId: 'preview-1',
-      url: '/api/media/preview/open',
     })
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/media/preview/open', expect.anything())
 
     expect(callback).toHaveBeenCalledWith({
       mode: 'single',
-      previewId: 'preview-1',
       src: 'data:image/png;base64,aW1hZ2U=',
       alt: 'Image',
     })
+    // 「开画廊窗」在浏览器里同样是本地承认:旧的 server 路由实现就是
+    // `return { success: true }`,一次不改变任何东西的往返。
+    await expect(api.openImageGallery('asset-1')).resolves.toEqual({ success: true })
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/media/gallery/open', expect.anything())
     cleanup()
   })
 
@@ -865,36 +871,11 @@ describe('createWebPlatformApi', () => {
     // project-dirs 域的五条同样迁走了(P4c,`projectDirsRouter` +
     // `@/platform/project-dirs-client`)。顺带修掉一处说谎:旧 web 壳把
     // `workspaceId` 收下就丢,浏览器里切空间等于没切;走 router 之后它真的传下去。
-    await expect(api.saveImage({
-      base64: 'aW1hZ2U=',
-      prompt: 'Image',
-      model: 'local',
-      sessionId: 'session-1',
-      messageId: 'message-1',
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/media/save-image',
-    })
-    await expect(api.listMediaAssets({ kind: 'image', search: 'cat' })).resolves.toEqual({
-      success: true,
-      url: '/api/media/assets?kind=image&search=cat',
-    })
-    await expect(api.getMediaGallery('asset-1', { kind: 'image' })).resolves.toEqual({
-      success: true,
-      url: '/api/media/gallery',
-    })
-    await expect(api.hideMediaAsset('asset-1')).resolves.toEqual({
-      success: true,
-      url: '/api/media/assets/hide',
-    })
-    await expect(api.openImagePreview('data:image/png;base64,aW1hZ2U=', 'Image')).resolves.toEqual({
-      success: true,
-      url: '/api/media/preview/open',
-    })
-    await expect(api.getImagePreview('preview-1')).resolves.toEqual({
-      success: true,
-      url: '/api/media/preview/get',
-    })
+    // media 域的十一条数据面同样迁走了(P4c 第三批,`mediaRouter` +
+    // `@/platform/media-client`):web 壳上不再有 /api/media/{assets,ingest,gallery,
+    // save-image,legacy-images,delete,clear-all,read-image,rebuild,assets/hide,
+    // preview/get} 这十一条镜像。留在壳上的三条**要宿主本体**,而浏览器给不出:
+    // 「另存为」是诚实桩,两条 open-image-* 就地承认(见下一条用例)。
     await expect(api.getActiveStreams()).resolves.toEqual({
       success: true,
       url: '/api/streams/active',
@@ -923,12 +904,6 @@ describe('createWebPlatformApi', () => {
       body: JSON.stringify({ root: '/workspace' }),
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/files/rename', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/media/gallery', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/media/preview/open', expect.objectContaining({
       method: 'POST',
     }))
   })

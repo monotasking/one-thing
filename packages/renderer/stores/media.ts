@@ -8,7 +8,9 @@ import type {
   MediaQuery,
 } from '@/types'
 import { platformApi } from '@/platform'
+import { mediaApi } from '@/platform/media-client'
 import { getLogger } from '@/services/log'
+import { mediaFileNameOf, resolveMediaFileSrc } from '@/services/media-src'
 
 const log = getLogger('renderer.media')
 
@@ -19,13 +21,13 @@ function sortNewestFirst(a: MediaAsset, b: MediaAsset) {
 }
 
 /**
- * The stored file name behind a media `filePath`. Both host shapes end in it —
- * an absolute path on desktop, `/api/media/file/<encoded name>` from the server
- * — so one `basename` + decode covers both, and callers that persist a
- * reference stay host-agnostic.
+ * The stored file name behind a media `filePath`. Since P4c 第三批 both hosts
+ * read the SAME record (the media域 rides the generic RPC channel), so this is
+ * always a plain absolute path — the decode survives only for values written
+ * while the server still rewrote `filePath` into `/api/media/file/<encoded name>`.
  */
 function mediaFileNameFromPath(filePath?: string): string {
-  const tail = (filePath || '').split(/[\\/]/).pop() || ''
+  const tail = mediaFileNameOf(filePath)
   if (!tail) return ''
   try {
     return decodeURIComponent(tail)
@@ -60,7 +62,7 @@ export const useMediaStore = defineStore('media', () => {
     if (hasBackfilled.value && !force) return
     isRebuilding.value = true
     try {
-      await platformApi.rebuildMediaLibrary()
+      await mediaApi.rebuildLibrary({})
       hasBackfilled.value = true
     } catch (e) {
       log.error('media library rebuild failed', {}, e)
@@ -82,7 +84,7 @@ export const useMediaStore = defineStore('media', () => {
       if (options.rebuild) {
         await rebuildLibraryOnce()
       }
-      mediaItems.value = await platformApi.listMediaAssets(options.query)
+      mediaItems.value = await mediaApi.listAssets({ query: options.query })
       hasLoaded.value = true
     })()
     activeLoad = load
@@ -109,7 +111,7 @@ export const useMediaStore = defineStore('media', () => {
     messageId: string
   }): Promise<GeneratedMedia | null> {
     try {
-      const item = await platformApi.saveImage(data)
+      const item = await mediaApi.saveImage(data)
       await loadMedia()
       return mediaItems.value.find(asset => asset.id === item.id) || null
     } catch (e) {
@@ -139,7 +141,7 @@ export const useMediaStore = defineStore('media', () => {
     label?: string
   }): Promise<string | null> {
     try {
-      const item = await platformApi.saveImage({
+      const item = await mediaApi.saveImage({
         base64: data.base64,
         prompt: data.label ? `Agent avatar · ${data.label}` : 'Agent avatar',
         model: 'user-upload',
@@ -171,7 +173,7 @@ export const useMediaStore = defineStore('media', () => {
     request: MediaIngestFilesRequest,
   ): Promise<MediaIngestFilesResponse> {
     try {
-      return await platformApi.ingestMediaFiles(request)
+      return await mediaApi.ingestFiles(request)
     } catch (e) {
       log.error('media ingest failed', {}, e)
       return {
@@ -187,7 +189,7 @@ export const useMediaStore = defineStore('media', () => {
 
   async function removeMedia(id: string) {
     try {
-      await platformApi.hideMediaAsset(id)
+      await mediaApi.hideAsset({ id })
       mediaItems.value = mediaItems.value.filter(m => m.id !== id)
     } catch (e) {
       log.error('media remove failed', { mediaId: id }, e)
@@ -196,20 +198,23 @@ export const useMediaStore = defineStore('media', () => {
 
   async function clearAll() {
     try {
-      await platformApi.clearAllMedia()
+      await mediaApi.clearAll({})
       mediaItems.value = []
     } catch (e) {
       log.error('media clear failed', {}, e)
     }
   }
 
+  /**
+   * 资产 → 本宿主能渲染的 `<img src>`。规则单源于 `services/media-src`(P4c 第三批):
+   * 桌面 `media://<name>`,web `/api/media/file/<name>`。从前这一步在 server 壳里
+   * 替 web 做掉(`toServerClientMediaAsset` 把每个 `filePath` 改写成那条路由);
+   * 媒体域走通用 RPC 之后两边拿到的是同一份记录,于是"用哪种 URL 去取"回到
+   * 宿主自己的判断。
+   */
   function getImageUrl(media: MediaAsset): string {
     if (!media.filePath) return ''
-    if (/^(https?:)?\/\//.test(media.filePath) || media.filePath.startsWith('/api/')) {
-      return media.filePath
-    }
-    const filename = media.filePath.split('/').pop() || media.fileName
-    return `media://${filename}`
+    return resolveMediaFileSrc(media.filePath, platformApi.environment, media.fileName)
   }
 
   return {

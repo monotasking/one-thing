@@ -200,15 +200,10 @@ export const IPC_CHANNELS = {
 	// Dialog related
 	SHOW_OPEN_DIALOG: "dialog:show-open",
 
-	// Image Preview related
-	LIST_MEDIA_ASSETS: "media:list-assets",
-	INGEST_MEDIA_FILES: "media:ingest-files",
+	// Media —— 只剩「要宿主本体」的三条(P4c 第三批:十一条数据面已迁 mediaRouter)。
+	// 「另存为」是一次原生保存对话框,两条 open-image-* 各是一个 BrowserWindow。
 	SAVE_MEDIA_AS: "media:save-as",
-	HIDE_MEDIA_ASSET: "media:hide-asset",
-	REBUILD_MEDIA_LIBRARY: "media:rebuild-library",
-	GET_MEDIA_GALLERY: "media:get-gallery",
 	OPEN_IMAGE_PREVIEW: "media:open-image-preview",
-	GET_IMAGE_PREVIEW: "media:get-image-preview",
 	OPEN_IMAGE_GALLERY: "media:open-image-gallery",
 	IMAGE_PREVIEW_UPDATE: "image-preview:update",
 	IMAGE_GALLERY_UPDATE: "image-gallery:update",

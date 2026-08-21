@@ -236,19 +236,8 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/chat/remove-system-marker') return handleRemoveSystemMarkerMessage
   if (method === 'POST' && pathname === '/api/chat/remove-message') return handleRemoveMessage
   if (method === 'POST' && pathname === '/api/chat/update-thinking-time') return handleUpdateMessageThinkingTime
-  if (method === 'GET' && pathname === '/api/media/assets') return handleListMediaAssets
-  if (method === 'POST' && pathname === '/api/media/ingest') return handleIngestMediaFiles
-  if (method === 'POST' && pathname === '/api/media/assets/hide') return handleHideMediaAsset
-  if (method === 'POST' && pathname === '/api/media/rebuild') return handleRebuildMediaLibrary
-  if (method === 'POST' && pathname === '/api/media/gallery') return handleGetMediaGallery
-  if (method === 'POST' && pathname === '/api/media/save-image') return handleSaveMediaImage
-  if (method === 'GET' && pathname === '/api/media/legacy-images') return handleLoadAllMedia
-  if (method === 'POST' && pathname === '/api/media/delete') return handleDeleteMedia
-  if (method === 'POST' && pathname === '/api/media/clear-all') return handleClearAllMedia
-  if (method === 'POST' && pathname === '/api/media/read-image') return handleReadMediaImageBase64
-  if (method === 'POST' && pathname === '/api/media/preview/open') return handleOpenImagePreview
-  if (method === 'POST' && pathname === '/api/media/preview/get') return handleGetImagePreview
-  if (method === 'POST' && pathname === '/api/media/gallery/open') return handleOpenImageGallery
+  // 媒体域的数据面已迁到通用 `POST /api/rpc`(P4c 第三批,`mediaRouter` 十一条)。
+  // 这里只剩两条**不是 RPC 形状**的:按文件名取字节的那条,和一条 SSE。
   if (method === 'GET' && pathname === '/api/media/events') return handleMediaEvents
   if (method === 'GET' && pathname === '/api/sessions') return handleListSessions
   if (method === 'POST' && pathname === '/api/sessions') return handleCreateSession
@@ -596,92 +585,6 @@ async function handleUpdateMessageThinkingTime(context: RouteContext): Promise<v
     ),
     context.corsOrigin,
   )
-}
-
-async function handleListMediaAssets(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.listAssets) return sendNotImplemented(context, 'media.listAssets')
-  sendJson(context.response, 200, await adapter.listAssets(readMediaQuery(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleIngestMediaFiles(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.ingestFiles) return sendNotImplemented(context, 'media.ingestFiles')
-  // 请求整体透传:files/source/links 是共享契约,拆字段只会让服务端悄悄吞掉新字段。
-  sendJson(context.response, 200, await adapter.ingestFiles(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleHideMediaAsset(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.hideAsset) return sendNotImplemented(context, 'media.hideAsset')
-  const body = await readJson<{ id?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.hideAsset(body?.id ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleRebuildMediaLibrary(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.rebuildLibrary) return sendNotImplemented(context, 'media.rebuildLibrary')
-  sendJson(context.response, 200, await adapter.rebuildLibrary(context.requestContext), context.corsOrigin)
-}
-
-async function handleGetMediaGallery(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.getGallery) return sendNotImplemented(context, 'media.getGallery')
-  const body = await readJson<{ assetId?: string; query?: unknown }>(context.request)
-  sendJson(context.response, 200, await adapter.getGallery(body?.assetId ?? '', body?.query, context.requestContext), context.corsOrigin)
-}
-
-async function handleSaveMediaImage(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.saveImage) return sendNotImplemented(context, 'media.saveImage')
-  sendJson(context.response, 200, await adapter.saveImage(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleLoadAllMedia(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.loadAll) return sendNotImplemented(context, 'media.loadAll')
-  sendJson(context.response, 200, await adapter.loadAll(context.requestContext), context.corsOrigin)
-}
-
-async function handleDeleteMedia(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.delete) return sendNotImplemented(context, 'media.delete')
-  const body = await readJson<{ id?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.delete(body?.id ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleClearAllMedia(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.clearAll) return sendNotImplemented(context, 'media.clearAll')
-  sendJson(context.response, 200, await adapter.clearAll(context.requestContext) ?? { success: true }, context.corsOrigin)
-}
-
-async function handleReadMediaImageBase64(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.readImageBase64) return sendNotImplemented(context, 'media.readImageBase64')
-  const body = await readJson<{ filePath?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.readImageBase64(body?.filePath ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleOpenImagePreview(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.openPreview) return sendNotImplemented(context, 'media.openPreview')
-  const body = await readJson<{ src?: string; alt?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.openPreview(body?.src ?? '', body?.alt, context.requestContext), context.corsOrigin)
-}
-
-async function handleGetImagePreview(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.getPreview) return sendNotImplemented(context, 'media.getPreview')
-  const body = await readJson<{ previewId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.getPreview(body?.previewId ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleOpenImageGallery(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.media
-  if (!adapter?.openGallery) return sendNotImplemented(context, 'media.openGallery')
-  const body = await readJson<{ mediaId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.openGallery(body?.mediaId ?? '', context.requestContext), context.corsOrigin)
 }
 
 async function handleReadMediaFile(context: RouteContext): Promise<void> {
@@ -1646,19 +1549,6 @@ function readBackgroundJobId(context: RouteContext): string {
 
 function readThemeId(context: RouteContext): string {
   return context.url.searchParams.get('themeId') || ''
-}
-
-function readMediaQuery(context: RouteContext): Record<string, unknown> {
-  const query: Record<string, unknown> = {}
-  const kind = context.url.searchParams.get('kind')
-  const source = context.url.searchParams.get('source')
-  const search = context.url.searchParams.get('search')
-  const includeHidden = context.url.searchParams.get('includeHidden')
-  if (kind) query.kind = kind
-  if (source) query.source = source
-  if (search) query.search = search
-  if (includeHidden === 'true') query.includeHidden = true
-  return query
 }
 
 function getRequestUrl(request: IncomingMessage): URL {

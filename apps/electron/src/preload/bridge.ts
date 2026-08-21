@@ -19,11 +19,7 @@ import type {
 import type {
 	CreateSessionOptions,
 	GetSessionMessagesPageRequest,
-	MediaIngestFilesRequest,
-	MediaQuery,
 	MediaSaveAsRequest,
-	MediaSource,
-	MediaUsageTag,
 	MarkdownResolveAssetRequest,
 	MarkdownSaveAttachmentsRequest,
 	SearchRequest,
@@ -1080,53 +1076,14 @@ const electronAPI = {
 		}
 	},
 
-	// Media methods
-	saveImage: (data: {
-		url?: string;
-		base64?: string;
-		prompt: string;
-		revisedPrompt?: string;
-		model: string;
-		sessionId: string;
-		messageId: string;
-		source?: MediaSource;
-		usageTags?: MediaUsageTag[];
-	}) => ipcRenderer.invoke("media:save-image", data),
-
-	loadAllMedia: () => ipcRenderer.invoke("media:load-all"),
-
-	deleteMedia: (id: string) => ipcRenderer.invoke("media:delete", id),
-
-	clearAllMedia: () => ipcRenderer.invoke("media:clear-all"),
-
-	readImageBase64: (filePath: string) =>
-		ipcRenderer.invoke("media:read-image-base64", filePath),
-
-	listMediaAssets: (query?: MediaQuery) =>
-		ipcRenderer.invoke(IPC_CHANNELS.LIST_MEDIA_ASSETS, query),
-
-	ingestMediaFiles: (request: MediaIngestFilesRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.INGEST_MEDIA_FILES, request),
-
+	// Media —— 只剩「要宿主本体」的三条:一次原生保存对话框 + 两个 BrowserWindow
+	// (P4c 第三批:十一条数据面走 `mediaRouter`,渲染侧从 platform/media-client 取)。
 	saveMediaAs: (request: MediaSaveAsRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SAVE_MEDIA_AS, request),
 
-	hideMediaAsset: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.HIDE_MEDIA_ASSET, id),
-
-	rebuildMediaLibrary: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.REBUILD_MEDIA_LIBRARY),
-
-	getMediaGallery: (assetId: string, query?: MediaQuery) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_MEDIA_GALLERY, { assetId, query }),
-
-	// Image preview methods
 	openImagePreview: (src: string, alt?: string) => {
 		return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_PREVIEW, { src, alt });
 	},
-
-	getImagePreview: (previewId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_IMAGE_PREVIEW, previewId),
 
 	onImagePreviewUpdate: (
 		callback: (data: {

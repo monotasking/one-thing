@@ -1555,70 +1555,13 @@ export interface ElectronAPI {
 		| Promise<{ success: boolean; error?: string }>
 		| { success: boolean; error?: string };
 
-	// Media methods
-	saveImage: (data: {
-		url?: string;
-		base64?: string;
-		prompt: string;
-		revisedPrompt?: string;
-		model: string;
-		sessionId: string;
-		messageId: string;
-		/** Where the bytes came from. Defaults to 'ai-generated'. */
-		source?: MediaSource;
-		/** What the image is for, e.g. 'persona-avatar'. */
-		usageTags?: MediaUsageTag[];
-	}) => Promise<{
-		id: string;
-		type: "image";
-		filePath: string;
-		prompt: string;
-		revisedPrompt?: string;
-		model: string;
-		createdAt: number;
-		sessionId: string;
-		messageId: string;
-	}>;
-	loadAllMedia: () => Promise<
-		{
-			id: string;
-			type: "image";
-			filePath: string;
-			prompt: string;
-			revisedPrompt?: string;
-			model: string;
-			createdAt: number;
-			sessionId: string;
-			messageId: string;
-		}[]
-	>;
-	deleteMedia: (id: string) => Promise<boolean>;
-	clearAllMedia: () => Promise<void>;
-	readImageBase64: (filePath: string) => Promise<string>;
-	listMediaAssets: (query?: MediaQuery) => Promise<MediaAsset[]>;
-	/** Put arbitrary files in the library (drop / picker / web upload). */
-	ingestMediaFiles: (
-		request: MediaIngestFilesRequest,
-	) => Promise<MediaIngestFilesResponse>;
+	// Media —— 只剩「要宿主本体」的三条(P4c 第三批:十一条数据面走 `mediaRouter`,
+	// 渲染侧从 `platform/media-client` 的 `mediaApi` 取,不再挂在壳上)。
 	saveMediaAs: (request: MediaSaveAsRequest) => Promise<MediaSaveAsResponse>;
-	hideMediaAsset: (id: string) => Promise<{ success: boolean }>;
-	rebuildMediaLibrary: () => Promise<MediaRebuildResponse>;
-	getMediaGallery: (
-		assetId: string,
-		query?: MediaQuery,
-	) => Promise<MediaGalleryResponse>;
-
-	// Image preview methods
 	openImagePreview: (
 		src: string,
 		alt?: string,
 	) => Promise<{ success: boolean }>;
-	getImagePreview: (previewId: string) => Promise<{
-		success: boolean;
-		src?: string;
-		alt?: string;
-		error?: string;
-	}>;
 	openImageGallery: (mediaId: string) => Promise<{ success: boolean }>;
 	onImagePreviewUpdate: (
 		callback: (data: {

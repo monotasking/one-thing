@@ -1,119 +1,43 @@
 /**
- * Media IPC Handlers
+ * Media IPC Handlers —— **只剩宿主残留的三条**(结构债 P4c 第三批)。
  *
- * Handles saving and loading generated images
+ * 十一条数据面(listAssets / ingestFiles / hideAsset / rebuildLibrary /
+ * getGallery / saveImage / loadAll / delete / clearAll / readImageBase64 /
+ * getPreview)已整只搬到通用 RPC 通道 —— `@shared/ipc/media.js` 的 `mediaRouter`
+ * + `@onething/backend/rpc/domains/media`,桌面走 `rpc:invoke`、web 走
+ * `POST /api/rpc`,两边同一份实现。
+ *
+ * 留在这里的三条要的是**宿主本体**而不是数据:
+ *  - `saveAs` —— 一次原生保存对话框(`saveElectronMediaFileAs`);
+ *  - `openPreview` / `openGallery` —— 两个 `BrowserWindow`(`openImagePreviewWindow`)。
+ *
+ * 「开预览窗」写进的那本登记簿,和已迁走的 `media.getPreview` 读的是**同一本** ——
+ * `@onething/runtime/media/image-preview-registry-bound` 的进程内单例。簿子从
+ * 本文件搬到产品层,正是因为它的两半从此不在同一个包里。
  */
-
-import { v4 as uuidv4 } from 'uuid'
 import {
   registerElectronMediaIpcHandlers,
   saveElectronMediaFileAs,
   type ElectronImageGalleryRequest,
   type ElectronImagePreviewRequest,
-  type ElectronMediaGalleryRequest,
-  type ElectronMediaSaveImageRequest,
 } from '@onething/electron-host/ipc/media'
 import {
-  clearOnethingMediaLibrary,
-  deleteOnethingMediaItem,
-  getOnethingMediaGallery,
-  hideOnethingMediaAsset,
-  ingestOnethingMediaFilesForIpc,
-  listOnethingLegacyMediaImages,
-  listOnethingMediaAssets,
-  OnethingImagePreviewRegistry,
   openOnethingImageGalleryForIpc,
   openOnethingImagePreviewForIpc,
-  readOnethingImageFileDataUrlForIpc,
-  rebuildOnethingMediaLibraryForIpc,
-  type OnethingMediaIngestLocalFilesInput,
 } from '@onething/runtime/media'
-import { getSessions } from '@onething/backend/stores/index.js'
+import { imagePreviewRegistry } from '@onething/runtime/media/image-preview-registry-bound'
 import { openImagePreviewWindow } from '@onething/electron-host/window'
-import { mediaLibraryService } from '@onething/runtime/media/library-service-bound'
-import { saveMediaImage, type MediaItem } from '@onething/runtime/media/save-image'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import type {
-  MediaAsset,
-  MediaIngestFilesResponse,
-  MediaQuery,
-  MediaSaveAsRequest,
-} from '@shared/ipc.js'
-
-export { saveMediaImage, type MediaItem } from '@onething/runtime/media/save-image'
-
-const imagePreviewRegistry = new OnethingImagePreviewRegistry({
-  createId: uuidv4,
-})
+import type { MediaSaveAsRequest } from '@shared/ipc.js'
 
 export function registerMediaHandlers() {
   registerElectronMediaIpcHandlers({
     channels: {
-      listAssets: IPC_CHANNELS.LIST_MEDIA_ASSETS,
-      ingestFiles: IPC_CHANNELS.INGEST_MEDIA_FILES,
       saveAs: IPC_CHANNELS.SAVE_MEDIA_AS,
-      hideAsset: IPC_CHANNELS.HIDE_MEDIA_ASSET,
-      rebuildLibrary: IPC_CHANNELS.REBUILD_MEDIA_LIBRARY,
-      getGallery: IPC_CHANNELS.GET_MEDIA_GALLERY,
-      saveImage: 'media:save-image',
-      loadAll: 'media:load-all',
-      delete: 'media:delete',
-      clearAll: 'media:clear-all',
       openPreview: IPC_CHANNELS.OPEN_IMAGE_PREVIEW,
-      getPreview: IPC_CHANNELS.GET_IMAGE_PREVIEW,
       openGallery: IPC_CHANNELS.OPEN_IMAGE_GALLERY,
-      readImageBase64: 'media:read-image-base64',
     },
-    listAssets: async (query?: unknown): Promise<MediaAsset[]> =>
-      listOnethingMediaAssets({
-        query: (query as MediaQuery | undefined) || {},
-        listAssets: mediaQuery => mediaLibraryService.listAssets(mediaQuery),
-      }),
-    ingestFiles: async (request?: unknown): Promise<MediaIngestFilesResponse> =>
-      ingestOnethingMediaFilesForIpc({
-        request: (request as OnethingMediaIngestLocalFilesInput | undefined) || { files: [] },
-        ingestFiles: input => mediaLibraryService.ingestLocalFiles(input),
-        logger: console,
-      }),
     saveAs: (request: MediaSaveAsRequest) => saveElectronMediaFileAs(request),
-    hideAsset: async (id: string): Promise<{ success: boolean }> =>
-      hideOnethingMediaAsset({
-        id,
-        hideAsset: assetId => mediaLibraryService.hideAsset(assetId),
-      }),
-    rebuildLibrary: async (): Promise<{
-      success: boolean
-      added: number
-      skipped: number
-      error?: string
-    }> =>
-      rebuildOnethingMediaLibraryForIpc({
-        listSessions: getSessions,
-        rebuildFromSessions: sessions => mediaLibraryService.rebuildFromSessions(sessions),
-        logger: console,
-      }),
-    getGallery: (data: ElectronMediaGalleryRequest) =>
-      getOnethingMediaGallery({
-        assetId: data.assetId,
-        query: (data.query as MediaQuery | undefined) || {},
-        getGallery: (assetId, mediaQuery) => mediaLibraryService.getGallery(assetId, mediaQuery),
-      }),
-    saveImage: (data: ElectronMediaSaveImageRequest): Promise<MediaItem> =>
-      saveMediaImage(data),
-    loadAll: (): Promise<MediaItem[]> =>
-      listOnethingLegacyMediaImages({
-        listLegacyImages: () => mediaLibraryService.listLegacyImages(),
-      }),
-    delete: (id: string): Promise<boolean> =>
-      deleteOnethingMediaItem({
-        id,
-        hideAsset: assetId => mediaLibraryService.hideAsset(assetId),
-      }),
-    clearAll: async (): Promise<void> => {
-      await clearOnethingMediaLibrary({
-        hideAllAssets: () => mediaLibraryService.hideAllAssets(),
-      })
-    },
     openPreview: (data: ElectronImagePreviewRequest) =>
       openOnethingImagePreviewForIpc({
         registry: imagePreviewRegistry,
@@ -122,19 +46,11 @@ export function registerMediaHandlers() {
         openPreviewWindow: openImagePreviewWindow,
         logger: console,
       }),
-    getPreview: (previewId: string): {
-      success: boolean
-      src?: string
-      alt?: string
-      error?: string
-    } => imagePreviewRegistry.get(previewId),
     openGallery: (data: ElectronImageGalleryRequest) =>
       openOnethingImageGalleryForIpc({
         mediaId: data.mediaId,
         openPreviewWindow: openImagePreviewWindow,
         logger: console,
       }),
-    readImageBase64: (filePath: string): string =>
-      readOnethingImageFileDataUrlForIpc(filePath, { logger: console }),
   })
 }

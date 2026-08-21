@@ -30,6 +30,7 @@ import { collabRouter } from '@shared/ipc/collab.js'
 import { goalRouter } from '@shared/ipc/goal.js'
 import { logsRouter } from '@shared/ipc/logs.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
+import { mediaRouter } from '@shared/ipc/media.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
 import { permissionRouter } from '@shared/ipc/permissions.js'
 import { practiceRouter } from '@shared/ipc/practice.js'
@@ -53,6 +54,7 @@ import { collabRpcHandlers } from './domains/collab.js'
 import { goalRpcHandlers } from './domains/goal.js'
 import { logsRpcHandlers } from './domains/logs.js'
 import { markdownRpcHandlers } from './domains/markdown.js'
+import { mediaRpcHandlers } from './domains/media.js'
 import { modelsRpcHandlers } from './domains/models.js'
 import { permissionGrantsRpcHandlers } from './domains/permission-grants.js'
 import { permissionRpcHandlers } from './domains/permission.js'
@@ -137,6 +139,14 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 顺带删掉了 server 侧那套 per-owner 的第二份技能实现(十三个 `*ServerSkill*` 助手):
   // 一个 store 一份技能表,web 与桌面从此读同一份。
   { id: 'rpc:skills', mount: ctx => { ctx.registerRpcDomain(skillsRouter, skillsRpcHandlers) } },
+  // P4c 第三批唯一的域(media)。旧线上除了六条契约通道,还挂着**五条写死的字面量
+  // 通道**(`media:save-image` / `media:load-all` / `media:delete` / `media:clear-all` /
+  // `media:read-image-base64`)—— 不在 `IPC_CHANNELS` 里,transport 门连数都数不到。
+  // 十一条数据面整只搬过来之后它们不再存在;留在宿主侧的是三条**要宿主本体**的:
+  // 「另存为」的原生对话框与两个 `BrowserWindow`(预览窗 / 画廊窗)。
+  // `getPreview` 跟数据走 —— 开窗那半写、这半读,两边共用 runtime 里那本
+  // `image-preview-registry-bound` 的进程内登记簿。
+  { id: 'rpc:media', mount: ctx => { ctx.registerRpcDomain(mediaRouter, mediaRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //
