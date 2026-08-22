@@ -28,7 +28,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/platform', () => ({
   platformApi: {
-    emitCommand: vi.fn(),
     openImagePreview: vi.fn(),
   },
 }))

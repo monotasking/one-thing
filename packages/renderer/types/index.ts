@@ -416,7 +416,6 @@ import type {
 	DeepLinkRespondResponse,
 } from "@shared/ipc/deeplink";
 import type {
-	SessionCommand,
 	SessionEventEnvelope,
 	StreamChunk,
 } from "@shared/events";
@@ -1779,11 +1778,6 @@ export interface ElectronAPI {
 	onSessionStream: (
 		callback: (payload: SessionStreamPayload) => void,
 	) => () => void;
-	emitCommand: (
-		sessionId: string,
-		command: SessionCommand,
-	) => Promise<{ success: boolean; error?: string; result?: unknown }>;
-
 	// Terminal (real PTY; wire contracts in packages/shared/ipc/terminal.ts)
 	createTerminal: (request: {
 		cwd?: string;

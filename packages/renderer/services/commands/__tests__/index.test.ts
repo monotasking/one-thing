@@ -25,9 +25,12 @@ const platformMocks = vi.hoisted(() => ({
   goalSet: vi.fn(),
   getPluginCommands: vi.fn(),
   executePluginCommand: vi.fn(),
-  emitCommand: vi.fn(),
   onSessionEvent: vi.fn(() => vi.fn()),
 }))
+
+// 命令总线是 `session-command` RPC 域(结构债 P4c 第四批),不再是 platformApi 上的属性。
+const sessionCommandMocks = vi.hoisted(() => ({ emit: vi.fn() }))
+vi.mock('@/platform/session-command-client', () => ({ sessionCommands: sessionCommandMocks }))
 
 vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => ({
@@ -64,7 +67,7 @@ describe('renderer command registry', () => {
     platformMocks.goalSet.mockReset()
     platformMocks.getPluginCommands.mockReset()
     platformMocks.executePluginCommand.mockReset()
-    platformMocks.emitCommand.mockReset()
+    sessionCommandMocks.emit.mockReset()
     platformMocks.onSessionEvent.mockReset()
     platformMocks.onSessionEvent.mockImplementation(() => vi.fn())
   })
@@ -230,7 +233,7 @@ describe('renderer command registry', () => {
     const result = await executeCommand('compact', { sessionId: 'draft:abc', args: '' })
 
     expect(result).toEqual({ success: true, message: 'Nothing to compact yet' })
-    expect(platformMocks.emitCommand).not.toHaveBeenCalled()
+    expect(sessionCommandMocks.emit).not.toHaveBeenCalled()
     expect(storeMocks.materializeNewChatDraft).not.toHaveBeenCalled()
   })
 

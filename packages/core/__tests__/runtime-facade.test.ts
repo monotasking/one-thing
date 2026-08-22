@@ -33,12 +33,6 @@ describe('createOnethingRuntimeFacade', () => {
       chat: {
         generateTitle: vi.fn(async message => ({ success: true, title: message })),
       },
-      commands: {
-        emit: vi.fn(async (sessionId: string, command: unknown) => ({
-          success: true,
-          result: { sessionId, command },
-        })),
-      },
       events: {
         subscribe: vi.fn((_sessionId, handler, _options) => {
           handler({
@@ -170,9 +164,6 @@ describe('createOnethingRuntimeFacade', () => {
     await expect(runtime.chat?.generateTitle?.('Hello world')).resolves.toEqual({
       success: true,
       title: 'Hello world',
-    })
-    await expect(runtime.commands.emit('session-1', { type: 'command:send-message' })).resolves.toMatchObject({
-      success: true,
     })
     await expect(runtime.network?.testProxy({ enabled: true, url: 'http://127.0.0.1:7890' })).resolves.toEqual({
       success: true,
@@ -325,9 +316,6 @@ describe('createOnethingRuntimeFacade', () => {
       sessions: {
         list: vi.fn(async () => []),
         create: vi.fn(async () => ({ id: 'session-1' })),
-      },
-      commands: {
-        emit: vi.fn(async () => ({ success: true })),
       },
       events: {
         subscribe: vi.fn(() => () => {}),

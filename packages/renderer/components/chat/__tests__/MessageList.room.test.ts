@@ -44,7 +44,6 @@ const mocks = await vi.hoisted(async () => {
   },
   platformApi: {
     capabilities: { shellTools: true },
-    emitCommand: vi.fn().mockResolvedValue({ success: true }),
     executeTool: vi.fn().mockResolvedValue({ success: true, result: '' }),
     getPendingPermissions: vi.fn().mockResolvedValue({ success: true, pending: [] }),
     updateMessageThinkingTime: vi.fn().mockResolvedValue({ success: true }),

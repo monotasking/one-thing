@@ -31,7 +31,7 @@ import type {
 	VoiceTestTTSRequest,
 	OAuthCredentialTargetRequest,
 } from "@/types";
-import type { SessionCommand, SessionEventEnvelope } from "@shared/events";
+import type { SessionEventEnvelope } from "@shared/events";
 import type {
 	AbortPluginRequestResult,
 	PluginConfigResponse,
@@ -51,6 +51,7 @@ import type {
 import type { RpcResponse } from "@shared/ipc/rpc.js";
 import { goalRouter } from "@shared/ipc/goal.js";
 import { promptsRouter } from "@shared/ipc/prompts.js";
+import { sessionCommandRouter } from "@shared/ipc/session-command.js";
 import { todoPlanRouter } from "@shared/ipc/todo-plan.js";
 import { usageRouter } from "@shared/ipc/usage.js";
 import { createRouterClient, type RpcInvoke } from "./router-client";
@@ -179,6 +180,7 @@ const usageApi = createRouterClient(usageRouter, rpcInvoke);
 const promptsApi = createRouterClient(promptsRouter, rpcInvoke);
 const goalApi = createRouterClient(goalRouter, rpcInvoke);
 const todoPlanApi = createRouterClient(todoPlanRouter, rpcInvoke);
+const sessionCommandApi = createRouterClient(sessionCommandRouter, rpcInvoke);
 
 function booleanProperty(
 	value: unknown,
@@ -1337,15 +1339,12 @@ const webApi = {
 			messageId,
 			thinkingTime,
 		}),
-	emitCommand: (sessionId: string, command: SessionCommand) =>
-		postJson(
-			`/api/sessions/${encodeURIComponent(sessionId)}/commands`,
-			command,
-		),
+	// 命令总线整只迁到 `session-command` RPC 域(结构债 P4c 第四批),web 壳上不再有
+	// `emitCommand`;这一条打的是同一条命令、同一个订阅者,只是换了信封。
 	resumeAfterToolConfirm: (sessionId: string, messageId: string) =>
-		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/commands`, {
-			type: SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM,
-			messageId,
+		sessionCommandApi.emit({
+			sessionId,
+			command: { type: SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM, messageId },
 		}),
 	abortStream: (sessionId?: string) =>
 		postJson("/api/streams/abort", { sessionId }),

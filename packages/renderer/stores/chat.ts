@@ -1,5 +1,6 @@
 import { platformApi } from "@/platform";
 import { collabApi } from "@/platform/collab-client";
+import { sessionCommands } from "@/platform/session-command-client";
 import { getLogger } from "@/services/log";
 /**
  * Chat Store - Centralized state management for all chat sessions
@@ -2350,37 +2351,40 @@ export const useChatStore = defineStore("chat", () => {
 		triggerRef(sessionLoading);
 
 		// platformApi : 根据web或electron环境生成对应的api
-		await platformApi.emitCommand(sessionId, {
-			type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
-			content,
-			attachments,
-			...providerOverride,
-			...(options?.source ? { source: options.source } : {}),
-			// IM quote reply (§3.5 A): a snapshot the composer built; the engine
-			// persists it onto the user message it creates. Re-built as a plain
-			// literal: the snapshot arrives through a ref and a reactive Proxy
-			// cannot cross the IPC structured-clone boundary (真机: InputBox 整树
-			// 被 "An object could not be cloned" 打崩).
-			...(options?.replyTo
-				? {
-					replyTo: {
-						messageId: String(options.replyTo.messageId),
-						authorLabel: String(options.replyTo.authorLabel),
-						excerpt: String(options.replyTo.excerpt),
-					},
-				}
-				: {}),
-			// Picked @mentions (W14a). Rebuilt from primitives for the same
-			// reason the quote above is: these come out of composer state and a
-			// reactive Proxy cannot cross the IPC structured-clone boundary.
-			...(options?.mentions?.length
-				? {
-					mentions: options.mentions.map((mention) => ({
-						agentId: String(mention.agentId),
-						label: String(mention.label),
-					})),
-				}
-				: {}),
+		await sessionCommands.emit({
+			sessionId,
+			command: {
+				type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
+				content,
+				attachments,
+				...providerOverride,
+				...(options?.source ? { source: options.source } : {}),
+				// IM quote reply (§3.5 A): a snapshot the composer built; the engine
+				// persists it onto the user message it creates. Re-built as a plain
+				// literal: the snapshot arrives through a ref and a reactive Proxy
+				// cannot cross the IPC structured-clone boundary (真机: InputBox 整树
+				// 被 "An object could not be cloned" 打崩).
+				...(options?.replyTo
+					? {
+						replyTo: {
+							messageId: String(options.replyTo.messageId),
+							authorLabel: String(options.replyTo.authorLabel),
+							excerpt: String(options.replyTo.excerpt),
+						},
+					}
+					: {}),
+				// Picked @mentions (W14a). Rebuilt from primitives for the same
+				// reason the quote above is: these come out of composer state and a
+				// reactive Proxy cannot cross the IPC structured-clone boundary.
+				...(options?.mentions?.length
+					? {
+						mentions: options.mentions.map((mention) => ({
+							agentId: String(mention.agentId),
+							label: String(mention.label),
+						})),
+					}
+					: {}),
+			},
 		});
 		return true;
 	}
@@ -2395,10 +2399,13 @@ export const useChatStore = defineStore("chat", () => {
 		// would strand the message in a queue keyed by an id that will never
 		// run. Materializing wouldn't help either — refuse instead.
 		if ((await draftAwareSessionsStore()).isNewChatDraftId(sessionId)) return false;
-		await platformApi.emitCommand(sessionId, {
-			type: SESSION_COMMAND_TYPES.INJECT_STEERING,
-			content,
-			source: "user",
+		await sessionCommands.emit({
+			sessionId,
+			command: {
+				type: SESSION_COMMAND_TYPES.INJECT_STEERING,
+				content,
+				source: "user",
+			},
 		});
 		return true;
 	}
@@ -2409,10 +2416,13 @@ export const useChatStore = defineStore("chat", () => {
 	async function queueFollowUpMessage(sessionId: string, content: string) {
 		// Same as steerMessage: no main-process session, nothing to follow up.
 		if ((await draftAwareSessionsStore()).isNewChatDraftId(sessionId)) return false;
-		await platformApi.emitCommand(sessionId, {
-			type: SESSION_COMMAND_TYPES.INJECT_FOLLOWUP,
-			content,
-			source: "user",
+		await sessionCommands.emit({
+			sessionId,
+			command: {
+				type: SESSION_COMMAND_TYPES.INJECT_FOLLOWUP,
+				content,
+				source: "user",
+			},
 		});
 		return true;
 	}
@@ -2433,11 +2443,14 @@ export const useChatStore = defineStore("chat", () => {
 		triggerRef(sessionLoading);
 
 		const providerOverride = await resolveSendProviderOverride(sessionId);
-		await platformApi.emitCommand(sessionId, {
-			type: SESSION_COMMAND_TYPES.EDIT_AND_RESEND,
-			messageId,
-			newContent,
-			...providerOverride,
+		await sessionCommands.emit({
+			sessionId,
+			command: {
+				type: SESSION_COMMAND_TYPES.EDIT_AND_RESEND,
+				messageId,
+				newContent,
+				...providerOverride,
+			},
 		});
 		return true;
 	}
@@ -2455,10 +2468,13 @@ export const useChatStore = defineStore("chat", () => {
 			triggerRef(sessionLoading);
 
 			const providerOverride = await resolveSendProviderOverride(sessionId);
-			await platformApi.emitCommand(sessionId, {
-				type: SESSION_COMMAND_TYPES.RETRY_MESSAGE,
-				messageId,
-				...providerOverride,
+			await sessionCommands.emit({
+				sessionId,
+				command: {
+					type: SESSION_COMMAND_TYPES.RETRY_MESSAGE,
+					messageId,
+					...providerOverride,
+				},
 			});
 			return true;
 		}
@@ -2775,9 +2791,12 @@ export const useChatStore = defineStore("chat", () => {
 	async function retractSteerMessage(messageId: string) {
 		const sessionId = pendingSteeringByMessageId.value.get(messageId);
 		if (!sessionId) return false;
-		await platformApi.emitCommand(sessionId, {
-			type: SESSION_COMMAND_TYPES.RETRACT_STEERING,
-			messageId,
+		await sessionCommands.emit({
+			sessionId,
+			command: {
+				type: SESSION_COMMAND_TYPES.RETRACT_STEERING,
+				messageId,
+			},
 		});
 		return true;
 	}

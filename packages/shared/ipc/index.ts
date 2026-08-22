@@ -317,6 +317,15 @@ export type {
 } from "./media.js";
 export { mediaRouter } from "./media.js";
 
+// 会话命令总线的入口(结构债 P4c 第四批)。命令的**词汇表与载荷**仍在
+// `@shared/events/session-commands.ts`,这里只有「怎么过线」那一半。
+export type {
+	SessionCommandEmitRequest,
+	SessionCommandEmitResult,
+	SessionCommandRoutes,
+} from "./session-command.js";
+export { sessionCommandRouter } from "./session-command.js";
+
 // Markdown asset / attachment types
 export type {
 	MarkdownAssetKind,

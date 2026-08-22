@@ -585,7 +585,6 @@ export type {
   RuntimeACPAdapter,
   RuntimeAppStateAdapter,
   RuntimeCapabilitiesAdapter,
-  RuntimeCommandsAdapter,
   RuntimeEventEnvelope,
   RuntimeEventsAdapter,
   RuntimeEventSubscribeOptions,

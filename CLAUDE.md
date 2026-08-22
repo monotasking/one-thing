@@ -566,11 +566,15 @@ Desktop boot: `apps/electron/src/main.ts` → `startOnethingElectronMain()` in `
 **Chat Message Flow (both transports, same engine):**
 
 ```
-renderer chatStore → platformApi.emitCommand(sessionId, { type: 'command:send-message', … })
-  desktop: preload bridge → ipcRenderer.invoke('session:command')
-           → apps/electron/src/main/ipc/handlers.ts → emitCoreSessionCommandForIpc
-  web:     POST /api/sessions/:id/commands → server forwards the command WHOLE
-           (only command:abort is handled locally; no field is destructured away)
+renderer chatStore → sessionCommands.emit({ sessionId, command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE, … } })
+  (packages/renderer/platform/session-command-client.ts — a router client, not a
+   platformApi property; it flattens @mentions into plain objects on the way out)
+→ generic RPC envelope: desktop `rpc:invoke`, web `POST /api/rpc` (same domain,
+  same handler — there is deliberately no hand-written session-command channel)
+→ packages/backend/rpc/domains/session-command.ts → emitCoreSessionCommandForIpc
+  (ipc: sanitizeRendererCommand stamps origin + amends the evals turn record;
+   http: command:abort is handled locally and a channel-less permission respond
+   adopts the pending ask's targetChannel — nothing else is destructured away)
 → EventBus (packages/backend/events/, per-session ring buffers)
 → ProductStreamEngine.handleSendMessage (packages/onething-runtime/src/engine/stream-engine.ts)
   → persist messages → emit events + stream chunks
@@ -595,7 +599,7 @@ AI tool_call → tool executor → core Permission.ask
 
 ### IPC Communication Pattern
 
-1. **Channel definitions**: `packages/shared/ipc/channels.ts` — all channel constants (incl. the unified `SESSION_COMMAND: 'session:command'`)
+1. **Channel definitions**: `packages/shared/ipc/channels.ts` — all channel constants (the session command bus is no longer one of them: it rides the generic `rpc:invoke` / `POST /api/rpc` envelope as the `session-command` domain)
 2. **Type definitions**: `packages/shared/ipc/*.ts` — request/response types per domain
 3. **Event/Command types**: `packages/shared/events/*.ts` — stream lifecycle types
 4. **Main handlers**: `apps/electron/src/main/ipc/*.ts` — one handler file per domain + `handlers.ts` (`initializeIPC()`)

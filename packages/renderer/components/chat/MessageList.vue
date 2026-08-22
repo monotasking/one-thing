@@ -2558,7 +2558,7 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
 }
 
 // Handle tool confirmation (for permission-gated tool calls).
-// 应答本身(emitCommand + 本地收尾)已抬进 `usePermissionResponder`,房面与这里
+// 应答本身(sessionCommands.emit + 本地收尾)已抬进 `usePermissionResponder`,房面与这里
 // 共用同一份 —— 见去复用重构 R1 §8 铁律 1。
 const { confirmTool: handleConfirmTool, rejectTool: handleRejectTool } = usePermissionResponder({
   getSessionId: () => panelSession.value?.id,

@@ -3,7 +3,7 @@
  *
  * 它以前住在 `packages/shared/events/session-commands.ts`,而 core 禁 import
  * `@shared` —— 于是引擎那边只能把同一批字符串再手抄一遍(`onAnySession('command:…')`),
- * 词汇变成两份,渲染层的 `platformApi.emitCommand(…, { type: SESSION_COMMAND_TYPES.X })`
+ * 词汇变成两份,渲染层的 `sessionCommands.emit({ …, command: { type: SESSION_COMMAND_TYPES.X } })`
  * 到引擎订阅点的 find-references 就断在中间。
  *
  * 现在表在 core:core 自己用它订阅,shared 从这里再导出(与 `shared/tool-errors.ts`

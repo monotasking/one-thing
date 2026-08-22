@@ -1,4 +1,5 @@
 import { platformApi } from '@/platform'
+import { sessionCommands } from '@/platform/session-command-client'
 /**
  * Command Registry
  * Manages available commands for the "/" command system
@@ -111,10 +112,13 @@ const commands: CommandDefinition[] = [
       const requestId = globalThis.crypto?.randomUUID?.() || `compact-${Date.now()}-${Math.random().toString(36).slice(2)}`
       const completion = waitForCompactCompletion(context.sessionId, requestId)
 
-      const emitted = await platformApi.emitCommand(context.sessionId, {
-        type: SESSION_COMMAND_TYPES.COMPACT_CONTEXT,
-        requestId,
-        manual: true,
+      const emitted = await sessionCommands.emit({
+        sessionId: context.sessionId,
+        command: {
+          type: SESSION_COMMAND_TYPES.COMPACT_CONTEXT,
+          requestId,
+          manual: true,
+        },
       })
 
       if (!emitted?.success) {

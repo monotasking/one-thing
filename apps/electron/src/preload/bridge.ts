@@ -8,7 +8,6 @@ import {
 import type { IpcRendererEvent } from "electron";
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import type {
-	SessionCommand,
 	SessionEventEnvelope,
 	StreamChunk,
 } from "@shared/events/index.js";
@@ -57,7 +56,6 @@ import type {
 	AppSettings,
 	SaveSettingsRequest,
 	ProxySettings,
-	ChatMessageMention,
 	Step,
 	BrowserTabsChangedEvent,
 	GatewayStartRequest,
@@ -97,42 +95,6 @@ import type {
 	EvalsRunProgressEvent,
 	OAuthCredentialTargetRequest,
 } from "@shared/ipc.js";
-
-/**
- * Second line of defense for W14a mentions (W7 血教训: a Vue reactive proxy
- * cannot survive structured clone and takes the whole component tree down with
- * it). The renderer already rebuilds them as literals when it constructs the
- * command; this rebuilds them again AT the boundary, because a caller has no
- * reliable way to know it is holding a proxy. Only the mentions array is
- * touched — everything else on the command travels exactly as before.
- *
- * 拍平必须搬走 `ChatMessageMention` 声明的**每一个**字段:少搬一个,这条通道就
- * 成了一个按传输方式分叉的静默丢字段点(web 走 HTTP 原样透传,桌面不)。字段形状
- * 与 runtime 的 `mergeCollabMentions` 保持同一套写法。
- */
-function withPlainCommandMentions(command: SessionCommand): SessionCommand {
-	const mentions = (command as { mentions?: unknown })?.mentions;
-	if (!Array.isArray(mentions)) return command;
-	return {
-		...command,
-		mentions: (mentions as Partial<ChatMessageMention>[]).map((mention) => ({
-			agentId: String(mention?.agentId ?? ""),
-			label: String(mention?.label ?? ""),
-			// `kind` 缺省是 `'agent'`,那一条**不写这个键** —— 老转录里它本来就不
-			// 存在,拍平不该给整仓凭空长出一批 `kind:'agent'`。用户那一条的
-			// `agentId` 是空串(collab-handle-codec.md §2.3),身份全在 kind/句柄上:
-			// 白名单掉它们,等于让 `@用户` 只在桌面这条通道上悄悄失效。
-			...(mention?.kind === "user"
-				? {
-						kind: "user" as const,
-						...(mention?.userHandle
-							? { userHandle: String(mention.userHandle) }
-							: {}),
-					}
-				: {}),
-		})),
-	} as SessionCommand;
-}
 
 const electronAPI = {
 	/**
@@ -237,13 +199,6 @@ const electronAPI = {
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SESSION_STREAM, listener);
 	},
-
-	emitCommand: (sessionId: string, command: SessionCommand) =>
-		// 给main线程发送消息
-		ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, {
-			sessionId,
-			command: withPlainCommandMentions(command),
-		}),
 
 	// ── Terminal (real PTY) ──────
 	createTerminal: (request: {
@@ -1107,7 +1062,7 @@ const electronAPI = {
 		return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_GALLERY, { mediaId });
 	},
 
-	// Permission methods. Responses go through emitCommand() with
+	// Permission methods. Responses go through the session-command RPC domain with
 	// type: 'command:permission-respond' (EventBus channel affinity validation).
 	// Permission requests arrive via session:event channel as 'permission:request'.
 	// ── Permission(活询问):已走通用 RPC 通道(permissionRouter),本文件不再暴露。──

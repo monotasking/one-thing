@@ -232,8 +232,16 @@ async function runOnce({ label, shadow, tools, ports, probePath }) {
   let fsyncsBefore = 0
   try { fsyncsBefore = JSON.parse(fs.readFileSync(perfOut, 'utf8')).fsyncs ?? 0 } catch { /* none */ }
   const startedAt = Date.now()
-  await fetch(`http://127.0.0.1:${ports.server}/api/sessions/${sessionId}/commands`, {
-    method: 'POST', headers, body: JSON.stringify({ type: 'command:send-message', content: `run ${tools} time checks` }),
+  // 命令总线的入口是 `session-command` RPC 域(结构债 P4c 第四批);
+  // `POST /api/sessions/:id/commands` 已随之删除。
+  await fetch(`http://127.0.0.1:${ports.server}/api/rpc`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      domain: 'session-command',
+      method: 'emit',
+      payload: { sessionId, command: { type: 'command:send-message', content: `run ${tools} time checks` } },
+    }),
   })
 
   let finishedAt = 0

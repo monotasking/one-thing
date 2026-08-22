@@ -1006,6 +1006,14 @@ describe('createWebPlatformApi', () => {
   it('maps chat and session message platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
+      // `resumeAfterToolConfirm` 是这批里唯一走命令总线的一条:它跟着
+      // `session-command` 域上了通用信封,所以要回一个 `RpcResponse`。
+      if (url === '/api/rpc') {
+        return new Response(JSON.stringify({ ok: true, data: { success: true, url } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
       if (url === '/api/capabilities') {
         return new Response(JSON.stringify({}), {
           status: 200,
@@ -1076,9 +1084,10 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/chat/update-thinking-time',
     })
+    // 命令总线迁 router 之后这条走的是通用信封;`createRouterClient` 解包 `data`。
     await expect(api.resumeAfterToolConfirm('session-1', 'message-1')).resolves.toEqual({
       success: true,
-      url: '/api/sessions/session-1/commands',
+      url: '/api/rpc',
     })
 
     expect(fetchMock).toHaveBeenCalledWith('/api/chat/update-session-pin', expect.objectContaining({
@@ -1095,11 +1104,18 @@ describe('createWebPlatformApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/chat/update-thinking-time', expect.objectContaining({
       method: 'POST',
     }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/sessions/session-1/commands', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith('/api/rpc', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({
-        type: 'command:resume-after-confirm',
-        messageId: 'message-1',
+        domain: 'session-command',
+        method: 'emit',
+        payload: {
+          sessionId: 'session-1',
+          command: {
+            type: 'command:resume-after-confirm',
+            messageId: 'message-1',
+          },
+        },
       }),
     }))
   })

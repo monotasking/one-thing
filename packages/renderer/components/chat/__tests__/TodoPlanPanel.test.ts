@@ -39,8 +39,15 @@ const mocks = vi.hoisted(() => {
 		editorApplyCommand: vi.fn(),
 		editorSelectedText: vi.fn(() => ""),
 		editorFindTextMatches: vi.fn((_query: string) => [] as Array<{ from: number; to: number }>),
+		// 命令总线是 `session-command` RPC 域(结构债 P4c 第四批),不再是
+		// `window.electronAPI` 上的一个属性。
+		emitSessionCommand: vi.fn().mockResolvedValue({ success: true }),
 	};
 });
+
+vi.mock("@/platform/session-command-client", () => ({
+	sessionCommands: { emit: mocks.emitSessionCommand },
+}));
 
 vi.mock("@/stores/sessions", () => ({
 	useSessionsStore: () => mocks.sessionsStore,
@@ -240,7 +247,6 @@ function installElectronApi() {
 			zoomTodoPlanWindow: vi.fn().mockResolvedValue({ success: true }),
 			dragTodoPlanWindow: vi.fn().mockResolvedValue({ success: true }),
 			setWindowButtonVisibility: vi.fn().mockResolvedValue({ success: true }),
-			emitCommand: vi.fn().mockResolvedValue({ success: true }),
 			onTodoPlanChanged: vi.fn((callback: (data: any) => void) => {
 				todoPlanChangedHandler = callback;
 				return vi.fn(() => {
@@ -1128,9 +1134,12 @@ describe("TodoPlanPanel", () => {
 
 			// 先落盘再发:模型下一轮读到的那份必须已经含这段话。
 			expect(mocks.scratchpadStore.flushNow).toHaveBeenCalledWith("session-1");
-			expect((window.electronAPI as any).emitCommand).toHaveBeenCalledWith("session-1", {
-				type: "command:send-message",
-				content: "纸上写了一句话",
+			expect(mocks.emitSessionCommand).toHaveBeenCalledWith({
+				sessionId: "session-1",
+				command: {
+					type: "command:send-message",
+					content: "纸上写了一句话",
+				},
 			});
 		});
 
@@ -1142,9 +1151,12 @@ describe("TodoPlanPanel", () => {
 			await wrapper.find('[aria-label="Send scratchpad content"]').trigger("click");
 			await settle();
 
-			expect((window.electronAPI as any).emitCommand).toHaveBeenCalledWith("session-1", {
-				type: "command:send-message",
-				content: "只发这一句",
+			expect(mocks.emitSessionCommand).toHaveBeenCalledWith({
+				sessionId: "session-1",
+				command: {
+					type: "command:send-message",
+					content: "只发这一句",
+				},
 			});
 		});
 

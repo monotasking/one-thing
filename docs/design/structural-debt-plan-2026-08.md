@@ -274,6 +274,26 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
    (其它订阅者 Permission / Interaction 同样改用常量);`emitCoreSessionCommandForIpc` 泛型收紧。
    结果:渲染层那一行 F12 → core 常量 → Shift+F12 直接列出处理者。链的七跳里 Proxy / contextBridge /
    跨进程一条通道是 Electron 结构性的,只此一条不再增;第七跳四类三树归 P3'b/c engine 归位。
+   **08-22 三纠正(用户:"我只能追到 API,到不了实现")**:上面"第 1–3 跳是 Electron 结构性"的判断站不住——
+   router 域在同样的 Electron 结构下是能追的,区别只在入口是一个有类型的 router 方法,而 `emitCommand` 是 Proxy 上的
+   属性 + 一条手写通道(`SESSION_COMMAND`)+ web 一条 REST 镜像。**修法**:命令总线入口做成 router 域
+   `session-command.emit({sessionId, command})`(`shared/ipc/session-command.ts` + `backend/rpc/domains/session-command.ts`,
+   处理者 = 原 `handlers.ts` 的 `sanitizeRendererCommand` → `emitCoreSessionCommandForIpc` → 总线;http 上 abort 的本地
+   语义逐字搬;渲染层 `sessionCommands.emit(...)`;删 `SESSION_COMMAND` 常量、工厂、bridge/web 包装、
+   `POST /api/sessions/:id/commands`;battery 与 measure-shadow-overhead 脚本同改走 rpc)。于是从 `chat.ts` 那一行起
+   每一跳都是 TS 标识符:router 方法 → 域处理者 → 总线 → 常量键派发表 → `ProductStreamEngine`。
+   **落地(08-22)**:`session-command` 域单方法 `emit`(分派在总线侧按 type 走,router 不再劈一遍);处理者按
+   `context.transport` 分叉——`ipc` 走 sanitize(origin 盖章 + retry/edit 补写评估事故包:该函数有副作用,搬到
+   `backend/wiring/evals/incident.ts`,`@main` 再导出),`http` 保留 server 两条本地语义(abort 就地中止 + 清权限;
+   无 channel 的权限应答认领待批那条的 `targetChannel`,事实源从 server 自己的 `pendingPermissions` 镜像换成 core
+   `Permission.getPendingPrompts`——这是 battery 两个权限场景的行为契约)。调用点 10 处信封化;删 `SESSION_COMMAND`
+   常量 / 工厂 / bridge `emitCommand`+`withPlainCommandMentions` / web `emitCommand` / `POST /api/sessions/:id/commands`
+   / `RuntimeCommandsAdapter`;battery 与 measure-shadow-overhead 改走 rpc;checker 整删 session-command IPC host 断言、
+   core 的"别处不许重抄 emit"改指域文件。新跳转序列 8 跳全是标识符:`chat.ts:2354 sessionCommands.emit` →
+   `session-command-client.ts:51` → `shared/ipc/session-command.ts:50` → `backend/rpc/index.ts:159` →
+   `domains/session-command.ts:192` → `core/events/ipc-operations.ts:62` → `core-stream-engine.ts:541` 派发表 →
+   `runtime/src/engine/stream-engine.ts:148`。transport channels 261→**260**、bridge 1532→1487;全量 11151 绿;battery 264/0。
+   **语义变化(拍板 #29,同 #23)**:server 侧命令的 per-owner "Session not found" 前置检查消失(桌面形状赢)。
 2. ~~`transport:gate` 改硬红~~ —— 查实它**本来就是增即红**(`compare()` 上升即 regression → exit 1,
    `--self-test` 用例 2 就是这条)。真正的缺口在别处:**CI(`.github/workflows/test.yml`)只跑
    `bun run test`,boundary / ui / log / session / transport 五道门一道都不在 CI 里**——门红两天没人理,
@@ -1323,6 +1343,7 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 | 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
 | 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
+| 29 | **(新,session-command 入口 router 化已发生)server 侧命令的 per-owner "Session not found" 前置检查消失**(桌面线从来没有;命令的 per-owner 隔离随之消失,会话/SSE 隔离不受影响) | 同 #23 接受;多租户时在 RpcContext 层统一 | 已按默认执行,待知会 |
 | 28 | **(新,P4c-3 已发生)media 迁 router 后 `filePath`/`thumbnailPath` 以 store 绝对路径出到浏览器**(旧 server 壳改写为 `/api/media/file/<name>` 兼有遮蔽之效;取文件 URL 规则改由渲染侧 `services/media-src.ts` 按 environment 决定) | 单用户 + loopback + Bearer 下与 project-dirs/skills 口径一致,接受;多租户前在 RpcContext 层统一处理 | 已按默认执行,待知会 |
 | 27 | **(新,P4c-2 已发生)skills 迁 router 后 web/server 不再扫 `owners/<uid>/<wid>/skills` 的第二份技能表,改读桌面 core 同一份**;`executeSkill` 从未实现的整条链(web 桩 + `/api/skills/execute` + adapter)删除 | 与 agents/models/#20 同判例接受 | 已按默认执行,待知会 |
 | 26 | **(新,词汇统一时查出)`command:confirm-tool`(`CONFIRM_TOOL`)全仓零订阅者**——shared 有 `ConfirmToolCommand` 形状、core 有常量,但没有任何 `onAnySession` 消费它,发这条命令等于丢进空气 | 删契约(shared 接口 + core 常量)并清渲染层发送点;若确有未完成的设计意图再补订阅 | 待拍 |

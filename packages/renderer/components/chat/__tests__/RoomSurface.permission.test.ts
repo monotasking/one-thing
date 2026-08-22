@@ -16,13 +16,13 @@ import RoomSurface from '../room/RoomSurface.vue'
  */
 const mocks = vi.hoisted(() => ({
   messages: [] as any[],
-  emitCommand: vi.fn().mockResolvedValue({ success: true }),
+  // 命令总线是 `session-command` RPC 域(结构债 P4c 第四批),不再是 platformApi 上的属性。
+  emit: vi.fn().mockResolvedValue({ success: true }),
 }))
 
-vi.mock('@/platform', () => ({
-  platformApi: {
-    emitCommand: mocks.emitCommand,
-  },
+vi.mock('@/platform', () => ({ platformApi: {} }))
+vi.mock('@/platform/session-command-client', () => ({
+  sessionCommands: { emit: mocks.emit },
 }))
 vi.mock('@/platform/collab-client', () => ({
   collabApi: { messageReact: vi.fn().mockResolvedValue({ success: true }) },
@@ -199,11 +199,14 @@ describe('RoomSurface 权限账页栏位', () => {
     await wrapper.find('.permission-btn.allow').trigger('click')
     await settle()
 
-    expect(mocks.emitCommand).toHaveBeenCalledWith('room-1', {
-      type: 'command:permission-respond',
-      requestId: 'perm-9',
-      toolCallId: 'call-77',
-      decision: 'once',
+    expect(mocks.emit).toHaveBeenCalledWith({
+      sessionId: 'room-1',
+      command: {
+        type: 'command:permission-respond',
+        requestId: 'perm-9',
+        toolCallId: 'call-77',
+        decision: 'once',
+      },
     })
   })
 
@@ -224,12 +227,15 @@ describe('RoomSurface 权限账页栏位', () => {
     ;(document.querySelector('.reject-dialog-btn-confirm') as HTMLElement).click()
     await settle()
 
-    expect(mocks.emitCommand).toHaveBeenCalledWith('room-1', {
-      type: 'command:permission-respond',
-      requestId: 'perm-9',
-      toolCallId: 'call-77',
-      decision: 'reject',
-      rejectReason: '这条要先备份',
+    expect(mocks.emit).toHaveBeenCalledWith({
+      sessionId: 'room-1',
+      command: {
+        type: 'command:permission-respond',
+        requestId: 'perm-9',
+        toolCallId: 'call-77',
+        decision: 'reject',
+        rejectReason: '这条要先备份',
+      },
     })
   })
 
@@ -240,10 +246,13 @@ describe('RoomSurface 权限账页栏位', () => {
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     await settle()
 
-    expect(mocks.emitCommand).toHaveBeenCalledWith('room-1', expect.objectContaining({
-      toolCallId: 'call-77',
-      decision: 'once',
-    }))
+    expect(mocks.emit).toHaveBeenCalledWith({
+      sessionId: 'room-1',
+      command: expect.objectContaining({
+        toolCallId: 'call-77',
+        decision: 'once',
+      }),
+    })
   })
 
   it('没有活的 prompt(canRespond=false)就不画栏位', async () => {

@@ -1315,16 +1315,6 @@ async function createServerRuntimeOverServerBackend(
 		}
 	}, "ServerRuntimeStore");
 
-	// Session commands ride the EventBus; the real StreamEngine subscribes to
-	// them and owns persistence, retries, steering, and permission flow.
-	const forwardSessionCommand = async (
-		sessionId: string,
-		command: SessionCommand,
-	): Promise<{ success: boolean; error?: string }> => {
-		await eventBus.emit(sessionId, command as unknown as AgentEngineSessionEvent);
-		return { success: true };
-	};
-
 	const getMCPSettingsForContext = async (
 		context = defaultRequestContext(),
 	): Promise<MCPSettings> => {
@@ -2501,53 +2491,6 @@ async function createServerRuntimeOverServerBackend(
 				if (!patched) return { success: false, error: "Message not found" };
 				settleMessageCommand(sessionId);
 				return { success: true };
-			},
-		},
-		commands: {
-			async emit(
-				sessionId: string,
-				command: SessionCommand,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-
-				if (command.type === SESSION_COMMAND_TYPES.ABORT) {
-					backend.abortSession(sessionId, "HTTP abort");
-					clearSessionPermissions(sessionId);
-					return { success: true };
-				}
-
-				// Every other command forwards whole — the StreamEngine owns
-				// send/edit/retry/resume/steering/compact/permission handling,
-				// so no field is destructured away on this hop.
-				//
-				// Channel stamping is deliberately narrow. Do NOT stamp 'api'
-				// onto send/edit/...: channel-identity resolves 'api' commands
-				// to an anonymous external guest and remaps the message into an
-				// identity session — but this HTTP surface is the owner's own
-				// web UI, which must keep desktop semantics. Permission
-				// responses instead ADOPT the pending ask's target channel:
-				// this endpoint already authenticated the session owner, and
-				// core's affinity check guards against cross-channel spoofing
-				// on the bus, not against the owner approving over HTTP.
-				if (command.type === SESSION_COMMAND_TYPES.PERMISSION_RESPOND) {
-					const pending =
-						(command.requestId
-							? pendingPermissions.get(command.requestId)
-							: undefined) ??
-						(command.toolCallId
-							? Array.from(pendingPermissions.values()).find(
-									(record) => record.info.callId === command.toolCallId,
-								)
-							: undefined);
-					return forwardSessionCommand(sessionId, {
-						...command,
-						channel:
-							command.channel ?? pending?.info.targetChannel ?? "api",
-					});
-				}
-				return forwardSessionCommand(sessionId, command);
 			},
 		},
 		events: {

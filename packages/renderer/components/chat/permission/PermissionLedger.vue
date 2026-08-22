@@ -105,7 +105,7 @@
  * 共用同一个实现,而不是各自抄一份。位置与语义的"零变化"因此是结构保证,
  * 不是比对结论。
  *
- * 这一层只画与收集意图;真正的应答(emitCommand + 本地状态收尾)由
+ * 这一层只画与收集意图;真正的应答(sessionCommands.emit + 本地状态收尾)由
  * `usePermissionResponder` 统一执行 —— 两处也共用同一份。
  */
 import { computed, ref, watch } from 'vue'

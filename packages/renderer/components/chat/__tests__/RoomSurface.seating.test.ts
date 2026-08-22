@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/platform', () => ({
-  platformApi: { emitCommand: vi.fn() },
+  platformApi: {},
 }))
 vi.mock('@/platform/collab-client', () => ({
   collabApi: { messageReact: vi.fn() },

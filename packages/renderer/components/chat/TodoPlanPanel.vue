@@ -815,6 +815,7 @@ import {
 } from './todo-window-drag'
 import { platformApi } from '@/platform'
 import { markdownApi } from '@/platform/markdown-client'
+import { sessionCommands } from '@/platform/session-command-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.todo-plan')
@@ -1780,7 +1781,7 @@ async function copyMarkdown() {
  * 草稿纸的「正式发出」:选区优先,否则水位之后没被读过的那一段。发出的内容
  * **不从纸上删除** —— 纸是持久文档,水位由引擎消费驱动往前推,与这次发送无关。
  *
- * ## 为什么这里直接 emitCommand,而不是借道 composer
+ * ## 为什么这里直接发命令,而不是借道 composer
  * 借不到。这个组件唯一活着的挂载点是**独立的 Todo 窗**(`TodoPlanWindow.vue`),
  * 那扇窗里没有 InputBox —— 排队、引用物化、附件降级那一套全在主窗的 composer 里,
  * 跨窗口够不着(要够着就得加一条主进程通道,那是后端改动)。
@@ -1801,9 +1802,12 @@ async function sendScratchpadPending() {
   pushScheduler.disarm()
   // 先把纸落盘再发:模型下一个 turn 读到的那份必须已经包含这段话。
   await scratchpad.store.flushNow(sessionId)
-  await platformApi.emitCommand(sessionId, {
-    type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
-    content: text,
+  await sessionCommands.emit({
+    sessionId,
+    command: {
+      type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
+      content: text,
+    },
   })
   lastPushedContent.value = scratchpad.content.value
   noteJustSent(text.trim().length)

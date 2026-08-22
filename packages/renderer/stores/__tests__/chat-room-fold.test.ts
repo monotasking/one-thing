@@ -13,7 +13,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({
-  emitCommand: vi.fn(async () => ({ success: true })),
   getSessions: vi.fn(async () => ({ success: true, sessions: [] })),
   getSettings: vi.fn(async () => ({ success: true, settings: {} })),
 }))

@@ -63,6 +63,8 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:skills', 'skills'],
   // P4c 第三批唯一的域:media(十一条数据面;另存为 / 两个开窗留在手写通道上)。
   ['rpc:media', 'media'],
+  // P4c 第四批唯一的域:session-command(会话命令总线的入口,只有 emit 一条)。
+  ['rpc:session-command', 'session-command'],
 ] as const
 
 /**

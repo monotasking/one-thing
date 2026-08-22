@@ -44,7 +44,6 @@ const mocks = vi.hoisted(() => ({
   },
   platformApi: {
     capabilities: { shellTools: true },
-    emitCommand: vi.fn().mockResolvedValue({ success: true }),
     executeTool: vi.fn().mockResolvedValue({ success: true, result: '' }),
     getPendingPermissions: vi.fn().mockResolvedValue({ success: true, pending: [] }),
     openImagePreview: vi.fn(),

@@ -263,8 +263,13 @@ class Driver {
     this.marker = `@@bat:${scenarioName}:${Buffer.from(JSON.stringify(variant), 'utf8').toString('base64url')}@@`
   }
 
+  /**
+   * 一条会话命令。结构债 P4c 第四批把命令总线的入口整只迁到了 `session-command`
+   * RPC 域,`POST /api/sessions/:id/commands` 随之删除 —— 这是唯一的路。
+   * 返回值仍是 `{success, error?}`(域的 `emit` 输出),所以场景断言不用改。
+   */
   command(command) {
-    return this.api('POST', `/api/sessions/${this.sessionId}/commands`, command)
+    return this.rpc('session-command', 'emit', { sessionId: this.sessionId, command })
   }
 
   /**

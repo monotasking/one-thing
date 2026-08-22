@@ -82,9 +82,6 @@ describe('createOnethingHttpServer', () => {
         list: async () => ({ success: true, sessions: [] }),
         create: async (name: string) => ({ id: 'session-1', name }),
       },
-      commands: {
-        emit: async () => ({ success: true }),
-      },
       events: {
         subscribe: () => () => {},
       },
@@ -231,9 +228,6 @@ describe('createOnethingHttpServer', () => {
         list: async () => ({ success: true, sessions: [] }),
         create: async (name: string) => ({ id: 'session-1', name }),
       },
-      commands: {
-        emit: async () => ({ success: true }),
-      },
       events: {
         subscribe: () => () => {},
       },
@@ -275,9 +269,6 @@ describe('createOnethingHttpServer', () => {
       sessions: {
         list: async () => ({ success: true, sessions: [] }),
         create: async (name: string) => ({ id: 'session-1', name }),
-      },
-      commands: {
-        emit: async () => ({ success: true }),
       },
       events: {
         subscribe: () => () => {},
@@ -1080,9 +1071,6 @@ describe('createOnethingHttpServer', () => {
         removeMessage,
         updateMessageThinkingTime,
       },
-      commands: {
-        emit: async () => ({ success: true }),
-      },
       events: {
         subscribe: () => () => {},
       },
@@ -1195,9 +1183,6 @@ describe('createOnethingHttpServer', () => {
         list: async () => ({ success: true, sessions: [] }),
         create: async (name: string) => ({ id: 'session-1', name }),
         createBranch,
-      },
-      commands: {
-        emit: async () => ({ success: true }),
       },
       events: {
         subscribe: () => () => {},
@@ -1887,46 +1872,6 @@ describe('createOnethingHttpServer', () => {
     expect(bobFileResponse.status).toBe(404)
   })
 
-  it('routes command POSTs through the runtime facade', async () => {
-    const emit = vi.fn(async (sessionId: string, command: unknown) => ({
-      success: true,
-      result: { sessionId, command },
-    }))
-    const server = await listen(createOnethingHttpServer({
-      runtime: createOnethingRuntimeFacade({
-        sessions: {
-          list: vi.fn(async () => []),
-          create: vi.fn(async () => ({ id: 'session-1' })),
-        },
-        commands: { emit },
-        events: {
-          subscribe: vi.fn(() => () => {}),
-        },
-      }),
-    }))
-
-    const response = await fetch(`${baseUrl(server)}/api/sessions/session-1/commands`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'command:send-message', content: 'hello' }),
-    })
-
-    await expect(response.json()).resolves.toEqual({
-      success: true,
-      result: {
-        sessionId: 'session-1',
-        command: { type: 'command:send-message', content: 'hello' },
-      },
-    })
-    expect(emit).toHaveBeenCalledWith('session-1', {
-      type: 'command:send-message',
-      content: 'hello',
-    }, expect.objectContaining({
-      userId: 'local-user',
-      workspaceId: 'default',
-    }))
-  })
-
   it('streams runtime events as SSE session:event messages', async () => {
     const unsubscribe = vi.fn()
     const subscribe = vi.fn((_sessionId, handler) => {
@@ -1942,9 +1887,6 @@ describe('createOnethingHttpServer', () => {
         sessions: {
           list: vi.fn(async () => []),
           create: vi.fn(async () => ({ id: 'session-1' })),
-        },
-        commands: {
-          emit: vi.fn(async () => ({ success: true })),
         },
         events: { subscribe },
       }),
@@ -1978,9 +1920,6 @@ describe('createOnethingHttpServer', () => {
           list: vi.fn(async () => []),
           create: vi.fn(async () => ({ id: 'session-1' })),
         },
-        commands: {
-          emit: vi.fn(async () => ({ success: true })),
-        },
         events: { subscribe },
       }),
     }))
@@ -2006,9 +1945,6 @@ describe('createOnethingHttpServer', () => {
         sessions: {
           list: vi.fn(async () => []),
           create: vi.fn(async () => ({ id: 'session-1' })),
-        },
-        commands: {
-          emit: vi.fn(async () => ({ success: true })),
         },
         events: {
           subscribe: vi.fn(() => () => {}),
@@ -2045,9 +1981,6 @@ describe('createOnethingHttpServer', () => {
         sessions: {
           list: vi.fn(async () => []),
           create: vi.fn(async () => ({ id: 'session-1' })),
-        },
-        commands: {
-          emit: vi.fn(async () => ({ success: true })),
         },
         events: {
           subscribe: vi.fn(() => () => {}),
@@ -2119,9 +2052,6 @@ describe('createOnethingHttpServer', () => {
         sessions: {
           list: vi.fn(async () => []),
           create: vi.fn(async () => ({ id: 'session-1' })),
-        },
-        commands: {
-          emit: vi.fn(async () => ({ success: true })),
         },
         events: {
           subscribe: vi.fn(() => () => {}),
@@ -2265,7 +2195,7 @@ describe('createOnethingHttpServer', () => {
     })
   })
 
-  it('runs the development runtime through REST commands and SSE streams', async () => {
+  it('runs the development runtime through session commands and SSE streams', async () => {
     const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
@@ -2287,12 +2217,10 @@ describe('createOnethingHttpServer', () => {
     const eventsResponse = await fetch(`${baseUrl(server)}/api/events?sessionId=${encodeURIComponent(sessionId!)}`)
     expect(eventsResponse.status).toBe(200)
 
-    const commandResponse = await fetch(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'command:send-message', content: 'hello web' }),
-    })
-    await expect(commandResponse.json()).resolves.toEqual({ success: true })
+    await expect(sendSessionCommand(serverRuntime, sessionId!, {
+      type: 'command:send-message',
+      content: 'hello web',
+    })).resolves.toEqual({ success: true })
 
     const sse = await readUntil(eventsResponse, text => (
       text.includes('event: session:stream') && text.includes('"type":"stream:complete"')
@@ -2314,7 +2242,7 @@ describe('createOnethingHttpServer', () => {
     expect(sessionId).toBeTruthy()
 
     let eventsResponse = await fetch(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
-    await expect(sendSessionCommand(baseUrlValue, sessionId!, {
+    await expect(sendSessionCommand(serverRuntime, sessionId!, {
       type: 'command:send-message',
       content: 'first',
     })).resolves.toEqual({ success: true })
@@ -2327,7 +2255,7 @@ describe('createOnethingHttpServer', () => {
     ])
 
     eventsResponse = await fetch(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
-    await expect(sendSessionCommand(baseUrlValue, sessionId!, {
+    await expect(sendSessionCommand(serverRuntime, sessionId!, {
       type: 'command:retry-message',
       messageId: messages[1].id,
     })).resolves.toEqual({ success: true })
@@ -2341,7 +2269,7 @@ describe('createOnethingHttpServer', () => {
     ])
 
     eventsResponse = await fetch(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
-    await expect(sendSessionCommand(baseUrlValue, sessionId!, {
+    await expect(sendSessionCommand(serverRuntime, sessionId!, {
       type: 'command:edit-and-resend',
       messageId: messages[0].id,
       newContent: 'edited',
@@ -3001,7 +2929,7 @@ describe('createOnethingHttpServer', () => {
     }))
   })
 
-	  it('isolates sessions, commands, and SSE streams by user/workspace context', async () => {
+	  it('isolates sessions and SSE streams by user/workspace context', async () => {
     const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
@@ -3020,13 +2948,6 @@ describe('createOnethingHttpServer', () => {
     expect(aliceList.sessions?.map((session: { id: string }) => session.id)).toContain(sessionId)
     expect(bobList.sessions ?? []).toHaveLength(0)
 
-    const bobCommand = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'command:send-message', content: 'should not run' }),
-    })
-    expect(bobCommand).toEqual({ success: false, error: 'Session not found' })
-
     const bobEvents = await fetch(`${baseUrl(server)}/api/events?sessionId=${encodeURIComponent(sessionId!)}`, {
       headers: bobHeaders,
     })
@@ -3036,10 +2957,12 @@ describe('createOnethingHttpServer', () => {
     })
     expect(bobSessionEvents.status).toBe(200)
 
-    await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'command:send-message', content: 'secret' }),
+    // 命令的 per-owner 前置检查随被删掉的 adapter 一起没了(域取的是桌面的形状,
+    // 见 `backend/rpc/domains/session-command.ts` 文件头);这条用例守的是**事件
+    // 扇出**的隔离 —— 别人的会话里发生的事不许漏进 bob 的两条 SSE。
+    await sendSessionCommand(serverRuntime, sessionId!, {
+      type: 'command:send-message',
+      content: 'secret',
     })
 
     const [bobSse, bobSessionSse] = await Promise.all([
@@ -3135,72 +3058,6 @@ describe('createOnethingHttpServer', () => {
       },
     }))
 
-    permissionCommand = undefined
-    await (serverRuntime.eventBus as any).emit(sessionId!, {
-      type: 'permission:request',
-      requestId: 'permission-2',
-      targetChannel: 'api',
-      toolCallId: 'tool-2',
-      messageId: 'message-2',
-      permissionType: 'bash',
-      title: 'Run another command',
-      metadata: {},
-    })
-
-    const aliceCommandResponse = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        type: 'command:permission-respond',
-        requestId: 'permission-2',
-        decision: 'reject',
-        rejectReason: 'no thanks',
-      }),
-    })
-    expect(aliceCommandResponse).toEqual({ success: true })
-    expect(permissionCommand).toEqual(expect.objectContaining({
-      sessionId,
-      event: {
-        type: 'command:permission-respond',
-        channel: 'api',
-        requestId: 'permission-2',
-        decision: 'reject',
-        rejectReason: 'no thanks',
-      },
-    }))
-
-    let resumeCommand: any
-    const unsubscribeResume = (serverRuntime.eventBus as any).onAnySession('command:resume-after-confirm', (envelope: any) => {
-      resumeCommand = envelope
-    })
-    const bobResume = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        type: 'command:resume-after-confirm',
-        messageId: 'message-3',
-      }),
-    })
-    expect(bobResume).toEqual({ success: false, error: 'Session not found' })
-    expect(resumeCommand).toBeUndefined()
-
-    const aliceResume = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        type: 'command:resume-after-confirm',
-        messageId: 'message-3',
-      }),
-    })
-    expect(aliceResume).toEqual({ success: true })
-    expect(resumeCommand).toEqual(expect.objectContaining({
-      sessionId,
-      event: {
-        type: 'command:resume-after-confirm',
-        messageId: 'message-3',
-      },
-    }))
-    unsubscribeResume()
     unsubscribe()
   })
 
@@ -3613,17 +3470,23 @@ async function createSession(
   })
 }
 
+/**
+ * 结构债 P4c 第四批:`POST /api/sessions/:id/commands` 已随命令总线整只迁到
+ * `session-command` RPC 域而删除,而这些用例跑的是**回声后端**(它有自己的
+ * EventBus,而域打的是装配层那台单例),所以走不了 `/api/rpc`。
+ *
+ * 这些用例要证的本来也不是「那条路由存在」,而是「命令进了总线之后
+ * server 的会话/事件/SSE 一路对得上」—— 于是这里直接往该 runtime 的总线上发,
+ * 与被删掉的 adapter 里 `forwardSessionCommand` 逐字同义。传输面那一半由
+ * `packages/backend/rpc/__tests__/session-command-domain.test.ts` 守。
+ */
 async function sendSessionCommand(
-  baseUrlValue: string,
+  serverRuntime: OnethingServerRuntime,
   sessionId: string,
   command: unknown,
-  headers: Record<string, string> = {},
-): Promise<any> {
-  return fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId)}/commands`, {
-    method: 'POST',
-    headers: { ...headers, 'content-type': 'application/json' },
-    body: JSON.stringify(command),
-  })
+): Promise<{ success: boolean }> {
+  await (serverRuntime.eventBus as any).emit(sessionId, command)
+  return { success: true }
 }
 
 async function getSessionMessages(

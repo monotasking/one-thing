@@ -31,7 +31,6 @@
     "./ipc/project-dirs": "./src/ipc/project-dirs.ts",
     "./ipc/scheduler": "./src/ipc/scheduler.ts",
     "./ipc/shell": "./src/ipc/shell.ts",
-    "./ipc/session-command": "./src/ipc/session-command.ts",
     "./ipc/sessions": "./src/ipc/sessions.ts",
     "./ipc/themes": "./src/ipc/themes.ts",
     "./ipc/todo-plan": "./src/ipc/todo-plan.ts",

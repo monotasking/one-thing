@@ -98,9 +98,12 @@ export interface RuntimeChatAdapter<
   updateMessageThinkingTime?(sessionId: string, messageId: string, thinkingTime: number, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
 }
 
-export interface RuntimeCommandsAdapter<TCommand = unknown, TResult = RuntimeMutationResult> {
-  emit(sessionId: string, command: TCommand, context?: RuntimeRequestContext): Promise<TResult>
-}
+/**
+ * 结构债 P4c 第四批:会话命令总线的入口整只迁到 `session-command` RPC 域
+ * (`POST /api/sessions/:id/commands` 与这个 adapter 一起消失)。`TCommand` /
+ * `TCommandResult` 两个**位置泛型**留着不动 —— 它们后面还排着十几个位置参数,
+ * 抽掉一格等于把每个宿主的实参表整体错位(与 `RuntimeAppStateAdapter` 同一处理)。
+ */
 
 export interface RuntimeEventsAdapter<TEvent = unknown> {
   subscribe(
@@ -396,7 +399,6 @@ export interface OnethingRuntimeFacadeOptions<
   sessions: RuntimeSessionsAdapter<TSessionList, TSession, TCreateSessionInput, TSessionPatch>
   messages?: RuntimeMessagesAdapter<TMessagePageRequest, TMessagePageResponse, TUserMarkersResponse>
   chat?: RuntimeChatAdapter
-  commands: RuntimeCommandsAdapter<TCommand, TCommandResult>
   events: RuntimeEventsAdapter<TEvent>
   streams?: RuntimeStreamsAdapter<TChunk>
   permissions?: RuntimePermissionsAdapter<TPermissionResponse>
@@ -471,7 +473,6 @@ export interface OnethingRuntimeFacade<
   readonly sessions: RuntimeSessionsAdapter<TSessionList, TSession, TCreateSessionInput, TSessionPatch>
   readonly messages?: RuntimeMessagesAdapter<TMessagePageRequest, TMessagePageResponse, TUserMarkersResponse>
   readonly chat?: RuntimeChatAdapter
-  readonly commands: RuntimeCommandsAdapter<TCommand, TCommandResult>
   readonly events: RuntimeEventsAdapter<TEvent>
   readonly streams?: RuntimeStreamsAdapter<TChunk>
   readonly permissions?: RuntimePermissionsAdapter<TPermissionResponse>
@@ -617,7 +618,6 @@ export function createOnethingRuntimeFacade<
     sessions: Object.freeze({ ...options.sessions }),
     messages: options.messages ? Object.freeze({ ...options.messages }) : undefined,
     chat: options.chat ? Object.freeze({ ...options.chat }) : undefined,
-    commands: Object.freeze({ ...options.commands }),
     events: Object.freeze({ ...options.events }),
     streams: options.streams ? Object.freeze({ ...options.streams }) : undefined,
     permissions: options.permissions ? Object.freeze({ ...options.permissions }) : undefined,

@@ -251,7 +251,6 @@ export const IPC_CHANNELS = {
 	// Unified event-driven channels (Phase 4)
 	SESSION_EVENT: "session:event",
 	SESSION_STREAM: "session:stream",
-	SESSION_COMMAND: "session:command",
 
 	// Variables subsystem (scalar-only)
 

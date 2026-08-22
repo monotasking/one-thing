@@ -254,7 +254,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
     if (method === 'DELETE' && !action) return withSessionId(sessionMatch[1], handleDeleteSession)
     if (method === 'POST' && action === 'activate') return withSessionId(sessionMatch[1], handleActivateSession)
     if (method === 'POST' && action === 'switch') return withSessionId(sessionMatch[1], handleActivateSession)
-    if (method === 'POST' && action === 'commands') return withSessionId(sessionMatch[1], handleEmitCommand)
     if (method === 'POST' && action === 'rename') return withSessionId(sessionMatch[1], handleRenameSession)
     if (method === 'POST' && action === 'archive') return withSessionId(sessionMatch[1], handleUpdateSessionArchive)
     if (method === 'POST' && action === 'working-directory') return withSessionId(sessionMatch[1], handleUpdateSessionWorkingDirectory)
@@ -1327,15 +1326,6 @@ async function handleUserMarkers(context: RouteContext): Promise<void> {
   const adapter = context.runtime.messages
   if (!adapter?.userMarkers) return sendNotImplemented(context, 'messages.userMarkers')
   sendJson(context.response, 200, await adapter.userMarkers(readSessionId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleEmitCommand(context: RouteContext): Promise<void> {
-  sendJson(
-    context.response,
-    200,
-    await context.runtime.commands.emit(readSessionId(context), await readJson(context.request), context.requestContext),
-    context.corsOrigin,
-  )
 }
 
 async function handlePermissionResponse(context: RouteContext): Promise<void> {

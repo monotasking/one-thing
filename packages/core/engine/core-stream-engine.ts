@@ -523,7 +523,7 @@ export class CoreStreamEngine<
 
   /**
    * 命令订阅表:键是 `SESSION_COMMAND_TYPES` 里的常量,不是再抄一遍的字面量 ——
-   * 渲染层 `emitCommand(…, { type: SESSION_COMMAND_TYPES.SEND_MESSAGE })` 上按
+   * 渲染层 `sessionCommands.emit({ …, command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE } })` 上按
    * F12 能直接跳到这张表的那一行,再一跳就是下面的 `handleSendMessage` 本体
    * (2026-08-21 两层合一之前,中间还隔着一层 `handleSendMessageCommand` 抽象转发)。
    *

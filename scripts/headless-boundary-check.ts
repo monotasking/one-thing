@@ -123,12 +123,6 @@ const MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS: RegExp[] = [
   /Failed to handle command/,
 ]
 
-const MAIN_SESSION_COMMAND_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
-]
-
 const MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS: RegExp[] = [
   /try\s*\{\s*\n\s*await\s+getEventBus\(\)\.emit\(sessionId,\s*event\)/,
   /console\.error\(['"]\[ChatIPC\]\s+EventBus emit failed:/,
@@ -5861,7 +5855,9 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
     path.join(root, 'packages/core/events/ipc-operations.ts'),
     path.join(root, 'packages/core/events/index.ts'),
   ]
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/handlers.ts')
+  // 结构债 P4c 第四批:命令总线的入口从 `@main/ipc/handlers.ts` 的 `ipcMain.handle`
+  // 搬到 `session-command` RPC 域,所以「不许在别处重抄一遍 emit」这条守的是域文件。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/session-command.ts')
   const chatFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
@@ -5882,7 +5878,7 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
       .map(symbol => `packages/core/events/ipc-operations.ts: missing core-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/handlers.ts: missing IPC handler adapter']),
+      : ['packages/backend/rpc/domains/session-command.ts: missing session-command RPC domain']),
     ...(fs.existsSync(chatFile)
       ? matchingLines(chatFile, MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
@@ -6057,47 +6053,6 @@ function checkCoreOwnsIpcRouterProtocol(): void {
   ]
 
   assertNoMatches('packages/core owns IPC router protocol', lines)
-}
-
-function checkElectronHostOwnsSessionCommandIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronSessionCommandFile = path.join(root, 'apps/electron/src/ipc/session-command.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/handlers.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronSessionCommandContent = fs.existsSync(electronSessionCommandFile)
-    ? fs.readFileSync(electronSessionCommandFile, 'utf-8')
-    : ''
-  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronSessionCommandIpcHandler',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronSessionCommandRequest',
-    'RegisterElectronSessionCommandIpcHandlerOptions',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/session-command',
-    'registerElectronSessionCommandIpcHandler',
-    'IPC_CHANNELS.SESSION_COMMAND',
-    'emitCoreSessionCommandForIpc',
-    'getEventBus()',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/session-command')
-      ? [`${rel(electronPackage)}: missing session-command IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronSessionCommandContent.includes(symbol))
-      .map(symbol => `${rel(electronSessionCommandFile)}: missing Electron session-command IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainContent.includes(symbol))
-      .map(symbol => `${rel(mainFile)}: missing session-command IPC adapter symbol ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SESSION_COMMAND_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/handlers.ts: missing IPC handler adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron session-command IPC host operations', lines)
 }
 
 function checkElectronHostOwnsChatIpcHost(): void {
@@ -9906,7 +9861,6 @@ checkCoreOwnsSessionCommandIpcOperation()
 checkCoreOwnsJsonProtocol()
 checkCoreOwnsIpcRouterProtocol()
 checkCoreOwnsStreamChunkProtocol()
-checkElectronHostOwnsSessionCommandIpcHost()
 checkElectronHostOwnsChatIpcHost()
 checkElectronHostOwnsFilesIpcHost()
 checkElectronHostOwnsSessionsIpcHost()

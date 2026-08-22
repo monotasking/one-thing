@@ -15,6 +15,7 @@
  */
 import type { ChatMessage, ToolCall } from '@/types'
 import { platformApi } from '@/platform'
+import { sessionCommands } from '@/platform/session-command-client'
 import type { PermissionResponse } from '@/components/chat/permission/permission-ledger'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
@@ -64,11 +65,14 @@ export function usePermissionResponder(options: UsePermissionResponderOptions) {
       decision: response,
     })
     try {
-      await platformApi.emitCommand(sessionId, {
-        type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
-        requestId: toolCall.permissionId,
-        toolCallId: toolCall.id,
-        decision: response,
+      await sessionCommands.emit({
+        sessionId,
+        command: {
+          type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
+          requestId: toolCall.permissionId,
+          toolCallId: toolCall.id,
+          decision: response,
+        },
       })
       // The backend will handle execution and resume - just update UI state
       if (tc) {
@@ -104,12 +108,15 @@ export function usePermissionResponder(options: UsePermissionResponderOptions) {
         rejectReason: rejectReasonArg,
       })
       try {
-        await platformApi.emitCommand(sessionId, {
-          type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
-          requestId: toolCall.permissionId,
-          toolCallId: toolCall.id,
-          decision: 'reject',
-          rejectReason: rejectReasonArg,
+        await sessionCommands.emit({
+          sessionId,
+          command: {
+            type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND,
+            requestId: toolCall.permissionId,
+            toolCallId: toolCall.id,
+            decision: 'reject',
+            rejectReason: rejectReasonArg,
+          },
         })
       } catch (error) {
         log.error('permission reject failed', { sessionId, toolCallId: toolCall.id }, error)
