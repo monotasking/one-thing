@@ -260,36 +260,9 @@ export interface RuntimeVoiceAdapter {
   subscribeRuntimeCommands?(handler: (command: unknown) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
 }
 
-export interface RuntimeToolsAdapter<
-  TTool = unknown,
-  TExecuteArgs = JsonObject,
-  TExecuteResult = RuntimeMutationResult,
-  TBackgroundJob = unknown,
-  TToolCallUpdate = unknown,
-> {
-  getTools(context?: RuntimeRequestContext): Promise<{ success: boolean; tools?: TTool[]; error?: string }>
-  executeTool(
-    toolId: string,
-    args: TExecuteArgs,
-    messageId: string,
-    sessionId: string,
-    context?: RuntimeRequestContext,
-  ): Promise<TExecuteResult>
-  cancelTool?(toolCallId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  updateToolCall?(
-    sessionId: string,
-    messageId: string,
-    toolCallId: string,
-    updates: TToolCallUpdate,
-    context?: RuntimeRequestContext,
-  ): Promise<RuntimeMutationResult>
-  listBackgroundJobs?(options?: { includeInactive?: boolean }, context?: RuntimeRequestContext): Promise<{
-    success: boolean
-    jobs?: TBackgroundJob[]
-    error?: string
-  }>
-  stopBackgroundJob?(jobId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-}
+// P4c 第九批:`RuntimeToolsAdapter` 随 tools 的七条数据面迁 `toolsRouter` 一起退役
+// —— 没有实现者(server/runtime.ts 的 `tools` adapter 已删)也没有读者
+// (server/http.ts 的六条路由已删)。同 `RuntimeGatewayAdapter` 判例(第八批)。
 
 export interface OnethingRuntimeFacadeOptions<
   TAppState = unknown,
@@ -309,11 +282,6 @@ export interface OnethingRuntimeFacadeOptions<
   TSettings = unknown,
   TSettingsUpdateResult = TSettings,
   THostCapabilities = RuntimeHostCapabilities,
-  TTool = unknown,
-  TToolExecuteArgs = JsonObject,
-  TToolExecuteResult = RuntimeMutationResult,
-  TBackgroundJob = unknown,
-  TToolCallUpdate = unknown,
 > {
   capabilities?: RuntimeCapabilitiesAdapter<THostCapabilities>
   appState?: RuntimeAppStateAdapter<TAppState, TUIState>
@@ -332,7 +300,6 @@ export interface OnethingRuntimeFacadeOptions<
   plugins?: RuntimePluginsAdapter
   oauth?: RuntimeOAuthAdapter
   voice?: RuntimeVoiceAdapter
-  tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
   shutdown?: () => void | Promise<void>
 }
 
@@ -354,11 +321,6 @@ export interface OnethingRuntimeFacade<
   TSettings = unknown,
   TSettingsUpdateResult = TSettings,
   THostCapabilities = RuntimeHostCapabilities,
-  TTool = unknown,
-  TToolExecuteArgs = JsonObject,
-  TToolExecuteResult = RuntimeMutationResult,
-  TBackgroundJob = unknown,
-  TToolCallUpdate = unknown,
 > {
   readonly capabilities?: RuntimeCapabilitiesAdapter<THostCapabilities>
   readonly appState?: RuntimeAppStateAdapter<TAppState, TUIState>
@@ -377,7 +339,6 @@ export interface OnethingRuntimeFacade<
   readonly plugins?: RuntimePluginsAdapter
   readonly oauth?: RuntimeOAuthAdapter
   readonly voice?: RuntimeVoiceAdapter
-  readonly tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
   shutdown(): Promise<void>
 }
 
@@ -399,11 +360,6 @@ export function createOnethingRuntimeFacade<
   TSettings = unknown,
   TSettingsUpdateResult = TSettings,
   THostCapabilities = RuntimeHostCapabilities,
-  TTool = unknown,
-  TToolExecuteArgs = JsonObject,
-  TToolExecuteResult = RuntimeMutationResult,
-  TBackgroundJob = unknown,
-  TToolCallUpdate = unknown,
 >(
   options: OnethingRuntimeFacadeOptions<
     TAppState,
@@ -422,12 +378,7 @@ export function createOnethingRuntimeFacade<
     TPermissionResponse,
     TSettings,
     TSettingsUpdateResult,
-    THostCapabilities,
-    TTool,
-    TToolExecuteArgs,
-    TToolExecuteResult,
-    TBackgroundJob,
-    TToolCallUpdate
+    THostCapabilities
   >,
 ): OnethingRuntimeFacade<
   TAppState,
@@ -446,12 +397,7 @@ export function createOnethingRuntimeFacade<
   TPermissionResponse,
   TSettings,
   TSettingsUpdateResult,
-  THostCapabilities,
-  TTool,
-  TToolExecuteArgs,
-  TToolExecuteResult,
-  TBackgroundJob,
-  TToolCallUpdate
+  THostCapabilities
 > {
   return Object.freeze({
     capabilities: options.capabilities ? Object.freeze({ ...options.capabilities }) : undefined,
@@ -471,7 +417,6 @@ export function createOnethingRuntimeFacade<
     plugins: options.plugins ? Object.freeze({ ...options.plugins }) : undefined,
     oauth: options.oauth ? Object.freeze({ ...options.oauth }) : undefined,
     voice: options.voice ? Object.freeze({ ...options.voice }) : undefined,
-    tools: options.tools ? Object.freeze({ ...options.tools }) : undefined,
     async shutdown() {
       await options.shutdown?.()
     },

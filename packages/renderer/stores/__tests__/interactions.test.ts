@@ -15,10 +15,12 @@ const mocks = vi.hoisted(() => ({
   respondInteraction: vi.fn(),
 }))
 
-vi.mock('@/platform', () => ({
-  platformApi: {
-    getPendingInteractions: mocks.getPendingInteractions,
-    respondInteraction: mocks.respondInteraction,
+// P4c 第九批:两条走通用 RPC 的 interaction 域,客户端在 `@/platform/interaction-client`
+// (能力位 `interactionRespond` 关着时它就地返回失败信封,store 因此逐字同构)。
+vi.mock('@/platform/interaction-client', () => ({
+  interactionApi: {
+    getPending: mocks.getPendingInteractions,
+    respond: mocks.respondInteraction,
   },
 }))
 

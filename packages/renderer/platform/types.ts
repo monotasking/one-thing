@@ -47,6 +47,18 @@ export interface PlatformCapabilities {
   embeddedBrowser: boolean
   /** Multi-agent collab rooms (需要主进程 RoomCoordinator;desktop only in P0). */
   collabRooms: boolean
+  /**
+   * 音乐电台(P4c 第九批,#13)。电台驱动的是**宿主机器上**的 ncm-cli / mpv,
+   * 浏览器点一下只会让服务器那台机器出声 —— 所以 web 默认 `false`,
+   * `platform/music-client.ts` 在它为 false 时就地返回迁移前那十四条硬桩的答案。
+   */
+  music: boolean
+  /**
+   * agent 提问 → 用户应答(P4c 第九批,#17)。web 上默认 `false`:通道虽然通了,
+   * 放开是一次独立的拍板,不搭搬家的便车。`platform/interaction-client.ts` 在它为
+   * false 时就地返回迁移前那两条硬桩的答案。
+   */
+  interactionRespond: boolean
   clipboardWrite: boolean
   desktopWindows: boolean
   globalMenuEvents: boolean

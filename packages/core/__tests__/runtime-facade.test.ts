@@ -49,10 +49,7 @@ describe('createOnethingRuntimeFacade', () => {
         query: vi.fn(async request => ({ success: true, results: [request] })),
         executeAction: vi.fn(async actionId => ({ success: true, actionId })),
       },
-      tools: {
-        getTools: vi.fn(async () => ({ success: true, tools: [] })),
-        executeTool: vi.fn(async () => ({ success: false, error: 'disabled' })),
-      },
+      // P4c 第九批:七条数据面已迁 `toolsRouter`,facade 上不再有 tools 这一格。
       // P4c 第八批:十四条数据面已迁 `filesRouter`,facade 上只剩订阅面。
       files: {
         subscribeWorkspaceFileChanged: vi.fn((handler) => {
@@ -127,11 +124,6 @@ describe('createOnethingRuntimeFacade', () => {
     await expect(runtime.search?.executeAction('open-settings')).resolves.toEqual({
       success: true,
       actionId: 'open-settings',
-    })
-    await expect(runtime.tools?.getTools()).resolves.toEqual({ success: true, tools: [] })
-    await expect(runtime.tools?.executeTool('bash', {}, 'message-1', 'session-1')).resolves.toEqual({
-      success: false,
-      error: 'disabled',
     })
     const offWorkspace = runtime.files?.subscribeWorkspaceFileChanged?.(eventHandler)
     expect(eventHandler).toHaveBeenCalledWith({
@@ -225,6 +217,5 @@ describe('createOnethingRuntimeFacade', () => {
     expect(runtime.plugins).toBeUndefined()
     expect(runtime.oauth).toBeUndefined()
     expect(runtime.voice).toBeUndefined()
-    expect(runtime.tools).toBeUndefined()
   })
 })

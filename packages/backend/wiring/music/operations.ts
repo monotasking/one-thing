@@ -1,70 +1,59 @@
-import { ipcMain } from 'electron'
+/**
+ * 音乐域的**操作面** —— 结构债 P4c 第九批从 `apps/electron/src/main/ipc/music.ts`
+ * 整块搬过来的三件真逻辑(那个文件里唯一不是「转调」的部分):
+ *
+ *  - `readPlayerVolume()` —— 音量读数从哪来是 provider 的事(ncm 把它存在自己的
+ *    prefs 文件里,因为 `state` 报的是 null);
+ *  - `runMusicCommand()` —— 播放条的传输控制,含电台在场时的五处特判;
+ *  - `setMusicProvider()` —— 换 CLI 是一次带手续的重新调台。
+ *
+ * 三件都是**纯 node**(child_process 走 runtime 的 `process-runner`,fs 只读一个
+ * prefs 文件),没有一行认识 Electron —— 它们从前住在主进程里只是因为 IPC 处理者
+ * 住在那儿。搬到装配层之后,桌面 IPC 与 `POST /api/rpc` 吃的是同一份。
+ *
+ * 逐字保留:三个函数的函数体、注释与文案与迁移前一字不差。
+ */
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { registerElectronMusicIpcHandlers } from '@onething/electron-host/music/ipc'
 import { createElectronMusicProcessRunner } from '@onething/runtime/music/process-runner'
-import {
-  getOnethingMusicStateForIpc,
-  listMusicProviderDescriptors,
-  runOnethingMusicSetupForIpc,
-  type OnethingMusicSetupRequest,
-} from '@onething/runtime/music'
+import { listMusicProviderDescriptors } from '@onething/runtime/music'
 import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
-import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'
-import { IPC_CHANNELS } from '@shared/ipc.js'
 import type {
   MusicCommand,
   MusicCommandRequest,
   MusicCommandResponse,
   MusicRadioState,
 } from '@shared/ipc/music.js'
+import { getSettings, saveSettings } from '../../stores/settings.js'
 import {
   getActiveMusicProvider,
   getMusicNowPlaying,
-  getMusicService,
   refreshMusicNowPlaying,
   resetMusicServiceForProviderSwitch,
   stopMusicPlayerKeepalive,
-} from '@onething/backend/wiring/music/service.js'
+} from './service.js'
 import {
-  applyProgrammeAction,
   disposeRadioConductor,
-  getMusicLyrics,
-  getProgrammeSnapshot,
   getRadioStartingTitle,
   getRadioStore,
   isRadioActive,
   likeCurrentSong,
-  openRadioStation,
-  radioToolClose,
   markRadioGesture,
+  radioToolClose,
   recordRadioSkip,
   replayCurrentRadioSong,
-  requestSong,
   resumeRadioPlayback,
   skipToNextRadioSong,
   startRadioConductor,
-} from '@onething/backend/wiring/music/radio.js'
-import { resolveDjSpeakDone } from '@onething/backend/wiring/music/dj-voice.js'
-
-/**
- * Music IPC serves the settings tab and the composer's music bar. Choosing what
- * to play is the model's job — it runs ncm-cli through bash, guided by the
- * `netease-music-cli` skill — so nothing here picks songs. The bar only steers
- * the song already playing.
- *
- * Two conductors, one player: the user's pause and the model's next `queue add`
- * both reach the same daemon. That is fine as long as the bar never touches the
- * queue — whatever the model does next simply wins.
- */
+} from './radio.js'
 
 /**
  * Where the bar's volume number comes from is the provider's business: ncm
  * persists it in a prefs file because `state` reports volume as null. Foreign
  * format — read defensively, absence just means the knob shows nothing.
  */
-function readPlayerVolume(): number | undefined {
+export function readPlayerVolume(): number | undefined {
   const provider = getActiveMusicProvider()
   if (provider.reliability.volumeSource !== 'prefs-file') return undefined
   const prefsPath = provider.reliability.probePaths?.volumePrefs
@@ -80,6 +69,23 @@ function readPlayerVolume(): number | undefined {
       : undefined
   } catch {
     return undefined
+  }
+}
+
+/** 播放条要的那份电台简报。组合逻辑逐字沿用迁移前的 `getRadio` handler。 */
+export function readRadioBrief(): MusicRadioState {
+  const store = getRadioStore()
+  const brief = store.readBrief()
+  const programme = store.readProgramme()
+  return {
+    active: brief.active,
+    intent: brief.intent,
+    lastError: brief.lastError,
+    starting: getRadioStartingTitle(),
+    programmeLength: programme.entries.length,
+    canResume: programme.entries.length > 0 || brief.onDeck !== undefined,
+    upNext: programme.entries[0]?.title,
+    volume: readPlayerVolume(),
   }
 }
 
@@ -108,7 +114,9 @@ function argsWithValue(request: MusicCommandRequest): string[] | { error: string
   return ['volume', String(Math.max(0, Math.min(100, Math.round(value))))]
 }
 
-async function runMusicCommand(request: MusicCommandRequest): Promise<MusicCommandResponse> {
+export async function runMusicCommand(
+  request: MusicCommandRequest,
+): Promise<MusicCommandResponse> {
   if (request.command === 'radio-resume') {
     // Not an ncm-cli transport command: the daemon is down (that is why the
     // button exists), so this goes through the keepalive restart flow instead.
@@ -202,6 +210,29 @@ async function runMusicCommand(request: MusicCommandRequest): Promise<MusicComma
   }
 }
 
+/** 面板的搜索框:一次搜索,只取可展示的三格。 */
+export async function searchMusicSongs(
+  query: string,
+): Promise<{ success: boolean; records?: Array<{ title: string; artist?: string; playFlag?: boolean }>; error?: string }> {
+  try {
+    const provider = getActiveMusicProvider()
+    const runner = createElectronMusicProcessRunner()
+    const result = await runner.run({
+      command: provider.descriptor.binary,
+      args: provider.cli.build.search(query, 10),
+      timeoutMs: 20_000,
+    })
+    const records = provider.cli.parse.searchRecords(result.stdout).map(record => ({
+      title: record.title,
+      artist: record.artist,
+      playFlag: record.playFlag,
+    }))
+    return { success: true, records }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : '搜索失败' }
+  }
+}
+
 /**
  * Switching CLIs is a retune with paperwork: stop the OLD provider's
  * playback, discard the programme (its ids belong to the old service; the
@@ -209,7 +240,9 @@ async function runMusicCommand(request: MusicCommandRequest): Promise<MusicComma
  * configured=false so the new wizard runs, and rebuild every provider-bound
  * singleton. Unreachable from the UI while only one provider is registered.
  */
-async function setMusicProvider(providerId: string): Promise<{ success: boolean; error?: string }> {
+export async function setMusicProvider(
+  providerId: string,
+): Promise<{ success: boolean; error?: string }> {
   const known = listMusicProviderDescriptors().some(descriptor => descriptor.id === providerId)
   if (!known) return { success: false, error: `未知的音乐 CLI:${providerId}` }
 
@@ -234,127 +267,4 @@ async function setMusicProvider(providerId: string): Promise<{ success: boolean;
   resetMusicServiceForProviderSwitch()
   startRadioConductor()
   return { success: true }
-}
-
-export function registerMusicHandlers(): void {
-  // Renderer acks a DJ patter finished playing → main resumes the music.
-  ipcMain.handle(IPC_CHANNELS.MUSIC_DJ_SPEAK_DONE, (_event, request: { id?: string }) => {
-    if (request?.id) resolveDjSpeakDone(request.id)
-  })
-
-  ipcMain.handle(
-    IPC_CHANNELS.MUSIC_OPEN_RADIO,
-    (_event, request: { intent?: string; clearProgramme?: boolean }) => {
-      const settings = getSettings()
-      if (settings.music?.enabled !== true) {
-        return { success: false, error: '音乐电台未启用:请在 设置 → 音乐 打开总开关' }
-      }
-      openRadioStation(request?.intent?.trim() ?? '', {
-        clearProgramme: request?.clearProgramme === true,
-      })
-      return { success: true }
-    },
-  )
-
-  ipcMain.handle(IPC_CHANNELS.MUSIC_SEARCH, async (_event, request: { query?: string }) => {
-    const query = request?.query?.trim()
-    if (!query) return { success: false, error: 'query is required' }
-    try {
-      const provider = getActiveMusicProvider()
-      const runner = createElectronMusicProcessRunner()
-      const result = await runner.run({
-        command: provider.descriptor.binary,
-        args: provider.cli.build.search(query, 10),
-        timeoutMs: 20_000,
-      })
-      const records = provider.cli.parse.searchRecords(result.stdout).map(record => ({
-        title: record.title,
-        artist: record.artist,
-        playFlag: record.playFlag,
-      }))
-      return { success: true, records }
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : '搜索失败' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.MUSIC_REQUEST_SONG, (_event, request: { query?: string }) =>
-    request?.query?.trim()
-      ? requestSong(request.query.trim())
-      : { success: false, error: 'query is required' },
-  )
-
-  ipcMain.handle(IPC_CHANNELS.MUSIC_GET_PROGRAMME, () => ({
-    success: true,
-    ...getProgrammeSnapshot(),
-  }))
-
-  ipcMain.handle(
-    IPC_CHANNELS.MUSIC_PROGRAMME_ACTION,
-    (_event, request: { action?: Parameters<typeof applyProgrammeAction>[0] }) =>
-      request?.action
-        ? applyProgrammeAction(request.action)
-        : { success: false, error: 'action is required' },
-  )
-
-  ipcMain.handle(IPC_CHANNELS.MUSIC_LIST_PROVIDERS, () => ({
-    success: true,
-    providers: listMusicProviderDescriptors(),
-    activeId: getActiveMusicProvider().descriptor.id,
-  }))
-
-  ipcMain.handle(IPC_CHANNELS.MUSIC_SET_PROVIDER, (_event, request: { providerId?: string }) =>
-    request?.providerId
-      ? setMusicProvider(request.providerId)
-      : { success: false, error: 'providerId is required' },
-  )
-
-  registerElectronMusicIpcHandlers({
-    channels: {
-      getState: IPC_CHANNELS.MUSIC_GET_STATE,
-      setup: IPC_CHANNELS.MUSIC_SETUP,
-      command: IPC_CHANNELS.MUSIC_COMMAND,
-      getNowPlaying: IPC_CHANNELS.MUSIC_GET_NOW_PLAYING,
-      getRadio: IPC_CHANNELS.MUSIC_GET_RADIO,
-      getLyrics: IPC_CHANNELS.MUSIC_GET_LYRICS,
-    },
-    getState: () => getOnethingMusicStateForIpc({ getState: () => getMusicService().getState() }),
-    command: request => runMusicCommand(request as MusicCommandRequest),
-    // The watcher's cache, not a fresh poll: answering a window reload must not
-    // cost a subprocess. Position is at most one poll interval stale, and the
-    // renderer interpolates anyway.
-    getNowPlaying: () => getMusicNowPlaying(),
-    getRadio: (): MusicRadioState => {
-      const store = getRadioStore()
-      const brief = store.readBrief()
-      const programme = store.readProgramme()
-      return {
-        active: brief.active,
-        intent: brief.intent,
-        lastError: brief.lastError,
-        starting: getRadioStartingTitle(),
-        programmeLength: programme.entries.length,
-        canResume: programme.entries.length > 0 || brief.onDeck !== undefined,
-        upNext: programme.entries[0]?.title,
-        volume: readPlayerVolume(),
-      }
-    },
-    getLyrics: () => getMusicLyrics(),
-    setup: async request => {
-      const result = await runOnethingMusicSetupForIpc({
-        request: request as OnethingMusicSetupRequest,
-        service: getMusicService(),
-      })
-
-      // Only ever stop the keepalive here, never start it. Starting launches the
-      // TUI, and the TUI plays 每日推荐 at whoever is nearby — nobody switching a
-      // radio button asked to hear music. The first playback command starts it
-      // (see the bash tool); switching to orpheus, or breaking the setup, makes
-      // the offscreen TUI dead weight.
-      if (result.success && !(result.state.setupStage === 'ready' && result.state.playerBackend === 'mpv')) {
-        stopMusicPlayerKeepalive()
-      }
-      return result
-    },
-  })
 }

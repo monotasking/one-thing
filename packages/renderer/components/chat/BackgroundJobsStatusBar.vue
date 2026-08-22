@@ -112,7 +112,7 @@
 import Button from '@/components/common/Button.vue'
 import StatusChip from '@/components/common/StatusChip.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { platformApi } from '@/platform'
+import { toolsApi } from '@/platform/tools-client'
 import { useChatStore } from '@/stores/chat'
 
 interface BackgroundJobView {
@@ -154,7 +154,7 @@ function compactCommand(command: string): string {
 async function loadJobs() {
   loading.value = true
   try {
-    const result = await platformApi.listBackgroundJobs()
+    const result = await toolsApi.listBackgroundJobs()
     jobs.value = (result.jobs ?? []) as BackgroundJobView[]
   } finally {
     loading.value = false
@@ -162,7 +162,7 @@ async function loadJobs() {
 }
 
 async function stopJob(jobId: string) {
-  await platformApi.stopBackgroundJob(jobId)
+  await toolsApi.stopBackgroundJob(jobId)
   await loadJobs()
 }
 

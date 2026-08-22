@@ -330,3 +330,65 @@ export interface MusicSettings {
 	 */
 	radioDj?: ToolCallModelSettings
 }
+
+// ============================================================================
+// Router
+// ============================================================================
+
+/**
+ * music(音乐电台)域 —— 结构债 P4c 第九批,十四条数据面整只从手写 IPC 通道迁到
+ * 通用 `rpc:invoke` / `POST /api/rpc`。
+ *
+ * 十四条逐条对应从前 `IPC_CHANNELS` 上那十四条 `music:*` invoke 通道:八条是主进程
+ * 里的裸 `ipcMain.handle`,六条经 `apps/electron/src/music/ipc.ts` 那只透传工厂。
+ * 请求/响应形状一字未改;变的只是通道。
+ *
+ * **四条推送留在原地**(`MUSIC_EVENT` / `MUSIC_NOW_PLAYING` / `MUSIC_LYRICS` /
+ * `MUSIC_DJ_SPEAK`)—— router 今天没有推送面,而它们早就走
+ * `broadcastVoiceHostMessage` 这个注入端口,由 `backend/wiring/music/*` 直接发。
+ * 常量与渲染侧订阅因此原样保留。
+ *
+ * 无参的六条(`getState` / `getNowPlaying` / `getRadio` / `getLyrics` /
+ * `getProgramme` / `listProviders`)按本仓惯例递 `{}`;`djSpeakDone` 从前递
+ * `{ id }`,形状不变。
+ */
+import { defineRouter } from './router.js'
+
+export interface MusicDjSpeakDoneRequest {
+    /** 与 `MusicDjSpeak.id` 对应的那次播报。 */
+    id: string
+}
+
+export type MusicRoutes = {
+    getState: { input: Record<string, never>; output: MusicGetStateResponse }
+    setup: { input: MusicSetupRequest; output: MusicSetupResponse }
+    command: { input: MusicCommandRequest; output: MusicCommandResponse }
+    getNowPlaying: { input: Record<string, never>; output: MusicNowPlaying | null }
+    getRadio: { input: Record<string, never>; output: MusicRadioState }
+    getLyrics: { input: Record<string, never>; output: MusicLyrics | null }
+    djSpeakDone: { input: MusicDjSpeakDoneRequest; output: void }
+    openRadio: { input: MusicOpenRadioRequest; output: MusicBaseResponse }
+    search: { input: MusicSearchRequest; output: MusicSearchResponse }
+    requestSong: { input: MusicRequestSongRequest; output: MusicRequestSongResponse }
+    getProgramme: { input: Record<string, never>; output: MusicGetProgrammeResponse }
+    programmeAction: { input: MusicProgrammeActionRequest; output: MusicBaseResponse }
+    listProviders: { input: Record<string, never>; output: MusicListProvidersResponse }
+    setProvider: { input: MusicSetProviderRequest; output: MusicBaseResponse }
+}
+
+export const musicRouter = defineRouter<MusicRoutes>('music', [
+    'getState',
+    'setup',
+    'command',
+    'getNowPlaying',
+    'getRadio',
+    'getLyrics',
+    'djSpeakDone',
+    'openRadio',
+    'search',
+    'requestSong',
+    'getProgramme',
+    'programmeAction',
+    'listProviders',
+    'setProvider',
+])

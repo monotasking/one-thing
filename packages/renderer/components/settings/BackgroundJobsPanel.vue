@@ -75,7 +75,7 @@ import {
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
-import { platformApi } from '@/platform'
+import { toolsApi } from '@/platform/tools-client'
 
 interface BackgroundJobView {
   id: string
@@ -93,7 +93,7 @@ const loading = ref(false)
 async function loadJobs() {
   loading.value = true
   try {
-    const result = await platformApi.listBackgroundJobs({ includeInactive: true })
+    const result = await toolsApi.listBackgroundJobs({ includeInactive: true })
     jobs.value = (result.jobs ?? []) as BackgroundJobView[]
   } finally {
     loading.value = false
@@ -101,7 +101,7 @@ async function loadJobs() {
 }
 
 async function stopJob(jobId: string) {
-  await platformApi.stopBackgroundJob(jobId)
+  await toolsApi.stopBackgroundJob(jobId)
   await loadJobs()
 }
 

@@ -52,3 +52,36 @@ export interface InteractionGetPendingResponse {
   pending?: InteractionRequest[]
   error?: string
 }
+
+// ============================================
+// Router
+// ============================================
+
+/**
+ * interaction(agent 提问 → 用户应答)域 —— 结构债 P4c 第九批,两条数据面整只从
+ * 手写 IPC 通道迁到通用 `rpc:invoke` / `POST /api/rpc`。
+ *
+ * 两条逐条对应从前的 `INTERACTION_RESPOND` / `INTERACTION_GET_PENDING`,形状一字
+ * 未改;`getPending` 从前递的是**裸 sessionId**,这里按本仓 router 惯例收成单
+ * id 包对象(`InteractionGetPendingRequest` 早就在上面定义好了,只是没人用)。
+ *
+ * **本域零推送** —— 提问事件走会话事件通道(`interaction:requested` /
+ * `interaction:settled`),不是这个域的通道。
+ *
+ * 注:除了这两条,应答还能走统一命令通道(`command:interaction-respond` →
+ * EventBus → Interaction 的订阅),两条路进的是同一个内核。
+ */
+import { defineRouter } from './router.js'
+
+export type InteractionRoutes = {
+  respond: { input: InteractionRespondRequest; output: InteractionRespondResponse }
+  getPending: {
+    input: InteractionGetPendingRequest
+    output: InteractionGetPendingResponse
+  }
+}
+
+export const interactionRouter = defineRouter<InteractionRoutes>('interaction', [
+  'respond',
+  'getPending',
+])

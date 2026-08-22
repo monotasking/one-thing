@@ -314,6 +314,7 @@ import { useSpacesStore } from '@/stores/spaces'
 import { matchShortcut } from '@/composables/useShortcuts'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
 import { platformApi } from '@/platform'
+import { toolsApi } from '@/platform/tools-client'
 
 // Tab Components
 import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
@@ -534,7 +535,7 @@ const hasUnsavedChanges = computed(() => {
 
 async function loadTools() {
   try {
-    const toolsResponse = await platformApi.getTools()
+    const toolsResponse = await toolsApi.getTools()
     if (toolsResponse.success && toolsResponse.tools) {
       tools.value = toolsResponse.tools
     }

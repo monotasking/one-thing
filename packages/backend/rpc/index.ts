@@ -41,6 +41,9 @@ import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
 import { filesRouter } from '@shared/ipc/files.js'
 import { gatewayRouter } from '@shared/ipc/gateway.js'
+import { interactionRouter } from '@shared/ipc/interaction.js'
+import { musicRouter } from '@shared/ipc/music.js'
+import { toolsRouter } from '@shared/ipc/tools.js'
 import { oauthRouter } from '@shared/ipc/oauth.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { schedulerRouter } from '@shared/ipc/scheduler.js'
@@ -65,6 +68,9 @@ import { collabRpcHandlers } from './domains/collab.js'
 import { filesRpcHandlers } from './domains/files.js'
 import { gatewayRpcHandlers } from './domains/gateway.js'
 import { goalRpcHandlers } from './domains/goal.js'
+import { interactionRpcHandlers } from './domains/interaction.js'
+import { musicRpcHandlers } from './domains/music.js'
+import { toolsRpcHandlers } from './domains/tools.js'
 import { logsRpcHandlers } from './domains/logs.js'
 import { markdownRpcHandlers } from './domains/markdown.js'
 import { mcpRpcHandlers } from './domains/mcp.js'
@@ -232,6 +238,26 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 一条推送留在原地:`FILE_WATCH_EVENT` 与它在 server 那侧的 SSE 源,
   // 登记簿搬到 `wiring/files/workspace-watch.ts`,请求面与推送面共用同一张表。
   { id: 'rpc:files', mount: ctx => { ctx.registerRpcDomain(filesRouter, filesRpcHandlers) } },
+  // P4c 第九批第一个域(tools)—— 七条:目录 / 执行 / 取消 / 后台任务表与停 /
+  // 刷 MCP 工具面 / 回写工具调用。它是继 files 之后第二个**逐方法带 http 分叉**
+  // 的域(#19 的安全面):`transport:'ipc'` 与迁移前逐字同义;`transport:'http'`
+  // 逐字照搬旧 server adapter 的语义 —— 执行面三道闸(白名单只有 `read`、会话必须
+  // 存在、路径夹进会话沙箱)、后台任务表恒空、停任务与回写工具调用按原话拒绝。
+  // **本域零推送**(工具进展走会话事件/流),所以两只宿主件整只删掉。
+  // 位置在 files 之后、自进化之前:它要工具目录与 runner,而 `backend.ts` 的顺序
+  // 是三档工具注册 → registerAppRpcDomains,注册时目录已就位;硬约束仍只有一条 ——
+  // 必须在自进化之前(卸载要逆序)。
+  { id: 'rpc:tools', mount: ctx => { ctx.registerRpcDomain(toolsRouter, toolsRpcHandlers) } },
+  // P4c 第九批第二个域(interaction)—— 两条:补水读 pending、写回一次应答。
+  // 通道亲和的 `channel` 仍由**宿主**盖章(桌面恒 'ipc';http 认领那次提问自己的
+  // targetChannel,同 server 权限应答判例),不从请求里读。**本域零推送**
+  // (提问/结算走会话事件),所以宿主件整只删掉。
+  { id: 'rpc:interaction', mount: ctx => { ctx.registerRpcDomain(interactionRouter, interactionRpcHandlers) } },
+  // P4c 第九批第三个域(music)—— 十四条:状态/向导/传输控制/现在播放/电台简报/
+  // 歌词/口播 ack/开台/搜索/点歌/节目单/节目单编辑/provider 列表与切换。
+  // **四条推送留在原地**(MUSIC_EVENT / NOW_PLAYING / LYRICS / DJ_SPEAK 早就走
+  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `wiring/music/operations.ts`。
+  { id: 'rpc:music', mount: ctx => { ctx.registerRpcDomain(musicRouter, musicRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

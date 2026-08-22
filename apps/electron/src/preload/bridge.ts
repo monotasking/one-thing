@@ -28,7 +28,6 @@ import type {
 	TodoPlanWindowActionRequest,
 	TodoPlanWindowDragRequest,
 	PracticeEventPayload,
-	InteractionRespondRequest,
 	AbortPluginRequestResult,
 	PluginNotificationPayload,
 	PluginRequestPayload,
@@ -66,17 +65,10 @@ import type {
 	VoiceSynthesizeRequest,
 	VoiceTestASRRequest,
 	VoiceTestTTSRequest,
-	MusicCommandRequest,
 	MusicDjSpeak,
 	MusicEvent,
 	MusicLyrics,
 	MusicNowPlaying,
-	MusicOpenRadioRequest,
-	MusicProgrammeActionRequest,
-	MusicRequestSongRequest,
-	MusicSearchRequest,
-	MusicSetProviderRequest,
-	MusicSetupRequest,
 	TodoPlanChangedPayload,
 	ScratchpadChangedPayload,
 	EvalsDiagnoseProgressEvent,
@@ -555,47 +547,15 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.VOICE_RUNTIME_COMMAND, listener);
 	},
 
-	// Music radio methods
-	musicGetState: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_STATE),
-
-	musicSetup: (request: MusicSetupRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SETUP, request),
-
+	// Music radio —— 十四条数据面已迁到通用 RPC 通道(musicRouter,P4c 第九批);
+	// 渲染侧客户端在 platform/music-client.ts。**四条推送留在这里**:router 今天
+	// 没有推送面,而它们早就走 `broadcastVoiceHostMessage` 端口从主进程发出。
 	onMusicEvent: (callback: (event: MusicEvent) => void) => {
 		const listener = (_event: IpcRendererEvent, event: MusicEvent) =>
 			callback(event);
 		ipcRenderer.on(IPC_CHANNELS.MUSIC_EVENT, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_EVENT, listener);
 	},
-
-	musicCommand: (request: MusicCommandRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_COMMAND, request),
-
-	musicGetNowPlaying: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_NOW_PLAYING),
-
-	musicGetRadio: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_RADIO),
-
-	musicOpenRadio: (request: MusicOpenRadioRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_OPEN_RADIO, request),
-
-	musicSearch: (request: MusicSearchRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SEARCH, request),
-
-	musicRequestSong: (request: MusicRequestSongRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_REQUEST_SONG, request),
-
-	musicGetProgramme: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_PROGRAMME),
-
-	musicProgrammeAction: (request: MusicProgrammeActionRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_PROGRAMME_ACTION, request),
-
-	musicListProviders: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_LIST_PROVIDERS),
-
-	musicSetProvider: (request: MusicSetProviderRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SET_PROVIDER, request),
-
-	musicGetLyrics: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_LYRICS),
 
 	onMusicLyrics: (callback: (lyrics: MusicLyrics) => void) => {
 		const listener = (_event: IpcRendererEvent, lyrics: MusicLyrics) =>
@@ -622,9 +582,6 @@ const electronAPI = {
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_DJ_SPEAK, listener);
 	},
 
-	musicDjSpeakDone: (id: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_DJ_SPEAK_DONE, { id }),
-
 	getSystemTheme: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_THEME),
 
 	testProxy: (proxy: ProxySettings) =>
@@ -648,43 +605,9 @@ const electronAPI = {
 	// Model registry 与 Providers 已迁到通用 RPC 通道(modelsRouter /
 	// providersRouter);渲染侧客户端在 platform/{models,providers}-client.ts。
 
-	// Tools methods
-	getTools: () => ipcRenderer.invoke(IPC_CHANNELS.GET_TOOLS),
-
-	executeTool: (
-		toolId: string,
-		args: Record<string, unknown>,
-		messageId: string,
-		sessionId: string,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EXECUTE_TOOL, {
-			toolId,
-			arguments: args,
-			messageId,
-			sessionId,
-		}),
-
-	cancelTool: (toolCallId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CANCEL_TOOL, { toolCallId }),
-
-	listBackgroundJobs: (options?: { includeInactive?: boolean }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BACKGROUND_JOBS_LIST, options || {}),
-
-	stopBackgroundJob: (jobId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BACKGROUND_JOBS_STOP, { jobId }),
-
-	updateToolCall: (
-		sessionId: string,
-		messageId: string,
-		toolCallId: string,
-		updates: Record<string, unknown>,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.UPDATE_TOOL_CALL, {
-			sessionId,
-			messageId,
-			toolCallId,
-			updates,
-		}),
+	// Tools —— 七条数据面已迁到通用 RPC 通道(toolsRouter,P4c 第九批);渲染侧
+	// 客户端在 platform/tools-client.ts。本域零推送,这里不再有任何一条。
+	// (`resumeAfterToolConfirm` 不是本域 —— 它按拍板 #21 留在手写 IPC 上。)
 
 	// Dialog methods
 	showOpenDialog: (options: {
@@ -788,14 +711,10 @@ const electronAPI = {
 	// Permission requests arrive via session:event channel as 'permission:request'.
 	// ── Permission(活询问):已走通用 RPC 通道(permissionRouter),本文件不再暴露。──
 
-	// Interaction methods (agent 提问 → 用户应答). 请求整体透传,不逐字段手抄。
-	// 提问事件从 session:event 通道以 'interaction:requested' 到达;
+	// Interaction(agent 提问 → 用户应答)的两条数据面已迁到通用 RPC 通道
+	// (interactionRouter,P4c 第九批);渲染侧客户端在 platform/interaction-client.ts。
+	// 提问事件仍从 session:event 通道以 'interaction:requested' 到达;
 	// 结算(含到点自结算)以 'interaction:settled' 到达。
-	getPendingInteractions: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.INTERACTION_GET_PENDING, sessionId),
-
-	respondInteraction: (request: InteractionRespondRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.INTERACTION_RESPOND, request),
 
 	// OAuth 的六条数据面已迁到通用 RPC 通道(oauthRouter),渲染侧客户端在
 	// packages/renderer/platform/oauth-client.ts —— 凭证写回目标(批 B6)如今

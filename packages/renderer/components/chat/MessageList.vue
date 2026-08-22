@@ -249,6 +249,7 @@ import { shouldRestoreReadingAnchor, useMessageScrollCoordinator } from '@/compo
 import { buildFontFamily, buildFontLoadSpecs } from '@shared/fonts'
 import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
+import { toolsApi } from '@/platform/tools-client'
 import { chatApi } from '@/platform/chat-client'
 import { getLogger } from '@/services/log'
 
@@ -2493,7 +2494,7 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
       tc.error = error
     }
     if (message) {
-      await platformApi.updateToolCall(currentSession.id, message.id, toolCall.id, {
+      await toolsApi.updateToolCall(currentSession.id, message.id, toolCall.id, {
         status: 'failed',
         startTime,
         endTime,
@@ -2511,7 +2512,7 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
   try {
     // Deep clone to unwrap all Vue reactive proxies - IPC cannot serialize Proxy objects
     const rawArguments = JSON.parse(JSON.stringify(toRaw(toolCall.arguments) || {}))
-    const result = await platformApi.executeTool(
+    const result = await toolsApi.executeTool(
       toolCall.toolId,
       rawArguments,
       toolCall.id,
@@ -2529,7 +2530,7 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
 
     // Persist to backend
     if (message) {
-      await platformApi.updateToolCall(currentSession.id, message.id, toolCall.id, {
+      await toolsApi.updateToolCall(currentSession.id, message.id, toolCall.id, {
         status: result.success ? 'completed' : 'failed',
         startTime,
         endTime,
@@ -2548,7 +2549,7 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
 
     // Persist to backend
     if (message) {
-      await platformApi.updateToolCall(currentSession.id, message.id, toolCall.id, {
+      await toolsApi.updateToolCall(currentSession.id, message.id, toolCall.id, {
         status: 'failed',
         startTime,
         endTime,

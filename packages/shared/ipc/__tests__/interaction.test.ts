@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { IPC_CHANNELS } from '../channels.js'
+import { interactionRouter } from '../interaction.js'
 import type {
   InteractionAnswer,
   InteractionGetPendingRequest,
@@ -186,8 +186,8 @@ describe('interaction wire 契约', () => {
     expect(GET_PENDING_RESPONSE_IS_EXHAUSTIVE).toBe(true)
   })
 
-  it('两条通道常量在册', () => {
-    expect(IPC_CHANNELS.INTERACTION_RESPOND).toBe('interaction:respond')
-    expect(IPC_CHANNELS.INTERACTION_GET_PENDING).toBe('interaction:get-pending')
+  it('两条方法在 router 名册上(P4c 第九批:通道常量已退役)', () => {
+    expect(interactionRouter.domain).toBe('interaction')
+    expect([...interactionRouter.methods]).toEqual(['respond', 'getPending'])
   })
 })

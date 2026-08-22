@@ -32,7 +32,12 @@ vi.mock('@/stores/workspace', () => ({
 }))
 
 vi.mock('@/platform', () => ({
-  platformApi: {
+  platformApi: {},
+}))
+
+// P4c 第九批:工具清单走通用 RPC 的 tools 域,客户端在 `@/platform/tools-client`。
+vi.mock('@/platform/tools-client', () => ({
+  toolsApi: {
     get getTools() {
       return mocks.getTools
     },

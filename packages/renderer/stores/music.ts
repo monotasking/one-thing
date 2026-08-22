@@ -14,6 +14,7 @@ import type {
   MusicSetupRequest,
 } from '@/types'
 import { platformApi } from '@/platform'
+import { musicApi } from '@/platform/music-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.music')
@@ -61,7 +62,7 @@ export const useMusicStore = defineStore('music', () => {
 
   async function refreshRadio() {
     try {
-      radio.value = await platformApi.musicGetRadio()
+      radio.value = await musicApi.getRadio()
     } catch {
       // Keep the last answer; a failed read is not "the radio turned off".
     }
@@ -73,7 +74,7 @@ export const useMusicStore = defineStore('music', () => {
 
   async function refreshProgramme() {
     try {
-      const response = await platformApi.musicGetProgramme()
+      const response = await musicApi.getProgramme()
       if (response.success) {
         programme.value = response.entries ?? []
         programmeOnDeck.value = response.onDeck
@@ -84,26 +85,26 @@ export const useMusicStore = defineStore('music', () => {
   }
 
   async function programmeAction(action: MusicProgrammeActionRequest['action']) {
-    const response = await platformApi.musicProgrammeAction({ action })
+    const response = await musicApi.programmeAction({ action })
     await refreshProgramme()
     return response
   }
 
   /** The bar's 开电台/新电台: empty intent = let the DJ pick by time/history. */
   async function openRadio(intent: string, clearProgramme: boolean) {
-    const response = await platformApi.musicOpenRadio({ intent, clearProgramme })
+    const response = await musicApi.openRadio({ intent, clearProgramme })
     await refreshRadio()
     await refreshProgramme()
     return response
   }
 
   async function searchSongs(query: string) {
-    return platformApi.musicSearch({ query })
+    return musicApi.search({ query })
   }
 
   /** Cut a named song in as the next track (same channel the radio tool uses). */
   async function requestSongNext(query: string) {
-    const response = await platformApi.musicRequestSong({ query })
+    const response = await musicApi.requestSong({ query })
     await refreshProgramme()
     return response
   }
@@ -190,7 +191,7 @@ export const useMusicStore = defineStore('music', () => {
 
   async function sendCommand(command: MusicCommand, value?: number) {
     try {
-      const response = await platformApi.musicCommand({ command, value })
+      const response = await musicApi.command({ command, value })
       if (response.success) setNowPlaying(response.nowPlaying ?? null)
       else if (response.error) lastError.value = response.error
       return response
@@ -241,7 +242,7 @@ export const useMusicStore = defineStore('music', () => {
     djPatter.value = ''
     const id = djCurrentSpeakId
     djCurrentSpeakId = null
-    if (id) void platformApi.musicDjSpeakDone(id)
+    if (id) void musicApi.djSpeakDone(id)
   }
 
   function playDjPatter(speak: { id: string; audioBase64: string; mimeType: string; text: string }) {
@@ -258,7 +259,7 @@ export const useMusicStore = defineStore('music', () => {
       djPatter.value = ''
       djAudio = null
       djCurrentSpeakId = null
-      void platformApi.musicDjSpeakDone(speak.id)
+      void musicApi.djSpeakDone(speak.id)
     }
     try {
       const audio = new Audio(`data:${speak.mimeType};base64,${speak.audioBase64}`)
@@ -291,12 +292,16 @@ export const useMusicStore = defineStore('music', () => {
     if (initialized) return
     initialized = true
 
+    // 四条推送仍在 `platformApi` 上(router 没有推送面);十四条数据面走
+    // `musicApi`(通用 RPC 的 music 域)。web 上挡在前面的是能力位
+    // `capabilities.music`,判断在 `platform/music-client.ts` 里做,本文件因此
+    // 与迁移前逐字同构。
     platformApi.onMusicEvent(handleEvent)
     platformApi.onMusicNowPlaying(setNowPlaying)
     platformApi.onMusicDjSpeak(playDjPatter)
     platformApi.onMusicLyrics(sheet => (lyrics.value = sheet))
-    platformApi
-      .musicGetLyrics()
+    musicApi
+      .getLyrics()
       .then(sheet => {
         if (lyrics.value === null) lyrics.value = sheet
       })
@@ -305,8 +310,8 @@ export const useMusicStore = defineStore('music', () => {
     // second window, app launched while the daemon plays on) would otherwise
     // stare at nothing until the next track. Subscribe first, then pull once;
     // if a push races the pull, the push is newer — keep it.
-    platformApi
-      .musicGetNowPlaying()
+    musicApi
+      .getNowPlaying()
       .then(current => {
         if (nowPlaying.value === null) setNowPlaying(current)
       })
@@ -314,7 +319,7 @@ export const useMusicStore = defineStore('music', () => {
     void refreshRadio()
     void refreshProviders()
     try {
-      const response = await platformApi.musicGetState()
+      const response = await musicApi.getState()
       if (response.success && response.state) state.value = response.state
       else if (response.error) lastError.value = response.error
     } catch (error: any) {
@@ -331,7 +336,7 @@ export const useMusicStore = defineStore('music', () => {
       lastError.value = ''
     }
     try {
-      const response = await platformApi.musicSetup(request)
+      const response = await musicApi.setup(request)
       if (response.success && response.state) state.value = response.state
       else if (response.error) lastError.value = response.error
       return response
@@ -354,7 +359,7 @@ export const useMusicStore = defineStore('music', () => {
 
   async function refreshProviders() {
     try {
-      const response = await platformApi.musicListProviders()
+      const response = await musicApi.listProviders()
       if (response.success) {
         providers.value = response.providers ?? []
         activeProviderId.value = response.activeId ?? 'ncm-cli'
@@ -368,11 +373,11 @@ export const useMusicStore = defineStore('music', () => {
   async function setProvider(providerId: string) {
     busy.value = true
     try {
-      const response = await platformApi.musicSetProvider({ providerId })
+      const response = await musicApi.setProvider({ providerId })
       if (!response.success && response.error) lastError.value = response.error
       await refreshProviders()
       await refreshRadio()
-      const stateResponse = await platformApi.musicGetState()
+      const stateResponse = await musicApi.getState()
       if (stateResponse.success && stateResponse.state) state.value = stateResponse.state
       return response
     } finally {

@@ -1240,20 +1240,9 @@ export interface ElectronAPI {
 	onVoiceRuntimeCommand: (
 		callback: (command: VoiceRuntimeCommand) => void,
 	) => () => void;
-	musicGetState: () => Promise<MusicGetStateResponse>;
-	musicSetup: (request: MusicSetupRequest) => Promise<MusicSetupResponse>;
+	// Music radio:十四条数据面走通用 RPC(musicRouter),方法在
+	// platform/music-client.ts 上。**四条推送留在这里** —— router 没有推送面。
 	onMusicEvent: (callback: (event: MusicEvent) => void) => () => void;
-	musicCommand: (request: MusicCommandRequest) => Promise<MusicCommandResponse>;
-	musicGetNowPlaying: () => Promise<MusicNowPlaying | null>;
-	musicGetRadio: () => Promise<MusicRadioState>;
-	musicOpenRadio: (request: MusicOpenRadioRequest) => Promise<MusicBaseResponse>;
-	musicSearch: (request: MusicSearchRequest) => Promise<MusicSearchResponse>;
-	musicRequestSong: (request: MusicRequestSongRequest) => Promise<MusicRequestSongResponse>;
-	musicGetProgramme: () => Promise<MusicGetProgrammeResponse>;
-	musicProgrammeAction: (request: MusicProgrammeActionRequest) => Promise<MusicBaseResponse>;
-	musicListProviders: () => Promise<MusicListProvidersResponse>;
-	musicSetProvider: (request: MusicSetProviderRequest) => Promise<MusicBaseResponse>;
-	musicGetLyrics: () => Promise<MusicLyrics | null>;
 	onMusicLyrics: (
 		callback: (lyrics: MusicLyrics) => void,
 	) => () => void;
@@ -1261,7 +1250,6 @@ export interface ElectronAPI {
 		callback: (nowPlaying: MusicNowPlaying | null) => void,
 	) => () => void;
 	onMusicDjSpeak: (callback: (speak: MusicDjSpeak) => void) => () => void;
-	musicDjSpeakDone: (id: string) => Promise<void>;
 	getSystemTheme: () => Promise<{ success: boolean; theme?: "light" | "dark" }>;
 	testProxy: (
 		proxy: ProxySettings,
@@ -1274,29 +1262,9 @@ export interface ElectronAPI {
 	// Theme methods:走通用 RPC(themesRouter),方法在 platform/themes-client.ts 上。
 	// Providers / model registry:走通用 RPC(providersRouter / modelsRouter),
 	// 方法在 platform/{providers,models}-client.ts 上。
-	// Tools methods
-	getTools: () => Promise<GetToolsResponse>;
-	executeTool: (
-		toolId: string,
-		args: Record<string, any>,
-		messageId: string,
-		sessionId: string,
-	) => Promise<ExecuteToolResponse>;
-	cancelTool: (toolCallId: string) => Promise<{ success: boolean }>;
-	listBackgroundJobs: (options?: { includeInactive?: boolean }) => Promise<{
-		success: boolean;
-		jobs?: Array<Record<string, any>>;
-		error?: string;
-	}>;
-	stopBackgroundJob: (
-		jobId: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	updateToolCall: (
-		sessionId: string,
-		messageId: string,
-		toolCallId: string,
-		updates: Partial<ToolCall>,
-	) => Promise<{ success: boolean }>;
+	// Tools:七条数据面走通用 RPC(toolsRouter),方法在 platform/tools-client.ts 上
+	// (那一层保留旧的位置参数签名,调用点零改动)。
+	// `resumeAfterToolConfirm` 不是本域 —— 它按拍板 #21 留在手写 IPC 上。
 	resumeAfterToolConfirm: (
 		sessionId: string,
 		messageId: string,
@@ -1305,14 +1273,9 @@ export interface ElectronAPI {
 	// Permission(活询问):已走通用 RPC 通道(permissionRouter +
 	// `@/platform/permission-client`)。应答仍走命令总线。
 
-	// Interaction methods (agent 提问 → 用户应答). 提问事件走 session:event 通道
-	// ('interaction:requested' / 'interaction:settled'),这两条只管补水和写回。
-	getPendingInteractions: (
-		sessionId: string,
-	) => Promise<InteractionGetPendingResponse>;
-	respondInteraction: (
-		request: InteractionRespondRequest,
-	) => Promise<InteractionRespondResponse>;
+	// Interaction(agent 提问 → 用户应答):两条数据面走通用 RPC(interactionRouter),
+	// 方法在 platform/interaction-client.ts 上。提问事件仍走 session:event 通道
+	// ('interaction:requested' / 'interaction:settled')。
 
 	// Dialog methods
 	showOpenDialog: (options: {

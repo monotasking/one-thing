@@ -5,7 +5,7 @@ import type {
   InteractionQuestionAnswer,
   InteractionRequest,
 } from '@shared/ipc.js'
-import { platformApi } from '@/platform'
+import { interactionApi } from '@/platform/interaction-client'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@/services/log'
@@ -78,15 +78,16 @@ export const useInteractionsStore = defineStore('interactions', () => {
     if (!sessionId) return
     const generation = nextGeneration(sessionId)
     try {
-      const response = await platformApi.getPendingInteractions?.(sessionId)
+      const response = await interactionApi.getPending(sessionId)
       // 更新的一问已经在路上(或已经答完),这份答案不再是真相。
       if (reconcileGenerations.get(sessionId) !== generation) return
       const requests = response?.success && response.pending ? response.pending : []
       pending.value = { ...pending.value, [sessionId]: requests }
     } catch (error) {
       // 读失败不是「没有欠账」的证据 —— 保留上一份,否则等于告诉用户相反的话。
-      // web 宿主上这两条是桩(返回 success:false),走的也是这一支:卡片不出现,
-      // 提问照旧由内核到点自结算,不会挂住。
+      // web 宿主上能力位 `interactionRespond` 关着(P4c 第九批,#17),客户端
+      // 就地返回 success:false —— 走的是上面 `requests = []` 那一支,不是这里:
+      // 卡片不出现,提问照旧由内核到点自结算,不会挂住。
       log.error('pending interactions reconcile failed', { sessionId }, error)
     }
   }
@@ -145,7 +146,8 @@ export const useInteractionsStore = defineStore('interactions', () => {
   /**
    * 交卷。
    *
-   * 走 `respondInteraction` 这条专用 IPC 面而不是统一命令通道:E1 就是为这一刻
+   * 走 `interactionApi.respond`(通用 RPC 通道上的 interaction 域)而不是统一命令
+   * 通道:E1 就是为这一刻
    * 建的它,而且它**答得回来成不成**(命令通道是单向的)。跨传输面的应答仍然可以
    * 走 `command:interaction-respond`,两条路进的是同一个内核。
    *
@@ -189,7 +191,7 @@ export const useInteractionsStore = defineStore('interactions', () => {
     reason?: string
   }): Promise<boolean> {
     try {
-      const response = await platformApi.respondInteraction?.(request)
+      const response = await interactionApi.respond(request)
       scheduleReconcile(request.sessionId)
       return Boolean(response?.success)
     } catch (error) {

@@ -252,25 +252,10 @@ import { toJsonValue } from "@shared/json.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
 import { ownerSandboxRoot } from "@onething/backend/rpc/sandbox.js";
 /*
- * "有哪些工具 / 跑一个工具"由目录 + runner 回答(设计文档 §10.2-④)。
- *
- * R4b(§15.6 ⑧):echo/test 那条**非真引擎**的假路原本挂着一份本地
- * `OnethingToolRegistry`(只装一只 read)。那棵树删掉之后它换成
- * `createReadonlyCatalog()` + 一台本地 runner —— 同一只 read、同一张白名单、
- * 同一道路径校验,只是册子换成了目录。
+ * P4c 第九批:"有哪些工具 / 跑一个工具"整只迁到 `backend/rpc/domains/tools.ts`。
+ * 连同 echo/test 假路那份本地只读目录 + 本地 runner 一起消失 —— 一个 store 一份
+ * 工具目录,http 侧的白名单与路径校验搬进了域处理者的 `transport:'http'` 分叉。
  */
-import { Decision } from "@onething/core/toolkit";
-import type { Catalog, Invocation, Observer } from "@onething/core/toolkit";
-import {
-	combineObservers,
-	createAppToolRunner,
-	createReadonlyCatalog,
-	IpcProjector,
-	runToolkitToolDirectly,
-	toolDefinitionsFromCatalog,
-	toolkitCatalogToolDefinitions,
-	type ToolExecutionResult,
-} from "../wiring/toolkit/index.js";
 import {
 	closeAllWorkspaceWatches,
 	subscribeWorkspaceFileChanged,
@@ -324,13 +309,8 @@ import type {
 	TestProxyResponse,
 } from "@shared/ipc/settings.js";
 import type { SessionCommand } from "@shared/events/session-commands.js";
+import type { ToolCall } from "@shared/ipc/tools.js";
 import type { PermissionInfo } from "@shared/ipc/permissions.js";
-import type {
-	ExecuteToolResponse,
-	GetToolsResponse,
-	ToolCall,
-	ToolDefinition,
-} from "@shared/ipc/tools.js";
 import { ServerMCPClient } from "./mcp-client.js";
 // P4c 第六批:MCP 私密字段的脱敏 / 合并规则搬到 `./mcp-secrets.js`,由这里的设置面
 // 与 `rpc/domains/mcp.ts` 的 http 分叉共用一份 —— 两处抄两份就是两条护栏。
@@ -516,8 +496,6 @@ const sensitiveSettingKeys = new Set([
 	"refreshToken",
 	"idToken",
 ]);
-
-const serverReadOnlyToolIds = new Set(["read"]);
 
 const webServerCapabilities: RuntimeHostCapabilities = {
 	localFileSystem: false,
@@ -926,8 +904,6 @@ async function createServerRuntimeOverServerBackend(
 			? (config: MCPServerConfig) =>
 					new ServerMCPClient(config, { allowStdio: allowMCPStdio })
 			: (config: MCPServerConfig) => new DisabledServerMCPClient(config));
-	const readOnlyCatalog = createReadonlyCatalog();
-
 	const isDefaultContext = (context = defaultRequestContext()) =>
 		context.userId === defaultRequestContext().userId &&
 		context.workspaceId === defaultRequestContext().workspaceId;
@@ -2203,102 +2179,10 @@ async function createServerRuntimeOverServerBackend(
 				return () => {};
 			},
 		},
-		tools: {
-			async getTools(
-				context = defaultRequestContext(),
-			): Promise<GetToolsResponse> {
-				// 真引擎在跑时,这台服务器**真的**装了 full / readonly 档的那一份目录;
-				// 报只读那一只是在说谎(R3b 之前的旧行为)。假路(echo/test)报的是
-				// 它自己那份只读目录。
-				const toolkitTools = useAppSubsystems(context)
-					? toolkitCatalogToolDefinitions()
-					: undefined;
-				return {
-					success: true,
-					tools:
-						toolkitTools
-						?? (toolDefinitionsFromCatalog(readOnlyCatalog) as ToolDefinition[]),
-				};
-			},
-			async executeTool(
-				toolId,
-				args,
-				messageId,
-				sessionId,
-				context = defaultRequestContext(),
-			): Promise<ExecuteToolResponse> {
-				if (!serverReadOnlyToolIds.has(toolId)) {
-					return {
-						success: false,
-						error: `Tool execution for "${toolId}" is disabled in the web server runtime.`,
-					};
-				}
-
-				const session = getSessionForContext(sessionId, context);
-				if (!session) {
-					return { success: false, error: "Session not found" };
-				}
-
-				const access = validateServerReadOnlyToolAccess(
-					toolId,
-					args,
-					session,
-					workspaceRoot,
-				);
-				if (!access.success) return access;
-
-				// 执行面的两道闸(`serverReadOnlyToolIds` 白名单 + 路径校验)在上面,
-				// **一个字不动** —— 换的只是"谁来跑它":真引擎在跑时走进程内那份目录的
-				// runner(两阶段 + 权限 + 统一取消 + 统一截断 + 审计),假路走它自己
-				// 那份只读目录的 runner。
-				const runContext = {
-					sessionId,
-					messageId,
-					workingDirectory: session.workingDirectory,
-					workingDirectoryRoots: session.workingDirectoryRoots,
-				};
-				const toolkitResult = useAppSubsystems(context)
-					? await runToolkitToolDirectly(
-							toolId,
-							args,
-							runContext as Parameters<typeof runToolkitToolDirectly>[2],
-						)
-					: undefined;
-				const result =
-					toolkitResult
-					?? (await runReadOnlyCatalogTool(readOnlyCatalog, toolId, args, runContext));
-
-				return {
-					success: result.success,
-					result: result.data as ExecuteToolResponse["result"],
-					error: result.error,
-				};
-			},
-			async cancelTool() {
-				return { success: true };
-			},
-			async updateToolCall(
-				_sessionId: string,
-				_messageId: string,
-				_toolCallId: string,
-				_updates: Partial<ToolCall>,
-			) {
-				return {
-					success: false,
-					error:
-						"Tool call updates are not available in the web server runtime yet.",
-				};
-			},
-			async listBackgroundJobs() {
-				return { success: true, jobs: [] };
-			},
-			async stopBackgroundJob() {
-				return {
-					success: false,
-					error: "Background jobs are not available in the web server runtime.",
-				};
-			},
-		},
+		// tools —— 七条数据面已迁到通用 RPC 通道(toolsRouter,P4c 第九批)。
+		// 护栏跟着走:域处理者按 `context.transport` 逐方法保留这份 adapter 的语义
+		// (执行面只放 `read` + 会话必须存在 + 路径夹进会话沙箱;后台任务表恒空;
+		// 停任务与回写工具调用按原话拒绝)。facade 上因此一格都不剩。
 		async shutdown() {
 			// 必须等 flush 完成:jsonl 会话是多文件写,fire-and-forget 会与
 			// 调用方随后的目录清理(如测试 teardown 的 rm)竞态
@@ -2852,99 +2736,9 @@ function stripSessionOwnerFields(meta: ServerSessionIndexMeta): SessionMeta {
 	return rest;
 }
 
-/**
- * 假路(echo/test backend、scoped owner)上跑一只只读目录里的工具。
- *
- * 授权者恒 allow:这条路上没有人在屏幕前,而它能跑的只有 `serverReadOnlyToolIds`
- * 白名单里那一只 read,路径已在上游被 `validateServerReadOnlyToolAccess` 夹进会话
- * 沙箱。把这句话写出来,而不是靠"调的是注册表不是引擎"这种偶然成立。
- */
-const NOOP_TOOL_OBSERVER: Observer = { on: () => {} };
-
-async function runReadOnlyCatalogTool(
-	catalog: Catalog,
-	toolId: string,
-	args: JsonObject,
-	context: {
-		sessionId: string;
-		messageId: string;
-		workingDirectory?: string;
-		workingDirectoryRoots?: string[];
-	},
-): Promise<ToolExecutionResult> {
-	const tool = catalog.get(toolId);
-	if (!tool) return { success: false, error: `Tool not found: ${toolId}` };
-	await catalog.ensurePrepared(tool.spec.id);
-	const projector = new IpcProjector();
-	const runner = createAppToolRunner({
-		observer: combineObservers(projector, NOOP_TOOL_OBSERVER),
-		authorizer: { decide: async () => Decision.allow() },
-	});
-	const invocation: Invocation = {
-		callId: `server-readonly-${Date.now()}`,
-		toolId,
-		input: args,
-		sessionId: context.sessionId,
-		messageId: context.messageId,
-		principal: undefined as never,
-		...(context.workingDirectory ? { cwd: context.workingDirectory } : {}),
-		...(context.workingDirectory
-			? { workspaceRoot: context.workingDirectory }
-			: {}),
-		...(context.workingDirectoryRoots
-			? { workingDirectoryRoots: context.workingDirectoryRoots }
-			: {}),
-	};
-	return projector.toExecutionResult(
-		await runner.run(tool, invocation),
-	) as ToolExecutionResult;
-}
-
-function validateServerReadOnlyToolAccess(
-	toolId: string,
-	args: JsonObject,
-	session: ServerChatSession,
-	workspaceRoot: string,
-): { success: true } | ExecuteToolResponse {
-	const pathValue =
-		toolId === "read"
-			? args.path
-			: typeof args.path === "string"
-				? args.path
-				: ".";
-
-	if (typeof pathValue !== "string") {
-		return { success: true };
-	}
-
-	if (!resolveSessionToolPath(workspaceRoot, session, pathValue)) {
-		return {
-			success: false,
-			error: `Tool "${toolId}" can only access paths inside the session workspace.`,
-		};
-	}
-
-	return { success: true };
-}
-
-function resolveSessionToolPath(
-	workspaceRoot: string,
-	session: ServerChatSession,
-	requestedPath: string,
-): string | null {
-	const sandboxRoot = workspaceSandboxRootForSession(workspaceRoot, session);
-	const baseDirectory =
-		session.workingDirectory &&
-		isPathInside(resolve(session.workingDirectory), sandboxRoot)
-			? session.workingDirectory
-			: sandboxRoot;
-	const candidate = resolve(
-		isAbsolute(requestedPath)
-			? requestedPath
-			: join(baseDirectory, requestedPath),
-	);
-	return isPathInside(candidate, sandboxRoot) ? candidate : null;
-}
+// P4c 第九批:执行面那三件事(只读目录里的 runner、白名单校验、会话沙箱路径解析)
+// 随 `tools` 域一起搬到了 `backend/rpc/domains/tools.ts` 的 http 分叉里 —— 桌面与
+// 联网宿主从此吃同一份实现,这里不再留第二份。
 
 async function* listServerToolFiles(options: {
 	cwd: string;

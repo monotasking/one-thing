@@ -66,48 +66,21 @@ export const IPC_CHANNELS = {
 	VOICE_RUNTIME_READY: "voice:runtime-ready",
 	VOICE_AUDIO_CHUNK: "voice:audio-chunk",
 
-	// Music radio related
-	MUSIC_GET_STATE: "music:get-state",
-	MUSIC_SETUP: "music:setup",
+	// Music radio —— 十四条数据面已迁到通用 RPC 通道(musicRouter,P4c 第九批)。
+	// 这里只剩**四条推送**:router 今天没有推送面,而它们早就走
+	// `broadcastVoiceHostMessage` 端口从 `backend/wiring/music/*` 直接发出。
 	MUSIC_EVENT: "music:event",
-	/** Transport controls for the composer's music bar (main -> ncm-cli directly). */
-	MUSIC_COMMAND: "music:command",
 	/** main -> renderer: what is playing, or null when nothing is. */
 	MUSIC_NOW_PLAYING: "music:now-playing",
-	/**
-	 * renderer -> main pull of the same answer. MUSIC_NOW_PLAYING only fires on
-	 * change, so a renderer that subscribes mid-song (reload, second window)
-	 * must ask once or it waits until the next track for its first update.
-	 */
-	MUSIC_GET_NOW_PLAYING: "music:get-now-playing",
-	/** renderer -> main: radio brief snapshot (active/intent/lastError). */
-	MUSIC_GET_RADIO: "music:get-radio",
 	/** main -> renderer: the current song's timed lyrics, once per song start. */
 	MUSIC_LYRICS: "music:lyrics",
-	/** renderer -> main pull of the same (reload mid-song). */
-	MUSIC_GET_LYRICS: "music:get-lyrics",
 	/**
 	 * main -> renderer: the DJ's synthesized patter to play in the gap before a
 	 * song. Audio rides here (not mpv) so music and voice stay on separate
-	 * tracks; the renderer plays it and acks on MUSIC_DJ_SPEAK_DONE.
+	 * tracks; the renderer plays it and acks through the music RPC domain's
+	 * `djSpeakDone`.
 	 */
 	MUSIC_DJ_SPEAK: "music:dj-speak",
-	/** renderer -> main: DJ patter finished (or failed) playing, keyed by id. */
-	MUSIC_DJ_SPEAK_DONE: "music:dj-speak-done",
-	/** renderer -> main: open/retune the station from the bar (empty intent = DJ's call). */
-	MUSIC_OPEN_RADIO: "music:open-radio",
-	/** renderer -> main: song search for the panel's request box. */
-	MUSIC_SEARCH: "music:search",
-	/** renderer -> main: cut a named song in as the next track. */
-	MUSIC_REQUEST_SONG: "music:request-song",
-	/** renderer -> main: the visible programme queue for the panel. */
-	MUSIC_GET_PROGRAMME: "music:get-programme",
-	/** renderer -> main: panel edits (remove=skip signal, promote, move). */
-	MUSIC_PROGRAMME_ACTION: "music:programme-action",
-	/** renderer -> main: available music CLI providers (settings selector). */
-	MUSIC_LIST_PROVIDERS: "music:list-providers",
-	/** renderer -> main: switch the music CLI provider (a retune: programme cleared). */
-	MUSIC_SET_PROVIDER: "music:set-provider",
 
 	// Gateway / IM channel:八条已迁到通用 RPC 通道(gatewayRouter),本域零推送,
 	// 此处不再有常量。
@@ -122,22 +95,15 @@ export const IPC_CHANNELS = {
 	// Model registry 与 Providers:已迁到通用 RPC 通道(modelsRouter /
 	// providersRouter),此处不再有常量。
 
-	// Tools related
-	GET_TOOLS: "tools:get-all",
-	EXECUTE_TOOL: "tools:execute",
-	CANCEL_TOOL: "tools:cancel",
-	UPDATE_TOOL_CALL: "tools:update-tool-call",
-	BACKGROUND_JOBS_LIST: "tools:background-jobs:list",
-	BACKGROUND_JOBS_STOP: "tools:background-jobs:stop",
-	REFRESH_ASYNC_TOOLS: "tools:refresh-async",
+	// Tools:七条数据面已迁到通用 RPC 通道(toolsRouter,P4c 第九批),本域零推送。
+	// 留下的这一条不是 tools 域 —— 它往引擎递 sender,信封里没有那一格(拍板 #21)。
 	RESUME_AFTER_TOOL_CONFIRM: "chat:resume-after-tool-confirm",
 
 	// Permission related
 	PERMISSION_REQUEST: "permission:request",
 
-	// Interaction related (agent 提问 → 用户应答)
-	INTERACTION_RESPOND: "interaction:respond",
-	INTERACTION_GET_PENDING: "interaction:get-pending",
+	// Interaction(agent 提问 → 用户应答):两条已迁到通用 RPC 通道
+	// (interactionRouter,P4c 第九批),本域零推送,此处不再有常量。
 
 	// Dialog related
 	SHOW_OPEN_DIALOG: "dialog:show-open",

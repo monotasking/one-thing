@@ -1541,12 +1541,6 @@ const MAIN_TOOLS_IPC_BACKGROUND_JOBS_FORBIDDEN_PATTERNS: RegExp[] = [
   /Failed to stop background job/,
 ]
 
-const MAIN_TOOLS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
-]
-
 const MAIN_SETTINGS_IPC_SAVE_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]electron['"].*\b(dialog|BrowserWindow|nativeTheme)\b/,
   /BrowserWindow\.getFocusedWindow/,
@@ -5081,57 +5075,16 @@ function checkElectronHostOwnsTodoPlanIpcHost(): void {
   assertNoMatches('apps/electron owns Electron todo-plan IPC host operations', lines)
 }
 
-function checkElectronHostOwnsToolsIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronToolsFile = path.join(root, 'apps/electron/src/ipc/tools.ts')
-  const mainToolsFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronToolsContent = fs.existsSync(electronToolsFile) ? fs.readFileSync(electronToolsFile, 'utf-8') : ''
-  const mainToolsContent = fs.existsSync(mainToolsFile) ? fs.readFileSync(mainToolsFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronToolsIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronToolsIpcChannels',
-    'ElectronToolCancelRequest',
-    'ElectronBackgroundJobsListRequest',
-    'ElectronBackgroundJobsStopRequest',
-    'ElectronRefreshAsyncToolsRequest',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/tools',
-    'registerElectronToolsIpcHandlers',
-    'IPC_CHANNELS.GET_TOOLS',
-    'IPC_CHANNELS.EXECUTE_TOOL',
-    'IPC_CHANNELS.CANCEL_TOOL',
-    'IPC_CHANNELS.BACKGROUND_JOBS_LIST',
-    'IPC_CHANNELS.BACKGROUND_JOBS_STOP',
-    'IPC_CHANNELS.REFRESH_ASYNC_TOOLS',
-    'IPC_CHANNELS.UPDATE_TOOL_CALL',
-    'listOnethingSettingsToolsForIpc',
-    'executeOnethingToolWithSessionContextForIpc',
-    'cancelOnethingToolForIpc',
-    'listOnethingBackgroundJobsForIpc',
-    'stopOnethingBackgroundJobForIpc',
-    'applyOnethingToolCallUpdateForIpc',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/tools')
-      ? [`${rel(electronPackage)}: missing tools IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronToolsContent.includes(symbol))
-      .map(symbol => `${rel(electronToolsFile)}: missing Electron tools IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainToolsContent.includes(symbol))
-      .map(symbol => `${rel(mainToolsFile)}: missing tools IPC host delegation ${symbol}`),
-    ...(fs.existsSync(mainToolsFile)
-      ? matchingLines(mainToolsFile, MAIN_TOOLS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron tools IPC host operations', lines)
-}
+// P4c 第九批:tools 的七条数据面已迁 `toolsRouter`,那只手写 IPC 工厂
+// (`apps/electron/src/ipc/tools.ts`)与它的壳适配(`@main/ipc/tools.ts`)**整只删掉**,
+// 连同 `apps/electron/package.json` 的 `./ipc/tools` 导出。所以
+// `checkElectronHostOwnsToolsIpcHost` 也随之退休:没有宿主件要守了(同 files 判例)。
+// 域的形状由 `packages/backend/rpc/__tests__/tools-domain.test.ts` 钉,
+// 「投影逻辑不许搬进传输层」由下面四条 `checkRuntimeOwns*`(已改指域文件)守。
+//
+// 同批消失的还有 interaction 与 music 的宿主件(`apps/electron/src/ipc/interaction.ts`、
+// `apps/electron/src/main/ipc/{interaction,music}.ts`、`apps/electron/src/music/ipc.ts`)
+// —— 它们本来就没有 checker 断言,这里只记一笔来路。
 
 function checkElectronHostOwnsAuthElectronAdapters(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
@@ -7444,9 +7397,15 @@ function checkRuntimeOwnsResumeAfterToolConfirmationFlow(): void {
   assertNoMatches('packages/onething-runtime owns resume-after-tool-confirmation flow', lines)
 }
 
+// P4c 第九批:tools 的七条数据面已迁 `toolsRouter`,`@main/ipc/tools.ts` 与
+// `apps/electron/src/ipc/tools.ts` 整只删掉。下面四条「runtime 拥有 X 操作」的断言
+// 因此改指**域处理者**(`packages/backend/rpc/domains/tools.ts`)—— 守的还是同一件事:
+// 投影逻辑住在产品层,传输层只转调,不许在这里重抄一份。
+const TOOLS_RPC_DOMAIN_FILE = 'packages/backend/rpc/domains/tools.ts'
+
 function checkRuntimeOwnsToolCallStateProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-call-state.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
+  const mainFile = path.join(root, TOOLS_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'applyOnethingToolCallUpdate',
@@ -7458,7 +7417,7 @@ function checkRuntimeOwnsToolCallStateProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tool call state projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOLS_IPC_TOOL_CALL_UPDATE_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : [`${TOOLS_RPC_DOMAIN_FILE}: missing tools RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns tool call state projection', lines)
@@ -7522,7 +7481,7 @@ function checkRuntimeOwnsToolRegistryRuntime(): void {
 
 function checkRuntimeOwnsToolsIpcListPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-list-presentation.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
+  const mainFile = path.join(root, TOOLS_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingSettingsTools',
@@ -7534,7 +7493,7 @@ function checkRuntimeOwnsToolsIpcListPresentation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned settings-visible tool list projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOLS_IPC_LIST_PRESENTATION_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : [`${TOOLS_RPC_DOMAIN_FILE}: missing tools RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns settings-visible tool list projection', lines)
@@ -7542,7 +7501,7 @@ function checkRuntimeOwnsToolsIpcListPresentation(): void {
 
 function checkRuntimeOwnsToolsIpcExecutionContext(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-execution-context.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
+  const mainFile = path.join(root, TOOLS_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'executeOnethingToolWithSessionContext',
@@ -7554,7 +7513,7 @@ function checkRuntimeOwnsToolsIpcExecutionContext(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tool execution context assembly ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOLS_IPC_EXECUTION_CONTEXT_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : [`${TOOLS_RPC_DOMAIN_FILE}: missing tools RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns tool execution context assembly', lines)
@@ -7562,7 +7521,7 @@ function checkRuntimeOwnsToolsIpcExecutionContext(): void {
 
 function checkRuntimeOwnsToolsIpcBackgroundJobs(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/ipc-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
+  const mainFile = path.join(root, TOOLS_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'cancelOnethingToolForIpc',
@@ -7577,7 +7536,7 @@ function checkRuntimeOwnsToolsIpcBackgroundJobs(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tools IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOLS_IPC_BACKGROUND_JOBS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : [`${TOOLS_RPC_DOMAIN_FILE}: missing tools RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns tools background-job IPC operations', lines)
@@ -9703,7 +9662,6 @@ checkProvidersDomainRidesTheRpcChannel()
 checkModelsDomainRidesTheRpcChannel()
 checkElectronHostOwnsMediaIpcHost()
 checkElectronHostOwnsTodoPlanIpcHost()
-checkElectronHostOwnsToolsIpcHost()
 checkElectronHostOwnsAuthElectronAdapters()
 checkElectronHostOwnsSkillsEnvironment()
 checkElectronHostOwnsNetworkProxy()

@@ -7,7 +7,6 @@ import type {
 	TodoPlanChangedPayload,
 	TodoPlanWindowActionRequest,
 	TodoPlanWindowDragRequest,
-	ToolCall,
 	VoiceAudioChunkPayload,
 	VoiceEvent,
 	VoiceRuntimeCommand,
@@ -68,6 +67,11 @@ const webCapabilities: PlatformCapabilities = {
 	terminal: false,
 	embeddedBrowser: false,
 	collabRooms: false,
+	// P4c 第九批(#13 / #17):两条数据面都已迁到通用 RPC 通道,通道是通的 ——
+	// 挡在前面的是**能力位**。music:电台驱动的是宿主机器上的 ncm-cli / mpv;
+	// interactionRespond:让浏览器替桌面答提问是一次独立的拍板。放开各改这一行。
+	music: false,
+	interactionRespond: false,
 	clipboardWrite: browserClipboardWriteCapability(),
 	desktopWindows: false,
 	globalMenuEvents: false,
@@ -88,7 +92,6 @@ const imagePreviewUpdateHandlers = new Set<
 	(payload: ImagePreviewUpdatePayload) => void
 >();
 const TODO_PLAN_WEB_WINDOW_EVENT = "todo-plan:web-window-action";
-const MUSIC_UNSUPPORTED = "音乐电台仅在桌面端可用";
 const sharedEventSources = new Map<
 	string,
 	{
@@ -195,6 +198,10 @@ function normalizeServerCapabilities(value: unknown): PlatformCapabilities {
 		// Rooms need the in-process RoomCoordinator; the server neither runs one
 		// nor accepts kind='room' creates (P0 desktop-only).
 		collabRooms: booleanProperty(value, "collabRooms", false),
+		// 电台要宿主机器上的播放器;提问应答要主进程的 InteractionRegistry。
+		// 两颗都默认关,服务器没有宣告就是关(P4c 第九批,#13 / #17)。
+		music: booleanProperty(value, "music", false),
+		interactionRespond: booleanProperty(value, "interactionRespond", false),
 		clipboardWrite: browserClipboardWriteCapability(),
 		desktopWindows: booleanProperty(value, "desktopWindows", false),
 		globalMenuEvents: booleanProperty(value, "globalMenuEvents", false),
@@ -436,12 +443,12 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	//
 	// **能力位没动**:`collabRooms` 在 web 上仍然是 false(见上方 capabilities),
 	// 协作 UI 照旧关着。放开它是独立的一次拍板,不搭这次搬家的便车。
-	// Interaction(agent 提问 → 用户应答,E1)。内核在主进程的 InteractionRegistry
-	// 里,web 侧要接得起来得先有 /api/interactions/* 两条路由 —— 那是 apps/server
-	// 的活,不在 E1 范围。**桩掉不会把提问挂住**:deadline 由内核自结算,web 端
-	// 不应答的后果是到点 timeout,而不是像 F3 那样永远等下去。
-	"getPendingInteractions",
-	"respondInteraction",
+	// Interaction(agent 提问 → 用户应答,E1)的两条已整只迁到通用 RPC 通道
+	// (P4c 第九批,`interactionRouter` + `@/platform/interaction-client`),所以
+	// 这份名单里不再有它们。**挡在前面的换成了能力位** `interactionRespond`
+	// (web 上 false,见上方 capabilities):客户端在它为 false 时返回与这里的
+	// `unsupported(method)` 逐字同形的失败信封,可感知结果一字不变 ——
+	// 卡片不出现,提问照旧由内核到点自结算,不会挂住。
 	// Terminal (P4 web parity is frozen; capability gate hides the UI on web)
 	"createTerminal",
 	"listTerminals",
@@ -640,61 +647,19 @@ const webApi = {
 	dragTodoPlanWindow: (_request: TodoPlanWindowDragRequest) =>
 		Promise.resolve({ success: false }),
 
-	// The radio drives ncm-cli's mpv on the host machine, so a browser client
-	// would only make audio come out of the server. Unsupported by design.
-	musicGetState: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
-	musicSetup: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	// music —— 十四条数据面已随 `musicRouter` 迁走(P4c 第九批);web 上挡在前面的
+	// 不再是这些桩,而是能力位 `music`(见上方 capabilities)与
+	// `platform/music-client.ts` 里那份逐字相同的降级答案。
+	// 只剩这四条**推送**订阅,router 今天没有推送面 —— 浏览器里没有主进程往这四条
+	// 通道发消息,所以照旧是空订阅。
 	onMusicEvent: () => () => {},
-	musicCommand: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
-	musicGetNowPlaying: () => Promise.resolve(null),
-	musicGetRadio: () =>
-		Promise.resolve({ active: false, intent: '', programmeLength: 0, canResume: false }),
-	musicOpenRadio: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
-	musicSearch: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
-	musicRequestSong: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
-	musicGetProgramme: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
-	musicProgrammeAction: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
-	musicListProviders: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
-	musicSetProvider: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
-	musicGetLyrics: () => Promise.resolve(null),
 	onMusicLyrics: () => () => {},
 	onMusicNowPlaying: () => () => {},
 	onMusicDjSpeak: () => () => {},
-	musicDjSpeakDone: () => Promise.resolve(),
 
-	getTools: () => requestJson("/api/tools"),
-	executeTool: (
-		toolId: string,
-		args: Record<string, unknown>,
-		messageId: string,
-		sessionId: string,
-	) =>
-		postJson("/api/tools/execute", {
-			toolId,
-			arguments: args,
-			messageId,
-			sessionId,
-		}),
-	cancelTool: (toolCallId: string) =>
-		postJson("/api/tools/cancel", { toolCallId }),
-	updateToolCall: (
-		sessionId: string,
-		messageId: string,
-		toolCallId: string,
-		updates: Partial<ToolCall>,
-	) =>
-		postJson("/api/tools/update-call", {
-			sessionId,
-			messageId,
-			toolCallId,
-			updates,
-		}),
-	listBackgroundJobs: (options?: { includeInactive?: boolean }) => {
-		const query = options?.includeInactive ? "?includeInactive=true" : "";
-		return requestJson(`/api/tools/background-jobs${query}`);
-	},
-	stopBackgroundJob: (jobId: string) =>
-		postJson(`/api/tools/background-jobs/${encodeURIComponent(jobId)}/stop`),
+	// tools —— 六条 REST 镜像已随 `toolsRouter` 迁走(P4c 第九批)。护栏跟着走:
+	// 域处理者按 `context.transport` 逐方法保留旧 server 路由的语义
+	// (执行面白名单 / 会话沙箱夹紧 / 后台任务与回写工具调用的拒绝文案)。
 
 	// files —— 十四条 REST 镜像已随 `filesRouter` 迁走(P4c 第八批);
 	// 只剩这一条**推送**的 SSE 订阅,router 今天没有推送面。

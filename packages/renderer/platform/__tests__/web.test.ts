@@ -24,6 +24,8 @@ describe('createWebPlatformApi', () => {
       terminal: false,
       embeddedBrowser: false,
       collabRooms: false,
+      music: false,
+      interactionRespond: false,
       clipboardWrite: false,
       desktopWindows: false,
       globalMenuEvents: false,
@@ -128,6 +130,8 @@ describe('createWebPlatformApi', () => {
       terminal: false,
       embeddedBrowser: false,
       collabRooms: false,
+      music: false,
+      interactionRespond: false,
       clipboardWrite: true,
       desktopWindows: false,
       globalMenuEvents: false,
@@ -169,6 +173,32 @@ describe('createWebPlatformApi', () => {
 
     const api = createWebPlatformApi()
     expect(api.capabilities.collabRooms).toBe(false)
+  })
+
+  /**
+   * music / interaction 迁到通用 RPC 通道之后(P4c 第九批),web 上同样不再有桩 ——
+   * 十四条 + 两条走的是同一条 `POST /api/rpc`,技术上真能驱动桌面那台后端。
+   *
+   * 挡在前面的是**能力位**,不是通道:`music` 与 `interactionRespond` 在 web 上
+   * 默认 false。这里钉的就是那两颗 false —— 一旦被人顺手改掉,浏览器点一下会让
+   * 服务器那台机器出声,或者替桌面答掉一条没人看见的提问。
+   */
+  it('keeps music and interaction shut on web through capabilities, not through stubs', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('server unavailable')
+    }))
+    vi.stubGlobal('navigator', {})
+
+    const { createWebPlatformApi, WEB_DESKTOP_ONLY_PLATFORM_METHODS } = await import('../web.js')
+    // 名单里一条都不该再有(它们随 platformApi 上的方法一起消失)。
+    expect(
+      WEB_DESKTOP_ONLY_PLATFORM_METHODS.filter(name => name.includes('Interaction')),
+    ).toEqual([])
+    expect(WEB_DESKTOP_ONLY_PLATFORM_METHODS.filter(name => name.startsWith('music'))).toEqual([])
+
+    const api = createWebPlatformApi()
+    expect(api.capabilities.music).toBe(false)
+    expect(api.capabilities.interactionRespond).toBe(false)
   })
 
   it('opens settings in the current browser tab', async () => {
@@ -796,50 +826,14 @@ describe('createWebPlatformApi', () => {
   // 十四条方法的行为(含 http 夹紧)由 `backend/rpc/__tests__/files-domain.test.ts`
   // 与 `backend/server/__tests__/http.test.ts` 那条端到端用例钉。
 
-  it('maps tool platform methods to server REST endpoints', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url === '/api/capabilities') {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(JSON.stringify({ success: true, url }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('navigator', {})
+  // tools 的七条数据面已整只迁到通用 RPC 通道(P4c 第九批,`toolsRouter` +
+  // `@/platform/tools-client`):web 壳上不再有 `/api/tools*` 的六条 REST 镜像,
+  // server 那六条路由(含 background-jobs stop 的正则)也一并删了。
+  // 方法的行为(含 http 侧逐方法的护栏)由 `backend/rpc/__tests__/tools-domain.test.ts` 钉。
 
-    const { createWebPlatformApi } = await import('../web.js')
-    const api = createWebPlatformApi()
-
-    await expect(api.getTools()).resolves.toEqual({ success: true, url: '/api/tools' })
-    await expect(api.executeTool('bash', { command: 'pwd' }, 'message-1', 'session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/tools/execute',
-    })
-    await expect(api.cancelTool('tool-1')).resolves.toEqual({ success: true, url: '/api/tools/cancel' })
-    await expect(api.updateToolCall('session-1', 'message-1', 'tool-1', { status: 'cancelled' })).resolves.toEqual({
-      success: true,
-      url: '/api/tools/update-call',
-    })
-    await expect(api.listBackgroundJobs({ includeInactive: true })).resolves.toEqual({
-      success: true,
-      url: '/api/tools/background-jobs?includeInactive=true',
-    })
-    await expect(api.stopBackgroundJob('job-1')).resolves.toEqual({
-      success: true,
-      url: '/api/tools/background-jobs/job-1/stop',
-    })
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/tools/execute', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/tools/background-jobs?includeInactive=true', expect.any(Object))
-  })
+  // music / interaction 从来没有 web REST 镜像(前者十四条硬桩、后者两条在
+  // `WEB_DESKTOP_ONLY_PLATFORM_METHODS` 名单里)。迁到 router 之后挡在前面的是
+  // **能力位**:`music` 与 `interactionRespond` 在 web 上默认 false,见下方用例。
 
   // permission(活询问)域的两条已整只迁到通用 RPC 通道(P4c,`permissionRouter` +
   // `@/platform/permission-client`):web 壳上不再有

@@ -26,10 +26,16 @@ const state = vi.hoisted(() => ({
 
 vi.mock('@/platform', () => ({
   platformApi: {
-    listBackgroundJobs: vi.fn(async () => ({ jobs: state.jobs })),
-    stopBackgroundJob: vi.fn(async () => ({ success: true })),
     goalSet: vi.fn(async () => ({ success: true })),
     openSettingsWindow: vi.fn(async () => ({ success: true })),
+  },
+}))
+
+// P4c 第九批:后台任务表走通用 RPC 的 tools 域,客户端在 `@/platform/tools-client`。
+vi.mock('@/platform/tools-client', () => ({
+  toolsApi: {
+    listBackgroundJobs: vi.fn(async () => ({ jobs: state.jobs })),
+    stopBackgroundJob: vi.fn(async () => ({ success: true })),
   },
 }))
 

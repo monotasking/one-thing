@@ -1,10 +1,8 @@
 import { registerChatHandlers } from "./chat.js";
 import { registerSettingsHandlers } from "./settings.js";
-import { registerToolHandlers } from "./tools.js";
 import { initializeMCP, shutdownMCP } from "./mcp.js";
 import { registerShellHandlers } from "./shell.js";
 import { registerMediaHandlers } from "./media.js";
-import { registerInteractionHandlers } from "./interaction.js";
 import { registerOAuthHandlers } from "./oauth.js";
 import { registerSpacesHandlers } from "./spaces.js";
 import { registerPluginHandlers } from "./plugins.js";
@@ -13,7 +11,6 @@ import { registerWindowHandlers } from "@onething/electron-host/ipc/window";
 import { registerTodoPlanHandlers } from "./todo-plan.js";
 import { registerScratchpadHandlers } from "./scratchpad.js";
 import { registerVoiceHandlers } from "./voice.js";
-import { registerMusicHandlers } from "./music.js";
 import { startMusicNowPlayingWatch } from "@onething/backend/wiring/music/service.js";
 import { startRadioConductor } from "@onething/backend/wiring/music/radio.js";
 import { initializeACP, shutdownACP } from "./acp.js";
@@ -27,10 +24,8 @@ import { registerNotifyHandlers } from "./notify.js";
 export function initializeIPC() {
 	registerChatHandlers();
 	registerSettingsHandlers();
-	registerToolHandlers();
 	registerShellHandlers();
 	registerMediaHandlers();
-	registerInteractionHandlers();
 	registerOAuthHandlers();
 	registerSpacesHandlers();
 	registerPluginHandlers();
@@ -39,7 +34,9 @@ export function initializeIPC() {
 	registerTodoPlanHandlers();
 	registerScratchpadHandlers();
 	registerVoiceHandlers();
-	registerMusicHandlers();
+	// tools / interaction / music 的数据面已迁到通用 RPC 通道(P4c 第九批,
+	// toolsRouter / interactionRouter / musicRouter),三只壳适配整只删掉;
+	// 音乐留下的只有下面两条**后台任务**(与推送同一侧,不是请求面)。
 	// Safe at startup, unlike the keepalive: watching is a file stat on a timer,
 	// and `ncm-cli state` cannot start a player even when it does run. Nothing
 	// here can make sound.

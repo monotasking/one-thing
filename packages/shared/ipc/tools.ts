@@ -231,3 +231,109 @@ export interface SendMessageStreamResponse {
   error?: string
   errorDetails?: string
 }
+
+// ============================================
+// Router
+// ============================================
+
+/**
+ * tools(工具面)域 —— 结构债 P4c 第九批,七条数据面整只从手写 IPC 通道迁到
+ * 通用 `rpc:invoke` / `POST /api/rpc`。
+ *
+ * 七条逐条对应从前 `IPC_CHANNELS` 上那七条 `tools:*` 通道(`GET_TOOLS` /
+ * `EXECUTE_TOOL` / `CANCEL_TOOL` / `BACKGROUND_JOBS_LIST` / `BACKGROUND_JOBS_STOP` /
+ * `REFRESH_ASYNC_TOOLS` / `UPDATE_TOOL_CALL`),请求/响应形状一字未改;变的只是通道。
+ *
+ * 位置参数在这里被收成**单 id 包对象**(本仓 router 惯例):`executeTool` 从前是
+ * `(toolId, args, messageId, sessionId)` 四个位置参数、`updateToolCall` 是四个,
+ * 现在各是一个请求对象 —— 渲染侧客户端保留旧的位置参数签名,调用点因此零改动。
+ *
+ * 无参的 `getTools` 按惯例递 `{}`。
+ */
+import { defineRouter } from './router.js'
+
+export interface CancelToolRequest {
+  toolCallId: string
+}
+
+export interface CancelToolResponse {
+  success: boolean
+}
+
+export interface BackgroundJobsListRequest {
+  includeInactive?: boolean
+}
+
+export interface BackgroundJobsListResponse {
+  success: boolean
+  /**
+   * 后台任务的形状住在产品层(`runtime/src/tools/background-jobs.ts` 的
+   * `BackgroundJob`),契约层不抄第二份 —— 两个消费者都是就地 `as` 成自己的视图
+   * 类型,与迁移前 `jobs?: Array<Record<string, any>>` 那一格同义。
+   */
+  jobs?: unknown[]
+  error?: string
+}
+
+export interface BackgroundJobsStopRequest {
+  jobId: string
+}
+
+export interface BackgroundJobsStopResponse {
+  success: boolean
+  error?: string
+}
+
+/**
+ * R4b 之后这条通道刷的是 **MCP 工具面**(旧树的「异步工具」概念随注册表一起退役)。
+ * `workingDirectory` 是旧契约留下的一格,今天没有读者 —— 保留是为了让形状一字不改。
+ */
+export interface RefreshAsyncToolsRequest {
+  workingDirectory?: string
+}
+
+export interface RefreshAsyncToolsResponse {
+  success: boolean
+  error?: string
+}
+
+export interface UpdateToolCallRequest {
+  sessionId: string
+  messageId: string
+  toolCallId: string
+  updates: Partial<ToolCall>
+}
+
+export interface UpdateToolCallResponse {
+  success: boolean
+  error?: string
+}
+
+export type ToolsRoutes = {
+  getTools: { input: Record<string, never>; output: GetToolsResponse }
+  executeTool: { input: ExecuteToolRequest; output: ExecuteToolResponse }
+  cancelTool: { input: CancelToolRequest; output: CancelToolResponse }
+  backgroundJobsList: {
+    input: BackgroundJobsListRequest
+    output: BackgroundJobsListResponse
+  }
+  backgroundJobsStop: {
+    input: BackgroundJobsStopRequest
+    output: BackgroundJobsStopResponse
+  }
+  refreshAsyncTools: {
+    input: RefreshAsyncToolsRequest
+    output: RefreshAsyncToolsResponse
+  }
+  updateToolCall: { input: UpdateToolCallRequest; output: UpdateToolCallResponse }
+}
+
+export const toolsRouter = defineRouter<ToolsRoutes>('tools', [
+  'getTools',
+  'executeTool',
+  'cancelTool',
+  'backgroundJobsList',
+  'backgroundJobsStop',
+  'refreshAsyncTools',
+  'updateToolCall',
+])

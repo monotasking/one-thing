@@ -39,8 +39,8 @@ const REQUEST = {
 
 describe('IPC hub → 提问账本 → 卡片 → 应答', () => {
   let sessionEventCallback: SessionEventCallback | undefined
-  let getPendingInteractions: ReturnType<typeof vi.fn>
-  let respondInteraction: ReturnType<typeof vi.fn>
+  let getPendingInteractions: ReturnType<typeof vi.fn<(sessionId: string) => Promise<unknown>>>
+  let respondInteraction: ReturnType<typeof vi.fn<(request: unknown) => Promise<unknown>>>
 
   beforeEach(() => {
     vi.resetModules()
@@ -57,8 +57,16 @@ describe('IPC hub → 提问账本 → 卡片 → 应答', () => {
         }),
         onSessionStream: vi.fn(() => vi.fn()),
         saveUIState: vi.fn(async () => ({ success: true })),
-        getPendingInteractions,
-        respondInteraction,
+        // P4c 第九批:两条走通用 RPC 的 interaction 域,所以宿主这里要给的是
+        // 通用信封,不再是两条具名方法。桌面的能力位 `interactionRespond` 为 true,
+        // 客户端不降级,请求真的会打到这条 `rpcInvoke` 上。
+        rpcInvoke: vi.fn(async (request: { domain: string, method: string, payload: any }) => {
+          if (request.domain !== 'interaction') return { ok: false, error: { message: 'unexpected domain' } }
+          if (request.method === 'getPending') {
+            return { ok: true, data: await getPendingInteractions(request.payload.sessionId) }
+          }
+          return { ok: true, data: await respondInteraction(request.payload) }
+        }),
       },
     })
   })

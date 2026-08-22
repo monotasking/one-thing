@@ -382,6 +382,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useMediaStore } from '@/stores/media'
 import { isProviderEnabledIn } from '@/stores/helpers/provider-model'
 import { platformApi } from '@/platform'
+import { toolsApi } from '@/platform/tools-client'
 import { providerFamilyDisplayName } from '@shared/provider-families'
 import type { PermissionMode } from '@shared/ipc'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
@@ -615,10 +616,9 @@ function onToggleTool(toolId: string) {
 }
 
 async function loadTools() {
-  if (typeof platformApi.getTools !== 'function') return
   toolsLoading.value = true
   try {
-    const response = await platformApi.getTools()
+    const response = await toolsApi.getTools()
     if (response?.success && response.tools) {
       availableTools.value = response.tools
         .filter(tool => tool.enabled !== false)

@@ -9,6 +9,7 @@ import { defineRouter } from '@onething/core/ipc'
 import type { CorePluginCommandContext } from '@onething/core/plugins'
 import { registerRouterHandlers, resetRpcRegistryForTests } from '@onething/backend/rpc/registry.js'
 import { registerFilesRpcDomain } from '@onething/backend/rpc/domains/files.js'
+import { registerToolsRpcDomain } from '@onething/backend/rpc/domains/tools.js'
 import { registerMarkdownRpcDomain } from '@onething/backend/rpc/domains/markdown.js'
 import { registerPermissionGrantsRpcDomain } from '@onething/backend/rpc/domains/permission-grants.js'
 import { resetPermissionGrantsForTests } from '@onething/core/permission'
@@ -1180,126 +1181,90 @@ describe('createOnethingHttpServer', () => {
   // `/api/themes/<id>[/apply]` 正则块与 `themes` adapter 一起没了。
   // 五条方法改由 `packages/backend/rpc/__tests__/themes-domain.test.ts` 钉。
 
-  it('exposes sandboxed read-only tool routes for the web runtime', async () => {
+  /**
+   * P4c 第九批:tools 的七条数据面迁到 `POST /api/rpc`(`toolsRouter`),六条
+   * `/api/tools*` REST 路由与 `tools` facade adapter 一起没了。
+   *
+   * 这条用例跟着改走通用信封,证的是**护栏搬家之后经过真实 HTTP 层一字未变**:
+   * 身份头 → dispatch context → `transport:'http'` 分叉。四条拒绝路径与两条
+   * 恒定答案在这里逐条钉;需要真装配(目录 + runner + app 会话仓)的那两条
+   * ——「工具清单」与「read 成功读到沙箱内文件」——由
+   * `packages/backend/rpc/__tests__/tools-domain.test.ts` 钉,因为 echo backend
+   * 的会话仓与装配层那只单例不是同一只(旧 adapter 读的是 server 自己那份,
+   * 迁移后读的是 app store —— 真 server 上两者本来就是同一只)。
+   *
+   * 同批消失的那份 per-owner 只读目录(`createReadonlyCatalog()` + 本地 runner)
+   * 也随之退场:一个 store 一份工具目录。**执行面没有变宽** —— 白名单仍然只有
+   * `read`,下面第一条断言钉着这件事。
+   */
+  it('serves the tool methods over the generic RPC route, keeping the http guards verbatim', async () => {
     const workspaceRoot = await createTempDir('onething-server-tools-')
     const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
+    // 装配层在 echo backend 下不跑,域要自己挂上(与 files / markdown 同款)。
+    const disposeDomain = registerToolsRpcDomain()
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
+      workspaceRoot: serverRuntime.workspaceRoot,
     }))
+    const baseUrlValue = baseUrl(server)
     const aliceHeaders = contextHeaders('alice', 'tool-workspace')
-    const bobHeaders = contextHeaders('bob', 'tool-workspace')
-    const created = await createSession(baseUrl(server), 'Tool session', aliceHeaders)
-    const sessionId = created.session?.id
-    expect(sessionId).toBeTruthy()
-
-    const aliceWorkspaceRoot = join(workspaceRoot, 'alice', 'tool-workspace')
-    const bobWorkspaceRoot = join(workspaceRoot, 'bob', 'tool-workspace')
-    await mkdir(join(aliceWorkspaceRoot, 'notes'), { recursive: true })
-    await mkdir(bobWorkspaceRoot, { recursive: true })
-    await writeFile(join(aliceWorkspaceRoot, 'notes', 'a.txt'), 'alpha\nneedle here\n', 'utf8')
-    await writeFile(join(aliceWorkspaceRoot, 'notes', 'b.ts'), 'const value = "needle";\n', 'utf8')
-    await writeFile(join(bobWorkspaceRoot, 'secret.txt'), 'bob secret\n', 'utf8')
-
-    const tools = await fetchJson(`${baseUrl(server)}/api/tools`, { headers: aliceHeaders })
-    expect(tools.success).toBe(true)
-    /*
-     * R4b(§15.6 ⑧):假路那份本地注册表(只装一只 read)换成了
-     * `createReadonlyCatalog()` —— 只读档的真实内容是四只零本地副作用的工具。
-     * **执行面没有变宽**:`serverReadOnlyToolIds` 白名单仍然只有 `read`,下面
-     * 那几条断言逐条钉着这件事。
-     */
-    expect(tools.tools.map((tool: { id: string }) => tool.id).sort())
-      .toEqual(['read', 'time', 'web_open', 'web_search'])
-
-    const readResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        toolId: 'read',
-        arguments: { path: 'notes/a.txt' },
-        messageId: 'message-1',
-        sessionId,
-      }),
-    })
-    expect(readResult.success).toBe(true)
-    expect(readResult.result.output).toContain('needle here')
-
-    for (const retired of ['glob', 'grep']) {
-      const retiredResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
+    const rpc = (method: string, payload: unknown) =>
+      fetchJson(`${baseUrlValue}/api/rpc`, {
         method: 'POST',
         headers: { ...aliceHeaders, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          toolId: retired,
-          arguments: { pattern: '**/*.txt' },
-          messageId: 'message-1',
-          sessionId,
-        }),
+        body: JSON.stringify({ domain: 'tools', method, payload }),
       })
-      expect(retiredResult.success).toBe(false)
-    }
+    const ok = (data: unknown) => ({ ok: true, data })
 
-    await expect(fetchJson(`${baseUrl(server)}/api/tools/execute`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        toolId: 'bash',
-        arguments: { command: 'pwd' },
-        messageId: 'message-1',
-        sessionId,
-      }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Tool execution for "bash" is disabled in the web server runtime.',
-    })
+    try {
+      // ① 执行白名单:除了 read,一律拒绝(文案逐字沿用旧 server adapter)。
+      for (const toolId of ['bash', 'glob', 'grep']) {
+        await expect(rpc('executeTool', {
+          toolId,
+          arguments: { command: 'pwd' },
+          messageId: 'message-1',
+          sessionId: 'whatever',
+        })).resolves.toEqual(ok({
+          success: false,
+          error: `Tool execution for "${toolId}" is disabled in the web server runtime.`,
+        }))
+      }
 
-    await expect(fetchJson(`${baseUrl(server)}/api/tools/execute`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        toolId: 'read',
-        arguments: { path: join(bobWorkspaceRoot, 'secret.txt') },
-        messageId: 'message-1',
-        sessionId,
-      }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Tool "read" can only access paths inside the session workspace.',
-    })
-
-    await expect(fetchJson(`${baseUrl(server)}/api/tools/execute`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
+      // ② 会话必须存在,而且这道闸排在路径校验之前。
+      await expect(rpc('executeTool', {
         toolId: 'read',
         arguments: { path: 'notes/a.txt' },
         messageId: 'message-1',
-        sessionId,
-      }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Session not found',
-    })
+        sessionId: 'ghost-session',
+      })).resolves.toEqual(ok({ success: false, error: 'Session not found' }))
 
-    await expect(fetchJson(`${baseUrl(server)}/api/tools/cancel`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ toolCallId: 'tool-1' }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrl(server)}/api/tools/background-jobs?includeInactive=true`, {
-      headers: aliceHeaders,
-    })).resolves.toEqual({
-      success: true,
-      jobs: [],
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/tools/background-jobs/job-1/stop`, {
-      method: 'POST',
-      headers: aliceHeaders,
-    })).resolves.toEqual({
-      success: false,
-      error: 'Background jobs are not available in the web server runtime.',
-    })
+      // ③ 取消是空操作,两条传输面同一个答案。
+      await expect(rpc('cancelTool', { toolCallId: 'tool-1' }))
+        .resolves.toEqual(ok({ success: true }))
+
+      // ④ 后台任务:表恒空、停任务按原话拒绝。
+      await expect(rpc('backgroundJobsList', { includeInactive: true }))
+        .resolves.toEqual(ok({ success: true, jobs: [] }))
+      await expect(rpc('backgroundJobsStop', { jobId: 'job-1' })).resolves.toEqual(ok({
+        success: false,
+        error: 'Background jobs are not available in the web server runtime.',
+      }))
+
+      // ⑤ 回写工具调用在联网宿主上仍然拒绝。
+      await expect(rpc('updateToolCall', {
+        sessionId: 'ghost-session',
+        messageId: 'message-1',
+        toolCallId: 'tool-1',
+        updates: { status: 'cancelled' },
+      })).resolves.toEqual(ok({
+        success: false,
+        error: 'Tool call updates are not available in the web server runtime yet.',
+      }))
+    } finally {
+      disposeDomain()
+    }
   })
 
   it('runs the development runtime through session commands and SSE streams', async () => {

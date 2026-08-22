@@ -1336,6 +1336,15 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      checker 退 files host 断言、6 条改指域、新增 `checkGatewayAndFilesHostPorts`;顺手修了 `http.test.ts` SSE 长连接
      让 `server.close()` 挂死的既有竞态(`closeAllConnections`);transport channels 197→**175**、四壳 3698;battery 264/0;
      全量 11191 绿。web:gateway 从 server 写死 disabled 文案变为真能开(#20),纯 server 进程未注入端口时结构化降级;files 数据面逐字不变。
+     **第九批落地记录(08-22,tools 7 + interaction 2 + music 14,待提交)**:tools http 侧护栏原话原封(`executeTool` 白名单只 `read`、
+     会话须存在、路径夹进会话沙箱——自写 `resolveSessionToolPath` 保留"相对路径以会话工作目录为基准、不展开 ~"的旧语义;
+     `updateToolCall`/`backgroundJobsStop` 拒绝、`backgroundJobsList` 空表、`cancelTool` 空操作),ipc 桌面不夹;`getTools` 在非默认
+     owner/假后端上从只读目录变真目录(生产单用户零变化);interaction / music 迁 router 但 **web 能力位默认关**
+     (`platform/types.ts` `music` / `interactionRespond`,`web.ts:73/74 = false`,闸在 client:关着时 14+2 条答案与旧硬桩逐字相同;
+     放开 = 那两行改 true,对应拍板 #13/#17);music 三个本地 helper 搬 `wiring/music/operations.ts`,`apps/electron/src/music/ipc.ts`
+     工厂目录整删,4 条推送留;server 删 `/api/tools*` 6 路由 + adapter 96 行 + 只读目录机器,`RuntimeToolsAdapter` 整只;
+     checker 退 tools host 断言、4 条改指域、零正则放松;transport channels 175→**151**、四壳 3463;battery 264/0;全量 11211 绿。
+     遗留:`refreshAsyncTools` 全仓零调用点(死通道,拍板 #34 退役);interaction http 分叉认领 `targetChannel` 在能力位关着时不可达。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。
@@ -1407,6 +1416,7 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 | 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
 | 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
+| 34 | **(新,P4c-9)`tools.refreshAsyncTools` 全仓零调用点**(bridge 从未暴露,死通道) | 退役该方法与常量 | 待拍 |
 | 32 | **(新,P4c-4 sessions)`apps/mobile` 是独立 RN 客户端直接打 server REST**:为它保留 `GET/POST /api/sessions`、`POST /api/session-messages/page` 三条薄适配;另发现 mobile 仍打 `POST /api/sessions/:id/commands`(session-command 入口 router 化时已删,今天 404——既有伤,非本批) | mobile 改走 `/api/rpc`(它已有 SSE/fetch 层)后删这三条;`/commands` 那条要么给 mobile 加 rpc 调用要么临时恢复路由 | 待拍 |
 | 33 | **(新,P4c-4 sessions)server 侧三条语义按 transport 分叉保留**:`updateWorkingDirectory` 在 http 夹 sandboxRoot(旧文案逐字)、`delete` 在 http 先 abort 活流/destroy 总线会话/清权限镜像、`create` 在 http 对 `kind` 维持旧拒绝——桌面形状不动 | 已按"不放宽"执行;放开任一条(如浏览器建协作房)另拍(已落地:域测试 13 例含三条分叉;两处旧 server 细节未补:`workingDirectory: null/''` 旧 server 解释为"重置到沙箱根"现为"清空"(ipc 原义);server 进程内 resident `sessions` Map 不再随 delete 摘条,`max-tokens`/`session-messages/page` 可能读到已删会话的陈旧缓存,`GET /api/sessions` 不受影响) | 已按默认执行,待知会 |
 | 30 | **(新,事件词汇统一时查出,现存 bug)`core/plugins/log-monitor.ts` 4 处 `'tool_execution_start'/'tool_execution_end'`(下划线)vs 真实事件 `tool:execution-start/end`**——日志监视器工具开始/结束摘要与"最近错误"半个条件永远匹配不到 | 改为 `SESSION_EVENT_TYPES.TOOL_EXECUTION_START/END`(一行修,但这是行为变化:监视器会开始对这两类事件产生摘要/通知) | 待拍 |

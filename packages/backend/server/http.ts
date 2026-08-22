@@ -175,11 +175,9 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'GET' && pathname === '/api/voice/runtime-commands') return handleVoiceRuntimeCommands
   if (method === 'GET' && pathname === '/api/todo-plan/events') return handleTodoPlanEvents
   if (method === 'GET' && pathname === '/api/scratchpad/events') return handleScratchpadEvents
-  if (method === 'GET' && pathname === '/api/tools') return handleGetTools
-  if (method === 'POST' && pathname === '/api/tools/execute') return handleExecuteTool
-  if (method === 'POST' && pathname === '/api/tools/cancel') return handleCancelTool
-  if (method === 'POST' && pathname === '/api/tools/update-call') return handleUpdateToolCall
-  if (method === 'GET' && pathname === '/api/tools/background-jobs') return handleListBackgroundJobs
+  // tools 的七条数据面已迁到 `POST /api/rpc`(toolsRouter,P4c 第九批),
+  // 护栏跟着走(域处理者按 `context.transport` 逐方法保留旧路由的语义)。
+  // 本域零推送 —— 所以这里一条都不剩,连同下面那条 background-jobs 停任务的正则。
   // files 的十四条数据面已迁到 `POST /api/rpc`(filesRouter,P4c 第八批),
   // 护栏跟着走(域处理者按 `context.transport` 逐方法夹紧 sandboxRoot)。
   // 留下的是推送 —— router 今天没有推送面。
@@ -216,11 +214,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
     if (method === 'GET' && action === 'events') return withSessionId(sessionMatch[1], handleEvents)
   }
 
-  const backgroundJobMatch = pathname.match(/^\/api\/tools\/background-jobs\/([^/]+)\/stop$/)
-  if (backgroundJobMatch && method === 'POST') {
-    return withBackgroundJobId(backgroundJobMatch[1], handleStopBackgroundJob)
-  }
-
   const permissionMatch = pathname.match(/^\/api\/permissions\/([^/]+)\/respond$/)
   if (permissionMatch && method === 'POST') {
     return withRequestId(permissionMatch[1], handlePermissionResponse)
@@ -252,13 +245,6 @@ function withSessionId(encodedSessionId: string, handler: RouteHandler): RouteHa
 function withRequestId(encodedRequestId: string, handler: RouteHandler): RouteHandler {
   return (context) => {
     context.url.searchParams.set('requestId', decodeURIComponent(encodedRequestId))
-    return handler(context)
-  }
-}
-
-function withBackgroundJobId(encodedJobId: string, handler: RouteHandler): RouteHandler {
-  return (context) => {
-    context.url.searchParams.set('jobId', decodeURIComponent(encodedJobId))
     return handler(context)
   }
 }
@@ -553,78 +539,11 @@ function handleVoiceRuntimeCommands(context: RouteContext): void {
   context.request.on('close', unsubscribe)
 }
 
-async function handleGetTools(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.tools
-  if (!adapter) return sendNotImplemented(context, 'tools.getTools')
-  sendJson(context.response, 200, await adapter.getTools(context.requestContext), context.corsOrigin)
-}
 
-async function handleExecuteTool(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.tools
-  if (!adapter) return sendNotImplemented(context, 'tools.executeTool')
-  const body = await readJson<{
-    toolId?: string
-    arguments?: JsonObject
-    messageId?: string
-    sessionId?: string
-  }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.executeTool(
-      body?.toolId || '',
-      body?.arguments ?? {},
-      body?.messageId || '',
-      body?.sessionId || '',
-      context.requestContext,
-    ),
-    context.corsOrigin,
-  )
-}
 
-async function handleCancelTool(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.tools
-  if (!adapter?.cancelTool) return sendNotImplemented(context, 'tools.cancelTool')
-  const body = await readJson<{ toolCallId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.cancelTool(body?.toolCallId || '', context.requestContext), context.corsOrigin)
-}
 
-async function handleUpdateToolCall(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.tools
-  if (!adapter?.updateToolCall) return sendNotImplemented(context, 'tools.updateToolCall')
-  const body = await readJson<{
-    sessionId?: string
-    messageId?: string
-    toolCallId?: string
-    updates?: JsonObject
-  }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.updateToolCall(
-      body?.sessionId || '',
-      body?.messageId || '',
-      body?.toolCallId || '',
-      body?.updates ?? {},
-      context.requestContext,
-    ),
-    context.corsOrigin,
-  )
-}
 
-async function handleListBackgroundJobs(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.tools
-  if (!adapter?.listBackgroundJobs) return sendNotImplemented(context, 'tools.listBackgroundJobs')
-  sendJson(context.response, 200, await adapter.listBackgroundJobs({
-    includeInactive: context.url.searchParams.get('includeInactive') === 'true',
-  }, context.requestContext), context.corsOrigin)
-}
 
-async function handleStopBackgroundJob(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.tools
-  if (!adapter?.stopBackgroundJob) return sendNotImplemented(context, 'tools.stopBackgroundJob')
-  sendJson(context.response, 200, await adapter.stopBackgroundJob(readBackgroundJobId(context), context.requestContext), context.corsOrigin)
-}
 
 async function handleListSessions(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await context.runtime.sessions.list(context.requestContext), context.corsOrigin)
@@ -870,10 +789,6 @@ function readSessionId(context: RouteContext): string {
 
 function readRequestId(context: RouteContext): string {
   return context.url.searchParams.get('requestId') || ''
-}
-
-function readBackgroundJobId(context: RouteContext): string {
-  return context.url.searchParams.get('jobId') || ''
 }
 
 function getRequestUrl(request: IncomingMessage): URL {

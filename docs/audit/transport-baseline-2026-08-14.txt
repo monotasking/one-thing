@@ -26,8 +26,9 @@
 # 2026-08-22:P4c 第六批 acp 8 + mcp 16 迁 router(两域零推送,工厂整删;mcp http 侧四道护栏保留)后收紧 —— channels 232→208、bridge 1334→1247、http 1461→1235、web 1370→1311、channels.ts 431→403。
 # 2026-08-22:P4c 第七批 themes 5 + oauth 6(2 推送留,走 configureOAuthEventBroadcaster 端口)迁 router 后收紧 —— channels 208→197、bridge 1247→1201、http 1235→1137、web 1311→1287、channels.ts 403→395。
 # 2026-08-22:P4c 第八批 gateway 8(configureGatewayHost 端口)+ files 14(http 侧 14 条夹紧逐字保留;FILE_WATCH_EVENT 推送留)迁 router 后收紧 —— channels 197→175、bridge 1201→1126、http 1137→972、web 1287→1230、channels.ts 395→370。
-channels:IPC_CHANNELS 175
-lines:apps/electron/src/preload/bridge.ts 1126
-lines:packages/backend/server/http.ts 972
-lines:packages/renderer/platform/web.ts 1230
-lines:packages/shared/ipc/channels.ts 370
+# 2026-08-22:P4c 第九批 tools 7(http 护栏逐字)+ interaction 2 + music 14(两域 web 能力位默认关;4 music 推送留)迁 router 后收紧 —— channels 175→151、bridge 1126→1045、http 972→887、web 1230→1195、channels.ts 370→336。
+channels:IPC_CHANNELS 151
+lines:apps/electron/src/preload/bridge.ts 1045
+lines:packages/backend/server/http.ts 887
+lines:packages/renderer/platform/web.ts 1195
+lines:packages/shared/ipc/channels.ts 336
