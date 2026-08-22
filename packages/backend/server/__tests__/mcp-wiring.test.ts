@@ -1,12 +1,17 @@
 /**
  * The engine's MCP bridge is hard-bound to the @onething/backend singleton manager.
- * The HTTP layer therefore MUST operate on that same instance for the default
- * owner — a server-local manager connects servers the model never sees, and
- * nothing about that failure is visible: the UI shows "connected", the tool
- * list populates, and only the model comes up empty.
+ * The transport layer therefore MUST operate on that same instance — a
+ * server-local manager connects servers the model never sees, and nothing about
+ * that failure is visible: the UI shows "connected", the tool list populates,
+ * and only the model comes up empty.
  *
  * This pins the invariant, not the implementation: add a server through the
- * runtime facade and assert the app singleton (what the engine reads) sees it.
+ * transport surface and assert the app singleton (what the engine reads) sees it.
+ *
+ * P4c 第六批:那个 transport 面从 `runtime.mcp` facade adapter(以及它背后
+ * per-owner 的第二台管家)换成了 `mcp` RPC 域。用例的形状一字不改 —— 换的只是
+ * 「从哪条路进去」;server runtime 仍然要建起来,因为 `configureMCPClientHost`
+ * 与 `MCPManager.initialize` 都由它负责接线。
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -22,6 +27,8 @@ import {
   type MCPServerState,
 } from '@onething/core/mcp'
 import { createDevelopmentOnethingServerRuntime, type OnethingServerRuntime } from '../runtime.js'
+import { registerMcpRpcDomain } from '../../rpc/domains/mcp.js'
+import { dispatchRpc, resetRpcRegistryForTests } from '../../rpc/registry.js'
 
 function createStubMCPClient(config: MCPServerConfig): MCPClientLike {
   let state: MCPServerState = createMCPServerState(config)
@@ -58,7 +65,7 @@ describe('server MCP wiring', () => {
     storePath = undefined
   })
 
-  it('routes the default owner through the app singleton the engine reads', async () => {
+  it('routes the mcp RPC domain through the app singleton the engine reads', async () => {
     storePath = mkdtempSync(join(tmpdir(), 'onething-mcp-wiring-'))
     // The @onething/backend path layer resolves its root from this env var, not
     // from the runtime's storePath option. Without pinning it the app-layer
@@ -81,14 +88,26 @@ describe('server MCP wiring', () => {
       mcpClientFactory: createStubMCPClient,
     })
 
-    const added = await runtime.runtime.mcp?.addServer({
-      id: 'wiring-1',
-      name: 'Wiring',
-      transport: 'stdio',
-      enabled: true,
-      command: 'node',
-    })
-    expect(added?.success).toBe(true)
+    resetRpcRegistryForTests()
+    const disposeDomain = registerMcpRpcDomain()
+    try {
+      const added = await dispatchRpc({
+        domain: 'mcp',
+        method: 'addServer',
+        payload: {
+          config: {
+            id: 'wiring-1',
+            name: 'Wiring',
+            transport: 'stdio',
+            enabled: true,
+            command: 'node',
+          },
+        },
+      })
+      expect(added.ok && (added.data as { success: boolean }).success).toBe(true)
+    } finally {
+      disposeDomain()
+    }
 
     // The assertion that matters: the singleton the engine's bridge reads has
     // the tool. Asserting via the HTTP facade instead would have passed even

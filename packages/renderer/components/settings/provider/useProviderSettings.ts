@@ -1,4 +1,4 @@
-import { platformApi } from "@/platform";
+import { acpApi } from "@/platform/acp-client";
 import { providersApi } from "@/platform/providers-client";
 /**
  * Provider Settings Composable
@@ -745,7 +745,7 @@ export function useProviderSettings(
 
 	async function loadACPAgents() {
 		try {
-			const response = await platformApi.acpGetAgents();
+			const response = await acpApi.getAgents({});
 			if (response.success && response.agents) {
 				acpAgentStates.value = Object.fromEntries(
 					response.agents.map((agent) => [agent.config.id, agent]),
@@ -781,7 +781,7 @@ export function useProviderSettings(
 	async function connectACPAgent() {
 		const agentId = currentACPAgent.value?.id;
 		if (!agentId) return;
-		const response = await platformApi.acpConnectAgent(agentId);
+		const response = await acpApi.connectAgent({ agentId });
 		if (response.success && response.agent) {
 			acpAgentStates.value = {
 				...acpAgentStates.value,
@@ -793,14 +793,14 @@ export function useProviderSettings(
 	async function disconnectACPAgent() {
 		const agentId = currentACPAgent.value?.id;
 		if (!agentId) return;
-		await platformApi.acpDisconnectAgent(agentId);
+		await acpApi.disconnectAgent({ agentId });
 		await loadACPAgents();
 	}
 
 	async function refreshACPAgent() {
 		const agentId = currentACPAgent.value?.id;
 		if (!agentId) return;
-		const response = await platformApi.acpRefreshAgent(agentId);
+		const response = await acpApi.refreshAgent({ agentId });
 		if (response.success && response.agent) {
 			acpAgentStates.value = {
 				...acpAgentStates.value,

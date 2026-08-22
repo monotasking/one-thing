@@ -146,34 +146,6 @@ export const IPC_CHANNELS = {
 	INTERACTION_RESPOND: "interaction:respond",
 	INTERACTION_GET_PENDING: "interaction:get-pending",
 
-	// MCP related
-	MCP_GET_SERVERS: "mcp:get-servers",
-	MCP_ADD_SERVER: "mcp:add-server",
-	MCP_UPDATE_SERVER: "mcp:update-server",
-	MCP_REMOVE_SERVER: "mcp:remove-server",
-	MCP_CONNECT_SERVER: "mcp:connect-server",
-	MCP_DISCONNECT_SERVER: "mcp:disconnect-server",
-	MCP_LOGOUT_SERVER: "mcp:logout-server",
-	MCP_PROBE_SERVER: "mcp:probe-server",
-	MCP_REFRESH_SERVER: "mcp:refresh-server",
-	MCP_GET_TOOLS: "mcp:get-tools",
-	MCP_CALL_TOOL: "mcp:call-tool",
-	MCP_GET_RESOURCES: "mcp:get-resources",
-	MCP_READ_RESOURCE: "mcp:read-resource",
-	MCP_GET_PROMPTS: "mcp:get-prompts",
-	MCP_GET_PROMPT: "mcp:get-prompt",
-	MCP_READ_CONFIG_FILE: "mcp:read-config-file",
-
-	// ACP related
-	ACP_GET_AGENTS: "acp:get-agents",
-	ACP_ADD_AGENT: "acp:add-agent",
-	ACP_UPDATE_AGENT: "acp:update-agent",
-	ACP_REMOVE_AGENT: "acp:remove-agent",
-	ACP_CONNECT_AGENT: "acp:connect-agent",
-	ACP_DISCONNECT_AGENT: "acp:disconnect-agent",
-	ACP_REFRESH_AGENT: "acp:refresh-agent",
-	ACP_CANCEL_SESSION: "acp:cancel-session",
-
 	// Dialog related
 	SHOW_OPEN_DIALOG: "dialog:show-open",
 

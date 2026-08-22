@@ -55,7 +55,6 @@ import {
 	configureMCPClientHost,
 	registerMCPTools as registerAppMCPTools,
 } from "@onething/runtime/mcp/index.wiring";
-import { getMCPOAuthFlowManager } from "@onething/runtime/mcp/oauth/index";
 import { configureMCPClientIdentity } from "@onething/runtime/mcp/identity";
 import { configureMCPCapabilitiesChangedHandler } from "@onething/runtime/mcp/capabilities-changed";
 import {
@@ -108,24 +107,6 @@ import {
 	type MCPClientLike,
 } from "@onething/core/mcp";
 import {
-	addOnethingMCPServerForIpc,
-	callOnethingMCPToolForIpc,
-	connectOnethingMCPServerForIpc,
-	disconnectOnethingMCPServerForIpc,
-	logoutOnethingMCPServerForIpc,
-	probeOnethingMCPServerForIpc,
-	getOnethingMCPPromptForIpc,
-	getOnethingMCPServersForIpc,
-	listOnethingMCPPromptsForIpc,
-	listOnethingMCPResourcesForIpc,
-	listOnethingMCPToolsForIpc,
-	readOnethingMCPConfigFileForIpc,
-	readOnethingMCPResourceForIpc,
-	refreshOnethingMCPServerForIpc,
-	removeOnethingMCPServerForIpc,
-	updateOnethingMCPServerForIpc,
-} from "@onething/runtime/mcp";
-import {
 	type OnethingAuthService,
 	OnethingTokenStore,
 	completeOnethingOAuthCallbackForIpc,
@@ -137,16 +118,6 @@ import {
 	startOnethingOAuthForIpc,
 	type OnethingOAuthToken,
 } from "@onething/runtime/auth";
-import {
-	addOnethingACPAgentForIpc,
-	cancelOnethingACPSessionForIpc,
-	connectOnethingACPAgentForIpc,
-	disconnectOnethingACPAgentForIpc,
-	getOnethingACPAgentsForIpc,
-	refreshOnethingACPAgentForIpc,
-	removeOnethingACPAgentForIpc,
-	updateOnethingACPAgentForIpc,
-} from "@onething/runtime/acp";
 import {
 	createOnethingSearchProviders,
 	executeOnethingSearchForIpc,
@@ -284,19 +255,6 @@ import {
 } from "@onething/core/storage";
 import { mergeWithDefaults } from "@shared/defaults/settings.js";
 import { toJsonValue } from "@shared/json.js";
-import type {
-	ACPAgentConfig,
-	ACPAgentState,
-	ACPSettings,
-	ACPAddAgentResponse,
-	ACPCancelSessionResponse,
-	ACPConnectAgentResponse,
-	ACPDisconnectAgentResponse,
-	ACPGetAgentsResponse,
-	ACPRefreshAgentResponse,
-	ACPRemoveAgentResponse,
-	ACPUpdateAgentResponse,
-} from "@shared/ipc/acp.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
 import { ownerSandboxRoot } from "@onething/backend/rpc/sandbox.js";
 /*
@@ -369,25 +327,9 @@ import type {
 	UserMessageMarker,
 } from "@shared/ipc/chat.js";
 import type {
-	MCPAddServerResponse,
-	MCPCallToolResponse,
-	MCPConnectServerResponse,
-	MCPDisconnectServerResponse,
-	MCPLogoutServerResponse,
-	MCPProbeServerResponse,
-	MCPGetPromptResponse,
-	MCPGetPromptsResponse,
-	MCPGetResourcesResponse,
-	MCPGetServersResponse,
-	MCPGetToolsResponse,
-	MCPReadConfigFileResponse,
-	MCPReadResourceResponse,
-	MCPRefreshServerResponse,
-	MCPRemoveServerResponse,
 	MCPServerConfig,
 	MCPServerState,
 	MCPSettings,
-	MCPUpdateServerResponse,
 } from "@shared/ipc/mcp.js";
 import type {
 	AppSettings,
@@ -402,7 +344,15 @@ import type {
 	ToolCall,
 	ToolDefinition,
 } from "@shared/ipc/tools.js";
-import { ServerMCPClient, probeServerMCPConfig } from "./mcp-client.js";
+import { ServerMCPClient } from "./mcp-client.js";
+// P4c 第六批:MCP 私密字段的脱敏 / 合并规则搬到 `./mcp-secrets.js`,由这里的设置面
+// 与 `rpc/domains/mcp.ts` 的 http 分叉共用一份 —— 两处抄两份就是两条护栏。
+import {
+	MCP_SERVER_PRIVATE_KEYS as mcpServerPrivateKeys,
+	SERVER_REDACTED_SECRET,
+	shouldRedactMcpPrivateValue,
+} from "./mcp-secrets.js";
+export { SERVER_REDACTED_SECRET } from "./mcp-secrets.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
 import { consolePort, getLogger } from '../wiring/logging/index.js'
@@ -578,23 +528,12 @@ type WorkspaceFileChangedHandler = (payload: {
 	path: string;
 	eventType: string;
 }) => void;
-export const SERVER_REDACTED_SECRET = "__onething_server_secret_set__";
-
 const sensitiveSettingKeys = new Set([
 	"apiKey",
 	"oauthToken",
 	"accessToken",
 	"refreshToken",
 	"idToken",
-]);
-
-const mcpServerPrivateKeys = new Set([
-	"command",
-	"args",
-	"env",
-	"cwd",
-	"url",
-	"headers",
 ]);
 
 const serverReadOnlyToolIds = new Set(["read"]);
@@ -778,56 +717,10 @@ class ServerPluginCatalogManager {
 	}
 }
 
-const SERVER_ACP_CONNECTIONS_DISABLED_ERROR =
-	"ACP agent connections are disabled in the web server runtime.";
 const SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR =
 	"Gateway channels are disabled in the web server runtime.";
 const SERVER_VOICE_UNAVAILABLE_ERROR =
 	"Voice runtime is not available in the web server runtime.";
-
-class ServerSafeACPManager {
-	private settings: ACPSettings = { enabled: true, agents: [] };
-
-	updateSettings(settings: ACPSettings): void {
-		this.settings = cloneJson(settings);
-	}
-
-	getAgentStates(): ACPAgentState[] {
-		return this.settings.agents.map((config) =>
-			this.toDisconnectedState(config),
-		);
-	}
-
-	getAgentState(agentId: string): ACPAgentState | undefined {
-		const config = this.settings.agents.find((agent) => agent.id === agentId);
-		return config ? this.toDisconnectedState(config) : undefined;
-	}
-
-	async connectAgent(agentId: string): Promise<ACPAgentState> {
-		const state = this.getAgentState(agentId);
-		if (!state) throw new Error(`ACP agent "${agentId}" not found`);
-		throw new Error(SERVER_ACP_CONNECTIONS_DISABLED_ERROR);
-	}
-
-	async disconnectAgent(): Promise<void> {}
-
-	async refreshAgent(agentId: string): Promise<ACPAgentState> {
-		const state = this.getAgentState(agentId);
-		if (!state) throw new Error(`ACP agent "${agentId}" not found`);
-		return state;
-	}
-
-	async cancelSession(): Promise<void> {}
-
-	private toDisconnectedState(config: ACPAgentConfig): ACPAgentState {
-		return {
-			config: cloneJson(config),
-			status: "disconnected",
-			sessionCount: 0,
-			activePromptCount: 0,
-		};
-	}
-}
 
 function createServerGatewayStatus(
 	settings: Pick<AppSettings, "channels">,
@@ -1314,38 +1207,6 @@ async function createServerRuntimeOverServerBackend(
 		return cloneJson(settings.mcp ?? DEFAULT_MCP_SETTINGS);
 	};
 
-	const saveMCPSettingsForContext = async (
-		mcpSettings: MCPSettings,
-		context = defaultRequestContext(),
-	): Promise<void> => {
-		const previousSettings = await getOwnerSettings(
-			settingsByOwner,
-			settingsStore,
-			context,
-		);
-		const nextSettings = mergeServerSettingsUpdate(previousSettings, {
-			...previousSettings,
-			mcp: mcpSettings,
-		});
-		settingsByOwner.set(ownerKey(context), cloneJson(nextSettings));
-		await settingsStore.save(context, nextSettings);
-	};
-
-	const mcpAdaptersForContext = (context = defaultRequestContext()) => ({
-		getSettings: () => getMCPSettingsForContext(context),
-		saveSettings: (mcpSettings: MCPSettings) =>
-			saveMCPSettingsForContext(mcpSettings, context),
-		manager: getOwnerMCPManager(mcpManagersByOwner, mcpClientFactory, context),
-		// Regenerating the tools catalog is what makes newly connected servers
-		// visible to the model; a no-op here is why HTTP-added servers used to
-		// connect without ever reaching the engine.
-		registerTools: useAppSubsystems(context)
-			? registerAppMCPTools
-			: async () => {},
-		logoutOAuth: (serverId: string) => getMCPOAuthFlowManager().logout(serverId),
-		logger: consoleLog,
-	});
-
 	// The engine's MCP bridge is hard-bound to the @onething/backend singleton
 	// manager, so the default owner MUST route through that same instance —
 	// a server-local manager would connect servers the model never sees
@@ -1391,45 +1252,6 @@ async function createServerRuntimeOverServerBackend(
 			})();
 		}
 	}
-
-	const getACPSettingsForContext = async (
-		context = defaultRequestContext(),
-	): Promise<ACPSettings> => {
-		const settings = await getOwnerSettings(
-			settingsByOwner,
-			settingsStore,
-			context,
-		);
-		return cloneJson(settings.acp ?? { enabled: true, agents: [] });
-	};
-
-	const saveACPSettingsForContext = async (
-		acpSettings: ACPSettings,
-		context = defaultRequestContext(),
-	): Promise<void> => {
-		const previousSettings = await getOwnerSettings(
-			settingsByOwner,
-			settingsStore,
-			context,
-		);
-		await saveOwnerSettings(settingsByOwner, settingsStore, context, {
-			...previousSettings,
-			acp: acpSettings,
-		});
-	};
-
-	const acpAdaptersForContext = (context = defaultRequestContext()) => {
-		const manager = new ServerSafeACPManager();
-		return {
-			getSettings: () => getACPSettingsForContext(context),
-			saveSettings: async (acpSettings: ACPSettings) => {
-				await saveACPSettingsForContext(acpSettings, context);
-				manager.updateSettings(acpSettings);
-			},
-			manager,
-			logger: consoleLog,
-		};
-	};
 
 	/**
 	 * 草稿纸的广播是**进程级**的:store 是 `@onething/runtime/scratchpad` 的单例
@@ -3064,82 +2886,6 @@ async function createServerRuntimeOverServerBackend(
 				return () => {};
 			},
 		},
-		acp: {
-			getAgents(
-				context = defaultRequestContext(),
-			): Promise<ACPGetAgentsResponse> {
-				return getOnethingACPAgentsForIpc(
-					acpAdaptersForContext(context),
-				) as Promise<ACPGetAgentsResponse>;
-			},
-			addAgent(
-				config: unknown,
-				context = defaultRequestContext(),
-			): Promise<ACPAddAgentResponse> {
-				return addOnethingACPAgentForIpc({
-					...acpAdaptersForContext(context),
-					config: config as ACPAgentConfig,
-				}) as Promise<ACPAddAgentResponse>;
-			},
-			updateAgent(
-				config: unknown,
-				context = defaultRequestContext(),
-			): Promise<ACPUpdateAgentResponse> {
-				return updateOnethingACPAgentForIpc({
-					...acpAdaptersForContext(context),
-					config: config as ACPAgentConfig,
-				}) as Promise<ACPUpdateAgentResponse>;
-			},
-			removeAgent(
-				agentId: string,
-				context = defaultRequestContext(),
-			): Promise<ACPRemoveAgentResponse> {
-				return removeOnethingACPAgentForIpc({
-					...acpAdaptersForContext(context),
-					agentId,
-				}) as Promise<ACPRemoveAgentResponse>;
-			},
-			connectAgent(
-				agentId: string,
-				context = defaultRequestContext(),
-			): Promise<ACPConnectAgentResponse> {
-				return connectOnethingACPAgentForIpc({
-					getSettings: () => getACPSettingsForContext(context),
-					manager: new ServerSafeACPManager(),
-					agentId,
-					logger: consoleLog,
-				}) as Promise<ACPConnectAgentResponse>;
-			},
-			disconnectAgent(agentId: string): Promise<ACPDisconnectAgentResponse> {
-				return disconnectOnethingACPAgentForIpc({
-					agentId,
-					disconnectAgent: async () => {},
-					logger: consoleLog,
-				});
-			},
-			refreshAgent(
-				agentId: string,
-				context = defaultRequestContext(),
-			): Promise<ACPRefreshAgentResponse> {
-				return refreshOnethingACPAgentForIpc({
-					getSettings: () => getACPSettingsForContext(context),
-					manager: new ServerSafeACPManager(),
-					agentId,
-					logger: consoleLog,
-				}) as Promise<ACPRefreshAgentResponse>;
-			},
-			cancelSession(
-				sessionId: string,
-				agentId?: string,
-			): Promise<ACPCancelSessionResponse> {
-				return cancelOnethingACPSessionForIpc({
-					sessionId,
-					agentId,
-					cancelSession: async () => {},
-					logger: consoleLog,
-				});
-			},
-		},
 		tools: {
 			async getTools(
 				context = defaultRequestContext(),
@@ -3234,220 +2980,6 @@ async function createServerRuntimeOverServerBackend(
 					success: false,
 					error: "Background jobs are not available in the web server runtime.",
 				};
-			},
-		},
-		mcp: {
-			async getServers(
-				context = defaultRequestContext(),
-			): Promise<MCPGetServersResponse> {
-				const settings = await getMCPSettingsForContext(context);
-				const states = projectMCPServerStates(
-					settings,
-					getOwnerMCPManager(mcpManagersByOwner, mcpClientFactory, context),
-				);
-				return getOnethingMCPServersForIpc({
-					getServerStates: () => sanitizeMCPServerStatesForClient(states),
-					logger: consoleLog,
-				}) as Promise<MCPGetServersResponse>;
-			},
-			async addServer(
-				config: MCPServerConfig,
-				context = defaultRequestContext(),
-			): Promise<MCPAddServerResponse> {
-				const result = (await addOnethingMCPServerForIpc({
-					...mcpAdaptersForContext(context),
-					config,
-				})) as MCPAddServerResponse;
-				return sanitizeMCPMutationResultForClient(
-					result,
-				) as MCPAddServerResponse;
-			},
-			async updateServer(
-				config: MCPServerConfig,
-				context = defaultRequestContext(),
-			): Promise<MCPUpdateServerResponse> {
-				const preparedConfig = await prepareMCPServerConfigForUpdate(
-					config,
-					getMCPSettingsForContext,
-					context,
-				);
-				const result = (await updateOnethingMCPServerForIpc({
-					...mcpAdaptersForContext(context),
-					config: preparedConfig,
-				})) as MCPUpdateServerResponse;
-				return sanitizeMCPMutationResultForClient(
-					result,
-				) as MCPUpdateServerResponse;
-			},
-			async removeServer(
-				serverId: string,
-				context = defaultRequestContext(),
-			): Promise<MCPRemoveServerResponse> {
-				return removeOnethingMCPServerForIpc({
-					...mcpAdaptersForContext(context),
-					serverId,
-				}) as Promise<MCPRemoveServerResponse>;
-			},
-			async connectServer(
-				serverId: string,
-				context = defaultRequestContext(),
-			): Promise<MCPConnectServerResponse> {
-				const result = (await connectOnethingMCPServerForIpc({
-					...mcpAdaptersForContext(context),
-					serverId,
-				})) as MCPConnectServerResponse;
-				return sanitizeMCPMutationResultForClient(
-					result,
-				) as MCPConnectServerResponse;
-			},
-			async disconnectServer(
-				serverId: string,
-				context = defaultRequestContext(),
-			): Promise<MCPDisconnectServerResponse> {
-				return disconnectOnethingMCPServerForIpc({
-					...mcpAdaptersForContext(context),
-					serverId,
-				}) as Promise<MCPDisconnectServerResponse>;
-			},
-			async logoutServer(
-				serverId: string,
-				context = defaultRequestContext(),
-			): Promise<MCPLogoutServerResponse> {
-				return logoutOnethingMCPServerForIpc({
-					...mcpAdaptersForContext(context),
-					serverId,
-				}) as Promise<MCPLogoutServerResponse>;
-			},
-			async probeServer(
-				config: MCPServerConfig,
-				_context = defaultRequestContext(),
-			): Promise<MCPProbeServerResponse> {
-				return probeOnethingMCPServerForIpc({
-					config,
-					probe: candidate => probeServerMCPConfig(candidate, { allowStdio: allowMCPStdio }),
-					logger: consoleLog,
-				}) as Promise<MCPProbeServerResponse>;
-			},
-			async refreshServer(
-				serverId: string,
-				context = defaultRequestContext(),
-			): Promise<MCPRefreshServerResponse> {
-				const result = (await refreshOnethingMCPServerForIpc({
-					...mcpAdaptersForContext(context),
-					serverId,
-				})) as MCPRefreshServerResponse;
-				return sanitizeMCPMutationResultForClient(
-					result,
-				) as MCPRefreshServerResponse;
-			},
-			async getTools(
-				context = defaultRequestContext(),
-			): Promise<MCPGetToolsResponse> {
-				const manager = getOwnerMCPManager(
-					mcpManagersByOwner,
-					mcpClientFactory,
-					context,
-				);
-				return listOnethingMCPToolsForIpc({
-					getAllTools: () => manager.getAllTools(),
-					logger: consoleLog,
-				}) as Promise<MCPGetToolsResponse>;
-			},
-			async callTool(
-				serverId,
-				toolName,
-				args,
-				context = defaultRequestContext(),
-			): Promise<MCPCallToolResponse> {
-				const manager = getOwnerMCPManager(
-					mcpManagersByOwner,
-					mcpClientFactory,
-					context,
-				);
-				return callOnethingMCPToolForIpc({
-					serverId,
-					toolName,
-					args,
-					callTool: (targetServerId, targetToolName, targetArgs) =>
-						manager.callTool(
-							targetServerId,
-							targetToolName,
-							targetArgs as JsonObject,
-						),
-					logger: consoleLog,
-				}) as Promise<MCPCallToolResponse>;
-			},
-			async getResources(
-				context = defaultRequestContext(),
-			): Promise<MCPGetResourcesResponse> {
-				const manager = getOwnerMCPManager(
-					mcpManagersByOwner,
-					mcpClientFactory,
-					context,
-				);
-				return listOnethingMCPResourcesForIpc({
-					getAllResources: () => manager.getAllResources(),
-					logger: consoleLog,
-				}) as Promise<MCPGetResourcesResponse>;
-			},
-			async readResource(
-				serverId,
-				uri,
-				context = defaultRequestContext(),
-			): Promise<MCPReadResourceResponse> {
-				const manager = getOwnerMCPManager(
-					mcpManagersByOwner,
-					mcpClientFactory,
-					context,
-				);
-				return readOnethingMCPResourceForIpc({
-					serverId,
-					uri,
-					readResource: (targetServerId, targetUri) =>
-						manager.readResource(targetServerId, targetUri),
-					logger: consoleLog,
-				}) as Promise<MCPReadResourceResponse>;
-			},
-			async getPrompts(
-				context = defaultRequestContext(),
-			): Promise<MCPGetPromptsResponse> {
-				const manager = getOwnerMCPManager(
-					mcpManagersByOwner,
-					mcpClientFactory,
-					context,
-				);
-				return listOnethingMCPPromptsForIpc({
-					getAllPrompts: () => manager.getAllPrompts(),
-					logger: consoleLog,
-				}) as Promise<MCPGetPromptsResponse>;
-			},
-			async getPrompt(
-				serverId,
-				name,
-				args,
-				context = defaultRequestContext(),
-			): Promise<MCPGetPromptResponse> {
-				const manager = getOwnerMCPManager(
-					mcpManagersByOwner,
-					mcpClientFactory,
-					context,
-				);
-				return getOnethingMCPPromptForIpc({
-					serverId,
-					name,
-					args,
-					getPrompt: (targetServerId, targetName, targetArgs) =>
-						manager.getPrompt(targetServerId, targetName, targetArgs),
-					logger: consoleLog,
-				}) as Promise<MCPGetPromptResponse>;
-			},
-			async readConfigFile(): Promise<MCPReadConfigFileResponse> {
-				return readOnethingMCPConfigFileForIpc({
-					filePath: "",
-					fileExists: () => false,
-					readTextFile: () => "",
-					logger: consoleLog,
-				}) as Promise<MCPReadConfigFileResponse>;
 			},
 		},
 		async shutdown() {
@@ -4218,22 +3750,6 @@ async function getOwnerSettings(
 	return cloneJson(settings);
 }
 
-async function saveOwnerSettings(
-	settingsByOwner: Map<string, AppSettings>,
-	settingsStore: ServerSettingsStore,
-	context: RuntimeRequestContext,
-	settings: AppSettings,
-): Promise<void> {
-	const previousSettings = await getOwnerSettings(
-		settingsByOwner,
-		settingsStore,
-		context,
-	);
-	const nextSettings = mergeServerSettingsUpdate(previousSettings, settings);
-	settingsByOwner.set(ownerKey(context), cloneJson(nextSettings));
-	await settingsStore.save(context, nextSettings);
-}
-
 export function createFileServerSettingsStore(
 	settingsRoot: string,
 ): ServerSettingsStore {
@@ -4837,83 +4353,6 @@ class DisabledServerMCPClient implements MCPClientLike {
 	async refreshCapabilities(): Promise<void> {}
 }
 
-function projectMCPServerStates(
-	settings: MCPSettings,
-	manager: ServerMCPManager,
-): MCPServerState[] {
-	return settings.servers.map(
-		(config) =>
-			manager.getServerState(config.id) ??
-			createMCPServerState(config, "disconnected"),
-	);
-}
-
-// createMCPServerState now comes from @onething/core/mcp — a local copy with a
-// different arity shadowed the core export and read as if core's took one arg.
-
-async function prepareMCPServerConfigForUpdate(
-	config: MCPServerConfig,
-	getSettings: (context?: RuntimeRequestContext) => Promise<MCPSettings>,
-	context = defaultRequestContext(),
-): Promise<MCPServerConfig> {
-	const settings = await getSettings(context);
-	const previous = settings.servers.find((server) => server.id === config.id);
-	if (!previous) return config;
-
-	const prepared = cloneJson(config) as unknown as Record<string, unknown>;
-	const previousRecord = previous as unknown as Record<string, unknown>;
-	const incomingRecord = config as unknown as Record<string, unknown>;
-
-	for (const key of mcpServerPrivateKeys) {
-		const previousValue = previousRecord[key];
-		if (!shouldRedactMcpPrivateValue(previousValue)) continue;
-		const hasIncomingValue = Object.hasOwn(incomingRecord, key);
-		const incomingValue = incomingRecord[key];
-		if (!hasIncomingValue || incomingValue === SERVER_REDACTED_SECRET) {
-			prepared[key] = cloneJson(previousValue);
-		}
-	}
-
-	return prepared as unknown as MCPServerConfig;
-}
-
-function sanitizeMCPServerStatesForClient(
-	states: MCPServerState[],
-): MCPServerState[] {
-	return states.map((state) => sanitizeMCPServerStateForClient(state));
-}
-
-function sanitizeMCPServerStateForClient(
-	state: MCPServerState,
-): MCPServerState {
-	return {
-		...state,
-		config: sanitizeMCPServerConfigForClient(state.config),
-	};
-}
-
-function sanitizeMCPMutationResultForClient<
-	T extends { server?: MCPServerState },
->(result: T): T {
-	if (!result.server) return result;
-	return {
-		...result,
-		server: sanitizeMCPServerStateForClient(result.server),
-	};
-}
-
-function sanitizeMCPServerConfigForClient(
-	config: MCPServerConfig,
-): MCPServerConfig {
-	const redacted = cloneJson(config) as unknown as Record<string, unknown>;
-	for (const key of mcpServerPrivateKeys) {
-		if (shouldRedactMcpPrivateValue(redacted[key])) {
-			redacted[key] = SERVER_REDACTED_SECRET;
-		}
-	}
-	return redacted as unknown as MCPServerConfig;
-}
-
 export function mergeServerSettingsUpdate(
 	previousSettings: AppSettings | undefined,
 	incomingSettings: unknown,
@@ -4946,12 +4385,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function shouldRedactSensitiveValue(value: unknown): boolean {
 	return value !== undefined && value !== null && value !== "";
-}
-
-function shouldRedactMcpPrivateValue(value: unknown): boolean {
-	if (Array.isArray(value)) return value.length > 0;
-	if (isRecord(value)) return Object.keys(value).length > 0;
-	return shouldRedactSensitiveValue(value);
 }
 
 function redactSensitiveSettings(value: unknown): void {

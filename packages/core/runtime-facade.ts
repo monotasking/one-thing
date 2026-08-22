@@ -277,21 +277,6 @@ export interface RuntimeVoiceAdapter {
   subscribeRuntimeCommands?(handler: (command: unknown) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
 }
 
-export interface RuntimeACPAdapter {
-  getAgents(context?: RuntimeRequestContext): Promise<unknown>
-  addAgent(config: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  updateAgent(config: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  removeAgent(agentId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  connectAgent(agentId: string, context?: RuntimeRequestContext): Promise<unknown>
-  disconnectAgent(agentId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  refreshAgent(agentId: string, context?: RuntimeRequestContext): Promise<unknown>
-  cancelSession(
-    sessionId: string,
-    agentId?: string,
-    context?: RuntimeRequestContext,
-  ): Promise<RuntimeMutationResult | unknown>
-}
-
 export interface RuntimeToolsAdapter<
   TTool = unknown,
   TExecuteArgs = JsonObject,
@@ -323,39 +308,6 @@ export interface RuntimeToolsAdapter<
   stopBackgroundJob?(jobId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
 }
 
-export interface RuntimeMCPAdapter<
-  TServerConfig = unknown,
-  TServerState = unknown,
-  TTool = unknown,
-  TResource = unknown,
-  TPrompt = unknown,
-  TToolCallArgs = unknown,
-  TToolCallResult = unknown,
-  TResourceReadResult = unknown,
-  TPromptResult = unknown,
-  TConfigFileResult = unknown,
-  TMutationResult = RuntimeMutationResult,
-> {
-  getServers(context?: RuntimeRequestContext): Promise<{ success: boolean; servers?: TServerState[]; error?: string }>
-  addServer(config: TServerConfig, context?: RuntimeRequestContext): Promise<TMutationResult>
-  updateServer(config: TServerConfig, context?: RuntimeRequestContext): Promise<TMutationResult>
-  removeServer(serverId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  connectServer(serverId: string, context?: RuntimeRequestContext): Promise<TMutationResult>
-  disconnectServer(serverId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  /** "重新授权": drop issuer-keyed OAuth credentials, then disconnect. */
-  logoutServer?(serverId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  /** P2-2 preflight: dry-run a candidate config, report protocol/identity/capabilities. */
-  probeServer?(config: TServerConfig, context?: RuntimeRequestContext): Promise<unknown>
-  refreshServer(serverId: string, context?: RuntimeRequestContext): Promise<TMutationResult>
-  getTools?(context?: RuntimeRequestContext): Promise<{ success: boolean; tools?: TTool[]; error?: string }>
-  callTool?(serverId: string, toolName: string, args: TToolCallArgs, context?: RuntimeRequestContext): Promise<TToolCallResult>
-  getResources?(context?: RuntimeRequestContext): Promise<{ success: boolean; resources?: TResource[]; error?: string }>
-  readResource?(serverId: string, uri: string, context?: RuntimeRequestContext): Promise<TResourceReadResult>
-  getPrompts?(context?: RuntimeRequestContext): Promise<{ success: boolean; prompts?: TPrompt[]; error?: string }>
-  getPrompt?(serverId: string, name: string, args?: Record<string, string>, context?: RuntimeRequestContext): Promise<TPromptResult>
-  readConfigFile?(filePath: string, context?: RuntimeRequestContext): Promise<TConfigFileResult>
-}
-
 export interface OnethingRuntimeFacadeOptions<
   TAppState = unknown,
   TUIState = unknown,
@@ -374,17 +326,6 @@ export interface OnethingRuntimeFacadeOptions<
   TSettings = unknown,
   TSettingsUpdateResult = TSettings,
   THostCapabilities = RuntimeHostCapabilities,
-  TMCPServerConfig = unknown,
-  TMCPServerState = unknown,
-  TMCPTool = unknown,
-  TMCPResource = unknown,
-  TMCPPrompt = unknown,
-  TMCPToolCallArgs = unknown,
-  TMCPToolCallResult = unknown,
-  TMCPResourceReadResult = unknown,
-  TMCPPromptResult = unknown,
-  TMCPConfigFileResult = unknown,
-  TMCPMutationResult = RuntimeMutationResult,
   TTool = unknown,
   TToolExecuteArgs = JsonObject,
   TToolExecuteResult = RuntimeMutationResult,
@@ -410,21 +351,7 @@ export interface OnethingRuntimeFacadeOptions<
   oauth?: RuntimeOAuthAdapter
   gateway?: RuntimeGatewayAdapter
   voice?: RuntimeVoiceAdapter
-  acp?: RuntimeACPAdapter
   tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
-  mcp?: RuntimeMCPAdapter<
-    TMCPServerConfig,
-    TMCPServerState,
-    TMCPTool,
-    TMCPResource,
-    TMCPPrompt,
-    TMCPToolCallArgs,
-    TMCPToolCallResult,
-    TMCPResourceReadResult,
-    TMCPPromptResult,
-    TMCPConfigFileResult,
-    TMCPMutationResult
-  >
   shutdown?: () => void | Promise<void>
 }
 
@@ -446,17 +373,6 @@ export interface OnethingRuntimeFacade<
   TSettings = unknown,
   TSettingsUpdateResult = TSettings,
   THostCapabilities = RuntimeHostCapabilities,
-  TMCPServerConfig = unknown,
-  TMCPServerState = unknown,
-  TMCPTool = unknown,
-  TMCPResource = unknown,
-  TMCPPrompt = unknown,
-  TMCPToolCallArgs = unknown,
-  TMCPToolCallResult = unknown,
-  TMCPResourceReadResult = unknown,
-  TMCPPromptResult = unknown,
-  TMCPConfigFileResult = unknown,
-  TMCPMutationResult = RuntimeMutationResult,
   TTool = unknown,
   TToolExecuteArgs = JsonObject,
   TToolExecuteResult = RuntimeMutationResult,
@@ -482,21 +398,7 @@ export interface OnethingRuntimeFacade<
   readonly oauth?: RuntimeOAuthAdapter
   readonly gateway?: RuntimeGatewayAdapter
   readonly voice?: RuntimeVoiceAdapter
-  readonly acp?: RuntimeACPAdapter
   readonly tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
-  readonly mcp?: RuntimeMCPAdapter<
-    TMCPServerConfig,
-    TMCPServerState,
-    TMCPTool,
-    TMCPResource,
-    TMCPPrompt,
-    TMCPToolCallArgs,
-    TMCPToolCallResult,
-    TMCPResourceReadResult,
-    TMCPPromptResult,
-    TMCPConfigFileResult,
-    TMCPMutationResult
-  >
   shutdown(): Promise<void>
 }
 
@@ -518,17 +420,6 @@ export function createOnethingRuntimeFacade<
   TSettings = unknown,
   TSettingsUpdateResult = TSettings,
   THostCapabilities = RuntimeHostCapabilities,
-  TMCPServerConfig = unknown,
-  TMCPServerState = unknown,
-  TMCPTool = unknown,
-  TMCPResource = unknown,
-  TMCPPrompt = unknown,
-  TMCPToolCallArgs = unknown,
-  TMCPToolCallResult = unknown,
-  TMCPResourceReadResult = unknown,
-  TMCPPromptResult = unknown,
-  TMCPConfigFileResult = unknown,
-  TMCPMutationResult = RuntimeMutationResult,
   TTool = unknown,
   TToolExecuteArgs = JsonObject,
   TToolExecuteResult = RuntimeMutationResult,
@@ -553,17 +444,6 @@ export function createOnethingRuntimeFacade<
     TSettings,
     TSettingsUpdateResult,
     THostCapabilities,
-    TMCPServerConfig,
-    TMCPServerState,
-    TMCPTool,
-    TMCPResource,
-    TMCPPrompt,
-    TMCPToolCallArgs,
-    TMCPToolCallResult,
-    TMCPResourceReadResult,
-    TMCPPromptResult,
-    TMCPConfigFileResult,
-    TMCPMutationResult,
     TTool,
     TToolExecuteArgs,
     TToolExecuteResult,
@@ -588,17 +468,6 @@ export function createOnethingRuntimeFacade<
   TSettings,
   TSettingsUpdateResult,
   THostCapabilities,
-  TMCPServerConfig,
-  TMCPServerState,
-  TMCPTool,
-  TMCPResource,
-  TMCPPrompt,
-  TMCPToolCallArgs,
-  TMCPToolCallResult,
-  TMCPResourceReadResult,
-  TMCPPromptResult,
-  TMCPConfigFileResult,
-  TMCPMutationResult,
   TTool,
   TToolExecuteArgs,
   TToolExecuteResult,
@@ -625,9 +494,7 @@ export function createOnethingRuntimeFacade<
     oauth: options.oauth ? Object.freeze({ ...options.oauth }) : undefined,
     gateway: options.gateway ? Object.freeze({ ...options.gateway }) : undefined,
     voice: options.voice ? Object.freeze({ ...options.voice }) : undefined,
-    acp: options.acp ? Object.freeze({ ...options.acp }) : undefined,
     tools: options.tools ? Object.freeze({ ...options.tools }) : undefined,
-    mcp: options.mcp ? Object.freeze({ ...options.mcp }) : undefined,
     async shutdown() {
       await options.shutdown?.()
     },

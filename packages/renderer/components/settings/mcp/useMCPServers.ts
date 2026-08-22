@@ -1,4 +1,4 @@
-import { platformApi } from '@/platform'
+import { mcpApi } from '@/platform/mcp-client'
 /**
  * useMCPServers - MCP 服务器管理 Composable
  *
@@ -33,7 +33,7 @@ export function useMCPServers(
   // Load servers from backend
   async function loadServers() {
     try {
-      const response = await platformApi.mcpGetServers()
+      const response = await mcpApi.getServers({})
       if (response.success && response.servers) {
         servers.value = response.servers
       }
@@ -59,7 +59,7 @@ export function useMCPServers(
 
     const updatedConfig = { ...server.config, enabled }
     try {
-      const response = await platformApi.mcpUpdateServer(updatedConfig)
+      const response = await mcpApi.updateServer({ config: updatedConfig })
       if (response.success) {
         await loadServers()
         const updatedServers = settings().servers.map(s =>
@@ -101,7 +101,7 @@ export function useMCPServers(
   // "重新授权": forget issuer-keyed credentials and disconnect
   async function handleOAuthLogout(serverId: string) {
     try {
-      await platformApi.mcpLogoutServer(serverId)
+      await mcpApi.logoutServer({ serverId })
     } catch (error) {
       log.error('mcp server logout failed', { serverId }, error)
     } finally {
@@ -116,9 +116,9 @@ export function useMCPServers(
 
     try {
       if (server.status === 'connected') {
-        await platformApi.mcpDisconnectServer(serverId)
+        await mcpApi.disconnectServer({ serverId })
       } else {
-        await platformApi.mcpConnectServer(serverId)
+        await mcpApi.connectServer({ serverId })
       }
       await loadServers()
     } catch (error) {
@@ -168,9 +168,9 @@ export function useMCPServers(
 
       let response
       if (editingServer) {
-        response = await platformApi.mcpUpdateServer(config)
+        response = await mcpApi.updateServer({ config })
       } else {
-        response = await platformApi.mcpAddServer(config)
+        response = await mcpApi.addServer({ config })
       }
 
       if (response.success) {
@@ -195,7 +195,7 @@ export function useMCPServers(
   // Delete server
   async function deleteServer(serverId: string): Promise<boolean> {
     try {
-      const response = await platformApi.mcpRemoveServer(serverId)
+      const response = await mcpApi.removeServer({ serverId })
       if (response.success) {
         await loadServers()
         const updatedServers = settings().servers.filter(s => s.id !== serverId)
@@ -223,7 +223,7 @@ export function useMCPServers(
     for (const server of toImport) {
       try {
         const cleanServer = JSON.parse(JSON.stringify(server))
-        const response = await platformApi.mcpAddServer(cleanServer)
+        const response = await mcpApi.addServer({ config: cleanServer })
         if (response.success) {
           successCount++
         } else {

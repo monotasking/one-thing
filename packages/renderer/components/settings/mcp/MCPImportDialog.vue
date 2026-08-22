@@ -370,6 +370,7 @@ import { MCP_PRESETS, PRESET_CATEGORIES, type MCPPreset, type PresetCategory } f
 import { v4 as uuidv4 } from 'uuid'
 import { parseConfigFile, parseCommandLine, getServerSummary } from './useMCPServers'
 import { platformApi } from '@/platform'
+import { mcpApi } from '@/platform/mcp-client'
 
 /**
  * The body is not a form but a tab pane that scrolls internally, so it takes
@@ -465,7 +466,7 @@ async function selectImportFile() {
     if (result.canceled || result.filePaths.length === 0) return
 
     const filePath = result.filePaths[0]
-    const response = await platformApi.mcpReadConfigFile(filePath)
+    const response = await mcpApi.readConfigFile({ filePath })
 
     if (!response.success) {
       error.value = response.error || 'Failed to read file'

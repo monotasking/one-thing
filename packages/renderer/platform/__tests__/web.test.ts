@@ -907,51 +907,6 @@ describe('createWebPlatformApi', () => {
     }))
   })
 
-  it('maps MCP platform methods to server REST endpoints', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url === '/api/capabilities') {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(JSON.stringify({ success: true, url }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('navigator', {})
-
-    const { createWebPlatformApi } = await import('../web.js')
-    const api = createWebPlatformApi()
-
-    await expect(api.mcpGetServers()).resolves.toEqual({ success: true, url: '/api/mcp/servers' })
-    await expect(api.mcpAddServer({
-      id: 'server-1',
-      name: 'Server',
-      transport: 'sse',
-      enabled: true,
-    })).resolves.toEqual({ success: true, url: '/api/mcp/servers' })
-    await expect(api.mcpUpdateServer({
-      id: 'server-1',
-      name: 'Server',
-      transport: 'sse',
-      enabled: true,
-    })).resolves.toEqual({ success: true, url: '/api/mcp/servers/server-1/update' })
-    await expect(api.mcpRemoveServer('server-1')).resolves.toEqual({ success: true, url: '/api/mcp/servers/server-1' })
-    await expect(api.mcpConnectServer('server-1')).resolves.toEqual({ success: true, url: '/api/mcp/servers/server-1/connect' })
-    await expect(api.mcpGetTools()).resolves.toEqual({ success: true, url: '/api/mcp/tools' })
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/mcp/servers/server-1/update', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/mcp/servers/server-1', expect.objectContaining({
-      method: 'DELETE',
-    }))
-  })
-
   it('maps tool platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -1371,48 +1326,6 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/voice/runtime-event',
     })
-    await expect(api.acpGetAgents()).resolves.toEqual({
-      success: true,
-      url: '/api/acp/agents',
-    })
-    await expect(api.acpAddAgent({
-      id: 'web-acp',
-      name: 'Web ACP',
-      command: 'web-acp',
-      enabled: true,
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/acp/agents',
-    })
-    await expect(api.acpUpdateAgent({
-      id: 'web-acp',
-      name: 'Updated ACP',
-      command: 'web-acp',
-      enabled: true,
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/acp/agents/update',
-    })
-    await expect(api.acpRemoveAgent('web-acp')).resolves.toEqual({
-      success: true,
-      url: '/api/acp/agents/remove',
-    })
-    await expect(api.acpConnectAgent('web-acp')).resolves.toEqual({
-      success: true,
-      url: '/api/acp/agents/connect',
-    })
-    await expect(api.acpDisconnectAgent('web-acp')).resolves.toEqual({
-      success: true,
-      url: '/api/acp/agents/disconnect',
-    })
-    await expect(api.acpRefreshAgent('web-acp')).resolves.toEqual({
-      success: true,
-      url: '/api/acp/agents/refresh',
-    })
-    await expect(api.acpCancelSession('session-1', 'web-acp')).resolves.toEqual({
-      success: true,
-      url: '/api/acp/sessions/cancel',
-    })
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/execute-command', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ commandName: '/demo', args: '--fast', sessionId: 'session-1' }),
@@ -1448,36 +1361,6 @@ describe('createWebPlatformApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/voice/tts-models', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ force: true }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/acp/agents', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        config: {
-          id: 'web-acp',
-          name: 'Web ACP',
-          command: 'web-acp',
-          enabled: true,
-        },
-      }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/acp/agents/update', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        config: {
-          id: 'web-acp',
-          name: 'Updated ACP',
-          command: 'web-acp',
-          enabled: true,
-        },
-      }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/acp/agents/connect', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ agentId: 'web-acp' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/acp/sessions/cancel', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ sessionId: 'session-1', agentId: 'web-acp' }),
     }))
     // scheduler 域的九条已整只迁到通用 RPC 通道(P4c,`@shared/ipc/scheduler.ts` 的
     // schedulerRouter + `@/platform/scheduler-client` 的 schedulerApi):web 壳上

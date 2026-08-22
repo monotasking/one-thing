@@ -1364,56 +1364,6 @@ export interface ElectronAPI {
 		request: InteractionRespondRequest,
 	) => Promise<InteractionRespondResponse>;
 
-	// MCP methods
-	mcpGetServers: () => Promise<MCPGetServersResponse>;
-	mcpAddServer: (config: MCPServerConfig) => Promise<MCPAddServerResponse>;
-	mcpUpdateServer: (
-		config: MCPServerConfig,
-	) => Promise<MCPUpdateServerResponse>;
-	mcpRemoveServer: (serverId: string) => Promise<MCPRemoveServerResponse>;
-	mcpConnectServer: (serverId: string) => Promise<MCPConnectServerResponse>;
-	mcpDisconnectServer: (
-		serverId: string,
-	) => Promise<MCPDisconnectServerResponse>;
-	mcpLogoutServer: (
-		serverId: string,
-	) => Promise<MCPLogoutServerResponse>;
-	mcpProbeServer: (
-		config: MCPServerConfig,
-	) => Promise<MCPProbeServerResponse>;
-	mcpRefreshServer: (serverId: string) => Promise<MCPRefreshServerResponse>;
-	mcpGetTools: () => Promise<MCPGetToolsResponse>;
-	mcpCallTool: (
-		serverId: string,
-		toolName: string,
-		args: Record<string, any>,
-	) => Promise<MCPCallToolResponse>;
-	mcpGetResources: () => Promise<MCPGetResourcesResponse>;
-	mcpReadResource: (
-		serverId: string,
-		uri: string,
-	) => Promise<MCPReadResourceResponse>;
-	mcpGetPrompts: () => Promise<MCPGetPromptsResponse>;
-	mcpGetPrompt: (
-		serverId: string,
-		name: string,
-		args?: Record<string, string>,
-	) => Promise<MCPGetPromptResponse>;
-	mcpReadConfigFile: (filePath: string) => Promise<MCPReadConfigFileResponse>;
-
-	// ACP methods
-	acpGetAgents: () => Promise<ACPGetAgentsResponse>;
-	acpAddAgent: (config: ACPAgentConfig) => Promise<ACPAddAgentResponse>;
-	acpUpdateAgent: (config: ACPAgentConfig) => Promise<ACPUpdateAgentResponse>;
-	acpRemoveAgent: (agentId: string) => Promise<ACPRemoveAgentResponse>;
-	acpConnectAgent: (agentId: string) => Promise<ACPConnectAgentResponse>;
-	acpDisconnectAgent: (agentId: string) => Promise<ACPDisconnectAgentResponse>;
-	acpRefreshAgent: (agentId: string) => Promise<ACPRefreshAgentResponse>;
-	acpCancelSession: (
-		sessionId: string,
-		agentId?: string,
-	) => Promise<ACPCancelSessionResponse>;
-
 	// Dialog methods
 	showOpenDialog: (options: {
 		properties?: Array<"openFile" | "openDirectory" | "multiSelections">;

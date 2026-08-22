@@ -582,7 +582,6 @@ export {
 export type {
   OnethingRuntimeFacade,
   OnethingRuntimeFacadeOptions,
-  RuntimeACPAdapter,
   RuntimeAppStateAdapter,
   RuntimeCapabilitiesAdapter,
   RuntimeEventEnvelope,

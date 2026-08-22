@@ -1328,12 +1328,6 @@ const MAIN_MCP_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
   /return\s+\{\s*success:\s*false,\s*error:/,
 ]
 
-const MAIN_MCP_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
-]
-
 const MAIN_SESSIONS_IPC_BRANCH_FORBIDDEN_PATTERNS: RegExp[] = [
   /createOnethingBranchSession</,
   /parentSession\.messages\.findIndex/,
@@ -1621,12 +1615,6 @@ const MAIN_ACP_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
   /readTextFile/,
   /writeTextFile/,
   /setInterval/,
-]
-
-const MAIN_ACP_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
 ]
 
 const MAIN_PLUGINS_IPC_LIST_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
@@ -5029,123 +5017,6 @@ function checkModelsDomainRidesTheRpcChannel(): void {
   assertNoMatches('models domain rides the generic RPC channel', lines)
 }
 
-function checkElectronHostOwnsMcpIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronMcpFile = path.join(root, 'apps/electron/src/ipc/mcp.ts')
-  const mainMcpFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronMcpContent = fs.existsSync(electronMcpFile) ? fs.readFileSync(electronMcpFile, 'utf-8') : ''
-  const mainMcpContent = fs.existsSync(mainMcpFile) ? fs.readFileSync(mainMcpFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronMCPIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronMCPIpcChannels',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/mcp',
-    'registerElectronMCPIpcHandlers',
-    'IPC_CHANNELS.MCP_GET_SERVERS',
-    'IPC_CHANNELS.MCP_ADD_SERVER',
-    'IPC_CHANNELS.MCP_UPDATE_SERVER',
-    'IPC_CHANNELS.MCP_REMOVE_SERVER',
-    'IPC_CHANNELS.MCP_CONNECT_SERVER',
-    'IPC_CHANNELS.MCP_DISCONNECT_SERVER',
-    'IPC_CHANNELS.MCP_REFRESH_SERVER',
-    'IPC_CHANNELS.MCP_GET_TOOLS',
-    'IPC_CHANNELS.MCP_CALL_TOOL',
-    'IPC_CHANNELS.MCP_GET_RESOURCES',
-    'IPC_CHANNELS.MCP_READ_RESOURCE',
-    'IPC_CHANNELS.MCP_GET_PROMPTS',
-    'IPC_CHANNELS.MCP_GET_PROMPT',
-    'IPC_CHANNELS.MCP_READ_CONFIG_FILE',
-    'getOnethingMCPServersForIpc',
-    'addOnethingMCPServerForIpc',
-    'updateOnethingMCPServerForIpc',
-    'removeOnethingMCPServerForIpc',
-    'connectOnethingMCPServerForIpc',
-    'disconnectOnethingMCPServerForIpc',
-    'refreshOnethingMCPServerForIpc',
-    'listOnethingMCPToolsForIpc',
-    'callOnethingMCPToolForIpc',
-    'listOnethingMCPResourcesForIpc',
-    'readOnethingMCPResourceForIpc',
-    'listOnethingMCPPromptsForIpc',
-    'getOnethingMCPPromptForIpc',
-    'readOnethingMCPConfigFileForIpc',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/mcp')
-      ? [`${rel(electronPackage)}: missing MCP IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronMcpContent.includes(symbol))
-      .map(symbol => `${rel(electronMcpFile)}: missing Electron MCP IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainMcpContent.includes(symbol))
-      .map(symbol => `${rel(mainMcpFile)}: missing MCP IPC host delegation ${symbol}`),
-    ...(fs.existsSync(mainMcpFile)
-      ? matchingLines(mainMcpFile, MAIN_MCP_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/mcp.ts: missing MCP IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron MCP IPC host operations', lines)
-}
-
-function checkElectronHostOwnsAcpIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronAcpFile = path.join(root, 'apps/electron/src/ipc/acp.ts')
-  const mainAcpFile = path.join(root, 'apps/electron/src/main/ipc/acp.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronAcpContent = fs.existsSync(electronAcpFile) ? fs.readFileSync(electronAcpFile, 'utf-8') : ''
-  const mainAcpContent = fs.existsSync(mainAcpFile) ? fs.readFileSync(mainAcpFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronACPIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronACPIpcChannels',
-    'ElectronACPAgentConfigRequest',
-    'ElectronACPAgentIdRequest',
-    'ElectronACPCancelSessionRequest',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/acp',
-    'registerElectronACPIpcHandlers',
-    'IPC_CHANNELS.ACP_GET_AGENTS',
-    'IPC_CHANNELS.ACP_ADD_AGENT',
-    'IPC_CHANNELS.ACP_UPDATE_AGENT',
-    'IPC_CHANNELS.ACP_REMOVE_AGENT',
-    'IPC_CHANNELS.ACP_CONNECT_AGENT',
-    'IPC_CHANNELS.ACP_DISCONNECT_AGENT',
-    'IPC_CHANNELS.ACP_REFRESH_AGENT',
-    'IPC_CHANNELS.ACP_CANCEL_SESSION',
-    'getOnethingACPAgentsForIpc',
-    'addOnethingACPAgentForIpc',
-    'updateOnethingACPAgentForIpc',
-    'removeOnethingACPAgentForIpc',
-    'connectOnethingACPAgentForIpc',
-    'disconnectOnethingACPAgentForIpc',
-    'refreshOnethingACPAgentForIpc',
-    'cancelOnethingACPSessionForIpc',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/acp')
-      ? [`${rel(electronPackage)}: missing ACP IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronAcpContent.includes(symbol))
-      .map(symbol => `${rel(electronAcpFile)}: missing Electron ACP IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainAcpContent.includes(symbol))
-      .map(symbol => `${rel(mainAcpFile)}: missing ACP IPC adapter symbol ${symbol}`),
-    ...(fs.existsSync(mainAcpFile)
-      ? matchingLines(mainAcpFile, MAIN_ACP_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/acp.ts: missing ACP IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron ACP IPC host operations', lines)
-}
-
 function checkElectronHostOwnsMediaIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMediaFile = path.join(root, 'apps/electron/src/ipc/media.ts')
@@ -6875,7 +6746,9 @@ function checkRuntimeOwnsProviderAcpStreamProjection(): void {
 
 function checkRuntimeOwnsAcpIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/acp/ipc-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/acp.ts')
+  // P4c 第六批:八条 acp 通道从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重实现
+  // 一遍」这条禁令跟着改指到新家。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/acp.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'normalizeOnethingACPAgentConfig',
@@ -6897,7 +6770,7 @@ function checkRuntimeOwnsAcpIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ACP IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_ACP_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/acp.ts: missing ACP IPC adapter']),
+      : ['packages/backend/rpc/domains/acp.ts: missing ACP RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns ACP IPC operations', lines)
@@ -7230,7 +7103,9 @@ function checkRuntimeOwnsModelQueryIpcPresentation(): void {
 
 function checkRuntimeOwnsMcpServerOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/mcp/server-orchestration.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
+  // P4c 第六批:十六条 mcp 通道从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重
+  // 实现一遍」这条禁令跟着改指到新家。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/mcp.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'addOnethingMCPServer',
@@ -7246,7 +7121,7 @@ function checkRuntimeOwnsMcpServerOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MCP_IPC_SERVER_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+      : ['packages/backend/rpc/domains/mcp.ts: missing MCP RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns MCP server orchestration', lines)
@@ -7254,7 +7129,9 @@ function checkRuntimeOwnsMcpServerOrchestration(): void {
 
 function checkRuntimeOwnsMcpCapabilityOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/mcp/capability-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
+  // P4c 第六批:十六条 mcp 通道从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重
+  // 实现一遍」这条禁令跟着改指到新家。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/mcp.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingMCPTools',
@@ -7270,7 +7147,7 @@ function checkRuntimeOwnsMcpCapabilityOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MCP_IPC_CAPABILITY_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+      : ['packages/backend/rpc/domains/mcp.ts: missing MCP RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns MCP capability operation projection', lines)
@@ -7278,7 +7155,9 @@ function checkRuntimeOwnsMcpCapabilityOperations(): void {
 
 function checkRuntimeOwnsMcpIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/mcp/ipc-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
+  // P4c 第六批:十六条 mcp 通道从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重
+  // 实现一遍」这条禁令跟着改指到新家。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/mcp.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingMCPServersForIpc',
@@ -7305,7 +7184,7 @@ function checkRuntimeOwnsMcpIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned MCP IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MCP_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+      : ['packages/backend/rpc/domains/mcp.ts: missing MCP RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns MCP IPC operations', lines)
@@ -9886,8 +9765,6 @@ checkElectronHostOwnsPluginsIpcHost()
 checkElectronHostOwnsThemesIpcHost()
 checkProvidersDomainRidesTheRpcChannel()
 checkModelsDomainRidesTheRpcChannel()
-checkElectronHostOwnsMcpIpcHost()
-checkElectronHostOwnsAcpIpcHost()
 checkElectronHostOwnsMediaIpcHost()
 checkElectronHostOwnsTodoPlanIpcHost()
 checkElectronHostOwnsToolsIpcHost()

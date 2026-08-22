@@ -436,7 +436,10 @@ export type {
 	MCPGetPromptResponse,
 	MCPReadConfigFileRequest,
 	MCPReadConfigFileResponse,
+	// mcp 域的 router 契约(结构债 P4c 第六批,十六条)。
+	McpRoutes,
 } from "./mcp.js";
+export { mcpRouter } from "./mcp.js";
 
 // ACP types
 export type {
@@ -460,7 +463,10 @@ export type {
 	ACPRefreshAgentResponse,
 	ACPCancelSessionRequest,
 	ACPCancelSessionResponse,
+	// acp 域的 router 契约(结构债 P4c 第六批,八条)。
+	AcpRoutes,
 } from "./acp.js";
+export { acpRouter } from "./acp.js";
 
 // OAuth types
 export type {

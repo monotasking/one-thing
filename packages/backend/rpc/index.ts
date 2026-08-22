@@ -23,6 +23,7 @@
  * 这是本期要证的形状。（遗留：函数仍叫 `registerAppRpcDomains`，名字比内容窄
  * 了半格 —— 改它要动 `backend.ts`，留给 C5 收口一起做。）
  */
+import { acpRouter } from '@shared/ipc/acp.js'
 import { agentsRouter } from '@shared/ipc/agents.js'
 import { appStateRouter } from '@shared/ipc/app-state.js'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
@@ -31,6 +32,7 @@ import { collabRouter } from '@shared/ipc/collab.js'
 import { goalRouter } from '@shared/ipc/goal.js'
 import { logsRouter } from '@shared/ipc/logs.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
+import { mcpRouter } from '@shared/ipc/mcp.js'
 import { mediaRouter } from '@shared/ipc/media.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
 import { permissionRouter } from '@shared/ipc/permissions.js'
@@ -50,6 +52,7 @@ import { variablesRouter } from '@shared/ipc/variables.js'
 import { selfEvolutionFeature } from '../features/builtin/self-evolution.js'
 import { trajectoryFeature } from '../features/builtin/trajectory.js'
 import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../features/index.js'
+import { acpRpcHandlers } from './domains/acp.js'
 import { agentsRpcHandlers } from './domains/agents.js'
 import { appStateRpcHandlers } from './domains/app-state.js'
 import { channelIdentityRpcHandlers } from './domains/channel-identity.js'
@@ -58,6 +61,7 @@ import { collabRpcHandlers } from './domains/collab.js'
 import { goalRpcHandlers } from './domains/goal.js'
 import { logsRpcHandlers } from './domains/logs.js'
 import { markdownRpcHandlers } from './domains/markdown.js'
+import { mcpRpcHandlers } from './domains/mcp.js'
 import { mediaRpcHandlers } from './domains/media.js'
 import { modelsRpcHandlers } from './domains/models.js'
 import { permissionGrantsRpcHandlers } from './domains/permission-grants.js'
@@ -175,6 +179,19 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 而 `backend.ts` 的顺序是引擎 → Permission → 工具注册 → registerAppRpcDomains,
   // 注册时两者都已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
   { id: 'rpc:chat', mount: ctx => { ctx.registerRpcDomain(chatRouter, chatRpcHandlers) } },
+  // P4c 第六批第一个域(acp)—— 八条外部 agent 的增删改 / 连断 / 刷新 / 取消。
+  // 它一条推送都没有:agent 连上以后的流是**会话事件**,不是这个域的通道,所以
+  // `apps/electron/src/ipc/acp.ts` 整只删掉(同 collab 判例)。位置在 chat 之后、
+  // 自进化之前:它只要 `ACPManager` 的进程内单例与设置缓存,两者在装配到这一步时
+  // 都早已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
+  { id: 'rpc:acp', mount: ctx => { ctx.registerRpcDomain(acpRouter, acpRpcHandlers) } },
+  // P4c 第六批第二个域(mcp)—— 十六条:服务器增删改 / 连接生命周期 / 能力面 /
+  // 配置导入。它与 acp 一样零推送(server 推来的 list-changed 由客户端就地回灌,
+  // 再经 `configureMCPCapabilitiesChangedHandler` 重生成模型面目录,不过传输面)。
+  // 本域是本批唯一**带 context 分叉**的:私密字段脱敏、更新时合并回真值、
+  // `readConfigFile` 在 http 上不读本机文件、stdio 探测在 http 上默认关闭(见域文件头)。
+  // 位置在 acp 之后、自进化之前 —— 同一条约束:卸载要逆序。
+  { id: 'rpc:mcp', mount: ctx => { ctx.registerRpcDomain(mcpRouter, mcpRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

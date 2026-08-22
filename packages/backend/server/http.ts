@@ -186,14 +186,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/voice/runtime-event') return handleVoiceRuntimeEvent
   if (method === 'GET' && pathname === '/api/voice/events') return handleVoiceEvents
   if (method === 'GET' && pathname === '/api/voice/runtime-commands') return handleVoiceRuntimeCommands
-  if (method === 'GET' && pathname === '/api/acp/agents') return handleACPGetAgents
-  if (method === 'POST' && pathname === '/api/acp/agents') return handleACPAddAgent
-  if (method === 'POST' && pathname === '/api/acp/agents/update') return handleACPUpdateAgent
-  if (method === 'POST' && pathname === '/api/acp/agents/remove') return handleACPRemoveAgent
-  if (method === 'POST' && pathname === '/api/acp/agents/connect') return handleACPConnectAgent
-  if (method === 'POST' && pathname === '/api/acp/agents/disconnect') return handleACPDisconnectAgent
-  if (method === 'POST' && pathname === '/api/acp/agents/refresh') return handleACPRefreshAgent
-  if (method === 'POST' && pathname === '/api/acp/sessions/cancel') return handleACPCancelSession
   if (method === 'GET' && pathname === '/api/todo-plan/events') return handleTodoPlanEvents
   if (method === 'GET' && pathname === '/api/scratchpad/events') return handleScratchpadEvents
   if (method === 'GET' && pathname === '/api/tools') return handleGetTools
@@ -201,15 +193,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/tools/cancel') return handleCancelTool
   if (method === 'POST' && pathname === '/api/tools/update-call') return handleUpdateToolCall
   if (method === 'GET' && pathname === '/api/tools/background-jobs') return handleListBackgroundJobs
-  if (method === 'GET' && pathname === '/api/mcp/servers') return handleMCPGetServers
-  if (method === 'POST' && pathname === '/api/mcp/servers') return handleMCPAddServer
-  if (method === 'GET' && pathname === '/api/mcp/tools') return handleMCPGetTools
-  if (method === 'POST' && pathname === '/api/mcp/tools/call') return handleMCPCallTool
-  if (method === 'GET' && pathname === '/api/mcp/resources') return handleMCPGetResources
-  if (method === 'POST' && pathname === '/api/mcp/resources/read') return handleMCPReadResource
-  if (method === 'GET' && pathname === '/api/mcp/prompts') return handleMCPGetPrompts
-  if (method === 'POST' && pathname === '/api/mcp/prompts/get') return handleMCPGetPrompt
-  if (method === 'POST' && pathname === '/api/mcp/config-file/read') return handleMCPReadConfigFile
   if (method === 'POST' && pathname === '/api/files/list') return handleListFiles
   if (method === 'POST' && pathname === '/api/dirs/list') return handleListDirs
   if (method === 'POST' && pathname === '/api/files/read') return handleReadFileContent
@@ -264,25 +247,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
     if (method === 'POST' && action === 'apply') return withThemeId(themeMatch[1], handleApplyTheme)
   }
 
-  const mcpServerMatch = pathname.match(/^\/api\/mcp\/servers\/([^/]+)(?:\/([^/]+))?$/)
-  if (mcpServerMatch) {
-    const action = mcpServerMatch[2]
-    if (method === 'POST' && action === 'update') return withMCPServerId(mcpServerMatch[1], handleMCPUpdateServer)
-    if (method === 'DELETE' && !action) return withMCPServerId(mcpServerMatch[1], handleMCPRemoveServer)
-    if (method === 'POST' && action === 'connect') return withMCPServerId(mcpServerMatch[1], handleMCPConnectServer)
-    if (method === 'POST' && action === 'disconnect') return withMCPServerId(mcpServerMatch[1], handleMCPDisconnectServer)
-    if (method === 'POST' && action === 'refresh') return withMCPServerId(mcpServerMatch[1], handleMCPRefreshServer)
-  }
-
-  const mcpOAuthLogoutMatch = pathname.match(/^\/api\/mcp\/servers\/([^/]+)\/oauth\/logout$/)
-  if (mcpOAuthLogoutMatch && method === 'POST') {
-    return withMCPServerId(mcpOAuthLogoutMatch[1], handleMCPLogoutServer)
-  }
-
-  if (pathname === '/api/mcp/probe' && method === 'POST') {
-    return handleMCPProbeServer
-  }
-
   const backgroundJobMatch = pathname.match(/^\/api\/tools\/background-jobs\/([^/]+)\/stop$/)
   if (backgroundJobMatch && method === 'POST') {
     return withBackgroundJobId(backgroundJobMatch[1], handleStopBackgroundJob)
@@ -319,13 +283,6 @@ function withSessionId(encodedSessionId: string, handler: RouteHandler): RouteHa
 function withRequestId(encodedRequestId: string, handler: RouteHandler): RouteHandler {
   return (context) => {
     context.url.searchParams.set('requestId', decodeURIComponent(encodedRequestId))
-    return handler(context)
-  }
-}
-
-function withMCPServerId(encodedServerId: string, handler: RouteHandler): RouteHandler {
-  return (context) => {
-    context.url.searchParams.set('serverId', decodeURIComponent(encodedServerId))
     return handler(context)
   }
 }
@@ -855,66 +812,6 @@ function handleVoiceRuntimeCommands(context: RouteContext): void {
   context.request.on('close', unsubscribe)
 }
 
-async function handleACPGetAgents(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.acp
-  if (!adapter) return sendNotImplemented(context, 'acp.getAgents')
-  sendJson(context.response, 200, await adapter.getAgents(context.requestContext), context.corsOrigin)
-}
-
-async function handleACPAddAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.acp
-  if (!adapter) return sendNotImplemented(context, 'acp.addAgent')
-  const body = await readJson<{ config?: unknown }>(context.request)
-  sendJson(context.response, 200, await adapter.addAgent(body?.config, context.requestContext), context.corsOrigin)
-}
-
-async function handleACPUpdateAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.acp
-  if (!adapter) return sendNotImplemented(context, 'acp.updateAgent')
-  const body = await readJson<{ config?: unknown }>(context.request)
-  sendJson(context.response, 200, await adapter.updateAgent(body?.config, context.requestContext), context.corsOrigin)
-}
-
-async function handleACPRemoveAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.acp
-  if (!adapter) return sendNotImplemented(context, 'acp.removeAgent')
-  const body = await readJson<{ agentId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.removeAgent(body?.agentId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleACPConnectAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.acp
-  if (!adapter) return sendNotImplemented(context, 'acp.connectAgent')
-  const body = await readJson<{ agentId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.connectAgent(body?.agentId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleACPDisconnectAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.acp
-  if (!adapter) return sendNotImplemented(context, 'acp.disconnectAgent')
-  const body = await readJson<{ agentId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.disconnectAgent(body?.agentId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleACPRefreshAgent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.acp
-  if (!adapter) return sendNotImplemented(context, 'acp.refreshAgent')
-  const body = await readJson<{ agentId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.refreshAgent(body?.agentId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleACPCancelSession(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.acp
-  if (!adapter) return sendNotImplemented(context, 'acp.cancelSession')
-  const body = await readJson<{ sessionId?: string; agentId?: string }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.cancelSession(body?.sessionId || '', body?.agentId, context.requestContext),
-    context.corsOrigin,
-  )
-}
-
 async function handleGetTools(context: RouteContext): Promise<void> {
   const adapter = context.runtime.tools
   if (!adapter) return sendNotImplemented(context, 'tools.getTools')
@@ -986,125 +883,6 @@ async function handleStopBackgroundJob(context: RouteContext): Promise<void> {
   const adapter = context.runtime.tools
   if (!adapter?.stopBackgroundJob) return sendNotImplemented(context, 'tools.stopBackgroundJob')
   sendJson(context.response, 200, await adapter.stopBackgroundJob(readBackgroundJobId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPGetServers(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter) return sendNotImplemented(context, 'mcp.getServers')
-  sendJson(context.response, 200, await adapter.getServers(context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPAddServer(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter) return sendNotImplemented(context, 'mcp.addServer')
-  sendJson(context.response, 200, await adapter.addServer(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPUpdateServer(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter) return sendNotImplemented(context, 'mcp.updateServer')
-  const config = await readJson<JsonObject>(context.request) ?? {}
-  sendJson(context.response, 200, await adapter.updateServer({
-    ...config,
-    id: readMCPServerId(context),
-  }, context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPRemoveServer(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter) return sendNotImplemented(context, 'mcp.removeServer')
-  sendJson(context.response, 200, await adapter.removeServer(readMCPServerId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPConnectServer(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter) return sendNotImplemented(context, 'mcp.connectServer')
-  sendJson(context.response, 200, await adapter.connectServer(readMCPServerId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPDisconnectServer(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter) return sendNotImplemented(context, 'mcp.disconnectServer')
-  sendJson(context.response, 200, await adapter.disconnectServer(readMCPServerId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPLogoutServer(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter?.logoutServer) return sendNotImplemented(context, 'mcp.logoutServer')
-  sendJson(context.response, 200, await adapter.logoutServer(readMCPServerId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPProbeServer(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter?.probeServer) return sendNotImplemented(context, 'mcp.probeServer')
-  // The web client posts the candidate config as the raw body (same shape as
-  // POST /api/mcp/servers); an envelope form {config: …} is also accepted to
-  // match the electron IPC request shape.
-  const body = await readJson<JsonObject & { config?: JsonObject }>(context.request)
-  const config = body?.config ?? body ?? {}
-  sendJson(context.response, 200, await adapter.probeServer(config, context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPRefreshServer(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter) return sendNotImplemented(context, 'mcp.refreshServer')
-  sendJson(context.response, 200, await adapter.refreshServer(readMCPServerId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPGetTools(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter?.getTools) return sendNotImplemented(context, 'mcp.getTools')
-  sendJson(context.response, 200, await adapter.getTools(context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPCallTool(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter?.callTool) return sendNotImplemented(context, 'mcp.callTool')
-  const body = await readJson<{ serverId?: string; toolName?: string; arguments?: JsonObject }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.callTool(body?.serverId || '', body?.toolName || '', body?.arguments ?? {}, context.requestContext),
-    context.corsOrigin,
-  )
-}
-
-async function handleMCPGetResources(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter?.getResources) return sendNotImplemented(context, 'mcp.getResources')
-  sendJson(context.response, 200, await adapter.getResources(context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPReadResource(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter?.readResource) return sendNotImplemented(context, 'mcp.readResource')
-  const body = await readJson<{ serverId?: string; uri?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.readResource(body?.serverId || '', body?.uri || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPGetPrompts(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter?.getPrompts) return sendNotImplemented(context, 'mcp.getPrompts')
-  sendJson(context.response, 200, await adapter.getPrompts(context.requestContext), context.corsOrigin)
-}
-
-async function handleMCPGetPrompt(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter?.getPrompt) return sendNotImplemented(context, 'mcp.getPrompt')
-  const body = await readJson<{ serverId?: string; name?: string; arguments?: Record<string, string> }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.getPrompt(body?.serverId || '', body?.name || '', body?.arguments, context.requestContext),
-    context.corsOrigin,
-  )
-}
-
-async function handleMCPReadConfigFile(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.mcp
-  if (!adapter?.readConfigFile) return sendNotImplemented(context, 'mcp.readConfigFile')
-  const body = await readJson<{ filePath?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.readConfigFile(body?.filePath || '', context.requestContext), context.corsOrigin)
 }
 
 async function handleListSessions(context: RouteContext): Promise<void> {
@@ -1351,10 +1129,6 @@ function readSessionId(context: RouteContext): string {
 
 function readRequestId(context: RouteContext): string {
   return context.url.searchParams.get('requestId') || ''
-}
-
-function readMCPServerId(context: RouteContext): string {
-  return context.url.searchParams.get('serverId') || ''
 }
 
 function readBackgroundJobId(context: RouteContext): string {

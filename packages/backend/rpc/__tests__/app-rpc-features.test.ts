@@ -70,6 +70,12 @@ const EXPECTED_DOMAIN_FEATURES = [
   // P4c 第五批的第二个域:chat(六条聊天面;第七条 resumeAfterToolConfirm 留在
   // 手写 IPC 上 —— 它往引擎递 sender,信封里没有那一格)。
   ['rpc:chat', 'chat'],
+  // P4c 第六批第一个域:acp(八条外部 agent 面;一条推送都没有,旧的手写 IPC
+  // 工厂整只删掉,`@main/ipc/acp.ts` 只剩 initialize/shutdown 两件生命周期)。
+  ['rpc:acp', 'acp'],
+  // P4c 第六批第二个域:mcp(十六条;本批唯一带 context 分叉的域 —— 私密字段脱敏 /
+  // 合并回真值 / readConfigFile 在 http 上不读本机文件 / stdio 探测默认关闭)。
+  ['rpc:mcp', 'mcp'],
 ] as const
 
 /**

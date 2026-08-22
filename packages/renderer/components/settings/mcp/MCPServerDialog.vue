@@ -276,7 +276,7 @@ import Button from '@/components/common/Button.vue'
 import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import Input from '@/components/common/Input.vue'
-import { platformApi } from '@/platform'
+import { mcpApi } from '@/platform/mcp-client'
 import { ref, watch } from 'vue'
 import type { MCPServerConfig, MCPProbeServerResponse } from '@/types'
 import type { ServerForm } from './useMCPServers'
@@ -393,7 +393,7 @@ async function handleProbe() {
     } else {
       config.url = form.value.url.trim()
     }
-    probeResult.value = await platformApi.mcpProbeServer(config)
+    probeResult.value = await mcpApi.probeServer({ config })
   } catch (probeError) {
     probeResult.value = { ok: false, error: String(probeError) }
   } finally {

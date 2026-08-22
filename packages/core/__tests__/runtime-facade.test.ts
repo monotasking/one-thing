@@ -114,25 +114,6 @@ describe('createOnethingRuntimeFacade', () => {
           return unsubscribe
         }),
       },
-      acp: {
-        getAgents: vi.fn(async () => ({ success: true, agents: [] })),
-        addAgent: vi.fn(async config => ({ success: true, agent: { config } })),
-        updateAgent: vi.fn(async config => ({ success: true, agent: { config } })),
-        removeAgent: vi.fn(async agentId => ({ success: true, agentId })),
-        connectAgent: vi.fn(async agentId => ({ success: false, agentId, error: 'disabled' })),
-        disconnectAgent: vi.fn(async agentId => ({ success: true, agentId })),
-        refreshAgent: vi.fn(async agentId => ({ success: true, agent: { id: agentId } })),
-        cancelSession: vi.fn(async (sessionId, agentId) => ({ success: true, sessionId, agentId })),
-      },
-      mcp: {
-        getServers: vi.fn(async () => ({ success: true, servers: [] })),
-        addServer: vi.fn(async () => ({ success: true })),
-        updateServer: vi.fn(async () => ({ success: true })),
-        removeServer: vi.fn(async () => ({ success: true })),
-        connectServer: vi.fn(async () => ({ success: true })),
-        disconnectServer: vi.fn(async () => ({ success: true })),
-        refreshServer: vi.fn(async () => ({ success: true })),
-      },
       shutdown,
     })
 
@@ -257,29 +238,6 @@ describe('createOnethingRuntimeFacade', () => {
     const offVoiceCommand = runtime.voice?.subscribeRuntimeCommands?.(voiceCommandHandler)
     expect(voiceCommandHandler).toHaveBeenCalledWith({ type: 'stop' })
     offVoiceCommand?.()
-    await expect(runtime.acp?.getAgents()).resolves.toEqual({ success: true, agents: [] })
-    await expect(runtime.acp?.addAgent({ id: 'agent-1' })).resolves.toEqual({
-      success: true,
-      agent: { config: { id: 'agent-1' } },
-    })
-    await expect(runtime.acp?.updateAgent({ id: 'agent-1', name: 'Updated' })).resolves.toEqual({
-      success: true,
-      agent: { config: { id: 'agent-1', name: 'Updated' } },
-    })
-    await expect(runtime.acp?.removeAgent('agent-1')).resolves.toEqual({ success: true, agentId: 'agent-1' })
-    await expect(runtime.acp?.connectAgent('agent-1')).resolves.toEqual({
-      success: false,
-      agentId: 'agent-1',
-      error: 'disabled',
-    })
-    await expect(runtime.acp?.disconnectAgent('agent-1')).resolves.toEqual({ success: true, agentId: 'agent-1' })
-    await expect(runtime.acp?.refreshAgent('agent-1')).resolves.toEqual({ success: true, agent: { id: 'agent-1' } })
-    await expect(runtime.acp?.cancelSession('session-1', 'agent-1')).resolves.toEqual({
-      success: true,
-      sessionId: 'session-1',
-      agentId: 'agent-1',
-    })
-    await expect(runtime.mcp?.getServers()).resolves.toEqual({ success: true, servers: [] })
 
     const off = runtime.events.subscribe('session-1', eventHandler, { afterSeq: 3 })
     expect(eventHandler).toHaveBeenCalledWith({
@@ -318,8 +276,6 @@ describe('createOnethingRuntimeFacade', () => {
     expect(runtime.oauth).toBeUndefined()
     expect(runtime.gateway).toBeUndefined()
     expect(runtime.voice).toBeUndefined()
-    expect(runtime.acp).toBeUndefined()
     expect(runtime.tools).toBeUndefined()
-    expect(runtime.mcp).toBeUndefined()
   })
 })

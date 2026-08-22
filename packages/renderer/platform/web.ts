@@ -1,13 +1,11 @@
 import type {
 	AppSettings,
-	ACPAgentConfig,
 	GatewayStartRequest,
 	GatewayWechatAddAccountRequest,
 	GatewayWechatLogoutRequest,
 	GatewayWechatRemoveAccountRequest,
 	GatewayWechatRenameAccountRequest,
 	GatewayWechatStopAccountRequest,
-	MCPServerConfig,
 	ProxySettings,
 	ScratchpadChangedPayload,
 	SearchRequest,
@@ -660,23 +658,6 @@ const webApi = {
 			"voice:runtime-command",
 			callback,
 		),
-	acpGetAgents: () => requestJson("/api/acp/agents"),
-	acpAddAgent: (config: ACPAgentConfig) =>
-		postJson("/api/acp/agents", { config }),
-	acpUpdateAgent: (config: ACPAgentConfig) =>
-		postJson("/api/acp/agents/update", { config }),
-	acpRemoveAgent: (agentId: string) =>
-		postJson("/api/acp/agents/remove", { agentId }),
-	acpConnectAgent: (agentId: string) =>
-		postJson("/api/acp/agents/connect", { agentId }),
-	acpDisconnectAgent: (agentId: string) =>
-		postJson("/api/acp/agents/disconnect", { agentId }),
-	acpRefreshAgent: (agentId: string) =>
-		postJson("/api/acp/agents/refresh", { agentId }),
-	acpCancelSession: (sessionId: string, agentId?: string) =>
-		postJson("/api/acp/sessions/cancel", { sessionId, agentId }),
-
-
 	// Todo / plan 数据面走通用 RPC(todoPlanRouter);窗口面在 web 是本地 DOM 事件。
 	openTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => {
 		dispatchTodoPlanWindowAction("open", { request });
@@ -757,46 +738,6 @@ const webApi = {
 	},
 	stopBackgroundJob: (jobId: string) =>
 		postJson(`/api/tools/background-jobs/${encodeURIComponent(jobId)}/stop`),
-
-	mcpGetServers: () => requestJson("/api/mcp/servers"),
-	mcpAddServer: (config: MCPServerConfig) =>
-		postJson("/api/mcp/servers", config),
-	mcpUpdateServer: (config: MCPServerConfig) =>
-		postJson(
-			`/api/mcp/servers/${encodeURIComponent(config.id || "")}/update`,
-			config,
-		),
-	mcpRemoveServer: (serverId: string) =>
-		requestJson(`/api/mcp/servers/${encodeURIComponent(serverId)}`, {
-			method: "DELETE",
-		}),
-	mcpConnectServer: (serverId: string) =>
-		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/connect`),
-	mcpDisconnectServer: (serverId: string) =>
-		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/disconnect`),
-	mcpLogoutServer: (serverId: string) =>
-		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/oauth/logout`),
-	mcpProbeServer: (config: MCPServerConfig) =>
-		postJson(`/api/mcp/probe`, config),
-	mcpRefreshServer: (serverId: string) =>
-		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/refresh`),
-	mcpGetTools: () => requestJson("/api/mcp/tools"),
-	mcpCallTool: (
-		serverId: string,
-		toolName: string,
-		args: Record<string, unknown>,
-	) => postJson("/api/mcp/tools/call", { serverId, toolName, arguments: args }),
-	mcpGetResources: () => requestJson("/api/mcp/resources"),
-	mcpReadResource: (serverId: string, uri: string) =>
-		postJson("/api/mcp/resources/read", { serverId, uri }),
-	mcpGetPrompts: () => requestJson("/api/mcp/prompts"),
-	mcpGetPrompt: (
-		serverId: string,
-		name: string,
-		args?: Record<string, string>,
-	) => postJson("/api/mcp/prompts/get", { serverId, name, arguments: args }),
-	mcpReadConfigFile: (filePath: string) =>
-		postJson("/api/mcp/config-file/read", { filePath }),
 
 	listFiles: (request: {
 		cwd?: string;

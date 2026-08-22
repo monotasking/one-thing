@@ -1211,6 +1211,11 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
 
 ### P4 传输面 router 迁移(主线,1–2 周,逐域可暂停;08-21:**P4a 前移到 P1' 之前**)
 
+> **08-22 续做口径(用户"继续",拍板未齐时的默认)**:凡能在**不改变可感知行为**前提下迁的都迁;会让 web 长出新能力的
+> (#12 collab / #13 music / #15 evals / #17 interaction)迁时加 web 能力位默认关(放开 = 一行,等拍);#16 plugins 写面 / #18 terminal
+> 不动;#19 tools·files 按 transport 分叉在 http 侧保留 server 沙箱语义;#20 五域按八域既有判例迁(server facade 镜像 → 同一 backend,
+> 多出的校验在 http 侧逐字保留);#21/#26/#30/#32 等需明确点头的小项不动。
+
 0. 08-21 改拍:P4a(六裸写域)紧跟 P0.5 做——它治的是"读"(断点 B),是用户每天撞的墙;
    P0.5 已把 transport 门改硬,P4a 的每一域都能用门的下降验收。P4b/c 仍排在 P3' 之后。
 1. 前置拍板:RpcRequest 是否加 context 字段(T1 遗留,见传输面统一记录)。
@@ -1306,6 +1311,13 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      `getActiveStreams` 字段 `streams`→`sessionIds` 且数据源改引擎 `getActiveSessionIds()`。遗留:server 壳 `pendingPermissions`
      镜像不再随 abort/delete 清(core 侧照清,误批不可能;与 sessions 批同收);`http.test.ts` 两条 SSE/media 用例满载下
      listen/close 竞态偶发;`updateSessionMaxTokens` 孤条。**至此零拍板可迁的域全部迁完**;余下 P4 域全部等拍板。
+     **第六批落地记录(08-22,acp 8 + mcp 16,待提交)**:两域零推送,工厂整删(同 collab);server 删 `/api/acp/*` 8 + `/api/mcp/*` 9 + 正则块,
+     `ServerSafeACPManager` 整只与 per-owner 第二台 MCP 管家/第二份设置消失,`RuntimeACPAdapter`/`RuntimeMCPAdapter` 与 11 个 `TMCP*` 泛型删;
+     mcp 在 http 侧**逐字保留四道护栏**(私密字段脱敏 `SERVER_REDACTED_SECRET` / 更新合并回磁盘真值 / `readConfigFile` 不读本机 / stdio 探测默认关
+     `ONETHING_SERVER_MCP_STDIO`),脱敏规则抽成 `backend/server/mcp-secrets.ts` 两处共用;acp 零分叉(旧 server 多出的全是"没实现"不是门);
+     mobile/scripts 零命中,REST 全删无薄适配;checker 两域 host 断言整删、4 条改指域文件;transport channels 232→**208**、
+     四壳 4596→4196;battery 264/0;全量 11173 绿。web 行为(#20 判例):acp connect/disconnect/cancel/refresh 从 no-op/恒失败变为
+     真连桌面那台管家;mcp 读写的是引擎正在用的那台单例(桌面内嵌时 web 看得到桌面已连服务器),连接可用性仍由 `configureMCPClientHost` 决定。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。
@@ -1366,7 +1378,7 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 11 | **(新)spaces 迁 router 后 web 端从"必然降级"变为"真拿到空间"** | 按 agents/models 收敛判例接受,不人为关闭 | 已按默认执行,待知会确认 |
 | 12 | **(新)collab 迁 router 后,web 的 `collabRooms` 能力位是否放开**(放开 = 浏览器里能用协作房间) | 迁移时**不动**能力位(零行为变化);放开另议 | 待拍 |
 | 13 | **(新)music 迁 router 后 web 能遥控桌面播放器**(今天 web 桩回"仅桌面可用") | 符合"一个 core 任何 UI",但用户可感知 → 先拍再迁 | 待拍,music 迁移暂缓 |
-| 14 | **(新)notify 域(`NOTIFY_SHOW/BADGE/ACTIVATE`)渲染侧零调用点,疑为死码** | 确认无主进程外调用后整域删除(不是迁移) | 待拍 |
+| 14 | ~~notify 域疑为死码~~ **08-22 纠正:活的**——`App.vue:1241/1246` 用 `platformApi.notify.onActivate/setBadge`、`ipc-hub.ts:607` 用 `notify.show`(嵌套对象访问,盘点 grep 漏了);Notification + sender 窗 + dock 是宿主原生(C 类) | 不删不迁,归窗口系残留集(#10) | 已裁 |
 | 15 | **(新)evals 迁 router 后 web 端从"Evals is not supported in the web build"桩变为真能跑 evals**(repoDir 在服务器机器上解析) | 先拍再迁;若不想放开,迁移时保留一颗 `evals` 能力位关 UI | 待拍,evals 迁移暂缓 |
 | 16 | **(新,P4c)plugins 迁 router = web 长出 install/uninstall/config 写/market 全套真能力**,与"插件只在桌面执行(方案 A)"冲突;server 现有 enable/disable 写路由改的是 `owners/<uid>/<wid>/plugin-store` 另一棵树 | 不迁写面;只迁只读面(list/commands)并保留桌面专属写面,或整域留到方案 A 重议 | 待拍 |
 | 17 | **(新,P4c)interaction 迁 router = web 从"桩掉靠 deadline 超时"变为"真能应答 agent 提问"** | 这是 `web.ts:461-465` 注释里的待办,建议放开 | 待拍 |

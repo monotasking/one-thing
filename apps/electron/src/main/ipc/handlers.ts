@@ -1,7 +1,7 @@
 import { registerChatHandlers } from "./chat.js";
 import { registerSettingsHandlers } from "./settings.js";
 import { registerToolHandlers } from "./tools.js";
-import { registerMCPHandlers, initializeMCP, shutdownMCP } from "./mcp.js";
+import { initializeMCP, shutdownMCP } from "./mcp.js";
 import { registerShellHandlers } from "./shell.js";
 import { registerMediaHandlers } from "./media.js";
 import { registerInteractionHandlers } from "./interaction.js";
@@ -18,7 +18,7 @@ import { registerVoiceHandlers } from "./voice.js";
 import { registerMusicHandlers } from "./music.js";
 import { startMusicNowPlayingWatch } from "@onething/backend/wiring/music/service.js";
 import { startRadioConductor } from "@onething/backend/wiring/music/radio.js";
-import { registerACPHandlers, initializeACP, shutdownACP } from "./acp.js";
+import { initializeACP, shutdownACP } from "./acp.js";
 import { registerGatewayHandlers } from "./gateway.js";
 import { registerEvalsHandlers } from "./evals.js";
 import { registerRpcHandler } from "./rpc.js";
@@ -31,7 +31,6 @@ export function initializeIPC() {
 	registerChatHandlers();
 	registerSettingsHandlers();
 	registerToolHandlers();
-	registerMCPHandlers();
 	registerShellHandlers();
 	registerMediaHandlers();
 	registerInteractionHandlers();
@@ -54,7 +53,6 @@ export function initializeIPC() {
 	// that says "inactive" and returns. Sound only ever follows a user opening
 	// the station in conversation.
 	startRadioConductor();
-	registerACPHandlers();
 	registerGatewayHandlers();
 	registerEvalsHandlers();
 	// 通用 RPC 适配器:一条通道服务所有 router 域(usage 是首个)。加域不再动这里。
