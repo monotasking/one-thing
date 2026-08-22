@@ -22,8 +22,9 @@
 # 2026-08-22:P4c 第三批 media 11 方法迁 router(5 条字面量通道随之消失,C 3 条留宿主)后收紧 —— channels 267→261、bridge 1575→1532、http 1757→1647、web 1532→1488、channels.ts 460→455。
 # 2026-08-22(续):P4c 第四批 session-command 整域迁 router —— 命令总线的入口,`SESSION_COMMAND` 常量与 `POST /api/sessions/:id/commands` 一起消失;收紧 channels 261→260、bridge 1532→1487、http 1647→1637、web 1488→1487、channels.ts 455→454。
 # 2026-08-22:P4c 第四批 sessions 26 方法迁 router(22 常量 + 4 字面量通道;为 mobile 留 3 条 REST)后收紧 —— channels 260→238、bridge 1487→1358、http 1637→1496、web 1487→1387、channels.ts 454→437。
-channels:IPC_CHANNELS 238
-lines:apps/electron/src/preload/bridge.ts 1358
-lines:packages/backend/server/http.ts 1496
-lines:packages/renderer/platform/web.ts 1387
-lines:packages/shared/ipc/channels.ts 437
+# 2026-08-22:P4c 第五批 chat 6 方法迁 router(RESUME_AFTER_TOOL_CONFIRM 按 #21 留手写;/api/streams/abort 为 mobile 留薄适配)后收紧 —— channels 238→232、bridge 1358→1334、http 1496→1461、web 1387→1370、channels.ts 437→431。
+channels:IPC_CHANNELS 232
+lines:apps/electron/src/preload/bridge.ts 1334
+lines:packages/backend/server/http.ts 1461
+lines:packages/renderer/platform/web.ts 1370
+lines:packages/shared/ipc/channels.ts 431

@@ -249,6 +249,7 @@ import { shouldRestoreReadingAnchor, useMessageScrollCoordinator } from '@/compo
 import { buildFontFamily, buildFontLoadSpecs } from '@shared/fonts'
 import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
+import { chatApi } from '@/platform/chat-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.message-list')
@@ -2598,7 +2599,7 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
     }
 
     // Persist to backend
-    await platformApi.updateMessageThinkingTime(currentSession.id, messageId, thinkingTime)
+    await chatApi.updateMessageThinkingTime({ sessionId: currentSession.id, messageId, thinkingTime })
   } catch (error) {
     log.error('thinking time update failed', { messageId }, error)
   }

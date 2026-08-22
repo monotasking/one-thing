@@ -389,7 +389,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import CollapsePanel from '@/components/common/CollapsePanel.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
-import { platformApi } from '@/platform'
+import { chatApi } from '@/platform/chat-client'
 
 const props = defineProps<{
   sessionId?: string
@@ -673,7 +673,7 @@ async function refreshSnapshot() {
   error.value = ''
 
   try {
-    const response = await platformApi.getSystemPromptSnapshot(sessionId)
+    const response = await chatApi.getSystemPromptSnapshot({ sessionId })
     if (currentRequest !== requestId) return
     if (!response.success || !response.snapshot) {
       throw new Error(response.error || 'Failed to load system prompt')

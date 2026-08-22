@@ -37,7 +37,6 @@ import {
 	Permission,
 	StreamChannel,
 	createOnethingRuntimeFacade,
-	generateTitleFromMessage,
 	type AgentEngineSessionEvent,
 	type AgentEngineStreamChunk,
 	type OnethingRuntimeFacade,
@@ -48,8 +47,6 @@ import {
 	type RuntimeUnsubscribe,
 } from "@onething/core";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
-import { buildSystemPromptSnapshot as buildAppSystemPromptSnapshot } from "@onething/backend/wiring/engine/prompt/system-prompt-snapshot.js";
-import { buildOnethingSystemPromptSnapshotForIpc } from "@onething/runtime/prompts";
 import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/stores/settings.js";
 import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/backend/wiring/agents/index.js";
 import { getProjectsStore as getAppProjectsStore } from "@onething/backend/wiring/project-dirs/index.js";
@@ -369,7 +366,6 @@ import type {
 	SessionDetails,
 	SessionMeta,
 	Step,
-	SystemPromptSnapshot,
 	UserMessageMarker,
 } from "@shared/ipc/chat.js";
 import type {
@@ -1004,13 +1000,6 @@ async function createServerRuntimeOverServerBackend(
 	const activeStreamSessions = new Set<string>();
 	const currentSessionIds = new Map<string, string>();
 	const pendingPermissions = new Map<string, PendingPermissionRecord>();
-	// Rejects core-side pending asks as well as the local mirror. Leaving core
-	// pendings behind would leave a dead head in the session's serialized
-	// prompt queue and block every later permission ask in that session.
-	const clearSessionPermissions = (sessionId: string): void => {
-		Permission.clearSession(sessionId);
-		clearPendingPermissionsForSession(pendingPermissions, sessionId);
-	};
 	const settingsByOwner = new Map<string, AppSettings>();
 	const authServicesByOwner = new Map<
 		string,
@@ -2013,111 +2002,6 @@ async function createServerRuntimeOverServerBackend(
 		return { success: true };
 	};
 
-	const buildSystemPromptSnapshotForContext = async (
-		sessionId: string,
-		context = defaultRequestContext(),
-	): Promise<
-		| { success: true; snapshot: SystemPromptSnapshot }
-		| { success: false; error: string }
-	> => {
-		if (useAppSubsystems(context)) {
-			// Real engine, single-user: the app snapshot builder reads the same
-			// store/settings/tool registry the live stream uses — the snapshot
-			// is the prompt that will actually ship, not a web-host mock.
-			return buildOnethingSystemPromptSnapshotForIpc({
-				sessionId,
-				buildSnapshot: buildAppSystemPromptSnapshot,
-				logger: consoleLog,
-			});
-		}
-		// Draft ids are ordinary session ids the server has never seen (the
-		// renderer materializes them lazily), so an unknown id is treated as a
-		// draft and gets the default-settings snapshot — this is a read-only
-		// preview, strictness buys nothing here.
-		const session = getSessionForContext(sessionId, context);
-
-		const settings = await getOwnerSettings(
-			settingsByOwner,
-			settingsStore,
-			context,
-		);
-		const providerId =
-			session?.lastProvider || settings.ai?.provider || "local";
-		const providerConfig = (
-			settings.ai?.providers as
-				| Record<string, { apiKey?: string; model?: string }>
-				| undefined
-		)?.[providerId];
-		const model = session?.lastModel || providerConfig?.model || "local-echo";
-		const tools = toolDefinitionsFromCatalog(readOnlyCatalog) as ToolDefinition[];
-		const enableToolCalls = settings.tools?.enableToolCalls !== false;
-		const enabledTools = tools.filter(
-			(tool) => enableToolCalls && tool.enabled,
-		);
-		const workingDirectory =
-			session?.workingDirectory || workspaceSandboxRoot(workspaceRoot, context);
-		const systemPrompt = [
-			"You are onething, an AI chat assistant running in the web host.",
-			`Current work directory: ${workingDirectory}`,
-			enabledTools.length > 0
-				? `Available tools: ${enabledTools.map((tool) => tool.id).join(", ")}`
-				: "Available tools: none",
-		].join("\n\n");
-
-		return {
-			success: true,
-			snapshot: {
-				sessionId: session?.id || sessionId,
-				generatedAt: Date.now(),
-				providerId,
-				model,
-				providerSupported: providerId === "local",
-				credentialsReady:
-					providerId === "local" || Boolean(providerConfig?.apiKey),
-				workingDirectory,
-				agentId: session?.agentId || "default",
-				agentName: session?.agentId || "Default Agent",
-				systemPrompt,
-				systemPromptChars: systemPrompt.length,
-				tools: {
-					enableToolCalls,
-					modelSupportsTools: enabledTools.length > 0,
-					hasTools: enabledTools.length > 0,
-					configuredCount: tools.length,
-					modelFacingCount: enabledTools.length,
-					builtin: tools.map((tool) => ({
-						id: tool.id,
-						name: tool.name,
-						description: tool.description,
-						category: tool.category,
-						source: "builtin",
-						enabled: tool.enabled,
-						autoExecute: tool.autoExecute,
-						permissionGuard: tool.permissionGuard,
-						executionMode: tool.executionMode,
-						renderKind: tool.renderKind,
-						parameters: tool.parameters,
-					})),
-					mcp: [],
-					codexNative: [],
-				},
-				agentLoopStream: {
-					enabled: false,
-					enabledBy: "default",
-					providerSupported: false,
-					active: false,
-					supportedProviderIds: [],
-				},
-				skills: {
-					enabled: false,
-					includedInPrompt: false,
-					count: 0,
-					items: [],
-				},
-			},
-		};
-	};
-
 	const respondToPermission = async (
 		requestId: string,
 		response: unknown,
@@ -2274,39 +2158,10 @@ async function createServerRuntimeOverServerBackend(
 					: sessionStore.getMessagesPage(request);
 			},
 		},
-		chat: {
-			async getHistory(sessionId: string, context = defaultRequestContext()) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				return { success: true, messages: sessionStore.getMessages(sessionId) };
-			},
-			async generateTitle(message: string) {
-				return { success: true, title: generateTitleFromMessage(message) };
-			},
-			// P4c 第五批:属于**会话域**的六条(getMessages / getTokenUsage /
-			// updateSessionPin / addSystemMessage / removeSystemMarkerMessage /
-			// removeMessage)随 `/api/chat/*` 那批路由一起迁到 `sessions` RPC 域。
-			async updateMessageThinkingTime(
-				sessionId: string,
-				messageId: string,
-				thinkingTime: number,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				const patched = sessionStore.messages.patchMessage(sessionId, {
-					messageId,
-					patch: { thinkingTime },
-					// `settle` = 不进 5s 懒写档。桌面端那只 mutator 用的是 `stream`(懒写),
-					// 但 server 这条路迁移前是 `persistSession` 立刻排 300ms 队列 ——
-					// 这里按**server 原来的时机**接,不顺手改成懒写。
-					hint: "settle",
-				});
-				if (!patched) return { success: false, error: "Message not found" };
-				settleMessageCommand(sessionId);
-				return { success: true };
-			},
-		},
+		// P4c 第五批:`chat` adapter 整只没了。属于**会话域**的六条随
+		// `sessionsRouter` 走,剩下的三条真正的聊天面(getHistory / generateTitle /
+		// updateMessageThinkingTime)随 `chatRouter` 走 —— 两个宿主从此是同一条
+		// 实现,这里不再留第二份。
 		events: {
 			subscribe(
 				sessionId,
@@ -2358,30 +2213,11 @@ async function createServerRuntimeOverServerBackend(
 					handler({ sessionId, chunk }),
 				);
 			},
-			async abort(sessionId?: string, context = defaultRequestContext()) {
-				// The backend owns the abort (engine.abort for the real factory,
-				// controller abort for echo); the ledger itself is settled by the
-				// resulting stream:aborted event, not mutated here.
-				if (sessionId) {
-					const session = getSessionForContext(sessionId, context);
-					if (!session) return { success: false, error: "Session not found" };
-					backend.abortSession(sessionId, "HTTP abort");
-					clearSessionPermissions(sessionId);
-					return { success: true };
-				}
-				// Abort-all stays owner-scoped: only sessions this context can read.
-				for (const activeSessionId of Array.from(activeStreamSessions)) {
-					if (!getSessionForContext(activeSessionId, context)) continue;
-					backend.abortSession(activeSessionId, "HTTP abort");
-					clearSessionPermissions(activeSessionId);
-				}
-				return { success: true };
-			},
-			async active(context = defaultRequestContext()) {
-				return Array.from(activeStreamSessions).filter((sessionId) => {
-					return Boolean(getSessionForContext(sessionId, context));
-				});
-			},
+			// P4c 第五批:`abort` / `active` 随 `chatRouter` 迁走。停止从此走桌面
+			// 那条完整收尾(取消挂起的 step、落 isStreaming:false、补
+			// stream:complete),活流表从此读引擎自己的 `getActiveSessionIds()` ——
+			// 下面 `activeStreamSessions` 这本影子账只剩「消息分页该读内存还是读盘」
+			// 与「热会话缓存」两个用途。
 		},
 		permissions: {
 			async respond(requestId, response, context = defaultRequestContext()) {
@@ -2457,9 +2293,8 @@ async function createServerRuntimeOverServerBackend(
 				};
 			},
 		},
-		prompts: {
-			getSystemPromptSnapshot: buildSystemPromptSnapshotForContext,
-		},
+		// P4c 第五批:`prompts` adapter 整只没了 —— 系统提示词快照随 `chatRouter`
+		// 走,两个宿主读的是同一条 `buildSystemPromptSnapshot`。
 		files: {
 			async listFiles(request: unknown, context = defaultRequestContext()) {
 				const typedRequest = request as {
@@ -5344,14 +5179,6 @@ function persistPermissionGrantFromDecision(
 	}
 }
 
-function clearPendingPermissionsForSession(
-	pendingPermissions: Map<string, PendingPermissionRecord>,
-	sessionId: string,
-): void {
-	for (const [requestId, pending] of pendingPermissions) {
-		if (pending.sessionId === sessionId) pendingPermissions.delete(requestId);
-	}
-}
 
 async function ensureServerWorkspaceSandboxRoot(
 	serverWorkspaceRoot: string,

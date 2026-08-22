@@ -225,11 +225,12 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/files/rename') return handleRenamePath
   if (method === 'POST' && pathname === '/api/files/delete') return handleDeletePath
   if (method === 'POST' && pathname === '/api/files/reveal') return handleRevealPath
-  if (method === 'POST' && pathname === '/api/chat/history') return handleChatHistory
-  if (method === 'POST' && pathname === '/api/chat/title') return handleGenerateTitle
+  // 聊天面的六条数据面已迁到通用 `POST /api/rpc`(P4c 第五批,`chatRouter`):
+  // `/api/chat/history`、`/api/chat/title`、`/api/chat/update-thinking-time`、
+  // `/api/streams/abort`、`/api/streams/active` 与
+  // `/api/sessions/:id/system-prompt-snapshot` 一起消失。
   // 通用 RPC 单路由(主线 T0):所有 router 域走这一条,加域不再往本文件加路由。
   if (method === 'POST' && pathname === '/api/rpc') return handleRpc
-  if (method === 'POST' && pathname === '/api/chat/update-thinking-time') return handleUpdateMessageThinkingTime
   // 媒体域的数据面已迁到通用 `POST /api/rpc`(P4c 第三批,`mediaRouter` 十一条)。
   // 这里只剩两条**不是 RPC 形状**的:按文件名取字节的那条,和一条 SSE。
   if (method === 'GET' && pathname === '/api/media/events') return handleMediaEvents
@@ -241,17 +242,18 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/sessions') return handleCreateSession
   if (method === 'POST' && pathname === '/api/session-messages/page') return handleMessagePage
   if (method === 'GET' && pathname === '/api/events') return handleEvents
+  // 停止的 REST 面为 `apps/mobile` 保留(独立 RN 客户端,直接打 REST)。它是
+  // chat 域处理者之上的**薄适配**,不是第二份实现 —— mobile 换成 `/api/rpc` 的
+  // 那天这一行就跟着消失(拍板 #32,与三条会话 REST 同一处理)。
   if (method === 'POST' && pathname === '/api/streams/abort') return handleAbortStream
-  if (method === 'GET' && pathname === '/api/streams/active') return handleGetActiveStreams
 
   const sessionMatch = pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
   if (sessionMatch) {
     const action = sessionMatch[2]
-    // 会话的读/改/删十二条已迁 `sessionsRouter`(P4c 第五批)。剩下的三条各有理由:
-    // `max-tokens` 桌面侧从来没有处理者(不是那 26 条之一);另两条不是 RPC 形状 ——
-    // 一次提示词快照读取和一条 SSE。
+    // 会话的读/改/删十二条已迁 `sessionsRouter`、提示词快照迁 `chatRouter`
+    // (P4c 第五批)。剩下的两条各有理由:`max-tokens` 桌面侧从来没有处理者
+    // (不是那 26 条之一);另一条不是 RPC 形状 —— 一条 SSE。
     if (method === 'POST' && action === 'max-tokens') return withSessionId(sessionMatch[1], handleUpdateSessionMaxTokens)
-    if (method === 'GET' && action === 'system-prompt-snapshot') return withSessionId(sessionMatch[1], handleGetSystemPromptSnapshot)
     if (method === 'GET' && action === 'events') return withSessionId(sessionMatch[1], handleEvents)
   }
 
@@ -467,20 +469,6 @@ async function handleRevealPath(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await adapter.revealPath(body?.path ?? '', context.requestContext), context.corsOrigin)
 }
 
-async function handleChatHistory(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.chat
-  if (!adapter?.getHistory) return sendNotImplemented(context, 'chat.getHistory')
-  const body = await readJson<{ sessionId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.getHistory(body?.sessionId ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleGenerateTitle(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.chat
-  if (!adapter?.generateTitle) return sendNotImplemented(context, 'chat.generateTitle')
-  const body = await readJson<{ message?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.generateTitle(body?.message ?? '', context.requestContext), context.corsOrigin)
-}
-
 /**
  * The generic RPC adapter — server half (主线 T0).
  *
@@ -509,23 +497,6 @@ async function handleRpc(context: RouteContext): Promise<void> {
     return
   }
   sendJson(context.response, 200, await dispatchRpc(request, context.rpcContext), context.corsOrigin)
-}
-
-async function handleUpdateMessageThinkingTime(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.chat
-  if (!adapter?.updateMessageThinkingTime) return sendNotImplemented(context, 'chat.updateMessageThinkingTime')
-  const body = await readJson<{ sessionId?: string; messageId?: string; thinkingTime?: number }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.updateMessageThinkingTime(
-      body?.sessionId ?? '',
-      body?.messageId ?? '',
-      typeof body?.thinkingTime === 'number' ? body.thinkingTime : 0,
-      context.requestContext,
-    ),
-    context.corsOrigin,
-  )
 }
 
 async function handleReadMediaFile(context: RouteContext): Promise<void> {
@@ -608,17 +579,6 @@ async function handleOpenThemesFolder(context: RouteContext): Promise<void> {
   const adapter = context.runtime.themes
   if (!adapter?.openThemesFolder) return sendNotImplemented(context, 'themes.openThemesFolder')
   sendJson(context.response, 200, await adapter.openThemesFolder(context.requestContext), context.corsOrigin)
-}
-
-async function handleGetSystemPromptSnapshot(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.prompts
-  if (!adapter) return sendNotImplemented(context, 'prompts.getSystemPromptSnapshot')
-  sendJson(
-    context.response,
-    200,
-    await adapter.getSystemPromptSnapshot(readSessionId(context), context.requestContext),
-    context.corsOrigin,
-  )
 }
 
 async function handleListPlugins(context: RouteContext): Promise<void> {
@@ -1181,6 +1141,27 @@ async function updateSession(context: RouteContext, patch: JsonObject): Promise<
   return adapter.update(readSessionId(context), patch, context.requestContext)
 }
 
+/**
+ * `POST /api/streams/abort` —— 为 `apps/mobile` 保留的薄适配(拍板 #32)。
+ *
+ * 它不再有自己的实现:请求原样折成 chat 域的信封,交给**同一个** RPC 处理者,
+ * 再把 `data` 拆出来还原成旧的 body 形状。web 与桌面走的是 `POST /api/rpc`;
+ * 这一行只为一个还没换信封的客户端存在。
+ */
+async function handleAbortStream(context: RouteContext): Promise<void> {
+  const body = await readJson<{ sessionId?: string }>(context.request)
+  const response = await dispatchRpc(
+    { domain: 'chat', method: 'abortStream', payload: { sessionId: body?.sessionId } },
+    context.rpcContext,
+  )
+  sendJson(
+    context.response,
+    200,
+    response.ok ? response.data : { success: false, error: response.error.message },
+    context.corsOrigin,
+  )
+}
+
 async function handleMessagePage(context: RouteContext): Promise<void> {
   const adapter = context.runtime.messages
   if (!adapter) return sendNotImplemented(context, 'messages.page')
@@ -1196,22 +1177,6 @@ async function handlePermissionResponse(context: RouteContext): Promise<void> {
     await adapter.respond(readRequestId(context), await readJson(context.request), context.requestContext),
     context.corsOrigin,
   )
-}
-
-async function handleAbortStream(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.streams
-  if (!adapter?.abort) return sendNotImplemented(context, 'streams.abort')
-  const body = await readJson<{ sessionId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.abort(body?.sessionId, context.requestContext), context.corsOrigin)
-}
-
-async function handleGetActiveStreams(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.streams
-  if (!adapter?.active) return sendNotImplemented(context, 'streams.active')
-  sendJson(context.response, 200, {
-    success: true,
-    streams: await adapter.active(context.requestContext),
-  }, context.corsOrigin)
 }
 
 function handleEvents(context: RouteContext): void {

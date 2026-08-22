@@ -91,20 +91,12 @@ export interface RuntimeMessagesAdapter<TPageRequest = unknown, TPageResponse = 
 }
 
 /**
- * 结构债 P4c 第五批:这个 adapter 上属于**会话域**的六条
+ * 结构债 P4c 第五批:`RuntimeChatAdapter` 整只没了。属于**会话域**的六条
  * (getMessages / getTokenUsage / updateSessionPin / addSystemMessage /
- * removeSystemMarkerMessage / removeMessage)随 `/api/chat/*` 那批路由一起迁到
- * `sessions` RPC 域。剩下的三条是真正的「聊天」面,不属于会话域。
- * 两个位置泛型留在原位不动(理由同 `RuntimeMessagesAdapter`)。
+ * removeSystemMarkerMessage / removeMessage)迁 `sessions` RPC 域,剩下的三条
+ * 真正的聊天面(getHistory / generateTitle / updateMessageThinkingTime)迁
+ * `chat` RPC 域 —— 两个宿主从此是同一条实现,facade 这一侧不再需要它。
  */
-export interface RuntimeChatAdapter<
-  TMessage = unknown,
-  TSystemMessage = unknown,
-> {
-  getHistory?(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
-  generateTitle?(message: string, context?: RuntimeRequestContext): Promise<unknown>
-  updateMessageThinkingTime?(sessionId: string, messageId: string, thinkingTime: number, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-}
 
 /**
  * 结构债 P4c 第四批:会话命令总线的入口整只迁到 `session-command` RPC 域
@@ -129,8 +121,8 @@ export interface RuntimeStreamsAdapter<TChunk = unknown> {
     options?: RuntimeEventSubscribeOptions,
     context?: RuntimeRequestContext,
   ): RuntimeUnsubscribe
-  abort?(sessionId?: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  active?(context?: RuntimeRequestContext): Promise<string[]>
+  // P4c 第五批:`abort` / `active` 迁 `chat` RPC 域(两个宿主同一条实现,
+  // 停止走完整收尾、活流表读引擎自己那本)。这里只剩推送订阅。
 }
 
 export interface RuntimePermissionsAdapter<TPermissionResponse = unknown> {
@@ -165,12 +157,9 @@ export interface RuntimeThemesAdapter {
 }
 
 /**
- * 只剩系统提示词快照这一条:片段的增删改查已经走通用 RPC 通道(promptsRouter),
- * 三个宿主共用一份实现,facade 这一侧不再需要对应成员。
+ * P4c 第五批:`RuntimePromptsAdapter` 整只没了 —— 最后一条(系统提示词快照)
+ * 随 `chatRouter` 迁走,片段的增删改查更早就走了 `promptsRouter`。
  */
-export interface RuntimePromptsAdapter {
-  getSystemPromptSnapshot(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
-}
 
 export interface RuntimeFilesAdapter {
   listFiles?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
@@ -406,7 +395,6 @@ export interface OnethingRuntimeFacadeOptions<
   appState?: RuntimeAppStateAdapter<TAppState, TUIState>
   sessions: RuntimeSessionsAdapter<TSessionList, TSession, TCreateSessionInput, TSessionPatch>
   messages?: RuntimeMessagesAdapter<TMessagePageRequest, TMessagePageResponse, TUserMarkersResponse>
-  chat?: RuntimeChatAdapter
   events: RuntimeEventsAdapter<TEvent>
   streams?: RuntimeStreamsAdapter<TChunk>
   permissions?: RuntimePermissionsAdapter<TPermissionResponse>
@@ -414,7 +402,6 @@ export interface OnethingRuntimeFacadeOptions<
   network?: RuntimeNetworkAdapter
   search?: RuntimeSearchAdapter
   themes?: RuntimeThemesAdapter
-  prompts?: RuntimePromptsAdapter
   files?: RuntimeFilesAdapter
   media?: RuntimeMediaAdapter
   todoPlan?: RuntimeTodoPlanAdapter
@@ -480,7 +467,6 @@ export interface OnethingRuntimeFacade<
   readonly appState?: RuntimeAppStateAdapter<TAppState, TUIState>
   readonly sessions: RuntimeSessionsAdapter<TSessionList, TSession, TCreateSessionInput, TSessionPatch>
   readonly messages?: RuntimeMessagesAdapter<TMessagePageRequest, TMessagePageResponse, TUserMarkersResponse>
-  readonly chat?: RuntimeChatAdapter
   readonly events: RuntimeEventsAdapter<TEvent>
   readonly streams?: RuntimeStreamsAdapter<TChunk>
   readonly permissions?: RuntimePermissionsAdapter<TPermissionResponse>
@@ -488,7 +474,6 @@ export interface OnethingRuntimeFacade<
   readonly network?: RuntimeNetworkAdapter
   readonly search?: RuntimeSearchAdapter
   readonly themes?: RuntimeThemesAdapter
-  readonly prompts?: RuntimePromptsAdapter
   readonly files?: RuntimeFilesAdapter
   readonly media?: RuntimeMediaAdapter
   readonly todoPlan?: RuntimeTodoPlanAdapter
@@ -625,7 +610,6 @@ export function createOnethingRuntimeFacade<
     appState: options.appState,
     sessions: Object.freeze({ ...options.sessions }),
     messages: options.messages ? Object.freeze({ ...options.messages }) : undefined,
-    chat: options.chat ? Object.freeze({ ...options.chat }) : undefined,
     events: Object.freeze({ ...options.events }),
     streams: options.streams ? Object.freeze({ ...options.streams }) : undefined,
     permissions: options.permissions ? Object.freeze({ ...options.permissions }) : undefined,
@@ -633,7 +617,6 @@ export function createOnethingRuntimeFacade<
     network: options.network ? Object.freeze({ ...options.network }) : undefined,
     search: options.search ? Object.freeze({ ...options.search }) : undefined,
     themes: options.themes ? Object.freeze({ ...options.themes }) : undefined,
-    prompts: options.prompts ? Object.freeze({ ...options.prompts }) : undefined,
     files: options.files ? Object.freeze({ ...options.files }) : undefined,
     media: options.media ? Object.freeze({ ...options.media }) : undefined,
     todoPlan: options.todoPlan ? Object.freeze({ ...options.todoPlan }) : undefined,

@@ -1296,6 +1296,16 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      web 侧修好的:`getSegments` 真读 TOC(原空桩)、`getCacheStats/evictCache` 真读/清 LRU(原假读数)、`updateAgent` /
      `updatePermissionMode` 有门(原直改)、`list` 契约从谎报的含 messages 改为元数据。**三处放宽按 #33 补回**
      (http 分叉保留旧 server 语义)。遗留:`sessions:update-max-tokens` 死码链(桌面无处理者)一小笔。
+     **第五批落地记录(08-22,chat 6 条,待提交)**:`getHistory / generateTitle / getSystemPromptSnapshot /
+     updateMessageThinkingTime / abortStream / getActiveStreams` 迁完,`RESUME_AFTER_TOOL_CONFIRM` 按 #21 留手写(工厂 66→48、
+     适配 219→77 行);server 删 5 路由 + chat/prompts adapter 整只 + `streams.abort/active` + 第二份快照实现 105 行,
+     `POST /api/streams/abort` 为 mobile 留薄适配(折成 chat 域信封交同一 dispatchRpc,#32);battery `abort/activeStreams`
+     改走 rpc;checker host 断言 16→4、5 处改指域文件;transport channels 238→**232**、bridge 1358→1334、http 1496→1461、
+     web 1387→1370,四壳 4596;battery 264/0;全量 11177 绿。web 侧修好:`generateTitle` 真叫模型(原本地截取桩)、
+     `getSystemPromptSnapshot` 是真流那份(原 web-host mock)、`abortStream` 走桌面完整收尾(原只 abort + 清权限,消息停在流式态)、
+     `getActiveStreams` 字段 `streams`→`sessionIds` 且数据源改引擎 `getActiveSessionIds()`。遗留:server 壳 `pendingPermissions`
+     镜像不再随 abort/delete 清(core 侧照清,误批不可能;与 sessions 批同收);`http.test.ts` 两条 SSE/media 用例满载下
+     listen/close 竞态偶发;`updateSessionMaxTokens` 孤条。**至此零拍板可迁的域全部迁完**;余下 P4 域全部等拍板。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。

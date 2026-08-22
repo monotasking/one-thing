@@ -147,7 +147,6 @@ import type {
 	MarkdownResolveAssetResponse,
 	MarkdownSaveAttachmentsRequest,
 	MarkdownSaveAttachmentsResponse,
-	GetChatHistoryResponse,
 	GetSystemPromptSnapshotResponse,
 	SystemPromptSkillSnapshot,
 	SystemPromptSnapshot,
@@ -162,7 +161,6 @@ import type {
 	UpdateSessionPinResponse,
 	GetSettingsResponse,
 	SaveSettingsResponse,
-	GenerateTitleResponse,
 	ToolDefinition,
 	ToolParameter,
 	ToolCall,
@@ -905,11 +903,9 @@ export interface ElectronAPI {
 			createdAt: number;
 		}) => void,
 	) => () => void;
-	getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>;
-	generateTitle: (message: string) => Promise<GenerateTitleResponse>;
-	getSystemPromptSnapshot: (
-		sessionId: string,
-	) => Promise<GetSystemPromptSnapshotResponse>;
+	// 聊天面(chat)—— 六条 invoke 已整只迁到通用 RPC 通道(P4c 第五批,
+	// `@shared/ipc/chat.ts` 的 chatRouter + `@/platform/chat-client` 的 chatApi)。
+	// 壳面上只剩第七条 `resumeAfterToolConfirm`(见下),它往引擎递 `sender`。
 	// 会话域(sessions)—— 26 条 invoke 已整只迁到通用 RPC 通道(P4c 第五批,
 	// `@shared/ipc/sessions.ts` 的 sessionsRouter + `@/platform/sessions-client`
 	// 的 sessionsApi)。壳面上只剩这个域的**推送**(见 onSessionMessagesChanged /
@@ -1351,18 +1347,6 @@ export interface ElectronAPI {
 		toolCallId: string,
 		updates: Partial<ToolCall>,
 	) => Promise<{ success: boolean }>;
-	abortStream: (sessionId?: string) => Promise<{ success: boolean }>;
-	/**
-	 * 两个宿主对同一件事**用了不同的字段名**,类型如实记两个:
-	 * desktop 走 `listOnethingActiveStreamsForIpc` 回 `sessionIds`,
-	 * server 的 `/api/streams/active` 回 `streams`。消费者两边都读
-	 * (`response.sessionIds ?? response.streams`),别只认一个。
-	 */
-	getActiveStreams: () => Promise<{
-		success: boolean;
-		streams?: string[];
-		sessionIds?: string[];
-	}>;
 	resumeAfterToolConfirm: (
 		sessionId: string,
 		messageId: string,
@@ -1429,13 +1413,6 @@ export interface ElectronAPI {
 		sessionId: string,
 		agentId?: string,
 	) => Promise<ACPCancelSessionResponse>;
-
-	// Message update methods
-	updateMessageThinkingTime: (
-		sessionId: string,
-		messageId: string,
-		thinkingTime: number,
-	) => Promise<{ success: boolean }>;
 
 	// Dialog methods
 	showOpenDialog: (options: {

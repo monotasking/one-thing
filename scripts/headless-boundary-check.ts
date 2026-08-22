@@ -5952,6 +5952,7 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
   // 搬到 `session-command` RPC 域,所以「不许在别处重抄一遍 emit」这条守的是域文件。
   const mainFile = path.join(root, 'packages/backend/rpc/domains/session-command.ts')
   const chatFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
+  const chatDomainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -5975,6 +5976,10 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
     ...(fs.existsSync(chatFile)
       ? matchingLines(chatFile, MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS)
       : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
+    // P4c 第五批:同一条规矩也守 chat RPC 域(停止收尾在那里发会话事件)。
+    ...(fs.existsSync(chatDomainFile)
+      ? matchingLines(chatDomainFile, MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS)
+      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/core owns session command/event IPC projections', lines)
@@ -6155,6 +6160,10 @@ function checkElectronHostOwnsChatIpcHost(): void {
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronChatContent = fs.existsSync(electronChatFile) ? fs.readFileSync(electronChatFile, 'utf-8') : ''
   const mainChatContent = fs.existsSync(mainChatFile) ? fs.readFileSync(mainChatFile, 'utf-8') : ''
+  // P4c 第五批:六条数据面迁 `chatRouter`,工厂与壳适配**只缩不删** —— 留下的
+  // 是第七条 `RESUME_AFTER_TOOL_CONFIRM`(拍板 #21:它往引擎递 `event.sender`,
+  // 而 router 的信封里没有「谁在问」这一格)。断言因此只守这一条:六条的归宿
+  // 在 `packages/backend/rpc/domains/chat.ts`,由域测试钉。
   const requiredHostSymbols = [
     'registerElectronChatIpcHandlers',
     'options.ipcMain ?? ipcMain',
@@ -6166,19 +6175,7 @@ function checkElectronHostOwnsChatIpcHost(): void {
   const requiredFacadeSymbols = [
     '@onething/electron-host/ipc/chat',
     'registerElectronChatIpcHandlers',
-    'IPC_CHANNELS.GET_CHAT_HISTORY',
-    'IPC_CHANNELS.GENERATE_TITLE',
-    'IPC_CHANNELS.GET_SYSTEM_PROMPT_SNAPSHOT',
-    'IPC_CHANNELS.UPDATE_MESSAGE_THINKING_TIME',
-    'IPC_CHANNELS.ABORT_STREAM',
-    'IPC_CHANNELS.GET_ACTIVE_STREAMS',
     'IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM',
-    'getOnethingChatHistoryForIpc',
-    'generateOnethingChatTitleForIpc',
-    'buildOnethingSystemPromptSnapshotForIpc',
-    'updateOnethingMessageThinkingTimeForIpc',
-    'abortOnethingStreamsForIpc',
-    'listOnethingActiveStreamsForIpc',
     'resumeOnethingAfterToolConfirmationForIpc',
   ]
   const lines = [
@@ -7497,8 +7494,9 @@ function checkRuntimeOwnsRendererMessageSanitizer(): void {
   const mainFiles = [
     path.join(root, 'apps/electron/src/main/ipc/message-sanitizer.ts'),
     path.join(root, 'apps/electron/src/main/ipc/chat.ts'),
-    // P4c 第五批:会话那一份调用点已是 RPC 域。
+    // P4c 第五批:会话与聊天两份调用点都已是 RPC 域。
     path.join(root, 'packages/backend/rpc/domains/sessions.ts'),
+    path.join(root, 'packages/backend/rpc/domains/chat.ts'),
   ]
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
@@ -7515,17 +7513,23 @@ function checkRuntimeOwnsRendererMessageSanitizer(): void {
 }
 
 function checkChatIpcDoesNotOwnLegacyStreamFlow(): void {
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
-  const lines = fs.existsSync(mainFile)
-    ? matchingLines(mainFile, MAIN_CHAT_IPC_LEGACY_STREAM_FORBIDDEN_PATTERNS)
-    : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']
+  // P4c 第五批:聊天面的六条已是 RPC 域,所以这条守的是**两处** —— 域文件,
+  // 以及只剩第七条的那层壳适配。
+  const mainFiles = [
+    path.join(root, 'packages/backend/rpc/domains/chat.ts'),
+    path.join(root, 'apps/electron/src/main/ipc/chat.ts'),
+  ]
+  const lines = mainFiles.flatMap(file => fs.existsSync(file)
+    ? matchingLines(file, MAIN_CHAT_IPC_LEGACY_STREAM_FORBIDDEN_PATTERNS)
+    : [`${rel(file)}: missing chat IPC adapter`])
 
   assertNoMatches('chat IPC delegates stream orchestration to EventBus/StreamEngine runtime', lines)
 }
 
 function checkRuntimeOwnsChatTitleGenerationFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-runtime.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
+  // P4c 第五批:标题生成的调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('generateOnethingChatTitle')
@@ -7545,7 +7549,7 @@ function checkRuntimeOwnsChatTitleGenerationFlow(): void {
           ...matchingLines(mainFile, MAIN_CHAT_IPC_TITLE_FORBIDDEN_PATTERNS),
           ...matchingLines(mainFile, MAIN_CHAT_IPC_PROVIDER_ERROR_FORBIDDEN_PATTERNS),
         ]
-      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns chat title generation flow', lines)
@@ -7553,7 +7557,8 @@ function checkRuntimeOwnsChatTitleGenerationFlow(): void {
 
 function checkRuntimeOwnsChatSessionIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/ipc-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
+  // P4c 第五批:历史读取与思考时长补写的调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingChatHistoryForIpc',
@@ -7568,7 +7573,7 @@ function checkRuntimeOwnsChatSessionIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned chat session IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_SESSION_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns chat session IPC operations', lines)
@@ -7576,7 +7581,8 @@ function checkRuntimeOwnsChatSessionIpcOperations(): void {
 
 function checkRuntimeOwnsChatActiveStreamListing(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/stream-abort.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
+  // P4c 第五批:活流表的调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('listOnethingActiveStreamsForIpc')
@@ -7584,7 +7590,7 @@ function checkRuntimeOwnsChatActiveStreamListing(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_ACTIVE_STREAMS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns active stream listing projection', lines)
@@ -7592,7 +7598,8 @@ function checkRuntimeOwnsChatActiveStreamListing(): void {
 
 function checkRuntimeOwnsChatAbortCleanupFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/stream-abort.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
+  // P4c 第五批:停止收尾的调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('cancelOnethingStreamingStepsForAbort')
@@ -7603,7 +7610,7 @@ function checkRuntimeOwnsChatAbortCleanupFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_ABORT_CLEANUP_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns chat abort cleanup flow', lines)
@@ -8962,7 +8969,8 @@ function checkRuntimeOwnsSystemPromptSnapshot(): void {
     path.join(root, 'packages/onething-runtime/src/prompts/index.ts'),
   ]
   const mainFile = path.join(root, 'packages/backend/wiring/engine/prompt/system-prompt-snapshot.ts')
-  const chatIpcFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
+  // P4c 第五批:快照读取的调用点已是 RPC 域。
+  const chatIpcFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -8988,7 +8996,7 @@ function checkRuntimeOwnsSystemPromptSnapshot(): void {
       : []),
     ...(fs.existsSync(chatIpcFile)
       ? matchingLines(chatIpcFile, MAIN_CHAT_IPC_SYSTEM_PROMPT_SNAPSHOT_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns system prompt snapshot assembly', lines)

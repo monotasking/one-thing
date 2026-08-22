@@ -814,6 +814,7 @@ import {
   type WindowDragOrigin,
 } from './todo-window-drag'
 import { platformApi } from '@/platform'
+import { chatApi } from '@/platform/chat-client'
 import { sessionsApi } from '@/platform/sessions-client'
 import { markdownApi } from '@/platform/markdown-client'
 import { sessionCommands } from '@/platform/session-command-client'
@@ -900,10 +901,12 @@ const mode = ref<TodoPanelMode>(readTodoPanelMode(modeStorageKey))
 const pushStorageKeyName = scratchpadPushStorageKey(storagePrefix)
 const pushPrefs = ref<ScratchpadPushPrefs>(readScratchpadPushPrefs(pushStorageKeyName))
 /**
- * 宿主查不查得到"这一刻 AI 在回复"。**一次性判定,不是猜**:查不到就把
- * 「仅回复中」整行关掉,而不是留一个点得动、其实永远不触发的选项。
+ * 宿主查不查得到"这一刻 AI 在回复"。P4c 第五批之前这是一次 `typeof` 探测
+ * (壳上有没有 `getActiveStreams` 这个方法);活流表整只迁到 chat RPC 域之后
+ * **两个宿主共用同一条实现**,探测恒真 —— 与其留一个永远为真的问句,不如
+ * 把它写成事实。
  */
-const canDetectReplying = typeof platformApi.getActiveStreams === 'function'
+const canDetectReplying = true
 const replying = ref(false)
 const pushCountdown = ref<number | null>(null)
 const justSentChars = ref<number | null>(null)
@@ -1859,8 +1862,9 @@ function syncAutoPushArming() {
 /**
  * 「仅回复中」档的探针。**只在真的选了它的时候才轮** —— 别的时候一次 IPC 都不打。
  *
- * 两个宿主的返回字段不同名(desktop 是 `sessionIds`,server 是 `streams`),
- * 两边都读,谁在读谁。查不到就当"不在回复",不猜。
+ * P4c 第五批起两个宿主读的是同一条实现,字段只剩 `sessionIds` 一个
+ * (server 那个 `streams` 随 `GET /api/streams/active` 一起没了)。
+ * 查不到就当"不在回复",不猜。
  */
 async function pollReplying() {
   const sessionId = resolvedSessionId.value
@@ -1869,8 +1873,8 @@ async function pollReplying() {
     return
   }
   try {
-    const response = await platformApi.getActiveStreams()
-    const ids = response?.sessionIds ?? response?.streams ?? []
+    const response = await chatApi.getActiveStreams({})
+    const ids = response?.sessionIds ?? []
     const next = Array.isArray(ids) && ids.includes(sessionId)
     const started = next && !replying.value
     replying.value = next

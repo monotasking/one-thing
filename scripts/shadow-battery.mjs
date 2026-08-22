@@ -303,7 +303,8 @@ class Driver {
   }
 
   abort() {
-    return this.api('POST', '/api/streams/abort', { sessionId: this.sessionId })
+    // 结构债 P4c 第五批:停止属聊天域,`POST /api/streams/abort` 已随之删除。
+    return this.rpc('chat', 'abortStream', { sessionId: this.sessionId })
   }
 
   /** 把这条会话钉在另一个模型上(生图那一格靠模型名走上特化流)。 */
@@ -356,8 +357,11 @@ class Driver {
   }
 
   async activeStreams() {
-    const result = await this.api('GET', '/api/streams/active')
-    return result?.streams ?? result?.sessionIds ?? []
+    // 结构债 P4c 第五批:活流表属聊天域,`GET /api/streams/active` 已随之删除。
+    // 字段也只剩一个 —— 桌面那条实现回的是 `sessionIds`,读的是引擎自己那本
+    // 活会话表(比从前 server 壳按事件维护的影子账更贴近"引擎还认不认它在跑")。
+    const result = await this.rpc('chat', 'getActiveStreams', {})
+    return result?.sessionIds ?? []
   }
 
   /** 轮询直到条件成立;超时就抛(场景当场判红,不静默过去)。 */
@@ -381,7 +385,7 @@ class Driver {
    *     `isStreaming:false` 由 `processor.finalize()` 写下,而
    *     `finalizeLingeringAgentLoopToolWork`(把没结局的调用判死并写上那句话)
    *     排在它**后面**一行,只等 isStreaming 会读到修复之前的那一瞬间;
-   *  3. **引擎自己也不再认为这条会话在跑**(`/api/streams/active`)。
+   *  3. **引擎自己也不再认为这条会话在跑**(`chat.getActiveStreams`)。
    *
    * 第 3 条是必须的:引擎释放会话比消息落 `isStreaming:false` 晚一步,那一步里
    * 发过去的下一条消息会被当成 **steering** 排进队列,而不是开一轮新的

@@ -292,7 +292,10 @@ export type {
 	GetSessionMessagesPageResponse,
 	UserMessageMarker,
 	GetSessionUserMarkersResponse,
+	// chat 域的 router 契约(结构债 P4c 第五批,六条)。
+	ChatRoutes,
 } from "./chat.js";
+export { chatRouter } from "./chat.js";
 
 // Media types
 export type {

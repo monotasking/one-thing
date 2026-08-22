@@ -115,8 +115,18 @@ describe('chat store permission ordering', () => {
   })
 
   it('clears pending permission UI state when generation is stopped', async () => {
+    // P4c 第五批:停止走 chat RPC 域,所以桩的是通用通道而不是壳上那个方法。
     const abortStream = vi.fn(async () => ({ success: true }))
-    vi.stubGlobal('window', { electronAPI: { abortStream } })
+    vi.stubGlobal('window', {
+      electronAPI: {
+        rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
+          if (request.domain === 'chat' && request.method === 'abortStream') {
+            return { ok: true, data: await abortStream() }
+          }
+          return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
+        }),
+      },
+    })
     const store = useChatStore()
     store.handleAssistantCreated({
       sessionId: 's1',
@@ -162,8 +172,18 @@ describe('chat store permission ordering', () => {
   })
 
   it('freezes running tool timers when generation is stopped', async () => {
+    // P4c 第五批:停止走 chat RPC 域,所以桩的是通用通道而不是壳上那个方法。
     const abortStream = vi.fn(async () => ({ success: true }))
-    vi.stubGlobal('window', { electronAPI: { abortStream } })
+    vi.stubGlobal('window', {
+      electronAPI: {
+        rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
+          if (request.domain === 'chat' && request.method === 'abortStream') {
+            return { ok: true, data: await abortStream() }
+          }
+          return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
+        }),
+      },
+    })
     const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2_500)
     const store = useChatStore()
     const canonicalToolCall: ToolCall = {

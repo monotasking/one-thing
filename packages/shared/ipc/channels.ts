@@ -13,14 +13,9 @@ export const IPC_CHANNELS = {
 	RPC_INVOKE: "rpc:invoke",
 
 	// Chat related
-	GET_CHAT_HISTORY: "chat:get-history",
 	CLEAR_CHAT: "chat:clear",
-	GENERATE_TITLE: "chat:generate-title",
-	GET_SYSTEM_PROMPT_SNAPSHOT: "chat:get-system-prompt-snapshot",
-
-	// Streaming control
-	ABORT_STREAM: "chat:abort-stream",
-	GET_ACTIVE_STREAMS: "chat:get-active-streams",
+	// 聊天面的六条数据面(历史/标题/提示词快照/思考时长/停止/活流表)已走通用
+	// RPC 通道(chatRouter,P4c 第五批);第七条 RESUME_AFTER_TOOL_CONFIRM 见下。
 
 	// Skill usage notification
 	SKILL_ACTIVATED: "chat:skill-activated",
@@ -142,7 +137,6 @@ export const IPC_CHANNELS = {
 	BACKGROUND_JOBS_LIST: "tools:background-jobs:list",
 	BACKGROUND_JOBS_STOP: "tools:background-jobs:stop",
 	REFRESH_ASYNC_TOOLS: "tools:refresh-async",
-	UPDATE_MESSAGE_THINKING_TIME: "chat:update-thinking-time",
 	RESUME_AFTER_TOOL_CONFIRM: "chat:resume-after-tool-confirm",
 
 	// Permission related

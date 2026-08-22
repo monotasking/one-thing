@@ -67,6 +67,9 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:session-command', 'session-command'],
   // P4c 第五批唯一的域:sessions(26 条,含四条契约表外的字面量通道)。
   ['rpc:sessions', 'sessions'],
+  // P4c 第五批的第二个域:chat(六条聊天面;第七条 resumeAfterToolConfirm 留在
+  // 手写 IPC 上 —— 它往引擎递 sender,信封里没有那一格)。
+  ['rpc:chat', 'chat'],
 ] as const
 
 /**

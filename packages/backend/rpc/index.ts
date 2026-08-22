@@ -26,6 +26,7 @@
 import { agentsRouter } from '@shared/ipc/agents.js'
 import { appStateRouter } from '@shared/ipc/app-state.js'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
+import { chatRouter } from '@shared/ipc/chat.js'
 import { collabRouter } from '@shared/ipc/collab.js'
 import { goalRouter } from '@shared/ipc/goal.js'
 import { logsRouter } from '@shared/ipc/logs.js'
@@ -52,6 +53,7 @@ import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../fe
 import { agentsRpcHandlers } from './domains/agents.js'
 import { appStateRpcHandlers } from './domains/app-state.js'
 import { channelIdentityRpcHandlers } from './domains/channel-identity.js'
+import { chatRpcHandlers } from './domains/chat.js'
 import { collabRpcHandlers } from './domains/collab.js'
 import { goalRpcHandlers } from './domains/goal.js'
 import { logsRpcHandlers } from './domains/logs.js'
@@ -166,6 +168,13 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 写面之后与「先有总线、再有查询」的叙事一致;真正的硬约束只有一条 —— 必须在
   // 自进化之前,因为卸载要逆序。
   { id: 'rpc:sessions', mount: ctx => { ctx.registerRpcDomain(sessionsRouter, sessionsRpcHandlers) } },
+  // P4c 第五批的第二个域(chat)—— 聊天面剩下的六条:历史 / 标题 / 提示词快照 /
+  // 思考时长 / 停止 / 活流表。**第七条 `RESUME_AFTER_TOOL_CONFIRM` 不在这里**
+  // (拍板 #21):它往引擎递 `sender`,信封里没有那一格,原样留在手写 IPC 上。
+  // 位置在 sessions 之后:`abortStream` 要 `getStreamEngine()` 与 `Permission`,
+  // 而 `backend.ts` 的顺序是引擎 → Permission → 工具注册 → registerAppRpcDomains,
+  // 注册时两者都已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
+  { id: 'rpc:chat', mount: ctx => { ctx.registerRpcDomain(chatRouter, chatRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

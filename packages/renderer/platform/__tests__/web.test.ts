@@ -876,10 +876,9 @@ describe('createWebPlatformApi', () => {
     // save-image,legacy-images,delete,clear-all,read-image,rebuild,assets/hide,
     // preview/get} 这十一条镜像。留在壳上的三条**要宿主本体**,而浏览器给不出:
     // 「另存为」是诚实桩,两条 open-image-* 就地承认(见下一条用例)。
-    await expect(api.getActiveStreams()).resolves.toEqual({
-      success: true,
-      url: '/api/streams/active',
-    })
+    // chat 域的六条(history / title / system-prompt-snapshot / thinking-time /
+    // abort / active-streams)已整只迁到通用 RPC 通道(P4c 第五批,`chatRouter` +
+    // `@/platform/chat-client`):web 壳上不再有 /api/chat/* 与 /api/streams/* 的镜像。
 
     expect(fetchMock).toHaveBeenCalledWith('/api/files/list', expect.objectContaining({
       method: 'POST',
@@ -1039,21 +1038,9 @@ describe('createWebPlatformApi', () => {
     const { createWebPlatformApi } = await import('../web.js')
     const api = createWebPlatformApi()
 
-    await expect(api.getChatHistory('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/chat/history',
-    })
-    await expect(api.generateTitle('Hello from web')).resolves.toEqual({
-      success: true,
-      url: '/api/chat/title',
-    })
     await expect(api.updateSessionMaxTokens('session-1', 200000)).resolves.toEqual({
       success: true,
       url: '/api/sessions/session-1/max-tokens',
-    })
-    await expect(api.updateMessageThinkingTime('session-1', 'message-1', 3.5)).resolves.toEqual({
-      success: true,
-      url: '/api/chat/update-thinking-time',
     })
     // 命令总线迁 router 之后这条走的是通用信封;`createRouterClient` 解包 `data`。
     await expect(api.resumeAfterToolConfirm('session-1', 'message-1')).resolves.toEqual({
@@ -1064,9 +1051,6 @@ describe('createWebPlatformApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/sessions/session-1/max-tokens', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ maxTokens: 200000 }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/chat/update-thinking-time', expect.objectContaining({
-      method: 'POST',
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/rpc', expect.objectContaining({
       method: 'POST',
@@ -1235,10 +1219,6 @@ describe('createWebPlatformApi', () => {
     const { createWebPlatformApi } = await import('../web.js')
     const api = createWebPlatformApi()
 
-    await expect(api.getSystemPromptSnapshot('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/sessions/session-1/system-prompt-snapshot',
-    })
     // 片段 CRUD 已经不再是五条 REST 路径,而是一条通道上的五个方法。
     await expect(api.listPrompts()).resolves.toEqual({
       success: true,
@@ -1506,8 +1486,9 @@ describe('createWebPlatformApi', () => {
     // web 壳上不再有它们的方法,客户端在 platform/{agents,providers,models}-client.ts。
     // skills 十二条同样迁走了(结构债 P4c 第二批,`@/platform/skills-client`):
     // web 壳上不再有 /api/skills* 的镜像,server 的六条 REST 路由与那个正则块也删了。
+    // 系统提示词快照(以及另外五条聊天面)迁 chatRouter(P4c 第五批,
+    // `@/platform/chat-client`):`/api/sessions/:id/system-prompt-snapshot` 也删了。
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/sessions/session-1/system-prompt-snapshot', expect.any(Object))
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/enable', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ pluginId: 'note-skills' }),

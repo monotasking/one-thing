@@ -1,3 +1,15 @@
+/**
+ * Electron chat IPC host —— 结构债 P4c 第五批之后只剩**一条**。
+ *
+ * 六条数据面(history / title / system-prompt-snapshot / thinking-time /
+ * abort / active-streams)已整只迁到通用 RPC 通道(`chatRouter` +
+ * `packages/backend/rpc/domains/chat.ts`)。留在这里的是第七条
+ * `RESUME_AFTER_TOOL_CONFIRM`(拍板 #21):它把 `event.sender`(发起这次 invoke
+ * 的 `webContents`)往 `StreamEngine.handleResumeAfterConfirm` 递,而 router 的
+ * 信封里没有「谁在问」这一格 —— 补一格进去等于给通用通道加一条只有一个宿主用
+ * 得上的私货。web 侧同名方法从来就不是这条路:它打的是命令总线上的
+ * `command:resume-after-confirm`。
+ */
 import { ipcMain } from 'electron'
 
 export interface ElectronIpcMainLike {
@@ -8,31 +20,7 @@ export interface ElectronIpcMainLike {
 }
 
 export interface ElectronChatIpcChannels {
-  getHistory: string
-  generateTitle: string
-  getSystemPromptSnapshot: string
-  updateMessageThinkingTime: string
-  abortStream: string
-  getActiveStreams: string
   resumeAfterToolConfirm: string
-}
-
-export interface ElectronChatSessionRequest {
-  sessionId: string
-}
-
-export interface ElectronGenerateTitleRequest {
-  message: string
-}
-
-export interface ElectronUpdateMessageThinkingTimeRequest {
-  sessionId: string
-  messageId: string
-  thinkingTime: number
-}
-
-export interface ElectronAbortStreamRequest {
-  sessionId?: string
 }
 
 export interface ElectronResumeAfterToolConfirmRequest {
@@ -46,12 +34,6 @@ export interface ElectronChatIpcInvokeEvent {
 
 export interface RegisterElectronChatIpcHandlersOptions {
   channels: ElectronChatIpcChannels
-  getHistory(request: ElectronChatSessionRequest): unknown
-  generateTitle(request: ElectronGenerateTitleRequest): unknown
-  getSystemPromptSnapshot(request: ElectronChatSessionRequest): unknown
-  updateMessageThinkingTime(request: ElectronUpdateMessageThinkingTimeRequest): unknown
-  abortStream(request?: ElectronAbortStreamRequest): unknown
-  getActiveStreams(): unknown
   resumeAfterToolConfirm(request: ElectronResumeAfterToolConfirmRequest, sender: unknown): unknown
   ipcMain?: ElectronIpcMainLike
 }
@@ -60,30 +42,6 @@ export function registerElectronChatIpcHandlers(
   options: RegisterElectronChatIpcHandlersOptions,
 ): void {
   const host = options.ipcMain ?? ipcMain
-
-  host.handle(options.channels.getHistory, (_event, request: ElectronChatSessionRequest) => {
-    return options.getHistory(request)
-  })
-
-  host.handle(options.channels.generateTitle, (_event, request: ElectronGenerateTitleRequest) => {
-    return options.generateTitle(request)
-  })
-
-  host.handle(options.channels.getSystemPromptSnapshot, (_event, request: ElectronChatSessionRequest) => {
-    return options.getSystemPromptSnapshot(request)
-  })
-
-  host.handle(options.channels.updateMessageThinkingTime, (_event, request: ElectronUpdateMessageThinkingTimeRequest) => {
-    return options.updateMessageThinkingTime(request)
-  })
-
-  host.handle(options.channels.abortStream, (_event, request?: ElectronAbortStreamRequest) => {
-    return options.abortStream(request)
-  })
-
-  host.handle(options.channels.getActiveStreams, () => {
-    return options.getActiveStreams()
-  })
 
   host.handle(options.channels.resumeAfterToolConfirm, (event: unknown, request: ElectronResumeAfterToolConfirmRequest) => {
     return options.resumeAfterToolConfirm(request, (event as ElectronChatIpcInvokeEvent).sender)

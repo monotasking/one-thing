@@ -307,21 +307,9 @@ const electronAPI = {
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.BROWSER_TABS_CHANGED, listener);
 	},
 
-	// ── Streaming methods ───────────────────────────
-	abortStream: (sessionId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.ABORT_STREAM, { sessionId }),
-
-	getActiveStreams: () => ipcRenderer.invoke(IPC_CHANNELS.GET_ACTIVE_STREAMS),
-
-	getChatHistory: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_CHAT_HISTORY, { sessionId }),
-
-	generateTitle: (message: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GENERATE_TITLE, { message }),
-
-	getSystemPromptSnapshot: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_PROMPT_SNAPSHOT, { sessionId }),
-
+	// ── Chat:六条 invoke 已走通用 RPC 通道(chatRouter),本文件不再暴露。
+	//    留在这里的只有第七条 —— 它往引擎递 `event.sender`,而 router 的信封里
+	//    没有「谁在问」这一格(拍板 #21)。──
 	resumeAfterToolConfirm: (sessionId: string, messageId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM, {
 			sessionId,
@@ -823,18 +811,6 @@ const electronAPI = {
 
 	acpCancelSession: (sessionId: string, agentId?: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.ACP_CANCEL_SESSION, { sessionId, agentId }),
-
-	// Message update methods
-	updateMessageThinkingTime: (
-		sessionId: string,
-		messageId: string,
-		thinkingTime: number,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.UPDATE_MESSAGE_THINKING_TIME, {
-			sessionId,
-			messageId,
-			thinkingTime,
-		}),
 
 	// Dialog methods
 	showOpenDialog: (options: {

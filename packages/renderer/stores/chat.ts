@@ -1,6 +1,6 @@
-import { platformApi } from "@/platform";
 import { collabApi } from "@/platform/collab-client";
 import { sessionCommands } from "@/platform/session-command-client";
+import { chatApi } from "@/platform/chat-client";
 import { sessionsApi } from "@/platform/sessions-client";
 import { getLogger } from "@/services/log";
 /**
@@ -2351,7 +2351,6 @@ export const useChatStore = defineStore("chat", () => {
 		sessionLoading.value.set(sessionId, true);
 		triggerRef(sessionLoading);
 
-		// platformApi : 根据web或electron环境生成对应的api
 		await sessionCommands.emit({
 			sessionId,
 			command: {
@@ -2494,7 +2493,7 @@ export const useChatStore = defineStore("chat", () => {
 	async function stopGeneration(sessionId?: string) {
 		try {
 			const activeMessageIds = new Map(activeStreams.value);
-			const response = await platformApi.abortStream(sessionId);
+			const response = await chatApi.abortStream({ sessionId });
 			if (response.success) {
 				const targetSessionIds = sessionId
 					? [sessionId]

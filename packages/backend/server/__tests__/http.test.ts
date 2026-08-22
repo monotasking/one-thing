@@ -12,6 +12,7 @@ import { registerMarkdownRpcDomain } from '@onething/backend/rpc/domains/markdow
 import { registerPermissionGrantsRpcDomain } from '@onething/backend/rpc/domains/permission-grants.js'
 import { resetPermissionGrantsForTests } from '@onething/core/permission'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { chatRouter } from '@shared/ipc/chat.js'
 import type { MCPServerConfig, MCPServerState } from '@shared/ipc/mcp.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import { createOnethingHttpServer } from '../http.js'
@@ -72,96 +73,6 @@ describe('createOnethingHttpServer', () => {
       clipboardWrite: false,
       desktopWindows: false,
       globalMenuEvents: false,
-    })
-  })
-
-  it('exposes active stream ids through the runtime facade', async () => {
-    const active = vi.fn(async () => ['session-1'])
-    const runtime = createOnethingRuntimeFacade({
-      sessions: {
-        list: async () => ({ success: true, sessions: [] }),
-        create: async (name: string) => ({ id: 'session-1', name }),
-      },
-      events: {
-        subscribe: () => () => {},
-      },
-      streams: {
-        subscribe: () => () => {},
-        active,
-      },
-    })
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
-
-    await expect(fetchJson(`${baseUrl(server)}/api/streams/active`, {
-      headers: contextHeaders('alice', 'streams-workspace'),
-    })).resolves.toEqual({
-      success: true,
-      streams: ['session-1'],
-    })
-    expect(active).toHaveBeenCalledWith(expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'streams-workspace',
-    }))
-  })
-
-  it('delegates stream aborts to the backend and derives active streams from engine events', async () => {
-    // Regression (architecture-review-2026-07-26.md A1): /api/streams/abort
-    // used to hit an AbortController map nothing ever populated — the UI
-    // reported "stopped" while the engine kept streaming, and
-    // /api/streams/active always returned an empty list.
-    const abortedSessions: string[] = []
-    let backendBus: { emit(sessionId: string, event: unknown): Promise<unknown> } | undefined
-    const serverRuntime = await createTestServerRuntime({
-      createBackend: async () => {
-        const backend = await createEchoServerBackend()
-        backendBus = backend.eventBus as unknown as typeof backendBus
-        return {
-          ...backend,
-          abortSession(sessionId, reason) {
-            abortedSessions.push(sessionId)
-            backend.abortSession(sessionId, reason)
-          },
-        }
-      },
-    })
-    runtimes.push(serverRuntime)
-    const server = await listen(createOnethingHttpServer({
-      runtime: serverRuntime.runtime,
-    }))
-
-    const created = await fetchJson(`${baseUrl(server)}/api/sessions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'abort target' }),
-    }) as { success?: boolean; session?: { id?: string } }
-    const sessionId = created.session?.id
-    expect(sessionId).toBeTruthy()
-
-    // The engine announces a live stream → the facade ledger must reflect it.
-    await backendBus!.emit(sessionId!, {
-      type: 'stream:start',
-      assistantMessageId: 'assistant-1',
-      userMessageId: 'user-1',
-    })
-    await expect(fetchJson(`${baseUrl(server)}/api/streams/active`)).resolves.toEqual({
-      success: true,
-      streams: [sessionId],
-    })
-
-    // Abort over HTTP must reach the backend (engine.abort on the real factory).
-    await expect(fetchJson(`${baseUrl(server)}/api/streams/abort`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })).resolves.toEqual({ success: true })
-    expect(abortedSessions).toEqual([sessionId])
-
-    // The terminal stream event settles the ledger.
-    await backendBus!.emit(sessionId!, { type: 'stream:aborted' })
-    await expect(fetchJson(`${baseUrl(server)}/api/streams/active`)).resolves.toEqual({
-      success: true,
-      streams: [],
     })
   })
 
@@ -1029,75 +940,10 @@ describe('createOnethingHttpServer', () => {
     expect(commands.success).toBe(true)
   })
 
-  it('routes chat requests through the runtime facade with owner context', async () => {
-    const getHistory = vi.fn(async (sessionId: string) => ({
-      success: true,
-      messages: [{ id: 'user-1', sessionId, role: 'user', content: 'hello', timestamp: 1 }],
-    }))
-    const generateTitle = vi.fn(async (message: string) => ({ success: true, title: message.slice(0, 20) }))
-    const updateMessageThinkingTime = vi.fn(async () => ({ success: true }))
-    // P4c 第五批:`/api/chat/messages`、`/api/chat/token-usage`、
-    // `/api/chat/update-session-pin`、`/api/chat/add-system-message`、
-    // `/api/chat/remove-system-marker`、`/api/chat/remove-message` 六条**是会话域**,
-    // 已随 `sessionsRouter` 迁走(域测试 `rpc/__tests__/sessions-domain.test.ts` 钉它们)。
-    // 这里只剩三条真正的聊天面。
-    const runtime = createOnethingRuntimeFacade({
-      sessions: {
-        list: async () => ({ success: true, sessions: [] }),
-        create: async (name: string) => ({ id: 'session-1', name }),
-      },
-      chat: {
-        getHistory,
-        generateTitle,
-        updateMessageThinkingTime,
-      },
-      events: {
-        subscribe: () => () => {},
-      },
-    })
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
-    const baseUrlValue = baseUrl(server)
-    const headers = contextHeaders('alice', 'chat-workspace')
-    const jsonHeaders = { ...headers, 'content-type': 'application/json' }
-
-    await expect(fetchJson(`${baseUrlValue}/api/chat/history`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId: 'session-1' }),
-    })).resolves.toEqual({
-      success: true,
-      messages: [{ id: 'user-1', sessionId: 'session-1', role: 'user', content: 'hello', timestamp: 1 }],
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/chat/title`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ message: 'Hello web runtime' }),
-    })).resolves.toEqual({ success: true, title: 'Hello web runtime' })
-    await expect(fetchJson(`${baseUrlValue}/api/chat/update-thinking-time`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId: 'session-1', messageId: 'message-1', thinkingTime: 2.5 }),
-    })).resolves.toEqual({ success: true })
-
-    expect(getHistory).toHaveBeenCalledWith('session-1', expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'chat-workspace',
-    }))
-    expect(generateTitle).toHaveBeenCalledWith('Hello web runtime', expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'chat-workspace',
-    }))
-    expect(updateMessageThinkingTime).toHaveBeenCalledWith('session-1', 'message-1', 2.5, expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'chat-workspace',
-    }))
-  })
-
-  it('exposes development chat operations over HTTP with owner isolation', async () => {
-    // P4c 第五批:会话域的 REST 面(建分支 / 取消息 / 系统标记 / pin / token 读数 /
-    // 按 id 取会话)已迁 `sessionsRouter`。这里剩下的是**不属于那 26 条**的三条:
-    // 标题生成、思考时长补写,以及 `max-tokens`(桌面侧从来没有处理者)。
+  it('exposes the one surviving session REST write over HTTP with owner isolation', async () => {
+    // P4c 第五批:会话域的 REST 面迁 `sessionsRouter`,聊天面的三条(标题生成 /
+    // 思考时长补写 / 提示词快照)迁 `chatRouter`。这里只剩 `max-tokens` ——
+    // 它桌面侧从来没有处理者,不属于任何一个已迁的域。
     const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
@@ -1111,22 +957,6 @@ describe('createOnethingHttpServer', () => {
     const created = await createSession(baseUrlValue, 'Chat ops', aliceHeaders)
     const sessionId = created.session?.id
     expect(sessionId).toBeTruthy()
-
-    const title = await fetchJson(`${baseUrlValue}/api/chat/title`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ message: 'Build a web runtime architecture for onething' }),
-    })
-    expect(title).toEqual(expect.objectContaining({
-      success: true,
-      title: expect.any(String),
-    }))
-
-    await expect(fetchJson(`${baseUrlValue}/api/chat/update-thinking-time`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId, messageId: 'nope', thinkingTime: 1.25 }),
-    })).resolves.toEqual({ success: false, error: 'Message not found' })
 
     await expect(fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/max-tokens`, {
       method: 'POST',
@@ -1796,40 +1626,6 @@ describe('createOnethingHttpServer', () => {
     expect(applyTheme).toHaveBeenCalledWith('flexoki', 'light', expect.any(Object))
     expect(refreshThemes).toHaveBeenCalledWith('/workspace', expect.any(Object))
     expect(openThemesFolder).toHaveBeenCalledWith(expect.any(Object))
-  })
-
-  it('routes the system-prompt snapshot through the runtime facade', async () => {
-    // agents / providers / models 三个域已迁到通用 RPC 通道(主线 T1 第二批),
-    // 它们的 HTTP 路由与 facade 适配器整只拔除,不留双轨 —— 所以这里只剩
-    // system-prompt 快照这一条还走 facade 的路。
-    const getSystemPromptSnapshot = vi.fn(async (sessionId: string) => ({
-      success: true,
-      snapshot: { sessionId },
-    }))
-    const server = await listen(createOnethingHttpServer({
-      runtime: createOnethingRuntimeFacade({
-        sessions: {
-          list: vi.fn(async () => []),
-          create: vi.fn(async () => ({ id: 'session-1' })),
-        },
-        events: {
-          subscribe: vi.fn(() => () => {}),
-        },
-        prompts: {
-          getSystemPromptSnapshot,
-        },
-      }),
-    }))
-
-    await expect(fetchJson(`${baseUrl(server)}/api/sessions/session-1/system-prompt-snapshot`)).resolves.toEqual({
-      success: true,
-      snapshot: { sessionId: 'session-1' },
-    })
-
-    expect(getSystemPromptSnapshot).toHaveBeenCalledWith('session-1', expect.objectContaining({
-      userId: 'local-user',
-      workspaceId: 'default',
-    }))
   })
 
   it('exposes sandboxed read-only tool routes for the web runtime', async () => {
@@ -2928,6 +2724,52 @@ describe('createOnethingHttpServer', () => {
       headers: { authorization: `Bearer ${TEST_SERVER_AUTH_TOKEN}` },
     })
     expect(authorized.status).toBe(200)
+  })
+
+  /**
+   * `POST /api/streams/abort` —— P4c 第五批为 `apps/mobile` 保留的那条 REST
+   * (拍板 #32)。要钉的是「它不是第二份实现」:请求折成 chat 域的信封,交给
+   * **同一个** RPC 处理者,再把 `data` 拆回旧 body 的形状。mobile 换成
+   * `/api/rpc` 的那天这条路由与这个用例一起消失。
+   */
+  it('serves the mobile-only /api/streams/abort as a thin adapter over the chat RPC domain', async () => {
+    resetRpcRegistryForTests()
+    const abortStream = vi.fn(async () => ({ success: true }))
+    const dispose = registerRouterHandlers(chatRouter, {
+      async getHistory() { return { success: true, messages: [] } },
+      async generateTitle() { return { success: true, title: '' } },
+      async getSystemPromptSnapshot() { return { success: false, error: 'not in this test' } },
+      async updateMessageThinkingTime() { return { success: true } },
+      abortStream,
+      async getActiveStreams() { return { success: true, sessionIds: [] } },
+    })
+    const serverRuntime = await createTestServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
+      runtime: serverRuntime.runtime,
+      workspaceRoot: serverRuntime.workspaceRoot,
+    }))
+
+    try {
+      await expect(fetchJson(`${baseUrl(server)}/api/streams/abort`, {
+        method: 'POST',
+        headers: {
+          ...contextHeaders('alice', 'abort-workspace'),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId: 'session-1' }),
+      })).resolves.toEqual({ success: true })
+      // 处理者收到的是**信封**,以及宿主自己铸的 dispatch context。
+      expect(abortStream).toHaveBeenCalledWith({ sessionId: 'session-1' }, expect.objectContaining({
+        transport: 'http',
+        ownerUid: 'alice',
+        workspaceId: 'abort-workspace',
+      }))
+    } finally {
+      dispose()
+      resetRpcRegistryForTests()
+    }
   })
 
   /**

@@ -25,9 +25,6 @@ describe('createOnethingRuntimeFacade', () => {
         list: vi.fn(async () => [{ id: 'session-1' }]),
         create: vi.fn(async (name: string) => ({ id: 'session-2', name })),
       },
-      chat: {
-        generateTitle: vi.fn(async message => ({ success: true, title: message })),
-      },
       events: {
         subscribe: vi.fn((_sessionId, handler, _options) => {
           handler({
@@ -151,10 +148,6 @@ describe('createOnethingRuntimeFacade', () => {
     await expect(runtime.appState?.get()).resolves.toEqual({ currentSessionId: 'session-1' })
     await expect(runtime.sessions.list()).resolves.toEqual([{ id: 'session-1' }])
     await expect(runtime.sessions.create('New Chat')).resolves.toEqual({ id: 'session-2', name: 'New Chat' })
-    await expect(runtime.chat?.generateTitle?.('Hello world')).resolves.toEqual({
-      success: true,
-      title: 'Hello world',
-    })
     await expect(runtime.network?.testProxy({ enabled: true, url: 'http://127.0.0.1:7890' })).resolves.toEqual({
       success: true,
       proxy: { enabled: true, url: 'http://127.0.0.1:7890' },
@@ -314,7 +307,6 @@ describe('createOnethingRuntimeFacade', () => {
 
     expect(runtime.capabilities).toBeUndefined()
     expect(runtime.appState).toBeUndefined()
-    expect(runtime.chat).toBeUndefined()
     expect(runtime.permissions).toBeUndefined()
     expect(runtime.settings).toBeUndefined()
     expect(runtime.network).toBeUndefined()

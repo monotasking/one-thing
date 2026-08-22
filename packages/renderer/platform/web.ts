@@ -557,11 +557,8 @@ const webApi = {
 		postJson("/api/themes/refresh", { projectPath }),
 	openThemesFolder: () => postJson("/api/themes/open-folder"),
 
-	getSystemPromptSnapshot: (sessionId: string) =>
-		requestJson(
-			`/api/sessions/${encodeURIComponent(sessionId)}/system-prompt-snapshot`,
-		),
-	// User prompt snippets 走通用 RPC(promptsRouter),见文件末尾的域客户端一行区。
+	// System prompt snapshot 与另外五条聊天面走通用 RPC(chatRouter,P4c 第五批);
+	// User prompt snippets 走 promptsRouter。两者都见文件末尾的域客户端一行区。
 
 	getPlugins: () => requestJson("/api/plugins"),
 	enablePlugin: (pluginId: string) =>
@@ -1226,19 +1223,9 @@ const webApi = {
 			maxTokens,
 		}),
 	onSessionMessagesChanged: createSessionMessagesChangedSubscription,
-	getChatHistory: (sessionId: string) =>
-		postJson("/api/chat/history", { sessionId }),
-	generateTitle: (message: string) => postJson("/api/chat/title", { message }),
-	updateMessageThinkingTime: (
-		sessionId: string,
-		messageId: string,
-		thinkingTime: number,
-	) =>
-		postJson("/api/chat/update-thinking-time", {
-			sessionId,
-			messageId,
-			thinkingTime,
-		}),
+	// ── Chat:六条数据面已走通用 RPC 通道(chatRouter over POST /api/rpc),
+	//    本文件不再镜像一份 REST。留下的只有第七条 —— 它在 web 上从来就不是
+	//    一次 invoke,而是命令总线上的一条命令。──
 	// 命令总线整只迁到 `session-command` RPC 域(结构债 P4c 第四批),web 壳上不再有
 	// `emitCommand`;这一条打的是同一条命令、同一个订阅者,只是换了信封。
 	resumeAfterToolConfirm: (sessionId: string, messageId: string) =>
@@ -1246,10 +1233,6 @@ const webApi = {
 			sessionId,
 			command: { type: SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM, messageId },
 		}),
-	abortStream: (sessionId?: string) =>
-		postJson("/api/streams/abort", { sessionId }),
-	getActiveStreams: () => requestJson("/api/streams/active"),
-
 	getSystemTheme: async () => ({
 		success: true,
 		theme: getPreferredColorScheme(),

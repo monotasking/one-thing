@@ -16,6 +16,7 @@ import type { SkillConditions, SkillReferenceSnapshot, SkillSource } from './ski
 import type { VoiceTranscriptMetadata } from './voice.js'
 import type { MessageOrigin } from './channel-identity.js'
 import type { SessionGoal } from './goal.js'
+import { defineRouter } from './router.js'
 
 /**
  * @deprecated Kept as a type alias for one version so old persisted
@@ -1038,3 +1039,63 @@ export interface GetSessionUserMarkersResponse {
   markers?: UserMessageMarker[]
   error?: string
 }
+
+// ============================================================================
+// chat 域的 router —— 结构债 P4c 第五批
+// ============================================================================
+
+/**
+ * chat(聊天面)域 —— **六条**方法从手写 IPC 通道搬到通用 `rpc:invoke` /
+ * `POST /api/rpc`:`GET_CHAT_HISTORY` / `GENERATE_TITLE` /
+ * `GET_SYSTEM_PROMPT_SNAPSHOT` / `UPDATE_MESSAGE_THINKING_TIME` /
+ * `ABORT_STREAM` / `GET_ACTIVE_STREAMS`。
+ *
+ * **第七条 `RESUME_AFTER_TOOL_CONFIRM` 不在这里**(拍板 #21):它往引擎递
+ * `sender`(`webContents`),而 router 的信封里没有「谁在问」这一格;web 侧同名
+ * 方法早就走命令总线(`command:resume-after-confirm`)。它留在手写 IPC 通道上,
+ * `apps/electron/src/ipc/chat.ts` 与 `@main/ipc/chat.ts` 因此只缩不删。
+ *
+ * **不在本域的聊天面**:会话的读/写是 `sessions` 域(第五批同期),命令总线的
+ * 入口是 `session-command` 域(第四批);`session:stream` / `session:event` 是
+ * **推送**,router 没有推送面。
+ *
+ * 位置参数一律折成信封(与 sessions / media / skills 同一判例):
+ * `getHistory({ sessionId })`、`generateTitle({ message })`;无参的
+ * `getActiveStreams` 按本仓惯例递 `{}`。
+ */
+export type ChatRoutes = {
+  getHistory: { input: { sessionId: string }; output: GetChatHistoryResponse }
+  generateTitle: { input: { message: string }; output: GenerateTitleResponse }
+  getSystemPromptSnapshot: {
+    input: { sessionId: string }
+    output: GetSystemPromptSnapshotResponse
+  }
+  updateMessageThinkingTime: {
+    input: { sessionId: string; messageId: string; thinkingTime: number }
+    output: { success: boolean; error?: string }
+  }
+  /**
+   * 不带 `sessionId` = 全停(旧线上 `abortStream()` 的零参调用)。`success` 的
+   * 含义是**真的停下了什么**(`abortOnethingStreamsForIpc` 的语义),不是「请求
+   * 收到了」—— 渲染层的 `stopGeneration` 靠它决定要不要就地收尾那几条消息。
+   */
+  abortStream: { input: { sessionId?: string }; output: { success: boolean } }
+  /**
+   * 字段名是 `sessionIds`(桌面那条实现的形状)。被删掉的
+   * `GET /api/streams/active` 回的是 `streams` —— 两个宿主对同一件事用了不同
+   * 的字段名,搬完之后只剩一个。
+   */
+  getActiveStreams: {
+    input: Record<string, never>
+    output: { success: boolean; sessionIds: string[] }
+  }
+}
+
+export const chatRouter = defineRouter<ChatRoutes>('chat', [
+  'getHistory',
+  'generateTitle',
+  'getSystemPromptSnapshot',
+  'updateMessageThinkingTime',
+  'abortStream',
+  'getActiveStreams',
+])
