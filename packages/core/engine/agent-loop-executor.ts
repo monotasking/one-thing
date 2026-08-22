@@ -1,3 +1,4 @@
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import {
 	coreToolCallSnapshot,
 	patchCoreToolCall,
@@ -911,12 +912,12 @@ export interface CoreAgentLoopAssistantMessage<
 export interface CoreAgentLoopAssistantCreatedEvent<
 	TMessage = CoreAgentLoopAssistantMessage,
 > {
-	type: "message:assistant-created";
+	type: typeof SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED;
 	message: TMessage;
 }
 
 export interface CoreAgentLoopStreamStartEvent {
-	type: "stream:start";
+	type: typeof SESSION_EVENT_TYPES.STREAM_START;
 	messageId: string;
 	assistantMessageId: string;
 	model: string;
@@ -986,7 +987,7 @@ export interface CompleteAgentLoopStreamWithAdaptersOptions<
 		patch: CoreAgentLoopLingeringRepair,
 	) => void;
 	emitMessageUpdated: (event: {
-		type: "message:updated";
+		type: typeof SESSION_EVENT_TYPES.MESSAGE_UPDATED;
 		messageId: string;
 		updates: CoreAgentLoopFinalMessageUpdate<TMessage>;
 	}) => CoreMaybePromise<void>;
@@ -1016,7 +1017,7 @@ export interface EmitAgentLoopFinalMessageUpdateWithAdaptersOptions<
 		patch: CoreAgentLoopLingeringRepair,
 	) => void;
 	emitMessageUpdated: (event: {
-		type: "message:updated";
+		type: typeof SESSION_EVENT_TYPES.MESSAGE_UPDATED;
 		messageId: string;
 		updates: CoreAgentLoopFinalMessageUpdate<TMessage>;
 	}) => CoreMaybePromise<void>;
@@ -1104,11 +1105,11 @@ export function createAgentLoopNextAssistantWriterPlan<
 		assistantMessage,
 		events: [
 			{
-				type: "message:assistant-created",
+				type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
 				message: assistantMessage,
 			},
 			{
-				type: "stream:start",
+				type: SESSION_EVENT_TYPES.STREAM_START,
 				messageId: assistantMessage.id,
 				assistantMessageId: assistantMessage.id,
 				model: assistantMessage.model,
@@ -1269,7 +1270,7 @@ export async function emitAgentLoopFinalMessageUpdateWithAdapters<
 	}
 
 	await options.emitMessageUpdated({
-		type: "message:updated",
+		type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
 		messageId: options.assistantMessageId,
 		updates: buildAgentLoopFinalMessageUpdate({
 			...updatedMessage,

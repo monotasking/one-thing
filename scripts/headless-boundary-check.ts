@@ -2567,6 +2567,105 @@ function checkRuntimeWiringModulesStayAtTheEdge(): void {
   assertNoMatches('packages/onething-runtime product layer does not import *.wiring modules', lines)
 }
 
+/**
+ * 会话**词汇**只有一份:`SESSION_EVENT_TYPES`(50 条)+ `SESSION_COMMAND_TYPES`(12 条)
+ * 都住在 `packages/core/events/`,shared 只做再导出。这条 check 守的是"别再手抄"。
+ *
+ * 判据形态:**精确值集**,不是命名空间前缀。两张表在这里被当场解析出来(所以加一条
+ * 事件 = 自动进禁令,不用改这个文件),然后在 core / backend / runtime / renderer /
+ * shared-events 的**非测试**源码里找与表中某个值**逐字相等**的引号字面量 —— 任何位置:
+ * `type: 'stream:error'`、`case 'message:updated':`、`onAnySession('stream:start')`、
+ * `=== 'stream:complete'` 全算。
+ *
+ * 为什么不只扫 `type:` 后面:发射点和**消费点**各占词汇的一半,只守发射点等于
+ * Shift+F12 只能列出一半引用 —— 订阅 / switch / 比较才是"谁在听"。
+ *
+ * 为什么不用 `/'[a-z]+:[a-z-]+'/` 这种前缀式模式:那会连 `media:`、`rpc:`、
+ * `plugin:notification`、`node:fs`、全局事件 `session:created` 一起误伤。精确值集
+ * 没有这个问题 —— 命中就是命中了这 62 个协议字符串之一。
+ *
+ * 豁免三类:两张表自己(它们**是**权威);测试(测试里手打字面量正是对常量值的独立
+ * 复核 —— 常量改了值而测试没改,测试就该红);注释(`codeOnlyLines` 剥掉)。
+ */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const SESSION_VOCABULARY_REGISTRY_FILES = [
+  'packages/core/events/session-event-types.ts',
+  'packages/core/events/session-command-types.ts',
+]
+
+/**
+ * 值集当场从两张表里解析出来 —— 加一条事件 / 命令**自动**进禁令,不用回来改这个文件。
+ * 每张表至少要出 10 条,否则说明表的书写形态变了而这里的解析悄悄空了(空集会让
+ * 这条 check 永远绿,那比红更糟),当场报红。
+ */
+function sessionVocabularyLiterals(): string[] | null {
+  const values: string[] = []
+  for (const relFile of SESSION_VOCABULARY_REGISTRY_FILES) {
+    const content = fs.readFileSync(path.join(root, relFile), 'utf-8')
+    const parsed = [...content.matchAll(/^\s{2}[A-Z0-9_]+:\s*'([^']+)',$/gm)].map(match => match[1])
+    if (parsed.length < 10) {
+      console.error(`[boundary] failed: ${relFile} did not parse as a vocabulary table (${parsed.length} entries)`)
+      return null
+    }
+    values.push(...parsed)
+  }
+  return values
+}
+
+function walkSourceFilesForVocabulary(dir: string, output: string[] = []): string[] {
+  if (!fs.existsSync(dir)) return output
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === '__tests__' || entry.name === 'node_modules' || entry.name === '.git') continue
+    const fullPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      walkSourceFilesForVocabulary(fullPath, output)
+    } else if (/\.(ts|tsx|vue|mts)$/.test(entry.name) && !/\.(test|spec)\.(ts|tsx)$/.test(entry.name)) {
+      output.push(fullPath)
+    }
+  }
+  return output
+}
+
+function checkSessionVocabularyUsesTheRegistry(): void {
+  const values = sessionVocabularyLiterals()
+  if (!values) {
+    process.exitCode = 1
+    return
+  }
+  const registrySources = new Set(SESSION_VOCABULARY_REGISTRY_FILES.map(relFile => path.join(root, relFile)))
+  const literalPattern = new RegExp(`(['"\`])(${values.map(escapeRegExp).join('|')})\\1`)
+  const roots = [
+    'packages/core',
+    'packages/backend',
+    'packages/onething-runtime/src',
+    'packages/renderer',
+    'packages/shared/events',
+  ]
+  const lines: string[] = []
+  for (const relRoot of roots) {
+    for (const file of walkSourceFilesForVocabulary(path.join(root, relRoot))) {
+      if (registrySources.has(file)) continue
+      // `.vue` 的 `<!-- … -->` 是注释,而 `codeOnlyLines` 只认 JS 的两种注释形态;
+      // 挖空时保留换行,行号才对得上原文(报错行仍从原文取)。
+      const original = fs.readFileSync(file, 'utf-8')
+      const content = file.endsWith('.vue')
+        ? original.replace(/<!--[\s\S]*?-->/g, block => block.replace(/[^\n]/g, ' '))
+        : original
+      const originalLines = original.split(/\r?\n/)
+      for (const { code, lineNo } of codeOnlyLines(content)) {
+        if (literalPattern.test(code)) lines.push(`${rel(file)}:${lineNo}: ${(originalLines[lineNo - 1] ?? '').trim()}`)
+      }
+    }
+  }
+  assertNoMatches(
+    'session event/command vocabulary goes through SESSION_EVENT_TYPES / SESSION_COMMAND_TYPES (no hand-typed literals)',
+    lines,
+  )
+}
+
 function checkGatewayHostBoundary(): void {
   const lines = walkFiles(path.join(root, 'packages/gateway'))
     .flatMap(file => matchingLines(file, [
@@ -9780,6 +9879,7 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
 checkCoreForbiddenImports()
 checkRuntimeHostBoundary()
 checkRuntimeWiringModulesStayAtTheEdge()
+checkSessionVocabularyUsesTheRegistry()
 checkGatewayHostBoundary()
 checkCoreOwnsGatewayConversationRuntimeProtocol()
 checkGatewayLoadsRuntimeFromHostBoundary()

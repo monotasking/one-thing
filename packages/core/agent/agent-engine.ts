@@ -1,3 +1,4 @@
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import { ContextManager, type AgentMessage } from '../context/context-manager.js'
 import { EventBus } from '../events/event-bus.js'
 import { StreamChannel } from '../events/stream-channel.js'
@@ -14,15 +15,15 @@ import type {
 } from '../providers/types.js'
 
 export type AgentEngineSessionEvent =
-  | (EventBase & { type: 'message:user-created'; message: AgentMessage & { id: string } })
-  | (EventBase & { type: 'message:assistant-created'; message: AgentMessage & { id: string } })
-  | (EventBase & { type: 'message:updated'; messageId: string; updates: Partial<AgentMessage> })
-  | (EventBase & { type: 'stream:start'; messageId: string; assistantMessageId: string; model?: string })
-  | (EventBase & { type: 'content:part'; part: { type: 'text'; text: string } })
-  | (EventBase & { type: 'tool:call'; toolCall: ToolCall })
-  | (EventBase & { type: 'tool:result'; toolCall: ToolCall; result: ToolResult })
-  | (EventBase & { type: 'stream:complete'; data: { sessionName?: string; usage?: AgentEngineUsage } })
-  | (EventBase & { type: 'stream:error'; data: { error: string; errorDetails?: string } })
+  | (EventBase & { type: typeof SESSION_EVENT_TYPES.MESSAGE_USER_CREATED; message: AgentMessage & { id: string } })
+  | (EventBase & { type: typeof SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED; message: AgentMessage & { id: string } })
+  | (EventBase & { type: typeof SESSION_EVENT_TYPES.MESSAGE_UPDATED; messageId: string; updates: Partial<AgentMessage> })
+  | (EventBase & { type: typeof SESSION_EVENT_TYPES.STREAM_START; messageId: string; assistantMessageId: string; model?: string })
+  | (EventBase & { type: typeof SESSION_EVENT_TYPES.CONTENT_PART; part: { type: 'text'; text: string } })
+  | (EventBase & { type: typeof SESSION_EVENT_TYPES.TOOL_CALL; toolCall: ToolCall })
+  | (EventBase & { type: typeof SESSION_EVENT_TYPES.TOOL_RESULT; toolCall: ToolCall; result: ToolResult })
+  | (EventBase & { type: typeof SESSION_EVENT_TYPES.STREAM_COMPLETE; data: { sessionName?: string; usage?: AgentEngineUsage } })
+  | (EventBase & { type: typeof SESSION_EVENT_TYPES.STREAM_ERROR; data: { error: string; errorDetails?: string } })
 
 export type AgentEngineStreamChunk = StreamChunkBase & Extract<
   ProviderStreamEvent,
@@ -106,16 +107,16 @@ export class AgentEngine {
 
     this.contextManager.appendMessage(options.sessionId, userMessage)
     await this.eventBus.emit(options.sessionId, {
-      type: 'message:user-created',
+      type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
       message: userMessage,
     })
 
     await this.eventBus.emit(options.sessionId, {
-      type: 'message:assistant-created',
+      type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
       message: assistantMessage,
     })
     await this.eventBus.emit(options.sessionId, {
-      type: 'stream:start',
+      type: SESSION_EVENT_TYPES.STREAM_START,
       messageId: assistantMessageId,
       assistantMessageId,
       model: this.provider.model,
@@ -152,12 +153,12 @@ export class AgentEngine {
 
         if (!turnResult.toolCalls.length) {
           await this.eventBus.emit(options.sessionId, {
-            type: 'message:updated',
+            type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
             messageId: assistantMessageId,
             updates: { content },
           })
           await this.eventBus.emit(options.sessionId, {
-            type: 'stream:complete',
+            type: SESSION_EVENT_TYPES.STREAM_COMPLETE,
             data: {
               usage: usage ?? estimateUsage(options.content, content, Date.now() - startedAt),
             },
@@ -174,7 +175,7 @@ export class AgentEngine {
         allToolCalls.push(...turnResult.toolCalls)
         for (const toolCall of turnResult.toolCalls) {
           await this.eventBus.emit(options.sessionId, {
-            type: 'tool:call',
+            type: SESSION_EVENT_TYPES.TOOL_CALL,
             toolCall,
           })
 
@@ -185,7 +186,7 @@ export class AgentEngine {
           })
 
           await this.eventBus.emit(options.sessionId, {
-            type: 'tool:result',
+            type: SESSION_EVENT_TYPES.TOOL_RESULT,
             toolCall,
             result,
           })
@@ -201,7 +202,7 @@ export class AgentEngine {
       throw new Error(`AgentEngine exceeded max tool iterations (${this.maxToolIterations})`)
     } catch (error) {
       await this.eventBus.emit(options.sessionId, {
-        type: 'stream:error',
+        type: SESSION_EVENT_TYPES.STREAM_ERROR,
         data: {
           error: error instanceof Error ? error.message : String(error),
           errorDetails: error instanceof Error ? error.stack : undefined,
@@ -250,7 +251,7 @@ export class AgentEngine {
         case 'text-delta':
           content += event.text
           await this.eventBus.emit(options.sessionId, {
-            type: 'content:part',
+            type: SESSION_EVENT_TYPES.CONTENT_PART,
             part: { type: 'text', text: event.text },
           })
           break

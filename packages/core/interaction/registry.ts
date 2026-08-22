@@ -1,3 +1,4 @@
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
 import { randomUUID } from 'node:crypto'
 import type {
@@ -59,11 +60,11 @@ export const DEFAULT_INTERACTION_ABORTED_REASON = 'Session cleared'
 
 export type InteractionBusEvent =
   | {
-      type: 'interaction:requested'
+      type: typeof SESSION_EVENT_TYPES.INTERACTION_REQUESTED
       request: InteractionRequest
     }
   | {
-      type: 'interaction:settled'
+      type: typeof SESSION_EVENT_TYPES.INTERACTION_SETTLED
       toolCallId?: string
       answer: InteractionAnswer
     }
@@ -186,7 +187,7 @@ export namespace Interaction {
     }
     entry.settle(answer)
     emitInteractionEvent(entry.request.sessionId, {
-      type: 'interaction:settled',
+      type: SESSION_EVENT_TYPES.INTERACTION_SETTLED,
       toolCallId: entry.request.toolCallId,
       answer,
     })
@@ -324,7 +325,7 @@ export namespace Interaction {
         })
         return
       }
-      emitInteractionEvent(input.sessionId, { type: 'interaction:requested', request })
+      emitInteractionEvent(input.sessionId, { type: SESSION_EVENT_TYPES.INTERACTION_REQUESTED, request })
     })
   }
 

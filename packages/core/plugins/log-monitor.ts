@@ -1,3 +1,4 @@
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import fs from 'fs'
 import path from 'path'
 
@@ -18,29 +19,29 @@ export interface CoreLogEnvelope {
 }
 
 export const CORE_LOG_MONITOR_HIGH_FREQUENCY_EVENTS = new Set([
-  'content:part',
-  'content:continuation',
-  'step:updated',
-  'tool:metadata',
-  'request:snapshot',
+  SESSION_EVENT_TYPES.CONTENT_PART,
+  SESSION_EVENT_TYPES.CONTENT_CONTINUATION,
+  SESSION_EVENT_TYPES.STEP_UPDATED,
+  SESSION_EVENT_TYPES.TOOL_METADATA,
+  SESSION_EVENT_TYPES.REQUEST_SNAPSHOT,
 ])
 
 export const CORE_LOG_MONITOR_TRACKED_EVENTS = [
-  'stream:start',
-  'stream:complete',
-  'stream:error',
-  'stream:aborted',
-  'tool:call',
-  'tool:result',
+  SESSION_EVENT_TYPES.STREAM_START,
+  SESSION_EVENT_TYPES.STREAM_COMPLETE,
+  SESSION_EVENT_TYPES.STREAM_ERROR,
+  SESSION_EVENT_TYPES.STREAM_ABORTED,
+  SESSION_EVENT_TYPES.TOOL_CALL,
+  SESSION_EVENT_TYPES.TOOL_RESULT,
   'tool_execution_start',
   'tool_execution_end',
-  'message:user-created',
-  'message:assistant-created',
-  'permission:request',
-  'skill:activated',
-  'step:added',
-  'session:renamed',
-  'messages:replaced',
+  SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
+  SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
+  SESSION_EVENT_TYPES.PERMISSION_REQUEST,
+  SESSION_EVENT_TYPES.SKILL_ACTIVATED,
+  SESSION_EVENT_TYPES.STEP_ADDED,
+  SESSION_EVENT_TYPES.SESSION_RENAMED,
+  SESSION_EVENT_TYPES.MESSAGES_REPLACED,
 ] as const
 
 export const CORE_LOG_MONITOR_LOG_FILE_PATTERN = /^agent-(\d{4}-\d{2}-\d{2})\.log$/
@@ -225,21 +226,21 @@ function stringValue(value: unknown, fallback = '?'): string {
 
 export function summarizeLogEvent(type: string, event: Record<string, unknown>): string {
   switch (type) {
-    case 'stream:start': return `Stream start (model: ${stringValue(event.model)})`
-    case 'stream:complete': return `Stream complete (${record(record(event.data).usage).totalTokens || '?'} tokens)`
-    case 'stream:error': return `Stream error: ${stringValue(record(event.data).error, 'unknown')}`
-    case 'stream:aborted': return `Stream aborted: ${stringValue(event.reason, 'user')}`
-    case 'tool:call': return `Tool call: ${stringValue(record(event.toolCall).toolName)}`
-    case 'tool:result': return `${record(event.toolCall).isError ? 'ERROR' : 'OK'} Tool: ${stringValue(record(event.toolCall).toolName)}`
+    case SESSION_EVENT_TYPES.STREAM_START: return `Stream start (model: ${stringValue(event.model)})`
+    case SESSION_EVENT_TYPES.STREAM_COMPLETE: return `Stream complete (${record(record(event.data).usage).totalTokens || '?'} tokens)`
+    case SESSION_EVENT_TYPES.STREAM_ERROR: return `Stream error: ${stringValue(record(event.data).error, 'unknown')}`
+    case SESSION_EVENT_TYPES.STREAM_ABORTED: return `Stream aborted: ${stringValue(event.reason, 'user')}`
+    case SESSION_EVENT_TYPES.TOOL_CALL: return `Tool call: ${stringValue(record(event.toolCall).toolName)}`
+    case SESSION_EVENT_TYPES.TOOL_RESULT: return `${record(event.toolCall).isError ? 'ERROR' : 'OK'} Tool: ${stringValue(record(event.toolCall).toolName)}`
     case 'tool_execution_start': return `Tool start: ${stringValue(event.toolName)}`
     case 'tool_execution_end': return `${event.isError ? 'ERROR' : 'OK'} Tool done: ${stringValue(event.toolName)}`
-    case 'message:user-created': return 'User message'
-    case 'message:assistant-created': return `Assistant (model: ${stringValue(record(event.message).model)})`
-    case 'skill:activated': return `Skill: ${stringValue(event.skillName)}`
-    case 'permission:request': return `Permission: ${stringValue(event.title)}`
-    case 'step:added': return `Step: ${stringValue(record(event.step).title)}`
-    case 'session:renamed': return `Session renamed: "${typeof event.name === 'string' ? event.name : ''}"`
-    case 'messages:replaced': return `Messages replaced (${Array.isArray(event.messages) ? event.messages.length : 0} total)`
+    case SESSION_EVENT_TYPES.MESSAGE_USER_CREATED: return 'User message'
+    case SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED: return `Assistant (model: ${stringValue(record(event.message).model)})`
+    case SESSION_EVENT_TYPES.SKILL_ACTIVATED: return `Skill: ${stringValue(event.skillName)}`
+    case SESSION_EVENT_TYPES.PERMISSION_REQUEST: return `Permission: ${stringValue(event.title)}`
+    case SESSION_EVENT_TYPES.STEP_ADDED: return `Step: ${stringValue(record(event.step).title)}`
+    case SESSION_EVENT_TYPES.SESSION_RENAMED: return `Session renamed: "${typeof event.name === 'string' ? event.name : ''}"`
+    case SESSION_EVENT_TYPES.MESSAGES_REPLACED: return `Messages replaced (${Array.isArray(event.messages) ? event.messages.length : 0} total)`
     default: return `${type}: ${JSON.stringify(event).slice(0, 80)}`
   }
 }
@@ -274,7 +275,7 @@ export function duplicateLogDiskLine(entry: CoreLogEntry): string {
 }
 
 export function shouldNotifyLogEntry(entry: CoreLogEntry): boolean {
-  return entry.eventType === 'stream:error' ||
+  return entry.eventType === SESSION_EVENT_TYPES.STREAM_ERROR ||
     (entry.eventType === 'tool_execution_end' && entry.summary.startsWith('ERROR'))
 }
 
@@ -330,7 +331,7 @@ export function normalizeLogTailCount(value: string | number | undefined, fallba
 
 export function getRecentLogErrors(logs: CoreLogEntry[], limit = 15): CoreLogEntry[] {
   return logs
-    .filter(entry => entry.eventType === 'stream:error' || (entry.eventType === 'tool_execution_end' && entry.summary.startsWith('ERROR')))
+    .filter(entry => entry.eventType === SESSION_EVENT_TYPES.STREAM_ERROR || (entry.eventType === 'tool_execution_end' && entry.summary.startsWith('ERROR')))
     .slice(-limit)
 }
 

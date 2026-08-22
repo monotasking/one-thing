@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { z } from 'zod'
+import { SESSION_EVENT_TYPES } from '@onething/core/events'
 import {
   CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS,
   CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER,
@@ -94,7 +95,7 @@ export function resolveOnethingLogMonitorConfig(raw: unknown): OnethingLogMonito
 
 export function createOnethingLogMonitorSearchToolParameters() {
   return z.object({
-    eventType: z.string().optional().describe('Filter by event type, e.g. "tool:call" or "stream:error".'),
+    eventType: z.string().optional().describe(`Filter by event type, e.g. "${SESSION_EVENT_TYPES.TOOL_CALL}" or "${SESSION_EVENT_TYPES.STREAM_ERROR}".`),
     query: z.string().optional().describe('Free-text search in event summaries. Case-insensitive.'),
     limit: z.number().optional().describe('Max results (default 30, max 100).'),
   })

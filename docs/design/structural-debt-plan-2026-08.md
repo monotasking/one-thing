@@ -294,6 +294,21 @@ runtime/<d> → core/<d>`,每步是 import;从 UI 追一个动作 `renderer 组�
    `domains/session-command.ts:192` → `core/events/ipc-operations.ts:62` → `core-stream-engine.ts:541` 派发表 →
    `runtime/src/engine/stream-engine.ts:148`。transport channels 261→**260**、bridge 1532→1487;全量 11151 绿;battery 264/0。
    **语义变化(拍板 #29,同 #23)**:server 侧命令的 per-owner "Session not found" 前置检查消失(桌面形状赢)。
+   **事件侧(08-22,用户问"events 能追吗")**:同一病根——shared `SESSION_EVENT_TYPES` 50 条,renderer/ipc-hub 用常量,
+   但 **core 发射 97 处全是字面量(36 个事件名,0 处用常量,core 禁 import shared)**、backend 88 处字面量 + 93 处常量混用
+   → 从常量 Shift+F12 看不到 core 发射点。修法同命令:`core/events/session-event-types.ts` 唯一源、shared 再导出、
+   core/backend 185 处字面量改常量、checker 新增"会话事件/命令名不得以字面量出现在 `type:` 后"防复发(§1.5 的
+   parity 测试以结构方式做掉);core 36 vs shared 50 的差集要算出来(补表 / 死条目列拍板)。
+   **落地(08-22)**:`core/events/session-event-types.ts` 50 条唯一源;shared 再导出、50 个接口 `type:` 派生同源、
+   双向穷尽断言保留;core 164 处(含 `agent-loop-executor.ts` 7 处双引号漏网)+ runtime 2 处改常量,backend 非测试本就 0 处;
+   差集:core 39 名全在 shared 50 内,补表 0、死条目 0(11 条由 backend/runtime/renderer 发射);checker 新增
+   `checkSessionVocabularyUsesTheRegistry`(值集当场从两张表解析共 62 条,匹配任意位置引号字面量、注释与测试豁免,
+   `.vue` HTML 注释也剥;投毒 4 例全抓到)。证明:`MESSAGE_CREATED` 引用含 `core-stream-engine.ts:1823`、
+   `agent-loop-runtime.ts:1159` 发射与 `ipc-hub.ts:200` 消费;`STREAM_ERROR` 35 处跨五包。battery 264/0,全量 11151 绿。
+   **顺带查出(拍板 #30,现存 bug 未修)**:`core/plugins/log-monitor.ts` 的 `CORE_LOG_MONITOR_TRACKED_EVENTS` 等 4 处写
+   `'tool_execution_start'/'tool_execution_end'`(下划线),真实事件名是 `tool:execution-start/end`——日志监视器的工具
+   开始/结束摘要永远匹配不到。**#31**:`shared/ipc/channels.ts:166 PERMISSION_REQUEST: "permission:request"` 与会话事件
+   同名(通道表与事件表命名空间重叠)。apps/mobile 手抄词汇 24+1 处、scripts/smoke-test 3 处在扫描面外。
 2. ~~`transport:gate` 改硬红~~ —— 查实它**本来就是增即红**(`compare()` 上升即 regression → exit 1,
    `--self-test` 用例 2 就是这条)。真正的缺口在别处:**CI(`.github/workflows/test.yml`)只跑
    `bun run test`,boundary / ui / log / session / transport 五道门一道都不在 CI 里**——门红两天没人理,
@@ -1343,6 +1358,8 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 | 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
 | 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
+| 30 | **(新,事件词汇统一时查出,现存 bug)`core/plugins/log-monitor.ts` 4 处 `'tool_execution_start'/'tool_execution_end'`(下划线)vs 真实事件 `tool:execution-start/end`**——日志监视器工具开始/结束摘要与"最近错误"半个条件永远匹配不到 | 改为 `SESSION_EVENT_TYPES.TOOL_EXECUTION_START/END`(一行修,但这是行为变化:监视器会开始对这两类事件产生摘要/通知) | 待拍 |
+| 31 | **(新)`shared/ipc/channels.ts:166 PERMISSION_REQUEST: "permission:request"` 与会话事件 `permission:request` 同名**(通道表与事件表命名空间重叠;checker 扫描面不含 shared/ipc) | 通道随 P4 消失即解;或先改通道值加前缀 | 待拍 |
 | 29 | **(新,session-command 入口 router 化已发生)server 侧命令的 per-owner "Session not found" 前置检查消失**(桌面线从来没有;命令的 per-owner 隔离随之消失,会话/SSE 隔离不受影响) | 同 #23 接受;多租户时在 RpcContext 层统一 | 已按默认执行,待知会 |
 | 28 | **(新,P4c-3 已发生)media 迁 router 后 `filePath`/`thumbnailPath` 以 store 绝对路径出到浏览器**(旧 server 壳改写为 `/api/media/file/<name>` 兼有遮蔽之效;取文件 URL 规则改由渲染侧 `services/media-src.ts` 按 environment 决定) | 单用户 + loopback + Bearer 下与 project-dirs/skills 口径一致,接受;多租户前在 RpcContext 层统一处理 | 已按默认执行,待知会 |
 | 27 | **(新,P4c-2 已发生)skills 迁 router 后 web/server 不再扫 `owners/<uid>/<wid>/skills` 的第二份技能表,改读桌面 core 同一份**;`executeSkill` 从未实现的整条链(web 桩 + `/api/skills/execute` + adapter)删除 | 与 agents/models/#20 同判例接受 | 已按默认执行,待知会 |

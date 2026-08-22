@@ -1,3 +1,4 @@
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
 import { randomUUID } from 'node:crypto'
 import type { JsonObject } from '../json.js'
@@ -21,7 +22,7 @@ export interface PermissionCommandEnvelope<TCommand = unknown> {
 
 export type PermissionBusEvent =
   | {
-      type: 'permission:request'
+      type: typeof SESSION_EVENT_TYPES.PERMISSION_REQUEST
       requestId: string
       targetChannel: string
       toolCallId: string
@@ -34,13 +35,13 @@ export type PermissionBusEvent =
       workspaceId?: string
     }
   | {
-      type: 'permission:queued'
+      type: typeof SESSION_EVENT_TYPES.PERMISSION_QUEUED
       requestId: string
       toolCallId: string
       messageId: string
     }
   | {
-      type: 'permission:settled'
+      type: typeof SESSION_EVENT_TYPES.PERMISSION_SETTLED
       requestId: string
       toolCallIds: string[]
       decision: 'allowed' | 'rejected'
@@ -218,7 +219,7 @@ export namespace Permission {
     const toolCallIds = [entry.info.callId, ...entry.followerCallIds]
       .filter((id): id is string => Boolean(id))
     emitPermissionEvent(entry.info.sessionId, {
-      type: 'permission:settled',
+      type: SESSION_EVENT_TYPES.PERMISSION_SETTLED,
       requestId: entry.info.id,
       toolCallIds,
       decision,
@@ -273,7 +274,7 @@ export namespace Permission {
     }
     const info = entry.info
     eventBus.emit(sessionId, {
-      type: 'permission:request',
+      type: SESSION_EVENT_TYPES.PERMISSION_REQUEST,
       requestId: info.id,
       targetChannel: info.targetChannel ?? 'ipc',
       toolCallId: info.callId || '',
@@ -284,7 +285,7 @@ export namespace Permission {
       metadata: info.metadata,
       userId: info.userId,
       workspaceId: info.workspaceId,
-    }).catch(err => log.error('event emit failed', { sessionId, eventType: 'permission:request' }, err))
+    }).catch(err => log.error('event emit failed', { sessionId, eventType: SESSION_EVENT_TYPES.PERMISSION_REQUEST }, err))
   }
 
   export function initialize(
@@ -443,7 +444,7 @@ export namespace Permission {
         if (info.callId) {
           equivalent.followerCallIds.push(info.callId)
           emitPermissionEvent(input.sessionId, {
-            type: 'permission:queued',
+            type: SESSION_EVENT_TYPES.PERMISSION_QUEUED,
             requestId: equivalent.info.id,
             toolCallId: info.callId,
             messageId: info.messageId,
@@ -473,7 +474,7 @@ export namespace Permission {
       emitNextPrompt(input.sessionId, session)
       if (!entry.emitted && info.callId) {
         emitPermissionEvent(input.sessionId, {
-          type: 'permission:queued',
+          type: SESSION_EVENT_TYPES.PERMISSION_QUEUED,
           requestId: info.id,
           toolCallId: info.callId,
           messageId: info.messageId,

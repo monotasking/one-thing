@@ -1,3 +1,4 @@
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import type { EventBase, StreamChunkBase } from '../events/index.js'
 import { toLogger, type CompatLogger } from '../logging/index.js'
 import type { JsonObject } from '../json.js'
@@ -32,22 +33,22 @@ type CoreEventOnlySessionEventBody<
   TStreamCompleteData = unknown,
   TStreamErrorData = unknown,
 > =
-  | { type: 'tool:call'; toolCall: TToolCall }
-  | { type: 'tool:result'; toolCall: TToolCall }
-  | { type: 'tool:input-start'; toolCallId: string; toolName: string; toolCall: TToolCall }
-  | { type: 'tool:input-end'; toolCallId: string; stepId?: string; toolCall: TToolCall; receivedAt: number; finalizedBy: CoreToolArgsFinalizedBy }
-  | { type: 'tool:execution-start'; toolCallId: string; stepId: string; toolName: string; args: JsonObject; startTime?: number }
-  | { type: 'tool:execution-update'; toolCallId: string; stepId: string; partialResult: TToolPartialResult }
-  | { type: 'tool:execution-end'; toolCallId: string; stepId: string; result?: TToolResult; isError?: boolean; error?: string; durationMs?: number }
-  | { type: 'content:part'; part: TContentPart }
-  | { type: 'content:continuation'; turnIndex?: number }
-  | { type: 'step:added'; step: TStep }
-  | { type: 'step:updated'; stepId: string; updates: Partial<TStep> }
-  | { type: 'stream:complete'; data: TStreamCompleteData }
-  | { type: 'stream:error'; data: TStreamErrorData }
-  | { type: 'stream:aborted'; reason?: string }
-  | { type: 'context:size-updated'; contextSize: number }
-  | { type: 'skill:activated'; skillName: string }
+  | { type: typeof SESSION_EVENT_TYPES.TOOL_CALL; toolCall: TToolCall }
+  | { type: typeof SESSION_EVENT_TYPES.TOOL_RESULT; toolCall: TToolCall }
+  | { type: typeof SESSION_EVENT_TYPES.TOOL_INPUT_START; toolCallId: string; toolName: string; toolCall: TToolCall }
+  | { type: typeof SESSION_EVENT_TYPES.TOOL_INPUT_END; toolCallId: string; stepId?: string; toolCall: TToolCall; receivedAt: number; finalizedBy: CoreToolArgsFinalizedBy }
+  | { type: typeof SESSION_EVENT_TYPES.TOOL_EXECUTION_START; toolCallId: string; stepId: string; toolName: string; args: JsonObject; startTime?: number }
+  | { type: typeof SESSION_EVENT_TYPES.TOOL_EXECUTION_UPDATE; toolCallId: string; stepId: string; partialResult: TToolPartialResult }
+  | { type: typeof SESSION_EVENT_TYPES.TOOL_EXECUTION_END; toolCallId: string; stepId: string; result?: TToolResult; isError?: boolean; error?: string; durationMs?: number }
+  | { type: typeof SESSION_EVENT_TYPES.CONTENT_PART; part: TContentPart }
+  | { type: typeof SESSION_EVENT_TYPES.CONTENT_CONTINUATION; turnIndex?: number }
+  | { type: typeof SESSION_EVENT_TYPES.STEP_ADDED; step: TStep }
+  | { type: typeof SESSION_EVENT_TYPES.STEP_UPDATED; stepId: string; updates: Partial<TStep> }
+  | { type: typeof SESSION_EVENT_TYPES.STREAM_COMPLETE; data: TStreamCompleteData }
+  | { type: typeof SESSION_EVENT_TYPES.STREAM_ERROR; data: TStreamErrorData }
+  | { type: typeof SESSION_EVENT_TYPES.STREAM_ABORTED; reason?: string }
+  | { type: typeof SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED; contextSize: number }
+  | { type: typeof SESSION_EVENT_TYPES.SKILL_ACTIVATED; skillName: string }
 
 /**
  * 每条事件都盖上它所属的 assistant 消息号。
@@ -298,71 +299,71 @@ export function createCoreEventOnlyEmitter<
     },
 
     sendToolCall(toolCall) {
-      emitSafe({ type: 'tool:call', toolCall })
+      emitSafe({ type: SESSION_EVENT_TYPES.TOOL_CALL, toolCall })
     },
 
     sendToolResult(toolCall) {
-      emitSafe({ type: 'tool:result', toolCall })
+      emitSafe({ type: SESSION_EVENT_TYPES.TOOL_RESULT, toolCall })
     },
 
     sendToolInputStart(toolCallId, toolName, toolCall) {
-      emitSafe({ type: 'tool:input-start', toolCallId, toolName, toolCall })
+      emitSafe({ type: SESSION_EVENT_TYPES.TOOL_INPUT_START, toolCallId, toolName, toolCall })
     },
 
     sendToolInputEnd(toolCallId, stepId, toolCall, receivedAt, finalizedBy) {
-      emitSafe({ type: 'tool:input-end', toolCallId, stepId, toolCall, receivedAt, finalizedBy })
+      emitSafe({ type: SESSION_EVENT_TYPES.TOOL_INPUT_END, toolCallId, stepId, toolCall, receivedAt, finalizedBy })
     },
 
     sendToolExecutionStart(toolCallId, stepId, toolName, args, startTime) {
-      emitSafe({ type: 'tool:execution-start', toolCallId, stepId, toolName, args, startTime })
+      emitSafe({ type: SESSION_EVENT_TYPES.TOOL_EXECUTION_START, toolCallId, stepId, toolName, args, startTime })
     },
 
     sendToolExecutionUpdate(toolCallId, stepId, partialResult) {
-      emitSafe({ type: 'tool:execution-update', toolCallId, stepId, partialResult })
+      emitSafe({ type: SESSION_EVENT_TYPES.TOOL_EXECUTION_UPDATE, toolCallId, stepId, partialResult })
     },
 
     sendToolExecutionEnd(toolCallId, stepId, result, isError, error, durationMs) {
-      emitSafe({ type: 'tool:execution-end', toolCallId, stepId, result, isError, error, durationMs })
+      emitSafe({ type: SESSION_EVENT_TYPES.TOOL_EXECUTION_END, toolCallId, stepId, result, isError, error, durationMs })
     },
 
     sendContentPart(part) {
-      emitSafe({ type: 'content:part', part })
+      emitSafe({ type: SESSION_EVENT_TYPES.CONTENT_PART, part })
     },
 
     sendContinuation(turnIndex?) {
-      emitSafe({ type: 'content:continuation', turnIndex })
+      emitSafe({ type: SESSION_EVENT_TYPES.CONTENT_CONTINUATION, turnIndex })
     },
 
     sendStepAdded(step) {
       store?.addMessageStep?.(sessionId, assistantMessageId, step)
-      emitSafe({ type: 'step:added', step })
+      emitSafe({ type: SESSION_EVENT_TYPES.STEP_ADDED, step })
     },
 
     sendStepUpdated(stepId, updates) {
       store?.updateMessageStep?.(sessionId, assistantMessageId, stepId, updates)
-      emitSafe({ type: 'step:updated', stepId, updates })
+      emitSafe({ type: SESSION_EVENT_TYPES.STEP_UPDATED, stepId, updates })
     },
 
     sendStreamComplete(data) {
-      emitSafe({ type: 'stream:complete', data })
+      emitSafe({ type: SESSION_EVENT_TYPES.STREAM_COMPLETE, data })
     },
 
     sendStreamError(data) {
-      emitSafe({ type: 'stream:error', data })
+      emitSafe({ type: SESSION_EVENT_TYPES.STREAM_ERROR, data })
     },
 
     sendStreamAborted(reason) {
-      emitSafe({ type: 'stream:aborted', reason })
+      emitSafe({ type: SESSION_EVENT_TYPES.STREAM_ABORTED, reason })
     },
 
     sendContextSizeUpdate(contextSize) {
       store?.updateSessionContextSize?.(sessionId, contextSize)
-      emitSafe({ type: 'context:size-updated', contextSize })
+      emitSafe({ type: SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED, contextSize })
     },
 
     sendSkillActivated(skillName) {
       store?.updateMessageSkill?.(sessionId, assistantMessageId, skillName)
-      emitSafe({ type: 'skill:activated', skillName })
+      emitSafe({ type: SESSION_EVENT_TYPES.SKILL_ACTIVATED, skillName })
     },
   }
 }

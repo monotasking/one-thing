@@ -17,77 +17,28 @@ import type {
 import type { InteractionAnswer, InteractionRequest } from '@onething/core/interaction'
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
+import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import type { SessionEventType } from '@onething/core/events'
 
 // ── Type registry ───────────────────────────────
 
 /**
- * 事件 type 字面量的**单一权威**。命名风格沿用 `IPC_CHANNELS`:键是
- * SCREAMING_SNAKE,值与线上格式逐字相同。
+ * 事件 type 字面量的**单一权威**现在在 core(`packages/core/events/session-event-types.ts`)
+ * —— core 禁 import `@shared`,表留在这里就意味着引擎发射点 / 会话状态机 / 权限 / 交互
+ * 只能把同一批字符串再手抄一遍,词汇分成两份、find-references 断在中间。表搬过去之后
+ * 这里只做再导出:所有 `import { SESSION_EVENT_TYPES } from '@shared/events/session-events'`
+ * 一字不改,但它们和 `CoreStreamEngine` 的发射点用的是同一个标识符。
  *
- * 存在的理由与 `SESSION_STREAM_TERMINAL_EVENTS` 同一条:手打的 `'stream:complete'`
- * 散在四百多处,改名时没有任何一处会编译红 —— 拼错一个字母只表现为"这条事件永远
- * 不到",而那是最难归因的一类。收进这张表之后,拼错就是一个不存在的属性名。
+ * (做法与 `session-commands.ts` 从 `@onething/core/events`、`shared/tool-errors.ts` 从
+ * `@onething/core/permission` 再导出同一条。)
  *
- * 下面的 `satisfies` 保证"没有多的",`_eventTableIsExhaustive` 保证"没有少的"
- * —— 双向,判据来自 `SessionEvent` 联合本身,不是人的记性。
- *
- * 注:`packages/core` 因边界规则不能 import `@shared`,它手抄的那份形状保持字面量,
- * 由核心侧自己的焊点断言护着。
+ * 事件的**载荷形状**仍然留在本文件 —— 它们要引用 `@shared/ipc/*` 的消息 / 权限 / 协作
+ * 类型,core 够不着。下面那条双向穷尽断言因此仍是真闸:core 那张表多一条 / 少一条,
+ * 这里都编译不过(每个接口的 `type:` 都写成 `typeof SESSION_EVENT_TYPES.X`,拼错就是
+ * 一个不存在的属性名)。
  */
-export const SESSION_EVENT_TYPES = {
-  STREAM_START: 'stream:start',
-  STREAM_COMPLETE: 'stream:complete',
-  STREAM_ERROR: 'stream:error',
-  STREAM_ABORTED: 'stream:aborted',
-  STREAM_USAGE: 'stream:usage',
-  TOOL_CALL: 'tool:call',
-  TOOL_RESULT: 'tool:result',
-  TOOL_INPUT_START: 'tool:input-start',
-  TOOL_INPUT_END: 'tool:input-end',
-  TOOL_EXECUTION_START: 'tool:execution-start',
-  TOOL_EXECUTION_UPDATE: 'tool:execution-update',
-  TOOL_EXECUTION_END: 'tool:execution-end',
-  STEP_ADDED: 'step:added',
-  STEP_UPDATED: 'step:updated',
-  CONTENT_PART: 'content:part',
-  CONTENT_CONTINUATION: 'content:continuation',
-  CONTEXT_SIZE_UPDATED: 'context:size-updated',
-  CONTEXT_COMPACT_STARTED: 'context:compact-started',
-  CONTEXT_COMPACT_PROGRESS: 'context:compact-progress',
-  CONTEXT_COMPACT_COMPLETED: 'context:compact-completed',
-  SESSION_VARIABLES_UPDATED: 'session:variables-updated',
-  SESSION_GOAL_UPDATED: 'session:goal-updated',
-  STREAM_PARAMS_RESOLVING: 'stream:params-resolving',
-  REQUEST_SNAPSHOT: 'request:snapshot',
-  SKILL_ACTIVATED: 'skill:activated',
-  PERMISSION_REQUEST: 'permission:request',
-  PERMISSION_TIMEOUT: 'permission:timeout',
-  PERMISSION_QUEUED: 'permission:queued',
-  PERMISSION_SETTLED: 'permission:settled',
-  INTERACTION_REQUESTED: 'interaction:requested',
-  INTERACTION_SETTLED: 'interaction:settled',
-  TOOL_EXECUTING: 'tool:executing',
-  TOOL_METADATA: 'tool:metadata',
-  SESSION_RENAMED: 'session:renamed',
-  SESSION_COLLAB_UPDATED: 'session:collab-updated',
-  STEERING_QUEUED: 'steering:queued',
-  STEERING_CONSUMED: 'steering:consumed',
-  STEERING_RETRACTED: 'steering:retracted',
-  SCRATCHPAD_CONSUMED: 'scratchpad:consumed',
-  MESSAGE_USER_CREATED: 'message:user-created',
-  MESSAGE_CREATED: 'message:created',
-  MESSAGE_ASSISTANT_CREATED: 'message:assistant-created',
-  MESSAGE_UPDATED: 'message:updated',
-  MESSAGE_DELETED: 'message:deleted',
-  MESSAGES_REPLACED: 'messages:replaced',
-  COLLAB_BOARD_CHANGED: 'collab:board-changed',
-  COLLAB_TYPING: 'collab:typing',
-  COLLAB_TURN_ACTIVE: 'collab:turn-active',
-  COLLAB_COORDINATOR_CHANGED: 'collab:coordinator-changed',
-  COLLAB_AGENT_CHANGED: 'collab:agent-changed',
-} as const satisfies Record<string, SessionEvent['type']>
-
-export type SessionEventType = (typeof SESSION_EVENT_TYPES)[keyof typeof SESSION_EVENT_TYPES]
+export { SESSION_EVENT_TYPES } from '@onething/core/events'
+export type { SessionEventType } from '@onething/core/events'
 
 // 双向穷尽:表少一个键(某个事件没进表)或联合少一个成员(表里有陈年死字符串)
 // 都在这里编译不过。写法与下面的 `_terminalListIsExhaustive` 同款。
@@ -129,24 +80,24 @@ export interface StreamErrorData {
 }
 
 export interface StreamStartEvent {
-  type: 'stream:start'
+  type: typeof SESSION_EVENT_TYPES.STREAM_START
   messageId: string
   assistantMessageId: string  // alias for messageId (backward compat)
   model?: string
 }
 
 export interface StreamCompleteEvent {
-  type: 'stream:complete'
+  type: typeof SESSION_EVENT_TYPES.STREAM_COMPLETE
   data: StreamCompleteData
 }
 
 export interface StreamErrorEvent {
-  type: 'stream:error'
+  type: typeof SESSION_EVENT_TYPES.STREAM_ERROR
   data: StreamErrorData
 }
 
 export interface StreamAbortedEvent {
-  type: 'stream:aborted'
+  type: typeof SESSION_EVENT_TYPES.STREAM_ABORTED
   reason?: string
 }
 
@@ -158,7 +109,7 @@ export interface StreamAbortedEvent {
  * `usage` is this turn's; `accumulated` is the running total for the stream.
  */
 export interface StreamUsageEvent {
-  type: 'stream:usage'
+  type: typeof SESSION_EVENT_TYPES.STREAM_USAGE
   messageId: string
   turnIndex?: number
   usage: StreamCompleteUsage
@@ -212,17 +163,17 @@ interface MessageScopedEvent {
 }
 
 export interface ToolCallEvent extends MessageScopedEvent {
-  type: 'tool:call'
+  type: typeof SESSION_EVENT_TYPES.TOOL_CALL
   toolCall: ToolCall
 }
 
 export interface ToolResultEvent extends MessageScopedEvent {
-  type: 'tool:result'
+  type: typeof SESSION_EVENT_TYPES.TOOL_RESULT
   toolCall: ToolCall
 }
 
 export interface ToolInputStartEvent extends MessageScopedEvent {
-  type: 'tool:input-start'
+  type: typeof SESSION_EVENT_TYPES.TOOL_INPUT_START
   toolCallId: string
   toolName: string
   toolCall: ToolCall
@@ -234,7 +185,7 @@ export interface ToolInputStartEvent extends MessageScopedEvent {
  * never on a frontend guess about argument completeness.
  */
 export interface ToolInputEndEvent extends MessageScopedEvent {
-  type: 'tool:input-end'
+  type: typeof SESSION_EVENT_TYPES.TOOL_INPUT_END
   toolCallId: string
   stepId?: string
   toolCall: ToolCall
@@ -245,7 +196,7 @@ export interface ToolInputEndEvent extends MessageScopedEvent {
 }
 
 export interface ToolExecutionStartEvent extends MessageScopedEvent {
-  type: 'tool:execution-start'
+  type: typeof SESSION_EVENT_TYPES.TOOL_EXECUTION_START
   toolCallId: string
   stepId: string
   toolName: string
@@ -255,14 +206,14 @@ export interface ToolExecutionStartEvent extends MessageScopedEvent {
 }
 
 export interface ToolExecutionUpdateEvent extends MessageScopedEvent {
-  type: 'tool:execution-update'
+  type: typeof SESSION_EVENT_TYPES.TOOL_EXECUTION_UPDATE
   toolCallId: string
   stepId: string
   partialResult: ToolPartialResult
 }
 
 export interface ToolExecutionEndEvent extends MessageScopedEvent {
-  type: 'tool:execution-end'
+  type: typeof SESSION_EVENT_TYPES.TOOL_EXECUTION_END
   toolCallId: string
   stepId: string
   result?: ToolResult
@@ -275,12 +226,12 @@ export interface ToolExecutionEndEvent extends MessageScopedEvent {
 // ── Step events ─────────────────────────────────
 
 export interface StepAddedEvent extends MessageScopedEvent {
-  type: 'step:added'
+  type: typeof SESSION_EVENT_TYPES.STEP_ADDED
   step: Step
 }
 
 export interface StepUpdatedEvent extends MessageScopedEvent {
-  type: 'step:updated'
+  type: typeof SESSION_EVENT_TYPES.STEP_UPDATED
   stepId: string
   updates: Partial<Step>
 }
@@ -288,19 +239,19 @@ export interface StepUpdatedEvent extends MessageScopedEvent {
 // ── Content events ──────────────────────────────
 
 export interface ContentPartEvent {
-  type: 'content:part'
+  type: typeof SESSION_EVENT_TYPES.CONTENT_PART
   part: ContentPart
 }
 
 export interface ContentContinuationEvent {
-  type: 'content:continuation'
+  type: typeof SESSION_EVENT_TYPES.CONTENT_CONTINUATION
   turnIndex?: number
 }
 
 // ── Context events ──────────────────────────────
 
 export interface ContextSizeUpdatedEvent {
-  type: 'context:size-updated'
+  type: typeof SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED
   contextSize: number
 }
 
@@ -311,7 +262,7 @@ export interface ContextSizeUpdatedEvent {
  * 一条,手动路径带 requestId。
  */
 export interface ContextCompactStartedEvent {
-  type: 'context:compact-started'
+  type: typeof SESSION_EVENT_TYPES.CONTEXT_COMPACT_STARTED
   requestId?: string
   auto?: boolean
   compactedThroughMessageId?: string
@@ -323,13 +274,13 @@ export interface ContextCompactStartedEvent {
  * 三条调用路(手动 / 发送前自动 / 回合中 adapters)各自转发到 eventBus。
  */
 export interface ContextCompactProgressEvent {
-  type: 'context:compact-progress'
+  type: typeof SESSION_EVENT_TYPES.CONTEXT_COMPACT_PROGRESS
   chunk: number
   totalChunks: number
 }
 
 export interface ContextCompactCompletedEvent {
-  type: 'context:compact-completed'
+  type: typeof SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED
   requestId?: string
   success: boolean
   skipped?: boolean
@@ -338,14 +289,14 @@ export interface ContextCompactCompletedEvent {
 }
 
 export interface SessionVariablesUpdatedEvent {
-  type: 'session:variables-updated'
+  type: typeof SESSION_EVENT_TYPES.SESSION_VARIABLES_UPDATED
   workingDirectory?: string
   workingDirectoryRoots?: string[]
   variables: ContextVariable[]
 }
 
 export interface SessionGoalUpdatedEvent {
-  type: 'session:goal-updated'
+  type: typeof SESSION_EVENT_TYPES.SESSION_GOAL_UPDATED
   /** The goal that just changed; null after the goal is cleared. */
   goal: SessionGoal | null
   /**
@@ -361,7 +312,7 @@ export interface SessionGoalUpdatedEvent {
 // ── Params events ───────────────────────────────
 
 export interface StreamParamsResolvingEvent {
-  type: 'stream:params-resolving'
+  type: typeof SESSION_EVENT_TYPES.STREAM_PARAMS_RESOLVING
   messageId: string
   params: {
     providerId: string
@@ -392,7 +343,7 @@ export interface RequestMessageSnapshot {
 }
 
 export interface RequestSnapshotEvent {
-  type: 'request:snapshot'
+  type: typeof SESSION_EVENT_TYPES.REQUEST_SNAPSHOT
   /** Pre-flight snapshot of an outbound model request, captured by the
    *  stream runtime right before provider execution. The Inspector panel
    *  keeps a small ring buffer of these per session. */
@@ -414,14 +365,14 @@ export interface RequestSnapshotEvent {
 // ── Skill events ────────────────────────────────
 
 export interface SkillActivatedEvent {
-  type: 'skill:activated'
+  type: typeof SESSION_EVENT_TYPES.SKILL_ACTIVATED
   skillName: string
 }
 
 // ── Permission events ───────────────────────────
 
 export interface PermissionRequestEvent {
-  type: 'permission:request'
+  type: typeof SESSION_EVENT_TYPES.PERMISSION_REQUEST
   requestId: string
   /** The channel that should handle this permission request */
   targetChannel: string
@@ -437,7 +388,7 @@ export interface PermissionRequestEvent {
 }
 
 export interface PermissionTimeoutEvent {
-  type: 'permission:timeout'
+  type: typeof SESSION_EVENT_TYPES.PERMISSION_TIMEOUT
   requestId: string
 }
 
@@ -448,7 +399,7 @@ export interface PermissionTimeoutEvent {
  * "waiting for permission" state on the tool call instead of "executing".
  */
 export interface PermissionQueuedEvent {
-  type: 'permission:queued'
+  type: typeof SESSION_EVENT_TYPES.PERMISSION_QUEUED
   /** The pending request this ask is queued behind / coalesced into. */
   requestId: string
   toolCallId: string
@@ -462,7 +413,7 @@ export interface PermissionQueuedEvent {
  * originate the response (e.g. renderer when approved remotely).
  */
 export interface PermissionSettledEvent {
-  type: 'permission:settled'
+  type: typeof SESSION_EVENT_TYPES.PERMISSION_SETTLED
   requestId: string
   /** Head ask's tool call plus all coalesced followers'. */
   toolCallIds: string[]
@@ -483,7 +434,7 @@ export interface PermissionSettledEvent {
  * 到点结成 timeout(原则 4)。
  */
 export interface InteractionRequestedEvent {
-  type: 'interaction:requested'
+  type: typeof SESSION_EVENT_TYPES.INTERACTION_REQUESTED
   request: InteractionRequest
 }
 
@@ -495,7 +446,7 @@ export interface InteractionRequestedEvent {
  * `toolCallId` 是卡片的归位键。
  */
 export interface InteractionSettledEvent {
-  type: 'interaction:settled'
+  type: typeof SESSION_EVENT_TYPES.INTERACTION_SETTLED
   toolCallId?: string
   answer: InteractionAnswer
 }
@@ -503,13 +454,13 @@ export interface InteractionSettledEvent {
 // ── Tool lifecycle (fine-grained) ───────────────
 
 export interface ToolExecutingEvent {
-  type: 'tool:executing'
+  type: typeof SESSION_EVENT_TYPES.TOOL_EXECUTING
   toolCallId: string
   title: string
 }
 
 export interface ToolMetadataEvent {
-  type: 'tool:metadata'
+  type: typeof SESSION_EVENT_TYPES.TOOL_METADATA
   toolCallId: string
   metadata: JsonObject
 }
@@ -517,7 +468,7 @@ export interface ToolMetadataEvent {
 // ── Session events ──────────────────────────────
 
 export interface SessionRenamedEvent {
-  type: 'session:renamed'
+  type: typeof SESSION_EVENT_TYPES.SESSION_RENAMED
   name: string
 }
 
@@ -537,7 +488,7 @@ export interface SessionRenamedEvent {
  * 的改名照旧由 `session:renamed` 负责,这里只在 room 写入顺带改了名时填上。
  */
 export interface SessionCollabUpdatedEvent {
-  type: 'session:collab-updated'
+  type: typeof SESSION_EVENT_TYPES.SESSION_COLLAB_UPDATED
   /** 会话名(房名)。没有变化时也照发 —— 快照哲学:接收方只认最新那一份。 */
   name?: string
   /** 房间配置的全量快照。房间被降级/删除这种事不走这条通道。 */
@@ -548,19 +499,19 @@ export interface SessionCollabUpdatedEvent {
 
 /** A steering message was persisted and queued; retractable until consumed. */
 export interface SteeringQueuedEvent {
-  type: 'steering:queued'
+  type: typeof SESSION_EVENT_TYPES.STEERING_QUEUED
   messageId: string
 }
 
 /** Queued steering messages were drained into the next model turn. */
 export interface SteeringConsumedEvent {
-  type: 'steering:consumed'
+  type: typeof SESSION_EVENT_TYPES.STEERING_CONSUMED
   messageIds: string[]
 }
 
 /** A pending steering message was retracted before being consumed. */
 export interface SteeringRetractedEvent {
-  type: 'steering:retracted'
+  type: typeof SESSION_EVENT_TYPES.STEERING_RETRACTED
   messageId: string
 }
 
@@ -571,7 +522,7 @@ export interface SteeringRetractedEvent {
  * `version` 就是纸的文件 mtime,与渲染层握着的版本号是同一个数。
  */
 export interface ScratchpadConsumedEvent {
-  type: 'scratchpad:consumed'
+  type: typeof SESSION_EVENT_TYPES.SCRATCHPAD_CONSUMED
   version: number
   turn: number
 }
@@ -579,33 +530,33 @@ export interface ScratchpadConsumedEvent {
 // ── Message events ──────────────────────────────
 
 export interface MessageUserCreatedEvent {
-  type: 'message:user-created'
+  type: typeof SESSION_EVENT_TYPES.MESSAGE_USER_CREATED
   message: ChatMessage
 }
 
 export interface MessageCreatedEvent {
-  type: 'message:created'
+  type: typeof SESSION_EVENT_TYPES.MESSAGE_CREATED
   message: ChatMessage
 }
 
 export interface MessageAssistantCreatedEvent {
-  type: 'message:assistant-created'
+  type: typeof SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED
   message: ChatMessage
 }
 
 export interface MessageUpdatedEvent {
-  type: 'message:updated'
+  type: typeof SESSION_EVENT_TYPES.MESSAGE_UPDATED
   messageId: string
   updates: Partial<ChatMessage>
 }
 
 export interface MessageDeletedEvent {
-  type: 'message:deleted'
+  type: typeof SESSION_EVENT_TYPES.MESSAGE_DELETED
   messageId: string
 }
 
 export interface MessagesReplacedEvent {
-  type: 'messages:replaced'
+  type: typeof SESSION_EVENT_TYPES.MESSAGES_REPLACED
   messages: ChatMessage[]
 }
 
@@ -613,14 +564,14 @@ export interface MessagesReplacedEvent {
 
 /** The room's board changed; carries the full (small) snapshot. */
 export interface CollabBoardChangedEvent {
-  type: 'collab:board-changed'
+  type: typeof SESSION_EVENT_TYPES.COLLAB_BOARD_CHANGED
   board: CollabBoard
 }
 
 /** A member is about to speak (queued/driving) or has stopped (settled).
  *  IM semantics: true may end with no message at all — "typed and deleted". */
 export interface CollabTypingEvent {
-  type: 'collab:typing'
+  type: typeof SESSION_EVENT_TYPES.COLLAB_TYPING
   agentId: string
   typing: boolean
 }
@@ -637,7 +588,7 @@ export interface CollabTypingEvent {
  * `agentId` names who holds the floor, for the button's tooltip.
  */
 export interface CollabTurnActiveEvent {
-  type: 'collab:turn-active'
+  type: typeof SESSION_EVENT_TYPES.COLLAB_TURN_ACTIVE
   agentId: string
   active: boolean
 }
@@ -650,7 +601,7 @@ export interface CollabTurnActiveEvent {
  * 后端不为计时广播。
  */
 export interface CollabCoordinatorChangedEvent {
-  type: 'collab:coordinator-changed'
+  type: typeof SESSION_EVENT_TYPES.COLLAB_COORDINATOR_CHANGED
   state: CollabCoordinatorState
 }
 
@@ -669,7 +620,7 @@ export interface CollabCoordinatorChangedEvent {
  * 归档。私聊房与群房因此都能收到,而没开着的房自然不占带宽。
  */
 export interface CollabAgentChangedEvent {
-  type: 'collab:agent-changed'
+  type: typeof SESSION_EVENT_TYPES.COLLAB_AGENT_CHANGED
   activity: CollabAgentActivitySnapshot
 }
 

@@ -1,3 +1,4 @@
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
 import type { SessionCommandType } from '../events/session-command-types.js'
 import type { Unsubscribe } from '../events/types.js'
@@ -672,7 +673,7 @@ export class CoreStreamEngine<
       queue.enqueue(pendingMessage)
       if (pendingMessage.id) {
         this.eventBus?.emit(sessionId, {
-          type: 'steering:queued',
+          type: SESSION_EVENT_TYPES.STEERING_QUEUED,
           messageId: pendingMessage.id,
         }).catch(err => this.logError('steering:queued emit error:', err))
       }
@@ -722,11 +723,11 @@ export class CoreStreamEngine<
       this.logError('Retracted steering message missing from session store:', messageId)
     }
     this.eventBus?.emit(sessionId, {
-      type: 'message:deleted',
+      type: SESSION_EVENT_TYPES.MESSAGE_DELETED,
       messageId,
     }).catch(err => this.logError('message:deleted emit error:', err))
     this.eventBus?.emit(sessionId, {
-      type: 'steering:retracted',
+      type: SESSION_EVENT_TYPES.STEERING_RETRACTED,
       messageId,
     }).catch(err => this.logError('steering:retracted emit error:', err))
     return true
@@ -862,7 +863,7 @@ export class CoreStreamEngine<
       this.store.addMessage(sessionId, userMessage)
 
       await this.eventBus?.emit(sessionId, {
-        type: 'message:user-created',
+        type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
         message: userMessage,
       })
 
@@ -911,7 +912,7 @@ export class CoreStreamEngine<
       this.store.addMessage(sessionId, assistantMessage)
 
       await this.eventBus?.emit(sessionId, {
-        type: 'message:assistant-created',
+        type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
         message: assistantMessage,
       })
 
@@ -951,7 +952,7 @@ export class CoreStreamEngine<
   ): Promise<void> {
     if (this.activeStreams.has(sessionId)) {
       await this.eventBus?.emit(sessionId, {
-        type: 'context:compact-completed',
+        type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
         requestId: cmd.requestId,
         success: false,
         error: 'Cannot compact while a response is streaming.',
@@ -960,7 +961,7 @@ export class CoreStreamEngine<
     }
     if (this.activeCompactions.has(sessionId)) {
       await this.eventBus?.emit(sessionId, {
-        type: 'context:compact-completed',
+        type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
         requestId: cmd.requestId,
         success: false,
         error: 'Context compact is already running.',
@@ -977,7 +978,7 @@ export class CoreStreamEngine<
       const resolved = await this.resolveProvider(sessionId)
       if (!resolved) {
         await this.eventBus?.emit(sessionId, {
-          type: 'context:compact-completed',
+          type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
           requestId: cmd.requestId,
           success: false,
           error: 'Provider is not configured.',
@@ -999,7 +1000,7 @@ export class CoreStreamEngine<
       )
 
       await this.eventBus?.emit(sessionId, {
-        type: 'context:compact-completed',
+        type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
         requestId: cmd.requestId,
         success: result.success,
         skipped: result.skipped,
@@ -1044,7 +1045,7 @@ export class CoreStreamEngine<
       }
 
       await this.eventBus?.emit(sessionId, {
-        type: 'messages:replaced',
+        type: SESSION_EVENT_TYPES.MESSAGES_REPLACED,
         messages: this.store.listMessages(sessionId) as TMessage[],
       })
 
@@ -1075,7 +1076,7 @@ export class CoreStreamEngine<
       this.store.addMessage(sessionId, assistantMessage)
 
       await this.eventBus?.emit(sessionId, {
-        type: 'message:assistant-created',
+        type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
         message: assistantMessage,
       })
 
@@ -1130,7 +1131,7 @@ export class CoreStreamEngine<
       }
 
       await this.eventBus?.emit(sessionId, {
-        type: 'messages:replaced',
+        type: SESSION_EVENT_TYPES.MESSAGES_REPLACED,
         messages: this.store.listMessages(sessionId) as TMessage[],
       })
 
@@ -1160,7 +1161,7 @@ export class CoreStreamEngine<
       this.store.addMessage(sessionId, assistantMessage)
 
       await this.eventBus?.emit(sessionId, {
-        type: 'message:assistant-created',
+        type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
         message: assistantMessage,
       })
 
@@ -1216,7 +1217,7 @@ export class CoreStreamEngine<
 
     this.store.addMessage(sessionId, userMessage)
     this.eventBus?.emit(sessionId, {
-      type: 'message:user-created',
+      type: SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
       message: userMessage,
     }).catch(err => this.logError('message:user-created emit error:', err))
 
@@ -1278,7 +1279,7 @@ export class CoreStreamEngine<
         .reverse()
         .find(message => message.role === 'user')?.source === 'voice'
 
-      this.eventBus?.emit(sessionId, { type: 'content:continuation', turnIndex: 1 })
+      this.eventBus?.emit(sessionId, { type: SESSION_EVENT_TYPES.CONTENT_CONTINUATION, turnIndex: 1 })
         .catch(err => this.logError('continuation emit error:', err))
 
       const abortController = new AbortController()
@@ -1322,7 +1323,7 @@ export class CoreStreamEngine<
         const streamError = this.normalizeStreamError(error)
         const isAborted = streamError.isAbortError || abortController.signal.aborted
         if (isAborted) {
-          this.eventBus?.emit(sessionId, { type: 'stream:aborted', reason: 'User cancelled' })
+          this.eventBus?.emit(sessionId, { type: SESSION_EVENT_TYPES.STREAM_ABORTED, reason: 'User cancelled' })
             .catch(err => this.logError('stream:aborted emit error:', err))
         } else {
           this.logError('Resume streaming error:', streamError.error)
@@ -1336,7 +1337,7 @@ export class CoreStreamEngine<
           } as unknown as TMessage
           this.store.addMessage(sessionId, errorMessage)
           this.eventBus?.emit(sessionId, {
-            type: 'stream:error',
+            type: SESSION_EVENT_TYPES.STREAM_ERROR,
             data: { error: streamError.message, errorDetails: streamError.details },
           }).catch(err => this.logError('stream:error emit error:', err))
         }
@@ -1373,7 +1374,7 @@ export class CoreStreamEngine<
 
       this.store.renameSession(sessionId, title)
       await this.eventBus?.emit(sessionId, {
-        type: 'session:renamed',
+        type: SESSION_EVENT_TYPES.SESSION_RENAMED,
         name: title,
       })
     } catch (error) {
@@ -1387,7 +1388,7 @@ export class CoreStreamEngine<
       ) {
         this.store.renameSession(sessionId, fallbackTitle)
         await this.eventBus?.emit(sessionId, {
-          type: 'session:renamed',
+          type: SESSION_EVENT_TYPES.SESSION_RENAMED,
           name: fallbackTitle,
         })
       }
@@ -1618,7 +1619,7 @@ export class CoreStreamEngine<
       )
 
       await this.eventBus?.emit(sessionId, {
-        type: 'context:compact-completed',
+        type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
         success: result.success,
         skipped: result.skipped,
         summary: result.summary,
@@ -1783,7 +1784,7 @@ export class CoreStreamEngine<
     try {
       // P1:压缩开始的唯一 emit 点 —— 手动与自动都从这里出去。
       await this.eventBus?.emit(sessionId, {
-        type: 'context:compact-started',
+        type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_STARTED,
         ...(registration.requestId !== undefined ? { requestId: registration.requestId } : {}),
         ...(registration.auto ? { auto: true } : {}),
       }).catch(err => this.logError('context:compact-started emit error:', err))
@@ -1795,7 +1796,7 @@ export class CoreStreamEngine<
         ...asRecord(options),
         onProgress: (progress: { chunk: number; totalChunks: number }) =>
           this.eventBus?.emit(sessionId, {
-            type: 'context:compact-progress',
+            type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_PROGRESS,
             chunk: progress.chunk,
             totalChunks: progress.totalChunks,
           }).catch(err => this.logError('context:compact-progress emit error:', err)),
@@ -1811,7 +1812,7 @@ export class CoreStreamEngine<
   protected emitStreamError(sessionId: string, error: string): void {
     if (this.eventBus) {
       this.eventBus.emit(sessionId, {
-        type: 'stream:error',
+        type: SESSION_EVENT_TYPES.STREAM_ERROR,
         data: { error },
       }).catch(err => this.logError('stream:error emit failed:', err))
     }
@@ -1819,7 +1820,7 @@ export class CoreStreamEngine<
 
   private async emitMessageCreated(sessionId: string, message: TMessage): Promise<void> {
     await this.eventBus?.emit(sessionId, {
-      type: 'message:created',
+      type: SESSION_EVENT_TYPES.MESSAGE_CREATED,
       message,
     })
   }
@@ -1830,7 +1831,7 @@ export class CoreStreamEngine<
     updates: Partial<TMessage>,
   ): Promise<void> {
     await this.eventBus?.emit(sessionId, {
-      type: 'message:updated',
+      type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
       messageId,
       updates,
     })
@@ -1838,7 +1839,7 @@ export class CoreStreamEngine<
 
   private emitContextSizeUpdated(sessionId: string, contextSize: number): void {
     this.eventBus?.emit(sessionId, {
-      type: 'context:size-updated',
+      type: SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED,
       contextSize,
     }).catch(err => this.logError('context:size-updated emit failed:', err))
   }

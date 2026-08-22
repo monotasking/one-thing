@@ -1,3 +1,4 @@
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import {
   getContextCompactReason,
   shouldSkipAutoCompactForProviderUsageMismatch,
@@ -460,14 +461,14 @@ export interface CoreAgentLoopCompactResultLike {
 
 export type CoreAgentLoopCompactEventPlan =
   | {
-      type: 'context:compact-completed'
+      type: typeof SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED
       success: boolean
       skipped?: boolean
       summary?: string
       error?: string
     }
   | {
-      type: 'context:size-updated'
+      type: typeof SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED
       contextSize: number
     }
 
@@ -503,7 +504,7 @@ export interface CoreAgentLoopCompactionAdapters<
     onMessageCreated: (message: unknown) => Promise<void>
     onMessageUpdated: (messageId: string, updates: unknown) => Promise<void>
   }): Promise<TCompactResult>
-  emitEvent(sessionId: string, event: CoreAgentLoopCompactEventPlan | { type: 'message:created'; message: unknown } | { type: 'message:updated'; messageId: string; updates: unknown }): Promise<void>
+  emitEvent(sessionId: string, event: CoreAgentLoopCompactEventPlan | { type: typeof SESSION_EVENT_TYPES.MESSAGE_CREATED; message: unknown } | { type: typeof SESSION_EVENT_TYPES.MESSAGE_UPDATED; messageId: string; updates: unknown }): Promise<void>
   rebuildMessages(): Promise<TMessage[]>
   shouldSkipProviderUsageMismatch?: (input: {
     providerId: string
@@ -1028,7 +1029,7 @@ export function buildAgentLoopContextCompactEventPlan(
   result: CoreAgentLoopCompactResultLike,
 ): CoreAgentLoopCompactEventPlan[] {
   const events: CoreAgentLoopCompactEventPlan[] = [{
-    type: 'context:compact-completed',
+    type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
     success: result.success,
     skipped: result.skipped,
     summary: result.summary,
@@ -1036,7 +1037,7 @@ export function buildAgentLoopContextCompactEventPlan(
   }]
   if (result.success && !result.skipped) {
     events.push({
-      type: 'context:size-updated',
+      type: SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED,
       contextSize: result.retainedContextSize ?? 0,
     })
   }
@@ -1085,7 +1086,7 @@ export async function maybeCompactAgentLoopContextWithAdapters<
         session.lastInputTokens !== usage.visibleInputTokens)
     ) {
       await adapters.emitEvent(ctx.sessionId, {
-        type: 'context:size-updated',
+        type: SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED,
         contextSize: usage.visibleInputTokens,
       })
     }
@@ -1155,11 +1156,11 @@ export async function maybeCompactAgentLoopContextWithAdapters<
       settings: ctx.settings,
       keepRecentTurns: passPlan.keepRecentTurns,
       onMessageCreated: message => adapters.emitEvent(ctx.sessionId, {
-        type: 'message:created',
+        type: SESSION_EVENT_TYPES.MESSAGE_CREATED,
         message,
       }),
       onMessageUpdated: (messageId, updates) => adapters.emitEvent(ctx.sessionId, {
-        type: 'message:updated',
+        type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
         messageId,
         updates,
       }),

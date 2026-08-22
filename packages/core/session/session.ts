@@ -12,6 +12,7 @@
  * drive persistence (checkpoints) and renderer sync.
  */
 
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamChannel } from '../events/stream-channel.js'
 import type { SessionEventEnvelope, StreamChunkBase, Unsubscribe } from '../events/types.js'
@@ -75,7 +76,7 @@ export class Session {
     }
 
     switch (event.type) {
-      case 'stream:start':
+      case SESSION_EVENT_TYPES.STREAM_START:
         this._state.activeMessageId = event.assistantMessageId ?? null
         this._state.isStreaming = true
         // Reset accumulators for new stream
@@ -83,54 +84,54 @@ export class Session {
         this._state.accumulatedReasoning = ''
         break
 
-      case 'stream:complete':
+      case SESSION_EVENT_TYPES.STREAM_COMPLETE:
         this._state.isStreaming = false
         if (event.data?.sessionName) {
           this._state.name = event.data.sessionName
         }
         break
 
-      case 'stream:error':
+      case SESSION_EVENT_TYPES.STREAM_ERROR:
         this._state.isStreaming = false
         break
 
-      case 'stream:aborted':
+      case SESSION_EVENT_TYPES.STREAM_ABORTED:
         this._state.isStreaming = false
         break
 
-      case 'message:user-created':
+      case SESSION_EVENT_TYPES.MESSAGE_USER_CREATED:
         // Phase 1: just track event count, no state mutation needed
         break
 
-      case 'message:assistant-created':
+      case SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED:
         this._state.activeMessageId = event.message?.id ?? null
         break
 
-      case 'session:renamed':
+      case SESSION_EVENT_TYPES.SESSION_RENAMED:
         if (event.name) {
           this._state.name = event.name
         }
         break
 
-      case 'tool:call':
-      case 'tool:result':
-      case 'tool:input-start':
-      case 'tool:input-end':
-      case 'tool:execution-start':
-      case 'tool:execution-update':
-      case 'tool:execution-end':
-      case 'step:added':
-      case 'step:updated':
-      case 'content:part':
-      case 'content:continuation':
-      case 'context:size-updated':
-      case 'stream:params-resolving':
-      case 'skill:activated':
-      case 'permission:request':
-      case 'permission:timeout':
-      case 'tool:executing':
-      case 'tool:metadata':
-      case 'message:updated':
+      case SESSION_EVENT_TYPES.TOOL_CALL:
+      case SESSION_EVENT_TYPES.TOOL_RESULT:
+      case SESSION_EVENT_TYPES.TOOL_INPUT_START:
+      case SESSION_EVENT_TYPES.TOOL_INPUT_END:
+      case SESSION_EVENT_TYPES.TOOL_EXECUTION_START:
+      case SESSION_EVENT_TYPES.TOOL_EXECUTION_UPDATE:
+      case SESSION_EVENT_TYPES.TOOL_EXECUTION_END:
+      case SESSION_EVENT_TYPES.STEP_ADDED:
+      case SESSION_EVENT_TYPES.STEP_UPDATED:
+      case SESSION_EVENT_TYPES.CONTENT_PART:
+      case SESSION_EVENT_TYPES.CONTENT_CONTINUATION:
+      case SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED:
+      case SESSION_EVENT_TYPES.STREAM_PARAMS_RESOLVING:
+      case SESSION_EVENT_TYPES.SKILL_ACTIVATED:
+      case SESSION_EVENT_TYPES.PERMISSION_REQUEST:
+      case SESSION_EVENT_TYPES.PERMISSION_TIMEOUT:
+      case SESSION_EVENT_TYPES.TOOL_EXECUTING:
+      case SESSION_EVENT_TYPES.TOOL_METADATA:
+      case SESSION_EVENT_TYPES.MESSAGE_UPDATED:
         // These events are tracked for replay but don't
         // update the validation-relevant state fields yet
         break

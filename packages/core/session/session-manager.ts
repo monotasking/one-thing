@@ -8,6 +8,7 @@
  * Phase 2+: SessionManager will coordinate persistence and recovery.
  */
 
+import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamChannel } from '../events/stream-channel.js'
 import type { Unsubscribe } from '../events/types.js'
@@ -28,7 +29,7 @@ export class SessionManager {
     this.streamChannel = streamChannel
 
     // Auto-vivify sessions on stream:start
-    const unsub = eventBus.onAnySession('stream:start', (envelope) => {
+    const unsub = eventBus.onAnySession(SESSION_EVENT_TYPES.STREAM_START, (envelope) => {
       const sessionId = envelope.sessionId
       if (!this.sessions.has(sessionId)) {
         log.debug('auto-creating session', { sessionId })
