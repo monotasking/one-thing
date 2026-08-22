@@ -158,14 +158,8 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   // oauth 的六条数据面已迁到 `POST /api/rpc`(oauthRouter,P4c 第七批)。
   // 留下的是推送 —— router 今天没有推送面。
   if (method === 'GET' && pathname === '/api/oauth/events') return handleOAuthEvents
-  if (method === 'GET' && pathname === '/api/gateway/status') return handleGatewayGetStatus
-  if (method === 'POST' && pathname === '/api/gateway/start') return handleGatewayStart
-  if (method === 'POST' && pathname === '/api/gateway/stop') return handleGatewayStop
-  if (method === 'POST' && pathname === '/api/gateway/wechat/logout') return handleGatewayWechatLogout
-  if (method === 'POST' && pathname === '/api/gateway/wechat/accounts/add') return handleGatewayWechatAddAccount
-  if (method === 'POST' && pathname === '/api/gateway/wechat/accounts/stop') return handleGatewayWechatStopAccount
-  if (method === 'POST' && pathname === '/api/gateway/wechat/accounts/remove') return handleGatewayWechatRemoveAccount
-  if (method === 'POST' && pathname === '/api/gateway/wechat/accounts/rename') return handleGatewayWechatRenameAccount
+  // gateway 的八条数据面已迁到 `POST /api/rpc`(gatewayRouter,P4c 第八批);
+  // 本域零推送,所以这里一条不剩。
   if (method === 'GET' && pathname === '/api/voice/state') return handleVoiceGetState
   if (method === 'POST' && pathname === '/api/voice/start') return handleVoiceStart
   if (method === 'POST' && pathname === '/api/voice/stop') return handleVoiceStop
@@ -186,21 +180,10 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/tools/cancel') return handleCancelTool
   if (method === 'POST' && pathname === '/api/tools/update-call') return handleUpdateToolCall
   if (method === 'GET' && pathname === '/api/tools/background-jobs') return handleListBackgroundJobs
-  if (method === 'POST' && pathname === '/api/files/list') return handleListFiles
-  if (method === 'POST' && pathname === '/api/dirs/list') return handleListDirs
-  if (method === 'POST' && pathname === '/api/files/read') return handleReadFileContent
-  if (method === 'POST' && pathname === '/api/files/save') return handleSaveFileContent
-  if (method === 'POST' && pathname === '/api/files/rollback') return handleRollbackFile
-  if (method === 'POST' && pathname === '/api/files/watch/start') return handleWatchWorkspace
-  if (method === 'POST' && pathname === '/api/files/watch/stop') return handleUnwatchWorkspace
+  // files 的十四条数据面已迁到 `POST /api/rpc`(filesRouter,P4c 第八批),
+  // 护栏跟着走(域处理者按 `context.transport` 逐方法夹紧 sandboxRoot)。
+  // 留下的是推送 —— router 今天没有推送面。
   if (method === 'GET' && pathname === '/api/files/watch/events') return handleWorkspaceFileEvents
-  if (method === 'POST' && pathname === '/api/files/list-directory') return handleListDirectory
-  if (method === 'POST' && pathname === '/api/files/stat') return handleStatPath
-  if (method === 'POST' && pathname === '/api/files/create') return handleCreateFile
-  if (method === 'POST' && pathname === '/api/files/create-directory') return handleCreateDirectory
-  if (method === 'POST' && pathname === '/api/files/rename') return handleRenamePath
-  if (method === 'POST' && pathname === '/api/files/delete') return handleDeletePath
-  if (method === 'POST' && pathname === '/api/files/reveal') return handleRevealPath
   // 聊天面的六条数据面已迁到通用 `POST /api/rpc`(P4c 第五批,`chatRouter`):
   // `/api/chat/history`、`/api/chat/title`、`/api/chat/update-thinking-time`、
   // `/api/streams/abort`、`/api/streams/active` 与
@@ -303,106 +286,6 @@ async function handleGetCapabilities(context: RouteContext): Promise<void> {
   const adapter = context.runtime.capabilities
   if (!adapter) return sendNotImplemented(context, 'capabilities.get')
   sendJson(context.response, 200, await adapter.get(context.requestContext), context.corsOrigin)
-}
-
-async function handleListFiles(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.listFiles) return sendNotImplemented(context, 'files.listFiles')
-  sendJson(context.response, 200, await adapter.listFiles(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleListDirs(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.listDirs) return sendNotImplemented(context, 'files.listDirs')
-  sendJson(context.response, 200, await adapter.listDirs(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleReadFileContent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.readContent) return sendNotImplemented(context, 'files.readContent')
-  const body = await readJson<{ path?: string; maxSize?: number }>(context.request)
-  sendJson(context.response, 200, await adapter.readContent(body?.path ?? '', body?.maxSize, context.requestContext), context.corsOrigin)
-}
-
-async function handleSaveFileContent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.saveContent) return sendNotImplemented(context, 'files.saveContent')
-  const body = await readJson<{ path?: string; content?: string; expectedMtimeMs?: number }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.saveContent(body?.path ?? '', body?.content ?? '', body?.expectedMtimeMs, context.requestContext),
-    context.corsOrigin,
-  )
-}
-
-async function handleRollbackFile(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.rollback) return sendNotImplemented(context, 'files.rollback')
-  sendJson(context.response, 200, await adapter.rollback(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleWatchWorkspace(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.watchWorkspace) return sendNotImplemented(context, 'files.watchWorkspace')
-  const body = await readJson<{ root?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.watchWorkspace(body?.root ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleUnwatchWorkspace(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.unwatchWorkspace) return sendNotImplemented(context, 'files.unwatchWorkspace')
-  const body = await readJson<{ root?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.unwatchWorkspace(body?.root ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleListDirectory(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.listDirectory) return sendNotImplemented(context, 'files.listDirectory')
-  const body = await readJson<{ path?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.listDirectory(body?.path ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleStatPath(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.stat) return sendNotImplemented(context, 'files.stat')
-  const body = await readJson<{ path?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.stat(body?.path ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleCreateFile(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.createFile) return sendNotImplemented(context, 'files.createFile')
-  const body = await readJson<{ path?: string; content?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.createFile(body?.path ?? '', body?.content, context.requestContext), context.corsOrigin)
-}
-
-async function handleCreateDirectory(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.createDirectory) return sendNotImplemented(context, 'files.createDirectory')
-  const body = await readJson<{ path?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.createDirectory(body?.path ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleRenamePath(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.renamePath) return sendNotImplemented(context, 'files.renamePath')
-  const body = await readJson<{ oldPath?: string; newPath?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.renamePath(body?.oldPath ?? '', body?.newPath ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleDeletePath(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.deletePath) return sendNotImplemented(context, 'files.deletePath')
-  const body = await readJson<{ path?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.deletePath(body?.path ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleRevealPath(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.files
-  if (!adapter?.revealPath) return sendNotImplemented(context, 'files.revealPath')
-  const body = await readJson<{ path?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.revealPath(body?.path ?? '', context.requestContext), context.corsOrigin)
 }
 
 /**
@@ -560,54 +443,6 @@ function handleOAuthEvents(context: RouteContext): void {
     writeSse(context.response, event.type, event)
   }, context.requestContext)
   context.request.on('close', unsubscribe)
-}
-
-async function handleGatewayGetStatus(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.gateway
-  if (!adapter) return sendNotImplemented(context, 'gateway.getStatus')
-  sendJson(context.response, 200, await adapter.getStatus(context.requestContext), context.corsOrigin)
-}
-
-async function handleGatewayStart(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.gateway
-  if (!adapter) return sendNotImplemented(context, 'gateway.start')
-  sendJson(context.response, 200, await adapter.start(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleGatewayStop(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.gateway
-  if (!adapter) return sendNotImplemented(context, 'gateway.stop')
-  sendJson(context.response, 200, await adapter.stop(context.requestContext), context.corsOrigin)
-}
-
-async function handleGatewayWechatLogout(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.gateway
-  if (!adapter) return sendNotImplemented(context, 'gateway.wechatLogout')
-  sendJson(context.response, 200, await adapter.wechatLogout(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleGatewayWechatAddAccount(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.gateway
-  if (!adapter?.wechatAddAccount) return sendNotImplemented(context, 'gateway.wechatAddAccount')
-  sendJson(context.response, 200, await adapter.wechatAddAccount(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleGatewayWechatStopAccount(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.gateway
-  if (!adapter?.wechatStopAccount) return sendNotImplemented(context, 'gateway.wechatStopAccount')
-  sendJson(context.response, 200, await adapter.wechatStopAccount(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleGatewayWechatRemoveAccount(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.gateway
-  if (!adapter?.wechatRemoveAccount) return sendNotImplemented(context, 'gateway.wechatRemoveAccount')
-  sendJson(context.response, 200, await adapter.wechatRemoveAccount(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleGatewayWechatRenameAccount(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.gateway
-  if (!adapter?.wechatRenameAccount) return sendNotImplemented(context, 'gateway.wechatRenameAccount')
-  sendJson(context.response, 200, await adapter.wechatRenameAccount(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
 async function handleVoiceGetState(context: RouteContext): Promise<void> {

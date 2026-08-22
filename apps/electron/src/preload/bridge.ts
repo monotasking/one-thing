@@ -55,12 +55,6 @@ import type {
 	ProxySettings,
 	Step,
 	BrowserTabsChangedEvent,
-	GatewayStartRequest,
-	GatewayWechatAddAccountRequest,
-	GatewayWechatLogoutRequest,
-	GatewayWechatRemoveAccountRequest,
-	GatewayWechatRenameAccountRequest,
-	GatewayWechatStopAccountRequest,
 	VoiceAudioChunkPayload,
 	VoiceEvent,
 	VoiceRuntimeCommand,
@@ -509,28 +503,7 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.SPACES_CHANGED, listener);
 	},
 
-	// Gateway / IM channel methods
-	gatewayGetStatus: () => ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_GET_STATUS),
-
-	gatewayStart: (request?: GatewayStartRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_START, request || {}),
-
-	gatewayStop: () => ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_STOP),
-
-	gatewayWechatLogout: (request?: GatewayWechatLogoutRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_LOGOUT, request || {}),
-
-	gatewayWechatAddAccount: (request?: GatewayWechatAddAccountRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_ADD_ACCOUNT, request || {}),
-
-	gatewayWechatStopAccount: (request: GatewayWechatStopAccountRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_STOP_ACCOUNT, request),
-
-	gatewayWechatRemoveAccount: (request: GatewayWechatRemoveAccountRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_REMOVE_ACCOUNT, request),
-
-	gatewayWechatRenameAccount: (request: GatewayWechatRenameAccountRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_RENAME_ACCOUNT, request),
+	// gateway —— 八条数据面已迁 `gatewayRouter`(P4c 第八批),本域零推送,壳上不留。
 
 	// Voice methods
 	voiceGetState: () => ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_STATE),
@@ -875,56 +848,8 @@ const electronAPI = {
 		return () => ipcRenderer.removeListener("menu:new-browser-tab", listener);
 	},
 
-	// Files methods (for @ file search)
-	listFiles: (options: { cwd?: string; query?: string; limit?: number }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILES_LIST, options),
-
-	// File rollback (prefer auditPath for hash-revalidated rollback)
-	rollbackFile: (options: {
-		auditPath?: string;
-		filePath?: string;
-		originalContent?: string;
-		isNew?: boolean;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.FILE_ROLLBACK, options),
-
-	// Directories listing (for /cd path completion)
-	listDirs: (options: { basePath: string; query?: string; limit?: number }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.DIRS_LIST, options),
-
-	// File content reading/writing (for file preview panel)
-	readFileContent: (filePath: string, maxSize?: number) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_CONTENT, {
-			path: filePath,
-			maxSize,
-		}),
-	saveFileContent: (
-		filePath: string,
-		content: string,
-		expectedMtimeMs?: number,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_SAVE_CONTENT, {
-			path: filePath,
-			content,
-			expectedMtimeMs,
-		}),
-	listDirectory: (dirPath: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_LIST_DIRECTORY, { path: dirPath }),
-	createFile: (filePath: string, content?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_CREATE, { path: filePath, content }),
-	createDirectory: (dirPath: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_CREATE_DIRECTORY, { path: dirPath }),
-	renamePath: (oldPath: string, newPath: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_RENAME, { oldPath, newPath }),
-	deletePath: (targetPath: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_DELETE, { path: targetPath }),
-	statPath: (targetPath: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, { path: targetPath }),
-	revealPath: (targetPath: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_REVEAL, { path: targetPath }),
-	watchWorkspace: (root: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_WATCH_START, { root }),
-	unwatchWorkspace: (root: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.FILE_WATCH_STOP, { root }),
+	// files —— 十四条数据面已迁 `filesRouter`(P4c 第八批);壳上只剩这一条**推送**,
+	// router 今天没有推送面。
 	onWorkspaceFileChanged: (
 		callback: (data: { root: string; path: string; eventType: string }) => void,
 	) => {

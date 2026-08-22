@@ -158,21 +158,14 @@ export interface RuntimeSearchAdapter<TSearchRequest = unknown, TSearchResponse 
  * 随 `chatRouter` 迁走,片段的增删改查更早就走了 `promptsRouter`。
  */
 
+/**
+ * P4c 第八批:十四条数据面(list / rollback / listDirs / readContent / saveContent /
+ * listDirectory / stat / create / createDirectory / rename / delete / reveal /
+ * watchStart / watchStop)已迁到通用 RPC 通道(`filesRouter`),**护栏跟着走** ——
+ * 域处理者按 `RpcDispatchContext.transport` 逐方法夹紧 sandboxRoot。留在 facade
+ * 上的只有变更订阅:`GET /api/files/watch/events` 那条 SSE 的货源,归主线 T2。
+ */
 export interface RuntimeFilesAdapter {
-  listFiles?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  listDirs?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  readContent?(path: string, maxSize?: number, context?: RuntimeRequestContext): Promise<unknown>
-  saveContent?(path: string, content: string, expectedMtimeMs?: number, context?: RuntimeRequestContext): Promise<unknown>
-  rollback?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  listDirectory?(path: string, context?: RuntimeRequestContext): Promise<unknown>
-  stat?(path: string, context?: RuntimeRequestContext): Promise<unknown>
-  createFile?(path: string, content?: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  createDirectory?(path: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  renamePath?(oldPath: string, newPath: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  deletePath?(path: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  revealPath?(path: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  watchWorkspace?(root: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  unwatchWorkspace?(root: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
   subscribeWorkspaceFileChanged?(
     handler: (payload: unknown) => void,
     context?: RuntimeRequestContext,
@@ -245,16 +238,11 @@ export interface RuntimeOAuthAdapter {
   subscribe(handler: (event: RuntimeOAuthTokenEvent) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
 }
 
-export interface RuntimeGatewayAdapter {
-  getStatus(context?: RuntimeRequestContext): Promise<unknown>
-  start(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  stop(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  wechatLogout(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  wechatAddAccount?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  wechatStopAccount?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  wechatRemoveAccount?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  wechatRenameAccount?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-}
+/**
+ * P4c 第八批:`RuntimeGatewayAdapter` 整只没了 —— 八条随 `gatewayRouter` 走通用
+ * RPC,由 `configureGatewayHost` 决定这台进程有没有网关能力(server / CLI 不注入
+ * 即结构化降级)。**本域零推送**,所以 facade 上一格不留。
+ */
 
 export interface RuntimeVoiceAdapter {
   getState(context?: RuntimeRequestContext): Promise<unknown>
@@ -343,7 +331,6 @@ export interface OnethingRuntimeFacadeOptions<
   scratchpad?: RuntimeScratchpadAdapter
   plugins?: RuntimePluginsAdapter
   oauth?: RuntimeOAuthAdapter
-  gateway?: RuntimeGatewayAdapter
   voice?: RuntimeVoiceAdapter
   tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
   shutdown?: () => void | Promise<void>
@@ -389,7 +376,6 @@ export interface OnethingRuntimeFacade<
   readonly scratchpad?: RuntimeScratchpadAdapter
   readonly plugins?: RuntimePluginsAdapter
   readonly oauth?: RuntimeOAuthAdapter
-  readonly gateway?: RuntimeGatewayAdapter
   readonly voice?: RuntimeVoiceAdapter
   readonly tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
   shutdown(): Promise<void>
@@ -484,7 +470,6 @@ export function createOnethingRuntimeFacade<
     scratchpad: options.scratchpad ? Object.freeze({ ...options.scratchpad }) : undefined,
     plugins: options.plugins ? Object.freeze({ ...options.plugins }) : undefined,
     oauth: options.oauth ? Object.freeze({ ...options.oauth }) : undefined,
-    gateway: options.gateway ? Object.freeze({ ...options.gateway }) : undefined,
     voice: options.voice ? Object.freeze({ ...options.voice }) : undefined,
     tools: options.tools ? Object.freeze({ ...options.tools }) : undefined,
     async shutdown() {

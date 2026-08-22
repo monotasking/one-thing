@@ -2,6 +2,7 @@ import { computed, reactive } from 'vue'
 import { languageFromPath } from '@/editor/languages'
 import type { EditorLanguage, EditorSelection } from '@/editor'
 import type { FileSearchMatch } from '@/components/chat/file-search'
+import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
 
 export interface FileSearchState {
@@ -96,7 +97,7 @@ async function loadFile(filePath: string, maxBytes: number, options: { force?: b
   buffer.conflict = false
 
   try {
-    const res = await platformApi.readFileContent(filePath, maxBytes)
+    const res = await filesApi.readContent({ path: filePath, maxSize: maxBytes })
     if (!res.success) {
       buffer.error = res.error || 'Failed to read file'
       return buffer
@@ -157,11 +158,11 @@ async function saveFile(filePath: string) {
   buffer.conflict = false
 
   try {
-    const res = await platformApi.saveFileContent(
-      filePath,
-      buffer.draftContent,
-      buffer.lastReadMtimeMs,
-    )
+    const res = await filesApi.saveContent({
+      path: filePath,
+      content: buffer.draftContent,
+      expectedMtimeMs: buffer.lastReadMtimeMs,
+    })
     if (!res.success) {
       buffer.conflict = !!res.conflict
       buffer.error = res.error || 'Failed to save'

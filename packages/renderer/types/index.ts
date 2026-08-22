@@ -60,20 +60,6 @@ import type {
 	ProxySettings,
 	NetworkSettings,
 	GatewayStatus,
-	GatewayGetStatusResponse,
-	GatewayStartRequest,
-	GatewayStartResponse,
-	GatewayStopResponse,
-	GatewayWechatAddAccountRequest,
-	GatewayWechatAddAccountResponse,
-	GatewayWechatStopAccountRequest,
-	GatewayWechatStopAccountResponse,
-	GatewayWechatRemoveAccountRequest,
-	GatewayWechatRemoveAccountResponse,
-	GatewayWechatRenameAccountRequest,
-	GatewayWechatRenameAccountResponse,
-	GatewayWechatLogoutRequest,
-	GatewayWechatLogoutResponse,
 	MessageOrigin,
 	ChannelUserLink,
 	ChannelUserProfile,
@@ -560,16 +546,6 @@ export type {
 	ProxySettings,
 	NetworkSettings,
 	GatewayStatus,
-	GatewayGetStatusResponse,
-	GatewayStartRequest,
-	GatewayStartResponse,
-	GatewayStopResponse,
-	GatewayWechatAddAccountRequest,
-	GatewayWechatStopAccountRequest,
-	GatewayWechatRemoveAccountRequest,
-	GatewayWechatRenameAccountRequest,
-	GatewayWechatLogoutRequest,
-	GatewayWechatLogoutResponse,
 	MessageOrigin,
 	ChannelUserLink,
 	ChannelUserProfile,
@@ -1230,26 +1206,8 @@ export interface ElectronAPI {
 	 * 渲染层 `spaceProviders` store 据此重拉当前空间那一侧 —— 跨窗口缓存过期的解药。
 	 */
 	onSpacesChanged: (callback: (event: SpacesChangedEvent) => void) => () => void;
-	gatewayGetStatus: () => Promise<GatewayGetStatusResponse>;
-	gatewayStart: (
-		request?: GatewayStartRequest,
-	) => Promise<GatewayStartResponse>;
-	gatewayStop: () => Promise<GatewayStopResponse>;
-	gatewayWechatLogout: (
-		request?: GatewayWechatLogoutRequest,
-	) => Promise<GatewayWechatLogoutResponse>;
-	gatewayWechatAddAccount: (
-		request?: GatewayWechatAddAccountRequest,
-	) => Promise<GatewayWechatAddAccountResponse>;
-	gatewayWechatStopAccount: (
-		request: GatewayWechatStopAccountRequest,
-	) => Promise<GatewayWechatStopAccountResponse>;
-	gatewayWechatRemoveAccount: (
-		request: GatewayWechatRemoveAccountRequest,
-	) => Promise<GatewayWechatRemoveAccountResponse>;
-	gatewayWechatRenameAccount: (
-		request: GatewayWechatRenameAccountRequest,
-	) => Promise<GatewayWechatRenameAccountResponse>;
+	// gateway —— 八条已迁 `gatewayRouter`(P4c 第八批),渲染侧从
+	// `platform/gateway-client` 的 `gatewayApi` 取;本域零推送,壳上不留。
 	voiceGetState: () => Promise<VoiceGetStateResponse>;
 	voiceStart: (
 		request?: VoiceStartRequest,
@@ -1420,115 +1378,9 @@ export interface ElectronAPI {
 	onMenuCloseChat: (callback: () => void) => () => void;
 	onMenuNewBrowserTab: (callback: () => void) => () => void;
 
-	// Files methods (for @ file search)
-	listFiles: (options: {
-		cwd?: string;
-		query?: string;
-		limit?: number;
-		/** 发起补全的会话 —— 接入目录 per-space,按会话归属解析(批 B2)。 */
-		sessionId?: string;
-	}) => Promise<{
-		success: boolean;
-		files: string[];
-		entries?: Array<{
-			path: string;
-			type: "file" | "directory";
-			source?: "workdir" | "downloads" | "note";
-			label?: string;
-		}>;
-		error?: string;
-	}>;
-
-	// File rollback (for /files command)
-	rollbackFile: (options: {
-		auditPath?: string;
-		filePath?: string;
-		originalContent?: string;
-		isNew?: boolean;
-	}) => Promise<{
-		success: boolean;
-		error?: string;
-		auditId?: string;
-		filePath?: string;
-		restoredExists?: boolean;
-	}>;
-
-	// Directories listing (for /cd path completion)
-	listDirs: (options: {
-		basePath: string;
-		query?: string;
-		limit?: number;
-	}) => Promise<{
-		success: boolean;
-		dirs: string[];
-		basePath: string;
-		error?: string;
-	}>;
-
-	// File content reading/writing (for file preview panel)
-	readFileContent: (
-		filePath: string,
-		maxSize?: number,
-	) => Promise<{
-		success: boolean;
-		content?: string;
-		encoding?: string;
-		size?: number;
-		mtimeMs?: number;
-		isBinary?: boolean;
-		error?: string;
-	}>;
-	saveFileContent: (
-		filePath: string,
-		content: string,
-		expectedMtimeMs?: number,
-	) => Promise<{
-		success: boolean;
-		mtimeMs?: number;
-		conflict?: boolean;
-		error?: string;
-	}>;
-	listDirectory: (dirPath: string) => Promise<{
-		success: boolean;
-		entries?: Array<{
-			name: string;
-			path: string;
-			type: "file" | "directory";
-			size?: number;
-			mtimeMs?: number;
-		}>;
-		error?: string;
-	}>;
-	createFile: (
-		filePath: string,
-		content?: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	createDirectory: (
-		dirPath: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	renamePath: (
-		oldPath: string,
-		newPath: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	deletePath: (
-		targetPath: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	statPath: (targetPath: string) => Promise<{
-		success: boolean;
-		type?: "file" | "directory";
-		size?: number;
-		mtimeMs?: number;
-		/** 实际 stat 的绝对路径(`~` 已由主进程展开)。 */
-		path?: string;
-		error?: string;
-	}>;
-	revealPath: (
-		targetPath: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	watchWorkspace: (
-		root: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	unwatchWorkspace: (root: string) => Promise<{ success: boolean }>;
+	// files —— 十四条已迁 `filesRouter`(P4c 第八批),渲染侧从
+	// `platform/files-client` 的 `filesApi` 取(一律信封,不再是位置参数);
+	// 壳上只剩这一条**推送**,router 今天没有推送面。
 	onWorkspaceFileChanged: (
 		callback: (data: { root: string; path: string; eventType: string }) => void,
 	) => () => void;

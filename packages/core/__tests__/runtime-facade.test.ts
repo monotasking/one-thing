@@ -53,11 +53,8 @@ describe('createOnethingRuntimeFacade', () => {
         getTools: vi.fn(async () => ({ success: true, tools: [] })),
         executeTool: vi.fn(async () => ({ success: false, error: 'disabled' })),
       },
+      // P4c 第八批:十四条数据面已迁 `filesRouter`,facade 上只剩订阅面。
       files: {
-        listFiles: vi.fn(async request => ({ success: true, request })),
-        rollback: vi.fn(async request => ({ success: true, request })),
-        watchWorkspace: vi.fn(async root => ({ success: true, root })),
-        unwatchWorkspace: vi.fn(async root => ({ success: true, root })),
         subscribeWorkspaceFileChanged: vi.fn((handler) => {
           handler({ root: '/workspace', path: '/workspace/a.txt', eventType: 'change' })
           return unsubscribe
@@ -82,12 +79,7 @@ describe('createOnethingRuntimeFacade', () => {
           return unsubscribe
         }),
       },
-      gateway: {
-        getStatus: vi.fn(async () => ({ success: true, status: { running: false } })),
-        start: vi.fn(async request => ({ success: false, request, error: 'disabled' })),
-        stop: vi.fn(async () => ({ success: true, status: { running: false } })),
-        wechatLogout: vi.fn(async () => ({ success: false, error: 'disabled' })),
-      },
+      // P4c 第八批:`gateway` 这一格整只没了 —— 八条走 `gatewayRouter` + 宿主端口。
       voice: {
         getState: vi.fn(async () => ({ success: true, state: { status: 'disabled' } })),
         start: vi.fn(async request => ({ success: false, request, error: 'disabled' })),
@@ -141,22 +133,6 @@ describe('createOnethingRuntimeFacade', () => {
       success: false,
       error: 'disabled',
     })
-    await expect(runtime.files?.listFiles?.({ cwd: '/workspace' })).resolves.toEqual({
-      success: true,
-      request: { cwd: '/workspace' },
-    })
-    await expect(runtime.files?.rollback?.({ filePath: '/workspace/a.txt' })).resolves.toEqual({
-      success: true,
-      request: { filePath: '/workspace/a.txt' },
-    })
-    await expect(runtime.files?.watchWorkspace?.('/workspace')).resolves.toEqual({
-      success: true,
-      root: '/workspace',
-    })
-    await expect(runtime.files?.unwatchWorkspace?.('/workspace')).resolves.toEqual({
-      success: true,
-      root: '/workspace',
-    })
     const offWorkspace = runtime.files?.subscribeWorkspaceFileChanged?.(eventHandler)
     expect(eventHandler).toHaveBeenCalledWith({
       root: '/workspace',
@@ -178,14 +154,6 @@ describe('createOnethingRuntimeFacade', () => {
     const offOAuth = runtime.oauth?.subscribe(oauthHandler)
     expect(oauthHandler).toHaveBeenCalledWith({ type: 'oauth:token-refreshed', providerId: 'codex' })
     offOAuth?.()
-    await expect(runtime.gateway?.getStatus()).resolves.toEqual({ success: true, status: { running: false } })
-    await expect(runtime.gateway?.start({ channel: 'wechat' })).resolves.toEqual({
-      success: false,
-      request: { channel: 'wechat' },
-      error: 'disabled',
-    })
-    await expect(runtime.gateway?.stop()).resolves.toEqual({ success: true, status: { running: false } })
-    await expect(runtime.gateway?.wechatLogout()).resolves.toEqual({ success: false, error: 'disabled' })
     await expect(runtime.voice?.getState()).resolves.toEqual({ success: true, state: { status: 'disabled' } })
     await expect(runtime.voice?.start({ sessionId: 'session-1' })).resolves.toEqual({
       success: false,
@@ -256,7 +224,6 @@ describe('createOnethingRuntimeFacade', () => {
     expect(runtime.media).toBeUndefined()
     expect(runtime.plugins).toBeUndefined()
     expect(runtime.oauth).toBeUndefined()
-    expect(runtime.gateway).toBeUndefined()
     expect(runtime.voice).toBeUndefined()
     expect(runtime.tools).toBeUndefined()
   })

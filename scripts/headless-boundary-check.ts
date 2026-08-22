@@ -830,7 +830,9 @@ const MAIN_FILES_IPC_DIRS_LIST_FORBIDDEN_PATTERNS: RegExp[] = [
   /dirs\.sort\(\(a,\s*b\)\s*=>\s*path\.basename/,
   /Failed to list directories/,
   /console\.error\(\s*['"]\[Files IPC\] Failed to list directories/,
-  /basePath:\s*''/,
+  // P4c 第八批:`basePath: ''` 从此不再是「适配层手搓响应」的信号 —— 它是
+  // `files` 域夹紧失败时逐字沿用旧 server 路由的那个形状。判据交给上面几条
+  // (真正的投影逻辑:filterPrefix / dirs.sort / 隐藏文件过滤)。
 ]
 
 const MAIN_FILES_IPC_FILE_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
@@ -878,12 +880,6 @@ const MAIN_FILES_IPC_WATCH_FORBIDDEN_PATTERNS: RegExp[] = [
   /recursive fs\.watch can overwhelm/,
   /void request/,
   /return\s+\{\s*success:\s*true\s*\}/,
-]
-
-const MAIN_FILES_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
 ]
 
 const MAIN_RIPGREP_UTIL_FORBIDDEN_PATTERNS: RegExp[] = [
@@ -2884,7 +2880,9 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
   const electronGatewayControllerFile = path.join(root, 'apps/electron/src/gateway/lifecycle-controller.ts')
   const electronGatewayFile = path.join(root, 'apps/electron/src/gateway/lifecycle.ts')
   const mainFile = path.join(root, 'packages/backend/gateway/lifecycle.ts')
-  const mainGatewayIpcFile = path.join(root, 'apps/electron/src/main/ipc/gateway.ts')
+  // P4c 第八批:`@main/ipc/gateway.ts` 整只删掉(八条数据面迁 `gatewayRouter`,
+  // 本域零推送)。生命周期原语的**注入点**因此是桌面的装配入口 —— 断言改指它。
+  const mainGatewayIpcFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const mainSettingsIpcFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
   const tsconfigNode = path.join(root, 'tsconfig.node.json')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -2919,14 +2917,15 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
       .filter(symbol => !electronGatewayContent.includes(symbol))
       .map(symbol => `${rel(electronGatewayFile)}: missing Electron-hosted gateway lifecycle facade symbol ${symbol}`),
     ...(!mainGatewayIpcContent.includes('@onething/electron-host/gateway/lifecycle')
-      ? [`${rel(mainGatewayIpcFile)}: gateway IPC must import lifecycle operations from electron-host directly`]
+      ? [`${rel(mainGatewayIpcFile)}: Electron host must import gateway lifecycle operations from electron-host directly`]
+      : []),
+    ...(!mainGatewayIpcContent.includes('configureGatewayHost')
+      ? [`${rel(mainGatewayIpcFile)}: Electron host must inject the gateway lifecycle through configureGatewayHost`]
       : []),
     ...(!mainSettingsIpcContent.includes('@onething/electron-host/gateway/lifecycle')
       ? [`${rel(mainSettingsIpcFile)}: settings IPC must apply gateway settings through electron-host directly`]
       : []),
-    ...(mainGatewayIpcContent.includes('./lifecycle')
-      ? [`${rel(mainGatewayIpcFile)}: gateway IPC must not import legacy ./lifecycle facade`]
-      : []),
+
     ...(mainSettingsIpcContent.includes('../gateway/lifecycle')
       ? [`${rel(mainSettingsIpcFile)}: settings IPC must not import legacy gateway lifecycle facade`]
       : []),
@@ -4485,6 +4484,72 @@ function checkElectronHostOwnsOAuthEvents(): void {
   assertNoMatches('apps/electron owns Electron OAuth event broadcasting', lines)
 }
 
+/**
+ * P4c 第八批立的两个门面 —— 一个注入端口、一个机制模块。
+ *
+ * 1. **`configureGatewayHost`**(`backend/wiring/gateway/host-ports.ts`)。gateway 的
+ *    八条数据面走 `gatewayRouter`,而八件事全都要宿主本体。判据同
+ *    `configureShellHost` / `configureOAuthEventBroadcaster`:端口本体在装配层、
+ *    只声明能力不 import electron、门面永远可调用(未注入即结构化降级),
+ *    桌面在 `main-process.ts` 注入。
+ *
+ * 2. **工作区监视登记簿**(`backend/wiring/files/workspace-watch.ts`)。
+ *    `watchStart` / `watchStop`(请求面,在 router 上)与 `/api/files/watch/events`
+ *    (推送面,在 server adapter 上)必须指着**同一张表**;两处各存一份等于
+ *    「开了监视但收不到事件」。断言钉住这条:两侧都从这个模块拿。
+ */
+function checkGatewayAndFilesHostPorts(): void {
+  const gatewayPortFile = path.join(root, 'packages/backend/wiring/gateway/host-ports.ts')
+  const watchPortFile = path.join(root, 'packages/backend/wiring/files/workspace-watch.ts')
+  const mainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const gatewayDomainFile = path.join(root, 'packages/backend/rpc/domains/gateway.ts')
+  const filesDomainFile = path.join(root, FILES_RPC_DOMAIN_FILE)
+  const serverRuntimeFile = path.join(root, 'packages/backend/server/runtime.ts')
+  const read = (file: string): string => (fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+  const gatewayPortContent = read(gatewayPortFile)
+  const watchPortContent = read(watchPortFile)
+  const mainProcessContent = read(mainProcessFile)
+  const gatewayDomainContent = read(gatewayDomainFile)
+  const filesDomainContent = read(filesDomainFile)
+  const serverRuntimeContent = read(serverRuntimeFile)
+
+  const lines = [
+    ...['configureGatewayHost', 'getGatewayHost', 'GATEWAY_HOST_UNAVAILABLE']
+      .filter(symbol => !gatewayPortContent.includes(symbol))
+      .map(symbol => `${rel(gatewayPortFile)}: missing gateway host port symbol ${symbol}`),
+    // 端口只声明能力:它不认识 Electron,也不认识宿主的任何模块。
+    ...matchingLines(gatewayPortFile, [
+      /from\s+['"]electron['"]/,
+      /@onething\/electron-host/,
+    ]),
+    ...(!gatewayDomainContent.includes('getGatewayHost')
+      ? [`${rel(gatewayDomainFile)}: gateway RPC domain must reach the host through getGatewayHost`]
+      : []),
+    ...(gatewayDomainContent.includes('@onething/electron-host')
+      ? [`${rel(gatewayDomainFile)}: gateway RPC domain must not import the Electron host directly`]
+      : []),
+    ...(!mainProcessContent.includes('configureGatewayHost')
+      ? [`${rel(mainProcessFile)}: Electron host must wire configureGatewayHost`]
+      : []),
+    ...['startWorkspaceWatch', 'stopWorkspaceWatch', 'subscribeWorkspaceFileChanged', 'closeAllWorkspaceWatches']
+      .filter(symbol => !watchPortContent.includes(symbol))
+      .map(symbol => `${rel(watchPortFile)}: missing workspace watch registry symbol ${symbol}`),
+    // 请求面与推送面必须指着同一张表。
+    ...(!filesDomainContent.includes("wiring/files/workspace-watch.js")
+      ? [`${rel(filesDomainFile)}: files RPC domain must drive the shared workspace watch registry`]
+      : []),
+    ...(!serverRuntimeContent.includes("wiring/files/workspace-watch.js")
+      ? [`${rel(serverRuntimeFile)}: workspace file SSE must read the shared workspace watch registry`]
+      : []),
+    // files 域必须逐方法夹紧(#19 的安全面):没有这两个符号 = 护栏在迁移中掉了。
+    ...['resolveRpcSandbox', 'resolveInsideSandbox']
+      .filter(symbol => !filesDomainContent.includes(symbol))
+      .map(symbol => `${rel(filesDomainFile)}: files RPC domain must clamp paths with ${symbol}`),
+  ]
+
+  assertNoMatches('gateway host port and workspace watch registry stay single-sourced', lines)
+}
+
 function checkElectronHostOwnsSettingsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSettingsFile = path.join(root, 'apps/electron/src/settings/ipc-host.ts')
@@ -5973,54 +6038,12 @@ function checkElectronHostOwnsChatIpcHost(): void {
   assertNoMatches('apps/electron owns Electron chat IPC host operations', lines)
 }
 
-function checkElectronHostOwnsFilesIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronFilesFile = path.join(root, 'apps/electron/src/ipc/files.ts')
-  const mainFilesFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronFilesContent = fs.existsSync(electronFilesFile) ? fs.readFileSync(electronFilesFile, 'utf-8') : ''
-  const mainFilesContent = fs.existsSync(mainFilesFile) ? fs.readFileSync(mainFilesFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronFilesIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronFilesIpcChannels',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/files',
-    'registerElectronFilesIpcHandlers',
-    'IPC_CHANNELS.FILES_LIST',
-    'IPC_CHANNELS.FILE_ROLLBACK',
-    'IPC_CHANNELS.DIRS_LIST',
-    'IPC_CHANNELS.FILE_READ_CONTENT',
-    'IPC_CHANNELS.FILE_SAVE_CONTENT',
-    'IPC_CHANNELS.FILE_LIST_DIRECTORY',
-    'IPC_CHANNELS.FILE_STAT',
-    'IPC_CHANNELS.FILE_CREATE',
-    'IPC_CHANNELS.FILE_CREATE_DIRECTORY',
-    'IPC_CHANNELS.FILE_RENAME',
-    'IPC_CHANNELS.FILE_DELETE',
-    'IPC_CHANNELS.FILE_REVEAL',
-    'IPC_CHANNELS.FILE_WATCH_START',
-    'IPC_CHANNELS.FILE_WATCH_STOP',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/files')
-      ? [`${rel(electronPackage)}: missing files IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronFilesContent.includes(symbol))
-      .map(symbol => `${rel(electronFilesFile)}: missing Electron files IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainFilesContent.includes(symbol))
-      .map(symbol => `${rel(mainFilesFile)}: missing files IPC host delegation ${symbol}`),
-    ...(fs.existsSync(mainFilesFile)
-      ? matchingLines(mainFilesFile, MAIN_FILES_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron files IPC host operations', lines)
-}
+// P4c 第八批:files 的十四条数据面已迁 `filesRouter`,那只手写 IPC 工厂
+// (`apps/electron/src/ipc/files.ts`)与它的壳适配(`@main/ipc/files.ts`)**整只删掉**,
+// 连同 `apps/electron/package.json` 的 `./ipc/files` 导出。所以
+// `checkElectronHostOwnsFilesIpcHost` 也随之退休:没有宿主件要守了。
+// 域的形状由 `packages/backend/rpc/__tests__/files-domain.test.ts` 钉,
+// 「投影逻辑不许搬进传输层」由下面六条 `checkRuntimeOwns*`(已改指域文件)守。
 
 // P4c 第五批:sessions 的 26 条数据面已迁 `sessionsRouter`,那只手写 IPC 工厂
 // (`apps/electron/src/ipc/sessions.ts`)与它的壳适配(`@main/ipc/sessions.ts`)
@@ -9276,9 +9299,15 @@ function checkRuntimeOwnsSchedulerAgentTaskRunner(): void {
   assertNoMatches('packages/onething-runtime owns scheduler agent task runner', lines)
 }
 
+// P4c 第八批:files 的十四条数据面已迁 `filesRouter`,`@main/ipc/files.ts` 与
+// `apps/electron/src/ipc/files.ts` 整只删掉。下面六条「runtime 拥有 X 操作」的断言
+// 因此改指**域处理者**(`packages/backend/rpc/domains/files.ts`)—— 守的还是同一件事:
+// 投影逻辑住在产品层,传输层只转调,不许在这里重抄一份。
+const FILES_RPC_DOMAIN_FILE = 'packages/backend/rpc/domains/files.ts'
+
 function checkRuntimeOwnsFilesListIpcOperation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-search.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
+  const mainFile = path.join(root, FILES_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'resolveOnethingFileSearchRoots',
@@ -9291,7 +9320,7 @@ function checkRuntimeOwnsFilesListIpcOperation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_LIST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
+      : [`${FILES_RPC_DOMAIN_FILE}: missing files RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns files list IPC operation', lines)
@@ -9299,7 +9328,7 @@ function checkRuntimeOwnsFilesListIpcOperation(): void {
 
 function checkRuntimeOwnsDirsListIpcOperation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/directory-listing.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
+  const mainFile = path.join(root, FILES_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'expandOnethingDirectoryBasePath',
@@ -9312,7 +9341,7 @@ function checkRuntimeOwnsDirsListIpcOperation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_DIRS_LIST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
+      : [`${FILES_RPC_DOMAIN_FILE}: missing files RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns dirs list IPC operation', lines)
@@ -9320,7 +9349,7 @@ function checkRuntimeOwnsDirsListIpcOperation(): void {
 
 function checkRuntimeOwnsFileContentAndDirectoryOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
+  const mainFile = path.join(root, FILES_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'readOnethingFileContent',
@@ -9334,7 +9363,7 @@ function checkRuntimeOwnsFileContentAndDirectoryOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_FILE_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
+      : [`${FILES_RPC_DOMAIN_FILE}: missing files RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns file content and directory operations', lines)
@@ -9342,7 +9371,7 @@ function checkRuntimeOwnsFileContentAndDirectoryOperations(): void {
 
 function checkRuntimeOwnsFileMutationOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
+  const mainFile = path.join(root, FILES_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'createOnethingFile',
@@ -9357,7 +9386,7 @@ function checkRuntimeOwnsFileMutationOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_MUTATION_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
+      : [`${FILES_RPC_DOMAIN_FILE}: missing files RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns file mutation operations', lines)
@@ -9365,7 +9394,7 @@ function checkRuntimeOwnsFileMutationOperations(): void {
 
 function checkRuntimeOwnsFileRollbackOperation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-rollback.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
+  const mainFile = path.join(root, FILES_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'rollbackOnethingFile',
@@ -9376,7 +9405,7 @@ function checkRuntimeOwnsFileRollbackOperation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_ROLLBACK_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
+      : [`${FILES_RPC_DOMAIN_FILE}: missing files RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns file rollback operation', lines)
@@ -9384,7 +9413,7 @@ function checkRuntimeOwnsFileRollbackOperation(): void {
 
 function checkRuntimeOwnsFileWatchOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-watch.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
+  const mainFile = path.join(root, FILES_RPC_DOMAIN_FILE)
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'startOnethingFileWatchForIpc',
@@ -9396,7 +9425,7 @@ function checkRuntimeOwnsFileWatchOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_WATCH_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
+      : [`${FILES_RPC_DOMAIN_FILE}: missing files RPC domain`]),
   ]
 
   assertNoMatches('packages/onething-runtime owns file watch IPC operations', lines)
@@ -9663,6 +9692,7 @@ checkElectronHostOwnsLoggingCapture()
 checkElectronHostOwnsAccessibilityPermissions()
 checkElectronHostOwnsShellOperations()
 checkElectronHostOwnsOAuthEvents()
+checkGatewayAndFilesHostPorts()
 checkElectronHostOwnsSettingsIpcHost()
 checkAgentsDomainRidesTheRpcChannel()
 checkPromptsDomainRidesTheRpcChannel()
@@ -9699,7 +9729,6 @@ checkCoreOwnsJsonProtocol()
 checkCoreOwnsIpcRouterProtocol()
 checkCoreOwnsStreamChunkProtocol()
 checkElectronHostOwnsChatIpcHost()
-checkElectronHostOwnsFilesIpcHost()
 checkCorePromptAssemblyOwnedByRuntime()
 checkCorePromptContextRegistryOwnedByRuntime()
 checkRuntimeOwnsOnethingStoragePaths()

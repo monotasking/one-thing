@@ -19,8 +19,6 @@
     "./gateway/lifecycle": "./src/gateway/lifecycle.ts",
     "./ipc/app-state": "./src/ipc/app-state.ts",
     "./ipc/chat": "./src/ipc/chat.ts",
-    "./ipc/files": "./src/ipc/files.ts",
-    "./ipc/gateway": "./src/ipc/gateway.ts",
     "./ipc/markdown": "./src/ipc/markdown.ts",
     "./ipc/media": "./src/ipc/media.ts",
     "./ipc/permission": "./src/ipc/permission.ts",

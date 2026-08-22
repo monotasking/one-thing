@@ -39,6 +39,8 @@ import { permissionRouter } from '@shared/ipc/permissions.js'
 import { practiceRouter } from '@shared/ipc/practice.js'
 import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
+import { filesRouter } from '@shared/ipc/files.js'
+import { gatewayRouter } from '@shared/ipc/gateway.js'
 import { oauthRouter } from '@shared/ipc/oauth.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { schedulerRouter } from '@shared/ipc/scheduler.js'
@@ -60,6 +62,8 @@ import { appStateRpcHandlers } from './domains/app-state.js'
 import { channelIdentityRpcHandlers } from './domains/channel-identity.js'
 import { chatRpcHandlers } from './domains/chat.js'
 import { collabRpcHandlers } from './domains/collab.js'
+import { filesRpcHandlers } from './domains/files.js'
+import { gatewayRpcHandlers } from './domains/gateway.js'
 import { goalRpcHandlers } from './domains/goal.js'
 import { logsRpcHandlers } from './domains/logs.js'
 import { markdownRpcHandlers } from './domains/markdown.js'
@@ -212,6 +216,22 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // server 那台 per-owner 的第二台 authService 随之消失 —— 一个 store 一本令牌账。
   // 位置在 themes 之后、自进化之前:同一条约束(卸载要逆序)。
   { id: 'rpc:oauth', mount: ctx => { ctx.registerRpcDomain(oauthRouter, oauthRpcHandlers) } },
+  // P4c 第八批第一个域(gateway)—— 八条:状态 / 起停 / 微信账号增删改与登出。
+  // 八条全都要**宿主本体**(主进程拉起来的子进程 + 一张二维码),所以域处理者
+  // 走 `wiring/gateway/host-ports.ts` 的 `configureGatewayHost`:桌面在
+  // `main-process.ts` 注入八行转调,server / CLI 不注入 —— 拿到的是结构化降级,
+  // 而不是旧 server adapter 那句写死的「server runtime 上网关已禁用」。
+  // **本域零推送**(全仓没有 `GATEWAY_*_CHANGED`),所以 `@main/ipc/gateway.ts`
+  // 整只删掉,不像 oauth 还要留一层广播注入。
+  { id: 'rpc:gateway', mount: ctx => { ctx.registerRpcDomain(gatewayRouter, gatewayRpcHandlers) } },
+  // P4c 第八批第二个域(files)—— 十四条,也是全仓**第一个逐方法带 http 夹紧**
+  // 的域(#19 的安全面):`transport:'ipc'` 不夹(桌面与迁移前逐字同义)、
+  // `transport:'http'` 每条带路径的方法都夹进 `sandboxRoot`,越界文案逐字沿用
+  // 旧 server 路由的原话。三处 http 分叉(`list` 的搜索根 / `reveal` 要外壳端口 /
+  // `watchStart|Stop` 桌面是投影桩而 http 是真监视器)逐条写在域文件头的表里。
+  // 一条推送留在原地:`FILE_WATCH_EVENT` 与它在 server 那侧的 SSE 源,
+  // 登记簿搬到 `wiring/files/workspace-watch.ts`,请求面与推送面共用同一张表。
+  { id: 'rpc:files', mount: ctx => { ctx.registerRpcDomain(filesRouter, filesRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

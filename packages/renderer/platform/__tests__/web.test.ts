@@ -789,123 +789,12 @@ describe('createWebPlatformApi', () => {
     })
   })
 
-  it('maps workspace file platform methods to server REST endpoints', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url === '/api/capabilities') {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(JSON.stringify({ success: true, url }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('navigator', {})
-
-    const { createWebPlatformApi } = await import('../web.js')
-    const api = createWebPlatformApi()
-
-    await expect(api.listFiles({ cwd: '/workspace', query: 'src', limit: 5 })).resolves.toEqual({
-      success: true,
-      url: '/api/files/list',
-    })
-    await expect(api.listDirs({ basePath: '/workspace', query: 's' })).resolves.toEqual({
-      success: true,
-      url: '/api/dirs/list',
-    })
-    await expect(api.readFileContent('/workspace/a.txt', 1024)).resolves.toEqual({
-      success: true,
-      url: '/api/files/read',
-    })
-    await expect(api.saveFileContent('/workspace/a.txt', 'hello', 123)).resolves.toEqual({
-      success: true,
-      url: '/api/files/save',
-    })
-    await expect(api.rollbackFile({
-      filePath: '/workspace/a.txt',
-      originalContent: 'before',
-      isNew: false,
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/files/rollback',
-    })
-    await expect(api.watchWorkspace('/workspace')).resolves.toEqual({
-      success: true,
-      url: '/api/files/watch/start',
-    })
-    await expect(api.unwatchWorkspace('/workspace')).resolves.toEqual({
-      success: true,
-      url: '/api/files/watch/stop',
-    })
-    await expect(api.listDirectory('/workspace')).resolves.toEqual({
-      success: true,
-      url: '/api/files/list-directory',
-    })
-    await expect(api.statPath('/workspace/a.txt')).resolves.toEqual({
-      success: true,
-      url: '/api/files/stat',
-    })
-    await expect(api.createFile('/workspace/b.txt', 'new')).resolves.toEqual({
-      success: true,
-      url: '/api/files/create',
-    })
-    await expect(api.createDirectory('/workspace/src')).resolves.toEqual({
-      success: true,
-      url: '/api/files/create-directory',
-    })
-    await expect(api.renamePath('/workspace/b.txt', '/workspace/c.txt')).resolves.toEqual({
-      success: true,
-      url: '/api/files/rename',
-    })
-    await expect(api.deletePath('/workspace/c.txt')).resolves.toEqual({
-      success: true,
-      url: '/api/files/delete',
-    })
-    // variables 域的三条已整只迁到通用 RPC 通道(P4c,`@shared/ipc/variables.ts` 的
-    // variablesRouter + `@/platform/variables-client` 的 variablesApi):web 壳上
-    // 不再有 /api/variables/* 的镜像。
-    // project-dirs 域的五条同样迁走了(P4c,`projectDirsRouter` +
-    // `@/platform/project-dirs-client`)。顺带修掉一处说谎:旧 web 壳把
-    // `workspaceId` 收下就丢,浏览器里切空间等于没切;走 router 之后它真的传下去。
-    // media 域的十一条数据面同样迁走了(P4c 第三批,`mediaRouter` +
-    // `@/platform/media-client`):web 壳上不再有 /api/media/{assets,ingest,gallery,
-    // save-image,legacy-images,delete,clear-all,read-image,rebuild,assets/hide,
-    // preview/get} 这十一条镜像。留在壳上的三条**要宿主本体**,而浏览器给不出:
-    // 「另存为」是诚实桩,两条 open-image-* 就地承认(见下一条用例)。
-    // chat 域的六条(history / title / system-prompt-snapshot / thinking-time /
-    // abort / active-streams)已整只迁到通用 RPC 通道(P4c 第五批,`chatRouter` +
-    // `@/platform/chat-client`):web 壳上不再有 /api/chat/* 与 /api/streams/* 的镜像。
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/files/list', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/files/save', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/files/rollback', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        filePath: '/workspace/a.txt',
-        originalContent: 'before',
-        isNew: false,
-      }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/files/watch/start', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ root: '/workspace' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/files/watch/stop', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ root: '/workspace' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/files/rename', expect.objectContaining({
-      method: 'POST',
-    }))
-  })
+  // P4c 第八批:`maps workspace file platform methods to server REST endpoints`
+  // 整条退休 —— 它断言的十四条 /api/files/* 与 /api/dirs/list 镜像已经不存在了
+  // (数据面走 `filesRouter` + `@/platform/files-client`)。留在 web 壳上的
+  // `onWorkspaceFileChanged` SSE 订阅由上面那条 EventSource 用例钉;
+  // 十四条方法的行为(含 http 夹紧)由 `backend/rpc/__tests__/files-domain.test.ts`
+  // 与 `backend/server/__tests__/http.test.ts` 那条端到端用例钉。
 
   it('maps tool platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -1215,22 +1104,8 @@ describe('createWebPlatformApi', () => {
     })
     // P4c 第七批:oauth 六条数据面已迁到通用 RPC(oauthRouter);web 壳上只剩
     // `/api/oauth/events` 那条 SSE 订阅(推送面,router 今天没有)。
-    await expect(api.gatewayGetStatus()).resolves.toEqual({
-      success: true,
-      url: '/api/gateway/status',
-    })
-    await expect(api.gatewayStart({ channel: 'wechat' })).resolves.toEqual({
-      success: true,
-      url: '/api/gateway/start',
-    })
-    await expect(api.gatewayStop()).resolves.toEqual({
-      success: true,
-      url: '/api/gateway/stop',
-    })
-    await expect(api.gatewayWechatLogout()).resolves.toEqual({
-      success: true,
-      url: '/api/gateway/wechat/logout',
-    })
+    // P4c 第八批:gateway 八条数据面已迁到通用 RPC(`gatewayRouter`);本域零推送,
+    // 所以 web 壳上一条不剩。
     await expect(api.voiceGetState()).resolves.toEqual({
       success: true,
       url: '/api/voice/state',
@@ -1287,13 +1162,6 @@ describe('createWebPlatformApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/execute-command', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ commandName: '/demo', args: '--fast', sessionId: 'session-1' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/gateway/start', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ channel: 'wechat' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/gateway/stop', expect.objectContaining({
-      method: 'POST',
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/voice/start', expect.objectContaining({
       method: 'POST',

@@ -525,6 +525,7 @@ import {
   Video,
   X,
 } from 'lucide-vue-next'
+import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
 import { mediaApi } from '@/platform/media-client'
 
@@ -1001,7 +1002,7 @@ function launchGallery(asset: MediaAsset) {
 }
 
 function revealAsset(asset: MediaAsset) {
-  if (asset.filePath) void platformApi.revealPath(asset.filePath)
+  if (asset.filePath) void filesApi.reveal({ path: asset.filePath })
 }
 
 const REMOVE_MEDIA_ASK = {

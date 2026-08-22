@@ -1,6 +1,7 @@
 import { computed, markRaw, reactive, shallowReactive } from 'vue'
 import * as monaco from 'monaco-editor'
 import { monacoLanguageFromPath } from '@/editor/monaco-languages'
+import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
 
 export interface ExplorerEntry {
@@ -134,7 +135,7 @@ function hasWorkspaceFileAccess(): boolean {
 async function setWorkspaceRoot(root: string) {
   if (workspace.root === root) return
   if (watchedRoot) {
-    await platformApi.unwatchWorkspace(watchedRoot).catch(() => {})
+    await filesApi.watchStop({ root: watchedRoot }).catch(() => {})
   }
   watchDispose?.()
   watchDispose = null
@@ -162,7 +163,7 @@ async function loadDirectory(dirPath: string) {
   node.loading = true
   node.error = ''
   try {
-    const res = await platformApi.listDirectory(dirPath)
+    const res = await filesApi.listDirectory({ path: dirPath })
     if (res.success) {
       node.entries = res.entries || []
       node.expanded = true
@@ -208,7 +209,7 @@ async function openFile(filePath: string, maxBytes = 1024 * 1024) {
   buffer.error = ''
   try {
     const res = await withTimeout(
-      platformApi.readFileContent(filePath, maxBytes),
+      filesApi.readContent({ path: filePath, maxSize: maxBytes }),
       8000,
       'File load timed out',
     )
@@ -261,7 +262,11 @@ async function saveFile(filePath = workspace.activePath) {
   buffer.error = ''
   buffer.conflict = false
   const value = buffer.model?.getValue() ?? buffer.value
-  const res = await platformApi.saveFileContent(filePath, value, buffer.lastReadMtimeMs)
+  const res = await filesApi.saveContent({
+    path: filePath,
+    content: value,
+    expectedMtimeMs: buffer.lastReadMtimeMs,
+  })
   buffer.saving = false
   if (!res.success) {
     buffer.conflict = !!res.conflict
@@ -330,7 +335,7 @@ async function refreshActiveFile() {
 async function createFile(parentDir: string, name: string) {
   if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
   const filePath = `${parentDir.replace(/\/$/, '')}/${name}`
-  const res = await platformApi.createFile(filePath)
+  const res = await filesApi.create({ path: filePath })
   if (res.success) await loadDirectory(parentDir)
   return res
 }
@@ -338,7 +343,7 @@ async function createFile(parentDir: string, name: string) {
 async function createDirectory(parentDir: string, name: string) {
   if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
   const dirPath = `${parentDir.replace(/\/$/, '')}/${name}`
-  const res = await platformApi.createDirectory(dirPath)
+  const res = await filesApi.createDirectory({ path: dirPath })
   if (res.success) await loadDirectory(parentDir)
   return res
 }
@@ -347,7 +352,7 @@ async function renamePath(oldPath: string, newName: string) {
   if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
   const parent = oldPath.split('/').slice(0, -1).join('/') || '/'
   const newPath = `${parent}/${newName}`
-  const res = await platformApi.renamePath(oldPath, newPath)
+  const res = await filesApi.rename({ oldPath, newPath })
   if (res.success) {
     await loadDirectory(parent)
     if (workspace.buffers.has(oldPath)) {
@@ -361,7 +366,7 @@ async function renamePath(oldPath: string, newName: string) {
 async function deletePath(targetPath: string) {
   if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
   const parent = targetPath.split('/').slice(0, -1).join('/') || '/'
-  const res = await platformApi.deletePath(targetPath)
+  const res = await filesApi.delete({ path: targetPath })
   if (res.success) {
     closeFile(targetPath)
     await loadDirectory(parent)
@@ -371,7 +376,7 @@ async function deletePath(targetPath: string) {
 
 async function revealPath(targetPath: string) {
   if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
-  return platformApi.revealPath(targetPath)
+  return filesApi.reveal({ path: targetPath })
 }
 
 function setViewState(filePath: string, state: monaco.editor.ICodeEditorViewState | null) {

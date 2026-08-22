@@ -102,16 +102,30 @@ const skillsApi = vi.hoisted(() => ({
 }))
 vi.mock('@/platform/skills-client', () => ({ skillsApi }))
 
+// P4c 第八批:@ 文件补全与 /cd 目录补全从 `electronAPI.listFiles` / `listDirs`
+// 换成 `@/platform/files-client` 的 `filesApi.list` / `filesApi.listDirs`。
+const filesApi = vi.hoisted(() => ({
+  list: vi.fn(),
+  listDirs: vi.fn(),
+}))
+vi.mock('@/platform/files-client', () => ({ filesApi }))
+
 describe('usePickerOrchestration', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     skillsApi.getAll.mockReset().mockResolvedValue({ success: true, skills: [] })
+    filesApi.list.mockReset().mockResolvedValue({
+      success: true,
+      files: ['/repo/src/editor/TextEditor.vue'],
+    })
+    filesApi.listDirs.mockReset().mockResolvedValue({
+      success: true,
+      dirs: ['/Users/me/My Project'],
+    })
     vi.stubGlobal('window', {
       electronAPI: {
         getPluginCommands: vi.fn().mockResolvedValue({ success: true, commands: [] }),
         listVariables: vi.fn().mockResolvedValue({ success: true, variables: [] }),
-        listFiles: vi.fn().mockResolvedValue({ success: true, files: ['/repo/src/editor/TextEditor.vue'] }),
-        listDirs: vi.fn().mockResolvedValue({ success: true, dirs: ['/Users/me/My Project'] }),
         listPrompts: vi.fn().mockResolvedValue({
           success: true,
           prompts: [{
@@ -249,7 +263,7 @@ describe('usePickerOrchestration', () => {
 
   it('shows Downloads as a normal @ file picker directory result', async () => {
     vi.useFakeTimers()
-    vi.mocked(window.electronAPI.listFiles).mockResolvedValue({
+    vi.mocked(filesApi.list).mockResolvedValue({
       success: true,
       files: [],
       entries: [{
@@ -275,7 +289,7 @@ describe('usePickerOrchestration', () => {
           value: '/Users/me/Downloads',
         }],
       })
-      expect(window.electronAPI.listFiles).toHaveBeenCalledWith({
+      expect(filesApi.list).toHaveBeenCalledWith({
         cwd: '/repo',
         query: 'downloads',
         limit: 50,
@@ -290,7 +304,7 @@ describe('usePickerOrchestration', () => {
 
   it('shows note and downloads directories for bare @ even without a workdir', async () => {
     vi.useFakeTimers()
-    vi.mocked(window.electronAPI.listFiles).mockResolvedValue({
+    vi.mocked(filesApi.list).mockResolvedValue({
       success: true,
       files: [],
       entries: [
@@ -314,7 +328,7 @@ describe('usePickerOrchestration', () => {
       await vi.advanceTimersByTimeAsync(200)
       await settleWatchers()
 
-      expect(window.electronAPI.listFiles).toHaveBeenCalledWith({
+      expect(filesApi.list).toHaveBeenCalledWith({
         cwd: '',
         query: '',
         limit: 50,
@@ -347,7 +361,7 @@ describe('usePickerOrchestration', () => {
       await settleWatchers()
 
       expect(harness.api.showFilePicker.value).toBe(true)
-      expect(window.electronAPI.listFiles).toHaveBeenCalledWith({
+      expect(filesApi.list).toHaveBeenCalledWith({
         cwd: '',
         query: 'receipt',
         limit: 50,

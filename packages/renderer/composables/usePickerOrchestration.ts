@@ -12,6 +12,8 @@ import { applyTriggerReplacement, parseEditorTrigger, type EditorTrigger } from 
 import { usePromptsStore } from '@/stores/prompts'
 import { createFileToken, createMemberToken, createPageToken, createPromptToken, createSkillToken, extractMemberTokens, extractPageTokens, FILE_REF_PATTERN, PAGE_REF_PATTERN } from '@shared/prompt-references'
 import { COLLAB_MENTION_ALL_LABELS } from '@onething/runtime/collab'
+import type { FileSearchEntry as SharedFileSearchEntry } from '@shared/ipc/files.js'
+import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
 import { skillsApi } from '@/platform/skills-client'
 import { variablesApi } from '@/platform/variables-client'
@@ -22,12 +24,9 @@ const log = getLogger('renderer.picker')
 export type ComposerExtensionType = 'none' | 'palette' | 'files' | 'paths' | 'pages' | 'members'
 export type ComposerExtensionItemKind = PaletteItemType | 'file' | 'directory' | 'path' | 'browser-page' | 'agent-member'
 
-interface FileSearchEntry {
-  path: string
-  type: 'file' | 'directory'
-  source?: 'workdir' | 'downloads' | 'note'
-  label?: string
-}
+// 契约上的那一份(`@shared/ipc/files`)—— 本地这份从前漏了 `connected`
+// (接入目录,批 B2),对不上就会在 `entries.map` 上炸。
+type FileSearchEntry = SharedFileSearchEntry
 
 export interface ComposerExtensionItem {
   id: string
@@ -610,7 +609,7 @@ export function usePickerOrchestration(
       await loadNoteRoots()
       const cwd = variableWorkdir.value || workingDirectory.value
 
-      const result = await platformApi.listFiles({
+      const result = await filesApi.list({
         cwd,
         query,
         limit: 50,
@@ -657,7 +656,7 @@ export function usePickerOrchestration(
     patchActiveExtension({ loading: true, error: null })
 
     try {
-      const result = await platformApi.listDirs({
+      const result = await filesApi.listDirs({
         basePath: pathToSearch,
         limit: 50,
       })

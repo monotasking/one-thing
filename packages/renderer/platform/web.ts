@@ -1,11 +1,5 @@
 import type {
 	AppSettings,
-	GatewayStartRequest,
-	GatewayWechatAddAccountRequest,
-	GatewayWechatLogoutRequest,
-	GatewayWechatRemoveAccountRequest,
-	GatewayWechatRenameAccountRequest,
-	GatewayWechatStopAccountRequest,
 	ProxySettings,
 	ScratchpadChangedPayload,
 	SearchRequest,
@@ -583,20 +577,7 @@ const webApi = {
 			"oauth:token-expired",
 			callback,
 		),
-	gatewayGetStatus: () => requestJson("/api/gateway/status"),
-	gatewayStart: (request?: GatewayStartRequest) =>
-		postJson("/api/gateway/start", request),
-	gatewayStop: () => postJson("/api/gateway/stop"),
-	gatewayWechatLogout: (request?: GatewayWechatLogoutRequest) =>
-		postJson("/api/gateway/wechat/logout", request ?? {}),
-	gatewayWechatAddAccount: (request?: GatewayWechatAddAccountRequest) =>
-		postJson("/api/gateway/wechat/accounts/add", request ?? {}),
-	gatewayWechatStopAccount: (request: GatewayWechatStopAccountRequest) =>
-		postJson("/api/gateway/wechat/accounts/stop", request),
-	gatewayWechatRemoveAccount: (request: GatewayWechatRemoveAccountRequest) =>
-		postJson("/api/gateway/wechat/accounts/remove", request),
-	gatewayWechatRenameAccount: (request: GatewayWechatRenameAccountRequest) =>
-		postJson("/api/gateway/wechat/accounts/rename", request),
+	// gateway —— 八条 REST 镜像已随 `gatewayRouter` 迁走(P4c 第八批),本域零推送。
 	voiceGetState: () => requestJson("/api/voice/state"),
 	voiceStart: (request?: VoiceStartRequest) =>
 		postJson("/api/voice/start", request),
@@ -715,32 +696,8 @@ const webApi = {
 	stopBackgroundJob: (jobId: string) =>
 		postJson(`/api/tools/background-jobs/${encodeURIComponent(jobId)}/stop`),
 
-	listFiles: (request: {
-		cwd?: string;
-		query?: string;
-		limit?: number;
-		sessionId?: string;
-	}) => postJson("/api/files/list", request),
-	listDirs: (request: { basePath: string; query?: string; limit?: number }) =>
-		postJson("/api/dirs/list", request),
-	readFileContent: (filePath: string, maxSize?: number) =>
-		postJson("/api/files/read", { path: filePath, maxSize }),
-	saveFileContent: (
-		filePath: string,
-		content: string,
-		expectedMtimeMs?: number,
-	) =>
-		postJson("/api/files/save", { path: filePath, content, expectedMtimeMs }),
-	rollbackFile: (request: {
-		auditPath?: string;
-		filePath?: string;
-		originalContent?: string;
-		isNew?: boolean;
-	}) => postJson("/api/files/rollback", request),
-	watchWorkspace: (root: string) =>
-		postJson("/api/files/watch/start", { root }),
-	unwatchWorkspace: (root: string) =>
-		postJson("/api/files/watch/stop", { root }),
+	// files —— 十四条 REST 镜像已随 `filesRouter` 迁走(P4c 第八批);
+	// 只剩这一条**推送**的 SSE 订阅,router 今天没有推送面。
 	onWorkspaceFileChanged: (
 		callback: (payload: {
 			root: string;
@@ -753,20 +710,6 @@ const webApi = {
 			"workspace:file-changed",
 			callback,
 		),
-	listDirectory: (dirPath: string) =>
-		postJson("/api/files/list-directory", { path: dirPath }),
-	statPath: (targetPath: string) =>
-		postJson("/api/files/stat", { path: targetPath }),
-	createFile: (filePath: string, content?: string) =>
-		postJson("/api/files/create", { path: filePath, content }),
-	createDirectory: (dirPath: string) =>
-		postJson("/api/files/create-directory", { path: dirPath }),
-	renamePath: (oldPath: string, newPath: string) =>
-		postJson("/api/files/rename", { oldPath, newPath }),
-	deletePath: (targetPath: string) =>
-		postJson("/api/files/delete", { path: targetPath }),
-	revealPath: (targetPath: string) =>
-		postJson("/api/files/reveal", { path: targetPath }),
 	recordEvalsDownvote: async () => ({
 		success: false,
 		error: "Evals is not supported in the web build",

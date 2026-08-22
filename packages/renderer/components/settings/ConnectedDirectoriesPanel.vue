@@ -141,6 +141,7 @@ import Button from '@/components/common/Button.vue'
 import Select from '@/components/common/Select.vue'
 import type { SelectOptionLike } from '@/components/common/select'
 import type { AppSettings } from '@/types'
+import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
 import { spacesApi } from '@/platform/spaces-client'
 import { useSpacesStore } from '@/stores/spaces'
@@ -230,7 +231,7 @@ async function refreshMissing(dirs: readonly string[]): Promise<void> {
   const missing = new Set<string>()
   await Promise.all(dirs.map(async dir => {
     try {
-      const result = await platformApi.statPath(dir)
+      const result = await filesApi.stat({ path: dir })
       if (!result.success || result.type !== 'directory') missing.add(dir)
     } catch {
       missing.add(dir)

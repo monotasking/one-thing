@@ -13,6 +13,20 @@ vi.mock('qrcode', () => ({
   toDataURL: mocks.toDataURL,
 }))
 
+// P4c 第八批:八条 gateway 数据面从 `electronAPI.gateway*` 换成
+// `@/platform/gateway-client` 的 `gatewayApi`(通用 RPC 通道)。
+const gatewayApi = vi.hoisted(() => ({
+  getStatus: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  wechatLogout: vi.fn(),
+  wechatAddAccount: vi.fn(),
+  wechatStopAccount: vi.fn(),
+  wechatRemoveAccount: vi.fn(),
+  wechatRenameAccount: vi.fn(),
+}))
+vi.mock('@/platform/gateway-client', () => ({ gatewayApi }))
+
 function appSettings(enabled = false): AppSettings {
   return {
     theme: 'dark',
@@ -124,64 +138,64 @@ describe('ChannelsSettingsTab', () => {
   beforeEach(() => {
     vi.useRealTimers()
     vi.clearAllMocks()
+    gatewayApi.getStatus.mockReset().mockResolvedValue({
+      success: true,
+      status: gatewayStatus(),
+    })
+    gatewayApi.start.mockReset().mockResolvedValue({
+      success: true,
+      status: gatewayStatus({
+        enabled: true,
+        running: true,
+        loginStatus: 'waiting-for-scan',
+        qrUrl: 'https://liteapp.weixin.qq.com/q/mock',
+      })
+    })
+    gatewayApi.stop.mockReset().mockResolvedValue({ success: true, status: gatewayStatus() }),
+    gatewayApi.wechatLogout.mockReset().mockResolvedValue({ success: true, status: gatewayStatus() }),
+    gatewayApi.wechatAddAccount.mockReset().mockResolvedValue({
+      success: true,
+      account: {
+        id: 'wechat-2',
+        enabled: true,
+        running: true,
+        loginStatus: 'waiting-for-scan',
+        loggedIn: false,
+        qrUrl: 'https://liteapp.weixin.qq.com/q/work',
+      },
+      status: gatewayStatus({}, [
+        {
+          id: 'default',
+          enabled: true,
+          running: false,
+          loginStatus: 'idle',
+          loggedIn: false,
+        },
+        {
+          id: 'wechat-2',
+          enabled: true,
+          running: true,
+          loginStatus: 'waiting-for-scan',
+          loggedIn: false,
+          qrUrl: 'https://liteapp.weixin.qq.com/q/work',
+        },
+      ]),
+    })
+    gatewayApi.wechatStopAccount.mockReset().mockResolvedValue({
+      success: true,
+      status: gatewayStatus({
+        id: 'default',
+        enabled: false,
+        running: false,
+        loginStatus: 'idle',
+        loggedIn: false,
+      })
+    })
+    gatewayApi.wechatRemoveAccount.mockReset().mockResolvedValue({ success: true, status: gatewayStatus() }),
+    gatewayApi.wechatRenameAccount.mockReset().mockResolvedValue({ success: true, status: gatewayStatus() }),
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
       value: {
-        gatewayGetStatus: vi.fn().mockResolvedValue({
-          success: true,
-          status: gatewayStatus(),
-        }),
-        gatewayStart: vi.fn().mockResolvedValue({
-          success: true,
-          status: gatewayStatus({
-            enabled: true,
-            running: true,
-            loginStatus: 'waiting-for-scan',
-            qrUrl: 'https://liteapp.weixin.qq.com/q/mock',
-          }),
-        }),
-        gatewayStop: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
-        gatewayWechatLogout: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
-        gatewayWechatAddAccount: vi.fn().mockResolvedValue({
-          success: true,
-          account: {
-            id: 'wechat-2',
-            enabled: true,
-            running: true,
-            loginStatus: 'waiting-for-scan',
-            loggedIn: false,
-            qrUrl: 'https://liteapp.weixin.qq.com/q/work',
-          },
-          status: gatewayStatus({}, [
-            {
-              id: 'default',
-              enabled: true,
-              running: false,
-              loginStatus: 'idle',
-              loggedIn: false,
-            },
-            {
-              id: 'wechat-2',
-              enabled: true,
-              running: true,
-              loginStatus: 'waiting-for-scan',
-              loggedIn: false,
-              qrUrl: 'https://liteapp.weixin.qq.com/q/work',
-            },
-          ]),
-        }),
-        gatewayWechatStopAccount: vi.fn().mockResolvedValue({
-          success: true,
-          status: gatewayStatus({
-            id: 'default',
-            enabled: false,
-            running: false,
-            loginStatus: 'idle',
-            loggedIn: false,
-          }),
-        }),
-        gatewayWechatRemoveAccount: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
-        gatewayWechatRenameAccount: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
         // 渠道身份域已迁到通用 RPC 通道(主线 T1 第二批):这里不再逐方法打桩,
         // 而是打**那一条**通道,再按 method 分发 —— 和生产链路同形。
         rpcInvoke: rpcInvokeMock,
@@ -205,7 +219,7 @@ describe('ChannelsSettingsTab', () => {
     expect(wrapper.emitted('update:settings')?.[0]?.[0]).toMatchObject({
       channels: { wechat: { enabled: true } },
     })
-    expect(window.electronAPI.gatewayStart).toHaveBeenCalledWith({ channel: 'wechat', accountId: 'default' })
+    expect(gatewayApi.start).toHaveBeenCalledWith({ channel: 'wechat', accountId: 'default' })
 
     wrapper.unmount()
   })
@@ -221,7 +235,7 @@ describe('ChannelsSettingsTab', () => {
     await addButton!.trigger('click')
     await settle()
 
-    expect(window.electronAPI.gatewayWechatAddAccount).toHaveBeenCalledWith({})
+    expect(gatewayApi.wechatAddAccount).toHaveBeenCalledWith({})
     expect(wrapper.text()).toContain('wechat-2')
     expect(mocks.toDataURL).toHaveBeenCalledWith(
       'https://liteapp.weixin.qq.com/q/work',
@@ -242,7 +256,7 @@ describe('ChannelsSettingsTab', () => {
   })
 
   it('stops a single WeChat account without removing the account setting', async () => {
-    vi.mocked(window.electronAPI.gatewayGetStatus).mockResolvedValue({
+    vi.mocked(gatewayApi.getStatus).mockResolvedValue({
       success: true,
       status: gatewayStatus({
         id: 'default',
@@ -274,7 +288,7 @@ describe('ChannelsSettingsTab', () => {
     await accountStopButton!.trigger('click')
     await settle()
 
-    expect(window.electronAPI.gatewayWechatStopAccount).toHaveBeenCalledWith({ accountId: 'default' })
+    expect(gatewayApi.wechatStopAccount).toHaveBeenCalledWith({ accountId: 'default' })
     expect(wrapper.emitted('update:settings')?.at(-1)?.[0]).toMatchObject({
       channels: {
         wechat: {
@@ -288,7 +302,7 @@ describe('ChannelsSettingsTab', () => {
   })
 
   it('renders the scan URL as a QR code and uses Electron APIs for QR actions', async () => {
-    vi.mocked(window.electronAPI.gatewayGetStatus).mockResolvedValue({
+    vi.mocked(gatewayApi.getStatus).mockResolvedValue({
       success: true,
       status: gatewayStatus({
         enabled: true,
@@ -329,7 +343,7 @@ describe('ChannelsSettingsTab', () => {
       loginStatus: 'waiting-for-scan',
       qrUrl: 'https://liteapp.weixin.qq.com/q/mock',
     })
-    vi.mocked(window.electronAPI.gatewayGetStatus).mockResolvedValue({
+    vi.mocked(gatewayApi.getStatus).mockResolvedValue({
       success: true,
       status: scanStatus,
     })

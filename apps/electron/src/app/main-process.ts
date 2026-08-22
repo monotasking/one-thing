@@ -113,6 +113,7 @@ import {
 	getElectronResourcesPath,
 } from "@onething/electron-host/skills/environment";
 import { configureAuthHost } from "@onething/runtime/auth/host-ports";
+import { configureGatewayHost } from "@onething/backend/wiring/gateway/host-ports.js";
 import { configureShellHost } from "@onething/runtime/shell/host-ports";
 import {
 	openElectronExternal,
@@ -136,9 +137,17 @@ import {
 	markStartupProcessStart,
 } from "@onething/runtime/perf";
 import {
+	addWechatGatewayAccount,
 	configureGatewayLifecycle,
+	getGatewayStatus,
 	initializeGateway,
+	logoutWechatGateway,
+	removeWechatGatewayAccount,
+	renameWechatGatewayAccount,
 	shutdownGateway,
+	startGateway,
+	stopGateway,
+	stopWechatGatewayAccount,
 } from "@onething/electron-host/gateway/lifecycle";
 import { createGatewayPluginCommandProvider } from "@main/ipc/plugins.js";
 import {
@@ -408,6 +417,20 @@ export function startOnethingElectronMain(): void {
 		openPath: (targetPath) => openElectronPath(targetPath),
 		openExternal: (url) => openElectronExternal(url),
 		revealPath: (targetPath) => revealElectronPath(targetPath),
+	});
+	// IM 网关生命周期的宿主能力(结构债 P4c 第八批)。八条数据面走 `gatewayRouter`,
+	// 而八件事全都要主进程本体(拉起来的子进程 + 一张二维码),所以由这里注入 ——
+	// server / CLI 不注入,于是拿到结构化降级而不是旧 server adapter 那句写死的
+	// 「server runtime 上网关已禁用」。
+	configureGatewayHost({
+		getStatus: () => getGatewayStatus(),
+		start: (request) => startGateway(request),
+		stop: () => stopGateway(),
+		wechatLogout: (request) => logoutWechatGateway(request),
+		wechatAddAccount: (request) => addWechatGatewayAccount(request),
+		wechatStopAccount: (request) => stopWechatGatewayAccount(request),
+		wechatRemoveAccount: (request) => removeWechatGatewayAccount(request),
+		wechatRenameAccount: (request) => renameWechatGatewayAccount(request),
 	});
 	configureAuthHost({
 		authFetch: createElectronAuthFetch({

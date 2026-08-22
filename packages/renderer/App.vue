@@ -186,6 +186,7 @@ import { useOverlayPresenceStore } from '@/stores/overlayPresence'
 import { useBrowserStore } from '@/stores/browser'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
+import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
 import { appStateApi } from '@/platform/app-state-client'
 import { toast } from '@/composables/useToast'
@@ -784,11 +785,11 @@ function createReferenceHost(): ReferenceHost {
       if (tabId) await browserStore.selectTab(tabId)
     },
     openExternal: url => void platformApi.openExternal(url),
-    revealPath: path => void platformApi.revealPath(path),
+    revealPath: path => void filesApi.reveal({ path }),
     openFolder: path => openFolderInRightWorkbench(path),
     openImage: (path, fileUrl) => void platformApi.openImagePreview(fileUrl, path.split('/').pop() || path),
     statPath: async (path) => {
-      const res = await platformApi.statPath(path).catch(() => null)
+      const res = await filesApi.stat({ path }).catch(() => null)
       if (!res?.success) return { exists: false, isDirectory: false, isImage: false }
       return {
         exists: true,
@@ -952,7 +953,7 @@ function registerCollabTags() {
       const absolute = resolveDeliverablePath(path, roomWorkingDirectoryForTags())
       if (!absolute) return null
       try {
-        const stat = await platformApi.statPath(absolute)
+        const stat = await filesApi.stat({ path: absolute })
         return stat?.success && stat.type === 'file' ? { absolutePath: absolute } : null
       } catch {
         return null

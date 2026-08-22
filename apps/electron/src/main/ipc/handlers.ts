@@ -8,7 +8,6 @@ import { registerInteractionHandlers } from "./interaction.js";
 import { registerOAuthHandlers } from "./oauth.js";
 import { registerSpacesHandlers } from "./spaces.js";
 import { registerPluginHandlers } from "./plugins.js";
-import { registerFilesHandlers } from "./files.js";
 import { registerSearchHandlers } from "@onething/electron-host/search/ipc";
 import { registerWindowHandlers } from "@onething/electron-host/ipc/window";
 import { registerTodoPlanHandlers } from "./todo-plan.js";
@@ -18,7 +17,6 @@ import { registerMusicHandlers } from "./music.js";
 import { startMusicNowPlayingWatch } from "@onething/backend/wiring/music/service.js";
 import { startRadioConductor } from "@onething/backend/wiring/music/radio.js";
 import { initializeACP, shutdownACP } from "./acp.js";
-import { registerGatewayHandlers } from "./gateway.js";
 import { registerEvalsHandlers } from "./evals.js";
 import { registerRpcHandler } from "./rpc.js";
 import { registerPracticeHandlers } from "./practice.js";
@@ -36,7 +34,6 @@ export function initializeIPC() {
 	registerOAuthHandlers();
 	registerSpacesHandlers();
 	registerPluginHandlers();
-	registerFilesHandlers();
 	registerSearchHandlers();
 	registerWindowHandlers();
 	registerTodoPlanHandlers();
@@ -51,7 +48,6 @@ export function initializeIPC() {
 	// that says "inactive" and returns. Sound only ever follows a user opening
 	// the station in conversation.
 	startRadioConductor();
-	registerGatewayHandlers();
 	registerEvalsHandlers();
 	// 通用 RPC 适配器:一条通道服务所有 router 域(usage 是首个)。加域不再动这里。
 	registerRpcHandler();

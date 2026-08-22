@@ -109,15 +109,8 @@ export const IPC_CHANNELS = {
 	/** renderer -> main: switch the music CLI provider (a retune: programme cleared). */
 	MUSIC_SET_PROVIDER: "music:set-provider",
 
-	// Gateway / IM channel related
-	GATEWAY_GET_STATUS: "gateway:get-status",
-	GATEWAY_START: "gateway:start",
-	GATEWAY_STOP: "gateway:stop",
-	GATEWAY_WECHAT_LOGOUT: "gateway:wechat-logout",
-	GATEWAY_WECHAT_ADD_ACCOUNT: "gateway:wechat-add-account",
-	GATEWAY_WECHAT_STOP_ACCOUNT: "gateway:wechat-stop-account",
-	GATEWAY_WECHAT_REMOVE_ACCOUNT: "gateway:wechat-remove-account",
-	GATEWAY_WECHAT_RENAME_ACCOUNT: "gateway:wechat-rename-account",
+	// Gateway / IM channel:八条已迁到通用 RPC 通道(gatewayRouter),本域零推送,
+	// 此处不再有常量。
 
 	// Agent 档案 CRUD:已迁到通用 RPC 通道(agentsRouter),此处不再有常量。
 
@@ -166,27 +159,9 @@ export const IPC_CHANNELS = {
 	OAUTH_TOKEN_REFRESHED: "oauth:token-refreshed",
 	OAUTH_TOKEN_EXPIRED: "oauth:token-expired",
 
-	// Files related (for @ file search)
-	FILES_LIST: "files:list",
-
-	// File rollback related
-	FILE_ROLLBACK: "files:rollback",
-
-	// Directories related (for /cd path completion)
-	DIRS_LIST: "dirs:list",
-
-	// File Preview related (for reading file content)
-	FILE_READ_CONTENT: "file:read-content",
-	FILE_SAVE_CONTENT: "file:save-content",
-	FILE_LIST_DIRECTORY: "file:list-directory",
-	FILE_CREATE: "file:create",
-	FILE_CREATE_DIRECTORY: "file:create-directory",
-	FILE_RENAME: "file:rename",
-	FILE_DELETE: "file:delete",
-	FILE_STAT: "file:stat",
-	FILE_REVEAL: "file:reveal",
-	FILE_WATCH_START: "file:watch-start",
-	FILE_WATCH_STOP: "file:watch-stop",
+	// Files:十四条数据面已迁到通用 RPC 通道(filesRouter),只剩这一条**推送** ——
+	// router 今天没有推送面。桌面侧至今没有发送方(watchStart 是投影桩),
+	// 真正在用它的是 web 那条 `/api/files/watch/events` SSE。
 	FILE_WATCH_EVENT: "file:watch-event",
 
 	// Unified event-driven channels (Phase 4)

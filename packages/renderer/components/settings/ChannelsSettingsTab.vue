@@ -442,6 +442,7 @@ import {
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
+import { gatewayApi } from '@/platform/gateway-client'
 import { platformApi } from '@/platform'
 import { channelIdentityApi } from '@/platform/channel-identity-client'
 import { getLogger } from '@/services/log'
@@ -836,7 +837,7 @@ function setWechatEnabled(enabled: boolean): void {
 }
 
 async function loadStatus(): Promise<void> {
-  const response = await platformApi.gatewayGetStatus()
+  const response = await gatewayApi.getStatus({})
   if (response.success && response.status) {
     status.value = response.status
     await renderQrCodes(statusAccounts(response.status))
@@ -1048,25 +1049,25 @@ function removeWechatSettingsAccount(accountId: string): void {
 
 async function startWechat(accountId = defaultWechatAccountId): Promise<void> {
   upsertWechatSettingsAccount({ id: accountId }, true)
-  await runGatewayAction(async () => platformApi.gatewayStart({ channel: 'wechat', accountId }))
+  await runGatewayAction(async () => gatewayApi.start({ channel: 'wechat', accountId }))
 }
 
 async function stopGateway(): Promise<void> {
-  await runGatewayAction(async () => platformApi.gatewayStop())
+  await runGatewayAction(async () => gatewayApi.stop({}))
 }
 
 async function stopWechatAccount(accountId: string): Promise<void> {
   setWechatSettingsAccountEnabled(accountId, false)
-  await runGatewayAction(async () => platformApi.gatewayWechatStopAccount({ accountId }), { forceQr: true })
+  await runGatewayAction(async () => gatewayApi.wechatStopAccount({ accountId }), { forceQr: true })
 }
 
 async function logoutWechat(accountId = defaultWechatAccountId): Promise<void> {
-  await runGatewayAction(async () => platformApi.gatewayWechatLogout({ accountId }), { forceQr: true })
+  await runGatewayAction(async () => gatewayApi.wechatLogout({ accountId }), { forceQr: true })
 }
 
 async function addWechatAccount(): Promise<void> {
   const response = await runGatewayAction(
-    async () => platformApi.gatewayWechatAddAccount({}),
+    async () => gatewayApi.wechatAddAccount({}),
     { forceQr: true },
   )
   if (response?.success && response.account) {
@@ -1079,7 +1080,7 @@ async function addWechatAccount(): Promise<void> {
 
 async function removeWechatAccount(accountId: string): Promise<void> {
   const response = await runGatewayAction(
-    async () => platformApi.gatewayWechatRemoveAccount({ accountId }),
+    async () => gatewayApi.wechatRemoveAccount({ accountId }),
     { forceQr: true },
   )
   if (response?.success) {

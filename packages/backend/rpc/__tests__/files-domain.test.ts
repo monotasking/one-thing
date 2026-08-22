@@ -1,0 +1,253 @@
+/**
+ * files 域,端到端穿过 dispatcher(结构债 P4c 第八批)。
+ *
+ * 接的是被删掉的三处转发的测试位:`apps/electron/src/ipc/files.ts` 的工厂与
+ * `@main/ipc/files.ts` 的壳适配(连同 `@main/ipc/__tests__/files.test.ts` ——
+ * 那两条 @ 补全用例原样搬到了下面)、bridge 上那十四条包装、server 的十四条
+ * REST 路由 + `files` facade adapter 的数据面。
+ *
+ * 本域最要紧的判据是 **#19 的安全面**:同一份实现要给出两种语义。
+ *  - `transport:'ipc'`(桌面)**不夹**,与迁移前 `@main` handler 逐字同义;
+ *  - `transport:'http'`(server)每条带路径的方法都夹进 `sandboxRoot`,越界回
+ *    结构化失败(文案逐字沿用旧 server 路由);
+ *  - `reveal` 走 `configureShellHost`,未注入即结构化降级,而且**先夹后降级**;
+ *  - `list` 带 `sessionId` 时按会话归属解析接入目录(批 B2)。
+ */
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
+
+const ripgrep = vi.hoisted(() => ({ listFiles: vi.fn() }))
+const shell = vi.hoisted(() => ({ revealPath: vi.fn() }))
+const connected = vi.hoisted(() => ({
+  getConnectedDirectoriesForSession: vi.fn((): string[] => []),
+}))
+
+vi.mock('../../utils/ripgrep.js', () => ({ listFiles: ripgrep.listFiles }))
+vi.mock('@onething/runtime/shell/host-ports', async () => {
+  const actual = await vi.importActual<typeof import('@onething/runtime/shell/host-ports')>(
+    '@onething/runtime/shell/host-ports',
+  )
+  return { ...actual, getShellHost: () => shell }
+})
+vi.mock('../../stores/connected-directories.js', () => ({
+  getConnectedDirectoriesForSession: connected.getConnectedDirectoriesForSession,
+}))
+
+async function* emit(items: string[]) {
+  for (const item of items) yield item
+}
+
+const IPC: RpcDispatchContext = { transport: 'ipc' }
+
+function http(sandboxRoot: string): RpcDispatchContext {
+  return { transport: 'http', ownerUid: 'alice', workspaceId: 'w1', sandboxRoot }
+}
+
+function unwrap(response: RpcResponse): Record<string, unknown> {
+  if (!response.ok) throw new Error(`dispatch failed: ${response.error.message}`)
+  return response.data as Record<string, unknown>
+}
+
+describe('files RPC domain', () => {
+  let dispatchRpc: typeof import('../registry.js')['dispatchRpc']
+  let dispose: (() => void) | undefined
+  let sandboxRoot: string
+
+  beforeEach(async () => {
+    const [registry, domain, { resetVariablesStoreForTests }, { createDefaultVariablesFile }]
+      = await Promise.all([
+        import('../registry.js'),
+        import('../domains/files.js'),
+        import('@onething/runtime/variables/store-bound'),
+        import('@onething/runtime/variables/schema'),
+      ])
+    dispatchRpc = registry.dispatchRpc
+    registry.resetRpcRegistryForTests()
+    dispose = domain.registerFilesRpcDomain()
+
+    resetVariablesStoreForTests().hydrateForTests({
+      ...createDefaultVariablesFile(),
+      user_note_dir: '',
+      work_note_dir: '',
+    })
+    ripgrep.listFiles.mockReset().mockReturnValue(emit([]))
+    shell.revealPath.mockReset().mockResolvedValue({ success: true })
+    connected.getConnectedDirectoriesForSession.mockReset().mockReturnValue([])
+
+    sandboxRoot = await mkdtemp(join(tmpdir(), 'onething-files-domain-'))
+  })
+
+  afterEach(() => {
+    dispose?.()
+    dispose = undefined
+    vi.restoreAllMocks()
+  })
+
+  function call(method: string, payload: unknown, context: RpcDispatchContext) {
+    return dispatchRpc({ domain: 'files', method, payload }, context)
+  }
+
+  // ── #19:http 夹紧 ───────────────────────────────────────────────
+
+  it('refuses every path-carrying method that escapes the http sandbox', async () => {
+    const outside = '/etc/passwd'
+    const cases: Array<[string, unknown, string]> = [
+      ['readContent', { path: outside }, 'File path must stay inside the workspace sandbox root.'],
+      ['saveContent', { path: outside, content: 'x' }, 'File path must stay inside the workspace sandbox root.'],
+      ['listDirectory', { path: outside }, 'Directory path must stay inside the workspace sandbox root.'],
+      ['stat', { path: outside }, 'Path must stay inside the workspace sandbox root.'],
+      ['create', { path: outside }, 'File path must stay inside the workspace sandbox root.'],
+      ['createDirectory', { path: outside }, 'Directory path must stay inside the workspace sandbox root.'],
+      ['rename', { oldPath: outside, newPath: outside }, 'Rename paths must stay inside the workspace sandbox root.'],
+      ['delete', { path: outside }, 'Path must stay inside the workspace sandbox root.'],
+      ['reveal', { path: outside }, 'Path must stay inside the workspace sandbox root.'],
+      ['watchStart', { root: outside }, 'Workspace watch root must stay inside the workspace sandbox root.'],
+      ['watchStop', { root: outside }, 'Workspace watch root must stay inside the workspace sandbox root.'],
+      ['rollback', { filePath: outside }, 'Rollback file path must stay inside the workspace sandbox root.'],
+    ]
+    for (const [method, payload, error] of cases) {
+      expect(unwrap(await call(method, payload, http(sandboxRoot)))).toEqual({ success: false, error })
+    }
+    expect(unwrap(await call('list', { cwd: outside }, http(sandboxRoot)))).toEqual({
+      success: false,
+      files: [],
+      entries: [],
+      error: 'File search must stay inside the workspace sandbox root.',
+    })
+    expect(unwrap(await call('listDirs', { basePath: outside }, http(sandboxRoot)))).toEqual({
+      success: false,
+      dirs: [],
+      basePath: '',
+      error: 'Directory completion must stay inside the workspace sandbox root.',
+    })
+  })
+
+  it('serves a path that stays inside the http sandbox', async () => {
+    await writeFile(join(sandboxRoot, 'a.txt'), 'hello', 'utf-8')
+    const read = unwrap(await call('readContent', { path: 'a.txt' }, http(sandboxRoot)))
+    expect(read).toMatchObject({ success: true, content: 'hello' })
+
+    // `~` 在联网宿主上只能是沙箱根本身。
+    const stat = unwrap(await call('stat', { path: '~/a.txt' }, http(sandboxRoot)))
+    expect(stat).toMatchObject({ success: true, type: 'file' })
+  })
+
+  it('fails closed when a networked context arrives without a sandbox root', async () => {
+    const response = await call('stat', { path: '/tmp' }, { transport: 'http' })
+    expect(response.ok).toBe(false)
+    if (response.ok) throw new Error('expected a rejection')
+    expect(response.error.message).toContain('sandboxRoot')
+  })
+
+  // ── 桌面:不夹 ──────────────────────────────────────────────────
+
+  it('does not clamp on the desktop transport', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'onething-files-outside-'))
+    await writeFile(join(outside, 'note.md'), 'desktop', 'utf-8')
+
+    const read = unwrap(await call('readContent', { path: join(outside, 'note.md') }, IPC))
+    expect(read).toMatchObject({ success: true, content: 'desktop' })
+
+    // 空串照旧由投影自己答(迁移前 `@main` handler 就是原样递下去的)。
+    const empty = unwrap(await call('readContent', { path: '' }, IPC))
+    expect(empty).toEqual({ success: false, error: 'File path is required' })
+  })
+
+  it('keeps watchStart/watchStop as the desktop projection stub', async () => {
+    expect(unwrap(await call('watchStart', { root: '/anywhere' }, IPC))).toEqual({ success: true })
+    expect(unwrap(await call('watchStart', { root: '' }, IPC)))
+      .toEqual({ success: false, error: 'Workspace root is required' })
+    expect(unwrap(await call('watchStop', { root: '/anywhere' }, IPC))).toEqual({ success: true })
+  })
+
+  // ── reveal:宿主端口 ────────────────────────────────────────────
+
+  it('degrades reveal structurally when no shell host is injected', async () => {
+    const target = join(sandboxRoot, 'shown.txt')
+    await writeFile(target, 'x', 'utf-8')
+    shell.revealPath.mockResolvedValue({ success: false, error: 'shell host not available' })
+
+    expect(unwrap(await call('reveal', { path: target }, IPC)))
+      .toEqual({ success: false, error: 'shell host not available' })
+
+    shell.revealPath.mockResolvedValue({ success: true })
+    expect(unwrap(await call('reveal', { path: target }, IPC))).toEqual({ success: true })
+    expect(shell.revealPath).toHaveBeenLastCalledWith(target)
+  })
+
+  // ── list:两侧的搜索根 ──────────────────────────────────────────
+
+  it('resolves connected directories by the session that asked (desktop only)', async () => {
+    const connectedDir = await mkdtemp(join(tmpdir(), 'onething-files-connected-'))
+    connected.getConnectedDirectoriesForSession.mockReturnValue([connectedDir])
+    ripgrep.listFiles.mockReturnValue(emit([]))
+
+    const result = unwrap(await call('list', { cwd: '', query: '', limit: 50, sessionId: 's-1' }, IPC))
+
+    expect(connected.getConnectedDirectoriesForSession).toHaveBeenCalledWith('s-1')
+    expect(result).toMatchObject({ success: true })
+    expect(result.entries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: connectedDir, source: 'connected' })]),
+    )
+  })
+
+  it('offers notes and Downloads as directory roots for a bare @ on the desktop', async () => {
+    const { getDownloadsDirectory } = await import('../../wiring/tools/core/sandbox.js')
+    const { resetVariablesStoreForTests } = await import('@onething/runtime/variables/store-bound')
+    const { createDefaultVariablesFile } = await import('@onething/runtime/variables/schema')
+    const noteRoot = '/notes/personal'
+    resetVariablesStoreForTests().hydrateForTests({
+      ...createDefaultVariablesFile(),
+      user_note_dir: noteRoot,
+      work_note_dir: '',
+    })
+    ripgrep.listFiles.mockReturnValue(emit([]))
+
+    const result = unwrap(await call('list', { cwd: '', query: '', limit: 50 }, IPC))
+
+    expect(result).toMatchObject({ success: true })
+    expect(result.entries).toEqual(expect.arrayContaining([
+      { path: noteRoot, type: 'directory', source: 'note', label: 'Personal notes' },
+      { path: getDownloadsDirectory(), type: 'directory', source: 'downloads', label: 'Downloads' },
+    ]))
+  })
+
+  it('searches the sandbox with its own walker (no ripgrep) on the http transport', async () => {
+    await mkdir(join(sandboxRoot, 'src'), { recursive: true })
+    await writeFile(join(sandboxRoot, 'src', 'receipt.txt'), 'x', 'utf-8')
+
+    const result = unwrap(await call('list', { query: 'receipt', limit: 50 }, http(sandboxRoot)))
+
+    expect(ripgrep.listFiles).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      success: true,
+      files: [join(sandboxRoot, 'src', 'receipt.txt')],
+    })
+  })
+
+  // ── 写面:落到磁盘 ──────────────────────────────────────────────
+
+  it('creates, saves and renames inside the http sandbox', async () => {
+    expect(unwrap(await call('create', { path: 'b.txt', content: 'one' }, http(sandboxRoot))))
+      .toEqual({ success: true })
+    expect(unwrap(await call('rename', { oldPath: 'b.txt', newPath: 'c.txt' }, http(sandboxRoot))))
+      .toEqual({ success: true })
+    const saved = unwrap(await call(
+      'saveContent',
+      { path: 'c.txt', content: 'two' },
+      http(sandboxRoot),
+    ))
+    expect(saved).toMatchObject({ success: true })
+    await expect(readFile(join(sandboxRoot, 'c.txt'), 'utf-8')).resolves.toBe('two')
+  })
+
+  it('rejects a method that is not on the router allowlist', async () => {
+    const response = await call('chmod', { path: '/tmp' }, IPC)
+    expect(response.ok).toBe(false)
+    if (response.ok) throw new Error('expected a rejection')
+    expect(response.error.code).toBe('UNKNOWN_METHOD')
+  })
+})

@@ -271,18 +271,11 @@ import {
 	toolkitCatalogToolDefinitions,
 	type ToolExecutionResult,
 } from "../wiring/toolkit/index.js";
-import type {
-	GatewayGetStatusResponse,
-	GatewayStartRequest,
-	GatewayStartResponse,
-	GatewayStatus,
-	GatewayStopResponse,
-	GatewayWechatAddAccountResponse,
-	GatewayWechatLogoutResponse,
-	GatewayWechatRemoveAccountResponse,
-	GatewayWechatRenameAccountResponse,
-	GatewayWechatStopAccountResponse,
-} from "@shared/ipc/gateway.js";
+import {
+	closeAllWorkspaceWatches,
+	subscribeWorkspaceFileChanged,
+	type WorkspaceFileChangedHandler,
+} from "../wiring/files/workspace-watch.js";
 import type {
 	VoiceEvent,
 	VoiceGetStateResponse,
@@ -516,11 +509,6 @@ type ServerVariablesRuntime = {
 	store: VariablesStore;
 	unsubscribe: RuntimeUnsubscribe;
 };
-type WorkspaceFileChangedHandler = (payload: {
-	root: string;
-	path: string;
-	eventType: string;
-}) => void;
 const sensitiveSettingKeys = new Set([
 	"apiKey",
 	"oauthToken",
@@ -710,32 +698,11 @@ class ServerPluginCatalogManager {
 	}
 }
 
-const SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR =
-	"Gateway channels are disabled in the web server runtime.";
+// P4c 第八批:`SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR` 与
+// `createServerGatewayStatus` 随 `gateway` adapter 一起没了 —— 那台「server 上
+// 网关永远禁用」的假状态机不再需要,降级由 `configureGatewayHost` 未注入给出。
 const SERVER_VOICE_UNAVAILABLE_ERROR =
 	"Voice runtime is not available in the web server runtime.";
-
-function createServerGatewayStatus(
-	settings: Pick<AppSettings, "channels">,
-	lastError?: string,
-): GatewayStatus {
-	const enabled = settings.channels?.wechat?.enabled === true;
-	return {
-		running: false,
-		starting: false,
-		stopping: false,
-		enabled,
-		lastError,
-		wechat: {
-			enabled,
-			running: false,
-			loginStatus: lastError ? "error" : "idle",
-			loggedIn: false,
-			lastError,
-			lastUpdatedAt: Date.now(),
-		},
-	};
-}
 
 function createServerVoiceState(lastError?: string): VoiceRuntimeState {
 	return {
@@ -903,11 +870,9 @@ async function createServerRuntimeOverServerBackend(
 		Set<(payload: unknown) => void>
 	>();
 	const variableRuntimesByOwner = new Map<string, ServerVariablesRuntime>();
-	const workspaceWatchersByOwner = new Map<string, Map<string, FSWatcher>>();
-	const workspaceFileChangedHandlersByOwner = new Map<
-		string,
-		Set<WorkspaceFileChangedHandler>
-	>();
+	// P4c 第八批:监视器登记簿与订阅表搬到了 `wiring/files/workspace-watch.ts`
+	// (按沙箱根分表),请求面(router 上的 `watchStart` / `watchStop`)与推送面
+	// (这里的 SSE 货源)从此指着同一张表。
 	const workspaceRoot = resolve(
 		options.workspaceRoot ??
 			process.env.ONETHING_SERVER_WORKSPACE_ROOT ??
@@ -1697,126 +1662,6 @@ async function createServerRuntimeOverServerBackend(
 		}
 	};
 
-	const notifyWorkspaceFileChanged = (
-		context: RuntimeRequestContext,
-		payload: { root: string; path: string; eventType: string },
-	): void => {
-		const handlers = workspaceFileChangedHandlersByOwner.get(ownerKey(context));
-		if (!handlers) return;
-		for (const handler of handlers) handler(payload);
-	};
-
-	const subscribeWorkspaceFileChanged = (
-		handler: WorkspaceFileChangedHandler,
-		context = defaultRequestContext(),
-	): RuntimeUnsubscribe => {
-		const key = ownerKey(context);
-		let handlers = workspaceFileChangedHandlersByOwner.get(key);
-		if (!handlers) {
-			handlers = new Set();
-			workspaceFileChangedHandlersByOwner.set(key, handlers);
-		}
-		handlers.add(handler);
-		return () => {
-			handlers?.delete(handler);
-			if (handlers?.size === 0) workspaceFileChangedHandlersByOwner.delete(key);
-		};
-	};
-
-	const watchWorkspaceForContext = async (
-		root: string,
-		context = defaultRequestContext(),
-	): Promise<{ success: boolean; error?: string }> => {
-		const watchRoot = resolveServerWorkspaceFilePath(
-			workspaceRoot,
-			context,
-			root,
-		);
-		if (!watchRoot) {
-			return {
-				success: false,
-				error:
-					"Workspace watch root must stay inside the workspace sandbox root.",
-			};
-		}
-
-		const rootStats = await stat(watchRoot).catch(() => null);
-		if (!rootStats?.isDirectory()) {
-			return {
-				success: false,
-				error: "Workspace watch root must be an existing directory.",
-			};
-		}
-
-		const key = ownerKey(context);
-		let watchers = workspaceWatchersByOwner.get(key);
-		if (!watchers) {
-			watchers = new Map();
-			workspaceWatchersByOwner.set(key, watchers);
-		}
-		if (watchers.has(watchRoot)) return { success: true };
-
-		const createWatcher = (recursive: boolean): FSWatcher =>
-			watch(watchRoot, { recursive }, (eventType, fileName) => {
-				const changedPath =
-					typeof fileName === "string" && fileName.length > 0
-						? resolve(watchRoot, fileName)
-						: watchRoot;
-				if (
-					!isPathInside(
-						changedPath,
-						workspaceSandboxRoot(workspaceRoot, context),
-					)
-				)
-					return;
-				notifyWorkspaceFileChanged(context, {
-					root: watchRoot,
-					path: changedPath,
-					eventType: eventType || "change",
-				});
-			});
-
-		let watcher: FSWatcher;
-		try {
-			watcher = createWatcher(true);
-		} catch {
-			watcher = createWatcher(false);
-		}
-		watcher.on("error", (error) => {
-			log.warn("workspace watcher failed", { watchRoot }, error);
-		});
-		watchers.set(watchRoot, watcher);
-		return { success: true };
-	};
-
-	const unwatchWorkspaceForContext = (
-		root: string,
-		context = defaultRequestContext(),
-	): { success: boolean; error?: string } => {
-		const watchRoot = resolveServerWorkspaceFilePath(
-			workspaceRoot,
-			context,
-			root,
-		);
-		if (!watchRoot) {
-			return {
-				success: false,
-				error:
-					"Workspace watch root must stay inside the workspace sandbox root.",
-			};
-		}
-
-		const watchers = workspaceWatchersByOwner.get(ownerKey(context));
-		const watcher = watchers?.get(watchRoot);
-		if (watcher) {
-			watcher.close();
-			watchers?.delete(watchRoot);
-		}
-		if (watchers?.size === 0)
-			workspaceWatchersByOwner.delete(ownerKey(context));
-		return { success: true };
-	};
-
 	const respondToPermission = async (
 		requestId: string,
 		response: unknown,
@@ -2098,326 +1943,27 @@ async function createServerRuntimeOverServerBackend(
 		// `configureShellHost` 未注入时的结构化降级。
 		// P4c 第五批:`prompts` adapter 整只没了 —— 系统提示词快照随 `chatRouter`
 		// 走,两个宿主读的是同一条 `buildSystemPromptSnapshot`。
+		/**
+		 * files —— **只剩推送面一条**(结构债 P4c 第八批)。
+		 *
+		 * 十四条数据面已整只迁到通用 `POST /api/rpc`(`filesRouter` +
+		 * `backend/rpc/domains/files.ts`),**护栏跟着走**:域处理者按
+		 * `context.transport` 逐方法夹紧 `sandboxRoot`,越界文案逐字沿用这里
+		 * 从前那几句(`resolveServerWorkspaceFilePath` 的公式本来就已经委托给
+		 * `rpc/sandbox.ts` 了,现在连调用点也归它)。
+		 *
+		 * 留下的一条是 `GET /api/files/watch/events` 那条 SSE 的货源。真正的监视器
+		 * 登记簿搬到了 `wiring/files/workspace-watch.ts`,按沙箱根分表 —— `watchStart`
+		 * / `watchStop`(请求面,在 router 上)与这里(推送面)指的是同一张表。
+		 */
 		files: {
-			async listFiles(request: unknown, context = defaultRequestContext()) {
-				const typedRequest = request as {
-					cwd?: string;
-					query?: string;
-					limit?: number;
-				};
-				const sandboxRoot = await ensureServerWorkspaceSandboxRoot(
-					workspaceRoot,
-					context,
-				);
-				const cwd = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					typedRequest.cwd ?? sandboxRoot,
-				);
-				if (!cwd)
-					return emptyWorkspaceFileList(
-						"File search must stay inside the workspace sandbox root.",
-					);
-
-				return listOnethingFileSearchEntriesForIpc({
-					cwd,
-					query: typedRequest.query,
-					limit: typedRequest.limit,
-					homeDir: sandboxRoot,
-					downloadsDir: null,
-					getNoteRoots: () => ({}),
-					listFiles: (root) => {
-						const rootPath = resolveServerWorkspaceFilePath(
-							workspaceRoot,
-							context,
-							root.path,
-						);
-						return rootPath ? listServerToolFiles({ cwd: rootPath }) : [];
-					},
-					logger: consoleLog,
-				});
-			},
-			async listDirs(request: unknown, context = defaultRequestContext()) {
-				const typedRequest = request as {
-					basePath?: string;
-					query?: string;
-					limit?: number;
-				};
-				const sandboxRoot = await ensureServerWorkspaceSandboxRoot(
-					workspaceRoot,
-					context,
-				);
-				const basePath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					typedRequest.basePath || sandboxRoot,
-				);
-				if (!basePath) {
-					return {
-						success: false,
-						dirs: [],
-						basePath: "",
-						error:
-							"Directory completion must stay inside the workspace sandbox root.",
-					};
-				}
-
-				return listOnethingDirectoriesForCompletionForIpc({
-					basePath,
-					query: typedRequest.query,
-					limit: typedRequest.limit,
-					homeDir: sandboxRoot,
-					stat: async (targetPath) => {
-						const resolvedPath = resolveServerWorkspaceFilePath(
-							workspaceRoot,
-							context,
-							targetPath,
-						);
-						return resolvedPath ? stat(resolvedPath).catch(() => null) : null;
-					},
-					readDir: async (targetPath) => {
-						const resolvedPath = resolveServerWorkspaceFilePath(
-							workspaceRoot,
-							context,
-							targetPath,
-						);
-						return resolvedPath
-							? readdir(resolvedPath, { withFileTypes: true })
-							: [];
-					},
-					logger: consoleLog,
-				});
-			},
-			async readContent(
-				path: string,
-				maxSize?: number,
-				context = defaultRequestContext(),
-			) {
-				const targetPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!targetPath)
-					return workspaceFilePathError(
-						"File path must stay inside the workspace sandbox root.",
-					);
-				return readOnethingFileContent({
-					path: targetPath,
-					maxSize,
-					stat: (filePath) => stat(filePath),
-					async readBytes(filePath, byteLength) {
-						const buffer = await readFile(filePath);
-						return buffer.subarray(0, byteLength);
-					},
-				});
-			},
-			async saveContent(
-				path: string,
-				content: string,
-				expectedMtimeMs?: number,
-				context = defaultRequestContext(),
-			) {
-				const targetPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!targetPath)
-					return workspaceFilePathError(
-						"File path must stay inside the workspace sandbox root.",
-					);
-				return saveOnethingFileContent({
-					path: targetPath,
-					content,
-					expectedMtimeMs,
-					stat: (filePath) => stat(filePath),
-					writeFile: (filePath, fileContent) =>
-						writeFile(filePath, fileContent, "utf-8"),
-				});
-			},
-			async rollback(request: unknown, context = defaultRequestContext()) {
-				const typedRequest = request as {
-					auditPath?: string;
-					filePath?: string;
-					originalContent?: string;
-					isNew?: boolean;
-				};
-				const auditPath = typedRequest.auditPath
-					? (resolveServerWorkspaceFilePath(
-							workspaceRoot,
-							context,
-							typedRequest.auditPath,
-						) ?? undefined)
-					: undefined;
-				if (typedRequest.auditPath && !auditPath) {
-					return workspaceFilePathError(
-						"Audit path must stay inside the workspace sandbox root.",
-					);
-				}
-
-				const filePath = typedRequest.filePath
-					? (resolveServerWorkspaceFilePath(
-							workspaceRoot,
-							context,
-							typedRequest.filePath,
-						) ?? undefined)
-					: undefined;
-				if (typedRequest.filePath && !filePath) {
-					return workspaceFilePathError(
-						"Rollback file path must stay inside the workspace sandbox root.",
-					);
-				}
-
-				return rollbackOnethingFile({
-					auditPath,
-					filePath,
-					originalContent: typedRequest.originalContent,
-					isNew: typedRequest.isNew,
-					applyAuditUndo: applyFileMutationUndo,
-					deleteFile: (filePathToDelete) =>
-						rm(filePathToDelete, { force: true }),
-					writeFile: (filePathToWrite, content) =>
-						writeFile(filePathToWrite, content, "utf-8"),
-				});
-			},
-			async listDirectory(path: string, context = defaultRequestContext()) {
-				const targetPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!targetPath)
-					return workspaceFilePathError(
-						"Directory path must stay inside the workspace sandbox root.",
-					);
-				return listOnethingDirectory({
-					path: targetPath,
-					readDir: (dirPath) => readdir(dirPath, { withFileTypes: true }),
-					stat: (entryPath) => stat(entryPath).catch(() => null),
-				});
-			},
-			async stat(path: string, context = defaultRequestContext()) {
-				const targetPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!targetPath)
-					return workspaceFilePathError(
-						"Path must stay inside the workspace sandbox root.",
-					);
-				return statOnethingPath({
-					path: targetPath,
-					stat: (target) => stat(target),
-				});
-			},
-			async createFile(
-				path: string,
-				content?: string,
-				context = defaultRequestContext(),
-			) {
-				const targetPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!targetPath)
-					return workspaceFilePathError(
-						"File path must stay inside the workspace sandbox root.",
-					);
-				return createOnethingFile({
-					path: targetPath,
-					content,
-					createFile: (filePath, fileContent) =>
-						writeFile(filePath, fileContent, { flag: "wx" }),
-				});
-			},
-			async createDirectory(path: string, context = defaultRequestContext()) {
-				const targetPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!targetPath)
-					return workspaceFilePathError(
-						"Directory path must stay inside the workspace sandbox root.",
-					);
-				return createOnethingDirectory({
-					path: targetPath,
-					createDirectory: (dirPath) =>
-						mkdir(dirPath, { recursive: false }).then(() => undefined),
-				});
-			},
-			async renamePath(
-				oldPath: string,
-				newPath: string,
-				context = defaultRequestContext(),
-			) {
-				const resolvedOldPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					oldPath,
-				);
-				const resolvedNewPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					newPath,
-				);
-				if (!resolvedOldPath || !resolvedNewPath) {
-					return workspaceFilePathError(
-						"Rename paths must stay inside the workspace sandbox root.",
-					);
-				}
-				return renameOnethingPath({
-					oldPath: resolvedOldPath,
-					newPath: resolvedNewPath,
-					renamePath: rename,
-				});
-			},
-			async deletePath(path: string, context = defaultRequestContext()) {
-				const targetPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!targetPath)
-					return workspaceFilePathError(
-						"Path must stay inside the workspace sandbox root.",
-					);
-				return deleteOnethingPath({
-					path: targetPath,
-					deletePath: (target) => rm(target, { recursive: true, force: false }),
-				});
-			},
-			async revealPath(path: string, context = defaultRequestContext()) {
-				const targetPath = resolveServerWorkspaceFilePath(
-					workspaceRoot,
-					context,
-					path,
-				);
-				if (!targetPath)
-					return workspaceFilePathError(
-						"Path must stay inside the workspace sandbox root.",
-					);
-				return {
-					success: false,
-					error:
-						"Revealing local files is not available in the web server runtime.",
-				};
-			},
-			watchWorkspace: (root: string, context = defaultRequestContext()) =>
-				watchWorkspaceForContext(root, context),
-			async unwatchWorkspace(root: string, context = defaultRequestContext()) {
-				return unwatchWorkspaceForContext(root, context);
-			},
 			subscribeWorkspaceFileChanged: (
 				handler,
 				context = defaultRequestContext(),
 			) =>
 				subscribeWorkspaceFileChanged(
+					workspaceSandboxRoot(workspaceRoot, context),
 					handler as WorkspaceFileChangedHandler,
-					context,
 				),
 		},
 		/**
@@ -2599,136 +2145,11 @@ async function createServerRuntimeOverServerBackend(
 		oauth: {
 			subscribe: subscribeOAuthTokenEvents,
 		},
-		gateway: {
-			async getStatus(
-				context = defaultRequestContext(),
-			): Promise<GatewayGetStatusResponse> {
-				const settings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				return { success: true, status: createServerGatewayStatus(settings) };
-			},
-			async start(
-				_request?: GatewayStartRequest,
-				context = defaultRequestContext(),
-			): Promise<GatewayStartResponse> {
-				const settings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				return {
-					success: false,
-					error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					status: createServerGatewayStatus(
-						settings,
-						SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					),
-				};
-			},
-			async stop(
-				context = defaultRequestContext(),
-			): Promise<GatewayStopResponse> {
-				const settings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				return { success: true, status: createServerGatewayStatus(settings) };
-			},
-			async wechatLogout(
-				_request?: unknown,
-				context = defaultRequestContext(),
-			): Promise<GatewayWechatLogoutResponse> {
-				const settings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				return {
-					success: false,
-					error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					status: createServerGatewayStatus(
-						settings,
-						SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					),
-				};
-			},
-			async wechatAddAccount(
-				_request?: unknown,
-				context = defaultRequestContext(),
-			): Promise<GatewayWechatAddAccountResponse> {
-				const settings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				return {
-					success: false,
-					error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					status: createServerGatewayStatus(
-						settings,
-						SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					),
-				};
-			},
-			async wechatStopAccount(
-				_request: unknown,
-				context = defaultRequestContext(),
-			): Promise<GatewayWechatStopAccountResponse> {
-				const settings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				return {
-					success: false,
-					error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					status: createServerGatewayStatus(
-						settings,
-						SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					),
-				};
-			},
-			async wechatRemoveAccount(
-				_request: unknown,
-				context = defaultRequestContext(),
-			): Promise<GatewayWechatRemoveAccountResponse> {
-				const settings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				return {
-					success: false,
-					error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					status: createServerGatewayStatus(
-						settings,
-						SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					),
-				};
-			},
-			async wechatRenameAccount(
-				_request: unknown,
-				context = defaultRequestContext(),
-			): Promise<GatewayWechatRenameAccountResponse> {
-				const settings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				return {
-					success: false,
-					error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					status: createServerGatewayStatus(
-						settings,
-						SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
-					),
-				};
-			},
-		},
+		// P4c 第八批:`gateway` adapter 整只没了 —— 八条随 `gatewayRouter` 走通用 RPC,
+		// 由 `configureGatewayHost` 决定这台进程有没有网关能力。server 不注入,于是
+		// 拿到的是结构化降级,而不是这里从前那句写死的
+		// "Gateway channel connections are disabled on the server runtime."。
+		// **本域零推送**,所以这一格连订阅面都不留。
 		voice: {
 			async getState(): Promise<VoiceGetStateResponse> {
 				return { success: true, state: createServerVoiceState() };
@@ -2904,11 +2325,8 @@ async function createServerRuntimeOverServerBackend(
 				variableRuntime.registry.reset();
 			}
 			variableRuntimesByOwner.clear();
-			for (const watchers of workspaceWatchersByOwner.values()) {
-				for (const watcher of watchers.values()) watcher.close();
-			}
-			workspaceWatchersByOwner.clear();
-			workspaceFileChangedHandlersByOwner.clear();
+			// 监视器与订阅表现在住在 `wiring/files/workspace-watch.ts`(P4c 第八批)。
+			closeAllWorkspaceWatches();
 			todoPlanChangedHandlers.clear();
 			if (ownsProcessPorts) stopScratchpadWatcher();
 			scratchpadChangedHandlers.clear();

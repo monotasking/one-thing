@@ -82,6 +82,12 @@ const EXPECTED_DOMAIN_FEATURES = [
   // P4c 第七批第二个域:oauth(六条数据面;两条令牌推送留在
   // `configureOAuthEventBroadcaster` 注入端口上,不在 router 的白名单里)。
   ['rpc:oauth', 'oauth'],
+  // P4c 第八批第一个域:gateway(八条;零推送,八件事全走
+  // `configureGatewayHost` 注入端口 —— server / CLI 未注入即结构化降级)。
+  ['rpc:gateway', 'gateway'],
+  // P4c 第八批第二个域:files(十四条;全仓第一个**逐方法带 http 夹紧**的域,
+  // `FILE_WATCH_EVENT` 那条推送留在原地,登记簿在 wiring/files/workspace-watch)。
+  ['rpc:files', 'files'],
 ] as const
 
 /**

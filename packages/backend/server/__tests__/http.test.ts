@@ -8,6 +8,7 @@ import { createOnethingRuntimeFacade } from '@onething/core'
 import { defineRouter } from '@onething/core/ipc'
 import type { CorePluginCommandContext } from '@onething/core/plugins'
 import { registerRouterHandlers, resetRpcRegistryForTests } from '@onething/backend/rpc/registry.js'
+import { registerFilesRpcDomain } from '@onething/backend/rpc/domains/files.js'
 import { registerMarkdownRpcDomain } from '@onething/backend/rpc/domains/markdown.js'
 import { registerPermissionGrantsRpcDomain } from '@onething/backend/rpc/domains/permission-grants.js'
 import { resetPermissionGrantsForTests } from '@onething/core/permission'
@@ -39,6 +40,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await Promise.all(servers.map(server => new Promise<void>((resolve, reject) => {
+    // 本文件里有好几条用例开着 SSE(media / session events / files watch)。
+    // `server.close()` 只是停止接受**新**连接,它会一直等到最后一条长连接断开
+    // —— 于是 afterEach 撞 10s 钩子超时,报在下一条用例头上。先把在途连接掐掉。
+    server.closeAllConnections?.()
     server.close(error => {
       if (error) reject(error)
       else resolve()
@@ -317,112 +322,11 @@ describe('createOnethingHttpServer', () => {
   // 六条方法的行为由 `packages/backend/rpc/__tests__/oauth-domain.test.ts` 端到端穿
   // dispatcher 钉住,包括 http 上不开浏览器那一条分叉。
 
-  it('serves owner-scoped gateway status while refusing server-side channel starts', async () => {
-    const dataRoot = await createTempDir('onething-gateway-data-')
-    const workspaceRoot = await createTempDir('onething-gateway-workspace-')
-    const serverRuntime = await createTestServerRuntime({
-      dataRoot,
-      workspaceRoot,
-    })
-    runtimes.push(serverRuntime)
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN,
-      runtime: serverRuntime.runtime,
-    }))
-    const baseUrlValue = baseUrl(server)
-    const aliceHeaders = contextHeaders('alice', 'gateway-workspace')
-    const bobHeaders = contextHeaders('bob', 'gateway-workspace')
-    const aliceJsonHeaders = { ...aliceHeaders, 'content-type': 'application/json' }
-
-    const initial = await fetchJson(`${baseUrlValue}/api/gateway/status`, {
-      headers: aliceHeaders,
-    })
-    expect(initial).toMatchObject({
-      success: true,
-      status: {
-        running: false,
-        enabled: false,
-        wechat: {
-          enabled: false,
-          running: false,
-          loggedIn: false,
-          loginStatus: 'idle',
-        },
-      },
-    })
-
-    await fetchJson(`${baseUrlValue}/api/settings`, {
-      method: 'POST',
-      headers: aliceJsonHeaders,
-      body: JSON.stringify({ channels: { wechat: { enabled: true } } }),
-    })
-
-    const aliceEnabled = await fetchJson(`${baseUrlValue}/api/gateway/status`, {
-      headers: aliceHeaders,
-    })
-    expect(aliceEnabled).toMatchObject({
-      success: true,
-      status: {
-        running: false,
-        enabled: true,
-        wechat: {
-          enabled: true,
-          running: false,
-          loggedIn: false,
-        },
-      },
-    })
-
-    const bobStatus = await fetchJson(`${baseUrlValue}/api/gateway/status`, {
-      headers: bobHeaders,
-    })
-    expect(bobStatus).toMatchObject({
-      success: true,
-      status: {
-        enabled: false,
-        wechat: { enabled: false },
-      },
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/gateway/start`, {
-      method: 'POST',
-      headers: aliceJsonHeaders,
-      body: JSON.stringify({ channel: 'wechat' }),
-    })).resolves.toMatchObject({
-      success: false,
-      error: 'Gateway channels are disabled in the web server runtime.',
-      status: {
-        enabled: true,
-        running: false,
-        wechat: {
-          enabled: true,
-          running: false,
-          loginStatus: 'error',
-          lastError: 'Gateway channels are disabled in the web server runtime.',
-        },
-      },
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/gateway/stop`, {
-      method: 'POST',
-      headers: aliceJsonHeaders,
-    })).resolves.toMatchObject({
-      success: true,
-      status: {
-        enabled: true,
-        running: false,
-        wechat: { enabled: true, running: false },
-      },
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/gateway/wechat/logout`, {
-      method: 'POST',
-      headers: aliceJsonHeaders,
-    })).resolves.toMatchObject({
-      success: false,
-      error: 'Gateway channels are disabled in the web server runtime.',
-    })
-  })
+  // P4c 第八批:gateway 的八条 REST 路由整只没了 —— 数据面走 `POST /api/rpc`
+  // (`gatewayRouter`),能力由 `configureGatewayHost` 决定。server 不注入,于是
+  // 拿到的是结构化降级(`GATEWAY_HOST_UNAVAILABLE`),而不是这里从前那台
+  // 「按 owner 设置拼一个永远 running:false 的假状态」的机器。域的形状(含未注入
+  // 降级、注入后转调、抛错折成失败)由 `rpc/__tests__/gateway-domain.test.ts` 钉。
 
   it('serves web-safe voice endpoints with explicit unavailable responses', async () => {
     const dataRoot = await createTempDir('onething-voice-data-')
@@ -792,181 +696,153 @@ describe('createOnethingHttpServer', () => {
     await expect(readFile(notePath, 'utf8')).resolves.toContain('# ')
   })
 
-  it('exposes workspace-scoped file routes for the web runtime', async () => {
+  /**
+   * P4c 第八批:files 迁到通用 RPC 通道,这条端到端断言跟着改走 `POST /api/rpc`
+   * —— **断言本身一条没减**(#19 判例同 markdown)。它证的是护栏从
+   * `server/runtime.ts` 的 adapter 搬进域处理者之后,经过真实 HTTP 层
+   * (含身份头 → dispatch context → sandboxRoot)的行为一字未变,含跨 owner 隔离。
+   *
+   * 留在 REST 上的仍旧是那条推送:`GET /api/files/watch/events`。它与 router 上的
+   * `watchStart` / `watchStop` 指的是同一张登记簿 —— 这条用例正是钉它:
+   * 用 RPC 开监视,从 SSE 收事件。
+   */
+  it('serves sandboxed file methods over the generic RPC route, feeding the watch SSE', async () => {
     const workspaceRoot = await createTempDir('onething-server-files-')
     const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
+    // 装配层在 echo backend 下不跑,域要自己挂上(与 markdown 同款)。
+    const disposeDomain = registerFilesRpcDomain()
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
+      workspaceRoot: serverRuntime.workspaceRoot,
     }))
     const baseUrlValue = baseUrl(server)
+    const rpc = (headers: Record<string, string>, method: string, payload: unknown) =>
+      fetchJson(`${baseUrlValue}/api/rpc`, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: 'files', method, payload }),
+      })
+    const ok = (data: unknown) => ({ ok: true, data })
     const aliceHeaders = contextHeaders('alice', 'files-workspace')
     const bobHeaders = contextHeaders('bob', 'files-workspace')
-    const created = await createSession(baseUrlValue, 'Files session', aliceHeaders)
-    const workspaceDir = created.session?.workingDirectory
-    expect(workspaceDir).toBeTruthy()
+    let fileEvents: Response | undefined
 
-    const srcDir = join(workspaceDir!, 'src')
-    const draftPath = join(srcDir, 'demo.txt')
-    const renamedPath = join(srcDir, 'main.txt')
+    try {
+      const created = await createSession(baseUrlValue, 'Files session', aliceHeaders)
+      const workspaceDir = created.session?.workingDirectory
+      expect(workspaceDir).toBeTruthy()
 
-    const fileEvents = await fetch(`${baseUrlValue}/api/files/watch/events`, { headers: aliceHeaders })
-    expect(fileEvents.status).toBe(200)
-    await expect(fetchJson(`${baseUrlValue}/api/files/watch/start`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ root: workspaceDir }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/files/watch/start`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ root: workspaceDir }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Workspace watch root must stay inside the workspace sandbox root.',
-    })
-    const watchedPath = join(workspaceDir!, 'watched.txt')
-    await writeFile(watchedPath, 'watch me\n', 'utf8')
-    const watchEventText = await readUntil(
-      fileEvents,
-      text => text.includes('workspace:file-changed') && text.includes('watched.txt'),
-    )
-    expect(watchEventText).toContain('workspace:file-changed')
-    expect(watchEventText).toContain(watchedPath)
-    await expect(fetchJson(`${baseUrlValue}/api/files/watch/stop`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ root: workspaceDir }),
-    })).resolves.toEqual({ success: true })
+      const srcDir = join(workspaceDir!, 'src')
+      const draftPath = join(srcDir, 'demo.txt')
+      const renamedPath = join(srcDir, 'main.txt')
 
-    await expect(fetchJson(`${baseUrlValue}/api/files/create-directory`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: srcDir }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/files/create`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: draftPath, content: 'hello web\n' }),
-    })).resolves.toEqual({ success: true })
+      // ── watch:RPC 开、SSE 收、RPC 关 ────────────────────────────
+      fileEvents = await fetch(`${baseUrlValue}/api/files/watch/events`, { headers: aliceHeaders })
+      expect(fileEvents.status).toBe(200)
+      await expect(rpc(aliceHeaders, 'watchStart', { root: workspaceDir }))
+        .resolves.toEqual(ok({ success: true }))
+      await expect(rpc(bobHeaders, 'watchStart', { root: workspaceDir })).resolves.toEqual(ok({
+        success: false,
+        error: 'Workspace watch root must stay inside the workspace sandbox root.',
+      }))
+      const watchedPath = join(workspaceDir!, 'watched.txt')
+      await writeFile(watchedPath, 'watch me\n', 'utf8')
+      const watchEventText = await readUntil(
+        fileEvents,
+        text => text.includes('workspace:file-changed') && text.includes('watched.txt'),
+      )
+      expect(watchEventText).toContain('workspace:file-changed')
+      expect(watchEventText).toContain(watchedPath)
+      await expect(rpc(aliceHeaders, 'watchStop', { root: workspaceDir }))
+        .resolves.toEqual(ok({ success: true }))
 
-    const readResult = await fetchJson(`${baseUrlValue}/api/files/read`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: draftPath }),
-    })
-    expect(readResult).toEqual(expect.objectContaining({
-      success: true,
-      content: 'hello web\n',
-      encoding: 'utf-8',
-      isBinary: false,
-    }))
+      // ── 增删改查 ─────────────────────────────────────────────────
+      await expect(rpc(aliceHeaders, 'createDirectory', { path: srcDir }))
+        .resolves.toEqual(ok({ success: true }))
+      await expect(rpc(aliceHeaders, 'create', { path: draftPath, content: 'hello web\n' }))
+        .resolves.toEqual(ok({ success: true }))
 
-    await expect(fetchJson(`${baseUrlValue}/api/files/save`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
+      const readResponse = await rpc(aliceHeaders, 'readContent', { path: draftPath })
+      expect(readResponse).toEqual(ok(expect.objectContaining({
+        success: true,
+        content: 'hello web\n',
+        encoding: 'utf-8',
+        isBinary: false,
+      })))
+
+      await expect(rpc(aliceHeaders, 'saveContent', {
         path: draftPath,
         content: 'updated web\n',
-        expectedMtimeMs: readResult.mtimeMs,
-      }),
-    })).resolves.toEqual(expect.objectContaining({ success: true }))
-    await expect(fetchJson(`${baseUrlValue}/api/files/rollback`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
+        expectedMtimeMs: (readResponse.data as { mtimeMs?: number }).mtimeMs,
+      })).resolves.toEqual(ok(expect.objectContaining({ success: true })))
+
+      await expect(rpc(aliceHeaders, 'rollback', {
         filePath: draftPath,
         originalContent: 'hello web\n',
         isNew: false,
-      }),
-    })).resolves.toEqual({
-      success: true,
-      filePath: draftPath,
-      restoredExists: true,
-    })
-    await expect(readFile(draftPath, 'utf8')).resolves.toBe('hello web\n')
-    await expect(fetchJson(`${baseUrlValue}/api/files/rollback`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
+      })).resolves.toEqual(ok({
+        success: true,
+        filePath: draftPath,
+        restoredExists: true,
+      }))
+      await expect(readFile(draftPath, 'utf8')).resolves.toBe('hello web\n')
+
+      // 跨 owner 隔离:bob 的沙箱根夹不住 alice 的路径。
+      await expect(rpc(bobHeaders, 'rollback', {
         filePath: draftPath,
         originalContent: 'bob should not write\n',
-      }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Rollback file path must stay inside the workspace sandbox root.',
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/files/stat`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: draftPath }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      type: 'file',
-    }))
-    await expect(fetchJson(`${baseUrlValue}/api/files/list-directory`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: workspaceDir }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      entries: expect.arrayContaining([
-        expect.objectContaining({ name: 'src', path: srcDir, type: 'directory' }),
-      ]),
-    }))
-    await expect(fetchJson(`${baseUrlValue}/api/files/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ cwd: workspaceDir, query: 'demo', limit: 10 }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      files: expect.arrayContaining([draftPath]),
-    }))
-    await expect(fetchJson(`${baseUrlValue}/api/dirs/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ basePath: workspaceDir, query: 's', limit: 10 }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      dirs: expect.arrayContaining([srcDir]),
-    }))
+      })).resolves.toEqual(ok({
+        success: false,
+        error: 'Rollback file path must stay inside the workspace sandbox root.',
+      }))
 
-    await expect(fetchJson(`${baseUrlValue}/api/files/read`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: draftPath }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'File path must stay inside the workspace sandbox root.',
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/files/read`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: '../escape.txt' }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'File path must stay inside the workspace sandbox root.',
-    })
+      await expect(rpc(aliceHeaders, 'stat', { path: draftPath }))
+        .resolves.toEqual(ok(expect.objectContaining({ success: true, type: 'file' })))
+      await expect(rpc(aliceHeaders, 'listDirectory', { path: workspaceDir }))
+        .resolves.toEqual(ok(expect.objectContaining({
+          success: true,
+          entries: expect.arrayContaining([
+            expect.objectContaining({ name: 'src', path: srcDir, type: 'directory' }),
+          ]),
+        })))
+      await expect(rpc(aliceHeaders, 'list', { cwd: workspaceDir, query: 'demo', limit: 10 }))
+        .resolves.toEqual(ok(expect.objectContaining({
+          success: true,
+          files: expect.arrayContaining([draftPath]),
+        })))
+      await expect(rpc(aliceHeaders, 'listDirs', { basePath: workspaceDir, query: 's', limit: 10 }))
+        .resolves.toEqual(ok(expect.objectContaining({
+          success: true,
+          dirs: expect.arrayContaining([srcDir]),
+        })))
 
-    await expect(fetchJson(`${baseUrlValue}/api/files/rename`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ oldPath: draftPath, newPath: renamedPath }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/files/delete`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: renamedPath }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/files/reveal`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: srcDir }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Revealing local files is not available in the web server runtime.',
-    })
+      // ── 越界的两条:跨 owner 与 `..` ──────────────────────────────
+      await expect(rpc(bobHeaders, 'readContent', { path: draftPath })).resolves.toEqual(ok({
+        success: false,
+        error: 'File path must stay inside the workspace sandbox root.',
+      }))
+      await expect(rpc(aliceHeaders, 'readContent', { path: '../escape.txt' })).resolves.toEqual(ok({
+        success: false,
+        error: 'File path must stay inside the workspace sandbox root.',
+      }))
+
+      await expect(rpc(aliceHeaders, 'rename', { oldPath: draftPath, newPath: renamedPath }))
+        .resolves.toEqual(ok({ success: true }))
+      await expect(rpc(aliceHeaders, 'delete', { path: renamedPath }))
+        .resolves.toEqual(ok({ success: true }))
+
+      // reveal:路径夹得住,但联网宿主没注入 shell 端口 —— 结构化降级。
+      await expect(rpc(aliceHeaders, 'reveal', { path: srcDir })).resolves.toEqual(ok({
+        success: false,
+        error: 'shell host not available',
+      }))
+    } finally {
+      // SSE 连着的话 `server.close()` 会挂在 afterEach 上 —— 主动断掉。
+      await fileEvents?.body?.cancel().catch(() => {})
+      disposeDomain()
+    }
   })
 
   /**

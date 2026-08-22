@@ -60,12 +60,18 @@ const mediaClientState = vi.hoisted(() => ({
 
 vi.mock('@/platform/media-client', () => mediaClientState)
 
+// P4c 第八批:「在文件管理器里显示」从 `platformApi.revealPath(path)` 换成
+// `filesApi.reveal({ path })`(通用 RPC 通道)。
+const filesClientState = vi.hoisted(() => ({
+  filesApi: { reveal: vi.fn(async () => ({ success: true })) },
+}))
+vi.mock('@/platform/files-client', () => filesClientState)
+
 const platformState = vi.hoisted(() => ({
   platformApi: {
     onImageGenerated: vi.fn(() => vi.fn()),
     openImageGallery: vi.fn(),
     openPath: vi.fn(),
-    revealPath: vi.fn(),
     // 默认按**桌面**摆:localFileSystem 真、路径能拿到、剪贴板图片存在。
     // 需要 web 形态的用例自己改这几项(平台差异正是要被断言的东西)。
     capabilities: { localFileSystem: true },
@@ -398,7 +404,7 @@ describe('MediaPanelContent', () => {
       .find(button => button.text() === '显示于访达')
     expect(revealButton).toBeTruthy()
     await revealButton!.trigger('click')
-    expect(platformState.platformApi.revealPath).toHaveBeenCalledWith('/tmp/local.png')
+    expect(filesClientState.filesApi.reveal).toHaveBeenCalledWith({ path: '/tmp/local.png' })
 
     storeState.mediaStore.assets = [imageAsset({ id: 'served-1', filePath: '/api/media/file/served.png', createdAt: TODAY })]
     const webWrapper = mountPanel()

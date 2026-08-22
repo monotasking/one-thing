@@ -1,24 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { filesApi } from '@/platform/files-client'
 import { useFileBuffers } from '../useFileBuffers'
+
+// P4c 第八批:两条数据面从壳上的 `readFileContent(path, maxSize)` /
+// `saveFileContent(path, content, mtime)`(位置参数)换成 `filesApi` 的信封。
+const files = vi.hoisted(() => ({
+  readContent: vi.fn(),
+  saveContent: vi.fn(),
+}))
+
+vi.mock('@/platform/files-client', () => ({ filesApi: files }))
+vi.mock('@/platform', () => ({
+  platformApi: { capabilities: { localFileSystem: true, workspaceFileSystem: true } },
+}))
 
 describe('useFileBuffers', () => {
   beforeEach(() => {
-    vi.stubGlobal('window', {
-      electronAPI: {
-        readFileContent: vi.fn().mockResolvedValue({
-          success: true,
-          content: 'hello',
-          encoding: 'utf-8',
-          size: 5,
-          mtimeMs: 10,
-          isBinary: false,
-        }),
-        saveFileContent: vi.fn().mockResolvedValue({
-          success: true,
-          mtimeMs: 20,
-        }),
-      },
+    files.readContent.mockReset().mockResolvedValue({
+      success: true,
+      content: 'hello',
+      encoding: 'utf-8',
+      size: 5,
+      mtimeMs: 10,
+      isBinary: false,
     })
+    files.saveContent.mockReset().mockResolvedValue({ success: true, mtimeMs: 20 })
   })
 
   afterEach(() => {
@@ -72,14 +78,18 @@ describe('useFileBuffers', () => {
 
     await expect(fileBuffers.saveFile(path)).resolves.toBe(true)
 
-    expect(window.electronAPI.saveFileContent).toHaveBeenCalledWith(path, 'saved', 10)
+    expect(filesApi.saveContent).toHaveBeenCalledWith({
+      path,
+      content: 'saved',
+      expectedMtimeMs: 10,
+    })
     expect(buffer.content).toBe('saved')
     expect(buffer.lastReadMtimeMs).toBe(20)
     expect(fileBuffers.isDirty(path)).toBe(false)
   })
 
   it('keeps the draft when save reports an external modification conflict', async () => {
-    vi.mocked(window.electronAPI.saveFileContent).mockResolvedValueOnce({
+    vi.mocked(filesApi.saveContent).mockResolvedValueOnce({
       success: false,
       conflict: true,
       error: 'File changed on disk. Review before saving again.',

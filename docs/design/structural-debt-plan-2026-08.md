@@ -1327,6 +1327,15 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      checker 两域 host 断言整删、2 条改指域文件、oauth-events 端口断言加强;transport channels 208→**197**、四壳 3820;
      battery 264/0;全量 11180 绿。`grep openElectronPath|openElectronExternal packages/backend apps/electron/src/main/ipc` = 0
      (只剩 files 的 `revealElectronPath`,归 #19 批)。遗留:`shared/ipc/themes.ts` 与 `runtime/themes/types.ts` 两份逐字副本待合。
+     **第八批落地记录(08-22,gateway 8 + files 14,待提交)**:`configureGatewayHost` 端口立在 `backend/wiring/gateway/host-ports.ts`
+     (端口收生命周期原语形状,`{success,status,error}` 信封由门面统一做——原先只住在 Electron 工厂里、server 各写各的,现在一份;
+     main-process 八行注入);files 14 条在 http 侧**逐字保留**旧 server 的沙箱夹紧(14 条全夹,越界文案逐字)与三处能力差
+     (搜索根=沙箱根 + 手写走查器不赌 rg;reveal 先夹后 shellHost 降级;watchStart/Stop 桌面仍是投影桩、http 真 `fs.watch`——
+     给桌面装真监视是未拍板的行为变化),ipc 一律不夹原样透传;监视登记簿搬 `wiring/files/workspace-watch.ts` 请求面/SSE 共用;
+     server 删 22 条 REST(mobile/scripts 零引用)、`RuntimeGatewayAdapter` 整只、files adapter 只剩 SSE 订阅、假网关状态机;
+     checker 退 files host 断言、6 条改指域、新增 `checkGatewayAndFilesHostPorts`;顺手修了 `http.test.ts` SSE 长连接
+     让 `server.close()` 挂死的既有竞态(`closeAllConnections`);transport channels 197→**175**、四壳 3698;battery 264/0;
+     全量 11191 绿。web:gateway 从 server 写死 disabled 文案变为真能开(#20),纯 server 进程未注入端口时结构化降级;files 数据面逐字不变。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。
