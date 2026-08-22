@@ -58,10 +58,45 @@ describe('core log-monitor helpers', () => {
       .toBe('Stream start (model: deepseek-chat)')
     expect(summarizeLogEvent('stream:complete', { data: { usage: { totalTokens: 42 } } }))
       .toBe('Stream complete (42 tokens)')
-    expect(summarizeLogEvent('tool_execution_end', { isError: true, toolName: 'bash' }))
-      .toBe('ERROR Tool done: bash')
+    expect(summarizeLogEvent('tool:execution-end', { isError: true, toolCallId: 'call-1' }))
+      .toBe('ERROR Tool done: call-1')
     expect(summarizeLogEvent('messages:replaced', { messages: [1, 2] }))
       .toBe('Messages replaced (2 total)')
+  })
+
+  /*
+   * P4-F #30:这两条以前写成下划线名(`tool_execution_start` / `tool_execution_end`),
+   * 与总线上真正发出的 `tool:execution-start` / `tool:execution-end` 对不上 ——
+   * 监视器于是既不跟踪也不摘要工具执行,`summarizeLogEvent` 落到 default 分支。
+   * 载荷按 shared 的 `ToolExecutionStartEvent`(带 toolName)/ `ToolExecutionEndEvent`
+   * (没有 toolName,只有 toolCallId + isError)对齐。
+   */
+  it('summarizes tool execution start/end under their real bus event names', () => {
+    expect(CORE_LOG_MONITOR_TRACKED_EVENTS).toContain('tool:execution-start')
+    expect(CORE_LOG_MONITOR_TRACKED_EVENTS).toContain('tool:execution-end')
+
+    expect(summarizeLogEvent('tool:execution-start', {
+      toolCallId: 'call-1',
+      stepId: 'step-1',
+      toolName: 'bash',
+      args: {},
+    })).toBe('Tool start: bash')
+
+    expect(summarizeLogEvent('tool:execution-end', {
+      toolCallId: 'call-1',
+      stepId: 'step-1',
+      isError: false,
+    })).toBe('OK Tool done: call-1')
+
+    const failed = createLogEntry('tool:execution-end', {
+      sessionId: 'session-1',
+      sequence: 3,
+      timestamp: 300,
+      event: { type: 'tool:execution-end', toolCallId: 'call-2', stepId: 'step-1', isError: true, error: 'boom' },
+    })
+    expect(failed.summary).toBe('ERROR Tool done: call-2')
+    expect(shouldNotifyLogEntry(failed)).toBe(true)
+    expect(getRecentLogErrors([failed])).toEqual([failed])
   })
 
   it('creates log entries and JSON disk lines', () => {
@@ -89,8 +124,8 @@ describe('core log-monitor helpers', () => {
   it('searches, formats, and counts log entries', () => {
     const logs = [
       { eventType: 'stream:start', timestamp: 1, sessionId: 's1', sequence: 1, summary: 'Stream start (model: a)' },
-      { eventType: 'tool_execution_end', timestamp: 2, sessionId: 's1', sequence: 2, summary: 'ERROR Tool done: bash' },
-      { eventType: 'tool_execution_end', timestamp: 3, sessionId: 's1', sequence: 3, summary: 'OK Tool done: read' },
+      { eventType: 'tool:execution-end', timestamp: 2, sessionId: 's1', sequence: 2, summary: 'ERROR Tool done: bash' },
+      { eventType: 'tool:execution-end', timestamp: 3, sessionId: 's1', sequence: 3, summary: 'OK Tool done: read' },
     ]
 
     expect(formatLogSearchOutput(logs, {
@@ -103,7 +138,7 @@ describe('core log-monitor helpers', () => {
     })
     expect(getRecentLogErrors(logs)).toEqual([logs[1]])
     expect(countLogEventTypes(logs)).toEqual([
-      ['tool_execution_end', 2],
+      ['tool:execution-end', 2],
       ['stream:start', 1],
     ])
     expect(normalizeLogTailCount('200')).toBe(100)
@@ -125,7 +160,7 @@ describe('core log-monitor helpers', () => {
       droppedCount: 4,
     })).toBe([
       '3 events in buffer | disk backpressure, 4 writes dropped',
-      '  tool_execution_end: 2',
+      '  tool:execution-end: 2',
       '  stream:start: 1',
     ].join('\n'))
   })
@@ -141,11 +176,11 @@ describe('core log-monitor helpers', () => {
       timestamp: 100,
       event: { type: 'stream:start', model: 'deepseek-chat' },
     })
-    const second = buffer.push('tool_execution_end', {
+    const second = buffer.push('tool:execution-end', {
       sessionId: 'session-1',
       sequence: 2,
       timestamp: 200,
-      event: { type: 'tool_execution_end', toolName: 'bash', isError: true },
+      event: { type: 'tool:execution-end', toolCallId: 'call-1', stepId: 'step-1', isError: true },
     })
     buffer.push('stream:complete', {
       sessionId: 'session-1',
@@ -160,9 +195,9 @@ describe('core log-monitor helpers', () => {
       notify: false,
     })
     expect(second.notify).toBe(true)
-    expect(buffer.entries.map(entry => entry.eventType)).toEqual(['tool_execution_end', 'stream:complete'])
+    expect(buffer.entries.map(entry => entry.eventType)).toEqual(['tool:execution-end', 'stream:complete'])
     expect(buffer.eventCounts()).toEqual([
-      ['tool_execution_end', 1],
+      ['tool:execution-end', 1],
       ['stream:complete', 1],
     ])
     expect(buffer.clear()).toBe(2)

@@ -121,14 +121,6 @@ export interface AbortCommand {
   reason?: string
 }
 
-export interface ConfirmToolCommand {
-  type: typeof SESSION_COMMAND_TYPES.CONFIRM_TOOL
-  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
-  channel?: string
-  toolCallId: string
-  approved: boolean
-}
-
 export interface ResumeAfterConfirmCommand {
   type: typeof SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
@@ -233,7 +225,6 @@ export type SessionCommand =
   | SendMessageCommand
   | EditAndResendCommand
   | AbortCommand
-  | ConfirmToolCommand
   | ResumeAfterConfirmCommand
   | PermissionRespondCommand
   | InteractionRespondCommand

@@ -528,12 +528,12 @@ export class CoreStreamEngine<
    * F12 能直接跳到这张表的那一行,再一跳就是下面的 `handleSendMessage` 本体
    * (2026-08-21 两层合一之前,中间还隔着一层 `handleSendMessageCommand` 抽象转发)。
    *
-   * 类型是 `Partial<Record<SessionCommandType, …>>` 而不是 `Record`:12 条命令里
-   * 引擎只订阅 9 条,另外三条各有自己的订阅者,不在这里硬造处理者 ——
+   * 类型是 `Partial<Record<SessionCommandType, …>>` 而不是 `Record`:11 条命令里
+   * 引擎只订阅 9 条,另外两条各有自己的订阅者,不在这里硬造处理者 ——
    *   - `PERMISSION_RESPOND` → `packages/core/permission/index.ts`(Permission 自己订)
    *   - `INTERACTION_RESPOND` → `packages/core/interaction/registry.ts`(交互注册表自己订)
-   *   - `CONFIRM_TOOL` → **全仓无订阅者**(只剩契约形状,没有任何 `onAnySession`
-   *     消费它;发它等于丢进空气)。
+   *
+   * (2026-08-22 P4-F #26:`CONFIRM_TOOL` 全仓零订阅者,契约已随该批删除。)
    */
   protected buildCommandHandlers(): Partial<
     Record<SessionCommandType, (envelope: CoreCommandEnvelope) => void>

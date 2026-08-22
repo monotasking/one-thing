@@ -24,7 +24,6 @@ const store = vi.hoisted(() => ({
 const toolkit = vi.hoisted(() => ({
   runToolkitToolDirectly: vi.fn(async (): Promise<unknown> => ({ success: true, data: 'ran' })),
   toolkitCatalogToolDefinitions: vi.fn((): unknown[] => []),
-  refreshToolkitMcpTools: vi.fn(),
 }))
 const jobs = vi.hoisted(() => ({
   listBackgroundJobs: vi.fn((): unknown[] => []),
@@ -68,7 +67,6 @@ describe('tools RPC domain', () => {
       .mockReset()
       .mockResolvedValue({ success: true, data: 'ran' } as never)
     toolkit.toolkitCatalogToolDefinitions.mockReset().mockReturnValue([])
-    toolkit.refreshToolkitMcpTools.mockReset()
     jobs.listBackgroundJobs.mockReset().mockReturnValue([])
     jobs.stopBackgroundJob.mockReset().mockResolvedValue(true)
   })
@@ -216,19 +214,6 @@ describe('tools RPC domain', () => {
       error: 'Tool call updates are not available in the web server runtime yet.',
     })
     expect(store.updateMessageToolCalls).not.toHaveBeenCalled()
-  })
-
-  it('refreshes the MCP tool surface, folding a throw into the contract envelope', async () => {
-    expect(unwrap(await call('refreshAsyncTools', {}, IPC))).toEqual({ success: true })
-    expect(toolkit.refreshToolkitMcpTools).toHaveBeenCalledTimes(1)
-
-    toolkit.refreshToolkitMcpTools.mockImplementation(() => {
-      throw new Error('mcp is down')
-    })
-    expect(unwrap(await call('refreshAsyncTools', {}, IPC))).toEqual({
-      success: false,
-      error: 'mcp is down',
-    })
   })
 
   it('keeps every method on the router allowlist and rejects anything else', async () => {

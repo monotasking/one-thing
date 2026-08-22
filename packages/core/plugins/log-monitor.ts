@@ -33,8 +33,8 @@ export const CORE_LOG_MONITOR_TRACKED_EVENTS = [
   SESSION_EVENT_TYPES.STREAM_ABORTED,
   SESSION_EVENT_TYPES.TOOL_CALL,
   SESSION_EVENT_TYPES.TOOL_RESULT,
-  'tool_execution_start',
-  'tool_execution_end',
+  SESSION_EVENT_TYPES.TOOL_EXECUTION_START,
+  SESSION_EVENT_TYPES.TOOL_EXECUTION_END,
   SESSION_EVENT_TYPES.MESSAGE_USER_CREATED,
   SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
   SESSION_EVENT_TYPES.PERMISSION_REQUEST,
@@ -232,8 +232,9 @@ export function summarizeLogEvent(type: string, event: Record<string, unknown>):
     case SESSION_EVENT_TYPES.STREAM_ABORTED: return `Stream aborted: ${stringValue(event.reason, 'user')}`
     case SESSION_EVENT_TYPES.TOOL_CALL: return `Tool call: ${stringValue(record(event.toolCall).toolName)}`
     case SESSION_EVENT_TYPES.TOOL_RESULT: return `${record(event.toolCall).isError ? 'ERROR' : 'OK'} Tool: ${stringValue(record(event.toolCall).toolName)}`
-    case 'tool_execution_start': return `Tool start: ${stringValue(event.toolName)}`
-    case 'tool_execution_end': return `${event.isError ? 'ERROR' : 'OK'} Tool done: ${stringValue(event.toolName)}`
+    case SESSION_EVENT_TYPES.TOOL_EXECUTION_START: return `Tool start: ${stringValue(event.toolName)}`
+    /* end 事件的载荷里没有 toolName(`ToolExecutionEndEvent` 只有 toolCallId/stepId/result/isError/error/durationMs),用 toolCallId 指认。 */
+    case SESSION_EVENT_TYPES.TOOL_EXECUTION_END: return `${event.isError ? 'ERROR' : 'OK'} Tool done: ${stringValue(event.toolCallId)}`
     case SESSION_EVENT_TYPES.MESSAGE_USER_CREATED: return 'User message'
     case SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED: return `Assistant (model: ${stringValue(record(event.message).model)})`
     case SESSION_EVENT_TYPES.SKILL_ACTIVATED: return `Skill: ${stringValue(event.skillName)}`
@@ -276,7 +277,7 @@ export function duplicateLogDiskLine(entry: CoreLogEntry): string {
 
 export function shouldNotifyLogEntry(entry: CoreLogEntry): boolean {
   return entry.eventType === SESSION_EVENT_TYPES.STREAM_ERROR ||
-    (entry.eventType === 'tool_execution_end' && entry.summary.startsWith('ERROR'))
+    (entry.eventType === SESSION_EVENT_TYPES.TOOL_EXECUTION_END && entry.summary.startsWith('ERROR'))
 }
 
 export function searchLogEntries(
@@ -331,7 +332,7 @@ export function normalizeLogTailCount(value: string | number | undefined, fallba
 
 export function getRecentLogErrors(logs: CoreLogEntry[], limit = 15): CoreLogEntry[] {
   return logs
-    .filter(entry => entry.eventType === SESSION_EVENT_TYPES.STREAM_ERROR || (entry.eventType === 'tool_execution_end' && entry.summary.startsWith('ERROR')))
+    .filter(entry => entry.eventType === SESSION_EVENT_TYPES.STREAM_ERROR || (entry.eventType === SESSION_EVENT_TYPES.TOOL_EXECUTION_END && entry.summary.startsWith('ERROR')))
     .slice(-limit)
 }
 

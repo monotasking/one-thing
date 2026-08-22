@@ -19,7 +19,6 @@ export const SESSION_COMMAND_TYPES = {
   SEND_MESSAGE: 'command:send-message',
   EDIT_AND_RESEND: 'command:edit-and-resend',
   ABORT: 'command:abort',
-  CONFIRM_TOOL: 'command:confirm-tool',
   RESUME_AFTER_CONFIRM: 'command:resume-after-confirm',
   PERMISSION_RESPOND: 'command:permission-respond',
   INTERACTION_RESPOND: 'command:interaction-respond',

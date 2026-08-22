@@ -31,9 +31,6 @@ export const toolsApi = {
   listBackgroundJobs: (options?: { includeInactive?: boolean }) =>
     tools.backgroundJobsList(options ?? {}),
   stopBackgroundJob: (jobId: string) => tools.backgroundJobsStop({ jobId }),
-  /** R4b 之后刷的是 MCP 工具面;全仓今天没有调用点,契约保留。 */
-  refreshAsyncTools: (request?: { workingDirectory?: string }) =>
-    tools.refreshAsyncTools(request ?? {}),
   updateToolCall: (
     sessionId: string,
     messageId: string,

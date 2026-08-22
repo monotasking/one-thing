@@ -29,7 +29,6 @@
  * | `updateToolCall`     | 写会话消息                  | **拒绝**,文案逐字沿用旧 adapter |
  * | `backgroundJobsList` | 真表                       | **空表**,逐字沿用旧 adapter    |
  * | `backgroundJobsStop` | 真停                       | **拒绝**,文案逐字沿用旧 adapter |
- * | `refreshAsyncTools`  | 重刷 MCP 工具面             | **同左**(旧 server 上根本没有这条路由,见下) |
  *
  * 三条 http 侧的执行闸(白名单 / 会话 / 路径)与旧 `server/runtime.ts` 的
  * `serverReadOnlyToolIds` + `validateServerReadOnlyToolAccess` +
@@ -47,11 +46,12 @@
  * 真相)。生产形态下这是**零变化**;变的只有测试夹具里的假后端。
  * 执行面**不跟着放开**:白名单仍然只有 `read`。
  *
- * ## `refreshAsyncTools` 在 http 上从 404 变成可达
+ * ## 退役记录:`refreshAsyncTools`
  *
- * 旧 server 上没有这条路由(全仓也没有任何调用点 —— 它是 R4b 之后只剩契约的一格)。
- * 迁到 router 之后它跟着可达,做的事是让**进程内**的 MCP 工具面重新枚举一次:
- * 不连新服务器、不落盘、没有外部作用,所以不设分叉。
+ * 迁来时还有第七条 `refreshAsyncTools`(刷 MCP 工具面)。它在旧 server 上是 404、
+ * 在 bridge 上从未暴露、全仓零调用点 —— R4b 之后只剩契约的一格,P4-F #34 整条删掉。
+ * 刷工具面这件事没有跟着消失:`backend/wiring/toolkit` 的 `refreshToolkitMcpTools`
+ * 仍由 `createOnethingBackend` 挂在 MCP 能力变更回调上,只是不再有传输面。
  */
 import {
   applyOnethingToolCallUpdateForIpc,
@@ -74,7 +74,6 @@ import { isAbsolute, join, resolve } from 'node:path'
 import * as store from '../../store.js'
 // 工具列表与直接执行由目录 / runner 回答(设计文档 §10.2-④)。
 import {
-  refreshToolkitMcpTools,
   runToolkitToolDirectly,
   toolkitCatalogToolDefinitions,
 } from '../../wiring/toolkit/index.js'
@@ -214,25 +213,6 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
   async backgroundJobsStop(request, context = DESKTOP_RPC_CONTEXT) {
     if (context.transport === 'http') return failure(HTTP_BACKGROUND_JOBS_DISABLED)
     return stopOnethingBackgroundJobForIpc({ jobId: request.jobId, stopJob: stopBackgroundJob })
-  },
-
-  /*
-   * R4b:旧路刷的是「异步工具」—— 一批要靠 `setInitContext(cwd/skills)` +
-   * `initializeAsyncTools()` 才拿得到 schema 的注册表条目。新树里没有这个
-   * 概念(懒初始化是 `Catalog.ensurePrepared`,按工具、按需、只跑一次),
-   * 唯一会在运行期改变的工具面是 MCP,所以这条通道现在刷的就是它。
-   * 契约(方法名与返回形状)一个字未动。
-   */
-  async refreshAsyncTools() {
-    try {
-      refreshToolkitMcpTools()
-      return { success: true as const }
-    } catch (error) {
-      log.error('refresh MCP tools failed', undefined, error)
-      return failure(
-        error instanceof Error && error.message ? error.message : 'Failed to refresh tools',
-      )
-    }
   },
 
   async updateToolCall(request, context = DESKTOP_RPC_CONTEXT) {

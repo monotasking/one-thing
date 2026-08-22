@@ -237,12 +237,15 @@ export interface SendMessageStreamResponse {
 // ============================================
 
 /**
- * tools(工具面)域 —— 结构债 P4c 第九批,七条数据面整只从手写 IPC 通道迁到
+ * tools(工具面)域 —— 结构债 P4c 第九批,数据面整只从手写 IPC 通道迁到
  * 通用 `rpc:invoke` / `POST /api/rpc`。
  *
- * 七条逐条对应从前 `IPC_CHANNELS` 上那七条 `tools:*` 通道(`GET_TOOLS` /
+ * 迁来时是七条,逐条对应从前 `IPC_CHANNELS` 上那七条 `tools:*` 通道(`GET_TOOLS` /
  * `EXECUTE_TOOL` / `CANCEL_TOOL` / `BACKGROUND_JOBS_LIST` / `BACKGROUND_JOBS_STOP` /
  * `REFRESH_ASYNC_TOOLS` / `UPDATE_TOOL_CALL`),请求/响应形状一字未改;变的只是通道。
+ * 今天只剩六条:`refreshAsyncTools` 全仓零调用点(bridge 从未暴露它),P4-F #34 退役 ——
+ * 刷 MCP 工具面的那件事本身还在,只是没有传输面(`backend/wiring/toolkit` 的
+ * `refreshToolkitMcpTools`,由 `createOnethingBackend` 挂在 MCP 能力变更回调上)。
  *
  * 位置参数在这里被收成**单 id 包对象**(本仓 router 惯例):`executeTool` 从前是
  * `(toolId, args, messageId, sessionId)` 四个位置参数、`updateToolCall` 是四个,
@@ -284,19 +287,6 @@ export interface BackgroundJobsStopResponse {
   error?: string
 }
 
-/**
- * R4b 之后这条通道刷的是 **MCP 工具面**(旧树的「异步工具」概念随注册表一起退役)。
- * `workingDirectory` 是旧契约留下的一格,今天没有读者 —— 保留是为了让形状一字不改。
- */
-export interface RefreshAsyncToolsRequest {
-  workingDirectory?: string
-}
-
-export interface RefreshAsyncToolsResponse {
-  success: boolean
-  error?: string
-}
-
 export interface UpdateToolCallRequest {
   sessionId: string
   messageId: string
@@ -321,10 +311,6 @@ export type ToolsRoutes = {
     input: BackgroundJobsStopRequest
     output: BackgroundJobsStopResponse
   }
-  refreshAsyncTools: {
-    input: RefreshAsyncToolsRequest
-    output: RefreshAsyncToolsResponse
-  }
   updateToolCall: { input: UpdateToolCallRequest; output: UpdateToolCallResponse }
 }
 
@@ -334,6 +320,5 @@ export const toolsRouter = defineRouter<ToolsRoutes>('tools', [
   'cancelTool',
   'backgroundJobsList',
   'backgroundJobsStop',
-  'refreshAsyncTools',
   'updateToolCall',
 ])

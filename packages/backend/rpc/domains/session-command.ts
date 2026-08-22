@@ -181,7 +181,7 @@ function adoptPendingPermissionChannel(
 function emitToBus(sessionId: string, command: unknown): Promise<SessionCommandEmitResult> {
   return emitCoreSessionCommandForIpc({
     sessionId,
-    // 命令面的形状是 `SessionCommand`(12 条 `SESSION_COMMAND_TYPES` 之一),
+    // 命令面的形状是 `SessionCommand`(11 条 `SESSION_COMMAND_TYPES` 之一),
     // 不是总线的事件 ∪ 命令并集 —— `emitCoreSessionCommandForIpc` 也这么要求。
     command: command as SessionCommand,
     eventBus: getEventBus(),
