@@ -57,12 +57,9 @@ describe('createOnethingRuntimeFacade', () => {
           return unsubscribe
         }),
       },
-      plugins: {
-        list: vi.fn(async () => ({ success: true, plugins: [] })),
-        enable: vi.fn(async pluginId => ({ success: true, pluginId })),
-        commands: vi.fn(async () => ({ success: true, commands: [] })),
-        executeCommand: vi.fn(async request => ({ success: true, request })),
-      },
+      // P4 终态批 C2:`plugins` adapter 整只没了 —— 六条读/开关面随 `pluginsRouter`
+      // 走通用 RPC,server 那本只读镜像目录改由 `@onething/backend/server/plugin-catalog.ts`
+      // 的单槽端口交给域。
       // P4c 第七批:六条数据面已迁到 `oauthRouter`,facade 上只剩推送面。
       oauth: {
         subscribe: vi.fn((handler) => {
@@ -115,13 +112,6 @@ describe('createOnethingRuntimeFacade', () => {
     const offMedia = runtime.media?.subscribeImageGenerated?.(eventHandler)
     expect(eventHandler).toHaveBeenCalledWith({ id: 'image-1' })
     offMedia?.()
-    await expect(runtime.plugins?.list?.()).resolves.toEqual({ success: true, plugins: [] })
-    await expect(runtime.plugins?.enable?.('demo')).resolves.toEqual({ success: true, pluginId: 'demo' })
-    await expect(runtime.plugins?.commands?.()).resolves.toEqual({ success: true, commands: [] })
-    await expect(runtime.plugins?.executeCommand?.({ commandName: '/demo', args: 'now', sessionId: 'session-1' })).resolves.toEqual({
-      success: true,
-      request: { commandName: '/demo', args: 'now', sessionId: 'session-1' },
-    })
     const oauthHandler = vi.fn()
     const offOAuth = runtime.oauth?.subscribe(oauthHandler)
     expect(oauthHandler).toHaveBeenCalledWith({ type: 'oauth:token-refreshed', providerId: 'codex' })
@@ -166,7 +156,6 @@ describe('createOnethingRuntimeFacade', () => {
     expect(runtime.streams).toBeUndefined()
     expect(runtime.files).toBeUndefined()
     expect(runtime.media).toBeUndefined()
-    expect(runtime.plugins).toBeUndefined()
     expect(runtime.oauth).toBeUndefined()
     expect(runtime.voice).toBeUndefined()
   })

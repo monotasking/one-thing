@@ -157,6 +157,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 | `configureAppLoggingHost` | `backend/wiring/logging/index.ts` |
 | `configureSkillsEnvironmentHost` | `backend/wiring/skills/loader.ts` |
 | `configureTodoPlanHost` | `backend/wiring/todo-plan/store.ts` |
+| `configurePluginsHost` | `backend/wiring/plugins/host-ports.ts` (native file dialog + plugin-command subprocess runner; unset = structured degrade) |
 
 ### Guardrails
 
@@ -304,10 +305,13 @@ Notes:
   `input-intercept-bound.ts`, `tool-call-intercept-bound.ts`,
   `tool-result-intercept-bound.ts`, plus `lifecycle.wiring.ts` / `tarball.wiring.ts`
   which speak `@shared/ipc`);
-  `packages/backend/wiring/plugins/` = the **assembly half** (17 files: `loader` /
+  `packages/backend/wiring/plugins/` = the **assembly half** (20 files: `loader` /
   `manager` / `api` / `install` / `store` / `sessions` / `llm` / `skin` /
   `theme-overrides` / `webview` / `background` / `file-import` / `notify-sound` /
-  `types` + `builtin/` 插座 — everything whose import closure hits the backend spine).
+  `types` + `commands` (the one command-execution wiring the `plugins` RPC domain and the
+  gateway command provider share) + `host-ports` (`configurePluginsHost`) + `events`
+  (`configurePluginRequestProgressBroadcaster`) + `builtin/` 插座 — everything whose
+  import closure hits the backend spine).
   A file's name says which half it is; nothing about plugins lives anywhere else.
   Current surface:
   - **AI capabilities**: tools, slash commands, events (+ plugin-namespaced custom events),
@@ -430,12 +434,27 @@ Notes:
     distribution design: `docs/design/plugin-distribution-npm-2026-08.md`;
     retirement record: `docs/design/plugin-legacy-retirement-plan-2026-08.md`.
   - **Plugins execute on the Electron desktop host only** (plan A). Two caveats the
-    earlier wording got wrong: apps/server is *not* a read-only mirror — its
-    `/api/plugins/{enable,disable,refresh}` routes do write enable-flags to disk, and it
-    scans a different tree (`owners/<uid>/<wid>/plugin-store/plugins`, not
-    `<store>/plugins`), so toggling there changes a catalog the desktop never reads. The
-    CLI daemon does not assemble the plugin system at all (it is not "UI-less" — it has
-    no plugins).
+    earlier wording got wrong: apps/server is *not* a read-only mirror — `plugins.enable`
+    / `.disable` / `.refresh` do write enable-flags to disk, and it scans a different tree
+    (`owners/<uid>/<wid>/plugin-store/plugins`, not `<store>/plugins`), so toggling there
+    changes a catalog the desktop never reads. The CLI daemon does not assemble the plugin
+    system at all (it is not "UI-less" — it has no plugins).
+    Since P4 终态批 C2 (2026-08-23) the whole domain rides the generic RPC channel
+    (`pluginsRouter`, 19 invoke methods; `packages/backend/rpc/domains/plugins.ts`) — the
+    six `/api/plugins*` REST routes and the parameterized 501 are gone. The domain forks on
+    `context.transport`: **http** read/toggle faces call the same server-mirror closures
+    through `backend/server/plugin-catalog.ts`'s single-slot port, `configGet` derives a
+    read-only projection from that catalog listing, and every write face is judged by
+    **whether a plugin manager is assembled in this process** (the desktop's embedded HTTP
+    face has one and takes the same path as IPC; a standalone `server:start` does not and
+    returns the structured "desktop host only" answers verbatim). The renderer adds a
+    second layer: capability bit `pluginsManage` (`platform/types.ts`) is `false` on web,
+    so `platform/plugins-client.ts` never even sends the write faces. Two pushes stay on
+    hand-written channels: `PLUGINS_NOTIFICATION` (a global bus event fanned out by
+    IPCBridge) and `PLUGINS_REQUEST_PROGRESS` (targeted back at `RpcDispatchContext.callerId`
+    via `configurePluginRequestProgressBroadcaster`). Two host capabilities are injected
+    through `configurePluginsHost` (`backend/wiring/plugins/host-ports.ts`): the native
+    file dialog (`pickFile`) and the plugin-command subprocess runner (`execCommand`).
   Design doc: `docs/design/plugin-system-redesign-2026-08.md` (§5.x carries the per-phase
   rulings and errata; §6 the multi-host decision).
   `docs/design/plugin-system-capabilities-and-evolution.md` is the pre-R0 survey — useful

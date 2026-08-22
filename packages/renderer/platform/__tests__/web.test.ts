@@ -27,78 +27,18 @@ describe('createWebPlatformApi', () => {
       music: true,
       interactionRespond: true,
       evals: true,
+      // P4 终态批 C2(#16):插件写面在 web 上默认关。
+      pluginsManage: false,
       clipboardWrite: false,
       desktopWindows: false,
       globalMenuEvents: false,
     })
   })
 
-  /**
-   * 方案 A(设计文档 §6):插件只在 Electron 桌面宿主执行,配置也只在桌面可编辑。
-   * web 端要**读得到、改不了**,而且改不了的时候要说人话。
-   */
-  it('serves plugin config read-only from the plugin catalog', async () => {
-    vi.stubGlobal('navigator', {})
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      success: true,
-      plugins: [{
-        id: 'log-monitor',
-        configTitle: 'Log monitor',
-        configFields: [{
-          key: 'retentionDays',
-          control: 'number',
-          label: 'Log retention (days)',
-          required: false,
-          defaultValue: 7,
-        }],
-        configValues: { retentionDays: 7 },
-        configUnsupportedReasons: [],
-      }],
-    }), { status: 200, headers: { 'content-type': 'application/json' } })))
-
-    const { createWebPlatformApi } = await import('../web.js')
-    const api = createWebPlatformApi()
-
-    const result = await api.getPluginConfig('log-monitor')
-    expect(result).toMatchObject({
-      success: true,
-      declared: true,
-      title: 'Log monitor',
-      config: { retentionDays: 7 },
-      editable: false,
-    })
-    expect(result.fields?.[0]).toMatchObject({ key: 'retentionDays', control: 'number' })
-    expect(result.readOnlyReason).toContain('desktop host only')
-  })
-
-  it('refuses plugin config writes with a readable reason instead of forking the file', async () => {
-    vi.stubGlobal('navigator', {})
-    vi.stubGlobal('fetch', vi.fn())
-
-    const { createWebPlatformApi } = await import('../web.js')
-    const api = createWebPlatformApi()
-
-    const result = await api.setPluginConfig('log-monitor', { retentionDays: 1 })
-    expect(result.success).toBe(false)
-    // server 写 plugin-settings 会与桌面那份文件分叉 —— 那比"不能编辑"糟得多。
-    expect(result.error).toContain('desktop host only')
-  })
-
-  it('reports an unknown plugin instead of pretending the config is empty', async () => {
-    vi.stubGlobal('navigator', {})
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      success: true,
-      plugins: [],
-    }), { status: 200, headers: { 'content-type': 'application/json' } })))
-
-    const { createWebPlatformApi } = await import('../web.js')
-    const api = createWebPlatformApi()
-
-    await expect(api.getPluginConfig('ghost')).resolves.toMatchObject({
-      success: false,
-      error: expect.stringContaining('Unknown plugin'),
-    })
-  })
+  // 方案 A(设计文档 §6)下「web 读得到、改不了」那三条已随 P4 终态批 C2 搬走:
+  // 只读配置的派生进了 `backend/rpc/domains/plugins.ts` 的 http 分支
+  // (`plugins-domain.test.ts` 覆盖),写面的拒绝进了 `platform/plugins-client.ts`
+  // 的能力位分支(`plugins-client.test.ts` 覆盖)。web 壳上不再有它们。
 
   it('refreshes capabilities from the server while preserving browser clipboard detection', async () => {
     const writeText = vi.fn()
@@ -136,6 +76,7 @@ describe('createWebPlatformApi', () => {
       music: true,
       interactionRespond: true,
       evals: true,
+      pluginsManage: false,
       clipboardWrite: true,
       desktopWindows: false,
       globalMenuEvents: false,
@@ -1093,40 +1034,15 @@ describe('createWebPlatformApi', () => {
       success: true,
       rpc: { domain: 'todo-plan', method: 'revealDirectory', payload: {} },
     })
-    await expect(api.getPlugins()).resolves.toEqual({
-      success: true,
-      url: '/api/plugins',
-    })
-    await expect(api.enablePlugin('note-skills')).resolves.toEqual({
-      success: true,
-      url: '/api/plugins/enable',
-    })
-    await expect(api.disablePlugin('note-skills')).resolves.toEqual({
-      success: true,
-      url: '/api/plugins/disable',
-    })
-    await expect(api.refreshPlugins()).resolves.toEqual({
-      success: true,
-      url: '/api/plugins/refresh',
-    })
-    await expect(api.getPluginCommands()).resolves.toEqual({
-      success: true,
-      url: '/api/plugins/commands',
-    })
-    await expect(api.executePluginCommand('/demo', '--fast', 'session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/plugins/execute-command',
-    })
+    // P4 终态批 C2:plugins 十九条数据面已迁到通用 RPC(`pluginsRouter`);
+    // web 壳上不再有 /api/plugins* 的镜像,server 那六条 REST 路由与那条 501
+    // 一起删了。客户端在 `@/platform/plugins-client`。
     // P4c 第七批:oauth 六条数据面已迁到通用 RPC(oauthRouter);web 壳上只剩
     // `/api/oauth/events` 那条 SSE 订阅(推送面,router 今天没有)。
     // P4c 第八批:gateway 八条数据面已迁到通用 RPC(`gatewayRouter`);本域零推送,
     // 所以 web 壳上一条不剩。
     // P4c 第十一批:voice 十一条数据面已迁到通用 RPC(voiceRouter);web 壳上只剩
     // `/api/voice/events` 与 `/api/voice/runtime-commands` 两条 SSE 订阅(推送面)。
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/execute-command', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ commandName: '/demo', args: '--fast', sessionId: 'session-1' }),
-    }))
     // scheduler 域的九条已整只迁到通用 RPC 通道(P4c,`@shared/ipc/scheduler.ts` 的
     // schedulerRouter + `@/platform/scheduler-client` 的 schedulerApi):web 壳上
     // 不再有 /api/scheduler/* 的镜像,server 的九条 REST 路由也一并删了。
@@ -1137,15 +1053,6 @@ describe('createWebPlatformApi', () => {
     // 系统提示词快照(以及另外五条聊天面)迁 chatRouter(P4c 第五批,
     // `@/platform/chat-client`):`/api/sessions/:id/system-prompt-snapshot` 也删了。
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/enable', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ pluginId: 'note-skills' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/disable', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ pluginId: 'note-skills' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/commands', expect.any(Object))
   })
 })
 

@@ -57,7 +57,13 @@ describe('IPC hub → plugin workspace panels', () => {
           notify = handler
           return vi.fn()
         }),
-        getPlugins: () => getPlugins(),
+        // P4 终态批 C2:目录清单走通用 RPC 的 `plugins` 域,不再是壳上的一条方法。
+        rpcInvoke: async (request: { domain: string; method: string }) => {
+          if (request.domain === 'plugins' && request.method === 'list') {
+            return { ok: true, data: await getPlugins() }
+          }
+          return { ok: true, data: null }
+        },
       },
     })
   })

@@ -8,6 +8,8 @@ import { createOnethingRuntimeFacade } from '@onething/core'
 import { defineRouter } from '@onething/core/ipc'
 import type { CorePluginCommandContext } from '@onething/core/plugins'
 import { registerRouterHandlers, resetRpcRegistryForTests } from '@onething/backend/rpc/registry.js'
+import { pluginsRpcHandlers } from '@onething/backend/rpc/domains/plugins.js'
+import { pluginsRouter } from '@shared/ipc/plugins.js'
 import { registerFilesRpcDomain } from '@onething/backend/rpc/domains/files.js'
 import { registerToolsRpcDomain } from '@onething/backend/rpc/domains/tools.js'
 import { registerMarkdownRpcDomain } from '@onething/backend/rpc/domains/markdown.js'
@@ -241,50 +243,40 @@ describe('createOnethingHttpServer', () => {
     const sessionId = created.session?.id
     expect(sessionId).toBeTruthy()
 
-    await expect(fetchJson(`${baseUrlValue}/api/plugins/commands`, {
-      headers: aliceHeaders,
-    })).resolves.toEqual({
-      success: true,
-      commands: [{
-        id: 'demo',
-        name: '/demo',
-        description: 'Run demo',
-        usage: '/demo <arg>',
-      }],
-    })
+    // P4 终态批 C2:两条走 `POST /api/rpc` 的 `plugins` 域,而不是从前那两条 REST。
+    // **断言一条没减** —— 域在 http 上调的就是 `server/plugin-catalog.ts` 那个单槽
+    // 端口里的同一批闭包,包括「bob 看不见 alice 的会话」这道归属护栏。
+    const dispose = registerRouterHandlers(pluginsRouter, pluginsRpcHandlers)
+    try {
+      await expect(rpcData(baseUrlValue, aliceHeaders, 'commands', {})).resolves.toEqual({
+        success: true,
+        commands: [{
+          id: 'demo',
+          name: '/demo',
+          description: 'Run demo',
+          usage: '/demo <arg>',
+        }],
+      })
 
-    const executed = await fetchJson(`${baseUrlValue}/api/plugins/execute-command`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
+      await expect(rpcData(baseUrlValue, aliceHeaders, 'executeCommand', {
         commandName: 'demo',
         args: '--fast',
         sessionId,
-      }),
-    })
-    expect(executed).toEqual({
-      success: true,
-      message: 'exec:126',
-    })
-    expect(handler).toHaveBeenCalledWith('--fast', expect.objectContaining({
-      sessionId,
-      cwd: expect.stringContaining('plugin-workspace'),
-    }))
+      })).resolves.toEqual({ success: true, message: 'exec:126' })
+      expect(handler).toHaveBeenCalledWith('--fast', expect.objectContaining({
+        sessionId,
+        cwd: expect.stringContaining('plugin-workspace'),
+      }))
 
-    const bobAttempt = await fetchJson(`${baseUrlValue}/api/plugins/execute-command`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
+      await expect(rpcData(baseUrlValue, bobHeaders, 'executeCommand', {
         commandName: 'demo',
         args: '--fast',
         sessionId,
-      }),
-    })
-    expect(bobAttempt).toEqual({
-      success: false,
-      error: 'Session not found',
-    })
-    expect(handler).toHaveBeenCalledTimes(1)
+      })).resolves.toEqual({ success: false, error: 'Session not found' })
+      expect(handler).toHaveBeenCalledTimes(1)
+    } finally {
+      dispose()
+    }
   })
 
   // P4c 第七批:「按 owner 分表的 OAuth 设备流」这条用例整只删掉 —— 它测的
@@ -341,74 +333,71 @@ describe('createOnethingHttpServer', () => {
     const baseUrlValue = baseUrl(server)
     const aliceHeaders = contextHeaders('alice', 'plugin-workspace')
     const bobHeaders = contextHeaders('bob', 'plugin-workspace')
-    const aliceJsonHeaders = { ...aliceHeaders, 'content-type': 'application/json' }
 
-    const alicePlugins = await fetchJson(`${baseUrlValue}/api/plugins`, {
-      headers: aliceHeaders,
-    })
-    expect(alicePlugins.success).toBe(true)
-    expect(alicePlugins.plugins.map((plugin: { id: string }) => plugin.id)).toEqual(
-      expect.arrayContaining(['log-monitor', 'note-skills']),
-    )
-    expect(alicePlugins.plugins.find((plugin: { id: string }) => plugin.id === 'note-skills')).toEqual(
-      expect.objectContaining({
-        enabled: true,
-        loaded: false,
-        commands: [],
-      }),
-    )
+    // P4 终态批 C2:六条读/开关面走 `POST /api/rpc` 的 `plugins` 域。**断言一条没减**
+    // —— 域在 http 上调的就是 `server/plugin-catalog.ts` 那个单槽端口里的同一批闭包,
+    // per-owner 的 enable 标志因此仍然分表落盘。
+    const dispose = registerRouterHandlers(pluginsRouter, pluginsRpcHandlers)
+    try {
+      const alicePlugins = await rpcData(baseUrlValue, aliceHeaders, 'list', {}) as {
+        success: boolean
+        plugins: Array<{ id: string }>
+      }
+      expect(alicePlugins.success).toBe(true)
+      expect(alicePlugins.plugins.map(plugin => plugin.id)).toEqual(
+        expect.arrayContaining(['log-monitor', 'note-skills']),
+      )
+      expect(alicePlugins.plugins.find(plugin => plugin.id === 'note-skills')).toEqual(
+        expect.objectContaining({ enabled: true, loaded: false, commands: [] }),
+      )
 
-    await expect(fetchJson(`${baseUrlValue}/api/plugins/disable`, {
-      method: 'POST',
-      headers: aliceJsonHeaders,
-      body: JSON.stringify({ pluginId: 'note-skills' }),
-    })).resolves.toEqual({ success: true })
+      await expect(rpcData(baseUrlValue, aliceHeaders, 'disable', { pluginId: 'note-skills' }))
+        .resolves.toEqual({ success: true })
 
-    const aliceAfterDisable = await fetchJson(`${baseUrlValue}/api/plugins`, {
-      headers: aliceHeaders,
-    })
-    expect(aliceAfterDisable.plugins.find((plugin: { id: string }) => plugin.id === 'note-skills')).toEqual(
-      expect.objectContaining({ enabled: false }),
-    )
+      const aliceAfterDisable = await rpcData(baseUrlValue, aliceHeaders, 'list', {}) as {
+        plugins: Array<{ id: string }>
+      }
+      expect(aliceAfterDisable.plugins.find(plugin => plugin.id === 'note-skills')).toEqual(
+        expect.objectContaining({ enabled: false }),
+      )
 
-    const bobPlugins = await fetchJson(`${baseUrlValue}/api/plugins`, {
-      headers: bobHeaders,
-    })
-    expect(bobPlugins.plugins.find((plugin: { id: string }) => plugin.id === 'note-skills')).toEqual(
-      expect.objectContaining({ enabled: true }),
-    )
+      const bobPlugins = await rpcData(baseUrlValue, bobHeaders, 'list', {}) as {
+        plugins: Array<{ id: string }>
+      }
+      expect(bobPlugins.plugins.find(plugin => plugin.id === 'note-skills')).toEqual(
+        expect.objectContaining({ enabled: true }),
+      )
 
-    await expect(fetchJson(`${baseUrlValue}/api/plugins/enable`, {
-      method: 'POST',
-      headers: aliceJsonHeaders,
-      body: JSON.stringify({ pluginId: 'note-skills' }),
-    })).resolves.toEqual({ success: true })
+      await expect(rpcData(baseUrlValue, aliceHeaders, 'enable', { pluginId: 'note-skills' }))
+        .resolves.toEqual({ success: true })
 
-    const aliceAfterEnable = await fetchJson(`${baseUrlValue}/api/plugins`, {
-      headers: aliceHeaders,
-    })
-    expect(aliceAfterEnable.plugins.find((plugin: { id: string }) => plugin.id === 'note-skills')).toEqual(
-      expect.objectContaining({ enabled: true }),
-    )
+      const aliceAfterEnable = await rpcData(baseUrlValue, aliceHeaders, 'list', {}) as {
+        plugins: Array<{ id: string }>
+      }
+      expect(aliceAfterEnable.plugins.find(plugin => plugin.id === 'note-skills')).toEqual(
+        expect.objectContaining({ enabled: true }),
+      )
 
-    await expect(fetchJson(`${baseUrlValue}/api/plugins/refresh`, {
-      method: 'POST',
-      headers: aliceJsonHeaders,
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/plugins/commands`, {
-      headers: aliceHeaders,
-    })).resolves.toEqual({
-      success: true,
-      commands: [],
-    })
+      await expect(rpcData(baseUrlValue, aliceHeaders, 'refresh', {}))
+        .resolves.toEqual({ success: true })
+      await expect(rpcData(baseUrlValue, aliceHeaders, 'commands', {}))
+        .resolves.toEqual({ success: true, commands: [] })
+    } finally {
+      dispose()
+    }
   })
 
   /**
    * 方案 A(设计文档 §6):插件只在 Electron 桌面宿主执行,server 的插件目录是
-   * 只读镜像。带参路由存在的意义就是**不静默** —— 调用方要拿到一条说明了原因的
-   * 501,而不是 404 或者一个永远 pending 的请求。
+   * 只读镜像。P4 终态批 C2 之前这件事是一条**带参 REST 路由回 501**;现在它是
+   * `plugins.request` 在 http 上的结构化失败 —— 语义一字未改(说明了原因、不静默),
+   * 变的只是判据:从「是不是 server」换成**插件管理器在不在场**。
+   *
+   * 同一条用例顺带钉住 http 上的只读配置:值与字段表从那份目录清单投影里就地
+   * 派生(逐字搬自迁移前 `platform/web.ts` 的 `getPluginConfig`)——读得到、改不了,
+   * 而且改不了的时候说人话。
    */
-  it('answers the parameterized plugin request route with a readable 501', async () => {
+  it('answers plugin execution on the server with a readable structured failure', async () => {
     const dataRoot = await createTempDir('onething-plugin-request-data-')
     const workspaceRoot = await createTempDir('onething-plugin-request-workspace-')
     const serverRuntime = await createTestServerRuntime({ dataRoot, workspaceRoot })
@@ -418,39 +407,54 @@ describe('createOnethingHttpServer', () => {
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
-    const headers = { ...contextHeaders('alice', 'plugin-workspace'), 'content-type': 'application/json' }
+    const headers = contextHeaders('alice', 'plugin-workspace')
 
-    const response = await fetch(`${baseUrlValue}/api/plugins/note-skills/search`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ payload: { q: 'hello' }, requestId: 'req-1' }),
-    })
-    expect(response.status).toBe(501)
-    const body = await response.json() as {
-      success: boolean
-      error: string
-      pluginId: string
-      action: string
-      host: string
+    const dispose = registerRouterHandlers(pluginsRouter, pluginsRpcHandlers)
+    try {
+      const requested = await rpcData(baseUrlValue, headers, 'request', {
+        pluginId: 'note-skills',
+        action: 'search',
+        payload: { q: 'hello' },
+        requestId: 'req-1',
+      }) as { success: boolean; requestId: string; error: string }
+      expect(requested.success).toBe(false)
+      expect(requested.requestId).toBe('req-1')
+      expect(requested.error).toContain('desktop host only')
+
+      // 写面同判据、同文案(与 `platform/plugins-client.ts` 那份降级逐字相同)。
+      await expect(rpcData(baseUrlValue, headers, 'install', { pkg: 'demo' }))
+        .resolves.toEqual({
+          success: false,
+          error: 'Plugins are installed on the desktop host only.',
+        })
+      await expect(rpcData(baseUrlValue, headers, 'pickFile', { pluginId: 'note-skills' }))
+        .resolves.toEqual({
+          error: 'Importing files into a plugin works on the desktop app only.',
+        })
+
+      // 只读配置照旧读得到,并且明说不可编辑。
+      const config = await rpcData(baseUrlValue, headers, 'configGet', {
+        pluginId: 'note-skills',
+      }) as { success: boolean; editable?: boolean; readOnlyReason?: string }
+      expect(config.success).toBe(true)
+      expect(config.editable).toBe(false)
+      expect(config.readOnlyReason).toContain('desktop host only')
+      await expect(rpcData(baseUrlValue, headers, 'configGet', { pluginId: 'ghost' }))
+        .resolves.toMatchObject({
+          success: false,
+          error: expect.stringContaining('Unknown plugin'),
+        })
+
+      // 开关面照旧是真的写盘。
+      await expect(rpcData(baseUrlValue, headers, 'enable', { pluginId: 'note-skills' }))
+        .resolves.toEqual({ success: true })
+      await expect(rpcData(baseUrlValue, headers, 'refresh', {}))
+        .resolves.toEqual({ success: true })
+      await expect(rpcData(baseUrlValue, headers, 'commands', {}))
+        .resolves.toMatchObject({ success: true })
+    } finally {
+      dispose()
     }
-    expect(body.success).toBe(false)
-    expect(body.error).toContain('desktop host only')
-    expect(body).toMatchObject({ pluginId: 'note-skills', action: 'search', host: 'server' })
-
-    // 参数化不能吃掉既有的精确路由 —— /api/plugins/enable 长得就像 :id。
-    await expect(fetchJson(`${baseUrlValue}/api/plugins/enable`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ pluginId: 'note-skills' }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/plugins/refresh`, {
-      method: 'POST',
-      headers,
-    })).resolves.toEqual({ success: true })
-    const commands = await fetchJson(`${baseUrlValue}/api/plugins/commands`, {
-      headers: contextHeaders('alice', 'plugin-workspace'),
-    })
-    expect(commands.success).toBe(true)
   })
 
   it('exposes the one surviving session REST write over HTTP with owner isolation', async () => {
@@ -2037,3 +2041,33 @@ async function readFor(response: Response, durationMs: number): Promise<string> 
   }
 }
 
+/**
+ * 一次 `plugins` 域的 RPC(P4 终态批 C2)。域在 http 上调的是
+ * `server/plugin-catalog.ts` 那个单槽端口 —— 也就是从前 `/api/plugins*` 六条
+ * REST 背后的同一批闭包。
+ */
+function rpc(
+  baseUrlValue: string,
+  headers: Record<string, string>,
+  method: string,
+  payload: unknown,
+): Promise<{ ok: boolean; data?: unknown; error?: { message: string } }> {
+  return fetchJson(`${baseUrlValue}/api/rpc`, {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ domain: 'plugins', method, payload }),
+  })
+}
+
+async function rpcData(
+  baseUrlValue: string,
+  headers: Record<string, string>,
+  method: string,
+  payload: unknown,
+): Promise<unknown> {
+  const response = await rpc(baseUrlValue, headers, method, payload)
+  // 读 `data` 之前先看 `ok` —— 失败的信封里没有 `data`,直接解构会把一条真错误
+  // 变成一个 undefined 断言失败。
+  if (!response.ok) throw new Error(response.error?.message ?? 'rpc failed')
+  return response.data
+}

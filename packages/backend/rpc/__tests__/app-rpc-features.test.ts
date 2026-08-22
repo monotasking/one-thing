@@ -107,6 +107,10 @@ const EXPECTED_DOMAIN_FEATURES = [
   // P4 终态批 D2:terminal(七条请求面;两条推送留在 configureTerminalBroadcaster
   // 端口上,七条在 http 上一律结构化拒绝 —— 能力位按用户拍板保持默认关)。
   ['rpc:terminal', 'terminal'],
+  // P4 终态批 C2:plugins(十九条 invoke;两条推送留在原地 —— NOTIFICATION 是
+  // 总线全局事件、REQUEST_PROGRESS 走 configurePluginRequestProgressBroadcaster
+  // 端口。http 上六条读/开关面走 server 那本只读镜像目录,写面按管理器在不在场)。
+  ['rpc:plugins', 'plugins'],
 ] as const
 
 /**

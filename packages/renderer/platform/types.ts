@@ -67,6 +67,23 @@ export interface PlatformCapabilities {
    * 的答案(`Evals is not supported in the web build`)。
    */
   evals: boolean
+  /**
+   * 插件**写面**(P4 终态批 C2,#16):install / update / uninstall /
+   * checkUpdates / configSet / pickFile / request / requestAbort / market /
+   * readTarball / footprint / lifecycleInfo。
+   *
+   * 方案 A(插件设计文档 §6)下**插件只在 Electron 桌面宿主执行**:安装要本机
+   * npm、配置要写 `<store>/plugins/<id>/config.json`、file-pick 要原生对话框,
+   * 而浏览器里这三样一个都没有。迁到通用通道之后这条路技术上通了,按「续做口径」
+   * 必须由一颗能力位挡着 —— web 默认 `false`,`platform/plugins-client.ts` 在它
+   * 为 false 时**根本不发请求**,逐条返回与迁移前 `platform/web.ts` 那批硬桩
+   * **逐字相同**的答案。**放开是一次独立拍板**,不搭搬家的便车。
+   *
+   * 读面(list / enable / disable / refresh / commands / executeCommand /
+   * configGet)不受这颗位管:它们在 web 上本来就打真路由(`/api/plugins*`),
+   * 迁移后打的是同一批闭包。
+   */
+  pluginsManage: boolean
   clipboardWrite: boolean
   desktopWindows: boolean
   globalMenuEvents: boolean

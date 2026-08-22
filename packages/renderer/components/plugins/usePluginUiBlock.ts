@@ -9,6 +9,7 @@
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { platformApi } from '@/platform'
+import { pluginsApi } from '@/platform/plugins-client'
 import { toast } from '@/composables/useToast'
 import type { PluginPanelTreeData } from '@/workspace/plugin-panel-types'
 
@@ -43,7 +44,7 @@ const REFRESH_DEBOUNCE_MS = 150
  * 后到的拉取**共享**在飞的那一次,不重复打请求通道。
  * 键含 action 与 payload(sessionId 不同就是不同的请求)。
  */
-const inflightRenders = new Map<string, Promise<Awaited<ReturnType<typeof platformApi.pluginRequest>>>>()
+const inflightRenders = new Map<string, Promise<Awaited<ReturnType<typeof pluginsApi.pluginRequest>>>>()
 
 function sharedRenderRequest(input: {
   pluginId: string
@@ -52,11 +53,11 @@ function sharedRenderRequest(input: {
   bypassDegraded?: boolean
 }) {
   // bypassDegraded 是用户显式的"再试一次" —— 它必须真的再试,不共享在飞。
-  if (input.bypassDegraded) return platformApi.pluginRequest(input)
+  if (input.bypassDegraded) return pluginsApi.pluginRequest(input)
   const key = `${input.action}::${JSON.stringify(input.payload ?? null)}`
   const existing = inflightRenders.get(key)
   if (existing) return existing
-  const request = platformApi.pluginRequest(input)
+  const request = pluginsApi.pluginRequest(input)
   inflightRenders.set(key, request)
   // 用 then/catch 手动清,不用 finally:finally 返回新 promise,会把共享语义弄丢。
   request.then(
@@ -128,7 +129,7 @@ export function usePluginUiBlock(getSource: () => PluginUiBlockSource) {
       }
       const result = source.shareInflight
         ? await sharedRenderRequest(requestInput)
-        : await platformApi.pluginRequest(requestInput)
+        : await pluginsApi.pluginRequest(requestInput)
       if (token !== renderToken) return
       if (result?.success) {
         tree.value = result.result as PluginPanelTreeData
@@ -171,7 +172,7 @@ export function usePluginUiBlock(getSource: () => PluginUiBlockSource) {
   ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
     const source = getSource()
     try {
-      const result = await platformApi.pluginRequest({
+      const result = await pluginsApi.pluginRequest({
         pluginId: source.pluginId,
         action: source.invokeAction,
         payload: { actionId: input.actionId, payload: toPlainPayload(input.payload) },

@@ -4868,52 +4868,72 @@ function checkPermissionGrantsDomainRidesTheRpcChannel(): void {
 }
 
 
-function checkElectronHostOwnsPluginsIpcHost(): void {
+/**
+ * plugins 域已整体迁到通用 RPC 通道(P4 终态批 C2)。反向检查,同 providers /
+ * models / themes:那只 portable 工厂与主进程的十九条壳适配都不许回来。
+ *
+ * 留在宿主侧的只有两件要 Electron 本体的事的**注入**(原生对话框 / execa)加
+ * 一条推送(`PLUGINS_REQUEST_PROGRESS` 的定向回送),所以
+ * `apps/electron/src/main/ipc/plugins.ts` 仍然存在 —— 但它一行 `ipcMain.handle`
+ * 都不许有(`MAIN_PLUGINS_IPC_HOST_FORBIDDEN_PATTERNS` 守着,连同下面四条
+ * `checkRuntimeOwnsPlugins*` 的投影/执行禁令)。
+ */
+function checkPluginsDomainRidesTheRpcChannel(): void {
+  const retiredFiles = ['apps/electron/src/ipc/plugins.ts']
   const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronPluginsFile = path.join(root, 'apps/electron/src/ipc/plugins.ts')
+  const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
+  const routerFile = path.join(root, 'packages/shared/ipc/plugins.ts')
+  const domainFile = path.join(root, 'packages/backend/rpc/domains/plugins.ts')
+  const registryIndexFile = path.join(root, 'packages/backend/rpc/index.ts')
   const mainPluginsFile = path.join(root, 'apps/electron/src/main/ipc/plugins.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronPluginsContent = fs.existsSync(electronPluginsFile) ? fs.readFileSync(electronPluginsFile, 'utf-8') : ''
-  const mainPluginsContent = fs.existsSync(mainPluginsFile) ? fs.readFileSync(mainPluginsFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronPluginsIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronPluginToggleRequest',
-    'ElectronPluginExecuteCommandRequest',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/plugins',
-    'registerElectronPluginsIpcHandlers',
-    'IPC_CHANNELS.PLUGINS_LIST',
-    'IPC_CHANNELS.PLUGINS_ENABLE',
-    'IPC_CHANNELS.PLUGINS_DISABLE',
-    'IPC_CHANNELS.PLUGINS_REFRESH',
-    'IPC_CHANNELS.PLUGINS_COMMANDS',
-    'IPC_CHANNELS.PLUGINS_EXECUTE_COMMAND',
+  const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
+  const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
+  const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
+  const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
+  const requiredDomainSymbols = [
+    'pluginsRouter',
+    'registerRouterHandlers',
     'listOnethingPluginsForIpc',
     'enableOnethingPluginForIpc',
     'disableOnethingPluginForIpc',
     'refreshOnethingPluginsForIpc',
     'listOnethingPluginCommandsForIpc',
-    'executeOnethingPluginCommandForIpc',
+    'getServerPluginCatalogPort',
+    'pickPluginFileOnHost',
+    'broadcastPluginRequestProgress',
   ]
   const lines = [
-    ...(!packageContent.includes('./ipc/plugins')
-      ? [`${rel(electronPackage)}: missing plugins IPC host export`]
+    ...retiredFiles
+      .filter(file => fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: retired plugins IPC line is back — the domain rides rpc:invoke now`),
+    ...(packageContent.includes('./ipc/plugins')
+      ? [`${rel(electronPackage)}: the retired plugins IPC host export is back`]
       : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronPluginsContent.includes(symbol))
-      .map(symbol => `${rel(electronPluginsFile)}: missing Electron plugins IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainPluginsContent.includes(symbol))
-      .map(symbol => `${rel(mainPluginsFile)}: missing plugins IPC adapter symbol ${symbol}`),
+    // 十九条 invoke 常量一条都不许回来;两条推送(NOTIFICATION / REQUEST_PROGRESS)
+    // 是留下的推送面,不在这张表里。
+    ...(/\bPLUGINS_LIST\b|\bPLUGINS_ENABLE\b|\bPLUGINS_DISABLE\b|\bPLUGINS_REFRESH\b|\bPLUGINS_COMMANDS\b|\bPLUGINS_EXECUTE_COMMAND\b|\bPLUGINS_REQUEST\b|\bPLUGINS_REQUEST_ABORT\b|\bPLUGINS_CONFIG_GET\b|\bPLUGINS_CONFIG_SET\b|\bPLUGINS_UNINSTALL\b|\bPLUGINS_INSTALL\b|\bPLUGINS_UPDATE\b|\bPLUGINS_CHECK_UPDATES\b|\bPLUGINS_LIFECYCLE_INFO\b|\bPLUGINS_READ_TARBALL\b|\bPLUGINS_MARKET\b|\bPLUGINS_FOOTPRINT\b|\bPLUGINS_PICK_FILE\b/.test(channelsContent)
+      ? ['packages/shared/ipc/channels.ts: a hand-written plugins invoke channel constant is back']
+      : []),
+    ...(!routerContent.includes("defineRouter<PluginsRoutes>(\"plugins\"")
+      ? [`${rel(routerFile)}: missing pluginsRouter definition`]
+      : []),
+    ...(!fs.existsSync(domainFile)
+      ? [`${rel(domainFile)}: missing plugins RPC domain`]
+      : []),
+    ...requiredDomainSymbols
+      .filter(symbol => !domainContent.includes(symbol))
+      .map(symbol => `${rel(domainFile)}: missing plugins RPC domain symbol ${symbol}`),
+    ...(!registryIndexContent.includes('pluginsRpcHandlers')
+      ? [`${rel(registryIndexFile)}: plugins domain is not listed in the RPC assembly point`]
+      : []),
+    // 宿主件还在(它拿着两条注入 + 一条推送),但一行 handle / electron 都不许有。
     ...(fs.existsSync(mainPluginsFile)
       ? matchingLines(mainPluginsFile, MAIN_PLUGINS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+      : ['apps/electron/src/main/ipc/plugins.ts: missing plugins host injection']),
   ]
 
-  assertNoMatches('apps/electron owns Electron plugins IPC host operations', lines)
+  assertNoMatches('plugins domain rides the generic RPC channel', lines)
 }
 
 /**
@@ -9663,7 +9683,7 @@ checkAgentsDomainRidesTheRpcChannel()
 checkPromptsDomainRidesTheRpcChannel()
 checkMarkdownDomainRidesTheRpcChannel()
 checkPermissionGrantsDomainRidesTheRpcChannel()
-checkElectronHostOwnsPluginsIpcHost()
+checkPluginsDomainRidesTheRpcChannel()
 checkProvidersDomainRidesTheRpcChannel()
 checkModelsDomainRidesTheRpcChannel()
 checkElectronHostOwnsMediaIpcHost()

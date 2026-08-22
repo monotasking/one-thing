@@ -56,6 +56,8 @@ const platform = vi.hoisted(() => ({
   environment: 'electron',
 }))
 vi.mock('@/platform', () => ({ platformApi: platform }))
+// P4 终态批 C2:插件面走 `plugins` 域,客户端在 `@/platform/plugins-client`。
+vi.mock('@/platform/plugins-client', () => ({ pluginsApi: platform }))
 vi.mock('@/services/plugin-notify-sound', () => ({
   playPluginNotifySound: vi.fn(),
   previewPluginNotifySound: vi.fn(),

@@ -28,25 +28,8 @@ import type {
 	TodoPlanWindowActionRequest,
 	TodoPlanWindowDragRequest,
 	PracticeEventPayload,
-	AbortPluginRequestResult,
 	PluginNotificationPayload,
-	PluginRequestPayload,
 	PluginRequestProgressPayload,
-	PluginRequestResult,
-	PluginConfigResponse,
-	PickPluginFileRequest,
-	PickPluginFileResponse,
-	SetPluginConfigResponse,
-	UninstallPluginResponse,
-	GetPluginMarketRequest,
-	GetPluginMarketResponse,
-	InstallPluginRequest,
-	InstallPluginResponse,
-	UpdatePluginResponse,
-	CheckPluginUpdatesResponse,
-	PluginLifecycleInfoResponse,
-	ReadPluginTarballResponse,
-	PluginFootprintResponse,
 	RpcRequest,
 	RpcResponse,
 	AppSettings,
@@ -288,14 +271,8 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.PRACTICE_EVENT, listener);
 	},
 
-	// 统一请求通道(R2)。requestId 缺省由 core 生成并随结果回传;abort 与
-	// progress 都按它寻址。形状走 @shared/ipc 的共享契约,不在这里手写。
-	pluginRequest: (request: PluginRequestPayload): Promise<PluginRequestResult> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REQUEST, request),
-
-	abortPluginRequest: (requestId: string): Promise<AbortPluginRequestResult> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REQUEST_ABORT, { requestId }),
-
+	// 插件的十九条数据面已随 `pluginsRouter` 迁到通用 RPC 通道(P4 终态批 C2);
+	// 本文件只剩**两条推送订阅** —— router 今天没有推送面。
 	onPluginRequestProgress: (
 		callback: (payload: PluginRequestProgressPayload) => void,
 	) => {
@@ -307,50 +284,6 @@ const electronAPI = {
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, listener);
 	},
-
-	// 插件自有配置(R3)。不碰插件代码 —— 未启用的插件也能读写。
-	getPluginConfig: (pluginId: string): Promise<PluginConfigResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_CONFIG_GET, { pluginId }),
-
-	setPluginConfig: (
-		pluginId: string,
-		config: Record<string, unknown>,
-	): Promise<SetPluginConfigResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_CONFIG_SET, { pluginId, config }),
-
-	// 真卸载(R4):停用 → 归档数据 → 删源目录 → 清设置键。仅用户插件。
-	uninstallPlugin: (pluginId: string): Promise<UninstallPluginResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_UNINSTALL, { pluginId }),
-
-	// npm 生命周期(P1):装/更/查更新 + 能力面(无 npm 置灰,裁决 8)。
-	installPlugin: (request: InstallPluginRequest): Promise<InstallPluginResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_INSTALL, request),
-
-	updatePlugin: (pluginId: string): Promise<UpdatePluginResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_UPDATE, { pluginId }),
-
-	checkPluginUpdates: (): Promise<CheckPluginUpdatesResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_CHECK_UPDATES),
-
-	getPluginLifecycleInfo: (): Promise<PluginLifecycleInfoResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_LIFECYCLE_INFO),
-
-	// 装前清单预读(file: 开发通道):选中 tarball 即可安装,包名不必手抄。
-	readPluginTarball: (path: string): Promise<ReadPluginTarballResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_READ_TARBALL, { path }),
-
-	// 市场(P3):索引视图主进程 join 好;断网回缓存并 stale 置位。
-	getPluginMarket: (request?: GetPluginMarketRequest): Promise<GetPluginMarketResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_MARKET, request ?? {}),
-
-	// 落盘足迹:卸载确认框据此展示"将被归档的东西"。
-	getPluginFootprint: (pluginId: string): Promise<PluginFootprintResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_FOOTPRINT, { pluginId }),
-
-	// file-pick 节点的宿主托管导入(B 期,用户壁纸):递声明,回一个
-	// `storage:` 地址 —— 用户选的路径与文件字节都不过 renderer 的手。
-	pickPluginFile: (request: PickPluginFileRequest): Promise<PickPluginFileResponse> =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_PICK_FILE, request),
 
 	onPluginNotification: (
 		callback: (payload: PluginNotificationPayload) => void,
@@ -709,29 +642,7 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.FILE_WATCH_EVENT, listener);
 	},
 
-	// ── Plugin management ───────────────────────────
-	getPlugins: () => ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_LIST),
-
-	enablePlugin: (pluginId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_ENABLE, { pluginId }),
-
-	disablePlugin: (pluginId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_DISABLE, { pluginId }),
-
-	refreshPlugins: () => ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REFRESH),
-
-	getPluginCommands: () => ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_COMMANDS),
-
-	executePluginCommand: (
-		commandName: string,
-		args: string,
-		sessionId: string,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_EXECUTE_COMMAND, {
-			commandName,
-			args,
-			sessionId,
-		}),
+	// ── Plugin management:已走通用 RPC 通道(pluginsRouter),本文件不再暴露。──
 
 	// ── Scheduler:已走通用 RPC 通道(schedulerRouter),本文件不再暴露。──
 

@@ -28,6 +28,12 @@ vi.mock('@/platform', () => ({
     },
   },
 }))
+// P4 终态批 C2:插件面走 `plugins` 域,客户端在 `@/platform/plugins-client`。
+vi.mock('@/platform/plugins-client', () => ({
+  pluginsApi: {
+    pluginRequest: (...args: any[]) => platformState.pluginRequest(...args),
+  },
+}))
 
 const toastState = vi.hoisted(() => ({ error: vi.fn(), info: vi.fn() }))
 vi.mock('@/composables/useToast', () => ({

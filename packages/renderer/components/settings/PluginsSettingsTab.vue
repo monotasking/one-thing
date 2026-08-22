@@ -814,6 +814,7 @@ import { describePluginPermission } from '@onething/core/plugins/sessions'
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { Bell, BellOff, Eye, EyeOff, RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
+import { pluginsApi } from '@/platform/plugins-client'
 import { useSettingsStore } from '@/stores/settings'
 import { previewPluginNotifySound } from '@/services/plugin-notify-sound'
 import { isUiSlotTruncated } from '@/workspace/ui-anchor-registry'
@@ -1103,7 +1104,7 @@ async function pickConfigFile(plugin: PluginInfo, field: PluginConfigFieldDescri
   try {
     // accept 来自响应式的字段表,是 Vue 的 Proxy —— 原样递过边界会炸
     // "An object can't be cloned"。边界铁律见 toPlainData 的文档(同病已犯两次)。
-    const result = await platformApi.pickPluginFile(toPlainData({
+    const result = await pluginsApi.pickPluginFile(toPlainData({
       pluginId: plugin.id,
       accept: field.accept,
       maxBytes: field.maxBytes,
@@ -1151,7 +1152,7 @@ async function saveConfig(plugin: PluginInfo): Promise<void> {
   // 快照本次要保存的草稿:飞行期用户可能接着改,那份新脏态不该被 reset 抹掉。
   const submitted = JSON.stringify(draftFor(plugin))
   try {
-    const result = await platformApi.setPluginConfig(plugin.id, JSON.parse(submitted))
+    const result = await pluginsApi.setPluginConfig(plugin.id, JSON.parse(submitted))
     if (result?.success) {
       plugin.configValues = result.config ?? JSON.parse(submitted)
       if (JSON.stringify(draftFor(plugin)) === submitted) resetDraft(plugin)
@@ -1196,7 +1197,7 @@ function canUninstall(plugin: PluginInfo): boolean {
  */
 async function describeFootprint(pluginId: string): Promise<string> {
   try {
-    const result = await platformApi.getPluginFootprint(pluginId)
+    const result = await pluginsApi.getPluginFootprint(pluginId)
     if (!result?.success || !result.footprint) return ''
     const { dataDirExists, entries, legacyKvExists, settingsKeys } = result.footprint
     const parts: string[] = []
@@ -1238,7 +1239,7 @@ async function confirmUninstall(plugin: PluginInfo): Promise<void> {
 
   uninstallingPlugins.value = withId(uninstallingPlugins.value, plugin.id)
   try {
-    const result = await platformApi.uninstallPlugin(plugin.id)
+    const result = await pluginsApi.uninstallPlugin(plugin.id)
     if (result?.success) {
       toast.success(result.archivePath
         ? `Uninstalled ${plugin.name}. Data archived to ${result.archivePath}`
@@ -1600,7 +1601,7 @@ async function loadPlugins() {
   loading.value = plugins.value.length === 0
   error.value = ''
   try {
-    const result = await platformApi.getPlugins()
+    const result = await pluginsApi.getPlugins()
     if (result?.success) {
       plugins.value = result.plugins || []
     } else {
@@ -1617,7 +1618,7 @@ async function togglePlugin(plugin: PluginInfo) {
   const wasEnabled = plugin.enabled
   try {
     if (wasEnabled) {
-      const result = await platformApi.disablePlugin(plugin.id)
+      const result = await pluginsApi.disablePlugin(plugin.id)
       if (result?.success) {
         // 乐观置位让开关立刻落位(enable 分支同款);清账仍在后端
         // (disableOnethingPluginForIpc 清 tracker),随后重拉拿后端的事实。
@@ -1628,7 +1629,7 @@ async function togglePlugin(plugin: PluginInfo) {
         log.error('plugin disable failed', { pluginId: plugin.id, error: result?.error })
       }
     } else {
-      const result = await platformApi.enablePlugin(plugin.id)
+      const result = await pluginsApi.enablePlugin(plugin.id)
       if (result?.success) {
         plugin.enabled = true
         // Reload list to get updated state
@@ -1645,7 +1646,7 @@ async function togglePlugin(plugin: PluginInfo) {
 
 async function refreshPlugins() {
   try {
-    const result = await platformApi.refreshPlugins()
+    const result = await pluginsApi.refreshPlugins()
     if (!result?.success) {
       log.error('plugin refresh failed', { error: result?.error })
     }
@@ -1695,7 +1696,7 @@ const updatingPlugins = ref<Set<string>>(new Set())
 
 async function loadLifecycleInfo(): Promise<void> {
   try {
-    const info = await platformApi.getPluginLifecycleInfo()
+    const info = await pluginsApi.getPluginLifecycleInfo()
     npmAvailable.value = info?.success ? info.npmAvailable : false
   } catch {
     npmAvailable.value = false
@@ -1704,7 +1705,7 @@ async function loadLifecycleInfo(): Promise<void> {
 
 async function loadUpdateOffers(): Promise<void> {
   try {
-    const result = await platformApi.checkPluginUpdates()
+    const result = await pluginsApi.checkPluginUpdates()
     if (result?.success) {
       updateOffers.value = new Map(
         (result.offers ?? []).map(offer => [offer.pluginId, { current: offer.current, latest: offer.latest }]),
@@ -1727,7 +1728,7 @@ async function readEntries(paths: string[]): Promise<void> {
   installEntries.value = paths.map(path => ({ path, reading: true }))
   await Promise.all(paths.map(async (path, index) => {
     try {
-      const result = await platformApi.readPluginTarball(path.trim())
+      const result = await pluginsApi.readPluginTarball(path.trim())
       if (seq !== tarballReadSeq) return
       const entry = installEntries.value[index]
       if (!entry) return
@@ -1826,7 +1827,7 @@ async function installPlugin(): Promise<void> {
       // 对不上照旧回滚。这里省掉的是用户的抄写,不是那道闸。
       const { pkg, path } = entry.summary!
       try {
-        const result = await platformApi.installPlugin({ pkg, path })
+        const result = await pluginsApi.installPlugin({ pkg, path })
         if (result?.success) {
           installed.push(result.pluginId ?? pkg)
         } else {
@@ -1865,7 +1866,7 @@ async function updatePlugin(plugin: PluginInfo): Promise<void> {
   if (updatingPlugins.value.has(plugin.id) || npmAvailable.value === false) return
   updatingPlugins.value = new Set(updatingPlugins.value).add(plugin.id)
   try {
-    const result = await platformApi.updatePlugin(plugin.id)
+    const result = await pluginsApi.updatePlugin(plugin.id)
     if (result?.success) {
       toast.success(`Updated ${plugin.name} to v${result.version}`)
     } else {
@@ -2014,7 +2015,7 @@ function marketDeclares(entry: MarketEntry): string[] {
 async function loadMarket(refresh = false): Promise<void> {
   marketLoading.value = true
   try {
-    const result = await platformApi.getPluginMarket({ refresh })
+    const result = await pluginsApi.getPluginMarket({ refresh })
     if (result?.success) {
       marketEntries.value = (result.entries ?? []) as MarketEntry[]
       marketStale.value = result.stale
@@ -2038,7 +2039,7 @@ async function installFromMarket(entry: MarketEntry): Promise<void> {
   if (installingMarket.value.has(entry.id) || npmAvailable.value === false) return
   installingMarket.value = withId(installingMarket.value, entry.id)
   try {
-    const result = await platformApi.installPlugin({
+    const result = await pluginsApi.installPlugin({
       pkg: entry.pkg,
       tarballUrl: entry.tarballUrl,
       ...(entry.integrity ? { integrity: entry.integrity } : {}),
@@ -2064,7 +2065,7 @@ async function updateMarketPlugin(entry: MarketEntry): Promise<void> {
   if (updatingPlugins.value.has(entry.id) || npmAvailable.value === false) return
   updatingPlugins.value = new Set(updatingPlugins.value).add(entry.id)
   try {
-    const result = await platformApi.updatePlugin(entry.id)
+    const result = await pluginsApi.updatePlugin(entry.id)
     if (result?.success) {
       toast.success(`Updated ${entry.id} to v${result.version}`)
     } else {

@@ -1,4 +1,5 @@
 import { platformApi } from '@/platform'
+import { pluginsApi } from '@/platform/plugins-client'
 import { sessionCommands } from '@/platform/session-command-client'
 /**
  * Command Registry
@@ -318,7 +319,7 @@ export async function refreshPluginCommands(): Promise<CommandDefinition[]> {
 
   pluginCommandsPromise = (async () => {
     try {
-      const result = await platformApi.getPluginCommands()
+      const result = await pluginsApi.getPluginCommands()
       if (!result.success) {
         pluginCommands = []
         return pluginCommands
@@ -335,7 +336,7 @@ export async function refreshPluginCommands(): Promise<CommandDefinition[]> {
           if (!sessionId) {
             return { success: false, error: `${command.name} needs a session` }
           }
-          const response = await platformApi.executePluginCommand(
+          const response = await pluginsApi.executePluginCommand(
             command.name,
             context.rawArgs,
             sessionId,

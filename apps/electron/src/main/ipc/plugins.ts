@@ -1,57 +1,43 @@
 /**
- * Plugin IPC Handlers
+ * 本文件在 P4 终态批 C2 之后只剩**三件要 Electron 本体的事的注入**加**一条推送**:
  *
- * Bridges the renderer (Settings UI) to the PluginManager in the main process.
+ * 十九条数据面(目录读/启停/刷新、命令表与执行、统一请求通道与取消、配置读写、
+ * 足迹与卸载、npm 生命周期四条、装前预读、市场、file-pick)已整只迁到通用 RPC
+ * 通道(`@shared/ipc/plugins.ts` 的 `pluginsRouter` +
+ * `packages/backend/rpc/domains/plugins.ts`),桌面和 web 走同一条 dispatch。
+ * 那只 portable 工厂(`apps/electron/src/ipc/plugins.ts`)整只删掉了。
+ *
+ * 留在这里的:
+ *  - `configurePluginsHost` —— 原生文件对话框(`pickFile`)与插件命令的子进程
+ *    执行器(`execCommand`,execa 是桌面这棵树的依赖)。两件的实现都在
+ *    `@onething/electron-host/plugins/ipc-host`,这里只做注入。
+ *  - `configurePluginRequestProgressBroadcaster` —— `PLUGINS_REQUEST_PROGRESS`
+ *    的**定向回送**(router 没有推送面)。「谁在问」由 `@main/ipc/rpc.ts` 从
+ *    `event.sender.id` 铸进 `RpcDispatchContext.callerId`,域处理者原样递回来。
+ *    **不能退化成全窗广播**:设置窗是独立 BrowserWindow(R3 插件设置 UI 的宿主),
+ *    广播出去等于每扇窗都收一份别人的进度。
+ *
+ * 另一条推送 `PLUGINS_NOTIFICATION` 连注入都不用:它是总线上的全局事件,
+ * 由 IPCBridge 扇给所有窗,从头到尾不经过请求面。
+ *
+ * `createGatewayPluginCommandProvider` 留在这里**不是 IPC** —— 它是网关的命令
+ * 提供者,由 `app/main-process.ts` 在 `configureGatewayLifecycle` 里递进去。
+ * 它的两件事(列命令 / 执行一条)已经和域共用装配层那份接线
+ * (`@onething/backend/wiring/plugins/commands`),不再各写一份。
  */
-
-import type {
-  PluginConfigRequest,
-  SetPluginConfigRequest,
-  UninstallPluginRequest,
-  InstallPluginRequest,
-  UpdatePluginRequest,
-} from '@shared/ipc/plugins.js'
-import { createPluginConfigAccess } from '@onething/runtime/plugins/config-access'
-import {
-  registerElectronPluginsIpcHandlers,
-  type ElectronPluginAbortRequestPayload,
-  type ElectronPluginExecuteCommandRequest,
-  type ElectronPluginRequestPayload,
-  type ElectronPluginToggleRequest,
-} from '@onething/electron-host/ipc/plugins'
-import {
-  abortOnethingPluginRequestForIpc,
-  getOnethingPluginMarketForIpc,
-  disableOnethingPluginForIpc,
-  getOnethingPluginConfigForIpc,
-  getOnethingPluginFootprintForIpc,
-  setOnethingPluginConfigForIpc,
-  uninstallOnethingPluginForIpc,
-  installOnethingPluginForIpc,
-  updateOnethingPluginForIpc,
-  checkOnethingPluginUpdatesForIpc,
-  enableOnethingPluginForIpc,
-  handleOnethingPluginRequestForIpc,
-  executeOnethingPluginCommandForIpc,
-  getOnethingPluginLifecycleInfoForIpc,
-  type ListOnethingPluginCommandsForIpcResult,
-  listOnethingPluginCommandsForIpc,
-  listOnethingPluginCommandsForIpcAllowingUninitialized,
-  listOnethingPluginsForIpc,
-  refreshOnethingPluginsForIpc,
-} from '@onething/runtime/plugins'
 import type { GatewayCommandProvider } from '@onething/gateway'
-import { pickPluginFileOnDesktop } from '@onething/electron-host/plugins/file-pick'
+import {
+  execPluginCommandOnDesktop,
+  pickPluginFileForCaller,
+  sendPluginRequestProgressToCaller,
+} from '@onething/electron-host/plugins/ipc-host'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { getPluginManager } from '@onething/backend/wiring/plugins/index.js'
-import { clearPluginRuntimeHealth } from '@onething/runtime/plugins/health'
-import { getPluginFootprint } from '@onething/backend/wiring/plugins/loader.js'
-import { getPluginBackgroundParams } from '@onething/backend/wiring/plugins/background.js'
-import { getPluginMarketIndexSnapshot, probePluginNpmAvailability } from '@onething/backend/wiring/plugins/install.js'
-import { readPluginTarballSummary } from '@onething/runtime/plugins/tarball.wiring'
-import { getPluginAppVersion } from '@onething/runtime/plugins/app-version'
-import { getEventBus } from '@onething/backend/events/index.js'
-import * as store from '@onething/backend/store.js'
+import {
+  executePluginCommandOnHost,
+  listPluginCommandsForGateway,
+} from '@onething/backend/wiring/plugins/commands.js'
+import { configurePluginRequestProgressBroadcaster } from '@onething/backend/wiring/plugins/events.js'
+import { configurePluginsHost } from '@onething/backend/wiring/plugins/host-ports.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('ipc.plugins')
@@ -63,7 +49,7 @@ export function createGatewayPluginCommandProvider(): GatewayCommandProvider {
       return result.success ? result.commands : []
     },
     executeCommand(request) {
-      return executePluginCommand({
+      return executePluginCommandOnHost({
         commandName: request.command.name,
         args: request.args,
         sessionId: request.sessionId,
@@ -72,75 +58,8 @@ export function createGatewayPluginCommandProvider(): GatewayCommandProvider {
   }
 }
 
-async function listPluginCommandsForGateway(): Promise<ListOnethingPluginCommandsForIpcResult> {
-  return listOnethingPluginCommandsForIpcAllowingUninitialized({
-    manager: getPluginManager(),
-    logger: console,
-  })
-}
-
-function executePluginCommand(request: ElectronPluginExecuteCommandRequest) {
-  const eventBus = getEventBus()
-  return executeOnethingPluginCommandForIpc({
-    manager: getPluginManager(),
-    commandName: request.commandName,
-    args: request.args,
-    sessionId: request.sessionId,
-    getSession: sessionId => store.getSession(sessionId),
-    emitSessionCommand: (sessionId, event) => eventBus.emit(sessionId, event),
-    emitGlobalEvent: event => eventBus.emitGlobal(event),
-    async exec(commandToRun, args = [], options) {
-      const { execa } = await import('execa')
-      try {
-        const result = await execa(commandToRun, args, {
-          cwd: options.cwd,
-          reject: false,
-        })
-        return {
-          stdout: result.stdout,
-          stderr: result.stderr,
-          exitCode: result.exitCode ?? 0,
-        }
-      } catch (error: any) {
-        return {
-          stdout: error.stdout || '',
-          stderr: error.stderr || error.message || '',
-          exitCode: error.exitCode ?? 1,
-        }
-      }
-    },
-    onEmitError(label, error) {
-      log.error('plugin event emit failed', { label }, error)
-    },
-    logger: console,
-  })
-}
-
-const pluginConfigAccess = createPluginConfigAccess()
-
 export function registerPluginHandlers(): void {
-  registerElectronPluginsIpcHandlers({
-    channels: {
-      list: IPC_CHANNELS.PLUGINS_LIST,
-      enable: IPC_CHANNELS.PLUGINS_ENABLE,
-      disable: IPC_CHANNELS.PLUGINS_DISABLE,
-      refresh: IPC_CHANNELS.PLUGINS_REFRESH,
-      commands: IPC_CHANNELS.PLUGINS_COMMANDS,
-      executeCommand: IPC_CHANNELS.PLUGINS_EXECUTE_COMMAND,
-      request: IPC_CHANNELS.PLUGINS_REQUEST,
-      abortRequest: IPC_CHANNELS.PLUGINS_REQUEST_ABORT,
-      configGet: IPC_CHANNELS.PLUGINS_CONFIG_GET,
-      configSet: IPC_CHANNELS.PLUGINS_CONFIG_SET,
-      uninstall: IPC_CHANNELS.PLUGINS_UNINSTALL,
-      footprint: IPC_CHANNELS.PLUGINS_FOOTPRINT,
-      install: IPC_CHANNELS.PLUGINS_INSTALL,
-      update: IPC_CHANNELS.PLUGINS_UPDATE,
-      checkUpdates: IPC_CHANNELS.PLUGINS_CHECK_UPDATES,
-      lifecycleInfo: IPC_CHANNELS.PLUGINS_LIFECYCLE_INFO,
-      readTarball: IPC_CHANNELS.PLUGINS_READ_TARBALL,
-      market: IPC_CHANNELS.PLUGINS_MARKET,
-      pickFile: IPC_CHANNELS.PLUGINS_PICK_FILE,
-    },
+  configurePluginsHost({
     /**
      * `file-pick` 的一次导入(B 期,用户壁纸)。
      *
@@ -150,167 +69,18 @@ export function registerPluginHandlers(): void {
      * 手势锚定是天然的:原生对话框只能由用户那一次点击拉起来。这里不需要
      * (也无法伪造)一个 `userGesture` 布尔。
      */
-    pickPluginFile: (request, sender) => pickPluginFileOnDesktop(request, sender),
-    listPlugins: () => {
-      return listOnethingPluginsForIpc({
-        manager: getPluginManager(),
-        logger: console,
-        // 设置页从列表一次拿全配置材料(字段表 + 当前值),不必逐插件再问一轮。
-        getPluginConfig: pluginConfigAccess.read,
-        // G 期(L2.5):背景层的运行期调参是内存态,只有桌面宿主有它 ——
-        // 方案 A 下只有这一个宿主执行插件代码,也就只有这里存在 updateBackground。
-        getPluginBackgroundParams: getPluginBackgroundParams,
-      })
-    },
-    enablePlugin: (request: ElectronPluginToggleRequest) => {
-      return enableOnethingPluginForIpc({
-        manager: getPluginManager(),
-        pluginId: request.pluginId,
-        logger: console,
-      })
-    },
-    disablePlugin: (request: ElectronPluginToggleRequest) => {
-      return disableOnethingPluginForIpc({
-        manager: getPluginManager(),
-        pluginId: request.pluginId,
-        logger: console,
-        // 用户亲手关的 = 清账。熔断的自动禁用不经过这条 IPC,所以两者天然分得开。
-        onManualDisable: clearPluginRuntimeHealth,
-      })
-    },
-    refreshPlugins: () => {
-      return refreshOnethingPluginsForIpc({
-        manager: getPluginManager(),
-        logger: console,
-      })
-    },
-    // 统一请求通道:分发与序列化判断全在 core 的 manager.handleRequest,
-    // 这里只把 progress 接到 renderer 的推送通道上(@main 只做薄接线)。
-    pluginRequest: (request: ElectronPluginRequestPayload, sender) => {
-      return handleOnethingPluginRequestForIpc({
-        manager: getPluginManager(),
-        pluginId: request.pluginId,
-        action: request.action,
-        payload: request.payload,
-        requestId: request.requestId,
-        bypassDegraded: request.bypassDegraded,
-        // 定向回送给发起这次 invoke 的窗口。走 IPCBridge 的话只投主窗单 sender:
-        // 设置窗(独立 BrowserWindow,R3 插件设置 UI 的宿主)发起的请求进度会
-        // 永远静默,主窗关闭时更是全丢。
-        onProgress: progress => {
-          if (!sender || sender.isDestroyed()) return
-          try {
-            sender.send(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, progress)
-          } catch (error) {
-            log.warn('request progress send failed', { likelyCause: 'window closed' }, error)
-          }
-        },
-        logger: console,
-      })
-    },
-    abortPluginRequest: (request: ElectronPluginAbortRequestPayload) => {
-      return abortOnethingPluginRequestForIpc({
-        manager: getPluginManager(),
-        requestId: request.requestId,
-        logger: console,
-      })
-    },
-    // 配置读写不碰插件代码:schema 在 manifest,存储与校验在宿主 ——
-    // 所以未启用(甚至从没加载过)的插件也能配。
-    getPluginConfig: (request: PluginConfigRequest) => {
-      return getOnethingPluginConfigForIpc({
-        access: pluginConfigAccess,
-        pluginId: request.pluginId,
-        logger: console,
-      })
-    },
-    getPluginFootprint: (request: UninstallPluginRequest) => {
-      return getOnethingPluginFootprintForIpc({
-        readFootprint: pluginId => {
-          const footprint = getPluginFootprint(pluginId)
-          return {
-            pluginId: footprint.pluginId,
-            dataDir: footprint.dataDir,
-            dataDirExists: footprint.dataDirExists,
-            entries: footprint.entries,
-            legacyKvExists: footprint.legacyKvExists,
-            settingsKeys: footprint.settingsKeys,
-          }
-        },
-        pluginId: request.pluginId,
-        logger: console,
-      })
-    },
-    uninstallPlugin: (request: UninstallPluginRequest) => {
-      return uninstallOnethingPluginForIpc({
-        manager: getPluginManager(),
-        pluginId: request.pluginId,
-        logger: console,
-      })
-    },
-    setPluginConfig: (request: SetPluginConfigRequest) => {
-      return setOnethingPluginConfigForIpc({
-        access: pluginConfigAccess,
-        pluginId: request.pluginId,
-        config: request.config,
-        logger: console,
-      })
-    },
-    // ── P1:npm 生命周期 —— 命令链在 core manager,这里只做薄接线。──
-    installPlugin: (request: InstallPluginRequest) => {
-      return installOnethingPluginForIpc({
-        manager: getPluginManager(),
-        pkg: request.pkg,
-        tarballUrl: request.tarballUrl,
-        path: request.path,
-        integrity: request.integrity,
-        logger: console,
-      })
-    },
-    updatePlugin: (request: UpdatePluginRequest) => {
-      return updateOnethingPluginForIpc({
-        manager: getPluginManager(),
-        pluginId: request.pluginId,
-        logger: console,
-      })
-    },
-    checkPluginUpdates: () => {
-      return checkOnethingPluginUpdatesForIpc({
-        manager: getPluginManager(),
-        logger: console,
-      })
-    },
-    // 裁决 8:v1 依赖本机 npm —— 能力面先行,设置页据此置灰并说明。
-    getPluginLifecycleInfo: () => {
-      return getOnethingPluginLifecycleInfoForIpc({
-        probeNpmAvailability: probePluginNpmAvailability,
-      })
-    },
-    // 装前清单预读:包名与声明都在 tarball 里,宿主自己读出来。
-    // 纯读取,不落任何盘 —— 安装闸一条不松(预读不是信任来源)。
-    readPluginTarball: request => {
-      return readPluginTarballSummary(request?.path ?? '')
-    },
-    // P3:市场 —— 索引视图在主进程 join 好(安装态 + 版本兼容 + 缓存龄),
-    // renderer 只渲染;拉取失败回上次缓存并 stale 置位(断网容忍)。
-    getPluginMarket: (request) => {
-      return getOnethingPluginMarketForIpc({
-        manager: getPluginManager(),
-        logger: console,
-        refresh: request?.refresh === true,
-        getMarketSnapshot: getPluginMarketIndexSnapshot,
-        appVersion: getPluginAppVersion(),
-      })
-    },
-    listCommands: () => {
-      return listOnethingPluginCommandsForIpc({
-        manager: getPluginManager(),
-        logger: console,
-      })
-    },
-    executeCommand: (request: ElectronPluginExecuteCommandRequest) => {
-      return executePluginCommand(request)
-    },
+    pickFile: (request, callerId) => pickPluginFileForCaller(request, callerId),
+    execCommand: (command, args, options) =>
+      execPluginCommandOnDesktop(command, args, options),
+  })
+
+  configurePluginRequestProgressBroadcaster((progress, callerId) => {
+    sendPluginRequestProgressToCaller(
+      IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS,
+      progress,
+      callerId,
+      error => log.warn('request progress send failed', { likelyCause: 'window closed' }, error),
+    )
   })
 
   log.info('handlers registered')

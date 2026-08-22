@@ -331,11 +331,16 @@ describe('插件块 · chip 壳', () => {
     vi.doMock('@/platform', () => ({
       platformApi: {
         environment: 'electron',
+        onPluginNotification: () => () => {},
+      },
+    }))
+    // P4 终态批 C2:统一请求通道走 `plugins` 域,客户端在 `@/platform/plugins-client`。
+    vi.doMock('@/platform/plugins-client', () => ({
+      pluginsApi: {
         pluginRequest: vi.fn(async () => ({
           success: true,
           result: { version: 2, body: { type: 'row', children: [{ type: 'badge', text: '5.2 tok/s' }] } },
         })),
-        onPluginNotification: () => () => {},
       },
     }))
     const { default: UiSlotHost } = await import('@/components/plugins/UiSlotHost.vue')
@@ -366,6 +371,7 @@ describe('插件块 · chip 壳', () => {
     setPluginUiSlots([])
     await flushPromises()
     vi.doUnmock('@/platform')
+    vi.doUnmock('@/platform/plugins-client')
     vi.resetModules()
   })
 })

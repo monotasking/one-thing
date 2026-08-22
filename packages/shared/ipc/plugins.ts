@@ -11,6 +11,7 @@
 // 枚举本体在 core(`@onething/core/plugins`)—— 与 `shared/tool-errors.ts` 从
 // `@onething/core/permission` 再导出同一条做法:契约只有一份,过线形状引用它。
 import type { PluginNotifySound } from "@onething/core/plugins/notify-sound";
+import { defineRouter } from "./router.js";
 
 export type { PluginNotifySound };
 
@@ -450,3 +451,130 @@ export interface PickPluginFileResponse {
 	/** 闸不过 / IO 失败时给用户看的一句人话。 */
 	error?: string;
 }
+
+// ============================================================================
+// Router
+// ============================================================================
+
+/**
+ * 目录清单里的一条(列表投影的**过线形状**)。
+ *
+ * 这里只声明每个宿主都保证给出的那几格 —— 主进程的投影
+ * (`@onething/runtime/plugins` 的 `OnethingRendererPluginInfo`)在此之上还带着
+ * `contributes` / `configFields` / `source` 等等,渲染侧按自己的局部形状读它们
+ * (`services/ipc-hub.ts` 的 `PluginCatalogEntry`、设置页的 `PluginInfo`)。
+ * **契约不复述那棵投影树**:它的单源在产品层,抄一份到 `@shared` 只会多一处
+ * 静默漂移 —— 与迁移前 `renderer/types/index.ts` 上 `getPlugins` 的声明逐字同宽。
+ */
+export interface PluginCatalogEntryView {
+	id: string;
+	name: string;
+	version: string;
+	description: string;
+	author: string;
+	loaded: boolean;
+	enabled: boolean;
+	commands: string[];
+	error: string;
+	dirPath: string;
+}
+
+export interface ListPluginsResponse {
+	success: boolean;
+	plugins?: PluginCatalogEntryView[];
+	/**
+	 * 胜出的插件背景 / 氛围层(G 期)。搭清单响应这一班车,零新通道;
+	 * 形状的单源是产品层的 `PluginBackgroundDescriptor` / `PluginAmbientDescriptor`,
+	 * 渲染侧按自己的局部形状读(`workspace/background-registry.ts`)。
+	 */
+	background?: unknown;
+	ambient?: unknown;
+	error?: string;
+}
+
+/** enable / disable / footprint / uninstall 共用的"点名一个插件"。 */
+export interface PluginToggleRequest {
+	pluginId: string;
+}
+
+/** enable / disable / refresh 的统一回执。 */
+export interface PluginToggleResponse {
+	success: boolean;
+	error?: string;
+}
+
+export interface AbortPluginRequestRequest {
+	requestId: string;
+}
+
+/**
+ * plugins 域 —— 结构债 P4 终态批 C2,十九条 invoke 数据面整只从手写 IPC 通道
+ * 搬到通用 `rpc:invoke` / `POST /api/rpc`。
+ *
+ * **两条推送留在 `IPC_CHANNELS`**(router 今天没有推送面):
+ * `PLUGINS_NOTIFICATION`(总线事件,IPCBridge 扇给所有窗)与
+ * `PLUGINS_REQUEST_PROGRESS`(按 `callerId` 定向回发起窗,经
+ * `configurePluginRequestProgressBroadcaster` 注入)。
+ *
+ * **http 分叉在域里**(`packages/backend/rpc/domains/plugins.ts`),不在这里:
+ * 六条读/开关面沿用 server 自己那本只读镜像目录,其余写面按「插件管理器在不在场」
+ * 判定 —— 与迁移前 `platform/web.ts` 那批硬桩逐字相同的答案。
+ */
+export type PluginsRoutes = {
+	list: { input: Record<string, never>; output: ListPluginsResponse };
+	enable: { input: PluginToggleRequest; output: PluginToggleResponse };
+	disable: { input: PluginToggleRequest; output: PluginToggleResponse };
+	refresh: { input: Record<string, never>; output: PluginToggleResponse };
+	commands: { input: Record<string, never>; output: GetPluginCommandsResponse };
+	executeCommand: {
+		input: ExecutePluginCommandRequest;
+		output: ExecutePluginCommandResponse;
+	};
+	request: { input: PluginRequestPayload; output: PluginRequestResult };
+	requestAbort: {
+		input: AbortPluginRequestRequest;
+		output: AbortPluginRequestResult;
+	};
+	configGet: { input: PluginConfigRequest; output: PluginConfigResponse };
+	configSet: { input: SetPluginConfigRequest; output: SetPluginConfigResponse };
+	uninstall: { input: UninstallPluginRequest; output: UninstallPluginResponse };
+	footprint: { input: UninstallPluginRequest; output: PluginFootprintResponse };
+	install: { input: InstallPluginRequest; output: InstallPluginResponse };
+	update: { input: UpdatePluginRequest; output: UpdatePluginResponse };
+	checkUpdates: {
+		input: Record<string, never>;
+		output: CheckPluginUpdatesResponse;
+	};
+	lifecycleInfo: {
+		input: Record<string, never>;
+		output: PluginLifecycleInfoResponse;
+	};
+	readTarball: {
+		input: ReadPluginTarballRequest;
+		output: ReadPluginTarballResponse;
+	};
+	market: { input: GetPluginMarketRequest; output: GetPluginMarketResponse };
+	pickFile: { input: PickPluginFileRequest; output: PickPluginFileResponse };
+};
+
+export const pluginsRouter = defineRouter<PluginsRoutes>("plugins", [
+	"list",
+	"enable",
+	"disable",
+	"refresh",
+	"commands",
+	"executeCommand",
+	"request",
+	"requestAbort",
+	"configGet",
+	"configSet",
+	"uninstall",
+	"footprint",
+	"install",
+	"update",
+	"checkUpdates",
+	"lifecycleInfo",
+	"readTarball",
+	"market",
+	"pickFile",
+]);

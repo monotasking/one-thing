@@ -37,8 +37,9 @@
 #   常量 + preload 的 ipcRenderer.send + 主进程 ipcMain.on 原样留着(@main/ipc/voice.ts 终态小文件)。
 # 2026-08-22 #21:删第七条「工具审批后恢复流」的 invoke 整链(渲染层零调用者、引擎 pause 路径已无生产者;两只手写工厂 + runtime ForIpc 助手 + platform 方法一并删,引擎命令总线不动)—— channels 111→110、bridge 888→881、web 1081→1073、channels.ts 300→299(http 806 不变:这条从来没有 server 路由)。
 # 2026-08-22 D2:terminal 7 条请求迁 terminal router 域(http 侧结构化拒,能力位仍关);DATA/EXIT 推送留注入广播器;channels 110→103、bridge 881→864、web 1073→1067、channels.ts 299→292,四壳 3029
-channels:IPC_CHANNELS 103
-lines:apps/electron/src/preload/bridge.ts 864
-lines:packages/backend/server/http.ts 806
-lines:packages/renderer/platform/web.ts 1067
-lines:packages/shared/ipc/channels.ts 292
+# 2026-08-23 C2:plugins 19 条 invoke 迁 plugins router 域(http 读面沿用 server catalog、写面按管理器在场;pluginsManage 能力位默认关);NOTIFICATION/REQUEST_PROGRESS 推送留注入广播器;server 6 条 /api/plugins REST 与那条 501 删;channels 103→84
+channels:IPC_CHANNELS 84
+lines:apps/electron/src/preload/bridge.ts 775
+lines:packages/backend/server/http.ts 730
+lines:packages/renderer/platform/web.ts 879
+lines:packages/shared/ipc/channels.ts 267

@@ -685,6 +685,14 @@ export type {
 	PickPluginFileResponse,
 	SetPluginConfigResponse,
 	UninstallPluginResponse,
+	InstallPluginRequest,
+	InstallPluginResponse,
+	UpdatePluginResponse,
+	CheckPluginUpdatesResponse,
+	GetPluginMarketRequest,
+	GetPluginMarketResponse,
+	PluginLifecycleInfoResponse,
+	ReadPluginTarballResponse,
 	PluginFootprintResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
@@ -890,67 +898,11 @@ export interface ElectronAPI {
 	// `@/platform/practice-client` 的 practiceApi)。壳面只剩推送订阅。
 	onPracticeEvent: (callback: (payload: PracticeEventPayload) => void) => () => void;
 
-	/**
-	 * 统一插件请求通道(R2)。payload / result 必须 JSON-可序列化。
-	 * server 端按方案 A 返回 501:插件只在 Electron 桌面宿主执行。
-	 */
-	pluginRequest: (request: PluginRequestPayload) => Promise<PluginRequestResult>;
-
-	abortPluginRequest: (requestId: string) => Promise<AbortPluginRequestResult>;
-
+	// 插件的十九条数据面已走通用 RPC 通道(pluginsRouter + `@/platform/plugins-client`
+	// 的 `pluginsApi`,P4 终态批 C2)。壳面只剩下面**两条推送订阅**。
 	onPluginRequestProgress: (
 		callback: (payload: PluginRequestProgressPayload) => void,
 	) => () => void;
-
-	/**
-	 * 插件自有配置(R3)。schema 单源在 manifest,存储与校验全在宿主,
-	 * 所以未启用的插件也能配。web 端只读(方案 A)。
-	 */
-	getPluginConfig: (pluginId: string) => Promise<PluginConfigResponse>;
-
-	setPluginConfig: (
-		pluginId: string,
-		config: Record<string, unknown>,
-	) => Promise<SetPluginConfigResponse>;
-
-	/**
-	 * 真卸载(R4)。数据被归档而不是删除;仅用户插件,web 端不提供。
-	 */
-	uninstallPlugin: (pluginId: string) => Promise<UninstallPluginResponse>;
-
-	/**
-	 * npm 生命周期(P1):装/更/查更新。v1 面向开发者市场,依赖本机 npm
-	 * (裁决 8);web 端不提供 —— 插件只在桌面执行。
-	 */
-	installPlugin: (request: InstallPluginRequest) => Promise<InstallPluginResponse>;
-
-	updatePlugin: (pluginId: string) => Promise<UpdatePluginResponse>;
-
-	/** "有更新"徽标的数据源;无市场索引/无 npm 时返回空 offers。 */
-	checkPluginUpdates: () => Promise<CheckPluginUpdatesResponse>;
-
-	/** 生命周期能力面:无 npm 时设置页把 Install/Update 置灰并说明。 */
-	getPluginLifecycleInfo: () => Promise<PluginLifecycleInfoResponse>;
-
-	/**
-	 * 装前清单预读(file: 开发通道):选中 .tgz 即拿到包名、版本与声明,
-	 * 用户不必再手抄包名。预读只喂 UI —— 安装闸一条不松。
-	 */
-	readPluginTarball: (path: string) => Promise<ReadPluginTarballResponse>;
-
-	/** 市场(P3):索引视图;断网回缓存并 stale 置位。 */
-	getPluginMarket: (request?: GetPluginMarketRequest) => Promise<GetPluginMarketResponse>;
-
-	/** 落盘足迹(R4 枚举 + R5 出口):卸载确认框展示"将被归档的东西"。 */
-	getPluginFootprint: (pluginId: string) => Promise<PluginFootprintResponse>;
-
-	/**
-	 * `file-pick` 节点的宿主托管导入(B 期,用户壁纸)。
-	 *
-	 * 递的是节点上的声明,回的是一个 `storage:` 地址 —— 用户选中的路径与
-	 * 文件字节**都不过 renderer 的手**,更不过插件的手。取消 = `canceled`。
-	 */
-	pickPluginFile: (request: PickPluginFileRequest) => Promise<PickPluginFileResponse>;
 
 	/**
 	 * 插件通知(api.ui.notify + 熔断自动禁用告警 + 配置变更同步信号)。
@@ -1186,36 +1138,7 @@ export interface ElectronAPI {
 	onBrowserTabsChanged: (callback: (event: BrowserTabsChangedEvent) => void) => () => void;
 
 
-	// Plugin management
-	getPlugins: () => Promise<{
-		success: boolean;
-		plugins?: Array<{
-			id: string;
-			name: string;
-			version: string;
-			description: string;
-			author: string;
-			loaded: boolean;
-			enabled: boolean;
-			commands: string[];
-			error: string;
-			dirPath: string;
-		}>;
-		error?: string;
-	}>;
-	enablePlugin: (
-		pluginId: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	disablePlugin: (
-		pluginId: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	refreshPlugins: () => Promise<{ success: boolean; error?: string }>;
-	getPluginCommands: () => Promise<GetPluginCommandsResponse>;
-	executePluginCommand: (
-		commandName: string,
-		args: string,
-		sessionId: string,
-	) => Promise<ExecutePluginCommandResponse>;
+	// Plugin management:已走通用 RPC 通道(pluginsRouter + `@/platform/plugins-client`)。
 
 	// App State:已走通用 RPC 通道(appStateRouter + `@/platform/app-state-client`)。
 

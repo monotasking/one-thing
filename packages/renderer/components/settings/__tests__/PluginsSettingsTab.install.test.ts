@@ -46,6 +46,8 @@ const platform = vi.hoisted(() => ({
 }))
 
 vi.mock('@/platform', () => ({ platformApi: platform }))
+// P4 终态批 C2:插件面走 `plugins` 域,客户端在 `@/platform/plugins-client`。
+vi.mock('@/platform/plugins-client', () => ({ pluginsApi: platform }))
 
 function chooseButton(wrapper: ReturnType<typeof mount>) {
   return wrapper.findAll('.install-actions button').find(button => button.text().includes('Choose file'))!

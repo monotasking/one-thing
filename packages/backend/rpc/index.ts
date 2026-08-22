@@ -38,6 +38,7 @@ import { mcpRouter } from '@shared/ipc/mcp.js'
 import { mediaRouter } from '@shared/ipc/media.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
 import { permissionRouter } from '@shared/ipc/permissions.js'
+import { pluginsRouter } from '@shared/ipc/plugins.js'
 import { practiceRouter } from '@shared/ipc/practice.js'
 import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
@@ -86,6 +87,7 @@ import { modelsRpcHandlers } from './domains/models.js'
 import { oauthRpcHandlers } from './domains/oauth.js'
 import { permissionGrantsRpcHandlers } from './domains/permission-grants.js'
 import { permissionRpcHandlers } from './domains/permission.js'
+import { pluginsRpcHandlers } from './domains/plugins.js'
 import { practiceRpcHandlers } from './domains/practice.js'
 import { projectDirsRpcHandlers } from './domains/project-dirs.js'
 import { promptsRpcHandlers } from './domains/prompts.js'
@@ -328,6 +330,26 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 而桌面自己也挂着同一份 HTTP 面,所以闸落在知道 transport 的域里;拒绝路径一次
   // 都不求值 `getTerminalService()`,懒单例因此仍然不在 server / CLI 上 load node-pty。
   { id: 'rpc:terminal', mount: ctx => { ctx.registerRpcDomain(terminalRouter, terminalRpcHandlers) } },
+  // P4 终态批 C2(plugins)—— 十九条 invoke:目录读/启停/刷新、命令表与执行、
+  // 统一请求通道与取消、配置读写、足迹与卸载、npm 生命周期四条、装前预读、市场、
+  // file-pick 的宿主托管导入。三处镜像(portable 工厂 + 主进程壳 / preload 十九条 /
+  // web 的六条 REST + 十三条硬桩)连同 server 的 `/api/plugins*` 六条路由与那条
+  // 501 一起消失。
+  // **两条推送留在原地**:`PLUGINS_NOTIFICATION`(总线全局事件,IPCBridge 扇全窗)
+  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `wiring/plugins/events.ts` 的
+  // `configurePluginRequestProgressBroadcaster`,按 `context.callerId` **定向回发起窗**
+  // —— 设置窗是独立 BrowserWindow,广播出去等于每扇窗都收一份别人的进度)。
+  // 两件要宿主本体的事走 `wiring/plugins/host-ports.ts` 的 `configurePluginsHost`:
+  // 原生文件对话框(`pickFile`)与插件命令的子进程执行器(`execCommand`,execa 是
+  // 桌面的依赖,不该被拖进 server 的单文件包)。未注入即结构化降级。
+  // http 分叉逐字保留 server 今天的语义:六条读/开关面走
+  // `server/plugin-catalog.ts` 那个单槽端口(装的就是从前六条 REST 背后的同一批
+  // 闭包),`configGet` 从那份清单就地派生只读值,其余写面按「插件管理器在不在场」
+  // 回迁移前 `platform/web.ts` 逐字相同的文案。渲染侧另有能力位 `pluginsManage`
+  // (web 默认关)让写面根本不发请求。
+  // 位置在 terminal 之后、自进化之前:它要插件管理器与事件总线,装配到这一步时
+  // 都已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
+  { id: 'rpc:plugins', mount: ctx => { ctx.registerRpcDomain(pluginsRouter, pluginsRpcHandlers) } },
   selfEvolutionFeature,
 ]
 

@@ -1,4 +1,5 @@
 import { platformApi } from '@/platform'
+import { pluginsApi } from '@/platform/plugins-client'
 import { getLogger } from '@/services/log'
 /**
  * Global IPC Event Hub
@@ -450,12 +451,12 @@ type PluginCatalogEntry = {
 /**
  * 拉一次插件面板清单。
  *
- * 数据源是 `/api/plugins` 或 IPC 的列表投影 —— 里面已经带着 manifest 的
+ * 数据源是 `plugins.list` 的列表投影(通用 RPC,两个宿主同一条)—— 里面已经带着 manifest 的
  * `contributes.panels`(R2 建的管道)。宿主凭它渲染入口,一行插件代码都不跑。
  */
 async function refreshPluginWorkspacePanels(): Promise<void> {
   try {
-    const result = await platformApi.getPlugins()
+    const result = await pluginsApi.getPlugins()
     if (!result?.success) return
     setPluginWorkspacePanels((result.plugins || [])
       // 停用的插件不贡献入口 —— 用户把它关了,它的界面就该消失。

@@ -223,14 +223,12 @@ export interface RuntimeScratchpadAdapter<TChangedPayload = unknown> {
   ): RuntimeUnsubscribe
 }
 
-export interface RuntimePluginsAdapter {
-  list?(context?: RuntimeRequestContext): Promise<unknown>
-  enable?(pluginId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  disable?(pluginId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  refresh?(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  commands?(context?: RuntimeRequestContext): Promise<unknown>
-  executeCommand?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-}
+/**
+ * P4 终态批 C2:`RuntimePluginsAdapter` 整只没了 —— 六条读/开关面随
+ * `pluginsRouter` 走通用 RPC,server 那本只读镜像目录改由
+ * `@onething/backend/server/plugin-catalog.ts` 的单槽端口交给域
+ * (它只有一个实现者、一个读者,放在 core 的 facade 上是多余的一格)。
+ */
 
 export interface RuntimeOAuthTokenEvent {
   type: 'oauth:token-refreshed' | 'oauth:token-expired'
@@ -295,7 +293,6 @@ export interface OnethingRuntimeFacadeOptions<
   media?: RuntimeMediaAdapter
   todoPlan?: RuntimeTodoPlanAdapter
   scratchpad?: RuntimeScratchpadAdapter
-  plugins?: RuntimePluginsAdapter
   oauth?: RuntimeOAuthAdapter
   voice?: RuntimeVoiceAdapter
   shutdown?: () => void | Promise<void>
@@ -330,7 +327,6 @@ export interface OnethingRuntimeFacade<
   readonly media?: RuntimeMediaAdapter
   readonly todoPlan?: RuntimeTodoPlanAdapter
   readonly scratchpad?: RuntimeScratchpadAdapter
-  readonly plugins?: RuntimePluginsAdapter
   readonly oauth?: RuntimeOAuthAdapter
   readonly voice?: RuntimeVoiceAdapter
   shutdown(): Promise<void>
@@ -400,7 +396,6 @@ export function createOnethingRuntimeFacade<
     media: options.media ? Object.freeze({ ...options.media }) : undefined,
     todoPlan: options.todoPlan ? Object.freeze({ ...options.todoPlan }) : undefined,
     scratchpad: options.scratchpad ? Object.freeze({ ...options.scratchpad }) : undefined,
-    plugins: options.plugins ? Object.freeze({ ...options.plugins }) : undefined,
     oauth: options.oauth ? Object.freeze({ ...options.oauth }) : undefined,
     voice: options.voice ? Object.freeze({ ...options.voice }) : undefined,
     async shutdown() {

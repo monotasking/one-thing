@@ -145,12 +145,10 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'GET' && pathname === '/api/capabilities') return handleGetCapabilities
   if (method === 'POST' && pathname === '/api/search/query') return handleSearchQuery
   if (method === 'POST' && pathname === '/api/search/actions') return handleSearchAction
-  if (method === 'GET' && pathname === '/api/plugins') return handleListPlugins
-  if (method === 'POST' && pathname === '/api/plugins/enable') return handleEnablePlugin
-  if (method === 'POST' && pathname === '/api/plugins/disable') return handleDisablePlugin
-  if (method === 'POST' && pathname === '/api/plugins/refresh') return handleRefreshPlugins
-  if (method === 'GET' && pathname === '/api/plugins/commands') return handlePluginCommands
-  if (method === 'POST' && pathname === '/api/plugins/execute-command') return handleExecutePluginCommand
+  // plugins 的十九条数据面已迁到 `POST /api/rpc`(pluginsRouter,P4 终态批 C2)。
+  // 六条读/开关面在域里走 `server/plugin-catalog.ts` 那个单槽端口(装的就是从前
+  // 这六条路由背后的同一批闭包),语义一字未改。本域在 server 上零推送 ——
+  // `PLUGINS_NOTIFICATION` 是桌面 IPCBridge 的窗间扇出,浏览器从来收不到它。
   // oauth 的六条数据面已迁到 `POST /api/rpc`(oauthRouter,P4c 第七批)。
   // 留下的是推送 —— router 今天没有推送面。
   if (method === 'GET' && pathname === '/api/oauth/events') return handleOAuthEvents
@@ -209,14 +207,9 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
     return withRequestId(permissionMatch[1], handlePermissionResponse)
   }
 
-  // 统一插件请求通道(R2)。方案 A 下 server 上没有插件执行面,这条路由存在的
-  // 唯一目的就是**不静默**:调用方拿到一条能读懂的 501,而不是 404 或者一个
-  // 永远 pending 的请求。将来 server 真跑插件时,替换 handler 即可,协议不变。
-  const pluginRequestMatch = pathname.match(/^\/api\/plugins\/([^/]+)\/([^/]+)$/)
-  if (pluginRequestMatch && method === 'POST') {
-    return withPluginRequestTarget(pluginRequestMatch[1], pluginRequestMatch[2], handlePluginRequest)
-  }
-
+  // 统一插件请求通道(R2)随 C2 迁 `plugins.request`。那条 501 的语义没丢,只是
+  // 从 HTTP 状态码变成域给的结构化失败 —— 判据也从「是不是 server」换成
+  // **插件管理器在不在场**(桌面内嵌 HTTP 面是装了的)。
   const mediaFileMatch = pathname.match(/^\/api\/media\/file\/([^/]+)$/)
   if (mediaFileMatch && method === 'GET') {
     return withMediaFileName(mediaFileMatch[1], handleReadMediaFile)
@@ -235,18 +228,6 @@ function withSessionId(encodedSessionId: string, handler: RouteHandler): RouteHa
 function withRequestId(encodedRequestId: string, handler: RouteHandler): RouteHandler {
   return (context) => {
     context.url.searchParams.set('requestId', decodeURIComponent(encodedRequestId))
-    return handler(context)
-  }
-}
-
-function withPluginRequestTarget(
-  encodedPluginId: string,
-  encodedAction: string,
-  handler: RouteHandler,
-): RouteHandler {
-  return (context) => {
-    context.url.searchParams.set('pluginId', decodeURIComponent(encodedPluginId))
-    context.url.searchParams.set('action', decodeURIComponent(encodedAction))
     return handler(context)
   }
 }
@@ -325,63 +306,6 @@ async function handleSearchAction(context: RouteContext): Promise<void> {
   if (!adapter) return sendNotImplemented(context, 'search.executeAction')
   const body = await readJson<{ actionId?: string }>(context.request)
   sendJson(context.response, 200, await adapter.executeAction(body?.actionId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleListPlugins(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.plugins
-  if (!adapter?.list) return sendNotImplemented(context, 'plugins.list')
-  sendJson(context.response, 200, await adapter.list(context.requestContext), context.corsOrigin)
-}
-
-async function handleEnablePlugin(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.plugins
-  if (!adapter?.enable) return sendNotImplemented(context, 'plugins.enable')
-  const body = await readJson<{ pluginId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.enable(body?.pluginId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleDisablePlugin(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.plugins
-  if (!adapter?.disable) return sendNotImplemented(context, 'plugins.disable')
-  const body = await readJson<{ pluginId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.disable(body?.pluginId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleRefreshPlugins(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.plugins
-  if (!adapter?.refresh) return sendNotImplemented(context, 'plugins.refresh')
-  sendJson(context.response, 200, await adapter.refresh(context.requestContext), context.corsOrigin)
-}
-
-async function handlePluginCommands(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.plugins
-  if (!adapter?.commands) return sendNotImplemented(context, 'plugins.commands')
-  sendJson(context.response, 200, await adapter.commands(context.requestContext), context.corsOrigin)
-}
-
-async function handleExecutePluginCommand(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.plugins
-  if (!adapter?.executeCommand) return sendNotImplemented(context, 'plugins.executeCommand')
-  sendJson(context.response, 200, await adapter.executeCommand(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-/**
- * 插件请求通道 —— 桌面-only(设计文档 §6 已拍板的方案 A)。
- *
- * apps/server 的插件目录是只读镜像:ServerPluginCatalogManager 的 entry 全是
- * noop,插件代码在 server 上从不执行。所以这里返回一条**说明了原因**的 501,
- * 而不是让请求悄无声息地消失。
- */
-async function handlePluginRequest(context: RouteContext): Promise<void> {
-  const pluginId = context.url.searchParams.get('pluginId') || ''
-  const action = context.url.searchParams.get('action') || ''
-  sendJson(context.response, 501, {
-    success: false,
-    error: 'Plugins execute on the desktop host only; this server mirrors the plugin catalog read-only.',
-    pluginId,
-    action,
-    host: 'server',
-  }, context.corsOrigin)
 }
 
 function handleOAuthEvents(context: RouteContext): void {

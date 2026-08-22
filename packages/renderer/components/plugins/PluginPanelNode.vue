@@ -432,6 +432,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watchEffect } from 'vue'
 import { platformApi } from '@/platform'
+import { pluginsApi } from '@/platform/plugins-client'
 import { toPlainData } from '@/workspace/plain-data'
 import { toast } from '@/composables/useToast'
 import Button from '@/components/common/Button.vue'
@@ -555,7 +556,7 @@ async function onFilePick(node: { label: string; accept?: string[]; maxBytes?: n
   try {
     // accept 来自响应式树,是 Vue 的 Proxy —— 原样递进 主进程 invoke 会炸
     // "An object can't be cloned"。边界铁律见 toPlainData 的文档(同病已犯两次)。
-    const result = await platformApi.pickPluginFile(toPlainData({
+    const result = await pluginsApi.pickPluginFile(toPlainData({
       pluginId: props.pluginId,
       accept: node.accept,
       maxBytes: node.maxBytes,

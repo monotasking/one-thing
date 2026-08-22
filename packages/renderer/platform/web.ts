@@ -9,22 +9,6 @@ import type {
 	VoiceRuntimeCommand,
 } from "@/types";
 import type { SessionEventEnvelope } from "@shared/events";
-import type {
-	AbortPluginRequestResult,
-	PluginConfigResponse,
-	PluginRequestPayload,
-	PluginRequestResult,
-	SetPluginConfigResponse,
-	PluginFootprintResponse,
-	UninstallPluginResponse,
-	InstallPluginResponse,
-	UpdatePluginResponse,
-	CheckPluginUpdatesResponse,
-	GetPluginMarketResponse,
-	PluginLifecycleInfoResponse,
-	PickPluginFileResponse,
-	ReadPluginTarballResponse,
-} from "@shared/ipc/plugins.js";
 import type { RpcResponse } from "@shared/ipc/rpc.js";
 import { goalRouter } from "@shared/ipc/goal.js";
 import { promptsRouter } from "@shared/ipc/prompts.js";
@@ -68,6 +52,11 @@ const webCapabilities: PlatformCapabilities = {
 	music: true,
 	interactionRespond: true,
 	evals: true,
+	// P4 终态批 C2(#16):插件写面在 web 上**默认关**。方案 A 下插件只在桌面
+	// 执行 —— 安装要本机 npm、配置要写桌面那份 `config.json`、file-pick 要原生
+	// 对话框。放开 = 把下面这行改成 `true`(或让它跟着 `/api/capabilities` 走),
+	// 而那是一次独立拍板。
+	pluginsManage: false,
 	clipboardWrite: browserClipboardWriteCapability(),
 	desktopWindows: false,
 	globalMenuEvents: false,
@@ -199,6 +188,9 @@ function normalizeServerCapabilities(value: unknown): PlatformCapabilities {
 		music: booleanProperty(value, "music", true),
 		interactionRespond: booleanProperty(value, "interactionRespond", true),
 		evals: booleanProperty(value, "evals", true),
+		// P4 终态批 C2(#16):插件写面默认关,服务器仍可按下去 / 抬起来 ——
+		// 今天没有宿主下发它,默认值就是结果。
+		pluginsManage: booleanProperty(value, "pluginsManage", false),
 		clipboardWrite: browserClipboardWriteCapability(),
 		desktopWindows: booleanProperty(value, "desktopWindows", false),
 		globalMenuEvents: booleanProperty(value, "globalMenuEvents", false),
@@ -538,19 +530,12 @@ const webApi = {
 	// System prompt snapshot 与另外五条聊天面走通用 RPC(chatRouter,P4c 第五批);
 	// User prompt snippets 走 promptsRouter。两者都见文件末尾的域客户端一行区。
 
-	getPlugins: () => requestJson("/api/plugins"),
-	enablePlugin: (pluginId: string) =>
-		postJson("/api/plugins/enable", { pluginId }),
-	disablePlugin: (pluginId: string) =>
-		postJson("/api/plugins/disable", { pluginId }),
-	refreshPlugins: () => postJson("/api/plugins/refresh"),
-	getPluginCommands: () => requestJson("/api/plugins/commands"),
-	executePluginCommand: (
-		commandName: string,
-		args: string,
-		sessionId: string,
-	) =>
-		postJson("/api/plugins/execute-command", { commandName, args, sessionId }),
+	// plugins —— 十九条数据面已随 `pluginsRouter` 迁走(P4 终态批 C2)。读面
+	// (list / enable / disable / refresh / commands / executeCommand / configGet)
+	// 打的是同一批闭包(域在 http 上沿用 server 那本只读镜像目录);写面挡在前面的
+	// 不再是这里的硬桩,而是能力位 `pluginsManage`(见上方 capabilities)与
+	// `platform/plugins-client.ts` 里那份逐字相同的降级答案。
+	// 只剩下面那两条**推送**订阅 —— router 今天没有推送面。
 	// OAuth 的六条数据面走通用 RPC(oauthRouter,P4c 第七批)。顺带修掉一处说谎:
 	// 从前 web 壳把凭证写回目标(批 B6 的 spaceId/entryId/label)**收下即丢**,
 	// 浏览器里往空间凭证池登录等于没登;走 router 之后它真的传到 authService 了
@@ -686,6 +671,10 @@ const webApi = {
 	// plugin:notification。这是有意降级,不是漏接。
 	onPluginNotification: () => () => {},
 
+	// abort/progress 需要一条活的双向通道;方案 A 下 web 端根本没有执行面,
+	// 所以进度订阅是诚实的空实现,而不是假装能收到。
+	onPluginRequestProgress: () => () => {},
+
 	// onething:// 深链只有桌面宿主接得到 —— 注册 URL scheme 是操作系统级的事,
 	// 浏览器里没有"外面点一条链接回到这个标签页"这种东西。三条都是诚实的空实现:
 	// ready 说成功(队列本来就不存在),没有卡会推来,respond 说得清地失败
@@ -696,183 +685,6 @@ const webApi = {
 		success: false,
 		error: "deep links are desktop-only",
 	}),
-
-	/**
-	 * 统一请求通道的 web 实现。
-	 *
-	 * 打的是真路由(`/api/plugins/:id/:action`),server 按方案 A 回 501 ——
-	 * **不是静默无应答**:调用方拿到的是一条能读懂的错误,而不是一个永远
-	 * pending 的 promise。将来 server 真跑插件时,这一侧一行都不用改。
-	 */
-	pluginRequest: async (
-		request: PluginRequestPayload,
-	): Promise<PluginRequestResult> => {
-		// 随机分量不是装饰:纯时间戳在同毫秒并发下会撞号,而 requestId 是 abort
-		// 的唯一地址。桌面侧由 core 统一生成(带序列号),web 这边没有那个 registry,
-		// 所以自己保证唯一。
-		const requestId =
-			request.requestId ||
-			`web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-		// 直接 fetch 而不是 requestJson:后者对 !ok 只抛
-		// "Request failed: 501 Not Implemented",把服务端写好的解释丢了 ——
-		// 而这条错误的全部价值就在那句解释里。
-		try {
-			const response = await fetch(
-				`/api/plugins/${encodeURIComponent(request.pluginId)}/${encodeURIComponent(request.action)}`,
-				{
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({ payload: request.payload, requestId }),
-				},
-			);
-			const body = (await response
-				.json()
-				.catch(() => null)) as Partial<PluginRequestResult> | null;
-			if (!response.ok) {
-				return {
-					success: false,
-					requestId,
-					error:
-						body?.error ||
-						`Request failed: ${response.status} ${response.statusText}`,
-				};
-			}
-			// 200 但没有可解析的正文不是成功:`success: body?.success !== false`
-			// 会把一个空体误判成 success 并把 result 当成 undefined 递给调用方。
-			if (!body) {
-				return {
-					success: false,
-					requestId,
-					error: "Plugin request returned an empty response body",
-				};
-			}
-			return {
-				success: body.success !== false,
-				requestId: body.requestId || requestId,
-				result: body.result,
-				error: body.error,
-				aborted: body.aborted,
-				timedOut: body.timedOut,
-			};
-		} catch (error) {
-			return {
-				success: false,
-				requestId,
-				error: error instanceof Error ? error.message : String(error),
-			};
-		}
-	},
-
-	/**
-	 * 配置读取:方案 A 下 web 端是**只读**的。
-	 *
-	 * 值与字段表都从 `/api/plugins` 的列表投影里取(schema 单源在 manifest,
-	 * 归约在产品层)——不新开路由,也不假装 server 上有一份可写的配置:
-	 * server 写 plugin-settings 会与桌面那份文件分叉,那是比"不能编辑"糟糕得多的
-	 * 结果。
-	 */
-	getPluginConfig: async (pluginId: string): Promise<PluginConfigResponse> => {
-		try {
-			const listed = (await requestJson("/api/plugins")) as {
-				success?: boolean;
-				plugins?: Array<Record<string, unknown>>;
-			};
-			const plugin = listed?.plugins?.find((item) => item.id === pluginId);
-			if (!plugin) {
-				return { success: false, error: `Unknown plugin "${pluginId}"` };
-			}
-			const fields = (plugin.configFields ??
-				[]) as PluginConfigResponse["fields"];
-			return {
-				success: true,
-				declared: Boolean(fields?.length) ||
-					Boolean((plugin.configUnsupportedReasons as string[])?.length),
-				fields,
-				title: (plugin.configTitle as string) || undefined,
-				config: (plugin.configValues as Record<string, unknown>) ?? {},
-				unsupportedReasons:
-					(plugin.configUnsupportedReasons as string[]) ?? [],
-				editable: false,
-				readOnlyReason:
-					"Plugin configuration is editable on the desktop host only.",
-			};
-		} catch (error) {
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : String(error),
-			};
-		}
-	},
-
-	// 方案 A:插件只在桌面执行,卸载(删源目录 + 归档数据)自然也只在桌面。
-	getPluginFootprint: async (): Promise<PluginFootprintResponse> => ({
-		success: false,
-		error: "Plugin data lives on the desktop host only.",
-	}),
-
-	// file-pick 要的是原生文件对话框与插件数据目录 —— 浏览器里两样都没有。
-	// 说出来而不是静默:按钮点下去毫无反应是最难解释的那种失败。
-	pickPluginFile: async (): Promise<PickPluginFileResponse> => ({
-		error: "Importing files into a plugin works on the desktop app only.",
-	}),
-
-	uninstallPlugin: async (): Promise<UninstallPluginResponse> => ({
-		success: false,
-		error:
-			"Plugins are installed and uninstalled on the desktop host only; this server mirrors the plugin catalog read-only.",
-	}),
-
-	// P1:npm 生命周期同样只在桌面(web 只投影目录,不执行插件)。
-	installPlugin: async (): Promise<InstallPluginResponse> => ({
-		success: false,
-		error: "Plugins are installed on the desktop host only.",
-	}),
-
-	updatePlugin: async (): Promise<UpdatePluginResponse> => ({
-		success: false,
-		pluginId: "",
-		error: "Plugins are updated on the desktop host only.",
-	}),
-
-	// 预读要读本机文件系统上的 tarball —— 浏览器里没有那个文件,也没有安装能力。
-	readPluginTarball: async (): Promise<ReadPluginTarballResponse> => ({
-		success: false,
-		errorCode: "not-supported",
-		error: "Plugin tarballs are inspected on the desktop host only.",
-	}),
-
-	getPluginMarket: async (): Promise<GetPluginMarketResponse> => ({
-		success: false,
-		entries: [],
-		fetchedAt: null,
-		stale: false,
-		error: 'Plugin market is unavailable in the web host',
-	}),
-	checkPluginUpdates: async (): Promise<CheckPluginUpdatesResponse> => ({
-		success: true,
-		offers: [],
-	}),
-
-	getPluginLifecycleInfo: async (): Promise<PluginLifecycleInfoResponse> => ({
-		success: true,
-		npmAvailable: false,
-	}),
-
-	setPluginConfig: async (): Promise<SetPluginConfigResponse> => ({
-		success: false,
-		error:
-			"Plugin configuration is editable on the desktop host only; this server mirrors the plugin catalog read-only.",
-	}),
-
-	// abort/progress 需要一条活的双向通道;方案 A 下 web 端根本没有执行面,
-	// 所以这两个是诚实的空实现,而不是假装能取消。
-	abortPluginRequest: async (): Promise<AbortPluginRequestResult> => ({
-		success: false,
-		aborted: false,
-		error: "Plugins execute on the desktop host only",
-	}),
-	onPluginRequestProgress: () => () => {},
-
 
 	/**
 	 * 「另存为」在浏览器里不是一次宿主对话框,而是一次下载 —— 沙箱里页面自发的

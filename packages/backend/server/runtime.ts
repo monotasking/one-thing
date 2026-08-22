@@ -84,6 +84,7 @@ import {
 } from "@onething/backend/session/reads.js";
 import { sessionEventTranslator } from "@onething/backend/session/event-translator.js";
 import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/stores/sessions.js";
+import { configureServerPluginCatalogPort } from "./plugin-catalog.js";
 import {
 	CorePluginStore,
 	createBuiltinPluginDefinitions,
@@ -1674,6 +1675,126 @@ async function createServerRuntimeOverServerBackend(
 		return { success: true };
 	};
 
+	/**
+	 * server 侧插件目录的六条读/开关面(P4 终态批 C2)。
+	 *
+	 * 从前它们是 `OnethingRuntimeFacade` 上的 `plugins` adapter,由
+	 * `/api/plugins*` 六条 REST 路由调用。C2 把入口换成 `plugins` RPC 域,
+	 * **闭包一行没改** —— 只是从 facade 的一格改成注册进单槽端口,域在
+	 * `transport === 'http'` 那一支上原样调用。返回的是**还原**函数:
+	 * 桌面内嵌 HTTP 面与 `server:start` 在同一进程里先后起落时,后者的槽
+	 * 不会被前者的 shutdown 抹掉。
+	 */
+	const restoreServerPluginCatalogPort = configureServerPluginCatalogPort({
+		list(context = defaultRequestContext()) {
+			const manager = getServerPluginCatalogManagerForContext(
+				pluginCatalogManagersByOwner,
+				dataRoot,
+				context,
+				options.pluginCommands,
+			);
+			return listOnethingPluginsForIpc({
+				manager,
+				logger: consoleLog,
+			});
+		},
+		enable(pluginId: string, context = defaultRequestContext()) {
+			const manager = getServerPluginCatalogManagerForContext(
+				pluginCatalogManagersByOwner,
+				dataRoot,
+				context,
+				options.pluginCommands,
+			);
+			return enableOnethingPluginForIpc({
+				manager,
+				pluginId,
+				logger: consoleLog,
+			});
+		},
+		disable(pluginId: string, context = defaultRequestContext()) {
+			const manager = getServerPluginCatalogManagerForContext(
+				pluginCatalogManagersByOwner,
+				dataRoot,
+				context,
+				options.pluginCommands,
+			);
+			return disableOnethingPluginForIpc({
+				manager,
+				pluginId,
+				logger: consoleLog,
+			});
+		},
+		refresh(context = defaultRequestContext()) {
+			const manager = getServerPluginCatalogManagerForContext(
+				pluginCatalogManagersByOwner,
+				dataRoot,
+				context,
+				options.pluginCommands,
+			);
+			return refreshOnethingPluginsForIpc({
+				manager,
+				logger: consoleLog,
+			});
+		},
+		commands(context = defaultRequestContext()) {
+			const manager = getServerPluginCatalogManagerForContext(
+				pluginCatalogManagersByOwner,
+				dataRoot,
+				context,
+				options.pluginCommands,
+			);
+			return listOnethingPluginCommandsForIpc({
+				manager,
+				logger: consoleLog,
+			});
+		},
+		executeCommand(request: unknown, context = defaultRequestContext()) {
+			const typedRequest = request as {
+				commandName?: string;
+				args?: string;
+				sessionId?: string;
+			};
+			const session = typedRequest.sessionId
+				? getSessionForContext(typedRequest.sessionId, context)
+				: undefined;
+			if (!session) {
+				return Promise.resolve({
+					success: false,
+					error: "Session not found",
+				});
+			}
+			const manager = getServerPluginCatalogManagerForContext(
+				pluginCatalogManagersByOwner,
+				dataRoot,
+				context,
+				options.pluginCommands,
+			);
+			return executeOnethingPluginCommandForIpc({
+				manager,
+				commandName: typedRequest.commandName || "",
+				args: typedRequest.args,
+				sessionId: typedRequest.sessionId || "",
+				getSession: () => session,
+				emitSessionCommand: (sessionId, event) =>
+					eventBus.emit(
+						sessionId,
+						event as unknown as AgentEngineSessionEvent,
+					),
+				emitGlobalEvent: (event) =>
+					eventBus.emitGlobal(event as unknown as AgentEngineSessionEvent),
+				exec: async () => ({
+					stdout: "",
+					stderr: "Shell execution is disabled in the web server runtime.",
+					exitCode: 126,
+				}),
+				onEmitError(label, error) {
+					log.error("server plugin emit failed", { label }, error);
+				},
+				logger: consolePort(log),
+			});
+		},
+	});
+
 	const runtime = createOnethingRuntimeFacade<
 		unknown,
 		unknown,
@@ -1961,115 +2082,12 @@ async function createServerRuntimeOverServerBackend(
 			// `GET /api/scratchpad/events` 的 SSE 源,router 今天没有推送面。
 			subscribeChanged: subscribeScratchpadChanged,
 		},
-		plugins: {
-			list(context = defaultRequestContext()) {
-				const manager = getServerPluginCatalogManagerForContext(
-					pluginCatalogManagersByOwner,
-					dataRoot,
-					context,
-					options.pluginCommands,
-				);
-				return listOnethingPluginsForIpc({
-					manager,
-					logger: consoleLog,
-				});
-			},
-			enable(pluginId: string, context = defaultRequestContext()) {
-				const manager = getServerPluginCatalogManagerForContext(
-					pluginCatalogManagersByOwner,
-					dataRoot,
-					context,
-					options.pluginCommands,
-				);
-				return enableOnethingPluginForIpc({
-					manager,
-					pluginId,
-					logger: consoleLog,
-				});
-			},
-			disable(pluginId: string, context = defaultRequestContext()) {
-				const manager = getServerPluginCatalogManagerForContext(
-					pluginCatalogManagersByOwner,
-					dataRoot,
-					context,
-					options.pluginCommands,
-				);
-				return disableOnethingPluginForIpc({
-					manager,
-					pluginId,
-					logger: consoleLog,
-				});
-			},
-			refresh(context = defaultRequestContext()) {
-				const manager = getServerPluginCatalogManagerForContext(
-					pluginCatalogManagersByOwner,
-					dataRoot,
-					context,
-					options.pluginCommands,
-				);
-				return refreshOnethingPluginsForIpc({
-					manager,
-					logger: consoleLog,
-				});
-			},
-			commands(context = defaultRequestContext()) {
-				const manager = getServerPluginCatalogManagerForContext(
-					pluginCatalogManagersByOwner,
-					dataRoot,
-					context,
-					options.pluginCommands,
-				);
-				return listOnethingPluginCommandsForIpc({
-					manager,
-					logger: consoleLog,
-				});
-			},
-			executeCommand(request: unknown, context = defaultRequestContext()) {
-				const typedRequest = request as {
-					commandName?: string;
-					args?: string;
-					sessionId?: string;
-				};
-				const session = typedRequest.sessionId
-					? getSessionForContext(typedRequest.sessionId, context)
-					: undefined;
-				if (!session) {
-					return Promise.resolve({
-						success: false,
-						error: "Session not found",
-					});
-				}
-				const manager = getServerPluginCatalogManagerForContext(
-					pluginCatalogManagersByOwner,
-					dataRoot,
-					context,
-					options.pluginCommands,
-				);
-				return executeOnethingPluginCommandForIpc({
-					manager,
-					commandName: typedRequest.commandName || "",
-					args: typedRequest.args,
-					sessionId: typedRequest.sessionId || "",
-					getSession: () => session,
-					emitSessionCommand: (sessionId, event) =>
-						eventBus.emit(
-							sessionId,
-							event as unknown as AgentEngineSessionEvent,
-						),
-					emitGlobalEvent: (event) =>
-						eventBus.emitGlobal(event as unknown as AgentEngineSessionEvent),
-					exec: async () => ({
-						stdout: "",
-						stderr: "Shell execution is disabled in the web server runtime.",
-						exitCode: 126,
-					}),
-					onEmitError(label, error) {
-						log.error("server plugin emit failed", { label }, error);
-					},
-					logger: consolePort(log),
-				});
-			},
-		},
+		// P4 终态批 C2:六条读/开关面(list / enable / disable / refresh / commands /
+		// executeCommand)随 `pluginsRouter` 走通用 RPC,`/api/plugins*` 那六条 REST
+		// 路由与那条 501 的 `/api/plugins/:id/:action` 一起没了。**实现一行没搬** ——
+		// 同一批闭包改成注册进 `server/plugin-catalog.ts` 的单槽端口(见下面的
+		// `restoreServerPluginCatalogPort`),域在 `transport === 'http'` 那一支上
+		// 原样调用,于是 web 读到的仍是这棵只读镜像树,一字不差。
 		// P4c 第七批:六条数据面已迁到 `oauthRouter`,连同 server 那台 per-owner 的
 		// 第二台 authService(拍板 #20:一个 store 一本令牌账)。这里只剩**推送面** ——
 		// `GET /api/oauth/events` 的 SSE 源,它从装配层那条广播端口取货,而不是
@@ -2125,6 +2143,7 @@ async function createServerRuntimeOverServerBackend(
 			configureTodoPlanHost(previousTodoPlanHostPorts);
 			configureScratchpadHost(previousScratchpadHostPorts);
 			restoreOAuthEventBroadcaster();
+			restoreServerPluginCatalogPort();
 			for (const variableRuntime of variableRuntimesByOwner.values()) {
 				variableRuntime.unsubscribe();
 				variableRuntime.registry.reset();

@@ -146,46 +146,21 @@ export const IPC_CHANNELS = {
 	 */
 	SPACES_CHANGED: "spaces:changed",
 
-	// Plugin management
-	PLUGINS_LIST: "plugins:list",
-	PLUGINS_ENABLE: "plugins:enable",
-	PLUGINS_DISABLE: "plugins:disable",
-	PLUGINS_REFRESH: "plugins:refresh",
-	PLUGINS_COMMANDS: "plugins:commands",
-	PLUGINS_EXECUTE_COMMAND: "plugins:execute-command",
+	// Plugin management —— 十九条 invoke 已随 `pluginsRouter` 迁到通用
+	// `rpc:invoke` / `POST /api/rpc`(P4 终态批 C2);留下的是**两条推送**,
+	// router 今天没有推送面。
+	//
 	// main → renderer 推送:api.ui.notify 与熔断自动禁用都走它。
 	// 在此之前 'plugin:notification' 只被 emitGlobal 到全局总线上,而全局总线
 	// 在 core/events 之外零订阅者 —— 插件的唯一 UI 触点其实从未接通。
+	// 它由 IPCBridge 扇给所有窗,从头到尾不经过请求面(所以连注入端口都不用)。
 	PLUGINS_NOTIFICATION: "plugins:notification",
-	// 统一请求通道(R2):UI → 插件的唯一通路,按 pluginId + action 分发。
-	// 三条语义从第一天就在:requestId(可寻址)、abort(真取消)、progress(中间态)。
-	PLUGINS_REQUEST: "plugins:request",
-	PLUGINS_REQUEST_ABORT: "plugins:request-abort",
+	// 统一请求通道(R2)的**中间态**。请求与取消本身已经是
+	// `plugins.request` / `plugins.requestAbort` 两条 router 方法;进度改走
+	// `@onething/backend/wiring/plugins/events.ts` 的注入端口,桌面按
+	// `RpcDispatchContext.callerId` **定向回发起窗** —— 设置窗是独立 BrowserWindow,
+	// 广播出去等于每扇窗都收一份别人的进度。
 	PLUGINS_REQUEST_PROGRESS: "plugins:request-progress",
-	// 插件自有配置(R3):schema 单源在 manifest,存储与校验全在宿主,
-	// 所以未启用的插件也能读写配置 —— 这两条通道不碰任何插件代码。
-	PLUGINS_CONFIG_GET: "plugins:config-get",
-	PLUGINS_CONFIG_SET: "plugins:config-set",
-	// 真卸载(R4):停用 → 归档数据 → 删源目录 → 清 plugin-settings 三键。
-	// 仅用户插件;内置插件与 app 同一份构建,没有卸载可言。
-	PLUGINS_UNINSTALL: "plugins:uninstall",
-	// npm 生命周期(P1):装/更/查更新 + 能力面(无 npm 置灰,裁决 8)。
-	PLUGINS_INSTALL: "plugins:install",
-	PLUGINS_UPDATE: "plugins:update",
-	PLUGINS_CHECK_UPDATES: "plugins:check-updates",
-	PLUGINS_LIFECYCLE_INFO: "plugins:lifecycle-info",
-	// 装前清单预读(file: 开发通道):包名与声明本来就在 tarball 里,
-	// 宿主自己读出来,用户不必再抄一遍。预读只喂 UI,不是信任来源。
-	PLUGINS_READ_TARBALL: "plugins:read-tarball",
-	// 市场(P3):索引视图(声明 + 本机安装态 + 版本兼容 join 好),
-	// 拉取失败回上次缓存并 stale 置位 —— 断网时市场区明示过期而非消失。
-	PLUGINS_MARKET: "plugins:market",
-	// 落盘足迹(R4 建枚举,R5 接出口):卸载确认框据此展示"将被归档的东西"。
-	PLUGINS_FOOTPRINT: "plugins:footprint",
-	// file-pick 节点的宿主托管导入(B 期,用户壁纸):renderer 只递节点的声明,
-	// 对话框 + 闸 + 拷贝全在主进程,回来的是一个 `storage:` 地址而不是字节。
-	// 挂在 PLUGINS_* 家族里而不是另开一支:它的授权语境是"某个插件的某个节点"。
-	PLUGINS_PICK_FILE: "plugins:pick-file",
 
 	// Generic scheduler
 

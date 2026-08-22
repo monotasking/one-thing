@@ -5,9 +5,10 @@
  * 路径**就地**交给装配层的拷贝函数。路径一步也不回到 renderer,更不回到插件 ——
  * 出口只有一个 `storage:` 地址。
  *
- * 为什么住这里而不住 `main/ipc/plugins.ts`:那个文件是**适配器**(把共享契约
- * 接到 `@onething/electron-host/ipc/plugins` 的工厂上),按边界检查器的规矩它
- * 一行 electron 都不吃。凡是要 electron 的,住 `@onething/electron-host/*`。
+ * 为什么住这里而不住 `main/ipc/plugins.ts`:那个文件是**接线**(P4 终态批 C2 之后
+ * 只剩两条 `configurePluginsHost` 注入与一条推送),按边界检查器的规矩它一行
+ * electron 都不吃。凡是要 electron 的,住 `@onething/electron-host/*` ——
+ * 把 `callerId` 还原成发起窗的那一步在同目录的 `ipc-host.ts`。
  *
  * 手势锚定在这里是天然的:原生对话框只能由用户的那一次点击拉起来,插件没有
  * 可以伪造的入口 —— 所以这条路径上没有(也不需要)`userGesture` 那种布尔。
