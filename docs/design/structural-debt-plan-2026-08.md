@@ -1345,6 +1345,14 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      工厂目录整删,4 条推送留;server 删 `/api/tools*` 6 路由 + adapter 96 行 + 只读目录机器,`RuntimeToolsAdapter` 整只;
      checker 退 tools host 断言、4 条改指域、零正则放松;transport channels 175→**151**、四壳 3463;battery 264/0;全量 11211 绿。
      遗留:`refreshAsyncTools` 全仓零调用点(死通道,拍板 #34 退役);interaction http 分叉认领 `targetChannel` 在能力位关着时不可达。
+     **第十批落地记录(08-22,evals 14 + evals-workbench 11 + 3 推送,待提交)**:`configureEvalsHost({isPackaged, repoDir})`
+     (`wiring/evals/host-ports.ts`,`resolveEvalsRepoDir` 判定进域:设置 evals.repoDir → 非打包 cwd → null;未注入视为非打包)+
+     `configureEvalsEventBroadcaster`(`wiring/evals/events.ts`,三条进度;desktop `main/ipc/evals.ts` 973→39 行只剩广播注入;server 不注入
+     = 安静 no-op);`EVALS_RUN_PROGRESS` 从单窗定向改全窗——核实零可感知变化(Settings 窗单槽 + 单跑闸 `activeRunAbort` + 订阅只在
+     `startRun` 建立);`evals-provider-adapter.ts` 搬 `wiring/evals/provider-adapter.ts`;`evals-workbench.ts` 757 行整删;
+     web 能力位 `evals:false`(闸在 client,关着时 24 条答案与旧桩逐字同;`readSnapshot` 迁移前 web 根本没有);http 分叉:
+     `readSnapshot/readFixture/promoteFixture/readRunDetail` 四条拿 wire 路径读文件的在 http 直接拒(与能力位同口径);checker 原无
+     evals 断言,新增 `checkEvalsHostPorts`;transport channels 151→**126**、四壳 3242;battery 264/0;全量 11218 绿。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。

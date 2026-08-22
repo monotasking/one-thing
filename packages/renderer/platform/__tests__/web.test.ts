@@ -26,6 +26,7 @@ describe('createWebPlatformApi', () => {
       collabRooms: false,
       music: false,
       interactionRespond: false,
+      evals: false,
       clipboardWrite: false,
       desktopWindows: false,
       globalMenuEvents: false,
@@ -132,6 +133,7 @@ describe('createWebPlatformApi', () => {
       collabRooms: false,
       music: false,
       interactionRespond: false,
+      evals: false,
       clipboardWrite: true,
       desktopWindows: false,
       globalMenuEvents: false,
@@ -176,14 +178,16 @@ describe('createWebPlatformApi', () => {
   })
 
   /**
-   * music / interaction 迁到通用 RPC 通道之后(P4c 第九批),web 上同样不再有桩 ——
-   * 十四条 + 两条走的是同一条 `POST /api/rpc`,技术上真能驱动桌面那台后端。
+   * music / interaction / evals 迁到通用 RPC 通道之后(P4c 第九批 / 第十批),
+   * web 上同样不再有桩 —— 十四条 + 两条 + 二十五条走的是同一条 `POST /api/rpc`,
+   * 技术上真能驱动桌面那台后端。
    *
-   * 挡在前面的是**能力位**,不是通道:`music` 与 `interactionRespond` 在 web 上
-   * 默认 false。这里钉的就是那两颗 false —— 一旦被人顺手改掉,浏览器点一下会让
-   * 服务器那台机器出声,或者替桌面答掉一条没人看见的提问。
+   * 挡在前面的是**能力位**,不是通道:`music` / `interactionRespond` / `evals`
+   * 在 web 上默认 false。这里钉的就是那三颗 false —— 一旦被人顺手改掉,浏览器
+   * 点一下会让服务器那台机器出声、替桌面答掉一条没人看见的提问,或者拿桌面的
+   * API key 在服务器上跑一整轮评估。
    */
-  it('keeps music and interaction shut on web through capabilities, not through stubs', async () => {
+  it('keeps music, interaction and evals shut on web through capabilities, not through stubs', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('server unavailable')
     }))
@@ -196,9 +200,12 @@ describe('createWebPlatformApi', () => {
     ).toEqual([])
     expect(WEB_DESKTOP_ONLY_PLATFORM_METHODS.filter(name => name.startsWith('music'))).toEqual([])
 
+    expect(WEB_DESKTOP_ONLY_PLATFORM_METHODS.filter(name => name.startsWith('evals'))).toEqual([])
+
     const api = createWebPlatformApi()
     expect(api.capabilities.music).toBe(false)
     expect(api.capabilities.interactionRespond).toBe(false)
+    expect(api.capabilities.evals).toBe(false)
   })
 
   it('opens settings in the current browser tab', async () => {
@@ -834,6 +841,13 @@ describe('createWebPlatformApi', () => {
   // music / interaction 从来没有 web REST 镜像(前者十四条硬桩、后者两条在
   // `WEB_DESKTOP_ONLY_PLATFORM_METHODS` 名单里)。迁到 router 之后挡在前面的是
   // **能力位**:`music` 与 `interactionRespond` 在 web 上默认 false,见下方用例。
+
+  // evals / evalsWorkbench 的二十五条同样从来没有 web REST 镜像(它们是二十四条
+  // `Evals is not supported in the web build` 硬桩 + 一条连壳都没有的 readSnapshot)。
+  // 迁到 router 之后(P4c 第十批)挡在前面的也是**能力位** `evals`,web 默认 false;
+  // 关着时 `platform/evals-client.ts` 就地返回与旧硬桩逐字相同的那句话。
+  // 方法的行为(含 http 侧四条按 wire 路径读盘的拒绝)由
+  // `backend/rpc/__tests__/evals-domain.test.ts` 钉。
 
   // permission(活询问)域的两条已整只迁到通用 RPC 通道(P4c,`permissionRouter` +
   // `@/platform/permission-client`):web 壳上不再有

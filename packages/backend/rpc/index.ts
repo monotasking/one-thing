@@ -29,6 +29,8 @@ import { appStateRouter } from '@shared/ipc/app-state.js'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
 import { chatRouter } from '@shared/ipc/chat.js'
 import { collabRouter } from '@shared/ipc/collab.js'
+import { evalsRouter } from '@shared/ipc/evals.js'
+import { evalsWorkbenchRouter } from '@shared/ipc/evals-workbench.js'
 import { goalRouter } from '@shared/ipc/goal.js'
 import { logsRouter } from '@shared/ipc/logs.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
@@ -65,6 +67,8 @@ import { appStateRpcHandlers } from './domains/app-state.js'
 import { channelIdentityRpcHandlers } from './domains/channel-identity.js'
 import { chatRpcHandlers } from './domains/chat.js'
 import { collabRpcHandlers } from './domains/collab.js'
+import { evalsRpcHandlers } from './domains/evals.js'
+import { evalsWorkbenchRpcHandlers } from './domains/evals-workbench.js'
 import { filesRpcHandlers } from './domains/files.js'
 import { gatewayRpcHandlers } from './domains/gateway.js'
 import { goalRpcHandlers } from './domains/goal.js'
@@ -258,6 +262,21 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // **四条推送留在原地**(MUSIC_EVENT / NOW_PLAYING / LYRICS / DJ_SPEAK 早就走
   // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `wiring/music/operations.ts`。
   { id: 'rpc:music', mount: ctx => { ctx.registerRpcDomain(musicRouter, musicRpcHandlers) } },
+  // P4c 第十批第一个域(evals)—— 十四条:👎 记录 / 记录表 / 夹具 / 快照 / 用例 /
+  // 跑批起停 / 晋升 / 退役 / 分诊报告 / 跑批明细。它是全仓第一个把 `app.isPackaged`
+  // 从宿主里摘出来的域:「evals 仓在哪」的判定搬进 `wiring/evals/host-ports.ts`,
+  // 宿主只注入 `isPackaged` 这一位事实(未注入 = 非打包 = `process.cwd()`)。
+  // **一条推送留在原地**(`EVALS_RUN_PROGRESS`),改走 `wiring/evals/events.ts`
+  // 的 `configureEvalsEventBroadcaster` 端口 —— 顺带从单窗定向改成全窗广播,
+  // 与工作台那两条一致。四条按 wire 路径读盘的方法在 http 上直接拒绝(见域文件头)。
+  { id: 'rpc:evals', mount: ctx => { ctx.registerRpcDomain(evalsRouter, evalsRpcHandlers) } },
+  // P4c 第十批第二个域(evalsWorkbench)—— 十一条:事故包读写 / 回放起停 /
+  // AI 分析 / 晋升成回归用例 / 逐轮列表与重放 / 诊断。**两条推送留在原地**
+  // (`EVALS_REPLAY_PROGRESS` / `EVALS_DIAGNOSE_PROGRESS`),与 evals 域共用
+  // 同一个广播端口。它排在 evals 之后:`evals.recordDownvote` 要用本域的
+  // `analyzeIncidentInBackground`(模块级 import,与装配顺序无关),而这一格
+  // 的硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
+  { id: 'rpc:evals-workbench', mount: ctx => { ctx.registerRpcDomain(evalsWorkbenchRouter, evalsWorkbenchRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

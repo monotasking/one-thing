@@ -893,46 +893,12 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.SCRATCHPAD_CHANGED, listener);
 	},
 
-	// Evals (prompt evaluation) — 👎 downvote + Review + Run + Actions
-	recordEvalsDownvote: (request: {
-		sessionId: string;
-		turnId: string;
-		userMessage: string;
-		note?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_RECORD_DOWNVOTE, request),
-
-	// Phase 1: Review (read-only)
-	evalsListRecords: (request: {
-		negativeOnly?: boolean;
-		category?: string;
-		sinceTs?: string;
-		limit?: number;
-		offset?: number;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_LIST_RECORDS, request),
-
-	evalsListFixtures: () => ipcRenderer.invoke(IPC_CHANNELS.EVALS_LIST_FIXTURES),
-
-	evalsReadFixture: (request: { fixturePath: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_READ_FIXTURE, request),
-
-	evalsListResults: () => ipcRenderer.invoke(IPC_CHANNELS.EVALS_LIST_RESULTS),
-
-	evalsListCases: () => ipcRenderer.invoke(IPC_CHANNELS.EVALS_LIST_CASES),
-
-	evalsGetCase: (request: { caseId: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_GET_CASE, request),
-
-	// Phase 2: Run
-	evalsRunStart: (request: {
-		caseIds?: string[];
-		runs: number;
-		disabledSections?: string[];
-		providerId: string;
-		model: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_RUN_START, request),
-
-	evalsRunCancel: () => ipcRenderer.invoke(IPC_CHANNELS.EVALS_RUN_CANCEL),
-
+	// ── Evals(提示词评估 + 事故工作台)——————————————————————
+	// P4c 第十批:二十五条 invoke 通道已整只迁到通用 RPC 通道
+	// (`@shared/ipc/evals.ts` 的 `evalsRouter` + `@shared/ipc/evals-workbench.ts`
+	// 的 `evalsWorkbenchRouter`),桌面和 web 走同一条 dispatch。
+	// 壳面只剩三条推送订阅 —— router 今天没有推送面。
+	//
 	// `detail` 在主进程发送前被剥掉(太大),所以到手的是它可选的那一半。
 	onEvalsRunProgress: (callback: (event: EvalsRunProgressEvent) => void) => {
 		const listener = (_event: IpcRendererEvent, data: EvalsRunProgressEvent) =>
@@ -942,57 +908,6 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.EVALS_RUN_PROGRESS, listener);
 	},
 
-	// Phase 3: Actions
-	evalsPromoteFixture: (request: {
-		fixturePath: string;
-		caseId: string;
-		description: string;
-		expect: {
-			firstToolCall?: string;
-			contains?: string;
-			notContains?: string;
-		};
-	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_PROMOTE_FIXTURE, request),
-
-	evalsRetireCase: (request: { caseId: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_RETIRE_CASE, request),
-
-	evalsGenerateTriage: (request?: { weeks?: number }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_GENERATE_TRIAGE, request || {}),
-
-	evalsReadRunDetail: (request: { detailPath: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_READ_RUN_DETAIL, request),
-
-	// Evals Workbench (incident-centric)
-	evalsIncidentList: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_LIST),
-
-	evalsIncidentGet: (request: { incidentId: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_GET, request),
-
-	evalsIncidentUpdate: (request: {
-		incidentId: string;
-		patch: { status?: string; note?: string; rubric?: string; title?: string };
-	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_UPDATE, request),
-
-	evalsIncidentReadFile: (request: {
-		incidentId: string;
-		relativePath: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_READ_FILE, request),
-
-	evalsReplayStart: (request: {
-		incidentId: string;
-		runs?: number;
-		disabledSections?: string[];
-		judge?: boolean;
-		useCapturedPrompt?: boolean;
-		providerId?: string;
-		model?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_REPLAY_START, request),
-
-	evalsReplayCancel: (request: { incidentId: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_REPLAY_CANCEL, request),
-
 	onEvalsReplayProgress: (callback: (event: EvalsReplayProgressEvent) => void) => {
 		const listener = (_event: IpcRendererEvent, data: EvalsReplayProgressEvent) =>
 			callback(data);
@@ -1000,18 +915,6 @@ const electronAPI = {
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.EVALS_REPLAY_PROGRESS, listener);
 	},
-
-	evalsIncidentAnalyze: (request: { incidentId: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_ANALYZE, request),
-
-	evalsIncidentPromote: (request: {
-		incidentId: string;
-		caseId: string;
-		description?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_PROMOTE, request),
-
-	evalsDiagnoseStart: (request: { incidentId: string; quick?: boolean }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_DIAGNOSE_START, request),
 
 	onEvalsDiagnoseProgress: (
 		callback: (event: EvalsDiagnoseProgressEvent) => void,
@@ -1025,18 +928,6 @@ const electronAPI = {
 				listener,
 			);
 	},
-
-	evalsRoundList: (request: { incidentId: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVALS_ROUND_LIST, request),
-
-	evalsRoundReplay: (request: {
-		incidentId: string;
-		round: number;
-		runs?: number;
-		editedMessages?: unknown[];
-		providerId?: string;
-		model?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_ROUND_REPLAY, request),
 };
 
 export function installOnethingPreloadBridge(): void {

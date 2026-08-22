@@ -4492,6 +4492,92 @@ function checkElectronHostOwnsOAuthEvents(): void {
  *    (推送面,在 server adapter 上)必须指着**同一张表**;两处各存一份等于
  *    「开了监视但收不到事件」。断言钉住这条:两侧都从这个模块拿。
  */
+/**
+ * P4c 第十批立的两个 evals 门面 —— 一个宿主注入端口、一个推送注入端口。
+ *
+ * 1. **`configureEvalsHost`**(`backend/wiring/evals/host-ports.ts`)。evals 域
+ *    身上唯一的 electron 触点是 `app.isPackaged`(旧 `getRepoDir()`,传染九条)。
+ *    判据同 `configureShellHost` / `configureSkillsEnvironmentHost`:**判定本身
+ *    在装配层**(`resolveEvalsRepoDir`),端口只声明能力、不 import electron,
+ *    桌面在 `main-process.ts` 注入那一位事实。
+ *
+ * 2. **`configureEvalsEventBroadcaster`**(`backend/wiring/evals/events.ts`)。
+ *    三条进度推送(run / replay / diagnose)留在原地,判据同
+ *    `configureOAuthEventBroadcaster`:单槽 + 可读回,桌面那一侧的注入就是
+ *    `@main/ipc/evals.ts` 仅剩的内容。
+ *
+ * 顺带钉住迁移的终态:两个域文件不许再碰 electron,`@main/ipc/evals.ts` 不许
+ * 再出现 `ipcMain.handle` / `app.isPackaged` / `BrowserWindow.fromWebContents`,
+ * 而 `@main/ipc/evals-workbench.ts` 与 `@main/ipc/evals-provider-adapter.ts`
+ * 必须已经不存在(前者整只删,后者搬进 `wiring/evals/provider-adapter.ts`)。
+ */
+function checkEvalsHostPorts(): void {
+  const hostPortFile = path.join(root, 'packages/backend/wiring/evals/host-ports.ts')
+  const eventPortFile = path.join(root, 'packages/backend/wiring/evals/events.ts')
+  const providerAdapterFile = path.join(root, 'packages/backend/wiring/evals/provider-adapter.ts')
+  const evalsDomainFile = path.join(root, 'packages/backend/rpc/domains/evals.ts')
+  const workbenchDomainFile = path.join(root, 'packages/backend/rpc/domains/evals-workbench.ts')
+  const mainEvalsFile = path.join(root, 'apps/electron/src/main/ipc/evals.ts')
+  const mainWorkbenchFile = path.join(root, 'apps/electron/src/main/ipc/evals-workbench.ts')
+  const mainAdapterFile = path.join(root, 'apps/electron/src/main/ipc/evals-provider-adapter.ts')
+  const mainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const read = (file: string): string => (fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+  const hostPortContent = read(hostPortFile)
+  const eventPortContent = read(eventPortFile)
+  const evalsDomainContent = read(evalsDomainFile)
+  const workbenchDomainContent = read(workbenchDomainFile)
+  const mainEvalsContent = read(mainEvalsFile)
+  const mainProcessContent = read(mainProcessFile)
+
+  const lines = [
+    ...['configureEvalsHost', 'getEvalsHostPorts', 'resolveEvalsRepoDir']
+      .filter(symbol => !hostPortContent.includes(symbol))
+      .map(symbol => `${rel(hostPortFile)}: missing evals host port symbol ${symbol}`),
+    ...['configureEvalsEventBroadcaster', 'getEvalsEventBroadcaster', 'broadcastEvalsRunProgress']
+      .filter(symbol => !eventPortContent.includes(symbol))
+      .map(symbol => `${rel(eventPortFile)}: missing evals event broadcaster port symbol ${symbol}`),
+    // 端口只声明能力:它不认识 Electron。(逐行剥注释再匹配 —— 文件头写的是
+    // 「这里没有 electron」,拿原始行匹配等于让说明自己打自己。)
+    ...matchingCodeLines(hostPortFile, [/from\s+['"]electron['"]/, /@onething\/electron-host/]),
+    ...matchingCodeLines(eventPortFile, [/from\s+['"]electron['"]/, /@onething\/electron-host/]),
+    ...(!fs.existsSync(providerAdapterFile)
+      ? [`${rel(providerAdapterFile)}: evals provider adapter must live in the assembly layer`]
+      : []),
+    // 两个域必须经端口拿仓根与推送,不许自己认打包态、不许自己找窗口。
+    ...(!evalsDomainContent.includes('resolveEvalsRepoDir')
+      ? [`${rel(evalsDomainFile)}: evals RPC domain must resolve the repo dir through the host port`]
+      : []),
+    ...(!evalsDomainContent.includes('broadcastEvalsRunProgress')
+      ? [`${rel(evalsDomainFile)}: evals run progress must go through the broadcaster port`]
+      : []),
+    ...(!workbenchDomainContent.includes('resolveEvalsRepoDir')
+      ? [`${rel(workbenchDomainFile)}: evals workbench RPC domain must resolve the repo dir through the host port`]
+      : []),
+    ...matchingCodeLines(evalsDomainFile, [/from\s+['"]electron['"]/, /\bisPackaged\b/]),
+    ...matchingCodeLines(workbenchDomainFile, [/from\s+['"]electron['"]/, /\bBrowserWindow\b/]),
+    // 桌面那一侧只剩广播注入。
+    ...(!mainEvalsContent.includes('configureEvalsEventBroadcaster')
+      ? [`${rel(mainEvalsFile)}: Electron host must wire configureEvalsEventBroadcaster`]
+      : []),
+    ...matchingCodeLines(mainEvalsFile, [
+      /ipcMain\.handle/,
+      /app\.isPackaged/,
+      /BrowserWindow\.fromWebContents/,
+    ]),
+    ...(fs.existsSync(mainWorkbenchFile)
+      ? [`${rel(mainWorkbenchFile)}: evals workbench IPC handlers were migrated to the evalsWorkbench RPC domain`]
+      : []),
+    ...(fs.existsSync(mainAdapterFile)
+      ? [`${rel(mainAdapterFile)}: evals provider adapter moved to packages/backend/wiring/evals/provider-adapter.ts`]
+      : []),
+    ...(!mainProcessContent.includes('configureEvalsHost')
+      ? [`${rel(mainProcessFile)}: Electron host must wire configureEvalsHost`]
+      : []),
+  ]
+
+  assertNoMatches('evals host ports stay single-sourced in the assembly layer', lines)
+}
+
 function checkGatewayAndFilesHostPorts(): void {
   const gatewayPortFile = path.join(root, 'packages/backend/wiring/gateway/host-ports.ts')
   const watchPortFile = path.join(root, 'packages/backend/wiring/files/workspace-watch.ts')
@@ -9652,6 +9738,7 @@ checkElectronHostOwnsAccessibilityPermissions()
 checkElectronHostOwnsShellOperations()
 checkElectronHostOwnsOAuthEvents()
 checkGatewayAndFilesHostPorts()
+checkEvalsHostPorts()
 checkElectronHostOwnsSettingsIpcHost()
 checkAgentsDomainRidesTheRpcChannel()
 checkPromptsDomainRidesTheRpcChannel()

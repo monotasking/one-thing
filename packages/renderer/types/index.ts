@@ -889,200 +889,20 @@ export interface ElectronAPI {
 	// Collab(多 agent 协作房)—— 十五条 invoke 已整只迁到通用 RPC 通道(P4a,
 	// `@shared/ipc/collab.ts` 的 collabRouter + `@/platform/collab-client` 的
 	// collabApi)。这个域一条推送也没有,所以壳面上什么也不剩。
-	// Evals (prompt evaluation) — 👎 downvote + Review + Run + Actions
-	recordEvalsDownvote: (request: {
-		sessionId: string;
-		turnId: string;
-		userMessage: string;
-		note?: string;
-	}) => Promise<{
-		success: boolean;
-		fixturePath?: string;
-		incidentId?: string;
-		error?: string;
-	}>;
-
-	// Phase 1: Review
-	evalsListRecords: (request: {
-		negativeOnly?: boolean;
-		category?: string;
-		sinceTs?: string;
-		limit?: number;
-		offset?: number;
-	}) => Promise<{
-		success: boolean;
-		records?: Array<Record<string, unknown>>;
-		total?: number;
-		error?: string;
-	}>;
-	evalsListFixtures: () => Promise<{
-		success: boolean;
-		fixtures?: Array<{
-			path: string;
-			capturedAt: string;
-			provider: string;
-			model: string;
-			sessionId: string;
-			turnId: string;
-			userMessagePreview: string;
-			hasNegative: boolean;
-		}>;
-		error?: string;
-	}>;
-	evalsReadFixture: (request: { fixturePath: string }) => Promise<{
-		success: boolean;
-		fixture?: Record<string, unknown>;
-		error?: string;
-	}>;
-	evalsListResults: () => Promise<{
-		success: boolean;
-		entries?: Array<{
-			ts: string;
-			promptVersion: string;
-			provider: string;
-			runs: number;
-			evalSetSize: number;
-			scores: Record<string, number>;
-			mean: number;
-			disabled?: string[];
-			cost?: string;
-			sentinelScores?: Record<string, number>;
-		}>;
-		error?: string;
-	}>;
-	evalsListCases: () => Promise<{
-		success: boolean;
-		cases?: Array<{
-			id: string;
-			file: string;
-			dir: string;
-			description: string;
-			fixture: string;
-			userMessage: string;
-			isSentinel: boolean;
-			expect: Record<string, unknown>;
-		}>;
-		error?: string;
-	}>;
-	evalsGetCase: (request: { caseId: string }) => Promise<{
-		success: boolean;
-		case_?: Record<string, unknown>;
-		error?: string;
-	}>;
-
-	// Phase 2: Run
-	evalsRunStart: (request: {
-		caseIds?: string[];
-		runs: number;
-		disabledSections?: string[];
-		providerId: string;
-		model: string;
-	}) => Promise<{ success: boolean; error?: string }>;
-	evalsRunCancel: () => Promise<{ success: boolean; error?: string }>;
+	// Evals(提示词评估 + 事故工作台)—— 二十五条 invoke 已整只迁到通用 RPC 通道
+	// (P4c 第十批,`@shared/ipc/evals.ts` 的 evalsRouter +
+	// `@shared/ipc/evals-workbench.ts` 的 evalsWorkbenchRouter;渲染侧从
+	// `@/platform/evals-client` 的 evalsApi 与 `@/platform/evals-workbench-client`
+	// 的 evalsWorkbenchApi 取)。**三条推送留在这里** —— router 没有推送面。
 	onEvalsRunProgress: (
 		callback: (event: Record<string, unknown>) => void,
 	) => () => void;
-
-	// Phase 3: Actions
-	evalsPromoteFixture: (request: {
-		fixturePath: string;
-		caseId: string;
-		description: string;
-		expect: { firstToolCall?: string; contains?: string; notContains?: string };
-	}) => Promise<{ success: boolean; casePath?: string; error?: string }>;
-	evalsRetireCase: (request: {
-		caseId: string;
-	}) => Promise<{ success: boolean; newPath?: string; error?: string }>;
-	evalsGenerateTriage: (request?: { weeks?: number }) => Promise<{
-		success: boolean;
-		report?: string;
-		triagePath?: string;
-		error?: string;
-	}>;
-	evalsReadRunDetail: (request: { detailPath: string }) => Promise<{
-		success: boolean;
-		detail?: Record<string, unknown>;
-		error?: string;
-	}>;
-	// Evals Workbench (incident-centric)
-	evalsIncidentList: () => Promise<{
-		success: boolean;
-		incidents?: Array<Record<string, unknown>>;
-		error?: string;
-	}>;
-	evalsIncidentGet: (request: { incidentId: string }) => Promise<{
-		success: boolean;
-		incident?: Record<string, unknown>;
-		markdown?: string;
-		runs?: Array<Record<string, unknown>>;
-		error?: string;
-	}>;
-	evalsIncidentUpdate: (request: {
-		incidentId: string;
-		patch: { status?: string; note?: string; rubric?: string; title?: string };
-	}) => Promise<{
-		success: boolean;
-		incident?: Record<string, unknown>;
-		error?: string;
-	}>;
-	evalsIncidentReadFile: (request: {
-		incidentId: string;
-		relativePath: string;
-	}) => Promise<{ success: boolean; content?: string; error?: string }>;
-	evalsReplayStart: (request: {
-		incidentId: string;
-		runs?: number;
-		disabledSections?: string[];
-		judge?: boolean;
-		useCapturedPrompt?: boolean;
-		providerId?: string;
-		model?: string;
-	}) => Promise<{ success: boolean; runId?: string; error?: string }>;
-	evalsReplayCancel: (request: {
-		incidentId: string;
-	}) => Promise<{ success: boolean; error?: string }>;
 	onEvalsReplayProgress: (
 		callback: (event: Record<string, unknown>) => void,
 	) => () => void;
-	evalsIncidentAnalyze: (request: { incidentId: string }) => Promise<{
-		success: boolean;
-		incident?: Record<string, unknown>;
-		error?: string;
-	}>;
-	evalsIncidentPromote: (request: {
-		incidentId: string;
-		caseId: string;
-		description?: string;
-	}) => Promise<{ success: boolean; casePath?: string; error?: string }>;
-	evalsDiagnoseStart: (request: {
-		incidentId: string;
-		quick?: boolean;
-	}) => Promise<{ success: boolean; error?: string }>;
 	onEvalsDiagnoseProgress: (
 		callback: (event: Record<string, unknown>) => void,
 	) => () => void;
-	evalsRoundList: (request: { incidentId: string }) => Promise<{
-		success: boolean;
-		rounds?: Array<Record<string, unknown>>;
-		error?: string;
-	}>;
-	evalsRoundReplay: (request: {
-		incidentId: string;
-		round: number;
-		runs?: number;
-		editedMessages?: unknown[];
-		providerId?: string;
-		model?: string;
-	}) => Promise<{
-		success: boolean;
-		attempts?: Array<{
-			content: string;
-			toolCalls: Array<{ name: string; args: Record<string, unknown> }>;
-			finishReason: string;
-		}>;
-		edited?: boolean;
-		error?: string;
-	}>;
 	// Session goals:走通用 RPC(goalRouter),方法在 platformApi 上,不在这里。
 	/**
 	 * 通用 RPC 出口(主线 T0)。router 域(usage 起)全走这一条,不再逐域加方法;

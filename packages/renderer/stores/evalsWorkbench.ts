@@ -8,6 +8,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { platformApi } from "@/platform";
+import { evalsWorkbenchApi } from "@/platform/evals-workbench-client";
 
 export interface IncidentListItem {
 	id: string;
@@ -184,7 +185,7 @@ export const useEvalsWorkbenchStore = defineStore("evalsWorkbench", () => {
 		loading.value = true;
 		error.value = null;
 		try {
-			const res = await platformApi.evalsIncidentList();
+			const res = await evalsWorkbenchApi.incidentList();
 			if (res.success && res.incidents) {
 				incidents.value = res.incidents as unknown as IncidentListItem[];
 			} else {
@@ -216,7 +217,7 @@ export const useEvalsWorkbenchStore = defineStore("evalsWorkbench", () => {
 		if (!selectedId.value) return;
 		detailLoading.value = true;
 		try {
-			const res = await platformApi.evalsIncidentGet({
+			const res = await evalsWorkbenchApi.incidentGet({
 				incidentId: selectedId.value,
 			});
 			if (res.success && res.incident) {
@@ -273,7 +274,7 @@ export const useEvalsWorkbenchStore = defineStore("evalsWorkbench", () => {
 		replayEvents.value = [];
 		replayVerdicts.value = [];
 		replayAttempt.value = 0;
-		const res = await platformApi.evalsReplayStart({
+		const res = await evalsWorkbenchApi.replayStart({
 			incidentId: selectedId.value,
 			...options,
 		});
@@ -287,14 +288,14 @@ export const useEvalsWorkbenchStore = defineStore("evalsWorkbench", () => {
 
 	async function cancelReplay() {
 		if (!selectedId.value) return;
-		await platformApi.evalsReplayCancel({ incidentId: selectedId.value });
+		await evalsWorkbenchApi.replayCancel({ incidentId: selectedId.value });
 	}
 
 	async function analyze() {
 		if (!selectedId.value || analyzing.value) return;
 		analyzing.value = true;
 		try {
-			const res = await platformApi.evalsIncidentAnalyze({
+			const res = await evalsWorkbenchApi.incidentAnalyze({
 				incidentId: selectedId.value,
 			});
 			if (!res.success) error.value = res.error ?? "分析失败";
@@ -311,7 +312,7 @@ export const useEvalsWorkbenchStore = defineStore("evalsWorkbench", () => {
 		diagnoseSteps.value = [];
 		diagnoseReport.value = null;
 		diagnoseConclusion.value = null;
-		const res = await platformApi.evalsDiagnoseStart({
+		const res = await evalsWorkbenchApi.diagnoseStart({
 			incidentId: selectedId.value,
 			quick,
 		});
@@ -323,7 +324,7 @@ export const useEvalsWorkbenchStore = defineStore("evalsWorkbench", () => {
 
 	async function promote(caseId: string, description?: string) {
 		if (!selectedId.value) return null;
-		const res = await platformApi.evalsIncidentPromote({
+		const res = await evalsWorkbenchApi.incidentPromote({
 			incidentId: selectedId.value,
 			caseId,
 			description,
@@ -342,11 +343,13 @@ export const useEvalsWorkbenchStore = defineStore("evalsWorkbench", () => {
 		roundsLoading.value = true;
 		roundsError.value = null;
 		try {
-			if (typeof platformApi.evalsRoundList !== "function") {
+			// 迁到通用 RPC 之后这道「预加载过旧」的护栏改看传输面本身:
+			// 旧壳没有 rpcInvoke,整个 router 客户端都发不出请求(P4c 第十批)。
+			if (typeof platformApi.rpcInvoke !== "function") {
 				roundsError.value = "预加载脚本过旧,请重启应用(bun run dev)";
 				return;
 			}
-			const res = await platformApi.evalsRoundList({
+			const res = await evalsWorkbenchApi.roundList({
 				incidentId: selectedId.value,
 			});
 			if (res.success) {
@@ -370,7 +373,7 @@ export const useEvalsWorkbenchStore = defineStore("evalsWorkbench", () => {
 		roundReplaying.value = options.round;
 		delete roundReplayErrors.value[options.round];
 		try {
-			const res = await platformApi.evalsRoundReplay({
+			const res = await evalsWorkbenchApi.roundReplay({
 				incidentId: selectedId.value,
 				round: options.round,
 				runs: options.runs,
@@ -399,7 +402,7 @@ export const useEvalsWorkbenchStore = defineStore("evalsWorkbench", () => {
 
 	async function readBundleFile(relativePath: string): Promise<string | null> {
 		if (!selectedId.value) return null;
-		const res = await platformApi.evalsIncidentReadFile({
+		const res = await evalsWorkbenchApi.incidentReadFile({
 			incidentId: selectedId.value,
 			relativePath,
 		});

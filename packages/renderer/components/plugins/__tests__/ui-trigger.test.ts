@@ -39,7 +39,9 @@ vi.mock('@/platform', () => ({
         platformState.notificationHandlers = platformState.notificationHandlers.filter(item => item !== handler)
       }
     },
-    recordEvalsDownvote: vi.fn(async () => ({ success: true })),
+    // 👎 走 evalsApi(P4c 第十批:通用 RPC + 能力位),不再是壳上的一条方法。
+    capabilities: { evals: true },
+    rpcInvoke: vi.fn(async () => ({ ok: true, data: { success: true } })),
   },
 }))
 

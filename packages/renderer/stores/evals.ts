@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { platformApi } from "@/platform";
+import { evalsApi } from "@/platform/evals-client";
 import { getLogger } from "@/services/log";
 import type { EvalRunDetail } from "@shared/ipc";
 
@@ -179,7 +180,7 @@ export const useEvalsStore = defineStore("evals", () => {
 		recordsLoading.value = true;
 		recordsError.value = null;
 		try {
-			const res = await platformApi.evalsListRecords({
+			const res = await evalsApi.listRecords({
 				...recordsFilter.value,
 			});
 			if (res.success && res.records) {
@@ -199,7 +200,7 @@ export const useEvalsStore = defineStore("evals", () => {
 		fixturesLoading.value = true;
 		fixturesError.value = null;
 		try {
-			const res = await platformApi.evalsListFixtures();
+			const res = await evalsApi.listFixtures();
 			if (res.success && res.fixtures) {
 				fixtures.value = res.fixtures as EvalFixtureMeta[];
 			} else {
@@ -215,7 +216,7 @@ export const useEvalsStore = defineStore("evals", () => {
 	async function loadFixture(path: string) {
 		fixtureLoading.value = true;
 		try {
-			const res = await platformApi.evalsReadFixture({ fixturePath: path });
+			const res = await evalsApi.readFixture({ fixturePath: path });
 			if (res.success && res.fixture) {
 				selectedFixture.value = res.fixture;
 			}
@@ -230,7 +231,7 @@ export const useEvalsStore = defineStore("evals", () => {
 		resultsLoading.value = true;
 		resultsError.value = null;
 		try {
-			const res = await platformApi.evalsListResults();
+			const res = await evalsApi.listResults();
 			if (res.success && res.entries) {
 				results.value = res.entries as EvalRunResult[];
 			} else {
@@ -247,7 +248,7 @@ export const useEvalsStore = defineStore("evals", () => {
 		casesLoading.value = true;
 		casesError.value = null;
 		try {
-			const res = await platformApi.evalsListCases();
+			const res = await evalsApi.listCases();
 			if (res.success && res.cases) {
 				cases.value = res.cases as EvalCaseMeta[];
 			} else {
@@ -328,7 +329,7 @@ export const useEvalsStore = defineStore("evals", () => {
 
 		try {
 			log.debug("evals run start dispatching");
-			const res = await platformApi.evalsRunStart(opts);
+			const res = await evalsApi.runStart(opts);
 			log.debug("evals run start responded", { success: res.success, error: res.error });
 			if (!res.success) {
 				log.error("evals run start failed", { error: res.error });
@@ -353,7 +354,7 @@ export const useEvalsStore = defineStore("evals", () => {
 		runDetail.value = null;
 		try {
 			const filename = `${ts.replace(/[:.]/g, "-")}.json`;
-			const res = await platformApi.evalsReadRunDetail({
+			const res = await evalsApi.readRunDetail({
 				detailPath: `evals/runs/${filename}`,
 			});
 			if (res.success && res.detail) {
@@ -370,7 +371,7 @@ export const useEvalsStore = defineStore("evals", () => {
 
 	async function cancelRun() {
 		try {
-			await platformApi.evalsRunCancel();
+			await evalsApi.runCancel();
 		} catch {
 			/* ignore */
 		}
@@ -388,7 +389,7 @@ export const useEvalsStore = defineStore("evals", () => {
 		expect: Record<string, unknown>;
 	}): Promise<{ success: boolean; casePath?: string; error?: string }> {
 		try {
-			const res = await platformApi.evalsPromoteFixture(opts);
+			const res = await evalsApi.promoteFixture(opts);
 			return res;
 		} catch (e) {
 			return {
@@ -402,7 +403,7 @@ export const useEvalsStore = defineStore("evals", () => {
 		caseId: string,
 	): Promise<{ success: boolean; error?: string }> {
 		try {
-			const res = await platformApi.evalsRetireCase({ caseId });
+			const res = await evalsApi.retireCase({ caseId });
 			if (res.success) {
 				await loadCases();
 			}
@@ -419,7 +420,7 @@ export const useEvalsStore = defineStore("evals", () => {
 		weeks?: number,
 	): Promise<{ success: boolean; report?: string; error?: string }> {
 		try {
-			const res = await platformApi.evalsGenerateTriage(
+			const res = await evalsApi.generateTriage(
 				weeks ? { weeks } : undefined,
 			);
 			return res;

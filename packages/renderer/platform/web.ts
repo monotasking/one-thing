@@ -72,6 +72,10 @@ const webCapabilities: PlatformCapabilities = {
 	// interactionRespond:让浏览器替桌面答提问是一次独立的拍板。放开各改这一行。
 	music: false,
 	interactionRespond: false,
+	// P4c 第十批(#15):evals / evalsWorkbench 二十五条已迁通用 RPC,通道是通的。
+	// 评估面读写宿主机器上的 evals 仓,跑批还会拿 API key 直接打 provider ——
+	// 放开是一次独立的拍板。改这一行。
+	evals: false,
 	clipboardWrite: browserClipboardWriteCapability(),
 	desktopWindows: false,
 	globalMenuEvents: false,
@@ -202,6 +206,8 @@ function normalizeServerCapabilities(value: unknown): PlatformCapabilities {
 		// 两颗都默认关,服务器没有宣告就是关(P4c 第九批,#13 / #17)。
 		music: booleanProperty(value, "music", false),
 		interactionRespond: booleanProperty(value, "interactionRespond", false),
+		// 评估面要宿主机器上的 evals 仓与 API key(P4c 第十批,#15)。
+		evals: booleanProperty(value, "evals", false),
 		clipboardWrite: browserClipboardWriteCapability(),
 		desktopWindows: booleanProperty(value, "desktopWindows", false),
 		globalMenuEvents: booleanProperty(value, "globalMenuEvents", false),
@@ -675,105 +681,16 @@ const webApi = {
 			"workspace:file-changed",
 			callback,
 		),
-	recordEvalsDownvote: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsListRecords: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsListFixtures: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsReadFixture: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsListResults: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsListCases: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsGetCase: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsRunStart: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsRunCancel: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
+	// ── Evals(提示词评估 + 事故工作台)——————————————————————
+	// P4c 第十批:二十五条数据面已整只迁到通用 RPC 通道(`evalsRouter` /
+	// `evalsWorkbenchRouter`),这份名单里不再有它们。**挡在前面的换成了能力位**
+	// `evals`(上面 `webCapabilities` 里默认 false):关着时
+	// `platform/evals-client.ts` / `platform/evals-workbench-client.ts` 根本不发
+	// 请求,就地返回与从前这批硬桩**逐字相同**的答案。
+	// 留在这里的只有三条推送订阅 —— router 没有推送面,web 上也没有对应的 SSE。
 	onEvalsRunProgress: () => () => {},
-	evalsPromoteFixture: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsRetireCase: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsGenerateTriage: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsReadRunDetail: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsIncidentList: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsIncidentGet: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsIncidentUpdate: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsIncidentReadFile: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsReplayStart: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsReplayCancel: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
 	onEvalsReplayProgress: () => () => {},
-	evalsIncidentAnalyze: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsIncidentPromote: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsDiagnoseStart: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
 	onEvalsDiagnoseProgress: () => () => {},
-	evalsRoundList: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
-	evalsRoundReplay: async () => ({
-		success: false,
-		error: "Evals is not supported in the web build",
-	}),
 
 	// ── Generic RPC(主线 T0)。域客户端各占一行,传输面只有这一条。──
 	rpcInvoke,

@@ -241,43 +241,14 @@ export const IPC_CHANNELS = {
 	// 的 practiceRouter)。只剩这一条**推送** —— router 没有推送面。
 	PRACTICE_EVENT: "practice:event",
 
-	// Evals (prompt evaluation) related
-	EVALS_RECORD_DOWNVOTE: "evals:record-downvote",
-
-	// Evals Phase 1 - Review (read-only)
-	EVALS_LIST_RECORDS: "evals:list-records",
-	EVALS_LIST_FIXTURES: "evals:list-fixtures",
-	EVALS_READ_FIXTURE: "evals:read-fixture",
-	EVALS_READ_SNAPSHOT: "evals:read-snapshot",
-	EVALS_LIST_RESULTS: "evals:list-results",
-
-	// Evals Phase 2 - Run
-	EVALS_RUN_START: "evals:run-start",
-	EVALS_RUN_CANCEL: "evals:run-cancel",
+	// Evals(提示词评估 + 事故工作台)—— 二十五条请求/响应通道已整只迁到通用
+	// RPC 通道(P4c 第十批,`@shared/ipc/evals.ts` 的 evalsRouter +
+	// `@shared/ipc/evals-workbench.ts` 的 evalsWorkbenchRouter)。
+	// 只剩这三条**推送** —— router 没有推送面;它们走
+	// `backend/wiring/evals/events.ts` 的 configureEvalsEventBroadcaster 注入端口。
 	EVALS_RUN_PROGRESS: "evals:run-progress",
-	EVALS_LIST_CASES: "evals:list-cases",
-	EVALS_GET_CASE: "evals:get-case",
-
-	// Evals Phase 3 - Actions
-	EVALS_PROMOTE_FIXTURE: "evals:promote-fixture",
-	EVALS_RETIRE_CASE: "evals:retire-case",
-	EVALS_GENERATE_TRIAGE: "evals:generate-triage",
-	EVALS_READ_RUN_DETAIL: "evals:read-run-detail",
-
-	// Evals Workbench (incident-centric, W1-W5)
-	EVALS_INCIDENT_LIST: "evals:incident-list",
-	EVALS_INCIDENT_GET: "evals:incident-get",
-	EVALS_INCIDENT_UPDATE: "evals:incident-update",
-	EVALS_INCIDENT_READ_FILE: "evals:incident-read-file",
-	EVALS_REPLAY_START: "evals:replay-start",
-	EVALS_REPLAY_CANCEL: "evals:replay-cancel",
 	EVALS_REPLAY_PROGRESS: "evals:replay-progress",
-	EVALS_INCIDENT_ANALYZE: "evals:incident-analyze",
-	EVALS_INCIDENT_PROMOTE: "evals:incident-promote",
-	EVALS_DIAGNOSE_START: "evals:diagnose-start",
 	EVALS_DIAGNOSE_PROGRESS: "evals:diagnose-progress",
-	EVALS_ROUND_LIST: "evals:round-list",
-	EVALS_ROUND_REPLAY: "evals:round-replay",
 
 	// Token usage / billing moved to the generic RPC channel (usageRouter).
 

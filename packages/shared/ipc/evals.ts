@@ -545,3 +545,63 @@ export interface EvalsReadRunDetailResponse {
 	detail?: EvalRunDetail;
 	error?: string;
 }
+
+// ============================================================================
+// Router
+// ============================================================================
+
+/**
+ * evals(提示词评估:👎 记录 / 夹具 / 用例 / 跑批 / 闭环动作)域 —— 结构债
+ * P4c 第十批,十四条数据面整只从手写 IPC 通道迁到通用 `rpc:invoke` /
+ * `POST /api/rpc`。
+ *
+ * 十四条逐条对应从前 `IPC_CHANNELS` 上那十四条 `evals:*` invoke 通道 —— 全是
+ * `apps/electron/src/main/ipc/evals.ts` 里的裸 `ipcMain.handle`(这一域从来没有
+ * 「手写 IPC 工厂 + 壳适配」那两层)。请求/响应形状一字未改;变的只是通道。
+ *
+ * **一条推送留在原地**(`EVALS_RUN_PROGRESS`)—— router 今天没有推送面,它改走
+ * `backend/wiring/evals/events.ts` 的 `configureEvalsEventBroadcaster` 注入端口。
+ *
+ * 无参的三条(`listFixtures` / `listResults` / `listCases` / `runCancel`)按本仓
+ * 惯例递 `{}`;`generateTriage` 从前签名是 `request?: { weeks?: number }`,客户端
+ * 补成 `request ?? {}`,形状不变。
+ *
+ * `readSnapshot` 是这一域里**唯一没有渲染侧调用点**的一条:迁移前它连 preload
+ * 包装都没有(只有主进程那一头)。搬家把它当正常一条搬过来,渲染侧同样不生成
+ * 调用点 —— 少一条挂在 `IPC_CHANNELS` 上的孤儿通道。
+ */
+import { defineRouter } from './router.js'
+
+export type EvalsRoutes = {
+	recordDownvote: { input: EvalsRecordDownvoteRequest; output: EvalsRecordDownvoteResponse }
+	listRecords: { input: EvalsListRecordsRequest; output: EvalsListRecordsResponse }
+	listFixtures: { input: Record<string, never>; output: EvalsListFixturesResponse }
+	readSnapshot: { input: EvalsReadSnapshotRequest; output: EvalsReadSnapshotResponse }
+	readFixture: { input: EvalsReadFixtureRequest; output: EvalsReadFixtureResponse }
+	listResults: { input: Record<string, never>; output: EvalsListResultsResponse }
+	listCases: { input: Record<string, never>; output: EvalsListCasesResponse }
+	getCase: { input: EvalsGetCaseRequest; output: EvalsGetCaseResponse }
+	runStart: { input: EvalsRunStartRequest; output: EvalsRunStartResponse }
+	runCancel: { input: Record<string, never>; output: EvalsRunCancelResponse }
+	promoteFixture: { input: EvalsPromoteFixtureRequest; output: EvalsPromoteFixtureResponse }
+	retireCase: { input: EvalsRetireCaseRequest; output: EvalsRetireCaseResponse }
+	generateTriage: { input: EvalsGenerateTriageRequest; output: EvalsGenerateTriageResponse }
+	readRunDetail: { input: EvalsReadRunDetailRequest; output: EvalsReadRunDetailResponse }
+}
+
+export const evalsRouter = defineRouter<EvalsRoutes>('evals', [
+	'recordDownvote',
+	'listRecords',
+	'listFixtures',
+	'readSnapshot',
+	'readFixture',
+	'listResults',
+	'listCases',
+	'getCase',
+	'runStart',
+	'runCancel',
+	'promoteFixture',
+	'retireCase',
+	'generateTriage',
+	'readRunDetail',
+])

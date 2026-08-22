@@ -20,6 +20,7 @@ const electronCapabilities: PlatformCapabilities = {
   collabRooms: true,
   music: true,
   interactionRespond: true,
+  evals: true,
   clipboardWrite: true,
   desktopWindows: true,
   globalMenuEvents: true,

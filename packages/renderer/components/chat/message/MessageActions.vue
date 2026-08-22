@@ -449,6 +449,7 @@ import { useTTS } from '@/composables/useTTS'
 import { stripMarkdown } from '@/composables/useMarkdownRenderer'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import { platformApi } from '@/platform'
+import { evalsApi } from '@/platform/evals-client'
 import { useEvalsWorkbenchStore } from '@/stores/evalsWorkbench'
 import { COLLAB_REACTION_EMOJIS } from '@onething/runtime/collab'
 import { getLogger } from '@/services/log'
@@ -628,7 +629,7 @@ async function submitDownvote(skipNote = false) {
   setDownvoteNote(false)
 
   try {
-    const result = await platformApi.recordEvalsDownvote({
+    const result = await evalsApi.recordDownvote({
       sessionId: props.sessionId,
       turnId: props.messageId,
       userMessage: props.content,

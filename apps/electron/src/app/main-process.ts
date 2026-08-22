@@ -107,6 +107,7 @@ import {
 	setElectronAppLogsPath,
 } from "@onething/electron-host/logging/console-capture";
 import { configureSkillsEnvironmentHost } from "@onething/backend/wiring/skills/loader.js";
+import { configureEvalsHost } from "@onething/backend/wiring/evals/host-ports.js";
 import {
 	getElectronAppIsPackaged,
 	getElectronAppVersion,
@@ -408,6 +409,13 @@ export function startOnethingElectronMain(): void {
 	configureSkillsEnvironmentHost({
 		isPackaged: getElectronAppIsPackaged,
 		getResourcesPath: getElectronResourcesPath,
+	});
+	// 评估面的宿主注入(结构债 P4c 第十批)。「evals 仓在哪」的判定在装配层
+	// (`resolveEvalsRepoDir`);宿主只回答它独有的那一位事实 —— 开发态 app 是从
+	// 仓库 checkout 里跑起来的(cwd 就是仓根),打包态没有任何有意义的 cwd,
+	// 必须由用户在设置里显式配。未注入 = 视为非打包(server / CLI / 测试)。
+	configureEvalsHost({
+		isPackaged: getElectronAppIsPackaged,
 	});
 	// 「用系统的方式打开一个东西」的宿主能力(结构债 P4c 第二批)。产品层只声明要,
 	// 能力由这里给 —— 桌面有文件管理器和默认浏览器,server / CLI 没有,于是那两个

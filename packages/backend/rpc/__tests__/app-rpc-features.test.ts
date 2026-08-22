@@ -94,6 +94,10 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:tools', 'tools'],
   ['rpc:interaction', 'interaction'],
   ['rpc:music', 'music'],
+  // P4c 第十批:evals(十四条,`app.isPackaged` 摘成 configureEvalsHost 端口)、
+  // evalsWorkbench(十一条)。三条进度推送走同一个注入端口,不在域上。
+  ['rpc:evals', 'evals'],
+  ['rpc:evals-workbench', 'evalsWorkbench'],
 ] as const
 
 /**

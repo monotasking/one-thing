@@ -59,6 +59,14 @@ export interface PlatformCapabilities {
    * false 时就地返回迁移前那两条硬桩的答案。
    */
   interactionRespond: boolean
+  /**
+   * 提示词评估 / 事故工作台(P4c 第十批,#15 续做口径)。评估面读写的是**宿主
+   * 机器上**的 evals 仓与 `~/.onething/evals`,跑批还会拿用户配置的 API key 直接
+   * 打 provider —— 所以 web 默认 `false`,`platform/evals-client.ts` 与
+   * `platform/evals-workbench-client.ts` 在它为 false 时就地返回迁移前那批硬桩
+   * 的答案(`Evals is not supported in the web build`)。
+   */
+  evals: boolean
   clipboardWrite: boolean
   desktopWindows: boolean
   globalMenuEvents: boolean
