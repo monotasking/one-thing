@@ -1313,15 +1313,7 @@ export interface ElectronAPI {
 	) => () => void;
 	// Agent methods:走通用 RPC(agentsRouter),方法在 agents-client.ts 上。
 		// User prompt methods:走通用 RPC(promptsRouter),方法在 platformApi 上。
-	// Theme methods
-	getThemes: () => Promise<GetThemesResponse>;
-	getTheme: (themeId: string) => Promise<GetThemeResponse>;
-	applyTheme: (
-		themeId: string,
-		mode: "dark" | "light",
-	) => Promise<ApplyThemeResponse>;
-	refreshThemes: (projectPath?: string) => Promise<RefreshThemesResponse>;
-	openThemesFolder: () => Promise<{ success: boolean; error?: string }>;
+	// Theme methods:走通用 RPC(themesRouter),方法在 platform/themes-client.ts 上。
 	// Providers / model registry:走通用 RPC(providersRouter / modelsRouter),
 	// 方法在 platform/{providers,models}-client.ts 上。
 	// Tools methods
@@ -1411,73 +1403,8 @@ export interface ElectronAPI {
 		}) => void,
 	) => () => void;
 
-	// OAuth methods。末位 `target` 是凭证写回目标(批 B6):缺席 = 默认空间,
-	// 带 spaceId = 落进那个空间的凭证池(entryId 缺席 = 登一个新账号)。
-	oauthStart: (
-		providerId: string,
-		target?: OAuthCredentialTargetRequest,
-	) => Promise<{
-		success: boolean;
-		error?: string;
-		flowId?: string;
-		flowKind?: "pkce-callback" | "manual-pkce" | "device-code";
-		pollIntervalMs?: number;
-		expiresAt?: number;
-		statusMessage?: string;
-		// For device flow (GitHub Copilot)
-		userCode?: string;
-		verificationUri?: string;
-		// For manual code entry flow (Claude Code)
-		requiresCodeEntry?: boolean;
-		state?: string;
-		instructions?: string;
-	}>;
-	oauthCallback: (
-		providerId: string,
-		code: string,
-		state: string,
-		target?: OAuthCredentialTargetRequest,
-	) => Promise<{
-		success: boolean;
-		error?: string;
-	}>;
-	oauthLogout: (
-		providerId: string,
-		target?: OAuthCredentialTargetRequest,
-	) => Promise<{ success: boolean; error?: string }>;
-	oauthGetStatus: (
-		providerId: string,
-		target?: OAuthCredentialTargetRequest,
-	) => Promise<{
-		success: boolean;
-		providerId?: string;
-		isLoggedIn: boolean;
-		isExpired?: boolean;
-		canRefresh?: boolean;
-		expiresAt?: number;
-		account?: {
-			id?: string;
-			email?: string;
-			planType?: string;
-			isFedramp?: boolean;
-		};
-		lastError?: string;
-		error?: string;
-	}>;
-	oauthDevicePoll: (
-		providerId: string,
-		flowId?: string,
-		target?: OAuthCredentialTargetRequest,
-	) => Promise<{
-		success: boolean;
-		completed?: boolean;
-		error?: string;
-		pollStatus?: string;
-	}>;
-	oauthRefresh: (
-		providerId: string,
-		target?: OAuthCredentialTargetRequest,
-	) => Promise<{ success: boolean; error?: string }>;
+	// OAuth 的六条数据面:走通用 RPC(oauthRouter),方法在 platform/oauth-client.ts 上。
+	// **两条推送仍在这里** —— router 今天没有推送面。
 	onOAuthTokenRefreshed: (
 		callback: (data: { providerId: string }) => void,
 	) => () => void;

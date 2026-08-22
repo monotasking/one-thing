@@ -39,6 +39,7 @@ import { permissionRouter } from '@shared/ipc/permissions.js'
 import { practiceRouter } from '@shared/ipc/practice.js'
 import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
+import { oauthRouter } from '@shared/ipc/oauth.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { schedulerRouter } from '@shared/ipc/scheduler.js'
 import { scratchpadRouter } from '@shared/ipc/scratchpad.js'
@@ -46,6 +47,7 @@ import { sessionCommandRouter } from '@shared/ipc/session-command.js'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
 import { skillsRouter } from '@shared/ipc/skills.js'
 import { spacesRouter } from '@shared/ipc/spaces.js'
+import { themesRouter } from '@shared/ipc/themes.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 import { usageRouter } from '@shared/ipc/usage.js'
 import { variablesRouter } from '@shared/ipc/variables.js'
@@ -64,6 +66,7 @@ import { markdownRpcHandlers } from './domains/markdown.js'
 import { mcpRpcHandlers } from './domains/mcp.js'
 import { mediaRpcHandlers } from './domains/media.js'
 import { modelsRpcHandlers } from './domains/models.js'
+import { oauthRpcHandlers } from './domains/oauth.js'
 import { permissionGrantsRpcHandlers } from './domains/permission-grants.js'
 import { permissionRpcHandlers } from './domains/permission.js'
 import { practiceRpcHandlers } from './domains/practice.js'
@@ -76,6 +79,7 @@ import { sessionCommandRpcHandlers } from './domains/session-command.js'
 import { sessionsRpcHandlers } from './domains/sessions.js'
 import { skillsRpcHandlers } from './domains/skills.js'
 import { spacesRpcHandlers } from './domains/spaces.js'
+import { themesRpcHandlers } from './domains/themes.js'
 import { todoPlanRpcHandlers } from './domains/todo-plan.js'
 import { usageRpcHandlers } from './domains/usage.js'
 import { variablesRpcHandlers } from './domains/variables.js'
@@ -192,6 +196,22 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // `readConfigFile` 在 http 上不读本机文件、stdio 探测在 http 上默认关闭(见域文件头)。
   // 位置在 acp 之后、自进化之前 —— 同一条约束:卸载要逆序。
   { id: 'rpc:mcp', mount: ctx => { ctx.registerRpcDomain(mcpRouter, mcpRpcHandlers) } },
+  // P4c 第七批第一个域(themes)—— 五条:列表 / 单取 / 应用 / 刷新 / 打开目录。
+  // 它零推送(系统深浅色变化走的是 `SYSTEM_THEME_CHANGED`,那是设置域的推送,
+  // 不是这个域的通道),所以 `apps/electron/src/ipc/themes.ts` 与
+  // `@main/ipc/themes.ts` 整只删掉(同 acp / collab 判例)。
+  // 两处口径变化写在域文件头:插件主题覆盖的合成从 `@main` 搬进了处理者(server
+  // 顺带获得,拍板 #20),`openFolder` 改走 `configureShellHost` 端口。
+  // 位置在 mcp 之后、自进化之前:它只要主题运行时的进程内单例与插件清单,
+  // 两者在装配到这一步时都早已就位;硬约束仍只有一条 —— 必须在自进化之前。
+  { id: 'rpc:themes', mount: ctx => { ctx.registerRpcDomain(themesRouter, themesRpcHandlers) } },
+  // P4c 第七批第二个域(oauth)—— 六条数据面。**两条推送留在原地**:
+  // `OAUTH_TOKEN_REFRESHED` / `OAUTH_TOKEN_EXPIRED` 改成注入端口
+  // (`configureOAuthEventBroadcaster`,同 practice / scratchpad 判例),
+  // 桌面推 webContents、server 串联进 `GET /api/oauth/events` 那条 SSE。
+  // server 那台 per-owner 的第二台 authService 随之消失 —— 一个 store 一本令牌账。
+  // 位置在 themes 之后、自进化之前:同一条约束(卸载要逆序)。
+  { id: 'rpc:oauth', mount: ctx => { ctx.registerRpcDomain(oauthRouter, oauthRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

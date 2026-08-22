@@ -319,7 +319,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { platformApi } from '@/platform'
+import { oauthApi } from '@/platform/oauth-client'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
@@ -808,7 +808,8 @@ async function startOAuthLogin(): Promise<void> {
   const label = draft.label.trim() || undefined
 
   try {
-    const response = await platformApi.oauthStart(props.providerId, {
+    const response = await oauthApi.start({
+      providerId: props.providerId,
       spaceId: spaceId.value,
       ...(label ? { label } : {}),
     })
@@ -853,7 +854,9 @@ async function pollDeviceFlow(flowId: string | undefined, intervalMs: number): P
   let delay = intervalMs
   for (let attempt = 0; attempt < 60; attempt++) {
     await wait(delay)
-    const response = await platformApi.oauthDevicePoll(props.providerId, flowId, {
+    const response = await oauthApi.devicePoll({
+      providerId: props.providerId,
+      flowId,
       spaceId: spaceId.value,
     })
     if (response.success && response.completed) {
@@ -885,7 +888,10 @@ async function submitOAuthCode(): Promise<void> {
   const label = draft.label.trim() || undefined
   busy.value = true
   try {
-    const response = await platformApi.oauthCallback(props.providerId, code, entry.state, {
+    const response = await oauthApi.callback({
+      providerId: props.providerId,
+      code,
+      state: entry.state,
       spaceId: spaceId.value,
       ...(label ? { label } : {}),
     })
@@ -916,7 +922,8 @@ async function logoutOAuth(entryId: string): Promise<void> {
   busy.value = true
   error.value = null
   try {
-    const response = await platformApi.oauthLogout(props.providerId, {
+    const response = await oauthApi.logout({
+      providerId: props.providerId,
       spaceId: spaceId.value,
       entryId,
     })

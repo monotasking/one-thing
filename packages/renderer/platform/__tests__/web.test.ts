@@ -1122,27 +1122,7 @@ describe('createWebPlatformApi', () => {
     const { createWebPlatformApi } = await import('../web.js')
     const api = createWebPlatformApi()
 
-    await expect(api.getThemes()).resolves.toEqual({ success: true, url: '/api/themes' })
-    await expect(api.getTheme('flexoki')).resolves.toEqual({ success: true, url: '/api/themes/flexoki' })
-    await expect(api.applyTheme('flexoki', 'dark')).resolves.toEqual({
-      success: true,
-      url: '/api/themes/flexoki/apply',
-    })
-    await expect(api.refreshThemes('/workspace')).resolves.toEqual({
-      success: true,
-      url: '/api/themes/refresh',
-    })
-    await expect(api.openThemesFolder()).resolves.toEqual({
-      success: true,
-      url: '/api/themes/open-folder',
-    })
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/themes/flexoki/apply', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/themes/refresh', expect.objectContaining({
-      method: 'POST',
-    }))
+    // P4c 第七批:themes 五条已迁到通用 RPC(themesRouter),web 壳上不再有它们的镜像。
   })
 
   it('maps prompt and todo-plan platform methods to server REST endpoints', async () => {
@@ -1233,30 +1213,8 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/plugins/execute-command',
     })
-    await expect(api.oauthStart('github-copilot')).resolves.toEqual({
-      success: true,
-      url: '/api/oauth/start',
-    })
-    await expect(api.oauthCallback('claude-code', 'code', 'state')).resolves.toEqual({
-      success: true,
-      url: '/api/oauth/callback',
-    })
-    await expect(api.oauthDevicePoll('github-copilot', 'flow-1')).resolves.toEqual({
-      success: true,
-      url: '/api/oauth/device-poll',
-    })
-    await expect(api.oauthRefresh('github-copilot')).resolves.toEqual({
-      success: true,
-      url: '/api/oauth/refresh',
-    })
-    await expect(api.oauthGetStatus('github-copilot')).resolves.toEqual({
-      success: true,
-      url: '/api/oauth/status',
-    })
-    await expect(api.oauthLogout('github-copilot')).resolves.toEqual({
-      success: true,
-      url: '/api/oauth/logout',
-    })
+    // P4c 第七批:oauth 六条数据面已迁到通用 RPC(oauthRouter);web 壳上只剩
+    // `/api/oauth/events` 那条 SSE 订阅(推送面,router 今天没有)。
     await expect(api.gatewayGetStatus()).resolves.toEqual({
       success: true,
       url: '/api/gateway/status',
@@ -1329,14 +1287,6 @@ describe('createWebPlatformApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/execute-command', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ commandName: '/demo', args: '--fast', sessionId: 'session-1' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/oauth/callback', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ providerId: 'claude-code', code: 'code', state: 'state' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/oauth/device-poll', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ providerId: 'github-copilot', flowId: 'flow-1' }),
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/gateway/start', expect.objectContaining({
       method: 'POST',

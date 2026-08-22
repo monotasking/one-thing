@@ -106,18 +106,13 @@ import {
 	HeadlessMCPManager,
 	type MCPClientLike,
 } from "@onething/core/mcp";
+// P4c 第七批:oauth 的六条数据面(与它们背后那台 per-owner 的第二台 authService)
+// 已随 `oauthRouter` 迁走;server 这侧只剩令牌事件的广播端口。
 import {
-	type OnethingAuthService,
-	OnethingTokenStore,
-	completeOnethingOAuthCallbackForIpc,
-	createOnethingAuthService,
-	getOnethingOAuthStatusForIpc,
-	logoutOnethingOAuthForIpc,
-	pollOnethingOAuthDeviceFlowForIpc,
-	refreshOnethingOAuthForIpc,
-	startOnethingOAuthForIpc,
-	type OnethingOAuthToken,
-} from "@onething/runtime/auth";
+	configureOAuthEventBroadcaster,
+	getOAuthEventBroadcaster,
+	type OAuthTokenEvent,
+} from "../wiring/auth/oauth-events.js";
 import {
 	createOnethingSearchProviders,
 	executeOnethingSearchForIpc,
@@ -206,7 +201,6 @@ import {
 	revokeOnethingPermissionGrantForIpc,
 	type PermissionGrant,
 } from "@onething/runtime/permissions";
-import { defaultOnethingThemeRuntime } from "@onething/runtime/themes/theme-runtime";
 // todo/plan 的数据面已整体迁走(含 per-owner 分库);server 这侧只剩变更广播的载荷类型。
 import type { TodoPlanChangedPayload } from "@onething/runtime/todo-plan";
 import {
@@ -428,7 +422,6 @@ export interface OnethingServerRuntimeOptions {
 	allowMCPStdio?: boolean;
 	mcpClientFactory?: ServerMCPClientFactory;
 	pluginCommands?: ServerPluginCommandDefinition[];
-	oauthFetch?: typeof fetch;
 	/**
 	 * 进程级单槽端口(MCP 客户端宿主 + clientInfo + capabilities-changed、授权账页
 	 * 存储、todo/scratchpad 广播)归谁配。
@@ -894,10 +887,6 @@ async function createServerRuntimeOverServerBackend(
 	const currentSessionIds = new Map<string, string>();
 	const pendingPermissions = new Map<string, PendingPermissionRecord>();
 	const settingsByOwner = new Map<string, AppSettings>();
-	const authServicesByOwner = new Map<
-		string,
-		OnethingAuthService<OnethingOAuthToken>
-	>();
 	const mcpManagersByOwner = new Map<string, ServerMCPManager>();
 	const agentStoresByOwner = new Map<
 		string,
@@ -1272,6 +1261,36 @@ async function createServerRuntimeOverServerBackend(
 	// `shutdown()` 里还原。独立进程里前一位是空的,串联退化成今天的行为。
 	const previousTodoPlanHostPorts = getTodoPlanHostPorts();
 	const previousScratchpadHostPorts = getScratchpadHostPorts();
+	/**
+	 * OAuth 令牌事件同形(P4c 第七批):数据面迁走之后,事件源是装配层那台
+	 * `authService` 单例,而 `GET /api/oauth/events` 那条 SSE 是它在 web 上的出口。
+	 * 端口是单槽的,所以嵌在宿主里时**串联** —— 先让桌面那只把事件推给窗口,
+	 * 再扇进这里的订阅表;`shutdown()` 还原。
+	 */
+	const oauthTokenEventHandlers = new Set<(event: OAuthTokenEvent) => void>();
+	const previousOAuthEventBroadcaster = getOAuthEventBroadcaster();
+	configureOAuthEventBroadcaster((event) => {
+		previousOAuthEventBroadcaster?.(event);
+		for (const handler of oauthTokenEventHandlers) {
+			try {
+				handler(event);
+			} catch (error) {
+				log.error("oauth token event broadcast failed", {}, error);
+			}
+		}
+	});
+	const restoreOAuthEventBroadcaster = (): void => {
+		configureOAuthEventBroadcaster(previousOAuthEventBroadcaster);
+		oauthTokenEventHandlers.clear();
+	};
+	const subscribeOAuthTokenEvents = (
+		handler: (event: OAuthTokenEvent) => void,
+	): RuntimeUnsubscribe => {
+		oauthTokenEventHandlers.add(handler);
+		return () => {
+			oauthTokenEventHandlers.delete(handler);
+		};
+	};
 	configureTodoPlanHost({
 		...previousTodoPlanHostPorts,
 		broadcastChanged: (payload) => {
@@ -1405,32 +1424,6 @@ async function createServerRuntimeOverServerBackend(
 			promptStoresByOwner.set(key, store);
 		}
 		return store;
-	};
-
-	const getAuthServiceForContext = (
-		context = defaultRequestContext(),
-	): OnethingAuthService<OnethingOAuthToken> => {
-		const key = ownerKey(context);
-		let service = authServicesByOwner.get(key);
-		if (!service) {
-			service = createOnethingAuthService<OnethingOAuthToken>({
-				tokenStore: new OnethingTokenStore<OnethingOAuthToken>({
-					tokenFilePath: join(
-						dataRoot,
-						"owners",
-						safePathSegment(context.userId),
-						safePathSegment(context.workspaceId),
-						"oauth",
-						"tokens.json",
-					),
-					logger: consoleLog,
-				}),
-				...(options.oauthFetch ? { fetch: options.oauthFetch } : {}),
-				logger: consoleLog,
-			});
-			authServicesByOwner.set(key, service);
-		}
-		return service;
 	};
 
 	const getVariableRuntimeForContext = (
@@ -2099,22 +2092,10 @@ async function createServerRuntimeOverServerBackend(
 				return resolveSearchActionForContext(actionId, context);
 			},
 		},
-		themes: {
-			getThemes: () => defaultOnethingThemeRuntime.listThemes(),
-			getTheme: (themeId: string) =>
-				defaultOnethingThemeRuntime.getTheme(themeId),
-			applyTheme: (themeId: string, mode: "dark" | "light") =>
-				defaultOnethingThemeRuntime.applyTheme(themeId, mode),
-			refreshThemes: (projectPath?: string) =>
-				defaultOnethingThemeRuntime.refreshThemes(projectPath),
-			async openThemesFolder() {
-				return {
-					success: false,
-					error:
-						"Opening the local themes folder is not available in the web server runtime.",
-				};
-			},
-		},
+		// P4c 第七批:`themes` adapter 整只没了 —— 五条随 `themesRouter` 走通用 RPC,
+		// 两个宿主读同一台 `defaultOnethingThemeRuntime`,连插件主题覆盖的合成都同一份。
+		// 从前那句「web server runtime 不支持打开本地主题目录」如今是
+		// `configureShellHost` 未注入时的结构化降级。
 		// P4c 第五批:`prompts` adapter 整只没了 —— 系统提示词快照随 `chatRouter`
 		// 走,两个宿主读的是同一条 `buildSystemPromptSnapshot`。
 		files: {
@@ -2611,97 +2592,12 @@ async function createServerRuntimeOverServerBackend(
 				});
 			},
 		},
+		// P4c 第七批:六条数据面已迁到 `oauthRouter`,连同 server 那台 per-owner 的
+		// 第二台 authService(拍板 #20:一个 store 一本令牌账)。这里只剩**推送面** ——
+		// `GET /api/oauth/events` 的 SSE 源,它从装配层那条广播端口取货,而不是
+		// 自己再挂一次 authService 的监听。
 		oauth: {
-			start(providerId: string, context = defaultRequestContext()) {
-				const service = getAuthServiceForContext(context);
-				return startOnethingOAuthForIpc({
-					providerId,
-					start: (id) => service.start(id),
-					logger: consoleLog,
-				});
-			},
-			callback(request: unknown, context = defaultRequestContext()) {
-				const typedRequest = request as {
-					providerId?: string;
-					code?: string;
-					state?: string;
-				};
-				const service = getAuthServiceForContext(context);
-				return completeOnethingOAuthCallbackForIpc({
-					providerId: typedRequest.providerId || "",
-					code: typedRequest.code || "",
-					state: typedRequest.state || "",
-					completeManualCode: (providerId, code, state) =>
-						service.completeManualCode(providerId, code, state),
-					logger: consoleLog,
-				});
-			},
-			devicePoll(request: unknown, context = defaultRequestContext()) {
-				const typedRequest = request as {
-					providerId?: string;
-					flowId?: string;
-				};
-				const service = getAuthServiceForContext(context);
-				return pollOnethingOAuthDeviceFlowForIpc({
-					providerId: typedRequest.providerId || "",
-					flowId: typedRequest.flowId,
-					pollDeviceFlow: (providerId, flowId) =>
-						service.pollDeviceFlow(providerId, flowId),
-					logger: consoleLog,
-				});
-			},
-			refresh(providerId: string, context = defaultRequestContext()) {
-				const service = getAuthServiceForContext(context);
-				return refreshOnethingOAuthForIpc({
-					providerId,
-					refreshToken: (id) => service.refreshToken(id),
-					notifyTokenExpired: (id, error) => {
-						service.emit("token-expired", { providerId: id, error });
-					},
-					logger: consoleLog,
-				});
-			},
-			status(providerId: string, context = defaultRequestContext()) {
-				const service = getAuthServiceForContext(context);
-				return getOnethingOAuthStatusForIpc({
-					providerId,
-					getStatus: (id) => service.getStatus(id),
-					logger: consoleLog,
-				});
-			},
-			logout(providerId: string, context = defaultRequestContext()) {
-				const service = getAuthServiceForContext(context);
-				return logoutOnethingOAuthForIpc({
-					providerId,
-					deleteToken: (id) => service.deleteToken(id),
-					logger: consoleLog,
-				});
-			},
-			subscribe(
-				handler: (event: RuntimeOAuthTokenEvent) => void,
-				context = defaultRequestContext(),
-			) {
-				const service = getAuthServiceForContext(context);
-				const onRefreshed = (data: { providerId: string }) => {
-					handler({
-						type: "oauth:token-refreshed",
-						providerId: data.providerId,
-					});
-				};
-				const onExpired = (data: { providerId: string; error?: string }) => {
-					handler({
-						type: "oauth:token-expired",
-						providerId: data.providerId,
-						error: data.error,
-					});
-				};
-				service.on("token-refreshed", onRefreshed);
-				service.on("token-expired", onExpired);
-				return () => {
-					service.off("token-refreshed", onRefreshed);
-					service.off("token-expired", onExpired);
-				};
-			},
+			subscribe: subscribeOAuthTokenEvents,
 		},
 		gateway: {
 			async getStatus(
@@ -3002,10 +2898,7 @@ async function createServerRuntimeOverServerBackend(
 			// 已经关掉的 runtime 的闭包(handler 集合虽已清空,但链子还在)。
 			configureTodoPlanHost(previousTodoPlanHostPorts);
 			configureScratchpadHost(previousScratchpadHostPorts);
-			for (const service of authServicesByOwner.values()) {
-				service.cleanup();
-			}
-			authServicesByOwner.clear();
+			restoreOAuthEventBroadcaster();
 			for (const variableRuntime of variableRuntimesByOwner.values()) {
 				variableRuntime.unsubscribe();
 				variableRuntime.registry.reset();

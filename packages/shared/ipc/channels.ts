@@ -157,20 +157,12 @@ export const IPC_CHANNELS = {
 	IMAGE_PREVIEW_UPDATE: "image-preview:update",
 	IMAGE_GALLERY_UPDATE: "image-gallery:update",
 
-	// Theme related
-	THEME_GET_ALL: "themes:get-all",
-	THEME_GET: "themes:get",
-	THEME_APPLY: "themes:apply",
-	THEME_REFRESH: "themes:refresh",
-	THEME_OPEN_FOLDER: "themes:open-folder",
+	// Theme:五条数据面已迁到通用 RPC 通道(themesRouter,P4c 第七批);
+	// 本域零推送,所以这里一条不剩。
 
-	// OAuth related
-	OAUTH_START: "oauth:start",
-	OAUTH_CALLBACK: "oauth:callback",
-	OAUTH_REFRESH: "oauth:refresh",
-	OAUTH_LOGOUT: "oauth:logout",
-	OAUTH_STATUS: "oauth:status",
-	OAUTH_DEVICE_POLL: "oauth:device-poll",
+	// OAuth:六条数据面已迁到通用 RPC 通道(oauthRouter,P4c 第七批)。
+	// 留下的两条是**推送** —— router 今天没有推送面,它们走
+	// `configureOAuthEventBroadcaster` 注入端口。
 	OAUTH_TOKEN_REFRESHED: "oauth:token-refreshed",
 	OAUTH_TOKEN_EXPIRED: "oauth:token-expired",
 

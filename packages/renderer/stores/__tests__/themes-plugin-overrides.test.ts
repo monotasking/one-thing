@@ -24,10 +24,16 @@ const applyTheme = vi.fn(async () => ({
   cssVariables: { '--color-primary': '#ff0000' },
 }))
 
+// P4c 第七批:themes 走通用 RPC 域客户端;`@/platform` 上只剩 settings store 要的几条。
+vi.mock('@/platform/themes-client', () => ({
+  themesApi: {
+    getAll: vi.fn(async () => ({ success: true, themes: [] })),
+    apply: (...args: unknown[]) => applyTheme(...(args as [])),
+  },
+}))
+
 vi.mock('@/platform', () => ({
   platformApi: {
-    getThemes: vi.fn(async () => ({ success: true, themes: [] })),
-    applyTheme: (...args: unknown[]) => applyTheme(...(args as [])),
     // settings store 在 setup 期就挂系统主题监听 —— 主题 store 会连带把它建起来。
     onSystemThemeChanged: vi.fn(() => () => {}),
     getSystemTheme: vi.fn(async () => ({ success: true, theme: 'dark' })),

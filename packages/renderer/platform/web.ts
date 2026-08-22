@@ -24,7 +24,6 @@ import type {
 	VoiceSynthesizeRequest,
 	VoiceTestASRRequest,
 	VoiceTestTTSRequest,
-	OAuthCredentialTargetRequest,
 } from "@/types";
 import type { SessionEventEnvelope } from "@shared/events";
 import type {
@@ -546,14 +545,8 @@ const webApi = {
 		return response;
 	},
 
-	getThemes: () => requestJson("/api/themes"),
-	getTheme: (themeId: string) =>
-		requestJson(`/api/themes/${encodeURIComponent(themeId)}`),
-	applyTheme: (themeId: string, mode: "dark" | "light") =>
-		postJson(`/api/themes/${encodeURIComponent(themeId)}/apply`, { mode }),
-	refreshThemes: (projectPath?: string) =>
-		postJson("/api/themes/refresh", { projectPath }),
-	openThemesFolder: () => postJson("/api/themes/open-folder"),
+	// Themes 走通用 RPC(themesRouter,P4c 第七批):浏览器从此拿到的是与桌面
+	// 逐字相同的一份主题 —— 插件覆盖的合成也在同一个域处理者里做。
 
 	// System prompt snapshot 与另外五条聊天面走通用 RPC(chatRouter,P4c 第五批);
 	// User prompt snippets 走 promptsRouter。两者都见文件末尾的域客户端一行区。
@@ -571,28 +564,11 @@ const webApi = {
 		sessionId: string,
 	) =>
 		postJson("/api/plugins/execute-command", { commandName, args, sessionId }),
-	// 末位 `_target` 是 per-space 凭证的写回目标(批 B6)。**web 端收下即丢** ——
-	// apps/server 没有 space 维度(B4 勘误 5 同一条口径),转发给一个不认识它的
-	// 宿主只会造出「以为分空间登录了」的假象。形态对齐,语义诚实。
-	oauthStart: (providerId: string, _target?: OAuthCredentialTargetRequest) =>
-		postJson("/api/oauth/start", { providerId }),
-	oauthCallback: (
-		providerId: string,
-		code: string,
-		state: string,
-		_target?: OAuthCredentialTargetRequest,
-	) => postJson("/api/oauth/callback", { providerId, code, state }),
-	oauthLogout: (providerId: string, _target?: OAuthCredentialTargetRequest) =>
-		postJson("/api/oauth/logout", { providerId }),
-	oauthGetStatus: (providerId: string, _target?: OAuthCredentialTargetRequest) =>
-		postJson("/api/oauth/status", { providerId }),
-	oauthDevicePoll: (
-		providerId: string,
-		flowId?: string,
-		_target?: OAuthCredentialTargetRequest,
-	) => postJson("/api/oauth/device-poll", { providerId, flowId }),
-	oauthRefresh: (providerId: string, _target?: OAuthCredentialTargetRequest) =>
-		postJson("/api/oauth/refresh", { providerId }),
+	// OAuth 的六条数据面走通用 RPC(oauthRouter,P4c 第七批)。顺带修掉一处说谎:
+	// 从前 web 壳把凭证写回目标(批 B6 的 spaceId/entryId/label)**收下即丢**,
+	// 浏览器里往空间凭证池登录等于没登;走 router 之后它真的传到 authService 了
+	// —— 两个宿主吃的也是同一台 authService、同一本令牌账。
+	// **两条推送仍走 SSE**:router 今天没有推送面。
 	onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) =>
 		createEventSourceSubscription<{ providerId: string }>(
 			"/api/oauth/events",

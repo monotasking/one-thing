@@ -108,3 +108,53 @@ export interface OAuthDevicePollResponse {
   // 'authorization_pending' | 'slow_down' | 'expired_token' | 'access_denied'
   pollStatus?: string
 }
+
+// OAuth refresh request / response
+export interface OAuthRefreshRequest extends OAuthCredentialTargetRequest {
+  providerId: string
+}
+
+export interface OAuthRefreshResponse {
+  success: boolean
+  error?: string
+}
+
+// ============================================
+// Router
+// ============================================
+
+/**
+ * oauth(订阅登录)域 —— 结构债 P4c 第七批,六条数据面从手写 IPC 通道迁到通用
+ * `rpc:invoke` / `POST /api/rpc`。
+ *
+ * 六条方法**逐条对应**从前 `IPC_CHANNELS` 上那六条 oauth invoke 通道,信封形状
+ * 也一字未改(`{ providerId, ...credentialTarget }`)—— 从前壳上那几条包装是把
+ * `(providerId, target)` 两个位置参数现拼成同一个对象,现在渲染侧直接递对象。
+ *
+ * **两条推送不在这张表上**:`OAUTH_TOKEN_REFRESHED` / `OAUTH_TOKEN_EXPIRED` 走
+ * `configureOAuthEventBroadcaster` 注入端口(`@onething/backend/wiring/auth/oauth-events`),
+ * 桌面推 `webContents.send`、server 推 `GET /api/oauth/events` 那条 SSE ——
+ * router 今天没有推送面,白名单上多一条就等于承诺了一条不存在的通道。
+ *
+ * `start` 是本域唯一按 `context.transport` 分叉的一条:http 上不开浏览器
+ * (旧 server 路由从来就没递过 `openExternal`,逐字保留)。
+ */
+import { defineRouter } from './router.js'
+
+export type OAuthRoutes = {
+  start: { input: OAuthStartRequest; output: OAuthStartResponse }
+  callback: { input: OAuthCallbackRequest; output: OAuthCallbackResponse }
+  devicePoll: { input: OAuthDevicePollRequest; output: OAuthDevicePollResponse }
+  refresh: { input: OAuthRefreshRequest; output: OAuthRefreshResponse }
+  status: { input: OAuthStatusRequest; output: OAuthStatusResponse }
+  logout: { input: OAuthLogoutRequest; output: OAuthLogoutResponse }
+}
+
+export const oauthRouter = defineRouter<OAuthRoutes>('oauth', [
+  'start',
+  'callback',
+  'devicePoll',
+  'refresh',
+  'status',
+  'logout',
+])

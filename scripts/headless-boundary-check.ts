@@ -1007,12 +1007,6 @@ const MAIN_OAUTH_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
   /isLoggedIn:\s*false/,
 ]
 
-const MAIN_OAUTH_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
-]
-
 const MAIN_STREAM_RUNTIME_WIRING_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]@onething\/runtime['"]/,
   /createOnethingProductStreamRuntime\s*</,
@@ -4460,8 +4454,20 @@ function checkElectronHostOwnsOAuthEvents(): void {
     'broadcastElectronOAuthTokenExpired',
     'IPC_CHANNELS.OAUTH_TOKEN_REFRESHED',
     'IPC_CHANNELS.OAUTH_TOKEN_EXPIRED',
+    // P4c 第七批:数据面迁走之后,这两条推送靠一个注入端口找到宿主 ——
+    // 桌面这一侧的注入就是本文件仅剩的内容(同 practice / scratchpad 判例)。
+    'configureOAuthEventBroadcaster',
   ]
+  // 端口本体在装配层 wiring/auth 里:单槽 + 可读回(server 要串联)+ 令牌过期的
+  // 统一通知口(`refresh` 那条改走事件源,而不是各宿主自己广播一次)。
+  const oauthEventPortFile = path.join(root, 'packages/backend/wiring/auth/oauth-events.ts')
+  const oauthEventPortContent = fs.existsSync(oauthEventPortFile)
+    ? fs.readFileSync(oauthEventPortFile, 'utf-8')
+    : ''
   const lines = [
+    ...['configureOAuthEventBroadcaster', 'getOAuthEventBroadcaster', 'notifyOAuthTokenExpired']
+      .filter(symbol => !oauthEventPortContent.includes(symbol))
+      .map(symbol => `${rel(oauthEventPortFile)}: missing OAuth event broadcaster port symbol ${symbol}`),
     ...(!packageContent.includes('./oauth/events')
       ? [`${rel(electronPackage)}: missing OAuth events export`]
       : []),
@@ -4477,58 +4483,6 @@ function checkElectronHostOwnsOAuthEvents(): void {
   ]
 
   assertNoMatches('apps/electron owns Electron OAuth event broadcasting', lines)
-}
-
-function checkElectronHostOwnsOAuthIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronOAuthIpcFile = path.join(root, 'apps/electron/src/ipc/oauth.ts')
-  const mainOAuthFile = path.join(root, 'apps/electron/src/main/ipc/oauth.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronOAuthIpcContent = fs.existsSync(electronOAuthIpcFile)
-    ? fs.readFileSync(electronOAuthIpcFile, 'utf-8')
-    : ''
-  const mainOAuthContent = fs.existsSync(mainOAuthFile) ? fs.readFileSync(mainOAuthFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronOAuthIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronOAuthIpcChannels',
-    'ElectronOAuthProviderRequest',
-    'ElectronOAuthCallbackRequest',
-    'ElectronOAuthDevicePollRequest',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/oauth',
-    'registerElectronOAuthIpcHandlers',
-    'IPC_CHANNELS.OAUTH_START',
-    'IPC_CHANNELS.OAUTH_CALLBACK',
-    'IPC_CHANNELS.OAUTH_DEVICE_POLL',
-    'IPC_CHANNELS.OAUTH_REFRESH',
-    'IPC_CHANNELS.OAUTH_STATUS',
-    'IPC_CHANNELS.OAUTH_LOGOUT',
-    'startOnethingOAuthForIpc',
-    'completeOnethingOAuthCallbackForIpc',
-    'pollOnethingOAuthDeviceFlowForIpc',
-    'refreshOnethingOAuthForIpc',
-    'getOnethingOAuthStatusForIpc',
-    'logoutOnethingOAuthForIpc',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/oauth')
-      ? [`${rel(electronPackage)}: missing OAuth IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronOAuthIpcContent.includes(symbol))
-      .map(symbol => `${rel(electronOAuthIpcFile)}: missing Electron OAuth IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainOAuthContent.includes(symbol))
-      .map(symbol => `${rel(mainOAuthFile)}: missing OAuth IPC adapter symbol ${symbol}`),
-    ...(fs.existsSync(mainOAuthFile)
-      ? matchingLines(mainOAuthFile, MAIN_OAUTH_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/oauth.ts: missing OAuth IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron OAuth IPC host operations', lines)
 }
 
 function checkElectronHostOwnsSettingsIpcHost(): void {
@@ -4869,54 +4823,6 @@ function checkElectronHostOwnsPluginsIpcHost(): void {
   ]
 
   assertNoMatches('apps/electron owns Electron plugins IPC host operations', lines)
-}
-
-function checkElectronHostOwnsThemesIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronThemesFile = path.join(root, 'apps/electron/src/ipc/themes.ts')
-  const mainThemesFile = path.join(root, 'apps/electron/src/main/ipc/themes.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronThemesContent = fs.existsSync(electronThemesFile) ? fs.readFileSync(electronThemesFile, 'utf-8') : ''
-  const mainThemesContent = fs.existsSync(mainThemesFile) ? fs.readFileSync(mainThemesFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronThemesIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'openElectronPath',
-    'ElectronThemeFolderOpener',
-    'ElectronThemeMode',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/themes',
-    'registerElectronThemesIpcHandlers',
-    'IPC_CHANNELS.THEME_GET_ALL',
-    'IPC_CHANNELS.THEME_GET',
-    'IPC_CHANNELS.THEME_APPLY',
-    'IPC_CHANNELS.THEME_REFRESH',
-    'IPC_CHANNELS.THEME_OPEN_FOLDER',
-    'defaultOnethingThemeRuntime',
-    'listThemes',
-    'getTheme',
-    'applyTheme',
-    'refreshThemes',
-    'openThemesFolder',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/themes')
-      ? [`${rel(electronPackage)}: missing themes IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronThemesContent.includes(symbol))
-      .map(symbol => `${rel(electronThemesFile)}: missing Electron themes IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainThemesContent.includes(symbol))
-      .map(symbol => `${rel(mainThemesFile)}: missing themes IPC adapter symbol ${symbol}`),
-    ...(fs.existsSync(mainThemesFile)
-      ? matchingLines(mainThemesFile, MAIN_THEMES_IPC_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/themes.ts: missing themes IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron themes IPC host operations', lines)
 }
 
 /**
@@ -6375,7 +6281,8 @@ function checkRuntimeOwnsAuthCallbackServer(): void {
 
 function checkRuntimeOwnsOAuthIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/auth/ipc-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/oauth.ts')
+  // P4c 第七批:oauth 六条数据面整域迁 router,`@main` 那层壳适配已删 —— 判据改指域文件。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/oauth.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'startOnethingOAuthForIpc',
@@ -6394,7 +6301,7 @@ function checkRuntimeOwnsOAuthIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned OAuth IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_OAUTH_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/oauth.ts: missing OAuth IPC adapter']),
+      : ['packages/backend/rpc/domains/oauth.ts: missing OAuth RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns OAuth IPC operations', lines)
@@ -8395,7 +8302,8 @@ function checkRuntimeOwnsThemeRuntime(): void {
     'packages/onething-runtime/src/themes/window-theme.ts',
   ]
   const mainFiles = [
-    path.join(root, 'apps/electron/src/main/ipc/themes.ts'),
+    // P4c 第七批:themes 整域迁 router,`@main` 那层壳适配已删 —— 判据改指域文件。
+    path.join(root, 'packages/backend/rpc/domains/themes.ts'),
     path.join(root, 'packages/backend/themes/index.ts'),
     path.join(root, 'apps/electron/src/window/index.ts'),
   ]
@@ -8431,7 +8339,7 @@ function checkRuntimeOwnsThemeRuntime(): void {
       .map(symbol => `packages/onething-runtime/src/themes/theme-runtime.ts: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFiles[0])
       ? matchingLines(mainFiles[0], MAIN_THEMES_IPC_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/themes.ts: missing themes IPC adapter']),
+      : ['packages/backend/rpc/domains/themes.ts: missing themes RPC domain']),
     ...(fs.existsSync(mainFiles[1])
       ? [`${rel(mainFiles[1])}: themes facade should be removed; import @onething/runtime/themes directly`]
       : []),
@@ -9755,14 +9663,12 @@ checkElectronHostOwnsLoggingCapture()
 checkElectronHostOwnsAccessibilityPermissions()
 checkElectronHostOwnsShellOperations()
 checkElectronHostOwnsOAuthEvents()
-checkElectronHostOwnsOAuthIpcHost()
 checkElectronHostOwnsSettingsIpcHost()
 checkAgentsDomainRidesTheRpcChannel()
 checkPromptsDomainRidesTheRpcChannel()
 checkMarkdownDomainRidesTheRpcChannel()
 checkPermissionGrantsDomainRidesTheRpcChannel()
 checkElectronHostOwnsPluginsIpcHost()
-checkElectronHostOwnsThemesIpcHost()
 checkProvidersDomainRidesTheRpcChannel()
 checkModelsDomainRidesTheRpcChannel()
 checkElectronHostOwnsMediaIpcHost()

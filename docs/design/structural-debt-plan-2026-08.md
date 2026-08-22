@@ -1318,6 +1318,15 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      mobile/scripts 零命中,REST 全删无薄适配;checker 两域 host 断言整删、4 条改指域文件;transport channels 232→**208**、
      四壳 4596→4196;battery 264/0;全量 11173 绿。web 行为(#20 判例):acp connect/disconnect/cancel/refresh 从 no-op/恒失败变为
      真连桌面那台管家;mcp 读写的是引擎正在用的那台单例(桌面内嵌时 web 看得到桌面已连服务器),连接可用性仍由 `configureMCPClientHost` 决定。
+     **第七批落地记录(08-22,themes 5 + oauth 6+2 推送,待提交)**:themes 零推送工厂整删,插件主题 override 合成从 `@main/ipc/themes.ts:49-81`
+     逐字搬进域 `apply`(server/web 顺带获得同一份合成,#20;CLAUDE.md 段同步"不再 desktop only");`openFolder` 走 shellHost;
+     oauth 六条走同一台 authService(per-owner 第二台整条链删),`start` 在 http 不递 openExternal(旧 server 本就不开),两条推送改
+     `backend/wiring/auth/oauth-events.ts` `configureOAuthEventBroadcaster` 注入端口(desktop 在 `main/ipc/oauth.ts` 只剩广播注入;
+     server SSE 串联同一端口,shutdown 还原)——桌面与 SSE 从此同一事件源;`credentialTarget`(spaceId/entryId/label)从 web 壳
+     "收下即丢"变为真生效;server 删 3+正则 + 6 路由、themes/oauth adapter(oauth 只剩 subscribe)、`RuntimeThemesAdapter`;
+     checker 两域 host 断言整删、2 条改指域文件、oauth-events 端口断言加强;transport channels 208→**197**、四壳 3820;
+     battery 264/0;全量 11180 绿。`grep openElectronPath|openElectronExternal packages/backend apps/electron/src/main/ipc` = 0
+     (只剩 files 的 `revealElectronPath`,归 #19 批)。遗留:`shared/ipc/themes.ts` 与 `runtime/themes/types.ts` 两份逐字副本待合。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。

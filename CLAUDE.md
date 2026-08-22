@@ -362,8 +362,9 @@ Notes:
     illegal entries are dropped and shown in the catalog projection, never a load
     error; conflicts resolve by canonical order (pluginId lexicographic) last-wins;
     the resolved token table is passed as a **parameter** into `applyTheme` from
-    `apps/electron/src/main/ipc/themes.ts` (desktop only) and lands *inside* the
-    theme computation — before `resolveThemeUI` / `generateCSSVariables`, so the
+    `packages/backend/rpc/domains/themes.ts` (the `themes` RPC domain — since P4c
+    第七批, 2026-08-22, **every** host that reaches the domain gets the composition,
+    not desktop only) and lands *inside* the theme computation — before `resolveThemeUI` / `generateCSSVariables`, so the
     `--ui-*` layer, `-rgb` variants and the primary color scale all re-derive from
     the override. Never spread it onto the finished `cssVariables`: that only covers
     the raw vars and leaves the derived layers on the old colors),

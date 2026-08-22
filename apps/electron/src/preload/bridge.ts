@@ -88,7 +88,6 @@ import type {
 	EvalsDiagnoseProgressEvent,
 	EvalsReplayProgressEvent,
 	EvalsRunProgressEvent,
-	OAuthCredentialTargetRequest,
 } from "@shared/ipc.js";
 
 const electronAPI = {
@@ -670,19 +669,8 @@ const electronAPI = {
 	// Agent 档案 CRUD 已迁到通用 RPC 通道(agentsRouter),渲染侧客户端在
 	// packages/renderer/platform/agents-client.ts —— 这里不再有它的出口。
 
-	// Theme methods
-	getThemes: () => ipcRenderer.invoke(IPC_CHANNELS.THEME_GET_ALL),
-
-	getTheme: (themeId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.THEME_GET, themeId),
-
-	applyTheme: (themeId: string, mode: "dark" | "light") =>
-		ipcRenderer.invoke(IPC_CHANNELS.THEME_APPLY, themeId, mode),
-
-	refreshThemes: (projectPath?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.THEME_REFRESH, projectPath),
-
-	openThemesFolder: () => ipcRenderer.invoke(IPC_CHANNELS.THEME_OPEN_FOLDER),
+	// Theme methods 已迁到通用 RPC 通道(themesRouter),渲染侧客户端在
+	// packages/renderer/platform/themes-client.ts —— 这里不再有它的出口。
 
 	// Model registry 与 Providers 已迁到通用 RPC 通道(modelsRouter /
 	// providersRouter);渲染侧客户端在 platform/{models,providers}-client.ts。
@@ -836,43 +824,9 @@ const electronAPI = {
 	respondInteraction: (request: InteractionRespondRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.INTERACTION_RESPOND, request),
 
-	// OAuth methods。末位 `target` 是凭证写回目标(批 B6):缺席 = 默认空间,
-	// 带 spaceId = 落进那个空间的凭证池(entryId 缺席 = 登一个新账号)。
-	oauthStart: (providerId: string, target?: OAuthCredentialTargetRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_START, { providerId, ...target }),
-
-	oauthLogout: (providerId: string, target?: OAuthCredentialTargetRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_LOGOUT, { providerId, ...target }),
-
-	oauthGetStatus: (providerId: string, target?: OAuthCredentialTargetRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_STATUS, { providerId, ...target }),
-
-	oauthDevicePoll: (
-		providerId: string,
-		flowId?: string,
-		target?: OAuthCredentialTargetRequest,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_DEVICE_POLL, {
-			providerId,
-			flowId,
-			...target,
-		}),
-
-	oauthRefresh: (providerId: string, target?: OAuthCredentialTargetRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_REFRESH, { providerId, ...target }),
-
-	oauthCallback: (
-		providerId: string,
-		code: string,
-		state: string,
-		target?: OAuthCredentialTargetRequest,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OAUTH_CALLBACK, {
-			providerId,
-			code,
-			state,
-			...target,
-		}),
+	// OAuth 的六条数据面已迁到通用 RPC 通道(oauthRouter),渲染侧客户端在
+	// packages/renderer/platform/oauth-client.ts —— 凭证写回目标(批 B6)如今
+	// 是信封里的三个字段,不再由这里现拼。**两条推送留在下面**:router 没有推送面。
 
 	// OAuth event listeners
 	onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) => {

@@ -12,18 +12,20 @@ import type { SpaceCredentialEntrySummary, SpaceCredentialsSummary } from '@/typ
  * (见 `ConnectionsSection.space.test.ts`),这里只钉池本身的行为。
  */
 
+// P4c 第七批:oauth 六条走通用 RPC 域客户端,信封是一个对象
+// (`{ providerId, ...credentialTarget }`),不再是位置参数。
 const mocks = vi.hoisted(() => ({
   store: null as any,
   spaceProviders: null as any,
-  platform: {
-    oauthStart: vi.fn(),
-    oauthCallback: vi.fn(),
-    oauthDevicePoll: vi.fn(),
-    oauthLogout: vi.fn(),
+  oauth: {
+    start: vi.fn(),
+    callback: vi.fn(),
+    devicePoll: vi.fn(),
+    logout: vi.fn(),
   },
 }))
 
-vi.mock('@/platform', () => ({ platformApi: mocks.platform }))
+vi.mock('@/platform/oauth-client', () => ({ oauthApi: mocks.oauth }))
 vi.mock('@/stores/spaces', () => ({
   DEFAULT_SPACE_ID: 'default',
   useSpacesStore: () => mocks.store,
@@ -135,15 +137,15 @@ beforeEach(() => {
   mocks.store = createSpacesStore()
   mocks.spaceProviders = createSpaceProviders()
   vi.clearAllMocks()
-  mocks.platform.oauthStart.mockResolvedValue({
+  mocks.oauth.start.mockResolvedValue({
     success: true,
     requiresCodeEntry: true,
     state: 'st',
     instructions: '贴码',
   })
-  mocks.platform.oauthCallback.mockResolvedValue({ success: true })
-  mocks.platform.oauthDevicePoll.mockResolvedValue({ success: true, completed: true })
-  mocks.platform.oauthLogout.mockResolvedValue({ success: true })
+  mocks.oauth.callback.mockResolvedValue({ success: true })
+  mocks.oauth.devicePoll.mockResolvedValue({ success: true, completed: true })
+  mocks.oauth.logout.mockResolvedValue({ success: true })
 })
 
 describe('SpaceCredentialPool', () => {
@@ -414,7 +416,8 @@ describe('SpaceCredentialPool', () => {
     await buttonWith(wrapper, '登录')[0].trigger('click')
     await nextTick()
 
-    expect(mocks.platform.oauthStart).toHaveBeenCalledWith('codex', {
+    expect(mocks.oauth.start).toHaveBeenCalledWith({
+      providerId: 'codex',
       spaceId: 'work',
       label: '工作号',
     })
@@ -422,7 +425,10 @@ describe('SpaceCredentialPool', () => {
     await inputLabelled(wrapper, '粘贴授权页给出的验证码').setValue('the-code')
     await buttonWith(wrapper, '提交')[0].trigger('click')
     await nextTick()
-    expect(mocks.platform.oauthCallback).toHaveBeenCalledWith('codex', 'the-code', 'st', {
+    expect(mocks.oauth.callback).toHaveBeenCalledWith({
+      providerId: 'codex',
+      code: 'the-code',
+      state: 'st',
       spaceId: 'work',
       label: '工作号',
     })
@@ -457,7 +463,8 @@ describe('SpaceCredentialPool', () => {
     // Disconnect 在 default 空间是直接退,这里也直接退(同构)。
     await buttonWith(wrapper, 'Disconnect')[0].trigger('click')
     await nextTick()
-    expect(mocks.platform.oauthLogout).toHaveBeenCalledWith('codex', {
+    expect(mocks.oauth.logout).toHaveBeenCalledWith({
+      providerId: 'codex',
       spaceId: 'work',
       entryId: 'acc-1',
     })
@@ -488,10 +495,11 @@ describe('SpaceCredentialPool', () => {
 
     await buttonWith(wrapper, '退出登录')[0].trigger('click')
     await nextTick()
-    expect(mocks.platform.oauthLogout).not.toHaveBeenCalled()
+    expect(mocks.oauth.logout).not.toHaveBeenCalled()
     await buttonWith(wrapper, '确认退出')[0].trigger('click')
     await nextTick()
-    expect(mocks.platform.oauthLogout).toHaveBeenCalledWith('codex', {
+    expect(mocks.oauth.logout).toHaveBeenCalledWith({
+      providerId: 'codex',
       spaceId: 'work',
       entryId: 'acc-1',
     })

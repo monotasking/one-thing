@@ -44,6 +44,7 @@
     "./wiring/acp/permission-bridge.js": "./wiring/acp/permission-bridge.ts",
     "./wiring/agents/index.js": "./wiring/agents/index.ts",
     "./wiring/auth/auth-service.js": "./wiring/auth/auth-service.ts",
+    "./wiring/auth/oauth-events.js": "./wiring/auth/oauth-events.ts",
     "./wiring/collab/actors/migrate.js": "./wiring/collab/actors/migrate.ts",
     "./wiring/collab/index.js": "./wiring/collab/index.ts",
     "./wiring/deeplink/index.js": "./wiring/deeplink/index.ts",

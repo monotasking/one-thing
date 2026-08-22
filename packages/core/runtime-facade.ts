@@ -148,13 +148,10 @@ export interface RuntimeSearchAdapter<TSearchRequest = unknown, TSearchResponse 
   executeAction(actionId: string, context?: RuntimeRequestContext): Promise<TSearchActionResponse>
 }
 
-export interface RuntimeThemesAdapter {
-  getThemes(context?: RuntimeRequestContext): Promise<unknown>
-  getTheme(themeId: string, context?: RuntimeRequestContext): Promise<unknown>
-  applyTheme(themeId: string, mode: 'dark' | 'light', context?: RuntimeRequestContext): Promise<unknown>
-  refreshThemes(projectPath?: string, context?: RuntimeRequestContext): Promise<unknown>
-  openThemesFolder?(context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-}
+/**
+ * P4c 第七批:`RuntimeThemesAdapter` 整只没了 —— 五条全部随 `themesRouter`
+ * 走通用 RPC,两个宿主读的是同一台主题运行时、同一份插件覆盖。
+ */
 
 /**
  * P4c 第五批:`RuntimePromptsAdapter` 整只没了 —— 最后一条(系统提示词快照)
@@ -240,14 +237,12 @@ export interface RuntimeOAuthTokenEvent {
   error?: string
 }
 
+/**
+ * P4c 第七批:六条数据面已迁到 `oauthRouter`,这里只剩**推送面** ——
+ * `GET /api/oauth/events` 的 SSE 源,router 今天没有推送面。
+ */
 export interface RuntimeOAuthAdapter {
-  start(providerId: string, context?: RuntimeRequestContext): Promise<unknown>
-  callback(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  devicePoll(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  refresh(providerId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  status(providerId: string, context?: RuntimeRequestContext): Promise<unknown>
-  logout(providerId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  subscribe?(handler: (event: RuntimeOAuthTokenEvent) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
+  subscribe(handler: (event: RuntimeOAuthTokenEvent) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
 }
 
 export interface RuntimeGatewayAdapter {
@@ -342,7 +337,6 @@ export interface OnethingRuntimeFacadeOptions<
   settings?: RuntimeSettingsAdapter<TSettings, TSettingsUpdateResult>
   network?: RuntimeNetworkAdapter
   search?: RuntimeSearchAdapter
-  themes?: RuntimeThemesAdapter
   files?: RuntimeFilesAdapter
   media?: RuntimeMediaAdapter
   todoPlan?: RuntimeTodoPlanAdapter
@@ -389,7 +383,6 @@ export interface OnethingRuntimeFacade<
   readonly settings?: RuntimeSettingsAdapter<TSettings, TSettingsUpdateResult>
   readonly network?: RuntimeNetworkAdapter
   readonly search?: RuntimeSearchAdapter
-  readonly themes?: RuntimeThemesAdapter
   readonly files?: RuntimeFilesAdapter
   readonly media?: RuntimeMediaAdapter
   readonly todoPlan?: RuntimeTodoPlanAdapter
@@ -485,7 +478,6 @@ export function createOnethingRuntimeFacade<
     settings: options.settings ? Object.freeze({ ...options.settings }) : undefined,
     network: options.network ? Object.freeze({ ...options.network }) : undefined,
     search: options.search ? Object.freeze({ ...options.search }) : undefined,
-    themes: options.themes ? Object.freeze({ ...options.themes }) : undefined,
     files: options.files ? Object.freeze({ ...options.files }) : undefined,
     media: options.media ? Object.freeze({ ...options.media }) : undefined,
     todoPlan: options.todoPlan ? Object.freeze({ ...options.todoPlan }) : undefined,

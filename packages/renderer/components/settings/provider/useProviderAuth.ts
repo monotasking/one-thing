@@ -1,5 +1,6 @@
 import { ref, type ComputedRef, type Ref } from 'vue'
 import { platformApi } from '@/platform'
+import { oauthApi } from '@/platform/oauth-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.provider-auth')
@@ -63,7 +64,7 @@ export function useProviderAuth(
     if (!isOAuthProvider.value) return
 
     try {
-      const response = await platformApi.oauthGetStatus(providerId.value)
+      const response = await oauthApi.status({ providerId: providerId.value })
       if (response.success) {
         oauthStatus.value = {
           isLoggedIn: response.isLoggedIn,
@@ -95,7 +96,7 @@ export function useProviderAuth(
     codeEntryError.value = ''
 
     try {
-      const response = await platformApi.oauthStart(providerId.value)
+      const response = await oauthApi.start({ providerId: providerId.value })
 
       if (!response.success) {
         oauthStatus.value = {
@@ -141,11 +142,11 @@ export function useProviderAuth(
     codeEntryError.value = ''
 
     try {
-      const response = await platformApi.oauthCallback(
-        providerId.value,
-        manualCode.value.trim(),
-        codeEntryInfo.value.state,
-      )
+      const response = await oauthApi.callback({
+        providerId: providerId.value,
+        code: manualCode.value.trim(),
+        state: codeEntryInfo.value.state,
+      })
 
       if (response.success) {
         codeEntryInfo.value = null
@@ -167,7 +168,7 @@ export function useProviderAuth(
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        const response = await platformApi.oauthDevicePoll(providerId.value, flowId)
+        const response = await oauthApi.devicePoll({ providerId: providerId.value, flowId })
 
         if (response.success && response.completed) {
           await checkOAuthStatus()
@@ -231,7 +232,7 @@ export function useProviderAuth(
 
   async function logoutOAuth() {
     try {
-      await platformApi.oauthLogout(providerId.value)
+      await oauthApi.logout({ providerId: providerId.value })
       resetOAuthState()
     } catch (err) {
       log.error('oauth logout failed', { providerId: providerId.value }, err)

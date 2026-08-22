@@ -149,21 +149,14 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/network/test-proxy') return handleTestProxy
   if (method === 'POST' && pathname === '/api/search/query') return handleSearchQuery
   if (method === 'POST' && pathname === '/api/search/actions') return handleSearchAction
-  if (method === 'GET' && pathname === '/api/themes') return handleGetThemes
-  if (method === 'POST' && pathname === '/api/themes/refresh') return handleRefreshThemes
-  if (method === 'POST' && pathname === '/api/themes/open-folder') return handleOpenThemesFolder
   if (method === 'GET' && pathname === '/api/plugins') return handleListPlugins
   if (method === 'POST' && pathname === '/api/plugins/enable') return handleEnablePlugin
   if (method === 'POST' && pathname === '/api/plugins/disable') return handleDisablePlugin
   if (method === 'POST' && pathname === '/api/plugins/refresh') return handleRefreshPlugins
   if (method === 'GET' && pathname === '/api/plugins/commands') return handlePluginCommands
   if (method === 'POST' && pathname === '/api/plugins/execute-command') return handleExecutePluginCommand
-  if (method === 'POST' && pathname === '/api/oauth/start') return handleOAuthStart
-  if (method === 'POST' && pathname === '/api/oauth/callback') return handleOAuthCallback
-  if (method === 'POST' && pathname === '/api/oauth/device-poll') return handleOAuthDevicePoll
-  if (method === 'POST' && pathname === '/api/oauth/refresh') return handleOAuthRefresh
-  if (method === 'POST' && pathname === '/api/oauth/status') return handleOAuthStatus
-  if (method === 'POST' && pathname === '/api/oauth/logout') return handleOAuthLogout
+  // oauth 的六条数据面已迁到 `POST /api/rpc`(oauthRouter,P4c 第七批)。
+  // 留下的是推送 —— router 今天没有推送面。
   if (method === 'GET' && pathname === '/api/oauth/events') return handleOAuthEvents
   if (method === 'GET' && pathname === '/api/gateway/status') return handleGatewayGetStatus
   if (method === 'POST' && pathname === '/api/gateway/start') return handleGatewayStart
@@ -240,13 +233,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
     if (method === 'GET' && action === 'events') return withSessionId(sessionMatch[1], handleEvents)
   }
 
-  const themeMatch = pathname.match(/^\/api\/themes\/([^/]+)(?:\/([^/]+))?$/)
-  if (themeMatch) {
-    const action = themeMatch[2]
-    if (method === 'GET' && !action) return withThemeId(themeMatch[1], handleGetTheme)
-    if (method === 'POST' && action === 'apply') return withThemeId(themeMatch[1], handleApplyTheme)
-  }
-
   const backgroundJobMatch = pathname.match(/^\/api\/tools\/background-jobs\/([^/]+)\/stop$/)
   if (backgroundJobMatch && method === 'POST') {
     return withBackgroundJobId(backgroundJobMatch[1], handleStopBackgroundJob)
@@ -290,13 +276,6 @@ function withRequestId(encodedRequestId: string, handler: RouteHandler): RouteHa
 function withBackgroundJobId(encodedJobId: string, handler: RouteHandler): RouteHandler {
   return (context) => {
     context.url.searchParams.set('jobId', decodeURIComponent(encodedJobId))
-    return handler(context)
-  }
-}
-
-function withThemeId(encodedThemeId: string, handler: RouteHandler): RouteHandler {
-  return (context) => {
-    context.url.searchParams.set('themeId', decodeURIComponent(encodedThemeId))
     return handler(context)
   }
 }
@@ -505,39 +484,6 @@ async function handleSearchAction(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await adapter.executeAction(body?.actionId || '', context.requestContext), context.corsOrigin)
 }
 
-async function handleGetThemes(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.themes
-  if (!adapter) return sendNotImplemented(context, 'themes.getThemes')
-  sendJson(context.response, 200, await adapter.getThemes(context.requestContext), context.corsOrigin)
-}
-
-async function handleGetTheme(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.themes
-  if (!adapter) return sendNotImplemented(context, 'themes.getTheme')
-  sendJson(context.response, 200, await adapter.getTheme(readThemeId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleApplyTheme(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.themes
-  if (!adapter) return sendNotImplemented(context, 'themes.applyTheme')
-  const body = await readJson<{ mode?: 'dark' | 'light' }>(context.request)
-  const mode = body?.mode === 'light' ? 'light' : 'dark'
-  sendJson(context.response, 200, await adapter.applyTheme(readThemeId(context), mode, context.requestContext), context.corsOrigin)
-}
-
-async function handleRefreshThemes(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.themes
-  if (!adapter) return sendNotImplemented(context, 'themes.refreshThemes')
-  const body = await readJson<{ projectPath?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.refreshThemes(body?.projectPath, context.requestContext), context.corsOrigin)
-}
-
-async function handleOpenThemesFolder(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.themes
-  if (!adapter?.openThemesFolder) return sendNotImplemented(context, 'themes.openThemesFolder')
-  sendJson(context.response, 200, await adapter.openThemesFolder(context.requestContext), context.corsOrigin)
-}
-
 async function handleListPlugins(context: RouteContext): Promise<void> {
   const adapter = context.runtime.plugins
   if (!adapter?.list) return sendNotImplemented(context, 'plugins.list')
@@ -593,46 +539,6 @@ async function handlePluginRequest(context: RouteContext): Promise<void> {
     action,
     host: 'server',
   }, context.corsOrigin)
-}
-
-async function handleOAuthStart(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.oauth
-  if (!adapter) return sendNotImplemented(context, 'oauth.start')
-  const body = await readJson<{ providerId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.start(body?.providerId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleOAuthCallback(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.oauth
-  if (!adapter) return sendNotImplemented(context, 'oauth.callback')
-  sendJson(context.response, 200, await adapter.callback(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleOAuthDevicePoll(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.oauth
-  if (!adapter) return sendNotImplemented(context, 'oauth.devicePoll')
-  sendJson(context.response, 200, await adapter.devicePoll(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleOAuthRefresh(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.oauth
-  if (!adapter) return sendNotImplemented(context, 'oauth.refresh')
-  const body = await readJson<{ providerId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.refresh(body?.providerId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleOAuthStatus(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.oauth
-  if (!adapter) return sendNotImplemented(context, 'oauth.status')
-  const body = await readJson<{ providerId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.status(body?.providerId || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleOAuthLogout(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.oauth
-  if (!adapter) return sendNotImplemented(context, 'oauth.logout')
-  const body = await readJson<{ providerId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.logout(body?.providerId || '', context.requestContext), context.corsOrigin)
 }
 
 function handleOAuthEvents(context: RouteContext): void {
@@ -1133,10 +1039,6 @@ function readRequestId(context: RouteContext): string {
 
 function readBackgroundJobId(context: RouteContext): string {
   return context.url.searchParams.get('jobId') || ''
-}
-
-function readThemeId(context: RouteContext): string {
-  return context.url.searchParams.get('themeId') || ''
 }
 
 function getRequestUrl(request: IncomingMessage): URL {

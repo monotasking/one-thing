@@ -76,6 +76,12 @@ const EXPECTED_DOMAIN_FEATURES = [
   // P4c 第六批第二个域:mcp(十六条;本批唯一带 context 分叉的域 —— 私密字段脱敏 /
   // 合并回真值 / readConfigFile 在 http 上不读本机文件 / stdio 探测默认关闭)。
   ['rpc:mcp', 'mcp'],
+  // P4c 第七批第一个域:themes(五条;零推送,插件主题覆盖的合成从 `@main` 搬进
+  // 域处理者,`openFolder` 走 configureShellHost 端口)。
+  ['rpc:themes', 'themes'],
+  // P4c 第七批第二个域:oauth(六条数据面;两条令牌推送留在
+  // `configureOAuthEventBroadcaster` 注入端口上,不在 router 的白名单里)。
+  ['rpc:oauth', 'oauth'],
 ] as const
 
 /**

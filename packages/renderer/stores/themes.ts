@@ -1,4 +1,4 @@
-import { platformApi } from '@/platform'
+import { themesApi } from '@/platform/themes-client'
 import { getLogger } from '@/services/log'
 /**
  * Theme Store
@@ -91,7 +91,7 @@ export const useThemeStore = defineStore('themes', () => {
     error.value = null
 
     try {
-      const response: GetThemesResponse = await platformApi.getThemes()
+      const response: GetThemesResponse = await themesApi.getAll({})
 
       if (response.success && response.themes) {
         availableThemes.value = response.themes
@@ -117,7 +117,7 @@ export const useThemeStore = defineStore('themes', () => {
     if (cached) return cached
 
     try {
-      const response = await platformApi.getTheme(themeId)
+      const response = await themesApi.get({ themeId })
 
       if (response.success && response.theme) {
         themeCache.value.set(themeId, response.theme)
@@ -181,7 +181,7 @@ export const useThemeStore = defineStore('themes', () => {
     const themeId = currentThemeId.value
 
     try {
-      const response: ApplyThemeResponse = await platformApi.applyTheme(themeId, mode)
+      const response: ApplyThemeResponse = await themesApi.apply({ themeId, mode })
 
       if (response.success && response.cssVariables) {
         applyThemeVariables(response.cssVariables)
@@ -284,7 +284,7 @@ export const useThemeStore = defineStore('themes', () => {
     const mode = settingsStore.effectiveTheme
 
     try {
-      const response = await platformApi.applyTheme(themeId, mode)
+      const response = await themesApi.apply({ themeId, mode })
 
       if (response.success && response.cssVariables) {
         applyThemeVariables(response.cssVariables)
@@ -358,7 +358,7 @@ export const useThemeStore = defineStore('themes', () => {
     error.value = null
 
     try {
-      const response = await platformApi.refreshThemes(projectPath)
+      const response = await themesApi.refresh({ projectPath })
 
       if (response.success && response.themes) {
         availableThemes.value = response.themes
@@ -381,7 +381,7 @@ export const useThemeStore = defineStore('themes', () => {
    */
   async function openThemesFolder(): Promise<void> {
     try {
-      await platformApi.openThemesFolder()
+      await themesApi.openFolder({})
     } catch (err: any) {
       log.error('open themes folder failed', {}, err)
     }

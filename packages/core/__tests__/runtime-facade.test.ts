@@ -75,13 +75,8 @@ describe('createOnethingRuntimeFacade', () => {
         commands: vi.fn(async () => ({ success: true, commands: [] })),
         executeCommand: vi.fn(async request => ({ success: true, request })),
       },
+      // P4c 第七批:六条数据面已迁到 `oauthRouter`,facade 上只剩推送面。
       oauth: {
-        start: vi.fn(async providerId => ({ success: true, providerId })),
-        callback: vi.fn(async request => ({ success: true, request })),
-        devicePoll: vi.fn(async request => ({ success: true, completed: false, request })),
-        refresh: vi.fn(async providerId => ({ success: true, providerId })),
-        status: vi.fn(async providerId => ({ success: true, providerId, isLoggedIn: false })),
-        logout: vi.fn(async providerId => ({ success: true, providerId })),
         subscribe: vi.fn((handler) => {
           handler({ type: 'oauth:token-refreshed', providerId: 'codex' })
           return unsubscribe
@@ -179,21 +174,8 @@ describe('createOnethingRuntimeFacade', () => {
       success: true,
       request: { commandName: '/demo', args: 'now', sessionId: 'session-1' },
     })
-    await expect(runtime.oauth?.start('codex')).resolves.toEqual({ success: true, providerId: 'codex' })
-    await expect(runtime.oauth?.callback({ providerId: 'codex', code: 'code', state: 'state' })).resolves.toEqual({
-      success: true,
-      request: { providerId: 'codex', code: 'code', state: 'state' },
-    })
-    await expect(runtime.oauth?.devicePoll({ providerId: 'github-copilot', flowId: 'flow-1' })).resolves.toEqual({
-      success: true,
-      completed: false,
-      request: { providerId: 'github-copilot', flowId: 'flow-1' },
-    })
-    await expect(runtime.oauth?.refresh('codex')).resolves.toEqual({ success: true, providerId: 'codex' })
-    await expect(runtime.oauth?.status('codex')).resolves.toEqual({ success: true, providerId: 'codex', isLoggedIn: false })
-    await expect(runtime.oauth?.logout('codex')).resolves.toEqual({ success: true, providerId: 'codex' })
     const oauthHandler = vi.fn()
-    const offOAuth = runtime.oauth?.subscribe?.(oauthHandler)
+    const offOAuth = runtime.oauth?.subscribe(oauthHandler)
     expect(oauthHandler).toHaveBeenCalledWith({ type: 'oauth:token-refreshed', providerId: 'codex' })
     offOAuth?.()
     await expect(runtime.gateway?.getStatus()).resolves.toEqual({ success: true, status: { running: false } })

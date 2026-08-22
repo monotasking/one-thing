@@ -645,3 +645,48 @@ export interface RefreshThemesResponse {
   themes?: ThemeMeta[]
   error?: string
 }
+
+export interface OpenThemesFolderResponse {
+  success: boolean
+  error?: string
+}
+
+// ============================================
+// Router
+// ============================================
+
+/**
+ * themes(主题)域 —— 结构债 P4c 第七批,整只从手写 IPC 通道迁到通用
+ * `rpc:invoke` / `POST /api/rpc`。
+ *
+ * 五条方法**逐条对应**从前 `IPC_CHANNELS` 上那五条 theme 通道,语义一字未改;
+ * 变的只是通道:壳上五条包装、web 上五条 REST 镜像(含 `/api/themes/<id>[/apply]`
+ * 那个正则块)、以及 server 那份 `themes` facade adapter,一起消失。
+ *
+ * 两处值得写下来的:
+ *  - `apply` 从前在 `@main` 那一层**现拼插件主题覆盖**(token 覆盖 / 皮肤档位 /
+ *    表面旋钮三样)。搬进域处理者之后 server 顺带获得了同一份合成 —— 拍板 #20
+ *    接受的口径变化(旧 server adapter 只透传声明,不做合成)。
+ *  - `openFolder` 要宿主能力,走 `@onething/runtime/shell` 的 `configureShellHost`
+ *    端口:未注入即结构化降级,不再需要 server 那句写死的英文。
+ *
+ * 无参的三条(`getAll` / `refresh` / `openFolder`)按本仓惯例递 `{}`;
+ * 单 id 的两条包成对象(`{ themeId }` / `{ themeId, mode }`)。
+ */
+import { defineRouter } from './router.js'
+
+export type ThemesRoutes = {
+  getAll: { input: Record<string, never>; output: GetThemesResponse }
+  get: { input: { themeId: string }; output: GetThemeResponse }
+  apply: { input: { themeId: string; mode: 'dark' | 'light' }; output: ApplyThemeResponse }
+  refresh: { input: { projectPath?: string }; output: RefreshThemesResponse }
+  openFolder: { input: Record<string, never>; output: OpenThemesFolderResponse }
+}
+
+export const themesRouter = defineRouter<ThemesRoutes>('themes', [
+  'getAll',
+  'get',
+  'apply',
+  'refresh',
+  'openFolder',
+])

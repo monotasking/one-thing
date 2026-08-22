@@ -37,12 +37,22 @@ function installElectronAPI(systemTheme: 'light' | 'dark' = 'dark') {
       }
     }),
     getSystemTheme: vi.fn().mockResolvedValue({ success: true, theme: systemTheme }),
+    // P4c 第七批:主题走通用 RPC 通道。这个替身仍然只暴露一个 `applyTheme` 间谍
+    // (断言逐字不变),它由本壳的 `rpcInvoke` 在 `themes.apply` 上转调 ——
+    // 与真桌面上那条路径同形。
     applyTheme: vi.fn((themeId: string, mode: 'light' | 'dark') => Promise.resolve({
       success: true,
       cssVariables: {
         '--applied-theme': `${themeId}:${mode}`,
       },
     })),
+    rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
+      if (request.domain === 'themes' && request.method === 'apply') {
+        const payload = request.payload as { themeId: string; mode: 'light' | 'dark' }
+        return { ok: true, data: await electronAPI.applyTheme(payload.themeId, payload.mode) }
+      }
+      return { ok: true, data: { success: true } }
+    }),
     saveSettings: vi.fn().mockResolvedValue({ success: true }),
   }
 

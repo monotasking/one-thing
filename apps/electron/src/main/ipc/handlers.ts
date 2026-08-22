@@ -5,8 +5,7 @@ import { initializeMCP, shutdownMCP } from "./mcp.js";
 import { registerShellHandlers } from "./shell.js";
 import { registerMediaHandlers } from "./media.js";
 import { registerInteractionHandlers } from "./interaction.js";
-import { registerOAuthHandlers, cleanupOAuth } from "./oauth.js";
-import { registerThemeHandlers, initializeThemeSystem } from "./themes.js";
+import { registerOAuthHandlers } from "./oauth.js";
 import { registerSpacesHandlers } from "./spaces.js";
 import { registerPluginHandlers } from "./plugins.js";
 import { registerFilesHandlers } from "./files.js";
@@ -35,7 +34,6 @@ export function initializeIPC() {
 	registerMediaHandlers();
 	registerInteractionHandlers();
 	registerOAuthHandlers();
-	registerThemeHandlers();
 	registerSpacesHandlers();
 	registerPluginHandlers();
 	registerFilesHandlers();
@@ -65,11 +63,4 @@ export function initializeIPC() {
 	registerDeepLinkHandlers();
 }
 
-export {
-	initializeMCP,
-	shutdownMCP,
-	cleanupOAuth,
-	initializeThemeSystem,
-	initializeACP,
-	shutdownACP,
-};
+export { initializeMCP, shutdownMCP, initializeACP, shutdownACP };
