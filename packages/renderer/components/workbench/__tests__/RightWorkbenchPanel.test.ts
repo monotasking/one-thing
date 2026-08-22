@@ -20,16 +20,27 @@ const mocks = vi.hoisted(() => ({
   variablesApi: {
     list: vi.fn(),
   },
-  electronAPI: {
-    listTerminals: vi.fn(),
-    createTerminal: vi.fn(),
-    killTerminal: vi.fn(),
+  // 空壳:只为让 `platformApi` 解析到 electron 分支(推送订阅走 `?.`,
+  // 缺席即 no-op)。本文件用到的域面全部走壳外客户端。
+  electronAPI: {} as Record<string, unknown>,
+  // terminal 域已迁到通用 RPC 通道(P4 终态批 D2):面板经 store 用的是壳外客户端
+  // `@/platform/terminal-client`,不再是 platformApi 上的 listTerminals/createTerminal。
+  terminalApi: {
+    list: vi.fn(),
+    create: vi.fn(),
+    kill: vi.fn(),
+    write: vi.fn(),
+    resize: vi.fn(),
+    attach: vi.fn(),
+    ack: vi.fn(),
   },
 }))
 
 vi.mock('@/composables/useEditorWorkspace', () => ({
   useEditorWorkspace: () => mocks.editorWorkspace,
 }))
+
+vi.mock('@/platform/terminal-client', () => ({ terminalApi: mocks.terminalApi }))
 
 vi.mock('@/platform/variables-client', () => ({ variablesApi: mocks.variablesApi }))
 
@@ -148,8 +159,8 @@ describe('RightWorkbenchPanel', () => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
     mocks.variablesApi.list.mockResolvedValue({ success: true, variables: [] })
-    mocks.electronAPI.listTerminals.mockResolvedValue({ success: true, terminals: [] })
-    mocks.electronAPI.createTerminal.mockResolvedValue({
+    mocks.terminalApi.list.mockResolvedValue({ success: true, terminals: [] })
+    mocks.terminalApi.create.mockResolvedValue({
       success: true,
       terminal: {
         id: 'pty-1',
@@ -161,7 +172,7 @@ describe('RightWorkbenchPanel', () => {
         createdAt: 0,
       },
     })
-    mocks.electronAPI.killTerminal.mockResolvedValue({ success: true })
+    mocks.terminalApi.kill.mockResolvedValue({ success: true })
     Object.defineProperty(window, 'electronAPI', {
       value: mocks.electronAPI,
       configurable: true,
@@ -327,7 +338,7 @@ describe('RightWorkbenchPanel', () => {
     await settle()
     await settle()
 
-    expect(mocks.electronAPI.createTerminal).toHaveBeenCalledWith(
+    expect(mocks.terminalApi.create).toHaveBeenCalledWith(
       expect.objectContaining({ cwd: '/repo', sessionId: 'session-1' }),
     )
     expect(wrapper.find('.mock-terminal-view').text()).toContain('pty-1')
@@ -774,7 +785,7 @@ describe('RightWorkbenchPanel', () => {
   })
 
   it('re-adopts surviving PTYs as tabs on mount (renderer reload recovery)', async () => {
-    mocks.electronAPI.listTerminals.mockResolvedValue({
+    mocks.terminalApi.list.mockResolvedValue({
       success: true,
       terminals: [
         { id: 'pty-a', title: 'zsh', cwd: '/repo', shell: '/bin/zsh', cols: 80, rows: 24, createdAt: 0 },

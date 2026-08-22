@@ -1,20 +1,21 @@
 /**
- * Terminal IPC handlers: real PTY shells for the workbench/dock terminal.
- * Output pushes go the other way via IPCBridge on TERMINAL_DATA/TERMINAL_EXIT
- * (practice-broadcaster pattern). See docs/design/terminal-system.md.
+ * Terminal 的宿主残留:**输出推送的广播注入**与**消费者掉线的 detach 边**。
+ *
+ * 七条请求面(create / list / write / resize / kill / attach / ack)于
+ * 2026-08-22(结构债 P4 终态批 D2)整只迁到通用 `rpc:invoke` / `POST /api/rpc`
+ * 的 `terminal` 域(`packages/backend/rpc/domains/terminal.ts`),
+ * `apps/electron/src/ipc/terminal.ts` 那只可移植工厂随之删除。
+ *
+ * 留在这里的两条是 `TERMINAL_DATA` / `TERMINAL_EXIT` —— router 今天只有请求/
+ * 响应面,推送统一走注入广播器端口(practice / scratchpad / oauth 同判例)。
+ * 见 docs/design/terminal-system.md。
  */
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import {
 	configureTerminalBroadcaster,
-	getTerminalService,
 	markAllTerminalsDetached,
 } from "@onething/runtime/terminal/service.wiring";
-import { registerElectronTerminalIpcHandlers } from "@onething/electron-host/ipc/terminal";
 import { getIPCBridge } from "../bridges/ipc-bridge-lifecycle.js";
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
 
 export function registerTerminalHandlers(): void {
 	configureTerminalBroadcaster({
@@ -23,54 +24,6 @@ export function registerTerminalHandlers(): void {
 		},
 		sendExit: (payload) => {
 			getIPCBridge()?.sendToRenderer(IPC_CHANNELS.TERMINAL_EXIT, payload);
-		},
-	});
-
-	registerElectronTerminalIpcHandlers({
-		channels: {
-			create: IPC_CHANNELS.TERMINAL_CREATE,
-			list: IPC_CHANNELS.TERMINAL_LIST,
-			write: IPC_CHANNELS.TERMINAL_WRITE,
-			resize: IPC_CHANNELS.TERMINAL_RESIZE,
-			kill: IPC_CHANNELS.TERMINAL_KILL,
-			attach: IPC_CHANNELS.TERMINAL_ATTACH,
-			ack: IPC_CHANNELS.TERMINAL_ACK,
-		},
-		create: (request) => {
-			try {
-				return { success: true, terminal: getTerminalService().create(request) };
-			} catch (error) {
-				return { success: false, error: errorMessage(error) };
-			}
-		},
-		list: () => {
-			try {
-				return { success: true, terminals: getTerminalService().list() };
-			} catch (error) {
-				return { success: false, terminals: [], error: errorMessage(error) };
-			}
-		},
-		write: (request) => {
-			getTerminalService().write(request.terminalId, request.data);
-			return { success: true };
-		},
-		resize: (request) => {
-			getTerminalService().resize(request.terminalId, request.cols, request.rows);
-			return { success: true };
-		},
-		kill: (request) => {
-			getTerminalService().kill(request.terminalId);
-			return { success: true };
-		},
-		attach: (request) => {
-			try {
-				return getTerminalService().attach(request.terminalId);
-			} catch (error) {
-				return { success: false, error: errorMessage(error) };
-			}
-		},
-		ack: (payload) => {
-			getTerminalService().ack(payload.terminalId, payload.bytes, payload.generation);
 		},
 	});
 }

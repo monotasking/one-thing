@@ -26,9 +26,6 @@ const mocks = vi.hoisted(() => ({
   },
   electronAPI: {
     listVariables: vi.fn(),
-    listTerminals: vi.fn(),
-    createTerminal: vi.fn(),
-    killTerminal: vi.fn(),
   },
   sessions: [] as Array<Record<string, unknown>>,
   generating: new Set<string>(),
@@ -37,11 +34,24 @@ const mocks = vi.hoisted(() => ({
   unread: new Set<string>(),
   dmRooms: {} as Record<string, { id: string }>,
   coordinators: {} as Record<string, { deadLetterCount?: number }>,
+  // terminal 域已迁到通用 RPC 通道(P4 终态批 D2):面板经 store 用的是壳外客户端
+  // `@/platform/terminal-client`,不再是 platformApi 上的 listTerminals/createTerminal。
+  terminalApi: {
+    list: vi.fn(),
+    create: vi.fn(),
+    kill: vi.fn(),
+    write: vi.fn(),
+    resize: vi.fn(),
+    attach: vi.fn(),
+    ack: vi.fn(),
+  },
 }))
 
 vi.mock('@/composables/useEditorWorkspace', () => ({
   useEditorWorkspace: () => mocks.editorWorkspace,
 }))
+
+vi.mock('@/platform/terminal-client', () => ({ terminalApi: mocks.terminalApi }))
 
 vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => ({
@@ -165,7 +175,7 @@ describe('RightWorkbenchPanel — 右栏只有一套面板系统', () => {
     mocks.dmRooms = {}
     mocks.coordinators = {}
     mocks.electronAPI.listVariables.mockResolvedValue({ success: true, variables: [] })
-    mocks.electronAPI.listTerminals.mockResolvedValue({ success: true, terminals: [] })
+    mocks.terminalApi.list.mockResolvedValue({ success: true, terminals: [] })
     Object.defineProperty(window, 'electronAPI', { value: mocks.electronAPI, configurable: true })
   })
 

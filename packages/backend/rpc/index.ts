@@ -55,6 +55,7 @@ import { sessionsRouter } from '@shared/ipc/sessions.js'
 import { settingsRouter } from '@shared/ipc/settings.js'
 import { skillsRouter } from '@shared/ipc/skills.js'
 import { spacesRouter } from '@shared/ipc/spaces.js'
+import { terminalRouter } from '@shared/ipc/terminal.js'
 import { themesRouter } from '@shared/ipc/themes.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 import { usageRouter } from '@shared/ipc/usage.js'
@@ -96,6 +97,7 @@ import { sessionsRpcHandlers } from './domains/sessions.js'
 import { skillsRpcHandlers } from './domains/skills.js'
 import { settingsRpcHandlers } from './domains/settings.js'
 import { spacesRpcHandlers } from './domains/spaces.js'
+import { terminalRpcHandlers } from './domains/terminal.js'
 import { themesRpcHandlers } from './domains/themes.js'
 import { todoPlanRpcHandlers } from './domains/todo-plan.js'
 import { usageRpcHandlers } from './domains/usage.js'
@@ -317,6 +319,15 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 单向残留集**,常量 / preload 的 `send` / 主进程那条 `ipcMain.on` 原样留着。
   // http 上十一条逐字沿用旧 server adapter 的「server 上没有语音运行时」。
   { id: 'rpc:voice', mount: ctx => { ctx.registerRpcDomain(voiceRouter, voiceRpcHandlers) } },
+  // P4 终态批 D2(terminal)—— 七条请求面:开 / 列 / 写 / 改尺寸 / 杀 / 附着 / 流控回执。
+  // **两条推送留在原地**:`TERMINAL_DATA` / `TERMINAL_EXIT` 早就是
+  // `configureTerminalBroadcaster` 注入端口,router 没有推送面。
+  // `ack` 从单向 `ipcRenderer.send` 变成带一条空回执的 invoke(渲染侧本来就不等它;
+  // 与 `VOICE_AUDIO_CHUNK` 退回单向的差别在频次 —— 那是每秒 10–25 块的稳定 PCM 上行)。
+  // **七条在 http 上一律结构化拒绝**:能力位 `terminal` 在 web 默认关(用户拍板),
+  // 而桌面自己也挂着同一份 HTTP 面,所以闸落在知道 transport 的域里;拒绝路径一次
+  // 都不求值 `getTerminalService()`,懒单例因此仍然不在 server / CLI 上 load node-pty。
+  { id: 'rpc:terminal', mount: ctx => { ctx.registerRpcDomain(terminalRouter, terminalRpcHandlers) } },
   selfEvolutionFeature,
 ]
 

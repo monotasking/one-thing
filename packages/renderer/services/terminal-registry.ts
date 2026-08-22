@@ -14,12 +14,21 @@
  *
  * xterm and its addons are DYNAMICALLY imported on first use — happy-dom test
  * mounts and hosts without terminals never pay for (or crash on) xterm.
+ *
+ * The seven request-side calls ride the generic RPC channel (`terminalApi`,
+ * P4 终态批 D2); the two pushes stay on `platformApi` (router has no push
+ * face). Fire-and-forget calls keep their pre-migration no-throw semantics via
+ * `ignoreRpcFailure` — the old `platformApi.xxx?.()` shape could not reject on
+ * a host without terminals either, and a lost write/resize/ack is recoverable
+ * by design (the attach generation protocol resets the ledger).
  */
 
 import '@xterm/xterm/css/xterm.css'
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
+import type { TerminalAttachResponse } from '@shared/ipc/terminal.js'
 import { platformApi } from '@/platform'
+import { terminalApi } from '@/platform/terminal-client'
 
 // A module-level registry does not survive HMR (the replacing module starts
 // with an empty map while orphaned xterm instances keep their subscriptions).
@@ -100,12 +109,17 @@ function getOrCreateEntry(terminalId: string): RegistryEntry {
   return entry
 }
 
+/** Fire-and-forget RPC: a host without terminals answers with a failure, not a crash. */
+function ignoreRpcFailure(): void {}
+
 function writeWithAck(entry: RegistryEntry, data: string): void {
   const generation = entry.generation
   // bytes = JS string length (UTF-16 code units) — must match the service's
   // accounting unit exactly or the watermark ledger drifts on CJK output.
   entry.term?.write(data, () => {
-    platformApi.ackTerminal?.(entry.terminalId, data.length, generation)
+    void terminalApi
+      .ack({ terminalId: entry.terminalId, bytes: data.length, generation })
+      .catch(ignoreRpcFailure)
   })
 }
 
@@ -140,10 +154,12 @@ async function createXterm(entry: RegistryEntry): Promise<void> {
     // DOM renderer fallback is fine.
   }
   term.onData(data => {
-    platformApi.writeTerminal?.(entry.terminalId, data)
+    void terminalApi.write({ terminalId: entry.terminalId, data }).catch(ignoreRpcFailure)
   })
   term.onResize(({ cols, rows }) => {
-    platformApi.resizeTerminal?.(entry.terminalId, cols, rows)
+    void terminalApi
+      .resize({ terminalId: entry.terminalId, cols, rows })
+      .catch(ignoreRpcFailure)
   })
   term.onTitleChange(title => {
     events.onTitle?.(entry.terminalId, title)
@@ -178,10 +194,15 @@ export async function ensureAttached(terminalId: string, container: HTMLElement)
 async function runAttach(entry: RegistryEntry): Promise<void> {
   entry.phase = 'attaching'
   entry.queue = []
-  const response = await platformApi.attachTerminal?.(entry.terminalId)
-  if (!response?.success || !response.info) {
+  let response: TerminalAttachResponse
+  try {
+    response = await terminalApi.attach({ terminalId: entry.terminalId })
+  } catch (error) {
+    response = { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+  if (!response.success || !response.info) {
     entry.phase = 'idle'
-    entry.term?.write(`\r\n[terminal] attach failed: ${response?.error ?? 'unknown error'}\r\n`)
+    entry.term?.write(`\r\n[terminal] attach failed: ${response.error ?? 'unknown error'}\r\n`)
     return
   }
   const term = entry.term

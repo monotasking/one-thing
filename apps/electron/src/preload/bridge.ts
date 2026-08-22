@@ -171,27 +171,10 @@ const electronAPI = {
 	},
 
 	// ── Terminal (real PTY) ──────
-	createTerminal: (request: {
-		cwd?: string;
-		shell?: string;
-		cols?: number;
-		rows?: number;
-		sessionId?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_CREATE, request ?? {}),
-	listTerminals: () => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_LIST),
-	writeTerminal: (terminalId: string, data: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_WRITE, { terminalId, data }),
-	resizeTerminal: (terminalId: string, cols: number, rows: number) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_RESIZE, { terminalId, cols, rows }),
-	killTerminal: (terminalId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_KILL, { terminalId }),
-	attachTerminal: (terminalId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_ATTACH, { terminalId }),
-	// One-way send, not invoke: pure notification at flush cadence — a lost
-	// ack only delays resume, and the attach generation resets the ledger.
-	ackTerminal: (terminalId: string, bytes: number, generation: number) => {
-		ipcRenderer.send(IPC_CHANNELS.TERMINAL_ACK, { terminalId, bytes, generation });
-	},
+	// 七条请求面(create/list/write/resize/kill/attach/ack)已整只迁到通用 RPC
+	// 通道(P4 终态批 D2,`terminalRouter` + `@/platform/terminal-client`);
+	// 这里只剩两条**推送**订阅 —— router 没有推送面,主进程那侧是
+	// `configureTerminalBroadcaster` 注入端口。
 	onTerminalData: (
 		callback: (data: { terminalId: string; seq: number; data: string }) => void,
 	) => {

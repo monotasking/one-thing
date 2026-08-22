@@ -6,17 +6,21 @@
  *
  * Terminals are APP-scoped, not session-scoped: a sessionId passed at create
  * time only seeds the working directory.
+ *
+ * The three request-side calls (`list` / `create` / `kill`) ride the generic RPC
+ * channel (`terminalApi`, P4 终态批 D2); the exit/title pushes still arrive
+ * through the registry's `platformApi` subscriptions.
  */
 
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { platformApi } from '@/platform'
+import type { TerminalInfo } from '@shared/ipc/terminal.js'
+import { terminalApi } from '@/platform/terminal-client'
 import {
   configureTerminalRegistryEvents,
   disposeTerminal as disposeRegistryTerminal,
   ensureSubscribed,
 } from '@/services/terminal-registry'
-import type { TerminalInfo } from '@/types'
 
 export interface TerminalDescriptor {
   id: string
@@ -57,8 +61,8 @@ export const useTerminalsStore = defineStore('terminals', () => {
     loadPromise ??= (async () => {
       bindRegistry()
       try {
-        const response = await platformApi.listTerminals?.()
-        if (response?.success && Array.isArray(response.terminals)) {
+        const response = await terminalApi.list({})
+        if (response.success && Array.isArray(response.terminals)) {
           terminals.value = response.terminals.map(toDescriptor)
         }
       } catch {
@@ -72,12 +76,12 @@ export const useTerminalsStore = defineStore('terminals', () => {
     options: { cwd?: string; sessionId?: string } = {},
   ): Promise<string> {
     await ensureLoaded()
-    const response = await platformApi.createTerminal?.({
+    const response = await terminalApi.create({
       cwd: options.cwd,
       sessionId: options.sessionId,
     })
-    if (!response?.success || !response.terminal) {
-      throw new Error(response?.error || 'Failed to create terminal')
+    if (!response.success || !response.terminal) {
+      throw new Error(response.error || 'Failed to create terminal')
     }
     terminals.value = [...terminals.value, toDescriptor(response.terminal)]
     return response.terminal.id
@@ -87,7 +91,7 @@ export const useTerminalsStore = defineStore('terminals', () => {
     disposeRegistryTerminal(terminalId)
     terminals.value = terminals.value.filter(t => t.id !== terminalId)
     try {
-      await platformApi.killTerminal?.(terminalId)
+      await terminalApi.kill({ terminalId })
     } catch {
       // Process may already be gone.
     }

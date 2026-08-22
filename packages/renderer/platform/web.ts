@@ -186,7 +186,7 @@ function normalizeServerCapabilities(value: unknown): PlatformCapabilities {
 		workspaceFileSystem: booleanProperty(value, "workspaceFileSystem", false),
 		nativeWindowControls: booleanProperty(value, "nativeWindowControls", false),
 		shellTools: booleanProperty(value, "shellTools", false),
-		// P4 (web terminal) is frozen: stays false until the server advertises it.
+		// 真 PTY:D2 迁 router 时按用户拍板保持默认关(真闸是域的 http 分叉)。
 		terminal: booleanProperty(value, "terminal", false),
 		// Embedded WebContentsView browser is Electron-only; web falls back to iframe.
 		embeddedBrowser: booleanProperty(value, "embeddedBrowser", false),
@@ -443,14 +443,8 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	// Interaction(agent 提问 → 用户应答,E1)的两条已整只迁到通用 RPC 通道
 	// (P4c 第九批,`interactionRouter` + `@/platform/interaction-client`),所以
 	// 这份名单里不再有它们;能力位 `interactionRespond` 同批放开(#17)。
-	// Terminal (P4 web parity is frozen; capability gate hides the UI on web)
-	"createTerminal",
-	"listTerminals",
-	"writeTerminal",
-	"resizeTerminal",
-	"killTerminal",
-	"attachTerminal",
-	"ackTerminal",
+	// Terminal:七条请求面已迁通用 RPC 通道(P4 终态批 D2,terminalRouter);闸在
+	// 服务端(域的 http 分叉一律拒),这里只剩两条推送订阅(router 无推送面)。
 	"onTerminalData",
 	"onTerminalExit",
 	// Browser (embedded WebContentsView is Electron-only; web uses iframe fallback)

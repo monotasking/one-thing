@@ -4,6 +4,7 @@
  * protocol "terminal", which is a pipes-based registry inside the ACP client).
  * See docs/design/terminal-system.md.
  */
+import { defineRouter } from "./router.js";
 
 export interface TerminalCreateRequest {
 	cwd?: string
@@ -113,3 +114,46 @@ export interface TerminalExitEvent {
 	terminalId: string
 	exitCode: number | null
 }
+
+/**
+ * terminal(真 PTY 终端)域 —— 结构债 P4 终态批 D2(用户拍板:「D2 terminal 迁 +
+ * 能力位默认关」)。
+ *
+ * 七条请求面(`create` / `list` / `write` / `resize` / `kill` / `attach` / `ack`)
+ * 整只从手写 IPC 通道搬到通用 `rpc:invoke` / `POST /api/rpc`。
+ *
+ * ## `ack` 从单向 send 变成有应答的 invoke
+ *
+ * 它从前是 `ipcRenderer.send`(不带回执):flush 节拍上的一条纯通知,丢一条只是
+ * 把恢复推迟一拍,attach 的世代协议本来就会把账本清零。router 只有请求/响应面,
+ * 所以搬过来之后它有了一条 `{ success: true }` 的空回执 —— **渲染侧本来就不等它**
+ * (`xterm.write` 的回调里发出去就不管了),所以可感知行为不变。
+ * 与 `VOICE_AUDIO_CHUNK` 的判例(拍板 #10,退回单向手写通道)的差别在频次:
+ * PCM 是每秒 10–25 块的稳定上行,ack 只在终端真有输出时按 16ms flush 节拍走一条。
+ *
+ * ## 两条推送不在这条路上
+ *
+ * `TERMINAL_DATA` / `TERMINAL_EXIT` 是**注入广播器端口**
+ * (`configureTerminalBroadcaster`,`@onething/runtime/terminal/service.wiring`),
+ * 而 router 今天只有请求/响应面 —— 所以那两条通道常量与它们的载荷类型原样留在
+ * 手写 IPC 上(同 practice / scratchpad / oauth 判例)。
+ */
+export type TerminalRoutes = {
+	create: { input: TerminalCreateRequest; output: TerminalCreateResponse };
+	list: { input: Record<string, never>; output: TerminalListResponse };
+	write: { input: TerminalWriteRequest; output: TerminalSimpleResponse };
+	resize: { input: TerminalResizeRequest; output: TerminalSimpleResponse };
+	kill: { input: TerminalKillRequest; output: TerminalSimpleResponse };
+	attach: { input: TerminalAttachRequest; output: TerminalAttachResponse };
+	ack: { input: TerminalAckPayload; output: TerminalSimpleResponse };
+};
+
+export const terminalRouter = defineRouter<TerminalRoutes>("terminal", [
+	"create",
+	"list",
+	"write",
+	"resize",
+	"kill",
+	"attach",
+	"ack",
+]);

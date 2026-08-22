@@ -104,6 +104,9 @@ const EXPECTED_DOMAIN_FEATURES = [
   // 那条单向 PCM 上行按拍板 #10 留在手写通道上)。
   ['rpc:settings', 'settings'],
   ['rpc:voice', 'voice'],
+  // P4 终态批 D2:terminal(七条请求面;两条推送留在 configureTerminalBroadcaster
+  // 端口上,七条在 http 上一律结构化拒绝 —— 能力位按用户拍板保持默认关)。
+  ['rpc:terminal', 'terminal'],
 ] as const
 
 /**

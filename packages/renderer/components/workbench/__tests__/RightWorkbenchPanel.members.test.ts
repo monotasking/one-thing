@@ -13,15 +13,25 @@ const mocks = vi.hoisted(() => ({
   openSession: vi.fn(),
   electronAPI: {
     listVariables: vi.fn(),
-    listTerminals: vi.fn(),
-    createTerminal: vi.fn(),
-    killTerminal: vi.fn(),
+  },
+  // terminal 域已迁到通用 RPC 通道(P4 终态批 D2):面板经 store 用的是壳外客户端
+  // `@/platform/terminal-client`,不再是 platformApi 上的 listTerminals/createTerminal。
+  terminalApi: {
+    list: vi.fn(),
+    create: vi.fn(),
+    kill: vi.fn(),
+    write: vi.fn(),
+    resize: vi.fn(),
+    attach: vi.fn(),
+    ack: vi.fn(),
   },
 }))
 
 vi.mock('@/composables/useEditorWorkspace', () => ({
   useEditorWorkspace: () => mocks.editorWorkspace,
 }))
+
+vi.mock('@/platform/terminal-client', () => ({ terminalApi: mocks.terminalApi }))
 
 vi.mock('@/components/terminal/TerminalView.vue', () => ({
   default: { name: 'TerminalView', props: ['terminalId'], template: '<div class="mock-terminal-view" />' },
@@ -95,7 +105,7 @@ describe('RightWorkbenchPanel — 成员 tab', () => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
     mocks.electronAPI.listVariables.mockResolvedValue({ success: true, variables: [] })
-    mocks.electronAPI.listTerminals.mockResolvedValue({ success: true, terminals: [] })
+    mocks.terminalApi.list.mockResolvedValue({ success: true, terminals: [] })
     Object.defineProperty(window, 'electronAPI', { value: mocks.electronAPI, configurable: true })
   })
 

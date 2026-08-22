@@ -241,6 +241,30 @@ describe('createWebPlatformApi', () => {
     expect(api.capabilities.evals).toBe(true)
   })
 
+  /**
+   * terminal 的七条请求面迁到通用 RPC 通道之后(P4 终态批 D2),web 壳上不再有
+   * 它们的「不支持」桩 —— 但**能力位按用户拍板保持默认关**,而且真正的闸落在
+   * **服务端**:`backend/rpc/domains/terminal.ts` 在 `transport === 'http'` 上
+   * 七条一律结构化拒绝(桌面自己也挂着同一份 HTTP 面,渲染侧的位挡不住拿到
+   * Bearer 的浏览器)。这里钉三件事:名单里请求面清零、两条推送仍在名单里、
+   * 能力位仍是 false。
+   */
+  it('drops the terminal request stubs but keeps the capability off on web', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('server unavailable')
+    }))
+    vi.stubGlobal('navigator', {})
+
+    const { createWebPlatformApi, WEB_DESKTOP_ONLY_PLATFORM_METHODS } = await import('../web.js')
+    expect(WEB_DESKTOP_ONLY_PLATFORM_METHODS.filter(name => name.includes('Terminal'))).toEqual([
+      'onTerminalData',
+      'onTerminalExit',
+    ])
+
+    const api = createWebPlatformApi()
+    expect(api.capabilities.terminal).toBe(false)
+  })
+
   it('opens settings in the current browser tab', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('server unavailable')

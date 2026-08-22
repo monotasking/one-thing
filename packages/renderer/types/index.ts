@@ -759,30 +759,6 @@ export interface GalleryImage {
 	thumbnail?: string; // Optional thumbnail URL
 }
 
-// Terminal (real PTY) — renderer mirror of packages/shared/ipc/terminal.ts
-export interface TerminalInfo {
-	id: string;
-	title: string;
-	cwd: string;
-	shell: string;
-	cols: number;
-	rows: number;
-	createdAt: number;
-	exited?: { code: number | null };
-}
-
-export interface TerminalAttachResult {
-	success: boolean;
-	info?: TerminalInfo;
-	chunks?: Array<{ seq: number; data: string }>;
-	lastSeq?: number;
-	/** Ring buffer wrapped: write a full reset (\x1bc) before replaying. */
-	truncated?: boolean;
-	/** Flow-control generation; every ack must carry it. */
-	generation?: number;
-	error?: string;
-}
-
 // Browser (embedded WebContentsView) — renderer mirror of packages/shared/ipc/browser.ts
 export interface BrowserTabInfo {
 	id: string;
@@ -1147,34 +1123,8 @@ export interface ElectronAPI {
 	onSessionStream: (
 		callback: (payload: SessionStreamPayload) => void,
 	) => () => void;
-	// Terminal (real PTY; wire contracts in packages/shared/ipc/terminal.ts)
-	createTerminal: (request: {
-		cwd?: string;
-		shell?: string;
-		cols?: number;
-		rows?: number;
-		sessionId?: string;
-	}) => Promise<{ success: boolean; terminal?: TerminalInfo; error?: string }>;
-	listTerminals: () => Promise<{
-		success: boolean;
-		terminals: TerminalInfo[];
-		error?: string;
-	}>;
-	writeTerminal: (
-		terminalId: string,
-		data: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	resizeTerminal: (
-		terminalId: string,
-		cols: number,
-		rows: number,
-	) => Promise<{ success: boolean; error?: string }>;
-	killTerminal: (
-		terminalId: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	attachTerminal: (terminalId: string) => Promise<TerminalAttachResult>;
-	/** One-way flow-control ack (no response). bytes = JS string length units. */
-	ackTerminal: (terminalId: string, bytes: number, generation: number) => void;
+	// Terminal (real PTY) — 七条请求面已迁通用 RPC 通道(P4 终态批 D2,
+	// `terminalRouter` + `@/platform/terminal-client`);这里只剩两条推送订阅。
 	onTerminalData: (
 		callback: (data: { terminalId: string; seq: number; data: string }) => void,
 	) => () => void;

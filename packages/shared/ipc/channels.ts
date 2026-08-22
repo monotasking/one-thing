@@ -244,16 +244,9 @@ export const IPC_CHANNELS = {
 
 	// Token usage / billing moved to the generic RPC channel (usageRouter).
 
-	// Terminal (real PTY, user-driven; distinct from the ACP protocol "terminal")
-	TERMINAL_CREATE: "terminal:create",
-	TERMINAL_LIST: "terminal:list",
-	TERMINAL_WRITE: "terminal:write",
-	TERMINAL_RESIZE: "terminal:resize",
-	TERMINAL_KILL: "terminal:kill",
-	TERMINAL_ATTACH: "terminal:attach",
-	// One-way renderer→main flow-control ack (ipcRenderer.send, not invoke)
-	TERMINAL_ACK: "terminal:ack",
-	// Push main→renderer
+	// Terminal (real PTY, user-driven; distinct from the ACP protocol "terminal").
+	// 七条请求面已迁通用 RPC 通道(P4 终态批 D2,`terminalRouter`);留下的两条是
+	// **推送面**,走注入广播器端口 `configureTerminalBroadcaster`(router 无推送面)。
 	TERMINAL_DATA: "terminal:data",
 	TERMINAL_EXIT: "terminal:exit",
 
