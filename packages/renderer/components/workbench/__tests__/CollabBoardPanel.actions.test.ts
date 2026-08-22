@@ -18,8 +18,14 @@ import { useCollabBoardStore } from '@/stores/collabBoard'
 const mocks = vi.hoisted(() => ({
   platformApi: {
     onSessionEvent: vi.fn(() => () => {}),
-    openPath: vi.fn(),
     getPendingPermissions: vi.fn(),
+  },
+  // A1-b:「用系统默认程序打开交付物」从 `electronAPI` 上一条字面量通道
+  // (`shell:open-path`)换成宿主壳路由的 `shell` 域,入参也从位置参数变成信封。
+  shellApi: {
+    openPath: vi.fn(),
+    openExternal: vi.fn(),
+    getDataPath: vi.fn(),
   },
   // collab 域已迁到通用 RPC 通道(P4a):方法名是 router 上的动词,入参是信封。
   collabApi: {
@@ -37,6 +43,7 @@ const mocks = vi.hoisted(() => ({
 const agentsApiMock = vi.hoisted(() => ({ listAgents: vi.fn() }))
 
 vi.mock('@/platform', () => ({ platformApi: mocks.platformApi }))
+vi.mock('@/platform/shell-domain-client', () => ({ shellApi: mocks.shellApi }))
 vi.mock('@/platform/collab-client', () => ({ collabApi: mocks.collabApi }))
 vi.mock('@/platform/agents-client', () => ({ agentsApi: agentsApiMock }))
 
@@ -280,7 +287,7 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
     setActivePinia(createPinia())
     agentsApiMock.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
     mocks.platformApi.onSessionEvent.mockReturnValue(() => {})
-    mocks.platformApi.openPath.mockResolvedValue('')
+    mocks.shellApi.openPath.mockResolvedValue('')
   })
 
   it('lists the card’s files by name, full path as the accessible name', async () => {
@@ -310,14 +317,14 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
     const wrapper = await mountPanel([delivered({ workSessionIds: ['work-1'] }, ['src/a.ts'])])
     await wrapper.find('.board-card-files .deliverable-file').trigger('click')
     await settle()
-    expect(mocks.platformApi.openPath).toHaveBeenCalledWith('/repo/src/a.ts')
+    expect(mocks.shellApi.openPath).toHaveBeenCalledWith({ filePath: '/repo/src/a.ts' })
   })
 
   it('says so instead of guessing when the room folder cannot be read', async () => {
     const wrapper = await mountPanel([delivered({}, ['src/a.ts'])], { roomFolder: null })
     await wrapper.find('.board-card-files .deliverable-file').trigger('click')
     await settle()
-    expect(mocks.platformApi.openPath).not.toHaveBeenCalled()
+    expect(mocks.shellApi.openPath).not.toHaveBeenCalled()
     expect(wrapper.find('.board-hint').text()).toContain('folder')
   })
 
@@ -352,7 +359,7 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
     await settle()
     await wrapper.find('.board-deliverables .deliverable-file').trigger('click')
     await settle()
-    expect(mocks.platformApi.openPath).toHaveBeenCalledWith('/repo/docs/readme.md')
+    expect(mocks.shellApi.openPath).toHaveBeenCalledWith({ filePath: '/repo/docs/readme.md' })
   })
 
   it('shows a one-line empty state when nothing has been produced yet', async () => {

@@ -2,7 +2,7 @@ import { computed, nextTick, onScopeDispose, ref, watch, type Ref } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { getScrollTopForSearchResult } from './result-scroll'
 import type { SearchCategory, SearchResult } from '@shared/ipc/search'
-import { platformApi } from '@/platform'
+import { searchApi } from '@/platform/search-client'
 
 const SEARCH_RESULT_LIMIT = 24
 const SEARCH_DEBOUNCE_MS = 150
@@ -71,7 +71,7 @@ export function useSearchWindow(resultsRef: Ref<HTMLElement | null>) {
     searchError.value = ''
 
     try {
-      const response = await platformApi.searchQuery({
+      const response = await searchApi.query({
         query: query.value,
         category: activeTab.value,
         limit: SEARCH_RESULT_LIMIT,

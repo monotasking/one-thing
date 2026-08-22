@@ -7,26 +7,19 @@
  * 「从哪扇窗按的」不再读 `event.sender`,而读宿主盖的 `ShellDispatchContext.callerId`
  * —— 同一个 webContents id,只是不再穿过四条专用通道。
  *
- * `search:query` **没有跟着走**,是刻意的:它一行 electron 都不碰(桌面是
- * `wiring/search/providers` 的 `executeSearch`),按「处理者 import 了 electron/窗口
- * = 壳,否则 = 数据面」的判据它是**数据面**,该去的是 `rpc:invoke` 的 backend 域;
- * 而 server 那侧是 per-owner 沙箱内的同一件事,要按 `context.transport` 分叉 ——
- * 那是 files / tools 那种域的做法,单独一批。所以这条通道与它的手写 handler 原样留着。
+ * A1-b 兑现了 A1-a 留下的那条判定:`search:query` 一行 electron 都不碰,按
+ * 「处理者 import 了 electron/窗口 = 壳,否则 = 数据面」的判据它是**数据面**,
+ * 已整只迁进 `rpc:invoke` 的 backend `search` 域(`backend/rpc/domains/search.ts`,
+ * 按 `context.transport` 分叉:ipc 走这台机器的 `executeSearch`,http 走
+ * per-owner 沙箱里的同一件事)。所以这只文件从此**只剩窗口活** ——
+ * `IPC_CHANNELS.SEARCH_QUERY` 那条常量与它的手写 handler 一起没了。
  */
 
-import { ipcMain } from 'electron'
-import { IPC_CHANNELS } from '@shared/ipc.js'
 import type {
-  SearchRequest,
-  SearchResponse,
   SearchWindowOpenOptions,
   SearchWindowSetAnchorRequest,
 } from '@shared/ipc/search.js'
-import {
-  closeOnethingSearchWindowForIpc,
-  executeOnethingSearchForIpc,
-} from '@onething/runtime/search'
-import { executeSearch } from '@onething/backend/wiring/search/providers.js'
+import { closeOnethingSearchWindowForIpc } from '@onething/runtime/search'
 import { closeSearchWindow, setSearchWindowAnchor } from './window.js'
 import {
   getElectronSearchWindowFromCallerId,
@@ -50,14 +43,6 @@ export function registerSearchHandlers(): void {
     },
     executeAction: (sourceWindow, actionId) => executeSearchActionFrom(sourceWindow, actionId),
   })
-
-  // 数据面的最后一条:只查不动窗,所以它还没有跟着搬(见文件头的判定)。
-  ipcMain.handle(IPC_CHANNELS.SEARCH_QUERY, (_event, request: unknown): Promise<SearchResponse> =>
-    executeOnethingSearchForIpc({
-      request: request as SearchRequest,
-      executeSearch,
-    }),
-  )
 
   log.info('handlers registered')
 }

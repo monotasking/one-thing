@@ -23,7 +23,7 @@ import {
   resolveBrowserSearchEngine,
   type BrowserSearchEngine,
 } from '@shared/ipc'
-import { platformApi } from '@/platform'
+import { browserApi } from '@/platform/browser-client'
 import { useBrowserStore } from '@/stores/browser'
 import { useOverlayPresenceStore } from '@/stores/overlayPresence'
 import type { MessageAttachment, PickedWebElement } from '@/types'
@@ -130,8 +130,8 @@ async function beginEdit(): Promise<void> {
 }
 
 async function loadEngine(): Promise<void> {
-  const res = await platformApi.getBrowserSearchEngine?.()
-  engine.value = resolveBrowserSearchEngine(res?.success ? res.engineId : undefined)
+  const res = await browserApi.getSearchEngine({})
+  engine.value = resolveBrowserSearchEngine(res.success ? res.engineId : undefined)
 }
 
 function onOmniboxBlur(): void {
@@ -294,7 +294,7 @@ function reconcileBounds(): void {
       next.width !== last.width || next.height !== last.height
     ) {
       last = next
-      void platformApi.setBrowserBounds?.(next)
+      void browserApi.setBounds({ bounds: next })
     }
   }
   rafId = requestAnimationFrame(reconcileBounds)
@@ -323,12 +323,12 @@ function applyVisibility(show: boolean): void {
     showTimer = null
   }
   if (!show) {
-    void platformApi.setBrowserVisible?.(false)
+    void browserApi.setVisible({ visible: false })
     return
   }
   const reveal = () => {
     last = { x: -1, y: -1, width: -1, height: -1 } // force a fresh setBounds
-    void platformApi.setBrowserVisible?.(true)
+    void browserApi.setVisible({ visible: true })
   }
   if (expanding) showTimer = setTimeout(reveal, 220)
   else reveal()
@@ -377,7 +377,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('focusin', onDocumentInteraction, true)
   document.removeEventListener('mousedown', onDocumentInteraction, true)
   store.setPanelFocused(false)
-  void platformApi.setBrowserVisible?.(false)
+  void browserApi.setVisible({ visible: false })
 })
 
 // 面板被切走/折叠时键就不再归它。注意不能挂 shouldShow：它含 !tabListOpen，

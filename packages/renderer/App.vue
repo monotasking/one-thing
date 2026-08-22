@@ -188,6 +188,7 @@ import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
+import { shellApi } from '@/platform/shell-domain-client'
 import { appStateApi } from '@/platform/app-state-client'
 import { settingsWindowApi } from '@/platform/settings-window-client'
 import { todoPlanWindowApi } from '@/platform/todo-plan-window-client'
@@ -777,7 +778,7 @@ function createReferenceHost(): ReferenceHost {
     openFile: (path, position) => openFileInRightWorkbench(path, position),
     openUrl: async (url) => {
       if (!platformApi.capabilities.embeddedBrowser) {
-        await platformApi.openExternal(url)
+        await shellApi.openExternal({ url })
         return
       }
       // 先把浏览器面板亮出来并等它完成 hydrate,再建 tab —— 反过来的话 BrowserPanel
@@ -790,7 +791,7 @@ function createReferenceHost(): ReferenceHost {
       const tabId = await browserStore.openTab(url)
       if (tabId) await browserStore.selectTab(tabId)
     },
-    openExternal: url => void platformApi.openExternal(url),
+    openExternal: url => void shellApi.openExternal({ url }),
     revealPath: path => void filesApi.reveal({ path }),
     openFolder: path => openFolderInRightWorkbench(path),
     openImage: (path, fileUrl) => void mediaWindowApi.openPreview({ src: fileUrl, alt: path.split('/').pop() || path }),
@@ -1086,7 +1087,7 @@ watch([sidebarStowed, sidebarFloating], () => {
   // Auxiliary windows own their chrome behavior. Todo/Notes uses native hover-only buttons.
   if (isSettingsWindow.value || isImagePreviewWindow.value || isSearchWindow.value || isTodoPlanWindow.value) return
   // Always show traffic lights since sidebar strip is always visible
-  platformApi?.setWindowButtonVisibility?.(true).catch(() => {
+  windowApi.setButtonVisibility({ visible: true }).catch(() => {
     // Handler may not be registered yet during initial load
   })
 }, { immediate: true })

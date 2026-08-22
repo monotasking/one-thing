@@ -169,7 +169,7 @@ import ProblemsPanel from './ProblemsPanel.vue'
 import { handleMarkdownAttachmentPaste } from '@/editor/markdown-attachments'
 import type { MarkdownFeatureSet } from '@/editor/markdown-document'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
-import { platformApi } from '@/platform'
+import { shellApi } from '@/platform/shell-domain-client'
 import { markdownApi } from '@/platform/markdown-client'
 import { mediaWindowApi } from '@/platform/media-window-client'
 import { searchWindowApi } from '@/platform/search-window-client'
@@ -382,15 +382,15 @@ async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution
 async function openMarkdownLink(payload: { href: string; asset?: MarkdownAssetResolution | null }) {
   const asset = await resolveMarkdownLink(payload.href, payload.asset)
   if (asset?.kind === 'external') {
-    await platformApi.openExternal(asset.href || payload.href)
+    await shellApi.openExternal({ url: asset.href || payload.href })
     return
   }
   if (asset?.absolutePath) {
-    await platformApi.openPath(asset.absolutePath)
+    await shellApi.openPath({ filePath: asset.absolutePath })
     return
   }
   if (/^[a-z][a-z\d+.-]*:/i.test(payload.href)) {
-    await platformApi.openExternal(payload.href)
+    await shellApi.openExternal({ url: payload.href })
   }
 }
 

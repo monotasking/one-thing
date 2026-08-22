@@ -16,7 +16,7 @@ import {
   isBrowserSearchInput,
   resolveBrowserSearchEngine,
 } from '@shared/ipc'
-import { platformApi } from '@/platform'
+import { browserApi } from '@/platform/browser-client'
 
 const emit = defineEmits<{ submit: [raw: string, engineId: string] }>()
 
@@ -69,8 +69,8 @@ onMounted(async () => {
   focusInput()
   // 默认引擎是主进程那份持久化，每次开页现取——设置窗是独立窗口独立 Pinia，
   // 镜像会跨窗口过期（omnibox 提交同理，见 stores/browser.ts）。
-  const res = await platformApi.getBrowserSearchEngine?.()
-  const current = resolveBrowserSearchEngine(res?.success ? res.engineId : undefined)
+  const res = await browserApi.getSearchEngine({})
+  const current = resolveBrowserSearchEngine(res.success ? res.engineId : undefined)
   const index = BROWSER_SEARCH_ENGINES.findIndex(e => e.id === current.id)
   if (index >= 0) engineIndex.value = index
 })

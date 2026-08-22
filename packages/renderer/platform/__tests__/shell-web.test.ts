@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * web 壳的派发表与八个域 —— 结构债 P4 终态批 A1-a。
+ * web 壳的派发表与十个域 —— 结构债 P4 终态批 A1-a(八个)+ A1-b(browser / shell)。
  *
  * 两件事:表本身的语义(白名单 / never-reject / 未注册回 `no-host-shell`),以及
  * **每个域的答复与迁移前 `platform/web.ts` 里那批桩逐字相同** —— 这批只搬路,
@@ -8,12 +8,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineRouter } from '@onething/core/ipc'
+import { browserRouter } from '@shared/ipc/browser.js'
 import { deeplinkRouter } from '@shared/ipc/deeplink.js'
 import { dialogRouter } from '@shared/ipc/dialog.js'
 import { mediaWindowRouter } from '@shared/ipc/media.js'
 import { notifyRouter } from '@shared/ipc/notify.js'
 import { searchWindowRouter } from '@shared/ipc/search.js'
 import { settingsWindowRouter } from '@shared/ipc/settings.js'
+import { shellRouter } from '@shared/ipc/shell.js'
 import { todoPlanWindowRouter } from '@shared/ipc/todo-plan.js'
 import { windowRouter } from '@shared/ipc/window.js'
 import {
@@ -87,7 +89,7 @@ describe('web shell domains', () => {
     registerWebShellDomains({ postJson, emitSearchAction, emitImagePreviewUpdate })
   })
 
-  it('registers all eight window domains', () => {
+  it('registers all ten shell domains', () => {
     for (const router of [
       todoPlanWindowRouter,
       searchWindowRouter,
@@ -97,6 +99,8 @@ describe('web shell domains', () => {
       mediaWindowRouter,
       notifyRouter,
       deeplinkRouter,
+      browserRouter,
+      shellRouter,
     ]) {
       expect(hasWebShellDomain(router.domain)).toBe(true)
     }
@@ -171,6 +175,13 @@ describe('web shell domains', () => {
 
   it('window / dialog / notify / deeplink answer exactly like the pre-migration stubs', async () => {
     await expect(call('window', 'close', {})).resolves.toEqual({ ok: true, data: { success: false } })
+    await expect(call('window', 'setButtonVisibility', { visible: true })).resolves.toEqual({
+      ok: true,
+      data: {
+        success: false,
+        error: 'Platform method "setWindowButtonVisibility" is not available in the web host yet.',
+      },
+    })
     await expect(call('dialog', 'showOpen', {}))
       .resolves.toEqual({ ok: true, data: { canceled: true, filePaths: [] } })
     await expect(call('notify', 'show', { title: 'a', body: 'b', sessionId: 's' }))
@@ -194,5 +205,65 @@ describe('web shell domains', () => {
     expect(emitImagePreviewUpdate).toHaveBeenCalledWith({ mode: 'single', src: 'blob:x', alt: 'a' })
     await expect(call('media-window', 'openGallery', { mediaId: 'm1' }))
       .resolves.toEqual({ ok: true, data: { success: true } })
+  })
+
+  it('browser: all 19 answer with the pre-migration sentence, method names verbatim', async () => {
+    const legacyNames: Array<[string, string]> = [
+      ['hydrate', 'hydrateBrowser'],
+      ['createTab', 'createBrowserTab'],
+      ['closeTab', 'closeBrowserTab'],
+      ['selectTab', 'selectBrowserTab'],
+      ['navigate', 'navigateBrowser'],
+      ['goBack', 'browserGoBack'],
+      ['goForward', 'browserGoForward'],
+      ['reload', 'reloadBrowser'],
+      ['stop', 'stopBrowser'],
+      ['setBounds', 'setBrowserBounds'],
+      ['setVisible', 'setBrowserVisible'],
+      ['pickElement', 'pickBrowserElement'],
+      ['pickCancel', 'cancelBrowserPick'],
+      ['getSearchEngine', 'getBrowserSearchEngine'],
+      ['setSearchEngine', 'setBrowserSearchEngine'],
+      ['listProfiles', 'listBrowserProfiles'],
+      ['addProfile', 'addBrowserProfile'],
+      ['removeProfile', 'removeBrowserProfile'],
+      ['switchProfile', 'switchBrowserProfile'],
+    ]
+    expect(legacyNames.map(([method]) => method)).toEqual([...browserRouter.methods])
+    for (const [method, legacyName] of legacyNames) {
+      await expect(call('browser', method, {})).resolves.toEqual({
+        ok: true,
+        data: {
+          success: false,
+          error: `Platform method "${legacyName}" is not available in the web host yet.`,
+        },
+      })
+    }
+  })
+
+  it('shell: openExternal really opens a tab; the other two admit they cannot', async () => {
+    const open = vi.fn()
+    const originalOpen = window.open
+    window.open = open as unknown as typeof window.open
+    try {
+      await expect(call('shell', 'openExternal', { url: 'https://example.com' }))
+        .resolves.toEqual({ ok: true, data: { success: true } })
+      expect(open).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
+    } finally {
+      window.open = originalOpen
+    }
+
+    for (const [method, legacyName] of [
+      ['openPath', 'openPath'],
+      ['getDataPath', 'getDataPath'],
+    ]) {
+      await expect(call('shell', method, {})).resolves.toEqual({
+        ok: true,
+        data: {
+          success: false,
+          error: `Platform method "${legacyName}" is not available in the web host yet.`,
+        },
+      })
+    }
   })
 })

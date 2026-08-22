@@ -639,7 +639,7 @@ Both share one envelope (`RpcRequest` / `RpcResponse`, `@shared/ipc/rpc.ts`), on
 
 **To add a window-system (shell) domain** (4 places): `defineRouter` in `@shared/ipc/<d>.ts` → host handlers in `apps/electron/src/ipc/shell/<d>.ts` (registered from that domain's existing `@main/ipc/<d>.ts` wiring — **not** a new line in `handlers.ts`) → web handlers in `packages/renderer/platform/shell-web/<d>.ts` (+ one line in its `index.ts`) → client `platform/<d>-client.ts`. No new channel constant, no preload edit, no `web.ts` edit.
 
-**`packages/shared/ipc/channels.ts` is now the push side plus a short residue**: `session:event` / `session:stream` / per-domain broadcasts, the one-way high-frequency `voice:audio-chunk`, browser's 20 (A1-b), and `search:query` (a data-plane handler still awaiting its backend domain). `bun run transport:gate` is a **numeric ratchet** over its constant count and the four shell files — a new hand-written channel turns it red.
+**`packages/shared/ipc/channels.ts` is now the push side plus one residue**: `session:event` / `session:stream` / per-domain broadcasts (including browser's single `browser:tabs-changed`), plus the one-way high-frequency `voice:audio-chunk`. Since A1-b (2026-08-23) the whole window system rides `shell:invoke` — browser's 19 request verbs, and the four channels that were never in this table at all (`shell:open-path` / `shell:open-external` / `app:get-data-path` → the new `shellRouter`; `window:set-button-visibility` → `windowRouter`, because it acts on the **caller's own window**). `search:query` became the backend `search` RPC domain, forked on `context.transport` like files/tools (http goes through the `backend/server/search-providers.ts` single-slot port — the same closure the old `POST /api/search/query` route called). `bun run transport:gate` is a **numeric ratchet** over its constant count and the four shell files — a new hand-written channel turns it red; the boundary checker separately ratchets those four literal channel names out of `apps/electron/src`.
 
 Supporting files: **type definitions** `packages/shared/ipc/*.ts`; **event/command types** `packages/shared/events/*.ts`; **preload bridge** `apps/electron/src/preload.ts` → `preload/bridge.ts` (`installOnethingPreloadBridge` — it exposes `rpcInvoke`, `shellInvoke`, and the `on*` push subscriptions, nothing per-domain).
 
@@ -727,9 +727,11 @@ apps/electron/src/
 │   ├── app/                   # boot: main-process.ts, ready.ts, bootstrap.ts, …
 │   ├── window/                # main/settings/search/todo-plan windows, macos-panel, state
 │   ├── preload.ts + preload/  # bridge.ts (electronAPI factory) + create-api.ts (routers)
-│   ├── ipc/                   # portable host surface, no electron import: shell-registry.ts
-│   │                          # (the `shell:invoke` dispatch table) + shell/<d>.ts (window-system
-│   │                          # handler tables) + the remaining register*IpcHandler factories
+│   ├── ipc/                   # portable host surface, no electron import in the dispatch half:
+│   │                          # shell-registry.ts (the `shell:invoke` table) + shell/<d>.ts —
+│   │                          # ten window-system handler tables (todo-plan-window, search-window,
+│   │                          # settings-window, window, dialog, media-window, notify, deeplink,
+│   │                          # browser, shell) — plus each domain's thin registration point
 │   └── voice/ music/ menu/ search/ gateway/ auth/ shell/ …   # '@onething/electron-host/*'
 │
 apps/server/src/               # process shell only: main.ts (env, discovery-file refusal,

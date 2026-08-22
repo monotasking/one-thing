@@ -819,7 +819,12 @@ describe('createWebPlatformApi', () => {
     const { createWebPlatformApi } = await import('../web.js')
     const api = createWebPlatformApi()
 
-    await expect(api.openExternal('https://example.com')).resolves.toEqual({ success: true })
+    // A1-b:`openExternal` 走宿主壳路由的 `shell` 域,`window.open` 那段实现逐字未改。
+    await expect(api.shellInvoke({
+      domain: 'shell',
+      method: 'openExternal',
+      payload: { url: 'https://example.com' },
+    })).resolves.toEqual({ ok: true, data: { success: true } })
     expect(open).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
   })
 
@@ -902,15 +907,8 @@ describe('createWebPlatformApi', () => {
 
     // P4c 第十一批:settings 四条数据面已迁到通用 RPC(settingsRouter);
     // web 壳上只剩「开设置窗」的 hash 等价物与三条 noop / 本地推送。
-    await expect(api.searchQuery({
-      query: 'hello',
-      category: 'all',
-      limit: 10,
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/search/query',
-    })
-
+    // A1-b:`searchQuery` 已迁到通用 RPC 的 `search` 域,web 壳上不再有它的桩 ——
+    // 这里只剩执行动作那条,它仍是 `shell-web/search-window.ts` 打的同一条 REST。
     const searchAction = vi.fn()
     const unsubscribeSearchAction = api.onSearchAction(searchAction)
     // A1-a:执行动作走宿主壳路由,web 处理者仍然打同一条 REST 并在页内广播。
@@ -925,14 +923,7 @@ describe('createWebPlatformApi', () => {
     expect(searchAction).toHaveBeenCalledWith('open-settings')
     unsubscribeSearchAction()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/search/query', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        query: 'hello',
-        category: 'all',
-        limit: 10,
-      }),
-    }))
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/search/query', expect.anything())
     expect(fetchMock).toHaveBeenCalledWith('/api/search/actions', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ actionId: 'open-settings' }),

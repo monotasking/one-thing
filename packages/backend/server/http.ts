@@ -143,7 +143,9 @@ async function handleRequest(context: RouteContext): Promise<void> {
 
 function matchRoute(method: string, pathname: string): RouteHandler | undefined {
   if (method === 'GET' && pathname === '/api/capabilities') return handleGetCapabilities
-  if (method === 'POST' && pathname === '/api/search/query') return handleSearchQuery
+  // search 的数据面(`query`)已迁到 `POST /api/rpc`(searchRouter,P4 终态批 A1-b);
+  // 留下的这条是**窗口活**在 server 上的对应物 —— web 壳的
+  // `searchWindowRouter.executeAction` 打的就是它。
   if (method === 'POST' && pathname === '/api/search/actions') return handleSearchAction
   // plugins 的十九条数据面已迁到 `POST /api/rpc`(pluginsRouter,P4 终态批 C2)。
   // 六条读/开关面在域里走 `server/plugin-catalog.ts` 那个单槽端口(装的就是从前
@@ -294,12 +296,6 @@ async function handleReadMediaFile(context: RouteContext): Promise<void> {
 
 
 
-
-async function handleSearchQuery(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.search
-  if (!adapter) return sendNotImplemented(context, 'search.query')
-  sendJson(context.response, 200, await adapter.query(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
 async function handleSearchAction(context: RouteContext): Promise<void> {
   const adapter = context.runtime.search

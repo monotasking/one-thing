@@ -16,8 +16,31 @@ export interface CloseWindowResponse {
 	success: boolean;
 }
 
+/**
+ * 红绿灯三枚交通灯的显隐(macOS)。**A1-b 加的第二条**:它从前是
+ * `apps/electron/src/ipc/shell-controller.ts` 里一条不在 `IPC_CHANNELS` 表上的
+ * 字面量通道(`window:set-button-visibility`)。
+ *
+ * 和 `close` 同一条规矩 —— **改哪扇窗由宿主从 `callerId` 认**,信封上只带「显还是
+ * 隐」。所以它归 `window` 域而不是 `shell` 域:处理者动的是发起窗本身。
+ */
+export interface SetWindowButtonVisibilityRequest {
+	visible: boolean;
+}
+
+export interface SetWindowButtonVisibilityResponse {
+	success: boolean;
+}
+
 export type WindowRoutes = {
 	close: { input: Record<string, never>; output: CloseWindowResponse };
+	setButtonVisibility: {
+		input: SetWindowButtonVisibilityRequest;
+		output: SetWindowButtonVisibilityResponse;
+	};
 };
 
-export const windowRouter = defineRouter<WindowRoutes>("window", ["close"]);
+export const windowRouter = defineRouter<WindowRoutes>("window", [
+	"close",
+	"setButtonVisibility",
+]);

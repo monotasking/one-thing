@@ -7,8 +7,8 @@
  */
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { platformApi } from '@/platform'
-import type { BrowserProfile, BrowserProfilesResponse } from '@/types'
+import type { BrowserProfile, BrowserProfilesResponse } from '@shared/ipc/browser'
+import { browserApi } from '@/platform/browser-client'
 
 export const useBrowserProfilesStore = defineStore('browserProfiles', () => {
   const profiles = ref<BrowserProfile[]>([])
@@ -25,7 +25,7 @@ export const useBrowserProfilesStore = defineStore('browserProfiles', () => {
   async function load(): Promise<void> {
     loading.value = true
     try {
-      apply(await platformApi.listBrowserProfiles?.())
+      apply(await browserApi.listProfiles({}))
     } finally {
       loading.value = false
     }
@@ -34,16 +34,16 @@ export const useBrowserProfilesStore = defineStore('browserProfiles', () => {
   async function add(name: string): Promise<void> {
     const trimmed = name.trim()
     if (!trimmed) return
-    apply(await platformApi.addBrowserProfile?.(trimmed))
+    apply(await browserApi.addProfile({ name: trimmed }))
   }
 
   async function remove(profileId: string): Promise<void> {
-    apply(await platformApi.removeBrowserProfile?.(profileId))
+    apply(await browserApi.removeProfile({ profileId }))
   }
 
   async function switchTo(profileId: string): Promise<void> {
     if (profileId === activeProfileId.value) return
-    apply(await platformApi.switchBrowserProfile?.(profileId))
+    apply(await browserApi.switchProfile({ profileId }))
   }
 
   return { profiles, activeProfileId, loading, load, add, remove, switchTo }

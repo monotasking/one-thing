@@ -1,4 +1,5 @@
 import { BrowserWindow, webContents } from 'electron'
+import { setElectronWindowButtonVisibility } from '../shell/operations.js'
 import { registerWindowShellDomain } from './shell/window.js'
 
 /**
@@ -11,6 +12,11 @@ import { registerWindowShellDomain } from './shell/window.js'
  * `event.sender`,现在读 `ShellDispatchContext.callerId`(同一个
  * `event.sender.id`,由 `@main/ipc/shell-rpc.ts` 铸)。渲染层从头到尾没有机会
  * 点名去关别人的窗。
+ *
+ * A1-b 又加了一件同型的事:红绿灯显隐(从前的字面量通道
+ * `window:set-button-visibility`)。实现仍是 `shell/operations.ts` 的
+ * `setElectronWindowButtonVisibility`(它自己判 darwin、自己找窗),这里只把
+ * callerId 还原成一份 `WebContents` —— 与 `close` 同一条还原法。
  */
 export function registerWindowHandlers(): void {
   registerWindowShellDomain({
@@ -22,6 +28,12 @@ export function registerWindowHandlers(): void {
       if (!window || window.isDestroyed()) return false
       window.close()
       return true
+    },
+    setCallerWindowButtonVisibility: (callerId, visible) => {
+      if (typeof callerId !== 'number') return
+      const sender = webContents.fromId(callerId)
+      if (!sender) return
+      setElectronWindowButtonVisibility(sender, visible)
     },
   })
 }

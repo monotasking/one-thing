@@ -1,6 +1,5 @@
 import type {
 	ScratchpadChangedPayload,
-	SearchRequest,
 	Step,
 	TodoPlanChangedPayload,
 	VoiceEvent,
@@ -426,33 +425,15 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	// 服务端(域的 http 分叉一律拒),这里只剩两条推送订阅(router 无推送面)。
 	"onTerminalData",
 	"onTerminalExit",
-	// Browser (embedded WebContentsView is Electron-only; web uses iframe fallback)
-	"hydrateBrowser",
-	"createBrowserTab",
-	"closeBrowserTab",
-	"selectBrowserTab",
-	"navigateBrowser",
-	"browserGoBack",
-	"browserGoForward",
-	"reloadBrowser",
-	"stopBrowser",
-	"setBrowserBounds",
-	"setBrowserVisible",
-	"pickBrowserElement",
-	"cancelBrowserPick",
-	"getBrowserSearchEngine",
-	"setBrowserSearchEngine",
-	"listBrowserProfiles",
-	"addBrowserProfile",
-	"removeBrowserProfile",
-	"switchBrowserProfile",
+	// Browser:19 条请求面于 A1-b 走宿主壳路由,web 侧的答复在
+	// `shell-web/browser.ts` 里(文案逐字沿用这份名单从前生成的那句,
+	// 能力位 `embeddedBrowser` 仍是 false)。这里只剩那条推送订阅。
 	"onBrowserTabsChanged",
-	"setWindowButtonVisibility",
 	// 四条搜索窗动作 + 关发起窗于 A1-a 走宿主壳路由,web 侧的答复在
 	// `shell-web/search-window.ts` / `shell-web/window.ts` 里(文案逐字沿用这份
 	// 名单从前生成的那句)—— 所以它们不再挂在 platformApi 上,也不在这份名单里。
-	"openPath",
-	"getDataPath",
+	// A1-b 同理带走了 `openPath` / `getDataPath`(→ `shell-web/shell.ts`)与
+	// `setWindowButtonVisibility`(→ `shell-web/window.ts`)。
 	"onMenuNewChat",
 	"onMenuCloseChat",
 	"onMenuNewBrowserTab",
@@ -493,9 +474,9 @@ const webApi = {
 	onSettingsChanged: () => () => {},
 	// web 端没有第二个窗口,也没有这条广播(批 B9-0):noop 退订即可。
 	onSpacesChanged: () => () => {},
-	searchQuery: (request: SearchRequest) =>
-		postJson("/api/search/query", request),
-	// `searchExecuteAction` 于 A1-a 搬进 `shell-web/search-window.ts`(实现逐字)。
+	// `searchQuery` 于 A1-b 迁到通用 RPC 通道的 backend `search` 域(域自己按
+	// `transport` 分叉:http 那一支调的就是从前 `POST /api/search/query` 背后的
+	// 同一个闭包)。`searchExecuteAction` 于 A1-a 搬进 `shell-web/search-window.ts`。
 
 	// Themes 走通用 RPC(themesRouter,P4c 第七批):浏览器从此拿到的是与桌面
 	// 逐字相同的一份主题 —— 插件覆盖的合成也在同一个域处理者里做。
@@ -721,16 +702,8 @@ const webApi = {
 			};
 		}
 	},
-	openExternal: async (url: string) => {
-		if (typeof window === "undefined" || typeof window.open !== "function") {
-			return {
-				success: false,
-				error: "Opening external URLs is not available in this browser.",
-			};
-		}
-		window.open(url, "_blank", "noopener,noreferrer");
-		return { success: true };
-	},
+	// `openExternal` 于 A1-b 搬进 `shell-web/shell.ts`(`window.open` 那段逐字),
+	// 与 `openPath` / `getDataPath` 同一个 `shell` 域。
 	onSessionEvent: (callback: (envelope: SessionEventEnvelope) => void) =>
 		createEventSourceSubscription("/api/events", "session:event", callback),
 	onSessionStream: (callback: (payload: SessionStreamPayload) => void) =>

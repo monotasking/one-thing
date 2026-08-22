@@ -151,8 +151,15 @@ export interface RuntimePermissionsAdapter<TPermissionResponse = unknown> {
  * 上一格不留(`SETTINGS_CHANGED` 是桌面独有的窗间广播)。
  */
 
-export interface RuntimeSearchAdapter<TSearchRequest = unknown, TSearchResponse = unknown, TSearchActionResponse = RuntimeMutationResult> {
-  query(request: TSearchRequest, context?: RuntimeRequestContext): Promise<TSearchResponse>
+/**
+ * 结构债 P4 终态批 A1-b:`query` 这一格没了 —— **数据面**随 `searchRouter` 走通用
+ * RPC(`backend/rpc/domains/search.ts`),server 那侧的实现改由
+ * `backend/server/search-providers.ts` 的单槽端口交给域,`POST /api/search/query`
+ * 随之删除。留下的 `executeAction` 是**窗口活**在 server 上的对应物,仍由
+ * `POST /api/search/actions` 调用(web 壳的 `searchWindowRouter.executeAction`
+ * 打的就是它)。
+ */
+export interface RuntimeSearchAdapter<TSearchActionResponse = RuntimeMutationResult> {
   executeAction(actionId: string, context?: RuntimeRequestContext): Promise<TSearchActionResponse>
 }
 

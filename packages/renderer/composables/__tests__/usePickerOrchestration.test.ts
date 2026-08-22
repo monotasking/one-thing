@@ -110,6 +110,12 @@ const filesApi = vi.hoisted(() => ({
 }))
 vi.mock('@/platform/files-client', () => ({ filesApi }))
 
+// A1-b:浏览器补水走宿主壳路由的 `browser` 域(标签态推送仍在 platformApi 上)。
+const browserApi = vi.hoisted(() => ({
+  hydrate: vi.fn(),
+}))
+vi.mock('@/platform/browser-client', () => ({ browserApi }))
+
 describe('usePickerOrchestration', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -490,17 +496,17 @@ describe('usePickerOrchestration', () => {
   })
 
   function stubBrowserTabs() {
-    // The picker harness hydrates the browser mirror at setup (per-access
-    // platform proxy), so extending the stub before createHarness is enough.
+    // A1-b:补水走 `browser` 壳域(下面 hoisted 的 `browserApi` 桩),标签态推送
+    // 仍是 `electronAPI` 上的订阅 —— router 没有推送面。
+    browserApi.hydrate.mockResolvedValue({
+      success: true,
+      tabs: [
+        { id: 'tab-1', url: 'https://github.com/pull/7', title: 'Example PR', loading: false, canGoBack: false, canGoForward: false },
+        { id: 'tab-2', url: 'https://vuejs.org/guide/', title: 'Vue Guide', loading: false, canGoBack: false, canGoForward: false },
+      ],
+      activeTabId: 'tab-1',
+    })
     Object.assign(window.electronAPI, {
-      hydrateBrowser: vi.fn().mockResolvedValue({
-        success: true,
-        tabs: [
-          { id: 'tab-1', url: 'https://github.com/pull/7', title: 'Example PR', loading: false, canGoBack: false, canGoForward: false },
-          { id: 'tab-2', url: 'https://vuejs.org/guide/', title: 'Vue Guide', loading: false, canGoBack: false, canGoForward: false },
-        ],
-        activeTabId: 'tab-1',
-      }),
       onBrowserTabsChanged: vi.fn().mockReturnValue(() => {}),
     })
   }

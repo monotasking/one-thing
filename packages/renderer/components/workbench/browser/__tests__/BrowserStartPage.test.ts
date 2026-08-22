@@ -4,12 +4,13 @@ import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import BrowserStartPage from '../BrowserStartPage.vue'
 
-const getBrowserSearchEngine = vi.fn()
+// A1-b:浏览器面走宿主壳路由的 `browser` 域,渲染侧客户端是 `browserApi`。
+const getSearchEngine = vi.fn()
 
-vi.mock('@/platform', () => ({
-  platformApi: {
-    get getBrowserSearchEngine() {
-      return getBrowserSearchEngine
+vi.mock('@/platform/browser-client', () => ({
+  browserApi: {
+    get getSearchEngine() {
+      return getSearchEngine
     },
   },
 }))
@@ -22,19 +23,19 @@ async function mountStartPage() {
 }
 
 beforeEach(() => {
-  getBrowserSearchEngine.mockReset()
-  getBrowserSearchEngine.mockResolvedValue({ success: true, engineId: 'google' })
+  getSearchEngine.mockReset()
+  getSearchEngine.mockResolvedValue({ success: true, engineId: 'google' })
 })
 
 describe('BrowserStartPage', () => {
   it('opens on the persisted default engine', async () => {
-    getBrowserSearchEngine.mockResolvedValue({ success: true, engineId: 'baidu' })
+    getSearchEngine.mockResolvedValue({ success: true, engineId: 'baidu' })
     const wrapper = await mountStartPage()
     expect(wrapper.get('.bsp-token').text()).toBe('百')
   })
 
   it('falls back to the default engine when the host has no answer', async () => {
-    getBrowserSearchEngine.mockResolvedValue({ success: false, engineId: 'google' })
+    getSearchEngine.mockResolvedValue({ success: false, engineId: 'google' })
     const wrapper = await mountStartPage()
     expect(wrapper.get('.bsp-token').text()).toBe('G')
   })

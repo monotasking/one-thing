@@ -42,8 +42,19 @@ const mocks = vi.hoisted(() => {
 		// 命令总线是 `session-command` RPC 域(结构债 P4c 第四批),不再是
 		// `window.electronAPI` 上的一个属性。
 		emitSessionCommand: vi.fn().mockResolvedValue({ success: true }),
+		// A1-b:红绿灯显隐从 `electronAPI` 上的一条字面量通道换成宿主壳路由上的
+		// `windowRouter.setButtonVisibility`。下面那两条「聊天卡片不许碰红绿灯」的
+		// 断言因此改打这只桩。
+		setWindowButtonVisibility: vi.fn().mockResolvedValue({ success: true }),
 	};
 });
+
+vi.mock("@/platform/window-client", () => ({
+	windowApi: {
+		close: vi.fn().mockResolvedValue({ success: true }),
+		setButtonVisibility: mocks.setWindowButtonVisibility,
+	},
+}));
 
 vi.mock("@/platform/session-command-client", () => ({
 	sessionCommands: { emit: mocks.emitSessionCommand },
@@ -274,7 +285,6 @@ function installElectronApi() {
 			minimizeTodoPlanWindow: vi.fn().mockResolvedValue({ success: true }),
 			zoomTodoPlanWindow: vi.fn().mockResolvedValue({ success: true }),
 			dragTodoPlanWindow: vi.fn().mockResolvedValue({ success: true }),
-			setWindowButtonVisibility: vi.fn().mockResolvedValue({ success: true }),
 			onTodoPlanChanged: vi.fn((callback: (data: any) => void) => {
 				todoPlanChangedHandler = callback;
 				return vi.fn(() => {
@@ -1025,7 +1035,7 @@ describe("TodoPlanPanel", () => {
 		);
 		await settle();
 
-		expect(window.electronAPI.setWindowButtonVisibility).not.toHaveBeenCalled();
+		expect(mocks.setWindowButtonVisibility).not.toHaveBeenCalled();
 	});
 
 	it("does not control native window buttons from chat card surfaces", async () => {
@@ -1044,7 +1054,7 @@ describe("TodoPlanPanel", () => {
 		);
 		await settle();
 
-		expect(window.electronAPI.setWindowButtonVisibility).not.toHaveBeenCalled();
+		expect(mocks.setWindowButtonVisibility).not.toHaveBeenCalled();
 	});
 
 	it("hides the standalone window on escape without toggling it", async () => {

@@ -814,6 +814,7 @@ import {
   type WindowDragOrigin,
 } from './todo-window-drag'
 import { platformApi } from '@/platform'
+import { shellApi } from '@/platform/shell-domain-client'
 import { chatApi } from '@/platform/chat-client'
 import { sessionsApi } from '@/platform/sessions-client'
 import { markdownApi } from '@/platform/markdown-client'
@@ -2031,15 +2032,15 @@ async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution
 async function openMarkdownLink(payload: { href: string; asset?: MarkdownAssetResolution | null }) {
   const asset = await resolveMarkdownLink(payload.href, payload.asset)
   if (asset?.kind === 'external') {
-    await platformApi.openExternal(asset.href || payload.href)
+    await shellApi.openExternal({ url: asset.href || payload.href })
     return
   }
   if (asset?.absolutePath) {
-    await platformApi.openPath(asset.absolutePath)
+    await shellApi.openPath({ filePath: asset.absolutePath })
     return
   }
   if (/^[a-z][a-z\d+.-]*:/i.test(payload.href)) {
-    await platformApi.openExternal(payload.href)
+    await shellApi.openExternal({ url: payload.href })
   }
 }
 

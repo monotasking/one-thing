@@ -634,8 +634,22 @@ export type {
 	ShowOpenDialogResponse,
 } from "./dialog.js";
 export { dialogRouter } from "./dialog.js";
-export type { CloseWindowResponse, WindowRoutes } from "./window.js";
+export type {
+	CloseWindowResponse,
+	SetWindowButtonVisibilityRequest,
+	SetWindowButtonVisibilityResponse,
+	WindowRoutes,
+} from "./window.js";
 export { windowRouter } from "./window.js";
+
+// 宿主壳路由(结构债 P4 终态批 A1-b):外壳三条 —— 打开路径 / 打开外链 / 数据目录。
+export type {
+	ShellOpenExternalRequest,
+	ShellOpenExternalResponse,
+	ShellOpenPathRequest,
+	ShellRoutes,
+} from "./shell.js";
+export { shellRouter } from "./shell.js";
 
 export type {
 	GatewayChannelId,
@@ -859,8 +873,9 @@ export type {
 	SearchExecuteActionRequest,
 	SearchExecuteActionResponse,
 	SearchWindowRoutes,
+	SearchRoutes,
 } from "./search.js";
-export { searchWindowRouter } from "./search.js";
+export { searchRouter, searchWindowRouter } from "./search.js";
 
 // User prompt snippet types
 export type {
@@ -1079,10 +1094,12 @@ export type {
 	BrowserTabInfo,
 	BrowserTabsChangedEvent,
 	BrowserViewBounds,
+	BrowserRoutes,
 	PickedWebElement,
 } from "./browser.js";
 
 export {
+	browserRouter,
 	BROWSER_SEARCH_ENGINES,
 	DEFAULT_BROWSER_SEARCH_ENGINE_ID,
 	isBrowserSearchInput,

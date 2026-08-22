@@ -360,7 +360,7 @@ import type { SelectOptionLike } from '@/components/common/select'
 import type { MusicPlayerBackend } from '@/types'
 import type { ThinkingEffort } from '@shared/ipc/providers'
 import type { ToolCallModelSettings } from '@shared/ipc/tools'
-import { platformApi } from '@/platform'
+import { shellApi } from '@/platform/shell-domain-client'
 import { useMusicStore } from '@/stores/music'
 import { useSettingsStore } from '@/stores/settings'
 import { isProviderEnabledIn } from '@/stores/helpers/provider-model'
@@ -619,7 +619,7 @@ watch(
 
 function openLoginUrl() {
   const url = loginClickableUrl.value
-  if (url) void platformApi.openExternal?.(url)
+  if (url) void shellApi.openExternal({ url })
 }
 
 /**

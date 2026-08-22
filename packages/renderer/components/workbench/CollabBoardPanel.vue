@@ -237,7 +237,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { CollabTask, CollabTaskStatus } from '@shared/ipc.js'
-import { platformApi } from '@/platform'
+import { shellApi } from '@/platform/shell-domain-client'
 import { collabApi } from '@/platform/collab-client'
 import { isActiveAgent } from '@shared/ipc'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
@@ -541,7 +541,7 @@ async function openDeliverable(file: string): Promise<void> {
     // Electron hands back '' on success and a message on failure; the web host
     // hands back an unsupported-method object. Both are surfaced as one hint
     // line rather than swallowed — a click that does nothing must say why.
-    const result: unknown = await platformApi.openPath(absolute)
+    const result: unknown = await shellApi.openPath({ filePath: absolute })
     hint.value = typeof result === 'string'
       ? result
       : (result && typeof result === 'object' && typeof (result as { error?: unknown }).error === 'string'

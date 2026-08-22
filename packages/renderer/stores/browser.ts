@@ -11,6 +11,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { resolveBrowserOmniboxInput, resolveBrowserSearchEngine } from '@shared/ipc'
 import { platformApi } from '@/platform'
+import { browserApi } from '@/platform/browser-client'
 import type { BrowserTabInfo, BrowserTabsChangedEvent, PickedWebElement } from '@/types'
 
 export const useBrowserStore = defineStore('browser', () => {
@@ -52,8 +53,8 @@ export const useBrowserStore = defineStore('browser', () => {
       if (!unsubscribe) {
         unsubscribe = platformApi.onBrowserTabsChanged?.(applyPatch) ?? null
       }
-      const snapshot = await platformApi.hydrateBrowser?.()
-      if (snapshot?.success) {
+      const snapshot = await browserApi.hydrate({})
+      if (snapshot.success) {
         tabs.value = snapshot.tabs
         activeTabId.value = snapshot.activeTabId
       }
@@ -63,17 +64,17 @@ export const useBrowserStore = defineStore('browser', () => {
 
   /** 返回新 tab 的 id(主进程已将其置为活动 tab);调用方需要时可再显式 selectTab。 */
   async function openTab(url?: string): Promise<string | null> {
-    const res = await platformApi.createBrowserTab?.({ url })
-    return res?.success && res.tab ? res.tab.id : null
+    const res = await browserApi.createTab({ url })
+    return res.success && res.tab ? res.tab.id : null
   }
   async function closeTab(tabId: string): Promise<void> {
-    await platformApi.closeBrowserTab?.(tabId)
+    await browserApi.closeTab({ tabId })
   }
   async function selectTab(tabId: string): Promise<void> {
-    await platformApi.selectBrowserTab?.(tabId)
+    await browserApi.selectTab({ tabId })
   }
   async function navigate(url: string): Promise<void> {
-    if (activeTabId.value) await platformApi.navigateBrowser?.(activeTabId.value, url)
+    if (activeTabId.value) await browserApi.navigate({ tabId: activeTabId.value, url })
     else await openTab(url)
   }
 
@@ -92,24 +93,24 @@ export const useBrowserStore = defineStore('browser', () => {
     if (!trimmed) return
     let engineId: string | undefined = engineOverride
     if (!engineId) {
-      const res = await platformApi.getBrowserSearchEngine?.()
-      engineId = res?.success ? res.engineId : undefined
+      const res = await browserApi.getSearchEngine({})
+      engineId = res.success ? res.engineId : undefined
     }
     const engine = resolveBrowserSearchEngine(engineId)
     const url = resolveBrowserOmniboxInput(trimmed, engine)
     if (url) await navigate(url)
   }
   async function goBack(): Promise<void> {
-    if (activeTabId.value) await platformApi.browserGoBack?.(activeTabId.value)
+    if (activeTabId.value) await browserApi.goBack({ tabId: activeTabId.value })
   }
   async function goForward(): Promise<void> {
-    if (activeTabId.value) await platformApi.browserGoForward?.(activeTabId.value)
+    if (activeTabId.value) await browserApi.goForward({ tabId: activeTabId.value })
   }
   async function reload(): Promise<void> {
-    if (activeTabId.value) await platformApi.reloadBrowser?.(activeTabId.value)
+    if (activeTabId.value) await browserApi.reload({ tabId: activeTabId.value })
   }
   async function stop(): Promise<void> {
-    if (activeTabId.value) await platformApi.stopBrowser?.(activeTabId.value)
+    if (activeTabId.value) await browserApi.stop({ tabId: activeTabId.value })
   }
 
   /**
@@ -145,15 +146,15 @@ export const useBrowserStore = defineStore('browser', () => {
     if (!activeTabId.value || picking.value) return null
     picking.value = true
     try {
-      const res = await platformApi.pickBrowserElement?.(activeTabId.value)
-      return res?.element ?? null
+      const res = await browserApi.pickElement({ tabId: activeTabId.value })
+      return res.element ?? null
     } finally {
       picking.value = false
     }
   }
 
   function cancelPick(): void {
-    if (activeTabId.value) void platformApi.cancelBrowserPick?.(activeTabId.value)
+    if (activeTabId.value) void browserApi.pickCancel({ tabId: activeTabId.value })
   }
 
   return {

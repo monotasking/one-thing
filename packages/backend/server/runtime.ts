@@ -85,6 +85,7 @@ import {
 import { sessionEventTranslator } from "@onething/backend/session/event-translator.js";
 import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/stores/sessions.js";
 import { configureServerPluginCatalogPort } from "./plugin-catalog.js";
+import { configureServerSearchPort } from "./search-providers.js";
 import {
 	CorePluginStore,
 	createBuiltinPluginDefinitions,
@@ -1795,6 +1796,28 @@ async function createServerRuntimeOverServerBackend(
 		},
 	});
 
+	/**
+	 * server 侧搜索的单槽端口(结构债 P4 终态批 A1-b)。
+	 *
+	 * 从前它是 `OnethingRuntimeFacade` 上 `search.query` 那一格,由
+	 * `POST /api/search/query` 调用。A1-b 把入口换成 `search` RPC 域,
+	 * **闭包一行没改** —— 域在 `transport === 'http'` 那一支上原样调用它。
+	 * 同 `restoreServerPluginCatalogPort`:返回的是**还原**函数。
+	 */
+	const restoreServerSearchPort = configureServerSearchPort({
+		async query(
+			request: unknown,
+			context = defaultRequestContext(),
+		) {
+			const providers = await createSearchProvidersForContext(context);
+			return executeOnethingSearchForIpc({
+				request: request as OnethingSearchRequest,
+				executeSearch: (query, category, limit) =>
+					providers.executeSearch(query, category, limit),
+			});
+		},
+	});
+
 	const runtime = createOnethingRuntimeFacade<
 		unknown,
 		unknown,
@@ -1974,18 +1997,12 @@ async function createServerRuntimeOverServerBackend(
 		// 那本 per-owner 缓存改成装配层单例(拍板 #20,同 mcp / oauth / agents 判例)。
 		// **本域推送不在这里**:`SETTINGS_CHANGED` 是桌面独有的窗间广播,旧 server
 		// 本来就没有它(web 壳上是个 noop 退订)。
+		// P4 终态批 A1-b:`query` 这一格没了 —— 数据面随 `searchRouter` 走通用 RPC,
+		// **实现一行没搬**(同一个闭包改成注册进 `server/search-providers.ts` 的单槽
+		// 端口,见上面的 `restoreServerSearchPort`)。留下的 `executeAction` 是**窗口
+		// 活的 server 侧对应物**:它仍由 `POST /api/search/actions` 调用,而那条路由
+		// 正是 A1-a 里 web 壳 `searchWindowRouter.executeAction` 的真实现。
 		search: {
-			async query(
-				request: OnethingSearchRequest,
-				context = defaultRequestContext(),
-			) {
-				const providers = await createSearchProvidersForContext(context);
-				return executeOnethingSearchForIpc({
-					request,
-					executeSearch: (query, category, limit) =>
-						providers.executeSearch(query, category, limit),
-				});
-			},
 			executeAction(actionId: string, context = defaultRequestContext()) {
 				return resolveSearchActionForContext(actionId, context);
 			},
@@ -2144,6 +2161,7 @@ async function createServerRuntimeOverServerBackend(
 			configureScratchpadHost(previousScratchpadHostPorts);
 			restoreOAuthEventBroadcaster();
 			restoreServerPluginCatalogPort();
+			restoreServerSearchPort();
 			for (const variableRuntime of variableRuntimesByOwner.values()) {
 				variableRuntime.unsubscribe();
 				variableRuntime.registry.reset();

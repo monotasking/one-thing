@@ -217,6 +217,19 @@ const MAIN_ACCESSIBILITY_FORBIDDEN_PATTERNS: RegExp[] = [
   /process\.platform\s*!==\s*['"]darwin['"]/,
 ]
 
+/**
+ * 结构债 P4 终态批 A1-b 之后的**反向棘轮**:这四条通道名从此不该在 apps/electron
+ * 的源码树里出现 —— 前三条走 `shellRouter`、第四条走 `windowRouter`,都不再有
+ * 自己的 `ipcMain.handle`。它们从来不在 `IPC_CHANNELS` 表上,所以 transport 门
+ * 数不到,只有这条断言拦得住它们长回来。
+ */
+const LEGACY_SHELL_LITERAL_CHANNEL_PATTERNS: RegExp[] = [
+  /['"`]shell:open-path['"`]/,
+  /['"`]shell:open-external['"`]/,
+  /['"`]app:get-data-path['"`]/,
+  /['"`]window:set-button-visibility['"`]/,
+]
+
 const MAIN_SHELL_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]electron['"]/,
   /ipcMain\.handle/,
@@ -3715,18 +3728,21 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
     'webContents.send',
     'focus',
   ]
+  const searchRpcDomainFile = path.join(root, 'packages/backend/rpc/domains/search.ts')
+  const searchServerPortFile = path.join(root, 'packages/backend/server/search-providers.ts')
   const requiredControllerSymbols = [
     '@onething/electron-host/search/window-actions',
     'toggleElectronSearchWindowFrom',
     'executeElectronSearchActionFrom',
     'resolveActionId',
   ]
+  // A1-b:`executeOnethingSearchForIpc` 不再在这只文件里 —— 数据面那条整只迁进了
+  // backend 的 `search` RPC 域,宿主这侧从此只剩窗口活。
   const requiredIpcFacadeSymbols = [
     'registerSearchHandlers',
     'registerSearchWindowShellDomain',
     'getElectronSearchWindowFromCallerId',
     'closeOnethingSearchWindowForIpc',
-    'executeOnethingSearchForIpc',
     'toggleSearchWindowFrom',
     'executeSearchActionFrom',
   ]
@@ -3749,13 +3765,22 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
     ...requiredIpcFacadeSymbols
       .filter(symbol => !electronSearchIpcContent.includes(symbol))
       .map(symbol => `${rel(electronSearchIpcFile)}: missing Electron search IPC host facade symbol ${symbol}`),
-    // 只剩 `search:query` 一条手写通道:它是数据面(处理者一行 electron 都不碰),
-    // 该去 `rpc:invoke` 的 backend 域,在那之前原样留在这里。
-    ...[
-      'IPC_CHANNELS.SEARCH_QUERY',
-    ]
-      .filter(symbol => !electronSearchIpcContent.includes(symbol))
-      .map(symbol => `${rel(electronSearchIpcFile)}: missing search IPC channel ${symbol}`),
+    // A1-b **反向棘轮**:数据面那条已进 backend 的 `search` 域,宿主这侧不许再有
+    // 一条自己的搜索 handler(`ipcMain.handle` / `SEARCH_QUERY` 都不该回来)。
+    ...matchingCodeLines(electronSearchIpcFile, [
+      /IPC_CHANNELS\.SEARCH_QUERY/,
+      /ipcMain\.handle/,
+    ])
+      .map(line => `${line} — search data plane rides the backend search RPC domain`),
+    // 域本体与它的 server 端口必须在场(数据面的两条腿)。
+    ...(!fs.existsSync(searchRpcDomainFile)
+      ? [`${rel(searchRpcDomainFile)}: missing search RPC domain`]
+      : ['searchRpcHandlers', 'getServerSearchPort', 'executeOnethingSearchForIpc', 'executeSearch']
+        .filter(symbol => !fs.readFileSync(searchRpcDomainFile, 'utf-8').includes(symbol))
+        .map(symbol => `${rel(searchRpcDomainFile)}: missing search RPC domain symbol ${symbol}`)),
+    ...(!fs.existsSync(searchServerPortFile)
+      ? [`${rel(searchServerPortFile)}: missing server search port`]
+      : []),
     ...(fs.existsSync(legacySelectionFile)
       ? [`${rel(legacySelectionFile)}: search main-window selection belongs in apps/electron`]
       : []),
@@ -4284,7 +4309,16 @@ function checkElectronHostOwnsAccessibilityPermissions(): void {
 function checkElectronHostOwnsShellOperations(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronShellFile = path.join(root, 'apps/electron/src/shell/operations.ts')
-  const electronShellIpcControllerFile = path.join(root, 'apps/electron/src/ipc/shell-controller.ts')
+  // 结构债 P4 终态批 A1-b:那四条**字面量**通道(`shell:open-path` /
+  // `shell:open-external` / `app:get-data-path` / `window:set-button-visibility`)
+  // 与 `ipc/shell-controller.ts` 那只裸 `ipcMain.handle` 工厂一起没了 ——
+  // 前三条进 `shellRouter` 的处理者表,第四条动的是发起窗本身,进 `windowRouter`。
+  // 断言随之改指:断的仍然是「这些外壳活由 apps/electron 拥有」,只是注册工厂
+  // 换成了域注册。**反向棘轮**:那只工厂文件与那四条字面量不许回来。
+  const electronShellShellDomainFile = path.join(root, 'apps/electron/src/ipc/shell/browser.ts')
+  const electronShellDomainFile = path.join(root, 'apps/electron/src/ipc/shell/shell.ts')
+  const electronWindowDomainFile = path.join(root, 'apps/electron/src/ipc/shell/window.ts')
+  const legacyShellControllerFile = path.join(root, 'apps/electron/src/ipc/shell-controller.ts')
   const electronShellIpcFile = path.join(root, 'apps/electron/src/ipc/shell.ts')
   const mainShellFile = path.join(root, 'apps/electron/src/main/ipc/shell.ts')
   // P4c 第二批:外壳能力从此有一个产品层端口(`@onething/runtime/shell`),
@@ -4295,8 +4329,11 @@ function checkElectronHostOwnsShellOperations(): void {
   const mainProcessWiringContent = fs.existsSync(mainProcessWiringFile) ? fs.readFileSync(mainProcessWiringFile, 'utf-8') : ''
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronShellContent = fs.existsSync(electronShellFile) ? fs.readFileSync(electronShellFile, 'utf-8') : ''
-  const electronShellIpcControllerContent = fs.existsSync(electronShellIpcControllerFile)
-    ? fs.readFileSync(electronShellIpcControllerFile, 'utf-8')
+  const electronShellDomainContent = fs.existsSync(electronShellDomainFile)
+    ? fs.readFileSync(electronShellDomainFile, 'utf-8')
+    : ''
+  const electronWindowDomainContent = fs.existsSync(electronWindowDomainFile)
+    ? fs.readFileSync(electronWindowDomainFile, 'utf-8')
     : ''
   const electronShellIpcContent = fs.existsSync(electronShellIpcFile) ? fs.readFileSync(electronShellIpcFile, 'utf-8') : ''
   const mainShellContent = fs.existsSync(mainShellFile) ? fs.readFileSync(mainShellFile, 'utf-8') : ''
@@ -4314,21 +4351,26 @@ function checkElectronHostOwnsShellOperations(): void {
     'setWindowButtonVisibility',
     'setWindowButtonPosition',
   ]
-  const requiredIpcHostSymbols = [
-    'registerElectronShellIpcHandlers',
-    'ipcMain',
-    'openElectronPath',
-    'openElectronExternal',
-    'setElectronWindowButtonVisibility',
-    'shell:open-path',
-    'shell:open-external',
-    'app:get-data-path',
-    'window:set-button-visibility',
+  // 三条外壳动词的处理者表(portable,零 electron import)。
+  const requiredShellDomainSymbols = [
+    'shellRouter',
+    'registerShellDomain',
+    'openPath',
+    'openExternal',
     'getDataPath',
+  ]
+  // 「改发起窗的红绿灯」与「关发起窗」同域、同一条 callerId 规矩。
+  const requiredWindowDomainSymbols = [
+    'windowRouter',
+    'setButtonVisibility',
+    'setCallerWindowButtonVisibility',
+    'ShellDispatchContext',
   ]
   const requiredHostFacadeSymbols = [
     'registerShellHandlers',
-    'registerElectronShellIpcHandlers',
+    'registerShellShellDomain',
+    'openElectronPath',
+    'openElectronExternal',
     // P3'a-2:`app/stores/paths.ts` 的同名转发层已删,宿主直取 runtime 的真名。
     'getOnethingStorePath',
   ]
@@ -4344,12 +4386,28 @@ function checkElectronHostOwnsShellOperations(): void {
     ...(!packageContent.includes('./ipc/shell')
       ? [`${rel(electronPackage)}: missing shell IPC host export`]
       : []),
+    ...(!packageContent.includes('./ipc/shell/shell')
+      ? [`${rel(electronPackage)}: missing shell domain host export`]
+      : []),
+    ...(!fs.existsSync(electronShellShellDomainFile)
+      ? [`${rel(electronShellShellDomainFile)}: missing browser shell domain handlers`]
+      : []),
     ...requiredHostSymbols
       .filter(symbol => !electronShellContent.includes(symbol))
       .map(symbol => `${rel(electronShellFile)}: missing Electron shell operation symbol ${symbol}`),
-    ...requiredIpcHostSymbols
-      .filter(symbol => !electronShellIpcControllerContent.includes(symbol))
-      .map(symbol => `${rel(electronShellIpcControllerFile)}: missing Electron shell IPC controller symbol ${symbol}`),
+    ...requiredShellDomainSymbols
+      .filter(symbol => !electronShellDomainContent.includes(symbol))
+      .map(symbol => `${rel(electronShellDomainFile)}: missing Electron shell domain symbol ${symbol}`),
+    ...requiredWindowDomainSymbols
+      .filter(symbol => !electronWindowDomainContent.includes(symbol))
+      .map(symbol => `${rel(electronWindowDomainFile)}: missing Electron window domain symbol ${symbol}`),
+    ...(fs.existsSync(legacyShellControllerFile)
+      ? [`${rel(legacyShellControllerFile)}: remove the legacy literal-channel shell IPC factory; shell verbs ride the host shell router`]
+      : []),
+    // 反向棘轮:那四条字面量通道一条都不许回到宿主树里。
+    ...walkFiles(path.join(root, 'apps/electron/src'))
+      .flatMap(file => matchingCodeLines(file, LEGACY_SHELL_LITERAL_CHANNEL_PATTERNS))
+      .map(line => `${line} — literal shell channel must ride the host shell router`),
     ...requiredHostFacadeSymbols
       .filter(symbol => !electronShellIpcContent.includes(symbol))
       .map(symbol => `${rel(electronShellIpcFile)}: missing Electron shell IPC host facade symbol ${symbol}`),

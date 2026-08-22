@@ -444,6 +444,7 @@ import {
 } from './settings-primitives'
 import { gatewayApi } from '@/platform/gateway-client'
 import { platformApi } from '@/platform'
+import { shellApi } from '@/platform/shell-domain-client'
 import { channelIdentityApi } from '@/platform/channel-identity-client'
 import { getLogger } from '@/services/log'
 
@@ -1126,7 +1127,7 @@ async function copyQrUrl(account: WechatAccountStatus): Promise<void> {
 async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   const url = account.qrUrl?.trim()
   if (!url) return
-  const result = await platformApi.openExternal(url)
+  const result = await shellApi.openExternal({ url })
   if (!result.success) {
     transientMessage.value = 'Failed to open login URL.'
   }

@@ -27,6 +27,15 @@ const gatewayApi = vi.hoisted(() => ({
 }))
 vi.mock('@/platform/gateway-client', () => ({ gatewayApi }))
 
+// P4 终态批 A1-b:`openExternal` 从 `electronAPI` 上的一条字面量通道换成宿主壳
+// 路由上的 `shell` 域(`@/platform/shell-domain-client` 的 `shellApi`)。
+const shellApi = vi.hoisted(() => ({
+  openPath: vi.fn(),
+  openExternal: vi.fn(),
+  getDataPath: vi.fn(),
+}))
+vi.mock('@/platform/shell-domain-client', () => ({ shellApi }))
+
 function appSettings(enabled = false): AppSettings {
   return {
     theme: 'dark',
@@ -193,6 +202,7 @@ describe('ChannelsSettingsTab', () => {
     })
     gatewayApi.wechatRemoveAccount.mockReset().mockResolvedValue({ success: true, status: gatewayStatus() }),
     gatewayApi.wechatRenameAccount.mockReset().mockResolvedValue({ success: true, status: gatewayStatus() }),
+    shellApi.openExternal.mockReset().mockResolvedValue({ success: true }),
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
       value: {
@@ -200,7 +210,6 @@ describe('ChannelsSettingsTab', () => {
         // 而是打**那一条**通道,再按 method 分发 —— 和生产链路同形。
         rpcInvoke: rpcInvokeMock,
         writeClipboardText: vi.fn().mockReturnValue({ success: true }),
-        openExternal: vi.fn().mockResolvedValue({ success: true }),
       },
     })
   })
@@ -331,7 +340,7 @@ describe('ChannelsSettingsTab', () => {
     await wrapper.find('button[aria-label="Open login URL"]').trigger('click')
 
     expect(window.electronAPI.writeClipboardText).toHaveBeenCalledWith('https://liteapp.weixin.qq.com/q/mock')
-    expect(window.electronAPI.openExternal).toHaveBeenCalledWith('https://liteapp.weixin.qq.com/q/mock')
+    expect(shellApi.openExternal).toHaveBeenCalledWith({ url: 'https://liteapp.weixin.qq.com/q/mock' })
 
     wrapper.unmount()
   })

@@ -50,6 +50,7 @@ import { toolsRouter } from '@shared/ipc/tools.js'
 import { oauthRouter } from '@shared/ipc/oauth.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { schedulerRouter } from '@shared/ipc/scheduler.js'
+import { searchRouter } from '@shared/ipc/search.js'
 import { scratchpadRouter } from '@shared/ipc/scratchpad.js'
 import { sessionCommandRouter } from '@shared/ipc/session-command.js'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
@@ -93,6 +94,7 @@ import { projectDirsRpcHandlers } from './domains/project-dirs.js'
 import { promptsRpcHandlers } from './domains/prompts.js'
 import { providersRpcHandlers } from './domains/providers.js'
 import { schedulerRpcHandlers } from './domains/scheduler.js'
+import { searchRpcHandlers } from './domains/search.js'
 import { scratchpadRpcHandlers } from './domains/scratchpad.js'
 import { sessionCommandRpcHandlers } from './domains/session-command.js'
 import { sessionsRpcHandlers } from './domains/sessions.js'
@@ -350,6 +352,13 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 位置在 terminal 之后、自进化之前:它要插件管理器与事件总线,装配到这一步时
   // 都已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
   { id: 'rpc:plugins', mount: ctx => { ctx.registerRpcDomain(pluginsRouter, pluginsRpcHandlers) } },
+  // P4 终态批 A1-b:search 的**数据面**一条(`query`)。A1-a 把搜索窗那四条动窗口的
+  // 迁进了宿主壳路由,同时判定这一条是数据面(处理者一行 electron 都不碰),该来
+  // 这里 —— 本批兑现。它按 `context.transport` 分叉:ipc 走桌面那份整机搜索,
+  // http 走 `server/search-providers.ts` 那个单槽端口(per-owner 沙箱里的同一件事,
+  // 装的就是从前 `POST /api/search/query` 背后的同一个闭包)。`executeAction` 与
+  // `SEARCH_ACTION` 不在这里(前者是窗口活,在 searchWindowRouter 上;后者是推送)。
+  { id: 'rpc:search', mount: ctx => { ctx.registerRpcDomain(searchRouter, searchRpcHandlers) } },
   selfEvolutionFeature,
 ]
 

@@ -10,6 +10,9 @@ import type { CorePluginCommandContext } from '@onething/core/plugins'
 import { registerRouterHandlers, resetRpcRegistryForTests } from '@onething/backend/rpc/registry.js'
 import { pluginsRpcHandlers } from '@onething/backend/rpc/domains/plugins.js'
 import { pluginsRouter } from '@shared/ipc/plugins.js'
+import { searchRpcHandlers } from '@onething/backend/rpc/domains/search.js'
+import { searchRouter } from '@shared/ipc/search.js'
+import { configureServerSearchPort } from '../search-providers.js'
 import { registerFilesRpcDomain } from '@onething/backend/rpc/domains/files.js'
 import { registerToolsRpcDomain } from '@onething/backend/rpc/domains/tools.js'
 import { registerMarkdownRpcDomain } from '@onething/backend/rpc/domains/markdown.js'
@@ -149,7 +152,14 @@ describe('createOnethingHttpServer', () => {
   // 没了 —— 代理自检随 `settingsRouter.testProxy` 走通用 RPC,实现收敛成
   // `backend/wiring/settings/proxy.ts` 一份(旧 server 里那份是逐字抄件)。
 
-  it('routes search requests through the search runtime facade with owner context', async () => {
+  /**
+   * P4 终态批 A1-b:`query` 改走 `POST /api/rpc` 的 `search` 域(域在 http 那一支上
+   * 调的就是 `server/search-providers.ts` 那个单槽端口 —— 从前 facade 上的同一个
+   * 闭包);`executeAction` 仍在 REST 上,它是**窗口活**在 server 侧的对应物,web 壳的
+   * `searchWindowRouter.executeAction` 打的就是这条。**断言一条没减**:两条都仍然
+   * 拿到 owner 上下文。
+   */
+  it('routes search requests through the search domain and the action route, both with owner context', async () => {
     const query = vi.fn(async request => ({ success: true, results: [{ id: 'action:1', request }] }))
     const executeAction = vi.fn(async actionId => ({ success: true, actionId }))
     const runtime = createOnethingRuntimeFacade({
@@ -161,55 +171,64 @@ describe('createOnethingHttpServer', () => {
         subscribe: () => () => {},
       },
       search: {
-        query,
         executeAction,
       },
     })
+    const disposeDomain = registerRouterHandlers(searchRouter, searchRpcHandlers)
+    const restorePort = configureServerSearchPort({ query })
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
     const headers = contextHeaders('alice', 'search-workspace')
 
-    await expect(fetchJson(`${baseUrl(server)}/api/search/query`, {
-      method: 'POST',
-      headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      await expect(fetchJson(`${baseUrl(server)}/api/rpc`, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          domain: 'search',
+          method: 'query',
+          payload: { query: 'settings', category: 'actions', limit: 5 },
+        }),
+      })).resolves.toEqual({
+        ok: true,
+        data: {
+          success: true,
+          results: [{
+            id: 'action:1',
+            request: {
+              query: 'settings',
+              category: 'actions',
+              limit: 5,
+            },
+          }],
+        },
+      })
+
+      await expect(fetchJson(`${baseUrl(server)}/api/search/actions`, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ actionId: 'open-settings' }),
+      })).resolves.toEqual({
+        success: true,
+        actionId: 'open-settings',
+      })
+
+      expect(query).toHaveBeenCalledWith({
         query: 'settings',
         category: 'actions',
         limit: 5,
-      }),
-    })).resolves.toEqual({
-      success: true,
-      results: [{
-        id: 'action:1',
-        request: {
-          query: 'settings',
-          category: 'actions',
-          limit: 5,
-        },
-      }],
-    })
-
-    await expect(fetchJson(`${baseUrl(server)}/api/search/actions`, {
-      method: 'POST',
-      headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({ actionId: 'open-settings' }),
-    })).resolves.toEqual({
-      success: true,
-      actionId: 'open-settings',
-    })
-
-    expect(query).toHaveBeenCalledWith({
-      query: 'settings',
-      category: 'actions',
-      limit: 5,
-    }, expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'search-workspace',
-    }))
-    expect(executeAction).toHaveBeenCalledWith('open-settings', expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'search-workspace',
-    }))
+      }, expect.objectContaining({
+        userId: 'alice',
+        workspaceId: 'search-workspace',
+      }))
+      expect(executeAction).toHaveBeenCalledWith('open-settings', expect.objectContaining({
+        userId: 'alice',
+        workspaceId: 'search-workspace',
+      }))
+    } finally {
+      restorePort()
+      disposeDomain()
+    }
   })
 
   it('executes web-safe plugin commands through the development runtime with session ownership checks', async () => {
@@ -504,10 +523,18 @@ describe('createOnethingHttpServer', () => {
     })
   })
 
-  it('searches owner-scoped server runtime data and resolves web search actions', async () => {
+  /**
+   * P4 终态批 A1-b:查询改走 `POST /api/rpc` 的 `search` 域 —— **断言一条没减**,
+   * 包括「bob 看不见 alice 的会话」那道归属护栏。它证的正是那个单槽端口装的就是
+   * 从前 `POST /api/search/query` 背后的同一个闭包(真 server runtime 装配时注入)。
+   * `POST /api/search/actions` 留在 REST 上,因为它是**窗口活**在 server 侧的对应物。
+   */
+  it('searches owner-scoped server runtime data over the generic RPC route, and resolves web search actions', async () => {
     const workspaceRoot = await createTempDir('onething-server-search-')
     const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
+    // 装配层在 echo backend 下不跑,域要自己挂上(与 files / markdown 同款)。
+    const disposeDomain = registerRouterHandlers(searchRouter, searchRpcHandlers)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
@@ -515,54 +542,60 @@ describe('createOnethingHttpServer', () => {
     const baseUrlValue = baseUrl(server)
     const aliceHeaders = contextHeaders('alice', 'search-dev-workspace')
     const bobHeaders = contextHeaders('bob', 'search-dev-workspace')
-    const created = await createSession(baseUrlValue, 'Searchable Alpha', aliceHeaders)
-    const sessionId = created.session?.id
-    expect(sessionId).toBeTruthy()
+    const searchRpc = (headers: Record<string, string>, payload: unknown) =>
+      fetchJson(`${baseUrlValue}/api/rpc`, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: 'search', method: 'query', payload }),
+      })
 
-    await expect(fetchJson(`${baseUrlValue}/api/search/query`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      const created = await createSession(baseUrlValue, 'Searchable Alpha', aliceHeaders)
+      const sessionId = created.session?.id
+      expect(sessionId).toBeTruthy()
+
+      await expect(searchRpc(aliceHeaders, {
         query: 'Searchable',
         category: 'chats',
         limit: 5,
-      }),
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      results: expect.arrayContaining([
-        expect.objectContaining({
-          type: 'chat',
-          sessionId,
-          title: 'Searchable Alpha',
+      })).resolves.toEqual({
+        ok: true,
+        data: expect.objectContaining({
+          success: true,
+          results: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'chat',
+              sessionId,
+              title: 'Searchable Alpha',
+            }),
+          ]),
         }),
-      ]),
-    }))
+      })
 
-    await expect(fetchJson(`${baseUrlValue}/api/search/query`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
+      await expect(searchRpc(bobHeaders, {
         query: 'Searchable',
         category: 'chats',
         limit: 5,
-      }),
-    })).resolves.toEqual({
-      success: true,
-      results: [],
-    })
+      })).resolves.toEqual({
+        ok: true,
+        data: { success: true, results: [] },
+      })
 
-    const notePath = join(workspaceRoot, 'alice', 'search-dev-workspace', 'notes', 'today.md')
-    await expect(fetchJson(`${baseUrlValue}/api/search/actions`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        actionId: `create-daily-note:${encodeURIComponent(notePath)}`,
-      }),
-    })).resolves.toEqual({
-      success: true,
-      actionId: `open-file:${notePath}`,
-    })
-    await expect(readFile(notePath, 'utf8')).resolves.toContain('# ')
+      const notePath = join(workspaceRoot, 'alice', 'search-dev-workspace', 'notes', 'today.md')
+      await expect(fetchJson(`${baseUrlValue}/api/search/actions`, {
+        method: 'POST',
+        headers: { ...aliceHeaders, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          actionId: `create-daily-note:${encodeURIComponent(notePath)}`,
+        }),
+      })).resolves.toEqual({
+        success: true,
+        actionId: `open-file:${notePath}`,
+      })
+      await expect(readFile(notePath, 'utf8')).resolves.toContain('# ')
+    } finally {
+      disposeDomain()
+    }
   })
 
   /**

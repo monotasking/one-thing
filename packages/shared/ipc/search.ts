@@ -86,11 +86,11 @@ export interface SearchWindowGuideState {
  * 结果动作」—— 最后这条看着像数据面,其实整件事都是窗口活:关掉搜索窗、找到主窗、
  * 把 actionId 送进去、再把主窗聚焦。
  *
- * `SEARCH_QUERY` **不在这张表上**,是刻意的:它的处理者一行 electron 都不 import
- * (桌面是 `wiring/search/providers` 的 `executeSearch`,server 是同一件事的
- * per-owner 沙箱版),按判据它是**数据面**,该去 `rpc:invoke` 的 backend 域。
- * 两个宿主的 owner/sandbox 口径不同,那是 files / tools 那种按 `context.transport`
- * 分叉的域 —— 单独一批,不搭这次的便车。
+ * 查询**不在这张表上**,是刻意的:它的处理者一行 electron 都不 import(桌面是
+ * `wiring/search/providers` 的 `executeSearch`,server 是同一件事的 per-owner
+ * 沙箱版),按判据它是**数据面**。A1-b(2026-08-23)把它迁进了 `rpc:invoke` 的
+ * backend `search` 域(见本文件下方的 `searchRouter`),`SEARCH_QUERY` 那条常量
+ * 随之删除。
  */
 export interface SearchWindowResponse {
   success: boolean
@@ -124,3 +124,24 @@ export const searchWindowRouter = defineRouter<SearchWindowRoutes>('search-windo
   'setAnchor',
   'executeAction',
 ])
+
+/**
+ * Search Everywhere 的**数据面**(结构债 P4 终态批 A1-b,2026-08-23)。
+ *
+ * 只有一条 `query`,走的是**装配层**的 `rpc:invoke` 而不是上面那张宿主壳表 ——
+ * 处理者一行 electron 都不碰。它是继 files / tools / mcp 之后又一个
+ * **按 `context.transport` 分叉**的域:
+ *  - `ipc`(桌面)= `wiring/search/providers` 的 `executeSearch`,整台机器的一份
+ *    会话 / 文件 / 提示词表,逐字沿用迁移前 `apps/electron/src/search/ipc.ts` 那条
+ *    手写 handler;
+ *  - `http`(server)= per-owner 沙箱里的同一件事(`server/search-providers.ts`
+ *    那个单槽端口,装的就是从前 `POST /api/search/query` 背后的同一个闭包)。
+ *
+ * `SEARCH_ACTION` 是推送、`executeAction` 是窗口活(在 `searchWindowRouter` 上),
+ * 两者都不在这里。
+ */
+export type SearchRoutes = {
+  query: { input: SearchRequest; output: SearchResponse }
+}
+
+export const searchRouter = defineRouter<SearchRoutes>('search', ['query'])

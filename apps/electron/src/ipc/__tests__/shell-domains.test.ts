@@ -1,5 +1,5 @@
 /**
- * 八个宿主壳域的处理者表 —— 结构债 P4 终态批 A1-a。
+ * 十个宿主壳域的处理者表 —— 结构债 P4 终态批 A1-a(八个)+ A1-b(browser / shell)。
  *
  * 每个域钉两件事:**方法集合就是 router 上那几条**(多一条少一条都红),以及
  * 每条**打到注入的操作、回的形状与迁移前那条手写 `ipcMain.handle` 逐字相同**。
@@ -7,11 +7,13 @@
  * 这些工厂一行 electron 都不 import,所以这只文件不需要跑起一个 Electron。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { browserRouter } from '@shared/ipc/browser.js'
 import { deeplinkRouter } from '@shared/ipc/deeplink.js'
 import { dialogRouter } from '@shared/ipc/dialog.js'
 import { mediaWindowRouter } from '@shared/ipc/media.js'
 import { notifyRouter } from '@shared/ipc/notify.js'
 import { searchWindowRouter } from '@shared/ipc/search.js'
+import { shellRouter } from '@shared/ipc/shell.js'
 import { settingsWindowRouter } from '@shared/ipc/settings.js'
 import { todoPlanWindowRouter } from '@shared/ipc/todo-plan.js'
 import { windowRouter } from '@shared/ipc/window.js'
@@ -24,6 +26,8 @@ import { registerDialogShellDomain } from '../shell/dialog.js'
 import { registerMediaWindowShellDomain } from '../shell/media-window.js'
 import { registerNotifyShellDomain } from '../shell/notify.js'
 import { registerDeeplinkShellDomain } from '../shell/deeplink.js'
+import { registerBrowserShellDomain, type BrowserShellService } from '../shell/browser.js'
+import { registerShellShellDomain } from '../shell/shell.js'
 
 afterEach(() => {
   resetShellRegistryForTests()
@@ -144,16 +148,40 @@ describe('settings-window shell domain', () => {
 describe('window shell domain', () => {
   it('closes the caller window by the host-minted callerId', async () => {
     const closeCallerWindow = vi.fn(() => true)
-    registerWindowShellDomain({ closeCallerWindow })
-    expect([...windowRouter.methods]).toEqual(['close'])
+    registerWindowShellDomain({
+      closeCallerWindow,
+      setCallerWindowButtonVisibility: vi.fn(),
+    })
+    // A1-b 把红绿灯显隐(旧字面量通道 `window:set-button-visibility`)加进了同一个域。
+    expect([...windowRouter.methods]).toEqual(['close', 'setButtonVisibility'])
 
     await expect(call('window', 'close', {}, 12)).resolves.toEqual({ ok: true, data: { success: true } })
     expect(closeCallerWindow).toHaveBeenCalledWith(12)
   })
 
   it('reports failure when there is no caller window (旧 handler 的 `{ success:false }`)', async () => {
-    registerWindowShellDomain({ closeCallerWindow: () => false })
+    registerWindowShellDomain({
+      closeCallerWindow: () => false,
+      setCallerWindowButtonVisibility: vi.fn(),
+    })
     await expect(call('window', 'close', {})).resolves.toEqual({ ok: true, data: { success: false } })
+  })
+
+  it('changes the traffic lights of the caller window only — never a window it names', async () => {
+    const setCallerWindowButtonVisibility = vi.fn()
+    registerWindowShellDomain({
+      closeCallerWindow: () => true,
+      setCallerWindowButtonVisibility,
+    })
+
+    await expect(call('window', 'setButtonVisibility', { visible: true }, 9))
+      .resolves.toEqual({ ok: true, data: { success: true } })
+    expect(setCallerWindowButtonVisibility).toHaveBeenCalledWith(9, true)
+
+    // 迁移前那条 handler 没有回值;补的这条空回执不带任何窗口身份。
+    await expect(call('window', 'setButtonVisibility', { visible: false }))
+      .resolves.toEqual({ ok: true, data: { success: true } })
+    expect(setCallerWindowButtonVisibility).toHaveBeenLastCalledWith(undefined, false)
   })
 })
 
@@ -235,6 +263,175 @@ describe('deeplink shell domain', () => {
     await expect(call('deeplink', 'respond', { requestId: 'r1', approved: true })).resolves.toEqual({
       ok: true,
       data: { success: false, error: 'dispatcher blew up' },
+    })
+  })
+})
+
+describe('browser shell domain', () => {
+  function service(overrides: Partial<BrowserShellService> = {}) {
+    return {
+      hydrate: vi.fn(() => ({ tabs: [{ id: 't1' }], activeTabId: 't1' })),
+      createTab: vi.fn(() => ({ id: 't2' })),
+      closeTab: vi.fn(),
+      selectTab: vi.fn(),
+      navigate: vi.fn(),
+      goBack: vi.fn(),
+      goForward: vi.fn(),
+      reload: vi.fn(),
+      stop: vi.fn(),
+      setBounds: vi.fn(),
+      setVisible: vi.fn(),
+      pickElement: vi.fn(async () => ({ image: '', sourceUrl: 'u', sourceTitle: 't', excerpt: '', clipped: false })),
+      cancelPick: vi.fn(),
+      getSearchEngine: vi.fn(() => ({ engineId: 'baidu' as const })),
+      setSearchEngine: vi.fn(() => ({ engineId: 'bing' as const })),
+      listProfiles: vi.fn(() => ({ profiles: [{ id: 'default', name: '默认' }], activeProfileId: 'default' })),
+      addProfile: vi.fn(() => ({ profiles: [], activeProfileId: 'work' })),
+      removeProfile: vi.fn(() => ({ profiles: [], activeProfileId: 'default' })),
+      switchProfile: vi.fn(() => ({ profiles: [], activeProfileId: 'work' })),
+      ...overrides,
+    } as unknown as BrowserShellService & Record<string, ReturnType<typeof vi.fn>>
+  }
+
+  it('exposes exactly the 19 request verbs — the tab-state push is not one of them', () => {
+    expect([...browserRouter.methods]).toEqual([
+      'hydrate', 'createTab', 'closeTab', 'selectTab', 'navigate',
+      'goBack', 'goForward', 'reload', 'stop', 'setBounds', 'setVisible',
+      'pickElement', 'pickCancel', 'getSearchEngine', 'setSearchEngine',
+      'listProfiles', 'addProfile', 'removeProfile', 'switchProfile',
+    ])
+  })
+
+  it('unpacks each envelope into the positional service call the old handler made', async () => {
+    const svc = service()
+    registerBrowserShellDomain(() => svc)
+
+    await expect(call('browser', 'hydrate', {}))
+      .resolves.toEqual({ ok: true, data: { success: true, tabs: [{ id: 't1' }], activeTabId: 't1' } })
+    await expect(call('browser', 'createTab', { url: 'https://a', background: true }))
+      .resolves.toEqual({ ok: true, data: { success: true, tab: { id: 't2' } } })
+    expect(svc.createTab).toHaveBeenCalledWith('https://a', true)
+    // 旧 handler 的 `request ?? {}`:没带信封 = 一张起始页。
+    await call('browser', 'createTab', undefined)
+    expect(svc.createTab).toHaveBeenLastCalledWith(undefined, undefined)
+
+    await expect(call('browser', 'navigate', { tabId: 't1', url: 'https://b' }))
+      .resolves.toEqual({ ok: true, data: { success: true } })
+    expect(svc.navigate).toHaveBeenCalledWith('t1', 'https://b')
+
+    for (const [method, fn] of [
+      ['closeTab', svc.closeTab], ['selectTab', svc.selectTab], ['goBack', svc.goBack],
+      ['goForward', svc.goForward], ['reload', svc.reload], ['stop', svc.stop],
+      ['pickCancel', svc.cancelPick],
+    ] as const) {
+      await expect(call('browser', method, { tabId: 't1' }))
+        .resolves.toEqual({ ok: true, data: { success: true } })
+      expect(fn).toHaveBeenCalledWith('t1')
+    }
+
+    const bounds = { x: 1, y: 2, width: 3, height: 4 }
+    await expect(call('browser', 'setBounds', { bounds }))
+      .resolves.toEqual({ ok: true, data: { success: true } })
+    expect(svc.setBounds).toHaveBeenCalledWith(bounds)
+    await call('browser', 'setVisible', { visible: false })
+    expect(svc.setVisible).toHaveBeenCalledWith(false)
+
+    await expect(call('browser', 'pickElement', { tabId: 't1' })).resolves.toEqual({
+      ok: true,
+      data: {
+        success: true,
+        element: { image: '', sourceUrl: 'u', sourceTitle: 't', excerpt: '', clipped: false },
+      },
+    })
+
+    await expect(call('browser', 'getSearchEngine', {}))
+      .resolves.toEqual({ ok: true, data: { success: true, engineId: 'baidu' } })
+    await expect(call('browser', 'setSearchEngine', { engineId: 'bing' }))
+      .resolves.toEqual({ ok: true, data: { success: true, engineId: 'bing' } })
+    expect(svc.setSearchEngine).toHaveBeenCalledWith('bing')
+
+    await expect(call('browser', 'listProfiles', {})).resolves.toEqual({
+      ok: true,
+      data: { success: true, profiles: [{ id: 'default', name: '默认' }], activeProfileId: 'default' },
+    })
+    await call('browser', 'addProfile', { name: 'work' })
+    expect(svc.addProfile).toHaveBeenCalledWith('work')
+    await call('browser', 'removeProfile', { profileId: 'work' })
+    expect(svc.removeProfile).toHaveBeenCalledWith('work')
+    await call('browser', 'switchProfile', { profileId: 'work' })
+    expect(svc.switchProfile).toHaveBeenCalledWith('work')
+  })
+
+  it('folds a throwing service into the old handler\'s structured failure, fallbacks included', async () => {
+    const boom = () => {
+      throw new Error('view is gone')
+    }
+    registerBrowserShellDomain(() => service({
+      hydrate: boom,
+      createTab: boom,
+      pickElement: boom,
+      getSearchEngine: boom,
+      listProfiles: boom,
+    }) as BrowserShellService)
+
+    await expect(call('browser', 'hydrate', {})).resolves.toEqual({
+      ok: true,
+      data: { success: false, tabs: [], activeTabId: null, error: 'view is gone' },
+    })
+    await expect(call('browser', 'createTab', {}))
+      .resolves.toEqual({ ok: true, data: { success: false, error: 'view is gone' } })
+    await expect(call('browser', 'pickElement', { tabId: 't1' }))
+      .resolves.toEqual({ ok: true, data: { success: false, error: 'view is gone' } })
+    await expect(call('browser', 'getSearchEngine', {}))
+      .resolves.toEqual({ ok: true, data: { success: false, engineId: 'google', error: 'view is gone' } })
+    await expect(call('browser', 'listProfiles', {})).resolves.toEqual({
+      ok: true,
+      data: { success: false, profiles: [], activeProfileId: 'default', error: 'view is gone' },
+    })
+  })
+
+  it('never touches the service until a call arrives (懒单例:开机不拉起 WebContentsView)', () => {
+    const resolve = vi.fn(() => service())
+    registerBrowserShellDomain(resolve)
+    expect(resolve).not.toHaveBeenCalled()
+  })
+})
+
+describe('shell shell domain', () => {
+  it('carries the three former literal channels, request-shaped', async () => {
+    const openPath = vi.fn(async () => '')
+    const openExternal = vi.fn(async () => ({ success: true }))
+    const getDataPath = vi.fn(() => '/home/test/.onething')
+    registerShellShellDomain({ openPath, openExternal, getDataPath })
+    expect([...shellRouter.methods]).toEqual(['openPath', 'openExternal', 'getDataPath'])
+
+    // `openPath` 回的是 Electron 那个错误串本身('' = 成功),不是信封。
+    await expect(call('shell', 'openPath', { filePath: '/tmp/a.txt' }))
+      .resolves.toEqual({ ok: true, data: '' })
+    expect(openPath).toHaveBeenCalledWith('/tmp/a.txt')
+
+    await expect(call('shell', 'openExternal', { url: 'https://example.com' }))
+      .resolves.toEqual({ ok: true, data: { success: true } })
+    expect(openExternal).toHaveBeenCalledWith('https://example.com')
+
+    await expect(call('shell', 'getDataPath', {}))
+      .resolves.toEqual({ ok: true, data: '/home/test/.onething' })
+  })
+
+  it('turns a failed open into a sentence rather than a rejected invoke', async () => {
+    registerShellShellDomain({
+      openPath: async () => 'No application knows how to open this file',
+      openExternal: async () => {
+        throw new Error('no handler for this scheme')
+      },
+      getDataPath: () => '/home/test/.onething',
+    })
+
+    await expect(call('shell', 'openPath', { filePath: '/tmp/a.weird' }))
+      .resolves.toEqual({ ok: true, data: 'No application knows how to open this file' })
+    await expect(call('shell', 'openExternal', { url: 'weird://x' })).resolves.toEqual({
+      ok: false,
+      error: { message: 'no handler for this scheme' },
     })
   })
 })

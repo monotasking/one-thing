@@ -11,6 +11,8 @@
  * apps/web (no-WebContentsView host) fallback.
  */
 
+import { defineRouter } from './router.js'
+
 /** Placeholder-div rect the WebContentsView must track, in renderer CSS px (DIP). */
 export interface BrowserViewBounds {
 	x: number
@@ -257,3 +259,61 @@ export interface BrowserAddProfileRequest {
 export interface BrowserProfileIdRequest {
 	profileId: string
 }
+
+/**
+ * 内嵌浏览器的**宿主壳路由**(结构债 P4 终态批 A1-b,2026-08-23)。
+ *
+ * 19 条请求面从 `IPC_CHANNELS.BROWSER_*` 那批手写通道搬到 `shell:invoke` 上的一份
+ * 处理者表(`apps/electron/src/ipc/shell/browser.ts`)。判据与 A1-a 的八个窗口域
+ * 一致:处理者动的是 `WebContentsView` —— 主进程里真真切切的一扇原生视图 ——
+ * 所以它是**壳面**而不是数据面,去的是宿主那张派发表,不是装配层的 `rpc:invoke`。
+ *
+ * **`BROWSER_TABS_CHANGED` 不在这张表上**:那是推送(一次合批的标签态广播),
+ * router 今天没有推送面,所以它连同 `onBrowserTabsChanged` 一起原样留在手写通道上。
+ *
+ * 每条的输入/输出都复用上面那批既有类型 —— 这批只搬路,不改 wire 形状。无参的三条
+ * (`hydrate` / `getSearchEngine` / `listProfiles`)按 router 的惯例收一个空信封。
+ */
+export type BrowserRoutes = {
+	hydrate: { input: Record<string, never>; output: BrowserHydrateResponse }
+	createTab: { input: BrowserCreateTabRequest; output: BrowserCreateTabResponse }
+	closeTab: { input: BrowserTabIdRequest; output: BrowserSimpleResponse }
+	selectTab: { input: BrowserTabIdRequest; output: BrowserSimpleResponse }
+	navigate: { input: BrowserNavigateRequest; output: BrowserSimpleResponse }
+	goBack: { input: BrowserTabIdRequest; output: BrowserSimpleResponse }
+	goForward: { input: BrowserTabIdRequest; output: BrowserSimpleResponse }
+	reload: { input: BrowserTabIdRequest; output: BrowserSimpleResponse }
+	stop: { input: BrowserTabIdRequest; output: BrowserSimpleResponse }
+	setBounds: { input: BrowserSetBoundsRequest; output: BrowserSimpleResponse }
+	setVisible: { input: BrowserSetVisibleRequest; output: BrowserSimpleResponse }
+	pickElement: { input: BrowserTabIdRequest; output: BrowserPickResponse }
+	pickCancel: { input: BrowserTabIdRequest; output: BrowserSimpleResponse }
+	getSearchEngine: { input: Record<string, never>; output: BrowserSearchEngineResponse }
+	setSearchEngine: { input: BrowserSetSearchEngineRequest; output: BrowserSearchEngineResponse }
+	listProfiles: { input: Record<string, never>; output: BrowserProfilesResponse }
+	addProfile: { input: BrowserAddProfileRequest; output: BrowserProfilesResponse }
+	removeProfile: { input: BrowserProfileIdRequest; output: BrowserProfilesResponse }
+	switchProfile: { input: BrowserProfileIdRequest; output: BrowserProfilesResponse }
+}
+
+export const browserRouter = defineRouter<BrowserRoutes>('browser', [
+	'hydrate',
+	'createTab',
+	'closeTab',
+	'selectTab',
+	'navigate',
+	'goBack',
+	'goForward',
+	'reload',
+	'stop',
+	'setBounds',
+	'setVisible',
+	'pickElement',
+	'pickCancel',
+	'getSearchEngine',
+	'setSearchEngine',
+	'listProfiles',
+	'addProfile',
+	'removeProfile',
+	'switchProfile',
+])

@@ -173,13 +173,11 @@ export const IPC_CHANNELS = {
 	// 由宿主从 `ShellDispatchContext.callerId` 认,不从请求体读(壳 context 首例)。
 
 	// Search Everywhere —— 三条动窗口的与 `search:execute-action`(关搜索窗 + 找主窗
-	// + 送动作 + 聚焦)于 A1-a 走 `searchWindowRouter`。`search:query` **没跟着走**:
-	// 它的处理者不碰窗口,按判据是**数据面**,该去 `rpc:invoke` 的 backend 域;
-	// 但 server 那侧是 per-owner 沙箱版,要按 `context.transport` 分叉(files / tools
-	// 那种域),单独一批。迁走之前这条常量与它的手写 handler 原样留着。
+	// + 送动作 + 聚焦)于 A1-a 走 `searchWindowRouter`;`search:query` 于 A1-b 走
+	// `rpc:invoke` 的 backend `search` 域(数据面,按 `context.transport` 分叉:
+	// ipc 查整机那份、http 查 per-owner 沙箱那份)。这里只剩三条**推送**。
 	SEARCH_WINDOW_SHOWN: "search-window:shown",
 	SEARCH_WINDOW_GUIDES: "search-window:guides",
-	SEARCH_QUERY: "search:query",
 	SEARCH_ACTION: "search:action",
 
 	// onething:// 深链(H4)。确认门三个时刻里的两条请求面(READY / RESPOND)本就是
@@ -218,29 +216,9 @@ export const IPC_CHANNELS = {
 
 	// Browser (embedded WebContentsView; distinct from the WorkbenchTab
 	// 'browser' <iframe> which stays only as the apps/web fallback)
-	BROWSER_HYDRATE: "browser:hydrate",
-	BROWSER_CREATE_TAB: "browser:create-tab",
-	BROWSER_CLOSE_TAB: "browser:close-tab",
-	BROWSER_SELECT_TAB: "browser:select-tab",
-	BROWSER_NAVIGATE: "browser:navigate",
-	BROWSER_GO_BACK: "browser:go-back",
-	BROWSER_GO_FORWARD: "browser:go-forward",
-	BROWSER_RELOAD: "browser:reload",
-	BROWSER_STOP: "browser:stop",
-	BROWSER_SET_BOUNDS: "browser:set-bounds",
-	BROWSER_SET_VISIBLE: "browser:set-visible",
-	// Element pick mode: invoke resolves with the picked element (or null on cancel)
-	BROWSER_PICK_ELEMENT: "browser:pick-element",
-	BROWSER_PICK_CANCEL: "browser:pick-cancel",
-	// Search engine (omnibox queries + default new-tab page): get/set the selection
-	BROWSER_GET_SEARCH_ENGINE: "browser:get-search-engine",
-	BROWSER_SET_SEARCH_ENGINE: "browser:set-search-engine",
-	// Profiles (Chrome-style isolated logins): list/add/remove/switch
-	BROWSER_LIST_PROFILES: "browser:list-profiles",
-	BROWSER_ADD_PROFILE: "browser:add-profile",
-	BROWSER_REMOVE_PROFILE: "browser:remove-profile",
-	BROWSER_SWITCH_PROFILE: "browser:switch-profile",
-	// Push main→renderer: single coalesced tab-state batch
+	// 19 条请求面于 A1-b 走**宿主壳路由**(`browserRouter`,处理者在
+	// `apps/electron/src/ipc/shell/browser.ts` —— 它动的是主进程里一扇真原生视图,
+	// 所以是壳面不是数据面)。这里只剩一条**推送**:一次合批的标签态广播。
 	BROWSER_TABS_CHANGED: "browser:tabs-changed",
 
 	// 系统通知与 dock 徽标(agent-dm-user.md §4.2)。判定在 renderer;两条执行面

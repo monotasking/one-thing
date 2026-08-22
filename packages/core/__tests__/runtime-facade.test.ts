@@ -39,8 +39,10 @@ describe('createOnethingRuntimeFacade', () => {
         respond: vi.fn(async () => ({ success: true })),
       },
       // P4c 第十一批:`settings` / `network` 两格整只没了 —— 四条走 `settingsRouter`。
+      // P4 终态批 A1-b:`search.query` 这一格没了 —— 数据面走 `searchRouter`,
+      // server 侧的实现改由 `@onething/backend/server/search-providers.ts` 的单槽
+      // 端口交给域。facade 上只剩窗口活在 server 上的对应物。
       search: {
-        query: vi.fn(async request => ({ success: true, results: [request] })),
         executeAction: vi.fn(async actionId => ({ success: true, actionId })),
       },
       // P4c 第九批:七条数据面已迁 `toolsRouter`,facade 上不再有 tools 这一格。
@@ -94,10 +96,6 @@ describe('createOnethingRuntimeFacade', () => {
     await expect(runtime.appState?.get()).resolves.toEqual({ currentSessionId: 'session-1' })
     await expect(runtime.sessions.list()).resolves.toEqual([{ id: 'session-1' }])
     await expect(runtime.sessions.create('New Chat')).resolves.toEqual({ id: 'session-2', name: 'New Chat' })
-    await expect(runtime.search?.query({ query: 'notes', category: 'all' })).resolves.toEqual({
-      success: true,
-      results: [{ query: 'notes', category: 'all' }],
-    })
     await expect(runtime.search?.executeAction('open-settings')).resolves.toEqual({
       success: true,
       actionId: 'open-settings',

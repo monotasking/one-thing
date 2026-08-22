@@ -314,6 +314,7 @@ import { useSpacesStore } from '@/stores/spaces'
 import { matchShortcut } from '@/composables/useShortcuts'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
 import { platformApi } from '@/platform'
+import { shellApi } from '@/platform/shell-domain-client'
 import { toolsApi } from '@/platform/tools-client'
 
 // Tab Components
@@ -782,9 +783,9 @@ function handleKeydown(e: KeyboardEvent) {
 
 async function openSettingsJson() {
   try {
-    const dataPath = await platformApi.getDataPath()
+    const dataPath = await shellApi.getDataPath({})
     const normalizedPath = dataPath.endsWith('/') ? dataPath.slice(0, -1) : dataPath
-    const result = await platformApi.openPath(`${normalizedPath}/settings.json`)
+    const result = await shellApi.openPath({ filePath: `${normalizedPath}/settings.json` })
     if (result) {
       log.warn('open settings.json reported an error', { result })
     }

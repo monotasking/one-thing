@@ -15,7 +15,6 @@ import type { DeepLinkConfirmRequest } from "@shared/ipc/deeplink.js";
 import type {
 	MarkdownResolveAssetRequest,
 	MarkdownSaveAttachmentsRequest,
-	SearchRequest,
 	SpacesChangedEvent,
 	SearchWindowGuideState,
 	SearchWindowShownPayload,
@@ -198,46 +197,13 @@ const electronAPI = {
 	},
 
 	// ── Browser (embedded WebContentsView) ──────
-	hydrateBrowser: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_HYDRATE),
-	createBrowserTab: (request?: { url?: string; background?: boolean }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_CREATE_TAB, request ?? {}),
-	closeBrowserTab: (tabId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_CLOSE_TAB, { tabId }),
-	selectBrowserTab: (tabId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SELECT_TAB, { tabId }),
-	navigateBrowser: (tabId: string, url: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_NAVIGATE, { tabId, url }),
-	browserGoBack: (tabId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_GO_BACK, { tabId }),
-	browserGoForward: (tabId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_GO_FORWARD, { tabId }),
-	reloadBrowser: (tabId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_RELOAD, { tabId }),
-	stopBrowser: (tabId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_STOP, { tabId }),
-	setBrowserBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_BOUNDS, { bounds }),
-	setBrowserVisible: (visible: boolean) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_VISIBLE, { visible }),
-	pickBrowserElement: (tabId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_PICK_ELEMENT, { tabId }),
-	cancelBrowserPick: (tabId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_PICK_CANCEL, { tabId }),
-	getBrowserSearchEngine: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_GET_SEARCH_ENGINE),
+	// 19 条 invoke 于 A1-b 整只迁到**宿主壳路由**(`browserRouter`,渲染侧客户端在
+	// `platform/browser-client.ts`)。留下的只有这一条推送 —— 一次合批的标签态广播。
 
 	// collab(多 agent 协作房)的十五条 invoke 已整只迁到通用 RPC 通道(P4a,
 	// `@shared/ipc/collab.ts` 的 collabRouter + `@/platform/collab-client` 的 collabApi)。
 	// 这个域一条推送也没有(看板/协调器/agent 的实时更新走会话事件),所以壳面
 	// 上什么也不剩 —— 与 spaces / practice 各留一条广播不同。
-	setBrowserSearchEngine: (engineId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_SEARCH_ENGINE, { engineId }),
-	listBrowserProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_LIST_PROFILES),
-	addBrowserProfile: (name: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_ADD_PROFILE, { name }),
-	removeBrowserProfile: (profileId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_REMOVE_PROFILE, { profileId }),
-	switchBrowserProfile: (profileId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SWITCH_PROFILE, { profileId }),
 	onBrowserTabsChanged: (callback: (event: BrowserTabsChangedEvent) => void) => {
 		const listener = (_event: IpcRendererEvent, data: BrowserTabsChangedEvent) =>
 			callback(data);
@@ -461,17 +427,9 @@ const electronAPI = {
 
 	// Dialog —— 原生「打开」对话框走宿主壳路由(dialogRouter,A1-a)。
 
-	// Shell methods
-	openPath: (filePath: string) =>
-		ipcRenderer.invoke("shell:open-path", filePath),
-
-	openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
-
-	getDataPath: () => ipcRenderer.invoke("app:get-data-path"),
-
-	// Window methods
-	setWindowButtonVisibility: (visible: boolean) =>
-		ipcRenderer.invoke("window:set-button-visibility", visible),
+	// Shell —— 打开路径 / 打开外链 / 数据目录三条于 A1-b 走宿主壳路由(shellRouter),
+	// 红绿灯显隐同批进 windowRouter。四条从前都是**不在 `IPC_CHANNELS` 表上**的
+	// 字面量通道;渲染侧客户端在 platform/{shell-domain,window}-client.ts。
 
 	// File methods
 	// Resolves the on-disk path of a dropped/picked File so attachments can
@@ -626,7 +584,8 @@ const electronAPI = {
 
 	// ── Search Everywhere ──────────────────────────
 	// 四条动窗口的(toggle / close / set-anchor / execute-action)走宿主壳路由
-	// (searchWindowRouter,A1-a);`searchQuery` 是数据面,还没迁(见 channels.ts)。
+	// (searchWindowRouter,A1-a);数据面那条 `query` 于 A1-b 走通用 RPC 通道的
+	// backend `search` 域。这里只剩三条推送。
 	onSearchWindowShown: (
 		callback: (payload?: SearchWindowShownPayload | null) => void,
 	) => {
@@ -644,9 +603,6 @@ const electronAPI = {
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_WINDOW_GUIDES, listener);
 	},
-
-	searchQuery: (req: SearchRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_QUERY, req),
 
 	onSearchAction: (callback: (actionId: string) => void) => {
 		const listener = (_event: IpcRendererEvent, actionId: string) => callback(actionId);

@@ -1,156 +1,27 @@
 /**
- * Browser IPC handlers: embedded WebContentsView browser for the workbench.
- * Tab-state pushes go the other way via IPCBridge on BROWSER_TABS_CHANGED
- * (single coalesced batch). See docs/design/browser-v2/p0-implementation.md.
+ * Browser IPC glue: the embedded WebContentsView browser for the workbench.
+ *
+ * 结构债 P4 终态批 A1-b(2026-08-23):19 条请求面改走**宿主壳路由**
+ * (`browserRouter` → `@onething/electron-host/ipc/shell/browser`),所以这只文件
+ * 只剩两件真宿主的事 —— **注入服务**(懒取:`getBrowserViewService` 头一次求值才
+ * 拉起 WebContentsView / Widevine)与 **`BROWSER_TABS_CHANGED` 那条推送**
+ * (一次合批的标签态广播;router 今天没有推送面,所以它原地不动)。
+ * 迁移前那只可移植工厂 `apps/electron/src/ipc/browser.ts` 随之整只删掉。
  */
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import {
-	configureBrowserBroadcaster,
-	getBrowserViewService,
+    configureBrowserBroadcaster,
+    getBrowserViewService,
 } from "@onething/electron-host/browser/service";
-import { registerElectronBrowserIpcHandlers } from "@onething/electron-host/ipc/browser";
+import { registerBrowserShellDomain } from "@onething/electron-host/ipc/shell/browser";
 import { getIPCBridge } from "../bridges/ipc-bridge-lifecycle.js";
 
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 export function registerBrowserHandlers(): void {
-	configureBrowserBroadcaster({
-		sendTabsChanged: (event) => {
-			getIPCBridge()?.sendToRenderer(IPC_CHANNELS.BROWSER_TABS_CHANGED, event);
-		},
-	});
+    configureBrowserBroadcaster({
+        sendTabsChanged: (event) => {
+            getIPCBridge()?.sendToRenderer(IPC_CHANNELS.BROWSER_TABS_CHANGED, event);
+        },
+    });
 
-	const service = getBrowserViewService;
-	const ok = { success: true } as const;
-
-	registerElectronBrowserIpcHandlers({
-		channels: {
-			hydrate: IPC_CHANNELS.BROWSER_HYDRATE,
-			createTab: IPC_CHANNELS.BROWSER_CREATE_TAB,
-			closeTab: IPC_CHANNELS.BROWSER_CLOSE_TAB,
-			selectTab: IPC_CHANNELS.BROWSER_SELECT_TAB,
-			navigate: IPC_CHANNELS.BROWSER_NAVIGATE,
-			goBack: IPC_CHANNELS.BROWSER_GO_BACK,
-			goForward: IPC_CHANNELS.BROWSER_GO_FORWARD,
-			reload: IPC_CHANNELS.BROWSER_RELOAD,
-			stop: IPC_CHANNELS.BROWSER_STOP,
-			setBounds: IPC_CHANNELS.BROWSER_SET_BOUNDS,
-			setVisible: IPC_CHANNELS.BROWSER_SET_VISIBLE,
-			pickElement: IPC_CHANNELS.BROWSER_PICK_ELEMENT,
-			pickCancel: IPC_CHANNELS.BROWSER_PICK_CANCEL,
-			getSearchEngine: IPC_CHANNELS.BROWSER_GET_SEARCH_ENGINE,
-			setSearchEngine: IPC_CHANNELS.BROWSER_SET_SEARCH_ENGINE,
-			listProfiles: IPC_CHANNELS.BROWSER_LIST_PROFILES,
-			addProfile: IPC_CHANNELS.BROWSER_ADD_PROFILE,
-			removeProfile: IPC_CHANNELS.BROWSER_REMOVE_PROFILE,
-			switchProfile: IPC_CHANNELS.BROWSER_SWITCH_PROFILE,
-		},
-		hydrate: () => {
-			try {
-				const snapshot = service().hydrate();
-				return { success: true, ...snapshot };
-			} catch (error) {
-				return { success: false, tabs: [], activeTabId: null, error: errorMessage(error) };
-			}
-		},
-		createTab: (request) => {
-			try {
-				return { success: true, tab: service().createTab(request.url, request.background) };
-			} catch (error) {
-				return { success: false, error: errorMessage(error) };
-			}
-		},
-		closeTab: (request) => {
-			service().closeTab(request.tabId);
-			return ok;
-		},
-		selectTab: (request) => {
-			service().selectTab(request.tabId);
-			return ok;
-		},
-		navigate: (request) => {
-			service().navigate(request.tabId, request.url);
-			return ok;
-		},
-		goBack: (request) => {
-			service().goBack(request.tabId);
-			return ok;
-		},
-		goForward: (request) => {
-			service().goForward(request.tabId);
-			return ok;
-		},
-		reload: (request) => {
-			service().reload(request.tabId);
-			return ok;
-		},
-		stop: (request) => {
-			service().stop(request.tabId);
-			return ok;
-		},
-		setBounds: (request) => {
-			service().setBounds(request.bounds);
-			return ok;
-		},
-		setVisible: (request) => {
-			service().setVisible(request.visible);
-			return ok;
-		},
-		pickElement: async (request) => {
-			try {
-				const element = await service().pickElement(request.tabId);
-				return { success: true, element };
-			} catch (error) {
-				return { success: false, error: errorMessage(error) };
-			}
-		},
-		pickCancel: (request) => {
-			service().cancelPick(request.tabId);
-			return ok;
-		},
-		getSearchEngine: () => {
-			try {
-				return { success: true, ...service().getSearchEngine() };
-			} catch (error) {
-				return { success: false, engineId: "google" as const, error: errorMessage(error) };
-			}
-		},
-		setSearchEngine: (request) => {
-			try {
-				return { success: true, ...service().setSearchEngine(request.engineId) };
-			} catch (error) {
-				return { success: false, engineId: "google" as const, error: errorMessage(error) };
-			}
-		},
-		listProfiles: () => {
-			try {
-				return { success: true, ...service().listProfiles() };
-			} catch (error) {
-				return { success: false, profiles: [], activeProfileId: "default", error: errorMessage(error) };
-			}
-		},
-		addProfile: (request) => {
-			try {
-				return { success: true, ...service().addProfile(request.name) };
-			} catch (error) {
-				return { success: false, profiles: [], activeProfileId: "default", error: errorMessage(error) };
-			}
-		},
-		removeProfile: (request) => {
-			try {
-				return { success: true, ...service().removeProfile(request.profileId) };
-			} catch (error) {
-				return { success: false, profiles: [], activeProfileId: "default", error: errorMessage(error) };
-			}
-		},
-		switchProfile: (request) => {
-			try {
-				return { success: true, ...service().switchProfile(request.profileId) };
-			} catch (error) {
-				return { success: false, profiles: [], activeProfileId: "default", error: errorMessage(error) };
-			}
-		},
-	});
+    registerBrowserShellDomain(() => getBrowserViewService());
 }

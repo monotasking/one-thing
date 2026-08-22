@@ -10,6 +10,7 @@ import { Check } from 'lucide-vue-next'
 import Input from '@/components/common/Input.vue'
 import { BROWSER_SEARCH_ENGINES, DEFAULT_BROWSER_SEARCH_ENGINE_ID } from '@shared/ipc'
 import { platformApi } from '@/platform'
+import { browserApi } from '@/platform/browser-client'
 import { useBrowserProfilesStore } from '@/stores/browserProfiles'
 
 const store = useBrowserProfilesStore()
@@ -29,15 +30,15 @@ const searchEngineId = ref<string>(DEFAULT_BROWSER_SEARCH_ENGINE_ID)
 onMounted(() => {
   if (!supported) return
   void store.load()
-  void platformApi.getBrowserSearchEngine?.().then((res) => {
-    if (res?.success) searchEngineId.value = res.engineId
+  void browserApi.getSearchEngine({}).then((res) => {
+    if (res.success) searchEngineId.value = res.engineId
   })
 })
 
 async function selectEngine(id: string): Promise<void> {
   if (id === searchEngineId.value) return
-  const res = await platformApi.setBrowserSearchEngine?.(id)
-  if (res?.success) searchEngineId.value = res.engineId
+  const res = await browserApi.setSearchEngine({ engineId: id })
+  if (res.success) searchEngineId.value = res.engineId
 }
 
 function engineHost(homeUrl: string): string {

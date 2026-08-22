@@ -5,7 +5,7 @@ import type {
   SkillDirectoryConfig,
   SkillSettings,
 } from '@/types'
-import { platformApi } from '@/platform'
+import { shellApi } from '@/platform/shell-domain-client'
 import { agentsApi } from '@/platform/agents-client'
 import { skillsApi } from '@/platform/skills-client'
 import { dialogApi } from '@/platform/dialog-client'
@@ -204,7 +204,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
 
   async function openPath(path: string) {
     try {
-      await platformApi.openPath(path)
+      await shellApi.openPath({ filePath: path })
     } catch (error) {
       log.error('open path failed', { path }, error)
     }

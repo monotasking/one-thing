@@ -111,6 +111,10 @@ const EXPECTED_DOMAIN_FEATURES = [
   // 总线全局事件、REQUEST_PROGRESS 走 configurePluginRequestProgressBroadcaster
   // 端口。http 上六条读/开关面走 server 那本只读镜像目录,写面按管理器在不在场)。
   ['rpc:plugins', 'plugins'],
+  // P4 终态批 A1-b:search 的数据面一条(`query`)。A1-a 判定它不是壳面(处理者
+  // 一行 electron 都不碰),本批兑现 —— 按 `context.transport` 分叉:ipc 走桌面
+  // 那份整机搜索,http 走 `server/search-providers.ts` 那个单槽端口。
+  ['rpc:search', 'search'],
 ] as const
 
 /**

@@ -788,32 +788,9 @@ export interface PickedWebElement {
 	clipped: boolean;
 }
 
-export interface BrowserPickResponse {
-	success: boolean;
-	/** Null when the user cancelled — a normal outcome, not an error. */
-	element?: PickedWebElement | null;
-	error?: string;
-}
-
-/** A browser profile — an isolated persistent partition (Chrome-style login). */
-export interface BrowserProfile {
-	id: string;
-	name: string;
-}
-
-export interface BrowserProfilesResponse {
-	success: boolean;
-	profiles: BrowserProfile[];
-	activeProfileId: string;
-	error?: string;
-}
-
-/** Persisted omnibox search-engine selection (table lives in @shared/ipc browser.ts). */
-export interface BrowserSearchEngineResponse {
-	success: boolean;
-	engineId: string;
-	error?: string;
-}
+// 拾取结果 / profile 列表 / 搜索引擎选择这三组镜像随 A1-b 一起没了 —— 19 条
+// 浏览器方法迁到 `browserRouter` 之后,调用点吃的是 `@shared/ipc/browser` 上的
+// 真契约(同 D2 terminal 判例)。这里只留推送面还要用的那两个。
 
 export interface ElectronAPI {
 	/**
@@ -986,10 +963,8 @@ export interface ElectronAPI {
 	// ('interaction:requested' / 'interaction:settled')。
 
 	// Dialog methods
-	// Shell methods
-	openPath: (filePath: string) => Promise<string>;
-	openExternal: (url: string) => Promise<{ success: boolean }>;
-	getDataPath: () => Promise<string>;
+	// Shell —— 打开路径 / 打开外链 / 数据目录三条于 A1-b 走宿主壳路由(shellRouter),
+	// 渲染侧从 `platform/shell-domain-client` 的 `shellApi` 取。
 
 	// Clipboard methods
 	writeClipboardText: (
@@ -1042,10 +1017,8 @@ export interface ElectronAPI {
 		callback: (data: { root: string; path: string; eventType: string }) => void,
 	) => () => void;
 
-	// Window methods
-	setWindowButtonVisibility: (
-		visible: boolean,
-	) => Promise<{ success: boolean }>;
+	// Window —— 关掉发起窗(A1-a)与红绿灯显隐(A1-b)都走宿主壳路由(windowRouter),
+	// 渲染侧从 `platform/window-client` 的 `windowApi` 取。
 
 	// Unified event-driven channels (Phase 4)
 	onSessionEvent: (
@@ -1077,39 +1050,8 @@ export interface ElectronAPI {
 		) => () => void;
 	};
 
-	// Browser (embedded WebContentsView; wire contracts in packages/shared/ipc/browser.ts)
-	hydrateBrowser: () => Promise<{
-		success: boolean;
-		tabs: BrowserTabInfo[];
-		activeTabId: string | null;
-		error?: string;
-	}>;
-	createBrowserTab: (request?: {
-		url?: string;
-		background?: boolean;
-	}) => Promise<{ success: boolean; tab?: BrowserTabInfo; error?: string }>;
-	closeBrowserTab: (tabId: string) => Promise<{ success: boolean; error?: string }>;
-	selectBrowserTab: (tabId: string) => Promise<{ success: boolean; error?: string }>;
-	navigateBrowser: (tabId: string, url: string) => Promise<{ success: boolean; error?: string }>;
-	browserGoBack: (tabId: string) => Promise<{ success: boolean; error?: string }>;
-	browserGoForward: (tabId: string) => Promise<{ success: boolean; error?: string }>;
-	reloadBrowser: (tabId: string) => Promise<{ success: boolean; error?: string }>;
-	stopBrowser: (tabId: string) => Promise<{ success: boolean; error?: string }>;
-	setBrowserBounds: (bounds: {
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-	}) => Promise<{ success: boolean; error?: string }>;
-	setBrowserVisible: (visible: boolean) => Promise<{ success: boolean; error?: string }>;
-	pickBrowserElement: (tabId: string) => Promise<BrowserPickResponse>;
-	cancelBrowserPick: (tabId: string) => Promise<{ success: boolean; error?: string }>;
-	getBrowserSearchEngine: () => Promise<BrowserSearchEngineResponse>;
-	setBrowserSearchEngine: (engineId: string) => Promise<BrowserSearchEngineResponse>;
-	listBrowserProfiles: () => Promise<BrowserProfilesResponse>;
-	addBrowserProfile: (name: string) => Promise<BrowserProfilesResponse>;
-	removeBrowserProfile: (profileId: string) => Promise<BrowserProfilesResponse>;
-	switchBrowserProfile: (profileId: string) => Promise<BrowserProfilesResponse>;
+	// Browser —— 19 条 invoke 于 A1-b 整只迁到**宿主壳路由**(browserRouter),渲染侧
+	// 从 `platform/browser-client` 的 `browserApi` 取。壳上只剩这一条**推送**。
 	onBrowserTabsChanged: (callback: (event: BrowserTabsChangedEvent) => void) => () => void;
 
 
@@ -1119,14 +1061,14 @@ export interface ElectronAPI {
 
 	// Search Everywhere
 	// 四条动窗口的走宿主壳路由(searchWindowRouter,A1-a),渲染侧从
-	// `platform/search-window-client` 取;`searchQuery` 是数据面,还没迁。
+	// `platform/search-window-client` 取;数据面那条 `query` 于 A1-b 走通用 RPC
+	// 通道的 backend `search` 域(`platform/search-client`)。这里只剩推送。
 	onSearchWindowShown: (
 		callback: (payload?: SearchWindowShownPayload | null) => void,
 	) => () => void;
 	onSearchWindowGuides: (
 		callback: (state: SearchWindowGuideState) => void,
 	) => () => void;
-	searchQuery: (req: SearchRequest) => Promise<SearchResponse>;
 	onSearchAction: (callback: (actionId: string) => void) => () => void;
 
 	// Todo / Plan:数据面走通用 RPC(todoPlanRouter),七条窗口面走宿主壳路由

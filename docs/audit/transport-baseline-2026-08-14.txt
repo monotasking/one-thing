@@ -46,8 +46,18 @@
 #   server 那条 REST 路由留着)。`search:query` 判定为**数据面**(处理者不碰窗口)留原地,待单独一批迁 backend rpc 域。
 #   收紧:channels 84→62、bridge 775→718、web 879→785、channels.ts 267→256,四壳 3040→2489
 #   (http 730 不变:窗口系从来没有 server 路由)。
-channels:IPC_CHANNELS 62
-lines:apps/electron/src/preload/bridge.ts 718
-lines:packages/backend/server/http.ts 730
-lines:packages/renderer/platform/web.ts 785
-lines:packages/shared/ipc/channels.ts 256
+# 2026-08-23 A1-b:browser 19 条 + shell-controller 4 条字面量迁壳路由,SEARCH_QUERY 迁 backend search 域;channels 62→42
+#   browser:19 条请求面进 `browserRouter`(宿主壳路由,处理者动的是 WebContentsView 这扇原生视图),
+#   只留 BROWSER_TABS_CHANGED 一条推送;旧可移植工厂 apps/electron/src/ipc/browser.ts 整只删。
+#   shell-controller:四条**从来不在 IPC_CHANNELS 表上**的字面量通道(shell:open-path / shell:open-external /
+#   app:get-data-path / window:set-button-visibility)——前三条进新立的 shellRouter,第四条动的是发起窗本身、
+#   进 A1-a 就有的 windowRouter;工厂与它的测试整只删,checker 换成反向棘轮(那四条字面量不许回宿主树)。
+#   SEARCH_QUERY:A1-a 判定的那条数据面兑现 —— 进 backend 的 `search` RPC 域,按 context.transport 分叉
+#   (ipc 走桌面 executeSearch;http 走 server/search-providers.ts 单槽端口,装的是从前 POST /api/search/query
+#   背后的同一个闭包,facade 上 search.query 与那条 REST 一起删,executeAction 留 —— 它是窗口活的 server 对应物)。
+#   收紧:channels 62→42、bridge 718→674、http 730→726、web 785→758、channels.ts 256→234,四壳 2489→2392。
+channels:IPC_CHANNELS 42
+lines:apps/electron/src/preload/bridge.ts 674
+lines:packages/backend/server/http.ts 726
+lines:packages/renderer/platform/web.ts 758
+lines:packages/shared/ipc/channels.ts 234

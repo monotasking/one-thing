@@ -431,7 +431,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watchEffect } from 'vue'
-import { platformApi } from '@/platform'
+import { shellApi } from '@/platform/shell-domain-client'
 import { pluginsApi } from '@/platform/plugins-client'
 import { toPlainData } from '@/workspace/plain-data'
 import { toast } from '@/composables/useToast'
@@ -532,9 +532,10 @@ function onLinkClick(node: { url?: string; actionId?: string; payload?: unknown 
     emit('action', { actionId: node.actionId, payload: node.payload })
     return
   }
-  // 走 platformApi 而不是 `window.platformApi` —— 后者从来没有被赋值过,
-  // 于是在此之前带 url 的 link 节点点下去**什么也不发生**(静默死路)。
-  if (node.url) void platformApi.openExternal?.(node.url)
+  // 走壳路由的 `shell` 域(A1-b 之前是 `platformApi.openExternal`)而不是
+  // `window.platformApi` —— 后者从来没有被赋值过,于是在更早之前带 url 的 link
+  // 节点点下去**什么也不发生**(静默死路)。
+  if (node.url) void shellApi.openExternal({ url: node.url })
 }
 
 /**
