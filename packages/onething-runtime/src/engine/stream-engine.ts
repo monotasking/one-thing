@@ -137,10 +137,6 @@ export class ProductStreamEngine<
 		this.bindCommandTarget(sender, clear => sender.on("destroyed", clear));
 	}
 
-	bindStatic(sender: StreamSender): void {
-		this.bindCommandTarget(sender);
-	}
-
 	hasBoundSender(): boolean {
 		return this.hasCommandTarget(sender => !sender.isDestroyed());
 	}
