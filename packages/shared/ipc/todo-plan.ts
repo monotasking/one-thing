@@ -150,3 +150,51 @@ export const todoPlanRouter = defineRouter<TodoPlanRoutes>('todo-plan', [
   'delete',
   'revealDirectory',
 ])
+
+/**
+ * Todo / plan 的**窗口面**(结构债 P4 终态批 A1-a,2026-08-23)。
+ *
+ * 七条动窗口的通道从 `IPC_CHANNELS` 搬到**宿主壳路由**(`shell:invoke`):契约在
+ * 这里,处理者在 `apps/electron/src/ipc/shell/todo-plan-window.ts`(宿主侧)与
+ * `packages/renderer/platform/shell-web/todo-plan-window.ts`(web 侧)。它们和上面
+ * 那个 `todoPlanRouter` 的分界线一字未改 —— **碰窗口的走壳路由,碰数据的走
+ * `rpc:invoke`**;变的只是「碰窗口的」不再一条一条手写通道。
+ *
+ * `drag` 也在这张表上。它是拖拽期间每帧一条的高频通道,从前刻意留在手写通道上
+ * 以避开「通用 RPC 的重封装」;A1-a 复核后仍然搬:壳路由的每次调用只多一个
+ * `{domain, method, payload}` 字面量 + 一次 Map 查找 + 一次 `{ok,data}` 包装,
+ * 与 IPC 的结构化克隆和一次 `setBounds` 相比不在一个量级,而「窗口系全部迁入」
+ * 换来的是拖窗这条路也能从调用点 F12 走到处理者。
+ */
+export interface TodoPlanWindowResponse {
+  success: boolean
+  error?: string
+}
+
+export interface TodoPlanWindowPinnedRequest {
+  pinned: boolean
+}
+
+export interface TodoPlanWindowPinnedResponse extends TodoPlanWindowResponse {
+  pinned?: boolean
+}
+
+export type TodoPlanWindowRoutes = {
+  open: { input: TodoPlanWindowActionRequest; output: TodoPlanWindowResponse }
+  hide: { input: TodoPlanWindowActionRequest; output: TodoPlanWindowResponse }
+  toggle: { input: TodoPlanWindowActionRequest; output: TodoPlanWindowResponse }
+  setPinned: { input: TodoPlanWindowPinnedRequest; output: TodoPlanWindowPinnedResponse }
+  minimize: { input: Record<string, never>; output: TodoPlanWindowResponse }
+  zoom: { input: Record<string, never>; output: TodoPlanWindowResponse }
+  drag: { input: TodoPlanWindowDragRequest; output: TodoPlanWindowResponse }
+}
+
+export const todoPlanWindowRouter = defineRouter<TodoPlanWindowRoutes>('todo-plan-window', [
+  'open',
+  'hide',
+  'toggle',
+  'setPinned',
+  'minimize',
+  'zoom',
+  'drag',
+])

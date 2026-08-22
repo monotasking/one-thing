@@ -193,3 +193,49 @@ export const mediaRouter = defineRouter<MediaRoutes>('media', [
   'readImageBase64',
   'getPreview',
 ])
+
+/**
+ * 媒体域**要宿主本体的三条**(结构债 P4 终态批 A1-a,2026-08-23)。
+ *
+ * 它们从手写通道搬到**宿主壳路由**(`shell:invoke`),分界线一字未改 ——
+ * 上面 `mediaRouter` 的十一条是数据面(装配层能做,桌面/web 同一份实现),
+ * 这三条要的是宿主本体:
+ *  - `saveAs` —— 一次原生保存对话框;
+ *  - `openPreview` / `openGallery` —— 各一个 `BrowserWindow`。
+ *
+ * web 侧不是"做不到"就完事:开预览在浏览器里是**就地**把图交给页内的
+ * `ImagePreviewWindow`(一次本地广播),开画廊如实回一次不改变任何东西的成功,
+ * 另存为如实说做不到并让调用点退回 `<a download>` —— 三段都是迁移前 web.ts 里
+ * 那几段的逐字搬迁。
+ */
+export interface MediaOpenImagePreviewRequest {
+  src: string
+  alt?: string
+}
+
+export interface MediaOpenImagePreviewResponse {
+  success: boolean
+  previewId?: string
+  error?: string
+}
+
+export interface MediaOpenImageGalleryRequest {
+  mediaId: string
+}
+
+export interface MediaOpenImageGalleryResponse {
+  success: boolean
+  error?: string
+}
+
+export type MediaWindowRoutes = {
+  saveAs: { input: MediaSaveAsRequest; output: MediaSaveAsResponse }
+  openPreview: { input: MediaOpenImagePreviewRequest; output: MediaOpenImagePreviewResponse }
+  openGallery: { input: MediaOpenImageGalleryRequest; output: MediaOpenImageGalleryResponse }
+}
+
+export const mediaWindowRouter = defineRouter<MediaWindowRoutes>('media-window', [
+  'saveAs',
+  'openPreview',
+  'openGallery',
+])

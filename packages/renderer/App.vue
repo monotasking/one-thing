@@ -189,6 +189,12 @@ import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/
 import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
 import { appStateApi } from '@/platform/app-state-client'
+import { settingsWindowApi } from '@/platform/settings-window-client'
+import { todoPlanWindowApi } from '@/platform/todo-plan-window-client'
+import { searchWindowApi } from '@/platform/search-window-client'
+import { mediaWindowApi } from '@/platform/media-window-client'
+import { notifyApi } from '@/platform/notify-client'
+import { windowApi } from '@/platform/window-client'
 import { toast } from '@/composables/useToast'
 import { getToolFilePath } from '@/stores/helpers/tool-step-view'
 import {
@@ -500,7 +506,7 @@ async function selectSidebarSession(sessionId: string) {
 }
 
 function openSettingsWindow() {
-  platformApi.openSettingsWindow()
+  void settingsWindowApi.open({})
 }
 
 
@@ -520,14 +526,14 @@ useShortcuts({
   },
   onOpenSettings: () => {
     if (isAuxiliaryWindow.value) return
-    platformApi.openSettingsWindow()
+    void settingsWindowApi.open({})
   },
   onSearchEverywhere: () => {
     if (isAuxiliaryWindow.value) return
     openSearch()
   },
   onToggleTodoPlanWindow: () => {
-    platformApi?.toggleTodoPlanWindow?.({
+    void todoPlanWindowApi.toggle({
       activation: 'preserve-current-app',
       preserveMainWindowVisibility: true,
     })
@@ -787,7 +793,7 @@ function createReferenceHost(): ReferenceHost {
     openExternal: url => void platformApi.openExternal(url),
     revealPath: path => void filesApi.reveal({ path }),
     openFolder: path => openFolderInRightWorkbench(path),
-    openImage: (path, fileUrl) => void platformApi.openImagePreview(fileUrl, path.split('/').pop() || path),
+    openImage: (path, fileUrl) => void mediaWindowApi.openPreview({ src: fileUrl, alt: path.split('/').pop() || path }),
     statPath: async (path) => {
       const res = await filesApi.stat({ path }).catch(() => null)
       if (!res?.success) return { exists: false, isDirectory: false, isImage: false }
@@ -1091,7 +1097,7 @@ watch([sidebarStowed, sidebarFloating], () => {
 // hidden there and the shortcut must not fire a silent no-op.
 function openSearch() {
   if (!platformApi.capabilities.desktopWindows) return
-  platformApi.toggleSearchWindow()
+  void searchWindowApi.toggle({})
 }
 
 // Report the content area rect (sidebar excluded) so the main process can
@@ -1102,10 +1108,10 @@ let searchAnchorReportTimer: ReturnType<typeof setTimeout> | null = null
 
 function reportSearchAnchor() {
   const el = appContentElement.value
-  if (!el || typeof platformApi.setSearchWindowAnchor !== 'function') return
+  if (!el) return
   const rect = el.getBoundingClientRect()
-  void platformApi
-    .setSearchWindowAnchor({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })
+  void searchWindowApi
+    .setAnchor({ anchor: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } })
     .catch(() => {})
 }
 
@@ -1244,7 +1250,7 @@ onMounted(async () => {
     }) ?? null
     watch(
       () => sessionsStore.unreadSessionIds.size > 0,
-      hasUnread => { void platformApi.notify?.setBadge(hasUnread) },
+      hasUnread => { void notifyApi.setBadge({ hasUnread }) },
       { immediate: true },
     )
   }
@@ -1301,7 +1307,7 @@ onMounted(async () => {
       void browserStore.closeActiveTab()
       return
     }
-    void platformApi.closeWindow().catch(() => {})
+    void windowApi.close({}).catch(() => {})
   })
 
   // Cmd+T is the browser's alone: outside the browser panel it does nothing

@@ -8,6 +8,7 @@ import type {
 import { platformApi } from '@/platform'
 import { agentsApi } from '@/platform/agents-client'
 import { skillsApi } from '@/platform/skills-client'
+import { dialogApi } from '@/platform/dialog-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.skills')
@@ -212,7 +213,7 @@ export function useSkills(getSettings: () => SkillSettings, emit: UseSkillsEmit)
   /** Returns the picked directory path, or null when cancelled/unsupported */
   async function pickDirectory(): Promise<string | null> {
     try {
-      const result = await platformApi.showOpenDialog({
+      const result = await dialogApi.showOpen({
         properties: ['openDirectory'],
         title: 'Choose a skills directory',
       })

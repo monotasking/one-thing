@@ -1,15 +1,4 @@
-import { BrowserWindow, ipcMain, type WebContents } from 'electron'
-
-export interface ElectronIpcMainLike {
-  handle<TArgs extends unknown[]>(
-    channel: string,
-    listener: (event: unknown, ...args: TArgs) => unknown,
-  ): void
-}
-
-export interface ElectronSearchIpcEvent {
-  sender?: WebContents
-}
+import { BrowserWindow, webContents, type WebContents } from 'electron'
 
 export interface ElectronSearchActionWindow {
   isDestroyed(): boolean
@@ -42,32 +31,25 @@ export interface ExecuteElectronSearchActionFromOptions extends FindElectronMain
   logger?: Pick<Console, 'warn'>
 }
 
-export interface ElectronSearchIpcChannels {
-  toggleWindow: string
-  closeWindow: string
-  query: string
-  executeAction: string
-  setAnchor?: string
-}
-
-export interface RegisterElectronSearchIpcHandlersOptions {
-  channels: ElectronSearchIpcChannels
-  toggleWindow(sourceWindow: ElectronSearchActionWindow | null, openOptions?: unknown): unknown
-  closeWindow(): unknown
-  query(request: unknown): unknown
-  executeAction(sourceWindow: ElectronSearchActionWindow | null, actionId: string): unknown
-  setAnchor?(anchor: unknown): unknown
-  ipcMain?: ElectronIpcMainLike
-}
-
 export function getElectronSearchWindowFromWebContents(
-  webContents: WebContents,
+  sender: WebContents,
 ): ElectronSearchActionWindow | null {
-  return BrowserWindow.fromWebContents(webContents)
+  return BrowserWindow.fromWebContents(sender)
 }
 
-function getElectronSearchWindowFromIpcEvent(event: unknown): ElectronSearchActionWindow | null {
-  const sender = (event as ElectronSearchIpcEvent).sender
+/**
+ * 「从哪扇窗按的」—— 结构债 P4 终态批 A1-a(2026-08-23)。
+ *
+ * 从前是从 IPC event 上取 `sender`;搬到宿主壳路由之后,身份是宿主在
+ * `@main/ipc/shell-rpc.ts` 里盖的章(`ShellDispatchContext.callerId` =
+ * `event.sender.id`),这里只负责把它翻回一扇窗。来源是同一个 webContents,
+ * 渲染层从头到尾没有机会自称是别人。
+ */
+export function getElectronSearchWindowFromCallerId(
+  callerId: number | undefined,
+): ElectronSearchActionWindow | null {
+  if (typeof callerId !== 'number') return null
+  const sender = webContents.fromId(callerId)
   return sender ? getElectronSearchWindowFromWebContents(sender) : null
 }
 
@@ -120,33 +102,4 @@ export async function executeElectronSearchActionFrom(
   mainWindow.webContents.send(options.actionChannel, resolvedActionId)
   mainWindow.focus()
   return { success: true }
-}
-
-export function registerElectronSearchIpcHandlers(
-  options: RegisterElectronSearchIpcHandlersOptions,
-): void {
-  const host = options.ipcMain ?? ipcMain
-
-  host.handle(options.channels.toggleWindow, (event, openOptions: unknown) => {
-    return options.toggleWindow(getElectronSearchWindowFromIpcEvent(event), openOptions)
-  })
-
-  if (options.channels.setAnchor && options.setAnchor) {
-    const setAnchor = options.setAnchor
-    host.handle(options.channels.setAnchor, (_event, anchor: unknown) => {
-      return setAnchor(anchor)
-    })
-  }
-
-  host.handle(options.channels.closeWindow, () => {
-    return options.closeWindow()
-  })
-
-  host.handle(options.channels.query, (_event, request: unknown) => {
-    return options.query(request)
-  })
-
-  host.handle(options.channels.executeAction, (event, actionId: string) => {
-    return options.executeAction(getElectronSearchWindowFromIpcEvent(event), actionId)
-  })
 }

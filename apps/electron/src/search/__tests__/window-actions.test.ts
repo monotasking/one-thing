@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   focusedWindow: null as any,
   allWindows: [] as any[],
   fromWebContents: vi.fn(),
+  fromId: vi.fn(),
 }))
 
 vi.mock('electron', () => ({
@@ -12,8 +13,8 @@ vi.mock('electron', () => ({
     getFocusedWindow: vi.fn(() => mocks.focusedWindow),
     getAllWindows: vi.fn(() => mocks.allWindows),
   },
-  ipcMain: {
-    handle: vi.fn(),
+  webContents: {
+    fromId: mocks.fromId,
   },
 }))
 
@@ -36,6 +37,7 @@ describe('electron search window actions', () => {
     mocks.focusedWindow = null
     mocks.allWindows = []
     mocks.fromWebContents.mockReset()
+    mocks.fromId.mockReset()
   })
 
   it('resolves a BrowserWindow from IPC sender webContents', async () => {
@@ -135,59 +137,25 @@ describe('electron search window actions', () => {
     expect(logger.warn).toHaveBeenCalledWith('[Search] No main app window found for action:', 'open-file:/tmp/today.md')
   })
 
-  it('registers search IPC handlers and resolves source windows from sender webContents', async () => {
-    const { registerElectronSearchIpcHandlers } = await import('../window-actions.js')
-    const handle = vi.fn()
+  // 「从哪扇窗按的」在 A1-a 之后来自宿主盖的 `callerId`,不再来自 IPC event。
+  it('resolves the source window from the shell dispatch callerId', async () => {
+    const { getElectronSearchWindowFromCallerId } = await import('../window-actions.js')
     const source = windowMock('app://index.html#/search')
     const sender = {} as any
-    const toggleWindow = vi.fn().mockReturnValue({ success: true })
-    const closeWindow = vi.fn().mockReturnValue({ success: true })
-    const query = vi.fn().mockResolvedValue({ success: true, results: [] })
-    const executeAction = vi.fn().mockResolvedValue({ success: true })
-    const setAnchor = vi.fn().mockReturnValue({ success: true })
+    mocks.fromId.mockReturnValue(sender)
     mocks.fromWebContents.mockReturnValue(source)
 
-    registerElectronSearchIpcHandlers({
-      channels: {
-        toggleWindow: 'search-window:toggle',
-        closeWindow: 'search-window:close',
-        query: 'search:query',
-        executeAction: 'search:execute-action',
-        setAnchor: 'search-window:set-anchor',
-      },
-      toggleWindow,
-      closeWindow,
-      query,
-      executeAction,
-      setAnchor,
-      ipcMain: { handle },
-    })
-
-    expect(handle).toHaveBeenCalledTimes(5)
-    expect(handle.mock.calls.map(call => call[0])).toEqual([
-      'search-window:toggle',
-      'search-window:set-anchor',
-      'search-window:close',
-      'search:query',
-      'search:execute-action',
-    ])
-
-    const openOptions = { intent: { type: 'split-panel', panelId: 'main' } }
-    expect(handle.mock.calls[0][1]({ sender }, openOptions)).toEqual({ success: true })
-    expect(toggleWindow).toHaveBeenCalledWith(source, openOptions)
+    expect(getElectronSearchWindowFromCallerId(7)).toBe(source)
+    expect(mocks.fromId).toHaveBeenCalledWith(7)
     expect(mocks.fromWebContents).toHaveBeenCalledWith(sender)
+  })
 
-    const anchor = { x: 240, y: 0, width: 960, height: 800 }
-    expect(handle.mock.calls[1][1]({}, anchor)).toEqual({ success: true })
-    expect(setAnchor).toHaveBeenCalledWith(anchor)
+  it('returns null when there is no callerId, or the caller is already gone', async () => {
+    const { getElectronSearchWindowFromCallerId } = await import('../window-actions.js')
+    expect(getElectronSearchWindowFromCallerId(undefined)).toBeNull()
+    expect(mocks.fromId).not.toHaveBeenCalled()
 
-    expect(handle.mock.calls[2][1]({})).toEqual({ success: true })
-
-    const request = { query: 'abc' }
-    await expect(handle.mock.calls[3][1]({}, request)).resolves.toEqual({ success: true, results: [] })
-    expect(query).toHaveBeenCalledWith(request)
-
-    await expect(handle.mock.calls[4][1]({ sender }, 'open-settings')).resolves.toEqual({ success: true })
-    expect(executeAction).toHaveBeenCalledWith(source, 'open-settings')
+    mocks.fromId.mockReturnValue(null)
+    expect(getElectronSearchWindowFromCallerId(3)).toBeNull()
   })
 })

@@ -1,34 +1,14 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog } from 'electron'
 import type { MediaSaveAsRequest, MediaSaveAsResponse } from '@shared/ipc.js'
 
-export interface ElectronIpcMainLike {
-  handle<TArgs extends unknown[]>(
-    channel: string,
-    listener: (event: unknown, ...args: TArgs) => unknown,
-  ): void
-}
-
 /**
- * 媒体域**留在宿主侧的三条**(结构债 P4c 第三批)。十一条数据面已迁到通用
- * `rpc:invoke` / `POST /api/rpc`(`mediaRouter`);这里只剩要宿主本体的那三件:
- * 一次原生保存对话框 + 两个 `BrowserWindow`。
+ * 媒体域**留在宿主侧的三条**(结构债 P4c 第三批)的那半个实现。十一条数据面已迁到
+ * 通用 `rpc:invoke` / `POST /api/rpc`(`mediaRouter`);要宿主本体的三条于 A1-a
+ * (2026-08-23)改走宿主壳路由(`mediaWindowRouter`),注册工厂与那三份请求形状
+ * 随之搬进契约 / 处理者表 —— 本文件只留「另存为」这件真要 `electron` 的实现。
  */
-export interface ElectronMediaIpcChannels {
-  saveAs: string
-  openPreview: string
-  openGallery: string
-}
-
-export interface ElectronImagePreviewRequest {
-  src: string
-  alt?: string
-}
-
-export interface ElectronImageGalleryRequest {
-  mediaId: string
-}
 
 /**
  * Host side of 「另存为」. Kept next to the media IPC host (rather than in the
@@ -79,30 +59,4 @@ export async function saveElectronMediaFileAs(
       error: error instanceof Error ? error.message : String(error),
     }
   }
-}
-
-export interface RegisterElectronMediaIpcHandlersOptions {
-  channels: ElectronMediaIpcChannels
-  saveAs(request: MediaSaveAsRequest): unknown
-  openPreview(request: ElectronImagePreviewRequest): unknown
-  openGallery(request: ElectronImageGalleryRequest): unknown
-  ipcMain?: ElectronIpcMainLike
-}
-
-export function registerElectronMediaIpcHandlers(
-  options: RegisterElectronMediaIpcHandlersOptions,
-): void {
-  const host = options.ipcMain ?? ipcMain
-
-  host.handle(options.channels.saveAs, (_event, request: MediaSaveAsRequest) => {
-    return options.saveAs(request)
-  })
-
-  host.handle(options.channels.openPreview, (_event, request: ElectronImagePreviewRequest) => {
-    return options.openPreview(request)
-  })
-
-  host.handle(options.channels.openGallery, (_event, request: ElectronImageGalleryRequest) => {
-    return options.openGallery(request)
-  })
 }

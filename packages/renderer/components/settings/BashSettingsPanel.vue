@@ -176,7 +176,7 @@ import Input from '@/components/common/Input.vue'
 import Switch from '@/components/common/Switch.vue'
 import { computed } from 'vue'
 import type { AppSettings, BashToolSettings } from '@/types'
-import { platformApi } from '@/platform'
+import { dialogApi } from '@/platform/dialog-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.settings-bash')
@@ -221,7 +221,7 @@ function updateWhitelist(value: string) {
 
 async function browseDirectory(mode: 'default' | 'add') {
   try {
-    const result = await platformApi.showOpenDialog({
+    const result = await dialogApi.showOpen({
       properties: ['openDirectory'],
       title: mode === 'default' ? 'Select Default Working Directory' : 'Add Allowed Directory',
     })

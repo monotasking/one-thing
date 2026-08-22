@@ -195,6 +195,7 @@ import type {
   SearchWindowSplitIntent,
 } from '@shared/ipc/search'
 import { platformApi } from '@/platform'
+import { searchWindowApi } from '@/platform/search-window-client'
 
 const HIDDEN_GUIDES: SearchWindowGuideState = {
   visible: false,
@@ -257,7 +258,7 @@ let unsubscribeGuides: (() => void) | null = null
 let lastCompositionEndAt: number | null = null
 
 function closeWindow() {
-  platformApi.closeSearchWindow()
+  void searchWindowApi.close({})
 }
 
 function onInputKeydown(event: KeyboardEvent) {
@@ -328,11 +329,11 @@ function confirmResult(item: SearchResult) {
 
   if (splitIntent.value && action.actionId.startsWith('switch-session:')) {
     const sessionId = action.actionId.slice('switch-session:'.length)
-    platformApi.searchExecuteAction(`split-panel:${splitIntent.value.panelId}:${sessionId}`)
+    void searchWindowApi.executeAction({ actionId: `split-panel:${splitIntent.value.panelId}:${sessionId}` })
     return
   }
 
-  platformApi.searchExecuteAction(action.actionId)
+  void searchWindowApi.executeAction({ actionId: action.actionId })
 }
 
 function openPromptCreate(title: string) {
@@ -371,7 +372,7 @@ async function createPromptFromDialog() {
   }
 
   showPromptCreate.value = false
-  platformApi.searchExecuteAction(`insert-prompt:${response.prompt.id}`)
+  void searchWindowApi.executeAction({ actionId: `insert-prompt:${response.prompt.id}` })
 }
 
 let lastShiftUp = 0

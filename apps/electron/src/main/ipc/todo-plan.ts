@@ -1,21 +1,24 @@
 /**
- * Todo / plan 的**窗口面**（主线 T1 第一批之后剩下的部分）。
+ * Todo / plan 的**窗口面接线**。
  *
- * 数据面（读快照 / 增删改重命名 / 在文件管理器里显示目录）已迁到通用 RPC 通道
+ * 数据面（读快照 / 增删改重命名 / 在文件管理器里显示目录）走通用 RPC 通道
  * （`todoPlanRouter` → `@onething/backend/rpc/domains/todo-plan.ts`）。这里只剩两样
  * 东西，都是宿主原生、迁不走的：
  *
- *  1. 四条窗口动作 —— 直接操作 BrowserWindow；
+ *  1. 七条窗口动作 —— 直接操作 BrowserWindow。它们于 2026-08-23（结构债 P4 终态批
+ *     A1-a）从七条手写通道改为**宿主壳路由**上的一份处理者表
+ *     （`todoPlanWindowRouter` → `@onething/electron-host/ipc/shell/todo-plan-window`），
+ *     语义逐字不变；
  *  2. `configureTodoPlanHost` 的端口注入 —— 变更广播（webContents.send）与
  *     Finder 里显示目录。注入必须留在这里，**RPC 域那边靠的正是这两个端口**：
  *     未注入端口的宿主（server / CLI）自然降级，而不是各写一份。
  */
-import { registerElectronTodoPlanIpcHandlers } from '@onething/electron-host/ipc/todo-plan'
-import type { ElectronTodoPlanPinnedRequest } from '@onething/electron-host/ipc/todo-plan'
+import { registerTodoPlanWindowShellDomain } from '@onething/electron-host/ipc/shell/todo-plan-window'
 import {
   IPC_CHANNELS,
   type TodoPlanWindowActionRequest,
   type TodoPlanWindowDragRequest,
+  type TodoPlanWindowPinnedRequest,
 } from '@shared/ipc.js'
 import {
   dragTodoPlanWindow,
@@ -44,48 +47,39 @@ export function registerTodoPlanHandlers(): void {
     }),
     revealDirectory: revealElectronTodoPlanDirectory,
   })
-  registerElectronTodoPlanIpcHandlers({
-    channels: {
-      openWindow: IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW,
-      hideWindow: IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW,
-      toggleWindow: IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW,
-      setWindowPinned: IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED,
-      minimizeWindow: IPC_CHANNELS.TODO_PLAN_MINIMIZE_WINDOW,
-      zoomWindow: IPC_CHANNELS.TODO_PLAN_ZOOM_WINDOW,
-      dragWindow: IPC_CHANNELS.TODO_PLAN_DRAG_WINDOW,
-    },
-    openWindow: request =>
+  registerTodoPlanWindowShellDomain({
+    open: (request: TodoPlanWindowActionRequest) =>
       runOnethingTodoPlanWindowActionForIpc({
-        request: request as TodoPlanWindowActionRequest | undefined,
+        request,
         action: openTodoPlanWindow,
       }),
-    hideWindow: request =>
+    hide: (request: TodoPlanWindowActionRequest) =>
       runOnethingTodoPlanWindowActionForIpc({
-        request: request as TodoPlanWindowActionRequest | undefined,
+        request,
         action: hideTodoPlanWindow,
       }),
-    toggleWindow: request =>
+    toggle: (request: TodoPlanWindowActionRequest) =>
       runOnethingTodoPlanWindowActionForIpc({
-        request: request as TodoPlanWindowActionRequest | undefined,
+        request,
         action: toggleTodoPlanWindow,
       }),
-    setWindowPinned: (request: ElectronTodoPlanPinnedRequest) =>
+    setPinned: (request: TodoPlanWindowPinnedRequest) =>
       setOnethingTodoPlanWindowPinnedForIpc({
         pinned: request.pinned,
         setPinned: setTodoPlanWindowPinned,
       }),
-    // 自绘红绿灯的黄 / 绿两枚。红点复用 hideWindow —— 这扇窗是隐藏不是销毁。
-    minimizeWindow: () =>
+    // 自绘红绿灯的黄 / 绿两枚。红点复用 hide —— 这扇窗是隐藏不是销毁。
+    minimize: () =>
       runOnethingTodoPlanWindowActionForIpc({
         action: () => minimizeTodoPlanWindow(),
       }),
-    zoomWindow: () =>
+    zoom: () =>
       runOnethingTodoPlanWindowActionForIpc({
         action: () => zoomTodoPlanWindow(),
       }),
-    dragWindow: request =>
+    drag: (request: TodoPlanWindowDragRequest) =>
       runOnethingTodoPlanWindowActionForIpc({
-        request: request as TodoPlanWindowDragRequest | undefined,
+        request,
         action: dragRequest => dragTodoPlanWindow(dragRequest),
       }),
   })

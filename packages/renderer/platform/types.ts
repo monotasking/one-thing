@@ -119,7 +119,7 @@ export type PlatformApi = ElectronAPI & {
   goalSet: (request: GoalSetRequest) => Promise<GoalSetResponse>
   goalDiffs: (sessionId: string) => Promise<GoalDiffsResponse>
 
-  /** todo/plan 的数据面。窗口面(open/hide/toggle/pin)仍在 `ElectronAPI` 上。 */
+  /** todo/plan 的数据面。窗口面走宿主壳路由(`platform/todo-plan-window-client`)。 */
   getTodoPlan: (request?: TodoPlanGetRequest) => Promise<TodoPlanGetResponse>
   createTodoPlanNote: (request: TodoPlanCreateRequest) => Promise<TodoPlanCreateResponse>
   updateTodoPlan: (request: TodoPlanUpdateRequest) => Promise<TodoPlanUpdateResponse>

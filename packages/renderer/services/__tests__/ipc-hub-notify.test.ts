@@ -39,9 +39,14 @@ describe('IPC hub → 私聊系统通知', () => {
         // 设置 store 的 setup 会挂这个监听 —— 通知开关读的是它那份 settings。
         onSystemThemeChanged: vi.fn(() => vi.fn()),
         getSystemTheme: vi.fn(async () => ({ success: true, theme: 'light' })),
+        // A1-a:弹通知走宿主壳路由(notifyRouter),桩里这条 dispatcher 是那条通道的替身。
+        shellInvoke: vi.fn(async (request: any) => {
+          if (request?.domain === 'notify' && request.method === 'show') {
+            return { ok: true, data: await (showNotification as (payload: unknown) => Promise<unknown>)(request.payload) }
+          }
+          return { ok: true, data: { success: true } }
+        }),
         notify: {
-          show: showNotification,
-          setBadge: vi.fn(async () => ({ success: true })),
           onActivate: vi.fn(() => vi.fn()),
         },
       },

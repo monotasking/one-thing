@@ -60,7 +60,7 @@ export function createElectronPlatformApi(electronAPI: ElectronAPI): PlatformApi
     goalSet: goal.set,
     goalDiffs: (sessionId: string) => goal.diffs({ sessionId }),
 
-    // ── Todo / plan 数据面(todoPlanRouter)。窗口面仍在 electronAPI 上。──
+    // ── Todo / plan 数据面(todoPlanRouter)。窗口面走宿主壳路由(A1-a)。──
     getTodoPlan: (request?: Parameters<typeof todoPlan.get>[0]) => todoPlan.get(request ?? {}),
     createTodoPlanNote: todoPlan.create,
     updateTodoPlan: todoPlan.update,

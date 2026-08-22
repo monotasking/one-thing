@@ -3698,13 +3698,15 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
   const electronSearchIpcContent = fs.existsSync(electronSearchIpcFile)
     ? fs.readFileSync(electronSearchIpcFile, 'utf-8')
     : ''
+  // 结构债 P4 终态批 A1-a:四条动窗口的通道改走宿主壳路由上的一份处理者表
+  // (`ipc/shell/search-window.ts`)。断言随之改指 —— 断的仍然是「这些窗口活由
+  // apps/electron 拥有」,只是注册工厂换成了域注册,「从哪扇窗按的」换成了
+  // 宿主盖的 callerId。
   const requiredHostSymbols = [
     'findElectronMainSearchWindow',
     'getElectronSearchWindowFromWebContents',
-    'registerElectronSearchIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronSearchIpcChannels',
+    'getElectronSearchWindowFromCallerId',
+    'webContents.fromId',
     'toggleElectronSearchWindowFrom',
     'executeElectronSearchActionFrom',
     'BrowserWindow.fromWebContents',
@@ -3721,7 +3723,8 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
   ]
   const requiredIpcFacadeSymbols = [
     'registerSearchHandlers',
-    'registerElectronSearchIpcHandlers',
+    'registerSearchWindowShellDomain',
+    'getElectronSearchWindowFromCallerId',
     'closeOnethingSearchWindowForIpc',
     'executeOnethingSearchForIpc',
     'toggleSearchWindowFrom',
@@ -3746,11 +3749,10 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
     ...requiredIpcFacadeSymbols
       .filter(symbol => !electronSearchIpcContent.includes(symbol))
       .map(symbol => `${rel(electronSearchIpcFile)}: missing Electron search IPC host facade symbol ${symbol}`),
+    // 只剩 `search:query` 一条手写通道:它是数据面(处理者一行 electron 都不碰),
+    // 该去 `rpc:invoke` 的 backend 域,在那之前原样留在这里。
     ...[
-      'IPC_CHANNELS.SEARCH_WINDOW_TOGGLE',
-      'IPC_CHANNELS.SEARCH_WINDOW_CLOSE',
       'IPC_CHANNELS.SEARCH_QUERY',
-      'IPC_CHANNELS.SEARCH_EXECUTE_ACTION',
     ]
       .filter(symbol => !electronSearchIpcContent.includes(symbol))
       .map(symbol => `${rel(electronSearchIpcFile)}: missing search IPC channel ${symbol}`),
@@ -4586,15 +4588,12 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
   // 只剩两件要 Electron 本体的事(开设置窗 / 原生对话框)与两条推送。
   // `getElectronShouldUseDarkColors` 仍在宿主文件里(现在由 `app/main-process.ts`
   // 的 `configureSettingsHost` 注入给域处理者),所以宿主侧那条断言保留。
+  // A1-a:两件要 Electron 本体的事改走宿主壳路由(`ipc/shell/settings-window.ts` /
+  // `ipc/shell/dialog.ts`),这只 host 文件只剩它们的**实现**与两条广播。
   const requiredHostSymbols = [
     'BrowserWindow',
     'dialog',
-    'ipcMain',
     'nativeTheme',
-    'registerElectronSettingsIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronSettingsIpcChannels',
     'getElectronShouldUseDarkColors',
     'registerElectronSystemThemeChangedBroadcast',
     'broadcastElectronSettingsChanged',
@@ -4606,13 +4605,13 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
   ]
   const requiredFacadeSymbols = [
     '@onething/electron-host/settings/ipc-host',
-    'registerElectronSettingsIpcHandlers',
     'registerElectronSystemThemeChangedBroadcast',
     'broadcastElectronSettingsChanged',
     'showElectronOpenDialog',
-    'IPC_CHANNELS.OPEN_SETTINGS_WINDOW',
+    'registerSettingsWindowShellDomain',
+    'registerDialogShellDomain',
     // `GET_NETWORK_INTERFACES` 于 603582d9 随网卡枚举一起退役,全仓 0 命中 —— 断言删除。
-    'IPC_CHANNELS.SHOW_OPEN_DIALOG',
+    // `OPEN_SETTINGS_WINDOW` / `SHOW_OPEN_DIALOG` 两条常量于 A1-a 随壳路由消失。
     'IPC_CHANNELS.SYSTEM_THEME_CHANGED',
     'IPC_CHANNELS.SETTINGS_CHANGED',
     // 推送改走注入端口(同 practice / scratchpad / oauth / evals 判例)。
@@ -5045,21 +5044,17 @@ function checkElectronHostOwnsMediaIpcHost(): void {
   // `packages/backend/rpc/__tests__/media-domain.test.ts` 钉它们)。这只工厂只剩
   // **要宿主本体**的三条,断言随之收窄 —— 断言的是「这三条仍然由 apps/electron 拥有」,
   // 不再是「那十四条都还在」。
+  // A1-a:三条改走宿主壳路由上的处理者表(`ipc/shell/media-window.ts`);
+  // 这只 host 文件只剩「另存为」的实现,三条常量随之消失。
   const requiredHostSymbols = [
-    'registerElectronMediaIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronMediaIpcChannels',
-    'ElectronImagePreviewRequest',
-    'ElectronImageGalleryRequest',
     'saveElectronMediaFileAs',
+    'BrowserWindow.getFocusedWindow',
+    'dialog.showSaveDialog',
   ]
   const requiredFacadeSymbols = [
     '@onething/electron-host/ipc/media',
-    'registerElectronMediaIpcHandlers',
-    'IPC_CHANNELS.SAVE_MEDIA_AS',
-    'IPC_CHANNELS.OPEN_IMAGE_PREVIEW',
-    'IPC_CHANNELS.OPEN_IMAGE_GALLERY',
+    'registerMediaWindowShellDomain',
+    'saveElectronMediaFileAs',
     'openOnethingImagePreviewForIpc',
     'openOnethingImageGalleryForIpc',
   ]
@@ -5083,35 +5078,30 @@ function checkElectronHostOwnsMediaIpcHost(): void {
 
 function checkElectronHostOwnsTodoPlanIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronTodoPlanFile = path.join(root, 'apps/electron/src/ipc/todo-plan.ts')
+  const electronTodoPlanFile = path.join(root, 'apps/electron/src/ipc/shell/todo-plan-window.ts')
   const mainTodoPlanFile = path.join(root, 'apps/electron/src/main/ipc/todo-plan.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTodoPlanContent = fs.existsSync(electronTodoPlanFile) ? fs.readFileSync(electronTodoPlanFile, 'utf-8') : ''
   const mainTodoPlanContent = fs.existsSync(mainTodoPlanFile) ? fs.readFileSync(mainTodoPlanFile, 'utf-8') : ''
+  // A1-a:七条窗口动作改走宿主壳路由上的处理者表(`ipc/shell/todo-plan-window.ts`);
+  // 数据面仍在 `rpc:invoke` 的 todoPlanRouter,留在 @main 的只有窗口面接线 +
+  // configureTodoPlanHost 的端口注入。
   const requiredHostSymbols = [
-    'registerElectronTodoPlanIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronTodoPlanIpcChannels',
-    'ElectronTodoPlanPinnedRequest',
+    'registerTodoPlanWindowShellDomain',
+    'todoPlanWindowRouter',
+    'TodoPlanWindowShellOperations',
   ]
   const requiredFacadeSymbols = [
-    // 数据面(get/create/update/rename/delete/revealDirectory)已迁到通用 RPC 通道,
-    // 留在 @main 的只有窗口面 + configureTodoPlanHost 的端口注入。
-    '@onething/electron-host/ipc/todo-plan',
-    'registerElectronTodoPlanIpcHandlers',
+    '@onething/electron-host/ipc/shell/todo-plan-window',
+    'registerTodoPlanWindowShellDomain',
     'configureTodoPlanHost',
     'IPC_CHANNELS.TODO_PLAN_CHANGED',
-    'IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW',
-    'IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW',
-    'IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW',
-    'IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED',
     'runOnethingTodoPlanWindowActionForIpc',
     'setOnethingTodoPlanWindowPinnedForIpc',
   ]
   const lines = [
-    ...(!packageContent.includes('./ipc/todo-plan')
-      ? [`${rel(electronPackage)}: missing todo-plan IPC host export`]
+    ...(!packageContent.includes('./ipc/shell/todo-plan-window')
+      ? [`${rel(electronPackage)}: missing todo-plan window shell domain export`]
       : []),
     ...requiredHostSymbols
       .filter(symbol => !electronTodoPlanContent.includes(symbol))

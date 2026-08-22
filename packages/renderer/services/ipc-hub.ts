@@ -1,5 +1,6 @@
 import { platformApi } from '@/platform'
 import { pluginsApi } from '@/platform/plugins-client'
+import { notifyApi } from '@/platform/notify-client'
 import { getLogger } from '@/services/log'
 /**
  * Global IPC Event Hub
@@ -605,7 +606,7 @@ function notifyInbound(sessionId: string, message: ChatMessage): void {
     // 标题是发言人,不是房名:私聊房的名字就是 agent 的名字,而通知栏里
     // 「小李」比「小李 · 私聊」更像一条来自人的消息。
     const identity = useAgentsStore().displayAgent(record.agentId)
-    void platformApi.notify?.show({
+    void notifyApi.show({
       title: identity?.name || '新消息',
       body,
       sessionId,

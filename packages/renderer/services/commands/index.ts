@@ -1,6 +1,7 @@
 import { platformApi } from '@/platform'
 import { pluginsApi } from '@/platform/plugins-client'
 import { sessionCommands } from '@/platform/session-command-client'
+import { dialogApi } from '@/platform/dialog-client'
 /**
  * Command Registry
  * Manages available commands for the "/" command system
@@ -66,7 +67,7 @@ const commands: CommandDefinition[] = [
           }
         }
 
-        const result = await platformApi.showOpenDialog({
+        const result = await dialogApi.showOpen({
           properties: ['openDirectory'],
           title: 'Select Working Directory',
         })

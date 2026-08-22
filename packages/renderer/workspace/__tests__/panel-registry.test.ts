@@ -166,8 +166,10 @@ describe('workspace panel registry', () => {
     const practiceStrip = readRendererFile('components/chat/PracticeStrip.vue')
     expect(practiceStrip).toContain(`new CustomEvent('${workspacePanelWindowEvent('practice')}')`)
 
-    const webPlatform = readRendererFile('platform/web.ts')
-    expect(webPlatform).toContain(`TODO_PLAN_WEB_WINDOW_EVENT = "${workspacePanelWindowEvent('tasks')}"`)
+    // A1-a:todo/plan 窗口面走宿主壳路由,web 那半的实现(含这个事件名)从
+    // `platform/web.ts` 搬进了 `platform/shell-web/todo-plan-window.ts`。
+    const todoPlanWebShell = readRendererFile('platform/shell-web/todo-plan-window.ts')
+    expect(todoPlanWebShell).toContain(`TODO_PLAN_WEB_WINDOW_EVENT = '${workspacePanelWindowEvent('tasks')}'`)
 
     expect(() => workspacePanelWindowEvent('media')).toThrow()
   })

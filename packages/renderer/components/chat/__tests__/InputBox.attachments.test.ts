@@ -344,7 +344,8 @@ describe("InputBox paste attachments", () => {
 					listDirs: vi
 						.fn()
 						.mockResolvedValue({ success: true, dirs: ["/repo/src"] }),
-					openSettingsWindow: vi.fn().mockResolvedValue({ success: true }),
+					// A1-a:开设置窗走宿主壳路由,桩里这条 dispatcher 是它的替身。
+					shellInvoke: vi.fn(async () => ({ ok: true, data: { success: true } })),
 				},
 			}),
 		);
@@ -690,7 +691,9 @@ describe("InputBox paste attachments", () => {
 		const savedSettings =
 			mocks.settingsStore.saveSettings.mock.calls.at(-1)?.[0];
 		expect(savedSettings.voice.asr.provider).toBe("funasr-stream");
-		expect(window.electronAPI.openSettingsWindow).toHaveBeenCalled();
+		expect((window.electronAPI as any).shellInvoke).toHaveBeenCalledWith(
+			expect.objectContaining({ domain: "settings-window", method: "open" }),
+		);
 		expect(mocks.voiceStore.startListening).not.toHaveBeenCalled();
 		// 结果提示走全局 ToastHost(与系统通知同一个组件),不再画在 InputBox 里。
 		expect(toasts.value.map((item) => item.message).join("\n")).toContain("Voice was reset to streaming ASR");
@@ -710,7 +713,9 @@ describe("InputBox paste attachments", () => {
 			mocks.settingsStore.saveSettings.mock.calls.at(-1)?.[0];
 		expect(savedSettings.voice.enabled).toBe(true);
 		expect(savedSettings.voice.asr.provider).toBe("funasr-stream");
-		expect(window.electronAPI.openSettingsWindow).not.toHaveBeenCalled();
+		expect((window.electronAPI as any).shellInvoke).not.toHaveBeenCalledWith(
+			expect.objectContaining({ domain: "settings-window", method: "open" }),
+		);
 		expect(mocks.voiceStore.startListening).toHaveBeenCalledWith("session-1");
 	});
 

@@ -575,7 +575,12 @@ Notes:
 │  apps/electron/src/main/ ('@main': ipc/ bridges/ cli/ only)     │
 │  - boots createOnethingBackend (engine/events live in           │
 │    packages/backend/)                          │
-│  - IPCBridge: single unified IPC exit point                     │
+│  - IPCBridge: the push side's single exit point                 │
+│    (session:event / session:stream / broadcasts)                │
+│  - Request/response rides TWO generic channels, never a new     │
+│    per-domain one: rpc:invoke -> packages/backend/rpc/domains/  │
+│    (data plane), shell:invoke -> src/ipc/shell/ (window system: │
+│    handlers that must touch Electron itself)                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -619,21 +624,26 @@ AI tool_call → tool executor → core Permission.ask
 
 ### IPC Communication Pattern
 
-1. **Channel definitions**: `packages/shared/ipc/channels.ts` — all channel constants (the session command bus is no longer one of them: it rides the generic `rpc:invoke` / `POST /api/rpc` envelope as the `session-command` domain)
-2. **Type definitions**: `packages/shared/ipc/*.ts` — request/response types per domain
-3. **Event/Command types**: `packages/shared/events/*.ts` — stream lifecycle types
-4. **Main handlers**: `apps/electron/src/main/ipc/*.ts` — one handler file per domain + `handlers.ts` (`initializeIPC()`)
-5. **Preload bridge**: `apps/electron/src/preload.ts` → `preload/bridge.ts` (`installOnethingPreloadBridge`, exposes typed `window.electronAPI`; `preload/create-api.ts` only generates invoke wrappers from `@onething/core/ipc` domain routers)
+**Request/response never gets a new channel. There are exactly two, and which one a domain uses is a fact about where its handler can live:**
 
-To add a new IPC channel:
+| | `rpc:invoke` / `POST /api/rpc` | `shell:invoke` |
+| --- | --- | --- |
+| Handler lives in | `packages/backend/rpc/domains/` (assembly layer, electron banned) | `apps/electron/src/ipc/shell/` (the host — `BrowserWindow` / `dialog` / `Notification`) |
+| Dispatch table | `packages/backend/rpc/registry.ts` | `apps/electron/src/ipc/shell-registry.ts` |
+| Web half | the server's own dispatch over `POST /api/rpc` | `packages/renderer/platform/shell-web/` — a *same-shaped* table in the renderer, because in a browser the "host" is the page itself |
+| Context | `RpcDispatchContext` (`transport` / `ownerUid` / `workspaceId` / `callerId` / `sandboxRoot`) | `ShellDispatchContext` (`callerId`) |
 
-1. Add channel name to `packages/shared/ipc/channels.ts`
-2. Add types in corresponding `packages/shared/ipc/[domain].ts`
-3. Implement handler in `apps/electron/src/main/ipc/[domain].ts`
-4. Expose API in `apps/electron/src/preload/bridge.ts`
-5. For web parity, implement the same surface over `/api` in `packages/renderer/platform/web.ts`
+Both share one envelope (`RpcRequest` / `RpcResponse`, `@shared/ipc/rpc.ts`), one contract style (`defineRouter`), one renderer client factory (`createRouterClient`), and one rule about identity: **the host mints the context after its own auth ran; it is never read off the envelope.**
 
-Note: `apps/electron/src/ipc/*` is a second, portable tree (`register*IpcHandler` factories + channel-shape interfaces) consumed by the `@main` handlers — don't confuse the two.
+**To add a data-plane domain** (2 steps): `defineRouter` in `@shared/ipc/<d>.ts` → register handlers in `packages/backend/rpc/domains/<d>.ts` → one-line client `platform/<d>-client.ts`. No shell file changes.
+
+**To add a window-system (shell) domain** (4 places): `defineRouter` in `@shared/ipc/<d>.ts` → host handlers in `apps/electron/src/ipc/shell/<d>.ts` (registered from that domain's existing `@main/ipc/<d>.ts` wiring — **not** a new line in `handlers.ts`) → web handlers in `packages/renderer/platform/shell-web/<d>.ts` (+ one line in its `index.ts`) → client `platform/<d>-client.ts`. No new channel constant, no preload edit, no `web.ts` edit.
+
+**`packages/shared/ipc/channels.ts` is now the push side plus a short residue**: `session:event` / `session:stream` / per-domain broadcasts, the one-way high-frequency `voice:audio-chunk`, browser's 20 (A1-b), and `search:query` (a data-plane handler still awaiting its backend domain). `bun run transport:gate` is a **numeric ratchet** over its constant count and the four shell files — a new hand-written channel turns it red.
+
+Supporting files: **type definitions** `packages/shared/ipc/*.ts`; **event/command types** `packages/shared/events/*.ts`; **preload bridge** `apps/electron/src/preload.ts` → `preload/bridge.ts` (`installOnethingPreloadBridge` — it exposes `rpcInvoke`, `shellInvoke`, and the `on*` push subscriptions, nothing per-domain).
+
+Note: `apps/electron/src/ipc/*` is a portable tree (no `electron` import in `shell-registry.ts` / `shell/*.ts`; the electron-touching implementations are injected by the `@main` wiring), consumed by the `@main` handlers — don't confuse it with `@main/ipc/`.
 
 ### Alias Registry
 
@@ -717,7 +727,9 @@ apps/electron/src/
 │   ├── app/                   # boot: main-process.ts, ready.ts, bootstrap.ts, …
 │   ├── window/                # main/settings/search/todo-plan windows, macos-panel, state
 │   ├── preload.ts + preload/  # bridge.ts (electronAPI factory) + create-api.ts (routers)
-│   ├── ipc/                   # portable typed host surface (register*IpcHandler factories)
+│   ├── ipc/                   # portable host surface, no electron import: shell-registry.ts
+│   │                          # (the `shell:invoke` dispatch table) + shell/<d>.ts (window-system
+│   │                          # handler tables) + the remaining register*IpcHandler factories
 │   └── voice/ music/ menu/ search/ gateway/ auth/ shell/ …   # '@onething/electron-host/*'
 │
 apps/server/src/               # process shell only: main.ts (env, discovery-file refusal,
@@ -732,7 +744,9 @@ packages/renderer/             # Vue 3 frontend ('@' / '@renderer')
 │   │   └── workspace/         # shared panel skeleton parts (PanelShell & co.)
 │   ├── workspace/             # panel-registry: the single source of truth for which
 │   │                          # workspace panels exist (builtin six + plugin panels)
-│   └── platform/              # platformApi: electron.ts + web.ts (fetch/SSE) + index.ts proxy
+│   └── platform/              # platformApi: electron.ts + web.ts (fetch/SSE) + index.ts proxy;
+│                              # <d>-client.ts per domain (rpc or shell), shell-web/ = the web
+│                              # host's own window-system handler table
 │
 packages/shared/               # '@shared'
 │   ├── ipc/                   # channels.ts + ~30 domain type files + router.ts

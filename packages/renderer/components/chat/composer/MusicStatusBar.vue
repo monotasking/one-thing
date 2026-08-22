@@ -308,7 +308,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import StatusChip from '@/components/common/StatusChip.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
-import { platformApi } from '@/platform'
+import { settingsWindowApi } from '@/platform/settings-window-client'
 import { useMusicStore } from '@/stores/music'
 import { useSettingsStore } from '@/stores/settings'
 import type { MusicCommand } from '@/types'
@@ -354,7 +354,7 @@ const playing = computed(() => {
 const loginMissing = computed(() => !musicStore.state.loggedIn)
 
 function openMusicSettings() {
-  void platformApi.openSettingsWindow({ tab: 'music' })
+  void settingsWindowApi.open({ tab: 'music' })
 }
 
 /**

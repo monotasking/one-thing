@@ -374,7 +374,7 @@ import {
   isCollabUserAuthorLabel,
   useUserProfile,
 } from '@/composables/useUserProfile'
-import { platformApi } from '@/platform'
+import { mediaWindowApi } from '@/platform/media-window-client'
 import { useAgentsStore } from '@/stores/agents'
 import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 import type { ChatMessageReplyTo } from '@/types'
@@ -686,7 +686,7 @@ function attachmentImageSrc(attachment: MessageAttachment): string {
 function openAttachmentImage(attachment: MessageAttachment): void {
   const src = attachmentImageSrc(attachment)
   if (!src) return
-  platformApi?.openImagePreview(src, attachment.fileName)
+  void mediaWindowApi.openPreview({ src, alt: attachment.fileName })
 }
 </script>
 

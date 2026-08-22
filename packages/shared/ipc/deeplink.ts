@@ -90,3 +90,31 @@ export interface DeepLinkRespondResponse {
 	/** 插件动作:handler 说的一句话(可无)。 */
 	notice?: string;
 }
+
+/**
+ * 深链确认门的**请求面**(结构债 P4 终态批 A1-a,2026-08-23)。
+ *
+ * 三个时刻里有两个是请求/响应(从前是两条 `ipcMain.handle`),它们走**宿主壳
+ * 路由**(`shell:invoke`):
+ *  - `ready` —— 渲染层给冷启动队列的放行信号。处理者动的是主进程里那只队列闸,
+ *    住在 `apps/electron`;
+ *  - `respond` —— 用户按了钮,派发的唯一入口。
+ *
+ * 推卡那一条(主进程 → 渲染层)是真推送,留在 `IPC_CHANNELS.DEEPLINK_REQUEST`。
+ *
+ * web 侧三条都是诚实的空实现:注册 URL scheme 是操作系统级的事,浏览器里没有
+ * "外面点一条链接回到这个标签页"这种东西。
+ */
+import { defineRouter } from "./router.js";
+
+export type DeepLinkReadyResponse = { success: boolean };
+
+export type DeeplinkRoutes = {
+	ready: { input: Record<string, never>; output: DeepLinkReadyResponse };
+	respond: { input: DeepLinkRespondRequest; output: DeepLinkRespondResponse };
+};
+
+export const deeplinkRouter = defineRouter<DeeplinkRoutes>("deeplink", [
+	"ready",
+	"respond",
+]);

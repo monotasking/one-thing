@@ -12,8 +12,19 @@ export const IPC_CHANNELS = {
 	 */
 	RPC_INVOKE: "rpc:invoke",
 
-	// Chat related
-	CLEAR_CHAT: "chat:clear",
+	/**
+	 * 宿主壳路由(结构债 P4 终态批 A1-a):与 `RPC_INVOKE` 一条一条对称 —— 同一个
+	 * 信封、同一套 `defineRouter` 契约、同一个 `createRouterClient`,唯一的差别是
+	 * **处理者住在宿主**(`apps/electron/src/ipc/shell/`)而不是装配层
+	 * (`packages/backend/rpc/domains/`,禁 import electron)。开设置窗 / 关窗 /
+	 * 原生对话框 / 系统通知 / 深链应答只有 Electron 本体做得了,合成一张表等于把
+	 * electron 处理者塞进装配层 —— 那道边界正是 `packages/backend` 存在的理由。
+	 * 新的窗口域 = 一个 router + 宿主处理者 + web 处理者 + 一个 client,
+	 * **不再往这张表加常量**。
+	 */
+	SHELL_INVOKE: "shell:invoke",
+
+	// Chat related(`chat:clear` 于 A1-a 删除:全仓零引用,只剩名字的遗留)。
 	// 聊天面的六条数据面(历史/标题/提示词快照/思考时长/停止/活流表)已走通用
 	// RPC 通道(chatRouter,P4c 第五批);第七条「工具审批后恢复流」于 2026-08-22
 	// (#21)整条删除,引擎的 `command:resume-after-confirm` 仍在命令总线上。
@@ -33,8 +44,8 @@ export const IPC_CHANNELS = {
 	// sessionsRouter)—— 连同四条契约表外的字面量通道
 	// (add-system-message / remove-files-changed-message /
 	// remove-git-status-message / remove-message)一起消失。这里只剩推送,
-	// 以及一条桌面从来没有处理者的历史遗留(server 侧仍有 REST 路由)。
-	UPDATE_SESSION_MAX_TOKENS: "sessions:update-max-tokens",
+	// `sessions:update-max-tokens` 于 A1-a 删除:桌面无 handler、渲染层零调用点;
+	// server 的 `POST /api/sessions/:id/max-tokens` 路由原样留着(mobile 面)。
 	CONTEXT_SIZE_UPDATED: "sessions:context-size-updated",
 	// P1(2026-08-14):压缩的开始/结束通知只有一条正路 —— session:event 信封里
 	// 的 context:compact-started / context:compact-completed。专用 IPC 通道
@@ -45,8 +56,8 @@ export const IPC_CHANNELS = {
 	// Settings related
 	// P4c 第十一批:`settings:get` / `settings:save` / `settings:get-system-theme` /
 	// `network:test-proxy` 四条随 `settingsRouter` 走通用 RPC,常量随之消失。
-	// 留下的是两件要 Electron 本体的事(开设置窗 / 原生对话框)与三条推送。
-	OPEN_SETTINGS_WINDOW: "settings:open-window",
+	// 只剩三条推送:开设置窗 / 原生对话框于 A1-a 走宿主壳路由
+	// (`settingsWindowRouter.open` / `dialogRouter.showOpen`)。
 	SETTINGS_NAVIGATE: "settings:navigate", // main → settings window: jump to a tab
 	SETTINGS_CHANGED: "settings:changed",
 	SYSTEM_THEME_CHANGED: "settings:system-theme-changed",
@@ -97,14 +108,8 @@ export const IPC_CHANNELS = {
 	// Interaction(agent 提问 → 用户应答):两条已迁到通用 RPC 通道
 	// (interactionRouter,P4c 第九批),本域零推送,此处不再有常量。
 
-	// Dialog related
-	SHOW_OPEN_DIALOG: "dialog:show-open",
-
-	// Media —— 只剩「要宿主本体」的三条(P4c 第三批:十一条数据面已迁 mediaRouter)。
-	// 「另存为」是一次原生保存对话框,两条 open-image-* 各是一个 BrowserWindow。
-	SAVE_MEDIA_AS: "media:save-as",
-	OPEN_IMAGE_PREVIEW: "media:open-image-preview",
-	OPEN_IMAGE_GALLERY: "media:open-image-gallery",
+	// Media —— 十一条数据面走 `mediaRouter`(P4c 第三批);「要宿主本体」的三条
+	// (另存为对话框 + 两个 BrowserWindow)于 A1-a 走 `mediaWindowRouter`。只剩推送。
 	IMAGE_PREVIEW_UPDATE: "image-preview:update",
 	IMAGE_GALLERY_UPDATE: "image-gallery:update",
 
@@ -164,40 +169,26 @@ export const IPC_CHANNELS = {
 
 	// Generic scheduler
 
-	// Window
-	WINDOW_CLOSE: "window:close",
+	// Window / App State —— `window:close` 于 A1-a 走 `windowRouter.close`:关哪扇窗
+	// 由宿主从 `ShellDispatchContext.callerId` 认,不从请求体读(壳 context 首例)。
 
-	// App State (restore on startup)
-
-	// Search Everywhere
-	SEARCH_WINDOW_TOGGLE: "search-window:toggle",
-	SEARCH_WINDOW_CLOSE: "search-window:close",
+	// Search Everywhere —— 三条动窗口的与 `search:execute-action`(关搜索窗 + 找主窗
+	// + 送动作 + 聚焦)于 A1-a 走 `searchWindowRouter`。`search:query` **没跟着走**:
+	// 它的处理者不碰窗口,按判据是**数据面**,该去 `rpc:invoke` 的 backend 域;
+	// 但 server 那侧是 per-owner 沙箱版,要按 `context.transport` 分叉(files / tools
+	// 那种域),单独一批。迁走之前这条常量与它的手写 handler 原样留着。
 	SEARCH_WINDOW_SHOWN: "search-window:shown",
 	SEARCH_WINDOW_GUIDES: "search-window:guides",
-	SEARCH_WINDOW_SET_ANCHOR: "search-window:set-anchor",
 	SEARCH_QUERY: "search:query",
-	SEARCH_EXECUTE_ACTION: "search:execute-action",
 	SEARCH_ACTION: "search:action",
 
-	// onething:// 深链(H4)。三条,刚好对应确认门的三个时刻:
-	// 渲染层说"我能画卡了"(READY)、主进程推一张卡(REQUEST)、用户按了钮(RESPOND)。
-	DEEPLINK_READY: "deeplink:ready",
+	// onething:// 深链(H4)。确认门三个时刻里的两条请求面(READY / RESPOND)本就是
+	// invoke,于 A1-a 走 `deeplinkRouter`;只剩主进程推卡这一条真推送。
 	DEEPLINK_REQUEST: "deeplink:request",
-	DEEPLINK_RESPOND: "deeplink:respond",
 
 	// Todo / Plan
-	// 数据面(get/create/update/rename/delete/revealDirectory)已迁到通用 RPC 通道
-	// (todoPlanRouter);下面七条动窗口、一条推变更,是宿主原生的,留在这里。
-	TODO_PLAN_OPEN_WINDOW: "todo-plan:open-window",
-	TODO_PLAN_HIDE_WINDOW: "todo-plan:hide-window",
-	TODO_PLAN_TOGGLE_WINDOW: "todo-plan:toggle-window",
-	TODO_PLAN_SET_WINDOW_PINNED: "todo-plan:set-window-pinned",
-	// 独立窗自绘红绿灯与手动拖拽的三条。它们只对 Todo 窗有意义:那扇窗是 macOS
-	// non-activating NSPanel,系统交通灯永远是灰的、原生 app-region 拖拽也不生效,
-	// 所以「最小化 / 缩放 / 挪窗」必须由渲染层显式发回主进程。
-	TODO_PLAN_MINIMIZE_WINDOW: "todo-plan:minimize-window",
-	TODO_PLAN_ZOOM_WINDOW: "todo-plan:zoom-window",
-	TODO_PLAN_DRAG_WINDOW: "todo-plan:drag-window",
+	// 数据面走 `todoPlanRouter`;七条动窗口的于 A1-a 走 `todoPlanWindowRouter`
+	// (含 drag —— 每帧开销的记账写在那份契约里)。这里只剩一条推变更。
 	TODO_PLAN_CHANGED: "todo-plan:changed",
 
 	// Scratchpad (per-session draft paper the AI silently perceives)
@@ -252,10 +243,8 @@ export const IPC_CHANNELS = {
 	// Push main→renderer: single coalesced tab-state batch
 	BROWSER_TABS_CHANGED: "browser:tabs-changed",
 
-	// 系统通知与 dock 徽标(agent-dm-user.md §4.2)。判定在 renderer(焦点/可见性/
-	// 水位都在那边),这三条只负责执行与回传点击。
-	NOTIFY_SHOW: "notify:show",
-	NOTIFY_BADGE: "notify:set-badge",
+	// 系统通知与 dock 徽标(agent-dm-user.md §4.2)。判定在 renderer;两条执行面
+	// (弹通知 / 画墨点)于 A1-a 走 `notifyRouter`。
 	// Push main→renderer:用户点了通知,带上要打开的会话。
 	NOTIFY_ACTIVATE: "notify:activate",
 

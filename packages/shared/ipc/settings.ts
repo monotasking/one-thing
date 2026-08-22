@@ -357,9 +357,10 @@ export interface TestProxyResponse {
  * `@main/ipc/settings.ts` 的壳适配 —— 这一域从来没有 `apps/electron/src/ipc/*`
  * 那层可移植工厂)。请求/响应形状一字未改;变的只是通道。
  *
- * **两条留在宿主**(C:要 Electron 本体,router 递不过去):
- *  - `OPEN_SETTINGS_WINDOW`(`BrowserWindow`);
- *  - `SHOW_OPEN_DIALOG`(原生 `dialog.showOpenDialog`;渲染侧 21 个调用点,全仓最高)。
+ * **两条要 Electron 本体的事**(开设置窗 / 原生对话框)不在这个 router 上,但它们
+ * 也不再是手写通道了 —— 2026-08-23(P4 终态批 A1-a)起走**宿主壳路由**
+ * (`shell:invoke`):开设置窗是本文件下方的 `settingsWindowRouter`,原生对话框
+ * 是 `@shared/ipc/dialog.ts` 的 `dialogRouter`。
  *
  * **三条推送留在原地**(router 今天没有推送面):`SETTINGS_CHANGED` /
  * `SYSTEM_THEME_CHANGED` 改走 `backend/wiring/settings/events.ts` 的
@@ -386,3 +387,31 @@ export const settingsRouter = defineRouter<SettingsRoutes>("settings", [
     "getSystemTheme",
     "testProxy",
 ]);
+
+/**
+ * 「开设置窗」的**宿主壳路由**(结构债 P4 终态批 A1-a,2026-08-23)。
+ *
+ * 它够不上 `settingsRouter`:设置窗是一个 `BrowserWindow`,处理者只能住在
+ * `apps/electron`。web 那侧不是"做不到",而是**同一件事的另一种做法** ——
+ * 浏览器里没有第二扇窗,于是改页内 hash 路由(逐字沿用迁移前 web.ts 里那段)。
+ */
+export interface OpenSettingsWindowRequest {
+    /** 直接跳到某个标签页。 */
+    tab?: string;
+}
+
+export interface OpenSettingsWindowResponse {
+    success: boolean;
+}
+
+export type SettingsWindowRoutes = {
+    open: {
+        input: OpenSettingsWindowRequest;
+        output: OpenSettingsWindowResponse;
+    };
+};
+
+export const settingsWindowRouter = defineRouter<SettingsWindowRoutes>(
+    "settings-window",
+    ["open"],
+);

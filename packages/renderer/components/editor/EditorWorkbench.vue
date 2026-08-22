@@ -171,6 +171,8 @@ import type { MarkdownFeatureSet } from '@/editor/markdown-document'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import { platformApi } from '@/platform'
 import { markdownApi } from '@/platform/markdown-client'
+import { mediaWindowApi } from '@/platform/media-window-client'
+import { searchWindowApi } from '@/platform/search-window-client'
 
 /**
  * 消息引用带过来的落点(docs/design/message-references-2026-08.md §5)。
@@ -399,7 +401,7 @@ async function openMarkdownImage(payload: {
   asset?: MarkdownAssetResolution | null
 }) {
   const src = payload.asset?.dataUrl || payload.src
-  await platformApi.openImagePreview(src, payload.alt)
+  await mediaWindowApi.openPreview({ src, alt: payload.alt })
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -417,7 +419,7 @@ function onKeydown(event: KeyboardEvent) {
   }
   if (event.key === 'p' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault()
-    platformApi.toggleSearchWindow?.()
+    void searchWindowApi.toggle({})
   }
 }
 

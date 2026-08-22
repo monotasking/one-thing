@@ -198,6 +198,21 @@ const TODO_PLAN_RPC_METHODS: Record<string, string> = {
 	revealDirectory: "revealTodoPlanDirectory",
 };
 
+/**
+ * 窗口面于 A1-a 走**宿主壳路由**(`shell:invoke` 上的 `todo-plan-window` 域),
+ * preload 同样不再逐方法暴露。桩里第二个 dispatcher 就是那条通道的替身,底下的
+ * vi.fn() 名字一个没改 —— 断言看的还是它们。
+ */
+const TODO_PLAN_WINDOW_SHELL_METHODS: Record<string, string> = {
+	open: "openTodoPlanWindow",
+	hide: "hideTodoPlanWindow",
+	toggle: "toggleTodoPlanWindow",
+	setPinned: "setTodoPlanWindowPinned",
+	minimize: "minimizeTodoPlanWindow",
+	zoom: "zoomTodoPlanWindow",
+	drag: "dragTodoPlanWindow",
+};
+
 function installElectronApi() {
 	Object.defineProperty(window, "electronAPI", {
 		configurable: true,
@@ -214,6 +229,19 @@ function installElectronApi() {
 				}
 				const handler = (window.electronAPI as any)[name];
 				return { ok: true, data: await handler(request.payload) };
+			}),
+			shellInvoke: vi.fn(async (request: any) => {
+				const name = request?.domain === "todo-plan-window"
+					? TODO_PLAN_WINDOW_SHELL_METHODS[request.method]
+					: undefined;
+				if (!name) {
+					return {
+						ok: false,
+						error: { message: `unstubbed shell ${request?.domain}.${request?.method}` },
+					};
+				}
+				const handler = (window.electronAPI as any)[name];
+				return { ok: true, data: (await handler(request.payload)) ?? null };
 			}),
 			getTodoPlan: vi.fn().mockResolvedValue({ success: true, snapshot }),
 			updateTodoPlan: vi.fn().mockImplementation((request) =>
@@ -356,13 +384,13 @@ describe("TodoPlanPanel", () => {
 
 		// 红点是**隐藏**不是销毁 —— 这扇窗从来就是收起来的语义。
 		await wrapper.find('.window-light[aria-label="关闭"]').trigger("click");
-		expect(window.electronAPI.hideTodoPlanWindow).toHaveBeenCalled();
+		expect((window.electronAPI as any).hideTodoPlanWindow).toHaveBeenCalled();
 
 		await wrapper.find('.window-light[aria-label="最小化"]').trigger("click");
-		expect(window.electronAPI.minimizeTodoPlanWindow).toHaveBeenCalled();
+		expect((window.electronAPI as any).minimizeTodoPlanWindow).toHaveBeenCalled();
 
 		await wrapper.find('.window-light[aria-label="缩放"]').trigger("click");
-		expect(window.electronAPI.zoomTodoPlanWindow).toHaveBeenCalled();
+		expect((window.electronAPI as any).zoomTodoPlanWindow).toHaveBeenCalled();
 	});
 
 	it("drags the window by cumulative screen offset, and buttons never start a drag", async () => {
@@ -372,7 +400,7 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		const drag = window.electronAPI.dragTodoPlanWindow as ReturnType<typeof vi.fn>;
+		const drag = (window.electronAPI as any).dragTodoPlanWindow as ReturnType<typeof vi.fn>;
 		const rail = wrapper.find(".mode-rail").element;
 		const nextFrame = () =>
 			new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
@@ -1035,11 +1063,11 @@ describe("TodoPlanPanel", () => {
 		);
 		await settle();
 
-		expect(window.electronAPI.hideTodoPlanWindow).toHaveBeenCalledWith({
+		expect((window.electronAPI as any).hideTodoPlanWindow).toHaveBeenCalledWith({
 			activation: "preserve-current-app",
 			preserveMainWindowVisibility: true,
 		});
-		expect(window.electronAPI.toggleTodoPlanWindow).not.toHaveBeenCalled();
+		expect((window.electronAPI as any).toggleTodoPlanWindow).not.toHaveBeenCalled();
 	});
 
 	/**

@@ -15,6 +15,7 @@ import { startRadioConductor } from "@onething/backend/wiring/music/radio.js";
 import { initializeACP, shutdownACP } from "./acp.js";
 import { registerEvalsHandlers } from "./evals.js";
 import { registerRpcHandler } from "./rpc.js";
+import { registerShellRpcHandler } from "./shell-rpc.js";
 import { registerPracticeHandlers } from "./practice.js";
 import { registerTerminalHandlers } from "./terminal.js";
 import { registerBrowserHandlers } from "./browser.js";
@@ -49,6 +50,10 @@ export function initializeIPC() {
 	registerEvalsHandlers();
 	// 通用 RPC 适配器:一条通道服务所有 router 域(usage 是首个)。加域不再动这里。
 	registerRpcHandler();
+	// 宿主壳路由适配器(P4 终态批 A1-a):同一个信封、同一套 router 契约,只是
+	// 处理者住在宿主而不是装配层。**这一行是最后一行** —— 新的窗口域只在
+	// `apps/electron/src/ipc/shell/<d>.ts` 注册处理者表,不再往 handlers 里加。
+	registerShellRpcHandler();
 	registerPracticeHandlers();
 	registerTerminalHandlers();
 	registerBrowserHandlers();

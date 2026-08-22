@@ -38,8 +38,16 @@
 # 2026-08-22 #21:删第七条「工具审批后恢复流」的 invoke 整链(渲染层零调用者、引擎 pause 路径已无生产者;两只手写工厂 + runtime ForIpc 助手 + platform 方法一并删,引擎命令总线不动)—— channels 111→110、bridge 888→881、web 1081→1073、channels.ts 300→299(http 806 不变:这条从来没有 server 路由)。
 # 2026-08-22 D2:terminal 7 条请求迁 terminal router 域(http 侧结构化拒,能力位仍关);DATA/EXIT 推送留注入广播器;channels 110→103、bridge 881→864、web 1073→1067、channels.ts 299→292,四壳 3029
 # 2026-08-23 C2:plugins 19 条 invoke 迁 plugins router 域(http 读面沿用 server catalog、写面按管理器在场;pluginsManage 能力位默认关);NOTIFICATION/REQUEST_PROGRESS 推送留注入广播器;server 6 条 /api/plugins REST 与那条 501 删;channels 103→84
-channels:IPC_CHANNELS 84
-lines:apps/electron/src/preload/bridge.ts 775
+# 2026-08-23 A1-a:立**宿主壳路由** `shell:invoke`(+1 常量)—— 与 `rpc:invoke` 对称的第二条通用通道,
+#   处理者住在宿主(`apps/electron/src/ipc/shell/`)而不是装配层。窗口系八域迁入,吃掉 21 条常量:
+#   todo-plan-window 7 / search-window 4(3 条窗口动作 + execute-action)/ settings-window 1 / window 1 /
+#   dialog 1 / media-window 3 / notify 2 / deeplink 2(ready 与 respond 本就是 invoke,不是推送)。
+#   另删两条**死常量**:`CLEAR_CHAT`(全仓零引用)、`UPDATE_SESSION_MAX_TOKENS`(桌面无 handler、渲染层零调用点;
+#   server 那条 REST 路由留着)。`search:query` 判定为**数据面**(处理者不碰窗口)留原地,待单独一批迁 backend rpc 域。
+#   收紧:channels 84→62、bridge 775→718、web 879→785、channels.ts 267→256,四壳 3040→2489
+#   (http 730 不变:窗口系从来没有 server 路由)。
+channels:IPC_CHANNELS 62
+lines:apps/electron/src/preload/bridge.ts 718
 lines:packages/backend/server/http.ts 730
-lines:packages/renderer/platform/web.ts 879
-lines:packages/shared/ipc/channels.ts 267
+lines:packages/renderer/platform/web.ts 785
+lines:packages/shared/ipc/channels.ts 256

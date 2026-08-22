@@ -818,6 +818,8 @@ import { chatApi } from '@/platform/chat-client'
 import { sessionsApi } from '@/platform/sessions-client'
 import { markdownApi } from '@/platform/markdown-client'
 import { sessionCommands } from '@/platform/session-command-client'
+import { todoPlanWindowApi } from '@/platform/todo-plan-window-client'
+import { mediaWindowApi } from '@/platform/media-window-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.todo-plan')
@@ -2042,7 +2044,7 @@ async function openMarkdownLink(payload: { href: string; asset?: MarkdownAssetRe
 }
 
 async function openMarkdownImage(payload: { src: string; alt: string; asset?: MarkdownAssetResolution | null }) {
-  await platformApi.openImagePreview(payload.asset?.dataUrl || payload.src, payload.alt)
+  await mediaWindowApi.openPreview({ src: payload.asset?.dataUrl || payload.src, alt: payload.alt })
 }
 
 function handleShortcut(event: KeyboardEvent) {
@@ -2107,7 +2109,7 @@ function handleEscape() {
     return
   }
   if (isStandalone.value) {
-    platformApi.hideTodoPlanWindow?.({
+    void todoPlanWindowApi.hide({
       activation: 'preserve-current-app',
       preserveMainWindowVisibility: true,
     })
@@ -2140,7 +2142,7 @@ function togglePinned() {
   pinned.value = !pinned.value
   if (pinned.value) collapsed.value = false
   if (isStandalone.value) {
-    platformApi.setTodoPlanWindowPinned(pinned.value)
+    void todoPlanWindowApi.setPinned({ pinned: pinned.value })
   }
 }
 
@@ -2206,15 +2208,15 @@ function handlePanelMouseLeave() {
 
 /** 红点 = 隐藏,不是销毁 —— 这扇窗从来就是「收起来」的语义(见 hideTodoPlanWindow)。 */
 function closeStandaloneWindow() {
-  void platformApi.hideTodoPlanWindow()
+  void todoPlanWindowApi.hide({})
 }
 
 function minimizeStandaloneWindow() {
-  void platformApi.minimizeTodoPlanWindow?.()
+  void todoPlanWindowApi.minimize({})
 }
 
 function zoomStandaloneWindow() {
-  void platformApi.zoomTodoPlanWindow?.()
+  void todoPlanWindowApi.zoom({})
 }
 
 let windowDragPointerId: number | null = null
@@ -2228,12 +2230,11 @@ function flushWindowDrag() {
   const offset = windowDragPending
   windowDragPending = null
   if (!offset) return
-  void platformApi.dragTodoPlanWindow?.({ phase: 'move', dx: offset.dx, dy: offset.dy })
+  void todoPlanWindowApi.drag({ phase: 'move', dx: offset.dx, dy: offset.dy })
 }
 
 function handleWindowDragStart(event: PointerEvent) {
   if (!isStandalone.value) return
-  if (typeof platformApi.dragTodoPlanWindow !== 'function') return
   if (!shouldStartWindowDrag(event)) return
 
   const surface = event.currentTarget as HTMLElement | null
@@ -2244,7 +2245,7 @@ function handleWindowDragStart(event: PointerEvent) {
   surface?.setPointerCapture?.(event.pointerId)
   // 拖动期间禁选:否则一路拖过去会把标题刷成蓝底。
   document.body.classList.add('todo-window-dragging')
-  void platformApi.dragTodoPlanWindow({ phase: 'start' })
+  void todoPlanWindowApi.drag({ phase: 'start' })
 }
 
 function handleWindowDragMove(event: PointerEvent) {
@@ -2270,7 +2271,7 @@ function handleWindowDragEnd(event?: PointerEvent) {
   windowDragSurface = null
   windowDragOrigin = null
   document.body.classList.remove('todo-window-dragging')
-  void platformApi.dragTodoPlanWindow?.({ phase: 'end' })
+  void todoPlanWindowApi.drag({ phase: 'end' })
 }
 
 /** 双击顶带 = zoom,mac 惯例。落在可交互件上的双击不算。 */
@@ -2311,7 +2312,7 @@ onMounted(() => {
   loadSnapshot()
   syncAutoPush()
   if (isStandalone.value) {
-    platformApi.setTodoPlanWindowPinned(pinned.value)
+    void todoPlanWindowApi.setPinned({ pinned: pinned.value })
   }
   window.addEventListener('resize', handleViewportResize)
   cleanupChanged = platformApi.onTodoPlanChanged((data) => {

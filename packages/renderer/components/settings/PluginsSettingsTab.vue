@@ -815,6 +815,7 @@ import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { Bell, BellOff, Eye, EyeOff, RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 import { pluginsApi } from '@/platform/plugins-client'
+import { dialogApi } from '@/platform/dialog-client'
 import { useSettingsStore } from '@/stores/settings'
 import { previewPluginNotifySound } from '@/services/plugin-notify-sound'
 import { isUiSlotTruncated } from '@/workspace/ui-anchor-registry'
@@ -1086,7 +1087,7 @@ function fileValueLabel(plugin: PluginInfo, key: string): string {
  */
 async function pickConfigDirectory(plugin: PluginInfo, field: PluginConfigFieldDescriptor): Promise<void> {
   try {
-    const result = await platformApi.showOpenDialog({
+    const result = await dialogApi.showOpen({
       title: field.label,
       properties: ['openDirectory'],
     })
@@ -1771,7 +1772,7 @@ function onInstallPathInput(value: string | number): void {
 async function chooseTarball(): Promise<void> {
   if (npmAvailable.value === false || installing.value) return
   try {
-    const result = await platformApi.showOpenDialog({
+    const result = await dialogApi.showOpen({
       title: 'Select a plugin tarball',
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Plugin package', extensions: ['tgz'] }],

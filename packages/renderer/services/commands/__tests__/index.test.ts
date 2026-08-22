@@ -52,6 +52,10 @@ vi.mock('@/platform', () => ({
 }))
 // P4 终态批 C2:插件面走 `plugins` 域,客户端在 `@/platform/plugins-client`。
 vi.mock('@/platform/plugins-client', () => ({ pluginsApi: platformMocks }))
+// A1-a:原生目录选择走宿主壳路由(dialogRouter),桩仍是同一个 vi.fn()。
+vi.mock('@/platform/dialog-client', () => ({
+  dialogApi: { showOpen: (request: unknown) => platformMocks.showOpenDialog(request) },
+}))
 
 describe('renderer command registry', () => {
   beforeEach(() => {

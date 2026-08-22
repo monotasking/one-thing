@@ -1,4 +1,5 @@
-import { platformApi } from '@/platform'
+import { searchWindowApi } from '@/platform/search-window-client'
+import { todoPlanWindowApi } from '@/platform/todo-plan-window-client'
 /**
  * Global Keyboard Shortcuts Composable
  *
@@ -134,7 +135,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       if (handlers.onSearchEverywhere) {
         handlers.onSearchEverywhere()
       } else {
-        platformApi?.toggleSearchWindow?.()
+        void searchWindowApi.toggle({})
       }
       return
     }
@@ -144,7 +145,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       if (handlers.onToggleTodoPlanWindow) {
         handlers.onToggleTodoPlanWindow()
       } else {
-        platformApi?.toggleTodoPlanWindow?.({
+        void todoPlanWindowApi.toggle({
           activation: 'preserve-current-app',
           preserveMainWindowVisibility: true,
         })

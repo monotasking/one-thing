@@ -1,11 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, nativeTheme, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron'
-
-export interface ElectronIpcMainLike {
-  handle<TArgs extends unknown[]>(
-    channel: string,
-    listener: (event: unknown, ...args: TArgs) => unknown,
-  ): void
-}
+import { BrowserWindow, dialog, nativeTheme, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron'
 
 export interface ElectronSettingsMessageWebContents {
   id?: number
@@ -46,20 +39,10 @@ export interface ShowElectronOpenDialogOptions {
 /**
  * P4c 第十一批:四条数据面(`settings:get` / `settings:save` /
  * `settings:get-system-theme` / `network:test-proxy`)已迁到通用 RPC 通道
- * (`settingsRouter`)。这只工厂只剩**两件要 Electron 本体的事**:开设置窗与
- * 原生文件对话框。
+ * (`settingsRouter`)。剩下的**两件要 Electron 本体的事**(开设置窗 / 原生文件
+ * 对话框)于 A1-a(2026-08-23)走宿主壳路由,注册工厂随之删除 —— 本文件只留
+ * 那两件事的**实现**(`showElectronOpenDialog`)与两条广播。
  */
-export interface ElectronSettingsIpcChannels {
-  openWindow: string
-  showOpenDialog: string
-}
-
-export interface RegisterElectronSettingsIpcHandlersOptions {
-  channels: ElectronSettingsIpcChannels
-  openSettingsWindow(request?: unknown): unknown
-  showOpenDialog(options: OpenDialogOptions): unknown
-  ipcMain?: ElectronIpcMainLike
-}
 
 function getLiveWindows(getAllWindows?: () => ElectronSettingsMessageWindow[]): ElectronSettingsMessageWindow[] {
   const windows = getAllWindows?.() ?? BrowserWindow.getAllWindows()
@@ -106,18 +89,4 @@ export async function showElectronOpenDialog(
     return showOpenDialog(focusedWindow, options)
   }
   return showOpenDialog(options)
-}
-
-export function registerElectronSettingsIpcHandlers(
-  options: RegisterElectronSettingsIpcHandlersOptions,
-): void {
-  const host = options.ipcMain ?? ipcMain
-
-  host.handle(options.channels.openWindow, (_event, request: unknown) => {
-    return options.openSettingsWindow(request)
-  })
-
-  host.handle(options.channels.showOpenDialog, (_event, dialogOptions: OpenDialogOptions) => {
-    return options.showOpenDialog(dialogOptions)
-  })
 }

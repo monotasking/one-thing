@@ -584,6 +584,8 @@ import { useMusicStore } from '@/stores/music'
 import { usePromptsStore } from '@/stores/prompts'
 import { platformApi } from '@/platform'
 import { mediaApi } from '@/platform/media-client'
+import { todoPlanWindowApi } from '@/platform/todo-plan-window-client'
+import { settingsWindowApi } from '@/platform/settings-window-client'
 // Sub-components
 import QuotedContext from './QuotedContext.vue'
 import CommandPicker from './CommandPicker.vue'
@@ -1014,7 +1016,7 @@ const scratchpadCapabilities = useActiveModelCapabilities(() => effectiveSession
  */
 function openScratchpad() {
   requestTodoPlanWindowScratchpadMode()
-  void platformApi.openTodoPlanWindow?.({
+  void todoPlanWindowApi.open({
     activation: 'focus-if-app-active',
     preserveMainWindowVisibility: true,
   })
@@ -2151,7 +2153,7 @@ async function prepareVoiceInput() {
   if (nextVoice.asr.provider === 'funasr-stream') {
     const url = nextVoice.asr.funasr.url.trim()
     if (!/^wss?:\/\//i.test(url)) {
-      void platformApi.openSettingsWindow()
+      void settingsWindowApi.open({})
       return {
         success: false,
         error: switchedToRecommended
@@ -2166,7 +2168,7 @@ async function prepareVoiceInput() {
     const openRouterVoiceKey = nextVoice.asr.openrouter?.apiKey?.trim()
     const hasOpenRouterKey = Boolean(openRouterVoiceKey || globalOpenRouterKey)
     if (!hasOpenRouterKey) {
-      void platformApi.openSettingsWindow()
+      void settingsWindowApi.open({})
       return {
         success: false,
         error: 'Add an OpenRouter API key in Voice settings.',
@@ -2175,7 +2177,7 @@ async function prepareVoiceInput() {
   }
 
   if (nextVoice.asr.provider === 'funasr-server' && !nextVoice.asr.funasr.url.trim()) {
-    void platformApi.openSettingsWindow()
+    void settingsWindowApi.open({})
     return {
       success: false,
       error: 'Add a FunASR server URL in Voice settings.',

@@ -784,6 +784,7 @@ import {
 } from './sidebar-recent'
 import { platformApi } from '@/platform'
 import { collabApi } from '@/platform/collab-client'
+import { dialogApi } from '@/platform/dialog-client'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useProjectsStore } from '@/stores/projects'
 import {
@@ -1357,7 +1358,7 @@ async function createProject(): Promise<void> {
   if (creatingProject.value) return
   creatingProject.value = true
   try {
-    const result = await platformApi.showOpenDialog({
+    const result = await dialogApi.showOpen({
       properties: ['openDirectory'],
       title: '选择项目目录',
     })
@@ -1454,7 +1455,7 @@ async function onProjectMenuSelect(id: string): Promise<void> {
     return
   }
   if (id === 'add-root') {
-    const result = await platformApi.showOpenDialog({
+    const result = await dialogApi.showOpen({
       properties: ['openDirectory'],
       title: '添加目录到项目',
     })

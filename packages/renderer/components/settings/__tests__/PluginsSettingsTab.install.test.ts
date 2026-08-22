@@ -48,6 +48,10 @@ const platform = vi.hoisted(() => ({
 vi.mock('@/platform', () => ({ platformApi: platform }))
 // P4 终态批 C2:插件面走 `plugins` 域,客户端在 `@/platform/plugins-client`。
 vi.mock('@/platform/plugins-client', () => ({ pluginsApi: platform }))
+// A1-a:原生对话框走宿主壳路由(dialogRouter),桩仍是同一个 vi.fn()。
+vi.mock('@/platform/dialog-client', () => ({
+  dialogApi: { showOpen: (request: unknown) => (platform as Record<string, any>).showOpenDialog(request) },
+}))
 
 function chooseButton(wrapper: ReturnType<typeof mount>) {
   return wrapper.findAll('.install-actions button').find(button => button.text().includes('Choose file'))!

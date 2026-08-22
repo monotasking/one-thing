@@ -1,6 +1,5 @@
 import type {
 	NotifyActivateEvent,
-	ShowNotificationRequest,
 	ChatMessage,
 	ChatMessageMention,
 	ChatMessageReaction,
@@ -261,9 +260,7 @@ import type {
 	SchedulerSetEnabledResponse,
 	SearchRequest,
 	SearchResponse,
-	SearchWindowAnchor,
 	SearchWindowGuideState,
-	SearchWindowOpenOptions,
 	SearchWindowShownPayload,
 	// Permission types
 	PermissionInfo,
@@ -394,11 +391,7 @@ import type {
 	PracticeSummaryRequest,
 	PracticeSummaryResult,
 } from "@shared/ipc";
-import type {
-	DeepLinkConfirmRequest,
-	DeepLinkRespondRequest,
-	DeepLinkRespondResponse,
-} from "@shared/ipc/deeplink";
+import type { DeepLinkConfirmRequest } from "@shared/ipc/deeplink";
 import type {
 	SessionEventEnvelope,
 	StreamChunk,
@@ -893,6 +886,12 @@ export interface ElectronAPI {
 	 * 对外方法名由 `platformApi` 上的 router client 提供。
 	 */
 	rpcInvoke: (request: RpcRequest) => Promise<RpcResponse>;
+	/**
+	 * 宿主壳路由出口(结构债 P4 终态批 A1-a)。与 `rpcInvoke` 同信封、同契约,
+	 * 差别只在处理者住哪:数据面在装配层,窗口系在宿主(`apps/electron`)。
+	 * 各域的方法从 `platform/<d>-client.ts` 上取,不再逐条挂在这个接口上。
+	 */
+	shellInvoke: (request: RpcRequest) => Promise<RpcResponse>;
 	// Practice (kegel / pomodoro / exercise log) —— 十条 invoke 已整只迁到通用
 	// RPC 通道(P4a,`@shared/ipc/practice.ts` 的 practiceRouter +
 	// `@/platform/practice-client` 的 practiceApi)。壳面只剩推送订阅。
@@ -919,13 +918,11 @@ export interface ElectronAPI {
 	 * `deepLinkReady` 是**冷启动队列的放行信号**:app 被一条深链拉起时,URL 可能
 	 * 在窗口建好之前就到,主进程先把它压在队列里,等渲染层说自己能画卡了才投递。
 	 */
-	deepLinkReady: () => Promise<{ success: boolean }>;
+	// `deepLinkReady` / `respondDeepLink` 走宿主壳路由(deeplinkRouter,A1-a),
+	// 渲染侧从 `platform/deeplink-client` 取;这里只剩推来的那张卡。
 	onDeepLinkRequest: (
 		callback: (request: DeepLinkConfirmRequest) => void,
 	) => () => void;
-	respondDeepLink: (
-		request: DeepLinkRespondRequest,
-	) => Promise<DeepLinkRespondResponse>;
 	// Project directories:已走通用 RPC 通道(projectDirsRouter +
 	// `@/platform/project-dirs-client`)。
 	onSessionMessagesChanged: (
@@ -940,14 +937,10 @@ export interface ElectronAPI {
 	) => () => void;
 	// P1(2026-08-14):onContextCompactStarted / onContextCompactCompleted 已删
 	// (专用 IPC 通道 + web 端嗅探,零消费者)。压缩通知走 session:event。
-	updateSessionMaxTokens: (
-		sessionId: string,
-		maxTokens: number,
-	) => Promise<{ success: boolean; error?: string }>;
+	// `updateSessionMaxTokens` 于 A1-a 删除:桌面从来没有处理者、渲染层零调用点。
 	// Settings —— 四条数据面(读 / 存 / 系统深浅色 / 代理自检)走通用 RPC
 	// (settingsRouter),方法在 platform/settings-client.ts 上。留在壳上的是两件要
 	// Electron 本体的事(开设置窗 / 原生对话框)与三条推送订阅。
-	openSettingsWindow: (options?: { tab?: string }) => Promise<{ success: boolean }>;
 	onSettingsNavigate: (callback: (payload: { tab: string }) => void) => () => void;
 	onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void;
 	/**
@@ -993,13 +986,6 @@ export interface ElectronAPI {
 	// ('interaction:requested' / 'interaction:settled')。
 
 	// Dialog methods
-	showOpenDialog: (options: {
-		properties?: Array<"openFile" | "openDirectory" | "multiSelections">;
-		title?: string;
-		defaultPath?: string;
-		filters?: Array<{ name: string; extensions: string[] }>;
-	}) => Promise<{ canceled: boolean; filePaths: string[] }>;
-
 	// Shell methods
 	openPath: (filePath: string) => Promise<string>;
 	openExternal: (url: string) => Promise<{ success: boolean }>;
@@ -1024,12 +1010,6 @@ export interface ElectronAPI {
 
 	// Media —— 只剩「要宿主本体」的三条(P4c 第三批:十一条数据面走 `mediaRouter`,
 	// 渲染侧从 `platform/media-client` 的 `mediaApi` 取,不再挂在壳上)。
-	saveMediaAs: (request: MediaSaveAsRequest) => Promise<MediaSaveAsResponse>;
-	openImagePreview: (
-		src: string,
-		alt?: string,
-	) => Promise<{ success: boolean }>;
-	openImageGallery: (mediaId: string) => Promise<{ success: boolean }>;
 	onImagePreviewUpdate: (
 		callback: (data: {
 			mode?: "single";
@@ -1049,7 +1029,6 @@ export interface ElectronAPI {
 	) => () => void;
 
 	// Window
-	closeWindow: () => Promise<{ success: boolean }>;
 
 	// Menu event listeners
 	onMenuNewChat: (callback: () => void) => () => void;
@@ -1090,13 +1069,9 @@ export interface ElectronAPI {
 	 * 只执行,不判定:"该不该弹"由 renderer 决定(焦点/可见性/水位/冷却窗全在
 	 * store 里)。web 宿主是 no-op —— 那边降级为只剩未读墨点。
 	 */
+	// 两条执行面走宿主壳路由(notifyRouter,A1-a),渲染侧从 `platform/notify-client`
+	// 取;这里只剩「用户点了通知」这条推送订阅。
 	notify: {
-		show: (
-			request: ShowNotificationRequest,
-		) => Promise<{ success: boolean; error?: string }>;
-		setBadge: (
-			hasUnread: boolean,
-		) => Promise<{ success: boolean; error?: string }>;
 		onActivate: (
 			callback: (data: NotifyActivateEvent) => void,
 		) => () => void;
@@ -1143,13 +1118,8 @@ export interface ElectronAPI {
 	// App State:已走通用 RPC 通道(appStateRouter + `@/platform/app-state-client`)。
 
 	// Search Everywhere
-	toggleSearchWindow: (
-		options?: SearchWindowOpenOptions,
-	) => Promise<{ success: boolean }>;
-	closeSearchWindow: () => Promise<{ success: boolean }>;
-	setSearchWindowAnchor: (
-		anchor: SearchWindowAnchor | null,
-	) => Promise<{ success: boolean }>;
+	// 四条动窗口的走宿主壳路由(searchWindowRouter,A1-a),渲染侧从
+	// `platform/search-window-client` 取;`searchQuery` 是数据面,还没迁。
 	onSearchWindowShown: (
 		callback: (payload?: SearchWindowShownPayload | null) => void,
 	) => () => void;
@@ -1157,28 +1127,10 @@ export interface ElectronAPI {
 		callback: (state: SearchWindowGuideState) => void,
 	) => () => void;
 	searchQuery: (req: SearchRequest) => Promise<SearchResponse>;
-	searchExecuteAction: (actionId: string) => Promise<{ success: boolean }>;
 	onSearchAction: (callback: (actionId: string) => void) => () => void;
 
-	// Todo / Plan:数据面走通用 RPC(todoPlanRouter),下面只剩窗口面。
-	openTodoPlanWindow: (
-		request?: TodoPlanWindowActionRequest,
-	) => Promise<{ success: boolean }>;
-	hideTodoPlanWindow: (
-		request?: TodoPlanWindowActionRequest,
-	) => Promise<{ success: boolean }>;
-	toggleTodoPlanWindow: (
-		request?: TodoPlanWindowActionRequest,
-	) => Promise<{ success: boolean }>;
-	setTodoPlanWindowPinned: (
-		pinned: boolean,
-	) => Promise<{ success: boolean; pinned: boolean }>;
-	// 独立窗自绘红绿灯(黄 / 绿)与手动拖窗。红点复用 hideTodoPlanWindow。
-	minimizeTodoPlanWindow: () => Promise<{ success: boolean }>;
-	zoomTodoPlanWindow: () => Promise<{ success: boolean }>;
-	dragTodoPlanWindow: (
-		request: TodoPlanWindowDragRequest,
-	) => Promise<{ success: boolean }>;
+	// Todo / Plan:数据面走通用 RPC(todoPlanRouter),七条窗口面走宿主壳路由
+	// (todoPlanWindowRouter,A1-a),渲染侧从 `platform/todo-plan-window-client` 取。
 	onTodoPlanChanged: (
 		callback: (data: TodoPlanChangedPayload) => void,
 	) => () => void;

@@ -528,6 +528,8 @@ import {
 import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
 import { mediaApi } from '@/platform/media-client'
+import { mediaWindowApi } from '@/platform/media-window-client'
+import { dialogApi } from '@/platform/dialog-client'
 
 type KindFilter = 'all' | 'image' | 'file' | 'audio' | 'video'
 type SourceFilter = 'all' | 'user-upload' | 'ai-generated'
@@ -998,7 +1000,7 @@ function copyFilePath(path: string) {
 }
 
 function launchGallery(asset: MediaAsset) {
-  platformApi.openImageGallery(asset.id)
+  void mediaWindowApi.openGallery({ mediaId: asset.id })
 }
 
 function revealAsset(asset: MediaAsset) {
@@ -1159,7 +1161,7 @@ async function pickFiles() {
     fileInputRef.value?.click()
     return
   }
-  const result = await platformApi.showOpenDialog({
+  const result = await dialogApi.showOpen({
     properties: ['openFile', 'multiSelections'],
   })
   if (result.canceled || result.filePaths.length === 0) return
@@ -1253,7 +1255,7 @@ async function saveAssetAs(asset: MediaAsset) {
     downloadInBrowser(asset)
     return
   }
-  const result = await platformApi.saveMediaAs({
+  const result = await mediaWindowApi.saveAs({
     filePath: asset.filePath,
     fileName: asset.fileName,
   })
@@ -1271,7 +1273,7 @@ async function savePickedAs() {
     return
   }
 
-  const picked = await platformApi.showOpenDialog({
+  const picked = await dialogApi.showOpen({
     properties: ['openDirectory'],
     title: '选择保存位置',
   })
@@ -1281,7 +1283,7 @@ async function savePickedAs() {
   let saved = 0
   let failed = 0
   for (const asset of assets) {
-    const result = await platformApi.saveMediaAs({
+    const result = await mediaWindowApi.saveAs({
       filePath: asset.filePath!,
       fileName: asset.fileName,
       targetDir,

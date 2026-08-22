@@ -216,7 +216,10 @@ describe('createWebPlatformApi', () => {
     const { createWebPlatformApi } = await import('../web.js')
     const api = createWebPlatformApi()
 
-    await expect(api.openSettingsWindow()).resolves.toEqual({ success: true })
+    // A1-a:开设置窗走宿主壳路由。web 壳的处理者表就在本包的 `shell-web/` 里,
+    // 所以这条断言同时钉住「`shellInvoke` 确实接上了那张表」。
+    await expect(api.shellInvoke({ domain: 'settings-window', method: 'open', payload: {} }))
+      .resolves.toEqual({ ok: true, data: { success: true } })
     expect((window as unknown as { location: { hash: string } }).location.hash).toBe('#/settings')
   })
 
@@ -411,9 +414,11 @@ describe('createWebPlatformApi', () => {
     // P4c 第三批:开预览不再往 server 走一趟。旧线先 POST /api/media/preview/open
     // 把 src 存进 server 的登记簿、再把**同一个 src** 原样广播出去 —— 那趟往返
     // 从来没有人读(页内订阅拿到的就是 src 本身)。现在只留广播,用户看到的一格没变。
-    await expect(api.openImagePreview('data:image/png;base64,aW1hZ2U=', 'Image')).resolves.toEqual({
-      success: true,
-    })
+    await expect(api.shellInvoke({
+      domain: 'media-window',
+      method: 'openPreview',
+      payload: { src: 'data:image/png;base64,aW1hZ2U=', alt: 'Image' },
+    })).resolves.toEqual({ ok: true, data: { success: true } })
     expect(fetchMock).not.toHaveBeenCalledWith('/api/media/preview/open', expect.anything())
 
     expect(callback).toHaveBeenCalledWith({
@@ -423,7 +428,11 @@ describe('createWebPlatformApi', () => {
     })
     // 「开画廊窗」在浏览器里同样是本地承认:旧的 server 路由实现就是
     // `return { success: true }`,一次不改变任何东西的往返。
-    await expect(api.openImageGallery('asset-1')).resolves.toEqual({ success: true })
+    await expect(api.shellInvoke({
+      domain: 'media-window',
+      method: 'openGallery',
+      payload: { mediaId: 'asset-1' },
+    })).resolves.toEqual({ ok: true, data: { success: true } })
     expect(fetchMock).not.toHaveBeenCalledWith('/api/media/gallery/open', expect.anything())
     cleanup()
   })
@@ -774,10 +783,15 @@ describe('createWebPlatformApi', () => {
     const { createWebPlatformApi } = await import('../web.js')
     const api = createWebPlatformApi()
 
-    await expect(api.openTodoPlanWindow({ activation: 'preserve-current-app' })).resolves.toEqual({ success: true })
-    await expect(api.hideTodoPlanWindow()).resolves.toEqual({ success: true })
-    await expect(api.toggleTodoPlanWindow()).resolves.toEqual({ success: true })
-    await expect(api.setTodoPlanWindowPinned(true)).resolves.toEqual({ success: true, pinned: true })
+    const shell = (method: string, payload: unknown) =>
+      api.shellInvoke({ domain: 'todo-plan-window', method, payload })
+
+    await expect(shell('open', { activation: 'preserve-current-app' }))
+      .resolves.toEqual({ ok: true, data: { success: true } })
+    await expect(shell('hide', {})).resolves.toEqual({ ok: true, data: { success: true } })
+    await expect(shell('toggle', {})).resolves.toEqual({ ok: true, data: { success: true } })
+    await expect(shell('setPinned', { pinned: true }))
+      .resolves.toEqual({ ok: true, data: { success: true, pinned: true } })
 
     const events = dispatchEvent.mock.calls.map(([event]) => event as CustomEvent)
     expect(events.map(event => event.type)).toEqual([
@@ -788,8 +802,8 @@ describe('createWebPlatformApi', () => {
     ])
     expect(events.map(event => event.detail)).toEqual([
       { action: 'open', request: { activation: 'preserve-current-app' } },
-      { action: 'hide', request: undefined },
-      { action: 'toggle', request: undefined },
+      { action: 'hide', request: {} },
+      { action: 'toggle', request: {} },
       { action: 'pin', pinned: true },
     ])
   })
@@ -818,10 +832,11 @@ describe('createWebPlatformApi', () => {
     const { createWebPlatformApi } = await import('../web.js')
     const api = createWebPlatformApi()
 
-    await expect(api.showOpenDialog({ properties: ['openDirectory'] })).resolves.toEqual({
-      canceled: true,
-      filePaths: [],
-    })
+    await expect(api.shellInvoke({
+      domain: 'dialog',
+      method: 'showOpen',
+      payload: { properties: ['openDirectory'] },
+    })).resolves.toEqual({ ok: true, data: { canceled: true, filePaths: [] } })
   })
 
   // P4c 第八批:`maps workspace file platform methods to server REST endpoints`
@@ -860,38 +875,10 @@ describe('createWebPlatformApi', () => {
   // mobile 仍在直接打的三条(list / create / messages page,拍板 #32)与
   // `max-tokens`(从来不在那 26 条里)。
 
-  it('maps chat and session message platform methods to server REST endpoints', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url === '/api/capabilities') {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(JSON.stringify({ success: true, url }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('navigator', {})
-
-    const { createWebPlatformApi } = await import('../web.js')
-    const api = createWebPlatformApi()
-
-    await expect(api.updateSessionMaxTokens('session-1', 200000)).resolves.toEqual({
-      success: true,
-      url: '/api/sessions/session-1/max-tokens',
-    })
-    expect(fetchMock).toHaveBeenCalledWith('/api/sessions/session-1/max-tokens', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ maxTokens: 200000 }),
-    }))
-    // 第七条「工具审批后恢复流」于 2026-08-22(#21)整条删除:桌面那条 invoke
-    // 和 web 这条命令总线壳方法一起没了(渲染层零调用者)。引擎的
-    // `command:resume-after-confirm` 仍在总线上,只是没有壳方法打它。
-  })
+  // 2026-08-23(A1-a):`updateSessionMaxTokens` 整条删除 —— 桌面从来没有处理者、
+  // 渲染层零调用点,web 这条 REST 镜像是全仓唯一的消费者。server 的
+  // `POST /api/sessions/:id/max-tokens` 路由留着(mobile 面),所以这条用例
+  // 连同它一起退休,而不是改写。
 
   it('maps settings and network platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -926,9 +913,14 @@ describe('createWebPlatformApi', () => {
 
     const searchAction = vi.fn()
     const unsubscribeSearchAction = api.onSearchAction(searchAction)
-    await expect(api.searchExecuteAction('open-settings')).resolves.toEqual({
-      success: true,
-      url: '/api/search/actions',
+    // A1-a:执行动作走宿主壳路由,web 处理者仍然打同一条 REST 并在页内广播。
+    await expect(api.shellInvoke({
+      domain: 'search-window',
+      method: 'executeAction',
+      payload: { actionId: 'open-settings' },
+    })).resolves.toEqual({
+      ok: true,
+      data: { success: true, url: '/api/search/actions' },
     })
     expect(searchAction).toHaveBeenCalledWith('open-settings')
     unsubscribeSearchAction()

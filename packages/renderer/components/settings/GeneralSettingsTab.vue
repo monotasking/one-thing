@@ -497,6 +497,7 @@ import {
   SettingsSection,
 } from './settings-primitives'
 import { platformApi } from '@/platform'
+import { dialogApi } from '@/platform/dialog-client'
 
 const props = defineProps<{
   settings: AppSettings
@@ -803,7 +804,7 @@ function updateTodoPlan(patch: Partial<TodoPlanSettings>) {
 
 async function chooseDailyNoteDirectory() {
   if (!canChooseLocalDirectory.value) return
-  const result = await platformApi.showOpenDialog({
+  const result = await dialogApi.showOpen({
     title: 'Choose Daily Notes Directory',
     properties: ['openDirectory'],
     defaultPath: dailyNotes.value.customDirectory || undefined,
@@ -818,7 +819,7 @@ async function chooseDailyNoteDirectory() {
 
 async function chooseTodoPlanDirectory() {
   if (!canChooseLocalDirectory.value) return
-  const result = await platformApi.showOpenDialog({
+  const result = await dialogApi.showOpen({
     title: 'Choose Todo / Plan Directory',
     properties: ['openDirectory'],
     defaultPath: todoPlan.value.directory || undefined,

@@ -18,6 +18,13 @@ const platformApiMock = vi.hoisted(() => ({
 vi.mock('@/platform', () => ({
   platformApi: platformApiMock,
 }))
+// A1-a:开预览 / 开画廊走宿主壳路由(mediaWindowRouter);入参折成信封。
+vi.mock('@/platform/media-window-client', () => ({
+  mediaWindowApi: {
+    openPreview: (request: unknown) => platformApiMock.openImagePreview(request),
+    openGallery: (request: unknown) => platformApiMock.openImageGallery(request),
+  },
+}))
 
 function installRaf() {
   vi.useFakeTimers()
@@ -915,10 +922,10 @@ describe('stream end visual stability', () => {
 
     await wrapper.find('.attachment-thumb-img').trigger('click')
 
-    expect(platformApiMock.openImagePreview).toHaveBeenCalledWith(
-      'media://session/image.png',
-      'screenshot.png',
-    )
+    expect(platformApiMock.openImagePreview).toHaveBeenCalledWith({
+      src: 'media://session/image.png',
+      alt: 'screenshot.png',
+    })
   })
 
   it('does not open previews for non-image attachments', async () => {
@@ -959,10 +966,10 @@ describe('stream end visual stability', () => {
 
     await wrapper.find('.attachment-thumb-img').trigger('click')
 
-    expect(platformApiMock.openImagePreview).toHaveBeenCalledWith(
-      'data:image/png;base64,abc123',
-      'screenshot.png',
-    )
+    expect(platformApiMock.openImagePreview).toHaveBeenCalledWith({
+      src: 'data:image/png;base64,abc123',
+      alt: 'screenshot.png',
+    })
   })
 
   it('does not show waiting when streamed content only exists in content parts', async () => {

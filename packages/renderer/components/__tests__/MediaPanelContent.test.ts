@@ -106,6 +106,24 @@ vi.mock('@/stores/sessions', () => ({
 vi.mock('@/platform', () => ({
   platformApi: platformState.platformApi,
 }))
+// A1-a:原生对话框与媒体窗三条走宿主壳路由,各有自己的域客户端。桩仍然是同一批
+// vi.fn(),断言看的还是它们 —— 只是入参从位置参数折成了信封。
+vi.mock('@/platform/dialog-client', () => ({
+  dialogApi: {
+    showOpen: (request: unknown) =>
+      (platformState.platformApi as Record<string, any>).showOpenDialog(request),
+  },
+}))
+vi.mock('@/platform/media-window-client', () => ({
+  mediaWindowApi: {
+    saveAs: (request: unknown) =>
+      (platformState.platformApi as Record<string, any>).saveMediaAs(request),
+    openPreview: (request: unknown) =>
+      (platformState.platformApi as Record<string, any>).openImagePreview?.(request),
+    openGallery: (request: unknown) =>
+      (platformState.platformApi as Record<string, any>).openImageGallery(request),
+  },
+}))
 
 function imageAsset(overrides: Partial<MediaAsset>): MediaAsset {
   return {
@@ -547,7 +565,7 @@ describe('MediaPanelContent', () => {
     await wrapper.vm.$nextTick()
 
     wrapper.findComponent({ name: 'ContextMenu' }).vm.$emit('select', 'preview')
-    expect(platformState.platformApi.openImageGallery).toHaveBeenCalledWith('upload-1')
+    expect(platformState.platformApi.openImageGallery).toHaveBeenCalledWith({ mediaId: 'upload-1' })
   })
 
   it('removes a single asset from the menu once the ask is answered', async () => {

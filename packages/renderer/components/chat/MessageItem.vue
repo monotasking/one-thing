@@ -478,7 +478,7 @@ import { isActiveAgent } from '@shared/ipc'
 import { renderCollabMentionMarkup } from '@/composables/collabInlineTags'
 import { useUserProfile } from '@/composables/useUserProfile'
 import { isRoomThinkingTrace, type RoomMessageLike } from './message/room-grouping'
-import { platformApi } from '@/platform'
+import { mediaWindowApi } from '@/platform/media-window-client'
 import { useChatStore } from '@/stores/chat'
 import { useAgentsStore } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
@@ -962,10 +962,10 @@ function handleOpenMedia(payload: MessageMediaOpenPayload) {
   const { src, alt, fileName, mediaId } = payload
   if (!src) return
   if (mediaId) {
-    platformApi?.openImageGallery(mediaId)
+    void mediaWindowApi.openGallery({ mediaId })
     return
   }
-  platformApi?.openImagePreview(src, fileName || alt)
+  void mediaWindowApi.openPreview({ src, alt: fileName || alt })
 }
 
 // Regenerate handler

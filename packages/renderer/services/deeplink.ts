@@ -18,6 +18,7 @@ import type {
 	DeepLinkRespondResponse,
 } from "@shared/ipc/deeplink";
 import { platformApi } from "@/platform";
+import { deeplinkApi } from "@/platform/deeplink-client";
 import { toast } from "@/composables/useToast";
 
 /** 当前正在显示的那一张(null = 没有卡)。 */
@@ -49,7 +50,7 @@ export function initDeepLinkListener(): void {
 		queue.push(request);
 		if (!activeDeepLink.value) showNext();
 	});
-	void Promise.resolve(platformApi.deepLinkReady?.()).catch(() => {
+	void deeplinkApi.ready({}).catch(() => {
 		// 放行信号发不出去只影响冷启动那几条(它们会一直排在主进程队列里)。
 		// 已经在跑的 app 不受影响,所以这里不打扰用户。
 	});
@@ -74,7 +75,7 @@ export async function settleDeepLink(approved: boolean): Promise<void> {
 	if (!request || deepLinkBusy.value) return;
 	deepLinkBusy.value = true;
 	try {
-		const response = await platformApi.respondDeepLink({
+		const response = await deeplinkApi.respond({
 			requestId: request.requestId,
 			approved,
 		});

@@ -317,8 +317,13 @@ export type {
 	MediaSaveImageRequest,
 	MediaPreviewLookupResponse,
 	MediaRoutes,
+	MediaOpenImagePreviewRequest,
+	MediaOpenImagePreviewResponse,
+	MediaOpenImageGalleryRequest,
+	MediaOpenImageGalleryResponse,
+	MediaWindowRoutes,
 } from "./media.js";
-export { mediaRouter } from "./media.js";
+export { mediaRouter, mediaWindowRouter } from "./media.js";
 
 // 会话命令总线的入口(结构债 P4c 第四批)。命令的**词汇表与载荷**仍在
 // `@shared/events/session-commands.ts`,这里只有「怎么过线」那一半。
@@ -615,7 +620,22 @@ export type {
 	SaveSettingsResponse,
 	TestProxyRequest,
 	TestProxyResponse,
+	OpenSettingsWindowRequest,
+	OpenSettingsWindowResponse,
+	SettingsWindowRoutes,
 } from "./settings.js";
+export { settingsWindowRouter } from "./settings.js";
+
+// 宿主壳路由(结构债 P4 终态批 A1-a):原生对话框与「关掉发起窗」。
+export type {
+	DialogRoutes,
+	ShowOpenDialogProperty,
+	ShowOpenDialogRequest,
+	ShowOpenDialogResponse,
+} from "./dialog.js";
+export { dialogRouter } from "./dialog.js";
+export type { CloseWindowResponse, WindowRoutes } from "./window.js";
+export { windowRouter } from "./window.js";
 
 export type {
 	GatewayChannelId,
@@ -834,7 +854,13 @@ export type {
 	SearchWindowOpenOptions,
 	SearchWindowShownPayload,
 	SearchWindowAnchor,
+	SearchWindowResponse,
+	SearchWindowSetAnchorRequest,
+	SearchExecuteActionRequest,
+	SearchExecuteActionResponse,
+	SearchWindowRoutes,
 } from "./search.js";
+export { searchWindowRouter } from "./search.js";
 
 // User prompt snippet types
 export type {
@@ -878,8 +904,12 @@ export type {
 	TodoPlanChangedPayload,
 	TodoPlanRevealDirectoryResponse,
 	TodoPlanRoutes,
+	TodoPlanWindowResponse,
+	TodoPlanWindowPinnedRequest,
+	TodoPlanWindowPinnedResponse,
+	TodoPlanWindowRoutes,
 } from "./todo-plan.js";
-export { todoPlanRouter } from "./todo-plan.js";
+export { todoPlanRouter, todoPlanWindowRouter } from "./todo-plan.js";
 
 // Scratchpad types
 export type {
@@ -1000,7 +1030,16 @@ export type {
 	NotifySimpleResponse,
 	SetBadgeRequest,
 	ShowNotificationRequest,
+	NotifyRoutes,
 } from "./notify.js";
+export { notifyRouter } from "./notify.js";
+
+// 深链确认门的请求面(结构债 P4 终态批 A1-a):走宿主壳路由。
+export type {
+	DeepLinkReadyResponse,
+	DeeplinkRoutes,
+} from "./deeplink.js";
+export { deeplinkRouter } from "./deeplink.js";
 
 export type {
 	TerminalAckPayload,

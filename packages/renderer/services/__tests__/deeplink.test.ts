@@ -19,6 +19,13 @@ const chatStore = vi.hoisted(() => ({ sendMessage: vi.fn() }))
 const toast = vi.hoisted(() => ({ error: vi.fn(), info: vi.fn(), success: vi.fn() }))
 
 vi.mock('@/platform', () => ({ platformApi: platform }))
+// A1-a:深链的两条请求面走宿主壳路由(deeplinkRouter),推来的那张卡仍是推送。
+vi.mock('@/platform/deeplink-client', () => ({
+  deeplinkApi: {
+    ready: (request: unknown) => platform.deepLinkReady(request),
+    respond: (request: unknown) => platform.respondDeepLink(request),
+  },
+}))
 vi.mock('@/composables/useToast', () => ({ toast }))
 vi.mock('@/stores/sessions', () => ({ useSessionsStore: () => sessionsStore }))
 vi.mock('@/stores/chat', () => ({ useChatStore: () => chatStore }))

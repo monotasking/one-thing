@@ -11,22 +11,14 @@ import type {
 	SessionEventEnvelope,
 	StreamChunk,
 } from "@shared/events/index.js";
+import type { DeepLinkConfirmRequest } from "@shared/ipc/deeplink.js";
 import type {
-	DeepLinkConfirmRequest,
-	DeepLinkRespondRequest,
-} from "@shared/ipc/deeplink.js";
-import type {
-	MediaSaveAsRequest,
 	MarkdownResolveAssetRequest,
 	MarkdownSaveAttachmentsRequest,
 	SearchRequest,
-	SearchWindowAnchor,
 	SpacesChangedEvent,
 	SearchWindowGuideState,
-	SearchWindowOpenOptions,
 	SearchWindowShownPayload,
-	TodoPlanWindowActionRequest,
-	TodoPlanWindowDragRequest,
 	PracticeEventPayload,
 	PluginNotificationPayload,
 	PluginRequestProgressPayload,
@@ -57,6 +49,15 @@ const electronAPI = {
 	 */
 	rpcInvoke: (request: RpcRequest): Promise<RpcResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.RPC_INVOKE, request),
+
+	/**
+	 * 宿主壳路由出口(结构债 P4 终态批 A1-a)。和 `rpcInvoke` 并排、同一个信封,
+	 * 差别只在处理者住哪:`rpc:invoke` 的在装配层,`shell:invoke` 的在宿主
+	 * (开设置窗 / 关窗 / 原生对话框 / 系统通知 / 深链应答 / todo 窗 / 搜索窗)。
+	 * 窗口域从此也不往本文件加暴露块。
+	 */
+	shellInvoke: (request: RpcRequest): Promise<RpcResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.SHELL_INVOKE, request),
 
 	onSkillActivated: (
 		callback: (data: {
@@ -182,11 +183,9 @@ const electronAPI = {
 	// ── 系统通知 + dock 徽标(agent-dm-user.md §4.2)──────
 	// 一个命名空间而不是三个平铺方法:这三件事只有一个调用方(主窗的通知链路),
 	// 而 `notify.show` 在调用点读起来就是它在做的事。
+	// 两条执行面(弹通知 / 画墨点)已走宿主壳路由(notifyRouter,A1-a);
+	// 留在这里的只有「用户点了通知」这条推送订阅。
 	notify: {
-		show: (request: { title: string; body: string; sessionId: string }) =>
-			ipcRenderer.invoke(IPC_CHANNELS.NOTIFY_SHOW, request),
-		setBadge: (hasUnread: boolean) =>
-			ipcRenderer.invoke(IPC_CHANNELS.NOTIFY_BADGE, { hasUnread }),
 		onActivate: (callback: (data: { sessionId: string }) => void) => {
 			const listener = (
 				_event: IpcRendererEvent,
@@ -297,10 +296,8 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_NOTIFICATION, listener);
 	},
 
-	// onething:// 深链的确认门(H4)。三条,方向刚好一进两出:
-	// ready 是渲染层给冷启动队列的放行信号,request 是推来的卡,respond 是那一按。
-	deepLinkReady: () => ipcRenderer.invoke(IPC_CHANNELS.DEEPLINK_READY),
-
+	// onething:// 深链的确认门(H4)。两条请求面(ready / respond)已走宿主壳路由
+	// (deeplinkRouter,A1-a);这里只剩推来的那张卡。
 	onDeepLinkRequest: (callback: (request: DeepLinkConfirmRequest) => void) => {
 		const listener = (_event: IpcRendererEvent, request: DeepLinkConfirmRequest) =>
 			callback(request);
@@ -309,8 +306,6 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.DEEPLINK_REQUEST, listener);
 	},
 
-	respondDeepLink: (request: DeepLinkRespondRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.DEEPLINK_RESPOND, request),
 
 	// Project directories — independent module.
 	// `workspaceId` 缺省 = default 空间(批 B4:名册 per-space)。
@@ -331,12 +326,8 @@ const electronAPI = {
 	// P1(2026-08-14):onContextCompactStarted / onContextCompactCompleted 已删。
 	// 它们订阅的是两条主进程从来没发过的通道;真正的通知走 session:event。
 
-	updateSessionMaxTokens: (sessionId: string, maxTokens: number) =>
-		ipcRenderer.invoke(
-			IPC_CHANNELS.UPDATE_SESSION_MAX_TOKENS,
-			sessionId,
-			maxTokens,
-		),
+	// `updateSessionMaxTokens` 于 A1-a 删除:桌面从来没有处理者、渲染层零调用点。
+	// server 的 `POST /api/sessions/:id/max-tokens` 路由原样留着。
 
 	// Listen for messages changed event (for real-time sync)
 	onSessionMessagesChanged: (
@@ -358,11 +349,9 @@ const electronAPI = {
 			);
 	},
 
-	// Settings —— 四条数据面(读 / 存 / 系统深浅色 / 代理自检)已迁到通用 RPC
-	// 通道(settingsRouter,P4c 第十一批);渲染侧客户端在 platform/settings-client.ts。
-	// 留在这里的是两件要 Electron 本体的事(开设置窗 / 原生对话框)与两条推送。
-	openSettingsWindow: (options?: { tab?: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.OPEN_SETTINGS_WINDOW, options),
+	// Settings —— 四条数据面走通用 RPC 通道(settingsRouter,P4c 第十一批);
+	// 两件要 Electron 本体的事(开设置窗 / 原生对话框)走宿主壳路由
+	// (settingsWindowRouter / dialogRouter,A1-a)。这里只剩推送订阅。
 
 	onSettingsNavigate: (callback: (payload: { tab: string }) => void) => {
 		const listener = (_event: IpcRendererEvent, payload: { tab: string }) => callback(payload);
@@ -470,12 +459,7 @@ const electronAPI = {
 	// Tools —— 七条数据面已迁到通用 RPC 通道(toolsRouter,P4c 第九批);渲染侧
 	// 客户端在 platform/tools-client.ts。本域零推送,这里不再有任何一条。
 
-	// Dialog methods
-	showOpenDialog: (options: {
-		properties?: Array<"openFile" | "openDirectory" | "multiSelections">;
-		title?: string;
-		defaultPath?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.SHOW_OPEN_DIALOG, options),
+	// Dialog —— 原生「打开」对话框走宿主壳路由(dialogRouter,A1-a)。
 
 	// Shell methods
 	openPath: (filePath: string) =>
@@ -536,15 +520,9 @@ const electronAPI = {
 		}
 	},
 
-	// Media —— 只剩「要宿主本体」的三条:一次原生保存对话框 + 两个 BrowserWindow
-	// (P4c 第三批:十一条数据面走 `mediaRouter`,渲染侧从 platform/media-client 取)。
-	saveMediaAs: (request: MediaSaveAsRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SAVE_MEDIA_AS, request),
-
-	openImagePreview: (src: string, alt?: string) => {
-		return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_PREVIEW, { src, alt });
-	},
-
+	// Media —— 十一条数据面走 `mediaRouter`(P4c 第三批),「要宿主本体」的三条
+	// (另存为对话框 + 两个 BrowserWindow)走宿主壳路由(mediaWindowRouter,A1-a)。
+	// 这里只剩两条推送订阅。
 	onImagePreviewUpdate: (
 		callback: (data: {
 			mode: "single";
@@ -560,11 +538,6 @@ const electronAPI = {
 		ipcRenderer.on(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, listener);
-	},
-
-	// Image gallery methods (now uses mediaId - gallery loads its own data)
-	openImageGallery: (mediaId: string) => {
-		return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_GALLERY, { mediaId });
 	},
 
 	// Permission methods. Responses go through the session-command RPC domain with
@@ -604,8 +577,8 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.OAUTH_TOKEN_EXPIRED, listener);
 	},
 
-	// Window
-	closeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE),
+	// Window —— 「关掉发起窗」走宿主壳路由(windowRouter,A1-a):要关哪扇由宿主
+	// 从 callerId 认,不从请求体里读。
 
 	// Menu event listeners
 	onMenuNewChat: (callback: () => void) => {
@@ -652,14 +625,8 @@ const electronAPI = {
 	// ── App State:已走通用 RPC 通道(appStateRouter),本文件不再暴露。──
 
 	// ── Search Everywhere ──────────────────────────
-	toggleSearchWindow: (options?: SearchWindowOpenOptions) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_TOGGLE, options),
-
-	closeSearchWindow: () => ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_CLOSE),
-
-	setSearchWindowAnchor: (anchor: SearchWindowAnchor | null) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_SET_ANCHOR, anchor),
-
+	// 四条动窗口的(toggle / close / set-anchor / execute-action)走宿主壳路由
+	// (searchWindowRouter,A1-a);`searchQuery` 是数据面,还没迁(见 channels.ts)。
 	onSearchWindowShown: (
 		callback: (payload?: SearchWindowShownPayload | null) => void,
 	) => {
@@ -681,9 +648,6 @@ const electronAPI = {
 	searchQuery: (req: SearchRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_QUERY, req),
 
-	searchExecuteAction: (actionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_EXECUTE_ACTION, actionId),
-
 	onSearchAction: (callback: (actionId: string) => void) => {
 		const listener = (_event: IpcRendererEvent, actionId: string) => callback(actionId);
 		ipcRenderer.on(IPC_CHANNELS.SEARCH_ACTION, listener);
@@ -691,29 +655,8 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_ACTION, listener);
 	},
 
-	// Todo / Plan:数据面已走通用通道(todoPlanRouter);下面只剩窗口面。
-	openTodoPlanWindow: (request?: TodoPlanWindowActionRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW, request),
-
-	hideTodoPlanWindow: (request?: TodoPlanWindowActionRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW, request),
-
-	toggleTodoPlanWindow: (request?: TodoPlanWindowActionRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW, request),
-
-	setTodoPlanWindowPinned: (pinned: boolean) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED, { pinned }),
-
-	// 独立窗自绘红绿灯 / 手动拖窗。拖窗是拖拽期间每帧一条,不走通用 RPC 的重封装。
-	minimizeTodoPlanWindow: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_MINIMIZE_WINDOW),
-
-	zoomTodoPlanWindow: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_ZOOM_WINDOW),
-
-	dragTodoPlanWindow: (request: TodoPlanWindowDragRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_DRAG_WINDOW, request),
-
+	// Todo / Plan:数据面走通用通道(todoPlanRouter),七条窗口面走宿主壳路由
+	// (todoPlanWindowRouter,A1-a)。这里只剩变更推送。
 	onTodoPlanChanged: (callback: (data: TodoPlanChangedPayload) => void) => {
 		const listener = (_event: IpcRendererEvent, data: TodoPlanChangedPayload) =>
 			callback(data);

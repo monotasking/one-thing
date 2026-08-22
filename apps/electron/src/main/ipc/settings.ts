@@ -1,9 +1,10 @@
 /**
- * 本文件在 P4c 第十一批之后只剩**两件要 Electron 本体的事**加**一条推送的注入**:
+ * 本文件只剩**两件要 Electron 本体的事**加**一条推送的注入**:
  *
- *  - `OPEN_SETTINGS_WINDOW` —— 开设置窗(`BrowserWindow`);
- *  - `SHOW_OPEN_DIALOG` —— 原生文件对话框(渲染侧 21 个调用点,全仓最高的一条,
- *    签名一个字没动)。
+ *  - 开设置窗(`BrowserWindow`)—— 结构债 P4 终态批 A1-a(2026-08-23)起走**宿主
+ *    壳路由** `settingsWindowRouter.open`,不再是 `settings:open-window` 那条手写通道;
+ *  - 原生文件对话框 —— 同批起走 `dialogRouter.showOpen`(渲染侧调用点全仓最多的一条,
+ *    形状一个字没动)。
  *
  * 四条数据面(`settings:get` / `settings:save` / `settings:get-system-theme` /
  * `network:test-proxy`)已整只迁到通用 RPC 通道(`@shared/ipc/settings.ts` 的
@@ -24,11 +25,13 @@
  */
 import {
   broadcastElectronSettingsChanged,
-  registerElectronSettingsIpcHandlers,
   registerElectronSystemThemeChangedBroadcast,
   showElectronOpenDialog,
 } from '@onething/electron-host/settings/ipc-host'
 import { IPC_CHANNELS } from '@shared/ipc.js'
+import type { OpenSettingsWindowRequest, ShowOpenDialogRequest } from '@shared/ipc.js'
+import { registerSettingsWindowShellDomain } from '@onething/electron-host/ipc/shell/settings-window'
+import { registerDialogShellDomain } from '@onething/electron-host/ipc/shell/dialog'
 import { openSettingsWindow } from '@onething/electron-host/window'
 import { configureSettingsEventBroadcaster } from '@onething/backend/wiring/settings/events.js'
 
@@ -46,16 +49,14 @@ export function registerSettingsHandlers() {
     })
   })
 
-  registerElectronSettingsIpcHandlers({
-    channels: {
-      openWindow: IPC_CHANNELS.OPEN_SETTINGS_WINDOW,
-      showOpenDialog: IPC_CHANNELS.SHOW_OPEN_DIALOG,
-    },
-    openSettingsWindow: (request?: unknown) => {
-      const tab = (request as { tab?: unknown } | undefined)?.tab
-      openSettingsWindow(undefined, typeof tab === 'string' ? tab : undefined)
+  registerSettingsWindowShellDomain({
+    open: (request: OpenSettingsWindowRequest) => {
+      openSettingsWindow(undefined, typeof request?.tab === 'string' ? request.tab : undefined)
       return { success: true }
     },
-    showOpenDialog: options => showElectronOpenDialog(options),
+  })
+
+  registerDialogShellDomain({
+    showOpen: (request: ShowOpenDialogRequest) => showElectronOpenDialog(request),
   })
 }

@@ -27,7 +27,6 @@ vi.mock('electron', () => ({
 import {
   broadcastElectronSettingsChanged,
   broadcastElectronSystemThemeChanged,
-  registerElectronSettingsIpcHandlers,
   registerElectronSystemThemeChangedBroadcast,
   showElectronOpenDialog,
 } from '../ipc-host.js'
@@ -115,37 +114,8 @@ describe('electron settings IPC host', () => {
     expect(showOpenDialog).toHaveBeenCalledWith({ title: 'Pick a file' })
   })
 
-  it('registers only the two host-bound settings handlers', async () => {
-    const handle = vi.fn()
-    const openSettingsWindow = vi.fn().mockReturnValue({ success: true })
-    const showOpenDialog = vi.fn().mockResolvedValue({ canceled: false, filePaths: ['/tmp'] })
-
-    registerElectronSettingsIpcHandlers({
-      channels: {
-        openWindow: 'settings:open-window',
-        showOpenDialog: 'dialog:show-open',
-      },
-      openSettingsWindow,
-      showOpenDialog,
-      ipcMain: { handle },
-    })
-
-    // 四条数据面已迁 `settingsRouter`(P4c 第十一批);这只工厂只剩要 Electron
-    // 本体的两条。
-    expect(handle).toHaveBeenCalledTimes(2)
-    expect(handle.mock.calls.map(call => call[0])).toEqual([
-      'settings:open-window',
-      'dialog:show-open',
-    ])
-
-    const dialogOptions = { properties: ['openDirectory'] }
-    expect(handle.mock.calls[0][1]({}, { tab: 'music' })).toEqual({ success: true })
-    await expect(handle.mock.calls[1][1]({}, dialogOptions)).resolves.toEqual({
-      canceled: false,
-      filePaths: ['/tmp'],
-    })
-
-    expect(openSettingsWindow).toHaveBeenCalledWith({ tab: 'music' })
-    expect(showOpenDialog).toHaveBeenCalledWith(dialogOptions)
-  })
+  // 「开设置窗」与「原生对话框」两条的**注册**于 A1-a 搬到宿主壳路由
+  // (`ipc/shell/settings-window.ts` / `ipc/shell/dialog.ts`,由
+  // `apps/electron/src/ipc/__tests__/shell-domains.test.ts` 钉);本文件只留
+  // 它们的实现与两条广播。
 })

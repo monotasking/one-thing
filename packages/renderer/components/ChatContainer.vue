@@ -83,8 +83,8 @@ import Button from '@/components/common/Button.vue'
 import { computed, ref, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { platformApi } from '@/platform'
 import { sessionsApi } from '@/platform/sessions-client'
+import { searchWindowApi } from '@/platform/search-window-client'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
 import PanelTree from '@/components/chat/PanelTree.vue'
 import Container from '@/components/common/Container.vue'
@@ -145,7 +145,7 @@ const chatPanelsRootRef = ref<HTMLElement | null>(null)
 // Split goes through the Search Everywhere window: it opens locked to Chats
 // with a split intent, and the chosen session comes back via search:action.
 function openSplitSearch(leafId: string) {
-  void platformApi.toggleSearchWindow({ intent: { type: 'split-panel', panelId: leafId } })
+  void searchWindowApi.toggle({ intent: { type: 'split-panel', panelId: leafId } })
 }
 
 // Split a leaf - create a new leaf with the selected session. Public method:

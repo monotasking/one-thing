@@ -3,8 +3,6 @@ import type {
 	SearchRequest,
 	Step,
 	TodoPlanChangedPayload,
-	TodoPlanWindowActionRequest,
-	TodoPlanWindowDragRequest,
 	VoiceEvent,
 	VoiceRuntimeCommand,
 } from "@/types";
@@ -15,6 +13,7 @@ import { promptsRouter } from "@shared/ipc/prompts.js";
 import { todoPlanRouter } from "@shared/ipc/todo-plan.js";
 import { usageRouter } from "@shared/ipc/usage.js";
 import { createRouterClient, type RpcInvoke } from "./router-client";
+import { dispatchWebShell, registerWebShellDomains } from "./shell-web";
 import type {
 	PlatformApi,
 	PlatformCapabilities,
@@ -64,7 +63,6 @@ const webCapabilities: PlatformCapabilities = {
 
 type Unsubscribe = () => void;
 type SearchActionHandler = (actionId: string) => void;
-type TodoPlanWebWindowAction = "open" | "hide" | "toggle" | "pin";
 type ImagePreviewUpdatePayload = {
 	mode: "single";
 	previewId?: string;
@@ -76,7 +74,6 @@ const searchActionHandlers = new Set<SearchActionHandler>();
 const imagePreviewUpdateHandlers = new Set<
 	(payload: ImagePreviewUpdatePayload) => void
 >();
-const TODO_PLAN_WEB_WINDOW_EVENT = "todo-plan:web-window-action";
 const sharedEventSources = new Map<
 	string,
 	{
@@ -103,23 +100,6 @@ function subscribeImagePreviewUpdate(
 ): Unsubscribe {
 	imagePreviewUpdateHandlers.add(callback);
 	return () => imagePreviewUpdateHandlers.delete(callback);
-}
-
-function dispatchTodoPlanWindowAction(
-	action: TodoPlanWebWindowAction,
-	detail: { request?: TodoPlanWindowActionRequest; pinned?: boolean } = {},
-): void {
-	const target = typeof window === "undefined" ? undefined : window;
-	if (!target?.dispatchEvent) return;
-	const payload = { action, ...detail };
-	const event =
-		typeof CustomEvent === "function"
-			? new CustomEvent(TODO_PLAN_WEB_WINDOW_EVENT, { detail: payload })
-			: ({
-					type: TODO_PLAN_WEB_WINDOW_EVENT,
-					detail: payload,
-				} as unknown as Event);
-	target.dispatchEvent(event);
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -156,6 +136,13 @@ const usageApi = createRouterClient(usageRouter, rpcInvoke);
 const promptsApi = createRouterClient(promptsRouter, rpcInvoke);
 const goalApi = createRouterClient(goalRouter, rpcInvoke);
 const todoPlanApi = createRouterClient(todoPlanRouter, rpcInvoke);
+
+/**
+ * 宿主壳传输面(结构债 P4 终态批 A1-a)。窗口系的"宿主"在浏览器里就是渲染层
+ * 自己,所以这条不出网:它打的是 `shell-web/registry` 那张本地派发表。
+ * 八个域在下面注册一次,加域不再动本文件的管道。
+ */
+registerWebShellDomains({ postJson, emitSearchAction, emitImagePreviewUpdate });
 
 function booleanProperty(
 	value: unknown,
@@ -461,12 +448,11 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	"switchBrowserProfile",
 	"onBrowserTabsChanged",
 	"setWindowButtonVisibility",
-	"toggleSearchWindow",
-	"closeSearchWindow",
-	"setSearchWindowAnchor",
+	// 四条搜索窗动作 + 关发起窗于 A1-a 走宿主壳路由,web 侧的答复在
+	// `shell-web/search-window.ts` / `shell-web/window.ts` 里(文案逐字沿用这份
+	// 名单从前生成的那句)—— 所以它们不再挂在 platformApi 上,也不在这份名单里。
 	"openPath",
 	"getDataPath",
-	"closeWindow",
 	"onMenuNewChat",
 	"onMenuCloseChat",
 	"onMenuNewBrowserTab",
@@ -500,29 +486,16 @@ const webApi = {
 	getCapabilities: refreshWebCapabilities,
 
 
-	// settings —— 四条 REST 镜像已随 `settingsRouter` 迁走(P4c 第十一批)。
-	// 留下的是「开设置窗」在 web 上的等价物(改 hash)与三条 noop / 本地推送。
-	openSettingsWindow: async (options?: { tab?: string }) => {
-		window.location.hash = options?.tab
-			? `#/settings?tab=${encodeURIComponent(options.tab)}`
-			: "#/settings";
-		return { success: true };
-	},
+	// settings —— 四条 REST 镜像已随 `settingsRouter` 迁走(P4c 第十一批);
+	// 「开设置窗」在 web 上的等价物(改 hash)于 A1-a 搬进
+	// `shell-web/settings-window.ts`。留下的是三条 noop / 本地推送。
 	onSettingsNavigate: () => () => {},
 	onSettingsChanged: () => () => {},
 	// web 端没有第二个窗口,也没有这条广播(批 B9-0):noop 退订即可。
 	onSpacesChanged: () => () => {},
 	searchQuery: (request: SearchRequest) =>
 		postJson("/api/search/query", request),
-	searchExecuteAction: async (actionId: string) => {
-		const response = await postJson<{
-			success: boolean;
-			actionId?: string;
-			error?: string;
-		}>("/api/search/actions", { actionId });
-		if (response.success) emitSearchAction(response.actionId || actionId);
-		return response;
-	},
+	// `searchExecuteAction` 于 A1-a 搬进 `shell-web/search-window.ts`(实现逐字)。
 
 	// Themes 走通用 RPC(themesRouter,P4c 第七批):浏览器从此拿到的是与桌面
 	// 逐字相同的一份主题 —— 插件覆盖的合成也在同一个域处理者里做。
@@ -575,30 +548,9 @@ const webApi = {
 			"voice:runtime-command",
 			callback,
 		),
-	// Todo / plan 数据面走通用 RPC(todoPlanRouter);窗口面在 web 是本地 DOM 事件。
-	openTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => {
-		dispatchTodoPlanWindowAction("open", { request });
-		return Promise.resolve({ success: true });
-	},
-	hideTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => {
-		dispatchTodoPlanWindowAction("hide", { request });
-		return Promise.resolve({ success: true });
-	},
-	toggleTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => {
-		dispatchTodoPlanWindowAction("toggle", { request });
-		return Promise.resolve({ success: true });
-	},
-	setTodoPlanWindowPinned: (pinned: boolean) => {
-		dispatchTodoPlanWindowAction("pin", { pinned });
-		return Promise.resolve({ success: true, pinned });
-	},
-	// 自绘红绿灯与手动拖窗是**桌面窗**的事。浏览器里没有窗可挪,也没有系统交通灯
-	// 要替代 —— 面板在 web 端始终是嵌在页面里的一块,所以这三条老实地报 false,
-	// 而不是派一个假的本地事件出去骗调用点。
-	minimizeTodoPlanWindow: () => Promise.resolve({ success: false }),
-	zoomTodoPlanWindow: () => Promise.resolve({ success: false }),
-	dragTodoPlanWindow: (_request: TodoPlanWindowDragRequest) =>
-		Promise.resolve({ success: false }),
+	// Todo / plan 数据面走通用 RPC(todoPlanRouter);窗口面于 A1-a 走宿主壳路由,
+	// web 侧那份「本地 DOM 事件 / 老实报 false」的实现搬进
+	// `shell-web/todo-plan-window.ts`(逐字)。
 
 	// music —— 十四条数据面已随 `musicRouter` 迁走(P4c 第九批);web 上挡在前面的
 	// 不再是这些桩,而是能力位 `music`(见上方 capabilities)与
@@ -641,6 +593,8 @@ const webApi = {
 
 	// ── Generic RPC(主线 T0)。域客户端各占一行,传输面只有这一条。──
 	rpcInvoke,
+	// ── 宿主壳路由(A1-a)。窗口系的处理者表就在本包的 `shell-web/` 里。──
+	shellInvoke: dispatchWebShell,
 	getUsageSummary: usageApi.getSummary,
 	getSessionUsage: usageApi.getSession,
 	listPrompts: () => promptsApi.list({}),
@@ -679,21 +633,8 @@ const webApi = {
 	// 浏览器里没有"外面点一条链接回到这个标签页"这种东西。三条都是诚实的空实现:
 	// ready 说成功(队列本来就不存在),没有卡会推来,respond 说得清地失败
 	// (而不是回一个假的成功,让调用方以为投递过了)。
-	deepLinkReady: async () => ({ success: true }),
 	onDeepLinkRequest: () => () => {},
-	respondDeepLink: async () => ({
-		success: false,
-		error: "deep links are desktop-only",
-	}),
 
-	/**
-	 * 「另存为」在浏览器里不是一次宿主对话框,而是一次下载 —— 沙箱里页面自发的
-	 * 下载会被拦,所以这里只**承认做不到**并让调用方退回 `<a download>`。
-	 */
-	saveMediaAs: async () => ({
-		success: false,
-		error: "Saving a copy is not available in the browser.",
-	}),
 	onImageGenerated: (
 		callback: (payload: {
 			id: string;
@@ -712,32 +653,12 @@ const webApi = {
 			"media:image-generated",
 			callback,
 		),
-	/**
-	 * 浏览器里「开预览」不是开一个宿主窗口,而是**就地**把这张图交给页内的
-	 * `ImagePreviewWindow`。P4c 第三批之前它先 POST 一次 `/api/media/preview/open`
-	 * 把 src 存进 server 的登记簿、再把同一个 src 原样广播出去 —— 那趟往返
-	 * 从来没有人读(页内订阅拿到的就是 src 本身,`getImagePreview` 在 web 上零调用),
-	 * 所以这里只留广播。用户看到的东西一格没变。
-	 */
-	openImagePreview: async (src: string, alt?: string) => {
-		emitImagePreviewUpdate({ mode: "single", src, alt });
-		return { success: true };
-	},
 	onImagePreviewUpdate: subscribeImagePreviewUpdate,
-	/**
-	 * 「开画廊窗」同样要宿主(桌面开的是第二个 BrowserWindow)。旧的 web 桩 POST
-	 * 一次 `/api/media/gallery/open`,而那条路由的实现就是 `return { success: true }` ——
-	 * 一次不改变任何东西的往返。这里如实地在本地承认同一件事。
-	 */
-	openImageGallery: async () => ({ success: true }),
 
 	// ── Sessions:26 条数据面已走通用 RPC 通道(sessionsRouter over POST /api/rpc),
-	//    本文件不再镜像一份 REST。剩下的两条与那个域无关:`updateSessionMaxTokens`
-	//    桌面从来没有处理者(只有 server 这一条 REST 路由),推送则走 SSE。──
-	updateSessionMaxTokens: (sessionId: string, maxTokens: number) =>
-		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/max-tokens`, {
-			maxTokens,
-		}),
+	//    本文件不再镜像一份 REST。`updateSessionMaxTokens` 于 A1-a 整条删掉
+	//    (桌面从来没有处理者、渲染层零调用点;server 那条 REST 路由留着),
+	//    所以这里只剩推送。──
 	onSessionMessagesChanged: createSessionMessagesChangedSubscription,
 	// ── Chat:六条数据面已走通用 RPC 通道(chatRouter over POST /api/rpc),
 	//    本文件不再镜像一份 REST。第七条「工具审批后恢复流」于 2026-08-22(#21)
@@ -810,11 +731,6 @@ const webApi = {
 		window.open(url, "_blank", "noopener,noreferrer");
 		return { success: true };
 	},
-	showOpenDialog: async () => ({
-		canceled: true,
-		filePaths: [],
-	}),
-
 	onSessionEvent: (callback: (envelope: SessionEventEnvelope) => void) =>
 		createEventSourceSubscription("/api/events", "session:event", callback),
 	onSessionStream: (callback: (payload: SessionStreamPayload) => void) =>
@@ -838,24 +754,14 @@ const webApi = {
 	// Browsers never expose local file paths.
 	getPathForFile: () => "",
 
-	// A browser tab has no window of ours to close.
-	closeWindow: async () => ({ success: false }),
-
 	onMenuNewChat: () => () => {},
 	onMenuCloseChat: () => () => {},
 	onMenuNewBrowserTab: () => () => {},
 	onSearchAction: subscribeSearchAction,
 
-	/**
-	 * 系统通知(agent-dm-user.md §4.2)在 web 端降级为**只剩未读墨点**。
-	 *
-	 * 不是"还没做"而是刻意留白:浏览器的 Notification 要先问权限,而一个页面
-	 * 在用户没要求的情况下弹权限框是骚扰。真要做,入口该是设置里的一次显式授权,
-	 * 不是这里悄悄申请。
-	 */
+	// 系统通知的两条执行面于 A1-a 搬进 `shell-web/notify.ts`(web 端刻意降级为
+	// 只剩未读墨点,理由写在那只文件里);这里只剩点击回传的空订阅。
 	notify: {
-		show: async () => ({ success: true }),
-		setBadge: async () => ({ success: true }),
 		onActivate: () => () => {},
 	},
 };

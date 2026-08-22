@@ -33,3 +33,27 @@ export interface NotifySimpleResponse {
 	success: boolean;
 	error?: string;
 }
+
+/**
+ * 系统通知与 dock 徽标的**宿主壳路由**(结构债 P4 终态批 A1-a,2026-08-23)。
+ *
+ * 两条执行面从手写通道搬到 `shell:invoke`。处理者要的是 `Notification` 与
+ * `app.dock`,只能住在 `apps/electron` —— 所以是壳路由不是 `rpc:invoke`。
+ * 判定仍然全在 renderer(这一层只执行),这次搬家一格没动。
+ *
+ * `NOTIFY_ACTIVATE`(用户点了通知)是推送,留在 `IPC_CHANNELS` 上。
+ *
+ * web 侧刻意降级为"只剩未读墨点":浏览器的 Notification 要先问权限,而一个页面
+ * 在用户没要求的情况下弹权限框是骚扰。两条都如实回成功(同迁移前的桩)。
+ */
+import { defineRouter } from "./router.js";
+
+export type NotifyRoutes = {
+	show: { input: ShowNotificationRequest; output: NotifySimpleResponse };
+	setBadge: { input: SetBadgeRequest; output: NotifySimpleResponse };
+};
+
+export const notifyRouter = defineRouter<NotifyRoutes>("notify", [
+	"show",
+	"setBadge",
+]);

@@ -13,6 +13,18 @@ vi.mock('../useSearchWindow', () => ({
   useSearchWindow: searchWindowMock.useSearchWindow,
 }))
 
+// A1-a:关搜索窗与执行结果动作走宿主壳路由(searchWindowRouter)。桩仍是同一批
+// vi.fn(),挂在下面那份 electronAPI 上 —— 组件从此经 `shellInvoke` 到达它们。
+vi.mock('@/platform/search-window-client', () => ({
+  searchWindowApi: {
+    close: () => (window as any).electronAPI.closeSearchWindow(),
+    executeAction: (request: { actionId: string }) =>
+      (window as any).electronAPI.searchExecuteAction(request.actionId),
+    toggle: vi.fn(),
+    setAnchor: vi.fn(),
+  },
+}))
+
 vi.mock('@/stores/themes', () => ({
   useThemeStore: () => ({
     initialize: vi.fn().mockResolvedValue(undefined),

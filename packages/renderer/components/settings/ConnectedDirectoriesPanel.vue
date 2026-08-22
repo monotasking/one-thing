@@ -144,6 +144,7 @@ import type { AppSettings } from '@/types'
 import { filesApi } from '@/platform/files-client'
 import { platformApi } from '@/platform'
 import { spacesApi } from '@/platform/spaces-client'
+import { dialogApi } from '@/platform/dialog-client'
 import { useSpacesStore } from '@/stores/spaces'
 import { SettingsGroup, SettingsSection } from './settings-primitives'
 
@@ -312,7 +313,7 @@ function commit(next: string[]): void {
 
 async function addDirectory(): Promise<void> {
   try {
-    const result = await platformApi.showOpenDialog({
+    const result = await dialogApi.showOpen({
       title: '选择要接入的目录',
       properties: ['openDirectory'],
     })
