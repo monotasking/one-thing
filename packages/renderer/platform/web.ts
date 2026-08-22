@@ -56,16 +56,19 @@ const webCapabilities: PlatformCapabilities = {
 	shellTools: false,
 	terminal: false,
 	embeddedBrowser: false,
-	collabRooms: false,
-	// P4c 第九批(#13 / #17):两条数据面都已迁到通用 RPC 通道,通道是通的 ——
-	// 挡在前面的是**能力位**。music:电台驱动的是宿主机器上的 ncm-cli / mpv;
-	// interactionRespond:让浏览器替桌面答提问是一次独立的拍板。放开各改这一行。
-	music: false,
-	interactionRespond: false,
-	// P4c 第十批(#15):evals / evalsWorkbench 二十五条已迁通用 RPC,通道是通的。
-	// 评估面读写宿主机器上的 evals 仓,跑批还会拿 API key 直接打 provider ——
-	// 放开是一次独立的拍板。改这一行。
-	evals: false,
+	// P4 终态批 B(拍板 #12 / #13 / #15 / #17):四颗「通道通了但位关着」的能力位
+	// 一起放开。这里是**静态默认**,服务器仍可在 `/api/capabilities` 里把某一位
+	// 按下去(见 `normalizeServerCapabilities`)。collabRooms 是唯一真会被按下去
+	// 的那颗:房间要进程内的 collab v3 actor,桌面(内嵌 HTTP 面)有、独立
+	// `server:start` 没有,server 按 `isCollabV3RuntimeRunning()` 如实下发。
+	// music:谁在服务这个 store,谁的机器就是那台放音机(桌面就是本机)。
+	// interactionRespond:应答盖的章是那次提问自己的 `targetChannel`,由宿主从
+	// 内核活账里读、不从请求体里读 —— 浏览器答桌面的提问因此不是冒答。
+	// evals:按 wire 路径读盘的四条在 http 上夹进 evals 面自己那两棵树,越界结构化失败。
+	collabRooms: true,
+	music: true,
+	interactionRespond: true,
+	evals: true,
 	clipboardWrite: browserClipboardWriteCapability(),
 	desktopWindows: false,
 	globalMenuEvents: false,
@@ -189,15 +192,15 @@ function normalizeServerCapabilities(value: unknown): PlatformCapabilities {
 		terminal: booleanProperty(value, "terminal", false),
 		// Embedded WebContentsView browser is Electron-only; web falls back to iframe.
 		embeddedBrowser: booleanProperty(value, "embeddedBrowser", false),
-		// Rooms need the in-process RoomCoordinator; the server neither runs one
-		// nor accepts kind='room' creates (P0 desktop-only).
-		collabRooms: booleanProperty(value, "collabRooms", false),
-		// 电台要宿主机器上的播放器;提问应答要主进程的 InteractionRegistry。
-		// 两颗都默认关,服务器没有宣告就是关(P4c 第九批,#13 / #17)。
-		music: booleanProperty(value, "music", false),
-		interactionRespond: booleanProperty(value, "interactionRespond", false),
-		// 评估面要宿主机器上的 evals 仓与 API key(P4c 第十批,#15)。
-		evals: booleanProperty(value, "evals", false),
+		// P4 终态批 B(#12 / #13 / #15 / #17):四颗默认 true,但**服务器是权威**。
+		// `collabRooms` 是唯一真会被按下去的那颗(`server/runtime.ts` 按
+		// `isCollabV3RuntimeRunning()` 下发:桌面内嵌面 true、独立 server false);
+		// 另外三颗今天没有宿主下发,默认值就是结果 —— 留着 `booleanProperty` 是
+		// 为了以后某个宿主想按下去时不用再动渲染侧一行。
+		collabRooms: booleanProperty(value, "collabRooms", true),
+		music: booleanProperty(value, "music", true),
+		interactionRespond: booleanProperty(value, "interactionRespond", true),
+		evals: booleanProperty(value, "evals", true),
 		clipboardWrite: browserClipboardWriteCapability(),
 		desktopWindows: booleanProperty(value, "desktopWindows", false),
 		globalMenuEvents: booleanProperty(value, "globalMenuEvents", false),
@@ -437,14 +440,11 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	// collabRouter + `@/platform/collab-client` 的 collabApi),所以这份名单里
 	// 不再有它们 —— web 走的是同一条 `POST /api/rpc`。
 	//
-	// **能力位没动**:`collabRooms` 在 web 上仍然是 false(见上方 capabilities),
-	// 协作 UI 照旧关着。放开它是独立的一次拍板,不搭这次搬家的便车。
+	// **能力位也放开了**(P4 终态批 B,拍板 #12):`collabRooms` 默认 true,由服务器
+	// 按进程内跑没跑 collab v3 运行时决定关不关(见上方 capabilities)。
 	// Interaction(agent 提问 → 用户应答,E1)的两条已整只迁到通用 RPC 通道
 	// (P4c 第九批,`interactionRouter` + `@/platform/interaction-client`),所以
-	// 这份名单里不再有它们。**挡在前面的换成了能力位** `interactionRespond`
-	// (web 上 false,见上方 capabilities):客户端在它为 false 时返回与这里的
-	// `unsupported(method)` 逐字同形的失败信封,可感知结果一字不变 ——
-	// 卡片不出现,提问照旧由内核到点自结算,不会挂住。
+	// 这份名单里不再有它们;能力位 `interactionRespond` 同批放开(#17)。
 	// Terminal (P4 web parity is frozen; capability gate hides the UI on web)
 	"createTerminal",
 	"listTerminals",

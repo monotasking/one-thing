@@ -180,7 +180,7 @@ src/main/engine/stream/agent-loop-executor.ts  Electron host 专属：落盘、�
   `src/main/tools/core/permission-policy.ts` →
   `src/main/permission/index.ts` 的 `Permission.getMode` / `Permission.ask`。
 - 需要确认时结果带 `requiresConfirmation`，`runner.ts:482-484` 抛出
-  `AgentLoopPauseForConfirmationError`，循环暂停等待 `command:confirm-tool`/resume 命令。
+  `AgentLoopPauseForConfirmationError`，循环暂停等待 `command:resume-after-confirm` 命令（`command:confirm-tool` 于 2026-08-22 随拍板 #26 删除：全仓零订阅者）。
 
 ## 7. 事件回传渲染进程
 

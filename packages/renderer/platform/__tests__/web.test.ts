@@ -23,10 +23,10 @@ describe('createWebPlatformApi', () => {
       shellTools: false,
       terminal: false,
       embeddedBrowser: false,
-      collabRooms: false,
-      music: false,
-      interactionRespond: false,
-      evals: false,
+      collabRooms: true,
+      music: true,
+      interactionRespond: true,
+      evals: true,
       clipboardWrite: false,
       desktopWindows: false,
       globalMenuEvents: false,
@@ -130,15 +130,48 @@ describe('createWebPlatformApi', () => {
       shellTools: false,
       terminal: false,
       embeddedBrowser: false,
-      collabRooms: false,
-      music: false,
-      interactionRespond: false,
-      evals: false,
+      // 服务器这只响应里没有这四个键 —— 没表态就用渲染侧的默认(P4 终态批 B 起
+      // 是 true)。`collabRooms` 是唯一真的会被宿主按下去的那一颗,见下方用例。
+      collabRooms: true,
+      music: true,
+      interactionRespond: true,
+      evals: true,
       clipboardWrite: true,
       desktopWindows: false,
       globalMenuEvents: false,
     })
     expect(api.capabilities).toBe(capabilities)
+  })
+
+  /**
+   * P4 终态批 B(拍板 #12):`collabRooms` 的静态默认翻成 true,但**服务器是权威**
+   * —— 独立 `server:start` 进程里没有 collab v3 的 actor,它下发 false,浏览器那
+   * 一侧就得跟着关。钉的是「宿主说了算」这条,不是某个具体值。
+   */
+  it('lets the server shut collabRooms back off when it has no room runtime', async () => {
+    vi.stubGlobal('navigator', {})
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      localFileSystem: false,
+      workspaceFileSystem: true,
+      nativeWindowControls: false,
+      shellTools: false,
+      clipboardWrite: false,
+      desktopWindows: false,
+      globalMenuEvents: false,
+      collabRooms: false,
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })))
+
+    const { createWebPlatformApi } = await import('../web.js')
+    const capabilities = await createWebPlatformApi().getCapabilities()
+
+    expect(capabilities.collabRooms).toBe(false)
+    // 其余三颗这只响应没提,默认照旧
+    expect(capabilities.music).toBe(true)
+    expect(capabilities.interactionRespond).toBe(true)
+    expect(capabilities.evals).toBe(true)
   })
 
   it('degrades unsupported event hooks to no-op subscriptions', async () => {
@@ -157,13 +190,13 @@ describe('createWebPlatformApi', () => {
 
   /**
    * collab 域整只迁到通用 RPC 通道之后(P4a),web 上不再有那批说谎的桩 ——
-   * 十五条走的是同一条 `POST /api/rpc`,技术上真能拿到桌面那台引擎的房间。
+   * 十五条走的是同一条 `POST /api/rpc`,拿到的就是桌面那台引擎的房间。
    *
-   * 挡在前面的是**能力位**,不是通道:`collabRooms` 在 web 上仍然是 false,
-   * 协作 UI 照旧关着。放开它是独立的一次拍板,所以这里钉的就是那颗 false ——
-   * 它一旦被人顺手改掉,web 端会突然长出一整套没走查过的协作界面。
+   * P4 终态批 B(拍板 #12)把能力位一起放开:默认 true,由服务器按进程内跑没跑
+   * collab v3 运行时决定关不关(上一条用例钉的就是那条否决权)。这里钉的是
+   * **没有第二条通道**:名单里一条 collab 方法都不该再有,能力位是唯一的闸。
    */
-  it('keeps the collab UI shut on web through the capability, not through stubs', async () => {
+  it('gates collab on web through the capability alone, with no stubs left', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('server unavailable')
     }))
@@ -174,7 +207,7 @@ describe('createWebPlatformApi', () => {
     expect(WEB_DESKTOP_ONLY_PLATFORM_METHODS.filter(name => name.includes('Collab'))).toEqual([])
 
     const api = createWebPlatformApi()
-    expect(api.capabilities.collabRooms).toBe(false)
+    expect(api.capabilities.collabRooms).toBe(true)
   })
 
   /**
@@ -182,12 +215,12 @@ describe('createWebPlatformApi', () => {
    * web 上同样不再有桩 —— 十四条 + 两条 + 二十五条走的是同一条 `POST /api/rpc`,
    * 技术上真能驱动桌面那台后端。
    *
-   * 挡在前面的是**能力位**,不是通道:`music` / `interactionRespond` / `evals`
-   * 在 web 上默认 false。这里钉的就是那三颗 false —— 一旦被人顺手改掉,浏览器
-   * 点一下会让服务器那台机器出声、替桌面答掉一条没人看见的提问,或者拿桌面的
-   * API key 在服务器上跑一整轮评估。
+   * P4 终态批 B(拍板 #13 / #15 / #17)把三颗一起放开:谁在服务这个 store,谁的
+   * 机器就是那台放音机(桌面就是本机);提问应答盖的章由宿主从内核活账里读、
+   * 不从请求体里读;评估面按 wire 路径读盘的四条在 http 上夹进 evals 自己那两棵
+   * 树。这里钉的是**闸只有能力位一道** —— 名单里一条桩都不该再有。
    */
-  it('keeps music, interaction and evals shut on web through capabilities, not through stubs', async () => {
+  it('gates music, interaction and evals on web through capabilities alone', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('server unavailable')
     }))
@@ -203,9 +236,9 @@ describe('createWebPlatformApi', () => {
     expect(WEB_DESKTOP_ONLY_PLATFORM_METHODS.filter(name => name.startsWith('evals'))).toEqual([])
 
     const api = createWebPlatformApi()
-    expect(api.capabilities.music).toBe(false)
-    expect(api.capabilities.interactionRespond).toBe(false)
-    expect(api.capabilities.evals).toBe(false)
+    expect(api.capabilities.music).toBe(true)
+    expect(api.capabilities.interactionRespond).toBe(true)
+    expect(api.capabilities.evals).toBe(true)
   })
 
   it('opens settings in the current browser tab', async () => {

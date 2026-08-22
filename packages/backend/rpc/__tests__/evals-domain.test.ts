@@ -10,8 +10,8 @@
  *  - **单跑闸**:第二次 `runStart` 拿到「A run is already in progress」,
  *    `runCancel` 只发信号(清空由后台跑批自己的 finally 做);
  *  - **`listRecords` 的过滤 / 分页 / 预览**与迁移前逐字相同;
- *  - **`readSnapshot` 的两种快照类型 + http 侧拒绝**(按 wire 路径读盘的四条
- *    在 `transport: 'http'` 上一律拒绝,与渲染侧能力位 `evals` 同口径)。
+ *  - **`readSnapshot` 的两种快照类型**,以及 **http 侧的路径夹紧**(P4 终态批 B:
+ *    按 wire 路径读盘的四条不再一律拒,改成必须落在 evals 面自己那两棵树里)。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -112,7 +112,7 @@ describe('evals RPC domain', () => {
     })
   })
 
-  it('reads prompt and context snapshots, and refuses both over http', async () => {
+  it('reads prompt and context snapshots', async () => {
     const promptPath = path.join(tmpDir, 'a.prompt.json')
     fs.writeFileSync(promptPath, JSON.stringify({ system: 'S' }), 'utf-8')
     const contextPath = path.join(tmpDir, 'a.context.jsonl')
@@ -138,14 +138,76 @@ describe('evals RPC domain', () => {
       success: false,
       error: 'Snapshot file not found',
     })
+  })
 
-    // http 上一律拒绝(evals 是桌面独占面)
-    for (const method of ['readSnapshot', 'readFixture', 'promoteFixture', 'readRunDetail']) {
-      expect(unwrap(await call(method, { path: promptPath, fixturePath: promptPath, detailPath: 'x' }, HTTP_CONTEXT))).toEqual({
+  /**
+   * P4 终态批 B(拍板 #15):渲染侧能力位 `evals` 放开之后,按 wire 路径读盘的四条
+   * 不能再一律拒 —— 拒了就是位开着面死着。改成**夹紧**:路径必须落在 evals 面自己
+   * 的两棵树里(`<repoDir>/evals` 与 `~/.onething/evals/fixtures/auto`)。
+   *
+   * 三支都要钉:树里的读得到、树外的结构化失败、桌面(ipc)一格没动。
+   */
+  it('http clamps wire paths into the evals roots instead of refusing them', async () => {
+    configureEvalsHost({ repoDir: () => tmpDir })
+    const fixturesDir = path.join(tmpDir, 'evals', 'fixtures')
+    fs.mkdirSync(fixturesDir, { recursive: true })
+    fs.mkdirSync(path.join(tmpDir, 'evals', 'runs'), { recursive: true })
+
+    const insidePrompt = path.join(fixturesDir, 'a.prompt.json')
+    fs.writeFileSync(insidePrompt, JSON.stringify({ system: 'S' }), 'utf-8')
+    const insideFixture = path.join(fixturesDir, 'fx.json')
+    fs.writeFileSync(insideFixture, JSON.stringify({ userMessage: 'hi' }), 'utf-8')
+    fs.writeFileSync(
+      path.join(tmpDir, 'evals', 'runs', 'r.json'),
+      JSON.stringify({ id: 'r' }),
+      'utf-8',
+    )
+
+    // 树里:http 上照读(位开着,面就得真的能用)
+    expect(unwrap(await call('readSnapshot', { path: insidePrompt }, HTTP_CONTEXT))).toMatchObject({
+      success: true,
+      snapshotType: 'prompt',
+      promptSnapshot: { system: 'S' },
+    })
+    expect(unwrap(await call('readFixture', { fixturePath: insideFixture }, HTTP_CONTEXT))).toMatchObject({
+      success: true,
+      fixture: { userMessage: 'hi' },
+    })
+    expect(unwrap(await call('readRunDetail', { detailPath: 'evals/runs/r.json' }, HTTP_CONTEXT))).toEqual({
+      success: true,
+      detail: { id: 'r' },
+    })
+
+    // 树外:结构化失败,一个字节都不读
+    const outside = path.join(tmpDir, 'outside.prompt.json')
+    fs.writeFileSync(outside, JSON.stringify({ system: 'X' }), 'utf-8')
+    const outsidePayloads: Array<[string, Record<string, unknown>]> = [
+      ['readSnapshot', { path: outside }],
+      ['readFixture', { fixturePath: outside }],
+      ['promoteFixture', { fixturePath: outside, expect: {} }],
+      // `..` 在与仓根拼完之后就塌掉了,所以 `readRunDetail` 也没有出路
+      ['readRunDetail', { detailPath: '../outside.prompt.json' }],
+    ]
+    for (const [method, payload] of outsidePayloads) {
+      expect(unwrap(await call(method, payload, HTTP_CONTEXT))).toEqual({
         success: false,
-        error: 'Evals is not supported in the web build',
+        error: 'Path is outside the evals workspace',
       })
     }
+
+    // ipc 一格没动:桌面就是本机那个人,树外照读
+    expect(unwrap(await call('readSnapshot', { path: outside }))).toMatchObject({
+      success: true,
+      snapshotType: 'prompt',
+      promptSnapshot: { system: 'X' },
+    })
+
+    // fail-closed:联网宿主没接沙箱根 = 宿主接线漏了,拒而不是「不夹」
+    const noSandbox = unwrap(
+      await call('readSnapshot', { path: insidePrompt }, { transport: 'http' }),
+    )
+    expect(noSandbox.success).toBe(false)
+    expect(String(noSandbox.error)).toContain('sandboxRoot')
   })
 
   it('keeps the single-run gate: a second runStart is refused, cancel only signals', async () => {

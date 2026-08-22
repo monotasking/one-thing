@@ -47,7 +47,11 @@ const store = vi.hoisted(() => ({
   setCurrentSessionId: vi.fn(),
 }))
 
-const collab = vi.hoisted(() => ({ ensureCollabGroupRoom: vi.fn() }))
+const collab = vi.hoisted(() => ({
+  ensureCollabGroupRoom: vi.fn(),
+  /** 协调器在不在场 —— `create` 的 http 分叉现在按它决定收不收 `kind`。 */
+  isCollabV3RuntimeRunning: vi.fn(() => false),
+}))
 const todoPlan = vi.hoisted(() => ({
   deleteSessionAiTodo: vi.fn(async () => {}),
   notifyTodoPlanActiveSessionChanged: vi.fn(),
@@ -392,16 +396,25 @@ describe('sessions RPC domain', () => {
     expect(permission.clearSession).not.toHaveBeenCalled()
   })
 
-  it("http refuses any create `kind` (no in-process room coordinator); ipc still builds the room", async () => {
+  /**
+   * P4 终态批 B(拍板 #12):`create` 的 http 分叉从「按传输一刀切」换成「按协调器
+   * 在不在场」。两支都要钉,因为这条判据同时是 `/api/capabilities` 里 `collabRooms`
+   * 的货源 —— 判反了就会出现「界面开着而请求被拒」的半开状态。
+   */
+  it('http refuses a create `kind` only when no collab runtime is in the process', async () => {
     const { dispatchRpc } = await loadDomain()
     collab.ensureCollabGroupRoom.mockReturnValue({ success: true, session: { id: SESSION_ID } })
+    collab.isCollabV3RuntimeRunning.mockReturnValue(false)
+
+    const roomPayload = {
+      name: 'x',
+      sessionId: SESSION_ID,
+      kind: 'room',
+      room: { memberAgentIds: ['a1'] },
+    }
 
     await expect(dispatchRpc(
-      {
-        domain: 'sessions',
-        method: 'create',
-        payload: { name: 'x', sessionId: SESSION_ID, kind: 'room', room: { memberAgentIds: ['a1'] } },
-      },
+      { domain: 'sessions', method: 'create', payload: roomPayload },
       HTTP_CONTEXT,
     )).resolves.toEqual({
       ok: true,
@@ -409,12 +422,22 @@ describe('sessions RPC domain', () => {
     })
     expect(collab.ensureCollabGroupRoom).not.toHaveBeenCalled()
 
+    // 协调器在场(桌面的内嵌 HTTP 面):走与 ipc 完全同一条建房路。
+    collab.isCollabV3RuntimeRunning.mockReturnValue(true)
+    await expect(dispatchRpc(
+      { domain: 'sessions', method: 'create', payload: roomPayload },
+      HTTP_CONTEXT,
+    )).resolves.toEqual({ ok: true, data: { success: true, session: { id: SESSION_ID } } })
+    expect(collab.ensureCollabGroupRoom).toHaveBeenCalledTimes(1)
+
+    // ipc 一格没动:桌面从来不问这个问题。
+    collab.isCollabV3RuntimeRunning.mockReturnValue(false)
     await expect(dispatchRpc({
       domain: 'sessions',
       method: 'create',
-      payload: { name: 'x', sessionId: SESSION_ID, kind: 'room', room: { memberAgentIds: ['a1'] } },
+      payload: roomPayload,
     })).resolves.toEqual({ ok: true, data: { success: true, session: { id: SESSION_ID } } })
-    expect(collab.ensureCollabGroupRoom).toHaveBeenCalledTimes(1)
+    expect(collab.ensureCollabGroupRoom).toHaveBeenCalledTimes(2)
   })
 
   it('rejects a method that is not on the router allowlist', async () => {

@@ -113,6 +113,9 @@ import {
 	getOAuthEventBroadcaster,
 	type OAuthTokenEvent,
 } from "../wiring/auth/oauth-events.js";
+// `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
+// 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
+import { isCollabV3RuntimeRunning } from "../wiring/collab/index.js";
 import {
 	createOnethingSearchProviders,
 	executeOnethingSearchForIpc,
@@ -484,6 +487,24 @@ const webServerCapabilities: RuntimeHostCapabilities = {
 	desktopWindows: false,
 	globalMenuEvents: false,
 };
+
+/**
+ * `/api/capabilities` 的出门快照(P4 终态批 B,拍板 #12)。
+ *
+ * 静态那几位是「联网宿主的环境事实」,常量就够;`collabRooms` 不是 ——
+ * 它问的是**这个进程里跑没跑 collab v3 那套 actor**,而同一份 `server/` 代码既
+ * 被独立 `server:start` 用(不装配 collab),也被桌面内嵌 HTTP 面挂在自己那只
+ * backend 上(`collab: true`)。所以每次现取,不缓存:答案是进程状态,不是配置。
+ *
+ * 渲染侧 `platform/web.ts` 的静态默认是 `true` —— 这里下发 `false` 就把它盖掉,
+ * 独立 server 上的浏览器因此看不到协作形态(房建得出来也没有 actor 驱动)。
+ */
+function currentServerCapabilities(): RuntimeHostCapabilities {
+	return {
+		...webServerCapabilities,
+		collabRooms: isCollabV3RuntimeRunning(),
+	};
+}
 
 class ServerStreamChannel extends StreamChannel<AgentEngineStreamChunk> {
 	private readonly wildcardHandlers = new Set<StreamPayloadHandler>();
@@ -1670,7 +1691,7 @@ async function createServerRuntimeOverServerBackend(
 	>({
 		capabilities: {
 			async get() {
-				return webServerCapabilities;
+				return currentServerCapabilities();
 			},
 		},
 		sessions: {

@@ -26,14 +26,18 @@
  * 两条路径都不读请求里的 `channel` —— 请求里根本没有那一格:让应答方自报通道,
  * 那道闸就白设了。
  *
- * ## 迁后 web 行为:能力位关着 = 零变化
+ * ## web 行为:能力位已放开(P4 终态批 B,拍板 #17)
  *
- * web 今天两条都是硬桩(`unsupported(method)`,返回 `{success:false, error:'…not
- * available in the web host yet.'}`)。迁走之后通道是通的,但渲染侧新立了一颗
- * 能力位 `interactionRespond`(`platform/types.ts`),web 上默认 `false`,
- * `stores/interactions.ts` 在它为 false 时**根本不发请求**,可感知结果与今天逐字
- * 相同(补水拿不到 pending、应答不落地,提问由内核 deadline 自结算)。
- * 放开 = `platform/web.ts` 里 `interactionRespond: false` 改成 `true` 那一行。
+ * 迁走之前 web 两条都是硬桩;迁走之后通道通了,但渲染侧那颗 `interactionRespond`
+ * (`platform/types.ts`)默认 `false`,`stores/interactions.ts` 在它为 false 时
+ * 根本不发请求。P4 终态批 B 把它翻成 `true` —— 浏览器从此能补水 pending、能应答。
+ *
+ * 放开之所以安全,全压在上面那条**通道亲和**上:应答盖的章是那次提问自己的
+ * `targetChannel`,由宿主从内核活账里读出来,请求体里没有那一格。换句话说,
+ * 浏览器答的只能是**这台引擎真的在等的那个提问**,而不是它自称在答的那个 ——
+ * 与 server HTTP 权限应答同一判例(sessions:shadow-battery 的权限场景走的就是
+ * 这条路)。能力位关着时的旧行为(提问由内核 deadline 自结算)仍然是任何宿主把
+ * 这一位按下去之后的兜底。
  *
  * ## 本域零推送
  *

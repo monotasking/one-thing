@@ -1211,6 +1211,18 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
 
 ### P4 传输面 router 迁移(主线,1–2 周,逐域可暂停;08-21:**P4a 前移到 P1' 之前**)
 
+> **08-22 用户拍板(P4 终态批)**:A1 立宿主壳路由(`shell:invoke` 一条通道 + 宿主侧 dispatcher + context 带 callerId,窗口系
+> 全部迁入,与 `rpc:invoke` 对称)/ C2 plugins 整域迁 + web 能力位默认关 / D2 terminal 迁 + 能力位默认关 / **B 四颗能力位全部
+> 放开**(#12 collab、#13 music、#15 evals、#17 interaction)/ E1 mobile 改走 `/api/rpc`(真机验收由用户跑)/ F 四条全做
+> (#21 桌面也走命令总线、#26 删 CONFIRM_TOOL 契约、#30 log-monitor 拼写修、#34 删 refreshAsyncTools)。
+> 排期:泳道 1(串行,碰四壳)B → #21 → D2 → C2 → A1-a → A1-b → E1-b;泳道 2(并行,不碰四壳)F-小项(#26/#30/#34)→ E1-a。
+>
+> **08-22 落地记录**:
+> - **E1-a 已提交 `fa403135`**(mobile `lib/rpc.ts` 通用信封,`api.ts`/`chat-reducer.ts` 改走 `/api/rpc`;真机走查待用户);查出既存 bug 列 #36。
+> - **F-小项已提交 `718ddfca`**(#26 删 `command:confirm-tool` 契约 12→11;#30 log-monitor 四处拼写改常量,且 `tool:execution-end` 无 `toolName` 摘要改 `toolCallId`;#34 删 `tools.refreshAsyncTools` 死通道);battery 264/0。
+> - **B 四颗能力位已放开**(`platform/web.ts` 静态默认与 `normalizeServerCapabilities` 同改 true):**只有 collabRooms 一位上 `/api/capabilities` 投影**(`RuntimeHostCapabilities.collabRooms?` 每次现取 `isCollabV3RuntimeRunning()`——独立 `server:start` 不装配 collab v3 actor,桌面内嵌面/CLI daemon 为 true),`sessions.create` 的 http 分叉判据从"哪条传输"改为"协调器是否在场"(文案逐字不变,在场时与 ipc 同一条 `ensureCollabGroupRoom`);music/evals/interactionRespond 无进程内缺口,不投影。**evals 四条 http 语义(执行中判定,非用户拍):不是夹 `resolveRpcSandbox` 的 sandboxRoot**(那是 `<workspaceRoot>/<uid>/<wid>` 的 per-owner 工作区,与宿主机器上的评估代码仓永不相交,夹它 = 四条全灭,与"一律拒"无异),而是保留 `resolveRpcSandbox` 的 fail-closed 不变量 + 夹进 evals 面自己两棵树(`<repoDir>/evals`、`~/.onething/evals/fixtures/auto`),越界回 `Path is outside the evals workspace`,`readRunDetail` 先与 repoDir 拼再夹(顺手堵了一条既存 `..` 遍历口);ipc 一格未动。若要改回"server 上等于关"是一行。真机(独立 server、隔离 store):`/api/capabilities` 如实 `collabRooms:false`,四域 `/api/rpc` 皆真后端答案,`/etc/hosts`/`../../../etc/hosts` 皆拒、界内不存在路径到 fs 检查。验收 typecheck 0、全量 11227 绿、五门绿(transport 3075 无上升)、web:build 绿、battery 264/0。遗留:桌面内嵌面 `collabRooms:true` 分支只有单测;浏览器建协作房端到端未走。
+> - **#21 读码结论(待执行)**:`platformApi.resumeAfterToolConfirm` 渲染层零调用点,且引擎侧 `result.requiresConfirmation=true` 已无生产者(toolkit 重建后审批在工具内阻塞,runner 的 pause 抛不出来)——整条"第七条 invoke"是死路。执行口径:删桌面 invoke 通道(preload / `main/ipc/chat.ts` / `apps/electron/src/ipc/chat.ts`)、删 platform 方法与 web 实现、删 runtime `sessions/tool-confirmation.ts` 的 ForIpc 助手;core 的 `command:resume-after-confirm` + `handleResumeAfterConfirm` 保留(引擎能力,退役另列待拍)。
+
 > **08-22 续做口径(用户"继续",拍板未齐时的默认)**:凡能在**不改变可感知行为**前提下迁的都迁;会让 web 长出新能力的
 > (#12 collab / #13 music / #15 evals / #17 interaction)迁时加 web 能力位默认关(放开 = 一行,等拍);#16 plugins 写面 / #18 terminal
 > 不动;#19 tools·files 按 transport 分叉在 http 侧保留 server 沙箱语义;#20 五域按八域既有判例迁(server facade 镜像 → 同一 backend,
@@ -1423,12 +1435,12 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 9 | **(新)薄壳接线的落位形态**:`<d>/*.wiring.ts` 后缀 vs `<d>/wiring/` 子目录 | 后缀(一两个文件时不值得开目录;≥3 个文件再开 `wiring/`) | 待拍 |
 | 10 | **(新)窗口系通道的典型形态**(todo-plan minimize/zoom/drag 等操作 BrowserWindow 的通道):宿主壳自己的 `shell`/`window` 路由 + sender 上下文 vs 维持手写 | P4 终态前统一成一个宿主壳路由;transport 门区分"域通道"(禁增)与"窗口系"(白名单) | 待拍 |
 | 11 | **(新)spaces 迁 router 后 web 端从"必然降级"变为"真拿到空间"** | 按 agents/models 收敛判例接受,不人为关闭 | 已按默认执行,待知会确认 |
-| 12 | **(新)collab 迁 router 后,web 的 `collabRooms` 能力位是否放开**(放开 = 浏览器里能用协作房间) | 迁移时**不动**能力位(零行为变化);放开另议 | 待拍 |
-| 13 | **(新)music 迁 router 后 web 能遥控桌面播放器**(今天 web 桩回"仅桌面可用") | 符合"一个 core 任何 UI",但用户可感知 → 先拍再迁 | 待拍,music 迁移暂缓 |
+| 12 | **(新)collab 迁 router 后,web 的 `collabRooms` 能力位是否放开**(放开 = 浏览器里能用协作房间) | 迁移时**不动**能力位(零行为变化);放开另议 | 已做(08-22 B:位放开;collabRooms 按 isCollabV3RuntimeRunning 投影) |
+| 13 | **(新)music 迁 router 后 web 能遥控桌面播放器**(今天 web 桩回"仅桌面可用") | 符合"一个 core 任何 UI",但用户可感知 → 先拍再迁 | 已做(08-22 B:位放开) |
 | 14 | ~~notify 域疑为死码~~ **08-22 纠正:活的**——`App.vue:1241/1246` 用 `platformApi.notify.onActivate/setBadge`、`ipc-hub.ts:607` 用 `notify.show`(嵌套对象访问,盘点 grep 漏了);Notification + sender 窗 + dock 是宿主原生(C 类) | 不删不迁,归窗口系残留集(#10) | 已裁 |
-| 15 | **(新)evals 迁 router 后 web 端从"Evals is not supported in the web build"桩变为真能跑 evals**(repoDir 在服务器机器上解析) | 先拍再迁;若不想放开,迁移时保留一颗 `evals` 能力位关 UI | 待拍,evals 迁移暂缓 |
+| 15 | **(新)evals 迁 router 后 web 端从"Evals is not supported in the web build"桩变为真能跑 evals**(repoDir 在服务器机器上解析) | 先拍再迁;若不想放开,迁移时保留一颗 `evals` 能力位关 UI | 已做(08-22 B:位放开;http 夹 evals 自有两棵树,见落地记录) |
 | 16 | **(新,P4c)plugins 迁 router = web 长出 install/uninstall/config 写/market 全套真能力**,与"插件只在桌面执行(方案 A)"冲突;server 现有 enable/disable 写路由改的是 `owners/<uid>/<wid>/plugin-store` 另一棵树 | 不迁写面;只迁只读面(list/commands)并保留桌面专属写面,或整域留到方案 A 重议 | 待拍 |
-| 17 | **(新,P4c)interaction 迁 router = web 从"桩掉靠 deadline 超时"变为"真能应答 agent 提问"** | 这是 `web.ts:461-465` 注释里的待办,建议放开 | 待拍 |
+| 17 | **(新,P4c)interaction 迁 router = web 从"桩掉靠 deadline 超时"变为"真能应答 agent 提问"** | 这是 `web.ts:461-465` 注释里的待办,建议放开 | 已做(08-22 B:位放开;应答章取 ask 自身 targetChannel 同 server 判例) |
 | 18 | **(新,P4c)terminal 内核已在 app 层,技术上可迁,但 `terminal:false` 政策冻结** | 维持冻结,不迁 | 待拍 |
 | 19 | **(新,P4c)tools(`executeTool` 直跑)/ files(13 条 fs)迁 router 后权限边界从 `DESKTOP_RPC_CONTEXT`(unconfined)变为 server `RpcContext` sandbox root 语义** | 安全面:迁前先把 sandbox root 语义逐条对清,桌面保持 unconfined | 待拍 |
 | 20 | **(新,P4c)acp / mcp / gateway / oauth / themes 迁 router = 删 server facade 自有的那份镜像实现,web 改吃桌面同一套**(themes 还让 server 获得插件主题 override) | 这正是"五重镜像"要消的债,按 agents/models 判例逐域接受 | 待拍(可一次性拍) |
@@ -1436,16 +1448,17 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 | 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
 | 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
+| 36 | **(新,E1-a 真机验信封时查出,既存 bug)mobile `sendMessage` 带 `channel:'api'`,被 channel session-router 改道进共享 identity 会话 `identity:api:api:default:…`,mobile 请求的会话永远为空**(A/B 实测:带 channel 0 条、不带 1 条;E1 之前旧 REST 同样透传,404 后无人看见) | A(推荐)删 `apps/mobile/src/lib/api.ts` 的 `channel:'api'` 一字段;B 维持;C mobile 本就该走 channel 身份线则改会话列表读法 | 待拍 |
 | 35 | **(新,P4c-11 已发生)server 的 per-owner 第二份设置账(`settingsByOwner` + `ServerSettingsStore`)收敛到装配层单例**——第六批 mcp 写面已落单例,再保留 per-owner 读面是自相矛盾;web 与桌面读同一本 `<store>/settings.json`,脱敏/哨兵合并两道护栏逐字保留 | 同 #20/#27 接受;要回 per-owner 得补 `configureServerSettingsHost` 端口注回旧 adapter | 已按默认执行,待知会 |
-| 34 | **(新,P4c-9)`tools.refreshAsyncTools` 全仓零调用点**(bridge 从未暴露,死通道) | 退役该方法与常量 | 待拍 |
+| 34 | **(新,P4c-9)`tools.refreshAsyncTools` 全仓零调用点**(bridge 从未暴露,死通道) | 退役该方法与常量 | 已做(08-22 F-小项) |
 | 32 | **(新,P4c-4 sessions)`apps/mobile` 是独立 RN 客户端直接打 server REST**:为它保留 `GET/POST /api/sessions`、`POST /api/session-messages/page` 三条薄适配;另发现 mobile 仍打 `POST /api/sessions/:id/commands`(session-command 入口 router 化时已删,今天 404——既有伤,非本批) | mobile 改走 `/api/rpc`(它已有 SSE/fetch 层)后删这三条;`/commands` 那条要么给 mobile 加 rpc 调用要么临时恢复路由 | 待拍 |
 | 33 | **(新,P4c-4 sessions)server 侧三条语义按 transport 分叉保留**:`updateWorkingDirectory` 在 http 夹 sandboxRoot(旧文案逐字)、`delete` 在 http 先 abort 活流/destroy 总线会话/清权限镜像、`create` 在 http 对 `kind` 维持旧拒绝——桌面形状不动 | 已按"不放宽"执行;放开任一条(如浏览器建协作房)另拍(已落地:域测试 13 例含三条分叉;两处旧 server 细节未补:`workingDirectory: null/''` 旧 server 解释为"重置到沙箱根"现为"清空"(ipc 原义);server 进程内 resident `sessions` Map 不再随 delete 摘条,`max-tokens`/`session-messages/page` 可能读到已删会话的陈旧缓存,`GET /api/sessions` 不受影响) | 已按默认执行,待知会 |
-| 30 | **(新,事件词汇统一时查出,现存 bug)`core/plugins/log-monitor.ts` 4 处 `'tool_execution_start'/'tool_execution_end'`(下划线)vs 真实事件 `tool:execution-start/end`**——日志监视器工具开始/结束摘要与"最近错误"半个条件永远匹配不到 | 改为 `SESSION_EVENT_TYPES.TOOL_EXECUTION_START/END`(一行修,但这是行为变化:监视器会开始对这两类事件产生摘要/通知) | 待拍 |
+| 30 | **(新,事件词汇统一时查出,现存 bug)`core/plugins/log-monitor.ts` 4 处 `'tool_execution_start'/'tool_execution_end'`(下划线)vs 真实事件 `tool:execution-start/end`**——日志监视器工具开始/结束摘要与"最近错误"半个条件永远匹配不到 | 改为 `SESSION_EVENT_TYPES.TOOL_EXECUTION_START/END`(一行修,但这是行为变化:监视器会开始对这两类事件产生摘要/通知) | 已做(08-22 F-小项;end 事件无 toolName,摘要改 toolCallId) |
 | 31 | **(新)`shared/ipc/channels.ts:166 PERMISSION_REQUEST: "permission:request"` 与会话事件 `permission:request` 同名**(通道表与事件表命名空间重叠;checker 扫描面不含 shared/ipc) | 通道随 P4 消失即解;或先改通道值加前缀 | 待拍 |
 | 29 | **(新,session-command 入口 router 化已发生)server 侧命令的 per-owner "Session not found" 前置检查消失**(桌面线从来没有;命令的 per-owner 隔离随之消失,会话/SSE 隔离不受影响) | 同 #23 接受;多租户时在 RpcContext 层统一 | 已按默认执行,待知会 |
 | 28 | **(新,P4c-3 已发生)media 迁 router 后 `filePath`/`thumbnailPath` 以 store 绝对路径出到浏览器**(旧 server 壳改写为 `/api/media/file/<name>` 兼有遮蔽之效;取文件 URL 规则改由渲染侧 `services/media-src.ts` 按 environment 决定) | 单用户 + loopback + Bearer 下与 project-dirs/skills 口径一致,接受;多租户前在 RpcContext 层统一处理 | 已按默认执行,待知会 |
 | 27 | **(新,P4c-2 已发生)skills 迁 router 后 web/server 不再扫 `owners/<uid>/<wid>/skills` 的第二份技能表,改读桌面 core 同一份**;`executeSkill` 从未实现的整条链(web 桩 + `/api/skills/execute` + adapter)删除 | 与 agents/models/#20 同判例接受 | 已按默认执行,待知会 |
-| 26 | **(新,词汇统一时查出)`command:confirm-tool`(`CONFIRM_TOOL`)全仓零订阅者**——shared 有 `ConfirmToolCommand` 形状、core 有常量,但没有任何 `onAnySession` 消费它,发这条命令等于丢进空气 | 删契约(shared 接口 + core 常量)并清渲染层发送点;若确有未完成的设计意图再补订阅 | 待拍 |
+| 26 | **(新,词汇统一时查出)`command:confirm-tool`(`CONFIRM_TOOL`)全仓零订阅者**——shared 有 `ConfirmToolCommand` 形状、core 有常量,但没有任何 `onAnySession` 消费它,发这条命令等于丢进空气 | 删契约(shared 接口 + core 常量)并清渲染层发送点;若确有未完成的设计意图再补订阅 | 已做(08-22 F-小项:契约删,零发送点) |
 | 25 | **(新,P3')归位单位从"目录"改为"文件":依赖脊柱的接线归 `backend/wiring/<d>/`,逻辑归 `runtime/<d>/`;I1 改为"逻辑一领域一家"**(量测:25 薄目录 17 个依赖脊柱,整目录折回会成环) | 按修正执行;P3'a-1 先做 6 个脊柱零依赖目录验证机制 | 已按默认开工,待知会 |
 
 08-21 已拍:组织原则 = 包按环境/依赖等级、包内按领域、文件名带角色(§0b.2);`app` 改名 `backend` 并瘦身;

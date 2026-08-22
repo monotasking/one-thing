@@ -24,13 +24,23 @@
  *    变化**(单窗 → 全窗),事件体一字未变;桌面只有一扇设置窗承载评估页,
  *    而渲染侧的订阅只在 `startRun` 时才建立,所以可感知结果不变。
  *
- * ## http 分叉:按 wire 上的绝对路径读盘的四条,在 http 上直接拒绝
+ * ## http 分叉:按 wire 上的绝对路径读盘的四条,在 http 上夹进 evals 面自己那两棵树
  *
  * `readSnapshot` / `readFixture` / `promoteFixture` / `readRunDetail` 会把请求
  * 里带来的路径直接交给 `fs`。桌面上这是对的(用户就是本机那个人,形状与迁移前
  * 逐字相同);挂上通用通道之后 server 上同一条会变成「读服务器上任意文件」。
- * 与渲染侧能力位 `evals`(web 默认关)取同一个口径:`transport === 'http'` 时
- * 一律拒绝,而不是夹进 sandboxRoot —— evals 是桌面独占面,半开不如不开。
+ *
+ * P4 终态批 B(拍板 #15)放开了渲染侧能力位 `evals`,所以这四条不能再一律拒 ——
+ * 拒了等于位开着面死着。改成**夹紧**:`transport === 'http'` 时路径必须落在 evals
+ * 面自己的两棵树里(`<repoDir>/evals` 与 `~/.onething/evals/fixtures/auto`),
+ * 越界回一句结构化失败,不抛、不读盘。
+ *
+ * **为什么不是 `resolveRpcSandbox` 的 sandboxRoot**:那是 `<workspaceRoot>/<uid>/<wid>`
+ * 的 per-owner 工作区(默认在 tmpdir 下),而 evals 仓是宿主机器上的**代码仓**
+ * (`resolveEvalsRepoDir()`:设置 → 非打包 cwd),两者从不相交 —— 夹进 sandboxRoot
+ * 会让四条全灭,与「一律拒」没有区别。所以 `resolveRpcSandbox` 在这里只用它那条
+ * **fail-closed 不变量**(联网宿主没接沙箱根 = 宿主接线漏了,抛),真正的边界是
+ * evals 面自己的根。两条都过才放行。
  */
 import fs from 'node:fs'
 import { homedir } from 'node:os'
@@ -59,16 +69,48 @@ import {
 import { getLogger } from '../../wiring/logging/index.js'
 import { getSkillsForSession } from '../../wiring/skills/session-skills.js'
 import { analyzeIncidentInBackground } from './evals-workbench.js'
+import { isPathInside, resolveRpcSandbox } from '../sandbox.js'
 import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.evals')
 
-/** 迁移前那句写在 `platform/web.ts` 硬桩里的话,拿来当 http 侧的拒绝文案。 */
-const EVALS_DESKTOP_ONLY = 'Evals is not supported in the web build'
+/** 夹不住时的答案。写给用户看,不泄露宿主上任何一段真实路径。 */
+const EVALS_PATH_OUTSIDE = 'Path is outside the evals workspace'
 
-/** 带 wire 路径的方法在 http 上一律拒绝(见文件头「http 分叉」)。 */
-function refusedOverHttp(context: RpcDispatchContext | undefined): boolean {
-  return context?.transport === 'http'
+/**
+ * evals 面在宿主机器上的两棵树 —— http 上 wire 路径只能落在它们里面。
+ *
+ * 每次现取而不是常量:`resolveEvalsRepoDir()` 读的是设置,用户改了评估仓的位置
+ * 之后不该还要重启才认。仓没配 = 只剩自动夹具那棵树(不是「全放开」)。
+ */
+function evalsWireRoots(): string[] {
+  const roots = [path.resolve(getEvalsFixturesAutoDir())]
+  const repoDir = resolveEvalsRepoDir()
+  if (repoDir) roots.push(path.resolve(repoDir, 'evals'))
+  return roots
+}
+
+type EvalsWirePath = { ok: true; path: string } | { ok: false; error: string }
+
+/**
+ * 请求里带来的路径 → 这次真的可以交给 `fs` 的路径(见文件头「http 分叉」)。
+ *
+ * `ipc`:原样(桌面语义就是「用户说哪就是哪」,与迁移前逐字相同)。
+ * `http`:先过 `resolveRpcSandbox` 的 fail-closed 闸(没接沙箱根就抛,那是宿主
+ * 接线 bug,不是用户输入错误),再要求解析后的绝对路径落在 evals 面的根里。
+ * 比较一律在 `path.resolve()` 之后做,`..` 在比较前就已经塌掉了。
+ */
+function clampEvalsWirePath(
+  rawPath: unknown,
+  context: RpcDispatchContext | undefined,
+): EvalsWirePath {
+  const value = typeof rawPath === 'string' ? rawPath.trim() : ''
+  if (!value) return { ok: false, error: 'Path required' }
+  if (context?.transport !== 'http') return { ok: true, path: value }
+  resolveRpcSandbox(context)
+  const candidate = path.resolve(value)
+  const inside = evalsWireRoots().some(root => isPathInside(candidate, root))
+  return inside ? { ok: true, path: candidate } : { ok: false, error: EVALS_PATH_OUTSIDE }
 }
 
 // ── Helpers(逐字搬自 @main/ipc/evals.ts)────────────────
@@ -436,29 +478,28 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
   },
 
   async readSnapshot(request, context) {
-    if (refusedOverHttp(context)) return { success: false, error: EVALS_DESKTOP_ONLY }
     try {
-      if (!request.path) {
-        return { success: false, error: 'Path required' }
-      }
-      if (!fs.existsSync(request.path)) {
+      const clamped = clampEvalsWirePath(request.path, context)
+      if (!clamped.ok) return { success: false, error: clamped.error }
+      const snapshotPath = clamped.path
+      if (!fs.existsSync(snapshotPath)) {
         return { success: false, error: 'Snapshot file not found' }
       }
 
-      const isPrompt = request.path.endsWith('.prompt.json')
-      const isContext = request.path.endsWith('.context.jsonl')
+      const isPrompt = snapshotPath.endsWith('.prompt.json')
+      const isContext = snapshotPath.endsWith('.context.jsonl')
       if (!isPrompt && !isContext) {
         return { success: false, error: 'Unknown snapshot type' }
       }
 
       if (isPrompt) {
-        const content = fs.readFileSync(request.path, 'utf-8')
+        const content = fs.readFileSync(snapshotPath, 'utf-8')
         const promptSnapshot = JSON.parse(content)
         return { success: true, snapshotType: 'prompt', promptSnapshot }
       }
 
       // Context: read jsonl with pagination
-      const raw = fs.readFileSync(request.path, 'utf-8')
+      const raw = fs.readFileSync(snapshotPath, 'utf-8')
       const allLines = raw.split('\n').filter(Boolean)
       // First line is header, rest are messages
       const messages: ContextSnapshotMessage[] = []
@@ -489,12 +530,13 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
   },
 
   async readFixture(request, context) {
-    if (refusedOverHttp(context)) return { success: false, error: EVALS_DESKTOP_ONLY }
     try {
-      if (!fs.existsSync(request.fixturePath)) {
+      const clamped = clampEvalsWirePath(request.fixturePath, context)
+      if (!clamped.ok) return { success: false, error: clamped.error }
+      if (!fs.existsSync(clamped.path)) {
         return { success: false, error: 'Fixture file not found' }
       }
-      const content = fs.readFileSync(request.fixturePath, 'utf-8')
+      const content = fs.readFileSync(clamped.path, 'utf-8')
       const fixture = JSON.parse(content)
       return { success: true, fixture }
     } catch (error) {
@@ -645,7 +687,6 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
   },
 
   async promoteFixture(request, context) {
-    if (refusedOverHttp(context)) return { success: false, error: EVALS_DESKTOP_ONLY }
     try {
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
@@ -653,19 +694,24 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
       }
 
       // Read the fixture
-      if (!fs.existsSync(request.fixturePath)) {
+      const clamped = clampEvalsWirePath(request.fixturePath, context)
+      if (!clamped.ok) return { success: false, error: clamped.error }
+      const fixturePath = clamped.path
+      if (!fs.existsSync(fixturePath)) {
         return { success: false, error: 'Fixture file not found' }
       }
-      const fixtureContent = fs.readFileSync(request.fixturePath, 'utf-8')
+      const fixtureContent = fs.readFileSync(fixturePath, 'utf-8')
       const fixture = JSON.parse(fixtureContent)
 
       // Copy fixture to repo evals/fixtures/
       const repoFixturesDir = getEvalsFixturesDir(repoDir)
       fs.mkdirSync(repoFixturesDir, { recursive: true })
-      const fixtureFilename = path.basename(request.fixturePath)
+      // 目的地一律由 `basename` 拼,所以写的落点永远在 repoFixturesDir 里,
+      // 与来源路径长什么样无关(来源那一侧由上面的夹紧负责)。
+      const fixtureFilename = path.basename(fixturePath)
       const destFixturePath = path.join(repoFixturesDir, fixtureFilename)
       if (!fs.existsSync(destFixturePath)) {
-        fs.copyFileSync(request.fixturePath, destFixturePath)
+        fs.copyFileSync(fixturePath, destFixturePath)
       }
 
       // Optionally copy .context.jsonl for multi-turn replay
@@ -673,7 +719,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
       if (request.includeContext) {
         const baseName = fixtureFilename.replace(/\.json$/, '')
         const contextSrc = path.join(
-          path.dirname(request.fixturePath),
+          path.dirname(fixturePath),
           `${baseName}.context.jsonl`,
         )
         if (fs.existsSync(contextSrc)) {
@@ -797,13 +843,16 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
   },
 
   async readRunDetail(request, context) {
-    if (refusedOverHttp(context)) return { success: false, error: EVALS_DESKTOP_ONLY }
     try {
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
         return { success: false, error: 'Evals repo not configured' }
       }
-      const fullPath = path.join(repoDir, request.detailPath)
+      // `detailPath` 是相对仓根的,先拼再夹 —— 夹的是拼完的结果,`..` 因此没有
+      // 出路(桌面照旧不夹,形状与迁移前逐字相同)。
+      const clamped = clampEvalsWirePath(path.join(repoDir, request.detailPath), context)
+      if (!clamped.ok) return { success: false, error: clamped.error }
+      const fullPath = clamped.path
       if (!fs.existsSync(fullPath)) {
         return { success: false, error: 'Run detail file not found' }
       }

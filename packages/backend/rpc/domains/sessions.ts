@@ -42,9 +42,11 @@
  *     `ipc` 照旧只 `fs.stat`。
  *  2. **`delete`**:`http` 先做旧路由那三件收尾(中止活流、清权限询问、拆事件/
  *     流通道),再走仓的删除与级联;`ipc` 保持桌面原样(它本来就没有这一段)。
- *  3. **`create`**:`http` 对任何 `kind` 一律拒(建房要 in-process 的
- *     RoomCoordinator,联网宿主不跑它),文案逐字沿用旧 REST;`ipc` 照旧走
- *     `ensureCollabGroupRoom`。
+ *  3. **`create`**:`http` 上带 `kind` 的请求要看**协调器在不在场**(P4 终态批 B,
+ *     拍板 #12)。在场(桌面的内嵌 HTTP 面 —— 它挂的就是桌面那只 `collab: true`
+ *     的 backend)走与 `ipc` 完全同一条 `ensureCollabGroupRoom`;不在场(独立
+ *     `server:start` 不装配 collab)照旧拒,文案逐字沿用旧 REST。判据与
+ *     `/api/capabilities` 下发的 `collabRooms` 同源,UI 与后端不会半开。
  */
 import fs from 'node:fs/promises'
 import { v4 as uuidv4 } from 'uuid'
@@ -79,7 +81,11 @@ import { sessionsRouter, type SessionsRoutes } from '@shared/ipc/sessions.js'
 import * as store from '../../store.js'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../../wiring/agents/index.js'
-import { ensureCollabGroupRoom, type CollabGroupRoomInput } from '../../wiring/collab/index.js'
+import {
+  ensureCollabGroupRoom,
+  isCollabV3RuntimeRunning,
+  type CollabGroupRoomInput,
+} from '../../wiring/collab/index.js'
 import { getStreamEngine } from '../../wiring/engine/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
@@ -195,12 +201,23 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
   },
   async create(request, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) {
     const { name, sessionId, workspaceId, kind, room } = request
-    // **传输面分叉(与 session-command 同一判例)**:建房要 in-process 的
-    // RoomCoordinator,联网宿主不跑它 —— 所以 `http` 上任何 `kind` 一律拒,
-    // 文案与被删掉的 `POST /api/sessions` 路由逐字相同(它回 400 + 这只 body;
-    // 通用信封没有 HTTP 状态码这一格,body 原样)。排在最前,与旧路由的顺序
-    // 一致:带 kind 的请求在碰 id 校验之前就被挡掉。
-    if (context.transport === 'http' && kind !== undefined) {
+    // **传输面分叉(与 session-command 同一判例)**:建房要 in-process 的 collab
+    // v3 actor 运行时。P4 终态批 B(拍板 #12)之前这里对 `http` 上任何 `kind` 一律
+    // 拒;放开 `collabRooms` 能力位之后,拒的判据从「哪条传输」换成**协调器在不
+    // 在场**:
+    //
+    //  - 桌面的内嵌 HTTP 面挂在自己那只 `collab: true` 的 backend 上,actor 就在
+    //    这个进程里 —— 浏览器建的房与桌面自己建的是同一间,所以放行,走下面与
+    //    `ipc` 完全同一条 `ensureCollabGroupRoom`。
+    //  - 独立 `server:start` 不装配 collab —— 房建得出来也没有 actor 驱动,那是
+    //    一间死房,所以照旧拒,文案与被删掉的 `POST /api/sessions` 路由逐字相同
+    //    (它回 400 + 这只 body;通用信封没有 HTTP 状态码这一格,body 原样)。
+    //
+    // 同一个判据也是 `/api/capabilities` 里 `collabRooms` 的货源
+    // (`server/runtime.ts` 的 `currentServerCapabilities`),所以「UI 让不让建」
+    // 与「后端收不收」永远同进同退,不会出现界面开着而请求被拒的半开状态。
+    // 排在最前,与旧路由的顺序一致:带 kind 的请求在碰 id 校验之前就被挡掉。
+    if (context.transport === 'http' && kind !== undefined && !isCollabV3RuntimeRunning()) {
       return {
         success: false,
         error: `Session kind '${kind}' is not supported on the server host`,

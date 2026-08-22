@@ -8,11 +8,13 @@
  *
  * 与被删掉的那条线的差别有两处值得记一笔:
  *
- * 1. **能力位没动**。web 端原来是一排 `unsupported()` 桩(必然回
+ * 1. **能力位后来放开了**(P4 终态批 B,拍板 #12)。web 端原来是一排
+ *    `unsupported()` 桩(必然回
  *    `{ success: false, error: 'Platform method … is not available in the web host yet.' }`),
- *    迁到 router 之后 web 走的是同一条 `POST /api/rpc`,技术上真能拿到桌面那台
- *    引擎的房间。但 `PlatformCapabilities.collabRooms` 在 web 上仍然是 `false`,
- *    协作 UI 照旧关着 —— 放开它是独立的一次拍板,不搭这次搬家的便车。
+ *    迁到 router 之后 web 走的是同一条 `POST /api/rpc`,拿到的就是桌面那台引擎的
+ *    房间。`PlatformCapabilities.collabRooms` 在 web 上默认 `true`,并由服务器按
+ *    进程内是否跑着 collab v3 运行时(`isCollabV3RuntimeRunning()`)如实下发 ——
+ *    独立 `server:start` 没有那套 actor,那里仍然是 `false`。
  *
  * 2. **结构化克隆的那道防线换了地方**。preload 桥从前在边界上把 `action` /
  *    `agentIds` / `actor` 从原始值重建一遍(Vue 的响应式代理过不了 structured

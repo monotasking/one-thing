@@ -34,6 +34,15 @@ export interface RuntimeHostCapabilities {
   clipboardWrite: boolean
   desktopWindows: boolean
   globalMenuEvents: boolean
+  /**
+   * 多 agent 协作房(P4 终态批 B,拍板 #12)。**可选**,因为这一位不是「宿主
+   * 环境有没有」而是「这个进程里跑没跑那套 actor」—— 只有真的知道答案的宿主才
+   * 该开口。省略 = 不表态,客户端用自己的默认值。
+   *
+   * 装配了 `createOnethingBackend({ collab: true })` 的宿主(桌面 + 它的内嵌
+   * HTTP 面)为 true;独立 `server:start` 今天不装配,为 false。
+   */
+  collabRooms?: boolean
 }
 
 export interface RuntimeEventSubscribeOptions {
