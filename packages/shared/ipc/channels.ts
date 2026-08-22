@@ -15,7 +15,8 @@ export const IPC_CHANNELS = {
 	// Chat related
 	CLEAR_CHAT: "chat:clear",
 	// 聊天面的六条数据面(历史/标题/提示词快照/思考时长/停止/活流表)已走通用
-	// RPC 通道(chatRouter,P4c 第五批);第七条 RESUME_AFTER_TOOL_CONFIRM 见下。
+	// RPC 通道(chatRouter,P4c 第五批);第七条「工具审批后恢复流」于 2026-08-22
+	// (#21)整条删除,引擎的 `command:resume-after-confirm` 仍在命令总线上。
 
 	// Skill usage notification
 	SKILL_ACTIVATED: "chat:skill-activated",
@@ -89,8 +90,6 @@ export const IPC_CHANNELS = {
 	// providersRouter),此处不再有常量。
 
 	// Tools:七条数据面已迁到通用 RPC 通道(toolsRouter,P4c 第九批),本域零推送。
-	// 留下的这一条不是 tools 域 —— 它往引擎递 sender,信封里没有那一格(拍板 #21)。
-	RESUME_AFTER_TOOL_CONFIRM: "chat:resume-after-tool-confirm",
 
 	// Permission related
 	PERMISSION_REQUEST: "permission:request",

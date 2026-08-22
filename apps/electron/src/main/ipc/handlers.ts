@@ -1,4 +1,3 @@
-import { registerChatHandlers } from "./chat.js";
 import { registerSettingsHandlers } from "./settings.js";
 import { initializeMCP, shutdownMCP } from "./mcp.js";
 import { registerShellHandlers } from "./shell.js";
@@ -22,7 +21,6 @@ import { registerBrowserHandlers } from "./browser.js";
 import { registerDeepLinkHandlers } from "./deeplink.js";
 import { registerNotifyHandlers } from "./notify.js";
 export function initializeIPC() {
-	registerChatHandlers();
 	registerSettingsHandlers();
 	registerShellHandlers();
 	registerMediaHandlers();

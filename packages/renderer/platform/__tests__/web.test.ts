@@ -898,14 +898,6 @@ describe('createWebPlatformApi', () => {
   it('maps chat and session message platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
-      // `resumeAfterToolConfirm` 是这批里唯一走命令总线的一条:它跟着
-      // `session-command` 域上了通用信封,所以要回一个 `RpcResponse`。
-      if (url === '/api/rpc') {
-        return new Response(JSON.stringify({ ok: true, data: { success: true, url } }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
       if (url === '/api/capabilities') {
         return new Response(JSON.stringify({}), {
           status: 200,
@@ -927,30 +919,13 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/sessions/session-1/max-tokens',
     })
-    // 命令总线迁 router 之后这条走的是通用信封;`createRouterClient` 解包 `data`。
-    await expect(api.resumeAfterToolConfirm('session-1', 'message-1')).resolves.toEqual({
-      success: true,
-      url: '/api/rpc',
-    })
-
     expect(fetchMock).toHaveBeenCalledWith('/api/sessions/session-1/max-tokens', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ maxTokens: 200000 }),
     }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/rpc', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        domain: 'session-command',
-        method: 'emit',
-        payload: {
-          sessionId: 'session-1',
-          command: {
-            type: 'command:resume-after-confirm',
-            messageId: 'message-1',
-          },
-        },
-      }),
-    }))
+    // 第七条「工具审批后恢复流」于 2026-08-22(#21)整条删除:桌面那条 invoke
+    // 和 web 这条命令总线壳方法一起没了(渲染层零调用者)。引擎的
+    // `command:resume-after-confirm` 仍在总线上,只是没有壳方法打它。
   })
 
   it('maps settings and network platform methods to server REST endpoints', async () => {

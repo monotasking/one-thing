@@ -4,8 +4,7 @@
  *
  * 替换掉四处镜像:
  *  - `apps/electron/src/ipc/chat.ts` 的手写 IPC 工厂 + `@main/ipc/chat.ts` 那层
- *    壳适配(两个文件**只缩不删** —— 第七条 `RESUME_AFTER_TOOL_CONFIRM` 留在
- *    原地,见下);
+ *    壳适配(两个文件本批只缩不删,2026-08-22 的 #21 把余下那一条也删了,见下);
  *  - `preload/bridge.ts` 的六条包装与 `platform/web.ts` 的六条 REST 镜像;
  *  - `server/http.ts` 的五条路由(`/api/chat/history` / `/api/chat/title` /
  *    `/api/chat/update-thinking-time` / `/api/streams/abort` /
@@ -21,14 +20,10 @@
  * 那一份 —— 与迁移前 `@main` 那份适配逐字同义,连 `logger: console` 都只是换成
  * 了同一个鸭子 logger 端口。
  *
- * ## 第七条 `RESUME_AFTER_TOOL_CONFIRM` 不在这里(拍板 #21)
- *
- * 它往 `StreamEngine.handleResumeAfterConfirm` 递第三个参数 `sender`
- * (`event.sender`,也就是发起这次 invoke 的 `webContents`),而 router 的信封里
- * 没有「谁在问」这一格 —— 补一格进去等于给通用通道加一条只有一个宿主用得上的
- * 私货。web 侧同名方法早就不是这条路了:它打的是命令总线上的
- * `command:resume-after-confirm`。所以这一条原样留在手写 IPC 通道上,本批不迁、
- * 不删、不动。
+ * ## 第七条「工具审批后恢复流」于 2026-08-22(#21)连同它的 invoke 通道整条
+ * 删除:渲染层零调用者,且引擎侧 `result.requiresConfirmation === true` 早已
+ * 无生产者(toolkit 重建后审批在工具内阻塞,runner 的 pause 抛不出来)。引擎的
+ * `command:resume-after-confirm` 与 `handleResumeAfterConfirm` 仍在命令总线上。
  *
  * ## 一处 `transport` 分叉也没有
  *

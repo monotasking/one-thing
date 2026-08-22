@@ -28,7 +28,6 @@ import type {
 import type { RpcResponse } from "@shared/ipc/rpc.js";
 import { goalRouter } from "@shared/ipc/goal.js";
 import { promptsRouter } from "@shared/ipc/prompts.js";
-import { sessionCommandRouter } from "@shared/ipc/session-command.js";
 import { todoPlanRouter } from "@shared/ipc/todo-plan.js";
 import { usageRouter } from "@shared/ipc/usage.js";
 import { createRouterClient, type RpcInvoke } from "./router-client";
@@ -38,7 +37,7 @@ import type {
 	SessionStreamPayload,
 } from "./types";
 
-import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
+import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 import { getLogger } from "@/services/log";
 
 const log = getLogger("renderer.platform-web");
@@ -168,7 +167,6 @@ const usageApi = createRouterClient(usageRouter, rpcInvoke);
 const promptsApi = createRouterClient(promptsRouter, rpcInvoke);
 const goalApi = createRouterClient(goalRouter, rpcInvoke);
 const todoPlanApi = createRouterClient(todoPlanRouter, rpcInvoke);
-const sessionCommandApi = createRouterClient(sessionCommandRouter, rpcInvoke);
 
 function booleanProperty(
 	value: unknown,
@@ -936,15 +934,9 @@ const webApi = {
 		}),
 	onSessionMessagesChanged: createSessionMessagesChangedSubscription,
 	// ── Chat:六条数据面已走通用 RPC 通道(chatRouter over POST /api/rpc),
-	//    本文件不再镜像一份 REST。留下的只有第七条 —— 它在 web 上从来就不是
-	//    一次 invoke,而是命令总线上的一条命令。──
-	// 命令总线整只迁到 `session-command` RPC 域(结构债 P4c 第四批),web 壳上不再有
-	// `emitCommand`;这一条打的是同一条命令、同一个订阅者,只是换了信封。
-	resumeAfterToolConfirm: (sessionId: string, messageId: string) =>
-		sessionCommandApi.emit({
-			sessionId,
-			command: { type: SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM, messageId },
-		}),
+	//    本文件不再镜像一份 REST。第七条「工具审批后恢复流」于 2026-08-22(#21)
+	//    连同桌面那条 invoke 一起删了 —— 渲染层零调用者;引擎的
+	//    `command:resume-after-confirm` 仍在命令总线上,只是没有壳方法打它。──
 	// getSystemTheme 已迁 `settingsRouter`;web 上它由 `platform/settings-client.ts`
 	// 就地读 `prefers-color-scheme` 作答(浏览器的「系统」是看的人那台机器,
 	// 问服务器等于问错机器),答案与这里删掉的那条桩逐字相同。

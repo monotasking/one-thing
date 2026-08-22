@@ -281,13 +281,7 @@ const electronAPI = {
 	},
 
 	// ── Chat:六条 invoke 已走通用 RPC 通道(chatRouter),本文件不再暴露。
-	//    留在这里的只有第七条 —— 它往引擎递 `event.sender`,而 router 的信封里
-	//    没有「谁在问」这一格(拍板 #21)。──
-	resumeAfterToolConfirm: (sessionId: string, messageId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM, {
-			sessionId,
-			messageId,
-		}),
+	//    第七条「工具审批后恢复流」于 2026-08-22(#21)整条删除,本域清零。──
 
 	// ── Sessions:26 条 invoke 已走通用 RPC 通道(sessionsRouter),本文件不再暴露。
 	//    留在这里的只有这个域的**推送**(onSessionMessagesChanged /
@@ -559,7 +553,6 @@ const electronAPI = {
 
 	// Tools —— 七条数据面已迁到通用 RPC 通道(toolsRouter,P4c 第九批);渲染侧
 	// 客户端在 platform/tools-client.ts。本域零推送,这里不再有任何一条。
-	// (`resumeAfterToolConfirm` 不是本域 —— 它按拍板 #21 留在手写 IPC 上。)
 
 	// Dialog methods
 	showOpenDialog: (options: {

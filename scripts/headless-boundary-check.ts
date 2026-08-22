@@ -1473,24 +1473,10 @@ const MAIN_CHAT_IPC_ABORT_CLEANUP_FORBIDDEN_PATTERNS: RegExp[] = [
   /for\s*\(const\s+\[sid,\s*controller\]\s+of\s+activeStreams/,
 ]
 
-const MAIN_CHAT_IPC_RESUME_CONFIRM_FORBIDDEN_PATTERNS: RegExp[] = [
-  /handleResumeAfterToolConfirm/,
-  /process\.nextTick/,
-  /Resuming after tool confirm for session/,
-  /completedToolCalls/,
-  /pendingToolCalls/,
-  /No completed tool calls to process/,
-  /Still have pending tool calls awaiting confirmation/,
-  /content:continuation/,
-  /Assistant message not found/,
-  /toolCalls\.filter/,
-]
-
-const MAIN_CHAT_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
-]
+// 2026-08-22(#21):chat 的第七条「工具审批后恢复流」整链已删,
+// `MAIN_CHAT_IPC_RESUME_CONFIRM_FORBIDDEN_PATTERNS` /
+// `MAIN_CHAT_IPC_HOST_FORBIDDEN_PATTERNS` 两张禁令表随它们守的文件一起退休
+// (见下面的 checkChatResumeAfterToolConfirmStaysRetired)。
 
 const MAIN_TOOLS_IPC_TOOL_CALL_UPDATE_FORBIDDEN_PATTERNS: RegExp[] = [
   /message\.toolCalls\.map/,
@@ -5794,7 +5780,7 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
   // 结构债 P4c 第四批:命令总线的入口从 `@main/ipc/handlers.ts` 的 `ipcMain.handle`
   // 搬到 `session-command` RPC 域,所以「不许在别处重抄一遍 emit」这条守的是域文件。
   const mainFile = path.join(root, 'packages/backend/rpc/domains/session-command.ts')
-  const chatFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
+  // 2026-08-22(#21):`@main/ipc/chat.ts` 已随第七条一起删掉,只剩 chat 域要守。
   const chatDomainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
@@ -5816,10 +5802,7 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS)
       : ['packages/backend/rpc/domains/session-command.ts: missing session-command RPC domain']),
-    ...(fs.existsSync(chatFile)
-      ? matchingLines(chatFile, MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
-    // P4c 第五批:同一条规矩也守 chat RPC 域(停止收尾在那里发会话事件)。
+    // P4c 第五批:同一条规矩守 chat RPC 域(停止收尾在那里发会话事件)。
     ...(fs.existsSync(chatDomainFile)
       ? matchingLines(chatDomainFile, MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS)
       : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
@@ -5996,47 +5979,34 @@ function checkCoreOwnsIpcRouterProtocol(): void {
   assertNoMatches('packages/core owns IPC router protocol', lines)
 }
 
-function checkElectronHostOwnsChatIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronChatFile = path.join(root, 'apps/electron/src/ipc/chat.ts')
-  const mainChatFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronChatContent = fs.existsSync(electronChatFile) ? fs.readFileSync(electronChatFile, 'utf-8') : ''
-  const mainChatContent = fs.existsSync(mainChatFile) ? fs.readFileSync(mainChatFile, 'utf-8') : ''
-  // P4c 第五批:六条数据面迁 `chatRouter`,工厂与壳适配**只缩不删** —— 留下的
-  // 是第七条 `RESUME_AFTER_TOOL_CONFIRM`(拍板 #21:它往引擎递 `event.sender`,
-  // 而 router 的信封里没有「谁在问」这一格)。断言因此只守这一条:六条的归宿
-  // 在 `packages/backend/rpc/domains/chat.ts`,由域测试钉。
-  const requiredHostSymbols = [
-    'registerElectronChatIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronChatIpcChannels',
-    'ElectronChatIpcInvokeEvent',
-    'options.resumeAfterToolConfirm(request, (event as ElectronChatIpcInvokeEvent).sender)',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/chat',
-    'registerElectronChatIpcHandlers',
-    'IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM',
-    'resumeOnethingAfterToolConfirmationForIpc',
+// 2026-08-22(#21):chat 的第七条「工具审批后恢复流」整链删除 —— 渲染层零调用者,
+// 且引擎侧 `result.requiresConfirmation === true` 早已无生产者(toolkit 重建后审批
+// 在工具内阻塞,runner 的 pause 抛不出来)。两只手写工厂
+// (`apps/electron/src/ipc/chat.ts` + `@main/ipc/chat.ts`)与 runtime 的那只
+// `*ForIpc` 助手一起没了,`checkElectronHostOwnsChatIpcHost` /
+// `checkRuntimeOwnsResumeAfterToolConfirmationFlow` 因此退休,换成下面这条**反向**
+// 断言:通道值与三只文件都不许长回来。引擎的 `command:resume-after-confirm` 与
+// `handleResumeAfterConfirm` 仍在命令总线上,不在本条守备范围内(是否退役另列待拍)。
+//
+// 守的是通道**值**而不是常量名:改个名字换汤不换药,值一样就还是同一条私货。
+function checkChatResumeAfterToolConfirmStaysRetired(): void {
+  const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
+  const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
+  const retiredFiles = [
+    'apps/electron/src/ipc/chat.ts',
+    'apps/electron/src/main/ipc/chat.ts',
+    'packages/onething-runtime/src/sessions/tool-confirmation.ts',
   ]
   const lines = [
-    ...(!packageContent.includes('./ipc/chat')
-      ? [`${rel(electronPackage)}: missing chat IPC host export`]
+    ...(channelsContent.includes('chat:resume-after-tool-confirm')
+      ? [`${rel(channelsFile)}: retired chat resume-after-tool-confirm channel came back`]
       : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronChatContent.includes(symbol))
-      .map(symbol => `${rel(electronChatFile)}: missing Electron chat IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainChatContent.includes(symbol))
-      .map(symbol => `${rel(mainChatFile)}: missing chat IPC host delegation ${symbol}`),
-    ...(fs.existsSync(mainChatFile)
-      ? matchingLines(mainChatFile, MAIN_CHAT_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
+    ...retiredFiles
+      .filter(file => fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: retired chat resume-after-tool-confirm handwritten IPC came back`),
   ]
 
-  assertNoMatches('apps/electron owns Electron chat IPC host operations', lines)
+  assertNoMatches('chat resume-after-tool-confirm IPC chain stays retired', lines)
 }
 
 // P4c 第八批:files 的十四条数据面已迁 `filesRouter`,那只手写 IPC 工厂
@@ -7303,8 +7273,8 @@ function checkRuntimeOwnsRendererMessageSanitizer(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/renderer-sanitizer.ts')
   const mainFiles = [
     path.join(root, 'apps/electron/src/main/ipc/message-sanitizer.ts'),
-    path.join(root, 'apps/electron/src/main/ipc/chat.ts'),
-    // P4c 第五批:会话与聊天两份调用点都已是 RPC 域。
+    // P4c 第五批:会话与聊天两份调用点都已是 RPC 域(`@main/ipc/chat.ts` 在
+    // 2026-08-22 的 #21 里整只删掉)。
     path.join(root, 'packages/backend/rpc/domains/sessions.ts'),
     path.join(root, 'packages/backend/rpc/domains/chat.ts'),
   ]
@@ -7323,11 +7293,10 @@ function checkRuntimeOwnsRendererMessageSanitizer(): void {
 }
 
 function checkChatIpcDoesNotOwnLegacyStreamFlow(): void {
-  // P4c 第五批:聊天面的六条已是 RPC 域,所以这条守的是**两处** —— 域文件,
-  // 以及只剩第七条的那层壳适配。
+  // P4c 第五批:聊天面的六条已是 RPC 域;2026-08-22(#21)第七条与那层壳适配
+  // 一起删掉之后,这条只剩域文件一处要守。
   const mainFiles = [
     path.join(root, 'packages/backend/rpc/domains/chat.ts'),
-    path.join(root, 'apps/electron/src/main/ipc/chat.ts'),
   ]
   const lines = mainFiles.flatMap(file => fs.existsSync(file)
     ? matchingLines(file, MAIN_CHAT_IPC_LEGACY_STREAM_FORBIDDEN_PATTERNS)
@@ -7426,24 +7395,9 @@ function checkRuntimeOwnsChatAbortCleanupFlow(): void {
   assertNoMatches('packages/onething-runtime owns chat abort cleanup flow', lines)
 }
 
-function checkRuntimeOwnsResumeAfterToolConfirmationFlow(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/tool-confirmation.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const lines = [
-    ...(!runtimeContent.includes('resumeOnethingAfterToolConfirmation')
-      ? [`${rel(runtimeFile)}: missing runtime-owned resume-after-tool-confirmation flow`]
-      : []),
-    ...(!runtimeContent.includes('resumeOnethingAfterToolConfirmationForIpc')
-      ? [`${rel(runtimeFile)}: missing runtime-owned resume-after-tool-confirmation IPC wrapper`]
-      : []),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_CHAT_IPC_RESUME_CONFIRM_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns resume-after-tool-confirmation flow', lines)
-}
+// 2026-08-22(#21):`checkRuntimeOwnsResumeAfterToolConfirmationFlow` 已退休 ——
+// runtime 的 `sessions/tool-confirmation.ts` 与它唯一的调用点一起删掉了,
+// 没有「归属」要守;换来的反向断言是 `checkChatResumeAfterToolConfirmStaysRetired`。
 
 // P4c 第九批:tools 的七条数据面已迁 `toolsRouter`,`@main/ipc/tools.ts` 与
 // `apps/electron/src/ipc/tools.ts` 整只删掉。下面四条「runtime 拥有 X 操作」的断言
@@ -9738,7 +9692,7 @@ checkCoreOwnsSessionCommandIpcOperation()
 checkCoreOwnsJsonProtocol()
 checkCoreOwnsIpcRouterProtocol()
 checkCoreOwnsStreamChunkProtocol()
-checkElectronHostOwnsChatIpcHost()
+checkChatResumeAfterToolConfirmStaysRetired()
 checkCorePromptAssemblyOwnedByRuntime()
 checkCorePromptContextRegistryOwnedByRuntime()
 checkRuntimeOwnsOnethingStoragePaths()
@@ -9791,7 +9745,6 @@ checkRuntimeOwnsChatTitleGenerationFlow()
 checkRuntimeOwnsChatSessionIpcOperations()
 checkRuntimeOwnsChatActiveStreamListing()
 checkRuntimeOwnsChatAbortCleanupFlow()
-checkRuntimeOwnsResumeAfterToolConfirmationFlow()
 checkRuntimeOwnsToolRegistryRuntime()
 checkRuntimeOwnsToolCallStateProjection()
 checkRuntimeOwnsToolsIpcListPresentation()

@@ -881,7 +881,7 @@ export interface ElectronAPI {
 	) => () => void;
 	// 聊天面(chat)—— 六条 invoke 已整只迁到通用 RPC 通道(P4c 第五批,
 	// `@shared/ipc/chat.ts` 的 chatRouter + `@/platform/chat-client` 的 chatApi)。
-	// 壳面上只剩第七条 `resumeAfterToolConfirm`(见下),它往引擎递 `sender`。
+	// 第七条「工具审批后恢复流」于 2026-08-22(#21)整条删除,壳面清零。
 	// 会话域(sessions)—— 26 条 invoke 已整只迁到通用 RPC 通道(P4c 第五批,
 	// `@shared/ipc/sessions.ts` 的 sessionsRouter + `@/platform/sessions-client`
 	// 的 sessionsApi)。壳面上只剩这个域的**推送**(见 onSessionMessagesChanged /
@@ -1057,12 +1057,6 @@ export interface ElectronAPI {
 	// 方法在 platform/{providers,models}-client.ts 上。
 	// Tools:七条数据面走通用 RPC(toolsRouter),方法在 platform/tools-client.ts 上
 	// (那一层保留旧的位置参数签名,调用点零改动)。
-	// `resumeAfterToolConfirm` 不是本域 —— 它按拍板 #21 留在手写 IPC 上。
-	resumeAfterToolConfirm: (
-		sessionId: string,
-		messageId: string,
-	) => Promise<{ success: boolean; error?: string }>;
-
 	// Permission(活询问):已走通用 RPC 通道(permissionRouter +
 	// `@/platform/permission-client`)。应答仍走命令总线。
 

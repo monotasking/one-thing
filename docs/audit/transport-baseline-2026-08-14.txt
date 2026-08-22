@@ -35,8 +35,9 @@
 #   voice 两条推送本来就是 configureVoiceHost 端口、一行没动;**VOICE_AUDIO_CHUNK 不迁** —— 高频 PCM 单向上行不带回执,
 #   搬到只有请求/响应面的 router 上等于给每块音频加一条空回执(性能面变化),按拍板 #10 归**流式单向残留集**:
 #   常量 + preload 的 ipcRenderer.send + 主进程 ipcMain.on 原样留着(@main/ipc/voice.ts 终态小文件)。
-channels:IPC_CHANNELS 111
-lines:apps/electron/src/preload/bridge.ts 888
+# 2026-08-22 #21:删第七条「工具审批后恢复流」的 invoke 整链(渲染层零调用者、引擎 pause 路径已无生产者;两只手写工厂 + runtime ForIpc 助手 + platform 方法一并删,引擎命令总线不动)—— channels 111→110、bridge 888→881、web 1081→1073、channels.ts 300→299(http 806 不变:这条从来没有 server 路由)。
+channels:IPC_CHANNELS 110
+lines:apps/electron/src/preload/bridge.ts 881
 lines:packages/backend/server/http.ts 806
-lines:packages/renderer/platform/web.ts 1081
-lines:packages/shared/ipc/channels.ts 300
+lines:packages/renderer/platform/web.ts 1073
+lines:packages/shared/ipc/channels.ts 299

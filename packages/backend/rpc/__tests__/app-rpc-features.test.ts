@@ -67,8 +67,8 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:session-command', 'session-command'],
   // P4c 第五批唯一的域:sessions(26 条,含四条契约表外的字面量通道)。
   ['rpc:sessions', 'sessions'],
-  // P4c 第五批的第二个域:chat(六条聊天面;第七条 resumeAfterToolConfirm 留在
-  // 手写 IPC 上 —— 它往引擎递 sender,信封里没有那一格)。
+  // P4c 第五批的第二个域:chat(六条聊天面;第七条「工具审批后恢复流」在
+  // 2026-08-22 的 #21 里连同它的 invoke 通道整条删除)。
   ['rpc:chat', 'chat'],
   // P4c 第六批第一个域:acp(八条外部 agent 面;一条推送都没有,旧的手写 IPC
   // 工厂整只删掉,`@main/ipc/acp.ts` 只剩 initialize/shutdown 两件生命周期)。

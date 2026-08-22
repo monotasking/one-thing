@@ -195,8 +195,9 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 自进化之前,因为卸载要逆序。
   { id: 'rpc:sessions', mount: ctx => { ctx.registerRpcDomain(sessionsRouter, sessionsRpcHandlers) } },
   // P4c 第五批的第二个域(chat)—— 聊天面剩下的六条:历史 / 标题 / 提示词快照 /
-  // 思考时长 / 停止 / 活流表。**第七条 `RESUME_AFTER_TOOL_CONFIRM` 不在这里**
-  // (拍板 #21):它往引擎递 `sender`,信封里没有那一格,原样留在手写 IPC 上。
+  // 思考时长 / 停止 / 活流表。第七条「工具审批后恢复流」于 2026-08-22(#21)
+  // 连同它的 invoke 通道整条删除(渲染层零调用者、引擎 pause 路径已无生产者);
+  // 引擎的 `command:resume-after-confirm` 仍在命令总线上。
   // 位置在 sessions 之后:`abortStream` 要 `getStreamEngine()` 与 `Permission`,
   // 而 `backend.ts` 的顺序是引擎 → Permission → 工具注册 → registerAppRpcDomains,
   // 注册时两者都已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。

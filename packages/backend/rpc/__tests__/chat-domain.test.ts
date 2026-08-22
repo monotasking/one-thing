@@ -1,8 +1,9 @@
 /**
  * chat 域,端到端穿过 dispatcher(结构债 P4c 第五批)。
  *
- * 接的是被删掉的四处转发的测试位:`apps/electron/src/ipc/chat.ts` 工厂里那六条
- * (它的用例只剩第七条)、`@main/ipc/chat.ts` 的壳适配、bridge 上那六条包装,
+ * 接的是被删掉的四处转发的测试位:`apps/electron/src/ipc/chat.ts` 工厂里那六条、
+ * `@main/ipc/chat.ts` 的壳适配(两只工厂在 2026-08-22 的 #21 之后已整只删掉)、
+ * bridge 上那六条包装,
  * 以及 server 的五条 REST 路由 + `/api/sessions/:id/system-prompt-snapshot`
  * 与它们背后的 `chat` / `prompts` 两个 facade adapter 和 `streams.abort/active`。
  *
@@ -12,8 +13,8 @@
  * 实现了一遍」。
  *
  * 值得钉的四件:
- *  - 六条方法都在 router 的白名单上,**第七条 `resumeAfterToolConfirm` 不在**
- *    (拍板 #21:它往引擎递 `sender`,信封里没有那一格);
+ *  - 六条方法都在 router 的白名单上(第七条「工具审批后恢复流」在 2026-08-22 的
+ *    #21 里整条删除 —— 没有第七条要钉了);
  *  - `abortStream` 带 sessionId 时走的是**完整收尾**:叫引擎停、清权限、把还
  *    挂着的 step 判死、落 `isStreaming:false`、补 `stream:complete{aborted:true}`;
  *  - `abortStream` 在**没有活流**时如实回 `{ success: false }` —— 这是
@@ -105,8 +106,6 @@ describe('chat RPC domain', () => {
       'getActiveStreams',
     ])
     expect(chatRouter.methods).toHaveLength(6)
-    // 拍板 #21:恢复流要 `event.sender`,router 的信封里没有那一格。
-    expect(chatRouter.methods).not.toContain('resumeAfterToolConfirm')
   })
 
   it('reads chat history off the assembly-layer store', async () => {

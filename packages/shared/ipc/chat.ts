@@ -1050,10 +1050,11 @@ export interface GetSessionUserMarkersResponse {
  * `GET_SYSTEM_PROMPT_SNAPSHOT` / `UPDATE_MESSAGE_THINKING_TIME` /
  * `ABORT_STREAM` / `GET_ACTIVE_STREAMS`。
  *
- * **第七条 `RESUME_AFTER_TOOL_CONFIRM` 不在这里**(拍板 #21):它往引擎递
- * `sender`(`webContents`),而 router 的信封里没有「谁在问」这一格;web 侧同名
- * 方法早就走命令总线(`command:resume-after-confirm`)。它留在手写 IPC 通道上,
- * `apps/electron/src/ipc/chat.ts` 与 `@main/ipc/chat.ts` 因此只缩不删。
+ * 第七条「工具审批后恢复流」于 2026-08-22(#21)连同它的 invoke 通道整条
+ * 删除:渲染层零调用者,且引擎侧 `result.requiresConfirmation === true` 早已
+ * 无生产者(toolkit 重建后审批在工具内阻塞,runner 的 pause 抛不出来)。引擎的
+ * `command:resume-after-confirm` 与 `handleResumeAfterConfirm` 仍在命令总线上。
+ * 两只手写工厂(`apps/electron/src/ipc/chat.ts` / `@main/ipc/chat.ts`)随之整只删掉。
  *
  * **不在本域的聊天面**:会话的读/写是 `sessions` 域(第五批同期),命令总线的
  * 入口是 `session-command` 域(第四批);`session:stream` / `session:event` 是
