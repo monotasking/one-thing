@@ -1389,12 +1389,6 @@ const MAIN_SESSIONS_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
   /return\s+\{\s*success:\s*true,\s*usage\s*\}/,
 ]
 
-const MAIN_SESSIONS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
-]
-
 const MAIN_SESSION_USAGE_FACADE_FORBIDDEN_PATTERNS: RegExp[] = [
   /store\.updateSessionTokenUsage\(sessionId,\s*usage,\s*lastTurnUsage\)/,
   /totalInputTokens:\s*usage\?\.totalInputTokens\s*\?\?\s*0/,
@@ -6254,66 +6248,11 @@ function checkElectronHostOwnsFilesIpcHost(): void {
   assertNoMatches('apps/electron owns Electron files IPC host operations', lines)
 }
 
-function checkElectronHostOwnsSessionsIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronSessionsFile = path.join(root, 'apps/electron/src/ipc/sessions.ts')
-  const mainSessionsFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronSessionsContent = fs.existsSync(electronSessionsFile)
-    ? fs.readFileSync(electronSessionsFile, 'utf-8')
-    : ''
-  const mainSessionsContent = fs.existsSync(mainSessionsFile) ? fs.readFileSync(mainSessionsFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronSessionIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronSessionIpcHandlerDefinition',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/sessions',
-    'registerElectronSessionIpcHandlers',
-    'IPC_CHANNELS.GET_SESSIONS',
-    'IPC_CHANNELS.GET_SESSIONS_LIST',
-    'IPC_CHANNELS.ACTIVATE_SESSION',
-    'IPC_CHANNELS.GET_SESSION_MESSAGES',
-    'IPC_CHANNELS.GET_SESSION_MESSAGES_PAGE',
-    'IPC_CHANNELS.GET_SESSION_USER_MARKERS',
-    'IPC_CHANNELS.CREATE_SESSION',
-    'IPC_CHANNELS.SWITCH_SESSION',
-    'IPC_CHANNELS.GET_SESSION',
-    'IPC_CHANNELS.DELETE_SESSION',
-    'IPC_CHANNELS.RENAME_SESSION',
-    'IPC_CHANNELS.UPDATE_SESSION_PIN',
-    'IPC_CHANNELS.UPDATE_SESSION_ARCHIVED',
-    'IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY',
-    'IPC_CHANNELS.UPDATE_SESSION_MODEL',
-    'IPC_CHANNELS.UPDATE_SESSION_AGENT',
-    'IPC_CHANNELS.UPDATE_SESSION_PERMISSION_MODE',
-    'IPC_CHANNELS.CREATE_BRANCH',
-    'IPC_CHANNELS.GET_SESSION_TOKEN_USAGE',
-    'add-system-message',
-    'remove-files-changed-message',
-    'remove-git-status-message',
-    'remove-message',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/sessions')
-      ? [`${rel(electronPackage)}: missing sessions IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronSessionsContent.includes(symbol))
-      .map(symbol => `${rel(electronSessionsFile)}: missing Electron sessions IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainSessionsContent.includes(symbol))
-      .map(symbol => `${rel(mainSessionsFile)}: missing sessions IPC host delegation ${symbol}`),
-    ...(fs.existsSync(mainSessionsFile)
-      ? matchingLines(mainSessionsFile, MAIN_SESSIONS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron sessions IPC host operations', lines)
-}
-
+// P4c 第五批:sessions 的 26 条数据面已迁 `sessionsRouter`,那只手写 IPC 工厂
+// (`apps/electron/src/ipc/sessions.ts`)与它的壳适配(`@main/ipc/sessions.ts`)
+// **整只删掉** —— 连同四条契约表外的字面量通道。所以
+// `checkElectronHostOwnsSessionsIpcHost` 也随之退休:没有宿主件要守了。
+// 域的形状由 `packages/backend/rpc/__tests__/sessions-domain.test.ts` 钉。
 
 function checkCorePromptAssemblyOwnedByRuntime(): void {
   const files = [
@@ -7378,7 +7317,9 @@ function checkRuntimeOwnsMcpIpcOperations(): void {
 function checkRuntimeOwnsSessionBranchCreation(): void {
   const runtimeFile = 'packages/onething-runtime/src/sessions/branching.ts'
   const runtimeIpcFile = 'packages/onething-runtime/src/sessions/ipc-operations.ts'
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
+  // P4c 第五批:调用点从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重实现一遍」
+  // 这条禁令跟着改指到新家。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -7397,7 +7338,7 @@ function checkRuntimeOwnsSessionBranchCreation(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_BRANCH_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session branch creation orchestration', lines)
@@ -7405,7 +7346,8 @@ function checkRuntimeOwnsSessionBranchCreation(): void {
 
 function checkRuntimeOwnsSessionUpdateFlows(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/session-updates.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
+  // P4c 第五批:调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'updateOnethingSessionModel',
@@ -7418,7 +7360,7 @@ function checkRuntimeOwnsSessionUpdateFlows(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_UPDATE_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session update flows', lines)
@@ -7465,7 +7407,8 @@ function checkRuntimeOwnsSessionMessageRuntime(): void {
 
 function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/working-directory.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
+  // P4c 第五批:调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('updateOnethingSessionWorkingDirectory')
@@ -7473,7 +7416,7 @@ function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_WORKDIR_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session working directory flow', lines)
@@ -7481,7 +7424,8 @@ function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
 
 function checkRuntimeOwnsSessionSystemMarkerFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/system-messages.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
+  // P4c 第五批:调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('removeOnethingSystemMarkerMessage')
@@ -7489,7 +7433,7 @@ function checkRuntimeOwnsSessionSystemMarkerFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_SYSTEM_MARKER_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session system marker flow', lines)
@@ -7498,7 +7442,8 @@ function checkRuntimeOwnsSessionSystemMarkerFlow(): void {
 function checkRuntimeOwnsSessionIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/ipc-operations.ts')
   const runtimeUsageFile = path.join(root, 'packages/onething-runtime/src/sessions/session-usage.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
+  // P4c 第五批:调用点已是 RPC 域。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
   const usageFile = path.join(root, 'packages/backend/session/usage.ts')
   const runtimeContent = [
     runtimeFile,
@@ -7538,7 +7483,7 @@ function checkRuntimeOwnsSessionIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned session IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
     ...(fs.existsSync(usageFile)
       ? matchingLines(usageFile, MAIN_SESSION_USAGE_FACADE_FORBIDDEN_PATTERNS)
       : ['packages/backend/session/usage.ts: missing session usage adapter']),
@@ -7552,7 +7497,8 @@ function checkRuntimeOwnsRendererMessageSanitizer(): void {
   const mainFiles = [
     path.join(root, 'apps/electron/src/main/ipc/message-sanitizer.ts'),
     path.join(root, 'apps/electron/src/main/ipc/chat.ts'),
-    path.join(root, 'apps/electron/src/main/ipc/sessions.ts'),
+    // P4c 第五批:会话那一份调用点已是 RPC 域。
+    path.join(root, 'packages/backend/rpc/domains/sessions.ts'),
   ]
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
@@ -9963,7 +9909,6 @@ checkCoreOwnsIpcRouterProtocol()
 checkCoreOwnsStreamChunkProtocol()
 checkElectronHostOwnsChatIpcHost()
 checkElectronHostOwnsFilesIpcHost()
-checkElectronHostOwnsSessionsIpcHost()
 checkCorePromptAssemblyOwnedByRuntime()
 checkCorePromptContextRegistryOwnedByRuntime()
 checkRuntimeOwnsOnethingStoragePaths()

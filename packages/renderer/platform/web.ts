@@ -1,5 +1,4 @@
 import type {
-	CreateSessionOptions,
 	AppSettings,
 	ACPAgentConfig,
 	GatewayStartRequest,
@@ -8,9 +7,7 @@ import type {
 	GatewayWechatRemoveAccountRequest,
 	GatewayWechatRenameAccountRequest,
 	GatewayWechatStopAccountRequest,
-	GetSessionMessagesPageRequest,
 	MCPServerConfig,
-	PermissionMode,
 	ProxySettings,
 	ScratchpadChangedPayload,
 	SearchRequest,
@@ -1221,114 +1218,17 @@ const webApi = {
 	 */
 	openImageGallery: async () => ({ success: true }),
 
-	getSessionsList: () => requestJson("/api/sessions"),
-	// 会话列表一律元数据(与 Electron IPC GET_SESSIONS 行为一致);消息经
-	// activate/分页接口按会话加载,不存在全量含消息的列表请求。
-	getSessions: () => requestJson("/api/sessions"),
-	createSession: (
-		name: string,
-		options?: CreateSessionOptions,
-	) =>
-		// kind/room are desktop-only in P0 (rooms need the collab coordinator);
-		// the server rejects unknown kinds if ever passed.
-		postJson("/api/sessions", {
-			name,
-			sessionId: options?.sessionId,
-			workspaceId: options?.workspaceId,
-			kind: options?.kind,
-			room: options?.room,
-		}),
-	activateSession: (sessionId: string) =>
-		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/activate`),
-	getSession: (sessionId: string) =>
-		requestJson(`/api/sessions/${encodeURIComponent(sessionId)}`),
-	switchSession: (sessionId: string) =>
-		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/switch`),
-	deleteSession: (sessionId: string) =>
-		requestJson(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-			method: "DELETE",
-		}),
-	renameSession: (sessionId: string, newName: string) =>
-		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/rename`, {
-			name: newName,
-		}),
-	createBranch: (parentSessionId: string, branchFromMessageId: string) =>
-		postJson("/api/sessions/branch", { parentSessionId, branchFromMessageId }),
-	updateSessionArchived: (
-		sessionId: string,
-		isArchived: boolean,
-		archivedAt?: number | null,
-	) =>
-		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/archive`, {
-			isArchived,
-			archivedAt,
-		}),
-	updateSessionWorkingDirectory: (
-		sessionId: string,
-		workingDirectory: string | null,
-	) =>
-		postJson(
-			`/api/sessions/${encodeURIComponent(sessionId)}/working-directory`,
-			{ workingDirectory },
-		),
-	updateSessionAgent: (sessionId: string, agentId: string) =>
-		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/agent`, {
-			agentId,
-		}),
-	updateSessionPermissionMode: (
-		sessionId: string,
-		permissionMode: PermissionMode,
-	) =>
-		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/permission-mode`, {
-			permissionMode,
-		}),
-	updateSessionModel: (sessionId: string, provider: string, model: string) =>
-		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/model`, {
-			provider,
-			model,
-		}),
+	// ── Sessions:26 条数据面已走通用 RPC 通道(sessionsRouter over POST /api/rpc),
+	//    本文件不再镜像一份 REST。剩下的两条与那个域无关:`updateSessionMaxTokens`
+	//    桌面从来没有处理者(只有 server 这一条 REST 路由),推送则走 SSE。──
 	updateSessionMaxTokens: (sessionId: string, maxTokens: number) =>
 		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/max-tokens`, {
 			maxTokens,
 		}),
-	getSessionMessagesPage: (request: GetSessionMessagesPageRequest) =>
-		postJson("/api/session-messages/page", request),
-	getSessionUserMarkers: (sessionId: string) =>
-		requestJson(`/api/sessions/${encodeURIComponent(sessionId)}/user-markers`),
-	// The web build has no TOC pipeline (it runs in the Electron main process);
-	// returning empty hides the preview rather than erroring on hover.
-	getSessionSegments: async () => ({ success: true, segments: [] }),
 	onSessionMessagesChanged: createSessionMessagesChangedSubscription,
-	// Web build has no in-process session LRU cache to report on; stub keeps
-	// the "cached" tab badge silently off instead of wiring a server endpoint.
-	getSessionCacheStats: () =>
-		Promise.resolve({ size: 0, maxSize: 0, cachedSessionIds: [] }),
-	evictSessionCache: () => Promise.resolve({ success: true }),
 	getChatHistory: (sessionId: string) =>
 		postJson("/api/chat/history", { sessionId }),
 	generateTitle: (message: string) => postJson("/api/chat/title", { message }),
-	getSessionMessages: (sessionId: string) =>
-		postJson("/api/chat/messages", { sessionId }),
-	getSessionTokenUsage: (sessionId: string) =>
-		postJson("/api/chat/token-usage", { sessionId }),
-	updateSessionPin: (sessionId: string, isPinned: boolean) =>
-		postJson("/api/chat/update-session-pin", { sessionId, isPinned }),
-	addSystemMessage: (
-		sessionId: string,
-		message: { id: string; role: string; content: string; timestamp: number },
-	) => postJson("/api/chat/add-system-message", { sessionId, message }),
-	removeFilesChangedMessage: (sessionId: string) =>
-		postJson("/api/chat/remove-system-marker", {
-			sessionId,
-			markerType: "files-changed",
-		}),
-	removeGitStatusMessage: (sessionId: string) =>
-		postJson("/api/chat/remove-system-marker", {
-			sessionId,
-			markerType: "git-status",
-		}),
-	removeMessage: (sessionId: string, messageId: string) =>
-		postJson("/api/chat/remove-message", { sessionId, messageId }),
 	updateMessageThinkingTime: (
 		sessionId: string,
 		messageId: string,

@@ -105,7 +105,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import SessionSegmentList, { type SegmentUserMessage } from '@/components/common/SessionSegmentList.vue'
 import { groupMarkersBySegment } from '@/components/chat/session-topic-grouping'
 import { releaseOutlineRailHost, setOutlineRailHost } from '@/composables/useOutlineRail'
-import { platformApi } from '@/platform'
+import { sessionsApi } from '@/platform/sessions-client'
 import type { SessionSegment, UserMessageMarker } from '@/types'
 
 type OutlineMode = 'topics' | 'message'
@@ -184,7 +184,7 @@ async function loadContents(): Promise<void> {
   tocLoading.value = true
   try {
     const [response] = await Promise.all([
-      platformApi.getSessionSegments(sessionId),
+      sessionsApi.getSegments({ sessionId }),
       chatStore.loadUserMessageMarkers(sessionId),
     ])
     if (props.sessionId !== sessionId) return

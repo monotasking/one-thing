@@ -814,6 +814,7 @@ import {
   type WindowDragOrigin,
 } from './todo-window-drag'
 import { platformApi } from '@/platform'
+import { sessionsApi } from '@/platform/sessions-client'
 import { markdownApi } from '@/platform/markdown-client'
 import { sessionCommands } from '@/platform/session-command-client'
 import { getLogger } from '@/services/log'
@@ -1037,7 +1038,7 @@ watch(resolvedSessionId, async (sessionId) => {
     return
   }
   try {
-    const response = await platformApi.getSession(sessionId)
+    const response = await sessionsApi.get({ sessionId })
     // 异步回来时会话可能又换了 —— 只认还是当前会话的那份答案。
     if (resolvedSessionId.value === sessionId && response?.success) {
       sessionTitle.value = response.session?.name || ''

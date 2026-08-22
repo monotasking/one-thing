@@ -423,7 +423,6 @@ type ServerChatSession = ChatSession & {
 	previewText?: string;
 };
 
-const DEFAULT_SESSION_MAX_TOKENS = 128000;
 export type ServerMCPClientFactory = (config: MCPServerConfig) => MCPClientLike;
 type ServerMCPManager = HeadlessMCPManager<MCPClientLike>;
 
@@ -2226,109 +2225,11 @@ async function createServerRuntimeOverServerBackend(
 				setServerCurrentSessionId(context, session.id);
 				return { success: true, session: toChatSession(session) };
 			},
-			async get(sessionId: string, context = defaultRequestContext()) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				return { success: true, session: toChatSession(session) };
-			},
-			async activate(sessionId: string, context = defaultRequestContext()) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				setServerCurrentSessionId(context, session.id);
-				return {
-					success: true,
-					session: toSessionDetails(session),
-					messageCount: sessionStore.getMessages(session.id).length,
-				};
-			},
-			async delete(sessionId: string, context = defaultRequestContext()) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: true };
-				const deleteResult = sessionStore.deleteSession(sessionId);
-				for (const deletedId of deleteResult.deletedIds.length
-					? deleteResult.deletedIds
-					: [sessionId]) {
-					// Deleting mid-stream: abort first — the terminal stream event
-					// may never arrive once the session's channels are destroyed.
-					if (activeStreamSessions.has(deletedId)) {
-						backend.abortSession(deletedId, "session deleted");
-						activeStreamSessions.delete(deletedId);
-					}
-					sessions.delete(deletedId);
-					clearSessionPermissions(deletedId);
-					eventBus.destroySession(deletedId);
-					streamChannel.destroySession(deletedId);
-				}
-				clearSessionPermissions(sessionId);
-				if (getServerCurrentSessionId(context) === sessionId) {
-					setServerCurrentSessionId(
-						context,
-						listSessionsForContext(context)[0]?.id ?? "",
-					);
-				}
-				return { success: true };
-			},
-			async rename(
-				sessionId: string,
-				name: string,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				session.name = name;
-				session.updatedAt = Date.now();
-				persistSession(session);
-				return { success: true };
-			},
-			async createBranch(
-				parentSessionId: string,
-				branchFromMessageId: string,
-				context = defaultRequestContext(),
-			) {
-				const parentSession = getSessionForContext(parentSessionId, context);
-				if (!parentSession) {
-					return { success: false, error: "Parent session not found" };
-				}
-
-				const parentMessages = sessionStore.getMessages(parentSessionId);
-				const messageIndex = parentMessages.findIndex(
-					(message) => message.id === branchFromMessageId,
-				);
-				if (messageIndex < 0)
-					return { success: false, error: "Message not found" };
-
-				const now = Date.now();
-				const branchId = createSessionId();
-				const inheritedMessages = parentMessages
-					.slice(0, messageIndex + 1)
-					.map((message) => cloneBranchMessage(message, branchId));
-				const branchSession = sessionStore.createBranchSession(
-					branchId,
-					`${parentSession.name} (Branch)`,
-					parentSessionId,
-					branchFromMessageId,
-					inheritedMessages,
-					context,
-				);
-				branchSession.createdAt = now;
-				branchSession.updatedAt = now;
-				branchSession.agentId = parentSession.agentId;
-				branchSession.lastProvider = parentSession.lastProvider;
-				branchSession.lastModel = parentSession.lastModel;
-				branchSession.permissionMode = parentSession.permissionMode;
-				branchSession.workingDirectory = parentSession.workingDirectory;
-				branchSession.workingDirectoryRoots = cloneJson(
-					parentSession.workingDirectoryRoots ?? [],
-				);
-				branchSession.variables = cloneJson(parentSession.variables ?? []);
-				refreshSessionMeta(
-					branchSession,
-					sessionStore.getMessages(branchSession.id),
-				);
-				persistSession(branchSession);
-				setServerCurrentSessionId(context, branchSession.id);
-				return { success: true, session: toChatSession(branchSession) };
-			},
+			// P4c 第五批:会话的读/改/删(get / activate / delete / rename /
+			// createBranch)整批迁到 `sessions` RPC 域 —— server 从此与桌面吃同一份
+			// 实现,这里那套 per-owner 的第二份没有了。`list` / `create` 留着是因为
+			// `apps/mobile` 仍然直接打那两条 REST(拍板 #32);`update` 留着是因为
+			// `POST /api/sessions/:id/max-tokens` 从来不在那 26 条里。
 			async update(
 				sessionId: string,
 				patch: Record<string, unknown>,
@@ -2372,19 +2273,6 @@ async function createServerRuntimeOverServerBackend(
 					? getMessagePage(sessionStore.getMessages(request.sessionId), request)
 					: sessionStore.getMessagesPage(request);
 			},
-			async userMarkers(sessionId: string, context = defaultRequestContext()) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) {
-					return { success: false, markers: [], error: "Session not found" };
-				}
-				return {
-					success: true,
-					markers: backend.persistsMessages || activeStreamSessions.has(sessionId)
-						? getUserMarkers(sessionStore.getMessages(sessionId))
-						: (sessionStore.getUserMessageMarkers(sessionId) ??
-							getUserMarkers(sessionStore.getMessages(sessionId))),
-				};
-			},
 		},
 		chat: {
 			async getHistory(sessionId: string, context = defaultRequestContext()) {
@@ -2395,83 +2283,9 @@ async function createServerRuntimeOverServerBackend(
 			async generateTitle(message: string) {
 				return { success: true, title: generateTitleFromMessage(message) };
 			},
-			async getMessages(sessionId: string, context = defaultRequestContext()) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				return { success: true, messages: sessionStore.getMessages(sessionId) };
-			},
-			async getTokenUsage(
-				sessionId: string,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) {
-					return { success: false, error: "Session not found" };
-				}
-				return { success: true, usage: getServerSessionTokenUsage(session) };
-			},
-			async updateSessionPin(
-				sessionId: string,
-				isPinned: boolean,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				session.isPinned = isPinned;
-				session.updatedAt = Date.now();
-				persistSession(session);
-				return { success: true };
-			},
-			// SV1–SV4(P0.3):四个写点全部走命令面。会话级收尾走
-			// `settleMessageCommand`(派生字段 + index 元数据),不再整份重写会话体。
-			async addSystemMessage(
-				sessionId: string,
-				message: unknown,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				sessionStore.messages.appendMessage(sessionId, {
-					message: normalizeServerSystemMessage(sessionId, message),
-				});
-				settleMessageCommand(sessionId);
-				return { success: true };
-			},
-			async removeSystemMarkerMessage(
-				sessionId: string,
-				markerType: string,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				const marker = `"type":"${markerType}"`;
-				const matchesMarker = (candidate: ChatMessage): boolean =>
-					candidate.role === "system" &&
-					typeof candidate.content === "string" &&
-					candidate.content.includes(marker);
-				const existing = sessionStore
-					.getMessages(sessionId)
-					.find(matchesMarker);
-				if (!existing) return { success: true, removedId: null };
-				sessionStore.messages.deleteMessage(sessionId, {
-					matchMarker: matchesMarker,
-				});
-				settleMessageCommand(sessionId);
-				return { success: true, removedId: existing.id };
-			},
-			async removeMessage(
-				sessionId: string,
-				messageId: string,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				if (!sessionStore.messages.deleteMessage(sessionId, { messageId })) {
-					return { success: false, error: "Message not found" };
-				}
-				settleMessageCommand(sessionId);
-				return { success: true };
-			},
+			// P4c 第五批:属于**会话域**的六条(getMessages / getTokenUsage /
+			// updateSessionPin / addSystemMessage / removeSystemMarkerMessage /
+			// removeMessage)随 `/api/chat/*` 那批路由一起迁到 `sessions` RPC 域。
 			async updateMessageThinkingTime(
 				sessionId: string,
 				messageId: string,
@@ -3936,23 +3750,6 @@ function applySessionEvent(
 	settle();
 }
 
-function getServerSessionTokenUsage(session: ServerChatSession): {
-	totalInputTokens: number;
-	totalOutputTokens: number;
-	totalTokens: number;
-	maxTokens: number;
-	lastInputTokens: number;
-	contextSize: number;
-} {
-	return {
-		totalInputTokens: session.totalInputTokens ?? 0,
-		totalOutputTokens: session.totalOutputTokens ?? 0,
-		totalTokens: session.totalTokens ?? 0,
-		maxTokens: session.maxTokens ?? DEFAULT_SESSION_MAX_TOKENS,
-		lastInputTokens: session.lastInputTokens ?? 0,
-		contextSize: session.contextSize ?? 0,
-	};
-}
 
 async function testServerProxy(
 	proxy: ProxySettings,
@@ -4011,50 +3808,6 @@ function finiteTokenCount(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) && value > 0
 		? value
 		: 0;
-}
-
-function normalizeServerSystemMessage(
-	sessionId: string,
-	value: unknown,
-): ChatMessage {
-	const message =
-		value && typeof value === "object" ? (value as Partial<ChatMessage>) : {};
-	const content = typeof message.content === "string" ? message.content : "";
-	const timestamp =
-		typeof message.timestamp === "number" && Number.isFinite(message.timestamp)
-			? message.timestamp
-			: Date.now();
-
-	return {
-		id:
-			typeof message.id === "string" && message.id.length > 0
-				? message.id
-				: `system-${Date.now()}`,
-		sessionId,
-		role: "system",
-		content,
-		timestamp,
-		contentParts: content ? [{ type: "text", content }] : [],
-	};
-}
-
-function cloneBranchMessage(
-	message: ChatMessage,
-	sessionId: string,
-): ChatMessage {
-	// 一次性构造(P0.3):先深拷再逐字段改写会被检查器认成"改消息",
-	// 而且 seq / thinkingStartTime 靠 `delete` 摘掉本来就比 rest 解构绕。
-	const {
-		seq: _seq,
-		thinkingStartTime: _thinkingStartTime,
-		...rest
-	} = cloneJson(message);
-	return {
-		...rest,
-		id: randomUUID(),
-		sessionId,
-		isStreaming: false,
-	};
 }
 
 function toChatMessage(
@@ -4349,20 +4102,6 @@ function getMessagePage(
 		hasMoreAfter: end < totalCount,
 		totalCount,
 	};
-}
-
-function getUserMarkers(
-	messages: readonly ChatMessage[],
-): UserMessageMarker[] {
-	return messages
-		.map((message, index) => ({ message, seq: index + 1 }))
-		.filter(({ message }) => message.role === "user")
-		.map(({ message, seq }) => ({
-			id: message.id,
-			seq,
-			timestamp: message.timestamp,
-			preview: message.content.slice(0, 120),
-		}));
 }
 
 function defaultRequestContext(): RuntimeRequestContext {

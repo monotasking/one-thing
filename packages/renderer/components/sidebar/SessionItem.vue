@@ -108,7 +108,7 @@ import { ref, watch, nextTick } from 'vue'
 import { MoreHorizontal } from 'lucide-vue-next'
 import Tooltip from '@/components/common/Tooltip.vue'
 import SessionPreviewCard from './SessionPreviewCard.vue'
-import { platformApi } from '@/platform'
+import { sessionsApi } from '@/platform/sessions-client'
 import type { SessionSegment } from '@/types'
 import type { SessionWithBranches } from './useSessionOrganizer'
 
@@ -175,7 +175,7 @@ async function loadPreview() {
   if (cachedFresh) return
   previewLoading.value = true
   try {
-    const response = await platformApi.getSessionSegments(sessionId)
+    const response = await sessionsApi.getSegments({ sessionId })
     // Guard against the pointer having moved on during the await.
     if (props.session.id !== sessionId) return
     previewSegments.value = response.success ? response.segments : []

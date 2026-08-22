@@ -65,6 +65,8 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:media', 'media'],
   // P4c 第四批唯一的域:session-command(会话命令总线的入口,只有 emit 一条)。
   ['rpc:session-command', 'session-command'],
+  // P4c 第五批唯一的域:sessions(26 条,含四条契约表外的字面量通道)。
+  ['rpc:sessions', 'sessions'],
 ] as const
 
 /**

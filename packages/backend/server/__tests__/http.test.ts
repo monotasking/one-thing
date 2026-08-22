@@ -1035,26 +1035,12 @@ describe('createOnethingHttpServer', () => {
       messages: [{ id: 'user-1', sessionId, role: 'user', content: 'hello', timestamp: 1 }],
     }))
     const generateTitle = vi.fn(async (message: string) => ({ success: true, title: message.slice(0, 20) }))
-    const getMessages = vi.fn(async (sessionId: string) => ({
-      success: true,
-      messages: [{ id: 'assistant-1', sessionId, role: 'assistant', content: 'hi', timestamp: 2 }],
-    }))
-    const getTokenUsage = vi.fn(async () => ({
-      success: true,
-      usage: {
-        totalInputTokens: 1,
-        totalOutputTokens: 2,
-        totalTokens: 3,
-        maxTokens: 128000,
-        lastInputTokens: 1,
-        contextSize: 1,
-      },
-    }))
-    const updateSessionPin = vi.fn(async () => ({ success: true }))
-    const addSystemMessage = vi.fn(async () => ({ success: true }))
-    const removeSystemMarkerMessage = vi.fn(async () => ({ success: true, removedId: 'system-1' }))
-    const removeMessage = vi.fn(async () => ({ success: true }))
     const updateMessageThinkingTime = vi.fn(async () => ({ success: true }))
+    // P4c 第五批:`/api/chat/messages`、`/api/chat/token-usage`、
+    // `/api/chat/update-session-pin`、`/api/chat/add-system-message`、
+    // `/api/chat/remove-system-marker`、`/api/chat/remove-message` 六条**是会话域**,
+    // 已随 `sessionsRouter` 迁走(域测试 `rpc/__tests__/sessions-domain.test.ts` 钉它们)。
+    // 这里只剩三条真正的聊天面。
     const runtime = createOnethingRuntimeFacade({
       sessions: {
         list: async () => ({ success: true, sessions: [] }),
@@ -1063,12 +1049,6 @@ describe('createOnethingHttpServer', () => {
       chat: {
         getHistory,
         generateTitle,
-        getMessages,
-        getTokenUsage,
-        updateSessionPin,
-        addSystemMessage,
-        removeSystemMarkerMessage,
-        removeMessage,
         updateMessageThinkingTime,
       },
       events: {
@@ -1094,52 +1074,6 @@ describe('createOnethingHttpServer', () => {
       headers: jsonHeaders,
       body: JSON.stringify({ message: 'Hello web runtime' }),
     })).resolves.toEqual({ success: true, title: 'Hello web runtime' })
-    await expect(fetchJson(`${baseUrlValue}/api/chat/messages`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId: 'session-1' }),
-    })).resolves.toEqual({
-      success: true,
-      messages: [{ id: 'assistant-1', sessionId: 'session-1', role: 'assistant', content: 'hi', timestamp: 2 }],
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/chat/token-usage`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId: 'session-1' }),
-    })).resolves.toEqual({
-      success: true,
-      usage: {
-        totalInputTokens: 1,
-        totalOutputTokens: 2,
-        totalTokens: 3,
-        maxTokens: 128000,
-        lastInputTokens: 1,
-        contextSize: 1,
-      },
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/chat/update-session-pin`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId: 'session-1', isPinned: true }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/chat/add-system-message`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({
-        sessionId: 'session-1',
-        message: { id: 'system-1', role: 'system', content: '{"type":"files-changed"}', timestamp: 1 },
-      }),
-    })).resolves.toEqual({ success: true })
-    await expect(fetchJson(`${baseUrlValue}/api/chat/remove-system-marker`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId: 'session-1', markerType: 'files-changed' }),
-    })).resolves.toEqual({ success: true, removedId: 'system-1' })
-    await expect(fetchJson(`${baseUrlValue}/api/chat/remove-message`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId: 'session-1', messageId: 'message-1' }),
-    })).resolves.toEqual({ success: true })
     await expect(fetchJson(`${baseUrlValue}/api/chat/update-thinking-time`, {
       method: 'POST',
       headers: jsonHeaders,
@@ -1154,68 +1088,16 @@ describe('createOnethingHttpServer', () => {
       userId: 'alice',
       workspaceId: 'chat-workspace',
     }))
-    expect(updateSessionPin).toHaveBeenCalledWith('session-1', true, expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'chat-workspace',
-    }))
-    expect(removeSystemMarkerMessage).toHaveBeenCalledWith('session-1', 'files-changed', expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'chat-workspace',
-    }))
     expect(updateMessageThinkingTime).toHaveBeenCalledWith('session-1', 'message-1', 2.5, expect.objectContaining({
       userId: 'alice',
       workspaceId: 'chat-workspace',
     }))
   })
 
-  it('routes branch creation through the sessions runtime facade with owner context', async () => {
-    const createBranch = vi.fn(async (parentSessionId: string, branchFromMessageId: string) => ({
-      success: true,
-      session: {
-        id: 'session-branch',
-        parentSessionId,
-        branchFromMessageId,
-        name: 'Branch',
-      },
-    }))
-    const runtime = createOnethingRuntimeFacade({
-      sessions: {
-        list: async () => ({ success: true, sessions: [] }),
-        create: async (name: string) => ({ id: 'session-1', name }),
-        createBranch,
-      },
-      events: {
-        subscribe: () => () => {},
-      },
-    })
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
-    const headers = contextHeaders('alice', 'branch-workspace')
-
-    await expect(fetchJson(`${baseUrl(server)}/api/sessions/branch`, {
-      method: 'POST',
-      headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        parentSessionId: 'session-1',
-        branchFromMessageId: 'message-1',
-      }),
-    })).resolves.toEqual({
-      success: true,
-      session: {
-        id: 'session-branch',
-        parentSessionId: 'session-1',
-        branchFromMessageId: 'message-1',
-        name: 'Branch',
-      },
-    })
-
-    expect(createBranch).toHaveBeenCalledWith('session-1', 'message-1', expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'branch-workspace',
-    }))
-  })
-
   it('exposes development chat operations over HTTP with owner isolation', async () => {
+    // P4c 第五批:会话域的 REST 面(建分支 / 取消息 / 系统标记 / pin / token 读数 /
+    // 按 id 取会话)已迁 `sessionsRouter`。这里剩下的是**不属于那 26 条**的三条:
+    // 标题生成、思考时长补写,以及 `max-tokens`(桌面侧从来没有处理者)。
     const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
@@ -1240,97 +1122,12 @@ describe('createOnethingHttpServer', () => {
       title: expect.any(String),
     }))
 
-    await expect(fetchJson(`${baseUrlValue}/api/chat/add-system-message`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({
-        sessionId,
-        message: {
-          id: 'system-files',
-          role: 'system',
-          content: '{"type":"files-changed","paths":["src/main.ts"]}',
-          timestamp: 1,
-        },
-      }),
-    })).resolves.toEqual({ success: true })
-
-    await expect(fetchJson(`${baseUrlValue}/api/chat/messages`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId }),
-    })).resolves.toEqual({
-      success: true,
-      messages: [
-        expect.objectContaining({
-          id: 'system-files',
-          sessionId,
-          role: 'system',
-          content: '{"type":"files-changed","paths":["src/main.ts"]}',
-        }),
-      ],
-    })
-
-    const branch = await fetchJson(`${baseUrlValue}/api/sessions/branch`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({
-        parentSessionId: sessionId,
-        branchFromMessageId: 'system-files',
-      }),
-    })
-    expect(branch).toEqual(expect.objectContaining({
-      success: true,
-      session: expect.objectContaining({
-        parentSessionId: sessionId,
-        branchFromMessageId: 'system-files',
-        messages: [
-          expect.objectContaining({
-            role: 'system',
-            sessionId: expect.any(String),
-            content: '{"type":"files-changed","paths":["src/main.ts"]}',
-          }),
-        ],
-      }),
-    }))
-    expect(branch.session.id).not.toBe(sessionId)
-    expect(branch.session.messages[0].id).not.toBe('system-files')
-    expect(branch.session.messages[0].sessionId).toBe(branch.session.id)
-
-    await expect(fetchJson(`${baseUrlValue}/api/sessions/branch`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        parentSessionId: sessionId,
-        branchFromMessageId: 'system-files',
-      }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Parent session not found',
-    })
-
     await expect(fetchJson(`${baseUrlValue}/api/chat/update-thinking-time`, {
       method: 'POST',
       headers: jsonHeaders,
-      body: JSON.stringify({ sessionId, messageId: 'system-files', thinkingTime: 1.25 }),
-    })).resolves.toEqual({ success: true })
+      body: JSON.stringify({ sessionId, messageId: 'nope', thinkingTime: 1.25 }),
+    })).resolves.toEqual({ success: false, error: 'Message not found' })
 
-    await expect(fetchJson(`${baseUrlValue}/api/chat/remove-system-marker`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId, markerType: 'files-changed' }),
-    })).resolves.toEqual({ success: true, removedId: 'system-files' })
-
-    await expect(fetchJson(`${baseUrlValue}/api/chat/messages`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId }),
-    })).resolves.toEqual({ success: true, messages: [] })
-
-    await expect(fetchJson(`${baseUrlValue}/api/chat/update-session-pin`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId, isPinned: true }),
-    })).resolves.toEqual({ success: true })
     await expect(fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/max-tokens`, {
       method: 'POST',
       headers: jsonHeaders,
@@ -1357,44 +1154,6 @@ describe('createOnethingHttpServer', () => {
     })).resolves.toEqual({
       success: false,
       error: 'Max tokens must be a positive number.',
-    })
-    await expect(fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}`, {
-      headers: aliceHeaders,
-    })).resolves.toEqual(expect.objectContaining({
-      success: true,
-      session: expect.objectContaining({ id: sessionId, isPinned: true, maxTokens: 200000 }),
-    }))
-
-    await (serverRuntime.eventBus as any).emit(sessionId!, {
-      type: 'stream:complete',
-      data: {
-        usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 },
-      },
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/chat/token-usage`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId }),
-    })).resolves.toEqual({
-      success: true,
-      usage: {
-        totalInputTokens: 4,
-        totalOutputTokens: 5,
-        totalTokens: 9,
-        maxTokens: 200000,
-        lastInputTokens: 4,
-        contextSize: 4,
-      },
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/chat/token-usage`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Session not found',
     })
   })
 
@@ -2855,79 +2614,11 @@ describe('createOnethingHttpServer', () => {
     })
   })
 
-  it('updates web session settings through the runtime facade with ownership checks', async () => {
-    const workspaceRoot = join(tmpdir(), 'onething-server-http-test-workspaces')
-    const aliceWorkspaceRoot = join(workspaceRoot, 'alice', 'workspace-settings')
-    const serverRuntime = await createTestServerRuntime({ workspaceRoot })
-    runtimes.push(serverRuntime)
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN,
-      runtime: serverRuntime.runtime,
-    }))
-
-    const aliceHeaders = contextHeaders('alice', 'workspace-settings')
-    const bobHeaders = contextHeaders('bob', 'workspace-settings')
-    const created = await createSession(baseUrl(server), 'Settings session', aliceHeaders)
-    const sessionId = created.session?.id
-    expect(sessionId).toBeTruthy()
-
-    await expect(postSessionAction(baseUrl(server), sessionId!, 'archive', {
-      isArchived: true,
-      archivedAt: 12345,
-    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
-    await expect(postSessionAction(baseUrl(server), sessionId!, 'working-directory', {
-      workingDirectory: 'project-a',
-    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
-    await expect(postSessionAction(baseUrl(server), sessionId!, 'working-directory', {
-      workingDirectory: join(workspaceRoot, 'bob', 'workspace-settings', 'outside'),
-    }, aliceHeaders)).resolves.toEqual({
-      success: false,
-      error: 'Working directory must stay inside the workspace sandbox root.',
-    })
-    await expect(postSessionAction(baseUrl(server), sessionId!, 'agent', {
-      agentId: 'agent-research',
-    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
-    await expect(postSessionAction(baseUrl(server), sessionId!, 'permission-mode', {
-      permissionMode: 'auto-accept-edits',
-    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
-    await expect(postSessionAction(baseUrl(server), sessionId!, 'model', {
-      provider: 'codex',
-      model: 'gpt-5.5',
-    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
-
-    const aliceSession = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}`, {
-      headers: aliceHeaders,
-    })
-    expect(aliceSession.session).toEqual(expect.objectContaining({
-      id: sessionId,
-      isArchived: true,
-      archivedAt: 12345,
-      workingDirectory: join(aliceWorkspaceRoot, 'project-a'),
-      workingDirectoryRoots: [aliceWorkspaceRoot],
-      agentId: 'agent-research',
-      permissionMode: 'auto-accept-edits',
-      lastProvider: 'codex',
-      lastModel: 'gpt-5.5',
-      // The picker route pins: without it an agent's model binding would keep
-      // outranking a model the user just chose (agent-capability-profile A1.4).
-      modelPinned: true,
-    }))
-    expect(aliceSession.session).not.toHaveProperty('userId')
-    expect(aliceSession.session).not.toHaveProperty('workspaceId')
-
-    await expect(postSessionAction(baseUrl(server), sessionId!, 'model', {
-      provider: 'other',
-      model: 'other-model',
-    }, bobHeaders)).resolves.toEqual({ success: false, error: 'Session not found' })
-
-    const unchanged = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}`, {
-      headers: aliceHeaders,
-    })
-    expect(unchanged.session).toEqual(expect.objectContaining({
-      lastProvider: 'codex',
-      lastModel: 'gpt-5.5',
-    }))
-  })
+  // P4c 第五批:「按会话改设置」的六条 REST(archive / working-directory / agent /
+  // permission-mode / model 与按 id 取会话)已随 `sessionsRouter` 迁走 —— server 侧
+  // 那份 per-owner 的第二实现连同它的沙箱根校验一起没有了(语义变化,见方案文档)。
+  // `sessions.update` 仍在,但它今天只服务 `max-tokens` 一条;它的账本翻译由
+  // `__tests__/session-agent-event.test.ts` 直接对着 facade 钉。
 
 	  it('isolates sessions and SSE streams by user/workspace context', async () => {
     const serverRuntime = await createTestServerRuntime()

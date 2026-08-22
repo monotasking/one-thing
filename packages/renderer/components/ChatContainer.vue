@@ -84,6 +84,7 @@ import { computed, ref, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
 import { platformApi } from '@/platform'
+import { sessionsApi } from '@/platform/sessions-client'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
 import PanelTree from '@/components/chat/PanelTree.vue'
 import Container from '@/components/common/Container.vue'
@@ -170,7 +171,7 @@ async function closePanel(leafId: string) {
     if (sessionsStore.isNewChatDraftId(sessionId)) {
       sessionsStore.discardNewChatDraft(sessionId)
     } else {
-      await platformApi.evictSessionCache(sessionId).catch(() => {})
+      await sessionsApi.evictCache({ sessionId }).catch(() => {})
     }
   }
 }

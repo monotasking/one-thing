@@ -33,35 +33,18 @@ export const IPC_CHANNELS = {
 	STEP_UPDATED: "chat:step-updated",
 
 	// Session related
-	GET_SESSIONS: "sessions:get-all",
-	CREATE_SESSION: "sessions:create",
-	SWITCH_SESSION: "sessions:switch",
-	DELETE_SESSION: "sessions:delete",
-	RENAME_SESSION: "sessions:rename",
-	CREATE_BRANCH: "sessions:create-branch",
-	UPDATE_SESSION_PIN: "sessions:update-pin",
-	UPDATE_SESSION_MODEL: "sessions:update-model",
-	UPDATE_SESSION_AGENT: "sessions:update-agent",
-	UPDATE_SESSION_PERMISSION_MODE: "sessions:update-permission-mode",
-	UPDATE_SESSION_ARCHIVED: "sessions:update-archived",
-	UPDATE_SESSION_WORKING_DIRECTORY: "sessions:update-working-directory",
-	GET_SESSION: "sessions:get",
-	GET_SESSION_TOKEN_USAGE: "sessions:get-token-usage",
+	// 会话域(sessions)的 22 条数据面已迁到通用 RPC 通道(P4c 第五批,
+	// sessionsRouter)—— 连同四条契约表外的字面量通道
+	// (add-system-message / remove-files-changed-message /
+	// remove-git-status-message / remove-message)一起消失。这里只剩推送,
+	// 以及一条桌面从来没有处理者的历史遗留(server 侧仍有 REST 路由)。
 	UPDATE_SESSION_MAX_TOKENS: "sessions:update-max-tokens",
 	CONTEXT_SIZE_UPDATED: "sessions:context-size-updated",
 	// P1(2026-08-14):压缩的开始/结束通知只有一条正路 —— session:event 信封里
 	// 的 context:compact-started / context:compact-completed。专用 IPC 通道
 	// (主进程从来没往里发过一条)已删,别再加回来。
 	// Session optimization (metadata separation)
-	GET_SESSIONS_LIST: "sessions:get-list", // Returns SessionMeta[] only (no messages)
-	ACTIVATE_SESSION: "sessions:activate", // Mark session as active, return details
-	GET_SESSION_MESSAGES: "sessions:get-messages", // Returns ChatMessage[] for a session
-	GET_SESSION_MESSAGES_PAGE: "sessions:get-messages-page", // Returns a cursor-addressed ChatMessage page
-	GET_SESSION_USER_MARKERS: "sessions:get-user-markers", // Returns lightweight user-message nav markers
-	GET_SESSION_SEGMENTS: "sessions:get-segments", // Returns the session's TOC segments
 	SESSION_MESSAGES_CHANGED: "sessions:messages-changed", // Event: messages added/updated
-	GET_SESSION_CACHE_STATS: "sessions:get-cache-stats", // Returns in-memory LRU cache stats
-	EVICT_SESSION_CACHE: "sessions:evict-cache", // Evicts a session from the in-memory LRU cache
 
 	// Settings related
 	GET_SETTINGS: "settings:get",

@@ -302,9 +302,9 @@ function formatDate(ts: string) {
 }
 
 function openSession(sessionId: string) {
-  // Switch to session via platform API
-  import("@/platform").then(({ platformApi }) => {
-    void platformApi.switchSession(sessionId);
+  // Switch to session via the sessions RPC domain.
+  import("@/platform/sessions-client").then(({ sessionsApi }) => {
+    void sessionsApi.switch({ sessionId });
   });
 }
 

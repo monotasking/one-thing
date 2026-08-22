@@ -18,8 +18,12 @@ import { useChatStore } from '../chat'
 const api = vi.hoisted(() => ({
   onSessionEvent: vi.fn(() => () => {}),
   getPendingPermissions: vi.fn(),
-  createSession: vi.fn(),
-  getSessionsList: vi.fn(),
+}))
+
+/** 会话域走通用 RPC 通道(P4c 第五批):方法名是 router 上的动词,入参是信封。 */
+const sessionsRpc = vi.hoisted(() => ({
+  create: vi.fn(),
+  listMeta: vi.fn(),
 }))
 
 /** collab 域走通用 RPC 通道(P4a):方法名是 router 上的动词,入参是信封。 */
@@ -37,6 +41,7 @@ const collab = vi.hoisted(() => ({
 }))
 
 vi.mock('@/platform', () => ({ platformApi: api }))
+vi.mock('@/platform/sessions-client', () => ({ sessionsApi: sessionsRpc }))
 vi.mock('@/platform/collab-client', () => ({ collabApi: collab }))
 
 function board(seq: number, title: string): CollabBoard {
@@ -61,7 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   setActivePinia(createPinia())
   api.getPendingPermissions.mockResolvedValue({ success: true, pending: [] })
-  api.getSessionsList.mockResolvedValue({ success: true, sessions: [] })
+  sessionsRpc.listMeta.mockResolvedValue({ success: true, sessions: [] })
 })
 
 describe('collabBoard 写 action:回填约定 = 回复带的那份快照', () => {
@@ -208,7 +213,7 @@ describe('sessions 房间配置 action:回填约定 = session:collab-updated', (
     expect(collab.roomSetBudgets).toHaveBeenCalledWith({ roomSessionId: 'room-1', dailyCostUSD: 8 })
     expect(collab.roomSetFrozen).toHaveBeenCalledWith({ roomSessionId: 'room-1', frozen: true })
     // 这就是 C4-α 的成果:七处全量重拉换成一条就地增量事件。
-    expect(api.getSessionsList).not.toHaveBeenCalled()
+    expect(sessionsRpc.listMeta).not.toHaveBeenCalled()
   })
 
   it('失败原样返回,store 不替谁决定怎么说话', async () => {
@@ -220,23 +225,24 @@ describe('sessions 房间配置 action:回填约定 = session:collab-updated', (
 
   it('建房是"加一行":那一次全量重拉在 action 里,调用方不用记得刷', async () => {
     const sessions = useSessionsStore()
-    api.createSession.mockResolvedValue({ success: true, session: { id: 'room-9', name: '新群' } })
+    sessionsRpc.create.mockResolvedValue({ success: true, session: { id: 'room-9', name: '新群' } })
 
     const response = await sessions.createCollabRoom('新群', { memberAgentIds: ['fe'] })
 
-    expect(api.createSession).toHaveBeenCalledWith('新群', {
+    expect(sessionsRpc.create).toHaveBeenCalledWith({
+      name: '新群',
       kind: 'room',
       room: { memberAgentIds: ['fe'] },
     })
     expect(response.session?.id).toBe('room-9')
-    expect(api.getSessionsList).toHaveBeenCalled()
+    expect(sessionsRpc.listMeta).toHaveBeenCalled()
   })
 
   it('建房失败不重拉', async () => {
     const sessions = useSessionsStore()
-    api.createSession.mockResolvedValue({ success: false, error: '创建失败' })
+    sessionsRpc.create.mockResolvedValue({ success: false, error: '创建失败' })
     await sessions.createCollabRoom('新群', { memberAgentIds: [] })
-    expect(api.getSessionsList).not.toHaveBeenCalled()
+    expect(sessionsRpc.listMeta).not.toHaveBeenCalled()
   })
 
   it('清空转录动的不是配置,所以那一次重拉也在 action 里', async () => {
@@ -246,7 +252,7 @@ describe('sessions 房间配置 action:回填约定 = session:collab-updated', (
     await sessions.clearCollabRoomHistory('room-1', true)
 
     expect(collab.roomClearHistory).toHaveBeenCalledWith({ roomSessionId: 'room-1', includeMemberDms: true })
-    expect(api.getSessionsList).toHaveBeenCalled()
+    expect(sessionsRpc.listMeta).toHaveBeenCalled()
   })
 })
 

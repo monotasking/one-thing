@@ -16,8 +16,6 @@ import type {
 	DeepLinkRespondRequest,
 } from "@shared/ipc/deeplink.js";
 import type {
-	CreateSessionOptions,
-	GetSessionMessagesPageRequest,
 	MediaSaveAsRequest,
 	MarkdownResolveAssetRequest,
 	MarkdownSaveAttachmentsRequest,
@@ -30,7 +28,6 @@ import type {
 	TodoPlanWindowActionRequest,
 	TodoPlanWindowDragRequest,
 	PracticeEventPayload,
-	PermissionMode,
 	InteractionRespondRequest,
 	AbortPluginRequestResult,
 	PluginNotificationPayload,
@@ -331,83 +328,9 @@ const electronAPI = {
 			messageId,
 		}),
 
-	// Session methods
-	getSessions: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SESSIONS),
-
-	createSession: (
-		name: string,
-		options?: CreateSessionOptions,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, {
-			name,
-			sessionId: options?.sessionId,
-			workspaceId: options?.workspaceId,
-			kind: options?.kind,
-			room: options?.room,
-		}),
-
-	switchSession: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SWITCH_SESSION, { sessionId }),
-
-	getSession: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION, { sessionId }),
-
-	deleteSession: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.DELETE_SESSION, { sessionId }),
-
-	renameSession: (sessionId: string, newName: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.RENAME_SESSION, { sessionId, newName }),
-
-	createBranch: (parentSessionId: string, branchFromMessageId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CREATE_BRANCH, {
-			parentSessionId,
-			branchFromMessageId,
-		}),
-
-	updateSessionPin: (sessionId: string, isPinned: boolean) =>
-		ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_PIN, {
-			sessionId,
-			isPinned,
-		}),
-
-	updateSessionModel: (sessionId: string, provider: string, model: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_MODEL, {
-			sessionId,
-			provider,
-			model,
-		}),
-
-	updateSessionAgent: (sessionId: string, agentId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_AGENT, {
-			sessionId,
-			agentId,
-		}),
-
-	updateSessionPermissionMode: (sessionId: string, permissionMode: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_PERMISSION_MODE, {
-			sessionId,
-			permissionMode,
-		}),
-
-	updateSessionArchived: (
-		sessionId: string,
-		isArchived: boolean,
-		archivedAt?: number | null,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_ARCHIVED, {
-			sessionId,
-			isArchived,
-			archivedAt,
-		}),
-
-	updateSessionWorkingDirectory: (
-		sessionId: string,
-		workingDirectory: string | null,
-	) =>
-		ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, {
-			sessionId,
-			workingDirectory,
-		}),
+	// ── Sessions:26 条 invoke 已走通用 RPC 通道(sessionsRouter),本文件不再暴露。
+	//    留在这里的只有这个域的**推送**(onSessionMessagesChanged /
+	//    onContextSizeUpdated)—— router 没有推送面。──
 
 	// ── Variables subsystem ─────────────────────────────────────
 	// Live updates arrive through the existing session:variables-updated
@@ -522,9 +445,6 @@ const electronAPI = {
 	// `workspaceId` 缺省 = default 空间(批 B4:名册 per-space)。
 	// ── Project Dirs:已走通用 RPC 通道(projectDirsRouter),本文件不再暴露。──
 
-	getSessionTokenUsage: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, sessionId),
-
 	onContextSizeUpdated: (
 		callback: (data: { sessionId: string; contextSize: number }) => void,
 	) => {
@@ -547,33 +467,6 @@ const electronAPI = {
 			maxTokens,
 		),
 
-	// ============================================================================
-	// Optimized Session Loading (Phase 4: Metadata Separation)
-	// ============================================================================
-
-	// Get sessions list (metadata only, no messages) - for fast startup
-	getSessionsList: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SESSIONS_LIST),
-
-	// Activate session (returns details, no messages) - for session switching
-	activateSession: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.ACTIVATE_SESSION, { sessionId }),
-
-	// Get session messages (on-demand loading) - only when messages need to be displayed
-	getSessionMessages: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_MESSAGES, { sessionId }),
-
-	// Get a cursor-addressed page of session messages
-	getSessionMessagesPage: (request: GetSessionMessagesPageRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_MESSAGES_PAGE, request),
-
-	// Get lightweight user-message markers for navigation
-	getSessionUserMarkers: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_USER_MARKERS, { sessionId }),
-
-	// Get the session's table-of-contents segments
-	getSessionSegments: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_SEGMENTS, { sessionId }),
-
 	// Listen for messages changed event (for real-time sync)
 	onSessionMessagesChanged: (
 		callback: (data: {
@@ -593,28 +486,6 @@ const electronAPI = {
 				listener,
 			);
 	},
-
-	// In-memory session LRU cache (main process): stats + eviction on tab close
-	getSessionCacheStats: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_CACHE_STATS),
-	evictSessionCache: (sessionId: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.EVICT_SESSION_CACHE, { sessionId }),
-
-	// System message methods (for /files command persistence)
-	addSystemMessage: (
-		sessionId: string,
-		message: { id: string; role: string; content: string; timestamp: number },
-	) => ipcRenderer.invoke("add-system-message", { sessionId, message }),
-
-	removeFilesChangedMessage: (sessionId: string) =>
-		ipcRenderer.invoke("remove-files-changed-message", { sessionId }),
-
-	removeGitStatusMessage: (sessionId: string) =>
-		ipcRenderer.invoke("remove-git-status-message", { sessionId }),
-
-	// Generic remove message by ID (for close button functionality)
-	removeMessage: (sessionId: string, messageId: string) =>
-		ipcRenderer.invoke("remove-message", { sessionId, messageId }),
 
 	// Settings methods
 	getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS),

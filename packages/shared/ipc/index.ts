@@ -326,6 +326,21 @@ export type {
 } from "./session-command.js";
 export { sessionCommandRouter } from "./session-command.js";
 
+// 会话域(结构债 P4c 第五批)。26 条数据面 —— 22 条旧 `IPC_CHANNELS.*` 加四条
+// 契约表外的字面量通道。推送(session:event / sessions:messages-changed 等)
+// 不在这里:router 没有推送面。
+export type {
+	AddSystemMessageRequest,
+	GetSessionTokenUsageResponse,
+	RemoveSystemMarkerMessageResponse,
+	SessionCacheStatsResponse,
+	SessionMutationResponse,
+	SessionTokenUsageReadout,
+	SessionsCreateRequest,
+	SessionsRoutes,
+} from "./sessions.js";
+export { sessionsRouter } from "./sessions.js";
+
 // Markdown asset / attachment types
 export type {
 	MarkdownAssetKind,

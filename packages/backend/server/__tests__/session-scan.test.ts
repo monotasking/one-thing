@@ -92,11 +92,11 @@ describe('server session scan regression guards', () => {
     const created = await runtime.sessions.create('新会话') as SessionResult
     expect(created.success).toBe(true)
 
-    const fetched = await runtime.sessions.get!(created.session!.id) as SessionResult
-    expect(fetched.success).toBe(true)
-
-    const existing = await runtime.sessions.get!('s-existing') as SessionResult
-    expect(existing.success).toBe(true)
+    // P4c 第五批:`runtime.sessions.get` 随会话域迁走了(REST 那条路已删),
+    // 但「按 id 取会话不许触发全量扫描」这条防回归仍然要守 —— 直接对着 store
+    // 的取会话面问,它正是从前那个 facade 方法背后的同一条路。
+    expect(sessionStore.getSession(created.session!.id)?.id).toBe(created.session!.id)
+    expect(sessionStore.getSession('s-existing')?.id).toBe('s-existing')
 
     expect(fullScanSpy).not.toHaveBeenCalled()
   })

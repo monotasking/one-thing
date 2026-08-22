@@ -770,7 +770,8 @@ export interface CreateSessionRequest {
 }
 
 /**
- * `platformApi.createSession(name, options)` 的第二个参数 —— **唯一一份**。
+ * `sessionsApi.create({ name, ...options })` 的可选项 —— **唯一一份**
+ * (P4c 第五批之前它是 `platformApi.createSession(name, options)` 的第二个参数)。
  *
  * 2026-08-05 (U5) 收敛:此前它在三处各手抄一遍(`renderer/types/index.ts`、
  * `preload/bridge.ts`、`platform/web.ts`),而且已经抄岔了 —— 只有 renderer 那份

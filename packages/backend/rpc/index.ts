@@ -40,6 +40,7 @@ import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { schedulerRouter } from '@shared/ipc/scheduler.js'
 import { scratchpadRouter } from '@shared/ipc/scratchpad.js'
 import { sessionCommandRouter } from '@shared/ipc/session-command.js'
+import { sessionsRouter } from '@shared/ipc/sessions.js'
 import { skillsRouter } from '@shared/ipc/skills.js'
 import { spacesRouter } from '@shared/ipc/spaces.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
@@ -66,6 +67,7 @@ import { providersRpcHandlers } from './domains/providers.js'
 import { schedulerRpcHandlers } from './domains/scheduler.js'
 import { scratchpadRpcHandlers } from './domains/scratchpad.js'
 import { sessionCommandRpcHandlers } from './domains/session-command.js'
+import { sessionsRpcHandlers } from './domains/sessions.js'
 import { skillsRpcHandlers } from './domains/skills.js'
 import { spacesRpcHandlers } from './domains/spaces.js'
 import { todoPlanRpcHandlers } from './domains/todo-plan.js'
@@ -157,6 +159,13 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 与 `Permission`(权限应答认领 targetChannel),而 `backend.ts` 的顺序是
   // 引擎 → Permission → 工具注册 → registerAppRpcDomains,注册时两者都已就位。
   { id: 'rpc:session-command', mount: ctx => { ctx.registerRpcDomain(sessionCommandRouter, sessionCommandRpcHandlers) } },
+  // P4c 第五批唯一的域(sessions)—— 全仓最大的一域,26 条:22 条旧 `IPC_CHANNELS.*`
+  // 加**四条契约表外的字面量通道**(add-system-message / remove-files-changed-message /
+  // remove-git-status-message / remove-message),搬完之后后四条不再存在。
+  // 位置在 session-command 之后:两者互不依赖(会话仓是模块级单例),但读面排在
+  // 写面之后与「先有总线、再有查询」的叙事一致;真正的硬约束只有一条 —— 必须在
+  // 自进化之前,因为卸载要逆序。
+  { id: 'rpc:sessions', mount: ctx => { ctx.registerRpcDomain(sessionsRouter, sessionsRpcHandlers) } },
   // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
   // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
   //

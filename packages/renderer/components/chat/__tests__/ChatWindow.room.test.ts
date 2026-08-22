@@ -81,8 +81,16 @@ function installElectronAPI() {
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
-      getSessionCacheStats: vi.fn().mockResolvedValue({ size: 0, maxSize: 10, cachedSessionIds: [] }),
-      evictSessionCache: vi.fn().mockResolvedValue({ success: true }),
+      // P4c 第五批:会话域走通用 RPC 通道,LRU 那两条因此不再是 electronAPI 上的方法。
+      rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
+        if (request.domain === 'sessions' && request.method === 'getCacheStats') {
+          return { ok: true, data: { size: 0, maxSize: 10, cachedSessionIds: [] } }
+        }
+        if (request.domain === 'sessions' && request.method === 'evictCache') {
+          return { ok: true, data: { success: true } }
+        }
+        return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
+      }),
       closeWindow: vi.fn().mockResolvedValue({ success: true }),
     },
   })

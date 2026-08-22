@@ -70,31 +70,39 @@ export interface RuntimeSessionsAdapter<
    * must validate the format and refuse ids that already exist.
    */
   create(input: TCreateSessionInput, context?: RuntimeRequestContext, requestedSessionId?: string): Promise<TSession>
-  get?(sessionId: string, context?: RuntimeRequestContext): Promise<TSession>
-  activate?(sessionId: string, context?: RuntimeRequestContext): Promise<TSession>
-  delete?(sessionId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  rename?(sessionId: string, name: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
-  createBranch?(parentSessionId: string, branchFromMessageId: string, context?: RuntimeRequestContext): Promise<unknown>
+  /**
+   * 结构债 P4c 第五批:会话的读/改/删(get / activate / delete / rename /
+   * createBranch)整批迁到 `sessions` RPC 域,对应的 REST 路由与这里的方法一起
+   * 消失。`list` / `create` 留着是因为 `apps/mobile` 仍然直接打那两条 REST
+   * (拍板 #32);`update` 留着是因为 `POST /api/sessions/:id/max-tokens` 从来就
+   * 不在那 26 条里(桌面侧没有处理者)。
+   */
   update?(sessionId: string, patch: TSessionPatch, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
 }
 
+/**
+ * 结构债 P4c 第五批:`userMarkers` 迁到 `sessions` 域。`page` 留着是因为
+ * `apps/mobile` 仍然直接打 `POST /api/session-messages/page`(拍板 #32)。
+ * `TMarkersResponse` 是**位置泛型**,后面还排着十几个位置参数,抽掉一格等于把
+ * 每个宿主的实参表整体错位 —— 留在原位不动(与 `TCommand` 同一处理)。
+ */
 export interface RuntimeMessagesAdapter<TPageRequest = unknown, TPageResponse = unknown, TMarkersResponse = unknown> {
   page(request: TPageRequest, context?: RuntimeRequestContext): Promise<TPageResponse>
-  userMarkers?(sessionId: string, context?: RuntimeRequestContext): Promise<TMarkersResponse>
 }
 
+/**
+ * 结构债 P4c 第五批:这个 adapter 上属于**会话域**的六条
+ * (getMessages / getTokenUsage / updateSessionPin / addSystemMessage /
+ * removeSystemMarkerMessage / removeMessage)随 `/api/chat/*` 那批路由一起迁到
+ * `sessions` RPC 域。剩下的三条是真正的「聊天」面,不属于会话域。
+ * 两个位置泛型留在原位不动(理由同 `RuntimeMessagesAdapter`)。
+ */
 export interface RuntimeChatAdapter<
   TMessage = unknown,
   TSystemMessage = unknown,
 > {
   getHistory?(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
   generateTitle?(message: string, context?: RuntimeRequestContext): Promise<unknown>
-  getMessages?(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
-  getTokenUsage?(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
-  updateSessionPin?(sessionId: string, isPinned: boolean, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  addSystemMessage?(sessionId: string, message: TSystemMessage, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  removeSystemMarkerMessage?(sessionId: string, markerType: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  removeMessage?(sessionId: string, messageId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
   updateMessageThinkingTime?(sessionId: string, messageId: string, thinkingTime: number, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
 }
 

@@ -910,51 +910,13 @@ export interface ElectronAPI {
 	getSystemPromptSnapshot: (
 		sessionId: string,
 	) => Promise<GetSystemPromptSnapshotResponse>;
-	getSessions: () => Promise<GetSessionsResponse>;
-	createSession: (
-		name: string,
-		options?: CreateSessionOptions,
-	) => Promise<CreateSessionResponse>;
+	// 会话域(sessions)—— 26 条 invoke 已整只迁到通用 RPC 通道(P4c 第五批,
+	// `@shared/ipc/sessions.ts` 的 sessionsRouter + `@/platform/sessions-client`
+	// 的 sessionsApi)。壳面上只剩这个域的**推送**(见 onSessionMessagesChanged /
+	// onContextSizeUpdated)。
 	// Collab(多 agent 协作房)—— 十五条 invoke 已整只迁到通用 RPC 通道(P4a,
 	// `@shared/ipc/collab.ts` 的 collabRouter + `@/platform/collab-client` 的
 	// collabApi)。这个域一条推送也没有,所以壳面上什么也不剩。
-	switchSession: (sessionId: string) => Promise<SwitchSessionResponse>;
-	getSession: (sessionId: string) => Promise<SwitchSessionResponse>;
-	deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>;
-	renameSession: (
-		sessionId: string,
-		newName: string,
-	) => Promise<RenameSessionResponse>;
-	createBranch: (
-		parentSessionId: string,
-		branchFromMessageId: string,
-	) => Promise<CreateBranchResponse>;
-	updateSessionPin: (
-		sessionId: string,
-		isPinned: boolean,
-	) => Promise<UpdateSessionPinResponse>;
-	updateSessionModel: (
-		sessionId: string,
-		provider: string,
-		model: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	updateSessionAgent: (
-		sessionId: string,
-		agentId: string,
-	) => Promise<{ success: boolean; error?: string }>;
-	updateSessionPermissionMode: (
-		sessionId: string,
-		permissionMode: PermissionMode,
-	) => Promise<{ success: boolean; error?: string }>;
-	updateSessionArchived: (
-		sessionId: string,
-		isArchived: boolean,
-		archivedAt?: number | null,
-	) => Promise<{ success: boolean; error?: string }>;
-	updateSessionWorkingDirectory: (
-		sessionId: string,
-		workingDirectory: string | null,
-	) => Promise<{ success: boolean; error?: string }>;
 	// Evals (prompt evaluation) — 👎 downvote + Review + Run + Actions
 	recordEvalsDownvote: (request: {
 		sessionId: string;
@@ -1246,33 +1208,6 @@ export interface ElectronAPI {
 	) => Promise<DeepLinkRespondResponse>;
 	// Project directories:已走通用 RPC 通道(projectDirsRouter +
 	// `@/platform/project-dirs-client`)。
-	getSessionTokenUsage: (sessionId: string) => Promise<{
-		success: boolean;
-		usage?: {
-			totalInputTokens: number;
-			totalOutputTokens: number;
-			totalTokens: number;
-			maxTokens: number;
-			lastInputTokens: number;
-			contextSize: number;
-		};
-		error?: string;
-	}>;
-	// Optimized session loading (Phase 4: Metadata Separation)
-	getSessionsList: () => Promise<GetSessionsListResponse>;
-	activateSession: (sessionId: string) => Promise<ActivateSessionResponse>;
-	getSessionMessages: (
-		sessionId: string,
-	) => Promise<GetSessionMessagesResponse>;
-	getSessionMessagesPage: (
-		request: GetSessionMessagesPageRequest,
-	) => Promise<GetSessionMessagesPageResponse>;
-	getSessionUserMarkers: (
-		sessionId: string,
-	) => Promise<GetSessionUserMarkersResponse>;
-	getSessionSegments: (
-		sessionId: string,
-	) => Promise<{ success: boolean; segments: SessionSegment[] }>;
 	onSessionMessagesChanged: (
 		callback: (data: {
 			sessionId: string;
@@ -1280,28 +1215,6 @@ export interface ElectronAPI {
 			messageId?: string;
 		}) => void,
 	) => () => void;
-	getSessionCacheStats: () => Promise<{
-		size: number;
-		maxSize: number;
-		cachedSessionIds: string[];
-	}>;
-	evictSessionCache: (sessionId: string) => Promise<{ success: boolean }>;
-	// System message methods (for /files command persistence)
-	addSystemMessage: (
-		sessionId: string,
-		message: { id: string; role: string; content: string; timestamp: number },
-	) => Promise<{ success: boolean; error?: string }>;
-	removeFilesChangedMessage: (
-		sessionId: string,
-	) => Promise<{ success: boolean; removedId?: string | null; error?: string }>;
-	removeGitStatusMessage: (
-		sessionId: string,
-	) => Promise<{ success: boolean; removedId?: string | null; error?: string }>;
-	// Generic remove message by ID (for close button functionality)
-	removeMessage: (
-		sessionId: string,
-		messageId: string,
-	) => Promise<{ success: boolean; error?: string }>;
 	onContextSizeUpdated: (
 		callback: (data: { sessionId: string; contextSize: number }) => void,
 	) => () => void;

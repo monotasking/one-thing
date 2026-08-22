@@ -221,8 +221,16 @@ async function runOnce({ label, shadow, tools, ports, probePath }) {
     method: 'POST', headers, body: JSON.stringify({ name: `perf-${label}` }),
   })).json()
   const sessionId = created.session?.id ?? created.sessionId ?? created.id
-  await fetch(`http://127.0.0.1:${ports.server}/api/sessions/${sessionId}/working-directory`, {
-    method: 'POST', headers, body: JSON.stringify({ workingDirectory: workdir }),
+  // 会话域整只迁进了 router(结构债 P4c 第五批);
+  // `POST /api/sessions/:id/working-directory` 已随之删除。
+  await fetch(`http://127.0.0.1:${ports.server}/api/rpc`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      domain: 'sessions',
+      method: 'updateWorkingDirectory',
+      payload: { sessionId, workingDirectory: workdir },
+    }),
   })
 
   const eventsPath = path.join(store, 'sessions', sessionId, 'events.jsonl')

@@ -227,21 +227,18 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/files/reveal') return handleRevealPath
   if (method === 'POST' && pathname === '/api/chat/history') return handleChatHistory
   if (method === 'POST' && pathname === '/api/chat/title') return handleGenerateTitle
-  if (method === 'POST' && pathname === '/api/chat/messages') return handleChatMessages
-  if (method === 'POST' && pathname === '/api/chat/token-usage') return handleChatTokenUsage
   // 通用 RPC 单路由(主线 T0):所有 router 域走这一条,加域不再往本文件加路由。
   if (method === 'POST' && pathname === '/api/rpc') return handleRpc
-  if (method === 'POST' && pathname === '/api/chat/update-session-pin') return handleUpdateSessionPin
-  if (method === 'POST' && pathname === '/api/chat/add-system-message') return handleAddSystemMessage
-  if (method === 'POST' && pathname === '/api/chat/remove-system-marker') return handleRemoveSystemMarkerMessage
-  if (method === 'POST' && pathname === '/api/chat/remove-message') return handleRemoveMessage
   if (method === 'POST' && pathname === '/api/chat/update-thinking-time') return handleUpdateMessageThinkingTime
   // 媒体域的数据面已迁到通用 `POST /api/rpc`(P4c 第三批,`mediaRouter` 十一条)。
   // 这里只剩两条**不是 RPC 形状**的:按文件名取字节的那条,和一条 SSE。
   if (method === 'GET' && pathname === '/api/media/events') return handleMediaEvents
+  // 会话域的数据面已迁到通用 `POST /api/rpc`(P4c 第五批,`sessionsRouter` 26 条)。
+  // 这里只剩**仍有真实客户端**的三条:`apps/mobile`(独立 RN 客户端,直接打 REST)
+  // 用的会话列表 / 建会话 / 消息分页。它们是同一批域处理者之上的薄适配,不是第二份
+  // 实现 —— 换句话说,mobile 换成 `/api/rpc` 的那天,这三行就跟着消失(拍板 #32)。
   if (method === 'GET' && pathname === '/api/sessions') return handleListSessions
   if (method === 'POST' && pathname === '/api/sessions') return handleCreateSession
-  if (method === 'POST' && pathname === '/api/sessions/branch') return handleCreateBranch
   if (method === 'POST' && pathname === '/api/session-messages/page') return handleMessagePage
   if (method === 'GET' && pathname === '/api/events') return handleEvents
   if (method === 'POST' && pathname === '/api/streams/abort') return handleAbortStream
@@ -250,20 +247,12 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   const sessionMatch = pathname.match(/^\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/)
   if (sessionMatch) {
     const action = sessionMatch[2]
-    if (method === 'GET' && !action) return withSessionId(sessionMatch[1], handleGetSession)
-    if (method === 'DELETE' && !action) return withSessionId(sessionMatch[1], handleDeleteSession)
-    if (method === 'POST' && action === 'activate') return withSessionId(sessionMatch[1], handleActivateSession)
-    if (method === 'POST' && action === 'switch') return withSessionId(sessionMatch[1], handleActivateSession)
-    if (method === 'POST' && action === 'rename') return withSessionId(sessionMatch[1], handleRenameSession)
-    if (method === 'POST' && action === 'archive') return withSessionId(sessionMatch[1], handleUpdateSessionArchive)
-    if (method === 'POST' && action === 'working-directory') return withSessionId(sessionMatch[1], handleUpdateSessionWorkingDirectory)
-    if (method === 'POST' && action === 'agent') return withSessionId(sessionMatch[1], handleUpdateSessionAgent)
-    if (method === 'POST' && action === 'permission-mode') return withSessionId(sessionMatch[1], handleUpdateSessionPermissionMode)
-    if (method === 'POST' && action === 'model') return withSessionId(sessionMatch[1], handleUpdateSessionModel)
+    // 会话的读/改/删十二条已迁 `sessionsRouter`(P4c 第五批)。剩下的三条各有理由:
+    // `max-tokens` 桌面侧从来没有处理者(不是那 26 条之一);另两条不是 RPC 形状 ——
+    // 一次提示词快照读取和一条 SSE。
     if (method === 'POST' && action === 'max-tokens') return withSessionId(sessionMatch[1], handleUpdateSessionMaxTokens)
     if (method === 'GET' && action === 'system-prompt-snapshot') return withSessionId(sessionMatch[1], handleGetSystemPromptSnapshot)
     if (method === 'GET' && action === 'events') return withSessionId(sessionMatch[1], handleEvents)
-    if (method === 'GET' && action === 'user-markers') return withSessionId(sessionMatch[1], handleUserMarkers)
   }
 
   const themeMatch = pathname.match(/^\/api\/themes\/([^/]+)(?:\/([^/]+))?$/)
@@ -492,20 +481,6 @@ async function handleGenerateTitle(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await adapter.generateTitle(body?.message ?? '', context.requestContext), context.corsOrigin)
 }
 
-async function handleChatMessages(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.chat
-  if (!adapter?.getMessages) return sendNotImplemented(context, 'chat.getMessages')
-  const body = await readJson<{ sessionId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.getMessages(body?.sessionId ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleChatTokenUsage(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.chat
-  if (!adapter?.getTokenUsage) return sendNotImplemented(context, 'chat.getTokenUsage')
-  const body = await readJson<{ sessionId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.getTokenUsage(body?.sessionId ?? '', context.requestContext), context.corsOrigin)
-}
-
 /**
  * The generic RPC adapter — server half (主线 T0).
  *
@@ -534,39 +509,6 @@ async function handleRpc(context: RouteContext): Promise<void> {
     return
   }
   sendJson(context.response, 200, await dispatchRpc(request, context.rpcContext), context.corsOrigin)
-}
-
-async function handleUpdateSessionPin(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.chat
-  if (!adapter?.updateSessionPin) return sendNotImplemented(context, 'chat.updateSessionPin')
-  const body = await readJson<{ sessionId?: string; isPinned?: boolean }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.updateSessionPin(body?.sessionId ?? '', Boolean(body?.isPinned), context.requestContext),
-    context.corsOrigin,
-  )
-}
-
-async function handleAddSystemMessage(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.chat
-  if (!adapter?.addSystemMessage) return sendNotImplemented(context, 'chat.addSystemMessage')
-  const body = await readJson<{ sessionId?: string; message?: unknown }>(context.request)
-  sendJson(context.response, 200, await adapter.addSystemMessage(body?.sessionId ?? '', body?.message, context.requestContext), context.corsOrigin)
-}
-
-async function handleRemoveSystemMarkerMessage(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.chat
-  if (!adapter?.removeSystemMarkerMessage) return sendNotImplemented(context, 'chat.removeSystemMarkerMessage')
-  const body = await readJson<{ sessionId?: string; markerType?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.removeSystemMarkerMessage(body?.sessionId ?? '', body?.markerType ?? '', context.requestContext), context.corsOrigin)
-}
-
-async function handleRemoveMessage(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.chat
-  if (!adapter?.removeMessage) return sendNotImplemented(context, 'chat.removeMessage')
-  const body = await readJson<{ sessionId?: string; messageId?: string }>(context.request)
-  sendJson(context.response, 200, await adapter.removeMessage(body?.sessionId ?? '', body?.messageId ?? '', context.requestContext), context.corsOrigin)
 }
 
 async function handleUpdateMessageThinkingTime(context: RouteContext): Promise<void> {
@@ -1221,83 +1163,6 @@ async function handleCreateSession(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await context.runtime.sessions.create(body?.name || 'New Chat', context.requestContext, body?.sessionId), context.corsOrigin)
 }
 
-async function handleGetSession(context: RouteContext): Promise<void> {
-  if (!context.runtime.sessions.get) return sendNotImplemented(context, 'sessions.get')
-  sendJson(context.response, 200, await context.runtime.sessions.get(readSessionId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleActivateSession(context: RouteContext): Promise<void> {
-  if (!context.runtime.sessions.activate) return sendNotImplemented(context, 'sessions.activate')
-  sendJson(context.response, 200, await context.runtime.sessions.activate(readSessionId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleDeleteSession(context: RouteContext): Promise<void> {
-  if (!context.runtime.sessions.delete) return sendNotImplemented(context, 'sessions.delete')
-  sendJson(context.response, 200, await context.runtime.sessions.delete(readSessionId(context), context.requestContext), context.corsOrigin)
-}
-
-async function handleRenameSession(context: RouteContext): Promise<void> {
-  if (!context.runtime.sessions.rename) return sendNotImplemented(context, 'sessions.rename')
-  const body = await readJson<{ name?: string }>(context.request)
-  sendJson(context.response, 200, await context.runtime.sessions.rename(readSessionId(context), body?.name || '', context.requestContext), context.corsOrigin)
-}
-
-async function handleCreateBranch(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.sessions
-  if (!adapter.createBranch) return sendNotImplemented(context, 'sessions.createBranch')
-  const body = await readJson<{ parentSessionId?: string; branchFromMessageId?: string }>(context.request)
-  sendJson(
-    context.response,
-    200,
-    await adapter.createBranch(
-      body?.parentSessionId ?? '',
-      body?.branchFromMessageId ?? '',
-      context.requestContext,
-    ),
-    context.corsOrigin,
-  )
-}
-
-async function handleUpdateSessionArchive(context: RouteContext): Promise<void> {
-  const body = await readJson<{ isArchived?: boolean; archivedAt?: number | null }>(context.request)
-  sendJson(context.response, 200, await updateSession(context, {
-    isArchived: Boolean(body?.isArchived),
-    archivedAt: body?.archivedAt ?? null,
-  }), context.corsOrigin)
-}
-
-async function handleUpdateSessionWorkingDirectory(context: RouteContext): Promise<void> {
-  const body = await readJson<{ workingDirectory?: string | null }>(context.request)
-  sendJson(context.response, 200, await updateSession(context, {
-    workingDirectory: body?.workingDirectory ?? null,
-  }), context.corsOrigin)
-}
-
-async function handleUpdateSessionAgent(context: RouteContext): Promise<void> {
-  const body = await readJson<{ agentId?: string }>(context.request)
-  sendJson(context.response, 200, await updateSession(context, {
-    agentId: body?.agentId || '',
-  }), context.corsOrigin)
-}
-
-async function handleUpdateSessionPermissionMode(context: RouteContext): Promise<void> {
-  const body = await readJson<{ permissionMode?: string }>(context.request)
-  sendJson(context.response, 200, await updateSession(context, {
-    permissionMode: body?.permissionMode,
-  }), context.corsOrigin)
-}
-
-async function handleUpdateSessionModel(context: RouteContext): Promise<void> {
-  const body = await readJson<{ provider?: string; model?: string }>(context.request)
-  sendJson(context.response, 200, await updateSession(context, {
-    lastProvider: body?.provider || '',
-    lastModel: body?.model || '',
-    // This route IS the picker (renderer platformApi.updateSessionModel), so
-    // the choice is the user's — mirrors the desktop repository's pin.
-    modelPinned: true,
-  }), context.corsOrigin)
-}
-
 async function handleUpdateSessionMaxTokens(context: RouteContext): Promise<void> {
   const body = await readJson<{ maxTokens?: number }>(context.request)
   sendJson(context.response, 200, await updateSession(context, {
@@ -1320,12 +1185,6 @@ async function handleMessagePage(context: RouteContext): Promise<void> {
   const adapter = context.runtime.messages
   if (!adapter) return sendNotImplemented(context, 'messages.page')
   sendJson(context.response, 200, await adapter.page(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
-async function handleUserMarkers(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.messages
-  if (!adapter?.userMarkers) return sendNotImplemented(context, 'messages.userMarkers')
-  sendJson(context.response, 200, await adapter.userMarkers(readSessionId(context), context.requestContext), context.corsOrigin)
 }
 
 async function handlePermissionResponse(context: RouteContext): Promise<void> {

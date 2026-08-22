@@ -1003,6 +1003,14 @@ describe('createWebPlatformApi', () => {
   // `/api/sessions/:id/permissions/{pending,clear}` 的镜像,server 那条正则路由的
   // 两个分支也一并删了(`/api/permissions/:id/respond` 不动 —— 那是命令面)。
 
+  // 会话域(sessions)的 26 条数据面已整只迁到通用 RPC 通道(P4c 第五批,
+  // `sessionsRouter` + `@/platform/sessions-client`):web 壳上不再有
+  // `/api/sessions/*`、`/api/session-messages/page`、`/api/chat/{messages,
+  // token-usage,update-session-pin,add-system-message,remove-system-marker,
+  // remove-message}` 的镜像,server 侧对应的路由也一并删了。留下的 REST 只有
+  // mobile 仍在直接打的三条(list / create / messages page,拍板 #32)与
+  // `max-tokens`(从来不在那 26 条里)。
+
   it('maps chat and session message platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -1039,46 +1047,9 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/chat/title',
     })
-    await expect(api.getSessionMessages('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/chat/messages',
-    })
-    await expect(api.getSessionTokenUsage('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/chat/token-usage',
-    })
-    await expect(api.createBranch('session-1', 'message-1')).resolves.toEqual({
-      success: true,
-      url: '/api/sessions/branch',
-    })
-    await expect(api.updateSessionPin('session-1', true)).resolves.toEqual({
-      success: true,
-      url: '/api/chat/update-session-pin',
-    })
     await expect(api.updateSessionMaxTokens('session-1', 200000)).resolves.toEqual({
       success: true,
       url: '/api/sessions/session-1/max-tokens',
-    })
-    await expect(api.addSystemMessage('session-1', {
-      id: 'system-1',
-      role: 'system',
-      content: '{"type":"files-changed"}',
-      timestamp: 1,
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/chat/add-system-message',
-    })
-    await expect(api.removeFilesChangedMessage('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/chat/remove-system-marker',
-    })
-    await expect(api.removeGitStatusMessage('session-1')).resolves.toEqual({
-      success: true,
-      url: '/api/chat/remove-system-marker',
-    })
-    await expect(api.removeMessage('session-1', 'message-1')).resolves.toEqual({
-      success: true,
-      url: '/api/chat/remove-message',
     })
     await expect(api.updateMessageThinkingTime('session-1', 'message-1', 3.5)).resolves.toEqual({
       success: true,
@@ -1090,16 +1061,9 @@ describe('createWebPlatformApi', () => {
       url: '/api/rpc',
     })
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/chat/update-session-pin', expect.objectContaining({
-      method: 'POST',
-    }))
     expect(fetchMock).toHaveBeenCalledWith('/api/sessions/session-1/max-tokens', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ maxTokens: 200000 }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/chat/remove-system-marker', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ sessionId: 'session-1', markerType: 'files-changed' }),
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/chat/update-thinking-time', expect.objectContaining({
       method: 'POST',

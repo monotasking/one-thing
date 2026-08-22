@@ -1,6 +1,7 @@
 import { platformApi } from "@/platform";
 import { collabApi } from "@/platform/collab-client";
 import { sessionCommands } from "@/platform/session-command-client";
+import { sessionsApi } from "@/platform/sessions-client";
 import { getLogger } from "@/services/log";
 /**
  * Chat Store - Centralized state management for all chat sessions
@@ -2051,7 +2052,7 @@ export const useChatStore = defineStore("chat", () => {
 	 */
 	async function loadMessages(sessionId: string) {
 		try {
-			const response = await platformApi.getSession(sessionId);
+			const response = await sessionsApi.get({ sessionId });
 			if (response.success && response.session) {
 				const messages = (response.session.messages || []).map(
 					rebuildContentParts,
@@ -2098,7 +2099,7 @@ export const useChatStore = defineStore("chat", () => {
 		let setStateMs = 0;
 		try {
 			const ipcStart = performance.now();
-			const response = await platformApi.getSessionMessagesPage({
+			const response = await sessionsApi.getMessagesPage({
 				sessionId,
 				anchor: "tail",
 				limit,
@@ -2155,7 +2156,7 @@ export const useChatStore = defineStore("chat", () => {
 
 		updateSessionPageState(sessionId, { isLoadingOlder: true });
 		try {
-			const response = await platformApi.getSessionMessagesPage({
+			const response = await sessionsApi.getMessagesPage({
 				sessionId,
 				cursor: state.nextCursor,
 				direction: "older",
@@ -2198,7 +2199,7 @@ export const useChatStore = defineStore("chat", () => {
 
 		updateSessionPageState(sessionId, { isLoadingOlder: true });
 		try {
-			const response = await platformApi.getSessionMessagesPage({
+			const response = await sessionsApi.getMessagesPage({
 				sessionId,
 				cursor: state.backwardsCursor,
 				direction: "newer",
@@ -2240,7 +2241,7 @@ export const useChatStore = defineStore("chat", () => {
 		sessionLoading.value.set(sessionId, true);
 		triggerRef(sessionLoading);
 		try {
-			const response = await platformApi.getSessionMessagesPage({
+			const response = await sessionsApi.getMessagesPage({
 				sessionId,
 				anchor: { messageId, before, after },
 			});
@@ -2274,7 +2275,7 @@ export const useChatStore = defineStore("chat", () => {
 	): Promise<UserMessageMarker[]> {
 		try {
 			const response: GetSessionUserMarkersResponse =
-				await platformApi.getSessionUserMarkers(sessionId);
+				await sessionsApi.getUserMarkers({ sessionId });
 			const markers = response.success ? response.markers || [] : [];
 			sessionUserMarkers.value.set(sessionId, markers);
 			triggerRef(sessionUserMarkers);

@@ -561,6 +561,7 @@ import type {
   SchedulerTaskSnapshotDTO,
 } from '@/types'
 import { platformApi } from '@/platform'
+import { sessionsApi } from '@/platform/sessions-client'
 import { schedulerApi } from '@/platform/scheduler-client'
 
 const agentsStore = useAgentsStore()
@@ -935,8 +936,8 @@ async function deleteTask(taskId: string): Promise<void> {
 }
 
 async function openRunSession(sessionId: string): Promise<void> {
-  await platformApi.updateSessionArchived(sessionId, false, null)
-  await platformApi.switchSession(sessionId)
+  await sessionsApi.updateArchived({ sessionId, isArchived: false, archivedAt: null })
+  await sessionsApi.switch({ sessionId })
 }
 
 function formatSchedule(schedule?: SchedulerSchedule): string {

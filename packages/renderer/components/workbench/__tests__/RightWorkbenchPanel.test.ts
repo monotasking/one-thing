@@ -33,6 +33,12 @@ vi.mock('@/composables/useEditorWorkspace', () => ({
 
 vi.mock('@/platform/variables-client', () => ({ variablesApi: mocks.variablesApi }))
 
+// 大纲页签会去问会话目录(P4c 第五批起走 `sessions` RPC 域)。本文件的契约是
+// 「页签怎么开怎么关」,不是目录内容 —— 桩掉传输面,免得跑去真的打 rpcInvoke。
+vi.mock('@/platform/sessions-client', () => ({
+  sessionsApi: { getSegments: async () => ({ success: true, segments: [] }) },
+}))
+
 // The real TerminalView opens an xterm instance — meaningless (and crash-prone)
 // under happy-dom. The panel contract is just "render a view for terminalId".
 vi.mock('@/components/terminal/TerminalView.vue', () => ({

@@ -10,6 +10,7 @@ import { platformApi } from "@/platform";
 import { collabApi } from "@/platform/collab-client";
 import { variablesApi } from "@/platform/variables-client";
 import { appStateApi } from "@/platform/app-state-client";
+import { sessionsApi } from "@/platform/sessions-client";
 import { getLogger } from "@/services/log";
 import { DEFAULT_AGENT_ID, isColleague } from "@shared/ipc";
 import { isAgentPairDmRoom, isUserDmRoom } from "@onething/runtime/collab";
@@ -485,7 +486,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		isLoading.value = true;
 		try {
 			// Use optimized API that returns only metadata (no messages)
-			const response = await platformApi.getSessionsList();
+			const response = await sessionsApi.listMeta({});
 			if (response.success) {
 				sessions.value = response.sessions || [];
 				// Don't auto-create new chat on app open - let user choose
@@ -666,7 +667,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		// currentSessionId already equals the draft/session id, so
 		// switchSession would early-return — activate explicitly so the main
 		// process's current-session pointer (todo window etc.) follows.
-		await platformApi.activateSession(created.id).catch(() => {});
+		await sessionsApi.activate({ sessionId: created.id }).catch(() => {});
 		await switchSession(created.id);
 		await applyDraftSettingsToSession(created.id, draft);
 		return created;
@@ -695,7 +696,8 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	async function createSession(name: string) {
 		try {
-			const response = await platformApi.createSession(name || "New Chat", {
+			const response = await sessionsApi.create({
+				name: name || "New Chat",
 				workspaceId: currentSpaceId(),
 			});
 			if (response.success && response.session) {
@@ -719,7 +721,8 @@ export const useSessionsStore = defineStore("sessions", () => {
 		options?: { workspaceId?: string },
 	) {
 		try {
-			const response = await platformApi.createSession(name, {
+			const response = await sessionsApi.create({
+				name,
 				...(sessionId ? { sessionId } : {}),
 				workspaceId: options?.workspaceId || currentSpaceId(),
 			});
@@ -793,7 +796,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			// Step 1: Activate session (returns details without messages)
 			const activateStart = performance.now();
 			const activateResponse =
-				await platformApi.activateSession(sessionId);
+				await sessionsApi.activate({ sessionId });
 			activateMs = performance.now() - activateStart;
 			if (generation !== switchGeneration) return;
 			if (!activateResponse.success || !activateResponse.session) {
@@ -984,7 +987,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				if (s) {
 					s.isArchived = true;
 					s.archivedAt = archivedAt;
-					await platformApi.updateSessionArchived(id, true, archivedAt);
+					await sessionsApi.updateArchived({ sessionId: id, isArchived: true, archivedAt });
 				}
 			}
 
@@ -1041,7 +1044,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				if (s) {
 					s.isArchived = false;
 					s.archivedAt = undefined;
-					await platformApi.updateSessionArchived(id, false, null);
+					await sessionsApi.updateArchived({ sessionId: id, isArchived: false, archivedAt: null });
 				}
 			}
 		} catch (error) {
@@ -1067,7 +1070,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			const childIds = collectChildSessionIds(sessionId);
 			const allIdsToDelete = [sessionId, ...childIds];
 
-			const response = await platformApi.deleteSession(sessionId);
+			const response = await sessionsApi.delete({ sessionId });
 			if (response.success) {
 				// Remove all deleted sessions from local state
 				sessions.value = sessions.value.filter(
@@ -1085,10 +1088,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	async function renameSession(sessionId: string, newName: string) {
 		try {
-			const response = await platformApi.renameSession(
-				sessionId,
-				newName,
-			);
+			const response = await sessionsApi.rename({ sessionId, newName });
 			if (response.success) {
 				cancelSessionNameAnimation(sessionId);
 				setSessionName(sessionId, newName);
@@ -1103,10 +1103,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 		branchFromMessageId: string,
 	) {
 		try {
-			const response = await platformApi.createBranch(
+			const response = await sessionsApi.createBranch({
 				parentSessionId,
 				branchFromMessageId,
-			);
+			});
 			if (response.success && response.session) {
 				// Add the new branch session to the list
 				sessions.value.unshift(response.session);
@@ -1121,10 +1121,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	async function updateSessionPin(sessionId: string, isPinned: boolean) {
 		try {
-			const response = await platformApi.updateSessionPin(
-				sessionId,
-				isPinned,
-			);
+			const response = await sessionsApi.updatePin({ sessionId, isPinned });
 			if (response.success) {
 				const session = sessions.value.find((s) => s.id === sessionId);
 				if (session) {
@@ -1153,10 +1150,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 
 		try {
-			const response = await platformApi.updateSessionWorkingDirectory(
+			const response = await sessionsApi.updateWorkingDirectory({
 				sessionId,
 				workingDirectory,
-			);
+			});
 			if (response.success) {
 				const session = sessions.value.find((s) => s.id === sessionId);
 				if (session) {
@@ -1194,10 +1191,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 
 		try {
-			const response = await platformApi.updateSessionAgent(
-				sessionId,
-				agentId,
-			);
+			const response = await sessionsApi.updateAgent({ sessionId, agentId });
 			if (response.success) {
 				const session = sessions.value.find((s) => s.id === sessionId);
 				if (session) {
@@ -1229,10 +1223,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 
 		try {
-			const response = await platformApi.updateSessionPermissionMode(
+			const response = await sessionsApi.updatePermissionMode({
 				sessionId,
 				permissionMode,
-			);
+			});
 			if (response.success) {
 				const session = sessions.value.find((s) => s.id === sessionId);
 				if (session) {
@@ -1269,11 +1263,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 
 		try {
-			const response = await platformApi.updateSessionModel(
-				sessionId,
-				provider,
-				model,
-			);
+			const response = await sessionsApi.updateModel({ sessionId, provider, model });
 			if (response.success) {
 				const session = sessions.value.find((s) => s.id === sessionId);
 				if (session) {
@@ -1437,7 +1427,8 @@ export const useSessionsStore = defineStore("sessions", () => {
 			dm?: true;
 		},
 	) {
-		const response = await platformApi.createSession(name, {
+		const response = await sessionsApi.create({
+			name,
 			kind: "room",
 			room,
 		});

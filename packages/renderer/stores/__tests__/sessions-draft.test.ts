@@ -4,7 +4,12 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useSessionsStore } from '../sessions'
 import { useChatStore } from '../chat'
 
-const { electronApi } = vi.hoisted(() => {
+/**
+ * P4c 第五批:会话域也走通用 RPC 通道了,所以这里桩的不再是 `electronAPI` 上那
+ * 26 个方法,而是 `sessions` 域的处理者 —— 入参是**信封**(`{ sessionId, … }`)。
+ * 断言因此跟着从位置参数改成信封,这正是本批要证的形状变化。
+ */
+const { electronApi, sessionsRpc } = vi.hoisted(() => {
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: {
@@ -14,20 +19,23 @@ const { electronApi } = vi.hoisted(() => {
       clear: vi.fn(),
     },
   })
+  const sessionsRpc = {
+    create: vi.fn(),
+    activate: vi.fn(),
+    getMessagesPage: vi.fn(),
+    getUserMarkers: vi.fn(),
+    updateAgent: vi.fn().mockResolvedValue({ success: true }),
+    updatePermissionMode: vi.fn().mockResolvedValue({ success: true }),
+    updateModel: vi.fn().mockResolvedValue({ success: true }),
+    updateWorkingDirectory: vi.fn().mockResolvedValue({ success: true }),
+  }
   return {
+    sessionsRpc,
     electronApi: {
-      createSession: vi.fn(),
-      activateSession: vi.fn(),
-      getSessionMessagesPage: vi.fn(),
-      getSessionUserMarkers: vi.fn(),
-      updateSessionAgent: vi.fn().mockResolvedValue({ success: true }),
-      updateSessionPermissionMode: vi.fn().mockResolvedValue({ success: true }),
-      updateSessionModel: vi.fn().mockResolvedValue({ success: true }),
-      updateSessionWorkingDirectory: vi.fn().mockResolvedValue({ success: true }),
       onSystemThemeChanged: vi.fn(() => vi.fn()),
       getSettings: vi.fn().mockResolvedValue({ success: true, settings: {} }),
       // 域已迁到通用 RPC 通道(主线 T1 第二批):打那一条通道,按 domain.method 分发。
-      rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
+      rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
         if (request.domain === 'agents' && request.method === 'list') {
           return { ok: true, data: { success: true, agents: [] } }
         }
@@ -37,6 +45,9 @@ const { electronApi } = vi.hoisted(() => {
         if (request.domain === 'models' && request.method === 'getNameAliases') {
           return { ok: true, data: { success: true, aliases: {} } }
         }
+        const sessionsHandlers = sessionsRpc as unknown as Record<string, ((payload: unknown) => Promise<unknown>) | undefined>
+        const sessionsHandler = request.domain === 'sessions' ? sessionsHandlers[request.method] : undefined
+        if (sessionsHandler) return { ok: true, data: await sessionsHandler(request.payload) }
         return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
       }),
     },
@@ -77,7 +88,7 @@ describe('sessions draft New Chat', () => {
     expect(store.sidebarSessions[0].id).toBe(draft.id)
     expect(store.filteredSessions[0].id).toBe('old-empty')
     expect(store.sessions.some(session => session.id === draft.id)).toBe(false)
-    expect(electronApi.createSession).not.toHaveBeenCalled()
+    expect(sessionsRpc.create).not.toHaveBeenCalled()
   })
 
   it('updates draft chat settings locally without calling session IPC', async () => {
@@ -95,9 +106,9 @@ describe('sessions draft New Chat', () => {
       lastProvider: 'codex',
       lastModel: 'gpt-5.5',
     })
-    expect(electronApi.updateSessionAgent).not.toHaveBeenCalled()
-    expect(electronApi.updateSessionPermissionMode).not.toHaveBeenCalled()
-    expect(electronApi.updateSessionModel).not.toHaveBeenCalled()
+    expect(sessionsRpc.updateAgent).not.toHaveBeenCalled()
+    expect(sessionsRpc.updatePermissionMode).not.toHaveBeenCalled()
+    expect(sessionsRpc.updateModel).not.toHaveBeenCalled()
   })
 
   it('creates another draft when current draft already has composer text', () => {
@@ -116,7 +127,7 @@ describe('sessions draft New Chat', () => {
     expect(store.currentSessionId).toBe(second.id)
     expect(store.newChatDrafts.map(item => item.id)).toEqual([second.id, first.id])
     expect(chatStore.getComposerDraft(first.id)?.messageInput).toBe('unfinished prompt')
-    expect(electronApi.createSession).not.toHaveBeenCalled()
+    expect(sessionsRpc.create).not.toHaveBeenCalled()
   })
 
   it('keeps draft and composer text when switching to another chat', async () => {
@@ -136,7 +147,7 @@ describe('sessions draft New Chat', () => {
       quotedText: '',
       attachments: [],
     })
-    electronApi.activateSession.mockResolvedValue({
+    sessionsRpc.activate.mockResolvedValue({
       success: true,
       session: {
         id: 'real-existing',
@@ -146,7 +157,7 @@ describe('sessions draft New Chat', () => {
         messageCount: 1,
       },
     })
-    electronApi.getSessionMessagesPage.mockResolvedValue({
+    sessionsRpc.getMessagesPage.mockResolvedValue({
       success: true,
       messages: [],
       pageState: {
@@ -164,7 +175,7 @@ describe('sessions draft New Chat', () => {
     expect(store.newChatDrafts.map(item => item.id)).toContain(draft.id)
     expect(store.sidebarSessions[0].id).toBe(draft.id)
     expect(chatStore.getComposerDraft(draft.id)?.messageInput).toBe('keep this draft')
-    expect(electronApi.createSession).not.toHaveBeenCalled()
+    expect(sessionsRpc.create).not.toHaveBeenCalled()
   })
 
   it('materializes the draft on first send instead of reusing an old empty session', async () => {
@@ -184,19 +195,19 @@ describe('sessions draft New Chat', () => {
 
     // The main process persists the session under the client-supplied id
     // (the draft's own id) — echo it back like the real handler does.
-    electronApi.createSession.mockImplementation(
-      async (name: string, options?: { sessionId?: string }) => ({
+    sessionsRpc.create.mockImplementation(
+      async (request: { name?: string; sessionId?: string }) => ({
         success: true,
         session: {
-          id: options?.sessionId ?? 'fresh-id',
-          name,
+          id: request?.sessionId ?? 'fresh-id',
+          name: request?.name,
           createdAt: Date.now(),
           updatedAt: Date.now(),
           messageCount: 0,
         },
       }),
     )
-    electronApi.activateSession.mockImplementation(async (sessionId: string) => ({
+    sessionsRpc.activate.mockImplementation(async ({ sessionId }: { sessionId: string }) => ({
       success: true,
       session: {
         id: sessionId,
@@ -206,7 +217,7 @@ describe('sessions draft New Chat', () => {
         messageCount: 0,
       },
     }))
-    electronApi.getSessionMessagesPage.mockResolvedValue({
+    sessionsRpc.getMessagesPage.mockResolvedValue({
       success: true,
       messages: [],
       pageState: {
@@ -223,16 +234,17 @@ describe('sessions draft New Chat', () => {
     // Identity is stable: the session persists under the draft's own id.
     expect(materialized?.id).toBe(draft.id)
     // 归属空间随草稿一路走到落盘(B1);没切过空间就是 default。
-    expect(electronApi.createSession).toHaveBeenCalledWith('New Chat', {
+    expect(sessionsRpc.create).toHaveBeenCalledWith({
+      name: 'New Chat',
       sessionId: draft.id,
       workspaceId: 'default',
     })
     expect(store.newChatDrafts).toEqual([])
     expect(store.currentSessionId).toBe(draft.id)
     expect(store.sessions[0].id).toBe(draft.id)
-    expect(electronApi.updateSessionAgent).toHaveBeenCalledWith(draft.id, 'agent-research')
-    expect(electronApi.updateSessionPermissionMode).toHaveBeenCalledWith(draft.id, 'dangerously-allow-all')
-    expect(electronApi.updateSessionModel).toHaveBeenCalledWith(draft.id, 'codex', 'gpt-5.5')
+    expect(sessionsRpc.updateAgent).toHaveBeenCalledWith({ sessionId: draft.id, agentId: 'agent-research' })
+    expect(sessionsRpc.updatePermissionMode).toHaveBeenCalledWith({ sessionId: draft.id, permissionMode: 'dangerously-allow-all' })
+    expect(sessionsRpc.updateModel).toHaveBeenCalledWith({ sessionId: draft.id, provider: 'codex', model: 'gpt-5.5' })
     expect(store.sessions[0]).toMatchObject({
       agentId: 'agent-research',
       permissionMode: 'dangerously-allow-all',

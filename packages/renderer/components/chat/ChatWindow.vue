@@ -124,6 +124,7 @@ import BorderBox from '@/components/common/BorderBox.vue'
 import PracticeStrip from './PracticeStrip.vue'
 import { useOutlineRail } from '@/composables/useOutlineRail'
 import { platformApi } from '@/platform'
+import { sessionsApi } from '@/platform/sessions-client'
 
 interface Props {
   panelId?: string
@@ -227,7 +228,7 @@ const chatSessionNames = computed<Record<string, string>>(() => {
 const cachedSessionIds = ref<Set<string> | null>(null)
 
 async function refreshCacheStats() {
-  const stats = await platformApi.getSessionCacheStats()
+  const stats = await sessionsApi.getCacheStats({})
   cachedSessionIds.value = stats.maxSize > 0 ? new Set(stats.cachedSessionIds) : null
 }
 

@@ -24,11 +24,6 @@ describe('createOnethingRuntimeFacade', () => {
       sessions: {
         list: vi.fn(async () => [{ id: 'session-1' }]),
         create: vi.fn(async (name: string) => ({ id: 'session-2', name })),
-        createBranch: vi.fn(async (parentSessionId: string, branchFromMessageId: string) => ({
-          id: 'session-branch',
-          parentSessionId,
-          branchFromMessageId,
-        })),
       },
       chat: {
         generateTitle: vi.fn(async message => ({ success: true, title: message })),
@@ -156,11 +151,6 @@ describe('createOnethingRuntimeFacade', () => {
     await expect(runtime.appState?.get()).resolves.toEqual({ currentSessionId: 'session-1' })
     await expect(runtime.sessions.list()).resolves.toEqual([{ id: 'session-1' }])
     await expect(runtime.sessions.create('New Chat')).resolves.toEqual({ id: 'session-2', name: 'New Chat' })
-    await expect(runtime.sessions.createBranch?.('session-1', 'message-1')).resolves.toEqual({
-      id: 'session-branch',
-      parentSessionId: 'session-1',
-      branchFromMessageId: 'message-1',
-    })
     await expect(runtime.chat?.generateTitle?.('Hello world')).resolves.toEqual({
       success: true,
       title: 'Hello world',

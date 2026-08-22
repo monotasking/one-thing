@@ -253,6 +253,19 @@ function makeApi(port, token) {
   }
 }
 
+/**
+ * 通用 RPC 信封的裸调用面 —— 会话还没建出来(因而没有 Driver)的那几步也要用它:
+ * 结构债 P4c 第五批把会话域整只迁进了 router,`POST /api/sessions/:id/{working-directory,
+ * permission-mode,model,agent}` 随之删除。
+ */
+async function rpcCall(api, domain, method, payload) {
+  const res = await api('POST', '/api/rpc', { domain, method, payload })
+  if (!res || res.ok !== true) {
+    throw new Error(`rpc ${domain}.${method} failed: ${JSON.stringify(res?.error ?? res)}`)
+  }
+  return res.data
+}
+
 class Driver {
   constructor(api, sessionId, scenarioName, variant, store) {
     this.api = api
@@ -277,12 +290,8 @@ class Driver {
    * `RpcResponse` 出)—— 结构债 P4c 把 permission 等域迁进 router 之后就**删掉了**
    * 对应的 REST 镜像,这是唯一的路。解包 `data`;`ok:false` 直接抛,不静默降级。
    */
-  async rpc(domain, method, payload) {
-    const res = await this.api('POST', '/api/rpc', { domain, method, payload })
-    if (!res || res.ok !== true) {
-      throw new Error(`rpc ${domain}.${method} failed: ${JSON.stringify(res?.error ?? res)}`)
-    }
-    return res.data
+  rpc(domain, method, payload) {
+    return rpcCall(this.api, domain, method, payload)
   }
 
   send(text = 'go') {
@@ -299,12 +308,26 @@ class Driver {
 
   /** 把这条会话钉在另一个模型上(生图那一格靠模型名走上特化流)。 */
   model(provider, model) {
-    return this.api('POST', `/api/sessions/${this.sessionId}/model`, { provider, model })
+    return this.rpc('sessions', 'updateModel', { sessionId: this.sessionId, provider, model })
   }
 
-  /** 换 agent —— `session/agent-changed` 的那条产地(§13.10 M7)。 */
-  agent(agentId) {
-    return this.api('POST', `/api/sessions/${this.sessionId}/agent`, { agentId })
+  /**
+   * 换 agent —— `session/agent-changed` 的那条产地(§13.10 M7)。
+   *
+   * P4c 第五批起走的是会话域(桌面那条实现),它比从前那条 REST 多一道
+   * 「agent 得在册」的门 —— 所以这里**断言成功**:静默失败不许再蒙混过去。
+   */
+  async agent(agentId) {
+    const result = await this.rpc('sessions', 'updateAgent', { sessionId: this.sessionId, agentId })
+    assert(result?.success === true, `switching to agent ${agentId} failed: ${result?.error}`)
+    return result
+  }
+
+  /** 现造一个在册的 agent(换 agent 那格要一个 default 以外的落点)。 */
+  async createAgent(name) {
+    const created = await this.rpc('agents', 'create', { name })
+    assert(created?.success === true && created.agent?.id, `agent create failed: ${created?.error}`)
+    return created.agent.id
   }
 
   /**
@@ -327,8 +350,9 @@ class Driver {
   }
 
   async messages() {
-    const result = await this.api('POST', '/api/chat/messages', { sessionId: this.sessionId })
-    return result?.messages ?? result?.data?.messages ?? []
+    // 结构债 P4c 第五批:取消息属会话域,`POST /api/chat/messages` 已随之删除。
+    const result = await this.rpc('sessions', 'getMessages', { sessionId: this.sessionId })
+    return result?.messages ?? []
   }
 
   async activeStreams() {
@@ -967,7 +991,7 @@ const SCENARIOS = [
       await d.send('先答一次')
       const first = await d.waitIdle(1)
       const victim = d.lastAssistant(first)
-      await d.api('POST', '/api/chat/remove-message', { sessionId: d.sessionId, messageId: victim.id })
+      await d.rpc('sessions', 'removeMessage', { sessionId: d.sessionId, messageId: victim.id })
       await d.send('再答一次')
       const messages = await d.waitIdle(1, { timeoutMs: 45_000 })
       assert(!messages.some(m => m.id === victim.id), 'the deleted message came back')
@@ -1047,13 +1071,16 @@ const SCENARIOS = [
       await d.waitIdle(1)
       // 换 agent 不是一条消息:切完之后消息条数一个不多。
       const before = await d.messages()
-      await d.agent('onething')
+      // 换的落点必须是**在册**的 agent(会话域比旧 REST 多一道这个门),
+      // 而且不能是会话已有的那个(没变就不该记账)。
+      const agentId = await d.createAgent(`battery-${d.variant.pass}-${Date.now()}`)
+      await d.agent(agentId)
       const after = await d.messages()
       assert(after.length === before.length, 'switching the agent must not add a message')
       // …但账本上**必须**有那一行(修复前 `POST /api/sessions/:id/agent` 是无声的)。
       const changed = await d.ledgerUntil('session/agent-changed')
       assert(changed.length === 1, `expected one session/agent-changed, got ${changed.length}`)
-      assert(changed[0].data?.to === 'onething', `wrong agent recorded: ${JSON.stringify(changed[0].data)}`)
+      assert(changed[0].data?.to === agentId, `wrong agent recorded: ${JSON.stringify(changed[0].data)}`)
       await d.send('切换之后')
       await d.waitIdle(2)
     },
@@ -1235,8 +1262,9 @@ async function main() {
         const created = await api('POST', '/api/sessions', { name: label })
         sessionId = created?.session?.id ?? created?.data?.id ?? created?.id
         if (!sessionId) throw new Error(`no session id: ${JSON.stringify(created).slice(0, 200)}`)
-        await api('POST', `/api/sessions/${sessionId}/working-directory`, { workingDirectory: workdir })
-        await api('POST', `/api/sessions/${sessionId}/permission-mode`, {
+        await rpcCall(api, 'sessions', 'updateWorkingDirectory', { sessionId, workingDirectory: workdir })
+        await rpcCall(api, 'sessions', 'updatePermissionMode', {
+          sessionId,
           permissionMode: scenario.permissionMode ?? 'dangerously-allow-all',
         })
         const driver = new Driver(api, sessionId, scenario.name, variant, store)

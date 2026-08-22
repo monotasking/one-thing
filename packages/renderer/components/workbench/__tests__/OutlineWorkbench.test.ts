@@ -31,9 +31,10 @@ vi.mock('@/stores/chat', () => ({
   useChatStore: () => chatStore,
 }))
 
-vi.mock('@/platform', () => ({
-  platformApi: {
-    getSessionSegments: (sessionId: string) => segmentsMock(sessionId),
+// P4c 第五批:目录读面走 `sessions` RPC 域(`sessionsApi.getSegments({ sessionId })`)。
+vi.mock('@/platform/sessions-client', () => ({
+  sessionsApi: {
+    getSegments: ({ sessionId }: { sessionId: string }) => segmentsMock(sessionId),
   },
 }))
 
