@@ -9,7 +9,6 @@ import type {
   RuntimeStreamPayload,
   RuntimeUnsubscribe,
 } from '@onething/core'
-import type { ProxySettings } from '@shared/ipc/settings.js'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
 import { SessionStreamCoalescer } from '@onething/backend/events/stream-coalescer.js'
 import { dispatchRpc } from '@onething/backend/rpc/registry.js'
@@ -144,9 +143,6 @@ async function handleRequest(context: RouteContext): Promise<void> {
 
 function matchRoute(method: string, pathname: string): RouteHandler | undefined {
   if (method === 'GET' && pathname === '/api/capabilities') return handleGetCapabilities
-  if (method === 'GET' && pathname === '/api/settings') return handleGetSettings
-  if (method === 'POST' && pathname === '/api/settings') return handleUpdateSettings
-  if (method === 'POST' && pathname === '/api/network/test-proxy') return handleTestProxy
   if (method === 'POST' && pathname === '/api/search/query') return handleSearchQuery
   if (method === 'POST' && pathname === '/api/search/actions') return handleSearchAction
   if (method === 'GET' && pathname === '/api/plugins') return handleListPlugins
@@ -160,17 +156,11 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'GET' && pathname === '/api/oauth/events') return handleOAuthEvents
   // gateway 的八条数据面已迁到 `POST /api/rpc`(gatewayRouter,P4c 第八批);
   // 本域零推送,所以这里一条不剩。
-  if (method === 'GET' && pathname === '/api/voice/state') return handleVoiceGetState
-  if (method === 'POST' && pathname === '/api/voice/start') return handleVoiceStart
-  if (method === 'POST' && pathname === '/api/voice/stop') return handleVoiceStop
-  if (method === 'POST' && pathname === '/api/voice/submit-utterance') return handleVoiceSubmitUtterance
-  if (method === 'POST' && pathname === '/api/voice/submit-transcript') return handleVoiceSubmitTranscript
-  if (method === 'POST' && pathname === '/api/voice/synthesize') return handleVoiceSynthesize
-  if (method === 'POST' && pathname === '/api/voice/test-asr') return handleVoiceTestASR
-  if (method === 'POST' && pathname === '/api/voice/test-tts') return handleVoiceTestTTS
-  if (method === 'POST' && pathname === '/api/voice/tts-models') return handleVoiceGetTTSModels
-  if (method === 'POST' && pathname === '/api/voice/runtime-ready') return handleVoiceRuntimeReady
-  if (method === 'POST' && pathname === '/api/voice/runtime-event') return handleVoiceRuntimeEvent
+  // settings 的四条数据面(读 / 存 / 系统深浅色 / 代理自检)已迁到 `POST /api/rpc`
+  // (settingsRouter,P4c 第十一批);出门脱敏与回来合并两道护栏跟着走进域处理者。
+  // 本域在 server 上零推送(`SETTINGS_CHANGED` 是桌面独有的窗间广播),一条不剩。
+  // voice 的十一条数据面同批迁走(voiceRouter);留下的是两条推送的 SSE 源 ——
+  // router 今天没有推送面。
   if (method === 'GET' && pathname === '/api/voice/events') return handleVoiceEvents
   if (method === 'GET' && pathname === '/api/voice/runtime-commands') return handleVoiceRuntimeCommands
   if (method === 'GET' && pathname === '/api/todo-plan/events') return handleTodoPlanEvents
@@ -321,24 +311,8 @@ async function handleReadMediaFile(context: RouteContext): Promise<void> {
   createReadStream(result.path).pipe(context.response)
 }
 
-async function handleGetSettings(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.settings
-  if (!adapter) return sendNotImplemented(context, 'settings.get')
-  sendJson(context.response, 200, await adapter.get(context.requestContext), context.corsOrigin)
-}
 
-async function handleUpdateSettings(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.settings
-  if (!adapter) return sendNotImplemented(context, 'settings.update')
-  sendJson(context.response, 200, await adapter.update(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
-async function handleTestProxy(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.network
-  if (!adapter) return sendNotImplemented(context, 'network.testProxy')
-  const body = await readJson<{ proxy?: ProxySettings }>(context.request)
-  sendJson(context.response, 200, await adapter.testProxy(body?.proxy ?? { enabled: false, url: '' }, context.requestContext), context.corsOrigin)
-}
 
 async function handleSearchQuery(context: RouteContext): Promise<void> {
   const adapter = context.runtime.search
@@ -431,71 +405,16 @@ function handleOAuthEvents(context: RouteContext): void {
   context.request.on('close', unsubscribe)
 }
 
-async function handleVoiceGetState(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.getState')
-  sendJson(context.response, 200, await adapter.getState(context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceStart(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.start')
-  sendJson(context.response, 200, await adapter.start(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceStop(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.stop')
-  sendJson(context.response, 200, await adapter.stop(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceSubmitUtterance(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.submitUtterance')
-  sendJson(context.response, 200, await adapter.submitUtterance(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceSubmitTranscript(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.submitTranscript')
-  sendJson(context.response, 200, await adapter.submitTranscript(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceSynthesize(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.synthesize')
-  sendJson(context.response, 200, await adapter.synthesize(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceTestASR(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.testASR')
-  sendJson(context.response, 200, await adapter.testASR(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceTestTTS(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.testTTS')
-  sendJson(context.response, 200, await adapter.testTTS(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceGetTTSModels(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.getTTSModels')
-  sendJson(context.response, 200, await adapter.getTTSModels(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceRuntimeReady(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.runtimeReady')
-  sendJson(context.response, 200, await adapter.runtimeReady(context.requestContext), context.corsOrigin)
-}
 
-async function handleVoiceRuntimeEvent(context: RouteContext): Promise<void> {
-  const adapter = context.runtime.voice
-  if (!adapter) return sendNotImplemented(context, 'voice.runtimeEvent')
-  sendJson(context.response, 200, await adapter.runtimeEvent(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
 
 function handleVoiceEvents(context: RouteContext): void {
   const adapter = context.runtime.voice

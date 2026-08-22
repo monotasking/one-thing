@@ -33,6 +33,9 @@ export function initializeIPC() {
 	registerWindowHandlers();
 	registerTodoPlanHandlers();
 	registerScratchpadHandlers();
+	// voice —— 十一条数据面已迁到通用 RPC 通道(P4c 第十一批,voiceRouter),
+	// 两条推送本来就是 `configureVoiceHost` 的端口;这里只剩 `VOICE_AUDIO_CHUNK`
+	// 那条高频 PCM 单向上行(流式单向残留集,拍板 #10)。
 	registerVoiceHandlers();
 	// tools / interaction / music 的数据面已迁到通用 RPC 通道(P4c 第九批,
 	// toolsRouter / interactionRouter / musicRouter),三只壳适配整只删掉;

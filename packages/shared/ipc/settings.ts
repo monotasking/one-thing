@@ -342,3 +342,47 @@ export interface TestProxyResponse {
 	error?: string;
 	status?: number;
 }
+
+// ============================================================================
+// Router
+// ============================================================================
+
+/**
+ * settings(应用设置)域 —— 结构债 P4c 第十一批,四条数据面从手写 IPC 通道迁到
+ * 通用 `rpc:invoke` / `POST /api/rpc`。
+ *
+ * 四条逐条对应从前 `IPC_CHANNELS` 上的 `settings:get` / `settings:save` /
+ * `settings:get-system-theme` / `network:test-proxy`(旧线是
+ * `apps/electron/src/settings/ipc-host.ts` 那只裸 `ipcMain.handle` 工厂 +
+ * `@main/ipc/settings.ts` 的壳适配 —— 这一域从来没有 `apps/electron/src/ipc/*`
+ * 那层可移植工厂)。请求/响应形状一字未改;变的只是通道。
+ *
+ * **两条留在宿主**(C:要 Electron 本体,router 递不过去):
+ *  - `OPEN_SETTINGS_WINDOW`(`BrowserWindow`);
+ *  - `SHOW_OPEN_DIALOG`(原生 `dialog.showOpenDialog`;渲染侧 21 个调用点,全仓最高)。
+ *
+ * **三条推送留在原地**(router 今天没有推送面):`SETTINGS_CHANGED` /
+ * `SYSTEM_THEME_CHANGED` 改走 `backend/wiring/settings/events.ts` 的
+ * `configureSettingsEventBroadcaster` 注入端口;`SETTINGS_NAVIGATE` 本来就是
+ * 主进程→设置窗的单向通知,与本域无关。
+ *
+ * 无参的两条(`getSettings` / `getSystemTheme`)按本仓惯例递 `{}`。
+ */
+import { defineRouter } from "./router.js";
+
+export type SettingsRoutes = {
+    getSettings: { input: Record<string, never>; output: GetSettingsResponse };
+    saveSettings: { input: SaveSettingsRequest; output: SaveSettingsResponse };
+    getSystemTheme: {
+        input: Record<string, never>;
+        output: { success: boolean; theme?: "light" | "dark"; error?: string };
+    };
+    testProxy: { input: TestProxyRequest; output: TestProxyResponse };
+};
+
+export const settingsRouter = defineRouter<SettingsRoutes>("settings", [
+    "getSettings",
+    "saveSettings",
+    "getSystemTheme",
+    "testProxy",
+]);

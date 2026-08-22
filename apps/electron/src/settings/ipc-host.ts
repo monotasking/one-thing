@@ -7,12 +7,6 @@ export interface ElectronIpcMainLike {
   ): void
 }
 
-export interface ElectronSettingsIpcEvent {
-  sender?: {
-    id?: number
-  }
-}
-
 export interface ElectronSettingsMessageWebContents {
   id?: number
   send(channel: string, payload: unknown): void
@@ -23,6 +17,13 @@ export interface ElectronSettingsMessageWindow {
   webContents: ElectronSettingsMessageWebContents
 }
 
+/**
+ * P4c 第十一批:发射点从这只文件的 IPC handler 搬到了装配层的域处理者,但
+ * `exceptWebContentsId` **一字未丢** —— 发起保存的那扇窗仍然不收自己的回声
+ * (回灌整份 settings 会冲掉它正在编辑的草稿)。「谁在问」现在由
+ * `@main/ipc/rpc.ts` 从 `event.sender.id` 铸进 `RpcDispatchContext.callerId`,
+ * 经域处理者原样递回这里。
+ */
 export interface BroadcastElectronSettingsChangedOptions {
   channel: string
   settings: unknown
@@ -42,22 +43,20 @@ export interface ShowElectronOpenDialogOptions {
   showOpenDialog?: typeof dialog.showOpenDialog
 }
 
+/**
+ * P4c 第十一批:四条数据面(`settings:get` / `settings:save` /
+ * `settings:get-system-theme` / `network:test-proxy`)已迁到通用 RPC 通道
+ * (`settingsRouter`)。这只工厂只剩**两件要 Electron 本体的事**:开设置窗与
+ * 原生文件对话框。
+ */
 export interface ElectronSettingsIpcChannels {
   openWindow: string
-  getSettings: string
-  getSystemTheme: string
-  saveSettings: string
-  testProxy: string
   showOpenDialog: string
 }
 
 export interface RegisterElectronSettingsIpcHandlersOptions {
   channels: ElectronSettingsIpcChannels
   openSettingsWindow(request?: unknown): unknown
-  getSettings(): unknown
-  getSystemTheme(): unknown
-  saveSettings(settings: unknown, event: ElectronSettingsIpcEvent): unknown
-  testProxy(request: unknown): unknown
   showOpenDialog(options: OpenDialogOptions): unknown
   ipcMain?: ElectronIpcMainLike
 }
@@ -116,22 +115,6 @@ export function registerElectronSettingsIpcHandlers(
 
   host.handle(options.channels.openWindow, (_event, request: unknown) => {
     return options.openSettingsWindow(request)
-  })
-
-  host.handle(options.channels.getSettings, () => {
-    return options.getSettings()
-  })
-
-  host.handle(options.channels.getSystemTheme, () => {
-    return options.getSystemTheme()
-  })
-
-  host.handle(options.channels.saveSettings, (event: unknown, settings: unknown) => {
-    return options.saveSettings(settings, event as ElectronSettingsIpcEvent)
-  })
-
-  host.handle(options.channels.testProxy, (_event, request: unknown) => {
-    return options.testProxy(request)
   })
 
   host.handle(options.channels.showOpenDialog, (_event, dialogOptions: OpenDialogOptions) => {

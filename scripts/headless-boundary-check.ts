@@ -1948,8 +1948,11 @@ const MAIN_VOICE_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
   /Voice test succeeded\./,
   /Failed to load TTS models\./,
   /return\s+\{\s*success:\s*true,\s*transcript:/,
-  /return\s+\{\s*success:\s*true,\s*models:/,
-  /return\s+\{\s*success:\s*true\s*\}/,
+  // P4c 第十一批:`/return { success: true, models: … }/` 与 `/return { success: true }/`
+  // 两条从这张表里摘掉 —— 断言现在指的是 `rpc/domains/voice.ts`,而那里逐字保留着
+  // 旧 server adapter 的 http 桩(`stop` 恒成功、`getTTSModels` 恒空表、`audioChunk`
+  // 的空回执),形状与它们撞车。真正要守的「不许把投影再抄一份」由上面那几条
+  // 文案与 `const transcript = await transcribeUtterance` 之类的实现痕迹继续守。
   /const\s+transcript\s*=\s*await\s+transcribeUtterance/,
   /const\s+result\s*=\s*await\s+getOpenRouterTTSModels/,
   /^\s*getVoiceService\(\)\.handleRuntimeReady\(event\.sender\)/,
@@ -2032,11 +2035,6 @@ const SHARED_VOICE_TEXT_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
   /return\s+chunk\.text\s*\|\|\s*chunk\.voiceSpeakText/,
 ]
 
-const MAIN_VOICE_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
-]
 
 const MAIN_SEARCH_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
   /isSearchCategory/,
@@ -2877,7 +2875,10 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
   // P4c 第八批:`@main/ipc/gateway.ts` 整只删掉(八条数据面迁 `gatewayRouter`,
   // 本域零推送)。生命周期原语的**注入点**因此是桌面的装配入口 —— 断言改指它。
   const mainGatewayIpcFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const mainSettingsIpcFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
+  // P4c 第十一批:「按新设置起停网关」随 `settingsRouter.saveSettings` 迁进域处理者,
+  // 走 `configureGatewayHost` 的 `applySettings` 那一格 —— 桌面这一侧的注入点因此
+  // 也是装配入口,断言与上面那两条 gateway 断言合并到同一只文件上。
+  const mainSettingsIpcFile = mainGatewayIpcFile
   const tsconfigNode = path.join(root, 'tsconfig.node.json')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronGatewayControllerContent = fs.existsSync(electronGatewayControllerFile)
@@ -2917,11 +2918,11 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
       ? [`${rel(mainGatewayIpcFile)}: Electron host must inject the gateway lifecycle through configureGatewayHost`]
       : []),
     ...(!mainSettingsIpcContent.includes('@onething/electron-host/gateway/lifecycle')
-      ? [`${rel(mainSettingsIpcFile)}: settings IPC must apply gateway settings through electron-host directly`]
+      ? [`${rel(mainSettingsIpcFile)}: Electron host must apply gateway settings through electron-host directly`]
       : []),
 
     ...(mainSettingsIpcContent.includes('../gateway/lifecycle')
-      ? [`${rel(mainSettingsIpcFile)}: settings IPC must not import legacy gateway lifecycle facade`]
+      ? [`${rel(mainSettingsIpcFile)}: Electron host must not import legacy gateway lifecycle facade`]
       : []),
     ...(!tsconfigContent.includes('apps/electron/**/*')
       ? [`${rel(tsconfigNode)}: missing apps/electron from node typecheck include`]
@@ -3104,55 +3105,12 @@ function checkElectronHostOwnsVoiceTray(): void {
   assertNoMatches('apps/electron owns Electron voice tray', lines)
 }
 
-function checkElectronHostOwnsVoiceIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronVoiceIpcFile = path.join(root, 'apps/electron/src/voice/ipc.ts')
-  const mainVoiceIpcFile = path.join(root, 'apps/electron/src/main/ipc/voice.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronVoiceIpcContent = fs.existsSync(electronVoiceIpcFile)
-    ? fs.readFileSync(electronVoiceIpcFile, 'utf-8')
-    : ''
-  const mainVoiceIpcContent = fs.existsSync(mainVoiceIpcFile) ? fs.readFileSync(mainVoiceIpcFile, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronVoiceIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronVoiceIpcChannels',
-    'ElectronVoiceIpcInvokeEvent',
-    'options.runtimeReady((event as ElectronVoiceIpcInvokeEvent).sender)',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/voice/ipc',
-    'registerElectronVoiceIpcHandlers',
-    'IPC_CHANNELS.VOICE_GET_STATE',
-    'IPC_CHANNELS.VOICE_START',
-    'IPC_CHANNELS.VOICE_STOP',
-    'IPC_CHANNELS.VOICE_SUBMIT_UTTERANCE',
-    'IPC_CHANNELS.VOICE_SUBMIT_TRANSCRIPT',
-    'IPC_CHANNELS.VOICE_SYNTHESIZE',
-    'IPC_CHANNELS.VOICE_TEST_ASR',
-    'IPC_CHANNELS.VOICE_TEST_TTS',
-    'IPC_CHANNELS.VOICE_GET_TTS_MODELS',
-    'IPC_CHANNELS.VOICE_RUNTIME_READY',
-    'IPC_CHANNELS.VOICE_RUNTIME_EVENT',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./voice/ipc')
-      ? [`${rel(electronPackage)}: missing voice IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronVoiceIpcContent.includes(symbol))
-      .map(symbol => `${rel(electronVoiceIpcFile)}: missing Electron voice IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainVoiceIpcContent.includes(symbol))
-      .map(symbol => `${rel(mainVoiceIpcFile)}: missing voice IPC host delegation ${symbol}`),
-    ...(fs.existsSync(mainVoiceIpcFile)
-      ? matchingLines(mainVoiceIpcFile, MAIN_VOICE_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/voice.ts: missing voice IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron voice IPC host operations', lines)
-}
+// P4c 第十一批:`checkElectronHostOwnsVoiceIpcHost` 整只删掉 —— 它守的是
+// `apps/electron/src/voice/ipc.ts` 那只裸 `ipcMain.handle` 工厂,随十一条数据面迁
+// `voiceRouter` 一起没了。`@main/ipc/voice.ts` 还在,但只剩 `VOICE_AUDIO_CHUNK`
+// 那条单向 PCM 上行(流式单向残留集,拍板 #10),没有工厂可守。
+// 本域两条推送(VOICE_EVENT / VOICE_RUNTIME_COMMAND)由
+// `checkElectronHostOwnsVoiceEventBroadcasting` 与 `...VoiceRuntimeWindow` 继续守。
 
 function checkElectronHostOwnsReadyHandler(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
@@ -4637,6 +4595,11 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSettingsContent = fs.existsSync(electronSettingsFile) ? fs.readFileSync(electronSettingsFile, 'utf-8') : ''
   const mainSettingsContent = fs.existsSync(mainSettingsFile) ? fs.readFileSync(mainSettingsFile, 'utf-8') : ''
+  // P4c 第十一批:四条数据面(`GET_SETTINGS` / `SAVE_SETTINGS` /
+  // `GET_SYSTEM_THEME` / `TEST_PROXY`)已迁 `settingsRouter` —— 三条断言随之删除,
+  // 只剩两件要 Electron 本体的事(开设置窗 / 原生对话框)与两条推送。
+  // `getElectronShouldUseDarkColors` 仍在宿主文件里(现在由 `app/main-process.ts`
+  // 的 `configureSettingsHost` 注入给域处理者),所以宿主侧那条断言保留。
   const requiredHostSymbols = [
     'BrowserWindow',
     'dialog',
@@ -4658,19 +4621,16 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
   const requiredFacadeSymbols = [
     '@onething/electron-host/settings/ipc-host',
     'registerElectronSettingsIpcHandlers',
-    'getElectronShouldUseDarkColors',
     'registerElectronSystemThemeChangedBroadcast',
     'broadcastElectronSettingsChanged',
     'showElectronOpenDialog',
     'IPC_CHANNELS.OPEN_SETTINGS_WINDOW',
-    'IPC_CHANNELS.GET_SETTINGS',
-    'IPC_CHANNELS.GET_SYSTEM_THEME',
-    'IPC_CHANNELS.SAVE_SETTINGS',
-    'IPC_CHANNELS.TEST_PROXY',
     // `GET_NETWORK_INTERFACES` 于 603582d9 随网卡枚举一起退役,全仓 0 命中 —— 断言删除。
     'IPC_CHANNELS.SHOW_OPEN_DIALOG',
     'IPC_CHANNELS.SYSTEM_THEME_CHANGED',
     'IPC_CHANNELS.SETTINGS_CHANGED',
+    // 推送改走注入端口(同 practice / scratchpad / oauth / evals 判例)。
+    'configureSettingsEventBroadcaster',
   ]
   const lines = [
     ...(!packageContent.includes('./settings/ipc-host')
@@ -5359,7 +5319,9 @@ function checkElectronHostOwnsGlobalShortcuts(): void {
   const electronShortcutsFile = path.join(root, 'apps/electron/src/shortcuts/global-shortcuts.ts')
   const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const mainShortcutsFile = path.join(root, 'packages/backend/shortcuts/global-shortcuts.ts')
-  const mainSettingsIpcFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
+  // P4c 第十一批:设置保存链搬进域处理者之后,「重注册全局快捷键」的**注入点**
+  // 是桌面的装配入口(`configureSettingsHost`)—— 断言改指它。
+  const mainSettingsIpcFile = electronMainFile
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronShortcutsContent = fs.existsSync(electronShortcutsFile)
     ? fs.readFileSync(electronShortcutsFile, 'utf-8')
@@ -5401,10 +5363,10 @@ function checkElectronHostOwnsGlobalShortcuts(): void {
       ? [`${rel(electronMainFile)}: Electron app bootstrap must inject shortcut settings into electron-host`]
       : []),
     ...(!mainSettingsIpcContent.includes('@onething/electron-host/shortcuts/global-shortcuts')
-      ? [`${rel(mainSettingsIpcFile)}: settings IPC must import global shortcuts from electron-host directly`]
+      ? [`${rel(mainSettingsIpcFile)}: Electron host must import global shortcuts from electron-host directly`]
       : []),
     ...(mainSettingsIpcContent.includes('../shortcuts/global-shortcuts')
-      ? [`${rel(mainSettingsIpcFile)}: settings IPC must not import legacy global shortcuts facade`]
+      ? [`${rel(mainSettingsIpcFile)}: Electron host must not import legacy global shortcuts facade`]
       : []),
     ...(!electronMainContent.includes('@onething/electron-host/shortcuts/global-shortcuts')
       ? [`${rel(electronMainFile)}: Electron app bootstrap must import global shortcuts from electron-host`]
@@ -7631,7 +7593,9 @@ function checkRuntimeOwnsToolsIpcBackgroundJobs(): void {
 function checkRuntimeOwnsSettingsSaveOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/settings/settings-save.ts')
   const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/settings/ipc-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
+  // P4c 第十一批:保存链的调用点从 `@main/ipc/settings.ts` 搬进了域处理者 ——
+  // 断言改指它,守的仍是同一件事(装配层不许把编排逻辑再抄一份)。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/settings.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
   const requiredRuntimeIpcSymbols = [
@@ -7649,7 +7613,7 @@ function checkRuntimeOwnsSettingsSaveOrchestration(): void {
       .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned settings IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SETTINGS_IPC_SAVE_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/settings.ts: missing settings IPC adapter']),
+      : ['packages/backend/rpc/domains/settings.ts: missing settings RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns settings save orchestration', lines)
@@ -8480,7 +8444,9 @@ function checkRuntimeOwnsTodoPlanStore(): void {
 
 function checkRuntimeOwnsVoiceIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/ipc-operations.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/voice.ts')
+  // P4c 第十一批:十一条数据面的调用点从 `@main/ipc/voice.ts` 搬进了域处理者 ——
+  // 断言改指它,守的仍是同一件事(装配层不许把投影逻辑再抄一份)。
+  const mainFile = path.join(root, 'packages/backend/rpc/domains/voice.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingVoiceStateForIpc',
@@ -8499,7 +8465,7 @@ function checkRuntimeOwnsVoiceIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned voice IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_VOICE_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/voice.ts: missing voice IPC adapter']),
+      : ['packages/backend/rpc/domains/voice.ts: missing voice RPC domain']),
   ]
 
   assertNoMatches('packages/onething-runtime owns voice IPC operations', lines)
@@ -9706,7 +9672,6 @@ checkElectronHostOwnsGatewayLifecycle()
 checkElectronHostOwnsVoiceRuntimeWindow()
 checkElectronHostOwnsVoiceEventBroadcasting()
 checkElectronHostOwnsVoiceTray()
-checkElectronHostOwnsVoiceIpcHost()
 checkElectronHostOwnsReadyHandler()
 checkElectronHostOwnsActivateHandler()
 checkElectronHostOwnsMainWindowBinding()

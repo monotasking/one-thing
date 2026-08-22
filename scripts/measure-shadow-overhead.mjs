@@ -207,7 +207,9 @@ async function runOnce({ label, shadow, tools, ports, probePath }) {
   let up = false
   for (let attempt = 0; attempt < 120 && !up; attempt++) {
     try {
-      const res = await fetch(`http://127.0.0.1:${ports.server}/api/settings`, { headers })
+      // P4c 第十一批:`GET /api/settings` 随 settings 四条迁 `settingsRouter` 一起删了;
+      // 活性探针改用 `/api/capabilities`(与 `shadow-battery.mjs` 同一条)。
+      const res = await fetch(`http://127.0.0.1:${ports.server}/api/capabilities`, { headers })
       up = res.ok
     } catch { /* not up */ }
     if (!up) await new Promise(r => setTimeout(r, 500))

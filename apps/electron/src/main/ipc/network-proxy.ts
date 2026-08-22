@@ -1,10 +1,10 @@
-import type { ProxySettings, TestProxyResponse } from '@shared/ipc.js'
+import type { ProxySettings } from '@shared/ipc.js'
 import {
   applyElectronNetworkProxySettings,
   type ElectronProxyConfig,
 } from '@onething/electron-host/network/proxy'
 import { applyBrowserProxy } from '@onething/electron-host/browser/session'
-import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '@onething/backend/provider-binding/bound-fetch.js'
+import { clearAppDispatcherCache, validateProxyUrl } from '@onething/backend/provider-binding/bound-fetch.js'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
@@ -67,32 +67,7 @@ export async function applyNetworkProxySettings(proxy: ProxySettings = getSettin
   }
 }
 
-export async function testProxy(proxy: ProxySettings): Promise<TestProxyResponse> {
-  if (!proxy.enabled) {
-    return { success: false, error: 'Proxy is disabled.' }
-  }
-
-  const validated = validateProxyUrl(proxy.url)
-  if (!validated.valid) {
-    return { success: false, error: validated.error }
-  }
-
-  try {
-    const fetchImpl = createRequiredAppFetch({
-      policy: 'default',
-      proxy: {
-        ...proxy,
-        url: validated.normalizedUrl,
-      },
-    })
-    const response = await fetchImpl('https://www.gstatic.com/generate_204', {
-      method: 'GET',
-      signal: AbortSignal.timeout(10000),
-    })
-    return response.ok || response.status === 204
-      ? { success: true, status: response.status }
-      : { success: false, status: response.status, error: `Proxy test returned HTTP ${response.status}.` }
-  } catch (error: any) {
-    return { success: false, error: error.message || 'Proxy test failed.' }
-  }
-}
+// P4c 第十一批:`testProxy` 搬到装配层(`@onething/backend/wiring/settings/proxy.ts`)——
+// 它没有一处 Electron 触点,而旧 server 里还躺着一份逐字相同的抄件。留在这里的
+// `applyNetworkProxySettings` 才是真要宿主的那一半(Electron session + 内嵌浏览器
+// 分区),它由 `app/main-process.ts` 的 `configureSettingsHost` 注入给域处理者。

@@ -46,10 +46,19 @@ function installElectronAPI(systemTheme: 'light' | 'dark' = 'dark') {
         '--applied-theme': `${themeId}:${mode}`,
       },
     })),
+    // P4c 第十一批:设置面同样走通用 RPC 通道。两个间谍
+    // (`getSystemTheme` / `saveSettings`)保留,断言逐字不变 —— 它们由本壳的
+    // `rpcInvoke` 在 `settings.*` 上转调,与真桌面同形。
     rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
       if (request.domain === 'themes' && request.method === 'apply') {
         const payload = request.payload as { themeId: string; mode: 'light' | 'dark' }
         return { ok: true, data: await electronAPI.applyTheme(payload.themeId, payload.mode) }
+      }
+      if (request.domain === 'settings' && request.method === 'getSystemTheme') {
+        return { ok: true, data: await electronAPI.getSystemTheme() }
+      }
+      if (request.domain === 'settings' && request.method === 'saveSettings') {
+        return { ok: true, data: await electronAPI.saveSettings(request.payload) }
       }
       return { ok: true, data: { success: true } }
     }),

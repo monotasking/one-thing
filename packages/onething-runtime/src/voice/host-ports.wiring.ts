@@ -34,6 +34,16 @@ export interface VoiceRuntimeWindowPorts {
   markReady?: () => void
   isReady?: () => boolean
   flushCommands?: () => void
+  /**
+   * 运行时窗自己的 webContents(结构债 P4c 第十一批)。
+   *
+   * `voice.runtimeReady` 从前从手写 IPC 通道的 `event.sender` 取发起窗,用来在
+   * `runtime-ready` 事件上做回声抑制(发起的那扇窗不收自己的回声)。十一条数据面
+   * 迁到通用 RPC 之后信封里没有「谁在问」这一格 —— 于是改由宿主回答:语音运行时窗
+   * 是**唯一**会调 `runtimeReady` 的窗口,宿主自己认得它,抑制口径逐字不变。
+   * 未注入(headless / web)= 不抑制,与那些宿主上根本没有运行时窗一致。
+   */
+  getWebContents?: () => VoiceHostWebContents | null | undefined
 }
 
 export interface VoiceHostPorts {

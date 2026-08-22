@@ -275,3 +275,66 @@ export interface VoiceTTSModelsResponse extends VoiceBaseResponse {
   models?: VoiceTTSModel[]
   fetchedAt?: number
 }
+
+// ============================================================================
+// Router
+// ============================================================================
+
+/**
+ * voice(语音:状态 / 起停 / 上行 / 合成 / 自检 / 运行时窗)域 —— 结构债 P4c
+ * 第十一批,十一条数据面整只从手写 IPC 通道迁到通用 `rpc:invoke` /
+ * `POST /api/rpc`。
+ *
+ * 十一条逐条对应从前 `IPC_CHANNELS` 上那些 `voice:*` invoke 通道 —— 旧线是
+ * `apps/electron/src/voice/ipc.ts` 那只裸 `ipcMain.handle` 工厂 +
+ * `@main/ipc/voice.ts` 的壳适配(这一域同样没有 `apps/electron/src/ipc/*` 那层)。
+ * 请求/响应形状一字未改;变的只是通道。
+ *
+ * **两条推送留在原地**(router 今天没有推送面):`VOICE_EVENT` 与
+ * `VOICE_RUNTIME_COMMAND`。这两条早就是端口形状(`configureVoiceHost` 的
+ * `broadcastMessage` / `runtimeWindow.sendCommand`),所以本批一行都不用动它们;
+ * server 那侧的 `/api/voice/events` 与 `/api/voice/runtime-commands` 两条 SSE
+ * 同样保留。
+ *
+ * **`VOICE_AUDIO_CHUNK` 不在这条 router 上**(拍板 #10 的「流式单向残留集」):
+ * 它是运行时窗往主进程灌的高频 PCM 上行,从来就是 `ipcRenderer.send` 的单向通道,
+ * 不带回执。router 只有请求/响应面,搬过去等于给每一块音频加一条空回执 ——
+ * 那是性能面的变化,不是通道收敛。常量、preload 的 `send` 包装与主进程那条
+ * `ipcMain.on` 因此原样留着(`apps/electron/src/main/ipc/voice.ts` 的终态小文件)。
+ *
+ * `runtimeReady` 从前从 `event.sender` 取发起窗(用来在 `runtime-ready` 事件上
+ * 做回声抑制)。信封里没有那一格,所以它改由宿主回答:`configureVoiceHost` 的
+ * `runtimeWindow.getWebContents` —— 语音运行时窗是**唯一**会调这条的窗口,
+ * 宿主自己认得它,抑制口径逐字不变。
+ *
+ * 无参的两条(`getState` / `runtimeReady`)按本仓惯例递 `{}`。
+ */
+import { defineRouter } from './router.js'
+
+export type VoiceRoutes = {
+  getState: { input: Record<string, never>; output: VoiceGetStateResponse }
+  start: { input: VoiceStartRequest; output: VoiceBaseResponse & { state?: VoiceRuntimeState } }
+  stop: { input: VoiceStopRequest; output: { success: boolean } }
+  submitUtterance: { input: VoiceSubmitUtteranceRequest; output: VoiceSubmitUtteranceResponse }
+  submitTranscript: { input: VoiceSubmitTranscriptRequest; output: VoiceSubmitUtteranceResponse }
+  synthesize: { input: VoiceSynthesizeRequest; output: VoiceSynthesizeResponse }
+  testASR: { input: VoiceTestASRRequest; output: VoiceSubmitUtteranceResponse }
+  testTTS: { input: VoiceTestTTSRequest; output: VoiceBaseResponse & { mimeType?: string } }
+  getTTSModels: { input: { force?: boolean }; output: VoiceTTSModelsResponse }
+  runtimeReady: { input: Record<string, never>; output: VoiceBaseResponse }
+  runtimeEvent: { input: VoiceRuntimeEvent; output: VoiceBaseResponse }
+}
+
+export const voiceRouter = defineRouter<VoiceRoutes>('voice', [
+  'getState',
+  'start',
+  'stop',
+  'submitUtterance',
+  'submitTranscript',
+  'synthesize',
+  'testASR',
+  'testTTS',
+  'getTTSModels',
+  'runtimeReady',
+  'runtimeEvent',
+])

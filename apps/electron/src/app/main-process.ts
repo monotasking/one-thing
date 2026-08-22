@@ -91,6 +91,7 @@ import {
 	destroyVoiceRuntimeWindow,
 	ensureVoiceRuntimeWindow,
 	flushVoiceRuntimeCommands,
+	getVoiceRuntimeWindow,
 	isVoiceRuntimeReady,
 	markVoiceRuntimeReady,
 	sendVoiceRuntimeCommand,
@@ -115,6 +116,8 @@ import {
 } from "@onething/electron-host/skills/environment";
 import { configureAuthHost } from "@onething/runtime/auth/host-ports";
 import { configureGatewayHost } from "@onething/backend/wiring/gateway/host-ports.js";
+import { configureSettingsHost } from "@onething/backend/wiring/settings/host-ports.js";
+import { getElectronShouldUseDarkColors } from "@onething/electron-host/settings/ipc-host";
 import { configureShellHost } from "@onething/runtime/shell/host-ports";
 import {
 	openElectronExternal,
@@ -139,6 +142,7 @@ import {
 } from "@onething/runtime/perf";
 import {
 	addWechatGatewayAccount,
+	applyGatewaySettings,
 	configureGatewayLifecycle,
 	getGatewayStatus,
 	initializeGateway,
@@ -439,6 +443,18 @@ export function startOnethingElectronMain(): void {
 		wechatStopAccount: (request) => stopWechatGatewayAccount(request),
 		wechatRemoveAccount: (request) => removeWechatGatewayAccount(request),
 		wechatRenameAccount: (request) => renameWechatGatewayAccount(request),
+		// P4c 第十一批:设置存盘后的网关套用。它从前住在 `@main/ipc/settings.ts` 的
+		// 保存链里,随四条数据面迁 `settingsRouter` 一起改走这张端口表。
+		applySettings: async (settings) => {
+			await applyGatewaySettings(settings);
+		},
+	});
+	// P4c 第十一批:设置面的三件宿主能力。三件都可缺 —— server / CLI 不注入,
+	// 域处理者那条保存链自然退化成「存盘 + 刷 provider 缓存 + 更新 MCP/ACP」。
+	configureSettingsHost({
+		shouldUseDarkColors: getElectronShouldUseDarkColors,
+		applyNetworkProxySettings: (proxy) => applyNetworkProxySettings(proxy),
+		registerGlobalWindowShortcuts,
 	});
 	configureAuthHost({
 		authFetch: createElectronAuthFetch({
@@ -455,6 +471,9 @@ export function startOnethingElectronMain(): void {
 			markReady: markVoiceRuntimeReady,
 			isReady: isVoiceRuntimeReady,
 			flushCommands: flushVoiceRuntimeCommands,
+			// P4c 第十一批:`voice.runtimeReady` 的回声抑制从前靠 `event.sender`;
+			// 信封里没有那一格,于是改由宿主指认那扇窗(它是唯一会调那条的窗口)。
+			getWebContents: () => getVoiceRuntimeWindow()?.webContents,
 		},
 		updateTray: updateVoiceTray,
 	});

@@ -5,6 +5,7 @@ import type { SessionEventEnvelope } from '@shared/events/index.js'
 import type { VoiceEvent, VoiceLatencyMilestone, VoiceRuntimeState } from '@/types'
 import { useSessionsStore } from './sessions'
 import { platformApi } from '@/platform'
+import { voiceApi } from '@/platform/voice-client'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
@@ -39,7 +40,7 @@ export const useVoiceStore = defineStore('voice', () => {
     initialized = true
 
     try {
-      const response = await platformApi.voiceGetState()
+      const response = await voiceApi.getState()
       if (response.success && response.state) state.value = response.state
     } catch (error: any) {
       lastError.value = error.message || 'Failed to load voice state.'
@@ -56,13 +57,13 @@ export const useVoiceStore = defineStore('voice', () => {
       lastError.value = 'No active session for voice input.'
       return { success: false, error: lastError.value }
     }
-    const response = await platformApi.voiceStart({ sessionId: resolvedSessionId, reason: 'manual' })
+    const response = await voiceApi.start({ sessionId: resolvedSessionId, reason: 'manual' })
     if (!response.success && response.error) lastError.value = response.error
     return response
   }
 
   async function stop(reason = 'user', submit = reason === 'mic-button') {
-    return platformApi.voiceStop({ reason, submit })
+    return voiceApi.stop({ reason, submit })
   }
 
   async function startCall(sessionId?: string) {
@@ -72,13 +73,13 @@ export const useVoiceStore = defineStore('voice', () => {
       lastError.value = 'No active session for a voice call.'
       return { success: false, error: lastError.value }
     }
-    const response = await platformApi.voiceStart({ sessionId: resolvedSessionId, reason: 'call' })
+    const response = await voiceApi.start({ sessionId: resolvedSessionId, reason: 'call' })
     if (!response.success && response.error) lastError.value = response.error
     return response
   }
 
   async function endCall() {
-    return platformApi.voiceStop({ reason: 'call-end', submit: false })
+    return voiceApi.stop({ reason: 'call-end', submit: false })
   }
 
   function dismissError() {

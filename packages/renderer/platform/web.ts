@@ -1,22 +1,12 @@
 import type {
-	AppSettings,
-	ProxySettings,
 	ScratchpadChangedPayload,
 	SearchRequest,
 	Step,
 	TodoPlanChangedPayload,
 	TodoPlanWindowActionRequest,
 	TodoPlanWindowDragRequest,
-	VoiceAudioChunkPayload,
 	VoiceEvent,
 	VoiceRuntimeCommand,
-	VoiceStartRequest,
-	VoiceStopRequest,
-	VoiceSubmitTranscriptRequest,
-	VoiceSubmitUtteranceRequest,
-	VoiceSynthesizeRequest,
-	VoiceTestASRRequest,
-	VoiceTestTTSRequest,
 } from "@/types";
 import type { SessionEventEnvelope } from "@shared/events";
 import type {
@@ -526,8 +516,8 @@ const webApi = {
 	getCapabilities: refreshWebCapabilities,
 
 
-	getSettings: () => requestJson("/api/settings"),
-	saveSettings: (settings: AppSettings) => postJson("/api/settings", settings),
+	// settings —— 四条 REST 镜像已随 `settingsRouter` 迁走(P4c 第十一批)。
+	// 留下的是「开设置窗」在 web 上的等价物(改 hash)与三条 noop / 本地推送。
 	openSettingsWindow: async (options?: { tab?: string }) => {
 		window.location.hash = options?.tab
 			? `#/settings?tab=${encodeURIComponent(options.tab)}`
@@ -535,8 +525,6 @@ const webApi = {
 		return { success: true };
 	},
 	onSettingsNavigate: () => () => {},
-	testProxy: (proxy: ProxySettings) =>
-		postJson("/api/network/test-proxy", { proxy }),
 	onSettingsChanged: () => () => {},
 	// web 端没有第二个窗口,也没有这条广播(批 B9-0):noop 退订即可。
 	onSpacesChanged: () => () => {},
@@ -591,37 +579,19 @@ const webApi = {
 			callback,
 		),
 	// gateway —— 八条 REST 镜像已随 `gatewayRouter` 迁走(P4c 第八批),本域零推送。
-	voiceGetState: () => requestJson("/api/voice/state"),
-	voiceStart: (request?: VoiceStartRequest) =>
-		postJson("/api/voice/start", request),
-	voiceStop: (request?: VoiceStopRequest) =>
-		postJson("/api/voice/stop", request),
-	voiceSubmitUtterance: (request: VoiceSubmitUtteranceRequest) =>
-		postJson("/api/voice/submit-utterance", request),
-	voiceSubmitTranscript: (request: VoiceSubmitTranscriptRequest) =>
-		postJson("/api/voice/submit-transcript", request),
-	voiceSynthesize: (request: VoiceSynthesizeRequest) =>
-		postJson("/api/voice/synthesize", request),
-	voiceTestASR: (request: VoiceTestASRRequest) =>
-		postJson("/api/voice/test-asr", request),
-	voiceTestTTS: (request: VoiceTestTTSRequest) =>
-		postJson("/api/voice/test-tts", request),
-	voiceGetTTSModels: (request?: { force?: boolean }) =>
-		postJson("/api/voice/tts-models", request),
+	// voice —— 十一条 REST 镜像已随 `voiceRouter` 迁走(P4c 第十一批)。
+	// 留下两条推送的 SSE 订阅,加下面这条**单向上行**的空实现。
+	//
+	// `voiceAudioChunk` 在浏览器里从来就是个空转:server 没有
+	// `/api/voice/audio-chunk` 这条路由,旧实现是 `postJson(...).catch(() => {})`
+	// —— 发出去、404、吞掉。可观察行为一字未变,只是不再白发那一趟。
+	voiceAudioChunk: () => {},
 	onVoiceEvent: (callback: (event: VoiceEvent) => void) =>
 		createEventSourceSubscription<VoiceEvent>(
 			"/api/voice/events",
 			"voice:event",
 			callback,
 		),
-	voiceRuntimeReady: () => postJson("/api/voice/runtime-ready"),
-	voiceRuntimeEvent: (event: VoiceEvent) =>
-		postJson("/api/voice/runtime-event", event),
-	voiceAudioChunk: (payload: VoiceAudioChunkPayload) => {
-		void postJson("/api/voice/audio-chunk", payload).catch(() => {
-			// Fire-and-forget PCM uplink; drops are tolerated on the web build.
-		});
-	},
 	onVoiceRuntimeCommand: (callback: (command: VoiceRuntimeCommand) => void) =>
 		createEventSourceSubscription<VoiceRuntimeCommand>(
 			"/api/voice/runtime-commands",
@@ -975,10 +945,9 @@ const webApi = {
 			sessionId,
 			command: { type: SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM, messageId },
 		}),
-	getSystemTheme: async () => ({
-		success: true,
-		theme: getPreferredColorScheme(),
-	}),
+	// getSystemTheme 已迁 `settingsRouter`;web 上它由 `platform/settings-client.ts`
+	// 就地读 `prefers-color-scheme` 作答(浏览器的「系统」是看的人那台机器,
+	// 问服务器等于问错机器),答案与这里删掉的那条桩逐字相同。
 	onContextSizeUpdated: createContextSizeUpdatedSubscription,
 	onSystemThemeChanged: (callback: (theme: "light" | "dark") => void) => {
 		const media = window.matchMedia?.("(prefers-color-scheme: dark)");

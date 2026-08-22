@@ -38,13 +38,7 @@ describe('createOnethingRuntimeFacade', () => {
       permissions: {
         respond: vi.fn(async () => ({ success: true })),
       },
-      settings: {
-        get: vi.fn(async () => ({ theme: 'dark' })),
-        update: vi.fn(async settings => settings),
-      },
-      network: {
-        testProxy: vi.fn(async proxy => ({ success: true, proxy })),
-      },
+      // P4c 第十一批:`settings` / `network` 两格整只没了 —— 四条走 `settingsRouter`。
       search: {
         query: vi.fn(async request => ({ success: true, results: [request] })),
         executeAction: vi.fn(async actionId => ({ success: true, actionId })),
@@ -77,18 +71,8 @@ describe('createOnethingRuntimeFacade', () => {
         }),
       },
       // P4c 第八批:`gateway` 这一格整只没了 —— 八条走 `gatewayRouter` + 宿主端口。
+      // P4c 第十一批:十一条数据面走 `voiceRouter`,adapter 上只剩两条推送的订阅面。
       voice: {
-        getState: vi.fn(async () => ({ success: true, state: { status: 'disabled' } })),
-        start: vi.fn(async request => ({ success: false, request, error: 'disabled' })),
-        stop: vi.fn(async request => ({ success: true, request })),
-        submitUtterance: vi.fn(async request => ({ success: false, request, error: 'disabled' })),
-        submitTranscript: vi.fn(async request => ({ success: false, request, error: 'disabled' })),
-        synthesize: vi.fn(async request => ({ success: false, request, error: 'disabled' })),
-        testASR: vi.fn(async request => ({ success: false, request, error: 'disabled' })),
-        testTTS: vi.fn(async request => ({ success: false, request, error: 'disabled' })),
-        getTTSModels: vi.fn(async request => ({ success: true, request, models: [] })),
-        runtimeReady: vi.fn(async () => ({ success: false, error: 'disabled' })),
-        runtimeEvent: vi.fn(async event => ({ success: false, event, error: 'disabled' })),
         subscribeEvents: vi.fn((handler) => {
           handler({ type: 'state' })
           return unsubscribe
@@ -113,10 +97,6 @@ describe('createOnethingRuntimeFacade', () => {
     await expect(runtime.appState?.get()).resolves.toEqual({ currentSessionId: 'session-1' })
     await expect(runtime.sessions.list()).resolves.toEqual([{ id: 'session-1' }])
     await expect(runtime.sessions.create('New Chat')).resolves.toEqual({ id: 'session-2', name: 'New Chat' })
-    await expect(runtime.network?.testProxy({ enabled: true, url: 'http://127.0.0.1:7890' })).resolves.toEqual({
-      success: true,
-      proxy: { enabled: true, url: 'http://127.0.0.1:7890' },
-    })
     await expect(runtime.search?.query({ query: 'notes', category: 'all' })).resolves.toEqual({
       success: true,
       results: [{ query: 'notes', category: 'all' }],
@@ -146,32 +126,6 @@ describe('createOnethingRuntimeFacade', () => {
     const offOAuth = runtime.oauth?.subscribe(oauthHandler)
     expect(oauthHandler).toHaveBeenCalledWith({ type: 'oauth:token-refreshed', providerId: 'codex' })
     offOAuth?.()
-    await expect(runtime.voice?.getState()).resolves.toEqual({ success: true, state: { status: 'disabled' } })
-    await expect(runtime.voice?.start({ sessionId: 'session-1' })).resolves.toEqual({
-      success: false,
-      request: { sessionId: 'session-1' },
-      error: 'disabled',
-    })
-    await expect(runtime.voice?.stop({ reason: 'manual' })).resolves.toEqual({
-      success: true,
-      request: { reason: 'manual' },
-    })
-    await expect(runtime.voice?.submitUtterance({ audioBase64: 'a' })).resolves.toMatchObject({ success: false })
-    await expect(runtime.voice?.submitTranscript({ text: 'hello' })).resolves.toMatchObject({ success: false })
-    await expect(runtime.voice?.synthesize({ text: 'hello' })).resolves.toMatchObject({ success: false })
-    await expect(runtime.voice?.testASR({ audioBase64: 'a' })).resolves.toMatchObject({ success: false })
-    await expect(runtime.voice?.testTTS({ text: 'hello' })).resolves.toMatchObject({ success: false })
-    await expect(runtime.voice?.getTTSModels({ force: true })).resolves.toEqual({
-      success: true,
-      request: { force: true },
-      models: [],
-    })
-    await expect(runtime.voice?.runtimeReady()).resolves.toEqual({ success: false, error: 'disabled' })
-    await expect(runtime.voice?.runtimeEvent({ type: 'runtime-ready' })).resolves.toEqual({
-      success: false,
-      event: { type: 'runtime-ready' },
-      error: 'disabled',
-    })
     const voiceEventHandler = vi.fn()
     const offVoice = runtime.voice?.subscribeEvents?.(voiceEventHandler)
     expect(voiceEventHandler).toHaveBeenCalledWith({ type: 'state' })
@@ -208,8 +162,6 @@ describe('createOnethingRuntimeFacade', () => {
     expect(runtime.capabilities).toBeUndefined()
     expect(runtime.appState).toBeUndefined()
     expect(runtime.permissions).toBeUndefined()
-    expect(runtime.settings).toBeUndefined()
-    expect(runtime.network).toBeUndefined()
     expect(runtime.search).toBeUndefined()
     expect(runtime.streams).toBeUndefined()
     expect(runtime.files).toBeUndefined()

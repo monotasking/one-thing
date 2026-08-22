@@ -33,6 +33,17 @@ const platform = vi.hoisted(() => ({
   onSystemThemeChanged: vi.fn(() => vi.fn()),
   getSystemTheme: vi.fn(async () => ({ success: true, theme: 'dark' })),
   saveSettings: vi.fn(async (settings: Record<string, unknown>) => ({ success: true, settings })),
+  // P4c 第十一批:设置面走通用 RPC 通道;`saveSettings` 间谍保留,
+  // 由这只 `rpcInvoke` 转调 —— 与真渲染层那条路径同形,断言逐字不变。
+  rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
+    if (request.domain === 'settings' && request.method === 'saveSettings') {
+      return { ok: true, data: await platform.saveSettings(request.payload as Record<string, unknown>) }
+    }
+    if (request.domain === 'settings' && request.method === 'getSystemTheme') {
+      return { ok: true, data: await platform.getSystemTheme() }
+    }
+    return { ok: true, data: { success: true } }
+  }),
   environment: 'electron',
 }))
 vi.mock('@/platform', () => ({ platformApi: platform }))

@@ -134,14 +134,13 @@ export interface RuntimePermissionsAdapter<TPermissionResponse = unknown> {
   respond(requestId: string, response: TPermissionResponse, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
 }
 
-export interface RuntimeSettingsAdapter<TSettings = unknown, TSettingsUpdateResult = TSettings> {
-  get(context?: RuntimeRequestContext): Promise<TSettings>
-  update(settings: TSettings, context?: RuntimeRequestContext): Promise<TSettingsUpdateResult>
-}
-
-export interface RuntimeNetworkAdapter<TProxySettings = unknown, TTestProxyResponse = RuntimeMutationResult> {
-  testProxy(proxy: TProxySettings, context?: RuntimeRequestContext): Promise<TTestProxyResponse>
-}
+/**
+ * P4c 第十一批:`RuntimeSettingsAdapter` / `RuntimeNetworkAdapter` 整只没了 ——
+ * 设置的读/存、系统深浅色与代理自检四条随 `settingsRouter` 走通用 RPC,出门脱敏
+ * 与回来合并两道护栏搬进 `backend/server/settings-projection.ts`,由域处理者在
+ * `transport === 'http'` 那一支上调用。**本域在 server 上零推送**,所以 facade
+ * 上一格不留(`SETTINGS_CHANGED` 是桌面独有的窗间广播)。
+ */
 
 export interface RuntimeSearchAdapter<TSearchRequest = unknown, TSearchResponse = unknown, TSearchActionResponse = RuntimeMutationResult> {
   query(request: TSearchRequest, context?: RuntimeRequestContext): Promise<TSearchResponse>
@@ -244,18 +243,12 @@ export interface RuntimeOAuthAdapter {
  * 即结构化降级)。**本域零推送**,所以 facade 上一格不留。
  */
 
+/**
+ * P4c 第十一批:十一条数据面随 `voiceRouter` 走通用 RPC,adapter 上只剩两条推送
+ * 的订阅面 —— router 今天没有推送面,`/api/voice/events` 与
+ * `/api/voice/runtime-commands` 两条 SSE 因此原样保留。
+ */
 export interface RuntimeVoiceAdapter {
-  getState(context?: RuntimeRequestContext): Promise<unknown>
-  start(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  stop(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  submitUtterance(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  submitTranscript(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  synthesize(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  testASR(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  testTTS(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  getTTSModels(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  runtimeReady(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  runtimeEvent(event: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
   subscribeEvents?(handler: (event: unknown) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
   subscribeRuntimeCommands?(handler: (command: unknown) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
 }
@@ -279,8 +272,6 @@ export interface OnethingRuntimeFacadeOptions<
   TEvent = unknown,
   TChunk = unknown,
   TPermissionResponse = unknown,
-  TSettings = unknown,
-  TSettingsUpdateResult = TSettings,
   THostCapabilities = RuntimeHostCapabilities,
 > {
   capabilities?: RuntimeCapabilitiesAdapter<THostCapabilities>
@@ -290,8 +281,6 @@ export interface OnethingRuntimeFacadeOptions<
   events: RuntimeEventsAdapter<TEvent>
   streams?: RuntimeStreamsAdapter<TChunk>
   permissions?: RuntimePermissionsAdapter<TPermissionResponse>
-  settings?: RuntimeSettingsAdapter<TSettings, TSettingsUpdateResult>
-  network?: RuntimeNetworkAdapter
   search?: RuntimeSearchAdapter
   files?: RuntimeFilesAdapter
   media?: RuntimeMediaAdapter
@@ -318,8 +307,6 @@ export interface OnethingRuntimeFacade<
   TEvent = unknown,
   TChunk = unknown,
   TPermissionResponse = unknown,
-  TSettings = unknown,
-  TSettingsUpdateResult = TSettings,
   THostCapabilities = RuntimeHostCapabilities,
 > {
   readonly capabilities?: RuntimeCapabilitiesAdapter<THostCapabilities>
@@ -329,8 +316,6 @@ export interface OnethingRuntimeFacade<
   readonly events: RuntimeEventsAdapter<TEvent>
   readonly streams?: RuntimeStreamsAdapter<TChunk>
   readonly permissions?: RuntimePermissionsAdapter<TPermissionResponse>
-  readonly settings?: RuntimeSettingsAdapter<TSettings, TSettingsUpdateResult>
-  readonly network?: RuntimeNetworkAdapter
   readonly search?: RuntimeSearchAdapter
   readonly files?: RuntimeFilesAdapter
   readonly media?: RuntimeMediaAdapter
@@ -357,8 +342,6 @@ export function createOnethingRuntimeFacade<
   TEvent = unknown,
   TChunk = unknown,
   TPermissionResponse = unknown,
-  TSettings = unknown,
-  TSettingsUpdateResult = TSettings,
   THostCapabilities = RuntimeHostCapabilities,
 >(
   options: OnethingRuntimeFacadeOptions<
@@ -376,8 +359,6 @@ export function createOnethingRuntimeFacade<
     TEvent,
     TChunk,
     TPermissionResponse,
-    TSettings,
-    TSettingsUpdateResult,
     THostCapabilities
   >,
 ): OnethingRuntimeFacade<
@@ -395,8 +376,6 @@ export function createOnethingRuntimeFacade<
   TEvent,
   TChunk,
   TPermissionResponse,
-  TSettings,
-  TSettingsUpdateResult,
   THostCapabilities
 > {
   return Object.freeze({
@@ -407,8 +386,6 @@ export function createOnethingRuntimeFacade<
     events: Object.freeze({ ...options.events }),
     streams: options.streams ? Object.freeze({ ...options.streams }) : undefined,
     permissions: options.permissions ? Object.freeze({ ...options.permissions }) : undefined,
-    settings: options.settings ? Object.freeze({ ...options.settings }) : undefined,
-    network: options.network ? Object.freeze({ ...options.network }) : undefined,
     search: options.search ? Object.freeze({ ...options.search }) : undefined,
     files: options.files ? Object.freeze({ ...options.files }) : undefined,
     media: options.media ? Object.freeze({ ...options.media }) : undefined,

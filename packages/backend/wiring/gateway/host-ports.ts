@@ -45,6 +45,7 @@ import type {
   GatewayWechatStopAccountRequest,
   GatewayWechatStopAccountResponse,
 } from '@shared/ipc/gateway.js'
+import type { AppSettings } from '@shared/ipc/settings.js'
 
 /** 未注入宿主时给出的统一原因串。调用点按它分支毫无意义 —— 它只用来说人话。 */
 export const GATEWAY_HOST_UNAVAILABLE
@@ -81,6 +82,14 @@ export interface GatewayHostPorts {
   wechatRenameAccount?(
     request: GatewayWechatRenameAccountRequest,
   ): MaybePromise<GatewayHostAccountResult>
+  /**
+   * 设置存盘之后把网关那一段套用上去(P4c 第十一批)。
+   *
+   * 它跟着 `settingsRouter.saveSettings` 从 `@main/ipc/settings.ts` 搬过来 ——
+   * 「按新设置起停微信网关」与上面八件事是同一台生命周期机器,不值得为它另立
+   * 一张端口表。**未注入 = 这台进程没有网关**,安静跳过(不是失败)。
+   */
+  applySettings?(settings: AppSettings): MaybePromise<void>
 }
 
 /** 永远可调用的门面 —— 未注入时八件事都是结构化失败。 */
@@ -101,6 +110,8 @@ export interface GatewayHost {
   wechatRenameAccount(
     request: GatewayWechatRenameAccountRequest,
   ): Promise<GatewayWechatRenameAccountResponse>
+  /** 设置存盘后的套用。没有网关能力时是安静的 no-op —— 调用方不必分支。 */
+  applySettings(settings: AppSettings): Promise<void>
 }
 
 let hostPorts: GatewayHostPorts = {}
@@ -183,6 +194,9 @@ const gatewayHost: GatewayHost = {
   wechatRenameAccount: request => accountEnvelope(
     hostPorts.wechatRenameAccount ? () => hostPorts.wechatRenameAccount!(request) : undefined,
   ),
+  applySettings: async settings => {
+    await hostPorts.applySettings?.(settings)
+  },
 }
 
 export function getGatewayHost(): GatewayHost {

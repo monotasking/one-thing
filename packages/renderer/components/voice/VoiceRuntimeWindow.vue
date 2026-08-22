@@ -20,6 +20,7 @@ import {
   parseFunASRMessage,
 } from './funasr-streaming'
 import { platformApi } from '@/platform'
+import { voiceApi } from '@/platform/voice-client'
 import { getLogger } from '@/services/log'
 
 const log = getLogger('renderer.voice')
@@ -113,7 +114,7 @@ const ENERGY_MIN_SILENCE_THRESHOLD = 0.006
 
 onMounted(() => {
   unsubscribeCommand = platformApi.onVoiceRuntimeCommand(handleCommand)
-  void platformApi.voiceRuntimeReady()
+  void voiceApi.runtimeReady()
 })
 
 onUnmounted(() => {
@@ -139,7 +140,7 @@ function handleCommand(command: VoiceRuntimeCommand) {
       latestSessionId = command.sessionId
       stopWake()
       void startRecording(command.settings, command.sessionId, command.reason).catch(error => {
-        void platformApi.voiceRuntimeEvent({
+        void voiceApi.runtimeEvent({
           type: 'error',
           error: error?.message || 'Microphone recording failed.',
           recoverable: true,
@@ -210,7 +211,7 @@ function startWake(settings: VoiceSettings, sessionId?: string) {
     return
   }
 
-  void platformApi.voiceRuntimeEvent({
+  void voiceApi.runtimeEvent({
     type: 'error',
     error: 'Browser speech wake is not supported in the desktop app. Switched back to the mic button.',
     recoverable: true,
@@ -243,7 +244,7 @@ async function startSherpaWakeStreaming(sessionId: string | undefined, runId: nu
       const result = drainPcmChunks(wakePendingPcm, float32ToInt16(downsampled), DOUBAO_CHUNK_SAMPLES)
       wakePendingPcm = result.pending
       for (const buffer of result.ready) {
-        platformApi.voiceAudioChunk({
+        voiceApi.audioChunk({
           sessionId,
           chunkBase64: arrayBufferToBase64(buffer),
           sampleRate: FUNASR_SAMPLE_RATE,
@@ -255,7 +256,7 @@ async function startSherpaWakeStreaming(sessionId: string | undefined, runId: nu
     wakeProcessor.connect(wakeAudioContext.destination)
   } catch (error: any) {
     stopSherpaWakeStreaming()
-    await platformApi.voiceRuntimeEvent({
+    await voiceApi.runtimeEvent({
       type: 'error',
       error: `Wake listening could not access the microphone: ${error?.message || String(error)}. Use the mic button to talk.`,
       recoverable: true,
@@ -280,7 +281,7 @@ function stopSherpaWakeStreaming() {
 
 async function startPorcupineWake(settings: VoiceSettings, sessionId: string | undefined, runId: number) {
   if (!settings.wake.accessKey || !settings.wake.modelPath) {
-    await platformApi.voiceRuntimeEvent({
+    await voiceApi.runtimeEvent({
       type: 'error',
       error: 'Wake phrase needs the local wake engine setup first. Switched back to the mic button.',
       recoverable: true,
@@ -308,7 +309,7 @@ async function startPorcupineWake(settings: VoiceSettings, sessionId: string | u
         : null
 
     if (!keyword) {
-      await platformApi.voiceRuntimeEvent({
+      await voiceApi.runtimeEvent({
         type: 'error',
         error: `The local wake engine does not know "${settings.wake.phrase}". Add a .ppn keyword file or use a built-in phrase.`,
         recoverable: true,
@@ -326,7 +327,7 @@ async function startPorcupineWake(settings: VoiceSettings, sessionId: string | u
       settings.wake.accessKey,
       keyword as any,
       detection => {
-        void platformApi.voiceRuntimeEvent({
+        void voiceApi.runtimeEvent({
           type: 'wake-detected',
           phrase: detection.label || settings.wake.phrase,
           sessionId,
@@ -336,7 +337,7 @@ async function startPorcupineWake(settings: VoiceSettings, sessionId: string | u
       model,
       {
         processErrorCallback: error => {
-          void platformApi.voiceRuntimeEvent({
+          void voiceApi.runtimeEvent({
             type: 'error',
             error: error?.message || 'Porcupine wake listener failed.',
             recoverable: true,
@@ -356,7 +357,7 @@ async function startPorcupineWake(settings: VoiceSettings, sessionId: string | u
     await WebVoiceProcessor.subscribe(porcupineWorker)
     return true
   } catch (error: any) {
-    await platformApi.voiceRuntimeEvent({
+    await voiceApi.runtimeEvent({
       type: 'error',
       error: `Local wake engine failed: ${error?.message || String(error)}. Switched back to the mic button.`,
       recoverable: true,
@@ -378,7 +379,7 @@ function resolveBuiltinKeyword(BuiltInKeyword: PorcupineBuiltinKeyword, phrase: 
 function startWebSpeechWake(settings: VoiceSettings, sessionId?: string) {
   const Recognition = getSpeechRecognition()
   if (!Recognition) {
-    void platformApi.voiceRuntimeEvent({
+    void voiceApi.runtimeEvent({
       type: 'error',
       error: 'Wake word is unavailable in this Electron runtime. Use the mic button to talk.',
       recoverable: true,
@@ -396,7 +397,7 @@ function startWebSpeechWake(settings: VoiceSettings, sessionId?: string) {
     for (const result of Array.from(event.results || [])) {
       const transcript = String((result as any)[0]?.transcript || '').trim().toLowerCase()
       if (transcript.includes(phrase)) {
-        void platformApi.voiceRuntimeEvent({ type: 'wake-detected', phrase, sessionId })
+        void voiceApi.runtimeEvent({ type: 'wake-detected', phrase, sessionId })
         stopWake()
         break
       }
@@ -407,7 +408,7 @@ function startWebSpeechWake(settings: VoiceSettings, sessionId?: string) {
     if (isFatalWebSpeechError(error)) {
       webSpeechFatalError = true
     }
-    void platformApi.voiceRuntimeEvent({
+    void voiceApi.runtimeEvent({
       type: 'error',
       error: formatWebSpeechError(error),
       recoverable: true,
@@ -584,7 +585,7 @@ async function startSileroRecording(settings: VoiceSettings, sessionId?: string,
   })
 
   await sileroVad.start()
-  await platformApi.voiceRuntimeEvent({ type: 'recording-started', sessionId, reason })
+  await voiceApi.runtimeEvent({ type: 'recording-started', sessionId, reason })
   sileroTimer = window.setTimeout(() => {
     void stopSileroRecording(true)
   }, settings.vad.maxRecordingMs)
@@ -594,7 +595,7 @@ async function finishSileroRecording(audio: Float32Array, sessionId?: string) {
   if (sileroFinished) return
   sileroFinished = true
   const durationMs = Math.max(1, Math.round((audio.length / 16000) * 1000))
-  await platformApi.voiceRuntimeEvent({ type: 'recording-stopped', sessionId, durationMs })
+  await voiceApi.runtimeEvent({ type: 'recording-stopped', sessionId, durationMs })
   const vad = sileroVad
   sileroVad = null
   clearSileroTimer()
@@ -613,7 +614,7 @@ async function finishSileroRecording(audio: Float32Array, sessionId?: string) {
   if (audio.length > 0) {
     const blob = float32ToWavBlob(audio, 16000)
     const audioBase64 = await blobToBase64(blob)
-    await platformApi.voiceSubmitUtterance({
+    await voiceApi.submitUtterance({
       sessionId,
       audioBase64,
       mimeType: 'audio/wav',
@@ -641,8 +642,8 @@ async function stopSileroRecording(submit: boolean) {
     if (!sileroFinished) {
       sileroFinished = true
       const durationMs = Date.now() - sileroStartedAt
-      await platformApi.voiceRuntimeEvent({ type: 'recording-stopped', sessionId: latestSessionId, durationMs })
-      await platformApi.voiceRuntimeEvent({
+      await voiceApi.runtimeEvent({ type: 'recording-stopped', sessionId: latestSessionId, durationMs })
+      await voiceApi.runtimeEvent({
         type: 'error',
         error: 'No speech was detected. Try the mic button again.',
         recoverable: true,
@@ -676,7 +677,7 @@ async function startDoubaoStreamingRecording(settings: VoiceSettings, sessionId?
     resetStreamingASRState()
     throw error
   }
-  await platformApi.voiceRuntimeEvent({ type: 'recording-started', sessionId, reason })
+  await voiceApi.runtimeEvent({ type: 'recording-started', sessionId, reason })
 
   streamingAsrTimeout = window.setTimeout(() => {
     stopDoubaoStreamingRecording(true)
@@ -686,7 +687,7 @@ async function startDoubaoStreamingRecording(settings: VoiceSettings, sessionId?
       const silentResume = streamingAsrReason === 'resume' || streamingAsrReason === 'wake' || streamingAsrReason === 'call'
       stopDoubaoStreamingRecording(false)
       if (!silentResume) {
-        void platformApi.voiceRuntimeEvent({
+        void voiceApi.runtimeEvent({
           type: 'error',
           error: 'No speech was detected. Try the mic button again.',
           recoverable: true,
@@ -700,7 +701,7 @@ function sendDoubaoAudioChunk(chunk: Int16Array, sessionId?: string) {
   const result = drainPcmChunks(streamingAsrPendingPcm, chunk, DOUBAO_CHUNK_SAMPLES)
   streamingAsrPendingPcm = result.pending
   for (const buffer of result.ready) {
-    platformApi.voiceAudioChunk({
+    voiceApi.audioChunk({
       sessionId,
       chunkBase64: arrayBufferToBase64(buffer),
       sampleRate: FUNASR_SAMPLE_RATE,
@@ -720,14 +721,14 @@ function stopDoubaoStreamingRecording(submit: boolean) {
 
   const sessionId = latestSessionId
   if (submit && streamingAsrPendingPcm.length > 0) {
-    platformApi.voiceAudioChunk({
+    voiceApi.audioChunk({
       sessionId,
       chunkBase64: arrayBufferToBase64(int16ToExactArrayBuffer(streamingAsrPendingPcm)),
       sampleRate: FUNASR_SAMPLE_RATE,
       phase: 'recording',
     })
   }
-  platformApi.voiceAudioChunk({
+  voiceApi.audioChunk({
     sessionId,
     phase: 'recording',
     last: true,
@@ -738,7 +739,7 @@ function stopDoubaoStreamingRecording(submit: boolean) {
   const durationMs = Date.now() - streamingAsrStartedAt
   streamingAsrTransport = null
   resetStreamingASRState()
-  void platformApi.voiceRuntimeEvent({ type: 'recording-stopped', sessionId, durationMs })
+  void voiceApi.runtimeEvent({ type: 'recording-stopped', sessionId, durationMs })
 
   if (latestSettings?.enabled && latestSettings.alwaysOn) {
     startWake(latestSettings, latestSessionId)
@@ -775,7 +776,7 @@ async function startFunASRStreamingRecording(settings: VoiceSettings, sessionId?
     resetStreamingASRState()
     throw error
   }
-  await platformApi.voiceRuntimeEvent({ type: 'recording-started', sessionId, reason })
+  await voiceApi.runtimeEvent({ type: 'recording-started', sessionId, reason })
 
   streamingAsrTimeout = window.setTimeout(() => {
     stopFunASRStreamingRecording(true)
@@ -784,13 +785,13 @@ async function startFunASRStreamingRecording(settings: VoiceSettings, sessionId?
     if (!streamingAsrVoiceStarted) {
       const silentResume = streamingAsrReason === 'resume' || streamingAsrReason === 'wake' || streamingAsrReason === 'call'
       stopFunASRStreamingRecording(false)
-      void platformApi.voiceRuntimeEvent({
+      void voiceApi.runtimeEvent({
         type: 'recording-stopped',
         sessionId,
         durationMs: Date.now() - streamingAsrStartedAt,
       })
       if (!silentResume) {
-        void platformApi.voiceRuntimeEvent({
+        void voiceApi.runtimeEvent({
           type: 'error',
           error: 'No speech was detected. Try the mic button again.',
           recoverable: true,
@@ -865,7 +866,7 @@ async function handleFunASRMessage(raw: unknown, sessionId?: string) {
       elapsedMs: durationMs,
     })
   }
-  await platformApi.voiceRuntimeEvent({
+  await voiceApi.runtimeEvent({
     type: 'partial-transcript',
     sessionId,
     transcriptId: streamingAsrTranscriptId,
@@ -925,7 +926,7 @@ async function finalizeFunASRStreamingRecording(submit: boolean, sessionId?: str
   streamingAsrSubmitted = true
   clearFunASRTimers()
   const durationMs = Date.now() - streamingAsrStartedAt
-  await platformApi.voiceRuntimeEvent({ type: 'recording-stopped', sessionId, durationMs })
+  await voiceApi.runtimeEvent({ type: 'recording-stopped', sessionId, durationMs })
   await emitStreamingASRMilestone('asr-finalized', sessionId, {
     transcriptId: streamingAsrTranscriptId,
     elapsedMs: durationMs,
@@ -936,7 +937,7 @@ async function finalizeFunASRStreamingRecording(submit: boolean, sessionId?: str
   resetStreamingASRState()
 
   if (submit && text) {
-    const response = await platformApi.voiceSubmitTranscript({
+    const response = await voiceApi.submitTranscript({
       sessionId,
       transcriptId: streamingAsrTranscriptId || createRuntimeId(),
       text,
@@ -945,10 +946,10 @@ async function finalizeFunASRStreamingRecording(submit: boolean, sessionId?: str
       durationMs,
     })
     if (!response.success && response.error) {
-      await platformApi.voiceRuntimeEvent({ type: 'error', error: response.error, recoverable: true })
+      await voiceApi.runtimeEvent({ type: 'error', error: response.error, recoverable: true })
     }
   } else if (submit) {
-    await platformApi.voiceRuntimeEvent({
+    await voiceApi.runtimeEvent({
       type: 'error',
       error: 'FunASR streaming ASR returned no transcript.',
       recoverable: true,
@@ -1008,9 +1009,9 @@ function monitorStreamingASRSilence(settings: VoiceSettings, rms: number, sessio
   } else if (!streamingAsrVoiceStarted && now - streamingAsrStartedAt > Math.min(ENERGY_NO_SPEECH_TIMEOUT_MS, settings.vad.maxRecordingMs)) {
     const silentResume = streamingAsrReason === 'resume' || streamingAsrReason === 'wake' || streamingAsrReason === 'call'
     stopFunASRStreamingRecording(false)
-    void platformApi.voiceRuntimeEvent({ type: 'recording-stopped', sessionId, durationMs: now - streamingAsrStartedAt })
+    void voiceApi.runtimeEvent({ type: 'recording-stopped', sessionId, durationMs: now - streamingAsrStartedAt })
     if (!silentResume) {
-      void platformApi.voiceRuntimeEvent({
+      void voiceApi.runtimeEvent({
         type: 'error',
         error: 'No speech was detected. Try the mic button again.',
         recoverable: true,
@@ -1072,7 +1073,7 @@ async function emitStreamingASRMilestone(
   sessionId?: string,
   extra: { transcriptId?: string; elapsedMs?: number } = {},
 ) {
-  await platformApi.voiceRuntimeEvent({
+  await voiceApi.runtimeEvent({
     type: 'latency-milestone',
     milestone: {
       name,
@@ -1124,25 +1125,25 @@ async function startEnergyRecording(settings: VoiceSettings, sessionId?: string,
   }
   mediaRecorder.onstop = async () => {
     const durationMs = Date.now() - startedAt
-    await platformApi.voiceRuntimeEvent({ type: 'recording-stopped', sessionId, durationMs })
+    await voiceApi.runtimeEvent({ type: 'recording-stopped', sessionId, durationMs })
     const blob = new Blob(chunks, { type: mediaRecorder?.mimeType || 'audio/webm' })
     cleanupRecording()
     if (blob.size === 0) {
-      await platformApi.voiceRuntimeEvent({
+      await voiceApi.runtimeEvent({
         type: 'error',
         error: 'No microphone audio was captured. Check the selected input device and try again.',
         recoverable: true,
       })
     } else {
       const audioBase64 = await blobToBase64(blob)
-      const response = await platformApi.voiceSubmitUtterance({
+      const response = await voiceApi.submitUtterance({
         sessionId,
         audioBase64,
         mimeType: blob.type || 'audio/webm',
         durationMs,
       })
       if (!response.success && response.error) {
-        await platformApi.voiceRuntimeEvent({
+        await voiceApi.runtimeEvent({
           type: 'error',
           error: response.error,
           recoverable: true,
@@ -1154,7 +1155,7 @@ async function startEnergyRecording(settings: VoiceSettings, sessionId?: string,
     }
   }
   mediaRecorder.start()
-  await platformApi.voiceRuntimeEvent({ type: 'recording-started', sessionId, reason })
+  await voiceApi.runtimeEvent({ type: 'recording-started', sessionId, reason })
   monitorSilence(settings, startedAt)
 }
 
@@ -1212,8 +1213,8 @@ function monitorSilence(settings: VoiceSettings, startedAt: number) {
       stopRecording(true)
     } else if (!voiceStarted && now - startedAt > Math.min(ENERGY_NO_SPEECH_TIMEOUT_MS, settings.vad.maxRecordingMs)) {
       stopRecording(false)
-      void platformApi.voiceRuntimeEvent({ type: 'recording-stopped', sessionId: latestSessionId, durationMs: now - startedAt })
-      void platformApi.voiceRuntimeEvent({
+      void voiceApi.runtimeEvent({ type: 'recording-stopped', sessionId: latestSessionId, durationMs: now - startedAt })
+      void voiceApi.runtimeEvent({
         type: 'error',
         error: 'No speech was detected. Try the mic button again.',
         recoverable: true,
@@ -1312,7 +1313,7 @@ async function playNext() {
   const item = playbackQueue.shift()
   if (!item) return
   isPlaying = true
-  await platformApi.voiceRuntimeEvent({ type: 'playback-start', requestId: item.requestId })
+  await voiceApi.runtimeEvent({ type: 'playback-start', requestId: item.requestId })
   if (item.type === 'speech') {
     currentUtterance = playSystemSpeech(item, finishPlayback)
     return
@@ -1370,7 +1371,7 @@ function finishAudioStream(requestId: string, error?: string) {
   const item = streamPlaybackItems.get(requestId)
   if (!item) return
   if (error) {
-    void platformApi.voiceRuntimeEvent({ type: 'error', error, recoverable: true })
+    void voiceApi.runtimeEvent({ type: 'error', error, recoverable: true })
   }
   item.ended = true
   flushAudioStream(item)
@@ -1398,9 +1399,9 @@ function flushAudioStream(item: Extract<PlaybackItem, { type: 'audio-stream' }>)
 
 function finishPlayback(requestId?: string, error?: string) {
   if (error) {
-    void platformApi.voiceRuntimeEvent({ type: 'error', error, recoverable: true })
+    void voiceApi.runtimeEvent({ type: 'error', error, recoverable: true })
   }
-  void platformApi.voiceRuntimeEvent({ type: 'playback-end', requestId })
+  void voiceApi.runtimeEvent({ type: 'playback-end', requestId })
   currentAudio = null
   currentUtterance = null
   if (currentStreamItem) {
@@ -1410,7 +1411,7 @@ function finishPlayback(requestId?: string, error?: string) {
   }
   isPlaying = false
   if (playbackQueue.length === 0) {
-    void platformApi.voiceRuntimeEvent({ type: 'playback-idle' })
+    void voiceApi.runtimeEvent({ type: 'playback-idle' })
     return
   }
   void playNext()

@@ -86,7 +86,7 @@ describe('VoiceSettingsTab', () => {
     })
     ;(window as any).electronAPI = {
       // 域已迁到通用 RPC 通道(主线 T1 第二批):打那一条通道,按 domain.method 分发。
-      rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
+      rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
         if (request.domain === 'agents' && request.method === 'list') {
           return { ok: true, data: { success: true, agents: [] } }
         }
@@ -96,9 +96,12 @@ describe('VoiceSettingsTab', () => {
         if (request.domain === 'models' && request.method === 'getNameAliases') {
           return { ok: true, data: { success: true, aliases: {} } }
         }
+        // P4c 第十一批:voice 十一条同样走这条通道;间谍留着,断言逐字不变。
+        if (request.domain === 'voice' && request.method === 'getTTSModels') {
+          return { ok: true, data: await voiceGetTTSModels((request as { payload: unknown }).payload) }
+        }
         return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
       }),
-      voiceGetTTSModels,
     }
 
     const wrapper = mount(VoiceSettingsTab, {
@@ -155,8 +158,15 @@ describe('VoiceSettingsTab', () => {
     const voiceTestTTS = vi.fn().mockResolvedValue({ success: true })
     ;(window as any).electronAPI = {
       listAgents: vi.fn().mockResolvedValue({ success: true, agents: [] }),
-      voiceTestTTS,
-      voiceGetTTSModels: vi.fn().mockResolvedValue({ success: true, models: [] }),
+      rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
+        if (request.domain === 'voice' && request.method === 'testTTS') {
+          return { ok: true, data: await voiceTestTTS(request.payload) }
+        }
+        if (request.domain === 'voice' && request.method === 'getTTSModels') {
+          return { ok: true, data: { success: true, models: [] } }
+        }
+        return { ok: true, data: { success: true } }
+      }),
     }
 
     const wrapper = mount(VoiceSettingsTab, {

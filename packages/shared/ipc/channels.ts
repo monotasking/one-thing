@@ -42,29 +42,23 @@ export const IPC_CHANNELS = {
 	SESSION_MESSAGES_CHANGED: "sessions:messages-changed", // Event: messages added/updated
 
 	// Settings related
-	GET_SETTINGS: "settings:get",
-	SAVE_SETTINGS: "settings:save",
+	// P4c 第十一批:`settings:get` / `settings:save` / `settings:get-system-theme` /
+	// `network:test-proxy` 四条随 `settingsRouter` 走通用 RPC,常量随之消失。
+	// 留下的是两件要 Electron 本体的事(开设置窗 / 原生对话框)与三条推送。
 	OPEN_SETTINGS_WINDOW: "settings:open-window",
 	SETTINGS_NAVIGATE: "settings:navigate", // main → settings window: jump to a tab
 	SETTINGS_CHANGED: "settings:changed",
-	GET_SYSTEM_THEME: "settings:get-system-theme",
 	SYSTEM_THEME_CHANGED: "settings:system-theme-changed",
 
 	// Voice related
-	VOICE_GET_STATE: "voice:get-state",
-	VOICE_START: "voice:start",
-	VOICE_STOP: "voice:stop",
-	VOICE_SUBMIT_UTTERANCE: "voice:submit-utterance",
-	VOICE_SUBMIT_TRANSCRIPT: "voice:submit-transcript",
-	VOICE_SYNTHESIZE: "voice:synthesize",
-	VOICE_TEST_ASR: "voice:test-asr",
-	VOICE_TEST_TTS: "voice:test-tts",
-	VOICE_GET_TTS_MODELS: "voice:get-tts-models",
+	// P4c 第十一批:十一条 voice invoke 通道随 `voiceRouter` 走通用 RPC。
+	// 留下三条:两条推送(router 没有推送面)与一条**单向上行** ——
+	// `VOICE_AUDIO_CHUNK` 是高频 PCM 流,`ipcRenderer.send` 不带回执;
+	// router 只有请求/响应面,搬过去等于给每块音频加一条空回执(性能面变化)。
+	// 它归**流式单向残留集**(与 FILE_WATCH_EVENT 等推送同类,拍板 #10)。
+	VOICE_AUDIO_CHUNK: "voice:audio-chunk",
 	VOICE_EVENT: "voice:event",
 	VOICE_RUNTIME_COMMAND: "voice:runtime-command",
-	VOICE_RUNTIME_EVENT: "voice:runtime-event",
-	VOICE_RUNTIME_READY: "voice:runtime-ready",
-	VOICE_AUDIO_CHUNK: "voice:audio-chunk",
 
 	// Music radio —— 十四条数据面已迁到通用 RPC 通道(musicRouter,P4c 第九批)。
 	// 这里只剩**四条推送**:router 今天没有推送面,而它们早就走
@@ -90,7 +84,6 @@ export const IPC_CHANNELS = {
 	// User prompt snippets:已迁到通用 RPC 通道(promptsRouter),此处不再有常量。
 
 	// Network related
-	TEST_PROXY: "network:test-proxy",
 
 	// Model registry 与 Providers:已迁到通用 RPC 通道(modelsRouter /
 	// providersRouter),此处不再有常量。

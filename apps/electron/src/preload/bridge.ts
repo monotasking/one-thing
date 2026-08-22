@@ -50,21 +50,11 @@ import type {
 	RpcRequest,
 	RpcResponse,
 	AppSettings,
-	SaveSettingsRequest,
-	ProxySettings,
 	Step,
 	BrowserTabsChangedEvent,
 	VoiceAudioChunkPayload,
 	VoiceEvent,
 	VoiceRuntimeCommand,
-	VoiceRuntimeEvent,
-	VoiceStartRequest,
-	VoiceStopRequest,
-	VoiceSubmitTranscriptRequest,
-	VoiceSubmitUtteranceRequest,
-	VoiceSynthesizeRequest,
-	VoiceTestASRRequest,
-	VoiceTestTTSRequest,
 	MusicDjSpeak,
 	MusicEvent,
 	MusicLyrics,
@@ -458,12 +448,9 @@ const electronAPI = {
 			);
 	},
 
-	// Settings methods
-	getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS),
-
-	saveSettings: (settings: SaveSettingsRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.SAVE_SETTINGS, settings),
-
+	// Settings —— 四条数据面(读 / 存 / 系统深浅色 / 代理自检)已迁到通用 RPC
+	// 通道(settingsRouter,P4c 第十一批);渲染侧客户端在 platform/settings-client.ts。
+	// 留在这里的是两件要 Electron 本体的事(开设置窗 / 原生对话框)与两条推送。
 	openSettingsWindow: (options?: { tab?: string }) =>
 		ipcRenderer.invoke(IPC_CHANNELS.OPEN_SETTINGS_WINDOW, options),
 
@@ -497,32 +484,12 @@ const electronAPI = {
 
 	// gateway —— 八条数据面已迁 `gatewayRouter`(P4c 第八批),本域零推送,壳上不留。
 
-	// Voice methods
-	voiceGetState: () => ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_STATE),
-
-	voiceStart: (request?: VoiceStartRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VOICE_START, request || {}),
-
-	voiceStop: (request?: VoiceStopRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VOICE_STOP, request || {}),
-
-	voiceSubmitUtterance: (request: VoiceSubmitUtteranceRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VOICE_SUBMIT_UTTERANCE, request),
-
-	voiceSubmitTranscript: (request: VoiceSubmitTranscriptRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VOICE_SUBMIT_TRANSCRIPT, request),
-
-	voiceSynthesize: (request: VoiceSynthesizeRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VOICE_SYNTHESIZE, request),
-
-	voiceTestASR: (request: VoiceTestASRRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VOICE_TEST_ASR, request),
-
-	voiceTestTTS: (request: VoiceTestTTSRequest) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VOICE_TEST_TTS, request),
-
-	voiceGetTTSModels: (request?: { force?: boolean }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_TTS_MODELS, request || {}),
+	// Voice —— 十一条数据面已迁到通用 RPC 通道(voiceRouter,P4c 第十一批);
+	// 渲染侧客户端在 platform/voice-client.ts。这里留三条:两条推送订阅
+	// (`VOICE_EVENT` / `VOICE_RUNTIME_COMMAND`,router 没有推送面)与一条
+	// **单向上行** —— 高频 PCM 流不带回执,归流式单向残留集(拍板 #10)。
+	voiceAudioChunk: (payload: VoiceAudioChunkPayload) =>
+		ipcRenderer.send(IPC_CHANNELS.VOICE_AUDIO_CHUNK, payload),
 
 	onVoiceEvent: (callback: (event: VoiceEvent) => void) => {
 		const listener = (_event: IpcRendererEvent, event: VoiceEvent) =>
@@ -530,14 +497,6 @@ const electronAPI = {
 		ipcRenderer.on(IPC_CHANNELS.VOICE_EVENT, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.VOICE_EVENT, listener);
 	},
-
-	voiceRuntimeReady: () => ipcRenderer.invoke(IPC_CHANNELS.VOICE_RUNTIME_READY),
-
-	voiceRuntimeEvent: (event: VoiceRuntimeEvent) =>
-		ipcRenderer.invoke(IPC_CHANNELS.VOICE_RUNTIME_EVENT, event),
-
-	voiceAudioChunk: (payload: VoiceAudioChunkPayload) =>
-		ipcRenderer.send(IPC_CHANNELS.VOICE_AUDIO_CHUNK, payload),
 
 	onVoiceRuntimeCommand: (callback: (command: VoiceRuntimeCommand) => void) => {
 		const listener = (_event: IpcRendererEvent, command: VoiceRuntimeCommand) =>
@@ -581,13 +540,6 @@ const electronAPI = {
 		ipcRenderer.on(IPC_CHANNELS.MUSIC_DJ_SPEAK, listener);
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_DJ_SPEAK, listener);
 	},
-
-	getSystemTheme: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_THEME),
-
-	testProxy: (proxy: ProxySettings) =>
-		ipcRenderer.invoke(IPC_CHANNELS.TEST_PROXY, {
-			proxy: JSON.parse(JSON.stringify(proxy)),
-		}),
 
 	onSystemThemeChanged: (callback: (theme: "light" | "dark") => void) => {
 		const listener = (_event: IpcRendererEvent, theme: "light" | "dark") => callback(theme);

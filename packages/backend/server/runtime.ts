@@ -138,7 +138,6 @@ import {
 } from "@onething/runtime/agents";
 import {
 	createRequiredOnethingAppFetch,
-	validateOnethingAppProxyUrl,
 } from "@onething/runtime/providers";
 // 片段的 ipc-operations 已随 CRUD 一起迁到 RPC 域;这里只剩搜索面还要读 store。
 import { OnethingPromptStore } from "@onething/runtime/prompts";
@@ -263,12 +262,7 @@ import {
 } from "../wiring/files/workspace-watch.js";
 import type {
 	VoiceEvent,
-	VoiceGetStateResponse,
 	VoiceRuntimeCommand,
-	VoiceRuntimeState,
-	VoiceSynthesizeResponse,
-	VoiceTTSModelsResponse,
-	VoiceSubmitUtteranceResponse,
 } from "@shared/ipc/voice.js";
 import {
 	adoptScratchpad as adoptAppScratchpad,
@@ -303,22 +297,14 @@ import type {
 	MCPServerState,
 	MCPSettings,
 } from "@shared/ipc/mcp.js";
-import type {
-	AppSettings,
-	ProxySettings,
-	TestProxyResponse,
-} from "@shared/ipc/settings.js";
+import type { AppSettings } from "@shared/ipc/settings.js";
 import type { SessionCommand } from "@shared/events/session-commands.js";
 import type { ToolCall } from "@shared/ipc/tools.js";
 import type { PermissionInfo } from "@shared/ipc/permissions.js";
 import { ServerMCPClient } from "./mcp-client.js";
-// P4c 第六批:MCP 私密字段的脱敏 / 合并规则搬到 `./mcp-secrets.js`,由这里的设置面
-// 与 `rpc/domains/mcp.ts` 的 http 分叉共用一份 —— 两处抄两份就是两条护栏。
-import {
-	MCP_SERVER_PRIVATE_KEYS as mcpServerPrivateKeys,
-	SERVER_REDACTED_SECRET,
-	shouldRedactMcpPrivateValue,
-} from "./mcp-secrets.js";
+// P4c 第六批:MCP 私密字段的脱敏 / 合并规则搬到 `./mcp-secrets.js`;P4c 第十一批
+// 起设置面那半也搬到了 `./settings-projection.js`,两处都由域处理者的 http 分叉调用。
+// 这里只剩一条再导出 —— 测试与旧调用点从 `server/runtime.js` 取那个哨兵常量。
 export { SERVER_REDACTED_SECRET } from "./mcp-secrets.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
@@ -489,14 +475,6 @@ type ServerVariablesRuntime = {
 	store: VariablesStore;
 	unsubscribe: RuntimeUnsubscribe;
 };
-const sensitiveSettingKeys = new Set([
-	"apiKey",
-	"oauthToken",
-	"accessToken",
-	"refreshToken",
-	"idToken",
-]);
-
 const webServerCapabilities: RuntimeHostCapabilities = {
 	localFileSystem: false,
 	workspaceFileSystem: true,
@@ -679,19 +657,6 @@ class ServerPluginCatalogManager {
 // P4c 第八批:`SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR` 与
 // `createServerGatewayStatus` 随 `gateway` adapter 一起没了 —— 那台「server 上
 // 网关永远禁用」的假状态机不再需要,降级由 `configureGatewayHost` 未注入给出。
-const SERVER_VOICE_UNAVAILABLE_ERROR =
-	"Voice runtime is not available in the web server runtime.";
-
-function createServerVoiceState(lastError?: string): VoiceRuntimeState {
-	return {
-		status: lastError ? "error" : "disabled",
-		enabled: false,
-		runtimeReady: false,
-		lastError,
-		updatedAt: Date.now(),
-	};
-}
-
 function normalizeServerPluginCommandName(commandName: string): string {
 	return commandName.startsWith("/") ? commandName : `/${commandName}`;
 }
@@ -1860,43 +1825,13 @@ async function createServerRuntimeOverServerBackend(
 				return respondToPermission(requestId, response, context);
 			},
 		},
-		settings: {
-			async get(context = defaultRequestContext()) {
-				const settings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				return { success: true, settings: sanitizeSettingsForClient(settings) };
-			},
-			async update(settings, context = defaultRequestContext()) {
-				const previousSettings = await getOwnerSettings(
-					settingsByOwner,
-					settingsStore,
-					context,
-				);
-				const nextSettings = mergeServerSettingsUpdate(
-					previousSettings,
-					settings,
-				);
-				settingsByOwner.set(ownerKey(context), cloneJson(nextSettings));
-				await settingsStore.save(context, nextSettings);
-				if (nextSettings.mcp) {
-					await getOwnerMCPManager(
-						mcpManagersByOwner,
-						mcpClientFactory,
-						context,
-					).updateSettings(nextSettings.mcp);
-				}
-				return {
-					success: true,
-					settings: sanitizeSettingsForClient(nextSettings),
-				};
-			},
-		},
-		network: {
-			testProxy: (proxy: ProxySettings) => testServerProxy(proxy),
-		},
+		// P4c 第十一批:`settings` / `network` 两格 adapter 整只没了 —— 四条数据面
+		// (读 / 存 / 系统深浅色 / 代理自检)随 `settingsRouter` 走通用 RPC。
+		// 出门脱敏与回来合并两道真护栏搬进 `server/settings-projection.ts`,由域处理者
+		// 在 `transport === 'http'` 那一支上逐字调用;读写的那份设置从 server 自己
+		// 那本 per-owner 缓存改成装配层单例(拍板 #20,同 mcp / oauth / agents 判例)。
+		// **本域推送不在这里**:`SETTINGS_CHANGED` 是桌面独有的窗间广播,旧 server
+		// 本来就没有它(web 壳上是个 noop 退订)。
 		search: {
 			async query(
 				request: OnethingSearchRequest,
@@ -2126,48 +2061,13 @@ async function createServerRuntimeOverServerBackend(
 		// 拿到的是结构化降级,而不是这里从前那句写死的
 		// "Gateway channel connections are disabled on the server runtime."。
 		// **本域零推送**,所以这一格连订阅面都不留。
+		// P4c 第十一批:十一条数据面(状态/起停/上行/合成/自检/运行时窗)随
+		// `voiceRouter` 走通用 RPC,adapter 上只剩**两条推送的订阅面** —— router
+		// 今天没有推送面,`/api/voice/events` 与 `/api/voice/runtime-commands`
+		// 两条 SSE 因此原样保留(server 上语音运行时不存在,两条订阅一如既往是空的)。
+		// 十一条在 http 上的答案(「server 上没有语音运行时」)由域处理者在
+		// `transport === 'http'` 那一支上逐字给出,与这里删掉的这批一字不差。
 		voice: {
-			async getState(): Promise<VoiceGetStateResponse> {
-				return { success: true, state: createServerVoiceState() };
-			},
-			async start(): Promise<{
-				success: boolean;
-				error: string;
-				state: VoiceRuntimeState;
-			}> {
-				return {
-					success: false,
-					error: SERVER_VOICE_UNAVAILABLE_ERROR,
-					state: createServerVoiceState(SERVER_VOICE_UNAVAILABLE_ERROR),
-				};
-			},
-			async stop(): Promise<{ success: boolean }> {
-				return { success: true };
-			},
-			async submitUtterance(): Promise<VoiceSubmitUtteranceResponse> {
-				return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR };
-			},
-			async submitTranscript(): Promise<VoiceSubmitUtteranceResponse> {
-				return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR };
-			},
-			async synthesize(): Promise<VoiceSynthesizeResponse> {
-				return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR };
-			},
-			async testASR(): Promise<VoiceSubmitUtteranceResponse> {
-				return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR };
-			},
-			async testTTS(): Promise<{ success: boolean; error: string }> {
-				return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR };
-			},
-			async getTTSModels(): Promise<VoiceTTSModelsResponse> {
-				return { success: true, models: [], fetchedAt: Date.now() };
-			},
-			async runtimeReady(): Promise<{ success: boolean; error: string }> {
-				return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR };
-			},
-			async runtimeEvent(): Promise<{ success: boolean; error: string }> {
-				return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR };
-			},
 			subscribeEvents(
 				_handler: (event: VoiceEvent) => void,
 			): RuntimeUnsubscribe {
@@ -2312,42 +2212,6 @@ function applySessionEvent(
 	settle();
 }
 
-
-async function testServerProxy(
-	proxy: ProxySettings,
-): Promise<TestProxyResponse> {
-	if (!proxy.enabled) {
-		return { success: false, error: "Proxy is disabled." };
-	}
-
-	const validated = validateOnethingAppProxyUrl(proxy.url);
-	if (!validated.valid) {
-		return { success: false, error: validated.error };
-	}
-
-	try {
-		const fetchImpl = createRequiredOnethingAppFetch({
-			policy: "default",
-			proxy: {
-				...proxy,
-				url: validated.normalizedUrl,
-			},
-		});
-		const response = await fetchImpl("https://www.gstatic.com/generate_204", {
-			method: "GET",
-			signal: AbortSignal.timeout(10000),
-		});
-		return response.ok || response.status === 204
-			? { success: true, status: response.status }
-			: {
-					success: false,
-					status: response.status,
-					error: `Proxy test returned HTTP ${response.status}.`,
-				};
-	} catch (error: any) {
-		return { success: false, error: error.message || "Proxy test failed." };
-	}
-}
 
 function applyServerSessionUsage(
 	session: ServerChatSession,
@@ -3390,20 +3254,9 @@ function writeServerRuntimeJsonFile<T>(filePath: string, data: T): void {
 }
 
 
-function getOwnerMCPManager(
-	managersByOwner: Map<string, ServerMCPManager>,
-	createClient: ServerMCPClientFactory,
-	context = defaultRequestContext(),
-): ServerMCPManager {
-	const key = ownerKey(context);
-	let manager = managersByOwner.get(key);
-	if (!manager) {
-		manager = new HeadlessMCPManager(createClient);
-		managersByOwner.set(key, manager);
-	}
-	return manager;
-}
-
+// P4c 第十一批:`getOwnerMCPManager` 随 `settings` adapter 一起没了 —— 它唯一的
+// 调用点是那条「存完设置顺带更新这个 owner 的 MCP 管理器」;设置面收敛成一份
+// 之后(拍板 #20),MCP 设置的更新由域处理者走装配层那台 `MCPManager` 单例。
 class DisabledServerMCPClient implements MCPClientLike {
 	private currentState: MCPServerState;
 
@@ -3458,177 +3311,12 @@ class DisabledServerMCPClient implements MCPClientLike {
 	async refreshCapabilities(): Promise<void> {}
 }
 
-export function mergeServerSettingsUpdate(
-	previousSettings: AppSettings | undefined,
-	incomingSettings: unknown,
-): AppSettings {
-	const incoming = isRecord(incomingSettings)
-		? (incomingSettings as Partial<AppSettings>)
-		: {};
-	const nextSettings = mergeWithDefaults(incoming);
-	if (previousSettings) {
-		preserveSensitiveSettings(nextSettings, previousSettings, incoming);
-		preserveMcpServerPrivateSettings(nextSettings, previousSettings, incoming);
-	}
-	return nextSettings;
-}
-
-export function sanitizeSettingsForClient(settings: AppSettings): AppSettings {
-	const sanitized = cloneJson(settings);
-	redactSensitiveSettings(sanitized);
-	redactMcpServerPrivateSettings(sanitized);
-	return sanitized;
-}
-
 function cloneJson<T>(value: T): T {
 	return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function shouldRedactSensitiveValue(value: unknown): boolean {
-	return value !== undefined && value !== null && value !== "";
-}
-
-function redactSensitiveSettings(value: unknown): void {
-	if (!value || typeof value !== "object") return;
-
-	if (Array.isArray(value)) {
-		for (const item of value) redactSensitiveSettings(item);
-		return;
-	}
-
-	const record = value as Record<string, unknown>;
-	for (const [key, child] of Object.entries(record)) {
-		if (sensitiveSettingKeys.has(key) && shouldRedactSensitiveValue(child)) {
-			record[key] = SERVER_REDACTED_SECRET;
-		} else {
-			redactSensitiveSettings(child);
-		}
-	}
-}
-
-function preserveSensitiveSettings(
-	target: unknown,
-	previous: unknown,
-	incoming: unknown,
-): void {
-	if (
-		!target ||
-		!previous ||
-		typeof target !== "object" ||
-		typeof previous !== "object"
-	)
-		return;
-
-	if (Array.isArray(target) && Array.isArray(previous)) {
-		const incomingArray = Array.isArray(incoming) ? incoming : [];
-		for (let index = 0; index < target.length; index += 1) {
-			preserveSensitiveSettings(
-				target[index],
-				previous[index],
-				incomingArray[index],
-			);
-		}
-		return;
-	}
-
-	if (Array.isArray(target) || Array.isArray(previous)) return;
-
-	const targetRecord = target as Record<string, unknown>;
-	const previousRecord = previous as Record<string, unknown>;
-	const incomingRecord = isRecord(incoming) ? incoming : {};
-
-	for (const [key, previousValue] of Object.entries(previousRecord)) {
-		if (sensitiveSettingKeys.has(key)) {
-			if (!shouldRedactSensitiveValue(previousValue)) continue;
-			const hasIncomingValue = Object.hasOwn(incomingRecord, key);
-			const incomingValue = incomingRecord[key];
-			if (!hasIncomingValue || incomingValue === SERVER_REDACTED_SECRET) {
-				targetRecord[key] = cloneJson(previousValue);
-			}
-			continue;
-		}
-
-		preserveSensitiveSettings(
-			targetRecord[key],
-			previousValue,
-			incomingRecord[key],
-		);
-	}
-}
-
-function redactMcpServerPrivateSettings(settings: AppSettings): void {
-	const servers = settings.mcp?.servers;
-	if (!Array.isArray(servers)) return;
-
-	for (const server of servers) {
-		if (!isRecord(server)) continue;
-		for (const key of mcpServerPrivateKeys) {
-			if (shouldRedactMcpPrivateValue(server[key])) {
-				server[key] = SERVER_REDACTED_SECRET;
-			}
-		}
-	}
-}
-
-function preserveMcpServerPrivateSettings(
-	target: AppSettings,
-	previous: AppSettings,
-	incoming: unknown,
-): void {
-	if (!previous.mcp) return;
-	if (!isRecord(incoming) || !Object.hasOwn(incoming, "mcp")) {
-		target.mcp = cloneJson(previous.mcp);
-		return;
-	}
-
-	const targetServers = Array.isArray(target.mcp?.servers)
-		? target.mcp.servers
-		: [];
-	const previousServers = Array.isArray(previous.mcp?.servers)
-		? previous.mcp.servers
-		: [];
-	const incomingServers =
-		isRecord(incoming.mcp) && Array.isArray(incoming.mcp.servers)
-			? incoming.mcp.servers
-			: [];
-	const targetById = mcpServersById(targetServers);
-	const incomingById = mcpServersById(incomingServers);
-
-	for (const previousServer of previousServers) {
-		if (!isRecord(previousServer) || typeof previousServer.id !== "string")
-			continue;
-		const targetServer = targetById.get(previousServer.id);
-		if (!targetServer) continue;
-		const incomingServer = incomingById.get(previousServer.id);
-
-		for (const key of mcpServerPrivateKeys) {
-			const previousValue = previousServer[key];
-			if (!shouldRedactMcpPrivateValue(previousValue)) continue;
-			const hasIncomingValue = Boolean(
-				incomingServer && Object.hasOwn(incomingServer, key),
-			);
-			const incomingValue = incomingServer?.[key];
-			if (!hasIncomingValue || incomingValue === SERVER_REDACTED_SECRET) {
-				targetServer[key] = cloneJson(previousValue);
-			}
-		}
-	}
-}
-
-function mcpServersById(
-	servers: unknown[],
-): Map<string, Record<string, unknown>> {
-	const byId = new Map<string, Record<string, unknown>>();
-	for (const server of servers) {
-		if (isRecord(server) && typeof server.id === "string") {
-			byId.set(server.id, server);
-		}
-	}
-	return byId;
 }
 
 type PermissionDecision = "once" | "session" | "workdir" | "reject";

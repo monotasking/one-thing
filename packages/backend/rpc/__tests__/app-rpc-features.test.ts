@@ -98,6 +98,12 @@ const EXPECTED_DOMAIN_FEATURES = [
   // evalsWorkbench(十一条)。三条进度推送走同一个注入端口,不在域上。
   ['rpc:evals', 'evals'],
   ['rpc:evals-workbench', 'evalsWorkbench'],
+  // P4c 第十一批:两个「无工厂的漏网 handler」——
+  // settings 四条(两条 C 留宿主、一条推送走注入端口)与 voice 十一条
+  // (两条推送本来就是 `configureVoiceHost` 端口一行没动;`VOICE_AUDIO_CHUNK`
+  // 那条单向 PCM 上行按拍板 #10 留在手写通道上)。
+  ['rpc:settings', 'settings'],
+  ['rpc:voice', 'voice'],
 ] as const
 
 /**

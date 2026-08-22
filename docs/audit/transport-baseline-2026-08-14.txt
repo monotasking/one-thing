@@ -28,8 +28,15 @@
 # 2026-08-22:P4c 第八批 gateway 8(configureGatewayHost 端口)+ files 14(http 侧 14 条夹紧逐字保留;FILE_WATCH_EVENT 推送留)迁 router 后收紧 —— channels 197→175、bridge 1201→1126、http 1137→972、web 1287→1230、channels.ts 395→370。
 # 2026-08-22:P4c 第九批 tools 7(http 护栏逐字)+ interaction 2 + music 14(两域 web 能力位默认关;4 music 推送留)迁 router 后收紧 —— channels 175→151、bridge 1126→1045、http 972→887、web 1230→1195、channels.ts 370→336。
 # 2026-08-22:P4c 第十批 evals 14 + evals-workbench 11 迁 router(app.isPackaged 摘成 configureEvalsHost 端口;3 条进度推送留,改走 configureEvalsEventBroadcaster 且 run 进度由单窗定向改全窗;web 能力位 evals 默认关)后收紧 —— channels 151→126、bridge 1045→936、web 1195→1112、channels.ts 336→307(http 887 不变:evals 从来没有 server 路由)。
-channels:IPC_CHANNELS 126
-lines:apps/electron/src/preload/bridge.ts 936
-lines:packages/backend/server/http.ts 887
-lines:packages/renderer/platform/web.ts 1112
-lines:packages/shared/ipc/channels.ts 307
+# 2026-08-22:P4c 第十一批 settings 4 + voice 11 迁 router(两个「无工厂的漏网 handler」)后收紧 —— channels 126→111、bridge 936→888、http 887→806、web 1112→1081、channels.ts 307→300。
+#   settings 留 2 条 C(OPEN_SETTINGS_WINDOW / SHOW_OPEN_DIALOG),推送 SETTINGS_CHANGED 改走 configureSettingsEventBroadcaster;
+#   **排除发起窗一字未丢** —— `RpcDispatchContext` 新增一格宿主铸的 `callerId`(@main/ipc/rpc.ts 从 event.sender.id 铸,http 不填),
+#   域把它递成 `excludeCallerId`(回灌整份 settings 会冲掉那扇窗正在编辑的草稿,靠幂等兜不住)。
+#   voice 两条推送本来就是 configureVoiceHost 端口、一行没动;**VOICE_AUDIO_CHUNK 不迁** —— 高频 PCM 单向上行不带回执,
+#   搬到只有请求/响应面的 router 上等于给每块音频加一条空回执(性能面变化),按拍板 #10 归**流式单向残留集**:
+#   常量 + preload 的 ipcRenderer.send + 主进程 ipcMain.on 原样留着(@main/ipc/voice.ts 终态小文件)。
+channels:IPC_CHANNELS 111
+lines:apps/electron/src/preload/bridge.ts 888
+lines:packages/backend/server/http.ts 806
+lines:packages/renderer/platform/web.ts 1081
+lines:packages/shared/ipc/channels.ts 300

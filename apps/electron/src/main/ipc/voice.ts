@@ -1,102 +1,27 @@
-import {
-  registerElectronVoiceIpcHandlers,
-  type ElectronVoiceTTSModelsRequest,
-} from '@onething/electron-host/voice/ipc'
-import {
-  IPC_CHANNELS,
-  type VoiceAudioChunkPayload,
-  type VoiceRuntimeEvent,
-  type VoiceStartRequest,
-  type VoiceStopRequest,
-  type VoiceSubmitTranscriptRequest,
-  type VoiceSubmitUtteranceRequest,
-  type VoiceSynthesizeRequest,
-  type VoiceTestASRRequest,
-  type VoiceTestTTSRequest,
-} from '@shared/ipc.js'
-import {
-  acknowledgeOnethingVoiceRuntimeReadyForIpc,
-  getOnethingVoiceStateForIpc,
-  handleOnethingVoiceRuntimeEventForIpc,
-  listOnethingVoiceTTSModelsForIpc,
-  testOnethingVoiceASRForIpc,
-  testOnethingVoiceTTSForIpc,
-} from '@onething/runtime/voice'
-import { getVoiceService } from '@onething/backend/wiring/voice/service.js'
-import { getSettings } from '@onething/backend/stores/settings.js'
-import { getOpenRouterTTSModels, transcribeUtterance } from '@onething/backend/wiring/voice/providers.js'
+/**
+ * 本文件在 P4c 第十一批之后只剩**一条单向上行**:`VOICE_AUDIO_CHUNK`。
+ *
+ * 十一条数据面(状态 / 起停 / 两条上行 / 合成 / 自检 / TTS 模型表 / 运行时窗就绪
+ * 与事件)已整只迁到通用 RPC 通道(`@shared/ipc/voice.ts` 的 `voiceRouter` +
+ * `packages/backend/rpc/domains/voice.ts`),桌面和 web 走同一条 dispatch。
+ *
+ * 这一条没跟着走,理由是**传输形状**而不是归属:它是语音运行时窗往主进程灌的
+ * 高频 PCM 流,`ipcRenderer.send` 单向、不带回执。router 只有请求/响应面,搬过去
+ * 等于给每一块音频加一条空回执 —— 那是性能面的变化,不是通道收敛。它因此归
+ * **流式单向残留集**(与 `FILE_WATCH_EVENT` 一类推送同类,拍板 #10)。
+ *
+ * 两条推送(`VOICE_EVENT` / `VOICE_RUNTIME_COMMAND`)不在这里也不需要在这里:
+ * 它们早就是 `configureVoiceHost` 的端口(`broadcastMessage` /
+ * `runtimeWindow.sendCommand`),桌面在 `app/main-process.ts` 一次性注入。
+ */
+import { ipcMain } from "electron";
+import { IPC_CHANNELS, type VoiceAudioChunkPayload } from "@shared/ipc.js";
+import { getVoiceService } from "@onething/backend/wiring/voice/service.js";
 
 export function registerVoiceHandlers(): void {
-  type VoiceRuntimeSender = Parameters<ReturnType<typeof getVoiceService>['handleRuntimeReady']>[0]
-
-  registerElectronVoiceIpcHandlers({
-    channels: {
-      getState: IPC_CHANNELS.VOICE_GET_STATE,
-      start: IPC_CHANNELS.VOICE_START,
-      stop: IPC_CHANNELS.VOICE_STOP,
-      submitUtterance: IPC_CHANNELS.VOICE_SUBMIT_UTTERANCE,
-      submitTranscript: IPC_CHANNELS.VOICE_SUBMIT_TRANSCRIPT,
-      synthesize: IPC_CHANNELS.VOICE_SYNTHESIZE,
-      testASR: IPC_CHANNELS.VOICE_TEST_ASR,
-      testTTS: IPC_CHANNELS.VOICE_TEST_TTS,
-      getTTSModels: IPC_CHANNELS.VOICE_GET_TTS_MODELS,
-      runtimeReady: IPC_CHANNELS.VOICE_RUNTIME_READY,
-      runtimeEvent: IPC_CHANNELS.VOICE_RUNTIME_EVENT,
-      audioChunk: IPC_CHANNELS.VOICE_AUDIO_CHUNK,
-    },
-    getState: async () => {
-      return getOnethingVoiceStateForIpc({
-        getState: () => getVoiceService().getState(),
-      })
-    },
-    start: async (request: unknown) => {
-      return getVoiceService().start(request as VoiceStartRequest)
-    },
-    stop: async (request: unknown) => {
-      return getVoiceService().stop(request as VoiceStopRequest)
-    },
-    submitUtterance: async (request: unknown) => {
-      return getVoiceService().submitUtterance(request as VoiceSubmitUtteranceRequest)
-    },
-    submitTranscript: async (request: unknown) => {
-      return getVoiceService().submitTranscript(request as VoiceSubmitTranscriptRequest)
-    },
-    synthesize: async (request: unknown) => {
-      return getVoiceService().synthesize(request as VoiceSynthesizeRequest)
-    },
-    testASR: async (request: unknown) => {
-      return testOnethingVoiceASRForIpc({
-        request: request as VoiceTestASRRequest,
-        getVoiceSettings: () => getSettings().voice!,
-        transcribeUtterance,
-      })
-    },
-    testTTS: async (request: unknown) => {
-      return testOnethingVoiceTTSForIpc({
-        request: request as VoiceTestTTSRequest,
-        synthesize: nextRequest => getVoiceService().synthesize(nextRequest),
-      })
-    },
-    getTTSModels: async (request?: ElectronVoiceTTSModelsRequest) => {
-      return listOnethingVoiceTTSModelsForIpc({
-        request,
-        getTTSModels: force => getOpenRouterTTSModels(force),
-      })
-    },
-    runtimeReady: async (sender: unknown) => {
-      return acknowledgeOnethingVoiceRuntimeReadyForIpc({
-        sender: sender as VoiceRuntimeSender,
-        handleRuntimeReady: runtimeSender => getVoiceService().handleRuntimeReady(runtimeSender),
-      })
-    },
-    runtimeEvent: async (runtimeEvent: unknown) => {
-      return handleOnethingVoiceRuntimeEventForIpc({
-        event: runtimeEvent as VoiceRuntimeEvent,
-        handleRuntimeEvent: event => getVoiceService().handleRuntimeEvent(event),
-      })
-    },
-    audioChunk: (payload: unknown) => {
-      getVoiceService().handleAudioChunk(payload as VoiceAudioChunkPayload)
-    },
-  })
+    // Fire-and-forget so the runtime window never blocks its audio callback on
+    // an invoke round trip.
+    ipcMain.on(IPC_CHANNELS.VOICE_AUDIO_CHUNK, (_event, payload: VoiceAudioChunkPayload) => {
+        getVoiceService().handleAudioChunk(payload);
+    });
 }

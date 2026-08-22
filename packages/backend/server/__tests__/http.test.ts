@@ -15,15 +15,17 @@ import { registerPermissionGrantsRpcDomain } from '@onething/backend/rpc/domains
 import { resetPermissionGrantsForTests } from '@onething/core/permission'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { chatRouter } from '@shared/ipc/chat.js'
-import type { AppSettings } from '@shared/ipc/settings.js'
 import { createOnethingHttpServer } from '../http.js'
 import {
   SERVER_REDACTED_SECRET,
   createAppBackedServerSessionStore,
-  mergeServerSettingsUpdate,
-  sanitizeSettingsForClient,
   type OnethingServerRuntime,
 } from '../runtime.js'
+// P4c 第十一批:设置面的 http 投影搬出 `runtime.ts`,由域处理者调用。
+import {
+  mergeServerSettingsUpdate,
+  sanitizeSettingsForClient,
+} from '../settings-projection.js'
 import { createEchoServerBackend, createTestServerRuntime } from './test-helpers.js'
 
 const servers: Server[] = []
@@ -33,7 +35,6 @@ const originalOnethingStorePath = process.env.ONETHING_STORE_PATH
 
 const TEST_SERVER_AUTH_TOKEN = 'test-server-token'
 
-type SettingsResponse = { success: boolean; settings?: AppSettings; error?: string }
 
 beforeEach(async () => {
   process.env.ONETHING_STORE_PATH = await createTempDir('onething-test-store-')
@@ -137,46 +138,9 @@ describe('createOnethingHttpServer', () => {
     expect(queryReplay).toContain(`id: ${abortedSeq}\n`)
   })
 
-  it('routes proxy tests through the network runtime facade with owner context', async () => {
-    const testProxy = vi.fn(async () => ({ success: false, error: 'Proxy is disabled.' }))
-    const runtime = createOnethingRuntimeFacade({
-      sessions: {
-        list: async () => ({ success: true, sessions: [] }),
-        create: async (name: string) => ({ id: 'session-1', name }),
-      },
-      events: {
-        subscribe: () => () => {},
-      },
-      network: {
-        testProxy,
-      },
-    })
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
-    const headers = contextHeaders('alice', 'network-workspace')
-
-    await expect(fetchJson(`${baseUrl(server)}/api/network/test-proxy`, {
-      method: 'POST',
-      headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        proxy: {
-          enabled: false,
-          url: '',
-        },
-      }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Proxy is disabled.',
-    })
-
-    expect(testProxy).toHaveBeenCalledWith({
-      enabled: false,
-      url: '',
-    }, expect.objectContaining({
-      userId: 'alice',
-      workspaceId: 'network-workspace',
-    }))
-  })
+  // P4c 第十一批:`POST /api/network/test-proxy` 与 `network` facade adapter 一起
+  // 没了 —— 代理自检随 `settingsRouter.testProxy` 走通用 RPC,实现收敛成
+  // `backend/wiring/settings/proxy.ts` 一份(旧 server 里那份是逐字抄件)。
 
   it('routes search requests through the search runtime facade with owner context', async () => {
     const query = vi.fn(async request => ({ success: true, results: [{ id: 'action:1', request }] }))
@@ -329,7 +293,11 @@ describe('createOnethingHttpServer', () => {
   // 「按 owner 设置拼一个永远 running:false 的假状态」的机器。域的形状(含未注入
   // 降级、注入后转调、抛错折成失败)由 `rpc/__tests__/gateway-domain.test.ts` 钉。
 
-  it('serves web-safe voice endpoints with explicit unavailable responses', async () => {
+  // P4c 第十一批:voice 的十一条 REST 路由随 `voiceRouter` 迁走 —— 那批
+  // 「server 上没有语音运行时」的答案逐字保留在域处理者的 `transport:'http'` 分支上,
+  // 由 `rpc/__tests__/voice-domain.test.ts` 端到端穿 dispatcher 钉住。
+  // 留在这里的是两条推送的 SSE 源(router 今天没有推送面)。
+  it('serves the two voice push streams as server-sent events', async () => {
     const dataRoot = await createTempDir('onething-voice-data-')
     const workspaceRoot = await createTempDir('onething-voice-workspace-')
     const serverRuntime = await createTestServerRuntime({
@@ -343,115 +311,6 @@ describe('createOnethingHttpServer', () => {
     }))
     const baseUrlValue = baseUrl(server)
     const headers = contextHeaders('alice', 'voice-workspace')
-    const jsonHeaders = { ...headers, 'content-type': 'application/json' }
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/state`, {
-      headers,
-    })).resolves.toMatchObject({
-      success: true,
-      state: {
-        status: 'disabled',
-        enabled: false,
-        runtimeReady: false,
-      },
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/start`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ sessionId: 'session-1', reason: 'manual' }),
-    })).resolves.toMatchObject({
-      success: false,
-      error: 'Voice runtime is not available in the web server runtime.',
-      state: {
-        status: 'error',
-        enabled: false,
-        runtimeReady: false,
-        lastError: 'Voice runtime is not available in the web server runtime.',
-      },
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/stop`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ reason: 'manual' }),
-    })).resolves.toEqual({ success: true })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/submit-utterance`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ audioBase64: 'audio', mimeType: 'audio/webm' }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Voice runtime is not available in the web server runtime.',
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/submit-transcript`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({
-        text: 'hello',
-        asrProvider: 'openai-transcribe',
-        asrModel: 'whisper-1',
-      }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Voice runtime is not available in the web server runtime.',
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/synthesize`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ text: 'hello' }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Voice runtime is not available in the web server runtime.',
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/test-asr`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ audioBase64: 'audio', mimeType: 'audio/webm' }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Voice runtime is not available in the web server runtime.',
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/test-tts`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ text: 'hello' }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Voice runtime is not available in the web server runtime.',
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/tts-models`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ force: true }),
-    })).resolves.toMatchObject({
-      success: true,
-      models: [],
-      fetchedAt: expect.any(Number),
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/runtime-ready`, {
-      method: 'POST',
-      headers: jsonHeaders,
-    })).resolves.toEqual({
-      success: false,
-      error: 'Voice runtime is not available in the web server runtime.',
-    })
-
-    await expect(fetchJson(`${baseUrlValue}/api/voice/runtime-event`, {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ type: 'runtime-ready' }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Voice runtime is not available in the web server runtime.',
-    })
 
     const voiceEvents = await fetch(`${baseUrlValue}/api/voice/events`, { headers })
     expect(voiceEvents.headers.get('content-type')).toContain('text/event-stream')
@@ -1356,44 +1215,9 @@ describe('createOnethingHttpServer', () => {
     ])
   })
 
-  it('uses the onething desktop settings file by default', async () => {
-    const storeRoot = await createTempDir('onething-desktop-settings-')
-    const originalStorePath = process.env.ONETHING_STORE_PATH
-    process.env.ONETHING_STORE_PATH = storeRoot
-    await writeFile(join(storeRoot, 'settings.json'), `${JSON.stringify({
-      theme: 'light',
-      ai: {
-        provider: 'openai',
-        providers: {
-          openai: {
-            apiKey: 'sk-desktop-secret',
-            model: 'gpt-4o',
-            selectedModels: ['gpt-4o'],
-          },
-        },
-      },
-    })}\n`, 'utf8')
-
-    try {
-      const serverRuntime = await createTestServerRuntime({
-        dataRoot: await createTempDir('onething-server-data-'),
-      })
-      runtimes.push(serverRuntime)
-
-      const response = await serverRuntime.runtime.settings!.get() as SettingsResponse
-
-      expect(response.settings).toEqual(expect.objectContaining({
-        theme: 'light',
-      }))
-      expect(response.settings?.ai.provider).toBe('openai')
-      expect(response.settings?.ai.providers.openai.model).toBe('gpt-4o')
-      expect(response.settings?.ai.providers.openai.apiKey).toBe(SERVER_REDACTED_SECRET)
-      expect(JSON.stringify(response.settings)).not.toContain('sk-desktop-secret')
-    } finally {
-      if (originalStorePath === undefined) delete process.env.ONETHING_STORE_PATH
-      else process.env.ONETHING_STORE_PATH = originalStorePath
-    }
-  })
+  // P4c 第十一批:「server 读桌面那份 settings.json 并脱敏」这条钉子搬到了
+  // `rpc/__tests__/settings-domain.test.ts` —— facade 上已经没有 `settings` 这一格,
+  // 而脱敏现在是域处理者在 `transport === 'http'` 上做的事。
 
   it('uses the onething desktop app state and chat sessions by default', async () => {
     const storeRoot = await createTempDir('onething-desktop-sessions-')
@@ -1492,114 +1316,11 @@ describe('createOnethingHttpServer', () => {
     }
   })
 
-  it('stores web settings per user/workspace owner in the server runtime', async () => {
-    const settingsRoot = await createTempDir('onething-server-settings-')
-    const serverRuntime = await createTestServerRuntime({ settingsRoot })
-    runtimes.push(serverRuntime)
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN,
-      runtime: serverRuntime.runtime,
-    }))
+  // P4c 第十一批:server 那本 per-owner 的第二份设置账随 `settings` adapter 一起
+  // 没了(拍板 #20)——一个 store 一份设置,web 与桌面读同一本
+  // `<store>/settings.json`。出门脱敏 / 回来合并两道护栏仍然钉在下面那条纯函数
+  // 用例上,以及 `rpc/__tests__/settings-domain.test.ts` 的 http 分叉用例上。
 
-    const aliceHeaders = contextHeaders('alice', 'settings-a')
-    const bobHeaders = contextHeaders('bob', 'settings-a')
-    const aliceOtherWorkspaceHeaders = contextHeaders('alice', 'settings-b')
-
-    const aliceInitial = await fetchJson(`${baseUrl(server)}/api/settings`, { headers: aliceHeaders })
-    expect(aliceInitial.settings).toEqual(expect.objectContaining({
-      theme: 'dark',
-    }))
-
-    const saved = await fetchJson(`${baseUrl(server)}/api/settings`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        theme: 'light',
-        general: {
-          typographyDensity: 'comfortable',
-        },
-        ai: {
-          providers: {
-            openai: {
-              apiKey: 'sk-alice-secret',
-              model: 'gpt-4o',
-              selectedModels: [],
-            },
-            codex: {
-              authType: 'oauth',
-              model: 'gpt-5.3-codex',
-              selectedModels: [],
-              oauthToken: {
-                accessToken: 'access-alice-secret',
-                refreshToken: 'refresh-alice-secret',
-                expiresAt: 12345,
-                tokenType: 'Bearer',
-                idToken: 'id-alice-secret',
-              },
-            },
-          },
-        },
-      }),
-    })
-    expect(saved.settings).toEqual(expect.objectContaining({
-      theme: 'light',
-      general: expect.objectContaining({
-        typographyDensity: 'comfortable',
-      }),
-      tools: expect.any(Object),
-    }))
-    expect(saved.settings.ai.providers.openai.apiKey).toBe(SERVER_REDACTED_SECRET)
-    expect(saved.settings.ai.providers.codex.oauthToken).toBe(SERVER_REDACTED_SECRET)
-    expect(JSON.stringify(saved.settings)).not.toContain('sk-alice-secret')
-    expect(JSON.stringify(saved.settings)).not.toContain('access-alice-secret')
-
-    const aliceAgain = await fetchJson(`${baseUrl(server)}/api/settings`, { headers: aliceHeaders })
-    expect(aliceAgain.settings).toEqual(expect.objectContaining({
-      theme: 'light',
-      general: expect.objectContaining({
-        typographyDensity: 'comfortable',
-      }),
-    }))
-    expect(aliceAgain.settings.ai.providers.openai.apiKey).toBe(SERVER_REDACTED_SECRET)
-    expect(aliceAgain.settings.ai.providers.codex.oauthToken).toBe(SERVER_REDACTED_SECRET)
-    expect(JSON.stringify(aliceAgain.settings)).not.toContain('sk-alice-secret')
-    expect(JSON.stringify(aliceAgain.settings)).not.toContain('access-alice-secret')
-
-    const bobSettings = await fetchJson(`${baseUrl(server)}/api/settings`, { headers: bobHeaders })
-    const aliceOtherWorkspaceSettings = await fetchJson(`${baseUrl(server)}/api/settings`, {
-      headers: aliceOtherWorkspaceHeaders,
-    })
-    expect(bobSettings.settings).toEqual(expect.objectContaining({ theme: 'dark' }))
-    expect(bobSettings.settings.ai.providers.openai.apiKey).toBe('')
-    expect(aliceOtherWorkspaceSettings.settings).toEqual(expect.objectContaining({ theme: 'dark' }))
-    expect(aliceOtherWorkspaceSettings.settings.ai.providers.openai.apiKey).toBe('')
-  })
-
-  it('tests network proxy settings through the development server runtime', async () => {
-    const serverRuntime = await createTestServerRuntime()
-    runtimes.push(serverRuntime)
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN,
-      runtime: serverRuntime.runtime,
-    }))
-
-    await expect(fetchJson(`${baseUrl(server)}/api/network/test-proxy`, {
-      method: 'POST',
-      headers: {
-        ...contextHeaders('alice', 'network-dev-workspace'),
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        proxy: {
-          enabled: false,
-          url: '',
-        },
-      }),
-    })).resolves.toEqual({
-      success: false,
-      error: 'Proxy is disabled.',
-    })
-  })
 
   it('redacts server settings secrets and preserves them when clients save sanitized settings', () => {
     const previous = createDefaultSettings()
@@ -1681,71 +1402,6 @@ describe('createOnethingHttpServer', () => {
     expect(partial.mcp).toEqual(previous.mcp)
   })
 
-  it('persists owner-scoped server settings outside the browser-facing payload', async () => {
-    const settingsRoot = await createTempDir('onething-server-settings-')
-    const aliceContext = { userId: 'alice', workspaceId: 'settings-persist' }
-    const baseSettings = createDefaultSettings()
-    const firstRuntime = await createTestServerRuntime({ settingsRoot })
-    runtimes.push(firstRuntime)
-
-    const saved = await firstRuntime.runtime.settings!.update({
-      ...baseSettings,
-      theme: 'light',
-      ai: {
-        ...baseSettings.ai,
-        providers: {
-          ...baseSettings.ai.providers,
-          openai: {
-            ...baseSettings.ai.providers.openai,
-            apiKey: 'sk-persisted-openai',
-          },
-        },
-      },
-      mcp: {
-        enabled: true,
-        servers: [{
-          id: 'persisted-mcp',
-          name: 'Persisted MCP',
-          transport: 'sse',
-          enabled: true,
-          url: 'https://mcp.example.test/sse?token=mcp-url-secret',
-          headers: {
-            Authorization: 'Bearer mcp-persisted-header',
-          },
-        }],
-      },
-    }, aliceContext) as SettingsResponse
-    expect(saved).toEqual(expect.objectContaining({
-      success: true,
-      settings: expect.objectContaining({
-        theme: 'light',
-      }),
-    }))
-    await firstRuntime.shutdown()
-    runtimes.splice(runtimes.indexOf(firstRuntime), 1)
-
-    const persisted = await readFile(join(settingsRoot, 'alice', 'settings-persist.json'), 'utf8')
-    expect(persisted).toContain('sk-persisted-openai')
-    expect(persisted).toContain('mcp-persisted-header')
-    expect(persisted).not.toContain(SERVER_REDACTED_SECRET)
-
-    const secondRuntime = await createTestServerRuntime({ settingsRoot })
-    runtimes.push(secondRuntime)
-    const aliceSettings = await secondRuntime.runtime.settings!.get(aliceContext) as SettingsResponse
-    const bobSettings = await secondRuntime.runtime.settings!.get({
-      userId: 'bob',
-      workspaceId: 'settings-persist',
-    }) as SettingsResponse
-
-    expect(aliceSettings.settings).toEqual(expect.objectContaining({ theme: 'light' }))
-    expect(aliceSettings.settings?.ai.providers.openai.apiKey).toBe(SERVER_REDACTED_SECRET)
-    expect(aliceSettings.settings?.mcp?.servers[0].url).toBe(SERVER_REDACTED_SECRET)
-    expect(aliceSettings.settings?.mcp?.servers[0].headers).toBe(SERVER_REDACTED_SECRET)
-    expect(JSON.stringify(aliceSettings.settings)).not.toContain('sk-persisted-openai')
-    expect(JSON.stringify(aliceSettings.settings)).not.toContain('mcp-persisted-header')
-    expect(bobSettings.settings).toEqual(expect.objectContaining({ theme: 'dark' }))
-    expect(bobSettings.settings?.ai.providers.openai.apiKey).toBe('')
-  })
 
   // P4c 第五批:「按会话改设置」的六条 REST(archive / working-directory / agent /
   // permission-mode / model 与按 id 取会话)已随 `sessionsRouter` 迁走 —— server 侧
@@ -2032,7 +1688,7 @@ describe('createOnethingHttpServer', () => {
       runtime: serverRuntime.runtime,
     }))
 
-    const spoofed = await fetch(`${baseUrl(server)}/api/settings`, {
+    const spoofed = await fetch(`${baseUrl(server)}/api/capabilities`, {
       headers: { 'x-onething-user-id': 'someone-else' },
     })
     expect(spoofed.status).toBe(401)

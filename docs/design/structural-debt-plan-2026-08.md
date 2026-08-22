@@ -1353,6 +1353,18 @@ stream-processor / stream-executor / chat-logger / system-prompt / agent-loop-se
      web 能力位 `evals:false`(闸在 client,关着时 24 条答案与旧桩逐字同;`readSnapshot` 迁移前 web 根本没有);http 分叉:
      `readSnapshot/readFixture/promoteFixture/readRunDetail` 四条拿 wire 路径读文件的在 http 直接拒(与能力位同口径);checker 原无
      evals 断言,新增 `checkEvalsHostPorts`;transport channels 151→**126**、四壳 3242;battery 264/0;全量 11218 绿。
+     **第十一批落地记录(08-22,settings 8 + voice 12,待提交)**:settings 迁 `getSettings/saveSettings/getSystemTheme/testProxy`,
+     `OPEN_SETTINGS_WINDOW`/`SHOW_OPEN_DIALOG`(21 调用点)C 留宿主;`SETTINGS_CHANGED` 改 `configureSettingsEventBroadcaster` 端口
+     **并保留"排除发起窗"语义**(桌面 rpc 入口把 `event.sender.id` 铸进 `RpcDispatchContext.callerId`——宿主铸、不可由 envelope 传——
+     广播按它排除;这是拍板 #5 "RpcRequest context"的第一格实际落地);`SYSTEM_THEME_CHANGED` 事件源只住宿主不走端口;保存时
+     gateway 套用走第八批 `configureGatewayHost` 多加一格 `applySettings`,另立 `configureSettingsHost`(nativeTheme / 代理应用 /
+     全局快捷键);server 删 settings/network 两 adapter 与 11 条 voice 路由,脱敏 + 哨兵合并护栏搬 `server/settings-projection.ts`
+     逐字保留,per-owner 设置账收敛(#35);voice 12 条迁,http 侧逐字给旧 server 的 12 个答案且一次不碰 VoiceService,两条
+     推送与 SSE 零改动;**`VOICE_AUDIO_CHUNK` 退回单向手写通道**(每秒 10–25 块 PCM,带回执的 invoke 是性能面变化;归"流式
+     单向残留集",与 FILE_WATCH_EVENT 同类);顺带修掉 web `voiceAudioChunk` 打不存在路由被 `.catch()` 吞的死镜像;
+     `measure-shadow-overhead.mjs` 改 rpc 后能跑通;transport channels 126→**111**(含退回的 VOICE_AUDIO_CHUNK)、四壳 3075;battery 264/0;全量 11225 绿。
+     **P4 至此:所有带工厂/裸写的数据面域已迁完**,剩窗口系残留集(#10:browser/shell/window/search/notify/deeplink/todo-plan 窗口/
+     media 3 条/settings 2 条/chat resumeAfterToolConfirm #21)、plugins 写面(#16)、terminal(#18)、mobile REST(#32)。
      另:`main/ipc/` 下无工厂的漏网 handler:**settings.ts**(8 条,`SHOW_OPEN_DIALOG` 渲染侧 21 调用点全仓最高,
      `OPEN_SETTINGS_WINDOW` C)、**voice.ts**(12 条,`configureVoiceHost` 已在,web 全套 REST);13 条**字面量通道**
      (shell 4 / sessions 4 / media 5)在契约表外、transport 门统计不到——终态前补进契约或明确豁免(拍板 #22)。
@@ -1424,6 +1436,7 @@ P0 卫生落库 ──► P1 alias 塌缩 ──► P2 boundary 清偿 ──►
 | 22 | **(新,P4c)13 条字面量通道(shell 4 / sessions 4 / media 5)不在 `IPC_CHANNELS`,transport 门统计不到** | sessions/media 的随域迁移消失;shell 4 条补进契约表并按项注明基线 | 待拍 |
 | 23 | **(新,P4c-1 已发生)permission.getPending/clearSession 在 server 上失去 per-owner 护栏**(旧 adapter 查"会话属于此 owner",桌面线无此检查;单用户 server 下无实际影响) | 接受(server 单用户是既定前提);若将来多租户,在 RpcContext 上加 owner 校验而不是回到每域手写 | 已按默认执行,待知会 |
 | 24 | **(新,P4c-1 已发生)app-state 迁 router 后 web 端 hydrate 桌面真实 `app-state.json`(页签树/侧栏状态),不再是 server 现场拼的恒定单页签** | 与 #11 同型接受 | 已按默认执行,待知会 |
+| 35 | **(新,P4c-11 已发生)server 的 per-owner 第二份设置账(`settingsByOwner` + `ServerSettingsStore`)收敛到装配层单例**——第六批 mcp 写面已落单例,再保留 per-owner 读面是自相矛盾;web 与桌面读同一本 `<store>/settings.json`,脱敏/哨兵合并两道护栏逐字保留 | 同 #20/#27 接受;要回 per-owner 得补 `configureServerSettingsHost` 端口注回旧 adapter | 已按默认执行,待知会 |
 | 34 | **(新,P4c-9)`tools.refreshAsyncTools` 全仓零调用点**(bridge 从未暴露,死通道) | 退役该方法与常量 | 待拍 |
 | 32 | **(新,P4c-4 sessions)`apps/mobile` 是独立 RN 客户端直接打 server REST**:为它保留 `GET/POST /api/sessions`、`POST /api/session-messages/page` 三条薄适配;另发现 mobile 仍打 `POST /api/sessions/:id/commands`(session-command 入口 router 化时已删,今天 404——既有伤,非本批) | mobile 改走 `/api/rpc`(它已有 SSE/fetch 层)后删这三条;`/commands` 那条要么给 mobile 加 rpc 调用要么临时恢复路由 | 待拍 |
 | 33 | **(新,P4c-4 sessions)server 侧三条语义按 transport 分叉保留**:`updateWorkingDirectory` 在 http 夹 sandboxRoot(旧文案逐字)、`delete` 在 http 先 abort 活流/destroy 总线会话/清权限镜像、`create` 在 http 对 `kind` 维持旧拒绝——桌面形状不动 | 已按"不放宽"执行;放开任一条(如浏览器建协作房)另拍(已落地:域测试 13 例含三条分叉;两处旧 server 细节未补:`workingDirectory: null/''` 旧 server 解释为"重置到沙箱根"现为"清空"(ipc 原义);server 进程内 resident `sessions` Map 不再随 delete 摘条,`max-tokens`/`session-messages/page` 可能读到已删会话的陈旧缓存,`GET /api/sessions` 不受影响) | 已按默认执行,待知会 |

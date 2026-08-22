@@ -1016,8 +1016,9 @@ export interface ElectronAPI {
 		sessionId: string,
 		maxTokens: number,
 	) => Promise<{ success: boolean; error?: string }>;
-	getSettings: () => Promise<GetSettingsResponse>;
-	saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>;
+	// Settings —— 四条数据面(读 / 存 / 系统深浅色 / 代理自检)走通用 RPC
+	// (settingsRouter),方法在 platform/settings-client.ts 上。留在壳上的是两件要
+	// Electron 本体的事(开设置窗 / 原生对话框)与三条推送订阅。
 	openSettingsWindow: (options?: { tab?: string }) => Promise<{ success: boolean }>;
 	onSettingsNavigate: (callback: (payload: { tab: string }) => void) => () => void;
 	onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void;
@@ -1028,35 +1029,11 @@ export interface ElectronAPI {
 	onSpacesChanged: (callback: (event: SpacesChangedEvent) => void) => () => void;
 	// gateway —— 八条已迁 `gatewayRouter`(P4c 第八批),渲染侧从
 	// `platform/gateway-client` 的 `gatewayApi` 取;本域零推送,壳上不留。
-	voiceGetState: () => Promise<VoiceGetStateResponse>;
-	voiceStart: (
-		request?: VoiceStartRequest,
-	) => Promise<{ success: boolean; error?: string }>;
-	voiceStop: (
-		request?: VoiceStopRequest,
-	) => Promise<{ success: boolean; error?: string }>;
-	voiceSubmitUtterance: (
-		request: VoiceSubmitUtteranceRequest,
-	) => Promise<VoiceSubmitUtteranceResponse>;
-	voiceSubmitTranscript: (
-		request: VoiceSubmitTranscriptRequest,
-	) => Promise<VoiceSubmitUtteranceResponse>;
-	voiceSynthesize: (
-		request: VoiceSynthesizeRequest,
-	) => Promise<VoiceSynthesizeResponse>;
-	voiceTestASR: (
-		request: VoiceTestASRRequest,
-	) => Promise<VoiceSubmitUtteranceResponse>;
-	voiceTestTTS: (
-		request: VoiceTestTTSRequest,
-	) => Promise<{ success: boolean; error?: string; mimeType?: string }>;
-	voiceGetTTSModels: (request?: {
-		force?: boolean;
-	}) => Promise<VoiceTTSModelsResponse>;
-	onVoiceEvent: (callback: (event: VoiceEvent) => void) => () => void;
-	voiceRuntimeReady: () => Promise<{ success: boolean }>;
-	voiceRuntimeEvent: (event: VoiceEvent) => Promise<{ success: boolean }>;
+	// Voice —— 十一条数据面走通用 RPC(voiceRouter),方法在
+	// platform/voice-client.ts 上。这里留三条:两条推送(router 没有推送面)与
+	// `voiceAudioChunk` 那条**单向上行**(高频 PCM 流,不带回执;拍板 #10)。
 	voiceAudioChunk: (payload: VoiceAudioChunkPayload) => void;
+	onVoiceEvent: (callback: (event: VoiceEvent) => void) => () => void;
 	onVoiceRuntimeCommand: (
 		callback: (command: VoiceRuntimeCommand) => void,
 	) => () => void;
@@ -1070,10 +1047,6 @@ export interface ElectronAPI {
 		callback: (nowPlaying: MusicNowPlaying | null) => void,
 	) => () => void;
 	onMusicDjSpeak: (callback: (speak: MusicDjSpeak) => void) => () => void;
-	getSystemTheme: () => Promise<{ success: boolean; theme?: "light" | "dark" }>;
-	testProxy: (
-		proxy: ProxySettings,
-	) => Promise<{ success: boolean; error?: string; status?: number }>;
 	onSystemThemeChanged: (
 		callback: (theme: "light" | "dark") => void,
 	) => () => void;

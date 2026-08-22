@@ -1,98 +1,60 @@
+/**
+ * 本文件在 P4c 第十一批之后只剩**两件要 Electron 本体的事**加**一条推送的注入**:
+ *
+ *  - `OPEN_SETTINGS_WINDOW` —— 开设置窗(`BrowserWindow`);
+ *  - `SHOW_OPEN_DIALOG` —— 原生文件对话框(渲染侧 21 个调用点,全仓最高的一条,
+ *    签名一个字没动)。
+ *
+ * 四条数据面(`settings:get` / `settings:save` / `settings:get-system-theme` /
+ * `network:test-proxy`)已整只迁到通用 RPC 通道(`@shared/ipc/settings.ts` 的
+ * `settingsRouter` + `packages/backend/rpc/domains/settings.ts`),桌面和 web 走同一条
+ * dispatch、同一本 `<store>/settings.json`。
+ *
+ * 两条推送留在这里(router 没有推送面):
+ *  - `SETTINGS_CHANGED` 现在是**注入端口**(`configureSettingsEventBroadcaster`,
+ *    同 practice / scratchpad / oauth / evals 判例)。**排除发起窗一字未丢**:
+ *    「谁在问」由 `@main/ipc/rpc.ts` 从 `event.sender.id` 铸进
+ *    `RpcDispatchContext.callerId`,域处理者原样递回来,这里按 webContents id 排除
+ *    —— 回灌整份 settings 会冲掉那扇窗正在编辑的草稿,靠「幂等」兜不住。
+ *  - `SYSTEM_THEME_CHANGED` 连端口都不用:它的事件源是系统主题的 updated 事件,
+ *    从头到尾只住在宿主里。
+ *
+ * 三件宿主能力(套代理 / 重注册全局快捷键 / 系统深浅色)的注入不在这里,而在
+ * `app/main-process.ts` 的 `configureSettingsHost` —— 与其余 configure*Host 同处。
+ */
 import {
   broadcastElectronSettingsChanged,
-  getElectronShouldUseDarkColors,
   registerElectronSettingsIpcHandlers,
   registerElectronSystemThemeChangedBroadcast,
   showElectronOpenDialog,
-  type ElectronSettingsIpcEvent,
 } from '@onething/electron-host/settings/ipc-host'
-import {
-  getOnethingSettingsForIpc,
-  getOnethingSystemThemeForIpc,
-  saveOnethingSettingsWithRuntimeEffectsForIpc,
-} from '@onething/runtime/settings'
-import { IPC_CHANNELS, type SaveSettingsRequest, type TestProxyRequest } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import { IPC_CHANNELS } from '@shared/ipc.js'
 import { openSettingsWindow } from '@onething/electron-host/window'
-import { invalidateProviderCache } from '@onething/backend/wiring/providers/registry.js'
-import { applyNetworkProxySettings, testProxy } from './network-proxy.js'
-import { registerGlobalWindowShortcuts } from '@onething/electron-host/shortcuts/global-shortcuts'
-import { getVoiceServiceSafe } from '@onething/backend/wiring/voice/service.js'
-import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
-import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
-import { ACPManager } from '@onething/runtime/acp'
-import { applyGatewaySettings } from '@onething/electron-host/gateway/lifecycle'
-import { startTodoPlanWatcher } from '@onething/backend/wiring/todo-plan/store.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
-
-const log = getLogger('ipc.settings')
-
-async function saveSettingsFromIpc(settings: SaveSettingsRequest, event: ElectronSettingsIpcEvent) {
-  const result = await saveOnethingSettingsWithRuntimeEffectsForIpc({
-    settings,
-    saveSettings: nextSettings => store.saveSettings(nextSettings),
-    getSettings: () => store.getSettings(),
-    invalidateProviderCache,
-    applyNetworkProxySettings,
-    registerGlobalWindowShortcuts,
-    applyVoiceSettings: normalizedSettings =>
-      getVoiceServiceSafe()?.applySettings(normalizedSettings),
-    updateMCPSettings: nextSettings => MCPManager.updateSettings(nextSettings),
-    registerMCPTools,
-    updateACPSettings: nextSettings => ACPManager.updateSettings(nextSettings),
-    defaultMCPSettings: DEFAULT_MCP_SETTINGS,
-    defaultACPSettings: { enabled: true, agents: [] },
-    logger: console,
-  })
-  if (!result.success) return result
-  const normalizedSettings = result.settings
-  await applyGatewaySettings(normalizedSettings).catch(error => {
-    log.error('apply gateway channel settings failed', undefined, error)
-  })
-
-  // The todo directory is a setting; re-point the watcher if it moved. start()
-  // is a no-op when the directory is unchanged.
-  await startTodoPlanWatcher().catch(error => {
-    log.error('todo-plan watcher restart failed', undefined, error)
-  })
-
-  broadcastElectronSettingsChanged({
-    channel: IPC_CHANNELS.SETTINGS_CHANGED,
-    settings: normalizedSettings,
-    exceptWebContentsId: event.sender?.id,
-  })
-  return result
-}
+import { configureSettingsEventBroadcaster } from '@onething/backend/wiring/settings/events.js'
 
 export function registerSettingsHandlers() {
   registerElectronSystemThemeChangedBroadcast({
     channel: IPC_CHANNELS.SYSTEM_THEME_CHANGED,
   })
 
+  configureSettingsEventBroadcaster(event => {
+    broadcastElectronSettingsChanged({
+      channel: IPC_CHANNELS.SETTINGS_CHANGED,
+      settings: event.settings,
+      exceptWebContentsId:
+        typeof event.excludeCallerId === 'number' ? event.excludeCallerId : undefined,
+    })
+  })
+
   registerElectronSettingsIpcHandlers({
     channels: {
       openWindow: IPC_CHANNELS.OPEN_SETTINGS_WINDOW,
-      getSettings: IPC_CHANNELS.GET_SETTINGS,
-      getSystemTheme: IPC_CHANNELS.GET_SYSTEM_THEME,
-      saveSettings: IPC_CHANNELS.SAVE_SETTINGS,
-      testProxy: IPC_CHANNELS.TEST_PROXY,
       showOpenDialog: IPC_CHANNELS.SHOW_OPEN_DIALOG,
     },
     openSettingsWindow: (request?: unknown) => {
       const tab = (request as { tab?: unknown } | undefined)?.tab
       openSettingsWindow(undefined, typeof tab === 'string' ? tab : undefined)
       return { success: true }
-    },
-    getSettings: () =>
-      getOnethingSettingsForIpc({
-        getSettings: () => store.getSettings(),
-        logger: console,
-      }),
-    getSystemTheme: () => getOnethingSystemThemeForIpc(getElectronShouldUseDarkColors()),
-    saveSettings: (settings, event) => saveSettingsFromIpc(settings as SaveSettingsRequest, event),
-    testProxy: request => {
-      const typedRequest = request as TestProxyRequest
-      return testProxy(typedRequest.proxy)
     },
     showOpenDialog: options => showElectronOpenDialog(options),
   })

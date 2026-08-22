@@ -79,6 +79,16 @@ function installElectronAPI() {
         const route = spacesRoutes[request.method]
         if (route) return { ok: true, data: await route() }
       }
+      // P4c 第十一批:settings 四条同样走这条通道;三个间谍留着,断言逐字不变。
+      if (request.domain === 'settings') {
+        const settingsRoutes: Record<string, () => Promise<unknown>> = {
+          getSettings: () => api.getSettings(),
+          saveSettings: () => api.saveSettings((request as { payload: AppSettings }).payload),
+          getSystemTheme: () => api.getSystemTheme(),
+        }
+        const route = settingsRoutes[request.method]
+        if (route) return { ok: true, data: await route() }
+      }
       return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
     }),
     saveSettings: vi.fn().mockImplementation((s: AppSettings) => {

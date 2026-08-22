@@ -52,12 +52,14 @@ import { schedulerRouter } from '@shared/ipc/scheduler.js'
 import { scratchpadRouter } from '@shared/ipc/scratchpad.js'
 import { sessionCommandRouter } from '@shared/ipc/session-command.js'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
+import { settingsRouter } from '@shared/ipc/settings.js'
 import { skillsRouter } from '@shared/ipc/skills.js'
 import { spacesRouter } from '@shared/ipc/spaces.js'
 import { themesRouter } from '@shared/ipc/themes.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 import { usageRouter } from '@shared/ipc/usage.js'
 import { variablesRouter } from '@shared/ipc/variables.js'
+import { voiceRouter } from '@shared/ipc/voice.js'
 import { selfEvolutionFeature } from '../features/builtin/self-evolution.js'
 import { trajectoryFeature } from '../features/builtin/trajectory.js'
 import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../features/index.js'
@@ -92,11 +94,13 @@ import { scratchpadRpcHandlers } from './domains/scratchpad.js'
 import { sessionCommandRpcHandlers } from './domains/session-command.js'
 import { sessionsRpcHandlers } from './domains/sessions.js'
 import { skillsRpcHandlers } from './domains/skills.js'
+import { settingsRpcHandlers } from './domains/settings.js'
 import { spacesRpcHandlers } from './domains/spaces.js'
 import { themesRpcHandlers } from './domains/themes.js'
 import { todoPlanRpcHandlers } from './domains/todo-plan.js'
 import { usageRpcHandlers } from './domains/usage.js'
 import { variablesRpcHandlers } from './domains/variables.js'
+import { voiceRpcHandlers } from './domains/voice.js'
 
 /**
  * 内置 feature 的名册。**顺序即装配顺序**，与 K0 之前逐行调用的顺序逐字一致
@@ -285,6 +289,33 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 恰好是「三档工具注册 → registerAppRpcDomains」。放在末尾还有第二重意义:
   // 卸载时它第一个被解绕,模型现场挂进来的那批动态 feature 因此在内置域拆掉
   // **之前**就已经收干净(动态 feature 可能骑在这些域上)。
+  // P4c 第十一批第一个域(settings)—— 四条:读 / 存 / 系统深浅色 / 代理自检。
+  // 它是本仓最后两个「无工厂的漏网 handler」之一:旧线就是
+  // `apps/electron/src/settings/ipc-host.ts` 那只裸 `ipcMain.handle` 工厂 + 主进程
+  // 壳适配,没有 `apps/electron/src/ipc/*` 那层可移植工厂。
+  // **两条留宿主**(C):`OPEN_SETTINGS_WINDOW`(BrowserWindow)与
+  // `SHOW_OPEN_DIALOG`(原生对话框,渲染侧 21 个调用点)。
+  // **一条推送留在原地**(`SETTINGS_CHANGED`),改走
+  // `wiring/settings/events.ts` 的 `configureSettingsEventBroadcaster` —— 顺带
+  // 从「跳过发起窗」改成全窗广播(信封里没有「谁在问」这一格,同 evals 判例)。
+  // 三件要宿主的事(套代理 / 重注册全局快捷键 / 系统深浅色)走新立的
+  // `configureSettingsHost`;网关设置的套用复用第八批的 `configureGatewayHost`,
+  // 只在那张端口表上多一格 `applySettings`。
+  // http 分叉:出门脱敏与回来合并两道真护栏逐字保留(`server/settings-projection.ts`),
+  // 而 server 那本 per-owner 的第二份设置账随之消失 —— 一个 store 一份设置(#20)。
+  // 位置在 evals-workbench 之后、自进化之前:它要设置仓、provider 缓存、MCP/ACP
+  // 管理器与网关端口,装配到这一步时都已就位;硬约束仍只有一条 —— 卸载要逆序。
+  { id: 'rpc:settings', mount: ctx => { ctx.registerRpcDomain(settingsRouter, settingsRpcHandlers) } },
+  // P4c 第十一批第二个域(voice)—— 十一条:状态 / 起停 / 两条上行 / 合成 /
+  // ASR·TTS 自检 / TTS 模型表 / 运行时窗就绪与事件。
+  // **两条推送留在原地而且一行没改**:`VOICE_EVENT` 与 `VOICE_RUNTIME_COMMAND`
+  // 早就是 `configureVoiceHost` 的端口,server 那两条 SSE 也原样保留。
+  // `runtimeReady` 的发起窗改由宿主回答(`runtimeWindow.getWebContents`);
+  // **`VOICE_AUDIO_CHUNK` 不在这个域里**:高频 PCM 单向上行不带回执,搬到只有
+  // 请求/响应面的 router 上等于给每块音频加一条空回执 —— 按拍板 #10 归**流式
+  // 单向残留集**,常量 / preload 的 `send` / 主进程那条 `ipcMain.on` 原样留着。
+  // http 上十一条逐字沿用旧 server adapter 的「server 上没有语音运行时」。
+  { id: 'rpc:voice', mount: ctx => { ctx.registerRpcDomain(voiceRouter, voiceRpcHandlers) } },
   selfEvolutionFeature,
 ]
 

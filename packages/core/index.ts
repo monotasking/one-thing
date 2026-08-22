@@ -595,7 +595,6 @@ export type {
   RuntimePermissionsAdapter,
   RuntimeRequestContext,
   RuntimeSessionsAdapter,
-  RuntimeSettingsAdapter,
   RuntimeStreamPayload,
   RuntimeStreamsAdapter,
   RuntimeUnsubscribe,

@@ -44,7 +44,6 @@
     "./shortcuts/global-shortcuts": "./src/shortcuts/global-shortcuts.ts",
     "./todo-plan/notifications": "./src/todo-plan/notifications.ts",
     "./voice/events": "./src/voice/events.ts",
-    "./voice/ipc": "./src/voice/ipc.ts",
     "./voice/runtime-window": "./src/voice/runtime-window.ts",
     "./voice/tray": "./src/voice/tray.ts",
     "./web-preview/web-preview": "./src/web-preview/web-preview.ts",

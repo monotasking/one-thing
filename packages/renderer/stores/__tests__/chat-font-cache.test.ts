@@ -37,12 +37,22 @@ function installElectronAPI() {
     getSettings: vi.fn().mockResolvedValue({ success: true, settings: null as AppSettings | null }),
     // providers / models 走通用 RPC 通道(主线 T1 第二批):打的是那一条通道,
     // 再按 domain.method 分发 —— 与生产链路同形。
-    rpcInvoke: vi.fn(async (request: { domain: string; method: string }) => {
+    rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
       if (request.domain === 'providers' && request.method === 'list') {
         return { ok: true, data: { success: true, providers: [] } }
       }
       if (request.domain === 'models' && request.method === 'getNameAliases') {
         return { ok: true, data: { success: true, aliases: {} } }
+      }
+      // P4c 第十一批:settings 四条同样走这条通道;三个间谍留着,断言逐字不变。
+      if (request.domain === 'settings' && request.method === 'getSettings') {
+        return { ok: true, data: await api.getSettings() }
+      }
+      if (request.domain === 'settings' && request.method === 'saveSettings') {
+        return { ok: true, data: await api.saveSettings((request as { payload: AppSettings }).payload) }
+      }
+      if (request.domain === 'settings' && request.method === 'getSystemTheme') {
+        return { ok: true, data: await api.getSystemTheme() }
       }
       return { ok: false, error: { message: `unstubbed RPC ${request.domain}.${request.method}` } }
     }),

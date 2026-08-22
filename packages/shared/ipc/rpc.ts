@@ -51,6 +51,27 @@ export interface RpcDispatchContext {
 	/** Authenticated workspace id. Undefined on desktop, same reason. */
 	workspaceId?: string;
 	/**
+	 * Which renderer surface asked — the host's own word on it, minted from
+	 * `event.sender.id` by the `@main` adapter (结构债 P4c 第十一批).
+	 *
+	 * Same rule as every other field here: **minted by the shell after that
+	 * shell's own authentication ran, never read off the envelope**. A client
+	 * that puts `callerId` in its JSON body is simply ignored — there is no such
+	 * field on `RpcRequest` to put it in.
+	 *
+	 * It exists for the one thing a fan-out push cannot do without it: **echo
+	 * suppression**. `settings.saveSettings` broadcasts the normalized settings
+	 * to every window, and the window that just saved must NOT get its own echo
+	 * back — re-seeding a whole settings object into the renderer that is
+	 * mid-edit throws away the user's in-flight draft. Idempotence does not
+	 * cover that, which is why this field exists rather than the broadcast
+	 * simply going everywhere.
+	 *
+	 * Undefined on `'http'` (a network client has no window to exclude) and on
+	 * any in-process caller.
+	 */
+	callerId?: string | number;
+	/**
 	 * Absolute path this request's filesystem reach must stay inside.
 	 *
 	 * Undefined means "unconfined" and is only legal together with

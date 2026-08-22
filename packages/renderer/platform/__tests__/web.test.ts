@@ -940,20 +940,8 @@ describe('createWebPlatformApi', () => {
     const { createWebPlatformApi } = await import('../web.js')
     const api = createWebPlatformApi()
 
-    await expect(api.getSettings()).resolves.toEqual({ success: true, url: '/api/settings' })
-    await expect(api.saveSettings({ theme: 'dark' } as any)).resolves.toEqual({
-      success: true,
-      url: '/api/settings',
-    })
-    await expect(api.testProxy({
-      enabled: true,
-      url: 'http://127.0.0.1:7890',
-      bypassRules: 'localhost',
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/network/test-proxy',
-    })
-
+    // P4c 第十一批:settings 四条数据面已迁到通用 RPC(settingsRouter);
+    // web 壳上只剩「开设置窗」的 hash 等价物与三条 noop / 本地推送。
     await expect(api.searchQuery({
       query: 'hello',
       category: 'all',
@@ -972,19 +960,6 @@ describe('createWebPlatformApi', () => {
     expect(searchAction).toHaveBeenCalledWith('open-settings')
     unsubscribeSearchAction()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/settings', expect.objectContaining({
-      method: 'POST',
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/network/test-proxy', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        proxy: {
-          enabled: true,
-          url: 'http://127.0.0.1:7890',
-          bypassRules: 'localhost',
-        },
-      }),
-    }))
     expect(fetchMock).toHaveBeenCalledWith('/api/search/query', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({
@@ -1114,79 +1089,11 @@ describe('createWebPlatformApi', () => {
     // `/api/oauth/events` 那条 SSE 订阅(推送面,router 今天没有)。
     // P4c 第八批:gateway 八条数据面已迁到通用 RPC(`gatewayRouter`);本域零推送,
     // 所以 web 壳上一条不剩。
-    await expect(api.voiceGetState()).resolves.toEqual({
-      success: true,
-      url: '/api/voice/state',
-    })
-    await expect(api.voiceStart({ sessionId: 'session-1', reason: 'manual' })).resolves.toEqual({
-      success: true,
-      url: '/api/voice/start',
-    })
-    await expect(api.voiceStop({ reason: 'manual', submit: false })).resolves.toEqual({
-      success: true,
-      url: '/api/voice/stop',
-    })
-    await expect(api.voiceSubmitUtterance({
-      sessionId: 'session-1',
-      audioBase64: 'audio',
-      mimeType: 'audio/webm',
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/voice/submit-utterance',
-    })
-    await expect(api.voiceSubmitTranscript({
-      sessionId: 'session-1',
-      text: 'hello',
-      asrProvider: 'openai-transcribe',
-      asrModel: 'whisper-1',
-    })).resolves.toEqual({
-      success: true,
-      url: '/api/voice/submit-transcript',
-    })
-    await expect(api.voiceSynthesize({ text: 'hello' })).resolves.toEqual({
-      success: true,
-      url: '/api/voice/synthesize',
-    })
-    await expect(api.voiceTestASR({ audioBase64: 'audio', mimeType: 'audio/webm' })).resolves.toEqual({
-      success: true,
-      url: '/api/voice/test-asr',
-    })
-    await expect(api.voiceTestTTS({ text: 'hello' })).resolves.toEqual({
-      success: true,
-      url: '/api/voice/test-tts',
-    })
-    await expect(api.voiceGetTTSModels({ force: true })).resolves.toEqual({
-      success: true,
-      url: '/api/voice/tts-models',
-    })
-    await expect(api.voiceRuntimeReady()).resolves.toEqual({
-      success: true,
-      url: '/api/voice/runtime-ready',
-    })
-    await expect(api.voiceRuntimeEvent({ type: 'runtime-ready' })).resolves.toEqual({
-      success: true,
-      url: '/api/voice/runtime-event',
-    })
+    // P4c 第十一批:voice 十一条数据面已迁到通用 RPC(voiceRouter);web 壳上只剩
+    // `/api/voice/events` 与 `/api/voice/runtime-commands` 两条 SSE 订阅(推送面)。
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/execute-command', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ commandName: '/demo', args: '--fast', sessionId: 'session-1' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/voice/start', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ sessionId: 'session-1', reason: 'manual' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/voice/submit-transcript', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        sessionId: 'session-1',
-        text: 'hello',
-        asrProvider: 'openai-transcribe',
-        asrModel: 'whisper-1',
-      }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/voice/tts-models', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ force: true }),
     }))
     // scheduler 域的九条已整只迁到通用 RPC 通道(P4c,`@shared/ipc/scheduler.ts` 的
     // schedulerRouter + `@/platform/scheduler-client` 的 schedulerApi):web 壳上

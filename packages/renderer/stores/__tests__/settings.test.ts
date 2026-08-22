@@ -40,12 +40,20 @@ describe('settings store', () => {
     const saveSettings = vi.fn((settings: unknown) =>
       Promise.resolve({ success: true, settings }),
     )
+    // P4c 第十一批:`saveSettings` 走通用 RPC 通道。间谍保留,断言逐字不变。
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
       value: {
-        saveSettings,
         onSystemThemeChanged: vi.fn(() => () => {}),
-        getSystemTheme: vi.fn().mockResolvedValue({ success: true, theme: 'light' }),
+        rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
+          if (request.domain === 'settings' && request.method === 'saveSettings') {
+            return { ok: true, data: await saveSettings(request.payload) }
+          }
+          if (request.domain === 'settings' && request.method === 'getSystemTheme') {
+            return { ok: true, data: { success: true, theme: 'light' } }
+          }
+          return { ok: true, data: { success: true } }
+        }),
       },
     })
 
@@ -71,15 +79,19 @@ describe('settings store', () => {
     const rpcInvoke = vi.fn(async (request: { domain: string; method: string; payload: unknown }) => {
       if (request.method === 'refreshRegistry') return { ok: true, data: { success: true } }
       if (request.method === 'getWithCapabilities') return { ok: true, data: { success: true, models: [] } }
+      if (request.domain === 'settings' && request.method === 'saveSettings') {
+        return { ok: true, data: await saveSettings(request.payload) }
+      }
+      if (request.domain === 'settings' && request.method === 'getSystemTheme') {
+        return { ok: true, data: { success: true, theme: 'light' } }
+      }
       return { ok: true, data: { success: true } }
     })
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
       value: {
-        saveSettings,
         rpcInvoke,
         onSystemThemeChanged: vi.fn(() => () => {}),
-        getSystemTheme: vi.fn().mockResolvedValue({ success: true, theme: 'light' }),
       },
     })
 

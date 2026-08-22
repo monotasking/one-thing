@@ -68,6 +68,8 @@ describe('electron settings IPC host', () => {
     expect(onUpdated).toHaveBeenCalledWith(expect.any(Function))
   })
 
+  // P4c 第十一批:发射点搬到装配层的域处理者之后,「谁在问」由宿主铸进
+  // `RpcDispatchContext.callerId` 再递回来 —— 排除发起窗这件事一字未丢。
   it('broadcasts settings changes except to the sender webContents', () => {
     const sender = windowMock(1)
     const other = windowMock(2)
@@ -113,63 +115,37 @@ describe('electron settings IPC host', () => {
     expect(showOpenDialog).toHaveBeenCalledWith({ title: 'Pick a file' })
   })
 
-  it('registers settings handlers against the provided IPC host', async () => {
+  it('registers only the two host-bound settings handlers', async () => {
     const handle = vi.fn()
     const openSettingsWindow = vi.fn().mockReturnValue({ success: true })
-    const getSettings = vi.fn().mockResolvedValue({ success: true, settings: { theme: 'dark' } })
-    const getSystemTheme = vi.fn().mockReturnValue({ success: true, theme: 'light' })
-    const saveSettings = vi.fn().mockResolvedValue({ success: true, settings: { theme: 'light' } })
-    const testProxy = vi.fn().mockResolvedValue({ success: true })
     const showOpenDialog = vi.fn().mockResolvedValue({ canceled: false, filePaths: ['/tmp'] })
 
     registerElectronSettingsIpcHandlers({
       channels: {
         openWindow: 'settings:open-window',
-        getSettings: 'settings:get',
-        getSystemTheme: 'settings:get-system-theme',
-        saveSettings: 'settings:save',
-        testProxy: 'network:test-proxy',
         showOpenDialog: 'dialog:show-open',
       },
       openSettingsWindow,
-      getSettings,
-      getSystemTheme,
-      saveSettings,
-      testProxy,
       showOpenDialog,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(6)
+    // 四条数据面已迁 `settingsRouter`(P4c 第十一批);这只工厂只剩要 Electron
+    // 本体的两条。
+    expect(handle).toHaveBeenCalledTimes(2)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'settings:open-window',
-      'settings:get',
-      'settings:get-system-theme',
-      'settings:save',
-      'network:test-proxy',
       'dialog:show-open',
     ])
 
-    const event = { sender: { id: 42 } }
-    const settings = { theme: 'light' }
-    const proxyRequest = { proxy: { enabled: true } }
     const dialogOptions = { properties: ['openDirectory'] }
-
     expect(handle.mock.calls[0][1]({}, { tab: 'music' })).toEqual({ success: true })
-    await expect(handle.mock.calls[1][1]({})).resolves.toEqual({ success: true, settings: { theme: 'dark' } })
-    expect(handle.mock.calls[2][1]({})).toEqual({ success: true, theme: 'light' })
-    await expect(handle.mock.calls[3][1](event, settings)).resolves.toEqual({ success: true, settings: { theme: 'light' } })
-    await expect(handle.mock.calls[4][1]({}, proxyRequest)).resolves.toEqual({ success: true })
-    await expect(handle.mock.calls[5][1]({}, dialogOptions)).resolves.toEqual({
+    await expect(handle.mock.calls[1][1]({}, dialogOptions)).resolves.toEqual({
       canceled: false,
       filePaths: ['/tmp'],
     })
 
     expect(openSettingsWindow).toHaveBeenCalledWith({ tab: 'music' })
-    expect(getSettings).toHaveBeenCalledWith()
-    expect(getSystemTheme).toHaveBeenCalledWith()
-    expect(saveSettings).toHaveBeenCalledWith(settings, event)
-    expect(testProxy).toHaveBeenCalledWith(proxyRequest)
     expect(showOpenDialog).toHaveBeenCalledWith(dialogOptions)
   })
 })

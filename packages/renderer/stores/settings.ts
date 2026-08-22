@@ -10,6 +10,7 @@ import {
 } from '@shared/defaults/ai-settings'
 import { useSpaceProvidersStore } from './spaceProviders'
 import { platformApi } from '@/platform'
+import { settingsApi } from '@/platform/settings-client'
 import { getLogger } from '@/services/log'
 import { modelsApi } from '@/platform/models-client'
 import { providersApi } from '@/platform/providers-client'
@@ -99,7 +100,7 @@ export const useSettingsStore = defineStore('settings', () => {
   // Fetch system theme from main process (uses nativeTheme.shouldUseDarkColors)
   async function fetchSystemTheme() {
     try {
-      const response = await platformApi.getSystemTheme()
+      const response = await settingsApi.getSystemTheme()
       if (response.success && response.theme) {
         systemTheme.value = response.theme
       }
@@ -267,7 +268,7 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       // Load settings, providers, and model aliases in parallel
       const [settingsResponse, providersResponse, aliasesResponse] = await Promise.all([
-        platformApi.getSettings(),
+        settingsApi.getSettings(),
         providersApi.getProviders(),
         modelsApi.getModelNameAliases(),
       ])
@@ -385,7 +386,7 @@ export const useSettingsStore = defineStore('settings', () => {
       const globalPayload = savedSpace
         ? ({ ...plainSettings, ai: global } as unknown as AppSettings)
         : plainSettings
-      const response = await platformApi.saveSettings(globalPayload)
+      const response = await settingsApi.saveSettings(globalPayload)
       if (!response.success) {
         throw new Error(response.error || 'Failed to save settings')
       }
