@@ -6,6 +6,7 @@
  * `dialect.* === '`)。需要代码的 provider 允许薄子类,但不许为了「每家一个
  * 类」而造空子类。
  */
+import type { AttachmentChannel } from "./attachment-channel.js";
 import type { AuthStrategy } from "./auth-strategy.js";
 import type { CachePolicy } from "./cache-policy.js";
 import type { ErrorMapper } from "./errors.js";
@@ -74,6 +75,15 @@ export interface Dialect<W = unknown> {
 	request: DialectRequestShape;
 	/** 不给 = 用 wire 的默认 codec。 */
 	parts?: PartCodec<W>;
+	/**
+	 * 序列化**之前**跑一次的附件通道(P4-6)。不给 = 这条方言的附件只走 codec。
+	 *
+	 * 今天唯一的实现是 Kimi 的「先上传再抽取」(`dialects/kimi-attachments.ts`):
+	 * 它把 user 消息里的文件块换成一条 `role:'system'` 的抽取文本。放在 `Dialect`
+	 * 而不是某条 wire 的方言上,是因为「附件走旁路」是端点的属性、不是线协议的
+	 * ——今天只有 openai-chat 的 wire 会去问它,但下一条线要用时不必再造一个字段。
+	 */
+	attachments?: AttachmentChannel;
 	usage?: UsageNormalizer;
 	/** 这家可能出现的思考线型;走哪条由 `ModelProfile.reasoningWire` 选。 */
 	reasoning: ThinkingWire[];

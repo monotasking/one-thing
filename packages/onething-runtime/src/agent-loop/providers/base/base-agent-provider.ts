@@ -16,6 +16,7 @@ import type {
 	AgentTurnStreamEvent,
 } from "@onething/core/agent-loop";
 import type { BaseProviderContext, Logger } from "./provider-context.js";
+import type { TransportFileDelivery } from "./model-profile.js";
 
 export abstract class BaseAgentProvider implements AgentProvider {
 	protected constructor(protected readonly ctx: BaseProviderContext) {}
@@ -31,6 +32,16 @@ export abstract class BaseAgentProvider implements AgentProvider {
 	protected abstract get transportCapabilities(): AgentModelCapabilities;
 
 	/**
+	 * 这条线**怎么**收文件(P4-6)。默认 = 靠线协议自己的 `file` 内容块;
+	 * 声明 `viaExtraction` 的(Kimi)靠 provider 旁路把文件变成文本,于是
+	 * 账本的 `fileInput` 对它没有否决权。判据本身在
+	 * `ModelProfile.toAgentModelCapabilities` 一处,这里只是把声明递过去。
+	 */
+	protected get transportFileDelivery(): TransportFileDelivery {
+		return {};
+	}
+
+	/**
 	 * 静态 `capabilities` 字段 = 默认档 profile 的投影。解析器给不出默认档
 	 * (没配默认模型)就退回传输声明 —— 与今天 `buildCapabilities(options)`
 	 * 的口径一致。
@@ -41,7 +52,9 @@ export abstract class BaseAgentProvider implements AgentProvider {
 		// 没有账本解析器 = 自述能力的 provider(acp / external-agents):
 		// 能力就是它自己声明的那份,一个字都不覆盖。
 		const profile = this.ctx.profiles?.defaultProfile?.(this.id);
-		return profile ? profile.toAgentModelCapabilities(base) : base;
+		return profile
+			? profile.toAgentModelCapabilities(base, this.transportFileDelivery)
+			: base;
 	}
 
 	/**
@@ -53,7 +66,9 @@ export abstract class BaseAgentProvider implements AgentProvider {
 		const base = this.transportCapabilities;
 		if (this.selfDeclared) return base;
 		const profile = await this.ctx.profiles?.resolve(this.id, model);
-		return profile ? profile.toAgentModelCapabilities(base) : base;
+		return profile
+			? profile.toAgentModelCapabilities(base, this.transportFileDelivery)
+			: base;
 	}
 
 	/**

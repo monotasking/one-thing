@@ -16,6 +16,12 @@ export type ProviderWarningKind =
 	| "setting-clamped"
 	/** 某个内容块进不了请求体,只能留成可见文本(见 `Undeliverable`)。 */
 	| "part-undeliverable"
+	/**
+	 * 附件通道(`AttachmentChannel`)那一跳没成:上传 / 抽取 / 传输缺席。
+	 * 那一块因此原样留在消息里,由 codec 落成 `Undeliverable` 可见文本
+	 * —— 少一块上下文,不是这一回合失败(P4-6)。
+	 */
+	| "attachment-extract-failed"
 	/** `required` 降成 `auto`(Zhipu / Kimi-K2)。 */
 	| "tool-choice-downgraded"
 	/** 思考意图这条线协议表达不了,整段没发。 */

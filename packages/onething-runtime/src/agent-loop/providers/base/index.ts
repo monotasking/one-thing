@@ -22,11 +22,13 @@ export {
 	type LedgerModelProfileConfig,
 	type ModelProfileCapability,
 	type ModelProfileLimits,
+	type TransportFileDelivery,
 	type ModelProfileResolver,
 	type ModelSamplingParam,
 } from "./model-profile.js";
 
-export { TurnContext } from "./turn-context.js";
+export { TurnContext, type TurnTransport } from "./turn-context.js";
+export type { AttachmentChannel } from "./attachment-channel.js";
 export { RequestBodyBuilder } from "./request-body-builder.js";
 export { ProviderWarning, type ProviderWarningKind } from "./warnings.js";
 

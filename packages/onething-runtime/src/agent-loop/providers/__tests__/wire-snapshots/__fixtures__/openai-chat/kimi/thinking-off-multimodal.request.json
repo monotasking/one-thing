@@ -15,6 +15,10 @@
         "role": "system"
       },
       {
+        "content": "File: spec.pdf\n# spec.pdf\nThe extracted text Kimi returns for the fixture PDF.",
+        "role": "system"
+      },
+      {
         "content": [
           {
             "text": "这张截图和这份 PDF 说的是同一件事吗？",
@@ -25,10 +29,6 @@
               "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
             },
             "type": "image_url"
-          },
-          {
-            "text": "[Attachment \"spec.pdf\" (application/pdf) could not be delivered: this model does not accept this file type.]",
-            "type": "text"
           }
         ],
         "role": "user"

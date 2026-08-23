@@ -52,6 +52,17 @@ export type ModelProfileCapability =
 	| "temperature"
 	| "fileInput";
 
+/**
+ * 这条线**怎么**收文件(P4-6)—— 传输侧的声明,与账本无关。
+ *
+ * 默认(空对象)= 靠线协议自己的 `file` 内容块,于是「模型收不收文件」是账本
+ * 的问题;`viaExtraction` = 靠 provider 的旁路把文件变成文本(Kimi 的
+ * `/v1/files` + `purpose=file-extract`),模型只见到文本,账本因此没有否决权。
+ */
+export interface TransportFileDelivery {
+	readonly viaExtraction?: boolean;
+}
+
 export interface ModelProfileLimits {
 	contextLength?: number;
 	maxOutputTokens?: number;
@@ -168,7 +179,10 @@ export class ModelProfile {
 	 * 只管 `image`;`file` 要这条线的 codec 投得出去(`base` 里有 `file-input`)
 	 * **且**账本的 `fileInput` 不反对(沉默 = 随线路)。
 	 */
-	toAgentModelCapabilities(base: AgentModelCapabilities): AgentModelCapabilities {
+	toAgentModelCapabilities(
+		base: AgentModelCapabilities,
+		transport: TransportFileDelivery = {},
+	): AgentModelCapabilities {
 		const resolved = this.resolved;
 		const capabilities = new Set<AgentCapability>(base.capabilities);
 		const inputModalities = new Set(base.inputModalities);
@@ -206,8 +220,19 @@ export class ModelProfile {
 		// 懂的东西。
 		const transportDeliversFile =
 			base.capabilities.includes("file-input") || base.inputModalities.includes("file");
-		const fileInput =
-			transportDeliversFile && (ledgerKnows("fileInput") ? resolved.fileInput : true);
+		// **抽取通道是个例外**(P4-6):Kimi 收文件不靠模型的输入模态,而靠
+		// provider 侧的旁路 —— 先 POST 到 `/v1/files`,再把抽出来的**文本**放进
+		// prompt。模型自始至终只见到文本,所以「这个模型的目录里有没有 pdf」对
+		// 这条线不是判据:目录说不收(models.dev 给 Kimi 的 `modalities.input`
+		// 从来只有 text/image)也拦不住,拦住了才是错的 —— 那会让 core 在上游把
+		// PDF 降级成 `[File: x.pdf]` 占位,通道拿不到字节。
+		//
+		// 拿掉的是**账本**(目录 / 规则表)的否决权,**不是用户的**:显式
+		// `override` 是人按的开关,仍然一票否决。
+		const ledgerAllowsFile = transport.viaExtraction
+			? resolved.source.fileInput !== "override" || resolved.fileInput
+			: !ledgerKnows("fileInput") || resolved.fileInput;
+		const fileInput = transportDeliversFile && ledgerAllowsFile;
 		setTags(fileInput, ["file-input"]);
 		if (fileInput) inputModalities.add("file");
 		else inputModalities.delete("file");

@@ -166,6 +166,60 @@ describe("文件输入的声明面:目录 ∧ 线路(拍板 #12)", () => {
 		).toBe(false);
 	});
 
+	/**
+	 * **抽取通道是第三种答案**(P4-6)。
+	 *
+	 * kimi / kimi-code 的 chat-completions 上没有 `file` 内容块,但它们有旁路:
+	 * 先 `POST /v1/files`(`purpose=file-extract`)再把抽出来的**文本**以一条
+	 * `role:'system'` 放进 prompt。模型自始至终只见到文本,所以「这个模型的目录
+	 * 里有没有 pdf」不是判据 —— 配方的 `fileViaExtraction` 让账本对这条线没有
+	 * 否决权。
+	 *
+	 * 这一条很要紧:models.dev 给 Kimi 的 `modalities.input` 只有 text(/image),
+	 * 而目录**压过**规则表(`resolveCapability` 的顺序:override → registry →
+	 * rules → default)。不拆这一条的话文件永远进不来 —— core 会在上游把 PDF
+	 * 降级成 `[File: x.pdf]` 占位,通道拿不到字节。
+	 */
+	for (const providerId of ["kimi", "kimi-code"] as const) {
+		it(`${providerId} 靠抽取通道收文件 ⇒ 目录不含 pdf 也声明`, async () => {
+			const model = providerId === "kimi" ? "kimi-k2.6" : "kimi-k2.7-code";
+			const capabilities = await capabilitiesOf(
+				providerId,
+				model,
+				catalog(model, ["text", "image"]),
+			);
+			expect(capabilities.capabilities).toContain("file-input");
+			expect(capabilities.inputModalities).toContain("file");
+		});
+
+		it(`${providerId} 目录含 pdf ⇒ 同样声明(两条路同解)`, async () => {
+			const model = providerId === "kimi" ? "kimi-k2.6" : "kimi-k2.7-code";
+			const capabilities = await capabilitiesOf(
+				providerId,
+				model,
+				catalog(model, ["text", "image", "pdf"]),
+			);
+			expect(declaresFile(capabilities)).toBe(true);
+		});
+
+		it(`${providerId} 目录缺席 ⇒ 仍然声明(线路自己就收得下)`, async () => {
+			const model = providerId === "kimi" ? "kimi-k2.6" : "kimi-k2.7-code";
+			expect(declaresFile(await capabilitiesOf(providerId, model))).toBe(true);
+		});
+	}
+
+	/**
+	 * 抽取通道拿掉的是**账本**的否决权,不是用户的:显式 override 仍然一票否决
+	 * (那是人按的开关,不是目录的猜测)。
+	 */
+	it("用户 override 关得掉 kimi 的文件输入", async () => {
+		const capabilities = await capabilitiesOf("kimi", "kimi-k2.6", {
+			...KEY,
+			modelCapabilitiesByModel: { "kimi-k2.6": { fileInput: false } },
+		});
+		expect(declaresFile(capabilities)).toBe(false);
+	});
+
 	it("custom-openai(用户自建端点)不声明 file", async () => {
 		const capabilities = await capabilitiesOf(
 			"custom-file-input-probe",

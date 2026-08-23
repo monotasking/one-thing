@@ -16,6 +16,7 @@ import {
 	BearerApiKeyAuth,
 	LedgerModelProfileResolver,
 	registerDialect,
+	type AttachmentChannel,
 	type AuthStrategy,
 	type Dialect,
 	type ModelProfileResolver,
@@ -157,6 +158,24 @@ export interface OpenAIChatDialectSpec {
 	/** 换掉整只 codec(DeepSeek 的纯文本 user 内容)。 */
 	parts?: PartCodec<OpenAIChatWireValue>;
 	/**
+	 * 序列化之前跑的附件通道(P4-6)。今天唯一的用户是 Kimi 的「先上传再抽取」
+	 * (`dialects/kimi-attachments.ts`)。
+	 */
+	attachments?: AttachmentChannel;
+	/**
+	 * 这条线靠**抽取**收文件(P4-6)。
+	 *
+	 * 与 `filePdf` 是两条互斥的路:`filePdf` 说的是「codec 投得出 `file` 内容块」
+	 * (openai / openrouter),`fileViaExtraction` 说的是「附件在序列化之前就被
+	 * 换成文本了」(kimi / kimi-code)。声明它的后果只有一个,而且只在能力那一侧:
+	 * 账本的 `fileInput` 对这条线**没有否决权** —— 模型自始至终只见到文本,
+	 * 「这个模型的目录里有没有 pdf」不是判据(models.dev 给 Kimi 的
+	 * `modalities.input` 只有 text/image,让它说了算的话文件永远进不来)。
+	 * 仍然要和 `transport` 的 `file: true` 一起给:能力说行与线路做得到是同一句
+	 * 话的两半(设计稿 §2.3)。
+	 */
+	fileViaExtraction?: boolean;
+	/**
 	 * 这家在流上多解出来的事件(OpenRouter 的 `images[]`)。挂在默认 codec 的
 	 * `decodeExtras` 上;`parts` 自带整只 codec 的家自己带这一条。
 	 */
@@ -216,9 +235,11 @@ export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialec
 		...(spec.usage ? { usage: spec.usage } : {}),
 		...(spec.sampling ? { sampling: spec.sampling } : {}),
 		...(spec.thinkingIntent ? { thinkingIntent: spec.thinkingIntent } : {}),
+		...(spec.attachments ? { attachments: spec.attachments } : {}),
 		extraBody: composeExtraBody(spec),
 		reasoning: [spec.reasoning],
 		transport: spec.transport,
+		...(spec.fileViaExtraction ? { fileViaExtraction: true } : {}),
 	};
 }
 

@@ -29,6 +29,7 @@ import {
 	type ProviderContext,
 	type RawTurnFinish,
 	type ThinkingWire,
+	type TransportFileDelivery,
 	type TurnContext,
 	type UsageNormalizer,
 	type UsagePathTable,
@@ -50,6 +51,12 @@ import {
 export interface OpenAIChatDialect extends Dialect<OpenAIChatWireValue> {
 	/** provider 的**传输**声明(模态 / 结构化工具结果)。per-model 的布尔归账本。 */
 	transport: AgentModelCapabilities;
+	/**
+	 * 这家的文件靠**抽取通道**收(P4-6)。见
+	 * `OpenAIChatDialectSpec.fileViaExtraction` —— 判据在
+	 * `ModelProfile.toAgentModelCapabilities`,这里只是配方那一行的落点。
+	 */
+	fileViaExtraction?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +180,11 @@ export class OpenAIChatWire extends HttpAgentProvider<
 		return this.chatDialect.transport;
 	}
 
+	/** 这家靠抽取通道收文件吗(P4-6)—— 配方的一行,基类只是把它递给账本投影。 */
+	protected override get transportFileDelivery(): TransportFileDelivery {
+		return this.chatDialect.fileViaExtraction ? { viaExtraction: true } : {};
+	}
+
 	protected get defaultParts(): PartCodec {
 		return openAIChatParts;
 	}
@@ -208,16 +220,23 @@ export class OpenAIChatWire extends HttpAgentProvider<
 	// 请求体
 	// -----------------------------------------------------------------------
 
-	protected buildBody(turn: TurnContext): void {
+	protected async buildBody(turn: TurnContext): Promise<void> {
 		const { builder, request } = turn;
 		const { request: shape } = this.chatDialect;
+
+		// 序列化**之前**先让附件通道换一次(P4-6):Kimi 的文件走
+		// `/v1/files` 旁路,抽出来的文本以一条 `role:'system'` 进 messages,
+		// 原来那一块从 user 消息里消失。没配通道 = 零副请求、零改写,这一句
+		// 就是一个 `await undefined`。读的是 `turn.messages` 而不是
+		// `request.messages` —— 上游的历史本体一个字都不动。
+		await this.chatDialect.attachments?.prepare(turn);
 
 		// 这条适配层同时服务一批 OpenAI 方言端点,其中包含要求 user/assistant
 		// 严格交替的(DeepSeek 走的就是这里)。相邻同角色先合成一条 —— 对宽松的
 		// 端点是无害的等价改写,对严格的端点是能不能发出去的分界。
 		const messages = shape.mergeAdjacent
-			? mergeAdjacentSameRoleMessages(request.messages)
-			: request.messages;
+			? mergeAdjacentSameRoleMessages(turn.messages)
+			: turn.messages;
 
 		builder.set("model", request.model);
 		builder.set("messages", this.serializeMessages(messages, turn));

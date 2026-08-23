@@ -6,6 +6,7 @@
 import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from "../../../providers/kimi.js";
 import { thinkingTypeWire } from "../thinking/index.js";
 import { openAIChatUsage } from "../wires/index.js";
+import { kimiFileExtractChannel } from "./kimi-attachments.js";
 import { KIMI_USAGE_TABLE, kimiSamplingPolicy, kimiThinkingIntent } from "./kimi.js";
 import {
 	defineOpenAIChatDialect,
@@ -27,5 +28,10 @@ export const KIMI_CODE_DIALECT = defineOpenAIChatDialect({
 	thinkingIntent: kimiThinkingIntent,
 	// Code Plan 把 `prompt_cache_key` 列为必填。
 	extraBody: promptCacheKeyExtraBody,
-	transport: openAIChatTransportCapabilities({ reasoning: true }),
+	// 同一套线材 = 同一条附件旁路(P4-6)。地址跟着 `baseUrl` 走,所以套餐通路
+	// 打的是 `https://api.kimi.com/coding/v1/files` —— 与开放平台是不是同一个
+	// 后端**待真机核**;打不通就是一条 warning + 可见留痕,不是这一回合失败。
+	attachments: kimiFileExtractChannel,
+	fileViaExtraction: true,
+	transport: openAIChatTransportCapabilities({ reasoning: true, file: true }),
 });

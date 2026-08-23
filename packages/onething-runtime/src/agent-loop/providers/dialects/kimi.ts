@@ -18,6 +18,7 @@ import type {
 	UsagePathTable,
 } from "../base/index.js";
 import { thinkingTypeWire } from "../thinking/index.js";
+import { kimiFileExtractChannel } from "./kimi-attachments.js";
 import { openAIChatUsage, openAIChatUsageTable } from "../wires/index.js";
 import {
 	defineOpenAIChatDialect,
@@ -109,5 +110,12 @@ export const KIMI_DIALECT = defineOpenAIChatDialect({
 	sampling: kimiSamplingPolicy,
 	thinkingIntent: kimiThinkingIntent,
 	extraBody: promptCacheKeyExtraBody,
-	transport: openAIChatTransportCapabilities({ reasoning: true }),
+	// 文件走**旁路**(P4-6):chat-completions 上没有 `file` 内容块,附件在序列化
+	// 之前就被 `KimiFileExtractChannel` 换成一条 `role:'system'` 的抽取文本。
+	// `file: true` 是「这条线收得下文件」,`fileViaExtraction` 是「靠什么收」——
+	// 后者让账本的 `fileInput` 没有否决权(models.dev 给 Kimi 的 `modalities.input`
+	// 只有 text/image,让它说了算的话文件永远进不来,而模型其实只会见到文本)。
+	attachments: kimiFileExtractChannel,
+	fileViaExtraction: true,
+	transport: openAIChatTransportCapabilities({ reasoning: true, file: true }),
 });

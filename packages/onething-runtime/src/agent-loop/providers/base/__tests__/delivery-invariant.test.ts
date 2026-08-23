@@ -17,7 +17,8 @@
  * 今天被这一条跳过的有:kimi / kimi-code / zhipu / deepseek 非 vision 族的
  * 全部图像用例(账本不给它们 vision),openai-chat 上**除 openai / openrouter
  * 之外**十家的 `user/file`(P4-1 起 `file` 是传输声明上的独立旗标,只有 codec
- * 真投得出 PDF 块的那两家声明它),以及 openai-chat 上**除 openrouter 之外**
+ * 真投得出 PDF 块的那两家声明它;P4-6 起 kimi / kimi-code 是另一种跳过 ——
+ * 它们**声明**了 file,但投递者是附件通道而不是 codec,见下面那一条分支),以及 openai-chat 上**除 openrouter 之外**
  * 十家的 toolResult ——`openAIChatTransportCapabilities()` 默认不声明
  * `toolResultModalities`,于是只有 text。要覆盖它们得先改账本/传输声明,那是
  * 行为变更。
@@ -230,6 +231,15 @@ describe("投递契约:能力声明的模态必须真的进得了请求体", () 
 						// 没声明这一模态 = 这条不变式对它不适用(core 的
 						// `degradeUnsupportedAgentContentParts` 在上游就把它降级了)。
 						if (!declared.includes(modality)) return;
+						// 这一模态由**附件通道**投递(P4-6,kimi / kimi-code 的
+						// 「先上传再抽取」):判官是通道不是 codec —— 它在
+						// `buildBody` 序列化之前就把这一块换成了一条 `role:'system'`
+						// 的抽取文本,codec 永远见不到它。不变式没变(声明了就必须
+						// 真的进请求体),换的是投递者;那一半的门在
+						// `dialects/__tests__/kimi-file-extract.test.ts`。
+						if (surface === "user" && dialect.attachments?.handles(PART[modality])) {
+							return;
+						}
 
 						const turn = await turnContextFor(testCase);
 						const delivery =

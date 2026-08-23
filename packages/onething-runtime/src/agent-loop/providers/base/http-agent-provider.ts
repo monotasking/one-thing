@@ -79,11 +79,19 @@ export abstract class HttpAgentProvider<
 	): AsyncGenerator<AgentTurnStreamEvent, void, void> {
 		// 1 profile
 		const profile = await this.ctx.profiles.resolve(this.id, request.model);
-		const turn = new TurnContext(
+		// 副请求通道(P4-6):与主请求同一个 `fetchImpl`、同一套凭据、同一个
+		// base URL。`headers()` 是闭包而不是提前算好的对象 —— auth 仍然晚绑定
+		// (策略要用的时候才现拿),纪律与主请求那一步逐字相同。
+		const turn: TurnContext = new TurnContext(
 			request,
 			profile,
 			new RequestBodyBuilder(),
 			this.turnLogger(request),
+			{
+				baseUrl: this.ctx.baseUrl.replace(/\/$/, ""),
+				fetchImpl: this.ctx.fetchImpl,
+				headers: () => this.dialect.auth.headers(turn),
+			},
 		);
 
 		let response: Response | undefined;

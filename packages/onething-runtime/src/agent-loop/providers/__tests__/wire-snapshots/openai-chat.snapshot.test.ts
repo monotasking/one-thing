@@ -174,8 +174,21 @@ const OPENROUTER_IMAGE_MODEL = "google/gemini-2.5-flash-image";
 const COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token";
 
 /**
- * 按 URL 分派的 fetch 桩:github-copilot 的 `resolveAuth` 会先去 GitHub 换一个
- * completion token,那一跳必须先答上,chat 请求才发得出去。
+ * Kimi 的附件旁路(P4-6)在 chat 请求**之前**打三跳:`POST /files` →
+ * `GET /files/{id}/content` → `DELETE /files/{id}`。fixture 把三跳的答案钉死,
+ * 于是 `thinking-off-multimodal` 那份请求体里的抽取文本是确定值。
+ */
+const KIMI_FIXTURE_FILE_ID = "file-fixture-1";
+const KIMI_FIXTURE_EXTRACTED_TEXT =
+	"# spec.pdf\nThe extracted text Kimi returns for the fixture PDF.";
+
+/**
+ * 按 URL 分派的 fetch 桩。两条**非 chat** 的跳:
+ *  - github-copilot 的 `resolveAuth` 先去 GitHub 换一个 completion token;
+ *  - kimi / kimi-code 的附件通道先去 `/v1/files` 上传 + 抽取 + 删除。
+ *
+ * 两条都**不**调 `onChatRequest` —— 快照只记 chat 那一跳的线上字节
+ * (`captureWireRequest` 断言恰好一条)。
  */
 const createFetchStub = ((
 	chatResponse: () => Response,
@@ -188,6 +201,29 @@ const createFetchStub = ((
 				JSON.stringify({ token: "copilot-completion-token", expires_in: 1800 }),
 				{ status: 200, headers: { "content-type": "application/json" } },
 			);
+		}
+		if (url.endsWith("/files") && init?.method === "POST") {
+			return new Response(
+				JSON.stringify({
+					id: KIMI_FIXTURE_FILE_ID,
+					object: "file",
+					bytes: 12,
+					created_at: 1700000000,
+					filename: "spec.pdf",
+					purpose: "file-extract",
+					status: "ready",
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } },
+			);
+		}
+		if (url.endsWith(`/files/${KIMI_FIXTURE_FILE_ID}/content`)) {
+			return new Response(KIMI_FIXTURE_EXTRACTED_TEXT, {
+				status: 200,
+				headers: { "content-type": "text/plain" },
+			});
+		}
+		if (url.endsWith(`/files/${KIMI_FIXTURE_FILE_ID}`) && init?.method === "DELETE") {
+			return new Response(null, { status: 204 });
 		}
 		onChatRequest?.(init);
 		return chatResponse();

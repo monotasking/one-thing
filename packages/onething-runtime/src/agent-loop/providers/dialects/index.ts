@@ -102,6 +102,10 @@ export {
 	decodeGrokResponsesCitations,
 } from "./grok.js";
 export { GROK_OAUTH_DIALECT } from "./grok-oauth.js";
+export {
+	KimiFileExtractChannel,
+	kimiFileExtractChannel,
+} from "./kimi-attachments.js";
 export { KIMI_DIALECT, KIMI_USAGE_TABLE, kimiThinkingIntent } from "./kimi.js";
 export { KIMI_CODE_DIALECT } from "./kimi-code.js";
 export {
