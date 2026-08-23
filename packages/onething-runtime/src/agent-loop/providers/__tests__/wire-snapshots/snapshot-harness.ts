@@ -154,6 +154,14 @@ export interface CaptureWireRequestOptions {
 }
 
 /**
+ * 请求体用例统一注入的 `cacheKey`(`AgentTurnRequest.cacheKey`,宿主给的会话级
+ * 不透明键)。**每一家都注入**,于是「谁会把它发上线」这件事在 fixture 里一眼
+ * 可见:认 `prompt_cache_key` 的家(openai / kimi / kimi-code / grok /
+ * grok-oauth / openrouter)请求体里多一行,其余家一个字节都不多。
+ */
+export const SNAPSHOT_CACHE_KEY = "session-fixture-0001";
+
+/**
  * 截获出站请求:返回 dump 的元信息 + **线上那份** requestBody。
  */
 export async function captureWireRequest(
@@ -176,7 +184,12 @@ export async function captureWireRequest(
 		fetchImpl: fetchStub,
 		requestDumper: requestDumper as AgentProviderRequestDumper,
 	});
-	await drain(provider.streamTurn(options.request));
+	await drain(
+		provider.streamTurn({
+			cacheKey: SNAPSHOT_CACHE_KEY,
+			...options.request,
+		}),
+	);
 	expect(requestDumper).toHaveBeenCalledTimes(1);
 	expect(wireBodies).toHaveLength(1);
 	return {

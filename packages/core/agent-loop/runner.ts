@@ -620,6 +620,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           maxTokens: options.maxTokens,
           thinking: turnRequestShape.thinking,
           reasoningEffort: turnRequestShape.reasoningEffort,
+          cacheKey: options.cacheKey,
           abortSignal: options.abortSignal,
           onEvent: options.onEvent,
           turn,

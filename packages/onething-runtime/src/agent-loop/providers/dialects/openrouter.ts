@@ -10,7 +10,11 @@
 import type { UsagePathTable } from "../base/index.js";
 import { openRouterReasoningWire } from "../thinking/index.js";
 import { openAIChatUsage, openAIChatUsageTable } from "../wires/index.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
+import {
+	defineOpenAIChatDialect,
+	openAIChatTransportCapabilities,
+	promptCacheKeyExtraBody,
+} from "./recipe.js";
 
 /**
  * OpenRouter 的 usage 恒返回,`cache_write_tokens` 与 `cached_tokens` 都在
@@ -30,5 +34,6 @@ export const OPENROUTER_DIALECT = defineOpenAIChatDialect({
 	defaultBaseUrl: "https://openrouter.ai/api/v1",
 	reasoning: openRouterReasoningWire,
 	usage: openAIChatUsage(OPENROUTER_USAGE_TABLE),
+	extraBody: promptCacheKeyExtraBody,
 	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
 });

@@ -223,10 +223,19 @@ export function onethingClaudeModelFamily(model: string): OnethingClaudeModelFam
   if (/fable|mythos/.test(lower)) {
     return { alwaysThinking: true, adaptive: true, supportsXhigh: true, samplingRemoved: true }
   }
-  // "claude-opus-4-6", "claude-sonnet-5" put the version after the name;
-  // legacy ids like "claude-3-7-sonnet-20250219" put it before.
-  const match = lower.match(/(?:opus|sonnet|haiku)-(\d+)(?:[-.](\d+))?/)
-    ?? lower.match(/claude-(\d+)(?:[-.](\d+))?/)
+  // Two id shapes, and the legacy one has a trap: "claude-opus-4-6" /
+  // "claude-sonnet-5" put the version AFTER the name, while legacy ids like
+  // "claude-3-7-sonnet-20250219" put it BEFORE and append an 8-digit release
+  // date. Reading the name-first pattern on a legacy id matched
+  // "sonnet-20250219" and read major = 20250219, so every dated 3.x model was
+  // judged adaptive + modern (#11). Two guards fix it: strip the trailing date
+  // first, then try the version-first shape (which is anchored on "claude-<n>"
+  // followed by the family name, so it cannot fire on a modern id) before the
+  // name-first one.
+  const undated = lower.replace(/-\d{8}$/, '')
+  const match = undated.match(/claude-(\d+)(?:[-.](\d+))?-(?:opus|sonnet|haiku)/)
+    ?? undated.match(/(?:opus|sonnet|haiku)-(\d+)(?:[-.](\d+))?/)
+    ?? undated.match(/claude-(\d+)(?:[-.](\d+))?/)
   const major = match ? Number(match[1]) : 0
   const minor = match?.[2] ? Number(match[2]) : 0
   const adaptive = major > 4 || (major === 4 && minor >= 6)
@@ -423,7 +432,11 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
         wire: 'zhipu-thinking',
       },
     },
-    { test: /(?:)/, caps: { reasoning: false } },
+    // 智谱全系不支持强制调用:官方文档写明 `tool_choice` 目前仅支持 `auto`
+    // (#5b)。挂在 catch-all 上就够 —— 上面那条 reasoning 行对
+    // `forcedToolUse` 不表态,而 `fromRules` 是**按能力**各取「第一条给出布尔
+    // 值的行」,所以 reasoning 的顺序语义一点没动。
+    { test: /(?:)/, caps: { reasoning: false, forcedToolUse: false } },
   ],
   // 千问 AI 平台 resells GLM / Kimi / DeepSeek / MiniMax next to its own Qwen
   // models, and each family keeps its own effort vocabulary on this endpoint.
@@ -551,8 +564,10 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
       caps: { reasoning: true },
       profile: {
         toggleable: true,
-        // The API does not think unless thinking.type=enabled is sent.
-        defaultOn: false,
+        // 官方原文:「思考模式默认打开,且 effort 默认为 high」—— 不传
+        // `thinking` 时服务端自己在想,所以这里是 true(#6;旧注释「不传
+        // 就不想」把这条写反了)。
+        defaultOn: true,
         efforts: ONETHING_DEEPSEEK_EFFORTS,
         defaultEffort: 'high',
         wire: 'thinking-type',
@@ -575,8 +590,9 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
   ],
   kimi: [
     {
+      // K3 是这家唯一收 `tool_choice: required` / 指名函数的一代(#5b)。
       test: /^kimi-k3/,
-      caps: { reasoning: true },
+      caps: { reasoning: true, forcedToolUse: true },
       profile: {
         toggleable: true,
         defaultOn: true,
@@ -587,9 +603,16 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
       },
     },
     {
+      // Kimi Code 套餐给同一代 K3 起的名字是**裸** `k3` / `k3-256k`
+      // (`ONETHING_KIMI_CODE_DEFAULT_MODEL`),`^kimi-k3` 够不着它。这一行
+      // **只说 forcedToolUse**:reasoning 仍由下面的行裁定,顺序语义不动。
+      test: /^k3(?:-|$)/,
+      caps: { forcedToolUse: true },
+    },
+    {
       // k2.7-code (+ -highspeed) and k2-thinking always think; nothing to configure.
       test: /^kimi-k2.*(code|thinking)/,
-      caps: { reasoning: true },
+      caps: { reasoning: true, forcedToolUse: false },
       profile: {
         toggleable: false,
         defaultOn: true,
@@ -601,7 +624,7 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
     {
       // k2.5 / k2.6: thinking on by default, toggleable via thinking.type.
       test: /^kimi-k2\.\d/,
-      caps: { reasoning: true },
+      caps: { reasoning: true, forcedToolUse: false },
       profile: {
         toggleable: true,
         defaultOn: true,
@@ -610,7 +633,8 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
         wire: 'thinking-type',
       },
     },
-    { test: /(?:)/, caps: { reasoning: false } },
+    // K2.x 及更早只认 `tool_choice: auto`(#5b);未知型号按保守面倒。
+    { test: /(?:)/, caps: { reasoning: false, forcedToolUse: false } },
   ],
   codex: [
     {

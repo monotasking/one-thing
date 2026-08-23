@@ -26,12 +26,7 @@
     "thinking": {
       "type": "enabled"
     },
-    "tool_choice": {
-      "function": {
-        "name": "read_file"
-      },
-      "type": "function"
-    },
+    "tool_choice": "auto",
     "tools": [
       {
         "function": {

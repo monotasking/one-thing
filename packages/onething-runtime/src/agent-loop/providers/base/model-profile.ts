@@ -75,7 +75,14 @@ export class ModelProfile {
 		return param === "temperature" ? this.resolved.temperature : true;
 	}
 
-	supports(capability: ModelProfileCapability): boolean {
+	/**
+	 * `'forcedToolUse'` 是这里唯一一条**不在** `source` 表上的能力(账本要么
+	 * 有话说,要么没有),所以它单独一条分支:`undefined` = 没话说 = 今天的
+	 * 行为(有 tools 即可强制)。`knows()` / `toAgentModelCapabilities()` 仍然
+	 * 只认那五条有 source 的,不受影响。
+	 */
+	supports(capability: ModelProfileCapability | "forcedToolUse"): boolean {
+		if (capability === "forcedToolUse") return this.resolved.forcedToolUse ?? true;
 		return this.resolved[capability];
 	}
 

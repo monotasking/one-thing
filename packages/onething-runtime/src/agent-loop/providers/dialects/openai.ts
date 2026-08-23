@@ -5,12 +5,17 @@
  * `includeAssistantReasoning` 没给 —— OpenAI 官方不收 `reasoning_content`。
  */
 import { openAIEffortWire } from "../thinking/index.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
+import {
+	defineOpenAIChatDialect,
+	openAIChatTransportCapabilities,
+	promptCacheKeyExtraBody,
+} from "./recipe.js";
 
 export const OPENAI_DIALECT = defineOpenAIChatDialect({
 	id: "openai",
 	defaultBaseUrl: "https://api.openai.com/v1",
 	maxTokensField: "max_completion_tokens",
 	reasoning: openAIEffortWire,
+	extraBody: promptCacheKeyExtraBody,
 	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
 });

@@ -8,7 +8,7 @@
   "model": "claude-3-7-sonnet-20250219",
   "providerId": "claude",
   "requestBody": {
-    "max_tokens": 1234,
+    "max_tokens": 20480,
     "messages": [
       {
         "content": [
@@ -24,9 +24,6 @@
       }
     ],
     "model": "claude-3-7-sonnet-20250219",
-    "output_config": {
-      "effort": "high"
-    },
     "stream": true,
     "system": [
       {
@@ -38,7 +35,8 @@
       }
     ],
     "thinking": {
-      "type": "adaptive"
+      "budget_tokens": 16384,
+      "type": "enabled"
     },
     "tool_choice": {
       "type": "auto"

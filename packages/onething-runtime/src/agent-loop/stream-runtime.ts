@@ -978,6 +978,12 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		maxTokens: budget.reservedOutputTokens,
 		thinking: thinkingOptions.thinking,
 		reasoningEffort: thinkingOptions.reasoningEffort,
+		// 服务端 prompt 缓存的路由键(OpenAI/xAI/Kimi/OpenRouter 的
+		// `prompt_cache_key`)。会话 id 是**不透明标识符**,不含任何会话内容,
+		// 但它确实会离开本机 —— 所以这一句写在宿主的调用点上,而不是让 core
+		// 从 `sessionId` 里自己推出来。哪家真的发,由各家配方的 `extraBody`
+		// 决定;没有这个旋钮的家收到了也当没看见。
+		cacheKey: ctx.sessionId,
 		// First model call only — see AgentLoopOptions.initialToolChoice. A
 		// standing 'required' would make every round owe another tool call and
 		// the run could never end on its own.

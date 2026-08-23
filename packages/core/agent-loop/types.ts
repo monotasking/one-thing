@@ -365,6 +365,13 @@ export interface AgentTurnRequest {
   maxTokens?: number
   thinking?: 'enabled' | 'disabled'
   reasoningEffort?: AgentReasoningEffort
+  /**
+   * Opaque, host-supplied session-level key a provider may use to route
+   * server-side prompt caching (OpenAI/xAI/Kimi/OpenRouter `prompt_cache_key`).
+   * It is an identifier, never content — nothing about the conversation can be
+   * recovered from it. Providers that have no such knob ignore it.
+   */
+  cacheKey?: string
   abortSignal?: AbortSignal
   onEvent?: (event: AgentStreamEvent) => void
   turn: number
@@ -451,6 +458,14 @@ export interface AgentLoopOptions {
   maxTokens?: number
   thinking?: 'enabled' | 'disabled'
   reasoningEffort?: AgentReasoningEffort
+  /**
+   * Forwarded onto every `AgentTurnRequest` of this run (see
+   * `AgentTurnRequest.cacheKey`). Deliberately NOT derived from `sessionId`
+   * here: sending a session identifier to a provider is the host's call, so the
+   * host says it out loud at its own call site rather than getting it by
+   * default from a field that exists for local bookkeeping.
+   */
+  cacheKey?: string
   sessionId: string
   messageId: string
   workingDirectory?: string

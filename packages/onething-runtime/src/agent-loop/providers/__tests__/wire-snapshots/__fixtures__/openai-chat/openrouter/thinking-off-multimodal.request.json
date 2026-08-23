@@ -35,6 +35,7 @@
       }
     ],
     "model": "openai/gpt-5.5",
+    "prompt_cache_key": "session-fixture-0001",
     "reasoning": {
       "enabled": false
     },

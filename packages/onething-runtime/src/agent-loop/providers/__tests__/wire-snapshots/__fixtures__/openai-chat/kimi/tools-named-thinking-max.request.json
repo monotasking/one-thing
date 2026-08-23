@@ -19,6 +19,7 @@
       }
     ],
     "model": "kimi-k2.6",
+    "prompt_cache_key": "session-fixture-0001",
     "reasoning_effort": "max",
     "stream": true,
     "stream_options": {
@@ -27,12 +28,7 @@
     "thinking": {
       "type": "enabled"
     },
-    "tool_choice": {
-      "function": {
-        "name": "read_file"
-      },
-      "type": "function"
-    },
+    "tool_choice": "auto",
     "tools": [
       {
         "function": {

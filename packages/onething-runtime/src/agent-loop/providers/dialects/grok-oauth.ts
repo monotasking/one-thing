@@ -6,7 +6,11 @@
 import { grokEffortWire } from "../thinking/index.js";
 import { openAIChatUsage } from "../wires/index.js";
 import { GROK_USAGE_TABLE } from "./grok.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
+import {
+	defineOpenAIChatDialect,
+	openAIChatTransportCapabilities,
+	promptCacheKeyExtraBody,
+} from "./recipe.js";
 
 export const GROK_OAUTH_DIALECT = defineOpenAIChatDialect({
 	id: "grok-oauth",
@@ -14,5 +18,6 @@ export const GROK_OAUTH_DIALECT = defineOpenAIChatDialect({
 	reasoning: grokEffortWire,
 	includeAssistantReasoning: true,
 	usage: openAIChatUsage(GROK_USAGE_TABLE),
+	extraBody: promptCacheKeyExtraBody,
 	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
 });

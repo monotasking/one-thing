@@ -144,6 +144,50 @@ describe('reasoning profiles per provider', () => {
     expect(fable.reasoningProfile).toMatchObject({ toggleable: false, defaultOn: true })
   })
 
+  it('claude: legacy dated ids read their real generation, modern ids are untouched', () => {
+    // #11 —— 「版本在前、日期在后」的老式 id 曾被 `sonnet-20250219` 那一段
+    // 读成 major=20250219,于是 3.x 全被判成 adaptive + samplingRemoved。
+    const sonnet37 = resolve('claude', 'claude-3-7-sonnet-20250219')
+    expect(sonnet37.reasoningProfile).toMatchObject({ wire: 'anthropic-budget' })
+    expect(sonnet37.temperature).toBe(true)
+
+    const haiku35 = resolve('claude', 'claude-3-5-haiku-20241022')
+    expect(haiku35.reasoningProfile).toMatchObject({ wire: 'anthropic-budget' })
+    expect(haiku35.temperature).toBe(true)
+
+    // 没有日期后缀的老式 id 同样得读对。
+    expect(resolve('claude', 'claude-3-opus-latest').reasoningProfile)
+      .toMatchObject({ wire: 'anthropic-budget' })
+
+    // 现代 id 的判定一个字没变。
+    expect(resolve('claude', 'claude-sonnet-5').reasoningProfile)
+      .toMatchObject({ wire: 'anthropic-adaptive', defaultOn: true })
+    expect(resolve('claude', 'claude-opus-4-6').reasoningProfile)
+      .toMatchObject({ wire: 'anthropic-adaptive' })
+    expect(resolve('claude', 'claude-opus-4-1').reasoningProfile)
+      .toMatchObject({ wire: 'anthropic-budget' })
+    expect(resolve('claude', 'claude-haiku-4-5').reasoningProfile)
+      .toMatchObject({ wire: 'anthropic-budget' })
+    // 带日期的现代 id 也不能被日期段带偏。
+    expect(resolve('claude', 'claude-sonnet-4-5-20250929').reasoningProfile)
+      .toMatchObject({ wire: 'anthropic-budget' })
+  })
+
+  it('forced tool use: zhipu never, kimi only on K3', () => {
+    // #5b —— 智谱官方 `tool_choice` 只收 auto;Kimi 只有 K3 收 required。
+    expect(resolve('zhipu', 'glm-5').forcedToolUse).toBe(false)
+    expect(resolve('zhipu', 'glm-4.6').forcedToolUse).toBe(false)
+    expect(resolve('kimi', 'kimi-k3').forcedToolUse).toBe(true)
+    // Kimi Code 套餐给 K3 起的裸名字。
+    expect(resolve('kimi-code', 'k3').forcedToolUse).toBe(true)
+    expect(resolve('kimi', 'kimi-k2.6').forcedToolUse).toBe(false)
+    expect(resolve('kimi', 'kimi-k2.7-code').forcedToolUse).toBe(false)
+    expect(resolve('kimi', 'moonshot-v1-128k').forcedToolUse).toBe(false)
+    // 账本对别家没话说 = provider 自己的传输声明说了算。
+    expect(resolve('openai', 'gpt-5.5').forcedToolUse).toBeUndefined()
+    expect(resolve('deepseek', 'deepseek-v4').forcedToolUse).toBeUndefined()
+  })
+
   it('gemini: level wire on 3.x, budget wire on 2.5, none before 2.5', () => {
     expect(resolve('gemini', 'gemini-3-pro').reasoningProfile).toMatchObject({ wire: 'gemini-level' })
     expect(resolve('gemini', 'gemini-2.5-flash').reasoningProfile).toMatchObject({ wire: 'gemini-budget' })
@@ -184,9 +228,10 @@ describe('reasoning profiles per provider', () => {
   it('deepseek: v4 exposes high/max, reasoner is always-on with no knob, chat has none', () => {
     expect(resolve('deepseek', 'deepseek-v4').reasoningProfile).toMatchObject({
       efforts: ['high', 'max'],
-      // Engine truth: the API only thinks when thinking.type=enabled is sent.
-      defaultOn: false,
+      // 官方原文:「思考模式默认打开,且 effort 默认为 high」(#6)。
+      defaultOn: true,
     })
+    expect(resolve('deepseek', 'deepseek-v4-flash').reasoningProfile?.defaultOn).toBe(true)
     expect(resolve('deepseek', 'deepseek-reasoner').reasoningProfile).toMatchObject({
       toggleable: false,
       efforts: [],

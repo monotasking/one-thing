@@ -11,12 +11,19 @@ import { ONETHING_KIMI_DEFAULT_BASE_URL } from "../../../providers/kimi.js";
 import type {
 	DialectThinkingConfig,
 	DialectThinkingIntent,
+	RequestBodyBuilder,
+	SamplingPolicy,
+	TurnContext,
 	UsageFieldReader,
 	UsagePathTable,
 } from "../base/index.js";
 import { thinkingTypeWire } from "../thinking/index.js";
 import { openAIChatUsage, openAIChatUsageTable } from "../wires/index.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
+import {
+	defineOpenAIChatDialect,
+	openAIChatTransportCapabilities,
+	promptCacheKeyExtraBody,
+} from "./recipe.js";
 
 /**
  * Kimi 把缓存命中报在 usage 的**顶层** `cached_tokens`,不在
@@ -69,12 +76,38 @@ export function kimiThinkingIntent(
 	return {};
 }
 
+/**
+ * Kimi 的采样家规 —— **一律不发 `temperature`**(设计稿 §5.1)。
+ *
+ * Kimi 的每个模型都把 temperature 钉在一个固定值上,请求里带别的值不是被忽略
+ * 而是被 API **拒绝**(400)。所以这里与思考开关无关:开着关着都不发。
+ *
+ * 与 `OpenAISamplingPolicy` 的差别只有这一条判据 —— 那边是「思考开着才不发」,
+ * 这边是「这一家从来不收」。丢掉的设置照例留一条 warning:warning 是旁路元
+ * 数据,请求体的字节与「什么都不做」完全相同。
+ */
+export class KimiSamplingPolicy implements SamplingPolicy {
+	apply(turn: TurnContext, _builder: RequestBodyBuilder): void {
+		const { temperature } = turn.request;
+		if (temperature === undefined) return;
+		turn.warn(
+			"setting-dropped",
+			"Kimi pins temperature to a fixed per-model value and rejects any other value, so it is never sent",
+			{ temperature },
+		);
+	}
+}
+
+export const kimiSamplingPolicy: SamplingPolicy = new KimiSamplingPolicy();
+
 export const KIMI_DIALECT = defineOpenAIChatDialect({
 	id: "kimi",
 	defaultBaseUrl: ONETHING_KIMI_DEFAULT_BASE_URL,
 	reasoning: thinkingTypeWire,
 	includeAssistantReasoning: true,
 	usage: openAIChatUsage(KIMI_USAGE_TABLE),
+	sampling: kimiSamplingPolicy,
 	thinkingIntent: kimiThinkingIntent,
+	extraBody: promptCacheKeyExtraBody,
 	transport: openAIChatTransportCapabilities({ reasoning: true }),
 });

@@ -20,6 +20,7 @@
       }
     ],
     "model": "grok-4.6",
+    "prompt_cache_key": "session-fixture-0001",
     "reasoning_effort": "high",
     "stream": true,
     "stream_options": {

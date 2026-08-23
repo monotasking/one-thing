@@ -19,6 +19,7 @@
       }
     ],
     "model": "grok-4.6",
+    "prompt_cache_key": "session-fixture-0001",
     "stream": true,
     "stream_options": {
       "include_usage": true

@@ -35,8 +35,9 @@
  *  - `thinking-high.claude-opus-4-1`    —— **budget 线型**:`thinking:
  *    {type:'enabled', budget_tokens}` + max_tokens 被顶到 budget + 4096
  *    (`claude-opus-4-6` 已经是 adaptive 了,budget 线型必须另找一个模型才录得到)
- *  - `thinking-high.claude-3-7-sonnet`  —— 老式带日期的 id 今天被家族判定读成
- *    major=20250219(日期段被当版本号),于是 3.7 也走 adaptive。钉住现状
+ *  - `thinking-high.claude-3-7-sonnet`  —— 老式带日期的 id(版本在前、日期在后)
+ *    必须读出 3.7:budget 线型 + temperature 照发(#11 修好之前,日期段被当成
+ *    版本号读成 major=20250219,于是 3.7 被判成 adaptive + samplingRemoved)
  *  - `prompt-caching-no-system`         —— 没有 system 时,缓存断点落在**工具表
  *    最后一项**上(有 system 时落在 system 上),外加会话尾部那个滑动断点
  *  - `history-thinking-unset`           —— 思考回放块是 `thinking === 'enabled'`
@@ -362,14 +363,16 @@ describe("anthropic-messages wire snapshots — request bodies", () => {
 	});
 
 	/**
-	 * **今天的行为,不是应该的行为**:`onethingClaudeModelFamily` 先试
-	 * `/(?:opus|sonnet|haiku)-(\d+)(?:[-.](\d+))?/`,老式 id 的日期段
-	 * (`claude-3-7-sonnet-20250219` → `sonnet-20250219`)当场把 major 读成
-	 * 20250219,后面那条 `claude-(\d+)` 兜底永远轮不上 —— 于是一个 3.7 的模型
-	 * 被判成 adaptive + modern(temperature 也被当作已移除)。这条快照就是把
-	 * 这个行为钉住:P1 若要修,必须是**有意为之地**改快照,而不是顺手改掉。
+	 * #11 —— 老式 id 把版本放在名字前、日期放在最后。修好之前
+	 * `onethingClaudeModelFamily` 先试 `/(?:opus|sonnet|haiku)-(\d+)…/`,
+	 * `claude-3-7-sonnet-20250219` 的 `sonnet-20250219` 当场把 major 读成
+	 * 20250219,后面那条 `claude-(\d+)` 兜底永远轮不上,于是一个 3.7 的模型被
+	 * 判成 adaptive + modern(temperature 也被当作已移除)。现在它读回 3.7:
+	 * **budget 线型**(`thinking:{type:'enabled', budget_tokens}` + max_tokens
+	 * 被顶到 budget + 4096),`samplingRemoved: false` —— temperature 之所以
+	 * 还是没了,原因只剩「thinking 开着」这一条。
 	 */
-	it("claude — legacy dated id is classified adaptive today", async () => {
+	it("claude — legacy dated id claude-3-7-sonnet reads as 3.7 (budget wire)", async () => {
 		const dump = await captureRequest(
 			"claude",
 			{

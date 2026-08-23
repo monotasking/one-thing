@@ -6,8 +6,12 @@
 import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from "../../../providers/kimi.js";
 import { thinkingTypeWire } from "../thinking/index.js";
 import { openAIChatUsage } from "../wires/index.js";
-import { KIMI_USAGE_TABLE } from "./kimi.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
+import { KIMI_USAGE_TABLE, kimiSamplingPolicy, kimiThinkingIntent } from "./kimi.js";
+import {
+	defineOpenAIChatDialect,
+	openAIChatTransportCapabilities,
+	promptCacheKeyExtraBody,
+} from "./recipe.js";
 
 export const KIMI_CODE_DIALECT = defineOpenAIChatDialect({
 	id: "kimi-code",
@@ -16,9 +20,12 @@ export const KIMI_CODE_DIALECT = defineOpenAIChatDialect({
 	includeAssistantReasoning: true,
 	// 同一套线材 = 同一张 usage 表(顶层 `cached_tokens`)。
 	usage: openAIChatUsage(KIMI_USAGE_TABLE),
-	// **没有** `thinkingIntent`:kimi 家规尚未挂到套餐通路 —— k2.7-code 关思考
-	// 会发出它拒收的 `thinking:{type:'disabled'}`,待拍板后挂上
-	// (`kimiThinkingIntent` 就在 `./kimi.js`,挂一行即可)。P2-a 保持今天的
-	// 行为:这条通路走 `thinking-options.ts` 的通用规则。
+	// 同一批模型 = 同一套家规。套餐通路跑的就是开放平台那几族模型,所以采样
+	// (Kimi 一律不发 temperature)与思考意图(k2.7-code 关思考时**什么都不发**,
+	// 而不是发它拒收的 `thinking:{type:'disabled'}`)都直接复用 `./kimi.js`。
+	sampling: kimiSamplingPolicy,
+	thinkingIntent: kimiThinkingIntent,
+	// Code Plan 把 `prompt_cache_key` 列为必填。
+	extraBody: promptCacheKeyExtraBody,
 	transport: openAIChatTransportCapabilities({ reasoning: true }),
 });

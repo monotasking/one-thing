@@ -18,6 +18,7 @@ import {
 	TurnContext,
 	noThinkingWire,
 	openAISamplingPolicy,
+	openAIToolChoicePolicy,
 	type Dialect,
 } from "../index.js";
 import { getLogger } from "../../../../logging/index.js";
@@ -131,6 +132,46 @@ describe("warnings —— 被丢掉的设置留痕", () => {
 		});
 		// 留痕之外,可见替身仍然进请求体 —— 模型知道有过这个附件。
 		expect(JSON.stringify(message.content)).toContain("spec.pdf");
+	});
+
+	/**
+	 * #5b —— 账本说这个模型不收强制调用(智谱全系 / Kimi K2.x),序列化器把
+	 * `required` 与指名函数一律降成 `'auto'` 并留痕。这是引擎之外的**第二道
+	 * 保险**:最后一个能看见线上字节的人在这里兜底。
+	 */
+	it("tool-choice:账本说不能强制,指名函数降成 auto 并留痕", () => {
+		const turn = turnFor("zhipu", {
+			messages: [{ role: "user", content: "hi" }],
+			model: "glm-5",
+			turn: 1,
+			toolChoice: { type: "function", function: { name: "read_file" } },
+		});
+		turn.builder.set("tools", [{ type: "function", function: { name: "read_file" } }]);
+		openAIToolChoicePolicy.apply(turn, turn.builder);
+
+		expect(turn.builder.get("tool_choice")).toBe("auto");
+		expect(turn.warnings.map((warning) => warning.kind)).toEqual([
+			"tool-choice-downgraded",
+		]);
+		expect(turn.warnings[0]!.fields).toMatchObject({
+			requested: "function:read_file",
+			sent: "auto",
+			model: "glm-5",
+		});
+	});
+
+	it("tool-choice:账本说得了强制(K3)就原样发,不留痕", () => {
+		const turn = turnFor("kimi", {
+			messages: [{ role: "user", content: "hi" }],
+			model: "kimi-k3",
+			turn: 1,
+			toolChoice: "required",
+		});
+		turn.builder.set("tools", [{ type: "function", function: { name: "read_file" } }]);
+		openAIToolChoicePolicy.apply(turn, turn.builder);
+
+		expect(turn.builder.get("tool_choice")).toBe("required");
+		expect(turn.warnings).toEqual([]);
 	});
 
 	it("没有 turn 也能序列化(P2 的投递契约矩阵没有回合)", () => {

@@ -6,7 +6,11 @@
 import type { UsagePathTable } from "../base/index.js";
 import { grokEffortWire } from "../thinking/index.js";
 import { openAIChatUsage, openAIChatUsageTable } from "../wires/index.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
+import {
+	defineOpenAIChatDialect,
+	openAIChatTransportCapabilities,
+	promptCacheKeyExtraBody,
+} from "./recipe.js";
 
 /** xAI 报价的单位是 1e-10 美元(`cost_in_usd_ticks`)。 */
 const USD_TICKS_PER_DOLLAR = 1e10;
@@ -28,5 +32,6 @@ export const GROK_DIALECT = defineOpenAIChatDialect({
 	reasoning: grokEffortWire,
 	includeAssistantReasoning: true,
 	usage: openAIChatUsage(GROK_USAGE_TABLE),
+	extraBody: promptCacheKeyExtraBody,
 	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
 });

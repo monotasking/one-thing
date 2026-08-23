@@ -75,6 +75,20 @@ export function openAIChatTransportCapabilities(
 	};
 }
 
+/**
+ * `prompt_cache_key` —— 服务端 prompt 缓存的路由键(设计稿 §5.1)。
+ *
+ * OpenAI / xAI(grok、grok-oauth)/ Kimi(开放平台与 Code Plan)/ OpenRouter
+ * 认这个字段:同一个键的请求会被路由到同一台机器上,前缀命中率因此从「碰运气」
+ * 变成「常态」;Kimi Code Plan 更是把它列为必填。宿主给的值是**会话 id**
+ * (`AgentTurnRequest.cacheKey`)—— 不透明标识符,不含任何会话内容。
+ *
+ * 不认这个字段的家(deepseek / zhipu / qwen / github-copilot / custom-*)一个
+ * 字节都不多发:挂不挂这一行就是「发不发」的全部开关。
+ */
+export const promptCacheKeyExtraBody: NonNullable<Dialect["extraBody"]> = (turn) =>
+	turn.request.cacheKey ? { prompt_cache_key: turn.request.cacheKey } : {};
+
 export interface OpenAIChatDialectSpec {
 	id: string;
 	/** 用户可见文案里的名字。不给 = 用**运行时的 providerId**。 */
@@ -93,6 +107,8 @@ export interface OpenAIChatDialectSpec {
 	sampling?: SamplingPolicy;
 	/** 这家自己的「用户意图 → thinking/effort」家规(Kimi)。 */
 	thinkingIntent?: Dialect["thinkingIntent"];
+	/** 这家的额外请求体字段(`prompt_cache_key` 等,见 `Dialect.extraBody`)。 */
+	extraBody?: Dialect["extraBody"];
 	transport: AgentModelCapabilities;
 }
 
@@ -116,6 +132,7 @@ export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialec
 		...(spec.usage ? { usage: spec.usage } : {}),
 		...(spec.sampling ? { sampling: spec.sampling } : {}),
 		...(spec.thinkingIntent ? { thinkingIntent: spec.thinkingIntent } : {}),
+		...(spec.extraBody ? { extraBody: spec.extraBody } : {}),
 		reasoning: [spec.reasoning],
 		transport: spec.transport,
 	};
