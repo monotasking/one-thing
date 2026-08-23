@@ -108,7 +108,11 @@ export abstract class HttpAgentProvider<
 					method: "POST",
 					turn: request.turn,
 				},
-				requestBody: turn.builder.forDump() as AgentProviderRequestDumpValue,
+				// P0a 落**原始**请求体:`RequestBodyBuilder.forDump()` 的 data-URI
+				// 截断是设计稿 §9 P0b 的一项(「基类日志/超时/finally/dump 截断」),
+				// 不在纯搬运这一期改 —— 十一家的请求体快照逐字节记的就是今天
+				// 落盘的那份。
+				requestBody: turn.builder.build() as AgentProviderRequestDumpValue,
 			});
 
 			// 6 send(含 onUnauthorized 一次重试、首字节超时)

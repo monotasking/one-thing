@@ -73,14 +73,16 @@ export function isProviderHttpError(error: unknown): error is ProviderHttpError 
 	return error instanceof ProviderHttpError;
 }
 
+/**
+ * 返回类型是 `Error` 而不是 `ProviderHttpError`:设计稿 §9 把「`ProviderHttpError`
+ * 全线」排在 **P1**,P0a 搬过来的 openai-chat 十一家仍然抛今天那个裸 `Error`
+ * (`name === 'Error'` + `responseBody` / `data` / `retryAfterAt` 三个自有字段)。
+ * 收窄成 `ProviderHttpError` 会把「哪一期换形状」变成类型问题,而不是行为问题。
+ */
 export interface ErrorMapper {
-	fromResponse(
-		response: Response,
-		bodyText: string,
-		turn: TurnContext,
-	): ProviderHttpError;
+	fromResponse(response: Response, bodyText: string, turn: TurnContext): Error;
 	/** 流中的错误事件(OpenRouter 带内错误、Anthropic `error` 事件、Zhipu sensitive)。 */
-	fromStreamEvent?(event: unknown, turn: TurnContext): ProviderHttpError | undefined;
+	fromStreamEvent?(event: unknown, turn: TurnContext): Error | undefined;
 }
 
 /**

@@ -2,15 +2,31 @@ import type {
 	AgentCapability,
 	AgentModelCapabilities,
 	AgentProvider,
+	AgentTurnRequest,
 } from "@onething/core/agent-loop";
 import { createClaudeAgentProvider } from "./claude.js";
 import {
 	createCodexAgentProvider,
 	type CodexAgentProviderOptions,
 } from "./codex.js";
-import { createDeepSeekAgentProvider } from "./deepseek.js";
 import { createGeminiAgentProvider } from "./gemini.js";
-import { createOpenAICompatibleAgentProvider } from "./openai-compatible.js";
+import { BearerApiKeyAuth, ResolveAuth } from "./base/index.js";
+import {
+	CUSTOM_OPENAI_DIALECT,
+	DEEPSEEK_DIALECT,
+	GITHUB_COPILOT_DIALECT,
+	GROK_DIALECT,
+	GROK_OAUTH_DIALECT,
+	KIMI_CODE_DIALECT,
+	KIMI_DIALECT,
+	OPENAI_DIALECT,
+	OPENROUTER_DIALECT,
+	QWEN_DIALECT,
+	ZHIPU_DIALECT,
+	createOpenAIChatProvider,
+	openAIChatTransportCapabilities,
+} from "./dialects/index.js";
+import { OpenAIChatPartCodec } from "./wires/index.js";
 import type { AgentProviderRequestDumper } from "./request-dump.js";
 import {
 	createACPAgentProvider,
@@ -23,14 +39,10 @@ import type {
 } from "../../external-agents/types.js";
 import {
 	ONETHING_KIMI_CODING_PLAN_BASE_URL,
-	ONETHING_KIMI_DEFAULT_BASE_URL,
 	resolveOnethingKimiBaseUrl,
 } from "../../providers/kimi.js";
 import { resolveOnethingZhipuBaseUrl } from "../../providers/zhipu.js";
-import {
-	ONETHING_QWEN_DEFAULT_BASE_URL,
-	resolveOnethingQwenBaseUrl,
-} from "../../providers/qwen.js";
+import { resolveOnethingQwenBaseUrl } from "../../providers/qwen.js";
 import {
 	readOnethingKimiOptions,
 	readOnethingQwenOptions,
@@ -283,8 +295,22 @@ function withPerModelCapabilities(
 			outputModalities: ["text"],
 		};
 
+	// **不是 `{...provider}`**:provider 现在可能是一个类实例
+	// (`OpenAIChatWire`),它的 `id` / `capabilities` / `streamTurn` / `runTurn`
+	// 都在原型上,展开运算符只搬自有可枚举属性,搬完就是一个没有 `streamTurn`
+	// 的空壳。逐个转交是这一层唯一不依赖「provider 恰好是对象字面量」的写法。
 	return {
-		...provider,
+		id: provider.id,
+		...(provider.capabilities ? { capabilities: provider.capabilities } : {}),
+		...(provider.capabilitiesAreSelfDeclared === undefined
+			? {}
+			: { capabilitiesAreSelfDeclared: provider.capabilitiesAreSelfDeclared }),
+		...(provider.streamTurn
+			? { streamTurn: (request: AgentTurnRequest) => provider.streamTurn!(request) }
+			: {}),
+		...(provider.runTurn
+			? { runTurn: (request: AgentTurnRequest) => provider.runTurn!(request) }
+			: {}),
 		getModelCapabilities: async (model: string) => {
 			const base = await resolveBase(model);
 			const resolved = resolveOnethingModelCapabilities({
@@ -456,30 +482,28 @@ function createCustomAgentProviderFromRuntime(
 		reasoning: true,
 	});
 
-	return createOpenAICompatibleAgentProvider({
+	return createOpenAIChatProvider(CUSTOM_OPENAI_DIALECT, {
 		providerId,
-		apiKey: config.apiKey,
 		baseUrl: config.baseUrl,
-		defaultBaseUrl: "https://api.openai.com/v1",
+		auth: new BearerApiKeyAuth(config.apiKey),
 		fetchImpl: options.fetchImpl,
 		requestDumper: resolveRequestDumper(options),
-		supportsVision: capabilities.vision,
-		supportsReasoning: capabilities.reasoning,
-		supportsTools: capabilities.tools,
-		includeAssistantReasoning: capabilities.reasoning,
-		reasoningStyle: "openai-effort",
+		transport: openAIChatTransportCapabilities(capabilities),
+		parts: new OpenAIChatPartCodec({
+			includeAssistantReasoning: capabilities.reasoning,
+		}),
 	});
 }
 
 registerAgentProviderRuntime(
 	"deepseek",
 	(config, options) =>
-		createDeepSeekAgentProvider({
-			apiKey: config.apiKey ?? "",
+		createOpenAIChatProvider(DEEPSEEK_DIALECT, {
 			baseUrl: config.baseUrl,
+			auth: new BearerApiKeyAuth(config.apiKey ?? ""),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			capabilities: {
+			transport: {
 				...capabilitiesFromFlags(
 					runtimeCapabilityFlags(config, {
 						tools: true,
@@ -550,17 +574,11 @@ registerAgentProviderRuntime(
 registerAgentProviderRuntime(
 	"openai",
 	(config, options) =>
-		createOpenAICompatibleAgentProvider({
-			providerId: "openai",
-			apiKey: config.apiKey,
+		createOpenAIChatProvider(OPENAI_DIALECT, {
 			baseUrl: config.baseUrl,
-			defaultBaseUrl: "https://api.openai.com/v1",
+			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			supportsVision: true,
-			supportsReasoning: true,
-			maxTokensField: "max_completion_tokens",
-			reasoningStyle: "openai-effort",
 		}),
 	{ replace: true },
 );
@@ -568,16 +586,11 @@ registerAgentProviderRuntime(
 registerAgentProviderRuntime(
 	"openrouter",
 	(config, options) =>
-		createOpenAICompatibleAgentProvider({
-			providerId: "openrouter",
-			apiKey: config.apiKey,
+		createOpenAIChatProvider(OPENROUTER_DIALECT, {
 			baseUrl: config.baseUrl,
-			defaultBaseUrl: "https://openrouter.ai/api/v1",
+			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			supportsVision: true,
-			supportsReasoning: true,
-			reasoningStyle: "openrouter-reasoning",
 		}),
 	{ replace: true },
 );
@@ -585,21 +598,16 @@ registerAgentProviderRuntime(
 registerAgentProviderRuntime(
 	"kimi",
 	(config, options) =>
-		createOpenAICompatibleAgentProvider({
-			providerId: "kimi",
-			apiKey: config.apiKey,
+		createOpenAIChatProvider(KIMI_DIALECT, {
 			// 开放平台(按量,国内/海外)与 Kimi Code(编程套餐)是三个地址、两种
 			// 计费。选错不是报错而是**多扣钱**:订阅用户留着通用地址会照按量再计一次。
 			baseUrl: resolveOnethingKimiBaseUrl({
 				baseUrl: config.baseUrl,
 				...readOnethingKimiOptions(config.providerOptions),
 			}),
-			defaultBaseUrl: ONETHING_KIMI_DEFAULT_BASE_URL,
+			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			supportsReasoning: true,
-			includeAssistantReasoning: true,
-			reasoningStyle: "thinking-type",
 		}),
 	{ replace: true },
 );
@@ -618,16 +626,11 @@ registerAgentProviderRuntime(
 		if (!accessToken) {
 			throw new Error("Not logged in to Kimi Code. Please login first.");
 		}
-		return createOpenAICompatibleAgentProvider({
-			providerId: "kimi-code",
+		return createOpenAIChatProvider(KIMI_CODE_DIALECT, {
 			baseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
-			defaultBaseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
+			auth: new BearerApiKeyAuth(accessToken),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			supportsReasoning: true,
-			includeAssistantReasoning: true,
-			reasoningStyle: "thinking-type",
-			resolveAuth: async () => ({ apiKey: accessToken }),
 		});
 	},
 	{ replace: true },
@@ -636,19 +639,14 @@ registerAgentProviderRuntime(
 registerAgentProviderRuntime(
 	"zhipu",
 	(config, options) =>
-		createOpenAICompatibleAgentProvider({
-			providerId: "zhipu",
-			apiKey: config.apiKey,
+		createOpenAIChatProvider(ZHIPU_DIALECT, {
 			baseUrl: resolveOnethingZhipuBaseUrl({
 				baseUrl: config.baseUrl,
 				...readOnethingZhipuOptions(config.providerOptions),
 			}),
-			defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
+			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			supportsReasoning: true,
-			includeAssistantReasoning: true,
-			reasoningStyle: "zhipu-thinking",
 		}),
 	{ replace: true },
 );
@@ -656,22 +654,14 @@ registerAgentProviderRuntime(
 registerAgentProviderRuntime(
 	"qwen",
 	(config, options) =>
-		createOpenAICompatibleAgentProvider({
-			providerId: "qwen",
-			apiKey: config.apiKey,
+		createOpenAIChatProvider(QWEN_DIALECT, {
 			baseUrl: resolveOnethingQwenBaseUrl({
 				baseUrl: config.baseUrl,
 				...readOnethingQwenOptions(config.providerOptions),
 			}),
-			defaultBaseUrl: ONETHING_QWEN_DEFAULT_BASE_URL,
+			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			supportsVision: true,
-			supportsReasoning: true,
-			// qwen3.8-max runs preserve_thinking by default and rejects history
-			// whose reasoning_content was dropped — echo it back verbatim.
-			includeAssistantReasoning: true,
-			reasoningStyle: "qwen-thinking",
 		}),
 	{ replace: true },
 );
@@ -679,17 +669,11 @@ registerAgentProviderRuntime(
 registerAgentProviderRuntime(
 	"grok",
 	(config, options) =>
-		createOpenAICompatibleAgentProvider({
-			providerId: "grok",
-			apiKey: config.apiKey,
+		createOpenAIChatProvider(GROK_DIALECT, {
 			baseUrl: config.baseUrl,
-			defaultBaseUrl: "https://api.x.ai/v1",
+			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			supportsVision: true,
-			supportsReasoning: true,
-			includeAssistantReasoning: true,
-			reasoningStyle: "grok-effort",
 		}),
 	{ replace: true },
 );
@@ -701,17 +685,11 @@ registerAgentProviderRuntime(
 		if (!accessToken) {
 			throw new Error("Not logged in to Grok. Please login first.");
 		}
-		return createOpenAICompatibleAgentProvider({
-			providerId: "grok-oauth",
+		return createOpenAIChatProvider(GROK_OAUTH_DIALECT, {
 			baseUrl: config.baseUrl,
-			defaultBaseUrl: "https://api.x.ai/v1",
+			auth: new BearerApiKeyAuth(accessToken),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			supportsVision: true,
-			supportsReasoning: true,
-			includeAssistantReasoning: true,
-			reasoningStyle: "grok-effort",
-			resolveAuth: async () => ({ apiKey: accessToken }),
 		});
 	},
 	{ replace: true },
@@ -725,25 +703,24 @@ registerAgentProviderRuntime(
 			throw new Error("Not logged in to GitHub Copilot. Please login first.");
 		}
 		const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-		return createOpenAICompatibleAgentProvider({
-			providerId: "github-copilot",
+		return createOpenAIChatProvider(GITHUB_COPILOT_DIALECT, {
 			baseUrl: config.baseUrl,
-			defaultBaseUrl: "https://api.individual.githubcopilot.com",
 			fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			headers: {
-				"Editor-Version": "vscode/1.85.1",
-				"Editor-Plugin-Version": "copilot-chat/0.29.1",
-				"Copilot-Integration-Id": "vscode-chat",
-				"User-Agent": "onething/1.0",
-				"OpenAI-Intent": "conversation-panel",
-			},
-			resolveAuth: async () => ({
-				apiKey: await getCopilotCompletionToken(githubAccessToken, fetchImpl),
-			}),
-			supportsVision: true,
-			supportsReasoning: true,
-			supportsTools: true,
+			auth: new ResolveAuth(
+				async () => ({
+					apiKey: await getCopilotCompletionToken(githubAccessToken, fetchImpl),
+				}),
+				{
+					headers: {
+						"Editor-Version": "vscode/1.85.1",
+						"Editor-Plugin-Version": "copilot-chat/0.29.1",
+						"Copilot-Integration-Id": "vscode-chat",
+						"User-Agent": "onething/1.0",
+						"OpenAI-Intent": "conversation-panel",
+					},
+				},
+			),
 		});
 	},
 	{ replace: true },
