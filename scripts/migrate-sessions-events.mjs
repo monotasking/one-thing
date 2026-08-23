@@ -404,6 +404,73 @@ export function coverageState(records) {
   return 'none'
 }
 
+/**
+ * 一条事件在投影里落成的**消息节点 id**(折不出消息节点的事件返回 undefined)。
+ * 与 `events-reads.ts` 的节点身份一致:user/system/imported → `data.message.id`,
+ * `run/start` → `data.assistantMessageId`,`user/message-edited` → `data.messageId`。
+ * `session/compacted` 的压缩卡 id 不在这里认 —— 认不出的覆盖会被下面的“干净后缀”
+ * 判据当成未覆盖,从而保守跳过,绝不硬合。
+ */
+function coveredMessageId(record) {
+  const data = record?.data
+  if (!data) return undefined
+  switch (record.type) {
+    case 'user/message':
+    case 'system/message':
+    case 'message/imported':
+      return data.message?.id
+    case 'run/start':
+      return data.assistantMessageId
+    case 'user/message-edited':
+      return data.messageId ?? data.message?.id
+    default:
+      return undefined
+  }
+}
+
+/** 现有事件覆盖到的消息 id 集合(覆盖感知合并的依据)。 */
+function coveredMessageIds(records) {
+  const ids = new Set()
+  for (const record of records) {
+    const id = coveredMessageId(record)
+    if (typeof id === 'string') ids.add(id)
+  }
+  return ids
+}
+
+/**
+ * 覆盖感知合并的计划(§13.15 / §10.16 混合覆盖会话)。混合覆盖 = S1 升级切面:
+ * `events.jsonl` 只从升级点起记着尾巴那几条**原生消息节点**,而 `messages.jsonl`
+ * 里还压着升级之前的**未覆盖头**。切默认到 `events` 后,`eventsListMessages` 折出
+ * 的只有尾巴(`state.nodes.length > 0` 就不再退回 messages 模式),头会**整段丢失**。
+ *
+ * 只在“未覆盖消息恰是一段前缀、其后全部被覆盖”(干净前缀 / 干净后缀)时才合并:
+ * 导入这段头为 `message/imported`、把尾巴事件整体重编号留在后面,投影 = 头 + 尾 =
+ * 全份历史。任何“洞”(尾巴里仍有未覆盖消息)都**不硬合** —— 朴素全量导入会撞 id、
+ * `verify` 的 covered-message-order 当场红,宁可跳过并报告,留人工处理。
+ *
+ * @returns {{kind:'covered'|'merge'|'unsafe', headCount?:number, reason?:string}}
+ */
+function planNativeMerge(messages, existing) {
+  const covered = coveredMessageIds(existing)
+  let firstCovered = -1
+  for (let index = 0; index < messages.length; index++) {
+    const id = messages[index]?.id
+    if (id && covered.has(id)) { firstCovered = index; break }
+  }
+  if (firstCovered === -1) {
+    return { kind: 'unsafe', reason: '事件覆盖的消息 id 在 messages.jsonl 里找不到(非前缀覆盖)' }
+  }
+  const suffixAllCovered = messages
+    .slice(firstCovered)
+    .every(message => message?.id && covered.has(message.id))
+  if (!suffixAllCovered) {
+    return { kind: 'unsafe', reason: '覆盖不是干净后缀(尾巴里仍有未覆盖消息)' }
+  }
+  if (firstCovered === 0) return { kind: 'covered' }
+  return { kind: 'merge', headCount: firstCovered }
+}
+
 /** 一条 message/imported 记录(与 dry-run 的 importedLineBytes 逐字段同形)。 */
 function makeImportedRecord(message, seq) {
   return {
@@ -454,7 +521,14 @@ function atomicWrite(file, text) {
 }
 
 /**
- * 迁移一间会话。@returns 结果对象(status:migrated|noop|skipped|error|empty)。
+ * 迁移一间会话。@returns 结果对象
+ * (status:migrated|merged|covered|noop|skipped|error|empty)。
+ *
+ *  - `migrated` = E0/空会话,全量导入 `message/imported`;
+ *  - `merged`   = 混合覆盖会话(原生尾 + 未覆盖头),**只导未覆盖头**、尾巴事件重编号留后;
+ *  - `covered`  = 原生事件已全覆盖,无未覆盖头 → 一个字节都不动;
+ *  - `skipped`  = 覆盖不是干净前缀/后缀(有洞),须人工处理,不硬合;
+ *  - `noop`     = 已迁过(带内 imported 标记);`empty` = 没消息;`error` = 出错。
  *
  * 不抛:任何一间出错都收进结果的 error 字段,由调用方跳过并汇报。
  */
@@ -472,19 +546,32 @@ export function applySession(sessionsDir, sessionId) {
     if (coverage === 'imported') {
       return { sessionId, status: 'noop', reason: '已有 message/imported(迁过了)' }
     }
+
+    // 覆盖感知:E0/空 = 全量导入;原生覆盖 = 分“已全覆盖 / 混合(导头留尾)/ 不可合”。
+    let importedMessages
+    let mode
+    let firstCoveredIndex
     if (coverage === 'native') {
-      return {
-        sessionId,
-        status: 'skipped',
-        reason: '事件里已有原生消息节点(混合覆盖会话须 S2b 覆盖感知合并,朴素全量导入会撞 id)',
+      const plan = planNativeMerge(transcript.messages, existing)
+      if (plan.kind === 'covered') {
+        return { sessionId, status: 'covered', reason: '事件已全覆盖(无未覆盖头,无需迁移)' }
       }
+      if (plan.kind === 'unsafe') {
+        return { sessionId, status: 'skipped', reason: `混合覆盖须人工处理:${plan.reason}` }
+      }
+      firstCoveredIndex = plan.headCount
+      importedMessages = transcript.messages.slice(0, plan.headCount)
+      mode = 'merged'
+    } else {
+      importedMessages = transcript.messages
+      mode = 'migrated'
     }
 
-    const messages = transcript.messages
-    const importedRecords = messages.map((message, index) => makeImportedRecord(message, index + 1))
+    const importedRecords = importedMessages.map((message, index) => makeImportedRecord(message, index + 1))
     const shift = importedRecords.length
 
-    // 现有 E0 事件整体重编号到 [shift+1, …];建 old→new 映射,兜底 +shift。
+    // 现有事件整体重编号到 [shift+1, …];建 old→new 映射,兜底 +shift。
+    // 全量导入(migrated)遮的是折不出消息的 E0 尾;合并(merged)留下的是原生尾。
     const seqMap = new Map()
     existing.forEach((record, index) => seqMap.set(record.seq, shift + index + 1))
     const remap = old => seqMap.get(old) ?? (typeof old === 'number' ? old + shift : old)
@@ -514,7 +601,9 @@ export function applySession(sessionsDir, sessionId) {
     const marker = {
       migratedAt: new Date().toISOString(),
       sessionId,
+      mode,
       imported: importedRecords.length,
+      ...(mode === 'merged' ? { firstCoveredIndex } : {}),
       existingEventsBefore: existing.length,
       shiftedBy: shift,
       eventsBytesBefore,
@@ -529,10 +618,11 @@ export function applySession(sessionsDir, sessionId) {
 
     return {
       sessionId,
-      status: 'migrated',
+      status: mode,
       imported: importedRecords.length,
       existingEvents: existing.length,
       shiftedBy: shift,
+      ...(mode === 'merged' ? { firstCoveredIndex } : {}),
       eventsBytesBefore,
       eventsBytesAfter,
       backupPath: path.relative(sessionsDir, backupDir),
@@ -549,13 +639,13 @@ export function applyMigration(store, options = {}) {
   const results = plan.sessions.map(session => applySession(sessionsDir, session.sessionId))
   const tally = results.reduce((acc, result) => {
     acc[result.status] = (acc[result.status] ?? 0) + 1
-    if (result.status === 'migrated') {
+    if (result.status === 'migrated' || result.status === 'merged') {
       acc.importedEvents += result.imported
       acc.bytesBefore += result.eventsBytesBefore
       acc.bytesAfter += result.eventsBytesAfter
     }
     return acc
-  }, { migrated: 0, noop: 0, skipped: 0, error: 0, empty: 0, importedEvents: 0, bytesBefore: 0, bytesAfter: 0 })
+  }, { migrated: 0, merged: 0, covered: 0, noop: 0, skipped: 0, error: 0, empty: 0, importedEvents: 0, bytesBefore: 0, bytesAfter: 0 })
   return { store, results, tally, legacyJsonFiles: plan.legacyJsonFiles }
 }
 
@@ -683,11 +773,13 @@ async function runApply(args) {
 
   const t = summary.tally
   console.log(`[migrate] APPLY store=${store}`)
-  console.log(`[migrate] 迁移 ${t.migrated} 间 / 已迁过(no-op)${t.noop} 间 / 跳过(有原生覆盖)${t.skipped} 间 / 空 ${t.empty} 间 / 出错 ${t.error} 间`)
+  console.log(`[migrate] 迁移 ${t.migrated} 间 / 合并混合 ${t.merged ?? 0} 间 / 已全覆盖 ${t.covered ?? 0} 间 / 已迁过(no-op)${t.noop} 间 / 跳过 ${t.skipped} 间 / 空 ${t.empty} 间 / 出错 ${t.error} 间`)
   console.log(`[migrate] 合成 message/imported ${t.importedEvents} 条;events.jsonl 字节 ${mb(t.bytesBefore)} → ${mb(t.bytesAfter)}`)
   for (const result of summary.results) {
     if (result.status === 'migrated') {
       console.log(`  migrated ${result.sessionId}  events ${result.existingEvents}→${result.existingEvents + result.imported}(+${result.imported} imported) bytes ${mb(result.eventsBytesBefore)}→${mb(result.eventsBytesAfter)} backup=${result.backupPath}${result.corrupt ? ` corrupt=${result.corrupt}` : ''}`)
+    } else if (result.status === 'merged') {
+      console.log(`  merged   ${result.sessionId}  头 ${result.imported} 条 imported + 尾 ${result.existingEvents} 事件重编号(firstCovered=${result.firstCoveredIndex}) bytes ${mb(result.eventsBytesBefore)}→${mb(result.eventsBytesAfter)} backup=${result.backupPath}${result.corrupt ? ` corrupt=${result.corrupt}` : ''}`)
     } else if (result.status === 'error') {
       console.log(`  ERROR    ${result.sessionId}  ${result.reason}`)
     } else if (result.status === 'skipped') {

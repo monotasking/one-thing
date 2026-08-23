@@ -2869,3 +2869,91 @@ E0 事件整体重编号到 `[N+1, …]`,内部 seq 引用(`surfaceOp.{start,end
   `applySession` / `applyMigration` / `rollbackSession` / `rollbackMigration` /
   `coverageState`;dry-run 与 `buildPlan`/`planSession` 一字未动,仍只读)、
   `packages/backend/session/__tests__/migrate-apply.test.ts`。
+
+#### D —— M5 写侧对齐(其实是读侧无为)+ 覆盖感知合并(2026-08-23)
+
+派工把 D 定为"M5 写侧对齐 + 定性混合覆盖迁移(二者同根)"。逐代码读下来,**两件事
+不同根、方向相反**,而"写侧对齐"这条的前提是错的。逐条记在这里。
+
+**Phase 1 —— 先读代码,后动手(全部实证)**
+
+1. **§13.12 连带项 1 的前提在 HEAD 上是错的。** 它说"今天 `sanitizeSessionOnStartup`
+   把崩溃截断的助手消息清成 `content=''`"。实际不是:该函数的纯计算本体
+   `computeMessageRepair`(`packages/core/session/timeline.ts`)只做三件事 —— 清
+   `isStreaming`、修中断的 step / toolCall、把卡死的 **system** compact 消息改判 failed;
+   **从不碰 `content`**。盘上看到的 `content:''` 是**流式落盘缺口**:`assistant/chunks`
+   是攒批写进 `events.jsonl` 的,而消息正文那格要到 `part-end` / `run-end` 才 flush 进
+   `messages.jsonl` —— 崩在文本流中途,`messages.jsonl` 那格是空,`events.jsonl` 里却有
+   用户实际看到的半篇。方向是**事件比 messages.jsonl 更全**。
+
+2. **M5 读路径无需改代码。** `reducer.ts` 的 `assistant/chunks` 分支无条件累加
+   `part.text`,物化(`materializeContentParts`/`materializePartText`)读的也是 `part.text`,
+   **不以 `part.ended` 为门**。所以 `events` 读模式下 `projectChatMessages` 从 chunks 折出
+   那半篇 —— 哪怕这条 run 没有 `part-end`、没有 `run/end`(纯崩溃),或只补了 `prepare`
+   合成的 `run/end{interrupted}`。§13.12"投影为准"在读侧**本就成立、且免费**。切默认到
+   `events` 后,`messages.jsonl` 退役为只读遗留、不再供产品读,所以"把快照侧也改成保留
+   半篇"既无必要(读路径已对)也不该做(那等于往退役文件里回写重建)。**D 的 M5 这一半
+   = 读路径无为 + 一条回归护栏**:`packages/core/session/__tests__/projection-crash-half.test.ts`
+   钉住"crash-half 折出半篇、不是空",把 fold 改成"要 ended 才算"当场红。§13.12 的"写侧
+   对齐"至此撤销 —— 前提不成立。
+
+3. **真实 `~/.onething` 的覆盖形态(只读扫,只打计数,不 cat 内容)。** 427 间会话目录:
+   **399 间 E0/空**(`coverageState==='none'`,其中 396 间连 `events.jsonl` 都没有)、
+   **28 间原生覆盖**(`native`)、0 间已迁(`imported`)、1 份 legacy 整文件。对 28 间
+   `native` 按**消息 id**逐条比对(事件的 `user/message.data.message.id` /
+   `run/start.data.assistantMessageId` 等 vs `messages.jsonl` 的消息 id):**18 间事件已全
+   覆盖**(尾=全,切读安全),**10 间是真·混合覆盖**——事件只从 S1 升级切面起记着尾巴的
+   原生节点,`messages.jsonl` 里还压着升级前的**未覆盖头**。头的规模:40 / 28 / 64 / 169 /
+   169 / 140 / 64 / 122 / 43 / **506** 条(最后一间 `5b151462` 共 536 条,事件只覆盖尾 30)。
+
+4. **这才是 S2b 切默认的门槛级 bug,且不是 M5 同根。** `events-reads.ts` 的
+   `eventsListMessages` 只在 `state.nodes.length === 0` 时返回 `undefined`(退回 messages
+   模式);混合会话 fold 出的尾节点 > 0,于是它返回**只有尾巴**、`?? getSessionMessages()`
+   兜底**不触发**——头被静默丢掉(`5b151462` 会丢 506 条)。方向是**messages.jsonl 比事件
+   更全**,病根是 S1 升级切面(2026-08-19 才开始写事件),与 M5 的流式 flush 缺口**方向
+   相反、根因不同**。§13.14-E 的 `--apply` 对这 10 间全是 `skipped`(有原生节点),留了
+   "覆盖感知合并"这条尾巴——不切默认时无害,一旦切默认就丢头。
+
+**Phase 2 —— 覆盖感知合并落进 `--apply`(§13.14-E 那条尾巴的了结)**
+
+采用**导头留尾**(不是"整份快照 replace 遮蔽尾巴"):混合会话只把**未覆盖头**合成
+`message/imported`(`surfaceOp:append`、seq 1..H),原生尾事件整体 +H 重编号(复用 E 已有的
+`shiftEventRecord` 引用平移),投影 = 头(imported)+ 尾(原生)= 全份历史。**留尾**而非
+整份 replace 的理由:尾巴的原生事件带着 chunk-fold(含 M5 半篇)、tool/audit、请求细节,
+比 `messages.jsonl` 的扁平快照更全——replace 掉它等于把 M5 的收益在尾巴上吐回去。
+
+`applySession` 的 `coverage==='native'` 从"一律 skip"改为 `planNativeMerge` 分流:
+- **干净前缀/后缀**(未覆盖恰是一段头、其后全覆盖)→ `merged`:导头、留尾、重编号;
+- **已全覆盖**(头长 0)→ `covered`:一个字节不动(切读后本就读得回全部);
+- **有洞**(尾巴里仍有未覆盖消息)→ `skipped`:朴素导入会撞 id,不硬合,留人工。
+  真实 10 间**全是干净前缀**(扫描实证 `notInEvents === head` 逐间成立),所以全部走
+  `merged`;"有洞"是防御分支(真实数据 0 例)。覆盖 id 的认法与 `events-reads` 的节点身份
+  一致(`session/compacted` 的压缩卡 id 不认——认不出的覆盖被"干净后缀"判据当未覆盖,从而
+  保守跳过,绝不硬合)。备份(copy 进 `legacy-backup/`)/ 标记 / 幂等 / `--rollback` /
+  R-c 硬前置全部沿用 E,未新开路径。marker 记 `mode:'merged'` + `firstCoveredIndex`。
+
+**apply 一次都没对真实 store 跑过**(与 §13.14-E 同纪律):只在临时 store 上测。用户自己
+在需要时手动 `--apply`(备份 + 可回滚 + 幂等),切默认是其后的独立一步。
+
+**门(全部实跑)**
+
+- `bun run typecheck` 干净(node + web)。
+- `bunx vitest run packages/core/session packages/backend/session` **306 绿**(含新增:
+  migrate-apply `merged`/`covered`/有洞跳过/合并回滚 + M5 crash-half 2 条;`native()` 用例
+  从 `skipped` 改判 `covered`,`tallies mixed` 加 `mixnat` 走 `merged`/`covered`)。
+- `session:gate` 0 / `boundary:gate` 0。
+- `sessions:shadow-battery` **GREEN**(264 runs / 0 mismatch——D 没碰投影/recorder/core,
+  影子路径不受影响)。
+- `sessions:verify:gate`:**RED,但与 D 无关**。新增 2 条落在真实会话 `9c94531d`
+  (`canonical differs` + `projection has 1 message unknown to messages.jsonl`),另有 4 条
+  healed(§13.13 的 fd899977 等,advisory)。把 D 的三份改动全部按下(verify 路径 =
+  `session-verify-gate.mjs` → `session-verify.ts` → 投影,**D 一个字没碰**)后复跑,同样这
+  2 条——证明是**真机自升级以来的漂移**(§10.17 说的"现在的代码读过去的文件"),不是 D 的
+  回归。这条 `9c94531d` 的方向是"事件比 messages.jsonl 多一条"(≠ 混合覆盖的丢头),是
+  S 线的一条**新真机 mismatch 类待归类**,留给后续批(不在 D 范围:D = M5 + 覆盖感知合并)。
+
+- 交付:`scripts/migrate-sessions-events.mjs`(`coveredMessageId`/`coveredMessageIds`/
+  `planNativeMerge` + `applySession` 覆盖感知分流 + tally/CLI 加 `merged`/`covered`)、
+  `packages/backend/session/__tests__/migrate-apply.test.ts`(改 2 用例 + 加 4 用例 + 2 fixture)、
+  `packages/core/session/__tests__/projection-crash-half.test.ts`(M5 读侧护栏,新增)。
+  **投影 / recorder / `session-verify.ts` / 基线一字未动。**

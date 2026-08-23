@@ -94,6 +94,46 @@ function native(id = 'native'): void {
   ])
 }
 
+/**
+ * 真·混合覆盖(S1 升级切面):messages.jsonl 有 4 条(u1/a1 头 + u2/a2 尾),
+ * events.jsonl 只从升级点起覆盖尾巴(u2 的 user/message + a2 的 run)—— 头未覆盖。
+ * 覆盖是干净前缀/后缀,所以合并:导入 u1/a1,尾巴事件整体重编号留后。
+ */
+function mixedNative(id = 'mixnat'): void {
+  writeTranscript(id, [
+    { id: 'u1', role: 'user', content: 'q1(升级前,只在 messages)', timestamp: 1000 },
+    { id: 'a1', role: 'assistant', content: 'a1(升级前)', timestamp: 2000 },
+    { id: 'u2', role: 'user', content: 'q2(升级后)', timestamp: 3000 },
+    // a2.timestamp 与 run/start.data.timestamp 一致(投影从后者取助手时刻)。
+    { id: 'a2', role: 'assistant', content: 'a2(升级后)', timestamp: 3500 },
+  ])
+  writeEvents(id, [
+    { seq: 1, time: 3000, type: 'user/message', data: { message: { id: 'u2', role: 'user', content: 'q2(升级后)', timestamp: 3000 } }, surfaceOp: 'append' },
+    { seq: 2, time: 3500, type: 'run/start', data: { runId: 'r2', kind: 'send', assistantMessageId: 'a2', timestamp: 3500 }, surfaceOp: 'append' },
+    { seq: 3, time: 3600, type: 'assistant/chunks', data: { runId: 'r2', requestIndex: 1, messageId: 'a2', partIndex: 0, kind: 'text', time0: 1, dt: [0], text: ['a2(升级后)'] } },
+    { seq: 4, time: 4000, type: 'run/end', data: { runId: 'r2', outcome: 'completed' } },
+  ])
+}
+
+/**
+ * 有洞的混合:尾巴里 a2 被 run 覆盖,但它后面的 u3 没有任何事件覆盖 ——
+ * 覆盖不是干净后缀。朴素导入会把 a2 导重、撞 id,所以必须跳过(不硬合)。
+ */
+function holeyMixed(id = 'holey'): void {
+  writeTranscript(id, [
+    { id: 'u1', role: 'user', content: 'q1', timestamp: 1000 },
+    { id: 'a1', role: 'assistant', content: 'a1', timestamp: 2000 },
+    { id: 'u2', role: 'user', content: 'q2', timestamp: 3000 },
+    { id: 'a2', role: 'assistant', content: 'a2', timestamp: 4000 },
+    { id: 'u3', role: 'user', content: 'q3(尾巴里没被事件覆盖 = 洞)', timestamp: 5000 },
+  ])
+  writeEvents(id, [
+    { seq: 1, time: 3500, type: 'run/start', data: { runId: 'r2', kind: 'send', assistantMessageId: 'a2', timestamp: 3500 }, surfaceOp: 'append' },
+    { seq: 2, time: 3600, type: 'assistant/chunks', data: { runId: 'r2', requestIndex: 1, messageId: 'a2', partIndex: 0, kind: 'text', time0: 1, dt: [0], text: ['a2'] } },
+    { seq: 3, time: 4000, type: 'run/end', data: { runId: 'r2', outcome: 'completed' } },
+  ])
+}
+
 describe('coverageState', () => {
   it('reads the coverage shape off the event types', () => {
     expect(coverageState([{ type: 'message/imported' }])).toBe('imported')
@@ -175,14 +215,62 @@ describe('migrate --apply', () => {
     expect(fs.existsSync(path.join(sessionsDir, 'done', 'legacy-backup'))).toBe(false)
   })
 
-  it('skips a session that already has native surface coverage instead of duplicating it', () => {
+  it('leaves a fully event-covered native session untouched (status covered, no head to import)', () => {
     native()
     const before = fs.readFileSync(path.join(sessionsDir, 'native', 'events.jsonl'), 'utf8')
     const result = applySession(sessionsDir, 'native')
-    expect(result.status).toBe('skipped')
-    // 一个字节都没动。
+    expect(result.status).toBe('covered')
+    // 一个字节都没动 —— 事件已全覆盖,不需要迁移(切读后照样读回全部)。
     expect(fs.readFileSync(path.join(sessionsDir, 'native', 'events.jsonl'), 'utf8')).toBe(before)
     expect(fs.existsSync(path.join(sessionsDir, 'native', 'legacy-backup'))).toBe(false)
+  })
+
+  it('merges a truly-mixed session: imports only the uncovered head, keeps+renumbers the covered tail', () => {
+    mixedNative()
+    const result = applySession(sessionsDir, 'mixnat')
+    // 头 2 条(u1/a1)未被事件覆盖 → 导入;尾 4 条事件(u2/a2 的 run)整体 +2 重编号。
+    expect(result.status).toBe('merged')
+    expect(result).toMatchObject({ imported: 2, existingEvents: 4, shiftedBy: 2, firstCoveredIndex: 2 })
+
+    const events = readEvents('mixnat')
+    expect(events.map(e => e.seq)).toEqual([1, 2, 3, 4, 5, 6])
+    // 前 2 条是 imported 头(u1/a1),后 4 条是原生尾(u2 的 user/message + a2 的 run)。
+    expect(events.slice(0, 2).every(e => e.type === 'message/imported')).toBe(true)
+    expect((events[0].data as { message: { id: string } }).message.id).toBe('u1')
+    expect((events[1].data as { message: { id: string } }).message.id).toBe('a1')
+    expect(events[2].type).toBe('user/message')
+    // 投影 = 头 + 尾 = 全份 messages.jsonl(切读后不再丢头)。
+    expect(verifySession(sessionsDir, 'mixnat').issues).toEqual([])
+    // 备份:messages + 迁移前的 events 都进 legacy-backup/。
+    expect(fs.existsSync(path.join(sessionsDir, 'mixnat', 'legacy-backup', 'messages.jsonl'))).toBe(true)
+    expect(fs.existsSync(path.join(sessionsDir, 'mixnat', 'legacy-backup', 'events.jsonl'))).toBe(true)
+  })
+
+  it('re-merging a merged session is a no-op (in-band imported marker)', () => {
+    mixedNative()
+    applySession(sessionsDir, 'mixnat')
+    const before = fs.readFileSync(path.join(sessionsDir, 'mixnat', 'events.jsonl'), 'utf8')
+    const second = applySession(sessionsDir, 'mixnat')
+    expect(second.status).toBe('noop')
+    expect(fs.readFileSync(path.join(sessionsDir, 'mixnat', 'events.jsonl'), 'utf8')).toBe(before)
+  })
+
+  it('skips a mixed session whose coverage is not a clean suffix (hole in the tail)', () => {
+    // 尾巴里 a2 被覆盖但 u3 没有 —— 有洞,朴素导入会撞 id,须人工处理。
+    holeyMixed()
+    const before = fs.readFileSync(path.join(sessionsDir, 'holey', 'events.jsonl'), 'utf8')
+    const result = applySession(sessionsDir, 'holey')
+    expect(result.status).toBe('skipped')
+    // 一个字节都没动,不硬合。
+    expect(fs.readFileSync(path.join(sessionsDir, 'holey', 'events.jsonl'), 'utf8')).toBe(before)
+    expect(fs.existsSync(path.join(sessionsDir, 'holey', 'legacy-backup'))).toBe(false)
+  })
+
+  it('skips a session (native) where a run/start has NO covered assistant id fallback — but merges when it does', () => {
+    // 这条钉住覆盖 id 的提取:run/start → assistantMessageId 必须被认作已覆盖,
+    // 否则 a2 会被当成未覆盖、落进洞里而错误跳过。
+    mixedNative('mixnat2')
+    expect(applySession(sessionsDir, 'mixnat2').status).toBe('merged')
   })
 
   it('running --apply twice is idempotent (second pass is all no-op)', () => {
@@ -201,10 +289,12 @@ describe('migrate --apply', () => {
     mixed()
     alreadyMigrated()
     native()
+    mixedNative()
     const summary = applyMigration(store)
-    expect(summary.tally).toMatchObject({ migrated: 2, noop: 1, skipped: 1, error: 0 })
+    // native 已全覆盖 → covered;mixnat 混合 → merged;legacy/mixed → migrated;done → noop。
+    expect(summary.tally).toMatchObject({ migrated: 2, merged: 1, covered: 1, noop: 1, skipped: 0, error: 0 })
     // 迁完全绿。
-    for (const id of ['legacy', 'mixed', 'done', 'native']) {
+    for (const id of ['legacy', 'mixed', 'done', 'native', 'mixnat']) {
       expect(verifySession(sessionsDir, id).issues).toEqual([])
     }
   })
@@ -244,6 +334,20 @@ describe('migrate --rollback', () => {
     expect(result.status).toBe('rolled-back')
     expect(result.restoredEvents).toBe(true)
     expect(fs.readFileSync(path.join(sessionsDir, 'mixed', 'events.jsonl'), 'utf8')).toBe(before)
+  })
+
+  it('restores a merged (mixed-coverage) session back to its pre-merge tail events', () => {
+    mixedNative()
+    const before = fs.readFileSync(path.join(sessionsDir, 'mixnat', 'events.jsonl'), 'utf8')
+    expect(applySession(sessionsDir, 'mixnat').status).toBe('merged')
+    const result = rollbackSession(sessionsDir, 'mixnat')
+    expect(result.status).toBe('rolled-back')
+    expect(result.restoredEvents).toBe(true)
+    // 尾巴事件逐字节复原,messages.jsonl 从未被动过。
+    expect(fs.readFileSync(path.join(sessionsDir, 'mixnat', 'events.jsonl'), 'utf8')).toBe(before)
+    expect(fs.existsSync(path.join(sessionsDir, 'mixnat', 'legacy-backup', 'events-migration.json'))).toBe(false)
+    // 复原后可再合并。
+    expect(applySession(sessionsDir, 'mixnat').status).toBe('merged')
   })
 
   it('re-applying after a rollback works again', () => {
