@@ -4,13 +4,18 @@
  * `reasoningStyle:'openrouter-reasoning'`;`maxTokensField` 用默认的
  * `max_tokens`,`includeAssistantReasoning` 没给。
  *
- * 上游的 `reasoning_details[]` 原样回传是 P3 的事。`cost` / `cache_write_tokens`
+ * 上游的 `reasoning_details[]` 从 P3-4 起原样回传:解码在
+ * `thinking/openrouter-reasoning.ts`(同一条线型的编码/解码/回传一个对象),
+ * 回传在 codec 的 `replayReasoningDetails`。`cost` / `cache_write_tokens`
  * 从 P0b-A 起入三桶(见下)。PDF 从 P3-1 起走 `file` 块 + `file-parser` 插件
  * (见 `openRouterExtraBody`)。
  */
 import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
 import type { Dialect, TurnContext, UsagePathTable } from "../base/index.js";
-import { openRouterReasoningWire } from "../thinking/index.js";
+import {
+	decodeOpenRouterReasoningDetails,
+	openRouterReasoningWire,
+} from "../thinking/index.js";
 import {
 	OPENAI_CHAT_IMAGE_DETAIL_VALUES,
 	OPENAI_CHAT_PDF_DELIVERED_NOTE,
@@ -173,13 +178,32 @@ function imageModalitiesExtraBody(turn: TurnContext): Record<string, unknown> {
 		: {};
 }
 
+/**
+ * 这条线上 OpenRouter 多解出来的两种块(P3-4 + P3-2)。
+ *
+ * 顺序:**思维链在正文与图之前** —— 上游把 `reasoning_details` 与
+ * `content` 放在同一块里时,思考先于产出,与 `reasoning-delta` 在
+ * `parseStream` 里先于 `text-delta` 是同一条口径。
+ */
+export function decodeOpenRouterExtras(
+	chunk: unknown,
+	turn: TurnContext,
+): AgentTurnStreamEvent[] {
+	return [
+		...decodeOpenRouterReasoningDetails(chunk, turn),
+		...decodeOpenRouterImageOutput(chunk, turn),
+	];
+}
+
 export const OPENROUTER_DIALECT = defineOpenAIChatDialect({
 	id: "openrouter",
 	defaultBaseUrl: "https://openrouter.ai/api/v1",
 	reasoning: openRouterReasoningWire,
 	filePdf: "openai-file",
 	usage: openAIChatUsage(OPENROUTER_USAGE_TABLE),
-	decodeExtras: decodeOpenRouterImageOutput,
+	decodeExtras: decodeOpenRouterExtras,
+	// OpenRouter 官方:多轮/工具调用必须原样回传整段连续的 `reasoning_details`。
+	replayReasoningDetails: true,
 	extraBody: openRouterExtraBody,
 	// 网关按 OpenAI 的形状转发内容块,`image_url.detail` 原样过去(P3-3)。
 	providerOptions: { imageDetail: OPENAI_CHAT_IMAGE_DETAIL_VALUES },

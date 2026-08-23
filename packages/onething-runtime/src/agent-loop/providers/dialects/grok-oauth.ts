@@ -4,8 +4,8 @@
  * providerId 不同:错误消息、dump、账本都按 id 归档。
  */
 import { grokEffortWire } from "../thinking/index.js";
-import { OPENAI_CHAT_IMAGE_DETAIL_VALUES, openAIChatUsage } from "../wires/index.js";
-import { GROK_USAGE_TABLE } from "./grok.js";
+import { openAIChatUsage } from "../wires/index.js";
+import { GROK_PROVIDER_OPTIONS, GROK_USAGE_TABLE, decodeGrokCitations } from "./grok.js";
 import {
 	defineOpenAIChatDialect,
 	openAIChatTransportCapabilities,
@@ -19,8 +19,9 @@ export const GROK_OAUTH_DIALECT = defineOpenAIChatDialect({
 	includeAssistantReasoning: true,
 	usage: openAIChatUsage(GROK_USAGE_TABLE),
 	extraBody: promptCacheKeyExtraBody,
-	// xAI 的 vision 端点收 `image_url.detail`(标准三值);`verbosity` 是
-	// OpenAI 自己的字段,这家不认(P3-3)。
-	providerOptions: { imageDetail: OPENAI_CHAT_IMAGE_DETAIL_VALUES },
+	// 线材与 `grok` 一字不差:Live Search 的请求侧白名单与响应侧 `citations[]`
+	// 都从那份配方借过来(P3-5a),两条通路对同一个端点永远同解。
+	decodeExtras: decodeGrokCitations,
+	providerOptions: GROK_PROVIDER_OPTIONS,
 	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
 });

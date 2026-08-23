@@ -86,7 +86,9 @@ export {
 	openAIAcceptsNoneEffort,
 } from "./openai-effort.js";
 export {
+	OPENROUTER_REASONING_DETAILS_TYPE,
 	OpenRouterReasoningWire,
+	decodeOpenRouterReasoningDetails,
 	openRouterReasoningWire,
 } from "./openrouter-reasoning.js";
 export {

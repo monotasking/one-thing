@@ -102,6 +102,12 @@ export interface OpenAIChatDialectSpec {
 	/** 多轮是否回传 `reasoning_content`。 */
 	includeAssistantReasoning?: boolean;
 	/**
+	 * 多轮是否回传 `reasoning_details[]`(P3-4)。**只有 OpenRouter 开** ——
+	 * 那些项挂在 `provider:'openrouter'` 名下,别家开了也拼不出东西,但字段
+	 * 本身是这条线上 OpenRouter 独有的,所以按家声明而不是默认全开。
+	 */
+	replayReasoningDetails?: boolean;
+	/**
 	 * PDF 文件块怎么投(P3-1)。**不给 = `'none'`**:只有确认收得下 `file` 块的
 	 * 端点才开(openai / openrouter),其余家保持可见留痕。
 	 */
@@ -157,6 +163,7 @@ export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialec
 			spec.parts ??
 			new OpenAIChatPartCodec({
 				includeAssistantReasoning: Boolean(spec.includeAssistantReasoning),
+				replayReasoningDetails: Boolean(spec.replayReasoningDetails),
 				filePdf: spec.filePdf ?? "none",
 				...(spec.providerOptions?.imageDetail === undefined
 					? {}

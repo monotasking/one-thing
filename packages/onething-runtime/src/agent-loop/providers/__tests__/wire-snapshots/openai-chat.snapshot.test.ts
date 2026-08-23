@@ -234,6 +234,59 @@ const HISTORY_MESSAGES: AgentMessage[] = [
 	{ role: "user", content: "总结一下。" },
 ];
 
+/**
+ * OpenRouter 的两项 `reasoning_details`(P3-4)—— 逐字照官方三种 `type` 里的
+ * 两种写:`reasoning.encrypted`(载荷在 `data`)与 `reasoning.text`。它们经
+ * **`providerData` 形状**进历史:消息上那一格 `{type:'provider-data',
+ * providerData}` 由历史重建摊回 `AgentMessage.providerData[]`
+ * (`getHistoryProviderData` → `providerDataFromOnethingContentPart`),这里
+ * 直接给重建之后的形状。
+ */
+const REASONING_DETAIL_ENCRYPTED = {
+	type: "reasoning.encrypted",
+	id: "rs_1",
+	index: 0,
+	format: "openai-responses-v1",
+	data: "ENCRYPTED-PAYLOAD-1",
+} as const;
+
+const REASONING_DETAIL_TEXT = {
+	type: "reasoning.text",
+	id: "rs_2",
+	index: 1,
+	format: "unknown",
+	text: "再决定读哪个文件。",
+	signature: "sig-2",
+} as const;
+
+/** 两条 providerData 各带一项 —— 跨条的顺序也必须是声明顺序。 */
+const REASONING_DETAILS_HISTORY: AgentMessage[] = [
+	SYSTEM_MESSAGE,
+	{ role: "user", content: "读一下 a.txt。" },
+	{
+		role: "assistant",
+		content: "我先读一下这个文件。",
+		reasoningContent: "先确认文件存在，再决定要不要写。",
+		providerData: [
+			{
+				provider: "openrouter",
+				type: "reasoning-details",
+				details: [REASONING_DETAIL_ENCRYPTED],
+			},
+			{
+				provider: "openrouter",
+				type: "reasoning-details",
+				details: [REASONING_DETAIL_TEXT],
+			},
+		],
+		toolCalls: [
+			{ id: "call_read", name: "read_file", arguments: '{"path":"a.txt"}' },
+		],
+	},
+	{ role: "tool", toolCallId: "call_read", content: "hello from a.txt" },
+	{ role: "user", content: "总结一下。" },
+];
+
 type RequestCase = Omit<AgentTurnRequest, "model" | "turn">;
 
 /**
@@ -441,6 +494,72 @@ describe("openai-chat wire snapshots — request bodies", () => {
 		);
 	});
 
+	/**
+	 * xAI 的 Live Search(P3-5a)。袋里的 `searchParameters` 是**一个对象**,
+	 * 它自己的键再过一层白名单:三个合法键原样写进顶层 `search_parameters`,
+	 * `bogus` 一个字都不出现(它被丢时留的那条 `setting-dropped` 在
+	 * `wires/__tests__/grok-search-parameters.test.ts` 里断)。
+	 *
+	 * 上面五个用例**不带袋**,所以那批 grok fixture 一个字节都没变。
+	 */
+	it("grok — request providerOptions bag: search_parameters", async () => {
+		const dump = await captureRequest("grok", {
+			messages: [SYSTEM_MESSAGE, USER_MESSAGE],
+			providerOptions: {
+				grok: {
+					searchParameters: {
+						mode: "auto",
+						max_search_results: 5,
+						return_citations: true,
+						bogus: 1,
+					},
+				},
+			},
+		});
+		const body = dump.requestBody as { search_parameters?: unknown };
+		expect(body.search_parameters).toEqual({
+			mode: "auto",
+			max_search_results: 5,
+			return_citations: true,
+		});
+		expect(JSON.stringify(dump.requestBody)).not.toContain("bogus");
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
+			fixturePath("grok", "provider-options-search.request.json"),
+		);
+	});
+
+	/**
+	 * OpenRouter 的 `reasoning_details[]` 多轮回传(P3-4)。
+	 *
+	 * 官方要求是「整段连续的 `reasoning_details` 原样送回,顺序不可改」,所以
+	 * 这份 fixture 守三件事:**项的全部字段一个不少**、**跨两条 providerData
+	 * 的顺序仍是声明顺序**、以及**只有 openrouter 写这个字段**(别家的对照断在
+	 * `wires/__tests__/openrouter-reasoning-details.test.ts`)。
+	 *
+	 * 上面五个用例的 assistant **不带 `providerData`**,所以那批 fixture 一个
+	 * 字节都没变。
+	 */
+	it("openrouter — history replays `reasoning-details`", async () => {
+		const dump = await captureRequest(
+			"openrouter",
+			{ messages: REASONING_DETAILS_HISTORY, tools: TOOLS },
+		);
+		const assistant = (
+			dump.requestBody as { messages: Array<Record<string, unknown>> }
+		).messages.find((message) => message.role === "assistant")!;
+		// 原序、全字段。
+		expect(assistant.reasoning_details).toEqual([
+			REASONING_DETAIL_ENCRYPTED,
+			REASONING_DETAIL_TEXT,
+		]);
+		// openrouter 今天不开 `includeAssistantReasoning`(见 `dialects/openrouter.ts`)
+		// —— 这一位不属于 P3-4,行为一个字不动,由这条断言钉住。
+		expect(assistant).not.toHaveProperty("reasoning_content");
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
+			fixturePath("openrouter", "history-reasoning-details.request.json"),
+		);
+	});
+
 	it("deepseek — thinking-unset on a non-reasoner model", async () => {
 		const dump = await captureRequest(
 			"deepseek",
@@ -515,6 +634,32 @@ describe("openai-chat wire snapshots — stream parsing", () => {
 		);
 	});
 
+	/**
+	 * OpenRouter 的结构化思维链(P3-4)。`delta.reasoning_details[]` 的每一项
+	 * **原样**装进一条 `provider-data` 事件(一块一条,块内多项同序);
+	 * `reasoning` / `reasoning_content` 的文字增量照旧走 `reasoning-delta`,
+	 * 两条线并存 —— 这份快照里第二块同时有两者。
+	 */
+	it("openrouter — `reasoning-details` → provider-data", async () => {
+		const provider = buildProvider(
+			"openrouter",
+			createFetchStub(() =>
+				sseResponse(readFixture("openrouter", "sse-reasoning-details.txt")),
+			),
+		);
+		const events = await drain(
+			provider.streamTurn({
+				messages: [SYSTEM_MESSAGE, USER_MESSAGE],
+				tools: TOOLS,
+				model: PROVIDERS.openrouter.model,
+				turn: 1,
+			}),
+		);
+		await expect(snapshotJson(events)).toMatchFileSnapshot(
+			fixturePath("openrouter", "events-reasoning-details.json"),
+		);
+	});
+
 	it("openrouter — unified `reasoning` field", async () => {
 		const provider = buildProvider(
 			"openrouter",
@@ -532,6 +677,33 @@ describe("openai-chat wire snapshots — stream parsing", () => {
 		);
 		await expect(snapshotJson(events)).toMatchFileSnapshot(
 			fixturePath("openrouter", "events-reasoning-field.json"),
+		);
+	});
+
+	/**
+	 * xAI 的 Live Search 引文(P3-5a)。`citations[]` 是**块的顶层字段**(不在
+	 * `choices[].delta` 里),通常随最后一块一起来一次全量。
+	 *
+	 * 这份快照只到 **provider 事件层**:消息上落哪一格由引擎那侧的表判
+	 * (`provider-data.ts`:非 codex 的 provider-data 落一格 `provider-data`),
+	 * 怎么呈现是渲染层将来的事,本期不做 UI。
+	 */
+	it("grok — top-level citations[] → provider-data", async () => {
+		const provider = buildProvider(
+			"grok",
+			createFetchStub(() =>
+				sseResponse(readFixture("grok", "sse-citations.txt")),
+			),
+		);
+		const events = await drain(
+			provider.streamTurn({
+				messages: [SYSTEM_MESSAGE, { role: "user", content: "今天有什么新闻？" }],
+				model: PROVIDERS.grok.model,
+				turn: 1,
+			}),
+		);
+		await expect(snapshotJson(events)).toMatchFileSnapshot(
+			fixturePath("grok", "events-citations.json"),
 		);
 	});
 });

@@ -58,12 +58,14 @@ export {
 } from "./openai-chat-errors.js";
 export {
 	DEEPSEEK_IMAGE_DETAIL_VALUES,
+	GROK_SEARCH_MODE_VALUES,
 	OPENAI_CHAT_IMAGE_DETAIL_VALUES,
 	OPENAI_CHAT_VERBOSITY_VALUES,
 	openAIChatImageDetail,
 	openAIChatProviderOptionsExtraBody,
 	pickOpenAIChatProviderOptions,
 	readOpenAIChatProviderOptionBag,
+	type GrokSearchMode,
 	type OpenAIChatProviderOptionDropReason,
 	type OpenAIChatProviderOptionDropped,
 	type OpenAIChatProviderOptionSupport,
@@ -73,6 +75,7 @@ export {
 export {
 	OPENAI_CHAT_PDF_DELIVERED_NOTE,
 	OpenAIChatPartCodec,
+	openRouterReasoningDetails,
 	toOpenAIChatTools,
 	type OpenAIChatCodec,
 	type OpenAIChatFilePdfMode,

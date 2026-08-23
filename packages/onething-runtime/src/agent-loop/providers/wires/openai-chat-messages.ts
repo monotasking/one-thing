@@ -11,8 +11,10 @@ import { agentToolMessageContentToText } from "@onething/core/agent-loop";
 import type {
 	AgentContentPart,
 	AgentJsonObject,
+	AgentJsonValue,
 	AgentMessage,
 	AgentMessageContent,
+	AgentProviderData,
 	AgentTool,
 	AgentTurnStreamEvent,
 } from "@onething/core/agent-loop";
@@ -26,6 +28,7 @@ import {
 	type TurnContext,
 	type UndeliverablePartLike,
 } from "../base/index.js";
+import { OPENROUTER_REASONING_DETAILS_TYPE } from "../thinking/openrouter-reasoning.js";
 import { openAIChatImageDetail } from "./openai-chat-provider-options.js";
 
 // ---------------------------------------------------------------------------
@@ -52,6 +55,14 @@ export type OpenAIChatMessage =
 			role: "assistant";
 			content: string | null;
 			reasoning_content?: string;
+			/**
+			 * OpenRouter 的结构化思维链(P3-4)。**原样回传**:项的内容由上游
+			 * 定义(`reasoning.summary` / `reasoning.encrypted` / `reasoning.text`
+			 * 三种 `type`,带 `id` / `index` / `format` / `text|summary|data|
+			 * signature` 等),这一层一个字段都不解释、一个字段都不重排。
+			 * 与 `reasoning_content` 并存 —— 两者是两件事,不是二选一。
+			 */
+			reasoning_details?: AgentJsonValue[];
 			tool_calls?: OpenAIChatToolCall[];
 	  }
 	| { role: "tool"; tool_call_id: string; content: string };
@@ -210,6 +221,16 @@ export interface OpenAIChatPartCodecOptions {
 	/** 多轮回传 `reasoning_content`(Kimi / Zhipu / Qwen / Grok 要,OpenAI 不要)。 */
 	includeAssistantReasoning?: boolean;
 	/**
+	 * 多轮回传 `reasoning_details[]`(P3-4)—— **只有 OpenRouter 开**。
+	 *
+	 * OpenRouter 的官方要求是「整段连续的 `reasoning_details` 原样送回,顺序
+	 * 不可改」,所以这里做的事只有一件:把这条 assistant 消息上所有
+	 * `provider:'openrouter'` 的 `reasoning-details` 载荷**按声明顺序**拼成
+	 * 一个数组。不给 = 该字段一个字节都不出现(换家时那些 details 也就自然
+	 * 不回传 —— 它们挂在 `provider:'openrouter'` 名下)。
+	 */
+	replayReasoningDetails?: boolean;
+	/**
 	 * PDF 文件块。**默认 `'none'`** —— 十一家里只有确认收得下的才开
 	 * (openai / openrouter),`custom-openai` 这类自建端点能力未知,保持今天的
 	 * 可见留痕而不是发一个可能 400 的块。
@@ -239,6 +260,37 @@ export interface OpenAIChatPartCodecOptions {
  * 读它决定要不要挂 `plugins: file-parser` —— codec 不直接写请求体。
  */
 export const OPENAI_CHAT_PDF_DELIVERED_NOTE = "pdf-delivered";
+
+/**
+ * 这条 assistant 消息上全部 OpenRouter `reasoning_details` 项,**按声明顺序**
+ * 摊平成一个数组(P3-4)。
+ *
+ * 与 `codexEncryptedReasoning`(`wires/openai-responses-messages.ts`)同一条
+ * 判例:回传读的是 `AgentMessage.providerData[]` —— 历史重建把消息上那些
+ * `{type:'provider-data', providerData}` 格摊回这个数组(`getHistoryProviderData`
+ * → `providerDataFromOnethingContentPart`),所以直播与重建两条路读到的是同一份。
+ *
+ * 一条 `provider-data` 可能带多项(provider 侧按块发),所以这里是**两层**
+ * 摊平:先按条,再按条内顺序。
+ */
+export function openRouterReasoningDetails(message: AgentMessage): AgentJsonValue[] {
+	const details: AgentJsonValue[] = [];
+	for (const data of message.providerData ?? []) {
+		if (!isOpenRouterReasoningDetails(data)) continue;
+		for (const item of data.details) details.push(item);
+	}
+	return details;
+}
+
+function isOpenRouterReasoningDetails(
+	data: AgentProviderData,
+): data is AgentProviderData & { details: AgentJsonValue[] } {
+	return (
+		data.provider === "openrouter" &&
+		data.type === OPENROUTER_REASONING_DETAILS_TYPE &&
+		Array.isArray(data.details)
+	);
+}
 
 export class OpenAIChatPartCodec implements OpenAIChatCodec {
 	constructor(private readonly options: OpenAIChatPartCodecOptions = {}) {}
@@ -311,12 +363,19 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 	assistant(message: AgentMessage): OpenAIChatMessage[] {
 		const content = contentToText(message.content);
 		const toolCalls = toolCallsOf(message);
+		// 原样、连续、按原顺序 —— 空数组不写字段(不给上游一个空壳)。
+		const reasoningDetails = this.options.replayReasoningDetails
+			? openRouterReasoningDetails(message)
+			: [];
 		return [
 			{
 				role: "assistant",
 				content: content || null,
 				...(this.options.includeAssistantReasoning && message.reasoningContent
 					? { reasoning_content: message.reasoningContent }
+					: {}),
+				...(reasoningDetails.length > 0
+					? { reasoning_details: reasoningDetails }
 					: {}),
 				...(toolCalls ? { tool_calls: toolCalls } : {}),
 			},

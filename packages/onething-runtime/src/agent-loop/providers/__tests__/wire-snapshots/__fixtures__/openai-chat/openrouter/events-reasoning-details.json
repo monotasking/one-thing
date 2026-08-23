@@ -1,0 +1,66 @@
+[
+  {
+    "delta": "先看一眼目录。",
+    "turn": 1,
+    "type": "reasoning-delta"
+  },
+  {
+    "providerData": {
+      "details": [
+        {
+          "data": "ENCRYPTED-PAYLOAD-1",
+          "format": "openai-responses-v1",
+          "id": "rs_1",
+          "index": 0,
+          "type": "reasoning.encrypted"
+        }
+      ],
+      "provider": "openrouter",
+      "type": "reasoning-details"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "providerData": {
+      "details": [
+        {
+          "format": "unknown",
+          "id": "rs_2",
+          "index": 1,
+          "signature": "sig-2",
+          "text": "再决定读哪个文件。",
+          "type": "reasoning.text"
+        }
+      ],
+      "provider": "openrouter",
+      "type": "reasoning-details"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "delta": "Hello",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "delta": ", world.",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "finishReason": "stop",
+    "turn": 1,
+    "type": "finish",
+    "usage": {
+      "cacheReadTokens": 64,
+      "cacheWriteTokens": 12,
+      "inputTokens": 108,
+      "outputTokens": 45,
+      "providerCostUSD": 0.00123,
+      "reasoningTokens": 30,
+      "totalTokens": 165
+    }
+  }
+]
