@@ -65,7 +65,6 @@ import {
 	flushSessionSave as flushAppStoreSessionSave,
 	getCurrentSessionId as getAppStoreCurrentSessionId,
 	getSession as getAppStoreSession,
-	getSessionMessagesPage as getAppStoreSessionMessagesPage,
 	getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers,
 	getSessions as getAppStoreSessions,
 	getSessionsList as getAppStoreSessionsList,
@@ -2976,10 +2975,12 @@ export function createAppBackedServerSessionStore(
 		deleteSession: (sessionId) => deleteAppStoreSession(sessionId),
 		flushSession: (sessionId) => flushAppStoreSessionSave(sessionId),
 		flushAll: () => flushAllAppStorePendingSaves(),
+		// S2b:app-store 背书的这只读门面两条读法都收口到 `appSessionReads`,
+		// `ONETHING_SESSION_READ=events` 因此对分页也生效;messages 模式下
+		// `pageMessages` 逐字走同一个 `getSessionMessagesPage`(store.js 再导出的
+		// 就是 stores/sessions 那份),页信封一格不动。
 		getMessagesPage: (request) =>
-			getAppStoreSessionMessagesPage(
-				request,
-			) as GetSessionMessagesPageResponse,
+			appSessionReads.pageMessages(request) as GetSessionMessagesPageResponse,
 		getUserMessageMarkers: (sessionId) =>
 			getAppStoreSessionUserMessageMarkers(sessionId),
 	};

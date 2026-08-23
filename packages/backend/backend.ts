@@ -56,6 +56,8 @@ import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from '@onething/runtime/acp'
 import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
+import { configureSessionHistoryBuilder } from './session/reads.js'
+import { buildHistoryMessages, historyProjectionRecipe } from './wiring/engine/stream/message-helpers.js'
 import { getLogger } from './wiring/logging/index.js'
 
 const log = getLogger('app.backend')
@@ -78,6 +80,14 @@ export function configureAppRuntimeAdapters(): void {
   configureAppSkillManage()
   configureAppSkillsLoader()
   configureAppPermissionGrants()
+  // S2b step C:`sliceForHistory` 的模型历史构造。两条路都用真机那份历史构造
+  // (消息侧 `buildHistoryMessages`、事件侧 `historyProjectionRecipe` →
+  // `projectModelHistory`),但它们身后是整棵 provider 树,`reads.ts` 不能静态
+  // 引用(会拖垮上游轻量单测),所以在这里装进读门面。
+  configureSessionHistoryBuilder({
+    fromMessages: (messages, session) => buildHistoryMessages([...messages], session),
+    recipe: session => historyProjectionRecipe(session),
+  })
 }
 
 export interface OnethingBackendHooks {

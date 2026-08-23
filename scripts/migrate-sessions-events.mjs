@@ -1,17 +1,24 @@
 #!/usr/bin/env node
 /**
- * 老会话 → 事件日志的迁移(S2a **只实现 `--dry-run`**,§11.1)。
+ * 老会话 → 事件日志的迁移(§11.1 / §11.2)。
  *
- *   bun run migrate:sessions:events --dry-run [--store PATH] [--json] [--limit N]
+ *   node scripts/migrate-sessions-events.mjs --dry-run [--store PATH] [--json] [--limit N]
+ *   node scripts/migrate-sessions-events.mjs --apply   [--store PATH] [--json] [--limit N]
+ *   node scripts/migrate-sessions-events.mjs --rollback <sessionId>|--all [--store PATH]
  *
  * 今天的老会话在事件层是**空的**:它们的历史事实住在 `messages.jsonl` 里,
- * `events.jsonl`(如果有)只记着 S1 之后那几条七类事件。迁移就是把每条消息
- * 合成一条 `message/imported`,让投影从此有话可说。
+ * `events.jsonl`(如果有)只记着 S1 之后那几条七类事件(E0,工具/请求级,
+ * 折不出任何一条消息)。迁移就是把每条消息合成一条 `message/imported`,让
+ * 投影从此有话可说。
  *
- * 本期一个字节都不写 —— `--apply` 明确拒绝(退出码 2)。这一版要回答的是
- * "如果写,会发生什么":哪些文件在白名单里、哪些不认识、每间会话会多出多少
- * 事件与多少字节、已经有 events.jsonl 的会话要怎么重编号、以及**现在有没有
- * 人正在用这个 store**。
+ * `--dry-run` 只回答"如果写会发生什么":白名单、未知文件、每间会话多出多少
+ * 事件与字节、已有 events.jsonl 的会话怎么重编号、现在有没有人在用这个 store。
+ * 全程只读,真实 `~/.onething` 上跑它是安全的。
+ *
+ * `--apply` 真的写(S2b):按 dry-run 的计划把 `message/imported` 落进
+ * `events.jsonl`。**先备份、再原子写**;幂等(重跑是 no-op);出错就跳过那间,
+ * 不半写坏文件。R-c 硬前置照旧在最前面 —— 有活的 core 拿着这个 store 就拒绝
+ * 运行,没有绕过口。
  *
  * ## 合成规则(报告里逐条列出来的那份)
  *
@@ -22,11 +29,27 @@
  *  - 顺序 = `messages.jsonl` 里的顺序,seq 从 1 起;
  *  - 已经有 `events.jsonl` 的会话:imported 插在**现有事件之前**,现有事件
  *    整体 +N 重编号,内部引用(`surfaceOp.start/end`、`sourceEventSeqs`、
- *    `sourceSeq`、`triggerEventSeq`)同步平移。理由:导入的历史发生在那些
- *    事件之前,倒过来的话 surface 的呈现序就错了。
+ *    `sourceSeq`、`triggerEventSeq`、`request/recipe.messages[].eventSeq`)同步
+ *    平移。理由:导入的历史发生在那些事件之前,倒过来的话 surface 的呈现序就错了。
  *
- * **只读**:全程 `readFileSync` / `statSync`,不写任何文件(连日志也只打到
- * stdout)。真实 `~/.onething` 上跑它是安全的。
+ * ## 谁需要迁移 / 谁不动(§11.3 裁定 4、§10.16)
+ *
+ * `--apply` 只碰**折不出任何一条消息节点**的会话(E0 七类 / 空事件)——它们
+ * 的历史还只在 `messages.jsonl` 里。判据看事件类型:
+ *  - 已有 `message/imported` = 这间已经迁过 → **no-op**(幂等的带内标记);
+ *  - 已有 `user/message` / `system/message` / `run/start` / `session/compacted`
+ *    / `user/message-edited` 任何一类节点 = 事件里已有原生覆盖 → **跳过并报告**
+ *    (原生尾覆盖 + 未覆盖头 的"混合覆盖会话"要 S2b 的覆盖感知合并,朴素的
+ *    "全量导入 + 重编号"会把尾巴导重 → 投影撞 id;所以这里不碰,不弄坏它);
+ *  - 否则(E0 / 空)= **要迁**。真实 store 上绝大多数会话是这一类(§11.3)。
+ *
+ * ## 备份策略(copy,不 move)
+ *
+ * §11.2 的意图是"原件留着可回滚"。这里**复制**原 `messages.jsonl`(以及迁移
+ * 前的 `events.jsonl`,如果有)到会话目录内的 `legacy-backup/` —— 复制而非
+ * 移动,好让 `messages` 读模式在切默认之前照旧工作(B8 记的"就地作快照 vs 备份
+ * 到 legacy-backup"矛盾,这里判给**复制**:两份都留,原地那份继续被读)。
+ * 一份 `legacy-backup/events-migration.json` 记着迁移出处,供 `--rollback` 认路。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -302,6 +325,307 @@ export function buildPlan(store, options = {}) {
   }
 }
 
+// ============ --apply(§11.2)============
+
+/** 迁移出处 + 备份指纹,住在会话目录内的 legacy-backup/(白名单子目录)。 */
+const MIGRATION_MARKER = 'events-migration.json'
+const BACKUP_DIR = 'legacy-backup'
+
+/** 会造出一个 surface **消息节点**的事件类型(E0 的 tool/result 折进 run,不算)。 */
+const MESSAGE_NODE_TYPES = new Set([
+  'user/message',
+  'system/message',
+  'user/message-edited',
+  'message/imported',
+  'run/start',
+  'session/compacted',
+])
+
+/** 逐条读出 messages.jsonl 里的消息(原样,不设大小上限 —— apply 必须导全)。 */
+function readMessagesForApply(file) {
+  let text
+  try {
+    text = fs.readFileSync(file, 'utf8')
+  } catch {
+    return undefined
+  }
+  const messages = []
+  let corrupt = 0
+  for (const line of text.split('\n')) {
+    if (!line) continue
+    let record
+    try {
+      record = JSON.parse(line)
+    } catch {
+      corrupt += 1
+      continue
+    }
+    if (record?.t !== 'm' || !record.m) continue
+    messages.push(record.m)
+  }
+  return { messages, corrupt }
+}
+
+/** 逐条读出 events.jsonl 的原始记录(按 seq 稳定升序;半行/空行跳过)。 */
+function readEventRecords(file) {
+  let text
+  try {
+    text = fs.readFileSync(file, 'utf8')
+  } catch {
+    return { records: [], existed: false }
+  }
+  const parsed = []
+  let order = 0
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let record
+    try {
+      record = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (typeof record?.seq !== 'number' || !Number.isFinite(record.seq)) continue
+    parsed.push({ record, order: order++ })
+  }
+  parsed.sort((a, b) => (a.record.seq - b.record.seq) || (a.order - b.order))
+  return { records: parsed.map(entry => entry.record), existed: true }
+}
+
+/** 事件里现有的覆盖形态:'imported'(迁过)/ 'native'(有原生节点)/ 'none'(E0 或空)。 */
+export function coverageState(records) {
+  let hasImported = false
+  let hasNative = false
+  for (const record of records) {
+    if (record.type === 'message/imported') hasImported = true
+    else if (MESSAGE_NODE_TYPES.has(record.type)) hasNative = true
+  }
+  if (hasImported) return 'imported'
+  if (hasNative) return 'native'
+  return 'none'
+}
+
+/** 一条 message/imported 记录(与 dry-run 的 importedLineBytes 逐字段同形)。 */
+function makeImportedRecord(message, seq) {
+  return {
+    seq,
+    time: typeof message?.timestamp === 'number' ? message.timestamp : 0,
+    type: 'message/imported',
+    data: { message, synthetic: true },
+    surfaceOp: 'append',
+  }
+}
+
+/**
+ * 把一条现有事件整体平移:seq 与所有内部 seq 引用都过 `remap`。
+ *
+ * 引用字段(§9.1 + §11.1):顶层 `surfaceOp.{start,end}` / `sourceEventSeqs[]`,
+ * data 里的 `sourceSeq` / `triggerEventSeq` / `messages[].eventSeq`(request/recipe)。
+ * remap 认不出的 seq(迁移前就悬着的引用)按 +shift 兜底,不新造错乱。
+ */
+function shiftEventRecord(record, remap) {
+  const next = { ...record, seq: remap(record.seq) }
+  if (next.surfaceOp && typeof next.surfaceOp === 'object') {
+    next.surfaceOp = { ...next.surfaceOp, start: remap(next.surfaceOp.start), end: remap(next.surfaceOp.end) }
+  }
+  if (Array.isArray(next.sourceEventSeqs)) {
+    next.sourceEventSeqs = next.sourceEventSeqs.map(seq => (typeof seq === 'number' ? remap(seq) : seq))
+  }
+  if (next.data && typeof next.data === 'object') {
+    const data = { ...next.data }
+    for (const field of SEQ_REFERENCE_FIELDS) {
+      if (typeof data[field] === 'number') data[field] = remap(data[field])
+    }
+    if (Array.isArray(data.messages)) {
+      data.messages = data.messages.map(entry =>
+        entry && typeof entry === 'object' && typeof entry.eventSeq === 'number'
+          ? { ...entry, eventSeq: remap(entry.eventSeq) }
+          : entry)
+    }
+    next.data = data
+  }
+  return next
+}
+
+/** 原子写:先写 .tmp 再 rename(崩溃只会留下 .tmp,不会半写坏正本)。 */
+function atomicWrite(file, text) {
+  const tmp = `${file}.migrate-tmp.${process.pid}`
+  fs.writeFileSync(tmp, text)
+  fs.renameSync(tmp, file)
+}
+
+/**
+ * 迁移一间会话。@returns 结果对象(status:migrated|noop|skipped|error|empty)。
+ *
+ * 不抛:任何一间出错都收进结果的 error 字段,由调用方跳过并汇报。
+ */
+export function applySession(sessionsDir, sessionId) {
+  const dir = path.join(sessionsDir, sessionId)
+  const eventsFile = path.join(dir, 'events.jsonl')
+  const messagesFile = path.join(dir, 'messages.jsonl')
+  try {
+    const transcript = readMessagesForApply(messagesFile)
+    if (!transcript || transcript.messages.length === 0) {
+      return { sessionId, status: 'empty', reason: 'messages.jsonl 缺失或没有消息' }
+    }
+    const { records: existing } = readEventRecords(eventsFile)
+    const coverage = coverageState(existing)
+    if (coverage === 'imported') {
+      return { sessionId, status: 'noop', reason: '已有 message/imported(迁过了)' }
+    }
+    if (coverage === 'native') {
+      return {
+        sessionId,
+        status: 'skipped',
+        reason: '事件里已有原生消息节点(混合覆盖会话须 S2b 覆盖感知合并,朴素全量导入会撞 id)',
+      }
+    }
+
+    const messages = transcript.messages
+    const importedRecords = messages.map((message, index) => makeImportedRecord(message, index + 1))
+    const shift = importedRecords.length
+
+    // 现有 E0 事件整体重编号到 [shift+1, …];建 old→new 映射,兜底 +shift。
+    const seqMap = new Map()
+    existing.forEach((record, index) => seqMap.set(record.seq, shift + index + 1))
+    const remap = old => seqMap.get(old) ?? (typeof old === 'number' ? old + shift : old)
+    const shiftedExisting = existing.map(record => shiftEventRecord(record, remap))
+
+    const eventsBytesBefore = existing.length > 0
+      ? Buffer.byteLength(fs.readFileSync(eventsFile, 'utf8'), 'utf8')
+      : 0
+
+    // 备份(复制,不移动)。备份已存在 = 拒绝覆盖(那是一份更早的原件)。
+    const backupDir = path.join(dir, BACKUP_DIR)
+    fs.mkdirSync(backupDir, { recursive: true })
+    const backupMessages = path.join(backupDir, 'messages.jsonl')
+    const backupEvents = path.join(backupDir, 'events.jsonl')
+    if (fs.existsSync(backupMessages)) {
+      return { sessionId, status: 'error', reason: `备份已存在(不覆盖):${backupMessages}` }
+    }
+    fs.copyFileSync(messagesFile, backupMessages)
+    const hadEvents = existing.length > 0 || fs.existsSync(eventsFile)
+    if (hadEvents && fs.existsSync(eventsFile)) fs.copyFileSync(eventsFile, backupEvents)
+
+    // 原子写新的 events.jsonl:imported(seq 1..N)+ 平移后的现有事件。
+    const lines = [...importedRecords, ...shiftedExisting].map(record => `${JSON.stringify(record)}\n`).join('')
+    atomicWrite(eventsFile, lines)
+    const eventsBytesAfter = Buffer.byteLength(lines, 'utf8')
+
+    const marker = {
+      migratedAt: new Date().toISOString(),
+      sessionId,
+      imported: importedRecords.length,
+      existingEventsBefore: existing.length,
+      shiftedBy: shift,
+      eventsBytesBefore,
+      eventsBytesAfter,
+      corruptMessageLines: transcript.corrupt,
+      backup: {
+        messages: path.relative(dir, backupMessages),
+        events: hadEvents ? path.relative(dir, backupEvents) : null,
+      },
+    }
+    fs.writeFileSync(path.join(backupDir, MIGRATION_MARKER), `${JSON.stringify(marker, null, 2)}\n`)
+
+    return {
+      sessionId,
+      status: 'migrated',
+      imported: importedRecords.length,
+      existingEvents: existing.length,
+      shiftedBy: shift,
+      eventsBytesBefore,
+      eventsBytesAfter,
+      backupPath: path.relative(sessionsDir, backupDir),
+      corrupt: transcript.corrupt,
+    }
+  } catch (error) {
+    return { sessionId, status: 'error', reason: String(error?.message ?? error) }
+  }
+}
+
+export function applyMigration(store, options = {}) {
+  const sessionsDir = path.join(store, 'sessions')
+  const plan = buildPlan(store, { limit: options.limit })
+  const results = plan.sessions.map(session => applySession(sessionsDir, session.sessionId))
+  const tally = results.reduce((acc, result) => {
+    acc[result.status] = (acc[result.status] ?? 0) + 1
+    if (result.status === 'migrated') {
+      acc.importedEvents += result.imported
+      acc.bytesBefore += result.eventsBytesBefore
+      acc.bytesAfter += result.eventsBytesAfter
+    }
+    return acc
+  }, { migrated: 0, noop: 0, skipped: 0, error: 0, empty: 0, importedEvents: 0, bytesBefore: 0, bytesAfter: 0 })
+  return { store, results, tally, legacyJsonFiles: plan.legacyJsonFiles }
+}
+
+// ============ --rollback(§11.2)============
+
+/**
+ * 回滚一间会话:从 legacy-backup/ 复原 events.jsonl(迁移前没有事件的就删掉),
+ * 删掉迁移标记。messages.jsonl 迁移时是复制的、从未被改,所以不用动。
+ */
+export function rollbackSession(sessionsDir, sessionId) {
+  const dir = path.join(sessionsDir, sessionId)
+  const backupDir = path.join(dir, BACKUP_DIR)
+  const markerFile = path.join(backupDir, MIGRATION_MARKER)
+  try {
+    let marker
+    try {
+      marker = JSON.parse(fs.readFileSync(markerFile, 'utf8'))
+    } catch {
+      return { sessionId, status: 'not-migrated', reason: '没有迁移标记(这间没被本脚本迁过)' }
+    }
+    const eventsFile = path.join(dir, 'events.jsonl')
+    const backupEvents = path.join(backupDir, 'events.jsonl')
+    const restoredEvents = Boolean(marker.backup?.events) && fs.existsSync(backupEvents)
+    if (restoredEvents) {
+      // 有迁移前的事件 → 原子复原。
+      atomicWrite(eventsFile, fs.readFileSync(backupEvents))
+    } else {
+      // 迁移前没有事件 → 删掉合成出来的 events.jsonl。
+      if (fs.existsSync(eventsFile)) fs.rmSync(eventsFile)
+    }
+
+    // 清掉本脚本造出来的备份 + 标记(复制来的,原件一直在原地),让这间回到
+    // 真正的迁移前状态 —— 否则下一次 --apply 会撞上"备份已存在"。只删标记点名
+    // 的那几份,legacy-backup/ 里别的东西(JSONL legacy-json 迁移的原件)不碰;
+    // 目录空了才删。
+    fs.rmSync(markerFile)
+    for (const rel of [marker.backup?.messages, marker.backup?.events]) {
+      if (!rel) continue
+      const file = path.join(dir, rel)
+      if (file.startsWith(backupDir + path.sep) && fs.existsSync(file)) fs.rmSync(file)
+    }
+    try {
+      if (fs.readdirSync(backupDir).length === 0) fs.rmdirSync(backupDir)
+    } catch { /* 目录里还有别的东西,留着 */ }
+
+    return { sessionId, status: 'rolled-back', restoredEvents }
+  } catch (error) {
+    return { sessionId, status: 'error', reason: String(error?.message ?? error) }
+  }
+}
+
+export function rollbackMigration(store, options = {}) {
+  const sessionsDir = path.join(store, 'sessions')
+  let ids
+  if (options.all) {
+    try {
+      ids = fs.readdirSync(sessionsDir, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && entry.name !== BACKUP_DIR)
+        .map(entry => entry.name)
+        .sort()
+    } catch {
+      ids = []
+    }
+  } else {
+    ids = [options.sessionId]
+  }
+  const results = ids.map(id => rollbackSession(sessionsDir, id))
+  return { store, results }
+}
+
 const SYNTHESIS_RULES = [
   '一条消息 → 一条 `message/imported`(`surfaceOp: append`)',
   '事件 `time` = 消息自己的 `timestamp`(不盖迁移时刻)',
@@ -316,11 +640,13 @@ function mb(bytes) {
 }
 
 function parseArgs(argv) {
-  const args = { dryRun: false, apply: false, store: undefined, json: false, limit: 0, top: 10 }
+  const args = { dryRun: false, apply: false, rollback: false, all: false, sessionId: undefined, store: undefined, json: false, limit: 0, top: 10 }
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index]
     if (arg === '--dry-run') args.dryRun = true
     else if (arg === '--apply') args.apply = true
+    else if (arg === '--rollback') args.rollback = true
+    else if (arg === '--all') args.all = true
     else if (arg === '--json') args.json = true
     else if (arg === '--store') args.store = argv[++index]
     else if (arg.startsWith('--store=')) args.store = arg.slice('--store='.length)
@@ -328,20 +654,100 @@ function parseArgs(argv) {
     else if (arg.startsWith('--limit=')) args.limit = Number(arg.slice('--limit='.length)) || 0
     else if (arg === '--top') args.top = Math.max(0, Number(argv[++index]) || 0)
     else if (arg.startsWith('--top=')) args.top = Math.max(0, Number(arg.slice('--top='.length)) || 0)
+    else if (!arg.startsWith('-')) args.sessionId = arg
   }
   return args
+}
+
+/** R-c 硬前置:有活的 core 拿着这个 store 就拒绝运行(退出码 3),没有绕过口。 */
+async function refuseIfLive(store) {
+  const blocked = await blockingLivenessReason(detectLiveness(store))
+  if (!blocked) return
+  console.error(`[migrate] 拒绝运行:${blocked}。`)
+  console.error('[migrate] 迁移会重编号整份 events.jsonl,而活着的 core 正在往同一个文件追加 ——')
+  console.error('[migrate] 两个写者会铸出同一个 seq,replace 遮蔽错区间而校验照样放行。')
+  console.error('[migrate] 先让它退出(退出时会删掉 run/http.json),再跑这条命令。没有绕过开关。')
+  process.exit(3)
+}
+
+async function runApply(args) {
+  const store = resolveStorePath(args.store)
+  // R-c:**先拦,再动手**。有活的 core = 硬拦。
+  await refuseIfLive(store)
+
+  const summary = applyMigration(store, { limit: args.limit })
+  if (args.json) {
+    console.log(JSON.stringify(summary, null, 2))
+    process.exit(summary.tally.error > 0 ? 1 : 0)
+  }
+
+  const t = summary.tally
+  console.log(`[migrate] APPLY store=${store}`)
+  console.log(`[migrate] 迁移 ${t.migrated} 间 / 已迁过(no-op)${t.noop} 间 / 跳过(有原生覆盖)${t.skipped} 间 / 空 ${t.empty} 间 / 出错 ${t.error} 间`)
+  console.log(`[migrate] 合成 message/imported ${t.importedEvents} 条;events.jsonl 字节 ${mb(t.bytesBefore)} → ${mb(t.bytesAfter)}`)
+  for (const result of summary.results) {
+    if (result.status === 'migrated') {
+      console.log(`  migrated ${result.sessionId}  events ${result.existingEvents}→${result.existingEvents + result.imported}(+${result.imported} imported) bytes ${mb(result.eventsBytesBefore)}→${mb(result.eventsBytesAfter)} backup=${result.backupPath}${result.corrupt ? ` corrupt=${result.corrupt}` : ''}`)
+    } else if (result.status === 'error') {
+      console.log(`  ERROR    ${result.sessionId}  ${result.reason}`)
+    } else if (result.status === 'skipped') {
+      console.log(`  skipped  ${result.sessionId}  ${result.reason}`)
+    }
+  }
+  if (summary.legacyJsonFiles > 0) {
+    console.log(`[migrate] legacy 整文件 ${summary.legacyJsonFiles} 份未处理(须先经 convert-sessions 转成目录会话)`)
+  }
+  console.log(t.error > 0 ? `[migrate] 有 ${t.error} 间出错(见上,已跳过,未半写)` : '[migrate] 全部成功')
+  process.exit(t.error > 0 ? 1 : 0)
+}
+
+async function runRollback(args) {
+  const store = resolveStorePath(args.store)
+  await refuseIfLive(store)
+  if (!args.all && !args.sessionId) {
+    console.error('[migrate] 用法:node scripts/migrate-sessions-events.mjs --rollback <sessionId>|--all [--store PATH]')
+    process.exit(2)
+  }
+  const summary = rollbackMigration(store, { all: args.all, sessionId: args.sessionId })
+  if (args.json) {
+    console.log(JSON.stringify(summary, null, 2))
+    const failed = summary.results.filter(r => r.status === 'error').length
+    process.exit(failed > 0 ? 1 : 0)
+  }
+  console.log(`[migrate] ROLLBACK store=${store}`)
+  let rolled = 0
+  let failed = 0
+  for (const result of summary.results) {
+    if (result.status === 'rolled-back') {
+      rolled += 1
+      console.log(`  rolled-back ${result.sessionId}  ${result.restoredEvents ? '复原了迁移前的 events.jsonl' : '删掉了合成的 events.jsonl'}`)
+    } else if (result.status === 'error') {
+      failed += 1
+      console.log(`  ERROR       ${result.sessionId}  ${result.reason}`)
+    } else if (result.status === 'not-migrated' && !args.all) {
+      console.log(`  skip        ${result.sessionId}  ${result.reason}`)
+    }
+  }
+  console.log(`[migrate] 回滚 ${rolled} 间${failed > 0 ? `,${failed} 间出错` : ''}`)
+  process.exit(failed > 0 ? 1 : 0)
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2))
 
+  if (args.rollback) {
+    await runRollback(args)
+    return
+  }
   if (args.apply) {
-    console.error('[migrate] --apply 被拒绝:S2b 未拍板(切默认读模式 + 真实 store 迁移都要用户先拍)。')
-    console.error('[migrate] 本期只有 --dry-run:它只读,不写任何文件。')
-    process.exit(2)
+    await runApply(args)
+    return
   }
   if (!args.dryRun) {
-    console.error('[migrate] 用法:bun run migrate:sessions:events --dry-run [--store PATH] [--json] [--limit N]')
+    console.error('[migrate] 用法:')
+    console.error('[migrate]   --dry-run  [--store PATH] [--json] [--limit N]   只读,算账不写')
+    console.error('[migrate]   --apply    [--store PATH] [--json] [--limit N]   真的写(备份 + 原子写 + 幂等)')
+    console.error('[migrate]   --rollback <sessionId>|--all [--store PATH]      从 legacy-backup/ 复原')
     process.exit(2)
   }
 

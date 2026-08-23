@@ -2681,3 +2681,191 @@ base64)当场分叉。
   在 `shared/ipc/chat.ts`(`JsonObject`)/ `wiring/engine/stream/message-helpers.ts` 两处
   (它们改了引擎类型,本批一个字没碰);`boundary:gate` 一条 `wiring/agent-loop/providers/
   media-reader.ts`(未跟踪文件)。本批改到的 9 个文件 typecheck / boundary 全净。
+
+### 13.14 S2b 落地记录
+
+#### B —— 主读路径收口到 `sessionReads`(2026-08-23)
+
+**病灶**:UI 的两条消息读入口绕过了读门面 —— 于是 `ONETHING_SESSION_READ=events`
+对界面是空开关(门面自己在 `fromEvents()` 上分叉,但没人经过门面)。本步只搬调用点,
+不动读法本体(`reads.ts` / `model-history.ts` 由并行的 C 负责,`migrate-sessions-events.mjs`
+由 E 负责,本步一个字没碰)。
+
+**改到的调用点(两个文件)**:
+
+1. `packages/backend/rpc/domains/sessions.ts` —— 桌面 IPC 与浏览器
+   (`POST /api/rpc`)共用的会话读面,真正到 UI 的那条:
+   - `getMessages` 的 `getSessionMessages` 端口:`store.getSessionMessages(id)` →
+     `sessionReads.listMessages(id).messages`。
+   - `getMessagesPage` 的 `getSessionMessagesPage` 端口:`store.getSessionMessagesPage(...)` →
+     `sessionReads.pageMessages(...)`。
+2. `packages/backend/server/runtime.ts`:
+   - `createAppBackedServerSessionStore.getMessagesPage`(app-store 背书、`persistsMessages`
+     的生产读门面):`getAppStoreSessionMessagesPage(request)` →
+     `appSessionReads.pageMessages(request)`。**同一读门面的 `getMessages` 早已收口**
+     (`appSessionReads.listMessages`,S2a),本步只补齐它的分页那半;`getAppStoreSessionMessagesPage`
+     成了孤儿导入,一并删。
+
+**形状适配(只在调用点,不动 `reads.ts`)**:读门面把「查无此会话」折成 `[]`,而
+`getOnethingSessionMessagesForIpc` 的契约是——回调交出 `undefined` 才回 `NOT_FOUND`。
+直接换会把「不存在」误判成「存在但空」。`getMessages` 端口因此在空结果时补一句
+`store.getSessionMessages(id) === undefined ? undefined : messages`,把仓的 `undefined`
+信号原样还原:`messages` 模式下与收口前**逐字相同**(不存在→`NOT_FOUND`,存在空→`success:[]`)。
+`readonly ChatMessage[]` 回到可变签名靠一次 `as ChatMessage[]`(投影只读它、产出新数组,
+不改原数组,安全)。`pageMessages` 无此问题——它返回带 `success` 标志的整只页信封
+(`hasMoreBefore/After` / `totalCount` / `cursor`),`messages` 模式下逐字走同一个
+`getSessionMessagesPage`(`store.js` 再导出的就是 `stores/sessions` 那份),直接换即可。
+
+**故意留 raw 的调用点(判断依据)**:
+
+- `server/runtime.ts` 的 `createLocalServerSessionStore`(echo/test 后端,`persistsMessages:false`)
+  的 `repository.getSessionMessages` / `repository.getSessionMessagesPage`:它挂的是**自己那只**
+  `createOnethingSessionRepository`(与 app store「是真的两只」,各有缓存与写队列),而
+  `appSessionReads` 只认得 app store 那只。换过去 = 读错一份内存真相,`messages` 模式下当场
+  分叉、echo 后端崩。留 raw。
+- `server/runtime.ts` 的 meta-refresh(`refreshSessionMeta` 的两处 `store.getMessages` 取数)
+  与投影内部的 `upsertServerMessage` / `markStreamingComplete`:这些调的是 store adapter 的
+  `getMessages` 方法(app-backed 那只早已经过 `appSessionReads`,是既有状态,本步没碰这些行);
+  按任务约定不动这些行,meta 刷新可能本就需要原始仓,判其非「UI 读入口」,原样保留。
+
+**测试**(`packages/backend/rpc/__tests__/sessions-domain.test.ts`,+3 条):桩门面分叉的
+**两口井**(`stores/sessions.js` 的原始仓 / `session/events-reads.js` 的事件投影)而**不桩门面本体**
+——读门面与真读模式(`setSessionReadModeForTesting`)都真跑。`messages` 模式两条读入口取原始仓、
+`events` 模式取投影(`eventsList/PageMessages` 被调到);另证 `getMessages` 的 `NOT_FOUND`/空
+两态被保住、`getMessagesPage` 的页信封(`hasMoreBefore/After`/`totalCount`)穿透不变。把调用点
+改回 `store.*` 直读 → `events` 那支当场红。
+
+#### 门(全部实跑)
+
+- `typecheck` 干净;targeted vitest(`packages/backend/rpc` + `server` + `session`)**533 绿**
+  (含新增 3 条);`session:gate` 0 / `boundary:gate` 0;`sessions:shadow-battery` **GREEN**
+  (264 runs / 0 mismatch)。
+- 影子看不见本步:比对口径始终是**抄本 vs 投影**(`listMessagesFromTranscript` 故意不经
+  `fromEvents`,见 F11),与「谁给 UI 供数」无关;切读只改产品读路,不改判据侧。
+
+#### C —— 读门面里最后四个方法接事件投影(2026-08-23)
+
+§11.3 待决 5 的收口:S2a 只路由了七个方法,`findMessage` / `firstUserPreview` /
+`iterateMessages` / `sliceForHistory` 仍无条件走 `getSessionMessages`——`events` 读模式
+对它们是空开关。本步把它们接上。B / E 是并行步,本步只碰 `reads.ts`(+ 一处
+`backend.ts` 装配)与新测试,一个字没碰 `rpc/domains/sessions.ts` / `server/runtime.ts` /
+`migrate-sessions-events.mjs`。
+
+**三个走投影(与 S2a 那七个同一条岔口)**:`findMessage` / `firstUserPreview` /
+`iterateMessages` 各加一行 `fromEvents(() => eventsListMessages(sessionId)) ??
+getSessionMessages(...)`——`events` 模式且这条会话事件里真有历史时取投影,否则(默认 /
+老会话)一字不改走原路。`messages` 模式下逐字节与今天相同。
+
+**`sliceForHistory` 走 `projectModelHistory`,不是「再抄一遍投影」**(§11.3 裁定的关键):
+它是**模型历史**的取数口,两条路都产出 provider 形状的历史(不是 `ChatMessage` 切片):
+- `messages` 模式:抄本切片过宿主的 `buildHistoryMessages`;
+- `events` 模式:活投影上的 `materializeModelHistory`(= `projectModelHistory` 的物化半)
+  + **同一份**宿主配方 `historyProjectionRecipe`(`buildMessageContent` / `getAIToolName` /
+  `failureResultForAI` / `prepareMessages` / `providerDataFromContentPart`)+
+  `sessionProjectionOptions`(blob 回放 `resolveBlob` + 退化留痕)。
+
+两侧因此逐字节相同——这正是切读的历史安全前提,也是历史影子
+(`checkSessionHistoryShadow`)比的那两份(抄本过 `buildHistoryMessages` vs 投影过
+`materializeModelHistory`)。压缩会话上「可见消息投影」与「模型历史」不同,所以事件版
+**必须**落在 `projectModelHistory` 而不是 `eventsListMessages`。
+
+**G9 由 `projectModelHistory` 自己保住,本步不碰历史逻辑**:压缩后 per-result 预算
+(`COMPACTED_HISTORY_*` 常量在 `core/engine/history.ts`,未动)由
+`materializeModelHistory` 按 surface 上有没有 `session/compacted` 节点决定
+`forceCompactedToolResults`(§10.1 G9),`sliceForHistory` 只是把状态与配方交过去,
+一行 budget 逻辑都不重写。
+
+**注入而非直接 import(关键的结构约束)**:`buildHistoryMessages` /
+`historyProjectionRecipe` 住在 `wiring/engine/stream/message-helpers.ts`,身后是整棵
+provider/collab/agents 树;而 `reads.ts` 被 ~30 个轻量会话层模块(`commands.ts` /
+`validation.ts` / permission / usage / tasks …)与它们的单测**静态引用**——一旦
+`reads.ts` 静态 import 了 message-helpers,那些「只 mock 了 `stores/paths`」的单测会当场
+把整棵树拉起来炸(与 history-shadow.ts 用回调避开 recorder→message-helpers 同一条纪律)。
+所以 `reads.ts` 只留一个端口 `configureSessionHistoryBuilder({ fromMessages, recipe })`
+(只静态依赖 core 的 `materializeModelHistory` + 本地 `projection-cache` /
+`projection-blobs`,全轻量),宿主在 `configureAppRuntimeAdapters()`(幂等)里把两个重函数
+装进来。未装(纯轻量单测)时 `sliceForHistory` 退回抄本 `ChatMessage` 切片,保住 P0.1 老
+形状;`upToMessageId` 落在 `events` 路上暂不支持(要按 seq 折,今天无调用点),退回消息
+模式。`sliceForHistory` 全仓无生产调用点(引擎历史走 `listSessionMessages` +
+`buildHistoryMessages`),所以返回形状从 `ChatMessage[]` 收成 provider 历史对产品行为零
+影响,也不在影子路径上。
+
+**测试**(`packages/backend/session/__tests__/reads-read-mode.test.ts`,11 条,跑真的
+`reads.ts`、只替身最底下的会话仓库):(1) 四个方法各证 `events` 与 `messages` 两条读路
+在同一条会话上**答案一致**(S2b 安全前提);(2) `sliceForHistory` 的 `events` 版逐字段
+等于独立算出的 `materializeModelHistory`(同一配方 —— 影子投影侧那份);(3) 一组**故意
+分岔**用例(抄本 `TAMPERED` / 事件 `EVENTS`):`events` 模式必须读到事件那一份——把任一
+方法改回 `getSessionMessages` 当场红(一致性用例内容相同,证明不了岔口真接上,靠这组兜)。
+
+#### 门(C,全部实跑)
+
+- `bun run typecheck` 干净;`bunx vitest run packages/backend/session packages/core/session`
+  **299 绿**(含新增 11 条);`session:gate` 0 / `boundary:gate` 0;
+  `sessions:shadow-battery` **GREEN**(264 runs / 0 mismatch —— `sliceForHistory` 改动不在
+  影子路径上,历史影子照绿)。
+- 交付:`packages/backend/session/reads.ts`(四方法路由 + `SessionHistoryBuilder` 端口)、
+  `packages/backend/backend.ts`(`configureAppRuntimeAdapters` 里装 builder)、
+  `packages/backend/session/__tests__/reads-read-mode.test.ts`。`model-history.ts` 未改
+  (`materializeModelHistory` 已足够,无需新投影入口)。
+
+#### E —— 迁移脚本 `--apply` / `--rollback`(2026-08-23)
+
+`scripts/migrate-sessions-events.mjs` 从「只有 `--dry-run`」补齐成真能写。R-c 硬前置
+(有活的 core 拿着 store 就退出码 3,没有绕过口)照旧在最前面,`--apply` / `--rollback`
+都过它。B / C 是并行步,本步一个字没碰 `rpc/domains/sessions.ts` / `server/runtime.ts` /
+`reads.ts` / `model-history.ts`。
+
+**`--apply` 做什么**:对**折不出任何一条消息节点**的会话(E0 七类 / 空事件),把
+`messages.jsonl` 逐条合成 `message/imported`(`surfaceOp:'append'`、`time` = 消息自己的
+timestamp、`data.synthetic:true`、seq 从 1 起、正文原样),插在现有事件**之前**;现有
+E0 事件整体重编号到 `[N+1, …]`,内部 seq 引用(`surfaceOp.{start,end}` /
+`sourceEventSeqs[]` / `data.sourceSeq` / `data.triggerEventSeq` /
+`request/recipe.data.messages[].eventSeq`)全过一张 old→new 映射同步平移(映射认不出的
+悬引用按 +N 兜底)。合成行与 dry-run 的 `importedLineBytes` **逐字段同形**,所以 apply
+落的字节与 dry-run 报的一致。
+
+**谁被迁 / 谁不动(§11.3 裁定 4 / §10.16)**:判据看事件类型——
+- 已有 `message/imported` → **no-op**(带内幂等标记,不需要额外标记文件也认得);
+- 已有 `user/message` / `system/message` / `run/start` / `session/compacted` /
+  `user/message-edited` 任何一类**原生消息节点** → **跳过并报告**。真·混合覆盖会话
+  (原生尾覆盖 + 未覆盖头)要 S2b 的覆盖感知合并:朴素的「全量导入 + 重编号」会把尾巴
+  导重、投影撞 id、`verify` 的「covered message order」当场红——所以这里**不碰、不弄坏**,
+  留给后续。真实 store 上绝大多数会话是 E0/空(§11.3),走得通的正是这条主路。
+- 否则(E0 / 空)→ **要迁**。
+
+**备份策略 = copy,不 move**(B8 的「就地作快照 vs 备份到 legacy-backup」矛盾判给复制)。
+原 `messages.jsonl`(及迁移前的 `events.jsonl`,如果有)**复制**进会话目录内的
+`legacy-backup/`(白名单子目录),原地那份继续被 `messages` 读模式读——切默认前不断供。
+一份 `legacy-backup/events-migration.json` 记出处(imported 条数、shiftedBy、字节、备份
+相对路径),供 `--rollback` 认路。**先备份、再原子写**(`events.jsonl.migrate-tmp.<pid>`
+→ rename);备份已存在 = 拒绝覆盖(那是更早的原件)。任何一间出错收进结果的 error 字段,
+跳过并汇报,决不半写坏 `events.jsonl`。
+
+**幂等**:重跑 `--apply` = 检出 `message/imported` 已在 → 全 no-op,一个字节不动。
+
+**`--rollback <sid>|--all`**:凭 `events-migration.json` 标记复原——有迁移前事件的
+原子写回、没有的删掉合成出来的 `events.jsonl`,再删掉**本脚本造的**那几份备份 + 标记
+(复制来的,原件一直在原地;`legacy-backup/` 里别的东西不碰,空了才 rmdir),让这间回到
+真正的迁移前状态(否则下次 `--apply` 撞「备份已存在」)。`--all` 只碰有标记的会话(种进去
+但没标记的 imported 不是我们迁的,不动)。R-c 同样在最前面。
+
+**临时 store e2e(全绿)**:三类 fixture ——(a) legacy(仅 messages)→ 全量 imported +
+`messages.jsonl` 进 `legacy-backup/`;(b) mixed(全份 messages + 尾 E0 工具事件)→ E0
+重编号、`sourceSeq` 2→6 随之平移;(c) already-migrated(种了 imported)→ no-op。三类迁完
+`sessions:verify --all` **GATE GREEN**(legacy=3 / mixed=4 / done=1 messages);`--apply`
+再跑 = 全 no-op;`--rollback --all` 复原(legacy 删 events、mixed 回 4 条 E0、done 不碰),
+复原后 `verify` 仍绿、`--apply` 可再迁。**退出码 3 实证**:临时 store 放一份假发现文件
+(pid 活 + 端口开)→ `--apply` / `--rollback` 都退出 3。真实 `~/.onething` 上跑 `--dry-run`
+时桌面 core 正活着(pid 97205 / http :63082),被 R-c 如实拦下(退出 3)——即真机上的
+硬前置实证;**apply 一次都没对真实 store 跑过**。
+
+#### 门(E,全部实跑)
+
+- `bun run typecheck` 干净;`bunx vitest run
+  packages/backend/session/__tests__/migrate-apply.test.ts` **14 绿**(coverageState /
+  apply 五类 / 备份 / 幂等 / 重编号 + sourceSeq 平移 / rollback 五条);既有
+  `session-verify.test.ts` **11 绿**(未破 dry-run);`session:gate` 0 / `boundary:gate` 0。
+- 交付:`scripts/migrate-sessions-events.mjs`(+`--apply`/`--rollback`,新导出
+  `applySession` / `applyMigration` / `rollbackSession` / `rollbackMigration` /
+  `coverageState`;dry-run 与 `buildPlan`/`planSession` 一字未动,仍只读)、
+  `packages/backend/session/__tests__/migrate-apply.test.ts`。

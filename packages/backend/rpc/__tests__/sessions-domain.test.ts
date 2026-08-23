@@ -22,6 +22,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { setSessionReadModeForTesting } from '../../session/read-mode.js'
 
 const store = vi.hoisted(() => ({
   getSessionsList: vi.fn(() => [] as unknown[]),
@@ -74,7 +75,25 @@ const events = vi.hoisted(() => ({
 }))
 const permission = vi.hoisted(() => ({ clearSession: vi.fn() }))
 
+/**
+ * S2b:主读路径收口后,`getMessages` / `getMessagesPage` 从 `store.js` 改走
+ * `session/reads.js` 的读门面 —— 门面自己按 `ONETHING_SESSION_READ` 在
+ * `fromEvents()` 上分叉。为了逐字证「开关到得了这两条入口」,这里桩的是门面
+ * 分叉的**两个源头**(events 投影 / 原始仓)而**不桩门面本体**:读门面与真读模式
+ * 都真跑,只有它脚下的两口井是假的。
+ */
+const storesSessions = vi.hoisted(() => ({
+  getSessionMessages: vi.fn(),
+  getSessionMessagesPage: vi.fn(),
+}))
+const eventsReads = vi.hoisted(() => ({
+  eventsListMessages: vi.fn(),
+  eventsPageMessages: vi.fn(),
+}))
+
 vi.mock('../../store.js', () => store)
+vi.mock('../../stores/sessions.js', () => storesSessions)
+vi.mock('../../session/events-reads.js', () => eventsReads)
 vi.mock('../../wiring/collab/index.js', () => collab)
 vi.mock('../../wiring/todo-plan/store.js', () => todoPlan)
 vi.mock('../../wiring/toc/index.js', () => toc)
@@ -444,5 +463,93 @@ describe('sessions RPC domain', () => {
     const { dispatchRpc } = await loadDomain()
     const response = await dispatchRpc({ domain: 'sessions', method: 'updateMaxTokens', payload: {} })
     expect(response.ok).toBe(false)
+  })
+
+  /**
+   * S2b step B:主读路径收口到 `sessionReads`,`ONETHING_SESSION_READ=events`
+   * 因此能到 UI 的两条读入口。默认(messages)与收口前逐字相同;把开关钉在
+   * `events` 上,答案从事件投影来 —— 把调用点改回 `store.*` 直读,这几条当场红。
+   */
+  describe('read-path routing (S2b): the read-mode switch reaches getMessages/getMessagesPage', () => {
+    const RAW = [{ id: 'raw-1', role: 'user', content: 'raw', timestamp: 1 }]
+    const EVT = [{ id: 'evt-1', role: 'user', content: 'events', timestamp: 2 }]
+
+    beforeEach(() => {
+      storesSessions.getSessionMessages.mockReset()
+      storesSessions.getSessionMessagesPage.mockReset()
+      eventsReads.eventsListMessages.mockReset()
+      eventsReads.eventsPageMessages.mockReset()
+      setSessionReadModeForTesting(undefined)
+    })
+    afterEach(() => {
+      setSessionReadModeForTesting(undefined)
+    })
+
+    it('getMessages: messages-mode reads the raw transcript; events-mode reads the projection', async () => {
+      const { dispatchRpc } = await loadDomain()
+      // 原始仓与门面脚下的仓返回同一份,好让 messages 模式对「收口前」逐字相同,
+      // 唯一能分出「收没收口」的只剩 events 模式那一支。
+      storesSessions.getSessionMessages.mockReturnValue(structuredClone(RAW))
+      store.getSessionMessages.mockReturnValue(structuredClone(RAW))
+      eventsReads.eventsListMessages.mockReturnValue(structuredClone(EVT))
+
+      setSessionReadModeForTesting('messages')
+      let res = await dispatchRpc({ domain: 'sessions', method: 'getMessages', payload: { sessionId: SESSION_ID } })
+      expect((res as { data: { success: boolean; messages: { id: string }[] } }).data.success).toBe(true)
+      expect((res as { data: { messages: { id: string }[] } }).data.messages.map(m => m.id)).toEqual(['raw-1'])
+      expect(eventsReads.eventsListMessages).not.toHaveBeenCalled()
+
+      setSessionReadModeForTesting('events')
+      res = await dispatchRpc({ domain: 'sessions', method: 'getMessages', payload: { sessionId: SESSION_ID } })
+      expect((res as { data: { messages: { id: string }[] } }).data.messages.map(m => m.id)).toEqual(['evt-1'])
+      expect(eventsReads.eventsListMessages).toHaveBeenCalledWith(SESSION_ID)
+    })
+
+    it('getMessages: preserves NOT_FOUND for a missing session, but success:[] for an existing empty one', async () => {
+      const { dispatchRpc } = await loadDomain()
+      setSessionReadModeForTesting('messages')
+
+      // 查无此会话:门面把它折成 `[]`,而本域契约是 NOT_FOUND —— 用仓的 `undefined`
+      // 信号还原(收口前逐字相同)。
+      storesSessions.getSessionMessages.mockReturnValue(undefined)
+      store.getSessionMessages.mockReturnValue(undefined)
+      await expect(
+        dispatchRpc({ domain: 'sessions', method: 'getMessages', payload: { sessionId: SESSION_ID } }),
+      ).resolves.toEqual({ ok: true, data: { success: false, error: 'Session not found' } })
+
+      // 会话在、但没消息:仍是 success + 空数组(不能误判成 NOT_FOUND)。
+      storesSessions.getSessionMessages.mockReturnValue([])
+      store.getSessionMessages.mockReturnValue([])
+      await expect(
+        dispatchRpc({ domain: 'sessions', method: 'getMessages', payload: { sessionId: SESSION_ID } }),
+      ).resolves.toEqual({ ok: true, data: { success: true, messages: [] } })
+    })
+
+    it('getMessagesPage: messages-mode reads the raw page; events-mode reads the projected page (envelope preserved)', async () => {
+      const { dispatchRpc } = await loadDomain()
+      const rawPage = { success: true, messages: structuredClone(RAW), hasMoreBefore: false, hasMoreAfter: true, totalCount: 1 }
+      const evtPage = { success: true, messages: structuredClone(EVT), hasMoreBefore: true, hasMoreAfter: false, totalCount: 2 }
+      storesSessions.getSessionMessagesPage.mockReturnValue(rawPage)
+      store.getSessionMessagesPage.mockReturnValue(rawPage)
+      eventsReads.eventsPageMessages.mockReturnValue(evtPage)
+
+      setSessionReadModeForTesting('messages')
+      let res = await dispatchRpc({ domain: 'sessions', method: 'getMessagesPage', payload: { sessionId: SESSION_ID } })
+      let data = (res as { data: { messages: { id: string }[]; hasMoreBefore: boolean; hasMoreAfter: boolean; totalCount: number } }).data
+      expect(data.messages.map(m => m.id)).toEqual(['raw-1'])
+      expect(data.hasMoreAfter).toBe(true)
+      expect(data.hasMoreBefore).toBe(false)
+      expect(data.totalCount).toBe(1)
+      expect(eventsReads.eventsPageMessages).not.toHaveBeenCalled()
+
+      setSessionReadModeForTesting('events')
+      res = await dispatchRpc({ domain: 'sessions', method: 'getMessagesPage', payload: { sessionId: SESSION_ID } })
+      data = (res as { data: { messages: { id: string }[]; hasMoreBefore: boolean; hasMoreAfter: boolean; totalCount: number } }).data
+      expect(data.messages.map(m => m.id)).toEqual(['evt-1'])
+      expect(data.hasMoreBefore).toBe(true)
+      expect(data.hasMoreAfter).toBe(false)
+      expect(data.totalCount).toBe(2)
+      expect(eventsReads.eventsPageMessages).toHaveBeenCalled()
+    })
   })
 })

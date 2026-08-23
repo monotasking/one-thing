@@ -20,7 +20,12 @@ import type {
 } from '@shared/ipc.js'
 import fs from 'node:fs'
 import path from 'node:path'
-import { deepFreeze } from '@onething/core/session'
+import {
+  deepFreeze,
+  materializeModelHistory,
+  type ProjectModelHistoryMeta,
+  type ProjectModelHistoryOptions,
+} from '@onething/core/session'
 import { sanitizeOnethingMessagesForRendererResult } from '@onething/runtime/sessions'
 import {
   getSession,
@@ -45,6 +50,8 @@ import {
 } from './events-reads.js'
 import { isSessionFreezeEnabled } from './freeze.js'
 import { isSessionEventsReadMode } from './read-mode.js'
+import { getLiveSessionProjection } from './projection-cache.js'
+import { sessionProjectionOptions } from './projection-blobs.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions')
@@ -80,6 +87,36 @@ function fromEvents<T>(read: () => T | undefined): T | undefined {
     log.warn('events-mode read failed, falling back to messages', {}, error)
     return undefined
   }
+}
+
+/**
+ * `sliceForHistory` 的模型历史构造由宿主注入(S2b step C)。
+ *
+ * 为什么是注入而不是直接 import:`sliceForHistory` 的两条路都要走真机那份历史
+ * 构造 —— 消息侧是 `buildHistoryMessages`,事件侧是 `projectModelHistory` 的宿主
+ * 配方(`historyProjectionRecipe`)。这两样都住在 `wiring/engine/stream/
+ * message-helpers.ts`,身后是整棵 provider/collab/agents 树。而 `reads.ts` 被
+ * ~30 个轻量会话层模块(`commands.ts` / `validation.ts` / permission / usage /
+ * tasks …)与它们的单测静态引用 —— 一旦这里 `import` 了 message-helpers,那些
+ * "只 mock 了 stores/paths"的单测会当场把整棵树拉起来炸掉(与 history-shadow.ts
+ * 用回调避开 recorder→message-helpers 是同一条纪律)。所以宿主在
+ * `configureAppRuntimeAdapters()` 里把这两个函数装进来,`reads.ts` 只留一个端口。
+ */
+export interface SessionHistoryBuilder {
+  /** 消息侧(抄本切片 → 真机历史):`buildHistoryMessages(messages, session)`。 */
+  fromMessages(
+    messages: readonly ChatMessage[],
+    session: Readonly<ChatSession> | undefined,
+  ): readonly unknown[]
+  /** 事件侧的宿主配方(`historyProjectionRecipe`):喂给 `projectModelHistory`。 */
+  recipe(session: Readonly<ChatSession> | undefined): ProjectModelHistoryOptions<unknown>
+}
+
+let historyBuilder: SessionHistoryBuilder | undefined
+
+/** 装上模型历史构造器(宿主在 `configureAppRuntimeAdapters()` 里调,幂等)。 */
+export function configureSessionHistoryBuilder(builder: SessionHistoryBuilder | undefined): void {
+  historyBuilder = builder
 }
 
 /**
@@ -150,7 +187,7 @@ export const sessionReads = {
     predicate: (message: ChatMessage, index: number) => boolean,
     options: { from?: 'start' | 'end' } = {},
   ): Readonly<ChatMessage> | undefined {
-    const messages = getSessionMessages(sessionId)
+    const messages = fromEvents(() => eventsListMessages(sessionId)) ?? getSessionMessages(sessionId)
     if (!messages) return undefined
     if (options.from === 'end') {
       for (let index = messages.length - 1; index >= 0; index--) {
@@ -187,29 +224,69 @@ export const sessionReads = {
 
   /** 第一条用户消息的预览文本(标题回退 / 列表预览;server 那三份实现的归口)。 */
   firstUserPreview(sessionId: string, maxLength = 120): string | undefined {
-    return sessionPreviewText(getSessionMessages(sessionId) ?? [], maxLength)
+    const messages = fromEvents(() => eventsListMessages(sessionId)) ?? getSessionMessages(sessionId)
+    return sessionPreviewText(messages ?? [], maxLength)
   },
 
   /**
-   * 送进模型历史构建的那一份切片。P0.1 只是把 6 处
-   * `history.buildMessages(session.messages, session)` 的取数收到一个名字下面;
-   * S 线的 `projectModelHistory` 落点就是这里。
+   * 下一次请求发出去的那份**模型历史**(S2b step C)。
+   *
+   * 两条路都产出**真机形状的历史**(provider 消息),而不是 `ChatMessage` 切片:
+   *  - `messages` 模式:抄本切片过宿主的 `buildHistoryMessages`(注入的
+   *    `historyBuilder.fromMessages`)—— 与今天真机发出去的那一份逐字节相同;
+   *  - `events` 模式:走 `projectModelHistory`(这里 = 活投影上的
+   *    `materializeModelHistory`)+ **同一份**宿主配方。§S2b #5 的裁定:事件版的
+   *    落点是 `projectModelHistory`,**不是"再抄一遍投影"**(那是可见消息投影,
+   *    压缩会话上与模型历史不同)。两侧因此逐字节相同 —— 这正是切读的安全前提,
+   *    也是历史影子(`checkSessionHistoryShadow`)比的那两份。
+   *
+   * `historyBuilder` 未装(纯轻量单测,没跑装配)时退回抄本 `ChatMessage` 切片,
+   * 保住 P0.1 的老形状;`upToMessageId` 落在 `events` 路上暂不支持(要按 seq 折,
+   * 无调用点),退回消息模式。
    */
   sliceForHistory(
     sessionId: string,
     options: { upToMessageId?: string; includeUpTo?: boolean } = {},
-  ): readonly ChatMessage[] {
+  ): readonly unknown[] {
+    const session = getSession(sessionId)
+    const fromEventLog = fromEvents(() => {
+      if (!historyBuilder) return undefined
+      // upToMessageId 的事件版要按 seq 折(无调用点),退回消息模式。
+      if (options.upToMessageId) return undefined
+      const state = getLiveSessionProjection(sessionId)
+      if (state.nodes.length === 0) return undefined
+      const meta: ProjectModelHistoryMeta = session
+        ? {
+            id: session.id,
+            ...(session.summary ? { summary: session.summary } : {}),
+            ...(session.summaryUpToMessageId
+              ? { summaryUpToMessageId: session.summaryUpToMessageId }
+              : {}),
+          }
+        : {}
+      return materializeModelHistory(state, meta, {
+        ...historyBuilder.recipe(session),
+        ...sessionProjectionOptions(sessionId),
+      })
+    })
+    if (fromEventLog !== undefined) return fromEventLog
+
     const messages = getSessionMessages(sessionId)
     if (!messages) return []
-    if (!options.upToMessageId) return guard(messages)
-    const index = messages.findIndex(message => message.id === options.upToMessageId)
-    if (index === -1) return guard(messages)
-    return guard(messages.slice(0, options.includeUpTo === false ? index : index + 1))
+    const slice = !options.upToMessageId
+      ? messages
+      : (() => {
+          const index = messages.findIndex(message => message.id === options.upToMessageId)
+          if (index === -1) return messages
+          return messages.slice(0, options.includeUpTo === false ? index : index + 1)
+        })()
+    // 装了构造器 = 归一到真机历史形状;没装则保住抄本切片(老形状)。
+    return historyBuilder ? historyBuilder.fromMessages(slice, session) : guard(slice)
   },
 
   /** 不物化整份数组的遍历(搜索 / 媒体 / 权限扫描)。 */
   *iterateMessages(sessionId: string): Generator<Readonly<ChatMessage>> {
-    const messages = getSessionMessages(sessionId)
+    const messages = fromEvents(() => eventsListMessages(sessionId)) ?? getSessionMessages(sessionId)
     if (!messages) return
     for (const message of messages) yield guard(message)
   },

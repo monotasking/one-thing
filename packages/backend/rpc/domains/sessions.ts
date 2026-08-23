@@ -79,6 +79,7 @@ import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest, Permissio
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sessionsRouter, type SessionsRoutes } from '@shared/ipc/sessions.js'
 import * as store from '../../store.js'
+import { sessionReads } from '../../session/reads.js'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../../wiring/agents/index.js'
 import {
@@ -156,7 +157,18 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
   async getMessages(request) {
     return getOnethingSessionMessagesForIpc({
       sessionId: request.sessionId,
-      getSessionMessages: id => store.getSessionMessages(id),
+      // S2b:主读路径收口到读门面,`ONETHING_SESSION_READ=events` 因此能到 UI
+      // (`listMessages` 自己按读模式在 `fromEvents()` 上分叉;messages 模式逐字
+      // 走 `getSessionMessages`,与旧路同一个函数)。唯一要补的形状差:读门面把
+      // “查无此会话”折成 `[]`,而本域的契约是回 NOT_FOUND —— 空结果时用仓库那句
+      // `undefined` 信号把它还原,messages 模式下与 S2b 前逐字相同。
+      getSessionMessages: (id): ChatMessage[] | undefined => {
+        // 读门面交出的是 `readonly` 视图;投影只读它再产出新数组(不改原数组),
+        // 这里回到可变签名是安全的。
+        const messages = sessionReads.listMessages(id).messages as ChatMessage[]
+        if (messages.length > 0) return messages
+        return store.getSessionMessages(id) === undefined ? undefined : messages
+      },
       logger: consoleLog,
     })
   },
@@ -164,8 +176,11 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     const start = performance.now()
     const response = await getOnethingSessionMessagesPageForIpc({
       request,
+      // S2b:同 getMessages,分页也收口到读门面(`pageMessages` 按读模式在
+      // `fromEvents()` 上分叉;messages 模式逐字走 `getSessionMessagesPage`,同一份
+      // 页信封 hasMoreBefore/After / totalCount / cursor,与旧路同一个函数)。
       getSessionMessagesPage: nextRequest =>
-        store.getSessionMessagesPage(nextRequest as GetSessionMessagesPageRequest),
+        sessionReads.pageMessages(nextRequest as GetSessionMessagesPageRequest),
       logger: consoleLog,
     })
     if (response.success) {
