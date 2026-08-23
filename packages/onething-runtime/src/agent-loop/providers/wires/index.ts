@@ -83,6 +83,7 @@ export {
 	type OpenAIChatPartCodecOptions,
 	type OpenAIChatTool,
 	type OpenAIChatToolCall,
+	type OpenAIChatToolContentPart,
 	type OpenAIChatUserContentPart,
 	type OpenAIChatWireValue,
 } from "./openai-chat-messages.js";

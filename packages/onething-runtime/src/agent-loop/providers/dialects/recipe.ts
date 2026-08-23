@@ -6,7 +6,12 @@
  * 构造**才有的东西(apiKey / OAuth access token / copilot 换来的 completion
  * token),所以注册表里登记的是**不带凭据**的配方,构造时再补上 `auth`。
  */
-import type { AgentCapability, AgentModelCapabilities, AgentProvider } from "@onething/core/agent-loop";
+import type {
+	AgentCapability,
+	AgentInputModality,
+	AgentModelCapabilities,
+	AgentProvider,
+} from "@onething/core/agent-loop";
 import {
 	BearerApiKeyAuth,
 	LedgerModelProfileResolver,
@@ -45,6 +50,13 @@ export interface OpenAIChatTransportFlags {
 	tools?: boolean;
 	vision?: boolean;
 	reasoning?: boolean;
+	/**
+	 * tool 结果收得下的模态(P3-5b)。**不给 = 只有 `text`** —— 这条线的默认
+	 * 是 OpenAI 官方口径(`role:'tool'` 的 `content` 只能是字符串),声明了
+	 * 才谈得上「能力说行」。给了就同时把 `supportsStructuredToolResults` 声明
+	 * 出来:core 的 `agentSupportsToolResultModality` 两个条件都要满足。
+	 */
+	toolResultModalities?: readonly AgentInputModality[];
 }
 
 /**
@@ -70,6 +82,12 @@ export function openAIChatTransportCapabilities(
 		capabilities,
 		inputModalities,
 		outputModalities,
+		...(flags.toolResultModalities
+			? {
+					toolResultModalities: [...flags.toolResultModalities],
+					supportsStructuredToolResults: flags.tools !== false,
+				}
+			: {}),
 		supportsTools: flags.tools !== false,
 		supportsReasoning: Boolean(flags.reasoning),
 		supportsStreaming: true,
@@ -112,6 +130,13 @@ export interface OpenAIChatDialectSpec {
 	 * 端点才开(openai / openrouter),其余家保持可见留痕。
 	 */
 	filePdf?: OpenAIChatFilePdfMode;
+	/**
+	 * tool 结果收不收多模态块(P3-5b)。**只有 OpenRouter 开** —— 它的文档
+	 * 明说 `role:'tool'` 的 `content` 可以是内容块数组;OpenAI 官方只允许
+	 * 字符串。要开就得同时在 `transport` 里声明 `toolResultModalities`:
+	 * 「能力说行」与「线协议做得到」是同一句话的两半(设计稿 §2.3)。
+	 */
+	toolResultMultimodal?: boolean;
 	/** 换掉整只 codec(DeepSeek 的纯文本 user 内容)。 */
 	parts?: PartCodec<OpenAIChatWireValue>;
 	/**
@@ -165,6 +190,7 @@ export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialec
 				includeAssistantReasoning: Boolean(spec.includeAssistantReasoning),
 				replayReasoningDetails: Boolean(spec.replayReasoningDetails),
 				filePdf: spec.filePdf ?? "none",
+				...(spec.toolResultMultimodal ? { toolResultMultimodal: true } : {}),
 				...(spec.providerOptions?.imageDetail === undefined
 					? {}
 					: { imageDetail: spec.providerOptions.imageDetail }),

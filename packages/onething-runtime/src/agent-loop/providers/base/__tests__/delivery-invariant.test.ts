@@ -15,9 +15,16 @@
  * 声明里**没有**这一模态的组合直接跳过(不是绿也不是红):core 的
  * `degradeUnsupportedAgentContentParts` 在上游就把它降级掉了,轮不到 codec。
  * 今天被这一条跳过的有:kimi / kimi-code / zhipu / deepseek 非 vision 族的
- * 全部图像用例(账本不给它们 vision),以及 openai-chat 十一家的 toolResult
- * ——`openAIChatTransportCapabilities()` 不声明 `toolResultModalities`,于是
- * 默认只有 text。要覆盖它们得先改账本/传输声明,那是行为变更。
+ * 全部图像用例(账本不给它们 vision),以及 openai-chat 上**除 openrouter 之外**
+ * 十家的 toolResult ——`openAIChatTransportCapabilities()` 默认不声明
+ * `toolResultModalities`,于是只有 text。要覆盖它们得先改账本/传输声明,那是
+ * 行为变更。
+ *
+ * P3-5b 起 **openrouter 的 `toolResult/image` 进了声明面**:它的配方声明
+ * `toolResultModalities: ['text','image']`(OpenRouter 文档允许 `role:'tool'`
+ * 的 `content` 是内容块数组并在其中收图),codec 的 `toolResultMultimodal`
+ * 同时打开,于是这一格从「跳过」变成「必须 delivered」。`toolResult/file`
+ * 仍然跳过 —— tool 消息里没有 `file` 块,声明里也就没有那一行。
  *
  * **今天已经违反的那些**在 `KNOWN_VIOLATIONS` 里逐条记名,用 `it.fails` 钉住:
  * 它们不是本期要改的行为(P2-a 行为不变),但从此不能再多一条,也不能悄悄修好

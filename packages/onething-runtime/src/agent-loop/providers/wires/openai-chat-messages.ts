@@ -41,9 +41,17 @@ export interface OpenAIChatToolCall {
 	function: { name: string; arguments: string };
 }
 
-export type OpenAIChatUserContentPart =
+/**
+ * tool 消息的内容块(P3-5b)。**只有 text 与 image_url** —— OpenRouter 文档
+ * 允许 `role:'tool'` 的 `content` 是内容块数组并在其中收图,但没有 `file` 块
+ * 那一行;user 那一侧多出来的 `file` 因此不在这个类型里。
+ */
+export type OpenAIChatToolContentPart =
 	| { type: "text"; text: string }
-	| { type: "image_url"; image_url: { url: string; detail?: string } }
+	| { type: "image_url"; image_url: { url: string; detail?: string } };
+
+export type OpenAIChatUserContentPart =
+	| OpenAIChatToolContentPart
 	/** chat-completions 的文件块。只走 `file_data`(base64 data URI)—— Files
 	 *  API 的 `file_id` 路径要先上传、要管生命周期,不在这一层。 */
 	| { type: "file"; file: { filename: string; file_data: string } };
@@ -65,7 +73,16 @@ export type OpenAIChatMessage =
 			reasoning_details?: AgentJsonValue[];
 			tool_calls?: OpenAIChatToolCall[];
 	  }
-	| { role: "tool"; tool_call_id: string; content: string };
+	/**
+	 * `content` 的数组档只有开了 `toolResultMultimodal` 的家用得到(今天只有
+	 * OpenRouter):OpenAI 官方的 tool 消息只收字符串。见 `OpenAIChatPartCodec`
+	 * 的同名旋钮 —— **含图才走数组**,纯文本结果仍是字符串。
+	 */
+	| {
+			role: "tool";
+			tool_call_id: string;
+			content: string | OpenAIChatToolContentPart[];
+	  };
 
 export interface OpenAIChatTool {
 	type: "function";
@@ -166,29 +183,12 @@ function toolCallsOf(message: AgentMessage): OpenAIChatToolCall[] | undefined {
 	}));
 }
 
-function toolMessage(message: AgentMessage): OpenAIChatMessage {
-	return {
-		role: "tool",
-		tool_call_id: message.toolCallId ?? "",
-		content: agentToolMessageContentToText(message.content),
-	};
-}
-
-/**
- * tool 消息只收文本 —— 非文本块进不了请求体(线协议没有那种块)。
- * 丢掉的块在 `turn` 上留一条 warning(§2.4:不静默)。
- */
-function toolResultDelivery(
-	part: AgentContentPart,
-	turn?: TurnContext,
-): PartDelivery<OpenAIChatUserContentPart> {
-	if (part.type === "text") return delivered({ type: "text", text: part.text });
-	const note = Undeliverable.fromPart(
-		undeliverablePartLike(part),
-		"tool-result-text-only",
+/** 这一块算不算「图」—— 与 `user()` 同一条判据(image 块,或 image/* 的 file 块)。 */
+function isImagePart(part: AgentContentPart): boolean {
+	return (
+		part.type === "image" ||
+		(part.type === "file" && part.mediaType.startsWith("image/"))
 	);
-	warnUndeliverable(note, part, turn);
-	return undeliverable(note);
 }
 
 /**
@@ -236,6 +236,17 @@ export interface OpenAIChatPartCodecOptions {
 	 * 可见留痕而不是发一个可能 400 的块。
 	 */
 	filePdf?: OpenAIChatFilePdfMode;
+	/**
+	 * tool 结果收不收多模态块(P3-5b)。**默认 false** —— OpenAI 官方的
+	 * `role:'tool'` 只允许字符串 `content`,发数组会 400;OpenRouter 的文档
+	 * 明说那里可以是内容块数组并在其中收图,所以只有它开。
+	 *
+	 * 开着也**不是**所有 tool 结果都改形状:**含至少一个图片块才走数组**,
+	 * 纯文本结果仍是 `agentToolMessageContentToText()` 的那个字符串。理由是
+	 * 「不多发一个字节」——纯文本的两种写法对上游等价,而线上字节不该因为一个
+	 * 与本条结果无关的开关而变。
+	 */
+	toolResultMultimodal?: boolean;
 	/**
 	 * 该家收不收 `image_url.detail`(P3-3)。`true` = 收,值域用标准三值
 	 * (`auto|low|high`);给数组 = 收,且值域是这一份(deepseek 多一个
@@ -382,11 +393,52 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 		];
 	}
 
+	/**
+	 * tool 消息的一块内容。默认这条线的 tool 消息只收文本,非文本块进不了请求体;
+	 * 开了 `toolResultMultimodal` 的家(OpenRouter)多认一种:图。
+	 * 投不出去的块在 `turn` 上留一条 warning(§2.4:不静默)。
+	 */
 	toolResult(
 		part: AgentContentPart,
 		turn?: TurnContext,
-	): PartDelivery<OpenAIChatUserContentPart> {
-		return toolResultDelivery(part, turn);
+	): PartDelivery<OpenAIChatToolContentPart> {
+		if (part.type === "text") return delivered({ type: "text", text: part.text });
+		if (this.options.toolResultMultimodal) {
+			const image = this.toolResultImage(part, turn);
+			if (image) return delivered(image);
+		}
+		const note = Undeliverable.fromPart(
+			undeliverablePartLike(part),
+			"tool-result-text-only",
+		);
+		warnUndeliverable(note, part, turn);
+		return undeliverable(note);
+	}
+
+	/** 图 → `image_url` 块(与 `user()` 同一个 URL 归一与 `detail` 判据)。 */
+	private toolResultImage(
+		part: AgentContentPart,
+		turn?: TurnContext,
+	): OpenAIChatToolContentPart | undefined {
+		if (part.type === "image") {
+			return {
+				type: "image_url",
+				image_url: {
+					url: dataContentToImageUrl(part.image, part.mediaType),
+					...this.imageDetail(turn),
+				},
+			};
+		}
+		if (part.type === "file" && part.mediaType.startsWith("image/")) {
+			return {
+				type: "image_url",
+				image_url: {
+					url: dataContentToImageUrl(part.data, part.mediaType),
+					...this.imageDetail(turn),
+				},
+			};
+		}
+		return undefined;
 	}
 
 	/** 方言缝 —— 配方给了才有事件,没给就是空数组(基类不认识任何额外块)。 */
@@ -395,10 +447,54 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 	}
 
 	toWireMessage(message: AgentMessage, turn?: TurnContext): OpenAIChatMessage {
-		if (message.role === "tool") return toolMessage(message);
+		if (message.role === "tool") return this.toolMessage(message, turn);
 		if (message.role === "assistant") return this.assistant(message)[0]!;
 		if (message.role === "user") return this.userMessage(message.content, turn);
 		return this.system(contentToText(message.content));
+	}
+
+	/**
+	 * tool 消息。**含图才走数组**(见 `toolResultMultimodal`):其余一切
+	 * ——开关关着的家、纯文本结果、非数组内容——都仍是今天那个字符串,
+	 * 于是既有 fixture 一个字节都不变。
+	 */
+	private toolMessage(
+		message: AgentMessage,
+		turn?: TurnContext,
+	): OpenAIChatMessage {
+		return {
+			role: "tool",
+			tool_call_id: message.toolCallId ?? "",
+			content: this.toolContent(message.content, turn),
+		};
+	}
+
+	private toolContent(
+		content: AgentMessageContent,
+		turn?: TurnContext,
+	): string | OpenAIChatToolContentPart[] {
+		if (!this.options.toolResultMultimodal) {
+			return agentToolMessageContentToText(content);
+		}
+		if (typeof content === "string" || !Array.isArray(content)) {
+			return agentToolMessageContentToText(content);
+		}
+		if (!content.some(isImagePart)) {
+			return agentToolMessageContentToText(content);
+		}
+
+		const parts: OpenAIChatToolContentPart[] = [];
+		for (const part of content) {
+			const delivery = this.toolResult(part, turn);
+			if (delivery.kind === "delivered") {
+				parts.push(delivery.part);
+				continue;
+			}
+			// 投不出去的块留成可见文本 —— 与纯文本档的口径一致:模型知道有过这个
+			// 附件,不会瞎编它的内容。
+			parts.push({ type: "text", text: delivery.note.toText() });
+		}
+		return parts.length > 0 ? parts : "";
 	}
 
 	private userMessage(

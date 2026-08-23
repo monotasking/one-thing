@@ -287,6 +287,41 @@ const REASONING_DETAILS_HISTORY: AgentMessage[] = [
 	{ role: "user", content: "总结一下。" },
 ];
 
+/**
+ * tool 结果里带一张图的历史(P3-5b)。core 的
+ * `agentToolMessageContentForCapabilities` 只在「能力说 tool 结果收得下 image」
+ * 时才把图留成结构块 —— openrouter 从这一期起就是这样,于是重建出来的 tool
+ * 消息内容是这个数组。
+ */
+const TOOL_RESULT_IMAGE_HISTORY: AgentMessage[] = [
+	SYSTEM_MESSAGE,
+	{ role: "user", content: "截个图看看。" },
+	{
+		role: "assistant",
+		content: "我截一张。",
+		toolCalls: [
+			{
+				id: "call_shot",
+				name: "read_file",
+				arguments: '{"path":"screen.png"}',
+			},
+		],
+	},
+	{
+		role: "tool",
+		toolCallId: "call_shot",
+		content: [
+			{ type: "text", text: "已截图。" },
+			{
+				type: "image",
+				image: "iVBORw0KGgoAAAANSUhEUg==",
+				mediaType: "image/png",
+			},
+		],
+	},
+	{ role: "user", content: "图里是什么?" },
+];
+
 type RequestCase = Omit<AgentTurnRequest, "model" | "turn">;
 
 /**
@@ -557,6 +592,36 @@ describe("openai-chat wire snapshots — request bodies", () => {
 		expect(assistant).not.toHaveProperty("reasoning_content");
 		await expect(snapshotJson(dump)).toMatchFileSnapshot(
 			fixturePath("openrouter", "history-reasoning-details.request.json"),
+		);
+	});
+
+	/**
+	 * OpenRouter 的 tool 结果多模态(P3-5b)。
+	 *
+	 * 这条线上**只有它**开:OpenRouter 文档允许 `role:'tool'` 的 `content` 是
+	 * 内容块数组并在其中收 `image_url`,OpenAI 官方只允许字符串。fixture 守两件
+	 * 事:含图的 tool 消息 `content` 是数组、图落成 `image_url` 的 data URL。
+	 *
+	 * 上面五个用例的 tool 结果是**纯文本**(`history-tool-roundtrip`),按
+	 * 「含图才走数组」的口径仍是字符串,那批 fixture 因此一个字节都没变。
+	 */
+	it("openrouter — tool-result-image:tool 结果里的图 → 内容块数组", async () => {
+		const dump = await captureRequest("openrouter", {
+			messages: TOOL_RESULT_IMAGE_HISTORY,
+			tools: TOOLS,
+		});
+		const toolMessage = (
+			dump.requestBody as { messages: Array<Record<string, unknown>> }
+		).messages.find((message) => message.role === "tool")!;
+		expect(toolMessage.content).toEqual([
+			{ type: "text", text: "已截图。" },
+			{
+				type: "image_url",
+				image_url: { url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==" },
+			},
+		]);
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
+			fixturePath("openrouter", "tool-result-image.request.json"),
 		);
 	});
 

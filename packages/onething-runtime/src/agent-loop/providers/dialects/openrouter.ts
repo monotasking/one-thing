@@ -207,5 +207,15 @@ export const OPENROUTER_DIALECT = defineOpenAIChatDialect({
 	extraBody: openRouterExtraBody,
 	// 网关按 OpenAI 的形状转发内容块,`image_url.detail` 原样过去(P3-3)。
 	providerOptions: { imageDetail: OPENAI_CHAT_IMAGE_DETAIL_VALUES },
-	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
+	// tool 结果里的图(P3-5b)。OpenRouter 文档明说 `role:'tool'` 的 `content`
+	// 可以是内容块数组并在其中收 `image_url`;OpenAI 官方只允许字符串,所以这
+	// 条线上**只有它**开。能力声明与序列化同时翻:`toolResultModalities` 里
+	// 有 `image`,codec 才真的把图放进请求体(投递契约,设计稿 §2.3)。
+	// `file` 不在声明里 —— 那一行在 tool 消息里没有对应的块。
+	toolResultMultimodal: true,
+	transport: openAIChatTransportCapabilities({
+		vision: true,
+		reasoning: true,
+		toolResultModalities: ["text", "image"],
+	}),
 });
