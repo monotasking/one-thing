@@ -16,6 +16,7 @@ import type { SkillConditions, SkillReferenceSnapshot, SkillSource } from './ski
 import type { VoiceTranscriptMetadata } from './voice.js'
 import type { MessageOrigin } from './channel-identity.js'
 import type { SessionGoal } from './goal.js'
+import type { JsonObject } from '../json.js'
 import { defineRouter } from './router.js'
 
 /**
@@ -45,6 +46,41 @@ export interface ContextVariable {
   updatedAt?: number
 }
 
+/**
+ * 一条 provider-data 的**原样载荷**。宿主不解释除 `provider` / `type` 之外的
+ * 任何键 —— 它们是 provider 自己的词汇,原样存、原样回传。
+ */
+export interface ProviderDataPayload extends JsonObject {
+  provider?: string
+  type?: string
+}
+
+/**
+ * 联网搜索引用(P3-5a 由 Grok 的流末顶层 `citations[]` 落成一条 provider-data)。
+ *
+ * **按 `type` 收窄,不按 provider 名收窄**(与 P3-2 图像输出同一条判据):同一件事
+ * 换一家 provider 也叫 citations,而 `provider` 名只是留痕。
+ */
+export interface ProviderCitationsData extends ProviderDataPayload {
+  type: 'citations'
+  citations: string[]
+}
+
+/**
+ * 这条 provider-data 是不是一份**可展示的**引用清单。
+ *
+ * 收窄发生在契约层而不是渲染层:渲染层拿到的是 `ProviderDataPayload`,没有这个
+ * 守卫就只能 `as any` 拆袋 —— 那正是"第二个判定点"的开头。codex 的
+ * `encrypted-reasoning`、openrouter 的 `reasoning-details` 在这里一律为假。
+ */
+export function isProviderCitations(data: unknown): data is ProviderCitationsData {
+  if (!data || typeof data !== 'object') return false
+  const candidate = data as { type?: unknown; citations?: unknown }
+  if (candidate.type !== 'citations') return false
+  return Array.isArray(candidate.citations)
+    && candidate.citations.every((item) => typeof item === 'string')
+}
+
 // Content part types for sequential display
 export type ContentPart =
   | { type: 'text'; content: string; turnIndex?: number }
@@ -55,7 +91,23 @@ export type ContentPart =
   | { type: 'waiting'; turnIndex?: number }      // Waiting for AI continuation after tool call
   | { type: 'image-loading'; turnIndex?: number; label?: string } // Image generation skeleton
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
-  | { type: 'provider-data'; provider: string; encryptedReasoning?: string; turnIndex?: number } // Hidden provider context
+  /**
+   * Provider 私有上下文。**两种形状并存,都是历史事实**:
+   *  - 老形状(codex 密文推理):`provider` + `encryptedReasoning` 直接挂在 part 上;
+   *  - 新形状:provider 的原样载荷整个挂在 `providerData` 上 —— core 的
+   *    `planAgentLoopProviderData` 落的就是这一格,`(provider, type)` 是它自己的词汇。
+   *
+   * 宿主默认**不展示**这一格(它是给下一轮请求回传用的)。要展示的类型逐个用
+   * 守卫收窄出来(见 `isProviderCitations`),而不是把 `providerData` 当成
+   * `any` 在渲染层拆。
+   */
+  | {
+      type: 'provider-data'
+      provider?: string
+      encryptedReasoning?: string
+      providerData?: ProviderDataPayload
+      turnIndex?: number
+    }
   /**
    * 插件流状态(R6)。**一个泛化成员,不是每插件一个类型。**
    *

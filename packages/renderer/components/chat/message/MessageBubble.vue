@@ -170,6 +170,30 @@
         </div>
       </div>
 
+      <!-- 来源(P4-3)。联网搜索的引用以 provider-data 落在消息上,一个回合一条;
+           `collectMessageCitations` 已经把多回合合并去重成一份清单,所以屏幕上
+           永远只有**一行**,落在所有正文 part 之后。链接走消息引用那条既有通道
+           (`openReference`),不是 window.open —— 宿主差异收在那一处。 -->
+      <div
+        v-if="citations.length > 0"
+        class="citations"
+      >
+        <span class="citations-label">来源</span>
+        <Tooltip
+          v-for="citation in citations"
+          :key="citation.url"
+          :text="citation.url"
+        >
+          <Link
+            class="citation-link"
+            href="#"
+            @click="openCitation(citation.url, $event)"
+          >
+            {{ citation.label }}
+          </Link>
+        </Tooltip>
+      </div>
+
       <!-- Collapse/Expand button (only for user messages) -->
       <Button
         v-if="role === 'user' && isOverflowing && !isStreaming"
@@ -198,6 +222,8 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Link from '@/components/common/Link.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { ref, computed, onBeforeUnmount, watch } from 'vue'
 import StepsPanel from '../StepsPanel.vue'
 import MessageInlineEdit from './MessageInlineEdit.vue'
@@ -205,6 +231,8 @@ import MessageMarkdown from './MessageMarkdown.vue'
 import ProcessRail from './ProcessRail.vue'
 import InlineThought from './InlineThought.vue'
 import ContentPartView, { CONTENT_PART_TYPES } from './ContentPartView.vue'
+import { collectMessageCitations } from './citations'
+import { openReference } from '@/references'
 import type { ToolCall, Step, ContentPart } from '@/types'
 import type { AnchorRect } from '@/composables/floating/compute-position'
 import { buildWorkRender, buildWorkSummary } from '@/stores/helpers/work-group'
@@ -332,6 +360,30 @@ function isAnchorPart(part: ContentPart): boolean {
 
 function isContentPart(part: ContentPart): boolean {
   return CONTENT_PART_TYPES.has(part.type)
+}
+
+// ---- 来源(P4-3):联网搜索引用 ------------------------------------------
+/**
+ * 整条消息的引用清单,去重后一行。判据在 `citations.ts`(经契约层的
+ * `isProviderCitations` 收窄),这里只负责把它接到模板上。
+ */
+const citations = computed(() => collectMessageCitations(props.contentParts))
+
+/**
+ * 点一条来源。`href="#"` + 同步 `preventDefault` 是消息引用那条链路的既有约定
+ * (`references/dom.ts` 里逐字同一件事):默认导航必须当场拦住,而打开是异步的。
+ * `stopPropagation` 是因为这一行长在 `.content-display` 里,那上面还挂着图片
+ * 点击的委托监听。
+ */
+function openCitation(url: string, event: MouseEvent): void {
+  event.preventDefault()
+  event.stopPropagation()
+  void openReference({ kind: 'url', url, raw: url }, {
+    meta: event.metaKey,
+    ctrl: event.ctrlKey,
+    shift: event.shiftKey,
+    alt: event.altKey,
+  })
 }
 
 const stepByToolCallId = computed(() => {
@@ -881,6 +933,33 @@ html[data-theme='light'] .image-generation-skeleton::after {
 /* Container for tool-calls, steps, and additional text parts */
 .other-parts-container {
   position: relative;
+}
+
+/* 来源行(P4-3)。分量刻意低于正文:meta 字号 + 弱化的标签,链接自身仍由
+   Link 的 --app-link-* 一套着色,所以主题换皮时它跟着走。 */
+.citations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: var(--content-paragraph-gap, 8px);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+}
+
+.citations-label {
+  color: var(--ui-text-muted-fg);
+  font-weight: var(--type-meta-weight);
+}
+
+.citation-link {
+  color: var(--ui-text-secondary-fg);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.citation-link:hover {
+  color: var(--ui-text-link-hover-fg);
 }
 
 /* Markdown content styles — compact for chat context */
