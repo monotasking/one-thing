@@ -2,21 +2,24 @@ export {
 	ANTHROPIC_THINKING_WIRES,
 	AnthropicCachePolicy,
 	AnthropicFinishReasonMapper,
-	AnthropicLegacyUsageNormalizer,
 	AnthropicMessagesWire,
 	AnthropicSamplingPolicy,
 	AnthropicToolChoicePolicy,
 	anthropicCachePolicy,
 	anthropicFinishReasonMapper,
-	anthropicLegacyUsage,
 	anthropicLogger,
 	anthropicSamplingPolicy,
 	anthropicSystemBody,
 	anthropicToolChoicePolicy,
 	type AnthropicDialect,
 	type AnthropicStreamEvent,
-	type AnthropicUsage,
 } from "./anthropic-messages-wire.js";
+export {
+	AnthropicUsageNormalizer,
+	anthropicUsage,
+	anthropicUsageBuckets,
+	type AnthropicUsage,
+} from "./anthropic-usage.js";
 export {
 	ANTHROPIC_SOURCE_NAME,
 	AnthropicErrorMapper,

@@ -7,6 +7,7 @@ import type {
 } from '@onething/core/agent-loop'
 import { createTwoFilesPatch } from 'diff'
 import { findAgentExecutorDescriptor } from '../agents/executor/capabilities.js'
+import { anthropicUsageBuckets } from '../agent-loop/providers/wires/anthropic-usage.js'
 import { onethingClaudeModelFamily } from '../providers/model-capability.js'
 import { countLineChanges } from '../tools/file-snapshot.js'
 import { trimDiff, truncateDiffForDisplay } from '../tools/replacers.js'
@@ -642,22 +643,16 @@ async function defaultQueryFn(params: {
   return sdk.query({ prompt: params.prompt, options: params.options } as never) as AsyncIterable<ClaudeCodeSdkMessage>
 }
 
+/**
+ * SDK 报的是**一份 Anthropic usage**,所以它走 Anthropic 那张表 —— 不在继承树里,
+ * 但同一份直译函数(设计稿 §7 表末「不在继承树,但必须同表修」)。
+ *
+ * 官方口径:总输入 = `input_tokens` + `cache_creation` + `cache_read`(三者互斥),
+ * 于是 `inputTokens = input_tokens + cache_read_input_tokens`,`cacheWrite` 在它
+ * 之外单独带出。这是**行为修正**:缓存命中的回合以前少算输入。
+ */
 function usageFromResult(message: ClaudeCodeSdkMessage): AgentUsage | undefined {
-  const usage = message.usage
-  if (!usage) return undefined
-  const inputTokens = usage.input_tokens ?? 0
-  const outputTokens = usage.output_tokens ?? 0
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens: inputTokens + outputTokens,
-    ...(usage.cache_read_input_tokens !== undefined
-      ? { cacheReadTokens: usage.cache_read_input_tokens }
-      : {}),
-    ...(usage.cache_creation_input_tokens !== undefined
-      ? { cacheWriteTokens: usage.cache_creation_input_tokens }
-      : {}),
-  }
+  return anthropicUsageBuckets(message.usage)?.toAgentUsage()
 }
 
 /**

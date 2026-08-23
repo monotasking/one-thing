@@ -11,13 +11,12 @@
  * 流状态机、`buildGeminiContents` 的块序、`mapFinishReason` 的映射,逐字保留
  * (`__tests__/wire-snapshots/gemini` 的 11 份快照就是这句话的门,**禁 `-u`**)。
  *
- * 三处复刻的现状,后面几期再动(设计稿 §9 P1 门 ① / §7 / §5.2):
- *  - **usage 少算输出**:`outputTokens` 仍只等于 `candidatesTokenCount`,
- *    而 Gemini 的 `thoughtsTokenCount` **不在** candidates 内(P1-d 按 §7 改成
- *    `candidates + thoughts`);
+ * 两处复刻的现状,后面几期再动(设计稿 §9 P1 门 ① / §5.2):
  *  - **认证发两遍**:URL 上的 `?key=` 与 `x-goog-api-key` 头**同时**发,
  *    官方已经把 query 那条标为旧法(P2 去掉 query);
  *  - **孤儿工具结果**退回 `toolCallId` 当函数名,只留形状不留 warning。
+ *
+ * usage 已在 P1-d2 按 §7 直译:`output = candidates + thoughts`。
  */
 import type {
 	AgentFinishReason,
@@ -138,19 +137,21 @@ function toolCallDoneEvent(
 }
 
 // ---------------------------------------------------------------------------
-// usage —— **P1-b 复刻今天的少算,P1-d 按设计稿 §7 修正**
+// usage —— 设计稿 §7 的 Gemini 行(三桶直译)
 // ---------------------------------------------------------------------------
 
 /**
  * 三桶直译:`promptTokenCount` **含** cached,所以 uncachedInput 要减掉
  * `cachedContentTokenCount`(投影 `input = uncached + read` 于是还原成
- * promptTokenCount);`totalTokenCount` 是厂商自己报的口径,原样进
- * `reportedTotal`(于是 input + output ≠ total —— 那正是「输出少算 thoughts」
- * 的现状,不是笔误)。
+ * promptTokenCount);Gemini 没有「缓存写入」这一桶,`cacheWrite` 恒 0。
  *
- * **`output` 只译 `candidatesTokenCount`,不含 thoughts** —— 这是复刻,不是
- * 设计。P1-d 按 §7 改成 `candidates + thoughts` 时,`events.json` 的
- * `outputTokens` 会变大,那是有意为之的期望 diff。
+ * **`output = candidatesTokenCount + thoughtsTokenCount`**:官方口径是
+ * `totalTokenCount = prompt + thoughts + candidates` —— 思考 token **不在**
+ * `candidatesTokenCount` 里,而计费按输出算(§12 研究摘要 Gemini 一行)。
+ * `reasoning` 仍报 `thoughtsTokenCount`(此处它是 output 的子集)。
+ *
+ * `totalTokenCount` 是厂商自己报的口径,原样进 `reportedTotal` —— 厂商报了就
+ * 用厂商的,`total` 不由三桶派生。
  */
 export class GeminiUsageNormalizer implements UsageNormalizer {
 	toBuckets(raw: unknown): UsageBuckets | undefined {
@@ -158,7 +159,8 @@ export class GeminiUsageNormalizer implements UsageNormalizer {
 		const usage = raw as GeminiUsageMetadata;
 		const promptTokens = usage.promptTokenCount ?? 0;
 		const cacheRead = usage.cachedContentTokenCount ?? 0;
-		const output = usage.candidatesTokenCount ?? 0;
+		const thoughts = usage.thoughtsTokenCount ?? 0;
+		const output = (usage.candidatesTokenCount ?? 0) + thoughts;
 		return new UsageBuckets(
 			Math.max(promptTokens - cacheRead, 0),
 			cacheRead,

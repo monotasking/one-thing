@@ -175,7 +175,9 @@ describe('ClaudeCodeConnector', () => {
     expect(finish).toMatchObject({
       type: 'finish',
       finishReason: 'stop',
-      usage: { inputTokens: 100, outputTokens: 40, totalTokens: 140, cacheReadTokens: 80 },
+      // Anthropic 口径:总输入 = input_tokens + cache_read(互斥),所以
+      // 100 + 80 = 180 —— P1-d2 的行为修正,以前这里少算了缓存命中的那 80。
+      usage: { inputTokens: 180, outputTokens: 40, totalTokens: 220, cacheReadTokens: 80 },
     })
     const cost = events.find(event => event.type === 'provider-data')
     expect(cost).toMatchObject({ providerData: { type: 'cost', costUSD: 0.0123 } })

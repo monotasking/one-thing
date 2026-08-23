@@ -12,10 +12,10 @@
  * 映射,逐字保留(`__tests__/wire-snapshots/anthropic` 的 29 份快照就是这句话
  * 的门,**禁 `-u`**)。
  *
- * 两处复刻的现状,P1-d 再动(设计稿 §9 P1 门 ①):
- *  - **usage 少算**:`AnthropicLegacyUsageNormalizer` 让 `inputTokens` 仍等于
- *    `input_tokens`(不含 `cache_read`),与 §7 的三桶投影**不一致**;
+ * 一处复刻的现状,后续再动(设计稿 §9 P1 门 ①):
  *  - **家族判定**:`onethingClaudeModelFamily` 把老式带日期 id 的日期段当版本号。
+ *
+ * usage 已在 P1-d2 按 §7 直译(`anthropic-usage.ts`),不再少算缓存回合的输入。
  */
 import type {
 	AgentModelCapabilities,
@@ -36,7 +36,6 @@ import {
 } from "../thinking/index.js";
 import {
 	HttpAgentProvider,
-	UsageBuckets,
 	noThinkingWire,
 	type CachePolicy,
 	type Dialect,
@@ -51,6 +50,7 @@ import {
 	type TurnContext,
 	type UsageNormalizer,
 } from "../base/index.js";
+import { anthropicUsage, type AnthropicUsage } from "./anthropic-usage.js";
 import { AnthropicErrorMapper } from "./anthropic-errors.js";
 import {
 	anthropicParts,
@@ -63,6 +63,9 @@ import {
 	type AnthropicTool,
 	type AnthropicWireValue,
 } from "./anthropic-messages.js";
+
+/** usage 的形状搬去 `anthropic-usage.ts`(与 claude-code-connector 共用),原处再导出。 */
+export type { AnthropicUsage } from "./anthropic-usage.js";
 
 // ---------------------------------------------------------------------------
 // 方言:这条线上多出来的两个字段
@@ -89,13 +92,6 @@ export const ANTHROPIC_THINKING_WIRES: ThinkingWire[] = [
 // ---------------------------------------------------------------------------
 // 流上的形状
 // ---------------------------------------------------------------------------
-
-export interface AnthropicUsage {
-	input_tokens?: number;
-	output_tokens?: number;
-	cache_creation_input_tokens?: number;
-	cache_read_input_tokens?: number;
-}
 
 export interface AnthropicStreamEvent {
 	type?: string;
@@ -156,45 +152,6 @@ function toolCallDoneEvent(
 		},
 	};
 }
-
-// ---------------------------------------------------------------------------
-// usage —— **P1-a 复刻今天的少算,P1-d 按设计稿 §7 修正**
-// ---------------------------------------------------------------------------
-
-/**
- * 今天 `usageFromAnthropic()` 把 `input_tokens` 直接当作总输入,而 Anthropic 的
- * `input_tokens` **不含** `cache_read_input_tokens` —— 缓存命中的那一回合于是
- * 少算输入(设计稿 §1 的病症表、§7 的 Anthropic 行「修正今天少算」)。
- *
- * `UsageBuckets` 的投影是 `input = uncachedInput + cacheRead`,直接三桶直译就
- * 会**改数**。P1-a 必须保快照 0 变,所以这里覆盖 `input` 让它只读
- * `uncachedInput`(= 原样的 `input_tokens`),`cacheRead` 照旧带出去。
- *
- * **这是复刻 bug,不是设计。** P1-d 删掉这个子类、改用普通 `UsageBuckets`,
- * 那时 `events.json` 的 `inputTokens` / `totalTokens` 会变大 —— 那是有意为之的
- * 期望 diff,要单独一份快照说明。
- */
-class AnthropicLegacyUsageBuckets extends UsageBuckets {
-	override get input(): number {
-		return this.uncachedInput;
-	}
-}
-
-export class AnthropicLegacyUsageNormalizer implements UsageNormalizer {
-	toBuckets(raw: unknown): UsageBuckets | undefined {
-		if (typeof raw !== "object" || raw === null) return undefined;
-		const usage = raw as AnthropicUsage;
-		return new AnthropicLegacyUsageBuckets(
-			usage.input_tokens ?? 0,
-			usage.cache_read_input_tokens ?? 0,
-			usage.cache_creation_input_tokens ?? 0,
-			usage.output_tokens ?? 0,
-		);
-	}
-}
-
-export const anthropicLegacyUsage: UsageNormalizer =
-	new AnthropicLegacyUsageNormalizer();
 
 // ---------------------------------------------------------------------------
 // finish reason
@@ -363,7 +320,7 @@ export class AnthropicMessagesWire extends HttpAgentProvider<
 	}
 
 	protected get defaultUsage(): UsageNormalizer {
-		return anthropicLegacyUsage;
+		return anthropicUsage;
 	}
 
 	protected get finish(): FinishReasonMapper {
@@ -493,6 +450,8 @@ export class AnthropicMessagesWire extends HttpAgentProvider<
 		let outputTokens = 0;
 		let cacheReadTokens = 0;
 		let cacheWriteTokens = 0;
+		/** 官方有则报(思考 token ⊂ output_tokens);没报就一路 undefined,不造零。 */
+		let thinkingTokens: number | undefined;
 		let stopReason: string | null | undefined;
 
 		const applyUsage = (usage: AnthropicUsage | undefined): void => {
@@ -501,6 +460,7 @@ export class AnthropicMessagesWire extends HttpAgentProvider<
 			outputTokens = usage.output_tokens ?? outputTokens;
 			cacheReadTokens = usage.cache_read_input_tokens ?? cacheReadTokens;
 			cacheWriteTokens = usage.cache_creation_input_tokens ?? cacheWriteTokens;
+			thinkingTokens = usage.output_tokens_details?.thinking_tokens ?? thinkingTokens;
 		};
 
 		for await (const event of readJsonSseData<AnthropicStreamEvent>(response, {
@@ -652,6 +612,9 @@ export class AnthropicMessagesWire extends HttpAgentProvider<
 				output_tokens: outputTokens,
 				cache_read_input_tokens: cacheReadTokens,
 				cache_creation_input_tokens: cacheWriteTokens,
+				...(thinkingTokens === undefined
+					? {}
+					: { output_tokens_details: { thinking_tokens: thinkingTokens } }),
 			} satisfies AnthropicUsage,
 		};
 	}

@@ -16,16 +16,26 @@ import {
 	type UsageNormalizer,
 } from "../../base/index.js";
 import "../../dialects/index.js";
+import { anthropicUsage } from "../anthropic-usage.js";
+import { geminiUsage } from "../gemini-wire.js";
 import { OPENAI_CHAT_USAGE_TABLE } from "../openai-chat-wire.js";
+import { codexResponsesUsage } from "../openai-responses-wire.js";
 
-function normalizerFor(providerId: string): UsageNormalizer {
+/** 线级默认表 —— `HttpAgentProvider.usage` 回落到的那只(`defaultUsage`)。 */
+const OPENAI_CHAT_DEFAULT: UsageNormalizer = new PathUsageNormalizer(OPENAI_CHAT_USAGE_TABLE);
+
+function normalizerFor(providerId: string, wireDefault: UsageNormalizer): UsageNormalizer {
 	const dialect = getDialect(providerId);
 	if (!dialect) throw new Error(`dialect ${providerId} is not registered`);
-	return dialect.usage ?? new PathUsageNormalizer(OPENAI_CHAT_USAGE_TABLE);
+	return dialect.usage ?? wireDefault;
 }
 
-function bucketsFor(providerId: string, usage: unknown): UsageBuckets {
-	const buckets = normalizerFor(providerId).toBuckets(usage);
+function bucketsFor(
+	providerId: string,
+	usage: unknown,
+	wireDefault: UsageNormalizer = OPENAI_CHAT_DEFAULT,
+): UsageBuckets {
+	const buckets = normalizerFor(providerId, wireDefault).toBuckets(usage);
 	if (!buckets) throw new Error(`${providerId} produced no buckets for the sample`);
 	return buckets;
 }
@@ -366,5 +376,196 @@ describe("reportedTotal", () => {
 		});
 		expect(buckets.reportedTotal).toBeUndefined();
 		expect(buckets.toAgentUsage().totalTokens).toBe(1500);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Anthropic —— input_tokens / cache_creation / cache_read 三者**互斥**
+// ---------------------------------------------------------------------------
+
+describe("anthropic(总输入 = input + cache_creation + cache_read)", () => {
+	/**
+	 * 数字取自设计稿 §12 的那种真实形状:**`cache_read` 远大于 `input_tokens`**
+	 * —— 长对话第二轮起,几乎整段前缀都命中缓存,现算的只剩最后那几十个 token。
+	 * 旧实现把 `input_tokens` 直接当总输入,于是这一回合的输入被钳在 42;三桶
+	 * 直译之后 `input = 42 + 31_500 = 31_542`。
+	 */
+	const SAMPLE = {
+		input_tokens: 42,
+		cache_read_input_tokens: 31_500,
+		cache_creation_input_tokens: 1_024,
+		output_tokens: 860,
+		output_tokens_details: { thinking_tokens: 512 },
+	};
+
+	for (const providerId of ["claude", "claude-code", "custom-anthropic"]) {
+		it(`${providerId} —— 三桶与投影`, () => {
+			const buckets = bucketsFor(providerId, SAMPLE, anthropicUsage);
+			expectBuckets(buckets, {
+				uncachedInput: 42,
+				cacheRead: 31_500,
+				cacheWrite: 1_024,
+				output: 860,
+				reasoning: 512,
+				// Anthropic 不报 total —— 派生 input + output。
+				reportedTotal: undefined,
+			});
+			expect(buckets.input).toBe(31_542);
+			expect(buckets.toAgentUsage()).toEqual({
+				inputTokens: 31_542,
+				outputTokens: 860,
+				totalTokens: 32_402,
+				cacheReadTokens: 31_500,
+				cacheWriteTokens: 1_024,
+				reasoningTokens: 512,
+			});
+		});
+	}
+
+	it("缓存命中不再被钳成 input_tokens(这条就是修正本身)", () => {
+		const buckets = bucketsFor("claude", SAMPLE, anthropicUsage);
+		expect(buckets.toAgentUsage().inputTokens).not.toBe(SAMPLE.input_tokens);
+	});
+
+	it("没有 thinking_tokens 就没有 reasoning(不造零)", () => {
+		const buckets = bucketsFor(
+			"claude",
+			{ input_tokens: 100, output_tokens: 40, cache_read_input_tokens: 80 },
+			anthropicUsage,
+		);
+		expect(buckets.reasoning).toBeUndefined();
+		expect(buckets.toAgentUsage()).toEqual({
+			inputTokens: 180,
+			outputTokens: 40,
+			totalTokens: 220,
+			cacheReadTokens: 80,
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Gemini —— thoughts 不在 candidates 内,但按输出计费
+// ---------------------------------------------------------------------------
+
+describe("gemini(output = candidates + thoughts)", () => {
+	/** 官方口径:`totalTokenCount = prompt + thoughts + candidates`。 */
+	const SAMPLE = {
+		promptTokenCount: 1_200,
+		cachedContentTokenCount: 800,
+		candidatesTokenCount: 248,
+		thoughtsTokenCount: 96,
+		totalTokenCount: 1_544,
+	};
+
+	it("三桶与投影", () => {
+		const buckets = bucketsFor("gemini", SAMPLE, geminiUsage);
+		expectBuckets(buckets, {
+			uncachedInput: 400,
+			cacheRead: 800,
+			cacheWrite: 0,
+			output: 344,
+			reasoning: 96,
+			reportedTotal: 1_544,
+		});
+		// promptTokenCount 含 cached —— 投影还原回 1200,不重复计。
+		expect(buckets.input).toBe(1_200);
+		expect(buckets.toAgentUsage()).toEqual({
+			inputTokens: 1_200,
+			outputTokens: 344,
+			totalTokens: 1_544,
+			cacheReadTokens: 800,
+			reasoningTokens: 96,
+		});
+	});
+
+	it("厂商 total 与三桶派生一致时也走 reportedTotal", () => {
+		const buckets = bucketsFor("gemini", SAMPLE, geminiUsage);
+		expect(buckets.input + buckets.output).toBe(1_544);
+		expect(buckets.total).toBe(1_544);
+	});
+
+	it("没有 thoughts 时 output 就是 candidates", () => {
+		expectBuckets(
+			bucketsFor(
+				"gemini",
+				{ promptTokenCount: 500, candidatesTokenCount: 120, totalTokenCount: 620 },
+				geminiUsage,
+			),
+			{
+				uncachedInput: 500,
+				cacheRead: 0,
+				cacheWrite: 0,
+				output: 120,
+				reasoning: undefined,
+				reportedTotal: 620,
+			},
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// codex / Responses —— input 含 cached 与 cache_write
+// ---------------------------------------------------------------------------
+
+describe("codex(input − cached − cache_write)", () => {
+	const SAMPLE = {
+		input_tokens: 1_200,
+		output_tokens: 300,
+		total_tokens: 1_500,
+		input_tokens_details: { cached_tokens: 800, cache_write_tokens: 100 },
+		output_tokens_details: { reasoning_tokens: 120 },
+	};
+
+	it("三桶与投影", () => {
+		const buckets = bucketsFor("codex", SAMPLE, codexResponsesUsage);
+		expectBuckets(buckets, {
+			uncachedInput: 300,
+			cacheRead: 800,
+			cacheWrite: 100,
+			output: 300,
+			reasoning: 120,
+			reportedTotal: 1_500,
+		});
+		expect(buckets.toAgentUsage()).toEqual({
+			inputTokens: 1_100,
+			outputTokens: 300,
+			totalTokens: 1_500,
+			cacheReadTokens: 800,
+			cacheWriteTokens: 100,
+			reasoningTokens: 120,
+		});
+	});
+
+	it("老模型没有 cache_write_tokens —— input 原样还原(与快照一致)", () => {
+		const buckets = bucketsFor(
+			"codex",
+			{
+				input_tokens: 1_200,
+				output_tokens: 248,
+				total_tokens: 1_448,
+				input_tokens_details: { cached_tokens: 800 },
+				output_tokens_details: { reasoning_tokens: 96 },
+			},
+			codexResponsesUsage,
+		);
+		expectBuckets(buckets, {
+			uncachedInput: 400,
+			cacheRead: 800,
+			cacheWrite: 0,
+			output: 248,
+			reasoning: 96,
+			reportedTotal: 1_448,
+		});
+		expect(buckets.toAgentUsage()).toEqual({
+			inputTokens: 1_200,
+			outputTokens: 248,
+			totalTokens: 1_448,
+			cacheReadTokens: 800,
+			reasoningTokens: 96,
+		});
+	});
+
+	it("整块没有 usage 就是 undefined(不造零)", () => {
+		expect(codexResponsesUsage.toBuckets({})).toBeUndefined();
 	});
 });

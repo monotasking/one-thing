@@ -65,7 +65,7 @@
     "usage": {
       "cacheReadTokens": 800,
       "inputTokens": 1200,
-      "outputTokens": 248,
+      "outputTokens": 344,
       "reasoningTokens": 96,
       "totalTokens": 1544
     }

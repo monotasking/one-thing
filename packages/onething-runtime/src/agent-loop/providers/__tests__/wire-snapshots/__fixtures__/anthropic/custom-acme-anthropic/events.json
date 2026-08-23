@@ -89,9 +89,9 @@
     "usage": {
       "cacheReadTokens": 800,
       "cacheWriteTokens": 64,
-      "inputTokens": 1200,
+      "inputTokens": 2000,
       "outputTokens": 248,
-      "totalTokens": 1448
+      "totalTokens": 2248
     }
   }
 ]

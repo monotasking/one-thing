@@ -81,7 +81,7 @@ export interface CodexResponsesUsage {
 	output_tokens?: number;
 	total_tokens?: number;
 	output_tokens_details?: { reasoning_tokens?: number };
-	input_tokens_details?: { cached_tokens?: number };
+	input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
 }
 
 export interface CodexSseEvent {
@@ -250,13 +250,13 @@ export function hasCodexResponsesUsage(usage: CodexResponsesUsage | undefined): 
 }
 
 /**
- * 三桶直译(设计稿 §7 的 Responses 行):`input_tokens` **含** cached,所以
- * uncachedInput 要减掉 `input_tokens_details.cached_tokens`(投影
- * `input = uncached + read` 于是还原成 `input_tokens`,与今天逐字一致);
+ * 三桶直译(设计稿 §7 的 Responses 行):`input_tokens` **含** cached **与**
+ * cache_write,所以 uncachedInput = `input − cached − cache_write`(投影
+ * `input = uncached + read`;`cacheWrite` 在 input 之外单独计费)。
  * `total_tokens` 是厂商自己报的口径,原样进 `reportedTotal`。
  *
- * `cacheWrite` 是 0:今天这条线不读 `input_tokens_details.cache_write_tokens`,
- * P1-c 不动它(读了会在账本上凭空多出一列)。
+ * `cache_write_tokens` 只有 GPT-5.6+ 会报(读 0.1× / 写 1.25× / 未缓存 1×);
+ * 老模型没这个字段,那一桶就是 0,投影里连键都不出现。
  */
 export class CodexResponsesUsageNormalizer implements UsageNormalizer {
 	toBuckets(raw: unknown): UsageBuckets | undefined {
@@ -265,10 +265,11 @@ export class CodexResponsesUsageNormalizer implements UsageNormalizer {
 		if (!hasCodexResponsesUsage(usage)) return undefined;
 		const inputTokens = usage.input_tokens ?? 0;
 		const cacheRead = usage.input_tokens_details?.cached_tokens ?? 0;
+		const cacheWrite = usage.input_tokens_details?.cache_write_tokens ?? 0;
 		return new UsageBuckets(
-			Math.max(inputTokens - cacheRead, 0),
+			Math.max(inputTokens - cacheRead - cacheWrite, 0),
 			cacheRead,
-			0,
+			cacheWrite,
 			usage.output_tokens ?? 0,
 			usage.output_tokens_details?.reasoning_tokens,
 			undefined,
