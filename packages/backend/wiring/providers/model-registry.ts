@@ -20,6 +20,7 @@ import {
 	getOnethingModelNameAliases,
 	getOnethingModelsForProvider,
 	onethingCapabilityEntryToOpenRouterModel,
+	onethingModelServesImageOutputInLoop,
 	onethingModelSupportsImageGeneration,
 	onethingModelSupportsTemperature,
 	onethingModelSupportsTools,
@@ -546,6 +547,21 @@ export async function modelSupportsImageGeneration(
 	providerId?: string,
 ): Promise<boolean> {
 	return onethingModelSupportsImageGeneration(
+		getProviderConfigs(),
+		modelId,
+		providerId,
+	);
+}
+
+/**
+ * 「这个模型在**回合内**出图吗」(拍板 #13)。同步 —— 判据全在已加载的
+ * provider 配置里(目录条目 + 用户 override + 账本的名字表),不必等网络。
+ */
+export function modelServesImageOutputInLoop(
+	modelId: string,
+	providerId?: string,
+): boolean {
+	return onethingModelServesImageOutputInLoop(
 		getProviderConfigs(),
 		modelId,
 		providerId,

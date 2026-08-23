@@ -1067,6 +1067,46 @@ export function onethingModelSupportsImageGeneration(
 	return false;
 }
 
+/**
+ * 「这个模型是不是在**回合内**出图」—— `onethingModelSupportsImageGeneration`
+ * 的另一半(拍板 #13)。
+ *
+ * 那一支回答「换不换通路」(true = 整条消息离开 agent loop 去专用生图流);
+ * 这一支回答「留在回合里的那一类要不要开原生出图工具」。两者读的是账本同一个
+ * 字段 `imageOutputServedBy`,互斥:`'in-loop'` ⇒ 这里 true、那里 false。
+ *
+ * 唯一消费者是 `backend/wiring/engine/stream/stream-executor.ts` 的
+ * `resolveRequestedOutputModalities`:命中就把 `requestedOutputModalities` 填成
+ * `['image']`,方言据此往工具表里加 `{type:'image_generation'}`(openai /
+ * codex),或者按自己的规矩发 `modalities` / `responseModalities`
+ * (openrouter / gemini)。
+ *
+ * 用户 override 一票**否**决:`imageOutput: false` 时账本连 `servedBy` 都不答,
+ * 于是这里 false —— 「别给我出图」不该被闸门绕过去。
+ */
+export function onethingModelServesImageOutputInLoop(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+): boolean {
+	const entry = getModelEntry(providers, modelId, providerId);
+	const override = getCapabilityOverride(
+		providers,
+		modelId,
+		providerId,
+		"imageOutput",
+	);
+
+	return (
+		resolveOnethingModelCapabilities({
+			providerId: providerId ?? entry?.provider ?? "",
+			modelId,
+			...(entry ? { registryEntry: entry } : {}),
+			...(override === undefined ? {} : { override: { imageOutput: override } }),
+		}).imageOutputServedBy === "in-loop"
+	);
+}
+
 export function getOnethingModelCacheStatus(
 	providers: OnethingProviderModelConfigs | undefined,
 ): { lastFetched: number; modelCount: number; isStale: boolean } {

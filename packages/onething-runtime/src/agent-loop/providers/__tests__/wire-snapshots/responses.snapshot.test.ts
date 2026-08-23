@@ -682,9 +682,10 @@ const OPENAI_HISTORY_MESSAGES: AgentMessage[] = [
  *                                  `reasoning:{effort:'high', summary:'auto'}`;
  *                                  temperature / maxTokens 这条线上没有出口;
  *  - `tools-named-thinking-max` —— 扁平 `{type:'function', name}` + effort
- *                                  `'max'` → **`high`**(`clampOpenAIReasoningEffort`
- *                                  逐字不变;官方 5.4+ 确实收 `xhigh`,但那要
- *                                  先在账本的档位表上加一档,见方言抬头);
+ *                                  `'max'` → **`xhigh`**(P4-9 / 拍板 #14:
+ *                                  钳位改按账本的 per-model 档位表,gpt-5.5
+ *                                  官方收 `xhigh`,`max` 退一档而不是两档。
+ *                                  这是 P4-9 唯一变字节的 fixture);
  *  - `thinking-off-multimodal`  —— thinking off ⇒ `reasoning:{effort:'none'}`
  *                                  (gpt-5.5 在账本上有 `'none'` 这一档),
  *                                  **没有 `summary`**;`include` 仍在;

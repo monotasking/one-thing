@@ -40,18 +40,28 @@ import type { TurnContext } from "../base/index.js";
 import { pickGrokSearchParameters } from "./xai-search-parameters.js";
 
 /**
- * `input_image.detail` 的标准值域(auto / low / high)。
- *
- * 官方 `/docs/guides/images-vision` 上还有第四个值 `original`
- * (「Available on `gpt-5.4` and future models」,且「On `gpt-5.5` and GPT-5.6
- * models, `auto` and the omitted/default behavior are equivalent to
- * `original`」)。**本期不加**:值域是用户手改 settings.json 时看得见的东西,
- * 加档是产品裁定,与「chat → Responses 换线」无关,两条线的三值因此保持一致。
+ * `input_image.detail` 的标准值域(auto / low / high)。xAI 的两条通路用这一份
+ * (docs.x.ai 的「Image detail levels」只列这三个)。
  */
 export const OPENAI_RESPONSES_IMAGE_DETAIL_VALUES = [
 	"auto",
 	"low",
 	"high",
+] as const;
+
+/**
+ * OpenAI 官方端点在 **gpt-5.4 及以后**多一个 `original`(拍板 #14)。官方
+ * `/docs/guides/images-vision`:「Available on `gpt-5.4` and future models」,
+ * 且「On `gpt-5.5` and GPT-5.6 models, `auto` and the omitted/default behavior
+ * are equivalent to `original`」。
+ *
+ * 值域因此是**按模型**开的 —— 这一家的支持面给的是一支函数(见
+ * `OpenAIResponsesProviderOptionSupport.imageDetail`),模型判据在账本
+ * (`onethingOpenAIAcceptsOriginalImageDetail`),wire 自己不认模型名。
+ */
+export const OPENAI_RESPONSES_IMAGE_DETAIL_VALUES_WITH_ORIGINAL = [
+	...OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
+	"original",
 ] as const;
 
 /**
@@ -74,10 +84,14 @@ export const OPENAI_RESPONSES_VERBOSITY_PATH = "text.verbosity";
 export interface OpenAIResponsesProviderOptionSupport {
 	/**
 	 * 收不收 `input_image.detail`。`true` = 收,值域用标准三值;给数组 = 收,
-	 * 且值域是这一份;不给 / `false` = 不收(codex 就不收 —— 它的 codec 恒发
-	 * `detail:'auto'`,那是 fixture 钉住的现状)。
+	 * 且值域是这一份;**给函数 = 收,值域按这一回合的模型算**(openai 的
+	 * `original` 只有 gpt-5.4+ 有);不给 / `false` = 不收(codex 就不收 ——
+	 * 它的 codec 恒发 `detail:'auto'`,那是 fixture 钉住的现状)。
 	 */
-	imageDetail?: boolean | readonly string[];
+	imageDetail?:
+		| boolean
+		| readonly string[]
+		| ((turn: TurnContext) => readonly string[]);
 	/** 收不收 `searchParameters`(xAI Live Search)。只有 grok / grok-oauth 打开。 */
 	searchParameters?: boolean;
 	/** 收不收 `text.verbosity`(OpenAI 的输出长度旋钮)。只有 openai 打开。 */
@@ -103,10 +117,12 @@ export type OpenAIResponsesProviderOptionDropped = (
 
 function imageDetailValues(
 	support: OpenAIResponsesProviderOptionSupport,
+	turn: TurnContext,
 ): readonly string[] | undefined {
 	const declared = support.imageDetail;
 	if (declared === undefined || declared === false) return undefined;
-	return declared === true ? OPENAI_RESPONSES_IMAGE_DETAIL_VALUES : declared;
+	if (declared === true) return OPENAI_RESPONSES_IMAGE_DETAIL_VALUES;
+	return typeof declared === "function" ? declared(turn) : declared;
 }
 
 /** 这一格袋 —— 只取自己 providerId 的那一格,别家的一个字都不看。 */
@@ -124,7 +140,7 @@ export function pickOpenAIResponsesProviderOptions(
 ): OpenAIResponsesProviderOptions {
 	const bag = readOpenAIResponsesProviderOptionBag(turn);
 	const picked: OpenAIResponsesProviderOptions = {};
-	const details = imageDetailValues(support);
+	const details = imageDetailValues(support, turn);
 
 	for (const [key, value] of Object.entries(bag)) {
 		if (value === undefined) continue;

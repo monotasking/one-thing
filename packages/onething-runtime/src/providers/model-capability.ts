@@ -307,16 +307,52 @@ export function onethingClaudeModelFamily(model: string): OnethingClaudeModelFam
 // ---------------------------------------------------------------------------
 
 export const ONETHING_CLAUDE_EFFORTS = ['low', 'medium', 'high', 'max'] as const
+/**
+ * OpenAI 的档位表**逐代不同**(拍板 #14,官方各模型页「Reasoning.effort
+ * supports」一句 + `/docs/guides/reasoning`「Supported values are
+ * model-dependent」,2026-08-23 核):
+ *
+ * | 模型 | 档位 | 服务端默认 |
+ * |---|---|---|
+ * | o 系列(o1 / o3 / o4…) | low / medium / high | 未核,沿用今天的 medium |
+ * | gpt-5(5.0,含 -mini / -nano) | minimal / low / medium / high | 未核,沿用今天的 medium |
+ * | gpt-5.1 / 5.2 / 5.3 | none / low / medium / high | 未核,沿用今天的 medium |
+ * | gpt-5.4 | none / low / medium / high / xhigh | **none**(官方逐字) |
+ * | gpt-5.5 | none / low / medium / high / xhigh | medium(官方逐字) |
+ * | gpt-5.6 及以后 | none / low / medium / high / xhigh / max | medium(官方逐字) |
+ *
+ * `'none'` 在 `efforts` 里是**线协议能力标记**而不是 picker 的一档(见
+ * `OnethingReasoningEffortOption`),所以 gpt-5.4 的「默认不想」记在
+ * `defaultOn: false` 上,不记在 `defaultEffort` 上 —— 后者的类型本身就排除
+ * `'none'`。
+ */
+export const ONETHING_OPENAI_O_SERIES_EFFORTS = ['low', 'medium', 'high'] as const
+/** gpt-5.0 家(含 -mini / -nano):`minimal` 只有这一代有,`none` 还没有。 */
 export const ONETHING_OPENAI_EFFORTS = ['minimal', 'low', 'medium', 'high'] as const
 /**
  * gpt-5.1 and later add `reasoning_effort: 'none'` — the only way to tell an
  * OpenAI reasoning model not to think (the family still has no `thinking`
  * toggle). Older members (gpt-5 / gpt-5.0, the whole o-series) reject it, so
  * they keep the four-rung table above and send nothing when thinking is off.
+ *
+ * 同一代起 `minimal` 从官方档位表里消失(5.1+ 的模型页都不再列它),所以这份
+ * 表不是「四档 + none」而是「三档 + none」。
  */
 export const ONETHING_OPENAI_EFFORTS_WITH_NONE = [
   'none',
-  ...ONETHING_OPENAI_EFFORTS,
+  'low',
+  'medium',
+  'high',
+] as const
+/** gpt-5.4 / 5.5:官方多一档 `xhigh`。 */
+export const ONETHING_OPENAI_EFFORTS_WITH_XHIGH = [
+  ...ONETHING_OPENAI_EFFORTS_WITH_NONE,
+  'xhigh',
+] as const
+/** gpt-5.6 及以后:再多一档 `max`。 */
+export const ONETHING_OPENAI_EFFORTS_WITH_MAX = [
+  ...ONETHING_OPENAI_EFFORTS_WITH_XHIGH,
+  'max',
 ] as const
 export const ONETHING_GEMINI_EFFORTS = ['low', 'medium', 'high'] as const
 export const ONETHING_GROK_EFFORTS = ['low', 'medium', 'high'] as const
@@ -450,25 +486,67 @@ const OPENAI_PROFILE: OnethingReasoningProfile = {
 }
 
 /**
- * gpt-5.1 and later, tolerating a "vendor/" path prefix like every other row
- * here. The minor version is matched as a whole number, so `gpt-5.1` … `gpt-5.9`
- * and `gpt-5.10`+ all qualify while `gpt-5` and `gpt-5.0` do not.
+ * The gpt-5 family's minor version, tolerating a "vendor/" path prefix like
+ * every other row here. `gpt-5` / `gpt-5-mini` / `gpt-5-nano` / `gpt-5.0` all
+ * read 0; `gpt-5.5` reads 5; `gpt-5.10` reads 10 (whole number, so it sorts
+ * after `gpt-5.6` rather than between 5.1 and 5.2). Anything that is not a
+ * gpt-5 id (the o-series, gpt-4.1, …) reads `undefined`.
  */
-const OPENAI_NONE_EFFORT_PATTERN = /(?:^|\/)gpt-5\.(?:[1-9]\d*)/
+const OPENAI_GPT5_PATTERN = /(?:^|\/)gpt-5(?:\.(\d+))?/
 
-export function onethingOpenAIAcceptsNoneEffort(model: string): boolean {
-  return OPENAI_NONE_EFFORT_PATTERN.test(model.toLowerCase())
+function openAIGpt5Minor(modelLower: string): number | undefined {
+  const match = modelLower.match(OPENAI_GPT5_PATTERN)
+  if (!match) return undefined
+  return match[1] ? Number(match[1]) : 0
 }
 
-const OPENAI_PROFILE_WITH_NONE: OnethingReasoningProfile = {
+/**
+ * gpt-5.1 and later take `reasoning_effort: 'none'`; `gpt-5` / `gpt-5.0` and
+ * the whole o-series do not. The single judge behind `OpenAIEffortWire`'s
+ * "can this model be told not to think at all" question.
+ */
+export function onethingOpenAIAcceptsNoneEffort(model: string): boolean {
+  const minor = openAIGpt5Minor(model.toLowerCase())
+  return minor !== undefined && minor >= 1
+}
+
+/**
+ * `input_image.detail: 'original'` —— 官方 `/docs/guides/images-vision`:
+ * 「Available on `gpt-5.4` and future models」(且「On `gpt-5.5` and GPT-5.6
+ * models, `auto` and the omitted/default behavior are equivalent to
+ * `original`」)。值域是**按模型**开的,所以判据放在账本这一份名字表里,由
+ * openai 方言在取袋时问一次(见 `wires/openai-responses-provider-options.ts`)。
+ */
+export function onethingOpenAIAcceptsOriginalImageDetail(model: string): boolean {
+  const minor = openAIGpt5Minor(model.toLowerCase())
+  return minor !== undefined && minor >= 4
+}
+
+/** 见 `ONETHING_OPENAI_EFFORTS` 抬头那张按代分档的表。 */
+function openAIEffortsForMinor(minor: number): readonly OnethingReasoningEffortOption[] {
+  if (minor === 0) return ONETHING_OPENAI_EFFORTS
+  if (minor <= 3) return ONETHING_OPENAI_EFFORTS_WITH_NONE
+  if (minor <= 5) return ONETHING_OPENAI_EFFORTS_WITH_XHIGH
+  return ONETHING_OPENAI_EFFORTS_WITH_MAX
+}
+
+/** o1 / o3 / o4:官方模型页只列 low / medium / high(没有 minimal,没有 none)。 */
+const OPENAI_O_SERIES_PROFILE: OnethingReasoningProfile = {
   ...OPENAI_PROFILE,
-  efforts: ONETHING_OPENAI_EFFORTS_WITH_NONE,
+  efforts: ONETHING_OPENAI_O_SERIES_EFFORTS,
 }
 
 function openAIProfile(model: string): OnethingReasoningProfile {
-  return onethingOpenAIAcceptsNoneEffort(model)
-    ? OPENAI_PROFILE_WITH_NONE
-    : OPENAI_PROFILE
+  const minor = openAIGpt5Minor(model.toLowerCase())
+  if (minor === undefined) return OPENAI_O_SERIES_PROFILE
+  return {
+    ...OPENAI_PROFILE,
+    efforts: openAIEffortsForMinor(minor),
+    // gpt-5.4 的服务端默认是 `none` —— 不发参数 = 不思考。这一格记的是
+    // 「什么都不发时服务端怎么办」,与 `toggleable: false`(这一家永远没有
+    // UI 上的 Off 开关)不冲突:前者是事实,后者是控件。
+    ...(minor === 4 ? { defaultOn: false } : {}),
+  }
 }
 
 const COPILOT_REASONING_PATTERN = /o1|o3|o4|deepseek-r1|reasoner/
@@ -796,6 +874,48 @@ function codexMetadataDeclaresImageOutput(providerMetadata: unknown): boolean {
 }
 
 /**
+ * 「OpenAI 直连的这个模型有没有**原生出图工具**」(拍板 #13)。
+ *
+ * 官方 `/docs/guides/tools-image-generation` 的「Supported models」逐字列着:
+ * `gpt-5.5` / `gpt-5.4-mini` / `gpt-5.4-nano` / `gpt-5.2` / `gpt-5` /
+ * `gpt-5-nano` / `o3` / `gpt-4.1` / `gpt-4.1-mini` / `gpt-4.1-nano`
+ * (2026-08-23 核)。**表里没有的就是没有** —— `gpt-5.4`(非 mini/nano)、
+ * `gpt-5-mini`、`o3-mini`、`gpt-5.6` 都不在,账本如实答 false。
+ *
+ * 这是一条**独立的事实**,与目录说的输出模态无关,所以它在
+ * `resolveCapability('imageOutput')` 里**站在 registry 之前**(与 codex 的
+ * `nativeTools` 捷径同一地位):官方模型页的「Output modalities: text」说的是
+ * *模型*的输出模态 —— 图是**工具**产出的,不是模型吐的模态,于是目录条目
+ * (models.dev / OpenAI /models)会一致地说 `output_modalities: ['text']`,
+ * 而它并没有说错。
+ *
+ * `gpt-image-*` **不在这张表里**:那是 `/v1/images/*` 的专用生图端点,通路不在
+ * 回合内,仍旧 `imageOutputServedBy: 'dedicated-api'`。
+ */
+const OPENAI_IMAGE_TOOL_MODELS = [
+  'gpt-5.5',
+  'gpt-5.4-mini',
+  'gpt-5.4-nano',
+  'gpt-5.2',
+  'gpt-5',
+  'gpt-5-nano',
+  'o3',
+  'gpt-4.1',
+  'gpt-4.1-mini',
+  'gpt-4.1-nano',
+]
+
+/**
+ * 逐名比对(不是模糊包含):`gpt-5-mini` 不能因为含 `gpt-5` 就点亮。容忍两样
+ * 装饰 —— `vendor/` 路径前缀(与本表其它行同规)和官方的 `-YYYY-MM-DD` 快照
+ * 后缀(`gpt-4.1-2025-04-14`)。
+ */
+function openAIModelHasNativeImageTool(modelLower: string): boolean {
+  const bare = modelLower.replace(/^.*\//, '').replace(/-\d{4}-\d{2}-\d{2}$/, '')
+  return OPENAI_IMAGE_TOOL_MODELS.includes(bare)
+}
+
+/**
  * Catalog modality names that mean "this model takes a file attachment".
  * models.dev says `pdf`; a few OpenRouter entries say `file`.
  */
@@ -911,6 +1031,19 @@ function resolveCapability(
     if (typeof override === 'boolean') return verdict(override, 'override')
   }
 
+  // 拍板 #13:OpenAI 直连的原生 `image_generation` 工具是一条**独立事实**,
+  // 站在 registry 之前 —— 目录说的 `output_modalities: ['text']` 讲的是模型的
+  // 输出模态,而图是工具产出的(理由写在 `OPENAI_IMAGE_TOOL_MODELS` 抬头)。
+  // 与 codex 那条捷径同一地位:两者都在「谁说了算」的链条上排在目录之上,
+  // 都排在用户 override 之下。
+  if (
+    capability === 'imageOutput' &&
+    kind === 'openai' &&
+    openAIModelHasNativeImageTool(modelLower)
+  ) {
+    return verdict(true, 'pattern')
+  }
+
   // Temperature is special-cased: generation rules encode hard API rejections
   // (Claude 4.7+/Fable 400 on sampling params), which outrank whatever the
   // fetched registry believes.
@@ -987,8 +1120,13 @@ const GENERIC_REASONING_PROFILE: OnethingReasoningProfile = {
  * 用户 override 表达的是「能出图」,不是「换通路」,而 Codex 的原生
  * `image_generation` 工具是在回合内出图的,换通路只会让它连普通对话都答不了。
  *
- * 三条 `'in-loop'` 证据:
+ * 四条 `'in-loop'` 证据:
  *  1. Codex 的原生 `image_generation` 工具(工具调用产出图,回合内);
+ *  1'. **OpenAI 直连**(kind = `openai`)且模型在官方的原生出图工具支持表里
+ *     (拍板 #13,`OPENAI_IMAGE_TOOL_MODELS`)—— 与 codex 同一条线协议
+ *     (`/v1/responses`)、同一个工具,只是后台不同。它排在 `imageOutput` 的
+ *     裁定**之后**:用户显式 override `imageOutput: false` 表达的是「别给我
+ *     出图」,那时连「谁来出」都不必回答。
  *  2. **provider kind = `openrouter`**(P3-2)—— OpenRouter 走的是
  *     chat-completions:请求带 `modalities: ['text','image']`,回复直接在
  *     `choices[].message.images[]` 里带图,能聊天的图像模型因此走普通流;
@@ -1009,11 +1147,13 @@ const GENERIC_REASONING_PROFILE: OnethingReasoningProfile = {
 function resolveImageOutputServedBy(
   input: ResolveOnethingModelCapabilitiesInput,
   kind: OnethingProviderKind,
+  modelLower: string,
   imageOutput: CapabilityVerdict,
 ): OnethingImageOutputServedBy | undefined {
   if (codexMetadataDeclaresImageOutput(input.registryEntry?.providerMetadata)) return 'in-loop'
   if (codexMetadataDeclaresImageOutput(input.modelMetadata?.providerMetadata)) return 'in-loop'
   if (!imageOutput.value) return undefined
+  if (kind === 'openai' && openAIModelHasNativeImageTool(modelLower)) return 'in-loop'
   return kind === 'openrouter' || kind === 'gemini' ? 'in-loop' : 'dedicated-api'
 }
 
@@ -1034,7 +1174,7 @@ export function resolveOnethingModelCapabilities(
     ? resolveProfile(kind, input.modelId, modelLower) ?? GENERIC_REASONING_PROFILE
     : undefined
   const forcedToolUse = fromRules('forcedToolUse', PROVIDER_MODEL_RULES[kind], modelLower)
-  const servedBy = resolveImageOutputServedBy(input, kind, imageOutput)
+  const servedBy = resolveImageOutputServedBy(input, kind, modelLower, imageOutput)
 
   return {
     reasoning: reasoning.value,

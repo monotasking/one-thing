@@ -107,27 +107,54 @@ export interface StreamExecutionResult {
  * @returns Result indicating how the stream was handled
  */
 /**
- * Resolve the requested output modalities for this stream.
- * Mirrors the system-prompt snapshot's native-tool resolution
- * (getNativeProviderTools) so the request body matches what the
- * prompt tells the model: when the Codex native image_generation
- * tool is available, request image output so the provider attaches it.
+ * Resolve the requested output modalities for this stream —— 「这一回合要不要
+ * 向 provider 要图」。
+ *
+ * 两条判据,顺序固定:
+ *
+ *  1. **codex 的原生工具表**(逐字不变)。ChatGPT 后台的模型元数据里带
+ *     `nativeTools: ['image_generation']` 就要图。它必须留在最前面,因为
+ *     codex 的判据还含 OAuth(`shouldResolveCodexNativeTools`)—— 账本回答不了
+ *     「这次用的是订阅凭据还是 API key」。命中即返回;providerId 是 codex 而没
+ *     命中的,到此为止(不再往下问账本 —— 否则 API-key 的 codex 会因为目录条目
+ *     上的 `nativeTools` 而拿到图,那是行为变更)。
+ *  2. **账本的 `imageOutputServedBy === 'in-loop'`**(拍板 #13,其余所有
+ *     provider)。这一格说的是「图在回合里出」;谁来出、怎么拼,是方言的事:
+ *     openai 走 `/v1/responses` 的原生 `image_generation` 工具(与 codex 逐字
+ *     同规),openrouter 拼 `modalities`,gemini 拼 `responseModalities`。
+ *     **OpenRouter / Gemini 的方言今天不读 `requestedOutputModalities`**
+ *     (它们按 profile 自己决定发不发 modalities),所以对这两家填上它是无害的
+ *     —— 账本已经答出 `imageOutput: true`,core 的输出模态断言
+ *     (`assertAgentOutputModalitiesSupportedByCapabilities`)因此也过得去。
+ *
+ * 工具闸门对第 2 条同样有效:`enableToolCalls` 关掉 / 模型不支持工具时不要图
+ * —— 原生出图是**工具表里的一项**,工具都关了还要图是自相矛盾的。
  */
 async function resolveRequestedOutputModalities(
   params: StreamExecutionParams,
 ): Promise<AgentOutputModality[] | undefined> {
   if (params.requestedOutputModalities) return params.requestedOutputModalities
   try {
+    const supportsTools = await modelRegistry.modelSupportsTools(
+      params.configWithApiKey.model,
+      params.providerId,
+    )
     const nativeTools = await getCodexNativeToolsForConfig({
       providerId: params.providerId,
       providerConfig: params.configWithApiKey,
       toolSettings: params.toolSettings,
-      supportsTools: await modelRegistry.modelSupportsTools(
-        params.configWithApiKey.model,
-        params.providerId,
-      ),
+      supportsTools,
     })
-    return nativeTools.includes(CODEX_NATIVE_IMAGE_GENERATION_TOOL) ? ['image'] : undefined
+    if (nativeTools.includes(CODEX_NATIVE_IMAGE_GENERATION_TOOL)) return ['image']
+    if (params.providerId === 'codex') return undefined
+
+    if (!params.toolSettings?.enableToolCalls || !supportsTools) return undefined
+    return modelRegistry.modelServesImageOutputInLoop(
+      params.configWithApiKey.model,
+      params.providerId,
+    )
+      ? ['image']
+      : undefined
   } catch (error) {
     log.warn('resolve native provider tools failed', {}, error)
     return undefined

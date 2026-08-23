@@ -253,17 +253,51 @@ describe("openai-chat — 请求级 providerOptions 袋", () => {
 	});
 
 	/**
-	 * `original` 官方在 Responses 上确实存在(`/docs/guides/images-vision`:
-	 * 「Available on `gpt-5.4` and future models」),但**没进我们的值域** ——
-	 * 加档是产品裁定,两条线的三值因此保持一致。收到就当非法值丢弃,块退回
-	 * 这条线的默认 `auto`。
+	 * `original` 官方 `/docs/guides/images-vision`:「Available on `gpt-5.4` and
+	 * future models」。P4-9(拍板 #14)起它进了 openai 的值域,而且是**按模型**
+	 * 开的 —— 5.4 之前的模型收到它仍旧当非法值丢弃,块退回默认 `auto`。
+	 * xAI 的两条通路一个字没变(官方只列三值)。
 	 */
-	it("openai:值域外的 original 被丢弃,块退回默认 detail:'auto'", async () => {
-		const turn = await turnContextFor("openai", "gpt-5.5", {
+	it("openai:gpt-5.4+ 收 original,更早的模型丢弃它并退回 detail:'auto'", async () => {
+		for (const model of ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6"]) {
+			const turn = await turnContextFor("openai", model, {
+				imageDetail: "original",
+			});
+			const part = responsesImagePart(
+				deliveredPart(codecOf("openai").user(IMAGE_PART, turn)),
+			);
+			expect(part.detail, model).toBe("original");
+			expect(turn.warnings, model).toEqual([]);
+		}
+
+		for (const model of ["gpt-5", "gpt-5.2", "o3"]) {
+			const turn = await turnContextFor("openai", model, {
+				imageDetail: "original",
+			});
+			const part = responsesImagePart(
+				deliveredPart(codecOf("openai").user(IMAGE_PART, turn)),
+			);
+			expect(part.detail, model).toBe("auto");
+		}
+
+		// 标准三值在每一代上都照样认。
+		for (const detail of ["auto", "low", "high"]) {
+			const turn = await turnContextFor("openai", "gpt-5.5", {
+				imageDetail: detail,
+			});
+			const part = responsesImagePart(
+				deliveredPart(codecOf("openai").user(IMAGE_PART, turn)),
+			);
+			expect(part.detail, detail).toBe(detail);
+		}
+	});
+
+	it("grok:值域仍是标准三值,original 被丢弃(#14 只开 openai 一家)", async () => {
+		const turn = await turnContextFor("grok", "grok-4.6", {
 			imageDetail: "original",
 		});
 		const part = responsesImagePart(
-			deliveredPart(codecOf("openai").user(IMAGE_PART, turn)),
+			deliveredPart(codecOf("grok").user(IMAGE_PART, turn)),
 		);
 
 		expect(part.detail).toBe("auto");

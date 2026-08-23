@@ -257,8 +257,11 @@ export interface ResponsesCodec extends PartCodec<ResponsesWireValue> {
 }
 
 export interface ResponsesPartCodecOptions {
-	/** 这家收不收 `input_image.detail`(见 `openai-responses-provider-options.ts`)。 */
-	imageDetail?: boolean | readonly string[];
+	/**
+	 * 这家收不收 `input_image.detail`(见 `openai-responses-provider-options.ts`)。
+	 * 与那边的支持面同型 —— 含「按回合的模型算值域」的函数档。
+	 */
+	imageDetail?: OpenAIResponsesProviderOptionSupport["imageDetail"];
 	/** 加密思维链回放认哪个 `providerData.provider` 标签。 */
 	providerDataTag?: string;
 }

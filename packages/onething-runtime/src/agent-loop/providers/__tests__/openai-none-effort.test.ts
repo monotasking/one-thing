@@ -80,19 +80,48 @@ describe("openai-effort — the `none` rung", () => {
 		expect(await bodyFor("gpt-5", {})).not.toHaveProperty("reasoning");
 	});
 
-	it("enabled 一路逐字未变:四档钳位,`none` 不是可选的强度", async () => {
+	it("enabled 一路按账本的 per-model 档位表钳位,`none` 不是可选的强度", async () => {
 		expect(
 			(await bodyFor("gpt-5.5", { thinking: "enabled", reasoningEffort: "low" }))
 				.reasoning,
 		).toEqual({ effort: "low", summary: "auto" });
-		// xhigh / max 仍旧夹到 high — 而不是掉进 `none`。
+		// P4-9(#14):gpt-5.5 官方收 `xhigh`,于是 `max` 退到 `xhigh`
+		// (P4-9 之前这里是 `high` —— 那时 wire 写死四档)。
 		expect(
 			(await bodyFor("gpt-5.5", { thinking: "enabled", reasoningEffort: "max" }))
 				.reasoning,
-		).toEqual({ effort: "high", summary: "auto" });
+		).toEqual({ effort: "xhigh", summary: "auto" });
+		// gpt-5(5.0)没有 xhigh:仍旧退到 high。
 		expect(
 			(await bodyFor("gpt-5", { thinking: "enabled", reasoningEffort: "xhigh" }))
 				.reasoning,
+		).toEqual({ effort: "high", summary: "auto" });
+		// 5.1+ 的官方档位表里没有 `minimal`:向下没有了才向上 ⇒ `low`。
+		expect(
+			(await bodyFor("gpt-5.5", {
+				thinking: "enabled",
+				reasoningEffort: "minimal",
+			})).reasoning,
+		).toEqual({ effort: "low", summary: "auto" });
+		// gpt-5(5.0)有 minimal:原样发。
+		expect(
+			(await bodyFor("gpt-5", {
+				thinking: "enabled",
+				reasoningEffort: "minimal",
+			})).reasoning,
+		).toEqual({ effort: "minimal", summary: "auto" });
+		// o 系列只有 low/medium/high:`minimal` ⇒ `low`,`max` ⇒ `high`。
+		expect(
+			(await bodyFor("o3", { thinking: "enabled", reasoningEffort: "minimal" }))
+				.reasoning,
+		).toEqual({ effort: "low", summary: "auto" });
+		expect(
+			(await bodyFor("o3", { thinking: "enabled", reasoningEffort: "max" }))
+				.reasoning,
+		).toEqual({ effort: "high", summary: "auto" });
+		// 用户没选档:仍旧按 `high` 算(P4-9 逐字不变)。
+		expect(
+			(await bodyFor("gpt-5.5", { thinking: "enabled" })).reasoning,
 		).toEqual({ effort: "high", summary: "auto" });
 	});
 

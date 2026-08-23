@@ -28,7 +28,7 @@
     "parallel_tool_calls": false,
     "prompt_cache_key": "session-fixture-0001",
     "reasoning": {
-      "effort": "high",
+      "effort": "xhigh",
       "summary": "auto"
     },
     "store": false,

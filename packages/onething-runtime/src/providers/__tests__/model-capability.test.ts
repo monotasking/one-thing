@@ -127,8 +127,70 @@ describe('resolution priority', () => {
     expect(resolve('gemini', 'gemini-3-pro-image', {
       registryEntry: { supportsImageOutput: true },
     }).imageOutputServedBy).toBe('in-loop')
+    // OpenAI 直连的原生出图工具(#13):同一条线协议、同一个工具,只是后台不是
+    // ChatGPT 订阅而是 API key —— 也留在回合里。
+    expect(resolve('openai', 'gpt-5.2').imageOutputServedBy).toBe('in-loop')
     // Plain text model: the ledger has nothing to say.
-    expect(resolve('openai', 'gpt-5.2').imageOutputServedBy).toBeUndefined()
+    expect(resolve('openai', 'gpt-4o').imageOutputServedBy).toBeUndefined()
+  })
+
+  it('openai 直连:官方支持表里的模型有原生出图工具,表外的没有(#13)', () => {
+    // 官方 /docs/guides/tools-image-generation 的「Supported models」。
+    for (const modelId of [
+      'gpt-5.5',
+      'gpt-5.4-mini',
+      'gpt-5.4-nano',
+      'gpt-5.2',
+      'gpt-5',
+      'gpt-5-nano',
+      'o3',
+      'gpt-4.1',
+      'gpt-4.1-mini',
+      'gpt-4.1-nano',
+    ]) {
+      expect(resolve('openai', modelId)).toMatchObject({
+        imageOutput: true,
+        imageOutputServedBy: 'in-loop',
+        source: { imageOutput: 'pattern' },
+      })
+    }
+
+    // 表外的如实答 false —— 官方没列 gpt-5.4(非 mini/nano)、gpt-5-mini、
+    // o3-mini、gpt-5.6。
+    for (const modelId of ['gpt-5.4', 'gpt-5-mini', 'o3-mini', 'gpt-5.6', 'gpt-4o']) {
+      expect(resolve('openai', modelId).imageOutput).toBe(false)
+      expect(resolve('openai', modelId).imageOutputServedBy).toBeUndefined()
+    }
+
+    // 官方的 `-YYYY-MM-DD` 快照后缀与 `vendor/` 前缀都容忍。
+    expect(resolve('openai', 'gpt-4.1-2025-04-14').imageOutput).toBe(true)
+    expect(resolve('openai', 'openai/gpt-5.5').imageOutputServedBy).toBe('in-loop')
+
+    // 这条事实**站在目录之前**:目录条目说 output_modalities 只有 text
+    // (官方模型页逐字如此 —— 图是工具产出的),账本仍答 true。
+    expect(resolve('openai', 'gpt-5.5', {
+      registryEntry: { supportsImageOutput: false },
+    })).toMatchObject({ imageOutput: true, imageOutputServedBy: 'in-loop' })
+
+    // 但**站在 override 之后**:用户说「别给我出图」就到此为止。
+    expect(resolve('openai', 'gpt-5.5', {
+      override: { imageOutput: false },
+    })).toMatchObject({
+      imageOutput: false,
+      source: { imageOutput: 'override' },
+    })
+    expect(resolve('openai', 'gpt-5.5', {
+      override: { imageOutput: false },
+    }).imageOutputServedBy).toBeUndefined()
+
+    // `gpt-image-*` 不在表里:那是 /v1/images/* 的专用端点,通路不在回合内。
+    expect(resolve('openai', 'gpt-image-1', {
+      registryEntry: { supportsImageOutput: true },
+    }).imageOutputServedBy).toBe('dedicated-api')
+
+    // 别家不受影响(判据锁在 openai kind 上)。
+    expect(resolve('openrouter', 'openai/gpt-5.5').imageOutput).toBe(false)
+    expect(resolve('copilot', 'gpt-4.1').imageOutput).toBe(false)
   })
 
   it('answers image output for a Google-endpoint gemini image model with no catalog entry', () => {
@@ -239,8 +301,7 @@ describe('reasoning profiles per provider', () => {
   it('gpt-5.1+ adds the `none` effort rung; gpt-5.0 and the o-series do not', () => {
     // `'none'` is how gpt-5.1+ says "do not think" — the family still has no
     // `thinking` toggle, so the effort field carries the off switch.
-    expect(resolve('openai', 'gpt-5.5').reasoningProfile?.efforts)
-      .toEqual(['none', 'minimal', 'low', 'medium', 'high'])
+    expect(resolve('openai', 'gpt-5.5').reasoningProfile?.efforts).toContain('none')
     expect(resolve('openai', 'gpt-5.1').reasoningProfile?.efforts).toContain('none')
     expect(resolve('openai', 'gpt-5.10').reasoningProfile?.efforts).toContain('none')
     expect(resolve('openai', 'gpt-5').reasoningProfile?.efforts)
@@ -250,6 +311,47 @@ describe('reasoning profiles per provider', () => {
     // A "vendor/" path prefix is tolerated like everywhere else in the table,
     // but only for the openai kind — openrouter has its own rows.
     expect(resolve('openai', 'openai/gpt-5.5').reasoningProfile?.efforts).toContain('none')
+  })
+
+  it('openai 档位表按官方模型页逐代不同(#14)', () => {
+    // o 系列:官方模型页只列 low / medium / high。
+    for (const modelId of ['o1', 'o3', 'o3-mini', 'o4-mini']) {
+      expect(resolve('openai', modelId).reasoningProfile?.efforts)
+        .toEqual(['low', 'medium', 'high'])
+    }
+    // gpt-5(5.0,含 -mini / -nano):minimal / low / medium / high,没有 none。
+    for (const modelId of ['gpt-5', 'gpt-5.0', 'gpt-5-mini', 'gpt-5-nano']) {
+      expect(resolve('openai', modelId).reasoningProfile?.efforts)
+        .toEqual(['minimal', 'low', 'medium', 'high'])
+    }
+    // 5.1–5.3:多了 none,少了 minimal。
+    for (const modelId of ['gpt-5.1', 'gpt-5.2', 'gpt-5.3']) {
+      expect(resolve('openai', modelId).reasoningProfile?.efforts)
+        .toEqual(['none', 'low', 'medium', 'high'])
+    }
+    // 5.4 / 5.5:再多一档 xhigh。
+    for (const modelId of ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.5']) {
+      expect(resolve('openai', modelId).reasoningProfile?.efforts)
+        .toEqual(['none', 'low', 'medium', 'high', 'xhigh'])
+    }
+    // 5.6 及以后:再多一档 max。
+    for (const modelId of ['gpt-5.6', 'gpt-5.10']) {
+      expect(resolve('openai', modelId).reasoningProfile?.efforts)
+        .toEqual(['none', 'low', 'medium', 'high', 'xhigh', 'max'])
+    }
+  })
+
+  it('openai 默认档:5.4 服务端默认 none(= 不想),其余沿用 medium(#14)', () => {
+    // 官方 gpt-5.4 模型页把 `none` 标成默认 —— 什么都不发 = 不思考。
+    // `defaultEffort` 的类型排除 `'none'`(那不是一档强度),所以这一格记在
+    // `defaultOn` 上。
+    expect(resolve('openai', 'gpt-5.4').reasoningProfile)
+      .toMatchObject({ defaultOn: false, defaultEffort: 'medium' })
+    expect(resolve('openai', 'gpt-5.4-mini').reasoningProfile?.defaultOn).toBe(false)
+    for (const modelId of ['gpt-5', 'gpt-5.2', 'gpt-5.5', 'gpt-5.6', 'o3']) {
+      expect(resolve('openai', modelId).reasoningProfile)
+        .toMatchObject({ defaultOn: true, defaultEffort: 'medium' })
+    }
   })
 
   it('openai and grok reasoning cannot be toggled off', () => {

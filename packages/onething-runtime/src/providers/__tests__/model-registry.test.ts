@@ -15,6 +15,7 @@ import {
   getOnethingModelMaxOutputTokens,
   getOnethingModelsForProvider,
   mergeOnethingModelsById,
+  onethingModelServesImageOutputInLoop,
   onethingModelSupportsImageGeneration,
   refreshAllOnethingProviderModels,
   refreshOnethingProviderModels,
@@ -188,6 +189,51 @@ describe('onething model registry helpers', () => {
         'gemini',
       ),
     ).toBe(false)
+  })
+
+  it('openai 直连的原生出图模型不换通路,但答「回合内出图」(#13)', () => {
+    // 两支互斥:`onethingModelSupportsImageGeneration` = 换不换通路,
+    // `onethingModelServesImageOutputInLoop` = 图在不在回合里出。
+    expect(onethingModelSupportsImageGeneration(undefined, 'gpt-5.5', 'openai')).toBe(false)
+    expect(onethingModelServesImageOutputInLoop(undefined, 'gpt-5.5', 'openai')).toBe(true)
+    expect(onethingModelServesImageOutputInLoop(undefined, 'o3', 'openai')).toBe(true)
+
+    // 表外的模型两边都是 false。
+    expect(onethingModelSupportsImageGeneration(undefined, 'gpt-5.4', 'openai')).toBe(false)
+    expect(onethingModelServesImageOutputInLoop(undefined, 'gpt-5.4', 'openai')).toBe(false)
+
+    // 专用生图端点仍旧换通路,且不是回合内。
+    expect(onethingModelSupportsImageGeneration(undefined, 'gpt-image-1', 'openai')).toBe(true)
+    expect(onethingModelServesImageOutputInLoop(undefined, 'gpt-image-1', 'openai')).toBe(false)
+
+    // 用户 override「别出图」一票否决闸门。
+    expect(
+      onethingModelServesImageOutputInLoop(
+        { openai: { modelCapabilitiesByModel: { 'gpt-5.5': { imageOutput: false } } } },
+        'gpt-5.5',
+        'openai',
+      ),
+    ).toBe(false)
+
+    // codex / gemini / openrouter 的 in-loop 模型走的是同一句话。
+    expect(
+      onethingModelServesImageOutputInLoop(
+        {
+          codex: {
+            models: {
+              'gpt-5.5': {
+                ...entry('gpt-5.5', 'codex', 192000, 65536),
+                supportsImageOutput: false,
+                providerMetadata: { codex: { nativeTools: ['image_generation'] } },
+              },
+            },
+          },
+        },
+        'gpt-5.5',
+        'codex',
+      ),
+    ).toBe(true)
+    expect(onethingModelServesImageOutputInLoop(undefined, 'gemini-3-pro-image', 'gemini')).toBe(true)
   })
 
   it('keeps the dedicated-endpoint name fallbacks', () => {

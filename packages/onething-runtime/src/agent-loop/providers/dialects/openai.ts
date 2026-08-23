@@ -43,24 +43,24 @@
  * `gpt-5.2` / `gpt-5` / `gpt-5-nano` / `o3` / `gpt-4.1` / `gpt-4.1-mini` /
  * `gpt-4.1-nano`,各模型页的「Supported tools」也逐个列着 `image_generation`。
  *
- * **但 `requestedOutputModalities` 今天对这一家恒为空**:填它的那支
- * (`backend/wiring/engine/stream/stream-executor.ts` →
- * `shouldResolveCodexNativeTools`)第一句就是
- * `if (options.providerId !== 'codex') return false`;而账本判 `imageOutput`
- * 时,gpt-5.x 的目录条目说的是 `output_modalities: ['text']`(官方模型页逐字:
- * 「Output modalities: text」—— 图是**工具**产出的,不是模型的输出模态),
- * 于是 `imageOutputServedBy` 也判不成 `'in-loop'`。
+ * **两道闸 P4-9(拍板 #13)已经开了,方言一个字没改**:
+ *  - 账本把「这个模型有原生出图工具」当独立事实(`OPENAI_IMAGE_TOOL_MODELS`,
+ *    排在目录之前 —— 官方模型页的「Output modalities: text」说的是*模型*的
+ *    输出模态,图是**工具**产出的),于是 `imageOutputServedBy: 'in-loop'`;
+ *  - `backend/wiring/engine/stream/stream-executor.ts` 的
+ *    `resolveRequestedOutputModalities` 对 codex 之外的家改问账本的
+ *    `servedBy === 'in-loop'`,于是这一家的 `requestedOutputModalities` 真的会
+ *    是 `['image']`。
  *
- * 两处都不在本期范围内(一处是 backend 的原生工具闸门,一处是账本的 openai
- * 行,后者会同时改动模型徽标这类用户可见的东西 —— 是产品裁定不是线协议迁移)。
- * 钩子先按同一条规矩挂着:闸门一开就活,方言一个字都不用改。
  * `gpt-image-*` 仍走专用生图流(`/v1/images/*`),那条通路不在回合里。
  */
 import type { AgentModelCapabilities } from "@onething/core/agent-loop";
 import type { TurnContext } from "../base/index.js";
 import { OPENAI_RESPONSES_THINKING_WIRES } from "../thinking/index.js";
+import { onethingOpenAIAcceptsOriginalImageDetail } from "../../../providers/model-capability.js";
 import {
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
+	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES_WITH_ORIGINAL,
 	type CodexTool,
 } from "../wires/index.js";
 import { promptCacheKeyExtraBody } from "./recipe.js";
@@ -88,9 +88,21 @@ export const OPENAI_PROVIDER_DATA_TAG = "openai";
  * 上的常规字段,codec 不给袋时恒发 `'auto'` —— 官方
  * `/docs/guides/images-vision`:「`auto`:Automatic detail selection.」
  */
+/**
+ * `input_image.detail` 的值域**按模型算**(拍板 #14):`original` 官方只在
+ * `gpt-5.4` 及以后可用(`/docs/guides/images-vision`:「Available on `gpt-5.4`
+ * and future models」)。判据在账本(`onethingOpenAIAcceptsOriginalImageDetail`)
+ * —— 方言不认模型名,只问账本;别家(codex / grok)一个字不变。
+ */
+function openAIImageDetailValues(turn: TurnContext): readonly string[] {
+	return onethingOpenAIAcceptsOriginalImageDetail(turn.model)
+		? OPENAI_RESPONSES_IMAGE_DETAIL_VALUES_WITH_ORIGINAL
+		: OPENAI_RESPONSES_IMAGE_DETAIL_VALUES;
+}
+
 export const OPENAI_PROVIDER_OPTIONS = {
 	verbosity: true,
-	imageDetail: OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
+	imageDetail: openAIImageDetailValues,
 } as const;
 
 /**

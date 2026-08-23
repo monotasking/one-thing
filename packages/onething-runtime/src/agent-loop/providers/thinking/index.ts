@@ -90,6 +90,9 @@ export {
 	openAIEffortWire,
 	clampOpenAIReasoningEffort,
 	openAIAcceptsNoneEffort,
+	openAIReasoningEffortsFor,
+	OPENAI_REASONING_EFFORT_LADDER,
+	type OpenAIReasoningEffort,
 } from "./openai-effort.js";
 export {
 	OPENAI_RESPONSES_THINKING_WIRES,

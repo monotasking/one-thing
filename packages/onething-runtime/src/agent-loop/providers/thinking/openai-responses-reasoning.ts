@@ -41,10 +41,11 @@
  *     ——`OpenAIEffortWire` 只认 `'enabled'` / `'disabled'` 两个显式意图。
  *     不发 = 服务端按模型自己的默认(gpt-5.5 是 `medium`)想,与 chat 通路
  *     上今天的字节等价。反推是 codex 的怪癖,不是这条线协议的。
- *  2. **effort 的钳法逐字不变**:`minimal|low|medium` 原样,其余(含 `xhigh` /
- *     `max`)一律 `high`。官方 5.4+ 确实收 `xhigh`,但那要先在**账本**
- *     (`ONETHING_OPENAI_EFFORTS`)上多一档 —— 档位表是用户可见的设置项,
- *     加档是产品裁定不是线协议迁移,本期不动(见汇报的待拍板项)。
+ *  2. **effort 的钳法与 chat 通路共用一支**(`clampOpenAIReasoningEffort`)。
+ *     P4-9(拍板 #14)起它按**账本的 per-model 档位表**钳,不再是写死的四档:
+ *     gpt-5.5 收 `xhigh`,于是 `max` 退到 `xhigh` 而不是 `high`;5.1+ 没有
+ *     `minimal`,于是 `minimal` 退到 `low`。档位表本身在
+ *     `providers/model-capability.ts`(官方各模型页逐条核过)。
  *
  * ## `none` 与 `summary` 的关系
  *
@@ -69,6 +70,8 @@ import type { RequestBodyBuilder, ThinkingWire, TurnContext } from "../base/inde
 import {
 	clampOpenAIReasoningEffort,
 	openAIAcceptsNoneEffort,
+	openAIReasoningEffortsFor,
+	type OpenAIReasoningEffort,
 } from "./openai-effort.js";
 import {
 	RESPONSES_ENCRYPTED_REASONING_INCLUDE,
@@ -77,7 +80,7 @@ import {
 } from "./responses-reasoning.js";
 
 export interface OpenAIResponsesReasoningOptions {
-	effort: "none" | "minimal" | "low" | "medium" | "high";
+	effort: "none" | OpenAIReasoningEffort;
 	summary?: "auto";
 }
 
@@ -117,7 +120,10 @@ export class OpenAIResponsesReasoningWire implements ThinkingWire {
 		}
 		// 显式说了「想」才发 —— 没说话不等于不想,但也不等于要我们替它决定。
 		if (thinking !== "enabled") return undefined;
-		const effort = clampOpenAIReasoningEffort(reasoningEffort);
+		const effort = clampOpenAIReasoningEffort(
+			reasoningEffort,
+			openAIReasoningEffortsFor(turn),
+		);
 		if (reasoningEffort !== undefined && reasoningEffort !== effort) {
 			turn.warn(
 				"setting-clamped",
