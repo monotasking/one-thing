@@ -97,6 +97,49 @@ describe('sessions:verify', () => {
     expect(verifySession(sessionsDir, 'drift').issues.map((issue: { kind: string }) => issue.kind)).toContain('messages')
   })
 
+  /**
+   * §13.17 裁定三 反向用例:老形态(stepOnly)会话 —— `toolCall.changes` 只在
+   * `steps[].toolCall`,顶层 `toolCalls[]` 没有。迁移把整条消息合成
+   * `message/imported`(逐字带着 stepOnly 形态);投影侧过
+   * `dehydrateProjectedMessages` 把 changes 归并到顶层。counterpart(磁盘)侧
+   * 若只走 `rehydrateSessionFromStorage`,changes 留在 step 上、顶层空 → canonical
+   * 在 `toolCalls[].changes` 上分叉 → 'messages' 红。两侧同走
+   * `dehydrateProjectedMessages` 后归一,消失。
+   */
+  it('does not blame a stepOnly legacy session once both sides normalize the same way', () => {
+    const stepOnlyMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: 'edited',
+      timestamp: 2,
+      // stepOnly: 顶层没有 changes
+      toolCalls: [{ id: 'tc1', toolName: 'edit', status: 'completed', result: 'ok' }],
+      steps: [{
+        type: 'tool-call',
+        toolCallId: 'tc1',
+        status: 'completed',
+        timestamp: 2,
+        toolCall: {
+          id: 'tc1',
+          toolName: 'edit',
+          status: 'completed',
+          result: 'ok',
+          changes: { hunks: [{ a: 1, b: 2 }], summary: 'edited' },
+        },
+      }],
+    }
+    const userMessage = { id: 'u1', role: 'user', content: 'edit it', timestamp: 1 }
+    // 迁移形态:一条消息 = 一条 message/imported，surfaceOp append，seq 连续。
+    writeEvents('steponly', [
+      { seq: 1, time: 1, type: 'message/imported', data: { message: userMessage }, surfaceOp: 'append' },
+      { seq: 2, time: 2, type: 'message/imported', data: { message: stepOnlyMessage }, surfaceOp: 'append' },
+    ])
+    writeTranscript('steponly', [userMessage, stepOnlyMessage])
+
+    const kinds = verifySession(sessionsDir, 'steponly').issues.map((issue: { kind: string }) => issue.kind)
+    expect(kinds).not.toContain('messages')
+  })
+
   it('lists session directories but never legacy-backup', () => {
     healthy('a')
     healthy('b')

@@ -33,7 +33,7 @@ import {
   canonicalChatMessage,
   type SessionLogEventRecord,
 } from '@onething/core/session'
-import { dehydrateProjectedMessages, rehydrateSessionFromStorage } from '@onething/runtime/sessions/session-dehydrate'
+import { dehydrateProjectedMessages } from '@onething/runtime/sessions/session-dehydrate'
 
 export interface SessionVerifyIssue {
   kind: 'seq' | 'surface' | 'projection' | 'blob' | 'unclosed-run' | 'messages'
@@ -208,7 +208,11 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
       // (事件账本开记之前的)只计数为 uncovered,不算错。
       // 磁盘上的消息是脱水形态(step.toolCall 被摘、partialResult 待重算);
       // shadow/读面比较的是补水后的形状,这里走同一个函数。
-      const hydrated = (rehydrateSessionFromStorage({ messages: real }) as { messages: typeof real }).messages
+      // §13.17 裁定三:counterpart 侧走 dehydrateProjectedMessages(clone→dehydrate
+      // →rehydrate),与投影侧同一把归一函数 —— 对新形态磁盘是恒等,对老形态把
+      // step 上的 changes 归并到顶层、剥 originalContent,三个不对称同源消解,
+      // canonical 判官零豁免。
+      const hydrated = dehydrateProjectedMessages(real)
       const realById = new Map(hydrated.map(message => [message.id, message]))
       let unknownProjected = 0
       for (const projected of messages) {
