@@ -4,15 +4,12 @@ import type {
 	AgentProvider,
 	AgentTurnRequest,
 } from "@onething/core/agent-loop";
-import {
-	createCodexAgentProvider,
-	type CodexAgentProviderOptions,
-} from "./codex.js";
 import { BearerApiKeyAuth, ResolveAuth } from "./base/index.js";
 import {
 	CLAUDE_CODE_DIALECT,
 	CLAUDE_CODE_OAUTH_BETA_HEADERS,
 	CLAUDE_DIALECT,
+	CODEX_DIALECT,
 	CUSTOM_ANTHROPIC_DIALECT,
 	CUSTOM_OPENAI_DIALECT,
 	DEEPSEEK_DIALECT,
@@ -27,8 +24,10 @@ import {
 	QWEN_DIALECT,
 	ZHIPU_DIALECT,
 	anthropicAuth,
+	codexAuth,
 	createAnthropicProvider,
 	createGeminiProvider,
+	createResponsesProvider,
 	geminiAuth,
 	createOpenAIChatProvider,
 	openAIChatTransportCapabilities,
@@ -555,16 +554,18 @@ registerAgentProviderRuntime(
 registerAgentProviderRuntime(
 	"codex",
 	(config, options) =>
-		createCodexAgentProvider({
-			apiKey: config.apiKey,
+		createResponsesProvider(CODEX_DIALECT, {
 			baseUrl: config.baseUrl,
-			oauthToken: config.oauthToken,
-			authContext: config.authContext,
+			auth: codexAuth({
+				apiKey: config.apiKey,
+				oauthToken: config.oauthToken,
+				authContext: config.authContext,
+				refreshOAuthToken: options.refreshOAuthToken
+					? forceRefresh => options.refreshOAuthToken!("codex", forceRefresh)
+					: undefined,
+			}),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			refreshOAuthToken: options.refreshOAuthToken
-				? forceRefresh => options.refreshOAuthToken!("codex", forceRefresh)
-				: undefined,
 		}),
 	{ replace: true },
 );

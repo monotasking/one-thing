@@ -1,0 +1,976 @@
+/**
+ * `OpenAIResponsesWire` —— OpenAI Responses(`/responses`,SSE 档)这条线协议的
+ * **唯一**实现(设计稿 §3:一条 wire 一个类,管线写死在 `HttpAgentProvider`
+ * 的模板方法里)。
+ *
+ * 今天它上面只挂一个 id(`codex`),但差异仍然全部由组合进 `Dialect` 的策略
+ * 对象表达:认证(OAuth token 三级解析 + 六个 codex 头 + 401 强制刷新重试)、
+ * 端点(`…/codex/responses` 的三态归一化)、思考线型(`reasoning` +
+ * `include`)、错误(`Codex request failed (…)`)。这个类里没有一处
+ * `if (providerId === …)`;方言私有的两样东西(`transport` /
+ * `fallbackInstructions`)是配方上的字段,不是分支。
+ *
+ * P1-c 是**纯搬运**:`codex.ts` 的 `buildCodexRequestBody`、
+ * `parseCodexResponsesSse` 的整个流状态机、`mapCodexFinishReason` 的映射,
+ * 逐字保留(`__tests__/wire-snapshots/responses` 的 9 份快照就是这句话的门,
+ * **禁 `-u`**)。
+ *
+ * 四处复刻的现状,后面几期再动(设计稿 §9 P1 门 ①):
+ *  - **不发 temperature / maxTokens**:Responses 有这两个旋钮,但今天的 codex
+ *    一个都不拼(`noSamplingPolicy`,`maxTokensField` 无读者);
+ *  - **相邻同角色不合并**(`dialect.request.mergeAdjacent: false`);
+ *  - **`isError` 对模型不可见**:工具结果的失败标记在这条线上没有出口
+ *    (anthropic 有,设计稿把它排成 P3 功能项);
+ *  - **dump 时序**:今天在 token 解析之前落盘,统一之后变成 auth 之后 ——
+ *    落盘的字节一模一样(`dumpMetadata` 覆盖成 `{url, method, requestSource}`),
+ *    差别只在「落盘了但 token 没拿到」这条边界上,fixture 看不见。
+ */
+import type {
+	AgentFinishReason,
+	AgentJsonValue,
+	AgentModelCapabilities,
+	AgentTurnStreamEvent,
+} from "@onething/core/agent-loop";
+import { getLogger } from "../../../logging/index.js";
+import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
+import {
+	HttpAgentProvider,
+	UsageBuckets,
+	noSamplingPolicy,
+	type Dialect,
+	type FinishReasonMapper,
+	type PartCodec,
+	type ProviderContext,
+	type RawTurnFinish,
+	type RequestBodyBuilder,
+	type SamplingPolicy,
+	type ToolChoicePolicy,
+	type TurnContext,
+	type UsageNormalizer,
+} from "../base/index.js";
+import type { AgentProviderRequestDumpValue } from "../request-dump.js";
+import {
+	CodexResponsesErrorMapper,
+	codexResponsesErrorMapper,
+} from "./openai-responses-errors.js";
+import {
+	responsesParts,
+	stringifyCodexToolInput,
+	toCodexToolChoice,
+	toCodexTools,
+	type ResponsesCodec,
+	type ResponsesWireValue,
+} from "./openai-responses-messages.js";
+
+// ---------------------------------------------------------------------------
+// 方言:这条线上多出来的两个字段
+// ---------------------------------------------------------------------------
+
+export interface ResponsesDialect extends Dialect<ResponsesWireValue> {
+	/** provider 的**传输**声明(模态 / 结构化工具结果)。per-model 的布尔归账本。 */
+	transport: AgentModelCapabilities;
+	/** 一条 system 都没有时顶上去的 `instructions`(Responses 这个字段必填)。 */
+	fallbackInstructions: string;
+}
+
+// ---------------------------------------------------------------------------
+// 流上的形状
+// ---------------------------------------------------------------------------
+
+type CodexRawRecord = Record<string, AgentJsonValue | undefined>;
+
+export interface CodexResponsesUsage {
+	input_tokens?: number;
+	output_tokens?: number;
+	total_tokens?: number;
+	output_tokens_details?: { reasoning_tokens?: number };
+	input_tokens_details?: { cached_tokens?: number };
+}
+
+export interface CodexSseEvent {
+	type?: string;
+	delta?: string;
+	text?: string;
+	input?: string;
+	arguments_delta?: string;
+	argumentsDelta?: string;
+	item_id?: string;
+	itemId?: string;
+	call_id?: string;
+	callId?: string;
+	summary?: AgentJsonValue;
+	summary_text?: AgentJsonValue;
+	summaryText?: AgentJsonValue;
+	item?: CodexRawRecord;
+	response?: {
+		id?: string;
+		model?: string;
+		usage?: CodexResponsesUsage;
+		incomplete_details?: { reason?: string };
+		error?: { message?: string };
+	};
+	error?: { message?: string };
+}
+
+function previewText(value: string, maxLength = 160): string {
+	return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function codexRecord(value: AgentJsonValue | undefined): CodexRawRecord {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as CodexRawRecord)
+		: {};
+}
+
+function optionalString(value: AgentJsonValue | undefined): string | undefined {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function collectReasoningSummaryText(
+	value: AgentJsonValue | undefined,
+): string[] {
+	if (typeof value === "string") return value ? [value] : [];
+	if (!value || typeof value !== "object") return [];
+	if (Array.isArray(value)) return value.flatMap(collectReasoningSummaryText);
+	const record = codexRecord(value);
+	return [
+		record.text,
+		record.summary_text,
+		record.summaryText,
+		record.value,
+		record.summary,
+		record.parts,
+		record.items,
+	].flatMap(collectReasoningSummaryText);
+}
+
+function collectManyReasoningSummaryText(
+	values: Array<AgentJsonValue | undefined>,
+): string[] {
+	return values.flatMap((value) => collectReasoningSummaryText(value));
+}
+
+function extractOutputText(item: AgentJsonValue | undefined): string {
+	const itemRecord = codexRecord(item);
+	if (!Array.isArray(itemRecord.content)) return "";
+	return itemRecord.content
+		.map((content) => {
+			const record = codexRecord(content);
+			return optionalString(record.text) ?? optionalString(record.content) ?? "";
+		})
+		.join("");
+}
+
+function extractReasoningSummaryText(item: AgentJsonValue | undefined): string {
+	const record = codexRecord(item);
+	return collectManyReasoningSummaryText([
+		record.summary,
+		record.text,
+		record.summary_text,
+		record.summaryText,
+		record.reasoning_summary,
+		record.reasoningSummary,
+	]).join("");
+}
+
+function isCodexFunctionCallItem(item: AgentJsonValue | undefined): boolean {
+	const record = codexRecord(item);
+	return record.type === "function_call" || record.type === "custom_tool_call";
+}
+
+/**
+ * SSE 拆包 —— 这条线的事件类型写在 **`event:` 行**上,`data` 里不一定有
+ * `type`,所以不能用共用的 `readJsonSseData`(那条只读 `data:`)。逐字复刻
+ * `parseCodexResponsesSse`:`[DONE]` 跳过,缓冲区尾巴在流末补发一次。
+ */
+export async function* parseCodexResponsesSse(
+	body: ReadableStream<Uint8Array>,
+): AsyncGenerator<CodexSseEvent> {
+	const reader = body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	let eventName: string | null = null;
+	let dataLines: string[] = [];
+
+	function decode(): CodexSseEvent | undefined {
+		const data = dataLines.join("\n").trim();
+		const name = eventName;
+		eventName = null;
+		dataLines = [];
+		if (!data || data === "[DONE]") return undefined;
+		const parsed = JSON.parse(data) as CodexSseEvent;
+		if (name && !parsed.type) parsed.type = name;
+		return parsed;
+	}
+
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+			const lines = buffer.split(/\r?\n/);
+			buffer = lines.pop() ?? "";
+			for (const line of lines) {
+				if (line === "") {
+					const event = decode();
+					if (event) yield event;
+					continue;
+				}
+				if (line.startsWith("event:")) {
+					eventName = line.slice(6).trim();
+				} else if (line.startsWith("data:")) {
+					dataLines.push(line.slice(5).trimStart());
+				}
+			}
+		}
+		if (buffer.trim()) {
+			dataLines.push(
+				buffer.startsWith("data:") ? buffer.slice(5).trimStart() : buffer.trim(),
+			);
+		}
+		const event = decode();
+		if (event) yield event;
+	} finally {
+		reader.releaseLock();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// usage —— §7 的三桶直译
+// ---------------------------------------------------------------------------
+
+/**
+ * 「这块响应里到底有没有 usage」的判据 —— `usageFromResponse` 逐字:
+ * `input_tokens` / `output_tokens` / `total_tokens` 三个里有一个是数就算有。
+ */
+export function hasCodexResponsesUsage(usage: CodexResponsesUsage | undefined): boolean {
+	if (!usage) return false;
+	return (
+		usage.input_tokens !== undefined ||
+		usage.output_tokens !== undefined ||
+		usage.total_tokens !== undefined
+	);
+}
+
+/**
+ * 三桶直译(设计稿 §7 的 Responses 行):`input_tokens` **含** cached,所以
+ * uncachedInput 要减掉 `input_tokens_details.cached_tokens`(投影
+ * `input = uncached + read` 于是还原成 `input_tokens`,与今天逐字一致);
+ * `total_tokens` 是厂商自己报的口径,原样进 `reportedTotal`。
+ *
+ * `cacheWrite` 是 0:今天这条线不读 `input_tokens_details.cache_write_tokens`,
+ * P1-c 不动它(读了会在账本上凭空多出一列)。
+ */
+export class CodexResponsesUsageNormalizer implements UsageNormalizer {
+	toBuckets(raw: unknown): UsageBuckets | undefined {
+		if (typeof raw !== "object" || raw === null) return undefined;
+		const usage = raw as CodexResponsesUsage;
+		if (!hasCodexResponsesUsage(usage)) return undefined;
+		const inputTokens = usage.input_tokens ?? 0;
+		const cacheRead = usage.input_tokens_details?.cached_tokens ?? 0;
+		return new UsageBuckets(
+			Math.max(inputTokens - cacheRead, 0),
+			cacheRead,
+			0,
+			usage.output_tokens ?? 0,
+			usage.output_tokens_details?.reasoning_tokens,
+			undefined,
+			undefined,
+			// 厂商没报 total 时派生 `input + output` —— `usageFromResponse` 的
+			// `?? (in ?? 0) + (out ?? 0)` 与 `UsageBuckets.total` 同一句话。
+			usage.total_tokens,
+		);
+	}
+}
+
+export const codexResponsesUsage: UsageNormalizer =
+	new CodexResponsesUsageNormalizer();
+
+// ---------------------------------------------------------------------------
+// finish reason
+// ---------------------------------------------------------------------------
+
+/**
+ * `mapCodexFinishReason` 逐字。
+ *
+ * 它对**自己的输出是幂等的**(`stop`/`length`/`error`/`tool_calls`/
+ * `content_filter`/`unknown` 原样回),所以 `parseStream` 里那台状态机可以
+ * 继续按今天的样子直接算出契约值,再由这里过一道 —— 两边不会打架。
+ */
+export class CodexFinishReasonMapper implements FinishReasonMapper {
+	map(reason: string | null | undefined): AgentFinishReason {
+		switch (reason) {
+			case "stop":
+			case "length":
+			case "error":
+				return reason;
+			case "max_output_tokens":
+			case "max_tokens":
+				return "length";
+			case "tool-calls":
+			case "tool_calls":
+				return "tool_calls";
+			case "content-filter":
+			case "content_filter":
+				return "content_filter";
+			default:
+				return "unknown";
+		}
+	}
+}
+
+export const codexFinishReasonMapper: FinishReasonMapper =
+	new CodexFinishReasonMapper();
+
+// ---------------------------------------------------------------------------
+// 横切策略
+// ---------------------------------------------------------------------------
+
+/**
+ * `tool_choice` **恒发**(没有工具时也发 `'auto'`,`baseline.request.json`
+ * 钉着这一条),指名工具是**扁平**的 `{type:'function', name}`。
+ * —— 与 openai-chat 那条「有工具才发、指名嵌套」正好两处都不同。
+ */
+export class ResponsesToolChoicePolicy implements ToolChoicePolicy {
+	apply(turn: TurnContext, builder: RequestBodyBuilder): void {
+		builder.set("tool_choice", toCodexToolChoice(turn.request.toolChoice));
+	}
+}
+
+export const responsesToolChoicePolicy: ToolChoicePolicy =
+	new ResponsesToolChoicePolicy();
+
+// ---------------------------------------------------------------------------
+// wire
+// ---------------------------------------------------------------------------
+
+interface ActiveFunctionCallInput {
+	itemId: string;
+	callId: string;
+	toolName: string;
+	streamedArgs: string;
+	started: boolean;
+}
+
+export class OpenAIResponsesWire extends HttpAgentProvider<
+	Record<string, unknown>,
+	CodexSseEvent
+> {
+	constructor(ctx: ProviderContext, dialect: ResponsesDialect) {
+		super(ctx, dialect);
+	}
+
+	protected get transportCapabilities(): AgentModelCapabilities {
+		return this.responsesDialect.transport;
+	}
+
+	protected get defaultParts(): PartCodec {
+		return responsesParts;
+	}
+
+	protected get defaultUsage(): UsageNormalizer {
+		return codexResponsesUsage;
+	}
+
+	protected get finish(): FinishReasonMapper {
+		return codexFinishReasonMapper;
+	}
+
+	protected override get defaultToolChoice(): ToolChoicePolicy {
+		return responsesToolChoicePolicy;
+	}
+
+	/** Responses 有 temperature / max_output_tokens,今天的 codex 一个都不拼。 */
+	protected override get defaultSampling(): SamplingPolicy {
+		return noSamplingPolicy;
+	}
+
+	/** P1-c 抛的仍是今天那个裸 `Error`(见 `openai-responses-errors.ts` 的抬头)。 */
+	protected override get errors(): CodexResponsesErrorMapper {
+		return (
+			(this.dialect.errors as CodexResponsesErrorMapper | undefined) ??
+			codexResponsesErrorMapper
+		);
+	}
+
+	protected get responsesDialect(): ResponsesDialect {
+		return this.dialect as ResponsesDialect;
+	}
+
+	protected get responsesParts(): ResponsesCodec {
+		return this.parts as ResponsesCodec;
+	}
+
+	/** 这条线是全仓唯一 `mode: 'codex-http'` 的。 */
+	protected override get dumpMode(): "stream" | "codex-http" {
+		return "codex-http";
+	}
+
+	/**
+	 * 落盘元信息 —— 今天的形状是 `{url, method, requestSource}`,**没有 `turn`**
+	 * (设计稿 §9 P1 门 ①,`baseline.request.json` 钉着)。
+	 */
+	protected override dumpMetadata(
+		_turn: TurnContext,
+		url: string,
+	): Record<string, AgentProviderRequestDumpValue> {
+		return { url, method: "POST", requestSource: "agent-loop" };
+	}
+
+	/**
+	 * 今天的行为:**能力是一张常量表,与模型无关**(`getModelCapabilities: () =>
+	 * CODEX_AGENT_CAPABILITIES`)。账本的 per-model 覆盖仍由 `factory.ts` 的
+	 * `withPerModelCapabilities` 在外面盖一层;P2 两份合一时这个覆盖退役。
+	 */
+	override async getModelCapabilities(): Promise<AgentModelCapabilities> {
+		return this.transportCapabilities;
+	}
+
+	// -----------------------------------------------------------------------
+	// 请求体 —— `buildCodexRequestBody` 逐字(`reasoning` / `include` 由
+	// `ResponsesReasoningWire` 在下一步写,顺序不影响字节)
+	// -----------------------------------------------------------------------
+
+	protected buildBody(turn: TurnContext): void {
+		const { builder, request } = turn;
+		// 今天这条线上 `mergeAdjacent` 是 **false**(Responses 的 `input` 是项
+		// 数组,不要求 user/assistant 严格交替)—— 但字段仍然有真读者,拍板改
+		// true 时这里立刻生效,不会变成一处静默的谎。
+		const messages = this.responsesDialect.request.mergeAdjacent
+			? mergeAdjacentSameRoleMessages(request.messages)
+			: request.messages;
+		const { input, instructions } = this.responsesParts.toRequestPrompt(
+			messages,
+			turn,
+		);
+
+		builder.set("model", request.model);
+		builder.set(
+			"instructions",
+			instructions || this.responsesDialect.fallbackInstructions,
+		);
+		builder.set("input", input);
+		// 生图不是一个开关,而是**工具表里多一项** —— 由
+		// `requestedOutputModalities` 含 'image' 决定(设计稿 §5 的生图路由)。
+		builder.set(
+			"tools",
+			toCodexTools(
+				request.tools,
+				Boolean(request.requestedOutputModalities?.includes("image")),
+			),
+		);
+		builder.set("parallel_tool_calls", false);
+		builder.set("store", false);
+		builder.set("stream", true);
+	}
+
+	// -----------------------------------------------------------------------
+	// 流解析 —— `codex.ts` 那台状态机逐字
+	// -----------------------------------------------------------------------
+
+	protected async *parseStream(
+		response: Response,
+		turn: TurnContext,
+	): AsyncGenerator<AgentTurnStreamEvent, RawTurnFinish, void> {
+		if (!response.body) {
+			throw new Error("Codex request failed: response body is empty");
+		}
+
+		const log = turn.logger;
+		const turnIndex = turn.turn;
+		const errors = this.errors;
+		const debugStream = log.isLevelEnabled("trace");
+
+		let finishReason: AgentFinishReason = "unknown";
+		let usage: CodexResponsesUsage | undefined;
+		let completedToolCallCount = 0;
+		let emittedTextFromDelta = false;
+		let activeReasoningItemId: string | undefined;
+		const reasoningSummaryByItem = new Map<string, string>();
+
+		const toolInputByItemId = new Map<string, ActiveFunctionCallInput>();
+		const toolInputByCallId = new Map<string, ActiveFunctionCallInput>();
+		const pendingToolInputDeltas = new Map<string, string>();
+
+		const emitReasoning = function* (
+			delta: string,
+			itemId = "reasoning-0",
+		): Generator<AgentTurnStreamEvent> {
+			if (!delta) return;
+			reasoningSummaryByItem.set(
+				itemId,
+				`${reasoningSummaryByItem.get(itemId) ?? ""}${delta}`,
+			);
+			if (debugStream) {
+				log.trace("reasoning delta", {
+					turn: turnIndex,
+					chars: delta.length,
+					text: previewText(delta, 240),
+				});
+			}
+			yield { type: "reasoning-delta", turn: turnIndex, delta };
+		};
+
+		const emitText = function* (delta: string): Generator<AgentTurnStreamEvent> {
+			if (!delta) return;
+			emittedTextFromDelta = true;
+			if (debugStream) {
+				log.trace("text delta", {
+					turn: turnIndex,
+					chars: delta.length,
+					text: previewText(delta, 240),
+				});
+			}
+			yield { type: "text-delta", turn: turnIndex, delta };
+		};
+
+		const getFunctionCallItemId = (
+			item: CodexRawRecord,
+			event?: CodexSseEvent,
+			fallback?: string,
+		): string | undefined => {
+			const id =
+				item.id ?? item.item_id ?? item.itemId ?? event?.item_id ?? fallback;
+			return optionalString(id);
+		};
+		const getFunctionCallCallId = (
+			item: CodexRawRecord,
+			event?: CodexSseEvent,
+		): string | undefined => {
+			return (
+				optionalString(item.call_id) ??
+				optionalString(item.callId) ??
+				optionalString(event?.call_id) ??
+				optionalString(item.id)
+			);
+		};
+		const getFunctionCallToolName = (
+			item: CodexRawRecord,
+		): string | undefined => {
+			return (
+				optionalString(item.name) ??
+				optionalString(item.tool_name) ??
+				optionalString(item.toolName)
+			);
+		};
+		const getFunctionCallArgs = (item: CodexRawRecord): string => {
+			if (typeof item.arguments === "string") return item.arguments;
+			if (typeof item.input === "string") return item.input;
+			return stringifyCodexToolInput(item.arguments ?? item.input);
+		};
+		const getReasoningItemId = (
+			item: CodexRawRecord | undefined,
+			event: CodexSseEvent,
+			fallback: string,
+		): string => {
+			return (
+				optionalString(item?.id) ??
+				optionalString(item?.item_id) ??
+				optionalString(item?.itemId) ??
+				optionalString(event.item_id) ??
+				optionalString(event.itemId) ??
+				fallback
+			);
+		};
+		const getImageGenerationCallId = (
+			item: CodexRawRecord,
+			event?: CodexSseEvent,
+		): string | undefined => {
+			return (
+				optionalString(item.id) ??
+				optionalString(item.call_id) ??
+				optionalString(item.callId) ??
+				optionalString(event?.item_id) ??
+				optionalString(event?.itemId)
+			);
+		};
+
+		const registerFunctionCallInput = (
+			item: CodexRawRecord,
+			event?: CodexSseEvent,
+		): ActiveFunctionCallInput | undefined => {
+			const callId = getFunctionCallCallId(item, event);
+			const toolName = getFunctionCallToolName(item);
+			if (!callId || !toolName) return undefined;
+			const itemId = getFunctionCallItemId(item, event, callId) ?? callId;
+			const existing =
+				toolInputByItemId.get(itemId) ?? toolInputByCallId.get(callId);
+			if (existing) {
+				existing.callId = callId;
+				existing.toolName = toolName;
+				toolInputByItemId.set(itemId, existing);
+				toolInputByCallId.set(callId, existing);
+				return existing;
+			}
+			const state = {
+				itemId,
+				callId,
+				toolName,
+				streamedArgs: "",
+				started: false,
+			};
+			toolInputByItemId.set(itemId, state);
+			toolInputByCallId.set(callId, state);
+			return state;
+		};
+
+		const startFunctionCallInput = function* (
+			state: ActiveFunctionCallInput,
+		): Generator<AgentTurnStreamEvent> {
+			if (state.started) return;
+			state.started = true;
+			yield {
+				type: "tool-call-start",
+				turn: turnIndex,
+				toolCallId: state.callId,
+				toolName: state.toolName,
+			};
+		};
+
+		const flushPendingFunctionCallDeltas = function* (
+			state: ActiveFunctionCallInput,
+		): Generator<AgentTurnStreamEvent> {
+			for (const key of Array.from(new Set([state.itemId, state.callId]))) {
+				const delta = pendingToolInputDeltas.get(key);
+				if (!delta) continue;
+				pendingToolInputDeltas.delete(key);
+				yield* startFunctionCallInput(state);
+				state.streamedArgs += delta;
+				yield {
+					type: "tool-call-delta",
+					turn: turnIndex,
+					toolCallId: state.callId,
+					toolName: state.toolName,
+					argumentsDelta: delta,
+				};
+			}
+		};
+
+		const registerAndStartFunctionCallInput = function* (
+			item: CodexRawRecord,
+			event?: CodexSseEvent,
+		): Generator<AgentTurnStreamEvent> {
+			const state = registerFunctionCallInput(item, event);
+			if (!state) return;
+			yield* startFunctionCallInput(state);
+			yield* flushPendingFunctionCallDeltas(state);
+		};
+
+		const emitFunctionCallInputDelta = function* (
+			event: CodexSseEvent,
+		): Generator<AgentTurnStreamEvent> {
+			const delta =
+				event.delta ??
+				event.input ??
+				event.arguments_delta ??
+				event.argumentsDelta ??
+				"";
+			if (!delta) return;
+			const itemId =
+				optionalString(event.item_id) ?? optionalString(event.itemId);
+			const callId =
+				optionalString(event.call_id) ?? optionalString(event.callId);
+			const state =
+				(itemId ? toolInputByItemId.get(itemId) : undefined) ??
+				(callId ? toolInputByCallId.get(callId) : undefined);
+			if (!state) {
+				const key = itemId ?? callId;
+				if (key)
+					pendingToolInputDeltas.set(
+						key,
+						`${pendingToolInputDeltas.get(key) ?? ""}${delta}`,
+					);
+				return;
+			}
+			yield* startFunctionCallInput(state);
+			state.streamedArgs += delta;
+			yield {
+				type: "tool-call-delta",
+				turn: turnIndex,
+				toolCallId: state.callId,
+				toolName: state.toolName,
+				argumentsDelta: delta,
+			};
+		};
+
+		const emitFunctionCall = function* (
+			item: CodexRawRecord,
+			event?: CodexSseEvent,
+		): Generator<AgentTurnStreamEvent> {
+			const callId = getFunctionCallCallId(item, event);
+			const toolName = getFunctionCallToolName(item);
+			if (!callId || !toolName) return;
+			const state = registerFunctionCallInput(item, event);
+			const args = getFunctionCallArgs(item);
+			if (state) {
+				yield* startFunctionCallInput(state);
+				yield* flushPendingFunctionCallDeltas(state);
+				if (args && !state.streamedArgs) {
+					state.streamedArgs = args;
+					yield {
+						type: "tool-call-delta",
+						turn: turnIndex,
+						toolCallId: callId,
+						toolName,
+						argumentsDelta: args,
+					};
+				} else if (
+					args &&
+					args.startsWith(state.streamedArgs) &&
+					args.length > state.streamedArgs.length
+				) {
+					const suffix = args.slice(state.streamedArgs.length);
+					state.streamedArgs = args;
+					yield {
+						type: "tool-call-delta",
+						turn: turnIndex,
+						toolCallId: callId,
+						toolName,
+						argumentsDelta: suffix,
+					};
+				}
+				toolInputByItemId.delete(state.itemId);
+				toolInputByCallId.delete(state.callId);
+			} else {
+				yield {
+					type: "tool-call-start",
+					turn: turnIndex,
+					toolCallId: callId,
+					toolName,
+				};
+				if (args)
+					yield {
+						type: "tool-call-delta",
+						turn: turnIndex,
+						toolCallId: callId,
+						toolName,
+						argumentsDelta: args,
+					};
+			}
+			completedToolCallCount += 1;
+			yield {
+				type: "tool-call-done",
+				turn: turnIndex,
+				toolCall: { id: callId, name: toolName, arguments: args },
+			};
+		};
+
+		for await (const event of parseCodexResponsesSse(response.body)) {
+			if (debugStream) {
+				log.trace("sse event", {
+					type: event.type,
+					deltaChars: typeof event.delta === "string" ? event.delta.length : 0,
+					deltaPreview:
+						typeof event.delta === "string" ? previewText(event.delta, 240) : "",
+					itemType: event.item?.type,
+					hasUsage: Boolean(event.response?.usage),
+				});
+			}
+			const streamError = errors.fromStreamEvent(event);
+			if (streamError) throw streamError;
+
+			switch (event.type) {
+				case "response.output_text.delta":
+					yield* emitText(event.delta ?? "");
+					break;
+				case "response.reasoning_summary_text.delta": {
+					const itemId = getReasoningItemId(
+						undefined,
+						event,
+						activeReasoningItemId ?? "reasoning-0",
+					);
+					yield* emitReasoning(event.delta ?? event.text ?? "", itemId);
+					break;
+				}
+				case "response.reasoning_summary_part.added": {
+					const itemId = getReasoningItemId(
+						undefined,
+						event,
+						activeReasoningItemId ?? "reasoning-0",
+					);
+					if (reasoningSummaryByItem.get(itemId)?.trim())
+						yield* emitReasoning("\n\n", itemId);
+					break;
+				}
+				case "response.reasoning_summary_text.done": {
+					const itemId = getReasoningItemId(
+						undefined,
+						event,
+						activeReasoningItemId ?? "reasoning-0",
+					);
+					const summary = collectManyReasoningSummaryText([
+						event.text,
+						event.summary,
+						event.summary_text,
+						event.summaryText,
+					]).join("");
+					if (summary && !reasoningSummaryByItem.get(itemId)?.trim())
+						yield* emitReasoning(summary, itemId);
+					break;
+				}
+				case "response.function_call_arguments.delta":
+				case "response.custom_tool_call_input.delta":
+					yield* emitFunctionCallInputDelta(event);
+					break;
+				case "response.output_item.added": {
+					const item = event.item ?? {};
+					if (item.type === "reasoning") {
+						activeReasoningItemId = getReasoningItemId(item, event, "reasoning-0");
+						const summary = extractReasoningSummaryText(item);
+						if (
+							summary &&
+							!reasoningSummaryByItem.get(activeReasoningItemId)?.trim()
+						)
+							yield* emitReasoning(summary, activeReasoningItemId);
+						break;
+					}
+					if (isCodexFunctionCallItem(item)) {
+						yield* registerAndStartFunctionCallInput(item, event);
+						break;
+					}
+					if (
+						item.type === "image_generation" ||
+						item.type === "image_generation_call"
+					) {
+						const callId = getImageGenerationCallId(item, event);
+						if (callId) {
+							yield {
+								type: "provider-data",
+								turn: turnIndex,
+								providerData: {
+									provider: "codex",
+									type: "image-generation-start",
+									callId,
+									status: optionalString(item.status),
+								},
+							};
+						}
+					}
+					break;
+				}
+				case "response.output_item.done": {
+					const item = event.item ?? {};
+					if (isCodexFunctionCallItem(item)) {
+						yield* emitFunctionCall(item, event);
+						finishReason = "tool_calls";
+						break;
+					}
+					if (
+						item.type === "image_generation" ||
+						item.type === "image_generation_call"
+					) {
+						const callId = getImageGenerationCallId(item, event);
+						const result = optionalString(item.result);
+						if (callId && result) {
+							yield {
+								type: "provider-data",
+								turn: turnIndex,
+								providerData: {
+									provider: "codex",
+									type: "image-generation-result",
+									callId,
+									status: optionalString(item.status) ?? "completed",
+									revisedPrompt:
+										optionalString(item.revised_prompt) ??
+										optionalString(item.revisedPrompt),
+									result,
+								},
+							};
+						}
+						break;
+					}
+					if (item.type === "reasoning") {
+						const itemId = getReasoningItemId(
+							item,
+							event,
+							activeReasoningItemId ?? "reasoning-0",
+						);
+						const summary = extractReasoningSummaryText(item);
+						if (summary && !reasoningSummaryByItem.get(itemId)?.trim())
+							yield* emitReasoning(summary, itemId);
+						const encryptedContent = optionalString(item.encrypted_content);
+						if (encryptedContent) {
+							yield {
+								type: "provider-data",
+								turn: turnIndex,
+								providerData: {
+									provider: "codex",
+									type: "encrypted-reasoning",
+									encryptedContent,
+								},
+							};
+						}
+						if (activeReasoningItemId === itemId)
+							activeReasoningItemId = undefined;
+						break;
+					}
+					if (item.type === "message" && !emittedTextFromDelta) {
+						yield* emitText(extractOutputText(item));
+					}
+					break;
+				}
+				case "response.completed":
+					usage = keepCodexUsage(event, usage);
+					if (finishReason !== "tool_calls") finishReason = "stop";
+					break;
+				case "response.incomplete":
+					usage = keepCodexUsage(event, usage);
+					finishReason = codexFinishReasonMapper.map(
+						event.response?.incomplete_details?.reason,
+					);
+					break;
+				case "response.failed":
+					throw errors.fromFailedResponse(event.response?.error?.message);
+				default:
+					usage = keepCodexUsage(event, usage);
+					break;
+			}
+		}
+
+		// Flush tool calls whose accumulator never saw output_item.done (stream
+		// interrupted / server closed early) so the loop can still execute them
+		// instead of silently ending the turn.
+		const flushedStates = new Set<ActiveFunctionCallInput>();
+		for (const state of [
+			...toolInputByItemId.values(),
+			...toolInputByCallId.values(),
+		]) {
+			if (flushedStates.has(state)) continue;
+			flushedStates.add(state);
+			yield* flushPendingFunctionCallDeltas(state);
+			if (!state.started) continue;
+			completedToolCallCount += 1;
+			yield {
+				type: "tool-call-done",
+				turn: turnIndex,
+				toolCall: {
+					id: state.callId,
+					name: state.toolName,
+					arguments: state.streamedArgs,
+				},
+			};
+		}
+		if (completedToolCallCount === 0 && finishReason === "tool_calls") {
+			finishReason = "stop";
+		}
+		return {
+			finishReason:
+				completedToolCallCount > 0 ? "tool_calls" : finishReason,
+			...(usage ? { usage } : {}),
+		};
+	}
+}
+
+/** `usage = usageFromResponse(event.response) ?? usage` 逐字:认得出才换。 */
+function keepCodexUsage(
+	event: CodexSseEvent,
+	previous: CodexResponsesUsage | undefined,
+): CodexResponsesUsage | undefined {
+	const next = event.response?.usage;
+	return hasCodexResponsesUsage(next) ? next : previous;
+}
+
+/** 方言文件与门面共用的 logger 命名规则。 */
+export function responsesLogger(providerId: string): ReturnType<typeof getLogger> {
+	return getLogger(`providers.${providerId}`);
+}

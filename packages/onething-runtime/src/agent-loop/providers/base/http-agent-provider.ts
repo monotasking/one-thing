@@ -104,15 +104,12 @@ export abstract class HttpAgentProvider<
 			// 真机上 provider dump 曾写出 1.1G,大头就是那些块;**线上发出去的
 			// 字节仍是 `build()`**(见 `send()`),两者从此不是同一份,快照门因此
 			// 改读 `fetchImpl` 收到的 body。
+			const dumpUrl = this.dialect.endpoint.redactForDump?.(url) ?? url;
 			const requestDumpPath = await this.ctx.dumper?.({
 				providerId: this.id,
 				model: request.model,
 				mode: this.dumpMode,
-				metadata: {
-					url: this.dialect.endpoint.redactForDump?.(url) ?? url,
-					method: "POST",
-					turn: request.turn,
-				},
+				metadata: this.dumpMetadata(turn, dumpUrl),
 				requestBody: turn.builder.forDump() as AgentProviderRequestDumpValue,
 			});
 			// 复刻 `deepseek.ts` 退役前那条 —— 十一家从此都有(ns `providers.<id>`)。
@@ -210,6 +207,21 @@ export abstract class HttpAgentProvider<
 	/** dump 的 `mode` 字段。Responses 形状的 codex 覆盖成 `'codex-http'`。 */
 	protected get dumpMode(): "stream" | "codex-http" {
 		return "stream";
+	}
+
+	/**
+	 * dump 的 `metadata` 字段。默认是 `{url, method, turn}`(openai-chat /
+	 * anthropic / gemini 三家的形状);codex 覆盖成今天那份
+	 * `{url, method, requestSource}` —— **它没有 `turn`**(设计稿 §9 P1 门 ①)。
+	 *
+	 * `url` 收到的已经是脱敏过的那份(`endpoint.redactForDump`),覆盖者不必
+	 * 再脱一次。
+	 */
+	protected dumpMetadata(
+		turn: TurnContext,
+		url: string,
+	): Record<string, AgentProviderRequestDumpValue> {
+		return { url, method: "POST", turn: turn.turn };
 	}
 
 	/**

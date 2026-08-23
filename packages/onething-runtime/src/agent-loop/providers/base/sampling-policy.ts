@@ -32,3 +32,20 @@ export class OpenAISamplingPolicy implements SamplingPolicy {
 }
 
 export const openAISamplingPolicy: SamplingPolicy = new OpenAISamplingPolicy();
+
+/**
+ * 这条线协议压根没有采样旋钮的出口(openai-responses 今天既不发 temperature
+ * 也不发 max_output_tokens)。**不发不等于静默**:请求里带了就留一条 warning,
+ * 请求体的字节与「什么都不做」完全相同(§2.4)。
+ */
+export class NoSamplingPolicy implements SamplingPolicy {
+	apply(turn: TurnContext): void {
+		const { temperature } = turn.request;
+		if (temperature === undefined) return;
+		turn.warn("setting-dropped", "this wire sends no sampling parameters", {
+			temperature,
+		});
+	}
+}
+
+export const noSamplingPolicy: SamplingPolicy = new NoSamplingPolicy();

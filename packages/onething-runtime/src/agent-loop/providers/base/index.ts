@@ -73,6 +73,8 @@ export {
 } from "./tool-choice-policy.js";
 
 export {
+	noSamplingPolicy,
+	NoSamplingPolicy,
 	openAISamplingPolicy,
 	OpenAISamplingPolicy,
 	type SamplingPolicy,

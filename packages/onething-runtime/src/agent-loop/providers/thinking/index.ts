@@ -21,6 +21,7 @@ import { openAIChatNoThinkingWire } from "./none.js";
 import { openAIEffortWire } from "./openai-effort.js";
 import { openRouterReasoningWire } from "./openrouter-reasoning.js";
 import { qwenThinkingWire } from "./qwen-thinking.js";
+import { responsesReasoningWire } from "./responses-reasoning.js";
 import { thinkingTypeWire } from "./thinking-type.js";
 import { zhipuThinkingWire } from "./zhipu-thinking.js";
 
@@ -37,7 +38,8 @@ thinkingWires
 	.register(anthropicBudgetThinkingWire)
 	.register(anthropicAlwaysThinkingWire)
 	.register(geminiLevelThinkingWire)
-	.register(geminiBudgetThinkingWire);
+	.register(geminiBudgetThinkingWire)
+	.register(responsesReasoningWire);
 
 export {
 	AnthropicAdaptiveThinkingWire,
@@ -91,6 +93,18 @@ export {
 	qwenThinkingWire,
 	clampQwenReasoningEffort,
 } from "./qwen-thinking.js";
+export {
+	RESPONSES_ENCRYPTED_REASONING_INCLUDE,
+	RESPONSES_INCLUDE_PATH,
+	RESPONSES_REASONING_PATH,
+	RESPONSES_THINKING_WIRES,
+	ResponsesReasoningWire,
+	isCodexReasoningModel,
+	normalizeCodexReasoningEffort,
+	responsesReasoningWire,
+	type CodexReasoningEffort,
+	type CodexReasoningOptions,
+} from "./responses-reasoning.js";
 export { ThinkingTypeWire, thinkingTypeWire } from "./thinking-type.js";
 export { ZhipuThinkingWire, zhipuThinkingWire } from "./zhipu-thinking.js";
 export {
