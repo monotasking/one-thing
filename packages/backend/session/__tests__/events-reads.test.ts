@@ -116,12 +116,13 @@ async function conversation(turns: number): Promise<void> {
 }
 
 describe('read-mode switch', () => {
-  it('defaults to messages and only flips on the exact value', () => {
-    expect(getSessionReadMode()).toBe('messages')
-    setSessionReadModeForTesting('events')
+  it('defaults to events (批 8) and the messages lever flips it back', () => {
+    // 默认已切到 events(S2b 批 8);`messages` 是显式回滚杆,必须被认。
     expect(getSessionReadMode()).toBe('events')
-    setSessionReadModeForTesting(undefined)
+    setSessionReadModeForTesting('messages')
     expect(getSessionReadMode()).toBe('messages')
+    setSessionReadModeForTesting(undefined)
+    expect(getSessionReadMode()).toBe('events')
   })
 })
 

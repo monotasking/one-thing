@@ -1,10 +1,14 @@
 /**
  * 读模式开关(S2a,`docs/design/session-event-sourcing-2026-08.md` §11.1)。
  *
- *   `ONETHING_SESSION_READ = 'messages'(默认) | 'events'`
+ *   `ONETHING_SESSION_READ = 'messages' | 'events'(默认)`
  *
- * **默认不变**:仍读 `messages.jsonl`。S2a 只把事件那条读路径建起来并放在
- * 开关之后;切默认是 S2b,要用户拍板。
+ * **默认已切到 `events`**(S2b 批 8,§13.18):产品线的历史来自 `events.jsonl`
+ * 的投影。前置全部满足才翻 —— A(批 6:settle 归位 changes)、B(批 7:事件写侧
+ * 走抄本真相读)、批 9(中止在途工具的自报标题两处写侧取材归位)都已落地,
+ * 双泳道 `sessions:shadow-battery` GREEN、`sessions:verify:gate` 0 新红。要回滚
+ * 只需把 `ONETHING_SESSION_READ=messages` 或把这里改回 `'messages'`;messages.jsonl
+ * 仍是磁盘真相(事件是投影),回滚零数据损伤。
  *
  * 单一入口的理由与 `event-stats.ts` 的总闸相同:一个"现在读的是哪一边"的
  * 问题在代码里只该有一个答案。测试用 `setSessionReadModeForTesting` 临时切,
@@ -13,14 +17,18 @@
 
 export type SessionReadMode = 'messages' | 'events'
 
-export const DEFAULT_SESSION_READ_MODE: SessionReadMode = 'messages'
+export const DEFAULT_SESSION_READ_MODE: SessionReadMode = 'events'
 
 let override: SessionReadMode | undefined
 let foreignCoreWarned = false
 
 function fromEnv(): SessionReadMode {
   const raw = process.env.ONETHING_SESSION_READ?.trim().toLowerCase()
-  return raw === 'events' ? 'events' : DEFAULT_SESSION_READ_MODE
+  // 两个值都显式认:默认已是 events(批 8),所以 `messages` 必须能把它显式
+  // 扳回去(回滚杆),不能被"非 events 即默认"吞掉;其余一切 = 默认。
+  if (raw === 'events') return 'events'
+  if (raw === 'messages') return 'messages'
+  return DEFAULT_SESSION_READ_MODE
 }
 
 export function getSessionReadMode(): SessionReadMode {

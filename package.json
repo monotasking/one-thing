@@ -60,6 +60,7 @@
 		"session:check": "node scripts/session-check.mjs",
 		"session:gate": "node scripts/session-gate.mjs",
 		"sessions:verify": "bun scripts/session-verify.ts",
+		"sessions:events-selfcheck": "bun scripts/session-events-read-selfcheck.ts",
 		"migrate:sessions:events": "node scripts/migrate-sessions-events.mjs",
 		"sessions:shadow-report": "node scripts/session-shadow-report.mjs",
 		"sessions:shadow-reset": "node scripts/session-shadow-reset.mjs",
