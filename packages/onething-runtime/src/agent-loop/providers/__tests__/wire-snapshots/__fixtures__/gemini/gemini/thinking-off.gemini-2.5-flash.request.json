@@ -1,0 +1,36 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=%5Bredacted%5D"
+  },
+  "mode": "stream",
+  "model": "gemini-2.5-flash",
+  "providerId": "gemini",
+  "requestBody": {
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "读一下 a.txt，然后把结论写进 b.txt。"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 1234,
+      "temperature": 0.3,
+      "thinkingConfig": {
+        "thinkingBudget": 0
+      }
+    },
+    "systemInstruction": {
+      "parts": [
+        {
+          "text": "You are onething, a careful engineering assistant."
+        }
+      ]
+    }
+  }
+}

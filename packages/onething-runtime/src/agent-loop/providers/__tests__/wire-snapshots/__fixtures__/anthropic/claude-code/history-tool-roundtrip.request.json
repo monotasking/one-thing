@@ -1,0 +1,149 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://api.anthropic.com/v1/messages"
+  },
+  "mode": "stream",
+  "model": "claude-sonnet-5",
+  "providerId": "claude-code",
+  "requestBody": {
+    "messages": [
+      {
+        "content": "读一下 a.txt。",
+        "role": "user"
+      },
+      {
+        "content": [
+          {
+            "signature": "sig-fixture-0001",
+            "thinking": "先确认文件存在，再决定要不要写。",
+            "type": "thinking"
+          },
+          {
+            "data": "redacted-fixture-0001",
+            "type": "redacted_thinking"
+          },
+          {
+            "text": "我先读一下这个文件。",
+            "type": "text"
+          },
+          {
+            "id": "toolu_read",
+            "input": {
+              "path": "a.txt"
+            },
+            "name": "read_file",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_write",
+            "input": {
+              "content": "done",
+              "path": "b.txt"
+            },
+            "name": "write_file",
+            "type": "tool_use"
+          }
+        ],
+        "role": "assistant"
+      },
+      {
+        "content": [
+          {
+            "content": "hello from a.txt",
+            "tool_use_id": "toolu_read",
+            "type": "tool_result"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "content": [
+          {
+            "content": "EACCES: permission denied, open 'b.txt'",
+            "is_error": true,
+            "tool_use_id": "toolu_write",
+            "type": "tool_result"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "content": [
+          {
+            "cache_control": {
+              "type": "ephemeral"
+            },
+            "text": "总结一下。",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "claude-sonnet-5",
+    "output_config": {
+      "effort": "high"
+    },
+    "stream": true,
+    "system": [
+      {
+        "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+        "type": "text"
+      },
+      {
+        "cache_control": {
+          "type": "ephemeral"
+        },
+        "text": "You are onething, a careful engineering assistant.",
+        "type": "text"
+      }
+    ],
+    "thinking": {
+      "type": "adaptive"
+    },
+    "tool_choice": {
+      "type": "auto"
+    },
+    "tools": [
+      {
+        "description": "Read a UTF-8 text file from the workspace.",
+        "input_schema": {
+          "properties": {
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
+        "name": "read_file"
+      },
+      {
+        "description": "Write a UTF-8 text file into the workspace.",
+        "input_schema": {
+          "properties": {
+            "content": {
+              "description": "Full file content.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
+        "name": "write_file"
+      }
+    ]
+  }
+}

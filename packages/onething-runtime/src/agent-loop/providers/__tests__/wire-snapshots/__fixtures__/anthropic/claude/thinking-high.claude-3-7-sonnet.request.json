@@ -1,0 +1,86 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://api.anthropic.com/v1/messages"
+  },
+  "mode": "stream",
+  "model": "claude-3-7-sonnet-20250219",
+  "providerId": "claude",
+  "requestBody": {
+    "max_tokens": 1234,
+    "messages": [
+      {
+        "content": [
+          {
+            "cache_control": {
+              "type": "ephemeral"
+            },
+            "text": "读一下 a.txt，然后把结论写进 b.txt。",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "claude-3-7-sonnet-20250219",
+    "output_config": {
+      "effort": "high"
+    },
+    "stream": true,
+    "system": [
+      {
+        "cache_control": {
+          "type": "ephemeral"
+        },
+        "text": "You are onething, a careful engineering assistant.",
+        "type": "text"
+      }
+    ],
+    "thinking": {
+      "type": "adaptive"
+    },
+    "tool_choice": {
+      "type": "auto"
+    },
+    "tools": [
+      {
+        "description": "Read a UTF-8 text file from the workspace.",
+        "input_schema": {
+          "properties": {
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
+        "name": "read_file"
+      },
+      {
+        "description": "Write a UTF-8 text file into the workspace.",
+        "input_schema": {
+          "properties": {
+            "content": {
+              "description": "Full file content.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
+        "name": "write_file"
+      }
+    ]
+  }
+}

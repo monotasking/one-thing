@@ -1,0 +1,57 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://api.anthropic.com/v1/messages"
+  },
+  "mode": "stream",
+  "model": "claude-sonnet-5",
+  "providerId": "claude",
+  "requestBody": {
+    "max_tokens": 1234,
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "这张截图和这份 PDF 说的是同一件事吗？",
+            "type": "text"
+          },
+          {
+            "source": {
+              "data": "iVBORw0KGgoAAAANSUhEUg==",
+              "media_type": "image/png",
+              "type": "base64"
+            },
+            "type": "image"
+          },
+          {
+            "cache_control": {
+              "type": "ephemeral"
+            },
+            "source": {
+              "data": "JVBERi0xLjcKJcOkw7zDtsOfCg==",
+              "media_type": "application/pdf",
+              "type": "base64"
+            },
+            "type": "document"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "claude-sonnet-5",
+    "stream": true,
+    "system": [
+      {
+        "cache_control": {
+          "type": "ephemeral"
+        },
+        "text": "You are onething, a careful engineering assistant.",
+        "type": "text"
+      }
+    ],
+    "thinking": {
+      "type": "disabled"
+    }
+  }
+}

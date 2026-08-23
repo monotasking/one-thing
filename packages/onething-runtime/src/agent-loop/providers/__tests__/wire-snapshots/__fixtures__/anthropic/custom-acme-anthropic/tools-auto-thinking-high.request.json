@@ -1,0 +1,70 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://acme.example.com/anthropic/v1/messages"
+  },
+  "mode": "stream",
+  "model": "claude-sonnet-5",
+  "providerId": "custom-acme-anthropic",
+  "requestBody": {
+    "max_tokens": 1234,
+    "messages": [
+      {
+        "content": "读一下 a.txt，然后把结论写进 b.txt。",
+        "role": "user"
+      }
+    ],
+    "model": "claude-sonnet-5",
+    "output_config": {
+      "effort": "high"
+    },
+    "stream": true,
+    "system": "You are onething, a careful engineering assistant.",
+    "thinking": {
+      "type": "adaptive"
+    },
+    "tool_choice": {
+      "type": "auto"
+    },
+    "tools": [
+      {
+        "description": "Read a UTF-8 text file from the workspace.",
+        "input_schema": {
+          "properties": {
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
+        "name": "read_file"
+      },
+      {
+        "description": "Write a UTF-8 text file into the workspace.",
+        "input_schema": {
+          "properties": {
+            "content": {
+              "description": "Full file content.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
+        "name": "write_file"
+      }
+    ]
+  }
+}

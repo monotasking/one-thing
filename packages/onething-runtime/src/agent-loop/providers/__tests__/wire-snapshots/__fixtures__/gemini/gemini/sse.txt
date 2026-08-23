@@ -1,0 +1,10 @@
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"先确认 a.txt 在不在，","thought":true}]}}],"modelVersion":"gemini-3.1-pro"}
+
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"再决定要不要写 b.txt。","thought":true}]}}],"modelVersion":"gemini-3.1-pro"}
+
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"我先读一下 a.txt。"}]}}],"modelVersion":"gemini-3.1-pro"}
+
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"functionCall":{"name":"read_file","args":{"path":"a.txt"}}},{"functionCall":{"name":"write_file","args":{"path":"b.txt","content":"done"}}}]}}],"modelVersion":"gemini-3.1-pro"}
+
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1200,"cachedContentTokenCount":800,"candidatesTokenCount":248,"thoughtsTokenCount":96,"totalTokenCount":1544},"modelVersion":"gemini-3.1-pro"}
+

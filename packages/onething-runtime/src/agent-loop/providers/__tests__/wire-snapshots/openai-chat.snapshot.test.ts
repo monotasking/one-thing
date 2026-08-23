@@ -36,22 +36,17 @@
  * - 其余快照没有时间戳/随机 id:tool call id 来自手写的 `sse.txt`,
  *   `turn` 固定为 1。
  *
+ * 取样与序列化的公共实现在 `./snapshot-harness.ts`,四个线协议套件(openai-chat /
+ * anthropic-messages / gemini / openai-responses)共用同一套规则。
+ *
  * `sse.txt` / `sse-*.txt` 是**手写的输入 fixture**(不是快照),形状照各家真实
  * 的线上流:文本增量、reasoning 增量、两个工具调用按 index 交错、finish_reason、
  * 最后一块 usage(各家用各家真实的 usage 字段名)。
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-	AgentMessage,
-	AgentTool,
-	AgentTurnRequest,
-	AgentTurnStreamEvent,
-} from "@onething/core/agent-loop";
+import type { AgentMessage, AgentTurnRequest } from "@onething/core/agent-loop";
 import {
-	createAgentProviderFromRuntime,
 	isAgentProviderRuntimeSupported,
 	type AgentProviderRuntimeConfig,
 } from "../../factory.js";
@@ -59,6 +54,24 @@ import type {
 	AgentProviderRequestDump,
 	AgentProviderRequestDumper,
 } from "../../request-dump.js";
+import {
+	FIXED_NOW,
+	MULTIMODAL_USER_MESSAGE,
+	SYSTEM_MESSAGE,
+	TOOLS,
+	USER_MESSAGE,
+	captureWireRequest,
+	createRuntimeProvider,
+	describeError,
+	drain,
+	expectFixtureDirectories,
+	fixtureFile,
+	readFixtureFile,
+	requestUrl,
+	snapshotJson,
+	sseResponse,
+	type WireFetchStubFactory,
+} from "./snapshot-harness.js";
 
 const FIXTURE_ROOT = fileURLToPath(
 	new URL("./__fixtures__/openai-chat", import.meta.url),
@@ -170,21 +183,15 @@ const PROVIDERS: Record<OpenAIChatProviderId, ProviderFixture> = {
 
 const COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token";
 
-function requestUrl(input: RequestInfo | URL): string {
-	if (typeof input === "string") return input;
-	if (input instanceof URL) return input.toString();
-	return input.url;
-}
-
 /**
  * 按 URL 分派的 fetch 桩:github-copilot 的 `resolveAuth` 会先去 GitHub 换一个
  * completion token,那一跳必须先答上,chat 请求才发得出去。
  */
-function createFetchStub(
+const createFetchStub = ((
 	chatResponse: () => Response,
 	onChatRequest?: (init: RequestInit | undefined) => void,
-): typeof globalThis.fetch {
-	return (async (input: RequestInfo | URL, init?: RequestInit) => {
+) =>
+	(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = requestUrl(input);
 		if (url.startsWith(COPILOT_TOKEN_URL)) {
 			return new Response(
@@ -194,75 +201,12 @@ function createFetchStub(
 		}
 		onChatRequest?.(init);
 		return chatResponse();
-	}) as typeof globalThis.fetch;
-}
-
-function sseResponse(body: string): Response {
-	return new Response(body, {
-		status: 200,
-		headers: { "content-type": "text/event-stream" },
-	});
-}
+	}) as typeof globalThis.fetch) satisfies WireFetchStubFactory;
 
 /** 请求体用例只关心「发出去什么」,流内容取最短的一条合法流。 */
 const MINIMAL_STREAM = `data: ${JSON.stringify({
 	choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
 })}\n\ndata: [DONE]\n\n`;
-
-function tool(name: string, description: string, properties: object, required: string[]): AgentTool {
-	return {
-		name,
-		description,
-		parameters: { type: "object", properties, required },
-		execute: async () => ({ content: "" }),
-	} as AgentTool;
-}
-
-const TOOLS: AgentTool[] = [
-	tool(
-		"read_file",
-		"Read a UTF-8 text file from the workspace.",
-		{ path: { type: "string", description: "Workspace-relative path." } },
-		["path"],
-	),
-	tool(
-		"write_file",
-		"Write a UTF-8 text file into the workspace.",
-		{
-			path: { type: "string", description: "Workspace-relative path." },
-			content: { type: "string", description: "Full file content." },
-		},
-		["path", "content"],
-	),
-];
-
-const SYSTEM_MESSAGE: AgentMessage = {
-	role: "system",
-	content: "You are onething, a careful engineering assistant.",
-};
-
-const USER_MESSAGE: AgentMessage = {
-	role: "user",
-	content: "读一下 a.txt，然后把结论写进 b.txt。",
-};
-
-const MULTIMODAL_USER_MESSAGE: AgentMessage = {
-	role: "user",
-	content: [
-		{ type: "text", text: "这张截图和这份 PDF 说的是同一件事吗？" },
-		{
-			type: "image",
-			image: "iVBORw0KGgoAAAANSUhEUg==",
-			mediaType: "image/png",
-		},
-		{
-			type: "file",
-			data: "JVBERi0xLjcKJcOkw7zDtsOfCg==",
-			mediaType: "application/pdf",
-			filename: "spec.pdf",
-		},
-	],
-};
 
 const HISTORY_MESSAGES: AgentMessage[] = [
 	SYSTEM_MESSAGE,
@@ -328,30 +272,18 @@ const REQUEST_CASES: Record<string, RequestCase> = {
 };
 
 function fixturePath(providerId: string, file: string): string {
-	return path.join(FIXTURE_ROOT, providerId, file);
+	return fixtureFile(FIXTURE_ROOT, providerId, file);
 }
 
 function readFixture(providerId: string, file: string): string {
-	return readFileSync(fixturePath(providerId, file), "utf8");
+	return readFixtureFile(FIXTURE_ROOT, providerId, file);
 }
 
-/**
- * 递归排序对象 key;**数组顺序原样保留**。见文件头:key 顺序不是行为,
- * 数组顺序是。
- */
-function sortKeysDeep(value: unknown): unknown {
-	if (Array.isArray(value)) return value.map(sortKeysDeep);
-	if (value === null || typeof value !== "object") return value;
-	const source = value as Record<string, unknown>;
-	const sorted: Record<string, unknown> = {};
-	for (const key of Object.keys(source).sort()) {
-		sorted[key] = sortKeysDeep(source[key]);
-	}
-	return sorted;
-}
-
-function snapshotJson(value: unknown): string {
-	return JSON.stringify(sortKeysDeep(value), null, 2);
+function runtimeConfig(
+	providerId: OpenAIChatProviderId,
+	model: string = PROVIDERS[providerId].model,
+): AgentProviderRuntimeConfig {
+	return { ...PROVIDERS[providerId].config, model };
 }
 
 /** 构造 provider —— 走生产入口,覆盖层(withPerModelCapabilities)也在里面。 */
@@ -360,23 +292,10 @@ function buildProvider(
 	fetchImpl: typeof globalThis.fetch,
 	requestDumper?: AgentProviderRequestDumper,
 ) {
-	const provider = createAgentProviderFromRuntime(
-		providerId,
-		{ ...PROVIDERS[providerId].config, model: PROVIDERS[providerId].model },
-		{ fetchImpl, requestDumper },
-	);
-	if (!provider?.streamTurn) {
-		throw new Error(`provider ${providerId} has no streamTurn`);
-	}
-	return provider;
-}
-
-async function drain(
-	stream: AsyncIterable<AgentTurnStreamEvent>,
-): Promise<AgentTurnStreamEvent[]> {
-	const events: AgentTurnStreamEvent[] = [];
-	for await (const event of stream) events.push(event);
-	return events;
+	return createRuntimeProvider(providerId, runtimeConfig(providerId), {
+		fetchImpl,
+		requestDumper,
+	});
 }
 
 /**
@@ -393,32 +312,14 @@ async function captureRequest(
 	request: RequestCase,
 	model: string = PROVIDERS[providerId].model,
 ): Promise<AgentProviderRequestDump> {
-	const dumps: AgentProviderRequestDump[] = [];
-	const wireBodies: unknown[] = [];
-	const requestDumper = vi.fn(async (dump: AgentProviderRequestDump) => {
-		dumps.push(dump);
-		return undefined;
-	});
-	const provider = buildProvider(
+	return captureWireRequest({
 		providerId,
-		createFetchStub(
-			() => sseResponse(MINIMAL_STREAM),
-			(init) => {
-				wireBodies.push(JSON.parse(String(init?.body ?? "null")));
-			},
-		),
-		requestDumper,
-	);
-	await drain(provider.streamTurn!({ ...request, model, turn: 1 }));
-	expect(requestDumper).toHaveBeenCalledTimes(1);
-	expect(wireBodies).toHaveLength(1);
-	return {
-		...dumps[0]!,
-		requestBody: wireBodies[0] as AgentProviderRequestDump["requestBody"],
-	};
+		config: runtimeConfig(providerId, model),
+		request: { ...request, model, turn: 1 },
+		respond: () => sseResponse(MINIMAL_STREAM),
+		fetchStub: createFetchStub,
+	});
 }
-
-const FIXED_NOW = Date.UTC(2023, 10, 14, 22, 13, 20); // 1700000000000
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -466,7 +367,7 @@ describe("openai-chat wire snapshots — request bodies", () => {
 			},
 		);
 		await drain(
-			provider.streamTurn!({
+			provider.streamTurn({
 				messages: [SYSTEM_MESSAGE, MULTIMODAL_USER_MESSAGE],
 				model: PROVIDERS.openai.model,
 				turn: 1,
@@ -501,7 +402,7 @@ describe("openai-chat wire snapshots — stream parsing", () => {
 				createFetchStub(() => sseResponse(readFixture(providerId, "sse.txt"))),
 			);
 			const events = await drain(
-				provider.streamTurn!({
+				provider.streamTurn({
 					messages: [SYSTEM_MESSAGE, USER_MESSAGE],
 					tools: TOOLS,
 					model: PROVIDERS[providerId].model,
@@ -526,7 +427,7 @@ describe("openai-chat wire snapshots — stream parsing", () => {
 			),
 		);
 		const events = await drain(
-			provider.streamTurn!({
+			provider.streamTurn({
 				messages: [SYSTEM_MESSAGE, USER_MESSAGE],
 				tools: TOOLS,
 				model: PROVIDERS.openrouter.model,
@@ -546,21 +447,6 @@ const ERROR_BODY = JSON.stringify({
 		code: "rate_limit_exceeded",
 	},
 });
-
-/** name + message + 可枚举自有字段(序列化时统一深度排序 key)。 */
-function describeError(error: unknown): unknown {
-	if (!(error instanceof Error)) return { thrown: error };
-	const own: Record<string, unknown> = {};
-	for (const key of Object.keys(error)) {
-		if (key === "stack") continue;
-		own[key] = (error as unknown as Record<string, unknown>)[key];
-	}
-	return {
-		name: error.name,
-		message: error.message,
-		ownEnumerableProperties: own,
-	};
-}
 
 describe("openai-chat wire snapshots — HTTP errors", () => {
 	for (const providerId of OPENAI_CHAT_PROVIDER_IDS) {
@@ -582,7 +468,7 @@ describe("openai-chat wire snapshots — HTTP errors", () => {
 			let caught: unknown;
 			try {
 				await drain(
-					provider.streamTurn!({
+					provider.streamTurn({
 						messages: [SYSTEM_MESSAGE, USER_MESSAGE],
 						model: PROVIDERS[providerId].model,
 						turn: 1,
@@ -610,15 +496,6 @@ describe("openai-chat wire snapshots — fixture inventory", () => {
 	});
 
 	it("every listed id has a non-empty fixture directory", () => {
-		for (const providerId of OPENAI_CHAT_PROVIDER_IDS) {
-			const dir = path.join(FIXTURE_ROOT, providerId);
-			expect(existsSync(dir), `missing fixture dir for ${providerId}`).toBe(
-				true,
-			);
-			expect(
-				readdirSync(dir).length,
-				`empty fixture dir for ${providerId}`,
-			).toBeGreaterThan(0);
-		}
+		expectFixtureDirectories(FIXTURE_ROOT, OPENAI_CHAT_PROVIDER_IDS);
 	});
 });

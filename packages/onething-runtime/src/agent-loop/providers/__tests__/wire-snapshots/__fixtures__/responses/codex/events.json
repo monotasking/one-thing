@@ -1,0 +1,118 @@
+[
+  {
+    "delta": "先确认 a.txt 在不在，",
+    "turn": 1,
+    "type": "reasoning-delta"
+  },
+  {
+    "delta": "再决定要不要写 b.txt。",
+    "turn": 1,
+    "type": "reasoning-delta"
+  },
+  {
+    "providerData": {
+      "encryptedContent": "enc-fixture-0001",
+      "provider": "codex",
+      "type": "encrypted-reasoning"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "delta": "我先读一下 a.txt。",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "toolCallId": "call_fixture_read",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-start"
+  },
+  {
+    "argumentsDelta": "{\"path\":",
+    "toolCallId": "call_fixture_read",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "argumentsDelta": "\"a.txt\"}",
+    "toolCallId": "call_fixture_read",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "toolCall": {
+      "arguments": "{\"path\":\"a.txt\"}",
+      "id": "call_fixture_read",
+      "name": "read_file"
+    },
+    "turn": 1,
+    "type": "tool-call-done"
+  },
+  {
+    "toolCallId": "call_fixture_write",
+    "toolName": "write_file",
+    "turn": 1,
+    "type": "tool-call-start"
+  },
+  {
+    "argumentsDelta": "{\"path\":\"b.txt\",",
+    "toolCallId": "call_fixture_write",
+    "toolName": "write_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "argumentsDelta": "\"content\":\"done\"}",
+    "toolCallId": "call_fixture_write",
+    "toolName": "write_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "toolCall": {
+      "arguments": "{\"path\":\"b.txt\",\"content\":\"done\"}",
+      "id": "call_fixture_write",
+      "name": "write_file"
+    },
+    "turn": 1,
+    "type": "tool-call-done"
+  },
+  {
+    "providerData": {
+      "callId": "ig_fixture_0001",
+      "provider": "codex",
+      "status": "in_progress",
+      "type": "image-generation-start"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "providerData": {
+      "callId": "ig_fixture_0001",
+      "provider": "codex",
+      "result": "iVBORw0KGgoAAAANSUhEUg==",
+      "revisedPrompt": "a small red square on white",
+      "status": "completed",
+      "type": "image-generation-result"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "finishReason": "tool_calls",
+    "turn": 1,
+    "type": "finish",
+    "usage": {
+      "cacheReadTokens": 800,
+      "inputTokens": 1200,
+      "outputTokens": 248,
+      "reasoningTokens": 96,
+      "totalTokens": 1448
+    }
+  }
+]

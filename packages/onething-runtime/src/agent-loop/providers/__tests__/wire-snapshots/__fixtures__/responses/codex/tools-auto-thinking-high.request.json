@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "method": "POST",
+    "requestSource": "agent-loop",
+    "url": "https://chatgpt.com/backend-api/codex/responses"
+  },
+  "mode": "codex-http",
+  "model": "gpt-5.5",
+  "providerId": "codex",
+  "requestBody": {
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "读一下 a.txt，然后把结论写进 b.txt。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are onething, a careful engineering assistant.",
+    "model": "gpt-5.5",
+    "parallel_tool_calls": false,
+    "reasoning": {
+      "effort": "high",
+      "summary": "auto"
+    },
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "description": "Read a UTF-8 text file from the workspace.",
+        "name": "read_file",
+        "parameters": {
+          "properties": {
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      },
+      {
+        "description": "Write a UTF-8 text file into the workspace.",
+        "name": "write_file",
+        "parameters": {
+          "properties": {
+            "content": {
+              "description": "Full file content.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      }
+    ]
+  }
+}

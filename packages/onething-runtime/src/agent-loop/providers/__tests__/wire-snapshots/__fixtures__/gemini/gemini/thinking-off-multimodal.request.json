@@ -1,0 +1,48 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro:streamGenerateContent?alt=sse&key=%5Bredacted%5D"
+  },
+  "mode": "stream",
+  "model": "gemini-3.1-pro",
+  "providerId": "gemini",
+  "requestBody": {
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "这张截图和这份 PDF 说的是同一件事吗？"
+          },
+          {
+            "inlineData": {
+              "data": "iVBORw0KGgoAAAANSUhEUg==",
+              "mimeType": "image/png"
+            }
+          },
+          {
+            "inlineData": {
+              "data": "JVBERi0xLjcKJcOkw7zDtsOfCg==",
+              "mimeType": "application/pdf"
+            }
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 1234,
+      "temperature": 0.3,
+      "thinkingConfig": {
+        "thinkingLevel": "low"
+      }
+    },
+    "systemInstruction": {
+      "parts": [
+        {
+          "text": "You are onething, a careful engineering assistant."
+        }
+      ]
+    }
+  }
+}

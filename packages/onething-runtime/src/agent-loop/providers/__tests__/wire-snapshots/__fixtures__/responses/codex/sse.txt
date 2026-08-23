@@ -1,0 +1,60 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_fixture_0001","model":"gpt-5.5","status":"in_progress"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"rs_fixture_0001","type":"reasoning","summary":[]}}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_fixture_0001","output_index":0,"summary_index":0,"delta":"先确认 a.txt 在不在，"}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_fixture_0001","output_index":0,"summary_index":0,"delta":"再决定要不要写 b.txt。"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"rs_fixture_0001","type":"reasoning","summary":[{"type":"summary_text","text":"先确认 a.txt 在不在，再决定要不要写 b.txt。"}],"encrypted_content":"enc-fixture-0001"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":1,"item":{"id":"msg_fixture_0001","type":"message","role":"assistant","status":"in_progress","content":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_fixture_0001","output_index":1,"content_index":0,"delta":"我先读一下 a.txt。"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":1,"item":{"id":"msg_fixture_0001","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"我先读一下 a.txt。"}]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":2,"item":{"id":"fc_fixture_read","type":"function_call","name":"read_file","call_id":"call_fixture_read","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","item_id":"fc_fixture_read","output_index":2,"delta":"{\"path\":"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","item_id":"fc_fixture_read","output_index":2,"delta":"\"a.txt\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":2,"item":{"id":"fc_fixture_read","type":"function_call","name":"read_file","call_id":"call_fixture_read","status":"completed","arguments":"{\"path\":\"a.txt\"}"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":3,"item":{"id":"fc_fixture_write","type":"function_call","name":"write_file","call_id":"call_fixture_write","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","item_id":"fc_fixture_write","output_index":3,"delta":"{\"path\":\"b.txt\","}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","item_id":"fc_fixture_write","output_index":3,"delta":"\"content\":\"done\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":3,"item":{"id":"fc_fixture_write","type":"function_call","name":"write_file","call_id":"call_fixture_write","status":"completed","arguments":"{\"path\":\"b.txt\",\"content\":\"done\"}"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":4,"item":{"id":"ig_fixture_0001","type":"image_generation_call","status":"in_progress"}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":4,"item":{"id":"ig_fixture_0001","type":"image_generation_call","status":"completed","revised_prompt":"a small red square on white","result":"iVBORw0KGgoAAAANSUhEUg=="}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_fixture_0001","model":"gpt-5.5","status":"completed","usage":{"input_tokens":1200,"output_tokens":248,"total_tokens":1448,"input_tokens_details":{"cached_tokens":800},"output_tokens_details":{"reasoning_tokens":96}}}}
+
+event: response.done
+data: [DONE]
+

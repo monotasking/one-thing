@@ -1,0 +1,46 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://acme.example.com/anthropic/v1/messages"
+  },
+  "mode": "stream",
+  "model": "claude-sonnet-5",
+  "providerId": "custom-acme-anthropic",
+  "requestBody": {
+    "max_tokens": 1234,
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "这张截图和这份 PDF 说的是同一件事吗？",
+            "type": "text"
+          },
+          {
+            "source": {
+              "data": "iVBORw0KGgoAAAANSUhEUg==",
+              "media_type": "image/png",
+              "type": "base64"
+            },
+            "type": "image"
+          },
+          {
+            "source": {
+              "data": "JVBERi0xLjcKJcOkw7zDtsOfCg==",
+              "media_type": "application/pdf",
+              "type": "base64"
+            },
+            "type": "document"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "claude-sonnet-5",
+    "stream": true,
+    "system": "You are onething, a careful engineering assistant.",
+    "thinking": {
+      "type": "disabled"
+    }
+  }
+}

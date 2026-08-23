@@ -1,0 +1,73 @@
+[
+  {
+    "delta": "先确认 a.txt 在不在，",
+    "turn": 1,
+    "type": "reasoning-delta"
+  },
+  {
+    "delta": "再决定要不要写 b.txt。",
+    "turn": 1,
+    "type": "reasoning-delta"
+  },
+  {
+    "delta": "我先读一下 a.txt。",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "toolCallId": "gemini-1-0-read_file",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-start"
+  },
+  {
+    "argumentsDelta": "{\"path\":\"a.txt\"}",
+    "toolCallId": "gemini-1-0-read_file",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "toolCall": {
+      "arguments": "{\"path\":\"a.txt\"}",
+      "id": "gemini-1-0-read_file",
+      "name": "read_file"
+    },
+    "turn": 1,
+    "type": "tool-call-done"
+  },
+  {
+    "toolCallId": "gemini-1-1-write_file",
+    "toolName": "write_file",
+    "turn": 1,
+    "type": "tool-call-start"
+  },
+  {
+    "argumentsDelta": "{\"path\":\"b.txt\",\"content\":\"done\"}",
+    "toolCallId": "gemini-1-1-write_file",
+    "toolName": "write_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "toolCall": {
+      "arguments": "{\"path\":\"b.txt\",\"content\":\"done\"}",
+      "id": "gemini-1-1-write_file",
+      "name": "write_file"
+    },
+    "turn": 1,
+    "type": "tool-call-done"
+  },
+  {
+    "finishReason": "tool_calls",
+    "turn": 1,
+    "type": "finish",
+    "usage": {
+      "cacheReadTokens": 800,
+      "inputTokens": 1200,
+      "outputTokens": 248,
+      "reasoningTokens": 96,
+      "totalTokens": 1544
+    }
+  }
+]
