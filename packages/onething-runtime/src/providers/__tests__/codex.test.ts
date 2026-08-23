@@ -162,10 +162,14 @@ describe('onething Codex provider helpers', () => {
       'xhigh',
     ])
     expect(jsonArrayField(metadata, 'nativeTools')).toContain('image_generation')
+    // The native image_generation tool is what declares image output —
+    // Codex /models never reports output_modalities.
+    expect(models[0].architecture.output_modalities).toContain('image')
 
     const selectedFallback = getOnethingCodexFallbackModel('gpt-5.5')
     expect(selectedFallback.id).toBe('gpt-5.5')
     expect(selectedFallback.architecture.input_modalities).toContain('image')
+    expect(selectedFallback.architecture.output_modalities).toContain('image')
   })
 
   it('parses Codex backend model metadata', () => {
@@ -206,6 +210,23 @@ describe('onething Codex provider helpers', () => {
       { id: 'flex', name: 'Flex', description: 'Flexible processing.' },
     ])
     expect(jsonArrayField(metadata, 'nativeTools')).toEqual(['image_generation'])
+    expect(model?.architecture.output_modalities).toContain('image')
+  })
+
+  it('leaves output modalities at text when no native image tool is declared', () => {
+    // A non-empty explicit tool list without image_generation is the only
+    // "explicit no" the normalizer honours: an EMPTY experimental_supported_tools
+    // is treated as "not enumerated" and still infers from input modalities
+    // (normalizeOnethingCodexModelNativeTools, explicitTools.length === 0 branch).
+    const model = codexModelInfoToOnethingOpenRouterModel({
+      slug: 'gpt-5.5-text-only',
+      input_modalities: ['text', 'image'],
+      experimental_supported_tools: ['web_search'],
+    })
+
+    expect(jsonArrayField(codexMetadata(model), 'nativeTools')).toEqual([])
+    expect(model?.architecture.output_modalities).toEqual(['text'])
+    expect(model?.architecture.input_modalities).toEqual(['text', 'image'])
   })
 
   it('normalizes Responses body for the Codex backend contract', () => {

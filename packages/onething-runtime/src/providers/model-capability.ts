@@ -14,6 +14,12 @@
  * Every answer carries its source so tests and debugging can tell where a
  * verdict came from.
  *
+ * Inside step 2 there is one sub-rule: a Codex entry/metadata carrying
+ * `providerMetadata.codex.nativeTools: ['image_generation']` declares image
+ * output regardless of its own `supportsImageOutput` / `output_modalities`
+ * (Codex /models never reports output modalities). See
+ * `codexMetadataDeclaresImageOutput` below.
+ *
  * This module must stay pure (no Node/Electron imports) — the renderer and the
  * web build import it directly.
  */
@@ -86,6 +92,12 @@ export interface OnethingCapabilityEntryLike {
   supportsReasoning?: boolean
   supportsImageOutput?: boolean
   supportsTemperature?: boolean
+  /**
+   * `OnethingModelCapabilityEntry.providerMetadata` (a JsonObject) — kept
+   * `unknown` here so this module stays import-free; only
+   * `codexMetadataDeclaresImageOutput` reads into it.
+   */
+  providerMetadata?: unknown
 }
 
 /** Wire-shaped model metadata (what the renderer's model cache holds). */
@@ -554,6 +566,25 @@ function verdict(value: boolean, source: OnethingCapabilitySource): CapabilityVe
   return { value, source }
 }
 
+/**
+ * 「Codex 的原生 `image_generation` 工具可用 ⇒ 该模型具备 image 输出」是一条
+ * 规则,两侧同读:目录条目生成时由 codex.ts 的
+ * `codexNativeToolsDeclareImageOutput` 写进 output_modalities,这里则认条目
+ * 自己带的 `providerMetadata.codex.nativeTools` —— 用户 settings 里已经缓存
+ * 的旧条目(supportsImageOutput:false)在下一次目录刷新前也不能让引擎炸。
+ *
+ * 字面量与 `codex-native-tools.ts` 的
+ * `CODEX_NATIVE_IMAGE_GENERATION_TOOL` 同值;此文件必须保持零 import(渲染
+ * 层与 web 构建直接引它),所以不从那里 import。
+ */
+export function codexMetadataDeclaresImageOutput(providerMetadata: unknown): boolean {
+  if (!providerMetadata || typeof providerMetadata !== 'object') return false
+  const codex = (providerMetadata as { codex?: unknown }).codex
+  if (!codex || typeof codex !== 'object') return false
+  const nativeTools = (codex as { nativeTools?: unknown }).nativeTools
+  return Array.isArray(nativeTools) && nativeTools.includes('image_generation')
+}
+
 function fromRegistry(
   capability: 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature',
   entry: OnethingCapabilityEntryLike | undefined,
@@ -564,7 +595,14 @@ function fromRegistry(
       case 'reasoning': if (typeof entry.supportsReasoning === 'boolean') return entry.supportsReasoning; break
       case 'vision': if (typeof entry.supportsVision === 'boolean') return entry.supportsVision; break
       case 'tools': if (typeof entry.supportsTools === 'boolean') return entry.supportsTools; break
-      case 'imageOutput': if (typeof entry.supportsImageOutput === 'boolean') return entry.supportsImageOutput; break
+      case 'imageOutput':
+        // The entry's own boolean is derived from output_modalities, which the
+        // Codex /models response never reports — a cached entry can say false
+        // while carrying nativeTools: ['image_generation']. The native tool is
+        // the stronger evidence, so it is read first.
+        if (codexMetadataDeclaresImageOutput(entry.providerMetadata)) return true
+        if (typeof entry.supportsImageOutput === 'boolean') return entry.supportsImageOutput
+        break
       case 'temperature': if (typeof entry.supportsTemperature === 'boolean') return entry.supportsTemperature; break
     }
   }
@@ -587,11 +625,7 @@ function fromRegistry(
         ? metadata.architecture.input_modalities.includes('image')
         : undefined
     case 'imageOutput': {
-      const codexNativeTools = (metadata.providerMetadata?.codex as { nativeTools?: unknown } | undefined)
-        ?.nativeTools
-      if (Array.isArray(codexNativeTools) && codexNativeTools.includes('image_generation')) {
-        return true
-      }
+      if (codexMetadataDeclaresImageOutput(metadata.providerMetadata)) return true
       return metadata.architecture?.output_modalities
         ? metadata.architecture.output_modalities.includes('image')
         : undefined

@@ -1691,6 +1691,30 @@ function normalizeOnethingCodexModelNativeTools(raw: OnethingCodexRawValue): One
   return Array.from(tools)
 }
 
+/**
+ * 一条规则,一个出口:Codex 的原生 `image_generation` 工具可用 ⇒ 该模型具备
+ * image 输出。目录条目的 output_modalities 由它推导(Codex /models 从不报
+ * output_modalities),能力解析器那一侧读同样的事实
+ * (`model-capability.ts` 的 `codexMetadataDeclaresImageOutput`)。
+ */
+export function codexNativeToolsDeclareImageOutput(
+  nativeTools: readonly string[] | undefined,
+): boolean {
+  return Array.isArray(nativeTools) &&
+    nativeTools.includes(ONETHING_CODEX_NATIVE_IMAGE_GENERATION_TOOL)
+}
+
+function resolveOnethingCodexOutputModalities(
+  outputModalities: readonly string[],
+  nativeTools: readonly string[] | undefined,
+): string[] {
+  const resolved = outputModalities.length > 0 ? [...outputModalities] : ['text']
+  if (codexNativeToolsDeclareImageOutput(nativeTools) && !resolved.includes('image')) {
+    resolved.push('image')
+  }
+  return resolved
+}
+
 export function getOnethingCodexModelProviderMetadata(
   raw: OnethingCodexRawValue,
 ): { codex: OnethingCodexModelProviderMetadata } {
@@ -1734,6 +1758,11 @@ function formatOnethingCodexFallbackName(modelId: string): string {
 export function getOnethingCodexFallbackModel(
   modelId: string = ONETHING_CODEX_DEFAULT_MODEL,
 ): OnethingOpenRouterModel {
+  const providerMetadata = getOnethingCodexModelProviderMetadata({
+    default_reasoning_level: 'medium',
+    supported_reasoning_levels: ONETHING_CODEX_FALLBACK_REASONING_EFFORTS.map((effort) => ({ effort })),
+    supports_reasoning_summaries: true,
+  })
   return {
     id: modelId,
     name: formatOnethingCodexFallbackName(modelId),
@@ -1742,17 +1771,13 @@ export function getOnethingCodexFallbackModel(
     architecture: {
       modality: 'multimodal',
       input_modalities: ['text', 'image'],
-      output_modalities: ['text'],
+      output_modalities: resolveOnethingCodexOutputModalities(['text'], providerMetadata.codex.nativeTools),
       tokenizer: 'unknown',
     },
     pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
     top_provider: { context_length: 192000, max_completion_tokens: 65536, is_moderated: false },
     supported_parameters: ['tools', 'reasoning'],
-    providerMetadata: toJsonObject(getOnethingCodexModelProviderMetadata({
-      default_reasoning_level: 'medium',
-      supported_reasoning_levels: ONETHING_CODEX_FALLBACK_REASONING_EFFORTS.map((effort) => ({ effort })),
-      supports_reasoning_summaries: true,
-    })),
+    providerMetadata: toJsonObject(providerMetadata),
   }
 }
 
@@ -1828,7 +1853,10 @@ export function codexModelInfoToOnethingOpenRouterModel(
     architecture: {
       modality: inputModalities.includes('image') ? 'multimodal' : 'text',
       input_modalities: inputModalities,
-      output_modalities: outputModalities.length > 0 ? outputModalities : ['text'],
+      output_modalities: resolveOnethingCodexOutputModalities(
+        outputModalities,
+        providerMetadata.codex.nativeTools,
+      ),
       tokenizer: onethingCodexOptionalStringFromValue(record.tokenizer) ?? 'unknown',
     },
     pricing: { prompt: '0', completion: '0', request: '0', image: '0' },

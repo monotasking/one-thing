@@ -130,6 +130,60 @@ describe('onething model registry helpers', () => {
     expect(onethingModelSupportsImageGeneration(scopedProviders, 'shared-model', 'custom')).toBe(true)
   })
 
+  it('never routes an in-loop image generator to the dedicated image stream', () => {
+    // onethingModelSupportsImageGeneration answers "换不换通路", not "能不能出图".
+    // Codex's gpt-5.5 makes images with a native tool INSIDE the agent loop, so
+    // the dedicated image stream (prompt-only, no tools) must never claim it —
+    // otherwise every ordinary message gets answered by the image API.
+    const codexNativeEntry: OnethingModelCapabilityEntry = {
+      ...entry('gpt-5.5', 'codex', 192000, 65536),
+      supportsImageOutput: true,
+      outputModalities: ['text', 'image'],
+      providerMetadata: {
+        codex: { nativeTools: ['image_generation'] },
+      },
+    }
+
+    expect(
+      onethingModelSupportsImageGeneration(
+        { codex: { models: { 'gpt-5.5': codexNativeEntry } } },
+        'gpt-5.5',
+        'codex',
+      ),
+    ).toBe(false)
+
+    // A user override says "this model can output images" — it does not ask for
+    // a different transport, so the exclusion still wins.
+    expect(
+      onethingModelSupportsImageGeneration(
+        {
+          codex: {
+            models: { 'gpt-5.5': codexNativeEntry },
+            modelCapabilitiesByModel: { 'gpt-5.5': { imageOutput: true } },
+          },
+        },
+        'gpt-5.5',
+        'codex',
+      ),
+    ).toBe(false)
+  })
+
+  it('still routes a real dedicated image model to the image stream', () => {
+    const imageEntry: OnethingModelCapabilityEntry = {
+      ...entry('some-image-model', 'openai', 128000, 4096),
+      supportsImageOutput: true,
+      outputModalities: ['image'],
+    }
+
+    expect(
+      onethingModelSupportsImageGeneration(
+        { openai: { models: { 'some-image-model': imageEntry } } },
+        'some-image-model',
+        'openai',
+      ),
+    ).toBe(true)
+  })
+
   it('converts models.dev provider data and sorts newest first', () => {
     const entries = createOnethingModelEntriesFromModelsDev('claude', {
       anthropic: {

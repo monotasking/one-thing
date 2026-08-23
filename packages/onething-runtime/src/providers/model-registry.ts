@@ -1,5 +1,6 @@
 import type { JsonObject } from "@onething/core";
 import { detectCopilotModelCapabilities as detectCopilotLikeModelCapabilities } from "./github-copilot.js";
+import { codexMetadataDeclaresImageOutput } from "./model-capability.js";
 import { getOnethingModelsDevProviderId } from "./models-dev-catalog.js";
 import type { OnethingKimiEndpointConfig } from "./kimi.js";
 import {
@@ -994,11 +995,37 @@ export function onethingModelSupportsTemperature(
 // The two former lookups here (async + sync) had drifted apart and had no
 // callers outside this registry — deleted 2026-07-18.
 
+/**
+ * 「这个模型要不要走**专用生图流**」—— 不是「这个模型能不能出图」。
+ *
+ * 唯一消费者是 `packages/backend/engine/stream/stream-executor.ts` 的
+ * `supportsSpecialStream`:命中即整条消息绕开 agent loop,只把 prompt 交给
+ * `image-stream.ts` 的 `executeOnethingImageGenerationStream`(OpenAI images /
+ * Gemini image API)。所以这里返回 true 的代价是**整个对话通路被换掉**。
+ *
+ * 设置页的生图徽标不读这里 —— 它走
+ * `resolveOnethingModelCapabilities().imageOutput`
+ * (`packages/renderer/components/settings/provider/model-capabilities.ts`
+ * 的 `hasImageGeneration`)。两者故意分家:能力账本回答「能不能出图」,这个
+ * 函数回答「换不换通路」。
+ *
+ * 因此 **provider 在回合内用原生工具出图的模型一律排除**:Codex 条目带
+ * `providerMetadata.codex.nativeTools: ['image_generation']` 的,图是 agent
+ * loop 里的一次工具调用产出的,专用流只会让它连普通对话都答不了。这条排除
+ * 站在用户 override 之前 —— override 表达的是「能出图」,不是「换通路」。
+ */
 export function onethingModelSupportsImageGeneration(
 	providers: OnethingProviderModelConfigs | undefined,
 	modelId: string,
 	providerId?: string,
 ): boolean {
+	const entry = getModelEntry(providers, modelId, providerId);
+	// In-loop image generation (Codex 原生 image_generation 工具)永远不换通路,
+	// 哪怕用户 override 了 imageOutput=true。
+	if (entry && codexMetadataDeclaresImageOutput(entry.providerMetadata)) {
+		return false;
+	}
+
 	const override = getCapabilityOverride(
 		providers,
 		modelId,
@@ -1023,7 +1050,6 @@ export function onethingModelSupportsImageGeneration(
 		return true;
 	}
 
-	const entry = getModelEntry(providers, modelId, providerId);
 	if (entry) return entry.supportsImageOutput;
 
 	return false;

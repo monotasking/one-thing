@@ -76,12 +76,20 @@ export interface AgentProviderRuntimeConfig {
 			reasoning?: boolean;
 		}
 	>;
+	/**
+	 * 运行时传进来的就是完整的 `OnethingModelCapabilityEntry`;这里只列覆盖层
+	 * (`withPerModelCapabilities` → `resolveOnethingModelCapabilities`)真正
+	 * 会读的字段。
+	 */
 	models?: Record<
 		string,
 		{
 			supportsTools?: boolean;
 			supportsVision?: boolean;
 			supportsReasoning?: boolean;
+			supportsImageOutput?: boolean;
+			supportsTemperature?: boolean;
+			providerMetadata?: unknown;
 			contextLength?: number;
 			maxOutputTokens?: number;
 		}

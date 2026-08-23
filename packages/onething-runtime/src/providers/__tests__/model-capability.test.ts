@@ -80,6 +80,31 @@ describe('resolution priority', () => {
       modelMetadata: { providerMetadata: { codex: { nativeTools: ['image_generation'] } } },
     }).imageOutput).toBe(true)
   })
+
+  it('honours codex nativeTools on a cached registry entry that says supportsImageOutput:false', () => {
+    // The real-machine shape: /codex/models/gpt-5.5 was written before the
+    // entry generator knew that the native image_generation tool implies image
+    // output, so its own boolean lies. The native tool wins.
+    const resolved = resolve('codex', 'gpt-5.5', {
+      registryEntry: {
+        supportsImageOutput: false,
+        providerMetadata: { codex: { nativeTools: ['image_generation'] } },
+      },
+    })
+    expect(resolved.imageOutput).toBe(true)
+    expect(resolved.source.imageOutput).toBe('registry')
+  })
+
+  it('does not grant image output when the codex native tool table is empty', () => {
+    const resolved = resolve('codex', 'gpt-5.5', {
+      registryEntry: {
+        supportsImageOutput: false,
+        providerMetadata: { codex: { nativeTools: [] } },
+      },
+    })
+    expect(resolved.imageOutput).toBe(false)
+    expect(resolved.source.imageOutput).toBe('registry')
+  })
 })
 
 describe('reasoning profiles per provider', () => {
