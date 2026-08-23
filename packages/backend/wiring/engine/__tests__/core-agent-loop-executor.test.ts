@@ -895,6 +895,8 @@ describe('core agent-loop executor helpers', () => {
     })).toBe(true)
 
     expect(applyAgentLoopToolMetadataWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
       toolCallId: 'call_1',
       update: {
         title: 'Read a.txt',
@@ -908,10 +910,13 @@ describe('core agent-loop executor helpers', () => {
       },
       toolCalls,
       stepIdsByToolCallId: stepIds,
+      store,
       emitter,
     })).toBe(true)
-    // COW(F3):`changes` 不再写回 toolCall,只随 step 更新发出去。
+    // 发现 A(§13.18):COW —— 入参那条(旧引用)不动,但带 changes 的新对象已换进工作表
+    // 并整表快照落盘,settle 从工作表重取时自然继承。
     expect(toolCall.changes).toBeUndefined()
+    expect(toolCalls[0].changes).toMatchObject({ diff: '+hello', filePath: 'a.txt' })
     expect(events.some(event => event.includes('step:step_1:Read a.txt'))).toBe(true)
 
     const settlement = settleAgentLoopToolResultWithAdapters({
@@ -945,12 +950,115 @@ describe('core agent-loop executor helpers', () => {
       'step:step_1:running',
       'partial:call_1:step_1:partial',
       'step:step_1:running',
+      // 发现 A(§13.18):metadata 时刻多一次整表快照落盘(带 changes)。
+      'store:executing',
       'step:step_1:Read a.txt',
       'store:completed',
       'tool-result:completed',
       'end:call_1:step_1:false::{"content":[{"type":"text","text":"done"}],"details":{"output":"done"}}',
       'step:step_1:completed',
     ])
+  })
+
+  it('carries edit changes from tool-metadata into both the store snapshot and the settle step update (§13.18 发现 A)', () => {
+    interface TestToolCall {
+      id: string
+      toolId?: string
+      toolName: string
+      arguments?: { path?: string }
+      status?: string
+      startTime?: number
+      endTime?: number
+      result?: JsonValue
+      changes?: {
+        diff: string
+        filePath: string
+        additions: number
+        deletions: number
+      }
+    }
+
+    const toolCall: TestToolCall = {
+      id: 'call_edit',
+      toolId: 'edit',
+      toolName: 'edit',
+      arguments: { path: 'src/a.ts' },
+      status: 'pending',
+    }
+    const toolCalls = [toolCall]
+    const stepIds = new Map([['call_edit', 'step_edit']])
+
+    // 落盘快照:store 每次收到的整表(取第一条,深拷 changes 以免后续 COW 覆盖引用)。
+    const storeSnapshots: Array<TestToolCall['changes']> = []
+    const store = {
+      updateMessageToolCalls: (_s: string, _m: string, calls: TestToolCall[]) => {
+        storeSnapshots.push(calls[0]?.changes ? { ...calls[0].changes } : undefined)
+      },
+    }
+    let lastStepToolCall: TestToolCall | undefined
+    const emitter = {
+      sendToolCall: () => {},
+      sendToolResult: () => {},
+      sendToolExecutionStart: () => {},
+      sendToolExecutionUpdate: () => {},
+      sendToolExecutionEnd: () => {},
+      sendStepUpdated: (_stepId: string, updates: { toolCall?: TestToolCall }) => {
+        if (updates.toolCall) lastStepToolCall = updates.toolCall
+      },
+      sendSkillActivated: () => {},
+    }
+
+    startAgentLoopToolExecution({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCall,
+      toolCalls,
+      stepId: 'step_edit',
+      store,
+      emitter,
+      now: () => 100,
+    })
+
+    applyAgentLoopToolMetadataWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCallId: 'call_edit',
+      update: {
+        metadata: {
+          output: 'edited',
+          path: 'src/a.ts',
+          diff: '@@ -1 +1 @@\n-old\n+new',
+          diffHunks: [],
+          additions: 1,
+          deletions: 1,
+        },
+      },
+      toolCalls,
+      stepIdsByToolCallId: stepIds,
+      store,
+      emitter,
+    })
+
+    // metadata 时刻:工作表已带 changes,并已整表快照落盘。
+    expect(toolCalls[0].changes).toMatchObject({ filePath: 'src/a.ts', additions: 1, deletions: 1 })
+    expect(storeSnapshots.at(-1)).toMatchObject({ filePath: 'src/a.ts' })
+
+    const settlement = settleAgentLoopToolResultWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCallId: 'call_edit',
+      result: { content: 'done', data: { output: 'done' } },
+      toolCalls,
+      stepIdsByToolCallId: stepIds,
+      store,
+      emitter,
+      now: () => 200,
+    })
+
+    // settle 后:顶层快照(store 最后一次收到的)与 stepUpdate.toolCall **都带** changes。
+    expect(settlement.toolCall?.changes).toMatchObject({ filePath: 'src/a.ts' })
+    expect(storeSnapshots.at(-1)).toMatchObject({ filePath: 'src/a.ts' })
+    expect(lastStepToolCall?.changes).toMatchObject({ filePath: 'src/a.ts' })
   })
 
   it('extracts text from partial results and diff metadata', () => {

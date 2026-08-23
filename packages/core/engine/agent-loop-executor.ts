@@ -1,5 +1,6 @@
 import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import {
+	type CoreIdentifiedToolCall,
 	coreToolCallSnapshot,
 	patchCoreToolCall,
 	replaceCoreToolCall,
@@ -638,13 +639,18 @@ export interface CoreAgentLoopToolResultSettlementResult<TToolCall> {
 }
 
 export interface ApplyAgentLoopToolMetadataOptions<
-	TToolCall extends CoreAgentLoopToolCallWithMetadata,
+	TToolCall extends CoreAgentLoopToolCallWithMetadata & CoreIdentifiedToolCall,
 	TStepUpdate,
 > {
+	// 发现 A(§13.18):metadata 折出的带 changes toolCall 必须回写工作表并整表快照落盘,
+	// 为此需要 settle 同款的 sessionId/assistantMessageId/store。
+	sessionId: string;
+	assistantMessageId: string;
 	toolCallId: string;
 	update: CoreAgentLoopToolMetadataUpdate;
 	toolCalls: TToolCall[];
 	stepIdsByToolCallId: Map<string, string>;
+	store: CoreAgentLoopToolExecutionStore<TToolCall>;
 	emitter: Pick<
 		CoreAgentLoopToolExecutionEmitter<TToolCall, TStepUpdate>,
 		"sendStepUpdated"
@@ -1952,17 +1958,29 @@ export function applyAgentLoopToolResultWithAdapters<
 }
 
 export function applyAgentLoopToolMetadataWithAdapters<
-	TToolCall extends CoreAgentLoopToolCallWithMetadata,
+	TToolCall extends CoreAgentLoopToolCallWithMetadata & CoreIdentifiedToolCall,
 	TStepUpdate,
 >(options: ApplyAgentLoopToolMetadataOptions<TToolCall, TStepUpdate>): boolean {
 	const stepId = options.stepIdsByToolCallId.get(options.toolCallId);
 	if (!stepId) return false;
 
 	const toolCall = options.toolCalls.find(
-		(existing) => "id" in existing && existing.id === options.toolCallId,
+		(existing) => existing.id === options.toolCallId,
 	);
 	const metadataUpdates = applyAgentLoopToolMetadata(toolCall, options.update);
 	if (Object.keys(metadataUpdates).length === 0) return false;
+
+	// 发现 A(§13.18):metadata 折出的 `{ ...toolCall, changes }` 在此刻回写工作表并整表
+	// 快照落盘 —— 否则 settle 从无 changes 的工作表重建 settled,顶层与 step 两头都不落
+	// changes(重载后 edit/write 的 diff 卡空)。单一写回点在此;settle 只继承。
+	if (metadataUpdates.toolCall) {
+		replaceCoreToolCall(options.toolCalls, metadataUpdates.toolCall);
+		options.store.updateMessageToolCalls(
+			options.sessionId,
+			options.assistantMessageId,
+			coreToolCallSnapshot(options.toolCalls),
+		);
+	}
 
 	options.emitter.sendStepUpdated(stepId, metadataUpdates as TStepUpdate);
 	return true;
@@ -2218,12 +2236,17 @@ export async function applyAgentLoopStreamChunkWithAdapters<
 			TToolCall & CoreAgentLoopToolCallWithMetadata,
 			TStepUpdate
 		>({
+			sessionId: options.sessionId,
+			assistantMessageId: options.assistantMessageId,
 			toolCallId: chunk.toolMetadata.toolCallId,
 			update: chunk.toolMetadata.update,
 			toolCalls: options.processor.toolCalls as Array<
 				TToolCall & CoreAgentLoopToolCallWithMetadata
 			>,
 			stepIdsByToolCallId: state.stepIdsByToolCallId,
+			store: options.store as CoreAgentLoopToolExecutionStore<
+				TToolCall & CoreAgentLoopToolCallWithMetadata
+			>,
 			emitter: options.emitter,
 		});
 	}

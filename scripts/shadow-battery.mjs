@@ -964,6 +964,40 @@ const SCENARIOS = [
   },
 
   {
+    name: 'edit-changes',
+    covers: ['§13.18 发现 A:edit/write 工具的 diff changes 落磁盘消息(顶层+step,重载不丢)'],
+    provider: ({ turn, variant, workdir }) => {
+      const dir = workdir ?? ''
+      const file = `${dir}/edit-target-${variant.tag}.txt`
+      if (turn === 1) {
+        return [
+          F.sleep(variant.firstByteMs),
+          ...F.tool('call_write_seed', 'write', { path: file, content: 'alpha\nbeta\ngamma\n' }, 2),
+          F.callTools(usageOf(variant, 1)),
+        ]
+      }
+      if (turn === 2) {
+        return [
+          F.sleep(variant.firstByteMs),
+          ...F.tool('call_edit_changes', 'edit', { path: file, edits: [{ oldText: 'beta', newText: 'BETA-changed' }] }, 3),
+          F.callTools(usageOf(variant, 2)),
+        ]
+      }
+      return [F.sleep(variant.firstByteMs), F.text(`改完了:${variant.body}`), F.stop(usageOf(variant, 3))]
+    },
+    async drive(d) {
+      await d.send('写一个文件再改它')
+      const messages = await d.waitIdle(1, { timeoutMs: 45_000 })
+      const assistant = d.lastAssistant(messages)
+      const editCall = (assistant?.toolCalls ?? []).find(c => c.id === 'call_edit_changes')
+      assert(editCall, 'edit tool call missing from persisted message')
+      assert(editCall.status === 'completed', `edit tool call did not complete: ${editCall.status}`)
+      // 发现 A:changes 必须落在磁盘消息上(重载后 diff 才不空);HEAD 上此处丢。
+      assert(editCall.changes?.filePath, 'edit tool call lost its diff changes on the persisted message')
+    },
+  },
+
+  {
     name: 'retry-message',
     covers: ['重试/重新生成:砍掉旧助手消息再开一条新 run'],
     provider: ({ variant }) => [
