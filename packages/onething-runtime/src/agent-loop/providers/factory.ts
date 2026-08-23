@@ -4,7 +4,6 @@ import type {
 	AgentProvider,
 	AgentTurnRequest,
 } from "@onething/core/agent-loop";
-import { createClaudeAgentProvider } from "./claude.js";
 import {
 	createCodexAgentProvider,
 	type CodexAgentProviderOptions,
@@ -12,6 +11,10 @@ import {
 import { createGeminiAgentProvider } from "./gemini.js";
 import { BearerApiKeyAuth, ResolveAuth } from "./base/index.js";
 import {
+	CLAUDE_CODE_DIALECT,
+	CLAUDE_CODE_OAUTH_BETA_HEADERS,
+	CLAUDE_DIALECT,
+	CUSTOM_ANTHROPIC_DIALECT,
 	CUSTOM_OPENAI_DIALECT,
 	DEEPSEEK_DIALECT,
 	GITHUB_COPILOT_DIALECT,
@@ -23,6 +26,8 @@ import {
 	OPENROUTER_DIALECT,
 	QWEN_DIALECT,
 	ZHIPU_DIALECT,
+	anthropicAuth,
+	createAnthropicProvider,
 	createOpenAIChatProvider,
 	openAIChatTransportCapabilities,
 } from "./dialects/index.js";
@@ -170,15 +175,6 @@ interface CopilotTokenResponse {
 }
 
 const copilotTokenCache = new Map<string, CopilotCompletionToken>();
-const CLAUDE_CODE_HEADER =
-	"You are Claude Code, Anthropic's official CLI for Claude.";
-const CLAUDE_CODE_OAUTH_BETA_HEADERS = [
-	"oauth-2025-04-20",
-	"claude-code-20250219",
-	"interleaved-thinking-2025-05-14",
-	"fine-grained-tool-streaming-2025-05-14",
-].join(",");
-
 function accessTokenFromRuntimeConfig(
 	config: AgentProviderRuntimeConfig,
 ): string {
@@ -466,13 +462,13 @@ function createCustomAgentProviderFromRuntime(
 			vision: true,
 			reasoning: true,
 		});
-		return createClaudeAgentProvider({
+		return createAnthropicProvider(CUSTOM_ANTHROPIC_DIALECT, {
 			providerId,
-			apiKey: config.apiKey,
 			baseUrl: config.baseUrl,
+			auth: anthropicAuth({ apiKey: config.apiKey }),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			capabilities: capabilitiesFromFlags(capabilities),
+			transport: capabilitiesFromFlags(capabilities),
 		});
 	}
 
@@ -729,12 +725,11 @@ registerAgentProviderRuntime(
 registerAgentProviderRuntime(
 	"claude",
 	(config, options) =>
-		createClaudeAgentProvider({
-			apiKey: config.apiKey,
+		createAnthropicProvider(CLAUDE_DIALECT, {
 			baseUrl: config.baseUrl,
+			auth: anthropicAuth({ apiKey: config.apiKey }),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			promptCaching: true,
 		}),
 	{ replace: true },
 );
@@ -746,18 +741,17 @@ registerAgentProviderRuntime(
 		if (!accessToken) {
 			throw new Error("Not logged in to Claude Code. Please login first.");
 		}
-		return createClaudeAgentProvider({
-			providerId: "claude-code",
+		return createAnthropicProvider(CLAUDE_CODE_DIALECT, {
 			baseUrl: config.baseUrl,
+			auth: anthropicAuth({
+				omitApiKeyHeader: true,
+				headers: {
+					authorization: `Bearer ${accessToken}`,
+					"anthropic-beta": CLAUDE_CODE_OAUTH_BETA_HEADERS,
+				},
+			}),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			omitApiKeyHeader: true,
-			systemHeader: CLAUDE_CODE_HEADER,
-			promptCaching: true,
-			headers: {
-				authorization: `Bearer ${accessToken}`,
-				"anthropic-beta": CLAUDE_CODE_OAUTH_BETA_HEADERS,
-			},
 		});
 	},
 	{ replace: true },

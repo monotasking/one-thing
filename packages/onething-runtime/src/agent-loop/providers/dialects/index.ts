@@ -1,7 +1,29 @@
 /**
- * openai-chat 线协议上的 11 份方言配方。import 这个桶 = 把它们全部登记进
- * `registerDialect` 的注册表(设计稿 §9 P0a 门 ④:每份配方都得有 fixture 目录)。
+ * 方言配方桶:openai-chat 线协议上的 11 份 + anthropic-messages 上的 3 份。
+ * import 这个桶 = 把它们全部登记进 `registerDialect` 的注册表
+ * (设计稿 §9 P0a 门 ④:每份配方都得有 fixture 目录)。
  */
+export {
+	ANTHROPIC_DEFAULT_BASE_URL,
+	ANTHROPIC_TRANSPORT_CAPABILITIES,
+	ANTHROPIC_VERSION,
+	anthropicAuth,
+	anthropicDialect,
+	createAnthropicProvider,
+	defineAnthropicDialect,
+	type AnthropicAuthOptions,
+	type AnthropicDialectSpec,
+	type AnthropicProviderInit,
+} from "./anthropic-recipe.js";
+
+export { CLAUDE_DIALECT } from "./claude.js";
+export {
+	CLAUDE_CODE_DIALECT,
+	CLAUDE_CODE_HEADER,
+	CLAUDE_CODE_OAUTH_BETA_HEADERS,
+} from "./claude-code.js";
+export { CUSTOM_ANTHROPIC_DIALECT } from "./custom-anthropic.js";
+
 export {
 	createOpenAIChatProvider,
 	defineOpenAIChatDialect,
