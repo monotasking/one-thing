@@ -66,3 +66,40 @@ export {
 	type OpenAIChatUserContentPart,
 	type OpenAIChatWireValue,
 } from "./openai-chat-messages.js";
+export {
+	GEMINI_TOOL_CALLS_FINISH,
+	GeminiFinishReasonMapper,
+	GeminiSamplingPolicy,
+	GeminiToolChoicePolicy,
+	GeminiUsageNormalizer,
+	GeminiWire,
+	geminiFinishReasonMapper,
+	geminiLogger,
+	geminiSamplingPolicy,
+	geminiToolChoicePolicy,
+	geminiUsage,
+	type GeminiDialect,
+	type GeminiStreamChunk,
+	type GeminiUsageMetadata,
+} from "./gemini-wire.js";
+export {
+	GEMINI_SOURCE_NAME,
+	GeminiErrorMapper,
+	geminiErrorMapper,
+	type GeminiApiError,
+} from "./gemini-errors.js";
+export {
+	GeminiPartCodec,
+	geminiDataPart,
+	geminiParts,
+	toGeminiToolConfig,
+	toGeminiTools,
+	type GeminiCodec,
+	type GeminiContent,
+	type GeminiPart,
+	type GeminiRequestContents,
+	type GeminiSystemInstruction,
+	type GeminiTool,
+	type GeminiToolConfig,
+	type GeminiWireValue,
+} from "./gemini-messages.js";

@@ -5,13 +5,17 @@
  * 这个模块一加载就把已迁移的线型登记进进程级的 `thinkingWires`:
  * openai-chat 的八条(`openai-compatible.ts` 的构造门面靠它把 `reasoningStyle`
  * 换成对象 —— 那个 `switch` 从此不存在了),外加 anthropic-messages 的三条
- * (P1-a)。
+ * (P1-a)与 gemini 的两条(P1-b)。
  */
 import { thinkingWires } from "../base/index.js";
 import { anthropicAdaptiveThinkingWire } from "./anthropic-adaptive.js";
 import { anthropicAlwaysThinkingWire } from "./anthropic-always.js";
 import { anthropicBudgetThinkingWire } from "./anthropic-budget.js";
 import { deepSeekInferredThinkingWire } from "./deepseek-inferred.js";
+import {
+	geminiBudgetThinkingWire,
+	geminiLevelThinkingWire,
+} from "./gemini-thinking.js";
 import { grokEffortWire } from "./grok-effort.js";
 import { openAIChatNoThinkingWire } from "./none.js";
 import { openAIEffortWire } from "./openai-effort.js";
@@ -31,7 +35,9 @@ thinkingWires
 	.register(deepSeekInferredThinkingWire)
 	.register(anthropicAdaptiveThinkingWire)
 	.register(anthropicBudgetThinkingWire)
-	.register(anthropicAlwaysThinkingWire);
+	.register(anthropicAlwaysThinkingWire)
+	.register(geminiLevelThinkingWire)
+	.register(geminiBudgetThinkingWire);
 
 export {
 	AnthropicAdaptiveThinkingWire,
@@ -51,6 +57,18 @@ export {
 	clampClaudeReasoningEffort,
 	type ClaudeEffort,
 } from "./anthropic-effort.js";
+export {
+	GEMINI_THINKING_CONFIG_PATH,
+	GEMINI_THINKING_WIRES,
+	GeminiBudgetThinkingWire,
+	GeminiLevelThinkingWire,
+	geminiBudgetThinkingWire,
+	geminiLevelThinkingWire,
+	geminiThinkingLevel,
+	isGemini25Model,
+	type GeminiThinkingConfig,
+	type GeminiThinkingLevel,
+} from "./gemini-thinking.js";
 export {
 	DeepSeekInferredThinkingWire,
 	deepSeekInferredThinkingWire,

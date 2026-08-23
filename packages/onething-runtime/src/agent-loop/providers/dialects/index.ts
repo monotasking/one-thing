@@ -1,5 +1,5 @@
 /**
- * 方言配方桶:openai-chat 线协议上的 11 份 + anthropic-messages 上的 3 份。
+ * 方言配方桶:openai-chat 线协议上的 11 份 + anthropic-messages 上的 3 份 + gemini 上的 1 份。
  * import 这个桶 = 把它们全部登记进 `registerDialect` 的注册表
  * (设计稿 §9 P0a 门 ④:每份配方都得有 fixture 目录)。
  */
@@ -23,6 +23,20 @@ export {
 	CLAUDE_CODE_OAUTH_BETA_HEADERS,
 } from "./claude-code.js";
 export { CUSTOM_ANTHROPIC_DIALECT } from "./custom-anthropic.js";
+
+export {
+	GEMINI_DEFAULT_BASE_URL,
+	GEMINI_TRANSPORT_CAPABILITIES,
+	createGeminiProvider,
+	defineGeminiDialect,
+	geminiAuth,
+	geminiDialect,
+	geminiEndpoint,
+	type GeminiAuthOptions,
+	type GeminiDialectSpec,
+	type GeminiProviderInit,
+} from "./gemini-recipe.js";
+export { GEMINI_DIALECT } from "./gemini.js";
 
 export {
 	createOpenAIChatProvider,

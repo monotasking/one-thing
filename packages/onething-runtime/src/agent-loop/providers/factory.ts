@@ -8,7 +8,6 @@ import {
 	createCodexAgentProvider,
 	type CodexAgentProviderOptions,
 } from "./codex.js";
-import { createGeminiAgentProvider } from "./gemini.js";
 import { BearerApiKeyAuth, ResolveAuth } from "./base/index.js";
 import {
 	CLAUDE_CODE_DIALECT,
@@ -17,6 +16,7 @@ import {
 	CUSTOM_ANTHROPIC_DIALECT,
 	CUSTOM_OPENAI_DIALECT,
 	DEEPSEEK_DIALECT,
+	GEMINI_DIALECT,
 	GITHUB_COPILOT_DIALECT,
 	GROK_DIALECT,
 	GROK_OAUTH_DIALECT,
@@ -28,6 +28,8 @@ import {
 	ZHIPU_DIALECT,
 	anthropicAuth,
 	createAnthropicProvider,
+	createGeminiProvider,
+	geminiAuth,
 	createOpenAIChatProvider,
 	openAIChatTransportCapabilities,
 } from "./dialects/index.js";
@@ -760,9 +762,11 @@ registerAgentProviderRuntime(
 registerAgentProviderRuntime(
 	"gemini",
 	(config, options) =>
-		createGeminiAgentProvider({
-			apiKey: config.apiKey,
+		createGeminiProvider(GEMINI_DIALECT, {
 			baseUrl: config.baseUrl,
+			// 同一把钥匙两个落点:URL 的 `?key=` 与 `x-goog-api-key` 头。
+			apiKey: config.apiKey,
+			auth: geminiAuth({ apiKey: config.apiKey }),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
 		}),
