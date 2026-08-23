@@ -146,24 +146,29 @@ const CASES: DialectCase[] = [
 /**
  * 今天就违反不变式的组合 —— `<dialect>/<surface>/<modality>`。
  *
- * 全部一个成因:**chat-completions 与 Responses 没有可移植的 PDF 块,而
- * 「有 vision」在账本里同时点亮 `image` 与 `file`**(`ModelProfile.
- * inputModalities` 那一行:`vision ? ['text','image','file'] : ['text']`)。
- * 于是 codec 只能把 PDF 留成一行可见文本(`Undeliverable`,不静默丢)。
+ * 全部一个成因:**这些 openai-chat 方言今天投不出 PDF 块,而「有 vision」
+ * 在账本里同时点亮 `image` 与 `file`**(`ModelProfile.inputModalities` 那一行:
+ * `vision ? ['text','image','file'] : ['text']`)。于是 codec 只能把 PDF 留成
+ * 一行可见文本(`Undeliverable`,不静默丢)。
  *
- * 两条修法,都不是本期的事(P2-a 行为不变):
- *  - P3「PDF 文件块」给 OpenAI `file` / OpenRouter `file`+plugins /
- *    Zhipu `file_url` 真正的块,那时这些行按家删除;
- *  - 或者把 `file` 从「vision ⇒ 三模态」里拆出来单记一行能力,那是账本的
- *    行为变更,要拍板。
+ * P3-1(PDF 文件块)删掉了其中两行 —— `openai` 与 `openrouter` 从此投真块
+ * (`{type:'file',file:{filename,file_data}}`,OpenRouter 另挂 `file-parser`
+ * 插件)。**剩下的六条各有各的理由,不是没做**:
+ *  - `custom-openai` —— 用户自建端点,能力未知。发一个可能 400 的块比留一行
+ *    可见文本坏;要开就得让用户自己声明,那是设置面的行为变更。
+ *  - `github-copilot` / `grok` / `grok-oauth` / `deepseek` / `qwen` ——
+ *    这几家的 chat-completions 端点没有可移植的 PDF 块(既不认 OpenAI 的
+ *    `file`,也没有自己的等价物)。
+ *
+ * 另一条修法仍然挂着(设计稿 §10 待拍板 #12):把 `file` 从「vision ⇒ 三模态」
+ * 里拆出来单记一行能力 —— 那时这六家的 `getModelCapabilities` 不再声明 `file`,
+ * core 会把 PDF 降级成可见占位,这几行随之消失。是账本的行为变更,要拍板。
  */
 const KNOWN_VIOLATIONS = new Set([
-	"openai/user/file",
 	"deepseek/user/file",
 	"qwen/user/file",
 	"grok/user/file",
 	"grok-oauth/user/file",
-	"openrouter/user/file",
 	"github-copilot/user/file",
 	"custom-openai/user/file",
 ]);

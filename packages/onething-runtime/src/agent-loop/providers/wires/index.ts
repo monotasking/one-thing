@@ -57,9 +57,11 @@ export {
 	type OpenAIChatApiError,
 } from "./openai-chat-errors.js";
 export {
+	OPENAI_CHAT_PDF_DELIVERED_NOTE,
 	OpenAIChatPartCodec,
 	toOpenAIChatTools,
 	type OpenAIChatCodec,
+	type OpenAIChatFilePdfMode,
 	type OpenAIChatMessage,
 	type OpenAIChatPartCodecOptions,
 	type OpenAIChatTool,
@@ -127,7 +129,6 @@ export {
 export {
 	ResponsesPartCodec,
 	codexEncryptedReasoning,
-	isPdfMediaType,
 	responsesParts,
 	stringifyCodexToolInput,
 	textFromContent as responsesTextFromContent,

@@ -14,6 +14,17 @@ export class TurnContext {
 	/** 字段只读,数组本身可 push —— 收集 warning 的唯一去处。 */
 	readonly warnings: ProviderWarning[] = [];
 
+	/**
+	 * 回合级标记 —— codec 在序列化时留一个词,方言的 `extraBody` 读它决定请求体
+	 * 上还要不要多长出什么(OpenRouter:本回合真投递了 PDF 才发 `plugins`
+	 * `file-parser`)。分工不变:**请求体只在 builder 里长出来**,由策略 /
+	 * `extraBody` 写,codec 一个字段都不直接写。
+	 *
+	 * 顺序上成立:模板方法先 `buildBody`(消息序列化 → 标记落下),再调
+	 * `extraBody`(读标记)。
+	 */
+	readonly notes = new Set<string>();
+
 	constructor(
 		readonly request: AgentTurnRequest,
 		readonly profile: ModelProfile,

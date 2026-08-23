@@ -18,6 +18,7 @@ import type {
 import {
 	Undeliverable,
 	delivered,
+	isPdfMediaType,
 	undeliverable,
 	type PartCodec,
 	type PartDelivery,
@@ -37,7 +38,10 @@ export interface OpenAIChatToolCall {
 
 export type OpenAIChatUserContentPart =
 	| { type: "text"; text: string }
-	| { type: "image_url"; image_url: { url: string } };
+	| { type: "image_url"; image_url: { url: string } }
+	/** chat-completions 的文件块。只走 `file_data`(base64 data URI)—— Files
+	 *  API 的 `file_id` 路径要先上传、要管生命周期,不在这一层。 */
+	| { type: "file"; file: { filename: string; file_data: string } };
 
 export type OpenAIChatMessage =
 	| { role: "system"; content: string }
@@ -99,6 +103,14 @@ function dataContentToImageUrl(data: string, mediaType?: string): string {
 		return data;
 	}
 	return `data:${mediaType || "image/png"};base64,${data}`;
+}
+
+/**
+ * `file` 块的 `file_data` 只收 data URI。已经是的原样交出去;裸 base64 补上
+ * `application/pdf` 前缀(媒体类型在这里已经判过是 PDF,参数后缀不带进线上)。
+ */
+function pdfFileData(data: string): string {
+	return data.startsWith("data:") ? data : `data:application/pdf;base64,${data}`;
 }
 
 /** `openai-compatible.ts` 的 `contentToText` —— 与 core 的 `agentContentToText`
@@ -185,10 +197,29 @@ function warnUndeliverable(
 // openai-compatible 半边
 // ---------------------------------------------------------------------------
 
+/** 这条线上的 PDF 怎么投(P3-1)。 */
+export type OpenAIChatFilePdfMode =
+	/** chat-completions 的 `file` 内容块(OpenAI 官方 / OpenRouter 都是这个形状)。 */
+	| "openai-file"
+	/** 不投 —— 端点能力未知或没有可移植的 PDF 块,留可见文本。 */
+	| "none";
+
 export interface OpenAIChatPartCodecOptions {
 	/** 多轮回传 `reasoning_content`(Kimi / Zhipu / Qwen / Grok 要,OpenAI 不要)。 */
 	includeAssistantReasoning?: boolean;
+	/**
+	 * PDF 文件块。**默认 `'none'`** —— 十一家里只有确认收得下的才开
+	 * (openai / openrouter),`custom-openai` 这类自建端点能力未知,保持今天的
+	 * 可见留痕而不是发一个可能 400 的块。
+	 */
+	filePdf?: OpenAIChatFilePdfMode;
 }
+
+/**
+ * 「本回合投递过 PDF」的回合级标记(`TurnContext.notes`)。OpenRouter 的配方
+ * 读它决定要不要挂 `plugins: file-parser` —— codec 不直接写请求体。
+ */
+export const OPENAI_CHAT_PDF_DELIVERED_NOTE = "pdf-delivered";
 
 export class OpenAIChatPartCodec implements OpenAIChatCodec {
 	constructor(private readonly options: OpenAIChatPartCodecOptions = {}) {}
@@ -214,7 +245,23 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 				image_url: { url: dataContentToImageUrl(part.data, part.mediaType) },
 			});
 		}
-		// chat-completions 没有可移植的 file 块:文本文件在上游已经内联过了,
+		// PDF:认这个块的端点(openai / openrouter)按方言开关投真块;开关关着
+		// 的家仍然走下面的可见文本。留一个回合级标记,`extraBody` 那一侧要用。
+		if (
+			part.type === "file" &&
+			this.options.filePdf === "openai-file" &&
+			isPdfMediaType(part.mediaType)
+		) {
+			turn?.notes.add(OPENAI_CHAT_PDF_DELIVERED_NOTE);
+			return delivered({
+				type: "file",
+				file: {
+					filename: part.filename ?? "document.pdf",
+					file_data: pdfFileData(part.data),
+				},
+			});
+		}
+		// chat-completions 没有别的可移植 file 块:文本文件在上游已经内联过了,
 		// 剩下的二进制留成可见文本,不静默丢。
 		const note = Undeliverable.fromPart(
 			undeliverablePartLike(part),

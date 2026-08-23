@@ -27,14 +27,25 @@
             "type": "image_url"
           },
           {
-            "text": "[Attachment \"spec.pdf\" (application/pdf) could not be delivered: this model does not accept this file type.]",
-            "type": "text"
+            "file": {
+              "file_data": "data:application/pdf;base64,JVBERi0xLjcKJcOkw7zDtsOfCg==",
+              "filename": "spec.pdf"
+            },
+            "type": "file"
           }
         ],
         "role": "user"
       }
     ],
     "model": "openai/gpt-5.5",
+    "plugins": [
+      {
+        "id": "file-parser",
+        "pdf": {
+          "engine": "native"
+        }
+      }
+    ],
     "prompt_cache_key": "session-fixture-0001",
     "reasoning": {
       "enabled": false

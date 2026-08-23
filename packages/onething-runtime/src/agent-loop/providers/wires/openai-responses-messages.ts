@@ -36,6 +36,7 @@ import type {
 } from "@onething/core/agent-loop";
 import {
 	delivered,
+	isPdfMediaType,
 	undeliverable,
 	Undeliverable,
 	type PartCodec,
@@ -162,13 +163,6 @@ function dataToUrl(
 	// Bare payloads without a media type cannot become a valid URL; returning
 	// them verbatim gets the whole request rejected with a 400 by the API.
 	return mediaType ? `data:${mediaType};base64,${value}` : undefined;
-}
-
-export function isPdfMediaType(mediaType: string | undefined): boolean {
-	if (!mediaType) return false;
-	return (
-		(mediaType.split(";")[0] ?? "").trim().toLowerCase() === "application/pdf"
-	);
 }
 
 function parseToolArguments(args: string): AgentJsonValue {

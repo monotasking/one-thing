@@ -26,6 +26,7 @@ import {
 	OpenAIChatWire,
 	openAIChatLogger,
 	type OpenAIChatDialect,
+	type OpenAIChatFilePdfMode,
 	type OpenAIChatWireValue,
 } from "../wires/index.js";
 
@@ -95,8 +96,13 @@ export interface OpenAIChatDialectSpec {
 	maxTokensField?: "max_tokens" | "max_completion_tokens";
 	/** 这家走哪条思考线型(一家一条,由 `ModelProfile.reasoningWire` 选中或兜底)。 */
 	reasoning: ThinkingWire;
-	/** 多轮是否回传 `reasoning_content`(默认 codec 的唯一旋钮)。 */
+	/** 多轮是否回传 `reasoning_content`。 */
 	includeAssistantReasoning?: boolean;
+	/**
+	 * PDF 文件块怎么投(P3-1)。**不给 = `'none'`**:只有确认收得下 `file` 块的
+	 * 端点才开(openai / openrouter),其余家保持可见留痕。
+	 */
+	filePdf?: OpenAIChatFilePdfMode;
 	/** 换掉整只 codec(DeepSeek 的纯文本 user 内容)。 */
 	parts?: PartCodec<OpenAIChatWireValue>;
 	/** 换掉 usage 直译表(DeepSeek 的 `prompt_cache_hit_tokens`)。 */
@@ -125,6 +131,7 @@ export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialec
 			spec.parts ??
 			new OpenAIChatPartCodec({
 				includeAssistantReasoning: Boolean(spec.includeAssistantReasoning),
+				filePdf: spec.filePdf ?? "none",
 			}),
 		...(spec.usage ? { usage: spec.usage } : {}),
 		...(spec.sampling ? { sampling: spec.sampling } : {}),

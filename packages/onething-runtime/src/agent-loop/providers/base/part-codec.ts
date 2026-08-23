@@ -61,6 +61,18 @@ export class Undeliverable {
 	}
 }
 
+/**
+ * 「这块是不是 PDF」—— 投递契约层面的媒体类型判据,两条线协议都要问
+ * (Responses 的 `input_file`、chat-completions 的 `file`),所以它住在契约
+ * 这一层而不是某一条 wire 里。参数带 `;charset=…` 之类的后缀也认。
+ */
+export function isPdfMediaType(mediaType: string | undefined): boolean {
+	if (!mediaType) return false;
+	return (
+		(mediaType.split(";")[0] ?? "").trim().toLowerCase() === "application/pdf"
+	);
+}
+
 export type PartDelivery<W> =
 	| { kind: "delivered"; part: W }
 	| { kind: "undeliverable"; note: Undeliverable };

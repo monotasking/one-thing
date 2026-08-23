@@ -27,8 +27,11 @@
             "type": "image_url"
           },
           {
-            "text": "[Attachment \"spec.pdf\" (application/pdf) could not be delivered: this model does not accept this file type.]",
-            "type": "text"
+            "file": {
+              "file_data": "data:application/pdf;base64,JVBERi0xLjcKJcOkw7zDtsOfCg==",
+              "filename": "spec.pdf"
+            },
+            "type": "file"
           }
         ],
         "role": "user"

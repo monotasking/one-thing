@@ -30,6 +30,7 @@ export { ProviderWarning, type ProviderWarningKind } from "./warnings.js";
 
 export {
 	delivered,
+	isPdfMediaType,
 	undeliverable,
 	Undeliverable,
 	type PartCodec,
