@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./agent-loop": "./src/agent-loop/index.ts",
     "./agent-loop/providers": "./src/agent-loop/providers/index.ts",
+    "./agent-loop/providers/base": "./src/agent-loop/providers/base/index.ts",
     "./agent-loop/providers/*": "./src/agent-loop/providers/*.ts",
     "./agent-loop/*": "./src/agent-loop/*.ts",
     "./acp": "./src/acp/index.ts",
