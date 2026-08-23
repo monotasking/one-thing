@@ -1,0 +1,96 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://api.individual.githubcopilot.com/chat/completions"
+  },
+  "mode": "stream",
+  "model": "gpt-5.5",
+  "providerId": "github-copilot",
+  "requestBody": {
+    "messages": [
+      {
+        "content": "You are onething, a careful engineering assistant.",
+        "role": "system"
+      },
+      {
+        "content": "读一下 a.txt。",
+        "role": "user"
+      },
+      {
+        "content": "我先读一下这个文件。",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"path\":\"a.txt\"}",
+              "name": "read_file"
+            },
+            "id": "call_read",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "content": "hello from a.txt",
+        "role": "tool",
+        "tool_call_id": "call_read"
+      },
+      {
+        "content": "总结一下。",
+        "role": "user"
+      }
+    ],
+    "model": "gpt-5.5",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "function": {
+          "description": "Read a UTF-8 text file from the workspace.",
+          "name": "read_file",
+          "parameters": {
+            "properties": {
+              "path": {
+                "description": "Workspace-relative path.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Write a UTF-8 text file into the workspace.",
+          "name": "write_file",
+          "parameters": {
+            "properties": {
+              "content": {
+                "description": "Full file content.",
+                "type": "string"
+              },
+              "path": {
+                "description": "Workspace-relative path.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      }
+    ]
+  }
+}

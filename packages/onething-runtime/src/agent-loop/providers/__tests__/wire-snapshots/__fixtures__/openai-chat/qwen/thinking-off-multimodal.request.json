@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+  },
+  "mode": "stream",
+  "model": "qwen3.8-max",
+  "providerId": "qwen",
+  "requestBody": {
+    "enable_thinking": false,
+    "max_tokens": 1234,
+    "messages": [
+      {
+        "content": "You are onething, a careful engineering assistant.",
+        "role": "system"
+      },
+      {
+        "content": [
+          {
+            "text": "这张截图和这份 PDF 说的是同一件事吗？",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+            },
+            "type": "image_url"
+          },
+          {
+            "text": "[Attachment \"spec.pdf\" (application/pdf) could not be delivered: this model does not accept this file type.]",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "qwen3.8-max",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "temperature": 0.3
+  }
+}

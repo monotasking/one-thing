@@ -1,0 +1,30 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://api.deepseek.com/chat/completions"
+  },
+  "mode": "stream",
+  "model": "deepseek-v4-flash",
+  "providerId": "deepseek",
+  "requestBody": {
+    "messages": [
+      {
+        "content": "You are onething, a careful engineering assistant.",
+        "role": "system"
+      },
+      {
+        "content": "读一下 a.txt，然后把结论写进 b.txt。",
+        "role": "user"
+      }
+    ],
+    "model": "deepseek-v4-flash",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "thinking": {
+      "type": "enabled"
+    }
+  }
+}

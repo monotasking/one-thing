@@ -1,0 +1,78 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://api.kimi.com/coding/v1/chat/completions"
+  },
+  "mode": "stream",
+  "model": "k3",
+  "providerId": "kimi-code",
+  "requestBody": {
+    "max_tokens": 1234,
+    "messages": [
+      {
+        "content": "You are onething, a careful engineering assistant.",
+        "role": "system"
+      },
+      {
+        "content": "读一下 a.txt，然后把结论写进 b.txt。",
+        "role": "user"
+      }
+    ],
+    "model": "k3",
+    "reasoning_effort": "high",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "thinking": {
+      "type": "enabled"
+    },
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "function": {
+          "description": "Read a UTF-8 text file from the workspace.",
+          "name": "read_file",
+          "parameters": {
+            "properties": {
+              "path": {
+                "description": "Workspace-relative path.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Write a UTF-8 text file into the workspace.",
+          "name": "write_file",
+          "parameters": {
+            "properties": {
+              "content": {
+                "description": "Full file content.",
+                "type": "string"
+              },
+              "path": {
+                "description": "Workspace-relative path.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      }
+    ]
+  }
+}

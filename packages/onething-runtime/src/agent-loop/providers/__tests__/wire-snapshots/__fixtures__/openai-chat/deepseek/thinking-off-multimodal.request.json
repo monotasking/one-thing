@@ -1,0 +1,32 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://api.deepseek.com/chat/completions"
+  },
+  "mode": "stream",
+  "model": "deepseek-v4-flash",
+  "providerId": "deepseek",
+  "requestBody": {
+    "max_tokens": 1234,
+    "messages": [
+      {
+        "content": "You are onething, a careful engineering assistant.",
+        "role": "system"
+      },
+      {
+        "content": "这张截图和这份 PDF 说的是同一件事吗？",
+        "role": "user"
+      }
+    ],
+    "model": "deepseek-v4-flash",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "temperature": 0.3,
+    "thinking": {
+      "type": "disabled"
+    }
+  }
+}
