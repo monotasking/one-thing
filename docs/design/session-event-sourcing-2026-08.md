@@ -2957,3 +2957,251 @@ E0 事件整体重编号到 `[N+1, …]`,内部 seq 引用(`surfaceOp.{start,end
   `packages/backend/session/__tests__/migrate-apply.test.ts`(改 2 用例 + 加 4 用例 + 2 fixture)、
   `packages/core/session/__tests__/projection-crash-half.test.ts`(M5 读侧护栏,新增)。
   **投影 / recorder / `session-verify.ts` / 基线一字未动。**
+
+### 13.16 真机 mismatch 类归类:`9c94531d`——「事件比 messages.jsonl 多一条」= 末轮 edit-resend 的 messages 落盘丢写(2026-08-23)
+
+§13.14-D 留下那条"待归类":`sessions:verify:gate` 在真实 `9c94531d` 上新长 **2 条**红
+(`canonical differs for f4bd0a05` + `projection has 1 message unknown to messages.jsonl`),
+是 S 线 S2b 切默认前最后一道判过的门。逐字段读完:**不是投影 bug,是 `messages.jsonl` 丢了
+末轮 edit-resend 的落盘,事件更全**——与 §13.14-D Phase 1 第 1 条(流式 flush 缺口)**同方向**
+(事件 > `messages.jsonl`),但**根因不同**:那条是崩在文本流中途;这条是一次**正常收尾**的 run
+的 messages 落盘丢了。
+
+**证据(全程只读:`sessions:verify --json` + 事件流 + 文件 mtime,不 cat 会话内容)**:
+
+- **稳定,非活写竞态**:无 `run/http.json`(无活 core),8 秒间隔两跑字节全同(events=81,
+  bytes=182657,issues 全同)。排除文档记过的两写者/流式 flush 瞬态。
+- **事件流**:同一条用户消息 `f4bd0a05` 上 **三轮** edit-resend——
+  run1(seq 3–44,assistant `ff482307`,带工具)→ `user/message-edited`(seq 45)→
+  run2(seq 46–63,ts 07:30:11,assistant `159eda23`,stop,run/end)→ `user/message-edited`(seq 64)→
+  run3(seq 65–81,ts 11:33:08,assistant `e0727dca`,`request/end` stop + `run/end` **完整收尾**)。
+  seq 1..81 连续无重、无未闭合 run、surface 无违规——事件账本自洽。
+- **`messages.jsonl` 只有 2 条**:user `f4bd0a05`(ts=07:30:11.139,= run2 的 edit 时刻)+
+  assistant `159eda23`(run2 答案)。**停在 run2 之后的状态,根本没有 run3。**
+- **投影(事件)= 2 条**:user `f4bd0a05`(ts=11:33:08.026,= run3 的 edit 时刻)+ assistant
+  `e0727dca`(run3 答案)。两条红同一个根:①`f4bd0a05` 的 canonical 差**只差 `timestamp`**
+  (run2 vs run3 的 edit 时刻——两侧都在 edit 时重盖 ts,`messages.jsonl` 自己也把 run1→run2
+  的 ts 盖过,只是冻结在不同轮);②`e0727dca` 是 run3 的助手,`messages.jsonl` 里没有 = 那条
+  "projection has 1 message unknown"。
+- **mtime 定根**:run3 start 11:33:08.055;`messages.jsonl` mtime **11:33:08.340**(run3 起步后
+  285ms,内容仍是 run2 态)；`events.jsonl` mtime **11:33:11.935**(run3 收尾后 ~3.9s);
+  meta.json 11:33:11.825。messages 仓是 LRU + 300ms 节流异步存,run3 收尾(~11:33:11.9)那次
+  flush 排到 ~+300ms 时进程已退,末次真正落盘的是 08.340 那次(run2 态);`events.jsonl`
+  每事件即时 append,把整条 run3 收全了。
+
+**裁定**:
+
+- 分类 = **NEW-CLASS「events-ahead / 末轮丢写」**,S 线新真机类。非 TRANSIENT(稳定,无活写)、
+  非 PRE-FIX-rebaseline(基线那些是"投影照出修复前引擎 bug 的字节";这条相反——投影**比快照
+  更对**)、非 OPEN-needs-projection-fix(**投影零 bug**:它忠实回放了真实发生的 run3,`e0727dca`
+  是完整连贯的真实答案,不是凭空造节点)。
+- **对 S2b 是利好,不是拦路**:切读到事件后,用户看到的是他最后真正拿到的 `e0727dca`;
+  `messages` 模式反而给的是过期的 run2 答案。这条红恰恰证明事件读路更可靠。
+- **投影 / recorder / core / `session-verify.ts` 一字不该动**;也**不是 `--apply` 覆盖感知合并
+  的对象**(那治"messages 更全的丢头";这条是"事件更全")——切默认后 `messages.jsonl` 退役为
+  只读遗留,这次丢的落盘自然作废。
+
+**建议(留给用户拍板,本次未改基线)**:按 §10.17 门的口径(红线 = 新代码弄坏旧文件;这条是
+"现在的代码读过去的文件"的真机漂移,非回归——§13.14-D 已反证:把 D 全 stash 后同样这 2 条),把
+这 2 条收进 `docs/audit/session-verify-baseline-2026-08-20.txt`,带一段区分注释(与既有"修复前
+引擎 bug"条目不同类:events-ahead 丢写,事件更全,切读即自愈)。待收基线两行:
+
+```
+9c94531d-2d44-41e0-89b6-4ef99f3c2440 messages: canonical differs for message f4bd0a05-d0a2-4de2-a18c-723b011097d2
+9c94531d-2d44-41e0-89b6-4ef99f3c2440 messages: projection has 1 message(s) unknown to messages.jsonl
+```
+
+另有 4 条 healed(§13.13 的 `fd899977` 等,advisory,门不因此红)可在收基线时一并清掉。
+
+### 13.17 S2b 拦路虎:dehydrate 往返丢 `toolCall.changes` —— 裁定唯一持有点 + 两侧同款归一 + 事件面补采集点(2026-08-23,方案)
+
+迁移 `--apply`(427 间)后 `sessions:verify:gate` 冒出 **156 条新红 / 42 间会话**,S2b 切默认
+(阶段 2)因此冻结。根因已查实(见派工记录,复现件在诊断 scratchpad 的 `synthetic.ts`):
+`session-dehydrate.ts` 的 `dehydrateStep`(line ~114)在 `step.toolCallId` 命中
+`message.toolCalls[].id` 时把整份 `step.toolCall` 置 `undefined`,rehydrate 从
+`message.toolCalls` 重建 —— 而**老形态会话的 `changes`(edit/write 的结构化 diff hunks)只在
+`step.toolCall` 上**,顶层没有,于是往返一次 `changes` 永久蒸发。本节把设计一次定完:changes
+存哪、往返怎么保真、verify 怎么转绿、事件词汇的缺口怎么补、体积账、门与反向测试。
+
+#### 病根全景:三个磁盘形态、两个时代、一个事件词汇缺口(全部只读实证于真机 store)
+
+对真机 427 间 `messages.jsonl` 逐条扫(共 364MB、2207 份 changes、38.2MB):
+
+| 磁盘形态 | 间数 | mtime 区间 | 含义 |
+| --- | --- | --- | --- |
+| stepOnly(changes 只在 `steps[].toolCall`) | 34 | 全部 2026-07-07 | 老写路径:step 存全份拷贝,顶层无 changes |
+| both(两处都有) | 6 | 全部 2026-07-07 | 同一时代的过渡形态 |
+| topOnly(changes 只在 `message.toolCalls[]`) | 86 | 2026-07-07 ~ 08-22 | **现行写路径** |
+
+三个关键事实,每一条都改写了派工时的判断:
+
+1. **现行引擎把 changes 写在顶层 `message.toolCalls[]`,不是 step 上**(代码与磁盘双证)。
+   `packages/core/engine/tool-orchestration.ts` 的 `buildToolMetadataStepUpdate`(line ~795):
+   `tool-metadata` 更新到达时 `changesFromToolMetadata(update.metadata)` 折出 changes,
+   `metadataUpdates.toolCall = { ...toolCall, changes }` 经 `updateToolCall` 命令落到会话的
+   `message.toolCalls[]` 条目上;step 只拿到一份**本地游标**拷贝(line ~1022 注释原话)。
+   所以**活引擎自己的新写不丢 changes**(dehydrate 对顶层只剥 `originalContent`)——
+   丢失只发生在 34+6 间 2026-07-07 老形态会话被**再次脱水落盘**时(rehydrate 保留盘上的
+   全份 step 拷贝,下一次 dehydrate 判它冗余、连 changes 一起扔)。潜伏,但真实:
+   任何一次触碰老会话(补一条消息、启动 sanitize 重写)都是一次销毁。
+2. **"18 间原生 verify 绿"的真正原因是两个都不是**(派工问的二选一)。不是"原生写路径把
+   changes 放进了 message.toolCalls 所以往返无损"(这句对,但不是绿的原因),也不完全是
+   "它们没有 edit changes"——准确表述:**真机 events 账本里 changes 的载体只有
+   `message/imported`(713 条),原生事件零条;原生覆盖范围内含 changes 的消息 = 0**
+   (逐 id 对过:2207 份 changes 全部落在 imported 覆盖区)。S1 上线(08-19)以来真机没跑过
+   一次产出 changes 的 edit/write,原生绿是"没考到这道题",不是"答对了"。
+3. **事件词汇没有 changes 的采集点 —— 这是比 dehydrate 更深的 S2b 拦路虎**。
+   `session-event-recorder.ts` 的 `tool/result` 只记 callId/isError/resultPreview/result/
+   resultData/reportedTitle;`tool/audit`(`wiring/toolkit/audit-sink.ts`)只记
+   effects/decision/outcome。而 changes **不可从已落账的 result 派生**:对 2207 份 changes
+   查其同调用的 `toolCall.result`,含 hunks 的只有 19 份(stepOnly 12/659、topOnly 7/1399)——
+   hunks 活在 `tool-metadata` 的 `update.metadata`(diff/diffHunks/path/additions/…)里,
+   结局正文里没有。切读之后第一次真原生 edit run 就会:UI 的 diff 卡片空掉(events-reads
+   物化不出 changes)+ 影子 `run/end` 比对当场 mismatch(`shadow.ts` 直比 canonical,
+   canonical **不**豁免 changes)+ verify 新红。影子电池 264 runs 全绿也是同一个盲区:
+   没有一格场景驱动过带 diff metadata 的工具。
+
+#### 裁定一(changes 该存哪):`message.toolCalls[]` 是唯一磁盘持有点,step.toolCall 是运行时游标
+
+三个候选里选**提升顶层唯一持有**:
+
+- **维持"只在 steps[]"+ 残桩**:否。现行引擎一年里写的就是顶层(86 间 topOnly 为证),
+  选 steps 等于让磁盘上并存两种"正常"形态直到永远,dehydrate/verify/canonical 三处都要
+  终身伺候双形态。
+- **降级为派生缓存(像 `partialResult` 一样脱水时丢、rehydrate 重算)**:否,数据上不成立——
+  result 里没有 hunks(19/2207),丢了就是丢了。
+- **提升 `message.toolCalls[]` 唯一持有(选定)**:与现行写路径逐字一致(引擎零改动);
+  rehydrate 本来就用顶层条目重建 `step.toolCall`(同引用),渲染层读
+  `step.toolCall.changes`(`renderer/stores/helpers/tool-display.ts` 等)拿到的就是它,
+  UI 零改动;老形态在下一次脱水时**归并归位**(见裁定二),磁盘逐步收敛到一种形态。
+
+事件面同款:`tool/result` 事件的 `changes` 字段是同一形状(`CoreToolCallChangesLike`,
+天然不含 `originalContent` —— `changesFromToolMetadata` 从来不折它,只有 hash/auditPath)。
+
+#### 裁定二(往返保真的具体改法):dehydrate 把 step 上的 changes **归并到顶层**,再摘 step 拷贝
+
+`session-dehydrate.ts` 的 `dehydrateSessionForStorage` 消息级两遍(纯函数、COW、不动入参,
+与现有风格同款):
+
+1. 先收集 `stepChangesById`:每个 `steps[].toolCall.changes` 存在、且 `toolCallId` 命中顶层
+   id 的,记 `toolCallId → changes`。
+2. 顶层 `toolCalls` 那一遍:条目**缺** changes 且 `stepChangesById` 有的,补
+   `{ ...entry, changes }`;随后照旧过 `dehydrateToolCall`(`originalContent` 剥离作用在
+   归并结果上,协同天然成立——先归并后剥离,一个顺序写死)。**顶层已有 changes 时不覆盖**
+   (both 形态 6 间:结算后两份本就相同,顶层那份是引擎正写,选它是确定性规则)。
+3. steps 那一遍:照旧摘被链上的 `step.toolCall`(现在摘之前 changes 已在顶层安家)。
+
+性质逐条:**幂等**(第二遍时 step 拷贝已不在、顶层已有 changes,两遍都是 no-op);**纯**
+(全 COW,`ONETHING_SESSION_FREEZE` 冻结对象不被就地改);**向后兼容三种老文件**——
+(a)stepOnly 全份形态:读得回(rehydrate 不动已存在的 step.toolCall),下次落盘归并保真、
+且净**缩**(扔掉的是整份冗余拷贝,保住的只是 changes 一格);(b)已丢形态(老会话在激进
+dehydrate 落地后被重存过的):changes 已蒸发,无从复活,往返自洽(两侧都没有,verify 不红);
+(c)现行 topOnly:字节级 no-op。`rehydrateSessionFromStorage` **一字不动**(`step.toolCall
+= linked` 本来就把顶层 changes 带回 step,同引用,和活引擎内存形态一致)。
+无链 step(toolCallId 不命中)照旧保留剥离后的拷贝,changes 本就不丢,行为钉死不变。
+
+#### 裁定三(verify 口径):counterpart 侧同走 `dehydrateProjectedMessages` —— 只修 roundtrip 不够,156 条不会自己全绿
+
+156 条红是**两个亚类**,只修 dehydrate 只治其一:
+
+- 亚类 A(changes 蒸发):投影(imported 事件逐字回放盘上老形态)带 changes,过
+  `dehydrateProjectedMessages` 丢掉;磁盘侧 rehydrate 保有 → canonical 差在 changes。
+- 亚类 B(`originalContent` 不对称):40 间老会话的 `changes.originalContent`(27.6MB)还在
+  盘上;投影侧往返会剥它,磁盘侧只 rehydrate 不剥 → 即便 changes 保真了,这一格还是不等。
+  (42 ≠ 34+6+1 的差额就是它:topOnly 带 originalContent 的也在红名单里。)
+
+而且修完裁定二后还会出现**新的不对称**:投影侧往返把 changes 归并到顶层,磁盘侧(只
+rehydrate)的老形态 changes 还在 step 上 —— 位置不同,canonical 照红。三个不对称同一个根:
+**两侧没走同一把归一函数**。修法与 §13.13-#4 同款判例:`scripts/session-verify.ts` 里
+counterpart 侧从 `rehydrateSessionFromStorage({ messages: real })` 改为
+`dehydrateProjectedMessages(real)`(它内部就是 clone → dehydrate → rehydrate,对新形态磁盘
+是恒等,对老形态是归一;`hydrated.length` 等 coverage 计数语义不变)。**canonical 一字不动、
+不加豁免**——"一个判官"的纪律保住,归一发生在判官之前、且用的是磁盘同款那把函数。
+
+预期:156 条中 changes/originalContent 两亚类全部转绿;剩 `9c94531d` 的 2 条(§13.16
+events-ahead 类,与本节无关)按 §13.16 已写好的两行收基线,4 条 healed 一并清掉 → 门归零。
+
+#### 裁定四(事件面补采集点):`tool/result` 事件带上 `changes`,采集点照抄判定点
+
+- **采集**:recorder 已经在听 `tool-metadata`(`session-event-recorder.ts:814`,今天只留
+  title)。扩这一格:对 `update.metadata` 跑**同一把** `changesFromToolMetadata`(从
+  `@onething/core` 导入,与引擎写消息的判定点同源),存进 run 状态表 `changesByCallId`
+  (与既有 `callSeqByCallId`/title 表同款);`tool/result` 落账时附 `changes`。
+  时序天然成立:metadata 在 apply 中途到,result 在 settle 后写。
+- **体积纪律**:沿用 §9.1 —— 序列化 ≤64KB 进事件行,超了走 blob(镜像
+  `resultData`/`resultDataBlob` 的既有机制,blobs.ts / verify 的 `collectBlobHashes` 一并
+  认识新引用)。真机数据:去掉 originalContent 后 2207 份里只有 3 份超 64KB(最大 85KB),
+  绝大多数 ~4.8KB。
+- **投影**:reducer 把 `changes` 当不透明 JSON 存进 call 状态;`chat-messages.ts` 物化时
+  attach 到 `toolCalls[]` 条目与 `step.toolCall`(两处今天就取自同一份 call 状态,一个
+  attach 点覆盖)——与活引擎内存形态一致,events-reads(不脱水)交给 UI 的消息 diff 卡
+  照常。旧事件文件没有这一格 = 物化不 attach,与今天逐字相同(§10.16 兜底口径:新字段
+  缺席即旧行为)。
+- **旧账不补**:原生覆盖区含 changes 的消息 = 0(实测),没有需要回填的事件;imported
+  事件已逐字带着 changes(713 条),**不需要重跑迁移**。
+
+#### 体积账(用户关心的那笔,全部真机实测)
+
+- `messages.jsonl` 侧:**保真不放大**。changes 今天已经在盘上(38.2MB / 364MB ≈ 10.5%,
+  其中 27.6MB 是 40 间老会话的 legacy `originalContent`,照旧在下次落盘时剥掉);现行写
+  路径本来就存顶层 changes,裁定二对新写零新增;老会话再存时净缩(扔全份 step 拷贝 ≥ 留
+  changes 一格)。
+- `events.jsonl` 侧:新增的只有**今后**每次 edit/write 的一格 changes,均值 ~4.8KB
+  (不含 originalContent,它从不进这条链),64KB 以上走 blob(历史数据里 3/2207)。
+  对照现状:events.jsonl 已 386MB(其中 imported 带 changes 的 713 行占 233MB——那是
+  整条消息行的账,迁移时已付清)。量级结论:**新增两位数 KB / 每次编辑,无存量放大**。
+
+#### 反向测试(每一条"不修就红")
+
+1. **合成往返**(scratchpad `synthetic.ts` 移植进
+   `packages/onething-runtime/src/sessions/__tests__/session-dehydrate.test.ts`):
+   stepOnly 形态过 `dehydrate→rehydrate`,断言 `step.toolCall.changes` 与
+   `message.toolCalls[].changes` 都在 —— HEAD 上输出 `*** CHANGES LOST ***`。
+2. **真机 f9b2181e**(stepOnly,38 份 changes):`bun scripts/session-verify.ts
+   f9b2181e-…`(只读)—— HEAD 红(canonical differs),修后绿。
+3. **幂等 + originalContent 协同 + both 不覆盖 + 无链 step 保留**:四条 contract test,
+   逐条对 HEAD 反证(幂等与无链两条 HEAD 本绿,是钉行为的回归桩)。
+4. **采集点**:recorder 单测喂 `tool-metadata`(带 diff/diffHunks/path)+ `tool-result`,
+   断言事件行带 `changes`、投影物化后 `toolCall.changes`/`step.toolCall.changes` 都在 ——
+   HEAD 上字段缺席即红。
+5. **影子**:电池加一格 "edit-changes" 场景(mock provider 发 edit 调用、真工具改临时
+   store 里的文件、产出 diff metadata)—— HEAD 上该场景 mismatch(投影缺 changes),
+   修后 0。若电池表达不了(参照 §13.9 的先例),降级为 `shadow.ts` 级单测:actual 带
+   changes vs 投影带 changes 比对为空、且"投影不带"那一侧 HEAD 红。
+
+#### 给 opus 的执行清单(按批,门全部实跑)
+
+- **批 1 —— 往返保真**:改 `packages/onething-runtime/src/sessions/session-dehydrate.ts`
+  (裁定二的归并;`dehydrateStep` 的链上摘除逻辑挪到消息级两遍,rehydrate 不动);
+  contract test 上面 1/3 两组进 `session-dehydrate.test.ts`。
+- **批 2 —— verify 归一**:`scripts/session-verify.ts` counterpart 侧改走
+  `dehydrateProjectedMessages`(裁定三,一处);
+  `packages/backend/session/__tests__/session-verify.test.ts` 加 fixture(stepOnly 老形态
+  transcript + imported 事件)反向用例;`projection-contract-host.test.ts` 补 changes 往返
+  逐字节断言。跑真机 `sessions:verify:gate`(只读):预期新红只剩 `9c94531d` 2 条。
+- **批 3 —— 事件采集**:`session-event-recorder.ts`(tool-metadata 收 changes、tool/result
+  落账,≤64KB 行内 / 超走 blob)+ `packages/core/session/projection/reducer.ts`(不透明
+  存)+ `chat-messages.ts`(物化 attach)+ 电池 "edit-changes" 场景(或 shadow 级单测,
+  见反向 5)+ recorder/投影 contract test(反向 4)。
+- **批 4 —— 收基线**:`9c94531d` 2 行按 §13.16 写好的文字收进
+  `docs/audit/session-verify-baseline-2026-08-20.txt`(带 events-ahead 区分注释),4 条
+  healed 清掉。
+- **批 5 —— 切读默认(S2b 阶段 2 收尾)**:`packages/backend/session/read-mode.ts`
+  `DEFAULT_SESSION_READ_MODE: 'messages' → 'events'`(文件头注释同步);自证脚本(只读):
+  events 模式下物化 `f9b2181e` 断言 diff changes 俱在(不做人肉走查)。
+- **每批门**:`bun run typecheck`;定向 vitest(`packages/onething-runtime/src/sessions`
+  `packages/backend/session` `packages/core/session`);`session:gate` 0(session-dehydrate
+  在白名单内,新改不出白名单);`boundary:gate` 0(recorder 是 wiring、reducer 改动是
+  core 内部,均无新跨层边);批 3/5 后加跑 `sessions:shadow-battery` GREEN 与
+  `sessions:verify:gate`(批 4 后应为 0 新红)。
+- **坑位提示**:COW 纪律(冻结对象就地改当场 TypeError);电池新场景 mock provider 的
+  工具调用要落在真 edit 工具上才会产出 diff metadata;blob 分支记得让 verify 的
+  `collectBlobHashes` 认识新引用,否则 blob 引用检查误报。
+
+#### 明确没做的
+
+- 不改 canonical(位置/originalContent 归一都由"两侧同一把脱水函数"完成,判官零豁免)。
+- 不重跑迁移、不回填旧事件(原生含 changes 的历史 = 0,imported 已带)。
+- 不动引擎写路径与渲染层(裁定一选的就是"现状即规范"的那一格)。
+- `messages.jsonl` 老形态不做批量就地改写 —— 归并只在"本来就要落盘"的那一次发生
+  (切默认后 messages.jsonl 渐冻,老形态大多永远停在盘上,verify 归一已让它不碍事)。
