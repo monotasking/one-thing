@@ -12,6 +12,11 @@
  *    `message/patched` —— 它们的来源是 `assistant/chunks`(§9.2 的类型级门在
  *    core 里钉着同一条)。`isStreaming` 同理:它是 `run/start`…`run/end` 之间
  *    的**状态**,不是字段。
+ * 4. **写侧取材走抄本真相面**(§13.18 发现 B)。翻译一条事件要读消息时,一律走
+ *    `sessionReads.*FromTranscript`(恒读 `messages.jsonl`),**永不**走
+ *    `getMessage` / `findMessage` 这类随 `ONETHING_SESSION_READ` 分岔的门面 ——
+ *    正要由这次翻译写出的那条事件,活投影还没看到,走 fromEvents 会自引用滞后的
+ *    旧投影,把旧正文焊进账本。`fromEvents` 岔口只属于产品读路;命令面同此纪律。
  *
  * 失败一律自吞:S1 是影子期,翻译坏了不能影响聊天(写失败的计数在
  * `event-stats.ts`)。
@@ -194,7 +199,11 @@ export const sessionEventTranslator = {
         appendSurfaceAwareEvent(sessionId, 'message/deleted', { messageId: payload.messageId }, options)
         return
       }
-      const message = updatedMessage ?? sessionReads.getMessage(sessionId, payload.messageId)
+      // §13.18 发现 B:兜底走抄本真相面(见文件头纪律 4)。`getMessage` 的
+      // fromEvents 岔口在 events 读模式下会回读到还没写入这条事件的旧投影,把
+      // 编辑前的旧正文永久焊进 `user/message-edited.data.message`。
+      const message =
+        updatedMessage ?? sessionReads.getMessageFromTranscript(sessionId, payload.messageId)
       if (!message) return
       appendSurfaceAwareEvent(
         sessionId,

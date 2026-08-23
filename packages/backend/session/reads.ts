@@ -165,6 +165,40 @@ export const sessionReads = {
     return guard(getSessionMessages(sessionId) ?? [])
   },
 
+  /**
+   * **抄本侧**按 id 取一条 —— 永远来自 `messages.jsonl`,**故意不经过 `fromEvents`**
+   * (F11,与 `listMessagesFromTranscript` 同款纪律)。
+   *
+   * 这是事件写侧(命令面 + 翻译器)取材的**唯一合法读法**:`user/message-edited` 等
+   * 事件正要由这次翻译写出,此刻活投影(§13.18 发现 B)还停在编辑前,走 `getMessage`
+   * 的 `fromEvents` 岔口会回读到旧正文并把它焊进账本。写侧读真相面,永不随读模式分岔。
+   */
+  getMessageFromTranscript(
+    sessionId: string,
+    messageId: string,
+  ): Readonly<ChatMessage> | undefined {
+    const message = getSessionMessages(sessionId)?.find(item => item.id === messageId)
+    return message ? guard(message) : undefined
+  },
+
+  /** **抄本侧**按谓词查一条(F11:同 `getMessageFromTranscript`,事件写侧取材用)。 */
+  findMessageFromTranscript(
+    sessionId: string,
+    predicate: (message: ChatMessage, index: number) => boolean,
+    options: { from?: 'start' | 'end' } = {},
+  ): Readonly<ChatMessage> | undefined {
+    const messages = getSessionMessages(sessionId)
+    if (!messages) return undefined
+    if (options.from === 'end') {
+      for (let index = messages.length - 1; index >= 0; index--) {
+        if (predicate(messages[index], index)) return guard(messages[index])
+      }
+      return undefined
+    }
+    const found = messages.find(predicate)
+    return found ? guard(found) : undefined
+  },
+
   /** 不加载整会话的分页(pager 走存储驱动)。 */
   pageMessages(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse {
     return fromEvents(() => eventsPageMessages(request)) ?? getSessionMessagesPage(request)

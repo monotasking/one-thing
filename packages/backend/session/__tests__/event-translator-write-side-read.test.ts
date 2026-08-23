@@ -1,0 +1,166 @@
+/**
+ * §13.18 发现 B:**事件写侧取材一律走抄本真相面,永不走随读模式分岔的门面。**
+ *
+ * events 读模式下,`user/message-edited` / `message/deleted` / upsert-existed 这三处
+ * 事件正要由这次翻译写出,而活投影(`projection-cache`)还停在写之前 —— 走
+ * `sessionReads.getMessage` / `findMessage` 的 `fromEvents` 岔口会**自引用**滞后的
+ * 旧投影,把旧正文 / 误判的类别 / 丢失的删除焊进账本(写坏账本,不只是读错)。
+ * 修法是给写侧一对读模式盲的 `*FromTranscript`,恒读 `messages.jsonl`。
+ *
+ * 与 `shadow-read-mode.test.ts` 同款:跑**真的** `reads.ts` / 事件日志 / 投影,
+ * 只替身最底下的会话仓库,让抄本与投影**故意分岔**,断言写侧取的是抄本那一份。
+ * HEAD 在 events 模式红、messages 模式绿(两个断言都写,把触发条件钉进测试)。
+ */
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ChatMessage } from '@shared/ipc.js'
+import type { SessionLogEventRecord } from '@onething/core/session'
+
+const state = vi.hoisted(() => ({
+  storeDir: '',
+  sessionsDir: '',
+  messages: new Map<string, ChatMessage[]>(),
+}))
+
+vi.mock('@onething/runtime/storage', () => ({
+  getOnethingSessionsDir: () => state.sessionsDir,
+  getOnethingLogDir: () => path.join(state.storeDir, 'log'),
+}))
+
+vi.mock('../../stores/sessions.js', () => ({
+  getSession: (id: string) => ({ id, messages: state.messages.get(id) ?? [] }),
+  getSessionRaw: (id: string) => ({ id, messages: state.messages.get(id) ?? [] }),
+  getSessions: () => [],
+  getSessionMessages: (id: string) => state.messages.get(id),
+  getSessionMessagesPage: () => ({ success: true, messages: [] }),
+  getSessionUserMessageMarkers: () => [],
+  readSessionTranscriptFile: () => undefined,
+}))
+
+const { sessionEventTranslator } = await import('../event-translator.js')
+const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
+  '../event-log.js'
+)
+const { resetSessionSurfaceCache } = await import('../event-surface.js')
+const { resetSessionRuns } = await import('../runs.js')
+const { resetSessionEventStatsCache } = await import('../event-stats.js')
+const { resetSessionProjectionCache } = await import('../projection-cache.js')
+const { resetSessionEventReadCache } = await import('../events-reads.js')
+const { resetSessionPrepareCache } = await import('../prepare.js')
+const { setSessionReadModeForTesting } = await import('../read-mode.js')
+const { sessionReads } = await import('../reads.js')
+
+const SESSION = 'write-side-1'
+
+beforeEach(() => {
+  delete process.env.ONETHING_SESSION_SHADOW
+  state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-write-side-'))
+  state.sessionsDir = path.join(state.storeDir, 'sessions')
+  fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
+  state.messages = new Map()
+  resetSessionEventLogCache()
+  resetSessionSurfaceCache()
+  resetSessionRuns()
+  resetSessionEventStatsCache()
+  resetSessionProjectionCache()
+  resetSessionEventReadCache()
+  resetSessionPrepareCache()
+  setSessionReadModeForTesting(undefined)
+})
+
+afterEach(async () => {
+  await flushSessionEventLog()
+  setSessionReadModeForTesting(undefined)
+  fs.rmSync(state.storeDir, { recursive: true, force: true })
+})
+
+function setTranscript(messages: ChatMessage[]): void {
+  state.messages.set(SESSION, messages)
+}
+
+async function events(): Promise<SessionLogEventRecord[]> {
+  await flushSessionEventLog(SESSION)
+  return readSessionLogEventsSync(SESSION)
+}
+
+describe.each(['messages', 'events'] as const)(
+  'event write side reads the transcript, never the lagging projection (§13.18 发现 B) — read mode %s',
+  mode => {
+    beforeEach(() => {
+      setSessionReadModeForTesting(mode)
+    })
+
+    it('truncateFrom(edit) writes the reducer-settled content/timestamp, not the pre-edit projection', async () => {
+      // 投影侧:账本上是编辑前的 'v1' / timestamp 1000。
+      setTranscript([{ id: 'u1', role: 'user', content: 'v1', timestamp: 1000 }])
+      sessionEventTranslator.appendMessage(SESSION, {
+        id: 'u1',
+        role: 'user',
+        content: 'v1',
+        timestamp: 1000,
+      })
+      resetSessionProjectionCache(SESSION)
+
+      // reducer 已落定:抄本换成 'v2' + 新 timestamp 2000。此刻 user/message-edited
+      // 事件还没写,活投影仍停在 'v1'。
+      setTranscript([{ id: 'u1', role: 'user', content: 'v2', timestamp: 2000 }])
+
+      // updatedMessage 传 undefined,逼翻译器走兜底读(B 的发作点)。
+      sessionEventTranslator.truncateFrom(SESSION, { messageId: 'u1', inclusive: false }, undefined)
+
+      const edited = (await events()).find(event => event.type === 'user/message-edited')
+      expect(edited).toBeDefined()
+      const message = (edited?.data as { message?: ChatMessage }).message
+      // HEAD 在 events 模式取到旧投影 'v1' / 1000 → 红;修后走抄本 'v2' / 2000 → 绿。
+      expect(message?.content).toBe('v2')
+      expect(message?.timestamp).toBe(2000)
+    })
+  },
+)
+
+describe('transcript accessors stay read-mode blind for the write side (§13.18 发现 B)', () => {
+  it('getMessageFromTranscript is transcript-bound while getMessage can return the lagging projection', async () => {
+    // 账本上 u1='v1'(投影侧);抄本换成 'v2'(reducer 落定侧)。upsert/truncate 写侧
+    // 取材若走 getMessage 的 fromEvents 岔口,拿到的是滞后投影的旧正文。
+    setTranscript([{ id: 'u1', role: 'user', content: 'v1', timestamp: 1000 }])
+    sessionEventTranslator.appendMessage(SESSION, {
+      id: 'u1',
+      role: 'user',
+      content: 'v1',
+      timestamp: 1000,
+    })
+    await flushSessionEventLog(SESSION)
+    resetSessionProjectionCache(SESSION)
+    setTranscript([{ id: 'u1', role: 'user', content: 'v2', timestamp: 2000 }])
+    setSessionReadModeForTesting('events')
+
+    // 产品读面(fromEvents)给的是投影里的旧正文 'v1'。
+    expect(sessionReads.getMessage(SESSION, 'u1')?.content).toBe('v1')
+    // 写侧取材面恒读抄本 → 'v2'。
+    expect(sessionReads.getMessageFromTranscript(SESSION, 'u1')?.content).toBe('v2')
+  })
+
+  it('findMessageFromTranscript finds a marker the lagging projection cannot', async () => {
+    setTranscript([
+      { id: 'u0', role: 'user', content: 'hi', timestamp: 1 },
+      { id: 'a-mark', role: 'assistant', content: 'has @@marker@@', timestamp: 6 },
+    ])
+    sessionEventTranslator.appendMessage(SESSION, {
+      id: 'u0',
+      role: 'user',
+      content: 'hi',
+      timestamp: 1,
+    })
+    await flushSessionEventLog(SESSION)
+    resetSessionProjectionCache(SESSION)
+    setSessionReadModeForTesting('events')
+
+    const byMarker = (m: ChatMessage) => (m.content ?? '').includes('@@marker@@')
+    // 产品读面滞后 → marker-delete 会找不到 → 该翻译的 message/deleted 整条丢失。
+    expect(sessionReads.findMessage(SESSION, byMarker)).toBeUndefined()
+    // 写侧取材面找得到 → 事件不丢。
+    expect(sessionReads.findMessageFromTranscript(SESSION, byMarker)?.id).toBe('a-mark')
+  })
+})

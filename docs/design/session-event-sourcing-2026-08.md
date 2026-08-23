@@ -3205,3 +3205,187 @@ events-ahead 类,与本节无关)按 §13.16 已写好的两行收基线,4 条 h
 - 不动引擎写路径与渲染层(裁定一选的就是"现状即规范"的那一格)。
 - `messages.jsonl` 老形态不做批量就地改写 —— 归并只在"本来就要落盘"的那一次发生
   (切默认后 messages.jsonl 渐冻,老形态大多永远停在盘上,verify 归一已让它不碍事)。
+
+### 13.18 批 5 冻结的两只拦路虎:活引擎 settle 丢 changes(A,推翻 §13.17 前提)+ events 读模式下编辑重发事件取材自滞后投影(B)——根因、裁定与解冻清单(2026-08-23,方案)
+
+§13.17 的批 1–4 已落地提交(dehydrate 往返保真、verify 归一、事件补 changes 采集、收基线),
+`verify:gate` 全绿、`shadow-battery` 在 messages 读模式 GREEN。批 5(翻
+`DEFAULT_SESSION_READ_MODE → 'events'`)在执行时暴露两个**引擎/投影级**的真 bug,切读默认
+因此冻结。本节把两个发现一次裁完。先说清与 §13.17 的关系:**本节推翻的是 §13.17
+「病根全景」第 1 条的事实断言("现行引擎把 changes 写在顶层"、"活引擎自己的新写不丢
+changes"),裁定一~四(顶层唯一持有点 / dehydrate 归并 / verify 归一 / 事件采集点)全部
+存活** —— 变的不是"changes 该住哪",而是"引擎今天根本没把它送回家"。§13.17 原文按
+append-only 纪律不改,以本节为准。
+
+#### 发现 A:活引擎的 agent-loop settle 链把 changes 丢在了半路 —— 消息(顶层与 step)两头都存不下
+
+**根因链(逐 file:line,全部 HEAD 实证)**:
+
+1. §13.17 事实 1 引的 `executeCoreToolAndUpdate` 编排链是**死代码**:
+   `packages/core/engine/tool-orchestration.ts:884` 的该函数,测试外唯一 import 是
+   `packages/backend/wiring/engine/stream/tool-execution.ts:117` 的 `executeToolAndUpdate`
+   壳,而这个壳的唯一 import 方 `packages/backend/wiring/engine/stream/tool-orchestrator.ts:7`
+   (`ToolOrchestrator` 类,line 43)**全仓零实例化**(只有 `__tests__`)。同文件的
+   `executeToolDirectly` 倒是活的(`agent-loop-runtime.ts:35` 引它)——死的只是
+   "AndUpdate 落账"那半截,即 §13.17 描述的那套"metadata → `updateToolCall` 命令 →
+   顶层落盘"机器。
+2. 活路径是 agent-loop 的 chunk 分发(`packages/backend/wiring/engine/stream/agent-loop-executor.ts:498`
+   → `coreApplyAgentLoopStreamChunkWithAdapters`,store 桥只带 `updateMessageToolCalls`,
+   line 511-513)。`tool-metadata` 到达时(`packages/core/engine/agent-loop-executor.ts:2217`)
+   调 `applyAgentLoopToolMetadataWithAdapters`(line 1954):`applyAgentLoopToolMetadata`
+   (line 1518)确实折出 `{ ...toolCall, changes }`(line 1535-1538,判定点
+   `changesFromMetadata` line 1493 与事件侧同源)——但这份新 toolCall **只进
+   `sendStepUpdated`,谁都没把它写回工作表 `processor.toolCalls`,选项束里连 store 都没带**
+   (对照 line 2198 的 tool-result 分发:有 store)。
+3. settle(`settleAgentLoopToolResultWithAdapters`,line 1724)从工作表按 id 重取
+   toolCall —— 那份**从未有过 changes** —— `settleAgentLoopToolCallResult`(line ~1560,
+   settled 展开在 ~1619)展开出的 settled 自然没有;`store.updateMessageToolCalls(整表快照)`
+   (line ~1755)把无 changes 的快照写进 `message.toolCalls[]`;紧接着
+   `buildAgentLoopToolResultPresentation`(line 1641,`stepUpdate.toolCall = { ...toolCall }`
+   在 ~1667)经 `sendStepUpdated` 落 `patchStep` 命令 —— 而 patchStep reducer
+   (`packages/core/session/commands.ts:323-331`)是浅覆盖:`updates.toolCall` **整体换掉**
+   `step.toolCall`,metadata 时刻写上去的那份带 changes 的 step 拷贝也被抹掉。
+4. 结论:现行活路径上,edit/write 的 changes **顶层与 step 两头都不落盘**;瞬时只存在于
+   metadata 到 settle 之间的 step 上与 IPC 流里(所以流中 UI 有 diff、重载后消失)。批 3
+   之后,`tool/result` 事件(`session-event-recorder.ts:857/896` 的 `changesByCallId` 表)
+   成了 changes 在活路径上**唯一**可靠的持久落点。
+
+**矛盾数据点解除(真机 `46dcec05-73e4-44ea-8a3e-11488effec08`,全程只读)**:该会话
+(created 08-18,grok-oauth/grok-4.6,agent-loop 路)97 条消息 / 385 个 toolCall,顶层带
+changes 的 26 个(write 21 / edit 5)**全部**落在 2026-08-18T15:36 ~ 08-19T06:20(UTC)
+窗口;step 侧 0 个;08-20T16(UTC)起的 178 个 edit/write **零** changes。R4b 删旧工具树
+(`6b9fa5a0`)提交于 2026-08-19 11:19 +0800 = 03:19Z,断点窗口 [08-19T06:20Z, 08-20T16:00Z]
+恰好覆盖 R4b 后桌面首次重启。所以 26 条不是 native-tool provider 的别道,是**时间断层**:
+旧执行链(R4b 删除的 runtime/tools 树)的遗产。§13.17 表格里 topOnly "mtime 至 08-22" 的
+误导由此解释 —— mtime 是重写时刻,不是 changes 出生时刻;46dcec05 自己就是"晚重写的老
+changes"。顺带:该会话 events.jsonl 380 条 `tool/result` 零 changes(先于批 3),与 §13.17
+事实 2("原生事件零条")继续吻合。也就是说,**丢 changes 是 08-19 起就存在的真机产品回归**
+(重载后 diff 卡空),与 S2b 无关,只是被批 5 的排查照了出来。
+
+**裁定 A:修 settle 链,让 changes 在 metadata 时刻进工作表、settle 自然携带 —— 不认账
+"事件是唯一家"。** 理由:
+
+- §13.17 裁定一已拍"`message.toolCalls[]` 是唯一磁盘持有点";发现 A 推翻的是"引擎已经
+  这么做了"的事实,不是裁定本身。让引擎去符合裁定,比反过来改裁定便宜且自洽 —— 认账方案
+  要付的是:messages 读模式(今天的默认、以及切读后的回滚路径)下新 edit 永远无 diff、
+  canonical 被迫开 changes 豁免(违反"一个判官零豁免"纪律)、批 1 的 dehydrate 归并沦为
+  只服务 2026-07 老文件的死逻辑、且 08-19 起的真机回归被固化成规范。全部不可接受。
+- 修法(单点,core):`applyAgentLoopToolMetadataWithAdapters`(agent-loop-executor.ts:1954)
+  的选项束加 `sessionId` / `assistantMessageId` / `store`(与 settle 同款
+  store-like);当 `metadataUpdates.toolCall` 存在时,先
+  `replaceCoreToolCall(options.toolCalls, metadataUpdates.toolCall)` 换进工作表,再
+  `store.updateMessageToolCalls(sessionId, assistantMessageId, coreToolCallSnapshot(...))`
+  整表快照写回(COW 已天然满足:`{ ...toolCall, changes }` 本就是新对象),然后照旧
+  `sendStepUpdated`。分发点(line 2217)把束里已有的三样传进去即可,wiring 零改动
+  (line 511-513 的 store 桥已带 `updateMessageToolCalls`)。
+- 生效路径:settle 从工作表重取的 toolCall 现在带 changes → settled 展开继承 → 顶层快照
+  有、`stepUpdate.toolCall = { ...settled }` 有 → patchStep 的整体替换写上的就是带 changes
+  的那份 —— **顶层与 step 同时归位,message == projection,messages.jsonl 重新自足**。
+  `requiresConfirmation` 分支同样继承(edit 审批卡上的 diff 也回来了)。
+- 连带影响:
+  - shadow/verify:canonical 继续**不豁免 changes**。修后消息侧与投影侧(批 3 事件 →
+    reducer.ts:633/1199 物化)同有,天然相等。**修前**(HEAD)任何真实 edit 在 messages
+    模式的 run/end 影子比对都该 mismatch(投影有、消息没有)——这正是反向判据;若电池的
+    edit-changes 场景(§13.17 反向 5)今天在 HEAD 上是绿的,先查两件事:场景是否真的产出
+    diff metadata、比对是否真的看得见 changes —— **门要先能在 HEAD 上看见 A,修 A 才算数**。
+  - dehydrate/verify(批 1/2)零改动:新写落顶层 = "现行 topOnly 字节级 no-op"那格。
+  - 事件侧(批 3)零改动:recorder 的 `changesByCallId` 与引擎写回同判定点
+    (`changesFromMetadata`),两侧同源不重复。
+  - 旧账不补:08-19 ~ 修复日之间真机产生的 edit,metadata 早已丢弃,无从回填(与 §13.17
+    "旧账不补"同口径;这段的 diff 只活在事件缺采集前的空白里,认损)。
+
+#### 发现 B:events 读模式下,`user/message-edited` 事件取材自"还没看到这条事件"的投影 —— 写侧自引用
+
+**根因链**:
+
+1. `handleEditAndResend`(`packages/core/engine/core-stream-engine.ts:1020`)调
+   `store.updateMessageAndTruncate(sessionId, messageId, 新正文, {contentParts})`;core
+   reducer `applyTruncate`(`packages/core/session/commands.ts:458` 起)**做对了所有事**:
+   `target.content = command.newContent`、`target.timestamp = now`,并把改写后那条放进
+   `meta.updatedMessage` 交回。真相在写侧手里。
+2. 命令面 `truncateFrom`(`packages/backend/session/commands.ts:243`)在端口写成功后,给
+   翻译器递的却是**回读**:`sessionReads.getMessage(sessionId, payload.messageId)`
+   (line ~262);翻译器自己的兜底同款(`event-translator.ts:197`
+   `updatedMessage ?? sessionReads.getMessage(...)`)。
+3. `sessionReads.getMessage`(`packages/backend/session/reads.ts:178`)带着 S2a 的岔口:
+   `fromEvents(...)` 优先 —— events 读模式下返回**活投影**的物化消息。而此刻
+   `user/message-edited` 事件**正要由这次翻译写出**,活投影(`projection-cache.ts:42/51/64`
+   随 append 折叠)还停在编辑前:回读拿到旧正文 + 旧 timestamp,原样写进
+   `data.message`(event-translator.ts:201-206)→ **旧正文永久落账**。投影 reducer
+   (`projection/reducer.ts:354`)无辜:它忠实回放了账本上的错事件。
+4. 触发条件由此完全解释:messages 模式下同一处回读走内存 store(reducer 刚落定,新正文)
+   → 事件正确 → 电池绿;events 模式下自引用 → 16 条红(history:8 / messages:8,全部
+   edit-and-resend,正文回退 + 时间戳差)。注意这是**写坏账本**的 bug,不只是读错:events
+   模式下每次编辑重发都会把错误事件焊进 events.jsonl(电池是一次性 store,真机默认未切,
+   尚无存量损伤;这也是批 5 必须先修 B 的硬理由 —— 切了默认,第一次编辑就开始写坏账)。
+
+**裁定 B:修事件写侧 —— 写侧取数一律走抄本真相面,永不走随读模式分岔的门面。** 修法:
+
+- `sessionReads` 加 `getMessageFromTranscript(sessionId, messageId)`(与
+  `listMessagesFromTranscript`(reads.ts:164)并排,同一段 F11 纪律注释:**故意不经过
+  `fromEvents`**);`commands.ts` truncateFrom 的递参(~262)与 `event-translator.ts:197`
+  的兜底改走它。
+- **同类全扫**(写侧自引用不止这一处,events 模式下都是定时炸弹):
+  `commands.ts:200` upsertMessage 的 existed 探测(流中 assistant 消息投影里还没有 →
+  误判成"新增",翻译错类)、`commands.ts:~276` deleteMessage 按 marker 的
+  `sessionReads.findMessage`(投影滞后 → 找不到 → 该翻译的 `message/deleted` 整条丢失)。
+  各换 transcript 真相读(找不到现成方法就补 `findMessageFromTranscript`)。
+- 纪律钉死:`event-translator.ts` 与 `commands.ts` 文件头补一条规矩 —— **事件写侧
+  (命令面 + 翻译器)的一切消息读取走 `*FromTranscript`;`fromEvents` 岔口只属于产品读路**。
+  配一条 contract test 把读模式钉在 `events` 上逐条驱动三个命令(见反向测试),防回潮。
+- 否决的备选:①把 reducer 的 `meta.updatedMessage` 穿过存储端口交给命令面 —— 语义最正
+  (事件取材 = reducer 产物),但要动 `SessionCommandsPorts` 三层接口,而 transcript 读给出
+  的是同一份字节;②改投影 reducer 忽略 `data.message` 正文 —— 治标,账本本身就是错的,
+  事件是词汇的载体,必须在产地写对。
+- 连带影响:timestamp 差同根同修(真相面上的 timestamp 是 reducer 盖的 now);canonical /
+  verify / UI 零改动;§13.16 的 events-ahead 类无涉(那是 flush 丢写,方向相反)。
+
+#### 给 opus 的执行清单(接 §13.17 编号,批 6–8;门全部实跑)
+
+- **批 6 —— A:settle 链归位 changes**。改
+  `packages/core/engine/agent-loop-executor.ts`(`applyAgentLoopToolMetadataWithAdapters`
+  选项束加 sessionId/assistantMessageId/store + 工作表写回 + 快照落盘;分发点 line ~2217
+  传参)。contract test 进
+  `packages/backend/wiring/engine/__tests__/core-agent-loop-executor.test.ts`(既有 settle
+  用例旁):喂 `tool-metadata{diff,diffHunks,path}` → settle,断言 store 收到的整表快照与
+  `stepUpdate.toolCall` **都带** changes —— HEAD 红。电池侧:确认 edit-changes 场景真的
+  产出 diff metadata 且比对看得见 changes(HEAD 上该场景在 messages 模式应为红;若绿,
+  先修场景/比对的盲区再修 A —— "不修则红"是本批的准入门)。**反向判据:上述 contract
+  test 与电池场景在 HEAD 红、修后绿;`46dcec05` 类只读复核(修后新 edit 的顶层
+  changes 在,老窗口 26 条不变)。**
+- **批 7 —— B:写侧真相读**。改 `packages/backend/session/reads.ts`(+
+  `getMessageFromTranscript`,必要时 `findMessageFromTranscript`)、
+  `packages/backend/session/commands.ts`(truncateFrom ~262 / upsertMessage 200 /
+  deleteMessage ~276)、`packages/backend/session/event-translator.ts`(197 兜底 + 文件头
+  纪律)。contract test 进 `packages/backend/session/__tests__/event-translator.test.ts`:
+  读模式钉 `events`(`ONETHING_SESSION_READ=events`),店里放 user 'v1',驱动
+  `truncateFrom{inclusive:false, newContent:'v2'}`,断言 `user/message-edited.data.message`
+  的 content === 'v2' 且 timestamp === reducer 落定值 —— HEAD 在 events 模式红、messages
+  模式绿(两个断言都写,把触发条件钉进测试);再各一条覆盖 upsert-existed 与
+  marker-delete 的同类。**反向判据:`sessions:shadow-battery` 以
+  `ONETHING_SESSION_READ=events` 跑 —— HEAD 16 红(edit-and-resend 全家),修后 0。**
+- **批 8 —— 切读默认(原批 5 照单执行)**。前置条件全部满足后翻
+  `DEFAULT_SESSION_READ_MODE: 'messages' → 'events'`(`read-mode.ts:16`,文件头注释同步)
+  + 原批 5 的自证脚本(events 模式物化 `f9b2181e` 断言 diff changes 俱在,只读)。
+- **每批门**:`bun run typecheck`;定向 vitest(批 6:`packages/core/engine`
+  `packages/backend/wiring/engine`;批 7:`packages/backend/session`
+  `packages/core/session`);`session:gate` 0;`boundary:gate` 0(批 6 是 core 内部 +
+  既有 store 桥,批 7 是 backend 包内,均无新跨层边);批 6/7/8 均加跑
+  `sessions:shadow-battery`(messages 与 events 双泳道)与 `sessions:verify:gate`
+  (0 新红;批 6 修后真机新 edit 不再制造"投影有消息没有"的 changes 差)。
+- **依赖顺序**:A、B 代码互不相交,可并行开发;**合入顺序 A(批 6)在前** —— A 是
+  messages 模式(今天的默认)下就存在的真机回归与影子红源,先修先止血;B 只在 events
+  模式发作,但**批 8 硬依赖 A、B 双完成 + 电池 events 泳道 GREEN**,缺一不翻。
+- **坑位提示**:COW/FREEZE 纪律照旧(工作表换新对象,不就地改);批 6 别顺手"优化"成
+  settle 时从 `changesByCallId` 侧表补 —— 单一写回点在 metadata 时刻,settle 只继承;
+  批 7 的测试要留神 `read-mode.ts` 对 env 的读取时机(若 configure 期缓存,测试内切模式
+  需走它的显式入口)。
+
+#### 明确没做的
+
+- 不改 canonical、不加 changes 豁免(批 6 修的就是让豁免永远不需要存在)。
+- 不回填 08-19 ~ 批 6 之间真机丢失的 changes(metadata 已灭失),不重跑迁移。
+- 不复活 `executeCoreToolAndUpdate` 编排链,也不在本轮删它 —— 死码清理另立门户
+  (`ToolOrchestrator` / `executeToolAndUpdate` 及其 checker 断言一起),与解冻无关。
+- 不把 `meta.updatedMessage` 穿端口(裁定 B 已述);不动投影 reducer 的
+  `user/message-edited` case。

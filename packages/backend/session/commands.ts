@@ -18,6 +18,13 @@
  * `saveSessionSnapshot`)并把 `session:check` 收到白名单外 0。
  * `app/stores/sessions.ts` 上还留着的那批 `updateMessage*` **不是**死路径:
  * 它们是 core 引擎注入的 store 端口的实现,接口形状 P0 不许动(§6)。
+ *
+ * **事件写侧取材纪律(§13.18 发现 B)**:命令面在写完端口后给翻译器递数,一律走
+ * `sessionReads.*FromTranscript`(恒读 `messages.jsonl` 真相面),**永不**走
+ * `getMessage` / `findMessage` 这类随 `ONETHING_SESSION_READ` 分岔的门面 ——
+ * events 读模式下活投影还没看到"正要由这次翻译写出的那条事件",走 fromEvents
+ * 会自引用旧投影,把旧正文 / 误判的类别 / 丢失的删除焊进账本(写坏账本,不只是读错)。
+ * `fromEvents` 岔口只属于产品读路。`event-translator.ts` 的兜底同此纪律。
  */
 
 import type {
@@ -196,8 +203,10 @@ export function createSessionCommands(
     },
 
     upsertMessage(sessionId, payload) {
-      // 翻译要分清"新增"与"就地换掉",所以先问一次在不在(读门面,不碰数组)。
-      const existed = sessionReads.getMessage(sessionId, payload.message.id) !== undefined
+      // 翻译要分清"新增"与"就地换掉",所以先问一次在不在。
+      // §13.18 发现 B:走抄本真相面 —— events 读模式下活投影还没看到这条流中
+      // assistant 消息,`getMessage` 的 fromEvents 岔口会误判成"新增",翻译错类。
+      const existed = sessionReads.getMessageFromTranscript(sessionId, payload.message.id) !== undefined
       const changed = ports.messages.upsertMessage(sessionId, payload.message)
       if (changed) translator?.upsertMessage(sessionId, payload.message, existed)
       return changed
@@ -260,7 +269,10 @@ export function createSessionCommands(
           payload,
           payload.inclusive
             ? undefined
-            : (sessionReads.getMessage(sessionId, payload.messageId) as ChatMessage | undefined),
+            // §13.18 发现 B:抄本真相面 —— reducer 刚把新正文+新 timestamp 落进内存
+            // store,而 `user/message-edited` 事件正要由这次翻译写出;走 fromEvents
+            // 会回读到编辑前的旧正文,把它永久焊进账本。
+            : (sessionReads.getMessageFromTranscript(sessionId, payload.messageId) as ChatMessage | undefined),
         )
       }
       return changed
@@ -274,7 +286,9 @@ export function createSessionCommands(
       }
       // 按 marker 删:命令面不知道删掉的是哪一条,所以先找出来再删
       // (`deleteMessageWhere` 内部会再找一次 —— 两次 find 换一条能翻译的事件)。
-      const target = sessionReads.findMessage(sessionId, payload.matchMarker)
+      // §13.18 发现 B:抄本真相面 —— events 读模式下活投影滞后会找不到,
+      // 该翻译的 `message/deleted` 整条丢失。
+      const target = sessionReads.findMessageFromTranscript(sessionId, payload.matchMarker)
       const changed = ports.messages.deleteMessageWhere(sessionId, payload.matchMarker)
       if (changed && target) translator?.deleteMessage(sessionId, target.id)
       return changed
