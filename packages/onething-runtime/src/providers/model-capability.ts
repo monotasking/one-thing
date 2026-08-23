@@ -36,6 +36,8 @@ export type OnethingReasoningEffortLevel =
 export type OnethingReasoningWire =
   | 'anthropic-adaptive'
   | 'anthropic-budget'
+  /** Fable / Mythos: thinking is always on, the `thinking` param is rejected. */
+  | 'anthropic-always'
   | 'openai-effort'
   | 'gemini-level'
   | 'gemini-budget'
@@ -66,6 +68,20 @@ export interface OnethingResolvedModelCapabilities {
   tools: boolean
   imageOutput: boolean
   temperature: boolean
+  /**
+   * How this model expresses its thinking intent on the wire — answered even
+   * when `reasoning` is false, because the wire format is a property of the
+   * model family, not of whether thinking happens to be available. This is the
+   * single judge `HttpAgentProvider.thinkingFor()` asks (P2-a); before it, each
+   * wire kept its own model-name regex.
+   */
+  reasoningWire: OnethingReasoningWire
+  /**
+   * Whether a "must call a tool" round is possible. Only present when the
+   * rules table has an opinion; absent = the provider's own transport
+   * declaration stands (today's behavior: tools ⇒ forced tool use).
+   */
+  forcedToolUse?: boolean
   source: {
     reasoning: OnethingCapabilitySource
     vision: OnethingCapabilitySource
@@ -240,14 +256,24 @@ export const ONETHING_GEMINI_THINKING_BUDGETS: Record<'minimal' | 'low' | 'mediu
 // the kind's default row (test: /(?:)/ matches everything).
 // ---------------------------------------------------------------------------
 
+type OnethingRuleCapability = 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature'
+
 type OnethingModelRuleCaps = Partial<
-  Pick<OnethingResolvedModelCapabilities, 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature'>
+  Pick<OnethingResolvedModelCapabilities, OnethingRuleCapability | 'forcedToolUse'>
 >
+
+type OnethingModelRuleCapsKey = OnethingRuleCapability | 'forcedToolUse'
 
 interface OnethingModelRule {
   test: RegExp
   caps?: OnethingModelRuleCaps | ((model: string) => OnethingModelRuleCaps)
   profile?: OnethingReasoningProfile | ((model: string) => OnethingReasoningProfile)
+  /**
+   * Wire format for the thinking intent, for rows whose models may resolve
+   * `reasoning: false` and therefore carry no `profile`. A row that has a
+   * `profile` already answers this through it.
+   */
+  wire?: OnethingReasoningWire | ((model: string) => OnethingReasoningWire)
 }
 
 function claudeProfile(model: string): OnethingReasoningProfile {
@@ -258,8 +284,19 @@ function claudeProfile(model: string): OnethingReasoningProfile {
     defaultOn: family.alwaysThinking || /sonnet-5/.test(model.toLowerCase()),
     efforts: ONETHING_CLAUDE_EFFORTS,
     defaultEffort: 'high',
-    wire: family.adaptive ? 'anthropic-adaptive' : 'anthropic-budget',
+    wire: claudeReasoningWire(model),
   }
+}
+
+/**
+ * The one Claude family judgement, shared by the profile and the wire lookup.
+ * `onethingClaudeModelFamily` is the only regex — the provider layer used to
+ * keep a second copy of this branch inside `AnthropicMessagesWire.thinkingFor`.
+ */
+function claudeReasoningWire(model: string): OnethingReasoningWire {
+  const family = onethingClaudeModelFamily(model)
+  if (family.alwaysThinking) return 'anthropic-always'
+  return family.adaptive ? 'anthropic-adaptive' : 'anthropic-budget'
 }
 
 /**
@@ -280,13 +317,21 @@ export function onethingGeminiThinkingLevels(
   return ONETHING_GEMINI_EFFORTS
 }
 
+/**
+ * 2.5 takes numeric budgets, everything else takes named levels. Same single
+ * `includes('2.5')` judgement the gemini wire used to keep for itself.
+ */
+function geminiReasoningWire(model: string): OnethingReasoningWire {
+  return model.toLowerCase().includes('2.5') ? 'gemini-budget' : 'gemini-level'
+}
+
 function geminiProfile(model: string): OnethingReasoningProfile {
   return {
     toggleable: true,
     defaultOn: true,
     efforts: onethingGeminiThinkingLevels(model),
     defaultEffort: 'high',
-    wire: model.toLowerCase().includes('2.5') ? 'gemini-budget' : 'gemini-level',
+    wire: geminiReasoningWire(model),
   }
 }
 
@@ -320,6 +365,10 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
         vision: true,
         tools: true,
         temperature: !onethingClaudeModelFamily(model).samplingRemoved,
+        // Forced tool use is paired with thinking off, and Fable/Mythos cannot
+        // take that half of the bargain (the API rejects an explicit
+        // `disabled`) — so the honest answer is that they cannot be forced.
+        forcedToolUse: !onethingClaudeModelFamily(model).alwaysThinking,
       }),
       profile: claudeProfile,
     },
@@ -332,7 +381,9 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
   ],
   gemini: [
     { test: /gemini-(?:2\.5|[3-9])/, caps: { reasoning: true }, profile: geminiProfile },
-    { test: /(?:)/, caps: { reasoning: false, vision: true } },
+    // Even a model the ledger grants no reasoning to has a wire format: the
+    // gemini wire must know which of the two thinking encoders to reach for.
+    { test: /(?:)/, caps: { reasoning: false, vision: true }, wire: geminiReasoningWire },
   ],
   zhipu: [
     {
@@ -642,7 +693,7 @@ function fromRegistry(
 }
 
 function fromRules(
-  capability: 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature',
+  capability: OnethingModelRuleCapsKey,
   rules: OnethingModelRule[],
   modelLower: string,
 ): boolean | undefined {
@@ -728,6 +779,25 @@ function resolveProfile(
   return undefined
 }
 
+/**
+ * The wire format, independent of whether reasoning is available. First
+ * matching row that says anything wins — its own `wire`, else its profile's.
+ */
+function resolveReasoningWire(
+  kind: OnethingProviderKind,
+  model: string,
+  modelLower: string,
+): OnethingReasoningWire | undefined {
+  for (const rule of PROVIDER_MODEL_RULES[kind]) {
+    if (!rule.test.test(modelLower)) continue
+    if (rule.wire) return typeof rule.wire === 'function' ? rule.wire(model) : rule.wire
+    if (rule.profile) {
+      return (typeof rule.profile === 'function' ? rule.profile(model) : rule.profile).wire
+    }
+  }
+  return undefined
+}
+
 /** Profile used when reasoning is known-true but no rule row carries a profile. */
 const GENERIC_REASONING_PROFILE: OnethingReasoningProfile = {
   toggleable: true,
@@ -749,12 +819,20 @@ export function resolveOnethingModelCapabilities(
   const imageOutput = resolveCapability('imageOutput', input, kind, modelLower)
   const temperature = resolveCapability('temperature', input, kind, modelLower)
 
+  const reasoningProfile = reasoning.value
+    ? resolveProfile(kind, input.modelId, modelLower) ?? GENERIC_REASONING_PROFILE
+    : undefined
+  const forcedToolUse = fromRules('forcedToolUse', PROVIDER_MODEL_RULES[kind], modelLower)
+
   return {
     reasoning: reasoning.value,
     vision: vision.value,
     tools: tools.value,
     imageOutput: imageOutput.value,
     temperature: temperature.value,
+    reasoningWire:
+      reasoningProfile?.wire ?? resolveReasoningWire(kind, input.modelId, modelLower) ?? 'none',
+    ...(typeof forcedToolUse === 'boolean' ? { forcedToolUse } : {}),
     source: {
       reasoning: reasoning.source,
       vision: vision.source,
@@ -762,11 +840,6 @@ export function resolveOnethingModelCapabilities(
       imageOutput: imageOutput.source,
       temperature: temperature.source,
     },
-    ...(reasoning.value
-      ? {
-          reasoningProfile:
-            resolveProfile(kind, input.modelId, modelLower) ?? GENERIC_REASONING_PROFILE,
-        }
-      : {}),
+    ...(reasoningProfile ? { reasoningProfile } : {}),
   }
 }

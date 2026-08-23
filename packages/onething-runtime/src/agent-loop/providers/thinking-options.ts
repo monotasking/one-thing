@@ -1,3 +1,16 @@
+/**
+ * 「用户意图 → thinking/effort」的归一化。
+ *
+ * P2-a 起这里**只剩通用规则**:各家的家规(Kimi 的三族模型)住在自己的方言
+ * 配方里(`Dialect.thinkingIntent`),这个函数问注册表,问不到才走通用。
+ *
+ * `./dialects/index.js` 是**副作用 import**:它一加载就把 16 份配方登记进
+ * `registerDialect` 的注册表。少了这一句,单独 import 本文件的调用方(测试就是
+ * 这么用的)会问到一张空表,家规静默失效。
+ */
+import "./dialects/index.js";
+import { getDialect } from "./base/index.js";
+
 export interface OnethingAgentLoopThinkingProviderConfig {
   model: string
   thinkingByModel?: Record<string, boolean | undefined>
@@ -43,34 +56,6 @@ export function normalizeDeepSeekReasoningEffort(value: unknown): 'high' | 'max'
   return value === 'max' ? 'max' : value === 'high' ? 'high' : undefined
 }
 
-// Kimi thinking-model families (https://platform.kimi.com/docs/guide/use-kimi-k2-thinking-model):
-// - kimi-k3: always thinks; configured via OpenAI-compatible reasoning_effort ("max" is
-//   the only accepted value); thinking.type is not supported.
-// - kimi-k2.7-code (+ -highspeed) and kimi-k2-thinking: always think; the thinking
-//   param must not be sent to disable them, so send nothing.
-// - kimi-k2.5 / kimi-k2.6: thinking on by default, toggleable via thinking.type.
-function isKimiAlwaysThinkingModel(model: string): boolean {
-  return model.includes('code') || model.includes('thinking')
-}
-
-function getKimiThinkingOptions(
-  config: OnethingAgentLoopThinkingProviderConfig,
-): OnethingAgentLoopThinkingOptions {
-  const model = config.model.toLowerCase()
-  if (model.startsWith('kimi-k3')) {
-    // K3 always reasons server-side; the toggle only controls whether we
-    // explicitly declare the (sole) "max" effort.
-    if (config.thinkingByModel?.[config.model] === false) return {}
-    return { reasoningEffort: 'max' }
-  }
-  if (isKimiAlwaysThinkingModel(model)) return {}
-  const enabled = config.thinkingByModel?.[config.model]
-  if (enabled === false) return { thinking: 'disabled' }
-  if (enabled === true) return { thinking: 'enabled' }
-  return {}
-}
-
-
 /**
  * Generic user-intent resolution: `thinkingByModel` decides on/off,
  * `thinkingEffortByModel` carries the abstract effort. The provider request
@@ -94,6 +79,10 @@ function getGenericThinkingOptions(
 export function getOnethingAgentLoopThinkingOptions(
   ctx: OnethingAgentLoopThinkingContext,
 ): OnethingAgentLoopThinkingOptions {
-  if (ctx.providerId === 'kimi') return getKimiThinkingOptions(ctx.providerConfig)
-  return getGenericThinkingOptions(ctx.providerConfig)
+  // 先问这家的方言配方有没有家规;没有(或压根没这份配方)才走通用规则。
+  const intent = getDialect(ctx.providerId)?.thinkingIntent?.(
+    ctx.providerConfig,
+    ctx.providerConfig.model,
+  )
+  return intent ?? getGenericThinkingOptions(ctx.providerConfig)
 }

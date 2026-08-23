@@ -37,16 +37,33 @@ export abstract class BaseAgentProvider implements AgentProvider {
 	 */
 	get capabilities(): AgentModelCapabilities {
 		const base = this.transportCapabilities;
+		if (this.selfDeclared) return base;
 		// 没有账本解析器 = 自述能力的 provider(acp / external-agents):
 		// 能力就是它自己声明的那份,一个字都不覆盖。
 		const profile = this.ctx.profiles?.defaultProfile?.(this.id);
 		return profile ? profile.toAgentModelCapabilities(base) : base;
 	}
 
+	/**
+	 * per-model 能力 = `ModelProfile` 对传输声明的投影(P2-a 起这是**唯一**
+	 * 一条路:`factory.ts` 的 `withPerModelCapabilities` 退役,四条 wire 的
+	 * 常量覆盖删除)。
+	 */
 	async getModelCapabilities(model: string): Promise<AgentModelCapabilities> {
 		const base = this.transportCapabilities;
+		if (this.selfDeclared) return base;
 		const profile = await this.ctx.profiles?.resolve(this.id, model);
 		return profile ? profile.toAgentModelCapabilities(base) : base;
+	}
+
+	/**
+	 * 自述能力的短路(旧 `createAgentProviderFromRuntime` 里那一句):账本对
+	 * 一个它没见过的模型没有真话可说,猜一个正好是 `supportsTools: false` 那类
+	 * bug。**读自己身上的那个可选字段**而不是声明它 —— 声明会给每个 provider
+	 * 凭空长出一个 `capabilitiesAreSelfDeclared: false`。
+	 */
+	private get selfDeclared(): boolean {
+		return (this as AgentProvider).capabilitiesAreSelfDeclared === true;
 	}
 
 	abstract streamTurn(

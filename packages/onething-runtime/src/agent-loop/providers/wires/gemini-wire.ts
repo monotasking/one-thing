@@ -28,14 +28,8 @@ import { getLogger } from "../../../logging/index.js";
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { readJsonSseData } from "../sse.js";
 import {
-	geminiBudgetThinkingWire,
-	geminiLevelThinkingWire,
-	isGemini25Model,
-} from "../thinking/index.js";
-import {
 	HttpAgentProvider,
 	UsageBuckets,
-	noThinkingWire,
 	type Dialect,
 	type FinishReasonMapper,
 	type PartCodec,
@@ -43,7 +37,6 @@ import {
 	type RawTurnFinish,
 	type RequestBodyBuilder,
 	type SamplingPolicy,
-	type ThinkingWire,
 	type ToolChoicePolicy,
 	type TurnContext,
 	type UsageNormalizer,
@@ -307,30 +300,6 @@ export class GeminiWire extends HttpAgentProvider<
 
 	protected get geminiParts(): GeminiCodec {
 		return this.parts as GeminiCodec;
-	}
-
-	/**
-	 * **按模型名选线型,不按账本的 `reasoningWire`**(基类默认那条)。
-	 *
-	 * 今天 `geminiThinkingConfig()` 问的是 `model.includes('2.5')`,而账本只对
-	 * 认得出的 gemini 模型给 `reasoningProfile`(认不出就是 `'none'`,连
-	 * `gemini-test` 这类测试模型都算)。判据同一句话,取处不同 —— P2 把这条
-	 * 判定并进 `ModelProfile` 之后,这个覆盖才能删。
-	 */
-	protected override thinkingFor(turn: TurnContext): ThinkingWire {
-		const wanted = isGemini25Model(turn.model)
-			? geminiBudgetThinkingWire.id
-			: geminiLevelThinkingWire.id;
-		return this.dialect.reasoning.find((wire) => wire.id === wanted) ?? noThinkingWire;
-	}
-
-	/**
-	 * 今天的行为:**能力是一张常量表,与模型无关**(`getModelCapabilities: () =>
-	 * GEMINI_CAPABILITIES`)。账本的 per-model 覆盖仍由 `factory.ts` 的
-	 * `withPerModelCapabilities` 在外面盖一层;P2 两份合一时这个覆盖退役。
-	 */
-	override async getModelCapabilities(): Promise<AgentModelCapabilities> {
-		return this.transportCapabilities;
 	}
 
 	// -----------------------------------------------------------------------

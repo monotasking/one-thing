@@ -44,6 +44,23 @@ export interface DialectRequestShape {
 	mergeAdjacent: boolean;
 }
 
+/**
+ * 用户意图那一侧的输入 —— 设置里的两张 per-model 表。形状与
+ * `thinking-options.ts` 的 `OnethingAgentLoopThinkingProviderConfig` 结构等价
+ * (那边的类型是公开契约,这边不 import 它:`base/` 不该反向依赖上一层)。
+ */
+export interface DialectThinkingConfig {
+	model: string;
+	thinkingByModel?: Record<string, boolean | undefined>;
+	thinkingEffortByModel?: Record<string, unknown>;
+}
+
+/** 归一化后的意图。线型编码器再把它翻成各家的请求体字段。 */
+export interface DialectThinkingIntent {
+	thinking?: "enabled" | "disabled";
+	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+}
+
 export interface Dialect<W = unknown> {
 	id: string;
 	wire: WireId;
@@ -61,6 +78,19 @@ export interface Dialect<W = unknown> {
 	cache?: CachePolicy;
 	/** 逃生舱:方言自己的额外字段,也接受宿主/设置注入的 providerOptions。 */
 	extraBody?: (turn: TurnContext) => Record<string, unknown>;
+	/**
+	 * 用户意图 → 归一化的 thinking/effort,**这一家自己说了算**。
+	 *
+	 * 不给 = 走通用规则(`thinkingByModel` 决定开关,`thinkingEffortByModel`
+	 * 决定档位)。给了就是这家的家规:Kimi 的三族模型(k3 只认
+	 * `reasoning_effort:'max'`、k2.7-code/k2-thinking 一个参数都不能发、
+	 * k2.5/k2.6 走 `thinking.type`)以前是 `thinking-options.ts` 里一句
+	 * `providerId === 'kimi'` 的分支。
+	 */
+	thinkingIntent?(
+		config: DialectThinkingConfig,
+		model: string,
+	): DialectThinkingIntent;
 }
 
 const dialects = new Map<string, Dialect>();

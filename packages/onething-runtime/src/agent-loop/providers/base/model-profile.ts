@@ -9,15 +9,18 @@
  *     `inputModalities` 让 PartCodec、SamplingPolicy、ThinkingWire 不必各自
  *     再去读一遍账本。
  *
- * P2 才把远端元数据(OpenRouter `/models.reasoning`、Codex `nativeTools`)并进来,
- * 并让 factory 的 `withPerModelCapabilities` 退役 —— 在那之前**两份必须等价**,
- * 由 `__tests__/architecture.test.ts` 逐用例比对守着。
+ * P2-a 起它是**唯一**的能力源:`factory.ts` 的 `withPerModelCapabilities` 退役,
+ * `BaseAgentProvider.getModelCapabilities()` 直接问它,四条 wire 的常量覆盖与
+ * 模型名正则一并删除。外来的 provider(宿主经 `registerAgentProviderRuntime`
+ * 登记的普通对象,不是 `BaseAgentProvider` 子类)由本文件的
+ * `withLedgerModelCapabilities()` 补上同一层投影 —— 同一个函数,不是第二份。
  */
 import type {
 	AgentCapability,
 	AgentInputModality,
 	AgentModelCapabilities,
 	AgentOutputModality,
+	AgentProvider,
 } from "@onething/core/agent-loop";
 import {
 	resolveOnethingModelCapabilities,
@@ -83,8 +86,22 @@ export class ModelProfile {
 		return this.resolved.source[capability] !== "default";
 	}
 
+	/**
+	 * 线型 —— 账本回答,**即使这个模型的 reasoning 是关的**:线协议格式是
+	 * 模型家族的属性,不是「这一刻思考开没开」的属性。P2-a 起这是
+	 * `HttpAgentProvider.thinkingFor()` 的唯一判据,四条 wire 各自那份
+	 * 模型名正则随之退役。
+	 */
 	get reasoningWire(): OnethingReasoningWire {
-		return this.resolved.reasoningProfile?.wire ?? "none";
+		return this.resolved.reasoningWire;
+	}
+
+	/**
+	 * 账本对「能不能强制首调用」有没有话说。`undefined` = 没话说,
+	 * provider 自己的传输声明说了算(今天的行为:有 tools 即可强制)。
+	 */
+	get forcedToolUse(): boolean | undefined {
+		return this.resolved.forcedToolUse;
 	}
 
 	get reasoningProfile(): OnethingReasoningProfile | undefined {
@@ -112,7 +129,7 @@ export class ModelProfile {
 	}
 
 	/**
-	 * 账本覆盖层投影 —— **`factory.ts` `withPerModelCapabilities` 的逐行复刻**。
+	 * 账本覆盖层投影 —— 能力合一之后的**唯一**一份。
 	 *
 	 * `base` 是 provider 自己的传输声明(模态、结构化工具结果),账本只翻它
 	 * 回答得了的那几个布尔与对应的 capability 标签;`'default'` 一律不动。
@@ -163,7 +180,11 @@ export class ModelProfile {
 			supportsStructuredToolResults: tools
 				? base.supportsStructuredToolResults !== false
 				: false,
-			supportsForcedToolUse: tools ? base.supportsForcedToolUse === true : false,
+			// 账本 per-model 的裁定优先(Fable/Mythos 恒思考 ⇒ 不可强制);
+			// 没有裁定就是今天的行为:有 tools 即可强制。
+			supportsForcedToolUse: tools
+				? resolved.forcedToolUse ?? base.supportsForcedToolUse === true
+				: false,
 			supportsReasoning: reasoning,
 			maxInputTokens:
 				positiveInteger(this.limits.contextLength) ?? base.maxInputTokens,
@@ -225,4 +246,54 @@ export class LedgerModelProfileResolver implements ModelProfileResolver {
 			? this.resolveSync(providerId, this.config.model)
 			: undefined;
 	}
+}
+
+/**
+ * 给**外来** provider 补上账本投影。
+ *
+ * `BaseAgentProvider` 的子类自己就问 `ModelProfile`,不需要这一层;宿主经
+ * `registerAgentProviderRuntime()` 登记的普通对象(以及自述能力之外的插件
+ * provider)没有那条路,于是由工厂在外面盖一层 —— 盖的是**同一个**
+ * `toAgentModelCapabilities`,不是第二份投影逻辑。
+ *
+ * **不是 `{...provider}`**:类实例的成员在原型上,展开运算符搬不走
+ * `streamTurn`。逐个转交是唯一不依赖「provider 恰好是对象字面量」的写法。
+ */
+export function withLedgerModelCapabilities(
+	provider: AgentProvider,
+	providerId: string,
+	profiles: ModelProfileResolver,
+): AgentProvider {
+	const resolveBase = async (model: string): Promise<AgentModelCapabilities> =>
+		(await provider.getModelCapabilities?.(model)) ??
+		provider.capabilities ?? {
+			capabilities: ["text-input", "text-output"],
+			inputModalities: ["text"],
+			outputModalities: ["text"],
+		};
+
+	return {
+		id: provider.id,
+		...(provider.capabilities ? { capabilities: provider.capabilities } : {}),
+		...(provider.capabilitiesAreSelfDeclared === undefined
+			? {}
+			: { capabilitiesAreSelfDeclared: provider.capabilitiesAreSelfDeclared }),
+		...(provider.streamTurn
+			? {
+					streamTurn: (request: Parameters<NonNullable<AgentProvider["streamTurn"]>>[0]) =>
+						provider.streamTurn!(request),
+				}
+			: {}),
+		...(provider.runTurn
+			? {
+					runTurn: (request: Parameters<NonNullable<AgentProvider["runTurn"]>>[0]) =>
+						provider.runTurn!(request),
+				}
+			: {}),
+		getModelCapabilities: async (model: string) => {
+			const base = await resolveBase(model);
+			const profile = await profiles.resolve(providerId, model);
+			return profile.toAgentModelCapabilities(base);
+		},
+	};
 }

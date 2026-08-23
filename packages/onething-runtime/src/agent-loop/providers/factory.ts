@@ -1,10 +1,15 @@
-import type {
-	AgentCapability,
-	AgentModelCapabilities,
-	AgentProvider,
-	AgentTurnRequest,
-} from "@onething/core/agent-loop";
-import { BearerApiKeyAuth, ResolveAuth } from "./base/index.js";
+import type { AgentProvider } from "@onething/core/agent-loop";
+import {
+	BaseAgentProvider,
+	BearerApiKeyAuth,
+	LedgerModelProfileResolver,
+	ResolveAuth,
+	getDialect,
+	listDialects,
+	withLedgerModelCapabilities,
+	type Dialect,
+	type ModelProfileResolver,
+} from "./base/index.js";
 import {
 	CLAUDE_CODE_DIALECT,
 	CLAUDE_CODE_OAUTH_BETA_HEADERS,
@@ -29,10 +34,14 @@ import {
 	createGeminiProvider,
 	createResponsesProvider,
 	geminiAuth,
+	capabilitiesFromFlags,
+	capabilityLimitsFromRuntimeConfig,
 	createOpenAIChatProvider,
 	openAIChatTransportCapabilities,
+	runtimeCapabilityFlags,
 } from "./dialects/index.js";
 import { OpenAIChatPartCodec } from "./wires/index.js";
+import type { AnthropicDialect, GeminiDialect, OpenAIChatDialect, ResponsesDialect } from "./wires/index.js";
 import type { AgentProviderRequestDumper } from "./request-dump.js";
 import {
 	createACPAgentProvider,
@@ -55,7 +64,6 @@ import {
 	readOnethingZhipuOptions,
 	type OnethingProviderOptions,
 } from "../../providers/provider-options.js";
-import { resolveOnethingModelCapabilities } from "../../providers/model-capability.js";
 
 export interface AgentProviderRuntimeOAuthToken {
 	accessToken: string;
@@ -78,6 +86,14 @@ export interface AgentProviderRuntimeConfig {
 	providerOptions?: OnethingProviderOptions;
 	model?: string;
 	apiType?: "openai" | "anthropic";
+	/**
+	 * `custom-*` 专用:直接点名一份已登记的方言配方(`openrouter` / `zhipu` /
+	 * `gemini` …),于是自建端点能拿到那一家的 usage 表、线型、`maxTokensField`
+	 * 与端点形状,只把地址与凭据换成自己的。不给 = 按 `apiType` 走
+	 * `custom-openai` / `custom-anthropic` 两份通用配方(今天的行为)。
+	 * 认不出的 id 是**明确错误**,不静默回退。
+	 */
+	dialect?: string;
 	oauthToken?: AgentProviderRuntimeOAuthToken;
 	authContext?: AgentProviderRuntimeAuthContext;
 	/**
@@ -95,9 +111,8 @@ export interface AgentProviderRuntimeConfig {
 		}
 	>;
 	/**
-	 * 运行时传进来的就是完整的 `OnethingModelCapabilityEntry`;这里只列覆盖层
-	 * (`withPerModelCapabilities` → `resolveOnethingModelCapabilities`)真正
-	 * 会读的字段。
+	 * 运行时传进来的就是完整的 `OnethingModelCapabilityEntry`;这里只列账本
+	 * (`ModelProfile` → `resolveOnethingModelCapabilities`)真正会读的字段。
 	 */
 	models?: Record<
 		string,
@@ -255,6 +270,27 @@ export function isAgentProviderRuntimeSupported(providerId: string): boolean {
 	);
 }
 
+/**
+ * 账本解析器 —— 每个 provider 构造时都拿到它,`ModelProfile` 从此是能力的
+ * **唯一**来源(设计稿 §2.2,P2-a)。
+ *
+ * **故意不传 `model`**:`defaultProfile()` 给不出默认档,于是静态
+ * `capabilities` 字段仍是纯传输声明(今天的行为,`provider-factory.test` 的
+ * `custom-*` 三条与 deepseek 的 `maxInputTokens` 都钉着它)。把静态字段也改成
+ * 「默认模型的投影」是可感知的行为变化,要另拍。
+ */
+function ledgerProfiles(
+	config: AgentProviderRuntimeConfig,
+): ModelProfileResolver {
+	return new LedgerModelProfileResolver({
+		...(config.apiType ? { apiType: config.apiType } : {}),
+		...(config.modelCapabilitiesByModel
+			? { modelCapabilitiesByModel: config.modelCapabilitiesByModel }
+			: {}),
+		...(config.models ? { models: config.models } : {}),
+	});
+}
+
 export function createAgentProviderFromRuntime(
 	providerId: string,
 	config: AgentProviderRuntimeConfig,
@@ -265,189 +301,64 @@ export function createAgentProviderFromRuntime(
 		createCustomAgentProviderFromRuntime(providerId, config, options);
 	if (!provider) return undefined;
 	// Capabilities that the provider declares as its own bypass the ledger
-	// overlay entirely. Asking the provider beats keeping a list of provider ids
-	// here: connecting another external agent used to mean editing this line.
+	// entirely. Asking the provider beats keeping a list of provider ids here:
+	// connecting another external agent used to mean editing this line.
 	if (provider.capabilitiesAreSelfDeclared) return provider;
-	return withPerModelCapabilities(provider, providerId, config);
+	// 自家的 provider 都是 `BaseAgentProvider` 的子类,构造时已经拿到账本解析器
+	// —— `getModelCapabilities()` 自己就问 `ModelProfile`,外面不需要再盖一层
+	// (P2-a:`withPerModelCapabilities` 退役)。
+	if (provider instanceof BaseAgentProvider) return provider;
+	// 剩下的是**外来** provider:宿主经 `registerAgentProviderRuntime()` 登记的
+	// 普通对象,没有那条路。给它补上的是**同一个**投影函数,不是第二份逻辑。
+	return withLedgerModelCapabilities(provider, providerId, ledgerProfiles(config));
 }
 
 /**
- * Per-model capability resolution: the provider's own capabilities describe
- * its transport (modalities, structured tool results); the capability ledger
- * answers the per-model booleans (reasoning/vision/tools/image output) so a
- * multi-model provider (copilot, openrouter) stops inheriting whatever the
- * session's initial model could do. The base capabilities stay as the shape
- * template; ledger verdicts flip the flags and their capability tags.
+ * `custom-*` 的四条线材出口 —— 一份已登记的配方 + 用户自己的地址与凭据。
+ *
+ * 基类不许对方言字段做字符串分支(架构门),但这里是**工厂**:把一个配方
+ * 交给它那条线协议的构造函数,正是「谁认识 wire」这件事该发生的地方。
  */
-function withPerModelCapabilities(
-	provider: AgentProvider,
+function createProviderForDialect(
+	dialect: Dialect,
 	providerId: string,
 	config: AgentProviderRuntimeConfig,
+	options: CreateAgentProviderFromRuntimeOptions,
 ): AgentProvider {
-	const resolveBase = async (model: string): Promise<AgentModelCapabilities> =>
-		(await provider.getModelCapabilities?.(model)) ??
-		provider.capabilities ?? {
-			capabilities: ["text-input", "text-output"],
-			inputModalities: ["text"],
-			outputModalities: ["text"],
-		};
-
-	// **不是 `{...provider}`**:provider 现在可能是一个类实例
-	// (`OpenAIChatWire`),它的 `id` / `capabilities` / `streamTurn` / `runTurn`
-	// 都在原型上,展开运算符只搬自有可枚举属性,搬完就是一个没有 `streamTurn`
-	// 的空壳。逐个转交是这一层唯一不依赖「provider 恰好是对象字面量」的写法。
-	return {
-		id: provider.id,
-		...(provider.capabilities ? { capabilities: provider.capabilities } : {}),
-		...(provider.capabilitiesAreSelfDeclared === undefined
-			? {}
-			: { capabilitiesAreSelfDeclared: provider.capabilitiesAreSelfDeclared }),
-		...(provider.streamTurn
-			? { streamTurn: (request: AgentTurnRequest) => provider.streamTurn!(request) }
-			: {}),
-		...(provider.runTurn
-			? { runTurn: (request: AgentTurnRequest) => provider.runTurn!(request) }
-			: {}),
-		getModelCapabilities: async (model: string) => {
-			const base = await resolveBase(model);
-			const resolved = resolveOnethingModelCapabilities({
-				providerId,
-				modelId: model,
-				customApiType: config.apiType,
-				override: config.modelCapabilitiesByModel?.[model],
-				registryEntry: config.models?.[model],
-			});
-			const limits = config.models?.[model];
-
-			const capabilities = new Set<AgentCapability>(base.capabilities);
-			const inputModalities = new Set(base.inputModalities);
-			const outputModalities = new Set(base.outputModalities);
-
-			// A 'default' verdict means the ledger has no knowledge — the
-			// provider's own declaration stands untouched. Anything stronger
-			// (override, registry, pattern) wins over the snapshot.
-			const ledgerKnows = (capability: keyof typeof resolved.source): boolean =>
-				resolved.source[capability] !== "default";
-			const setTags = (enabled: boolean, tags: AgentCapability[]): void => {
-				for (const tag of tags) {
-					if (enabled) capabilities.add(tag);
-					else capabilities.delete(tag);
-				}
-			};
-
-			const reasoning = ledgerKnows("reasoning")
-				? resolved.reasoning
-				: base.supportsReasoning === true || base.capabilities.includes("reasoning");
-			const tools = ledgerKnows("tools")
-				? resolved.tools
-				: base.supportsTools !== false;
-			if (ledgerKnows("reasoning")) setTags(reasoning, ["reasoning"]);
-			if (ledgerKnows("tools")) setTags(tools, ["tool-calls", "structured-tool-results"]);
-			if (ledgerKnows("vision")) {
-				setTags(resolved.vision, ["vision-input", "file-input"]);
-				if (resolved.vision) {
-					inputModalities.add("image");
-					inputModalities.add("file");
-				} else {
-					inputModalities.delete("image");
-					inputModalities.delete("file");
-				}
-			}
-			if (ledgerKnows("imageOutput")) {
-				setTags(resolved.imageOutput, ["image-output"]);
-				if (resolved.imageOutput) outputModalities.add("image");
-				else outputModalities.delete("image");
-			}
-
-			return {
-				...base,
-				capabilities: [...capabilities],
-				inputModalities: [...inputModalities],
-				outputModalities: [...outputModalities],
-				supportsTools: tools,
-				supportsStructuredToolResults: tools
-					? base.supportsStructuredToolResults !== false
-					: false,
-				supportsForcedToolUse: tools
-					? base.supportsForcedToolUse === true
-					: false,
-				supportsReasoning: reasoning,
-				maxInputTokens: positiveInteger(limits?.contextLength) ?? base.maxInputTokens,
-				maxOutputTokens: positiveInteger(limits?.maxOutputTokens) ?? base.maxOutputTokens,
-			};
-		},
+	const shared = {
+		providerId,
+		baseUrl: config.baseUrl,
+		fetchImpl: options.fetchImpl,
+		requestDumper: resolveRequestDumper(options),
+		profiles: ledgerProfiles(config),
 	};
+	switch (dialect.wire) {
+		case "anthropic-messages":
+			return createAnthropicProvider(dialect as AnthropicDialect, {
+				...shared,
+				auth: anthropicAuth({ apiKey: config.apiKey }),
+			});
+		case "gemini-generateContent":
+			return createGeminiProvider(dialect as GeminiDialect, {
+				...shared,
+				apiKey: config.apiKey,
+				auth: geminiAuth({ apiKey: config.apiKey }),
+			});
+		case "openai-responses":
+			return createResponsesProvider(dialect as ResponsesDialect, {
+				...shared,
+				auth: codexAuth({ apiKey: config.apiKey }),
+			});
+		case "openai-chat":
+			return createOpenAIChatProvider(dialect as OpenAIChatDialect, {
+				...shared,
+				auth: new BearerApiKeyAuth(config.apiKey),
+			});
+	}
 }
 
 function isCustomAgentProviderRuntime(providerId: string): boolean {
 	return providerId.startsWith("custom-");
-}
-
-function runtimeCapabilityFlags(
-	config: AgentProviderRuntimeConfig,
-	defaults: {
-		tools: boolean;
-		vision: boolean;
-		reasoning: boolean;
-	},
-) {
-	const model = config.model;
-	const override = model ? config.modelCapabilitiesByModel?.[model] : undefined;
-	const metadata = model ? config.models?.[model] : undefined;
-
-	return {
-		tools: override?.tools ?? metadata?.supportsTools ?? defaults.tools,
-		vision: override?.vision ?? metadata?.supportsVision ?? defaults.vision,
-		reasoning:
-			override?.reasoning ?? metadata?.supportsReasoning ?? defaults.reasoning,
-	};
-}
-
-function capabilitiesFromFlags(flags: {
-	tools: boolean;
-	vision: boolean;
-	reasoning: boolean;
-}): AgentModelCapabilities {
-	const capabilities: AgentCapability[] = [
-		"text-input",
-		"text-output",
-		"streaming",
-	];
-	if (flags.tools) capabilities.push("tool-calls", "structured-tool-results");
-	if (flags.vision) capabilities.push("vision-input", "file-input");
-	if (flags.reasoning) capabilities.push("reasoning");
-
-	return {
-		capabilities,
-		inputModalities: flags.vision ? ["text", "image", "file"] : ["text"],
-		outputModalities: ["text"],
-		toolResultModalities:
-			flags.tools && flags.vision ? ["text", "image", "file"] : ["text"],
-		supportsTools: flags.tools,
-		supportsStructuredToolResults: flags.tools,
-		supportsReasoning: flags.reasoning,
-		supportsStreaming: true,
-		// Every wire format behind this factory (OpenAI chat-completions,
-		// Responses, Anthropic, Gemini) has a "must call a tool" mode, so a
-		// model that has tools at all can be forced into one.
-		supportsForcedToolUse: flags.tools,
-	};
-}
-
-function positiveInteger(value: number | undefined): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) && value > 0
-		? Math.floor(value)
-		: undefined;
-}
-
-function capabilityLimitsFromRuntimeConfig(
-	config: AgentProviderRuntimeConfig,
-): Pick<AgentModelCapabilities, "maxInputTokens" | "maxOutputTokens"> {
-	const metadata = config.model ? config.models?.[config.model] : undefined;
-	return {
-		maxInputTokens: positiveInteger(metadata?.contextLength),
-		maxOutputTokens: positiveInteger(metadata?.maxOutputTokens),
-	};
 }
 
 function createCustomAgentProviderFromRuntime(
@@ -457,20 +368,20 @@ function createCustomAgentProviderFromRuntime(
 ): AgentProvider | undefined {
 	if (!isCustomAgentProviderRuntime(providerId)) return undefined;
 
-	if (config.apiType === "anthropic") {
-		const capabilities = runtimeCapabilityFlags(config, {
-			tools: true,
-			vision: true,
-			reasoning: true,
-		});
-		return createAnthropicProvider(CUSTOM_ANTHROPIC_DIALECT, {
-			providerId,
-			baseUrl: config.baseUrl,
-			auth: anthropicAuth({ apiKey: config.apiKey }),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			transport: capabilitiesFromFlags(capabilities),
-		});
+	// 点名了配方就用那一家的整套线材(usage 表 / 线型 / maxTokensField /
+	// 端点形状 / 传输声明),只换地址与凭据。认不出 = 明确错误:静默退回
+	// custom-openai 会让请求体悄悄变成另一家的形状。
+	if (config.dialect) {
+		const dialect = getDialect(config.dialect);
+		if (!dialect) {
+			throw new Error(
+				`Unknown provider dialect: ${config.dialect}. Registered: ${listDialects()
+					.map((entry) => entry.id)
+					.sort()
+					.join(", ")}`,
+			);
+		}
+		return createProviderForDialect(dialect, providerId, config, options);
 	}
 
 	const capabilities = runtimeCapabilityFlags(config, {
@@ -478,6 +389,18 @@ function createCustomAgentProviderFromRuntime(
 		vision: true,
 		reasoning: true,
 	});
+
+	if (config.apiType === "anthropic") {
+		return createAnthropicProvider(CUSTOM_ANTHROPIC_DIALECT, {
+			providerId,
+			baseUrl: config.baseUrl,
+			auth: anthropicAuth({ apiKey: config.apiKey }),
+			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
+			transport: capabilitiesFromFlags(capabilities),
+			profiles: ledgerProfiles(config),
+		});
+	}
 
 	return createOpenAIChatProvider(CUSTOM_OPENAI_DIALECT, {
 		providerId,
@@ -489,6 +412,7 @@ function createCustomAgentProviderFromRuntime(
 		parts: new OpenAIChatPartCodec({
 			includeAssistantReasoning: capabilities.reasoning,
 		}),
+		profiles: ledgerProfiles(config),
 	});
 }
 
@@ -500,6 +424,7 @@ registerAgentProviderRuntime(
 			auth: new BearerApiKeyAuth(config.apiKey ?? ""),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 			transport: {
 				...capabilitiesFromFlags(
 					runtimeCapabilityFlags(config, {
@@ -566,6 +491,7 @@ registerAgentProviderRuntime(
 			}),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		}),
 	{ replace: true },
 );
@@ -578,6 +504,7 @@ registerAgentProviderRuntime(
 			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		}),
 	{ replace: true },
 );
@@ -590,6 +517,7 @@ registerAgentProviderRuntime(
 			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		}),
 	{ replace: true },
 );
@@ -607,6 +535,7 @@ registerAgentProviderRuntime(
 			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		}),
 	{ replace: true },
 );
@@ -630,6 +559,7 @@ registerAgentProviderRuntime(
 			auth: new BearerApiKeyAuth(accessToken),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		});
 	},
 	{ replace: true },
@@ -646,6 +576,7 @@ registerAgentProviderRuntime(
 			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		}),
 	{ replace: true },
 );
@@ -661,6 +592,7 @@ registerAgentProviderRuntime(
 			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		}),
 	{ replace: true },
 );
@@ -673,6 +605,7 @@ registerAgentProviderRuntime(
 			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		}),
 	{ replace: true },
 );
@@ -689,6 +622,7 @@ registerAgentProviderRuntime(
 			auth: new BearerApiKeyAuth(accessToken),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		});
 	},
 	{ replace: true },
@@ -706,6 +640,7 @@ registerAgentProviderRuntime(
 			baseUrl: config.baseUrl,
 			fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 			auth: new ResolveAuth(
 				async () => ({
 					apiKey: await getCopilotCompletionToken(githubAccessToken, fetchImpl),
@@ -733,6 +668,7 @@ registerAgentProviderRuntime(
 			auth: anthropicAuth({ apiKey: config.apiKey }),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		}),
 	{ replace: true },
 );
@@ -755,6 +691,7 @@ registerAgentProviderRuntime(
 			}),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		});
 	},
 	{ replace: true },
@@ -770,6 +707,7 @@ registerAgentProviderRuntime(
 			auth: geminiAuth({ apiKey: config.apiKey }),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
+			profiles: ledgerProfiles(config),
 		}),
 	{ replace: true },
 );

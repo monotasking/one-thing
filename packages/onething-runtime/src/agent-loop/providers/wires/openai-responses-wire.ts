@@ -415,15 +415,6 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 		return { url, method: "POST", requestSource: "agent-loop" };
 	}
 
-	/**
-	 * 今天的行为:**能力是一张常量表,与模型无关**(`getModelCapabilities: () =>
-	 * CODEX_AGENT_CAPABILITIES`)。账本的 per-model 覆盖仍由 `factory.ts` 的
-	 * `withPerModelCapabilities` 在外面盖一层;P2 两份合一时这个覆盖退役。
-	 */
-	override async getModelCapabilities(): Promise<AgentModelCapabilities> {
-		return this.transportCapabilities;
-	}
-
 	// -----------------------------------------------------------------------
 	// 请求体 —— `buildCodexRequestBody` 逐字(`reasoning` / `include` 由
 	// `ResponsesReasoningWire` 在下一步写,顺序不影响字节)

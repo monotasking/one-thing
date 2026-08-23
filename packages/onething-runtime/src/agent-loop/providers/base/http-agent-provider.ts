@@ -231,8 +231,15 @@ export abstract class HttpAgentProvider<
 	}
 
 	/**
-	 * 按 `ModelProfile.reasoningWire` 从方言登记的线型里选一条。选不到就用
-	 * 第一条(P0a 每家只配一个);一条都没有就什么都不发。
+	 * 按 `ModelProfile.reasoningWire` 从方言登记的线型里选一条 —— **四条 wire
+	 * 从此没有一份自己的模型名正则**(P2-a)。选不到就用第一条;一条都没有就
+	 * 什么都不发。
+	 *
+	 * 「选不到就用第一条」是活的现状,不是兜底摆设:openai-chat 每家只登记一条
+	 * 线型,而账本对同一个模型可能记着另一个值(deepseek 登记
+	 * `deepseek-inferred`,账本给 v4 记的是 `thinking-type`)——
+	 * **登记表优先于账本**,行为与迁移前逐字一致。账本要当 deepseek 的权威
+	 * 需要先拍板(设计稿 §10)。
 	 */
 	protected thinkingFor(turn: TurnContext): ThinkingWire {
 		const wanted = turn.profile.reasoningWire;

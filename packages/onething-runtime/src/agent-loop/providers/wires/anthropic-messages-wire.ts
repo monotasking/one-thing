@@ -29,14 +29,12 @@ import { onethingClaudeModelFamily } from "../../../providers/model-capability.j
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { readJsonSseData } from "../sse.js";
 import {
-	ANTHROPIC_ALWAYS_THINKING_WIRE_ID,
 	anthropicAdaptiveThinkingWire,
 	anthropicAlwaysThinkingWire,
 	anthropicBudgetThinkingWire,
 } from "../thinking/index.js";
 import {
 	HttpAgentProvider,
-	noThinkingWire,
 	type CachePolicy,
 	type Dialect,
 	type FinishReasonMapper,
@@ -355,48 +353,6 @@ export class AnthropicMessagesWire extends HttpAgentProvider<
 
 	protected get anthropicParts(): AnthropicCodec {
 		return this.parts as AnthropicCodec;
-	}
-
-	/**
-	 * **按模型家族选线型,不按账本的 `reasoningWire`**(基类默认那条)。
-	 *
-	 * 两个原因,都是「今天的行为」:
-	 *  - Fable/Mythos 在账本里记的是 `anthropic-adaptive`,而它其实连
-	 *    `thinking` 参数都不能发 —— 账本的枚举里没有第三条;
-	 *  - `custom-*` 构造时的 `ModelProfile` 解析器是空配置(不带 `apiType`),
-	 *    账本认不出它是 Claude,`reasoningWire` 会是 `'none'`。
-	 *
-	 * P2 把这条判定并进 `ModelProfile` 之后,这个覆盖才能删。
-	 */
-	protected override thinkingFor(turn: TurnContext): ThinkingWire {
-		const family = onethingClaudeModelFamily(turn.model);
-		const wanted = family.alwaysThinking
-			? ANTHROPIC_ALWAYS_THINKING_WIRE_ID
-			: family.adaptive
-				? "anthropic-adaptive"
-				: "anthropic-budget";
-		return (
-			this.dialect.reasoning.find((wire) => wire.id === wanted) ?? noThinkingWire
-		);
-	}
-
-	/**
-	 * Forced tool choice is incompatible with extended thinking, and the loop
-	 * honours that by pairing a forced round with thinking off. Fable/Mythos
-	 * cannot take that half of the bargain — they always reason, and the API
-	 * rejects an explicit `disabled` — so for them the honest answer is that
-	 * they cannot be forced at all, and the loop falls back to `auto`.
-	 *
-	 * P2:这条按模型翻的布尔并进 `ModelProfile`(账本的
-	 * `supportsForcedToolUse` 还没有 per-model 的行),这个覆盖随之退役。
-	 */
-	override async getModelCapabilities(
-		model: string,
-	): Promise<AgentModelCapabilities> {
-		const capabilities = await super.getModelCapabilities(model);
-		return onethingClaudeModelFamily(model).alwaysThinking
-			? { ...capabilities, supportsForcedToolUse: false }
-			: capabilities;
 	}
 
 	// -----------------------------------------------------------------------

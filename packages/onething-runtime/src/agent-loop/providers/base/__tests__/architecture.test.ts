@@ -7,9 +7,9 @@
  *  2. `base/` 源码里不得出现对方言字段的字符串分支
  *     (`dialect.x === '…'` / `switch (dialect.…)`)—— 多态取代分支;
  *  3. `UsageBuckets` 的不变量与投影,`billable` 与账本同一条公式;
- *  4. `ModelProfile.toAgentModelCapabilities` 与 `factory.ts` 现役的
- *     `withPerModelCapabilities` 对同一输入产出**相同**结果 —— 两份并存期间
- *     的等价门(P2 后者退役)。
+ *  4. `ModelProfile.toAgentModelCapabilities` 对固定输入产出固定结果 ——
+ *     P2-a 之前这是「与 `factory.ts` 的 `withPerModelCapabilities` 等价」的
+ *     并存门,覆盖层退役后改为把当时的输出录成内联期望(见文件末尾)。
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -17,11 +17,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { undeliverableAttachmentText } from "@onething/core/agent-loop";
 import type { AgentModelCapabilities } from "@onething/core/agent-loop";
-import {
-	createAgentProviderFromRuntime,
-	registerAgentProviderRuntime,
-	type AgentProviderRuntimeConfig,
-} from "../../factory.js";
+import type { AgentProviderRuntimeConfig } from "../../factory.js";
 import { computeOnethingUsageCostUSD } from "../../../../usage/pricing.js";
 import {
 	LedgerModelProfileResolver,
@@ -374,7 +370,7 @@ describe("Undeliverable", () => {
 });
 
 // ---------------------------------------------------------------------------
-// ModelProfile.toAgentModelCapabilities ≡ factory.withPerModelCapabilities
+// ModelProfile.toAgentModelCapabilities —— 能力投影的唯一一份
 // ---------------------------------------------------------------------------
 
 /** 编译期断言:`AgentProviderRuntimeConfig` 喂得进 `LedgerModelProfileConfig`。 */
@@ -397,20 +393,43 @@ const TRANSPORT: AgentModelCapabilities = {
 	maxOutputTokens: 222,
 };
 
-interface ProbeCase {
+interface ProfileCase {
 	name: string;
 	providerId: string;
 	model: string;
 	config: AgentProviderRuntimeConfig;
 	base?: AgentModelCapabilities;
+	expected: AgentModelCapabilities;
 }
 
-const CASES: ProbeCase[] = [
+/**
+ * P0a–P1 期间这张表是**等价门**:每条用例都用一个 `registerAgentProviderRuntime`
+ * 探针把同一份输入喂给 `factory.ts` 的 `withPerModelCapabilities`,再与
+ * `ModelProfile.toAgentModelCapabilities` 逐条比对,守着两份并存不漂移。
+ *
+ * P2-a 覆盖层退役,`ModelProfile` 成了唯一一份 —— 探针没有第二份可比,于是它
+ * **当时的输出被录成下面的内联期望**再删除。断言的意思因此从「两份相等」变成
+ * 「这一份没有变」:同样是硬门,只是不再需要一个假 provider 来当尺子。
+ */
+const PROFILE_CASES: ProfileCase[] = [
 	{
 		name: "账本一无所知('default')—— provider 的声明原样保留",
 		providerId: PROBE_ID,
 		model: "totally-unknown-model",
 		config: {},
+		expected: {
+			capabilities: ["text-input", "text-output", "streaming", "tool-calls"],
+			inputModalities: ["text"],
+			outputModalities: ["text"],
+			toolResultModalities: ["text"],
+			supportsTools: true,
+			supportsStructuredToolResults: true,
+			supportsReasoning: false,
+			supportsStreaming: true,
+			supportsForcedToolUse: true,
+			maxInputTokens: 111,
+			maxOutputTokens: 222,
+		},
 	},
 	{
 		name: "registry 翻 vision + imageOutput",
@@ -426,20 +445,75 @@ const CASES: ProbeCase[] = [
 				},
 			},
 		},
+		expected: {
+			capabilities: ["text-input", "text-output", "streaming", "tool-calls", "vision-input", "file-input", "image-output"],
+			inputModalities: ["text", "image", "file"],
+			outputModalities: ["text", "image"],
+			toolResultModalities: ["text"],
+			supportsTools: true,
+			supportsStructuredToolResults: true,
+			supportsReasoning: false,
+			supportsStreaming: true,
+			supportsForcedToolUse: true,
+			maxInputTokens: 128000,
+			maxOutputTokens: 8192,
+		},
 	},
 	{
 		name: "registry 关掉 tools —— 结构化结果与强制调用一起归零",
 		providerId: PROBE_ID,
 		model: "no-tools",
-		config: { models: { "no-tools": { supportsTools: false } } },
+		config: {
+			models: {
+				"no-tools": {
+					supportsTools: false,
+				},
+			},
+		},
+		expected: {
+			capabilities: ["text-input", "text-output", "streaming"],
+			inputModalities: ["text"],
+			outputModalities: ["text"],
+			toolResultModalities: ["text"],
+			supportsTools: false,
+			supportsStructuredToolResults: false,
+			supportsReasoning: false,
+			supportsStreaming: true,
+			supportsForcedToolUse: false,
+			maxInputTokens: 111,
+			maxOutputTokens: 222,
+		},
 	},
 	{
 		name: "override 压过 registry",
 		providerId: PROBE_ID,
 		model: "clash",
 		config: {
-			modelCapabilitiesByModel: { clash: { vision: false, reasoning: true } },
-			models: { clash: { supportsVision: true, supportsReasoning: false } },
+			modelCapabilitiesByModel: {
+				clash: {
+					vision: false,
+					reasoning: true,
+				},
+			},
+			models: {
+				clash: {
+					supportsVision: true,
+					supportsReasoning: false,
+				},
+			},
+		},
+		expected: {
+			capabilities: ["text-input", "text-output", "streaming", "tool-calls", "reasoning"],
+			inputModalities: ["text"],
+			outputModalities: ["text"],
+			toolResultModalities: ["text"],
+			supportsTools: true,
+			supportsStructuredToolResults: true,
+			supportsReasoning: true,
+			supportsStreaming: true,
+			supportsForcedToolUse: true,
+			maxInputTokens: 111,
+			maxOutputTokens: 222,
 		},
 	},
 	{
@@ -454,9 +528,26 @@ const CASES: ProbeCase[] = [
 					supportsReasoning: true,
 					supportsImageOutput: false,
 					supportsTemperature: false,
-					providerMetadata: { codex: { nativeTools: ["image_generation"] } },
+					providerMetadata: {
+						codex: {
+							nativeTools: ["image_generation"],
+						},
+					},
 				},
 			},
+		},
+		expected: {
+			capabilities: ["text-input", "text-output", "streaming", "tool-calls", "reasoning", "structured-tool-results", "vision-input", "file-input", "image-output"],
+			inputModalities: ["text", "image", "file"],
+			outputModalities: ["text", "image"],
+			toolResultModalities: ["text"],
+			supportsTools: true,
+			supportsStructuredToolResults: true,
+			supportsReasoning: true,
+			supportsStreaming: true,
+			supportsForcedToolUse: true,
+			maxInputTokens: 111,
+			maxOutputTokens: 222,
 		},
 	},
 	{
@@ -464,12 +555,45 @@ const CASES: ProbeCase[] = [
 		providerId: "deepseek",
 		model: "deepseek-reasoner",
 		config: {},
+		expected: {
+			capabilities: ["text-input", "text-output", "streaming", "tool-calls", "reasoning"],
+			inputModalities: ["text"],
+			outputModalities: ["text"],
+			toolResultModalities: ["text"],
+			supportsTools: true,
+			supportsStructuredToolResults: true,
+			supportsReasoning: true,
+			supportsStreaming: true,
+			supportsForcedToolUse: true,
+			maxInputTokens: 111,
+			maxOutputTokens: 222,
+		},
 	},
 	{
 		name: "limits 只在正整数时压过 base",
 		providerId: PROBE_ID,
 		model: "limits",
-		config: { models: { limits: { contextLength: 0, maxOutputTokens: 4096 } } },
+		config: {
+			models: {
+				limits: {
+					contextLength: 0,
+					maxOutputTokens: 4096,
+				},
+			},
+		},
+		expected: {
+			capabilities: ["text-input", "text-output", "streaming", "tool-calls"],
+			inputModalities: ["text"],
+			outputModalities: ["text"],
+			toolResultModalities: ["text"],
+			supportsTools: true,
+			supportsStructuredToolResults: true,
+			supportsReasoning: false,
+			supportsStreaming: true,
+			supportsForcedToolUse: true,
+			maxInputTokens: 111,
+			maxOutputTokens: 4096,
+		},
 	},
 	{
 		name: "base 只声明文本、无 tools —— 账本沉默时不许被翻",
@@ -482,39 +606,28 @@ const CASES: ProbeCase[] = [
 			outputModalities: ["text"],
 			supportsTools: false,
 		},
+		expected: {
+			capabilities: ["text-input", "text-output"],
+			inputModalities: ["text"],
+			outputModalities: ["text"],
+			supportsTools: false,
+			supportsStructuredToolResults: false,
+			supportsForcedToolUse: false,
+			supportsReasoning: false,
+		},
 	},
 ];
 
-describe("ModelProfile.toAgentModelCapabilities ≡ withPerModelCapabilities", () => {
-	for (const testCase of CASES) {
+describe("ModelProfile.toAgentModelCapabilities", () => {
+	for (const testCase of PROFILE_CASES) {
 		it(testCase.name, async () => {
-			const base = testCase.base ?? TRANSPORT;
-			const dispose = registerAgentProviderRuntime(
+			const profile = await new LedgerModelProfileResolver(testCase.config).resolve(
 				testCase.providerId,
-				() => ({
-					id: testCase.providerId,
-					capabilities: base,
-					getModelCapabilities: () => base,
-				}),
-				{ replace: true },
+				testCase.model,
 			);
-			try {
-				const legacy = createAgentProviderFromRuntime(
-					testCase.providerId,
-					testCase.config,
-				);
-				expect(legacy).toBeDefined();
-				const viaFactory = await legacy!.getModelCapabilities!(testCase.model);
-
-				const profile = await new LedgerModelProfileResolver(
-					testCase.config,
-				).resolve(testCase.providerId, testCase.model);
-				const viaProfile = profile.toAgentModelCapabilities(base);
-
-				expect(viaProfile).toEqual(viaFactory);
-			} finally {
-				dispose();
-			}
+			expect(profile.toAgentModelCapabilities(testCase.base ?? TRANSPORT)).toEqual(
+				testCase.expected,
+			);
 		});
 	}
 });

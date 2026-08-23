@@ -16,5 +16,9 @@ export const KIMI_CODE_DIALECT = defineOpenAIChatDialect({
 	includeAssistantReasoning: true,
 	// 同一套线材 = 同一张 usage 表(顶层 `cached_tokens`)。
 	usage: openAIChatUsage(KIMI_USAGE_TABLE),
+	// **没有** `thinkingIntent`:kimi 家规尚未挂到套餐通路 —— k2.7-code 关思考
+	// 会发出它拒收的 `thinking:{type:'disabled'}`,待拍板后挂上
+	// (`kimiThinkingIntent` 就在 `./kimi.js`,挂一行即可)。P2-a 保持今天的
+	// 行为:这条通路走 `thinking-options.ts` 的通用规则。
 	transport: openAIChatTransportCapabilities({ reasoning: true }),
 });

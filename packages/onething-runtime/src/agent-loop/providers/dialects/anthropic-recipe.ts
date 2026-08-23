@@ -152,11 +152,11 @@ export interface AnthropicProviderInit {
 /**
  * 配方 + 凭据 → provider。
  *
- * `profiles` 故意是**空**的 `LedgerModelProfileResolver`(不带 `model`):
- * 静态 `capabilities` 因此仍是纯传输声明(与今天 `options.capabilities ??
- * CLAUDE_CAPABILITIES` 一致),而 per-model 的账本覆盖仍由 `factory.ts` 的
- * `withPerModelCapabilities` 在外面盖一层 —— 两次投影是幂等的
- * (`base/__tests__/architecture.test.ts` 逐用例守着两份等价)。
+ * `profiles` 由构造处注入(`factory.ts` 的 `ledgerProfiles(config)`):
+ * per-model 的能力从此只有它一个来源(P2-a,`withPerModelCapabilities` 已退役)。
+ * 它**故意不带 `model`**,`defaultProfile()` 因此给不出默认档 —— 静态
+ * `capabilities` 仍是纯传输声明,与今天一致。不给 `profiles` 就退成一个空账本
+ * 解析器(直接调这个函数的测试就是这样)。
  */
 export function createAnthropicProvider(
 	dialect: AnthropicDialect,

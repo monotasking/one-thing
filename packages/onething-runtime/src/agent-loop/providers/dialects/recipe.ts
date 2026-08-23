@@ -12,6 +12,7 @@ import {
 	LedgerModelProfileResolver,
 	registerDialect,
 	type AuthStrategy,
+	type Dialect,
 	type ModelProfileResolver,
 	type PartCodec,
 	type ProviderContext,
@@ -90,6 +91,8 @@ export interface OpenAIChatDialectSpec {
 	usage?: UsageNormalizer;
 	/** 换掉采样策略(DeepSeek 的 thinking 是**推断**出来的)。 */
 	sampling?: SamplingPolicy;
+	/** 这家自己的「用户意图 → thinking/effort」家规(Kimi)。 */
+	thinkingIntent?: Dialect["thinkingIntent"];
 	transport: AgentModelCapabilities;
 }
 
@@ -112,6 +115,7 @@ export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialec
 			}),
 		...(spec.usage ? { usage: spec.usage } : {}),
 		...(spec.sampling ? { sampling: spec.sampling } : {}),
+		...(spec.thinkingIntent ? { thinkingIntent: spec.thinkingIntent } : {}),
 		reasoning: [spec.reasoning],
 		transport: spec.transport,
 	};
@@ -143,11 +147,11 @@ export interface OpenAIChatProviderInit {
 /**
  * 配方 + 凭据 → provider。
  *
- * `profiles` 故意是**空**的 `LedgerModelProfileResolver`(不带 `model`):
- * 静态 `capabilities` 因此仍是纯传输声明(与今天 `buildCapabilities(options)`
- * 一致),而 per-model 的账本覆盖仍由 `factory.ts` 的 `withPerModelCapabilities`
- * 在外面盖一层 —— 两次投影是幂等的(`base/__tests__/architecture.test.ts` 逐用例
- * 守着两份等价)。
+ * `profiles` 由构造处注入(`factory.ts` 的 `ledgerProfiles(config)`):
+ * per-model 的能力从此只有它一个来源(P2-a,`withPerModelCapabilities` 已退役)。
+ * 它**故意不带 `model`**,`defaultProfile()` 因此给不出默认档 —— 静态
+ * `capabilities` 仍是纯传输声明,与今天一致。不给 `profiles` 就退成一个空账本
+ * 解析器(直接调这个函数的测试就是这样)。
  */
 export function createOpenAIChatProvider(
 	dialect: OpenAIChatDialect,

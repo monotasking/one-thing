@@ -16,6 +16,7 @@ export type {
 export {
 	LedgerModelProfileResolver,
 	ModelProfile,
+	withLedgerModelCapabilities,
 	type LedgerModelProfileConfig,
 	type ModelProfileCapability,
 	type ModelProfileLimits,
@@ -102,6 +103,8 @@ export {
 	type Dialect,
 	type DialectEndpoint,
 	type DialectRequestShape,
+	type DialectThinkingConfig,
+	type DialectThinkingIntent,
 	type WireId,
 } from "./dialect.js";
 

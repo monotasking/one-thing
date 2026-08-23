@@ -39,6 +39,14 @@ export {
 export { GEMINI_DIALECT } from "./gemini.js";
 
 export {
+	capabilitiesFromFlags,
+	capabilityLimitsFromRuntimeConfig,
+	runtimeCapabilityFlags,
+	type RuntimeCapabilityFlags,
+	type RuntimeTransportConfig,
+} from "./runtime-transport.js";
+
+export {
 	createOpenAIChatProvider,
 	defineOpenAIChatDialect,
 	openAIChatDialect,
@@ -84,7 +92,7 @@ export {
 export { GITHUB_COPILOT_DIALECT } from "./github-copilot.js";
 export { GROK_DIALECT, GROK_USAGE_TABLE } from "./grok.js";
 export { GROK_OAUTH_DIALECT } from "./grok-oauth.js";
-export { KIMI_DIALECT, KIMI_USAGE_TABLE } from "./kimi.js";
+export { KIMI_DIALECT, KIMI_USAGE_TABLE, kimiThinkingIntent } from "./kimi.js";
 export { KIMI_CODE_DIALECT } from "./kimi-code.js";
 export { OPENAI_DIALECT } from "./openai.js";
 export { OPENROUTER_DIALECT, OPENROUTER_USAGE_TABLE } from "./openrouter.js";

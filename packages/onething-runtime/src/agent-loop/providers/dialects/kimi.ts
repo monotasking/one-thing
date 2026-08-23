@@ -8,7 +8,12 @@
  * 选错不是报错而是**多扣钱**,所以那一步留在 factory,配方只给缺省。
  */
 import { ONETHING_KIMI_DEFAULT_BASE_URL } from "../../../providers/kimi.js";
-import type { UsageFieldReader, UsagePathTable } from "../base/index.js";
+import type {
+	DialectThinkingConfig,
+	DialectThinkingIntent,
+	UsageFieldReader,
+	UsagePathTable,
+} from "../base/index.js";
 import { thinkingTypeWire } from "../thinking/index.js";
 import { openAIChatUsage, openAIChatUsageTable } from "../wires/index.js";
 import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
@@ -31,11 +36,45 @@ export const KIMI_USAGE_TABLE: UsagePathTable = openAIChatUsageTable({
 		(read("prompt_tokens") ?? 0) - (kimiCacheRead(raw, read) ?? 0),
 });
 
+// Kimi thinking-model families (https://platform.kimi.com/docs/guide/use-kimi-k2-thinking-model):
+// - kimi-k3: always thinks; configured via OpenAI-compatible reasoning_effort ("max" is
+//   the only accepted value); thinking.type is not supported.
+// - kimi-k2.7-code (+ -highspeed) and kimi-k2-thinking: always think; the thinking
+//   param must not be sent to disable them, so send nothing.
+// - kimi-k2.5 / kimi-k2.6: thinking on by default, toggleable via thinking.type.
+function isKimiAlwaysThinkingModel(model: string): boolean {
+	return model.includes("code") || model.includes("thinking");
+}
+
+/**
+ * 「用户意图 → thinking/effort」的 Kimi 家规 —— 从 `thinking-options.ts` 那句
+ * `ctx.providerId === 'kimi'` 的分支搬来,逐字。搬家的判据:家规是方言的,
+ * 不是那个通用函数的;`kimi-code` 跑的是同一套模型,所以两份配方共用它。
+ */
+export function kimiThinkingIntent(
+	config: DialectThinkingConfig,
+	model: string,
+): DialectThinkingIntent {
+	const lower = model.toLowerCase();
+	if (lower.startsWith("kimi-k3")) {
+		// K3 always reasons server-side; the toggle only controls whether we
+		// explicitly declare the (sole) "max" effort.
+		if (config.thinkingByModel?.[model] === false) return {};
+		return { reasoningEffort: "max" };
+	}
+	if (isKimiAlwaysThinkingModel(lower)) return {};
+	const enabled = config.thinkingByModel?.[model];
+	if (enabled === false) return { thinking: "disabled" };
+	if (enabled === true) return { thinking: "enabled" };
+	return {};
+}
+
 export const KIMI_DIALECT = defineOpenAIChatDialect({
 	id: "kimi",
 	defaultBaseUrl: ONETHING_KIMI_DEFAULT_BASE_URL,
 	reasoning: thinkingTypeWire,
 	includeAssistantReasoning: true,
 	usage: openAIChatUsage(KIMI_USAGE_TABLE),
+	thinkingIntent: kimiThinkingIntent,
 	transport: openAIChatTransportCapabilities({ reasoning: true }),
 });
