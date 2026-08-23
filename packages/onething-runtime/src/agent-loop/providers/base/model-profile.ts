@@ -26,6 +26,7 @@ import {
 	resolveOnethingModelCapabilities,
 	type OnethingCapabilityEntryLike,
 	type OnethingCapabilityOverrideLike,
+	type OnethingImageOutputServedBy,
 	type OnethingReasoningProfile,
 	type OnethingReasoningWire,
 	type OnethingResolvedModelCapabilities,
@@ -121,6 +122,23 @@ export class ModelProfile {
 
 	get outputModalities(): AgentOutputModality[] {
 		return this.resolved.imageOutput ? ["text", "image"] : ["text"];
+	}
+
+	/**
+	 * 图像输出的**两个问题合一**(设计稿 §3 / §11):`supported` = 能不能出图,
+	 * `servedBy` = 谁来出 —— 回合内的原生工具(`'in-loop'`)还是专用生图端点
+	 * (`'dedicated-api'`)。生图路由判据(`onethingModelSupportsImageGeneration`)
+	 * 问的是后者;设置页的徽标问的是前者。`servedBy: undefined` = 账本没话说。
+	 */
+	get imageOutput(): {
+		supported: boolean;
+		servedBy?: OnethingImageOutputServedBy;
+	} {
+		const servedBy = this.resolved.imageOutputServedBy;
+		return {
+			supported: this.resolved.imageOutput,
+			...(servedBy ? { servedBy } : {}),
+		};
 	}
 
 	/** 原始裁定,给需要看 source 的调用方(诊断/测试)。 */

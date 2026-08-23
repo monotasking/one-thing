@@ -2,7 +2,7 @@
   "metadata": {
     "method": "POST",
     "turn": 1,
-    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=%5Bredacted%5D"
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
   },
   "mode": "stream",
   "model": "gemini-2.5-flash",

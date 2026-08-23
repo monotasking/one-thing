@@ -440,7 +440,8 @@ describe('DeepSeek provider agent routing', () => {
     const body = request.body
     expect(url.origin + url.pathname).toBe('https://gemini.test/v1beta/models/gemini-test:streamGenerateContent')
     expect(url.searchParams.get('alt')).toBe('sse')
-    expect(url.searchParams.get('key')).toBe('gemini-key')
+    // P2-b: the key rides the `x-goog-api-key` header only.
+    expect(url.searchParams.get('key')).toBeNull()
     expect(body).toMatchObject({
       systemInstruction: { parts: [{ text: 'utility rules' }] },
       generationConfig: {

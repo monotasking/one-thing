@@ -2,10 +2,9 @@
  * gemini 方言配方的公共构件(设计稿 §3:**Dialect = 类型化的组合配方**),
  * 与 openai-chat 的 `recipe.ts` / anthropic 的 `anthropic-recipe.ts` 同一形状。
  *
- * 这条线上有一处别家没有的事:**端点也带凭据**。今天的 gemini 把 API key
- * 同时写进 URL 的 `?key=` 与 `x-goog-api-key` 头,所以「配方 + 凭据 → provider」
- * 这一步要补的不止 `auth`,还有 `endpoint`(注册表里登记的那份不带 key,拼出
- * 来的 URL 就只有 `?alt=sse`)。P2 官方推荐的是只留头,那时这半边可以删。
+ * 曾经这条线上有一处别家没有的事:**端点也带凭据** —— API key 同时写进 URL 的
+ * `?key=` 与 `x-goog-api-key` 头。P2-b 按官方示例只留头,`geminiEndpoint` 因此
+ * 与别家一样不再需要凭据,拼出来的 URL 只有 `?alt=sse`。
  */
 import type {
 	AgentModelCapabilities,
@@ -36,9 +35,6 @@ export type FetchFn = typeof globalThis.fetch;
 export const GEMINI_DEFAULT_BASE_URL =
 	"https://generativelanguage.googleapis.com/v1beta";
 
-/** URL 里那把钥匙在 dump 里的替身 —— 逐字沿用今天的字面量。 */
-const REDACTED_KEY = "[redacted]";
-
 /**
  * provider 的**传输**声明 —— `gemini.ts` 的 `GEMINI_CAPABILITIES` 逐字复刻
  * (数组顺序也一样)。这条线是全仓唯一声明 audio / video 输入的:
@@ -66,14 +62,16 @@ export const GEMINI_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
 };
 
 /**
- * 端点 —— 逐字复刻今天那三句:
- * `${baseUrl}/models/${encodeURIComponent(model)}:streamGenerateContent`,
- * 挂 `alt=sse`,有钥匙再挂 `key=`;落盘那份把 `key` 换成 `[redacted]`。
+ * 端点 —— `${baseUrl}/models/${encodeURIComponent(model)}:streamGenerateContent`
+ * 挂 `alt=sse`,没有别的。
  *
  * `path` 是空串:真正的路径与模型有关,只能在 `decorateUrl` 里长出来。
+ *
+ * **没有 `redactForDump`**:URL 上不带凭据,落盘那份原样就是安全的。P2-b 之前
+ * 这里还会挂一把 `?key=<apiKey>`,dump 时换成 `key=[redacted]` —— 官方示例一律
+ * 走 `x-goog-api-key` 头,query 那条是旧写法,连同它的脱敏一起删了。
  */
 export function geminiEndpoint(
-	apiKey: string | undefined,
 	defaultBaseUrl: string = GEMINI_DEFAULT_BASE_URL,
 ): DialectEndpoint {
 	return {
@@ -84,15 +82,7 @@ export function geminiEndpoint(
 				`${url}/models/${encodeURIComponent(turn.model)}:streamGenerateContent`,
 			);
 			target.searchParams.set("alt", "sse");
-			if (apiKey) target.searchParams.set("key", apiKey);
 			return target.toString();
-		},
-		redactForDump(url: string): string {
-			const dumpUrl = new URL(url);
-			if (dumpUrl.searchParams.has("key")) {
-				dumpUrl.searchParams.set("key", REDACTED_KEY);
-			}
-			return dumpUrl.toString();
 		},
 	};
 }
@@ -115,8 +105,7 @@ export interface GeminiAuthOptions {
 /**
  * 头的叠加顺序逐字沿用 `gemini.ts`:`Content-Type` → `x-goog-api-key`。
  *
- * 钥匙**同时**还挂在 URL 的 `?key=` 上(见 `geminiEndpoint`)—— 那是今天的
- * 行为,原样保留;官方已把 query 那条标为旧法,P2 去掉。
+ * P2-b 起这是钥匙**唯一**的落点(URL 上那把 `?key=` 已删)。
  */
 export function geminiAuth(options: GeminiAuthOptions = {}): AuthStrategy {
 	return new HeaderApiKeyAuth("x-goog-api-key", options.apiKey, {
@@ -135,7 +124,7 @@ export function geminiDialect(spec: GeminiDialectSpec): GeminiDialect {
 	return {
 		id: spec.id,
 		wire: "gemini-generateContent",
-		endpoint: geminiEndpoint(undefined, defaultBaseUrl),
+		endpoint: geminiEndpoint(defaultBaseUrl),
 		auth: UNCONFIGURED_AUTH,
 		request: {
 			// Gemini 的上限字段叫 `generationConfig.maxOutputTokens`,不在这个
@@ -161,8 +150,6 @@ export interface GeminiProviderInit {
 	/** 不给 = 用配方的 id。 */
 	providerId?: string;
 	baseUrl?: string;
-	/** URL 上那把 `?key=`(与 `auth` 是同一把钥匙的两个落点)。 */
-	apiKey?: string;
 	auth: AuthStrategy;
 	fetchImpl?: FetchFn;
 	requestDumper?: AgentProviderRequestDumper;
@@ -201,7 +188,6 @@ export function createGeminiProvider(
 	return new GeminiWire(ctx, {
 		...dialect,
 		auth: init.auth,
-		endpoint: geminiEndpoint(init.apiKey, dialect.endpoint.defaultBaseUrl),
 		...(init.transport ? { transport: init.transport } : {}),
 		...(init.parts ? { parts: init.parts } : {}),
 	});

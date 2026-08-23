@@ -17,8 +17,10 @@
  * Inside step 2 there is one sub-rule: a Codex entry/metadata carrying
  * `providerMetadata.codex.nativeTools: ['image_generation']` declares image
  * output regardless of its own `supportsImageOutput` / `output_modalities`
- * (Codex /models never reports output modalities). See
- * `codexMetadataDeclaresImageOutput` below.
+ * (Codex /models never reports output modalities). That same evidence also
+ * answers *how* the image is served — see `imageOutputServedBy` below; the
+ * detector itself (`codexMetadataDeclaresImageOutput`) is internal to this
+ * module, because the ledger is now the only thing that reads native tools.
  *
  * This module must stay pure (no Node/Electron imports) — the renderer and the
  * web build import it directly.
@@ -62,12 +64,36 @@ export interface OnethingReasoningProfile {
 
 export type OnethingCapabilitySource = 'override' | 'registry' | 'pattern' | 'default'
 
+/**
+ * How a model's image output reaches the user.
+ *
+ *  - `'in-loop'`     —— the provider produces the image *inside* the agent loop
+ *                       (Codex's native `image_generation` tool). The normal
+ *                       chat pipeline already handles it; switching to the
+ *                       dedicated image stream would break plain conversation.
+ *  - `'dedicated-api'` —— the image comes from a separate image endpoint
+ *                       (OpenAI images / Gemini image API): the turn has to
+ *                       leave the agent loop to get one.
+ *
+ * `undefined` = the ledger has nothing to say (no image output, or it does not
+ * know). This is the judge behind `onethingModelSupportsImageGeneration`
+ * ("换不换通路"), which is a different question from `imageOutput`
+ * ("能不能出图").
+ */
+export type OnethingImageOutputServedBy = 'in-loop' | 'dedicated-api'
+
 export interface OnethingResolvedModelCapabilities {
   reasoning: boolean
   vision: boolean
   tools: boolean
   imageOutput: boolean
   temperature: boolean
+  /**
+   * Present only when the ledger can tell how the image output is served.
+   * Read `OnethingImageOutputServedBy` for the two values and why the routing
+   * question is not the same as the capability question.
+   */
+  imageOutputServedBy?: OnethingImageOutputServedBy
   /**
    * How this model expresses its thinking intent on the wire — answered even
    * when `reasoning` is false, because the wire format is a property of the
@@ -635,8 +661,12 @@ function verdict(value: boolean, source: OnethingCapabilitySource): CapabilityVe
  * 字面量与 `codex-native-tools.ts` 的
  * `CODEX_NATIVE_IMAGE_GENERATION_TOOL` 同值;此文件必须保持零 import(渲染
  * 层与 web 构建直接引它),所以不从那里 import。
+ *
+ * **模块内部函数**:P2-b 之后账本自己把这条证据折成
+ * `imageOutputServedBy: 'in-loop'`,外面(`model-registry.ts` 的生图路由判据)
+ * 读那个字段,不再各自认原生工具。
  */
-export function codexMetadataDeclaresImageOutput(providerMetadata: unknown): boolean {
+function codexMetadataDeclaresImageOutput(providerMetadata: unknown): boolean {
   if (!providerMetadata || typeof providerMetadata !== 'object') return false
   const codex = (providerMetadata as { codex?: unknown }).codex
   if (!codex || typeof codex !== 'object') return false
@@ -807,6 +837,20 @@ const GENERIC_REASONING_PROFILE: OnethingReasoningProfile = {
   wire: 'none',
 }
 
+/**
+ * 「谁来出图」—— 在能力裁定**之外**再问一次,因为这条判据不吃 override:
+ * 用户 override 表达的是「能出图」,不是「换通路」,而 Codex 的原生
+ * `image_generation` 工具是在回合内出图的,换通路只会让它连普通对话都答不了。
+ */
+function resolveImageOutputServedBy(
+  input: ResolveOnethingModelCapabilitiesInput,
+  imageOutput: CapabilityVerdict,
+): OnethingImageOutputServedBy | undefined {
+  if (codexMetadataDeclaresImageOutput(input.registryEntry?.providerMetadata)) return 'in-loop'
+  if (codexMetadataDeclaresImageOutput(input.modelMetadata?.providerMetadata)) return 'in-loop'
+  return imageOutput.value ? 'dedicated-api' : undefined
+}
+
 export function resolveOnethingModelCapabilities(
   input: ResolveOnethingModelCapabilitiesInput,
 ): OnethingResolvedModelCapabilities {
@@ -823,6 +867,7 @@ export function resolveOnethingModelCapabilities(
     ? resolveProfile(kind, input.modelId, modelLower) ?? GENERIC_REASONING_PROFILE
     : undefined
   const forcedToolUse = fromRules('forcedToolUse', PROVIDER_MODEL_RULES[kind], modelLower)
+  const servedBy = resolveImageOutputServedBy(input, imageOutput)
 
   return {
     reasoning: reasoning.value,
@@ -830,6 +875,7 @@ export function resolveOnethingModelCapabilities(
     tools: tools.value,
     imageOutput: imageOutput.value,
     temperature: temperature.value,
+    ...(servedBy ? { imageOutputServedBy: servedBy } : {}),
     reasoningWire:
       reasoningProfile?.wire ?? resolveReasoningWire(kind, input.modelId, modelLower) ?? 'none',
     ...(typeof forcedToolUse === 'boolean' ? { forcedToolUse } : {}),

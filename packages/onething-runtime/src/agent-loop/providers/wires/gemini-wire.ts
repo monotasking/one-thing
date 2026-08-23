@@ -4,17 +4,18 @@
  *
  * 今天它上面只挂一个 id(`gemini`),但差异仍然全部由组合进 `Dialect` 的策略
  * 对象表达:认证(`x-goog-api-key` 头)、端点(`models/{model}:streamGenerateContent`
- * 与 `?alt=sse&key=` 的拼装与脱敏)、思考线型(level / budget)。这个类里没有
+ * 与 `?alt=sse` 的拼装)、思考线型(level / budget)。这个类里没有
  * 一处 `if (providerId === …)`。
  *
  * P1-b 是**纯搬运**:`gemini.ts` 的请求体构造、`streamGeminiResponse` 的
  * 流状态机、`buildGeminiContents` 的块序、`mapFinishReason` 的映射,逐字保留
  * (`__tests__/wire-snapshots/gemini` 的 11 份快照就是这句话的门,**禁 `-u`**)。
  *
- * 两处复刻的现状,后面几期再动(设计稿 §9 P1 门 ① / §5.2):
- *  - **认证发两遍**:URL 上的 `?key=` 与 `x-goog-api-key` 头**同时**发,
- *    官方已经把 query 那条标为旧法(P2 去掉 query);
+ * 一处复刻的现状,后面几期再动(设计稿 §9 P1 门 ① / §5.2):
  *  - **孤儿工具结果**退回 `toolCallId` 当函数名,只留形状不留 warning。
+ *
+ * (曾经的「认证发两遍」——URL 的 `?key=` 与 `x-goog-api-key` 头同时发 ——
+ * 已在 P2-b 按官方示例收成只发头。)
  *
  * usage 已在 P1-d2 按 §7 直译:`output = candidates + thoughts`。
  */

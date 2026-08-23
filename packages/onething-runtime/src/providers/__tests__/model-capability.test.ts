@@ -95,6 +95,27 @@ describe('resolution priority', () => {
     expect(resolved.source.imageOutput).toBe('registry')
   })
 
+  it('says who serves the image output (in-loop vs dedicated-api vs unknown)', () => {
+    // Codex native image_generation = produced inside the agent loop; the
+    // dedicated image stream must not take over (see
+    // onethingModelSupportsImageGeneration).
+    expect(resolve('codex', 'gpt-5.5', {
+      registryEntry: {
+        supportsImageOutput: false,
+        providerMetadata: { codex: { nativeTools: ['image_generation'] } },
+      },
+    }).imageOutputServedBy).toBe('in-loop')
+    // A real image endpoint: the turn has to leave the loop. (The openai rules
+    // table has no image row — the registry entry is what the ledger reads;
+    // the name pattern only fires for unknown providers.)
+    expect(resolve('openai', 'gpt-image-1', {
+      registryEntry: { supportsImageOutput: true },
+    }).imageOutputServedBy).toBe('dedicated-api')
+    expect(resolve('whatever', 'gpt-image-1').imageOutputServedBy).toBe('dedicated-api')
+    // Plain text model: the ledger has nothing to say.
+    expect(resolve('openai', 'gpt-5.2').imageOutputServedBy).toBeUndefined()
+  })
+
   it('does not grant image output when the codex native tool table is empty', () => {
     const resolved = resolve('codex', 'gpt-5.5', {
       registryEntry: {

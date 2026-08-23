@@ -27,9 +27,14 @@ export interface DialectEndpoint {
 	defaultBaseUrl: string;
 	/** 挂在 baseUrl 之后的路径,带前导斜杠(`/chat/completions`)。 */
 	path: string;
-	/** 需要往 URL 上挂东西的(Gemini 的 `?key=`、`:streamGenerateContent`)。 */
+	/** 需要往 URL 上挂东西的(Gemini 的 `:streamGenerateContent`、`?alt=sse`)。 */
 	decorateUrl?(url: string, turn: TurnContext): string;
-	/** 落盘前的脱敏(Gemini 的 `key=`)。不给 = 原样。 */
+	/**
+	 * 落盘前的脱敏。不给 = 原样 —— **今天没有实现者**:唯一一个曾经把凭据挂在
+	 * URL 上的方言(Gemini 的 `?key=`)已在 P2-b 改成只发 `x-goog-api-key` 头。
+	 * 钩子留着,因为「凭据进了 URL」是线协议层面可能再出现的事,而 dump 是
+	 * 落盘的。
+	 */
 	redactForDump?(url: string): string;
 }
 

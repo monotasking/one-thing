@@ -68,7 +68,8 @@ describe('Gemini agent provider', () => {
     const request = JSON.parse(fetchImpl.mock.calls[0][1].body)
     expect(url.origin + url.pathname).toBe('https://gemini.test/v1beta/models/gemini-test:streamGenerateContent')
     expect(url.searchParams.get('alt')).toBe('sse')
-    expect(url.searchParams.get('key')).toBe('gemini-key')
+    // P2-b: the key rides the header only — the legacy `?key=` query is gone.
+    expect(url.searchParams.get('key')).toBeNull()
     expect(fetchImpl.mock.calls[0][1].headers['x-goog-api-key']).toBe('gemini-key')
     expect(request).toMatchObject({
       systemInstruction: { parts: [{ text: 'System rules' }] },

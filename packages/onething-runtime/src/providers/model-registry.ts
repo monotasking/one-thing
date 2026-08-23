@@ -1,6 +1,6 @@
 import type { JsonObject } from "@onething/core";
 import { detectCopilotModelCapabilities as detectCopilotLikeModelCapabilities } from "./github-copilot.js";
-import { codexMetadataDeclaresImageOutput } from "./model-capability.js";
+import { resolveOnethingModelCapabilities } from "./model-capability.js";
 import { getOnethingModelsDevProviderId } from "./models-dev-catalog.js";
 import type { OnethingKimiEndpointConfig } from "./kimi.js";
 import {
@@ -1009,10 +1009,13 @@ export function onethingModelSupportsTemperature(
  * 的 `hasImageGeneration`)。两者故意分家:能力账本回答「能不能出图」,这个
  * 函数回答「换不换通路」。
  *
- * 因此 **provider 在回合内用原生工具出图的模型一律排除**:Codex 条目带
- * `providerMetadata.codex.nativeTools: ['image_generation']` 的,图是 agent
- * loop 里的一次工具调用产出的,专用流只会让它连普通对话都答不了。这条排除
- * 站在用户 override 之前 —— override 表达的是「能出图」,不是「换通路」。
+ * 因此 **provider 在回合内用原生工具出图的模型一律排除**:账本把这类模型答成
+ * `imageOutputServedBy: 'in-loop'`(证据是 Codex 条目的
+ * `providerMetadata.codex.nativeTools: ['image_generation']`),图是 agent loop
+ * 里的一次工具调用产出的,专用流只会让它连普通对话都答不了。这条排除站在用户
+ * override 之前 —— override 表达的是「能出图」,不是「换通路」,而 `servedBy`
+ * 是账本对「谁来出」的裁定,不吃 override(P2-b:判据从直接认原生工具改成读
+ * `ModelProfile`/账本的 `servedBy`)。
  */
 export function onethingModelSupportsImageGeneration(
 	providers: OnethingProviderModelConfigs | undefined,
@@ -1020,18 +1023,22 @@ export function onethingModelSupportsImageGeneration(
 	providerId?: string,
 ): boolean {
 	const entry = getModelEntry(providers, modelId, providerId);
-	// In-loop image generation (Codex 原生 image_generation 工具)永远不换通路,
-	// 哪怕用户 override 了 imageOutput=true。
-	if (entry && codexMetadataDeclaresImageOutput(entry.providerMetadata)) {
-		return false;
-	}
-
 	const override = getCapabilityOverride(
 		providers,
 		modelId,
 		providerId,
 		"imageOutput",
 	);
+
+	const servedBy = resolveOnethingModelCapabilities({
+		providerId: providerId ?? entry?.provider ?? "",
+		modelId,
+		...(entry ? { registryEntry: entry } : {}),
+		...(override === undefined ? {} : { override: { imageOutput: override } }),
+	}).imageOutputServedBy;
+	// 回合内出图的模型永远不换通路,哪怕用户 override 了 imageOutput=true。
+	if (servedBy === "in-loop") return false;
+
 	if (override !== undefined) return override;
 
 	const lower = modelId.toLowerCase();

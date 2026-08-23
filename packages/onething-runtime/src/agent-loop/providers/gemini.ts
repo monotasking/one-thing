@@ -44,7 +44,6 @@ export function createGeminiAgentProvider(
 	return createGeminiProvider(dialect, {
 		providerId: "gemini",
 		...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
-		...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
 		auth: geminiAuth({
 			...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
 		}),

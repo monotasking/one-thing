@@ -26,8 +26,9 @@
  *
  * ## 值得盯住的两处「今天的行为」
  *
- *  - **dump 的 URL 会脱敏**:线上 URL 带 `key=<apiKey>`,落盘那份换成
- *    `key=[redacted]`。快照记的是 dump 那份(`metadata.url`),所以真钥匙不会进库。
+ *  - **URL 上不带凭据**:钥匙只走 `x-goog-api-key` 头。P2-b 之前它**同时**挂在
+ *    `?key=<apiKey>` 上,dump 那份换成 `key=[redacted]`;这批快照的 `metadata.url`
+ *    因此少了 `&key=%5Bredacted%5D`(本文件唯一一次有意 `-u`)。
  *  - **usage 的 outputTokens 不含 thoughts**:`candidatesTokenCount` 直接当
  *    outputTokens,`thoughtsTokenCount` 另挂 `reasoningTokens`,`totalTokens`
  *    则取 `totalTokenCount`(于是 input + output ≠ total,这是现状不是笔误)。

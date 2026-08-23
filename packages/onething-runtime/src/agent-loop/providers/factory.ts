@@ -341,7 +341,6 @@ function createProviderForDialect(
 		case "gemini-generateContent":
 			return createGeminiProvider(dialect as GeminiDialect, {
 				...shared,
-				apiKey: config.apiKey,
 				auth: geminiAuth({ apiKey: config.apiKey }),
 			});
 		case "openai-responses":
@@ -702,8 +701,6 @@ registerAgentProviderRuntime(
 	(config, options) =>
 		createGeminiProvider(GEMINI_DIALECT, {
 			baseUrl: config.baseUrl,
-			// 同一把钥匙两个落点:URL 的 `?key=` 与 `x-goog-api-key` 头。
-			apiKey: config.apiKey,
 			auth: geminiAuth({ apiKey: config.apiKey }),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
