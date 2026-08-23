@@ -398,7 +398,13 @@ function captureCancelledToolResults(state: AgentLoopExecutorState): void {
 	if (!recorder) return;
 	try {
 		// COW:收尾修复刚刚经命令面落过盘,这里必须**重读**(P0 的那个坑)。
-		const message = sessionReads.getMessage(
+		// §13.18 发现 B(同类):这是**事件写侧**取材 —— 读到的消息直接决定
+		// `recordCancelledToolResults` 往 events.jsonl 写哪几条 `tool/result`
+		// (含工具自报标题)。必须走 `*FromTranscript` 读抄本真相,**永不**走随
+		// 读模式分岔的 `getMessage`:events 模式下后者返回的活投影此刻还没看到
+		// 收尾修复(那条 `tool/result` 正要由这次采集写出),读空 → 采集不触发 →
+		// 账本缺 `tool/result` → 中止在途工具的 step 永远停在占位标题。
+		const message = sessionReads.getMessageFromTranscript(
 			state.ctx.sessionId,
 			state.ctx.assistantMessageId,
 		) as ChatMessage | undefined;
@@ -434,9 +440,16 @@ async function emitFinalAssistantMessageUpdate(
 				sessionId: state.ctx.sessionId,
 				assistantMessageId: state.ctx.assistantMessageId,
 				getSession: (sessionId) => store.getSession(sessionId),
-				// C1(P0.2):读走门面;F3:收尾修复是 COW 的,必须显式落盘。
+				// F3:收尾修复是 COW 的,必须显式落盘。§13.18 发现 B(同类):这是对
+				// **消息真相**的 read-modify-write —— 读到的消息经 `finalizeLingering…`
+				// 折成 patch 后原样写回 messages.jsonl(自报标题等字段随 steps 数组回落)。
+				// 必须走 `*FromTranscript` 读抄本:events 模式下 `getMessage` 的 `fromEvents`
+				// 岔口此刻返回的活投影还没看到这次收尾要写的 `tool/result`,读到占位标题 →
+				// 修复把占位标题焊回 messages.jsonl,反把引擎写好的自报标题抹掉。
 				getMessage: (sessionId, messageId) =>
-					sessionReads.getMessage(sessionId, messageId) as ChatMessage | undefined,
+					sessionReads.getMessageFromTranscript(sessionId, messageId) as
+						| ChatMessage
+						| undefined,
 				patchMessage: (sessionId, messageId, patch) => {
 					sessionCommands.patchMessage(sessionId, {
 						messageId,

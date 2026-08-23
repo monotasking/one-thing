@@ -163,4 +163,47 @@ describe('transcript accessors stay read-mode blind for the write side (§13.18 
     // 写侧取材面找得到 → 事件不丢。
     expect(sessionReads.findMessageFromTranscript(SESSION, byMarker)?.id).toBe('a-mark')
   })
+
+  it('批 9(§13.18 同类):中止在途工具的收尾取材读到抄本的自报标题,而非滞后投影的占位', async () => {
+    // events 读模式下,中止在途工具的收尾链有两处**写侧取材**滞后投影会踩坑:
+    //   ① 收尾修复(`emitFinalAssistantMessageUpdate` 的 read-modify-write)—— 读投影
+    //      的占位标题再原样写回 messages.jsonl,反把 metadata 时刻 `updateMessageStep`
+    //      写下的自报标题 'sleep 20' 抹成占位;
+    //   ② 采集点(`captureCancelledToolResults`)—— 读投影找不到收尾修复刚落盘的
+    //      cancelled step,`recordCancelledToolResults` 不触发 → 账本缺 `tool/result`
+    //      → 投影永远退回占位标题。
+    // 两处都必须走 `*FromTranscript`。这里把两侧**故意分岔**:抄本带自报标题,活投影
+    // 停在占位,断言写侧取材面读的是抄本。
+    const projectionPlaceholder: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      timestamp: 5,
+      steps: [
+        { id: 'step-c1', type: 'command', title: '调用工具: bash', status: 'cancelled', toolCallId: 'c1', timestamp: 5 },
+      ],
+      toolCalls: [
+        { id: 'c1', toolId: 'bash', toolName: 'bash', arguments: {}, status: 'cancelled', error: 'User cancelled', timestamp: 5 },
+      ],
+    }
+    // 账本上是占位标题那一份(收尾修复要写的 `tool/result` 还没进账本)。
+    sessionEventTranslator.appendMessage(SESSION, projectionPlaceholder)
+    await flushSessionEventLog(SESSION)
+    resetSessionProjectionCache(SESSION)
+    // 抄本(store)上是 metadata 时刻已写下的自报标题 'sleep 20'。
+    setTranscript([
+      {
+        ...projectionPlaceholder,
+        steps: [
+          { id: 'step-c1', type: 'command', title: 'sleep 20', status: 'cancelled', toolCallId: 'c1', timestamp: 5 },
+        ],
+      },
+    ])
+    setSessionReadModeForTesting('events')
+
+    // 产品读面(fromEvents)给的是投影里的占位标题。
+    expect(sessionReads.getMessage(SESSION, 'a1')?.steps?.[0]?.title).toBe('调用工具: bash')
+    // 写侧取材面恒读抄本 → 自报标题 'sleep 20'(收尾修复不再抹掉它,采集点找得到 step)。
+    expect(sessionReads.getMessageFromTranscript(SESSION, 'a1')?.steps?.[0]?.title).toBe('sleep 20')
+  })
 })
