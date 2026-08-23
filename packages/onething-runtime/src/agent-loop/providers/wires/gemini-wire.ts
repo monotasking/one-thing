@@ -58,6 +58,14 @@ import {
 export interface GeminiDialect extends Dialect<GeminiWireValue> {
 	/** provider 的**传输**声明(模态 / 结构化工具结果)。per-model 的布尔归账本。 */
 	transport: AgentModelCapabilities;
+	/**
+	 * 多轮改图(P4-2):回放历史 assistant 消息时,把它画过的图从媒体库取回来
+	 * 作为 `inlineData` part 一起发。只有 Google 官方端点这条配方开着 —— 别的
+	 * 线协议要么不在回合里出图,要么图的回传形状不是这个。
+	 *
+	 * 真正生效还要 `ProviderContext.media` 在场(端口缺席 = 静默不回放)。
+	 */
+	replayGeneratedImages?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +90,15 @@ export interface GeminiStreamChunk {
 				functionCall?: {
 					name?: string;
 					args?: AgentJsonObject;
+				};
+				/**
+				 * 图像输出(P4-2)。`gemini-*-image` 是**聊天模型**:请求带
+				 * `generationConfig.responseModalities: ['TEXT','IMAGE']`,图就以
+				 * 这一块混在同一条 `candidates[0].content.parts[]` 里回来。
+				 */
+				inlineData?: {
+					mimeType?: string;
+					data?: string;
 				};
 			}>;
 		};
@@ -126,6 +143,52 @@ function toolCallDoneEvent(
 			id: entry.id,
 			name: entry.name,
 			arguments: entry.arguments,
+		},
+	};
+}
+
+// ---------------------------------------------------------------------------
+// 图像输出(P4-2)—— `inlineData` part → provider-data
+// ---------------------------------------------------------------------------
+
+const GEMINI_IMAGE_NOTE_PREFIX = "gemini:image:";
+
+/**
+ * 一回合里第 n 张图。计数存在 `turn.notes` 上而不是实例上 —— provider 实例
+ * 无状态(§3.1),同一个实例可能同时在跑好几回合。与 OpenRouter 那条同规。
+ */
+function nextImageIndex(turn: TurnContext): number {
+	let index = 0;
+	while (turn.notes.has(`${GEMINI_IMAGE_NOTE_PREFIX}${index}`)) index += 1;
+	turn.notes.add(`${GEMINI_IMAGE_NOTE_PREFIX}${index}`);
+	return index;
+}
+
+/**
+ * 形状与 codex / OpenRouter 的那条**逐字对齐**(`image-generation-result`),
+ * 于是 `provider-data.ts` 的落点按 **type** 判就够了,不必再认第三个 provider 名。
+ *
+ * `inlineData` 的载荷是裸 base64(不是 data URI),直接进 `result`。
+ * 非 `image/*` 的 `inlineData`(理论上的音频输出)**不当图**:宁可漏,不可错。
+ */
+function imageGenerationResultEvent(
+	part: { inlineData?: { mimeType?: string; data?: string } },
+	turn: TurnContext,
+): Extract<AgentTurnStreamEvent, { type: "provider-data" }> | undefined {
+	const inline = part.inlineData;
+	if (!inline?.data) return undefined;
+	const mediaType = inline.mimeType ?? "";
+	if (!mediaType.toLowerCase().startsWith("image/")) return undefined;
+	return {
+		type: "provider-data",
+		turn: turn.turn,
+		providerData: {
+			provider: "gemini",
+			type: "image-generation-result",
+			callId: `${turn.turn}-img-${nextImageIndex(turn)}`,
+			status: "completed",
+			result: inline.data,
+			mediaType,
 		},
 	};
 }
@@ -307,7 +370,7 @@ export class GeminiWire extends HttpAgentProvider<
 	// 请求体
 	// -----------------------------------------------------------------------
 
-	protected buildBody(turn: TurnContext): void {
+	protected async buildBody(turn: TurnContext): Promise<void> {
 		const { builder, request } = turn;
 
 		// Gemini 的 contents 期望 user/model 交替(相邻同角色它自己会合,但依赖
@@ -316,6 +379,17 @@ export class GeminiWire extends HttpAgentProvider<
 			? mergeAdjacentSameRoleMessages(request.messages)
 			: request.messages;
 		const converted = this.geminiParts.toRequestContents(messages, turn);
+
+		// 多轮改图(P4-2):把历史 model 回复画过的图从媒体库取回来,作为
+		// `inlineData` 放回同一条 content —— Gemini 官方的图像编辑示例就是把上一条
+		// model 回复的 parts 原样放回 `contents`。端口缺席 = 静默不回放。
+		if (this.geminiDialect.replayGeneratedImages && this.ctx.media) {
+			await this.geminiParts.replayGeneratedImages?.(
+				converted.contents,
+				this.ctx.media,
+				turn.logger,
+			);
+		}
 
 		if (converted.systemInstruction) {
 			builder.set("systemInstruction", converted.systemInstruction);
@@ -326,6 +400,11 @@ export class GeminiWire extends HttpAgentProvider<
 		builder.set("generationConfig", {});
 		if (request.maxTokens !== undefined) {
 			builder.set("generationConfig.maxOutputTokens", request.maxTokens);
+		}
+		// 图像输出(P4-2):判据是账本 —— `servedBy === 'in-loop'` =「这个模型在
+		// 回合内出图」(gemini 家 + imageOutput 为真)。纯文本模型一个字节都不多发。
+		if (turn.profile.imageOutput.servedBy === "in-loop") {
+			builder.set("generationConfig.responseModalities", ["TEXT", "IMAGE"]);
 		}
 
 		const tools =
@@ -367,6 +446,9 @@ export class GeminiWire extends HttpAgentProvider<
 						yield { type: "text-delta", turn: turnIndex, delta: part.text };
 					}
 				}
+
+				const imageEvent = imageGenerationResultEvent(part, turn);
+				if (imageEvent) yield imageEvent;
 
 				if (part.functionCall?.name) {
 					// Gemini 的函数调用**一块到位**(参数不是流式增量),所以

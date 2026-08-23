@@ -20,6 +20,7 @@ import {
 	geminiAuth,
 	geminiDialect,
 } from "./dialects/gemini-recipe.js";
+import type { ProviderMediaReader } from "./base/index.js";
 import type { AgentProviderRequestDumper } from "./request-dump.js";
 
 type FetchFn = typeof globalThis.fetch;
@@ -29,6 +30,12 @@ export interface GeminiAgentProviderOptions {
 	baseUrl?: string;
 	fetchImpl?: FetchFn;
 	requestDumper?: AgentProviderRequestDumper;
+	/**
+	 * 只读媒体端口(P4-2)—— 多轮改图从这里取回历史生成图的字节。装配层
+	 * (`packages/backend/wiring/agent-loop/providers/gemini.ts`)注入实现;
+	 * 不给 = 不回放。
+	 */
+	media?: ProviderMediaReader;
 }
 
 export function createGeminiAgentProvider(
@@ -40,6 +47,8 @@ export function createGeminiAgentProvider(
 	const dialect = geminiDialect({
 		id: "gemini",
 		defaultBaseUrl: GEMINI_DEFAULT_BASE_URL,
+		// 与 `dialects/gemini.ts` 那份具名配方保持同一份行为(P4-2)。
+		replayGeneratedImages: true,
 	});
 	return createGeminiProvider(dialect, {
 		providerId: "gemini",
@@ -49,5 +58,6 @@ export function createGeminiAgentProvider(
 		}),
 		...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
 		...(options.requestDumper ? { requestDumper: options.requestDumper } : {}),
+		...(options.media ? { media: options.media } : {}),
 	});
 }

@@ -1,89 +1,218 @@
 /**
- * `grok` —— xAI API key 通路。对照 `factory.ts`:`defaultBaseUrl` /
- * `supportsVision:true` / `supportsReasoning:true` /
- * `includeAssistantReasoning:true` / `reasoningStyle:'grok-effort'`。
+ * `grok` —— xAI 的 API-key 通路,**openai-responses 线协议**(P4-4)。
+ *
+ * ## 为什么换线
+ *
+ * 官方把 chat-completions 标成 legacy:
+ * 「Chat Completions is offered as a legacy endpoint. New features will come to
+ *  the [Responses API] first.」(docs.x.ai
+ *  `/developers/model-capabilities/legacy/chat-completions`)。
+ * 加密思维链回放、`input_file`(PDF)、结构化引文 annotations 这三样在
+ * chat-completions 上压根没有出口,而它们都是我们已经在 codex 那条线上跑着的
+ * 东西 —— 换线之后 xAI 直接继承,零新代码。
+ *
+ * 顺带证明了另一件事:`OpenAIResponsesWire` 脱得开 codex 的订阅制后台怪癖,
+ * 同一条管线服务一个纯 API-key 用户(设计稿 §9 P1 门 ①)。
+ *
+ * ## 配方逐项对照官方(docs.x.ai,2026-08-23 核)
+ *
+ * | 字段 | 值 | 官方出处 |
+ * |---|---|---|
+ * | endpoint | `https://api.x.ai/v1` + `/responses` | `POST /v1/responses` |
+ * | auth | `Authorization: Bearer <XAI_API_KEY>` | `/developers/debugging` 401 行 |
+ * | store | `false` | Request Body `store`(默认 true、留存 30 天;我们无状态) |
+ * | reasoning | `reasoning: {effort}` 四档 | `/developers/model-capabilities/text/reasoning` |
+ * | include | 恒发 `['reasoning.encrypted_content']` | 同页「Encrypted Reasoning Content」 |
+ * | usage | 三桶 + `cost_in_usd_ticks / 1e10` | Response Body → usage |
+ * | providerOptions | `imageDetail` / `searchParameters` | `input_image.detail` / Request Body `search_parameters` |
+ * | 引文 | `output_text.annotations[].url_citation` | `/developers/tools/citations` |
+ *
+ * **没接的两样,写明白**:
+ *  - 服务端工具(`web_search` / `x_search` / `code_interpreter`)—— 官方
+ *    `tools:[{type:'web_search'}]` 的形状是清楚的,但挂上去等于替用户决定
+ *    「这一回合可以自己上网并计费」,那是产品决定不是线协议默认,本期不挂。
+ *    Live Search 走 `search_parameters`(官方那一页明说
+ *    「`web_search_preview` tool, if specified, will be overridden by
+ *    `search_parameters`」),所以联网这件事**已经有一条不改变默认的通路**。
+ *  - `previous_response_id` / 服务端会话续接 —— 我们的历史是本地那份账本,
+ *    `store:false` 与它互斥,不接。
  */
-import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
-import type { TurnContext, UsagePathTable } from "../base/index.js";
-import { grokEffortWire } from "../thinking/index.js";
-import { OPENAI_CHAT_IMAGE_DETAIL_VALUES, openAIChatUsage, openAIChatUsageTable } from "../wires/index.js";
+import type {
+	AgentModelCapabilities,
+	AgentTurnStreamEvent,
+} from "@onething/core/agent-loop";
+import type { TurnContext } from "../base/index.js";
+import { GROK_RESPONSES_THINKING_WIRES } from "../thinking/grok-responses-reasoning.js";
 import {
-	defineOpenAIChatDialect,
-	openAIChatTransportCapabilities,
-	promptCacheKeyExtraBody,
-} from "./recipe.js";
+	CodexResponsesUsageNormalizer,
+	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
+	type CodexResponsesUsage,
+} from "../wires/index.js";
+import { promptCacheKeyExtraBody } from "./recipe.js";
+import {
+	defineResponsesDialect,
+	type ResponsesDialectSpec,
+} from "./responses-recipe.js";
 
-/** xAI 报价的单位是 1e-10 美元(`cost_in_usd_ticks`)。 */
+/** 两条 xAI 通路共用的地址 —— `POST https://api.x.ai/v1/responses`。 */
+export const GROK_BASE_URL = "https://api.x.ai/v1";
+
+/**
+ * 两条 xAI 通路共用的 provider-data 标签(**不是 providerId**)。
+ *
+ * 错误消息 / dump / 账本按 providerId 归档,但消息上的 provider-data 按家族:
+ * 同一段历史在 `grok` 与 `grok-oauth` 之间切换时,加密思维链与引文的回放不断。
+ * 与 P3-5a 的 `decodeGrokCitations` 逐字同规。
+ */
+export const GROK_PROVIDER_DATA_TAG = "grok";
+
+/**
+ * xAI 报价的单位是 1e-10 美元。官方 `POST /v1/responses` → Response Body →
+ * usage → `cost_in_usd_ticks`:「Accurate cost of this request in USD ticks,
+ * where "tick" is defined as follows: TICKS_IN_USD_CENT: i64 = 100_000_000
+ * which means there is 10'000'000'000 ticks in one *dollar*.」
+ */
 const USD_TICKS_PER_DOLLAR = 1e10;
 
 /**
- * 三桶与默认表同形状,只多一个厂商报价。与 OpenRouter 同理:`providerCostUSD`
- * 不投影进 `AgentUsage`(设计稿 §10 决策 3 待拍板)。
+ * 三桶与这条线的默认直译同形状,只多一个厂商报价。与 OpenRouter 同理:
+ * `providerCostUSD` 不投影进 `AgentUsage` 的估算,账本另存一格
+ * (设计稿 §10 决策 3 待拍板)。
+ *
+ * 三桶本身官方逐字对得上:`input_tokens` /
+ * `input_tokens_details.cached_tokens` / `output_tokens` /
+ * `output_tokens_details.reasoning_tokens` / `total_tokens`。
+ * **没有 `cache_write_tokens`** —— xAI 不报写缓存(定价页只有 input /
+ * cached input / output 三档),那一桶恒 0,投影里连键都不出现。
  */
-export const GROK_USAGE_TABLE: UsagePathTable = openAIChatUsageTable({
-	providerCostUSD: (_raw, read) => {
-		const ticks = read("cost_in_usd_ticks");
-		return ticks === undefined ? undefined : ticks / USD_TICKS_PER_DOLLAR;
-	},
-});
-
-// ---------------------------------------------------------------------------
-// Live Search(P3-5a)—— 请求侧 `search_parameters`,响应侧顶层 `citations[]`
-// ---------------------------------------------------------------------------
+export const GROK_RESPONSES_USAGE = new CodexResponsesUsageNormalizer(
+	(usage: CodexResponsesUsage) =>
+		usage.cost_in_usd_ticks === undefined
+			? undefined
+			: usage.cost_in_usd_ticks / USD_TICKS_PER_DOLLAR,
+);
 
 /**
- * xAI 两条通路共用的请求级袋支持面。
+ * 两条 xAI 通路共用的请求级袋支持面。
  *
- * `imageDetail`:vision 端点收 `image_url.detail`(标准三值)。
- * `searchParameters`:Live Search 的检索开关(`mode` / `sources` / 日期窗 /
- * `max_search_results` / `return_citations`),白名单与逐键校验在
- * `wires/openai-chat-provider-options.ts` 的那一张表里 —— 这里只声明「这家认」。
- * `verbosity` 是 OpenAI 自己的字段,这家不认(P3-3)。
+ * `imageDetail`:`input_image` 收 `detail`(`auto|low|high`)。
+ * `searchParameters`:Live Search,官方在 `POST /v1/responses` 的 Request Body
+ * 上原样列着 `search_parameters` —— 与 chat-completions **同一个对象**,所以
+ * P3-5a 那张嵌套白名单一个字都不用改(它已经搬进
+ * `wires/xai-search-parameters.ts`)。
  */
 export const GROK_PROVIDER_OPTIONS = {
-	imageDetail: OPENAI_CHAT_IMAGE_DETAIL_VALUES,
+	imageDetail: OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
 	searchParameters: true,
 } as const;
 
+interface UrlCitationAnnotation {
+	type?: unknown;
+	url?: unknown;
+}
+
 /**
- * Live Search 的引文 → 一条 `provider-data`。
+ * Responses 上的引文 → 一条 `provider-data`,形状与 P3-5a 的 chat 通路**逐字
+ * 相同**(`{provider:'grok', type:'citations', citations:[url, …]}`)。
  *
- * `citations` 是**块的顶层字段**(不在 `choices[].delta` 里),xAI 通常在最后
- * 一块随 `finish_reason` 一起发一次全量。所以这里不累积、不去重:来一块认一块,
- * 认得的就产一条事件。项是字符串 URL,非字符串 / 空串一律不要(不猜)。
+ * 官方(`/developers/tools/citations`):每个 `output_text` 内容块带一个
+ * `annotations` 数组,项是
+ * `{type:'url_citation', url, start_index, end_index, title}`。
+ * 「Inline citations are enabled by default for the Responses API」,所以不用
+ * 请求侧开关;`include:['no_inline_citations']` 是**关**的开关,我们不发。
  *
- * 消息上落哪一格由 `provider-data.ts` 的那张表判:非 codex 的 provider-data 落
- * `'provider-data'` 一格。**本期不做 UI** —— 这一格先存下来,怎么呈现是渲染层
- * 将来的事。
+ * 这里**只取 `url`**:位置索引(`start_index`/`end_index`)描述的是正文里
+ * `[[N]](url)` 那段 markdown 的字符区间,而我们的正文是逐 delta 拼出来的,
+ * 索引对不齐;而且 P3-5a 那一格的消费者(将来的渲染层)要的就是 URL 列表。
+ * 不猜、不改形状 —— 要位置就等 UI 真需要时再单独设计一格。
+ *
+ * 非字符串 / 空串一律不要;一条都不剩就不产事件。
  */
-export function decodeGrokCitations(
-	chunk: unknown,
+export function decodeGrokResponsesCitations(
+	item: Record<string, unknown>,
 	turn: TurnContext,
 ): AgentTurnStreamEvent[] {
-	if (!chunk || typeof chunk !== "object") return [];
-	const raw = (chunk as { citations?: unknown }).citations;
-	if (!Array.isArray(raw)) return [];
-	const citations = raw.filter(
-		(entry): entry is string => typeof entry === "string" && entry.length > 0,
-	);
+	if (item.type !== "message") return [];
+	const content = item.content;
+	if (!Array.isArray(content)) return [];
+
+	const citations: string[] = [];
+	for (const block of content) {
+		if (!block || typeof block !== "object") continue;
+		const annotations = (block as { annotations?: unknown }).annotations;
+		if (!Array.isArray(annotations)) continue;
+		for (const raw of annotations as UrlCitationAnnotation[]) {
+			if (!raw || typeof raw !== "object") continue;
+			if (raw.type !== "url_citation") continue;
+			const url = raw.url;
+			if (typeof url !== "string" || url.length === 0) continue;
+			if (citations.includes(url)) continue;
+			citations.push(url);
+		}
+	}
 	if (citations.length === 0) return [];
 	return [
 		{
 			type: "provider-data",
 			turn: turn.turn,
-			providerData: { provider: "grok", type: "citations", citations },
+			providerData: {
+				provider: GROK_PROVIDER_DATA_TAG,
+				type: "citations",
+				citations,
+			},
 		},
 	];
 }
 
-export const GROK_DIALECT = defineOpenAIChatDialect({
-	id: "grok",
-	defaultBaseUrl: "https://api.x.ai/v1",
-	reasoning: grokEffortWire,
-	includeAssistantReasoning: true,
-	usage: openAIChatUsage(GROK_USAGE_TABLE),
-	extraBody: promptCacheKeyExtraBody,
-	decodeExtras: decodeGrokCitations,
+/**
+ * 传输声明。`file-input`(PDF)是换线之后**新拿到**的能力:chat-completions
+ * 上 xAI 收不下 PDF(那条线只有 `image_url`),Responses 的 `input_file` 收。
+ * 没有 `image-output` —— xAI 的生图是另一套模型与端点(grok-imagine),不是
+ * 这条线上的原生工具。
+ */
+export const GROK_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
+	capabilities: [
+		"text-input",
+		"vision-input",
+		"file-input",
+		"text-output",
+		"streaming",
+		"tool-calls",
+		"structured-tool-results",
+		"reasoning",
+	],
+	inputModalities: ["text", "image", "file"],
+	outputModalities: ["text"],
+	toolResultModalities: ["text", "image"],
+	supportsTools: true,
+	supportsStructuredToolResults: true,
+	supportsReasoning: true,
+	supportsStreaming: true,
+	// Responses API tool_choice: "required"
+	supportsForcedToolUse: true,
+};
+
+/** 两条通路共用的配方主体 —— 只有 id 不同(见 `grok-oauth.ts` 的抬头)。 */
+export const GROK_DIALECT_SPEC = {
+	defaultBaseUrl: GROK_BASE_URL,
+	reasoning: GROK_RESPONSES_THINKING_WIRES,
+	store: false,
+	// 一条 system 都没有时的兜底。Responses 的 `instructions` 必填,而
+	// 我们的系统提示词永远在,所以这一句实际只在测试里出现。
+	fallbackInstructions: "You are Grok, a helpful AI assistant built by xAI.",
+	usage: GROK_RESPONSES_USAGE,
+	providerDataTag: GROK_PROVIDER_DATA_TAG,
+	errorLabel: "Grok",
 	providerOptions: GROK_PROVIDER_OPTIONS,
-	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
+	// `prompt_cache_key`:官方 `POST /v1/responses` 收它 ——
+	// 「Plumbed to x-grok-conv-id for Open Responses compatibility, used for
+	//  routing.」 与 chat 通路上逐字同一个字段名(P0b-B 泳道甲 #4)。
+	extraBody: promptCacheKeyExtraBody,
+	decodeOutputItem: decodeGrokResponsesCitations,
+	transport: GROK_TRANSPORT_CAPABILITIES,
+} satisfies Omit<ResponsesDialectSpec, "id">;
+
+export const GROK_DIALECT = defineResponsesDialect({
+	id: "grok",
+	...GROK_DIALECT_SPEC,
 });

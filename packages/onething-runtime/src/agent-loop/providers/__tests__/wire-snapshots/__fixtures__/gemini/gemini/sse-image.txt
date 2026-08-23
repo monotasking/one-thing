@@ -1,0 +1,7 @@
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"好的，这是一只猫。"}]}}],"modelVersion":"gemini-3-pro-image"}
+
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"inlineData":{"mimeType":"image/png","data":"iVBORw0KGgo="}}]}}],"modelVersion":"gemini-3-pro-image"}
+
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"需要我换个颜色吗？"},{"inlineData":{"mimeType":"image/webp","data":"UklGRh4="}}]}}],"modelVersion":"gemini-3-pro-image"}
+
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":42,"candidatesTokenCount":1290,"totalTokenCount":1332},"modelVersion":"gemini-3-pro-image"}

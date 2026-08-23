@@ -410,6 +410,12 @@ interface ProfileCase {
  * P2-a 覆盖层退役,`ModelProfile` 成了唯一一份 —— 探针没有第二份可比,于是它
  * **当时的输出被录成下面的内联期望**再删除。断言的意思因此从「两份相等」变成
  * 「这一份没有变」:同样是硬门,只是不再需要一个假 provider 来当尺子。
+ *
+ * **P4-1 有意改了其中两条**(拍板 #12 选 A):账本 vision 为真时不再顺手点亮
+ * `file-input` / `file` —— 文件输入跟这条线的传输声明走,账本只管 `image`。
+ * 两条 vision 用例的期望里因此少了那两项;这不是漂移,是 P0a 等价口径按新语义
+ * 的一次**有意更新**(见 `base/model-profile.ts` 的 `toAgentModelCapabilities`
+ * 与 `base/__tests__/file-input-declaration.test.ts`)。
  */
 const PROFILE_CASES: ProfileCase[] = [
 	{
@@ -446,8 +452,8 @@ const PROFILE_CASES: ProfileCase[] = [
 			},
 		},
 		expected: {
-			capabilities: ["text-input", "text-output", "streaming", "tool-calls", "vision-input", "file-input", "image-output"],
-			inputModalities: ["text", "image", "file"],
+			capabilities: ["text-input", "text-output", "streaming", "tool-calls", "vision-input", "image-output"],
+			inputModalities: ["text", "image"],
 			outputModalities: ["text", "image"],
 			toolResultModalities: ["text"],
 			supportsTools: true,
@@ -537,8 +543,8 @@ const PROFILE_CASES: ProfileCase[] = [
 			},
 		},
 		expected: {
-			capabilities: ["text-input", "text-output", "streaming", "tool-calls", "reasoning", "structured-tool-results", "vision-input", "file-input", "image-output"],
-			inputModalities: ["text", "image", "file"],
+			capabilities: ["text-input", "text-output", "streaming", "tool-calls", "reasoning", "structured-tool-results", "vision-input", "image-output"],
+			inputModalities: ["text", "image"],
 			outputModalities: ["text", "image"],
 			toolResultModalities: ["text"],
 			supportsTools: true,

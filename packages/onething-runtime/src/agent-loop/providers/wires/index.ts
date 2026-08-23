@@ -58,20 +58,37 @@ export {
 } from "./openai-chat-errors.js";
 export {
 	DEEPSEEK_IMAGE_DETAIL_VALUES,
-	GROK_SEARCH_MODE_VALUES,
 	OPENAI_CHAT_IMAGE_DETAIL_VALUES,
 	OPENAI_CHAT_VERBOSITY_VALUES,
 	openAIChatImageDetail,
 	openAIChatProviderOptionsExtraBody,
 	pickOpenAIChatProviderOptions,
 	readOpenAIChatProviderOptionBag,
-	type GrokSearchMode,
 	type OpenAIChatProviderOptionDropReason,
 	type OpenAIChatProviderOptionDropped,
 	type OpenAIChatProviderOptionSupport,
 	type OpenAIChatProviderOptions,
 	type OpenAIChatVerbosity,
 } from "./openai-chat-provider-options.js";
+export {
+	GROK_SEARCH_MODE_VALUES,
+	GROK_SEARCH_PARAMETER_VALIDATORS,
+	pickGrokSearchParameters,
+	type GrokSearchMode,
+	type XaiSearchParameterDropReason,
+	type XaiSearchParameterDropped,
+} from "./xai-search-parameters.js";
+export {
+	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
+	openAIResponsesImageDetail,
+	openAIResponsesProviderOptionsExtraBody,
+	pickOpenAIResponsesProviderOptions,
+	readOpenAIResponsesProviderOptionBag,
+	type OpenAIResponsesProviderOptionDropReason,
+	type OpenAIResponsesProviderOptionDropped,
+	type OpenAIResponsesProviderOptionSupport,
+	type OpenAIResponsesProviderOptions,
+} from "./openai-responses-provider-options.js";
 export {
 	OPENAI_CHAT_PDF_DELIVERED_NOTE,
 	OpenAIChatPartCodec,
@@ -157,5 +174,6 @@ export {
 	type CodexPromptPayload,
 	type CodexTool,
 	type ResponsesCodec,
+	type ResponsesPartCodecOptions,
 	type ResponsesWireValue,
 } from "./openai-responses-messages.js";

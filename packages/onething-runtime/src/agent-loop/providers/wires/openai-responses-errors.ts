@@ -4,9 +4,11 @@
  * 边界与另外三条线同款(设计稿 §2.5 / §9 P1-d1),两处这条线独有的现状原样保留:
  *
  *  - 消息不是 `<source> API error: <status> <body>` 而是
- *    `Codex request failed (<status>): <detail> [request-id: …]`,`detail` 走
+ *    `<Label> request failed (<status>): <detail> [request-id: …]`,`detail` 走
  *    `summarizeCodexErrorBody` 的三级兜底(JSON 字段 → `<title>`/`<p>` →
- *    压平原文,各截 300 字);
+ *    压平原文,各截 300 字)。`<Label>` 是**方言给的**(codex → `Codex`,
+ *    xAI 两条通路 → `Grok`)—— 这条线 P4-4 起不只 codex 一家在跑,而错误消息
+ *    会进日志、进渲染层,说错家名就是排障时的假线索;
  *  - request-id 读的是 **`x-oai-request-id`**(不是 `x-request-id`)。
  *
  * 今天的兼容字段是**顶层** `statusCode` / `responseBody` / `isRetryable`
@@ -77,13 +79,14 @@ export function createCodexAgentApiError(
 	responseBody: string,
 	headers: Headers,
 	providerId = "codex",
+	label = "Codex",
 ): CodexHttpError {
 	const detail = summarizeCodexErrorBody(responseBody);
 	const requestId = headers.get("x-oai-request-id");
 	return new CodexHttpError({
 		providerId,
 		status,
-		message: `Codex request failed (${status})${detail ? `: ${detail}` : ""}${requestId ? ` [request-id: ${requestId}]` : ""}`,
+		message: `${label} request failed (${status})${detail ? `: ${detail}` : ""}${requestId ? ` [request-id: ${requestId}]` : ""}`,
 		responseBody,
 		headers,
 		...(requestId ? { requestId } : {}),
@@ -91,7 +94,16 @@ export function createCodexAgentApiError(
 }
 
 export class CodexResponsesErrorMapper implements ErrorMapper {
-	constructor(private readonly providerId = "codex") {}
+	constructor(
+		private readonly providerId = "codex",
+		/** 消息里的家名。不给 = `Codex`(这条线上第一家,fixture 钉着)。 */
+		readonly label = "Codex",
+	) {}
+
+	/** 空响应体那一句 —— 与另外三条出口同一个家名。 */
+	emptyBodyMessage(): string {
+		return `${this.label} request failed: response body is empty`;
+	}
 
 	fromResponse(response: Response, bodyText: string): CodexHttpError {
 		return createCodexAgentApiError(
@@ -99,6 +111,7 @@ export class CodexResponsesErrorMapper implements ErrorMapper {
 			bodyText,
 			response.headers,
 			this.providerId,
+			this.label,
 		);
 	}
 
@@ -117,7 +130,7 @@ export class CodexResponsesErrorMapper implements ErrorMapper {
 			providerId: this.providerId,
 			status: 0,
 			inStream: true,
-			message: `Codex stream error: ${chunk.error.message ?? "unknown error"}`,
+			message: `${this.label} stream error: ${chunk.error.message ?? "unknown error"}`,
 		});
 	}
 
@@ -127,7 +140,7 @@ export class CodexResponsesErrorMapper implements ErrorMapper {
 			providerId: this.providerId,
 			status: 0,
 			inStream: true,
-			message: `Codex stream error: ${message || "Codex stream failed"}`,
+			message: `${this.label} stream error: ${message || `${this.label} stream failed`}`,
 		});
 	}
 }

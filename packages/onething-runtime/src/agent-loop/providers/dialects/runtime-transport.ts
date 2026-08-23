@@ -62,9 +62,16 @@ export function runtimeCapabilityFlags(
 	};
 }
 
-/** 三个布尔 → 一份 `AgentModelCapabilities`(数组顺序逐字沿用)。 */
+/**
+ * 三个布尔(+ 一条线路事实)→ 一份 `AgentModelCapabilities`。
+ *
+ * `file` 是**独立旗标**(P4-1,拍板 #12),不跟 `vision` 走:三旋钮说的是「这个
+ * 模型能干什么」,而「PDF 块投不投得出去」是这条线序列化器的事。anthropic 那条
+ * 线发得出 `document` 块,所以 `custom-anthropic` 传 `file: true`;deepseek 的
+ * chat-completions 端点没有可移植的 PDF 块,不传。
+ */
 export function capabilitiesFromFlags(
-	flags: RuntimeCapabilityFlags,
+	flags: RuntimeCapabilityFlags & { file?: boolean },
 ): AgentModelCapabilities {
 	const capabilities: AgentCapability[] = [
 		"text-input",
@@ -72,12 +79,17 @@ export function capabilitiesFromFlags(
 		"streaming",
 	];
 	if (flags.tools) capabilities.push("tool-calls", "structured-tool-results");
-	if (flags.vision) capabilities.push("vision-input", "file-input");
+	if (flags.vision) capabilities.push("vision-input");
+	if (flags.file) capabilities.push("file-input");
 	if (flags.reasoning) capabilities.push("reasoning");
+
+	const inputModalities: AgentModelCapabilities["inputModalities"] = ["text"];
+	if (flags.vision) inputModalities.push("image");
+	if (flags.file) inputModalities.push("file");
 
 	return {
 		capabilities,
-		inputModalities: flags.vision ? ["text", "image", "file"] : ["text"],
+		inputModalities,
 		outputModalities: ["text"],
 		toolResultModalities:
 			flags.tools && flags.vision ? ["text", "image", "file"] : ["text"],

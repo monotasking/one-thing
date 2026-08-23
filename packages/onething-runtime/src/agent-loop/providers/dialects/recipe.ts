@@ -51,6 +51,17 @@ export interface OpenAIChatTransportFlags {
 	vision?: boolean;
 	reasoning?: boolean;
 	/**
+	 * user 消息里的 `file` 块(PDF)投得出去吗(P4-1,拍板 #12)。**不给 = false**。
+	 *
+	 * 它**故意不跟着 `vision` 走**:「看得懂图」是模型的事,「收得下 PDF 块」是
+	 * 这条线序列化器的事 —— openai-chat 上只有认 `{type:'file'}` 内容块的端点
+	 * (openai / openrouter,配方里 `filePdf` 开着的那两家)做得到。别家声明了
+	 * `file` 就等于骗上游:core 的 `degradeUnsupportedAgentContentParts` 会把 PDF
+	 * 原样递下来,codec 只能留一行 `Undeliverable` 文本。不声明,core 就在上游
+	 * 降级成 `[File: x.pdf]` 占位 —— 同样留痕,但模型拿到的是一句人话。
+	 */
+	file?: boolean;
+	/**
 	 * tool 结果收得下的模态(P3-5b)。**不给 = 只有 `text`** —— 这条线的默认
 	 * 是 OpenAI 官方口径(`role:'tool'` 的 `content` 只能是字符串),声明了
 	 * 才谈得上「能力说行」。给了就同时把 `supportsStructuredToolResults` 声明
@@ -60,9 +71,11 @@ export interface OpenAIChatTransportFlags {
 }
 
 /**
- * provider 的**传输**声明 —— `openai-compatible.ts` 的 `buildCapabilities()`
- * 逐字复刻(数组顺序也一样:三条基础 → vision → tools → reasoning)。
+ * provider 的**传输**声明(数组顺序:三条基础 → vision → file → tools → reasoning)。
  * per-model 的布尔不在这里翻,那是账本(`ModelProfile`)的事。
+ *
+ * P4-1 起 `file` 是独立旗标:vision 只点亮 `vision-input` / `image`,`file-input`
+ * / `file` 要这条线自己认领(见 `OpenAIChatTransportFlags.file`)。
  */
 export function openAIChatTransportCapabilities(
 	flags: OpenAIChatTransportFlags,
@@ -72,8 +85,12 @@ export function openAIChatTransportCapabilities(
 	const outputModalities: AgentModelCapabilities["outputModalities"] = ["text"];
 
 	if (flags.vision) {
-		capabilities.push("vision-input", "file-input");
-		inputModalities.push("image", "file");
+		capabilities.push("vision-input");
+		inputModalities.push("image");
+	}
+	if (flags.file) {
+		capabilities.push("file-input");
+		inputModalities.push("file");
 	}
 	if (flags.tools !== false) capabilities.push("tool-calls");
 	if (flags.reasoning) capabilities.push("reasoning");

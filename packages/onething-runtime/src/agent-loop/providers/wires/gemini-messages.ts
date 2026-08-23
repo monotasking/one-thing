@@ -29,8 +29,10 @@ import type {
 } from "@onething/core/agent-loop";
 import {
 	delivered,
+	type Logger,
 	type PartCodec,
 	type PartDelivery,
+	type ProviderMediaReader,
 	type TurnContext,
 } from "../base/index.js";
 
@@ -169,6 +171,39 @@ function toolResultResponse(content: AgentMessageContent): AgentJsonObject {
 }
 
 // ---------------------------------------------------------------------------
+// 多轮改图:从正文里认出「这条 model 回复画过哪几张图」(P4-2)
+// ---------------------------------------------------------------------------
+
+/**
+ * 生图落在消息上的**唯一**痕迹是一段 markdown —— `provider-data.ts` 的
+ * `buildOnethingGeneratedImageMarkdown` 写的那段:
+ *
+ * ```
+ * ![Generated Image|mediaId:<id>](media://<id>.png)
+ * ```
+ *
+ * (`planOnethingProviderDataPart` 对 `image-generation-result` 返回 `'text'`
+ * —— 消息上**没有**第二份记录,所以回放只能从正文认。)
+ *
+ * 两个来源都认:alt 里的 `mediaId:<id>` 标记,以及 URL 里的 `media://<id>.<ext>`。
+ * 远端 URL 的那一支(`buildOnethingRemoteImageMarkdown`)故意**不带** `mediaId:`
+ * —— 它没进过媒体库,认不出来正是对的。
+ */
+const GENERATED_IMAGE_ALT_MEDIA_ID = /!\[[^\]]*\bmediaId:([A-Za-z0-9._-]+)[^\]]*\]/g;
+const GENERATED_IMAGE_URL_MEDIA_ID = /\bmedia:\/\/([A-Za-z0-9_-]+)(?:\.[A-Za-z0-9]+)?/g;
+
+/** 按出现顺序去重。 */
+export function generatedImageMediaIdsFromText(text: string): string[] {
+	const ids: string[] = [];
+	const push = (id: string | undefined): void => {
+		if (id && !ids.includes(id)) ids.push(id);
+	};
+	for (const match of text.matchAll(GENERATED_IMAGE_ALT_MEDIA_ID)) push(match[1]);
+	for (const match of text.matchAll(GENERATED_IMAGE_URL_MEDIA_ID)) push(match[1]);
+	return ids;
+}
+
+// ---------------------------------------------------------------------------
 // codec 契约(线级)
 // ---------------------------------------------------------------------------
 
@@ -184,6 +219,22 @@ export interface GeminiCodec extends PartCodec<GeminiWireValue> {
 		messages: AgentMessage[],
 		turn?: TurnContext,
 	): GeminiRequestContents;
+	/**
+	 * 多轮改图(P4-2):把每条 `role: 'model'` content 正文里提到的**生成图**
+	 * 从媒体库取回来,作为额外的 `inlineData` part 放回同一条 content —— Gemini
+	 * 官方的图像编辑示例就是把上一条 model 回复的 parts(含 `inlineData`)原样
+	 * 放回 `contents`。
+	 *
+	 * 为什么不写在 `assistant()` 里:`PartCodec.assistant` 是**同步**的投递契约
+	 * 入口(四条线共用一个签名),而这一步要 `await` 一次磁盘读。所以逻辑仍然
+	 * 住在 codec 上,只是换了一个方法,由 wire 在 `buildBody` 里紧接着
+	 * `toRequestContents()` 调用。
+	 */
+	replayGeneratedImages?(
+		contents: GeminiContent[],
+		media: ProviderMediaReader,
+		logger?: Logger,
+	): Promise<void>;
 }
 
 export class GeminiPartCodec implements GeminiCodec {
@@ -292,6 +343,59 @@ export class GeminiPartCodec implements GeminiCodec {
 			...(systemParts.length ? { systemInstruction: { parts: systemParts } } : {}),
 			contents,
 		};
+	}
+
+	/**
+	 * 见 `GeminiCodec.replayGeneratedImages` 的抬头。
+	 *
+	 * 三条规矩:
+	 *  1. **只动 `role: 'model'`** —— user 侧的图早就是真正的 `inlineData`;
+	 *  2. **文本在前、图在后**:图插在最后一个文本块之后,`functionCall` 仍然
+	 *     押尾(与 `assistant()` 的块序一致);
+	 *  3. **读不到就跳过 + 一条 warning**,不抛:少一块历史上下文不该让这一回合
+	 *     失败(端口缺席时 wire 压根不会调到这里)。
+	 */
+	async replayGeneratedImages(
+		contents: GeminiContent[],
+		media: ProviderMediaReader,
+		logger?: Logger,
+	): Promise<void> {
+		for (const content of contents) {
+			if (content.role !== "model") continue;
+
+			const mediaIds: string[] = [];
+			let insertAt = 0;
+			content.parts.forEach((part, index) => {
+				if (!("text" in part)) return;
+				insertAt = index + 1;
+				for (const id of generatedImageMediaIdsFromText(part.text)) {
+					if (!mediaIds.includes(id)) mediaIds.push(id);
+				}
+			});
+			if (mediaIds.length === 0) continue;
+
+			const images: GeminiPart[] = [];
+			for (const mediaId of mediaIds) {
+				let image: Awaited<ReturnType<ProviderMediaReader["readImageBase64"]>>;
+				try {
+					image = await media.readImageBase64(mediaId);
+				} catch (error) {
+					logger?.warn("generated image replay failed", { mediaId }, error);
+					continue;
+				}
+				if (!image?.base64) {
+					logger?.warn("generated image not found for replay", { mediaId });
+					continue;
+				}
+				images.push({
+					inlineData: {
+						mimeType: image.mediaType || "image/png",
+						data: image.base64,
+					},
+				});
+			}
+			if (images.length > 0) content.parts.splice(insertAt, 0, ...images);
+		}
 	}
 
 	/** `userPartsFromContent` 逐字:空文本块不进请求体。 */

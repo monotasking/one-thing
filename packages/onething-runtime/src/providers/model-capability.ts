@@ -14,7 +14,18 @@
  * Every answer carries its source so tests and debugging can tell where a
  * verdict came from.
  *
- * Inside step 2 there is one sub-rule: a Codex entry/metadata carrying
+ * Inside step 2 there are two sub-rules. The first: `fileInput` (ruling #12,
+ * P4-1) reads the entry's own `inputModalities` list — `'pdf'` / `'file'`
+ * present means yes, a non-empty list without them means **no** (an entry
+ * enumerates what the model takes, so absence there is an answer, not
+ * silence). It is deliberately not a rider on `vision`:
+ * `deepseek-*-vision-exp` reads images and takes no PDF. Note that the
+ * capability a caller finally sees is **catalog AND wire** — this module
+ * answers the catalog half; whether the dialect's codec can put a file block
+ * on the wire is the provider's transport declaration, and the two are joined
+ * in `ModelProfile.toAgentModelCapabilities`.
+ *
+ * The second: a Codex entry/metadata carrying
  * `providerMetadata.codex.nativeTools: ['image_generation']` declares image
  * output regardless of its own `supportsImageOutput` / `output_modalities`
  * (Codex /models never reports output modalities). That same evidence also
@@ -103,6 +114,19 @@ export type OnethingImageOutputServedBy = 'in-loop' | 'dedicated-api'
 export interface OnethingResolvedModelCapabilities {
   reasoning: boolean
   vision: boolean
+  /**
+   * Whether the model itself accepts file attachments (PDF). Deliberately
+   * separate from `vision` (P4-1, ruling #12): "reads images" and "accepts a
+   * PDF" are two different catalog facts — `deepseek-*-vision-exp` has the
+   * first and not the second.
+   *
+   * This is only half the question a caller cares about. The declared
+   * capability is **catalog AND wire**: the model must accept files *and* the
+   * dialect's codec must be able to put a file block on the wire. The wire
+   * half lives in the provider's transport declaration; the join happens in
+   * `ModelProfile.toAgentModelCapabilities`.
+   */
+  fileInput: boolean
   tools: boolean
   imageOutput: boolean
   temperature: boolean
@@ -132,6 +156,7 @@ export interface OnethingResolvedModelCapabilities {
     tools: OnethingCapabilitySource
     imageOutput: OnethingCapabilitySource
     temperature: OnethingCapabilitySource
+    fileInput: OnethingCapabilitySource
   }
   /** Present when reasoning is true. */
   reasoningProfile?: OnethingReasoningProfile
@@ -143,6 +168,8 @@ export interface OnethingCapabilityOverrideLike {
   vision?: boolean
   reasoning?: boolean
   imageOutput?: boolean
+  /** Ruling #12: file attachments are their own switch, not a vision rider. */
+  fileInput?: boolean
 }
 
 /** Storage-shaped registry entry (models.dev fetch persisted in settings). */
@@ -152,6 +179,14 @@ export interface OnethingCapabilityEntryLike {
   supportsReasoning?: boolean
   supportsImageOutput?: boolean
   supportsTemperature?: boolean
+  /**
+   * `OnethingModelCapabilityEntry.inputModalities` — the catalog's own list
+   * (models.dev `modalities.input`, OpenRouter `architecture.input_modalities`).
+   * It is the evidence behind `fileInput`: a list that carries `'pdf'`/`'file'`
+   * says yes, a list that does not says **no** (an entry enumerates what the
+   * model takes, so absence is a real answer, not silence).
+   */
+  inputModalities?: string[]
   /**
    * `OnethingModelCapabilityEntry.providerMetadata` (a JsonObject) — kept
    * `unknown` here so this module stays import-free; only
@@ -319,7 +354,13 @@ export const ONETHING_GEMINI_THINKING_BUDGETS: Record<'minimal' | 'low' | 'mediu
 // the kind's default row (test: /(?:)/ matches everything).
 // ---------------------------------------------------------------------------
 
-type OnethingRuleCapability = 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature'
+type OnethingRuleCapability =
+  | 'reasoning'
+  | 'vision'
+  | 'tools'
+  | 'imageOutput'
+  | 'temperature'
+  | 'fileInput'
 
 type OnethingModelRuleCaps = Partial<
   Pick<OnethingResolvedModelCapabilities, OnethingRuleCapability | 'forcedToolUse'>
@@ -748,8 +789,19 @@ function codexMetadataDeclaresImageOutput(providerMetadata: unknown): boolean {
   return Array.isArray(nativeTools) && nativeTools.includes('image_generation')
 }
 
+/**
+ * Catalog modality names that mean "this model takes a file attachment".
+ * models.dev says `pdf`; a few OpenRouter entries say `file`.
+ */
+const FILE_INPUT_MODALITIES = ['pdf', 'file']
+
+function declaresFileInput(modalities: string[] | undefined): boolean | undefined {
+  if (!Array.isArray(modalities) || modalities.length === 0) return undefined
+  return modalities.some((modality) => FILE_INPUT_MODALITIES.includes(modality.toLowerCase()))
+}
+
 function fromRegistry(
-  capability: 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature',
+  capability: OnethingRuleCapability,
   entry: OnethingCapabilityEntryLike | undefined,
   metadata: OnethingModelMetadataLike | undefined,
 ): boolean | undefined {
@@ -767,6 +819,11 @@ function fromRegistry(
         if (typeof entry.supportsImageOutput === 'boolean') return entry.supportsImageOutput
         break
       case 'temperature': if (typeof entry.supportsTemperature === 'boolean') return entry.supportsTemperature; break
+      case 'fileInput': {
+        const declared = declaresFileInput(entry.inputModalities)
+        if (typeof declared === 'boolean') return declared
+        break
+      }
     }
   }
   if (!metadata) return undefined
@@ -793,6 +850,8 @@ function fromRegistry(
         ? metadata.architecture.output_modalities.includes('image')
         : undefined
     }
+    case 'fileInput':
+      return declaresFileInput(metadata.architecture?.input_modalities)
   }
 }
 
@@ -823,16 +882,20 @@ function copilotPatternVerdict(
   }
 }
 
-const CAPABILITY_DEFAULTS: Record<'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature', boolean> = {
+const CAPABILITY_DEFAULTS: Record<OnethingRuleCapability, boolean> = {
   reasoning: false,
   vision: false,
   tools: true,
   imageOutput: false,
   temperature: true,
+  // Ruling #12: nobody gets file input for free. Silence from every source
+  // means "the catalog has nothing to say", and the transport declaration is
+  // what stands — see `ModelProfile.toAgentModelCapabilities`.
+  fileInput: false,
 }
 
 function resolveCapability(
-  capability: 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature',
+  capability: OnethingRuleCapability,
   input: ResolveOnethingModelCapabilitiesInput,
   kind: OnethingProviderKind,
   modelLower: string,
@@ -856,7 +919,9 @@ function resolveCapability(
   const registry = fromRegistry(capability, input.registryEntry, input.modelMetadata)
   if (typeof registry === 'boolean') return verdict(registry, 'registry')
 
-  if (kind === 'copilot') {
+  // Copilot's pattern table answers the four capabilities it knows; it has
+  // nothing to say about file input, which falls through to the rules table.
+  if (kind === 'copilot' && capability !== 'fileInput') {
     return verdict(copilotPatternVerdict(capability, modelLower), 'pattern')
   }
 
@@ -916,17 +981,24 @@ const GENERIC_REASONING_PROFILE: OnethingReasoningProfile = {
  * 用户 override 表达的是「能出图」,不是「换通路」,而 Codex 的原生
  * `image_generation` 工具是在回合内出图的,换通路只会让它连普通对话都答不了。
  *
- * 两条 `'in-loop'` 证据:
+ * 三条 `'in-loop'` 证据:
  *  1. Codex 的原生 `image_generation` 工具(工具调用产出图,回合内);
  *  2. **provider kind = `openrouter`**(P3-2)—— OpenRouter 走的是
  *     chat-completions:请求带 `modalities: ['text','image']`,回复直接在
- *     `choices[].message.images[]` 里带图,能聊天的图像模型因此走普通流。
- *     这一条按**家**判而不是按模型名判:同一个上游模型经 OpenRouter 是回合内
- *     出图,经 Google 官方端点则仍是专用 API(GeminiWire 还没解析 `inlineData`
- *     输出),判据必须能区分这两者。
+ *     `choices[].message.images[]` 里带图,能聊天的图像模型因此走普通流;
+ *  3. **provider kind = `gemini`**(P4-2)—— Google 官方端点上的图像模型
+ *     (`gemini-3.1-flash-image` / `gemini-3-pro-image` / `gemini-2.5-flash-image`)
+ *     **同时是聊天模型**:请求带 `generationConfig.responseModalities:
+ *     ['TEXT','IMAGE']`,图以 `inlineData` part 混在
+ *     `candidates[0].content.parts[]` 里回来,GeminiWire 解析它。专用生图流对
+ *     这一家从此退役 —— 换通路只会让它连普通对话都答不了,而多轮改图(把上一条
+ *     model 回复含图的 parts 原样放回 `contents`)在专用通路上根本不存在。
  *
- * 其余能出图的模型一律 `'dedicated-api'`(openai 的 `gpt-image-*`、gemini 官方
- * 端点、grok-imagine):那条通路不在回合里。
+ * 2 与 3 都按**家**判而不是按模型名判:同一个上游模型经 OpenRouter 与经
+ * Google 官方端点是两条线协议,判据必须落在家上。
+ *
+ * 其余能出图的模型一律 `'dedicated-api'`(openai 的 `gpt-image-*`、grok-imagine):
+ * 那条通路不在回合里。
  */
 function resolveImageOutputServedBy(
   input: ResolveOnethingModelCapabilitiesInput,
@@ -936,7 +1008,7 @@ function resolveImageOutputServedBy(
   if (codexMetadataDeclaresImageOutput(input.registryEntry?.providerMetadata)) return 'in-loop'
   if (codexMetadataDeclaresImageOutput(input.modelMetadata?.providerMetadata)) return 'in-loop'
   if (!imageOutput.value) return undefined
-  return kind === 'openrouter' ? 'in-loop' : 'dedicated-api'
+  return kind === 'openrouter' || kind === 'gemini' ? 'in-loop' : 'dedicated-api'
 }
 
 export function resolveOnethingModelCapabilities(
@@ -947,6 +1019,7 @@ export function resolveOnethingModelCapabilities(
 
   const reasoning = resolveCapability('reasoning', input, kind, modelLower)
   const vision = resolveCapability('vision', input, kind, modelLower)
+  const fileInput = resolveCapability('fileInput', input, kind, modelLower)
   const tools = resolveCapability('tools', input, kind, modelLower)
   const imageOutput = resolveCapability('imageOutput', input, kind, modelLower)
   const temperature = resolveCapability('temperature', input, kind, modelLower)
@@ -960,6 +1033,7 @@ export function resolveOnethingModelCapabilities(
   return {
     reasoning: reasoning.value,
     vision: vision.value,
+    fileInput: fileInput.value,
     tools: tools.value,
     imageOutput: imageOutput.value,
     temperature: temperature.value,
@@ -973,6 +1047,7 @@ export function resolveOnethingModelCapabilities(
       tools: tools.source,
       imageOutput: imageOutput.source,
       temperature: temperature.source,
+      fileInput: fileInput.source,
     },
     ...(reasoningProfile ? { reasoningProfile } : {}),
   }

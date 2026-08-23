@@ -95,6 +95,8 @@ export interface OnethingModelCapabilityOverride {
 	reasoning?: boolean;
 	imageOutput?: boolean;
 	audio?: boolean;
+	/** 拍板 #12:接不接文件附件,与 vision 分开的一条(P4-1)。 */
+	fileInput?: boolean;
 }
 
 export interface OnethingModelCapabilityEntry {

@@ -2,9 +2,14 @@
  * `prompt_cache_key` 透传(P0b-B 泳道甲 #4,设计稿 §5.1 / §8)。
  *
  * `AgentTurnRequest.cacheKey` 是**宿主给的会话级不透明键** —— 它是标识符不是
- * 内容,但它确实会离开本机,所以「谁发」是逐家点名的:认这个字段的五家
+ * 内容,但它确实会离开本机,所以「谁发」是逐家点名的:认这个字段的六家
  * (openai / kimi / kimi-code / grok / grok-oauth / openrouter)在配方上挂
  * `extraBody: promptCacheKeyExtraBody`,其余家一个字节都不多发。
+ *
+ * **跨线协议**(P4-4):xAI 的两条通路搬到 openai-responses 之后,官方
+ * `POST /v1/responses` 同样收 `prompt_cache_key`(「Plumbed to x-grok-conv-id
+ * for Open Responses compatibility, used for routing.」),字段名一个字没变 ——
+ * 所以这份名单换线之后仍然是这六家,只是 grok 那两条走的 SSE 形状不同。
  *
  * 判据一律是**线上那份 body**(`fetchImpl` 收到的 `init.body`),不是 dump。
  */
@@ -24,6 +29,16 @@ const SSE = [
 	"data: [DONE]",
 	"",
 ].join("\n\n");
+
+/** openai-responses 上最短的一条合法流(grok / grok-oauth 走这一条)。 */
+const RESPONSES_SSE = [
+	'event: response.completed',
+	'data: {"type":"response.completed","response":{"id":"resp_cache_key","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}',
+	"",
+].join("\n") + "\n";
+
+/** 这一家跑在哪条线协议上 —— 决定桩要答哪种 SSE。 */
+const RESPONSES_WIRE_IDS = new Set(["grok", "grok-oauth"]);
 
 /** 各家构造所需的最小 config —— 与快照套件同源,OAuth 家族凭证挂 authContext。 */
 const CONFIGS: Record<string, { model: string; config: AgentProviderRuntimeConfig }> = {
@@ -89,7 +104,9 @@ async function wireBody(
 			requestDumper: vi.fn(async () => undefined) as AgentProviderRequestDumper,
 			fetchImpl: (async (_input: RequestInfo | URL, init?: RequestInit) => {
 				body = JSON.parse(String(init?.body ?? "null"));
-				return sseResponse(SSE);
+				return sseResponse(
+					RESPONSES_WIRE_IDS.has(providerId as string) ? RESPONSES_SSE : SSE,
+				);
 			}) as typeof globalThis.fetch,
 		},
 	);

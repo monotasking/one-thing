@@ -213,8 +213,11 @@ export const OPENROUTER_DIALECT = defineOpenAIChatDialect({
 	// 有 `image`,codec 才真的把图放进请求体(投递契约,设计稿 §2.3)。
 	// `file` 不在声明里 —— 那一行在 tool 消息里没有对应的块。
 	toolResultMultimodal: true,
+	// `file: true` 与上面的 `filePdf` 是同一句话的两半(P4-1):网关认 OpenAI 的
+	// `file` 块(另挂 `file-parser` 插件),codec 真投得出去,能力才声明 `file-input`。
 	transport: openAIChatTransportCapabilities({
 		vision: true,
+		file: true,
 		reasoning: true,
 		toolResultModalities: ["text", "image"],
 	}),

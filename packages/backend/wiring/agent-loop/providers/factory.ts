@@ -19,6 +19,7 @@ import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { createRequiredAppFetch } from '../../../provider-binding/bound-fetch.js'
 import { dumpProviderRequest } from '../../../provider-binding/request-dump.js'
+import { providerMediaReader } from './media-reader.js'
 import type { AgentProvider } from '@onething/core/agent-loop'
 
 export {
@@ -94,5 +95,7 @@ export function createAgentProviderFromRuntime(
       options.onExternalAgentSessionLink ?? persistExternalAgentSessionLink,
     refreshOAuthToken: options.refreshOAuthToken ?? createRefreshOAuthToken(config),
     requestDumper: options.requestDumper ?? dumpProviderRequest,
+    // 多轮改图的只读媒体端口(P4-2)——runtime 只声明接口,库在这一层。
+    media: options.media ?? providerMediaReader,
   })
 }

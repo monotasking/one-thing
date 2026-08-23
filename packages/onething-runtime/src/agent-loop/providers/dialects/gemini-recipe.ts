@@ -19,6 +19,7 @@ import {
 	type ModelProfileResolver,
 	type PartCodec,
 	type ProviderContext,
+	type ProviderMediaReader,
 	type TurnContext,
 } from "../base/index.js";
 import type { AgentProviderRequestDumper } from "../request-dump.js";
@@ -117,6 +118,11 @@ export interface GeminiDialectSpec {
 	id: string;
 	defaultBaseUrl?: string;
 	transport?: AgentModelCapabilities;
+	/**
+	 * 多轮改图(P4-2):回放历史 assistant 消息时把它画过的图一起发回去。
+	 * 不给 = 关 —— 只有 Google 官方端点那份具名配方显式开着。
+	 */
+	replayGeneratedImages?: boolean;
 }
 
 export function geminiDialect(spec: GeminiDialectSpec): GeminiDialect {
@@ -136,6 +142,9 @@ export function geminiDialect(spec: GeminiDialectSpec): GeminiDialect {
 		},
 		reasoning: GEMINI_THINKING_WIRES,
 		transport: spec.transport ?? GEMINI_TRANSPORT_CAPABILITIES,
+		...(spec.replayGeneratedImages
+			? { replayGeneratedImages: true }
+			: {}),
 	};
 }
 
@@ -157,6 +166,11 @@ export interface GeminiProviderInit {
 	transport?: AgentModelCapabilities;
 	parts?: PartCodec<GeminiWireValue>;
 	profiles?: ModelProfileResolver;
+	/**
+	 * 只读媒体端口(P4-2)—— 多轮改图从这里取回历史生成图的字节。runtime 只
+	 * 声明接口,实现由装配层注入;不给 = 不回放。
+	 */
+	media?: ProviderMediaReader;
 }
 
 /**
@@ -184,6 +198,7 @@ export function createGeminiProvider(
 		...(init.requestDumper ? { dumper: init.requestDumper } : {}),
 		logger: geminiLogger(providerId),
 		profiles: init.profiles ?? new LedgerModelProfileResolver(),
+		...(init.media ? { media: init.media } : {}),
 	};
 	return new GeminiWire(ctx, {
 		...dialect,

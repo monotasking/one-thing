@@ -3,12 +3,16 @@
  * **唯一**实现(设计稿 §3:一条 wire 一个类,管线写死在 `HttpAgentProvider`
  * 的模板方法里)。
  *
- * 今天它上面只挂一个 id(`codex`),但差异仍然全部由组合进 `Dialect` 的策略
- * 对象表达:认证(OAuth token 三级解析 + 六个 codex 头 + 401 强制刷新重试)、
- * 端点(`…/codex/responses` 的三态归一化)、思考线型(`reasoning` +
- * `include`)、错误(`Codex request failed (…)`)。这个类里没有一处
- * `if (providerId === …)`;方言私有的两样东西(`transport` /
- * `fallbackInstructions`)是配方上的字段,不是分支。
+ * P4-4 起它上面挂三个 id(`codex` / `grok` / `grok-oauth`)—— 一条订阅制后台
+ * (ChatGPT backend-api)与一家 API-key 端点(`https://api.x.ai/v1`)跑同一条
+ * 管线,这就是「Responses wire 脱得开 codex 的怪癖」那道门。
+ *
+ * codex 专属的每一样东西都是**配方上的字段**,不是这个类里的分支:认证
+ * (OAuth token 三级解析 + 六个 codex 头 + 401 强制刷新重试)、端点
+ * (`…/codex/responses` 的三态归一化)、`instructions` 兜底、`store`、
+ * 原生工具(`image_generation`)、思考线型(`reasoning` + `include` 的同生共死)、
+ * 错误措辞(`Codex request failed (…)`)、provider-data 标签、usage 里的
+ * 厂商报价。这个类里没有一处 `if (providerId === …)`。
  *
  * P1-c 是**纯搬运**:`codex.ts` 的 `buildCodexRequestBody`、
  * `parseCodexResponsesSse` 的整个流状态机、`mapCodexFinishReason` 的映射,
@@ -55,6 +59,7 @@ import {
 	stringifyCodexToolInput,
 	toCodexToolChoice,
 	toCodexTools,
+	type CodexTool,
 	type ResponsesCodec,
 	type ResponsesWireValue,
 } from "./openai-responses-messages.js";
@@ -68,6 +73,32 @@ export interface ResponsesDialect extends Dialect<ResponsesWireValue> {
 	transport: AgentModelCapabilities;
 	/** 一条 system 都没有时顶上去的 `instructions`(Responses 这个字段必填)。 */
 	fallbackInstructions: string;
+	/**
+	 * 这一家的 provider-data 标签 —— 流里产出的 `encrypted-reasoning` /
+	 * `image-generation-*` 事件挂它,历史回放时 codec 也按它认
+	 * (`codexEncryptedReasoning`)。codex → `'codex'`,xAI 两条通路 → `'grok'`。
+	 */
+	providerDataTag: string;
+	/**
+	 * 顶层 `store`。`undefined` = 不发这个键(服务端默认 `true`,30 天留存)。
+	 * 我们两家都发 `false`:会话历史由本地这份账本负责,端点侧无状态。
+	 */
+	store?: boolean;
+	/**
+	 * 这一回合要挂的**原生工具**(服务端自己执行的那种)。codex 的
+	 * `image_generation` 由 `requestedOutputModalities` 含 `'image'` 决定;
+	 * xAI 有 `web_search` / `x_search` / `code_interpreter`,但本期一个都不挂。
+	 */
+	nativeTools?(turn: TurnContext): CodexTool[];
+	/**
+	 * 完成的一条 output item → 额外事件。方言缝,与 openai-chat 的
+	 * `PartCodec.decodeExtras` 同一个位置:xAI 的 `url_citation` annotations
+	 * 长在 `message` 项的 `content[].annotations` 上,只有到 item 完成才拿得全。
+	 */
+	decodeOutputItem?(
+		item: Record<string, unknown>,
+		turn: TurnContext,
+	): AgentTurnStreamEvent[];
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +108,8 @@ export interface ResponsesDialect extends Dialect<ResponsesWireValue> {
 type CodexRawRecord = Record<string, AgentJsonValue | undefined>;
 
 export interface CodexResponsesUsage {
+	/** xAI 独有的厂商报价(1e10 ticks = $1)。codex 不报这个字段。 */
+	cost_in_usd_ticks?: number;
 	input_tokens?: number;
 	output_tokens?: number;
 	total_tokens?: number;
@@ -259,6 +292,18 @@ export function hasCodexResponsesUsage(usage: CodexResponsesUsage | undefined): 
  * 老模型没这个字段,那一桶就是 0,投影里连键都不出现。
  */
 export class CodexResponsesUsageNormalizer implements UsageNormalizer {
+	/**
+	 * `providerCost` 是方言的一行:xAI 在 `/v1/responses` 的 usage 上多报一个
+	 * `cost_in_usd_ticks`(官方 `POST /v1/responses` → Response Body → usage:
+	 * 「Accurate cost of this request in USD ticks… there is 10'000'000'000
+	 * ticks in one *dollar*」)。codex 不报,不传这个参数就是今天逐字的行为。
+	 */
+	constructor(
+		private readonly providerCost?: (
+			usage: CodexResponsesUsage,
+		) => number | undefined,
+	) {}
+
 	toBuckets(raw: unknown): UsageBuckets | undefined {
 		if (typeof raw !== "object" || raw === null) return undefined;
 		const usage = raw as CodexResponsesUsage;
@@ -273,7 +318,7 @@ export class CodexResponsesUsageNormalizer implements UsageNormalizer {
 			usage.output_tokens ?? 0,
 			usage.output_tokens_details?.reasoning_tokens,
 			undefined,
-			undefined,
+			this.providerCost?.(usage),
 			// 厂商没报 total 时派生 `input + output` —— `usageFromResponse` 的
 			// `?? (in ?? 0) + (out ?? 0)` 与 `UsageBuckets.total` 同一句话。
 			usage.total_tokens,
@@ -432,24 +477,16 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 			messages,
 			turn,
 		);
+		const dialect = this.responsesDialect;
 
 		builder.set("model", request.model);
-		builder.set(
-			"instructions",
-			instructions || this.responsesDialect.fallbackInstructions,
-		);
+		builder.set("instructions", instructions || dialect.fallbackInstructions);
 		builder.set("input", input);
-		// 生图不是一个开关,而是**工具表里多一项** —— 由
-		// `requestedOutputModalities` 含 'image' 决定(设计稿 §5 的生图路由)。
-		builder.set(
-			"tools",
-			toCodexTools(
-				request.tools,
-				Boolean(request.requestedOutputModalities?.includes("image")),
-			),
-		);
+		// 原生工具不是一个开关,而是**工具表里多几项** —— 挂哪些由方言说了算
+		// (codex 的生图路由:`requestedOutputModalities` 含 'image')。
+		builder.set("tools", toCodexTools(request.tools, dialect.nativeTools?.(turn)));
 		builder.set("parallel_tool_calls", false);
-		builder.set("store", false);
+		if (dialect.store !== undefined) builder.set("store", dialect.store);
 		builder.set("stream", true);
 	}
 
@@ -462,11 +499,15 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 		turn: TurnContext,
 	): AsyncGenerator<AgentTurnStreamEvent, RawTurnFinish, void> {
 		if (!response.body) {
-			throw new Error("Codex request failed: response body is empty");
+			throw new Error(this.errors.emptyBodyMessage());
 		}
 
 		const log = turn.logger;
 		const turnIndex = turn.turn;
+		const providerTag = this.responsesDialect.providerDataTag;
+		const decodeOutputItem = this.responsesDialect.decodeOutputItem?.bind(
+			this.responsesDialect,
+		);
 		const errors = this.errors;
 		const debugStream = log.isLevelEnabled("trace");
 
@@ -827,7 +868,7 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 								type: "provider-data",
 								turn: turnIndex,
 								providerData: {
-									provider: "codex",
+									provider: providerTag,
 									type: "image-generation-start",
 									callId,
 									status: optionalString(item.status),
@@ -839,6 +880,9 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 				}
 				case "response.output_item.done": {
 					const item = event.item ?? {};
+					// 方言缝:这条 item 上还有别的东西可解吗(xAI 的引文
+					// annotations)。codex 不挂这一支,一个事件都不多。
+					if (decodeOutputItem) yield* decodeOutputItem(item, turn);
 					if (isCodexFunctionCallItem(item)) {
 						yield* emitFunctionCall(item, event);
 						finishReason = "tool_calls";
@@ -855,7 +899,7 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 								type: "provider-data",
 								turn: turnIndex,
 								providerData: {
-									provider: "codex",
+									provider: providerTag,
 									type: "image-generation-result",
 									callId,
 									status: optionalString(item.status) ?? "completed",
@@ -883,7 +927,7 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 								type: "provider-data",
 								turn: turnIndex,
 								providerData: {
-									provider: "codex",
+									provider: providerTag,
 									type: "encrypted-reasoning",
 									encryptedContent,
 								},

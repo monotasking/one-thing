@@ -15,7 +15,9 @@
  * 声明里**没有**这一模态的组合直接跳过(不是绿也不是红):core 的
  * `degradeUnsupportedAgentContentParts` 在上游就把它降级掉了,轮不到 codec。
  * 今天被这一条跳过的有:kimi / kimi-code / zhipu / deepseek 非 vision 族的
- * 全部图像用例(账本不给它们 vision),以及 openai-chat 上**除 openrouter 之外**
+ * 全部图像用例(账本不给它们 vision),openai-chat 上**除 openai / openrouter
+ * 之外**十家的 `user/file`(P4-1 起 `file` 是传输声明上的独立旗标,只有 codec
+ * 真投得出 PDF 块的那两家声明它),以及 openai-chat 上**除 openrouter 之外**
  * 十家的 toolResult ——`openAIChatTransportCapabilities()` 默认不声明
  * `toolResultModalities`,于是只有 text。要覆盖它们得先改账本/传输声明,那是
  * 行为变更。
@@ -26,9 +28,9 @@
  * 同时打开,于是这一格从「跳过」变成「必须 delivered」。`toolResult/file`
  * 仍然跳过 —— tool 消息里没有 `file` 块,声明里也就没有那一行。
  *
- * **今天已经违反的那些**在 `KNOWN_VIOLATIONS` 里逐条记名,用 `it.fails` 钉住:
- * 它们不是本期要改的行为(P2-a 行为不变),但从此不能再多一条,也不能悄悄修好
- * 而不更新这张表。修一条 = 从表里删一行。
+ * **违反的那些**在 `KNOWN_VIOLATIONS` 里逐条记名,用 `it.fails` 钉住:不能再多
+ * 一条,也不能悄悄修好而不更新这张表。修一条 = 从表里删一行 —— P4-1 把最后
+ * 六行删完了,表现在是空的。
  */
 import { describe, expect, it } from "vitest";
 import type { AgentContentPart, AgentInputModality } from "@onething/core/agent-loop";
@@ -151,34 +153,23 @@ const CASES: DialectCase[] = [
 ];
 
 /**
- * 今天就违反不变式的组合 —— `<dialect>/<surface>/<modality>`。
+ * 违反不变式的组合 —— `<dialect>/<surface>/<modality>`。**P4-1 起是空的。**
  *
- * 全部一个成因:**这些 openai-chat 方言今天投不出 PDF 块,而「有 vision」
- * 在账本里同时点亮 `image` 与 `file`**(`ModelProfile.inputModalities` 那一行:
- * `vision ? ['text','image','file'] : ['text']`)。于是 codec 只能把 PDF 留成
- * 一行可见文本(`Undeliverable`,不静默丢)。
+ * 曾经有六条(`deepseek` / `qwen` / `grok` / `grok-oauth` / `github-copilot` /
+ * `custom-openai` 的 `user/file`),全部一个成因:这些 openai-chat 方言投不出
+ * PDF 块,而「有 vision」在账本里同时点亮了 `image` 与 `file`,于是 codec 只能
+ * 把 PDF 留成一行可见文本(`Undeliverable`,不静默丢)。
  *
- * P3-1(PDF 文件块)删掉了其中两行 —— `openai` 与 `openrouter` 从此投真块
- * (`{type:'file',file:{filename,file_data}}`,OpenRouter 另挂 `file-parser`
- * 插件)。**剩下的六条各有各的理由,不是没做**:
- *  - `custom-openai` —— 用户自建端点,能力未知。发一个可能 400 的块比留一行
- *    可见文本坏;要开就得让用户自己声明,那是设置面的行为变更。
- *  - `github-copilot` / `grok` / `grok-oauth` / `deepseek` / `qwen` ——
- *    这几家的 chat-completions 端点没有可移植的 PDF 块(既不认 OpenAI 的
- *    `file`,也没有自己的等价物)。
+ * 拍板 #12 选 A 把病根拔了(P4-1):`file` 从「vision ⇒ 三模态」里拆出来,成为
+ * 传输声明上的独立旗标(`OpenAIChatTransportFlags.file`),只有 codec 真投得出
+ * `{type:'file'}` 块的两家(openai / openrouter,`filePdf` 开着的)才声明它;
+ * 账本的 `vision` 从此只翻 `image`。这六家的 `getModelCapabilities` 不再声明
+ * `file`,core 的 `degradeUnsupportedAgentContentParts` 在上游就把 PDF 降级成
+ * `[File: x.pdf]` 占位 —— 于是这六格从「红」变成「不适用」。
  *
- * 另一条修法仍然挂着(设计稿 §10 待拍板 #12):把 `file` 从「vision ⇒ 三模态」
- * 里拆出来单记一行能力 —— 那时这六家的 `getModelCapabilities` 不再声明 `file`,
- * core 会把 PDF 降级成可见占位,这几行随之消失。是账本的行为变更,要拍板。
+ * 表空了但**不删**:它是「不许再多一条」的位置。新增一行 = 新增一处说谎。
  */
-const KNOWN_VIOLATIONS = new Set([
-	"deepseek/user/file",
-	"qwen/user/file",
-	"grok/user/file",
-	"grok-oauth/user/file",
-	"github-copilot/user/file",
-	"custom-openai/user/file",
-]);
+const KNOWN_VIOLATIONS = new Set<string>([]);
 
 function dialectOf(id: string): Dialect {
 	const dialect = listDialects().find((entry) => entry.id === id);

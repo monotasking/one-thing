@@ -1,26 +1,46 @@
 /**
- * xAI 的 **Live Search**(P3-5a,设计稿 §12 Grok):请求侧 `search_parameters`
- * 经 providerOptions 袋透传,响应侧顶层 `citations[]` 落成一条 `provider-data`。
+ * xAI 的 **Live Search**(P3-5a → P4-4 换线到 openai-responses):请求侧
+ * `search_parameters` 经 providerOptions 袋透传,响应侧的引文落成一条
+ * `provider-data`。
  *
- * 三条规矩,这份测试逐条守:
+ * ## 换线之后哪一半变了,哪一半没变
+ *
+ * **请求侧一个字没变**:官方把同一个 `search_parameters` 对象逐字列在
+ * `POST /v1/chat/completions` 与 `POST /v1/responses` 两边的 Request Body 上
+ * (docs.x.ai `/developers/rest-api-reference/inference/chat`),所以 P3-5a 那张
+ * 嵌套白名单原样搬进 `wires/xai-search-parameters.ts` 就够了。
+ *
+ * **响应侧换了形状**:chat 那条线上引文是**块的顶层 `citations[]`**;Responses
+ * 上是 `message` 项里每个 `output_text` 块的
+ * `annotations[] = {type:'url_citation', url, start_index, end_index, title}`
+ * (官方 `/developers/tools/citations`,「Inline citations are enabled by
+ * default for the Responses API」)。产出的 `provider-data` **形状不变**
+ * (`{provider:'grok', type:'citations', citations:[url, …]}`)—— 换线不该让
+ * 下游多认一种事件。
+ *
+ * 四条规矩,这份测试逐条守:
  *
  *  1. **袋 → `search_parameters` 是逐键裁的**。`searchParameters` 的值是一个
  *     对象,它自己的键再过一层白名单(`mode` / `sources` / `from_date` /
  *     `to_date` / `max_search_results` / `return_citations`)。认不出的子键、
  *     值不合法的子键各丢自己一个,**合法的兄弟照发** —— 这是 fixture
- *     `provider-options-search.request.json` 记的那件事。整个值不是对象才
- *     整条丢。丢一个键就留一条 `setting-dropped`,没有静默。
+ *     `responses/grok/provider-options.request.json` 记的那件事。整个值不是
+ *     对象才整条丢。丢一个键就留一条 `setting-dropped`,没有静默。
  *  2. **白名单是方言的一份声明**,不是袋里的 `if (providerId === 'grok')`:
- *     grok 与 grok-oauth 同一份支持面(同一个端点),openai 收到
- *     `searchParameters` 当认不出的键丢弃 + 留痕。
- *  3. **`citations[]` 是块的顶层字段**(不在 `choices[].delta` 里),来一块认
- *     一块;非字符串 / 空串的项不要,一条都不剩就不产事件。
+ *     grok 与 grok-oauth 同一份支持面(同一个端点);同一条线上的 **codex**
+ *     与另一条线上的 **openai** 收到 `searchParameters` 都当认不出的键丢弃 +
+ *     留痕。
+ *  3. **引文只取 `url`**,按出现顺序去重;不是 `url_citation` 的 annotation、
+ *     非字符串 / 空串的 url 一律不要,一条都不剩就不产事件。
+ *  4. **只有 `message` 项才解引文** —— reasoning / function_call 项上没有这
+ *     东西,拿它们喂进去应当一个事件都不产。
  */
 import { describe, expect, it } from "vitest";
 import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
 import { getLogger } from "../../../../logging/index.js";
 import "../../dialects/index.js";
-import { decodeGrokCitations } from "../../dialects/grok.js";
+import { decodeGrokResponsesCitations } from "../../dialects/grok.js";
+import type { ResponsesDialect } from "../index.js";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
@@ -186,9 +206,22 @@ describe("grok — search_parameters(请求侧)", () => {
 		expect(turn.warnings).toEqual([]);
 	});
 
-	it("openai 不认 searchParameters:整条当认不出的键丢弃 + 留痕", async () => {
+	it("openai(另一条线)不认 searchParameters:整条当认不出的键丢弃 + 留痕", async () => {
 		const { body, turn } = await extraBodyFor(
 			"openai",
+			{ searchParameters: FULL_SEARCH_PARAMETERS },
+			"gpt-5.5",
+		);
+
+		expect(body).not.toHaveProperty("search_parameters");
+		expect(droppedKeys(turn)).toEqual([
+			{ key: "searchParameters", reason: "unknown-key" },
+		]);
+	});
+
+	it("codex(同一条线)也不认:白名单是一家一份,不是一条线一份", async () => {
+		const { body, turn } = await extraBodyFor(
+			"codex",
 			{ searchParameters: FULL_SEARCH_PARAMETERS },
 			"gpt-5.5",
 		);
@@ -207,18 +240,47 @@ describe("grok — search_parameters(请求侧)", () => {
 	});
 });
 
-describe("grok — citations[](响应侧)", () => {
-	function decode(chunk: unknown, turn: TurnContext): AgentTurnStreamEvent[] {
-		return decodeGrokCitations(chunk, turn);
+describe("grok — 引文 annotations(响应侧)", () => {
+	/** 一条完成的 `message` 项 —— 官方 `/developers/tools/citations` 的形状。 */
+	function messageItem(
+		annotations: unknown[],
+		text = "xAI 最近发布了 Grok 4.6。",
+	): Record<string, unknown> {
+		return {
+			id: "msg_grok_0001",
+			type: "message",
+			role: "assistant",
+			status: "completed",
+			content: [{ type: "output_text", text, logprobs: [], annotations }],
+		};
 	}
 
-	it("顶层 citations[] → 一条 provider-data", async () => {
+	function decode(
+		item: Record<string, unknown>,
+		turn: TurnContext,
+	): AgentTurnStreamEvent[] {
+		return decodeGrokResponsesCitations(item, turn);
+	}
+
+	it("output_text.annotations[].url_citation → 一条 provider-data", async () => {
 		const turn = await turnContextFor("grok");
 		const events = decode(
-			{
-				choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-				citations: ["https://a.example", "https://b.example"],
-			},
+			messageItem([
+				{
+					type: "url_citation",
+					url: "https://a.example",
+					start_index: 0,
+					end_index: 10,
+					title: "1",
+				},
+				{
+					type: "url_citation",
+					url: "https://b.example",
+					start_index: 11,
+					end_index: 20,
+					title: "2",
+				},
+			]),
 			turn,
 		);
 
@@ -235,10 +297,36 @@ describe("grok — citations[](响应侧)", () => {
 		]);
 	});
 
-	it("非字符串 / 空串的项不要,剩下的照发", async () => {
+	it("形状与 P3-5a 的 chat 通路逐字相同 —— 换线不让下游多认一种事件", async () => {
+		const turn = await turnContextFor("grok");
+		const [event] = decode(
+			messageItem([{ type: "url_citation", url: "https://a.example" }]),
+			turn,
+		);
+
+		expect(event?.type).toBe("provider-data");
+		const providerData =
+			event?.type === "provider-data" ? event.providerData : undefined;
+		expect(Object.keys(providerData ?? {}).sort()).toEqual([
+			"citations",
+			"provider",
+			"type",
+		]);
+	});
+
+	it("非 url_citation / 非字符串 / 空串的项不要,重复的 url 只留一次", async () => {
 		const turn = await turnContextFor("grok");
 		const events = decode(
-			{ citations: ["https://a.example", "", 42, null, "https://b.example"] },
+			messageItem([
+				{ type: "url_citation", url: "https://a.example" },
+				{ type: "file_citation", url: "https://skip.example" },
+				{ type: "url_citation", url: "" },
+				{ type: "url_citation", url: 42 },
+				{ type: "url_citation" },
+				null,
+				{ type: "url_citation", url: "https://a.example" },
+				{ type: "url_citation", url: "https://b.example" },
+			]),
 			turn,
 		);
 
@@ -249,21 +337,61 @@ describe("grok — citations[](响应侧)", () => {
 		});
 	});
 
-	it("没有 citations、不是数组、一条都不剩 —— 都不产事件", async () => {
+	it("跨多个 output_text 块累积(按出现顺序)", async () => {
 		const turn = await turnContextFor("grok");
+		const events = decode(
+			{
+				type: "message",
+				content: [
+					{
+						type: "output_text",
+						text: "一",
+						annotations: [{ type: "url_citation", url: "https://a.example" }],
+					},
+					{
+						type: "output_text",
+						text: "二",
+						annotations: [{ type: "url_citation", url: "https://b.example" }],
+					},
+				],
+			},
+			turn,
+		);
 
-		expect(decode({ choices: [] }, turn)).toEqual([]);
-		expect(decode({ citations: "https://a.example" }, turn)).toEqual([]);
-		expect(decode({ citations: [] }, turn)).toEqual([]);
-		expect(decode({ citations: ["", 1] }, turn)).toEqual([]);
-		expect(decode(null, turn)).toEqual([]);
+		expect(events[0]).toMatchObject({
+			providerData: {
+				citations: ["https://a.example", "https://b.example"],
+			},
+		});
 	});
 
-	it("挂在两条通路的 codec 上(grok 与 grok-oauth 都解得出来)", async () => {
+	it("不是 message 项、没有 annotations、一条都不剩 —— 都不产事件", async () => {
+		const turn = await turnContextFor("grok");
+
+		// reasoning / function_call 项上没有引文这回事。
+		expect(
+			decode({ type: "reasoning", encrypted_content: "enc" }, turn),
+		).toEqual([]);
+		expect(
+			decode(
+				{ type: "function_call", name: "read_file", call_id: "c1" },
+				turn,
+			),
+		).toEqual([]);
+		expect(decode(messageItem([]), turn)).toEqual([]);
+		expect(decode({ type: "message" }, turn)).toEqual([]);
+		expect(decode({ type: "message", content: "plain" }, turn)).toEqual([]);
+		expect(
+			decode(messageItem([{ type: "url_citation", url: "" }]), turn),
+		).toEqual([]);
+	});
+
+	it("挂在两条通路的方言上(grok 与 grok-oauth 都解得出来)", async () => {
 		for (const providerId of ["grok", "grok-oauth"]) {
 			const turn = await turnContextFor(providerId);
-			const events = dialectOf(providerId).parts?.decodeExtras?.(
-				{ citations: ["https://a.example"] },
+			const dialect = dialectOf(providerId) as ResponsesDialect;
+			const events = dialect.decodeOutputItem?.(
+				messageItem([{ type: "url_citation", url: "https://a.example" }]),
 				turn,
 			);
 			expect(events, providerId).toEqual([
@@ -278,5 +406,11 @@ describe("grok — citations[](响应侧)", () => {
 				},
 			]);
 		}
+	});
+
+	it("codex 不挂这一支 —— 同一条 wire,一个事件都不多", () => {
+		expect(
+			(dialectOf("codex") as ResponsesDialect).decodeOutputItem,
+		).toBeUndefined();
 	});
 });

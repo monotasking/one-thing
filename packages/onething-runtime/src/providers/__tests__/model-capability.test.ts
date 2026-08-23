@@ -118,11 +118,15 @@ describe('resolution priority', () => {
     expect(resolve('openrouter', 'google/gemini-2.5-flash-image', {
       registryEntry: { supportsImageOutput: true },
     }).imageOutputServedBy).toBe('in-loop')
-    // The same upstream model on Google's own endpoint is still a dedicated
-    // API — GeminiWire does not parse inlineData output yet.
+    // Google's own endpoint draws in-loop too (P4-2): the image models are
+    // chat models, the request declares `responseModalities` and the image
+    // comes back as an `inlineData` part of the same stream.
     expect(resolve('gemini', 'gemini-2.5-flash-image', {
       registryEntry: { supportsImageOutput: true },
-    }).imageOutputServedBy).toBe('dedicated-api')
+    }).imageOutputServedBy).toBe('in-loop')
+    expect(resolve('gemini', 'gemini-3-pro-image', {
+      registryEntry: { supportsImageOutput: true },
+    }).imageOutputServedBy).toBe('in-loop')
     // Plain text model: the ledger has nothing to say.
     expect(resolve('openai', 'gpt-5.2').imageOutputServedBy).toBeUndefined()
   })

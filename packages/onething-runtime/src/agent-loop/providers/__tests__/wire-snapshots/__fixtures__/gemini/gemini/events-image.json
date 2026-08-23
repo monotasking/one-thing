@@ -1,0 +1,46 @@
+[
+  {
+    "delta": "好的，这是一只猫。",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "providerData": {
+      "callId": "1-img-0",
+      "mediaType": "image/png",
+      "provider": "gemini",
+      "result": "iVBORw0KGgo=",
+      "status": "completed",
+      "type": "image-generation-result"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "delta": "需要我换个颜色吗？",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "providerData": {
+      "callId": "1-img-1",
+      "mediaType": "image/webp",
+      "provider": "gemini",
+      "result": "UklGRh4=",
+      "status": "completed",
+      "type": "image-generation-result"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "finishReason": "stop",
+    "turn": 1,
+    "type": "finish",
+    "usage": {
+      "inputTokens": 42,
+      "outputTokens": 1290,
+      "totalTokens": 1332
+    }
+  }
+]

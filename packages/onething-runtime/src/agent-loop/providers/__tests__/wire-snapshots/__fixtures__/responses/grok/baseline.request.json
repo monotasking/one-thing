@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "method": "POST",
+    "requestSource": "agent-loop",
+    "url": "https://api.x.ai/v1/responses"
+  },
+  "mode": "codex-http",
+  "model": "grok-4.6",
+  "providerId": "grok",
+  "requestBody": {
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "读一下 a.txt，然后把结论写进 b.txt。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are onething, a careful engineering assistant.",
+    "model": "grok-4.6",
+    "parallel_tool_calls": false,
+    "prompt_cache_key": "session-fixture-0001",
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": []
+  }
+}

@@ -78,6 +78,12 @@ export {
 	resolveDeepSeekThinking,
 } from "./deepseek-inferred.js";
 export { GrokEffortWire, grokEffortWire, clampGrokReasoningEffort } from "./grok-effort.js";
+export {
+	GROK_RESPONSES_THINKING_WIRES,
+	GrokResponsesReasoningWire,
+	grokResponsesReasoningWire,
+	type GrokResponsesReasoningOptions,
+} from "./grok-responses-reasoning.js";
 export { OpenAIChatNoThinkingWire, openAIChatNoThinkingWire } from "./none.js";
 export {
 	OpenAIEffortWire,

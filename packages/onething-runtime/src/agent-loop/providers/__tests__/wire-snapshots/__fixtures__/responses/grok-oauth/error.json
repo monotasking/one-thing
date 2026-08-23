@@ -1,16 +1,19 @@
 {
-  "message": "grok agent loop API error: 429 {\"error\":{\"message\":\"Rate limit reached for requests\",\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}",
+  "message": "Grok request failed (429): Rate limit reached for requests [request-id: req_fixture_0001]",
   "name": "ProviderHttpError",
   "ownEnumerableProperties": {
     "data": {
-      "providerId": "grok",
+      "providerId": "grok-oauth",
       "responseBody": "{\"error\":{\"message\":\"Rate limit reached for requests\",\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}",
       "statusCode": 429
     },
     "inStream": false,
-    "providerId": "grok",
+    "isRetryable": true,
+    "providerId": "grok-oauth",
+    "requestId": "req_fixture_0001",
     "responseBody": "{\"error\":{\"message\":\"Rate limit reached for requests\",\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}",
     "retryAfterAt": 1700000015000,
-    "status": 429
+    "status": 429,
+    "statusCode": 429
   }
 }

@@ -10,8 +10,13 @@
  *     顺序);
  *  2. `image_url.detail` 与它按家不同的值域 —— 直接问已登记方言的 codec;
  *  3. 白名单是**方言的一份声明**,不是 codec 里的 `if (providerId === …)`:
- *     kimi 的块上一个 `detail` 都不长,grok/openrouter 长,deepseek 还多认一个
+ *     kimi 的块上一个 `detail` 都不长,openrouter 长,deepseek 还多认一个
  *     `original`。
+ *
+ * **`imageDetail` 是跨线协议的**(P4-4):xAI 的两条通路搬到 openai-responses
+ * 之后,同一个袋键在那条线上写的是 `input_image.detail`(不是
+ * `image_url.detail`)。同一份白名单机制、两条线各自一份声明 —— 这一条也
+ * 在这里守着,免得「换线之后 detail 悄悄失效」。
  */
 import { describe, expect, it } from "vitest";
 import type { AgentContentPart, AgentMessage } from "@onething/core/agent-loop";
@@ -212,14 +217,64 @@ describe("openai-chat — 请求级 providerOptions 袋", () => {
 		expect(imageUrlOf(part)).not.toHaveProperty("detail");
 	});
 
-	it("grok / grok-oauth / openrouter:同样收 detail", async () => {
-		for (const providerId of ["grok", "grok-oauth", "openrouter"]) {
+	it("openrouter:同样收 detail", async () => {
+		const turn = await turnContextFor("openrouter", "openai/gpt-5.5", {
+			imageDetail: "high",
+		});
+		const part = deliveredPart(codecOf("openrouter").user(IMAGE_PART, turn));
+
+		expect(imageUrlOf(part).detail).toBe("high");
+	});
+
+	/**
+	 * xAI 换线之后(P4-4)`detail` 长在 **`input_image` 块自己身上**,不再是
+	 * 嵌套的 `image_url.detail` —— 官方 Responses 的内容块就是这个形状
+	 * (`{"type":"input_image","image_url":…,"detail":"high"}`)。
+	 * 袋键与值域一个字没变,所以这一条守的是「换线没把旋钮弄丢」。
+	 */
+	it("grok / grok-oauth(openai-responses):detail 长在 input_image 上", async () => {
+		for (const providerId of ["grok", "grok-oauth"]) {
 			const turn = await turnContextFor(providerId, "grok-4.6", {
 				imageDetail: "high",
 			});
-			const part = deliveredPart(codecOf(providerId).user(IMAGE_PART, turn));
-			expect(imageUrlOf(part).detail, providerId).toBe("high");
+			const part = deliveredPart(
+				codecOf(providerId).user(IMAGE_PART, turn),
+			) as unknown as { type: string; detail?: string };
+			expect(part.type, providerId).toBe("input_image");
+			expect(part.detail, providerId).toBe("high");
 		}
+	});
+
+	it("grok:值域外的 original 被丢弃,块退回默认 detail:'auto'", async () => {
+		const turn = await turnContextFor("grok", "grok-4.6", {
+			imageDetail: "original",
+		});
+		const part = deliveredPart(
+			codecOf("grok").user(IMAGE_PART, turn),
+		) as unknown as { detail?: string };
+
+		expect(part.detail).toBe("auto");
+	});
+
+	/**
+	 * codex 在同一条线上**不收**这个键:它的 fixture 钉着 `detail:'auto'` 恒发,
+	 * 而配方上一个 `imageDetail` 声明都没有。收到就当认不出的键丢弃并留痕。
+	 */
+	it("codex:不收 detail(同一条线,白名单仍是一家一份)", async () => {
+		const turn = await turnContextFor("codex", "gpt-5.5", {
+			imageDetail: "high",
+		});
+		const part = deliveredPart(
+			codecOf("codex").user(IMAGE_PART, turn),
+		) as unknown as { detail?: string };
+
+		expect(part.detail).toBe("auto");
+
+		const dialect = listDialects().find((entry) => entry.id === "codex")!;
+		dialect.extraBody?.(turn);
+		expect(turn.warnings.map((warning) => warning.fields?.key)).toEqual([
+			"imageDetail",
+		]);
 	});
 
 	it("kimi / zhipu / qwen:不收 detail,块上一个字段都不多", async () => {

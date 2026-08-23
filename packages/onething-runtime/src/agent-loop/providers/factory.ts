@@ -40,6 +40,7 @@ import {
 	openAIChatTransportCapabilities,
 	runtimeCapabilityFlags,
 } from "./dialects/index.js";
+import type { ProviderMediaReader } from "./base/index.js";
 import { OpenAIChatPartCodec } from "./wires/index.js";
 import type { AnthropicDialect, GeminiDialect, OpenAIChatDialect, ResponsesDialect } from "./wires/index.js";
 import type { AgentProviderRequestDumper } from "./request-dump.js";
@@ -108,6 +109,7 @@ export interface AgentProviderRuntimeConfig {
 			tools?: boolean;
 			vision?: boolean;
 			reasoning?: boolean;
+			fileInput?: boolean;
 		}
 	>;
 	/**
@@ -122,6 +124,8 @@ export interface AgentProviderRuntimeConfig {
 			supportsReasoning?: boolean;
 			supportsImageOutput?: boolean;
 			supportsTemperature?: boolean;
+			/** 目录自己的输入模态表 —— `fileInput` 的证据(P4-1)。 */
+			inputModalities?: string[];
 			providerMetadata?: unknown;
 			contextLength?: number;
 			maxOutputTokens?: number;
@@ -151,6 +155,13 @@ export interface CreateAgentProviderFromRuntimeOptions {
 	 * body of their own and are not covered.
 	 */
 	requestDumper?: AgentProviderRequestDumper;
+	/**
+	 * 只读媒体端口(P4-2)。Gemini 的多轮改图要把历史 assistant 消息里画过的图
+	 * 从媒体库取回来放进请求 —— 消息上留下的只有一段 markdown,字节在库里。
+	 * runtime 只声明接口(`base/provider-context.ts` 的 `ProviderMediaReader`),
+	 * 实现由装配层注入;不给 = 不回放。
+	 */
+	media?: ProviderMediaReader;
 	/** Host-provided external agent connectors keyed by provider id. */
 	externalAgentConnectors?: Record<string, ExternalAgentConnector | undefined>;
 	resolveExternalAgentSessionLink?: (
@@ -342,6 +353,8 @@ function createProviderForDialect(
 			return createGeminiProvider(dialect as GeminiDialect, {
 				...shared,
 				auth: geminiAuth({ apiKey: config.apiKey }),
+				// 多轮改图的只读媒体端口(P4-2)—— 只有这条线读它。
+				media: options.media,
 			});
 		case "openai-responses":
 			return createResponsesProvider(dialect as ResponsesDialect, {
@@ -396,7 +409,9 @@ function createCustomAgentProviderFromRuntime(
 			auth: anthropicAuth({ apiKey: config.apiKey }),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			transport: capabilitiesFromFlags(capabilities),
+			// anthropic 线真发得出 `document` 块 —— 文件输入这一半由线路认领
+			// (P4-1,拍板 #12);另一半(模型收不收)由账本的 `fileInput` 判。
+			transport: capabilitiesFromFlags({ ...capabilities, file: true }),
 			profiles: ledgerProfiles(config),
 		});
 	}
@@ -596,10 +611,13 @@ registerAgentProviderRuntime(
 	{ replace: true },
 );
 
+// xAI 的两条通路 P4-4 起走 **openai-responses**(`POST /v1/responses`);
+// chat-completions 被官方标成 legacy,而加密思维链回放 / `input_file` /
+// 结构化引文只在 Responses 上有出口。凭据形状一个字没变。
 registerAgentProviderRuntime(
 	"grok",
 	(config, options) =>
-		createOpenAIChatProvider(GROK_DIALECT, {
+		createResponsesProvider(GROK_DIALECT, {
 			baseUrl: config.baseUrl,
 			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
@@ -616,7 +634,7 @@ registerAgentProviderRuntime(
 		if (!accessToken) {
 			throw new Error("Not logged in to Grok. Please login first.");
 		}
-		return createOpenAIChatProvider(GROK_OAUTH_DIALECT, {
+		return createResponsesProvider(GROK_OAUTH_DIALECT, {
 			baseUrl: config.baseUrl,
 			auth: new BearerApiKeyAuth(accessToken),
 			fetchImpl: options.fetchImpl,
@@ -705,6 +723,7 @@ registerAgentProviderRuntime(
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
 			profiles: ledgerProfiles(config),
+			media: options.media,
 		}),
 	{ replace: true },
 );

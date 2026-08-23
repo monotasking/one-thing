@@ -47,6 +47,33 @@ export interface BaseProviderContext {
 	readonly profiles?: ModelProfileResolver;
 }
 
+/**
+ * 一张已经落进媒体库的图(`readImageBase64` 的返回值)。
+ *
+ * `base64` 是**裸载荷**,不带 `data:` 头 —— 线协议自己决定包成什么
+ * (gemini 包成 `inlineData: { mimeType, data }`)。
+ */
+export interface ProviderMediaImage {
+	readonly base64: string;
+	readonly mediaType: string;
+}
+
+/**
+ * **只读**媒体端口(P4-2,设计稿 §5.2 Gemini 行)。
+ *
+ * 多轮改图要求把上一条 model 回复里的**生成图**原样放回 `contents`,而消息上
+ * 留下的只有一段 markdown(`![Generated Image|mediaId:<id>](media://<id>.png)`)
+ * —— 字节在媒体库里。runtime 的 provider 只声明这个接口,实现由装配层注入
+ * (`packages/backend/wiring/agent-loop/providers/media-reader.ts`),于是
+ * provider 不必认识媒体库的路径解析、也不会顺着它拖进任何宿主依赖。
+ *
+ * 只读、只按 id 取、找不到就 `undefined`(**不抛**):回放不到一张历史图是
+ * 「少一块上下文」,不是「这一回合失败」。
+ */
+export interface ProviderMediaReader {
+	readImageBase64(mediaId: string): Promise<ProviderMediaImage | undefined>;
+}
+
 /** HTTP provider 的运行环境:在三样之上再加传输与落盘。 */
 export interface ProviderContext extends BaseProviderContext {
 	/** 已经解析过的 base URL(`baseUrl || defaultBaseUrl`),末尾斜杠可有可无。 */
@@ -57,4 +84,9 @@ export interface ProviderContext extends BaseProviderContext {
 	/** HTTP 这一支必有账本解析器 —— 收窄回必填。 */
 	readonly profiles: ModelProfileResolver;
 	readonly timeouts?: ProviderTimeouts;
+	/**
+	 * 不给 = 不回放历史生成图(直接 `new GeminiWire` 的测试、以及任何没接
+	 * 媒体库的宿主就是这样)。缺席是**静默降级**,不是错误。
+	 */
+	readonly media?: ProviderMediaReader;
 }

@@ -9,4 +9,7 @@ import { GEMINI_DEFAULT_BASE_URL, defineGeminiDialect } from "./gemini-recipe.js
 export const GEMINI_DIALECT = defineGeminiDialect({
 	id: "gemini",
 	defaultBaseUrl: GEMINI_DEFAULT_BASE_URL,
+	// P4-2:图像模型回普通流之后,多轮改图要求把上一条 model 回复里的生成图
+	// 原样放回 `contents`。全仓只有这一份配方开着。
+	replayGeneratedImages: true,
 });

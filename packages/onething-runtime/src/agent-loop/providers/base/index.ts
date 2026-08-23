@@ -9,6 +9,8 @@ export type {
 	BaseProviderContext,
 	Logger,
 	ProviderContext,
+	ProviderMediaImage,
+	ProviderMediaReader,
 	ProviderTimeouts,
 	RequestDumper,
 } from "./provider-context.js";

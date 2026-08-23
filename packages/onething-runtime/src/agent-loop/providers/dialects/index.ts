@@ -69,6 +69,7 @@ export {
 	codexAuth,
 	createResponsesProvider,
 	defineResponsesDialect,
+	plainResponsesEndpoint,
 	resolveCodexResponsesUrl,
 	resolveCodexToken,
 	resolveCodexTokenForRequest,
@@ -90,7 +91,16 @@ export {
 	DeepSeekSamplingPolicy,
 } from "./deepseek.js";
 export { GITHUB_COPILOT_DIALECT } from "./github-copilot.js";
-export { GROK_DIALECT, GROK_USAGE_TABLE } from "./grok.js";
+export {
+	GROK_BASE_URL,
+	GROK_DIALECT,
+	GROK_DIALECT_SPEC,
+	GROK_PROVIDER_DATA_TAG,
+	GROK_PROVIDER_OPTIONS,
+	GROK_RESPONSES_USAGE,
+	GROK_TRANSPORT_CAPABILITIES,
+	decodeGrokResponsesCitations,
+} from "./grok.js";
 export { GROK_OAUTH_DIALECT } from "./grok-oauth.js";
 export { KIMI_DIALECT, KIMI_USAGE_TABLE, kimiThinkingIntent } from "./kimi.js";
 export { KIMI_CODE_DIALECT } from "./kimi-code.js";

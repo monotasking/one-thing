@@ -1,0 +1,57 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:streamGenerateContent?alt=sse"
+  },
+  "mode": "stream",
+  "model": "gemini-3-pro-image",
+  "providerId": "gemini",
+  "requestBody": {
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "画一只猫。"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "parts": [
+          {
+            "text": "这是你要的猫。\n\n![Generated Image|mediaId:img-1](media://img-1.png)"
+          },
+          {
+            "inlineData": {
+              "data": "aVJlcGxheQ==",
+              "mimeType": "image/png"
+            }
+          }
+        ],
+        "role": "model"
+      },
+      {
+        "parts": [
+          {
+            "text": "把它换成蓝色的。"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "generationConfig": {
+      "responseModalities": [
+        "TEXT",
+        "IMAGE"
+      ]
+    },
+    "systemInstruction": {
+      "parts": [
+        {
+          "text": "You are onething, a careful engineering assistant."
+        }
+      ]
+    }
+  }
+}

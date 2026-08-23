@@ -18,6 +18,7 @@
 import type { AgentProvider } from "@onething/core/agent-loop";
 import {
 	CODEX_BASE_URL,
+	CODEX_DIALECT_SPEC,
 	CODEX_NOT_LOGGED_IN,
 	CODEX_PROVIDER_ID,
 	codexAuth,
@@ -61,10 +62,12 @@ export function createCodexAgentProvider(
 
 	// 门面走 `responsesDialect()` 而不是 `defineResponsesDialect()`:每次构造
 	// 一份即用即弃的配方,不往进程级注册表里再塞一个同名条目(注册表里该有的
-	// 是 `dialects/codex.ts` 那份**具名**配方)。
+	// 是 `dialects/codex.ts` 那份**具名**配方)。**配方主体是同一个常量** ——
+	// P4-4 把 codex 的怪癖从「配方默认值」改成「配方字段」之后,这里不明说
+	// 就会丢掉 `store:false` 与 image_generation 原生工具。
 	const dialect = responsesDialect({
 		id: CODEX_PROVIDER_ID,
-		defaultBaseUrl: CODEX_BASE_URL,
+		...CODEX_DIALECT_SPEC,
 	});
 	return createResponsesProvider(dialect, {
 		providerId: CODEX_PROVIDER_ID,

@@ -49,7 +49,8 @@ export type ModelProfileCapability =
 	| "vision"
 	| "tools"
 	| "imageOutput"
-	| "temperature";
+	| "temperature"
+	| "fileInput";
 
 export interface ModelProfileLimits {
 	contextLength?: number;
@@ -79,7 +80,7 @@ export class ModelProfile {
 	 * `'forcedToolUse'` 是这里唯一一条**不在** `source` 表上的能力(账本要么
 	 * 有话说,要么没有),所以它单独一条分支:`undefined` = 没话说 = 今天的
 	 * 行为(有 tools 即可强制)。`knows()` / `toAgentModelCapabilities()` 仍然
-	 * 只认那五条有 source 的,不受影响。
+	 * 只认那六条有 source 的(P4-1 加了 `fileInput`),不受影响。
 	 */
 	supports(capability: ModelProfileCapability | "forcedToolUse"): boolean {
 		if (capability === "forcedToolUse") return this.resolved.forcedToolUse ?? true;
@@ -116,15 +117,19 @@ export class ModelProfile {
 		return this.resolved.reasoningProfile;
 	}
 
-	/** 账本自己的模态视图(不含 provider 的传输声明,那要走 `toAgentModelCapabilities`)。 */
+	/**
+	 * 账本自己的模态视图(不含 provider 的传输声明,那要走 `toAgentModelCapabilities`)。
+	 *
+	 * P4-1(拍板 #12):`vision` 只点亮 `image`;`file` 是账本的另一条
+	 * (`fileInput`),而且**还要那条线的 codec 投得出去**才算数 —— 那一半只有
+	 * `toAgentModelCapabilities(base)` 看得见,所以这个只读账本的视图里不列它。
+	 */
 	get inputModalities(): AgentInputModality[] {
-		return this.resolved.vision ? ["text", "image", "file"] : ["text"];
+		return this.resolved.vision ? ["text", "image"] : ["text"];
 	}
 
 	get toolResultModalities(): AgentInputModality[] {
-		return this.resolved.tools && this.resolved.vision
-			? ["text", "image", "file"]
-			: ["text"];
+		return this.resolved.tools && this.resolved.vision ? ["text", "image"] : ["text"];
 	}
 
 	get outputModalities(): AgentOutputModality[] {
@@ -158,6 +163,10 @@ export class ModelProfile {
 	 *
 	 * `base` 是 provider 自己的传输声明(模态、结构化工具结果),账本只翻它
 	 * 回答得了的那几个布尔与对应的 capability 标签;`'default'` 一律不动。
+	 *
+	 * P4-1(拍板 #12)起 **`file` 单独一条判据:目录 ∧ 线路**。账本的 `vision`
+	 * 只管 `image`;`file` 要这条线的 codec 投得出去(`base` 里有 `file-input`)
+	 * **且**账本的 `fileInput` 不反对(沉默 = 随线路)。
 	 */
 	toAgentModelCapabilities(base: AgentModelCapabilities): AgentModelCapabilities {
 		const resolved = this.resolved;
@@ -181,15 +190,27 @@ export class ModelProfile {
 		if (ledgerKnows("reasoning")) setTags(reasoning, ["reasoning"]);
 		if (ledgerKnows("tools")) setTags(tools, ["tool-calls", "structured-tool-results"]);
 		if (ledgerKnows("vision")) {
-			setTags(resolved.vision, ["vision-input", "file-input"]);
-			if (resolved.vision) {
-				inputModalities.add("image");
-				inputModalities.add("file");
-			} else {
-				inputModalities.delete("image");
-				inputModalities.delete("file");
-			}
+			// P4-1(拍板 #12):账本的 `vision` 只回答「看不看得懂**图**」。
+			// 文件输入是**另一条**能力,见下面的 `fileInput`。
+			setTags(resolved.vision, ["vision-input"]);
+			if (resolved.vision) inputModalities.add("image");
+			else inputModalities.delete("image");
 		}
+		// **文件输入 = 目录 ∧ 线路**(P4-1,拍板 #12)。两个条件都要:
+		//  - 线路(`base` = 这条线的传输声明)—— 这只 codec 投得出 `file` 块吗;
+		//  - 目录(账本的 `fileInput`)—— 这个模型收得下文件吗。
+		// 账本沉默(`'default'`,目录里没这条模型)就退回线路自己的声明 ——
+		// 与 P4-1 之前的默认行为一致,不是「一律不给」。
+		// 反过来,账本明说不收(deepseek vision-exp 的目录是 ['text','image'])
+		// 就算线路发得出去也不声明:声明了 core 就不降级,模型会收到一段它读不
+		// 懂的东西。
+		const transportDeliversFile =
+			base.capabilities.includes("file-input") || base.inputModalities.includes("file");
+		const fileInput =
+			transportDeliversFile && (ledgerKnows("fileInput") ? resolved.fileInput : true);
+		setTags(fileInput, ["file-input"]);
+		if (fileInput) inputModalities.add("file");
+		else inputModalities.delete("file");
 		if (ledgerKnows("imageOutput")) {
 			setTags(resolved.imageOutput, ["image-output"]);
 			if (resolved.imageOutput) outputModalities.add("image");

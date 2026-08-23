@@ -1,0 +1,107 @@
+[
+  {
+    "delta": "先查一下 xAI 最近发了什么，",
+    "turn": 1,
+    "type": "reasoning-delta"
+  },
+  {
+    "delta": "再决定读哪个文件。",
+    "turn": 1,
+    "type": "reasoning-delta"
+  },
+  {
+    "providerData": {
+      "encryptedContent": "grok-enc-fixture-0001",
+      "provider": "grok",
+      "type": "encrypted-reasoning"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "delta": "xAI 最近发布了 Grok 4.6。",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "delta": "[[1]](https://x.ai/news/grok-4-6)",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "providerData": {
+      "citations": [
+        "https://x.ai/news/grok-4-6",
+        "https://docs.x.ai/developers/release-notes"
+      ],
+      "provider": "grok",
+      "type": "citations"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "toolCallId": "call_grok_read",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-start"
+  },
+  {
+    "argumentsDelta": "{\"path\":",
+    "toolCallId": "call_grok_read",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "argumentsDelta": "\"a.txt\"}",
+    "toolCallId": "call_grok_read",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "toolCall": {
+      "arguments": "{\"path\":\"a.txt\"}",
+      "id": "call_grok_read",
+      "name": "read_file"
+    },
+    "turn": 1,
+    "type": "tool-call-done"
+  },
+  {
+    "toolCallId": "call_grok_write",
+    "toolName": "write_file",
+    "turn": 1,
+    "type": "tool-call-start"
+  },
+  {
+    "argumentsDelta": "{\"path\":\"b.txt\",\"content\":\"done\"}",
+    "toolCallId": "call_grok_write",
+    "toolName": "write_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "toolCall": {
+      "arguments": "{\"path\":\"b.txt\",\"content\":\"done\"}",
+      "id": "call_grok_write",
+      "name": "write_file"
+    },
+    "turn": 1,
+    "type": "tool-call-done"
+  },
+  {
+    "finishReason": "tool_calls",
+    "turn": 1,
+    "type": "finish",
+    "usage": {
+      "cacheReadTokens": 128,
+      "inputTokens": 131,
+      "outputTokens": 624,
+      "providerCostUSD": 0.0037756,
+      "reasoningTokens": 246,
+      "totalTokens": 755
+    }
+  }
+]

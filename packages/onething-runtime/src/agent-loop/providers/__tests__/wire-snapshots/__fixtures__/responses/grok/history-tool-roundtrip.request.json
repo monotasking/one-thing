@@ -1,0 +1,129 @@
+{
+  "metadata": {
+    "method": "POST",
+    "requestSource": "agent-loop",
+    "url": "https://api.x.ai/v1/responses"
+  },
+  "mode": "codex-http",
+  "model": "grok-4.6",
+  "providerId": "grok",
+  "requestBody": {
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "读一下 a.txt。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      },
+      {
+        "encrypted_content": "grok-enc-fixture-0001",
+        "summary": [],
+        "type": "reasoning"
+      },
+      {
+        "encrypted_content": "grok-enc-fixture-0002",
+        "summary": [],
+        "type": "reasoning"
+      },
+      {
+        "content": [
+          {
+            "text": "我先读一下这个文件。",
+            "type": "output_text"
+          }
+        ],
+        "role": "assistant",
+        "type": "message"
+      },
+      {
+        "arguments": "{\"path\":\"a.txt\"}",
+        "call_id": "call_read",
+        "name": "read_file",
+        "type": "function_call"
+      },
+      {
+        "arguments": "{\"path\":\"b.txt\",\"content\":\"done\"}",
+        "call_id": "call_write",
+        "name": "write_file",
+        "type": "function_call"
+      },
+      {
+        "call_id": "call_read",
+        "output": "hello from a.txt",
+        "type": "function_call_output"
+      },
+      {
+        "call_id": "call_write",
+        "output": "EACCES: permission denied, open 'b.txt'",
+        "type": "function_call_output"
+      },
+      {
+        "content": [
+          {
+            "text": "总结一下。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are onething, a careful engineering assistant.",
+    "model": "grok-4.6",
+    "parallel_tool_calls": false,
+    "prompt_cache_key": "session-fixture-0001",
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "description": "Read a UTF-8 text file from the workspace.",
+        "name": "read_file",
+        "parameters": {
+          "properties": {
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      },
+      {
+        "description": "Write a UTF-8 text file into the workspace.",
+        "name": "write_file",
+        "parameters": {
+          "properties": {
+            "content": {
+              "description": "Full file content.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Workspace-relative path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      }
+    ]
+  }
+}

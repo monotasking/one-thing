@@ -85,6 +85,44 @@ const BUDGET_MODEL = "gemini-2.5-flash";
 
 const CONFIG: AgentProviderRuntimeConfig = { apiKey: "sk-gemini-fixture" };
 
+/**
+ * P4-2:Google 官方端点的图像模型是**聊天模型** —— 账本给它
+ * `imageOutputServedBy: 'in-loop'`,请求因此多一行
+ * `generationConfig.responseModalities: ['TEXT','IMAGE']`,而不是换一条专用
+ * 生图通路。`supportsImageOutput` 由目录条目给(账本的 gemini 规则表对
+ * imageOutput 不表态)。
+ */
+const IMAGE_MODEL = "gemini-3-pro-image";
+const IMAGE_CONFIG: AgentProviderRuntimeConfig = {
+	...CONFIG,
+	models: { [IMAGE_MODEL]: { supportsImageOutput: true } },
+};
+
+/** 历史里那条 assistant 消息画过的图,回放时从这个桩取回来。 */
+const REPLAYED_IMAGE_BASE64 = "aVJlcGxheQ==";
+
+const REPLAY_MEDIA = {
+	readImageBase64: async (mediaId: string) =>
+		mediaId === "img-1"
+			? { base64: REPLAYED_IMAGE_BASE64, mediaType: "image/png" }
+			: undefined,
+};
+
+/**
+ * 生图在消息上留下的**唯一**痕迹就是这段 markdown(`provider-data.ts` 的
+ * `buildOnethingGeneratedImageMarkdown`)。多轮改图靠它把 mediaId 认出来。
+ */
+const HISTORY_WITH_GENERATED_IMAGE: AgentMessage[] = [
+	SYSTEM_MESSAGE,
+	{ role: "user", content: "画一只猫。" },
+	{
+		role: "assistant",
+		content:
+			"这是你要的猫。\n\n![Generated Image|mediaId:img-1](media://img-1.png)",
+	},
+	{ role: "user", content: "把它换成蓝色的。" },
+];
+
 /** 请求体用例只关心「发出去什么」,流内容取最短的一条合法流。 */
 const MINIMAL_STREAM = `data: ${JSON.stringify({
 	candidates: [
@@ -238,6 +276,75 @@ describe("gemini wire snapshots — request bodies", () => {
 		);
 		await expect(snapshotJson(dump)).toMatchFileSnapshot(
 			fixturePath("thinking-off.gemini-2.5-flash.request.json"),
+		);
+	});
+});
+
+describe("gemini wire snapshots — image output (P4-2)", () => {
+	/** 能出图 ⇒ `responseModalities`;不出图的模型一个字节都不多发(baseline 已钉)。 */
+	it("image-output", async () => {
+		const dump = await captureWireRequest({
+			providerId: GEMINI_ID,
+			config: { ...IMAGE_CONFIG, model: IMAGE_MODEL },
+			request: {
+				messages: [SYSTEM_MESSAGE, { role: "user", content: "画一只猫。" }],
+				model: IMAGE_MODEL,
+				turn: 1,
+			},
+			respond: () => sseResponse(MINIMAL_STREAM),
+		});
+		expect(
+			(dump.requestBody as { generationConfig?: Record<string, unknown> })
+				.generationConfig?.responseModalities,
+		).toEqual(["TEXT", "IMAGE"]);
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
+			fixturePath("image-output.request.json"),
+		);
+	});
+
+	/**
+	 * 多轮改图:历史 assistant 消息的正文照旧是 text part,它画过的图额外作为
+	 * `inlineData` 跟在后面 —— Gemini 官方的图像编辑示例就是把上一条 model 回复
+	 * 的 parts 原样放回 `contents`。
+	 */
+	it("history-generated-image", async () => {
+		const dump = await captureWireRequest({
+			providerId: GEMINI_ID,
+			config: { ...IMAGE_CONFIG, model: IMAGE_MODEL },
+			request: {
+				messages: HISTORY_WITH_GENERATED_IMAGE,
+				model: IMAGE_MODEL,
+				turn: 1,
+			},
+			respond: () => sseResponse(MINIMAL_STREAM),
+			providerOptions: { media: REPLAY_MEDIA },
+		});
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
+			fixturePath("history-generated-image.request.json"),
+		);
+	});
+
+	/** `inlineData` 的图片块 → `provider-data`(与 codex / OpenRouter 同形)。 */
+	it("sse-image", async () => {
+		const provider = createRuntimeProvider(
+			GEMINI_ID,
+			{ ...IMAGE_CONFIG, model: IMAGE_MODEL },
+			{
+				fetchImpl: (async () =>
+					sseResponse(
+						readFixtureFile(FIXTURE_ROOT, GEMINI_ID, "sse-image.txt"),
+					)) as typeof globalThis.fetch,
+			},
+		);
+		const events = await drain(
+			provider.streamTurn({
+				messages: [SYSTEM_MESSAGE, { role: "user", content: "画一只猫。" }],
+				model: IMAGE_MODEL,
+				turn: 1,
+			}),
+		);
+		await expect(snapshotJson(events)).toMatchFileSnapshot(
+			fixturePath("events-image.json"),
 		);
 	});
 });

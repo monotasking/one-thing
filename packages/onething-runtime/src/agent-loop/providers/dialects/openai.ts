@@ -32,5 +32,11 @@ export const OPENAI_DIALECT = defineOpenAIChatDialect({
 		verbosity: true,
 		imageDetail: OPENAI_CHAT_IMAGE_DETAIL_VALUES,
 	},
-	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
+	// `file: true` 与上面的 `filePdf` 是同一句话的两半(P4-1):codec 真的把
+	// PDF 投成 `{type:'file'}` 块,能力才敢声明 `file-input`。
+	transport: openAIChatTransportCapabilities({
+		vision: true,
+		file: true,
+		reasoning: true,
+	}),
 });

@@ -3,38 +3,61 @@
  * 配方**),与 openai-chat 的 `recipe.ts` / anthropic 的 `anthropic-recipe.ts` /
  * gemini 的 `gemini-recipe.ts` 同一形状。
  *
- * 这条线上有两处别家没有的事:
+ * ## P4-4:配方是通用的,codex 的怪癖是**这个文件下半截的一组常量**
  *
- *  1. **端点是三态归一化的**:`baseUrl` 可能已经是 `…/codex/responses`、可能
- *     只到 `…/codex`、也可能什么都没带 —— 三种都要落到同一个地址
- *     (`resolveCodexResponsesUrl`,`codex-provider.test.ts` 钉着这三条)。
- *  2. **认证是一台带刷新的小状态机**:token 三级解析(`authContext.kind ===
- *     'oauth'` → `oauthToken` → 拿 `apiKey` 伪造一个)、每回合现拿(可选地
- *     过一次 `refreshOAuthToken(false)`)、六个 codex 头、以及 401 时**强制**
- *     刷新一次再重试。设计稿 §3 把「401 刷新重试是 `AuthStrategy` 自己的事」
- *     写进了契约,wire 因此不知道 OAuth 的存在。
+ * 这条线原本只有 codex 一家,于是它的三样东西曾经长在配方的默认值里:
+ * `…/codex/responses` 的三态 URL 归一化、`CodexOAuthAuth`(token 三级解析 +
+ * 六个头 + 401 强制刷新一次)、`CODEX_FALLBACK_INSTRUCTIONS`。P4-4 把 grok /
+ * grok-oauth 也搬上这条线(`https://api.x.ai/v1/responses`,Bearer API key)
+ * 之后,`responsesDialect(spec)` 里**一个 codex 字样都没有**:
+ *
+ *  - `endpoint`:默认就是 `<baseUrl>/responses` 这条最普通的拼法;codex 传
+ *    自己的 `responsesEndpoint()`(三态归一化)进来。
+ *  - `auth`:配方**必须**收一条(登记期给占位)。codex 传 `CodexOAuthAuth`,
+ *    xAI 传 `BearerApiKeyAuth`。
+ *  - `reasoning`:codex 传 `RESPONSES_THINKING_WIRES`(`include` 与 `reasoning`
+ *    同生共死 + effort 钳 high + `isCodexReasoningModel` 自动补档),
+ *    xAI 传 `GROK_RESPONSES_THINKING_WIRES`(恒发 `include`、四档 effort)。
+ *  - `store` / `fallbackInstructions` / `nativeTools`(codex 的
+ *    `image_generation`)/ `usage`(xAI 的 `cost_in_usd_ticks`)/
+ *    `providerDataTag` / `errorLabel` / `providerOptions`:一家一行。
+ *
+ * 认证那台状态机仍然住在这里(它是 codex 的,不是配方的):token 三级解析
+ * (`authContext.kind === 'oauth'` → `oauthToken` → 拿 `apiKey` 伪造一个)、
+ * 每回合现拿(可选地过一次 `refreshOAuthToken(false)`)、六个 codex 头、
+ * 以及 401 时**强制**刷新一次再重试。设计稿 §3 把「401 刷新重试是
+ * `AuthStrategy` 自己的事」写进了契约,wire 因此不知道 OAuth 的存在。
  */
 import type {
 	AgentModelCapabilities,
 	AgentProvider,
 } from "@onething/core/agent-loop";
 import { getLogger } from "../../../logging/index.js";
+import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
 import {
 	LedgerModelProfileResolver,
 	registerDialect,
 	type AuthStrategy,
+	type Dialect,
 	type DialectEndpoint,
 	type ModelProfileResolver,
 	type PartCodec,
 	type ProviderContext,
+	type ThinkingWire,
 	type TurnContext,
+	type UsageNormalizer,
 } from "../base/index.js";
 import type { AgentProviderRequestDumper } from "../request-dump.js";
 import { RESPONSES_THINKING_WIRES } from "../thinking/index.js";
 import {
+	CodexResponsesErrorMapper,
 	OpenAIResponsesWire,
+	ResponsesPartCodec,
 	createCodexAgentApiError,
+	openAIResponsesProviderOptionsExtraBody,
 	responsesLogger,
+	type CodexTool,
+	type OpenAIResponsesProviderOptionSupport,
 	type ResponsesDialect,
 	type ResponsesWireValue,
 } from "../wires/index.js";
@@ -210,9 +233,10 @@ export function resolveCodexResponsesUrl(baseUrl?: string): string {
 }
 
 /**
- * `path` 是空串:真正的路径是 baseUrl **本身**的三态归一化结果,只能在
- * `decorateUrl` 里长出来(basePath 拼接会把 `…/codex/responses` 拼成
- * `…/codex/responses/responses`)。URL 上不带凭据,所以不需要 `redactForDump`。
+ * **codex 专属**的端点:`path` 是空串,真正的路径是 baseUrl **本身**的三态
+ * 归一化结果,只能在 `decorateUrl` 里长出来(basePath 拼接会把
+ * `…/codex/responses` 拼成 `…/codex/responses/responses`)。URL 上不带凭据,
+ * 所以不需要 `redactForDump`。
  */
 export function responsesEndpoint(
 	defaultBaseUrl: string = CODEX_BASE_URL,
@@ -226,14 +250,23 @@ export function responsesEndpoint(
 	};
 }
 
+/**
+ * 这条线协议**最普通**的端点拼法:`<baseUrl>/responses`(官方
+ * `POST /v1/responses`,baseUrl 就是 `https://api.x.ai/v1`)。配方不给
+ * `endpoint` 时用它 —— codex 那份三态归一化是它自己的事,不是这条线的默认。
+ */
+export function plainResponsesEndpoint(defaultBaseUrl: string): DialectEndpoint {
+	return { defaultBaseUrl, path: "/responses" };
+}
+
 // ---------------------------------------------------------------------------
 // 传输声明
 // ---------------------------------------------------------------------------
 
 /**
- * provider 的**传输**声明 —— `codex.ts` 的 `CODEX_AGENT_CAPABILITIES` 逐字
- * 复刻(数组顺序也一样)。这条线是 openai 系里唯一声明 `image-output` 的:
- * `image_generation` 是它的原生工具。
+ * codex 的**传输**声明 —— `codex.ts` 的 `CODEX_AGENT_CAPABILITIES` 逐字
+ * 复刻(数组顺序也一样)。它是这条线上唯一声明 `image-output` 的:
+ * `image_generation` 是**它**的原生工具(xAI 的生图是另一个端点)。
  */
 export const CODEX_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
 	capabilities: [
@@ -262,19 +295,93 @@ export const CODEX_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
 // 配方
 // ---------------------------------------------------------------------------
 
+/**
+ * **codex 那一份配方主体**(除了 id)—— 两个构造点共用一份,于是
+ * `dialects/codex.ts` 的具名方言与 `providers/codex.ts` 那个即用即弃的门面
+ * 永远同解。
+ *
+ * P4-4 之前这几样是 `responsesDialect()` 的默认值,门面因此「不写就对」;
+ * 现在配方通用了,谁要 codex 的行为谁就得**明说**,所以它成了一个常量而不是
+ * 一句默认。`codex-provider.test.ts` 的 image_generation 断言就是这条的门。
+ */
+export const CODEX_DIALECT_SPEC: Omit<ResponsesDialectSpec, "id"> = {
+	defaultBaseUrl: CODEX_BASE_URL,
+	endpoint: responsesEndpoint(CODEX_BASE_URL),
+	store: false,
+	nativeTools: (turn) =>
+		turn.request.requestedOutputModalities?.includes("image")
+			? [{ type: "image_generation", output_format: "png" }]
+			: [],
+};
+
 export interface ResponsesDialectSpec {
 	id: string;
-	defaultBaseUrl?: string;
-	transport?: AgentModelCapabilities;
+	/** 不给 `endpoint` 时,拼成 `<defaultBaseUrl>/responses`。 */
+	defaultBaseUrl: string;
+	/** 需要非常规拼法的自己给(codex 的三态归一化)。 */
+	endpoint?: DialectEndpoint;
+	/**
+	 * 登记期的占位认证 —— 真正的凭据在 `createResponsesProvider` 里注入。
+	 * 不给 = codex 那个「没登录就抛」的占位(历史默认)。
+	 */
+	auth?: AuthStrategy;
+	/** 这家可能出现的思考线型;不给 = codex 那条。 */
+	reasoning?: ThinkingWire[];
+	/** 顶层 `store`;不给 = 不发这个键。两家生产配方都发 `false`。 */
+	store?: boolean;
+	/** 一条 system 都没有时顶上去的 `instructions`;不给 = codex 那句。 */
 	fallbackInstructions?: string;
+	/** 这一回合的原生工具(服务端自己跑的那种)。 */
+	nativeTools?(turn: TurnContext): CodexTool[];
+	/** usage 归一化;不给 = 这条线的默认三桶直译(无厂商报价)。 */
+	usage?: UsageNormalizer;
+	/** provider-data 标签与加密思维链回放的判据;不给 = `spec.id`。 */
+	providerDataTag?: string;
+	/** 错误消息里的家名;不给 = `Codex`。 */
+	errorLabel?: string;
+	/** 请求级 providerOptions 袋这家认哪些键(P3-3 的机制,这条线的白名单)。 */
+	providerOptions?: OpenAIResponsesProviderOptionSupport;
+	/** 这家自己的额外请求体字段(`prompt_cache_key` 等)。 */
+	extraBody?: Dialect["extraBody"];
+	/** 完成的 output item → 额外事件(xAI 的引文 annotations)。 */
+	decodeOutputItem?(
+		item: Record<string, unknown>,
+		turn: TurnContext,
+	): AgentTurnStreamEvent[];
+	transport?: AgentModelCapabilities;
+}
+
+/**
+ * 配方自己的 `extraBody` 先跑,袋那支后跑 —— 与 openai-chat 的
+ * `composeExtraBody` 同一条规矩:哪怕这家一个袋键都不认,认不出的键也要留痕,
+ * 不能因为「这家没有旋钮」就静默吞掉用户写进 settings.json 的东西。
+ */
+function composeExtraBody(spec: ResponsesDialectSpec): Dialect["extraBody"] {
+	const bag = openAIResponsesProviderOptionsExtraBody(spec.providerOptions ?? {});
+	const own = spec.extraBody;
+	return (turn) => ({ ...own?.(turn), ...bag(turn) });
 }
 
 export function responsesDialect(spec: ResponsesDialectSpec): ResponsesDialect {
+	const providerDataTag = spec.providerDataTag ?? spec.id;
 	return {
 		id: spec.id,
 		wire: "openai-responses",
-		endpoint: responsesEndpoint(spec.defaultBaseUrl ?? CODEX_BASE_URL),
-		auth: UNCONFIGURED_AUTH,
+		endpoint: spec.endpoint ?? plainResponsesEndpoint(spec.defaultBaseUrl),
+		auth: spec.auth ?? UNCONFIGURED_AUTH,
+		parts: new ResponsesPartCodec({
+			providerDataTag,
+			...(spec.providerOptions?.imageDetail === undefined
+				? {}
+				: { imageDetail: spec.providerOptions.imageDetail }),
+		}),
+		errors: new CodexResponsesErrorMapper(spec.id, spec.errorLabel ?? "Codex"),
+		extraBody: composeExtraBody(spec),
+		providerDataTag,
+		...(spec.store === undefined ? {} : { store: spec.store }),
+		...(spec.usage ? { usage: spec.usage } : {}),
+		...(spec.nativeTools ? { nativeTools: spec.nativeTools } : {}),
+		...(spec.decodeOutputItem ? { decodeOutputItem: spec.decodeOutputItem } : {}),
 		request: {
 			// Responses 的上限字段叫 `max_output_tokens`,不在这个二选一的枚举里
 			// —— 而且今天压根不发,所以这个值没有读者。
@@ -287,7 +394,7 @@ export function responsesDialect(spec: ResponsesDialectSpec): ResponsesDialect {
 			// 与另外三条线同规(设计稿 §10 第 2 条)。
 			mergeAdjacent: true,
 		},
-		reasoning: RESPONSES_THINKING_WIRES,
+		reasoning: spec.reasoning ?? RESPONSES_THINKING_WIRES,
 		transport: spec.transport ?? CODEX_TRANSPORT_CAPABILITIES,
 		fallbackInstructions:
 			spec.fallbackInstructions ?? CODEX_FALLBACK_INSTRUCTIONS,

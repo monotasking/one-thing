@@ -278,19 +278,31 @@ describe("openrouter(cost)", () => {
 	});
 });
 
-describe("grok / grok-oauth(cost_in_usd_ticks)", () => {
+/**
+ * xAI 换线之后(P4-4)usage 是 **Responses 的字段名**,不再是 chat 的
+ * `prompt_tokens` 那一套。官方 `POST /v1/responses` → Response Body → usage:
+ * `input_tokens` / `input_tokens_details.cached_tokens` / `output_tokens` /
+ * `output_tokens_details.reasoning_tokens` / `total_tokens` /
+ * `cost_in_usd_ticks`(1e10 ticks = $1)。
+ *
+ * **没有 `cache_write_tokens`** —— xAI 的定价页只有 input / cached input /
+ * output 三档,不报写缓存,那一桶恒 0。
+ */
+describe("grok / grok-oauth(Responses usage + cost_in_usd_ticks)", () => {
 	const SAMPLE = {
-		prompt_tokens: 1200,
-		completion_tokens: 300,
+		input_tokens: 1200,
+		input_tokens_details: { cached_tokens: 800 },
+		output_tokens: 300,
+		output_tokens_details: { reasoning_tokens: 120 },
 		total_tokens: 1500,
-		prompt_tokens_details: { cached_tokens: 800 },
-		completion_tokens_details: { reasoning_tokens: 120 },
+		num_sources_used: 2,
+		num_server_side_tools_used: 0,
 		cost_in_usd_ticks: 12_300_000,
 	};
 
 	for (const providerId of ["grok", "grok-oauth"]) {
 		it(`${providerId} —— ticks / 1e10 进 providerCostUSD`, () => {
-			const buckets = bucketsFor(providerId, SAMPLE);
+			const buckets = bucketsFor(providerId, SAMPLE, codexResponsesUsage);
 			expectBuckets(buckets, {
 				uncachedInput: 400,
 				cacheRead: 800,
@@ -305,14 +317,19 @@ describe("grok / grok-oauth(cost_in_usd_ticks)", () => {
 	}
 
 	it("没有 ticks 就没有报价(不造零)", () => {
-		const buckets = bucketsFor("grok", {
-			prompt_tokens: 1200,
-			completion_tokens: 300,
-			total_tokens: 1500,
-		});
+		const buckets = bucketsFor(
+			"grok",
+			{ input_tokens: 1200, output_tokens: 300, total_tokens: 1500 },
+			codexResponsesUsage,
+		);
 		expect(buckets.providerCostUSD).toBeUndefined();
 		// 没报价的家一个字节都不变:投影里连这个键都不该出现。
 		expect(buckets.toAgentUsage()).not.toHaveProperty("providerCostUSD");
+	});
+
+	it("codex 同在这条线上,但不认 cost_in_usd_ticks(报价是方言的一行)", () => {
+		const buckets = bucketsFor("codex", SAMPLE, codexResponsesUsage);
+		expect(buckets.providerCostUSD).toBeUndefined();
 	});
 
 	it("报价是 0(免费模型)也带出去 —— 0 与「没报」是两件事", () => {

@@ -66,6 +66,10 @@ export { createGeminiAgentProvider } from './gemini.js'
 export type { GeminiAgentProviderOptions } from './gemini.js'
 export { createOpenAICompatibleAgentProvider } from './openai-compatible.js'
 export type { OpenAICompatibleAgentProviderOptions } from './openai-compatible.js'
+export type {
+  ProviderMediaImage,
+  ProviderMediaReader,
+} from './base/index.js'
 export {
   readJsonSseData,
   readSseData,

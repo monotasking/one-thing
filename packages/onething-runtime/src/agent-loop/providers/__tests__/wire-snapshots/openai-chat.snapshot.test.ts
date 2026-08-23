@@ -17,8 +17,9 @@
  *
  * ## 覆盖面
  *
- * openai-chat 线协议上全部 11 个注册 id(见 `OPENAI_CHAT_PROVIDER_IDS`):
- * 10 个 `registerAgentProviderRuntime(...)` 注册的 + 1 个 `custom-*`
+ * openai-chat 线协议上全部 9 个注册 id(见 `OPENAI_CHAT_PROVIDER_IDS`):
+ * 8 个 `registerAgentProviderRuntime(...)` 注册的 + 1 个 `custom-*`(xAI 的两条
+ * 通路 P4-4 起在 `responses.snapshot.test.ts` 里)
  * (apiType `openai`,走 `createCustomAgentProviderFromRuntime`)。
  * 全部经**生产入口** `createAgentProviderFromRuntime` 构造 —— 覆盖层
  * (`withPerModelCapabilities`)也在里面。
@@ -85,8 +86,6 @@ export const OPENAI_CHAT_PROVIDER_IDS = [
 	"kimi-code",
 	"zhipu",
 	"qwen",
-	"grok",
-	"grok-oauth",
 	"openrouter",
 	"github-copilot",
 	"custom-acme",
@@ -101,7 +100,7 @@ interface ProviderFixture {
 
 /**
  * 各家构造所需的最小 config —— 逐条对着 `factory.ts` 的注册块读出来的:
- * OAuth 家族(kimi-code / grok-oauth / github-copilot)走
+ * OAuth 家族(kimi-code / github-copilot)走
  * `accessTokenFromRuntimeConfig`,凭证只能挂在 `authContext.token` 或
  * `oauthToken` 上(`apiKey` 对它们恒为空);带私有旋钮的(kimi / zhipu / qwen)
  * 的地址由 `providerOptions` 决定。
@@ -143,19 +142,6 @@ const PROVIDERS: Record<OpenAIChatProviderId, ProviderFixture> = {
 		config: {
 			apiKey: "sk-qwen-fixture",
 			providerOptions: { qwenApiMode: "standard", qwenRegion: "cn" },
-		},
-	},
-	grok: {
-		model: "grok-4.6",
-		config: { apiKey: "sk-grok-fixture" },
-	},
-	"grok-oauth": {
-		model: "grok-4.6",
-		config: {
-			authContext: {
-				kind: "oauth",
-				token: { accessToken: "grok-oauth-access-token" },
-			},
 		},
 	},
 	openrouter: {
@@ -530,40 +516,6 @@ describe("openai-chat wire snapshots — request bodies", () => {
 	});
 
 	/**
-	 * xAI 的 Live Search(P3-5a)。袋里的 `searchParameters` 是**一个对象**,
-	 * 它自己的键再过一层白名单:三个合法键原样写进顶层 `search_parameters`,
-	 * `bogus` 一个字都不出现(它被丢时留的那条 `setting-dropped` 在
-	 * `wires/__tests__/grok-search-parameters.test.ts` 里断)。
-	 *
-	 * 上面五个用例**不带袋**,所以那批 grok fixture 一个字节都没变。
-	 */
-	it("grok — request providerOptions bag: search_parameters", async () => {
-		const dump = await captureRequest("grok", {
-			messages: [SYSTEM_MESSAGE, USER_MESSAGE],
-			providerOptions: {
-				grok: {
-					searchParameters: {
-						mode: "auto",
-						max_search_results: 5,
-						return_citations: true,
-						bogus: 1,
-					},
-				},
-			},
-		});
-		const body = dump.requestBody as { search_parameters?: unknown };
-		expect(body.search_parameters).toEqual({
-			mode: "auto",
-			max_search_results: 5,
-			return_citations: true,
-		});
-		expect(JSON.stringify(dump.requestBody)).not.toContain("bogus");
-		await expect(snapshotJson(dump)).toMatchFileSnapshot(
-			fixturePath("grok", "provider-options-search.request.json"),
-		);
-	});
-
-	/**
 	 * OpenRouter 的 `reasoning_details[]` 多轮回传(P3-4)。
 	 *
 	 * 官方要求是「整段连续的 `reasoning_details` 原样送回,顺序不可改」,所以
@@ -745,32 +697,6 @@ describe("openai-chat wire snapshots — stream parsing", () => {
 		);
 	});
 
-	/**
-	 * xAI 的 Live Search 引文(P3-5a)。`citations[]` 是**块的顶层字段**(不在
-	 * `choices[].delta` 里),通常随最后一块一起来一次全量。
-	 *
-	 * 这份快照只到 **provider 事件层**:消息上落哪一格由引擎那侧的表判
-	 * (`provider-data.ts`:非 codex 的 provider-data 落一格 `provider-data`),
-	 * 怎么呈现是渲染层将来的事,本期不做 UI。
-	 */
-	it("grok — top-level citations[] → provider-data", async () => {
-		const provider = buildProvider(
-			"grok",
-			createFetchStub(() =>
-				sseResponse(readFixture("grok", "sse-citations.txt")),
-			),
-		);
-		const events = await drain(
-			provider.streamTurn({
-				messages: [SYSTEM_MESSAGE, { role: "user", content: "今天有什么新闻？" }],
-				model: PROVIDERS.grok.model,
-				turn: 1,
-			}),
-		);
-		await expect(snapshotJson(events)).toMatchFileSnapshot(
-			fixturePath("grok", "events-citations.json"),
-		);
-	});
 });
 
 const ERROR_BODY = JSON.stringify({

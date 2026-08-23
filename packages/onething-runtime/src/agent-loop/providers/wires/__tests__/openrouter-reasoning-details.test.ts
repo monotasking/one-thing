@@ -286,7 +286,10 @@ describe('openrouter reasoning_details — replay', () => {
   })
 
   it('never touches another family — the details ride under `provider:"openrouter"`', async () => {
-    for (const providerId of ['openai', 'kimi', 'deepseek', 'grok']) {
+    // 同一条线(openai-chat)上的别家。xAI 的两条通路 P4-4 起在
+    // openai-responses 上,请求体里根本没有 `messages` 这个键 —— 这里换成
+    // `qwen` 保持「另一家」的对照,跨线协议的对照由快照套件覆盖。
+    for (const providerId of ['openai', 'kimi', 'deepseek', 'qwen']) {
       const { requestBody } = await runTurn(providerId, MINIMAL, HISTORY)
       expect(assistantMessage(requestBody)).not.toHaveProperty('reasoning_details')
     }

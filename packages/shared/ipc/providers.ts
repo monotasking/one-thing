@@ -173,6 +173,7 @@ export interface ModelCapabilityOverride {
   reasoning?: boolean    // supports thinking / reasoning mode
   imageOutput?: boolean  // generates images
   audio?: boolean        // accepts / emits audio
+  fileInput?: boolean    // accepts file attachments (PDF) — ruling #12, not a vision rider
 }
 
 // User-defined custom provider

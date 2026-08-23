@@ -598,6 +598,13 @@ export async function executeCoreImageGenerationStream(
   await emitEvent?.(sessionId, startPlan.loadingEvent)
 
   const requestPlan = planImageGenerationRequest({ providerId, model, baseUrl })
+  // TODO(P4-2 后续):这条 gemini 分支已是死路 —— Google 官方端点的图像模型
+  // (`gemini-*-image`)在账本上是 `imageOutputServedBy: 'in-loop'`,
+  // `onethingModelSupportsImageGeneration` 因此不再把它们路由到专用生图流,
+  // 它们走 GeminiWire 的普通流(请求 `responseModalities`、回复 `inlineData`)。
+  // 本期只留注释不删:账本对某个 gemini 图像模型完全没话说时,那句
+  // `lower.includes('gemini') && lower.includes('image')` 的兜底仍会走到这里。
+  // 兜底连同这条分支一起退役,是 P4 收尾的事。
   const result = requestPlan.providerKind === 'gemini'
     ? await generateGeminiImage({
         apiKey,

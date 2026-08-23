@@ -89,7 +89,12 @@ export abstract class HttpAgentProvider<
 		let response: Response | undefined;
 		try {
 			// 2 body(wire 必有字段 + 消息序列化)
-			this.buildBody(turn);
+			//
+			// `await` 而不是直接调:gemini 的多轮改图要在序列化时**回读媒体库**
+			// (历史 model 回复里的生成图作为 `inlineData` 原样放回),那是一次
+			// 磁盘 I/O。返回 `void` 的实现照旧同步跑完,`await undefined` 只多
+			// 排一个微任务,顺序(2 → 3 → 4 …)一个字没动。
+			await this.buildBody(turn);
 			// 3 横切策略往同一只 builder 上写
 			this.thinkingFor(turn).encode(turn, turn.builder);
 			this.cache.annotate(turn, turn.builder);
@@ -152,8 +157,14 @@ export abstract class HttpAgentProvider<
 	// wire 必须实现
 	// -----------------------------------------------------------------------
 
-	/** 往 `turn.builder` 写这条线协议必有的字段(model / messages / stream / tools …)。 */
-	protected abstract buildBody(turn: TurnContext): void;
+	/**
+	 * 往 `turn.builder` 写这条线协议必有的字段(model / messages / stream / tools …)。
+	 *
+	 * 允许返回 `Promise`(模板方法 `await` 它):序列化偶尔需要一次外部读取
+	 * —— gemini 多轮改图要把历史生成图的字节从媒体库取回来。绝大多数实现仍是
+	 * 同步的 `void`。
+	 */
+	protected abstract buildBody(turn: TurnContext): void | Promise<void>;
 
 	protected abstract parseStream(
 		response: Response,

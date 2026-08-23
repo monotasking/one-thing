@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "method": "POST",
+    "requestSource": "agent-loop",
+    "url": "https://api.x.ai/v1/responses"
+  },
+  "mode": "codex-http",
+  "model": "grok-4.6",
+  "providerId": "grok",
+  "requestBody": {
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "这张截图和这份 PDF 说的是同一件事吗？",
+            "type": "input_text"
+          },
+          {
+            "detail": "high",
+            "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+            "type": "input_image"
+          },
+          {
+            "file_data": "data:application/pdf;base64,JVBERi0xLjcKJcOkw7zDtsOfCg==",
+            "filename": "spec.pdf",
+            "type": "input_file"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are onething, a careful engineering assistant.",
+    "model": "grok-4.6",
+    "parallel_tool_calls": false,
+    "prompt_cache_key": "session-fixture-0001",
+    "search_parameters": {
+      "max_search_results": 5,
+      "mode": "auto",
+      "return_citations": true
+    },
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": []
+  }
+}
