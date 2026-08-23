@@ -1,13 +1,16 @@
 {
   "message": "custom-acme agent loop API error: 429 {\"error\":{\"message\":\"Rate limit reached for requests\",\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}",
-  "name": "Error",
+  "name": "ProviderHttpError",
   "ownEnumerableProperties": {
     "data": {
       "providerId": "custom-acme",
       "responseBody": "{\"error\":{\"message\":\"Rate limit reached for requests\",\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}",
       "statusCode": 429
     },
+    "inStream": false,
+    "providerId": "custom-acme",
     "responseBody": "{\"error\":{\"message\":\"Rate limit reached for requests\",\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}",
-    "retryAfterAt": 1700000015000
+    "retryAfterAt": 1700000015000,
+    "status": 429
   }
 }

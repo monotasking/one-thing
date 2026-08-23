@@ -49,10 +49,7 @@ import {
 	type UsageNormalizer,
 } from "../base/index.js";
 import type { AgentProviderRequestDumpValue } from "../request-dump.js";
-import {
-	CodexResponsesErrorMapper,
-	codexResponsesErrorMapper,
-} from "./openai-responses-errors.js";
+import { CodexResponsesErrorMapper } from "./openai-responses-errors.js";
 import {
 	responsesParts,
 	stringifyCodexToolInput,
@@ -385,11 +382,11 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 		return noSamplingPolicy;
 	}
 
-	/** P1-c 抛的仍是今天那个裸 `Error`(见 `openai-responses-errors.ts` 的抬头)。 */
+	/** P1-d1 起抛 `ProviderHttpError`(见 `openai-responses-errors.ts` 的抬头)。 */
 	protected override get errors(): CodexResponsesErrorMapper {
 		return (
 			(this.dialect.errors as CodexResponsesErrorMapper | undefined) ??
-			codexResponsesErrorMapper
+			new CodexResponsesErrorMapper(this.id)
 		);
 	}
 

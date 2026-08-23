@@ -48,7 +48,15 @@ export class ProviderHttpError extends Error {
 			init.message ??
 				`${init.providerId} agent loop API error: ${init.status} ${responseBody}`,
 		);
-		this.name = "ProviderHttpError";
+		// `name` 定义成**不可枚举**,与 `Error.prototype.name` 同待遇:直接赋值会
+		// 让它变成一个自有可枚举属性,于是每一条错误的"字段"里都多出一份与
+		// `error.name` 重复的噪音(快照里看得最清楚)。
+		Object.defineProperty(this, "name", {
+			value: "ProviderHttpError",
+			enumerable: false,
+			configurable: true,
+			writable: true,
+		});
 		this.providerId = init.providerId;
 		this.status = init.status;
 		this.code = init.code;
@@ -74,15 +82,24 @@ export function isProviderHttpError(error: unknown): error is ProviderHttpError 
 }
 
 /**
- * 返回类型是 `Error` 而不是 `ProviderHttpError`:设计稿 §9 把「`ProviderHttpError`
- * 全线」排在 **P1**,P0a 搬过来的 openai-chat 十一家仍然抛今天那个裸 `Error`
- * (`name === 'Error'` + `responseBody` / `data` / `retryAfterAt` 三个自有字段)。
- * 收窄成 `ProviderHttpError` 会把「哪一期换形状」变成类型问题,而不是行为问题。
+ * 返回类型 **P1-d1 起收窄回 `ProviderHttpError`**:四条线的映射器全部换装完毕,
+ * 「哪一期换形状」从此是类型问题,新写一份映射器再也退不回裸 `Error`。
+ *
+ * 用户可见的 `message` 一字未改(前缀 `DeepSeek` / `Claude` / `Gemini` /
+ * `Codex request failed` 各家原样;前缀统一是设计稿 §10 的待拍板项),今天的
+ * 兼容字段全部保留为超集 —— 变的只有 `name` 与**只增**的统一字段。
  */
 export interface ErrorMapper {
-	fromResponse(response: Response, bodyText: string, turn: TurnContext): Error;
+	fromResponse(
+		response: Response,
+		bodyText: string,
+		turn: TurnContext,
+	): ProviderHttpError;
 	/** 流中的错误事件(OpenRouter 带内错误、Anthropic `error` 事件、Zhipu sensitive)。 */
-	fromStreamEvent?(event: unknown, turn: TurnContext): Error | undefined;
+	fromStreamEvent?(
+		event: unknown,
+		turn: TurnContext,
+	): ProviderHttpError | undefined;
 }
 
 /**

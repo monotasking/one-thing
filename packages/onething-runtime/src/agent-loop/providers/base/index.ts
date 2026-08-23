@@ -6,6 +6,7 @@
  * P0a 不搬任何一家 provider —— 迁移是下一步。
  */
 export type {
+	BaseProviderContext,
 	Logger,
 	ProviderContext,
 	ProviderTimeouts,

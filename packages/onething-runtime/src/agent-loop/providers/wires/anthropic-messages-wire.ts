@@ -51,7 +51,7 @@ import {
 	type TurnContext,
 	type UsageNormalizer,
 } from "../base/index.js";
-import { AnthropicErrorMapper, anthropicErrorMapper } from "./anthropic-errors.js";
+import { AnthropicErrorMapper } from "./anthropic-errors.js";
 import {
 	anthropicParts,
 	toAnthropicToolChoice,
@@ -379,11 +379,17 @@ export class AnthropicMessagesWire extends HttpAgentProvider<
 	}
 
 	/**
-	 * P1-a 抛的仍是今天那个裸 `Error`(见 `anthropic-errors.ts` 的抬头)。
+	 * P1-d1 起抛 `ProviderHttpError`(见 `anthropic-errors.ts` 的抬头)。
 	 * 覆盖 getter 而不是在基类里加分支 —— 那是方言的事,不是模板的事。
+	 *
+	 * 映射器**现建**而不是配方里那一只单例:一份 anthropic 配方服务
+	 * `custom-*` 任意多个 provider id,`this.id` 是这里唯一说得出真身份的东西。
 	 */
 	protected override get errors(): AnthropicErrorMapper {
-		return (this.dialect.errors as AnthropicErrorMapper | undefined) ?? anthropicErrorMapper;
+		return (
+			(this.dialect.errors as AnthropicErrorMapper | undefined) ??
+			new AnthropicErrorMapper(this.id)
+		);
 	}
 
 	protected get anthropicDialect(): AnthropicDialect {

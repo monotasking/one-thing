@@ -34,6 +34,9 @@ import {
 
 const BASE_DIR = dirname(fileURLToPath(import.meta.url)).replace(/\/__tests__$/, "");
 const PROVIDERS_DIR = dirname(BASE_DIR);
+/** `packages/onething-runtime/src` —— 非 HTTP 的子类住在 `external-agents/`。 */
+const RUNTIME_SRC_DIR = dirname(dirname(PROVIDERS_DIR));
+const EXTERNAL_AGENTS_DIR = join(RUNTIME_SRC_DIR, "external-agents");
 
 /**
  * 扫源码前先剥注释 —— 这份文件自己的注释里就写着被禁的那两个模式,
@@ -174,6 +177,29 @@ class Bad extends HttpAgentProvider {
 			}
 		}
 		expect(offenders).toEqual([]);
+	});
+
+	/**
+	 * 非 HTTP 的两家(acp / external-agents)直接继承 `BaseAgentProvider`:
+	 * 它们的传输是一条 JSON-RPC 会话 / 一个子进程,没有 fetch 可言(§2.9)。
+	 * `streamTurn` 是它们**必须**实现的抽象方法,所以这一条只守「实例无状态」。
+	 *
+	 * 断言里点名两个类,是因为"扫到 0 个"也会绿 —— 门必须先证明自己扫得到东西。
+	 */
+	it("BaseAgentProvider 的直接子类没有可写实例字段", () => {
+		const offenders: string[] = [];
+		const found: string[] = [];
+		for (const file of [...providerFiles, ...collectTsFiles(EXTERNAL_AGENTS_DIR)]) {
+			const source = stripComments(readFileSync(file, "utf8"));
+			for (const cls of extractClassBodies(source, /^BaseAgentProvider$/)) {
+				found.push(cls.name);
+				for (const field of findWritableInstanceFields(cls.body)) {
+					offenders.push(`${file}: ${cls.name} has a writable field: ${field}`);
+				}
+			}
+		}
+		expect(offenders).toEqual([]);
+		expect(found.sort()).toEqual(["ACPAgentProvider", "ExternalAgentProvider"]);
 	});
 
 	it("base/ 里没有对方言字段的字符串分支", () => {

@@ -28,14 +28,33 @@ export interface ProviderTimeouts {
 	readonly idleMs?: number;
 }
 
-export interface ProviderContext {
+/**
+ * `BaseProviderContext` —— **每个** provider 都有的那三样(P1-d1)。
+ *
+ * 拆出来是因为 `ProviderContext` 对非 HTTP 的 provider 太重:acp /
+ * external-agents 没有 base URL、没有 `fetchImpl`(它们的传输是一个子进程 /
+ * 一条 SDK 会话),更没有可以落盘的请求体。让它们为了继承 `BaseAgentProvider`
+ * 去编一个假的 `fetchImpl`,就是让类型说谎。
+ *
+ * `profiles` 在这里是**可选**的:自述能力的 provider(`capabilitiesAreSelfDeclared`)
+ * 压根不该问账本 —— 账本对一个它没见过的模型没有真话可说,猜一个就正好是
+ * `supportsTools: false` 那一类 bug。给不出解析器时,能力就是传输声明本身。
+ */
+export interface BaseProviderContext {
 	readonly providerId: string;
+	readonly logger: Logger;
+	/** 不给 = 不查账本,能力即传输声明(自述能力的 provider 就是这样)。 */
+	readonly profiles?: ModelProfileResolver;
+}
+
+/** HTTP provider 的运行环境:在三样之上再加传输与落盘。 */
+export interface ProviderContext extends BaseProviderContext {
 	/** 已经解析过的 base URL(`baseUrl || defaultBaseUrl`),末尾斜杠可有可无。 */
 	readonly baseUrl: string;
 	readonly fetchImpl: typeof globalThis.fetch;
 	/** 不给 = 不落盘(诊断模式关闭时就是这样)。 */
 	readonly dumper?: RequestDumper;
-	readonly logger: Logger;
+	/** HTTP 这一支必有账本解析器 —— 收窄回必填。 */
 	readonly profiles: ModelProfileResolver;
 	readonly timeouts?: ProviderTimeouts;
 }

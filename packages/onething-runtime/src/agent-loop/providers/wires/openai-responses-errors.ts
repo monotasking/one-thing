@@ -1,30 +1,42 @@
 /**
- * openai-responses 线上的错误形状 —— **P1-c 保持今天的对象,一个字节不动**。
+ * openai-responses 线上的错误形状 —— **P1-d1 起是 `ProviderHttpError`**。
  *
- * 设计稿 §9 把「`ProviderHttpError` 全线 + 分类器改读对象」排在 P1 的后半段;
- * P1-c 是纯搬运,所以这里造的仍然是 `codex.ts` 退役前那个对象:裸 `Error`
- * (`name` 仍是 `'Error'`)+ 顶层 `statusCode` / `responseBody` / `isRetryable`
- * + `withProviderRetryAfter` 挂上去的顶层 `retryAfterAt`,**没有** `data`
- * (那个兼容字段是 openai-chat 那一家的老习惯)。`error.json` 快照就是这句话
- * 的门。
+ * 边界与另外三条线同款(设计稿 §2.5 / §9 P1-d1),两处这条线独有的现状原样保留:
  *
- * 两处这条线独有的现状:
  *  - 消息不是 `<source> API error: <status> <body>` 而是
  *    `Codex request failed (<status>): <detail> [request-id: …]`,`detail` 走
  *    `summarizeCodexErrorBody` 的三级兜底(JSON 字段 → `<title>`/`<p>` →
  *    压平原文,各截 300 字);
  *  - request-id 读的是 **`x-oai-request-id`**(不是 `x-request-id`)。
+ *
+ * 今天的兼容字段是**顶层** `statusCode` / `responseBody` / `isRetryable`
+ * (+ `retryAfterAt`)。`responseBody` / `retryAfterAt` 由 `ProviderHttpError`
+ * 自带,另外两个由 `CodexHttpError` 这个薄子类补上 —— `isRetryable` 是
+ * `core/agent-loop/retry.ts` 里**优先级最高**的判据(`typeof isRetryable ===
+ * 'boolean'` 直接返回),丢了它这一家的重试口径当场就变。
+ *
+ * 所以 `isRetryable` 只挂在 **`fromResponse`** 造的那种错误上:流中的错误事件
+ * 与 `response.failed` 今天压根没有这个字段,给它们补一个 `false` 会把
+ * 「Codex stream error: overloaded」从可重试变成不可重试。
  */
-import { withProviderRetryAfter } from "../../provider-error-classification.js";
-import type { ErrorMapper } from "../base/index.js";
+import { ProviderHttpError, type ErrorMapper, type ProviderHttpErrorInit } from "../base/index.js";
 
-/** `codex.ts` 抛出来的那个对象的形状。 */
-export type CodexApiError = Error & {
-	statusCode: number;
-	responseBody: string;
-	isRetryable: boolean;
-	retryAfterAt?: number;
-};
+/** `codex.ts` 退役前那个对象的形状 —— 换装后是 `ProviderHttpError` 的子类。 */
+export type CodexApiError = CodexHttpError;
+
+/** 顶层 `statusCode` / `isRetryable` 两个兼容字段的持有者。 */
+export class CodexHttpError extends ProviderHttpError {
+	/** = `status`。今天的调用方(含 `retry.ts`)读的是这个名字。 */
+	readonly statusCode: number;
+	/** provider 侧的预判:5xx 与 429 可重试。`retry.ts` 优先读它。 */
+	readonly isRetryable: boolean;
+
+	constructor(init: ProviderHttpErrorInit) {
+		super(init);
+		this.statusCode = init.status;
+		this.isRetryable = init.status >= 500 || init.status === 429;
+	}
+}
 
 /** JSON 字段 → HTML 标题/段落 → 压平原文,各截 300 字。逐字。 */
 export function summarizeCodexErrorBody(body: string): string {
@@ -54,39 +66,39 @@ export function summarizeCodexErrorBody(body: string): string {
 }
 
 /**
- * `createCodexAgentApiError` 逐字。
+ * `createCodexAgentApiError` —— 消息逐字,形状换成 `CodexHttpError`。
  *
- * 批 B8-2:headers 本来就传进来了(只用来取 request-id),顺手把
- * `retry-after` / `x-ratelimit-reset-*` 解析成绝对时间戳挂上去。
+ * `providerId` 有默认值 `'codex'`:这条线今天只有 codex 一家在跑,而方言的
+ * 认证策略(`CodexOAuthAuth.onUnauthorized`)手上没有 provider 实例,拿不到
+ * `this.id`。wire 走 `errors` getter 时会把真实的 id 传进来。
  */
 export function createCodexAgentApiError(
 	status: number,
 	responseBody: string,
 	headers: Headers,
-): CodexApiError {
+	providerId = "codex",
+): CodexHttpError {
 	const detail = summarizeCodexErrorBody(responseBody);
 	const requestId = headers.get("x-oai-request-id");
-	return withProviderRetryAfter(
-		Object.assign(
-			new Error(
-				`Codex request failed (${status})${detail ? `: ${detail}` : ""}${requestId ? ` [request-id: ${requestId}]` : ""}`,
-			),
-			{
-				statusCode: status,
-				responseBody,
-				isRetryable: status >= 500 || status === 429,
-			},
-		),
-		{ headers, body: responseBody },
-	);
+	return new CodexHttpError({
+		providerId,
+		status,
+		message: `Codex request failed (${status})${detail ? `: ${detail}` : ""}${requestId ? ` [request-id: ${requestId}]` : ""}`,
+		responseBody,
+		headers,
+		...(requestId ? { requestId } : {}),
+	});
 }
 
 export class CodexResponsesErrorMapper implements ErrorMapper {
-	fromResponse(response: Response, bodyText: string): CodexApiError {
+	constructor(private readonly providerId = "codex") {}
+
+	fromResponse(response: Response, bodyText: string): CodexHttpError {
 		return createCodexAgentApiError(
 			response.status,
 			bodyText,
 			response.headers,
+			this.providerId,
 		);
 	}
 
@@ -95,21 +107,27 @@ export class CodexResponsesErrorMapper implements ErrorMapper {
 	 *  - 任意事件上的顶层 `error`(`Codex stream error: <message>`);
 	 *  - `response.failed`(`Codex stream error: <response.error.message>`,
 	 *    兜底文案是 `Codex stream failed`)。
-	 * 两处都抛裸 `Error`,没有状态码 —— 逐字复刻。
+	 * 两处都没有 HTTP 状态(`status: 0`)也没有 `isRetryable` —— 逐字复刻。
 	 */
-	fromStreamEvent(event: unknown): Error | undefined {
+	fromStreamEvent(event: unknown): ProviderHttpError | undefined {
 		if (typeof event !== "object" || event === null) return undefined;
 		const chunk = event as { error?: { message?: string } };
 		if (!chunk.error) return undefined;
-		return new Error(
-			`Codex stream error: ${chunk.error.message ?? "unknown error"}`,
-		);
+		return new ProviderHttpError({
+			providerId: this.providerId,
+			status: 0,
+			inStream: true,
+			message: `Codex stream error: ${chunk.error.message ?? "unknown error"}`,
+		});
 	}
 
 	/** `response.failed` 那一条。 */
-	fromFailedResponse(message: string | undefined): Error {
-		return new Error(`Codex stream error: ${message || "Codex stream failed"}`);
+	fromFailedResponse(message: string | undefined): ProviderHttpError {
+		return new ProviderHttpError({
+			providerId: this.providerId,
+			status: 0,
+			inStream: true,
+			message: `Codex stream error: ${message || "Codex stream failed"}`,
+		});
 	}
 }
-
-export const codexResponsesErrorMapper = new CodexResponsesErrorMapper();

@@ -22,18 +22,27 @@
  *
  * ## 各 provider 家族的真实错误形态(2026-08-15 实测自代码,勘误记在设计文档批 D)
  *
+ * **P1-d1 起,provider 错误是一个对象:`ProviderHttpError`**
+ * (`agent-loop/providers/base/errors.ts`)。它顶层就带 `status` / `providerId` /
+ * `responseBody` / `retryAfterAt`,所以下面每个读取函数都**先认这个形状**,认出来
+ * 就直接取字段,根本不去碰消息文本。三段兜底与前缀抠取原样留着,服务的是另外
+ * 两类来源:OAuth 刷新失败(`auth-service.ts` 造的错误)与任何外来错误。
+ *
  * | 家族 | 抛出处 | 形状 |
  * | --- | --- | --- |
- * | claude / claude-code | `providers/claude.ts` | 裸 `Error`,消息 `Claude agent loop API error: <status> <body>` |
- * | deepseek | `providers/deepseek.ts` | 裸 `Error`,消息 `DeepSeek agent loop API error: <status> <body>` |
- * | gemini | `providers/gemini.ts` | 裸 `Error`,消息 `Gemini agent loop API error: <status> <body>` |
- * | openai-compatible(zhipu/qwen/kimi/grok/openrouter/custom…) | `providers/openai-compatible.ts` | `Error` + `{ responseBody, data: { providerId, statusCode, responseBody } }` —— **statusCode 藏在 `data` 里一层** |
- * | codex | `providers/codex.ts` | `Error` + `{ statusCode, responseBody, isRetryable }` —— 唯一带顶层 statusCode 的 |
+ * | claude / claude-code / custom-anthropic | `agent-loop/providers/wires/anthropic-errors.ts` | `ProviderHttpError`,消息 `Claude agent loop API error: <status> <body>` |
+ * | deepseek / openai / kimi / zhipu / qwen / grok / openrouter / copilot / custom… | `agent-loop/providers/wires/openai-chat-errors.ts` | `ProviderHttpError`,消息 `<DisplayName> agent loop API error: <status> <body>`;顶层 `responseBody` + `data { providerId, statusCode, responseBody }` 是保留的兼容字段 |
+ * | gemini | `agent-loop/providers/wires/gemini-errors.ts` | `ProviderHttpError`,消息 `Gemini agent loop API error: <status> <body>` |
+ * | codex | `agent-loop/providers/wires/openai-responses-errors.ts` | `CodexHttpError`(`ProviderHttpError` 子类),消息 `Codex request failed (<status>): <detail>`;顶层 `statusCode` / `isRetryable` 是保留的兼容字段 |
  *
- * 也就是说:**五家里只有一家把状态码放在顶层**。所以取状态码要三段兜底
- * (顶层 → `data.statusCode` → 从消息前缀里抠),而且抠的时候必须**锚定前缀**
- * (`API error: 429` / `request failed (429)`),不能像 `retry.ts` 那样在整条
- * 消息里扫 `\b[45]\d\d\b` —— 响应体里一个 `"max_tokens": 500` 就够让它读错。
+ * **`status === 0` = 没有 HTTP 状态**(流中的错误事件、首字节/空闲超时)。读取
+ * 函数把它当作「读不到状态码」原样往下走文本判据 —— 那正是换装前这些错误的
+ * 待遇,一个结论都没变。
+ *
+ * 兜底那三段(顶层 → `data.statusCode` → 从消息前缀里抠)仍然写在下面:抠的时候
+ * 必须**锚定前缀**(`API error: 429` / `request failed (429)`),不能像 `retry.ts`
+ * 那样在整条消息里扫 `\b[45]\d\d\b` —— 响应体里一个 `"max_tokens": 500` 就够
+ * 让它读错。
  */
 
 export type ProviderErrorKind =
@@ -87,6 +96,30 @@ export const PROVIDER_ERROR_COOLDOWN_MS: Record<ProviderErrorKind, number> = {
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined
+}
+
+/**
+ * `ProviderHttpError` 的**鸭子形状**:顶层 `status` 是 number **且** `providerId`
+ * 是 string。用形状而不是 `instanceof`,是因为这个模块在 runtime 的下游被多条
+ * import 路径加载过(包导出 vs 相对源码),`instanceof` 会当场说谎;而这两个字段
+ * 一起出现,在这个仓里只有 `ProviderHttpError` 一家。
+ *
+ * 也不 import `base/errors.ts` —— 那份文件反过来 import 本模块的
+ * `withProviderRetryAfter`,认形状避开了一圈循环依赖。
+ */
+interface ProviderHttpErrorShape {
+  providerId: string
+  status: number
+  responseBody?: unknown
+  retryAfterAt?: unknown
+}
+
+function asProviderHttpError(error: unknown): ProviderHttpErrorShape | undefined {
+  const top = record(error)
+  if (!top) return undefined
+  return typeof top.status === 'number' && typeof top.providerId === 'string'
+    ? (top as unknown as ProviderHttpErrorShape)
+    : undefined
 }
 
 /**
@@ -234,8 +267,17 @@ export function withProviderRetryAfter<E extends object>(
   return at === undefined ? error : Object.assign(error, { retryAfterAt: at })
 }
 
-/** 读回来:顶层优先,`data` 里兜一层(openai-compatible 家族的老习惯)。 */
+/**
+ * 读回来:**先认 `ProviderHttpError`**,再顶层,再 `data` 里兜一层
+ * (openai-compatible 家族的老习惯)。
+ */
 export function providerErrorRetryAfterAt(error: unknown): number | undefined {
+  const http = asProviderHttpError(error)
+  if (http) {
+    return typeof http.retryAfterAt === 'number' && Number.isFinite(http.retryAfterAt)
+      ? http.retryAfterAt
+      : undefined
+  }
   const top = record(error)
   if (!top) return undefined
   if (typeof top.retryAfterAt === 'number' && Number.isFinite(top.retryAfterAt)) {
@@ -250,10 +292,15 @@ export function providerErrorRetryAfterAt(error: unknown): number | undefined {
 
 
 /**
- * 状态码三段兜底:顶层(codex)→ `data.statusCode`(openai-compatible)→
- * **锚定前缀**的消息抠取(claude / deepseek / gemini)。
+ * 状态码:**先认 `ProviderHttpError`**(直接取 `status`,`0` 当作没有),认不出
+ * 才走三段兜底 —— 顶层 → `data.statusCode` → **锚定前缀**的消息抠取。
+ *
+ * 认出对象之后**立刻返回**,不许往下掉:掉下去 `data.statusCode` 会把
+ * `status: 0` 又原样捡回来,那正是「流中的错误突然有了 HTTP 状态」这类假事实。
  */
 export function providerErrorStatus(error: unknown): number | undefined {
+  const http = asProviderHttpError(error)
+  if (http) return http.status > 0 ? http.status : undefined
   const top = record(error)
   if (top) {
     for (const key of ['statusCode', 'status']) {
@@ -269,8 +316,24 @@ export function providerErrorStatus(error: unknown): number | undefined {
   return matched ? Number(matched[1]) : undefined
 }
 
-/** 消息 + 结构化响应体 + 一层 cause,拼成待匹配的文本。 */
+/**
+ * 消息 + 结构化响应体 + 一层 cause,拼成待匹配的文本。
+ *
+ * `ProviderHttpError` 走一条更短的路:它的 `responseBody` 只有一份(`data` 里那
+ * 个是同一个字符串的别名),拼两遍除了让文本变长没有任何作用。
+ */
 export function providerErrorText(error: unknown): string {
+  const http = asProviderHttpError(error)
+  if (http && error instanceof Error) {
+    const cause = (error as Error & { cause?: unknown }).cause
+    return [
+      error.message,
+      cause instanceof Error ? cause.message : undefined,
+      typeof http.responseBody === 'string' ? http.responseBody : undefined,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  }
   const parts: string[] = []
   if (error instanceof Error) {
     parts.push(error.message)

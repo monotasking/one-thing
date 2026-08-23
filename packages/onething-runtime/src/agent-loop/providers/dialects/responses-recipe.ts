@@ -33,7 +33,6 @@ import type { AgentProviderRequestDumper } from "../request-dump.js";
 import { RESPONSES_THINKING_WIRES } from "../thinking/index.js";
 import {
 	OpenAIResponsesWire,
-	codexResponsesErrorMapper,
 	createCodexAgentApiError,
 	responsesLogger,
 	type ResponsesDialect,
@@ -286,7 +285,6 @@ export function responsesDialect(spec: ResponsesDialectSpec): ResponsesDialect {
 			mergeAdjacent: false,
 		},
 		reasoning: RESPONSES_THINKING_WIRES,
-		errors: codexResponsesErrorMapper,
 		transport: spec.transport ?? CODEX_TRANSPORT_CAPABILITIES,
 		fallbackInstructions:
 			spec.fallbackInstructions ?? CODEX_FALLBACK_INSTRUCTIONS,

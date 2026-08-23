@@ -26,7 +26,6 @@ import type { AgentProviderRequestDumper } from "../request-dump.js";
 import { GEMINI_THINKING_WIRES } from "../thinking/index.js";
 import {
 	GeminiWire,
-	geminiErrorMapper,
 	geminiLogger,
 	type GeminiDialect,
 	type GeminiWireValue,
@@ -147,7 +146,6 @@ export function geminiDialect(spec: GeminiDialectSpec): GeminiDialect {
 			mergeAdjacent: true,
 		},
 		reasoning: GEMINI_THINKING_WIRES,
-		errors: geminiErrorMapper,
 		transport: spec.transport ?? GEMINI_TRANSPORT_CAPABILITIES,
 	};
 }

@@ -49,7 +49,7 @@ import {
 	type TurnContext,
 	type UsageNormalizer,
 } from "../base/index.js";
-import { GeminiErrorMapper, geminiErrorMapper } from "./gemini-errors.js";
+import { GeminiErrorMapper } from "./gemini-errors.js";
 import {
 	geminiParts,
 	toGeminiToolConfig,
@@ -289,11 +289,14 @@ export class GeminiWire extends HttpAgentProvider<
 	}
 
 	/**
-	 * P1-b 抛的仍是今天那个裸 `Error`(见 `gemini-errors.ts` 的抬头)。
+	 * P1-d1 起抛 `ProviderHttpError`(见 `gemini-errors.ts` 的抬头)。
 	 * 覆盖 getter 而不是在基类里加分支 —— 那是方言的事,不是模板的事。
 	 */
 	protected override get errors(): GeminiErrorMapper {
-		return (this.dialect.errors as GeminiErrorMapper | undefined) ?? geminiErrorMapper;
+		return (
+			(this.dialect.errors as GeminiErrorMapper | undefined) ??
+			new GeminiErrorMapper(this.id)
+		);
 	}
 
 	protected get geminiDialect(): GeminiDialect {

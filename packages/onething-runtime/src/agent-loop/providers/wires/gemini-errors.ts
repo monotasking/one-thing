@@ -1,25 +1,20 @@
 /**
- * gemini 线上的错误形状 —— **P1-b 保持今天的对象,一个字节不动**。
+ * gemini 线上的错误形状 —— **P1-d1 起是 `ProviderHttpError`**。
  *
- * 设计稿 §9 把「`ProviderHttpError` 全线 + 分类器改读对象」排在 P1 的后半段;
- * P1-b 是纯搬运,所以这里造的仍然是 `gemini.ts` 退役前那个对象:裸 `Error`
- * (`name` 仍是 `'Error'`)+ `withProviderRetryAfter` 挂上去的顶层
- * `retryAfterAt`,**没有** `responseBody` / `data`(那两个兼容字段是
- * openai-chat 那一家的老习惯)。两份 `error*.json` 快照就是这句话的门。
+ * 边界与另外三条线逐条同款(设计稿 §2.5 / §9 P1-d1):`message` 一字不变
+ * (`Gemini agent loop API error: ${status} ${body}`,`sourceName` 仍与
+ * providerId 无关 —— 锚定前缀抠取读的正是它)、顶层 `retryAfterAt` 照旧、
+ * `providerId` / `status` / `responseBody` / `data` / `inStream` 只增。
  *
  * 一处这条线独有、别家没有的现状:**Gemini 没有 `Retry-After` 头** —— 它把
  * `RetryInfo`(`retryDelay: "27s"`)放在响应体的 `error.details[]` 里,所以
- * `withProviderRetryAfter` 必须**同时**喂头和体,否则整个家族拿不到任何恢复
- * 时刻(批 B8-2)。
- *
- * `sourceName` 是写死的 `Gemini agent loop`,与 providerId 无关
- * (`provider-error-classification.ts` 的锚定前缀抠取读的正是它)。
+ * 解析必须**同时**喂头和体,否则整个家族拿不到任何恢复时刻(批 B8-2)。
+ * `ProviderHttpError` 的构造器本来就是这么调 `withProviderRetryAfter` 的。
  */
-import { withProviderRetryAfter } from "../../provider-error-classification.js";
-import type { ErrorMapper } from "../base/index.js";
+import { ProviderHttpError, type ErrorMapper } from "../base/index.js";
 
-/** `gemini.ts` 抛出来的那个对象的形状。 */
-export type GeminiApiError = Error & { retryAfterAt?: number };
+/** 这条线抛出来的对象的形状 —— 换装后就是 `ProviderHttpError` 本身。 */
+export type GeminiApiError = ProviderHttpError;
 
 /** 流块里能带错误的那一块。 */
 interface GeminiStreamErrorChunk {
@@ -29,26 +24,38 @@ interface GeminiStreamErrorChunk {
 export const GEMINI_SOURCE_NAME = "Gemini agent loop";
 
 export class GeminiErrorMapper implements ErrorMapper {
-	constructor(readonly sourceName: string = GEMINI_SOURCE_NAME) {}
+	constructor(
+		private readonly providerId: string,
+		readonly sourceName: string = GEMINI_SOURCE_NAME,
+	) {}
 
-	fromResponse(response: Response, bodyText: string): GeminiApiError {
-		return withProviderRetryAfter(
-			new Error(
-				`${this.sourceName} API error: ${response.status} ${bodyText}`,
-			),
-			{ headers: response.headers, body: bodyText },
-		);
+	fromResponse(response: Response, bodyText: string): ProviderHttpError {
+		return new ProviderHttpError({
+			providerId: this.providerId,
+			status: response.status,
+			message: `${this.sourceName} API error: ${response.status} ${bodyText}`,
+			responseBody: bodyText,
+			headers: response.headers,
+		});
 	}
 
-	/** 流中的 `error` 块 —— message → status → 兜底文案,逐字。 */
-	fromStreamEvent(event: unknown): Error | undefined {
+	/**
+	 * 流中的 `error` 块 —— message → status → 兜底文案,逐字。
+	 *
+	 * `status: 0` = 没有 HTTP 状态;Gemini 在块里给的 `error.status`
+	 * (`RESOURCE_EXHAUSTED` 之类)是一个**字符串枚举**,不是 HTTP 码,所以它
+	 * 落在 `type` 上而不是 `status` 上。
+	 */
+	fromStreamEvent(event: unknown): ProviderHttpError | undefined {
 		if (typeof event !== "object" || event === null) return undefined;
 		const chunk = event as GeminiStreamErrorChunk;
 		if (!chunk.error) return undefined;
-		return new Error(
-			`${this.sourceName} API error: ${chunk.error.message ?? chunk.error.status ?? "unknown error"}`,
-		);
+		return new ProviderHttpError({
+			providerId: this.providerId,
+			status: 0,
+			inStream: true,
+			...(chunk.error.status ? { type: chunk.error.status } : {}),
+			message: `${this.sourceName} API error: ${chunk.error.message ?? chunk.error.status ?? "unknown error"}`,
+		});
 	}
 }
-
-export const geminiErrorMapper = new GeminiErrorMapper();

@@ -15,10 +15,10 @@ import type {
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
 } from "@onething/core/agent-loop";
-import type { Logger, ProviderContext } from "./provider-context.js";
+import type { BaseProviderContext, Logger } from "./provider-context.js";
 
 export abstract class BaseAgentProvider implements AgentProvider {
-	protected constructor(protected readonly ctx: ProviderContext) {}
+	protected constructor(protected readonly ctx: BaseProviderContext) {}
 
 	get id(): string {
 		return this.ctx.providerId;
@@ -37,13 +37,16 @@ export abstract class BaseAgentProvider implements AgentProvider {
 	 */
 	get capabilities(): AgentModelCapabilities {
 		const base = this.transportCapabilities;
-		const profile = this.ctx.profiles.defaultProfile?.(this.id);
+		// 没有账本解析器 = 自述能力的 provider(acp / external-agents):
+		// 能力就是它自己声明的那份,一个字都不覆盖。
+		const profile = this.ctx.profiles?.defaultProfile?.(this.id);
 		return profile ? profile.toAgentModelCapabilities(base) : base;
 	}
 
 	async getModelCapabilities(model: string): Promise<AgentModelCapabilities> {
-		const profile = await this.ctx.profiles.resolve(this.id, model);
-		return profile.toAgentModelCapabilities(this.transportCapabilities);
+		const base = this.transportCapabilities;
+		const profile = await this.ctx.profiles?.resolve(this.id, model);
+		return profile ? profile.toAgentModelCapabilities(base) : base;
 	}
 
 	abstract streamTurn(

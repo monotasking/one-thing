@@ -2,10 +2,13 @@ import { statSync } from 'node:fs'
 import { agentContentToText } from '@onething/core/agent-loop'
 import type {
   AgentMessageContent,
+  AgentModelCapabilities,
   AgentProvider,
   AgentTurnRequest,
   AgentTurnStreamEvent,
 } from '@onething/core/agent-loop'
+import { BaseAgentProvider } from '../agent-loop/providers/base/base-agent-provider.js'
+import { getLogger } from '../logging/index.js'
 import type {
   ExternalAgentConnector,
   ExternalAgentImageInput,
@@ -135,27 +138,46 @@ function systemPrompt(request: AgentTurnRequest): string {
  * Adapts an ExternalAgentConnector to the engine's AgentProvider seam:
  * connector-level events (session-established, agent-status) are consumed
  * here; everything else is the AgentTurnStreamEvent vocabulary already.
+ *
+ * P1-d1:从对象字面量改成 `BaseAgentProvider` 的子类。继承来的是身份、能力投影、
+ * logger 与 `runTurn = collect(streamTurn)`。**不**继承 `HttpAgentProvider` ——
+ * 外部 agent 的传输是一条 SDK 会话/子进程,不是一次 fetch(设计稿 §2.9)。
+ *
+ * 实例无可写字段:`options` 是构造时闭起来的只读依赖,回合级的量全在
+ * `streamTurn` 的局部里。
  */
-export function createExternalAgentProvider(
-  options: CreateExternalAgentProviderOptions,
-): AgentProvider {
-  return {
-    id: options.providerId,
-    // Capabilities come from the connected agent, not the model ledger.
-    capabilitiesAreSelfDeclared: true,
-    capabilities: {
+class ExternalAgentProvider extends BaseAgentProvider {
+  constructor(private readonly options: CreateExternalAgentProviderOptions) {
+    super({
+      providerId: options.providerId,
+      logger: getLogger(`providers.${options.providerId}`),
+    })
+  }
+
+  /** 能力来自连接的 agent,不是账本 —— 宿主的账本覆盖层看这一位跳过自己。 */
+  get capabilitiesAreSelfDeclared(): boolean {
+    return true
+  }
+
+  /**
+   * 传输声明。自述能力的 provider 没有账本解析器,所以 `BaseAgentProvider` 会把
+   * 这份表原样交出去 —— 与从前那个字面量逐字段相同。
+   */
+  protected get transportCapabilities(): AgentModelCapabilities {
+    const { connector } = this.options
+    return {
       /**
        * 图像那一位**从连接器的能力表读**(2026-08-12),不在这里硬编码 —— 与
        * `executorAcceptsHostTools` 同一条纪律(原则 5):翻 `imagesIn` 会真的改变
        * 声明,而不是改一行没人看的文档。
        */
-      capabilities: options.connector.capabilities.imagesIn
+      capabilities: connector.capabilities.imagesIn
         ? ['text-input', 'text-output', 'streaming', 'reasoning', 'vision-input']
         : ['text-input', 'text-output', 'streaming', 'reasoning'],
-      inputModalities: options.connector.capabilities.imagesIn ? ['text', 'image'] : ['text'],
+      inputModalities: connector.capabilities.imagesIn ? ['text', 'image'] : ['text'],
       outputModalities: ['text'],
       supportsStreaming: true,
-      supportsReasoning: options.connector.capabilities.thinking,
+      supportsReasoning: connector.capabilities.thinking,
       /**
        * 仍是 false —— 而 E3 之后这句话的含义变了,值得写清楚。
        *
@@ -172,98 +194,106 @@ export function createExternalAgentProvider(
        * 引擎不再从 provider 的这一位推断任何东西。
        */
       supportsTools: false,
-    },
+    }
+  }
 
-    async *streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
-      const { text: prompt, images } = latestUserTurn(request)
-      if (!prompt && images.length === 0) throw new Error(`${options.providerId} prompt is empty`)
+  async *streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
+    const { options } = this
+    const { text: prompt, images } = latestUserTurn(request)
+    if (!prompt && images.length === 0) throw new Error(`${options.providerId} prompt is empty`)
 
-      /**
-       * **接不住图也要说话**(2026-08-12)。`imagesIn` 为假的连接器(今天是 ACP)
-       * 从前拿到的是一份被悄悄剥掉图片的文本 —— 用户发的图去哪了,界面上一个字都没有。
-       * 现在它拿到的仍然是文本,但用户先看到一句「图片没送到、为什么」。
-       *
-       * 这一位就是 `imagesIn` 的第二个读者:翻它会改行为,不只是改声明。
-       */
-      const deliverableImages = options.connector.capabilities.imagesIn ? images : []
-      const undeliverableImageNotice =
-        !options.connector.capabilities.imagesIn && images.length > 0
-          ? externalAgentImagesUnsupportedNotice(images.length)
-          : undefined
-
-      /**
-       * **未绑工作目录 = 不开跑**(2026-08-11 止血,审计「四堵墙」之二)。
-       *
-       * 这里以前兜底 `process.cwd()`:开发时那恰好是仓库根,于是看着像能用;
-       * 打包之后主进程的 cwd 是 `/`,外部 agent 于是在一个空目录里困惑地摸索,
-       * 而界面上一个字的提示都没有。兜底给的不是韧性,是一次静默的错误现场。
-       *
-       * 拒绝的形状与失败 result 同一套(`claude-code-connector.ts` 的
-       * `claudeCodeFailureNotice`):一条可见正文 + `finish(error)`。不 throw ——
-       * 抛出去只会在别处变成一条堆栈,用户要的是「我该做什么」。
-       */
-      const cwd = options.workingDirectory?.trim()
-      if (!cwd) {
-        yield { type: 'text-delta', turn: request.turn, delta: UNBOUND_WORKING_DIRECTORY_NOTICE }
-        yield { type: 'finish', turn: request.turn, finishReason: 'error' }
-        return
-      }
-
-      /**
-       * **绑了但没了**(2026-08-12 真机)。见 `missingWorkingDirectoryNotice`:
-       * 不拦的话这一支会以一条关于 musl / glibc 的排查建议收场。
-       *
-       * 判据是「是不是一个目录」而不是「存不存在」:绑到一个**文件**上 spawn 同样
-       * 失败,而 `existsSync` 对它是真 —— 只查存在会漏掉一半。
-       */
-      if (!isUsableDirectory(cwd)) {
-        yield { type: 'text-delta', turn: request.turn, delta: missingWorkingDirectoryNotice(cwd) }
-        yield { type: 'finish', turn: request.turn, finishReason: 'error' }
-        return
-      }
-
-      // 图片送不出去的那句话排在工作目录之后:没绑目录时这一轮压根不会跑,
-      // 用户该看到的是「去绑个目录」,而不是先被告知一件不相干的事。
-      if (undeliverableImageNotice) {
-        yield { type: 'text-delta', turn: request.turn, delta: undeliverableImageNotice }
-        // 只有图、没有文字,而这个引擎又接不住图 —— 这一轮没有任何可送的东西。
-        // 与未绑工作目录同一套收场:一条可见正文 + finish(error),不 throw。
-        if (!prompt) {
-          yield { type: 'finish', turn: request.turn, finishReason: 'error' }
-          return
-        }
-      }
-
-      const system = systemPrompt(request)
-      const localSessionId = options.localSessionId ?? `${options.providerId}-${request.model}`
-      const resume = options.connector.capabilities.resume
-        ? options.resolveSessionLink?.(localSessionId)
+    /**
+     * **接不住图也要说话**(2026-08-12)。`imagesIn` 为假的连接器(今天是 ACP)
+     * 从前拿到的是一份被悄悄剥掉图片的文本 —— 用户发的图去哪了,界面上一个字都没有。
+     * 现在它拿到的仍然是文本,但用户先看到一句「图片没送到、为什么」。
+     *
+     * 这一位就是 `imagesIn` 的第二个读者:翻它会改行为,不只是改声明。
+     */
+    const deliverableImages = options.connector.capabilities.imagesIn ? images : []
+    const undeliverableImageNotice =
+      !options.connector.capabilities.imagesIn && images.length > 0
+        ? externalAgentImagesUnsupportedNotice(images.length)
         : undefined
 
-      for await (const event of options.connector.streamTurn({
-        localSessionId,
-        messageId: options.messageId,
-        prompt,
-        ...(deliverableImages.length > 0 ? { images: deliverableImages } : {}),
-        ...(system ? { systemPrompt: system } : {}),
-        // `||`: unbound sessions arrive with an empty-string working dir.
-        cwd,
-        // The provider id doubles as the picker's pseudo-model; only a real
-        // model override is forwarded to the connector.
-        model: request.model === options.providerId ? undefined : request.model,
-        thinking: request.thinking,
-        reasoningEffort: request.reasoningEffort,
-        turn: request.turn,
-        abortSignal: request.abortSignal,
-        resume,
-      })) {
-        if (event.type === 'session-established') {
-          options.onSessionLink?.(event.link)
-          continue
-        }
-        if (event.type === 'agent-status') continue
-        yield event
+    /**
+     * **未绑工作目录 = 不开跑**(2026-08-11 止血,审计「四堵墙」之二)。
+     *
+     * 这里以前兜底 `process.cwd()`:开发时那恰好是仓库根,于是看着像能用;
+     * 打包之后主进程的 cwd 是 `/`,外部 agent 于是在一个空目录里困惑地摸索,
+     * 而界面上一个字的提示都没有。兜底给的不是韧性,是一次静默的错误现场。
+     *
+     * 拒绝的形状与失败 result 同一套(`claude-code-connector.ts` 的
+     * `claudeCodeFailureNotice`):一条可见正文 + `finish(error)`。不 throw ——
+     * 抛出去只会在别处变成一条堆栈,用户要的是「我该做什么」。
+     */
+    const cwd = options.workingDirectory?.trim()
+    if (!cwd) {
+      yield { type: 'text-delta', turn: request.turn, delta: UNBOUND_WORKING_DIRECTORY_NOTICE }
+      yield { type: 'finish', turn: request.turn, finishReason: 'error' }
+      return
+    }
+
+    /**
+     * **绑了但没了**(2026-08-12 真机)。见 `missingWorkingDirectoryNotice`:
+     * 不拦的话这一支会以一条关于 musl / glibc 的排查建议收场。
+     *
+     * 判据是「是不是一个目录」而不是「存不存在」:绑到一个**文件**上 spawn 同样
+     * 失败,而 `existsSync` 对它是真 —— 只查存在会漏掉一半。
+     */
+    if (!isUsableDirectory(cwd)) {
+      yield { type: 'text-delta', turn: request.turn, delta: missingWorkingDirectoryNotice(cwd) }
+      yield { type: 'finish', turn: request.turn, finishReason: 'error' }
+      return
+    }
+
+    // 图片送不出去的那句话排在工作目录之后:没绑目录时这一轮压根不会跑,
+    // 用户该看到的是「去绑个目录」,而不是先被告知一件不相干的事。
+    if (undeliverableImageNotice) {
+      yield { type: 'text-delta', turn: request.turn, delta: undeliverableImageNotice }
+      // 只有图、没有文字,而这个引擎又接不住图 —— 这一轮没有任何可送的东西。
+      // 与未绑工作目录同一套收场:一条可见正文 + finish(error),不 throw。
+      if (!prompt) {
+        yield { type: 'finish', turn: request.turn, finishReason: 'error' }
+        return
       }
-    },
+    }
+
+    const system = systemPrompt(request)
+    const localSessionId = options.localSessionId ?? `${options.providerId}-${request.model}`
+    const resume = options.connector.capabilities.resume
+      ? options.resolveSessionLink?.(localSessionId)
+      : undefined
+
+    for await (const event of options.connector.streamTurn({
+      localSessionId,
+      messageId: options.messageId,
+      prompt,
+      ...(deliverableImages.length > 0 ? { images: deliverableImages } : {}),
+      ...(system ? { systemPrompt: system } : {}),
+      // `||`: unbound sessions arrive with an empty-string working dir.
+      cwd,
+      // The provider id doubles as the picker's pseudo-model; only a real
+      // model override is forwarded to the connector.
+      model: request.model === options.providerId ? undefined : request.model,
+      thinking: request.thinking,
+      reasoningEffort: request.reasoningEffort,
+      turn: request.turn,
+      abortSignal: request.abortSignal,
+      resume,
+    })) {
+      if (event.type === 'session-established') {
+        options.onSessionLink?.(event.link)
+        continue
+      }
+      if (event.type === 'agent-status') continue
+      yield event
+    }
   }
+}
+
+/** 工厂函数签名与导出名一字不变 —— 调用方看不出里面换成了一个类。 */
+export function createExternalAgentProvider(
+  options: CreateExternalAgentProviderOptions,
+): AgentProvider {
+  return new ExternalAgentProvider(options)
 }

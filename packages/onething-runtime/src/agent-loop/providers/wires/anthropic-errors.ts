@@ -1,23 +1,30 @@
 /**
- * anthropic-messages 线上的错误形状 —— **P1-a 保持今天的对象,一个字节不动**。
+ * anthropic-messages 线上的错误形状 —— **P1-d1 起是 `ProviderHttpError`**。
  *
- * 设计稿 §9 把「`ProviderHttpError` 全线 + 分类器改读对象」排在 P1 的后半段;
- * P1-a 是纯搬运,所以这里造的仍然是 `claude.ts` 退役前那个对象:裸 `Error`
- * (`name` 仍是 `'Error'`)+ `withProviderRetryAfter` 挂上去的顶层
- * `retryAfterAt`,**没有** `responseBody` / `data`(openai-chat 那两个兼容字段
- * 是那一家的老习惯,anthropic 这条线今天压根没有)。三份 `error.json` 快照
- * 就是这句话的门。
+ * 边界与 openai-chat 那份逐条同款(设计稿 §2.5 / §9 P1-d1):
  *
- * `sourceName` 是**写死的 `Claude agent loop`**,与 providerId 无关:
- * claude-code 与 `custom-*` 的错误消息今天也都以这五个字打头
- * (`provider-error-classification.ts` 的锚定前缀抠取读的正是它)。统一成
- * per-id 的名字是行为变更,排 P1-d。
+ *  1. **`message` 一字不变**:`Claude agent loop API error: ${status} ${body}`。
+ *     `sourceName` 仍是**写死的 `Claude agent loop`**,与 providerId 无关 ——
+ *     claude-code 与 `custom-*` 的错误消息今天也都以这五个字打头
+ *     (`provider-error-classification.ts` 的锚定前缀抠取读的正是它)。改成
+ *     per-id 是行为变更,仍然待拍板。
+ *  2. **今天有的照旧**:顶层 `retryAfterAt`(`withProviderRetryAfter` 在
+ *     `ProviderHttpError` 构造里做)。
+ *  3. **只增**:`providerId` / `status` / `responseBody` / `data` / `inStream`
+ *     ——`responseBody` 与 `data` 这两个从前只有 openai-chat 一家有的兼容字段,
+ *     换装后四条线一致(超集,不是替换)。
+ *
+ * `providerId` **在构造时给**(wire 的 `errors` getter 用 `this.id` 建),不是从
+ * 方言配方里拿:一份 anthropic 配方服务 `custom-*` 任意多个 provider id,
+ * 拿配方 id 就会给自建端点贴上 `custom-anthropic` 这个假身份。
+ *
+ * 一处这条线独有的现状:Anthropic 429 必带 `retry-after`(秒),另有
+ * `anthropic-ratelimit-*-reset`(RFC 3339)。挂成绝对时间戳,冷却按它走(批 B8-2)。
  */
-import { withProviderRetryAfter } from "../../provider-error-classification.js";
-import type { ErrorMapper } from "../base/index.js";
+import { ProviderHttpError, type ErrorMapper } from "../base/index.js";
 
-/** `claude.ts` 抛出来的那个对象的形状。 */
-export type AnthropicApiError = Error & { retryAfterAt?: number };
+/** 这条线抛出来的对象的形状 —— 换装后就是 `ProviderHttpError` 本身。 */
+export type AnthropicApiError = ProviderHttpError;
 
 /** 流事件里能带错误的两个位置。 */
 interface AnthropicStreamErrorEvent {
@@ -28,28 +35,38 @@ interface AnthropicStreamErrorEvent {
 export const ANTHROPIC_SOURCE_NAME = "Claude agent loop";
 
 export class AnthropicErrorMapper implements ErrorMapper {
-	constructor(readonly sourceName: string = ANTHROPIC_SOURCE_NAME) {}
+	constructor(
+		private readonly providerId: string,
+		readonly sourceName: string = ANTHROPIC_SOURCE_NAME,
+	) {}
 
-	fromResponse(response: Response, bodyText: string): AnthropicApiError {
-		// 批 B8-2:Anthropic 429 必带 `retry-after`(秒),另有
-		// `anthropic-ratelimit-*-reset`(RFC 3339)。挂成绝对时间戳,冷却按它走。
-		return withProviderRetryAfter(
-			new Error(
-				`${this.sourceName} API error: ${response.status} ${bodyText}`,
-			),
-			{ headers: response.headers, body: bodyText },
-		);
+	fromResponse(response: Response, bodyText: string): ProviderHttpError {
+		return new ProviderHttpError({
+			providerId: this.providerId,
+			status: response.status,
+			message: `${this.sourceName} API error: ${response.status} ${bodyText}`,
+			responseBody: bodyText,
+			headers: response.headers,
+			requestId: response.headers.get("request-id") ?? undefined,
+		});
 	}
 
-	/** `event.type === 'error'` 或者任意事件上挂了 `error` 那一块。 */
-	fromStreamEvent(event: unknown): Error | undefined {
+	/**
+	 * `event.type === 'error'` 或者任意事件上挂了 `error` 那一块。
+	 *
+	 * `status: 0` = 没有 HTTP 状态(§2.5)—— 分类器与 retry 都把 0 当作读不到,
+	 * 于是这一支照旧走文本判据(`overloaded` → transient),结论逐字不变。
+	 */
+	fromStreamEvent(event: unknown): ProviderHttpError | undefined {
 		if (typeof event !== "object" || event === null) return undefined;
 		const candidate = event as AnthropicStreamErrorEvent;
 		if (candidate.type !== "error" && !candidate.error) return undefined;
-		return new Error(
-			`${this.sourceName} error: ${candidate.error?.message ?? "unknown error"}`,
-		);
+		return new ProviderHttpError({
+			providerId: this.providerId,
+			status: 0,
+			inStream: true,
+			...(candidate.error?.type ? { type: candidate.error.type } : {}),
+			message: `${this.sourceName} error: ${candidate.error?.message ?? "unknown error"}`,
+		});
 	}
 }
-
-export const anthropicErrorMapper = new AnthropicErrorMapper();

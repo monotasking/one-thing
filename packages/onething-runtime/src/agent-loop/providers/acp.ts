@@ -1,6 +1,7 @@
-import { agentContentToText, collectAgentTurnFromStream } from '@onething/core/agent-loop'
+import { agentContentToText } from '@onething/core/agent-loop'
 import type {
   AgentFinishReason,
+  AgentModelCapabilities,
   AgentProvider,
   AgentToolCall,
   AgentToolResult,
@@ -8,6 +9,8 @@ import type {
   AgentTurnRequest,
   AgentTurnStreamEvent,
 } from '@onething/core/agent-loop'
+import { getLogger } from '../../logging/index.js'
+import { BaseAgentProvider } from './base/base-agent-provider.js'
 
 export interface CoreACPPromptStreamOptions {
   localSessionId: string
@@ -234,80 +237,104 @@ function createACPToolCallTracker(turn: number) {
   return { start, progress, settleRemaining }
 }
 
-export function createACPAgentProvider(options: CoreACPAgentProviderOptions): AgentProvider {
-  return {
-    id: 'acp',
-    // Capabilities come from the connected agent, not the model ledger.
-    capabilitiesAreSelfDeclared: true,
-    capabilities: {
-      capabilities: ['text-input', 'text-output', 'streaming', 'reasoning'],
-      inputModalities: ['text'],
-      outputModalities: ['text'],
-      supportsStreaming: true,
-      supportsReasoning: true,
-      supportsTools: false,
-    },
+/**
+ * ACP 的传输声明 —— **能力来自连上的那个 agent,不来自模型账本**
+ * (`capabilitiesAreSelfDeclared`)。所以这份表就是最终答案:`BaseAgentProvider`
+ * 在没有账本解析器时原样交出它,一个布尔都不翻。
+ */
+const ACP_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
+  capabilities: ['text-input', 'text-output', 'streaming', 'reasoning'],
+  inputModalities: ['text'],
+  outputModalities: ['text'],
+  supportsStreaming: true,
+  supportsReasoning: true,
+  supportsTools: false,
+}
 
-    async *streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
-      const prompt = latestUserPrompt(request)
-      if (!prompt) throw new Error('ACP prompt is empty')
-
-      const tracker = createACPToolCallTracker(request.turn)
-
-      for await (const event of options.streamPrompt(request.model, {
-        localSessionId: options.localSessionId ?? `acp-${request.model}`,
-        prompt,
-        cwd: options.workingDirectory ?? options.cwd?.() ?? '.',
-        abortSignal: request.abortSignal,
-      })) {
-        if (event.type === 'warning') {
-          yield { type: 'reasoning-delta', turn: request.turn, delta: event.message }
-          continue
-        }
-
-        if (event.type === 'finish') {
-          yield* tracker.settleRemaining({ aborted: event.stopReason === 'cancelled' })
-          yield {
-            type: 'finish',
-            turn: request.turn,
-            finishReason: mapACPFinishReason(event.stopReason),
-            usage: event.usage,
-          }
-          continue
-        }
-
-        const update = event.notification.update
-        switch (update.sessionUpdate) {
-          case 'agent_message_chunk':
-            {
-              const text = textFromACPContent(update.content)
-              if (text) yield { type: 'text-delta', turn: request.turn, delta: text }
-            }
-            break
-          case 'agent_thought_chunk':
-            {
-              const text = textFromACPContent(update.content)
-              if (text) yield { type: 'reasoning-delta', turn: request.turn, delta: text }
-            }
-            break
-          case 'plan':
-            yield { type: 'reasoning-delta', turn: request.turn, delta: 'ACP plan updated.' }
-            break
-          case 'tool_call':
-            yield* tracker.start(update)
-            break
-          case 'tool_call_update':
-            yield* tracker.progress(update)
-            break
-          default:
-            break
-        }
-      }
-    },
-
-    async runTurn(request) {
-      if (!this.streamTurn) throw new Error('ACP streamTurn unavailable')
-      return collectAgentTurnFromStream(this.streamTurn(request), request.onEvent)
-    },
+/**
+ * ACP provider(P1-d1:从对象字面量改成 `BaseAgentProvider` 的子类)。
+ *
+ * 继承来的是身份、能力投影、`runTurn = collect(streamTurn)` 与 logger —— 与它
+ * 从前手写的那份 `runTurn` 逐字等价。**不**继承 `HttpAgentProvider`:ACP 的传输
+ * 是一条 JSON-RPC 会话,不是一次 fetch(设计稿 §2.9)。
+ *
+ * 实例无可写字段:每回合的可变量(工具调用跟踪器)活在 `streamTurn` 的局部里,
+ * `options` 是构造时闭起来的只读依赖。
+ */
+class ACPAgentProvider extends BaseAgentProvider {
+  constructor(private readonly options: CoreACPAgentProviderOptions) {
+    super({ providerId: 'acp', logger: getLogger('providers.acp') })
   }
+
+  /** 能力来自连接的 agent,不是账本 —— 宿主的账本覆盖层看这一位跳过自己。 */
+  get capabilitiesAreSelfDeclared(): boolean {
+    return true
+  }
+
+  protected get transportCapabilities(): AgentModelCapabilities {
+    return ACP_TRANSPORT_CAPABILITIES
+  }
+
+  async *streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
+    const { options } = this
+    const prompt = latestUserPrompt(request)
+    if (!prompt) throw new Error('ACP prompt is empty')
+
+    const tracker = createACPToolCallTracker(request.turn)
+
+    for await (const event of options.streamPrompt(request.model, {
+      localSessionId: options.localSessionId ?? `acp-${request.model}`,
+      prompt,
+      cwd: options.workingDirectory ?? options.cwd?.() ?? '.',
+      abortSignal: request.abortSignal,
+    })) {
+      if (event.type === 'warning') {
+        yield { type: 'reasoning-delta', turn: request.turn, delta: event.message }
+        continue
+      }
+
+      if (event.type === 'finish') {
+        yield* tracker.settleRemaining({ aborted: event.stopReason === 'cancelled' })
+        yield {
+          type: 'finish',
+          turn: request.turn,
+          finishReason: mapACPFinishReason(event.stopReason),
+          usage: event.usage,
+        }
+        continue
+      }
+
+      const update = event.notification.update
+      switch (update.sessionUpdate) {
+        case 'agent_message_chunk':
+          {
+            const text = textFromACPContent(update.content)
+            if (text) yield { type: 'text-delta', turn: request.turn, delta: text }
+          }
+          break
+        case 'agent_thought_chunk':
+          {
+            const text = textFromACPContent(update.content)
+            if (text) yield { type: 'reasoning-delta', turn: request.turn, delta: text }
+          }
+          break
+        case 'plan':
+          yield { type: 'reasoning-delta', turn: request.turn, delta: 'ACP plan updated.' }
+          break
+        case 'tool_call':
+          yield* tracker.start(update)
+          break
+        case 'tool_call_update':
+          yield* tracker.progress(update)
+          break
+        default:
+          break
+      }
+    }
+  }
+}
+
+/** 工厂函数签名与导出名一字不变 —— 调用方看不出里面换成了一个类。 */
+export function createACPAgentProvider(options: CoreACPAgentProviderOptions): AgentProvider {
+  return new ACPAgentProvider(options)
 }

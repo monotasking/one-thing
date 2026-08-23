@@ -20,7 +20,6 @@ export {
 export {
 	ANTHROPIC_SOURCE_NAME,
 	AnthropicErrorMapper,
-	anthropicErrorMapper,
 	type AnthropicApiError,
 } from "./anthropic-errors.js";
 export {
@@ -85,7 +84,6 @@ export {
 export {
 	GEMINI_SOURCE_NAME,
 	GeminiErrorMapper,
-	geminiErrorMapper,
 	type GeminiApiError,
 } from "./gemini-errors.js";
 export {
@@ -119,8 +117,8 @@ export {
 	type ResponsesDialect,
 } from "./openai-responses-wire.js";
 export {
+	CodexHttpError,
 	CodexResponsesErrorMapper,
-	codexResponsesErrorMapper,
 	createCodexAgentApiError,
 	summarizeCodexErrorBody,
 	type CodexApiError,

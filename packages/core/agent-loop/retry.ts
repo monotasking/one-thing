@@ -59,9 +59,21 @@ const RETRYABLE_PATTERNS: RegExp[] = [
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 
+/**
+ * HTTP 状态码。**先认 provider 错误对象的鸭子形状** —— 顶层 `status` 是 number
+ * 且 `providerId` 是 string(runtime 的 `ProviderHttpError`;core 不 import
+ * runtime,所以认形状不认类)。认出来就直接用,正文里的数字一概不参与。
+ *
+ * `status === 0` = **没有 HTTP 状态**(流中的错误事件、首字节/空闲超时)。当作
+ * 读不到往下走,否则 `RETRYABLE_STATUS.has(0)` 会把一条「stream interrupted」
+ * 直接判成不可重试 —— 那是换装前它绝不会有的下场。
+ */
 function errorStatus(error: unknown): number | undefined {
   if (!error || typeof error !== 'object') return undefined
   const record = error as Record<string, unknown>
+  if (typeof record.status === 'number' && typeof record.providerId === 'string') {
+    return record.status > 0 ? record.status : undefined
+  }
   for (const key of ['statusCode', 'status']) {
     const value = record[key]
     if (typeof value === 'number') return value
@@ -90,6 +102,8 @@ export function isRetryableAgentError(error: unknown): boolean {
     return (error as Record<string, unknown>).isRetryable as boolean
   }
 
+  // 读得到状态码就到此为止 —— 正文全文扫描是**兜底**,不是并列判据:响应体里
+  // 一个 `"max_tokens": 500` 就够让它把一条 429 读成 5xx。
   const status = errorStatus(error)
   if (status !== undefined) return RETRYABLE_STATUS.has(status)
 

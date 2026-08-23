@@ -1,26 +1,26 @@
 /**
- * openai-chat 线上的错误形状 —— **P0a 保持今天的对象,一个字节不动**。
+ * openai-chat 线上的错误形状 —— **P1-d1 起是 `ProviderHttpError`**。
  *
- * 设计稿 §9 把「`ProviderHttpError` 全线 + 分类器改读对象」排在 **P1**;P0a 是
- * 纯搬运,所以这里造的仍然是 `openai-compatible.ts` 的
- * `createOpenAICompatibleApiError` 那个对象:裸 `Error`(`name` 仍是
- * `'Error'`)+ 顶层 `responseBody` + `data { providerId, statusCode, responseBody }`
- * + 顶层 `retryAfterAt`。换成 `ProviderHttpError` 会同时改掉 `name` 和可枚举
- * 自有字段集,十一份 `error.json` 快照会一起变 —— 那不是搬运。
+ * 换装的边界写死在三句话里(设计稿 §2.5 / §9 P1-d1):
+ *
+ *  1. **用户可见的 `message` 一字不变**:`${displayName} agent loop API error:
+ *     ${status} ${body}`,DeepSeek 那个大写前缀照旧(前缀统一是 §10 的待拍板
+ *     项,不在这一批);
+ *  2. **今天的兼容字段全部保留**:顶层 `responseBody`、
+ *     `data { providerId, statusCode, responseBody }`、顶层 `retryAfterAt` ——
+ *     `ProviderHttpError` 自带这三样,分类器的三段兜底与既有测试一行不用改;
+ *  3. **只增不减**:再多出统一字段 `providerId` / `status` / `inStream`
+ *     (以及有值才出现的 `requestId`)。`name` 从 `'Error'` 变成
+ *     `'ProviderHttpError'` —— 这是本批唯一允许的快照变化。
  *
  * `displayName` 是这家在**用户可见文案**里的名字:十家用 providerId,DeepSeek
- * 今天写作 `DeepSeek`(设计稿 §10 第 1 条:统一成小写是 P1 要拍板的变更)。
- * 它也是 SSE 读取器的 `sourceName` —— 同一个名字只有一处 owner。
+ * 今天写作 `DeepSeek`。它也是 SSE 读取器的 `sourceName` —— 同一个名字只有一处
+ * owner。
  */
-import { withProviderRetryAfter } from "../../provider-error-classification.js";
-import type { ErrorMapper } from "../base/index.js";
+import { ProviderHttpError, type ErrorMapper } from "../base/index.js";
 
-/** `createOpenAICompatibleApiError` 造出来的那个对象的形状。 */
-export type OpenAIChatApiError = Error & {
-	responseBody: string;
-	data: { providerId: string; statusCode: number; responseBody: string };
-	retryAfterAt?: number;
-};
+/** 这条线抛出来的对象的形状 —— 换装后就是 `ProviderHttpError` 本身。 */
+export type OpenAIChatApiError = ProviderHttpError;
 
 export class OpenAIChatErrorMapper implements ErrorMapper {
 	constructor(
@@ -33,35 +33,39 @@ export class OpenAIChatErrorMapper implements ErrorMapper {
 		return `${this.displayName} agent loop`;
 	}
 
-	fromResponse(response: Response, bodyText: string): OpenAIChatApiError {
+	fromResponse(response: Response, bodyText: string): ProviderHttpError {
 		// 批 B8-2:OpenAI 系用 `retry-after` + `x-ratelimit-reset-requests/-tokens`
 		// (Go duration,`6m0s` / `2m59.56s`)。`retryAfterAt` 挂**顶层**,与
 		// `statusCode` 藏在 data 里的老习惯不同 —— 那是既有形状,不去动它。
-		return withProviderRetryAfter(
-			Object.assign(
-				new Error(
-					`${this.displayName} agent loop API error: ${response.status} ${bodyText}`,
-				),
-				{
-					responseBody: bodyText,
-					data: {
-						providerId: this.providerId,
-						statusCode: response.status,
-						responseBody: bodyText,
-					},
-				},
-			),
-			{ headers: response.headers, body: bodyText },
-		);
+		return new ProviderHttpError({
+			providerId: this.providerId,
+			status: response.status,
+			message: `${this.displayName} agent loop API error: ${response.status} ${bodyText}`,
+			responseBody: bodyText,
+			headers: response.headers,
+			requestId:
+				response.headers.get("x-request-id") ??
+				response.headers.get("request-id") ??
+				undefined,
+		});
 	}
 
-	/** 带内错误:`{ error: { message } }` 那一块。 */
-	fromStreamEvent(event: unknown): Error | undefined {
+	/**
+	 * 带内错误:`{ error: { message } }` 那一块。
+	 *
+	 * `status: 0` = **没有 HTTP 状态**(§2.5)——它来自流里的一条事件,不是响应头。
+	 * 分类器与 core 的 retry 都把 0 当作「读不到状态码」,于是这一支照旧走文本
+	 * 判据(`overloaded` → transient / 可重试),与换装前逐字同一个结论。
+	 */
+	fromStreamEvent(event: unknown): ProviderHttpError | undefined {
 		if (typeof event !== "object" || event === null) return undefined;
 		const error = (event as { error?: { message?: string } }).error;
 		if (!error) return undefined;
-		return new Error(
-			`${this.sourceName} error: ${error.message ?? "unknown error"}`,
-		);
+		return new ProviderHttpError({
+			providerId: this.providerId,
+			status: 0,
+			inStream: true,
+			message: `${this.sourceName} error: ${error.message ?? "unknown error"}`,
+		});
 	}
 }

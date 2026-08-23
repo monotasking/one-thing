@@ -57,6 +57,12 @@ export abstract class HttpAgentProvider<
 	TBody extends object = Record<string, unknown>,
 	TChunk = unknown,
 > extends BaseAgentProvider {
+	/**
+	 * 把继承来的 `ctx` 收窄回 `ProviderContext`:HTTP 这一支必有 `baseUrl` /
+	 * `fetchImpl` / `profiles`(`declare` 只改类型,不生成字段,实例仍然无状态)。
+	 */
+	protected declare readonly ctx: ProviderContext;
+
 	protected constructor(
 		ctx: ProviderContext,
 		protected readonly dialect: Dialect,
