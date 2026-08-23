@@ -1,11 +1,13 @@
 /**
  * Image Generation Module
- * Handles OpenAI DALL-E and Gemini image generation
+ * Handles OpenAI-compatible (DALL-E / gpt-image) image generation.
+ *
+ * P4-8:gemini 那一支已退役 —— Google 官方端点的图像模型同时是聊天模型,图在
+ * agent loop 里以 `inlineData` part 回来(GeminiWire 解析),不再有专用生图流。
  */
 
 import { createAppFetch } from '../../../provider-binding/bound-fetch.js'
 import {
-  generateCoreGeminiImage,
   generateCoreOpenAIImage,
   normalizeImageModelId,
   type CoreImageGenerationResult,
@@ -40,23 +42,6 @@ export async function generateImage(
     model,
     prompt,
     imageOptions: options,
-    fetch: createAppFetch({ policy: 'default' }),
-    logger: consoleLog,
-  })
-}
-
-/**
- * Generate image using Gemini's native image generation REST API.
- */
-export async function generateGeminiImage(
-  apiKey: string,
-  model: string,
-  prompt: string
-): Promise<ImageGenerationResult> {
-  return generateCoreGeminiImage({
-    apiKey,
-    model,
-    prompt,
     fetch: createAppFetch({ policy: 'default' }),
     logger: consoleLog,
   })

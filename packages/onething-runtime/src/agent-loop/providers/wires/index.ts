@@ -80,6 +80,8 @@ export {
 } from "./xai-search-parameters.js";
 export {
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
+	OPENAI_RESPONSES_VERBOSITY_PATH,
+	OPENAI_RESPONSES_VERBOSITY_VALUES,
 	openAIResponsesImageDetail,
 	openAIResponsesProviderOptionsExtraBody,
 	pickOpenAIResponsesProviderOptions,
@@ -88,6 +90,7 @@ export {
 	type OpenAIResponsesProviderOptionDropped,
 	type OpenAIResponsesProviderOptionSupport,
 	type OpenAIResponsesProviderOptions,
+	type OpenAIResponsesVerbosity,
 } from "./openai-responses-provider-options.js";
 export {
 	OPENAI_CHAT_PDF_DELIVERED_NOTE,

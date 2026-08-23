@@ -168,6 +168,43 @@ describe('onething model registry helpers', () => {
     ).toBe(false)
   })
 
+  it('no longer routes a Google-endpoint gemini image model to the image stream', () => {
+    // P4-8:`gemini` + `image` 的名字兜底退役。目录缺席时账本仍答得出
+    // imageOutput=true(gemini 规则表的 `/image/` 行)⇒ servedBy='in-loop'
+    // ⇒ 不换通路;它走 GeminiWire 的普通流。
+    expect(onethingModelSupportsImageGeneration(undefined, 'gemini-2.5-flash-image', 'gemini')).toBe(false)
+    expect(onethingModelSupportsImageGeneration({}, 'gemini-3-pro-image', 'gemini')).toBe(false)
+
+    // 目录**在**、并且说它能出图 —— 结论一样(servedBy 判在 override 之前)。
+    const geminiEntry: OnethingModelCapabilityEntry = {
+      ...entry('gemini-3-pro-image', 'gemini', 1048576, 65536),
+      supportsImageOutput: true,
+      outputModalities: ['text', 'image'],
+    }
+    expect(
+      onethingModelSupportsImageGeneration(
+        { gemini: { models: { 'gemini-3-pro-image': geminiEntry } } },
+        'gemini-3-pro-image',
+        'gemini',
+      ),
+    ).toBe(false)
+  })
+
+  it('keeps the dedicated-endpoint name fallbacks', () => {
+    // dall-e / gpt-image / imagen / flux / stable-diffusion / midjourney 那一族
+    // 的名字兜底保留:那条通路确实不在回合里。
+    for (const modelId of [
+      'dall-e-3',
+      'gpt-image-1',
+      'imagen-4.0-generate-001',
+      'flux-1.1-pro',
+      'stable-diffusion-xl',
+      'midjourney-v6',
+    ]) {
+      expect(onethingModelSupportsImageGeneration(undefined, modelId, 'openai')).toBe(true)
+    }
+  })
+
   it('still routes a real dedicated image model to the image stream', () => {
     const imageEntry: OnethingModelCapabilityEntry = {
       ...entry('some-image-model', 'openai', 128000, 4096),

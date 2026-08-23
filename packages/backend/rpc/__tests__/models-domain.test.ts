@@ -200,3 +200,66 @@ describe('models RPC domain — Codex cache handling', () => {
     expect(mocks.forceRefresh).toHaveBeenCalledTimes(1)
   })
 })
+
+/**
+ * P4-7:渲染层的「文件能力」诚实口。
+ *
+ * 这一组**不 mock** provider 工厂 —— 要测的正是「账本 ∧ 传输声明」这条真链:
+ * mock 掉它就只剩一句 JSON 转发,那不是这条通道存在的理由。
+ */
+describe('models RPC domain — getModelCapabilities', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.settings = { ai: { provider: 'openai', temperature: 0.7, providers: {} } } as unknown as AppSettings
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('rejects an incomplete request instead of guessing', async () => {
+    expect(await modelsRpcHandlers.getModelCapabilities({ providerId: '', model: 'gpt-5.5' }))
+      .toMatchObject({ success: false })
+    expect(await modelsRpcHandlers.getModelCapabilities({ providerId: 'openai', model: '' }))
+      .toMatchObject({ success: false })
+  })
+
+  it('openai gpt-5.5 takes files (transport declares them, the ledger has nothing against it)', async () => {
+    const response = await modelsRpcHandlers.getModelCapabilities({
+      providerId: 'openai',
+      model: 'gpt-5.5',
+    })
+
+    expect(response.success).toBe(true)
+    expect(response.capabilities).toMatchObject({ supportsVision: true, supportsFiles: true })
+  })
+
+  it('deepseek vision-exp reads images and takes no file — the two are not one switch', async () => {
+    mocks.settings = {
+      ai: {
+        provider: 'deepseek',
+        temperature: 0.7,
+        providers: { deepseek: { apiKey: 'k' } },
+      },
+    } as unknown as AppSettings
+
+    const response = await modelsRpcHandlers.getModelCapabilities({
+      providerId: 'deepseek',
+      model: 'deepseek-vl2-vision-exp',
+    })
+
+    expect(response.success).toBe(true)
+    expect(response.capabilities?.supportsVision).toBe(true)
+    expect(response.capabilities?.supportsFiles).toBe(false)
+  })
+
+  it('reports the failure instead of throwing when a provider cannot be constructed', async () => {
+    const response = await modelsRpcHandlers.getModelCapabilities({
+      providerId: 'definitely-not-a-provider',
+      model: 'whatever',
+    })
+
+    expect(response.success).toBe(false)
+    expect(response.error).toBeTruthy()
+  })
+})

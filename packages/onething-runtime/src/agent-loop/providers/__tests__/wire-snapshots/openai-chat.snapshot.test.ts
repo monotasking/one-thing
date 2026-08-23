@@ -17,10 +17,12 @@
  *
  * ## 覆盖面
  *
- * openai-chat 线协议上全部 9 个注册 id(见 `OPENAI_CHAT_PROVIDER_IDS`):
- * 8 个 `registerAgentProviderRuntime(...)` 注册的 + 1 个 `custom-*`(xAI 的两条
- * 通路 P4-4 起在 `responses.snapshot.test.ts` 里)
+ * openai-chat 线协议上全部 8 个注册 id(见 `OPENAI_CHAT_PROVIDER_IDS`):
+ * 7 个 `registerAgentProviderRuntime(...)` 注册的 + 1 个 `custom-*`
  * (apiType `openai`,走 `createCustomAgentProviderFromRuntime`)。
+ * xAI 的两条通路 P4-4 起、**OpenAI 官方通路 P4-5 起**在
+ * `responses.snapshot.test.ts` 里 —— `custom-*`(apiType `openai`)与
+ * `github-copilot` 仍留在这条线上,自建端点与 Copilot 后台大多只有 chat 接口。
  * 全部经**生产入口** `createAgentProviderFromRuntime` 构造 —— 覆盖层
  * (`withPerModelCapabilities`)也在里面。
  *
@@ -80,7 +82,6 @@ const FIXTURE_ROOT = fileURLToPath(
 
 /** 每个 id 的 fixture 目录名 = id 本身。 */
 export const OPENAI_CHAT_PROVIDER_IDS = [
-	"openai",
 	"deepseek",
 	"kimi",
 	"kimi-code",
@@ -106,10 +107,6 @@ interface ProviderFixture {
  * 的地址由 `providerOptions` 决定。
  */
 const PROVIDERS: Record<OpenAIChatProviderId, ProviderFixture> = {
-	openai: {
-		model: "gpt-5.5",
-		config: { apiKey: "sk-openai-fixture" },
-	},
 	deepseek: {
 		model: "deepseek-v4-flash",
 		config: { apiKey: "sk-deepseek-fixture" },
@@ -435,7 +432,10 @@ describe("openai-chat wire snapshots — request bodies", () => {
 		const dumps: AgentProviderRequestDump[] = [];
 		const wireBodies: unknown[] = [];
 		const provider = buildProvider(
-			"openai",
+			// P4-5 之前这条门取样 `openai`;它换到 Responses 之后,这里改用同线上
+			// 另一家收图的配方 —— 守的是 **openai-chat wire 的 dump 截断**,与哪家
+			// 无关(Responses 那条线的同一道门在 `responses.snapshot.test.ts`)。
+			"openrouter",
 			createFetchStub(
 				() => sseResponse(MINIMAL_STREAM),
 				(init) => {
@@ -450,7 +450,7 @@ describe("openai-chat wire snapshots — request bodies", () => {
 		await drain(
 			provider.streamTurn({
 				messages: [SYSTEM_MESSAGE, MULTIMODAL_USER_MESSAGE],
-				model: PROVIDERS.openai.model,
+				model: PROVIDERS.openrouter.model,
 				turn: 1,
 			}),
 		);
@@ -487,31 +487,6 @@ describe("openai-chat wire snapshots — request bodies", () => {
 		});
 		await expect(snapshotJson(dump)).toMatchFileSnapshot(
 			fixturePath("openrouter", "image-output.request.json"),
-		);
-	});
-
-	/**
-	 * 请求级 providerOptions 袋(P3-3)。上面五个用例**不带袋**,所以那批 fixture
-	 * 一个字节都没变;袋是这一条独有的输入。
-	 *
-	 * 三件事一份 fixture 一起守:白名单里的 `verbosity` 上顶层、`imageDetail`
-	 * 进每个 `image_url.detail`、白名单外的 `unknownKey` 一个字都不出现
-	 * (它被丢弃时留的那条 `setting-dropped` 在 `wires/__tests__/provider-options.test.ts`
-	 * 里断)。
-	 */
-	it("openai — request providerOptions bag", async () => {
-		const dump = await captureRequest("openai", {
-			messages: [SYSTEM_MESSAGE, MULTIMODAL_USER_MESSAGE],
-			providerOptions: {
-				openai: { verbosity: "low", imageDetail: "low", unknownKey: 1 },
-			},
-		});
-		const body = JSON.stringify(dump.requestBody);
-		expect(body).toContain('"verbosity":"low"');
-		expect(body).toContain('"detail":"low"');
-		expect(body).not.toContain("unknownKey");
-		await expect(snapshotJson(dump)).toMatchFileSnapshot(
-			fixturePath("openai", "provider-options.request.json"),
 		);
 	});
 

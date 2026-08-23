@@ -286,12 +286,16 @@ interface OrderedPart {
   [key: string]: unknown
 }
 
-function applyOptions(providerData: Record<string, unknown>) {
+function applyOptions(
+  providerData: Record<string, unknown>,
+  // 落库那侧按真实 mediaType 决定后缀;`media://<id>.<ext>` 取的就是这个文件名。
+  filePath = '/store/media/media_1.png',
+) {
   const orderedParts: OrderedPart[] = []
   const content = { value: '' }
   const saveMediaImage = vi.fn(async () => ({
     id: 'media_1',
-    filePath: '/store/media/media_1.png',
+    filePath,
     prompt: 'draw moon',
     revisedPrompt: 'better moon',
     model: IMAGE_MODEL,
@@ -369,6 +373,8 @@ describe('openrouter image output — message placement', () => {
       model: IMAGE_MODEL,
       sessionId: 's1',
       messageId: 'm1',
+      // P4-8:provider 报的真实类型原样传给落库那侧。
+      mediaType: 'image/png',
     })
     expect(harness.orderedParts).toEqual([
       {
@@ -381,6 +387,35 @@ describe('openrouter image output — message placement', () => {
     expect(harness.notifyImageGenerated).toHaveBeenCalledWith(
       expect.objectContaining({ mediaId: 'media_1', sessionId: 's1' }),
     )
+  })
+
+  it('carries the real media type into the library and into media://<id>.<ext>', async () => {
+    const harness = applyOptions(
+      {
+        provider: 'openrouter',
+        type: 'image-generation-result',
+        callId: '1-img-0',
+        status: 'completed',
+        result: 'UklGRg==',
+        mediaType: 'image/webp',
+      },
+      '/store/media/media_1.webp',
+    )
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await applyOnethingAgentLoopProviderData(harness.options as any)
+
+    expect(harness.saveMediaImage).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaType: 'image/webp' }),
+    )
+    // 后缀取磁盘上那个文件的,不另立一张 mime→后缀表。
+    expect(harness.orderedParts).toEqual([
+      {
+        type: 'text',
+        content:
+          '**Revised prompt:** better moon\n\n![Generated Image|mediaId:media_1](media://media_1.webp)',
+        turnIndex: 1,
+      },
+    ])
   })
 
   it('writes a plain markdown link for an http URL and never touches the media library', async () => {

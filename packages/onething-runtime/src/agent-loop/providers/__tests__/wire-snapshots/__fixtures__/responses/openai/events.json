@@ -1,0 +1,95 @@
+[
+  {
+    "delta": "先确认 a.txt 在不在，",
+    "turn": 1,
+    "type": "reasoning-delta"
+  },
+  {
+    "delta": "再决定要不要写 b.txt。",
+    "turn": 1,
+    "type": "reasoning-delta"
+  },
+  {
+    "providerData": {
+      "encryptedContent": "openai-enc-fixture-0001",
+      "provider": "openai",
+      "type": "encrypted-reasoning"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "delta": "我先读一下 a.txt，",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "delta": "然后把结果写进 b.txt。",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "toolCallId": "call_openai_read",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-start"
+  },
+  {
+    "argumentsDelta": "{\"path\":",
+    "toolCallId": "call_openai_read",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "argumentsDelta": "\"a.txt\"}",
+    "toolCallId": "call_openai_read",
+    "toolName": "read_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "toolCall": {
+      "arguments": "{\"path\":\"a.txt\"}",
+      "id": "call_openai_read",
+      "name": "read_file"
+    },
+    "turn": 1,
+    "type": "tool-call-done"
+  },
+  {
+    "toolCallId": "call_openai_write",
+    "toolName": "write_file",
+    "turn": 1,
+    "type": "tool-call-start"
+  },
+  {
+    "argumentsDelta": "{\"path\":\"b.txt\",\"content\":\"done\"}",
+    "toolCallId": "call_openai_write",
+    "toolName": "write_file",
+    "turn": 1,
+    "type": "tool-call-delta"
+  },
+  {
+    "toolCall": {
+      "arguments": "{\"path\":\"b.txt\",\"content\":\"done\"}",
+      "id": "call_openai_write",
+      "name": "write_file"
+    },
+    "turn": 1,
+    "type": "tool-call-done"
+  },
+  {
+    "finishReason": "tool_calls",
+    "turn": 1,
+    "type": "finish",
+    "usage": {
+      "cacheReadTokens": 2000,
+      "cacheWriteTokens": 400,
+      "inputTokens": 2200,
+      "outputTokens": 624,
+      "reasoningTokens": 246,
+      "totalTokens": 3224
+    }
+  }
+]

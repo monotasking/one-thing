@@ -1,0 +1,48 @@
+{
+  "metadata": {
+    "method": "POST",
+    "requestSource": "agent-loop",
+    "url": "https://api.openai.com/v1/responses"
+  },
+  "mode": "codex-http",
+  "model": "gpt-5.5",
+  "providerId": "openai",
+  "requestBody": {
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "这张截图和这份 PDF 说的是同一件事吗？",
+            "type": "input_text"
+          },
+          {
+            "detail": "low",
+            "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+            "type": "input_image"
+          },
+          {
+            "file_data": "data:application/pdf;base64,JVBERi0xLjcKJcOkw7zDtsOfCg==",
+            "filename": "spec.pdf",
+            "type": "input_file"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are onething, a careful engineering assistant.",
+    "model": "gpt-5.5",
+    "parallel_tool_calls": false,
+    "prompt_cache_key": "session-fixture-0001",
+    "store": false,
+    "stream": true,
+    "text": {
+      "verbosity": "low"
+    },
+    "tool_choice": "auto",
+    "tools": []
+  }
+}

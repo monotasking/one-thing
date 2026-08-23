@@ -104,7 +104,14 @@ export {
 export { GROK_OAUTH_DIALECT } from "./grok-oauth.js";
 export { KIMI_DIALECT, KIMI_USAGE_TABLE, kimiThinkingIntent } from "./kimi.js";
 export { KIMI_CODE_DIALECT } from "./kimi-code.js";
-export { OPENAI_DIALECT } from "./openai.js";
+export {
+	OPENAI_BASE_URL,
+	OPENAI_DIALECT,
+	OPENAI_DIALECT_SPEC,
+	OPENAI_PROVIDER_DATA_TAG,
+	OPENAI_PROVIDER_OPTIONS,
+	OPENAI_TRANSPORT_CAPABILITIES,
+} from "./openai.js";
 export { OPENROUTER_DIALECT, OPENROUTER_USAGE_TABLE } from "./openrouter.js";
 export { QWEN_DIALECT, QWEN_USAGE_TABLE } from "./qwen.js";
 export { ZHIPU_DIALECT } from "./zhipu.js";

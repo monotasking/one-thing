@@ -15,10 +15,11 @@
  *
  * ## 覆盖面
  *
- * Responses 线协议上**三个**注册 id(P4-4):`codex`(ChatGPT 后台,OAuth)
- * 与 xAI 的两条通路 `grok` / `grok-oauth`(`https://api.x.ai/v1/responses`,
- * Bearer)。同一条 wire 服务一台订阅制后台和一家纯 API-key 端点 —— 这就是
- * 「Responses wire 脱得开 codex 怪癖」那道门(设计稿 §9 P1 门 ①)。
+ * Responses 线协议上**四个**注册 id:`codex`(ChatGPT 后台,OAuth)、xAI 的
+ * 两条通路 `grok` / `grok-oauth`(`https://api.x.ai/v1/responses`,Bearer,
+ * P4-4),以及 **OpenAI 官方通路 `openai`**(`https://api.openai.com/v1/responses`,
+ * Bearer,P4-5)。同一条 wire 服务一台订阅制后台和两家纯 API-key 端点 ——
+ * 这就是「Responses wire 脱得开 codex 怪癖」那道门(设计稿 §9 P1 门 ①)。
  *
  * codex 的凭证按 `resolveCodexToken` 的读法造:`authContext.kind === 'oauth'`
  * 时取 `authContext.token`,固定字符串。**`refreshOAuthToken` 不传** ——
@@ -32,7 +33,8 @@
  * P4-4 把 wire 里的 codex 专属项(端点归一化 / 认证 / `store` /
  * `image_generation` / `include`+`reasoning` 同生共死 / 错误措辞 /
  * provider-data 标签)全部下沉成配方字段。做对了 = codex 那 9 份一个字节
- * 都不动。`-u` 只许 `-t "(grok|grok-oauth)"`。
+ * 都不动。P4-4 时 `-u` 只许 `-t "(grok|grok-oauth)"`;**P4-5 只许
+ * `-t "openai"`**,codex 那 9 份与 xAI 那 15 份同样零字节变。
  *
  * ## 值得盯住的三处「codex 今天的行为」
  *
@@ -90,7 +92,12 @@ const FIXTURE_ROOT = fileURLToPath(
 );
 
 /** 每个 id 的 fixture 目录名 = id 本身。 */
-export const RESPONSES_PROVIDER_IDS = ["codex", "grok", "grok-oauth"] as const;
+export const RESPONSES_PROVIDER_IDS = [
+	"codex",
+	"grok",
+	"grok-oauth",
+	"openai",
+] as const;
 
 type ResponsesProviderId = (typeof RESPONSES_PROVIDER_IDS)[number];
 
@@ -98,6 +105,13 @@ const CODEX_ID = "codex";
 const DEFAULT_MODEL = "gpt-5.5";
 /** xAI 的当家模型 —— 四档 effort(含 `xhigh`)、500k 上下文、收图与 PDF。 */
 const GROK_MODEL = "grok-4.6";
+/**
+ * OpenAI 官方通路的当家模型(P4-5)。与 codex 同名不是巧合 —— 同一个模型的两条
+ * 通路,一条是 ChatGPT 订阅后台、一条是 `api.openai.com` 的 API key。
+ * 账本给它的 effort 档含 `'none'`(`onethingOpenAIAcceptsNoneEffort`:gpt-5.1+),
+ * 所以 `thinking:'disabled'` 在这一家发得出 `reasoning:{effort:'none'}`。
+ */
+const OPENAI_MODEL = "gpt-5.5";
 
 interface ProviderFixture {
 	model: string;
@@ -132,6 +146,10 @@ const PROVIDERS: Record<ResponsesProviderId, ProviderFixture> = {
 				token: { accessToken: "grok-oauth-access-token" },
 			},
 		},
+	},
+	openai: {
+		model: OPENAI_MODEL,
+		config: { apiKey: "sk-openai-fixture" },
 	},
 };
 
@@ -599,6 +617,244 @@ describe("openai-responses wire snapshots — xAI HTTP errors", () => {
 			);
 		});
 	}
+});
+
+// ---------------------------------------------------------------------------
+// OpenAI 官方通路(openai)—— P4-5
+// ---------------------------------------------------------------------------
+
+/**
+ * OpenAI 的加密思维链回放。标签是 **`'openai'`**(`OPENAI_PROVIDER_DATA_TAG`,
+ * 与 providerId 同值),由方言给 `ResponsesPartCodec`,codec 里没有硬编码的
+ * `'codex'` —— 这条线上现在有三个家族标签在跑。
+ */
+const OPENAI_HISTORY_MESSAGES: AgentMessage[] = [
+	SYSTEM_MESSAGE,
+	{ role: "user", content: "读一下 a.txt。" },
+	{
+		role: "assistant",
+		content: "我先读一下这个文件。",
+		reasoningContent: "先确认文件存在，再决定要不要写。",
+		providerData: [
+			{
+				provider: "openai",
+				type: "encrypted-reasoning",
+				encryptedContent: "openai-enc-fixture-0001",
+			},
+			{
+				provider: "openai",
+				type: "encrypted-reasoning",
+				encryptedContent: "openai-enc-fixture-0002",
+			},
+		],
+		toolCalls: [
+			{ id: "call_read", name: "read_file", arguments: '{"path":"a.txt"}' },
+			{
+				id: "call_write",
+				name: "write_file",
+				arguments: '{"path":"b.txt","content":"done"}',
+			},
+		],
+	},
+	{ role: "tool", toolCallId: "call_read", content: "hello from a.txt" },
+	{
+		role: "tool",
+		toolCallId: "call_write",
+		content: "EACCES: permission denied, open 'b.txt'",
+		isError: true,
+	},
+	{ role: "user", content: "总结一下。" },
+];
+
+/**
+ * 五个用例,与 xAI 那批同维度 —— 差异因此是**方言字段的差异**,一眼看得出:
+ *
+ *  - `baseline`                 —— `instructions` / `input` / `store:false` /
+ *                                  `include` 恒发 `reasoning.encrypted_content`
+ *                                  (`store:false` 下加密内容本来就默认回传,
+ *                                  `include` 那一条官方仍然接受);**没有**
+ *                                  `reasoning` —— thinking 没说 = 不发,与
+ *                                  chat 通路上今天的字节等价(codex 会从模型名
+ *                                  反推,这一家不);
+ *  - `tools-auto-thinking-high` —— 工具表(**没有** `image_generation` ——
+ *                                  `requestedOutputModalities` 没有 'image')
+ *                                  + `tool_choice:'auto'` +
+ *                                  `reasoning:{effort:'high', summary:'auto'}`;
+ *                                  temperature / maxTokens 这条线上没有出口;
+ *  - `tools-named-thinking-max` —— 扁平 `{type:'function', name}` + effort
+ *                                  `'max'` → **`high`**(`clampOpenAIReasoningEffort`
+ *                                  逐字不变;官方 5.4+ 确实收 `xhigh`,但那要
+ *                                  先在账本的档位表上加一档,见方言抬头);
+ *  - `thinking-off-multimodal`  —— thinking off ⇒ `reasoning:{effort:'none'}`
+ *                                  (gpt-5.5 在账本上有 `'none'` 这一档),
+ *                                  **没有 `summary`**;`include` 仍在;
+ *                                  `input_image{detail:'auto'}` /
+ *                                  `input_file`(PDF 要 filename);
+ *  - `history-tool-roundtrip`   —— 加密 reasoning 回放(标签 `'openai'`)+
+ *                                  function_call / function_call_output 往返。
+ */
+const OPENAI_REQUEST_CASES: Record<string, RequestCase> = {
+	baseline: {
+		messages: [SYSTEM_MESSAGE, USER_MESSAGE],
+	},
+	"tools-auto-thinking-high": {
+		messages: [SYSTEM_MESSAGE, USER_MESSAGE],
+		tools: TOOLS,
+		toolChoice: "auto",
+		thinking: "enabled",
+		reasoningEffort: "high",
+		temperature: 0.3,
+		maxTokens: 1234,
+	},
+	"tools-named-thinking-max": {
+		messages: [SYSTEM_MESSAGE, USER_MESSAGE],
+		tools: TOOLS,
+		toolChoice: { type: "function", function: { name: "read_file" } },
+		thinking: "enabled",
+		reasoningEffort: "max",
+	},
+	"thinking-off-multimodal": {
+		messages: [SYSTEM_MESSAGE, MULTIMODAL_USER_MESSAGE],
+		thinking: "disabled",
+		temperature: 0.3,
+		maxTokens: 1234,
+	},
+	"history-tool-roundtrip": {
+		messages: OPENAI_HISTORY_MESSAGES,
+		tools: TOOLS,
+	},
+};
+
+describe("openai-responses wire snapshots — OpenAI request bodies", () => {
+	for (const [caseName, request] of Object.entries(OPENAI_REQUEST_CASES)) {
+		it(caseName, async () => {
+			const dump = await captureRequestFor("openai", request);
+			await expect(snapshotJson(dump)).toMatchFileSnapshot(
+				fixturePath(`${caseName}.request.json`, "openai"),
+			);
+		});
+	}
+
+	/**
+	 * 请求级 providerOptions 袋(P3-3 的机制,这条线的白名单)。换线之后
+	 * `verbosity` 的落点变了:chat 上它是**顶层** `verbosity`,Responses 上是
+	 * **`text.verbosity`**(官方 `/docs/guides/latest-model`)。一份 fixture 守
+	 * 三件事:`text.verbosity` 的嵌套落点、`imageDetail` 进**每一个**
+	 * `input_image.detail`、白名单外的 `unknownKey` 一个字都不出现。
+	 *
+	 * 上面五个用例**不带袋**,所以那批 fixture 与袋无关。
+	 */
+	it("openai — request providerOptions bag: text.verbosity + imageDetail", async () => {
+		const dump = await captureRequestFor("openai", {
+			messages: [SYSTEM_MESSAGE, MULTIMODAL_USER_MESSAGE],
+			providerOptions: {
+				openai: { verbosity: "low", imageDetail: "low", unknownKey: 1 },
+			},
+		});
+		const body = dump.requestBody as { text?: unknown };
+		expect(body.text).toEqual({ verbosity: "low" });
+		const serialized = JSON.stringify(dump.requestBody);
+		expect(serialized).toContain('"detail":"low"');
+		expect(serialized).not.toContain("unknownKey");
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
+			fixturePath("provider-options.request.json", "openai"),
+		);
+	});
+
+	/**
+	 * 生图与 codex 逐字同规:不是一个开关,而是**工具表里多一项**
+	 * `{type:'image_generation', output_format:'png'}`,由
+	 * `requestedOutputModalities` 含 'image' 决定。
+	 *
+	 * ⚠️ 今天在真机上走不到这里 —— 填 `requestedOutputModalities` 的那支
+	 * (`shouldResolveCodexNativeTools`)第一句就是
+	 * `providerId !== 'codex' ⇒ false`。这份 fixture 守的是**闸门一开就对**:
+	 * 方言的钩子形状与 codex 那份一个字节不差。
+	 */
+	it("openai — image-output:requestedOutputModalities 加上 image_generation", async () => {
+		const dump = await captureRequestFor("openai", {
+			messages: [SYSTEM_MESSAGE, USER_MESSAGE],
+			tools: TOOLS,
+			toolChoice: "auto",
+			requestedOutputModalities: ["image"],
+			thinking: "enabled",
+			reasoningEffort: "high",
+		});
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
+			fixturePath("image-output.request.json", "openai"),
+		);
+	});
+});
+
+describe("openai-responses wire snapshots — OpenAI stream parsing", () => {
+	/**
+	 * `sse.txt` 是**手写的输入 fixture**,形状照官方的 Responses 事件流
+	 * (`/docs/guides/streaming-responses` 列的 `response.created` /
+	 * `response.output_text.delta` / `response.completed` / `error`,加上
+	 * reasoning 与 function_call 的那几条):reasoning 的 `output_item.added` →
+	 * `reasoning_summary_text.delta` ×2 → `output_item.done`(带
+	 * `encrypted_content`)→ `output_text.delta` ×2 → 两个 function_call 的
+	 * `arguments.delta` + `output_item.done` → `response.completed`。
+	 *
+	 * usage 里**三桶齐全**:`input_tokens_details.cached_tokens` /
+	 * **`input_tokens_details.cache_write_tokens`** /
+	 * `output_tokens_details.reasoning_tokens`。`cache_write_tokens` 是这一家
+	 * 独有的一桶(xAI 不报),官方 `/docs/guides/prompt-caching` 的 usage 例子
+	 * 逐字列着它,数值也照那个例子取。
+	 */
+	it("openai — sse.txt → events", async () => {
+		const provider = buildProviderFor("openai", (async () =>
+			sseResponse(
+				readFixtureFile(FIXTURE_ROOT, "openai", "sse.txt"),
+			)) as typeof globalThis.fetch);
+		const events = await drain(
+			provider.streamTurn({
+				messages: [SYSTEM_MESSAGE, USER_MESSAGE],
+				tools: TOOLS,
+				model: OPENAI_MODEL,
+				turn: 1,
+			}),
+		);
+		await expect(snapshotJson(events)).toMatchFileSnapshot(
+			fixturePath("events.json", "openai"),
+		);
+	});
+});
+
+describe("openai-responses wire snapshots — OpenAI HTTP errors", () => {
+	/**
+	 * 错误体照官方 `/docs/guides/error-codes` 的「429 - Rate limit reached for
+	 * requests」那一行(「follow the `Retry-After` header when it's present」),
+	 * 请求 id 头沿用这套 fixture 一直用的 `x-oai-request-id` —— 与 codex / xAI
+	 * 三家同一份输入,差别只在 `errorLabel`(`Codex` / `Grok` / **`OpenAI`**)。
+	 */
+	it("openai — 429 + retry-after", async () => {
+		vi.spyOn(Date, "now").mockReturnValue(FIXED_NOW);
+		const provider = buildProviderFor("openai", (async () =>
+			jsonResponse(ERROR_BODY, {
+				status: 429,
+				headers: {
+					"retry-after": "15",
+					"x-oai-request-id": "req_fixture_0001",
+				},
+			})) as typeof globalThis.fetch);
+		let caught: unknown;
+		try {
+			await drain(
+				provider.streamTurn({
+					messages: [SYSTEM_MESSAGE, USER_MESSAGE],
+					model: OPENAI_MODEL,
+					turn: 1,
+				}),
+			);
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(Error);
+		await expect(snapshotJson(describeError(caught))).toMatchFileSnapshot(
+			fixturePath("error.json", "openai"),
+		);
+	});
 });
 
 describe("openai-responses wire snapshots — fixture inventory", () => {

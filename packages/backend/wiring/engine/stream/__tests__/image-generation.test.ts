@@ -11,7 +11,6 @@ vi.mock('../../../../provider-binding/bound-fetch.js', () => ({
 }))
 
 import {
-  generateGeminiImage,
   generateImage,
   normalizeImageModelId,
 } from '../image-generation.js'
@@ -86,63 +85,5 @@ describe('native image generation', () => {
       revisedPrompt: undefined,
     })
     expect(fetchHolder.current).toHaveBeenNthCalledWith(2, 'https://cdn.test/generated.png')
-  })
-
-  it('generates Gemini images through generateContent without the AI SDK', async () => {
-    fetchHolder.current.mockResolvedValueOnce(new Response(JSON.stringify({
-      candidates: [{
-        content: {
-          parts: [{
-            inlineData: {
-              mimeType: 'image/png',
-              data: 'gemini-image-base64',
-            },
-          }],
-        },
-      }],
-    }), { status: 200 }))
-
-    const result = await generateGeminiImage(
-      'gemini-key',
-      'gemini-2.5-flash-image',
-      'make a product shot',
-    )
-
-    expect(result).toEqual({
-      success: true,
-      imageBase64: 'gemini-image-base64',
-    })
-    expect(fetchHolder.current).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchHolder.current.mock.calls[0]
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent')
-    expect(init.headers['x-goog-api-key']).toBe('gemini-key')
-    expect(JSON.parse(init.body)).toEqual({
-      contents: [{
-        role: 'user',
-        parts: [{ text: 'make a product shot' }],
-      }],
-      generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE'],
-      },
-    })
-  })
-
-  it('reports Gemini text-only responses as image generation failures', async () => {
-    fetchHolder.current.mockResolvedValueOnce(new Response(JSON.stringify({
-      candidates: [{
-        content: {
-          parts: [{ text: 'I cannot create an image for that prompt.' }],
-        },
-      }],
-    }), { status: 200 }))
-
-    const result = await generateGeminiImage(
-      'gemini-key',
-      'gemini-2.5-flash-image',
-      'make an image',
-    )
-
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('Model returned text instead of image')
   })
 })

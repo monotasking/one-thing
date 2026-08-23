@@ -431,6 +431,33 @@ export interface ModelDisplayNameResponse {
   error?: string
 }
 
+/**
+ * 「这条线上的这个模型,渲染层该开哪几个口」(P4-7)。
+ *
+ * 与 `getWithCapabilities` 是两件事:那一条回的是**目录**(models.dev / 各家
+ * /models 的条目),这一条回的是**这条线真正接得住什么** —— 账本(能不能)
+ * ∧ provider 的传输声明(这条线的 codec 放不放得上去)。渲染层拿不到后者,
+ * 所以必须问后端:`deepseek-*-vision-exp` 读图不吃 PDF,`supportsFiles` 从此
+ * 不再是 `supportsVision` 的别名。
+ */
+export interface ModelCapabilitiesRequest {
+  providerId: string
+  model: string
+}
+
+/** 只投影渲染层真正用得上的那几位,不把整份 `AgentModelCapabilities` 端出去。 */
+export interface RendererModelCapabilities {
+  supportsVision: boolean
+  supportsFiles: boolean
+  supportsImageOutput: boolean
+}
+
+export interface ModelCapabilitiesResponse {
+  success: boolean
+  capabilities?: RendererModelCapabilities
+  error?: string
+}
+
 export type ProvidersRoutes = {
   list: { input: Record<string, never>; output: GetProvidersResponse }
   usage: { input: ProviderUsageRequest; output: ProviderUsageResponse }
@@ -450,6 +477,7 @@ export type ModelsRoutes = {
   refreshRegistry: { input: ModelRefreshRegistryRequest; output: ModelRefreshRegistryResponse }
   getNameAliases: { input: Record<string, never>; output: ModelNameAliasesResponse }
   getDisplayName: { input: ModelDisplayNameRequest; output: ModelDisplayNameResponse }
+  getModelCapabilities: { input: ModelCapabilitiesRequest; output: ModelCapabilitiesResponse }
 }
 
 export const modelsRouter = defineRouter<ModelsRoutes>('models', [
@@ -459,4 +487,5 @@ export const modelsRouter = defineRouter<ModelsRoutes>('models', [
   'refreshRegistry',
   'getNameAliases',
   'getDisplayName',
+  'getModelCapabilities',
 ])

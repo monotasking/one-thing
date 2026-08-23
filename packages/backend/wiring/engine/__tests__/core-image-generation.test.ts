@@ -6,13 +6,10 @@ import {
   buildImageStreamResponseContent,
   buildImageStreamStartEventPlan,
   buildImageStreamSuccessEventPlan,
-  buildGeminiImageGenerationRequest,
   buildOpenAIImageGenerationRequest,
   executeCoreImageGenerationStream,
-  extractGeminiImageGenerationPayload,
   extractImageGenerationResponseError,
   extractOpenAIImageGenerationPayload,
-  generateCoreGeminiImage,
   generateCoreOpenAIImage,
   normalizeImageModelId,
   normalizeOpenAIImageBaseUrl,
@@ -27,14 +24,17 @@ describe('onething runtime image generation helpers', () => {
     expect(normalizeImageModelId('gpt-image-1')).toBe('gpt-image-1')
   })
 
-  it('plans provider-specific image generation requests', () => {
+  // P4-8:专用生图流只剩 images API 一条路 —— 连 providerId 'gemini' 也按
+  // openai-compatible 计划(它永远不会被路由到这里,账本把那一家答成 in-loop)。
+  it('plans every image generation request as an OpenAI-compatible one', () => {
     expect(planImageGenerationRequest({
       providerId: 'gemini',
       model: 'gemini-2.5-flash-image',
     })).toEqual({
-      providerKind: 'gemini',
+      providerKind: 'openai-compatible',
       modelForDisplay: 'gemini-2.5-flash-image',
       modelForRequest: 'gemini-2.5-flash-image',
+      baseUrl: 'https://api.openai.com/v1',
     })
 
     expect(planImageGenerationRequest({
@@ -102,45 +102,6 @@ describe('onething runtime image generation helpers', () => {
     )).toBe('bad request')
   })
 
-  it('builds and parses Gemini image generation payloads in core', () => {
-    expect(buildGeminiImageGenerationRequest('draw')).toEqual({
-      contents: [{
-        role: 'user',
-        parts: [{ text: 'draw' }],
-      }],
-      generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE'],
-      },
-    })
-
-    expect(extractGeminiImageGenerationPayload({
-      candidates: [{
-        content: {
-          parts: [{
-            inline_data: {
-              mime_type: 'image/png',
-              data: 'gemini-image',
-            },
-          }],
-        },
-      }],
-    })).toEqual({
-      success: true,
-      imageBase64: 'gemini-image',
-    })
-
-    expect(extractGeminiImageGenerationPayload({
-      candidates: [{
-        content: {
-          parts: [{ text: 'text only' }],
-        },
-      }],
-    })).toEqual({
-      success: false,
-      error: 'Model returned text instead of image: text only',
-    })
-  })
-
   it('runs OpenAI-compatible image generation through injected fetch in core', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = []
     const fetchImpl: typeof fetch = async (url, init) => {
@@ -202,42 +163,6 @@ describe('onething runtime image generation helpers', () => {
       success: false,
       error: 'bad key',
     })
-  })
-
-  it('runs Gemini image generation through injected fetch in core', async () => {
-    const calls: Array<{ url: string; init?: RequestInit }> = []
-    const fetchImpl: typeof fetch = async (url, init) => {
-      calls.push({ url: String(url), init })
-      return new Response(JSON.stringify({
-        candidates: [{
-          content: {
-            parts: [{
-              inlineData: {
-                mimeType: 'image/png',
-                data: 'gemini-image',
-              },
-            }],
-          },
-        }],
-      }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    }
-
-    await expect(generateCoreGeminiImage({
-      apiKey: 'gemini-key',
-      model: 'gemini image',
-      prompt: 'draw',
-      fetch: fetchImpl,
-    })).resolves.toEqual({
-      success: true,
-      imageBase64: 'gemini-image',
-    })
-
-    expect(calls[0].url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini%20image:generateContent')
-    expect((calls[0].init?.headers as Record<string, string>)['x-goog-api-key']).toBe('gemini-key')
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual(buildGeminiImageGenerationRequest('draw'))
   })
 
   it('formats image stream content and notifications without main media APIs', () => {
@@ -341,9 +266,6 @@ describe('onething runtime image generation helpers', () => {
           revisedPrompt: 'draw a warm sunrise',
         }
       },
-      generateGeminiImage: () => {
-        throw new Error('gemini should not be used')
-      },
       saveMediaImage: input => {
         expect(input).toMatchObject({
           base64: 'img',
@@ -413,19 +335,17 @@ describe('onething runtime image generation helpers', () => {
       sessionId: 's1',
       assistantMessageId: 'm1',
       prompt: 'draw a sunrise',
-      providerId: 'gemini',
+      providerId: 'openai',
       apiKey: 'key',
-      model: 'gemini-image',
+      model: 'dall-e-3',
       emitEvent: (_sessionId, event) => {
         events.push(event.type)
       },
-      generateOpenAIImage: () => {
-        throw new Error('openai should not be used')
-      },
-      generateGeminiImage: input => {
+      generateOpenAIImage: input => {
         expect(input).toMatchObject({
           apiKey: 'key',
-          model: 'gemini-image',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'dall-e-3',
           prompt: 'draw a sunrise',
         })
         return {

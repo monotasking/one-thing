@@ -1043,8 +1043,11 @@ export function onethingModelSupportsImageGeneration(
 
 	if (override !== undefined) return override;
 
+	// 名字兜底只留「专用生图端点」那一族(dall-e / gpt-image / imagen / flux /
+	// stable-diffusion / midjourney)。gemini 的名字兜底 P4-8 退役:Google 官方
+	// 端点的图像模型在账本上是 `imageOutputServedBy: 'in-loop'`(目录缺席时也由
+	// gemini 规则表的 `/image/` 行答出 imageOutput=true),走 GeminiWire 的普通流。
 	const lower = modelId.toLowerCase();
-	if (lower.includes("gemini") && lower.includes("image")) return true;
 	if (
 		[
 			"dall-e",

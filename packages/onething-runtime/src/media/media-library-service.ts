@@ -138,6 +138,18 @@ export interface OnethingMediaIngestGeneratedImageInput {
    */
   source?: OnethingMediaSource
   /**
+   * The image's real mime type (`image/png` | `image/jpeg` | `image/webp` | …).
+   *
+   * P4-8:provider 侧现在报得出真实类型(gemini 的 `inlineData.mimeType`、
+   * OpenRouter data URL 的那一段),落库就该按真实类型写 —— 文件后缀由
+   * `mimeToExtension` 从它推,索引里的 `mimeType` 也记它。
+   *
+   * 缺席 = `image/png`(旧行为逐字不变:codex 的 `image_generation` 与 OpenAI
+   * images API 都只回 png,它们不带这个字段)。非 `image/` 前缀一律忽略 ——
+   * 这条路只收图。
+   */
+  mediaType?: string
+  /**
    * What the image is FOR (e.g. 'persona-avatar'). Recorded on the asset so a
    * picked agent avatar can be told apart from generated artwork later; it does
    * not change where the bytes land.
@@ -254,6 +266,15 @@ const EXTENSION_MIME_TYPES: Record<string, string> = {
 function mimeFromFileName(fileName: string): string {
   const extension = extnamePath(fileName).toLowerCase()
   return EXTENSION_MIME_TYPES[extension] || 'application/octet-stream'
+}
+
+/**
+ * 生图落库的 mime:调用方报什么就记什么,只挡住不是图的那一类。缺席 = png
+ * (codex / OpenAI images 只回 png,它们不带 `mediaType`)。
+ */
+function generatedImageMimeType(mediaType: string | undefined): string {
+  const normalized = mediaType?.trim().toLowerCase()
+  return normalized?.startsWith('image/') ? normalized : 'image/png'
 }
 
 function base64ToBuffer(base64Data: string): Buffer {
@@ -470,7 +491,7 @@ export class OnethingMediaLibraryService {
       kind: 'image',
       source,
       buffer,
-      mimeType: 'image/png',
+      mimeType: generatedImageMimeType(input.mediaType),
       fileName: undefined,
       link,
       contentHash,

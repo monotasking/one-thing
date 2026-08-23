@@ -10,10 +10,17 @@
  *  1. **开关开着的家** —— 含图的 tool 结果落成数组,图是 `image_url` 的 data URL;
  *  2. **形状守恒** —— 同一家的**纯文本**结果仍是字符串(既有 fixture 因此
  *     一个字节都不变),非图片二进制仍旧 `Undeliverable` 并留可见文本 + warning;
- *  3. **开关关着的家** —— openai 的 tool 结果图仍旧 `Undeliverable` + warning;
+ *  3. **开关关着的家** —— kimi 的 tool 结果图仍旧 `Undeliverable` + warning;
  *  4. **能力那一半** —— core 的 `agentSupportsToolResultModality` 对 openrouter
- *     的 tool 结果图不再降级,对 openai 仍然降级。「能力说行」与「线协议做得到」
+ *     的 tool 结果图不再降级,对 kimi 仍然降级。「能力说行」与「线协议做得到」
  *     是同一句话的两半(投递契约,§2.3),所以两半在同一份用例里断。
+ *
+ * **P4-5 的一处对照更换**:这两半原本拿 `openai` 当「开关关着的家」。它换到
+ * `openai-responses` 之后,与 codex 共用同一只 `ResponsesPartCodec` —— 那只
+ * codec 的 `function_call_output` 本来就投得出 `input_image`,所以它的传输
+ * 声明**真的**含 `toolResultModalities: ['text','image']`,再当反例就是说谎。
+ * 反例换成同一条线(openai-chat)上仍然没开这个开关的 `kimi`,守的规则一个字
+ * 没变。
  */
 import { describe, expect, it } from "vitest";
 import type { AgentContentPart, AgentMessage } from "@onething/core/agent-loop";
@@ -36,7 +43,9 @@ import type {
 } from "../openai-chat-messages.js";
 
 const OPENROUTER_MODEL = "anthropic/claude-sonnet-5";
-const OPENAI_MODEL = "gpt-5.5";
+/** openai-chat 这条线上「没开 `toolResultMultimodal`」的对照家(见文件头)。 */
+const TEXT_ONLY_PROVIDER = "kimi";
+const TEXT_ONLY_MODEL = "kimi-k2.6";
 
 const IMAGE_PART: AgentContentPart = {
 	type: "image",
@@ -158,10 +167,10 @@ describe("openrouter — tool 结果里的图", () => {
 	});
 });
 
-describe("openai — tool 结果只收文本(行为不变)", () => {
+describe("kimi — tool 结果只收文本(行为不变)", () => {
 	it("图仍旧 Undeliverable 并留一条 warning", async () => {
-		const turn = await turnContextFor("openai", OPENAI_MODEL);
-		const delivery = codecOf("openai").toolResult(IMAGE_PART, turn);
+		const turn = await turnContextFor(TEXT_ONLY_PROVIDER, TEXT_ONLY_MODEL);
+		const delivery = codecOf(TEXT_ONLY_PROVIDER).toolResult(IMAGE_PART, turn);
 
 		expect(delivery.kind).toBe("undeliverable");
 		expect(
@@ -173,9 +182,9 @@ describe("openai — tool 结果只收文本(行为不变)", () => {
 	});
 
 	it("含图的 tool 消息压成一行文本摘要,不是数组", async () => {
-		const turn = await turnContextFor("openai", OPENAI_MODEL);
+		const turn = await turnContextFor(TEXT_ONLY_PROVIDER, TEXT_ONLY_MODEL);
 		const message = wireToolMessage(
-			codecOf("openai").toWireMessage(
+			codecOf(TEXT_ONLY_PROVIDER).toWireMessage(
 				toolMessage([{ type: "text", text: "已截图。" }, IMAGE_PART]),
 				turn,
 			),
@@ -206,8 +215,11 @@ describe("能力那一半 —— core 对 tool 结果图的降级判据", () => 
 		).toEqual([{ type: "text", text: "已截图。" }, IMAGE_PART]);
 	});
 
-	it("openai 不声明,core 照旧降级成文本", async () => {
-		const capabilities = await capabilitiesOf("openai", OPENAI_MODEL);
+	it("kimi 不声明,core 照旧降级成文本", async () => {
+		const capabilities = await capabilitiesOf(
+			TEXT_ONLY_PROVIDER,
+			TEXT_ONLY_MODEL,
+		);
 
 		expect(capabilities.toolResultModalities).toBeUndefined();
 		expect(agentSupportsToolResultModality(capabilities, "image")).toBe(false);

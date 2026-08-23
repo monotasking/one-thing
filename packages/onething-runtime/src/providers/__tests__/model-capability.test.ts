@@ -131,6 +131,24 @@ describe('resolution priority', () => {
     expect(resolve('openai', 'gpt-5.2').imageOutputServedBy).toBeUndefined()
   })
 
+  it('answers image output for a Google-endpoint gemini image model with no catalog entry', () => {
+    // P4-8:目录缺席时也要答得出,否则 servedBy 无从判成 'in-loop',
+    // `onethingModelSupportsImageGeneration` 会把它换到专用生图流。
+    expect(resolve('gemini', 'gemini-2.5-flash-image')).toMatchObject({
+      imageOutput: true,
+      imageOutputServedBy: 'in-loop',
+      source: { imageOutput: 'pattern' },
+    })
+    expect(resolve('gemini', 'gemini-3-pro-image').imageOutputServedBy).toBe('in-loop')
+    // 这一行只答 imageOutput —— reasoning / vision 仍由下面两行裁定。
+    expect(resolve('gemini', 'gemini-3-pro-image')).toMatchObject({
+      reasoning: true,
+      vision: true,
+    })
+    // 非图像模型不受影响。
+    expect(resolve('gemini', 'gemini-3-pro').imageOutput).toBe(false)
+  })
+
   it('does not grant image output when the codex native tool table is empty', () => {
     const resolved = resolve('codex', 'gpt-5.5', {
       registryEntry: {

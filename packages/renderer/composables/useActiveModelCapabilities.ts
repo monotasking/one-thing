@@ -1,11 +1,49 @@
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import { useAgentsStore } from '@/stores/agents'
 import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
 import { useSpaceProviderView } from '@/composables/useSpaceProviderView'
 import { createCustomModel, hasVision } from '@/components/settings/provider/model-capabilities'
+import { modelsApi } from '@/platform/models-client'
+import type { RendererModelCapabilities } from '@shared/ipc/providers'
 import type { OpenRouterModel } from '@/types'
+
+/**
+ * P4-7 的那条通道的答案缓存,**模块级**:一个会话里 InputBox / useAttachments /
+ * scratchpad 各挂一份这个 composable,同一条 (provider, model) 不该问三遍。
+ * 判定是纯本地的(账本 ∧ 传输声明),换模型才会变,所以缓存没有过期一说 ——
+ * 唯一会变的输入是设置里的 per-model override,那一支改完会重挂。
+ */
+const probeCache = new Map<string, RendererModelCapabilities | null>()
+const probeInFlight = new Map<string, Promise<void>>()
+
+function probeKey(providerId: string, modelId: string): string {
+  return `${providerId}::${modelId}`
+}
+
+/**
+ * 问一次后端「这条线上的这个模型接不接文件」。
+ *
+ * 失败(未登录的 provider 构造不出来、通道不通、跑在没有 rpc 的测试壳里)一律
+ * 记成 `null` = 没答案,调用方退回今天的 vision 别名 —— 宁可保持旧行为,
+ * 也不要凭一次失败就告诉用户"不能传文件"。
+ */
+function probeModelCapabilities(providerId: string, modelId: string): void {
+  const key = probeKey(providerId, modelId)
+  if (probeCache.has(key) || probeInFlight.has(key)) return
+  const task = (async () => {
+    try {
+      const response = await modelsApi.getModelCapabilities(providerId, modelId)
+      probeCache.set(key, response?.success && response.capabilities ? response.capabilities : null)
+    } catch {
+      probeCache.set(key, null)
+    } finally {
+      probeInFlight.delete(key)
+    }
+  })()
+  probeInFlight.set(key, task)
+}
 
 /**
  * 这一发请求**真的**会用哪个 provider / model,以及它认不认图。
@@ -60,10 +98,40 @@ export function useActiveModelCapabilities(sessionId: () => string | undefined) 
   })
 
   /**
-   * 文档类原生附件没有独立的账本档位 —— 能看图的模型通常也收文件,这是
-   * `useAttachments` 一直以来的代理判据,原样保留(不在这里发明新结论)。
+   * 「这条线接不接文件」(P4-7)。
+   *
+   * 从前这里写的是 `supportsFiles = supportsVision` —— 一个代理判据,而它是错
+   * 的:`deepseek-*-vision-exp` 读图不吃 PDF,而 chat-completions 那几家压根
+   * 没有可移植的文件块。真话是**账本 fileInput ∧ 这条线的传输声明**,后半句
+   * 只有后端知道,所以去问一次(`models.getModelCapabilities`)。
+   *
+   * 没答案时(还在飞、构造不出 provider、跑在没有 rpc 的壳里)退回旧的 vision
+   * 别名:保持今天的行为,不因为一次问不到就把用户的文件口关掉。
    */
-  const supportsFiles = computed(() => supportsVision.value)
+  const probeTick = ref(0)
+  const probed = computed<RendererModelCapabilities | null>(() => {
+    // 读一下 tick,让 probe 落地后这个 computed 会重算(Map 不是响应式的)。
+    void probeTick.value
+    if (!providerId.value || !modelId.value) return null
+    return probeCache.get(probeKey(providerId.value, modelId.value)) ?? null
+  })
+
+  watch(
+    [providerId, modelId],
+    ([nextProviderId, nextModelId]) => {
+      if (!nextProviderId || !nextModelId) return
+      const key = probeKey(nextProviderId, nextModelId)
+      if (probeCache.has(key)) {
+        probeTick.value += 1
+        return
+      }
+      probeModelCapabilities(nextProviderId, nextModelId)
+      probeInFlight.get(key)?.then(() => { probeTick.value += 1 })
+    },
+    { immediate: true },
+  )
+
+  const supportsFiles = computed(() => probed.value?.supportsFiles ?? supportsVision.value)
 
   return {
     providerId,

@@ -28,13 +28,16 @@ import type {
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
 } from "@onething/core/agent-loop";
-import { OPENAI_DIALECT } from "../dialects/index.js";
+import { OPENROUTER_DIALECT } from "../dialects/index.js";
 import { LedgerModelProfileResolver, type TurnContext } from "../base/index.js";
 import { OpenAIChatWire, openAIChatLogger } from "../wires/index.js";
 import { drain, sseResponse } from "./wire-snapshots/snapshot-harness.js";
 
-const PROVIDER_ID = "openai";
-const MODEL = "gpt-5.5";
+// 取样用 openrouter —— 这条门守的是 **openai-chat wire** 的 index 判据,与哪家
+// 无关;P4-5 起 `openai` 自己走 Responses(那条线按 output item id 判 done,
+// 没有 index 这个概念),所以这里换成同线上另一家最普通的配方。
+const PROVIDER_ID = "openrouter";
+const MODEL = "openai/gpt-5.5";
 
 const REQUEST: AgentTurnRequest = {
 	turn: 1,
@@ -89,12 +92,12 @@ function wireOver(body: string): ObservableOpenAIChatWire {
 	return new ObservableOpenAIChatWire(
 		{
 			providerId: PROVIDER_ID,
-			baseUrl: OPENAI_DIALECT.endpoint.defaultBaseUrl,
+			baseUrl: OPENROUTER_DIALECT.endpoint.defaultBaseUrl,
 			fetchImpl: (async () => sseResponse(body)) as typeof globalThis.fetch,
 			logger: openAIChatLogger(PROVIDER_ID),
 			profiles: new LedgerModelProfileResolver(),
 		},
-		OPENAI_DIALECT,
+		OPENROUTER_DIALECT,
 	);
 }
 

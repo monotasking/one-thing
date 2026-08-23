@@ -52,6 +52,17 @@ const MINIMAL_STREAM = `data: ${JSON.stringify({
 	choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
 })}\n\ndata: [DONE]\n\n`;
 
+/** openai-responses 那条线上的最短合法流(P4-5 起 `openai` 走它)。 */
+const MINIMAL_RESPONSES_STREAM = `event: response.completed\ndata: ${JSON.stringify(
+	{
+		type: "response.completed",
+		response: {
+			id: "resp_provider_options",
+			usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+		},
+	},
+)}\n\n`;
+
 /** 已登记方言的 codec —— 与生产走的是同一只对象(配方里那只)。 */
 function codecOf(dialectId: string): PartCodec {
 	const dialect = listDialects().find((entry) => entry.id === dialectId);
@@ -81,6 +92,11 @@ async function turnContextFor(
 	);
 }
 
+/**
+ * 交出去的那一块。返回类型仍是 chat 的形状(这份门里绝大多数断言都在那条线
+ * 上);Responses 那几家经 `responsesImagePart()` 再窄一次 —— 与
+ * `grok / codex` 那两条既有断言的写法一致。
+ */
 function deliveredPart(
 	delivery: PartDelivery<unknown>,
 ): OpenAIChatUserContentPart {
@@ -102,6 +118,7 @@ async function wireBody(
 	config: Record<string, unknown>,
 	model: string,
 	bag: Record<string, unknown>,
+	stream: string = MINIMAL_STREAM,
 ): Promise<Record<string, unknown>> {
 	const dump = await captureWireRequest({
 		providerId,
@@ -112,33 +129,55 @@ async function wireBody(
 			turn: 1,
 			providerOptions: { [providerId]: bag },
 		},
-		respond: () => sseResponse(MINIMAL_STREAM),
+		respond: () => sseResponse(stream),
 	});
 	return dump.requestBody as Record<string, unknown>;
 }
 
-describe("openai-chat — 请求级 providerOptions 袋", () => {
-	it("openai:白名单里的 verbosity 上顶层,imageDetail 进内容块", async () => {
-		const body = await wireBody(
-			"openai",
-			{ apiKey: "sk-openai-fixture" },
-			"gpt-5.5",
-			{ verbosity: "low", imageDetail: "low" },
-		);
+/** `openai` 那一格的快捷入口 —— 它的线、它的流。 */
+function openAIWireBody(
+	bag: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+	return wireBody(
+		"openai",
+		{ apiKey: "sk-openai-fixture" },
+		"gpt-5.5",
+		bag,
+		MINIMAL_RESPONSES_STREAM,
+	);
+}
 
-		expect(body.verbosity).toBe("low");
-		const parts = (body.messages as { content: unknown }[])[1]!
-			.content as OpenAIChatUserContentPart[];
-		expect(imageUrlOf(parts[1]!).detail).toBe("low");
+/** Responses 内容块上的 `detail` —— 与 chat 的嵌套 `image_url.detail` 不同。 */
+function responsesImagePart(part: unknown): {
+	type: string;
+	image_url?: string;
+	detail?: string;
+} {
+	return part as { type: string; image_url?: string; detail?: string };
+}
+
+describe("openai-chat — 请求级 providerOptions 袋", () => {
+	/**
+	 * **P4-5:同一个袋键,换线之后换了落点。** chat-completions 上 `verbosity`
+	 * 拼在**顶层**;Responses 上是 **`text.verbosity`**(官方
+	 * `/docs/guides/latest-model`:「Set a default with `text.verbosity`」)。
+	 * `imageDetail` 同理 —— 从嵌套的 `image_url.detail` 挪到 `input_image` 块
+	 * 自己身上。守的是「换线没把旋钮弄丢」,不是新行为。
+	 */
+	it("openai(openai-responses):verbosity 进 text.verbosity,imageDetail 进内容块", async () => {
+		const body = await openAIWireBody({ verbosity: "low", imageDetail: "low" });
+
+		expect(body.text).toEqual({ verbosity: "low" });
+		expect(body).not.toHaveProperty("verbosity");
+		const parts = (body.input as { content: unknown }[])[0]!
+			.content as unknown[];
+		const image = responsesImagePart(parts[1]);
+		expect(image.type).toBe("input_image");
+		expect(image.detail).toBe("low");
 	});
 
 	it("openai:白名单外的键一个字都不发", async () => {
-		const body = await wireBody(
-			"openai",
-			{ apiKey: "sk-openai-fixture" },
-			"gpt-5.5",
-			{ unknownKey: 1, temperature: 0.9 },
-		);
+		const body = await openAIWireBody({ unknownKey: 1, temperature: 0.9 });
 
 		expect(body).not.toHaveProperty("unknownKey");
 		// `temperature` 是采样策略的字段:袋里写它不等于绕过策略 —— 白名单没有
@@ -166,23 +205,28 @@ describe("openai-chat — 请求级 providerOptions 袋", () => {
 		]);
 	});
 
-	it("openai:非法的 verbosity 不上线", async () => {
-		const body = await wireBody(
-			"openai",
-			{ apiKey: "sk-openai-fixture" },
-			"gpt-5.5",
-			{ verbosity: "huge" },
-		);
+	it("openai:非法的 verbosity 不上线(`text` 这个键压根不长出来)", async () => {
+		const body = await openAIWireBody({ verbosity: "huge" });
 
+		expect(body).not.toHaveProperty("text");
 		expect(body).not.toHaveProperty("verbosity");
 	});
 
-	it("袋里没有这一格就一个字节都不多(别家的格子不看)", async () => {
+	/**
+	 * 袋里没有这一格时,Responses 的 codec **仍然发 `detail:'auto'`** ——
+	 * 那是这条线上内容块的常规形状(codex 的 fixture 一直钉着它),不是
+	 * 「多发了一个字段」。chat 那条线是不长 `detail`,两条线本来就不同。
+	 */
+	it("袋里没有这一格就退回这条线的默认 detail:'auto'", async () => {
 		const turn = await turnContextFor("openai", "gpt-5.5");
-		const part = deliveredPart(codecOf("openai").user(IMAGE_PART, turn));
+		const part = responsesImagePart(
+			deliveredPart(codecOf("openai").user(IMAGE_PART, turn)),
+		);
 
-		expect(imageUrlOf(part)).toEqual({
-			url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+		expect(part).toEqual({
+			type: "input_image",
+			image_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+			detail: "auto",
 		});
 		expect(turn.warnings).toEqual([]);
 	});
@@ -208,13 +252,21 @@ describe("openai-chat — 请求级 providerOptions 袋", () => {
 		expect(imageUrlOf(part)).not.toHaveProperty("detail");
 	});
 
-	it("openai:值域外的 original 也被丢弃(那是 deepseek 的值,不是这家的)", async () => {
+	/**
+	 * `original` 官方在 Responses 上确实存在(`/docs/guides/images-vision`:
+	 * 「Available on `gpt-5.4` and future models」),但**没进我们的值域** ——
+	 * 加档是产品裁定,两条线的三值因此保持一致。收到就当非法值丢弃,块退回
+	 * 这条线的默认 `auto`。
+	 */
+	it("openai:值域外的 original 被丢弃,块退回默认 detail:'auto'", async () => {
 		const turn = await turnContextFor("openai", "gpt-5.5", {
 			imageDetail: "original",
 		});
-		const part = deliveredPart(codecOf("openai").user(IMAGE_PART, turn));
+		const part = responsesImagePart(
+			deliveredPart(codecOf("openai").user(IMAGE_PART, turn)),
+		);
 
-		expect(imageUrlOf(part)).not.toHaveProperty("detail");
+		expect(part.detail).toBe("auto");
 	});
 
 	it("openrouter:同样收 detail", async () => {

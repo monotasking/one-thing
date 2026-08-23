@@ -10,10 +10,7 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import * as store from '../../../store.js'
 import { saveMediaImage } from '@onething/runtime/media/save-image'
 import { getEventBus, getStreamChannel } from '../../../events/index.js'
-import {
-  generateImage,
-  generateGeminiImage,
-} from './image-generation.js'
+import { generateImage } from './image-generation.js'
 import type { StreamSender } from './stream-processor.js'
 import {
   executeOnethingImageGenerationStream,
@@ -85,7 +82,6 @@ export async function processImageGenerationStream(
       // Send the real image markdown; the renderer reducer pops the skeleton first.
       streamChannel?.push(targetSessionId, chunk)
     },
-    generateGeminiImage: input => generateGeminiImage(input.apiKey, input.model, input.prompt),
     generateOpenAIImage: input => generateImage(input.apiKey, input.baseUrl, input.model, input.prompt),
     saveMediaImage,
     store: {

@@ -17,9 +17,16 @@
  *    `xai-search-parameters.ts` 的抬头),通过嵌套白名单的键原样写成顶层
  *    `search_parameters`。
  *
- * **这条线上没有 `verbosity`** —— 那是 OpenAI chat-completions 自己的旋钮,
- * xAI 的 Responses 文档里没有这个字段,所以不进白名单(收到就当认不出的键
- * 丢弃 + 留痕,不猜)。
+ *  - `verbosity`(`low|medium|high`,**P4-5 新增**)—— OpenAI 官方的输出长度
+ *    旋钮。这条线上它**不是顶层字段**,而是 `text.verbosity`:官方
+ *    `/docs/guides/latest-model` →「Set a default with `text.verbosity`」:
+ *    「Choose `low`, `medium`, or `high` as the default level of detail for a
+ *     request.」chat-completions 上同一个旋钮拼在顶层 `verbosity`
+ *    (见 `openai-chat-provider-options.ts`)—— 同一个用户设置,两条线两种拼法,
+ *    白名单各写各的。
+ *
+ *    **只有 openai 一家开**:xAI 的 Responses 文档里没有这个字段,grok /
+ *    grok-oauth 的支持面不含它(收到就当认不出的键丢弃 + 留痕,不猜)。
  *
  * ## 为什么留痕只在一处
  *
@@ -32,12 +39,36 @@
 import type { TurnContext } from "../base/index.js";
 import { pickGrokSearchParameters } from "./xai-search-parameters.js";
 
-/** `input_image.detail` 的标准值域(auto / low / high)。 */
+/**
+ * `input_image.detail` 的标准值域(auto / low / high)。
+ *
+ * 官方 `/docs/guides/images-vision` 上还有第四个值 `original`
+ * (「Available on `gpt-5.4` and future models」,且「On `gpt-5.5` and GPT-5.6
+ * models, `auto` and the omitted/default behavior are equivalent to
+ * `original`」)。**本期不加**:值域是用户手改 settings.json 时看得见的东西,
+ * 加档是产品裁定,与「chat → Responses 换线」无关,两条线的三值因此保持一致。
+ */
 export const OPENAI_RESPONSES_IMAGE_DETAIL_VALUES = [
 	"auto",
 	"low",
 	"high",
 ] as const;
+
+/**
+ * `text.verbosity` 的值域。与 chat 通路上的
+ * `OPENAI_CHAT_VERBOSITY_VALUES` 同值(官方:`low` / `medium` / `high`)。
+ */
+export const OPENAI_RESPONSES_VERBOSITY_VALUES = [
+	"low",
+	"medium",
+	"high",
+] as const;
+
+export type OpenAIResponsesVerbosity =
+	(typeof OPENAI_RESPONSES_VERBOSITY_VALUES)[number];
+
+/** `text.verbosity` 在请求体里的点分路径(`RequestBodyBuilder` 认它)。 */
+export const OPENAI_RESPONSES_VERBOSITY_PATH = "text.verbosity";
 
 /** 这一家认哪些请求级键 —— 一家一份,写在配方里(`ResponsesDialectSpec`)。 */
 export interface OpenAIResponsesProviderOptionSupport {
@@ -49,12 +80,15 @@ export interface OpenAIResponsesProviderOptionSupport {
 	imageDetail?: boolean | readonly string[];
 	/** 收不收 `searchParameters`(xAI Live Search)。只有 grok / grok-oauth 打开。 */
 	searchParameters?: boolean;
+	/** 收不收 `text.verbosity`(OpenAI 的输出长度旋钮)。只有 openai 打开。 */
+	verbosity?: boolean;
 }
 
 /** 白名单过滤后剩下的东西。 */
 export interface OpenAIResponsesProviderOptions {
 	imageDetail?: string;
 	searchParameters?: Record<string, unknown>;
+	verbosity?: OpenAIResponsesVerbosity;
 }
 
 export type OpenAIResponsesProviderOptionDropReason =
@@ -107,6 +141,17 @@ export function pickOpenAIResponsesProviderOptions(
 			if (search) picked.searchParameters = search;
 			continue;
 		}
+		if (key === "verbosity" && support.verbosity) {
+			if (
+				typeof value === "string" &&
+				(OPENAI_RESPONSES_VERBOSITY_VALUES as readonly string[]).includes(value)
+			) {
+				picked.verbosity = value as OpenAIResponsesVerbosity;
+				continue;
+			}
+			onDropped?.(key, value, "illegal-value");
+			continue;
+		}
 		onDropped?.(key, value, "unknown-key");
 	}
 
@@ -123,8 +168,9 @@ export function openAIResponsesImageDetail(
 }
 
 /**
- * 请求体那一半:`search_parameters` 上顶层。`imageDetail` **不在这里** ——
- * 它是内容块上的字段,由 codec 写。
+ * 请求体那一半:`search_parameters` 上顶层、`verbosity` 进 `text.verbosity`
+ * (点分路径由 `RequestBodyBuilder.set` 按需补出中间对象)。`imageDetail`
+ * **不在这里** —— 它是内容块上的字段,由 codec 写。
  *
  * 这一支是每家配方都会挂上的:哪怕这家一个键都不认,认不出的键也要留痕,
  * 不能因为「这家没有旋钮」就静默吞掉用户写进 settings.json 的东西。
@@ -146,8 +192,13 @@ export function openAIResponsesProviderOptionsExtraBody(
 				);
 			},
 		);
-		return picked.searchParameters === undefined
-			? {}
-			: { search_parameters: picked.searchParameters };
+		return {
+			...(picked.searchParameters === undefined
+				? {}
+				: { search_parameters: picked.searchParameters }),
+			...(picked.verbosity === undefined
+				? {}
+				: { [OPENAI_RESPONSES_VERBOSITY_PATH]: picked.verbosity }),
+		};
 	};
 }

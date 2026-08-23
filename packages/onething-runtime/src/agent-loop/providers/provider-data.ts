@@ -32,6 +32,12 @@ export interface ApplyOnethingAgentLoopProviderDataOptions<TContentPart extends 
     model: string
     sessionId: string
     messageId: string
+    /**
+     * 真实图片类型(P4-8)。gemini 报 `inlineData.mimeType`、OpenRouter 报 data
+     * URL 里的那一段;codex 不报(它只回 png)。缺席时落库那侧按 png 走 ——
+     * 旧调用一字不改。
+     */
+    mediaType?: string
   }): MaybePromise<OnethingGeneratedImageMediaItem>
   notifyImageGenerated?(notification: OnethingGeneratedImageNotification): MaybePromise<void>
   /**
@@ -118,8 +124,25 @@ export function providerDataFromOnethingContentPart(part: CoreHistoryContentPart
   return undefined
 }
 
-export function buildOnethingGeneratedImageMarkdown(mediaId: string, revisedPrompt?: string): string {
-  const imageUrl = `media://${mediaId}.png`
+/**
+ * `media://<id><ext>` 里的 `<ext>`(P4-8)。
+ *
+ * 取的是**磁盘上那个文件**的后缀,而不是另立一张 mime→后缀表:落库那侧
+ * (`mimeToExtension`)已经按真实 `mediaType` 决定了文件名,再抄一份表就是第二个
+ * 判定点,迟早分叉(`image/jpeg` 落成 `.jpg` 还是 `.jpeg` 就是现成的分叉点),
+ * 而 `media://` 协议是**按文件名**取的。读不出后缀退回 `.png`(旧行为)。
+ */
+export function generatedImageUrlExtension(filePath: string | undefined): string {
+  const match = /(\.[A-Za-z0-9]+)$/.exec(filePath ?? '')
+  return match?.[1] ?? '.png'
+}
+
+export function buildOnethingGeneratedImageMarkdown(
+  mediaId: string,
+  revisedPrompt?: string,
+  extension = '.png',
+): string {
+  const imageUrl = `media://${mediaId}${extension}`
   const promptText = revisedPrompt?.trim()
   return `${promptText ? `**Revised prompt:** ${promptText}\n\n` : ''}![Generated Image|mediaId:${mediaId}](${imageUrl})`
 }
@@ -147,10 +170,11 @@ export function buildOnethingGeneratedImageTextDelta(
   currentContent: string,
   mediaId: string,
   revisedPrompt?: string,
+  extension = '.png',
 ): string {
   return buildOnethingImageTextDelta(
     currentContent,
-    buildOnethingGeneratedImageMarkdown(mediaId, revisedPrompt),
+    buildOnethingGeneratedImageMarkdown(mediaId, revisedPrompt, extension),
   )
 }
 
@@ -210,6 +234,12 @@ async function appendGeneratedImageText<TContentPart extends CoreOrderedPartLike
   let markdown: string
   let mediaItem: OnethingGeneratedImageMediaItem | undefined
   if ('base64' in payload) {
+    // 真实类型交给落库那侧决定后缀与索引 mimeType;这里只负责把 provider 报的
+    // 那一句原样传下去(不报 = 不传 = png,旧行为)。
+    const mediaType =
+      typeof providerData.mediaType === 'string' && providerData.mediaType.trim()
+        ? providerData.mediaType
+        : undefined
     mediaItem = await options.saveMediaImage({
       base64: payload.base64,
       prompt: options.latestUserPrompt?.trim() || 'Image generation',
@@ -217,8 +247,13 @@ async function appendGeneratedImageText<TContentPart extends CoreOrderedPartLike
       model: options.model,
       sessionId: options.sessionId,
       messageId: options.messageId,
+      ...(mediaType ? { mediaType } : {}),
     })
-    markdown = buildOnethingGeneratedImageMarkdown(mediaItem.id, mediaItem.revisedPrompt)
+    markdown = buildOnethingGeneratedImageMarkdown(
+      mediaItem.id,
+      mediaItem.revisedPrompt,
+      generatedImageUrlExtension(mediaItem.filePath),
+    )
   } else {
     markdown = buildOnethingRemoteImageMarkdown(payload.url, revisedPrompt)
   }

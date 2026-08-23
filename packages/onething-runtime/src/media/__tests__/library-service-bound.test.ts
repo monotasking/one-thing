@@ -355,5 +355,41 @@ describe('MediaLibraryService', () => {
       expect(avatar.metadata?.usageTags).toEqual(['persona-avatar'])
       expect(service.listAssets({ source: 'user-upload' })).toHaveLength(1)
     })
+
+    // P4-8:provider 报得出真实类型时,后缀与索引里的 mimeType 都按真实类型写。
+    it('records the declared media type in the index and in the file extension', async () => {
+      const jpeg = await service.ingestGeneratedImage({
+        base64: Buffer.from('jpeg-bytes').toString('base64'),
+        prompt: 'a jpeg',
+        model: 'gemini-3-pro-image',
+        sessionId: 'session-1',
+        messageId: 'message-1',
+        mediaType: 'image/jpeg',
+      })
+      expect(jpeg.mimeType).toBe('image/jpeg')
+      expect(jpeg.filePath?.endsWith('.jpg')).toBe(true)
+
+      const webp = await service.ingestGeneratedImage({
+        base64: Buffer.from('webp-bytes').toString('base64'),
+        prompt: 'a webp',
+        model: 'gemini-3-pro-image',
+        sessionId: 'session-1',
+        messageId: 'message-1',
+        mediaType: 'image/webp',
+      })
+      expect(webp.mimeType).toBe('image/webp')
+      expect(webp.filePath?.endsWith('.webp')).toBe(true)
+
+      // 缺席 / 不是图 = png(旧行为逐字不变)。
+      const fallback = await service.ingestGeneratedImage({
+        base64: Buffer.from('png-bytes').toString('base64'),
+        prompt: 'no declared type',
+        model: 'gpt-image-1',
+        sessionId: 'session-1',
+        messageId: 'message-1',
+      })
+      expect(fallback.mimeType).toBe('image/png')
+      expect(fallback.filePath?.endsWith('.png')).toBe(true)
+    })
   })
 })

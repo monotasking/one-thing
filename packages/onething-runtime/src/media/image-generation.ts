@@ -15,7 +15,12 @@ export function normalizeImageModelId(modelId: string): string {
 }
 
 export interface CoreImageGenerationRequestPlan {
-  providerKind: 'gemini' | 'openai-compatible'
+  /**
+   * 只剩 openai-compatible 的 images API 一条(P4-8)。gemini 分支已退役:
+   * Google 官方端点的图像模型同时是聊天模型,图在 agent loop 里以 `inlineData`
+   * part 回来,由 GeminiWire 解析 —— 专用生图流对那一家从来就不该接手。
+   */
+  providerKind: 'openai-compatible'
   modelForDisplay: string
   modelForRequest: string
   baseUrl?: string
@@ -50,27 +55,6 @@ export interface CoreOpenAIImageGenerationPayload {
   }
 }
 
-export interface CoreGeminiGenerateContentPayload {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{
-        text?: string
-        inlineData?: {
-          data?: string
-          mimeType?: string
-        }
-        inline_data?: {
-          data?: string
-          mime_type?: string
-        }
-      }>
-    }
-  }>
-  error?: {
-    message?: string
-  }
-}
-
 export interface CoreImageGenerationResult {
   success: boolean
   imageUrl?: string
@@ -91,30 +75,11 @@ export interface GenerateCoreOpenAIImageOptions {
   }
 }
 
-export interface GenerateCoreGeminiImageOptions {
-  apiKey: string
-  model: string
-  prompt: string
-  fetch: FetchLike
-  logger?: {
-    log?: (...args: unknown[]) => void
-    error?: (...args: unknown[]) => void
-  }
-}
-
 export function planImageGenerationRequest(options: {
   providerId: string
   model: string
   baseUrl?: string
 }): CoreImageGenerationRequestPlan {
-  if (options.providerId === 'gemini') {
-    return {
-      providerKind: 'gemini',
-      modelForDisplay: options.model,
-      modelForRequest: options.model,
-    }
-  }
-
   const normalizedModel = normalizeImageModelId(options.model)
   return {
     providerKind: 'openai-compatible',
@@ -171,59 +136,6 @@ export function extractOpenAIImageGenerationPayload(
     imageBase64,
     imageUrl,
     revisedPrompt: first.revised_prompt,
-  }
-}
-
-export function buildGeminiImageGenerationRequest(prompt: string) {
-  return {
-    contents: [{
-      role: 'user',
-      parts: [{ text: prompt }],
-    }],
-    generationConfig: {
-      responseModalities: ['TEXT', 'IMAGE'],
-    },
-  }
-}
-
-export function extractGeminiImageGenerationPayload(
-  payload: CoreGeminiGenerateContentPayload,
-): CoreImageGenerationResult {
-  if (payload.error?.message) {
-    return { success: false, error: payload.error.message }
-  }
-
-  const parts = payload.candidates?.flatMap(candidate => candidate.content?.parts ?? []) ?? []
-  for (const part of parts) {
-    const inlineData = part.inlineData ?? (part.inline_data
-      ? {
-          data: part.inline_data.data,
-          mimeType: part.inline_data.mime_type,
-        }
-      : undefined)
-    if (inlineData?.data && inlineData.mimeType?.startsWith('image/')) {
-      return {
-        success: true,
-        imageBase64: inlineData.data,
-      }
-    }
-  }
-
-  const text = parts
-    .map(part => part.text)
-    .filter(Boolean)
-    .join('\n')
-
-  if (text) {
-    return {
-      success: false,
-      error: `Model returned text instead of image: ${text.substring(0, 200)}`,
-    }
-  }
-
-  return {
-    success: false,
-    error: 'No image generated',
   }
 }
 
@@ -301,56 +213,6 @@ export async function generateCoreOpenAIImage(
   } catch (error) {
     const imageError = error instanceof Error ? error : new Error(String(error))
     options.logger?.error?.('[Image Generation] Error:', imageError)
-    return {
-      success: false,
-      error: imageError.message || 'Failed to generate image',
-    }
-  }
-}
-
-/**
- * Generate an image through Gemini's native generateContent REST API.
- */
-export async function generateCoreGeminiImage(
-  options: GenerateCoreGeminiImageOptions,
-): Promise<CoreImageGenerationResult> {
-  try {
-    options.logger?.log?.(`[Gemini Image] Generating image with model: ${options.model}`)
-    const encodedModel = encodeURIComponent(options.model)
-    const response = await options.fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodedModel}:generateContent`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': options.apiKey,
-        },
-        body: JSON.stringify(buildGeminiImageGenerationRequest(options.prompt)),
-      },
-    )
-    if (!response.ok) {
-      throw new Error(await imageGenerationResponseError(
-        response,
-        `Gemini image API error: ${response.status}`,
-      ))
-    }
-
-    const result = await response.json() as CoreGeminiGenerateContentPayload
-    const parts = result.candidates?.flatMap(candidate => candidate.content?.parts ?? []) ?? []
-    options.logger?.log?.(`[Gemini Image] Response received, parts: ${parts.length}`)
-
-    const extracted = extractGeminiImageGenerationPayload(result)
-    if (extracted.success) {
-      options.logger?.log?.('[Gemini Image] Found image')
-    } else if (extracted.error?.startsWith('Model returned text instead of image:')) {
-      const text = extracted.error.replace(/^Model returned text instead of image:\s*/, '')
-      options.logger?.log?.(`[Gemini Image] No image generated, got text: ${text.substring(0, 100)}...`)
-    }
-
-    return extracted
-  } catch (error) {
-    const imageError = error instanceof Error ? error : new Error(String(error))
-    options.logger?.error?.('[Gemini Image] Error:', imageError)
     return {
       success: false,
       error: imageError.message || 'Failed to generate image',
@@ -543,11 +405,6 @@ export interface ExecuteCoreImageGenerationStreamOptions {
     model: string
     prompt: string
   }) => CoreMaybePromise<CoreImageGenerationResult>
-  generateGeminiImage: (input: {
-    apiKey: string
-    model: string
-    prompt: string
-  }) => CoreMaybePromise<CoreImageGenerationResult>
   saveMediaImage: (input: {
     base64: string
     prompt: string
@@ -583,7 +440,6 @@ export async function executeCoreImageGenerationStream(
     sessionName,
     emitEvent,
     pushStreamChunk,
-    generateGeminiImage,
     generateOpenAIImage,
     saveMediaImage,
     store,
@@ -598,25 +454,15 @@ export async function executeCoreImageGenerationStream(
   await emitEvent?.(sessionId, startPlan.loadingEvent)
 
   const requestPlan = planImageGenerationRequest({ providerId, model, baseUrl })
-  // TODO(P4-2 后续):这条 gemini 分支已是死路 —— Google 官方端点的图像模型
-  // (`gemini-*-image`)在账本上是 `imageOutputServedBy: 'in-loop'`,
-  // `onethingModelSupportsImageGeneration` 因此不再把它们路由到专用生图流,
-  // 它们走 GeminiWire 的普通流(请求 `responseModalities`、回复 `inlineData`)。
-  // 本期只留注释不删:账本对某个 gemini 图像模型完全没话说时,那句
-  // `lower.includes('gemini') && lower.includes('image')` 的兜底仍会走到这里。
-  // 兜底连同这条分支一起退役,是 P4 收尾的事。
-  const result = requestPlan.providerKind === 'gemini'
-    ? await generateGeminiImage({
-        apiKey,
-        model: requestPlan.modelForRequest,
-        prompt,
-      })
-    : await generateOpenAIImage({
-        apiKey,
-        baseUrl: requestPlan.baseUrl || 'https://api.openai.com/v1',
-        model: requestPlan.modelForRequest,
-        prompt,
-      })
+  // 专用生图流只剩 images API 一条路(P4-8):gemini 那一支连同名字兜底一起
+  // 退役 —— 账本把 Google 官方端点的图像模型答成 `imageOutputServedBy: 'in-loop'`,
+  // `onethingModelSupportsImageGeneration` 因此永远不会把它们路由到这里。
+  const result = await generateOpenAIImage({
+    apiKey,
+    baseUrl: requestPlan.baseUrl || 'https://api.openai.com/v1',
+    model: requestPlan.modelForRequest,
+    prompt,
+  })
 
   if (result.success && result.imageBase64) {
     const mediaItem = await saveMediaImage({

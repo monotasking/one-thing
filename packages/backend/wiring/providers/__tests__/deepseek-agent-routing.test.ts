@@ -203,18 +203,36 @@ describe('DeepSeek provider agent routing', () => {
     ])
   })
 
-  it('generates OpenAI-compatible utility responses through the agent provider without the AI SDK', async () => {
+  /**
+   * P4-5:`openai` 的工具模型调用与聊天走**同一个 provider**,所以它也随之
+   * 换到 `/v1/responses`(取样的流因此是 Responses 事件流,不是 chat 的
+   * `choices[].delta`)。这条门守的仍是原来那件事 —— 工具模型不经 AI SDK,
+   * 走的是我们自己的 agent provider。
+   */
+  it('generates OpenAI utility responses through the agent provider without the AI SDK', async () => {
     const fetchImpl = mockFetchResponse(streamResponse([
-      sse({
-        choices: [{ index: 0, delta: { content: 'native ' }, finish_reason: null }],
-      }),
-      sse({
-        choices: [{ index: 0, delta: { content: 'response' }, finish_reason: 'stop' }],
-      }),
-      sse({
-        choices: [],
-        usage: { prompt_tokens: 7, completion_tokens: 2, total_tokens: 9 },
-      }),
+      `event: response.output_text.delta\ndata: ${JSON.stringify({
+        type: 'response.output_text.delta',
+        item_id: 'msg_utility',
+        output_index: 0,
+        content_index: 0,
+        delta: 'native ',
+      })}\n\n`,
+      `event: response.output_text.delta\ndata: ${JSON.stringify({
+        type: 'response.output_text.delta',
+        item_id: 'msg_utility',
+        output_index: 0,
+        content_index: 0,
+        delta: 'response',
+      })}\n\n`,
+      `event: response.completed\ndata: ${JSON.stringify({
+        type: 'response.completed',
+        response: {
+          id: 'resp_utility',
+          status: 'completed',
+          usage: { input_tokens: 7, output_tokens: 2, total_tokens: 9 },
+        },
+      })}\n\n`,
       'data: [DONE]\n\n',
     ]))
     fetchHolder.current = fetchImpl
@@ -240,21 +258,27 @@ describe('DeepSeek provider agent routing', () => {
 
     const request = firstFetchCall(fetchImpl)
     const body = request.body
-    expect(request.url).toBe('https://openai.test/v1/chat/completions')
+    expect(request.url).toBe('https://openai.test/v1/responses')
     expect(request.headers.Authorization).toBe('Bearer openai-key')
     expect(body).toMatchObject({
       model: 'gpt-test',
       stream: true,
-      stream_options: { include_usage: true },
-      max_completion_tokens: 123,
-      temperature: 0.2,
+      store: false,
     })
-    expect(body.tools).toBeUndefined()
-    expect(body.tool_choice).toBeUndefined()
-    expect(body.messages).toEqual([
-      { role: 'system', content: 'utility rules' },
-      { role: 'user', content: 'summarize' },
+    // Responses 上 system 抽成顶层 `instructions`,其余落成 `input` 项;
+    // 这条线没有 temperature / max_tokens 的出口(与 codex / xAI 同)。
+    expect(body.instructions).toBe('utility rules')
+    expect(body.input).toEqual([
+      {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'summarize' }],
+      },
     ])
+    expect(body.messages).toBeUndefined()
+    expect(body.temperature).toBeUndefined()
+    expect(body.max_completion_tokens).toBeUndefined()
+    expect(body.tools).toEqual([])
   })
 
   it('generates custom OpenAI-compatible utility responses through the agent provider without the AI SDK', async () => {

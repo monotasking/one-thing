@@ -6,6 +6,7 @@
  */
 import { modelsRouter } from '@shared/ipc/providers.js'
 import type {
+  ModelCapabilitiesResponse,
   ModelDisplayNameResponse,
   ModelNameAliasesResponse,
   ModelRefreshRegistryResponse,
@@ -30,4 +31,11 @@ export const modelsApi = {
   getModelNameAliases: (): Promise<ModelNameAliasesResponse> => models.getNameAliases({}),
   getModelDisplayName: (modelId: string): Promise<ModelDisplayNameResponse> =>
     models.getDisplayName({ modelId }),
+  /**
+   * P4-7:这条线上的这个模型接不接图 / 文件 / 出不出图。
+   * 目录能力(`getModelsWithCapabilities`)回答不了「这条线放不放得上去」,
+   * 那半边只有后端知道。
+   */
+  getModelCapabilities: (providerId: string, model: string): Promise<ModelCapabilitiesResponse> =>
+    models.getModelCapabilities({ providerId, model }),
 }

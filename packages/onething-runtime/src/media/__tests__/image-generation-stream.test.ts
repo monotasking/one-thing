@@ -12,7 +12,6 @@ describe('executeOnethingImageGenerationStream', () => {
       imageBase64: 'ZmFrZQ==',
       revisedPrompt: 'a small painted cabin',
     }))
-    const generateGeminiImage = vi.fn()
     const saveMediaImage = vi.fn(async () => ({
       id: 'media-1',
       filePath: '/tmp/image.png',
@@ -38,7 +37,6 @@ describe('executeOnethingImageGenerationStream', () => {
       emitEvent,
       pushStreamChunk,
       generateOpenAIImage,
-      generateGeminiImage,
       saveMediaImage,
       store,
       notifyImageGenerated,
@@ -50,7 +48,6 @@ describe('executeOnethingImageGenerationStream', () => {
       model: 'gpt-image-1',
       prompt: 'a cabin',
     })
-    expect(generateGeminiImage).not.toHaveBeenCalled()
     expect(saveMediaImage).toHaveBeenCalledWith({
       base64: 'ZmFrZQ==',
       prompt: 'a cabin',

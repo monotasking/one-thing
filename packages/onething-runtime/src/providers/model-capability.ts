@@ -506,6 +506,12 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
     { test: /(?:)/, caps: { reasoning: false, vision: true } },
   ],
   gemini: [
+    // Google 官方端点的图像模型(`gemini-*-image*`)**同时是聊天模型**:图在回合内
+    // 以 `inlineData` part 回来(P4-2)。目录缺席时账本也必须答出 imageOutput=true,
+    // 否则 `imageOutputServedBy` 无从判成 'in-loop',生图路由
+    // (`onethingModelSupportsImageGeneration`)就会把它换到专用生图流。
+    // 这一行只答 imageOutput,reasoning/wire 继续落到下面两行。
+    { test: /image/, caps: { imageOutput: true } },
     { test: /gemini-(?:2\.5|[3-9])/, caps: { reasoning: true }, profile: geminiProfile },
     // Even a model the ledger grants no reasoning to has a wire format: the
     // gemini wire must know which of the two thinking encoders to reach for.

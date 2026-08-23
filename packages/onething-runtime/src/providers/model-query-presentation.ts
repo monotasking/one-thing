@@ -1,3 +1,10 @@
+import type { AgentModelCapabilities, AgentProvider } from '@onething/core/agent-loop'
+import {
+  agentSupportsInputModality,
+  agentSupportsOutputModality,
+  resolveAgentModelCapabilities,
+} from '@onething/core/agent-loop'
+
 type MaybePromise<T> = T | Promise<T>
 
 export interface OnethingModelQueryIpcLogger {
@@ -136,6 +143,68 @@ export function getOnethingModelRegistryDisplayNameForIpc(
     return getOnethingModelRegistryDisplayName(options)
   } catch (error) {
     return modelQueryIpcError(options.logger, 'get model display name', error)
+  }
+}
+
+/**
+ * 「这条线上的这个模型,渲染层该开哪几个口」(P4-7)。
+ *
+ * 与目录查询(`getAll` / `search`)是两件事:那些回的是**目录条目**,这一条回的
+ * 是**这条线真正接得住什么** —— 账本(能不能)∧ provider 的传输声明(这条线的
+ * codec 放不放得上去)。两半在 `ModelProfile.toAgentModelCapabilities` 里已经合
+ * 过一次,这里只投影,不再判第二遍。
+ */
+export interface OnethingRendererModelCapabilities {
+  supportsVision: boolean
+  supportsFiles: boolean
+  supportsImageOutput: boolean
+}
+
+export function projectOnethingRendererModelCapabilities(
+  capabilities: AgentModelCapabilities,
+): OnethingRendererModelCapabilities {
+  return {
+    supportsVision: agentSupportsInputModality(capabilities, 'image'),
+    supportsFiles: agentSupportsInputModality(capabilities, 'file'),
+    supportsImageOutput: agentSupportsOutputModality(capabilities, 'image'),
+  }
+}
+
+export interface GetOnethingModelCapabilitiesOptions {
+  providerId: string
+  model: string
+  /** 装配层的事:把设置里的凭据/目录折成 provider。认不出就给 undefined。 */
+  createProvider(providerId: string, model: string): AgentProvider | undefined
+}
+
+export interface OnethingModelCapabilitiesResult {
+  success: true
+  capabilities: OnethingRendererModelCapabilities
+}
+
+export async function getOnethingModelCapabilities(
+  options: GetOnethingModelCapabilitiesOptions,
+): Promise<OnethingModelCapabilitiesResult> {
+  if (!options.providerId || !options.model) {
+    throw new Error('providerId and model are required')
+  }
+  const provider = options.createProvider(options.providerId, options.model)
+  if (!provider) throw new Error(`unsupported provider: ${options.providerId}`)
+  return {
+    success: true,
+    capabilities: projectOnethingRendererModelCapabilities(
+      await resolveAgentModelCapabilities(provider, options.model),
+    ),
+  }
+}
+
+export async function getOnethingModelCapabilitiesForIpc(
+  options: GetOnethingModelCapabilitiesOptions & { logger?: OnethingModelQueryIpcLogger },
+): Promise<OnethingModelCapabilitiesResult | { success: false; error: string }> {
+  try {
+    return await getOnethingModelCapabilities(options)
+  } catch (error) {
+    return modelQueryIpcError(options.logger, 'get model capabilities', error)
   }
 }
 

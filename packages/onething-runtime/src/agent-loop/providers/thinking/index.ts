@@ -92,6 +92,12 @@ export {
 	openAIAcceptsNoneEffort,
 } from "./openai-effort.js";
 export {
+	OPENAI_RESPONSES_THINKING_WIRES,
+	OpenAIResponsesReasoningWire,
+	openAIResponsesReasoningWire,
+	type OpenAIResponsesReasoningOptions,
+} from "./openai-responses-reasoning.js";
+export {
 	OPENROUTER_REASONING_DETAILS_TYPE,
 	OpenRouterReasoningWire,
 	decodeOpenRouterReasoningDetails,
