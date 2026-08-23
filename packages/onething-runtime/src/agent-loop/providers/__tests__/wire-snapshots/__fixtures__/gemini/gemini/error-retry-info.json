@@ -1,5 +1,5 @@
 {
-  "message": "Gemini agent loop API error: 429 {\"error\":{\"code\":429,\"message\":\"You exceeded your current quota, please check your plan.\",\"status\":\"RESOURCE_EXHAUSTED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaMetric\":\"generate_content_free_tier_requests\"}]},{\"@type\":\"type.googleapis.com/google.rpc.RetryInfo\",\"retryDelay\":\"27s\"}]}}",
+  "message": "gemini agent loop API error: 429 {\"error\":{\"code\":429,\"message\":\"You exceeded your current quota, please check your plan.\",\"status\":\"RESOURCE_EXHAUSTED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaMetric\":\"generate_content_free_tier_requests\"}]},{\"@type\":\"type.googleapis.com/google.rpc.RetryInfo\",\"retryDelay\":\"27s\"}]}}",
   "name": "ProviderHttpError",
   "ownEnumerableProperties": {
     "data": {

@@ -76,6 +76,11 @@ export function buildOnethingUsageLedgerRecord(
     usage,
     ...(input.unitPrice ? { unitPrice: input.unitPrice } : {}),
     costUSD: computeOnethingUsageCostUSD(usage, input.unitPrice),
+    // 厂商报价与本地估算**并存**:`costUSD` 照旧按价目表算,厂商值另存一格。
+    // 报了就落(含 0 —— 免费模型的 0 也是一句真话),没报就诚实缺席。
+    ...(input.providerCostUSD !== undefined && Number.isFinite(input.providerCostUSD)
+      ? { providerCostUSD: Math.max(input.providerCostUSD, 0) }
+      : {}),
     ...(input.partial ? { partial: true } : {}),
   }
 }

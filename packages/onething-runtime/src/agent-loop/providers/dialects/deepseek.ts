@@ -12,8 +12,9 @@
  *  4. **思考是推断出来的**:调用方不说话时 reasoner 类模型自己打开
  *     —— 于是「思考开着就不发 temperature」这条也必须按**推断后**的值判,
  *     所以采样策略是自己一份(`DeepSeekSamplingPolicy`);
- *  5. **错误文案首字母大写**:`DeepSeek agent loop API error: …`
- *     (统一成小写是设计稿 §10 第 1 条,P1 拍板)。
+ *  5. **错误文案与别家同规**:`deepseek agent loop API error: …` —— 曾经写作
+ *     `DeepSeek` 的那个家名随 `displayName` 字段一起退役(设计稿 §10 第 1 条,
+ *     P0b-B 拍板)。
  */
 import type { AgentModelCapabilities } from "@onething/core/agent-loop";
 import {
@@ -77,7 +78,6 @@ export const DEEPSEEK_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
 
 export const DEEPSEEK_DIALECT = defineOpenAIChatDialect({
 	id: "deepseek",
-	displayName: "DeepSeek",
 	defaultBaseUrl: "https://api.deepseek.com",
 	reasoning: deepSeekInferredThinkingWire,
 	// 线级 codec(`OpenAIChatPartCodec`),`includeAssistantReasoning` 恒开。

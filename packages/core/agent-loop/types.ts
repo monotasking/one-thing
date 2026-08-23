@@ -297,6 +297,13 @@ export interface AgentUsage {
   cacheWriteTokens?: number
   /** Reasoning/thinking tokens (subset of outputTokens for most providers). */
   reasoningTokens?: number
+  /**
+   * 厂商在响应里报的**本次请求成本**(USD)。只有少数几家给:OpenRouter
+   * `usage.cost`、xAI `cost_in_usd_ticks / 1e10`。与本地价目估算**并存**
+   * (账本照旧按价目表算 `costUSD`),永不互相覆盖 —— 没有这个字段的厂商
+   * 一个字节都不变。
+   */
+  providerCostUSD?: number
 }
 
 export type AgentFinishReason =

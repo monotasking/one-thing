@@ -85,6 +85,15 @@ export interface OnethingUsageLedgerRecord {
   usage: OnethingUsageTokens
   unitPrice?: OnethingUsageUnitPrice
   costUSD?: number | null
+  /**
+   * 厂商在响应里报的本次请求成本(USD)—— OpenRouter `usage.cost`、
+   * xAI `cost_in_usd_ticks / 1e10` 等少数几家才有。
+   *
+   * **与 `costUSD`(本地价目估算)并存,永不覆盖**:两个口径同时落盘,读侧
+   * 才说得清"这一段到底按谁的价算的"。账本 append-only,老行没有这个字段,
+   * 读侧一律按"没有厂商报价"理解 —— 零迁移。
+   */
+  providerCostUSD?: number
   /** Set when the stream aborted mid-turn and usage may be incomplete. */
   partial?: boolean
 }
@@ -101,5 +110,7 @@ export interface OnethingUsageRecordInput {
   billing: OnethingUsageBillingMode
   usage: Partial<OnethingUsageTokens> & { input: number; output: number }
   unitPrice?: OnethingUsageUnitPrice
+  /** 厂商报的本次成本(USD)。没报就缺席 —— 不要造 0。 */
+  providerCostUSD?: number
   partial?: boolean
 }

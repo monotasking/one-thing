@@ -1,5 +1,5 @@
 {
-  "message": "DeepSeek agent loop API error: 429 {\"error\":{\"message\":\"Rate limit reached for requests\",\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}",
+  "message": "deepseek agent loop API error: 429 {\"error\":{\"message\":\"Rate limit reached for requests\",\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}",
   "name": "ProviderHttpError",
   "ownEnumerableProperties": {
     "data": {

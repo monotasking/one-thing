@@ -1,5 +1,5 @@
 {
-  "message": "Claude agent loop API error: 429 {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Number of request tokens has exceeded your per-minute rate limit\"}}",
+  "message": "claude agent loop API error: 429 {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Number of request tokens has exceeded your per-minute rate limit\"}}",
   "name": "ProviderHttpError",
   "ownEnumerableProperties": {
     "data": {

@@ -91,8 +91,6 @@ export const promptCacheKeyExtraBody: NonNullable<Dialect["extraBody"]> = (turn)
 
 export interface OpenAIChatDialectSpec {
 	id: string;
-	/** 用户可见文案里的名字。不给 = 用**运行时的 providerId**。 */
-	displayName?: string;
 	defaultBaseUrl: string;
 	maxTokensField?: "max_tokens" | "max_completion_tokens";
 	/** 这家走哪条思考线型(一家一条,由 `ModelProfile.reasoningWire` 选中或兜底)。 */
@@ -115,7 +113,6 @@ export interface OpenAIChatDialectSpec {
 export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialect {
 	return {
 		id: spec.id,
-		...(spec.displayName ? { displayName: spec.displayName } : {}),
 		wire: "openai-chat",
 		endpoint: { defaultBaseUrl: spec.defaultBaseUrl, path: "/chat/completions" },
 		auth: UNCONFIGURED_AUTH,

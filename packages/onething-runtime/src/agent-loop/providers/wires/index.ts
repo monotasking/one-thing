@@ -21,7 +21,6 @@ export {
 	type AnthropicUsage,
 } from "./anthropic-usage.js";
 export {
-	ANTHROPIC_SOURCE_NAME,
 	AnthropicErrorMapper,
 	type AnthropicApiError,
 } from "./anthropic-errors.js";
@@ -85,7 +84,6 @@ export {
 	type GeminiUsageMetadata,
 } from "./gemini-wire.js";
 export {
-	GEMINI_SOURCE_NAME,
 	GeminiErrorMapper,
 	type GeminiApiError,
 } from "./gemini-errors.js";

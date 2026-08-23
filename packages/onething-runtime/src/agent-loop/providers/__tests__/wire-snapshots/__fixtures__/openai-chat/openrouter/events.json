@@ -86,6 +86,7 @@
       "cacheWriteTokens": 12,
       "inputTokens": 108,
       "outputTokens": 45,
+      "providerCostUSD": 0.00123,
       "reasoningTokens": 30,
       "totalTokens": 165
     }

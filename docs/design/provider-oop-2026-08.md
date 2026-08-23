@@ -259,7 +259,7 @@ export class UsageBuckets {                                                  // 
 
 > **2026-08-23 拍板结果**:1 改、2 codex 也合并、3 做(并存不覆盖)、4 五家(openai/kimi/kimi-code/grok/grok-oauth/openrouter)默认发 sessionId、5 两件都做、6 改、7 保留早 done 只加交错告警、8 挂、9 不拆(走 P3 PDF 块)、10 不做、11 修。执行排期:泳道甲 B(4/5a/8)→C(1/2/7);泳道乙 A(5b/6/11)→D(3);泳道间并行、泳道内顺序,`-u` 只许 `-t` 限定自己的用例。
 
-1. **错误形状统一**(P1):用户可见前缀从 `DeepSeek agent loop API error:` 变 `deepseek agent loop API error:`;分类器与测试同改。
+1. **错误形状统一**(P1 形状已统一;P0b-B C 批前缀已改为小写 providerId,含 claude-code / custom-* 用自己的 id;分类器锚定抠取不看家名零改动;renderer error-humanizer 先 toLowerCase 再子串匹配不受影响)。
 2. **codex 相邻同角色合并**:基类开关默认 true,codex 设 false 保持今天行为,还是跟大家一致?
 3. **厂商报价进账本**:`providerCostUSD` 与本地价目**并存**(`pricingQuality: 'provider-reported'`),聚合时显式选口径,永不覆盖本地值 —— 这是建议,要不要做?
 4. **`cacheKey = sessionId`**:对 OpenAI/xAI/Kimi/OpenRouter 默认发(不透明 id,但离开本机),还是设置项?

@@ -244,6 +244,43 @@ describe('UsageSettingsPanel', () => {
     expect(text).toContain('100.0%')
   })
 
+  it('厂商报价与本地估算并排显示 —— 大数字仍是覆盖全部记录的本地估算', async () => {
+    getUsageSummary.mockResolvedValue(
+      summaryFixture({
+        totalProviderCostUSD: 0.008,
+        pricingQuality: {
+          pricedTokens: 1500,
+          unpricedTokens: 0,
+          cacheSavingsUSD: 0.5,
+          providerReportedTokens: 900,
+          providerReportedLocalCostUSD: 0.0072,
+        },
+      }),
+    )
+    const wrapper = mount(UsageSettingsPanel)
+    await flushPromises()
+
+    const text = wrapper.text()
+    // 头顶的总数没被厂商值换掉。
+    expect(text).toContain('$0.0150')
+    // 多出来的那一行:厂商值在前,本地估算在后。
+    expect(text).toContain('provider quoted $0.0080')
+    expect(text).toContain('locally estimated $0.0072')
+    // Cost quality 里 "Provider reported" 是真数了(900 / 1500)。
+    expect(text).toContain('60.0%')
+  })
+
+  it('没有任何厂商报价时,那一行不出现,老账本读数不变', async () => {
+    getUsageSummary.mockResolvedValue(summaryFixture())
+    const wrapper = mount(UsageSettingsPanel)
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).not.toContain('provider quoted')
+    expect(text).toContain('Provider reported')
+    expect(text).toContain('$0.0150')
+  })
+
   it('renders the daily chart with one area layer per provider', async () => {
     getUsageSummary.mockResolvedValue(summaryFixture())
     const wrapper = mount(UsageSettingsPanel)

@@ -21,7 +21,13 @@ export type ProviderWarningKind =
 	/** 思考意图这条线协议表达不了,整段没发。 */
 	| "thinking-unsupported"
 	/** 响应里没有 usage 那块,账本这一回合是空的。 */
-	| "usage-missing";
+	| "usage-missing"
+	/**
+	 * 工具调用的 `arguments` 增量在该 index 已被判 done **之后**才到
+	 * (openai-chat 的 index 切换判据遇上不按 index 顺序发的网关)。
+	 * 那些字符对模型已经无效 —— 留痕,不静默。
+	 */
+	| "tool-call-interleaved";
 
 export class ProviderWarning {
 	constructor(

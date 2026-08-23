@@ -18,6 +18,12 @@ export interface GetUsageSummaryResponse {
   buckets: OnethingUsageBucket[];
   totalApiCostUSD: number;
   totalSubscriptionCostUSD: number;
+  /**
+   * 厂商自己报的成本合计(USD)。与上面两个本地价目估算**并存**,不相加也不
+   * 覆盖:一条记录可能同时有厂商报价和本地估算(设计稿 §10 决策 3)。老账本
+   * 没有这个字段,恒为 0。
+   */
+  totalProviderCostUSD?: number;
   pricingQuality: OnethingUsagePricingQuality;
   byProject: OnethingUsageProjectTotals[];
 }
@@ -29,6 +35,8 @@ export interface GetSessionUsageRequest {
 export interface GetSessionUsageResponse {
   apiCostUSD: number;
   subscriptionCostUSD: number;
+  /** 本会话里厂商报价的合计(USD)。与本地估算并存,不覆盖。 */
+  providerCostUSD?: number;
   turnCount: number;
   usage: {
     inputTokens: number;

@@ -15,6 +15,11 @@ export interface OnethingUsageBreakdownEntry {
   apiCostUSD: number
   subscriptionCostUSD: number
   records: number
+  /**
+   * 厂商自己报的成本合计(USD),只累加带报价的记录。与上面两个本地估算
+   * **并排**,不相加也不覆盖 —— 老记录没有这个字段,一律按 0 计。
+   */
+  providerCostUSD?: number
 }
 
 export interface OnethingUsageBucket {
@@ -24,6 +29,8 @@ export interface OnethingUsageBucket {
   usage: OnethingUsageTokens
   apiCostUSD: number
   subscriptionCostUSD: number
+  /** 本段里厂商报价的合计(只有报价的记录进这个数)。 */
+  providerCostUSD?: number
   records: number
   byProvider: OnethingUsageBreakdownEntry[]
   byModel: OnethingUsageBreakdownEntry[]
@@ -47,9 +54,12 @@ export interface OnethingUsageSummaryRequest {
 
 /**
  * How much of the ranged usage we could actually put a dollar figure on, plus
- * the cache-read discount. The dashboard's "cost quality" block reads this:
- * every cost we show is computed locally from the pricing table (never
- * provider-reported), so the interesting split is priced vs unpriced tokens.
+ * the cache-read discount. The dashboard's "cost quality" block reads this.
+ *
+ * 三个口径,**并存不相消**:厂商自己报了价的那部分(`providerReported*`)、
+ * 本地价目表算得出的那部分(`pricedTokens`)、以及压根没价的那部分
+ * (`unpricedTokens`)。厂商报价的记录同时也会被本地价目表算一遍,所以
+ * `providerReportedTokens` 是 `pricedTokens` 的**子集**,不要相加。
  */
 export interface OnethingUsagePricingQuality {
   /** usage.total tokens from records with a known price (costUSD != null). */
@@ -58,6 +68,17 @@ export interface OnethingUsagePricingQuality {
   unpricedTokens: number
   /** Estimated savings from cache reads vs paying the full input rate. */
   cacheSavingsUSD: number
+  /**
+   * 带厂商报价的记录贡献的 `usage.total` —— 这一段的成本**以厂商报价为准**
+   * (`pricingQuality: 'provider-reported'`,设计稿 §10 决策 3)。老记录没有
+   * 厂商报价,恒为 0。
+   */
+  providerReportedTokens?: number
+  /**
+   * 那同一批记录的**本地价目估算**合计。与 `totalProviderCostUSD` 并排显示,
+   * 才看得出本地价目表偏了多少;两者永不互相覆盖。
+   */
+  providerReportedLocalCostUSD?: number
 }
 
 /**
@@ -84,6 +105,8 @@ export interface OnethingUsageSummaryResult {
   buckets: OnethingUsageBucket[]
   totalApiCostUSD: number
   totalSubscriptionCostUSD: number
+  /** 全窗口厂商报价合计(USD)。没有任何一条带报价时为 0。 */
+  totalProviderCostUSD?: number
   pricingQuality: OnethingUsagePricingQuality
   byProject: OnethingUsageProjectTotals[]
 }
@@ -184,12 +207,22 @@ function accumulateBreakdown(
   key: string,
   record: OnethingUsageLedgerRecord,
 ): void {
-  const entry = map.get(key) ?? { key, usage: zeroUsage(), apiCostUSD: 0, subscriptionCostUSD: 0, records: 0 }
+  const entry = map.get(key) ?? {
+    key,
+    usage: zeroUsage(),
+    apiCostUSD: 0,
+    subscriptionCostUSD: 0,
+    records: 0,
+  }
   entry.usage = addUsage(entry.usage, record.usage)
   entry.records += 1
   if (record.costUSD != null) {
     if (record.billing === 'subscription') entry.subscriptionCostUSD += record.costUSD
     else entry.apiCostUSD += record.costUSD
+  }
+  // 厂商报价单独一格,与上面两个本地估算并存。
+  if (record.providerCostUSD != null) {
+    entry.providerCostUSD = (entry.providerCostUSD ?? 0) + record.providerCostUSD
   }
   map.set(key, entry)
 }
@@ -308,6 +341,9 @@ export function computeOnethingUsageSummary(
   let pricedTokens = 0
   let unpricedTokens = 0
   let cacheSavingsUSD = 0
+  let totalProviderCostUSD = 0
+  let providerReportedTokens = 0
+  let providerReportedLocalCostUSD = 0
 
   for (const record of records) {
     if (record.ts < overallStart || record.ts >= overallEnd) continue
@@ -315,6 +351,12 @@ export function computeOnethingUsageSummary(
     if (index === -1) continue
     if (record.costUSD != null) pricedTokens += record.usage.total
     else unpricedTokens += record.usage.total
+    // 厂商报价:记录带了就单独累一份(以及它那一份的本地估算,用来并排对照)。
+    if (record.providerCostUSD != null) {
+      totalProviderCostUSD += record.providerCostUSD
+      providerReportedTokens += record.usage.total
+      if (record.costUSD != null) providerReportedLocalCostUSD += record.costUSD
+    }
     // A cache read would have been billed at the full input rate without
     // caching; the discount vs the cache-read rate is the saving.
     if (record.unitPrice) {
@@ -328,6 +370,9 @@ export function computeOnethingUsageSummary(
     const subscriptionCost = costForBilling(record, 'subscription')
     bucket.apiCostUSD += apiCost
     bucket.subscriptionCostUSD += subscriptionCost
+    if (record.providerCostUSD != null) {
+      bucket.providerCostUSD = (bucket.providerCostUSD ?? 0) + record.providerCostUSD
+    }
     totalApiCostUSD += apiCost
     totalSubscriptionCostUSD += subscriptionCost
     accumulateBreakdown(providerMaps[index], record.providerId, record)
@@ -352,7 +397,14 @@ export function computeOnethingUsageSummary(
     buckets,
     totalApiCostUSD,
     totalSubscriptionCostUSD,
-    pricingQuality: { pricedTokens, unpricedTokens, cacheSavingsUSD },
+    totalProviderCostUSD,
+    pricingQuality: {
+      pricedTokens,
+      unpricedTokens,
+      cacheSavingsUSD,
+      providerReportedTokens,
+      providerReportedLocalCostUSD,
+    },
     byProject,
   }
 }
@@ -375,6 +427,8 @@ export async function getOnethingUsageSummary(
 export interface OnethingSessionUsageTotal {
   apiCostUSD: number
   subscriptionCostUSD: number
+  /** 本会话里厂商报价的合计(USD);没有任何一条带报价时为 0。 */
+  providerCostUSD?: number
   turnCount: number
   usage: OnethingUsageTokens
 }
@@ -402,6 +456,9 @@ export async function getOnethingSessionUsageTotal(
     if (record.costUSD != null) {
       if (record.billing === 'subscription') total.subscriptionCostUSD += record.costUSD
       else total.apiCostUSD += record.costUSD
+    }
+    if (record.providerCostUSD != null) {
+      total.providerCostUSD = (total.providerCostUSD ?? 0) + record.providerCostUSD
     }
     total.usage.input += record.usage.input
     total.usage.output += record.usage.output

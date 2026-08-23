@@ -59,6 +59,11 @@ export interface RecordUsageInput {
 		cacheReadTokens?: number;
 		cacheWriteTokens?: number;
 		reasoningTokens?: number;
+		/**
+		 * 厂商在响应里报的本次成本(USD)。这是 `AgentUsage` 的字段,整包透传
+		 * 进来 —— 账本把它另存一格,**不**用它覆盖本地价目估算。
+		 */
+		providerCostUSD?: number;
 	};
 	/** The assistant message this usage was recorded for, used to resolve platform from its origin. */
 	assistantMessageId?: string;
@@ -130,6 +135,8 @@ export async function getUsageSummaryWithProjects(
 export interface SessionUsageTotal {
 	apiCostUSD: number;
 	subscriptionCostUSD: number;
+	/** 本会话里厂商报价的合计(USD);没有任何一条带报价时为 0。 */
+	providerCostUSD?: number;
 	turnCount: number;
 	usage: {
 		inputTokens: number;
@@ -147,6 +154,7 @@ export async function getSessionUsageTotal(sessionId: string): Promise<SessionUs
 	return {
 		apiCostUSD: total.apiCostUSD,
 		subscriptionCostUSD: total.subscriptionCostUSD,
+		providerCostUSD: total.providerCostUSD ?? 0,
 		turnCount: total.turnCount,
 		usage: {
 			inputTokens: total.usage.input,
@@ -183,6 +191,9 @@ export function recordUsage(input: RecordUsageInput): OnethingUsageLedgerRecord 
 			reasoning: input.usage.reasoningTokens,
 		},
 		unitPrice: capability?.pricing,
+		// 厂商报价与本地价目并存(设计稿 §10 决策 3):`unitPrice` 照旧算
+		// `costUSD`,厂商值另存一格,永不互相覆盖。没报的家一个字节都不变。
+		providerCostUSD: input.usage.providerCostUSD,
 		partial: input.partial,
 	});
 }

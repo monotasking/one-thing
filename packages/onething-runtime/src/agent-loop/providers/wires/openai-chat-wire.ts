@@ -50,12 +50,6 @@ import {
 export interface OpenAIChatDialect extends Dialect<OpenAIChatWireValue> {
 	/** provider 的**传输**声明(模态 / 结构化工具结果)。per-model 的布尔归账本。 */
 	transport: AgentModelCapabilities;
-	/**
-	 * 用户可见文案里这家的名字。**不给 = 用 providerId** —— 一份 `custom-openai`
-	 * 配方服务任意多个自定义 id,文案里必须是那个 id 而不是配方名。
-	 * 只有 DeepSeek 例外:它今天写作 `DeepSeek`(设计稿 §10 第 1 条)。
-	 */
-	displayName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +82,8 @@ interface ToolCallAccumulator {
 	arguments: string;
 	started: boolean;
 	done: boolean;
+	/** 已经为这个 index 记过一条 `tool-call-interleaved` —— 一次交错记一条,不刷屏。 */
+	interleavedReported: boolean;
 }
 
 /**
@@ -182,13 +178,13 @@ export class OpenAIChatWire extends HttpAgentProvider<
 	}
 
 	/**
-	 * P0a 抛的仍是今天那个裸 `Error`(见 `openai-chat-errors.ts` 的抬头)。
+	 * P1-d1 起抛 `ProviderHttpError`(见 `openai-chat-errors.ts` 的抬头)。
 	 * 覆盖 getter 而不是在基类里加分支 —— 那是方言的事,不是模板的事。
 	 */
 	protected override get errors(): OpenAIChatErrorMapper {
 		return (
 			(this.dialect.errors as OpenAIChatErrorMapper | undefined) ??
-			new OpenAIChatErrorMapper(this.id, this.chatDialect.displayName ?? this.id)
+			new OpenAIChatErrorMapper(this.id)
 		);
 	}
 
@@ -320,6 +316,7 @@ export class OpenAIChatWire extends HttpAgentProvider<
 							arguments: "",
 							started: false,
 							done: false,
+							interleavedReported: false,
 						};
 						toolCalls.set(index, entry);
 					}
@@ -327,6 +324,32 @@ export class OpenAIChatWire extends HttpAgentProvider<
 					if (toolCallDelta.id) entry.id = toolCallDelta.id;
 					if (toolCallDelta.function?.name) entry.name += toolCallDelta.function.name;
 					const argumentsDelta = toolCallDelta.function?.arguments ?? "";
+
+					// 交错:index 切换已经把这个 index 判 done 了(done 事件带着当时
+					// 的完整 arguments 发了出去,下游可能已经在执行),后面又来了
+					// 这个 index 的 arguments —— 那些字符对模型**已经无效**。
+					//
+					// 行为一个字不改(**不补第二条 done**,增量照旧累加与外发):
+					// 补 done 会让同一个 toolCallId 出现两次终态,比丢几个字符坏得多。
+					// 能做的是留痕 —— 一个 index 记一条,不刷屏。
+					if (entry.done && argumentsDelta && !entry.interleavedReported) {
+						entry.interleavedReported = true;
+						const fields = {
+							toolCallId: entry.id,
+							index,
+							droppedChars: argumentsDelta.length,
+						};
+						turn.warn(
+							"tool-call-interleaved",
+							"tool call arguments arrived after this index was already done",
+							fields,
+						);
+						turn.logger.warn("tool call arguments arrived after done", {
+							turn: turnIndex,
+							...fields,
+						});
+					}
+
 					if (argumentsDelta) entry.arguments += argumentsDelta;
 
 					if (!entry.started && entry.name) {

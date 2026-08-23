@@ -6,7 +6,9 @@
  * 要求 user/assistant 交替。这里钉的是那条兜底真的落在**传输层**:
  *
  *  1. 纯函数的合并规则(合谁、不合谁、内容怎么接);
- *  2. 严格交替的 provider 发出去的请求体里,连续两条 user 已经是一条。
+ *  2. 传输层发出去的请求体里,连续两条 user 已经是一条 —— DeepSeek 系是硬要求
+ *     (严格交替),codex(Responses)P0b-B 起也同规(设计稿 §10 第 2 条:
+ *     `input` 是项数组、合并对它是无害的等价改写,四条线一个样子)。
  */
 import { describe, expect, it } from "vitest";
 import type {
@@ -18,6 +20,7 @@ import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { createDeepSeekAgentProvider } from "../deepseek.js";
 import { createOpenAICompatibleAgentProvider } from "../openai-compatible.js";
 import { createClaudeAgentProvider } from "../claude.js";
+import { createCodexAgentProvider } from "../codex.js";
 
 const COMPACT_SUMMARY_USER =
 	"The conversation history before this point was compacted into the following summary:\n\n<summary>\nEarlier work\n</summary>";
@@ -133,7 +136,7 @@ describe("mergeAdjacentSameRoleMessages", () => {
 	});
 });
 
-describe("严格交替的 provider 请求体里没有连续两条 user", () => {
+describe("传输层发出去的请求体里没有连续两条 user", () => {
 	it("deepseek", async () => {
 		let body: { messages: Array<{ role: string; content: string }> } | undefined;
 		const provider = createDeepSeekAgentProvider({
@@ -171,6 +174,27 @@ describe("严格交替的 provider 请求体里没有连续两条 user", () => {
 		expect(body?.messages.map((message) => message.role)).toEqual([
 			"system",
 			"user",
+		]);
+	});
+
+	it("codex", async () => {
+		let body: { input: Array<{ type?: string; role?: string }> } | undefined;
+		const provider = createCodexAgentProvider({
+			oauthToken: { accessToken: "test-token" } as never,
+			fetchImpl: async (_url: unknown, init: { body?: string } = {}) => {
+				body = JSON.parse(init.body ?? "{}");
+				return sseResponse([]);
+			},
+		} as never);
+
+		await drain(provider.streamTurn!(requestWith(compactedMessages)));
+
+		// P0b-B 起 responses 这条线也合并(`mergeAdjacent: true`):Responses 的
+		// `input` 是项数组、不要求严格交替,合并是无害的等价改写 —— 四条线同规,
+		// 同一段对话在哪条线上都长成一个样子。system 走 `instructions`,
+		// 于是 `input` 里只剩合并后的那一条 user。
+		expect(body?.input.map((item) => [item.type, item.role])).toEqual([
+			["message", "user"],
 		]);
 	});
 

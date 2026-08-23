@@ -281,8 +281,11 @@ export function responsesDialect(spec: ResponsesDialectSpec): ResponsesDialect {
 			maxTokensField: "max_tokens",
 			// 流恒带 `response.completed.usage`,没有 `stream_options` 这个概念。
 			streamUsage: "always",
-			// `input` 是项数组,不要求 user/assistant 严格交替。
-			mergeAdjacent: false,
+			// `input` 是项数组,本来不要求 user/assistant 严格交替 —— 但相邻同
+			// 角色合成一条对它是无害的等价改写,而与别家不一致的历史形状会让
+			// 「同一段对话在两条线上长得不一样」变成排障时的假线索。P0b-B 起
+			// 与另外三条线同规(设计稿 §10 第 2 条)。
+			mergeAdjacent: true,
 		},
 		reasoning: RESPONSES_THINKING_WIRES,
 		transport: spec.transport ?? CODEX_TRANSPORT_CAPABILITIES,

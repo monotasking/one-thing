@@ -15,10 +15,10 @@
  * 逐字保留(`__tests__/wire-snapshots/responses` 的 9 份快照就是这句话的门,
  * **禁 `-u`**)。
  *
- * 四处复刻的现状,后面几期再动(设计稿 §9 P1 门 ①):
+ * 三处复刻的现状,后面几期再动(设计稿 §9 P1 门 ①;第四处「相邻同角色不合并」
+ * 已在 P0b-B 与别家统一成合并):
  *  - **不发 temperature / maxTokens**:Responses 有这两个旋钮,但今天的 codex
  *    一个都不拼(`noSamplingPolicy`,`maxTokensField` 无读者);
- *  - **相邻同角色不合并**(`dialect.request.mergeAdjacent: false`);
  *  - **`isError` 对模型不可见**:工具结果的失败标记在这条线上没有出口
  *    (anthropic 有,设计稿把它排成 P3 功能项);
  *  - **dump 时序**:今天在 token 解析之前落盘,统一之后变成 auth 之后 ——
@@ -422,9 +422,9 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 
 	protected buildBody(turn: TurnContext): void {
 		const { builder, request } = turn;
-		// 今天这条线上 `mergeAdjacent` 是 **false**(Responses 的 `input` 是项
-		// 数组,不要求 user/assistant 严格交替)—— 但字段仍然有真读者,拍板改
-		// true 时这里立刻生效,不会变成一处静默的谎。
+		// P0b-B 起这条线上 `mergeAdjacent` 也是 **true**:Responses 的 `input`
+		// 是项数组、不要求严格交替,合并对它是无害的等价改写 —— 四条线同规,
+		// 同一段对话在哪条线上都长成一个样子。
 		const messages = this.responsesDialect.request.mergeAdjacent
 			? mergeAdjacentSameRoleMessages(request.messages)
 			: request.messages;

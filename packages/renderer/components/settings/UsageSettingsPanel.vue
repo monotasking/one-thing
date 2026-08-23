@@ -76,6 +76,16 @@
           >
             * subscription usage estimated at the official API rate
           </div>
+          <!--
+            厂商报价与本地价目并存(不覆盖):有报价的那部分,厂商值在前、本地
+            估算在后。头顶那个大数字仍是本地估算 —— 只有它覆盖 100% 的记录。
+          -->
+          <div
+            v-if="providerQuotedCost > 0"
+            class="cost-footnote"
+          >
+            provider quoted {{ formatUSD(providerQuotedCost) }} · locally estimated {{ formatUSD(providerQuotedLocalCost) }}
+          </div>
 
           <div class="provider-rows">
             <div
@@ -554,6 +564,16 @@ const rawCost = computed(
 
 const hasEstimate = computed(() => (summary.value?.totalSubscriptionCostUSD ?? 0) > 0)
 
+/**
+ * 厂商自己报的成本(OpenRouter `usage.cost` / xAI ticks)与它同一批记录的本地
+ * 价目估算。两个数**并排显示,永不互相覆盖**:厂商报价只覆盖部分记录,拿它
+ * 换掉头顶那个总数会让总数不可比。
+ */
+const providerQuotedCost = computed(() => summary.value?.totalProviderCostUSD ?? 0)
+const providerQuotedLocalCost = computed(
+  () => summary.value?.pricingQuality?.providerReportedLocalCostUSD ?? 0,
+)
+
 function shareOfCost(cost: number): string {
   if (rawCost.value <= 0) return '0.0%'
   return `${((cost / rawCost.value) * 100).toFixed(1)}%`
@@ -1004,7 +1024,7 @@ const qualityRows = computed(() => {
   const denominator = priced + unpriced
   const pct = (value: number) => (denominator > 0 ? `${((value / denominator) * 100).toFixed(1)}%` : '—')
   return [
-    { label: 'Provider reported', value: '0.0%', strong: false },
+    { label: 'Provider reported', value: pct(quality?.providerReportedTokens ?? 0), strong: false },
     { label: 'Model priced', value: pct(priced), strong: false },
     { label: 'Unpriced', value: pct(unpriced), strong: false },
     { label: 'Cache savings', value: formatUSD(quality?.cacheSavingsUSD ?? 0), strong: true },

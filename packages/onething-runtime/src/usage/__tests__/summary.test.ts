@@ -15,6 +15,70 @@ function record(overrides: Partial<OnethingUsageLedgerRecord> & { ts: number }):
   }
 }
 
+describe('厂商报价(providerCostUSD)与本地价目并存', () => {
+  const day = new Date(2026, 6, 13, 10, 0, 0).getTime()
+
+  it('把厂商报价单独汇总,既不覆盖也不并进本地估算', () => {
+    const records = [
+      // OpenRouter 这类会报价的:两个口径同时在。
+      record({ ts: day, providerId: 'openrouter', costUSD: 0.001, providerCostUSD: 0.0008 }),
+      // 老记录:没有这个字段,读侧零迁移。
+      record({ ts: day, providerId: 'anthropic', costUSD: 0.002 }),
+    ]
+
+    const summary = computeOnethingUsageSummary(records, { granularity: 'day', count: 1, now: day })
+    const [bucket] = summary.buckets
+
+    // 本地估算一分不少 —— 厂商报价没有覆盖它。
+    expect(summary.totalApiCostUSD).toBeCloseTo(0.003, 10)
+    expect(bucket.apiCostUSD).toBeCloseTo(0.003, 10)
+    // 厂商报价自己一格。
+    expect(summary.totalProviderCostUSD).toBeCloseTo(0.0008, 10)
+    expect(bucket.providerCostUSD).toBeCloseTo(0.0008, 10)
+    // 分项也按 provider 分开:只有报价的那家有这个数。
+    const byProvider = Object.fromEntries(bucket.byProvider.map(entry => [entry.key, entry]))
+    expect(byProvider.openrouter.providerCostUSD).toBeCloseTo(0.0008, 10)
+    expect(byProvider.anthropic.providerCostUSD).toBeUndefined()
+  })
+
+  it('pricingQuality 记下"这一段以厂商报价为准"的 token 量与它的本地估算', () => {
+    const records = [
+      record({ ts: day, providerId: 'openrouter', costUSD: 0.001, providerCostUSD: 0.0008 }),
+      record({ ts: day, providerId: 'anthropic', costUSD: 0.002 }),
+      record({ ts: day, providerId: 'custom', costUSD: null }),
+    ]
+
+    const summary = computeOnethingUsageSummary(records, { granularity: 'day', count: 1, now: day })
+
+    // 三条各 150 tok:有价 300、无价 150,其中 150 有厂商报价(是有价的子集)。
+    expect(summary.pricingQuality.pricedTokens).toBe(300)
+    expect(summary.pricingQuality.unpricedTokens).toBe(150)
+    expect(summary.pricingQuality.providerReportedTokens).toBe(150)
+    expect(summary.pricingQuality.providerReportedLocalCostUSD).toBeCloseTo(0.001, 10)
+  })
+
+  it('一条厂商报价都没有时,老账本的读数一个字节都不变', () => {
+    const summary = computeOnethingUsageSummary(
+      [record({ ts: day }), record({ ts: day, costUSD: null })],
+      { granularity: 'day', count: 1, now: day },
+    )
+    expect(summary.totalProviderCostUSD).toBe(0)
+    expect(summary.pricingQuality.providerReportedTokens).toBe(0)
+    expect(summary.pricingQuality.providerReportedLocalCostUSD).toBe(0)
+    expect(summary.buckets[0].providerCostUSD).toBeUndefined()
+  })
+
+  it('厂商报价为 0(免费模型)算"报过价",不是"没报"', () => {
+    const summary = computeOnethingUsageSummary(
+      [record({ ts: day, costUSD: 0.001, providerCostUSD: 0 })],
+      { granularity: 'day', count: 1, now: day },
+    )
+    expect(summary.totalProviderCostUSD).toBe(0)
+    expect(summary.pricingQuality.providerReportedTokens).toBe(150)
+    expect(summary.buckets[0].providerCostUSD).toBe(0)
+  })
+})
+
 describe('computeOnethingUsageSummary', () => {
   it('buckets records by local day and keeps api/subscription costs separate', () => {
     const day1 = new Date(2026, 6, 13, 10, 0, 0).getTime()

@@ -3,19 +3,19 @@
  *
  * 换装的边界写死在三句话里(设计稿 §2.5 / §9 P1-d1):
  *
- *  1. **用户可见的 `message` 一字不变**:`${displayName} agent loop API error:
- *     ${status} ${body}`,DeepSeek 那个大写前缀照旧(前缀统一是 §10 的待拍板
- *     项,不在这一批);
+ *  1. **用户可见的 `message`**:`${providerId} agent loop API error:
+ *     ${status} ${body}` —— P0b-B 起前缀是**运行时的 providerId**,一家一份、
+ *     一律小写(DeepSeek 那个大写的家名随 `displayName` 字段一起删了,设计稿
+ *     §10 第 1 条);
  *  2. **今天的兼容字段全部保留**:顶层 `responseBody`、
  *     `data { providerId, statusCode, responseBody }`、顶层 `retryAfterAt` ——
- *     `ProviderHttpError` 自带这三样,分类器的三段兜底与既有测试一行不用改;
+ *     `ProviderHttpError` 自带这三样,分类器的三段兜底与既有测试一行不用改
+ *     (锚定前缀抠取只认 `API error: NNN`,不看家名);
  *  3. **只增不减**:再多出统一字段 `providerId` / `status` / `inStream`
- *     (以及有值才出现的 `requestId`)。`name` 从 `'Error'` 变成
- *     `'ProviderHttpError'` —— 这是本批唯一允许的快照变化。
+ *     (以及有值才出现的 `requestId`)。
  *
- * `displayName` 是这家在**用户可见文案**里的名字:十家用 providerId,DeepSeek
- * 今天写作 `DeepSeek`。它也是 SSE 读取器的 `sourceName` —— 同一个名字只有一处
- * owner。
+ * `providerId` 同时是 SSE 读取器的 `sourceName`(`invalidMessage` 前缀)——
+ * 同一个名字只有一处 owner。
  */
 import { ProviderHttpError, type ErrorMapper } from "../base/index.js";
 
@@ -23,14 +23,11 @@ import { ProviderHttpError, type ErrorMapper } from "../base/index.js";
 export type OpenAIChatApiError = ProviderHttpError;
 
 export class OpenAIChatErrorMapper implements ErrorMapper {
-	constructor(
-		private readonly providerId: string,
-		readonly displayName: string = providerId,
-	) {}
+	constructor(private readonly providerId: string) {}
 
 	/** `readJsonSseData` 的 `sourceName`,以及流中错误那句话的前缀。 */
 	get sourceName(): string {
-		return `${this.displayName} agent loop`;
+		return `${this.providerId} agent loop`;
 	}
 
 	fromResponse(response: Response, bodyText: string): ProviderHttpError {
@@ -40,7 +37,7 @@ export class OpenAIChatErrorMapper implements ErrorMapper {
 		return new ProviderHttpError({
 			providerId: this.providerId,
 			status: response.status,
-			message: `${this.displayName} agent loop API error: ${response.status} ${bodyText}`,
+			message: `${this.sourceName} API error: ${response.status} ${bodyText}`,
 			responseBody: bodyText,
 			headers: response.headers,
 			requestId:

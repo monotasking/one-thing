@@ -30,14 +30,19 @@
  *
  * | 家族 | 抛出处 | 形状 |
  * | --- | --- | --- |
- * | claude / claude-code / custom-anthropic | `agent-loop/providers/wires/anthropic-errors.ts` | `ProviderHttpError`,消息 `Claude agent loop API error: <status> <body>` |
- * | deepseek / openai / kimi / zhipu / qwen / grok / openrouter / copilot / custom… | `agent-loop/providers/wires/openai-chat-errors.ts` | `ProviderHttpError`,消息 `<DisplayName> agent loop API error: <status> <body>`;顶层 `responseBody` + `data { providerId, statusCode, responseBody }` 是保留的兼容字段 |
- * | gemini | `agent-loop/providers/wires/gemini-errors.ts` | `ProviderHttpError`,消息 `Gemini agent loop API error: <status> <body>` |
+ * | claude / claude-code / custom-anthropic | `agent-loop/providers/wires/anthropic-errors.ts` | `ProviderHttpError`,消息 `<providerId> agent loop API error: <status> <body>` |
+ * | deepseek / openai / kimi / zhipu / qwen / grok / openrouter / copilot / custom… | `agent-loop/providers/wires/openai-chat-errors.ts` | `ProviderHttpError`,消息 `<providerId> agent loop API error: <status> <body>`;顶层 `responseBody` + `data { providerId, statusCode, responseBody }` 是保留的兼容字段 |
+ * | gemini | `agent-loop/providers/wires/gemini-errors.ts` | `ProviderHttpError`,消息 `<providerId> agent loop API error: <status> <body>` |
  * | codex | `agent-loop/providers/wires/openai-responses-errors.ts` | `CodexHttpError`(`ProviderHttpError` 子类),消息 `Codex request failed (<status>): <detail>`;顶层 `statusCode` / `isRetryable` 是保留的兼容字段 |
  *
  * **`status === 0` = 没有 HTTP 状态**(流中的错误事件、首字节/空闲超时)。读取
  * 函数把它当作「读不到状态码」原样往下走文本判据 —— 那正是换装前这些错误的
  * 待遇,一个结论都没变。
+ *
+ * 四条线的前缀 P0b-B 起统一成**运行时的 providerId**(`deepseek` / `claude` /
+ * `claude-code` / `custom-xxx` / `gemini`,codex 那条自成一格的
+ * `Codex request failed (NNN)` 不动)—— 抠取只认 `API error: NNN` 与
+ * `request failed (NNN)` 这两个锚,不看家名,所以换前缀不改任何一条分类结论。
  *
  * 兜底那三段(顶层 → `data.statusCode` → 从消息前缀里抠)仍然写在下面:抠的时候
  * 必须**锚定前缀**(`API error: 429` / `request failed (429)`),不能像 `retry.ts`

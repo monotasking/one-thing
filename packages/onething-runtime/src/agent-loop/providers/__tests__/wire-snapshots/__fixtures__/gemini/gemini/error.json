@@ -1,5 +1,5 @@
 {
-  "message": "Gemini agent loop API error: 429 {\"error\":{\"code\":429,\"message\":\"Resource has been exhausted (e.g. check quota).\",\"status\":\"RESOURCE_EXHAUSTED\"}}",
+  "message": "gemini agent loop API error: 429 {\"error\":{\"code\":429,\"message\":\"Resource has been exhausted (e.g. check quota).\",\"status\":\"RESOURCE_EXHAUSTED\"}}",
   "name": "ProviderHttpError",
   "ownEnumerableProperties": {
     "data": {

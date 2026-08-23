@@ -248,7 +248,7 @@ describe("kimi / kimi-code(顶层 cached_tokens)", () => {
 // ---------------------------------------------------------------------------
 
 describe("openrouter(cost)", () => {
-	it("cost 进 providerCostUSD,**不**投影进 AgentUsage", () => {
+	it("cost 进 providerCostUSD,并投影进 AgentUsage(与本地价目并存)", () => {
 		const buckets = bucketsFor("openrouter", {
 			prompt_tokens: 1200,
 			completion_tokens: 300,
@@ -273,8 +273,8 @@ describe("openrouter(cost)", () => {
 			cacheReadTokens: 800,
 			cacheWriteTokens: 100,
 			reasoningTokens: 120,
+			providerCostUSD: 0.00123,
 		});
-		expect(buckets.toAgentUsage()).not.toHaveProperty("providerCostUSD");
 	});
 });
 
@@ -300,18 +300,29 @@ describe("grok / grok-oauth(cost_in_usd_ticks)", () => {
 				providerCostUSD: 0.00123,
 				reportedTotal: 1500,
 			});
-			expect(buckets.toAgentUsage()).not.toHaveProperty("providerCostUSD");
+			expect(buckets.toAgentUsage().providerCostUSD).toBe(0.00123);
 		});
 	}
 
 	it("没有 ticks 就没有报价(不造零)", () => {
-		expect(
-			bucketsFor("grok", {
-				prompt_tokens: 1200,
-				completion_tokens: 300,
-				total_tokens: 1500,
-			}).providerCostUSD,
-		).toBeUndefined();
+		const buckets = bucketsFor("grok", {
+			prompt_tokens: 1200,
+			completion_tokens: 300,
+			total_tokens: 1500,
+		});
+		expect(buckets.providerCostUSD).toBeUndefined();
+		// 没报价的家一个字节都不变:投影里连这个键都不该出现。
+		expect(buckets.toAgentUsage()).not.toHaveProperty("providerCostUSD");
+	});
+
+	it("报价是 0(免费模型)也带出去 —— 0 与「没报」是两件事", () => {
+		const buckets = bucketsFor("openrouter", {
+			prompt_tokens: 100,
+			completion_tokens: 10,
+			cost: 0,
+		});
+		expect(buckets.providerCostUSD).toBe(0);
+		expect(buckets.toAgentUsage().providerCostUSD).toBe(0);
 	});
 });
 

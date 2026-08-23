@@ -63,6 +63,41 @@ describe('buildOnethingUsageLedgerRecord', () => {
     expect(record.partial).toBeUndefined()
   })
 
+  it('落厂商报价时,本地价目估算一分不动(并存,不覆盖)', () => {
+    const record = buildOnethingUsageLedgerRecord({
+      providerId: 'openrouter',
+      modelId: 'anthropic/claude-fable-5',
+      platform: 'electron',
+      source: 'chat',
+      billing: 'api',
+      usage: { input: 100, output: 50 },
+      unitPrice: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+      providerCostUSD: 0.00042,
+    })
+    expect(record.providerCostUSD).toBe(0.00042)
+    // 本地口径照算 —— 两个数各自成立。
+    expect(record.costUSD).toBeCloseTo((100 * 3 + 50 * 15) / 1_000_000, 10)
+  })
+
+  it('厂商没报价就诚实缺席(不造 0),负值夹回 0', () => {
+    const base = {
+      providerId: 'anthropic',
+      modelId: 'claude-fable-5',
+      platform: 'electron',
+      source: 'chat',
+      billing: 'api' as const,
+      usage: { input: 100, output: 50 },
+    }
+    expect(buildOnethingUsageLedgerRecord(base).providerCostUSD).toBeUndefined()
+    expect(
+      buildOnethingUsageLedgerRecord({ ...base, providerCostUSD: -1 }).providerCostUSD,
+    ).toBe(0)
+    // 免费模型报的 0 是一句真话,不当"没报"。
+    expect(
+      buildOnethingUsageLedgerRecord({ ...base, providerCostUSD: 0 }).providerCostUSD,
+    ).toBe(0)
+  })
+
   it('marks subscription billing without dropping the cost estimate', () => {
     const record = buildOnethingUsageLedgerRecord({
       providerId: 'codex',

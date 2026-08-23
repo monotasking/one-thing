@@ -49,12 +49,12 @@ describe('四条线的 ProviderHttpError 都走对象路径', () => {
 
   it('openai-chat / deepseek:402 + insufficient_balance —— 配额耗尽', () => {
     const body = JSON.stringify({ error: { message: 'Insufficient Balance' } })
-    const error = new OpenAIChatErrorMapper('deepseek', 'DeepSeek').fromResponse(
+    const error = new OpenAIChatErrorMapper('deepseek').fromResponse(
       jsonResponse(402),
       body,
     )
-    // 用户可见的前缀一字不变。
-    expect(error.message.startsWith('DeepSeek agent loop API error: 402 ')).toBe(true)
+    // 用户可见的前缀 = 运行时的 providerId(P0b-B 起四条线同规)。
+    expect(error.message.startsWith('deepseek agent loop API error: 402 ')).toBe(true)
     expect(providerErrorStatus(error)).toBe(402)
     const classification = classifyProviderError(error)
     expect(classification.kind).toBe('quota-exhausted')
@@ -67,7 +67,7 @@ describe('四条线的 ProviderHttpError 都走对象路径', () => {
       error: { type: 'authentication_error', message: 'invalid x-api-key' },
     })
     const error = new AnthropicErrorMapper('claude').fromResponse(jsonResponse(401), body)
-    expect(error.message.startsWith('Claude agent loop API error: 401 ')).toBe(true)
+    expect(error.message.startsWith('claude agent loop API error: 401 ')).toBe(true)
     expect(providerErrorStatus(error)).toBe(401)
     const classification = classifyProviderError(error)
     expect(classification.kind).toBe('auth-invalid')

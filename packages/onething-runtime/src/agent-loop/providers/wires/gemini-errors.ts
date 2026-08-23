@@ -1,9 +1,10 @@
 /**
  * gemini 线上的错误形状 —— **P1-d1 起是 `ProviderHttpError`**。
  *
- * 边界与另外三条线逐条同款(设计稿 §2.5 / §9 P1-d1):`message` 一字不变
- * (`Gemini agent loop API error: ${status} ${body}`,`sourceName` 仍与
- * providerId 无关 —— 锚定前缀抠取读的正是它)、顶层 `retryAfterAt` 照旧、
+ * 边界与另外三条线逐条同款(设计稿 §2.5 / §9 P1-d1):`message` 是
+ * `${providerId} agent loop API error: ${status} ${body}`(P0b-B 起 `sourceName`
+ * 由**运行时的 providerId** 长出来,写死的 `Gemini` 家名已退役 —— 分类器的锚定
+ * 前缀抠取只认 `API error: NNN`,不看家名)、顶层 `retryAfterAt` 照旧、
  * `providerId` / `status` / `responseBody` / `data` / `inStream` 只增。
  *
  * 一处这条线独有、别家没有的现状:**Gemini 没有 `Retry-After` 头** —— 它把
@@ -21,13 +22,13 @@ interface GeminiStreamErrorChunk {
 	error?: { message?: string; status?: string; code?: number };
 }
 
-export const GEMINI_SOURCE_NAME = "Gemini agent loop";
-
 export class GeminiErrorMapper implements ErrorMapper {
-	constructor(
-		private readonly providerId: string,
-		readonly sourceName: string = GEMINI_SOURCE_NAME,
-	) {}
+	constructor(private readonly providerId: string) {}
+
+	/** `readJsonSseData` 的 `sourceName`,以及每句错误文案的前缀。 */
+	get sourceName(): string {
+		return `${this.providerId} agent loop`;
+	}
 
 	fromResponse(response: Response, bodyText: string): ProviderHttpError {
 		return new ProviderHttpError({

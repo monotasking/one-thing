@@ -218,10 +218,11 @@ describe('ThinkToggle', () => {
       props: { sessionId: 'session-1' },
     })
 
-    // DeepSeek V4 only thinks when explicitly enabled — the unset default now
-    // displays Off, matching what the engine actually sends (previously the
-    // UI showed thinking as on while no parameter went out).
-    expect(wrapper.find('.think-value').text()).toBe('Off')
+    // DeepSeek V4 thinks by default on the API side (official docs: 思考模式默认
+    // 打开,effort 默认 high) — the ledger's `defaultOn:true` (拍板 #6,
+    // 2026-08-23) makes the unset toggle display the real state instead of a
+    // misleading Off while the model was in fact thinking and billing for it.
+    expect(wrapper.find('.think-value').text()).toBe('High')
 
     await openPanel(wrapper)
 

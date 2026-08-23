@@ -3,11 +3,11 @@
  *
  * 边界与 openai-chat 那份逐条同款(设计稿 §2.5 / §9 P1-d1):
  *
- *  1. **`message` 一字不变**:`Claude agent loop API error: ${status} ${body}`。
- *     `sourceName` 仍是**写死的 `Claude agent loop`**,与 providerId 无关 ——
- *     claude-code 与 `custom-*` 的错误消息今天也都以这五个字打头
- *     (`provider-error-classification.ts` 的锚定前缀抠取读的正是它)。改成
- *     per-id 是行为变更,仍然待拍板。
+ *  1. **`message` 是 `${providerId} agent loop API error: ${status} ${body}`**
+ *     —— P0b-B 起 `sourceName` 由**运行时的 providerId** 长出来(`claude` /
+ *     `claude-code` / `custom-xxx`),写死的 `Claude` 家名已退役(设计稿 §10
+ *     第 1 条)。`provider-error-classification.ts` 的锚定前缀抠取只认
+ *     `API error: NNN`,不看家名,所以分类结论一条没变。
  *  2. **今天有的照旧**:顶层 `retryAfterAt`(`withProviderRetryAfter` 在
  *     `ProviderHttpError` 构造里做)。
  *  3. **只增**:`providerId` / `status` / `responseBody` / `data` / `inStream`
@@ -32,13 +32,13 @@ interface AnthropicStreamErrorEvent {
 	error?: { message?: string; type?: string };
 }
 
-export const ANTHROPIC_SOURCE_NAME = "Claude agent loop";
-
 export class AnthropicErrorMapper implements ErrorMapper {
-	constructor(
-		private readonly providerId: string,
-		readonly sourceName: string = ANTHROPIC_SOURCE_NAME,
-	) {}
+	constructor(private readonly providerId: string) {}
+
+	/** `readSseEvents` 的 `sourceName`,以及每句错误文案的前缀。 */
+	get sourceName(): string {
+		return `${this.providerId} agent loop`;
+	}
 
 	fromResponse(response: Response, bodyText: string): ProviderHttpError {
 		return new ProviderHttpError({

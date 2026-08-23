@@ -61,6 +61,11 @@ export class UsageBuckets {
 			...(this.cacheRead ? { cacheReadTokens: this.cacheRead } : {}),
 			...(this.cacheWrite ? { cacheWriteTokens: this.cacheWrite } : {}),
 			...(this.reasoning ? { reasoningTokens: this.reasoning } : {}),
+			// 厂商报价:报了就带出去(**含 0** —— 免费模型的 0 也是一句真话),
+			// 没报的家一个字节都不变。账本读它另存一格,不覆盖本地估算。
+			...(this.providerCostUSD !== undefined
+				? { providerCostUSD: this.providerCostUSD }
+				: {}),
 		};
 	}
 

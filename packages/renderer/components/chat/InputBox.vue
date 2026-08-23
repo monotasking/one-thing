@@ -917,6 +917,11 @@ const contextTooltipText = computed(() => {
     if (usage.apiCostUSD > 0) lines.push(`Session cost: ${formatSessionCostUSD(usage.apiCostUSD)}`)
     if (usage.subscriptionCostUSD > 0) lines.push(`Session cost (subscription est.): ${formatSessionCostUSD(usage.subscriptionCostUSD)}`)
   }
+  // 厂商自己报的成本(OpenRouter / xAI 才有)。与上面的本地估算**并排**,
+  // 不覆盖 —— 谁家报了价,这一行才出现。
+  if (usage && (usage.providerCostUSD ?? 0) > 0) {
+    lines.push(`Session cost (provider quoted): ${formatSessionCostUSD(usage.providerCostUSD ?? 0)}`)
+  }
   return lines.join('\n')
 })
 
@@ -964,6 +969,10 @@ const contextDetailRows = computed(() => {
   }
   if (usage && usage.subscriptionCostUSD > 0) {
     rows.push({ label: '订阅折算', value: formatSessionCostUSD(usage.subscriptionCostUSD) })
+  }
+  // 厂商报价与本地估算并存:报了才多这一行,永不替换上面那两行。
+  if (usage && (usage.providerCostUSD ?? 0) > 0) {
+    rows.push({ label: '厂商报价', value: formatSessionCostUSD(usage.providerCostUSD ?? 0) })
   }
   return rows
 })
