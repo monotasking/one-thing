@@ -1,21 +1,13 @@
 /**
- * openai-chat 线协议的消息/工具形状 —— 一份类型,两个 codec。
+ * openai-chat 线协议的消息/工具形状 —— 一份类型,一个 codec。
  *
- * `OpenAIChatPartCodec` 是 `openai-compatible.ts` 的 `toOpenAICompatibleMessages`
- * / `toUserContent` 逐字搬家;`DeepSeekPartCodec` 是 `deepseek.ts` 的
- * `toDeepSeekMessage` 逐字搬家。两者的差别**全部是今天的行为**,一处不修:
- *
- *  - DeepSeek 的 user 内容走 `agentContentToText()` 压成纯文本 —— 图和 PDF 双双
- *    静默消失(设计稿 §9 P0b 的第一项修的就是它);
- *  - DeepSeek 的 assistant 用 `agentContentToText()`(不过滤空串),
- *    openai-compatible 用自己的 `contentToText()`(`filter(Boolean)` 之后再 join);
- *  - DeepSeek 无条件回传 `reasoning_content`,openai-compatible 由方言的
- *    `includeAssistantReasoning` 决定。
+ * `OpenAIChatPartCodec` 是这条线上**唯一**的序列化器,十一家共用
+ * (`includeAssistantReasoning` 是它唯一的旋钮)。曾经并存的
+ * `DeepSeekPartCodec`(user 内容压成纯文本、图和 PDF 静默消失)在 P0b-A
+ * 随 DeepSeek vision 一起删除 —— 「能力说行、线协议做得到」的块必须
+ * `delivered`,做不到的必须留成可见文本,没有第三种。
  */
-import {
-	agentContentToText,
-	agentToolMessageContentToText,
-} from "@onething/core/agent-loop";
+import { agentToolMessageContentToText } from "@onething/core/agent-loop";
 import type {
 	AgentContentPart,
 	AgentJsonObject,
@@ -157,14 +149,36 @@ function toolMessage(message: AgentMessage): OpenAIChatMessage {
 	};
 }
 
-/** tool 消息只收文本 —— 非文本块进不了请求体(线协议没有那种块)。 */
+/**
+ * tool 消息只收文本 —— 非文本块进不了请求体(线协议没有那种块)。
+ * 丢掉的块在 `turn` 上留一条 warning(§2.4:不静默)。
+ */
 function toolResultDelivery(
 	part: AgentContentPart,
+	turn?: TurnContext,
 ): PartDelivery<OpenAIChatUserContentPart> {
 	if (part.type === "text") return delivered({ type: "text", text: part.text });
-	return undeliverable(
-		Undeliverable.fromPart(undeliverablePartLike(part), "tool-result-text-only"),
+	const note = Undeliverable.fromPart(
+		undeliverablePartLike(part),
+		"tool-result-text-only",
 	);
+	warnUndeliverable(note, part, turn);
+	return undeliverable(note);
+}
+
+/**
+ * `TurnContext` 是可选的:codec 也被 P2 的投递契约矩阵直接调用(那里没有回合)。
+ * 有回合就留痕,没有就只把 `Undeliverable` 交出去 —— 契约本身不变。
+ */
+function warnUndeliverable(
+	note: Undeliverable,
+	part: AgentContentPart,
+	turn: TurnContext | undefined,
+): void {
+	turn?.warn("part-undeliverable", note.toText(), {
+		partType: part.type,
+		reason: note.reason,
+	});
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +197,10 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 		return { role: "system", content: text };
 	}
 
-	user(part: AgentContentPart): PartDelivery<OpenAIChatUserContentPart> {
+	user(
+		part: AgentContentPart,
+		turn?: TurnContext,
+	): PartDelivery<OpenAIChatUserContentPart> {
 		if (part.type === "text") return delivered({ type: "text", text: part.text });
 		if (part.type === "image") {
 			return delivered({
@@ -199,9 +216,12 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 		}
 		// chat-completions 没有可移植的 file 块:文本文件在上游已经内联过了,
 		// 剩下的二进制留成可见文本,不静默丢。
-		return undeliverable(
-			Undeliverable.fromPart(undeliverablePartLike(part), "wire-has-no-part"),
+		const note = Undeliverable.fromPart(
+			undeliverablePartLike(part),
+			"wire-has-no-part",
 		);
+		warnUndeliverable(note, part, turn);
+		return undeliverable(note);
 	}
 
 	assistant(message: AgentMessage): OpenAIChatMessage[] {
@@ -219,24 +239,30 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 		];
 	}
 
-	toolResult(part: AgentContentPart): PartDelivery<OpenAIChatUserContentPart> {
-		return toolResultDelivery(part);
+	toolResult(
+		part: AgentContentPart,
+		turn?: TurnContext,
+	): PartDelivery<OpenAIChatUserContentPart> {
+		return toolResultDelivery(part, turn);
 	}
 
-	toWireMessage(message: AgentMessage): OpenAIChatMessage {
+	toWireMessage(message: AgentMessage, turn?: TurnContext): OpenAIChatMessage {
 		if (message.role === "tool") return toolMessage(message);
 		if (message.role === "assistant") return this.assistant(message)[0]!;
-		if (message.role === "user") return this.userMessage(message.content);
+		if (message.role === "user") return this.userMessage(message.content, turn);
 		return this.system(contentToText(message.content));
 	}
 
-	private userMessage(content: AgentMessageContent): OpenAIChatMessage {
+	private userMessage(
+		content: AgentMessageContent,
+		turn?: TurnContext,
+	): OpenAIChatMessage {
 		if (typeof content === "string") return { role: "user", content };
 		if (!Array.isArray(content)) return { role: "user", content: "" };
 
 		const parts: OpenAIChatUserContentPart[] = [];
 		for (const part of content) {
-			const delivery = this.user(part);
+			const delivery = this.user(part, turn);
 			if (delivery.kind === "delivered") {
 				parts.push(delivery.part);
 				continue;
@@ -249,55 +275,5 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 			}
 		}
 		return { role: "user", content: parts.length > 0 ? parts : "" };
-	}
-}
-
-// ---------------------------------------------------------------------------
-// DeepSeek 半边
-// ---------------------------------------------------------------------------
-
-export class DeepSeekPartCodec implements OpenAIChatCodec {
-	system(text: string): OpenAIChatMessage {
-		return { role: "system", content: text };
-	}
-
-	/**
-	 * DeepSeek 今天只发得出文本 —— `toWireMessage()` 走 `agentContentToText()`,
-	 * 图和 PDF 在那里被**静默**丢掉。投递契约这一侧如实说出那件事(P0b 修的是
-	 * `toWireMessage()`,不是这一句)。
-	 */
-	user(part: AgentContentPart): PartDelivery<OpenAIChatUserContentPart> {
-		if (part.type === "text") return delivered({ type: "text", text: part.text });
-		return undeliverable(
-			Undeliverable.fromPart(undeliverablePartLike(part), "wire-has-no-part"),
-		);
-	}
-
-	assistant(message: AgentMessage): OpenAIChatMessage[] {
-		const content = agentContentToText(message.content);
-		const toolCalls = toolCallsOf(message);
-		return [
-			{
-				role: "assistant",
-				content: content || null,
-				...(message.reasoningContent
-					? { reasoning_content: message.reasoningContent }
-					: {}),
-				...(toolCalls ? { tool_calls: toolCalls } : {}),
-			},
-		];
-	}
-
-	toolResult(part: AgentContentPart): PartDelivery<OpenAIChatUserContentPart> {
-		return toolResultDelivery(part);
-	}
-
-	toWireMessage(message: AgentMessage): OpenAIChatMessage {
-		if (message.role === "tool") return toolMessage(message);
-		if (message.role === "assistant") return this.assistant(message)[0]!;
-		if (message.role === "user") {
-			return { role: "user", content: agentContentToText(message.content) };
-		}
-		return { role: "system", content: agentContentToText(message.content) };
 	}
 }

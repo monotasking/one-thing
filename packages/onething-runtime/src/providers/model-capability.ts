@@ -462,6 +462,14 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
   ],
   deepseek: [
     {
+      // DeepSeek 的图片输入只在 vision 实验族上(`image_url` / `file` 块,
+      // 且只在 user 消息里)。这一行**只给 vision**,不给 reasoning ——
+      // `fromRules` 对每个能力独立取「第一条给出布尔值的行」,所以
+      // `deepseek-v4-*-vision-exp` 的 reasoning 仍由下面那条 v4 行决定。
+      test: /vision/,
+      caps: { vision: true },
+    },
+    {
       test: /(^|[^a-z])v4/,
       caps: { reasoning: true },
       profile: {

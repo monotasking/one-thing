@@ -5,6 +5,8 @@
  */
 import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from "../../../providers/kimi.js";
 import { thinkingTypeWire } from "../thinking/index.js";
+import { openAIChatUsage } from "../wires/index.js";
+import { KIMI_USAGE_TABLE } from "./kimi.js";
 import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
 
 export const KIMI_CODE_DIALECT = defineOpenAIChatDialect({
@@ -12,5 +14,7 @@ export const KIMI_CODE_DIALECT = defineOpenAIChatDialect({
 	defaultBaseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
 	reasoning: thinkingTypeWire,
 	includeAssistantReasoning: true,
+	// 同一套线材 = 同一张 usage 表(顶层 `cached_tokens`)。
+	usage: openAIChatUsage(KIMI_USAGE_TABLE),
 	transport: openAIChatTransportCapabilities({ reasoning: true }),
 });

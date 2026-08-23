@@ -182,8 +182,9 @@ function requestUrl(input: RequestInfo | URL): string {
  */
 function createFetchStub(
 	chatResponse: () => Response,
+	onChatRequest?: (init: RequestInit | undefined) => void,
 ): typeof globalThis.fetch {
-	return (async (input: RequestInfo | URL) => {
+	return (async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = requestUrl(input);
 		if (url.startsWith(COPILOT_TOKEN_URL)) {
 			return new Response(
@@ -191,6 +192,7 @@ function createFetchStub(
 				{ status: 200, headers: { "content-type": "application/json" } },
 			);
 		}
+		onChatRequest?.(init);
 		return chatResponse();
 	}) as typeof globalThis.fetch;
 }
@@ -377,30 +379,43 @@ async function drain(
 	return events;
 }
 
-/** 用 requestDumper 截获出站请求 —— 不解析 fetch 的 body。 */
+/**
+ * 截获出站请求。
+ *
+ * **`requestBody` 取的是 `fetchImpl` 真收到的 `init.body`**(线上字节),
+ * 不是 dumper 那份:落盘的那份从 P0b-A 起走 `RequestBodyBuilder.forDump()`
+ * (data-URI 截断),它是**排障视图**,不是线上事实。dump 的其余字段
+ * (`providerId` / `model` / `mode` / `metadata.url|method|turn`)照旧进快照,
+ * 由同一份 fixture 一并守着。
+ */
 async function captureRequest(
 	providerId: OpenAIChatProviderId,
 	request: RequestCase,
+	model: string = PROVIDERS[providerId].model,
 ): Promise<AgentProviderRequestDump> {
 	const dumps: AgentProviderRequestDump[] = [];
+	const wireBodies: unknown[] = [];
 	const requestDumper = vi.fn(async (dump: AgentProviderRequestDump) => {
 		dumps.push(dump);
 		return undefined;
 	});
 	const provider = buildProvider(
 		providerId,
-		createFetchStub(() => sseResponse(MINIMAL_STREAM)),
+		createFetchStub(
+			() => sseResponse(MINIMAL_STREAM),
+			(init) => {
+				wireBodies.push(JSON.parse(String(init?.body ?? "null")));
+			},
+		),
 		requestDumper,
 	);
-	await drain(
-		provider.streamTurn!({
-			...request,
-			model: PROVIDERS[providerId].model,
-			turn: 1,
-		}),
-	);
+	await drain(provider.streamTurn!({ ...request, model, turn: 1 }));
 	expect(requestDumper).toHaveBeenCalledTimes(1);
-	return dumps[0]!;
+	expect(wireBodies).toHaveLength(1);
+	return {
+		...dumps[0]!,
+		requestBody: wireBodies[0] as AgentProviderRequestDump["requestBody"],
+	};
 }
 
 const FIXED_NOW = Date.UTC(2023, 10, 14, 22, 13, 20); // 1700000000000
@@ -428,24 +443,51 @@ describe("openai-chat wire snapshots — request bodies", () => {
 	 * reasoner 类模型自己打开思考,其它模型什么都不发。基线里 baseline 用的是
 	 * `deepseek-v4-flash`(推断为 enabled),这里补一条 `deepseek-chat` 的对照。
 	 */
-	it("deepseek — thinking-unset on a non-reasoner model", async () => {
+	/**
+	 * 落盘的那份**不是**线上那份:`RequestBodyBuilder.forDump()` 把 data URI 的
+	 * base64 载荷换成一行摘要(真机上 provider dump 曾写出 1.1G)。这条门守着
+	 * 「两份确实不同,且线上那份没被截断」—— 上面所有 `*.request.json` 记的都是
+	 * 线上那份。
+	 */
+	it("dump 截断 data URI,线上字节不受影响", async () => {
 		const dumps: AgentProviderRequestDump[] = [];
+		const wireBodies: unknown[] = [];
 		const provider = buildProvider(
-			"deepseek",
-			createFetchStub(() => sseResponse(MINIMAL_STREAM)),
+			"openai",
+			createFetchStub(
+				() => sseResponse(MINIMAL_STREAM),
+				(init) => {
+					wireBodies.push(JSON.parse(String(init?.body ?? "null")));
+				},
+			),
 			async (dump) => {
 				dumps.push(dump);
-				return undefined;
+				return "/tmp/onething-dump.json";
 			},
 		);
 		await drain(
 			provider.streamTurn!({
-				messages: [SYSTEM_MESSAGE, USER_MESSAGE],
-				model: "deepseek-chat",
+				messages: [SYSTEM_MESSAGE, MULTIMODAL_USER_MESSAGE],
+				model: PROVIDERS.openai.model,
 				turn: 1,
 			}),
 		);
-		await expect(snapshotJson(dumps[0])).toMatchFileSnapshot(
+
+		const dumped = JSON.stringify(dumps[0]!.requestBody);
+		expect(dumped).toContain("<data-uri:image/png ");
+		expect(dumped).not.toContain("iVBORw0KGgoAAAANSUhEUg==");
+		expect(JSON.stringify(wireBodies[0])).toContain(
+			"data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+		);
+	});
+
+	it("deepseek — thinking-unset on a non-reasoner model", async () => {
+		const dump = await captureRequest(
+			"deepseek",
+			{ messages: [SYSTEM_MESSAGE, USER_MESSAGE] },
+			"deepseek-chat",
+		);
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
 			fixturePath("deepseek", "baseline-deepseek-chat.request.json"),
 		);
 	});

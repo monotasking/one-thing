@@ -173,6 +173,16 @@ describe('reasoning profiles per provider', () => {
     expect(resolve('deepseek', 'deepseek-chat').reasoning).toBe(false)
   })
 
+  it('deepseek: only the vision-exp family takes image input', () => {
+    // The vision row sits first but declares `vision` only — the v4 row below
+    // it still owns `reasoning`, because each capability takes the first row
+    // that gives it a boolean.
+    expect(resolve('deepseek', 'deepseek-v4-flash-vision-exp').vision).toBe(true)
+    expect(resolve('deepseek', 'deepseek-v4-flash-vision-exp').reasoning).toBe(true)
+    expect(resolve('deepseek', 'deepseek-chat').vision).toBe(false)
+    expect(resolve('deepseek', 'deepseek-v4').vision).toBe(false)
+  })
+
   it('zhipu and grok gate by generation patterns', () => {
     expect(resolve('zhipu', 'glm-5.2').reasoningProfile).toMatchObject({ wire: 'zhipu-thinking', efforts: [] })
     expect(resolve('zhipu', 'glm-4').reasoning).toBe(false)

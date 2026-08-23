@@ -15,7 +15,22 @@
         "role": "system"
       },
       {
-        "content": "这张截图和这份 PDF 说的是同一件事吗？",
+        "content": [
+          {
+            "text": "这张截图和这份 PDF 说的是同一件事吗？",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+            },
+            "type": "image_url"
+          },
+          {
+            "text": "[Attachment \"spec.pdf\" (application/pdf) could not be delivered: this model does not accept this file type.]",
+            "type": "text"
+          }
+        ],
         "role": "user"
       }
     ],

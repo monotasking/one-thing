@@ -25,6 +25,12 @@ export class UsageBuckets {
 		readonly reasoning?: number,
 		readonly audio?: number,
 		readonly providerCostUSD?: number,
+		/**
+		 * 厂商自己报的 `total_tokens`。**厂商报了就用厂商的**(保守:三桶是
+		 * 规范化中间表示,而各家对「total 里算不算 cacheWrite / reasoning」的
+		 * 口径不一 —— 派生值会与账本历史打架)。没报才派生 `input + output`。
+		 */
+		readonly reportedTotal?: number,
 		readonly raw?: unknown,
 	) {
 		assertNonNegative("uncachedInput", uncachedInput);
@@ -34,6 +40,7 @@ export class UsageBuckets {
 		assertNonNegative("reasoning", reasoning);
 		assertNonNegative("audio", audio);
 		assertNonNegative("providerCostUSD", providerCostUSD);
+		assertNonNegative("reportedTotal", reportedTotal);
 	}
 
 	/** cacheRead 是 input 的折扣子集,不是额外的量。 */
@@ -42,7 +49,7 @@ export class UsageBuckets {
 	}
 
 	get total(): number {
-		return this.input + this.output;
+		return this.reportedTotal ?? this.input + this.output;
 	}
 
 	/** 唯一的投影。`cacheWrite` 原样带出(它在 input 之外单独计费)。 */
@@ -113,6 +120,8 @@ export interface UsagePathTable {
 	reasoning?: UsageField;
 	audio?: UsageField;
 	providerCostUSD?: UsageField;
+	/** 厂商报的 total(`total_tokens`)。读不到就派生 `input + output`。 */
+	reportedTotal?: UsageField;
 	/**
 	 * 「这块响应里到底有没有 usage」的判据。给了就按它判,读不到就返回
 	 * undefined(OpenAI 只认 `[DONE]` 前那块);不给则以 `output` 是否读得到为准。
@@ -177,6 +186,7 @@ export class PathUsageNormalizer implements UsageNormalizer {
 			field(this.table.reasoning),
 			field(this.table.audio),
 			field(this.table.providerCostUSD),
+			field(this.table.reportedTotal),
 			raw,
 		);
 	}

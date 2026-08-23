@@ -83,7 +83,8 @@
     "type": "finish",
     "usage": {
       "cacheReadTokens": 64,
-      "inputTokens": 120,
+      "cacheWriteTokens": 12,
+      "inputTokens": 108,
       "outputTokens": 45,
       "reasoningTokens": 30,
       "totalTokens": 165

@@ -4,6 +4,8 @@
  * providerId 不同:错误消息、dump、账本都按 id 归档。
  */
 import { grokEffortWire } from "../thinking/index.js";
+import { openAIChatUsage } from "../wires/index.js";
+import { GROK_USAGE_TABLE } from "./grok.js";
 import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
 
 export const GROK_OAUTH_DIALECT = defineOpenAIChatDialect({
@@ -11,5 +13,6 @@ export const GROK_OAUTH_DIALECT = defineOpenAIChatDialect({
 	defaultBaseUrl: "https://api.x.ai/v1",
 	reasoning: grokEffortWire,
 	includeAssistantReasoning: true,
+	usage: openAIChatUsage(GROK_USAGE_TABLE),
 	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
 });

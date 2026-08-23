@@ -85,6 +85,7 @@
       "cacheReadTokens": 64,
       "inputTokens": 120,
       "outputTokens": 45,
+      "reasoningTokens": 30,
       "totalTokens": 165
     }
   }

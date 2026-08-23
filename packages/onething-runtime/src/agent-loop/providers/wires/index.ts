@@ -2,6 +2,8 @@ export {
 	OPENAI_CHAT_USAGE_TABLE,
 	OpenAIChatWire,
 	openAIChatLogger,
+	openAIChatUsage,
+	openAIChatUsageTable,
 	type OpenAIChatDialect,
 	type OpenAIChatStreamChunk,
 } from "./openai-chat-wire.js";
@@ -10,7 +12,6 @@ export {
 	type OpenAIChatApiError,
 } from "./openai-chat-errors.js";
 export {
-	DeepSeekPartCodec,
 	OpenAIChatPartCodec,
 	toOpenAIChatTools,
 	type OpenAIChatCodec,

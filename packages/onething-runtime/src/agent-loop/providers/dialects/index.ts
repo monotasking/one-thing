@@ -21,11 +21,11 @@ export {
 	DeepSeekSamplingPolicy,
 } from "./deepseek.js";
 export { GITHUB_COPILOT_DIALECT } from "./github-copilot.js";
-export { GROK_DIALECT } from "./grok.js";
+export { GROK_DIALECT, GROK_USAGE_TABLE } from "./grok.js";
 export { GROK_OAUTH_DIALECT } from "./grok-oauth.js";
-export { KIMI_DIALECT } from "./kimi.js";
+export { KIMI_DIALECT, KIMI_USAGE_TABLE } from "./kimi.js";
 export { KIMI_CODE_DIALECT } from "./kimi-code.js";
 export { OPENAI_DIALECT } from "./openai.js";
-export { OPENROUTER_DIALECT } from "./openrouter.js";
-export { QWEN_DIALECT } from "./qwen.js";
+export { OPENROUTER_DIALECT, OPENROUTER_USAGE_TABLE } from "./openrouter.js";
+export { QWEN_DIALECT, QWEN_USAGE_TABLE } from "./qwen.js";
 export { ZHIPU_DIALECT } from "./zhipu.js";

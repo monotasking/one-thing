@@ -1,12 +1,14 @@
 /**
  * `deepseek` —— 唯一一份**不是**从 `openai-compatible.ts` 那批注册旋钮读出来的
- * 配方:它来自整整一份 `deepseek.ts`。今天的全部怪癖原样保留(P0a 是搬运,
- * 每一条的修法都写在设计稿 §9 的 P0b 行里):
+ * 配方:它来自整整一份 `deepseek.ts`。
  *
- *  1. **user 内容压成纯文本**(`DeepSeekPartCodec`)—— 图和 PDF 静默消失;
- *  2. **assistant `reasoning_content` 无条件回传**(带 tools 的多轮不回传会 400);
- *  3. **usage 读 `prompt_cache_hit_tokens`**,而且**不读** reasoning
- *     (`completion_tokens_details.reasoning_tokens` 今天没人看);
+ *  1. **user 内容走线级 codec**(P0b-A):vision-exp 类模型收 `image_url`
+ *     内容块,其余附件留成可见文本 —— 曾经的 `DeepSeekPartCodec` 把 user 压成
+ *     纯文本,图和 PDF **静默**消失,那份 codec 已随本期删除;
+ *  2. **assistant `reasoning_content` 无条件回传**(带 tools 的多轮不回传会 400)
+ *     —— 线级 codec 的 `includeAssistantReasoning` 恒开;
+ *  3. **usage 读 `prompt_cache_hit/miss_tokens`**(DeepSeek 是少数直接报「未命中」
+ *     的家),reasoning 读 `completion_tokens_details.reasoning_tokens`;
  *  4. **思考是推断出来的**:调用方不说话时 reasoner 类模型自己打开
  *     —— 于是「思考开着就不发 temperature」这条也必须按**推断后**的值判,
  *     所以采样策略是自己一份(`DeepSeekSamplingPolicy`);
@@ -22,19 +24,22 @@ import {
 	type UsagePathTable,
 } from "../base/index.js";
 import { deepSeekInferredThinkingWire, resolveDeepSeekThinking } from "../thinking/index.js";
-import { DeepSeekPartCodec } from "../wires/index.js";
 import { defineOpenAIChatDialect } from "./recipe.js";
 
 /**
- * DeepSeek 的 usage:`prompt_tokens` 含缓存命中,`prompt_cache_hit_tokens` 是
- * 其中折扣的那部分 —— 直译成三桶就是 `uncached = prompt − hit`、`cacheRead = hit`。
- * **没有 reasoning 行**:今天的 `usageFromChunk` 不读它,P0a 不补。
+ * DeepSeek 的 usage(设计稿 §7 第二行):`prompt_tokens` 含缓存命中,
+ * `prompt_cache_hit_tokens` 是其中折扣的那部分。DeepSeek 还**直接报未命中**
+ * (`prompt_cache_miss_tokens`)—— 有就用厂商的,没有才 `prompt − hit`。
+ * 这条线上没有 cacheWrite(缓存全自动,不单独计费)。
  */
 export const DEEPSEEK_USAGE_TABLE: UsagePathTable = {
 	uncachedInput: (_raw, read) =>
+		read("prompt_cache_miss_tokens") ??
 		(read("prompt_tokens") ?? 0) - (read("prompt_cache_hit_tokens") ?? 0),
 	cacheRead: "prompt_cache_hit_tokens",
 	output: (_raw, read) => read("completion_tokens") ?? 0,
+	reasoning: ["completion_tokens_details", "reasoning_tokens"],
+	reportedTotal: "total_tokens",
 };
 
 /**
@@ -75,7 +80,8 @@ export const DEEPSEEK_DIALECT = defineOpenAIChatDialect({
 	displayName: "DeepSeek",
 	defaultBaseUrl: "https://api.deepseek.com",
 	reasoning: deepSeekInferredThinkingWire,
-	parts: new DeepSeekPartCodec(),
+	// 线级 codec(`OpenAIChatPartCodec`),`includeAssistantReasoning` 恒开。
+	includeAssistantReasoning: true,
 	usage: new PathUsageNormalizer(DEEPSEEK_USAGE_TABLE),
 	sampling: new DeepSeekSamplingPolicy(),
 	transport: DEEPSEEK_TRANSPORT_CAPABILITIES,

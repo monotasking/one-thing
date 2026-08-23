@@ -98,8 +98,13 @@ export abstract class HttpAgentProvider<
 			const url = this.endpointUrl(turn);
 			const headers = await this.dialect.auth.headers(turn);
 
-			// 5 dump
-			await this.ctx.dumper?.({
+			// 5 dump + 一条排障日志(P0b-A)
+			//
+			// 落盘的是 `forDump()` —— data URI 的 base64 载荷换成一行摘要。
+			// 真机上 provider dump 曾写出 1.1G,大头就是那些块;**线上发出去的
+			// 字节仍是 `build()`**(见 `send()`),两者从此不是同一份,快照门因此
+			// 改读 `fetchImpl` 收到的 body。
+			const requestDumpPath = await this.ctx.dumper?.({
 				providerId: this.id,
 				model: request.model,
 				mode: this.dumpMode,
@@ -108,11 +113,16 @@ export abstract class HttpAgentProvider<
 					method: "POST",
 					turn: request.turn,
 				},
-				// P0a 落**原始**请求体:`RequestBodyBuilder.forDump()` 的 data-URI
-				// 截断是设计稿 §9 P0b 的一项(「基类日志/超时/finally/dump 截断」),
-				// 不在纯搬运这一期改 —— 十一家的请求体快照逐字节记的就是今天
-				// 落盘的那份。
-				requestBody: turn.builder.build() as AgentProviderRequestDumpValue,
+				requestBody: turn.builder.forDump() as AgentProviderRequestDumpValue,
+			});
+			// 复刻 `deepseek.ts` 退役前那条 —— 十一家从此都有(ns `providers.<id>`)。
+			turn.logger.debug("stream turn request", {
+				model: request.model,
+				turn: request.turn,
+				messageCount: request.messages.length,
+				toolCount: request.tools?.length ?? 0,
+				thinking: request.thinking ?? "default",
+				requestDumpPath,
 			});
 
 			// 6 send(含 onUnauthorized 一次重试、首字节超时)
@@ -226,7 +236,14 @@ export abstract class HttpAgentProvider<
 	): Extract<AgentTurnStreamEvent, { type: "finish" }> {
 		const buckets = raw.usage === undefined ? undefined : this.usage.toBuckets(raw.usage);
 		// warnings 随 finish 事件带出是 §8 的契约增量(core `AgentTurnStreamEvent`
-		// 还没有那个字段),P0b 才动 —— 在那之前 `turn.warnings` 只是回合内的账。
+		// 还没有那个字段,待拍板)。在那之前这一条日志就是 warnings 的**唯一**
+		// 出口 —— 被丢掉的设置至少在 app.jsonl 里留了痕,不再是静默(§2.4)。
+		if (turn.warnings.length > 0) {
+			turn.logger.debug("turn warnings", {
+				count: turn.warnings.length,
+				kinds: [...new Set(turn.warnings.map((warning) => warning.kind))],
+			});
+		}
 		return {
 			type: "finish",
 			turn: turn.turn,

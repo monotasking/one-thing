@@ -91,27 +91,47 @@ interface ToolCallAccumulator {
 }
 
 /**
- * openai-chat 的 usage 直译表(设计稿 §2.6 三桶)。与今天 `usageFromChunk`
- * **等价**:`input = prompt_tokens`(桶里拆成 uncached + cacheRead)、
- * `output = completion_tokens`、`cacheRead = prompt_tokens_details.cached_tokens`、
- * `reasoning = completion_tokens_details.reasoning_tokens`。
+ * openai-chat 的 usage 直译表(设计稿 §2.6 三桶 / §7 表的第一行)。
+ *
+ * 三个桶互不交叠:`cacheRead` 与 `cacheWrite` 都是 `prompt_tokens` 里的子集
+ * (OpenAI 官方口径:读 0.1× / 写 1.25× / 未缓存 1×,没有「未命中」字段),
+ * 所以 `uncachedInput = prompt − cached − cache_write`。
+ * `cache_write_tokens` 是 GPT-5.6+ 才有的字段,老模型读不到就是 0。
  *
  * 两个字段读成函数而不是路径,是为了保住今天的一个边界行为:usage 那一块只要
  * 在(truthy),即使字段全缺也要产出一份零值 usage,而不是 `undefined`。
  *
- * `cache_write` / kimi 顶层 `cached_tokens` / openrouter `cost` /
- * qwen `cache_creation_input_tokens` 今天**无人读取** —— P0b 才修,这里不顺手加。
+ * 各家的偏差(kimi 顶层 `cached_tokens`、deepseek 的 hit/miss、openrouter `cost`、
+ * grok `cost_in_usd_ticks`、qwen `cache_creation_input_tokens`)是**方言的一行**
+ * —— 见各自的配方文件,不进这里的 if。
  */
 export const OPENAI_CHAT_USAGE_TABLE: UsagePathTable = {
 	uncachedInput: (_raw, read) =>
 		(read("prompt_tokens") ?? 0) -
-		(read(["prompt_tokens_details", "cached_tokens"]) ?? 0),
+		(read(["prompt_tokens_details", "cached_tokens"]) ?? 0) -
+		(read(["prompt_tokens_details", "cache_write_tokens"]) ?? 0),
 	cacheRead: ["prompt_tokens_details", "cached_tokens"],
+	cacheWrite: ["prompt_tokens_details", "cache_write_tokens"],
 	output: (_raw, read) => read("completion_tokens") ?? 0,
 	reasoning: ["completion_tokens_details", "reasoning_tokens"],
+	reportedTotal: "total_tokens",
 };
 
-const openAIChatUsage = new PathUsageNormalizer(OPENAI_CHAT_USAGE_TABLE);
+/** 配方改一行用的:默认表 + 这家的偏差。 */
+export function openAIChatUsageTable(
+	overrides: Partial<UsagePathTable>,
+): UsagePathTable {
+	return { ...OPENAI_CHAT_USAGE_TABLE, ...overrides };
+}
+
+/** `openAIChatUsageTable(...)` 的常用形式 —— 配方里就是一句 `usage:`。 */
+export function openAIChatUsage(
+	overrides: Partial<UsagePathTable> = {},
+): UsageNormalizer {
+	return new PathUsageNormalizer(openAIChatUsageTable(overrides));
+}
+
+const openAIChatDefaultUsage = new PathUsageNormalizer(OPENAI_CHAT_USAGE_TABLE);
 const openAIChatParts = new OpenAIChatPartCodec();
 
 function previewText(value: string | null | undefined, maxLength = 240): string {
@@ -154,7 +174,7 @@ export class OpenAIChatWire extends HttpAgentProvider<
 	}
 
 	protected get defaultUsage(): UsageNormalizer {
-		return openAIChatUsage;
+		return openAIChatDefaultUsage;
 	}
 
 	protected get finish(): FinishReasonMapper {
