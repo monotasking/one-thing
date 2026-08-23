@@ -290,15 +290,10 @@ async function computeRetainedContextSizeAfterCompact(options: {
   const session = store.getSession(options.sessionId)
   if (!session) return 0
 
+  // 2026-08-23:预留输出量不再参与用量判定(hard-limit 已删),只查窗口长度。
   let modelContextLength = 128000
-  let reservedOutputTokens = options.settings.chat?.maxTokens || 4096
   try {
     modelContextLength = await modelRegistry.getModelContextLength(options.configWithApiKey.model, options.providerId)
-    const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(options.configWithApiKey.model, options.providerId)
-    const perModelOverride = options.configWithApiKey.maxOutputByModel?.[options.configWithApiKey.model]
-    const halfDefault = modelMaxOutputTokens > 0 ? Math.max(1, Math.floor(modelMaxOutputTokens / 2)) : 0
-    const requested = perModelOverride ?? (halfDefault > 0 ? halfDefault : reservedOutputTokens)
-    reservedOutputTokens = modelMaxOutputTokens > 0 ? Math.min(requested, modelMaxOutputTokens) : requested
   } catch (error) {
     log.warn('resolve model context budget after compact failed', { model: options.configWithApiKey.model, providerId: options.providerId }, error)
   }
@@ -314,7 +309,6 @@ async function computeRetainedContextSizeAfterCompact(options: {
     historyMessages,
     modelContextLength,
     thresholdPercent: options.settings.chat?.contextCompactThreshold ?? 85,
-    reservedOutputTokens,
     providerId: options.providerId,
     model: options.configWithApiKey.model,
   })
@@ -327,7 +321,6 @@ async function computeRetainedContextSizeAfterCompact(options: {
     providerInputTokens: usage.providerInputTokens,
     requestEstimatedInputTokens: usage.requestEstimatedInputTokens,
     modelContextLength: usage.modelContextLength,
-    reservedOutputTokens: usage.reservedOutputTokens,
     source: usage.source,
   })
 

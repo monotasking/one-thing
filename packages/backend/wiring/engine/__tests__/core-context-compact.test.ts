@@ -318,7 +318,7 @@ describe('core context compact helpers', () => {
     ])
   })
 
-  it('uses provider usage, local estimates, and hard-limit reserved output checks', async () => {
+  it('uses provider usage and local estimates against the user threshold only', async () => {
     const testSession = session([{ ...message(1, 'user'), content: 'x'.repeat(10000) }])
 
     await expect(shouldAutoCompactBeforeSend({
@@ -328,13 +328,14 @@ describe('core context compact helpers', () => {
       thresholdPercent: 50,
     })).resolves.toBe(true)
 
+    // 2026-08-23:本地估算(10000 字符 ≈ 2500 token)照样过 85% 线;判定里
+    // 不再有任何"预留输出撞窗口"的第二条路。
     testSession.contextSize = 80
     await expect(shouldAutoCompactBeforeSend({
       session: testSession,
       sessionMessages: testSession.messages,
       modelContextLength: 100,
       thresholdPercent: 85,
-      reservedOutputTokens: 25,
     })).resolves.toBe(true)
   })
 
@@ -361,7 +362,6 @@ describe('core context compact helpers', () => {
       historyMessages: builtHistory,
       modelContextLength: 272000,
       thresholdPercent: 85,
-      reservedOutputTokens: 32768,
       providerId: 'codex',
       model: 'gpt-5.5',
     })

@@ -13,8 +13,6 @@ import type {
   AgentProviderStreamChunk,
 } from '@onething/core/agent-loop'
 import {
-  buildAgentLoopContextHardLimitError,
-  getAgentLoopContextBlockReason,
   getAgentLoopTransientTail,
 } from '@onething/core/engine'
 import * as store from '../../../store.js'
@@ -50,8 +48,6 @@ const consoleLog = consolePort(log)
 
 
 export {
-  buildAgentLoopContextHardLimitError,
-  getAgentLoopContextBlockReason,
   getAgentLoopTransientTail,
 }
 

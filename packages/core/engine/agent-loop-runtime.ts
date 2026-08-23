@@ -421,7 +421,7 @@ export interface BuildAgentLoopDirectToolsWithAdaptersOptions<
   ) => Promise<TResult>
 }
 
-export type CoreAgentLoopCompactReason = 'threshold' | 'hard-limit'
+export type CoreAgentLoopCompactReason = 'threshold'
 
 export interface CoreAgentLoopCompactState {
   configuredKeepTurns: number
@@ -444,12 +444,10 @@ export type CoreAgentLoopCompactPassPlan =
 export type CoreAgentLoopCompactResultPlan =
   | { kind: 'retry'; state: CoreAgentLoopCompactState }
   | { kind: 'stop'; state: CoreAgentLoopCompactState }
-  | { kind: 'hard-limit-failure'; state: CoreAgentLoopCompactState }
 
 export type CoreAgentLoopCompactFinalPlan =
   | { kind: 'none' }
   | { kind: 'rebuild' }
-  | { kind: 'hard-limit'; inputTokens: number }
 
 export interface CoreAgentLoopCompactResultLike {
   success: boolean
@@ -791,18 +789,6 @@ export function createAgentLoopCompactState(configuredKeepTurns: number): CoreAg
   }
 }
 
-export function buildAgentLoopContextHardLimitError(
-  inputTokens: number,
-  reservedOutputTokens: number,
-  modelContextLength: number,
-): string {
-  return [
-    'Context is still too large before the next agent-loop provider turn.',
-    `Last known provider input ${inputTokens.toLocaleString()} + reserved output ${reservedOutputTokens.toLocaleString()} exceeds model context ${modelContextLength.toLocaleString()}.`,
-    'Reduce the latest message/tool context or lower max output tokens before retrying.',
-  ].join(' ')
-}
-
 export function positiveTokenLimit(value: number | undefined): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? Math.floor(value)
@@ -874,44 +860,6 @@ export async function resolveAgentLoopContextBudgetWithRegistry(
   }
 }
 
-export function getAgentLoopContextBlockReason(options: {
-  turn: number
-  providerId: string
-  compactEnabled: boolean
-  session?: Omit<CoreCompactSession, 'messages'>
-  /** 会话消息快照:没给 `inputTokens` 时靠它估算(core 不从 session 上取 messages) */
-  sessionMessages?: readonly CoreCompactMessage[]
-  budget: CoreAgentLoopContextBudget
-  inputTokens?: number
-}): string | undefined {
-  if (options.turn <= 1) return undefined
-  // 同上:别人的上下文窗口,我们连「太大了」都不该判。
-  if (coreProviderOwnsItsContextWindow(options.providerId)) return undefined
-  if (!options.compactEnabled) return undefined
-  if (!options.session) return undefined
-  if (shouldSkipAutoCompactForProviderUsageMismatch({
-    providerId: options.providerId,
-    session: options.session,
-    modelContextLength: options.budget.modelContextLength,
-  })) return undefined
-
-  const reason = getContextCompactReason({
-    session: options.session,
-    sessionMessages: options.sessionMessages,
-    modelContextLength: options.budget.modelContextLength,
-    thresholdPercent: options.budget.thresholdPercent,
-    reservedOutputTokens: options.budget.reservedOutputTokens,
-    inputTokens: options.inputTokens,
-  })
-  if (reason !== 'hard-limit') return undefined
-
-  return buildAgentLoopContextHardLimitError(
-    options.inputTokens ?? options.session.contextSize ?? options.session.lastInputTokens ?? 0,
-    options.budget.reservedOutputTokens,
-    options.budget.modelContextLength,
-  )
-}
-
 export function planAgentLoopContextCompactPass(options: {
   state: CoreAgentLoopCompactState
   session?: CoreCompactSession
@@ -937,7 +885,6 @@ export function planAgentLoopContextCompactPass(options: {
     session: options.session,
     modelContextLength: options.budget.modelContextLength,
     thresholdPercent: options.budget.thresholdPercent,
-    reservedOutputTokens: options.budget.reservedOutputTokens,
     inputTokens: options.inputTokens,
   })
   if (!reason) {
@@ -970,10 +917,7 @@ export function applyAgentLoopContextCompactResult(options: {
   skipped?: boolean
 }): CoreAgentLoopCompactResultPlan {
   if (!options.success) {
-    return {
-      kind: options.reason === 'hard-limit' ? 'hard-limit-failure' : 'stop',
-      state: options.state,
-    }
+    return { kind: 'stop', state: options.state }
   }
 
   if (options.skipped) {
@@ -986,42 +930,17 @@ export function applyAgentLoopContextCompactResult(options: {
       : { kind: 'retry', state }
   }
 
-  const compactedState = nextAgentLoopCompactState(options.state, { compacted: true })
-  if (options.reason === 'hard-limit') {
-    const state = nextAgentLoopCompactState(compactedState, {
-      keepRecentTurns: compactedState.keepRecentTurns - 1,
-      pass: compactedState.pass + 1,
-    })
-    return state.keepRecentTurns <= 0 || state.pass > state.configuredKeepTurns
-      ? { kind: 'stop', state }
-      : { kind: 'retry', state }
-  }
-
-  return { kind: 'stop', state: compactedState }
+  return { kind: 'stop', state: nextAgentLoopCompactState(options.state, { compacted: true }) }
 }
 
+/**
+ * 2026-08-23:hard-limit 触发删除之后,压缩收尾只剩"压过就重建历史"一条路 ——
+ * 压缩轮次跑完仍然超阈值,循环就带着现有历史继续走(与既有 'stop' 路径同款),
+ * 不再抛错早退。
+ */
 export function planAgentLoopContextCompactFinal(options: {
   state: CoreAgentLoopCompactState
-  session?: CoreCompactSession | null
-  budget: CoreAgentLoopContextBudget
-  inputTokens?: number
 }): CoreAgentLoopCompactFinalPlan {
-  if (options.session) {
-    const finalReason = getContextCompactReason({
-      session: options.session,
-      modelContextLength: options.budget.modelContextLength,
-      thresholdPercent: options.budget.thresholdPercent,
-      reservedOutputTokens: options.budget.reservedOutputTokens,
-      inputTokens: options.inputTokens,
-    })
-    if (finalReason === 'hard-limit') {
-      return {
-        kind: 'hard-limit',
-        inputTokens: options.inputTokens ?? options.session.contextSize ?? options.session.lastInputTokens ?? 0,
-      }
-    }
-  }
-
   return options.state.compacted ? { kind: 'rebuild' } : { kind: 'none' }
 }
 
@@ -1074,7 +993,6 @@ export async function maybeCompactAgentLoopContextWithAdapters<
             : undefined,
           modelContextLength: options.budget.modelContextLength,
           thresholdPercent: options.budget.thresholdPercent,
-          reservedOutputTokens: options.budget.reservedOutputTokens,
           providerId: ctx.providerId,
           model: (ctx.providerConfig as { model?: string }).model,
         })
@@ -1130,7 +1048,7 @@ export async function maybeCompactAgentLoopContextWithAdapters<
       providerInputTokens: usage?.providerInputTokens,
       requestEstimatedInputTokens: usage?.requestEstimatedInputTokens,
       modelContextLength: usage?.modelContextLength ?? options.budget.modelContextLength,
-      reservedOutputTokens: usage?.reservedOutputTokens ?? options.budget.reservedOutputTokens,
+      reservedOutputTokens: options.budget.reservedOutputTokens,
       thresholdPercent: usage?.thresholdPercent ?? options.budget.thresholdPercent,
       reason: passPlan.reason,
       source: usage?.source,
@@ -1182,47 +1100,13 @@ export async function maybeCompactAgentLoopContextWithAdapters<
     })
     compactState = resultPlan.state
 
-    if (resultPlan.kind === 'hard-limit-failure') {
-      const latestSession = adapters.getSession(ctx.sessionId)
-      throw new Error(buildAgentLoopContextHardLimitError(
-        latestSession?.contextSize ?? latestSession?.lastInputTokens ?? 0,
-        options.budget.reservedOutputTokens,
-        options.budget.modelContextLength,
-      ))
-    }
     if (!result.success) return undefined
 
     if (resultPlan.kind === 'retry') continue
     break
   }
 
-  const latestSession = adapters.getSession(ctx.sessionId)
-  const finalUsage = latestSession
-    ? buildContextUsageSnapshot({
-        session: latestSession,
-        historyMessages: !compactState.compacted && options.messages.length > 0
-          ? options.messages as unknown[]
-          : undefined,
-        modelContextLength: options.budget.modelContextLength,
-        thresholdPercent: options.budget.thresholdPercent,
-        reservedOutputTokens: options.budget.reservedOutputTokens,
-        providerId: ctx.providerId,
-        model: (ctx.providerConfig as { model?: string }).model,
-      })
-    : undefined
-  const finalPlan = planAgentLoopContextCompactFinal({
-    state: compactState,
-    session: latestSession ?? undefined,
-    budget: options.budget,
-    inputTokens: finalUsage?.visibleInputTokens,
-  })
-  if (finalPlan.kind === 'hard-limit') {
-    throw new Error(buildAgentLoopContextHardLimitError(
-      finalUsage?.visibleInputTokens ?? finalPlan.inputTokens,
-      options.budget.reservedOutputTokens,
-      options.budget.modelContextLength,
-    ))
-  }
+  const finalPlan = planAgentLoopContextCompactFinal({ state: compactState })
 
   return finalPlan.kind === 'rebuild' ? adapters.rebuildMessages() : undefined
 }
@@ -1451,28 +1335,6 @@ export async function runAgentLoopBeforeTurnWithAdapters<
     })
     return { messages: compactedWithTail ?? compactedMessages, startNewResponse }
   }
-
-  const blockSession = options.adapters.getSession(options.ctx.sessionId) ?? undefined
-  const blockUsage = blockSession
-    ? buildContextUsageSnapshot({
-        session: blockSession,
-        historyMessages: nextMessages as unknown[],
-        modelContextLength: options.budget.modelContextLength,
-        thresholdPercent: options.budget.thresholdPercent,
-        reservedOutputTokens: options.budget.reservedOutputTokens,
-        providerId: options.ctx.providerId,
-        model: (options.ctx.providerConfig as { model?: string }).model,
-      })
-    : undefined
-  const blockReason = getAgentLoopContextBlockReason({
-    turn: options.turn,
-    providerId: options.ctx.providerId,
-    compactEnabled: options.compactEnabled,
-    session: blockSession,
-    budget: options.budget,
-    inputTokens: blockUsage?.visibleInputTokens,
-  })
-  if (blockReason) throw new Error(blockReason)
 
   // 尾块最后挂:它是**瞬态**的,不该参与上面那两处按历史算的预算判定
   // (算进去等于让一块随时会消失的内容去触发压缩)。

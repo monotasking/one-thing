@@ -3,14 +3,14 @@ import {
   agentLoopInitSkills,
   agentLoopSkillContexts,
   applyAgentLoopContextCompactResult,
-  buildAgentLoopContextHardLimitError,
   buildAgentLoopContextCompactEventPlan,
   buildAgentLoopDirectToolsWithAdapters,
   buildPendingAgentLoopMessageInjections,
   configWithApiKey,
   createAgentLoopCompactState,
-  getAgentLoopContextBlockReason,
   getAgentLoopTransientTail,
+  getContextCompactReason,
+  getContextUsageTriggerReason,
   maybeCompactAgentLoopContextWithAdapters,
   planAgentLoopContextCompactFinal,
   planAgentLoopContextCompactPass,
@@ -585,21 +585,29 @@ describe('core agent-loop runtime helpers', () => {
     })
   })
 
-  it('blocks later provider turns when context remains over the hard limit', () => {
-    const reason = getAgentLoopContextBlockReason({
-      turn: 2,
-      providerId: 'deepseek',
-      compactEnabled: true,
+  // 2026-08-23:hard-limit 触发整条删除 —— 判定只认用户百分比。9900/10000 过线,
+  // 所以是 'threshold';8000/10000(80% < 85%)不过线,哪怕"输入 + 任何预留输出"
+  // 早就贴满窗口,也只能是 'none'。
+  it('judges a provider turn on the user threshold only', () => {
+    expect(getContextCompactReason({
       session: { contextSize: 9900 },
-        sessionMessages: [],
-      budget: {
-        modelContextLength: 10000,
-        reservedOutputTokens: 512,
-        thresholdPercent: 85,
-      },
-    })
+      sessionMessages: [],
+      modelContextLength: 10000,
+      thresholdPercent: 85,
+    })).toBe('threshold')
 
-    expect(reason).toBe(buildAgentLoopContextHardLimitError(9900, 512, 10000))
+    expect(getContextCompactReason({
+      session: { contextSize: 8000 },
+      sessionMessages: [],
+      modelContextLength: 10000,
+      thresholdPercent: 85,
+    })).toBe(null)
+
+    expect(getContextUsageTriggerReason({
+      inputTokens: 8000,
+      modelContextLength: 10000,
+      thresholdPercent: 85,
+    })).toBe('none')
   })
 
   it('plans agent-loop context compact passes and result transitions in core', () => {
@@ -665,42 +673,41 @@ describe('core agent-loop runtime helpers', () => {
       },
     })
 
-    const hardLimitSuccess = applyAgentLoopContextCompactResult({
+    // 2026-08-23:压过一次就收 —— 'hard-limit' 那条会递减 keepRecentTurns 再重来
+    // 的支线随触发器一起删除,失败一律 'stop'。
+    const compacted = applyAgentLoopContextCompactResult({
       state: skipped.state,
-      reason: 'hard-limit',
+      reason: 'threshold',
       success: true,
       skipped: false,
     })
-    expect(hardLimitSuccess).toEqual({
-      kind: 'retry',
+    expect(compacted).toEqual({
+      kind: 'stop',
       state: {
         configuredKeepTurns: 3,
-        keepRecentTurns: 1,
-        pass: 3,
+        keepRecentTurns: 2,
+        pass: 2,
         compacted: true,
       },
     })
 
     expect(applyAgentLoopContextCompactResult({
-      state: hardLimitSuccess.state,
-      reason: 'hard-limit',
+      state: compacted.state,
+      reason: 'threshold',
       success: false,
     })).toEqual({
-      kind: 'hard-limit-failure',
-      state: hardLimitSuccess.state,
+      kind: 'stop',
+      state: compacted.state,
     })
 
+    // 收尾计划只看"这一轮压过没有",不再有把仍然超窗当错误抛出的分支。
     expect(planAgentLoopContextCompactFinal({
-      state: hardLimitSuccess.state,
-      session: { messages: [], contextSize: 1000 },
-      budget,
+      state: compacted.state,
     })).toEqual({ kind: 'rebuild' })
 
     expect(planAgentLoopContextCompactFinal({
-      state: hardLimitSuccess.state,
-      session: { messages: [], contextSize: 9900 },
-      budget,
-    })).toEqual({ kind: 'hard-limit', inputTokens: 9900 })
+      state: { configuredKeepTurns: 3, keepRecentTurns: 3, pass: 1, compacted: false },
+    })).toEqual({ kind: 'none' })
   })
 
   it('builds context compact event plans without an EventBus', () => {
@@ -788,6 +795,46 @@ describe('core agent-loop runtime helpers', () => {
       reservedOutputTokens: 2048,
       thresholdPercent: 85,
     })
+  })
+
+  // 回归(2026-08-23,grok-4.5/4.6 形状):models.dev 上 context 与 max output
+  // 都是 500000,预留照旧取一半 = 250000。从前那条 hard-limit 线
+  // (input + 250000 >= 500000 − margin)会在 ~50% 抢在用户的 90% 前面触发;
+  // 现在预留只喂请求的 maxTokens,一格都不进触发判定。
+  it('never lets reserved output influence the compact trigger', () => {
+    const budget = resolveAgentLoopContextBudgetValues({
+      providerConfig: { model: 'grok-4.5' },
+      registeredModelContextLength: 500000,
+      registeredModelMaxOutputTokens: 500000,
+      chatMaxTokens: 4096,
+      contextCompactThreshold: 90,
+    })
+    expect(budget).toEqual({
+      modelContextLength: 500000,
+      // 请求的 max_tokens 照旧是"模型最大输出的一半"——公式没动。
+      reservedOutputTokens: 250000,
+      thresholdPercent: 90,
+    })
+
+    const cases: Array<{ inputTokens: number; expected: 'none' | 'threshold' }> = [
+      // 262435 / 500000 = 52.5%:旧 hard-limit 线上早就红了,新判据必须是 'none'。
+      { inputTokens: 262435, expected: 'none' },
+      { inputTokens: 449999, expected: 'none' },
+      { inputTokens: 450000, expected: 'threshold' },
+    ]
+    for (const { inputTokens, expected } of cases) {
+      expect(getContextUsageTriggerReason({
+        inputTokens,
+        modelContextLength: budget.modelContextLength,
+        thresholdPercent: budget.thresholdPercent,
+      })).toBe(expected)
+      expect(getContextCompactReason({
+        session: { contextSize: inputTokens },
+        modelContextLength: budget.modelContextLength,
+        thresholdPercent: budget.thresholdPercent,
+        inputTokens,
+      })).toBe(expected === 'threshold' ? 'threshold' : null)
+    }
   })
 
   it('runs context compaction through injected adapters and rebuilds messages', async () => {

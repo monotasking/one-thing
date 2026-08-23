@@ -522,7 +522,7 @@ export function selectCompactPlan<TMessage extends CoreCompactMessage>(
 	};
 }
 
-export type CoreContextCompactReason = "threshold" | "hard-limit";
+export type CoreContextCompactReason = "threshold";
 
 export async function shouldAutoCompactBeforeSend(options: {
 	session: Omit<CoreCompactSession, "messages">;
@@ -530,7 +530,6 @@ export async function shouldAutoCompactBeforeSend(options: {
 	sessionMessages?: readonly CoreCompactMessage[];
 	modelContextLength: number;
 	thresholdPercent: number;
-	reservedOutputTokens?: number;
 	inputTokens?: number;
 }): Promise<boolean> {
 	return getContextCompactReason(options) !== null;
@@ -542,7 +541,6 @@ export function getContextCompactReason(options: {
 	sessionMessages?: readonly CoreCompactMessage[];
 	modelContextLength: number;
 	thresholdPercent: number;
-	reservedOutputTokens?: number;
 	inputTokens?: number;
 }): CoreContextCompactReason | null {
 	const inputContextSize =
@@ -554,7 +552,6 @@ export function getContextCompactReason(options: {
 		inputTokens: inputContextSize,
 		modelContextLength: options.modelContextLength,
 		thresholdPercent: options.thresholdPercent,
-		reservedOutputTokens: options.reservedOutputTokens,
 	});
 	// Deliberately token-threshold-only. A tail-size (char count) trigger was
 	// tried and removed: compaction does not shrink the tail's raw chars, so
@@ -620,7 +617,7 @@ export function estimateSessionInputTokens(
 		}
 		// Tool payloads are counted at the size the rebuilt request actually
 		// ships (sanitized + budgeted), not the compacted summary size — a
-		// summary here would blind the threshold/hard-limit checks to the very
+		// summary here would blind the threshold check to the very
 		// payloads that overflow the model context.
 		for (const toolCall of message.toolCalls ?? []) {
 			parts.push(

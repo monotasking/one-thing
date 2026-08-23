@@ -1,4 +1,4 @@
-export type CoreContextUsageTriggerReason = 'none' | 'threshold' | 'hard-limit'
+export type CoreContextUsageTriggerReason = 'none' | 'threshold'
 export type CoreContextUsageSource = 'empty' | 'provider-usage' | 'request-estimate'
 
 export interface CoreContextUsageSessionLike {
@@ -12,7 +12,6 @@ export interface CoreContextUsageSnapshot {
   providerId?: string
   model?: string
   modelContextLength: number
-  reservedOutputTokens: number
   thresholdPercent: number
   providerInputTokens: number
   requestEstimatedInputTokens?: number
@@ -42,29 +41,27 @@ export function normalizeContextLength(value: number | undefined): number {
   return value && value > 0 ? value : 128000
 }
 
-export function contextHardLimitSafetyMargin(modelContextLength: number): number {
-  return Math.min(2048, Math.floor(modelContextLength * 0.01))
-}
-
+/**
+ * 压缩的**唯一**触发判据:输入 token 是否越过用户设的百分比。
+ *
+ * 2026-08-23 裁定:曾经并列的第二条 hard-limit 线
+ * (`inputTokens + reservedOutputTokens >= contextLength − margin`)整条删除 ——
+ * models.dev 上 xai grok-4.5 / 4.6 的 context 与 max output 都是 500000,预留
+ * 取一半就是 250000,hard 线因此塌到窗口的 ~50%,把用户设的
+ * `contextCompactThreshold` 整个盖掉。预留量(`reservedOutputTokens`)从此只剩
+ * 一个职责:provider 请求的 `max_tokens`,不再参与任何触发判定。
+ */
 export function getContextUsageTriggerReason(input: {
   inputTokens: number
   modelContextLength: number
   thresholdPercent: number
-  reservedOutputTokens?: number
 }): CoreContextUsageTriggerReason {
   const contextLength = normalizeContextLength(input.modelContextLength)
   const inputTokens = Math.max(0, Math.floor(input.inputTokens || 0))
   if (inputTokens <= 0) return 'none'
 
   const threshold = normalizeContextThresholdPercent(input.thresholdPercent)
-  const reservedOutputTokens = Math.max(0, Math.floor(input.reservedOutputTokens || 0))
-  const thresholdHit = inputTokens >= Math.floor(contextLength * (threshold / 100))
-  const hardLimitRisk =
-    inputTokens + reservedOutputTokens >= contextLength - contextHardLimitSafetyMargin(contextLength)
-
-  if (hardLimitRisk) return 'hard-limit'
-  if (thresholdHit) return 'threshold'
-  return 'none'
+  return inputTokens >= Math.floor(contextLength * (threshold / 100)) ? 'threshold' : 'none'
 }
 
 export function estimateHistoryMessagesInputTokens(historyMessages: unknown[] | undefined): number | undefined {
@@ -78,13 +75,11 @@ export function buildContextUsageSnapshot(options: {
   historyMessages?: unknown[]
   modelContextLength: number
   thresholdPercent: number
-  reservedOutputTokens?: number
   providerId?: string
   model?: string
 }): CoreContextUsageSnapshot {
   const modelContextLength = normalizeContextLength(options.modelContextLength)
   const thresholdPercent = normalizeContextThresholdPercent(options.thresholdPercent)
-  const reservedOutputTokens = Math.max(0, Math.floor(options.reservedOutputTokens || 0))
   const providerInputTokens = Math.max(
     0,
     Math.floor(options.session?.contextSize ?? 0),
@@ -100,14 +95,12 @@ export function buildContextUsageSnapshot(options: {
     inputTokens: effectiveInputTokens,
     modelContextLength,
     thresholdPercent,
-    reservedOutputTokens,
   })
 
   return {
     providerId: options.providerId,
     model: options.model,
     modelContextLength,
-    reservedOutputTokens,
     thresholdPercent,
     providerInputTokens,
     requestEstimatedInputTokens,

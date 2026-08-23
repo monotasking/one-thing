@@ -29,7 +29,7 @@
 
 不变量:
 - **执行入口唯一**:`compactSessionContext` 只被协调器调用;任何新触发点接协调器,结构上不可能再出现"绕过 gate/事件"这类洞。
-- **判定唯一**:用量快照→mismatch 跳过→阈值/hard-limit→递减(或预算折半)这套编排只存在于一处;触发点不携带任何判定知识。
+- **判定唯一**:用量快照→mismatch 跳过→阈值→递减(或预算折半)这套编排只存在于一处;触发点不携带任何判定知识。(阈值是唯一判据,见 08-23 errata。)
 - **触发点只声明时机与来源**(`trigger: 'manual' | 'pre-turn' | 'mid-turn' | 'post-turn' | 'overflow'`),来源进 started/completed 事件,UI 与 events.jsonl 可辨。
 
 ## 1.5 业务面:压缩管哪些会话形态
@@ -59,7 +59,7 @@
 | C0 | `CompactionCoordinator` 收口:gate/事件/registration 从 CoreStreamEngine 抽成 core 协调器,三条现有路全部改接 | 路 3 绕过 gate/started 的遗留缺口;协调状态唯一化 | 无(在已落地的 P0-P3 之上) |
 | C1 | 判定合一:删 `maybeCompactBeforeSend` 的私有编排,pre-turn 触发点改用与 loop 同一份 `planAgentLoopContextCompactPass` | 路 2/路 3 的判定重复 | C0 |
 | C2 | 错误类型化:`AgentProviderError { kind, status, providerId, raw }`,五家 provider 在各自 throw 点映射;retry.ts 改为先认 kind、正则降级为未映射兜底 | 错误面进抽象;溢出识别不再靠猜文案 | 无,可与 C0/C1 并行 |
-| C3 | 海口兜底:runner 捕获 `kind === 'context-overflow'` → 协调器(`trigger: 'overflow'`)→ 压缩 → 重建历史重试本轮(限 2 次/轮,失败升 hard-limit 错误) | retry.ts 注释里"owned by the compaction layer"的空头支票;预估失手时不再死轮 | C0 + C2 |
+| C3 | 海口兜底:runner 捕获 `kind === 'context-overflow'` → 协调器(`trigger: 'overflow'`)→ 压缩 → 重建历史重试本轮(限 2 次/轮,失败报 provider 原始错误) | retry.ts 注释里"owned by the compaction layer"的空头支票;预估失手时不再死轮 | C0 + C2 |
 | C4 | 空闲期压缩与切点升级(原 P4):post-turn 触发点(一行接协调器)、`contextCompactRetainTokens` 预算切点(默认 ≈20k,替代 6 轮)、摘要独立模型档位(内部能力不进设置页) | 发送零等待;保留量有界 | C0-C1 |
 
 C0-C1 是结构主线;C2-C3 是错误面补全;C4 是体验升级。P5(composer 状态呈现、折叠线)不变,仍单独拍板。
@@ -95,12 +95,11 @@ coordinator.isCompacting(sessionId): boolean
 
 ### C1 判定合一
 
-- 删 `maybeCompactBeforeSend` 内私有的快照→mismatch→阈值→递减编排(约 `core-stream-engine.ts:1242-1362`),pre-turn 触发点改为调用与 loop 相同的判定循环(`planAgentLoopContextCompactPass` + `createAgentLoopCompactState`,它们已经封装了 pass/递减/hard-limit 状态机)。
-- `shouldStartAgentLoopContextCompact` 的 `turn <= 1` 让路条件**保留**——pre-turn 触发点继续存在于开流前(assistant 占位消息之前),维持现有事件次序与 hard-limit 早退 UX;合的是**逻辑**,不是调用点(河口保留,电站合一)。
-- hard-limit 最终失败文案(`buildAgentLoopContextHardLimitError`)两路共用,删引擎里的重复拼接。
+- 删 `maybeCompactBeforeSend` 内私有的快照→mismatch→阈值→递减编排(约 `core-stream-engine.ts:1242-1362`),pre-turn 触发点改为调用与 loop 相同的判定循环(`planAgentLoopContextCompactPass` + `createAgentLoopCompactState`,它们已经封装了 pass/递减状态机)。
+- `shouldStartAgentLoopContextCompact` 的 `turn <= 1` 让路条件**保留**——pre-turn 触发点继续存在于开流前(assistant 占位消息之前),维持现有事件次序;合的是**逻辑**,不是调用点(河口保留,电站合一)。
 - `context:size-updated` 的 pre-send 发射逻辑并入判定循环(loop 版已有,引擎版删除)。
 
-**测试**:同一 session 状态下 pre-turn 与 mid-turn 判定结果一致(表驱动);hard-limit 早退行为与现状快照一致。
+**测试**:同一 session 状态下 pre-turn 与 mid-turn 判定结果一致(表驱动)。
 
 ### C2 错误类型化
 
@@ -123,15 +122,15 @@ export class AgentProviderError extends Error {
 ### C3 海口兜底(溢出反应式压缩)
 
 - `packages/core/agent-loop/runner.ts` turn 级错误处理:`kind === 'context-overflow'` 时不再直接 fatal——调 `coordinator.run({trigger:'overflow', keepRecentTurns: 当前状态递减值})` → 成功且未 skipped → 复用路 3 现成的 `{kind:'rebuild'}` 历史重建 → 重试本轮。
-- 刹车:每轮最多 2 次溢出压缩重试(计入既有 compact state 的 pass 计数,不另设计数器);压缩 skipped/失败或重试后仍溢出 → 升级为 hard-limit 错误报出(现有文案)。
+- 刹车:每轮最多 2 次溢出压缩重试(计入既有 compact state 的 pass 计数,不另设计数器);压缩 skipped/失败或重试后仍溢出 → 报 provider 原始错误。
 - 该路径天然覆盖"预估失手"与"provider 静默改口径"两类漏网;C4 之后,预判触发(pre-turn/mid-turn)退化为省钱优化,正确性由这里保证。
 
-**测试**:mock provider 首次抛 overflow、压缩后成功 → 本轮最终完成且用户无感(只多一张 compact 卡);连续溢出 → 2 次后报 hard-limit;`contextCompactEnabled=false` 时溢出兜底**仍然生效**(它是正确性路径,不受自动压缩开关管——开关只管预判触发)。
+**测试**:mock provider 首次抛 overflow、压缩后成功 → 本轮最终完成且用户无感(只多一张 compact 卡);连续溢出 → 2 次后报 provider 原始错误;`contextCompactEnabled=false` 时溢出兜底**仍然生效**(它是正确性路径,不受自动压缩开关管——开关只管预判触发)。
 
 ### C4 空闲期与切点(原 P4,细案随实施再拆)
 
 - **post-turn 触发点**:turn 正常收尾后(`app/engine/triggers/` 后处理链)一行接 `coordinator.run({trigger:'post-turn'})`,判定不达标即 no-op。用户空闲期完成,下次发送零等待;pre-turn 触发保留为兜底。
-- **保留 token 预算切点**:`selectCompactPlan` 换 `contextCompactRetainTokens`(默认 ≈20k,pi 对齐),从尾部按 `estimateTextTokens` 累计,切点仍落用户轮边界;hard-limit 循环改预算折半。`contextCompactKeepRecentTurns` 设置保留读取、内部换算,不新增设置项曝光。
+- **保留 token 预算切点**:`selectCompactPlan` 换 `contextCompactRetainTokens`(默认 ≈20k,pi 对齐),从尾部按 `estimateTextTokens` 累计,切点仍落用户轮边界;多轮递减循环改预算折半。`contextCompactKeepRecentTurns` 设置保留读取、内部换算,不新增设置项曝光。
 - **摘要模型档位**:`summarizeInChunks` 接受 provider/model 覆盖,内部能力,默认沿用会话模型。
 
 ### C5 摘要形态对齐 pi(2026-08-14 拍板,先于 C0-C4 单独实施)
@@ -185,3 +184,11 @@ export class AgentProviderError extends Error {
    - **单块路径逐字不变**:一次请求、不带 `part`、不报进度、提示词字节与从前完全相同。
 
 `## Goal` 的格式校验仍只校最终摘要(部分摘要不合格由 merge 兜);`billCompactUsage` 每次 provider 调用照记,merge 也算一次。
+
+## 2026-08-23 errata:删除 hard-limit 触发,压缩只认用户百分比
+
+- 触发面从两条判据收成一条:`getContextUsageTriggerReason` 只剩 `'threshold' | 'none'`,`inputTokens + reservedOutputTokens >= contextLength − margin` 那条 hard-limit 线连同 `contextHardLimitSafetyMargin` / `getAgentLoopContextBlockReason` / `buildAgentLoopContextHardLimitError` 与 `'hard-limit-failure'`、`'hard-limit'` 两个计划分支一并删除。
+- 起因:models.dev 上 xai grok-4.5 / 4.6 的 context 与 max output 都是 500000,预留取一半就是 250000,hard 线因此塌到窗口的 ~50%,把用户设的 `contextCompactThreshold` 整个盖掉 —— 填 85 还是 90 都没用,压缩一律在 50% 抢先触发。
+- `reservedOutputTokens` 只剩一个职责:provider 请求的 `max_tokens`(`stream-runtime.ts` 用 `budget.reservedOutputTokens`)。**算式不变**,仍是 `perModelOverride ?? floor(modelMaxOutputTokens / 2)`(最大输出未知时退回 `chat.maxTokens || 4096`),再夹到 `modelMaxOutputTokens`。它不再出现在任何触发判定里,也不再挂在 `CoreContextUsageSnapshot` 上。
+- 已知后果(接受):输入 + `max_tokens` 可能超出窗口,压缩不再预判兜底,这类请求会被 provider 侧直接拒。**待拍板**:是否在请求侧按剩余窗口夹一次 `max_tokens`。
+- 压缩轮次跑完仍然超阈值时,不再抛错早退 —— 带着现有历史继续走(与既有 `'stop'` 路径同款);C3 的溢出兜底条目里"升 hard-limit 错误"也随之改为"报 provider 原始错误"。

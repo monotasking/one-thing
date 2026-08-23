@@ -344,13 +344,11 @@ export {
 	agentLoopInitSkills,
 	agentLoopSkillContexts,
 	applyAgentLoopContextCompactResult,
-	buildAgentLoopContextHardLimitError,
 	buildAgentLoopContextCompactEventPlan,
 	buildAgentLoopDirectToolsWithAdapters,
 	buildPendingAgentLoopMessageInjections,
 	configWithApiKey,
 	createAgentLoopCompactState,
-	getAgentLoopContextBlockReason,
 	getAgentLoopTransientTail,
 	injectPendingAgentLoopMessagesWithAdapters,
 	maybeCompactAgentLoopContextWithAdapters,
@@ -588,7 +586,6 @@ export {
 } from "./context-compact.js";
 export {
 	buildContextUsageSnapshot,
-	contextHardLimitSafetyMargin,
 	estimateHistoryMessagesInputTokens,
 	estimateTextTokens,
 	getContextUsageTriggerReason,

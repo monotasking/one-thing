@@ -1522,15 +1522,10 @@ export class CoreStreamEngine<
       return false
     }
 
+    // 2026-08-23:预留输出量不再参与触发判定(hard-limit 已删),这里只需要窗口长度。
     let modelContextLength = 128000
-    let reservedOutputTokens = settings.chat?.maxTokens || 4096
     try {
       modelContextLength = await this.runtime.models.getModelContextLength(configWithApiKey.model, providerId)
-      const modelMaxOutputTokens = await this.runtime.models.getModelMaxOutputTokens(configWithApiKey.model, providerId)
-      const perModelOverride = configWithApiKey.maxOutputByModel?.[configWithApiKey.model]
-      const halfDefault = modelMaxOutputTokens > 0 ? Math.max(1, Math.floor(modelMaxOutputTokens / 2)) : 0
-      const requested = perModelOverride ?? (halfDefault > 0 ? halfDefault : reservedOutputTokens)
-      reservedOutputTokens = modelMaxOutputTokens > 0 ? Math.min(requested, modelMaxOutputTokens) : requested
     } catch (error) {
       this.logError('Failed to resolve model context length for compact:', error)
     }
@@ -1550,7 +1545,6 @@ export class CoreStreamEngine<
         historyMessages: historyMessages as unknown[],
         modelContextLength,
         thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
-        reservedOutputTokens,
         providerId,
         model: configWithApiKey.model,
       })
@@ -1582,7 +1576,6 @@ export class CoreStreamEngine<
         session: latestSession,
         modelContextLength,
         thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
-        reservedOutputTokens,
         inputTokens: usage.visibleInputTokens,
       })
       if (!reason) return true
@@ -1596,7 +1589,6 @@ export class CoreStreamEngine<
         providerInputTokens: usage.providerInputTokens,
         requestEstimatedInputTokens: usage.requestEstimatedInputTokens,
         modelContextLength: usage.modelContextLength,
-        reservedOutputTokens: usage.reservedOutputTokens,
         thresholdPercent: usage.thresholdPercent,
         reason,
         source: usage.source,
@@ -1642,14 +1634,13 @@ export class CoreStreamEngine<
       if (result.skipped) {
         keepRecentTurns--
         if (keepRecentTurns <= 0) break
-      } else if (reason === 'hard-limit') {
-        keepRecentTurns--
-        if (keepRecentTurns <= 0) break
       } else {
         return true
       }
     }
 
+    // 压缩轮次跑完就放行:2026-08-23 起唯一的触发器是用户设的百分比,压不下去
+    // 也不再拦截发送 —— provider 若真的超窗,报它自己的原始错误。
     const latestSession = this.store.getSession(sessionId)
     if (!latestSession) return true
     const finalHistoryMessages = this.runtime.history.buildMessages(
@@ -1661,7 +1652,6 @@ export class CoreStreamEngine<
       historyMessages: finalHistoryMessages as unknown[],
       modelContextLength,
       thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
-      reservedOutputTokens,
       providerId,
       model: configWithApiKey.model,
     })
@@ -1670,23 +1660,6 @@ export class CoreStreamEngine<
       latestSession.lastInputTokens !== finalUsage.visibleInputTokens
     ) {
       this.emitContextSizeUpdated(sessionId, finalUsage.visibleInputTokens)
-    }
-    const finalReason = this.runtime.compaction.getContextCompactReason({
-      session: latestSession,
-      modelContextLength,
-      thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
-      reservedOutputTokens,
-      inputTokens: finalUsage.visibleInputTokens,
-    })
-    if (finalReason === 'hard-limit') {
-      const lastKnownInputTokens = finalUsage.visibleInputTokens
-      const message = [
-        'Context is still too large after compacting down to the latest turn.',
-        `Last known provider input ${lastKnownInputTokens.toLocaleString()} + reserved output ${reservedOutputTokens.toLocaleString()} exceeds model context ${modelContextLength.toLocaleString()}.`,
-        'Reduce the latest message/tool context or lower max output tokens before retrying.',
-      ].join(' ')
-      this.emitStreamError(sessionId, message)
-      return false
     }
 
     return true

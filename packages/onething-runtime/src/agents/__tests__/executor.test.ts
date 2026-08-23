@@ -10,7 +10,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   coreProviderOwnsItsContextWindow,
-  getAgentLoopContextBlockReason,
   getCoreProviderExecution,
   registerCoreProviderExecution,
   shouldStartAgentLoopContextCompact,
@@ -155,8 +154,10 @@ describe('executor 字段接线的向后兼容(域模型 M7)', () => {
 })
 
 describe('Set 判定 → 能力查询:行为等价', () => {
-  it('压缩门:上下文归执行体自己管时,压缩与阻断都不发生', () => {
+  it('压缩门:上下文归执行体自己管时,压缩不发生', () => {
     // 改造前判据是 `isCoreExternalAgentProvider(providerId)`;这两条是同一批入参。
+    // 2026-08-23:`getAgentLoopContextBlockReason`(hard-limit 阻断)随触发器一起删除,
+    // 这道门只剩"压不压"一个观测点。
     for (const providerId of ['acp', 'claude-code-agent']) {
       expect(coreProviderOwnsItsContextWindow(providerId)).toBe(true)
       expect(shouldStartAgentLoopContextCompact({
@@ -164,31 +165,15 @@ describe('Set 判定 → 能力查询:行为等价', () => {
         providerId,
         compactEnabled: true,
       })).toBe(false)
-      expect(getAgentLoopContextBlockReason({
-        turn: 2,
-        providerId,
-        compactEnabled: true,
-        session: { contextSize: 9900 },
-        sessionMessages: [],
-        budget: { modelContextLength: 10000, reservedOutputTokens: 512, thresholdPercent: 85 },
-      })).toBeUndefined()
     }
 
-    // 本地 provider 一步不让:压缩照开、超限照报。
+    // 本地 provider 一步不让:压缩照开。
     expect(coreProviderOwnsItsContextWindow('deepseek')).toBe(false)
     expect(shouldStartAgentLoopContextCompact({
       turn: 2,
       providerId: 'deepseek',
       compactEnabled: true,
     })).toBe(true)
-    expect(getAgentLoopContextBlockReason({
-      turn: 2,
-      providerId: 'deepseek',
-      compactEnabled: true,
-      session: { contextSize: 9900 },
-        sessionMessages: [],
-      budget: { modelContextLength: 10000, reservedOutputTokens: 512, thresholdPercent: 85 },
-    })).toBeTruthy()
   })
 
   it('压缩门认的是登记表而不是写死名单:新登记一个外部执行体就该关门', () => {

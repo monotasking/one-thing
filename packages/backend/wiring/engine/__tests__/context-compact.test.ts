@@ -143,6 +143,8 @@ describe('shouldAutoCompactBeforeSend', () => {
     })).resolves.toBe(true)
   })
 
+  // 2026-08-23:预留输出量不再是判据的一部分 —— 80/200 = 40% 不到 85%,
+  // 从前那条 hard-limit 线(80 + 25 >= 100 − margin)整条删除,只剩百分比。
   it('does not count reserved output tokens toward the configured percentage', async () => {
     const testSession = session([message(1, 'user')])
     testSession.contextSize = 80
@@ -151,11 +153,10 @@ describe('shouldAutoCompactBeforeSend', () => {
       session: testSession,
       modelContextLength: 200,
       thresholdPercent: 85,
-      reservedOutputTokens: 80,
     })).resolves.toBe(false)
   })
 
-  it('still triggers when reserved output would exceed the hard model limit', async () => {
+  it('does not trigger from a would-be hard limit when the percentage is not reached', async () => {
     const testSession = session([message(1, 'user')])
     testSession.contextSize = 80
 
@@ -164,8 +165,8 @@ describe('shouldAutoCompactBeforeSend', () => {
       sessionMessages: testSession.messages,
       modelContextLength: 100,
       thresholdPercent: 85,
-      reservedOutputTokens: 25,
-    })).resolves.toBe(true)
+      inputTokens: 80,
+    })).resolves.toBe(false)
   })
 
   it('does not trigger below threshold', async () => {
