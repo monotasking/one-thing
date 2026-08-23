@@ -69,7 +69,15 @@ export interface OpenAIChatStreamChunk {
 				type?: "function";
 				function?: { name?: string; arguments?: string };
 			}>;
+			/**
+			 * OpenRouter 的图像输出(P3-2)。**流式这一支在 OpenRouter 的
+			 * OpenAPI 里没有声明**,形状按非流式 `message.images[]` 的项假定
+			 * (待真机核);解析在 `dialects/openrouter.ts`,这里只是把字段留出来。
+			 */
+			images?: unknown;
 		};
+		/** 非流式形状被折进流里的那一支(同上,`message.images[]`)。 */
+		message?: { images?: unknown };
 		finish_reason?: string | null;
 	}>;
 	usage?: unknown;
@@ -289,6 +297,11 @@ export class OpenAIChatWire extends HttpAgentProvider<
 				}
 				yield { type: "text-delta", turn: turnIndex, delta: delta.content };
 			}
+
+			// 方言缝(基类 `decodeExtras`):这条线上多出来的块。今天唯一的用户是
+			// OpenRouter 的 `images[]`。位置在正文之后、工具调用之前 —— 图与它
+			// 前面那段正文同序,且不插进 tool-call 的 start/delta/done 之间。
+			for (const event of this.decodeExtras(chunk, turn)) yield event;
 
 			if (delta?.tool_calls) {
 				for (const toolCallDelta of delta.tool_calls) {

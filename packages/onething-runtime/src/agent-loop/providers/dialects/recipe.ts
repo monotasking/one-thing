@@ -27,6 +27,7 @@ import {
 	openAIChatLogger,
 	type OpenAIChatDialect,
 	type OpenAIChatFilePdfMode,
+	type OpenAIChatPartCodecOptions,
 	type OpenAIChatWireValue,
 } from "../wires/index.js";
 
@@ -105,6 +106,11 @@ export interface OpenAIChatDialectSpec {
 	filePdf?: OpenAIChatFilePdfMode;
 	/** 换掉整只 codec(DeepSeek 的纯文本 user 内容)。 */
 	parts?: PartCodec<OpenAIChatWireValue>;
+	/**
+	 * 这家在流上多解出来的事件(OpenRouter 的 `images[]`)。挂在默认 codec 的
+	 * `decodeExtras` 上;`parts` 自带整只 codec 的家自己带这一条。
+	 */
+	decodeExtras?: OpenAIChatPartCodecOptions["decodeExtras"];
 	/** 换掉 usage 直译表(DeepSeek 的 `prompt_cache_hit_tokens`)。 */
 	usage?: UsageNormalizer;
 	/** 换掉采样策略(DeepSeek 的 thinking 是**推断**出来的)。 */
@@ -132,6 +138,7 @@ export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialec
 			new OpenAIChatPartCodec({
 				includeAssistantReasoning: Boolean(spec.includeAssistantReasoning),
 				filePdf: spec.filePdf ?? "none",
+				...(spec.decodeExtras ? { decodeExtras: spec.decodeExtras } : {}),
 			}),
 		...(spec.usage ? { usage: spec.usage } : {}),
 		...(spec.sampling ? { sampling: spec.sampling } : {}),

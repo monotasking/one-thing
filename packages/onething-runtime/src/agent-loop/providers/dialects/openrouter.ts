@@ -8,7 +8,8 @@
  * 从 P0b-A 起入三桶(见下)。PDF 从 P3-1 起走 `file` 块 + `file-parser` 插件
  * (见 `openRouterExtraBody`)。
  */
-import type { Dialect, UsagePathTable } from "../base/index.js";
+import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
+import type { Dialect, TurnContext, UsagePathTable } from "../base/index.js";
 import { openRouterReasoningWire } from "../thinking/index.js";
 import {
 	OPENAI_CHAT_PDF_DELIVERED_NOTE,
@@ -64,7 +65,7 @@ function hasFileParser(plugins: readonly unknown[]): boolean {
  * 已经有 `plugins` 就合并(同 id 不重复挂),不覆盖别人写的那些。
  */
 export const openRouterExtraBody: NonNullable<Dialect["extraBody"]> = (turn) => {
-	const base = promptCacheKeyExtraBody(turn);
+	const base = { ...promptCacheKeyExtraBody(turn), ...imageModalitiesExtraBody(turn) };
 	if (!turn.notes.has(OPENAI_CHAT_PDF_DELIVERED_NOTE)) return base;
 	const existing = turn.builder.get<unknown[]>("plugins");
 	const plugins = Array.isArray(existing) ? [...existing] : [];
@@ -72,12 +73,112 @@ export const openRouterExtraBody: NonNullable<Dialect["extraBody"]> = (turn) => 
 	return { ...base, plugins };
 };
 
+// ---------------------------------------------------------------------------
+// 图像输出(P3-2)—— 请求侧 `modalities`,响应侧 `images[]`
+// ---------------------------------------------------------------------------
+
+/**
+ * 一张图在流上的项形状。
+ *
+ * ⚠️ **流式的 `delta.images` 在 OpenRouter 的 OpenAPI 里没有声明**;这里按
+ * **非流式** `choices[].message.images[]` 的项形状假定(`{type:'image_url',
+ * image_url:{url}}`,`url` 是 data URL)。两种落点都认(`delta.images` 与
+ * `message.images`),因为上游把非流式形状折进流里的做法也见过。**待真机核**。
+ */
+interface OpenRouterImageItem {
+	image_url?: { url?: unknown };
+}
+
+/** 回合级计数器的标记前缀 —— callId 要稳定,而 provider 实例无状态。 */
+const OPENROUTER_IMAGE_NOTE_PREFIX = "openrouter-image-";
+
+function nextImageIndex(turn: TurnContext): number {
+	let index = 0;
+	while (turn.notes.has(`${OPENROUTER_IMAGE_NOTE_PREFIX}${index}`)) index += 1;
+	turn.notes.add(`${OPENROUTER_IMAGE_NOTE_PREFIX}${index}`);
+	return index;
+}
+
+const DATA_URL_PATTERN = /^data:([^;,]+)?(?:;[^,]*)*;base64,(.*)$/s;
+
+/**
+ * data URL 剥成 base64 + mediaType;http(s) URL 原样留在 `url` 字段。
+ * 认不出的字符串 = 不产事件(不猜)。
+ */
+function imagePayload(
+	url: string,
+): { result: string; mediaType: string } | { url: string } | undefined {
+	const dataUrl = DATA_URL_PATTERN.exec(url);
+	if (dataUrl) {
+		const result = dataUrl[2] ?? "";
+		return result ? { result, mediaType: dataUrl[1] || "image/png" } : undefined;
+	}
+	if (url.startsWith("http://") || url.startsWith("https://")) return { url };
+	return undefined;
+}
+
+function imageItems(value: unknown): OpenRouterImageItem[] {
+	return Array.isArray(value) ? (value as OpenRouterImageItem[]) : [];
+}
+
+/**
+ * OpenRouter 的图像输出 → `provider-data` 事件,形状与 codex 的那条对齐
+ * (`type: 'image-generation-result'`),于是消息落点按 **type** 判就够了
+ * (`provider-data.ts`),不必再认第二个 provider 名。
+ */
+export function decodeOpenRouterImageOutput(
+	chunk: unknown,
+	turn: TurnContext,
+): AgentTurnStreamEvent[] {
+	if (!chunk || typeof chunk !== "object") return [];
+	const choice = (chunk as { choices?: unknown[] }).choices?.[0] as
+		| { delta?: { images?: unknown }; message?: { images?: unknown } }
+		| undefined;
+	if (!choice) return [];
+
+	const items = [
+		...imageItems(choice.delta?.images),
+		...imageItems(choice.message?.images),
+	];
+	const events: AgentTurnStreamEvent[] = [];
+	for (const item of items) {
+		const url = item?.image_url?.url;
+		if (typeof url !== "string" || !url) continue;
+		const payload = imagePayload(url);
+		if (!payload) continue;
+		events.push({
+			type: "provider-data",
+			turn: turn.turn,
+			providerData: {
+				provider: "openrouter",
+				type: "image-generation-result",
+				callId: `${turn.turn}-img-${nextImageIndex(turn)}`,
+				status: "completed",
+				...payload,
+			},
+		});
+	}
+	return events;
+}
+
+/**
+ * `modalities: ['text','image']` —— OpenRouter 只在请求声明了 image 输出模态时
+ * 才回图。判据是账本:`servedBy === 'in-loop'` = 「这个模型在回合内出图」
+ * (openrouter 家 + imageOutput 为真),纯文本模型一个字节都不多发。
+ */
+function imageModalitiesExtraBody(turn: TurnContext): Record<string, unknown> {
+	return turn.profile.imageOutput.servedBy === "in-loop"
+		? { modalities: ["text", "image"] }
+		: {};
+}
+
 export const OPENROUTER_DIALECT = defineOpenAIChatDialect({
 	id: "openrouter",
 	defaultBaseUrl: "https://openrouter.ai/api/v1",
 	reasoning: openRouterReasoningWire,
 	filePdf: "openai-file",
 	usage: openAIChatUsage(OPENROUTER_USAGE_TABLE),
+	decodeExtras: decodeOpenRouterImageOutput,
 	extraBody: openRouterExtraBody,
 	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
 });

@@ -14,6 +14,7 @@ import type {
 	AgentMessage,
 	AgentMessageContent,
 	AgentTool,
+	AgentTurnStreamEvent,
 } from "@onething/core/agent-loop";
 import {
 	Undeliverable,
@@ -213,6 +214,15 @@ export interface OpenAIChatPartCodecOptions {
 	 * 可见留痕而不是发一个可能 400 的块。
 	 */
 	filePdf?: OpenAIChatFilePdfMode;
+	/**
+	 * 方言缝(设计稿 §5.1「图像输出」行):这条线上多出来的**响应侧**块。
+	 * 一家给一个函数,codec 只负责把它接在 `PartCodec.decodeExtras` 上 ——
+	 * wire 的 `parseStream` 每块调一次,不给就是空数组。
+	 *
+	 * 今天唯一的用户是 OpenRouter 的 `images[]`(见
+	 * `dialects/openrouter.ts` 的 `decodeOpenRouterImageOutput`)。
+	 */
+	decodeExtras?(chunk: unknown, turn: TurnContext): AgentTurnStreamEvent[];
 }
 
 /**
@@ -291,6 +301,11 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 		turn?: TurnContext,
 	): PartDelivery<OpenAIChatUserContentPart> {
 		return toolResultDelivery(part, turn);
+	}
+
+	/** 方言缝 —— 配方给了才有事件,没给就是空数组(基类不认识任何额外块)。 */
+	decodeExtras(chunk: unknown, turn: TurnContext): AgentTurnStreamEvent[] {
+		return this.options.decodeExtras?.(chunk, turn) ?? [];
 	}
 
 	toWireMessage(message: AgentMessage, turn?: TurnContext): OpenAIChatMessage {

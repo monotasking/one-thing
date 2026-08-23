@@ -39,6 +39,8 @@ export {
   applyOnethingAgentLoopProviderData,
   buildOnethingGeneratedImageMarkdown,
   buildOnethingGeneratedImageTextDelta,
+  buildOnethingImageTextDelta,
+  buildOnethingRemoteImageMarkdown,
   providerDataFromOnethingContentPart,
 } from './provider-data.js'
 export type {

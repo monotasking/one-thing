@@ -526,7 +526,8 @@ export async function applyAgentLoopStreamChunk(
 			applyOnethingAgentLoopProviderData({
 				...options,
 				saveMediaImage,
-				// A14(§13.1):codex 内联生图那段 markdown 是**引擎合成的**,
+				// A14(§13.1):内联生图那段 markdown 是**引擎合成的**(codex 的
+				// 原生 image_generation、OpenRouter 的 images[] 都走这里),
 				// provider 流里没有对应的 text-delta —— 采集点只能由这里告知,
 				// 否则那段正文在会话事件账本上不存在。
 				onSynthesizedText: (text) =>

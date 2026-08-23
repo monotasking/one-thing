@@ -1,0 +1,33 @@
+[
+  {
+    "delta": "Here is the moon.",
+    "turn": 1,
+    "type": "text-delta"
+  },
+  {
+    "providerData": {
+      "callId": "1-img-0",
+      "mediaType": "image/png",
+      "provider": "openrouter",
+      "result": "iVBORw0KGgo=",
+      "status": "completed",
+      "type": "image-generation-result"
+    },
+    "turn": 1,
+    "type": "provider-data"
+  },
+  {
+    "finishReason": "stop",
+    "turn": 1,
+    "type": "finish",
+    "usage": {
+      "cacheReadTokens": 64,
+      "cacheWriteTokens": 12,
+      "inputTokens": 108,
+      "outputTokens": 45,
+      "providerCostUSD": 0.00123,
+      "reasoningTokens": 30,
+      "totalTokens": 165
+    }
+  }
+]

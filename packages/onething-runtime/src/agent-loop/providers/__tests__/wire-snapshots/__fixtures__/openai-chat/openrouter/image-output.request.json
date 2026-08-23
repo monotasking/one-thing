@@ -1,0 +1,32 @@
+{
+  "metadata": {
+    "method": "POST",
+    "turn": 1,
+    "url": "https://openrouter.ai/api/v1/chat/completions"
+  },
+  "mode": "stream",
+  "model": "google/gemini-2.5-flash-image",
+  "providerId": "openrouter",
+  "requestBody": {
+    "messages": [
+      {
+        "content": "You are onething, a careful engineering assistant.",
+        "role": "system"
+      },
+      {
+        "content": "画一轮月亮。",
+        "role": "user"
+      }
+    ],
+    "modalities": [
+      "text",
+      "image"
+    ],
+    "model": "google/gemini-2.5-flash-image",
+    "prompt_cache_key": "session-fixture-0001",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    }
+  }
+}

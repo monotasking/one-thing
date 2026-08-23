@@ -181,6 +181,13 @@ const PROVIDERS: Record<OpenAIChatProviderId, ProviderFixture> = {
 	},
 };
 
+/**
+ * OpenRouter 上一个「能聊天又能出图」的模型 —— 图像输出两个用例共用。
+ * 账本对 openrouter 的 `imageOutput` 只认目录条目(名字正则不管这一家),
+ * 所以两处都得把 `models[…].supportsImageOutput` 传进去。
+ */
+const OPENROUTER_IMAGE_MODEL = "google/gemini-2.5-flash-image";
+
 const COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token";
 
 /**
@@ -382,6 +389,33 @@ describe("openai-chat wire snapshots — request bodies", () => {
 		);
 	});
 
+	/**
+	 * OpenRouter 的图像输出(P3-2)。`modalities: ['text','image']` 只在账本判出
+	 * 「这个模型在回合内出图」时才发 —— 判据是 `ModelProfile.imageOutput.servedBy
+	 * === 'in-loop'`(openrouter 家 + `supportsImageOutput`)。上面五个用例的模型
+	 * `openai/gpt-5.5` 不出图,那五份 fixture 因此一个字节都没变。
+	 */
+	it("openrouter — image output adds `modalities`", async () => {
+		const dump = await captureWireRequest({
+			providerId: "openrouter",
+			config: {
+				...PROVIDERS.openrouter.config,
+				model: OPENROUTER_IMAGE_MODEL,
+				models: { [OPENROUTER_IMAGE_MODEL]: { supportsImageOutput: true } },
+			},
+			request: {
+				messages: [SYSTEM_MESSAGE, { role: "user", content: "画一轮月亮。" }],
+				model: OPENROUTER_IMAGE_MODEL,
+				turn: 1,
+			},
+			respond: () => sseResponse(MINIMAL_STREAM),
+			fetchStub: createFetchStub,
+		});
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
+			fixturePath("openrouter", "image-output.request.json"),
+		);
+	});
+
 	it("deepseek — thinking-unset on a non-reasoner model", async () => {
 		const dump = await captureRequest(
 			"deepseek",
@@ -419,6 +453,43 @@ describe("openai-chat wire snapshots — stream parsing", () => {
 	 * OpenRouter 的上游有的发 `reasoning_content`、有的发统一的 `reasoning`。
 	 * 适配层两个都读(`delta.reasoning_content ?? delta.reasoning`),两份都记。
 	 */
+	/**
+	 * OpenRouter 的图像输出(P3-2)。
+	 *
+	 * ⚠️ **流式的 `delta.images` 在 OpenRouter 的 OpenAPI 里没有声明**;
+	 * `sse-image.txt` 里那一块是按**非流式** `choices[].message.images[]` 的项
+	 * 形状(`{type:'image_url', image_url:{url}}`,`url` 为 data URL)假定手写的
+	 * —— **待真机核**。解析两种落点都认(见 `dialects/openrouter.ts`)。
+	 *
+	 * 这份快照只到 **provider 事件层**:`saveMediaImage` 在引擎那一侧
+	 * (`provider-data.ts`),这里不会被调到。
+	 */
+	it("openrouter — `images[]` → provider-data", async () => {
+		const provider = createRuntimeProvider(
+			"openrouter",
+			{
+				...PROVIDERS.openrouter.config,
+				model: OPENROUTER_IMAGE_MODEL,
+				models: { [OPENROUTER_IMAGE_MODEL]: { supportsImageOutput: true } },
+			},
+			{
+				fetchImpl: createFetchStub(() =>
+					sseResponse(readFixture("openrouter", "sse-image.txt")),
+				),
+			},
+		);
+		const events = await drain(
+			provider.streamTurn({
+				messages: [SYSTEM_MESSAGE, { role: "user", content: "画一轮月亮。" }],
+				model: OPENROUTER_IMAGE_MODEL,
+				turn: 1,
+			}),
+		);
+		await expect(snapshotJson(events)).toMatchFileSnapshot(
+			fixturePath("openrouter", "events-image.json"),
+		);
+	});
+
 	it("openrouter — unified `reasoning` field", async () => {
 		const provider = buildProvider(
 			"openrouter",

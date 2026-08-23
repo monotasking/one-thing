@@ -865,14 +865,28 @@ const GENERIC_REASONING_PROFILE: OnethingReasoningProfile = {
  * 「谁来出图」—— 在能力裁定**之外**再问一次,因为这条判据不吃 override:
  * 用户 override 表达的是「能出图」,不是「换通路」,而 Codex 的原生
  * `image_generation` 工具是在回合内出图的,换通路只会让它连普通对话都答不了。
+ *
+ * 两条 `'in-loop'` 证据:
+ *  1. Codex 的原生 `image_generation` 工具(工具调用产出图,回合内);
+ *  2. **provider kind = `openrouter`**(P3-2)—— OpenRouter 走的是
+ *     chat-completions:请求带 `modalities: ['text','image']`,回复直接在
+ *     `choices[].message.images[]` 里带图,能聊天的图像模型因此走普通流。
+ *     这一条按**家**判而不是按模型名判:同一个上游模型经 OpenRouter 是回合内
+ *     出图,经 Google 官方端点则仍是专用 API(GeminiWire 还没解析 `inlineData`
+ *     输出),判据必须能区分这两者。
+ *
+ * 其余能出图的模型一律 `'dedicated-api'`(openai 的 `gpt-image-*`、gemini 官方
+ * 端点、grok-imagine):那条通路不在回合里。
  */
 function resolveImageOutputServedBy(
   input: ResolveOnethingModelCapabilitiesInput,
+  kind: OnethingProviderKind,
   imageOutput: CapabilityVerdict,
 ): OnethingImageOutputServedBy | undefined {
   if (codexMetadataDeclaresImageOutput(input.registryEntry?.providerMetadata)) return 'in-loop'
   if (codexMetadataDeclaresImageOutput(input.modelMetadata?.providerMetadata)) return 'in-loop'
-  return imageOutput.value ? 'dedicated-api' : undefined
+  if (!imageOutput.value) return undefined
+  return kind === 'openrouter' ? 'in-loop' : 'dedicated-api'
 }
 
 export function resolveOnethingModelCapabilities(
@@ -891,7 +905,7 @@ export function resolveOnethingModelCapabilities(
     ? resolveProfile(kind, input.modelId, modelLower) ?? GENERIC_REASONING_PROFILE
     : undefined
   const forcedToolUse = fromRules('forcedToolUse', PROVIDER_MODEL_RULES[kind], modelLower)
-  const servedBy = resolveImageOutputServedBy(input, imageOutput)
+  const servedBy = resolveImageOutputServedBy(input, kind, imageOutput)
 
   return {
     reasoning: reasoning.value,
