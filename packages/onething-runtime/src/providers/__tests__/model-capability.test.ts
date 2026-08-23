@@ -214,6 +214,22 @@ describe('reasoning profiles per provider', () => {
     expect(resolve('gemini', 'gemini-2.5-pro').reasoningProfile?.efforts).toEqual(['low', 'medium', 'high'])
   })
 
+  it('gpt-5.1+ adds the `none` effort rung; gpt-5.0 and the o-series do not', () => {
+    // `'none'` is how gpt-5.1+ says "do not think" — the family still has no
+    // `thinking` toggle, so the effort field carries the off switch.
+    expect(resolve('openai', 'gpt-5.5').reasoningProfile?.efforts)
+      .toEqual(['none', 'minimal', 'low', 'medium', 'high'])
+    expect(resolve('openai', 'gpt-5.1').reasoningProfile?.efforts).toContain('none')
+    expect(resolve('openai', 'gpt-5.10').reasoningProfile?.efforts).toContain('none')
+    expect(resolve('openai', 'gpt-5').reasoningProfile?.efforts)
+      .toEqual(['minimal', 'low', 'medium', 'high'])
+    expect(resolve('openai', 'gpt-5.0').reasoningProfile?.efforts).not.toContain('none')
+    expect(resolve('openai', 'o3').reasoningProfile?.efforts).not.toContain('none')
+    // A "vendor/" path prefix is tolerated like everywhere else in the table,
+    // but only for the openai kind — openrouter has its own rows.
+    expect(resolve('openai', 'openai/gpt-5.5').reasoningProfile?.efforts).toContain('none')
+  })
+
   it('openai and grok reasoning cannot be toggled off', () => {
     expect(resolve('openai', 'gpt-5.2').reasoningProfile?.toggleable).toBe(false)
     expect(resolve('grok', 'grok-4.5').reasoningProfile?.toggleable).toBe(false)

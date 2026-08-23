@@ -12,6 +12,7 @@ import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
 import type { Dialect, TurnContext, UsagePathTable } from "../base/index.js";
 import { openRouterReasoningWire } from "../thinking/index.js";
 import {
+	OPENAI_CHAT_IMAGE_DETAIL_VALUES,
 	OPENAI_CHAT_PDF_DELIVERED_NOTE,
 	openAIChatUsage,
 	openAIChatUsageTable,
@@ -180,5 +181,7 @@ export const OPENROUTER_DIALECT = defineOpenAIChatDialect({
 	usage: openAIChatUsage(OPENROUTER_USAGE_TABLE),
 	decodeExtras: decodeOpenRouterImageOutput,
 	extraBody: openRouterExtraBody,
+	// 网关按 OpenAI 的形状转发内容块,`image_url.detail` 原样过去(P3-3)。
+	providerOptions: { imageDetail: OPENAI_CHAT_IMAGE_DETAIL_VALUES },
 	transport: openAIChatTransportCapabilities({ vision: true, reasoning: true }),
 });

@@ -60,6 +60,7 @@ import {
 	type AgentProviderRuntimeConfig,
 	type CreateAgentProviderFromRuntimeOptions,
 } from "./providers/index.js";
+import { readOnethingRequestProviderOptions } from "../providers/provider-options.js";
 import { createTurnTraceRecorder } from "../evals/trace-store.js";
 import {
 	DEFAULT_AGENT_MAX_TURNS,
@@ -984,6 +985,22 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		// 从 `sessionId` 里自己推出来。哪家真的发,由各家配方的 `extraBody`
 		// 决定;没有这个旋钮的家收到了也当没看见。
 		cacheKey: ctx.sessionId,
+		// 请求级 providerOptions 袋(P3-3)。设置里存的是**构造级 + 请求级**两半
+		// 一只袋(`providerOptions`),这里只取 `request` 那一半 —— 构造级的旋钮
+		// (kimi 的 apiMode / region 之类)早在工厂里就用掉了,不该再随每个回合
+		// 出门。按 providerId 命名空间装,provider 只读自己那一格并按白名单透传;
+		// 认不出的键被丢弃并留一条 `setting-dropped`,不静默。
+		//
+		// 故意没有设置 UI:这一格装的是实验性 / 家专属的请求参数
+		// (OpenAI 的 `verbosity`、`image_url.detail`),用户手改 settings.json
+		// 就能开,形状见 `providers/provider-options.ts`。
+		providerOptions: {
+			[ctx.providerId]: readOnethingRequestProviderOptions(
+				ctx.providerConfig.providerOptions as
+					| Record<string, unknown>
+					| undefined,
+			),
+		},
 		// First model call only — see AgentLoopOptions.initialToolChoice. A
 		// standing 'required' would make every round owe another tool call and
 		// the run could never end on its own.

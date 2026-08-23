@@ -291,7 +291,14 @@ const effortOptions = computed<EffortOption[]>(() => {
   if (isCodexProvider.value) return codexEffortOptions.value
   const profile = resolvedCapabilities.value?.reasoningProfile
   if (!profile) return []
-  return profile.efforts.map(value => ({ value, label: EFFORT_LABELS[value] }))
+  // `'none'` is in the ledger's effort list as a WIRE capability marker
+  // (gpt-5.1+ takes `reasoning_effort: 'none'`), not as a picker rung — the
+  // stored `thinkingEffortByModel` vocabulary is `ThinkingEffort`, which has no
+  // such value. The provider turns a thinking-off intent into it; the picker
+  // keeps offering exactly the rungs it offered before.
+  return profile.efforts
+    .filter((value): value is ThinkingEffort => value !== 'none')
+    .map(value => ({ value, label: EFFORT_LABELS[value] }))
 })
 
 const defaultEffort = computed<ThinkingEffort>(() => {

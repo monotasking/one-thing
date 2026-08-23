@@ -26,6 +26,7 @@ import {
 	type TurnContext,
 	type UndeliverablePartLike,
 } from "../base/index.js";
+import { openAIChatImageDetail } from "./openai-chat-provider-options.js";
 
 // ---------------------------------------------------------------------------
 // 线上形状
@@ -39,7 +40,7 @@ export interface OpenAIChatToolCall {
 
 export type OpenAIChatUserContentPart =
 	| { type: "text"; text: string }
-	| { type: "image_url"; image_url: { url: string } }
+	| { type: "image_url"; image_url: { url: string; detail?: string } }
 	/** chat-completions 的文件块。只走 `file_data`(base64 data URI)—— Files
 	 *  API 的 `file_id` 路径要先上传、要管生命周期,不在这一层。 */
 	| { type: "file"; file: { filename: string; file_data: string } };
@@ -215,6 +216,14 @@ export interface OpenAIChatPartCodecOptions {
 	 */
 	filePdf?: OpenAIChatFilePdfMode;
 	/**
+	 * 该家收不收 `image_url.detail`(P3-3)。`true` = 收,值域用标准三值
+	 * (`auto|low|high`);给数组 = 收,且值域是这一份(deepseek 多一个
+	 * `original`);**不给 = 不收**(kimi / zhipu / qwen),块上一个字段都不多。
+	 *
+	 * 真正的值来自请求级 providerOptions 袋 —— 这个旋钮只回答「这家认不认」。
+	 */
+	imageDetail?: boolean | readonly string[];
+	/**
 	 * 方言缝(设计稿 §5.1「图像输出」行):这条线上多出来的**响应侧**块。
 	 * 一家给一个函数,codec 只负责把它接在 `PartCodec.decodeExtras` 上 ——
 	 * wire 的 `parseStream` 每块调一次,不给就是空数组。
@@ -238,6 +247,18 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 		return { role: "system", content: text };
 	}
 
+	/**
+	 * `detail` —— 袋里有、这家又收得下才写。展开成 0/1 个字段而不是
+	 * `detail: undefined`:后者会在 JSON 里留下一个键,快照就不是「一个字节
+	 * 都没变」了。
+	 */
+	private imageDetail(turn: TurnContext | undefined): { detail?: string } {
+		const detail = openAIChatImageDetail(turn, {
+			imageDetail: this.options.imageDetail,
+		});
+		return detail === undefined ? {} : { detail };
+	}
+
 	user(
 		part: AgentContentPart,
 		turn?: TurnContext,
@@ -246,13 +267,19 @@ export class OpenAIChatPartCodec implements OpenAIChatCodec {
 		if (part.type === "image") {
 			return delivered({
 				type: "image_url",
-				image_url: { url: dataContentToImageUrl(part.image, part.mediaType) },
+				image_url: {
+					url: dataContentToImageUrl(part.image, part.mediaType),
+					...this.imageDetail(turn),
+				},
 			});
 		}
 		if (part.type === "file" && part.mediaType.startsWith("image/")) {
 			return delivered({
 				type: "image_url",
-				image_url: { url: dataContentToImageUrl(part.data, part.mediaType) },
+				image_url: {
+					url: dataContentToImageUrl(part.data, part.mediaType),
+					...this.imageDetail(turn),
+				},
 			});
 		}
 		// PDF:认这个块的端点(openai / openrouter)按方言开关投真块;开关关着

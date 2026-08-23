@@ -57,6 +57,20 @@ export {
 	type OpenAIChatApiError,
 } from "./openai-chat-errors.js";
 export {
+	DEEPSEEK_IMAGE_DETAIL_VALUES,
+	OPENAI_CHAT_IMAGE_DETAIL_VALUES,
+	OPENAI_CHAT_VERBOSITY_VALUES,
+	openAIChatImageDetail,
+	openAIChatProviderOptionsExtraBody,
+	pickOpenAIChatProviderOptions,
+	readOpenAIChatProviderOptionBag,
+	type OpenAIChatProviderOptionDropReason,
+	type OpenAIChatProviderOptionDropped,
+	type OpenAIChatProviderOptionSupport,
+	type OpenAIChatProviderOptions,
+	type OpenAIChatVerbosity,
+} from "./openai-chat-provider-options.js";
+export {
 	OPENAI_CHAT_PDF_DELIVERED_NOTE,
 	OpenAIChatPartCodec,
 	toOpenAIChatTools,

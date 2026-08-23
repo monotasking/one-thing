@@ -34,6 +34,20 @@ export type OnethingReasoningEffortLevel =
   | 'xhigh'
   | 'max'
 
+/**
+ * An effort tier plus `'none'` — the "think nothing" rung gpt-5.1 and later
+ * accept as `reasoning_effort: 'none'` (P3-3).
+ *
+ * It is deliberately NOT a member of `OnethingReasoningEffortLevel`: that union
+ * is the *scale* (every rung has a thinking budget behind it — see
+ * `ONETHING_CLAUDE_THINKING_BUDGETS`), while `'none'` is the absence of one.
+ * It appears only inside `OnethingReasoningProfile.efforts`, where it answers a
+ * wire question: "does this model take an explicit off switch on the effort
+ * field?" — the single judge `OpenAIEffortWire` asks before turning a
+ * `thinking: 'disabled'` intent into bytes.
+ */
+export type OnethingReasoningEffortOption = OnethingReasoningEffortLevel | 'none'
+
 /** How the thinking intent is expressed on the wire by the owning provider. */
 export type OnethingReasoningWire =
   | 'anthropic-adaptive'
@@ -56,8 +70,12 @@ export interface OnethingReasoningProfile {
   toggleable: boolean
   /** Server-side behavior when no parameter is sent. */
   defaultOn: boolean
-  /** Levels the UI offers — identical to what the wire accepts after clamping. */
-  efforts: readonly OnethingReasoningEffortLevel[]
+  /**
+   * Levels the UI offers — identical to what the wire accepts after clamping.
+   * May additionally carry `'none'` (gpt-5.1+); that entry is a wire capability
+   * marker, not a picker rung — see `OnethingReasoningEffortOption`.
+   */
+  efforts: readonly OnethingReasoningEffortOption[]
   defaultEffort: OnethingReasoningEffortLevel
   wire: OnethingReasoningWire
 }
@@ -255,6 +273,16 @@ export function onethingClaudeModelFamily(model: string): OnethingClaudeModelFam
 
 export const ONETHING_CLAUDE_EFFORTS = ['low', 'medium', 'high', 'max'] as const
 export const ONETHING_OPENAI_EFFORTS = ['minimal', 'low', 'medium', 'high'] as const
+/**
+ * gpt-5.1 and later add `reasoning_effort: 'none'` — the only way to tell an
+ * OpenAI reasoning model not to think (the family still has no `thinking`
+ * toggle). Older members (gpt-5 / gpt-5.0, the whole o-series) reject it, so
+ * they keep the four-rung table above and send nothing when thinking is off.
+ */
+export const ONETHING_OPENAI_EFFORTS_WITH_NONE = [
+  'none',
+  ...ONETHING_OPENAI_EFFORTS,
+] as const
 export const ONETHING_GEMINI_EFFORTS = ['low', 'medium', 'high'] as const
 export const ONETHING_GROK_EFFORTS = ['low', 'medium', 'high'] as const
 export const ONETHING_OPENROUTER_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -380,6 +408,28 @@ const OPENAI_PROFILE: OnethingReasoningProfile = {
   wire: 'openai-effort',
 }
 
+/**
+ * gpt-5.1 and later, tolerating a "vendor/" path prefix like every other row
+ * here. The minor version is matched as a whole number, so `gpt-5.1` … `gpt-5.9`
+ * and `gpt-5.10`+ all qualify while `gpt-5` and `gpt-5.0` do not.
+ */
+const OPENAI_NONE_EFFORT_PATTERN = /(?:^|\/)gpt-5\.(?:[1-9]\d*)/
+
+export function onethingOpenAIAcceptsNoneEffort(model: string): boolean {
+  return OPENAI_NONE_EFFORT_PATTERN.test(model.toLowerCase())
+}
+
+const OPENAI_PROFILE_WITH_NONE: OnethingReasoningProfile = {
+  ...OPENAI_PROFILE,
+  efforts: ONETHING_OPENAI_EFFORTS_WITH_NONE,
+}
+
+function openAIProfile(model: string): OnethingReasoningProfile {
+  return onethingOpenAIAcceptsNoneEffort(model)
+    ? OPENAI_PROFILE_WITH_NONE
+    : OPENAI_PROFILE
+}
+
 const COPILOT_REASONING_PATTERN = /o1|o3|o4|deepseek-r1|reasoner/
 const COPILOT_VISION_PATTERN = /gpt-4o|gpt-4-turbo|gpt-4-vision|gpt-4\.1|claude-3|claude-sonnet-4|claude-opus|gemini-1\.5|gemini-2|gemini-pro-vision/
 const COPILOT_IMAGE_GEN_PATTERN = /dall-e|dalle|gpt-image|imagen/
@@ -410,7 +460,7 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
   ],
   openai: [
     // Anchored to the id start, tolerating "vendor/" path prefixes.
-    { test: /(?:^|\/)(o[134]|gpt-5)/, caps: { reasoning: true }, profile: OPENAI_PROFILE },
+    { test: /(?:^|\/)(o[134]|gpt-5)/, caps: { reasoning: true }, profile: openAIProfile },
     // Kind-level vision default mirrors the engine's historical provider-level flag.
     { test: /(?:)/, caps: { reasoning: false, vision: true } },
   ],

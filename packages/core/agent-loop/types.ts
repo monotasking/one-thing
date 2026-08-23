@@ -379,6 +379,19 @@ export interface AgentTurnRequest {
    * recovered from it. Providers that have no such knob ignore it.
    */
   cacheKey?: string
+  /**
+   * Two-level namespace bag for provider-specific request knobs: keyed by
+   * provider id, then by knob name. A provider reads ONLY its own slot and
+   * whitelists what it recognizes — an unknown key is dropped with a warning,
+   * never forwarded blind.
+   *
+   * These are experimental or vendor-private request parameters injected by the
+   * host / settings (OpenAI's `verbosity`, `image_url.detail`). core forwards
+   * the bag verbatim and never looks inside: naming a vendor knob here would put
+   * a provider name in the provider-agnostic layer, which is exactly the failure
+   * the opaque-bag rule exists to prevent.
+   */
+  providerOptions?: Record<string, Record<string, unknown>>
   abortSignal?: AbortSignal
   onEvent?: (event: AgentStreamEvent) => void
   turn: number
@@ -473,6 +486,8 @@ export interface AgentLoopOptions {
    * default from a field that exists for local bookkeeping.
    */
   cacheKey?: string
+  /** Forwarded onto every `AgentTurnRequest` of this run (see there). */
+  providerOptions?: Record<string, Record<string, unknown>>
   sessionId: string
   messageId: string
   workingDirectory?: string

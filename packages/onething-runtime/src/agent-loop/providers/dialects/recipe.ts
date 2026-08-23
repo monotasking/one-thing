@@ -25,9 +25,11 @@ import {
 	OpenAIChatPartCodec,
 	OpenAIChatWire,
 	openAIChatLogger,
+	openAIChatProviderOptionsExtraBody,
 	type OpenAIChatDialect,
 	type OpenAIChatFilePdfMode,
 	type OpenAIChatPartCodecOptions,
+	type OpenAIChatProviderOptionSupport,
 	type OpenAIChatWireValue,
 } from "../wires/index.js";
 
@@ -119,7 +121,25 @@ export interface OpenAIChatDialectSpec {
 	thinkingIntent?: Dialect["thinkingIntent"];
 	/** 这家的额外请求体字段(`prompt_cache_key` 等,见 `Dialect.extraBody`)。 */
 	extraBody?: Dialect["extraBody"];
+	/**
+	 * 请求级 providerOptions 袋这家认哪些键(P3-3)。**一处声明,两处派生**:
+	 * codec 的 `imageDetail` 与请求体那半边的白名单都从这一份来,于是两处对
+	 * 「什么算白名单」永远同解。不给 = 一个键都不认(袋里有东西照样留痕)。
+	 */
+	providerOptions?: OpenAIChatProviderOptionSupport;
 	transport: AgentModelCapabilities;
+}
+
+/**
+ * 白名单那一支**每家都挂**:认不出的键要留痕,不能因为「这家没有旋钮」就把
+ * 用户写进 settings.json 的东西静默吞掉。配方自己的 `extraBody` 先跑,袋那支
+ * 的结果后并 —— 袋是逃生舱,不该压过配方自己的字段。
+ */
+function composeExtraBody(spec: OpenAIChatDialectSpec): Dialect["extraBody"] {
+	const bag = openAIChatProviderOptionsExtraBody(spec.providerOptions ?? {});
+	const own = spec.extraBody;
+	if (!own) return bag;
+	return (turn) => ({ ...own(turn), ...bag(turn) });
 }
 
 export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialect {
@@ -138,12 +158,15 @@ export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialec
 			new OpenAIChatPartCodec({
 				includeAssistantReasoning: Boolean(spec.includeAssistantReasoning),
 				filePdf: spec.filePdf ?? "none",
+				...(spec.providerOptions?.imageDetail === undefined
+					? {}
+					: { imageDetail: spec.providerOptions.imageDetail }),
 				...(spec.decodeExtras ? { decodeExtras: spec.decodeExtras } : {}),
 			}),
 		...(spec.usage ? { usage: spec.usage } : {}),
 		...(spec.sampling ? { sampling: spec.sampling } : {}),
 		...(spec.thinkingIntent ? { thinkingIntent: spec.thinkingIntent } : {}),
-		...(spec.extraBody ? { extraBody: spec.extraBody } : {}),
+		extraBody: composeExtraBody(spec),
 		reasoning: [spec.reasoning],
 		transport: spec.transport,
 	};

@@ -416,6 +416,31 @@ describe("openai-chat wire snapshots — request bodies", () => {
 		);
 	});
 
+	/**
+	 * 请求级 providerOptions 袋(P3-3)。上面五个用例**不带袋**,所以那批 fixture
+	 * 一个字节都没变;袋是这一条独有的输入。
+	 *
+	 * 三件事一份 fixture 一起守:白名单里的 `verbosity` 上顶层、`imageDetail`
+	 * 进每个 `image_url.detail`、白名单外的 `unknownKey` 一个字都不出现
+	 * (它被丢弃时留的那条 `setting-dropped` 在 `wires/__tests__/provider-options.test.ts`
+	 * 里断)。
+	 */
+	it("openai — request providerOptions bag", async () => {
+		const dump = await captureRequest("openai", {
+			messages: [SYSTEM_MESSAGE, MULTIMODAL_USER_MESSAGE],
+			providerOptions: {
+				openai: { verbosity: "low", imageDetail: "low", unknownKey: 1 },
+			},
+		});
+		const body = JSON.stringify(dump.requestBody);
+		expect(body).toContain('"verbosity":"low"');
+		expect(body).toContain('"detail":"low"');
+		expect(body).not.toContain("unknownKey");
+		await expect(snapshotJson(dump)).toMatchFileSnapshot(
+			fixturePath("openai", "provider-options.request.json"),
+		);
+	});
+
 	it("deepseek — thinking-unset on a non-reasoner model", async () => {
 		const dump = await captureRequest(
 			"deepseek",

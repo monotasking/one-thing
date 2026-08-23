@@ -39,6 +39,42 @@ import type { OnethingZhipuApiMode } from './zhipu.js'
 /** Opaque to everything between the settings store and the owning factory. */
 export type OnethingProviderOptions = Record<string, unknown>
 
+/**
+ * The one sub-key of the bag that is NOT a construction dial: request-level
+ * knobs, forwarded onto every turn as `AgentTurnRequest.providerOptions[id]`
+ * and whitelisted by the owning dialect (P3-3).
+ *
+ * It has no settings UI on purpose. These are experimental / vendor-private
+ * request parameters (OpenAI's `verbosity`, `image_url.detail`); a user who
+ * wants one hand-edits `settings.json`:
+ *
+ *   "openai": { "providerOptions": { "request": { "verbosity": "low" } } }
+ *
+ * Unlike the dials around it, this sub-key IS persisted — it is the user's own
+ * writing, so it must survive the stored → runtime hop below verbatim.
+ */
+export const ONETHING_PROVIDER_REQUEST_OPTIONS_KEY = 'request'
+
+function readStoredRequestOptions(
+  storedConfig: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const bag = storedConfig.providerOptions
+  if (!bag || typeof bag !== 'object' || Array.isArray(bag)) return undefined
+  const request = (bag as Record<string, unknown>)[ONETHING_PROVIDER_REQUEST_OPTIONS_KEY]
+  if (!request || typeof request !== 'object' || Array.isArray(request)) return undefined
+  return request as Record<string, unknown>
+}
+
+/** Unpack the request-level sub-bag, for the turn-request builder. */
+export function readOnethingRequestProviderOptions(
+  providerOptions: OnethingProviderOptions | undefined,
+): Record<string, unknown> {
+  const request = providerOptions?.[ONETHING_PROVIDER_REQUEST_OPTIONS_KEY]
+  return request && typeof request === 'object' && !Array.isArray(request)
+    ? (request as Record<string, unknown>)
+    : {}
+}
+
 export const ONETHING_ZHIPU_PROVIDER_ID = 'zhipu'
 
 function normalizeZhipuApiMode(value: unknown): OnethingZhipuApiMode | undefined {
@@ -56,15 +92,24 @@ export function pickOnethingProviderOptions(
 ): OnethingProviderOptions | undefined {
   if (!storedConfig) return undefined
 
+  // The user's own hand-written request knobs ride along with every provider's
+  // dials — a provider that has dials would otherwise have its `request` sub-key
+  // overwritten by the packed bag below (the failure is silent: the knob simply
+  // never reaches the turn).
+  const request = readStoredRequestOptions(storedConfig)
+  const carried = request ? { [ONETHING_PROVIDER_REQUEST_OPTIONS_KEY]: request } : undefined
+
   if (providerId === ONETHING_ZHIPU_PROVIDER_ID) {
     const zhipuApiMode = normalizeZhipuApiMode(storedConfig.zhipuApiMode)
-    return zhipuApiMode ? { zhipuApiMode } : undefined
+    if (!zhipuApiMode) return carried
+    return { ...carried, zhipuApiMode }
   }
 
   if (providerId === ONETHING_QWEN_PROVIDER_ID) {
     // Both normalizers fall back to a default rather than returning undefined,
     // so qwen always gets a bag — its endpoint depends on the pair.
     return {
+      ...carried,
       qwenApiMode: normalizeOnethingQwenApiMode(storedConfig.qwenApiMode),
       qwenRegion: normalizeOnethingQwenRegion(storedConfig.qwenRegion),
     }
@@ -74,12 +119,13 @@ export function pickOnethingProviderOptions(
     // Same shape as qwen: the endpoint is a lookup on the pair, so the bag is
     // always present and always complete.
     return {
+      ...carried,
       kimiApiMode: normalizeOnethingKimiApiMode(storedConfig.kimiApiMode),
       kimiRegion: normalizeOnethingKimiRegion(storedConfig.kimiRegion),
     }
   }
 
-  return undefined
+  return carried
 }
 
 /** Unpack + narrow, for the zhipu factory. */

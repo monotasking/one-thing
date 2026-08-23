@@ -8,7 +8,6 @@
   "model": "gpt-5.5",
   "providerId": "openai",
   "requestBody": {
-    "max_completion_tokens": 1234,
     "messages": [
       {
         "content": "You are onething, a careful engineering assistant.",
@@ -22,6 +21,7 @@
           },
           {
             "image_url": {
+              "detail": "low",
               "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
             },
             "type": "image_url"
@@ -39,11 +39,10 @@
     ],
     "model": "gpt-5.5",
     "prompt_cache_key": "session-fixture-0001",
-    "reasoning_effort": "none",
     "stream": true,
     "stream_options": {
       "include_usage": true
     },
-    "temperature": 0.3
+    "verbosity": "low"
   }
 }

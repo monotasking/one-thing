@@ -621,6 +621,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           thinking: turnRequestShape.thinking,
           reasoningEffort: turnRequestShape.reasoningEffort,
           cacheKey: options.cacheKey,
+          providerOptions: options.providerOptions,
           abortSignal: options.abortSignal,
           onEvent: options.onEvent,
           turn,

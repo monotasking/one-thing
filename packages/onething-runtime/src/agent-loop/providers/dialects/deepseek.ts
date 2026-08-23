@@ -25,6 +25,7 @@ import {
 	type UsagePathTable,
 } from "../base/index.js";
 import { deepSeekInferredThinkingWire, resolveDeepSeekThinking } from "../thinking/index.js";
+import { DEEPSEEK_IMAGE_DETAIL_VALUES } from "../wires/index.js";
 import { defineOpenAIChatDialect } from "./recipe.js";
 
 /**
@@ -84,5 +85,8 @@ export const DEEPSEEK_DIALECT = defineOpenAIChatDialect({
 	includeAssistantReasoning: true,
 	usage: new PathUsageNormalizer(DEEPSEEK_USAGE_TABLE),
 	sampling: new DeepSeekSamplingPolicy(),
+	// vision-exp 端点的 `image_url.detail` 比标准多一个 `original`(原图不缩放)
+	// —— 值域是这一家的事实,所以按家给表而不是取并集(P3-3)。
+	providerOptions: { imageDetail: DEEPSEEK_IMAGE_DETAIL_VALUES },
 	transport: DEEPSEEK_TRANSPORT_CAPABILITIES,
 });

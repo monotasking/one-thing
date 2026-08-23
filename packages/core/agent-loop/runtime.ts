@@ -44,6 +44,8 @@ export interface BuildAgentLoopRuntimeOptions {
   reasoningEffort?: AgentReasoningEffort
   /** Opaque session-level prompt-cache key (see `AgentTurnRequest.cacheKey`). */
   cacheKey?: string
+  /** Per-provider request knob bag (see `AgentTurnRequest.providerOptions`). */
+  providerOptions?: Record<string, Record<string, unknown>>
   /** Forced tool choice for the run's FIRST model call only (see AgentLoopOptions). */
   initialToolChoice?: AgentToolChoice
   maxTurns?: number
@@ -82,6 +84,7 @@ export async function buildAgentLoopRuntime(
     thinking: options.thinking,
     reasoningEffort: options.reasoningEffort,
     cacheKey: options.cacheKey,
+    providerOptions: options.providerOptions,
     initialToolChoice: options.initialToolChoice,
     maxTurns: options.maxTurns,
     beforeTurn: options.beforeTurn,
