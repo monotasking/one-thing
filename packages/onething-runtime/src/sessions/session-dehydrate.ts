@@ -147,10 +147,40 @@ export function dehydrateSessionForStorage<TSession>(input: TSession): TSession 
     if (!isPlainObject(message)) return message
     let next: StoredMessageLike = message
 
+    // Collect `changes` that live only on `steps[].toolCall` so they can be
+    // merged up to the canonical holder (`message.toolCalls[]`). Legacy
+    // sessions (2026-07) stored the structured diff hunks on the full step
+    // copy; the step copy is dropped as redundant below, so the changes must
+    // reach the top-level entry first or they evaporate on round-trip. First
+    // step wins per id; the top-level holder is never overwritten (both-form).
+    const topLevelToolCallIds = new Set(
+      (message.toolCalls ?? [])
+        .map(toolCall => toolCall.id)
+        .filter((id): id is string => typeof id === 'string'),
+    )
+    const stepChangesById = new Map<string, StoredToolCallLike['changes']>()
+    if (Array.isArray(message.steps)) {
+      for (const step of message.steps) {
+        if (!isPlainObject(step)) continue
+        const changes = (step as StoredStepLike).toolCall?.changes
+        const toolCallId = (step as StoredStepLike).toolCallId
+        if (changes && typeof toolCallId === 'string' && topLevelToolCallIds.has(toolCallId)) {
+          if (!stepChangesById.has(toolCallId)) stepChangesById.set(toolCallId, changes)
+        }
+      }
+    }
+
     if (Array.isArray(message.toolCalls)) {
       let changed = false
       const toolCalls = message.toolCalls.map(toolCall => {
-        const dehydrated = dehydrateToolCall(toolCall)
+        // Merge step-held changes up (only when the top-level holder lacks
+        // them) BEFORE stripping — dehydrateToolCall then strips
+        // originalContent off the merged result, so order is fixed here.
+        let entry = toolCall
+        if (!entry.changes && typeof entry.id === 'string' && stepChangesById.has(entry.id)) {
+          entry = { ...entry, changes: stepChangesById.get(entry.id) }
+        }
+        const dehydrated = dehydrateToolCall(entry)
         if (dehydrated !== toolCall) changed = true
         return dehydrated
       })

@@ -82,6 +82,146 @@ describe('dehydrateSessionForStorage', () => {
   })
 })
 
+describe('dehydrateSessionForStorage — toolCall.changes round-trip fidelity (§13.17)', () => {
+  // Legacy (2026-07) stepOnly form: changes live ONLY on steps[].toolCall,
+  // the step is linked to a top-level toolCalls[] entry that has no changes.
+  function makeStepOnlySession() {
+    return {
+      id: 's-steponly',
+      messages: [
+        {
+          id: 'm1',
+          role: 'assistant',
+          toolCalls: [
+            { id: 'tc1', toolId: 'edit', toolName: 'edit', arguments: {}, status: 'completed', result: 'ok' },
+          ],
+          steps: [
+            {
+              type: 'tool-call',
+              toolCallId: 'tc1',
+              toolCall: {
+                id: 'tc1',
+                toolId: 'edit',
+                toolName: 'edit',
+                arguments: {},
+                status: 'completed',
+                result: 'ok',
+                changes: { hunks: [{ a: 1, b: 2 }], summary: 'edited' },
+              },
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  it('preserves changes through a stepOnly dehydrate→rehydrate (synthetic repro)', () => {
+    const de = dehydrateSessionForStorage({ messages: [structuredClone(makeStepOnlySession().messages[0])] }) as any
+    const re = rehydrateSessionFromStorage(structuredClone(de)) as any
+    // Merged up to the canonical holder, and the redundant step copy dropped.
+    expect(re.messages[0].toolCalls[0].changes).toEqual({ hunks: [{ a: 1, b: 2 }], summary: 'edited' })
+    // rehydrate relinks step.toolCall to the top-level entry (same ref) →
+    // renderer reading step.toolCall.changes gets it back.
+    expect(re.messages[0].steps[0].toolCall?.changes).toEqual({ hunks: [{ a: 1, b: 2 }], summary: 'edited' })
+    expect(re.messages[0].steps[0].toolCall).toBe(re.messages[0].toolCalls[0])
+  })
+
+  it('is idempotent: a second dehydrate is a byte-for-byte no-op', () => {
+    const once = dehydrateSessionForStorage(makeStepOnlySession()) as any
+    const twice = dehydrateSessionForStorage(structuredClone(once)) as any
+    expect(JSON.stringify(twice)).toEqual(JSON.stringify(once))
+    // The merged changes survive the second pass.
+    expect(twice.messages[0].toolCalls[0].changes).toEqual({ hunks: [{ a: 1, b: 2 }], summary: 'edited' })
+    expect(twice.messages[0].steps[0].toolCall).toBeUndefined()
+  })
+
+  it('does not overwrite an existing top-level changes (both-form: top wins)', () => {
+    const session: any = {
+      id: 's-both',
+      messages: [
+        {
+          id: 'm1',
+          role: 'assistant',
+          toolCalls: [
+            { id: 'tc1', toolName: 'edit', status: 'completed', result: 'ok', changes: { summary: 'TOP' } },
+          ],
+          steps: [
+            {
+              type: 'tool-call',
+              toolCallId: 'tc1',
+              toolCall: { id: 'tc1', toolName: 'edit', status: 'completed', result: 'ok', changes: { summary: 'STEP' } },
+            },
+          ],
+        },
+      ],
+    }
+    const de = dehydrateSessionForStorage(session) as any
+    expect(de.messages[0].toolCalls[0].changes).toEqual({ summary: 'TOP' })
+  })
+
+  it('strips originalContent off merged changes (merge-then-strip order)', () => {
+    const session: any = {
+      id: 's-legacy-orig',
+      messages: [
+        {
+          id: 'm1',
+          role: 'assistant',
+          toolCalls: [{ id: 'tc1', toolName: 'write', status: 'completed', result: 'ok' }],
+          steps: [
+            {
+              type: 'tool-call',
+              toolCallId: 'tc1',
+              toolCall: {
+                id: 'tc1',
+                toolName: 'write',
+                status: 'completed',
+                result: 'ok',
+                changes: { hunks: [{ a: 1 }], originalContent: 'x'.repeat(5000) },
+              },
+            },
+          ],
+        },
+      ],
+    }
+    const de = dehydrateSessionForStorage(session) as any
+    const changes = de.messages[0].toolCalls[0].changes
+    expect(changes.hunks).toEqual([{ a: 1 }])
+    expect(changes.originalContent).toBeUndefined()
+  })
+
+  it('keeps a stripped step.toolCall copy (with its changes) for an unlinked step', () => {
+    // step.toolCallId does not match any top-level id → no merge, copy survives.
+    const session: any = {
+      id: 's-unlinked',
+      messages: [
+        {
+          id: 'm1',
+          role: 'assistant',
+          toolCalls: [{ id: 'other', toolName: 'edit', status: 'completed', result: 'ok' }],
+          steps: [
+            {
+              type: 'tool-call',
+              toolCallId: 'orphan',
+              toolCall: {
+                id: 'orphan',
+                toolName: 'edit',
+                status: 'completed',
+                result: 'ok',
+                changes: { summary: 'kept' },
+              },
+            },
+          ],
+        },
+      ],
+    }
+    const de = dehydrateSessionForStorage(session) as any
+    expect(de.messages[0].steps[0].toolCall).toBeTruthy()
+    expect(de.messages[0].steps[0].toolCall.changes).toEqual({ summary: 'kept' })
+    // The unrelated top-level entry gets nothing merged.
+    expect(de.messages[0].toolCalls[0].changes).toBeUndefined()
+  })
+})
+
 describe('rehydrateSessionFromStorage', () => {
   it('restores step.toolCall link and rebuilds the final partialResult', () => {
     const stored = dehydrateSessionForStorage(makeSession())
