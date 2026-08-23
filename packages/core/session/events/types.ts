@@ -229,6 +229,18 @@ export interface SessionToolResultEventData {
    */
   reportedTitle?: string
   /**
+   * edit/write 的**结构化 diff**(`CoreToolCallChangesLike` 的 JSON,§13.17)。
+   *
+   * changes(diff / hunks / filePath / additions / deletions / *Hash / auditPath)
+   * 不可从 `resultData` 派生 —— hunks 活在工具的 `tool-metadata` 里,结局正文
+   * 不带。切读之后工具卡的 diff、影子 `run/end` 比对、verify 都要它,所以采集点
+   * 独立成一格。采集点抄引擎写消息时的**同一把** `changesFromToolMetadata`,
+   * 天然不含 `originalContent`(那一格从不进事件链)。与 `resultData` 同一条
+   * 64KB 线(超过走 blob)。**成对交付**:老文件没有这一格 = 物化不 attach,
+   * 与修复前逐字相同。
+   */
+  changes?: { text: string } | { blob: BlobRef }
+  /**
    * 这条结局是**收场修复**记下的,不是工具自己报的(§13.8 第一类)。
    *
    * 用户按下停止(或请求最终出错)时,已经派工出去的调用永远等不到

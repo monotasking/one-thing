@@ -49,6 +49,10 @@ import { safeParseAgentToolArguments } from '@onething/core/agent-loop'
 // `@onething/core/engine` barrel —— barrel 会把整棵执行器模块图拖进记录器
 // (与上面 provider-data 那条 import 同一条理由)。
 import { nextAgentLoopTurnIndexAfterFinish } from '@onething/core/engine/agent-loop-turn'
+// §13.17:changes 的判定点与引擎写消息时同源(`changesFromToolMetadata`)。引
+// 那一个叶子文件而不是 `@onething/core/engine` barrel —— 同上"避免拖进整棵执行器
+// 模块图"的理由。
+import { changesFromToolMetadata } from '@onething/core/engine/tool-orchestration'
 // 直接引那一个纯文件而不是 providers 的 barrel:barrel 会把六个 provider 实现
 // 一并拖进记录器的模块图,而这里要的只是一张判定表(见文件头"本模块只依赖
 // 会话事件那一层"的同一条理由)。
@@ -186,6 +190,27 @@ function structuredResultForEvent(
   return { resultData: textOrBlobForEvent(sessionId, text) }
 }
 
+/**
+ * edit/write 的结构化 diff → 事件行(§13.17)。序列化 ≤64KB 进事件行,超了走
+ * blob(与 `resultData` 同一条 `textOrBlobForEvent` 线;真机上去掉 originalContent
+ * 后 2207 份里只有 3 份超线)。`changes` 天然不含 `originalContent`
+ * (`changesFromToolMetadata` 从不折它)。缺席 / 序列化失败 = 不写这一格。
+ */
+function changesForEvent(
+  sessionId: string,
+  changes: ReturnType<typeof changesFromToolMetadata>,
+): { changes: { text: string } | { blob: BlobRef } } | Record<string, never> {
+  if (!changes) return {}
+  let text: string
+  try {
+    text = JSON.stringify(changes)
+  } catch {
+    return {}
+  }
+  if (!text) return {}
+  return { changes: textOrBlobForEvent(sessionId, text) }
+}
+
 function toToolSchemas(tools: readonly AgentTool[] | undefined): SessionEventToolSchema[] {
   if (!tools?.length) return []
   return tools.map(tool => ({
@@ -282,6 +307,12 @@ interface RecorderState {
    * 字符串时覆盖 step 标题,收尾时只带 metadata 的那条 annotate 不清空标题。
    */
   reportedTitleByCallId: Map<string, string>
+  /**
+   * callId → edit/write 的结构化 diff(§13.17)。工具在 `tool-metadata` 里带
+   * diff/hunks/path 时,过**引擎同款** `changesFromToolMetadata` 折出,`tool/result`
+   * 落账时附上。时序天然成立:metadata 在 apply 中途到,result 在 settle 后写。
+   */
+  changesByCallId: Map<string, ReturnType<typeof changesFromToolMetadata>>
   /** 正在攒的批(每个 part 至多一个)。 */
   batches: Map<number, ChunkBatch>
   /** 还没收齐的 part。 */
@@ -365,6 +396,7 @@ export function createSessionEventRecorder(
     lastToolsHashLoaded: false,
     callSeqByCallId: new Map(),
     reportedTitleByCallId: new Map(),
+    changesByCallId: new Map(),
     batches: new Map(),
     openParts: new Map(),
     toolInputPartByCallId: new Map(),
@@ -819,6 +851,11 @@ export function createSessionEventRecorder(
         if (typeof title === 'string' && title) {
           state.reportedTitleByCallId.set(event.toolCall.id, title)
         }
+        // §13.17:edit/write 的结构化 diff 就藏在这条 metadata 里(diff/diffHunks/
+        // path/…),结局正文不带。抄引擎写消息的**同一把**判定点折出,记进表,
+        // `tool/result` 落账时附上。最后一条带 diff 的 metadata 覆盖前一条。
+        const changes = changesFromToolMetadata(event.update.metadata)
+        if (changes) state.changesByCallId.set(event.toolCall.id, changes)
         return
       }
       case 'provider-data': {
@@ -856,6 +893,8 @@ export function createSessionEventRecorder(
         state.callSeqByCallId.delete(event.toolCall.id)
         const reportedTitle = state.reportedTitleByCallId.get(event.toolCall.id)
         state.reportedTitleByCallId.delete(event.toolCall.id)
+        const changes = state.changesByCallId.get(event.toolCall.id)
+        state.changesByCallId.delete(event.toolCall.id)
         appendSessionLogEvent(ctx.sessionId, 'tool/result', {
           callId: event.toolCall.id,
           isError,
@@ -871,6 +910,9 @@ export function createSessionEventRecorder(
           // (`settleAgentLoopToolResult`)。只记 `data` 的话,一次 `data` 缺席、
           // `content` 是空串的失败(参数 JSON 断在半路)在账上就少一格 `result`。
           ...structuredResultForEvent(ctx.sessionId, event.result.data ?? event.result.content, isError),
+          // §13.17:edit/write 的结构化 diff。resultData 里派生不出 hunks —— 它们
+          // 只活在 tool-metadata,这里是独立采集的一格。
+          ...changesForEvent(ctx.sessionId, changes),
           // 工具自报的标题:引擎的 step 标题就是它。成功时它同时在
           // `resultData.title` 里,失败时那里没有 —— 所以这一格是独立的一份账。
           ...(reportedTitle ? { reportedTitle } : {}),
@@ -983,6 +1025,10 @@ export function createSessionEventRecorder(
           // 标题与正常那条路同源(工具自报的最后一条 `annotate{title}`)。
           const reportedTitle = state.reportedTitleByCallId.get(call.callId)
           state.reportedTitleByCallId.delete(call.callId)
+          // §13.17:收场前若 edit 已产出 diff metadata,引擎在 step 上仍留着
+          // changes —— 与它同源地记下这一格,清表防泄漏。
+          const changes = state.changesByCallId.get(call.callId)
+          state.changesByCallId.delete(call.callId)
           const text = call.result ?? ''
           appendSessionLogEvent(ctx.sessionId, 'tool/result', {
             callId: call.callId,
@@ -992,6 +1038,7 @@ export function createSessionEventRecorder(
             cancelled: true,
             resultPreview: truncateSessionEventPreview(text),
             ...(text ? { result: textOrBlobForEvent(ctx.sessionId, text) } : {}),
+            ...changesForEvent(ctx.sessionId, changes),
             ...(reportedTitle ? { reportedTitle } : {}),
             sourceSeq,
             ...withRunId(),

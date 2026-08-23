@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest'
 import {
   canonicalChatMessage,
   canonicalHistoryMessages,
+  projectChatMessages,
   projectModelHistory,
   type SessionLogEventRecord,
 } from '@onething/core/session'
@@ -158,5 +159,110 @@ describe('§13.13 #4:工具结果图片,投影与脱水同口径省略', () => {
     expect(canonicalChatMessage(raw as never))
       .not.toEqual(canonicalChatMessage(disk() as never))
     expect(JSON.stringify(raw)).toContain(base64)
+  })
+})
+
+/**
+ * §13.17:老形态(stepOnly)会话的 `toolCall.changes` 往返保真。changes 只在
+ * `steps[].toolCall`(顶层 `toolCalls[]` 没有)。投影侧过
+ * `dehydrateProjectedMessages`、磁盘侧过 `dehydrate→rehydrate`,同一把归一函数把
+ * changes 归并到顶层持有点 → 两侧逐字节相同、changes 俱在。
+ */
+describe('§13.17:stepOnly changes 两侧同款归一后逐字节相同', () => {
+  const changes = { hunks: [{ a: 1, b: 2 }], summary: 'edited' }
+  // stepOnly:顶层无 changes,step.toolCall 上有。
+  const stepOnly = (): ChatMessage => ({
+    id: 'a1', role: 'assistant', content: 'done', timestamp: 2,
+    toolCalls: [{
+      id: 'c1', toolId: 'edit', toolName: 'edit',
+      arguments: { path: 'x.ts' }, status: 'completed', result: 'ok', timestamp: 2,
+    }],
+    steps: [{
+      id: 's1', type: 'file-edit', title: 'Editing x.ts', status: 'completed',
+      timestamp: 2, turnIndex: 1, toolCallId: 'c1',
+      toolCall: {
+        id: 'c1', toolId: 'edit', toolName: 'edit',
+        arguments: { path: 'x.ts' }, status: 'completed', result: 'ok', timestamp: 2,
+        changes: { ...changes },
+      },
+    }],
+  } as unknown as ChatMessage)
+
+  const disk = (): ChatMessage =>
+    (rehydrateSessionFromStorage(
+      dehydrateSessionForStorage({ messages: [stepOnly()] }),
+    ) as { messages: ChatMessage[] }).messages[0]
+
+  it('投影与磁盘两侧归一后 canonical 逐字节相同,changes 归位顶层', () => {
+    const projected = dehydrateProjectedMessages([stepOnly()])[0]
+    expect(canonicalChatMessage(projected as never))
+      .toEqual(canonicalChatMessage(disk() as never))
+    // changes 归并到顶层持有点,step.toolCall 补水后同引用同样拿得到。
+    const p = projected as unknown as { toolCalls: Array<{ changes?: unknown }>; steps: Array<{ toolCall?: { changes?: unknown } }> }
+    expect(p.toolCalls[0].changes).toEqual(changes)
+    expect(p.steps[0].toolCall?.changes).toEqual(changes)
+  })
+
+  it('反证:裸 stepOnly(未归一,顶层无 changes)与磁盘归一形态分叉 → 红', () => {
+    // 若不把 changes 归并到顶层持有点,canonical 在 toolCalls[].changes 上分叉。
+    expect(canonicalChatMessage(stepOnly() as never))
+      .not.toEqual(canonicalChatMessage(disk() as never))
+  })
+})
+
+/**
+ * §13.17 反向 5(影子级单测,§13.9 先例的降级路):影子在 `run/end` 用
+ * `canonicalChatMessage` 直比真实消息 vs 事件投影。这一格证明:tool/result 事件
+ * 带 changes 时,投影物化出的消息与"引擎写在 toolCall.changes 上的真实消息"
+ * canonical 相等;**投影不带 changes 那一侧**(旧事件缺采集点)与真实分叉 → 红。
+ *
+ * (电池的真机 edit 场景本可端到端验这条,但现行 agent-loop 结算把 step.toolCall
+ * 的 changes 覆盖掉、且从不落到 message.toolCalls[] —— 真实消息侧当下就没有
+ * changes,是本节之外的独立引擎缺口。故按 §13.17 降级为此单测,判官逐字同款。)
+ */
+describe('§13.17 反向5:影子判官在 changes 上认得投影带/不带的差别', () => {
+  const changes = { diff: '@@ -1 +1 @@', filePath: 'a.ts', additions: 1, deletions: 1 }
+
+  function events(withChanges: boolean): SessionLogEventRecord[] {
+    return [
+      { seq: 1, time: 1, type: 'user/message', data: { message: { id: 'u1', role: 'user', content: 'edit', timestamp: 1 } }, surfaceOp: 'append' },
+      { seq: 2, time: 2, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1', timestamp: 2 }, surfaceOp: 'append' },
+      { seq: 3, time: 2, type: 'tool/call', data: { runId: 'r1', callId: 'c1', name: 'edit', argumentsRaw: JSON.stringify({ path: 'a.ts' }), messageId: 'a1', turnIndex: 1 } },
+      {
+        seq: 4, time: 2, type: 'tool/result',
+        data: {
+          runId: 'r1', callId: 'c1', isError: false, resultPreview: 'ok',
+          result: { text: 'ok' }, resultData: { text: JSON.stringify('ok') },
+          ...(withChanges ? { changes: { text: JSON.stringify(changes) } } : {}),
+          sourceSeq: 3,
+        },
+      },
+      { seq: 5, time: 3, type: 'run/end', data: { runId: 'r1', outcome: 'completed' } },
+    ] as SessionLogEventRecord[]
+  }
+
+  function projectedAssistant(withChanges: boolean): ChatMessage {
+    const messages = projectChatMessages(events(withChanges)).messages as unknown as ChatMessage[]
+    return messages.find(m => m.id === 'a1')!
+  }
+
+  it('tool/result 带 changes:投影物化出 toolCall.changes / step.toolCall.changes', () => {
+    const a = projectedAssistant(true) as unknown as {
+      toolCalls: Array<{ changes?: unknown }>
+      steps: Array<{ toolCall?: { changes?: unknown } }>
+    }
+    expect(a.toolCalls[0].changes).toEqual(changes)
+    expect(a.steps[0].toolCall?.changes).toEqual(changes)
+  })
+
+  it('影子判官(canonicalChatMessage)认得带/不带 changes 的差别 —— 不带那侧本该红', () => {
+    // 与 checkSessionRunShadow 同一把判官:tool/result 缺 changes 采集点(旧事件、
+    // 或 HEAD 上没有本节改动)时,投影这一侧 canonical 缺 changes,与带 changes 的
+    // 那一侧分叉。切读之后真实消息若带 changes,这就是当场 mismatch 的来路。
+    expect(canonicalChatMessage(projectedAssistant(true) as never))
+      .not.toEqual(canonicalChatMessage(projectedAssistant(false) as never))
+    // 不带那侧的物化消息确实没有 changes(旧行为逐字保留)。
+    const without = projectedAssistant(false) as unknown as { toolCalls: Array<{ changes?: unknown }> }
+    expect(without.toolCalls[0].changes).toBeUndefined()
   })
 })

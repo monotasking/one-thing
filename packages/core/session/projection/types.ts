@@ -40,6 +40,11 @@ export interface ProjectedToolCall {
   requiresConfirmation?: boolean
   /** 参数还在流式生成时的原始 JSON 片段;`tool/call` 一到就撤下。 */
   streamingArgs?: string
+  /**
+   * edit/write 的结构化 diff(`CoreToolCallChangesLike`,§13.17)。工具卡的 diff
+   * 视图读它;`tool/result.changes` 物化出来的那一份。不透明,不含 originalContent。
+   */
+  changes?: unknown
 }
 
 export type ProjectedStepStatus =

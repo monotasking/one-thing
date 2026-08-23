@@ -155,6 +155,10 @@ interface ToolState {
   resultData?: unknown
   /** 结构化结局超了 64KB 那一支 —— 物化时由 resolver 换回来(A8)。 */
   resultDataBlob?: { hash: string; bytes: number; mime?: string }
+  /** edit/write 的结构化 diff(`tool/result.changes` 解出来的那一份,§13.17)。不透明。 */
+  changes?: unknown
+  /** changes 超了 64KB 那一支 —— 物化时由 resolver 换回来。 */
+  changesBlob?: { hash: string; bytes: number; mime?: string }
   resultTime?: number
   isError?: boolean
   /**
@@ -624,6 +628,11 @@ export function reduceSessionProjection(
       // A8:结构化结局也可能走了 blob(与正文同一条 64KB 线)。从前这一支被整格
       // 丢掉 —— 大结果的工具卡在投影里连 metadata 都没有。
       else if (resultData && 'blob' in resultData) tool.resultDataBlob = resultData.blob
+      // §13.17:edit/write 的结构化 diff,当不透明 JSON 存进 call 状态(与
+      // resultData 同一条 64KB 线,超了走 blob,物化时由 resolver 换回来)。
+      const changes = event.data.changes
+      if (changes && 'text' in changes) tool.changes = parseJsonSafely(changes.text)
+      else if (changes && 'blob' in changes) tool.changesBlob = changes.blob
       if (event.data.reportedTitle) tool.reportedTitle = event.data.reportedTitle
       break
     }
@@ -1098,6 +1107,18 @@ function resolveToolResultData(
   return resolved === undefined ? undefined : parseJsonSafely(resolved)
 }
 
+/** edit/write 的结构化 diff(§13.17):事件行里的 `{text}`,或 blob 换回来再解一次。 */
+function resolveToolChanges(
+  tool: ToolState,
+  options: ProjectionMaterializeOptions,
+  messageId: string,
+): unknown {
+  if (tool.changes !== undefined) return tool.changes
+  if (!tool.changesBlob) return undefined
+  const resolved = resolveProjectionBlobRef(tool.changesBlob, options, 'toolCall.changes', messageId)
+  return resolved === undefined ? undefined : parseJsonSafely(resolved)
+}
+
 /**
  * 这次调用的结局正文(A8):事件行里的 `{text}`,或 blob 换回来的那一份。
  *
@@ -1170,6 +1191,13 @@ function materializeToolCall(
     ...(tool.streamingArgs !== undefined ? { streamingArgs: tool.streamingArgs } : {}),
     ...toolTimingFields(tool),
     ...toolResultFields(tool, options, run.messageId),
+    // §13.17:edit/write 的结构化 diff。materializeStep 用同一个 materializeToolCall
+    // 建 step.toolCall,所以这一个 attach 点同时覆盖 `toolCalls[]` 与
+    // `step.toolCall` —— 与活引擎内存形态一致。老事件没有这一格 = 不 attach,
+    // 与修复前逐字相同。
+    ...(resolveToolChanges(tool, options, run.messageId) !== undefined
+      ? { changes: resolveToolChanges(tool, options, run.messageId) as ProjectedToolCall['changes'] }
+      : {}),
     // 没等到结局就收场的那一次:引擎的收尾修复在它身上写了一句话(见上)。
     // §13.8 第一类:那次收场现在**自己记了一条** `tool/result`(账本上因此有
     // 结局时刻),那句话仍然由这里派生 —— 它由 run 的收场方式决定,不是工具说的。

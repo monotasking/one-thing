@@ -13,6 +13,7 @@
     "./engine/agent-loop-turn": "./engine/agent-loop-turn.ts",
     "./engine/attachment-mime": "./engine/attachment-mime.ts",
     "./engine/streaming-args": "./engine/streaming-args.ts",
+    "./engine/tool-orchestration": "./engine/tool-orchestration.ts",
     "./events": "./events/index.ts",
     "./gateway-runtime": "./gateway-runtime.ts",
     "./http": "./http/index.ts",

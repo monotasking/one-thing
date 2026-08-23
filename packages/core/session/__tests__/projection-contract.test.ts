@@ -119,6 +119,12 @@ interface ToolSpec {
    * 所以两条线都以它为准 —— **失败的调用只有它**(结局对象里没有 title)。
    */
   reportedTitle?: string
+  /**
+   * §13.17:edit/write 的结构化 diff(`CoreToolCallChangesLike`)。引擎把它写在
+   * `toolCall.changes`(顶层 = step.toolCall 同引用),事件面记在
+   * `tool/result.changes` —— 结局正文派生不出 hunks。不含 originalContent。
+   */
+  changes?: Record<string, unknown>
 }
 
 interface RequestSpec {
@@ -310,6 +316,8 @@ function toolCallOf(spec: ToolSpec, timestamp: number, receivedAt?: number): Pro
   else if (spec.resultText !== undefined && !spec.isError) call.result = spec.resultText
   if (spec.isError && spec.resultText !== undefined) call.error = spec.resultText
   if (spec.outcome === 'denied') call.rejected = true
+  // §13.17:引擎把结构化 diff 写在 toolCall.changes(step.toolCall 同引用)。
+  if (spec.changes !== undefined) call.changes = spec.changes
   return call
 }
 
@@ -813,6 +821,9 @@ function emitTurnEvents(
             resultPreview: tool.resultText, result: { text: tool.resultText },
             ...(tool.resultData !== undefined
               ? { resultData: { text: JSON.stringify(tool.resultData) } }
+              : {}),
+            ...(tool.changes !== undefined
+              ? { changes: { text: JSON.stringify(tool.changes) } }
               : {}),
             ...(tool.reportedTitle ? { reportedTitle: tool.reportedTitle } : {}),
           },
@@ -1490,6 +1501,40 @@ describe('projection contract: command line ≡ event line', () => {
     })
     // 失败的调用没有 partialResult(引擎写的是 `result.error ? undefined : …`)。
     expect(step.partialResult).toBeUndefined()
+  })
+
+  /**
+   * §13.17:edit/write 的结构化 diff 在两条线上都到位 —— A 线写在
+   * `toolCall.changes`,B 线记在 `tool/result.changes`,投影物化后
+   * `toolCalls[].changes` 与 `step.toolCall.changes`(同引用)都拿得到。
+   */
+  it('carries edit changes onto both toolCall and step.toolCall', () => {
+    const changes = {
+      diff: '@@ -1 +1 @@\n-old\n+new',
+      hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-old', '+new'] }],
+      filePath: 'a.ts',
+      additions: 1,
+      deletions: 1,
+    }
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'edit it' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [{
+        text: 'edited',
+        tools: [{
+          callId: 'c1', name: 'edit', args: { path: 'a.ts' },
+          resultText: 'ok', resultData: { success: true }, outcome: 'ok',
+          reportedTitle: 'Editing a.ts', changes,
+        }],
+      }],
+      outcome: 'completed',
+    })
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    expect(message.toolCalls![0].changes).toEqual(changes)
+    expect(message.steps![0].toolCall?.changes).toEqual(changes)
   })
 
   it('two-request tool loop including a denied permission', () => {

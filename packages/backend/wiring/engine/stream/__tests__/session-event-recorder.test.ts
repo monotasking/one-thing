@@ -570,6 +570,72 @@ describe('session event recorder (agent loop integration)', () => {
   })
 
   /**
+   * §13.17:edit/write 的结构化 diff 藏在 `tool-metadata`(diff/diffHunks/path/…),
+   * 结局正文派生不出。采集点把它抄进 `tool/result.changes`(≤64KB 行内)。
+   */
+  it('collects edit changes from tool-metadata into tool/result.changes', async () => {
+    await runLoop({
+      name: 'echo',
+      description: 'Edit a file',
+      parameters: { type: 'object', properties: { text: { type: 'string' } } },
+      async execute(_args, context) {
+        context?.onMetadata?.({
+          title: 'Editing a.ts',
+          metadata: {
+            diff: '@@ -1 +1 @@\n-old\n+new',
+            diffHunks: [{
+              oldStart: 1, oldLines: 1, newStart: 1, newLines: 1,
+              lines: [{ op: 'del', text: 'old' }, { op: 'add', text: 'new' }],
+            }],
+            path: 'a.ts',
+            additions: 1,
+            deletions: 1,
+          },
+        })
+        return { content: 'ok', data: { success: true } }
+      },
+    })
+
+    const result = (await readSessionEvents(SESSION_ID)).find(event => event.type === 'tool/result')
+    const changes = result?.type === 'tool/result' ? result.data.changes : undefined
+    expect(changes && 'text' in changes ? JSON.parse(changes.text) : undefined).toMatchObject({
+      diff: '@@ -1 +1 @@\n-old\n+new',
+      filePath: 'a.ts',
+      additions: 1,
+      deletions: 1,
+      hunks: [{
+        oldStart: 1, oldLines: 1, newStart: 1, newLines: 1,
+        lines: [{ op: 'del', text: 'old' }, { op: 'add', text: 'new' }],
+      }],
+    })
+    // originalContent 从不进这条链。
+    expect(changes && 'text' in changes ? JSON.parse(changes.text).originalContent : undefined).toBeUndefined()
+  })
+
+  /**
+   * §13.17 体积纪律:序列化超 64KB 的 changes 走 blob(与 resultData 同一条线);
+   * blob 引用检查靠 verify 的 collectBlobHashes 递归识别(事件里的 BlobRef)。
+   */
+  it('spills an oversized changes payload to a blob', async () => {
+    const bigDiff = 'x'.repeat(70_000)
+    await runLoop({
+      name: 'echo',
+      description: 'Edit a big file',
+      parameters: { type: 'object', properties: { text: { type: 'string' } } },
+      async execute(_args, context) {
+        context?.onMetadata?.({ metadata: { diff: bigDiff, path: 'big.ts', additions: 1, deletions: 0 } })
+        return { content: 'ok', data: { success: true } }
+      },
+    })
+    const result = (await readSessionEvents(SESSION_ID)).find(event => event.type === 'tool/result')
+    const changes = result?.type === 'tool/result' ? result.data.changes : undefined
+    expect(changes && 'blob' in changes).toBe(true)
+    if (changes && 'blob' in changes) {
+      expect(fs.existsSync(path.join(state.sessionsDir, SESSION_ID, 'blobs', changes.blob.hash))).toBe(true)
+    }
+  })
+
+  /**
    * §10.12 第 5 类:steering 换的是助手消息、不是执行。账本上两条 run,
    * 新的那条必须把被接手的 runId 带上,否则投影只能按"每条 run 从第 1 轮数起"
    * 猜 —— 回合号、推理落点、usage 三样全错。
