@@ -14,11 +14,17 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  canonicalChatMessage,
   canonicalHistoryMessages,
   projectModelHistory,
   type SessionLogEventRecord,
 } from '@onething/core/session'
 import type { ChatMessage } from '@shared/ipc.js'
+import {
+  dehydrateProjectedMessages,
+  dehydrateSessionForStorage,
+  rehydrateSessionFromStorage,
+} from '@onething/runtime/sessions/session-dehydrate'
 import {
   buildHistoryMessages,
   historyProjectionRecipe,
@@ -102,5 +108,55 @@ describe('F4:模型历史合同跑的是**宿主配方**', () => {
       } as unknown as ChatMessage,
     ])
     expect(projectedWithHostRecipe(events)).toBe(builtByHost(messages))
+  })
+})
+
+/**
+ * #4(§13.13,裁定:选项 1 —— 投影也省略,与脱水一致)。
+ *
+ * 一张 `read` 工具读回来的图片:落盘时 `dehydrate` 把 `toolCall.result` /
+ * `step.partialResult` 里那段图片正文换成 `[Image: … omitted]` 占位,补水又不还原;
+ * 而投影(A8)把 blob 换回全文 —— 两侧分叉。修法:投影过一遍**同一把**
+ * `dehydrateProjectedMessages`,两侧于是逐字节相同。图片本体仍在 blob 里一份。
+ */
+describe('§13.13 #4:工具结果图片,投影与脱水同口径省略', () => {
+  const base64 = 'A'.repeat(4000)
+  const imageResult = { type: 'image', mimeType: 'image/png', data: base64 }
+  // 一条带图片工具结果的**全量**消息(= A8 投影补齐后的形状)。
+  const full = (): ChatMessage => ({
+    id: 'a1', role: 'assistant', content: 'done', timestamp: 2,
+    toolCalls: [{
+      id: 'c1', toolId: 'read', toolName: 'read',
+      arguments: { path: 'x.png' }, status: 'completed',
+      result: { ...imageResult }, timestamp: 2,
+    }],
+    steps: [{
+      id: 's1', type: 'file-read', title: 'Reading x.png', status: 'completed',
+      timestamp: 2, turnIndex: 1, toolCallId: 'c1',
+      partialResult: { ...imageResult }, partialResultIsPartial: false,
+    }],
+  } as unknown as ChatMessage)
+
+  // 磁盘那一份:落盘即脱水,读盘即补水(存储驱动逐字如此)。
+  const disk = (): ChatMessage =>
+    (rehydrateSessionFromStorage(
+      dehydrateSessionForStorage({ messages: [full()] }),
+    ) as { messages: ChatMessage[] }).messages[0]
+
+  it('投影过 dehydrateProjectedMessages 后与磁盘逐字节相同(两侧都省略了图片)', () => {
+    const projected = dehydrateProjectedMessages([full()])[0]
+    expect(canonicalChatMessage(projected as never))
+      .toEqual(canonicalChatMessage(disk() as never))
+    // 占位符就是 dehydrate 那把:`[Image: image/png data omitted: 4000 chars]`。
+    const json = JSON.stringify(projected)
+    expect(json).toContain('data omitted: 4000 chars')
+    expect(json).not.toContain(base64)
+  })
+
+  it('反证:不省略(裸投影,全量 base64)与磁盘分叉 → 红', () => {
+    const raw = full()
+    expect(canonicalChatMessage(raw as never))
+      .not.toEqual(canonicalChatMessage(disk() as never))
+    expect(JSON.stringify(raw)).toContain(base64)
   })
 })

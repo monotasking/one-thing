@@ -33,7 +33,7 @@ import {
   canonicalChatMessage,
   type SessionLogEventRecord,
 } from '@onething/core/session'
-import { rehydrateSessionFromStorage } from '@onething/runtime/sessions/session-dehydrate'
+import { dehydrateProjectedMessages, rehydrateSessionFromStorage } from '@onething/runtime/sessions/session-dehydrate'
 
 export interface SessionVerifyIssue {
   kind: 'seq' | 'surface' | 'projection' | 'blob' | 'unclosed-run' | 'messages'
@@ -137,19 +137,33 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
   const degraded = new Map<string, number>()
   try {
     const projected = projectChatMessages(events, {
+      // #3(§13.13):blob 存的是**原始字节**。二进制正文(image/* 等,附件的
+      // `base64Data` / image part 的 `data`)回放成 base64,文本(text/*,或没有
+      // mime 的正文占位符路径)回放成 utf8 —— 与宿主的 `sessionProjectionOptions`
+      // 同一条分流。utf8 硬解一段图片字节会把它改写成 `�`,两侧当场分叉。
       resolveBlob: ref => {
+        let buffer: Buffer
         try {
-          return fs.readFileSync(path.join(dir, 'blobs', ref.hash), 'utf8')
+          buffer = fs.readFileSync(path.join(dir, 'blobs', ref.hash))
         } catch {
           return undefined
         }
+        const wantsBase64 = typeof ref.mime === 'string' && ref.mime.length > 0 && !ref.mime.startsWith('text/')
+        return wantsBase64 ? buffer.toString('base64') : buffer.toString('utf8')
       },
       onIssue: issue => {
         const key = `${issue.kind}:${issue.where}`
         degraded.set(key, (degraded.get(key) ?? 0) + 1)
       },
     })
-    messages = projected.messages as unknown as Array<{ id: string; role: string }>
+    // #4(§13.13):投影侧过一遍**磁盘同款**的脱水+补水,好和 `messages.jsonl`
+    // 逐字节对齐 —— 工具结果里的图片正文两侧一起变成 `[Image: … omitted]` 占位。
+    // 只碰 `toolCall.result` / `step.partialResult`(dehydrate 的作用域),附件
+    // base64(#3)/ 消息正文 / R-b 生图正文一格不动。补水后回填 partialResult,
+    // 与磁盘那份(读盘即脱水态、再补水)走同一条构造法。
+    messages = dehydrateProjectedMessages(
+      projected.messages as unknown as Array<{ id: string; role: string }>,
+    )
     nodes = messages.length
   } catch (error) {
     issues.push({ kind: 'projection', detail: String(error) })

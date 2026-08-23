@@ -405,7 +405,12 @@ export function reduceSessionProjection(
         kind: 'compacted',
         eventSeq: event.seq,
         // 消息自己的时刻优先于记账时刻(与 `run/start.timestamp` 同一条道理)。
-        time: placeholder?.time ?? event.time,
+        // §13.13 #2:占位那格的 `node.time` 是 `system/message` 事件的**记账时刻**
+        // (`addMessageNode` 拿的是 `event.time`),不是那条标记消息自己的
+        // `timestamp` —— 两者差几毫秒。真事实是消息的 `timestamp`,先取它;拿不到
+        // (老账本占位没存 timestamp)再退回占位记账时刻,最后退回本事件记账时刻。
+        time: (placeholder?.kind === 'message' ? placeholder.message.timestamp : undefined)
+          ?? placeholder?.time ?? event.time,
         hidden: false,
         patch: {},
         messageId: event.data.messageId,

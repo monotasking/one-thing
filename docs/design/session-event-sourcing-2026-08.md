@@ -2613,3 +2613,71 @@ W-B 窗口(F12):进程在助手文本流中途被杀,重启后 `messages.jsonl` 
 1. **写侧对齐**:S2b 迁移/切读时,被崩溃截断的助手消息在快照侧也保留半篇 —— 今天 `sanitizeSessionOnStartup` 把它清空(`content=''`)的行为要改成"保留已落盘的 chunk fold",与 R-a 收口口径同批;否则两侧仍分叉,只是方向反转。
 2. **半篇 + 未收尾工具一致收口**:半篇文本保留 + 那条中断工具走 R-a 的 `cancelled` 约定(§13.6/§13.8),两者是同一次崩溃的两半,收口口径必须一致。
 3. 这条与 F12 表里 W-B "无人收口"的记录合并:W-B 不再是"两侧各错",而是"投影对、快照待 S2b 对齐"。
+
+### 13.13 真机第四轮(2026-08-23):S2b 前把 `sessions:verify:gate` 收干净的四项
+
+真机上 `sessions:verify` 冒出的四类新残余。诊断法与 §13 同一条:把那条会话
+拷进只读回放,两路逐字段对读。分类:三项修代码(#2/#3/#4)、一项重录基线(#1)。
+
+| # | 症状 | 病根 | 裁定 |
+|---|---|---|---|
+| #1 | 一条**中止**的 edit-resend run,消息上有 usage,投影没有 | 修复**前**的引擎在中止路径上仍写了 message-level `usage`;投影按"只有 completed 才结算 usage"这条铁律正确地不产出 | 与 §13.7 `2bf9d289` 同类:重录基线,不改代码 |
+| #2 | 压缩卡的时刻比 `messages.jsonl` 晚几毫秒(真机 3–73ms) | M3(§13.10)那次修复读错字段:`placeholder.time` 是 `system/message` 的**记账时刻**,不是那条标记消息自己的 `timestamp` | 改归约器:读 `placeholder.message.timestamp` |
+| #3 | 图片附件的 `base64Data` 投影出来是 `�PNG…`(腐蚀) | 附件以**原始字节**落 blob(正确),但读侧一律 `utf8` —— 二进制被改写 | dsh 方案 B:blob 存二进制,读口按 mime 分流(image/* → base64,text/* → utf8),base64 只在边界产生 |
+| #4 | 一张 `read` 工具读回来的图片:磁盘脱水态是 `[Image: … omitted]`,投影是全量 base64 | `dehydrate` 省略工具结果里的图片正文、`rehydrate` 不还原;投影(A8)把 blob 换回全文 | 选项 1:投影**也**省略,复用**同一把** `dehydrate` 函数 |
+
+#### #2 —— 压缩卡取标记消息自己的 timestamp
+
+`packages/core/session/projection/reducer.ts` 的 `session/compacted` 分支:
+`time` 从 `placeholder?.time ?? event.time` 改成
+`(placeholder.kind==='message' ? placeholder.message.timestamp : undefined) ?? placeholder?.time ?? event.time`。
+`placeholder.time` 是 `addMessageNode` 记的 `event.time`(记账时刻),而真事实是那条
+标记消息自己的 `timestamp`。合同 fixture 当年抓不到,是因为它把 `system/message`
+事件的 `time` 写成与消息 `timestamp` 相等 —— 合同里新增一条**故意错开**两者的用例
+(`§13.13 #2`,completed / failed 各一),反证:读回 `placeholder.time` 当场红。
+
+#### #3 —— blob 存二进制,读口按 mime 分流(dsh 方案 B)
+
+`event-translator.ts:61` 一直是对的:`Buffer.from(base64,'base64')` 存原始字节。
+错在读侧 `blob-store.ts` 一律 `utf8`。改法:
+
+- `readSessionBlob` 读回 `Buffer`,`readSessionBlobBase64 = readSessionBlob()?.toString('base64')`,
+  `readSessionBlobText` 走 `readSessionBlob()?.toString('utf8')`(三者一条读路)。
+- 投影读口(`projection-blobs.ts` 的 `sessionProjectionOptions`,以及 `session-verify.ts`
+  自己那份)按 `BlobRef.mime` 分流:`image/*` 等二进制 → base64,`text/*`(或没有 mime 的
+  正文占位符路径)→ utf8。附件走 `image/png`、超 64KB 的工具结果走 `text/plain` —— 实测
+  两条各归各路。**base64 只在这个边界产生**,盘上永远是二进制。
+- **sha256 读时自校验(dsh 的安全网)**:blob 内容寻址,文件名**就是** sha256 前 16 位
+  (`hashSessionBlob`)。`readSessionBlob` 读回来重算一遍,对不上 = 损坏 → 返回 undefined
+  (调用方走 F6 `blob-missing` 退化,不抛),不把被截断 / 被覆盖的脏字节投出去。
+- **老数据无需迁移**:盘上那些 blob 本来就是对的二进制(只有读错),修读即恢复。
+
+#### #4 —— 投影复用 dehydrate 的同一把省略
+
+`dehydrateSessionForStorage` 把 `toolCall.result` / `step.partialResult` 里的图片正文
+(`content` / `data` 键、超 2000 字符)换成 `[Image: … data omitted: N chars]`,`rehydrate`
+不还原;投影(A8)把 blob 换回全文 —— 两侧分叉。新导出
+`dehydrateProjectedMessages`(`session-dehydrate.ts`)= `rehydrate(dehydrate(messages))`
+(先 `structuredClone`,绝不动活投影缓存),投影侧过一遍它,两侧于是逐字节相同。
+作用域只在 dehydrate 碰的那两格 —— 消息级 `content` / `contentParts` /
+`attachments.base64Data` 一格不动(#3 与 R-b 不受影响)。图片本体仍在 blob 里一份,
+轨迹 / UI 按需取。今天落在 `sessions:verify` 的比对侧 + 合同测试;S2b 切读时生产读路
+(`eventsListMessages`)一并套上同一把(与 §13.12 "S2b 本体一并做"同批,本条不单独动
+生产读路)。合同 `§13.13 #4`(host)两条:套上后与磁盘脱水态相同、不套(裸投影全量
+base64)当场分叉。
+
+#### 门(全部实跑)
+
+- `sessions:verify:gate` **GREEN**:#2×3 实例 / #3 healed;#1 追进基线(1 条,注明中止
+  run、修前字节、不再新增);顺带 healed 一条老图片腐蚀红(`fd899977/977b78fc` —— #3
+  的读口修好之后那条附件也对上了)。基线里已有的 healed 行按既有做法留着不动。
+- `session:gate` 0 / `log:gate` 4 无新增;targeted vitest(`core/session` + `backend/session`
+  + `runtime/src/sessions`)**367 绿**(含新增 #2 core 2 条、#3 backend 4 条、#4 host 2 条)。
+- `sessions:shadow-battery` **GREEN**(264 runs / 0 mismatch)。#3 影子**看不见**:run 断言
+  比的是活内存(全量),崩溃前两侧都是全图;#4 影子同理看不见(活内存两侧都全)——
+  两者都由单测兜住,`sessions:verify`(整文件逐条 canonical)是它们的门。
+- `server:build` 通过。
+- 与本批**无关**的在途红(另一 session 的 provider/compact 改动,未提交):`typecheck`
+  在 `shared/ipc/chat.ts`(`JsonObject`)/ `wiring/engine/stream/message-helpers.ts` 两处
+  (它们改了引擎类型,本批一个字没碰);`boundary:gate` 一条 `wiring/agent-loop/providers/
+  media-reader.ts`(未跟踪文件)。本批改到的 9 个文件 typecheck / boundary 全净。

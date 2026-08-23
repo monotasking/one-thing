@@ -34,6 +34,9 @@ import {
   getOnethingSessionsDir,
 } from '@onething/runtime/storage'
 import { countSessionEventFailure } from './event-stats.js'
+import { getLogger } from '../wiring/logging/index.js'
+
+const log = getLogger('sessions.events')
 
 export const SESSION_BLOBS_DIRNAME = 'blobs'
 
@@ -81,21 +84,46 @@ export function putSessionBlob(
   }
 }
 
-/** 读回正文(utf8)。文件不在 = 这条引用没有对应的正文,返回 undefined。 */
-export function readSessionBlobText(sessionId: string, hash: string): string | undefined {
+/**
+ * 读回原始字节(#3,§13.13)。文件不在 = 这条引用没有对应的正文,返回 undefined。
+ *
+ * **读时自校验(dsh 的安全网)**:blob 是内容寻址的 —— 文件名**就是**这段字节的
+ * sha256(前 16 位,`hashSessionBlob`)。读回来重算一遍,对不上就当**损坏**处理:
+ * 返回 undefined(调用方走 F6 退化,`blob-missing` 那条 issue 会记下来),而不是把
+ * 一段被截断 / 被改写的字节当成正文投出去。**不抛** —— 投影跑在引擎热路径上。
+ */
+export function readSessionBlob(sessionId: string, hash: string): Buffer | undefined {
+  let buffer: Buffer
   try {
-    return fs.readFileSync(getSessionBlobPath(sessionId, hash), 'utf8')
+    buffer = fs.readFileSync(getSessionBlobPath(sessionId, hash))
   } catch {
     return undefined
   }
+  const actual = hashSessionBlob(buffer)
+  if (actual !== hash) {
+    // 内容寻址下"文件名 ≠ 内容 hash"= 磁盘上这段 blob 坏了(被截断 / 被覆盖)。
+    // 当成读不到:调用方退化留痕,不把脏字节投出去。
+    log.warn('session blob failed sha256 self-check', { sessionId, hash, actual, bytes: buffer.byteLength })
+    return undefined
+  }
+  return buffer
 }
 
-export function readSessionBlob(sessionId: string, hash: string): Buffer | undefined {
-  try {
-    return fs.readFileSync(getSessionBlobPath(sessionId, hash))
-  } catch {
-    return undefined
-  }
+/** 读回 base64(图片等二进制正文的回放口,#3)。字节走同一条自校验路。 */
+export function readSessionBlobBase64(sessionId: string, hash: string): string | undefined {
+  return readSessionBlob(sessionId, hash)?.toString('base64')
+}
+
+/**
+ * 读回文本正文(utf8)。走 `readSessionBlob` 同一条自校验路,只是最后按 utf8 解。
+ * 文件不在 / 自校验失败 = 返回 undefined。
+ *
+ * 只用于**确知是文本**的 blob(超 64KB 的工具结果、text/plain):二进制正文
+ * (图片附件 / image part)必须走 `readSessionBlobBase64`,否则 utf8 解码会把
+ * 字节改写成 `�`(#3 的病根就在这里)。
+ */
+export function readSessionBlobText(sessionId: string, hash: string): string | undefined {
+  return readSessionBlob(sessionId, hash)?.toString('utf8')
 }
 
 /**

@@ -15,8 +15,8 @@
  * 绝不抛:投影跑在引擎热路径上,记账坏掉不能让聊天挂掉(S1 三条纪律的第一条)。
  */
 
-import type { ProjectionIssue, ProjectionMaterializeOptions } from '@onething/core/session'
-import { readSessionBlobText } from './blob-store.js'
+import type { BlobRef, ProjectionIssue, ProjectionMaterializeOptions } from '@onething/core/session'
+import { readSessionBlob } from './blob-store.js'
 import { bumpSessionShadowStats } from './event-stats.js'
 import { getLogger } from '../wiring/logging/index.js'
 
@@ -49,14 +49,36 @@ export function reportSessionProjectionIssue(sessionId: string, issue: Projectio
 }
 
 /**
+ * 二进制正文 vs 文本正文的判据(#3,§13.13)。
+ *
+ * blob 存的是**原始字节**(附件的图片 = `Buffer.from(base64,'base64')`,
+ * 超 64KB 的工具结果 = utf8 文本)。回放时:
+ *  - 图片 / 音视频 / PDF 等二进制 → `base64`(投影里附件的 `base64Data` /
+ *    image part 的 `data` 要的就是 base64,与落盘前逐字节相同);
+ *  - `text/*`(或没有 mime 的正文占位符路径)→ `utf8`。
+ *
+ * 用 utf8 去解一段图片字节会把它改写成 `�`(#3 的病根)——所以这一格必须按
+ * mime 分流,而不是一律 utf8。没有 mime 的那条路(`onething-blob://` 正文占位符,
+ * `resolveProjectionBlobText` 传的是 `{hash,bytes:0}`)本来就只装文本,退回 utf8。
+ */
+function blobRefWantsBase64(ref: BlobRef): boolean {
+  return typeof ref.mime === 'string' && ref.mime.length > 0 && !ref.mime.startsWith('text/')
+}
+
+/**
  * 这条会话的物化选项:blob 读口 + 退化留痕。
  *
- * 每个读点都用它,别再手搓 `ref => readSessionBlobText(...)` —— 那正是 A8 补上
- * 之后"补一处漏一处"的来源。
+ * 每个读点都用它,别再手搓 `ref => readSessionBlob(...)` —— 那正是 A8 补上
+ * 之后"补一处漏一处"的来源。读口按 mime 分流二进制 / 文本(`blobRefWantsBase64`);
+ * 字节侧的 sha256 自校验在 `readSessionBlob` 里,损坏 = undefined = 走 F6 退化。
  */
 export function sessionProjectionOptions(sessionId: string): ProjectionMaterializeOptions {
   return {
-    resolveBlob: ref => readSessionBlobText(sessionId, ref.hash),
+    resolveBlob: ref => {
+      const buffer = readSessionBlob(sessionId, ref.hash)
+      if (buffer === undefined) return undefined
+      return blobRefWantsBase64(ref) ? buffer.toString('base64') : buffer.toString('utf8')
+    },
     onIssue: issue => reportSessionProjectionIssue(sessionId, issue),
   }
 }

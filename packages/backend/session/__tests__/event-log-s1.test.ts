@@ -37,9 +37,13 @@ const {
   getSessionBlobPath,
   listSessionBlobs,
   putSessionBlob,
+  readSessionBlob,
+  readSessionBlobBase64,
   readSessionBlobText,
   textOrBlobForEvent,
 } = await import('../blob-store.js')
+const { sessionProjectionOptions } = await import('../projection-blobs.js')
+const { projectChatMessages } = await import('@onething/core/session')
 
 beforeEach(() => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-s1-'))
@@ -181,5 +185,67 @@ describe('blob store (§10.6 第 6 条)', () => {
     // 会话删除 = `rmSync(sessionDir, {recursive:true})`(storage-driver 的 delete)。
     fs.rmSync(path.join(state.sessionsDir, 'b4'), { recursive: true, force: true })
     expect(readSessionBlobText('b4', ref!.hash)).toBeUndefined()
+  })
+})
+
+/**
+ * #3(§13.13):图片 blob 二进制往返 + sha256 读时自校验。
+ *
+ * 病根:附件图片以**原始字节**落 blob(`Buffer.from(base64,'base64')`,正确),
+ * 但读侧一律 `utf8` —— 二进制被改写成 `�`。修法:投影读口按 mime 分流,image/*
+ * 走 base64;文本仍 utf8。老盘上的字节本来就是对的(只有读错),修读即恢复。
+ */
+describe('#3(§13.13):图片 blob 二进制往返', () => {
+  // PNG 魔术字节(‰PNG␍␊␚␊)+ 一段确定的二进制,足以暴露 utf8 改写。
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.from(Array.from({ length: 3000 }, (_, index) => index % 256)),
+  ])
+  const base64 = png.toString('base64')
+
+  it('an attachment image round-trips through the projection as byte-identical base64', () => {
+    makeJsonlSession('img1')
+    const ref = putSessionBlob('img1', png, 'image/png')
+    expect(ref?.mime).toBe('image/png')
+
+    const events = [{
+      seq: 1, time: 1, type: 'user/message',
+      data: { message: { id: 'u1', role: 'user', content: 'see', timestamp: 1, attachments: [{ id: 'a', fileName: 'x.png', mimeType: 'image/png', base64Data: ref }] } },
+      surfaceOp: 'append',
+    }]
+    const projected = projectChatMessages(events as never, sessionProjectionOptions('img1')).messages
+    const attachment = (projected[0] as unknown as { attachments: Array<{ base64Data: string }> }).attachments[0]
+    expect(attachment.base64Data).toBe(base64)
+    expect(Buffer.from(attachment.base64Data, 'base64')).toEqual(png)
+
+    // 反证(改回 utf8 读法):二进制被改写成 `�PNG…`,与 base64 不同 —— 就是修前的
+    // 那道腐蚀签名。
+    const utf8 = readSessionBlobText('img1', ref!.hash)!
+    expect(utf8.startsWith('�PNG')).toBe(true)
+    expect(utf8).not.toBe(base64)
+  })
+
+  it('readSessionBlobBase64 equals the source base64', () => {
+    makeJsonlSession('img2')
+    const ref = putSessionBlob('img2', png, 'image/png')!
+    expect(readSessionBlobBase64('img2', ref.hash)).toBe(base64)
+  })
+
+  it('a text blob still resolves as utf8, not base64', () => {
+    makeJsonlSession('txt1')
+    const big = 'hello 世界 '.repeat(50)
+    const ref = putSessionBlob('txt1', big, 'text/plain')!
+    expect(sessionProjectionOptions('txt1').resolveBlob!(ref)).toBe(big)
+  })
+
+  it('sha256 self-check: a tampered blob reads as undefined', () => {
+    makeJsonlSession('corrupt1')
+    const ref = putSessionBlob('corrupt1', png, 'image/png')!
+    // 覆盖成别的字节 —— 文件名(hash)不再等于内容 sha256。
+    fs.writeFileSync(getSessionBlobPath('corrupt1', ref.hash), Buffer.from('tampered bytes'))
+    expect(readSessionBlob('corrupt1', ref.hash)).toBeUndefined()
+    expect(readSessionBlobBase64('corrupt1', ref.hash)).toBeUndefined()
+    // 投影读口因此退化(F6 会记 blob-missing),不把脏字节投出去。
+    expect(sessionProjectionOptions('corrupt1').resolveBlob!(ref)).toBeUndefined()
   })
 })

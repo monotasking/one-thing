@@ -179,6 +179,32 @@ export function dehydrateSessionForStorage<TSession>(input: TSession): TSession 
 
 const TERMINAL_STEP_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
+/**
+ * #4(§13.13):把投影出的消息过一遍**磁盘同款**的脱水 + 补水,好和
+ * `messages.jsonl` 逐字节对齐。
+ *
+ * 病根:一张 `read` 工具读回来的图片,落盘时 `dehydrateSessionForStorage` 把
+ * `toolCall.result` / `step.partialResult` 里那段图片正文(`content` / `data` 键、
+ * 超 2000 字符)换成 `[Image: … data omitted: N chars]` 占位,补水又不还原它;
+ * 而投影(A8)把 blob 换回**全文** —— 两侧于是分叉(裁定:选项 1,投影也省略,
+ * 与脱水口径一致;图片本体仍在 blob 里一份,轨迹 / UI 按需取)。
+ *
+ * 复用的是**同一把**函数(`dehydrate` + `rehydrate`),所以两侧产出的占位符逐字
+ * 相同。作用域只在 `toolCall.result` / `step.partialResult`(dehydrate 的作用域)——
+ * 消息级的 `content` / `contentParts` / `attachments.base64Data` 是别的字段,dehydrate
+ * 一律不碰,所以 #3(附件 base64 往返)与 R-b(生图正文)不受影响。
+ *
+ * `rehydrate` 就地改对象,所以先 `structuredClone` 一份,绝不动调用方(投影缓存 /
+ * 活投影节点)里的那份。
+ */
+export function dehydrateProjectedMessages<TMessage>(messages: readonly TMessage[]): TMessage[] {
+  const cloned = structuredClone(messages as unknown as TMessage[])
+  const round = rehydrateSessionFromStorage(
+    dehydrateSessionForStorage({ messages: cloned as unknown[] }),
+  ) as { messages: TMessage[] }
+  return round.messages
+}
+
 export function rehydrateSessionFromStorage<TSession>(input: TSession): TSession {
   const session = input as unknown as StoredSessionLike
   if (!Array.isArray(session.messages)) return input

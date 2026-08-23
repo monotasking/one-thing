@@ -1776,6 +1776,45 @@ describe('projection contract: command line ≡ event line', () => {
 })
 
 // ============================================================================
+// §13.13 #2:压缩卡的时刻
+// ============================================================================
+
+/**
+ * #2(§13.13):M3 那次修复读错了字段。压缩标记那格的 `node.time` 是
+ * `system/message` 事件的**记账时刻**(`addMessageNode` 拿的是 `event.time`),
+ * 而不是那条标记消息自己的 `timestamp` —— 真机上两者差 5–73ms。压缩卡的时刻必须
+ * 沿用消息自己的 `timestamp`。
+ *
+ * 合同 fixture(`Scenario.compact`)当年抓不到:它把 `system/message` 事件的
+ * `time` 写成和消息 `timestamp` 相等,两格恒同。这里**故意错开**它俩,反证才立得住。
+ */
+describe('§13.13 #2:压缩卡取标记消息自己的 timestamp', () => {
+  const T_MSG = 1000
+  const T_EVENT = 1007 // 占位那格的记账时刻(system/message 的 event.time),晚 7ms
+  const marker = { id: 'k1', role: 'system', content: 'compacting', timestamp: T_MSG }
+  const base: SessionLogEventRecord[] = [
+    { seq: 1, time: 1, type: 'user/message', data: { message: { id: 'u1', role: 'user', content: 'hi', timestamp: 1 } }, surfaceOp: 'append' },
+    { seq: 2, time: T_EVENT, type: 'system/message', data: { message: marker }, surfaceOp: 'append' },
+  ]
+  const compacted = (status: 'completed' | 'failed'): SessionLogEventRecord => ({
+    seq: 3, time: 2000, type: 'session/compacted',
+    data: {
+      summary: status === 'completed' ? '## Goal\nx' : '',
+      messageId: 'k1', compactedMessageCount: 1, status,
+      ...(status === 'failed' ? { error: 'boom' } : {}),
+    },
+    surfaceOp: 'append',
+  } as SessionLogEventRecord)
+
+  it.each(['completed', 'failed'] as const)('%s compaction: card timestamp === marker message timestamp', status => {
+    const card = projectChatMessages([...base, compacted(status)]).messages.find(message => message.id === 'k1')!
+    expect(card.timestamp).toBe(T_MSG)
+    // 反证:旧 M3 修复读的是占位那格的**记账时刻** —— 改回去这一格就变 T_EVENT。
+    expect(card.timestamp).not.toBe(T_EVENT)
+  })
+})
+
+// ============================================================================
 // SurfaceIndex
 // ============================================================================
 
