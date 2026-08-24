@@ -3389,3 +3389,225 @@ changes"。顺带:该会话 events.jsonl 380 条 `tool/result` 零 changes(先�
   (`ToolOrchestrator` / `executeToolAndUpdate` 及其 checker 断言一起),与解冻无关。
 - 不把 `meta.updatedMessage` 穿端口(裁定 B 已述);不动投影 reducer 的
   `user/message-edited` case。
+
+## 14. S3w(写切换 + 删旧)方案勘察(2026-08-24,只勘察未开工)
+
+**命名先说清**:§12 已经把 "S3" 这个名字用在了只读查询面(trace)上;本节勘察的是
+§8 分期表里那行 **S3 = 删旧**(旧写路径退役、`messages.jsonl` 停写、双存消失)。为免
+歧义,下文称 **S3w**(w = write switch)。§8 那行定义写于 S1/S2 落地之前,本节按
+HEAD(S2b 批 8 已切读默认 `events`、迁移 `--apply` 已落地)的真实代码重摸一遍。
+
+### 14.1 当前写模型全图(全部 HEAD 实证)
+
+**先纠正 §8 原始定义里的一个时代错位**:"旧 `updateMessage/…` 写路径删除,只剩 append"
+—— 那批 mutator 早已在 P0 收进命令面;今天没有"旧写路径"可删。真正要切的是
+**架构本身**:今天不是事件溯源,而是「store 写模型 → 双份派生」:
+
+```
+命令(13 条,backend/session/commands.ts)
+  → applySessionCommand(core/session/commands.ts,纯 reducer,COW)   ← 真相在这里落定
+  → 写回内存 store(session-repository LRU(10) + 冻结守卫)
+  ├→ saveSessionToFile → AsyncSaveQueue(300ms 节流,session-repository.ts:157)
+  │    → hybrid driver 脱水落 messages.jsonl(storage-driver.ts:257 writeJsonl
+  │      → :226 writeSuffix / :208 rewriteAll;:178 writeMeta → meta.json)
+  │      脱水 = session-dehydrate.ts:141(changes 归并顶层、settled partialResult 剥、
+  │      inline base64 剥)
+  └→ sessionEventTranslator(event-translator.ts)把 mutation 翻成事件
+       → appendSessionLogEvent(event-log.ts:241,异步队列 appendFile,
+         失败只计数不抛 :282-286;语义检查点 fsync;G12 跨进程守卫)
+```
+
+**events.jsonl 有两个采集面**,S3w 一个都不用动:
+
+- **翻译器**(结构性词汇,命令派生):`appendMessage`→`user/message`|`system/message`
+  (assistant `isStreaming` 不翻,run/start 是它的那一格);`upsertMessage`→
+  `message/patched{fullBody}`;`patchMessage`→`message/patched`(丢 BODY_KEYS 与
+  DERIVED_KEYS——**`steps`/`toolCalls` 在 DERIVED_KEYS 里,消息命令的 step/toolCall
+  变更从不进事件**;`turnContext`→`context/turn-update`);`truncateFrom`→
+  `message/deleted`|`user/message-edited`;`deleteMessage`→`message/deleted`;
+  `replaceAll`→`session/cleared`(+`replaced` 时逐条 `message/imported`;`normalize`
+  不翻);`sessionCompacted`→`session/compacted`;`patchSession`→仅 agent/model/workdir。
+- **recorder**(执行词汇,挂 `AgentLoopOptions.onEvent`,wiring/engine/stream/
+  session-event-recorder.ts,1092 行):`run/*`、`request/recipe|response|error`、
+  `assistant/chunks|part-end`、`tool/call|result(带 changes,§13.17 裁定四)|audit`、
+  `skill/activated`、`recordCancelledToolResults`(批 9);permission-events.ts 另采
+  `permission/*`。**工具/step/正文的事件事实全部来自 recorder,不来自命令面** ——
+  这就是"双存从存储消失"在事件侧早已成立的原因(投影的 steps/toolCalls 是
+  chat-messages.ts:127/131 从 `tool/*` + chunks 物化出来的两个视图)。
+
+**store 的双重身份**:它既是**写模型**(reducer 的落定处、翻译器与收尾链的取材面),又是
+**运行时缓存**(LRU + 冷加载补水)。关键:**冷加载补水今天仍走 `messages.jsonl`**
+(session-repository.ts:604 loadSession → storage-driver loadJsonl:271;冷加载时
+`sanitizeSessionOnStartup`:633 + rehydrate:238 重建 `step.toolCall` 链接)。产品读路
+(S2b)已经全线投影,但**写模型的起点还是 messages.jsonl** —— 这是 S3w 真正要换的那根梁。
+
+**写侧回读残留清单**(全部**故意**读内存 store、永不随读模式分岔;§13.18 发现 B 的纪律):
+
+| 位置 | 读什么 | 为什么必须读抄本 |
+|---|---|---|
+| backend/session/commands.ts:209 | upsertMessage 的 existed 探测 | 流中 assistant 投影里还没有,误判成新增 |
+| backend/session/commands.ts:275 | truncateFrom 递翻译器的兜底 | 投影还没看到正要写出的事件 |
+| backend/session/event-translator.ts:206 | 同上(翻译器自己的兜底) | 同上 |
+| wiring/engine/stream/agent-loop-executor.ts:407 | captureCancelledToolResults | 投影没看到收尾修复,读空则账本缺 tool/result |
+| wiring/engine/stream/agent-loop-executor.ts:450 | 收尾修复 read-modify-write | 投影的占位标题会反焊回去 |
+| wiring/engine/stream/agent-loop-executor.ts:498 | completeAgentLoopStream settle 快照 | 投影 contentParts 无 data-steps 锚点(见 14.4) |
+| backend/session/reads.ts:165/180/190 | `*FromTranscript` 三口本体 | F11:影子/写侧的真相面 |
+| backend/session/shadow.ts | listMessagesFromTranscript | 影子的"事实"侧 |
+| backend/server/runtime.ts:3084、rpc/domains/sessions.ts:170、stores/sessions.ts:829 | 存在性/计数杂用 | — |
+
+另:reads.ts 各 routed 方法的 `?? getSessionMessages(...)` 兜底半边
+(143/215/224/239/245/251/261/308/323)在 events 折不出消息时(未迁移老会话 / legacy
+整文件 / fromEvents 出错)退回消息模式 —— S3w 要把这批兜底的**命中率量成 0** 才能删。
+
+### 14.2 范围分档与推荐
+
+**S3w-lite(推荐)**:只停写 `messages.jsonl`,events 成唯一持久化;store 保留为运行时
+写模型(命令仍 mutate store → 派生事件 → 只 append events);冷加载从投影补水;
+read-your-own-write 照旧读 store(它是运行时真相,不再是"文件的镜像")。
+
+- 改动面:repository 冷加载岔口 + storage-driver 写半边(`writeMeta`/meta.json 保留)+
+  reads 兜底 + verify/shadow/battery 门改造 + 事件写失败语义翻转。**采集点(翻译器 +
+  recorder)零改动,core reducer 零改动,引擎端口(P0 冻结形状)零改动,渲染层只有
+  14.4 那一个前置。**
+- "什么都读 events" 达成度:文件层 100%(唯一持久化);内存 store 变成"投影的写侧
+  孪生"(加载=物化,增量=reducer),语义上是事件的运行时缓冲,不再是第二真相。
+
+**S3w-full(丙,纯事件溯源)**:命令 emit 事件 → fold → 状态;core reducer 退役给
+projection/reducer;store 退化为物化缓存;mid-command 读 fold 后投影。
+
+- 爆炸半径:13 条命令 + core 引擎注入的 store 端口全套(P0 明令冻结的接口形状)+
+  `appendSessionLogEvent` 从异步队列改成写侧同步可见(否则 read-your-own-write 读不到
+  自己刚写的)+ 上表 9 处回读残留全部换语义 + 翻译器消亡(命令即事件)。§13 一整章
+  实战换来的"写侧读抄本"纪律全部作废重建。
+- **反而拆掉安全网**:今天 shadow 之所以是真门,靠的是 store(reducer)与投影
+  (projection/reducer)是**两条独立推导**;S3w-full 合并成一条后,"写模型 vs 读模型"
+  的恒等比对失去对象。单一真相的正确性从"可对账"退化成"只能信"。
+
+**推荐 S3w-lite**。丙的纯度收益(删一份 reducer 双实现)换不回它的风险与安全网损失;
+而 lite 已经拿到 S3 的全部用户可感知价值:单一持久化、双存消失、存储量下降、
+messages.jsonl 落盘丢写类(§13.16)整类消亡。丙留作远期(或永不做)。
+
+### 14.3 安全网(S3w 能否落地的关键)
+
+**先把"两个独立来源"看准**:今天有两层对账 ——
+
+1. **语义层**(shadow,run/end + 请求前):内存 store(reducer 推导)vs 活投影(事件
+   推导)。**它不依赖 messages.jsonl 文件** —— 真相侧 `listMessagesFromTranscript` 读的
+   是内存 store。停写后这道门**照跑不误**,且两侧仍是独立推导(reducer ≠ projection
+   reducer)。
+2. **耐久层**(verify #6 + §13.16 那类真机对账):`messages.jsonl` 文件 vs 投影。它守的
+   是**落盘本身**:append 丢没丢、行坏没坏、seq 乱没乱。停写后这一层的**新增量**没有了
+   对象 —— 这才是真正消失的第二来源。
+
+**方案(三件套,推荐)**:
+
+- **A. 分两步停写,观察期带影子**:`ONETHING_SESSION_TRANSCRIPT = 'primary'(今天)|
+  'shadow' | 'off'`。`shadow` 档:messages.jsonl 照写,但正式降级为纯对账影子(产品读
+  路零消费、写失败只计数不打扰);观察期内 verify #6 / §13.16 类真机对账原样有效。
+  达标(建议:≥2 周真机 ∧ ≥200 run ∧ shadow=0 ∧ verify 全库 0 新红)才切 `off`。
+  **这一档同时保住 S2b 的回滚船**:`ONETHING_SESSION_READ=messages` 的回滚杆要求
+  messages.jsonl 还在写 —— 停写之前必须先确认再也不需要回滚读(见 14.7 时机)。
+- **B. 文件重折自洽环(耐久层的替身,`off` 之后的常驻门)**:run/end 采样(每会话每
+  N 个 run 一次)把 `events.jsonl` **文件字节**重折出的投影与**内存活投影**(尾部增量
+  折叠,projection-cache)做 canonical 对比,不等记 `session-shadow.jsonl`
+  `kind:'refold'` 并计数。两侧同源(同一份事件)但**路径独立**(文件重读+全量 fold vs
+  内存增量 fold + 队列 append)—— 它恰好覆盖耐久层守的那几类:append 静默丢
+  (§13.16 的反方向)、坏行、seq 错乱、fsync 缺口、G12 外写者。verify 的 1–5 项
+  (seq/surface/投影/blob/未闭合 run)本来就不依赖 messages.jsonl,原样保留。
+- **C. shadow(store vs 投影)转正为常驻恒等门**:S3w 后它不再是"迁移对账",而是
+  "写模型 vs 读模型"的永久合同;battery 场景矩阵照跑(battery 是一次性 store,需把
+  其中依赖 messages.jsonl 的断言改为 refold + store 断言)。
+
+**配套的纪律翻转**(停写那一刻生效):`appendSessionLogEvent` 写失败与 blob 写失败从
+"计数自吞"升级为**命令失败上抛**(event-log.ts:282-286)。唯一持久化的账本写不进去
+不再是可吞的旁路故障;blob 尤其要紧 —— 今天附件 base64 落 blob 失败时"正文还在
+messages.jsonl"(§10.1 的兜底),停写后同一失败 = 正文永久丢失。
+
+### 14.4 加载路径与渲染锚点(S3w 前置)
+
+**现状链条**:投影**故意不产出** `data-steps`(canonical G4:渲染锚点是派生物;
+materializeContentParts 不合成);`messages.jsonl` 的 contentParts 带着它;renderer
+`rebuildLoadedContentParts` 见 parts **非空即信**(投影给了 text/reasoning 就不再合成
+锚点)。S2b 切读后这条断裂已经咬过两口:collab work-group 消失与收尾覆盖
+(43b47b2a / 011df77a),止血法都是**收尾链改读抄本**(agent-loop-executor.ts:450/:498
+的注释即此)。**这个止血依赖"store 由 messages.jsonl 补水"** —— S3w 抽掉补水源后,
+冷加载进 store 的消息 contentParts 就是投影形状(无锚点),FromTranscript 读回的也是它,
+止血自动失效。
+
+**裁定建议:渲染层自合成,定为 S3w-0 前置。** `rebuildLoadedContentParts` 的判据从
+"parts 非空即信"改为"**缺锚点且有 steps → 按 turnIndex 合成/归并 data-steps**"
+(rebuild-content-parts.test.ts 已有'旧 tool-call parts ≡ 新 data-steps'的等价性基架,
+扩一组'投影形状(text/reasoning-only)+ steps'用例)。落地后:①投影补水的消息渲染
+完整;②:450/:498 两处对"抄本才有锚点"的依赖解除(读投影补水的消息也不掉渲染);
+③G4 纪律原样(投影仍不产出,canonical 仍丢弃比较)。
+备选(均否):投影产出 data-steps —— 违反"锚点住渲染侧"(G4),canonical 要开豁免;
+维持抄本依赖 —— 等于否决 S3w。
+
+**补水的形状门**:冷加载改投影补水后,store 里的消息会被后续命令改写、再经翻译器写出
+新事件 —— 补水形状的任何漂移(`eventSeq` vs 退役的 `seq`、attachments 的 BlobRef、
+data-steps)都会**反射进新事件**。过渡期需要一道一次性合同:对全量真机会话断言
+"投影补水 + rehydrate ≡ loadJsonl + sanitize + rehydrate"(canonical 口径),绿了才许
+切补水源。这道门是 S3w-1 的核心验收。
+
+### 14.5 steps/toolCalls 双存移除
+
+- **磁盘双存随停写免费消失**:events 里工具事实只有一份(`tool/call|result|audit` +
+  chunks),`steps[]`/`toolCalls[]` 是 materialize 的两个视图。§8 那句"双存从存储消失
+  (投影仍产出)"在 S3w-lite 落地日自动成立,不需要单独动手。
+- **内存/IPC/渲染的双视图保留,不在 S3w 范围**。消费者两边都有硬吃者:history builder
+  (core/engine/history.ts:96-97,toolCalls 出工具结果、steps 出 turn 切分)、renderer
+  (StepsPanel / tool-display / work-group,`step.toolCall` 与顶层同引用)、collab
+  worker-mind-port、resume-history、evals。收敛这层形状 = 渲染层 + history 大改,存储
+  收益为零 —— 另立门户,或接受"两个视图"为长期形态。
+- §13.17 裁定一("`message.toolCalls[]` 是唯一磁盘持有点")语义顺延为
+  "`tool/result` 事件是唯一磁盘持有点,顶层是物化视图" —— 裁定四已把事件面的 changes
+  采集补齐,不冲突。
+
+### 14.6 子分期、门与待拍板清单
+
+| 期 | 交付 | 门 | 回退 |
+|---|---|---|---|
+| **S3w-0** 渲染锚点自合成 | rebuildLoadedContentParts 判据改造 + :450/:498 依赖解除说明 | work-group/rebuild 测试 + battery 双泳道 GREEN + 真机重载走查 | 纯渲染层,git revert |
+| **S3w-0b** 单写者硬化 | server 双写者裁定重审(2026-08-19 明言"事件成唯一真相前必须重审",就是现在):server 取 StoreLock('server') 或 events 写侧拒绝外写者(R-c 从 warn 升级) | 双进程真机用例:第二个 core 拿不到写权 | 开关 |
+| **S3w-1** 冷加载补水切投影 | repository 冷加载岔口(events 有消息覆盖→物化补水+rehydrate;无→老路);reads 兜底命中遥测(fallback-hit 计数);补水形状合同(14.4) | 全量真机"补水 ≡ loadJsonl"canonical 合同绿 + fallback-hit=0(观察)+ 全量测试/battery | 岔口开关,默认老路先行 |
+| **S3w-2** 停写观察期 | `ONETHING_SESSION_TRANSCRIPT` 三态,默认切 `shadow`;事件/blob 写失败上抛;refold 自洽环(14.3-B)上线 | ≥2 周真机 ∧ ≥200 run:shadow=0 ∧ refold=0 ∧ appendFailures=0 ∧ verify 全库 0 新红 | 切回 primary,零损伤 |
+| **S3w-3** 切 off + 删旧 | 默认 `off`;storage-driver 消息写半边删(meta.json/index 写保留);reads 兜底删(legacy 整文件除外,见拍板 8);sanitize 死码清;session:check 白名单收缩;verify #6 改"存量只读对账";battery 断言落定 | 棘轮归零 + verify 全库 + 存储量目标(≈messages×1.1–1.2,§8)| 本期才删码,回退=revert |
+| **S3w-4** 体积治理 | events/blobs 上限、gzip 轮转、blob GC(引用扫描已有 collectBlobHashes)、cleared 历史段归档策略 | 存储脚本给出目标值并达标 | 独立 |
+
+**待用户拍板(编号)**:
+
+1. **范围档位**:S3w-lite(推荐)vs S3w-full(丙)。
+2. **命名**:写切换期定名 S3w(§12 已占 "S3"),或重编号整表。
+3. **停写策略**:三态开关 + 观察期(推荐;观察期时长/run 数阈值一并拍)vs 一步停写。
+4. **安全网组合**:refold 自洽环 + shadow 转正 + 观察期(14.3 三件套)是否成立;
+   battery 断言改造口径。
+5. **渲染锚点归属**:渲染层自合成为 S3w-0 前置(推荐)vs 投影产出(违 G4)vs 维持
+   抄本依赖(= 否决 S3w)。
+6. **steps/toolCalls**:只删磁盘双存(随停写免费,推荐),内存/IPC 双视图长期保留;
+   形状收敛另立门户 —— 认不认。
+7. **单写者硬化方式**:server 取锁 vs events 写拒绝 vs 维持 warn(不推荐第三项)。
+8. **legacy 处置**:`messages.jsonl` 存量永久原地只读(推荐)vs 观察期后归档
+   legacy-backup;legacy 整文件会话(`sessions/<id>.json`)首触迁移进 events vs 永久
+   保留只读兜底代码。
+9. **写失败语义**:events append / blob 写失败升级为命令失败上抛(推荐)vs 维持计数。
+10. **clear 留档**:`messages.cleared-*` 存档保留(事件之外另一份)vs 退役
+    (`session/cleared` 只遮蔽不删,事件本身就是档)。
+11. **时机**:S3w-0(+0b 拍板)现在做、S3w-1 起等 S2b 真机浸泡期(推荐)vs 全线立即。
+
+### 14.7 effort / risk 与时机
+
+- **规模**(S3w-lite 全程):约 5–7 个工作批。S3w-0 小(1 批,纯渲染);0b 小(拍板
+  后 1 批内);1 中(最险的一批:补水形状合同 + 兜底清零);2 中小(机制少、门重);
+  3 中(删码 + 四个脚本/门改造);4 独立中小。
+- **风险 Top4**:①补水形状漂移反射进新事件(翻译器以 store 为取材源 —— 14.4 的合同门
+  就是为它设的);②崩溃窗口:events append 是异步队列,停写后"队列未刷即崩"从
+  "影子少一笔"变成"账本少一笔"(语义 fsync 检查点已比 messages 的 300ms 节流强,但
+  上抛语义与 flush 时点要在 S3w-2 重审);③双写者 seq 撞号 = 静默历史错乱,比 messages
+  双写(最后写者赢)严重一个量级 —— 0b 是硬前置;④blob 写失败 = 正文永久丢
+  (messages.jsonl 今天兜着的那层没了)。
+- **现在做 vs 推迟**:**S3w-0 现在做** —— 它修的是 S2b 已现形的真机渲染断裂的根
+  (43b47b2a/011df77a 是止血不是治法),独立于停写决策都值得落。**S3w-1 起建议推迟到
+  S2b 真机浸泡 ≥1–2 周后**:批 8(bad54a31)刚切默认,事件读路的未知真机类还在暴露期
+  (§13.16 那类就是真机暴露出来的);更硬的一条 —— S2b 的回滚杆
+  `ONETHING_SESSION_READ=messages` 依赖 messages.jsonl 还在写,**停写 = 烧掉 S2b 的
+  回滚船**,必须等"再也不需要回滚读"这个判断先成立。
