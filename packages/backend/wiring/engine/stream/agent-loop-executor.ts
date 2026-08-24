@@ -484,8 +484,20 @@ export async function completeAgentLoopStream(
 		finalize: () => state.processor.finalize(),
 		getSession: (sessionId) => store.getSession(sessionId),
 		// C1(P0.2):读走门面;F3:收尾修复是 COW 的,必须显式落盘。
+		// §13.18 发现 B(与 :449 收尾修复同治法):正常收尾这次读**又是**对消息真相的
+		// read-emit —— 读到的消息经 `finalizeLingering…` 折成 patch 落盘,并原样作为
+		// settled 快照(`updates.contentParts`)广播给 renderer。必须走 `*FromTranscript`
+		// 读抄本真相:`messages.jsonl` 的 contentParts 带着 `data-steps` 渲染锚点,而
+		// events 投影**故意不产出**这个锚点(它是渲染侧的东西,canonical G4 丢弃比较,
+		// materializeContentParts 也不合成)。走随读模式分岔的 `getMessage`:events
+		// 模式下返回的投影 contentParts 只有 text/reasoning,没有 data-steps/tool-call
+		// —— renderer 的 `updateSessionMessage` 用它整体覆盖 contentParts 后,
+		// `rebuildContentParts` 见非空(有 text)不再合成锚点,work group 与整段工具
+		// 渲染当场消失(切读默认翻到 events 后才现形)。写侧/收尾读真相面,永不随读模式分岔。
 		getMessage: (sessionId, messageId) =>
-			sessionReads.getMessage(sessionId, messageId) as ChatMessage | undefined,
+			sessionReads.getMessageFromTranscript(sessionId, messageId) as
+				| ChatMessage
+				| undefined,
 		patchMessage: (sessionId, messageId, patch) => {
 			sessionCommands.patchMessage(sessionId, {
 				messageId,
