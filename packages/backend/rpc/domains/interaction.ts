@@ -49,9 +49,9 @@ import {
   getPendingInteractionsForIpc,
   respondInteractionForIpc,
 } from '@onething/runtime/interaction/ipc-operations.wiring'
-import { interactionRouter, type InteractionRoutes } from '@shared/ipc/interaction.js'
+import type { InteractionRoutes } from '@shared/ipc/interaction.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 /**
  * 这次应答该盖哪条通道的章。桌面恒 `'ipc'`;联网宿主认领那次提问自己的
@@ -79,6 +79,3 @@ export const interactionRpcHandlers: RpcRouteHandlers<InteractionRoutes> = {
   },
 }
 
-export function registerInteractionRpcDomain(): () => void {
-  return registerRouterHandlers(interactionRouter, interactionRpcHandlers)
-}

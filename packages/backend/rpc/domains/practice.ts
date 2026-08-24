@@ -22,7 +22,7 @@
  * 没有推送面,所以那条通道原样留在手写 IPC 上(`@main/ipc/practice.ts`)。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import { practiceRouter, type PracticeRoutes } from '@shared/ipc/practice.js'
+import type { PracticeRoutes } from '@shared/ipc/practice.js'
 import {
   getPracticeState,
   getPracticeSummary,
@@ -35,7 +35,6 @@ import {
   stopPractice,
   writePracticeConfig,
 } from '@onething/runtime/practice/service.wiring'
-import { registerRouterHandlers } from '../registry.js'
 
 export const practiceRpcHandlers: RouteHandlers<PracticeRoutes> = {
   async start(request) {
@@ -72,6 +71,3 @@ export const practiceRpcHandlers: RouteHandlers<PracticeRoutes> = {
   },
 }
 
-export function registerPracticeRpcDomain(): () => void {
-  return registerRouterHandlers(practiceRouter, practiceRpcHandlers)
-}

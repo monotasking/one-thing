@@ -19,6 +19,7 @@
  *    —— `scripts/shadow-battery.mjs` 的两个权限场景就靠它。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { sessionCommandRouter } from '@shared/ipc/session-command.js'
 
 const bus = vi.hoisted(() => ({
   emit: vi.fn(async (_sessionId: string, _command: unknown): Promise<unknown> => 'emitted'),
@@ -50,9 +51,9 @@ const IPC = { transport: 'ipc' } as const
 const HTTP = { transport: 'http', sandboxRoot: '/store', ownerUid: 'local-user' } as const
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerSessionCommandRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { sessionCommandRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/session-command.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerSessionCommandRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, sessionCommandRpcHandlers }
 }
 
 /** 等 fire-and-forget 的补写跑完(两个动态 import + 两层 await)。 */
@@ -74,9 +75,9 @@ describe('session-command RPC domain', () => {
     runtimeAmend.amendTurnRetry.mockReset()
     runtimeAmend.amendTurnEditResend.mockReset()
 
-    const { resetRpcRegistryForTests, registerSessionCommandRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, sessionCommandRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerSessionCommandRpcDomain()
+    dispose = registerRouterHandlers(sessionCommandRouter, sessionCommandRpcHandlers)
   })
 
   afterEach(() => {

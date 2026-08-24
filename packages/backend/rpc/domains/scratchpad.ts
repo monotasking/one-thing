@@ -20,14 +20,13 @@
  * `get`/`update` 成功时带 `document`,`delete`/`adopt` 只回 `{ success:true }`。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import { scratchpadRouter, type ScratchpadRoutes } from '@shared/ipc/scratchpad.js'
+import type { ScratchpadRoutes } from '@shared/ipc/scratchpad.js'
 import {
   adoptScratchpad,
   readScratchpad,
   removeScratchpad,
   updateScratchpad,
 } from '@onething/runtime/scratchpad/service-bound'
-import { registerRouterHandlers } from '../registry.js'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -70,6 +69,3 @@ export const scratchpadRpcHandlers: RouteHandlers<ScratchpadRoutes> = {
   },
 }
 
-export function registerScratchpadRpcDomain(): () => void {
-  return registerRouterHandlers(scratchpadRouter, scratchpadRpcHandlers)
-}

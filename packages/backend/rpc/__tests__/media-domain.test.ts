@@ -27,6 +27,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { imagePreviewRegistry } from '@onething/runtime/media/image-preview-registry-bound'
 import { openOnethingImagePreviewForIpc } from '@onething/runtime/media'
+import { mediaRouter } from '@shared/ipc/media.js'
 
 const library = vi.hoisted(() => ({
   listAssets: vi.fn(),
@@ -72,9 +73,9 @@ const LEGACY_ITEM = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerMediaRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { mediaRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/media.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerMediaRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mediaRpcHandlers }
 }
 
 describe('media RPC domain', () => {
@@ -95,9 +96,9 @@ describe('media RPC domain', () => {
     stores.getSessions.mockReset().mockReturnValue([])
     imagePreviewRegistry.clear()
 
-    const { resetRpcRegistryForTests, registerMediaRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, mediaRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerMediaRpcDomain()
+    dispose = registerRouterHandlers(mediaRouter, mediaRpcHandlers)
   })
 
   afterEach(async () => {

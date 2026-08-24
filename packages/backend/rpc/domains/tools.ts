@@ -68,7 +68,7 @@ import {
 } from '@onething/runtime/tools/background-jobs-bound'
 import { getMCPToolDefinitionsForModel } from '@onething/runtime/mcp/index.wiring'
 import type { JsonObject } from '@shared/json.js'
-import { toolsRouter, type ToolsRoutes } from '@shared/ipc/tools.js'
+import type { ToolsRoutes } from '@shared/ipc/tools.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { isAbsolute, join, resolve } from 'node:path'
 import * as store from '../../store.js'
@@ -79,7 +79,7 @@ import {
 } from '../../wiring/toolkit/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.tools')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
@@ -242,6 +242,3 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
   },
 }
 
-export function registerToolsRpcDomain(): () => void {
-  return registerRouterHandlers(toolsRouter, toolsRpcHandlers)
-}

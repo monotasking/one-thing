@@ -10,6 +10,7 @@
  *  - 出错时回 `{ success:false, error }`,而不是让 dispatcher 变成 `ok:false`。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { permissionRouter } from '@shared/ipc/permissions.js'
 
 const permission = vi.hoisted(() => ({
   Permission: {
@@ -34,9 +35,9 @@ const ACTIONABLE = {
 const QUEUED = { ...ACTIONABLE, id: 'p2', callId: 'call-2', promptState: 'queued' as const }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerPermissionRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { permissionRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/permission.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerPermissionRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, permissionRpcHandlers }
 }
 
 describe('permission RPC domain', () => {
@@ -46,9 +47,9 @@ describe('permission RPC domain', () => {
     permission.Permission.getPendingPrompts.mockReset().mockReturnValue([ACTIONABLE, QUEUED])
     permission.Permission.clearSession.mockReset().mockReturnValue(undefined)
 
-    const { resetRpcRegistryForTests, registerPermissionRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, permissionRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerPermissionRpcDomain()
+    dispose = registerRouterHandlers(permissionRouter, permissionRpcHandlers)
   })
 
   afterEach(() => {

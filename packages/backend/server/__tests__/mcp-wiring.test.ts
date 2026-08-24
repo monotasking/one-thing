@@ -27,8 +27,9 @@ import {
   type MCPServerState,
 } from '@onething/core/mcp'
 import { createDevelopmentOnethingServerRuntime, type OnethingServerRuntime } from '../runtime.js'
-import { registerMcpRpcDomain } from '../../rpc/domains/mcp.js'
-import { dispatchRpc, resetRpcRegistryForTests } from '../../rpc/registry.js'
+import { mcpRpcHandlers } from '../../rpc/domains/mcp.js'
+import { mcpRouter } from '@shared/ipc/mcp.js'
+import { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests } from '../../rpc/registry.js'
 
 function createStubMCPClient(config: MCPServerConfig): MCPClientLike {
   let state: MCPServerState = createMCPServerState(config)
@@ -89,7 +90,7 @@ describe('server MCP wiring', () => {
     })
 
     resetRpcRegistryForTests()
-    const disposeDomain = registerMcpRpcDomain()
+    const disposeDomain = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
     try {
       const added = await dispatchRpc({
         domain: 'mcp',

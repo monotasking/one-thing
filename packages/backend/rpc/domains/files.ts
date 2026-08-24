@@ -90,7 +90,7 @@ import {
 import { getShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/runtime/shell/host-ports'
 import { applyFileMutationUndo } from '@onething/runtime/tools'
 import { getVariablesStore } from '@onething/runtime/variables/store-bound'
-import { filesRouter, type FilesRoutes } from '@shared/ipc/files.js'
+import type { FilesRoutes } from '@shared/ipc/files.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
 import { listFiles as ripgrepListFiles } from '../../utils/ripgrep.js'
@@ -106,7 +106,7 @@ import {
   resolveRpcSandbox,
   type RpcSandbox,
 } from '../sandbox.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.files')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
@@ -416,6 +416,3 @@ function clampWith(sandbox: RpcSandbox, path: string | undefined): string | null
   return resolveInsideSandbox(sandbox, path ?? '')
 }
 
-export function registerFilesRpcDomain(): () => void {
-  return registerRouterHandlers(filesRouter, filesRpcHandlers)
-}

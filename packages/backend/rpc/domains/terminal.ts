@@ -39,8 +39,8 @@ import {
   getTerminalService,
 } from '@onething/runtime/terminal/service.wiring'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { terminalRouter, type TerminalRoutes } from '@shared/ipc/terminal.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { TerminalRoutes } from '@shared/ipc/terminal.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 /** 七条 http 拒绝共用的那一句话。 */
 export const TERMINAL_DESKTOP_ONLY_ERROR =
@@ -116,6 +116,3 @@ export const terminalRpcHandlers: RpcRouteHandlers<TerminalRoutes> = {
   },
 }
 
-export function registerTerminalRpcDomain(): () => void {
-  return registerRouterHandlers(terminalRouter, terminalRpcHandlers)
-}

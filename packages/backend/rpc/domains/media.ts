@@ -45,10 +45,10 @@ import {
 import { imagePreviewRegistry } from '@onething/runtime/media/image-preview-registry-bound'
 import { mediaLibraryService } from '@onething/runtime/media/library-service-bound'
 import { saveMediaImage } from '@onething/runtime/media/save-image'
-import { mediaRouter, type MediaRoutes } from '@shared/ipc/media.js'
+import type { MediaRoutes } from '@shared/ipc/media.js'
 import { getSessions } from '../../stores/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.media')
 /** 投影层收的是鸭子 logger;过渡替身与旧的 `@main` 适配用的是同一个(area ① 统一后删)。 */
@@ -115,6 +115,3 @@ export const mediaRpcHandlers: RpcRouteHandlers<MediaRoutes> = {
   },
 }
 
-export function registerMediaRpcDomain(): () => void {
-  return registerRouterHandlers(mediaRouter, mediaRpcHandlers)
-}

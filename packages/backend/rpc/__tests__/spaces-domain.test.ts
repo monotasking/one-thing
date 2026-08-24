@@ -13,6 +13,7 @@
  *  - `importCredentials` 对默认空间是拒绝(它就是导入的来源)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { spacesRouter } from '@shared/ipc/spaces.js'
 
 const store = vi.hoisted(() => ({
   list: vi.fn(),
@@ -52,11 +53,14 @@ const SPACE = { id: 'work', name: '工作', createdAt: 1 }
 const DEFAULT_SPACE = { id: 'default', name: '默认空间', createdAt: 0 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerSpacesRpcDomain }] = await Promise.all([
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { spacesRpcHandlers },
+  ] = await Promise.all([
     import('../registry.js'),
     import('../domains/spaces.js'),
   ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerSpacesRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, spacesRpcHandlers }
 }
 
 describe('spaces RPC domain', () => {
@@ -79,9 +83,9 @@ describe('spaces RPC domain', () => {
     credentials.clearSpaceProviderCredential.mockReset().mockReturnValue({ providers: {} })
     credentials.importDefaultSpaceCredentials.mockReset().mockReturnValue({ imported: ['deepseek'], skipped: [], credentials: { providers: {} } })
     sessions.countSessionsInWorkspace.mockReset().mockReturnValue(0)
-    const { resetRpcRegistryForTests, registerSpacesRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, spacesRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerSpacesRpcDomain()
+    dispose = registerRouterHandlers(spacesRouter, spacesRpcHandlers)
   })
 
   afterEach(() => {

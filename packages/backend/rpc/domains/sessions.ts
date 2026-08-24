@@ -77,7 +77,7 @@ import {
 import { isValidSpaceId } from '@onething/runtime/spaces/types'
 import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest, PermissionMode } from '@shared/ipc.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { sessionsRouter, type SessionsRoutes } from '@shared/ipc/sessions.js'
+import type { SessionsRoutes } from '@shared/ipc/sessions.js'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
@@ -94,7 +94,7 @@ import { readSessionSegments } from '../../wiring/toc/index.js'
 import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '../../wiring/todo-plan/store.js'
 import { workdirGateway } from '../../wiring/variables/gateways.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.sessions')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */
@@ -451,6 +451,3 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
   },
 }
 
-export function registerSessionsRpcDomain(): () => void {
-  return registerRouterHandlers(sessionsRouter, sessionsRpcHandlers)
-}

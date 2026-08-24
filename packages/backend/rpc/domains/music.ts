@@ -40,7 +40,7 @@ import {
   runOnethingMusicSetupForIpc,
   type OnethingMusicSetupRequest,
 } from '@onething/runtime/music'
-import { musicRouter, type MusicRoutes } from '@shared/ipc/music.js'
+import type { MusicRoutes } from '@shared/ipc/music.js'
 import { getSettings } from '../../stores/settings.js'
 import { resolveDjSpeakDone } from '../../wiring/music/dj-voice.js'
 import {
@@ -62,7 +62,7 @@ import {
   getMusicService,
   stopMusicPlayerKeepalive,
 } from '../../wiring/music/service.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 export const musicRpcHandlers: RpcRouteHandlers<MusicRoutes> = {
   async getState() {
@@ -160,6 +160,3 @@ export const musicRpcHandlers: RpcRouteHandlers<MusicRoutes> = {
   },
 }
 
-export function registerMusicRpcDomain(): () => void {
-  return registerRouterHandlers(musicRouter, musicRpcHandlers)
-}

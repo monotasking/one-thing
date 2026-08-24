@@ -45,16 +45,15 @@
 import fs from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import {
-  evalsRouter,
-  type ContextSnapshotMessage,
-  type EvalCaseMeta,
-  type EvalFixtureMeta,
-  type EvalRunResultEntry,
-  type EvalsRoutes,
-  type EvalsRunProgressEvent,
-  type EvalsRunStartRequest,
-  type TurnEvalRecordView,
+import type {
+  ContextSnapshotMessage,
+  EvalCaseMeta,
+  EvalFixtureMeta,
+  EvalRunResultEntry,
+  EvalsRoutes,
+  EvalsRunProgressEvent,
+  EvalsRunStartRequest,
+  TurnEvalRecordView,
 } from '@shared/ipc/evals.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sessionReads } from '../../session/reads.js'
@@ -70,7 +69,7 @@ import { getLogger } from '../../wiring/logging/index.js'
 import { getSkillsForSession } from '../../wiring/skills/session-skills.js'
 import { analyzeIncidentInBackground } from './evals-workbench.js'
 import { isPathInside, resolveRpcSandbox } from '../sandbox.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.evals')
 
@@ -866,6 +865,3 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
   },
 }
 
-export function registerEvalsRpcDomain(): () => void {
-  return registerRouterHandlers(evalsRouter, evalsRpcHandlers)
-}

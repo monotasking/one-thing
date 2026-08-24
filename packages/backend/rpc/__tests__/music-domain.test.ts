@@ -12,6 +12,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcResponse } from '@shared/ipc/rpc.js'
+import { musicRouter } from '@shared/ipc/music.js'
 
 const runner = vi.hoisted(() => ({ run: vi.fn() }))
 const provider = vi.hoisted(() => ({
@@ -94,7 +95,7 @@ describe('music RPC domain', () => {
     ])
     dispatchRpc = registry.dispatchRpc
     registry.resetRpcRegistryForTests()
-    dispose = domain.registerMusicRpcDomain()
+    dispose = registry.registerRouterHandlers(musicRouter, domain.musicRpcHandlers)
     service.getActiveMusicProvider.mockReturnValue(provider as never)
     settings.getSettings.mockReturnValue({ music: { enabled: true, provider: 'ncm-cli' } })
     runner.run.mockReset().mockResolvedValue({ stdout: '{}', stderr: '', code: 0 })

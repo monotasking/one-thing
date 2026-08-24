@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EventBus } from '@onething/core/events'
 import { Interaction } from '@onething/core/interaction'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
+import { interactionRouter } from '@shared/ipc/interaction.js'
 
 const IPC: RpcDispatchContext = { transport: 'ipc' }
 const HTTP: RpcDispatchContext = {
@@ -39,7 +40,7 @@ describe('interaction RPC domain', () => {
     ])
     dispatchRpc = registry.dispatchRpc
     registry.resetRpcRegistryForTests()
-    dispose = domain.registerInteractionRpcDomain()
+    dispose = registry.registerRouterHandlers(interactionRouter, domain.interactionRpcHandlers)
     Interaction.initialize(new EventBus(), () => 'ipc')
   })
 

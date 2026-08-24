@@ -23,6 +23,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { setSessionReadModeForTesting } from '../../session/read-mode.js'
+import { sessionsRouter } from '@shared/ipc/sessions.js'
 
 const store = vi.hoisted(() => ({
   getSessionsList: vi.fn(() => [] as unknown[]),
@@ -118,9 +119,9 @@ const HTTP_CONTEXT = {
 const SESSION_ID = '0f1e2d3c-4b5a-4678-89ab-cdef01234567'
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerSessionsRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { sessionsRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/sessions.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerSessionsRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, sessionsRpcHandlers }
 }
 
 describe('sessions RPC domain', () => {
@@ -141,9 +142,9 @@ describe('sessions RPC domain', () => {
     permission.clearSession.mockReset()
     variables.workdirGateway.write.mockReset().mockResolvedValue(undefined)
 
-    const { resetRpcRegistryForTests, registerSessionsRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, sessionsRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerSessionsRpcDomain()
+    dispose = registerRouterHandlers(sessionsRouter, sessionsRpcHandlers)
   })
 
   afterEach(async () => {

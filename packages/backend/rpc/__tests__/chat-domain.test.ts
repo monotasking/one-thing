@@ -23,6 +23,7 @@
  *  - `getActiveStreams` 读的是引擎自己的活会话表,字段名只有 `sessionIds`。
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { chatRouter } from '@shared/ipc/chat.js'
 
 const store = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -63,9 +64,9 @@ vi.mock('../../wiring/usage/bill-side-line.js', () => ({ billTitleUsage: () => (
 const SESSION_ID = 'session-1'
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerChatRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { chatRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/chat.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerChatRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, chatRpcHandlers }
 }
 
 describe('chat RPC domain', () => {
@@ -82,9 +83,9 @@ describe('chat RPC domain', () => {
     eventBus.emit.mockReset().mockResolvedValue(undefined)
     prompt.buildSystemPromptSnapshot.mockReset()
 
-    const { resetRpcRegistryForTests, registerChatRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, chatRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerChatRpcDomain()
+    dispose = registerRouterHandlers(chatRouter, chatRpcHandlers)
   })
 
   afterEach(async () => {

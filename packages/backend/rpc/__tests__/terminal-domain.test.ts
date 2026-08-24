@@ -12,6 +12,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
+import { terminalRouter } from '@shared/ipc/terminal.js'
 
 const IPC: RpcDispatchContext = { transport: 'ipc' }
 const HTTP: RpcDispatchContext = {
@@ -63,7 +64,7 @@ describe('terminal RPC domain', () => {
     ])
     dispatchRpc = registry.dispatchRpc
     registry.resetRpcRegistryForTests()
-    dispose = domain.registerTerminalRpcDomain()
+    dispose = registry.registerRouterHandlers(terminalRouter, domain.terminalRpcHandlers)
     desktopOnlyError = domain.TERMINAL_DESKTOP_ONLY_ERROR
     getTerminalService.mockClear()
     for (const fn of Object.values(service)) fn.mockReset()

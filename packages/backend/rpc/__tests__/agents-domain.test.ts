@@ -8,6 +8,7 @@
  * 快索引(`getSessionsList`),不是会带出全部转录的 `getSessions`。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { agentsRouter } from '@shared/ipc/agents.js'
 
 const store = vi.hoisted(() => ({
   DEFAULT_AGENT_ID: 'default',
@@ -34,11 +35,14 @@ const AGENT = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerAgentsRpcDomain }] = await Promise.all([
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { agentsRpcHandlers },
+  ] = await Promise.all([
     import('../registry.js'),
     import('../domains/agents.js'),
   ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerAgentsRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, agentsRpcHandlers }
 }
 
 describe('agents RPC domain', () => {
@@ -52,9 +56,9 @@ describe('agents RPC domain', () => {
     store.retireAgent.mockReset().mockReturnValue({ ...AGENT, status: 'retired' })
     store.restoreAgent.mockReset().mockReturnValue({ ...AGENT, status: 'active' })
     sessions.getSessionsList.mockReset().mockReturnValue([])
-    const { resetRpcRegistryForTests, registerAgentsRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, agentsRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerAgentsRpcDomain()
+    dispose = registerRouterHandlers(agentsRouter, agentsRpcHandlers)
   })
 
   afterEach(() => {

@@ -15,6 +15,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
+import { searchRouter } from '@shared/ipc/search.js'
 
 const IPC: RpcDispatchContext = { transport: 'ipc' }
 const HTTP: RpcDispatchContext = {
@@ -52,7 +53,7 @@ describe('search RPC domain', () => {
     dispatchRpc = registry.dispatchRpc
     configureServerSearchPort = port.configureServerSearchPort
     registry.resetRpcRegistryForTests()
-    dispose = domain.registerSearchRpcDomain()
+    dispose = registry.registerRouterHandlers(searchRouter, domain.searchRpcHandlers)
     missingError = domain.SEARCH_SERVER_RUNTIME_MISSING_ERROR
     executeSearch.mockClear()
   })

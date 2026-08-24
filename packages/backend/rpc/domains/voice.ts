@@ -54,11 +54,11 @@ import {
 import { getVoiceHostPorts } from '@onething/runtime/voice/host-ports.wiring'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { VoiceRuntimeState } from '@shared/ipc/voice.js'
-import { voiceRouter, type VoiceRoutes } from '@shared/ipc/voice.js'
+import type { VoiceRoutes } from '@shared/ipc/voice.js'
 import { getSettings } from '../../stores/settings.js'
 import { getOpenRouterTTSModels, transcribeUtterance } from '../../wiring/voice/providers.js'
 import { getVoiceService } from '../../wiring/voice/service.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 /** 逐字沿用被删掉的 server `voice` adapter 的那句话。 */
 const SERVER_VOICE_UNAVAILABLE_ERROR =
@@ -154,6 +154,3 @@ export const voiceRpcHandlers: RpcRouteHandlers<VoiceRoutes> = {
   },
 }
 
-export function registerVoiceRpcDomain(): () => void {
-  return registerRouterHandlers(voiceRouter, voiceRpcHandlers)
-}

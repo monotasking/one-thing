@@ -8,6 +8,7 @@
  *  2. 只有显式 resume（status:'active'）才 kick，改预算 / 改目标不许自己起跑。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { goalRouter } from '@shared/ipc/goal.js'
 
 const goals = vi.hoisted(() => ({
   getGoal: vi.fn(),
@@ -32,11 +33,14 @@ vi.mock('../../wiring/goals/file-changes.js', () => ({ collectGoalFileDiffs: goa
 const GOAL = { id: 'goal-1', objective: 'Ship it', status: 'active', createdAt: 100 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerGoalRpcDomain }] = await Promise.all([
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { goalRpcHandlers },
+  ] = await Promise.all([
     import('../registry.js'),
     import('../domains/goal.js'),
   ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerGoalRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, goalRpcHandlers }
 }
 
 describe('goal RPC domain', () => {
@@ -50,9 +54,9 @@ describe('goal RPC domain', () => {
     goals.clearGoal.mockReset()
     goals.kickGoalRunIfIdle.mockReset()
     goals.collectGoalFileDiffs.mockReset().mockResolvedValue([{ path: 'a.ts', added: 1, removed: 0 }])
-    const { resetRpcRegistryForTests, registerGoalRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, goalRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerGoalRpcDomain()
+    dispose = registerRouterHandlers(goalRouter, goalRpcHandlers)
   })
 
   afterEach(() => {

@@ -14,6 +14,7 @@ import {
   encodeSessionEventLine,
   type SessionEventRecord,
 } from '@onething/runtime/sessions/session-events'
+import { sessionEventsRouter } from '@shared/ipc/session-events.js'
 
 const paths = vi.hoisted(() => ({ sessionsDir: '' }))
 
@@ -124,12 +125,12 @@ function writeLog(): void {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerSessionEventsRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { sessionEventsRpcHandlers }] =
     await Promise.all([
       import('../registry.js'),
       import('../domains/session-events.js'),
     ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerSessionEventsRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, sessionEventsRpcHandlers }
 }
 
 describe('sessionEvents RPC domain', () => {
@@ -151,8 +152,8 @@ describe('sessionEvents RPC domain', () => {
   })
 
   it('list 交回整份日志,按 seq 升序', async () => {
-    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
-    unregister = registerSessionEventsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, sessionEventsRpcHandlers } = await loadDomain()
+    unregister = registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'sessionEvents',
@@ -166,8 +167,8 @@ describe('sessionEvents RPC domain', () => {
   })
 
   it('没有事件日志的会话交回空数组,而不是错误', async () => {
-    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
-    unregister = registerSessionEventsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, sessionEventsRpcHandlers } = await loadDomain()
+    unregister = registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'sessionEvents',
@@ -179,8 +180,8 @@ describe('sessionEvents RPC domain', () => {
   })
 
   it('inspectCall 把历史调用解析到「当时那份」schema,而不是今天那份', async () => {
-    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
-    unregister = registerSessionEventsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, sessionEventsRpcHandlers } = await loadDomain()
+    unregister = registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
 
     const older = await dispatchRpc({
       domain: 'sessionEvents',
@@ -213,8 +214,8 @@ describe('sessionEvents RPC domain', () => {
   })
 
   it('找不到 callId 时交回 null,不抛错', async () => {
-    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
-    unregister = registerSessionEventsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, sessionEventsRpcHandlers } = await loadDomain()
+    unregister = registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'sessionEvents',
@@ -226,8 +227,8 @@ describe('sessionEvents RPC domain', () => {
   })
 
   it('getTrace 把同一份日志装配成 run 树(老日志 = 合成组,runId 留空)', async () => {
-    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
-    unregister = registerSessionEventsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, sessionEventsRpcHandlers } = await loadDomain()
+    unregister = registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'sessionEvents',
@@ -252,8 +253,8 @@ describe('sessionEvents RPC domain', () => {
   })
 
   it('getTrace 的 run/last 过滤走同一棵树,totalRuns 说全量', async () => {
-    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
-    unregister = registerSessionEventsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, sessionEventsRpcHandlers } = await loadDomain()
+    unregister = registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'sessionEvents',
@@ -266,8 +267,8 @@ describe('sessionEvents RPC domain', () => {
   })
 
   it('getResponseText:没有 chunks 的老日志折出空正文,而不是编一段', async () => {
-    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
-    unregister = registerSessionEventsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, sessionEventsRpcHandlers } = await loadDomain()
+    unregister = registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'sessionEvents',
@@ -295,8 +296,8 @@ describe('sessionEvents RPC domain', () => {
       'utf8',
     )
 
-    const { dispatchRpc, registerSessionEventsRpcDomain } = await loadDomain()
-    unregister = registerSessionEventsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, sessionEventsRpcHandlers } = await loadDomain()
+    unregister = registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'sessionEvents',

@@ -24,12 +24,12 @@ import {
   listOnethingPermissionGrantsForIpc,
   revokeOnethingPermissionGrantForIpc,
 } from '@onething/runtime/permissions'
-import { permissionGrantsRouter, type PermissionGrantsRoutes } from '@shared/ipc/permission-grants.js'
+import type { PermissionGrantsRoutes } from '@shared/ipc/permission-grants.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import * as PermissionGrants from '../../wiring/permission/permission-grants.js'
 import { getSessionsList } from '../../stores/sessions.js'
 import { resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('ipc.permission')
@@ -186,7 +186,3 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
   },
 }
 
-/** 直接注册（域级测试用）；装配走 `app/rpc/index.ts` 的 feature 名册。 */
-export function registerPermissionGrantsRpcDomain(): () => void {
-  return registerRouterHandlers(permissionGrantsRouter, permissionGrantsRpcHandlers)
-}

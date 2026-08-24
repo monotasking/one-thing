@@ -11,6 +11,7 @@
  *  - 存储层报错时回的是 `{ success:false, error }`,而不是让 dispatcher 变成 `ok:false`。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { appStateRouter } from '@shared/ipc/app-state.js'
 
 const store = vi.hoisted(() => ({
   getAppState: vi.fn(),
@@ -35,9 +36,9 @@ const STATE = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerAppStateRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { appStateRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/app-state.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerAppStateRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, appStateRpcHandlers }
 }
 
 describe('app-state RPC domain', () => {
@@ -48,9 +49,9 @@ describe('app-state RPC domain', () => {
     storage.saveOnethingUiStateForIpc.mockReset().mockReturnValue({ success: true, state: STATE })
     paths.getOnethingAppStatePath.mockClear()
 
-    const { resetRpcRegistryForTests, registerAppStateRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, appStateRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerAppStateRpcDomain()
+    dispose = registerRouterHandlers(appStateRouter, appStateRpcHandlers)
   })
 
   afterEach(() => {

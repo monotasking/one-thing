@@ -11,6 +11,7 @@
  *  - `update` 回的是写完之后的 document(渲染侧靠它的 `version` 做回声抑制)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { scratchpadRouter } from '@shared/ipc/scratchpad.js'
 
 const scratchpad = vi.hoisted(() => ({
   readScratchpad: vi.fn(),
@@ -30,9 +31,9 @@ const DOC = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerScratchpadRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { scratchpadRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/scratchpad.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerScratchpadRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, scratchpadRpcHandlers }
 }
 
 describe('scratchpad RPC domain', () => {
@@ -44,9 +45,9 @@ describe('scratchpad RPC domain', () => {
     scratchpad.removeScratchpad.mockReset().mockResolvedValue(undefined)
     scratchpad.adoptScratchpad.mockReset().mockResolvedValue(undefined)
 
-    const { resetRpcRegistryForTests, registerScratchpadRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, scratchpadRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerScratchpadRpcDomain()
+    dispose = registerRouterHandlers(scratchpadRouter, scratchpadRpcHandlers)
   })
 
   afterEach(() => {

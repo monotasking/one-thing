@@ -7,6 +7,7 @@
  * 迁移后必须还是那一组调用、同样的参数、结果原样回传。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { promptsRouter } from '@shared/ipc/prompts.js'
 
 const store = vi.hoisted(() => ({
   listPrompts: vi.fn(),
@@ -29,11 +30,14 @@ const PROMPT = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerPromptsRpcDomain }] = await Promise.all([
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { promptsRpcHandlers },
+  ] = await Promise.all([
     import('../registry.js'),
     import('../domains/prompts.js'),
   ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerPromptsRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, promptsRpcHandlers }
 }
 
 describe('prompts RPC domain', () => {
@@ -45,9 +49,9 @@ describe('prompts RPC domain', () => {
     store.createPrompt.mockReset().mockReturnValue(PROMPT)
     store.updatePrompt.mockReset().mockReturnValue(PROMPT)
     store.deletePrompt.mockReset().mockReturnValue(true)
-    const { resetRpcRegistryForTests, registerPromptsRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, promptsRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerPromptsRpcDomain()
+    dispose = registerRouterHandlers(promptsRouter, promptsRpcHandlers)
   })
 
   afterEach(() => {

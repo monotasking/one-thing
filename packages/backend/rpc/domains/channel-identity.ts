@@ -11,16 +11,12 @@
  * 那层信封是渲染侧既有的消费形状,不是传输层能替它决定的东西。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import {
-  channelIdentityRouter,
-  type ChannelIdentityRoutes,
-} from '@shared/ipc/channel-identity.js'
+import type { ChannelIdentityRoutes } from '@shared/ipc/channel-identity.js'
 import {
   getChannelIdentityService,
   getChannelIdentityStore,
   identitySessionKey,
 } from '../../channel/index.js'
-import { registerRouterHandlers } from '../registry.js'
 
 function failure(error: unknown): { success: false; error: string } {
   return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -92,6 +88,3 @@ export const channelIdentityRpcHandlers: RouteHandlers<ChannelIdentityRoutes> = 
   },
 }
 
-export function registerChannelIdentityRpcDomain(): () => void {
-  return registerRouterHandlers(channelIdentityRouter, channelIdentityRpcHandlers)
-}

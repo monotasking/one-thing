@@ -67,7 +67,7 @@ import {
 } from '@onething/runtime/mcp/index.wiring'
 import { getMCPOAuthFlowManager } from '@onething/runtime/mcp/oauth/index'
 import type { MCPSettings } from '@shared/ipc/mcp.js'
-import { mcpRouter, type McpRoutes } from '@shared/ipc/mcp.js'
+import type { McpRoutes } from '@shared/ipc/mcp.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import {
   mergeRedactedMCPServerConfig,
@@ -76,7 +76,7 @@ import {
 } from '../../server/mcp-secrets.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.mcp')
 /** 投影层收的是鸭子 logger;`@main` 那份原来直接递 `console`,这里递受管的那只。 */
@@ -262,6 +262,3 @@ export const mcpRpcHandlers: RpcRouteHandlers<McpRoutes> = {
   },
 }
 
-export function registerMcpRpcDomain(): () => void {
-  return registerRouterHandlers(mcpRouter, mcpRpcHandlers)
-}

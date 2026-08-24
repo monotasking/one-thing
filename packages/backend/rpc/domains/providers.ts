@@ -16,7 +16,7 @@
  *    与第一批 `goal` 补齐 web 桩同类:顺带补齐,不是等价搬迁。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import { providersRouter, type ProvidersRoutes } from '@shared/ipc/providers.js'
+import type { ProvidersRoutes } from '@shared/ipc/providers.js'
 import { AIProvider } from '@shared/ipc/providers.js'
 import {
   getOnethingProviderUsage,
@@ -33,7 +33,6 @@ import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import { fetchCodexUsage } from '../../wiring/providers/builtin/codex.js'
 import { getAvailableProviders } from '../../wiring/providers/index.js'
 import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
-import { registerRouterHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('ipc.providers')
@@ -76,6 +75,3 @@ export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
   },
 }
 
-export function registerProvidersRpcDomain(): () => void {
-  return registerRouterHandlers(providersRouter, providersRpcHandlers)
-}

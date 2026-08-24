@@ -67,7 +67,7 @@ import {
 } from '@onething/runtime/settings'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { AppSettings, SaveSettingsRequest } from '@shared/ipc/settings.js'
-import { settingsRouter, type SettingsRoutes } from '@shared/ipc/settings.js'
+import type { SettingsRoutes } from '@shared/ipc/settings.js'
 import {
   mergeServerSettingsUpdate,
   sanitizeSettingsForClient,
@@ -85,7 +85,7 @@ import {
 import { testOnethingProxy } from '../../wiring/settings/proxy.js'
 import { getVoiceServiceSafe } from '../../wiring/voice/service.js'
 import { startTodoPlanWatcher } from '../../wiring/todo-plan/store.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.settings')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
@@ -169,6 +169,3 @@ export const settingsRpcHandlers: RpcRouteHandlers<SettingsRoutes> = {
   },
 }
 
-export function registerSettingsRpcDomain(): () => void {
-  return registerRouterHandlers(settingsRouter, settingsRpcHandlers)
-}

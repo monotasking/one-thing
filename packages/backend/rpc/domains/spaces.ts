@@ -23,7 +23,7 @@
  * 没有推送面,所以那条通道原样留在手写 IPC 上(`@main/ipc/spaces.ts`)。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import { spacesRouter, type SpacesRoutes } from '@shared/ipc/spaces.js'
+import type { SpacesRoutes } from '@shared/ipc/spaces.js'
 import {
   clearOnethingSpaceCredentialForIpc,
   createOnethingSpaceForIpc,
@@ -56,7 +56,6 @@ import {
   setSpaceProviderCredentialPoolForRequest,
 } from '../../wiring/providers/space-credentials.js'
 import { countSessionsInWorkspace } from '../../stores/sessions.js'
-import { registerRouterHandlers } from '../registry.js'
 
 /** 已登记判定。每个带 id 的方法都过这一关 —— 见文件头。 */
 function hasSpace(id: string): boolean {
@@ -168,6 +167,3 @@ export const spacesRpcHandlers: RouteHandlers<SpacesRoutes> = {
   },
 }
 
-export function registerSpacesRpcDomain(): () => void {
-  return registerRouterHandlers(spacesRouter, spacesRpcHandlers)
-}

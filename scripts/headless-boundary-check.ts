@@ -4711,8 +4711,6 @@ function checkAgentsDomainRidesTheRpcChannel(): void {
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
   const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
   const requiredDomainSymbols = [
-    'agentsRouter',
-    'registerRouterHandlers',
     'listOnethingAgentsForIpc',
     'createOnethingAgentFromRequestForIpc',
     'updateOnethingAgentFromRequestForIpc',
@@ -4735,11 +4733,12 @@ function checkAgentsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing agents RPC domain symbol ${symbol}`),
-    // 装配点从「逐域调 registerXRpcDomain()」换成了 feature 描述子
-    // (`{ id: 'rpc:agents', mount: ctx => ctx.registerRpcDomain(...) }`,K0/C0),
-    // 域函数本身还在 domains/agents.ts 里、也还有测试在用,只是 index 不再直接叫它。
-    // 认 handlers 名 —— 和 markdown / permissionGrants 两条同族规则一个口径。
-    ...(!registryIndexContent.includes('agentsRpcHandlers')
+    // 装配点是 feature 描述子(`{ id: 'rpc:agents', mount: ctx =>
+    // ctx.registerRpcDomain(agentsRouter, agentsRpcHandlers) }`,K0/C0)。域文件
+    // 本身只导出 handlers —— 每域那只「只有测试在用的注册包装」已随 S3 删掉
+    // (它长得像入口,生产却零调用)。所以「域上了通用面」的判据认
+    // **装配点上 router + handlers 成对出现**,而不是域文件里的绑定调用。
+    ...(!registryIndexContent.includes('agentsRouter, agentsRpcHandlers')
       ? [`${rel(registryIndexFile)}: agents domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -4768,8 +4767,6 @@ function checkPromptsDomainRidesTheRpcChannel(): void {
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
   const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
   const requiredDomainSymbols = [
-    'promptsRouter',
-    'registerRouterHandlers',
     'listOnethingPromptsForIpc',
     'getOnethingPromptForIpc',
     'createOnethingPromptForIpc',
@@ -4792,7 +4789,7 @@ function checkPromptsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing prompts RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('promptsRpcHandlers')
+    ...(!registryIndexContent.includes('promptsRouter, promptsRpcHandlers')
       ? [`${rel(registryIndexFile)}: prompts domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -4822,8 +4819,6 @@ function checkMarkdownDomainRidesTheRpcChannel(): void {
   const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
   const serverRuntimeContent = fs.existsSync(serverRuntimeFile) ? fs.readFileSync(serverRuntimeFile, 'utf-8') : ''
   const requiredDomainSymbols = [
-    'markdownRouter',
-    'registerRouterHandlers',
     'resolveRpcSandbox',
     'prepareMarkdownRequest',
     'clampResolvedAsset',
@@ -4859,7 +4854,7 @@ function checkMarkdownDomainRidesTheRpcChannel(): void {
     ...requiredGuardSymbols
       .filter(symbol => !guardContent.includes(symbol))
       .map(symbol => `${rel(guardFile)}: missing markdown workspace sandbox guard ${symbol}`),
-    ...(!registryIndexContent.includes('markdownRpcHandlers')
+    ...(!registryIndexContent.includes('markdownRouter, markdownRpcHandlers')
       ? [`${rel(registryIndexFile)}: markdown domain is not listed in the RPC assembly point`]
       : []),
     ...(/prepareServerMarkdownRequest|sanitizeServerMarkdownAsset/.test(serverRuntimeContent)
@@ -4887,8 +4882,6 @@ function checkPermissionGrantsDomainRidesTheRpcChannel(): void {
   const mainPermissionContent = fs.existsSync(mainPermissionFile) ? fs.readFileSync(mainPermissionFile, 'utf-8') : ''
   const serverRuntimeContent = fs.existsSync(serverRuntimeFile) ? fs.readFileSync(serverRuntimeFile, 'utf-8') : ''
   const requiredDomainSymbols = [
-    'permissionGrantsRouter',
-    'registerRouterHandlers',
     'resolveRpcSandbox',
     'listOnethingPermissionGrantsForIpc',
     'revokeOnethingPermissionGrantForIpc',
@@ -4911,7 +4904,7 @@ function checkPermissionGrantsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing permissionGrants RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('permissionGrantsRpcHandlers')
+    ...(!registryIndexContent.includes('permissionGrantsRouter, permissionGrantsRpcHandlers')
       ? [`${rel(registryIndexFile)}: permissionGrants domain is not listed in the RPC assembly point`]
       : []),
     // `resolveServerWorkspaceGrantRoot` 已随 P4c 第二批(skills 整域迁 router)一起删 ——
@@ -4949,8 +4942,6 @@ function checkPluginsDomainRidesTheRpcChannel(): void {
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
   const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
   const requiredDomainSymbols = [
-    'pluginsRouter',
-    'registerRouterHandlers',
     'listOnethingPluginsForIpc',
     'enableOnethingPluginForIpc',
     'disableOnethingPluginForIpc',
@@ -4981,7 +4972,7 @@ function checkPluginsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing plugins RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('pluginsRpcHandlers')
+    ...(!registryIndexContent.includes('pluginsRouter, pluginsRpcHandlers')
       ? [`${rel(registryIndexFile)}: plugins domain is not listed in the RPC assembly point`]
       : []),
     // 宿主件还在(它拿着两条注入 + 一条推送),但一行 handle / electron 都不许有。
@@ -5011,8 +5002,6 @@ function checkProvidersDomainRidesTheRpcChannel(): void {
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
   const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
   const requiredDomainSymbols = [
-    'providersRouter',
-    'registerRouterHandlers',
     'listOnethingProvidersForIpc',
     'getOnethingProviderUsage',
     'inspectOnethingProviderEnvStatusForIpc',
@@ -5033,7 +5022,7 @@ function checkProvidersDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing providers RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('providersRpcHandlers')
+    ...(!registryIndexContent.includes('providersRouter, providersRpcHandlers')
       ? [`${rel(registryIndexFile)}: providers domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -5058,8 +5047,6 @@ function checkModelsDomainRidesTheRpcChannel(): void {
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
   const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
   const requiredDomainSymbols = [
-    'modelsRouter',
-    'registerRouterHandlers',
     'getOnethingModelsWithCapabilities',
     'getAllOnethingModelRegistryModelsForIpc',
     'searchOnethingModelRegistryForIpc',
@@ -5083,7 +5070,7 @@ function checkModelsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing models RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('modelsRpcHandlers')
+    ...(!registryIndexContent.includes('modelsRouter, modelsRpcHandlers')
       ? [`${rel(registryIndexFile)}: models domain is not listed in the RPC assembly point`]
       : []),
   ]

@@ -17,10 +17,7 @@
  * 文件重新长出第二套 per-owner 分支。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import {
-  promptsRouter,
-  type PromptsRoutes,
-} from '@shared/ipc/prompts.js'
+import type { PromptsRoutes } from '@shared/ipc/prompts.js'
 import {
   createOnethingPromptForIpc,
   deleteOnethingPromptForIpc,
@@ -35,7 +32,6 @@ import {
   listPrompts,
   updatePrompt,
 } from '@onething/runtime/prompts/store-bound'
-import { registerRouterHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('ipc.prompts')
@@ -61,6 +57,3 @@ export const promptsRpcHandlers: RouteHandlers<PromptsRoutes> = {
   },
 }
 
-export function registerPromptsRpcDomain(): () => void {
-  return registerRouterHandlers(promptsRouter, promptsRpcHandlers)
-}

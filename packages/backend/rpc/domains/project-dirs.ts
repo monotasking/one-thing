@@ -33,10 +33,10 @@ import {
   updateOnethingProjectDirForIpc,
 } from '@onething/runtime/project-dirs'
 import { getProjectsStore } from '@onething/runtime/project-dirs/store'
-import { projectDirsRouter, type ProjectDirsRoutes } from '@shared/ipc/project-dirs.js'
+import type { ProjectDirsRoutes } from '@shared/ipc/project-dirs.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 /** 夹不住时的答案。逐字沿用 server 那份 —— 渲染层按 `code` 分支的地方不用改。 */
 const PATH_ERROR = {
@@ -117,6 +117,3 @@ export const projectDirsRpcHandlers: RpcRouteHandlers<ProjectDirsRoutes> = {
   },
 }
 
-export function registerProjectDirsRpcDomain(): () => void {
-  return registerRouterHandlers(projectDirsRouter, projectDirsRpcHandlers)
-}

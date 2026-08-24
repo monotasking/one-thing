@@ -7,6 +7,7 @@
  *    冒充成功（迁移前 server 给的就是这句实话）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 
 const store = vi.hoisted(() => ({
   canRevealTodoPlanDirectory: vi.fn(),
@@ -24,11 +25,14 @@ const SNAPSHOT = { directory: '/todo', userNotes: [], sessionId: 'session-1' }
 const DOCUMENT = { id: 'note-1', title: 'Today', content: '- [ ] Ship' }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerTodoPlanRpcDomain }] = await Promise.all([
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { todoPlanRpcHandlers },
+  ] = await Promise.all([
     import('../registry.js'),
     import('../domains/todo-plan.js'),
   ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerTodoPlanRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, todoPlanRpcHandlers }
 }
 
 describe('todo-plan RPC domain (data half only)', () => {
@@ -42,9 +46,9 @@ describe('todo-plan RPC domain (data half only)', () => {
     store.renameUserTodoNote.mockReset().mockResolvedValue(DOCUMENT)
     store.deleteUserTodoNote.mockReset().mockResolvedValue(undefined)
     store.revealTodoPlanDirectory.mockReset().mockResolvedValue(undefined)
-    const { resetRpcRegistryForTests, registerTodoPlanRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, todoPlanRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerTodoPlanRpcDomain()
+    dispose = registerRouterHandlers(todoPlanRouter, todoPlanRpcHandlers)
   })
 
   afterEach(() => {

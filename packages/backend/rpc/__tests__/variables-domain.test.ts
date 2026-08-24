@@ -13,6 +13,7 @@
  *  - `VariableError` 的 `code` 必须活着穿过传输面(渲染侧按 code 决定提示)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { variablesRouter } from '@shared/ipc/variables.js'
 
 const registry = vi.hoisted(() => ({
   list: vi.fn(),
@@ -25,9 +26,9 @@ vi.mock('@onething/runtime/variables/registry', () => ({
 }))
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerVariablesRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { variablesRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/variables.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerVariablesRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, variablesRpcHandlers }
 }
 
 describe('variables RPC domain', () => {
@@ -38,9 +39,9 @@ describe('variables RPC domain', () => {
     registry.set.mockReset().mockResolvedValue({ name: 'topic', value: 'x' })
     registry.delete.mockReset().mockResolvedValue(undefined)
 
-    const { resetRpcRegistryForTests, registerVariablesRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, variablesRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerVariablesRpcDomain()
+    dispose = registerRouterHandlers(variablesRouter, variablesRpcHandlers)
   })
 
   afterEach(() => {

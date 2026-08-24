@@ -12,7 +12,7 @@
  * 迁完收敛成 `<store>` 下的单库,旧的 `owners/<uid>/<wid>/` 设置不会自动搬家。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import { modelsRouter, type ModelsRoutes } from '@shared/ipc/providers.js'
+import type { ModelsRoutes } from '@shared/ipc/providers.js'
 import { AIProvider } from '@shared/ipc/providers.js'
 import type { OpenRouterModel, ProviderConfig } from '@shared/ipc/providers.js'
 import { createAgentProviderFromRuntime } from '../../wiring/agent-loop/providers/factory.js'
@@ -33,7 +33,6 @@ import { fetchCopilotModels } from '../../wiring/providers/builtin/github-copilo
 import { fetchCodexModels, getCodexFallbackModels } from '../../wiring/providers/builtin/codex.js'
 import * as modelRegistry from '../../wiring/providers/model-registry.js'
 import { getSettings } from '../../stores/settings.js'
-import { registerRouterHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('ipc.models')
@@ -150,6 +149,3 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
   },
 }
 
-export function registerModelsRpcDomain(): () => void {
-  return registerRouterHandlers(modelsRouter, modelsRpcHandlers)
-}

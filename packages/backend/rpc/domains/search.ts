@@ -29,15 +29,14 @@ import {
 } from '@onething/runtime/search'
 import { executeSearch } from '../../wiring/search/providers.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import {
-  searchRouter,
-  type SearchRequest,
-  type SearchResponse,
-  type SearchResult,
-  type SearchRoutes,
+import type {
+  SearchRequest,
+  SearchResponse,
+  SearchResult,
+  SearchRoutes,
 } from '@shared/ipc/search.js'
 import { getServerSearchPort } from '../../server/search-providers.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 /**
  * http 上这台进程没有 server 运行时时的那一句。
@@ -69,6 +68,3 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
   },
 }
 
-export function registerSearchRpcDomain(): () => void {
-  return registerRouterHandlers(searchRouter, searchRpcHandlers)
-}

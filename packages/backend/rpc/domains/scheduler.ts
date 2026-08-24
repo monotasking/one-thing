@@ -37,7 +37,7 @@ import {
   setOnethingSchedulerTaskEnabledForIpc,
   updateOnethingUserSchedulerTaskForIpc,
 } from '@onething/runtime/scheduler'
-import { schedulerRouter, type SchedulerRoutes } from '@shared/ipc/scheduler.js'
+import type { SchedulerRoutes } from '@shared/ipc/scheduler.js'
 import type {
   SchedulerRunDetailDTO,
   SchedulerRunRecordDTO,
@@ -59,7 +59,6 @@ import {
   setUserSchedulerTaskEnabled,
   updateUserSchedulerTask,
 } from '../../wiring/scheduler/user-tasks.js'
-import { registerRouterHandlers } from '../registry.js'
 
 const log = getLogger('rpc.scheduler')
 /** 旧线传的是裸 `console`;结构化 logger 的鸭子端口替身(area ① 统一后删)。 */
@@ -159,6 +158,3 @@ export const schedulerRpcHandlers: RouteHandlers<SchedulerRoutes> = {
   },
 }
 
-export function registerSchedulerRpcDomain(): () => void {
-  return registerRouterHandlers(schedulerRouter, schedulerRpcHandlers)
-}

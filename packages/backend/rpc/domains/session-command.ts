@@ -55,18 +55,14 @@
 import { emitCoreSessionCommandForIpc } from '@onething/core/events'
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import type { SessionCommand } from '@shared/events/index.js'
-import {
-  sessionCommandRouter,
-  type SessionCommandEmitResult,
-  type SessionCommandRoutes,
-} from '@shared/ipc/session-command.js'
+import type { SessionCommandEmitResult, SessionCommandRoutes } from '@shared/ipc/session-command.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sanitizeRendererOrigin } from '../../channel/index.js'
 import { getEventBus } from '../../events/index.js'
 import { getStreamEngine } from '../../wiring/engine/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.session-command')
 /** 旧线传的是裸 `console`;结构化 logger 的鸭子端口替身(area ① 统一后删)。 */
@@ -216,6 +212,3 @@ export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> =
   },
 }
 
-export function registerSessionCommandRpcDomain(): () => void {
-  return registerRouterHandlers(sessionCommandRouter, sessionCommandRpcHandlers)
-}

@@ -53,7 +53,7 @@ import {
   updateOnethingMessageThinkingTimeForIpc,
 } from '@onething/runtime/sessions'
 import { emitCoreSessionEventSafely } from '@onething/core/events'
-import { chatRouter, type ChatRoutes } from '@shared/ipc/chat.js'
+import type { ChatRoutes } from '@shared/ipc/chat.js'
 import * as store from '../../store.js'
 import { getEventBus } from '../../events/index.js'
 import { abortCollabRoomTurnForStop } from '../../wiring/collab/index.js'
@@ -70,7 +70,7 @@ import {
   isProviderSupported,
 } from '../../wiring/providers/index.js'
 import { billTitleUsage } from '../../wiring/usage/bill-side-line.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.chat')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */
@@ -197,6 +197,3 @@ export const chatRpcHandlers: RpcRouteHandlers<ChatRoutes> = {
   },
 }
 
-export function registerChatRpcDomain(): () => void {
-  return registerRouterHandlers(chatRouter, chatRpcHandlers)
-}

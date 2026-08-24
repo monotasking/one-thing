@@ -30,10 +30,9 @@ import {
   clearOnethingPermissionSessionForIpc,
   getOnethingPendingPermissionsForIpc,
 } from '@onething/runtime/permissions'
-import { permissionRouter, type PermissionRoutes } from '@shared/ipc/permissions.js'
+import type { PermissionRoutes } from '@shared/ipc/permissions.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
-import { registerRouterHandlers } from '../registry.js'
 
 const log = getLogger('rpc.permission')
 /** 旧线传的是裸 `console`;结构化 logger 的鸭子端口替身(area ① 统一后删)。 */
@@ -59,6 +58,3 @@ export const permissionRpcHandlers: RouteHandlers<PermissionRoutes> = {
   },
 }
 
-export function registerPermissionRpcDomain(): () => void {
-  return registerRouterHandlers(permissionRouter, permissionRpcHandlers)
-}

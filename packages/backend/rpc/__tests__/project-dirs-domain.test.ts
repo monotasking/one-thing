@@ -12,6 +12,7 @@
  *  - 出错时回 `{ success:false, error, code }`,而不是让 dispatcher 变成 `ok:false`。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
 
 const stores = vi.hoisted(() => {
   const store = {
@@ -38,9 +39,9 @@ const PROJECT = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerProjectDirsRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { projectDirsRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/project-dirs.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerProjectDirsRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, projectDirsRpcHandlers }
 }
 
 describe('project-dirs RPC domain', () => {
@@ -54,9 +55,9 @@ describe('project-dirs RPC domain', () => {
     stores.store.update.mockReset().mockReturnValue(PROJECT)
     stores.store.remove.mockReset().mockReturnValue(true)
 
-    const { resetRpcRegistryForTests, registerProjectDirsRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, projectDirsRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerProjectDirsRpcDomain()
+    dispose = registerRouterHandlers(projectDirsRouter, projectDirsRpcHandlers)
   })
 
   afterEach(() => {

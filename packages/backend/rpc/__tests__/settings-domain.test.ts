@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mergeWithDefaults } from '@shared/defaults/settings.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import { SERVER_REDACTED_SECRET } from '../../server/mcp-secrets.js'
+import { settingsRouter } from '@shared/ipc/settings.js'
 
 const store = vi.hoisted(() => ({
   current: null as unknown as AppSettings,
@@ -108,8 +109,8 @@ describe('settings RPC domain', () => {
   })
 
   it('serves the desktop settings verbatim and redacts only for http callers', async () => {
-    const { dispatchRpc, registerSettingsRpcDomain } = await loadDomain()
-    dispose = registerSettingsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, settingsRpcHandlers } = await loadDomain()
+    dispose = registerRouterHandlers(settingsRouter, settingsRpcHandlers)
 
     const desktop = unwrap(await dispatchRpc({ domain: 'settings', method: 'getSettings', payload: {} }))
     expect(desktop.success).toBe(true)
@@ -126,7 +127,8 @@ describe('settings RPC domain', () => {
   it('runs the save side-effect chain and broadcasts the normalized settings', async () => {
     const {
       dispatchRpc,
-      registerSettingsRpcDomain,
+      registerRouterHandlers,
+      settingsRpcHandlers,
       configureSettingsHost,
       configureSettingsEventBroadcaster,
     } = await loadDomain()
@@ -135,7 +137,7 @@ describe('settings RPC domain', () => {
     configureSettingsHost({ applyNetworkProxySettings, registerGlobalWindowShortcuts })
     const broadcast = vi.fn()
     configureSettingsEventBroadcaster(broadcast)
-    dispose = registerSettingsRpcDomain()
+    dispose = registerRouterHandlers(settingsRouter, settingsRpcHandlers)
 
     const next = mergeWithDefaults({ theme: 'light' })
     const result = unwrap(await dispatchRpc({
@@ -163,11 +165,11 @@ describe('settings RPC domain', () => {
   })
 
   it('excludes the calling window from the settings broadcast', async () => {
-    const { dispatchRpc, registerSettingsRpcDomain, configureSettingsEventBroadcaster } =
+    const { dispatchRpc, registerRouterHandlers, settingsRpcHandlers, configureSettingsEventBroadcaster } =
       await loadDomain()
     const broadcast = vi.fn()
     configureSettingsEventBroadcaster(broadcast)
-    dispose = registerSettingsRpcDomain()
+    dispose = registerRouterHandlers(settingsRouter, settingsRpcHandlers)
 
     // 桌面壳(`@main/ipc/rpc.ts`)从 `event.sender.id` 铸进来的那一格。
     await dispatchRpc(
@@ -193,8 +195,8 @@ describe('settings RPC domain', () => {
   })
 
   it('merges redacted secrets back before saving an http caller payload', async () => {
-    const { dispatchRpc, registerSettingsRpcDomain } = await loadDomain()
-    dispose = registerSettingsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, settingsRpcHandlers } = await loadDomain()
+    dispose = registerRouterHandlers(settingsRouter, settingsRpcHandlers)
 
     // 浏览器拿到的是脱敏那份;它只改主题就交回来。
     const sanitized = unwrap(await dispatchRpc(
@@ -216,8 +218,8 @@ describe('settings RPC domain', () => {
   })
 
   it('reads the system theme from the host port and falls back to light', async () => {
-    const { dispatchRpc, registerSettingsRpcDomain, configureSettingsHost } = await loadDomain()
-    dispose = registerSettingsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, settingsRpcHandlers, configureSettingsHost } = await loadDomain()
+    dispose = registerRouterHandlers(settingsRouter, settingsRpcHandlers)
 
     expect(unwrap(await dispatchRpc({ domain: 'settings', method: 'getSystemTheme', payload: {} })))
       .toEqual({ success: true, theme: 'light' })
@@ -228,8 +230,8 @@ describe('settings RPC domain', () => {
   })
 
   it('rejects a disabled proxy without reaching the network', async () => {
-    const { dispatchRpc, registerSettingsRpcDomain } = await loadDomain()
-    dispose = registerSettingsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, settingsRpcHandlers } = await loadDomain()
+    dispose = registerRouterHandlers(settingsRouter, settingsRpcHandlers)
 
     expect(unwrap(await dispatchRpc({
       domain: 'settings',
@@ -239,8 +241,8 @@ describe('settings RPC domain', () => {
   })
 
   it('refuses a method that is not on the router', async () => {
-    const { dispatchRpc, registerSettingsRpcDomain } = await loadDomain()
-    dispose = registerSettingsRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, settingsRpcHandlers } = await loadDomain()
+    dispose = registerRouterHandlers(settingsRouter, settingsRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'settings',

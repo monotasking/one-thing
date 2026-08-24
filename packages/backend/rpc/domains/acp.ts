@@ -39,10 +39,10 @@ import {
   updateOnethingACPAgentForIpc,
 } from '@onething/runtime/acp'
 import type { ACPSettings } from '@shared/ipc/acp.js'
-import { acpRouter, type AcpRoutes } from '@shared/ipc/acp.js'
+import type { AcpRoutes } from '@shared/ipc/acp.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.acp')
 /** 投影层收的是鸭子 logger;`@main` 那份原来直接递 `console`,这里递受管的那只。 */
@@ -127,6 +127,3 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
   },
 }
 
-export function registerAcpRpcDomain(): () => void {
-  return registerRouterHandlers(acpRouter, acpRpcHandlers)
-}

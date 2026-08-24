@@ -14,15 +14,16 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GatewayStatus } from '@shared/ipc/gateway.js'
+import { gatewayRouter } from '@shared/ipc/gateway.js'
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerGatewayRpcDomain }, ports]
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { gatewayRpcHandlers }, ports]
     = await Promise.all([
       import('../registry.js'),
       import('../domains/gateway.js'),
       import('../../wiring/gateway/host-ports.js'),
     ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerGatewayRpcDomain, ports }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, gatewayRpcHandlers, ports }
 }
 
 function status(overrides: Partial<GatewayStatus> = {}): GatewayStatus {
@@ -44,7 +45,7 @@ describe('gateway RPC domain', () => {
     api = await loadDomain()
     api.resetRpcRegistryForTests()
     api.ports.configureGatewayHost({})
-    dispose = api.registerGatewayRpcDomain()
+    dispose = api.registerRouterHandlers(gatewayRouter, api.gatewayRpcHandlers)
   })
 
   afterEach(() => {

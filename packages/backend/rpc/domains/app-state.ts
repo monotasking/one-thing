@@ -22,12 +22,11 @@
  */
 import type { RouteHandlers } from '@onething/core/ipc'
 import { saveOnethingUiStateForIpc, type OnethingUiStatePatch } from '@onething/runtime/storage'
-import { appStateRouter, type AppStateRoutes } from '@shared/ipc/app-state.js'
+import type { AppStateRoutes } from '@shared/ipc/app-state.js'
 import { getAppState } from '../../stores/app-state.js'
 import {
   getOnethingAppStatePath,
 } from '@onething/runtime/storage'
-import { registerRouterHandlers } from '../registry.js'
 
 export const appStateRpcHandlers: RouteHandlers<AppStateRoutes> = {
   async get() {
@@ -41,6 +40,3 @@ export const appStateRpcHandlers: RouteHandlers<AppStateRoutes> = {
   },
 }
 
-export function registerAppStateRpcDomain(): () => void {
-  return registerRouterHandlers(appStateRouter, appStateRpcHandlers)
-}

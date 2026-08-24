@@ -9,13 +9,12 @@
  * server's `/api/usage/*` routes: one implementation, both hosts.
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import { usageRouter, type UsageRoutes } from '@shared/ipc/usage.js'
+import type { UsageRoutes } from '@shared/ipc/usage.js'
 import {
   getSessionUsageTotal,
   getUsageLedger,
   getUsageSummaryWithProjects,
 } from '../../wiring/usage/index.js'
-import { registerRouterHandlers } from '../registry.js'
 
 /**
  * The envelope carries whatever the caller sent — on the server that is the
@@ -39,6 +38,3 @@ export const usageRpcHandlers: RouteHandlers<UsageRoutes> = {
   },
 }
 
-export function registerUsageRpcDomain(): () => void {
-  return registerRouterHandlers(usageRouter, usageRpcHandlers)
-}

@@ -7,6 +7,7 @@
  * `ChannelIdentityStore`。两本账。所以这里守的是:**每个方法都落到那一个 store 上**。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
 
 const channel = vi.hoisted(() => ({
   store: {
@@ -40,11 +41,14 @@ const LINK = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerChannelIdentityRpcDomain }] = await Promise.all([
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { channelIdentityRpcHandlers },
+  ] = await Promise.all([
     import('../registry.js'),
     import('../domains/channel-identity.js'),
   ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerChannelIdentityRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, channelIdentityRpcHandlers }
 }
 
 describe('channelIdentity RPC domain', () => {
@@ -60,9 +64,9 @@ describe('channelIdentity RPC domain', () => {
     channel.store.listDeliveries.mockReset().mockReturnValue([])
     channel.service.resolveOrigin.mockReset()
     channel.identitySessionKey.mockReset()
-    const { resetRpcRegistryForTests, registerChannelIdentityRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, channelIdentityRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerChannelIdentityRpcDomain()
+    dispose = registerRouterHandlers(channelIdentityRouter, channelIdentityRpcHandlers)
   })
 
   afterEach(() => {

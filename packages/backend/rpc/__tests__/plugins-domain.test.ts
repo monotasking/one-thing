@@ -18,6 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
+import { pluginsRouter } from '@shared/ipc/plugins.js'
 
 const IPC: RpcDispatchContext = { transport: 'ipc', callerId: 7 }
 const HTTP: RpcDispatchContext = {
@@ -146,7 +147,7 @@ describe('plugins RPC domain', () => {
     ])
     dispatchRpc = registry.dispatchRpc
     registry.resetRpcRegistryForTests()
-    dispose = domain.registerPluginsRpcDomain()
+    dispose = registry.registerRouterHandlers(pluginsRouter, domain.pluginsRpcHandlers)
     configurePluginsHost = hostPorts.configurePluginsHost
     configureProgress = events.configurePluginRequestProgressBroadcaster
     configurePluginsHost({})

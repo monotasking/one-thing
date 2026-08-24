@@ -11,7 +11,7 @@
  * 事件下行的收敛是主线 T2 的事。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import { goalRouter, type GoalRoutes } from '@shared/ipc/goal.js'
+import type { GoalRoutes } from '@shared/ipc/goal.js'
 import type { SessionGoal } from '@shared/ipc/goal.js'
 import { collectGoalFileDiffs } from '../../wiring/goals/file-changes.js'
 import {
@@ -22,7 +22,6 @@ import {
   updateGoalFromUser,
 } from '../../wiring/goals/index.js'
 import { kickGoalRunIfIdle } from '../../wiring/goals/kick.js'
-import { registerRouterHandlers } from '../registry.js'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -105,6 +104,3 @@ export const goalRpcHandlers: RouteHandlers<GoalRoutes> = {
   },
 }
 
-export function registerGoalRpcDomain(): () => void {
-  return registerRouterHandlers(goalRouter, goalRpcHandlers)
-}

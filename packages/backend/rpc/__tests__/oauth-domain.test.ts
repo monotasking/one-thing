@@ -15,6 +15,7 @@
  *    直接调 Electron 广播),于是桌面窗口与 web 的 SSE 收到的是同一次事件。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { oauthRouter } from '@shared/ipc/oauth.js'
 
 const authService = vi.hoisted(() => ({
   start: vi.fn(),
@@ -44,9 +45,9 @@ const HTTP_CONTEXT = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerOAuthRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { oauthRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/oauth.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerOAuthRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, oauthRpcHandlers }
 }
 
 describe('oauth RPC domain', () => {
@@ -71,9 +72,9 @@ describe('oauth RPC domain', () => {
     shell.openExternal.mockReset().mockResolvedValue({ success: true })
     events.notifyOAuthTokenExpired.mockReset()
 
-    const { resetRpcRegistryForTests, registerOAuthRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, oauthRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerOAuthRpcDomain()
+    dispose = registerRouterHandlers(oauthRouter, oauthRpcHandlers)
   })
 
   afterEach(() => {

@@ -30,8 +30,7 @@ import {
   setOnethingVariableForIpc,
 } from '@onething/runtime/variables'
 import { getVariableRegistry } from '@onething/runtime/variables/registry'
-import { variablesRouter, type VariablesRoutes } from '@shared/ipc/variables.js'
-import { registerRouterHandlers } from '../registry.js'
+import type { VariablesRoutes } from '@shared/ipc/variables.js'
 
 export const variablesRpcHandlers: RouteHandlers<VariablesRoutes> = {
   async list(request) {
@@ -55,6 +54,3 @@ export const variablesRpcHandlers: RouteHandlers<VariablesRoutes> = {
   },
 }
 
-export function registerVariablesRpcDomain(): () => void {
-  return registerRouterHandlers(variablesRouter, variablesRpcHandlers)
-}

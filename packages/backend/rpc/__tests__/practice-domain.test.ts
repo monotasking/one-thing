@@ -12,6 +12,7 @@
  *  - `setConfig` 把整个请求(`{ config }`)原样递给写配置函数,不在传输面拆包。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { practiceRouter } from '@shared/ipc/practice.js'
 
 const practice = vi.hoisted(() => ({
   startPractice: vi.fn(),
@@ -36,11 +37,14 @@ const CONFIG = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerPracticeRpcDomain }] = await Promise.all([
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { practiceRpcHandlers },
+  ] = await Promise.all([
     import('../registry.js'),
     import('../domains/practice.js'),
   ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerPracticeRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, practiceRpcHandlers }
 }
 
 describe('practice RPC domain', () => {
@@ -57,9 +61,9 @@ describe('practice RPC domain', () => {
     practice.getRecentPracticeRecords.mockReset().mockResolvedValue([{ id: 'r1' }])
     practice.readPracticeConfig.mockReset().mockResolvedValue(CONFIG)
     practice.writePracticeConfig.mockReset().mockResolvedValue(CONFIG)
-    const { resetRpcRegistryForTests, registerPracticeRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, practiceRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerPracticeRpcDomain()
+    dispose = registerRouterHandlers(practiceRouter, practiceRpcHandlers)
   })
 
   afterEach(() => {

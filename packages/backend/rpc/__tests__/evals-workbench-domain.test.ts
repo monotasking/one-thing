@@ -14,6 +14,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcResponse } from '@shared/ipc/rpc.js'
+import { evalsWorkbenchRouter } from '@shared/ipc/evals-workbench.js'
 
 const incidentDirs = vi.hoisted(() => ({ root: '' }))
 const runtime = vi.hoisted(() => ({
@@ -75,7 +76,7 @@ describe('evalsWorkbench RPC domain', () => {
     configureEvalsHost = ports.configureEvalsHost
     registry.resetRpcRegistryForTests()
     domain.resetEvalsWorkbenchOpsForTests()
-    dispose = domain.registerEvalsWorkbenchRpcDomain()
+    dispose = registry.registerRouterHandlers(evalsWorkbenchRouter, domain.evalsWorkbenchRpcHandlers)
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'evals-wb-'))
     incidentDirs.root = tmpDir
     // 打包态 + 设置里没配 = 没有 repoDir(晋升那条要的就是这个分支)

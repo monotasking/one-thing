@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
+import { filesRouter } from '@shared/ipc/files.js'
 
 const ripgrep = vi.hoisted(() => ({ listFiles: vi.fn() }))
 const shell = vi.hoisted(() => ({ revealPath: vi.fn() }))
@@ -66,7 +67,7 @@ describe('files RPC domain', () => {
       ])
     dispatchRpc = registry.dispatchRpc
     registry.resetRpcRegistryForTests()
-    dispose = domain.registerFilesRpcDomain()
+    dispose = registry.registerRouterHandlers(filesRouter, domain.filesRpcHandlers)
 
     resetVariablesStoreForTests().hydrateForTests({
       ...createDefaultVariablesFile(),

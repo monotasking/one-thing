@@ -20,6 +20,7 @@
  *    所以本域没有按 transport 分叉的护栏。
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { acpRouter } from '@shared/ipc/acp.js'
 
 const manager = vi.hoisted(() => ({
   updateSettings: vi.fn(),
@@ -49,9 +50,9 @@ const AGENT = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerAcpRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { acpRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/acp.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerAcpRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers }
 }
 
 describe('acp RPC domain', () => {
@@ -77,9 +78,9 @@ describe('acp RPC domain', () => {
   })
 
   it('exposes exactly the eight acp methods and refuses anything else', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerAcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerAcpRpcDomain()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
 
     const unknown = await dispatchRpc({ domain: 'acp', method: 'streamPrompt', payload: {} })
     expect(unknown.ok).toBe(false)
@@ -105,9 +106,9 @@ describe('acp RPC domain', () => {
   })
 
   it('projects the agent list off the live manager', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerAcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerAcpRpcDomain()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
     manager.getAgentStates.mockReturnValue([{ config: AGENT, status: 'disconnected' }])
 
     const response = await dispatchRpc({ domain: 'acp', method: 'getAgents', payload: {} })
@@ -121,9 +122,9 @@ describe('acp RPC domain', () => {
   })
 
   it('persists a new agent and hands the same settings to the manager', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerAcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerAcpRpcDomain()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
     settings.getSettings.mockReturnValue({ acp: { enabled: true, agents: [] } })
 
     const response = await dispatchRpc({
@@ -143,9 +144,9 @@ describe('acp RPC domain', () => {
   })
 
   it('removes an agent through the settings cache', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerAcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerAcpRpcDomain()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'acp',
@@ -161,9 +162,9 @@ describe('acp RPC domain', () => {
   })
 
   it('connects / disconnects / cancels through the real manager', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerAcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerAcpRpcDomain()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
 
     const connected = await dispatchRpc({
       domain: 'acp',
@@ -188,9 +189,9 @@ describe('acp RPC domain', () => {
   })
 
   it('reports a manager failure as a structured error, not a thrown dispatch', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerAcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerAcpRpcDomain()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
     manager.connectAgent.mockRejectedValue(new Error('ACP agent "ghost" not found'))
 
     const response = await dispatchRpc({

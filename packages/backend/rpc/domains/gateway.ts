@@ -35,9 +35,9 @@
  * 全仓没有 `GATEWAY_*_CHANGED` 一类的通道,所以 `apps/electron/src/main/ipc/gateway.ts`
  * 整只删掉(不像 oauth 还要留一层广播注入)。状态刷新靠调用方轮询 `getStatus`。
  */
-import { gatewayRouter, type GatewayRoutes } from '@shared/ipc/gateway.js'
+import type { GatewayRoutes } from '@shared/ipc/gateway.js'
 import { getGatewayHost } from '../../wiring/gateway/host-ports.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 export const gatewayRpcHandlers: RpcRouteHandlers<GatewayRoutes> = {
   async getStatus() {
@@ -66,6 +66,3 @@ export const gatewayRpcHandlers: RpcRouteHandlers<GatewayRoutes> = {
   },
 }
 
-export function registerGatewayRpcDomain(): () => void {
-  return registerRouterHandlers(gatewayRouter, gatewayRpcHandlers)
-}

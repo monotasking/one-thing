@@ -24,6 +24,7 @@ import type {
   CollabRoomRevokeLeaseResult,
   CollabRoomUpdatePatch,
 } from '@shared/ipc/collab.js'
+import { collabRouter } from '@shared/ipc/collab.js'
 
 const mocks = vi.hoisted(() => ({
   loadCollabBoard: vi.fn(() => ({ version: 1, tasks: [] }) as unknown),
@@ -73,11 +74,14 @@ vi.mock('../../wiring/collab/index.js', () => ({
 const EMPTY_BOARD = { version: 1, tasks: [] }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerCollabRpcDomain }] = await Promise.all([
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { collabRpcHandlers },
+  ] = await Promise.all([
     import('../registry.js'),
     import('../domains/collab.js'),
   ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerCollabRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, collabRpcHandlers }
 }
 
 /** 一次调用 = 一个信封;成功时把 `data` 剥出来,断言写起来和从前一模一样。 */
@@ -106,9 +110,9 @@ beforeEach(async () => {
   mocks.applyUserCollabBoardAction.mockResolvedValue({ success: true, board: EMPTY_BOARD })
   mocks.clearCollabRoomHistory.mockResolvedValue({ success: true, clearedMessageCount: 3 })
   mocks.revokeCollabRoomLease.mockResolvedValue({ ok: true, revoked: true })
-  const { resetRpcRegistryForTests, registerCollabRpcDomain } = await loadDomain()
+  const { resetRpcRegistryForTests, registerRouterHandlers, collabRpcHandlers } = await loadDomain()
   resetRpcRegistryForTests()
-  dispose = registerCollabRpcDomain()
+  dispose = registerRouterHandlers(collabRouter, collabRpcHandlers)
 })
 
 afterEach(() => {

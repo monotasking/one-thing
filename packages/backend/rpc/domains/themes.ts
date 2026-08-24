@@ -32,13 +32,13 @@
  */
 import { getShellHost } from '@onething/runtime/shell/host-ports'
 import { defaultOnethingThemeRuntime } from '@onething/runtime/themes/theme-runtime'
-import { themesRouter, type ThemesRoutes } from '@shared/ipc/themes.js'
+import type { ThemesRoutes } from '@shared/ipc/themes.js'
 import { getPluginSkinTiers } from '../../wiring/plugins/skin.js'
 import {
   getPluginThemeKnobVariables,
   getPluginThemeOverrideTokenValues,
 } from '../../wiring/plugins/theme-overrides.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 export const themesRpcHandlers: RpcRouteHandlers<ThemesRoutes> = {
   async getAll() {
@@ -95,6 +95,3 @@ export const themesRpcHandlers: RpcRouteHandlers<ThemesRoutes> = {
   },
 }
 
-export function registerThemesRpcDomain(): () => void {
-  return registerRouterHandlers(themesRouter, themesRpcHandlers)
-}

@@ -19,6 +19,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureShellHost } from '@onething/runtime/shell/host-ports'
+import { skillsRouter } from '@shared/ipc/skills.js'
 
 const settings = vi.hoisted(() => ({
   getSettings: vi.fn(),
@@ -58,9 +59,9 @@ const SKILL = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerSkillsRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { skillsRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/skills.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerSkillsRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, skillsRpcHandlers }
 }
 
 describe('skills RPC domain', () => {
@@ -77,9 +78,9 @@ describe('skills RPC domain', () => {
     // 每个用例从「没有宿主」起步 —— server / CLI 的现实。
     configureShellHost({})
 
-    const { resetRpcRegistryForTests, registerSkillsRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, skillsRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerSkillsRpcDomain()
+    dispose = registerRouterHandlers(skillsRouter, skillsRpcHandlers)
   })
 
   afterEach(() => {

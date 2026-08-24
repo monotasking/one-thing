@@ -34,11 +34,7 @@
  * 请求/响应面。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import {
-  collabRouter,
-  type CollabRoutes,
-  type CollabSchedulerLogEntry,
-} from '@shared/ipc/collab.js'
+import type { CollabRoutes, CollabSchedulerLogEntry } from '@shared/ipc/collab.js'
 import { loadCollabBoard } from '../../wiring/collab/board-store.js'
 import {
   applyUserCollabBoardAction,
@@ -57,7 +53,6 @@ import {
   stopCollabTaskWork,
   type CollabSchedulerLogTailOptions,
 } from '../../wiring/collab/index.js'
-import { registerRouterHandlers } from '../registry.js'
 
 /** 时间轴过滤的类型表属主在纯层;这里只是把 wire 上那串裸字符串接回去。 */
 type CollabSchedulerLogTailTypes = NonNullable<CollabSchedulerLogTailOptions['types']>
@@ -264,6 +259,3 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
   },
 }
 
-export function registerCollabRpcDomain(): () => void {
-  return registerRouterHandlers(collabRouter, collabRpcHandlers)
-}

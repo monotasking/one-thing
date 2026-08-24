@@ -9,16 +9,12 @@
  * 事件日志是 append-only 的纯文件,一份索引就是第二份可能说谎的事实。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import {
-  sessionEventsRouter,
-  type SessionEventsRoutes,
-} from '@shared/ipc/session-events.js'
+import type { SessionEventsRoutes } from '@shared/ipc/session-events.js'
 import { resolveToolCallInspection } from '@onething/runtime/sessions/session-events'
 import { readSessionEvents } from '../../session/event-log.js'
 // 路径消毒的那道门与轨迹读实现同住一处:S3 之前它是本文件的私有函数,而 S3 把
 // 调用点从 2 个变成 4 个 —— 一道安全门有两份拷贝,迟早只改其中一份。
 import { isSafeSessionId, readSessionTrace, readSessionTraceResponseText } from '../../session/trace.js'
-import { registerRouterHandlers } from '../registry.js'
 
 export const sessionEventsRpcHandlers: RouteHandlers<SessionEventsRoutes> = {
   async list(request) {
@@ -57,6 +53,3 @@ export const sessionEventsRpcHandlers: RouteHandlers<SessionEventsRoutes> = {
   },
 }
 
-export function registerSessionEventsRpcDomain(): () => void {
-  return registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
-}

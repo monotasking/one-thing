@@ -14,6 +14,7 @@
  *  - `runtimeReady` 的发起窗改由 `runtimeWindow.getWebContents` 端口指认。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { voiceRouter } from '@shared/ipc/voice.js'
 
 const service = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -94,8 +95,8 @@ describe('voice RPC domain', () => {
   })
 
   it('forwards the desktop calls straight to the voice service', async () => {
-    const { dispatchRpc, registerVoiceRpcDomain } = await loadDomain()
-    dispose = registerVoiceRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'getState', payload: {} })))
       .toEqual({ success: true, state: expect.objectContaining({ status: 'idle' }) })
@@ -115,8 +116,8 @@ describe('voice RPC domain', () => {
   })
 
   it('keeps the PCM uplink off the router (one-way channel, 拍板 #10)', async () => {
-    const { dispatchRpc, registerVoiceRpcDomain } = await loadDomain()
-    dispose = registerVoiceRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     const response = await dispatchRpc({
       domain: 'voice',
@@ -128,10 +129,10 @@ describe('voice RPC domain', () => {
   })
 
   it('asks the host which window the runtime-ready came from', async () => {
-    const { dispatchRpc, registerVoiceRpcDomain, configureVoiceHost } = await loadDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
     const webContents = { id: 7, send: vi.fn() }
     configureVoiceHost({ runtimeWindow: { getWebContents: () => webContents } })
-    dispose = registerVoiceRpcDomain()
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'runtimeReady', payload: {} })))
       .toEqual({ success: true })
@@ -139,8 +140,8 @@ describe('voice RPC domain', () => {
   })
 
   it('marks runtime-ready without a sender when no host window is injected', async () => {
-    const { dispatchRpc, registerVoiceRpcDomain } = await loadDomain()
-    dispose = registerVoiceRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'runtimeReady', payload: {} })))
       .toEqual({ success: true })
@@ -148,8 +149,8 @@ describe('voice RPC domain', () => {
   })
 
   it('answers every http caller with the old server-runtime stubs', async () => {
-    const { dispatchRpc, registerVoiceRpcDomain } = await loadDomain()
-    dispose = registerVoiceRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'getState', payload: {} }, HTTP)))
       .toEqual({ success: true, state: expect.objectContaining({ status: 'disabled', enabled: false, runtimeReady: false }) })
@@ -174,8 +175,8 @@ describe('voice RPC domain', () => {
   })
 
   it('refuses a method that is not on the router', async () => {
-    const { dispatchRpc, registerVoiceRpcDomain } = await loadDomain()
-    dispose = registerVoiceRpcDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     const response = await dispatchRpc({ domain: 'voice', method: 'onVoiceEvent', payload: {} })
     expect(response.ok).toBe(false)

@@ -15,6 +15,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
+import { toolsRouter } from '@shared/ipc/tools.js'
 
 const store = vi.hoisted(() => ({
   getSession: vi.fn((_id: string): unknown => undefined),
@@ -59,7 +60,7 @@ describe('tools RPC domain', () => {
     ])
     dispatchRpc = registry.dispatchRpc
     registry.resetRpcRegistryForTests()
-    dispose = domain.registerToolsRpcDomain()
+    dispose = registry.registerRouterHandlers(toolsRouter, domain.toolsRpcHandlers)
     store.getSession.mockReset().mockReturnValue(undefined)
     store.updateMessageToolCalls.mockReset()
     store.updateMessageStep.mockReset()

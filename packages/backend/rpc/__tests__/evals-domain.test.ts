@@ -18,6 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
+import { evalsRouter } from '@shared/ipc/evals.js'
 
 const runtime = vi.hoisted(() => ({
   loadMergedRecords: vi.fn(() => [] as Array<Record<string, unknown>>),
@@ -73,7 +74,7 @@ describe('evals RPC domain', () => {
     configureEvalsHost = ports.configureEvalsHost
     registry.resetRpcRegistryForTests()
     domain.resetEvalsRunStateForTests()
-    dispose = domain.registerEvalsRpcDomain()
+    dispose = registry.registerRouterHandlers(evalsRouter, domain.evalsRpcHandlers)
     configureEvalsHost({})
     settings.getSettings.mockReturnValue({})
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'evals-domain-'))

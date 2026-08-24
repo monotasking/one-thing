@@ -13,6 +13,7 @@
  *    (Electron 打开原语的约定:空串才算成功,非空串 = 失败原因)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { themesRouter } from '@shared/ipc/themes.js'
 
 const themeRuntime = vi.hoisted(() => ({
   listThemes: vi.fn(),
@@ -50,9 +51,9 @@ vi.mock('../../wiring/plugins/skin.js', () => ({
 }))
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerThemesRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { themesRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/themes.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerThemesRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, themesRpcHandlers }
 }
 
 describe('themes RPC domain', () => {
@@ -75,9 +76,9 @@ describe('themes RPC domain', () => {
     plugins.getPluginThemeKnobVariables.mockReset().mockReturnValue({})
     plugins.getPluginSkinTiers.mockReset().mockReturnValue({})
 
-    const { resetRpcRegistryForTests, registerThemesRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, themesRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerThemesRpcDomain()
+    dispose = registerRouterHandlers(themesRouter, themesRpcHandlers)
   })
 
   afterEach(() => {

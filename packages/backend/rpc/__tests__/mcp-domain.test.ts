@@ -18,6 +18,7 @@
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { SERVER_REDACTED_SECRET } from '../../server/mcp-secrets.js'
+import { mcpRouter } from '@shared/ipc/mcp.js'
 
 const manager = vi.hoisted(() => ({
   getServerStates: vi.fn(() => [] as unknown[]),
@@ -75,9 +76,9 @@ function stateOf(config: unknown) {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerMcpRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { mcpRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/mcp.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerMcpRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers }
 }
 
 describe('mcp RPC domain', () => {
@@ -117,9 +118,9 @@ describe('mcp RPC domain', () => {
   })
 
   it('exposes exactly the sixteen mcp methods and refuses anything else', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerMcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerMcpRpcDomain()
+    dispose = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
 
     const unknown = await dispatchRpc({ domain: 'mcp', method: 'startServer', payload: {} })
     expect(unknown.ok).toBe(false)
@@ -164,9 +165,9 @@ describe('mcp RPC domain', () => {
   })
 
   it('redacts private server fields for an http caller and leaves them alone on ipc', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerMcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerMcpRpcDomain()
+    dispose = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
     manager.getServerStates.mockReturnValue([stateOf(SECRET_SERVER)])
 
     const remote = await dispatchRpc({ domain: 'mcp', method: 'getServers', payload: {} }, HTTP_CONTEXT)
@@ -190,9 +191,9 @@ describe('mcp RPC domain', () => {
   })
 
   it('merges the redaction sentinel back to the stored value on an http update', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerMcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerMcpRpcDomain()
+    dispose = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
 
     await dispatchRpc(
       {
@@ -221,9 +222,9 @@ describe('mcp RPC domain', () => {
   })
 
   it('refuses to read a local config file for an http caller, reads it on ipc', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerMcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerMcpRpcDomain()
+    dispose = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
 
     const remote = await dispatchRpc(
       { domain: 'mcp', method: 'readConfigFile', payload: { filePath: '/etc/hosts' } },
@@ -242,9 +243,9 @@ describe('mcp RPC domain', () => {
   })
 
   it('refuses a stdio probe over http unless the server opts in, never on ipc', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerMcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerMcpRpcDomain()
+    dispose = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
     const stdioConfig = {
       id: 'stdio-1',
       name: 'Local',
@@ -278,9 +279,9 @@ describe('mcp RPC domain', () => {
   })
 
   it('routes capability reads at the live manager', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerMcpRpcDomain } = await loadDomain()
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerMcpRpcDomain()
+    dispose = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
     manager.getAllTools.mockReturnValue([{ name: 'echo', serverId: 'server-1' }])
 
     const tools = await dispatchRpc({ domain: 'mcp', method: 'getTools', payload: {} }, IPC_CONTEXT)

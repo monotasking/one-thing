@@ -15,6 +15,7 @@
  *    `ok:false` —— 域的错误语义没变,渲染侧那套 `response.success` 判断照旧成立。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { schedulerRouter } from '@shared/ipc/scheduler.js'
 
 const scheduler = vi.hoisted(() => ({
   list: vi.fn(),
@@ -56,9 +57,9 @@ const TASK = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerSchedulerRpcDomain }] =
+  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { schedulerRpcHandlers }] =
     await Promise.all([import('../registry.js'), import('../domains/scheduler.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerSchedulerRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, schedulerRpcHandlers }
 }
 
 describe('scheduler RPC domain', () => {
@@ -78,9 +79,9 @@ describe('scheduler RPC domain', () => {
     runHistory.listSchedulerRunDetails.mockReset().mockResolvedValue([{ runId: 'run-1' }])
     runHistory.saveSchedulerRunDetail.mockReset().mockResolvedValue(undefined)
 
-    const { resetRpcRegistryForTests, registerSchedulerRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, schedulerRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerSchedulerRpcDomain()
+    dispose = registerRouterHandlers(schedulerRouter, schedulerRpcHandlers)
   })
 
   afterEach(() => {

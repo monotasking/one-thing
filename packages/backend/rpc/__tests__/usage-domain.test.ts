@@ -10,6 +10,7 @@
  * untouched.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { usageRouter } from '@shared/ipc/usage.js'
 
 const usageModule = vi.hoisted(() => ({
   ledger: { marker: 'the-app-usage-ledger' },
@@ -51,11 +52,14 @@ const SESSION_TOTAL = {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, resetRpcRegistryForTests }, { registerUsageRpcDomain }] = await Promise.all([
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { usageRpcHandlers },
+  ] = await Promise.all([
     import('../registry.js'),
     import('../domains/usage.js'),
   ])
-  return { dispatchRpc, resetRpcRegistryForTests, registerUsageRpcDomain }
+  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, usageRpcHandlers }
 }
 
 describe('usage RPC domain', () => {
@@ -65,9 +69,9 @@ describe('usage RPC domain', () => {
     usageModule.getUsageLedger.mockReset().mockReturnValue(usageModule.ledger)
     usageModule.getUsageSummaryWithProjects.mockReset().mockResolvedValue(SUMMARY)
     usageModule.getSessionUsageTotal.mockReset().mockResolvedValue(SESSION_TOTAL)
-    const { resetRpcRegistryForTests, registerUsageRpcDomain } = await loadDomain()
+    const { resetRpcRegistryForTests, registerRouterHandlers, usageRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
-    dispose = registerUsageRpcDomain()
+    dispose = registerRouterHandlers(usageRouter, usageRpcHandlers)
   })
 
   afterEach(() => {

@@ -9,10 +9,7 @@
  * 端口，未注入端口的宿主（server / CLI daemon）自然降级成 no-op，而不是报错。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import {
-  todoPlanRouter,
-  type TodoPlanRoutes,
-} from '@shared/ipc/todo-plan.js'
+import type { TodoPlanRoutes } from '@shared/ipc/todo-plan.js'
 import {
   createOnethingTodoNoteForIpc,
   deleteOnethingTodoNoteForIpc,
@@ -30,7 +27,6 @@ import {
   revealTodoPlanDirectory,
   updateTodoPlanDocument,
 } from '../../wiring/todo-plan/store.js'
-import { registerRouterHandlers } from '../registry.js'
 
 export const todoPlanRpcHandlers: RouteHandlers<TodoPlanRoutes> = {
   async get(request) {
@@ -78,6 +74,3 @@ export const todoPlanRpcHandlers: RouteHandlers<TodoPlanRoutes> = {
   },
 }
 
-export function registerTodoPlanRpcDomain(): () => void {
-  return registerRouterHandlers(todoPlanRouter, todoPlanRpcHandlers)
-}

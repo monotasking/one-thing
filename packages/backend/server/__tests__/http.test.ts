@@ -13,10 +13,16 @@ import { pluginsRouter } from '@shared/ipc/plugins.js'
 import { searchRpcHandlers } from '@onething/backend/rpc/domains/search.js'
 import { searchRouter } from '@shared/ipc/search.js'
 import { configureServerSearchPort } from '../search-providers.js'
-import { registerFilesRpcDomain } from '@onething/backend/rpc/domains/files.js'
-import { registerToolsRpcDomain } from '@onething/backend/rpc/domains/tools.js'
-import { registerMarkdownRpcDomain } from '@onething/backend/rpc/domains/markdown.js'
-import { registerPermissionGrantsRpcDomain } from '@onething/backend/rpc/domains/permission-grants.js'
+import { filesRpcHandlers } from '@onething/backend/rpc/domains/files.js'
+import { toolsRpcHandlers } from '@onething/backend/rpc/domains/tools.js'
+import { markdownRpcHandlers } from '@onething/backend/rpc/domains/markdown.js'
+import { permissionGrantsRpcHandlers } from '@onething/backend/rpc/domains/permission-grants.js'
+import { filesRouter } from '@shared/ipc/files.js'
+import { toolsRouter } from '@shared/ipc/tools.js'
+import { markdownRouter } from '@shared/ipc/markdown.js'
+import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
+import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
+import { appStateRouter } from '@shared/ipc/app-state.js'
 import { resetPermissionGrantsForTests } from '@onething/core/permission'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { chatRouter } from '@shared/ipc/chat.js'
@@ -613,7 +619,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     // 装配层在 echo backend 下不跑,域要自己挂上(与 markdown 同款)。
-    const disposeDomain = registerFilesRpcDomain()
+    const disposeDomain = registerRouterHandlers(filesRouter, filesRpcHandlers)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
@@ -758,7 +764,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     // 装配层在 echo backend 下不跑,域要自己挂上(与上面 http-probe 同款)。
-    const disposeDomain = registerMarkdownRpcDomain()
+    const disposeDomain = registerRouterHandlers(markdownRouter, markdownRpcHandlers)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
@@ -869,8 +875,8 @@ describe('createOnethingHttpServer', () => {
     process.env.ONETHING_STORE_PATH = storeRoot
     const serverRuntime = await createTestServerRuntime({ workspaceRoot, dataRoot })
     runtimes.push(serverRuntime)
-    const { registerProjectDirsRpcDomain } = await import('../../rpc/domains/project-dirs.js')
-    const disposeDomain = registerProjectDirsRpcDomain()
+    const { projectDirsRpcHandlers } = await import('../../rpc/domains/project-dirs.js')
+    const disposeDomain = registerRouterHandlers(projectDirsRouter, projectDirsRpcHandlers)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
@@ -1103,7 +1109,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     // 装配层在 echo backend 下不跑,域要自己挂上(与 files / markdown 同款)。
-    const disposeDomain = registerToolsRpcDomain()
+    const disposeDomain = registerRouterHandlers(toolsRouter, toolsRpcHandlers)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
@@ -1326,8 +1332,8 @@ describe('createOnethingHttpServer', () => {
       // 同一份 `app-state.json` 现在经 `POST /api/rpc` 的 appState.get 读出来。
       // 这个 fixture 的 runtime 是手搭的,不走 `registerAppRpcDomains`,所以域要
       // 自己挂一下 —— 挂的是**真** handler,读的正是 ONETHING_STORE_PATH 那份。
-      const { registerAppStateRpcDomain } = await import('../../rpc/domains/app-state.js')
-      const disposeAppStateDomain = registerAppStateRpcDomain()
+      const { appStateRpcHandlers } = await import('../../rpc/domains/app-state.js')
+      const disposeAppStateDomain = registerRouterHandlers(appStateRouter, appStateRpcHandlers)
       await expect(fetchJson(`${baseUrlValue}/api/rpc`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -1613,7 +1619,7 @@ describe('createOnethingHttpServer', () => {
       sessionStore: createAppBackedServerSessionStore(),
     })
     runtimes.push(serverRuntime)
-    const disposeDomain = registerPermissionGrantsRpcDomain()
+    const disposeDomain = registerRouterHandlers(permissionGrantsRouter, permissionGrantsRpcHandlers)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,

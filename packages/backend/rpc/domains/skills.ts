@@ -41,7 +41,7 @@ import {
   updateOnethingSkillDirectoryForIpc,
 } from '@onething/runtime/skills'
 import { getShellHost } from '@onething/runtime/shell/host-ports'
-import { skillsRouter, type SkillsRoutes } from '@shared/ipc/skills.js'
+import type { SkillsRoutes } from '@shared/ipc/skills.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import {
@@ -55,7 +55,7 @@ import {
   initializeSkills,
   invalidateSkillsCache,
 } from '../../wiring/skills/session-skills.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.skills')
 /** 投影层收的是鸭子 logger;过渡替身与 `wiring/skills` 用的是同一个(area ① 统一后删)。 */
@@ -199,6 +199,3 @@ export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
   },
 }
 
-export function registerSkillsRpcDomain(): () => void {
-  return registerRouterHandlers(skillsRouter, skillsRpcHandlers)
-}

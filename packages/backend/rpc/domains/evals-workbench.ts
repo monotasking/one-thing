@@ -28,10 +28,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import {
-  evalsWorkbenchRouter,
-  type EvalsWorkbenchRoutes,
-} from '@shared/ipc/evals-workbench.js'
+import type { EvalsWorkbenchRoutes } from '@shared/ipc/evals-workbench.js'
 import type {
   EvalsDiagnoseProgressEvent,
   EvalsIncidentMetaDTO,
@@ -51,7 +48,7 @@ import {
   resolveEvalsCredentials,
 } from '../../wiring/evals/provider-adapter.js'
 import { getLogger } from '../../wiring/logging/index.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.evals-workbench')
 
@@ -664,6 +661,3 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
   },
 }
 
-export function registerEvalsWorkbenchRpcDomain(): () => void {
-  return registerRouterHandlers(evalsWorkbenchRouter, evalsWorkbenchRpcHandlers)
-}

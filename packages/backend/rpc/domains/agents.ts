@@ -13,7 +13,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import type { RouteHandlers } from '@onething/core/ipc'
-import { agentsRouter, type AgentsRoutes } from '@shared/ipc/agents.js'
+import type { AgentsRoutes } from '@shared/ipc/agents.js'
 import {
   createOnethingAgentFromRequestForIpc,
   deleteOnethingAgentFromRequestForIpc,
@@ -31,7 +31,6 @@ import {
   updateAgent,
 } from '../../wiring/agents/index.js'
 import { getSessionsList } from '../../stores/index.js'
-import { registerRouterHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 
 const log = getLogger('ipc.agents')
@@ -100,6 +99,3 @@ export const agentsRpcHandlers: RouteHandlers<AgentsRoutes> = {
   },
 }
 
-export function registerAgentsRpcDomain(): () => void {
-  return registerRouterHandlers(agentsRouter, agentsRpcHandlers)
-}

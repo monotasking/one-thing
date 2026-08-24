@@ -21,7 +21,7 @@ import {
   saveOnethingMarkdownAttachments,
   saveOnethingMarkdownAttachmentsForIpc,
 } from '@onething/runtime/markdown'
-import { markdownRouter, type MarkdownRoutes } from '@shared/ipc/markdown.js'
+import type { MarkdownRoutes } from '@shared/ipc/markdown.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import {
   clampResolvedAsset,
@@ -29,7 +29,7 @@ import {
   prepareMarkdownRequest,
 } from '../../wiring/markdown/asset-service.js'
 import { resolveRpcSandbox } from '../sandbox.js'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../registry.js'
+import type { RpcRouteHandlers } from '../registry.js'
 
 export const markdownRpcHandlers: RpcRouteHandlers<MarkdownRoutes> = {
   async resolveAsset(request, context = DESKTOP_RPC_CONTEXT) {
@@ -74,10 +74,3 @@ export const markdownRpcHandlers: RpcRouteHandlers<MarkdownRoutes> = {
   },
 }
 
-/**
- * 直接注册（不经 feature 基座）。装配走 `app/rpc/index.ts` 的 feature 名册；
- * 这个入口留给**域级测试**——它要的是一个域，不是整套 feature 生命周期。
- */
-export function registerMarkdownRpcDomain(): () => void {
-  return registerRouterHandlers(markdownRouter, markdownRpcHandlers)
-}
