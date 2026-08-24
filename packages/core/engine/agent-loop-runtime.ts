@@ -394,20 +394,6 @@ export interface CoreAgentLoopDirectToolResultLike {
   rejectionReason?: string
 }
 
-export interface CoreAgentLoopDirectToolExecutionContext<TPartialResultUpdate = unknown> {
-  sessionId: string
-  messageId: string
-  toolCallId: string
-  workingDirectory?: string
-  workingDirectoryRoots?: string[]
-  abortSignal?: AbortSignal
-  principal?: Principal
-  /** F4:回合归属的 agent(见 CoreAgentLoopDirectToolRuntimeContext.agentId)。 */
-  agentId?: string
-  onMetadata?: (update: CoreAgentLoopDirectToolMetadataUpdate) => void
-  onPartialResult?: (update: TPartialResultUpdate) => void
-}
-
 export interface BuildAgentLoopDirectToolsWithAdaptersOptions<
   TResult extends CoreAgentLoopDirectToolResultLike,
   TPartialResultUpdate = unknown,
@@ -417,7 +403,19 @@ export interface BuildAgentLoopDirectToolsWithAdaptersOptions<
   executeToolDirectly: (
     toolName: string,
     args: JsonObject,
-    context: CoreAgentLoopDirectToolExecutionContext<TPartialResultUpdate>,
+    context: {
+      sessionId: string
+      messageId: string
+      toolCallId: string
+      workingDirectory?: string
+      workingDirectoryRoots?: string[]
+      abortSignal?: AbortSignal
+      principal?: Principal
+      /** F4:回合归属的 agent(见 CoreAgentLoopDirectToolRuntimeContext.agentId)。 */
+      agentId?: string
+      onMetadata?: (update: CoreAgentLoopDirectToolMetadataUpdate) => void
+      onPartialResult?: (update: TPartialResultUpdate) => void
+    },
   ) => Promise<TResult>
 }
 

@@ -93,19 +93,6 @@ export interface CollabRoomReplayOptions {
 }
 
 /** 重放管线额外暴露的观测面 —— 测试拿它比账,不必去翻内部。 */
-export interface CollabRoomActorReplayPipeline extends CollabActorReplayPipeline {
-  /** 跑完之后房间的账。 */
-  account(): CollabRoomAccount
-  /** 落进转录的消息(重放不真写盘,写到这里)。 */
-  messages(): CollabRoomTranscriptMessage[]
-  /** 全部动词,按序 —— 与 `replayRoomTranscript` 捕获的那一串相同。 */
-  verbs(): CollabActorVerb[]
-  /**
-   * 买过几次裁决(D3)。**O(1) 的断言数它** —— 一个触发事件恰好一次,N 个候选
-   * 不是 N 次。
-   */
-  judgeCalls(): number
-}
 
 /** 转录里出现过的 agent,按首次出现序。重放的名册就是它。 */
 export function collabRoomMembersFromTranscript(
@@ -132,7 +119,19 @@ export function collabRoomMembersFromTranscript(
  */
 export function createCollabRoomActorReplayPipeline(
   options: CollabRoomReplayOptions,
-): CollabRoomActorReplayPipeline {
+): CollabActorReplayPipeline & {
+  /** 跑完之后房间的账。 */
+  account(): CollabRoomAccount
+  /** 落进转录的消息(重放不真写盘,写到这里)。 */
+  messages(): CollabRoomTranscriptMessage[]
+  /** 全部动词,按序 —— 与 `replayRoomTranscript` 捕获的那一串相同。 */
+  verbs(): CollabActorVerb[]
+  /**
+   * 买过几次裁决(D3)。**O(1) 的断言数它** —— 一个触发事件恰好一次,N 个候选
+   * 不是 N 次。
+   */
+  judgeCalls(): number
+} {
   const members = options.members ? [...options.members] : []
   const maxChain = options.maxChain ?? Number.POSITIVE_INFINITY
   const maxConcurrent = options.maxConcurrent ?? 1

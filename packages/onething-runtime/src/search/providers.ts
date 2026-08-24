@@ -105,10 +105,6 @@ export interface OnethingSearchProvidersAdapters {
   listPrompts(): OnethingSearchPrompt[]
 }
 
-export interface OnethingSearchProviders {
-  createDailyNote(filePath: string): Promise<string>
-  executeSearch(query: string, category: SearchCategory, limit?: number): Promise<SearchResult[]>
-}
 
 let configuredAdapters: OnethingSearchProvidersAdapters | undefined
 
@@ -122,7 +118,10 @@ function getSearchAdapters(adapters?: OnethingSearchProvidersAdapters): Onething
   return resolved
 }
 
-export function createOnethingSearchProviders(adapters: OnethingSearchProvidersAdapters): OnethingSearchProviders {
+export function createOnethingSearchProviders(adapters: OnethingSearchProvidersAdapters): {
+  createDailyNote(filePath: string): Promise<string>
+  executeSearch(query: string, category: SearchCategory, limit?: number): Promise<SearchResult[]>
+} {
   return {
     createDailyNote: filePath => createDailyNote(filePath, adapters),
     executeSearch: (query, category, limit) => executeSearch(query, category, limit, adapters),

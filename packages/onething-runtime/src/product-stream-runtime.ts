@@ -76,15 +76,7 @@ export interface OnethingProductStreamRuntimeOptions<
   provider: OnethingStreamProviderAdapterOptions<TProviderConfig, TSettings, TAuthContext, TSession>
   models: StreamEngineModelRegistryAdapter
   history: StreamEngineHistoryAdapter<TSession, TMessage, THistoryMessage>
-  streams: {
-    executeMessageStream(options: Record<string, unknown>): Promise<void>
-    executeAgentLoopStreamGeneration(
-      context: unknown,
-      historyMessages: THistoryMessage[],
-      sessionName?: string,
-      options?: unknown
-    ): Promise<TStreamResult>
-  }
+  streams: StreamEngineStreamsAdapter<THistoryMessage, TStreamResult>
   compaction: StreamEngineCompactionAdapter<unknown, TCompactResult>
 }
 

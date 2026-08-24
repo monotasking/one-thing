@@ -4,12 +4,6 @@ export interface OnethingImagePreviewRecord {
   createdAt: number
 }
 
-export interface OnethingImagePreviewRegistryOptions {
-  ttlMs?: number
-  maxRecords?: number
-  createId(): string
-  now?(): number
-}
 
 export type OnethingImagePreviewLookupResult =
   | { success: true; src: string; alt?: string }
@@ -21,7 +15,12 @@ export class OnethingImagePreviewRegistry {
   private readonly maxRecords: number
   private readonly now: () => number
 
-  constructor(private readonly options: OnethingImagePreviewRegistryOptions) {
+  constructor(private readonly options: {
+    ttlMs?: number
+    maxRecords?: number
+    createId(): string
+    now?(): number
+  }) {
     this.ttlMs = options.ttlMs ?? 10 * 60 * 1000
     this.maxRecords = options.maxRecords ?? 20
     this.now = options.now ?? (() => Date.now())

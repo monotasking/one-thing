@@ -68,7 +68,6 @@ export type {
   CoreToolParameterType,
   CoreToolRegistryKind,
   CoreToolRegistryRegisterResult,
-  CoreToolRuntimeContext,
   CoreToolSettingsLike,
   CoreToolValidationResult,
 } from './registry.js'

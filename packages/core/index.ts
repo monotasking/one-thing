@@ -136,7 +136,6 @@ export type {
   AgentUsage,
   AgentVideoContentPart,
   BuildAgentLoopRuntimeOptions,
-  OrderedSideEffectGate,
   ToolExecutionScheduleOptions,
 } from './agent-loop/index.js'
 
@@ -434,7 +433,6 @@ export type {
   CoreCommandEnvelope,
   CoreContextCompactResultLike,
   CoreEventBusEmitterLike,
-  CoreEventBusLike,
   CoreEventOnlyEventBusLike,
   CoreEventOnlyLogger,
   CoreEventOnlySessionEvent,

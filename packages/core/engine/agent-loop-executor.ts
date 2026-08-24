@@ -875,22 +875,6 @@ export interface CoreAgentLoopFinishState<TTurn> {
 	turn: TTurn;
 }
 
-export interface ApplyAgentLoopFinishChunkWithAdaptersOptions<TTurn> {
-	state: CoreAgentLoopFinishState<TTurn>;
-	usage?: CoreAgentLoopUsage;
-	finishReason?: string;
-	syncAccumulatedUsage?: (usage: CoreAgentLoopUsage) => void;
-	syncLastTurnUsage?: (usage: CoreAgentLoopUsage) => void;
-	updateStepsUsageByTurn?: (
-		turnIndex: number,
-		usage: CoreAgentLoopUsage,
-	) => void;
-	sendContextSizeUpdate: (inputTokens: number) => void;
-	persistTurnContentParts: () => void;
-	createTurnState: () => TTurn;
-	sendContinuation: (turnIndex: number) => void;
-}
-
 export interface CoreAgentLoopAssistantMessageOptions {
 	id: string;
 	model: string;
@@ -2632,7 +2616,21 @@ export {
 };
 
 export function applyAgentLoopFinishChunkWithAdapters<TTurn>(
-	options: ApplyAgentLoopFinishChunkWithAdaptersOptions<TTurn>,
+	options: {
+		state: CoreAgentLoopFinishState<TTurn>;
+		usage?: CoreAgentLoopUsage;
+		finishReason?: string;
+		syncAccumulatedUsage?: (usage: CoreAgentLoopUsage) => void;
+		syncLastTurnUsage?: (usage: CoreAgentLoopUsage) => void;
+		updateStepsUsageByTurn?: (
+			turnIndex: number,
+			usage: CoreAgentLoopUsage,
+		) => void;
+		sendContextSizeUpdate: (inputTokens: number) => void;
+		persistTurnContentParts: () => void;
+		createTurnState: () => TTurn;
+		sendContinuation: (turnIndex: number) => void;
+	},
 ): CoreAgentLoopFinishPlan {
 	const plan = planAgentLoopFinishChunk({
 		turnIndex: options.state.turnIndex,

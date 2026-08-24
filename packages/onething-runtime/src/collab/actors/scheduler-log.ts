@@ -192,14 +192,13 @@ export function sweepCollabSchedulerLogs(
 
 /* ── 测试与重放:内存 ─────────────────────────────────────────────────────── */
 
-export interface CollabSchedulerLogMemoryStore extends CollabSchedulerLogStore {
+
+/** 语义与落盘那一个相同,只是重启之后一切归零(与 room-account 同款模式)。 */
+export function createCollabSchedulerLogMemoryStore(): CollabSchedulerLogStore & {
   /** 这间房记下的全部行,**旧在前**(写入序)。断言读它。 */
   rows(roomId: string): CollabSchedulerLogRow[]
   clear(): void
-}
-
-/** 语义与落盘那一个相同,只是重启之后一切归零(与 room-account 同款模式)。 */
-export function createCollabSchedulerLogMemoryStore(): CollabSchedulerLogMemoryStore {
+} {
   const byRoom = new Map<string, CollabSchedulerLogRow[]>()
   return {
     append(roomId: string, row: CollabSchedulerLogRow): void {

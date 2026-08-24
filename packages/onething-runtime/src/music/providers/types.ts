@@ -133,16 +133,6 @@ export interface MusicReliabilityProfile {
   volumeSource: 'state' | 'prefs-file'
 }
 
-export interface MusicBashPolicy {
-  /** Matched against the parsed command head (basename tolerated by caller). */
-  binary: string
-  /** '<group>' or '<group> <sub>' keys; longest match wins. */
-  autoAllow: ReadonlySet<string>
-  /** Extra read-only probes outside the subcommand table (--version, config get …). */
-  extraAllow?(args: string[]): boolean
-  /** Why a non-whitelisted subcommand asks — shown in the permission prompt. */
-  askReason(groupOrPair: string): string
-}
 
 export interface MusicProseBundle {
   /** resources/skills/<dir> exposed only while this provider is active. */
@@ -168,6 +158,15 @@ export interface MusicProvider {
   cli: MusicCliProfile
   ids: MusicIdSchema
   reliability: MusicReliabilityProfile
-  bashPolicy: MusicBashPolicy
+  bashPolicy: {
+    /** Matched against the parsed command head (basename tolerated by caller). */
+    binary: string
+    /** '<group>' or '<group> <sub>' keys; longest match wins. */
+    autoAllow: ReadonlySet<string>
+    /** Extra read-only probes outside the subcommand table (--version, config get …). */
+    extraAllow?(args: string[]): boolean
+    /** Why a non-whitelisted subcommand asks — shown in the permission prompt. */
+    askReason(groupOrPair: string): string
+  }
   prose: MusicProseBundle
 }

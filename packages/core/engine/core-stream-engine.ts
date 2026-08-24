@@ -46,14 +46,6 @@ export interface CoreCommandEnvelope<TCommand = unknown> {
   event: TCommand
 }
 
-export interface CoreEventBusLike {
-  onAnySession(
-    eventType: string,
-    handler: (envelope: CoreCommandEnvelope) => void,
-    label?: string
-  ): Unsubscribe
-}
-
 export interface AbortLikeCommand {
   type?: string
   reason?: string
@@ -71,7 +63,12 @@ export interface RetractSteeringLikeCommand {
   messageId: string
 }
 
-export interface CoreEventBusEmitterLike extends CoreEventBusLike {
+export interface CoreEventBusEmitterLike {
+  onAnySession(
+    eventType: string,
+    handler: (envelope: CoreCommandEnvelope) => void,
+    label?: string
+  ): Unsubscribe
   emit(sessionId: string, event: any): Promise<unknown>
 }
 

@@ -36,7 +36,6 @@ export {
   createCollabRoomActorReplayPipeline,
 } from '@onething/runtime/collab/actors/room-replay.wiring'
 export type {
-  CollabRoomActorReplayPipeline,
   CollabRoomReplayOptions,
 } from '@onething/runtime/collab/actors/room-replay.wiring'
 
@@ -118,7 +117,6 @@ export {
 export type {
   CollabScriptedWork,
   CollabScriptedWorkerCall,
-  CollabScriptedWorkerPort,
   CollabWorkerBoardCall,
   CollabWorkerBoardPort,
   CollabWorkerBoardRecorder,
@@ -198,7 +196,6 @@ export {
 } from '@onething/runtime/collab/actors/scheduler-log'
 export type {
   CollabDeadLetterSinkOptions,
-  CollabSchedulerLogMemoryStore,
   CollabSchedulerLogStore,
   CollabSchedulerLogTailOptions,
 } from '@onething/runtime/collab/actors/scheduler-log'

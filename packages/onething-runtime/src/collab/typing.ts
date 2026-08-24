@@ -65,19 +65,6 @@ export interface CollabTypingTrackerOptions {
   roomSessionId?: string
 }
 
-export interface CollabTypingTracker {
-  /**
-   * Feed one session event. Returns the value to emit, or `null` when this
-   * event changes nothing — a second concurrent `say` does not re-light an
-   * already-lit indicator, and finishing one of two does not put it out.
-   */
-  observe(signal: CollabTypingSignal | null | undefined): boolean | null
-  /** Window closed (turn settled, observer detached). Returns `false` when the
-   *  light is still on — the 兜底 that guarantees no name stays stuck typing. */
-  finish(): boolean | null
-  /** Is the indicator currently lit? (test/introspection) */
-  readonly lit: boolean
-}
 
 /** Every shape a tool name can take across the event/persisted forms. */
 function toolNameOf(signal: CollabTypingSignal): string | undefined {
@@ -107,7 +94,19 @@ const TERMINAL_TYPES: ReadonlySet<string> = new Set(SESSION_STREAM_TERMINAL_EVEN
 
 export function createCollabTypingTracker(
   options: CollabTypingTrackerOptions = {},
-): CollabTypingTracker {
+): {
+  /**
+   * Feed one session event. Returns the value to emit, or `null` when this
+   * event changes nothing — a second concurrent `say` does not re-light an
+   * already-lit indicator, and finishing one of two does not put it out.
+   */
+  observe(signal: CollabTypingSignal | null | undefined): boolean | null
+  /** Window closed (turn settled, observer detached). Returns `false` when the
+   *  light is still on — the 兜底 that guarantees no name stays stuck typing. */
+  finish(): boolean | null
+  /** Is the indicator currently lit? (test/introspection) */
+  readonly lit: boolean
+} {
   /** Say calls whose arguments are still streaming, by toolCallId. A Set (not a
    *  boolean) because providers may stream two tool calls at once — the light
    *  belongs to the union of them, and flickering between the two would read as

@@ -131,13 +131,12 @@ export function getLogger(ns: string): Logger {
  * 迁移期需要它 —— 老测试断言的是 `vi.spyOn(console, 'warn')`,而日志已经不走
  * console 了;断言的对象应该是**记录**,不是某个 sink 的副作用。
  */
-export interface RuntimeLogCapture {
+
+export function captureRuntimeLogs(level = 'trace'): {
   records(): LogRecord[]
   ofLevel(level: LogLevel): LogRecord[]
   restore(): void
-}
-
-export function captureRuntimeLogs(level = 'trace'): RuntimeLogCapture {
+} {
   const previous = currentRoot
   const ring = new MemoryRingSink(500)
   const loggerRootOptions2: LoggerRootOptions = { level, sinks: [ring] };

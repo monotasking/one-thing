@@ -84,10 +84,6 @@ export interface CoreDirectToolPermissionInput<TEffect = unknown, TPreview = unk
   principal?: Principal
 }
 
-export interface CoreDirectToolMCPExecutionOptions {
-  onPartialResult?: (text: string, phase: string) => void
-}
-
 /** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
 export type CoreDirectToolLogger = CompatLogger
 
@@ -181,7 +177,7 @@ export interface ExecuteCoreDirectToolOptions<
   args: JsonObject
   context: CoreDirectToolExecutionContext<TMetadataUpdate, TPartialResultUpdate, TStep>
   isMCPTool: (toolName: string) => boolean
-  executeMCPTool: (toolName: string, args: JsonObject, options: CoreDirectToolMCPExecutionOptions) => Promise<unknown>
+  executeMCPTool: (toolName: string, args: JsonObject, options: { onPartialResult?: (text: string, phase: string) => void }) => Promise<unknown>
   /** Qualifies MCP permission grants with the owning server; see buildMCPPermissionPlan. */
   resolveMCPServerId?: (toolRef: string) => string | undefined
   analyzeTool: (toolName: string, args: JsonObject, context: TExecContext) => Promise<CoreDirectToolAnalysisLike<TEffect, TPreview>>

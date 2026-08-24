@@ -4,7 +4,6 @@ export * from './ipc-operations.js'
 export type {
   ACPAgentConfig,
   ACPAgentState,
-  ACPClientRuntimeOptions,
   ACPConnectionStatus,
   ACPPermissionBridge,
   ACPPermissionDecision,

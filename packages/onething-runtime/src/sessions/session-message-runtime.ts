@@ -74,20 +74,6 @@ export interface OnethingSessionMessageRuntimeRepository<
   updateSessionsIndexMeta(sessionId: string, update: (meta: TMeta) => void): boolean
 }
 
-export interface OnethingSessionMessageRuntimeSqliteAdapters<
-  TSession,
-  TMessage,
-> {
-  isSessionReady?(sessionId: string): boolean
-  scheduleMigration?(sessionId: string): void
-  syncMessage?(sessionId: string, message: TMessage, seq: number): void
-  syncSessionMetadata?(session: TSession): void
-  syncSessionUsage?(session: TSession): void
-  deleteMessage?(sessionId: string, messageId: string): void
-  deleteMessageAndAfter?(sessionId: string, messageId: string): void
-  upsertMessageAndTruncate?(sessionId: string, message: TMessage, seq: number): void
-}
-
 export interface OnethingSessionMessageRuntimeOptions<
   TSession extends CoreSessionWithMessageList<TMessage> & { id: string },
   TMessage extends CoreSessionMessageWithId & CoreSessionMessageWithModelInfo,
@@ -97,7 +83,20 @@ export interface OnethingSessionMessageRuntimeOptions<
   TToolCall = unknown,
 > {
   repository: OnethingSessionMessageRuntimeRepository<TSession, TMessage, TMeta>
-  sqlite?: OnethingSessionMessageRuntimeSqliteAdapters<TSession, TMessage>
+  /**
+   * SQLite 退役遗留:全仓零生产填充(S4 把只为它存在的那个具名口删了,形状
+   * 原地保留)。
+   */
+  sqlite?: {
+    isSessionReady?(sessionId: string): boolean
+    scheduleMigration?(sessionId: string): void
+    syncMessage?(sessionId: string, message: TMessage, seq: number): void
+    syncSessionMetadata?(session: TSession): void
+    syncSessionUsage?(session: TSession): void
+    deleteMessage?(sessionId: string, messageId: string): void
+    deleteMessageAndAfter?(sessionId: string, messageId: string): void
+    upsertMessageAndTruncate?(sessionId: string, message: TMessage, seq: number): void
+  }
   streamSyncThrottleMs?: number
   now?: () => number
   logger?: OnethingSessionMessageRuntimeLogger

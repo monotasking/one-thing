@@ -93,32 +93,12 @@ export function mcpTaskHandleFromResult(record: Record<string, unknown>): CoreMC
   }
 }
 
-export interface CoreMCPTaskPollAdapters {
-  /** `tasks/get` — read the current task state. */
-  getTask(taskId: string): Promise<CoreMCPTask>
-  /** `tasks/result` — fetch the payload of a COMPLETED task. */
-  getTaskPayload(taskId: string): Promise<unknown>
-  /** `tasks/cancel` — best-effort only; failures are swallowed. */
-  cancelTask(taskId: string): Promise<unknown>
-}
-
 export type CoreMCPTaskPollOutcome =
   | { kind: 'completed'; task: CoreMCPTask; payload: unknown; polls: number; elapsedMs: number }
   | { kind: 'failed'; task: CoreMCPTask; polls: number; elapsedMs: number }
   | { kind: 'cancelled'; task: CoreMCPTask; polls: number; elapsedMs: number }
   | { kind: 'timeout'; task: CoreMCPTask; polls: number; elapsedMs: number }
   | { kind: 'aborted'; task: CoreMCPTask; polls: number; elapsedMs: number }
-
-export interface CoreMCPTaskPollOptions {
-  /** Overall poll budget. Default 10 min — long tasks escape the 60s ceiling. */
-  timeoutMs?: number
-  /** Fallback interval when the task carries no pollInterval hint. Default 1s. */
-  defaultIntervalMs?: number
-  signal?: AbortSignal
-  onStatus?: (task: CoreMCPTask, pollIndex: number) => void
-  now?: () => number
-  sleep?: (ms: number) => Promise<void>
-}
 
 export const MCP_TASK_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 export const MCP_TASK_DEFAULT_INTERVAL_MS = 1000
@@ -143,8 +123,24 @@ function defaultSleep(ms: number): Promise<void> {
  */
 export async function pollMCPTaskWithAdapters(
   initialTask: CoreMCPTask,
-  adapters: CoreMCPTaskPollAdapters,
-  options: CoreMCPTaskPollOptions = {},
+  adapters: {
+    /** `tasks/get` — read the current task state. */
+    getTask(taskId: string): Promise<CoreMCPTask>
+    /** `tasks/result` — fetch the payload of a COMPLETED task. */
+    getTaskPayload(taskId: string): Promise<unknown>
+    /** `tasks/cancel` — best-effort only; failures are swallowed. */
+    cancelTask(taskId: string): Promise<unknown>
+  },
+  options: {
+    /** Overall poll budget. Default 10 min — long tasks escape the 60s ceiling. */
+    timeoutMs?: number
+    /** Fallback interval when the task carries no pollInterval hint. Default 1s. */
+    defaultIntervalMs?: number
+    signal?: AbortSignal
+    onStatus?: (task: CoreMCPTask, pollIndex: number) => void
+    now?: () => number
+    sleep?: (ms: number) => Promise<void>
+  } = {},
 ): Promise<CoreMCPTaskPollOutcome> {
   const now = options.now ?? Date.now
   const sleep = options.sleep ?? defaultSleep

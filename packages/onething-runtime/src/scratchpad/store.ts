@@ -15,10 +15,6 @@ export interface ScratchpadChangedPayload {
   document?: ScratchpadDocument
 }
 
-export interface OnethingScratchpadStoreOptions {
-  getDefaultStorePath: () => string
-  notifyChanged?: (payload: ScratchpadChangedPayload) => void
-}
 
 const SCRATCHPADS_DIR = 'scratchpads'
 
@@ -52,7 +48,10 @@ const SELF_WRITE_TTL_MS = 2_000
 export class OnethingScratchpadStore {
   private readonly selfWrites = new Map<string, number>()
 
-  constructor(private readonly options: OnethingScratchpadStoreOptions) {}
+  constructor(private readonly options: {
+    getDefaultStorePath: () => string
+    notifyChanged?: (payload: ScratchpadChangedPayload) => void
+  }) {}
 
   private markSelfWrite(filePath: string): void {
     const now = Date.now()

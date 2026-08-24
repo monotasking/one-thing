@@ -3,11 +3,6 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { OnethingScratchpadStore, ScratchpadChangedPayload } from './store.js'
 
-export interface OnethingScratchpadWatcherOptions {
-  store: OnethingScratchpadStore
-  notifyChanged: (payload: ScratchpadChangedPayload) => void
-  onError?: (error: unknown) => void
-}
 
 // Coalesce the burst of events a single save produces, and give the file a
 // moment to settle before consumers re-read it.
@@ -25,7 +20,11 @@ export class OnethingScratchpadWatcher {
   private readonly changedPaths = new Set<string>()
   private watchedDirectory = ''
 
-  constructor(private readonly options: OnethingScratchpadWatcherOptions) {}
+  constructor(private readonly options: {
+    store: OnethingScratchpadStore
+    notifyChanged: (payload: ScratchpadChangedPayload) => void
+    onError?: (error: unknown) => void
+  }) {}
 
   async start(): Promise<void> {
     const directory = this.options.store.getDirectory()

@@ -25,24 +25,23 @@ export interface ChannelGuardSession {
 	originIdentityKey?: string;
 }
 
-export interface ChannelSessionGuard {
-	isExternalIdentitySession(sessionId: string): boolean;
-	/** Hide custom global variables from externally-routed sessions. */
-	filterVariablesForSession(
-		sessionId: string,
-		variables: ContextVariable[],
-	): ContextVariable[];
-	/** Throw FORBIDDEN when an external session writes shared-scope state. */
-	assertExternalWriteAllowed(
-		sessionId: string,
-		name: string | undefined,
-		scope: VariableScope | undefined,
-	): void;
-}
 
 export function createChannelSessionGuard(
 	getSession: (sessionId: string) => ChannelGuardSession | undefined,
-): ChannelSessionGuard {
+): {
+  isExternalIdentitySession(sessionId: string): boolean;
+  /** Hide custom global variables from externally-routed sessions. */
+  filterVariablesForSession(
+  	sessionId: string,
+  	variables: ContextVariable[],
+  ): ContextVariable[];
+  /** Throw FORBIDDEN when an external session writes shared-scope state. */
+  assertExternalWriteAllowed(
+  	sessionId: string,
+  	name: string | undefined,
+  	scope: VariableScope | undefined,
+  ): void;
+} {
 	const isExternalIdentitySession = (sessionId: string): boolean =>
 		Boolean(getSession(sessionId)?.originIdentityKey);
 

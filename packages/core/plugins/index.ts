@@ -599,7 +599,6 @@ export type {
   CorePluginMessageStateScoped,
   CorePluginMessageStateStore,
   CorePluginStorage,
-  CorePluginStorageWithMessageState,
   CreateCorePluginMessageStateStoreOptions,
   CreateCorePluginStorageOptions,
   PluginOrphanArchiveDecision,

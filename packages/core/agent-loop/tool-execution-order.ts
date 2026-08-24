@@ -1,8 +1,3 @@
-export interface OrderedSideEffectGate {
-  beforeSideEffect: () => Promise<void>
-  release: () => void
-}
-
 /**
  * Serializes the point where tool executions perform side effects, while still
  * allowing earlier phases such as metadata generation and permission prompts to
@@ -11,7 +6,7 @@ export interface OrderedSideEffectGate {
 export class OrderedSideEffectQueue {
   private tail: Promise<void> = Promise.resolve()
 
-  createGate(): OrderedSideEffectGate {
+  createGate(): { beforeSideEffect: () => Promise<void>; release: () => void } {
     const waitForPrevious = this.tail.catch(() => undefined)
     let releaseCurrent!: () => void
     let released = false

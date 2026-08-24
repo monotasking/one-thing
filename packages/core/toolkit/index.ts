@@ -70,7 +70,6 @@ export type { OutputBudgetLimits, OutputBudgetOptions, SpillPort, SpillRequest }
 
 export { bindJobRegistry, jobSnapshot } from './job.js'
 export type {
-  BoundJobRegistry,
   Job,
   JobEvent,
   JobOwner,

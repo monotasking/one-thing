@@ -17,19 +17,6 @@ export interface OnethingACPSettingsLike<TConfig extends OnethingACPAgentConfigL
   agents: TConfig[]
 }
 
-export interface OnethingACPManagerLike<
-  TConfig extends OnethingACPAgentConfigLike = OnethingACPAgentConfigLike,
-  TState = unknown,
-> {
-  updateSettings(settings: OnethingACPSettingsLike<TConfig>): MaybePromise<unknown>
-  getAgentStates(): TState[]
-  getAgentState(agentId: string): TState | undefined
-  connectAgent(agentId: string): MaybePromise<TState>
-  disconnectAgent(agentId: string): MaybePromise<unknown>
-  refreshAgent(agentId: string): MaybePromise<TState>
-  cancelSession(sessionId: string, agentId?: string): MaybePromise<unknown>
-}
-
 export interface OnethingACPIpcLogger {
   error?: (...args: unknown[]) => void
 }
@@ -40,7 +27,15 @@ export interface OnethingACPIpcAdapters<
 > {
   getSettings(): MaybePromise<OnethingACPSettingsLike<TConfig>>
   saveSettings(settings: OnethingACPSettingsLike<TConfig>): MaybePromise<unknown>
-  manager: OnethingACPManagerLike<TConfig, TState>
+  manager: {
+    updateSettings(settings: OnethingACPSettingsLike<TConfig>): MaybePromise<unknown>
+    getAgentStates(): TState[]
+    getAgentState(agentId: string): TState | undefined
+    connectAgent(agentId: string): MaybePromise<TState>
+    disconnectAgent(agentId: string): MaybePromise<unknown>
+    refreshAgent(agentId: string): MaybePromise<TState>
+    cancelSession(sessionId: string, agentId?: string): MaybePromise<unknown>
+  }
   logger?: OnethingACPIpcLogger
   createId?(): string
 }

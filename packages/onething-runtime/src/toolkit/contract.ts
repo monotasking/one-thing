@@ -100,15 +100,14 @@ export interface ToolContract<T = unknown> {
   readonly _output?: T
 }
 
-export interface DefineInputOptions {
-  readonly formatError?: (error: z.ZodError) => string
-}
 
 const CONTRACTS = new WeakMap<object, ToolContract>()
 
 export function defineInput<S extends z.ZodType>(
   zodSchema: S,
-  options: DefineInputOptions = {},
+  options: {
+    readonly formatError?: (error: z.ZodError) => string
+  } = {},
 ): ToolContract<z.infer<S>> {
   const schema = zodToJsonSchema(zodSchema) as unknown as JsonSchema
   const contract: ToolContract<z.infer<S>> = {

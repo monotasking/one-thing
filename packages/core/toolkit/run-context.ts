@@ -14,7 +14,7 @@ import type { Principal } from '../permission/principal.js'
 import type { AbortScope, AbortView } from './abort-scope.js'
 import type { ToolEvent } from './events.js'
 import { LIFECYCLE_EVENT_TYPE } from './events.js'
-import type { BoundJobRegistry, JobRegistry } from './job.js'
+import type { JobRegistry } from './job.js'
 import { bindJobRegistry } from './job.js'
 import type { OutputBudget } from './output-budget.js'
 import type { Clock, SandboxPolicy } from './ports.js'
@@ -81,7 +81,7 @@ export class RunContext {
   readonly budget: OutputBudget
   readonly sandbox?: SandboxPolicy
   readonly session?: SessionSnapshot
-  readonly jobs: BoundJobRegistry
+  readonly jobs: ReturnType<typeof bindJobRegistry>
 
   private readonly sink?: (event: ToolEvent) => void
   private readonly clock?: Clock

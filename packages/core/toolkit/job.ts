@@ -83,16 +83,14 @@ export interface JobRegistry {
  * 绑定到一次调用的视图。工具拿不到 `owner` 这个参数 —— 归属由系统填,不由工具
  * 声明,否则一个工具就能把自己的后台进程挂到别的会话名下。
  */
-export interface BoundJobRegistry {
-  spawn(spec: Omit<JobSpec, 'owner'>): Promise<Job>
-  get(id: string): Job | undefined
-  list(): readonly Job[]
-}
-
 export function bindJobRegistry(
   registry: JobRegistry | undefined,
   owner: JobOwner,
-): BoundJobRegistry {
+): {
+  spawn(spec: Omit<JobSpec, 'owner'>): Promise<Job>
+  get(id: string): Job | undefined
+  list(): readonly Job[]
+} {
   return {
     async spawn(spec) {
       if (!registry) throw new Error('No JobRegistry port is bound to this RunContext')

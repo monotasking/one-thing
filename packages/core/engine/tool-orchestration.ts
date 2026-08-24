@@ -289,25 +289,6 @@ export interface CoreToolExecutionEmitter<
   sendToolExecutionEnd(toolCallId: string, stepId: string, result?: TStructuredResult, isError?: boolean, error?: string, durationMs?: number): void
 }
 
-export interface CoreToolDirectExecutionCallbacks<
-  TStep extends CoreExecutableStepLike<TToolCall>,
-  TToolCall extends CoreExecutableToolCallLike<JsonValue | undefined>,
-  TMetadataUpdate extends CoreToolMetadataUpdate,
-  TPartialResult extends CoreToolResultLike,
-> {
-  sessionId: string
-  messageId: string
-  toolCallId?: string
-  workingDirectory?: string
-  workingDirectoryRoots?: string[]
-  abortSignal?: { aborted?: boolean }
-  onMetadata?: (update: TMetadataUpdate) => void
-  onPartialResult?: (update: TPartialResult) => void
-  onStepStart?: (step: TStep) => void
-  onStepComplete?: (step: TStep) => void
-  beforeSideEffect?: () => Promise<void>
-}
-
 export interface ExecuteCoreToolAndUpdateOptions<
   TToolCall extends CoreExecutableToolCallLike<TJson, TChanges>,
   TStep extends CoreExecutableStepLike<TToolCall>,
@@ -331,7 +312,19 @@ export interface ExecuteCoreToolAndUpdateOptions<
   executeToolDirectly: (
     toolName: string,
     args: JsonObject,
-    context: CoreToolDirectExecutionCallbacks<TStep, TToolCall, TMetadataUpdate, TPartialResult>
+    context: {
+      sessionId: string
+      messageId: string
+      toolCallId?: string
+      workingDirectory?: string
+      workingDirectoryRoots?: string[]
+      abortSignal?: { aborted?: boolean }
+      onMetadata?: (update: TMetadataUpdate) => void
+      onPartialResult?: (update: TPartialResult) => void
+      onStepStart?: (step: TStep) => void
+      onStepComplete?: (step: TStep) => void
+      beforeSideEffect?: () => Promise<void>
+    }
   ) => Promise<TResult>
   createStep: (toolCall: TToolCall, skillName?: string | null, turnIndex?: number) => TStep
   toJsonValue: (value: unknown) => TJson
@@ -352,21 +345,6 @@ export interface CoreToolCallArtifactRemovalPlan<TStep, TPart, TToolCall> {
     steps?: TStep[]
     contentParts?: TPart[]
   }
-}
-
-export interface BuildToolExecutionFinalPresentationOptions<
-  TToolCall extends CoreToolExecutionToolCallLike<TJson, TChanges>,
-  TStructuredResult,
-  TJson = JsonValue,
-  TChanges = unknown,
-> {
-  toolCall: TToolCall
-  result: CoreToolExecutionResultLike
-  currentTitle?: string
-  changes?: TChanges
-  toJsonValue: (value: unknown) => TJson
-  toStructured: (value: unknown) => TStructuredResult
-  formatFailure: (failure: CoreToolExecutionFailureLike) => string
 }
 
 export function shouldStopAfterTool(toolCall: Pick<CoreToolCallLike, 'status' | 'rejected'>): boolean {
@@ -811,7 +789,15 @@ export function buildToolExecutionFinalPresentation<
   TJson = JsonValue,
   TChanges = unknown,
 >(
-  options: BuildToolExecutionFinalPresentationOptions<TToolCall, TStructuredResult, TJson, TChanges>,
+  options: {
+    toolCall: TToolCall
+    result: CoreToolExecutionResultLike
+    currentTitle?: string
+    changes?: TChanges
+    toJsonValue: (value: unknown) => TJson
+    toStructured: (value: unknown) => TStructuredResult
+    formatFailure: (failure: CoreToolExecutionFailureLike) => string
+  },
 ): CoreToolExecutionFinalPresentation<TToolCall & { changes?: TChanges }, TStructuredResult> {
   const { result } = options
 

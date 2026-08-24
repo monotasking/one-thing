@@ -173,7 +173,6 @@ export type {
   BuildAgentLoopRuntimeOptions,
 } from './runtime.js'
 export type {
-  OrderedSideEffectGate,
 } from './tool-execution-order.js'
 export type {
   ToolExecutionScheduleOptions,

@@ -1,16 +1,12 @@
 type MaybePromise<T> = T | Promise<T>
 
-export interface ListOnethingMCPToolsOptions<TTool = unknown> {
-  getAllTools(): TTool[]
-}
-
 export interface ListOnethingMCPToolsResult<TTool = unknown> {
   success: true
   tools: TTool[]
 }
 
 export function listOnethingMCPTools<TTool = unknown>(
-  options: ListOnethingMCPToolsOptions<TTool>,
+  options: { getAllTools(): TTool[] },
 ): ListOnethingMCPToolsResult<TTool> {
   return {
     success: true,
@@ -55,17 +51,13 @@ export async function callOnethingMCPTool<TArgs = unknown, TContent = unknown>(
   }
 }
 
-export interface ListOnethingMCPResourcesOptions<TResource = unknown> {
-  getAllResources(): TResource[]
-}
-
 export interface ListOnethingMCPResourcesResult<TResource = unknown> {
   success: true
   resources: TResource[]
 }
 
 export function listOnethingMCPResources<TResource = unknown>(
-  options: ListOnethingMCPResourcesOptions<TResource>,
+  options: { getAllResources(): TResource[] },
 ): ListOnethingMCPResourcesResult<TResource> {
   return {
     success: true,
@@ -105,17 +97,13 @@ export async function readOnethingMCPResource<TContent = unknown>(
   }
 }
 
-export interface ListOnethingMCPPromptsOptions<TPrompt = unknown> {
-  getAllPrompts(): TPrompt[]
-}
-
 export interface ListOnethingMCPPromptsResult<TPrompt = unknown> {
   success: true
   prompts: TPrompt[]
 }
 
 export function listOnethingMCPPrompts<TPrompt = unknown>(
-  options: ListOnethingMCPPromptsOptions<TPrompt>,
+  options: { getAllPrompts(): TPrompt[] },
 ): ListOnethingMCPPromptsResult<TPrompt> {
   return {
     success: true,

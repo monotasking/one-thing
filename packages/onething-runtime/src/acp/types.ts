@@ -99,14 +99,6 @@ export type ACPPermissionBridge = (
   context: ACPPermissionRequestContext,
 ) => Promise<ACPPermissionDecision>
 
-export interface ACPClientRuntimeOptions {
-  /**
-   * Late-bound accessor so clients created before the host registers the
-   * bridge still pick it up, and bridge removal takes effect immediately.
-   */
-  getPermissionBridge?: () => ACPPermissionBridge | undefined
-}
-
 export type ACPPromptStreamEvent =
   | { type: 'update'; notification: SessionNotification }
   | { type: 'warning'; message: string }

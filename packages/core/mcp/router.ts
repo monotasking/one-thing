@@ -146,12 +146,6 @@ export interface MCPRouterActionOptions {
   onPartialResult?: (text: string, phase: string) => void
 }
 
-export interface MCPBridgeToolExecutionOptions extends MCPRouterActionOptions {
-  refs: MCPFunctionRef[]
-  parseToolId: (toolId: string) => MCPToolIdentity | null
-  callTool: (serverId: string, toolName: string, args: JsonObject) => Promise<MCPToolCallResult>
-}
-
 export function buildMCPToolsForAI(options: MCPToolsForAIOptions): MCPToolsForAIResult {
   const tools: Record<string, MCPModelFacingToolDefinition> = {}
   const routerToolId = options.routerToolId ?? MCP_ROUTER_TOOL_ID
@@ -710,7 +704,11 @@ function withMCPResultOutputText(result: MCPToolCallResult): MCPToolCallResult {
 export async function executeMCPBridgeTool(
   toolId: string,
   args: JsonObject,
-  options: MCPBridgeToolExecutionOptions,
+  options: MCPRouterActionOptions & {
+    refs: MCPFunctionRef[]
+    parseToolId: (toolId: string) => MCPToolIdentity | null
+    callTool: (serverId: string, toolName: string, args: JsonObject) => Promise<MCPToolCallResult>
+  },
 ): Promise<MCPToolCallResult> {
   if (isMCPRouterToolId(toolId)) {
     const resolvedAction = resolveMCPRouterAction(args, options.refs, options)

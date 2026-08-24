@@ -60,26 +60,6 @@ export interface OnethingSessionRepositoryLogger {
   error?(...args: unknown[]): void
 }
 
-export interface OnethingSessionRepositorySqliteAdapters<
-  TSession,
-  TMeta,
-  TDetails,
-  TMarker,
-> {
-  importSessionIndex?(index: TMeta[]): void
-  getSessionDetails?(sessionId: string): TDetails | undefined
-  getMessagesPage?(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse | undefined
-  getUserMessageMarkers?(sessionId: string): TMarker[] | undefined
-  isSessionReady?(sessionId: string): boolean
-  scheduleMigration?(sessionId: string): void
-  syncFullSession?(session: TSession): void
-  syncSession?(session: TSession): void
-  syncSessionMetadata?(session: TSession): void
-  syncSessionUsage?(session: TSession): void
-  syncSessionVariables?(session: TSession): void
-  deleteSessions?(sessionIds: string[]): void
-}
-
 export interface OnethingSessionRepositoryOptions<
   TSession extends CoreSession<TMessage> & {
     id: string
@@ -110,7 +90,24 @@ export interface OnethingSessionRepositoryOptions<
   cancelPendingSideEffects?(sessionId: string): void
   /** 格式感知的存储驱动(legacy/jsonl 混合路由);缺省时退回整文件 JSON 直写 */
   storageDriver?: SessionStorageDriver<TSession>
-  sqlite?: OnethingSessionRepositorySqliteAdapters<TSession, TMeta, TDetails, TMarker>
+  /**
+   * SQLite 退役遗留:全仓零生产填充(S4 把只为它存在的那个具名口删了,形状
+   * 原地保留)。下面每个成员都缺席 = 相应分支恒为 no-op。
+   */
+  sqlite?: {
+    importSessionIndex?(index: TMeta[]): void
+    getSessionDetails?(sessionId: string): TDetails | undefined
+    getMessagesPage?(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse | undefined
+    getUserMessageMarkers?(sessionId: string): TMarker[] | undefined
+    isSessionReady?(sessionId: string): boolean
+    scheduleMigration?(sessionId: string): void
+    syncFullSession?(session: TSession): void
+    syncSession?(session: TSession): void
+    syncSessionMetadata?(session: TSession): void
+    syncSessionUsage?(session: TSession): void
+    syncSessionVariables?(session: TSession): void
+    deleteSessions?(sessionIds: string[]): void
+  }
   logger?: OnethingSessionRepositoryLogger
 }
 

@@ -114,7 +114,6 @@ export {
 export {
   createCollabTypingTracker,
   type CollabTypingSignal,
-  type CollabTypingTracker,
   type CollabTypingTrackerOptions,
 } from './typing.js'
 export {

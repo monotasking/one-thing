@@ -4,10 +4,6 @@ import type { ContextVariable, VariableContext, VariableProvider } from '../type
 
 const NAME = 'git_branch'
 
-export interface GitBranchGateway {
-  /** Active work directory for the session ('' when unset). */
-  read(sessionId: string): string
-}
 
 async function findGitDir(start: string): Promise<string | null> {
   let dir = start
@@ -53,7 +49,10 @@ export class GitBranchProvider implements VariableProvider {
   readonly id = 'git-branch'
   readonly priority = 21
 
-  constructor(private readonly gateway: GitBranchGateway) {}
+  constructor(private readonly gateway: {
+    /** Active work directory for the session ('' when unset). */
+    read(sessionId: string): string
+  }) {}
 
   async list(ctx: VariableContext): Promise<ContextVariable[]> {
     const workdir = this.gateway.read(ctx.sessionId)

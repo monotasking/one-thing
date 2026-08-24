@@ -97,13 +97,6 @@ export interface ApplySessionIndexMetaMutationWithAdaptersOptions<TMeta extends 
   mutateMeta(meta: TMeta): void
 }
 
-export interface CoreSessionSqliteMutationAdapters<TSession> {
-  isReady(sessionId: string): boolean
-  scheduleMigration(sessionId: string): void
-  syncMetadata(session: TSession): void
-  syncUsage?(session: TSession): void
-}
-
 export interface SyncSessionSideEffectWithReadyAdaptersOptions<TSession> {
   sessionId: string
   session: TSession

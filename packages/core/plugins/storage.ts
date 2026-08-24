@@ -254,14 +254,6 @@ export interface CorePluginMessageStateScoped {
   exists(): boolean
 }
 
-/**
- * 插件侧 api.storage 的完整面:KV + 消息作用域状态(plugin-message-state-2026-08)。
- * `message(sessionId, messageId)` 返回该消息的 scoped 视图 —— 坐标随调用递交。
- */
-export interface CorePluginStorageWithMessageState extends CorePluginStorage {
-  message(sessionId: string, messageId: string): CorePluginMessageStateScoped
-}
-
 export interface CreateCorePluginStorageOptions {
   pluginId: string
   /**

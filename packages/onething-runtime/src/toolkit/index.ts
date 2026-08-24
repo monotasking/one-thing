@@ -18,7 +18,7 @@ export {
   zodToJsonSchema,
   ZodValidator,
 } from './contract.js'
-export type { DefineInputOptions, ToolContract, ZodValidatorOptions } from './contract.js'
+export type { ToolContract, ZodValidatorOptions } from './contract.js'
 
 export { ReadOnlyTool } from './families/read-only.js'
 export {

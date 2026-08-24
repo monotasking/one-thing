@@ -148,28 +148,6 @@ export function coreToolParameterFromSchema(
 
 
 
-/** `CoreToolHostExecutionContext` 映射出来的那份运行期上下文。 */
-export interface CoreToolRuntimeContext<
-  TMetadata extends object = object,
-  TPartialResult = unknown,
-  TStep = unknown,
-  TApprovedAnalysis = unknown,
-  TAbortSignal = unknown,
-> {
-  sessionId: string
-  messageId: string
-  toolCallId?: string
-  workingDirectory?: string
-  workingDirectoryRoots?: string[]
-  abortSignal?: TAbortSignal
-  metadata(input: { title?: string; metadata?: Partial<TMetadata> }): void
-  updateResult?(update: TPartialResult): void
-  onStepStart?: (step: TStep) => void
-  onStepComplete?: (step: TStep) => void
-  beforeSideEffect?: () => Promise<void>
-  approvedAnalysis?: TApprovedAnalysis
-}
-
 function coreToolParametersFromJsonSchema(schema: CoreToolJsonSchemaLike): CoreToolParameterDefinition[] {
   const required = schema.required ?? []
   return Object.entries(schema.properties ?? {}).map(([name, prop]) => (
@@ -205,7 +183,21 @@ export function coreToolContextFromHost<
     TApprovedAnalysis,
     TAbortSignal
   >,
-): CoreToolRuntimeContext<TMetadata, TPartialResult, TStep, TApprovedAnalysis, TAbortSignal> {
+): {
+  /** `CoreToolHostExecutionContext` 映射出来的那份运行期上下文。 */
+  sessionId: string
+  messageId: string
+  toolCallId?: string
+  workingDirectory?: string
+  workingDirectoryRoots?: string[]
+  abortSignal?: TAbortSignal
+  metadata(input: { title?: string; metadata?: Partial<TMetadata> }): void
+  updateResult?(update: TPartialResult): void
+  onStepStart?: (step: TStep) => void
+  onStepComplete?: (step: TStep) => void
+  beforeSideEffect?: () => Promise<void>
+  approvedAnalysis?: TApprovedAnalysis
+} {
   return {
     sessionId: context.sessionId,
     messageId: context.messageId,

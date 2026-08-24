@@ -187,41 +187,7 @@ export interface CoreProviderAuthLogger {
   error?: (...args: unknown[]) => void
 }
 
-export interface ResolveProviderApiKeyWithAdaptersOptions<TProvider extends CoreProviderConfigLike = CoreProviderConfigLike> {
-  providerId: string
-  providerConfig: TProvider | undefined
-  acpProviderId?: string
-  isOAuthProvider: (providerId: string) => boolean
-  /**
-   * 第二参是 B3 盖在 config 上的运行期标记(批 B6)——「这条会话的 token 存在
-   * 哪儿」。缺席 = settings(默认空间),即本参数出现之前的行为。
-   */
-  refreshOAuthToken: (
-    providerId: string,
-    credential?: CoreSpaceCredentialMarker,
-  ) => Promise<{ accessToken: string }>
-  resolveApiKey: (providerId: string, providerConfig: TProvider | undefined) => string | null | undefined
-  logger?: CoreProviderAuthLogger
-}
 
-export interface ResolveProviderAuthWithAdaptersOptions<
-  TProvider extends CoreProviderConfigLike = CoreProviderConfigLike,
-  TAuth extends CoreProviderAuthLike = CoreProviderAuthLike,
-> {
-  providerId: string
-  providerConfig: TProvider | undefined
-  acpProviderId?: string
-  isOAuthProvider: (providerId: string) => boolean
-  resolveApiKey: (providerId: string, providerConfig: TProvider | undefined) => string | null | undefined
-  /** 第三参见 `refreshOAuthToken` 的同一句(批 B6)。 */
-  resolveOAuthAuth: (
-    providerId: string,
-    apiKey?: string,
-    credential?: CoreSpaceCredentialMarker,
-  ) => Promise<TAuth | null>
-  createApiKeyAuth?: (apiKey: string) => TAuth
-  logger?: CoreProviderAuthLogger
-}
 
 export interface CoreResolvedProviderConfigForChat<
   TProvider extends CoreProviderConfigLike = CoreProviderConfigLike,
@@ -236,20 +202,6 @@ export interface CoreResolvedProviderConfigForChat<
   temperature: number
 }
 
-export interface ResolveProviderConfigForChatOptions<
-  TProvider extends CoreProviderConfigLike = CoreProviderConfigLike,
-  TAuth extends CoreProviderAuthLike = CoreProviderAuthLike,
-> {
-  settings: CoreAppSettingsWithAI<TProvider>
-  session?: CoreSessionProviderSelection | null
-  resolveAuth: (providerId: string, providerConfig: TProvider | undefined) => TAuth | null | Promise<TAuth | null>
-  /**
-   * per-space 凭证覆盖(批 B3)。缺省 = 恒等,即默认空间语义。
-   * 这条路径与 `getEffectiveProviderConfig` 各自读 settings,所以隔离闸也得
-   * 各挂一次 —— 少挂的那一条就是漏出去的那一条。
-   */
-  applySpaceCredentials?: (providerId: string, providerConfig: TProvider | undefined) => TProvider | undefined
-}
 
 export function extractErrorDetails(error: CoreProviderErrorDetails | undefined): string | undefined {
   if (!error) return undefined
@@ -332,7 +284,22 @@ export function getProviderConfig<TProvider extends CoreProviderConfigLike>(
 }
 
 export async function getProviderApiKeyWithAdapters<TProvider extends CoreProviderConfigLike>(
-  options: ResolveProviderApiKeyWithAdaptersOptions<TProvider>,
+  options: {
+    providerId: string
+    providerConfig: TProvider | undefined
+    acpProviderId?: string
+    isOAuthProvider: (providerId: string) => boolean
+    /**
+     * 第二参是 B3 盖在 config 上的运行期标记(批 B6)——「这条会话的 token 存在
+     * 哪儿」。缺席 = settings(默认空间),即本参数出现之前的行为。
+     */
+    refreshOAuthToken: (
+      providerId: string,
+      credential?: CoreSpaceCredentialMarker,
+    ) => Promise<{ accessToken: string }>
+    resolveApiKey: (providerId: string, providerConfig: TProvider | undefined) => string | null | undefined
+    logger?: CoreProviderAuthLogger
+  },
 ): Promise<string | null> {
   // 严格隔离闸(批 B3):非 default 空间没有这个 provider 的 entry,就是未配置。
   // 挡在最前面 —— 后面每一条路(OAuth 刷新、env 兜底)都会绕过隔离。
@@ -367,7 +334,21 @@ export async function resolveProviderAuthWithAdapters<
   TProvider extends CoreProviderConfigLike,
   TAuth extends CoreProviderAuthLike,
 >(
-  options: ResolveProviderAuthWithAdaptersOptions<TProvider, TAuth>,
+  options: {
+    providerId: string
+    providerConfig: TProvider | undefined
+    acpProviderId?: string
+    isOAuthProvider: (providerId: string) => boolean
+    resolveApiKey: (providerId: string, providerConfig: TProvider | undefined) => string | null | undefined
+    /** 第三参见 `refreshOAuthToken` 的同一句(批 B6)。 */
+    resolveOAuthAuth: (
+      providerId: string,
+      apiKey?: string,
+      credential?: CoreSpaceCredentialMarker,
+    ) => Promise<TAuth | null>
+    createApiKeyAuth?: (apiKey: string) => TAuth
+    logger?: CoreProviderAuthLogger
+  },
 ): Promise<TAuth | null> {
   const createApiKeyAuth = options.createApiKeyAuth ?? ((apiKey: string) => ({ kind: 'api-key', apiKey }) as TAuth)
 
@@ -557,7 +538,17 @@ export async function resolveProviderConfigForChat<
   TProvider extends CoreProviderConfigLike,
   TAuth extends CoreProviderAuthLike,
 >(
-  options: ResolveProviderConfigForChatOptions<TProvider, TAuth>,
+  options: {
+    settings: CoreAppSettingsWithAI<TProvider>
+    session?: CoreSessionProviderSelection | null
+    resolveAuth: (providerId: string, providerConfig: TProvider | undefined) => TAuth | null | Promise<TAuth | null>
+    /**
+     * per-space 凭证覆盖(批 B3)。缺省 = 恒等,即默认空间语义。
+     * 这条路径与 `getEffectiveProviderConfig` 各自读 settings,所以隔离闸也得
+     * 各挂一次 —— 少挂的那一条就是漏出去的那一条。
+     */
+    applySpaceCredentials?: (providerId: string, providerConfig: TProvider | undefined) => TProvider | undefined
+  },
 ): Promise<CoreResolvedProviderConfigForChat<TProvider, TAuth> | null> {
   const settings = options.settings
   const applySpace = options.applySpaceCredentials ?? ((_id: string, config: TProvider | undefined) => config)

@@ -12,16 +12,6 @@ export interface OnethingSystemMessageSessionLike<
   messages: TMessage[]
 }
 
-export interface RemoveOnethingSystemMarkerMessageOptions<
-  TMessage extends OnethingSystemMessageLike = OnethingSystemMessageLike,
-  TSession extends OnethingSystemMessageSessionLike<TMessage> = OnethingSystemMessageSessionLike<TMessage>,
-> {
-  sessionId: string
-  markerType: string
-  getSession(sessionId: string): TSession | null | undefined
-  deleteMessage(sessionId: string, messageId: string): MaybePromise<unknown>
-}
-
 export interface RemoveOnethingSystemMarkerMessageResult {
   success: boolean
   removedId?: string | null
@@ -32,7 +22,12 @@ export async function removeOnethingSystemMarkerMessage<
   TMessage extends OnethingSystemMessageLike,
   TSession extends OnethingSystemMessageSessionLike<TMessage>,
 >(
-  options: RemoveOnethingSystemMarkerMessageOptions<TMessage, TSession>,
+  options: {
+    sessionId: string
+    markerType: string
+    getSession(sessionId: string): TSession | null | undefined
+    deleteMessage(sessionId: string, messageId: string): MaybePromise<unknown>
+  },
 ): Promise<RemoveOnethingSystemMarkerMessageResult> {
   const session = options.getSession(options.sessionId)
   if (!session) {

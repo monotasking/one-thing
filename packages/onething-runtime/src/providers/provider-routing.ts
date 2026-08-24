@@ -45,19 +45,6 @@ export interface OnethingChatTitleGenerationRequest {
   }
 }
 
-export interface GenerateOnethingProviderChatTitleOptions<TConfig = unknown> {
-  providerId: string
-  config: TConfig
-  userMessage: string
-  options?: OnethingChatTitleOptions
-  isACPProvider(providerId: string): boolean
-  generateChatResponse(
-    providerId: string,
-    config: TConfig,
-    messages: OnethingChatTitleGenerationRequest['messages'],
-    options: OnethingChatTitleGenerationRequest['options'],
-  ): Promise<string>
-}
 
 export interface OnethingTextChatResponseResult {
   text: string
@@ -154,66 +141,8 @@ export interface StreamOnethingACPChatResponseWithToolsOptions<
   ): AsyncIterable<TEvent>
 }
 
-export interface GenerateOnethingTextChatResponseOptions<
-  TConfig = unknown,
-  TMessage = unknown,
-  TOptions = unknown,
-  TResult extends OnethingTextChatResponseResult = OnethingTextChatResponseResult,
-> {
-  providerId: string
-  config: TConfig
-  messages: TMessage[]
-  options: TOptions
-  /**
-   * Side channel for token usage. This function returns the response text
-   * (a contract with callers all over the repo), so usage rides out here
-   * rather than widening the return type.
-   */
-  onUsage?: (usage: OnethingProviderTokenUsage) => void
-  generateWithReasoning(
-    providerId: string,
-    config: TConfig,
-    messages: TMessage[],
-    options: TOptions,
-  ): Promise<TResult>
-  onFinish?: (info: { finishReason?: string }) => void
-}
 
 
-export interface GenerateOnethingChatResponseWithReasoningOptions<
-  TConfig extends { baseUrl?: string } = { baseUrl?: string },
-  TMessage = unknown,
-  TOptions extends { abortSignal?: AbortSignal; debugSessionId?: string } = {},
-  TProvider = unknown,
-  TResult extends OnethingChatResponseWithReasoningResult = OnethingChatResponseWithReasoningResult,
-> {
-  providerId: string
-  config: TConfig
-  messages: TMessage[]
-  options: TOptions
-  streamACPResponse(
-    config: TConfig,
-    messages: TMessage[],
-    options: {
-      abortSignal?: AbortSignal
-      debugSessionId?: string
-      workingDirectory?: string
-    },
-  ): AsyncIterable<OnethingACPReasoningStreamChunk>
-  mergeMessagesForGenerate(providerId: string, messages: TMessage[]): TMessage[]
-  resolveRuntimeRoute(
-    providerId: string,
-    config: TConfig,
-  ): OnethingProviderRuntimeChatRoute<TProvider>
-  runUtilityAgentTurn(
-    providerId: string,
-    provider: TProvider,
-    config: TConfig,
-    messages: TMessage[],
-    options: TOptions,
-    mode: 'generate',
-  ): Promise<TResult | undefined>
-}
 
 
 
@@ -362,7 +291,19 @@ export function cleanOnethingGeneratedChatTitle(response: string): string {
 }
 
 export async function generateOnethingProviderChatTitle<TConfig = unknown>(
-  options: GenerateOnethingProviderChatTitleOptions<TConfig>,
+  options: {
+    providerId: string
+    config: TConfig
+    userMessage: string
+    options?: OnethingChatTitleOptions
+    isACPProvider(providerId: string): boolean
+    generateChatResponse(
+      providerId: string,
+      config: TConfig,
+      messages: OnethingChatTitleGenerationRequest['messages'],
+      options: OnethingChatTitleGenerationRequest['options'],
+    ): Promise<string>
+  },
 ): Promise<string> {
   if (options.isACPProvider(options.providerId)) {
     return fallbackOnethingACPChatTitle(options.userMessage)
@@ -384,7 +325,25 @@ export async function generateOnethingTextChatResponse<
   TOptions = unknown,
   TResult extends OnethingTextChatResponseResult = OnethingTextChatResponseResult,
 >(
-  options: GenerateOnethingTextChatResponseOptions<TConfig, TMessage, TOptions, TResult>,
+  options: {
+    providerId: string
+    config: TConfig
+    messages: TMessage[]
+    options: TOptions
+    /**
+     * Side channel for token usage. This function returns the response text
+     * (a contract with callers all over the repo), so usage rides out here
+     * rather than widening the return type.
+     */
+    onUsage?: (usage: OnethingProviderTokenUsage) => void
+    generateWithReasoning(
+      providerId: string,
+      config: TConfig,
+      messages: TMessage[],
+      options: TOptions,
+    ): Promise<TResult>
+    onFinish?: (info: { finishReason?: string }) => void
+  },
 ): Promise<string> {
   const result = await options.generateWithReasoning(
     options.providerId,
@@ -404,13 +363,34 @@ export async function generateOnethingChatResponseWithReasoning<
   TProvider = unknown,
   TResult extends OnethingChatResponseWithReasoningResult = OnethingChatResponseWithReasoningResult,
 >(
-  options: GenerateOnethingChatResponseWithReasoningOptions<
-    TConfig,
-    TMessage,
-    TOptions,
-    TProvider,
-    TResult
-  >,
+  options: {
+    providerId: string
+    config: TConfig
+    messages: TMessage[]
+    options: TOptions
+    streamACPResponse(
+      config: TConfig,
+      messages: TMessage[],
+      options: {
+        abortSignal?: AbortSignal
+        debugSessionId?: string
+        workingDirectory?: string
+      },
+    ): AsyncIterable<OnethingACPReasoningStreamChunk>
+    mergeMessagesForGenerate(providerId: string, messages: TMessage[]): TMessage[]
+    resolveRuntimeRoute(
+      providerId: string,
+      config: TConfig,
+    ): OnethingProviderRuntimeChatRoute<TProvider>
+    runUtilityAgentTurn(
+      providerId: string,
+      provider: TProvider,
+      config: TConfig,
+      messages: TMessage[],
+      options: TOptions,
+      mode: 'generate',
+    ): Promise<TResult | undefined>
+  },
 ): Promise<TResult> {
   const runtimeRoute = options.resolveRuntimeRoute(options.providerId, options.config)
 

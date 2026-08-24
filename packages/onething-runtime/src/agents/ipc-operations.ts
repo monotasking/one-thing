@@ -158,20 +158,6 @@ export async function updateOnethingAgentFromRequestForIpc<TAgent extends Onethi
  */
 export type OnethingAgentRemovalOutcome = 'retired' | 'deleted'
 
-export interface DeleteOnethingAgentFromRequestOptions<
-  TAgent extends OnethingAgentDefinition = OnethingAgentDefinition,
-  TSession extends AgentReferenceSessionLike = AgentReferenceSessionLike,
-> {
-  agentId?: string | null
-  defaultAgentId?: string
-  /** 引用检查的输入。会话元数据即可(agentId / kind / room / collab 四个字段)。 */
-  sessions: readonly TSession[]
-  /** 被引用过 → 退休(status 翻 retired,身份面全留)。 */
-  retireAgent(agentId: string): MaybePromise<TAgent>
-  /** 从未被引用过 → 真硬删。 */
-  deleteAgent(agentId: string): MaybePromise<void>
-}
-
 export interface DeleteOnethingAgentFromRequestResult<
   TAgent extends OnethingAgentDefinition = OnethingAgentDefinition,
 > {
@@ -193,7 +179,16 @@ export async function deleteOnethingAgentFromRequest<
   TAgent extends OnethingAgentDefinition,
   TSession extends AgentReferenceSessionLike,
 >(
-  options: DeleteOnethingAgentFromRequestOptions<TAgent, TSession>,
+  options: {
+    agentId?: string | null
+    defaultAgentId?: string
+    /** 引用检查的输入。会话元数据即可(agentId / kind / room / collab 四个字段)。 */
+    sessions: readonly TSession[]
+    /** 被引用过 → 退休(status 翻 retired,身份面全留)。 */
+    retireAgent(agentId: string): MaybePromise<TAgent>
+    /** 从未被引用过 → 真硬删。 */
+    deleteAgent(agentId: string): MaybePromise<void>
+  },
 ): Promise<DeleteOnethingAgentFromRequestResult<TAgent>> {
   const defaultAgentId = options.defaultAgentId ?? DEFAULT_ONETHING_AGENT_ID
   const agentId = options.agentId

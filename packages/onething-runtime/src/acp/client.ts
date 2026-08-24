@@ -33,8 +33,8 @@ import type {
 import type {
   ACPAgentConfig,
   ACPAgentState,
-  ACPClientRuntimeOptions,
   ACPConnectionStatus,
+  ACPPermissionBridge,
   ACPPermissionDecision,
   ACPPermissionMode,
   ACPPermissionRequestContext,
@@ -187,7 +187,13 @@ export class ACPClient {
 
   constructor(
     private config: ACPAgentConfig,
-    private runtimeOptions: ACPClientRuntimeOptions = {},
+    private runtimeOptions: {
+      /**
+       * Late-bound accessor so clients created before the host registers the
+       * bridge still pick it up, and bridge removal takes effect immediately.
+       */
+      getPermissionBridge?: () => ACPPermissionBridge | undefined
+    } = {},
   ) {}
 
   get id(): string {

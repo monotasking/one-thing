@@ -238,19 +238,18 @@ export interface CoreCollectAgentReviewedSkillDirectoriesOptions {
   isSkillFile: (skillPath: string) => boolean
 }
 
-export interface CoreEnsureAgentReviewedSkillsCompleteAdapters {
-  isSkillFile(skillPath: string): boolean
-  readSkillFile(skillPath: string): string
-  writeSkillFile(skillPath: string, content: string): void
-  listSupportFiles(skillDir: string): string[]
-  supportFileExists(skillDir: string, relativePath: string): boolean
-  writeSupportFile(skillDir: string, relativePath: string, content: string): void
-}
 
 export interface CoreEnsureAgentReviewedSkillsCompleteOptions {
   mutatedPaths: Iterable<string>
   mutableRoots: string[]
-  adapters: CoreEnsureAgentReviewedSkillsCompleteAdapters
+  adapters: {
+    isSkillFile(skillPath: string): boolean
+    readSkillFile(skillPath: string): string
+    writeSkillFile(skillPath: string, content: string): void
+    listSupportFiles(skillDir: string): string[]
+    supportFileExists(skillDir: string, relativePath: string): boolean
+    writeSupportFile(skillDir: string, relativePath: string, content: string): void
+  }
 }
 
 export interface CoreSkillReviewExecutionResult {
@@ -924,15 +923,14 @@ export function slugFromText(text: string | undefined): string {
   return slug || 'review-notes'
 }
 
-export interface UniqueSkillSupportFilePathOptions {
+
+export function uniqueSkillSupportFilePath(options: {
   requestedPath?: string
   fallbackText?: string
   reserved: Set<string>
   exists?: (filePath: string) => boolean
   now?: () => number
-}
-
-export function uniqueSkillSupportFilePath(options: UniqueSkillSupportFilePathOptions): string {
+}): string {
   const normalized = normalizeSupportFilePath(options.requestedPath)
   const normalizedRoot = normalized?.split('/')[0]
   const directory = normalizedRoot && SUPPORT_FILE_ROOTS.has(normalizedRoot) ? normalizedRoot : 'references'

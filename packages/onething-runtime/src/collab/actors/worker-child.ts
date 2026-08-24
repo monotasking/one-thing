@@ -489,14 +489,6 @@ export interface CollabScriptedWorkerCall {
   boardDigest?: string
 }
 
-export interface CollabScriptedWorkerPort extends CollabWorkerMindPort {
-  readonly calls: CollabScriptedWorkerCall[]
-  readonly peakConcurrency: number
-  readonly inFlight: number
-  /** 让接下来的 `runWorkTurn` 挂住,直到 `release()`。并行豁免的测试要它。 */
-  hold(): void
-  release(): void
-}
 
 /**
  * 剧本化的假件:按卡出结果,可挂起。
@@ -506,7 +498,14 @@ export interface CollabScriptedWorkerPort extends CollabWorkerMindPort {
  */
 export function createCollabScriptedWorkerPort(
   script: readonly CollabScriptedWork[] = [],
-): CollabScriptedWorkerPort {
+): CollabWorkerMindPort & {
+  readonly calls: CollabScriptedWorkerCall[]
+  readonly peakConcurrency: number
+  readonly inFlight: number
+  /** 让接下来的 `runWorkTurn` 挂住,直到 `release()`。并行豁免的测试要它。 */
+  hold(): void
+  release(): void
+} {
   const queue = new Map<string, CollabScriptedWork[]>()
   for (const work of script) {
     const list = queue.get(work.cardId) ?? []

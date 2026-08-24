@@ -46,7 +46,8 @@ import {
   assertSafePluginFileName,
   getCorePluginScratchDir,
   PluginStorageError,
-  type CorePluginStorageWithMessageState,
+  type CorePluginMessageStateScoped,
+  type CorePluginStorage,
 } from './storage.js'
 import { PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT } from './sessions.js'
 
@@ -177,7 +178,12 @@ export interface CorePluginFiles {
  * 一个"实现已经有、契约还没承认"的缺口。合成的类型放在这里而不是 storage.ts,
  * 是因为依赖方向:storage-files 认识 storage,反过来不认识。
  */
-export interface CorePluginStorageWithFiles extends CorePluginStorageWithMessageState {
+export interface CorePluginStorageWithFiles extends CorePluginStorage {
+  /**
+   * 消息作用域状态(plugin-message-state-2026-08)。
+   * `message(sessionId, messageId)` 返回该消息的 scoped 视图 —— 坐标随调用递交。
+   */
+  message(sessionId: string, messageId: string): CorePluginMessageStateScoped
   files: CorePluginFiles
 }
 

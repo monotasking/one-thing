@@ -96,7 +96,6 @@ export type {
 } from './tool-id-registry.js'
 export type {
   MCPFunctionRef,
-  MCPBridgeToolExecutionOptions,
   MCPModelFacingToolDefinition,
   MCPRegisteredToolLike,
   MCPRouterActionOptions,
@@ -158,8 +157,6 @@ export {
 export type {
   CoreMCPTask,
   CoreMCPTaskHandle,
-  CoreMCPTaskPollAdapters,
-  CoreMCPTaskPollOptions,
   CoreMCPTaskPollOutcome,
   CoreMCPTaskStatus,
 } from './tasks.js'
