@@ -23,7 +23,9 @@ export interface PermissionGrantWorkspaceFile {
   grants: PermissionGrant[]
 }
 
-export type OnethingPermissionGrantStorageAdapters = PermissionGrantFileStorageAdapters
+// S2(I4-缝收口):interface 而不是 type alias —— tsserver 的 Go to Implementation
+// 不跟随别名,写成 extends 之后装配层那两处注入才是这道口看得见的实现。
+export interface OnethingPermissionGrantStorageAdapters extends PermissionGrantFileStorageAdapters {}
 
 export function getPermissionWorkspaceGrantsPath(getPermissionsDir: () => string): string {
   return path.join(getPermissionsDir(), 'workspace-grants.json')

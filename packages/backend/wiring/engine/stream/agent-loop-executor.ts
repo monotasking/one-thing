@@ -33,6 +33,7 @@ import { checkSessionHistoryShadowForRequest } from "./history-shadow.js";
 import { resolveAgentProfileForSession } from "../../agents/profile.js";
 import { saveMediaImage } from "@onething/runtime/media/save-image";
 import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop/providers";
+import type { ApplyOnethingAgentLoopProviderDataOptions } from "@onething/runtime/agent-loop/providers/provider-data";
 import { updateSessionUsage } from "../../../session/usage.js";
 import { recordUsage } from "../../usage/index.js";
 import { triggerManager } from "../triggers/index.js";
@@ -46,9 +47,10 @@ import {
 	createAgentLoopNextAssistantWriterPlan,
 	emitAgentLoopFinalMessageUpdateWithAdapters,
 	executeAgentLoopStreamLifecycleWithAdapters,
+	type ExecuteAgentLoopStreamLifecycleWithAdaptersOptions,
 	lastUserMessageText,
 	persistAgentLoopTurnContentPartsWithAdapters,
-	runAgentLoopPostResponseHooksWithAdapters,
+	runAgentLoopPostResponseHooksWithAdapters, type CoreAgentLoopContentPartStore, type CoreAgentLoopToolExecutionStore, type CompleteAgentLoopStreamWithAdaptersOptions, type EmitAgentLoopFinalMessageUpdateWithAdaptersOptions,
 } from "@onething/core/engine";
 import type {
 	CorePromptCapture,
@@ -66,6 +68,10 @@ import {
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 import { consolePort, getLogger } from '../../logging/index.js'
+import type { JsonObject } from '@onething/core'
+import type { AppSettings } from '@shared/ipc.js'
+import type { StreamProviderConfig } from './stream-processor.js'
+import type { RunAgentLoopPostResponseHooksWithAdaptersOptions, ApplyAgentLoopStreamChunkWithAdaptersOptions } from '@onething/core/engine'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -149,14 +155,15 @@ function createTurnState(): AgentLoopExecutorTurnState {
 }
 
 function persistTurnContentParts(state: AgentLoopExecutorState): void {
+	const storePort: CoreAgentLoopContentPartStore<ContentPart> = {
+		addMessageContentPart: store.addMessageContentPart,
+	};
 	persistAgentLoopTurnContentPartsWithAdapters({
 		sessionId: state.ctx.sessionId,
 		assistantMessageId: state.ctx.assistantMessageId,
 		turn: state.turn,
 		turnIndex: state.turnIndex,
-		store: {
-			addMessageContentPart: store.addMessageContentPart,
-		},
+		store: storePort,
 		emitter: state.emitter,
 	});
 }
@@ -330,12 +337,7 @@ export function runAgentLoopPostResponseHooks(options: {
 				}
 			: undefined;
 
-	runAgentLoopPostResponseHooksWithAdapters<
-		ChatSession,
-		ChatMessage,
-		typeof options.state.ctx.providerConfig,
-		typeof options.state.ctx.settings
-	>({
+	const runAgentLoopPostResponseHooksWithAdaptersOptions: RunAgentLoopPostResponseHooksWithAdaptersOptions<ChatSession, ChatMessage, StreamProviderConfig, AppSettings> = {
 		sessionId: options.state.ctx.sessionId,
 		assistantMessageId: options.state.ctx.assistantMessageId,
 		lastAssistantMessage: options.state.processor.accumulatedContent,
@@ -376,7 +378,13 @@ export function runAgentLoopPostResponseHooks(options: {
 				error,
 			);
 		},
-	});
+	};
+	runAgentLoopPostResponseHooksWithAdapters<
+		ChatSession,
+		ChatMessage,
+		typeof options.state.ctx.providerConfig,
+		typeof options.state.ctx.settings
+	>(runAgentLoopPostResponseHooksWithAdaptersOptions);
 }
 
 /**
@@ -435,33 +443,34 @@ async function emitFinalAssistantMessageUpdate(
 	errorMessage?: string,
 ): Promise<void> {
 	try {
-		await emitAgentLoopFinalMessageUpdateWithAdapters<ChatMessage, ChatSession>(
-			{
-				sessionId: state.ctx.sessionId,
-				assistantMessageId: state.ctx.assistantMessageId,
-				getSession: (sessionId) => store.getSession(sessionId),
-				// F3:收尾修复是 COW 的,必须显式落盘。§13.18 发现 B(同类):这是对
-				// **消息真相**的 read-modify-write —— 读到的消息经 `finalizeLingering…`
-				// 折成 patch 后原样写回 messages.jsonl(自报标题等字段随 steps 数组回落)。
-				// 必须走 `*FromTranscript` 读抄本:events 模式下 `getMessage` 的 `fromEvents`
-				// 岔口此刻返回的活投影还没看到这次收尾要写的 `tool/result`,读到占位标题 →
-				// 修复把占位标题焊回 messages.jsonl,反把引擎写好的自报标题抹掉。
-				getMessage: (sessionId, messageId) =>
-					sessionReads.getMessageFromTranscript(sessionId, messageId) as
-						| ChatMessage
-						| undefined,
-				patchMessage: (sessionId, messageId, patch) => {
-					sessionCommands.patchMessage(sessionId, {
-						messageId,
-						patch: patch as Partial<ChatMessage>,
-						hint: "settle",
-					});
-				},
-				emitMessageUpdated: async (event) => {
-					await getEventBus().emit(state.ctx.sessionId, event);
-				},
-				errorMessage,
+		const emitAgentLoopFinalMessageUpdateWithAdaptersOptions: EmitAgentLoopFinalMessageUpdateWithAdaptersOptions<ChatMessage, ChatSession> = {
+			sessionId: state.ctx.sessionId,
+			assistantMessageId: state.ctx.assistantMessageId,
+			getSession: (sessionId) => store.getSession(sessionId),
+			// F3:收尾修复是 COW 的,必须显式落盘。§13.18 发现 B(同类):这是对
+			// **消息真相**的 read-modify-write —— 读到的消息经 `finalizeLingering…`
+			// 折成 patch 后原样写回 messages.jsonl(自报标题等字段随 steps 数组回落)。
+			// 必须走 `*FromTranscript` 读抄本:events 模式下 `getMessage` 的 `fromEvents`
+			// 岔口此刻返回的活投影还没看到这次收尾要写的 `tool/result`,读到占位标题 →
+			// 修复把占位标题焊回 messages.jsonl,反把引擎写好的自报标题抹掉。
+			getMessage: (sessionId, messageId) =>
+				sessionReads.getMessageFromTranscript(sessionId, messageId) as
+					| ChatMessage
+					| undefined,
+			patchMessage: (sessionId, messageId, patch) => {
+				sessionCommands.patchMessage(sessionId, {
+					messageId,
+					patch: patch as Partial<ChatMessage>,
+					hint: "settle",
+				});
 			},
+			emitMessageUpdated: async (event) => {
+				await getEventBus().emit(state.ctx.sessionId, event);
+			},
+			errorMessage,
+		};
+		await emitAgentLoopFinalMessageUpdateWithAdapters<ChatMessage, ChatSession>(
+			emitAgentLoopFinalMessageUpdateWithAdaptersOptions,
 		);
 	} catch {
 		// Event system may not be initialized in tests.
@@ -475,7 +484,7 @@ export async function completeAgentLoopStream(
 	state: AgentLoopExecutorState,
 	sessionName?: string,
 ): Promise<void> {
-	await completeAgentLoopStreamWithAdapters<ChatMessage, ChatSession>({
+	const completeAgentLoopStreamWithAdaptersOptions: CompleteAgentLoopStreamWithAdaptersOptions<ChatMessage, ChatSession> = {
 		sessionId: state.ctx.sessionId,
 		assistantMessageId: state.ctx.assistantMessageId,
 		sessionName,
@@ -513,19 +522,18 @@ export async function completeAgentLoopStream(
 			}
 		},
 		sendStreamComplete: (data) => state.emitter.sendStreamComplete(data),
-	});
+	};
+	await completeAgentLoopStreamWithAdapters<ChatMessage, ChatSession>(completeAgentLoopStreamWithAdaptersOptions);
 }
 
 export async function applyAgentLoopStreamChunk(
 	state: AgentLoopExecutorState,
 	chunk: AgentProviderStreamChunk,
 ): Promise<void> {
-	await coreApplyAgentLoopStreamChunkWithAdapters<
-		ContentPart,
-		ToolCall,
-		Partial<Step>,
-		ToolResult
-	>({
+	const storePort2: CoreAgentLoopToolExecutionStore<ToolCall> = {
+		updateMessageToolCalls: store.updateMessageToolCalls,
+	};
+	const applyAgentLoopStreamChunkWithAdaptersOptions: ApplyAgentLoopStreamChunkWithAdaptersOptions<ContentPart, ToolCall, Partial<Step>, ToolResult<JsonObject | undefined>> = {
 		state,
 		chunk,
 		sessionId: state.ctx.sessionId,
@@ -533,9 +541,7 @@ export async function applyAgentLoopStreamChunk(
 		model: state.ctx.providerConfig.model,
 		accumulatedContent: state.processor.accumulatedContent,
 		processor: state.processor,
-		store: {
-			updateMessageToolCalls: store.updateMessageToolCalls,
-		},
+		store: storePort2,
 		emitter: state.emitter,
 		createNextAssistantWriter: () => createNextAssistantWriter(state),
 		handleTextChunk: (text, content, turnIndex) =>
@@ -547,8 +553,8 @@ export async function applyAgentLoopStreamChunk(
 				turnIndex,
 				placement,
 			),
-		applyProviderData: (options) =>
-			applyOnethingAgentLoopProviderData({
+		applyProviderData: (options) => {
+			const providerDataOptions: ApplyOnethingAgentLoopProviderDataOptions<ContentPart> = {
 				...options,
 				saveMediaImage,
 				// A14(§13.1):内联生图那段 markdown 是**引擎合成的**(codex 的
@@ -562,7 +568,9 @@ export async function applyAgentLoopStreamChunk(
 						state.ctx.sender.send(IPC_CHANNELS.IMAGE_GENERATED, notification);
 					}
 				},
-			}),
+			}
+			return applyOnethingAgentLoopProviderData(providerDataOptions)
+		},
 		persistTurnContentParts: () => persistTurnContentParts(state),
 		createTurnState,
 		syncAccumulatedUsage: (usage) => {
@@ -617,7 +625,13 @@ export async function applyAgentLoopStreamChunk(
 			);
 		},
 		now: Date.now,
-	});
+	};
+	await coreApplyAgentLoopStreamChunkWithAdapters<
+		ContentPart,
+		ToolCall,
+		Partial<Step>,
+		ToolResult
+	>(applyAgentLoopStreamChunkWithAdaptersOptions);
 }
 
 export async function executeAgentLoopStreamGeneration(
@@ -689,10 +703,10 @@ export async function executeAgentLoopStreamGeneration(
 	};
 
 	try {
-		return await executeAgentLoopStreamLifecycleWithAdapters<
-		BuildAgentLoopStreamRuntimeResult,
-		Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>
-	>({
+		const lifecycleOptions: ExecuteAgentLoopStreamLifecycleWithAdaptersOptions<
+			BuildAgentLoopStreamRuntimeResult,
+			Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>
+		> = {
 		prepareRuntime: () =>
 			buildAgentLoopRuntimeFromStreamContext(ctx, historyMessages, { emitter }),
 		isRuntimeSupported: (
@@ -837,7 +851,11 @@ export async function executeAgentLoopStreamGeneration(
 		sendStreamComplete: (data) => state.emitter.sendStreamComplete(data),
 		getSessionName: () => store.getSession(state.ctx.sessionId)?.name,
 		now: Date.now,
-		});
+		};
+		return await executeAgentLoopStreamLifecycleWithAdapters<
+			BuildAgentLoopStreamRuntimeResult,
+			Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>
+		>(lifecycleOptions);
 	} catch (error) {
 		if (resumeRun.started) {
 			endSessionRun(ctx.sessionId, resumeRun.run.runId, {

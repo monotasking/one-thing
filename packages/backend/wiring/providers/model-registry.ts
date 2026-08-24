@@ -42,10 +42,14 @@ import {
 } from "./builtin/codex.js";
 import { detectModelCapabilities } from "./builtin/github-copilot.js";
 import { consolePort, getLogger } from '../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingModelRegistryRefreshLogger } from '@onething/runtime/providers/model-registry'
+import type { AppSettings } from '@shared/ipc.js'
+import type { OnethingModelRegistryRefreshAdapters } from '@onething/runtime/providers/model-registry'
 
 const log = getLogger('providers.registry')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingModelRegistryRefreshLogger = consolePort(log)
 
 
 // Fallback models for Grok (grok / grok-oauth) when models.dev data is unavailable.
@@ -405,12 +409,13 @@ async function fetchModelsDevData(): Promise<OnethingModelsDevResponse> {
  * Fetches from models.dev and stores results under settings.ai.providers[providerId].models.
  */
 export async function refreshProviderModels(providerId: string): Promise<void> {
-	await refreshOnethingProviderModels(providerId, {
+	const modelRegistryRefreshAdapters: OnethingModelRegistryRefreshAdapters<AppSettings> = {
 		getSettings,
 		saveSettings,
 		fetchModelsDevData,
 		logger: consoleLog,
-	});
+	};
+	await refreshOnethingProviderModels(providerId, modelRegistryRefreshAdapters);
 }
 
 /**
@@ -428,12 +433,13 @@ export async function refreshAllProviders(): Promise<void> {
 	}
 	saveSettings(settings);
 
-	await refreshAllOnethingProviderModels({
+	const modelRegistryRefreshAdapters2: OnethingModelRegistryRefreshAdapters<AppSettings> = {
 		getSettings: () => settings,
 		saveSettings: (s) => saveSettings(s as any),
 		fetchModelsDevData,
 		logger: consoleLog,
-	});
+	};
+	await refreshAllOnethingProviderModels(modelRegistryRefreshAdapters2);
 }
 
 export const forceRefresh = refreshAllProviders;

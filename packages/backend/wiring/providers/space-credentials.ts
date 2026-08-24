@@ -15,7 +15,7 @@ import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
 import {
   applySpaceProviderCredential,
   resolveSpaceProviderCredential,
-  type SpaceProviderCredentialResolution,
+  type SpaceProviderCredentialResolution, type ResolveSpaceProviderCredentialOptions,
 } from '@onething/runtime/spaces/provider-credentials'
 import {
   addSpaceProviderCredentialEntry,
@@ -109,7 +109,7 @@ export function resolveSpaceProviderCredentialForSpace(
   spaceId: string,
   providerId: string,
 ): SpaceProviderCredentialResolution {
-  return resolveSpaceProviderCredential({
+  const resolveSpaceProviderCredentialOptions: ResolveSpaceProviderCredentialOptions = {
     spaceId,
     providerId,
     isOAuthProvider: requiresOAuth,
@@ -117,7 +117,8 @@ export function resolveSpaceProviderCredentialForSpace(
     hasEnvApiKey: hasProviderEnvApiKey,
     providerLabel: providerLabel(providerId),
     spaceLabel: spaceLabel(spaceId),
-  })
+  };
+  return resolveSpaceProviderCredential(resolveSpaceProviderCredentialOptions)
 }
 
 /**

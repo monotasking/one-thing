@@ -10,18 +10,20 @@ import {
   writeJsonFile,
 } from '../storage/index.js'
 import { getLogger } from '../logging/index.js'
+import type { OnethingPromptStoreAdapters } from './store.js'
 
 const log = getLogger('prompts')
 
 
-export const promptStore = new OnethingPromptStore({
+const promptStoreAdapters: OnethingPromptStoreAdapters = {
   getPath: () => getOnethingPromptsPath(),
   readJson: readJsonFile,
   writeJson: writeJsonFile,
   warn: (message, details) => {
     log.warn('prompt store', details === undefined ? { detail: message } : { detail: message, details })
   },
-})
+};
+export const promptStore = new OnethingPromptStore(promptStoreAdapters)
 
 export function listPrompts(): UserPrompt[] {
   return promptStore.list()

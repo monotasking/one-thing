@@ -311,7 +311,8 @@ export class CollabWorkerChildActor extends ActorBase<ActorEvent<CollabActorVerb
 
   constructor(options: CollabWorkerChildActorOptions) {
     const inbox = options.mailbox ?? new InMemoryMailbox<ActorEvent<CollabActorVerb>>()
-    super({ ...options, id: `worker:${options.workerId}`, mailbox: inbox })
+    const actorBaseOptions: ActorBaseOptions<ActorEvent<CollabActorVerb>> = { ...options, id: `worker:${options.workerId}`, mailbox: inbox };
+    super(actorBaseOptions)
     this.agentId = options.agentId
     this.workerId = options.workerId
     this.inbox = inbox

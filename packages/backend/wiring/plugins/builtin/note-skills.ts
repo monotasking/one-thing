@@ -16,6 +16,7 @@ import {
   ONETHING_NOTE_SKILLS_MANIFEST,
   registerOnethingNoteSkillsPlugin,
 } from '@onething/runtime/plugins'
+import type { RegisterOnethingNoteSkillsPluginOptions } from '@onething/runtime/plugins/note-skills'
 
 export const noteSkillsManifest = ONETHING_NOTE_SKILLS_MANIFEST
 
@@ -27,7 +28,7 @@ export function buildNoteSkillInstructionContext(input: { skillDir: string; root
 }
 
 export default function noteSkillsPlugin(api: PluginAPI): void {
-  registerOnethingNoteSkillsPlugin(api, {
+  const registerOnethingNoteSkillsPluginOptions: RegisterOnethingNoteSkillsPluginOptions = {
     getDirs: () => {
       const store = getVariablesStore()
       return [store.getUserNoteDir(), store.getWorkNoteDir()]
@@ -36,5 +37,6 @@ export default function noteSkillsPlugin(api: PluginAPI): void {
     onVariableChange: handler => getVariablesStore().subscribe(handler),
     invalidateSkillsCache: invalidateSessionSkillsCache,
     isDirectory,
-  })
+  };
+  registerOnethingNoteSkillsPlugin(api, registerOnethingNoteSkillsPluginOptions)
 }

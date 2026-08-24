@@ -11,11 +11,12 @@ import {
   setPluginConfig,
 } from './config.js'
 import { getLogger } from '../logging/index.js'
+import type { OnethingPluginConfigAccess } from './ipc-operations.js'
 
 const log = getLogger('plugins')
 
 
-export interface PluginConfigAccess {
+export interface PluginConfigAccess extends OnethingPluginConfigAccess {
   describe(pluginId: string): {
     declared: boolean
     supported: boolean

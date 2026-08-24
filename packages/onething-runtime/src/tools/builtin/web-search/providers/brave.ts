@@ -141,9 +141,10 @@ export function createBraveSearchProvider(adapters: BraveSearchProviderAdapters)
   return new BraveSearchProvider(adapters)
 }
 
-export const braveProvider = createBraveSearchProvider({
+const braveSearchProviderAdapters: BraveSearchProviderAdapters = {
   getApiKey: () => undefined,
-})
+};
+export const braveProvider = createBraveSearchProvider(braveSearchProviderAdapters)
 
 async function withBraveRequestQueue<T>(task: () => Promise<T>): Promise<T> {
   const previous = requestQueue.catch(() => {})

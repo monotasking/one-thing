@@ -184,7 +184,8 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
   private readonly blockLatch: CollabSchedulerBlockLatch = new Map()
 
   constructor(options: CollabRoomActorOptions) {
-    super({ ...options, id: `room:${options.roomId}` })
+    const actorBaseOptions: ActorBaseOptions<ActorEvent<CollabActorVerb>> = { ...options, id: `room:${options.roomId}` };
+    super(actorBaseOptions)
     this.roomId = options.roomId
     this.host = options.host
     this.accountStore = options.store ?? createCollabRoomAccountFileStore()

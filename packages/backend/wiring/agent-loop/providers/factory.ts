@@ -83,7 +83,7 @@ export function createAgentProviderFromRuntime(
   config: AgentProviderRuntimeConfig,
   options: CreateAgentProviderFromRuntimeOptions = {},
 ): AgentProvider | undefined {
-  return createCoreAgentProviderFromRuntime(providerId, config as CoreAgentProviderRuntimeConfig, {
+  const createAgentProviderFromRuntimeOptions: CreateAgentProviderFromRuntimeOptions = {
     ...options,
     fetchImpl: options.fetchImpl ?? createRequiredAppFetch({ policy: 'streaming' }),
     acpStreamPrompt: options.acpStreamPrompt ?? ((model, promptOptions) => ACPManager.streamPrompt(model, promptOptions)),
@@ -97,5 +97,6 @@ export function createAgentProviderFromRuntime(
     requestDumper: options.requestDumper ?? dumpProviderRequest,
     // 多轮改图的只读媒体端口(P4-2)——runtime 只声明接口,库在这一层。
     media: options.media ?? providerMediaReader,
-  })
+  };
+  return createCoreAgentProviderFromRuntime(providerId, config as CoreAgentProviderRuntimeConfig, createAgentProviderFromRuntimeOptions)
 }

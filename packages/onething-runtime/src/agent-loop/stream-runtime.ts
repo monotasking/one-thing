@@ -50,7 +50,7 @@ import {
 	type CorePendingAgentLoopChatMessage,
 	type PromptSection,
 	type CorePendingAgentLoopInputMessage,
-	type CorePromptRequestMessage,
+	type CorePromptRequestMessage, type ResolveAgentLoopContextBudgetOptions, type CoreAgentLoopTurnQueueAdapters, type CoreAgentLoopEphemeralTailAdapters,
 } from "@onething/core/engine";
 import type { JsonObject } from "@onething/core";
 import {
@@ -876,7 +876,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		ctx,
 		adapters,
 	);
-	const turnQueueAdapters = {
+	const turnQueueAdapters: CoreAgentLoopTurnQueueAdapters = {
 		drainSteeringMessages: (): CorePendingAgentLoopInputMessage[] => {
 			const drained = ctx.steeringQueue?.drain() ?? [];
 			// Consumed messages are no longer retractable — tell the UI so it
@@ -898,7 +898,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	// 草稿纸的瞬态尾块。宿主没接 scratchpad hook = `buildEphemeralTail` 缺席 =
 	// core 里那一段整个跳过,行为逐字不变。
 	const scratchpadHooks = adapters.scratchpad;
-	const ephemeralTailAdapters = {
+	const ephemeralTailAdapters: CoreAgentLoopEphemeralTailAdapters = {
 		...(scratchpadHooks
 			? {
 					buildEphemeralTail: (turn: number) =>
@@ -1218,7 +1218,7 @@ async function resolveOnethingAgentLoopContextBudget<
 		TPartialToolResult
 	>,
 ): Promise<CoreAgentLoopContextBudget> {
-	const result = await resolveAgentLoopContextBudgetWithRegistry({
+	const resolveAgentLoopContextBudgetOptions: ResolveAgentLoopContextBudgetOptions = {
 		capabilities,
 		providerId: ctx.providerId,
 		providerConfig: ctx.providerConfig,
@@ -1226,7 +1226,8 @@ async function resolveOnethingAgentLoopContextBudget<
 		contextCompactThreshold: ctx.settings.chat?.contextCompactThreshold,
 		resolveModelContextLength: adapters.resolveModelContextLength,
 		resolveModelMaxOutputTokens: adapters.resolveModelMaxOutputTokens,
-	});
+	};
+	const result = await resolveAgentLoopContextBudgetWithRegistry(resolveAgentLoopContextBudgetOptions);
 
 	if (result.error) {
 		adapters.logger?.warn?.(

@@ -59,6 +59,7 @@ import { prefetchDjPatter, resetDjPatterCache, speakDjPatter } from './dj-voice.
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { OnethingRadioConductorOptions } from '@onething/runtime/music/radio-conductor'
 
 const log = getLogger('music.radio')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -1273,7 +1274,7 @@ export function startRadioConductor(): void {
   void getMusicService()
     .refreshEnv()
     .catch(() => {})
-  conductor = createOnethingRadioConductor({
+  const radioConductorOptions: OnethingRadioConductorOptions = {
     store: getRadioStore(),
     runner: getReliableRunner(),
     playSong: playProgrammeEntry,
@@ -1291,7 +1292,8 @@ export function startRadioConductor(): void {
       onSongStarted(onDeck, getMusicNowPlaying()?.title ?? onDeck.title)
     },
     logger: consoleLog,
-  })
+  };
+  conductor = createOnethingRadioConductor(radioConductorOptions)
   setMusicSampleListener(sample => {
     // The master switch, enforced where everything converges: with music
     // disabled the conductor never ticks (no advance, no DJ wakes, no merges)

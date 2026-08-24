@@ -17,7 +17,7 @@ import {
   type VoiceSubmitUtteranceRequest,
   type VoiceSynthesizeRequest,
 } from '@shared/ipc.js'
-import { VoiceAudioRouter } from '@onething/runtime/voice/audio-router.wiring'
+import { VoiceAudioRouter, type VoiceDoubaoRecordingOptions } from '@onething/runtime/voice/audio-router.wiring'
 import { WakeWordEngine } from '@onething/runtime/voice/kws/engine.wiring'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
 import type { StreamChunk } from '@shared/events/index.js'
@@ -49,6 +49,7 @@ import {
 } from '@onething/runtime/voice/host-ports.wiring'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+import type { OnethingVoiceSpeechStreamHandlers } from '@onething/runtime/voice/providers'
 
 // Host-surface delegates: the audio runtime window and tray are Electron
 // concepts injected via configureVoiceHost; headless hosts no-op them.
@@ -270,11 +271,12 @@ class VoiceService {
     if (settings.asr.provider === 'doubao') {
       this.doubaoTranscriptId = randomUUID()
       this.doubaoFirstPartialSeen = false
-      void this.getAudioRouter().startDoubaoRecording(settings, sessionId, {
+      const voiceDoubaoRecordingOptions: VoiceDoubaoRecordingOptions = {
         shouldIgnoreDefinite: request.reason === 'wake'
           ? text => stripWakePhrasePrefix(text, settings.wake.phrase).length === 0
           : undefined,
-      })
+      };
+      void this.getAudioRouter().startDoubaoRecording(settings, sessionId, voiceDoubaoRecordingOptions)
     }
     sendVoiceRuntimeCommand({
       type: 'start-recording',
@@ -423,7 +425,7 @@ class VoiceService {
       let streamMimeType = 'audio/mpeg'
       let firstChunkSent = false
       try {
-        await streamSynthesizeSpeech(text, settings, {
+        const voiceSpeechStreamHandlers: OnethingVoiceSpeechStreamHandlers = {
           onStart: ({ mimeType }) => {
             streamStarted = true
             streamMimeType = mimeType
@@ -463,7 +465,8 @@ class VoiceService {
               chunkBase64: Buffer.from(chunk).toString('base64'),
             })
           },
-        })
+        };
+        await streamSynthesizeSpeech(text, settings, voiceSpeechStreamHandlers)
         if (streamStarted) {
           sendVoiceRuntimeCommand({ type: 'play-audio-stream-end', requestId })
           this.emitMilestone('tts-audio-stream-end', {

@@ -25,7 +25,7 @@ import {
   selectCompactPlan,
   stripCompactFileOperations,
   shouldSkipAutoCompactForProviderUsageMismatch as shouldSkipAutoCompactForProviderUsageMismatchByUsage,
-  summarizeContextInChunks,
+  summarizeContextInChunks, type SummarizeContextInChunksOptions,
 } from '@onething/core/engine'
 import { buildHistoryMessages } from './stream/message-helpers.js'
 import { collectCompactFileOperations } from '@onething/runtime/engine/compact-file-lists'
@@ -384,7 +384,7 @@ async function summarizeInChunks(options: {
   // 已经没有用武之地了,让它们跑完只是白烧 token 和时间。
   const batchController = new AbortController()
 
-  return summarizeContextInChunks({
+  const summarizeContextInChunksOptions: SummarizeContextInChunksOptions = {
     messages: options.messages,
     previousSummary: options.previousSummary,
     maxChunkChars,
@@ -467,5 +467,6 @@ async function summarizeInChunks(options: {
         batchController.signal.removeEventListener('abort', abortFromBatch)
       }
     },
-  })
+  };
+  return summarizeContextInChunks(summarizeContextInChunksOptions)
 }

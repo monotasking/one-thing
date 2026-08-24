@@ -17,10 +17,12 @@ import {
   getOnethingStorePath,
 } from '../storage/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { SchedulerLogger } from '@onething/runtime/scheduler/scheduler'
 
 const log = getLogger('scheduler')
 /** 注入式鸭子 logger 端口的过渡替身(logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & SchedulerLogger = consolePort(log)
 
 
 let schedulerConfigured = false

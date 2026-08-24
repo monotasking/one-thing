@@ -9,9 +9,10 @@
  * Responses(P4-4)。
  */
 import { GROK_DIALECT_SPEC } from "./grok.js";
-import { defineResponsesDialect } from "./responses-recipe.js";
+import { defineResponsesDialect, type ResponsesDialectSpec } from "./responses-recipe.js";
 
-export const GROK_OAUTH_DIALECT = defineResponsesDialect({
+const responsesDialectSpec: ResponsesDialectSpec = {
 	id: "grok-oauth",
 	...GROK_DIALECT_SPEC,
-});
+};
+export const GROK_OAUTH_DIALECT = defineResponsesDialect(responsesDialectSpec);

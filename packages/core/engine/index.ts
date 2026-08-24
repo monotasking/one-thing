@@ -401,6 +401,7 @@ export type {
 	CoreAgentLoopProviderConfigWithOptionalKey,
 	CoreAgentLoopToolPlan,
 	CoreAgentLoopToolSettings,
+	CoreAgentLoopEphemeralTailAdapters,
 	CoreAgentLoopTurnCompactionAdapters,
 	CoreAgentLoopTurnMessages,
 	CoreAgentLoopTurnQueueAdapters,

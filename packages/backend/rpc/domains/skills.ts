@@ -56,10 +56,14 @@ import {
   invalidateSkillsCache,
 } from '../../wiring/skills/session-skills.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { DeleteOnethingSkillForIpcOptions, OnethingSkillsIpcLogger } from '@onething/runtime/skills/ipc-operations'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { SkillDefinition, AppSettings } from '@shared/ipc.js'
+import type { ListOnethingSkillsForIpcOptions, RefreshOnethingSkillsForIpcOptions, OpenOnethingSkillDirectoryForIpcOptions, CreateOnethingSkillForIpcOptions, ToggleOnethingSkillEnabledForIpcOptions, AddOnethingSkillDirectoryForIpcOptions, UpdateOnethingSkillDirectoryForIpcOptions, RemoveOnethingSkillDirectoryForIpcOptions, SetOnethingSkillAgentForIpcOptions } from '@onething/runtime/skills/ipc-operations'
 
 const log = getLogger('rpc.skills')
 /** 投影层收的是鸭子 logger;过渡替身与 `wiring/skills` 用的是同一个(area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingSkillsIpcLogger = consolePort(log)
 
 /**
  * 自定义技能根的路径判据。**只收绝对路径,且必须是当下可读的目录** ——
@@ -82,19 +86,21 @@ function validateSkillDirectoryPath(dirPath: string): string | null {
 
 export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
   async getAll(request) {
-    return listOnethingSkillsForIpc({
+    const listOnethingSkillsForIpcOptions: ListOnethingSkillsForIpcOptions<SkillDefinition> = {
       workingDirectory: request?.workingDirectory,
       ensureInitialized: initializeSkills,
       listSkills: options => getAllSkillsForDisplay(options),
       logger: consoleLog,
-    })
+    };
+    return listOnethingSkillsForIpc(listOnethingSkillsForIpcOptions)
   },
   async refresh() {
-    return refreshOnethingSkillsForIpc({
+    const refreshOnethingSkillsForIpcOptions: RefreshOnethingSkillsForIpcOptions<SkillDefinition> = {
       invalidateSkillsCache: () => invalidateSkillsCache(),
       listSkills: options => getAllSkillsForDisplay(options),
       logger: consoleLog,
-    })
+    };
+    return refreshOnethingSkillsForIpc(refreshOnethingSkillsForIpcOptions)
   },
   async readFile(request) {
     return readOnethingSkillFileForIpc({
@@ -105,7 +111,7 @@ export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
     })
   },
   async openDirectory(request) {
-    return openOnethingSkillDirectoryForIpc({
+    const openOnethingSkillDirectoryForIpcOptions: OpenOnethingSkillDirectoryForIpcOptions<SkillDefinition> = {
       skillId: request?.skillId,
       listSkills: options => getAllSkillsForDisplay(options),
       getUserSkillsPath,
@@ -113,10 +119,11 @@ export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
       // (Electron 打开原语的约定:空串才算成功)。
       openPath: targetPath => getShellHost().openPath(targetPath),
       logger: consoleLog,
-    })
+    };
+    return openOnethingSkillDirectoryForIpc(openOnethingSkillDirectoryForIpcOptions)
   },
   async create(request) {
-    return createOnethingSkillForIpc({
+    const createOnethingSkillForIpcOptions: CreateOnethingSkillForIpcOptions<SkillDefinition> = {
       name: request.name,
       description: request.description,
       instructions: request.instructions,
@@ -124,24 +131,27 @@ export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
       createSkill,
       invalidateSkillsCache: () => invalidateSkillsCache(),
       logger: consoleLog,
-    })
+    };
+    return createOnethingSkillForIpc(createOnethingSkillForIpcOptions)
   },
   async delete(request) {
-    return deleteOnethingSkillForIpc({
+    const deleteOnethingSkillForIpcOptions: DeleteOnethingSkillForIpcOptions = {
       skillId: request.skillId,
       deleteSkill,
       invalidateSkillsCache: () => invalidateSkillsCache(),
       logger: consoleLog,
-    })
+    };
+    return deleteOnethingSkillForIpc(deleteOnethingSkillForIpcOptions)
   },
   async toggleEnabled(request) {
-    return toggleOnethingSkillEnabledForIpc({
+    const toggleOnethingSkillEnabledForIpcOptions: ToggleOnethingSkillEnabledForIpcOptions<AppSettings> = {
       skillId: request.skillId,
       enabled: request.enabled,
       getSettings,
       saveSettings,
       logger: consoleLog,
-    })
+    };
+    return toggleOnethingSkillEnabledForIpc(toggleOnethingSkillEnabledForIpcOptions)
   },
   async listDirectories() {
     return listOnethingSkillDirectoriesForIpc({
@@ -150,7 +160,7 @@ export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
     })
   },
   async addDirectory(request) {
-    return addOnethingSkillDirectoryForIpc({
+    const addOnethingSkillDirectoryForIpcOptions: AddOnethingSkillDirectoryForIpcOptions<AppSettings> = {
       path: request.path,
       label: request.label,
       agentId: request.agentId,
@@ -160,10 +170,11 @@ export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
       resolvePath: value => path.resolve(value),
       invalidateSkillsCache: () => invalidateSkillsCache(),
       logger: consoleLog,
-    })
+    };
+    return addOnethingSkillDirectoryForIpc(addOnethingSkillDirectoryForIpcOptions)
   },
   async updateDirectory(request) {
-    return updateOnethingSkillDirectoryForIpc({
+    const updateOnethingSkillDirectoryForIpcOptions: UpdateOnethingSkillDirectoryForIpcOptions<AppSettings> = {
       id: request.id,
       enabled: request.enabled,
       label: request.label,
@@ -172,22 +183,24 @@ export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
       saveSettings,
       invalidateSkillsCache: () => invalidateSkillsCache(),
       logger: consoleLog,
-    })
+    };
+    return updateOnethingSkillDirectoryForIpc(updateOnethingSkillDirectoryForIpcOptions)
   },
   async removeDirectory(request) {
-    return removeOnethingSkillDirectoryForIpc({
+    const removeOnethingSkillDirectoryForIpcOptions: RemoveOnethingSkillDirectoryForIpcOptions<AppSettings> = {
       id: request.id,
       getSettings,
       saveSettings,
       invalidateSkillsCache: () => invalidateSkillsCache(),
       logger: consoleLog,
-    })
+    };
+    return removeOnethingSkillDirectoryForIpc(removeOnethingSkillDirectoryForIpcOptions)
   },
   async setAgent(request) {
     // 这条技能今天到底开着没有:设置里没有条目时,新条目沿用它现在的可见状态,
     // 免得「绑定 agent」顺手把一条本来开着的技能关掉。
     const current = getAllSkillsForDisplay().find(skill => skill.id === request.skillId)
-    return setOnethingSkillAgentForIpc({
+    const setOnethingSkillAgentForIpcOptions: SetOnethingSkillAgentForIpcOptions<AppSettings> = {
       skillId: request.skillId,
       agentId: request.agentId,
       currentEnabled: current?.enabled,
@@ -195,7 +208,8 @@ export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
       saveSettings,
       invalidateSkillsCache: () => invalidateSkillsCache(),
       logger: consoleLog,
-    })
+    };
+    return setOnethingSkillAgentForIpc(setOnethingSkillAgentForIpcOptions)
   },
 }
 

@@ -66,9 +66,10 @@ export function buildOnethingMessageContent(
   message: CoreMessageContentSource,
   options: Pick<BuildOnethingHistoryMessagesOptions, 'onImageAttachment' | 'finalizeContent'> = {},
 ): OnethingHistoryAIMessageContent {
-  const content = buildCoreMessageContent(message, {
+  const buildMessageContentOptions: BuildMessageContentOptions = {
     onImageAttachment: options.onImageAttachment,
-  })
+  };
+  const content = buildCoreMessageContent(message, buildMessageContentOptions)
   return options.finalizeContent ? options.finalizeContent(content, message) : content
 }
 
@@ -100,11 +101,12 @@ export function buildOnethingHistoryMessages<TMessage extends CoreHistoryChatMes
   session?: OnethingHistorySessionSummary,
   options: BuildOnethingHistoryMessagesOptions = {},
 ): OnethingHistoryMessage[] {
-  return buildCoreHistoryMessages(messages, session, {
+  const buildHistoryMessagesOptions: CoreBuildHistoryMessagesOptions<CoreAIMessageContent, TMessage> = {
     ...onethingHistoryBuildRecipe<TMessage>(options),
     onCompactedHistory: options.onCompactedHistory,
     onMissingSummaryAnchor: options.onMissingSummaryAnchor,
-  }) as OnethingHistoryMessage[]
+  };
+  return buildCoreHistoryMessages(messages, session, buildHistoryMessagesOptions) as OnethingHistoryMessage[]
 }
 
 export function filterOnethingHistoryForNonToolAPI(

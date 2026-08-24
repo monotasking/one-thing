@@ -77,10 +77,13 @@ import {
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingMCPIpcLogger } from '@onething/runtime/mcp/ipc-operations'
+import type { OnethingMCPServerIpcAdapters } from '@onething/runtime/mcp/ipc-operations'
 
 const log = getLogger('rpc.mcp')
 /** 投影层收的是鸭子 logger;`@main` 那份原来直接递 `console`,这里递受管的那只。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingMCPIpcLogger = consolePort(log)
 
 const SERVER_MCP_STDIO_DISABLED_ERROR =
   'MCP stdio transport is disabled in the web server runtime.'
@@ -136,10 +139,11 @@ export const mcpRpcHandlers: RpcRouteHandlers<McpRoutes> = {
     }) as Promise<McpRoutes['getServers']['output']>
   },
   async addServer(request, context = DESKTOP_RPC_CONTEXT) {
-    const result = (await addOnethingMCPServerForIpc({
+    const mCPServerIpcAdapters: OnethingMCPServerIpcAdapters<MCPServerConfig, MCPServerState> & { config: MCPServerConfig; } = {
       ...mcpServerAdapters(),
       config: request.config,
-    })) as McpRoutes['addServer']['output']
+    };
+    const result = (await addOnethingMCPServerForIpc(mCPServerIpcAdapters)) as McpRoutes['addServer']['output']
     return projectMutation(result, context)
   },
   async updateServer(request, context = DESKTOP_RPC_CONTEXT) {
@@ -153,36 +157,41 @@ export const mcpRpcHandlers: RpcRouteHandlers<McpRoutes> = {
           ),
         )
       : request.config
-    const result = (await updateOnethingMCPServerForIpc({
+    const mCPServerIpcAdapters2: OnethingMCPServerIpcAdapters<MCPServerConfig, MCPServerState> & { config: MCPServerConfig; } = {
       ...mcpServerAdapters(),
       config,
-    })) as McpRoutes['updateServer']['output']
+    };
+    const result = (await updateOnethingMCPServerForIpc(mCPServerIpcAdapters2)) as McpRoutes['updateServer']['output']
     return projectMutation(result, context)
   },
   async removeServer(request) {
-    return removeOnethingMCPServerForIpc({
+    const mCPServerIpcAdapters3: OnethingMCPServerIpcAdapters<MCPServerConfig, MCPServerState> & { serverId: string; } = {
       ...mcpServerAdapters(),
       serverId: request.serverId,
-    }) as Promise<McpRoutes['removeServer']['output']>
+    };
+    return removeOnethingMCPServerForIpc(mCPServerIpcAdapters3) as Promise<McpRoutes['removeServer']['output']>
   },
   async connectServer(request, context = DESKTOP_RPC_CONTEXT) {
-    const result = (await connectOnethingMCPServerForIpc({
+    const mCPServerIpcAdapters4: OnethingMCPServerIpcAdapters<MCPServerConfig, MCPServerState> & { serverId: string; } = {
       ...mcpServerAdapters(),
       serverId: request.serverId,
-    })) as McpRoutes['connectServer']['output']
+    };
+    const result = (await connectOnethingMCPServerForIpc(mCPServerIpcAdapters4)) as McpRoutes['connectServer']['output']
     return projectMutation(result, context)
   },
   async disconnectServer(request) {
-    return disconnectOnethingMCPServerForIpc({
+    const mCPServerIpcAdapters5: OnethingMCPServerIpcAdapters<MCPServerConfig, MCPServerState> & { serverId: string; } = {
       ...mcpServerAdapters(),
       serverId: request.serverId,
-    }) as Promise<McpRoutes['disconnectServer']['output']>
+    };
+    return disconnectOnethingMCPServerForIpc(mCPServerIpcAdapters5) as Promise<McpRoutes['disconnectServer']['output']>
   },
   async logoutServer(request) {
-    return logoutOnethingMCPServerForIpc({
+    const mCPServerIpcAdapters6: OnethingMCPServerIpcAdapters<MCPServerConfig, MCPServerState> & { serverId: string; } = {
       ...mcpServerAdapters(),
       serverId: request.serverId,
-    }) as Promise<McpRoutes['logoutServer']['output']>
+    };
+    return logoutOnethingMCPServerForIpc(mCPServerIpcAdapters6) as Promise<McpRoutes['logoutServer']['output']>
   },
   async probeServer(request, context = DESKTOP_RPC_CONTEXT) {
     // 护栏 4:起本机进程这件事,网络那一侧默认不给。
@@ -200,10 +209,11 @@ export const mcpRpcHandlers: RpcRouteHandlers<McpRoutes> = {
     }) as Promise<McpRoutes['probeServer']['output']>
   },
   async refreshServer(request, context = DESKTOP_RPC_CONTEXT) {
-    const result = (await refreshOnethingMCPServerForIpc({
+    const mCPServerIpcAdapters7: OnethingMCPServerIpcAdapters<MCPServerConfig, MCPServerState> & { serverId: string; } = {
       ...mcpServerAdapters(),
       serverId: request.serverId,
-    })) as McpRoutes['refreshServer']['output']
+    };
+    const result = (await refreshOnethingMCPServerForIpc(mCPServerIpcAdapters7)) as McpRoutes['refreshServer']['output']
     return projectMutation(result, context)
   },
   async getTools() {

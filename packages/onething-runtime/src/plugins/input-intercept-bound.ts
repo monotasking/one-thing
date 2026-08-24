@@ -23,7 +23,7 @@ import {
   pluginScope,
   type PluginInputInterceptContext,
   type PluginInputInterceptHandler,
-  type PluginInputInterceptOutcome,
+  type PluginInputInterceptOutcome, type CorePluginInputInterceptRegistryOptions,
 } from '@onething/core/plugins'
 import {
   probePluginSurface,
@@ -35,7 +35,7 @@ import { getLogger } from '../logging/index.js'
 const log = getLogger('plugins')
 
 
-const registry = new CorePluginInputInterceptRegistry({
+const pluginInputInterceptRegistryOptions: CorePluginInputInterceptRegistryOptions = {
   // 超时预算走 core 默认(1.5s,刻意短于生命周期钩子的 5s):这条链挂在用户
   // 按下回车与消息出现之间,五秒的空白就已经是"应用卡了"。
   onHandlerFailure({ pluginId, hookId, error }) {
@@ -64,7 +64,8 @@ const registry = new CorePluginInputInterceptRegistry({
       new Error(reason),
     )
   },
-})
+};
+const registry = new CorePluginInputInterceptRegistry(pluginInputInterceptRegistryOptions)
 
 export function registerPluginInputInterceptHook(
   pluginId: string,

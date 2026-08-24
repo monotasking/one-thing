@@ -33,6 +33,8 @@ import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { publishExternalAgentBackgroundStatus } from './background-status.js'
 import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { ExternalAgentObserver } from '@onething/runtime/external-agents/types'
+import type { ClaudeCodeConnectorOptions } from '@onething/runtime/external-agents/claude-code-connector'
 
 const log = getLogger('external-agents')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -302,28 +304,30 @@ let connectors: Record<string, ExternalAgentConnector | undefined> | undefined
 
 export function getExternalAgentConnectors(): Record<string, ExternalAgentConnector | undefined> {
   if (connectors) return connectors
+  const observerPort: ExternalAgentObserver = {
+    turn: input => { recordExternalAgentTurn(input) },
+    toolDecision: input => { recordExternalAgentTool(input) },
+    // 后台子代理的电平 → 气泡里的一行状态(可见性,2026-08-11)。与上面两条
+    // 不同,它的落点不是调度时间轴而是**用户看得见的会话流** —— 因为这一条
+    // 回答的问题("它还在跑吗、跑了多久")是用户在问,不是回查时才问。
+    backgroundTasks: input => { publishExternalAgentBackgroundStatus(input) },
+  };
+  const claudeCodeConnectorOptions: ClaudeCodeConnectorOptions = {
+    executablePath: findClaudeExecutable(),
+    permissionHandler: askExternalAgentPermission,
+    // E4 提问落点:AskUserQuestion 与 onUserDialog 都汇到 InteractionRegistry。
+    interactionHandler: askExternalAgentInteraction,
+    resolveSpawnEnv: resolveExternalAgentSpawnEnv,
+    // E3 宿主工具面:协作工具经进程内 MCP 注入 SDK,发言权回到房间(§2)。
+    // 连接器仍会再问一次 E0 能力表(`hostTools`)—— 装上不等于开着。
+    hostToolSurface: resolveClaudeCodeHostToolSurface,
+    // E6 观测:外部回合的起落与每一次工具决定进调度时间轴(§6)。装配层认识
+    // 房间与时间轴,连接器不认识 —— 所以它是一个端口而不是一条 import。
+    observer: observerPort,
+    logger: consoleLog,
+  };
   connectors = {
-    [CLAUDE_CODE_AGENT_CONNECTOR_ID]: createClaudeCodeConnector({
-      executablePath: findClaudeExecutable(),
-      permissionHandler: askExternalAgentPermission,
-      // E4 提问落点:AskUserQuestion 与 onUserDialog 都汇到 InteractionRegistry。
-      interactionHandler: askExternalAgentInteraction,
-      resolveSpawnEnv: resolveExternalAgentSpawnEnv,
-      // E3 宿主工具面:协作工具经进程内 MCP 注入 SDK,发言权回到房间(§2)。
-      // 连接器仍会再问一次 E0 能力表(`hostTools`)—— 装上不等于开着。
-      hostToolSurface: resolveClaudeCodeHostToolSurface,
-      // E6 观测:外部回合的起落与每一次工具决定进调度时间轴(§6)。装配层认识
-      // 房间与时间轴,连接器不认识 —— 所以它是一个端口而不是一条 import。
-      observer: {
-        turn: input => { recordExternalAgentTurn(input) },
-        toolDecision: input => { recordExternalAgentTool(input) },
-        // 后台子代理的电平 → 气泡里的一行状态(可见性,2026-08-11)。与上面两条
-        // 不同,它的落点不是调度时间轴而是**用户看得见的会话流** —— 因为这一条
-        // 回答的问题("它还在跑吗、跑了多久")是用户在问,不是回查时才问。
-        backgroundTasks: input => { publishExternalAgentBackgroundStatus(input) },
-      },
-      logger: consoleLog,
-    }),
+    [CLAUDE_CODE_AGENT_CONNECTOR_ID]: createClaudeCodeConnector(claudeCodeConnectorOptions),
   }
   return connectors
 }

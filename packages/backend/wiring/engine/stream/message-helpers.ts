@@ -44,6 +44,7 @@ import { findAgent } from "../../agents/index.js";
 import { resolveUserIdentity } from "../../collab/user-identity.js";
 import * as store from "../../../store.js";
 import { getLogger } from '../../logging/index.js'
+import type { BuildOnethingHistoryMessagesOptions } from '@onething/runtime/sessions/history-messages'
 
 const log = getLogger('engine.history')
 
@@ -123,41 +124,42 @@ export function buildHistoryMessages(
 		collab?: { roomSessionId?: string; seenMessageId?: string };
 	},
 ): HistoryMessage[] {
+	const buildOnethingHistoryMessagesOptions: BuildOnethingHistoryMessagesOptions = {
+		...HISTORY_CONTENT_HOOKS,
+		onCompactedHistory: (details) => {
+			logMessageBodyShape(
+				"compacted history body",
+				historyMessagesForLog(details.resultMessages as HistoryMessage[]),
+				{
+					sessionId: details.sessionId,
+					summaryUpToMessageId: details.summaryUpToMessageId,
+					summaryIndex: details.summaryIndex,
+					totalSessionMessages: details.totalSessionMessages,
+					recentSessionMessages: details.recentSessionMessages,
+					retainedRecentMessages: details.retainedRecentMessages,
+					degradedRecentMessages: details.degradedRecentMessages,
+					droppedRecentMessages: details.droppedRecentMessages,
+					retainedPayloadChars: details.retainedPayloadChars,
+					originalRecentPayloadChars: details.originalRecentPayloadChars,
+					retainedPayloadBudgetChars: details.retainedPayloadBudgetChars,
+					summaryChars: details.summaryChars,
+					retainedMessages: details.retainedMessages,
+					degradedMessageIds: details.degradedMessageIds,
+					droppedMessages: details.droppedMessages,
+				},
+			);
+		},
+		onMissingSummaryAnchor: (details) => {
+			log.warn("ignoring summary with missing anchor", {
+				sessionId: details.sessionId,
+				summaryUpToMessageId: details.summaryUpToMessageId,
+			});
+		},
+	};
 	return buildOnethingHistoryMessages(
 		prepareHistoryInputForModel(messages, session),
 		session,
-		{
-			...HISTORY_CONTENT_HOOKS,
-			onCompactedHistory: (details) => {
-				logMessageBodyShape(
-					"compacted history body",
-					historyMessagesForLog(details.resultMessages as HistoryMessage[]),
-					{
-						sessionId: details.sessionId,
-						summaryUpToMessageId: details.summaryUpToMessageId,
-						summaryIndex: details.summaryIndex,
-						totalSessionMessages: details.totalSessionMessages,
-						recentSessionMessages: details.recentSessionMessages,
-						retainedRecentMessages: details.retainedRecentMessages,
-						degradedRecentMessages: details.degradedRecentMessages,
-						droppedRecentMessages: details.droppedRecentMessages,
-						retainedPayloadChars: details.retainedPayloadChars,
-						originalRecentPayloadChars: details.originalRecentPayloadChars,
-						retainedPayloadBudgetChars: details.retainedPayloadBudgetChars,
-						summaryChars: details.summaryChars,
-						retainedMessages: details.retainedMessages,
-						degradedMessageIds: details.degradedMessageIds,
-						droppedMessages: details.droppedMessages,
-					},
-				);
-			},
-			onMissingSummaryAnchor: (details) => {
-				log.warn("ignoring summary with missing anchor", {
-					sessionId: details.sessionId,
-					summaryUpToMessageId: details.summaryUpToMessageId,
-				});
-			},
-		},
+		buildOnethingHistoryMessagesOptions,
 	) as HistoryMessage[];
 }
 

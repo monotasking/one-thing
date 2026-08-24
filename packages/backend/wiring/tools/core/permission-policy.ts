@@ -1,4 +1,5 @@
 import * as PermissionGrants from '../../permission/permission-grants.js'
+import type { PermissionBridge } from '@onething/core/permission'
 import { Permission } from '../../permission/index.js'
 import { isSessionUnattended } from '@onething/runtime/permissions/unattended'
 import {
@@ -33,7 +34,7 @@ export function decidePermission(input: PermissionPolicyInput) {
  * that would ask is denied on the spot with an explanation the model can act
  * on.
  */
-const unattendedBridge = {
+const unattendedBridge: PermissionBridge = {
   getMode: (sessionId: string) => Permission.getMode(sessionId),
   ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<void> => {
     throw new Error(
@@ -72,7 +73,7 @@ function isSystemDrivenTurn(sessionId: string): boolean {
 
 const UNATTENDED_ASK_TIMEOUT_MS = 120_000
 
-const timeoutAskBridge = {
+const timeoutAskBridge: PermissionBridge = {
   getMode: (sessionId: string) => Permission.getMode(sessionId),
   ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<void> => {
     // Auto-deny through the normal respond path so pending UI prompts are
@@ -114,7 +115,7 @@ function isCollabTurn(sessionId: string): boolean {
 
 const COLLAB_ASK_REMINDER_MS = 30 * 60_000
 
-const collabReminderBridge = {
+const collabReminderBridge: PermissionBridge = {
   getMode: (sessionId: string) => Permission.getMode(sessionId),
   ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<void> => {
     const timer = setTimeout(() => {

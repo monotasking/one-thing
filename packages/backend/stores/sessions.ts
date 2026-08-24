@@ -55,10 +55,14 @@ import {
 } from "@onething/core/session";
 import { assertContentPartIsCarriable } from '../session/content-part-guard.js'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
+import type { HybridSessionStorageDriverOptions } from '@onething/runtime/sessions/storage-driver'
+import type { OnethingSessionRepositoryOptions, OnethingSessionRepositoryLogger } from '@onething/runtime/sessions/session-repository'
+import type { OnethingSessionMessageRuntimeRepository } from '@onething/runtime/sessions/session-message-runtime'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
 
 const log = getLogger('sessions')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingSessionRepositoryLogger = consolePort(log)
 
 
 export {
@@ -88,7 +92,7 @@ let sessionMessageRuntime:
 const writeSessionJsonFileAsync = (filePath: string, data: unknown) =>
 	writeJsonFileAsync(filePath, data, { pretty: false });
 
-const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>({
+const hybridSessionStorageDriverOptions: HybridSessionStorageDriverOptions = {
 	getSessionsDir: getOnethingSessionsDir,
 	getLegacySessionPath: getOnethingSessionPath,
 	// flag 只决定"新建会话"的格式(也是惰性迁移的开关);已有会话跟随盘上格式,
@@ -98,15 +102,10 @@ const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>({
 	writeJsonFileAsync: writeSessionJsonFileAsync,
 	deleteJsonFile,
 	logger: consoleLog,
-});
+};
+const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>(hybridSessionStorageDriverOptions);
 
-const sessionRepository = createOnethingSessionRepository<
-	ChatSession,
-	ChatMessage,
-	SessionMeta,
-	SessionDetails,
-	UserMessageMarker
->({
+const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ChatSession, ChatMessage, SessionMeta, SessionDetails, UserMessageMarker> = {
 	defaultAgentId: DEFAULT_AGENT_ID,
 	getSessionsDir: getOnethingSessionsDir,
 	getSessionPath: getOnethingSessionPath,
@@ -121,8 +120,28 @@ const sessionRepository = createOnethingSessionRepository<
 		getSettings().tools?.bash?.defaultWorkingDirectory,
 	expandPath,
 	logger: consoleLog,
-});
+};
+const sessionRepository = createOnethingSessionRepository<
+	ChatSession,
+	ChatMessage,
+	SessionMeta,
+	SessionDetails,
+	UserMessageMarker
+>(sessionRepositoryOptions);
 
+const repositoryPort: OnethingSessionMessageRuntimeRepository<ChatSession, ChatMessage, SessionMeta> = {
+	getSession: (sessionId) => sessionRepository.getSession(sessionId),
+	getCachedSession: (sessionId) =>
+		sessionRepository.getCachedSession(sessionId),
+	getCachedSessionMessages: (sessionId) =>
+		sessionRepository.getCachedSessionMessages(sessionId),
+	saveSessionToFile: (sessionId, session, options) =>
+		sessionRepository.saveSessionToFile(sessionId, session, options),
+	syncSessionToSqliteIfReady: (session) =>
+		sessionRepository.syncSessionToSqliteIfReady(session),
+	updateSessionsIndexMeta: (sessionId, update) =>
+		sessionRepository.updateSessionsIndexMeta(sessionId, update),
+};
 sessionMessageRuntime = createOnethingSessionMessageRuntime<
 	ChatSession,
 	ChatMessage,
@@ -131,19 +150,7 @@ sessionMessageRuntime = createOnethingSessionMessageRuntime<
 	ContentPart,
 	ToolCall
 >({
-	repository: {
-		getSession: (sessionId) => sessionRepository.getSession(sessionId),
-		getCachedSession: (sessionId) =>
-			sessionRepository.getCachedSession(sessionId),
-		getCachedSessionMessages: (sessionId) =>
-			sessionRepository.getCachedSessionMessages(sessionId),
-		saveSessionToFile: (sessionId, session, options) =>
-			sessionRepository.saveSessionToFile(sessionId, session, options),
-		syncSessionToSqliteIfReady: (session) =>
-			sessionRepository.syncSessionToSqliteIfReady(session),
-		updateSessionsIndexMeta: (sessionId, update) =>
-			sessionRepository.updateSessionsIndexMeta(sessionId, update),
-	},
+	repository: repositoryPort,
 	now: Date.now,
 	logger: consoleLog,
 });

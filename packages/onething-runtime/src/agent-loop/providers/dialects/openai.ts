@@ -164,7 +164,8 @@ export const OPENAI_DIALECT_SPEC = {
 	transport: OPENAI_TRANSPORT_CAPABILITIES,
 } satisfies Omit<ResponsesDialectSpec, "id">;
 
-export const OPENAI_DIALECT = defineResponsesDialect({
+const responsesDialectSpec: ResponsesDialectSpec = {
 	id: "openai",
 	...OPENAI_DIALECT_SPEC,
-});
+};
+export const OPENAI_DIALECT = defineResponsesDialect(responsesDialectSpec);

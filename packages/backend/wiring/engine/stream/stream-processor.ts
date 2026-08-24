@@ -11,7 +11,8 @@ import type { ReasoningPlacement } from '@shared/events/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/runtime/mcp/index.wiring'
 import { resolveAIToolName } from '@onething/core/agent-loop'
 import { createEventOnlyEmitter } from '../../../events/event-only-emitter.js'
-import type { PendingMessageQueue } from '@onething/core/engine'
+import type { PendingMessageQueue, CoreToolIdentityResolver, CoreStreamProcessorStore } from '@onething/core/engine'
+import type { CoreAgentLoopToolInputProcessor } from '@onething/core/engine'
 import type { AgentJsonObject, AgentOutputModality } from '@onething/core/agent-loop'
 import type { AgentRuntimeProviderConfig } from '../../providers/agent-runtime.js'
 import {
@@ -21,7 +22,7 @@ import type { CoreInitialToolChoice } from '@onething/core/engine'
 import type { EffectiveAgentProfile } from '@onething/runtime/agents'
 import type { CoreSpaceCredentialMarker } from '@onething/runtime/providers'
 import {
-  createOnethingStreamProcessor,
+  createOnethingStreamProcessor, type CreateOnethingStreamProcessorOptions,
 } from '@onething/runtime/stream-processor'
 
 export type StreamProviderConfig = ProviderConfig & AgentRuntimeProviderConfig & {
@@ -73,7 +74,7 @@ export interface ResolvedTool {
  * @returns Resolved tool identity with full ID and display name
  */
 export function resolveToolIdentity(toolName: string, args: AgentJsonObject = {}): ResolvedTool {
-  return resolveCoreToolIdentity(toolName, args, {
+  const toolIdentityResolver: CoreToolIdentityResolver = {
     normalizeToolName: resolveAIToolName,
     isMCPTool,
     findMCPToolIdByShortName,
@@ -81,7 +82,8 @@ export function resolveToolIdentity(toolName: string, args: AgentJsonObject = {}
     getMCPServerName(serverId) {
       return MCPManager.getServerState(serverId)?.config.name
     },
-  })
+  };
+  return resolveCoreToolIdentity(toolName, args, toolIdentityResolver)
 }
 
 /**
@@ -142,7 +144,7 @@ export interface StreamContext {
 /**
  * Stream processor that handles chunk accumulation and event sending
  */
-export interface StreamProcessor {
+export interface StreamProcessor extends CoreAgentLoopToolInputProcessor<ToolCall> {
   accumulatedContent: string
   accumulatedReasoning: string
   toolCalls: ToolCall[]
@@ -173,18 +175,20 @@ export interface StreamProcessor {
 export function createStreamProcessor(ctx: StreamContext, initialContent?: { content?: string; reasoning?: string }): StreamProcessor {
   const emitter = createEventOnlyEmitter(ctx)
 
-  return createOnethingStreamProcessor<ToolCall, Step, ReasoningPlacement>({
+  const storePort: CoreStreamProcessorStore<ToolCall> = {
+    updateMessageContent: store.updateMessageContent,
+    updateMessageReasoning: store.updateMessageReasoning,
+    updateMessageToolCalls: store.updateMessageToolCalls,
+    updateMessageStreaming: store.updateMessageStreaming,
+    flushSessionSave: store.flushSessionSave,
+  };
+  const createOnethingStreamProcessorOptions: CreateOnethingStreamProcessorOptions<ToolCall, Step, ReasoningPlacement> = {
     sessionId: ctx.sessionId,
     assistantMessageId: ctx.assistantMessageId,
     initialContent,
     resolveToolIdentity: (toolName, args) => resolveToolIdentity(toolName, args as AgentJsonObject),
-    store: {
-      updateMessageContent: store.updateMessageContent,
-      updateMessageReasoning: store.updateMessageReasoning,
-      updateMessageToolCalls: store.updateMessageToolCalls,
-      updateMessageStreaming: store.updateMessageStreaming,
-      flushSessionSave: store.flushSessionSave,
-    },
+    store: storePort,
     emitter,
-  })
+  };
+  return createOnethingStreamProcessor<ToolCall, Step, ReasoningPlacement>(createOnethingStreamProcessorOptions)
 }

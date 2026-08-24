@@ -30,7 +30,7 @@ import { toJsonObject } from '@shared/json.js'
 import { buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import type { StreamContext } from './stream-processor.js'
 import { buildPrompt } from '../prompt/system-prompt.js'
-import { SessionTurnContext } from '@onething/runtime/engine/session-turn-context.wiring'
+import { SessionTurnContext, type SessionTurnContextStore } from '@onething/runtime/engine/session-turn-context.wiring'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import { executeToolDirectly } from './tool-execution.js'
 import { compactSessionContext } from '../context-compact.js'
@@ -41,10 +41,20 @@ import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingAgentLoopLogger } from '@onething/runtime/agent-loop/stream-runtime'
+import type { ToolExecutionResult, ToolPartialResultUpdate } from '@onething/runtime/toolkit/execution-types.wiring'
+import type { ContextCompactResult } from '../context-compact.js'
+import type { ContentPart } from '@/types'
+import type { PromptRequestMessage } from '../prompt/system-prompt.js'
+import type { CoreAgentLoopRuntimeToolSettingsLike } from '@onething/core/engine'
+import type { ProviderConfigWithKey } from './stream-executor.js'
+import type { AppSettings, ToolDefinition } from '@shared/ipc.js'
+import type { OnethingAgentLoopRuntimeHostAdapters } from '@onething/runtime/agent-loop/stream-runtime'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingAgentLoopLogger = consolePort(log)
 
 
 export {
@@ -139,7 +149,7 @@ export async function* streamAgentLoopChunksFromStreamContext(
 function createAgentLoopRuntimeAdapters(
   options: BuildAgentLoopStreamRuntimeOptions = {},
 ) {
-  return createOnethingAgentLoopRuntimeAdapters({
+  const agentLoopRuntimeHostAdapters: OnethingAgentLoopRuntimeHostAdapters<AppSettings, ProviderConfigWithKey, CoreAgentLoopRuntimeToolSettingsLike | undefined, ChatSession, ChatMessage, HistoryMessage, PromptRequestMessage, SkillDefinition, ToolDefinition, ContentPart[], ContextCompactResult, ToolExecutionResult, ToolPartialResultUpdate> = {
     getSession: (sessionId: string) => store.getSession(sessionId),
     getSkillsForSession,
     createProvider: createAgentProviderFromRuntime,
@@ -216,7 +226,8 @@ function createAgentLoopRuntimeAdapters(
     scratchpad: scratchpadRuntimeHooks,
     logger: consoleLog,
     createId: undefined,
-  })
+  };
+  return createOnethingAgentLoopRuntimeAdapters(agentLoopRuntimeHostAdapters)
 }
 
 /**
@@ -244,7 +255,7 @@ function withCompactProgressEmit(
  * 幂等闸靠持久化的 `turnContext` 字段,写档与迁移前的
  * `store.updateMessageTurnContext`(无 hint → 常规 300ms 档)逐字等价。
  */
-const sessionTurnContext = new SessionTurnContext({
+const sessionTurnContextStore: SessionTurnContextStore = {
   listMessages: (sessionId: string) => sessionReads.listMessages(sessionId).messages,
   getSessionMeta: (sessionId: string) => sessionReads.getSession(sessionId),
   updateMessageTurnContext: (sessionId: string, messageId: string, turnContext) =>
@@ -253,7 +264,8 @@ const sessionTurnContext = new SessionTurnContext({
       patch: { turnContext },
       hint: 'settle',
     }),
-})
+};
+const sessionTurnContext = new SessionTurnContext(sessionTurnContextStore)
 
 async function emitEvent(sessionId: string, event: unknown): Promise<void> {
   await getEventBus().emit(sessionId, event as Parameters<ReturnType<typeof getEventBus>['emit']>[1])

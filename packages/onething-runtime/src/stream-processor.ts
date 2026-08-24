@@ -9,7 +9,7 @@ import {
   type CoreStreamProcessorLogger,
   type CoreStreamProcessorStore,
   type CoreStreamStepLike,
-  type CoreStreamToolCallLike,
+  type CoreStreamToolCallLike, type CreateCoreStreamProcessorOptions,
 } from '@onething/core/engine'
 
 export interface CreateOnethingStreamProcessorOptions<
@@ -37,7 +37,7 @@ export function createOnethingStreamProcessor<
 >(
   options: CreateOnethingStreamProcessorOptions<TToolCall, TStep, TReasoningPlacement>,
 ): CoreStreamProcessor<TToolCall, TReasoningPlacement> {
-  return createCoreStreamProcessor<TToolCall, TStep, TReasoningPlacement>({
+  const createCoreStreamProcessorOptions: CreateCoreStreamProcessorOptions<TToolCall, TStep, TReasoningPlacement> = {
     ctx: {
       sessionId: options.sessionId,
       assistantMessageId: options.assistantMessageId,
@@ -48,5 +48,6 @@ export function createOnethingStreamProcessor<
     store: options.store,
     emitter: options.emitter,
     logger: options.logger,
-  })
+  };
+  return createCoreStreamProcessor<TToolCall, TStep, TReasoningPlacement>(createCoreStreamProcessorOptions)
 }

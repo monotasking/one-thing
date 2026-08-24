@@ -13,6 +13,8 @@ import {
 } from '@onething/runtime/storage'
 import { getCurrentSessionId } from '../../stores/app-state.js'
 import { getLogger } from '../logging/index.js'
+import type { OnethingTodoPlanWatcherOptions } from '@onething/runtime/todo-plan/watcher'
+import type { OnethingTodoPlanStoreOptions } from '@onething/runtime/todo-plan/store'
 
 const log = getLogger('todo-plan')
 
@@ -56,20 +58,22 @@ function broadcast(payload: TodoPlanChangedPayload): void {
   hostPorts.broadcastChanged?.(payload)
 }
 
-export const todoPlanStore = new OnethingTodoPlanStore({
+const todoPlanStoreOptions: OnethingTodoPlanStoreOptions = {
   getConfiguredDirectory: () => getSettings().general?.todoPlan?.directory,
   getDefaultStorePath: () => getOnethingStorePath(),
   notifyChanged: broadcast,
   revealDirectory: directory => hostPorts.revealDirectory?.(directory),
-})
+};
+export const todoPlanStore = new OnethingTodoPlanStore(todoPlanStoreOptions)
 
 // The AI writes its todo with the ordinary write/edit tools, which do not go
 // through this store, so the watcher is what tells the UI those edits happened.
-const todoPlanWatcher = new OnethingTodoPlanWatcher({
+const todoPlanWatcherOptions: OnethingTodoPlanWatcherOptions = {
   store: todoPlanStore,
   notifyChanged: broadcast,
   onError: error => log.error('todo plan watch failed', {}, error),
-})
+};
+const todoPlanWatcher = new OnethingTodoPlanWatcher(todoPlanWatcherOptions)
 
 export function startTodoPlanWatcher(): Promise<void> {
   return todoPlanWatcher.start()

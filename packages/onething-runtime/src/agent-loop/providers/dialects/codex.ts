@@ -27,10 +27,11 @@
  */
 import {
 	CODEX_DIALECT_SPEC,
-	defineResponsesDialect,
+	defineResponsesDialect, type ResponsesDialectSpec,
 } from "./responses-recipe.js";
 
-export const CODEX_DIALECT = defineResponsesDialect({
+const responsesDialectSpec: ResponsesDialectSpec = {
 	id: "codex",
 	...CODEX_DIALECT_SPEC,
-});
+};
+export const CODEX_DIALECT = defineResponsesDialect(responsesDialectSpec);

@@ -33,10 +33,12 @@ import {
   updatePrompt,
 } from '@onething/runtime/prompts/store-bound'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingPromptIpcLogger } from '@onething/runtime/prompts/ipc-operations'
 
 const log = getLogger('ipc.prompts')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingPromptIpcLogger = consolePort(log)
 
 
 export const promptsRpcHandlers: RouteHandlers<PromptsRoutes> = {

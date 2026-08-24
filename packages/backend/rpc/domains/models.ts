@@ -34,18 +34,26 @@ import { fetchCodexModels, getCodexFallbackModels } from '../../wiring/providers
 import * as modelRegistry from '../../wiring/providers/model-registry.js'
 import { getSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/runtime/providers/model-registry'
+import type { RefreshOnethingModelRegistryOptions, GetOnethingModelRegistryNameAliasesOptions, OnethingModelQueryIpcLogger } from '@onething/runtime/providers/model-query-presentation'
+import type { OnethingModelRegistryRefreshLogger } from '@onething/runtime/providers/model-registry'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { GetAllOnethingModelRegistryModelsOptions } from '@onething/runtime/providers/model-query-presentation'
+import type { ModelInfo } from '@shared/ipc.js'
+import type { FetchOnethingGitHubCopilotModelsWithAuthOptions } from '@onething/runtime/providers/model-registry'
 
 const log = getLogger('ipc.models')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingModelQueryIpcLogger & OnethingModelRegistryRefreshLogger = consolePort(log)
 
 
 /** Copilot 的模型表不在注册表里,要拿着 OAuth token 现取。 */
 async function fetchGitHubCopilotModelsRaw(): Promise<{ id: string; name: string; description?: string }[]> {
-  return fetchOnethingGitHubCopilotModelsWithAuth({
+  const fetchOnethingGitHubCopilotModelsWithAuthOptions: FetchOnethingGitHubCopilotModelsWithAuthOptions<ModelInfo> = {
     getToken: providerId => authService.getToken(providerId),
     fetchCopilotModels,
-  })
+  };
+  return fetchOnethingGitHubCopilotModelsWithAuth(fetchOnethingGitHubCopilotModelsWithAuthOptions)
 }
 
 async function fetchCodexModelsRaw(): Promise<OpenRouterModel[]> {
@@ -55,33 +63,35 @@ async function fetchCodexModelsRaw(): Promise<OpenRouterModel[]> {
 
 export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
   async getWithCapabilities(request) {
+    const getOnethingModelsWithCapabilitiesAdapters: GetOnethingModelsWithCapabilitiesAdapters = {
+      getModelsForProvider: providerId =>
+        modelRegistry.getModelsForProvider(providerId) as Promise<OpenRouterModel[]>,
+      fetchCopilotModels: fetchGitHubCopilotModelsRaw,
+      fetchCodexModels: fetchCodexModelsRaw,
+      saveProviderModels: (providerId, models) =>
+        modelRegistry.saveProviderModels(providerId, models as OpenRouterModel[]),
+      getCodexFallbackModels: modelIds => getCodexFallbackModels(modelIds) as OpenRouterModel[],
+      getConfiguredCodexModelSelection: () =>
+        getSettings()?.ai?.providers?.codex as OnethingConfiguredModelSelection | undefined,
+      getACPAgents: () => getSettings()?.acp?.agents,
+      providerIds: {
+        githubCopilot: [AIProvider.GitHubCopilot],
+        codex: [AIProvider.Codex],
+        acp: [AIProvider.ACP],
+      },
+      logger: consoleLog,
+    };
     return getOnethingModelsWithCapabilities(
       { providerId: request?.providerId ?? '', forceRefresh: request?.forceRefresh },
-      {
-        getModelsForProvider: providerId =>
-          modelRegistry.getModelsForProvider(providerId) as Promise<OpenRouterModel[]>,
-        fetchCopilotModels: fetchGitHubCopilotModelsRaw,
-        fetchCodexModels: fetchCodexModelsRaw,
-        saveProviderModels: (providerId, models) =>
-          modelRegistry.saveProviderModels(providerId, models as OpenRouterModel[]),
-        getCodexFallbackModels: modelIds => getCodexFallbackModels(modelIds) as OpenRouterModel[],
-        getConfiguredCodexModelSelection: () =>
-          getSettings()?.ai?.providers?.codex as OnethingConfiguredModelSelection | undefined,
-        getACPAgents: () => getSettings()?.acp?.agents,
-        providerIds: {
-          githubCopilot: [AIProvider.GitHubCopilot],
-          codex: [AIProvider.Codex],
-          acp: [AIProvider.ACP],
-        },
-        logger: consoleLog,
-      },
+      getOnethingModelsWithCapabilitiesAdapters,
     )
   },
   async getAll() {
-    return getAllOnethingModelRegistryModelsForIpc({
+    const getAllOnethingModelRegistryModelsOptions: GetAllOnethingModelRegistryModelsOptions<OpenRouterModel> & { logger?: OnethingModelQueryIpcLogger | undefined; } = {
       getAllModels: () => modelRegistry.getAllModels(),
       logger: consoleLog,
-    })
+    };
+    return getAllOnethingModelRegistryModelsForIpc(getAllOnethingModelRegistryModelsOptions)
   },
   async search(request) {
     return searchOnethingModelRegistryForIpc({
@@ -93,17 +103,19 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
   },
   async refreshRegistry(request) {
     const providerId = request?.providerId
-    return refreshOnethingModelRegistryForIpc({
+    const refreshOnethingModelRegistryOptions: RefreshOnethingModelRegistryOptions & { logger?: OnethingModelRegistryRefreshLogger } = {
       forceRefresh: () =>
         providerId ? modelRegistry.refreshProviderModels(providerId) : modelRegistry.forceRefresh(),
       logger: consoleLog,
-    })
+    };
+    return refreshOnethingModelRegistryForIpc(refreshOnethingModelRegistryOptions)
   },
   async getNameAliases() {
-    return getOnethingModelRegistryNameAliasesForIpc({
+    const getOnethingModelRegistryNameAliasesOptions: GetOnethingModelRegistryNameAliasesOptions & { logger?: OnethingModelRegistryRefreshLogger } = {
       getModelNameAliases: () => modelRegistry.getModelNameAliases(),
       logger: consoleLog,
-    })
+    };
+    return getOnethingModelRegistryNameAliasesForIpc(getOnethingModelRegistryNameAliasesOptions)
   },
   /**
    * P4-7:渲染层的「文件能力」诚实口。投影与错误成形归 runtime

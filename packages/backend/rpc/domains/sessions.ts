@@ -95,10 +95,15 @@ import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '../../w
 import { workdirGateway } from '../../wiring/variables/gateways.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { UpdateOnethingSessionWorkingDirectoryOptions } from '@onething/runtime/sessions/working-directory'
+import type { UpdateOnethingSessionAgentOptions } from '@onething/runtime/sessions/session-updates'
+import type { CreateOnethingBranchSessionAdapters } from '@onething/runtime/sessions/branching'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-operations'
 
 const log = getLogger('rpc.sessions')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingSessionsIpcLogger = consolePort(log)
 
 /** 会话切换时把「当前会话」写进 app-state,并叫醒那扇独立的 todo 窗。 */
 function setCurrentSession(sessionId: string): void {
@@ -347,13 +352,14 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       if (!inside) return WORKDIR_SANDBOX_ERROR
       workingDirectory = inside
     }
-    return updateOnethingSessionWorkingDirectory({
+    const updateOnethingSessionWorkingDirectoryOptions: UpdateOnethingSessionWorkingDirectoryOptions = {
       sessionId: request.sessionId,
       workingDirectory,
       isDirectory: async path => (await fs.stat(path)).isDirectory(),
       writeWorkingDirectory: (id, nextWorkingDirectory) =>
         workdirGateway.write(id, nextWorkingDirectory),
-    })
+    };
+    return updateOnethingSessionWorkingDirectory(updateOnethingSessionWorkingDirectoryOptions)
   },
   async updateModel(request) {
     return updateOnethingSessionModel({
@@ -365,14 +371,15 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     })
   },
   async updateAgent(request) {
-    return updateOnethingSessionAgent({
+    const updateOnethingSessionAgentOptions: UpdateOnethingSessionAgentOptions = {
       sessionId: request.sessionId,
       agentId: request.agentId,
       defaultAgentId: DEFAULT_AGENT_ID,
       agentExists,
       getSessionKind: (id) => store.getSession(id)?.kind,
       updateSessionAgent: (id, nextAgentId) => store.updateSessionAgent(id, nextAgentId),
-    })
+    };
+    return updateOnethingSessionAgent(updateOnethingSessionAgentOptions)
   },
   async updatePermissionMode(request) {
     return updateOnethingSessionPermissionMode<PermissionMode>({
@@ -384,20 +391,21 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     })
   },
   async createBranch(request) {
+    const adaptersPort: CreateOnethingBranchSessionAdapters<ChatSession, ChatMessage, ChatSession> = {
+      createId: uuidv4,
+      getSession: id => store.getSession(id),
+      createBranchSession: input => store.createBranchSession(
+        input.branchId,
+        input.branchName,
+        input.parentSessionId,
+        input.branchFromMessageId,
+        input.inheritedMessages,
+      ),
+    };
     return createOnethingBranchSessionForIpc<ChatSession, ChatMessage, ChatSession>({
       parentSessionId: request.parentSessionId,
       branchFromMessageId: request.branchFromMessageId,
-      adapters: {
-        createId: uuidv4,
-        getSession: id => store.getSession(id),
-        createBranchSession: input => store.createBranchSession(
-          input.branchId,
-          input.branchName,
-          input.parentSessionId,
-          input.branchFromMessageId,
-          input.inheritedMessages,
-        ),
-      },
+      adapters: adaptersPort,
       logger: consoleLog,
     })
   },

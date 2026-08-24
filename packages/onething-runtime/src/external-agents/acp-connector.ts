@@ -1,5 +1,4 @@
-import { createACPAgentProvider } from '../agent-loop/providers/acp.js'
-import type { CoreACPAgentProviderOptions } from '../agent-loop/providers/acp.js'
+import { createACPAgentProvider, type CoreACPAgentProviderOptions } from '../agent-loop/providers/acp.js'
 import type {
   ExternalAgentCapabilities,
   ExternalAgentConnector,
@@ -40,11 +39,12 @@ export function createAcpConnector(options: AcpConnectorOptions): ExternalAgentC
     capabilities: ACP_CAPABILITIES,
 
     async *streamTurn(request: ExternalAgentTurnRequest): AsyncIterable<ExternalAgentEvent> {
-      const provider = createACPAgentProvider({
+      const aCPAgentProviderOptions: CoreACPAgentProviderOptions = {
         localSessionId: request.localSessionId,
         workingDirectory: request.cwd,
         streamPrompt: options.streamPrompt,
-      })
+      };
+      const provider = createACPAgentProvider(aCPAgentProviderOptions)
       if (!provider.streamTurn) throw new Error('ACP provider did not expose streamTurn')
       yield* provider.streamTurn({
         model: request.model ?? options.agentId,

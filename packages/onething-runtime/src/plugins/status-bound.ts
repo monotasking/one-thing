@@ -15,7 +15,7 @@
  */
 import {
   CorePluginStatusRegistry,
-  type CorePluginStatusPart,
+  type CorePluginStatusPart, type CorePluginStatusRegistryOptions,
 } from '@onething/core/plugins'
 import { SESSION_STREAM_TERMINAL_EVENTS } from '@shared/events/session-events.js'
 
@@ -51,10 +51,11 @@ let ports: StatusHostPorts | null = null
  * 每插件一本的话,按会话清扫就要遍历所有插件的账 —— 而"扫干净"恰恰是这一期
  * 唯一必须保证的事,不能依赖调用方记得把每本都传进来。
  */
-const statusRegistry = new CorePluginStatusRegistry({
+const pluginStatusRegistryOptions: CorePluginStatusRegistryOptions = {
   isStreaming: sessionId => ports?.isStreaming?.(sessionId) ?? true,
   warn: message => log.warn('plugin status registry', { detail: message }),
-})
+};
+const statusRegistry = new CorePluginStatusRegistry(pluginStatusRegistryOptions)
 
 export function getPluginStatusRegistry(): CorePluginStatusRegistry {
   return statusRegistry

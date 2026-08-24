@@ -42,6 +42,7 @@ import { billCollabPlanUsage } from '../../usage/bill-side-line.js'
 import { collabUserPromptFields } from '../user-identity.js'
 import type { CollabRefereeJudgePort, CollabRefereeJudgeRequest } from '@onething/runtime/collab/actors/referee-actor'
 import { getLogger } from '../../logging/index.js'
+import type { BuildCollabRefereeJudgePromptOptions } from '@onething/runtime/collab/actors/referee-rules'
 
 const log = getLogger('collab.referee')
 
@@ -164,7 +165,7 @@ export function createCollabEngineRefereeJudgePort(
       void isUserDmRoom(roomShape)
       void isAgentPairDmRoom(roomShape)
 
-      const { system, user } = buildCollabRefereeJudgePrompt({
+      const buildCollabRefereeJudgePromptOptions: BuildCollabRefereeJudgePromptOptions = {
         roomName: request.roomName,
         candidates: request.candidates,
         members: request.members,
@@ -181,7 +182,8 @@ export function createCollabEngineRefereeJudgePort(
         // 会渲染成一串光秃秃的名字,裁判判「谁该说」时手上什么都没有。
         resolvePersona: request.resolvePersona ?? (agentId => findAgent(agentId)?.systemPrompt),
         resolveAgentName: request.resolveAgentName ?? (agentId => findAgent(agentId)?.name),
-      })
+      };
+      const { system, user } = buildCollabRefereeJudgePrompt(buildCollabRefereeJudgePromptOptions)
 
       const controller = new AbortController()
       // 死线是不是我们自己踩的 —— `withDeadline` 只会给回一个空串,分不出"超时了"

@@ -1,4 +1,4 @@
-import { configureOnethingPermissionGrantStorage } from '@onething/runtime/permissions'
+import { configureOnethingPermissionGrantStorage, type OnethingPermissionGrantStorageAdapters } from '@onething/runtime/permissions'
 import {
   getOnethingPermissionsDir,
   readJsonFile,
@@ -12,11 +12,12 @@ let permissionGrantsConfigured = false
 export function configureAppPermissionGrants(): void {
   if (permissionGrantsConfigured) return
   permissionGrantsConfigured = true
-  configureOnethingPermissionGrantStorage({
+  const permissionGrantStorageAdapters: OnethingPermissionGrantStorageAdapters = {
     getPermissionsDir: getOnethingPermissionsDir,
     readJsonFile,
     writeJsonFile,
-  })
+  }
+  configureOnethingPermissionGrantStorage(permissionGrantStorageAdapters)
   registerBuiltinCapabilities()
 }
 

@@ -18,7 +18,7 @@ import {
   MCP_ROUTER_TOOL_ID,
   planMCPInputSchemaValidation,
   type CoreMCPJsonSchemaValidationPlan,
-  type MCPModelFacingToolDefinition as ModelFacingToolDefinition,
+  type MCPModelFacingToolDefinition as ModelFacingToolDefinition, type CoreMCPBridgeRuntimeHost, type WriteMCPToolsCatalogWithAdaptersOptions,
 } from '@onething/core/mcp'
 import { pathExists, writeTextFile } from '@onething/core/storage'
 import { consolePort, getLogger } from '../logging/index.js'
@@ -28,7 +28,7 @@ const log = getLogger('mcp')
 const consoleLog = consolePort(log)
 
 
-const coreMCPBridgeRuntime = new CoreMCPBridgeRuntime({
+const mCPBridgeRuntimeHost: CoreMCPBridgeRuntimeHost = {
   isEnabled: () => MCPManager.isEnabled,
   getAllTools: () => MCPManager.getAllTools(),
   getServerState: serverId => MCPManager.getServerState(serverId),
@@ -37,7 +37,8 @@ const coreMCPBridgeRuntime = new CoreMCPBridgeRuntime({
   // 决策点 #1: hybrid flat-mode threshold lives in MCP settings; 0 pins the
   // pre-hybrid router-only behavior.
   getFlatToolThreshold: () => MCPManager.getSettings().flatToolThreshold,
-})
+};
+const coreMCPBridgeRuntime = new CoreMCPBridgeRuntime(mCPBridgeRuntimeHost)
 
 export function mcpToolToToolDefinition(mcpTool: MCPToolInfo): ToolDefinition {
   return coreMCPBridgeRuntime.mcpToolToToolDefinition(mcpTool) as ToolDefinition
@@ -128,11 +129,12 @@ function validationPlanToZod(plan: CoreMCPJsonSchemaValidationPlan, applyOptiona
  * AI can reference this file to understand tool capabilities in detail
  */
 export function generateToolsCatalog(): void {
-  coreMCPBridgeRuntime.writeToolsCatalogWithAdapters({
+  const writeMCPToolsCatalogWithAdaptersOptions: WriteMCPToolsCatalogWithAdaptersOptions = {
     getCatalogPath: getOnethingMCPToolsCatalogPath,
     writeFile: writeTextFile,
     logger: consoleLog,
-  })
+  };
+  coreMCPBridgeRuntime.writeToolsCatalogWithAdapters(writeMCPToolsCatalogWithAdaptersOptions)
 }
 
 /**

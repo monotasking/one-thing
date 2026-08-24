@@ -87,10 +87,12 @@ import {
 import { getPluginFootprint } from '../../wiring/plugins/loader.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
 
 const log = getLogger('rpc.plugins')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingPluginIpcLogger = consolePort(log)
 
 /**
  * 迁移前 `platform/web.ts` 那批硬桩里的原话,一个字都不改 —— 迁的是通道,

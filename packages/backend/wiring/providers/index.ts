@@ -50,6 +50,7 @@ import type {
   ProviderInfo,
 } from '@onething/runtime/providers/types.wiring'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { OnethingChatGenerationOptions, OnethingProviderFacadeAdapters } from '@onething/runtime/providers/provider-facade'
 
 const log = getLogger('providers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -120,7 +121,7 @@ async function dumpRuntimeProviderRequest(context: Parameters<typeof createOneth
   })
 }
 
-const providerFacade = createOnethingProviderFacade<RuntimeProviderConfig, AgentProvider>({
+const providerFacadeAdapters: OnethingProviderFacadeAdapters<RuntimeProviderConfig, AgentProvider> = {
   requiresOAuth,
   refreshOAuthToken: id => oauthManager.refreshTokenIfNeeded(id),
   requiresSystemMerge: requiresSystemMergeFromRegistry,
@@ -131,7 +132,8 @@ const providerFacade = createOnethingProviderFacade<RuntimeProviderConfig, Agent
   defaultWorkingDirectory: () => process.cwd(),
   isACPProvider,
   logger: consoleLog,
-})
+};
+const providerFacade = createOnethingProviderFacade<RuntimeProviderConfig, AgentProvider>(providerFacadeAdapters)
 
 
 export async function generateChatResponse(
@@ -158,10 +160,11 @@ export async function generateChatResponse(
   // knows it; when it doesn't, nothing is sent and the provider decides.
   const maxTokens = options.maxTokens
     ?? await modelRegistry.getKnownModelMaxOutputTokens(config.model, providerId)
-  return providerFacade.generateChatResponse(providerId, config, messages, {
+  const chatGenerationOptions: OnethingChatGenerationOptions = {
     ...options,
     ...(maxTokens !== undefined ? { maxTokens } : {}),
-  })
+  };
+  return providerFacade.generateChatResponse(providerId, config, messages, chatGenerationOptions)
 }
 
 

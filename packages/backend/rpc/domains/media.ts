@@ -49,10 +49,15 @@ import type { MediaRoutes } from '@shared/ipc/media.js'
 import { getSessions } from '../../stores/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { ClearOnethingMediaLibraryOptions, OnethingMediaIpcLogger } from '@onething/runtime/media/media-library-presentation'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingImageFileDataUrlIpcLogger } from '@onething/runtime/media/image-file-data-url'
+import type { OnethingLegacyMediaItem } from '@onething/runtime/media/media-library-service'
+import type { ListOnethingLegacyMediaImagesOptions } from '@onething/runtime/media/media-library-presentation'
 
 const log = getLogger('rpc.media')
 /** 投影层收的是鸭子 logger;过渡替身与旧的 `@main` 适配用的是同一个(area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingImageFileDataUrlIpcLogger & OnethingMediaIpcLogger = consolePort(log)
 
 export const mediaRpcHandlers: RpcRouteHandlers<MediaRoutes> = {
   async listAssets(request) {
@@ -92,9 +97,10 @@ export const mediaRpcHandlers: RpcRouteHandlers<MediaRoutes> = {
     return saveMediaImage(request)
   },
   async loadAll() {
-    return listOnethingLegacyMediaImages({
+    const listOnethingLegacyMediaImagesOptions: ListOnethingLegacyMediaImagesOptions<OnethingLegacyMediaItem> = {
       listLegacyImages: () => mediaLibraryService.listLegacyImages(),
-    })
+    };
+    return listOnethingLegacyMediaImages(listOnethingLegacyMediaImagesOptions)
   },
   async delete(request) {
     return deleteOnethingMediaItem({
@@ -103,9 +109,10 @@ export const mediaRpcHandlers: RpcRouteHandlers<MediaRoutes> = {
     })
   },
   async clearAll() {
-    await clearOnethingMediaLibrary({
+    const clearOnethingMediaLibraryOptions: ClearOnethingMediaLibraryOptions = {
       hideAllAssets: () => mediaLibraryService.hideAllAssets(),
-    })
+    };
+    await clearOnethingMediaLibrary(clearOnethingMediaLibraryOptions)
   },
   async readImageBase64(request) {
     return readOnethingImageFileDataUrlForIpc(request.filePath, { logger: consoleLog })

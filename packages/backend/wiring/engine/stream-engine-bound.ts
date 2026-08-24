@@ -14,6 +14,11 @@ import {
 	type EngineMessageOrigin,
 	type EngineRoutedSession,
 	type ProductStreamEnginePorts,
+	type StreamEngineAgentBindingPort,
+	type StreamEnginePluginInterceptPort,
+	type StreamEngineRoomIngressPort,
+	type StreamEngineSessionRouterPort,
+	type StreamEngineSteeringDeliveryPort,
 } from "@onething/runtime/engine";
 import type { MessageOrigin } from "@shared/ipc.js";
 import type { EventBus } from "../../events/event-bus.js";
@@ -57,37 +62,47 @@ export function createBoundStreamEngine(
 		engine?.steerMessage(sessionId, content, source, origin);
 	};
 
+	// 五个端口各自提成带类型标注的 const(S2/I4-缝收口):就地字面量只有 contextual
+	// type 认亲,tsserver 的 Go to Implementation 走不过去;标注在这里,缝就有声明边。
+	const router: StreamEngineSessionRouterPort = {
+		route: (input): EngineRoutedSession =>
+			getChannelSessionRouter().route({
+				sessionId: input.sessionId,
+				origin: input.origin as MessageOrigin | undefined,
+				fallbackTransport: input.fallbackTransport,
+				preserveSessionId: input.preserveSessionId,
+			}) as EngineRoutedSession,
+	};
+	const roomIngress: StreamEngineRoomIngressPort = {
+		isRoomSession: isCollabRoomSession,
+		isCoordinatorDrivenSession: isCollabCoordinatorDrivenSession,
+		handleRoomSendMessage: (sessionId, command) =>
+			handleCollabRoomSendMessage(sessionId, command as CollabRoomInboundCommand),
+	};
+	const pluginIntercept: StreamEnginePluginInterceptPort = {
+		postReply: (pluginId, sessionId, content) =>
+			pluginPostInterceptReply({ steer }, pluginId, sessionId, content),
+	};
+	const agentBinding: StreamEngineAgentBindingPort = {
+		resolveModelForSession: sessionId =>
+			resolveAgentProfileForSession(sessionId).model,
+		// persona/能力功能兜底(域模型 §3.3),与 profile.ts 同一条规则:现读,
+		// 不吃回合快照 —— 权限走严格且新鲜。
+		resolvePermissionDeclaration: agentId => {
+			const agent = findAgent(agentId) ?? defaultAgent();
+			return { agentId: agent?.id, permissionMode: agent?.permissionMode };
+		},
+	};
+	const steeringDelivery: StreamEngineSteeringDeliveryPort = {
+		take: takeExternalAgentSteering,
+	};
+
 	const ports: ProductStreamEnginePorts = {
-		router: {
-			route: (input): EngineRoutedSession =>
-				getChannelSessionRouter().route({
-					sessionId: input.sessionId,
-					origin: input.origin as MessageOrigin | undefined,
-					fallbackTransport: input.fallbackTransport,
-					preserveSessionId: input.preserveSessionId,
-				}) as EngineRoutedSession,
-		},
-		roomIngress: {
-			isRoomSession: isCollabRoomSession,
-			isCoordinatorDrivenSession: isCollabCoordinatorDrivenSession,
-			handleRoomSendMessage: (sessionId, command) =>
-				handleCollabRoomSendMessage(sessionId, command as CollabRoomInboundCommand),
-		},
-		pluginIntercept: {
-			postReply: (pluginId, sessionId, content) =>
-				pluginPostInterceptReply({ steer }, pluginId, sessionId, content),
-		},
-		agentBinding: {
-			resolveModelForSession: sessionId =>
-				resolveAgentProfileForSession(sessionId).model,
-			// persona/能力功能兜底(域模型 §3.3),与 profile.ts 同一条规则:现读,
-			// 不吃回合快照 —— 权限走严格且新鲜。
-			resolvePermissionDeclaration: agentId => {
-				const agent = findAgent(agentId) ?? defaultAgent();
-				return { agentId: agent?.id, permissionMode: agent?.permissionMode };
-			},
-		},
-		steeringDelivery: { take: takeExternalAgentSteering },
+		router,
+		roomIngress,
+		pluginIntercept,
+		agentBinding,
+		steeringDelivery,
 	};
 
 	engine = new ProductStreamEngine<EventBus>(

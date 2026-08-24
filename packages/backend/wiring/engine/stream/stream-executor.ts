@@ -32,6 +32,7 @@ import {
 } from '@onething/core/engine'
 import type { CoreInitialToolChoice } from '@onething/core/engine'
 import { consolePort, getLogger } from '../../logging/index.js'
+import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/core/engine'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -237,26 +238,39 @@ async function runMessageStream(
   params: StreamExecutionParams,
   abortController?: AbortController,
 ): Promise<StreamExecutionResult> {
-  const result = await executeCoreMessageStream({
+  const streamControllerRegistry: CoreStreamControllerRegistry<AbortController, PendingMessageQueue> = {
+    registerController: (sessionId, controller) => engine.registerController(sessionId, controller),
+    removeController: sessionId => engine.removeController(sessionId),
+    getSteeringQueue: sessionId => engine.getSteeringQueue(sessionId),
+    getFollowUpQueue: sessionId => engine.getFollowUpQueue(sessionId),
+  };
+  const executeCoreMessageStreamOptions: ExecuteCoreMessageStreamOptions<
+    StreamSender,
+    AppSettings,
+    ProviderConfigWithKey,
+    ToolSettings,
+    HistoryMessage,
+    AgentOutputModality,
+    PendingMessageQueue,
+    unknown,
+    AbortController,
+    AgentLoopStreamGenerationResult
+  > = {
     params: {
       ...params,
       requestedOutputModalities: await resolveRequestedOutputModalities(params),
     },
     controller: abortController,
     createController: () => new AbortController(),
-    registry: {
-      registerController: (sessionId, controller) => engine.registerController(sessionId, controller),
-      removeController: sessionId => engine.removeController(sessionId),
-      getSteeringQueue: sessionId => engine.getSteeringQueue(sessionId),
-      getFollowUpQueue: sessionId => engine.getFollowUpQueue(sessionId),
-    },
+    registry: streamControllerRegistry,
     supportsSpecialStream: (model, providerId) =>
       modelRegistry.modelSupportsImageGeneration(model, providerId),
     processSpecialStream: input => processImageGenerationStream(input),
     executeTextStream: (ctx, historyMessages, sessionName): Promise<AgentLoopStreamGenerationResult> =>
       executeAgentLoopStreamGeneration(ctx as StreamContext, historyMessages, sessionName),
     logger: consoleLog,
-  })
+  };
+  const result = await executeCoreMessageStream(executeCoreMessageStreamOptions)
 
   return {
     handled: result.handled,

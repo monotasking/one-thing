@@ -10,7 +10,7 @@ import {
   type CorePluginInstallResult,
   type CorePluginManagerHost,
   type CorePluginUninstallResult,
-  type CorePluginUpdateResult,
+  type CorePluginUpdateResult, type CorePluginBootstrapperOptions,
 } from '@onething/core/plugins'
 import { createPluginAPI, disposePlugin, type PluginState } from './api.js'
 import {
@@ -67,10 +67,12 @@ import {
 } from '@onething/runtime/plugins/health'
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './types.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/core/logging'
 
 const log = getLogger('plugins.manager')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & LegacyDuckLogger = consolePort(log)
 
 
 export interface PluginManagerContext {
@@ -398,12 +400,13 @@ export class PluginManager extends CorePluginManager<
   }
 }
 
-const pluginBootstrapper = new CorePluginBootstrapper<PluginManager, PluginManagerContext>({
+const pluginBootstrapperOptions: CorePluginBootstrapperOptions<PluginManager, PluginManagerContext> = {
   ensurePluginDirs,
   createManager: () => new PluginManager(),
   initializeManager: (manager, context) => manager.initialize(context),
   logger: consoleLog,
-})
+};
+const pluginBootstrapper = new CorePluginBootstrapper<PluginManager, PluginManagerContext>(pluginBootstrapperOptions)
 
 /**
  * Bootstrap the plugin system.

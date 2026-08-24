@@ -7,10 +7,12 @@ import {
   getOnethingLogDir,
 } from '@onething/runtime/storage'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingProviderRequestDumpLogger } from '@onething/runtime/providers/request-dump'
 
 const log = getLogger('providers.dump')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingProviderRequestDumpLogger = consolePort(log)
 
 
 export type ProviderRequestDumpMode = OnethingProviderRequestDumpMode

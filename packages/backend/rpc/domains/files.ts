@@ -107,10 +107,16 @@ import {
   type RpcSandbox,
 } from '../sandbox.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { ListOnethingFileSearchEntriesForIpcOptions, OnethingFilesIpcLogger } from '@onething/runtime/files/file-search'
+import type { RollbackOnethingFileOptions } from '@onething/runtime/files/file-rollback'
+import type { ReadOnethingFileContentOptions, SaveOnethingFileContentOptions, ListOnethingDirectoryOptions, RevealOnethingPathOptions } from '@onething/runtime/files/file-operations'
+import type { ListOnethingDirectoriesForCompletionOptions } from '@onething/runtime/files/directory-listing'
+import type { OnethingDirectoryIpcLogger } from '@onething/runtime/files/directory-listing'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
 
 const log = getLogger('rpc.files')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingDirectoryIpcLogger & OnethingFilesIpcLogger = consolePort(log)
 
 /** 夹不住时的答案 —— 文案由调用点逐条给(旧 server 路由每条各有原话)。 */
 function pathError(error: string): { success: false; error: string } {
@@ -151,7 +157,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
       cwd = clamped
     }
 
-    return listOnethingFileSearchEntriesForIpc({
+    const listOnethingFileSearchEntriesForIpcOptions: ListOnethingFileSearchEntriesForIpcOptions = {
       cwd,
       query: request?.query,
       limit: request?.limit,
@@ -179,7 +185,8 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
         return rootPath ? walkWorkspaceFiles(rootPath) : []
       },
       logger: consoleLog,
-    })
+    };
+    return listOnethingFileSearchEntriesForIpc(listOnethingFileSearchEntriesForIpcOptions)
   },
 
   async rollback(request, context = DESKTOP_RPC_CONTEXT) {
@@ -204,7 +211,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
       }
     }
 
-    return rollbackOnethingFile({
+    const rollbackOnethingFileOptions: RollbackOnethingFileOptions = {
       auditPath,
       filePath,
       originalContent: request?.originalContent,
@@ -216,7 +223,8 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
         ? fs.rm(target, { force: true })
         : fs.unlink(target)),
       writeFile: (target, content) => fs.writeFile(target, content, 'utf-8'),
-    })
+    };
+    return rollbackOnethingFile(rollbackOnethingFileOptions)
   },
 
   async listDirs(request, context = DESKTOP_RPC_CONTEXT) {
@@ -237,7 +245,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
       basePath = clamped
     }
 
-    return listOnethingDirectoriesForCompletionForIpc({
+    const listOnethingDirectoriesForCompletionOptions: ListOnethingDirectoriesForCompletionOptions & { logger?: OnethingDirectoryIpcLogger } = {
       basePath,
       query: request?.query,
       limit: request?.limit,
@@ -251,7 +259,8 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
         return resolved ? await fs.readdir(resolved, { withFileTypes: true }) : []
       },
       logger: consoleLog,
-    })
+    };
+    return listOnethingDirectoriesForCompletionForIpc(listOnethingDirectoriesForCompletionOptions)
   },
 
   async readContent(request, context = DESKTOP_RPC_CONTEXT) {
@@ -259,7 +268,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
     if (path === null) {
       return pathError('File path must stay inside the workspace sandbox root.')
     }
-    return readOnethingFileContent({
+    const readOnethingFileContentOptions: ReadOnethingFileContentOptions = {
       path,
       maxSize: request?.maxSize,
       stat: filePath => fs.stat(filePath),
@@ -273,7 +282,8 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
           await fileHandle.close()
         }
       },
-    })
+    };
+    return readOnethingFileContent(readOnethingFileContentOptions)
   },
 
   async saveContent(request, context = DESKTOP_RPC_CONTEXT) {
@@ -281,13 +291,14 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
     if (path === null) {
       return pathError('File path must stay inside the workspace sandbox root.')
     }
-    return saveOnethingFileContent({
+    const saveOnethingFileContentOptions: SaveOnethingFileContentOptions = {
       path,
       content: request?.content ?? '',
       expectedMtimeMs: request?.expectedMtimeMs,
       stat: filePath => fs.stat(filePath),
       writeFile: (filePath, content) => fs.writeFile(filePath, content, 'utf-8'),
-    })
+    };
+    return saveOnethingFileContent(saveOnethingFileContentOptions)
   },
 
   async listDirectory(request, context = DESKTOP_RPC_CONTEXT) {
@@ -295,11 +306,12 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
     if (path === null) {
       return pathError('Directory path must stay inside the workspace sandbox root.')
     }
-    return listOnethingDirectory({
+    const listOnethingDirectoryOptions: ListOnethingDirectoryOptions = {
       path,
       readDir: dirPath => fs.readdir(dirPath, { withFileTypes: true }),
       stat: entryPath => fs.stat(entryPath).catch(() => null),
-    })
+    };
+    return listOnethingDirectory(listOnethingDirectoryOptions)
   },
 
   async stat(request, context = DESKTOP_RPC_CONTEXT) {
@@ -365,7 +377,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
     if (path === null) {
       return pathError('Path must stay inside the workspace sandbox root.')
     }
-    return revealOnethingPath({
+    const revealOnethingPathOptions: RevealOnethingPathOptions = {
       path,
       stat: target => fs.stat(target),
       // 未注入宿主 = 抛;投影自己 catch 成 `{ success:false, error }`,
@@ -374,7 +386,8 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
         const outcome = await getShellHost().revealPath(target)
         if (!outcome.success) throw new Error(outcome.error ?? SHELL_HOST_UNAVAILABLE)
       },
-    })
+    };
+    return revealOnethingPath(revealOnethingPathOptions)
   },
 
   async watchStart(request, context = DESKTOP_RPC_CONTEXT) {

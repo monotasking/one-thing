@@ -21,6 +21,8 @@ import { toJsonObject, type JsonObject } from '@shared/json.js'
 import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
 import { createAppToolRunner } from '../../toolkit/runner.js'
 import { consolePort, getLogger } from '../../logging/index.js'
+import type { CoreSkillReviewVisibleSkill } from '@onething/runtime/triggers/skill-review-core'
+import type { OnethingSkillReviewAdapters } from '@onething/runtime/triggers/skill-review'
 
 const log = getLogger('engine.triggers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -145,7 +147,7 @@ async function createSkillReviewAgentProvider(ctx: TriggerContext) {
 }
 
 export function createSkillReviewTrigger(): Trigger {
-  return createOnethingSkillReviewTrigger<TriggerContext>({
+  const skillReviewAdapters: OnethingSkillReviewAdapters<TriggerContext, CoreSkillReviewVisibleSkill> = {
     isDisabled: isSkillReviewDisabledByEnv,
     homeDir: () => process.env.HOME,
     getVisibleSkills: getFreshSkillsForSession,
@@ -158,5 +160,6 @@ export function createSkillReviewTrigger(): Trigger {
       billSkillUsage(context.providerId, context.model, context.sessionId)(usage),
     fileTools: (ctx, options) => createMainSkillReviewFileToolAdapters(ctx, options.mutableRoots),
     logger: consoleLog,
-  }) as Trigger
+  };
+  return createOnethingSkillReviewTrigger<TriggerContext>(skillReviewAdapters) as Trigger
 }

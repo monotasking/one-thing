@@ -53,10 +53,12 @@ import { authService } from '../../wiring/auth/auth-service.js'
 import { notifyOAuthTokenExpired } from '../../wiring/auth/oauth-events.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { StartOnethingOAuthForIpcOptions, RefreshOnethingOAuthForIpcOptions, OnethingOAuthIpcLogger } from '@onething/runtime/auth/ipc-operations'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
 
 const log = getLogger('rpc.oauth')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingOAuthIpcLogger = consolePort(log)
 
 /** 凭证写回目标的归一 —— 非法 / 默认 spaceId 一律落回 settings(批 B6)。 */
 function targetOf(request: {
@@ -78,7 +80,7 @@ function isRemoteCaller(context: RpcDispatchContext): boolean {
 export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
   async start(request, context = DESKTOP_RPC_CONTEXT) {
     const target = targetOf(request)
-    return startOnethingOAuthForIpc({
+    const startOnethingOAuthForIpcOptions: StartOnethingOAuthForIpcOptions = {
       providerId: request.providerId,
       start: providerId => authService.start(providerId, target),
       // http 上不开浏览器:调用方拿 `authUrl` 自己开(旧 server 路由的形状)。
@@ -86,7 +88,8 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
         ? undefined
         : url => getShellHost().openExternal(url).then(() => undefined),
       logger: consoleLog,
-    })
+    };
+    return startOnethingOAuthForIpc(startOnethingOAuthForIpcOptions)
   },
   async callback(request) {
     const target = targetOf(request)
@@ -112,12 +115,13 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
   },
   async refresh(request) {
     const target = targetOf(request)
-    return refreshOnethingOAuthForIpc({
+    const refreshOnethingOAuthForIpcOptions: RefreshOnethingOAuthForIpcOptions = {
       providerId: request.providerId,
       refreshToken: providerId => authService.refreshToken(providerId, target),
       notifyTokenExpired: notifyOAuthTokenExpired,
       logger: consoleLog,
-    })
+    };
+    return refreshOnethingOAuthForIpc(refreshOnethingOAuthForIpcOptions)
   },
   async status(request) {
     const target = targetOf(request)

@@ -17,10 +17,12 @@ import {
 } from '../storage/index.js'
 import type { SchedulerRunDetailDTO } from '@shared/ipc.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { SchedulerRunHistoryLogger } from '@onething/runtime/scheduler/run-history'
 
 const log = getLogger('scheduler')
 /** 注入式鸭子 logger 端口的过渡替身(logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & SchedulerRunHistoryLogger = consolePort(log)
 
 
 const runHistory = new OnethingSchedulerRunHistory<SchedulerRunDetailDTO>({

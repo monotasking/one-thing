@@ -17,6 +17,7 @@ import {
 } from '@onething/runtime/media'
 import { recordSynthesizedAssistantText } from '../../../session/assistant-parts.js'
 import { consolePort, getLogger } from '../../logging/index.js'
+import type { CoreImageStreamStoreAdapter, ExecuteCoreImageGenerationStreamOptions } from '@onething/runtime/media/image-generation'
 
 const log = getLogger('engine.stream.image')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -62,7 +63,31 @@ export async function processImageGenerationStream(
   try { eventBus = getEventBus() } catch { /* not initialized */ }
   try { streamChannel = getStreamChannel() } catch { /* not initialized */ }
 
-  return executeOnethingImageGenerationStream({
+  const storePort: CoreImageStreamStoreAdapter = {
+    updateMessageContent: store.updateMessageContent,
+    // R-b(§13.6):**正文落到消息上的那一刻**,同一段正文也进事件账本
+    // (data URL 换成 blob 占位符)。挂在这一格而不是 `saveMediaImage` 上:
+    // 这里才是"消息上多了一格 contentPart"的那一刻,两侧因此逐字节对得上
+    // (错误分支不写 contentPart,账本上也就没有那一格)。
+    addMessageContentPart: async (targetSessionId, messageId, part) => {
+      const applied = await store.addMessageContentPart(targetSessionId, messageId, part)
+      if (part.type === 'text' && typeof part.content === 'string') {
+        recordSynthesizedAssistantText(targetSessionId, messageId, part.content)
+      }
+      return applied
+    },
+    // §13.8 第二类:失败分支的正文只落在 `content` 上(没有 contentPart),
+    // 所以它有自己的落点 —— 挂在 `updateMessageContent` 上会把成功分支的
+    // 那段正文记两遍(那边先写 content、再写 part)。
+    updateMessageErrorContent: async (targetSessionId, messageId, content) => {
+      const applied = await store.updateMessageContent(targetSessionId, messageId, content)
+      recordSynthesizedAssistantText(targetSessionId, messageId, content, { contentOnly: true })
+      return applied
+    },
+    updateMessageStreaming: store.updateMessageStreaming,
+    flushSessionSave: store.flushSessionSave,
+  };
+  const imageGenerationStreamOptions: ExecuteCoreImageGenerationStreamOptions = {
     sessionId,
     assistantMessageId,
     prompt,
@@ -84,30 +109,7 @@ export async function processImageGenerationStream(
     },
     generateOpenAIImage: input => generateImage(input.apiKey, input.baseUrl, input.model, input.prompt),
     saveMediaImage,
-    store: {
-      updateMessageContent: store.updateMessageContent,
-      // R-b(§13.6):**正文落到消息上的那一刻**,同一段正文也进事件账本
-      // (data URL 换成 blob 占位符)。挂在这一格而不是 `saveMediaImage` 上:
-      // 这里才是"消息上多了一格 contentPart"的那一刻,两侧因此逐字节对得上
-      // (错误分支不写 contentPart,账本上也就没有那一格)。
-      addMessageContentPart: async (targetSessionId, messageId, part) => {
-        const applied = await store.addMessageContentPart(targetSessionId, messageId, part)
-        if (part.type === 'text' && typeof part.content === 'string') {
-          recordSynthesizedAssistantText(targetSessionId, messageId, part.content)
-        }
-        return applied
-      },
-      // §13.8 第二类:失败分支的正文只落在 `content` 上(没有 contentPart),
-      // 所以它有自己的落点 —— 挂在 `updateMessageContent` 上会把成功分支的
-      // 那段正文记两遍(那边先写 content、再写 part)。
-      updateMessageErrorContent: async (targetSessionId, messageId, content) => {
-        const applied = await store.updateMessageContent(targetSessionId, messageId, content)
-        recordSynthesizedAssistantText(targetSessionId, messageId, content, { contentOnly: true })
-        return applied
-      },
-      updateMessageStreaming: store.updateMessageStreaming,
-      flushSessionSave: store.flushSessionSave,
-    },
+    store: storePort,
     notifyImageGenerated: notification => {
       // IMAGE_GENERATED is a one-off renderer notification outside EventBus.
       if (!sender.isDestroyed()) {
@@ -115,5 +117,6 @@ export async function processImageGenerationStream(
       }
     },
     logger: consoleLog,
-  })
+  };
+  return executeOnethingImageGenerationStream(imageGenerationStreamOptions)
 }

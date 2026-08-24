@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { OnethingPermissionGrantStorageAdapters } from "@onething/runtime/permissions";
 import { EventEmitter } from "node:events";
 import {
 	existsSync,
@@ -99,7 +100,7 @@ import {
 	type CorePluginCommandDefinition,
 	type CorePluginDefinition,
 	type CorePluginInfo,
-	type PluginSettings,
+	type PluginSettings, type CorePluginSettingsStorageAdapters,
 } from "@onething/core/plugins";
 import {
 	createMCPServerState,
@@ -241,9 +242,9 @@ import {
 	saveOnethingUiState,
 	setOnethingCurrentSessionId,
 } from "@onething/runtime/storage";
-import { createOnethingSessionRepository } from "@onething/runtime/sessions/session-repository";
-import { createHybridSessionStorageDriver } from "@onething/runtime/sessions/storage-driver";
-import { createOnethingSessionMessageRuntime } from "@onething/runtime/sessions/session-message-runtime";
+import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/runtime/sessions/session-repository";
+import { createHybridSessionStorageDriver, type HybridSessionStorageDriverOptions } from "@onething/runtime/sessions/storage-driver";
+import { createOnethingSessionMessageRuntime, type OnethingSessionMessageRuntimeRepository } from "@onething/runtime/sessions/session-message-runtime";
 import {
 	deleteJsonFile,
 	readJsonFile as readCoreJsonFile,
@@ -313,10 +314,16 @@ export { SERVER_REDACTED_SECRET } from "./mcp-secrets.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
 import { consolePort, getLogger } from '../wiring/logging/index.js'
+import type { VariablesStorePersistence } from '@onething/runtime/variables/store'
+import type { OnethingPromptStoreAdapters } from '@onething/runtime/prompts/store'
+import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimeEventsAdapter, RuntimeStreamsAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeMediaAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from '@onething/core/runtime-facade'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
+import type { RuntimeSearchAdapter, RuntimeMutationResult } from '@onething/core/runtime-facade'
 
 const log = getLogger('server.runtime')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingPluginIpcLogger & OnethingSessionRepositoryLogger = consolePort(log)
 
 
 type ServerChatSession = ChatSession & {
@@ -661,10 +668,11 @@ class ServerPluginCatalogManager {
 	}
 
 	private setEnabled(pluginId: string, enabled: boolean): void {
-		setPluginEnabledWithAdapters(pluginId, enabled, {
+		const pluginSettingsStorageAdapters: CorePluginSettingsStorageAdapters = {
 			readSettings: () => this.readSettings(),
 			writeSettings: (settings) => this.writeSettings(settings),
-		});
+		};
+		setPluginEnabledWithAdapters(pluginId, enabled, pluginSettingsStorageAdapters);
 	}
 
 	private readSettings(): PluginSettings {
@@ -874,11 +882,12 @@ async function createServerRuntimeOverServerBackend(
 	// 嵌在宿主里时不碰这个端口:桌面已经按它自己的口径配过了,再配一次等于把
 	// 桌面的授权账页搬到另一个目录(dataRoot 与 store 不一定同一处)。
 	if (ownsProcessPorts) {
-		configureOnethingPermissionGrantStorage({
+		const permissionGrantStorageAdapters: OnethingPermissionGrantStorageAdapters = {
 			getPermissionsDir: () => join(dataRoot, "permissions"),
 			readJsonFile: readServerRuntimeJsonFile,
 			writeJsonFile: writeServerRuntimeJsonFile,
-		});
+		}
+		configureOnethingPermissionGrantStorage(permissionGrantStorageAdapters);
 	}
 	const enableMCPConnections =
 		options.enableMCPConnections ??
@@ -1331,7 +1340,7 @@ async function createServerRuntimeOverServerBackend(
 		const key = ownerKey(context);
 		let store = promptStoresByOwner.get(key);
 		if (!store) {
-			store = new OnethingPromptStore({
+			const promptStoreAdapters: OnethingPromptStoreAdapters = {
 				getPath: () =>
 					join(
 						dataRoot,
@@ -1348,7 +1357,8 @@ async function createServerRuntimeOverServerBackend(
 						details === undefined ? { detail: message } : { detail: message, details },
 					);
 				},
-			});
+			};
+			store = new OnethingPromptStore(promptStoreAdapters);
 			promptStoresByOwner.set(key, store);
 		}
 		return store;
@@ -1366,7 +1376,7 @@ async function createServerRuntimeOverServerBackend(
 			context,
 			isDefaultContext(context) ? storePath : undefined,
 		);
-		const store = new VariablesStore({
+		const variablesStorePersistence: VariablesStorePersistence = {
 			loadFromDisk: () => {
 				const raw = readServerRuntimeJsonFile<unknown | undefined>(
 					variablesPath,
@@ -1385,7 +1395,8 @@ async function createServerRuntimeOverServerBackend(
 					variablesPath,
 					sanitizeServerVariablesFile(state, workspaceRoot, context),
 				),
-		});
+		};
+		const store = new VariablesStore(variablesStorePersistence);
 		store.initialize();
 
 		const registry = new VariableRegistry();
@@ -1817,6 +1828,228 @@ async function createServerRuntimeOverServerBackend(
 		},
 	});
 
+	const capabilitiesPort: RuntimeCapabilitiesAdapter<RuntimeHostCapabilities> = {
+		async get() {
+			return currentServerCapabilities();
+		},
+	};
+	const sessionsPort: RuntimeSessionsAdapter<unknown, unknown, string, Record<string, unknown>> = {
+		async list(context = defaultRequestContext()) {
+			return {
+				success: true,
+				sessions: listSessionsForContext(context),
+			};
+		},
+		async create(
+			name: string,
+			context = defaultRequestContext(),
+			requestedSessionId?: string,
+		) {
+			// Client-supplied ids keep the renderer's draft identity stable
+			// (the draft id becomes the session id). Only plain v4 UUIDs are
+			// accepted — the id is a storage path segment — and an id that
+			// already exists is refused rather than silently adopted.
+			if (requestedSessionId !== undefined) {
+				if (!SESSION_ID_V4_RE.test(requestedSessionId)) {
+					return { success: false as const, error: "Invalid session id" };
+				}
+				if (getSessionForContext(requestedSessionId, context)) {
+					return {
+						success: false as const,
+						error: "Session id already exists",
+					};
+				}
+			}
+			const session = ensureSession(
+				context,
+				requestedSessionId ?? createSessionId(),
+			);
+			session.name = name || "New Chat";
+			session.updatedAt = Date.now();
+			persistSession(session);
+			setServerCurrentSessionId(context, session.id);
+			return { success: true, session: toChatSession(session) };
+		},
+		// P4c 第五批:会话的读/改/删(get / activate / delete / rename /
+		// createBranch)整批迁到 `sessions` RPC 域 —— server 从此与桌面吃同一份
+		// 实现,这里那套 per-owner 的第二份没有了。`list` / `create` 留着是因为
+		// `apps/mobile` 仍然直接打那两条 REST(拍板 #32);`update` 留着是因为
+		// `POST /api/sessions/:id/max-tokens` 从来不在那 26 条里。
+		async update(
+			sessionId: string,
+			patch: Record<string, unknown>,
+			context = defaultRequestContext(),
+		) {
+			const session = getSessionForContext(sessionId, context);
+			if (!session) return { success: false, error: "Session not found" };
+			// §13.10 M7:快照必须**在 applySessionPatch 之前**取。
+			//
+			// `applySessionPatch` 就地改这只对象,而真后端上它正是 app store
+			// 里那一份 —— 等 `persistSession` → `sessionCommands.patchSession`
+			// 再去问"改之前是什么",问到的已经是改之后的值,三格
+			// (agent / model / workdir)于是一条事件都写不出来。
+			// `POST /api/sessions/:id/agent` 从此在账本上是无声的。
+			const beforeMeta = sessionMetaFieldsOf(session);
+			const patchResult = applySessionPatch(session, patch, workspaceRoot);
+			if (!patchResult.success) return patchResult;
+			persistSession(session);
+			// 翻译排在写成功之后(翻译器的纪律 1)。三格里没变的那些由翻译器
+			// 自己按 before 逐格比对丢掉,这里不预筛。
+			sessionEventTranslator.patchSession(
+				sessionId,
+				sessionMetaFieldsOf(session),
+				beforeMeta,
+			);
+			return { success: true, session: toSessionDetails(session) };
+		},
+	};
+	const messagesPort: RuntimeMessagesAdapter<GetSessionMessagesPageRequest, GetSessionMessagesPageResponse, unknown> = {
+		async page(
+			request: GetSessionMessagesPageRequest,
+			context = defaultRequestContext(),
+		) {
+			const session = getSessionForContext(request.sessionId, context);
+			if (!session) {
+				return { success: false, error: "Session not found" };
+			}
+			// Real backends: the app-store session in memory is the truth
+			// (async writes may still be queued) — page from it directly.
+			return backend.persistsMessages || activeStreamSessions.has(request.sessionId)
+				? getMessagePage(sessionStore.getMessages(request.sessionId), request)
+				: sessionStore.getMessagesPage(request);
+		},
+	};
+	const eventsPort: RuntimeEventsAdapter<AgentEngineSessionEvent> = {
+		subscribe(
+			sessionId,
+			handler,
+			options,
+			context = defaultRequestContext(),
+		) {
+			const canReadSession = (targetSessionId: string) => {
+				return Boolean(getSessionForContext(targetSessionId, context));
+			};
+
+			if (sessionId !== "*" && options?.afterSeq !== undefined) {
+				if (!canReadSession(sessionId)) return () => {};
+				for (const envelope of eventBus.replay(
+					sessionId,
+					options.afterSeq + 1,
+				)) {
+					handler(envelope);
+				}
+			}
+
+			if (sessionId === "*") {
+				return eventBus.onAnySessionAny((envelope) => {
+					if (canReadSession(envelope.sessionId)) handler(envelope);
+				}, "ServerRuntimeEvents");
+			}
+			if (!canReadSession(sessionId)) return () => {};
+			return eventBus.onAny(sessionId, handler, "ServerRuntimeEvents");
+		},
+	};
+	const streamsPort: RuntimeStreamsAdapter<AgentEngineStreamChunk> = {
+		subscribe(
+			sessionId,
+			handler,
+			_options,
+			context = defaultRequestContext(),
+		) {
+			const canReadSession = (targetSessionId: string) => {
+				return Boolean(getSessionForContext(targetSessionId, context));
+			};
+
+			if (sessionId === "*") {
+				return streamChannel.subscribeAny((payload) => {
+					if (canReadSession(payload.sessionId)) handler(payload);
+				});
+			}
+			if (!canReadSession(sessionId)) return () => {};
+			return streamChannel.subscribe(sessionId, (chunk) =>
+				handler({ sessionId, chunk }),
+			);
+		},
+		// P4c 第五批:`abort` / `active` 随 `chatRouter` 迁走。停止从此走桌面
+		// 那条完整收尾(取消挂起的 step、落 isStreaming:false、补
+		// stream:complete),活流表从此读引擎自己的 `getActiveSessionIds()` ——
+		// 下面 `activeStreamSessions` 这本影子账只剩「消息分页该读内存还是读盘」
+		// 与「热会话缓存」两个用途。
+	};
+	const permissionsPort: RuntimePermissionsAdapter<unknown> = {
+		async respond(requestId, response, context = defaultRequestContext()) {
+			return respondToPermission(requestId, response, context);
+		},
+	};
+	const filesPort: RuntimeFilesAdapter = {
+		subscribeWorkspaceFileChanged: (
+			handler,
+			context = defaultRequestContext(),
+		) =>
+			subscribeWorkspaceFileChanged(
+				workspaceSandboxRoot(workspaceRoot, context),
+				handler as WorkspaceFileChangedHandler,
+			),
+	};
+	const mediaPort: RuntimeMediaAdapter = {
+		async resolveFile(fileName: string, context = defaultRequestContext()) {
+			const resolved = resolveServerMediaFilePath(
+				mediaServicesByOwner,
+				dataRoot,
+				context,
+				fileName,
+				isDefaultContext(context) ? storePath : undefined,
+			);
+			return resolved
+				? { success: true, path: resolved.path, mimeType: resolved.mimeType }
+				: { success: false, error: "Media file not found" };
+		},
+		subscribeImageGenerated(
+			handler: (payload: unknown) => void,
+			context = defaultRequestContext(),
+		) {
+			const key = ownerKey(context);
+			let handlers = mediaImageGeneratedHandlersByOwner.get(key);
+			if (!handlers) {
+				handlers = new Set<(payload: unknown) => void>();
+				mediaImageGeneratedHandlersByOwner.set(key, handlers);
+			}
+			handlers.add(handler);
+			return () => {
+				handlers?.delete(handler);
+				if (handlers?.size === 0)
+					mediaImageGeneratedHandlersByOwner.delete(key);
+			};
+		},
+	};
+	const todoPlanPort: RuntimeTodoPlanAdapter<unknown> = {
+		subscribeChanged: subscribeTodoPlanChanged,
+	};
+	const scratchpadPort: RuntimeScratchpadAdapter<unknown> = {
+		// 结构债 P4c:四条数据面已迁到 `scratchpad` RPC 域。这里只剩推送面 ——
+		// `GET /api/scratchpad/events` 的 SSE 源,router 今天没有推送面。
+		subscribeChanged: subscribeScratchpadChanged,
+	};
+	const oauthPort: RuntimeOAuthAdapter = {
+		subscribe: subscribeOAuthTokenEvents,
+	};
+	const voicePort: RuntimeVoiceAdapter = {
+		subscribeEvents(
+			_handler: (event: VoiceEvent) => void,
+		): RuntimeUnsubscribe {
+			return () => {};
+		},
+		subscribeRuntimeCommands(
+			_handler: (command: VoiceRuntimeCommand) => void,
+		): RuntimeUnsubscribe {
+			return () => {};
+		},
+	};
+	const runtimeSearchAdapter: RuntimeSearchAdapter<RuntimeMutationResult> = {
+		executeAction(actionId: string, context = defaultRequestContext()) {
+			return resolveSearchActionForContext(actionId, context);
+		},
+	};
 	const runtime = createOnethingRuntimeFacade<
 		unknown,
 		unknown,
@@ -1832,163 +2065,16 @@ async function createServerRuntimeOverServerBackend(
 		AgentEngineSessionEvent,
 		AgentEngineStreamChunk
 	>({
-		capabilities: {
-			async get() {
-				return currentServerCapabilities();
-			},
-		},
-		sessions: {
-			async list(context = defaultRequestContext()) {
-				return {
-					success: true,
-					sessions: listSessionsForContext(context),
-				};
-			},
-			async create(
-				name: string,
-				context = defaultRequestContext(),
-				requestedSessionId?: string,
-			) {
-				// Client-supplied ids keep the renderer's draft identity stable
-				// (the draft id becomes the session id). Only plain v4 UUIDs are
-				// accepted — the id is a storage path segment — and an id that
-				// already exists is refused rather than silently adopted.
-				if (requestedSessionId !== undefined) {
-					if (!SESSION_ID_V4_RE.test(requestedSessionId)) {
-						return { success: false as const, error: "Invalid session id" };
-					}
-					if (getSessionForContext(requestedSessionId, context)) {
-						return {
-							success: false as const,
-							error: "Session id already exists",
-						};
-					}
-				}
-				const session = ensureSession(
-					context,
-					requestedSessionId ?? createSessionId(),
-				);
-				session.name = name || "New Chat";
-				session.updatedAt = Date.now();
-				persistSession(session);
-				setServerCurrentSessionId(context, session.id);
-				return { success: true, session: toChatSession(session) };
-			},
-			// P4c 第五批:会话的读/改/删(get / activate / delete / rename /
-			// createBranch)整批迁到 `sessions` RPC 域 —— server 从此与桌面吃同一份
-			// 实现,这里那套 per-owner 的第二份没有了。`list` / `create` 留着是因为
-			// `apps/mobile` 仍然直接打那两条 REST(拍板 #32);`update` 留着是因为
-			// `POST /api/sessions/:id/max-tokens` 从来不在那 26 条里。
-			async update(
-				sessionId: string,
-				patch: Record<string, unknown>,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(sessionId, context);
-				if (!session) return { success: false, error: "Session not found" };
-				// §13.10 M7:快照必须**在 applySessionPatch 之前**取。
-				//
-				// `applySessionPatch` 就地改这只对象,而真后端上它正是 app store
-				// 里那一份 —— 等 `persistSession` → `sessionCommands.patchSession`
-				// 再去问"改之前是什么",问到的已经是改之后的值,三格
-				// (agent / model / workdir)于是一条事件都写不出来。
-				// `POST /api/sessions/:id/agent` 从此在账本上是无声的。
-				const beforeMeta = sessionMetaFieldsOf(session);
-				const patchResult = applySessionPatch(session, patch, workspaceRoot);
-				if (!patchResult.success) return patchResult;
-				persistSession(session);
-				// 翻译排在写成功之后(翻译器的纪律 1)。三格里没变的那些由翻译器
-				// 自己按 before 逐格比对丢掉,这里不预筛。
-				sessionEventTranslator.patchSession(
-					sessionId,
-					sessionMetaFieldsOf(session),
-					beforeMeta,
-				);
-				return { success: true, session: toSessionDetails(session) };
-			},
-		},
-		messages: {
-			async page(
-				request: GetSessionMessagesPageRequest,
-				context = defaultRequestContext(),
-			) {
-				const session = getSessionForContext(request.sessionId, context);
-				if (!session) {
-					return { success: false, error: "Session not found" };
-				}
-				// Real backends: the app-store session in memory is the truth
-				// (async writes may still be queued) — page from it directly.
-				return backend.persistsMessages || activeStreamSessions.has(request.sessionId)
-					? getMessagePage(sessionStore.getMessages(request.sessionId), request)
-					: sessionStore.getMessagesPage(request);
-			},
-		},
+		capabilities: capabilitiesPort,
+		sessions: sessionsPort,
+		messages: messagesPort,
 		// P4c 第五批:`chat` adapter 整只没了。属于**会话域**的六条随
 		// `sessionsRouter` 走,剩下的三条真正的聊天面(getHistory / generateTitle /
 		// updateMessageThinkingTime)随 `chatRouter` 走 —— 两个宿主从此是同一条
 		// 实现,这里不再留第二份。
-		events: {
-			subscribe(
-				sessionId,
-				handler,
-				options,
-				context = defaultRequestContext(),
-			) {
-				const canReadSession = (targetSessionId: string) => {
-					return Boolean(getSessionForContext(targetSessionId, context));
-				};
-
-				if (sessionId !== "*" && options?.afterSeq !== undefined) {
-					if (!canReadSession(sessionId)) return () => {};
-					for (const envelope of eventBus.replay(
-						sessionId,
-						options.afterSeq + 1,
-					)) {
-						handler(envelope);
-					}
-				}
-
-				if (sessionId === "*") {
-					return eventBus.onAnySessionAny((envelope) => {
-						if (canReadSession(envelope.sessionId)) handler(envelope);
-					}, "ServerRuntimeEvents");
-				}
-				if (!canReadSession(sessionId)) return () => {};
-				return eventBus.onAny(sessionId, handler, "ServerRuntimeEvents");
-			},
-		},
-		streams: {
-			subscribe(
-				sessionId,
-				handler,
-				_options,
-				context = defaultRequestContext(),
-			) {
-				const canReadSession = (targetSessionId: string) => {
-					return Boolean(getSessionForContext(targetSessionId, context));
-				};
-
-				if (sessionId === "*") {
-					return streamChannel.subscribeAny((payload) => {
-						if (canReadSession(payload.sessionId)) handler(payload);
-					});
-				}
-				if (!canReadSession(sessionId)) return () => {};
-				return streamChannel.subscribe(sessionId, (chunk) =>
-					handler({ sessionId, chunk }),
-				);
-			},
-			// P4c 第五批:`abort` / `active` 随 `chatRouter` 迁走。停止从此走桌面
-			// 那条完整收尾(取消挂起的 step、落 isStreaming:false、补
-			// stream:complete),活流表从此读引擎自己的 `getActiveSessionIds()` ——
-			// 下面 `activeStreamSessions` 这本影子账只剩「消息分页该读内存还是读盘」
-			// 与「热会话缓存」两个用途。
-		},
-		permissions: {
-			async respond(requestId, response, context = defaultRequestContext()) {
-				return respondToPermission(requestId, response, context);
-			},
-		},
+		events: eventsPort,
+		streams: streamsPort,
+		permissions: permissionsPort,
 		// P4c 第十一批:`settings` / `network` 两格 adapter 整只没了 —— 四条数据面
 		// (读 / 存 / 系统深浅色 / 代理自检)随 `settingsRouter` 走通用 RPC。
 		// 出门脱敏与回来合并两道真护栏搬进 `server/settings-projection.ts`,由域处理者
@@ -2001,11 +2087,7 @@ async function createServerRuntimeOverServerBackend(
 		// 端口,见上面的 `restoreServerSearchPort`)。留下的 `executeAction` 是**窗口
 		// 活的 server 侧对应物**:它仍由 `POST /api/search/actions` 调用,而那条路由
 		// 正是 A1-a 里 web 壳 `searchWindowRouter.executeAction` 的真实现。
-		search: {
-			executeAction(actionId: string, context = defaultRequestContext()) {
-				return resolveSearchActionForContext(actionId, context);
-			},
-		},
+		search: runtimeSearchAdapter,
 		// P4c 第七批:`themes` adapter 整只没了 —— 五条随 `themesRouter` 走通用 RPC,
 		// 两个宿主读同一台 `defaultOnethingThemeRuntime`,连插件主题覆盖的合成都同一份。
 		// 从前那句「web server runtime 不支持打开本地主题目录」如今是
@@ -2025,16 +2107,7 @@ async function createServerRuntimeOverServerBackend(
 		 * 登记簿搬到了 `wiring/files/workspace-watch.ts`,按沙箱根分表 —— `watchStart`
 		 * / `watchStop`(请求面,在 router 上)与这里(推送面)指的是同一张表。
 		 */
-		files: {
-			subscribeWorkspaceFileChanged: (
-				handler,
-				context = defaultRequestContext(),
-			) =>
-				subscribeWorkspaceFileChanged(
-					workspaceSandboxRoot(workspaceRoot, context),
-					handler as WorkspaceFileChangedHandler,
-				),
-		},
+		files: filesPort,
 		/**
 		 * media —— **只剩两条不是 RPC 形状的**(结构债 P4c 第三批)。
 		 *
@@ -2055,49 +2128,13 @@ async function createServerRuntimeOverServerBackend(
 		 *    走了,而桌面那条真通知走的是引擎的 `IPC_CHANNELS.IMAGE_GENERATED`
 		 *    (server 的 sender 是 noop)—— 事件下行的收敛是主线 T2 的事。
 		 */
-		media: {
-			async resolveFile(fileName: string, context = defaultRequestContext()) {
-				const resolved = resolveServerMediaFilePath(
-					mediaServicesByOwner,
-					dataRoot,
-					context,
-					fileName,
-					isDefaultContext(context) ? storePath : undefined,
-				);
-				return resolved
-					? { success: true, path: resolved.path, mimeType: resolved.mimeType }
-					: { success: false, error: "Media file not found" };
-			},
-			subscribeImageGenerated(
-				handler: (payload: unknown) => void,
-				context = defaultRequestContext(),
-			) {
-				const key = ownerKey(context);
-				let handlers = mediaImageGeneratedHandlersByOwner.get(key);
-				if (!handlers) {
-					handlers = new Set<(payload: unknown) => void>();
-					mediaImageGeneratedHandlersByOwner.set(key, handlers);
-				}
-				handlers.add(handler);
-				return () => {
-					handlers?.delete(handler);
-					if (handlers?.size === 0)
-						mediaImageGeneratedHandlersByOwner.delete(key);
-				};
-			},
-		},
+		media: mediaPort,
 		// todo/plan 的数据面已迁到通用 RPC 通道(todoPlanRouter);这里只剩事件订阅,
 		// 它给 `/api/todo-plan/events` 那条 SSE 供货 —— 事件下行的收敛是主线 T2。
-		todoPlan: {
-			subscribeChanged: subscribeTodoPlanChanged,
-		},
+		todoPlan: todoPlanPort,
 		// 草稿纸没有 per-owner 分表:server 是单用户,而且**引擎在同一个进程里
 		// 读同一张纸**(beforeTurn 尾块注入)。第二个仓等于把事实分叉。
-		scratchpad: {
-			// 结构债 P4c:四条数据面已迁到 `scratchpad` RPC 域。这里只剩推送面 ——
-			// `GET /api/scratchpad/events` 的 SSE 源,router 今天没有推送面。
-			subscribeChanged: subscribeScratchpadChanged,
-		},
+		scratchpad: scratchpadPort,
 		// P4 终态批 C2:六条读/开关面(list / enable / disable / refresh / commands /
 		// executeCommand)随 `pluginsRouter` 走通用 RPC,`/api/plugins*` 那六条 REST
 		// 路由与那条 501 的 `/api/plugins/:id/:action` 一起没了。**实现一行没搬** ——
@@ -2108,9 +2145,7 @@ async function createServerRuntimeOverServerBackend(
 		// 第二台 authService(拍板 #20:一个 store 一本令牌账)。这里只剩**推送面** ——
 		// `GET /api/oauth/events` 的 SSE 源,它从装配层那条广播端口取货,而不是
 		// 自己再挂一次 authService 的监听。
-		oauth: {
-			subscribe: subscribeOAuthTokenEvents,
-		},
+		oauth: oauthPort,
 		// P4c 第八批:`gateway` adapter 整只没了 —— 八条随 `gatewayRouter` 走通用 RPC,
 		// 由 `configureGatewayHost` 决定这台进程有没有网关能力。server 不注入,于是
 		// 拿到的是结构化降级,而不是这里从前那句写死的
@@ -2122,18 +2157,7 @@ async function createServerRuntimeOverServerBackend(
 		// 两条 SSE 因此原样保留(server 上语音运行时不存在,两条订阅一如既往是空的)。
 		// 十一条在 http 上的答案(「server 上没有语音运行时」)由域处理者在
 		// `transport === 'http'` 那一支上逐字给出,与这里删掉的这批一字不差。
-		voice: {
-			subscribeEvents(
-				_handler: (event: VoiceEvent) => void,
-			): RuntimeUnsubscribe {
-				return () => {};
-			},
-			subscribeRuntimeCommands(
-				_handler: (command: VoiceRuntimeCommand) => void,
-			): RuntimeUnsubscribe {
-				return () => {};
-			},
-		},
+		voice: voicePort,
 		// tools —— 七条数据面已迁到通用 RPC 通道(toolsRouter,P4c 第九批)。
 		// 护栏跟着走:域处理者按 `context.transport` 逐方法保留这份 adapter 的语义
 		// (执行面只放 `read` + 会话必须存在 + 路径夹进会话沙箱;后台任务表恒空;
@@ -2998,7 +3022,7 @@ export function createLocalServerSessionStore(
 	// 会话体紧凑序列化,与 Electron 宿主保持一致;index.json 仍走 pretty。
 	const writeSessionJsonFileAsync = (filePath: string, data: unknown) =>
 		writeCoreJsonFileAsync(filePath, data, { pretty: false });
-	const storageDriver = createHybridSessionStorageDriver<ServerChatSession>({
+	const hybridSessionStorageDriverOptions: HybridSessionStorageDriverOptions = {
 		getSessionsDir: () =>
 			getOnethingSessionsDir({ storePath: resolvedStorePath }),
 		getLegacySessionPath: getSessionFilePath,
@@ -3008,14 +3032,9 @@ export function createLocalServerSessionStore(
 		writeJsonFileAsync: writeSessionJsonFileAsync,
 		deleteJsonFile,
 		logger: consoleLog,
-	});
-	const repository = createOnethingSessionRepository<
-		ServerChatSession,
-		ChatMessage,
-		SessionMeta,
-		SessionDetails,
-		UserMessageMarker
-	>({
+	};
+	const storageDriver = createHybridSessionStorageDriver<ServerChatSession>(hybridSessionStorageDriverOptions);
+	const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ServerChatSession, ChatMessage, SessionMeta, SessionDetails, UserMessageMarker> = {
 		defaultAgentId: DEFAULT_ONETHING_AGENT_ID,
 		getSessionsDir: () =>
 			getOnethingSessionsDir({ storePath: resolvedStorePath }),
@@ -3033,7 +3052,14 @@ export function createLocalServerSessionStore(
 			readLocalDefaultWorkingDirectory(resolvedStorePath),
 		expandPath: expandOnethingToolSandboxPath,
 		logger: consoleLog,
-	});
+	};
+	const repository = createOnethingSessionRepository<
+		ServerChatSession,
+		ChatMessage,
+		SessionMeta,
+		SessionDetails,
+		UserMessageMarker
+	>(sessionRepositoryOptions);
 
 	repository.initializeSessionRepositoryIndex();
 
@@ -3041,6 +3067,18 @@ export function createLocalServerSessionStore(
 	// 各有各的缓存与写队列),所以命令面也得为它单独装一份 —— `sessionCommands`
 	// 那个单例绑死在 app store 上,借过来用会写到另一份内存真相里去。
 	// 装的是同一个工厂、同一个 reducer,写计划/COW/lazy 档的算法只有那一份。
+	const repositoryPort: OnethingSessionMessageRuntimeRepository<ServerChatSession, ChatMessage, SessionMeta> = {
+		getSession: (sessionId) => repository.getSession(sessionId),
+		getCachedSession: (sessionId) => repository.getCachedSession(sessionId),
+		getCachedSessionMessages: (sessionId) =>
+			repository.getCachedSessionMessages(sessionId),
+		saveSessionToFile: (sessionId, session, options) =>
+			repository.saveSessionToFile(sessionId, session, options),
+		syncSessionToSqliteIfReady: (session) =>
+			repository.syncSessionToSqliteIfReady(session),
+		updateSessionsIndexMeta: (sessionId, update) =>
+			repository.updateSessionsIndexMeta(sessionId, update),
+	};
 	const messageRuntime = createOnethingSessionMessageRuntime<
 		ServerChatSession,
 		ChatMessage,
@@ -3049,18 +3087,7 @@ export function createLocalServerSessionStore(
 		ContentPart,
 		ToolCall
 	>({
-		repository: {
-			getSession: (sessionId) => repository.getSession(sessionId),
-			getCachedSession: (sessionId) => repository.getCachedSession(sessionId),
-			getCachedSessionMessages: (sessionId) =>
-				repository.getCachedSessionMessages(sessionId),
-			saveSessionToFile: (sessionId, session, options) =>
-				repository.saveSessionToFile(sessionId, session, options),
-			syncSessionToSqliteIfReady: (session) =>
-				repository.syncSessionToSqliteIfReady(session),
-			updateSessionsIndexMeta: (sessionId, update) =>
-				repository.updateSessionsIndexMeta(sessionId, update),
-		},
+		repository: repositoryPort,
 		now: Date.now,
 		logger: consoleLog,
 	});

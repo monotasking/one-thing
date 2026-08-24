@@ -86,10 +86,13 @@ import { testOnethingProxy } from '../../wiring/settings/proxy.js'
 import { getVoiceServiceSafe } from '../../wiring/voice/service.js'
 import { startTodoPlanWatcher } from '../../wiring/todo-plan/store.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingSettingsIpcLogger } from '@onething/runtime/settings/ipc-operations'
+import type { SaveOnethingSettingsWithRuntimeEffectsOptions } from '@onething/runtime/settings/settings-save'
 
 const log = getLogger('rpc.settings')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingSettingsIpcLogger = consolePort(log)
 
 /** 只有网络那一侧要脱敏 —— 桌面读的是自己刚填进去的值。 */
 function isRemoteCaller(context: RpcDispatchContext): boolean {
@@ -106,10 +109,7 @@ async function saveSettingsFromRpc(
     ? (mergeServerSettingsUpdate(getSettings(), incoming) as SaveSettingsRequest)
     : incoming
 
-  const result = await saveOnethingSettingsWithRuntimeEffectsForIpc<
-    AppSettings,
-    SaveSettingsRequest
-  >({
+  const saveOnethingSettingsWithRuntimeEffectsOptions: SaveOnethingSettingsWithRuntimeEffectsOptions<AppSettings, SaveSettingsRequest> & { logger?: OnethingSettingsIpcLogger | undefined; } = {
     settings: settingsToSave,
     saveSettings: nextSettings => saveSettings(nextSettings),
     getSettings: () => getSettings(),
@@ -124,7 +124,11 @@ async function saveSettingsFromRpc(
     defaultMCPSettings: DEFAULT_MCP_SETTINGS,
     defaultACPSettings: { enabled: true, agents: [] },
     logger: consoleLog,
-  })
+  };
+  const result = await saveOnethingSettingsWithRuntimeEffectsForIpc<
+    AppSettings,
+    SaveSettingsRequest
+  >(saveOnethingSettingsWithRuntimeEffectsOptions)
   if (!result.success) return result
   const normalizedSettings = result.settings
 

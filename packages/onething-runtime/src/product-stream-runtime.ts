@@ -242,6 +242,27 @@ export function createOnethingProductStreamRuntimeFromHostAdapters<
   TStreamResult,
   TCompactResult
 > {
+  const permissionPort: StreamEnginePermissionAdapter = {
+    clearSession: adapters.clearPermissionSession,
+  };
+  const skillsPort: StreamEngineSkillsAdapter<TSkill> = {
+    getForSession: adapters.getSkillsForSession,
+  };
+  const promptsPort: StreamEnginePromptAdapter<TSkill, TContentPart> = {
+    resolveReferences: adapters.resolvePromptReferences,
+  };
+  const mediaPort: StreamEngineMediaAdapter<TAttachment> = {
+    ingestMessageAttachments: adapters.ingestMessageAttachments,
+  };
+  const historyPort: StreamEngineHistoryAdapter<TSession, TMessage, THistoryMessage> = {
+    buildMessages: adapters.buildHistoryMessages,
+    buildResumeAfterToolConfirmation: adapters.buildResumeHistoryAfterToolConfirmation,
+  };
+  const compactionPort: StreamEngineCompactionAdapter<unknown, TCompactResult> = {
+    compactSessionContext: adapters.compactSessionContext,
+    getContextCompactReason: adapters.getContextCompactReason,
+    shouldSkipAutoCompactForProviderUsageMismatch: adapters.shouldSkipAutoCompactForProviderUsageMismatch,
+  };
   return createOnethingProductStreamRuntime<
     TSettings,
     TMessage,
@@ -258,32 +279,17 @@ export function createOnethingProductStreamRuntimeFromHostAdapters<
     store: adapters.store,
     ids: adapters.ids,
     clock: adapters.clock,
-    permission: {
-      clearSession: adapters.clearPermissionSession,
-    },
-    skills: {
-      getForSession: adapters.getSkillsForSession,
-    },
-    prompts: {
-      resolveReferences: adapters.resolvePromptReferences,
-    },
-    media: {
-      ingestMessageAttachments: adapters.ingestMessageAttachments,
-    },
+    permission: permissionPort,
+    skills: skillsPort,
+    prompts: promptsPort,
+    media: mediaPort,
     provider: adapters.provider,
     models: adapters.models,
-    history: {
-      buildMessages: adapters.buildHistoryMessages,
-      buildResumeAfterToolConfirmation: adapters.buildResumeHistoryAfterToolConfirmation,
-    },
+    history: historyPort,
     streams: {
       executeMessageStream: adapters.executeMessageStream,
       executeAgentLoopStreamGeneration: adapters.executeAgentLoopStreamGeneration,
     },
-    compaction: {
-      compactSessionContext: adapters.compactSessionContext,
-      getContextCompactReason: adapters.getContextCompactReason,
-      shouldSkipAutoCompactForProviderUsageMismatch: adapters.shouldSkipAutoCompactForProviderUsageMismatch,
-    },
+    compaction: compactionPort,
   })
 }

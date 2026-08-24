@@ -9,7 +9,7 @@ import {
   type MCPConnectionStatus,
   type MCPServerConfig,
   type MCPServerState,
-  type MCPToolCallResult,
+  type MCPToolCallResult, type CoreMCPClientRuntimeOptions, type CoreMCPProbeAdapters,
 } from '@onething/core/mcp'
 import type { JsonArray, JsonObject, JsonValue } from '@onething/core'
 import { getMCPClientIdentity } from '@onething/runtime/mcp/identity'
@@ -20,10 +20,12 @@ import {
 import { getMCPOAuthFlowManager } from '@onething/runtime/mcp/oauth/index'
 import { notifyMCPCapabilitiesChanged } from '@onething/runtime/mcp/capabilities-changed'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/core/logging'
 
 const log = getLogger('server.mcp')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & LegacyDuckLogger = consolePort(log)
 
 
 type ServerMCPTransport = SSEClientTransport | StdioClientTransport | StreamableHTTPClientTransport
@@ -36,7 +38,7 @@ export class ServerMCPClient implements MCPClientLike {
   private readonly runtime: CoreMCPClientRuntime<OnethingMCPClient, ServerMCPTransport>
 
   constructor(config: MCPServerConfig, options: ServerMCPClientOptions = {}) {
-    this.runtime = new CoreMCPClientRuntime<OnethingMCPClient, ServerMCPTransport>({
+    const mCPClientRuntimeOptions: CoreMCPClientRuntimeOptions<OnethingMCPClient, ServerMCPTransport> = {
       config,
       getBaseEnv: () => process.env,
       adapters: {
@@ -112,7 +114,8 @@ export class ServerMCPClient implements MCPClientLike {
         },
         logger: consoleLog,
       },
-    })
+    };
+    this.runtime = new CoreMCPClientRuntime<OnethingMCPClient, ServerMCPTransport>(mCPClientRuntimeOptions)
   }
 
   get state(): MCPServerState {
@@ -169,10 +172,7 @@ export async function probeServerMCPConfig(
   options: ServerMCPClientOptions = {},
 ): Promise<CoreMCPProbeResult> {
   try {
-    return await probeMCPServerWithAdapters<OnethingMCPClient, ServerMCPTransport>(
-    config,
-    process.env,
-    {
+    const mCPProbeAdapters: CoreMCPProbeAdapters<OnethingMCPClient, ServerMCPTransport> = {
       createTransport: async (plan) => {
         if (plan.transport === 'stdio') {
           if (!options.allowStdio) {
@@ -216,7 +216,11 @@ export async function probeServerMCPConfig(
       getNegotiatedProtocolVersion: client => client.getNegotiatedProtocolVersion(),
       getServerInfo: client => client.getServerVersion(),
       getServerCapabilities: client => client.getServerCapabilities(),
-    },
+    };
+    return await probeMCPServerWithAdapters<OnethingMCPClient, ServerMCPTransport>(
+    config,
+    process.env,
+    mCPProbeAdapters,
     )
   } finally {
     // See app/mcp/client.ts: drop the probe's ephemeral OAuth flow entry so

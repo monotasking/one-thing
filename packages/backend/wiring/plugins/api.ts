@@ -31,7 +31,7 @@ import { registerPluginCredentialStrategy } from '../providers/credential-strate
 import {
   forgetUiActionGestures,
   PLUGIN_FILES_QUOTA_WARNING_EVENT,
-  PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT,
+  PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT, type DisposeCorePluginStateOptions,
 } from '@onething/core/plugins'
 import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
@@ -76,6 +76,8 @@ import type {
 import { LOCAL_PLUGIN_API_KEYS } from './types.js'
 import {
   createCorePluginAPI,
+  type CreateCorePluginAPIOptions,
+  type CorePluginAPIHost,
   createScopedPluginScheduler,
   disposeCorePluginState,
   executeCorePluginTool,
@@ -284,19 +286,286 @@ export function createPluginAPI(
     isDisposed: () => Boolean(stateRef.current?.disposed),
   }) as PluginSchedulerAPI
 
-  const result = createCorePluginAPI<
-    PluginAPI,
+  const pluginApiHost: CorePluginAPIHost<
+    PluginToolDefinition<z.ZodType, object>,
+    PluginEventHandler,
+    PluginPromptContextProvider,
+    BeforeContextCompactHook,
+    AfterAssistantResponseHook,
+    PluginSkillRootProvider
+  > = {
+    registerTool(_, toolId, tool) {
+      /*
+       * **插件不能给自己发免检通行证。**
+       *
+       * `permissionGuard: 'safe'` 落在 CORE_AUTO_EXECUTE 集里 —— 声明它的工具
+       * 不弹权限提示、直接执行。上一版把它交给插件自己填(`?? 'permission-gated'`
+       * 只是缺省),于是任何插件写一行就绕过了整套权限系统,而 manifest 的
+       * `contributes.permissions` 纯装饰、不参与任何判定。示例插件正在教这个写法。
+       *
+       * 现在插件注册的工具**一律 permission-gated**:要不要执行由用户在提示里
+       * 决定。等 manifest 的 permissions 真正参与判定(H 线一起做)之后,
+       * 再考虑按声明降级。
+       */
+      if (tool.permissionGuard && tool.permissionGuard !== 'permission-gated') {
+        log.warn(
+          'plugin tool permissionGuard ignored; plugin tools are always permission-gated',
+          { pluginId, tool: tool.name, requested: tool.permissionGuard },
+        )
+      }
+      /*
+       * 一份定义 → 目录里的一只 `PluginTool`(设计文档 §14.5 第 1 条)。
+       *
+       * R4b:旧 registry 那一半(`Tool.define` + `registerToolInRegistry`)已
+       * 随旧树删除,目录是唯一的册子 —— 它同时答"有哪些工具"与"谁来跑它"。
+       *
+       * `permissionGuard: 'permission-gated'` 那句话在新树里由 `plugin_exec`
+       * 这条效果说出来(§13.3),所以这里不必再传一次。
+       */
+      registerPluginToolInCatalog({
+        toolId,
+        definition: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+          /*
+           * N3:并发声明原样透传。core 的注册闸已经保证它只可能是
+           * 'parallel' / 'sequential' / undefined,所以这里不再兜一层 ——
+           * 归一化有两处就迟早不一致。缺省(undefined)= 屏障 = 插件工具
+           * 今天的行为,一字不改。真正读它的只有一处:agent-loop runner
+           * 的 `executionMode !== 'parallel'` 判据。
+           */
+          ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+          // 工具自带的提示词原样透传:core 注册闸已经校验过形状。它随工具面
+          // 进出 —— 插件禁用/卸载时工具注销,段落随之消失,不另记账。
+          ...(tool.prompt ? { prompt: tool.prompt } : {}),
+        },
+        execute: (args, hostContext) => executeCorePluginTool(tool, args as any, hostContext as any),
+      })
+    },
+    subscribeEvent(id, eventType, handler) {
+      // 会话事件走 per-session 环形缓冲,全局事件走 globalHandlers —— 两条投递面
+      // 不同,订阅口必须分流,否则订阅了却永远收不到东西,而且零告警。
+      //
+      // 判据是**显式的全局事件名单**,不是 startsWith('plugin:'):按前缀分的话,
+      // 插件订阅 settings:changed / session:created / mcp:server-* 这些真·全局
+      // 事件会被误挂到会话面上,同样永远收不到。
+      if (isGlobalPluginEventType(eventType)) {
+        return eventBus.onGlobal(eventType as any, handler as any)
+      }
+      if (!KNOWN_SESSION_EVENT_HINT.test(eventType)) {
+        log.warn(
+          'plugin subscribed to an unrecognized event; treating it as a session event',
+          { pluginId: id, eventType },
+        )
+      }
+      return eventBus.onAnySession(
+        eventType as any,
+        handler as any,
+        `Plugin:${id}`,
+      )
+    },
+    emitPanelRefresh(id, panelId) {
+      // 短窗合流:插件在一次文件扫描里对每个变化的文件调一次 refresh 是完全
+      // 合理的写法,但那是 N 条一模一样的信号。同一 pluginId+panelId 在窗口内
+      // 只发一条,窗口结束时若期间还来过则补发一条(见 requestPanelRefresh)。
+      requestPanelRefresh(id, panelId, () => {
+        eventBus.emitGlobal({
+          type: 'plugin:notification',
+          pluginId: id,
+          message: `plugin-panel-refresh:${id}:${panelId}`,
+          level: 'info',
+          kind: 'panel-refresh',
+          panelId,
+        })
+      })
+    },
+    emitPluginStatus(_id, sessionId, part) {
+      emitPluginStatusPart(sessionId, part)
+    },
+    notePluginStatusPending() {
+      notePluginStatusPending()
+    },
+    /**
+     * R7 试点注册表:IM 连接器。
+     *
+     * 开放下一个注册表要动五处,清单在 core 的 `PLUGIN_OPEN_REGISTRIES`
+     * 注释里(策略表 / API+Host 类型 / api-builder 实现 / 这里的转发 /
+     * 拆除快照测试)。这里是其中的第四处。
+     */
+    registerIMConnector(id, connector) {
+      // 带上归属:运行期投递失败要记到**这个插件**的熔断账上,
+      // 而 registry 本身不认识 pluginId。
+      return registerIMConnector(connector as IMConnector, { ownerPluginId: id })
+    },
+    /**
+     * 搜索供给方(M2)—— 又一个既有宿主动词面。转发到装配层的注册表 +
+     * 聚合器;onAction 的 ctx.notify 走既有 plugin:notification 轨(与 ui.notify
+     * 同一条广播),让插件在点击时能对用户说一句话。
+     */
+    registerSearchProvider(id, registration) {
+      return registerPluginSearchProvider(id, registration, {
+        notify: (message, level) => eventBus.emitGlobal({
+          type: 'plugin:notification',
+          pluginId: id,
+          message,
+          level,
+          sound: resolvePluginNotifySound(id, undefined),
+        }),
+      })
+    },
+    /**
+     * 深链动作(H4)—— 第三个既有宿主动词面。转发到装配层的注册表;
+     * 确认门与派发在 Electron 宿主(它才认识窗口与 URL scheme)。
+     *
+     * 这里**只登记**:一个动作被注册不代表它会被调用,调用永远要经过一次
+     * 用户看着全文按下的确认。
+     */
+    registerDeepLinkAction(id, registration) {
+      return registerPluginDeepLinkAction(id, registration)
+    },
+    /**
+     * 凭证轮换策略(批 E)—— 第四个既有宿主动词面。转发到装配层的注册表;
+     * 脱敏投影、超时、熔断、用量聚合都在那里(它才认识凭证池与账本)。
+     *
+     * 这里**只登记**:一个策略被注册不代表它会被调用 —— 只有用户在某个空间的
+     * 某个 provider 上把 policy 选成 `plugin:<id>:<name>` 之后,它才会被问到。
+     */
+    registerCredentialStrategy(id, registration) {
+      return registerPluginCredentialStrategy(id, registration)
+    },
+    emitPluginEvent(id, eventName, payload) {
+      // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast
+      // 是有意的(与 panel-refresh 不同,后者已经收进联合)。
+      eventBus.emitGlobal({
+        type: `plugin:${id}:${eventName}`,
+        pluginId: id,
+        name: eventName,
+        payload,
+      } as any)
+    },
+    steer(_, sessionId, content) {
+      streamEngine.steerMessage(sessionId, content, pluginId)
+    },
+    followUp(_, sessionId, content) {
+      streamEngine.followUpMessage(sessionId, content, pluginId)
+    },
+    /**
+     * N1 的三个动词(投递 + 两个快照)。实现在 `./sessions.ts` —— 这里只是
+     * 把 eventBus / streamEngine 这两个装配期才有的东西喂进去。
+     */
+    ...createPluginSessionHostPorts({ eventBus, streamEngine }),
+    /**
+     * N7-b:受管 LLM 调用。实现在 `./llm.ts` —— provider 解析 / 计费 /
+     * 超时 / 配额三要素全在那里,core 只做声明门与输入校验。
+     */
+    llmComplete: (id, options) => pluginLlmComplete(id, options),
+    /**
+     * 横幅 + 可选一声(M1)。
+     *
+     * `sound` 在**这里**就裁决完:静音开关、每插件静音、限频三道闸全在
+     * `resolvePluginNotifySound` 里。renderer 拿到的是结论不是请求 ——
+     * 这条通知走 `sendToAllWindows` 广播,让每个窗口自己判就会响两声。
+     *
+     * 被静音/被限频时只是 sound 变 'none',`message` 原样发出:横幅照常显示。
+     */
+    notify(id, message, level, sound) {
+      eventBus.emitGlobal({
+        type: 'plugin:notification',
+        pluginId: id,
+        message,
+        level,
+        sound: resolvePluginNotifySound(id, sound),
+      })
+    },
+    /**
+     * 布局动词的投递(I 期)。
+     *
+     * **零新通道**:搭的是 panel-refresh / catalog-changed 那班既有的
+     * `plugin:notification` 车 —— 带 `kind` 的通知是**机械信号**,renderer
+     * 一律不弹 toast(判据是"有没有 kind",不是白名单),于是新增一个 kind
+     * 不需要动 toast 那一侧的任何代码。
+     *
+     * 手势闸与 unsupported 都在 core 判完了:这里只负责把结论发出去。
+     * 广播到所有窗口 —— "开合侧栏"是每个窗口自己的布局,谁在前台谁响应。
+     */
+    applyLayoutVerb(id, verb, panelId) {
+      eventBus.emitGlobal({
+        type: 'plugin:notification',
+        pluginId: id,
+        // message 是机器串(与 panel-refresh 同款):有 kind 就不给人看,
+        // 但日志与调试里要认得出是哪一条。
+        message: `plugin-layout:${verb}${panelId ? `:${panelId}` : ''}`,
+        level: 'info',
+        kind: 'layout',
+        layout: { verb, ...(panelId ? { panelId } : {}) },
+      })
+    },
+    getPluginConfig: getEffectivePluginConfig,
+    onPluginConfigChange: subscribePluginConfigChange,
+    /**
+     * 背景层运行期调参的落点(G 期,L2.5)。
+     *
+     * 记进内存态,然后**复用 catalog-changed** 这一条既有信号 —— renderer 已经
+     * 在监听它重拉插件清单(面板入口、锚点块、主题覆盖都走这条路),背景描述符
+     * 就挂在同一份清单响应里,于是这里零新通道、零新事件。
+     */
+    updatePluginBackground(id, patch) {
+      // 图源的最后一道闸(B 期):core 判得了 `storage:` 寻址的形状,判不了
+      // 文件存不存在(它不吃 fs)。指向空气的一次换图**整条被拒**、背景保持
+      // 原样 —— 记进内存态的话,设置页会说"生效中"而屏幕上什么也没有。
+      //
+      // 撤回(`image: null`)不进这道闸:没有图,就没有"存不存在"可问。
+      // 用 `typeof === 'string'` 而不是 `!== undefined`,是因为这里要分的是
+      // "有图 / 无图",不是"提没提这个字段"。
+      if (typeof patch.image === 'string' && !pluginStorageImageExists(id, patch.image)) {
+        log.error('theme.updateBackground rejected: image is not in this plugin storage', {
+          pluginId: id,
+          image: patch.image,
+        })
+        return
+      }
+      setPluginBackgroundParams(id, patch)
+      eventBus.emitGlobal({
+        type: 'plugin:notification',
+        pluginId: id,
+        message: `plugin-catalog-changed:${id}`,
+        level: 'info',
+        kind: 'catalog-changed',
+      })
+    },
+    registerPromptContextProvider: registerPromptContextProvider,
+    registerBeforeContextCompactHook,
+    registerAfterAssistantResponseHook,
+    // N2:发送前拦截(第一个干预型钩子)。声明门在 api-builder(`input:intercept`),
+    // 链的次序 / 预算 / fail-open / 熔断闸在 input-intercept.ts,挂点在引擎。
+    registerInputInterceptHook: registerPluginInputInterceptHook,
+    // N4:工具调用拦截(第二个干预型钩子,第一个 fail-closed 的)。声明门在
+    // api-builder(`toolcall:intercept`),链的次序 / 预算 / fail-closed / 熔断闸
+    // 在 tool-call-intercept.ts,挂点在 executeCoreDirectTool 那一处必经点。
+    registerToolCallInterceptHook: registerPluginToolCallInterceptHook,
+    // N5:工具结果改写(第三个干预型钩子,interceptToolCall 的 fail-open 镜像)。
+    // 声明门在 api-builder(`toolresult:intercept`),链在 tool-result-intercept.ts,
+    // 挂点在 executeCoreDirectTool 工具执行**之后**、结果回模型之前的对称位置。
+    registerToolResultInterceptHook: registerPluginToolResultInterceptHook,
+    registerSkillRoot: registerPluginSkillRootProvider,
+    invalidateSkillsCache() {
+      return import('../skills/session-skills.js')
+        .then(({ invalidateSessionSkillsCache }) => invalidateSessionSkillsCache())
+        .catch(() => undefined)
+    },
+  }
+  const createPluginApiOptions: CreateCorePluginAPIOptions<
     PluginToolDefinition<z.ZodType, object>,
     PluginEventHandler,
     PluginCommandDefinition,
-    Omit<PluginCommandDefinition, 'name'>,
     PluginPromptContextProvider,
     BeforeContextCompactHook,
     AfterAssistantResponseHook,
     PluginSkillRootProvider,
     PluginStore,
     PluginSchedulerAPI
-  >({
+  > = {
     pluginId,
     // core 的 API builder 自己也有话说(声明门拒绝、storage 拒绝、超时…)。
     // 不注入的话它拿到的是 noop —— 那些拒绝就再也没人听见了。
@@ -333,269 +602,21 @@ export function createPluginAPI(
     onPluginSuccess({ pluginId: id, scope }: { pluginId: string; scope: PluginFailureScope }) {
       reportPluginRuntimeSuccess(id, scope)
     },
-    host: {
-      registerTool(_, toolId, tool) {
-        /*
-         * **插件不能给自己发免检通行证。**
-         *
-         * `permissionGuard: 'safe'` 落在 CORE_AUTO_EXECUTE 集里 —— 声明它的工具
-         * 不弹权限提示、直接执行。上一版把它交给插件自己填(`?? 'permission-gated'`
-         * 只是缺省),于是任何插件写一行就绕过了整套权限系统,而 manifest 的
-         * `contributes.permissions` 纯装饰、不参与任何判定。示例插件正在教这个写法。
-         *
-         * 现在插件注册的工具**一律 permission-gated**:要不要执行由用户在提示里
-         * 决定。等 manifest 的 permissions 真正参与判定(H 线一起做)之后,
-         * 再考虑按声明降级。
-         */
-        if (tool.permissionGuard && tool.permissionGuard !== 'permission-gated') {
-          log.warn(
-            'plugin tool permissionGuard ignored; plugin tools are always permission-gated',
-            { pluginId, tool: tool.name, requested: tool.permissionGuard },
-          )
-        }
-        /*
-         * 一份定义 → 目录里的一只 `PluginTool`(设计文档 §14.5 第 1 条)。
-         *
-         * R4b:旧 registry 那一半(`Tool.define` + `registerToolInRegistry`)已
-         * 随旧树删除,目录是唯一的册子 —— 它同时答"有哪些工具"与"谁来跑它"。
-         *
-         * `permissionGuard: 'permission-gated'` 那句话在新树里由 `plugin_exec`
-         * 这条效果说出来(§13.3),所以这里不必再传一次。
-         */
-        registerPluginToolInCatalog({
-          toolId,
-          definition: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters,
-            /*
-             * N3:并发声明原样透传。core 的注册闸已经保证它只可能是
-             * 'parallel' / 'sequential' / undefined,所以这里不再兜一层 ——
-             * 归一化有两处就迟早不一致。缺省(undefined)= 屏障 = 插件工具
-             * 今天的行为,一字不改。真正读它的只有一处:agent-loop runner
-             * 的 `executionMode !== 'parallel'` 判据。
-             */
-            ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
-            // 工具自带的提示词原样透传:core 注册闸已经校验过形状。它随工具面
-            // 进出 —— 插件禁用/卸载时工具注销,段落随之消失,不另记账。
-            ...(tool.prompt ? { prompt: tool.prompt } : {}),
-          },
-          execute: (args, hostContext) => executeCorePluginTool(tool, args as any, hostContext as any),
-        })
-      },
-      subscribeEvent(id, eventType, handler) {
-        // 会话事件走 per-session 环形缓冲,全局事件走 globalHandlers —— 两条投递面
-        // 不同,订阅口必须分流,否则订阅了却永远收不到东西,而且零告警。
-        //
-        // 判据是**显式的全局事件名单**,不是 startsWith('plugin:'):按前缀分的话,
-        // 插件订阅 settings:changed / session:created / mcp:server-* 这些真·全局
-        // 事件会被误挂到会话面上,同样永远收不到。
-        if (isGlobalPluginEventType(eventType)) {
-          return eventBus.onGlobal(eventType as any, handler as any)
-        }
-        if (!KNOWN_SESSION_EVENT_HINT.test(eventType)) {
-          log.warn(
-            'plugin subscribed to an unrecognized event; treating it as a session event',
-            { pluginId: id, eventType },
-          )
-        }
-        return eventBus.onAnySession(
-          eventType as any,
-          handler as any,
-          `Plugin:${id}`,
-        )
-      },
-      emitPanelRefresh(id, panelId) {
-        // 短窗合流:插件在一次文件扫描里对每个变化的文件调一次 refresh 是完全
-        // 合理的写法,但那是 N 条一模一样的信号。同一 pluginId+panelId 在窗口内
-        // 只发一条,窗口结束时若期间还来过则补发一条(见 requestPanelRefresh)。
-        requestPanelRefresh(id, panelId, () => {
-          eventBus.emitGlobal({
-            type: 'plugin:notification',
-            pluginId: id,
-            message: `plugin-panel-refresh:${id}:${panelId}`,
-            level: 'info',
-            kind: 'panel-refresh',
-            panelId,
-          })
-        })
-      },
-      emitPluginStatus(_id, sessionId, part) {
-        emitPluginStatusPart(sessionId, part)
-      },
-      notePluginStatusPending() {
-        notePluginStatusPending()
-      },
-      /**
-       * R7 试点注册表:IM 连接器。
-       *
-       * 开放下一个注册表要动五处,清单在 core 的 `PLUGIN_OPEN_REGISTRIES`
-       * 注释里(策略表 / API+Host 类型 / api-builder 实现 / 这里的转发 /
-       * 拆除快照测试)。这里是其中的第四处。
-       */
-      registerIMConnector(id, connector) {
-        // 带上归属:运行期投递失败要记到**这个插件**的熔断账上,
-        // 而 registry 本身不认识 pluginId。
-        return registerIMConnector(connector as IMConnector, { ownerPluginId: id })
-      },
-      /**
-       * 搜索供给方(M2)—— 又一个既有宿主动词面。转发到装配层的注册表 +
-       * 聚合器;onAction 的 ctx.notify 走既有 plugin:notification 轨(与 ui.notify
-       * 同一条广播),让插件在点击时能对用户说一句话。
-       */
-      registerSearchProvider(id, registration) {
-        return registerPluginSearchProvider(id, registration, {
-          notify: (message, level) => eventBus.emitGlobal({
-            type: 'plugin:notification',
-            pluginId: id,
-            message,
-            level,
-            sound: resolvePluginNotifySound(id, undefined),
-          }),
-        })
-      },
-      /**
-       * 深链动作(H4)—— 第三个既有宿主动词面。转发到装配层的注册表;
-       * 确认门与派发在 Electron 宿主(它才认识窗口与 URL scheme)。
-       *
-       * 这里**只登记**:一个动作被注册不代表它会被调用,调用永远要经过一次
-       * 用户看着全文按下的确认。
-       */
-      registerDeepLinkAction(id, registration) {
-        return registerPluginDeepLinkAction(id, registration)
-      },
-      /**
-       * 凭证轮换策略(批 E)—— 第四个既有宿主动词面。转发到装配层的注册表;
-       * 脱敏投影、超时、熔断、用量聚合都在那里(它才认识凭证池与账本)。
-       *
-       * 这里**只登记**:一个策略被注册不代表它会被调用 —— 只有用户在某个空间的
-       * 某个 provider 上把 policy 选成 `plugin:<id>:<name>` 之后,它才会被问到。
-       */
-      registerCredentialStrategy(id, registration) {
-        return registerPluginCredentialStrategy(id, registration)
-      },
-      emitPluginEvent(id, eventName, payload) {
-        // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast
-        // 是有意的(与 panel-refresh 不同,后者已经收进联合)。
-        eventBus.emitGlobal({
-          type: `plugin:${id}:${eventName}`,
-          pluginId: id,
-          name: eventName,
-          payload,
-        } as any)
-      },
-      steer(_, sessionId, content) {
-        streamEngine.steerMessage(sessionId, content, pluginId)
-      },
-      followUp(_, sessionId, content) {
-        streamEngine.followUpMessage(sessionId, content, pluginId)
-      },
-      /**
-       * N1 的三个动词(投递 + 两个快照)。实现在 `./sessions.ts` —— 这里只是
-       * 把 eventBus / streamEngine 这两个装配期才有的东西喂进去。
-       */
-      ...createPluginSessionHostPorts({ eventBus, streamEngine }),
-      /**
-       * N7-b:受管 LLM 调用。实现在 `./llm.ts` —— provider 解析 / 计费 /
-       * 超时 / 配额三要素全在那里,core 只做声明门与输入校验。
-       */
-      llmComplete: (id, options) => pluginLlmComplete(id, options),
-      /**
-       * 横幅 + 可选一声(M1)。
-       *
-       * `sound` 在**这里**就裁决完:静音开关、每插件静音、限频三道闸全在
-       * `resolvePluginNotifySound` 里。renderer 拿到的是结论不是请求 ——
-       * 这条通知走 `sendToAllWindows` 广播,让每个窗口自己判就会响两声。
-       *
-       * 被静音/被限频时只是 sound 变 'none',`message` 原样发出:横幅照常显示。
-       */
-      notify(id, message, level, sound) {
-        eventBus.emitGlobal({
-          type: 'plugin:notification',
-          pluginId: id,
-          message,
-          level,
-          sound: resolvePluginNotifySound(id, sound),
-        })
-      },
-      /**
-       * 布局动词的投递(I 期)。
-       *
-       * **零新通道**:搭的是 panel-refresh / catalog-changed 那班既有的
-       * `plugin:notification` 车 —— 带 `kind` 的通知是**机械信号**,renderer
-       * 一律不弹 toast(判据是"有没有 kind",不是白名单),于是新增一个 kind
-       * 不需要动 toast 那一侧的任何代码。
-       *
-       * 手势闸与 unsupported 都在 core 判完了:这里只负责把结论发出去。
-       * 广播到所有窗口 —— "开合侧栏"是每个窗口自己的布局,谁在前台谁响应。
-       */
-      applyLayoutVerb(id, verb, panelId) {
-        eventBus.emitGlobal({
-          type: 'plugin:notification',
-          pluginId: id,
-          // message 是机器串(与 panel-refresh 同款):有 kind 就不给人看,
-          // 但日志与调试里要认得出是哪一条。
-          message: `plugin-layout:${verb}${panelId ? `:${panelId}` : ''}`,
-          level: 'info',
-          kind: 'layout',
-          layout: { verb, ...(panelId ? { panelId } : {}) },
-        })
-      },
-      getPluginConfig: getEffectivePluginConfig,
-      onPluginConfigChange: subscribePluginConfigChange,
-      /**
-       * 背景层运行期调参的落点(G 期,L2.5)。
-       *
-       * 记进内存态,然后**复用 catalog-changed** 这一条既有信号 —— renderer 已经
-       * 在监听它重拉插件清单(面板入口、锚点块、主题覆盖都走这条路),背景描述符
-       * 就挂在同一份清单响应里,于是这里零新通道、零新事件。
-       */
-      updatePluginBackground(id, patch) {
-        // 图源的最后一道闸(B 期):core 判得了 `storage:` 寻址的形状,判不了
-        // 文件存不存在(它不吃 fs)。指向空气的一次换图**整条被拒**、背景保持
-        // 原样 —— 记进内存态的话,设置页会说"生效中"而屏幕上什么也没有。
-        //
-        // 撤回(`image: null`)不进这道闸:没有图,就没有"存不存在"可问。
-        // 用 `typeof === 'string'` 而不是 `!== undefined`,是因为这里要分的是
-        // "有图 / 无图",不是"提没提这个字段"。
-        if (typeof patch.image === 'string' && !pluginStorageImageExists(id, patch.image)) {
-          log.error('theme.updateBackground rejected: image is not in this plugin storage', {
-            pluginId: id,
-            image: patch.image,
-          })
-          return
-        }
-        setPluginBackgroundParams(id, patch)
-        eventBus.emitGlobal({
-          type: 'plugin:notification',
-          pluginId: id,
-          message: `plugin-catalog-changed:${id}`,
-          level: 'info',
-          kind: 'catalog-changed',
-        })
-      },
-      registerPromptContextProvider: registerPromptContextProvider,
-      registerBeforeContextCompactHook,
-      registerAfterAssistantResponseHook,
-      // N2:发送前拦截(第一个干预型钩子)。声明门在 api-builder(`input:intercept`),
-      // 链的次序 / 预算 / fail-open / 熔断闸在 input-intercept.ts,挂点在引擎。
-      registerInputInterceptHook: registerPluginInputInterceptHook,
-      // N4:工具调用拦截(第二个干预型钩子,第一个 fail-closed 的)。声明门在
-      // api-builder(`toolcall:intercept`),链的次序 / 预算 / fail-closed / 熔断闸
-      // 在 tool-call-intercept.ts,挂点在 executeCoreDirectTool 那一处必经点。
-      registerToolCallInterceptHook: registerPluginToolCallInterceptHook,
-      // N5:工具结果改写(第三个干预型钩子,interceptToolCall 的 fail-open 镜像)。
-      // 声明门在 api-builder(`toolresult:intercept`),链在 tool-result-intercept.ts,
-      // 挂点在 executeCoreDirectTool 工具执行**之后**、结果回模型之前的对称位置。
-      registerToolResultInterceptHook: registerPluginToolResultInterceptHook,
-      registerSkillRoot: registerPluginSkillRootProvider,
-      invalidateSkillsCache() {
-        return import('../skills/session-skills.js')
-          .then(({ invalidateSessionSkillsCache }) => invalidateSessionSkillsCache())
-          .catch(() => undefined)
-      },
-    },
-  })
+    host: pluginApiHost,
+  }
+  const result = createCorePluginAPI<
+    PluginAPI,
+    PluginToolDefinition<z.ZodType, object>,
+    PluginEventHandler,
+    PluginCommandDefinition,
+    Omit<PluginCommandDefinition, 'name'>,
+    PluginPromptContextProvider,
+    BeforeContextCompactHook,
+    AfterAssistantResponseHook,
+    PluginSkillRootProvider,
+    PluginStore,
+    PluginSchedulerAPI
+  >(createPluginApiOptions)
 
   stateRef.current = result.state
   // 级联(§3.3):消息/会话删除事件携带坐标,存在即清。订阅的生命周期与
@@ -645,14 +666,15 @@ export function createPluginAPI(
 const storeClosers = new WeakMap<PluginState, () => void>()
 
 export function disposePlugin(state: PluginState): void {
-  disposeCorePluginState(state, {
+  const disposeCorePluginStateOptions: DisposeCorePluginStateOptions = {
     /*
      * core 按注册过的工具 id 逐个调这个口(`builtin-teardown.test.ts` 钉的就是
      * "停用之后一个字都不剩")。R4b 之后只剩目录一侧,不存在"两侧漂开"这种
      * 失败模式了。目录没建起来时返回 false,无害。
      */
     unregisterTool: (toolId: string) => unregisterPluginToolFromCatalog(toolId),
-  })
+  };
+  disposeCorePluginState(state, disposeCorePluginStateOptions)
   // KV **在 onDispose 回调全部跑完之后**才关 —— 插件在 onDispose 里
   // `api.store.set` 存盘是最自然的收尾写法,提前关掉就是静默丢数据。
   try {

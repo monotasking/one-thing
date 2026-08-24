@@ -298,10 +298,11 @@ export const sessionReads = {
               : {}),
           }
         : {}
-      return materializeModelHistory(state, meta, {
+      const projectModelHistoryOptions: ProjectModelHistoryOptions<unknown> = {
         ...historyBuilder.recipe(session),
         ...sessionProjectionOptions(sessionId),
-      })
+      };
+      return materializeModelHistory(state, meta, projectModelHistoryOptions)
     })
     if (fromEventLog !== undefined) return fromEventLog
 

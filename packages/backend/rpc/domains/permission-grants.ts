@@ -31,10 +31,14 @@ import { getSessionsList } from '../../stores/sessions.js'
 import { resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingPermissionIpcLogger } from '@onething/runtime/permissions/permission-grants-presentation'
+import type { PermissionGrant } from '@onething/core/permission'
+import type { ListOnethingPermissionGrantsOptions } from '@onething/runtime/permissions/permission-grants-presentation'
 
 const log = getLogger('ipc.permission')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingPermissionIpcLogger = consolePort(log)
 
 
 const WORKSPACE_ROOT_OUTSIDE_SANDBOX =
@@ -132,7 +136,7 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
     }
 
     const owner = grantOwner(sandbox, context, input)
-    return listOnethingPermissionGrantsForIpc({
+    const listOnethingPermissionGrantsOptions: ListOnethingPermissionGrantsOptions<PermissionGrant> & { logger?: OnethingPermissionIpcLogger | undefined; } = {
       sessionId: input.sessionId,
       workspaceRoot,
       userId: owner.userId,
@@ -140,7 +144,8 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
       listSessionGrants: PermissionGrants.listSessionGrants,
       listWorkspaceGrants: PermissionGrants.listWorkspaceGrants,
       logger: consoleLog,
-    })
+    };
+    return listOnethingPermissionGrantsForIpc(listOnethingPermissionGrantsOptions)
   },
 
   async revoke(request, context = DESKTOP_RPC_CONTEXT) {

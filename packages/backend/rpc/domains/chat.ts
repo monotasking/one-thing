@@ -71,10 +71,19 @@ import {
 } from '../../wiring/providers/index.js'
 import { billTitleUsage } from '../../wiring/usage/bill-side-line.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { ListOnethingActiveStreamsForIpcOptions, AbortOnethingStreamsForIpcLogger } from '@onething/runtime/sessions/stream-abort'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-operations'
+import type { CoreProviderAuthLogger } from '@onething/runtime/providers/provider-config'
+import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '@onething/runtime/prompts/system-prompt-snapshot'
+import type { AbortOnethingStreamsForIpcOptions, OnethingAbortToolCallLike, OnethingAbortStepLike, OnethingAbortMessageLike } from '@onething/runtime/sessions/stream-abort'
+import type { OnethingAuthAccount } from '@onething/runtime/auth/types'
+import type { ProviderConfig, OAuthToken, ChatSession } from '@shared/ipc.js'
+import type { OnethingChatTitleGenerationAdapters } from '@onething/runtime/providers/provider-runtime'
 
 const log = getLogger('rpc.chat')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & AbortOnethingStreamsForIpcLogger & BuildOnethingSystemPromptSnapshotForIpcLogger & CoreProviderAuthLogger & OnethingSessionsIpcLogger = consolePort(log)
 
 async function emitSessionEvent(
   sessionId: string,
@@ -98,32 +107,33 @@ export const chatRpcHandlers: RpcRouteHandlers<ChatRoutes> = {
     })
   },
   async generateTitle(request) {
+    const chatTitleGenerationAdapters: OnethingChatTitleGenerationAdapters<ProviderConfig, { kind: "api-key"; apiKey: string; } | { kind: "oauth"; token: OAuthToken; account: OnethingAuthAccount; }> = {
+      isProviderSupported,
+      resolveAuth: resolveProviderAuth,
+      getProviderApiType,
+      generateTitle: (providerId, providerConfig, message, options) =>
+        generateChatTitle(
+          providerId,
+          {
+            apiKey: providerConfig.apiKey,
+            authContext: providerConfig.authContext,
+            oauthToken: providerConfig.oauthToken as Parameters<typeof generateChatTitle>[1]['oauthToken'],
+            baseUrl: providerConfig.baseUrl,
+            model: providerConfig.model || '',
+            apiType: providerConfig.apiType,
+          },
+          message,
+          {
+            ...(options as Parameters<typeof generateChatTitle>[3]),
+            onUsage: billTitleUsage(providerId, providerConfig.model || ''),
+          },
+        ),
+      logger: consoleLog,
+    };
     return generateOnethingChatTitleForIpc({
       userMessage: request.message,
       settings: store.getSettings(),
-      adapters: {
-        isProviderSupported,
-        resolveAuth: resolveProviderAuth,
-        getProviderApiType,
-        generateTitle: (providerId, providerConfig, message, options) =>
-          generateChatTitle(
-            providerId,
-            {
-              apiKey: providerConfig.apiKey,
-              authContext: providerConfig.authContext,
-              oauthToken: providerConfig.oauthToken as Parameters<typeof generateChatTitle>[1]['oauthToken'],
-              baseUrl: providerConfig.baseUrl,
-              model: providerConfig.model || '',
-              apiType: providerConfig.apiType,
-            },
-            message,
-            {
-              ...(options as Parameters<typeof generateChatTitle>[3]),
-              onUsage: billTitleUsage(providerId, providerConfig.model || ''),
-            },
-          ),
-        logger: consoleLog,
-      },
+      adapters: chatTitleGenerationAdapters,
     })
   },
   async getSystemPromptSnapshot(request) {
@@ -145,7 +155,7 @@ export const chatRpcHandlers: RpcRouteHandlers<ChatRoutes> = {
     })
   },
   async abortStream(request) {
-    return abortOnethingStreamsForIpc({
+    const abortOnethingStreamsForIpcOptions: AbortOnethingStreamsForIpcOptions<OnethingAbortToolCallLike, OnethingAbortStepLike<OnethingAbortToolCallLike>, OnethingAbortMessageLike<OnethingAbortStepLike<OnethingAbortToolCallLike>>, ChatSession> = {
       sessionId: request.sessionId,
       // 群聊房间的停止按钮(collab-team-v2 §5.1 入口①):房间会话上没有流,
       // 真正要停的是本轮发言人的执行会话。装配层在这里注入,产品层不 import app。
@@ -188,12 +198,14 @@ export const chatRpcHandlers: RpcRouteHandlers<ChatRoutes> = {
       emitEvent: (sid, event) =>
         emitSessionEvent(sid, event as Parameters<typeof emitSessionEvent>[1]),
       logger: consoleLog,
-    })
+    };
+    return abortOnethingStreamsForIpc(abortOnethingStreamsForIpcOptions)
   },
   async getActiveStreams() {
-    return listOnethingActiveStreamsForIpc({
+    const listOnethingActiveStreamsForIpcOptions: ListOnethingActiveStreamsForIpcOptions = {
       getEngineActiveSessionIds: () => getStreamEngine().getActiveSessionIds(),
-    })
+    };
+    return listOnethingActiveStreamsForIpc(listOnethingActiveStreamsForIpcOptions)
   },
 }
 

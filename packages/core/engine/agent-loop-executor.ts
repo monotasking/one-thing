@@ -2261,7 +2261,7 @@ export async function applyAgentLoopStreamChunkWithAdapters<
 	}
 
 	if (chunk.type === "provider-data" && chunk.providerData) {
-		return applyAgentLoopProviderDataWithAdapters<TContentPart>({
+		const applyAgentLoopProviderDataWithAdaptersOptions: ApplyAgentLoopProviderDataWithAdaptersOptions<TContentPart> = {
 			providerData: chunk.providerData,
 			turnIndex: state.turnIndex,
 			latestUserPrompt: state.latestUserPrompt,
@@ -2274,7 +2274,8 @@ export async function applyAgentLoopStreamChunkWithAdapters<
 			handleTextChunk: options.handleTextChunk,
 			planProviderData: options.planProviderData,
 			applyProviderData: options.applyProviderData,
-		});
+		};
+		return applyAgentLoopProviderDataWithAdapters<TContentPart>(applyAgentLoopProviderDataWithAdaptersOptions);
 	}
 
 	if (chunk.type === "finish") {

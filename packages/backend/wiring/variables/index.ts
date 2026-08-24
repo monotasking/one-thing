@@ -47,6 +47,7 @@ import type { ContextVariable } from "@onething/runtime/variables";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 import { getLogger } from '../logging/index.js'
+import type { CoreProviderAdapters } from '@onething/runtime/variables/providers/core'
 
 const log = getLogger('variables')
 
@@ -62,6 +63,32 @@ export function bootstrapVariableSystem(): void {
 	getVariablesStore().initialize();
 
 	const registry = getVariableRegistry();
+	const corePort: CoreProviderAdapters = {
+		enforcePermission: enforcePermissionPolicy,
+		// Registered project directories are user-blessed: switching the
+		// workdir into one (or a subdirectory) never prompts.
+		//
+		// 批 B4:名册 per-space,所以判据只认**这条会话归属的**那一份名册。
+		// 调用链上有会话语境(CoreProvider.enforceSetPermission 手里就有
+		// ctx.sessionId),所以取的是真值而不是保守回退;真要没有 sessionId,
+		// `resolveSessionSpaceId` 给的是 default —— 更严,绝不做全空间并集
+		// (那等于让任一空间的名册替所有空间免审批)。
+		isPreauthorizedDirectory: (dir, ctx) => {
+			try {
+				const target = path.resolve(dir);
+				return getProjectsStore(resolveSessionSpaceId(ctx?.sessionId))
+					.list()
+					.some((project) =>
+						project.paths.some((projectRoot) => {
+							const root = path.resolve(projectRoot);
+							return target === root || target.startsWith(root + path.sep);
+						}),
+					);
+			} catch {
+				return false;
+			}
+		},
+	};
 	registerStandardVariableProviders(registry, {
 		workdir: workdirGateway,
 		notes: notesGateway,
@@ -72,32 +99,7 @@ export function bootstrapVariableSystem(): void {
 		agentSelf: agentSelfGateway,
 		agentStore: agentStoreGateway,
 		projectStore: projectStoreGateway,
-		core: {
-			enforcePermission: enforcePermissionPolicy,
-			// Registered project directories are user-blessed: switching the
-			// workdir into one (or a subdirectory) never prompts.
-			//
-			// 批 B4:名册 per-space,所以判据只认**这条会话归属的**那一份名册。
-			// 调用链上有会话语境(CoreProvider.enforceSetPermission 手里就有
-			// ctx.sessionId),所以取的是真值而不是保守回退;真要没有 sessionId,
-			// `resolveSessionSpaceId` 给的是 default —— 更严,绝不做全空间并集
-			// (那等于让任一空间的名册替所有空间免审批)。
-			isPreauthorizedDirectory: (dir, ctx) => {
-				try {
-					const target = path.resolve(dir);
-					return getProjectsStore(resolveSessionSpaceId(ctx?.sessionId))
-						.list()
-						.some((project) =>
-							project.paths.some((projectRoot) => {
-								const root = path.resolve(projectRoot);
-								return target === root || target.startsWith(root + path.sep);
-							}),
-						);
-				} catch {
-					return false;
-				}
-			},
-		},
+		core: corePort,
 	});
 
 	// Bridge registry change events to the EventBus so the renderer

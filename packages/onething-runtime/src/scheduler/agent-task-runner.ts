@@ -7,7 +7,7 @@ import {
   toOnethingSchedulerRunToolCall,
   type OnethingSchedulerMessageStepLike,
   type OnethingSchedulerRunDetail,
-  type OnethingSchedulerToolCallLike,
+  type OnethingSchedulerToolCallLike, type OnethingSchedulerRunDetailOptions,
 } from './run-detail.js'
 import type { SchedulerTaskContext } from './types.js'
 import type { OnethingSchedulerUserTask } from './user-tasks.js'
@@ -92,17 +92,19 @@ function timelineEntry(
   input: Parameters<typeof createOnethingSchedulerTimelineEntry>[0],
   options: OnethingSchedulerAgentTaskRunnerOptions,
 ) {
-  return createOnethingSchedulerTimelineEntry(input, {
+  const schedulerRunDetailOptions: OnethingSchedulerRunDetailOptions = {
     createId: () => createId(options),
     now: () => nowMs(options),
-  })
+  };
+  return createOnethingSchedulerTimelineEntry(input, schedulerRunDetailOptions)
 }
 
 async function finishRunDetail(
   detail: OnethingSchedulerRunDetail,
   options: OnethingSchedulerAgentTaskRunnerOptions,
 ): Promise<OnethingSchedulerRunDetail> {
-  const next = finishOnethingSchedulerRunDetail(detail, { now: () => nowMs(options) })
+  const schedulerRunDetailOptions2: OnethingSchedulerRunDetailOptions = { now: () => nowMs(options) };
+  const next = finishOnethingSchedulerRunDetail(detail, schedulerRunDetailOptions2)
   return await options.saveRunDetail(next)
 }
 

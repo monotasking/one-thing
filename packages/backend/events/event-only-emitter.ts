@@ -12,12 +12,14 @@ import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from 
 import type { StreamContext } from '../wiring/engine/stream/stream-processor.js'
 import type { StreamCompleteData, StreamErrorData } from '@shared/events/session-events.js'
 import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
-import { createCoreEventOnlyEmitter } from '@onething/core/engine'
-import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk } from '@onething/core/engine'
+import { createCoreEventOnlyEmitter, type CoreEventOnlyStoreHooks } from '@onething/core/engine'
+import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk, CoreEventOnlyEventBusLike, CoreEventOnlyStreamChannelLike } from '@onething/core/engine'
 import { getEventBus, getStreamChannel } from './index.js'
 import { appendSessionLogEvent } from '../session/event-log.js'
 import { currentSessionRunId } from '../session/runs.js'
 import { getLogger } from '../wiring/logging/index.js'
+import type { JsonObject } from '@onething/core'
+import type { CreateCoreEventOnlyEmitterOptions } from '@onething/core/engine'
 
 /**
  * core 因边界规则(不得 import `@shared`)把事件与流块的形状重抄了一份,泛型
@@ -65,6 +67,64 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
   const sessionId = ctx.sessionId
   const assistantMessageId = ctx.assistantMessageId
 
+  const storePort: CoreEventOnlyStoreHooks<Step> = {
+    addMessageStep: store.addMessageStep,
+    updateMessageStep: store.updateMessageStep,
+    updateSessionContextSize: (targetSessionId, contextSize) =>
+      store.updateSessionContextSize(targetSessionId, contextSize, 'provider-finish'),
+    /*
+     * S3.1(§10.11):技能宣告的**两个落点挂在同一次宣告上** —— 消息上的
+     * `skillUsed`(产品事实)与事件账本的 `skill/activated`(那条 run 的账)。
+     * 判定点只有一个,在引擎里;这里只负责把它宣告过的事记两处,所以两处
+     * 永远同源。以前 `skill/activated` 是记录器自己认出来写的,与引擎那一份
+     * 各认各的,真机上就出现过"账本有、消息没有"。
+     *
+     * 记账坏了绝不能影响聊天:自吞异常,与记录器同一条规矩。
+     */
+    updateMessageSkill: (targetSessionId, targetMessageId, skillName) => {
+      store.updateMessageSkill(targetSessionId, targetMessageId, skillName)
+      try {
+        const runId = currentSessionRunId(targetSessionId)
+        appendSessionLogEvent(targetSessionId, 'skill/activated', {
+          messageId: targetMessageId,
+          skill: skillName,
+          ...(runId ? { runId } : {}),
+        })
+      } catch (error) {
+        streamLog.warn('skill activated event append failed', {
+          sessionId: targetSessionId,
+        }, error)
+      }
+    },
+  };
+  const createCoreEventOnlyEmitterOptions: CreateCoreEventOnlyEmitterOptions<Step, ToolCall, ToolPartialResult, ToolResult<JsonObject | undefined>, ContentPart, StreamCompleteData, StreamErrorData> = {
+    sessionId,
+    assistantMessageId,
+    getEventBus: (): CoreEventOnlyEventBusLike<
+      CoreEventOnlySessionEvent<
+        Step,
+        ToolCall,
+        ToolPartialResult,
+        ToolResult,
+        ContentPart,
+        StreamCompleteData,
+        StreamErrorData
+      >
+    > => {
+      const eventBus = getEventBus()
+      return {
+        emit: (targetSessionId, event) => eventBus.emit(targetSessionId, event),
+      }
+    },
+    getStreamChannel: (): CoreEventOnlyStreamChannelLike<CoreEventOnlyStreamChunk> => {
+      const streamChannel = getStreamChannel()
+      return {
+        push: (targetSessionId, chunk) => streamChannel.push(targetSessionId, chunk),
+      }
+    },
+    store: storePort,
+    debugStream: shouldTraceStream,
+  };
   return createCoreEventOnlyEmitter<
     Step,
     ToolCall,
@@ -73,51 +133,5 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
     ContentPart,
     StreamCompleteData,
     StreamErrorData
-  >({
-    sessionId,
-    assistantMessageId,
-    getEventBus: () => {
-      const eventBus = getEventBus()
-      return {
-        emit: (targetSessionId, event) => eventBus.emit(targetSessionId, event),
-      }
-    },
-    getStreamChannel: () => {
-      const streamChannel = getStreamChannel()
-      return {
-        push: (targetSessionId, chunk) => streamChannel.push(targetSessionId, chunk),
-      }
-    },
-    store: {
-      addMessageStep: store.addMessageStep,
-      updateMessageStep: store.updateMessageStep,
-      updateSessionContextSize: (targetSessionId, contextSize) =>
-        store.updateSessionContextSize(targetSessionId, contextSize, 'provider-finish'),
-      /*
-       * S3.1(§10.11):技能宣告的**两个落点挂在同一次宣告上** —— 消息上的
-       * `skillUsed`(产品事实)与事件账本的 `skill/activated`(那条 run 的账)。
-       * 判定点只有一个,在引擎里;这里只负责把它宣告过的事记两处,所以两处
-       * 永远同源。以前 `skill/activated` 是记录器自己认出来写的,与引擎那一份
-       * 各认各的,真机上就出现过"账本有、消息没有"。
-       *
-       * 记账坏了绝不能影响聊天:自吞异常,与记录器同一条规矩。
-       */
-      updateMessageSkill: (targetSessionId, targetMessageId, skillName) => {
-        store.updateMessageSkill(targetSessionId, targetMessageId, skillName)
-        try {
-          const runId = currentSessionRunId(targetSessionId)
-          appendSessionLogEvent(targetSessionId, 'skill/activated', {
-            messageId: targetMessageId,
-            skill: skillName,
-            ...(runId ? { runId } : {}),
-          })
-        } catch (error) {
-          streamLog.warn('skill activated event append failed', {
-            sessionId: targetSessionId,
-          }, error)
-        }
-      },
-    },
-    debugStream: shouldTraceStream,
-  })
+  >(createCoreEventOnlyEmitterOptions)
 }

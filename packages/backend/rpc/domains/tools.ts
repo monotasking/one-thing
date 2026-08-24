@@ -80,10 +80,20 @@ import {
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingToolsIpcLogger } from '@onething/runtime/tools/ipc-operations'
+import type { OnethingToolListIpcLogger } from '@onething/runtime/tools/tool-list-presentation'
+import type { OnethingToolExecutionIpcLogger } from '@onething/runtime/tools/tool-execution-context'
+import type { OnethingToolCallStateIpcLogger } from '@onething/runtime/tools/tool-call-state'
+import type { ApplyOnethingToolCallUpdateOptions, OnethingToolStepStateLike, OnethingToolMessageStateLike } from '@onething/runtime/tools/tool-call-state'
+import type { JsonArray } from '@onething/core'
+import type { ExecuteOnethingToolWithSessionContextOptions } from '@onething/runtime/tools/tool-execution-context'
+import type { ToolDefinition, ChatSession } from '@shared/ipc.js'
+import type { ListOnethingSettingsToolsOptions } from '@onething/runtime/tools/tool-list-presentation'
 
 const log = getLogger('rpc.tools')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingToolCallStateIpcLogger & OnethingToolExecutionIpcLogger & OnethingToolListIpcLogger & OnethingToolsIpcLogger = consolePort(log)
 
 /** 结构化失败。写成表达式而不是 `return { success:false, error }` —— checker 的
  * 「适配层不许手搓响应」正则守的是后者那个形状。 */
@@ -150,11 +160,12 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
      * MCP 合并、同一条 source 推导),换的只是"有哪些工具"这一格的来源:
      * Catalog + 派生 guard。目录建不起来时报空表 —— 这台宿主确实没有工具。
      */
-    return listOnethingSettingsToolsForIpc({
+    const listOnethingSettingsToolsOptions: ListOnethingSettingsToolsOptions<ToolDefinition> & { logger?: OnethingToolListIpcLogger | undefined; } = {
       getAllToolsAsync: () => toolkitCatalogToolDefinitions() ?? [],
       getMCPToolDefinitions: getMCPToolDefinitionsForModel,
       logger: consoleLog,
-    })
+    };
+    return listOnethingSettingsToolsForIpc(listOnethingSettingsToolsOptions)
   },
 
   async executeTool(request, context = DESKTOP_RPC_CONTEXT) {
@@ -174,7 +185,7 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
       )
       if (problem) return failure(problem)
     }
-    return (await executeOnethingToolWithSessionContextForIpc({
+    const executeOnethingToolWithSessionContextOptions: ExecuteOnethingToolWithSessionContextOptions<JsonObject, string | number | boolean | object | JsonObject | JsonArray | null, ChatSession> & { logger?: OnethingToolExecutionIpcLogger | undefined; } = {
       toolId,
       args,
       sessionId,
@@ -191,7 +202,8 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
         return outcome ?? failure(`Tool not found: ${id}`)
       },
       logger: consoleLog,
-    })) as ToolsRoutes['executeTool']['output']
+    };
+    return (await executeOnethingToolWithSessionContextForIpc(executeOnethingToolWithSessionContextOptions)) as ToolsRoutes['executeTool']['output']
   },
 
   async cancelTool(request) {
@@ -218,7 +230,7 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
   async updateToolCall(request, context = DESKTOP_RPC_CONTEXT) {
     if (context.transport === 'http') return failure(HTTP_UPDATE_TOOL_CALL_DISABLED)
     const { sessionId, messageId, toolCallId, updates } = request
-    return applyOnethingToolCallUpdateForIpc({
+    const applyOnethingToolCallUpdateOptions: ApplyOnethingToolCallUpdateOptions<OnethingToolCallStateLike, OnethingToolStepStateLike<OnethingToolCallStateLike>, OnethingToolMessageStateLike<OnethingToolCallStateLike, OnethingToolStepStateLike<OnethingToolCallStateLike>>, ChatSession> & { logger?: OnethingToolCallStateIpcLogger | undefined; } = {
       sessionId,
       messageId,
       toolCallId,
@@ -238,7 +250,8 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
           stepUpdates as Parameters<typeof store.updateMessageStep>[3],
         ),
       logger: consoleLog,
-    })
+    };
+    return applyOnethingToolCallUpdateForIpc(applyOnethingToolCallUpdateOptions)
   },
 }
 

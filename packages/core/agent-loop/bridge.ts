@@ -16,13 +16,14 @@ export async function* streamAgentLoopProviderChunks(
 
   const run = (async () => {
     try {
-      result = await runAgentLoop({
+      const agentLoopOptions: AgentLoopOptions = {
         ...options,
         onEvent(event) {
           onEvent?.(event)
           queue.push(event)
         },
-      })
+      };
+      result = await runAgentLoop(agentLoopOptions)
       queue.close()
     } catch (error) {
       queue.fail(error instanceof Error ? error : new Error(String(error)))

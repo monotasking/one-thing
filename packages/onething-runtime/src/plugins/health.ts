@@ -8,7 +8,7 @@
  * 为什么要熔断:加载期错误会写进 CorePluginInfo.error,**运行期**错误在此之前
  * 不进任何用户可见状态 —— 一个每回合都抛错的插件会一直显示 Active。
  */
-import type { PluginFailureScope } from '@onething/core/plugins'
+import type { PluginFailureScope, CorePluginHealthTrackerOptions } from '@onething/core/plugins'
 import { PLUGIN_SURFACE_PROBE_INTERVAL_MS } from '@onething/core/plugins'
 import {
   CorePluginHealthTracker,
@@ -47,7 +47,7 @@ function toPersisted(health: CorePluginRuntimeHealth): PersistedPluginHealth | n
   }
 }
 
-const tracker = new CorePluginHealthTracker({
+const pluginHealthTrackerOptions: CorePluginHealthTrackerOptions = {
   /**
    * 界面降级(R7):**不禁用插件**,只把那一个界面标红。
    *
@@ -84,7 +84,8 @@ const tracker = new CorePluginHealthTracker({
       log.error('auto-disable plugin failed', { pluginId }, error)
     })
   },
-})
+};
+const tracker = new CorePluginHealthTracker(pluginHealthTrackerOptions)
 
 /** 启动时回灌上次的禁用原因。幂等。 */
 export function restorePluginRuntimeHealth(): void {

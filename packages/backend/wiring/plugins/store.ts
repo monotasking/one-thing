@@ -6,7 +6,7 @@ import {
   type CorePluginFiles,
   type CorePluginFilesUsage,
   type CorePluginMessageStateStore,
-  type CorePluginStorage,
+  type CorePluginStorage, type CreateCorePluginFilesOptions,
 } from '@onething/core/plugins'
 import { getPluginsDir } from './loader.js'
 
@@ -72,7 +72,7 @@ export function createPluginFiles(
     onQuotaWarning?: (usage: CorePluginFilesUsage) => void
   } = {},
 ): CorePluginFiles {
-  return createCorePluginFiles({
+  const createCorePluginFilesOptions: CreateCorePluginFilesOptions = {
     pluginId,
     homeRoot: getPluginsDir(),
     quotaBytes: options.quotaBytes,
@@ -80,5 +80,6 @@ export function createPluginFiles(
     resolveExternalRoot: options.resolveExternalRoot,
     isDisposed: options.isDisposed,
     onQuotaWarning: options.onQuotaWarning,
-  })
+  };
+  return createCorePluginFiles(createCorePluginFilesOptions)
 }

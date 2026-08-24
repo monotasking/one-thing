@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import type { CorePluginSchedulerHost } from '@onething/core/plugins'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {
@@ -145,7 +146,15 @@ function resolveStateFilePath(value: SchedulerOptions['stateFilePath']): string 
   return typeof resolved === 'string' && resolved.trim() ? resolved : undefined
 }
 
-export class Scheduler {
+export class Scheduler
+  implements
+    CorePluginSchedulerHost<
+      SchedulerTaskRegistration,
+      SchedulerTaskSnapshot,
+      SchedulerRunOptions,
+      SchedulerRunRecord
+    >
+{
   private tasks = new Map<string, InternalTask>()
   private state: SchedulerStateFile = { version: SCHEDULER_STATE_VERSION, tasks: {} }
   private loaded = false

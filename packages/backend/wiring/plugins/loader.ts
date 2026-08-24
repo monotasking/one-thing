@@ -13,7 +13,7 @@ import {
   describePluginBackgroundProblem,
   describePluginWebviewPanelProblem,
   isPluginWebviewPanel,
-  type PluginContributionUiSlot,
+  type PluginContributionUiSlot, type CorePluginSettingsStorageAdapters, type LoadCorePluginEntryAdapters,
 } from '@onething/core/plugins'
 import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/runtime/storage'
 import { writeJsonFile } from '@onething/core/storage'
@@ -47,10 +47,12 @@ import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
 import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/core/logging'
 
 const log = getLogger('plugins.loader')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & LegacyDuckLogger = consolePort(log)
 
 
 export function getPluginsDir(): string {
@@ -251,10 +253,11 @@ export function writePluginConfig(pluginId: string, config: Record<string, unkno
 }
 
 export function setPluginEnabled(pluginId: string, enabled: boolean): void {
-  setPluginEnabledWithAdapters(pluginId, enabled, {
+  const pluginSettingsStorageAdapters: CorePluginSettingsStorageAdapters = {
     readSettings: readPluginSettings,
     writeSettings: writePluginSettings,
-  })
+  };
+  setPluginEnabledWithAdapters(pluginId, enabled, pluginSettingsStorageAdapters)
   // 显式启用 = 一次清账:熔断状态与失败计数不跨越它,否则重新启用的插件会带着
   // 上一次的红态复活。
   if (enabled) clearPluginRuntimeHealth(pluginId)
@@ -459,10 +462,11 @@ export async function loadPluginEntry(
   def: PluginDefinition,
   reloadToken?: string | number,
 ): Promise<PluginEntry | null> {
-  return loadCorePluginEntry(def, {
+  const loadCorePluginEntryAdapters: LoadCorePluginEntryAdapters<PluginEntry> = {
     importEntry: entryPath => import(buildPluginEntryImportSpecifier(entryPath, reloadToken)),
     logger: consoleLog,
-  })
+  };
+  return loadCorePluginEntry(def, loadCorePluginEntryAdapters)
 }
 
 /** Create the plugin directories if they don't exist */

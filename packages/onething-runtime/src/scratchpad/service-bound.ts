@@ -8,6 +8,7 @@ import {
   getOnethingStorePath,
 } from '../storage/index.js'
 import { getLogger } from '../logging/index.js'
+import type { OnethingAgentLoopScratchpadHooks } from '../agent-loop/stream-runtime.js'
 
 const log = getLogger('scratchpad')
 
@@ -135,7 +136,7 @@ export async function buildScratchpadTail(sessionId: string): Promise<Scratchpad
  * 注入进 agent-loop 的 hook。产品层拿到的是**这个对象**,不是这个模块 ——
  * 依赖方向单向(产品 ← 装配),所以走注入而不是 import。
  */
-export const scratchpadRuntimeHooks = {
+export const scratchpadRuntimeHooks: OnethingAgentLoopScratchpadHooks = {
   buildTail(sessionId: string): Promise<ScratchpadTail | undefined> {
     return buildScratchpadTail(sessionId)
   },

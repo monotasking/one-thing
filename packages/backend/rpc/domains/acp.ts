@@ -43,10 +43,14 @@ import type { AcpRoutes } from '@shared/ipc/acp.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingACPIpcLogger } from '@onething/runtime/acp/ipc-operations'
+import type { ACPAgentConfig, ACPAgentState } from '@/types'
+import type { OnethingACPIpcAdapters } from '@onething/runtime/acp/ipc-operations'
 
 const log = getLogger('rpc.acp')
 /** 投影层收的是鸭子 logger;`@main` 那份原来直接递 `console`,这里递受管的那只。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingACPIpcLogger = consolePort(log)
 
 function getACPSettings(): ACPSettings {
   return getSettings().acp || { enabled: true, agents: [] }
@@ -77,22 +81,25 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
     }) as Promise<AcpRoutes['getAgents']['output']>
   },
   async addAgent(request) {
-    return addOnethingACPAgentForIpc({
+    const aCPIpcAdapters: OnethingACPIpcAdapters<ACPAgentConfig, ACPAgentState> & { config: ACPAgentConfig; } = {
       ...acpAdapters(),
       config: request.config,
-    }) as Promise<AcpRoutes['addAgent']['output']>
+    };
+    return addOnethingACPAgentForIpc(aCPIpcAdapters) as Promise<AcpRoutes['addAgent']['output']>
   },
   async updateAgent(request) {
-    return updateOnethingACPAgentForIpc({
+    const aCPIpcAdapters2: OnethingACPIpcAdapters<ACPAgentConfig, ACPAgentState> & { config: ACPAgentConfig; } = {
       ...acpAdapters(),
       config: request.config,
-    }) as Promise<AcpRoutes['updateAgent']['output']>
+    };
+    return updateOnethingACPAgentForIpc(aCPIpcAdapters2) as Promise<AcpRoutes['updateAgent']['output']>
   },
   async removeAgent(request) {
-    return removeOnethingACPAgentForIpc({
+    const aCPIpcAdapters3: OnethingACPIpcAdapters<ACPAgentConfig, ACPAgentState> & { agentId: string; } = {
       ...acpAdapters(),
       agentId: request.agentId,
-    })
+    };
+    return removeOnethingACPAgentForIpc(aCPIpcAdapters3)
   },
   async connectAgent(request) {
     return connectOnethingACPAgentForIpc({

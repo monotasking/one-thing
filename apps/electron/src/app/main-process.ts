@@ -124,7 +124,7 @@ import {
 	openElectronPath,
 	revealElectronPath,
 } from "@onething/electron-host/shell/operations";
-import { configureVoiceHost } from "@onething/runtime/voice/host-ports.wiring";
+import { configureVoiceHost, type VoiceRuntimeWindowPorts } from "@onething/runtime/voice/host-ports.wiring";
 import { broadcastElectronVoiceMessage } from "@onething/electron-host/voice/events";
 import { createElectronAuthFetch } from "@onething/electron-host/auth/auth-fetch";
 import { getElectronSafeStorage } from "@onething/electron-host/auth/electron-auth";
@@ -462,19 +462,20 @@ export function startOnethingElectronMain(): void {
 		}),
 		tokenCryptoAdapter: getElectronSafeStorage,
 	});
+	const runtimeWindowPort: VoiceRuntimeWindowPorts = {
+		ensure: () => void ensureVoiceRuntimeWindow(),
+		destroy: destroyVoiceRuntimeWindow,
+		sendCommand: sendVoiceRuntimeCommand,
+		markReady: markVoiceRuntimeReady,
+		isReady: isVoiceRuntimeReady,
+		flushCommands: flushVoiceRuntimeCommands,
+		// P4c 第十一批:`voice.runtimeReady` 的回声抑制从前靠 `event.sender`;
+		// 信封里没有那一格,于是改由宿主指认那扇窗(它是唯一会调那条的窗口)。
+		getWebContents: () => getVoiceRuntimeWindow()?.webContents,
+	};
 	configureVoiceHost({
 		broadcastMessage: broadcastElectronVoiceMessage,
-		runtimeWindow: {
-			ensure: () => void ensureVoiceRuntimeWindow(),
-			destroy: destroyVoiceRuntimeWindow,
-			sendCommand: sendVoiceRuntimeCommand,
-			markReady: markVoiceRuntimeReady,
-			isReady: isVoiceRuntimeReady,
-			flushCommands: flushVoiceRuntimeCommands,
-			// P4c 第十一批:`voice.runtimeReady` 的回声抑制从前靠 `event.sender`;
-			// 信封里没有那一格,于是改由宿主指认那扇窗(它是唯一会调那条的窗口)。
-			getWebContents: () => getVoiceRuntimeWindow()?.webContents,
-		},
+		runtimeWindow: runtimeWindowPort,
 		updateTray: updateVoiceTray,
 	});
 	// 日志系统的接线点(L1):`app.jsonl` + console 兜底 + 进程钩子 + log/ 目录治理。

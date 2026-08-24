@@ -34,10 +34,16 @@ import { fetchCodexUsage } from '../../wiring/providers/builtin/codex.js'
 import { getAvailableProviders } from '../../wiring/providers/index.js'
 import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingProviderPresentationIpcLogger } from '@onething/runtime/providers/provider-presentation'
+import type { OAuthToken, CodexProviderUsage } from '@shared/ipc.js'
+import type { GetOnethingProviderUsageOptions } from '@onething/runtime/providers/provider-usage'
+import type { ProviderInfo } from '@/types'
+import type { ListOnethingProvidersOptions } from '@onething/runtime/providers/provider-presentation'
 
 const log = getLogger('ipc.providers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingProviderPresentationIpcLogger = consolePort(log)
 
 
 /** 「这个空间的这个 provider 的 OAuth 账号」→ auth 层的读写目标。 */
@@ -48,10 +54,11 @@ function providerUsageCredentialTarget(spaceId: string | undefined, providerId: 
 
 export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
   async list() {
-    return listOnethingProvidersForIpc({ getAvailableProviders, logger: consoleLog })
+    const listOnethingProvidersOptions: ListOnethingProvidersOptions<ProviderInfo> & { logger?: OnethingProviderPresentationIpcLogger | undefined; } = { getAvailableProviders, logger: consoleLog };
+    return listOnethingProvidersForIpc(listOnethingProvidersOptions)
   },
   async usage(request) {
-    return getOnethingProviderUsage({
+    const getOnethingProviderUsageOptions: GetOnethingProviderUsageOptions<OAuthToken, CodexProviderUsage> = {
       providerId: request?.providerId ?? '',
       codexProviderIds: ['codex', AIProvider.Codex],
       canonicalCodexProviderId: AIProvider.Codex,
@@ -64,7 +71,8 @@ export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
           providerUsageCredentialTarget(request?.spaceId, providerId),
         ),
       fetchCodexUsage,
-    })
+    };
+    return getOnethingProviderUsage(getOnethingProviderUsageOptions)
   },
   async envStatus(request) {
     return inspectOnethingProviderEnvStatusForIpc({

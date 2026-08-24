@@ -21,17 +21,19 @@ import {
   probeMCPServerWithAdapters,
   refreshMCPClientCapabilities,
   type CoreMCPProbeResult,
-  type CoreMCPTask,
+  type CoreMCPTask, type CoreMCPClientRuntimeOptions, type CoreMCPProbeAdapters,
 } from '@onething/core/mcp'
 import type { JsonArray, JsonObject, JsonValue } from '@onething/core'
 import { getMCPOAuthFlowManager } from './oauth/index.js'
 import { getMCPClientIdentity } from './identity.js'
 import { notifyMCPCapabilitiesChanged } from './capabilities-changed.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/core/logging'
 
 const log = getLogger('mcp')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & LegacyDuckLogger = consolePort(log)
 
 
 type MCPTransport = StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport
@@ -92,7 +94,7 @@ export class MCPClient {
   private readonly runtime: CoreMCPClientRuntime<OnethingMCPClient, MCPTransport>
 
   constructor(config: MCPServerConfig) {
-    this.runtime = new CoreMCPClientRuntime<OnethingMCPClient, MCPTransport>({
+    const mCPClientRuntimeOptions: CoreMCPClientRuntimeOptions<OnethingMCPClient, MCPTransport> = {
       config,
       getBaseEnv: () => process.env,
       adapters: {
@@ -174,7 +176,8 @@ export class MCPClient {
         },
         logger: consoleLog,
       },
-    })
+    };
+    this.runtime = new CoreMCPClientRuntime<OnethingMCPClient, MCPTransport>(mCPClientRuntimeOptions)
   }
 
   /**
@@ -274,10 +277,7 @@ export class MCPClient {
  */
 export async function probeMCPServerConfig(config: MCPServerConfig): Promise<CoreMCPProbeResult> {
   try {
-    return await probeMCPServerWithAdapters<Client, MCPTransport>(
-    config,
-    process.env,
-    {
+    const mCPProbeAdapters: CoreMCPProbeAdapters<Client, MCPTransport> = {
       createTransport: async (plan) => {
         if (plan.transport === 'stdio') {
           return new StdioClientTransport({
@@ -317,7 +317,11 @@ export async function probeMCPServerConfig(config: MCPServerConfig): Promise<Cor
       getNegotiatedProtocolVersion: client => client.getNegotiatedProtocolVersion(),
       getServerInfo: client => client.getServerVersion(),
       getServerCapabilities: client => client.getServerCapabilities(),
-    },
+    };
+    return await probeMCPServerWithAdapters<Client, MCPTransport>(
+    config,
+    process.env,
+    mCPProbeAdapters,
     )
   } finally {
     // Drop the probe's ephemeral OAuth flow entry (loopback registration +

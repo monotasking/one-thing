@@ -445,11 +445,12 @@ export async function synthesizeOnethingSpeech(
   adapters: OnethingVoiceProviderRuntimeAdapters = {},
 ): Promise<OnethingVoiceSpeechResult> {
   const chunks: Uint8Array[] = []
-  const result = await streamSynthesizeOnethingSpeech(text, settings, {
+  const voiceSpeechStreamHandlers: OnethingVoiceSpeechStreamHandlers = {
     onChunk: chunk => {
       chunks.push(chunk)
     },
-  }, adapters)
+  };
+  const result = await streamSynthesizeOnethingSpeech(text, settings, voiceSpeechStreamHandlers, adapters)
   return {
     audioBase64: Buffer.concat(chunks.map(chunk => Buffer.from(chunk))).toString('base64'),
     mimeType: result.mimeType,

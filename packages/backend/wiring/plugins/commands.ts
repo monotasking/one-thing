@@ -23,9 +23,11 @@ import * as store from '../../store.js'
 import { consolePort, getLogger } from '../logging/index.js'
 import { execPluginCommandOnHost } from './host-ports.js'
 import { getPluginManager } from './manager.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
 
 const log = getLogger('plugins.commands')
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingPluginIpcLogger = consolePort(log)
 
 export interface ExecutePluginCommandOnHostRequest {
   commandName: string

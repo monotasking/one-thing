@@ -3,7 +3,7 @@ import {
   resolveAgentModelCapabilities,
   runAgentLoop,
   type AgentProvider,
-  type AgentJsonObject,
+  type AgentJsonObject, type AgentLoopOptions,
 } from '@onething/core/agent-loop'
 import path from 'path'
 import {
@@ -299,7 +299,7 @@ async function planSkillReviewTarget<TContext extends OnethingSkillReviewContext
   ctx: TContext,
   agentProvider: OnethingSkillReviewAgentProviderRef,
 ): Promise<SkillReviewTarget | undefined> {
-  const result = await runAgentLoop({
+  const agentLoopOptions: AgentLoopOptions = {
     provider: agentProvider.provider,
     model: agentProvider.model,
     messages: buildTargetReviewMessages(adapters, ctx),
@@ -315,7 +315,8 @@ async function planSkillReviewTarget<TContext extends OnethingSkillReviewContext
     sessionId: ctx.sessionId,
     messageId: `skill-review-target:${ctx.sessionId}`,
     workingDirectory: ctx.session.workingDirectory,
-  })
+  };
+  const result = await runAgentLoop(agentLoopOptions)
   if (result.usage) {
     adapters.onUsage?.(result.usage, {
       providerId: agentProvider.providerId,
@@ -354,7 +355,7 @@ async function runAgentSkillReview<TContext extends OnethingSkillReviewContext>(
     return
   }
 
-  const result = await runAgentLoop({
+  const agentLoopOptions2: AgentLoopOptions = {
     provider: agentProvider.provider,
     model: runPlan.model,
     messages: runPlan.messages,
@@ -374,7 +375,8 @@ async function runAgentSkillReview<TContext extends OnethingSkillReviewContext>(
         getLogger(adapters).log(`[SkillReview] Agent tool ${event.toolCall.name}: ${event.result.error ?? 'ok'}`)
       }
     },
-  })
+  };
+  const result = await runAgentLoop(agentLoopOptions2)
   if (result.usage) {
     adapters.onUsage?.(result.usage, {
       providerId: agentProvider.providerId,

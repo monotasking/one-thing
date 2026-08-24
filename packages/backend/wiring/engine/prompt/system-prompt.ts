@@ -41,6 +41,8 @@ import type {
   CorePromptActiveProject as PromptActiveProject,
   CorePromptKnownProjects as PromptKnownProjects,
 } from '@onething/core/engine'
+import type { VariableBoardRenderer } from '@onething/runtime/prompts/variable-board'
+import type { OnethingPromptHostAdapters } from '@onething/runtime/prompts/builder'
 
 export interface BuildPromptContextOptions extends Omit<CoreBuildPromptContextOptions, 'settings' | 'skills' | 'activeProject' | 'knownProjects'> {
   settings?: AppSettings
@@ -244,9 +246,10 @@ function collabWorkOverrides(
  *    callbacks (before this object existed the build path called the bare
  *    runtime collector and the promptContext breaker lane was never fed).
  */
-const variableBoardSource = new VariableBoardSource({
+const variableBoardRenderer: VariableBoardRenderer = {
   render: (sessionId: string) => buildStateVariablesPromptText(sessionId),
-})
+};
+const variableBoardSource = new VariableBoardSource(variableBoardRenderer)
 
 export const desktopPromptComposer: PromptComposer = new PromptComposer([
   builtinPromptSource,
@@ -257,14 +260,15 @@ export const desktopPromptComposer: PromptComposer = new PromptComposer([
 ])
 
 function coreOptions(ctx: BuildPromptContextOptions): BuildOnethingPromptContextOptions {
+  const hostPort: OnethingPromptHostAdapters = {
+    // persona 功能兜底(域模型 §3.3):无 agentId / 查无此人 → default persona。
+    getAgent: (agentId: string | undefined) => findAgent(agentId) ?? defaultAgent(),
+    getMacOSAutomationDocsPath,
+    getTodoPlanDirectory,
+  };
   return {
     ...ctx,
-    host: {
-      // persona 功能兜底(域模型 §3.3):无 agentId / 查无此人 → default persona。
-      getAgent: (agentId: string | undefined) => findAgent(agentId) ?? defaultAgent(),
-      getMacOSAutomationDocsPath,
-      getTodoPlanDirectory,
-    },
+    host: hostPort,
     // 两支互斥(一条会话只有一个 kind),顺序因此不构成优先级 —— 房版返回 null
     // 的那些会话里,只有 kind='work' 会被下一支接住。
     ...(collabRoomOverrides(ctx) ?? {}),

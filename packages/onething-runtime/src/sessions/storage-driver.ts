@@ -32,6 +32,7 @@ import {
   type StoredChatMessage,
   type UserMessageMarker,
 } from '@onething/core/session'
+import type { JsonlLogPageSource } from '@onething/core/session/storage'
 
 export type SessionStorageFormat = 'legacy-json' | 'jsonl'
 
@@ -387,14 +388,15 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
     const ensured = state ?? ensureJsonlState(sessionId)
     if (!ensured) return undefined
 
-    return getMessagesPageFromLogSource<StoredChatMessage>(request, {
+    const jsonlLogPageSource: JsonlLogPageSource<StoredChatMessage> = {
       totalCount: ensured.lines.length,
       readRange: (startSeq, endSeq) => readLineRange(sessionId, ensured, startSeq, endSeq),
       resolveAnchorSeq: messageId => {
         const index = ensured.lines.findIndex(line => line.id === messageId)
         return index === -1 ? undefined : index + 1
       },
-    })
+    };
+    return getMessagesPageFromLogSource<StoredChatMessage>(request, jsonlLogPageSource)
   }
 
   function getJsonlUserMessageMarkers(sessionId: string): UserMessageMarker[] | undefined {

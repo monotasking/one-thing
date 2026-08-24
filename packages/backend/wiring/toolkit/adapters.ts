@@ -55,17 +55,19 @@ import { collabLinkedRoomSessionId } from '../collab/venue.js'
 // R4b:落盘口不再在这里重建一份 —— 与旧 `app/collab/actors/notebook-tool.ts` 的
 // `appendNote` 曾经"逐字相同"的那份代码,现在直接用原处那一个(它已导出)。
 import { appendNote } from '../collab/actors/notebook-tool.js'
+import type { BraveSearchProviderAdapters } from '@onething/runtime/tools/builtin/web-search/providers/brave'
 
 // ── 网络 ────────────────────────────────────────────────────────────────────
 
 const createWebSearchFetch = () => createRequiredAppFetch({ policy: 'webSearch' })
 
 export function webSearchAdapters(): WebSearchToolAdapters {
+  const braveSearchProviderAdapters: BraveSearchProviderAdapters = {
+    getApiKey: () => getSettings().tools?.webSearch?.braveApiKey,
+    getFetch: createWebSearchFetch,
+  };
   const providers: Record<string, SearchProvider> = {
-    brave: createBraveSearchProvider({
-      getApiKey: () => getSettings().tools?.webSearch?.braveApiKey,
-      getFetch: createWebSearchFetch,
-    }),
+    brave: createBraveSearchProvider(braveSearchProviderAdapters),
   }
   return { providers, getFetch: createWebSearchFetch }
 }

@@ -39,6 +39,8 @@ import {
 	getContextCompactReason,
 	shouldSkipAutoCompactForProviderUsageMismatch,
 } from "./context-compact.js";
+import type { OnethingStreamProviderAdapterOptions } from '@onething/runtime/providers/stream-provider-adapter'
+import type { StreamEngineStoreAdapter, StreamEngineModelRegistryAdapter } from '@onething/core/engine'
 
 export type MainStreamEngineRuntime = OnethingProductStreamRuntime<
 	AppSettings,
@@ -55,6 +57,74 @@ export type MainStreamEngineRuntime = OnethingProductStreamRuntime<
 >;
 
 export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
+	const storePort: StreamEngineStoreAdapter<AppSettings, ChatSession, ChatMessage> = {
+		getSettings: () => store.getSettings(),
+		// 换源(C2):provider 设置整套 per-space 之后,不经过 getEffectiveConfig
+		// 的解析点(标题模型)也必须看这条会话所在空间的那一份。
+		getSettingsForSession: (sessionId: string) => getSessionSettings(sessionId),
+		getSession: (sessionId) => store.getSession(sessionId),
+		// C1(P0.2 area ①):core 引擎的会话消息读全部走读门面
+		// (docs/design/session-commands-p0-2026-08.md §3)。
+		listMessages: (sessionId) => sessionReads.listMessages(sessionId).messages,
+		getMessage: (sessionId, messageId) =>
+			sessionReads.getMessage(sessionId, messageId) as ChatMessage | undefined,
+		addMessage: (sessionId, message) => store.addMessage(sessionId, message),
+		renameSession: (sessionId, name) => store.renameSession(sessionId, name),
+		updateMessageAndTruncate: (sessionId, messageId, newContent, options) =>
+			store.updateMessageAndTruncate(
+				sessionId,
+				messageId,
+				newContent,
+				options as Parameters<typeof store.updateMessageAndTruncate>[3],
+			),
+		deleteMessageAndTruncate: (sessionId, messageId) =>
+			store.deleteMessageAndTruncate(sessionId, messageId),
+		deleteMessage: (sessionId, messageId) =>
+			store.deleteMessage(sessionId, messageId),
+	};
+	const providerPort: OnethingStreamProviderAdapterOptions<ProviderConfig, AppSettings, ProviderAuthContext, ChatSession> = {
+		getSession: (sessionId) => store.getSession(sessionId),
+		// per-space 凭证(批 B3):非 default 空间用它自己的凭证池,没配就是
+		// 「未配置」——起流前置拦截,绝不悄悄用默认空间的 key。
+		applySpaceCredentials: applySessionSpaceCredentials,
+		// per-space 默认 provider/model(批 B9)。与上一行同源:两条解析链各自
+		// 构造一次适配器,少挂的那一条就是会话悄悄用回全局默认的那一条。
+		resolveSpaceDefaultSelection: resolveSessionSpaceDefaultSelection,
+		isProviderSupported,
+		isOAuthProvider: requiresOAuth,
+		resolveApiKey: (providerId, providerConfig) =>
+			resolveProviderApiKey(providerId, providerConfig),
+		// per-space OAuth(批 B6):token 去 `spaceCredential` 指的那条 entry 取,
+		// 缺席才回 settings。刷新被拒会顺手给那条 entry 写 auth-invalid 冷却。
+		resolveOAuthAuth: (providerId, apiKey, credential) =>
+			resolveSessionSpaceOAuthAuth(providerId, apiKey, credential),
+		createApiKeyAuth: (apiKey) => ({ kind: "api-key", apiKey }),
+		generateTitle: (providerId, providerConfig, content, options) => {
+			const titleOptions = options as Parameters<typeof generateChatTitle>[3];
+			return generateChatTitle(
+				providerId,
+				providerConfig as unknown as Parameters<typeof generateChatTitle>[1],
+				content,
+				{
+					...titleOptions,
+					// debugSessionId carries the session here (see
+					// core-stream-engine's generateSessionTitle), which is the
+					// only handle this adapter has on which session to bill.
+					onUsage: billTitleUsage(
+						providerId,
+						String(providerConfig?.model || ""),
+						titleOptions?.debugSessionId,
+					),
+				},
+			);
+		},
+	};
+	const modelsPort: StreamEngineModelRegistryAdapter = {
+		getModelContextLength: (model, providerId) =>
+			modelRegistry.getModelContextLength(model, providerId),
+		getModelMaxOutputTokens: (model, providerId) =>
+			modelRegistry.getModelMaxOutputTokens(model, providerId),
+	};
 	return createOnethingProductStreamRuntimeFromHostAdapters<
 		AppSettings,
 		ChatMessage,
@@ -68,31 +138,7 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 		Awaited<ReturnType<typeof executeAgentLoopStreamGeneration>>,
 		Awaited<ReturnType<typeof compactSessionContext>>
 	>({
-		store: {
-			getSettings: () => store.getSettings(),
-			// 换源(C2):provider 设置整套 per-space 之后,不经过 getEffectiveConfig
-			// 的解析点(标题模型)也必须看这条会话所在空间的那一份。
-			getSettingsForSession: (sessionId: string) => getSessionSettings(sessionId),
-			getSession: (sessionId) => store.getSession(sessionId),
-			// C1(P0.2 area ①):core 引擎的会话消息读全部走读门面
-			// (docs/design/session-commands-p0-2026-08.md §3)。
-			listMessages: (sessionId) => sessionReads.listMessages(sessionId).messages,
-			getMessage: (sessionId, messageId) =>
-				sessionReads.getMessage(sessionId, messageId) as ChatMessage | undefined,
-			addMessage: (sessionId, message) => store.addMessage(sessionId, message),
-			renameSession: (sessionId, name) => store.renameSession(sessionId, name),
-			updateMessageAndTruncate: (sessionId, messageId, newContent, options) =>
-				store.updateMessageAndTruncate(
-					sessionId,
-					messageId,
-					newContent,
-					options as Parameters<typeof store.updateMessageAndTruncate>[3],
-				),
-			deleteMessageAndTruncate: (sessionId, messageId) =>
-				store.deleteMessageAndTruncate(sessionId, messageId),
-			deleteMessage: (sessionId, messageId) =>
-				store.deleteMessage(sessionId, messageId),
-		},
+		store: storePort,
 		clearPermissionSession: (sessionId) => {
 			Permission.clearSession(sessionId);
 			// 提问链与审批链在会话清理上必须同进同退:少结算一条 pending interaction,
@@ -109,49 +155,8 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 				role as ChatMessage["role"],
 				attachments,
 			),
-		provider: {
-			getSession: (sessionId) => store.getSession(sessionId),
-			// per-space 凭证(批 B3):非 default 空间用它自己的凭证池,没配就是
-			// 「未配置」——起流前置拦截,绝不悄悄用默认空间的 key。
-			applySpaceCredentials: applySessionSpaceCredentials,
-			// per-space 默认 provider/model(批 B9)。与上一行同源:两条解析链各自
-			// 构造一次适配器,少挂的那一条就是会话悄悄用回全局默认的那一条。
-			resolveSpaceDefaultSelection: resolveSessionSpaceDefaultSelection,
-			isProviderSupported,
-			isOAuthProvider: requiresOAuth,
-			resolveApiKey: (providerId, providerConfig) =>
-				resolveProviderApiKey(providerId, providerConfig),
-			// per-space OAuth(批 B6):token 去 `spaceCredential` 指的那条 entry 取,
-			// 缺席才回 settings。刷新被拒会顺手给那条 entry 写 auth-invalid 冷却。
-			resolveOAuthAuth: (providerId, apiKey, credential) =>
-				resolveSessionSpaceOAuthAuth(providerId, apiKey, credential),
-			createApiKeyAuth: (apiKey) => ({ kind: "api-key", apiKey }),
-			generateTitle: (providerId, providerConfig, content, options) => {
-				const titleOptions = options as Parameters<typeof generateChatTitle>[3];
-				return generateChatTitle(
-					providerId,
-					providerConfig as unknown as Parameters<typeof generateChatTitle>[1],
-					content,
-					{
-						...titleOptions,
-						// debugSessionId carries the session here (see
-						// core-stream-engine's generateSessionTitle), which is the
-						// only handle this adapter has on which session to bill.
-						onUsage: billTitleUsage(
-							providerId,
-							String(providerConfig?.model || ""),
-							titleOptions?.debugSessionId,
-						),
-					},
-				);
-			},
-		},
-		models: {
-			getModelContextLength: (model, providerId) =>
-				modelRegistry.getModelContextLength(model, providerId),
-			getModelMaxOutputTokens: (model, providerId) =>
-				modelRegistry.getModelMaxOutputTokens(model, providerId),
-		},
+		provider: providerPort,
+		models: modelsPort,
 		buildHistoryMessages,
 		buildResumeHistoryAfterToolConfirmation,
 		executeMessageStream:

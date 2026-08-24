@@ -14,10 +14,12 @@ import {
 import { getOnethingSettingsPath } from '@onething/runtime/storage'
 import { applyDiagnosticsMode } from '../wiring/logging/diagnostics.js'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingSettingsRepositoryLogger } from '@onething/runtime/settings/settings-repository'
 
 const log = getLogger('settings')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingSettingsRepositoryLogger = consolePort(log)
 
 
 const settingsRepository = createOnethingSettingsRepository<AppSettings>({

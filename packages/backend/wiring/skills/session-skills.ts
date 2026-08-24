@@ -8,19 +8,21 @@ import {
   loadProjectSkillsForDirectory,
 } from './index.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { OnethingSessionSkillsRuntimeAdapters } from '@onething/runtime/skills/session-skills'
 
 const log = getLogger('skills')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
 const consoleLog = consolePort(log)
 
 
-const sessionSkillsRuntime = createOnethingSessionSkillsRuntime<SkillDefinition>({
+const sessionSkillsRuntimeAdapters: OnethingSessionSkillsRuntimeAdapters<SkillDefinition> = {
   ensureSkillsDirectories,
   loadAllSkills,
   loadProjectSkillsForDirectory,
   getSkillSettings: () => getSettings().skills,
   logger: consoleLog,
-})
+};
+const sessionSkillsRuntime = createOnethingSessionSkillsRuntime<SkillDefinition>(sessionSkillsRuntimeAdapters)
 
 export async function initializeSessionSkills(): Promise<void> {
   await sessionSkillsRuntime.initialize()

@@ -33,10 +33,12 @@ import {
 import type { PermissionRoutes } from '@shared/ipc/permissions.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingPermissionSessionIpcLogger } from '@onething/runtime/permissions/permission-session-presentation'
 
 const log = getLogger('rpc.permission')
 /** 旧线传的是裸 `console`;结构化 logger 的鸭子端口替身(area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingPermissionSessionIpcLogger = consolePort(log)
 
 export const permissionRpcHandlers: RouteHandlers<PermissionRoutes> = {
   // 全景(含 promptState 标注的排队 prompt),这样重载的客户端能按 toolCallId

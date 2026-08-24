@@ -27,7 +27,7 @@ import {
   pluginScope,
   type PluginToolResultInterceptContext,
   type PluginToolResultInterceptHandler,
-  type PluginToolResultInterceptOutcome,
+  type PluginToolResultInterceptOutcome, type CorePluginToolResultInterceptRegistryOptions,
 } from '@onething/core/plugins'
 import {
   probePluginSurface,
@@ -39,7 +39,7 @@ import { getLogger } from '../logging/index.js'
 const log = getLogger('plugins')
 
 
-const registry = new CorePluginToolResultInterceptRegistry({
+const pluginToolResultInterceptRegistryOptions: CorePluginToolResultInterceptRegistryOptions = {
   // 超时预算走 core 默认(2s):与 N4 同 —— 它同样同步阻塞在一次工具结果回模型
   // 之前,用户此刻在看"正在执行"的转圈。
   onHandlerFailure({ pluginId, hookId, error }) {
@@ -65,7 +65,8 @@ const registry = new CorePluginToolResultInterceptRegistry({
       new Error(reason),
     )
   },
-})
+};
+const registry = new CorePluginToolResultInterceptRegistry(pluginToolResultInterceptRegistryOptions)
 
 export function registerPluginToolResultInterceptHook(
   pluginId: string,

@@ -134,7 +134,7 @@ import { clearCollabWakeFollowups } from '../wake-followup.js'
 import {
   CollabAgentActor,
   type CollabAgentActorHost,
-  type CollabAgentRoomContextInput,
+  type CollabAgentRoomContextInput, type CollabAgentActorOptions,
 } from '@onething/runtime/collab/actors/agent-actor'
 import { openCollabAgentMailbox } from '@onething/runtime/collab/actors/agent-mailbox'
 import { createCollabEngineMindPort } from './engine-mind-port.js'
@@ -143,7 +143,7 @@ import { createCollabNotebookFileStore } from '@onething/runtime/collab/actors/n
 import {
   CollabRefereeActor,
   type CollabRefereeActorHost,
-  type CollabRefereeJudgePort,
+  type CollabRefereeJudgePort, type CollabRefereeActorOptions,
 } from '@onething/runtime/collab/actors/referee-actor'
 import { createCollabEngineRefereeJudgePort } from './referee-judge.js'
 import { collabRoomActorsDir, createCollabRoomAccountFileStore } from '@onething/runtime/collab/actors/room-account'
@@ -304,6 +304,32 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
     worker: options.ports?.worker ?? createCollabEngineWorkerPort(),
   }
   const schedulerLog = createCollabSchedulerLogFileStore()
+  const collabRefereeActorOptions: CollabRefereeActorOptions = {
+    refereeId: 'referee',
+    host: refereeHost(),
+    judge: options.ports?.judge ?? createCollabEngineRefereeJudgePort(),
+    // 裁决的三格(why / elapsedMs / model)在这里被接住 —— 时间轴上
+    // `judge-verdict` / `judge-degraded` 两类行的唯一产生点(D8 §3.3)。
+    onJudged: trace => {
+      schedulerLog.append(trace.roomId, trace.degraded
+        ? collabSchedulerJudgeDegraded({
+            at: Date.now(),
+            token: trace.token,
+            reason: trace.reason ?? 'unreadable',
+            elapsedMs: trace.elapsedMs,
+            triggeredBy: trace.token,
+          })
+        : collabSchedulerJudgeVerdict({
+            at: Date.now(),
+            token: trace.token,
+            order: [...trace.grants],
+            elapsedMs: trace.elapsedMs,
+            ...(trace.why ? { why: trace.why } : {}),
+            ...(trace.model ? { model: trace.model } : {}),
+            triggeredBy: trace.token,
+          }))
+    },
+  };
   const runtime: RuntimeState = {
     rooms: new Map(),
     agents: new Map(),
@@ -312,32 +338,7 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
     budget: new Map(),
     judgments: new Map(),
     slots,
-    referee: new CollabRefereeActor({
-      refereeId: 'referee',
-      host: refereeHost(),
-      judge: options.ports?.judge ?? createCollabEngineRefereeJudgePort(),
-      // 裁决的三格(why / elapsedMs / model)在这里被接住 —— 时间轴上
-      // `judge-verdict` / `judge-degraded` 两类行的唯一产生点(D8 §3.3)。
-      onJudged: trace => {
-        schedulerLog.append(trace.roomId, trace.degraded
-          ? collabSchedulerJudgeDegraded({
-              at: Date.now(),
-              token: trace.token,
-              reason: trace.reason ?? 'unreadable',
-              elapsedMs: trace.elapsedMs,
-              triggeredBy: trace.token,
-            })
-          : collabSchedulerJudgeVerdict({
-              at: Date.now(),
-              token: trace.token,
-              order: [...trace.grants],
-              elapsedMs: trace.elapsedMs,
-              ...(trace.why ? { why: trace.why } : {}),
-              ...(trace.model ? { model: trace.model } : {}),
-              triggeredBy: trace.token,
-            }))
-      },
-    }),
+    referee: new CollabRefereeActor(collabRefereeActorOptions),
     disposers: [],
     stopping: false,
     ports,
@@ -584,7 +585,7 @@ async function ensureAgent(agentId: string): Promise<AgentEntry | undefined> {
 
   const task = (async (): Promise<AgentEntry | undefined> => {
     const mailbox = await openCollabAgentMailbox(agentId)
-    const actor = new CollabAgentActor({
+    const collabAgentActorOptions: CollabAgentActorOptions = {
       agentId,
       host: agentHost(),
       mindPort: runtime.ports.mind,
@@ -613,7 +614,8 @@ async function ensureAgent(agentId: string): Promise<AgentEntry | undefined> {
       onActivity: transition => {
         broadcastCollabAgentActivity(agentId, { activity: transition !== 'inbox' })
       },
-    })
+    };
+    const actor = new CollabAgentActor(collabAgentActorOptions)
     const entry: AgentEntry = { agentId, actor, mailbox }
     runtime.agents.set(agentId, entry)
     actor.start()

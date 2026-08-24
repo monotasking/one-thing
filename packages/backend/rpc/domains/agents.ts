@@ -32,18 +32,23 @@ import {
 } from '../../wiring/agents/index.js'
 import { getSessionsList } from '../../stores/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingAgentsIpcLogger } from '@onething/runtime/agents/ipc-operations'
+import type { AgentDefinition } from '@shared/ipc.js'
+import type { ListOnethingAgentsOptions, CreateOnethingAgentFromRequestOptions, UpdateOnethingAgentFromRequestOptions } from '@onething/runtime/agents/ipc-operations'
 
 const log = getLogger('ipc.agents')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingAgentsIpcLogger = consolePort(log)
 
 
 export const agentsRpcHandlers: RouteHandlers<AgentsRoutes> = {
   async list() {
-    return listOnethingAgentsForIpc({ listAgents, logger: consoleLog })
+    const listOnethingAgentsOptions: ListOnethingAgentsOptions<AgentDefinition> & { logger?: OnethingAgentsIpcLogger | undefined; } = { listAgents, logger: consoleLog };
+    return listOnethingAgentsForIpc(listOnethingAgentsOptions)
   },
   async create(request) {
-    return createOnethingAgentFromRequestForIpc({
+    const createOnethingAgentFromRequestOptions: CreateOnethingAgentFromRequestOptions<AgentDefinition> & { logger?: OnethingAgentsIpcLogger | undefined; } = {
       name: request?.name ?? '',
       systemPrompt: request?.systemPrompt ?? '',
       tools: request?.tools,
@@ -59,10 +64,11 @@ export const agentsRpcHandlers: RouteHandlers<AgentsRoutes> = {
       createId: randomUUID,
       createAgent,
       logger: consoleLog,
-    })
+    };
+    return createOnethingAgentFromRequestForIpc(createOnethingAgentFromRequestOptions)
   },
   async update(request) {
-    return updateOnethingAgentFromRequestForIpc({
+    const updateOnethingAgentFromRequestOptions: UpdateOnethingAgentFromRequestOptions<AgentDefinition> & { logger?: OnethingAgentsIpcLogger | undefined; } = {
       agentId: request?.agentId ?? '',
       name: request?.name,
       systemPrompt: request?.systemPrompt,
@@ -78,7 +84,8 @@ export const agentsRpcHandlers: RouteHandlers<AgentsRoutes> = {
       maxTurns: request?.maxTurns,
       updateAgent,
       logger: consoleLog,
-    })
+    };
+    return updateOnethingAgentFromRequestForIpc(updateOnethingAgentFromRequestOptions)
   },
   async delete(request) {
     return deleteOnethingAgentFromRequestForIpc({

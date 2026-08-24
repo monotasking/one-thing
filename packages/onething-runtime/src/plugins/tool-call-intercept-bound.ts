@@ -31,7 +31,7 @@ import {
   pluginScope,
   type PluginToolCallInterceptContext,
   type PluginToolCallInterceptHandler,
-  type PluginToolCallInterceptOutcome,
+  type PluginToolCallInterceptOutcome, type CorePluginToolCallInterceptRegistryOptions,
 } from '@onething/core/plugins'
 import type { JsonObject } from '@shared/json.js'
 import {
@@ -44,7 +44,7 @@ import { getLogger } from '../logging/index.js'
 const log = getLogger('plugins')
 
 
-const registry = new CorePluginToolCallInterceptRegistry({
+const pluginToolCallInterceptRegistryOptions: CorePluginToolCallInterceptRegistryOptions = {
   // 超时预算走 core 默认(2s):高于 N2 的 1.5s(用户此刻在看"正在执行"的转圈,
   // 比空白输入框耐受度高),远低于生命周期钩子的 5s(它同步阻塞在每一次工具
   // 执行之前)。
@@ -92,7 +92,8 @@ const registry = new CorePluginToolCallInterceptRegistry({
       new Error(reason),
     )
   },
-})
+};
+const registry = new CorePluginToolCallInterceptRegistry(pluginToolCallInterceptRegistryOptions)
 
 export function registerPluginToolCallInterceptHook(
   pluginId: string,

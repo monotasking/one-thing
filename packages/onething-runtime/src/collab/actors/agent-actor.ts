@@ -351,7 +351,8 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
   private turn: InFlightTurn | null = null
 
   constructor(options: CollabAgentActorOptions) {
-    super({ ...options, id: `agent:${options.agentId}` })
+    const actorBaseOptions: ActorBaseOptions<ActorEvent<CollabActorVerb>> = { ...options, id: `agent:${options.agentId}` };
+    super(actorBaseOptions)
     this.agentId = options.agentId
     this.host = options.host
     this.mindPort = options.mindPort

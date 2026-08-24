@@ -22,7 +22,7 @@ import {
   type LogFields,
   type LogLevel,
   type LogRecord,
-  type Logger,
+  type Logger, type LoggerRootOptions,
 } from '@onething/core/logging'
 
 const FALLBACK_RING_SIZE = 200
@@ -33,10 +33,11 @@ function resolveEnvLevelSpec(): string | undefined {
 }
 
 const fallbackRing = new MemoryRingSink(FALLBACK_RING_SIZE)
-const fallbackRoot = new LoggerRoot({
+const loggerRootOptions: LoggerRootOptions = {
   level: resolveEnvLevelSpec(),
   sinks: [fallbackRing],
-})
+};
+const fallbackRoot = new LoggerRoot(loggerRootOptions)
 
 let currentRoot: LoggerRoot = fallbackRoot
 /** root 换了就让所有 DeferredLogger 重新取一次目标,避免每行都新建 child。 */
@@ -139,7 +140,8 @@ export interface RuntimeLogCapture {
 export function captureRuntimeLogs(level = 'trace'): RuntimeLogCapture {
   const previous = currentRoot
   const ring = new MemoryRingSink(500)
-  setRuntimeLoggerRoot(new LoggerRoot({ level, sinks: [ring] }))
+  const loggerRootOptions2: LoggerRootOptions = { level, sinks: [ring] };
+  setRuntimeLoggerRoot(new LoggerRoot(loggerRootOptions2))
   return {
     records: () => ring.dump(),
     ofLevel: (wanted: LogLevel) => ring.dump().filter(record => record.level === wanted),

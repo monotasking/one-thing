@@ -21,6 +21,8 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { MusicSetupServiceOptions } from '@onething/runtime/music/setup-service'
+import type { NowPlayingWatcherOptions } from '@onething/runtime/music/now-playing'
 
 const log = getLogger('music')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -100,7 +102,7 @@ export function getMusicService(): MusicSetupService {
   if (service) return service
 
   const provider = getActiveMusicProvider()
-  service = new MusicSetupService({
+  const musicSetupServiceOptions: MusicSetupServiceOptions = {
     backend: provider.createBackend({
       runner: createElectronMusicProcessRunner(),
       writeSecretFile: writeElectronMusicSecretFile,
@@ -110,7 +112,8 @@ export function getMusicService(): MusicSetupService {
     getSource: (): OnethingMusicRadioSource => getMusicSettings().source,
     tools: provider.descriptor.tools,
     logger: consoleLog,
-  })
+  };
+  service = new MusicSetupService(musicSetupServiceOptions)
   return service
 }
 
@@ -138,7 +141,7 @@ export function stopMusicPlayerKeepalive(): void {
 
 function getNowPlayingWatcher(): NowPlayingWatcher {
   const provider = getActiveMusicProvider()
-  nowPlayingWatcher ??= createNowPlayingWatcher({
+  const nowPlayingWatcherOptions: NowPlayingWatcherOptions = {
     runner: createElectronMusicProcessRunner(),
     cli: {
       binary: provider.descriptor.binary,
@@ -156,7 +159,8 @@ function getNowPlayingWatcher(): NowPlayingWatcher {
     },
     onSample: nowPlaying => sampleListener?.(nowPlaying),
     logger: consoleLog,
-  })
+  };
+  nowPlayingWatcher ??= createNowPlayingWatcher(nowPlayingWatcherOptions)
   return nowPlayingWatcher
 }
 

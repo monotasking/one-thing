@@ -15,6 +15,7 @@ import {
   type OnethingProviderToolParameter,
   type OnethingProviderToolSourceDefinition,
 } from '@onething/runtime/providers'
+import type { OnethingProviderRuntimeRouteAdapters } from '@onething/runtime/providers/agent-runtime-route'
 
 export const ACP_PROVIDER_ID = ONETHING_ACP_RUNTIME_PROVIDER_ID
 
@@ -40,9 +41,10 @@ export function createUtilityAgentProvider(
   providerId: string,
   config: AgentRuntimeProviderConfig,
 ): AgentProvider | undefined {
-  return createOnethingUtilityAgentProvider(providerId, config, {
+  const providerRuntimeRouteAdapters: OnethingProviderRuntimeRouteAdapters = {
     createAgentProvider: createAgentProviderFromRuntime,
-  }) as AgentProvider | undefined
+  };
+  return createOnethingUtilityAgentProvider(providerId, config, providerRuntimeRouteAdapters) as AgentProvider | undefined
 }
 
 
@@ -50,7 +52,8 @@ export function resolveProviderRuntimeRoute(
   providerId: string,
   config: AgentRuntimeProviderConfig,
 ): ProviderRuntimeRoute {
-  return resolveOnethingProviderRuntimeRoute(providerId, config, {
+  const providerRuntimeRouteAdapters2: OnethingProviderRuntimeRouteAdapters = {
     createAgentProvider: createAgentProviderFromRuntime,
-  }) as ProviderRuntimeRoute
+  };
+  return resolveOnethingProviderRuntimeRoute(providerId, config, providerRuntimeRouteAdapters2) as ProviderRuntimeRoute
 }

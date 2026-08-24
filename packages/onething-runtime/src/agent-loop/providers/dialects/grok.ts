@@ -212,7 +212,8 @@ export const GROK_DIALECT_SPEC = {
 	transport: GROK_TRANSPORT_CAPABILITIES,
 } satisfies Omit<ResponsesDialectSpec, "id">;
 
-export const GROK_DIALECT = defineResponsesDialect({
+const responsesDialectSpec: ResponsesDialectSpec = {
 	id: "grok",
 	...GROK_DIALECT_SPEC,
-});
+};
+export const GROK_DIALECT = defineResponsesDialect(responsesDialectSpec);

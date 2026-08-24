@@ -17,10 +17,12 @@ import {
 } from '@onething/core/plugins'
 import { PLUGIN_NPM_INSTALL_TIMEOUT_MS } from './loader.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/core/logging'
 
 const log = getLogger('plugins.market')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & LegacyDuckLogger = consolePort(log)
 
 
 const NPM_BIN = process.platform === 'win32' ? 'npm.cmd' : 'npm'

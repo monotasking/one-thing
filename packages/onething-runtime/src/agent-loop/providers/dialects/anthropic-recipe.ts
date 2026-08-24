@@ -29,6 +29,7 @@ import {
 	type AnthropicDialect,
 	type AnthropicWireValue,
 } from "../wires/index.js";
+import type { DialectEndpoint } from '../base/dialect.js'
 
 export type FetchFn = typeof globalThis.fetch;
 
@@ -105,13 +106,14 @@ export interface AnthropicDialectSpec {
 }
 
 export function anthropicDialect(spec: AnthropicDialectSpec): AnthropicDialect {
+	const endpointPort: DialectEndpoint = {
+		defaultBaseUrl: spec.defaultBaseUrl ?? ANTHROPIC_DEFAULT_BASE_URL,
+		path: "/messages",
+	};
 	return {
 		id: spec.id,
 		wire: "anthropic-messages",
-		endpoint: {
-			defaultBaseUrl: spec.defaultBaseUrl ?? ANTHROPIC_DEFAULT_BASE_URL,
-			path: "/messages",
-		},
+		endpoint: endpointPort,
 		auth: UNCONFIGURED_AUTH,
 		request: {
 			maxTokensField: "max_tokens",

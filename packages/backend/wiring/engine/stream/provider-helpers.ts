@@ -29,10 +29,12 @@ import {
   type OnethingProviderErrorDetails,
 } from '@onething/runtime/providers'
 import { consolePort, getLogger } from '../../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { CoreProviderAuthLogger } from '@onething/runtime/providers/provider-config'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & CoreProviderAuthLogger = consolePort(log)
 
 
 /**

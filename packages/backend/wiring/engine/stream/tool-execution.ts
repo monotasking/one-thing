@@ -17,7 +17,7 @@ import {
   detectSkillUsage,
   executeCoreToolAndUpdate,
   generateStepTitle,
-  getStepType,
+  getStepType, type CreateToolStepWithFactoryOptions,
 } from '@onething/core/engine'
 import {
   toJsonValue,
@@ -28,10 +28,15 @@ import {
 } from '@onething/core'
 import { runToolkitToolDirectly } from '../../toolkit/wiring.js'
 import { consolePort, getLogger } from '../../logging/index.js'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/core/logging'
+import type { DiffHunk } from '@/types'
+import type { ToolMetadataUpdate } from '@onething/runtime/toolkit/execution-types.wiring'
+import type { ExecuteCoreToolAndUpdateOptions, CoreExecutableSessionLike, CoreToolExecutionStore } from '@onething/core/engine/tool-orchestration'
 
 const log = getLogger('toolkit.runner')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & LegacyDuckLogger = consolePort(log)
 
 
 export {
@@ -90,12 +95,13 @@ export function createStep(
   skillName?: string | null,
   turnIndex?: number
 ): Step {
-  return createToolExecutionStepWithFactory(toolCall, {
+  const createToolStepWithFactoryOptions: CreateToolStepWithFactoryOptions = {
     createId: createCoreId,
     now: Date.now,
     skillName,
     turnIndex,
-  }) as Step
+  };
+  return createToolExecutionStepWithFactory(toolCall, createToolStepWithFactoryOptions) as Step
 }
 
 /**
@@ -114,16 +120,13 @@ export async function executeToolAndUpdate(
   } = {},
 ): Promise<void> {
   const emitter = createEventOnlyEmitter(ctx)
-  await executeCoreToolAndUpdate<
-    ToolCall,
-    Step,
-    ToolExecutionResult,
-    NonNullable<ToolExecutionContext['onMetadata']> extends (update: infer TUpdate) => void ? TUpdate : never,
-    ToolPartialResultUpdate,
-    unknown,
-    JsonValue | undefined,
-    ToolCall['changes']
-  >({
+  const toolExecutionStore: CoreToolExecutionStore<ToolCall, Step, CoreExecutableSessionLike<Step>> = {
+    getSession: store.getSession,
+    // C1(P0.2):消息读走读门面。
+    getMessage: (sessionId, messageId) => sessionReads.getMessage(sessionId, messageId),
+    updateMessageToolCalls: store.updateMessageToolCalls,
+  };
+  const executeCoreToolAndUpdateOptions: ExecuteCoreToolAndUpdateOptions<ToolCall, Step, ToolExecutionResult, ToolMetadataUpdate, ToolPartialResultUpdate, unknown, JsonValue | undefined, { diff: string; hunks?: DiffHunk[] | undefined; filePath: string; additions: number; deletions: number; originalContent?: string | undefined; originalContentHash?: string | undefined; afterContentHash?: string | undefined; auditId?: string | undefined; auditPath?: string | undefined; } | undefined, CoreExecutableSessionLike<Step>> = {
     ctx: {
       sessionId: ctx.sessionId,
       assistantMessageId: ctx.assistantMessageId,
@@ -135,12 +138,7 @@ export async function executeToolAndUpdate(
     turnIndex,
     existingStepId,
     beforeSideEffect: options.beforeSideEffect,
-    store: {
-      getSession: store.getSession,
-      // C1(P0.2):消息读走读门面。
-      getMessage: (sessionId, messageId) => sessionReads.getMessage(sessionId, messageId),
-      updateMessageToolCalls: store.updateMessageToolCalls,
-    },
+    store: toolExecutionStore,
     emitter,
     executeToolDirectly: (name, directArgs, directContext) =>
       executeToolDirectly(name, directArgs, directContext as Parameters<typeof executeToolDirectly>[2]),
@@ -153,5 +151,15 @@ export async function executeToolAndUpdate(
     toJsonValue: value => toJsonValue(value) as JsonValue | undefined,
     toStructured: value => toolResultToStructured(value as ToolResultLike | string | undefined),
     formatFailure: toolFailureText,
-  })
+  };
+  await executeCoreToolAndUpdate<
+    ToolCall,
+    Step,
+    ToolExecutionResult,
+    NonNullable<ToolExecutionContext['onMetadata']> extends (update: infer TUpdate) => void ? TUpdate : never,
+    ToolPartialResultUpdate,
+    unknown,
+    JsonValue | undefined,
+    ToolCall['changes']
+  >(executeCoreToolAndUpdateOptions)
 }

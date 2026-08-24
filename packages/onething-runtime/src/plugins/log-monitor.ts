@@ -10,8 +10,9 @@ import {
   createCoreLogMonitorFileDiskAdapters,
   ensureCoreLogMonitorDirectory,
   registerCoreLogMonitorPlugin,
+  type CoreLogMonitorPluginOptions,
   type CoreLogMonitorPluginApi,
-  type CoreLogMonitorPluginRuntime,
+  type CoreLogMonitorPluginRuntime, type CoreLogMonitorDiskWriterOptions,
 } from '@onething/core/plugins'
 
 // Manifests are product data: the plugin's id/描述/作者只有产品层认识,
@@ -115,7 +116,8 @@ export interface RegisterOnethingLogMonitorPluginOptions {
   getConfig?(): OnethingLogMonitorConfig
 }
 
-export type OnethingLogMonitorPluginApi = CoreLogMonitorPluginApi<OnethingLogMonitorSearchToolParameters>
+export interface OnethingLogMonitorPluginApi
+  extends CoreLogMonitorPluginApi<OnethingLogMonitorSearchToolParameters> {}
 
 export function registerOnethingLogMonitorPlugin(
   api: OnethingLogMonitorPluginApi,
@@ -129,19 +131,21 @@ export function registerOnethingLogMonitorPlugin(
   const readConfig = options.getConfig
     ?? (() => resolveOnethingLogMonitorConfig(api.settings?.get?.()))
 
-  const runtime = registerCoreLogMonitorPlugin(api, {
+  const diskWriterOptionsPort: CoreLogMonitorDiskWriterOptions = {
+    // 取值器:设置页改一次,下一次 flush / cleanup 就按新值走。
+    flushIntervalMs: () => readConfig().flushIntervalMs,
+    retentionDays: () => readConfig().retentionDays,
+    adapters: createCoreLogMonitorFileDiskAdapters(logDir, { log: logger.log?.bind(logger) }),
+  };
+  const logMonitorPluginOptions: CoreLogMonitorPluginOptions<OnethingLogMonitorSearchToolParameters> = {
     maxBuffer: CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER,
     searchToolParameters: createOnethingLogMonitorSearchToolParameters(),
-    diskWriterOptions: {
-      // 取值器:设置页改一次,下一次 flush / cleanup 就按新值走。
-      flushIntervalMs: () => readConfig().flushIntervalMs,
-      retentionDays: () => readConfig().retentionDays,
-      adapters: createCoreLogMonitorFileDiskAdapters(logDir, { log: logger.log?.bind(logger) }),
-    },
+    diskWriterOptions: diskWriterOptionsPort,
     shouldNotify: () => readConfig().notifyOnErrors,
     ensureLogDir: () => ensureCoreLogMonitorDirectory(logDir),
     logger,
-  })
+  }
+  const runtime = registerCoreLogMonitorPlugin(api, logMonitorPluginOptions)
 
   registerOnethingLogMonitorPanel(api, { logDir, readConfig, runtime })
   // api 的静态类型是 core 的窄接口(只声明了 log-monitor 用到的那几个成员);

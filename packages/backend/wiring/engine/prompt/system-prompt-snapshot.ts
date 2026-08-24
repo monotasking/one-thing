@@ -37,6 +37,8 @@ import {
 import {
   buildSystemPromptSnapshotWithAdapters,
 } from '@onething/runtime/prompts'
+import type { BuildSystemPromptSnapshotWithAdaptersOptions } from '@onething/runtime/prompts/system-prompt-snapshot'
+import type { CreateAgentProviderFromRuntimeOptions } from '@onething/runtime/agent-loop/providers/factory'
 
 type ProviderConfigWithAuth = ProviderConfig & {
   authContext?: ProviderAuthContext
@@ -59,6 +61,10 @@ async function resolveModelSupportsToolsForSnapshot(options: {
   if (!options.provider.providerSupported) return false
 
   if (options.agentLoopActive) {
+    const createAgentProviderFromRuntimeOptions: CreateAgentProviderFromRuntimeOptions = {
+      workingDirectory: options.workingDirectory,
+      localSessionId: options.sessionId,
+    };
     const agentProvider = createAgentProviderFromRuntime(options.provider.providerId, {
       apiKey: options.provider.providerConfig.apiKey,
       baseUrl: typeof options.provider.providerConfig.baseUrl === 'string'
@@ -71,10 +77,7 @@ async function resolveModelSupportsToolsForSnapshot(options: {
       authContext: options.provider.providerConfig.authContext,
       modelCapabilitiesByModel: options.provider.providerConfig.modelCapabilitiesByModel,
       models: options.provider.providerConfig.models,
-    }, {
-      workingDirectory: options.workingDirectory,
-      localSessionId: options.sessionId,
-    })
+    }, createAgentProviderFromRuntimeOptions)
 
     if (agentProvider) {
       const capabilities = await resolveAgentModelCapabilities(agentProvider, options.provider.model)
@@ -130,12 +133,7 @@ function enabledSkillNamesForSnapshot(
 }
 
 export async function buildSystemPromptSnapshot(sessionId: string): Promise<SystemPromptSnapshot> {
-  const snapshot = await buildSystemPromptSnapshotWithAdapters<
-    AppSettings,
-    ProviderConfigWithAuth,
-    ToolDefinition,
-    SkillDefinition
-  >({
+  const buildSystemPromptSnapshotWithAdaptersOptions: BuildSystemPromptSnapshotWithAdaptersOptions<AppSettings, ProviderConfigWithAuth, ToolDefinition, SkillDefinition> = {
     sessionId,
     getSession: id => store.getSession(id),
     getSettings: () => store.getSettings(),
@@ -174,7 +172,13 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     // 报成"已装配"。
     getAgentToolAllowlist: () => resolveAgentProfileForSession(sessionId).tools,
     buildPrompt,
-  })
+  };
+  const snapshot = await buildSystemPromptSnapshotWithAdapters<
+    AppSettings,
+    ProviderConfigWithAuth,
+    ToolDefinition,
+    SkillDefinition
+  >(buildSystemPromptSnapshotWithAdaptersOptions)
 
   const codexNative = snapshot.tools.nativeProvider.map(tool => ({
     ...tool,

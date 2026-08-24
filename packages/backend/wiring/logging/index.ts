@@ -7,7 +7,7 @@ import {
   type LogRecord,
   type LogSink,
   type LogSource,
-  type Logger,
+  type Logger, type LoggerRootOptions,
 } from '@onething/core/logging'
 import {
   ensureDir,
@@ -16,7 +16,7 @@ import {
 import { setRuntimeLoggerRoot } from '@onething/runtime/logging/index'
 import { JsonlFileSink } from '@onething/runtime/logging/jsonl-file-sink'
 import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from '@onething/runtime/logging/legacy-console-sink'
-import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode } from '@onething/runtime/logging/crash-hooks'
+import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode, type ProcessCrashHooksOptions } from '@onething/runtime/logging/crash-hooks'
 import { LogDirJanitor } from '@onething/runtime/logging/janitor'
 import { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from '@onething/runtime/logging/legacy-debug-env'
 import type { AppLogLevel } from '@onething/runtime/logging/rolling-file-logger'
@@ -93,14 +93,15 @@ const memoryRing = new MemoryRingSink(MEMORY_RING_SIZE)
  * 都能用 —— configure 之前的记录留在环里,不会丢也不会打到别处。
  * 导入本模块**不产生任何副作用**(不建目录、不劫持 console),那是 configure 的事。
  */
-const root = new LoggerRoot({
+const loggerRootOptions: LoggerRootOptions = {
   level: resolveLevelSpec(),
   sinks: [memoryRing],
   src: 'main',
   onSinkError: error => {
     reportInternalError(error)
   },
-})
+};
+const root = new LoggerRoot(loggerRootOptions)
 
 let internalErrorReporter: ((error: unknown) => void) | undefined
 
@@ -221,11 +222,12 @@ export function configureLogging(options: ConfigureLoggingOptions = {}): Logging
   legacyConsole?.install()
 
   if (options.crashHooks !== false) {
-    crashHooks = installProcessCrashHooks(getLogger('process'), {
+    const processCrashHooksOptions: ProcessCrashHooksOptions = {
       flushSync: () => fileSink?.flushSync(),
       uncaughtException: options.uncaughtException,
       printFatal: error => legacyConsole?.getOriginalConsole().error(error),
-    })
+    };
+    crashHooks = installProcessCrashHooks(getLogger('process'), processCrashHooksOptions)
   }
 
   if (options.janitor !== false) {

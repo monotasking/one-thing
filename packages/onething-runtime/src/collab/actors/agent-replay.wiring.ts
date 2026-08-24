@@ -33,6 +33,8 @@
  *    那条路是同步的,不受调度影响。
  */
 import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/core/actors'
+import type { CollabRoomMemberMailbox } from './room-actor.wiring.js'
+import type { CollabAgentOutbox } from './agent-actor.js'
 import {
   buildCollabDriveRoomContext,
   collabAgentSessionId,
@@ -56,7 +58,7 @@ import {
 import {
   CollabAgentActor,
   type CollabAgentActorHost,
-  type CollabAgentTurnFailure,
+  type CollabAgentTurnFailure, type CollabAgentActorOptions,
 } from './agent-actor.js'
 import {
   createCollabScriptedMindPort,
@@ -225,7 +227,7 @@ export async function replayCollabDuet(
       appendMessage: (_roomId, message) => {
         roomMessages.get(spec.roomId)?.push(message)
       },
-      memberMailbox: agentId => {
+      memberMailbox: (agentId): CollabRoomMemberMailbox | undefined => {
         const mailbox = agentMailboxes.get(agentId)
         if (!mailbox) return undefined
         return { append: event => mailbox.append(event) }
@@ -269,7 +271,7 @@ export async function replayCollabDuet(
           bootstrap: input.bootstrap,
         })
       },
-      roomOutbox: roomId => {
+      roomOutbox: (roomId): CollabAgentOutbox | undefined => {
         const mailbox = roomMailboxes.get(roomId)
         if (!mailbox) return undefined
         return {
@@ -290,7 +292,7 @@ export async function replayCollabDuet(
       now: () => clock.now,
     }
 
-    return new CollabAgentActor({
+    const collabAgentActorOptions: CollabAgentActorOptions = {
       agentId,
       host,
       mindPort,
@@ -300,7 +302,8 @@ export async function replayCollabDuet(
       ...(options.foldLimits ? { foldLimits: options.foldLimits } : {}),
       ...(options.notebookBudget === undefined ? {} : { notebookBudget: options.notebookBudget }),
       onTurnFailure: failure => failures.push(failure),
-    })
+    };
+    return new CollabAgentActor(collabAgentActorOptions)
   })
 
   /* ── 跑 ─────────────────────────────────────────────────────────────── */

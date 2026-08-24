@@ -23,10 +23,13 @@ import {
 } from '@onething/runtime/storage'
 import { saveSchedulerRunDetail } from '@onething/runtime/scheduler/run-history-bound.wiring'
 import { consolePort, getLogger } from '../logging/index.js'
+import type { OnethingSchedulerAgentTaskEventBus, OnethingSchedulerAgentTaskSessionStore, OnethingSchedulerAgentTaskRunnerOptions, OnethingSchedulerAgentTaskLogger } from '@onething/runtime/scheduler/agent-task-runner'
+import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { OnethingSchedulerUserTaskLogger } from '@onething/runtime/scheduler/user-tasks'
 
 const log = getLogger('scheduler')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
+const consoleLog: ConsoleLikePort & OnethingSchedulerAgentTaskLogger & OnethingSchedulerUserTaskLogger = consolePort(log)
 
 
 const USER_TASK_TIMEOUT_MS = 30 * 60 * 1000
@@ -112,27 +115,30 @@ export function setUserSchedulerTaskEnabled(id: string, enabled: boolean): Sched
 
 async function runAgentTask(taskId: string, context: SchedulerTaskContext): Promise<Record<string, unknown>> {
   const eventBus = getEventBus()
-  return await runOnethingSchedulerAgentTask(taskId, context, {
+  const eventBusPort: OnethingSchedulerAgentTaskEventBus = {
+    onAny: (sessionId, handler, label) =>
+      eventBus.onAny(sessionId, handler as unknown as Parameters<typeof eventBus.onAny>[1], label),
+    emit: (sessionId, event) =>
+      eventBus.emit(sessionId, event as unknown as Parameters<typeof eventBus.emit>[1]),
+  };
+  const sessionsPort: OnethingSchedulerAgentTaskSessionStore = {
+    getCurrentSessionId: store.getCurrentSessionId,
+    createSession: store.createSession,
+    updateSessionAgent: store.updateSessionAgent,
+    updateSessionWorkingDirectory: store.updateSessionWorkingDirectory,
+    updateSessionArchived: store.updateSessionArchived,
+    setCurrentSessionId: store.setCurrentSessionId,
+    getSession: store.getSession,
+  };
+  const schedulerAgentTaskRunnerOptions: OnethingSchedulerAgentTaskRunnerOptions = {
     getTask: getUserTask,
     getStreamHost: getStreamEngineSafe,
-    eventBus: {
-      onAny: (sessionId, handler, label) =>
-        eventBus.onAny(sessionId, handler as unknown as Parameters<typeof eventBus.onAny>[1], label),
-      emit: (sessionId, event) =>
-        eventBus.emit(sessionId, event as unknown as Parameters<typeof eventBus.emit>[1]),
-    },
-    sessions: {
-      getCurrentSessionId: store.getCurrentSessionId,
-      createSession: store.createSession,
-      updateSessionAgent: store.updateSessionAgent,
-      updateSessionWorkingDirectory: store.updateSessionWorkingDirectory,
-      updateSessionArchived: store.updateSessionArchived,
-      setCurrentSessionId: store.setCurrentSessionId,
-      getSession: store.getSession,
-    },
+    eventBus: eventBusPort,
+    sessions: sessionsPort,
     saveRunDetail: detail => saveSchedulerRunDetail(detail as SchedulerRunDetailDTO) as OnethingSchedulerRunDetail,
     createId: uuidv4,
     now: nowMs,
     logger: consoleLog,
-  })
+  };
+  return await runOnethingSchedulerAgentTask(taskId, context, schedulerAgentTaskRunnerOptions)
 }

@@ -21,6 +21,7 @@ import {
 } from "../engine/stream/provider-helpers.js";
 import { resolveUtilityModel } from "@onething/runtime/providers/utility-model.wiring";
 import { applySessionSpaceCredentials } from "./space-credentials.js";
+import type { CreateAgentProviderFromRuntimeOptions } from '@onething/runtime/agent-loop/providers/factory'
 
 export interface UtilityProviderRef {
 	provider: AgentProvider;
@@ -80,6 +81,10 @@ export async function createUtilityProvider(
 	const authContext = await resolveProviderAuth(resolved.providerId, providerConfig);
 	if (!authContext) return undefined;
 
+	const createAgentProviderFromRuntimeOptions: CreateAgentProviderFromRuntimeOptions = {
+		workingDirectory: options.workingDirectory,
+		localSessionId: options.sessionId,
+	};
 	const provider = createAgentProviderFromRuntime(
 		resolved.providerId,
 		{
@@ -99,10 +104,7 @@ export async function createUtilityProvider(
 				authContext.kind === "oauth" ? authContext.token : providerConfig.oauthToken,
 			apiType: getProviderApiType(settings, resolved.providerId),
 		},
-		{
-			workingDirectory: options.workingDirectory,
-			localSessionId: options.sessionId,
-		},
+		createAgentProviderFromRuntimeOptions,
 	);
 	if (!provider) return undefined;
 

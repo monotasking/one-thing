@@ -66,13 +66,14 @@ import { createDefaultSettings } from '@shared/defaults/settings.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'
+import type { BindableOnethingStreamSender } from '@onething/runtime/stream-sender'
 
 const log = getLogger('daemon')
 
 
 type EmitStreamEvent = (event: DaemonStreamEvent) => void
 
-class HeadlessSender extends EventEmitter {
+class HeadlessSender extends EventEmitter implements BindableOnethingStreamSender {
   isDestroyed(): boolean {
     return false
   }
