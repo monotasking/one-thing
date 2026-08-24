@@ -42,6 +42,7 @@ import {
 	pushWaiting,
 	rebuildLoadedContentParts,
 	removeTransientIndicators,
+	synthesizeToolAnchors,
 	upsertToolCall,
 } from "./helpers/content-parts";
 import {
@@ -986,7 +987,15 @@ export const useChatStore = defineStore("chat", () => {
 		// user actions propagate to both consumers.
 		linkStepsToToolCalls(message);
 
-		if (message.contentParts && message.contentParts.length > 0) return message;
+		if (message.contentParts && message.contentParts.length > 0) {
+			// 投影形态(events 读模式)的 contentParts 只有 text/reasoning,故意不带
+			// 渲染锚点(canonical G4)。缺锚点且消息有工具时,按 turnIndex 现合成
+			// data-steps —— 工具行 / work-group 不再依赖任何持久化锚点(S3w-0)。
+			// 已带锚点的消息(迁移会话、流式)是 no-op,绝不重复插。
+			const merged = synthesizeToolAnchors(message.contentParts, message);
+			if (merged) return { ...message, contentParts: merged };
+			return message;
+		}
 
 		const parts = rebuildLoadedContentParts(message);
 

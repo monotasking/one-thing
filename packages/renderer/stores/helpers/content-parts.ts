@@ -308,3 +308,85 @@ export function rebuildLoadedContentParts(message: {
 
   return parts
 }
+
+/** 一条 contentParts 是否已带工具渲染锚点(`data-steps` 或 `tool-call`)。 */
+function hasToolAnchor(parts: readonly ContentPart[]): boolean {
+  return parts.some(part => part.type === 'data-steps' || part.type === 'tool-call')
+}
+
+/** 消息里有没有真的工具活儿:含 toolCall 的 step,或非空 toolCalls。 */
+function messageHasToolWork(message: { steps?: Step[]; toolCalls?: ToolCall[] }): boolean {
+  const steps = message.steps ?? []
+  if (steps.some(s => s.toolCall !== undefined || s.toolCallId !== undefined)) return true
+  return (message.toolCalls?.length ?? 0) > 0
+}
+
+/** part 的所属轮次;缺省视为第 0 轮(单轮老消息 / content-only 那一格)。 */
+function partTurn(part: ContentPart): number {
+  return (part as { turnIndex?: number }).turnIndex ?? 0
+}
+
+/**
+ * 把 `data-steps` 锚点插进**已有的** parts:每一轮内容 part 之后、下一轮之前各插一个,
+ * 让 `buildWorkRender` 的 Working/Worked 切分落在最后一轮工具处(而不是把最终回答也
+ * 卷进 work group)。`turns` 里没有对应内容 part 的轮次挂末尾兜底,保证覆盖。
+ */
+function insertDataStepsByTurn(parts: readonly ContentPart[], turns: number[]): ContentPart[] {
+  const remaining = new Set(turns)
+  const out: ContentPart[] = []
+  parts.forEach((part, index) => {
+    out.push(part)
+    const turnIndex = partTurn(part)
+    const next = parts[index + 1]
+    const nextTurn = next ? partTurn(next) : undefined
+    if (remaining.has(turnIndex) && nextTurn !== turnIndex) {
+      out.push({ type: 'data-steps', turnIndex })
+      remaining.delete(turnIndex)
+    }
+  })
+  for (const turnIndex of turns) {
+    if (remaining.has(turnIndex)) {
+      out.push({ type: 'data-steps', turnIndex })
+      remaining.delete(turnIndex)
+    }
+  }
+  return out
+}
+
+/**
+ * 加载路径的**锚点自合成**(S3w-0)。
+ *
+ * events 读模式下的投影**故意不产出**渲染锚点(canonical G4:`data-steps` 是渲染侧
+ * 派生物,不进事件、不进投影),于是投影补水的 contentParts 只有 `text`/`reasoning`,
+ * 没有 `data-steps`/`tool-call`。这里按消息**自己**的 steps/toolCalls 现合成锚点,
+ * 让工具行与 work-group 不再依赖任何地方持久化的锚点(S2b 前靠"结束读抄本把锚点
+ * 带出来"止血,S3w 抽掉 messages.jsonl 补水后止血失效)。
+ *
+ * 三条纪律:
+ *   · **只在缺锚点且有工具时动手** —— 已带锚点的历史消息(迁移会话、流式消息)返回
+ *     `null`(no-op),绝不重复插。流式期间 contentParts 早就有 `tool-call`/`data-steps`,
+ *     这里一律不碰,不会把 live 的 `tool-call` 冲成 `data-steps` 导致行 remount。
+ *   · **turnIndex 全覆盖** —— steps 里出现的每个 turnIndex 都得到一个 `data-steps`,
+ *     否则那一轮的 step 折不出、工具行不显示。
+ *   · **幂等** —— 同一条已合成过(或本就带锚点)的消息再过一遍不变。
+ *
+ * 返回补好锚点的新 parts;无需改动时返回 `null`。
+ */
+export function synthesizeToolAnchors(
+  parts: readonly ContentPart[],
+  message: { steps?: Step[]; toolCalls?: ToolCall[] },
+): ContentPart[] | null {
+  if (hasToolAnchor(parts)) return null
+  if (!messageHasToolWork(message)) return null
+
+  const steps = message.steps ?? []
+  if (steps.length > 0) {
+    const turns = [...new Set(steps.map(s => s.turnIndex ?? 0))].sort((a, b) => a - b)
+    return insertDataStepsByTurn(parts, turns)
+  }
+
+  // 更老的、只存了 toolCalls 的消息:一个 tool-call 兜底块挂末尾(与
+  // rebuildLoadedContentParts 的空路径同款)。
+  const toolCalls = message.toolCalls ?? []
+  return [...parts, { type: 'tool-call', toolCalls: [...toolCalls] }]
+}

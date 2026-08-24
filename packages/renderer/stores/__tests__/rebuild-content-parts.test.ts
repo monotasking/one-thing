@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { rebuildLoadedContentParts } from '../helpers/content-parts'
+import { rebuildLoadedContentParts, synthesizeToolAnchors } from '../helpers/content-parts'
 import { buildWorkRender, type WorkPartEntry } from '../helpers/work-group'
 import type { ContentPart, Step, ToolCall } from '@/types'
 
@@ -180,5 +180,145 @@ describe('rebuildLoadedContentParts × buildWorkRender 等价性', () => {
     expect(rowIds(next)).toEqual(rowIds(legacy))
     expect(next.stats.toolCount).toBe(2)
     expect(next.hasWorkGroup).toBe(legacy.hasWorkGroup)
+  })
+})
+
+/**
+ * `synthesizeToolAnchors` —— S3w-0:events 读模式的投影 contentParts 只有
+ * text/reasoning(无渲染锚点),加载路径按 steps/toolCalls 现合成 data-steps。
+ * 反向门:不修则 work group 空(投影形态的工具行折不出);修后每一轮都折得出。
+ */
+describe('synthesizeToolAnchors(投影形态补锚点)', () => {
+  function entries(parts: readonly ContentPart[]): WorkPartEntry[] {
+    return parts.map((part, index) => ({ part, key: `${part.type}-${index}` }))
+  }
+
+  function render(parts: readonly ContentPart[], steps: Step[]) {
+    const byId = new Map(steps.filter(s => s.toolCallId).map(s => [s.toolCallId as string, s]))
+    return buildWorkRender({
+      entries: entries(parts),
+      role: 'assistant',
+      findStep: id => byId.get(id),
+      stepsForTurn: turnIndex =>
+        (turnIndex === undefined ? steps : steps.filter(s => (s.turnIndex ?? 0) === turnIndex)),
+    })
+  }
+
+  function rowIds(result: ReturnType<typeof render>): string[] {
+    return [...result.stepsByEntry.values()].flat().map(row => row.id)
+  }
+
+  it('反向:投影形态(text/reasoning-only,无锚点)+ 齐全 steps → 补锚点后 work group 折得出', () => {
+    // 投影补水的形状:每一轮的正文,但没有任何 data-steps / tool-call 锚点。
+    // 工具在第 0、1 轮;第 2 轮是无工具的最终回答。
+    const projected: ContentPart[] = [
+      { type: 'reasoning', content: '想一下', turnIndex: 0 },
+      { type: 'text', content: '先查一下', turnIndex: 0 },
+      { type: 'text', content: '再查一下', turnIndex: 1 },
+      { type: 'text', content: '查完了,答案是 X', turnIndex: 2 },
+    ]
+    const steps = [
+      step('a', { turnIndex: 0 }),
+      step('b', { turnIndex: 0 }),
+      step('c', { turnIndex: 1 }),
+    ]
+
+    // 不修(投影形态原样过 buildWorkRender):无锚点 → 工具一个都折不出、无 work group。
+    const before = render(projected, steps)
+    expect(before.hasWorkGroup).toBe(false)
+    expect(before.stats.toolCount).toBe(0)
+
+    // 修后:补出 data-steps,每一轮的 step 都折得出。
+    const merged = synthesizeToolAnchors(projected, {
+      steps,
+      toolCalls: steps.map(s => s.toolCall as ToolCall),
+    })
+    expect(merged).not.toBeNull()
+    const after = render(merged!, steps)
+    expect(after.hasWorkGroup).toBe(true)
+    expect(after.stats.toolCount).toBe(3)
+    expect(rowIds(after).sort()).toEqual(['a', 'b', 'c'])
+
+    // Working/Worked 切分:最后一轮工具之后的最终回答留在 tail,不卷进 work group。
+    expect(after.tailEntries.map(e => (e.part as { content?: string }).content)).toEqual([
+      '查完了,答案是 X',
+    ])
+    // 锚点位置:各轮正文之后、下一轮之前。
+    expect(merged!.map(p => `${p.type}:${(p as { turnIndex?: number }).turnIndex ?? ''}`)).toEqual([
+      'reasoning:0',
+      'text:0',
+      'data-steps:0',
+      'text:1',
+      'data-steps:1',
+      'text:2',
+    ])
+  })
+
+  it('单轮投影 + 无后续回答文本:锚点补在末尾,tail 为空', () => {
+    const projected: ContentPart[] = [{ type: 'text', content: '执行中', turnIndex: 0 }]
+    const steps = [step('a', { turnIndex: 0 })]
+    const merged = synthesizeToolAnchors(projected, { steps })
+    expect(merged).toEqual([
+      { type: 'text', content: '执行中', turnIndex: 0 },
+      { type: 'data-steps', turnIndex: 0 },
+    ])
+    const after = render(merged!, steps)
+    expect(after.hasWorkGroup).toBe(true)
+    expect(after.stats.toolCount).toBe(1)
+  })
+
+  it('幂等:已带 data-steps 锚点的历史消息过一遍不变(返回 null,锚点数不增)', () => {
+    const withAnchor: ContentPart[] = [
+      { type: 'text', content: '做完了' },
+      { type: 'data-steps', turnIndex: 0 },
+    ]
+    expect(synthesizeToolAnchors(withAnchor, { steps: [step('a')] })).toBeNull()
+  })
+
+  it('幂等:已带 tool-call 锚点(流式/极老消息)也是 no-op', () => {
+    const withToolCall: ContentPart[] = [{ type: 'tool-call', toolCalls: [toolCall('a')] }]
+    expect(synthesizeToolAnchors(withToolCall, { toolCalls: [toolCall('a')] })).toBeNull()
+  })
+
+  it('无工具:纯 text/reasoning 的消息不补锚点(返回 null)', () => {
+    const textOnly: ContentPart[] = [{ type: 'text', content: '就一句话', turnIndex: 0 }]
+    expect(synthesizeToolAnchors(textOnly, {})).toBeNull()
+    expect(synthesizeToolAnchors(textOnly, { steps: [], toolCalls: [] })).toBeNull()
+    // reasoning step 但无 toolCall/toolCallId → 不算工具活儿。
+    const reasoningStep = step('r', { type: 'thinking', toolCall: undefined, toolCallId: undefined })
+    expect(synthesizeToolAnchors(textOnly, { steps: [reasoningStep] })).toBeNull()
+  })
+
+  it('无 steps 只有 toolCalls 的投影消息:兜底补一个 tool-call 块挂末尾', () => {
+    const projected: ContentPart[] = [{ type: 'text', content: '正文' }]
+    const calls = [toolCall('a'), toolCall('b')]
+    const merged = synthesizeToolAnchors(projected, { toolCalls: calls })
+    expect(merged).toEqual([
+      { type: 'text', content: '正文' },
+      { type: 'tool-call', toolCalls: calls },
+    ])
+    const toolPart = merged![1] as Extract<ContentPart, { type: 'tool-call' }>
+    expect(toolPart.toolCalls).not.toBe(calls)
+  })
+
+  it('多轮乱序 turnIndex 全覆盖:每一轮都有一个 data-steps 锚点', () => {
+    const projected: ContentPart[] = [
+      { type: 'text', content: 't0', turnIndex: 0 },
+      { type: 'text', content: 't1', turnIndex: 1 },
+      { type: 'text', content: 't2', turnIndex: 2 },
+    ]
+    const steps = [
+      step('a', { turnIndex: 2 }),
+      step('b', { turnIndex: 0 }),
+      step('c', { turnIndex: 1 }),
+    ]
+    const merged = synthesizeToolAnchors(projected, { steps })!
+    const anchorTurns = merged
+      .filter(p => p.type === 'data-steps')
+      .map(p => (p as { turnIndex?: number }).turnIndex)
+    expect(anchorTurns).toEqual([0, 1, 2])
+    const after = render(merged, steps)
+    expect(after.stats.toolCount).toBe(3)
+    expect(rowIds(after).sort()).toEqual(['a', 'b', 'c'])
   })
 })
