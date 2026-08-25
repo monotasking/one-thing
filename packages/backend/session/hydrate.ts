@@ -4,12 +4,12 @@
  *
  * LRU 冷加载时,内存 store(写模型)从哪一侧补水:
  *
- *   `ONETHING_SESSION_HYDRATE = 'messages'(默认,老路)| 'projection'`
+ *   `ONETHING_SESSION_HYDRATE = 'messages'(老路,回滚杆)| 'projection'(默认)`
  *
  * 老路是 `messages.jsonl` —— 那是 §14.1 点名的"S3w 真正要换的那根梁":产品读路
- * 早已全线投影(S2b),写模型的**起点**却还在抄本上。这里就是换梁的岔口,但
- * **本批不翻默认**:补水形状合同(`bun run sessions:hydration-contract`)对全量
- * 真机会话绿了、`fallbackHits` 量到 0 之后才谈默认值。
+ * 早已全线投影(S2b),写模型的**起点**却还在抄本上。这里就是换梁的岔口,而
+ * **批 3(§15.10)已经把默认扳到 `projection`**:前提是批 1 立的合同门对全量真机
+ * 会话绿(436 会话 pass 417 / fail 0 / 0 新类)。回滚 = `ONETHING_SESSION_HYDRATE=messages`。
  *
  * 岔口只在这一层:仓库(产品层)只知道"有没有人给我一份消息",不知道有几种档;
  * 会话外壳(meta.json)两条路共用,换的只是消息那一格。

@@ -23,10 +23,11 @@
  * 已修的每一类失配都固化成至少一个场景(映射表在运行结束时打印,与
  * §10.14 的表逐条对应)。
  *
- * **两条泳道**(S3w-1 起):泳道一按场景表写会话(上面那条链);泳道二把 server
- * 换成一个空 LRU 的新进程 + `ONETHING_SESSION_HYDRATE=projection`,在同一批会话
- * 上各接一轮 —— 冷加载这次从 `events.jsonl` 的投影补水,补水形状漂一格,收尾的
- * 影子当场红(见 `runHydrateLane`)。
+ * **三条泳道**(S3w-1 起两条,批 3 起三条,§15.10):泳道一按场景表写会话(上面
+ * 那条链);另外两条各把 server 换成一个**空 LRU 的新进程**,在(彼此不相交的)
+ * 一批会话上各接一轮 —— 冷加载真的走一遍,补水形状漂一格,收尾的影子当场红
+ * (见 `runHydrateLane`)。这两条分别跑**默认档**(批 3 起 = `projection`)和
+ * **显式回滚档**(`ONETHING_SESSION_HYDRATE=messages`):回滚杆也要一直被测着。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -1358,18 +1359,25 @@ function countShadowLines(store) {
 }
 
 /**
- * 泳道二:**冷加载补水**(S3w-1,§14.4 / §15.4)。
+ * 冷加载补水泳道(S3w-1,§14.4 / §15.4;批 3 起跑**两条**,§15.10)。
  *
- * 泳道一写完的那批会话,换一个空 LRU 的新进程 + `ONETHING_SESSION_HYDRATE=projection`
- * 再各接一轮。第一次 `getSession` 就是冷加载,消息这次从投影物化;那一轮的
- * run 收尾时影子照常比"store vs 投影"。判据是**这条泳道期间新增的失配行必须
- * 为 0** —— 补水形状漂一格就当场红,不必新造判据。
+ * 泳道一写完的那批会话,换一个空 LRU 的新进程再各接一轮。第一次 `getSession`
+ * 就是冷加载;那一轮的 run 收尾时影子照常比"store vs 投影"。判据是**这条泳道
+ * 期间新增的失配行必须为 0** —— 补水形状漂一格就当场红,不必新造判据。
  *
- * 取样上限 8 条:泳道二的价值在"冷加载路径被真的走了一遍",不在遍历全矩阵;
- * 每条会话都要起一轮真执行,全量会把 45s 的矩阵拖成两倍。
+ * 批 3 把默认翻成 `projection` 之后,这里跑两趟,`env` 决定跑的是哪一档:
+ *  - **默认档**(不设 `ONETHING_SESSION_HYDRATE`)—— 今天等于 `projection`,
+ *    验的是"产品出厂时走的那条路";
+ *  - **显式 legacy 档**(`ONETHING_SESSION_HYDRATE=messages`)—— 验的是**回滚杆
+ *    本身**:扳回老路后冷加载仍然要能读出完整历史、接着写的那轮仍然要 0 失配。
+ *    回滚杆没被测着 = 真要回滚的那天才发现它坏了。
+ *
+ * 两趟各取样上限 8 条,且**互不相交**(`exclude`):泳道的价值在"冷加载路径被
+ * 真的走了一遍",不在遍历全矩阵;每条会话都要起一轮真执行,全量会把 45s 的
+ * 矩阵拖成两倍。相交还会让"是哪一档漂的"变成一道推理题。
  */
-async function runHydrateLane({ store, api, library, stopServer, startServer, targets }) {
-  const lane = { attempted: 0, failed: [], mismatchLines: 0, skipped: false }
+async function runHydrateLane({ store, api, library, stopServer, startServer, targets, label, env, exclude }) {
+  const lane = { label, attempted: 0, failed: [], mismatchLines: 0, skipped: false }
   const scenario = library.find(entry => entry.name === 'plain-text') ?? library[0]
   if (!scenario || targets.length === 0) {
     lane.skipped = true
@@ -1381,16 +1389,22 @@ async function runHydrateLane({ store, api, library, stopServer, startServer, ta
   const seen = new Set()
   for (const entry of targets) {
     if (seen.has(entry.scenario)) continue
+    if (exclude?.has(entry.sessionId)) continue
     seen.add(entry.scenario)
     picked.push(entry)
     if (picked.length >= 8) break
   }
+  if (picked.length === 0) {
+    lane.skipped = true
+    return lane
+  }
+  for (const entry of picked) exclude?.add(entry.sessionId)
 
   await stopServer()
   await sleep(300)
   const before = countShadowLines(store)
-  console.log(`[battery] hydrate lane: restarting with ONETHING_SESSION_HYDRATE=projection (${picked.length} session(s))`)
-  await startServer({ ONETHING_SESSION_HYDRATE: 'projection' })
+  console.log(`[battery] hydrate lane [${label}]: restarting with an empty LRU (${picked.length} session(s))`)
+  await startServer(env)
 
   for (const entry of picked) {
     lane.attempted += 1
@@ -1454,23 +1468,28 @@ async function main() {
     }]),
   ))
 
-  // 两趟都用它起 server:第二趟只多一个 `ONETHING_SESSION_HYDRATE=projection`
+  // 三趟都用它起 server:场景矩阵那趟 + 两条补水泳道,差别只在 `extraEnv`
   // (S3w-1 的补水泳道,见下面 `runHydrateLane`)。
   const serverOut = []
   let server
   let stopped = true
   const startServer = async extraEnv => {
+    const env = {
+      ...process.env,
+      ONETHING_STORE_PATH: store,
+      ONETHING_SERVER_PORT: String(serverPort),
+      ONETHING_SERVER_TOKEN: token,
+      ONETHING_SESSION_SHADOW: '1',
+      ONETHING_LOG: 'warn',
+    }
+    // 补水档由脚本自己说了算:先把继承来的那一格摘掉,免得开发者 shell 里
+    // 恰好导出过 `ONETHING_SESSION_HYDRATE`,把"默认档泳道"悄悄变成显式档
+    // ——那样两条泳道会验同一件事,而报告照样说自己在验两档。
+    delete env.ONETHING_SESSION_HYDRATE
+    Object.assign(env, extraEnv)
     server = spawn(process.execPath, [SERVER_ENTRY], {
       cwd: REPO,
-      env: {
-        ...process.env,
-        ONETHING_STORE_PATH: store,
-        ONETHING_SERVER_PORT: String(serverPort),
-        ONETHING_SERVER_TOKEN: token,
-        ONETHING_SESSION_SHADOW: '1',
-        ONETHING_LOG: 'warn',
-        ...extraEnv,
-      },
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     stopped = false
@@ -1490,7 +1509,7 @@ async function main() {
 
   const api = makeApi(serverPort, token)
   const results = []
-  let hydrateLane
+  const hydrateLanes = []
   const stopServer = async () => {
     if (stopped) return
     stopped = true
@@ -1541,19 +1560,28 @@ async function main() {
     // 统计表是 1s 节流写、`unref` 的定时器,关停时没人 flush —— 等它自己落一次。
     await sleep(2500)
 
-    // ---- 泳道二:冷加载补水(S3w-1,§14.4)
+    // ---- 补水泳道(S3w-1,§14.4;批 3 起两条,§15.10)
     //
-    // 第一趟把会话写完就把进程杀掉;第二趟换一个**空 LRU 的新进程**、把
-    // `ONETHING_SESSION_HYDRATE` 拨到 `projection`,再往同一批会话上各接一轮。
-    // 那一轮的第一件事就是冷加载 —— store 的消息这次从 `events.jsonl` 的投影
-    // 物化,而不是 `messages.jsonl`。接着 run 收尾时影子照常比"store vs 投影":
-    // 补水形状只要漂了一格,这里当场红。
+    // 第一趟把会话写完就把进程杀掉;后面每一趟都换一个**空 LRU 的新进程**,
+    // 再往一批(彼此不相交的)会话上各接一轮。那一轮的第一件事就是冷加载,
+    // 接着 run 收尾时影子照常比"store vs 投影":补水形状只要漂了一格,当场红。
+    // 换句话说,这两条泳道用**既有的影子法官**验补水,不新造判据。
     //
-    // 换句话说,这条泳道用**既有的影子法官**验补水,不新造判据。
-    hydrateLane = await runHydrateLane({
-      store, api, library, stopServer, startServer,
-      targets: results.filter(entry => entry.ok && entry.sessionId),
-    })
+    //  - `default` —— 不设 `ONETHING_SESSION_HYDRATE`。批 3 翻默认之后它 = 投影
+    //    补水,验的就是产品出厂那条路;
+    //  - `legacy` —— 显式 `ONETHING_SESSION_HYDRATE=messages`,即**回滚杆**。
+    //    它也必须一直被测着:没人跑的回滚杆,等到真要回滚那天才发现是坏的。
+    const laneTargets = results.filter(entry => entry.ok && entry.sessionId)
+    const laneTaken = new Set()
+    for (const spec of [
+      { label: 'default (= projection)', env: {} },
+      { label: 'legacy rollback (ONETHING_SESSION_HYDRATE=messages)', env: { ONETHING_SESSION_HYDRATE: 'messages' } },
+    ]) {
+      hydrateLanes.push(await runHydrateLane({
+        store, api, library, stopServer, startServer,
+        targets: laneTargets, label: spec.label, env: spec.env, exclude: laneTaken,
+      }))
+    }
   } finally {
     await stopServer()
     mock.close()
@@ -1595,15 +1623,19 @@ async function main() {
     for (const error of entry.errors.slice(0, 3)) console.log(`        ${error}`)
   }
 
-  if (hydrateLane) {
-    const red = hydrateLane.failed.length > 0 || hydrateLane.mismatchLines > 0
-    if (red) anyRed = true
-    console.log(
-      `\n[battery] hydrate lane (S3w-1, ONETHING_SESSION_HYDRATE=projection):`
-      + ` ${red ? 'FAIL' : 'PASS'} sessions=${hydrateLane.attempted}`
-      + ` failed=${hydrateLane.failed.length} new-mismatch-lines=${hydrateLane.mismatchLines}`,
-    )
-    for (const error of hydrateLane.failed.slice(0, 5)) console.log(`        ${error}`)
+  if (hydrateLanes.length > 0) {
+    console.log('\n[battery] hydrate lanes (S3w-1 cold load, §15.10 两档):')
+    for (const lane of hydrateLanes) {
+      // 跳过也算红:两档都必须真的跑过 —— 静默少跑一档,门就不再看着回滚杆了。
+      const red = lane.skipped || lane.failed.length > 0 || lane.mismatchLines > 0
+      if (red) anyRed = true
+      console.log(
+        `  ${red ? 'FAIL' : 'PASS'}  ${lane.label}`
+        + ` sessions=${lane.attempted} failed=${lane.failed.length}`
+        + ` new-mismatch-lines=${lane.mismatchLines}${lane.skipped ? ' (skipped — no target session)' : ''}`,
+      )
+      for (const error of lane.failed.slice(0, 5)) console.log(`        ${error}`)
+    }
   }
 
   console.log('\n[battery] fixed-class coverage:')

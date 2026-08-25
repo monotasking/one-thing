@@ -3988,7 +3988,7 @@ renderer 直接 import core reducer)。
 |---|---|---|---|
 | 08-25 晚 | 1 | 0b G12 拒写 + S3w-1 补水岔口/合同门/遥测(在途) | — |
 | 08-26 | 2 | U0 源头标注+runId 上提+双发(steering 竞态结构性消失) | 落地后**重启桌面 + shadow-reset** |
-| 08-26/27 | 3 | S3w-1 翻默认(合同门绿为前提)+ 真机走查 | — |
+| 08-26/27 | 3 | S3w-1 翻默认(合同门绿为前提)+ 真机走查 — **已完成(§15.10)**,真机走查待用户 | — |
 | 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 | — |
 | 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5) | 正常使用即可 |
 | 08-28 | 5 | S3w-4 体积治理(独立,提前插空) | — |
@@ -4071,3 +4071,68 @@ mismatches 0 / appendFailures 0,**hydrate lane PASS:8 会话 / 0 新失配行**)
    `sourceEventSeqs` 只查声明区的校验 —— 与本批零关系(本批不碰写侧、不碰 checker)。
    按 §15.7 检查点①,它的处置要等"重启桌面换上批 P 代码 + shadow-reset"之后再判:
    若换代码后不再新增,则并入基线;若仍新增,则是批 P 遗留的写侧缺口。**本批不动基线。**
+
+### 15.10 批 3 落地记录:S3w-1 翻默认 —— 冷加载从投影补水(2026-08-25,opus 执行,未提交)
+
+**这一批只翻一个常量,但翻的是 §14.1 点名的那根梁**:产品读路早已全线投影
+(S2b),而写模型(内存 store)的**起点**一直还在 `messages.jsonl` 上。批 1 把
+岔口和合同门都装好了、默认留在老路;这一批把默认扳过去。
+
+**改动面(4 个文件,零逻辑新增)**:
+
+- `backend/session/read-mode.ts` —— `DEFAULT_SESSION_HYDRATE_MODE`
+  `'messages' → 'projection'`。**解析逻辑一个字没改**:两个值本来就都显式认,
+  所以 `ONETHING_SESSION_HYDRATE=messages` 原地变成**回滚杆**,语义逐字保留
+  (开关注释里改写成这个口径:扳回去 = 冷加载读抄本;抄本在 S3w-2 之前还在写,
+  所以回滚零数据损伤、不需要迁移也不需要重放)。
+- `backend/session/hydrate.ts` —— 文件头那句"本批不翻默认"换成落地口径。
+- `backend/session/__tests__/reads-read-mode.test.ts` —— **语义对调**:原先靠
+  "什么都不设"表达 messages 档的那条,改成显式 `setSessionHydrateModeForTesting('messages')`
+  并改名为"回滚杆";新增一条**默认即 projection** 的断言。
+  这条断言钉的是**常量 `DEFAULT_SESSION_HYDRATE_MODE`**,不是"什么都不设时读到
+  什么" —— 后者要去读进程环境变量,于是谁在 shell 里扳过回滚杆这条就红,而那是
+  开关在正常工作、不是默认值改了(实测:`ONETHING_SESSION_HYDRATE=messages bun
+  vitest` 下最初的写法当场红,遂改)。两档各自的行为仍由三条显式设档的用例担着。
+- `scripts/shadow-battery.mjs` —— **补水泳道改成两条**(见下)。
+
+**battery 泳道语义对调**:批 1 的第二泳道是"显式 `projection` 档一条"。默认翻过
+之后那个写法会骗人 —— 它验的其实就是默认路,而**回滚杆一条用例都没有**。改成:
+
+- `default (= projection)` —— 不设 `ONETHING_SESSION_HYDRATE`,验产品出厂那条路;
+- `legacy rollback (ONETHING_SESSION_HYDRATE=messages)` —— 验**回滚杆本身**:扳回
+  老路后冷加载仍要读出完整历史、接着写的那轮仍要 0 失配。
+  *没人跑的回滚杆,等到真要回滚那天才发现是坏的。*
+
+三条配套纪律:①两条泳道取样**互不相交**(`exclude` 按 sessionId 去重),否则"是
+哪一档漂的"变成一道推理题;②`startServer` 先 `delete env.ONETHING_SESSION_HYDRATE`
+再叠 `extraEnv` —— 开发者 shell 里恰好导出过这一格时,"默认档泳道"会被悄悄变成显式
+档,而报告照样说自己在验两档;③**`skipped` 也算红**:静默少跑一档 = 门不再看着
+回滚杆。判据照旧是既有的影子法官(泳道期间新增失配行 = 0),不新造。
+
+**门(全部实跑)**:
+
+- `bun run typecheck` 绿(node + web)。
+- 定向 `packages/backend/session` + `runtime/src/sessions` + `core/session`:
+  **45 文件 / 426 用例全绿**;`reads-read-mode.test.ts` 在**两档下各跑一遍**都 18/18。
+- `bun run sessions:shadow-battery` **GREEN**:28 场景 ×7 pass,runs 282 /
+  historyChecks 393 / mismatches 0 / appendFailures 0 / shadow.jsonl 0 行;
+  **两条补水泳道各 8 会话、failed 0、新失配行 0**。
+- `boundary:gate` ok(0)、`session:gate` ok(0 新)、`log:gate` ok(4 已知,0 新)。
+  本批零 `console.*` 新增。
+- **合同门真机重跑**(`~/.onething`,全程只读):436 会话 →
+  **pass 417 / fail 0 / baseline-skip 9 / no-events 10**,与批 1 **逐字相同**。
+  脚本本就与档位无关(它自己物化两侧,不经 `hydrateSessionMessagesFromProjection`),
+  这次重跑要的就是这句"新默认下行为不变"的实证。
+
+**两条读数,原样留给后续批(本批不改)**:
+
+1. `fallbackHits = 282`,恰好 = run 数 —— §15.9 诊断 1 说的那条**结构性地板**
+   (`stream-executor.ts` 在 `run/start` 之前读助手占位消息),翻默认后**一格没动**,
+   佐证它确实与补水档无关。压到 0 属 S3w-3 删兜底的前置。
+2. 全量 `packages/backend`(2344 用例)跑出 1–3 条红,失败集**每轮不同**、单跑全绿,
+   且**在回滚档下同样复现**(`ONETHING_SESSION_HYDRATE=messages` 那轮红的是同两条
+   `sessions-delete-cascade` / `http.test.ts`)—— 本机高负载抖动,与本批无关。
+
+**留给用户的一件事**:§15.8 表里批 3 的"真机走查"。翻默认之后,桌面重启起来的第一
+件事就是从投影冷加载;合同门已经对全量真机会话证过形状等价,走查要看的是**人眼那
+一层**(历史渲染、锚点、滚动位置)。

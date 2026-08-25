@@ -44,7 +44,7 @@ const { getLiveSessionProjection, resetSessionProjectionCache } =
   await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
-const { setSessionReadModeForTesting, setSessionHydrateModeForTesting } =
+const { setSessionReadModeForTesting, setSessionHydrateModeForTesting, DEFAULT_SESSION_HYDRATE_MODE } =
   await import('../read-mode.js')
 const { hydrateSessionMessagesFromProjection } = await import('../hydrate.js')
 const { sessionProjectionOptions } = await import('../projection-blobs.js')
@@ -291,16 +291,24 @@ describe('S3w-1 — transcript fallback telemetry', () => {
 })
 
 /**
- * S3w-1(§14.4):**冷加载补水源**。岔口默认关着,开了才从投影物化;
- * 位置字段 `seq` 摘掉(投影不产出位置,把事件坐标写回抄本正是形状漂移)。
+ * S3w-1(§14.4 / §15.10):**冷加载补水源**。批 3 起岔口**默认走投影**,
+ * `ONETHING_SESSION_HYDRATE=messages` 是显式回滚杆;位置字段 `seq` 摘掉
+ * (投影不产出位置,把事件坐标写回抄本正是形状漂移)。
+ *
+ * 下面每条用例都**显式设档**(默认那条除外,它验的就是默认值本身):默认翻过
+ * 之后,靠"没设档"来表达某一档的用例读起来会骗人。
  */
 describe('S3w-1 — projection hydrate source', () => {
   beforeEach(async () => {
     await recordRun('hello')
   })
 
-  it('is off by default (the store keeps loading from the transcript)', () => {
-    expect(hydrateSessionMessagesFromProjection(SESSION)).toBeUndefined()
+  it('defaults to projection (the store cold-loads from the events side)', () => {
+    // 断言**默认值本身**,而不是"什么都不设时读到什么":后者会去读进程环境
+    // 变量,于是谁在 shell 里扳过回滚杆(`ONETHING_SESSION_HYDRATE=messages`),
+    // 这条就红 —— 那是开关在正常工作,不是默认值改了。默认值只有一个产地,
+    // 就钉在这里;两档各自的行为由下面三条显式设档的用例负责。
+    expect(DEFAULT_SESSION_HYDRATE_MODE).toBe('projection')
   })
 
   it('materializes the projection when the switch is on, without the position seq', () => {
@@ -309,6 +317,11 @@ describe('S3w-1 — projection hydrate source', () => {
     expect(messages?.map(message => message.id)).toEqual(['u1', 'a1'])
     expect(messages?.every(message => !('seq' in message))).toBe(true)
     expect(messages?.[1].content).toBe('hello')
+  })
+
+  it('the messages mode is the rollback lever (the store keeps loading from the transcript)', () => {
+    setSessionHydrateModeForTesting('messages')
+    expect(hydrateSessionMessagesFromProjection(SESSION)).toBeUndefined()
   })
 
   it('falls back (undefined) when the events hold no history for this session', () => {

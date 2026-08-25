@@ -48,23 +48,28 @@ export function setSessionReadModeForTesting(mode?: SessionReadMode): void {
 /**
  * **冷加载补水**开关(S3w-1,§14.4 / §15.4)。
  *
- *   `ONETHING_SESSION_HYDRATE = 'messages'(默认)| 'projection'`
+ *   `ONETHING_SESSION_HYDRATE = 'messages' | 'projection'(默认)`
  *
  * 与上面那个开关问的**不是同一个问题**,所以不合并:
  *  - `ONETHING_SESSION_READ` 问的是"产品线的历史从哪一侧**读**";
  *  - 这一个问的是"LRU 冷加载时,内存 store(写模型)从哪一侧**补水**"。
  *
- * 今天 `read` 已经默认 `events`,而写模型的起点仍然是 `messages.jsonl`
- * (§14.1:"S3w 真正要换的那根梁")。翻这一个 = 把梁换掉,所以它**默认老路**:
- * 补水形状合同(`bun run sessions:hydration-contract`)对全量真机会话绿了、
- * 兜底命中(`fallbackHits`)量到 0 之后才谈默认值。
+ * **默认已切到 `projection`**(S3w-1 批 3,§15.10):写模型的起点也换成
+ * `events.jsonl` 的投影 —— §14.1 点名的"S3w 真正要换的那根梁"换完了。翻默认的
+ * 前提是批 1 立的那道合同门:`bun run sessions:hydration-contract` 对全量真机
+ * 会话断言「投影补水 + rehydrate + sanitize ≡ 抄本 + rehydrate + sanitize」,
+ * 436 会话 pass 417 / fail 0 / 0 新类。
  *
- * 只认两个值,拼错 = 默认 —— 与读开关同款(那边 `messages` 是回滚杆必须显式认,
- * 这边反过来:`projection` 是新路,必须显式点名)。
+ * **`ONETHING_SESSION_HYDRATE=messages` 是显式回滚杆**(回滚语义原样保留):
+ * 扳回去就是老路 —— 冷加载从 `messages.jsonl` 读。抄本仍在写(S3w-2 之前它还是
+ * 磁盘真相之一),所以回滚零数据损伤,不需要迁移、不需要重放。
+ *
+ * 只认两个值,拼错 = 默认 —— 与读开关同款:默认翻过去之后,`messages` 就是那根
+ * 必须被显式认出来的回滚杆,不能被"非 projection 即默认"吞掉。
  */
 export type SessionHydrateMode = 'messages' | 'projection'
 
-export const DEFAULT_SESSION_HYDRATE_MODE: SessionHydrateMode = 'messages'
+export const DEFAULT_SESSION_HYDRATE_MODE: SessionHydrateMode = 'projection'
 
 let hydrateOverride: SessionHydrateMode | undefined
 
