@@ -76,6 +76,31 @@ engine(唯一装配点,delta 在源头就带 partIndex/kind/messageId)
 | U-b | reducer 复用 | ①**renderer 直接 import core 投影 reducer**(已可行,L3 先例)②在 shared 镜像一份(双份漂移,违背本设计初衷) |
 | U-c | 时机 | ①**S2b 后、与 B 期同窗**②立即(与 S2b 争 renderer 回归带宽) |
 
+## 4.1 U0 落地记录(2026-08-25)
+
+三件一起交,**默认档下 renderer 一个字节都不多收**。
+
+| 交付 | 落点 |
+|---|---|
+| 共享 part 边界状态机 | `packages/core/session/part-boundary.ts`(零依赖纯件,`createCoreAssistantPartBoundaryMachine`)。采集点 `session-event-recorder.ts` 从此不再自己拿 `currentTextPart` / `currentReasoningPart` / `toolInputPartByCallId` 那三个字段判边界 —— 它只登记"那一段身上挂着什么"(runId / messageId / turnIndex / 正文累计)。三条规则(换 kind 换段、参数流自成段、分界全收)与从前逐字相同 |
+| delta 源头标注 | 采集点每盖一次章就经 `emitUiEvent` 口发一条 `assistant/delta`(`{runId, requestIndex, messageId, partIndex, kind, toolCallId?, toolName?, turnIndex, text}`),收段发 `assistant/part-end`。**词汇与 events.jsonl 同名同形**(拍板 U-a) |
+| runId 上提(§10.15 根治) | `response-boundary` 的**同步点**换锚点:采集点在收完上一条响应的 part 之后调 `ctx.onResponseBoundary()`,宿主(`agent-loop-executor.ts` 的 `rotateAssistantWriterIdentity`)当场建新助手消息 + `rotateSessionRun` + 盖 runId 回消息。执行器退成"消费已经盖过章的事件":换处理器 / 发射器 / turn state 那一半仍排在上一条消息 `finalize()` 之后 |
+| UI 事件小批 | `SessionStreamCoalescer` 在同一个 16ms 缓冲里把 `assistant/delta` 按**源头那枚章**攒成 `assistant/chunks`(不再判第二遍边界),`assistant/part-end` 走 flush-before-event。管子、消费者(ipc-bridge / SSE)一行未改 —— `transport:gate` 常量 42 / 四壳 2392 不变 |
+| 开关 | `ONETHING_UI_STREAM=legacy(默认)|events`,单点在 `packages/backend/events/ui-stream.ts`。legacy 下 UI 事件**根本不出生**;未知档位按 legacy(不认识就不发) |
+
+两处与原文的偏差,记在这里:
+
+1. **UI 流不带 `placement`**。它在引擎里是由**回合状态**算出来的(`getAgentLoopReasoningPlacement` 要 `accumulatedContent` + 当轮 `turn` 才判得出 top/inline),而边界判定点在 agent-loop 的同步侧,手里没有那份状态 —— 硬要带就得在采集点复刻一遍规则,那正是 §1 规则 2 要消灭的第二个判定点。读侧的 core 投影 reducer 已经从事件里复刻了同一条规则(`reducer.ts` 的 `topReasoningPartIndexes`),U1 的 fold 直接吃它;旧的 `reasoning-delta` chunk 照旧在源头带 placement,legacy 档一字未变。
+2. **旧三条裸 delta(`text-delta` / `reasoning-delta` / `tool-input-delta`)没有被回填 `partIndex`/`kind`**。它们的发射点(`event-only-emitter`)在异步 chunk 队列的**另一侧**,在那里再要一个号就是第三个分号器(provider-data / 合成正文各自占号,两侧立刻错位)。U2 本来就要退役这套词汇,所以 U0 让新词汇带全身份、旧词汇原样不动。
+
+### 门(全部实跑)
+
+- **合同**:`ui-stream-part-boundary.test.ts` —— 同一条 delta 序列(换 kind / 参数流插在正文中间 / 回合分界 / 响应边界),落盘打包器与 UI 小批的 `(partIndex, kind, 正文)` 与 part-end 顺序**逐一致**;段号跨回合单调不复用。
+- **steering 身份**:`steering-run-identity.test.ts` —— 执行器故意一步不走(就是那条竞态的形状),接了同步换锚点口时 steer 之后的事件出生即带新 run + 新消息号,且被接手那条的 `run/end` 排在新正文之前;不接口时仍落在旧 run 上(修复前行为,留作对照)。
+- **落盘字节**:固定 fixture(21 条 delta,含 provider-data / 工具结局 / 两次回合 / 响应边界)在 `HEAD` 的 worktree 与本改动上各跑一次,归一时刻 / runId / dt 之后 **33 行逐字节相同**(sha 一致)。**唯一有意的字节变化在 steering**:被接手那条 run 的 `run/end` 与新 run 的 `run/start` 现在排在新正文之前 —— 那正是 §10.15 要修的东西,不是回归。
+- `sessions:shadow-battery` 两档各跑一遍:`legacy` 与 `ONETHING_UI_STREAM=events` 都是 **274 runs / 0 mismatch / GATE GREEN**。
+- `typecheck` 0;`boundary:gate` / `session:gate` / `log:gate` / `transport:gate` 全 ok。
+
 ## 5. 不做
 - 不改 provider 层;不动 events.jsonl 格式;不动 S 线影子。
 - 不做多窗口协同编辑类的双向流——UI 流是单向投影。

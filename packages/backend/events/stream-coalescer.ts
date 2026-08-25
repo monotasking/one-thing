@@ -20,6 +20,7 @@ import type {
   ReasoningPlacement,
   SessionEventEnvelope,
   StreamChunk,
+  UiAssistantChunksChunk,
 } from '@shared/events/index.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
@@ -31,6 +32,10 @@ export type BufferedStreamChunk =
   | { type: 'text-delta'; text: string; turnIndex?: number; voiceSpeakText?: string }
   | { type: 'reasoning-delta'; reasoning: string; turnIndex?: number; placement?: ReasoningPlacement }
   | { type: 'tool-input-delta'; toolCallId: string; argsTextDelta: string }
+  // U0:UI 事件流的小批(`docs/design/ui-event-stream-2026-08.md` §3)。它与上面
+  // 三条**并排**躺在同一个 16ms 缓冲里 —— 一个缓冲一个顺序,两条流的相对次序
+  // 因此天然稳定,而不是各排各的队再在管口撞车。
+  | UiAssistantChunksChunk
 
 /** Accumulates high-frequency stream chunks between flush intervals. */
 export interface StreamBuffer {
@@ -89,6 +94,33 @@ export function appendStreamBufferChunk(buffer: StreamBuffer, chunk: StreamChunk
     return true
   }
 
+  // U0:UI 事件流的 delta 已经在**源头**盖过章(messageId / partIndex / kind ——
+  // core 的 part 边界状态机判的那一次)。这里因此不再判第二遍边界,只按那枚章
+  // 攒批:同一段就并进上一条,换段就另起一条。
+  if (chunk.type === 'assistant/delta') {
+    if (
+      last?.type === 'assistant/chunks'
+      && last.messageId === chunk.messageId
+      && last.partIndex === chunk.partIndex
+    ) {
+      last.text.push(chunk.text)
+    } else {
+      buffer.chunks.push({
+        type: 'assistant/chunks',
+        runId: chunk.runId,
+        requestIndex: chunk.requestIndex,
+        messageId: chunk.messageId,
+        partIndex: chunk.partIndex,
+        kind: chunk.kind,
+        ...(chunk.toolCallId ? { toolCallId: chunk.toolCallId } : {}),
+        ...(chunk.toolName ? { toolName: chunk.toolName } : {}),
+        ...(chunk.turnIndex !== undefined ? { turnIndex: chunk.turnIndex } : {}),
+        text: [chunk.text],
+      })
+    }
+    return true
+  }
+
   return false
 }
 
@@ -106,7 +138,18 @@ function streamChunkText(chunk: BufferedStreamChunk): string {
   if (chunk.type === 'text-delta') return chunk.text
   if (chunk.type === 'reasoning-delta') return chunk.reasoning
   if (chunk.type === 'tool-input-delta') return chunk.argsTextDelta
+  if (chunk.type === 'assistant/chunks') return chunk.text.join('')
   return ''
+}
+
+/**
+ * U0:UI 事件流的那几条**自带 messageId**(源头就盖好了章,steering 换锚点时
+ * 它比"当前活跃流"更早也更准),所以合帧器不许用自己那份去盖它。
+ */
+function isUiStreamChunkType(type: string): boolean {
+  return type === 'assistant/delta'
+    || type === 'assistant/chunks'
+    || type === 'assistant/part-end'
 }
 
 function previewText(value: string, maxLength = 240): string {
@@ -180,10 +223,23 @@ export class SessionStreamCoalescer {
   handleChunk(sessionId: string, chunk: StreamChunk): void {
     const state = this.sessions.get(sessionId)
 
-    if (!state || (chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta' && chunk.type !== 'tool-input-delta')) {
+    // U0:一段收齐了 —— 与 flush-before-event 同一条纪律,那一段还攒着的 delta
+    // 必须先走,`assistant/part-end` 不许越过自己那一段的正文。
+    if (chunk.type === 'assistant/part-end') {
+      if (state) this.flush(sessionId, state)
+      this.sink.sendChunk(sessionId, chunk)
+      return
+    }
+
+    const bufferable = chunk.type === 'text-delta'
+      || chunk.type === 'reasoning-delta'
+      || chunk.type === 'tool-input-delta'
+      || chunk.type === 'assistant/delta'
+
+    if (!state || !bufferable) {
       this.sink.sendChunk(
         sessionId,
-        state
+        state && !isUiStreamChunkType(chunk.type)
           ? { ...chunk, messageId: (chunk as { messageId?: string }).messageId || state.messageId }
           : chunk,
       )
@@ -242,7 +298,11 @@ export class SessionStreamCoalescer {
           text: previewText(text),
         })
       }
-      this.sink.sendChunk(sessionId, { ...chunk, messageId: state.messageId })
+      // UI 小批自带 messageId(源头盖的章);旧 delta 仍由这里补。
+      this.sink.sendChunk(
+        sessionId,
+        isUiStreamChunkType(chunk.type) ? chunk : { ...chunk, messageId: state.messageId },
+      )
     }
   }
 }

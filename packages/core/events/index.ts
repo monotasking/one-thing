@@ -53,6 +53,11 @@ export type {
   StreamChunk,
   TextDeltaChunk,
   ToolInputDeltaChunk,
+  UiAssistantChunksChunk,
+  UiAssistantDeltaChunk,
+  UiAssistantPartEndChunk,
+  UiAssistantPartKind,
+  UiStreamChunk,
 } from './stream-chunks.js'
 export type {
   CoreSessionCommandEmitterLike,

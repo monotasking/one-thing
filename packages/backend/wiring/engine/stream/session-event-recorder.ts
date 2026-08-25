@@ -40,10 +40,17 @@ import type {
 } from '@onething/core/agent-loop'
 import type {
   BlobRef,
+  CoreAssistantPartBoundaryResult,
+  CoreAssistantPartRef,
   SessionAssistantDeltaPartKind,
   SessionAssistantPartKind,
   SessionResponseUsage,
 } from '@onething/core/session'
+// U0(`docs/design/ui-event-stream-2026-08.md` §1 规则 1):part 边界**只判一次**。
+// 从前这台状态机是本文件里的四个字段 + `deltaInto`;现在它是 core 的一件纯件,
+// 落盘打包器(这里)与 UI 小批发器(coalescer)共用同一份判定。
+import { createCoreAssistantPartBoundaryMachine } from '@onething/core/session/part-boundary'
+import type { UiAssistantDeltaChunk, UiAssistantPartEndChunk } from '@onething/core/events'
 import { safeParseAgentToolArguments } from '@onething/core/agent-loop'
 // §13.9:回合号的判定规则只有一份,住在引擎那边。引那**一个叶子文件**而不是
 // `@onething/core/engine` barrel —— barrel 会把整棵执行器模块图拖进记录器
@@ -159,6 +166,25 @@ export interface SessionEventRecorderContext {
    * 给将来的守卫,不是在描述现状。
    */
   isToolCallHidden?: (toolCallId: string) => boolean
+  /**
+   * U0:UI 事件流的**旁路口**(`docs/design/ui-event-stream-2026-08.md` §3)。
+   *
+   * 采集点是 part 边界的唯一判定处,所以"这条 delta 属于哪一段"也只该在这里
+   * 说一次 —— UI 小批吃的就是这里盖过章的东西,不再自己判第二遍。
+   *
+   * 不注入(默认 `ONETHING_UI_STREAM=legacy`)= 一条都不发,renderer 零感知。
+   */
+  emitUiEvent?: (event: UiAssistantDeltaChunk | UiAssistantPartEndChunk) => void
+  /**
+   * U0(§10.15):`response-boundary` 的**同步**换锚点口。
+   *
+   * 采集点在这一刻已经把上一条响应的 part 全收了,接下来的每一条事件都属于
+   * 新的那条助手消息 —— 宿主在这里换 run 与消息 id,采集点随后取到的
+   * `getMessageId()` / `currentSessionRunId()` 就是新的那一对。
+   *
+   * 不注入 = 保持 U0 之前的行为(换锚点仍由执行器在异步侧做)。
+   */
+  onResponseBoundary?: () => void
 }
 
 /**
@@ -315,13 +341,20 @@ interface RecorderState {
   changesByCallId: Map<string, ReturnType<typeof changesFromToolMetadata>>
   /** 正在攒的批(每个 part 至多一个)。 */
   batches: Map<number, ChunkBatch>
-  /** 还没收齐的 part。 */
+  /**
+   * 还没收齐的 part 的**元信息**(runId / messageId / turnIndex / 正文累计)。
+   *
+   * U0:哪一段开着、该收哪一段,由 core 的边界状态机说了算(`state.parts`);
+   * 这张表只存"那一段身上挂着什么"——两件事分开之后,UI 小批与落盘打包才可能
+   * 共用同一份边界判定。
+   */
   openParts: Map<number, PartState>
-  /** 正文 / 推理各自当前那一段的 partIndex(换 kind 就换段)。 */
-  currentTextPart?: number
-  currentReasoningPart?: number
-  /** toolCallId → 它的参数流那一段。 */
-  toolInputPartByCallId: Map<string, number>
+  /**
+   * U0:part 边界的**唯一判定处**(core `part-boundary.ts`)。从前是本文件里
+   * `currentTextPart` / `currentReasoningPart` / `toolInputPartByCallId` 三个
+   * 字段加 `deltaInto` 的那段 if。
+   */
+  parts: ReturnType<typeof createCoreAssistantPartBoundaryMachine>
   /** 这次请求收齐的 part(request/response 的 parts 指纹表)。 */
   finishedParts: Array<{ partIndex: number; kind: SessionAssistantPartKind; len: number; hash: string }>
   /** 这次请求产出的工具调用 id。 */
@@ -388,9 +421,16 @@ export interface SessionCancelledToolResult {
 export function createSessionEventRecorder(
   ctx: SessionEventRecorderContext,
 ): SessionEventRecorder {
+  // U0:边界状态机的号由**这次执行**发(`nextSessionRunPartIndex`)。开不出段
+  // 的条件与从前逐字相同:没有请求号 / 没有活跃 run 就一个号都不分。
+  const parts = createCoreAssistantPartBoundaryMachine({
+    allocate: () => allocatePartIndex(),
+  })
+
   const state: RecorderState = {
     // 引擎那边同一格的初值也是 1(`agent-loop-executor.ts` 的 `turnIndex: 1`)。
     turnIndex: 1,
+    parts,
     firstTokenWritten: false,
     lastHeaderLoaded: false,
     lastToolsHashLoaded: false,
@@ -399,7 +439,6 @@ export function createSessionEventRecorder(
     changesByCallId: new Map(),
     batches: new Map(),
     openParts: new Map(),
-    toolInputPartByCallId: new Map(),
     finishedParts: [],
     toolCallIds: [],
     attempt: 0,
@@ -505,35 +544,47 @@ export function createSessionEventRecorder(
 
   // ---- delta 攒批 ----
 
-  function openPart(
-    kind: SessionAssistantDeltaPartKind,
-    toolCallId?: string,
-    toolName?: string,
-  ): number | undefined {
+  /** 号从**这次执行**上取;取不到就是取不到(见 `applyPartBoundary` 的掉账)。 */
+  function allocatePartIndex(): number | undefined {
     const requestIndex = state.requestIndex
     const id = runId()
-    const partIndex = requestIndex === undefined || !id
-      ? undefined
-      : nextSessionRunPartIndex(ctx.sessionId)
-    if (requestIndex === undefined || !id || partIndex === undefined) {
-      // F13(§13.2):开不出段 = 这一段正文在账本上**整格消失**。从前这是三个
-      // 纯静默的 `return undefined`;现在它至少是账单上的一个数
-      // (`sessions:shadow-report` 打印它)。仍然不抛:记账不打断聊天。
-      countSessionEventDroppedPart(ctx.sessionId)
-      return undefined
-    }
-    state.openParts.set(partIndex, {
+    if (requestIndex === undefined || !id) return undefined
+    return nextSessionRunPartIndex(ctx.sessionId)
+  }
+
+  /** 状态机开了一段 → 把这一段身上挂的东西记下来。 */
+  function registerPart(ref: CoreAssistantPartRef): void {
+    const requestIndex = state.requestIndex
+    const id = runId()
+    // allocate 刚刚同步答应过这两格都在,这里只是把类型收窄。
+    if (requestIndex === undefined || !id) return
+    state.openParts.set(ref.partIndex, {
       runId: id,
-      partIndex,
-      kind,
+      partIndex: ref.partIndex,
+      kind: ref.kind,
       requestIndex,
       messageId: ctx.getMessageId(),
-      ...(toolCallId ? { toolCallId } : {}),
-      ...(toolName ? { toolName } : {}),
+      ...(ref.toolCallId ? { toolCallId: ref.toolCallId } : {}),
+      ...(ref.toolName ? { toolName: ref.toolName } : {}),
       turnIndex: state.turnIndex,
       text: '',
     })
-    return partIndex
+  }
+
+  /**
+   * 状态机的一步判定 → 落到账上:先按收的先后收段,再登记新开的那一段。
+   *
+   * F13(§13.2):开不出段 = 这一段正文在账本上**整格消失**。从前这是三个纯静默
+   * 的 `return undefined`;现在它至少是账单上的一个数
+   * (`sessions:shadow-report` 打印它)。仍然不抛:记账不打断聊天。
+   */
+  function applyPartBoundary(
+    result: CoreAssistantPartBoundaryResult,
+  ): CoreAssistantPartBoundaryResult {
+    for (const ref of result.ended) endPart(ref.partIndex)
+    if (result.opened) registerPart(result.opened)
+    if (result.dropped) countSessionEventDroppedPart(ctx.sessionId)
+    return result
   }
 
   function flushBatch(partIndex: number): void {
@@ -594,6 +645,20 @@ export function createSessionEventRecorder(
     }
     batch.dt.push(now - batch.time0)
     batch.text.push(delta)
+    // U0:同一条 delta,**同一份段身份**,发一份给 UI 流(16ms 小批由 coalescer
+    // 合)。落盘那份继续按 2s/64 攒 —— 词汇同名同形,只是节奏不同。
+    ctx.emitUiEvent?.({
+      type: 'assistant/delta',
+      runId: part.runId,
+      requestIndex: part.requestIndex,
+      messageId: part.messageId,
+      partIndex,
+      kind: part.kind,
+      ...(part.toolCallId ? { toolCallId: part.toolCallId } : {}),
+      ...(part.toolName ? { toolName: part.toolName } : {}),
+      turnIndex: part.turnIndex,
+      text: delta,
+    })
     // 64 条闸。
     if (batch.text.length >= SESSION_CHUNK_BATCH_SIZE) flushBatch(partIndex)
   }
@@ -627,13 +692,24 @@ export function createSessionEventRecorder(
       ...(part.toolName ? { toolName: part.toolName } : {}),
       turnIndex: part.turnIndex,
     })
+    // U0:边界只判一次 —— UI 流收到的"这一段收齐了"与落盘那条是同一次判定。
+    ctx.emitUiEvent?.({
+      type: 'assistant/part-end',
+      runId: id,
+      requestIndex: part.requestIndex,
+      messageId: part.messageId,
+      partIndex,
+      kind: part.kind,
+      ...(part.toolCallId ? { toolCallId: part.toolCallId } : {}),
+      ...(part.toolName ? { toolName: part.toolName } : {}),
+      turnIndex: part.turnIndex,
+      len: part.text.length,
+      hash,
+    })
   }
 
   function endAllOpenParts(): void {
-    for (const partIndex of [...state.openParts.keys()]) endPart(partIndex)
-    state.currentTextPart = undefined
-    state.currentReasoningPart = undefined
-    state.toolInputPartByCallId.clear()
+    applyPartBoundary(state.parts.endAll())
   }
 
   /**
@@ -663,12 +739,11 @@ export function createSessionEventRecorder(
     }
     if (!text) return
 
-    endPart(state.currentTextPart)
-    state.currentTextPart = undefined
-    endPart(state.currentReasoningPart)
-    state.currentReasoningPart = undefined
-
-    const partIndex = nextSessionRunPartIndex(ctx.sessionId)
+    // U0:占号也走同一台状态机 —— 它先把正文/推理两段收了(顺序与从前逐字
+    // 相同:先正文后推理),再要一个号。
+    const reserved = state.parts.reserve()
+    for (const ref of reserved.ended) endPart(ref.partIndex)
+    const partIndex = reserved.partIndex
     if (partIndex === undefined) return
     const hash = hashSessionEventContent(text)
     state.finishedParts.push({ partIndex, kind: 'provider-data', len: text.length, hash })
@@ -687,16 +762,9 @@ export function createSessionEventRecorder(
 
   /** 换 kind 就换段:一段 text 与一段 reasoning 不能共用一个 partIndex。 */
   function deltaInto(kind: 'text' | 'reasoning', delta: string): void {
-    const slot = kind === 'text' ? 'currentTextPart' : 'currentReasoningPart'
-    const other = kind === 'text' ? 'currentReasoningPart' : 'currentTextPart'
-    if (state[other] !== undefined) {
-      endPart(state[other])
-      state[other] = undefined
-    }
-    if (state[slot] === undefined) state[slot] = openPart(kind)
-    const partIndex = state[slot]
-    if (partIndex === undefined) return
-    pushDelta(partIndex, delta)
+    const result = applyPartBoundary(state.parts.delta(kind))
+    if (!result.current) return
+    pushDelta(result.current.partIndex, delta)
   }
 
   /**
@@ -778,9 +846,20 @@ export function createSessionEventRecorder(
         return
       }
       case 'response-boundary': {
-        // steering 打断:当前响应到此为止。part 全部收齐,新响应从
-        // `createNextAssistantWriter` 那边换 run(见 agent-loop-executor)。
+        // steering 打断:当前响应到此为止。part 全部收齐。
         endAllOpenParts()
+        // U0(§10.15 的根治):**身份就在这一刻换**。
+        //
+        // 从前换 run 是执行器那边的事(`createNextAssistantWriter`),而执行器
+        // 隔着 agent-loop 的异步事件队列 —— 采集点挂在 `onEvent` 上是同步的,
+        // 它看到 boundary 之后的 `turn-start` / 第一批 delta 时,登记簿里往往
+        // 还是**上一条** run 与上一条助手消息,于是新响应的开头被记在旧消息上
+        // (电池 1/5 复现的那条竞态)。
+        //
+        // 修法不是时序 hack:事实(boundary)生在这里,身份就该在这里定。宿主
+        // 在这个同步点换锚点(新助手消息 + `rotateSessionRun`),执行器退成
+        // "消费已经盖过章的事件"。
+        ctx.onResponseBoundary?.()
         return
       }
       case 'text-delta':
@@ -799,23 +878,18 @@ export function createSessionEventRecorder(
         return
       }
       case 'tool-call-start': {
-        const partIndex = openPart('tool-input', event.toolCallId, event.toolName)
-        if (partIndex !== undefined) state.toolInputPartByCallId.set(event.toolCallId, partIndex)
+        applyPartBoundary(state.parts.toolInputStart(event.toolCallId, event.toolName))
         return
       }
       case 'tool-call-delta': {
-        const partIndex = state.toolInputPartByCallId.get(event.toolCallId)
-        if (partIndex !== undefined) pushDelta(partIndex, event.argumentsDelta)
+        const current = state.parts.toolInputDelta(event.toolCallId).current
+        if (current) pushDelta(current.partIndex, event.argumentsDelta)
         return
       }
       case 'tool-call-done': {
         // 参数流**先**收齐(part-end),`tool/call` 才落账 —— 铁律 2 的顺序:
         // 记的是"参数定稿了,还没执行"。
-        const partIndex = state.toolInputPartByCallId.get(event.toolCall.id)
-        if (partIndex !== undefined) {
-          endPart(partIndex)
-          state.toolInputPartByCallId.delete(event.toolCall.id)
-        }
+        applyPartBoundary(state.parts.toolInputDone(event.toolCall.id))
         // S3.1(§10.11):`skill/activated` **不在这里认**。记录器认一遍、引擎再认
         // 一遍 = 两个判定点,真机上就出现过"账本有 skill/activated 而消息上没有
         // skillUsed"。现在唯一的判定点在引擎(`startAgentLoopToolExecution` /

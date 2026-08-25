@@ -17,6 +17,14 @@ import {
 import { getEventBus } from "../../../events/index.js";
 import { createEventOnlyEmitter } from "../../../events/event-only-emitter.js";
 import {
+	isUiEventStreamEnabled,
+	pushSessionUiStreamEvent,
+} from "../../../events/ui-stream.js";
+import type {
+	UiAssistantDeltaChunk,
+	UiAssistantPartEndChunk,
+} from "@onething/core/events";
+import {
 	streamAgentLoopProviderChunks,
 	type AgentProviderStreamChunk,
 } from "@onething/core/agent-loop";
@@ -137,6 +145,22 @@ export interface AgentLoopExecutorState {
 	 * `onEvent`,而"请求最终失败"与"最后一批 delta"正是要在那两条路上落账的。
 	 */
 	eventRecorder?: SessionEventRecorder;
+	/**
+	 * U0(§10.15):采集点当前盖的**助手消息号**。
+	 *
+	 * 与 `ctx.assistantMessageId` 分开是这条修复的全部内容:身份在 agent-loop 发
+	 * boundary 的同步点就换掉(这一格),而处理器 / 发射器那一套要等上一条消息
+	 * `finalize()` 之后才换(那一格)。缺省不设 = 两者同一个值。
+	 */
+	recordingAssistantMessageId?: string;
+	/** U0:同步点已经定好、消费侧还没接手的那次换锚点。 */
+	pendingAssistantRotation?: {
+		assistantMessageId: string;
+		plan: ReturnType<
+			typeof createAgentLoopNextAssistantWriterPlan<ToolCall, ContentPart>
+		>;
+		releaseShadow: () => void;
+	};
 }
 
 export interface AgentLoopStreamGenerationResult {
@@ -183,10 +207,21 @@ async function finishCurrentAssistantWriter(
 	}
 }
 
-async function createNextAssistantWriter(
-	state: AgentLoopExecutorState,
-): Promise<void> {
-	await finishCurrentAssistantWriter(state);
+/**
+ * U0(§10.15 的根治):**换锚点的同步那一半**。
+ *
+ * 从前整件事都发生在 `createNextAssistantWriter` 里 —— 而那是 chunk 消费侧,
+ * 隔着 agent-loop 的异步事件队列。采集点挂在 `onEvent` 上是同步的,于是
+ * boundary 之后的 `turn-start` / 第一批 delta 常常在换锚点之前就落了账:
+ * 新响应的开头被记在**上一条**助手消息、上一条 run 上(电池 1/5 复现)。
+ *
+ * 事实(boundary)生在 agent-loop,身份就该在那一刻定。这个函数只做"定身份"
+ * 那一半,并且**全同步**:建消息、换 run、把 runId 盖回消息。
+ * 换处理器 / 换发射器 / 换 turn state 那一半仍然留在消费侧 —— 它必须排在上一条
+ * 消息 `finalize()` 之后,而那是个 await。
+ */
+function rotateAssistantWriterIdentity(state: AgentLoopExecutorState): void {
+	if (state.pendingAssistantRotation) return;
 
 	const assistantMessageId = createCoreId();
 	const now = Date.now();
@@ -209,26 +244,60 @@ async function createNextAssistantWriter(
 		state.ctx.sessionId,
 		assistantMessageId,
 	);
-	const rotated = rotateSessionRun(state.ctx.sessionId, {
-		kind: "steer",
-		assistantMessageId,
-		provider: state.ctx.providerId,
-		model: state.ctx.providerConfig.model,
-		timestamp: now,
-		...(storedAssistantMessage?.agentId
-			? { agentId: storedAssistantMessage.agentId }
-			: {}),
-		// §13.9:与 agentId 同一刻盖的那格 `source`(collab 回合思考记录标记)。
-		...(storedAssistantMessage?.source
-			? { messageSource: storedAssistantMessage.source }
-			: {}),
+	// 影子的闸:旧 run 现在收得比引擎写完上一条消息**早**,所以比对要等一下
+	// (见 `EndSessionRunInput.shadowGate`)。开闸的两处 = 消费侧接手完成、
+	// 以及执行收尾的 finally(闸永远不开就等于这条 run 不比)。
+	let releaseShadow: () => void = () => {};
+	const shadowGate = new Promise<void>((resolve) => {
+		releaseShadow = resolve;
 	});
+	const rotated = rotateSessionRun(
+		state.ctx.sessionId,
+		{
+			kind: "steer",
+			assistantMessageId,
+			provider: state.ctx.providerId,
+			model: state.ctx.providerConfig.model,
+			timestamp: now,
+			...(storedAssistantMessage?.agentId
+				? { agentId: storedAssistantMessage.agentId }
+				: {}),
+			// §13.9:与 agentId 同一刻盖的那格 `source`(collab 回合思考记录标记)。
+			...(storedAssistantMessage?.source
+				? { messageSource: storedAssistantMessage.source }
+				: {}),
+		},
+		{ shadowGate },
+	);
 	sessionCommands.patchMessage(state.ctx.sessionId, {
 		messageId: assistantMessageId,
 		patch: { runId: rotated.runId },
 		hint: "settle",
 	});
-	state.ctx.assistantMessageId = assistantMessageId;
+	// 采集点从这一刻起盖新号(`getMessageId()` 读的就是这一格)。
+	state.recordingAssistantMessageId = assistantMessageId;
+	state.pendingAssistantRotation = {
+		assistantMessageId,
+		plan,
+		releaseShadow,
+	};
+}
+
+async function createNextAssistantWriter(
+	state: AgentLoopExecutorState,
+): Promise<void> {
+	// 没人在同步点换过(采集点没挂上 / 单测直喂 chunk)= 这里补一次,行为与
+	// U0 之前逐字相同。
+	rotateAssistantWriterIdentity(state);
+	const pending = state.pendingAssistantRotation;
+	state.pendingAssistantRotation = undefined;
+	if (!pending) return;
+
+	await finishCurrentAssistantWriter(state);
+	// 上一条消息写完了 —— 它的影子这才有得比。
+	pending.releaseShadow();
+
+	state.ctx.assistantMessageId = pending.assistantMessageId;
 	state.processor = createStreamProcessor(state.ctx);
 	state.emitter = createEventOnlyEmitter(state.ctx);
 	state.turn = createTurnState();
@@ -236,7 +305,7 @@ async function createNextAssistantWriter(
 
 	try {
 		const eventBus = getEventBus();
-		for (const event of plan.events) {
+		for (const event of pending.plan.events) {
 			await eventBus.emit(state.ctx.sessionId, event);
 		}
 	} catch {
@@ -738,7 +807,21 @@ export async function executeAgentLoopStreamGeneration(
 				providerId: ctx.providerId,
 				model: ctx.providerConfig.model,
 				systemPrompt: prepared.systemPrompt,
-				getMessageId: () => state.ctx.assistantMessageId,
+				// U0:采集点读的是**同步点**那一格 —— 换锚点之后它立刻是新号,而
+				// `ctx.assistantMessageId` 要等消费侧接手(见 state 上的注释)。
+				getMessageId: () =>
+					state.recordingAssistantMessageId ?? state.ctx.assistantMessageId,
+				// U0(§10.15):身份在**事实这一侧**分配 —— boundary 一到就换锚点。
+				onResponseBoundary: () => rotateAssistantWriterIdentity(state),
+				// U0:UI 事件流的旁路。**档位在装配时读一次**而不是每条 delta 读一次
+				// —— 口不接上时 `ctx.emitUiEvent?.(…)` 连那个事件对象都不构造
+				// (可选调用短路掉实参求值),legacy 档因此是真的零开销。
+				...(isUiEventStreamEnabled()
+					? {
+							emitUiEvent: (event: UiAssistantDeltaChunk | UiAssistantPartEndChunk) =>
+								pushSessionUiStreamEvent(ctx.sessionId, event),
+						}
+					: {}),
 				// G10:recipe 记的是 history builder 的**输入**(带 id 的那一份),
 				// 不是 provider 收到的 AgentMessage[](那一份没有消息 id)。
 				getHistoryInput: () =>
@@ -866,6 +949,10 @@ export async function executeAgentLoopStreamGeneration(
 		throw error;
 	} finally {
 		state.eventRecorder?.flush();
+		// U0:同步点换过锚点但消费侧没来得及接手(中断 / 出错 / 循环到头)——
+		// 那道影子闸必须开,否则被接手的那条 run 永远不比(门看的是 run 数)。
+		state.pendingAssistantRotation?.releaseShadow();
+		state.pendingAssistantRotation = undefined;
 		// 幂等(见 `endSessionRun`);`started:false` 时收尾归 `executeMessageStream`。
 		if (resumeRun.started) {
 			endSessionRun(ctx.sessionId, resumeRun.run.runId, { outcome: "completed" });

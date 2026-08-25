@@ -194,6 +194,18 @@ export function ensureSessionRun(
 export interface EndSessionRunInput {
   outcome: 'completed' | 'aborted' | 'error' | 'interrupted'
   error?: unknown
+  /**
+   * U0(§10.15):**影子等这一下再比**。
+   *
+   * steering 的换锚点被提到了 agent-loop 发 boundary 的同步点(事件出生即带
+   * runId),而引擎那边把上一条助手消息**写完**要晚一步(执行器隔着异步事件
+   * 队列)。影子比的是"抄本 vs 投影",抄本这一侧还没写完就比,比出来的不等
+   * 不说明任何事 —— 所以换锚点的人递一个闸进来,引擎收完上一条消息再开闸。
+   *
+   * 不给 = 照旧(落盘检查点之后立刻比)。闸永远不 resolve 的话这条 run 的
+   * 影子就不比 —— 所以调用方必须在**收尾路径**上也开闸(执行器的 finally)。
+   */
+  shadowGate?: PromiseLike<unknown>
 }
 
 /**
@@ -232,13 +244,16 @@ export function endSessionRun(
   //
   // 影子断言排在检查点**之后**(§10.4:"`run/end` 落盘后"):比对读的是活投影,
   // 但一条还没落盘的 run 万一进程当场没了,记下的"相等"就没有对应的账。
-  void flushSessionEventLog(sessionId).then(() => {
-    scheduleSessionRunShadow(sessionId, {
-      runId: handle.runId,
-      assistantMessageId: handle.assistantMessageId,
-      ...(handle.triggerMessageId ? { triggerMessageId: handle.triggerMessageId } : {}),
+  void flushSessionEventLog(sessionId)
+    // U0:换锚点递进来的那道闸(见 `EndSessionRunInput.shadowGate`)。
+    .then(() => input.shadowGate)
+    .then(() => {
+      scheduleSessionRunShadow(sessionId, {
+        runId: handle.runId,
+        assistantMessageId: handle.assistantMessageId,
+        ...(handle.triggerMessageId ? { triggerMessageId: handle.triggerMessageId } : {}),
+      })
     })
-  })
 }
 
 function normalizeRunError(error: unknown): { name?: string; message: string } | undefined {
@@ -302,9 +317,17 @@ export function nextSessionRunPartIndex(sessionId: string): number | undefined {
 export function rotateSessionRun(
   sessionId: string,
   input: BeginSessionRunInput,
+  options: { shadowGate?: PromiseLike<unknown> } = {},
 ): SessionRunHandle {
   const previous = currentRuns.get(sessionId)
-  if (previous) endSessionRun(sessionId, previous.runId, { outcome: 'completed' })
+  if (previous) {
+    endSessionRun(sessionId, previous.runId, {
+      outcome: 'completed',
+      // U0:轮换现在发生在 agent-loop 的同步点,而引擎把上一条消息写完要晚
+      // 一步 —— 影子等引擎那边收完再比(见 `EndSessionRunInput.shadowGate`)。
+      ...(options.shadowGate ? { shadowGate: options.shadowGate } : {}),
+    })
+  }
   const handle = beginSessionRun(sessionId, {
     ...input,
     ...(previous ? { continuesRunId: previous.runId } : {}),
