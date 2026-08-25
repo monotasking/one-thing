@@ -3967,3 +3967,107 @@ unclosed-run 会随会话打开自愈届时应摘)。全库 verify:25 known / 0 
 现阶段丢失(§13.8 第一类的子形状);**乙(annotate 成为事件产地)登记为 F 线 F2 的
 必做项**(full 之下停写后该格永久折不出,不做乙则丙从"偶发丢文案"恶化为"永久丢"),
 届时连同 §13.8 "采集点不二次派生"裁定一起重审。
+
+### 15.7 时机改拍:全线直接推(2026-08-25,用户)
+
+用户裁定不等日历浸泡窗口,S3w 各期背靠背推进(§14.6 裁定 4 从推荐 A 改拍 B 的变体)。
+落法:**日历门取消,技术门全留** —— 补水形状合同、battery、verify、shadow 短窗判据
+一个不少;各期仍按批走(写码 → Fable 审 → haiku 提交),门红即停。两个仍然保留的
+检查点:①任何评估都以**重启桌面换上批 P 代码 + shadow-reset 之后**的读数为准(旧进程
+的账不算);②S3w-3(切 off 删旧)是烧掉 S2b 回滚读的那一步,开工前单独跟用户确认
+一次。风险知情:压缩浸泡期意味着未知真机类的暴露机会变少,靠 refold 自洽环与 verify
+全库扫补位。
+
+### 15.8 直通排期(2026-08-25 用户令"全线直接干完";Fable 自动逐批推进)
+
+流水线节奏:opus 写一批 → Fable 审 → haiku 提交 → 立即派下一批;门红即停修。
+日期为一路全绿的估计,每次门红顺延。U-a/U-b 按推荐执行(事件词汇同名同形、
+renderer 直接 import core reducer)。
+
+| 日期(估) | 批 | 内容 | 用户动作 |
+|---|---|---|---|
+| 08-25 晚 | 1 | 0b G12 拒写 + S3w-1 补水岔口/合同门/遥测(在途) | — |
+| 08-26 | 2 | U0 源头标注+runId 上提+双发(steering 竞态结构性消失) | 落地后**重启桌面 + shadow-reset** |
+| 08-26/27 | 3 | S3w-1 翻默认(合同门绿为前提)+ 真机走查 | — |
+| 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 | — |
+| 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5) | 正常使用即可 |
+| 08-28 | 5 | S3w-4 体积治理(独立,提前插空) | — |
+| 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿) | **唯一确认点**:烧 S2b 回滚读前问一次 |
+| 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
+| 09-05→09-08 | 12–14 | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动) | B 期细案到期过目 |
+| ≈ 09-08 | 终 | 全线收口:事件唯一真相、UI 同词汇;refold 常驻唯一耐久门 | — |
+
+不做:U3(可选期,未要);甲(退出等收尾,已裁不做)。
+
+### 15.9 批 1 落地记录:0b 拒写 + S3w-1 补水岔口(2026-08-25,opus 执行,未提交)
+
+**0b(G12 拒写升级)**——`backend/session/event-log.ts`:
+
+- `guardForeignWriter` 从"重装计数器 + warn 后照写"改为**返回布尔的拒写判据**;
+  state 新增 `foreignWriter`,判定一次就**一路拒到底**(不再每 500ms 重新 stat,
+  也永不翻回去:这个进程已经不是唯一写者,写下去的每一条都是错乱的种子)。
+- `appendSessionLogEvent` 命中即 `countSessionEventFailure(...)` + 返回
+  `undefined` —— 调用方拿不到 seq,不会有人引用一条根本没写出去的事件。
+  **不上抛**(观察期里 messages.jsonl 还在写;命令失败语义留到 S3w-2 随裁定 7)。
+- 用例改写(`event-log-s1.test.ts`,临时 store):第二写者追 3 条后,本进程两次
+  append 全被拒、盘上只剩对方那 4 条、`appendFailures = 2`、warn 出现一次。
+
+**S3w-1(冷加载补水,默认老路)**:
+
+- **岔口**在 `session-repository.ts` 的 `loadStoredSession`(`getSession` 的取数
+  口,`rehydrate` 的**上游**)。新可选端口
+  `hydrateMessagesFromProjection(sessionId)`:返回非空就用它顶掉抄本那一格消息
+  (**外壳仍来自 meta.json**),整体替换用展开(规则 C:`session.messages = …`
+  不许);随后照旧过 `rehydrateSessionFromStorage`(重建 `step.toolCall` /
+  `partialResult`)与 `repairOnFirstTouch → sanitizeSessionOnStartup`
+  —— **两条路收在同一个出口,一步不减**。
+- **档位**在装配层:`backend/session/read-mode.ts` 新增
+  `ONETHING_SESSION_HYDRATE = 'messages'(默认)| 'projection'`;实现
+  `backend/session/hydrate.ts`(`eventsListMessages` 物化 + 摘掉位置字段 `seq`,
+  理由同投影"不产出位置")。产品层仓库只知道"有没有人给我一份消息"。
+- **sanitize 的逐项判**:事件侧的 `prepare`(S2a)已经按 `interrupted.ts` 的单一
+  口径合成过中断结局,所以 step/toolCall 判死那部分投影天然承担;`isStreaming`
+  与会话级时间线元数据(`summaryUpToMessageId`/`contextSize`/`lastInputTokens`)
+  仍然只有 sanitize 管 —— 故**两条路都跑**,不给投影开特例。
+- **兜底遥测**:`reads.ts` 11 处 `?? getSessionMessages(...)` 统一裹
+  `transcriptFallback()`,计进 `session-shadow-stats.json` 的 `fallbackHits`
+  (`shadow-report` 打印,不进门)。两条**不计**:`messages` 模式;**抄本也是空的**
+  (空会话的例行读 —— 不排除它,battery 上直接计出 820 次噪声,门永远没有判据)。
+- **battery 第二泳道**:泳道一写完 → 杀进程 → 换空 LRU 的新进程 +
+  `ONETHING_SESSION_HYDRATE=projection` → 在其中 8 条会话上各接一轮。第一次
+  `getSession` 就是冷加载(store 从投影物化),那一轮 run 收尾时**既有的影子法官**
+  照常比 store vs 投影 —— 补水形状漂一格当场红,不新造判据。另断言历史没缩水。
+
+**合同门(§14.4 的核心验收)**:新脚本 `scripts/session-hydration-contract.ts`
+(`bun run sessions:hydration-contract`,**全程只读**),对全量真机会话断言
+「投影补水 + rehydrate + sanitize ≡ loadJsonl + rehydrate + sanitize」,判官是
+`canonicalChatMessage`(零本地豁免),两侧比前都过 `dehydrateProjectedMessages`
+(`sessions:verify` #6 立下的既有归一口径,§13.17 裁定三)。
+
+**真机实跑结果(`~/.onething`,只读)**:436 会话 → **pass 417 / fail 0 /
+baseline-skip 9 / no-events 10**。9 条 baseline-skip 全部是 `sessions:verify` 基线
+在册的已知残余(`46dcec05` 的 providerCostUSD ×7、`5e4d2cea`/`fe5261d9` 的
+usage/steps.type/skillUsed、`fd899977` 与 `a5157107` 的 step.result、`room-1`
+投影多 1 条、`web-…` 的 content),**没有一条新类**;10 条 no-events 是产品代码
+本来就不补水的会话(agent-exec/dm 等无事件历史)。**混合覆盖(legacy 前缀未迁移)
+在真机上一条都没有** —— 这正是翻默认前最担心的那一类。
+
+**门(全部实跑)**:`typecheck` 绿;定向 2577 用例全绿(backend + runtime/sessions
++ core/session);`sessions:shadow-battery` **GREEN**(28 场景 ×7 pass,runs 274 /
+mismatches 0 / appendFailures 0,**hydrate lane PASS:8 会话 / 0 新失配行**);
+`boundary:gate` / `session:gate` / `log:gate` 全 ok;合同门如上。
+
+**两条留给下一批的诊断(本批不改)**:
+
+1. **`fallbackHits` 有一条结构性地板**:battery 实测命中数恰好 = run 数,产地是
+   `wiring/engine/stream/stream-executor.ts:182` —— 它在 `run/start` **之前**读助手
+   占位消息(为了把时刻带进 `run/start`),而那条消息此刻在账本里没有产地(翻译器
+   故意不翻 `isStreaming` 的 assistant)。它本身是 §14.1 表里的"写侧读抄本",按批 7
+   的纪律本该走 `getMessageFromTranscript`(那口不经过 `fromEvents`,也就不算兜底)。
+   **要把这个数压到 0,先把这类写侧取材点归位** —— 属 S3w-3 删兜底的前置,不在本批。
+2. **`sessions:verify:gate` 真机 1 条新红**:`ec2437ff` 的
+   `session/compacted@6068: source-seqs-incomplete`(事件写于 08-25 16:49)。产地是
+   **仍在运行的旧桌面**(批 P 未提交、未重启换代码),判据是**批 P 新加的**那条
+   `sourceEventSeqs` 只查声明区的校验 —— 与本批零关系(本批不碰写侧、不碰 checker)。
+   按 §15.7 检查点①,它的处置要等"重启桌面换上批 P 代码 + shadow-reset"之后再判:
+   若换代码后不再新增,则并入基线;若仍新增,则是批 P 遗留的写侧缺口。**本批不动基线。**

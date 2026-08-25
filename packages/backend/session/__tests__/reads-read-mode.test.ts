@@ -44,9 +44,13 @@ const { getLiveSessionProjection, resetSessionProjectionCache } =
   await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
-const { setSessionReadModeForTesting } = await import('../read-mode.js')
+const { setSessionReadModeForTesting, setSessionHydrateModeForTesting } =
+  await import('../read-mode.js')
+const { hydrateSessionMessagesFromProjection } = await import('../hydrate.js')
 const { sessionProjectionOptions } = await import('../projection-blobs.js')
 const { sessionReads, configureSessionHistoryBuilder } = await import('../reads.js')
+const { flushSessionEventStats, readSessionShadowStats, resetSessionEventStatsCache } =
+  await import('../event-stats.js')
 
 const SESSION = 'reads-read-mode-1'
 const RUN = 'run-1'
@@ -64,6 +68,7 @@ beforeEach(() => {
   resetSessionProjectionCache()
   resetSessionEventReadCache()
   resetSessionPrepareCache()
+  resetSessionEventStatsCache()
   setSessionReadModeForTesting(undefined)
   configureSessionHistoryBuilder({
     fromMessages: (messages, session) =>
@@ -75,6 +80,7 @@ beforeEach(() => {
 afterEach(async () => {
   await flushSessionEventLog()
   setSessionReadModeForTesting(undefined)
+  setSessionHydrateModeForTesting(undefined)
   configureSessionHistoryBuilder(undefined)
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
@@ -243,5 +249,70 @@ describe('S2b step C — events mode reads the projection, not the transcript', 
     expect(JSON.stringify(fromEvents)).toContain('EVENTS')
     expect(JSON.stringify(fromEvents)).not.toContain('TAMPERED')
     expect(JSON.stringify(fromMessages)).toContain('TAMPERED')
+  })
+})
+
+/**
+ * S3w-1(§15.4):兜底半边的**命中遥测**。
+ *
+ * `events` 模式下折不出历史 = 这一次读仍然走在 `messages.jsonl` 上。S3w-3 要删掉
+ * 这批兜底,删之前必须先把命中量到 0 —— 所以它必须先能被数出来。
+ */
+describe('S3w-1 — transcript fallback telemetry', () => {
+  const NO_EVENTS = 'reads-no-events'
+
+  beforeEach(() => {
+    state.messages.set(NO_EVENTS, [
+      { id: 'u1', role: 'user', content: 'legacy', timestamp: 1 },
+    ])
+  })
+
+  it('counts a fallback when the events side has no history for this session', () => {
+    readIn('events', () => sessionReads.listMessages(NO_EVENTS))
+    readIn('events', () => sessionReads.countMessages(NO_EVENTS))
+    flushSessionEventStats()
+    expect(readSessionShadowStats().fallbackHits).toBe(2)
+  })
+
+  it('does not count in messages mode (there every read comes from the transcript)', () => {
+    readIn('messages', () => sessionReads.listMessages(NO_EVENTS))
+    readIn('messages', () => sessionReads.countMessages(NO_EVENTS))
+    flushSessionEventStats()
+    expect(readSessionShadowStats().fallbackHits).toBe(0)
+  })
+
+  it('does not count when the projection answers', async () => {
+    await recordRun('hello')
+    resetSessionEventStatsCache()
+    readIn('events', () => sessionReads.listMessages(SESSION))
+    flushSessionEventStats()
+    expect(readSessionShadowStats().fallbackHits).toBe(0)
+  })
+})
+
+/**
+ * S3w-1(§14.4):**冷加载补水源**。岔口默认关着,开了才从投影物化;
+ * 位置字段 `seq` 摘掉(投影不产出位置,把事件坐标写回抄本正是形状漂移)。
+ */
+describe('S3w-1 — projection hydrate source', () => {
+  beforeEach(async () => {
+    await recordRun('hello')
+  })
+
+  it('is off by default (the store keeps loading from the transcript)', () => {
+    expect(hydrateSessionMessagesFromProjection(SESSION)).toBeUndefined()
+  })
+
+  it('materializes the projection when the switch is on, without the position seq', () => {
+    setSessionHydrateModeForTesting('projection')
+    const messages = hydrateSessionMessagesFromProjection(SESSION)
+    expect(messages?.map(message => message.id)).toEqual(['u1', 'a1'])
+    expect(messages?.every(message => !('seq' in message))).toBe(true)
+    expect(messages?.[1].content).toBe('hello')
+  })
+
+  it('falls back (undefined) when the events hold no history for this session', () => {
+    setSessionHydrateModeForTesting('projection')
+    expect(hydrateSessionMessagesFromProjection('reads-no-events')).toBeUndefined()
   })
 })

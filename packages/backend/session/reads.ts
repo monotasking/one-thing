@@ -48,6 +48,7 @@ import {
   eventsListUserMarkers,
   eventsPageMessages,
 } from './events-reads.js'
+import { countSessionReadFallback } from './event-stats.js'
 import { isSessionFreezeEnabled } from './freeze.js'
 import { isSessionEventsReadMode } from './read-mode.js'
 import { getLiveSessionProjection } from './projection-cache.js'
@@ -87,6 +88,45 @@ function fromEvents<T>(read: () => T | undefined): T | undefined {
     log.warn('events-mode read failed, falling back to messages', {}, error)
     return undefined
   }
+}
+
+/**
+ * 兜底半边的**命中遥测**(S3w-1,§15.4)。零行为变化,只记一个数。
+ *
+ * 每个 routed 方法的 `?? getSessionMessages(...)` 都裹一层这个:`events` 模式
+ * 下走到右边 = 事件里折不出这条会话的历史(未迁移 / legacy 整文件 / 物化出错),
+ * 于是产品线的这一次读仍然走在抄本上。S3w-3 要删掉这批兜底,而**删之前必须先
+ * 量到 0** —— 今天它是完全静默的。
+ *
+ * 两条不计的:
+ *  - `messages` 模式 —— 那时每一次读都从这里过,数它没有意义;
+ *  - **抄本也是空的** —— 刚建的会话、还没说第一句话的会话,两侧都没有历史。
+ *    那不是"兜底救了一次",那是"这条会话还什么都没有"。把它算进去,这个数
+ *    永远到不了 0,门也就永远没有判据(battery 实测:不加这一条会计出 820 次,
+ *    全部是空会话的例行读)。
+ *
+ * **已知的结构性地板**(S3w-1 实测,battery:命中数恰好 = run 数):
+ * `stream-executor.ts:182` 在 `run/start` **之前**读助手占位消息(为了把它的时刻
+ * 带进 `run/start`)—— 那条消息此刻在事件账本里还没有产地(翻译器故意不翻
+ * `isStreaming` 的 assistant,`run/start` 才是它的那一格),于是每个 run 必然
+ * 命中一次兜底。它本身是 §14.1 表里的"写侧读抄本",按批 7 的纪律本该走
+ * `getMessageFromTranscript`(那口不经过 `fromEvents`,也就不算兜底)。要把这个
+ * 数压到 0,先把这类写侧取材点归位;这不在 S3w-1 的改动面里,记在案。
+ */
+function fallbackCarriesHistory(value: unknown): boolean {
+  if (value === undefined || value === null) return false
+  if (Array.isArray(value)) return value.length > 0
+  if (typeof value === 'number') return value > 0
+  if (typeof value === 'object') {
+    const messages = (value as { messages?: unknown }).messages
+    return Array.isArray(messages) ? messages.length > 0 : true
+  }
+  return true
+}
+
+function transcriptFallback<T>(value: T): T {
+  if (isSessionEventsReadMode() && fallbackCarriesHistory(value)) countSessionReadFallback()
+  return value
 }
 
 /**
@@ -140,7 +180,8 @@ export function sessionPreviewText(
 export const sessionReads = {
   /** 一条会话的全部消息。`sanitize` 打开时同时告诉调用方"到底动没动"。 */
   listMessages(sessionId: string, options: ListMessagesOptions = {}): ListMessagesResult {
-    const messages = fromEvents(() => eventsListMessages(sessionId)) ?? getSessionMessages(sessionId)
+    const messages = fromEvents(() => eventsListMessages(sessionId))
+      ?? transcriptFallback(getSessionMessages(sessionId))
     if (!messages) return { messages: [], changed: false }
     if (!options.sanitize) return { messages: guard(messages), changed: false }
     // F9:`changed` 由 sanitizer 自己带回来,不再靠 `===` 比引用。
@@ -201,18 +242,20 @@ export const sessionReads = {
 
   /** 不加载整会话的分页(pager 走存储驱动)。 */
   pageMessages(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse {
-    return fromEvents(() => eventsPageMessages(request)) ?? getSessionMessagesPage(request)
+    return fromEvents(() => eventsPageMessages(request))
+      ?? transcriptFallback(getSessionMessagesPage(request))
   },
 
   /** 用户消息锚点(会话目录 / 跳转用)。 */
   listUserMarkers(sessionId: string): readonly UserMessageMarker[] | undefined {
-    return fromEvents(() => eventsListUserMarkers(sessionId)) ?? getSessionUserMessageMarkers(sessionId);
+    return fromEvents(() => eventsListUserMarkers(sessionId))
+      ?? transcriptFallback(getSessionUserMessageMarkers(sessionId));
   },
 
   getMessage(sessionId: string, messageId: string): Readonly<ChatMessage> | undefined {
     const fromEventLog = fromEvents(() => eventsGetMessage(sessionId, messageId))
     if (fromEventLog) return guard(fromEventLog)
-    const message = getSessionMessages(sessionId)?.find(item => item.id === messageId)
+    const message = transcriptFallback(getSessionMessages(sessionId))?.find(item => item.id === messageId)
     return message ? guard(message) : undefined
   },
 
@@ -221,7 +264,8 @@ export const sessionReads = {
     predicate: (message: ChatMessage, index: number) => boolean,
     options: { from?: 'start' | 'end' } = {},
   ): Readonly<ChatMessage> | undefined {
-    const messages = fromEvents(() => eventsListMessages(sessionId)) ?? getSessionMessages(sessionId)
+    const messages = fromEvents(() => eventsListMessages(sessionId))
+      ?? transcriptFallback(getSessionMessages(sessionId))
     if (!messages) return undefined
     if (options.from === 'end') {
       for (let index = messages.length - 1; index >= 0; index--) {
@@ -236,19 +280,19 @@ export const sessionReads = {
   getMessageIndex(sessionId: string, messageId: string): number {
     const fromEventLog = fromEvents(() => eventsGetMessageIndex(sessionId, messageId))
     if (fromEventLog !== undefined) return fromEventLog
-    return getSessionMessages(sessionId)?.findIndex(item => item.id === messageId) ?? -1
+    return transcriptFallback(getSessionMessages(sessionId))?.findIndex(item => item.id === messageId) ?? -1
   },
 
   countMessages(sessionId: string): number {
     const fromEventLog = fromEvents(() => eventsCountMessages(sessionId))
     if (fromEventLog !== undefined) return fromEventLog
-    return getSessionMessages(sessionId)?.length ?? 0
+    return transcriptFallback(getSessionMessages(sessionId))?.length ?? 0
   },
 
   lastMessageOfRole(sessionId: string, role: ChatMessage['role']): Readonly<ChatMessage> | undefined {
     const fromEventLog = fromEvents(() => eventsLastMessageOfRole(sessionId, role))
     if (fromEventLog) return guard(fromEventLog)
-    const messages = getSessionMessages(sessionId)
+    const messages = transcriptFallback(getSessionMessages(sessionId))
     if (!messages) return undefined
     for (let index = messages.length - 1; index >= 0; index--) {
       if (messages[index].role === role) return guard(messages[index])
@@ -258,7 +302,8 @@ export const sessionReads = {
 
   /** 第一条用户消息的预览文本(标题回退 / 列表预览;server 那三份实现的归口)。 */
   firstUserPreview(sessionId: string, maxLength = 120): string | undefined {
-    const messages = fromEvents(() => eventsListMessages(sessionId)) ?? getSessionMessages(sessionId)
+    const messages = fromEvents(() => eventsListMessages(sessionId))
+      ?? transcriptFallback(getSessionMessages(sessionId))
     return sessionPreviewText(messages ?? [], maxLength)
   },
 
@@ -306,7 +351,7 @@ export const sessionReads = {
     })
     if (fromEventLog !== undefined) return fromEventLog
 
-    const messages = getSessionMessages(sessionId)
+    const messages = transcriptFallback(getSessionMessages(sessionId))
     if (!messages) return []
     const slice = !options.upToMessageId
       ? messages
@@ -321,7 +366,8 @@ export const sessionReads = {
 
   /** 不物化整份数组的遍历(搜索 / 媒体 / 权限扫描)。 */
   *iterateMessages(sessionId: string): Generator<Readonly<ChatMessage>> {
-    const messages = fromEvents(() => eventsListMessages(sessionId)) ?? getSessionMessages(sessionId)
+    const messages = fromEvents(() => eventsListMessages(sessionId))
+      ?? transcriptFallback(getSessionMessages(sessionId))
     if (!messages) return
     for (const message of messages) yield guard(message)
   },

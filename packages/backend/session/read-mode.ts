@@ -46,6 +46,46 @@ export function setSessionReadModeForTesting(mode?: SessionReadMode): void {
 }
 
 /**
+ * **冷加载补水**开关(S3w-1,§14.4 / §15.4)。
+ *
+ *   `ONETHING_SESSION_HYDRATE = 'messages'(默认)| 'projection'`
+ *
+ * 与上面那个开关问的**不是同一个问题**,所以不合并:
+ *  - `ONETHING_SESSION_READ` 问的是"产品线的历史从哪一侧**读**";
+ *  - 这一个问的是"LRU 冷加载时,内存 store(写模型)从哪一侧**补水**"。
+ *
+ * 今天 `read` 已经默认 `events`,而写模型的起点仍然是 `messages.jsonl`
+ * (§14.1:"S3w 真正要换的那根梁")。翻这一个 = 把梁换掉,所以它**默认老路**:
+ * 补水形状合同(`bun run sessions:hydration-contract`)对全量真机会话绿了、
+ * 兜底命中(`fallbackHits`)量到 0 之后才谈默认值。
+ *
+ * 只认两个值,拼错 = 默认 —— 与读开关同款(那边 `messages` 是回滚杆必须显式认,
+ * 这边反过来:`projection` 是新路,必须显式点名)。
+ */
+export type SessionHydrateMode = 'messages' | 'projection'
+
+export const DEFAULT_SESSION_HYDRATE_MODE: SessionHydrateMode = 'messages'
+
+let hydrateOverride: SessionHydrateMode | undefined
+
+export function getSessionHydrateMode(): SessionHydrateMode {
+  if (hydrateOverride) return hydrateOverride
+  const raw = process.env.ONETHING_SESSION_HYDRATE?.trim().toLowerCase()
+  if (raw === 'projection') return 'projection'
+  if (raw === 'messages') return 'messages'
+  return DEFAULT_SESSION_HYDRATE_MODE
+}
+
+export function isSessionProjectionHydrateMode(): boolean {
+  return getSessionHydrateMode() === 'projection'
+}
+
+/** 仅测试:临时切补水档;传 `undefined` 归还给环境变量。 */
+export function setSessionHydrateModeForTesting(mode?: SessionHydrateMode): void {
+  hydrateOverride = mode
+}
+
+/**
  * R-c(§13.6):**切读之前先问一句这个 store 还有没有别的 core。**
  *
  * `events` 模式下产品线的历史来自 `events.jsonl`。两个写者同时往它追加时,

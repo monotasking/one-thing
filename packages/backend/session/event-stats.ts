@@ -62,6 +62,19 @@ export interface SessionShadowStats {
    * 那一段正文在账本上整格消失,而没有任何计数说它消失过。
    */
   droppedParts: number
+  /**
+   * S3w-1(§15.4):`events` 读模式下 **退回抄本**的次数。
+   *
+   * `sessionReads` 的每个 routed 方法都有半边 `?? getSessionMessages(...)`:
+   * 事件折不出消息(未迁移的老会话 / legacy 整文件 / 物化出错)时退回
+   * `messages.jsonl`。S3w-3 要删掉这批兜底,而删之前必须先**量到 0** ——
+   * 它今天是静默的,没人知道产品线到底还有多少读走在抄本上。
+   *
+   * 只在 `events` 读模式下、且**抄本那边真的有历史**时计数(空会话两侧都没有
+   * 东西,那不是兜底救了一次)。
+   * 不进门(它量的是存量数据的覆盖面,不是这次改动的对错),报告打印。
+   */
+  fallbackHits: number
   /** 按断言种类拆的不等计数(`messages` / `history`)。 */
   byKind: Record<string, number>
   /**
@@ -85,6 +98,7 @@ const EMPTY: SessionShadowStats = {
   duplicateMismatches: 0,
   projectionIssues: 0,
   droppedParts: 0,
+  fallbackHits: 0,
   byKind: {},
   skipped: {},
 }
@@ -112,6 +126,7 @@ function load(): SessionShadowStats {
       // 老账单缺这两格读成 0(而不是读崩)。
       projectionIssues: Number(parsed.projectionIssues) || 0,
       droppedParts: Number(parsed.droppedParts) || 0,
+      fallbackHits: Number(parsed.fallbackHits) || 0,
       byKind: normalizeByKind(parsed.byKind),
       skipped: normalizeByKind(parsed.skipped),
       ...(Number(parsed.lastMismatchAt) ? { lastMismatchAt: Number(parsed.lastMismatchAt) } : {}),
@@ -172,6 +187,7 @@ export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void
   if (patch.duplicateMismatches) stats.duplicateMismatches += patch.duplicateMismatches
   if (patch.projectionIssues) stats.projectionIssues += patch.projectionIssues
   if (patch.droppedParts) stats.droppedParts += patch.droppedParts
+  if (patch.fallbackHits) stats.fallbackHits += patch.fallbackHits
   if (patch.mismatches) {
     stats.mismatches += patch.mismatches
     stats.lastMismatchAt = Date.now()
@@ -213,6 +229,15 @@ export function countSessionEventFailure(sessionId: string, error: unknown, what
   if (warnedSessions.has(sessionId)) return
   warnedSessions.add(sessionId)
   log.warn('session event append failed', { sessionId, what }, error)
+}
+
+/**
+ * S3w-1:`events` 读模式下退回了一次抄本。只计数,不 warn —— 一次全库搜索会
+ * 在老会话上连命中几百次,刷屏没有意义;总数在账单里,`sessions:shadow-report`
+ * 会打印。
+ */
+export function countSessionReadFallback(): void {
+  bumpSessionShadowStats({ fallbackHits: 1 })
 }
 
 /**

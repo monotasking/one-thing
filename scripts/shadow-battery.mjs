@@ -22,6 +22,11 @@
  *
  * 已修的每一类失配都固化成至少一个场景(映射表在运行结束时打印,与
  * §10.14 的表逐条对应)。
+ *
+ * **两条泳道**(S3w-1 起):泳道一按场景表写会话(上面那条链);泳道二把 server
+ * 换成一个空 LRU 的新进程 + `ONETHING_SESSION_HYDRATE=projection`,在同一批会话
+ * 上各接一轮 —— 冷加载这次从 `events.jsonl` 的投影补水,补水形状漂一格,收尾的
+ * 影子当场红(见 `runHydrateLane`)。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -1339,6 +1344,79 @@ async function withConcurrency(items, limit, worker) {
   return results
 }
 
+
+// ============================================================ 补水泳道(S3w-1)
+
+/** `<store>/log/session-shadow.jsonl` 现在有多少行(泳道二只认它之后新增的)。 */
+function countShadowLines(store) {
+  const file = path.join(store, 'log', 'session-shadow.jsonl')
+  try {
+    return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).length
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * 泳道二:**冷加载补水**(S3w-1,§14.4 / §15.4)。
+ *
+ * 泳道一写完的那批会话,换一个空 LRU 的新进程 + `ONETHING_SESSION_HYDRATE=projection`
+ * 再各接一轮。第一次 `getSession` 就是冷加载,消息这次从投影物化;那一轮的
+ * run 收尾时影子照常比"store vs 投影"。判据是**这条泳道期间新增的失配行必须
+ * 为 0** —— 补水形状漂一格就当场红,不必新造判据。
+ *
+ * 取样上限 8 条:泳道二的价值在"冷加载路径被真的走了一遍",不在遍历全矩阵;
+ * 每条会话都要起一轮真执行,全量会把 45s 的矩阵拖成两倍。
+ */
+async function runHydrateLane({ store, api, library, stopServer, startServer, targets }) {
+  const lane = { attempted: 0, failed: [], mismatchLines: 0, skipped: false }
+  const scenario = library.find(entry => entry.name === 'plain-text') ?? library[0]
+  if (!scenario || targets.length === 0) {
+    lane.skipped = true
+    return lane
+  }
+
+  // 每个场景取一条,最多 8 条 —— 覆盖不同形状(工具 / 压缩 / steering / 编辑)。
+  const picked = []
+  const seen = new Set()
+  for (const entry of targets) {
+    if (seen.has(entry.scenario)) continue
+    seen.add(entry.scenario)
+    picked.push(entry)
+    if (picked.length >= 8) break
+  }
+
+  await stopServer()
+  await sleep(300)
+  const before = countShadowLines(store)
+  console.log(`[battery] hydrate lane: restarting with ONETHING_SESSION_HYDRATE=projection (${picked.length} session(s))`)
+  await startServer({ ONETHING_SESSION_HYDRATE: 'projection' })
+
+  for (const entry of picked) {
+    lane.attempted += 1
+    try {
+      const variant = makeVariant(makeRng(entry.sessionId.length + lane.attempted), 0)
+      const d = new Driver(api, entry.sessionId, scenario.name, variant, store)
+      // 冷加载发生在这一句:新进程的 LRU 是空的,store 从投影补水。
+      const beforeMessages = await d.messages()
+      const assistants = beforeMessages.filter(m => m.role === 'assistant').length
+      if (beforeMessages.length === 0) throw new Error('cold load produced an empty session')
+      await d.send('再说一句')
+      const after = await d.waitIdle(assistants + 1)
+      // 补水没吞历史:接着写的这一轮是**加**在原来那段上面的。
+      if (after.length < beforeMessages.length + 2) {
+        throw new Error(`history shrank after hydrate: ${beforeMessages.length} → ${after.length}`)
+      }
+    } catch (error) {
+      lane.failed.push(`${entry.scenario}/${entry.sessionId}: ${String(error?.message ?? error)}`)
+    }
+  }
+
+  await sleep(2500)
+  lane.mismatchLines = countShadowLines(store) - before
+  return lane
+}
+
 async function main() {
   // **默认每次都重建**:矩阵验的是 `packages/**` 里那份投影,而跑的是
   // `dist/server/main.js` 里那份。忘了重建就会拿旧 bundle 报绿(第一次写这个
@@ -1376,44 +1454,53 @@ async function main() {
     }]),
   ))
 
-  const server = spawn(process.execPath, [SERVER_ENTRY], {
-    cwd: REPO,
-    env: {
-      ...process.env,
-      ONETHING_STORE_PATH: store,
-      ONETHING_SERVER_PORT: String(serverPort),
-      ONETHING_SERVER_TOKEN: token,
-      ONETHING_SESSION_SHADOW: '1',
-      ONETHING_LOG: 'warn',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  // 两趟都用它起 server:第二趟只多一个 `ONETHING_SESSION_HYDRATE=projection`
+  // (S3w-1 的补水泳道,见下面 `runHydrateLane`)。
   const serverOut = []
-  server.stdout.on('data', d => serverOut.push(String(d)))
-  server.stderr.on('data', d => serverOut.push(String(d)))
-
-  const api = makeApi(serverPort, token)
-  const results = []
-  let stopped = false
-  const stopServer = async () => {
-    if (stopped) return
-    stopped = true
-    server.kill('SIGTERM')
-    await new Promise(resolve => { server.on('exit', resolve); setTimeout(resolve, 10_000) })
-  }
-
-  try {
-    let up = false
+  let server
+  let stopped = true
+  const startServer = async extraEnv => {
+    server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: REPO,
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_SERVER_PORT: String(serverPort),
+        ONETHING_SERVER_TOKEN: token,
+        ONETHING_SESSION_SHADOW: '1',
+        ONETHING_LOG: 'warn',
+        ...extraEnv,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    stopped = false
+    server.stdout.on('data', d => serverOut.push(String(d)))
+    server.stderr.on('data', d => serverOut.push(String(d)))
     for (let i = 0; i < 150; i++) {
       await sleep(200)
       try {
         const res = await fetch(`http://127.0.0.1:${serverPort}/api/sessions`, {
           headers: { authorization: `Bearer ${token}` },
         })
-        if (res.ok) { up = true; break }
+        if (res.ok) return
       } catch { /* not yet */ }
     }
-    if (!up) throw new Error(`server never came up:\n${serverOut.join('').slice(-4000)}`)
+    throw new Error(`server never came up:\n${serverOut.join('').slice(-4000)}`)
+  }
+
+  const api = makeApi(serverPort, token)
+  const results = []
+  let hydrateLane
+  const stopServer = async () => {
+    if (stopped) return
+    stopped = true
+    const dying = server
+    dying.kill('SIGTERM')
+    await new Promise(resolve => { dying.on('exit', resolve); setTimeout(resolve, 10_000) })
+  }
+
+  try {
+    await startServer()
     console.log('[battery] server up')
 
     const rng = makeRng(ARGS.seed)
@@ -1453,6 +1540,20 @@ async function main() {
 
     // 统计表是 1s 节流写、`unref` 的定时器,关停时没人 flush —— 等它自己落一次。
     await sleep(2500)
+
+    // ---- 泳道二:冷加载补水(S3w-1,§14.4)
+    //
+    // 第一趟把会话写完就把进程杀掉;第二趟换一个**空 LRU 的新进程**、把
+    // `ONETHING_SESSION_HYDRATE` 拨到 `projection`,再往同一批会话上各接一轮。
+    // 那一轮的第一件事就是冷加载 —— store 的消息这次从 `events.jsonl` 的投影
+    // 物化,而不是 `messages.jsonl`。接着 run 收尾时影子照常比"store vs 投影":
+    // 补水形状只要漂了一格,这里当场红。
+    //
+    // 换句话说,这条泳道用**既有的影子法官**验补水,不新造判据。
+    hydrateLane = await runHydrateLane({
+      store, api, library, stopServer, startServer,
+      targets: results.filter(entry => entry.ok && entry.sessionId),
+    })
   } finally {
     await stopServer()
     mock.close()
@@ -1492,6 +1593,17 @@ async function main() {
       `  ${red ? 'FAIL' : 'PASS'}  ${scenario.name.padEnd(22)} ok=${entry.ok} failed=${entry.failed} mismatch-lines=${entry.mismatches}`,
     )
     for (const error of entry.errors.slice(0, 3)) console.log(`        ${error}`)
+  }
+
+  if (hydrateLane) {
+    const red = hydrateLane.failed.length > 0 || hydrateLane.mismatchLines > 0
+    if (red) anyRed = true
+    console.log(
+      `\n[battery] hydrate lane (S3w-1, ONETHING_SESSION_HYDRATE=projection):`
+      + ` ${red ? 'FAIL' : 'PASS'} sessions=${hydrateLane.attempted}`
+      + ` failed=${hydrateLane.failed.length} new-mismatch-lines=${hydrateLane.mismatchLines}`,
+    )
+    for (const error of hydrateLane.failed.slice(0, 5)) console.log(`        ${error}`)
   }
 
   console.log('\n[battery] fixed-class coverage:')

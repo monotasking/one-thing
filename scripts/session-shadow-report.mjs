@@ -61,6 +61,9 @@ export function readStats(logDir) {
       projectionIssues: Number(parsed.projectionIssues) || 0,
       droppedParts: Number(parsed.droppedParts) || 0,
       appendFailures: Number(parsed.appendFailures) || 0,
+      // S3w-1(§15.4):`events` 读模式下退回抄本的次数。不进门 —— 它量的是
+      // 存量数据的覆盖面;S3w-3 删兜底之前必须先量到 0。
+      fallbackHits: Number(parsed.fallbackHits) || 0,
       byKind: parsed.byKind && typeof parsed.byKind === 'object' ? parsed.byKind : {},
       skipped: parsed.skipped && typeof parsed.skipped === 'object' ? parsed.skipped : {},
       lastMismatchAt: Number(parsed.lastMismatchAt) || undefined,
@@ -75,6 +78,7 @@ export function readStats(logDir) {
       projectionIssues: 0,
       droppedParts: 0,
       appendFailures: 0,
+      fallbackHits: 0,
       byKind: {},
       skipped: {},
       missing: true,
@@ -156,6 +160,8 @@ function main() {
     // F13:记录器丢掉的 part/批次。同样只打印。
     console.log(`[shadow] droppedParts    : ${stats.droppedParts}   (采集点丢账,不进门)`)
     console.log(`[shadow] appendFailures : ${stats.appendFailures}`)
+    // S3w-1:兜底命中(events 模式下退回 messages.jsonl 的读)。不进门,S3w-3 前要量到 0。
+    console.log(`[shadow] fallbackHits   : ${stats.fallbackHits}   (退回抄本的读,不进门)`)
     console.log(`[shadow] byKind         : ${JSON.stringify(stats.byKind)}`)
     // 跳过 ≠ 不等:门只看 mismatches。列出来是为了让"这条会话为什么没被比"看得见
     // —— `legacyPartial` = 老会话的 events.jsonl 只覆盖了历史尾巴(§10.9)。

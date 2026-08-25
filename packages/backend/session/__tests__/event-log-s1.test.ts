@@ -111,7 +111,14 @@ describe('event-log discipline flip (§10.3)', () => {
     expect(text.trimEnd().split('\n')).toHaveLength(20)
   })
 
-  it('G12: reloads counters instead of overwriting another writer\'s seqs', async () => {
+  /**
+   * S3w-0b(§14.6 裁定 3):**第二个写者写进来之后,这个进程再也写不进去。**
+   *
+   * 从前的行为是"重装计数器接着写"(接到别人的 4 后面写 5)。那会让两个进程
+   * 交错着往同一份账本上写,而 `surfaceOp: replace` 的区间引用的是 seq ——
+   * 遮蔽从此指向对方的事件,校验还照样放行。事件成为唯一真相之前必须换成拒写。
+   */
+  it('G12: refuses the append once another writer touched the log', async () => {
     makeJsonlSession('s3')
     appendSessionLogEvent('s3', 'request/end', { requestIndex: 1 })
     await flushSessionEventLog('s3')
@@ -125,17 +132,24 @@ describe('event-log discipline flip (§10.3)', () => {
     const logs = collectLogRecordsForTests()
     // 守卫有 500ms 的检查间隔:把表往前拨,让下一次 append 真的去 stat。
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 10_000)
-    const seq = appendSessionLogEvent('s3', 'request/end', { requestIndex: 9 })
+    const refused = appendSessionLogEvent('s3', 'request/end', { requestIndex: 9 })
+    // 拒写是**一路拒到底**的:守卫认定之后不再 stat,后续 append 同样写不进去。
+    const refusedAgain = appendSessionLogEvent('s3', 'request/end', { requestIndex: 10 })
     vi.mocked(Date.now).mockRestore()
     await flushSessionEventLog('s3')
 
-    // 接着别人的 4 往下数,而不是把 2 再写一遍(重复 seq 会让 surfaceOp 的
-    // 区间遮蔽静默错乱)。
-    expect(seq).toBe(5)
-    expect(logs.messages().some(msg => msg.includes('another writer'))).toBe(true)
+    expect(refused).toBeUndefined()
+    expect(refusedAgain).toBeUndefined()
+    expect(logs.messages().some(msg => msg.includes('refusing to append'))).toBe(true)
     logs.stop()
+
+    // 盘上只有第二个写者那四条:我们一个字节都没有接上去。
     const events = await readSessionLogEvents('s3')
-    expect(events.map(event => event.seq)).toEqual([1, 2, 3, 4, 5])
+    expect(events.map(event => event.seq)).toEqual([1, 2, 3, 4])
+
+    // 每一次拒写都是一笔"这条事件永远补不回来了" —— 进 appendFailures,门看得见。
+    flushSessionEventStats()
+    expect(readSessionShadowStats().appendFailures).toBe(2)
   })
 })
 

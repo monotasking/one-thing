@@ -29,6 +29,7 @@ import { sessionCommands } from "../session/commands.js";
 import { resetSessionEventLogCache } from "../session/event-log.js";
 import { resetSessionSurfaceCache } from "../session/event-surface.js";
 import { resetSessionRuns } from "../session/runs.js";
+import { hydrateSessionMessagesFromProjection } from "../session/hydrate.js";
 import { getSettings } from "./settings.js";
 import { expandPath } from "../wiring/tools/core/sandbox.js";
 import {
@@ -114,6 +115,9 @@ const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ChatSession, Ch
 	writeJsonFileAsync: writeSessionJsonFileAsync,
 	deleteJsonFile,
 	storageDriver: sessionStorageDriver,
+	// S3w-1:冷加载补水的岔口(`ONETHING_SESSION_HYDRATE=projection` 才真的换,
+	// 默认返回 undefined = 一字不改走 messages.jsonl)。
+	hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection,
 	getCurrentSessionId,
 	setCurrentSessionId,
 	getDefaultWorkingDirectory: () =>

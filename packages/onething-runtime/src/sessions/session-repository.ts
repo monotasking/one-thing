@@ -91,6 +91,18 @@ export interface OnethingSessionRepositoryOptions<
   /** 格式感知的存储驱动(legacy/jsonl 混合路由);缺省时退回整文件 JSON 直写 */
   storageDriver?: SessionStorageDriver<TSession>
   /**
+   * **冷加载补水源**(S3w-1,`docs/design/session-event-sourcing-2026-08.md`
+   * §14.4)。装上了就在冷加载时用它物化出来的消息顶掉 `messages.jsonl` 那一份
+   * (外壳仍来自 meta.json);返回 `undefined` / 空数组 = 这条会话的事件里没有
+   * 历史,一字不改走老路。
+   *
+   * 为什么是注入而不是直接 import:投影住在装配层(`backend/session/`,它认识
+   * 事件文件、blob 与活投影缓存),而产品层的仓库不许反向依赖装配层。档位判定
+   * (`ONETHING_SESSION_HYDRATE`)也在宿主那一侧 —— 仓库只知道"有没有人给我
+   * 一份消息",不知道有几种档。
+   */
+  hydrateMessagesFromProjection?(sessionId: string): TMessage[] | undefined
+  /**
    * SQLite 退役遗留:全仓零生产填充(S4 把只为它存在的那个具名口删了,形状
    * 原地保留)。下面每个成员都缺席 = 相应分支恒为 no-op。
    */
@@ -245,12 +257,36 @@ export class OnethingSessionRepository<
     return plan
   }
 
+  /**
+   * 冷加载的取数口 —— **S3w-1 的岔口就在这里**
+   * (`docs/design/session-event-sourcing-2026-08.md` §14.4 / §15.4)。
+   *
+   * 会话的**外壳**(meta.json:名字、模型、agent、工作目录、摘要…)永远来自
+   * 存储驱动;换的只是**消息**这一格:补水源装上了(宿主判档,见
+   * `hydrateMessagesFromProjection`)且这条会话的事件里真的折得出消息时,
+   * store 的消息从投影物化;折不出(未迁移的老会话 / legacy 整文件 / 补水源
+   * 没装)就一字不改地走老路。
+   *
+   * 换完之后照旧过 `rehydrateSessionFromStorage` —— 老路那条补水链一步不减:
+   * 它重建 `step.toolCall` 链接、把终态 step 的 `partialResult` 补回来。投影
+   * 侧大多已经带着这两格,于是它对投影形状是近乎恒等的一遍;真正的意义是
+   * **两条路收在同一个出口**,不必有人记得"投影那条不用跑补水"。
+   *
+   * 启动期修复(`sanitizeSessionOnStartup`)在这之后由 `getSession` 的
+   * `repairOnFirstTouch` 跑,两条路同款 —— 事件侧虽然已经有 `prepare` 合成过
+   * 中断结局(两者口径由 `core/session/interrupted.ts` 统一),但 `isStreaming`
+   * 与会话级时间线元数据那几格仍然只有它管。
+   */
   private loadStoredSession(sessionId: string): TSession | undefined {
     if (this.deletionTombstones.has(sessionId)) return undefined
     const stored = this.options.storageDriver
       ? this.options.storageDriver.load(sessionId)
       : this.options.readJsonFile<TSession | null>(this.options.getSessionPath(sessionId), null) ?? undefined
-    return stored ? rehydrateSessionFromStorage(stored) : undefined
+    if (!stored) return undefined
+    const projected = this.options.hydrateMessagesFromProjection?.(sessionId)
+    // 整体替换用展开(命令面 COW 的同一条纪律:`session.messages = …` 不许)。
+    const hydrated = projected && projected.length > 0 ? { ...stored, messages: projected } : stored
+    return rehydrateSessionFromStorage(hydrated)
   }
 
   invalidateSessionCache(sessionId: string): void {

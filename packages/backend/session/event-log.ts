@@ -23,7 +23,8 @@
  *    300ms 节流那种"按时间刷"换成"按语义刷":崩溃时丢的是"还没到检查点的那
  *    一小段",而不是"随机的 300ms"。
  * 4. **G12 跨进程守卫** —— 首次启用读文件 lastSeq;之后按字节数比对,发现文件
- *    比我们写进去的还长(别的进程写过)就重新装载计数器并 warn,绝不盲写。
+ *    比我们写进去的还长(别的进程写过)就**拒写**(S3w-0b:从"重装计数器继续写"
+ *    升级而来,见 `guardForeignWriter`),绝不盲写。
  *    `surfaceOp replace` 是按 seq 区间遮蔽的,重复 seq 会变成静默的历史错乱。
  *
  * 类型与纯编解码在 core(`@onething/core/session`);这里只负责路径、文件、
@@ -98,6 +99,14 @@ interface SessionEventLogState {
    */
   expectedBytes: number
   lastForeignCheckAt: number
+  /**
+   * G12(S3w-0b):这份文件被**别的进程**写过。
+   *
+   * 一旦为真就再也不翻回去:这个进程已经不是唯一写者,它内存里的 seq 与文件
+   * 上的 seq 从此各说各话,继续追加只会制造 `surfaceOp` 遮错区间的静默错乱。
+   * 于是此后每一次 append 都拒写并记账(见 `appendSessionLogEvent`)。
+   */
+  foreignWriter: boolean
   /** 影子投影还没取走的记录(见 `SHADOW_TAIL_MAX`)。关闸时永远是空的。 */
   shadowTail: SessionLogEventRecord[]
   /** 尾巴溢出过 = 这一段事件没进活投影,消费者必须从文件重折。 */
@@ -183,6 +192,7 @@ function ensureState(sessionId: string): SessionEventLogState {
     queue: Promise.resolve(),
     expectedBytes: 0,
     lastForeignCheckAt: 0,
+    foreignWriter: false,
     shadowTail: [],
     shadowTailOverflowed: false,
     lastByType: new Map(),
@@ -193,30 +203,50 @@ function ensureState(sessionId: string): SessionEventLogState {
 }
 
 /**
- * G12:别的进程写过这份文件吗?
+ * G12:别的进程写过这份文件吗?返回 `true` = 有,本次 append 必须**拒写**。
  *
  * 判据是**字节数**,不是 seq:seq 要 parse 整份文件,而"文件比我们写进去的还长"
  * 是一次 stat 就能答的问题(我们自己的在途写入已经算进 `expectedBytes`,所以
- * 队列没排空不会误报)。发现了就重新装载计数器并 warn —— 绝不在别人的 seq 上
- * 继续盲写。
+ * 队列没排空不会误报)。
+ *
+ * ## S3w-0b:从"重装计数器继续写"升级为"拒写"(§14.6 裁定 3 / §15.4)
+ *
+ * 从前发现外写者是**重新装载计数器并 warn 后照写**。那在影子期还说得过去
+ * (messages.jsonl 才是真相),但事件正在成为唯一账本:两个写者各自在内存里数
+ * seq,重装只是把这一次接到别人的尾巴后面,下一次别人又接到我们后面 ——
+ * 交错写出来的 `surfaceOp: replace` 区间指向的是**对方的** seq,遮蔽从此静默
+ * 错乱,而校验照样放行(那个 seq 在面上确实存在)。比 messages.jsonl 的双写
+ * (最后写者赢)严重一个量级(§14.7 风险③)。
+ *
+ * 所以判定一次就**一路拒到底**:这个进程已经不是唯一写者,它写下去的每一条都
+ * 是错乱的种子。拒写只记账(`appendFailures` + 每会话一次 warn),**不上抛**
+ * —— 观察期里 messages.jsonl 还在写,拒写该记账不该打扰(命令失败语义留到
+ * S3w-2 随裁定 7 一起翻转)。
+ *
+ * 进程级单写者由 one-core 发现文件(`run/http.json` 启动拒绝)承担;这道拒写
+ * 兜的是它盖不住的残余窗口(两个 `server:start` 互不拒绝、`--force` 绕过)。
  */
-function guardForeignWriter(state: SessionEventLogState, sessionId: string): void {
+function guardForeignWriter(state: SessionEventLogState, sessionId: string): boolean {
+  if (state.foreignWriter) return true
   const now = Date.now()
-  if (now - state.lastForeignCheckAt < FOREIGN_WRITER_CHECK_INTERVAL_MS) return
+  if (now - state.lastForeignCheckAt < FOREIGN_WRITER_CHECK_INTERVAL_MS) return false
   state.lastForeignCheckAt = now
+  let size: number
   try {
-    const size = fs.statSync(getSessionEventsLogPath(sessionId)).size
-    if (size <= state.expectedBytes) return
-    const before = state.lastSeq
-    reloadCounters(state, sessionId)
-    log.warn('another writer appended to the session event log; reloaded counters', {
-      sessionId,
-      seqBefore: before,
-      seqAfter: state.lastSeq,
-    })
+    size = fs.statSync(getSessionEventsLogPath(sessionId)).size
   } catch {
     // 文件还不存在 / stat 失败:什么都不做,append 自己会报错并计数。
+    return false
   }
+  if (size <= state.expectedBytes) return false
+  state.foreignWriter = true
+  log.warn('another writer appended to the session event log; refusing to append', {
+    sessionId,
+    ourSeq: state.lastSeq,
+    ourBytes: state.expectedBytes,
+    fileBytes: size,
+  })
+  return true
 }
 
 /**
@@ -253,7 +283,17 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   if (type === 'session/created') ensureSessionEventDir(state, sessionId)
   if (!state.enabled) return undefined
 
-  guardForeignWriter(state, sessionId)
+  // G12(S3w-0b):外写者在场 = 本次拒写。记一笔失败(每会话 warn 一次由
+  // `countSessionEventFailure` 负责),返回 undefined —— 调用方拿不到 seq,
+  // 于是没有人会去引用一个根本没写出去的事件。
+  if (guardForeignWriter(state, sessionId)) {
+    countSessionEventFailure(
+      sessionId,
+      new Error('another writer appended to this event log'),
+      'foreign writer detected; append refused',
+    )
+    return undefined
+  }
 
   const seq = state.lastSeq + 1
   state.lastSeq = seq

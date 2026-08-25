@@ -122,6 +122,69 @@ describe('onething session repository', () => {
     expect(repository.getSessionRaw('s1')).toBeUndefined()
   })
 
+  /**
+   * S3w-1(§14.4):冷加载补水岔口 —— 装上补水源就用它顶掉抄本那一份消息,
+   * 外壳仍来自存储层;补水源交白(未迁移的老会话)时一字不改走老路。
+   * 补水完照旧跑 `rehydrate`(`step.toolCall` 链接由它重建)。
+   */
+  it('hydrates cold-loaded messages from the injected projection source', async () => {
+    const sessionsDir = createTempSessionsDir()
+    let currentSessionId = ''
+    let hydrated: TestMessage[] | undefined
+    const repository = createOnethingSessionRepository<
+      TestSession,
+      TestMessage,
+      TestMeta,
+      CoreSessionDetails,
+      UserMessageMarker
+    >({
+      defaultAgentId: 'default-agent',
+      getSessionsDir: () => sessionsDir,
+      getSessionPath: sessionId => path.join(sessionsDir, `${sessionId}.json`),
+      readJsonFile,
+      writeJsonFile,
+      writeJsonFileAsync,
+      deleteJsonFile: filePath => fs.rmSync(filePath, { force: true }),
+      getCurrentSessionId: () => currentSessionId,
+      setCurrentSessionId: sessionId => {
+        currentSessionId = sessionId
+      },
+      hydrateMessagesFromProjection: () => hydrated,
+    })
+
+    const session = repository.createSession('s1', 'First')
+    session.messages.push({ id: 'm1', role: 'user', content: 'from the transcript', timestamp: 1 })
+    repository.saveSessionToFile('s1', session)
+    await repository.flushSessionSave('s1')
+
+    // 补水源交白 = 老路:盘上那份原样回来。
+    repository.clearAllSessionCache()
+    expect(repository.getSession('s1')?.messages).toMatchObject([{ content: 'from the transcript' }])
+
+    // 装上补水源:冷加载的消息换成投影那一份,外壳(名字)仍来自存储层。
+    hydrated = [
+      { id: 'm1', role: 'user', content: 'from the projection', timestamp: 1 },
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: 'answer',
+        timestamp: 2,
+        steps: [{ id: 'st1', title: 'call', status: 'completed', toolCallId: 'tc1' }],
+        toolCalls: [{ id: 'tc1', toolName: 'read', status: 'completed', result: 'ok' }],
+      } as unknown as TestMessage,
+    ]
+    repository.clearAllSessionCache()
+    const reloaded = repository.getSession('s1')
+    expect(reloaded?.name).toBe('First')
+    expect(reloaded?.messages).toMatchObject([
+      { content: 'from the projection' },
+      { content: 'answer' },
+    ])
+    // 老路那条补水链一步不减:`step.toolCall` 由 `rehydrate` 接回顶层那一份。
+    const step = (reloaded?.messages[1] as unknown as { steps: { toolCall?: { id: string } }[] }).steps[0]
+    expect(step.toolCall?.id).toBe('tc1')
+  })
+
   it('owns session metadata and side-effect mutations behind repository adapters', () => {
     const sessionsDir = createTempSessionsDir()
     let currentSessionId = ''
