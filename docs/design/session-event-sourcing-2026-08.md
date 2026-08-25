@@ -3839,7 +3839,7 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 |---|---|---|---|
 | **F0 恒等门转向** | 现 shadow(store=真相 vs 投影=影子)**角色对调**:事件/fold 侧成真相,老 reducer 降级为影子验证器;比对机制、记账口径沿用 session-shadow | 对调后真机 ≥200 run 0 失配 | 对调是比对方向,零行为变化 |
 | **F1 写侧同步可见** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
-| **F2 命令面翻转(逐条)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归) | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
+| **F2 命令面翻转(逐条)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
 | **F3 写侧回读换语义** | §14.1 的 9 处写侧回读残留全部改读 fold 后投影(F1 是前提);「写侧读抄本」纪律(§13.18)整体翻面 | 定向用例逐处 + battery | 随 F2 分批走 |
 | **F4 reducer 退役** | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
 
@@ -3961,3 +3961,9 @@ interrupted 占位,自报标题接受丢失 —— 今天的实际行为)。
 基线:+2 行(a5157107 的 unclosed-run 与 canonical differs,注释写明该类**尚未修**、
 unclosed-run 会随会话打开自愈届时应摘)。全库 verify:25 known / 0 new,无第二个
 会话命中此类。
+
+**裁定(2026-08-25,用户):丙 + 乙挂 F 线,甲不做。** 即:今天收编为判例 ——
+退出竞速导致的半截 run 由 prepare 兜底成 interrupted 占位,自报结局文案这一格接受
+现阶段丢失(§13.8 第一类的子形状);**乙(annotate 成为事件产地)登记为 F 线 F2 的
+必做项**(full 之下停写后该格永久折不出,不做乙则丙从"偶发丢文案"恶化为"永久丢"),
+届时连同 §13.8 "采集点不二次派生"裁定一起重审。
