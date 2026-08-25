@@ -699,6 +699,10 @@ export function createSessionEventRecorder(
     pushDelta(partIndex, delta)
   }
 
+  /**
+   * 批 P-a(§15.3):这张白名单**就是**事件面的采集口径 —— 新上线的 usage 字段
+   * 不加进来,store 有、事件没有,投影当场对不上(providerCostUSD 就是这么漏的)。
+   */
   function normalizeUsage(usage: {
     inputTokens?: number
     outputTokens?: number
@@ -706,6 +710,7 @@ export function createSessionEventRecorder(
     cacheReadTokens?: number
     cacheWriteTokens?: number
     reasoningTokens?: number
+    providerCostUSD?: number
   } | undefined): SessionResponseUsage | undefined {
     if (!usage) return undefined
     return {
@@ -715,6 +720,7 @@ export function createSessionEventRecorder(
       ...(usage.cacheReadTokens !== undefined ? { cacheReadTokens: usage.cacheReadTokens } : {}),
       ...(usage.cacheWriteTokens !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
       ...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
+      ...(usage.providerCostUSD !== undefined ? { providerCostUSD: usage.providerCostUSD } : {}),
     }
   }
 

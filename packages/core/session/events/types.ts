@@ -483,6 +483,17 @@ export interface SessionResponseUsage {
   cacheReadTokens?: number
   cacheWriteTokens?: number
   reasoningTokens?: number
+  /**
+   * 批 P-a(§15.3):厂商在响应里报的**本次请求成本**(USD;OpenRouter
+   * `usage.cost`、xAI `cost_in_usd_ticks / 1e10`)。引擎把它原样带在
+   * `lastTurnUsage` 上写进 `steps[].usage`,所以事件面必须收 —— 少收一格
+   * 就是"store 有、投影缺",每个带成本读数的 run 记一条影子失配。
+   *
+   * 只落 **step** 那一格:消息级 `usage` 是引擎累加器的产物
+   * (`agent-loop-executor.ts` 的 `accumulatedUsage`,两个分支都逐字段列名),
+   * 它从来不带成本 —— 投影侧的 `addUsage` 照抄这一条。
+   */
+  providerCostUSD?: number
 }
 
 export interface SessionRequestResponseEventData {

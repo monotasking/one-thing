@@ -931,14 +931,27 @@ function normalizeUsage(usage: SessionResponseUsage): ProjectedStepUsage {
     ...(usage.cacheReadTokens !== undefined ? { cacheReadTokens: usage.cacheReadTokens } : {}),
     ...(usage.cacheWriteTokens !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
     ...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
+    ...(usage.providerCostUSD !== undefined ? { providerCostUSD: usage.providerCostUSD } : {}),
   }
 }
 
+/**
+ * 累加成**消息级** usage。
+ *
+ * 批 P-a:`providerCostUSD` 在这里被**丢掉**,不是漏了 —— 引擎的累加器
+ * (`core/engine/agent-loop-executor.ts` 的 `accumulatedUsage`)两个分支都逐字段
+ * 列名,里面没有成本那一格,所以 store 的 `message.usage` 从不带它。这里跟着丢,
+ * 两边才逐字段相等;成本只活在 `usageByTurn` → `steps[].usage` 那一格。
+ */
 function addUsage(
   current: ProjectedStepUsage | undefined,
   next: ProjectedStepUsage,
 ): ProjectedStepUsage {
-  if (!current) return next
+  if (!current) {
+    if (next.providerCostUSD === undefined) return next
+    const { providerCostUSD: _cost, ...rest } = next
+    return rest
+  }
   const merged: ProjectedStepUsage = {
     inputTokens: current.inputTokens + next.inputTokens,
     outputTokens: current.outputTokens + next.outputTokens,

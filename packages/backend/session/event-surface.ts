@@ -20,6 +20,7 @@
 import {
   SurfaceIndex,
   isSessionSurfaceNodeType,
+  surfaceMessageIdOf,
   type SessionLogEventDataFor,
   type SessionLogEventRecord,
   type SessionLogEventType,
@@ -40,24 +41,6 @@ interface SessionSurfaceState {
 
 const states = new Map<string, SessionSurfaceState>()
 
-/** 一条事件在 surface 上代表哪条消息(不代表任何消息的返回 undefined)。 */
-function messageIdOf(event: SessionLogEventRecord): string | undefined {
-  switch (event.type) {
-    case 'user/message':
-    case 'system/message':
-    case 'message/imported':
-      return event.data.message.id
-    case 'user/message-edited':
-      return event.data.message.id
-    case 'run/start':
-      return event.data.assistantMessageId
-    case 'session/compacted':
-      return event.data.messageId
-    default:
-      return undefined
-  }
-}
-
 function ensureState(sessionId: string): SessionSurfaceState {
   const existing = states.get(sessionId)
   if (existing) return existing
@@ -75,7 +58,10 @@ function ensureState(sessionId: string): SessionSurfaceState {
 function applyToState(state: SessionSurfaceState, event: SessionLogEventRecord): void {
   state.index.push(event)
   if (!isSessionSurfaceNodeType(event.type)) return
-  const messageId = messageIdOf(event)
+  // 批 P-b:节点判定与"这条事件代表哪条消息"的判定都只此一份(core 的
+  // `isSessionSurfaceNodeType` / `surfaceMessageIdOf`)—— 写侧曾自带一份同名
+  // 函数,两份各自演化就是"切点切在读侧不认得的格上"那类静默错乱的温床。
+  const messageId = surfaceMessageIdOf(event)
   if (messageId) state.seqByMessageId.set(messageId, event.seq)
 }
 

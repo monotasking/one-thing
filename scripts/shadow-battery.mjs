@@ -336,6 +336,26 @@ class Driver {
    *
    * 写入口是排队的,所以按类型等 —— 场景要断言"某件事**记下来了**"时用它。
    */
+  /** 账本上这一类事件现在有哪些(不等)。 */
+  ledger(type) {
+    const file = path.join(this.store, 'sessions', this.sessionId, 'events.jsonl')
+    if (!fs.existsSync(file)) return []
+    return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
+      .map(line => JSON.parse(line)).filter(event => event.type === type)
+  }
+
+  /**
+   * 把这条会话的事件账本摘掉 —— 只在**它写下第一个字之前**用得上,用来造出
+   * "日志诞生于一次 run 中途"那种账本(首事件不是 `session/created`)。
+   *
+   * 真机上那是崩溃/迁移留下的形状,这里没有别的造法:写侧的 surface 与活投影
+   * 都在内存里,会话跑起来之后再动文件改不动它们。
+   */
+  dropEventLog() {
+    const file = path.join(this.store, 'sessions', this.sessionId, 'events.jsonl')
+    try { fs.rmSync(file) } catch { /* 还没建起来就是了 */ }
+  }
+
   async ledgerUntil(type, { timeoutMs = 10_000, everyMs = 60 } = {}) {
     const file = path.join(this.store, 'sessions', this.sessionId, 'events.jsonl')
     const deadline = Date.now() + timeoutMs
@@ -1125,6 +1145,105 @@ const SCENARIOS = [
   },
 
   {
+    name: 'compact-half-run-log',
+    covers: [
+      '批 P-b(§15.3):日志**首事件不是 `session/created`**(半截 run 开头)的那份账上压缩 —— '
+      + '压缩节点必须真的遮住东西,投影的模型历史与 store 的压缩口径一致',
+    ],
+    /**
+     * 真机 46dcec05 的病根形状:那份事件日志诞生于一次 run 中途,`session/created`
+     * 从来没写过。压缩落账时写侧按当时的 surface 取切点,而这份 surface 的头
+     * 不是会话的头 —— 一旦日志的头**事后**又被补过(迁移),写侧那句 `start`
+     * 就落在了会话真正的头之后,前面那一段永远遮不掉(模型同时看到摘要和原文,
+     * 预算翻倍而两边 token 账都是绿的)。
+     *
+     * 活进程里补头是做不到的(写侧 surface 与活投影都在内存里,补文件也改不动
+     * 它们),所以那一半由 `projection-contract.test.ts` 的 fold 级用例钉住 ——
+     * 那正是"新进程重折一份被改过的文件"。这一格钉的是活进程这一半:**没有
+     * `session/created` 的账本上,压缩照样遮得干净**。
+     */
+    provider: ({ turn, variant }) => [
+      F.sleep(variant.firstByteMs),
+      F.text(`第 ${turn} 段:${variant.body}`),
+      F.stop(usageOf(variant, turn)),
+    ],
+    async drive(d) {
+      // 第一个字写进去之前先把账本摘掉:接下来落的第一条事件就不是
+      // `session/created` 了(= 半截 run 开头的那份日志)。
+      d.dropEventLog()
+      await d.send('第一段')
+      await d.waitIdle(1)
+      await d.send('第二段')
+      await d.waitIdle(2)
+      const created = await d.ledger('session/created')
+      assert(created.length === 0, 'the ledger was supposed to start mid-run')
+      await d.command({ type: 'command:compact-context', manual: true })
+      const messages = await d.until('compact card', list =>
+        list.some(m => m.role === 'system' && typeof m.content === 'string'
+          && m.content.includes('"type":"context-compact"') && m.content.includes('"status":"completed"')),
+        { timeoutMs: 45_000 })
+      const compacted = await d.ledgerUntil('session/compacted')
+      const completed = compacted.filter(event => (event.data?.status ?? 'completed') === 'completed')
+      assert(completed.length === 1, `expected one completed compaction, got ${completed.length}`)
+      // 一次成功的压缩必须真的遮住东西 —— `append` 就是切点没解出来(F3),
+      // 后果正是"摘要与原文同时在场"。
+      const op = completed[0].surfaceOp
+      assert(op && op !== 'append' && op.op === 'replace',
+        `a completed compaction must shadow the surface, got ${JSON.stringify(op)}`)
+      assert((completed[0].sourceEventSeqs ?? []).length > 0, 'the compaction declared nothing shadowed')
+      // 压缩之后接着说话:这一轮的历史影子断言跑的就是"投影的模型历史 ≡
+      // 引擎真发出去的那一份",压缩没遮干净它当场红。
+      await d.send('压缩之后再问一句')
+      const after = await d.waitIdle(3, { timeoutMs: 45_000 })
+      assert(after.length > messages.length, 'nothing was written after the compaction')
+    },
+  },
+
+  {
+    name: 'provider-cost-usage',
+    covers: [
+      '批 P-a(§15.3):厂商报的 `providerCostUSD` 必须进事件面 —— 记录器的 usage 白名单漏一格,'
+      + 'store 的 `steps[].usage` 有而投影没有,每个带成本读数的 run 记一条失配(真机 10 条)',
+    ],
+    /**
+     * `providerCostUSD` 只有少数几家报,而 `deepseek` 的 usage 表里没有这一格 ——
+     * 所以这一格把会话钉在 `openrouter` 上(它的方言读顶层 `cost`,而它本身就是
+     * 一份 OpenAI chat 方言,同一个假 provider 接得住)。
+     *
+     * 必须有一次工具调用:成本落的是 **step** 那一格(`patchStepsUsageByTurn`),
+     * 一句纯文本没有 step 可落,断言就没有着落。
+     */
+    provider: ({ turn, variant }) => (turn === 1
+      ? [
+        F.sleep(variant.firstByteMs),
+        F.text('先查一下。'),
+        ...F.tool('call_cost_1', 'bash', { command: 'echo cost', description: 'cost probe' }, 2),
+        F.callTools({ ...usageOf(variant, 1), cost: 0.058543648 }),
+      ]
+      : [
+        F.sleep(variant.firstByteMs),
+        F.text(`报价:${variant.body}`),
+        F.stop({ ...usageOf(variant, 2), cost: 0.075264032 }),
+      ]),
+    async drive(d) {
+      await d.model('openrouter', 'battery-cost-model')
+      await d.send('报个价')
+      const messages = await d.waitIdle(1)
+      const assistant = d.lastAssistant(messages)
+      const costs = (assistant?.steps ?? []).map(step => step.usage?.providerCostUSD).filter(c => c !== undefined)
+      // 前提断言:真相侧真的带上了成本。带不上就说明 provider 那一侧没读到
+      // 顶层 `cost`,后面的影子对比会恒等成立 —— 这一格就白站了。
+      assert(costs.length > 0, `store step usage carries no providerCostUSD: ${JSON.stringify((assistant?.steps ?? []).map(s => s.usage))}`)
+      assert(costs.every(c => c > 0), `providerCostUSD must be positive: ${JSON.stringify(costs)}`)
+      // 消息级用量走引擎累加器,累加器逐字段列名 —— 成本到不了这一格。
+      assert(
+        assistant?.usage === undefined || assistant.usage.providerCostUSD === undefined,
+        `message-level usage must not carry cost: ${JSON.stringify(assistant?.usage)}`,
+      )
+    },
+  },
+
+  {
     name: 'long-multipart-text',
     covers: ['多段长正文(part 边界 + 攒批闸)'],
     provider: ({ variant }) => {
@@ -1170,6 +1289,20 @@ function prepareStore(store, mockPort) {
           enabled: true,
           modelCapabilitiesByModel: {
             'deepseek-chat': { tools: true, reasoning: true, vision: false },
+          },
+        },
+        // 批 P-a:`providerCostUSD` 只有少数几家报,deepseek 的 usage 表里没有这一格。
+        // openrouter 的方言把顶层 `cost` 读进三桶(`OPENROUTER_USAGE_TABLE`),而它
+        // 就是一份 OpenAI chat 方言 —— 同一个假 provider 接得住,`provider-cost-usage`
+        // 那一格靠 `d.model('openrouter', …)` 钉过去。
+        openrouter: {
+          apiKey: 'sk-battery-openrouter',
+          baseUrl: `http://127.0.0.1:${mockPort}/v1`,
+          model: 'battery-cost-model',
+          selectedModels: ['battery-cost-model'],
+          enabled: true,
+          modelCapabilitiesByModel: {
+            'battery-cost-model': { tools: true, reasoning: false, vision: false },
           },
         },
       },

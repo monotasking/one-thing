@@ -175,7 +175,7 @@ S0 可立即开(纯函数,零风险);S1 影子期是**唯一的时间成本**(�
 | B5 | **旁路账本纪律与唯一事实互斥,doc 没翻** | `event-log.ts:10-12,116-120,144-152`:fire-and-forget、写失败 warnOnce 吞掉、无 fsync、`!enabled` 静默丢;dsh 是"检查点 fsync + 原子发布" | 事件成为事实后:写失败必须上抛 + UI 提示;检查点 fsync;seq 分配要跨进程安全(`event-log.ts:43 states` 是进程内 Map,`:139 lastSeq+1`,第二写者即重复 seq,而 `surfaceOp replace` 按 seq 区间遮蔽 → 静默错乱) |
 | B6 | **快照/事件一致性无不变量、无唯一写者、无原子写** | 快照 header `{t:'h',v:2}` 无处放 `snapshotSeq`(`codec.ts:17`);引擎 persist / 后台 rebuild / `sessions:rebuild` 三个写者未互斥;`writeSuffix` 是就地 truncate+write 非原子;崩溃序"快照已更新但 events 尾撕裂"→ 快照超前于事实,无处置 | header v3 加 `snapshotSeq`;唯一写者 = per-session 串行队列;打开时断言 `snapshotSeq ≤ lastSeq` 否则弃快照全量重放 |
 | B7 | **影子期门不可脚本化,S0 金测恒真** | "mismatch"未定义(isStreaming/thinkingTime/timestamp/usage 累计/steps 顺序必不等);每次 persist 深比较 400 消息 = 自造性能事故;"≥3 天真机"是人肉门;S0 的 `project(synthesize(messages))≡messages` 因 `message/imported` 原样带字段而恒成立,证不了细粒度事件→消息的投影 | 定义 `canonicalChatMessage()`;比较只在检查点、只比最后一个 run;门改按量(`runs ≥ 200 且 mismatch = 0`);S0 金测改为"新产生会话的细粒度事件投影 ≡ 引擎写出的消息"(只能在 S1 验) |
-| B8 | **迁移输入集合与回滚未定义** | 未覆盖 `segments.jsonl`(66)、`messages.cleared-*.jsonl`(~90)、`agent-dm-*` 非 uuid 会话、1 个 `sessions/<id>.json`、`legacy-backup/` 276MB、`onething.sqlite` 同步副本、meta.json 字段合成事件的假时间戳;"就地作快照"与"备份到 legacy-backup"矛盾;无 `StoreLock` 检查;影子期 events 与迁移出的 `message/imported` 的 seq 对齐未写;无 `sessions:rollback` | 脚本需白名单 + 未知文件清单 + lock owner `migrate` + dry-run + 重编号 + 回滚命令 |
+| B8 | **迁移输入集合与回滚未定义** | 未覆盖 `segments.jsonl`(66)、`messages.cleared-*.jsonl`(~90)、`agent-dm-*` 非 uuid 会话、1 个 `sessions/<id>.json`、`legacy-backup/` 276MB、`onething.sqlite` 同步副本、meta.json 字段合成事件的假时间戳;"就地作快照"与"备份到 legacy-backup"矛盾;无 `StoreLock` 检查;影子期 events 与迁移出的 `message/imported` 的 seq 对齐未写;无 `sessions:rollback` | 脚本需白名单 + 未知文件清单 + 运行中检测(无活 core 硬检查;~~lock owner `migrate`~~ 2026-08-24 裁定不引入锁)+ dry-run + 重编号 + 回滚命令 |
 
 ### 7.2 Major
 
@@ -1013,7 +1013,7 @@ S2b 的性能门(首屏 ±10%、翻页 p95 ≤50ms)按这两行看是宽裕的,�
 | # | 待决 | 现状 / 影响 |
 |---|---|---|
 | 1 | **切默认读模式** | `ONETHING_SESSION_READ=events` 变默认 —— 用户拍板项,本期一行没动 |
-| 2 | **`--apply` 迁移真实 store** | 脚本拒绝执行。真跑之前还要定:备份策略(`legacy-backup/`)、迁移期间禁止写入(StoreLock)、347MB 的写入要不要分批 |
+| 2 | **`--apply` 迁移真实 store** | 脚本拒绝执行。真跑之前还要定:备份策略(`legacy-backup/`)、迁移期间禁止写入(**不用锁** —— 2026-08-24 裁定:查发现文件 + 进程探测的"无活 core 硬检查",见 §14.6 裁定 3)、347MB 的写入要不要分批 |
 | 3 | **深翻页时"更晚的遮蔽事件"看不见** | 带游标往上翻只扫游标之前的字节,所以"很久以前的消息在今天被删掉了"在深翻页时会照旧显示。首屏(从 EOF 倒读)永远准,活投影在内存里时也准。要么接受,要么让游标带上一个有界的 hidden 集合 |
 | 4 | **`totalCount` 在大会话上缺席** | 见裁定 2。UI 的"上面还有 N 条"在大会话上会退成"已加载条数";要精确就得付一次全量扫 |
 | 5 | **读门面里还有四个方法没路由** | `sliceForHistory` / `findMessage` / `iterateMessages` / `firstUserPreview` 仍走 `getSessionMessages`(§11.1 只点名了七个)。其中 `sliceForHistory` 是模型历史的取数口 —— 它的事件版落点是 `projectModelHistory`,不是"再抄一遍投影",所以留给 S2b 一并接 |
@@ -1620,7 +1620,7 @@ bun run sessions:shadow-battery --seed 7 --passes 3 --concurrency 2
 - **P 批(判据先行,必须最先)**:F11(影子真相侧强制走 messages 读法)、F9 统计口径(按 run 去重计数)、F5 类型洞、F10a(结局/参数比较改为对记录字符串而非解析对象)。——门不真,其余修了也无从证明。
 - **Q 批(日常必现的采集/投影缺口)**:A1+A13+A14(provider-data 词汇 + 分段对齐)、A2(图片闸回归)、A6+A7(工具身份归一进事件)、A8+A9(blob 回填,投影注入 resolver)、A5(truncateFrom 遮全段)、A4(agentId 贯通)、F2(hasCompacted 看 status)、F1(providerData last-only)。
 - **R 批(收口与约定)**:A10+F12-W-C(prepare/sanitize 单一口径——需拍板)、A12(permission join 出 awaiting 状态)、A11(可见性)、F3、F8、F13、F6(blob 缺失报错)、A3(图片 content 表示——需拍板:进 chunks 还是专用事件)、translator 五命令守卫、F4(合同改跑宿主配方)。
-- **S 批(裁定)**:F14 server 双写者——撤锁裁定与 S2b 前提冲突,选项:①迁移脚本+切读前置"无活 core 硬检查"(不复活常驻锁)②仅 events.jsonl 追加时文件锁 ③复活 server StoreLock。
+- **S 批(裁定)**:F14 server 双写者——撤锁裁定与 S2b 前提冲突,选项:①迁移脚本+切读前置"无活 core 硬检查"(不复活常驻锁)②仅 events.jsonl 追加时文件锁 ③复活 server StoreLock。**(2026-08-24 已裁:②③出局——用户重申不要 lock;①并入 S3w-1 的门,G12 守卫升级拒写见 §14.6 裁定 3。)**
 
 ### 13.4 P 批落地记录(2026-08-20):判据先行
 
@@ -3390,7 +3390,7 @@ changes"。顺带:该会话 events.jsonl 380 条 `tool/result` 零 changes(先�
 - 不把 `meta.updatedMessage` 穿端口(裁定 B 已述);不动投影 reducer 的
   `user/message-edited` case。
 
-## 14. S3w(写切换 + 删旧)方案勘察(2026-08-24,只勘察未开工)
+## 14. S3w(写切换 + 删旧)方案勘察(2026-08-24;S3w-0 已落地 `8682d980`,其余子期待 §14.6 拍板后开工)
 
 **命名先说清**:§12 已经把 "S3" 这个名字用在了只读查询面(trace)上;本节勘察的是
 §8 分期表里那行 **S3 = 删旧**(旧写路径退役、`messages.jsonl` 停写、双存消失)。为免
@@ -3567,32 +3567,107 @@ data-steps)都会**反射进新事件**。过渡期需要一道一次性合同:�
 
 | 期 | 交付 | 门 | 回退 |
 |---|---|---|---|
-| **S3w-0** 渲染锚点自合成 | rebuildLoadedContentParts 判据改造 + :450/:498 依赖解除说明 | work-group/rebuild 测试 + battery 双泳道 GREEN + 真机重载走查 | 纯渲染层,git revert |
-| **S3w-0b** 单写者硬化 | server 双写者裁定重审(2026-08-19 明言"事件成唯一真相前必须重审",就是现在):server 取 StoreLock('server') 或 events 写侧拒绝外写者(R-c 从 warn 升级) | 双进程真机用例:第二个 core 拿不到写权 | 开关 |
+| **S3w-0** 渲染锚点自合成 | **已落地 `8682d980`(§14.8)** rebuildLoadedContentParts 判据改造 + :450/:498 依赖解除说明 | work-group/rebuild 测试 + battery 双泳道 GREEN + 真机重载走查 | 纯渲染层,git revert |
+| **S3w-0b** 单写者硬化 | server 双写者裁定重审(2026-08-19 明言"事件成唯一真相前必须重审",就是现在)。**不引入锁**(server StoreLock 方案 P0.4 已按用户裁定撤回,单写者走 one-core 发现文件):G12 守卫从"重装+warn"升级为拒写上抛,并裁定发现文件盖不住的残余双写窗口 | 双进程真机用例:第二个写者写不进 events | 开关 |
 | **S3w-1** 冷加载补水切投影 | repository 冷加载岔口(events 有消息覆盖→物化补水+rehydrate;无→老路);reads 兜底命中遥测(fallback-hit 计数);补水形状合同(14.4) | 全量真机"补水 ≡ loadJsonl"canonical 合同绿 + fallback-hit=0(观察)+ 全量测试/battery | 岔口开关,默认老路先行 |
 | **S3w-2** 停写观察期 | `ONETHING_SESSION_TRANSCRIPT` 三态,默认切 `shadow`;事件/blob 写失败上抛;refold 自洽环(14.3-B)上线 | ≥2 周真机 ∧ ≥200 run:shadow=0 ∧ refold=0 ∧ appendFailures=0 ∧ verify 全库 0 新红 | 切回 primary,零损伤 |
 | **S3w-3** 切 off + 删旧 | 默认 `off`;storage-driver 消息写半边删(meta.json/index 写保留);reads 兜底删(legacy 整文件除外,见拍板 8);sanitize 死码清;session:check 白名单收缩;verify #6 改"存量只读对账";battery 断言落定 | 棘轮归零 + verify 全库 + 存储量目标(≈messages×1.1–1.2,§8)| 本期才删码,回退=revert |
 | **S3w-4** 体积治理 | events/blobs 上限、gzip 轮转、blob GC(引用扫描已有 collectBlobHashes)、cleared 历史段归档策略 | 存储脚本给出目标值并达标 | 独立 |
 
-**待用户拍板(编号)**:
+**待用户拍板(裁定单,2026-08-24 整理)**。按"什么时候必须拍"分三组;每条给出
+问题、选项(推荐加粗)、推荐理由与拍错的代价。已经被落地事实解决的一条(原 5)单列
+在末尾追认。
 
-1. **范围档位**:S3w-lite(推荐)vs S3w-full(丙)。
-2. **命名**:写切换期定名 S3w(§12 已占 "S3"),或重编号整表。
-3. **停写策略**:三态开关 + 观察期(推荐;观察期时长/run 数阈值一并拍)vs 一步停写。
-4. **安全网组合**:refold 自洽环 + shadow 转正 + 观察期(14.3 三件套)是否成立;
-   battery 断言改造口径。
-5. **渲染锚点归属**:渲染层自合成为 S3w-0 前置(推荐)vs 投影产出(违 G4)vs 维持
-   抄本依赖(= 否决 S3w)。
-6. **steps/toolCalls**:只删磁盘双存(随停写免费,推荐),内存/IPC 双视图长期保留;
-   形状收敛另立门户 —— 认不认。
-7. **单写者硬化方式**:server 取锁 vs events 写拒绝 vs 维持 warn(不推荐第三项)。
-8. **legacy 处置**:`messages.jsonl` 存量永久原地只读(推荐)vs 观察期后归档
-   legacy-backup;legacy 整文件会话(`sessions/<id>.json`)首触迁移进 events vs 永久
-   保留只读兜底代码。
-9. **写失败语义**:events append / blob 写失败升级为命令失败上抛(推荐)vs 维持计数。
-10. **clear 留档**:`messages.cleared-*` 存档保留(事件之外另一份)vs 退役
-    (`session/cleared` 只遮蔽不删,事件本身就是档)。
-11. **时机**:S3w-0(+0b 拍板)现在做、S3w-1 起等 S2b 真机浸泡期(推荐)vs 全线立即。
+**第一组 —— 现在就拍(决定下一批能否开工)**
+
+1. **范围档位:S3w-lite vs S3w-full(丙)** —— 整个 §14 的总开关,后面每条都以它为前提。
+   - **A. S3w-lite(推荐)**:只停写 `messages.jsonl`,events 成唯一持久化;store 保留为
+     运行时写模型,冷加载从投影补水。采集点/reducer/引擎端口零改动(§14.2)。
+   - B. S3w-full:命令即事件、reducer 退役、store 退化为物化缓存。爆炸半径 = 13 条命令 +
+     P0 冻结的 store 端口全套 + §13 全章纪律重建,且拆掉 shadow 门的"两条独立推导"
+     (§14.2)。
+   - 代价对比:lite 已拿到全部用户可感知价值(单一持久化、双存消失、§13.16 类消亡);
+     full 的纯度收益只有"删一份 reducer 双实现"。**拍 B 意味着本节大半方案作废重写。**
+   - **裁定(2026-08-25,用户):走 full。** lite 推荐被推翻。落法修正:批 P/0b/1/2/3/4
+     的实施内容**不作废**——它们同时是 full 的必经前站,原样作为第一阶段执行;full 的
+     增量(命令即事件、reducer 退役、翻译器消亡)立为 **F 线**,设计见 §16,在 S3w-3
+     浸泡后开工。"大半方案作废"仅指终局与安全网叙事:§14.3 的 shadow 转正为永久恒等门
+     改为 F 线过渡门(F4 退役),refold 自洽环升格为终局唯一常驻耐久门。
+2. **命名:写切换期就叫 S3w,还是重编号 §8 分期表** —— 纯记账问题。
+   - **A. 定名 S3w(推荐)**:§12 的 "S3"(trace)已入库不动,文档与提交信息统一用 S3w。
+   - B. 重编号整表:改动波及 §8/§12 与既有提交信息的引用,收益为零。
+3. **单写者硬化(S3w-0b 的全部内容,拍完即可开工)** —— 2026-08-19 "desktop + dev
+   server 共享 `~/.onething` 的双写者风险,事件成唯一真相前必须重审"指的就是现在:
+   停写后双写者 seq 撞号 = 静默历史错乱,比 messages 双写(最后写者赢)严重一个量级
+   (§14.7 风险③),所以 0b 是 S3w-1 的硬前置。
+   **锁方案不在选项里**:server StoreLock P0.4 已按用户裁定撤回,2026-08-24 用户重申
+   不要 lock —— 进程级单写者由 one-core 发现文件(`run/http.json` 启动拒绝)承担,
+   S3w 不引入任何新锁。要拍的只剩一问:
+   - **A. G12 守卫从"重装 + warn"升级为拒写上抛(推荐)**:events 写侧发现文件被
+     别的进程写过(字节数守卫命中)→ 该次 append 直接失败上抛,不再重装计数器继续写。
+     发现文件盖不住的残余窗口(两个 `server:start` 互不拒绝、`--force` 绕过)全部由
+     这道拒写兜底 —— 窗口本身接受为已知边界,不另设机制。
+   - B. 维持"重装 + warn":**不推荐** —— 等于带着已知的静默错乱源停写。
+   - 连带关闭:§13.3 S 批 F14 的选项③(复活 server StoreLock)出局;选项①(迁移/切换
+     前置"无活 core 硬检查",查发现文件 + 进程探测,不引入常驻锁)并入 S3w-1 的门。
+4. **时机:S3w-1 起何时开工**。
+   - **A. S3w-0b 拍板后即做;S3w-1 起等 S2b 真机浸泡 ≥1–2 周(推荐)**:批 8
+     (`bad54a31`)刚切读默认,事件读路的未知真机类还在暴露期(§13.16 即真机暴露);
+     更硬的一条 —— 停写 = 烧掉 `ONETHING_SESSION_READ=messages` 这条 S2b 回滚船,
+     必须先确认"再也不需要回滚读"。
+   - B. 全线立即:省 1–2 周,换来的是回滚船提前烧掉 + 未知类直接落在唯一账本上。
+
+**第二组 —— S3w-2(停写观察期)开工前拍**
+
+5. **停写策略:三态开关 + 观察期,还是一步停写**。
+   - **A. `ONETHING_SESSION_TRANSCRIPT = primary | shadow | off` 三态(推荐)**:先切
+     `shadow`(messages.jsonl 照写但降级为纯对账影子),达标才切 `off`。观察期内
+     verify #6 与 §13.16 类真机对账原样有效,回滚 = 切回 primary 零损伤(§14.3-A)。
+   - B. 一步停写:少一个开关状态,换来的是耐久层对账直接失去对象、回退有损。
+   - **随本条一并拍观察期阈值**,建议:≥2 周真机 ∧ ≥200 run ∧ shadow=0 ∧ refold=0 ∧
+     appendFailures=0 ∧ verify 全库 0 新红(不达标不切 off,没有"差不多了"档)。
+6. **安全网组合:§14.3 三件套是否成立**。三件 = A 观察期带影子(见上条)+
+   B refold 自洽环(off 之后的常驻耐久门:run/end 采样把 events.jsonl 文件字节重折与内存
+   活投影 canonical 对比,盖住 append 静默丢/坏行/seq 错乱/fsync 缺口/外写者)+
+   C shadow 转正为"写模型 vs 读模型"永久恒等门。
+   - **认三件套(推荐)**:这是"停写后第二来源消失"的唯一替代方案;否决其中任何一件
+     需要给出替代的耐久性证明,否则 S3w-2 的门没有判据。
+   - 附带口径:battery 是一次性 store,其中依赖 messages.jsonl 的断言改为
+     refold + store 断言 —— 认不认这个改造口径也在本条内。
+7. **写失败语义:events append / blob 写失败,升级上抛还是维持计数**。
+   - **A. 升级为命令失败上抛(推荐,停写那一刻生效)**:唯一持久化的账本写不进去不再是
+     可吞的旁路故障。blob 尤其要紧:今天附件落 blob 失败时"正文还在 messages.jsonl"
+     (§10.1 兜底),停写后同一失败 = 正文永久丢失(§14.7 风险④)。
+   - B. 维持计数自吞:保住"写失败不打扰用户",代价是静默丢正文从"影子少一笔"变成
+     "账本少一笔",用户看不见。
+   - 派生细节(可授权实施时定):上抛的 flush 时点与异步队列语义在 S3w-2 重审
+     (§14.7 风险②)。
+
+**第三组 —— S3w-3(删旧)开工前拍**
+
+8. **steps/toolCalls 双存**:磁盘双存随停写免费消失(§14.5,这半句不用拍);要拍的是 ——
+   内存/IPC/渲染的双视图**长期保留**、形状收敛**另立门户**(或接受为长期形态),认不认。
+   - **认(推荐)**:双视图两边都有硬吃者(history builder / StepsPanel / collab /
+     resume-history / evals),收敛 = 渲染层 + history 大改而存储收益为零。
+   - 不认 = 把一个存储工程扩成渲染重构工程,S3w-3 的规模估算作废。
+9. **legacy 处置(两小问)**:
+   - 9a. `messages.jsonl` 存量:**永久原地只读(推荐)** vs 观察期后归档进
+     legacy-backup。推荐理由:原地只读零风险零迁移;归档只省目录整洁,多一次批量搬文件
+     的风险窗口。
+   - 9b. legacy 整文件会话(`sessions/<id>.json`):**首触迁移进 events(推荐)** vs
+     永久保留只读兜底代码。推荐理由:reads 兜底半边(§14.1 末)要把命中率量成 0 才能删,
+     永久保留兜底 = 那批代码永远删不掉。
+10. **clear 留档:`messages.cleared-*` 存档保留还是退役**。
+    - A. 保留:事件之外另一份物理存档,清空误操作时有独立副本。
+    - **B. 退役(推荐)**:`session/cleared` 只遮蔽不删,事件本身就是档 —— 保留等于给
+      "事件是唯一真相"开第一个例外。
+    - 若拍 A,需同时指定它的 janitor 策略(今天没有任何治理器管这批文件)。
+
+**已被落地事实解决,待追认**
+
+- **渲染锚点归属**(原 5):勘察推荐"渲染层自合成,定为 S3w-0 前置",**已按推荐落地**
+  (`8682d980`,§14.8)。备选两项(投影产出 data-steps —— 违 G4;维持抄本依赖 ——
+  等于否决 S3w)自动关闭。若要否决,revert 即回,但 S3w-1 的补水前提随之消失。
 
 ### 14.7 effort / risk 与时机
 
@@ -3611,3 +3686,229 @@ data-steps)都会**反射进新事件**。过渡期需要一道一次性合同:�
   (§13.16 那类就是真机暴露出来的);更硬的一条 —— S2b 的回滚杆
   `ONETHING_SESSION_READ=messages` 依赖 messages.jsonl 还在写,**停写 = 烧掉 S2b 的
   回滚船**,必须等"再也不需要回滚读"这个判断先成立。
+
+### 14.8 S3w-0 落地记录(2026-08-24,`8682d980`)
+
+按 §14.4 推荐项落地,纯渲染层三文件:
+
+- `packages/renderer/stores/helpers/content-parts.ts` 新增 `synthesizeToolAnchors`;
+  `rebuildContentParts` 判据从「contentParts 非空即信」改为「缺工具锚点(无
+  data-steps/tool-call part)且有 steps/toolCalls → 按 turnIndex 补合成 data-steps」。
+  幂等、不破坏流式、turnIndex 对齐。
+- `packages/renderer/stores/chat.ts` 接线;`rebuild-content-parts.test.ts` +6
+  反向/幂等用例(含「投影形状(text/reasoning-only)+ steps」组)。
+- 效果即 §14.4 预期三条:投影补水的消息渲染完整;agent-loop-executor.ts:450/:498 对
+  「抄本才有锚点」的依赖解除(work-group settle 修复从止血升级为终局);G4 纪律原样
+  (投影仍不产出 data-steps,canonical 仍丢弃比较)。
+
+下一步:§14.6 裁定单第一组(1 档位 / 2 命名 / 3 G12 拒写升级 / 4 时机)拍完即可开工
+S3w-0b;第二、三组分别在 S3w-2 / S3w-3 开工前拍。锁方案已全部出局(2026-08-24 用户
+重申不要 lock),S3w 全线不引入任何锁。
+
+## 15. 影子门红灯诊断(2026-08-25)+ S3w 实施方案
+
+### 15.1 影子门红灯:runs 76 / mismatches 30 —— 两类,全部查到根因
+
+`sessions:shadow-report` RED。`runs 76 < 200` 只是 reset 后累计不足(battery 238 runs
+即可挣满,不是病);要治的是 `mismatches 30`(另 duplicateMismatches 183、
+projectionIssues 5)。30 条**全部来自同一个会话** `46dcec05`(日常主力会话),
+08-24 11:55 起。两类:
+
+**A 类(history,20 条):压缩遮蔽在投影侧失效 —— 真相侧 114 条(压缩口径),
+投影侧 227 条(全量,从第一条 "hi" 开始)。**
+> **勘误(08-25,§15.5)**:下面第 2–4 步的机制描述在执行批 P 时被代码推翻 ——
+> `tool/result` 本来就是 surface 节点,replace 解析并未失败;真因是**压缩落账在前、
+> 迁移把 43 条 imported 补到头部在后**,头部节点越过了 covered 起点。现象与影响面
+> 描述仍准确,机制以 §15.5 为准。原文保留供对照:
+
+1. 该会话的事件日志**诞生于一次 run 中途**(迁移前备份首行 seq 1 =
+   `request/tools`,没有 `session/created`;早期 43 条消息只在 messages.jsonl)。
+2. 08-21 15:43 第一次压缩落账时,写侧 `sessionCompacted`
+   (`backend/session/event-translator.ts:346-382`)从写侧 surface 的 order 取
+   `covered = order.slice(0, at+1)`,写出的 `surfaceOp.start=7` —— 指向一条
+   **`tool/result`**。
+3. 读侧 `SurfaceIndex.applyReplace`(`core/session/projection/surface.ts`)按
+   `order.indexOf(start)` 解析;`tool/result` 不是读侧 surface 节点 → `-1` →
+   `replace-start-missing` → **静默不遮蔽**,摘要节点还被 splice 到错误位置。
+   第二次压缩(08-23 00:09,start=上一条 compacted 节点)能解析,但第一段已漏,
+   总账仍是全量。
+4. 08-23 21:19 的 merged 迁移(imported 43、shiftedBy 43)**无错**:均匀移位后
+   end 仍精确指向锚点 run/start(1170→1213、1905→1948)。病根在压缩落账那一刻。
+
+定性:**写侧 surface 与读侧 SurfaceIndex 对"什么算节点"在"半截 run 开头的日志"上
+判定不一致**(写侧 order 里进了 seq 7;它怎么进去的,修复批读
+`backend/session/event-surface.ts` 时钉死)。F3(§13.2)防的是"找不到切点退化成
+append",这次是同病第二形态:**切点找到了,但切在读侧不存在的格上**。影响面:
+全库 400 个迁移过的会话里带 completed compact 的仅 3 个。**这不只是影子账面问题**:
+S2b 已切读 events,这个会话的发送历史**真的在按全量走**(预算翻倍、摘要与原文同时
+在场 —— F3 注释预言的后果,真机兑现了)。
+
+**B 类(messages,10 条):`steps[].usage.providerCostUSD` store 有、投影缺。**
+Provider OO P4 批(1491a19b 起)让 grok/openrouter 方言把上游成本写进 usage
+(`runtime/src/agent-loop/providers/base/usage.ts`);但 recorder 的 `normalizeUsage`
+(`backend/wiring/engine/stream/session-event-recorder.ts:702-717`)是六字段白名单,
+没收新字段 → 事件不带 → 投影 materialize 不出 → 每个带成本读数的 run 记一条。
+**这正是影子门的本职**:新字段上线、事件面漏采,门当场红。在 canonical 里豁免是
+错修(停写后该字段永久丢);正修 = 采集补齐。
+
+### 15.2 S3w 实施方案(分期总览)
+
+裁定状态(2026-08-25):**档位已拍 = full**(§14.6 裁定 1)——本表 P–4 原样保留,
+作为 full 的**第一阶段**(终局叙事见 §16 F 线);命名(S3w)/ G12 拒写 / 时机三条
+用户未提异议,按推荐执行。**批 P 已派工执行**(2026-08-25,opus)—— 它修的是已在
+真机流血的缺陷(A 类在放大真实请求预算),同时是 S3w-2 影子门判据成立的前提。
+执行按用户分工:Fable 拆分/审查,opus 执行,haiku 提交。
+
+| 期 | 交付 | 规模 | 门 | 回退 |
+|---|---|---|---|---|
+| **P 清障** | P-a providerCostUSD 采集补齐;P-b compact 遮蔽写读两侧修复 + 存量自愈 | 1 批 | 全量测试 + battery(新增 2 场景)+ shadow-reset 后真机泡 0 失配 | 纯修复,revert |
+| **0b 单写者硬化** | G12 守卫升级:发现外写者 → 本次 append 拒写并计数(不再重装计数器继续写);S3w-2 起随裁定 7 升级为命令失败 | 1 批内 | 双进程真机用例:第二个写者写不进 events | 开关 |
+| **1 冷加载补水** | repository 冷加载岔口(events 有消息覆盖→物化补水+rehydrate;无→老路);补水形状合同门;reads 兜底 fallback-hit 遥测 | 1–2 批(最险) | 全量真机会话"投影补水 ≡ loadJsonl+sanitize"canonical 合同绿 + fallback-hit=0 观察 | 岔口开关,默认老路先行 |
+| **2 停写观察** | `ONETHING_SESSION_TRANSCRIPT=primary\|shadow\|off` 默认切 shadow;写失败上抛(裁定 7);refold 自洽环;battery 断言改 refold+store 口径 | 1 批 + 观察期 | ≥2 周 ∧ ≥200 run ∧ shadow=0 ∧ refold=0 ∧ appendFailures=0 ∧ verify 0 新红(裁定 5 阈值) | 切回 primary 零损伤 |
+| **3 切 off 删旧** | 默认 off;storage-driver 消息写半边删(meta/index 保留);reads 兜底删;sanitize 死码清;session:check 白名单收缩;verify #6 改存量只读对账;legacy/clear 按裁定 8/9/10 | 1–2 批 | 棘轮归零 + verify 全库 + 存储量 ≈ messages×1.1–1.2 | 本期才删码,revert |
+| **4 体积治理** | events/blobs 上限、gzip 轮转、blob GC(collectBlobHashes 已有)、cleared 归档 | 独立 1 批 | 存储脚本达标 | 独立 |
+
+浸泡时钟:S2b 真机浸泡期(≥1–2 周)从**批 P 落地 + shadow-reset** 起算 —— 批 P 之前
+的影子读数带着两类已知失配,不构成干净基线。
+
+### 15.3 批 P 细化(唯一现在就开工的批)
+
+**P-a providerCostUSD(小)**:
+1. `session-event-recorder.ts` `normalizeUsage` 白名单 + `providerCostUSD`;
+   `SessionResponseUsage` 类型(core/shared 两处形状)同步;投影 materialize 侧
+   透传(request/end → step.usage 的路,预计零改动,合同测试钉死)。
+2. battery 新场景:带成本 usage 的 run(fake provider 回 usage 带 providerCostUSD),
+   断言投影 step.usage 与 store 逐字段等。
+3. **历史残余**:P4 落地(08-22)后、本修复前的 grok run,messages 里有成本、events
+   里没有 —— `sessions:verify:gate` 基线追加为已知 legacy 残余(棘轮只减不增),
+   不回填、不豁免 canonical。
+
+**P-b compact 遮蔽(中)**:
+1. **写侧修正**:`event-translator.ts` sessionCompacted 的 covered 只能由**节点 seq**
+   构成 —— 修 `event-surface.ts` 里非节点 seq 进 order 的那条路(半截 run 开头的
+   日志),使 start 永远落在读侧认得的格上。
+2. **读侧语义兜底**(老文件自愈,不改数据):`SurfaceIndex.applyReplace` 对
+   `session/compacted` 的 `replace-start-missing` 增加第二步解析 —— 按
+   `data.compactedThroughMessageId` 找锚点节点,从 surface 头遮到它(压缩语义本来
+   就是"从头到锚点");仍解析不出才落 violation。canonical 单法官纪律不动
+   (兜底在投影内核,两侧同款)。
+3. **verify 新判据**:completed compact 且 shadowed 覆盖数为 0 → 红(今天这类
+   静默漏遮从此进门)。
+4. battery 新场景:半截 run 开头(日志首事件非 session/created)+ compact。
+5. 受影响存量:46dcec05 及全库另 2 个"迁移+compact"会话,读侧兜底落地即自愈,
+   `sessions:verify` 全库跑一遍确认。
+6. 收尾:`sessions:shadow-reset`,真机开始积干净的 ≥200 run。
+
+### 15.4 后续各期的实施要点(开工前再细化成工单)
+
+- **0b**:改 `backend/session/event-log.ts` G12 段(:196 附近)——检测到外写者时
+  本次 append 拒绝并计入 appendFailures(warn 一次),**不**回退重装继续写;
+  命令失败语义留到 S3w-2 随裁定 7 一起翻转(观察期里 messages.jsonl 还在,拒写
+  只该记账不该打扰)。双进程用例进 battery 或独立脚本。
+- **1**:岔口开在 `session-repository.ts:604 loadSession`;补水函数 = 物化投影 +
+  `rehydrate`(:238)同款链接重建;合同脚本对全量真机会话断言
+  "投影补水+rehydrate ≡ loadJsonl+sanitize+rehydrate"(canonical 口径),绿了才许
+  把岔口默认翻过去;`reads.ts` 各 `?? getSessionMessages` 兜底加命中计数,进
+  shadow-stats(fallbackHits),S3w-3 删兜底前必须量到 0。
+- **2**:三态开关读点在 event-log 写入口与 storage-driver 写入口;refold 自洽环
+  新模块(建议 `backend/session/refold.ts`,run/end 采样:文件字节重折 vs 内存活
+  投影,不等记 `kind:'refold'` 进 session-shadow.jsonl);battery 里依赖
+  messages.jsonl 的断言改 refold+store。
+- **3**:删码清单以 §14.1 的写侧回读残留表和 reads 兜底清单为准;`scripts/
+  session-check.mjs` 白名单同步收缩;`messages.cleared-*` 与 legacy 按裁定 8/9/10。
+- **4**:`LOG_DIR_POLICY` 不管 sessions(它只管 log/),事件账本的治理是新策略面,
+  单独设计,不塞进日志 janitor。
+
+## 16. F 线:full 终局(写模型翻转)设计轮廓(2026-08-25 立项,S3w-3 浸泡后开工)
+
+用户 2026-08-25 拍板走 full(§14.6 裁定 1)。F 线是 S3w 第一阶段(批 P–4)之后的
+增量:把写路径从「命令 → reducer 改 store → 翻译成事件」翻成「命令 → 产出事件 →
+fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core reducer 与翻译器
+退役,投影 reducer 成为唯一状态推导。
+
+### 16.1 为什么必须排在 S3w-3 之后
+
+- 翻转的前提是「事件已经是唯一持久化并被证明可信」:refold 自洽环(S3w-2)与停写
+  观察期就是这份证明。事件还只是影子/双写时翻写模型,等于把未验证的账本直接扶正。
+- S3w-1 的补水形状合同(投影补水 ≡ 老加载)在 F 线里复用为「fold 出的状态 ≡ reducer
+  出的状态」恒等门的基架 —— 先落 S3w-1,F 线的门就有现成判据。
+
+### 16.2 分期草案(开工前再细化成§15.3 粒度的工单)
+
+| 期 | 交付 | 门 | 回退 |
+|---|---|---|---|
+| **F0 恒等门转向** | 现 shadow(store=真相 vs 投影=影子)**角色对调**:事件/fold 侧成真相,老 reducer 降级为影子验证器;比对机制、记账口径沿用 session-shadow | 对调后真机 ≥200 run 0 失配 | 对调是比对方向,零行为变化 |
+| **F1 写侧同步可见** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
+| **F2 命令面翻转(逐条)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归) | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
+| **F3 写侧回读换语义** | §14.1 的 9 处写侧回读残留全部改读 fold 后投影(F1 是前提);「写侧读抄本」纪律(§13.18)整体翻面 | 定向用例逐处 + battery | 随 F2 分批走 |
+| **F4 reducer 退役** | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
+
+### 16.3 F 线自己的待拍板(到期再拍)
+
+1. **P0 冻结端口解冻范围**:core 引擎注入的 store 端口形状是 P0 明令冻结的,F4 必须
+   解冻 —— 解到什么程度(只换实现 vs 换接口形状)到 F4 前拍。
+2. **F0 影子验证器的退役条件**:F4 合一后两条推导变一条,「可对账」终结 —— 退役门
+   (多少 run / 多久)与 refold 采样率一并拍。
+3. **时机**:S3w-3 落地后浸泡多久开 F0。
+
+### 16.4 风险登记(立项即记录)
+
+- **安全网递减是 full 的本质代价**(§14.2 已述,用户知情拍板):F4 之后正确性凭据只剩
+  refold(同源两路径),没有独立第二推导。F0–F3 期间恒等门仍在,风险集中在 F4 之后。
+- **同步可见 vs 崩溃窗口**:F1 把「fold 先于落盘」钉成纪律后,崩溃时活投影可能领先
+  磁盘 —— refold 会把这类窗口暴露为 refold 失配,语义 fsync 检查点是兜底,F1 落地时
+  重审检查点位。
+- **13 条命令翻转是长尾**:compact/truncateFrom/upsert 三条携带 §13 一整章的真机判例
+  (双追加、占位替换、existed 探测),每条翻转都要把对应判例搬进用例。
+
+### 15.5 批 P 落地记录 + §15.1 勘误(2026-08-25,opus 执行,未提交)
+
+**先勘误 —— §15.1 A 类的机制描述(第 2–4 步)是错的,执行时被代码推翻:**
+
+- `tool/result` **本来就是** surface 节点(`SESSION_SURFACE_NODE_TYPES`,
+  `core/session/events/types.ts:903`),写读两侧从一开始就共用 `isSessionSurfaceNodeType`
+  —— "写读节点判定不一致"不成立,`replace-start-missing` 在这份文件上**一条都没有**
+  (修复前实测 `foldSurface` violations 为空)。
+- 真正的病根是**顺序**:压缩落账在 08-21(covered 从当时的 `order[0]` = seq 7 起),
+  迁移在 08-23 把 43 条 `message/imported` 补到**头部** —— 43 个更早的节点插到了
+  covered 起点前面,永远留在 surface 头上。§15.1 说迁移"无错"只在 seq 平移算术上
+  成立;**语义上正是迁移制造了这个形状**。投影 632 条 / 真相 519 条。
+- 第三个真机反例(`fd899977`)逼出补充规则:那次压缩当年锚点解不出,写侧退化成
+  "遮蔽整条 surface"(声明 [61..458]),而迁移把锚点消息补到了第 14 格 —— 只按锚点
+  遮会把 400 多格原文放回历史。**终局规则:completed 压缩遮蔽
+  `[0 .. max(锚点位, 声明 end 位)]`(只许长不许缩,两种说法取并集)。**
+
+**落地内容**(9 文件,+813/−81 中属本批的部分;工作树另有他会话的 renderer 改动勿混):
+
+- **P-a**:`SessionResponseUsage`/`ProjectedStepUsage` + `providerCostUSD`;recorder
+  `normalizeUsage` 白名单补字段;投影 reducer 透传到 `steps[].usage`,**消息级 usage
+  显式摘掉成本**(镜像引擎累加器 `agent-loop-executor.ts:2560` 逐字段列名的行为,
+  否则造出新失配);battery 场景 `provider-cost-usage`(反证:撤掉采集行单跑即红)。
+- **P-b**:`surfaceMessageIdOf` 上收 core 成为写读唯一判定(写侧自抄的 `messageIdOf`
+  删除);`SurfaceIndex` 自持 `seqByMessageId`,compact 的 replace **与 append 两条路**
+  都按锚点语义重解(F3 的"退化成 append"读侧也救);`sourceEventSeqs` 校验只查声明区,
+  新 violation `source-seqs-incomplete`;`shadowedCount()` 供 verify 逐条判;
+  `sessions:verify` 新判据 `compact-shadowed-nothing`。
+- battery 只放得下 A 类的**活进程半边**(首事件非 `session/created` 时压缩照样遮净);
+  "离线改过的文件被新进程重折"那半边活进程里造不出红(写侧 surface 与活投影常驻
+  内存),落在 fold 级合同用例(`projection-contract.test.ts` +3)—— 结构性事实,
+  记录在案。
+- **基线**:`session-verify-baseline` +9 条(全部 46dcec05 的 providerCostUSD 存量残余;
+  stash 反证:本批不新增不治愈任何 verify 红线)。
+
+**门(全部实跑)**:typecheck 绿;battery GREEN(26 场景×7 pass,runs 266 /
+mismatches 0);boundary:gate / session:gate / log:gate 全 ok;定向 2428 用例 16 失败
+均为本机冷启动抖动(两文件单跑 32/32 绿,与近两 commit 记录同款)。
+
+**真机只读验证**(零写入):全库 424 会话 surface 类问题 0;三个"迁移+compact"会话
+全部自愈 —— `46dcec05` order 444→401、模型历史 520 条首条为摘要(与影子真相侧
+逐字对上),`fd899977` 58→30,`fe5261d9` 311→247;`compact-shadowed-nothing` 全库
+零命中。
+
+**遗留待裁定(3 条,均先于本批存在,verify:gate new 12→3)**:
+`a5157107` 的 unclosed-run 与 aborted ask_user 类 canonical differs(§13.8 第一类新
+实例)、`room-1` 的 projection 多 1 条 —— 要不要按既有分类并入基线,待用户拍。
+
+**收尾顺序**(待用户指令):审查通过 → haiku 提交(只圈本批 9 文件 + 两份 docs,
+勿裹他会话的 renderer/tsconfig 改动)→ 重启桌面换上新代码 → `sessions:shadow-reset`
+→ 真机开始积干净的 ≥200 run(S2b 浸泡时钟起点)。

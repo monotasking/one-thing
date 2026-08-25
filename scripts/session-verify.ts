@@ -26,7 +26,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   decodeJsonlLine,
-  foldSurface,
+  SurfaceIndex,
   isBlobRef,
   parseSessionLogEventLog,
   projectChatMessages,
@@ -123,8 +123,35 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
   }
 
   // 2. surface
-  for (const violation of foldSurface(events).violations) {
+  //
+  // 批 P-b(§15.3 第 3 条)新判据:一次 **completed** 的压缩落在一张非空 surface 上
+  // 却一格都没遮住 = 静默漏遮 —— 真机 46dcec05 正是这样让模型同时看到摘要和被压掉
+  // 的原文(投影 227 条 / 真相 114 条,预算翻倍而两边 token 账都是绿的)。
+  // 逐条 push(而不是一次 `foldSurface`)才数得出"这一条压缩遮了几格"。
+  const surface = new SurfaceIndex()
+  const shadowedNothing: number[] = []
+  for (const event of events) {
+    const hadSurface = surface.lastSeq() !== undefined
+    const before = surface.shadowedCount()
+    surface.push(event)
+    if (
+      event.type === 'session/compacted'
+      && (event.data.status ?? 'completed') === 'completed'
+      && hadSurface
+      && surface.shadowedCount() === before
+    ) {
+      shadowedNothing.push(event.seq)
+    }
+  }
+  const snapshot = surface.snapshot()
+  const violatedSeqs = new Set(snapshot.violations.map(violation => violation.eventSeq))
+  for (const violation of snapshot.violations) {
     issues.push({ kind: 'surface', detail: `${violation.type}@${violation.eventSeq}: ${violation.reason}` })
+  }
+  // 已经落了 violation 的那一条不再重复报(`compact-anchor-unresolved` 说的是同一件事)。
+  for (const seq of shadowedNothing) {
+    if (violatedSeqs.has(seq)) continue
+    issues.push({ kind: 'surface', detail: `session/compacted@${seq}: compact-shadowed-nothing` })
   }
 
   // 3. 投影

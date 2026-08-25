@@ -139,7 +139,13 @@ interface RequestSpec {
   /** provider-data 之后的那一段正文(验分段:text → provider-data → text = 3 格)。 */
   textAfter?: string
   tools?: ToolSpec[]
-  usage?: { inputTokens: number; outputTokens: number }
+  /**
+   * 批 P-a:`providerCostUSD` 是厂商在响应里报的本次请求成本(OpenRouter
+   * `usage.cost` / xAI `cost_in_usd_ticks`)。引擎把 `lastTurnUsage` **原样**
+   * 写进 `steps[].usage`,而消息级 usage 走累加器(逐字段列名,不带成本)——
+   * 两条线都照抄这一条,合同才钉得住"事件面收没收这一格"。
+   */
+  usage?: { inputTokens: number; outputTokens: number; providerCostUSD?: number }
   /**
    * 这一轮**没走到** `turn-end`(用户 abort / 请求出错)。
    *
@@ -368,11 +374,14 @@ function stepOf(
   return step
 }
 
-function normalizedUsage(usage: { inputTokens: number; outputTokens: number }): ProjectedStepUsage {
+function normalizedUsage(
+  usage: { inputTokens: number; outputTokens: number; providerCostUSD?: number },
+): ProjectedStepUsage {
   return {
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
     totalTokens: usage.inputTokens + usage.outputTokens,
+    ...(usage.providerCostUSD !== undefined ? { providerCostUSD: usage.providerCostUSD } : {}),
   }
 }
 
@@ -519,13 +528,16 @@ function applyTurnCommands(
     }
     if (request.usage) {
       const next = normalizedUsage(request.usage)
+      // 批 P-a:消息级累加器逐字段列名(引擎的 `accumulatedUsage` 两个分支都是),
+      // 所以 `providerCostUSD` 到不了消息上 —— 单请求那一支也要显式摘掉它。
+      const { providerCostUSD: _cost, ...first } = next
       usage = usage
         ? {
             inputTokens: usage.inputTokens + next.inputTokens,
             outputTokens: usage.outputTokens + next.outputTokens,
             totalTokens: usage.totalTokens + next.totalTokens,
           }
-        : next
+        : first
       // 注意:**这里不写消息上的 usage**。引擎只在整次执行收尾时写一次
       // (`updateUsage` → `store.updateMessageUsage(ctx.assistantMessageId, 累加器)`),
       // 落点是那一刻的助手消息 —— steering 之后就是接手的那条。由 `Scenario`
@@ -888,7 +900,13 @@ function emitTurnEvents(
         type: 'request/response',
         data: {
           runId: turn.runId, requestIndex, messageId: turn.messageId,
-          usage: { inputTokens: request.usage.inputTokens, outputTokens: request.usage.outputTokens },
+          usage: {
+            inputTokens: request.usage.inputTokens,
+            outputTokens: request.usage.outputTokens,
+            ...(request.usage.providerCostUSD !== undefined
+              ? { providerCostUSD: request.usage.providerCostUSD }
+              : {}),
+          },
           // 引擎把这份 usage 记到哪个回合的 step 上(带 usage 的那条 finish
           // **推进之前**的回合号)。没有分界时它就是这次请求的回合号。
           usageTurnIndex: boundaryTurnIndex,
@@ -1537,6 +1555,42 @@ describe('projection contract: command line ≡ event line', () => {
     expect(message.steps![0].toolCall?.changes).toEqual(changes)
   })
 
+  /**
+   * 批 P-a(§15.3):厂商报的成本 `providerCostUSD` 一路走到 `steps[].usage`。
+   *
+   * Provider OO P4 让 grok / openrouter 方言把上游成本写进 usage,store 的
+   * `step.usage` 当场带上它 —— 而记录器的 `normalizeUsage` 是一张白名单,漏收
+   * 就是"真相有、投影缺",每个带成本读数的 run 记一条影子失配(真机 10 条)。
+   * 这一格只落 **step**:消息级 usage 走引擎累加器,累加器从不带成本。
+   */
+  it('provider-reported cost rides usage all the way to steps[].usage', () => {
+    const scenario = new Scenario()
+    scenario.user({ id: 'u1', content: 'do it' })
+    scenario.turn({
+      runId: 'r1', messageId: 'a1', kind: 'send',
+      requests: [
+        {
+          text: 'looking',
+          usage: { inputTokens: 10, outputTokens: 5, providerCostUSD: 0.058543648 },
+          tools: [{ callId: 'c1', name: 'read', args: { path: '/a' }, resultText: 'body', outcome: 'ok', streamedArgs: true }],
+        },
+        { text: ' done', usage: { inputTokens: 20, outputTokens: 3, providerCostUSD: 0.075264032 } },
+      ],
+      outcome: 'completed',
+    })
+    scenario.flushPendingExecutionUsage()
+    // 真相线与事件线逐字段相等 —— 这一条就是影子门那 10 条失配的判据。
+    expectEquivalent(scenario)
+
+    const message = projectChatMessages(scenario.b.events).messages[1]
+    expect(message.steps?.[0].usage).toEqual({
+      inputTokens: 10, outputTokens: 5, totalTokens: 15, providerCostUSD: 0.058543648,
+    })
+    // 消息级用量是累加器的产物,不带成本(引擎的 `accumulatedUsage` 逐字段列名)。
+    expect(message.usage).toEqual({ inputTokens: 30, outputTokens: 8, totalTokens: 38 })
+    expect(message.usage).not.toHaveProperty('providerCostUSD')
+  })
+
   it('two-request tool loop including a denied permission', () => {
     const scenario = new Scenario()
     scenario.user({ id: 'u1', content: 'do it' })
@@ -1900,6 +1954,74 @@ describe('SurfaceIndex', () => {
       { seq: 3, time: 3, type: 'session/cleared', data: { reason: 'clear' }, surfaceOp: { op: 'replace', start: 1, end: 2 }, sourceEventSeqs: [1] },
     ])
     expect(bad.violations.map(v => v.reason)).toEqual(['source-seqs-incomplete'])
+  })
+
+  /**
+   * 批 P-b(§15.3):**日志头部被事后改过**的压缩,按 `compactedThroughMessageId`
+   * 的语义重解 —— 真机 46dcec05 的形状。
+   *
+   * 那份日志诞生于一次 run 中途(首事件不是 `session/created`),压缩落账在前、
+   * 迁移把更早的 43 条 `message/imported` 补到头部在后。于是写侧当时写下的
+   * `surfaceOp.start` 落在第 43 格上,它前面那一段本该被压掉的老消息永远留在了
+   * 模型可见历史里 —— 投影 227 条而真相 114 条,请求预算真的翻了倍(而两边的
+   * token 账都是绿的,只有影子门看得见)。
+   */
+  it('re-resolves a compaction whose declared range starts after nodes imported later', () => {
+    const compacted: SessionLogEventRecord = {
+      seq: 4, time: 4, type: 'session/compacted',
+      // 写侧当时只看得见 u2/u3,于是 start=2 —— 而 u1 是迁移后来补到头部的。
+      data: { summary: 's', messageId: 'k1', compactedMessageCount: 2, compactedThroughMessageId: 'u3' },
+      surfaceOp: { op: 'replace', start: 2, end: 3 }, sourceEventSeqs: [2, 3],
+    }
+    const line: SessionLogEventRecord[] = [
+      { seq: 1, time: 1, type: 'message/imported', data: { message: { id: 'u1', role: 'user' } }, surfaceOp: 'append' },
+      { seq: 2, time: 2, type: 'user/message', data: { message: { id: 'u2', role: 'user' } }, surfaceOp: 'append' },
+      { seq: 3, time: 3, type: 'user/message', data: { message: { id: 'u3', role: 'user' } }, surfaceOp: 'append' },
+      compacted,
+      { seq: 5, time: 5, type: 'user/message', data: { message: { id: 'u4', role: 'user' } }, surfaceOp: 'append' },
+    ]
+    const folded = foldSurface(line)
+    // 压缩节点排在最前,补进来的 u1 与声明的那一段一起被遮掉。
+    expect(folded.order).toEqual([4, 5])
+    expect(folded.shadowed).toEqual([1, 2, 3])
+    // 声明区之前的头部不参与"列全没有"的校验:写侧当时根本看不见它。
+    expect(folded.violations).toEqual([])
+    // fold 与逐条 push 结果仍然相同。
+    const index = new SurfaceIndex()
+    for (const event of line) index.push(event)
+    expect(index.snapshot()).toEqual(folded)
+  })
+
+  /**
+   * 同一条语义也救得回 F3 那一形态:写侧当时**一个切点都没解出来**,写成了
+   * `append`(replace 静默退化);读侧手里是整份日志,解得出就照压缩语义遮蔽,
+   * 解不出才落 `compact-anchor-unresolved`。
+   */
+  it('re-resolves a compaction that degraded to append when the writer lost the anchor', () => {
+    const line: SessionLogEventRecord[] = [
+      { seq: 1, time: 1, type: 'user/message', data: { message: { id: 'u1', role: 'user' } }, surfaceOp: 'append' },
+      { seq: 2, time: 2, type: 'user/message', data: { message: { id: 'u2', role: 'user' } }, surfaceOp: 'append' },
+      {
+        seq: 3, time: 3, type: 'session/compacted',
+        data: { summary: 's', messageId: 'k1', compactedMessageCount: 2, compactedThroughMessageId: 'u2' },
+        surfaceOp: 'append',
+      },
+    ]
+    const folded = foldSurface(line)
+    expect(folded.order).toEqual([3])
+    expect(folded.shadowed).toEqual([1, 2])
+    expect(folded.violations).toEqual([])
+
+    // 锚点那条消息压根不在这份 surface 上 = 真的解不出来,F3 照旧红。
+    const unresolved = foldSurface([
+      line[0], line[1],
+      {
+        seq: 3, time: 3, type: 'session/compacted',
+        data: { summary: 's', messageId: 'k1', compactedMessageCount: 2, compactedThroughMessageId: 'nope' },
+        surfaceOp: 'append',
+      },
+    ])
+    expect(unresolved.violations.map(v => v.reason)).toEqual(['compact-anchor-unresolved'])
   })
 })
 

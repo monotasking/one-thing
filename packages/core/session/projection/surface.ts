@@ -18,6 +18,30 @@
 import type { SessionLogEventRecord } from '../events/types.js'
 import { isSessionSurfaceNodeType } from '../events/types.js'
 
+/**
+ * 一条事件在 surface 上代表**哪条消息**(不代表任何消息的返回 undefined)。
+ *
+ * 批 P-b:这是写读两侧共用的**唯一**一份判定 —— 写侧
+ * (`backend/session/event-surface.ts`)从前自己抄了一份同名函数,两份判定各自
+ * 演化就是"切点落在对面不认得的格上"那类静默错乱的温床。判定只此一处,
+ * 与 `isSessionSurfaceNodeType` 同源。
+ */
+export function surfaceMessageIdOf(event: SessionLogEventRecord): string | undefined {
+  switch (event.type) {
+    case 'user/message':
+    case 'system/message':
+    case 'message/imported':
+    case 'user/message-edited':
+      return event.data.message.id
+    case 'run/start':
+      return event.data.assistantMessageId
+    case 'session/compacted':
+      return event.data.messageId
+    default:
+      return undefined
+  }
+}
+
 export interface SurfaceViolation {
   eventSeq: number
   type: string
@@ -52,10 +76,16 @@ export class SurfaceIndex {
   private order: number[] = []
   private readonly shadowed = new Set<number>()
   private readonly violations: SurfaceViolation[] = []
+  /** 消息 id → 它在 surface 上那一格的 eventSeq(压缩锚点的第二步解析用)。 */
+  private readonly seqByMessageId = new Map<string, number>()
 
   push(event: SessionLogEventRecord): void {
     const op = event.surfaceOp
     const isNode = isSessionSurfaceNodeType(event.type)
+    if (isNode) {
+      const messageId = surfaceMessageIdOf(event)
+      if (messageId) this.seqByMessageId.set(messageId, event.seq)
+    }
 
     if (op === undefined) {
       // surface 事件没带 op 的兜底:节点类型按 append 处理(老写者/迁移脚本
@@ -65,6 +95,16 @@ export class SurfaceIndex {
     }
 
     if (op === 'append') {
+      // F3 + 批 P-b:写侧当时解不出切点写成了 append,读侧**再解一次** ——
+      // 整份日志在手,写侧当时缺的那一段可能就在眼前(半截 run 开头的日志被
+      // `message/imported` 补齐之后正是这种局面)。解得出就照压缩语义遮蔽,
+      // 解不出才落 F3 那条 violation。
+      const anchor = this.resolveCompactAnchorIndex(event)
+      if (anchor !== undefined) {
+        this.shadowCompact(event, anchor)
+        if (isNode) this.order.splice(0, 0, event.seq)
+        return
+      }
       this.checkCompactAnchor(event)
       if (isNode) this.order.push(event.seq)
       return
@@ -73,6 +113,53 @@ export class SurfaceIndex {
     const at = this.applyReplace(event, op.start, op.end)
     if (isNode) {
       this.order.splice(at, 0, event.seq)
+    }
+  }
+
+  /**
+   * 一次**成功**的压缩在 surface 上遮蔽的是哪一格为止 —— 返回 `order` 上的下标。
+   *
+   * 批 P-b:唯一的解析依据是 **`data.compactedThroughMessageId`** —— 它是压缩自己
+   * 说的那句话("历史被压到这条消息为止"),而这句话的语义本来就是**从 surface 头
+   * 一直遮到它(含)**;写侧写的也正是 `order.slice(0, at+1)`。正常写下来的日志两种
+   * 说法逐字相同(`surfaceOp.start` 就是当时的 `order[0]`),只有日志被**事后改过
+   * 头部**时才分岔,这时按语义解才是对的。
+   *
+   * **不**拿 `surfaceOp` 反推锚点:没有 `compactedThroughMessageId` 的压缩(全量压缩
+   * 或老写者)只有一句语法上的 replace,读侧只能逐字照办 —— 那种日志里"压缩节点插在
+   * 中间"是合法形状。
+   *
+   * 解不出(没这一格 / 那条消息不在这份 surface 上)返回 undefined:调用方回到逐字
+   * 照办的老路,行为与修复前一致。失败的压缩没有落点可言,照旧 append。
+   */
+  private resolveCompactAnchorIndex(event: SessionLogEventRecord): number | undefined {
+    if (event.type !== 'session/compacted') return undefined
+    if ((event.data.status ?? 'completed') !== 'completed') return undefined
+    if (this.order.length === 0) return undefined
+    const throughId = event.data.compactedThroughMessageId
+    if (throughId === undefined) return undefined
+    const seq = this.seqByMessageId.get(throughId)
+    if (seq === undefined) return undefined
+    const at = this.order.indexOf(seq)
+    return at === -1 ? undefined : at
+  }
+
+  /**
+   * 从 surface 头遮到 `to`(含)。
+   *
+   * `sourceEventSeqs` 的"列全没有"只校验**写侧声明的那一段**:声明区之前的头部是
+   * 写侧当时看不见的节点(真机 46dcec05:压缩落账在前、迁移把 43 条
+   * `message/imported` 补到头部在后),它们不在 `sourceEventSeqs` 里是应该的。
+   */
+  private shadowCompact(event: SessionLogEventRecord, to: number): void {
+    const removed = this.order.slice(0, to + 1)
+    for (const seq of removed) this.shadowed.add(seq)
+    this.order.splice(0, removed.length)
+    const declared = new Set(event.sourceEventSeqs ?? [])
+    const declaredFrom = removed.findIndex(seq => declared.has(seq))
+    if (declaredFrom === -1) return
+    if (removed.slice(declaredFrom).some(seq => !declared.has(seq))) {
+      this.violations.push({ eventSeq: event.seq, type: event.type, reason: 'source-seqs-incomplete' })
     }
   }
 
@@ -97,6 +184,22 @@ export class SurfaceIndex {
    * 校验报了 range-missing,而模型历史里旧的一问一答原封不动地留着。
    */
   private applyReplace(event: SessionLogEventRecord, start: number, end: number): number {
+    // 批 P-b:压缩这一类 replace 的语义不是"替换声明的那一段",是**从 surface 头
+    // 遮到锚点** —— 写侧写的就是 `order.slice(0, at+1)`。正常写下来的日志两种说法
+    // 逐字相同(`start` 就是当时的 `order[0]`),只有日志被**事后改过头部**时才分岔:
+    // 真机 46dcec05 在压缩落账(08-21)之后才被迁移补进 43 条 `message/imported`,
+    // 于是 `start` 落在第 43 格上,前面 43 条早该被摘掉的老消息永远留在了模型历史里
+    // (投影 227 条 / 真相 114 条,请求预算真的翻了倍)。按语义解,老文件当场自愈。
+    const anchor = this.resolveCompactAnchorIndex(event)
+    if (anchor !== undefined) {
+      // **只许长,不许缩**:写侧当年解不出锚点时会退化成"遮蔽整条 surface"
+      // (`at = order.length - 1`),那份声明比锚点走得更远 —— 真机 fd899977 的
+      // 压缩声明的是 [61..458] 而锚点那条消息是迁移后才补到第 14 格的,只按锚点
+      // 遮就会把 400 多格原文放回模型历史里。两种说法取并集才两头都对。
+      this.shadowCompact(event, Math.max(anchor, this.order.indexOf(end)))
+      return 0
+    }
+
     const from = this.order.indexOf(start)
     if (from === -1) {
       // 整段都在 surface 之外:要么已经被遮蔽过,要么写错了。
@@ -127,6 +230,17 @@ export class SurfaceIndex {
 
   isShadowed(eventSeq: number): boolean {
     return this.shadowed.has(eventSeq)
+  }
+
+  /**
+   * 到此刻为止被遮蔽了多少格。
+   *
+   * 批 P-b:`sessions:verify` 靠"压缩前后这个数有没有涨"判"这次压缩到底遮住了
+   * 什么" —— 一次成功的压缩遮蔽 0 格就是静默漏遮(A 类失配的形状)。
+   * 不用 `snapshot()` 是因为逐条判要跑几千次,而它每次都复制三个数组。
+   */
+  shadowedCount(): number {
+    return this.shadowed.size
   }
 
   snapshot(): SurfaceSnapshot {

@@ -62,6 +62,11 @@ export interface ProjectedStepUsage {
   cacheReadTokens?: number
   cacheWriteTokens?: number
   reasoningTokens?: number
+  /**
+   * 批 P-a:厂商报的本次请求成本(USD)。**只在 step 那一格**出现 —— 消息级
+   * `usage` 走引擎累加器,累加器不带成本(见 `addUsage`)。
+   */
+  providerCostUSD?: number
 }
 
 export interface ProjectedStep {

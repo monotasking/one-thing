@@ -48,3 +48,23 @@ agent-exec-agent-eba0c4b7-46b7-46a3-a495-671c94cc340c-agent-dm-agent-eba0c4b7-46
 # (§13.14-D 已反证同源)。故按 §10.17 门口径收进基线。
 9c94531d-2d44-41e0-89b6-4ef99f3c2440 messages: canonical differs for message f4bd0a05-d0a2-4de2-a18c-723b011097d2
 9c94531d-2d44-41e0-89b6-4ef99f3c2440 messages: projection has 1 message(s) unknown to messages.jsonl
+# 2026-08-25 追加 9 条(批 P-a,§15.1 B 类):**采集缺口**留下的存量残余,不是回归。
+# Provider OO P4(08-22,1491a19b 起)让 grok / openrouter 方言把上游报的成本写进
+# usage(`providerCostUSD`),引擎原样写进 `steps[].usage`;而记录器的 `normalizeUsage`
+# 是一张六字段白名单,没收这一格 —— 于是 P4 落地到本批修复(08-25)之间的每一次
+# grok run,messages.jsonl 里有成本、events.jsonl 里没有。修的是采集(白名单已补,
+# 合同测试 `provider-reported cost rides usage all the way to steps[].usage` +
+# battery 场景 `provider-cost-usage` 两面钉住),**不回填历史事件、不在 canonical 里
+# 豁免** —— 那两条都会让这一格永久丢失或永久说谎。所以旧账留在盘上,进基线。
+# 只读实证:11 条差异里 183 处路径全是 `steps[].usage.providerCostUSD`(另 1 处
+# `.usage` 是 89ec74f7 那条早已在册的 aborted-run 残余,见上一段)。反证做过:
+# 把本批改动整体 stash 之后跑同一道门,这 9 条一字不差地照样在(输出逐字节相同)。
+46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message 044ed006-4b02-409d-b245-f4a3b38be74c
+46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message 163bdbbc-eff6-49ef-9df1-af6a8fc04c5d
+46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message 4907d923-1632-49da-bbdc-05144369dd9d
+46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message 48559020-1964-43c0-9332-fe05e4a57f36
+46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message 97bb4eb1-c602-442e-b8e5-35ec83d767ab
+46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message d12d65d4-b3f8-4396-b68d-7d8da5fa2b59
+46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message 9e3c267d-7050-419e-8474-fc7612412efb
+46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message 57475f59-eb9f-49bd-927e-c884bb576426
+46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message b58863e6-6bcd-40ea-b5cb-267e136f52f0
