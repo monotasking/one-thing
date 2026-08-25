@@ -68,3 +68,38 @@ agent-exec-agent-eba0c4b7-46b7-46a3-a495-671c94cc340c-agent-dm-agent-eba0c4b7-46
 46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message 9e3c267d-7050-419e-8474-fc7612412efb
 46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message 57475f59-eb9f-49bd-927e-c884bb576426
 46dcec05-73e4-44ea-8a3e-11488effec08 messages: canonical differs for message b58863e6-6bcd-40ea-b5cb-267e136f52f0
+# 2026-08-25 追加 1 条(批 P 遗留裁定,用户拍板进基线):一次性迁移数据残余,不是
+# 引擎 bug。room-1 是协作房间形状的会话,messages.jsonl 里只有一行 v2 格式头、零条
+# 消息;迁移却导入了一条 message/imported(id "m-1",assistant,种子/夹具形状,疑似
+# 取材自 legacy 整文件),于是投影多出一条 messages.jsonl 不认识的消息。孤例,全库
+# 唯一;不回写数据。
+room-1 messages: projection has 1 message(s) unknown to messages.jsonl
+# 2026-08-25 追加 2 条(a5157107,§13.8 第一类的**新实例**)—— 与上面所有条目**不同**:
+# 这一条**不是"修复前的残余"**。它是 08-24 20:58 起、08-25 09:29 落的账,产地是**批 9
+# (cd55d62f)之后**的代码。上面第 24 行"修好之后不再新增"的口径**过宽**,此处更正:
+# 批 9 的采集点 `captureCancelledToolResults` 挂在**引擎收尾**里(completeAgentLoopStream
+# → emitFinalAssistantMessageUpdate),它只覆盖"进程活着时的中止";这一次的 abort 是
+# **退出进程**发出的(Cmd+Q → before-quit → shutdownStreamEngine → CoreStreamEngine.abortAll),
+# 收尾链本身没有机会跑完。
+# 事故链(只读实证,全部有账可查):
+#   seq 244 tool/call(ask_user)→ 245 interaction/asked → 挂 12.5 小时 →
+#   09:29 退出 → abortAll 同步触发 AbortScope → InteractiveTool.withdraw →
+#   Interaction.abort → 246... 247 interaction/answered(aborted, cancelled:true,同步落账)→
+#   微任务里 ask() resolve → buildResult 的 `annotate` 把「提问已取消」+ 结局 JSON 写进
+#   messages.jsonl(01:29:23.739Z)→ 248 tool/audit(01:29:23.650Z)→ **账本到此为止**。
+#   `endSessionRun`(全仓唯一的 run/end 产地)与 `captureCancelledToolResults` 一笔都没产出。
+# 因此两条红线:
+#   ① unclosed-run —— 这条会话**至今没被再打开过**(events.jsonl mtime 停在事故那一刻)。
+#      冷加载收尾 `prepareSessionEvents`(S2a §11.1)本来就管这一类:下次打开会话时会补
+#      `tool/result(interrupted)` + `run/end(interrupted)`。**所以这一行会自愈** ——
+#      门打印 healed 时应当把它从基线摘掉,不要当成"治好了这个类"。
+#   ② canonical differs —— 自愈不到的那一格。逐字段实证:差的是 steps[0] 的
+#      `title`(盘上「提问已取消」/ 投影「调用工具: ask_user」占位)与 `result`
+#      (盘上 ask_user 的 aborted details JSON / 投影没有);`isStreaming` 随 ① 自愈。
+#      工具的**自报结局**(`ctx.emit({type:'annotate'})`)在事件账本里**没有任何产地** ——
+#      它今天只能经 `tool/result` 或收尾采集**间接**到达,而这两条都晚于 annotate。
+#      不回填历史事件、不在 canonical 里豁免,所以这一行永久留在盘上。
+# **这一类尚未修**:同款退出竞速会继续产生新实例。基线按"会话 id + 整行"精确匹配,
+# 这两行只静音 a5157107 一条,别的会话再出同款仍然红 —— 这是刻意的。
+a5157107-dfac-4a42-b910-58148e982bfb unclosed-run: run a2813feb-0373-46d4-9391-25236fb1f6f1 started at seq 233 has no run/end
+a5157107-dfac-4a42-b910-58148e982bfb messages: canonical differs for message b4a1e667-801b-4185-b17d-d4647cc807f9

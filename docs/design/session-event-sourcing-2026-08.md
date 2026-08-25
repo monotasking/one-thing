@@ -3912,3 +3912,52 @@ mismatches 0);boundary:gate / session:gate / log:gate 全 ok;定向 2428 用例 
 **收尾顺序**(待用户指令):审查通过 → haiku 提交(只圈本批 9 文件 + 两份 docs,
 勿裹他会话的 renderer/tsconfig 改动)→ 重启桌面换上新代码 → `sessions:shadow-reset`
 → 真机开始积干净的 ≥200 run(S2b 浸泡时钟起点)。
+
+### 15.6 P2 诊断:不是取消采集缺口,是退出竞速(2026-08-25,opus 诊断,零代码改动)
+
+工单前提(interaction 取消路径漏采)被代码与账本推翻。真链条:
+
+```
+Cmd+Q → before-quit.ts:100 await shutdownStreamEngine()
+      → CoreStreamEngine.abortAll()(同步 abort 全部控制器)
+      → InteractiveTool AbortScope 同步 withdraw → Interaction.abort(全仓唯一调用者
+        wiring/toolkit/adapters.ts:113)→ settle('aborted')
+      → interaction/answered(seq 247)+ ask-user.ts:237 annotate(「提问已取消」进
+        store)+ tool/audit(seq 248)—— 同步/微任务,全部落账 ✅
+      → run/end(runs.ts:225 endSessionRun)与批 9 取消采集
+        (agent-loop-executor.ts:404/480)都挂在 completeAgentLoopStream 异步收尾链
+        → before-quit 随后同步跑三个 shutdown + flush 就走人,链没跑完,两笔账没了 ❌
+```
+
+**硬证据**:messages.jsonl mtime = 事故那一秒(01:29:23.739,「提问已取消」是引擎
+活着写的,不是 sanitize —— interrupted.ts 裁定表本来就不动 title);app.jsonl 同秒是
+整串退出日志,13 秒后冷启动;endSessionRun 零产出。
+
+**三条修正既有认知**:
+1. 批 9 只封住"活进程中止"半边;"abort 由退出发出"是没盖到的一格(基线第 24 行
+   "不再新增"口径过宽,已在基线注释更正)。
+2. `unclosed-run` 那格**会自愈**:prepareSessionEvents(S2a §11.1)在会话下次打开时
+   补 tool/result(interrupted) + run/end(interrupted)。a5157107 只是从没被再打开。
+3. 自愈不了的只有**工具自报结局那一格**(step.title「提问已取消」/ step.result
+   details):`annotate` 在事件账本里没有产地,只能经收尾链间接到达 —— 而 §13.8 明确
+   裁定"采集点不二次派生、只抄收尾后引擎写下的那一份"。救这一格 = 推翻该裁定。
+
+**三个可选修法(待拍板)**:甲 退出路径等收尾(before-quit 不被 Electron await,
+结构上无法保证,且退出变慢)/ 乙 annotate 自己成为事件产地(根治,但动事件词汇 +
+canonical 兜底 + 推翻 §13.8 裁定)/ 丙 收编为判例(退出即中断由 prepare 兜底成
+interrupted 占位,自报标题接受丢失 —— 今天的实际行为)。
+
+**与 F 线的关系(方案侧意见)**:full 拍板后「事件是唯一源头」成为终局 —— 自报结局
+若在事件里没有产地,停写后这一格**永久**折不出来,丙就从"接受偶发丢失"变成"接受
+永久丢失"。所以乙不是要不要做、是什么时候做:建议**现在收丙(零码,写进 §13.8 作
+第一类子形状),乙挂进 F 线**(F2 命令/词汇翻转时给 annotate 一个事件产地,连同
+§13.8 裁定一起重审)。甲不做。
+
+**这起事故同时是 §14.7 风险②的真机预演**:停写之后,同样的退出竞速丢的就不是
+"影子少一笔"而是"账本少一笔" —— S3w-2 重审写失败语义与 flush 时点时,必须把
+"引擎收尾链 vs 进程退出"的顺序一并纳入(before-quit 的 flush 只救了 store 落盘,
+救不了没跑到的收尾链)。
+
+基线:+2 行(a5157107 的 unclosed-run 与 canonical differs,注释写明该类**尚未修**、
+unclosed-run 会随会话打开自愈届时应摘)。全库 verify:25 known / 0 new,无第二个
+会话命中此类。
