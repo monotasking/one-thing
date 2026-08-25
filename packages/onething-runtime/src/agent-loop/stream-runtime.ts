@@ -259,6 +259,16 @@ export interface OnethingAgentLoopRuntimeAdapters<
 	 * 由宿主从读门面现取一份交过来 —— 宿主侧接的是 `sessionReads.listMessages`。
 	 */
 	listSessionMessages(sessionId: string): TChatMessage[];
+	/**
+	 * 压缩重建**读 store 之前**要跑的那一步(顺序约束,不是数据口)。
+	 *
+	 * 宿主的换锚点分成同步的"定身份"与异步的"收尾"两半,而 afterTurn 发的
+	 * response-boundary 之后,下一轮的 `beforeTurn`(压缩重建就在这里)排在收尾
+	 * 那一半**之前**:上一条 assistant 还挂着 `isStreaming`,`buildHistoryMessages`
+	 * 见了整条跳过,重建出来的历史真的少一整轮。宿主在这个口里把收尾补上。
+	 * 不接 = 直接读,行为与从前逐字相同。
+	 */
+	beforeRebuildMessages?(): Promise<void> | void;
 	resolvePromptReferences(
 		content: string,
 		input: {
@@ -381,6 +391,8 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 	 * 由宿主从读门面现取一份交过来 —— 宿主侧接的是 `sessionReads.listMessages`。
 	 */
 	listSessionMessages(sessionId: string): TChatMessage[];
+	/** 见 `OnethingAgentLoopRuntimeAdapters.beforeRebuildMessages`(§15.15)。 */
+	beforeRebuildMessages?(): Promise<void> | void;
 	resolvePromptReferences(
 		content: string,
 		input: {
@@ -494,6 +506,7 @@ export function createOnethingAgentLoopRuntimeAdapters<
 		buildPrompt: host.buildPrompt,
 		buildHistoryMessages: host.buildHistoryMessages,
 		listSessionMessages: host.listSessionMessages,
+		beforeRebuildMessages: host.beforeRebuildMessages,
 		resolvePromptReferences(content, input) {
 			const settingsWithSkills = input.settings as {
 				skills?: { enableSkills?: boolean };
@@ -855,6 +868,10 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	const rebuildAgentMessagesFromSession = async (
 		messages: AgentMessage[],
 	): Promise<AgentMessage[]> => {
+		// §15.15 的顺序约束:**重建必须看到收尾之后的 store**。上一条 assistant 还
+		// 挂着 `isStreaming` 时,`buildHistoryMessages` 会把它整条跳过,重建出来的
+		// 历史真的少一整轮(那是发给模型的东西,不是账)。宿主没接这个口 = 直接读。
+		await adapters.beforeRebuildMessages?.();
 		const latestSession = adapters.getSession(ctx.sessionId);
 		if (!latestSession) return messages;
 

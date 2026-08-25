@@ -68,6 +68,14 @@ export type BuildAgentLoopStreamRuntimeResult =
 
 export interface BuildAgentLoopStreamRuntimeOptions {
   emitter?: IPCEmitter
+  /**
+   * §15.15:压缩重建**读 store 之前**要跑的那一步。
+   *
+   * 唯一的生产实现是执行器的 `settlePendingAssistantWriterBeforeStoreRead`
+   * (把还挂着的那次换锚点先收尾,否则重建出来的历史会少一整轮)。不接 = 重建
+   * 直接读,行为与从前逐字相同。
+   */
+  beforeRebuildMessages?: () => Promise<void> | void
 }
 
 export type AgentLoopContextBudget = OnethingAgentLoopContextBudget
@@ -197,6 +205,8 @@ function createAgentLoopRuntimeAdapters(
     // C1:回合中重建历史时,消息从读门面现取(产品层不许自己持有 session.messages)。
     listSessionMessages: (sessionId: string) =>
       [...sessionReads.listMessages(sessionId).messages],
+    // §15.15:重建读 store 之前的顺序约束(见 options 上的注释)。
+    beforeRebuildMessages: options.beforeRebuildMessages,
     resolvePromptReferences(content, input) {
       const resolvedPromptRefs = resolvePromptReferences(content, { skills: input.skills })
       return {

@@ -18,15 +18,48 @@
  */
 
 import { sessionReads } from '../../../session/reads.js'
-import { checkSessionHistoryShadow } from '../../../session/shadow.js'
+import { checkSessionHistoryShadow, countSessionShadowSkip } from '../../../session/shadow.js'
 import { buildHistoryMessages, historyProjectionRecipe } from './message-helpers.js'
 import { getLogger } from '../../logging/index.js'
 
 const log = getLogger('engine.history')
 
 
-/** 一次请求发出前的历史断言。出错自吞:记账不该影响聊天。 */
-export function checkSessionHistoryShadowForRequest(sessionId: string, runId: string): void {
+export interface SessionHistoryShadowRequestOptions {
+  /**
+   * 这一刻有没有一次**已经定了身份、消费侧还没接手**的换锚点
+   * (`AgentLoopExecutorState.pendingAssistantRotation`)。
+   */
+  pendingAssistantRotation?: boolean
+}
+
+/**
+ * 一次请求发出前的历史断言。出错自吞:记账不该影响聊天。
+ *
+ * ## steer 窗口闸(§15.15)
+ *
+ * `rotateAssistantWriterIdentity` 在 agent-loop 发 boundary 的**同步点**就把旧 run
+ * 收掉、把身份换成新号,而上一条 assistant 消息的 `isStreaming` 要等消费侧那一半
+ * (`createNextAssistantWriter` → `finalize()`)才落成 false。这中间的一小段窗口里,
+ * 真相侧现算的 `buildHistoryMessages` 会被 `core/engine/history.ts` 的
+ * `if (message.isStreaming) continue` 把上一条 assistant **整条**滤掉,而投影侧不认
+ * `isStreaming`(它是 `run/start`…`run/end` 之间的派生态,见 `event-translator.ts`
+ * 的 `DERIVED_KEYS`)—— 比出来永远差一整轮。那是**窗口的假红**,不是投影错了。
+ *
+ * 与 run 断言那道闸是**同一条判例**:那边叫 `EndSessionRunInput.shadowGate`
+ * (`session/runs.ts`,开闸的两处在 `agent-loop-executor.ts` 的消费侧与 finally),
+ * 走的是"等一下再比";历史断言每次请求都跑,等下去等于把这一次请求的口径挪到
+ * 别的时刻,所以这边取"这一次不比,并记一笔账"。
+ */
+export function checkSessionHistoryShadowForRequest(
+  sessionId: string,
+  runId: string,
+  options: SessionHistoryShadowRequestOptions = {},
+): void {
+  if (options.pendingAssistantRotation) {
+    countSessionShadowSkip('history-steer-window')
+    return
+  }
   try {
     const session = sessionReads.getSession(sessionId)
     // F11(§13.2):真相侧只能是抄本。`listMessages` 自 S2a 起带着

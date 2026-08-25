@@ -160,6 +160,12 @@ export interface AgentLoopExecutorState {
 			typeof createAgentLoopNextAssistantWriterPlan<ToolCall, ContentPart>
 		>;
 		releaseShadow: () => void;
+		/**
+		 * §15.15:上一条助手消息的收尾(`finalize()` + `isStreaming:false`)是不是
+		 * **已经被压缩重建那条路提前跑掉了**。提前跑过就不再跑第二遍 —— 换身份
+		 * 那一半仍然留在消费侧,时序与语义一字不动。
+		 */
+		finished?: boolean;
 	};
 }
 
@@ -283,6 +289,37 @@ function rotateAssistantWriterIdentity(state: AgentLoopExecutorState): void {
 	};
 }
 
+/**
+ * §15.15:**压缩重建必须看到收尾之后的 store。**
+ *
+ * 换锚点的同步那一半(`rotateAssistantWriterIdentity`)在 agent-loop 发 boundary
+ * 的那一刻就跑完,而收尾那一半要等消费侧的下一个 `turn-start`
+ * (`createNewAssistantOnNextTurnStart` → `createNextAssistantWriter`)。麻烦在于
+ * afterTurn 发的 boundary 之后,**下一轮的 `beforeTurn` 排在那个 turn-start 之前**:
+ * 若这一轮恰好判成 `finalPlan.kind === 'rebuild'`,`rebuildAgentMessagesFromSession`
+ * 就会在上一条 assistant 还挂着 `isStreaming: true` 的时候去读 store,而
+ * `buildHistoryMessages` 见 `isStreaming` 整条跳过(`core/engine/history.ts`
+ * :753/:812)—— 重建出来的历史**真的少一整轮**,模型看不见上一条回复。
+ * 这不是账记歪,是发出去的请求少了东西。
+ *
+ * 所以在读 store 之前把收尾这一半提前跑掉。**只提前收尾,不提前换身份**:
+ * `pendingAssistantRotation` 原样留着,于是"两次 boundary 挤在一个 turn-start 前面
+ * 会折叠成一条新消息"这条既有语义(`rotateAssistantWriterIdentity` 的早退)一字未动,
+ * 消费侧仍然在原来的那一格接手。此刻队列里不会有还没消费的正文 chunk:boundary 是
+ * 同步推进队列的,而 `beforeTurn` 的第一个 await 就已经把消费侧放过去了 ——
+ * 提前的只是"什么时候写 `isStreaming:false`",不是"写进去的是什么"。
+ */
+async function settlePendingAssistantWriterBeforeStoreRead(
+	state: AgentLoopExecutorState,
+): Promise<void> {
+	const pending = state.pendingAssistantRotation;
+	if (!pending || pending.finished) return;
+	pending.finished = true;
+	await finishCurrentAssistantWriter(state);
+	// 上一条消息写完了 —— 它的影子这才有得比(与消费侧那一处同一条理由)。
+	pending.releaseShadow();
+}
+
 async function createNextAssistantWriter(
 	state: AgentLoopExecutorState,
 ): Promise<void> {
@@ -293,9 +330,13 @@ async function createNextAssistantWriter(
 	state.pendingAssistantRotation = undefined;
 	if (!pending) return;
 
-	await finishCurrentAssistantWriter(state);
-	// 上一条消息写完了 —— 它的影子这才有得比。
-	pending.releaseShadow();
+	// §15.15:压缩重建那条路可能已经把收尾跑掉了(只跑一次:`finalize()` 幂等,
+	// 但那条 `isStreaming:false` 广播不该发两遍)。
+	if (!pending.finished) {
+		await finishCurrentAssistantWriter(state);
+		// 上一条消息写完了 —— 它的影子这才有得比。
+		pending.releaseShadow();
+	}
 
 	state.ctx.assistantMessageId = pending.assistantMessageId;
 	state.processor = createStreamProcessor(state.ctx);
@@ -777,7 +818,12 @@ export async function executeAgentLoopStreamGeneration(
 			Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>
 		> = {
 		prepareRuntime: () =>
-			buildAgentLoopRuntimeFromStreamContext(ctx, historyMessages, { emitter }),
+			buildAgentLoopRuntimeFromStreamContext(ctx, historyMessages, {
+				emitter,
+				// §15.15:压缩重建读 store 之前,先把还挂着的那次换锚点收尾掉。
+				beforeRebuildMessages: () =>
+					settlePendingAssistantWriterBeforeStoreRead(state),
+			}),
 		isRuntimeSupported: (
 			prepared,
 		): prepared is Extract<
@@ -831,8 +877,13 @@ export async function executeAgentLoopStreamGeneration(
 						content: message.content,
 					})),
 				// S1b:发出去之前比一次历史(§10.4 第二条)。
+				// §15.15:换锚点的同步点与消费侧之间那一小段窗口里不比 —— 真相侧
+				// 现算的历史会被上一条 assistant 的 `isStreaming` 整条滤掉,比出来
+				// 差一整轮而投影没错(与 run 断言的 `shadowGate` 同一条判例)。
 				onRequestRecipe: (runId) =>
-					checkSessionHistoryShadowForRequest(ctx.sessionId, runId),
+					checkSessionHistoryShadowForRequest(ctx.sessionId, runId, {
+						pendingAssistantRotation: Boolean(state.pendingAssistantRotation),
+					}),
 				// A6+A7(§13.1):工具身份归一交给**引擎那一个函数**。记录器不再
 				// 自己实现一遍别名表 / MCP 折叠 —— 一个判定点,两处落点。
 				resolveToolIdentity: (toolName, args) =>

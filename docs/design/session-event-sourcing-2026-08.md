@@ -3990,7 +3990,7 @@ renderer 直接 import core reducer)。
 | 08-26 | 2 | U0 源头标注+runId 上提+双发(steering 竞态结构性消失) | 落地后**重启桌面 + shadow-reset** |
 | 08-26/27 | 3 | S3w-1 翻默认(合同门绿为前提)+ 真机走查 — **已完成(§15.10)**,真机走查待用户 | — |
 | 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 — **已完成(§15.11)**,含 §14.7 风险② flush 顺序审计(只出清单,动手归批 6) | — |
-| 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5)—— **首杀已修**:refold 门在真机上抓到第一例失配(补水改写活投影),根因/修法/新场景见 §15.13。**第二笔账也来自真机**:refold 首采在 17MB 账本上一口气阻塞主进程 ≈115ms("答完顿一下"),已改协作式分片,连同当晚整轮延迟诊断的归责结论见 §15.14 | 正常使用即可 |
+| 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5)—— **首杀已修**:refold 门在真机上抓到第一例失配(补水改写活投影),根因/修法/新场景见 §15.13。**第二笔账也来自真机**:refold 首采在 17MB 账本上一口气阻塞主进程 ≈115ms("答完顿一下"),已改协作式分片,连同当晚整轮延迟诊断的归责结论见 §15.14。**第三笔:history 影子 2 条假红**(steering 换锚点的同步点与消费侧之间那一小段窗口),同一个窗口里还藏着一颗压缩重建**真丢一整轮**的雷(今天没撞上),两处已收口,见 §15.15 | 正常使用即可 |
 | 08-28 | 5 | flush 收口四项(§15.11 清单 a–d,批 6 前置)+ S3w-4 体积治理 — **已完成(§15.12)**;events.jsonl 轮转只出方案未动手(§15.12 B3,待拍板) | — |
 | 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿) | **唯一确认点**:烧 S2b 回滚读前问一次 |
 | 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
@@ -4705,3 +4705,115 @@ parse 34.2ms + fold 16.8ms + 重折侧物化 30.8ms + deepEqual 10.8ms = 93ms �
 **refoldChecks 225、refoldMismatches 0** —— 分片后的这条路在 225 次真采样上判定不变);
 `boundary:gate` / `session:gate` / `log:gate` 全绿;零 `console.*` 新增。
 `~/.onething` 全程只读。
+
+### 15.15 steer 换锚点窗口:history 影子的两条假红 + 压缩重建的真雷(2026-08-26,opus 执行,未提交)
+
+真机 `session-shadow.jsonl` 上两条 `kind:'history'` 的失配(展开是 24 条 vs 4 条、
+两侧差一整轮的那种形状)。查下来两条同源,而**同一个窗口里还坐着一颗今天没撞上
+的真雷** —— 那颗才是这一批的重点:假红只是账记歪,真雷是**发给模型的请求真的少
+了一轮**。
+
+#### 一、窗口是怎么来的(U0 的结构性遗留)
+
+U0(§10.15)把换锚点劈成两半:
+
+- **同步的那一半** `rotateAssistantWriterIdentity`(`agent-loop-executor.ts`):
+  agent-loop 发 `response-boundary` 的那一刻**同步**跑完 —— 建新助手消息、
+  `rotateSessionRun` 把旧 run 收掉、新号盖回消息、`state.recordingAssistantMessageId`
+  改成新号;
+- **异步的那一半** `createNextAssistantWriter` → `finishCurrentAssistantWriter`:
+  必须排在上一条消息 `processor.finalize()` 之后,而那是个 `await`,所以留在
+  **chunk 消费侧**,由 `turn-start` 那一格触发
+  (`createNewAssistantOnNextTurnStart`,core `applyAgentLoopTurnStartWithAdapters`)。
+
+于是从 boundary 到消费侧接手之间有一段窗口。窗口里 store 的样子是:**新消息已经
+建好、旧 run 已经收掉,而上一条 assistant 还挂着 `isStreaming: true`**。
+
+#### 二、假红:窗口里比历史,真相侧自己少一轮
+
+历史影子挂在 `onRequestRecipe`(`history-shadow.ts` ← `session-event-recorder.ts`
+写 `request/recipe` 的那一刻,也就是"发出去之前"),它从 store **现算**
+`buildHistoryMessages`。而 `core/engine/history.ts` 的 :753 / :812 两处都有
+`if (message.isStreaming) continue` —— 窗口里那条上一轮的 assistant 被**整条**滤掉。
+投影侧不认 `isStreaming`(它是 `run/start`…`run/end` 之间的派生态,
+`event-translator.ts` 的 `DERIVED_KEYS` 里),照常产出那一轮。两侧差一整轮,
+**而投影没错**。
+
+messages 类断言早就有同判例的闸:`EndSessionRunInput.shadowGate`
+(`session/runs.ts`,`rotateAssistantWriterIdentity` 建闸、消费侧接手与执行 finally
+开闸),走的是"**等一下再比**"。history 类没有这道闸 —— 这就是缺口。
+
+**修法**:`checkSessionHistoryShadowForRequest` 加第三个参数
+`{ pendingAssistantRotation }`,由执行器现读 `state.pendingAssistantRotation` 交进来;
+非空就**这一次不比**,记一笔 `skipped['history-steer-window']`
+(`session/shadow.ts` 的 `countSessionShadowSkip`,与 `legacyPartial` 同一张表)。
+历史断言是**每次请求**跑的,"等一下"等于把这一次请求的口径挪到别的时刻,所以这边
+取跳过而不是等待 —— 两道闸的判例互相在注释里指认。跳过既不进 `mismatches` 也不进
+`historyChecks`(这一次请求根本没比),`sessions:shadow-report` 的 `skipped` 行照打。
+
+#### 三、真雷:压缩重建落在同一个窗口里,模型**真的**看不到上一轮
+
+`beforeTurn` 里判成 `finalPlan.kind === 'rebuild'`
+(`core/engine/agent-loop-runtime.ts`:1109)时,`rebuildAgentMessagesFromSession`
+(`runtime/src/agent-loop/stream-runtime.ts`)会**从 store 重新拼一遍历史**交给模型。
+它走的是同一个 `buildHistoryMessages` —— 落在窗口里就是**真丢一整轮**,不是账记歪。
+
+而且它不是概率竞态,是**确定的顺序**:`afterTurn` 那一处 boundary
+(`core/agent-loop/runner.ts`:836)发完就 `continue`,下一轮的 `beforeTurn`(压缩重建
+就在这里)**排在消费侧那一格 `turn-start` 之前**。只要那一轮判成 rebuild,读到的
+就必然是没收尾的 store。
+
+**修法(顺序修正,不是新语义)**:执行器新增
+`settlePendingAssistantWriterBeforeStoreRead` —— **只把收尾那一半提前跑掉**
+(`finalize()` + `isStreaming:false` 广播 + 开影子闸),`pendingAssistantRotation`
+原样留着、`finished` 打上标记;换身份那一半仍然由消费侧在原来那一格接手,
+`createNextAssistantWriter` 见 `finished` 就不再收第二遍。这样"两次 boundary 挤在
+一个 `turn-start` 前面折叠成一条新消息"(`rotateAssistantWriterIdentity` 的早退)
+这条既有语义**一字未动**。
+
+接线是一个可选口 `beforeRebuildMessages`,顺着现成的
+`BuildAgentLoopStreamRuntimeOptions`(执行器 `prepareRuntime` 已经在用它传 emitter)
+下到产品层的 host adapters,在 `rebuildAgentMessagesFromSession` **读 store 之前**
+`await` 一次。**core 里没有加任何特判**;不接这个口 = 直接读,行为逐字不变。
+
+此刻队列里不会有还没消费的正文 chunk:boundary 是同步推进队列的
+(`bridge.ts` 的 `AgentEventQueue` 无背压),而 `beforeTurn` 的第一个 `await` 就已经
+把消费侧放过去了 —— 提前的只是"什么时候写 `isStreaming:false`",不是"写进去的是
+什么"。
+
+#### 四、改了什么
+
+| 文件 | 改动 |
+|---|---|
+| `backend/session/shadow.ts` | `SessionShadowSkipReason` 类型化 + 导出 `countSessionShadowSkip`(关闸时连账都不记) |
+| `backend/wiring/engine/stream/history-shadow.ts` | 第三参 `pendingAssistantRotation` → 跳过 + 记账;窗口成因与 `shadowGate` 判例写在头注释 |
+| `backend/wiring/engine/stream/agent-loop-executor.ts` | `pendingAssistantRotation.finished` 一格;新增 `settlePendingAssistantWriterBeforeStoreRead`;`createNextAssistantWriter` 认这个标记;`prepareRuntime` 接上 `beforeRebuildMessages`;`onRequestRecipe` 交出窗口态 |
+| `backend/wiring/engine/stream/agent-loop-runtime.ts` | `BuildAgentLoopStreamRuntimeOptions.beforeRebuildMessages` → host adapters |
+| `runtime/src/agent-loop/stream-runtime.ts` | 两个 adapters 接口各加一格可选口;`rebuildAgentMessagesFromSession` 读 store 前 `await` 一次 |
+
+#### 五、反证(修前真的丢、修后真的不丢)
+
+`runtime/src/agent-loop/__tests__/rebuild-steer-window.test.ts` —— 走**真的**
+`buildOnethingAgentLoopStreamRuntime` + **真的** `buildOnethingHistoryMessages`
+(`isStreaming` 整条跳过就发生在它里面),store 摆成窗口里的样子
+(`u1` / `a1{isStreaming:true}` / `u2`),`beforeTurn` 判成 rebuild:
+
+- **不接 `beforeRebuildMessages`(= 修前)**:重建出来的历史里两条 user 都在
+  (证明重建确实跑了、确实读到了 store),**唯独 `a1` 的正文不在** —— 一整轮丢了;
+- **接上(= 修后)**:`a1` 的正文回到历史里。
+
+`backend/wiring/engine/stream/__tests__/history-shadow-steer-window.test.ts` ——
+窗口里跳过且 `skipped['history-steer-window'] === 1`、`historyChecks === 0`;
+窗口外照常走比对、不记这笔账。
+
+#### 六、验收
+
+`bun run typecheck` 0;定向 `packages/backend/wiring/engine` + `packages/backend/session`
++ `packages/onething-runtime/src/agent-loop` 127 文件 / 1249 测试全绿,
+`packages/core/{engine,agent-loop,session}` 21 文件 / 261 测试全绿;
+`sessions:shadow-battery` **GREEN**(runs 321、historyChecks 448、mismatches 0、
+appendFailures 0、refoldMismatches 0、`skipped {}` —— 新闸在电池里一次都没触发,
+即**零行为变化**:电池的假提供者跑得太快,消费侧从不落后,那个窗口只在真机上张开);
+`boundary:gate` / `session:gate` / `log:gate` 全绿;零 `console.*` 新增。
+`~/.onething` 全程只读 —— 真机 stats 里那 2 条 `mismatches` 不清不改,下次
+`sessions:shadow-reset` 自然归零。

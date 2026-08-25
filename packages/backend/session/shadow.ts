@@ -339,10 +339,32 @@ export function resetSessionShadowCoverageCache(sessionId?: string): void {
   resetSessionShadowDedupe()
 }
 
+/**
+ * 一次跳过的理由。跳过的是"**没有可比的东西**",不是"比出来不等" —— 只记账,
+ * 不进 `mismatches`,也不进 `historyChecks`(报告里单独一行打印,门不受影响)。
+ *
+ * - `legacyPartial` —— 老会话的 `events.jsonl` 只覆盖了历史的一段尾巴(§10.9)。
+ * - `history-steer-window` —— steering 换锚点的同步点与消费侧之间那一小段窗口
+ *   (§15.15)。判据在接线层,见 `wiring/engine/stream/history-shadow.ts`。
+ */
+export type SessionShadowSkipReason = 'legacyPartial' | 'history-steer-window'
+
 /** 一次跳过:只记账,不进 `mismatches`(门不受影响)。 */
-function countSkip(reason: 'legacyPartial'): 'skipped' {
+function countSkip(reason: SessionShadowSkipReason): 'skipped' {
   bumpSessionShadowStats({ skipped: { [reason]: 1 } })
   return 'skipped'
+}
+
+/**
+ * 宿主接线层的一次跳过。
+ *
+ * 判据留在接线层是因为它问的是**引擎内部的时序**(那次换锚点消费侧接手了没有),
+ * 这里只认得会话与事件 —— 把那个判断搬进来等于让影子模块认识执行器的状态机。
+ * 关闸(`ONETHING_SESSION_SHADOW=0`)时连账都不记,与其它出口同一条纪律。
+ */
+export function countSessionShadowSkip(reason: SessionShadowSkipReason): 'skipped' {
+  if (!isSessionShadowEnabled()) return 'skipped'
+  return countSkip(reason)
 }
 
 // ============ run 断言(kind: 'messages') ============
