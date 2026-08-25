@@ -16,6 +16,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildHistoryMessages } from '@onething/core/engine'
 import { defaultHistoryMessageContent, materializeModelHistory } from '@onething/core/session'
+import { rehydrateSessionFromStorage } from '@onething/runtime/sessions/session-dehydrate'
 
 const state = vi.hoisted(() => ({
   storeDir: '',
@@ -327,5 +328,49 @@ describe('S3w-1 — projection hydrate source', () => {
   it('falls back (undefined) when the events hold no history for this session', () => {
     setSessionHydrateModeForTesting('projection')
     expect(hydrateSessionMessagesFromProjection('reads-no-events')).toBeUndefined()
+  })
+})
+
+/**
+ * §15.13(refold 门真机首杀):**补水不得改写活投影**。
+ *
+ * `materializeMessageNode` 对 `message/imported` 节点是浅展开 —— 交出去的
+ * `steps` 数组与 step 对象都是活投影节点本体;而冷加载下游
+ * (`session-repository.loadStoredSession` → `rehydrateSessionFromStorage`)是**就地**
+ * 写者(`step.toolCall = linked`)。补水出口不深拷,活投影上就会多出事件里根本
+ * 没有的 `steps[].toolCall`,refold(文件全量重折 ≡ 活投影)当场失配。
+ *
+ * 反证:把 `hydrate.ts` 里那次 `structuredClone` 撤掉,这条必红。
+ */
+describe('S3w-1 — projection hydrate never writes back into the live projection', () => {
+  const IMPORTED = 'reads-read-mode-imported'
+
+  it('leaves the live MessageNode alone while the downstream rehydrates in place', async () => {
+    fs.mkdirSync(path.join(state.sessionsDir, IMPORTED), { recursive: true })
+    // 迁移后的脱水形状:step 只有 `toolCallId`(没有 `toolCall`),消息级
+    // `toolCalls` 齐 —— 正是 rehydrate 会去补的那一格。
+    appendSessionLogEvent(IMPORTED, 'message/imported', {
+      message: {
+        id: 'a1',
+        role: 'assistant',
+        content: 'done',
+        timestamp: 2000,
+        toolCalls: [{ id: 'tc1', toolName: 'edit', status: 'completed', result: 'ok' }],
+        steps: [{ type: 'tool-call', toolCallId: 'tc1', status: 'completed', timestamp: 2000 }],
+      },
+    } as never, { surfaceOp: 'append' })
+    await flushSessionEventLog(IMPORTED)
+    resetSessionProjectionCache()
+
+    setSessionHydrateModeForTesting('projection')
+    const projected = hydrateSessionMessagesFromProjection(IMPORTED)
+    // 生产里这一步在 `loadStoredSession` 里:补水的那份直接交给就地写者。
+    rehydrateSessionFromStorage({ id: IMPORTED, messages: projected })
+
+    const node = getLiveSessionProjection(IMPORTED).nodes
+      .find(candidate => candidate.kind === 'message') as { message: { steps: { toolCall?: unknown }[] } } | undefined
+    expect(node?.message.steps[0].toolCall).toBeUndefined()
+    // 反面:写模型手里那一份**应该**被补上 —— 断开的是引用,不是行为。
+    expect((projected?.[0] as { steps?: { toolCall?: unknown }[] }).steps?.[0].toolCall).toBeDefined()
   })
 })

@@ -3990,7 +3990,7 @@ renderer 直接 import core reducer)。
 | 08-26 | 2 | U0 源头标注+runId 上提+双发(steering 竞态结构性消失) | 落地后**重启桌面 + shadow-reset** |
 | 08-26/27 | 3 | S3w-1 翻默认(合同门绿为前提)+ 真机走查 — **已完成(§15.10)**,真机走查待用户 | — |
 | 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 — **已完成(§15.11)**,含 §14.7 风险② flush 顺序审计(只出清单,动手归批 6) | — |
-| 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5) | 正常使用即可 |
+| 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5)—— **首杀已修**:refold 门在真机上抓到第一例失配(补水改写活投影),根因/修法/新场景见 §15.13 | 正常使用即可 |
 | 08-28 | 5 | flush 收口四项(§15.11 清单 a–d,批 6 前置)+ S3w-4 体积治理 — **已完成(§15.12)**;events.jsonl 轮转只出方案未动手(§15.12 B3,待拍板) | — |
 | 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿) | **唯一确认点**:烧 S2b 回滚读前问一次 |
 | 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
@@ -4525,3 +4525,78 @@ messages 不等)。两次跑出来的条数还不一样(4 → 2),因为那两条
 - **没动 events.jsonl 的形状**:轮转/归档只有上面三段要点,待拍板。
 - **`messages.cleared-*` 与 `legacy-backup/` 只测量不治理**:前者归裁定 10,
   后者随裁定 9a 一起看 —— 本批把它们的字节数摆到台面上,治法不擅自替用户拍。
+
+### 15.13 refold 门真机首杀:补水改写了活投影(2026-08-25,opus 执行,未提交)
+
+**门报对了。** 批 4 装上的 refold 自洽环(§14.3-B:`events.jsonl` 的**文件字节**
+全量重折 ≡ **内存活投影**)在短窗真机上抓到第一例失配 —— 不是误报,是真的
+不变量被打破。文件侧完好(7096 seq 连续、零坏行),被写脏的是**内存里的活投影**。
+
+#### 根因(一条链,五站,四次浅展开 + 一次就地写)
+
+S3w-1 开的补水岔口把**活投影节点的内部引用**一路交到了一个就地写者手里:
+
+1. `core/session/projection/chat-messages.ts` `materializeMessageNode` —— 对
+   `message/imported` 节点是**浅展开**(`{...carried}`):`steps` 数组与其中的
+   step 对象都是活投影节点**本体**;
+2. `backend/session/events-reads.ts` `toChatMessage` —— 浅展开续传;
+3. `backend/session/hydrate.ts` `hydrateSessionMessagesFromProjection` —— 摘 `seq`
+   那一步又是浅展开,续传;
+4. `runtime/src/sessions/session-repository.ts` `loadStoredSession` —— 把它整体
+   换进 `stored.messages`,**不 clone**;
+5. `runtime/src/sessions/session-dehydrate.ts` `rehydrateSessionFromStorage` ——
+   **就地**写:`step.toolCall = linked`(以及终态 step 的 `partialResult` 补算)。
+
+于是活投影的 `message/imported` 节点上永远多出**事件里根本没有的**
+`steps[].toolCall`;下一次 refold 一比,文件侧折出来的没有这一格,当场失配。
+
+**只有 imported 节点会中招**:assistant 节点的 steps 是每次物化**现造**的
+(`materializeSteps`),写者改的是那份一次性产物,改不着任何人。这也正是前两条
+补水泳道(§15.10)漏掉它的原因——它们接的都是本进程自己写出来的会话。
+
+#### 修法(诊断首选,两处代码 + 两道钉子)
+
+- **补水出口 clone**(`backend/session/hydrate.ts`):返回前 `structuredClone`
+  整条消息(摘 `seq` 那步不动)。冷加载每会话一次,成本吃得起;**没有**放进
+  `toChatMessage`(读路热路径)。
+- **纪律入注**(`core/session/projection/chat-messages.ts`
+  `materializeMessageNode` 注释头):MessageNode 交出的消息是**活对象**,任何
+  就地写者必须先 clone。实现不动 —— 让物化深拷是次选方案,那会把每次读都变成
+  一次全树复制。
+- **判例引用**:隔壁 `dehydrateProjectedMessages` 早就立过同一条纪律
+  ("rehydrate 就地改对象,所以先 `structuredClone` 一份,绝不动调用方
+  (投影缓存 / 活投影节点)里的那份")—— S3w-1 开的这条新缝漏了它。同一条纪律
+  第二次被漏,说明它只写在**用它的那个函数**头上不够;所以这次同时钉在**产地**
+  (`materializeMessageNode`)。
+
+#### 两道新门(都做过反证)
+
+- **单测**(`backend/session/__tests__/reads-read-mode.test.ts`,
+  `S3w-1 — projection hydrate never writes back into the live projection`):折一份
+  含 `message/imported`(脱水形状:step 只有 `toolCallId`,消息级 `toolCalls` 齐)
+  的投影 → `hydrateSessionMessagesFromProjection` → 交给真的
+  `rehydrateSessionFromStorage` → 断言活投影里那条
+  `MessageNode.message.steps[0].toolCall` **仍然没有**,同时断言写模型手里那一份
+  **补上了**(断开的是引用,不是行为)。**反证**:撤掉 clone,这条红。
+- **battery 新泳道** `imported-history-cold-hydrate`(`scripts/shadow-battery.mjs`):
+  产品自己建会话外壳 → 停机后往账本尾巴补两条迁移形态的 `message/imported`
+  (历史只能在停机后补:写侧 surface 与活投影都在内存里)→ 空 LRU 新进程冷加载
+  (`ONETHING_SESSION_HYDRATE` 默认投影)→ 接一轮 → run/end **首个 run 必采**的
+  refold 必须 match。判据两条:本泳道新增失配行 = 0 **且** `refoldChecks` 真的
+  有增量(否则"0 失配"只是没人看)。**反证**:撤掉 clone,该泳道
+  `new-mismatch-lines=1`、`refoldMismatches 1`、battery RED。
+
+#### 验收
+
+`typecheck` 0;定向 47 文件 / 450 测试全绿;`sessions:shadow-battery` **GREEN**
+(runs 321、mismatches 0、appendFailures 0、refoldChecks 225、refoldMismatches 0,
+新泳道 PASS `refold-checks=1`);`boundary:gate` / `session:gate` / `log:gate` 全绿;
+零 `console.*` 新增。`~/.onething` 全程只读。
+
+`sessions:hydration-contract` 真机**只读**重跑:436 会话 → **pass 418 / fail 0 /
+baseline-skip 8 / no-events 10**。与批 1/3/5 记的 `pass 417 / baseline-skip 9`
+差一条,**与本批无关**:那个脚本**不 import** `session/hydrate.ts`(它按同一条链
+自己走一遍),clone 一个引用都碰不着它;而且 clone 改的是引用不是值,合同的
+判官(`canonicalChatMessage`)比的是值。差的那一条是**真机漂移** —— 一条在册
+基线会话上一轮跑数时正被写(§15.12 末尾记的同一种活会话漂移),这轮不再有差异,
+于是从 `baseline-skip` 升成 `pass`。

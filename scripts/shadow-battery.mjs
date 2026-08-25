@@ -1442,6 +1442,119 @@ async function runHydrateLane({ store, api, library, stopServer, startServer, ta
   return lane
 }
 
+// ============================================================ 迁移历史冷补水(§15.13)
+
+/** `<store>/log/session-shadow-stats.json` 现在记了多少次 refold 采样。 */
+function countRefoldChecks(store) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(store, 'log', 'session-shadow-stats.json'), 'utf8'))
+    return Number(parsed.refoldChecks) || 0
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * 往这条会话的账本尾巴上补一段**迁移形态**的历史(`message/imported`)。
+ *
+ * 形状照 S2b 迁移脚本的产出:一条消息一条事件、`surfaceOp: 'append'`、seq 接着数。
+ * 助手那条是**脱水形状** —— `steps[]` 只有 `toolCallId`(没有 `toolCall`,也没有
+ * `partialResult`),消息级 `toolCalls[]` 齐全。补水下游
+ * (`rehydrateSessionFromStorage`)正是靠这两格**就地**把 `step.toolCall` /
+ * `step.partialResult` 补回去的,而那一刀落在谁身上就是 §15.13 那道题。
+ */
+function seedImportedHistory(store, sessionId) {
+  const file = path.join(store, 'sessions', sessionId, 'events.jsonl')
+  const existing = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line))
+  let seq = existing.reduce((max, event) => Math.max(max, Number(event.seq) || 0), 0)
+  const time = Date.now() - 60_000
+  const messages = [
+    { id: 'imported-u1', role: 'user', content: '把 note-p0.md 改一下', timestamp: time },
+    {
+      id: 'imported-a1',
+      role: 'assistant',
+      content: '改好了。',
+      timestamp: time + 1,
+      toolCalls: [{ id: 'imported-tc1', toolName: 'edit', status: 'completed', result: 'ok' }],
+      // 脱水形状:没有 `toolCall`,没有 `partialResult`。
+      steps: [{ type: 'tool-call', toolCallId: 'imported-tc1', status: 'completed', timestamp: time + 1 }],
+    },
+  ]
+  const lines = messages.map(message => {
+    seq += 1
+    return `${JSON.stringify({ seq, time: message.timestamp, type: 'message/imported', data: { message }, surfaceOp: 'append' })}\n`
+  })
+  fs.appendFileSync(file, lines.join(''))
+}
+
+/**
+ * **迁移历史冷补水泳道**(§15.13 —— refold 门真机首杀的场景化)。
+ *
+ * 首杀的形状是这样的:一条被迁移过的老会话,历史全在 `message/imported` 里;冷加载
+ * 走投影补水,而补水交出去的消息**就是活投影节点本体**;下游
+ * `rehydrateSessionFromStorage` 就地给 step 补 `toolCall`,于是活投影上凭空多出
+ * 事件里根本没有的一格 —— refold(文件全量重折 ≡ 内存活投影)当场失配。
+ *
+ * 前两条补水泳道抓不到它:它们接的是**这个进程自己写出来的**会话,助手节点的
+ * steps 是每次物化现造的(改不着任何人),只有 `message/imported` 那种整条消息
+ * 原样带过来的节点会中招。所以这一格必须自己造一条迁移形态的会话。
+ *
+ * 判据两条,缺一不可:
+ *  - 这条泳道期间新增的 `session-shadow.jsonl` 行 = 0(refold 与影子共用那份账);
+ *  - refold **真的采过样**(`refoldChecks` 有增量)—— 否则 0 失配只是没人看。
+ */
+async function runImportedHydrateLane({ store, api, library, stopServer, startServer, workdir, seed }) {
+  const lane = { name: 'imported-history-cold-hydrate', ok: false, detail: '', mismatchLines: 0, refoldChecks: 0 }
+  const scenario = library.find(entry => entry.name === 'plain-text') ?? library[0]
+  if (!scenario) {
+    lane.detail = 'skipped — no scenario in the library'
+    return lane
+  }
+  try {
+    // 会话外壳交给产品自己建(meta.json / `session/created` 都要是真的)。
+    const created = await api('POST', '/api/sessions', { name: lane.name })
+    const sessionId = created?.session?.id ?? created?.data?.id ?? created?.id
+    if (!sessionId) throw new Error(`no session id: ${JSON.stringify(created).slice(0, 200)}`)
+    await rpcCall(api, 'sessions', 'updateWorkingDirectory', { sessionId, workingDirectory: workdir })
+    await rpcCall(api, 'sessions', 'updatePermissionMode', { sessionId, permissionMode: 'dangerously-allow-all' })
+
+    // 历史只能在停机之后补:写侧的 surface 与活投影都在内存里,跑着的时候动文件
+    // 改不动它们(与 `Driver.dropEventLog` 同一条理由)。
+    await stopServer()
+    await sleep(300)
+    seedImportedHistory(store, sessionId)
+
+    const before = countShadowLines(store)
+    const refoldBefore = countRefoldChecks(store)
+    console.log(`[battery] imported-history lane: restarting with an empty LRU (session ${sessionId})`)
+    await startServer({})
+
+    const d = new Driver(api, sessionId, scenario.name, makeVariant(makeRng(seed), 0), store)
+    // 冷加载就在这一句:新进程的 LRU 是空的,`ONETHING_SESSION_HYDRATE` 默认投影。
+    const cold = await d.messages()
+    const importedAssistant = cold.find(m => m.id === 'imported-a1')
+    assert(importedAssistant, `cold load lost the imported history (got ${cold.length} message(s))`)
+    // 补水**给写模型的**那一份该是补齐的 —— 断开的是引用,不是行为。
+    assert(
+      (importedAssistant.steps ?? []).length === 1,
+      'the imported assistant message lost its step on the way through hydrate',
+    )
+
+    await d.send('接着说一句')
+    await d.waitIdle(2)
+    await sleep(2500)
+
+    lane.mismatchLines = countShadowLines(store) - before
+    lane.refoldChecks = countRefoldChecks(store) - refoldBefore
+    lane.ok = lane.mismatchLines === 0 && lane.refoldChecks > 0
+    lane.detail = `session=${sessionId} new-mismatch-lines=${lane.mismatchLines} refold-checks=${lane.refoldChecks}`
+    if (lane.refoldChecks <= 0) lane.detail += ' (refold never sampled — the lane proves nothing)'
+  } catch (error) {
+    lane.detail = String(error?.message ?? error)
+  }
+  return lane
+}
+
 // ============================================================ 停写泳道(S3w-2)
 
 /** 这条会话的 `messages.jsonl` 有多大(不存在 = 0)。停写档它必须一直是 0。 */
@@ -1721,6 +1834,7 @@ async function main() {
   const api = makeApi(serverPort, token)
   const results = []
   const hydrateLanes = []
+  let importedLane
   let offLane
   const writeFailureProbes = []
   const stopServer = async () => {
@@ -1795,6 +1909,13 @@ async function main() {
         targets: laneTargets, label: spec.label, env: spec.env, exclude: laneTaken,
       }))
     }
+
+    // ---- 迁移历史冷补水(§15.13):refold 门真机首杀的那条形状。
+    //
+    // 排在停写泳道**之前**:它要的是"抄本还在"的世界(与两条补水泳道同款)。
+    importedLane = await runImportedHydrateLane({
+      store, api, library, stopServer, startServer, workdir, seed: ARGS.seed + 613,
+    })
 
     // ---- 停写泳道(S3w-2,§14.3-A/C):`ONETHING_SESSION_TRANSCRIPT=off` 全场景
     //
@@ -1871,6 +1992,16 @@ async function main() {
       )
       for (const error of lane.failed.slice(0, 5)) console.log(`        ${error}`)
     }
+  }
+
+  if (importedLane) {
+    console.log('\n[battery] imported-history cold hydrate (§15.13:refold 门真机首杀):')
+    if (!importedLane.ok) anyRed = true
+    console.log(`  ${importedLane.ok ? 'PASS' : 'FAIL'}  ${importedLane.name.padEnd(30)} ${importedLane.detail}`)
+  } else {
+    // 泳道没跑到 = 前面就抛了。静默略过等于门自己少看一格。
+    anyRed = true
+    console.log('\n[battery] imported-history cold hydrate: FAIL (never ran)')
   }
 
   if (offLane) {

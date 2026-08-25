@@ -45,8 +45,25 @@ export function hydrateSessionMessagesFromProjection(sessionId: string): ChatMes
     return undefined
   }
   if (!projected || projected.length === 0) return undefined
-  return projected.map(message => {
-    const { seq: _position, ...rest } = message as ChatMessage & { seq?: number }
-    return rest as ChatMessage
-  })
+  // 交出去的这一份必须与**活投影彻底断开**(§15.13,refold 门真机首杀)。
+  //
+  // `materializeMessageNode` 对 `message/imported` 节点是浅展开 —— `steps` 数组和
+  // 里面的 step 对象都是活投影节点**本体**;而这条链的下游
+  // (`session-repository.loadStoredSession` → `rehydrateSessionFromStorage`)是个
+  // **就地**写者(`step.toolCall = linked`)。拿到本体就等于把事件里根本没有的
+  // `steps[].toolCall` 写进了活投影,此后 refold(文件全量重折 ≡ 活投影)的不变量
+  // 当场破掉 —— 门报的是真事。
+  //
+  // 隔壁 `sessions/session-dehydrate.ts` 的 `dehydrateProjectedMessages` 早立过同一条
+  // 纪律:"rehydrate 就地改对象,所以先 `structuredClone` 一份,绝不动调用方
+  // (投影缓存 / 活投影节点)里的那份";S3w-1 开的这条新缝漏了它。
+  //
+  // 深拷放在这里:冷加载每会话一次,成本吃得起。**不要**挪到 `toChatMessage`
+  // (读路热路径,每次读都要走)。
+  return structuredClone(
+    projected.map(message => {
+      const { seq: _position, ...rest } = message as ChatMessage & { seq?: number }
+      return rest as ChatMessage
+    }),
+  )
 }

@@ -98,6 +98,14 @@ export function materializeNode(
  * A9(§13.1):附件的 `base64Data` 在事件行里是 `BlobRef` —— 交出去之前换回正文
  * (`resolveHistoryBlobRefs`,与模型历史那条路**同一个函数**)。换不回来时
  * 照实留引用并记一条 issue(F6),不静默变短。
+ *
+ * **交出去的消息是活对象**(§15.13):这里对 `node.message` 是浅展开,`steps` /
+ * `toolCalls` / `attachments` 这些数组与其中的对象都还是活投影节点本体(顶层归约器
+ * 的"线性持有"约定的自然延伸)。**任何就地写者拿到它之前必须先 clone**;
+ * 补水链上真出过这一刀 —— `rehydrateSessionFromStorage` 就地给 step 补
+ * `toolCall`,把事件里没有的字段写进了活投影,refold 不变量当场破掉
+ * (修法见 `backend/session/hydrate.ts`、判例见
+ * `sessions/session-dehydrate.ts` 的 `dehydrateProjectedMessages`)。
  */
 function materializeMessageNode(
   node: MessageNode,
