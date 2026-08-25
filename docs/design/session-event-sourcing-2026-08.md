@@ -3989,7 +3989,7 @@ renderer 直接 import core reducer)。
 | 08-25 晚 | 1 | 0b G12 拒写 + S3w-1 补水岔口/合同门/遥测(在途) | — |
 | 08-26 | 2 | U0 源头标注+runId 上提+双发(steering 竞态结构性消失) | 落地后**重启桌面 + shadow-reset** |
 | 08-26/27 | 3 | S3w-1 翻默认(合同门绿为前提)+ 真机走查 — **已完成(§15.10)**,真机走查待用户 | — |
-| 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 | — |
+| 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 — **已完成(§15.11)**,含 §14.7 风险② flush 顺序审计(只出清单,动手归批 6) | — |
 | 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5) | 正常使用即可 |
 | 08-28 | 5 | S3w-4 体积治理(独立,提前插空) | — |
 | 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿) | **唯一确认点**:烧 S2b 回滚读前问一次 |
@@ -4136,3 +4136,204 @@ mismatches 0 / appendFailures 0,**hydrate lane PASS:8 会话 / 0 新失配行**)
 **留给用户的一件事**:§15.8 表里批 3 的"真机走查"。翻默认之后,桌面重启起来的第一
 件事就是从投影冷加载;合同门已经对全量真机会话证过形状等价,走查要看的是**人眼那
 一层**(历史渲染、锚点、滚动位置)。
+
+### 15.11 批 4 落地记录:S3w-2 三态开关 + 写失败上抛 + refold 自洽环(2026-08-25,opus 执行,未提交)
+
+按 §14.3 的安全网三件套与 §14.6 裁定 5 / 6 / 7 落地。**机制全装,默认一档不动** ——
+`ONETHING_SESSION_TRANSCRIPT` 停在 `shadow`,切 `off` 是批 6(那一步烧掉 S2b 的回滚读,
+§15.7 的唯一确认点)。
+
+#### 一、三态开关(裁定 5)
+
+`backend/session/read-mode.ts` 新增第三个开关,与既有两个并排、同款写法(现读环境
+变量 + 测试 setter + 三个值都显式认、拼错回默认):
+
+  `ONETHING_SESSION_TRANSCRIPT = primary | shadow(默认)| off`
+
+三档的语义写在开关注释里,这里只记两处**刻意**的取舍:
+
+1. **`primary` 与 `shadow` 的写路径完全相同**。`shadow` 不是新行为,是**正式定性**:
+   产品读路(S2b)与冷加载补水(S3w-1)都已全线投影,抄本已经没有任何产品消费者,
+   它今天的唯一用处是耐久层对账。`primary` 留着只为记账口径与回滚叙事 —— 哪天要把
+   "抄本是真相"这句话重新讲一遍,扳到那一档即可,不必翻代码考古它当年是什么行为。
+2. **`off` 只停 jsonl 会话的消息写半边**,`meta.json`(会话外壳 + `log` 索引)照写;
+   **legacy 整文件会话不受它管**(那种格式的消息与外壳在同一个文件里,停写等于停掉
+   整条会话);**`migrateToJsonlNow` 也不受它管**(那是把既有数据换个格式落地,不是
+   写路径,停掉它等于把 legacy 历史丢在 backup 里)。
+
+落点是产品层驱动上的一个可选端口 `HybridSessionStorageDriverOptions.skipMessageWrites?()`
+—— 与 S3w-1 的 `hydrateMessagesFromProjection` 同一判例:**产品层只问"这一刻还写不写
+消息",不知道有几种档**;判档在装配层(`backend/stores/sessions.ts` 与
+`backend/server/runtime.ts` 的 echo/test 仓库,两处都接,少接一处就等于多一条暗路)。
+`writeJsonl` 里的岔口是一句前置:停写档走 `writeMetaOnly`(mkdir + writeMeta),
+**`states` 行表一个字节不动** —— 于是盘上那份与内存索引始终自洽,分页读那条路仍然
+成立,只是从此停在停写那一刻。
+
+#### 二、写失败上抛(裁定 7,生效条件 = `off` 档)
+
+新增 `SessionEventWriteError`(`event-log.ts`)。三个产地、一条纪律:
+
+| 产地 | `primary`/`shadow` | `off` |
+|---|---|---|
+| G12 拒写(外写者在场) | 计 `appendFailures` + 每会话一次 warn,返回 `undefined`(批 1 的行为) | 同样记账,**再抛** |
+| events append 落盘失败 | 计数自吞 | 粘住(`state.writeFailure`),**下一次同步写口抛** |
+| blob 写失败 | 计数 + 返回 `undefined`(调用方退回"正文进事件行") | **抛** —— 那条退路(正文还在抄本里)已经不存在(§14.7 风险④) |
+
+**"下一次写口"这个落点是被迫的,也是唯一诚实的**:append 是**排队异步**落盘的,失败
+天生晚于调用它的那一句,没有任何同步返回值能当场说出它。于是把失败粘在会话状态上,
+`off` 档的下一次 `appendSessionLogEvent` 直接抛。粘上就不翻回去:一段丢掉的事件补不
+回来,后面写得再顺也不改变"这份文件缺了一截"这个事实。队列自己的 `.catch` 里**不抛**
+—— 那条链没人接,抛出去只会变成一次 unhandledRejection。
+
+**顺带改了一处 S1 纪律**:`event-translator.ts` 的 `safely()` 从前一律自吞(理由是
+"翻译坏了不能影响聊天")。`SessionEventWriteError` 说的不是"翻译坏了",是"这条事件
+没落进磁盘";停写档下吞掉它等于让一段历史悄悄消失。所以 `safely` 现在**只对这一类、
+只在停写档**放行,其余一字不变。这一改也是让上抛真的到得了命令面的那一步:
+`sessions.removeMessage` → `sessionCommands.deleteMessage` → 翻译器 → 写口,中间原本
+就横着这道 `safely`。
+
+**已知的不完美,原样记下**:上抛发生在 reducer **之后**(store 已经改了、事件没写成),
+没有回滚。裁定 7 要的是"调用方能感知",这一条做到了;"写不成就当没发生"要等 F 线的
+命令即事件(F2)才谈得上。
+
+#### 三、refold 自洽环(§14.3-B):新模块 `backend/session/refold.ts`
+
+两侧同源(同一份事件)、**路径独立**:`events.jsonl` 的**文件字节**重读 + 全量 fold,
+对上**内存活投影**(写入口那条尾巴的增量 fold)。判据是 `canonicalChatMessage`
+(单法官,不开豁免)。不等记 `session-shadow.jsonl` 一行 `kind:'refold'`,计数进
+`refoldChecks` / `refoldMismatches`。
+
+**挂点选 `runs.ts` 的 `endSessionRun`,紧挨着 `scheduleSessionRunShadow`。理由三条**:
+
+1. **只有这里"文件字节此刻是全的"这个前提成立**。refold 比的是**文件**,而事件是排队
+   异步落盘的;`endSessionRun` 的那条 `.then` 链排在 `flushSessionEventLog(sessionId)`
+   (队列排空 + fsync,§10.3 ③ 的语义检查点)**之后**。挂在采集点上就是在比一份还没
+   写完的文件。
+2. **侵入面最小 —— 两行**(一句 import、一句 schedule),缝是现成的:影子已经在这里
+   拿到"run 收尾 + 已落盘"这两个条件,refold 要的是同一对条件。备选的
+   `session-event-recorder.ts` 收尾处要自己再找一次检查点、自己判 run 归属
+   (steering 轮换后 `runId` 与 handle 不是一回事,`endSessionRun` 的归属判据是现成的)。
+3. **两道门同缝而不同判据**,读代码的人一眼看得出这是两件事:语义层(store vs 投影)
+   与耐久层(文件 vs 内存),各记各的账 —— refold 的不等**不进** `mismatches`,
+   `mismatches` 也不进 `refoldMismatches`。
+
+采样:每会话每 `ONETHING_SESSION_REFOLD_EVERY` 个 run 一次(默认 **5**),**首个 run
+必采**(计数是进程内的,重启后从 1 重数 —— 而"冷启动后第一个 run"恰恰最值得看一眼,
+那一份投影是从文件折出来的)。`ONETHING_SESSION_REFOLD=0` 关掉。
+
+两处**宁可少比一次,不许报一次假红**的守卫:
+
+- **游标对齐**:新增 `liveSessionProjectionCursor()`(projection-cache),文件最后一条
+  `seq` ≠ 活投影折到的 seq 就跳过 —— 中间有人又写了一条(或有一条还没落盘)时,比出
+  的"多一段/少一段"说明的是采样撞上了写,不是账本坏了。
+- **尾巴闸**:活投影靠写入口那条尾巴增量推进,尾巴关着时它会停在第一次折出来的那一刻。
+  判据只该有一份,所以由 `event-log.ts` 导出 `sessionEventTailEnabled()` 对外说。
+
+门:`sessions:shadow-report` 打印 `refoldChecks`(不进门,采样数是配置问题)与
+`refoldMismatches`(**进门,必须是 0**)。门的口径因此从三条变四条:
+`runs ≥ 200 ∧ mismatches = 0 ∧ appendFailures = 0 ∧ refoldMismatches = 0`。
+
+**这道门上线第一天就抓了自己一次(值得记下来)。** 第一版把活投影那一侧的物化排在
+`await readFile` **之后**,battery 上 4 跑 1 红(`tool-args-truncated`:A 那条助手消息
+`content` 为空、B 有正文)。查下来是**我这边的竞态,不是账本的毛病**:
+`reduceSessionProjection` 是移动语义的,而活投影全进程只有一份 —— 读路径的
+`eventsListMessages`(battery 的 driver 一直在轮询 `sessions.getMessages`)、影子断言、
+下一次采样都会 `getLiveSessionProjection` 把新事件**就地**折进去。于是 `await` 回来
+物化到的是一份"比游标多一段"的投影,而文件那边没有。改法:**活投影这一侧连同游标
+一起在第一次 await 之前定格**(`canonicalChatMessage` 产出的是全新的朴素对象,快照
+一旦取出就不再受就地推进影响);游标对齐检查照旧,只是现在比的是"文件 vs 那一刻的
+快照"。回归用例
+(`transcript-off.test.ts` 的 *does not cry wolf…*)做过反证:把物化挪回 await 之后,
+它当场红。留下的判例一句话:**任何拿活投影去比对的代码,都必须在第一次 await 之前
+把它变成快照** —— 一份全进程共用、就地推进的 state,await 之后就不是你借出来的那份了。
+
+#### 四、battery:第四条泳道 + 两枚探针
+
+- **停写泳道**(`runTranscriptOffLane`):`ONETHING_SESSION_TRANSCRIPT=off` 下把**全部
+  26 个场景**再跑一遍(**一趟**,不乘 passes —— 这条泳道要的是"每个场景在停写档下都
+  走得通",不是再攒一遍 run 数)。判据按 §14.3-C 换口径:场景自证照旧(它们读的是
+  `sessions.getMessages`,S2b 之后本来就是投影)+ 这条泳道期间**新增失配行 0**
+  (那份文件里现在有 `messages`/`history`/`refold` 三类,一条都不许有)+ 一条只有这条
+  泳道有的断言:**`messages.jsonl` 不许长**(每条会话跑完必须仍是 0 字节 / 不存在)。
+  放在两条补水泳道**之后**:前面那两条要的正是"抄本还在"的世界,顺序不能反。
+- **写失败探针**(`runWriteFailureProbe`,跑两档):把会话的 `events.jsonl` chmod 成
+  只读 —— 这是能在真 server 上造出"账本写不进去"的最省事的一刀,而且命中的正是那条
+  排队落盘链。观察点选 `sessions.removeMessage`(经命令面 → 翻译器 → 写口,同步,
+  不开新一轮执行,一次 RPC 的成败就是答案;`send-message` 会散落在收尾链好几处,
+  判据不干净)。断言:`off` 至少一次报错**且错误文本是这件事**(`session event log
+  write failed`,免得拿一个 "Message not found" 当绿灯),`shadow` 两次都不报错但
+  `appendFailures > 0`(证明这一刀真的咬到了)。**探针跑在各自的临时 store 上** ——
+  它故意制造 `appendFailures`,留在主 store 里会让最后那道 shadow-report 以一个假理由
+  变红。
+
+一处**实测推翻了预设**:探针最初只认 `rpcCall` 抛出的错(信封 `ok:false`),第一轮判红
+"the append failure was swallowed"。真因是 `sessions.removeMessage` 的实现
+(`removeOnethingMessageForIpc`)自己 catch 成 `{success:false, error}` —— **那也是
+"调用方感知得到"**,只是长相不同。探针改为两种长相都认。
+
+#### 五、§14.7 风险② 的 flush 顺序审计(**本批只审计,不动手**)
+
+结论四条,全部代码实证:
+
+1. **`flushSessionEventLog()` 在三条关停链上一次都没有被调用。** Electron
+   `before-quit.ts:106` / `createOnethingBackend.shutdown`(backend.ts:319)/
+   `HeadlessBackend.shutdown`(wiring/headless/backend.ts:143)三条都只
+   `await flushAllPendingSaves()` —— 那是 `sessionRepository.flushAllPendingSaves()`,
+   排的是 **messages.jsonl** 的 300ms 节流写队列。事件账本的每会话写队列与 fsync
+   **没有任何关停期的排空点**,今天全靠"语义检查点在跑的时候顺手 flush"。
+   `apps/server` 的 SIGTERM 有 5s flush 预算(main.ts:189),调的是
+   `runtime.flushAll` → 同一只 repository,同样不含事件队列。
+   **停写之后这就是 §14.7 风险②的正面**:退出那一刻队列里还剩什么,就丢什么。
+2. **四个语义检查点全是 `void flushSessionEventLog(...)`**(recorder :823/:923/:1046
+   + runs.ts:247),fire-and-forget。设计如此(收尾路径不该多一次等待),但代价要写明:
+   ①检查点返回时"已落盘"这句话并不成立;②flush 内部的失败没有出口
+   (`fsyncSessionLog` 自吞)。裁定 7 的上抛因此**也够不着 flush 这条路** ——
+   它的落点只能是下一次同步写口。
+3. **`flushSessionEventStats()` 零生产调用点**(只有测试),尽管它自己的注释写着
+   "关停调它"。统计表靠 1s 节流 + `unref` 定时器落盘,快速退出丢最后 ≤1s 的计数 ——
+   而门读的正是这张表。
+4. **§15.6 的退出竞速仍在,且本批新挂的 refold 也在它下游**:`endSessionRun` 与批 9
+   取消采集挂在 `completeAgentLoopStream` 的异步收尾链上,而 before-quit 的同步段跑完
+   就走人;refold 排在那条链更后面(flush → shadowGate → schedule),退出时同样跑不到。
+   这是**采样门在退出路径上静默不采**,不是误报 —— 但它意味着"退出那一刻的账"永远
+   不会被 refold 看一眼。
+
+**要动的点清单(批 6 前置,本批一个都不动)**:
+
+- (a) 三条关停链的收尾表里补 `await flushSessionEventLog()`,排在 `flushAllPendingSaves`
+  同级或之前;
+- (b) 同处补 `flushSessionEventStats()`;
+- (c) 四个检查点的 `void` 是否至少在 run/end 那一处改成 `await`(与 (a) 一起拍:
+  改了就要接受收尾路径多一次 fsync 等待);
+- (d) `apps/server` SIGTERM 的 5s 预算里把事件队列纳入 `flushAll`。
+
+#### 门(全部实跑)
+
+- `bun run typecheck` —— 0。
+- 定向 vitest:`packages/backend/session` + `packages/backend/rpc` +
+  `packages/backend/server` + `packages/backend/wiring/engine` +
+  `packages/onething-runtime/src/sessions` + `packages/core/session` ——
+  **108 文件 / 891 用例全绿**(含新增 `transcript-off.test.ts` 11 条与
+  `storage-driver.test.ts` 的停写档新用例)。
+- `bun run sessions:shadow-battery` —— **GREEN**。26 场景 × 7 passes 全 PASS;
+  两条补水泳道各 8 会话 failed 0 / 新失配 0;**停写泳道 26 场景 failed 0 /
+  新失配 0 / transcript-grew 0**;两枚写失败探针 PASS。报告:
+  runs 320、mismatches 0、appendFailures 0、**refoldChecks 224 / refoldMismatches 0**、
+  shadow.jsonl 0 行。
+  **上面那条竞态修完之后跑了 11 趟(全矩阵 5 趟 + `--only` 6 趟),0 红**;
+  修之前是 4 跑 1 红。(排查中间有一次假红:`--no-build` 跑的是修改前的
+  `dist/server/main.js` —— battery 默认每次重建正是为了防这一手,自己却踩了一次。)
+- `boundary:gate` ok(0)、`session:gate` ok(0 新)、`log:gate` ok(4 已知,0 新)、
+  `transport:gate` ok(42 常量 / 2392 行,不变)。本批零 `console.*` 新增。
+- **合同门真机重跑**(`~/.onething`,全程只读):436 会话 →
+  **pass 417 / fail 0 / baseline-skip 9 / no-events 10**,与批 1 / 批 3 **逐字相同**,
+  无回归。
+
+#### 明确没做的
+
+- **没切 `off`**:默认停在 `shadow`,批 6 才切(§15.7 的唯一确认点)。
+- **没动 flush 顺序**:审计结论与清单在上面第五节,动手是批 6 前置。
+- **没删任何兜底**:`reads.ts` 的 `?? getSessionMessages` 一处未删(`fallbackHits`
+  今天还有结构性地板,见 §15.10 读数 1),`messages.cleared-*` / legacy 按裁定 9/10
+  留到 S3w-3。
+- **上抛不回滚**:reducer 已改、事件没写成的那一格没有补偿,登记进 F 线 F2。

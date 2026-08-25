@@ -35,6 +35,8 @@ function makeSession(id: string, count: number): TestSession {
 describe('hybrid session storage driver', () => {
   let dir: string
   let newFormat: 'legacy-json' | 'jsonl'
+  /** S3w-2:抄本停写档(`ONETHING_SESSION_TRANSCRIPT=off` 在装配层的落点)。 */
+  let skipMessages: boolean
   let driver: SessionStorageDriver<TestSession>
 
   const legacyPath = (id: string) => path.join(dir, `${id}.json`)
@@ -44,10 +46,12 @@ describe('hybrid session storage driver', () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-jsonl-'))
     newFormat = 'jsonl'
+    skipMessages = false
     driver = createHybridSessionStorageDriver<TestSession>({
       getSessionsDir: () => dir,
       getLegacySessionPath: legacyPath,
       newSessionFormat: () => newFormat,
+      skipMessageWrites: () => skipMessages,
       readJsonFile: (filePath, fallback) => {
         try {
           return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
@@ -260,6 +264,43 @@ describe('hybrid session storage driver', () => {
     expect(fs.existsSync(path.join(dir, 's2.migrating'))).toBe(false)
     // 原文件原样保留
     expect(fs.readFileSync(legacyPath('s2'), 'utf-8')).toBe('not-json{{{')
+  })
+
+  /**
+   * S3w-2(§14.3-A / §14.6 S3w-3 行):`skipMessageWrites()` 为真时**消息写半边
+   * 跳过,`meta.json` 照写**。
+   *
+   * 三条一起验,因为它们是同一件事的三面:抄本一个字节都不长、会话外壳仍然
+   * 在更新、扳回去之后照写(这一档是开关,不是单程票)。
+   */
+  it('S3w-2: the off gear stops message writes but keeps meta.json', async () => {
+    const first = makeSession('s1', 2)
+    await driver.write('s1', first, { kind: 'structural' })
+    const bytes = fs.statSync(logPath('s1')).size
+
+    skipMessages = true
+    const grown = { ...first, name: '改过名字', messages: [...first.messages, {
+      id: 's1-m3', role: 'user' as const, content: '停写之后写的这一条', timestamp: 1700000000099,
+    }] }
+    await driver.write('s1', grown, { kind: 'message', dirtySeq: 3 })
+
+    // 抄本一个字节都没长。
+    expect(fs.statSync(logPath('s1')).size).toBe(bytes)
+    expect(driver.load('s1')?.messages).toHaveLength(2)
+    // 会话外壳照旧更新(名字与 log 索引都住 meta.json)。
+    const meta = JSON.parse(fs.readFileSync(metaPath('s1'), 'utf-8'))
+    expect(meta.name).toBe('改过名字')
+    expect(meta.log.messageCount).toBe(3)
+
+    // 全新会话:目录与 meta 立得起来,`messages.jsonl` 压根不出生。
+    await driver.write('s2', makeSession('s2', 2), { kind: 'structural' })
+    expect(fs.existsSync(metaPath('s2'))).toBe(true)
+    expect(fs.existsSync(logPath('s2'))).toBe(false)
+
+    // 反向:扳回去就照写(回滚零损伤)。
+    skipMessages = false
+    await driver.write('s1', grown, { kind: 'structural' })
+    expect(driver.load('s1')?.messages).toHaveLength(3)
   })
 
   it('deletes jsonl session directories', async () => {

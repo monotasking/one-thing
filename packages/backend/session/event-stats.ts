@@ -75,6 +75,22 @@ export interface SessionShadowStats {
    * 不进门(它量的是存量数据的覆盖面,不是这次改动的对错),报告打印。
    */
   fallbackHits: number
+  /**
+   * S3w-2(§14.3-B):**refold 自洽环**跑过多少次。
+   *
+   * 每会话每 N 个 run 采一次(`ONETHING_SESSION_REFOLD_EVERY`,首个 run 必采):
+   * 把 `events.jsonl` 的**文件字节**重折出的投影,与**内存活投影**做 canonical
+   * 对比。只打印,不进门 —— 采样数多少是配置问题,不是对错问题。
+   */
+  refoldChecks: number
+  /**
+   * refold 对不上的次数。**进门,必须是 0。**
+   *
+   * 它是"停写之后第二来源消失"的替身(§14.3):两侧同源(同一份事件)但路径
+   * 独立 —— 文件重读 + 全量 fold vs 内存增量 fold + 队列 append —— 于是恰好盖住
+   * 耐久层守的那几类:append 静默丢、坏行、seq 错乱、fsync 缺口、G12 外写者。
+   */
+  refoldMismatches: number
   /** 按断言种类拆的不等计数(`messages` / `history`)。 */
   byKind: Record<string, number>
   /**
@@ -99,6 +115,8 @@ const EMPTY: SessionShadowStats = {
   projectionIssues: 0,
   droppedParts: 0,
   fallbackHits: 0,
+  refoldChecks: 0,
+  refoldMismatches: 0,
   byKind: {},
   skipped: {},
 }
@@ -127,6 +145,8 @@ function load(): SessionShadowStats {
       projectionIssues: Number(parsed.projectionIssues) || 0,
       droppedParts: Number(parsed.droppedParts) || 0,
       fallbackHits: Number(parsed.fallbackHits) || 0,
+      refoldChecks: Number(parsed.refoldChecks) || 0,
+      refoldMismatches: Number(parsed.refoldMismatches) || 0,
       byKind: normalizeByKind(parsed.byKind),
       skipped: normalizeByKind(parsed.skipped),
       ...(Number(parsed.lastMismatchAt) ? { lastMismatchAt: Number(parsed.lastMismatchAt) } : {}),
@@ -188,6 +208,8 @@ export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void
   if (patch.projectionIssues) stats.projectionIssues += patch.projectionIssues
   if (patch.droppedParts) stats.droppedParts += patch.droppedParts
   if (patch.fallbackHits) stats.fallbackHits += patch.fallbackHits
+  if (patch.refoldChecks) stats.refoldChecks += patch.refoldChecks
+  if (patch.refoldMismatches) stats.refoldMismatches += patch.refoldMismatches
   if (patch.mismatches) {
     stats.mismatches += patch.mismatches
     stats.lastMismatchAt = Date.now()

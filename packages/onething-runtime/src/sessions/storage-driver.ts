@@ -14,6 +14,12 @@
  *   meta       只重写 meta.json
  *   message    后缀重写:从最低脏 seq 的字节偏移截断后重追加(流式热路径,O(当前消息))
  *   structural 全量重写(删除/插入/截断/分支等低频结构性修改)
+ *
+ * S3w-2 起多一个前置岔口:`skipMessageWrites()`(装配层按
+ * `ONETHING_SESSION_TRANSCRIPT` 现算)为真时 jsonl 会话只写 `meta.json`,
+ * `messages.jsonl` 停写 —— `events.jsonl` 成为唯一持久化。**legacy→jsonl 的
+ * 一次性迁移(`migrateToJsonlNow`)不受它管**:那是把既有数据换个格式落地,
+ * 不是"写路径";停掉它等于把 legacy 会话的历史丢在 backup 里。
  */
 
 import fs from 'node:fs'
@@ -72,6 +78,19 @@ export interface HybridSessionStorageDriverOptions {
   readJsonFile<TValue>(filePath: string, fallback: TValue): TValue
   writeJsonFileAsync(filePath: string, data: unknown): Promise<void>
   deleteJsonFile(filePath: string): void
+  /**
+   * **抄本停写**的判据(S3w-2,`docs/design/session-event-sourcing-2026-08.md`
+   * §14.3-A / §14.6 S3w-3 行)。装配层按 `ONETHING_SESSION_TRANSCRIPT` 现算,
+   * 产品层只问一句"这一刻还写不写消息",不知道有几种档。
+   *
+   * 返回 `true` 时 jsonl 会话的**消息写半边跳过**(`messages.jsonl` 不再增长),
+   * `meta.json`(会话外壳 + `log` 索引)照写 —— 会话外壳两条路共用,停的只是
+   * 消息那一格。**legacy 整文件会话不受它管**:那种格式的消息与外壳在同一个
+   * 文件里,停写等于停掉整条会话(裁定 9b 之前它们连事件都还没有)。
+   *
+   * 不装 = 一字不改照写(默认档 `shadow` 就是照写)。
+   */
+  skipMessageWrites?(): boolean
   /** 惰性迁移触发前的延迟(毫秒),默认 1000;测试可设 0 以确定性触发 */
   migrationDelayMs?: number
   logger?: { info?(...args: unknown[]): void; warn?(...args: unknown[]): void; error?(...args: unknown[]): void }
@@ -255,7 +274,24 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
     await writeMeta(sessionId, session)
   }
 
+  /**
+   * 抄本停写档(S3w-2):**只写会话外壳**。
+   *
+   * `messages.jsonl` 一个字节也不动 —— 于是盘上那份(如果有)与内存里的
+   * `states` 行表保持一致,分页读那条路仍然自洽,只是从此永远停在停写那一刻。
+   * 目录仍要保证在:事件层通常已经用 `session/created` 建过它了,但那条路只有
+   * 新会话走得到,而 `meta.json` 是这里唯一的落点。
+   */
+  async function writeMetaOnly(sessionId: string, session: TSession): Promise<void> {
+    await fs.promises.mkdir(sessionDir(sessionId), { recursive: true })
+    await writeMeta(sessionId, session)
+  }
+
   async function writeJsonl(sessionId: string, session: TSession, plan: SessionWritePlan): Promise<void> {
+    if (options.skipMessageWrites?.()) {
+      await writeMetaOnly(sessionId, session)
+      return
+    }
     if (plan.kind === 'meta' && fs.existsSync(logPath(sessionId))) {
       await writeMeta(sessionId, session)
       return

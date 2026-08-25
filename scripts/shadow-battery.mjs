@@ -23,11 +23,22 @@
  * 已修的每一类失配都固化成至少一个场景(映射表在运行结束时打印,与
  * §10.14 的表逐条对应)。
  *
- * **三条泳道**(S3w-1 起两条,批 3 起三条,§15.10):泳道一按场景表写会话(上面
- * 那条链);另外两条各把 server 换成一个**空 LRU 的新进程**,在(彼此不相交的)
- * 一批会话上各接一轮 —— 冷加载真的走一遍,补水形状漂一格,收尾的影子当场红
- * (见 `runHydrateLane`)。这两条分别跑**默认档**(批 3 起 = `projection`)和
- * **显式回滚档**(`ONETHING_SESSION_HYDRATE=messages`):回滚杆也要一直被测着。
+ * **四条泳道 + 两枚探针**(S3w-1 起两条,批 3 起三条,批 4 起四条,§15.10/§15.11):
+ *  1. **场景矩阵** —— 按场景表 × passes 写会话(上面那条链);
+ *  2/3. **冷加载补水**(`runHydrateLane`)—— 各把 server 换成一个**空 LRU 的新
+ *     进程**,在(彼此不相交的)一批会话上各接一轮:冷加载真的走一遍,补水形状
+ *     漂一格,收尾的影子当场红。两条分别跑**默认档**(批 3 起 = `projection`)与
+ *     **显式回滚档**(`ONETHING_SESSION_HYDRATE=messages`)——回滚杆也要一直被测着;
+ *  4. **停写**(`runTranscriptOffLane`)—— `ONETHING_SESSION_TRANSCRIPT=off` 下把
+ *     全场景再跑一遍:抄本一个字节都不写,产品行为只能靠事件账本活着。判据除了
+ *     场景自证与 0 新失配行,还多一条只有这条泳道有的:**`messages.jsonl` 不许长**。
+ *
+ * 两枚探针(`runWriteFailureProbe`,§14.6 裁定 7)在**各自的 store** 上把会话的
+ * `events.jsonl` chmod 成只读,看 `off` 与 `shadow` 两档答得一不一样:前者命令
+ * 报错、后者只计数。它们故意制造 `appendFailures`,所以绝不能跑在主 store 上。
+ *
+ * 门另外多了一条(§14.3-B):`session-shadow.jsonl` 里 `kind:'refold'` 的行
+ * ——`events.jsonl` 文件字节重折 vs 内存活投影 —— 与语义层那两类一样,一行都不许有。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -1431,6 +1442,206 @@ async function runHydrateLane({ store, api, library, stopServer, startServer, ta
   return lane
 }
 
+// ============================================================ 停写泳道(S3w-2)
+
+/** 这条会话的 `messages.jsonl` 有多大(不存在 = 0)。停写档它必须一直是 0。 */
+function transcriptBytes(store, sessionId) {
+  try {
+    return fs.statSync(path.join(store, 'sessions', sessionId, 'messages.jsonl')).size
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * **停写泳道**(S3w-2,§14.3-A/C)—— `ONETHING_SESSION_TRANSCRIPT=off` 下把
+ * **全场景**再跑一遍。
+ *
+ * 它是"events 成为唯一持久化"的端到端预演:抄本一个字节都不写,所有产品行为
+ * (读、补水、压缩、steering、权限、生图…)只能靠事件账本活着。
+ *
+ * 判据换了口径(§14.3-C:一次性 store 上依赖 `messages.jsonl` 的断言在这条泳道
+ * 改 refold + store):
+ *  - 场景自证照旧(它们读的是 `sessions.getMessages`,S2b 之后本来就是投影);
+ *  - **抄本不许长**:每条会话跑完 `messages.jsonl` 必须仍然是 0 字节 / 不存在
+ *    —— 这条是停写本身的断言,别处没有;
+ *  - **影子法官换 refold + store**:这条泳道期间新增的 `session-shadow.jsonl`
+ *    行必须为 0。那份文件里现在有两类行:`messages`/`history`(store vs 投影,
+ *    语义层)与 `refold`(文件字节 vs 内存活投影,耐久层)——一条都不许有。
+ *
+ * 只跑**一趟**(每个场景一次),不乘 passes:这条泳道要的是"每个场景在停写档
+ * 下都走得通",不是再攒一遍 run 数;乘上去只会把 45s 的矩阵拖成两倍。
+ */
+async function runTranscriptOffLane({ store, api, library, stopServer, startServer, workdir, seed }) {
+  const lane = { attempted: 0, failed: [], mismatchLines: 0, transcriptGrew: [] }
+
+  await stopServer()
+  await sleep(300)
+  const before = countShadowLines(store)
+  console.log(`[battery] transcript-off lane: restarting with ONETHING_SESSION_TRANSCRIPT=off (${library.length} scenario(s))`)
+  await startServer({ ONETHING_SESSION_TRANSCRIPT: 'off' })
+
+  for (const scenario of library) {
+    lane.attempted += 1
+    const label = `${scenario.name}#off`
+    let sessionId
+    try {
+      const created = await api('POST', '/api/sessions', { name: label })
+      sessionId = created?.session?.id ?? created?.data?.id ?? created?.id
+      if (!sessionId) throw new Error(`no session id: ${JSON.stringify(created).slice(0, 200)}`)
+      await rpcCall(api, 'sessions', 'updateWorkingDirectory', { sessionId, workingDirectory: workdir })
+      await rpcCall(api, 'sessions', 'updatePermissionMode', {
+        sessionId,
+        permissionMode: scenario.permissionMode ?? 'dangerously-allow-all',
+      })
+      const variant = makeVariant(makeRng(seed + lane.attempted), 0)
+      const driver = new Driver(api, sessionId, scenario.name, variant, store)
+      await scenario.drive(driver)
+      // 停写本身的断言:抄本一个字节都不许长出来。
+      const bytes = transcriptBytes(store, sessionId)
+      if (bytes > 0) lane.transcriptGrew.push(`${scenario.name}/${sessionId}: ${bytes} byte(s)`)
+    } catch (error) {
+      lane.failed.push(`${label}: ${String(error?.message ?? error)}`)
+    }
+  }
+
+  await sleep(2500)
+  lane.mismatchLines = countShadowLines(store) - before
+  return lane
+}
+
+// ============================================================ 写失败上抛(S3w-2 裁定 7)
+
+/** 起一个只服务这次探针的 server(自己的 store、自己的端口)。 */
+async function bootProbeServer({ store, port, token, extraEnv, out }) {
+  const env = {
+    ...process.env,
+    ONETHING_STORE_PATH: store,
+    ONETHING_SERVER_PORT: String(port),
+    ONETHING_SERVER_TOKEN: token,
+    ONETHING_SESSION_SHADOW: '1',
+    ONETHING_LOG: 'warn',
+    ...extraEnv,
+  }
+  delete env.ONETHING_SESSION_HYDRATE
+  const proc = spawn(process.execPath, [SERVER_ENTRY], { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  proc.stdout.on('data', d => out.push(String(d)))
+  proc.stderr.on('data', d => out.push(String(d)))
+  for (let i = 0; i < 150; i++) {
+    await sleep(200)
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/sessions`, { headers: { authorization: `Bearer ${token}` } })
+      if (res.ok) {
+        return async () => {
+          proc.kill('SIGTERM')
+          await new Promise(resolve => { proc.on('exit', resolve); setTimeout(resolve, 10_000) })
+        }
+      }
+    } catch { /* not yet */ }
+  }
+  proc.kill('SIGKILL')
+  throw new Error(`probe server never came up:\n${out.join('').slice(-3000)}`)
+}
+
+/**
+ * **写失败上抛**的注入用例(§14.6 裁定 7)。
+ *
+ * 注入法:把这条会话的 `events.jsonl` chmod 成只读 —— 之后每一次 append 都
+ * EACCES。这是能在真 server 上造出"账本写不进去"的最省事的一刀,而且它命中的
+ * 正是那条排队落盘链(不是某个 mock 的分支)。
+ *
+ * 观察点选 `sessions.removeMessage`:它经命令面 → 翻译器 → 写口,**同步**,
+ * 而且不开新的一轮执行 —— 一次 RPC 的成败就是"调用方感不感知得到"的答案。
+ * (send-message 也走命令面,但它随后展开一整轮执行,失败会散落在收尾链的
+ * 好几处,判据不干净。)
+ *
+ * 两档的分歧就是裁定 7 本身:
+ *  - `off` —— 至少有一次 `removeMessage` **报错**(账本是唯一持久化,写不进去
+ *    不再可吞);
+ *  - `shadow` —— 两次都不报错,失败**只计数**(`appendFailures > 0`)。
+ *
+ * 探针跑在**自己的 store 上**:它故意制造 `appendFailures`,留在主 store 里会
+ * 让最后那道 `sessions:shadow-report` 以一个假理由变红。
+ */
+async function runWriteFailureProbe({ transcript, mockPort, port, scenarioName, seed }) {
+  const probe = { transcript, ok: false, detail: '' }
+  const store = fs.mkdtempSync(path.join(os.tmpdir(), `onething-shadow-probe-${transcript}-`))
+  const token = `battery-probe-${transcript}`
+  const out = []
+  let stop
+  try {
+    const workdir = prepareStore(store, mockPort)
+    stop = await bootProbeServer({ store, port, token, extraEnv: { ONETHING_SESSION_TRANSCRIPT: transcript }, out })
+    const api = makeApi(port, token)
+
+    const created = await api('POST', '/api/sessions', { name: `write-failure-${transcript}` })
+    const sessionId = created?.session?.id ?? created?.data?.id ?? created?.id
+    if (!sessionId) throw new Error(`no session id: ${JSON.stringify(created).slice(0, 200)}`)
+    await rpcCall(api, 'sessions', 'updateWorkingDirectory', { sessionId, workingDirectory: workdir })
+    await rpcCall(api, 'sessions', 'updatePermissionMode', { sessionId, permissionMode: 'dangerously-allow-all' })
+
+    const variant = makeVariant(makeRng(seed), 0)
+    const d = new Driver(api, sessionId, scenarioName, variant, store)
+    await d.send('先答一次')
+    const messages = await d.waitIdle(1)
+    const victim = d.lastAssistant(messages)
+    const user = messages.find(m => m.role === 'user')
+    if (!victim || !user) throw new Error('the probe session never got both a user and an assistant message')
+
+    // 注入:账本从这一刻起写不进去。
+    const ledger = path.join(store, 'sessions', sessionId, 'events.jsonl')
+    fs.chmodSync(ledger, 0o444)
+
+    // "调用方感知得到"有两种长相,都算数:RPC 信封 `ok:false`(抛到 `rpcCall`),
+    // 或者会话域自己把异常收成 `{success:false, error}` —— 后者正是
+    // `sessions.removeMessage` 走的路(`removeOnethingMessageForIpc` 的 catch)。
+    // 只认前一种的话,这枚探针会在"其实已经报错了"的时候判红。
+    let surfaced
+    for (const messageId of [victim.id, user.id]) {
+      try {
+        const result = await d.rpc('sessions', 'removeMessage', { sessionId, messageId })
+        if (result?.success === false) surfaced ??= String(result.error ?? 'success:false')
+      } catch (error) {
+        surfaced ??= String(error?.message ?? error)
+      }
+      // 第一刀的失败是**排队之后**才发生的,所以给队列一点时间把它变成事实;
+      // 上抛的落点是**下一次**同步写口(见 `event-log.ts` 的 `writeFailure`)。
+      await sleep(900)
+    }
+    fs.chmodSync(ledger, 0o644)
+
+    const stats = (() => {
+      try {
+        return JSON.parse(fs.readFileSync(path.join(store, 'log', 'session-shadow-stats.json'), 'utf8'))
+      } catch {
+        return {}
+      }
+    })()
+    const appendFailures = Number(stats.appendFailures) || 0
+    if (appendFailures === 0) throw new Error('the injection never bit: appendFailures stayed 0')
+
+    if (transcript === 'off') {
+      if (!surfaced) throw new Error('off: the append failure was swallowed — no command error surfaced')
+      // 报的必须是**这件事**:一个 "Message not found" 也会让 `surfaced` 有值,
+      // 而那时探针就在拿一个不相干的错误当绿灯。
+      if (!/session event log write failed/.test(surfaced)) {
+        throw new Error(`off: the command failed for another reason — ${surfaced}`)
+      }
+      probe.detail = `command failed as designed (appendFailures=${appendFailures})`
+    } else {
+      if (surfaced) throw new Error(`shadow: the failure was raised to the caller — ${surfaced}`)
+      probe.detail = `counted only, no command error (appendFailures=${appendFailures})`
+    }
+    probe.ok = true
+  } catch (error) {
+    probe.detail = String(error?.message ?? error)
+  } finally {
+    await stop?.()
+    fs.rmSync(store, { recursive: true, force: true })
+  }
+  return probe
+}
+
 async function main() {
   // **默认每次都重建**:矩阵验的是 `packages/**` 里那份投影,而跑的是
   // `dist/server/main.js` 里那份。忘了重建就会拿旧 bundle 报绿(第一次写这个
@@ -1510,6 +1721,8 @@ async function main() {
   const api = makeApi(serverPort, token)
   const results = []
   const hydrateLanes = []
+  let offLane
+  const writeFailureProbes = []
   const stopServer = async () => {
     if (stopped) return
     stopped = true
@@ -1582,6 +1795,28 @@ async function main() {
         targets: laneTargets, label: spec.label, env: spec.env, exclude: laneTaken,
       }))
     }
+
+    // ---- 停写泳道(S3w-2,§14.3-A/C):`ONETHING_SESSION_TRANSCRIPT=off` 全场景
+    //
+    // 放在最后:它把 server 换到停写档,之后这个 store 上再建的会话都不写抄本
+    // —— 前面两条泳道要的正是"抄本还在"的世界,顺序不能反。
+    offLane = await runTranscriptOffLane({
+      store, api, library, stopServer, startServer, workdir, seed: ARGS.seed + 991,
+    })
+
+    // ---- 写失败上抛(S3w-2 裁定 7):同一刀注两档,看两档答得一不一样。
+    // 各跑在自己的 store 上(它们故意制造 appendFailures),端口也各占一个。
+    const probeScenario = (library.find(s => s.name === 'plain-text') ?? library[0]).name
+    for (const [index, transcript] of ['off', 'shadow'].entries()) {
+      console.log(`[battery] write-failure probe [${transcript}] …`)
+      writeFailureProbes.push(await runWriteFailureProbe({
+        transcript,
+        mockPort,
+        port: serverPort + 100 + index,
+        scenarioName: probeScenario,
+        seed: ARGS.seed + 7 + index,
+      }))
+    }
   } finally {
     await stopServer()
     mock.close()
@@ -1636,6 +1871,34 @@ async function main() {
       )
       for (const error of lane.failed.slice(0, 5)) console.log(`        ${error}`)
     }
+  }
+
+  if (offLane) {
+    console.log('\n[battery] transcript-off lane (S3w-2,§14.3-A/C:events 是唯一持久化):')
+    const red = offLane.failed.length > 0 || offLane.mismatchLines > 0 || offLane.transcriptGrew.length > 0
+    if (red) anyRed = true
+    console.log(
+      `  ${red ? 'FAIL' : 'PASS'}  ONETHING_SESSION_TRANSCRIPT=off`
+      + ` scenarios=${offLane.attempted} failed=${offLane.failed.length}`
+      + ` new-mismatch-lines=${offLane.mismatchLines} transcript-grew=${offLane.transcriptGrew.length}`,
+    )
+    for (const error of offLane.failed.slice(0, 5)) console.log(`        ${error}`)
+    for (const grew of offLane.transcriptGrew.slice(0, 5)) console.log(`        messages.jsonl grew — ${grew}`)
+  } else {
+    // 泳道没跑到 = 前面就抛了。静默略过等于门自己少看一格。
+    anyRed = true
+    console.log('\n[battery] transcript-off lane: FAIL (never ran)')
+  }
+
+  if (writeFailureProbes.length > 0) {
+    console.log('\n[battery] write-failure probes (S3w-2 裁定 7:off 上抛 / shadow 计数):')
+    for (const probe of writeFailureProbes) {
+      if (!probe.ok) anyRed = true
+      console.log(`  ${probe.ok ? 'PASS' : 'FAIL'}  transcript=${probe.transcript.padEnd(7)} ${probe.detail}`)
+    }
+  } else {
+    anyRed = true
+    console.log('\n[battery] write-failure probes: FAIL (never ran)')
   }
 
   console.log('\n[battery] fixed-class coverage:')

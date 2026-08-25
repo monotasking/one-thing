@@ -23,6 +23,11 @@
  * 写失败**不抛**:S1 仍是影子期,记账坏了不能影响聊天。失败计进
  * `session-shadow-stats.json` 的 `appendFailures` 并每会话 warn 一次
  * (§10.3 ②),调用方拿到 `undefined` 就退回"正文进事件行"或"只留预览"。
+ *
+ * **S3w-2(§14.6 裁定 7)给它加了一档**:`ONETHING_SESSION_TRANSCRIPT=off` 之后
+ * blob 写失败**上抛**。理由是那条退路当场消失 —— 今天附件 base64 落 blob 失败时
+ * "正文还在 messages.jsonl"(§10.1 的兜底);停写之后同一次失败 = 正文**永久丢失**
+ * (§14.7 风险④)。observation 期(primary/shadow)一字不变。
  */
 
 import fs from 'node:fs'
@@ -34,6 +39,8 @@ import {
   getOnethingSessionsDir,
 } from '@onething/runtime/storage'
 import { countSessionEventFailure } from './event-stats.js'
+import { SessionEventWriteError } from './event-log.js'
+import { isSessionTranscriptOff } from './read-mode.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
@@ -57,6 +64,8 @@ export function getSessionBlobPath(sessionId: string, hash: string): string {
  * 落一段正文,拿回引用。已存在的同 hash 内容直接复用(不重写)。
  *
  * @returns 写不进去时 `undefined` —— 调用方必须有一条不写 blob 也能走的路。
+ *          `ONETHING_SESSION_TRANSCRIPT=off` 时改为抛 `SessionEventWriteError`:
+ *          那条退路(正文还在抄本里)已经不存在了。
  */
 export function putSessionBlob(
   sessionId: string,
@@ -75,6 +84,10 @@ export function putSessionBlob(
     }
   } catch (error) {
     countSessionEventFailure(sessionId, error, 'blob write failed')
+    // S3w-2 裁定 7:停写之后 blob 写失败 = 正文永久丢失,不再可吞。
+    if (isSessionTranscriptOff()) {
+      throw new SessionEventWriteError(sessionId, 'blob write failed', { cause: error })
+    }
     return undefined
   }
   return {
@@ -139,6 +152,8 @@ export function textOrBlobForEvent(
   if (Buffer.byteLength(text, 'utf8') <= SESSION_EVENT_BLOB_THRESHOLD_BYTES) return { text }
   const blob = putSessionBlob(sessionId, text, 'text/plain')
   // blob 写不进去就退回正文:一条大一点的事件行,好过一条丢了结果的账。
+  // (`off` 档 `putSessionBlob` 已经抛了,走不到这一行 —— 那一档的裁定是
+  // "写不进去 = 命令失败",不是"退回一条更胖的事件行"。)
   return blob ? { blob } : { text }
 }
 

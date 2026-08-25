@@ -19,13 +19,16 @@
  *    旧投影,把旧正文焊进账本。`fromEvents` 岔口只属于产品读路;命令面同此纪律。
  *
  * 失败一律自吞:S1 是影子期,翻译坏了不能影响聊天(写失败的计数在
- * `event-stats.ts`)。
+ * `event-stats.ts`)。**S3w-2 起有一个例外**:停写档(`ONETHING_SESSION_TRANSCRIPT=off`)
+ * 下的 `SessionEventWriteError` 往上抛 —— 见 `safely`。
  */
 
 import type { ChatMessage, ChatSession, MessageAttachment } from '@shared/ipc.js'
 import type { BlobRef } from '@onething/core/session'
 import { putSessionBlob } from './blob-store.js'
 import { appendSurfaceAwareEvent, isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
+import { SessionEventWriteError } from './event-log.js'
+import { isSessionTranscriptOff } from './read-mode.js'
 import { currentSessionRun } from './runs.js'
 import { sessionReads } from './reads.js'
 import { getLogger } from '../wiring/logging/index.js'
@@ -38,10 +41,21 @@ const BODY_KEYS = new Set(['content', 'contentParts', 'reasoning'])
 /** 派生字段:投影自己算得出来,记一份补丁只会制造第二个真相。 */
 const DERIVED_KEYS = new Set(['isStreaming', 'isThinking', 'thinkingStartTime', 'seq', 'steps', 'toolCalls'])
 
+/**
+ * 翻译失败一律自吞 —— **除了"账本写不进去"这一类,而且只在停写档**
+ * (S3w-2,§14.6 裁定 7)。
+ *
+ * 自吞的理由在文件头:翻译坏了不能影响聊天。但 `SessionEventWriteError` 说的
+ * 不是"翻译坏了",是"这条事件没落进磁盘";而 `ONETHING_SESSION_TRANSCRIPT=off`
+ * 之后 `events.jsonl` 是唯一持久化,吞掉它等于让一段历史悄悄消失。所以这一类
+ * 在停写档往上抛,由命令面的调用方(RPC 域 / 命令总线)变成一次可见的失败。
+ * 观察期(primary/shadow)一字不变:抄本还在写,这里吞掉是对的。
+ */
 function safely(what: string, run: () => void): void {
   try {
     run()
   } catch (error) {
+    if (error instanceof SessionEventWriteError && isSessionTranscriptOff()) throw error
     log.warn('session event translation failed', { what }, error)
   }
 }

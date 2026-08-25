@@ -30,6 +30,7 @@ import { resetSessionEventLogCache } from "../session/event-log.js";
 import { resetSessionSurfaceCache } from "../session/event-surface.js";
 import { resetSessionRuns } from "../session/runs.js";
 import { hydrateSessionMessagesFromProjection } from "../session/hydrate.js";
+import { isSessionTranscriptOff } from "../session/read-mode.js";
 import { getSettings } from "./settings.js";
 import { expandPath } from "../wiring/tools/core/sandbox.js";
 import {
@@ -102,6 +103,10 @@ const hybridSessionStorageDriverOptions: HybridSessionStorageDriverOptions = {
 	readJsonFile,
 	writeJsonFileAsync: writeSessionJsonFileAsync,
 	deleteJsonFile,
+	// S3w-2:抄本三态开关的写侧落点(§14.3-A)。默认档 `shadow` 返回 false =
+	// 一字不改照写;`off` 才真的停掉消息写半边。**每次现算**,与读/补水两个
+	// 开关同款 —— "现在还写不写"是个一句字符串比较就能答的问题。
+	skipMessageWrites: isSessionTranscriptOff,
 	logger: consoleLog,
 };
 const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>(hybridSessionStorageDriverOptions);

@@ -20,6 +20,7 @@ import type { SessionRunKind } from '@onething/core/session'
 import { appendSurfaceAwareEvent } from './event-surface.js'
 import { prepareSessionEventsOnce } from './prepare.js'
 import { flushSessionEventLog } from './event-log.js'
+import { scheduleSessionRefold } from './refold.js'
 import { scheduleSessionRunShadow } from './shadow.js'
 
 export interface BeginSessionRunInput {
@@ -253,6 +254,10 @@ export function endSessionRun(
         assistantMessageId: handle.assistantMessageId,
         ...(handle.triggerMessageId ? { triggerMessageId: handle.triggerMessageId } : {}),
       })
+      // S3w-2(§14.3-B):耐久层的那道门挂在同一个缝上 —— 检查点之后、影子旁边。
+      // 两道门问的不是同一件事(语义 vs 落盘),但"文件字节此刻是全的"这个前提
+      // 只有这里成立,所以它们同缝而不同判据。自己按会话采样,不是每个 run 都跑。
+      scheduleSessionRefold(sessionId, handle.runId)
     })
 }
 

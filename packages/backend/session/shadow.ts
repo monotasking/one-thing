@@ -69,7 +69,16 @@ const DIFF_MAX_ENTRIES = Number(process.env.ONETHING_SHADOW_DIFF_MAX) || 12
 /** 单个值的展示长度。 */
 const DIFF_VALUE_CHARS = 120
 
-export type SessionShadowKind = 'messages' | 'history'
+/**
+ * 一行影子记录属于哪一类断言。
+ *
+ * - `messages` / `history` —— 语义层(§14.3-1):内存 store(reducer 推导)
+ *   vs 活投影(事件推导),两条**独立推导**。
+ * - `refold` —— 耐久层(§14.3-B,S3w-2):`events.jsonl` 的**文件字节**重折
+ *   vs 内存活投影,两条**独立路径**。它由 `refold.ts` 写,不走 `recordMismatch`
+ *   (计数进 `refoldMismatches`,不进 `mismatches` —— 两道门问的不是同一件事)。
+ */
+export type SessionShadowKind = 'messages' | 'history' | 'refold'
 
 export interface SessionShadowDiffEntry {
   /** 字段路径,如 `1.contentParts.0.content`。 */
@@ -191,7 +200,14 @@ export function summarizeShadowDiff(
   return { diff, truncated }
 }
 
-function appendShadowLine(record: SessionShadowRecord): void {
+/**
+ * 往 `<store>/log/session-shadow.jsonl` 记一行。
+ *
+ * 导出是给 `refold.ts` 用的:refold 是**另一道门**(耐久层),但它记的还是
+ * "两侧对不上"这同一件事,应该落在同一份文件里让人一眼看全 —— 各写一份
+ * append 逻辑迟早在路径/容错上分叉。
+ */
+export function appendSessionShadowLine(record: SessionShadowRecord): void {
   try {
     fs.mkdirSync(getOnethingLogDir(), { recursive: true })
     fs.appendFileSync(getSessionShadowLogPath(), `${JSON.stringify(record)}\n`, 'utf8')
@@ -255,7 +271,7 @@ function recordMismatch(
     bumpSessionShadowStats({ duplicateMismatches: 1 })
     return
   }
-  appendShadowLine({
+  appendSessionShadowLine({
     time: Date.now(),
     sessionId,
     ...(runId ? { runId } : {}),

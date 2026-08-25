@@ -91,6 +91,59 @@ export function setSessionHydrateModeForTesting(mode?: SessionHydrateMode): void
 }
 
 /**
+ * **抄本(`messages.jsonl`)的三态开关**(S3w-2,§14.3-A / §14.6 裁定 5)。
+ *
+ *   `ONETHING_SESSION_TRANSCRIPT = 'primary' | 'shadow'(默认)| 'off'`
+ *
+ * 与上面两个开关问的又不是同一个问题,所以还是不合并:
+ *  - `ONETHING_SESSION_READ` —— 产品线的历史从哪一侧**读**(已默认 `events`);
+ *  - `ONETHING_SESSION_HYDRATE` —— 冷加载时写模型从哪一侧**补水**(已默认 `projection`);
+ *  - 这一个 —— `messages.jsonl` 还**写不写**。
+ *
+ * 三档的语义:
+ *
+ * - **`primary`** —— 抄本仍被当作磁盘真相之一(S3w-2 之前的世界)。**写路径与
+ *   `shadow` 完全相同**;这一档留着只为记账口径与回滚叙事:哪天要把"抄本是真相"
+ *   这句话重新讲一遍,扳到这里即可,不必翻代码找它当年是什么行为。
+ * - **`shadow`(默认)** —— 抄本照写,但**正式降级为纯对账影子**:产品读路
+ *   (S2b)与冷加载补水(S3w-1)都已全线走投影,没有任何一条产品路径消费它;
+ *   它今天的唯一用处是耐久层对账(verify #6 与 §13.16 那类真机比对)。
+ * - **`off`** —— storage-driver 的**消息写半边跳过**(`meta.json` 与索引照写,
+ *   §14.6 S3w-3 行),`events.jsonl` 成为唯一持久化。这一档同时是**写失败上抛**
+ *   (§14.6 裁定 7)的生效条件:唯一账本写不进去不再是可吞的旁路故障。
+ *
+ * **本批只实现机制,默认停在 `shadow`,不切 `off`** —— 切 off 是批 6,而且是烧掉
+ * `ONETHING_SESSION_READ=messages` 那条 S2b 回滚船的一步(§15.7 的唯一确认点)。
+ *
+ * 三个值都显式认,拼错 = 默认:`primary` 与 `off` 都是**要被显式说出口**的档,
+ * 谁也不该被"非 X 即默认"吞掉。
+ */
+export type SessionTranscriptMode = 'primary' | 'shadow' | 'off'
+
+export const DEFAULT_SESSION_TRANSCRIPT_MODE: SessionTranscriptMode = 'shadow'
+
+let transcriptOverride: SessionTranscriptMode | undefined
+
+export function getSessionTranscriptMode(): SessionTranscriptMode {
+  if (transcriptOverride) return transcriptOverride
+  const raw = process.env.ONETHING_SESSION_TRANSCRIPT?.trim().toLowerCase()
+  if (raw === 'primary') return 'primary'
+  if (raw === 'shadow') return 'shadow'
+  if (raw === 'off') return 'off'
+  return DEFAULT_SESSION_TRANSCRIPT_MODE
+}
+
+/** 抄本停写了吗 —— storage-driver 的消息写半边与写失败上抛共用这一个判据。 */
+export function isSessionTranscriptOff(): boolean {
+  return getSessionTranscriptMode() === 'off'
+}
+
+/** 仅测试:临时切抄本档;传 `undefined` 归还给环境变量。 */
+export function setSessionTranscriptModeForTesting(mode?: SessionTranscriptMode): void {
+  transcriptOverride = mode
+}
+
+/**
  * R-c(§13.6):**切读之前先问一句这个 store 还有没有别的 core。**
  *
  * `events` 模式下产品线的历史来自 `events.jsonl`。两个写者同时往它追加时,

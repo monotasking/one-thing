@@ -83,6 +83,7 @@ import {
 	sessionPreviewText,
 } from "@onething/backend/session/reads.js";
 import { sessionEventTranslator } from "@onething/backend/session/event-translator.js";
+import { isSessionTranscriptOff } from "@onething/backend/session/read-mode.js";
 import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/stores/sessions.js";
 import { configureServerPluginCatalogPort } from "./plugin-catalog.js";
 import { configureServerSearchPort } from "./search-providers.js";
@@ -3031,6 +3032,10 @@ export function createLocalServerSessionStore(
 		readJsonFile: readCoreJsonFile,
 		writeJsonFileAsync: writeSessionJsonFileAsync,
 		deleteJsonFile,
+		// S3w-2:抄本三态开关(§14.3-A)。这只仓库是 echo/test 后端专用的
+		// (真引擎走 `createAppBackedServerSessionStore`),但判据只该有一份 ——
+		// 少接一处就等于多一条"off 档下仍在写抄本"的暗路。
+		skipMessageWrites: isSessionTranscriptOff,
 		logger: consoleLog,
 	};
 	const storageDriver = createHybridSessionStorageDriver<ServerChatSession>(hybridSessionStorageDriverOptions);

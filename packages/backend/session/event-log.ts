@@ -18,6 +18,10 @@
  * 2. **写失败不再静默** —— 计进 `<store>/log/session-shadow-stats.json` 的
  *    `appendFailures`,每会话 warn 一次(`event-stats.ts`)。S1 还是影子期,
  *    所以仍然不抛;门是"计数必须为 0",不是"炸给用户看"。
+ *    **S3w-2(裁定 7)给它加了一档**:`ONETHING_SESSION_TRANSCRIPT=off` —— 抄本
+ *    停写、事件成为唯一持久化 —— 之后,写失败从"计数自吞"升级为
+ *    **命令失败上抛**(`SessionEventWriteError`)。落点是**下一次同步写口**
+ *    (append 是排队异步落盘的,失败天生晚于调用它的那一句),见 `writeFailure`。
  * 3. **语义检查点 fsync** —— `flushSessionEventLog(sessionId)` 排空队列**并**
  *    fsync。调模型前 / 调工具前 / 响应收齐 / run 结束各一次(dsh 判例)。
  *    300ms 节流那种"按时间刷"换成"按语义刷":崩溃时丢的是"还没到检查点的那
@@ -53,13 +57,31 @@ import {
   getOnethingSessionsDir,
 } from '@onething/runtime/storage'
 import { countSessionEventFailure, isSessionShadowEnabled } from './event-stats.js'
-import { isSessionEventsReadMode } from './read-mode.js'
+import { isSessionEventsReadMode, isSessionTranscriptOff } from './read-mode.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
 
 
 export const SESSION_EVENTS_LOG_FILENAME = 'events.jsonl'
+
+/**
+ * 事件账本写不进去(S3w-2,§14.6 裁定 7)。
+ *
+ * **只在 `ONETHING_SESSION_TRANSCRIPT=off` 档抛** —— 那一刻 `events.jsonl` 是唯一
+ * 持久化,写不进去不再是"影子少一笔"而是"账本少一笔",于是从计数自吞升级为
+ * **命令失败上抛**:调用方(命令面 / 引擎收尾链)必须感知得到。`primary` /
+ * `shadow` 两档维持计数(观察期里抄本还在写,拒写该记账不该打扰)。
+ */
+export class SessionEventWriteError extends Error {
+  readonly sessionId: string
+  constructor(sessionId: string, what: string, options?: { cause?: unknown }) {
+    super(`session event log write failed (${what}): ${sessionId}`)
+    this.name = 'SessionEventWriteError'
+    this.sessionId = sessionId
+    if (options && 'cause' in options) (this as { cause?: unknown }).cause = options.cause
+  }
+}
 
 /** G12 守卫的最小间隔:每次 append 都 stat 一遍文件是纯浪费。 */
 const FOREIGN_WRITER_CHECK_INTERVAL_MS = 500
@@ -86,6 +108,17 @@ function wantsEventTail(): boolean {
   return isSessionShadowEnabled() || isSessionEventsReadMode()
 }
 
+/**
+ * 内存活投影**在被维护**吗(即写入口那条尾巴有没有在攒)。
+ *
+ * refold 自洽环(`refold.ts`)要拿"内存活投影"当比对的一侧,而那份投影靠这条
+ * 尾巴增量推进 —— 尾巴关着的时候它会停在第一次折出来的那一刻,拿它去比只会
+ * 比出"文件多了一段"的假不等。判据只该有一份,所以由这里对外说。
+ */
+export function sessionEventTailEnabled(): boolean {
+  return wantsEventTail()
+}
+
 interface SessionEventLogState {
   /** false = 这个会话不记事件(legacy 整文件格式),见 resolveEnabled。 */
   enabled: boolean
@@ -107,6 +140,18 @@ interface SessionEventLogState {
    * 于是此后每一次 append 都拒写并记账(见 `appendSessionLogEvent`)。
    */
   foreignWriter: boolean
+  /**
+   * S3w-2(裁定 7):这个会话的**落盘队列上出过错**。
+   *
+   * append 是排队异步落盘的,所以"写失败"这件事天生比调用它的那一句晚 ——
+   * 没有任何同步返回值能当场说出它。于是把失败**粘住**:`off` 档下一次
+   * `appendSessionLogEvent` 直接抛(见 `appendSessionLogEvent` 开头),调用方
+   * 于是在**下一次写口**上感知到"这本账已经不完整了"。
+   *
+   * 一旦粘上就不翻回去:一段丢掉的事件补不回来,后面写得再顺也不改变
+   * "这份文件缺了一截"这个事实。
+   */
+  writeFailure?: Error
   /** 影子投影还没取走的记录(见 `SHADOW_TAIL_MAX`)。关闸时永远是空的。 */
   shadowTail: SessionLogEventRecord[]
   /** 尾巴溢出过 = 这一段事件没进活投影,消费者必须从文件重折。 */
@@ -283,15 +328,24 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   if (type === 'session/created') ensureSessionEventDir(state, sessionId)
   if (!state.enabled) return undefined
 
+  // S3w-2(裁定 7):`off` 档下,这本账上一次落盘就没落进去 —— 它已经不完整了。
+  // 观察期(primary/shadow)里这一格只是个记号,不改变行为。
+  if (state.writeFailure && isSessionTranscriptOff()) {
+    throw new SessionEventWriteError(sessionId, 'queued append failed earlier', {
+      cause: state.writeFailure,
+    })
+  }
+
   // G12(S3w-0b):外写者在场 = 本次拒写。记一笔失败(每会话 warn 一次由
-  // `countSessionEventFailure` 负责),返回 undefined —— 调用方拿不到 seq,
-  // 于是没有人会去引用一个根本没写出去的事件。
+  // `countSessionEventFailure` 负责)。观察期返回 undefined —— 调用方拿不到 seq,
+  // 于是没有人会去引用一个根本没写出去的事件;`off` 档则升级为上抛(裁定 7):
+  // 抄本不在了,一条"悄悄没写进去"的事件就是一段永远补不回来的历史。
   if (guardForeignWriter(state, sessionId)) {
-    countSessionEventFailure(
-      sessionId,
-      new Error('another writer appended to this event log'),
-      'foreign writer detected; append refused',
-    )
+    const error = new Error('another writer appended to this event log')
+    countSessionEventFailure(sessionId, error, 'foreign writer detected; append refused')
+    if (isSessionTranscriptOff()) {
+      throw new SessionEventWriteError(sessionId, 'foreign writer detected', { cause: error })
+    }
     return undefined
   }
 
@@ -323,6 +377,12 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
     })
     .catch(error => {
       countSessionEventFailure(sessionId, error, 'event log write failed')
+      // S3w-2:粘住(见 `writeFailure`)。这里**不抛** —— 这条链是队列自己的
+      // promise,抛出去只会变成一次没人接的 unhandledRejection;上抛的落点是
+      // 下一次同步写口。
+      if (!state.writeFailure) {
+        state.writeFailure = error instanceof Error ? error : new Error(String(error))
+      }
     })
 
   return seq

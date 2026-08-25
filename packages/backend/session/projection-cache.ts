@@ -67,6 +67,20 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
   return live.state
 }
 
+/**
+ * 活投影**折到第几条 seq 了**(S3w-2,`refold.ts` 用)。
+ *
+ * refold 要把"文件字节重折"与"内存活投影"摆在一起比,而这两侧只有在**折到
+ * 同一条 seq** 时才可比:中间只要有人又写了一条(或有一条还没落盘),比出来的
+ * "多了一段 / 少了一段"说明的是采样撞上了写,不是账本坏了。所以它先问一句
+ * 游标,对不齐就跳过这次采样 —— 宁可少比一次,不许报一次假红。
+ *
+ * 不推进(不 drain 尾巴):推进由 `getLiveSessionProjection` 负责,这里只读游标。
+ */
+export function liveSessionProjectionCursor(sessionId: string): number | undefined {
+  return projections.get(sessionId)?.lastSeq
+}
+
 /** 这条会话现在有活投影吗(读路径据此决定走内存还是走文件分页)。 */
 export function hasLiveSessionProjection(sessionId: string): boolean {
   return projections.has(sessionId)

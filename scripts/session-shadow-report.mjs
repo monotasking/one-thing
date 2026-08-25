@@ -8,7 +8,8 @@
  *   `<store>/log/session-shadow-stats.json`  —— 计数(runs / mismatches / appendFailures / byKind)
  *   `<store>/log/session-shadow.jsonl`       —— 每一次不等的字段级摘要
  *
- * **门 = runs ≥ 200 ∧ mismatches = 0 ∧ appendFailures = 0**(§10.4,按量不按天)。
+ * **门 = runs ≥ 200 ∧ mismatches = 0 ∧ appendFailures = 0 ∧ refoldMismatches = 0**
+ * (§10.4 立的前三条,§14.3-B 加的第四条:refold 自洽环是停写之后耐久层的替身)。
  * `--min-runs` 只放宽第一条 —— 分批验证时用得着(S1b 自证跑的是 20)。另外两条
  * 不给开关:一次不等就是一次"S2 切读之后会看到另一段历史",没有"少量可接受"。
  *
@@ -64,6 +65,10 @@ export function readStats(logDir) {
       // S3w-1(§15.4):`events` 读模式下退回抄本的次数。不进门 —— 它量的是
       // 存量数据的覆盖面;S3w-3 删兜底之前必须先量到 0。
       fallbackHits: Number(parsed.fallbackHits) || 0,
+      // S3w-2(§14.3-B):refold 自洽环。`refoldChecks` 只打印(采样数是配置
+      // 问题),`refoldMismatches` **进门** —— 它是停写之后耐久层的唯一判据。
+      refoldChecks: Number(parsed.refoldChecks) || 0,
+      refoldMismatches: Number(parsed.refoldMismatches) || 0,
       byKind: parsed.byKind && typeof parsed.byKind === 'object' ? parsed.byKind : {},
       skipped: parsed.skipped && typeof parsed.skipped === 'object' ? parsed.skipped : {},
       lastMismatchAt: Number(parsed.lastMismatchAt) || undefined,
@@ -79,6 +84,8 @@ export function readStats(logDir) {
       droppedParts: 0,
       appendFailures: 0,
       fallbackHits: 0,
+      refoldChecks: 0,
+      refoldMismatches: 0,
       byKind: {},
       skipped: {},
       missing: true,
@@ -162,6 +169,10 @@ function main() {
     console.log(`[shadow] appendFailures : ${stats.appendFailures}`)
     // S3w-1:兜底命中(events 模式下退回 messages.jsonl 的读)。不进门,S3w-3 前要量到 0。
     console.log(`[shadow] fallbackHits   : ${stats.fallbackHits}   (退回抄本的读,不进门)`)
+    // S3w-2:refold 自洽环(文件字节重折 vs 内存活投影)。采样数只打印;
+    // 不等**进门** —— 停写之后它就是耐久层仅剩的那道门(§14.3-B)。
+    console.log(`[shadow] refoldChecks   : ${stats.refoldChecks}   (采样次数,不进门)`)
+    console.log(`[shadow] refoldMismatch : ${stats.refoldMismatches}`)
     console.log(`[shadow] byKind         : ${JSON.stringify(stats.byKind)}`)
     // 跳过 ≠ 不等:门只看 mismatches。列出来是为了让"这条会话为什么没被比"看得见
     // —— `legacyPartial` = 老会话的 events.jsonl 只覆盖了历史尾巴(§10.9)。
@@ -187,12 +198,17 @@ function main() {
   if (stats.runs < args.minRuns) failures.push(`runs ${stats.runs} < ${args.minRuns}`)
   if (stats.mismatches !== 0) failures.push(`mismatches ${stats.mismatches} ≠ 0`)
   if (stats.appendFailures !== 0) failures.push(`appendFailures ${stats.appendFailures} ≠ 0`)
+  // S3w-2:refold 与 mismatches 同级 —— 一个是"写模型 vs 读模型",另一个是
+  // "文件 vs 内存",停写之后两道都不许有"少量可接受"。
+  if (stats.refoldMismatches !== 0) failures.push(`refoldMismatches ${stats.refoldMismatches} ≠ 0`)
 
   if (failures.length > 0) {
     console.error(`\n[shadow] GATE RED: ${failures.join('; ')}`)
     process.exit(1)
   }
-  console.log(`\n[shadow] GATE GREEN (runs ≥ ${args.minRuns}, mismatches = 0, appendFailures = 0)`)
+  console.log(
+    `\n[shadow] GATE GREEN (runs ≥ ${args.minRuns}, mismatches = 0, appendFailures = 0, refoldMismatches = 0)`,
+  )
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main()
