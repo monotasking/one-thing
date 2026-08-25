@@ -38,6 +38,7 @@ describe('electron before-quit cleanup', () => {
         shutdownSessionLayer: fn('shutdownSessionLayer'),
         shutdownEventSystem: fn('shutdownEventSystem'),
         flushAllPendingSaves: asyncFn('flushAllPendingSaves'),
+        flushSessionEventLedger: asyncFn('flushSessionEventLedger'),
         shutdownAppLogging: asyncFn('shutdownAppLogging'),
         releaseDesktopStoreLock: asyncFn('releaseDesktopStoreLock'),
       },
@@ -70,6 +71,7 @@ describe('electron before-quit cleanup', () => {
       'shutdownSessionLayer',
       'shutdownEventSystem',
       'flushAllPendingSaves',
+      'flushSessionEventLedger',
       'shutdownAppLogging',
       'releaseDesktopStoreLock',
     ])
@@ -88,11 +90,39 @@ describe('electron before-quit cleanup', () => {
     await runElectronBeforeQuitCleanup(options, logger)
 
     expect(logger.error).toHaveBeenCalledWith('[Shutdown] flushAllPendingSaves error:', flushError)
-    expect(calls.slice(-3)).toEqual([
+    expect(calls.slice(-4)).toEqual([
       'flushAllPendingSaves',
+      'flushSessionEventLedger',
       'shutdownAppLogging',
       'releaseDesktopStoreLock',
     ])
+  })
+
+  it('flushes the session event ledger even when the transcript flush throws', async () => {
+    /*
+     * S3w 批 5(§15.12(a)):抄本队列与事件队列是**两条**队列,谁也不该独自代表
+     * "已落盘"。抄本那一刀失败(磁盘满 / 目录没了)恰恰是事件账本最需要被刷到
+     * 盘上的时刻,所以它不能挂在前一步的成功上。
+     */
+    const { runElectronBeforeQuitCleanup } = await import('../before-quit.js')
+    const logger = { error: vi.fn() }
+    const { calls, options } = createOptions()
+    options.flushAllPendingSaves.mockImplementationOnce(async () => {
+      calls.push('flushAllPendingSaves')
+      throw new Error('flush failed')
+    })
+    const ledgerError = new Error('ledger flush failed')
+    options.flushSessionEventLedger.mockImplementationOnce(async () => {
+      calls.push('flushSessionEventLedger')
+      throw ledgerError
+    })
+
+    await runElectronBeforeQuitCleanup(options, logger)
+
+    expect(calls).toContain('flushSessionEventLedger')
+    // 它自己炸了也不许把后面两步(日志收尾 / 释放 store lock)带走。
+    expect(logger.error).toHaveBeenCalledWith('[Shutdown] flushSessionEventLedger error:', ledgerError)
+    expect(calls.slice(-2)).toEqual(['shutdownAppLogging', 'releaseDesktopStoreLock'])
   })
 
   it('uses Electron app by default', async () => {

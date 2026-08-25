@@ -56,7 +56,11 @@ import {
 import {
   getOnethingSessionsDir,
 } from '@onething/runtime/storage'
-import { countSessionEventFailure, isSessionShadowEnabled } from './event-stats.js'
+import {
+  countSessionEventFailure,
+  flushSessionEventStats,
+  isSessionShadowEnabled,
+} from './event-stats.js'
 import { isSessionEventsReadMode, isSessionTranscriptOff } from './read-mode.js'
 import { getLogger } from '../wiring/logging/index.js'
 
@@ -466,6 +470,73 @@ export async function flushSessionEventLog(sessionId?: string): Promise<void> {
     await states.get(id)?.queue
     await fsyncSessionLog(id)
   }))
+}
+
+/**
+ * 关停时的**默认排空预算**(§15.12(a))。
+ *
+ * 排空要有上限,是因为退出这条路上没有人等得起一次卡住的 fsync:Electron 的
+ * `before-quit` 不被 await(第一个 await 之后就在和进程消失赛跑),
+ * `apps/server` 的 SIGTERM 之后编排器很快就是 SIGKILL。2s 是"磁盘正常时绰绰
+ * 有余、磁盘不正常时不把退出钉死"的那一档 —— 而超时**记账不阻退出**,
+ * 因为"没刷干净"必须说出来,不能假装干净。
+ */
+export const SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS = 2000
+
+/**
+ * 排空**全部活跃会话**的事件队列并 fsync,带时限(关停链专用,§15.12(a))。
+ *
+ * 与 `flushSessionEventLog()`(不传 sessionId)是同一件事,多的只有两样:
+ * 一个说得出用途的名字(关停表里 `flushAllPendingSaves` 排的是 messages.jsonl
+ * 的节流队列,两者一眼要能分开),和一个**时限**。
+ *
+ * 超时不抛也不阻退出:返回 `{timedOut:true}`,调用方记一行 warn。剩下的在途
+ * 写入随进程一起消失 —— 那正是 §14.7 风险②说的那一段,现在它至少是**看得见的**。
+ */
+export async function flushAllSessionEventLogs(
+  options: { timeoutMs?: number } = {},
+): Promise<{ timedOut: boolean }> {
+  const timeoutMs = options.timeoutMs ?? SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS
+  if (states.size === 0) return { timedOut: false }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const timedOut = await Promise.race([
+      flushSessionEventLog().then(() => false, () => false),
+      new Promise<boolean>(resolve => {
+        timer = setTimeout(() => resolve(true), timeoutMs)
+        // 计时器自己不该把进程留住:它只是罩子,不是任务。
+        ;(timer as unknown as { unref?: () => void }).unref?.()
+      }),
+    ])
+    return { timedOut }
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+/**
+ * 关停链上的**事件账本收尾**:排空 + fsync,然后把统计表落盘(§15.12(a)(b))。
+ *
+ * 两件事写在一个函数里,是为了让**顺序**只有一个地方定义:排空过程本身可能
+ * 记上几笔 `appendFailures`(队列尾巴上那几条正是最容易失败的),统计表必须
+ * 排在它之后落盘,否则门读到的是少一截的账。
+ *
+ * 三条关停链(Electron `before-quit` / `createOnethingBackend.shutdown` /
+ * `HeadlessBackend.shutdown`)各调一次;`apps/server` 的 SIGTERM 经
+ * `serverRuntime.shutdown()` 落到同一处,因此同在那 5s 预算里。
+ */
+export async function flushSessionEventLedger(
+  options: { timeoutMs?: number } = {},
+): Promise<{ timedOut: boolean }> {
+  const result = await flushAllSessionEventLogs(options)
+  if (result.timedOut) {
+    log.warn('session event log flush timed out during shutdown', {
+      sessions: states.size,
+      timeoutMs: options.timeoutMs ?? SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS,
+    })
+  }
+  flushSessionEventStats()
+  return result
 }
 
 async function fsyncSessionLog(sessionId: string): Promise<void> {

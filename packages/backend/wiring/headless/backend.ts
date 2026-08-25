@@ -32,6 +32,7 @@ import {
 } from '@onething/runtime/headless/index'
 import { createOnethingBackend } from '../../backend.js'
 import { flushAllPendingSaves } from '../../store.js'
+import { flushSessionEventLedger } from '../../session/event-log.js'
 import {
   createSession,
   deleteSession,
@@ -144,6 +145,9 @@ export class HeadlessBackend {
     } catch (error) {
       log.error('flush pending saves failed', {}, error)
     }
+    // 事件账本的收尾(§15.12(a)(b)):`flushAllPendingSaves` 排的是
+    // messages.jsonl 的节流队列,事件有自己的每会话写队列。自带 2s 时限。
+    await flushSessionEventLedger()
     this.activeStreams.clear()
     this.activeStreamBySession.clear()
     this.started = false

@@ -17,6 +17,7 @@ import {
 // (从前它挂在 `@main/ipc/skills.ts` 的适配上,而那个适配已经没有了)。
 import { initializeSkills } from "@onething/backend/wiring/skills/session-skills.js";
 import { flushAllPendingSaves } from "@onething/backend/store.js";
+import { flushSessionEventLedger } from "@onething/backend/session/event-log.js";
 import { getSettings } from "@onething/backend/stores/settings.js";
 import { startTodoPlanWatcher } from "@onething/backend/wiring/todo-plan/store.js";
 import { startScratchpadWatcher } from "@onething/runtime/scratchpad/service-bound";
@@ -573,6 +574,7 @@ export function startOnethingElectronMain(): void {
 			shutdownSessionLayer,
 			shutdownEventSystem,
 			flushAllPendingSaves,
+			flushSessionEventLedger: () => flushSessionEventLedger().then(() => undefined),
 			shutdownAppLogging,
 			releaseDesktopStoreLock: () => {
 				desktopStoreLock?.release();

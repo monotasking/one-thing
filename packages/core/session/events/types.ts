@@ -81,6 +81,33 @@ export function isBlobRef(value: unknown): value is BlobRef {
 /** 超过这个字节数的工具结果/正文必须走 blob(§9.1)。S0 只是常量,不落盘。 */
 export const SESSION_EVENT_BLOB_THRESHOLD_BYTES = 64 * 1024
 
+/** `collectSessionBlobRefHashes` 的下潜上限(事件 data 再深也不该超过这个)。 */
+const BLOB_REF_WALK_MAX_DEPTH = 8
+
+/**
+ * 一份事件里出现的**全部 blob 引用**(附件 / 工具结果 / 图片 part)。
+ *
+ * 判据只有一个 —— `isBlobRef`,所以"哪些字节还被引用着"这句话全仓只有一种答法:
+ * `sessions:verify` 的引用完整性检查(有引用没文件)与 blob GC 的孤儿判定
+ * (有文件没引用)问的是同一张表的两侧,判据分家迟早会分出一边删掉另一边认的
+ * 东西。放在 core 是因为它是纯遍历,只依赖 `isBlobRef` 本身。
+ */
+export function collectSessionBlobRefHashes(
+  events: readonly SessionEventRecordShape<string, unknown>[],
+): Set<string> {
+  const hashes = new Set<string>()
+  const walk = (value: unknown, depth: number): void => {
+    if (depth > BLOB_REF_WALK_MAX_DEPTH || !value || typeof value !== 'object') return
+    if (isBlobRef(value)) {
+      hashes.add(value.hash)
+      return
+    }
+    for (const entry of Object.values(value as Record<string, unknown>)) walk(entry, depth + 1)
+  }
+  for (const event of events) walk(event.data, 0)
+  return hashes
+}
+
 // ============ 投影用的消息形状(core 本地,不引 shared 的契约) ============
 
 /**

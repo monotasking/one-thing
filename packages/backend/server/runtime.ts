@@ -2171,6 +2171,12 @@ async function createServerRuntimeOverServerBackend(
 			} catch (error) {
 				log.error("flush local sessions failed", {}, error);
 			}
+			// 事件账本的排空 + fsync 就在这一步里(§15.12(d)):
+			// `backend.shutdown()` → `createOnethingBackend` 的收尾表 →
+			// `flushSessionEventLedger()`。所以 `apps/server` SIGTERM 的 5s 预算
+			// (`SHUTDOWN_FLUSH_TIMEOUT_MS`)天然罩住它,而账本自己还带一层 2s 时限
+			// —— 两层都不会把进程钉死。借来的 backend(桌面内嵌 HTTP 面,
+			// `ownsBackend:false`)这一步是 no-op:那份账本归宿主的 before-quit 收。
 			await backend.shutdown();
 			for (const manager of mcpManagersByOwner.values()) {
 				manager.shutdown().catch(() => {});

@@ -10,6 +10,8 @@
  * (or any @onething/backend module) performs no configuration by itself.
  */
 import { initializeStores, flushAllPendingSaves } from './store.js'
+import { flushSessionEventLedger } from './session/event-log.js'
+import { scheduleSessionBlobGcOnStartup } from './session/blob-gc.js'
 import { getSettings, initializeSettings } from './stores/settings.js'
 import { applyDiagnosticsMode } from './wiring/logging/diagnostics.js'
 import { initializeAgents } from './wiring/agents/index.js'
@@ -254,11 +256,17 @@ export async function createOnethingBackend(
     getStreamEngine().bind(options.sender)
   }
 
+  // S3w-4:blob 孤儿的启动后延迟治理。**默认不跑** —— `ONETHING_SESSION_BLOB_GC`
+  // 没设就直接返回 undefined,这一行在缺省档上是纯声明。定时器 unref,所以
+  // 它自己留不住进程;disposer 挂在下面的 shutdown 上。
+  const cancelBlobGc = scheduleSessionBlobGcOnStartup()
+
   return {
     engine: getStreamEngine(),
     eventBus: getEventBus(),
     streamChannel: getStreamChannel(),
     async shutdown() {
+      cancelBlobGc?.()
       // Reversible registration: a second createOnethingBackend in the same
       // process (tests, host restarts) must not trip the duplicate-domain guard.
       await disposeRpcDomains()
@@ -320,6 +328,12 @@ export async function createOnethingBackend(
       } catch (error) {
         log.error('flush pending saves failed', {}, error)
       }
+      // 事件账本的收尾(§15.12(a)(b))。`flushAllPendingSaves` 排的是
+      // messages.jsonl 的 300ms 节流队列 —— 事件有**自己**的每会话写队列,
+      // 从前在关停链上一次都没被排空过(§15.11 第五节结论 1)。抄本停写之后
+      // 那就是 §14.7 风险②的正面:退出那一刻队列里剩什么就丢什么。
+      // 自带 2s 时限,超时记一行 warn 不阻退出。
+      await flushSessionEventLedger()
     },
   }
 }

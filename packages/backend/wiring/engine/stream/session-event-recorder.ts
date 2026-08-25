@@ -820,6 +820,12 @@ export function createSessionEventRecorder(
           ...withRunId(),
         })
         // 语义检查点:调模型之前,这次请求的配方必须已经在盘上(§10.3 ③)。
+        //
+        // **`void` 是刻意的**(§15.12(c)):四个检查点里只有 `run/end` 那一处改成了
+        // 可 await —— 它一次执行只发生一次,等一次 fsync 换来的是"收账时已落盘"。
+        // 这里(以及另两处调工具前 / 响应收齐)在**流的中途**,每回合、每工具各一次:
+        // 等下去就是把一次盘等待摊进每一轮,而它们最坏丢的只是"还没到下一个检查点
+        // 的那一小段"—— 队列本身是保序的,fsync 只是把它推得更实。
         void flushSessionEventLog(ctx.sessionId)
         return
       }
@@ -919,7 +925,7 @@ export function createSessionEventRecorder(
         })
         if (seq !== undefined) state.callSeqByCallId.set(event.toolCall.id, seq)
         state.toolCallIds.push(event.toolCall.id)
-        // 语义检查点:调工具之前(§10.3 ③)。
+        // 语义检查点:调工具之前(§10.3 ③)。`void` 同 `request/start` 处的理由。
         void flushSessionEventLog(ctx.sessionId)
         return
       }
@@ -1042,7 +1048,7 @@ export function createSessionEventRecorder(
             : {}),
           ...withRunId(),
         })
-        // 语义检查点:响应收齐(§10.3 ③)。
+        // 语义检查点:响应收齐(§10.3 ③)。`void` 同 `request/start` 处的理由。
         void flushSessionEventLog(ctx.sessionId)
         return
       }

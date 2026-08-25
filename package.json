@@ -62,6 +62,8 @@
 		"sessions:verify": "bun scripts/session-verify.ts",
 		"sessions:events-selfcheck": "bun scripts/session-events-read-selfcheck.ts",
 		"sessions:hydration-contract": "bun scripts/session-hydration-contract.ts",
+		"sessions:blob-gc": "bun scripts/session-blob-gc.ts",
+		"sessions:storage-report": "bun scripts/session-storage-report.ts",
 		"migrate:sessions:events": "node scripts/migrate-sessions-events.mjs",
 		"sessions:shadow-report": "node scripts/session-shadow-report.mjs",
 		"sessions:shadow-reset": "node scripts/session-shadow-reset.mjs",

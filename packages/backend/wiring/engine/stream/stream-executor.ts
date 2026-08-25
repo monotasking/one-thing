@@ -217,7 +217,8 @@ export async function executeMessageStream(
     return await runMessageStream(engine, params, abortController)
   } catch (error) {
     if (started) {
-      endSessionRun(params.sessionId, run.runId, {
+      // §15.12(c):等那一次 fsync —— 一次执行收账时"已落盘"必须是真的。
+      await endSessionRun(params.sessionId, run.runId, {
         outcome: isAbortLikeError(error) ? 'aborted' : 'error',
         error,
       })
@@ -225,7 +226,7 @@ export async function executeMessageStream(
     throw error
   } finally {
     // 幂等:catch 已经收过就是 no-op(见 `endSessionRun`)。
-    if (started) endSessionRun(params.sessionId, run.runId, { outcome: 'completed' })
+    if (started) await endSessionRun(params.sessionId, run.runId, { outcome: 'completed' })
   }
 }
 

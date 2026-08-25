@@ -3991,7 +3991,7 @@ renderer 直接 import core reducer)。
 | 08-26/27 | 3 | S3w-1 翻默认(合同门绿为前提)+ 真机走查 — **已完成(§15.10)**,真机走查待用户 | — |
 | 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 — **已完成(§15.11)**,含 §14.7 风险② flush 顺序审计(只出清单,动手归批 6) | — |
 | 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5) | 正常使用即可 |
-| 08-28 | 5 | S3w-4 体积治理(独立,提前插空) | — |
+| 08-28 | 5 | flush 收口四项(§15.11 清单 a–d,批 6 前置)+ S3w-4 体积治理 — **已完成(§15.12)**;events.jsonl 轮转只出方案未动手(§15.12 B3,待拍板) | — |
 | 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿) | **唯一确认点**:烧 S2b 回滚读前问一次 |
 | 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
 | 09-05→09-08 | 12–14 | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动) | B 期细案到期过目 |
@@ -4337,3 +4337,191 @@ mismatches 0 / appendFailures 0,**hydrate lane PASS:8 会话 / 0 新失配行**)
   今天还有结构性地板,见 §15.10 读数 1),`messages.cleared-*` / legacy 按裁定 9/10
   留到 S3w-3。
 - **上抛不回滚**:reducer 已改、事件没写成的那一格没有补偿,登记进 F 线 F2。
+
+### 15.12 批 5 落地记录:flush 收口四项 + S3w-4 体积治理(2026-08-25,opus 执行,未提交)
+
+批 4 的 flush 审计(§15.11 第五节)只出了清单,这一批照单施工;S3w-4 按"保守圈定"
+落地 —— **只做引用扫描与测量,不做任何自动删除**。
+
+#### 一、flush 收口(§15.11 清单 a–d)
+
+**(a) 三条关停链补事件账本排空。** 新增 `flushAllSessionEventLogs({timeoutMs})`
+(`backend/session/event-log.ts`):排空**全部活跃会话**的写队列并 fsync,带
+**2s 时限**,超时返回 `{timedOut:true}` 并 warn 一行,**不抛、不阻退出**。它与
+既有的 `flushSessionEventLog()`(不传 sessionId)是同一件事,多的只有两样 ——
+一个在关停表里说得出用途的名字(`flushAllPendingSaves` 排的是 messages.jsonl 的
+300ms 节流队列,两条队列一眼要能分开),和那道时限。
+
+时限是**被迫的,不是保险起见**:Electron 的 `before-quit` 不被 await(第一个
+await 之后就在和进程消失赛跑,§15.6),`apps/server` 的 SIGTERM 之后编排器很快
+就是 SIGKILL。所以这一步**尊重既有的竞速结构**:不重构退出机制,只在既有
+`flushAllPendingSaves` 旁边加一格,而且这一格自己不会把关停钉住。
+
+**(b) 同处补统计表落盘。** `flushSessionEventLedger()` = 排空 + fsync **然后**
+`flushSessionEventStats()`,两件事写在一个函数里只为让**顺序**只有一处定义:
+排空过程本身会记上 `appendFailures`(队列尾巴那几条正是最容易失败的),统计表
+必须排在它之后落盘,否则门读到的是少一截的账。三条关停链各调一次:
+
+| 链 | 落点 |
+|---|---|
+| Electron `before-quit` | `apps/electron/src/app/before-quit.ts` 新增可选项 `flushSessionEventLedger`,排在 `flushAllPendingSaves` **之后**、`shutdownAppLogging` 之前;各自 try/catch(抄本那一刀失败恰恰是账本最需要落盘的时刻,不能挂在前一步的成功上)。宿主在 `main-process.ts` 注入。 |
+| `createOnethingBackend.shutdown` | `backend.ts` 收尾表末尾一行 |
+| `HeadlessBackend.shutdown` | `wiring/headless/backend.ts`,同样紧跟 `flushAllPendingSaves` |
+
+**(d) apps/server 的 SIGTERM 预算。** 不新增第二个调用点:标准 server 的
+`serverRuntime.shutdown()` → `backend.shutdown()`(`ownsBackend:true`)已经走到
+(a) 那一行,而整段 `drained` 本来就罩在 `SHUTDOWN_FLUSH_TIMEOUT_MS`(5s)里 ——
+于是事件队列自动进同一预算,外加账本自己那层 2s。`runtime.ts` 的 `shutdown()`
+上补了一段注释把这条链写明(**借来的 backend**,即桌面内嵌 HTTP 面
+`ownsBackend:false`,这一步是 no-op —— 那份账本归宿主的 before-quit 收)。
+
+**(c) 四个语义检查点里只有 `run/end` 改成可 await。** `endSessionRun` 从
+`void` 改为 `async` / 返回 `Promise<void>`,返回的**只是那一次 flush**:
+
+- **刻意不含影子与 refold 那条链** —— `input.shadowGate` 是调用方自己开的闸,
+  完全可能永远不 resolve(它自己的注释就这么写),await 它等于把收尾挂死。
+  链子照旧 fire-and-forget,只有 flush 被交出去;flush 上挂 `.catch(()=>undefined)`,
+  因为它现在有两个消费者,而 flush 的失败不该变成收尾路径上的异常(写失败的
+  出口是 `appendFailures` 与裁定 7 的上抛,不是这里)。
+- **函数体在第一个 await 之前是同步的**:`run/end` 的落账与 `currentRuns` 的清账
+  都在那之前,所以幂等与顺序语义一字未变,不 await 的调用方照旧工作。
+- 四个执行器出口改 `await`(`stream-executor.ts` 的 catch + finally、
+  `agent-loop-executor.ts` 的 catch + finally);`runs.ts` 内部两个**同步**调用点
+  (`beginSessionRun` 收陈旧 run、`rotateSessionRun` 收上一条 run)保持 `void`,
+  理由逐条写在调用点上 —— 前者是开执行的同步路径,后者是 steering 的同步点,
+  在那里等一次盘 = 每次 steering 加一次盘等待。
+- 另三处(recorder :823/:923/:1046)**保持 `void`**,理由写进代码:它们在**流的
+  中途**,每回合/每工具各一次,等下去就是把一次盘等待摊进每一轮;而它们最坏丢的
+  只是"还没到下一个检查点的那一小段"(队列本身保序)。
+
+**(c) 的延迟实测**(本机 APFS,300 次采样,逐字复刻 flush 的两步 = 排空在途
+appendFile + `open('r')`+`sync()`+`close`):
+
+| 文件大小 | p50 | p90 | p99 | max |
+|---|---|---|---|---|
+| 29KB | 4.60ms | 5.40ms | 6.97ms | 11.56ms |
+| 21MB | 4.04ms | 4.92ms | 5.60ms | 6.18ms |
+
+**代价 ≈ 每个 run 多 5ms,且不随账本长大**(fsync 的代价是脏页数,不是文件
+大小 —— 大文件那一行反而更稳)。一次执行只发生一次,收尾路径本来就在等更贵的
+东西,接受。
+
+#### 二、S3w-4 体积治理(保守圈定)
+
+**B1 blob GC —— 归档,不硬删。** 新增 `backend/session/blob-gc.ts` +
+`bun run sessions:blob-gc`(**默认 dry-run**,`--apply` 才动手)。孤儿移进
+`sessions/<id>/blobs/orphan/`(还在会话目录里,会话删了它跟着走)。
+
+判据与 `sessions:verify` 的引用完整性检查**同源**:本批把那段递归扫描上移进
+core,成为 `collectSessionBlobRefHashes`(`core/session/events/types.ts`,紧挨
+`isBlobRef`),`session-verify.ts` 改为 import 它。理由一句话:verify 问"有引用
+没文件",GC 问"有文件没引用",两侧是同一张表的两侧,**判据分家迟早会分出一边
+删掉另一边认的东西**。
+
+孤儿的唯一来处是"写了 blob 但那条事件没落进去"(队列失败 / G12 拒写 / 进程在
+两步之间没了);被 `surfaceOp: replace` 遮蔽的正文**不是**孤儿 —— 引用集按
+**全量事件**算(遮蔽只影响模型可见面,不影响账本)。四道跳过闸,每一道拦住的
+都是"看着像孤儿其实不是"的一类:
+
+| 闸 | 拦住什么 |
+|---|---|
+| `no-events` | 没有 `events.jsonl`(legacy 整文件 / 未迁移老会话)——引用集为空,整个 `blobs/` 会被当成孤儿 |
+| `malformed-events` | 事件文件有坏行:`parseSessionLogEventLog` 会**静默跳过**那一行(append-only 的读侧纪律),它里面的引用会凭空消失 |
+| 年龄(默认 24h) | blob 是**同步**写的,引用它的事件是**排队异步**落盘的 —— 两步之间那个文件在盘上确实"没有引用" |
+| `orphan/` 自己 | 扫描只看文件不看子目录,归过档的不会被再数一遍 |
+
+启动后延迟触发**默认关**:`ONETHING_SESSION_BLOB_GC` 未设 / `0` = 不跑,
+`dry-run` = 跑但只记账,`1`/`apply` = 真归档;延迟 5 分钟、定时器 `unref`、
+disposer 挂在 `backend.shutdown` 上。
+
+**B2 体积测量。** 新增 `bun run sessions:storage-report`(全程只读):每会话
+events / blobs(orphan 单列)/ messages / meta / `messages.cleared-*` /
+`legacy-backup/` 六格 + 全库合计 + **events÷messages 比值**(§14.6 那句"存储脚本
+给出目标值"就是它)。比值只在两份都在的会话上算,覆盖面单列一行 —— 拿一个
+覆盖 30% 的比值当全库结论是这类报表最容易犯的错。
+
+**真机只读跑数(`~/.onething`,436 会话,2026-08-25)**:
+
+```
+events.jsonl        410.7MB
+blobs/                1.0MB   (orphan/ 0B)
+messages.jsonl      376.7MB
+meta.json             1.5MB
+messages.cleared-*   14.3MB   ← §14.6 裁定 10 待拍;今天没有治理器
+legacy-backup/      381.4MB   ← S1a 迁移留下的原抄本副本;同样没有治理器
+其它                554.8KB
+sessions/ 全部        1.16GB
+events+blobs ÷ messages = 1.09   (目标 1.10–1.20,426 条两份都在的会话同为 1.09)
+```
+
+blob GC dry-run:436 会话 → **扫过 4 条**(422 条根本没有 blobs 目录、10 条没有
+事件),**孤儿 0 个 / 0 字节 / 未移动任何文件**,`missing refs` 0。
+
+**这两个数一起说明了本期最该记下的一件事:blob 不是体积问题。** 全库 blob 才
+1MB,而两块**没有任何治理器**的存量各是 14MB 与 381MB。真正的比值(1.09)已经
+低于 §8 的目标带 —— S3w-3 停写之后 messages.jsonl 那 376.7MB 变成只读存量,
+`legacy-backup/` 那 381.4MB 则是它的第二份副本。**"停写省下多少"的账要按这三块
+一起算**,而不是只看 events 与 messages 的比。裁定 9a(存量原地只读)与裁定 10
+(cleared 存档退役)因此各自对着一块具体的数字,不再是抽象取舍。
+
+#### 三、events.jsonl 的轮转/归档 —— **只出方案要点,本批不写代码(待拍板)**
+
+它是**唯一账本**,而今天全仓每一个读侧(refold 全量重折、`sessions:verify`、
+trace 装配、冷加载补水、surface 索引首建)读的都是**整份文件**。任何截断或分卷
+都要先回答"读侧怎么把它拼回来",所以这里只立三段要点:
+
+1. **触发条件不该是时间,只能是字节 + 一个语义边界。** 时间轮转会把一次执行
+   劈到两个文件里(`run/start` 在旧卷、`run/end` 在新卷),而 `surfaceOp: replace`
+   的区间是按 **eventSeq** 的闭区间 —— 跨卷之后遮蔽区间的两端可能不在同一个
+   文件里。可行的切点只有**没有活跃 run、且不在任何未闭合遮蔽区间中间**的那一
+   刻,配上一个够大的字节阈值(真机今天最大的单份 events.jsonl 才 5MB 级,
+   全库 410MB 分在 436 条会话上 —— **这件事今天并不急**)。
+2. **归档格式:分卷 + 清单,不是 gzip 覆盖原文件。** `events.<n>.jsonl`(+ 可选
+   `.gz`)加一份 `events.index.json` 记每卷的 `[firstSeq, lastSeq]` 与字节数;
+   活跃卷永远是未压缩的 `events.jsonl`。这样 seq 仍然是全局单调的(G12 的字节数
+   守卫只盯活跃卷),`prepare` 的尾部窗口扫描不必改。gzip 就地压缩会让 append
+   与 `expectedBytes` 守卫两条纪律同时失效。
+3. **读侧兼容是这件事的全部成本,分三档。** ①**尾部读**(prepare / surface 首建 /
+   `findLastSessionEventSync`)只需活跃卷,零改动;②**全量读**(投影 / refold /
+   verify / trace)必须按清单顺序拼多卷,`parseSessionLogEventLog` 之上加一个
+   "按 index 顺序喂文本"的读取器;③**refold 的判据要重新定义** —— 它今天的前提
+   是"文件字节此刻是全的",分卷之后要么每次拼全(代价随卷数长),要么改成
+   "只折活跃卷 + 一个已封存卷的投影快照",而后者等于给"事件是唯一真相"引入一份
+   派生缓存。**③是真正要拍的那一格**,不是格式问题。
+
+**结论:本批不动。** 数字不支持现在做(单会话 5MB 级),而它要动的是账本自己的
+形状与那道常驻耐久门的前提 —— 应当排在 F 线之后、独立立项。
+
+**dumps / 日志侧不碰**:§15.4 已裁定事件账本不塞进日志 janitor,`LOG_DIR_POLICY`
+管的那半边一字未动。
+
+#### 门(全部实跑)
+
+- `bun run typecheck` —— 0。
+- 定向 vitest:`packages/backend` + `packages/core/session` +
+  `packages/onething-runtime/src/sessions` + `apps/electron/src` ——
+  **359 文件 / 2979 用例全绿**(含新增 `shutdown-flush-and-blob-gc.test.ts` 10 条
+  与 `before-quit.test.ts` 的第 6 条)。
+- `bun run sessions:shadow-battery` —— **GREEN**。runs 320 / mismatches 0 /
+  appendFailures 0 / refoldChecks 223 / refoldMismatches 0 / shadow.jsonl 0 行;
+  四条泳道与两枚写失败探针全 PASS。**(c) 改 await 之后照旧全绿,延迟见上表。**
+- `boundary:gate` ok(0)、`session:gate` ok(0 新)、`log:gate` ok(4 已知,0 新)、
+  `transport:gate` ok(42 常量 / 2392 行,不变)。本批零 `console.*` 新增
+  (两个新脚本在 `scripts/` 白名单内)。
+- 真机 dry-run 与体积报表见上,`~/.onething` **全程只读,零字节改动**。
+
+**一处如实记下:`sessions:verify:gate` 在本批开工前就是红的。** 用未改动的
+HEAD 版脚本 stash 后重跑,同样红(4 条新 issue:`46dcec05` / `ec2437ff` 各一条
+`unclosed-run`,`ec2437ff` 一条 `surface: source-seqs-incomplete` 与一条
+messages 不等)。两次跑出来的条数还不一样(4 → 2),因为那两条是**正在被写的
+活会话** —— 这是基线记录之后的真机漂移,与本批无关。它归 §13.16 那条"真机暴露"
+线,不在本批门内。
+
+#### 明确没做的
+
+- **没切 `off`**:默认仍是 `shadow`,批 6 才切。
+- **没有任何自动删除**:GC 只归档、只在显式 `--apply` 下动手,启动触发默认关;
+  真机本批只 dry-run 报数。
+- **没动 events.jsonl 的形状**:轮转/归档只有上面三段要点,待拍板。
+- **`messages.cleared-*` 与 `legacy-backup/` 只测量不治理**:前者归裁定 10,
+  后者随裁定 9a 一起看 —— 本批把它们的字节数摆到台面上,治法不擅自替用户拍。

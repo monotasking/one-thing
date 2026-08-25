@@ -54,6 +54,21 @@ export interface ElectronBeforeQuitCleanupOptions {
   shutdownSessionLayer: CleanupFn
   shutdownEventSystem: CleanupFn
   flushAllPendingSaves: CleanupFn
+  /**
+   * 事件账本(`sessions/<id>/events.jsonl`)的收尾:排空每会话写队列 + fsync,
+   * 然后把影子统计表落盘(§15.12(a)(b))。
+   *
+   * 与 `flushAllPendingSaves` **不是**一件事:那一只排的是 messages.jsonl 的
+   * 300ms 节流队列,事件有自己的每会话队列,从前在这张表上一次都没被排空过
+   * (§15.11 第五节结论 1)。抄本停写之后它就是唯一持久化,退出那一刻队列里
+   * 剩什么就丢什么。
+   *
+   * **自带 2s 时限**(实现在 `flushSessionEventLedger`):这一步排在第一个
+   * await 之后,本来就在和退出赛跑(见 `shutdownPlugins` 的注释),再叠一次
+   * 无上限的等待只会把"退不出去"换成另一种病;超时记一行 warn,不阻退出。
+   * 可选:没有事件账本的宿主(测试)不用给。
+   */
+  flushSessionEventLedger?: CleanupFn
   shutdownAppLogging: CleanupFn
   releaseDesktopStoreLock: CleanupFn
   app?: ElectronBeforeQuitAppLike
@@ -106,6 +121,14 @@ export async function runElectronBeforeQuitCleanup(
     await options.flushAllPendingSaves()
   } catch (err) {
     logger.error('[Shutdown] flushAllPendingSaves error:', err)
+  }
+
+  // 抄本刷完紧接着刷事件账本 —— 两条队列同级,谁也不该独自代表"已落盘"。
+  // 它自己带 2s 时限,所以这一步不会把关停钉住(见选项上的注释)。
+  try {
+    await options.flushSessionEventLedger?.()
+  } catch (err) {
+    logger.error('[Shutdown] flushSessionEventLedger error:', err)
   }
 
   await options.shutdownAppLogging()

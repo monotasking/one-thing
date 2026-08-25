@@ -27,11 +27,12 @@ import { fileURLToPath } from 'node:url'
 import {
   decodeJsonlLine,
   SurfaceIndex,
-  isBlobRef,
+  // 引用扫描的**单一判据**(§15.12):GC 的孤儿判定与这里的引用完整性检查问的是
+  // 同一张表的两侧,判据分家迟早会分出一边删掉另一边认的东西。
+  collectSessionBlobRefHashes,
   parseSessionLogEventLog,
   projectChatMessages,
   canonicalChatMessage,
-  type SessionLogEventRecord,
 } from '@onething/core/session'
 import { dehydrateProjectedMessages } from '@onething/runtime/sessions/session-dehydrate'
 
@@ -70,21 +71,6 @@ function readTextIfExists(file: string): string | undefined {
   } catch {
     return undefined
   }
-}
-
-/** 事件里出现的全部 blob 引用(附件 / 工具结果 / 图片 part)。 */
-function collectBlobHashes(events: readonly SessionLogEventRecord[]): Set<string> {
-  const hashes = new Set<string>()
-  const walk = (value: unknown, depth: number): void => {
-    if (depth > 8 || !value || typeof value !== 'object') return
-    if (isBlobRef(value)) {
-      hashes.add((value as { hash: string }).hash)
-      return
-    }
-    for (const entry of Object.values(value as Record<string, unknown>)) walk(entry, depth + 1)
-  }
-  for (const event of events) walk(event.data, 0)
-  return hashes
 }
 
 
@@ -201,7 +187,7 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
   const degradedLines = [...degraded].sort().map(([key, count]) => `${key} ×${count}`)
 
   // 4. blob 引用
-  for (const hash of collectBlobHashes(events)) {
+  for (const hash of collectSessionBlobRefHashes(events)) {
     if (!fs.existsSync(path.join(dir, 'blobs', hash))) {
       issues.push({ kind: 'blob', detail: `missing blob ${hash}` })
     }

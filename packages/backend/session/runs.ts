@@ -134,7 +134,9 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
   // 上一次没收尾就走到这里 = 引擎在同一条会话上开了第二次执行。把旧的按
   // `interrupted` 结掉(它确实被打断了),而不是让两条 run/start 悬在那里。
   const stale = currentRuns.get(sessionId)
-  if (stale) endSessionRun(sessionId, stale.runId, { outcome: 'interrupted' })
+  // `void`:开一次执行是同步路径(返回 handle),不能为了旧 run 的 fsync 停下来。
+  // 落账与清账都在 `endSessionRun` 的第一个 await 之前完成,所以顺序仍然是对的。
+  if (stale) void endSessionRun(sessionId, stale.runId, { outcome: 'interrupted' })
 
   const runId = randomUUID()
   const agentId = input.agentId
@@ -212,12 +214,27 @@ export interface EndSessionRunInput {
 /**
  * 收一次执行。幂等:同一个 runId 收两次只写一条 `run/end`
  * (finally 与 catch 都会调它,而那两条路在 abort 时会同时走到)。
+ *
+ * ## 返回的 promise = **只有那一次 fsync**(§15.12(c))
+ *
+ * 四个语义检查点里,`run/end` 这一处从 `void` 改成"可 await":一次执行收账时
+ * "已落盘"这句话必须是真的 —— 那正是崩溃窗口最值钱的一格(§14.7 风险②),
+ * 而收尾路径本来就已经在等更贵的东西了。另外三处(recorder 的响应/工具检查点)
+ * 保持 `void`:它们在**流的中途**,每一次都换一次 fsync 等待会把延迟摊进每个
+ * 回合,而它们丢的最多是"还没到下一个检查点的那一小段"。
+ *
+ * **刻意不包含影子与 refold 那条链**:`input.shadowGate` 是调用方自己开的闸,
+ * 它完全可能永远不 resolve(注释见 `EndSessionRunInput.shadowGate`),
+ * await 它等于把收尾挂死。所以链子照旧 fire-and-forget,只有 flush 被交出去。
+ *
+ * 函数体在第一个 await 之前是**同步**的(`run/end` 的落账与 `currentRuns` 的
+ * 清账都在那之前),所以幂等与顺序语义一字未变;调用方不 await 也照旧工作。
  */
-export function endSessionRun(
+export async function endSessionRun(
   sessionId: string,
   runId: string | undefined,
   input: EndSessionRunInput,
-): void {
+): Promise<void> {
   const handle = currentRuns.get(sessionId)
   if (!handle) return
   // 归属判据 = "这次执行的 run",不是"这一个 runId":steering 轮换之后当前 run 是
@@ -240,12 +257,15 @@ export function endSessionRun(
     outcome,
     ...(error ? { error } : {}),
   })
-  // 语义检查点:run 结束(§10.3 ③)。不 await —— 收尾路径上不该多一次等待,
-  // 队列已经保序,fsync 只是把它推到盘上。
+  // 语义检查点:run 结束(§10.3 ③)。S3w-4 起**交给调用方 await**(见函数头):
+  // 收一次执行时"已落盘"必须是真的。`catch` 兜底是因为这个 promise 现在有两个
+  // 消费者(返回值 + 下面那条链),而 flush 的失败不该变成收尾路径上的异常
+  // —— 写失败自己的出口是 `appendFailures` 与裁定 7 的上抛,不是这里。
+  const flushed = flushSessionEventLog(sessionId).catch(() => undefined)
   //
   // 影子断言排在检查点**之后**(§10.4:"`run/end` 落盘后"):比对读的是活投影,
   // 但一条还没落盘的 run 万一进程当场没了,记下的"相等"就没有对应的账。
-  void flushSessionEventLog(sessionId)
+  void flushed
     // U0:换锚点递进来的那道闸(见 `EndSessionRunInput.shadowGate`)。
     .then(() => input.shadowGate)
     .then(() => {
@@ -259,6 +279,8 @@ export function endSessionRun(
       // 只有这里成立,所以它们同缝而不同判据。自己按会话采样,不是每个 run 都跑。
       scheduleSessionRefold(sessionId, handle.runId)
     })
+
+  await flushed
 }
 
 function normalizeRunError(error: unknown): { name?: string; message: string } | undefined {
@@ -326,7 +348,9 @@ export function rotateSessionRun(
 ): SessionRunHandle {
   const previous = currentRuns.get(sessionId)
   if (previous) {
-    endSessionRun(sessionId, previous.runId, {
+    // `void`:轮换发生在 agent-loop 的**同步点**上(返回新 handle),这里等一次
+    // fsync 等于把每一次 steering 都加一次盘等待。收账本身是同步的(见函数头)。
+    void endSessionRun(sessionId, previous.runId, {
       outcome: 'completed',
       // U0:轮换现在发生在 agent-loop 的同步点,而引擎把上一条消息写完要晚
       // 一步 —— 影子等引擎那边收完再比(见 `EndSessionRunInput.shadowGate`)。

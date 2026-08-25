@@ -941,7 +941,8 @@ export async function executeAgentLoopStreamGeneration(
 		>(lifecycleOptions);
 	} catch (error) {
 		if (resumeRun.started) {
-			endSessionRun(ctx.sessionId, resumeRun.run.runId, {
+			// §15.12(c):等那一次 fsync —— 收账时「已落盘」必须是真的。
+			await endSessionRun(ctx.sessionId, resumeRun.run.runId, {
 				outcome: ctx.abortSignal.aborted ? "aborted" : "error",
 				error,
 			});
@@ -955,7 +956,7 @@ export async function executeAgentLoopStreamGeneration(
 		state.pendingAssistantRotation = undefined;
 		// 幂等(见 `endSessionRun`);`started:false` 时收尾归 `executeMessageStream`。
 		if (resumeRun.started) {
-			endSessionRun(ctx.sessionId, resumeRun.run.runId, { outcome: "completed" });
+			await endSessionRun(ctx.sessionId, resumeRun.run.runId, { outcome: "completed" });
 		}
 	}
 }
