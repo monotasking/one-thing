@@ -3990,7 +3990,7 @@ renderer 直接 import core reducer)。
 | 08-26 | 2 | U0 源头标注+runId 上提+双发(steering 竞态结构性消失) | 落地后**重启桌面 + shadow-reset** |
 | 08-26/27 | 3 | S3w-1 翻默认(合同门绿为前提)+ 真机走查 — **已完成(§15.10)**,真机走查待用户 | — |
 | 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 — **已完成(§15.11)**,含 §14.7 风险② flush 顺序审计(只出清单,动手归批 6) | — |
-| 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5)—— **首杀已修**:refold 门在真机上抓到第一例失配(补水改写活投影),根因/修法/新场景见 §15.13 | 正常使用即可 |
+| 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5)—— **首杀已修**:refold 门在真机上抓到第一例失配(补水改写活投影),根因/修法/新场景见 §15.13。**第二笔账也来自真机**:refold 首采在 17MB 账本上一口气阻塞主进程 ≈115ms("答完顿一下"),已改协作式分片,连同当晚整轮延迟诊断的归责结论见 §15.14 | 正常使用即可 |
 | 08-28 | 5 | flush 收口四项(§15.11 清单 a–d,批 6 前置)+ S3w-4 体积治理 — **已完成(§15.12)**;events.jsonl 轮转只出方案未动手(§15.12 B3,待拍板) | — |
 | 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿) | **唯一确认点**:烧 S2b 回滚读前问一次 |
 | 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
@@ -4600,3 +4600,108 @@ baseline-skip 8 / no-events 10**。与批 1/3/5 记的 `pass 417 / baseline-skip
 判官(`canonicalChatMessage`)比的是值。差的那一条是**真机漂移** —— 一条在册
 基线会话上一轮跑数时正被写(§15.12 末尾记的同一种活会话漂移),这轮不再有差异,
 于是从 `baseline-skip` 升成 `pass`。
+
+### 15.14 refold 主进程卡顿:一口气 115ms → 协作式分片(2026-08-26,opus 执行,未提交)
+
+短窗跑数期间用户报"答完之后顿一下"。当晚一整轮真机延迟诊断的**归责结论**先摆在
+这里,免得下次再从头查一遍:
+
+| 疑犯 | 判决 | 依据 |
+|---|---|---|
+| 后端推送(coalescer → IPC) | **清白** | 19ms/delta 是**厂商吐字的节奏**,不是我们攒批攒出来的;攒批闸本身 16ms 有序缓冲,量出来没有额外堆积 |
+| U0 事件流双发 | **清白**(legacy 档零开销) | 档位在**装配时**读一次(`agent-loop-executor.ts` 的 `isUiEventStreamEnabled()` 三元),口不接上时 `ctx.emitUiEvent?.(…)` 连事件对象都不构造 —— 可选调用短路掉实参求值 |
+| grok 的 reasoning 爆发节奏 | **体感主因,但不是回归** | 长思考段一次性涌出,渲染侧一帧要吃一大块;这是模型侧的吐字形状,与本线改动无关 |
+| **refold 首采** | **真凶,已修(本节)** | run 收尾后的 `setTimeout(0)` 宏任务里一口气跑 ≈115ms 同步代码 |
+
+**顺带记一条有意为之、别当 bug 修的东西**:`backend/wiring/engine/stream/agent-loop-executor.ts:815`
+的 `onResponseBoundary`(→ `rotateAssistantWriterIdentity`)**不受 UI 事件流的档位闸
+控**,与它同一个对象字面量里的 `emitUiEvent` 才在闸后面。这是对的:runId/锚点上提
+解决的是**账本正确性**(§10.15 那条竞态 —— 新响应的开头被记在旧消息上),不是 UI
+特性;关掉 UI 事件流不该把账本改回错的那一版。
+
+#### 病灶
+
+`checkSessionRefold` 的 `await readFile` 之后是**一整块同步代码**:整份日志 parse →
+全量 fold → 重折侧物化 → 逐字段深比。真机那本 17.1MB / 7915 行的账本上实测
+(bun,只读):
+
+```
+parse 34.2ms + fold 16.8ms + 重折侧物化 30.8ms + deepEqual 10.8ms = 93ms 一口气
+另加 await 之前的活投影侧定格 21.8ms(同步,见下)= 单次 refold ≈115ms
+```
+
+> **勘误**:诊断稿里那句"deepEqual 56.6ms / 合计 164ms"高估了。那一格当时是用
+> `JSON.stringify(a) === JSON.stringify(b)` 近似量的,而生产的 `deepEqual` 是结构化
+> 短路比较,真值 ≈10.8ms。真凶的量级(百毫秒级、一口气、run 收尾时)不变。
+
+触发:每会话第 1、6、11… 个 run(`DEFAULT_REFOLD_EVERY=5`,**首个 run 必采**)。
+所以"每次答完都可能顿一下"里的**首答必顿**,正是它。
+
+#### 修法:协作式切片,不是 worker
+
+`worker_threads` 被否:`dist/server` 是 `inlineDynamicImports` 的单文件包,装不下
+第二个入口脚本(CLAUDE.md 的单文件/TDZ 判例),而 refold 要用的正是 core 那一整套
+投影函数。
+
+改成**把那一整块切开**(新文件 `packages/backend/session/refold-slices.ts`):四个
+分片函数 + 一个分片闸,每跑够**半帧(8ms)**就 `setImmediate` 让出一次事件环。
+`setImmediate` 而不是 `queueMicrotask` —— 微任务仍在同一个宏任务里排队,让出去的
+还是自己(与 `shadow.ts` 选 `setTimeout(0)` 同一个理由)。
+
+| 段 | 分片粒度 | 与原写法的等价关系 |
+|---|---|---|
+| `parseSessionLogEventLogSliced` | 每行 | ≡ `parseSessionLogEventLog`:同一份行切分(`indexOf` 逐段扫,省掉一次 17MB 的整体 `split`,段集合一模一样)、同一个稳定排序 |
+| `foldSessionProjectionSliced` | 每事件 | ≡ 顺序 `reduceSessionProjection` 全折(折的是私有 state,让出期间谁也碰不到) |
+| `canonicalProjectionMessagesSliced` | 每节点 | ≡ `visible.map(canonical∘materialize)`,同一份物化选项 |
+| `deepEqualPairsSliced` | 每对消息 | ≡ `deepEqual(a,b)`(两侧都是数组时),首个不等即短路进 diff 汇总 |
+
+**每一步问一次表,不隔 N 次问**:问表是一次 `Date.now()`(几十纳秒),7915 行的账本
+上总共不到 0.3ms。第一版隔 64 次问一次,在真机另一本 **50MB 却只有 258 行**的账本
+(单行 200KB)上一片塞进 64 个 200KB 的 `JSON.parse` —— 29.2ms 破帧。改成每步问一次
+之后同一本账 9.2ms。
+
+**诚实交代一条地板**:"逐条"是这个粒度的底。单条 200KB 级的巨行 / 巨消息本身就是
+一步,再往下切得改 `JSON.parse` / `deepEqual` 本身。真机三本账上没踩到(最长单步
+远小于半帧),记在这里等哪天真有一条 MB 级消息时不用重新查。
+
+#### 唯一**不**分片的那一格:活投影侧定格(≈22ms)
+
+让出事件环 = 一次 `await`,而批 4 早就用一次 battery 红换来了那条纪律:活投影
+**必须在第一次 await 之前取成快照**(`reduceSessionProjection` 是移动语义的,全进程
+共用一份;await 期间任何消费者把新事件折进去,回来物化到的就是"比游标多一段"的
+投影 → 假红)。所以这 22ms 是这道门里唯一无法避免的连续阻塞,**正确性优先,明账
+收着**。
+
+#### 游标守卫:不加新机制,加一段注释
+
+分片期间账本可能又被写,但这次比对的两侧此刻**都已与外界脱钩** —— 活投影侧是定格
+出来的朴素对象,文件侧从 `readFile` 返回起就只是一个字符串。所以守卫仍然只有原来
+那一道(**文件末条 seq == 定格游标**,parse 之后立刻问一次);分片完再问一遍没有
+意义,两个被比较的量一个都没变。这道理写进了 `refold.ts` 的头注释,免得后人以为
+"分片了就得补一道新守卫"。
+
+#### 门
+
+- **合同断言**(新增 `backend/session/__tests__/refold-slices.test.ts`,9 例):同一份
+  输入,原写法 vs 分片写法 `toEqual`。预算一律传 `0`(每一步都让出),把分片点踩满。
+  覆盖难看日志(空行 / 乱序 seq / 同 seq 重复行 / 未来类型 / 坏包封 / 末尾半行 /
+  末行无 `\n`)、空文件、500 行、fold、物化、逐对深比与短路。外加一条**行为**断言:
+  同步版跑完期间"别人的宏任务"一次都插不进来,分片版必须插得进来。
+- **真机只读实测**(探针 `scratchpad/refold-slice-probe.ts`,跑的是**生产同一份**
+  分片代码 + 同一个闸,只在外面套秒表):
+
+| 账本 | 修前一口气 | 修后墙钟 | 片数 | **最长连续阻塞** | 结果 |
+|---|---|---|---|---|---|
+| 17.1MB / 7915 行(诊断那本) | 93ms | 84ms | 12 | **8.4ms** ✅ | parse/canonical 逐字节相同,判定同为 match |
+| 50.4MB / 258 行(单行 200KB) | 68ms | 78ms | 12 | **9.2ms** ✅ | 同上 |
+| 25.2MB | 36ms | 35ms | 7 | **11.7ms** ✅ | 同上 |
+
+  总耗时基本持平(让出往返的开销落在噪声里),**最长一次连续阻塞全部 ≤16ms**。
+
+#### 验收
+
+`typecheck` 0;定向 `packages/backend/session` 22 文件 / 214 测试全绿;
+`sessions:shadow-battery` **GREEN**(runs 321、mismatches 0、appendFailures 0、
+**refoldChecks 225、refoldMismatches 0** —— 分片后的这条路在 225 次真采样上判定不变);
+`boundary:gate` / `session:gate` / `log:gate` 全绿;零 `console.*` 新增。
+`~/.onething` 全程只读。

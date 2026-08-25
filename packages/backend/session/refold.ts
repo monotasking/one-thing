@@ -17,7 +17,7 @@
  * 尾巴的增量 fold)。它恰好盖住耐久层守的那几类:append 静默丢、坏行、seq 错乱、
  * fsync 缺口、G12 外写者写进来的那一段。
  *
- * ## 三条纪律(与影子同款,理由也同款)
+ * ## 四条纪律(前三条与影子同款,理由也同款)
  *
  * 1. **永不抛进引擎**。出口 try/catch 自吞:一道对账门算错了最坏是账记歪,
  *    绝不能是聊天挂掉。
@@ -26,6 +26,11 @@
  *    (默认 5),**首个 run 必采** —— 一条只跑了一轮的会话也该被看一眼。
  * 3. **单法官,不开豁免**。判据是 `canonicalChatMessage`(与影子、与 S0 合同
  *    测试同一把尺)。这里不再额外豁免字段:真的不等就是真的不等。
+ * 4. **不许攥着主进程不放**(§15.14)。`await` 之后那一整块(parse / fold /
+ *    重折侧物化 / 深比)在真机 16.2MB 账本上是一口气 ≈142ms 的同步代码,主进程
+ *    那一刻什么都干不了 —— 用户感知就是"答完顿一下"。现在它走**协作式分片**
+ *    (`refold-slices.ts`):每跑够半帧让出一次事件环,总耗时略增,最长一次
+ *    连续阻塞压回一帧以内。唯一不分片的是活投影侧的定格(见下)。
  *
  * 记账:不等记 `<store>/log/session-shadow.jsonl` 一行 `kind:'refold'`,计数进
  * `session-shadow-stats.json` 的 `refoldChecks` / `refoldMismatches`;
@@ -35,13 +40,17 @@
 import fs from 'node:fs'
 import {
   canonicalChatMessage,
-  createSessionProjectionState,
   materializeNode,
-  parseSessionLogEventLog,
-  reduceSessionProjection,
   type ProjectionNode,
   type SessionProjectionState,
 } from '@onething/core/session'
+import {
+  canonicalProjectionMessagesSliced,
+  createRefoldSliceGate,
+  deepEqualPairsSliced,
+  foldSessionProjectionSliced,
+  parseSessionLogEventLogSliced,
+} from './refold-slices.js'
 import { bumpSessionShadowStats } from './event-stats.js'
 import {
   getSessionEventsLogPath,
@@ -121,6 +130,20 @@ export type SessionRefoldOutcome = 'match' | 'mismatch' | 'skipped'
  * A 那条助手消息 content 为空、B 有正文 —— 差的正是 await 期间新落的那批
  * chunks)。改法是把物化提到 await 之前:`canonicalChatMessage` 产出的是全新的
  * 朴素对象,快照一旦取出就不再受就地推进影响。
+ *
+ * **所以活投影侧这一段不分片**(§15.14):让出事件环 = 一次 `await`,与"第一次
+ * await 之前取完快照"是同一件事的正反面。它在真机大账本上 ≈22ms,是这道门里
+ * 唯一无法避免的连续阻塞 —— 正确性优先于流畅度,这一格明账收着。
+ *
+ * ## 分片之后为什么**不需要**新的游标机制
+ *
+ * 让出事件环期间账本可能又被写。但这次比对的两侧此刻**都已经与外界脱钩**:
+ *  - 活投影侧 `b` 是定格出来的朴素对象(上一段);
+ *  - 文件侧从 `readFile` 返回的那一刻起就只是一个字符串,后面追加的字节不会
+ *    出现在它里面。
+ * 所以守卫仍然只有原来那一道 —— **文件末条 seq == 定格游标**,在 parse 之后
+ * 立刻问一次。分片完再问一遍没有意义:两个被比较的量一个都没变,重问也只会
+ * 拿到同一个答案。要防的东西(快照过期)在定格那一步就已经防住了。
  */
 export async function checkSessionRefold(
   sessionId: string,
@@ -139,17 +162,22 @@ export async function checkSessionRefold(
     const b = canonicalMessages(sessionId, live)
 
     // ---- 这之后可以 await:上面那份快照已经与活投影脱钩。
+    // 剩下的四段都走分片闸:每跑够半帧让出一次事件环(§15.14)。
+    const gate = createRefoldSliceGate()
     const text = await fs.promises.readFile(getSessionEventsLogPath(sessionId), 'utf8')
-    const events = parseSessionLogEventLog(text)
+    const events = await parseSessionLogEventLogSliced(text, gate)
     if (events.length === 0) return 'skipped'
     if (events[events.length - 1].seq !== cursor) return 'skipped'
 
-    let refolded = createSessionProjectionState()
-    for (const event of events) refolded = reduceSessionProjection(refolded, event)
+    const refolded = await foldSessionProjectionSliced(events, gate)
 
-    const a = canonicalMessages(sessionId, refolded)
+    const a = await canonicalProjectionMessagesSliced(
+      refolded,
+      sessionProjectionOptions(sessionId),
+      gate,
+    )
     bumpSessionShadowStats({ refoldChecks: 1 })
-    if (deepEqual(a, b)) return 'match'
+    if (await deepEqualPairsSliced(a, b, deepEqual, gate)) return 'match'
 
     const { diff, truncated } = summarizeShadowDiff(a, b)
     appendSessionShadowLine({
