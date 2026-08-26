@@ -3,11 +3,13 @@
  *
  * `sessionCommands` 的 reducer 落定之后,这里把"刚刚发生了什么"翻成 v2 事件。
  *
- * **F2 起这里是"还没翻转的那几条"的家**(§16.2 的 F2 行 / §16.7)。翻转过的命令
- * 事件产地搬进了 `command-events.ts`(`sessionCommandEvents`),在那里事件是命令的
+ * **F2 起这里是"还没翻转的那几条"的家**(§16.2 的 F2 行 / §16.7 / §16.8)。翻转过的
+ * 命令事件产地搬进了 `command-events.ts`(`sessionCommandEvents`),在那里事件是命令的
  * **第一手表达**、写在 reducer **之前**;留在本文件里的这几条仍是老口径:从
- * store 的 mutation 反推,写在 reducer **之后**。F2-a 已搬走三条:
- * `appendMessage` / `deleteMessage` / `patchMessage`。
+ * store 的 mutation 反推,写在 reducer **之后**。已搬走五条:F2-a 的
+ * `appendMessage` / `deleteMessage` / `patchMessage`,F2-b 的
+ * `upsertMessage` / `truncateFrom`。剩下四个方法里只有 `replaceAll` / `patchSession`
+ * 还是命令(F2-c 翻),`sessionCreated` / `sessionCompacted` 是**非命令**采集点。
  * 共用的取材件(`messageForEvent` / `attachmentsForEvent` / `safely` /
  * BODY_KEYS / DERIVED_KEYS)只有一份,住在 `command-events.ts`。
  *
@@ -15,8 +17,8 @@
  *
  * 1. **翻译在 reducer 成功之后**。命令没改成任何东西(找不到那条消息、
  *    patch 是空的)就一条事件都不写 —— 事件账本记的是事实,不是意图。
- * 2. **只读门面**。这个模块从 `sessionReads` 取消息,从 `sessionSurface` 取
- *    surface 坐标,一次都不碰 `session.messages`(`session:gate` 盯着这条)。
+ * 2. **只读门面**。这个模块从 `sessionSurface` 取 surface 坐标,一次都不碰
+ *    `session.messages`(`session:gate` 盯着这条)。
  * 3. **正文只有一个来源**。`content` / `reasoning` / `contentParts` 永远不进
  *    `message/patched` —— 它们的来源是 `assistant/chunks`(§9.2 的类型级门在
  *    core 里钉着同一条)。`isStreaming` 同理:它是 `run/start`…`run/end` 之间
@@ -26,16 +28,17 @@
  *    `getMessage` / `findMessage` 这类走投影的门面 ——
  *    正要由这次翻译写出的那条事件,活投影还没看到,走 fromEvents 会自引用滞后的
  *    旧投影,把旧正文焊进账本。`fromEvents` 岔口只属于产品读路;命令面同此纪律。
+ *    (F2-b 之后本文件已经不再需要读消息:唯一那两处取材随 upsert / truncateFrom
+ *    搬去了命令面。)
  *
  * 失败一律自吞:翻译坏了不能影响聊天(写失败的计数在 `event-stats.ts`)。
  * **有一个例外**:`SessionEventWriteError` 往上抛(批 6b 起无条件)—— 见 `safely`。
  */
 
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
-import { messageForEvent, safely, sessionCommandEvents } from './command-events.js'
+import { messageForEvent, safely } from './command-events.js'
 import { appendSurfaceAwareEvent, isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
 import { currentSessionRun } from './runs.js'
-import { sessionReads } from './reads.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
@@ -43,81 +46,6 @@ const log = getLogger('sessions.events')
 // ============ 命令翻译(还没翻转产地的那几条) ============
 
 export const sessionEventTranslator = {
-  /**
-   * `upsertMessage` 命中已有的那条 = **整条换掉**(S1b 补齐,§10.7 缺口 6)。
-   *
-   * 翻成一条 `message/patched`,但走的是 `fullBody` 档:正文字段
-   * (`content` / `contentParts` / `reasoning`)**照旧带上**。理由是这一条与
-   * 普通 patch 的语义不同 —— 普通 patch 的正文另有来源(assistant 的正文唯一
-   * 来源是 chunks),而 upsert 的语义就是"这条消息现在整条长这样"。
-   *
-   * 安全边界在归约器里而不是这里:`sanitizePatch` 对 **assistant 节点**照旧
-   * 剥掉正文三件套(它的正文来自 chunks,让一条 patch 盖过去就是开了第二个
-   * 正文来源),对消息节点则原样叠加 —— 那正是"整条换掉"。
-   *
-   * 唯一的生产调用点是 server 的 MESSAGE_* 投影(`app/server/runtime.ts` 的
-   * `upsertServerMessage`),它在交给命令面之前已经把 existing 与 incoming 合并
-   * 过了,所以这里拿到的确实是完整的一条。
-   */
-  upsertMessage(sessionId: string, message: ChatMessage, existed: boolean): void {
-    // F2-a:这两条的事件构造已经搬进 `command-events.ts`(命令面第一手产地)。
-    // upsert 自己还没翻转(F2-b),所以它仍然从这里借道 —— 借的是**同一份**构造,
-    // 不是复制一份。
-    if (!existed) {
-      sessionCommandEvents.appendMessage(sessionId, message)
-      return
-    }
-    sessionCommandEvents.patchMessage(
-      sessionId,
-      message.id,
-      message as Partial<ChatMessage>,
-      { fullBody: true },
-    )
-  },
-
-  /**
-   * `truncateFrom`。两种语义,两条事件:
-   *  - `inclusive` (regenerate) → `message/deleted` + replace 遮蔽"这条到末尾";
-   *  - 否则 (edit-resend) → `user/message-edited` + 同样的 replace,新节点接上。
-   *
-   * range 与 `sourceEventSeqs` 都从活 surface 取 —— 手数下标会在压缩之后错位
-   * (那个节点排在最前面而 seq 最大)。
-   */
-  truncateFrom(
-    sessionId: string,
-    payload: { messageId: string; inclusive: boolean },
-    updatedMessage: ChatMessage | undefined,
-  ): void {
-    if (!isSessionTranslationEnabled(sessionId)) return
-    safely('truncateFrom', () => {
-      const range = sessionSurface(sessionId).rangeFrom(payload.messageId)
-      const surfaceOp = range
-        ? ({ op: 'replace', start: range.start, end: range.end } as const)
-        : undefined
-      const options = surfaceOp ? { surfaceOp, sourceEventSeqs: range!.seqs } : {}
-
-      if (payload.inclusive) {
-        appendSurfaceAwareEvent(sessionId, 'message/deleted', { messageId: payload.messageId }, options)
-        return
-      }
-      // §13.18 发现 B:兜底走抄本真相面(见文件头纪律 4)。`getMessage` 的
-      // fromEvents 岔口在 events 读模式下会回读到还没写入这条事件的旧投影,把
-      // 编辑前的旧正文永久焊进 `user/message-edited.data.message`。
-      const message =
-        updatedMessage ?? sessionReads.getMessageFromTranscript(sessionId, payload.messageId)
-      if (!message) return
-      appendSurfaceAwareEvent(
-        sessionId,
-        'user/message-edited',
-        {
-          messageId: payload.messageId,
-          message: messageForEvent(sessionId, message as ChatMessage) as never,
-        },
-        { ...options, surfaceOp: surfaceOp ?? 'append' },
-      )
-    })
-  },
-
   /**
    * `replaceAll`。
    *  - `clear` → 一条 `session/cleared{reason:'clear'}` 遮蔽整条 surface;

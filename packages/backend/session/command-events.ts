@@ -14,10 +14,11 @@
  * | `event-translator.ts`(未翻转的命令) | 从 store 的 mutation 反推 | reducer 之后 |
  * | 本文件(已翻转的命令) | 命令自己构造 | reducer **之前** |
  *
- * F2-a 翻转的三条:`appendMessage` / `deleteMessage` / `patchMessage`。
- * 其余命令(upsert / truncateFrom / replaceAll / compact / patchSession …)仍住在
- * 翻译器里,并从这里取共用的取材件 —— **共用件只有一份**:两个产地各自演化出一份
- * `messageForEvent` 就是"同一条消息在两种事件里长得不一样"的温床。
+ * F2-a 翻转的三条:`appendMessage` / `deleteMessage` / `patchMessage`;
+ * F2-b 再翻两条:`upsertMessage` / `truncateFrom`。其余命令(replaceAll / compact /
+ * patchSession / sessionCreated)仍住在翻译器里,并从这里取共用的取材件 ——
+ * **共用件只有一份**:两个产地各自演化出一份 `messageForEvent` 就是"同一条消息
+ * 在两种事件里长得不一样"的温床。
  *
  * 纪律(与翻译器同源,§9.3 / §13.18):
  *
@@ -142,8 +143,8 @@ export const sessionCommandEvents = {
    * `ChatMessage.turnContext` 字段,§9.2);正文与派生字段一律丢弃;
    * 剩下全空就一条都不写。
    *
-   * `fullBody` 是 **upsert 的整条替换**借道用的那一档(它还在翻译器里,F2-b 才翻转):
-   * 正文三件套照旧带上 —— 那一条的语义就是"这条消息现在整条长这样"。
+   * `fullBody` 是 **upsert 的整条替换**用的那一档(F2-b 之后 upsert 就在本文件里,
+   * 见下):正文三件套照旧带上 —— 那一条的语义就是"这条消息现在整条长这样"。
    */
   patchMessage(
     sessionId: string,
@@ -178,4 +179,125 @@ export const sessionCommandEvents = {
       appendSurfaceAwareEvent(sessionId, 'message/patched', { messageId, patch: kept })
     })
   },
+
+  /**
+   * `upsertMessage`(F2-b)。两条分支,岔口是**这条消息在不在**——
+   * 与 core reducer 的 `findIndex(item => item.id === message.id) === -1` 同源同义,
+   * 由命令面在写事件之前从抄本真相面问一次(§13.18 发现 B:events 读模式下活投影
+   * 还没看到这条流中 assistant 消息,`getMessage` 的 fromEvents 岔口会误判成"新增",
+   * 于是把一条 `message/patched` 写成了 `system/message`)。
+   *
+   *  - **不在** → 与 `appendMessage` 是**同一条**构造(reducer 那边也正是同一个
+   *    `applyAppend`):流中的 assistant 占位照旧一条都不写,`run/start` 才是它
+   *    在 surface 上的那一格;
+   *  - **在** → `message/patched` 的 `fullBody` 档:正文三件套照旧带上,因为 upsert
+   *    的语义就是"这条消息现在整条长这样"。安全边界在归约器的 `sanitizePatch`
+   *    (它对 assistant 节点仍然剥掉正文三件套),不在这里。
+   *
+   * 借道的是**同一份**构造而不是复制一份 —— 两个产地各自演化出一份 append/patch,
+   * 就是"同一条命令写出两种事件"的温床。
+   */
+  upsertMessage(sessionId: string, message: ChatMessage, existed: boolean): void {
+    if (!existed) {
+      sessionCommandEvents.appendMessage(sessionId, message)
+      return
+    }
+    sessionCommandEvents.patchMessage(
+      sessionId,
+      message.id,
+      message as Partial<ChatMessage>,
+      { fullBody: true },
+    )
+  },
+
+  /**
+   * `truncateFrom`(F2-b)。两种语义,两条事件:
+   *  - `inclusive`(regenerate)→ `message/deleted` + replace 遮蔽"这条到末尾";
+   *  - 否则(edit-resend)→ `user/message-edited` + 同样的 replace,新节点接上。
+   *
+   * range 与 `sourceEventSeqs` 都从**活 surface** 取 —— 手数下标会在压缩之后错位
+   * (那个节点排在最前面而 seq 最大)。F1 之后活 surface 上还有 `tool/result` 这类
+   * 格子,所以这一段遮蔽比 F1 之前更全:那是已拍定的行为,不是本批的副作用。
+   *
+   * **编辑那一支的新正文由命令自己合成**(翻转之前是 reducer 先写、翻译器再从 store
+   * 把它读回来):底稿 = 编辑**前**那条(命令面从抄本真相面取,§13.18 发现 B),
+   * 叠上 `newContent` / `contentParts`,再盖上 `now`。这三步逐字镜像 core 的
+   * `applyTruncate`,而 `now` 由命令决定一次、**同时**递给事件与 reducer(§16.8),
+   * 所以两条推导上的 `timestamp` 不是"差不多相等",是同一个数 —— 否则恒等门
+   * (§16.5)比的就是两个时钟读数。
+   */
+  truncateFrom(
+    sessionId: string,
+    payload: {
+      messageId: string
+      inclusive: boolean
+      newContent?: string
+      contentParts?: ChatMessage['contentParts'] | null
+    },
+    context: { before?: Readonly<ChatMessage>; now: number },
+  ): void {
+    if (!isSessionTranslationEnabled(sessionId)) return
+    safely('truncateFrom', () => {
+      const range = sessionSurface(sessionId).rangeFrom(payload.messageId)
+      const surfaceOp = range
+        ? ({ op: 'replace', start: range.start, end: range.end } as const)
+        : undefined
+      const options = surfaceOp ? { surfaceOp, sourceEventSeqs: range!.seqs } : {}
+
+      if (payload.inclusive) {
+        appendSurfaceAwareEvent(sessionId, 'message/deleted', { messageId: payload.messageId }, options)
+        return
+      }
+      // 底稿不在 = 这次命令什么都改不成(reducer 的 `index === -1`)。命令面已经
+      // 用同一个判据挡在前面,这里是第二道 —— 只写事实。
+      if (!context.before) return
+      appendSurfaceAwareEvent(
+        sessionId,
+        'user/message-edited',
+        {
+          messageId: payload.messageId,
+          message: messageForEvent(sessionId, editedMessage(payload, context.before, context.now)) as never,
+        },
+        { ...options, surfaceOp: surfaceOp ?? 'append' },
+      )
+    })
+  },
+}
+
+/**
+ * `truncateFrom{inclusive:false}` 改写出来的那条消息 —— **逐字镜像**
+ * `packages/core/session/commands.ts` 的 `applyTruncate`:
+ *
+ * ```
+ * target.content = command.newContent
+ * if (command.hasContentParts) { 非空 → 赋值;空 → delete }
+ * target.timestamp = now
+ * ```
+ *
+ * `hasContentParts` 的判据是"payload 上有没有 `contentParts` 这个键"(与命令面
+ * 递给 store 端口的那一个同义,不是"值是不是真"),所以 `contentParts: null`
+ * 是**显式清空**,而键不在则一格都不动。
+ *
+ * 写法上**只构造、不赋值**:`session:gate` 的规则 B 只放行 core reducer 里的消息
+ * 字段赋值,而这里本来也不该改任何一条在册的消息 —— 它算的是"这条命令要写进事件
+ * 里的那一份",拿到的 `before` 是只读的(dev / vitest 下还是深冻结的)。
+ */
+function editedMessage(
+  payload: {
+    newContent?: string
+    contentParts?: ChatMessage['contentParts'] | null
+  },
+  before: Readonly<ChatMessage>,
+  now: number,
+): ChatMessage {
+  const declared = Object.prototype.hasOwnProperty.call(payload, 'contentParts')
+  const clearing = declared && !(payload.contentParts && payload.contentParts.length > 0)
+  // 清空那一档要的是"这个键不在了",所以底稿先把它摘掉(而不是赋一个空值)。
+  const { contentParts: _cleared, ...withoutParts } = before
+  return {
+    ...(clearing ? withoutParts : before),
+    ...(declared && !clearing ? { contentParts: payload.contentParts } : {}),
+    content: payload.newContent ?? '',
+    timestamp: now,
+  } as ChatMessage
 }

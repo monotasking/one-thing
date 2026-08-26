@@ -2,10 +2,14 @@
  * §13.18 发现 B:**事件写侧取材一律走抄本真相面,永不走随读模式分岔的门面。**
  *
  * events 读模式下,`user/message-edited` / `message/deleted` / upsert-existed 这三处
- * 事件正要由这次翻译写出,而活投影(`projection-cache`)还停在写之前 —— 走
+ * 事件正要由这次写出,而活投影(`projection-cache`)还停在写之前 —— 走
  * `sessionReads.getMessage` / `findMessage` 的 `fromEvents` 岔口会**自引用**滞后的
  * 旧投影,把旧正文 / 误判的类别 / 丢失的删除焊进账本(写坏账本,不只是读错)。
  * 修法是给写侧一对读模式盲的 `*FromTranscript`,恒读 `messages.jsonl`。
+ *
+ * **F2-b 之后取材点搬了家**:这三处的事件产地都在 `command-events.ts`,而"从哪儿
+ * 取底稿"这一步在命令面(`commands.ts`)。纪律一字未变,断言的入口从翻译器换成了
+ * 命令面。
  *
  * 与 `shadow-read-mode.test.ts` 同款:跑**真的** `reads.ts` / 事件日志 / 投影,
  * 只替身最底下的会话仓库,让抄本与投影**故意分岔**,断言写侧取的是抄本那一份。
@@ -37,9 +41,19 @@ vi.mock('../../stores/sessions.js', () => ({
   getSessionMessagesPage: () => ({ success: true, messages: [] }),
   getSessionUserMessageMarkers: () => [],
   readSessionTranscriptFile: () => undefined,
+  // 命令面的生产接线口:本用例自己搭命令面,不走 `getSessionCommands()`。
+  getSessionMessageCommandRuntime: () => {
+    throw new Error('unused in this test')
+  },
+  flushSessionSave: async () => {},
+  patchSessionFields: () => false,
+  stampCollabAgentId: (_sessionId: string, message: ChatMessage) => message,
+  updateSessionsIndexMetaForCommands: () => true,
 }))
 
-const { sessionEventTranslator } = await import('../event-translator.js')
+import type { SessionMessageCommandRuntime } from '../commands.js'
+
+const { createSessionCommands } = await import('../commands.js')
 const { sessionCommandEvents } = await import('../command-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
   '../event-log.js'
@@ -83,33 +97,87 @@ async function events(): Promise<SessionLogEventRecord[]> {
   return readSessionLogEventsSync(SESSION)
 }
 
+/**
+ * F2-b:取材那一步搬到了命令面(`commands.ts`),所以这条用例也要走命令面才问得到
+ * "底稿从哪儿来"。store 端口只做归约器那一半(改抄本),事件那一半由命令自己产出。
+ */
+function commandsOverTranscript(now: number) {
+  const messages: SessionMessageCommandRuntime = {
+    addMessage: () => {},
+    upsertMessage: () => true,
+    patchMessageFields: () => true,
+    addMessageContentPart: () => false,
+    addMessageStep: () => false,
+    updateMessageStep: () => false,
+    updateStepsUsageByTurn: () => [],
+    updateMessageToolCalls: () => false,
+    deleteMessage: () => true,
+    deleteMessageWhere: () => true,
+    deleteMessageAndTruncate: () => true,
+    updateMessageAndTruncate: (_sessionId, messageId, newContent, options) => {
+      const list = state.messages.get(SESSION) ?? []
+      const index = list.findIndex(item => item.id === messageId)
+      if (index === -1) return false
+      const next = list.slice()
+      next[index] = { ...next[index], content: newContent, timestamp: options?.now ?? 0 }
+      state.messages.set(SESSION, next.slice(0, index + 1))
+      return true
+    },
+    replaceAllMessages: () => false,
+    repairOnLoad: () => false,
+  }
+  return createSessionCommands(
+    {
+      messages,
+      getSession: id => ({ id, messages: state.messages.get(id) ?? [] }) as never,
+      updateSessionsIndexMeta: () => true,
+      flushSessionSave: async () => {},
+      patchSession: () => false,
+    },
+    { now: () => now },
+  )
+}
+
 describe(
   'event write side reads the transcript, never the lagging projection (§13.18 发现 B)',
   () => {
-    it('truncateFrom(edit) writes the reducer-settled content/timestamp, not the pre-edit projection', async () => {
-      // 投影侧:账本上是编辑前的 'v1' / timestamp 1000。
-      setTranscript([{ id: 'u1', role: 'user', content: 'v1', timestamp: 1000 }])
+    it('truncateFrom(edit) takes its base from the transcript, not from the lagging projection', async () => {
+      // 投影侧:账本上那一格是 `model:'from-projection'` 的旧快照。
+      setTranscript([
+        { id: 'u1', role: 'user', content: 'v1', timestamp: 1000, model: 'from-projection' },
+      ])
       sessionCommandEvents.appendMessage(SESSION, {
         id: 'u1',
         role: 'user',
         content: 'v1',
         timestamp: 1000,
+        model: 'from-projection',
       })
       resetSessionProjectionCache(SESSION)
 
-      // reducer 已落定:抄本换成 'v2' + 新 timestamp 2000。此刻 user/message-edited
-      // 事件还没写,活投影仍停在 'v1'。
-      setTranscript([{ id: 'u1', role: 'user', content: 'v2', timestamp: 2000 }])
+      // 抄本侧此刻另有一份(真机上是这条消息在别处被改过)。F2-b 之后
+      // `user/message-edited` 的底稿由**命令面**在 reducer 之前取,取的必须是抄本
+      // 这一份;走 `getMessage` 的 fromEvents 岔口就会取到上面那份滞后投影。
+      setTranscript([
+        { id: 'u1', role: 'user', content: 'v1', timestamp: 1000, model: 'from-transcript' },
+      ])
 
-      // updatedMessage 传 undefined,逼翻译器走兜底读(B 的发作点)。
-      sessionEventTranslator.truncateFrom(SESSION, { messageId: 'u1', inclusive: false }, undefined)
+      commandsOverTranscript(2000).truncateFrom(SESSION, {
+        messageId: 'u1',
+        inclusive: false,
+        newContent: 'v2',
+      })
 
       const edited = (await events()).find(event => event.type === 'user/message-edited')
       expect(edited).toBeDefined()
       const message = (edited?.data as { message?: ChatMessage }).message
-      // HEAD 在 events 模式取到旧投影 'v1' / 1000 → 红;修后走抄本 'v2' / 2000 → 绿。
+      // 底稿来自抄本(B 的发作点);正文与时刻来自命令自己(F2-b 的翻转)。
+      expect(message?.model).toBe('from-transcript')
       expect(message?.content).toBe('v2')
       expect(message?.timestamp).toBe(2000)
+      // 而 store 侧(影子验证器)独立推导出的那条,timestamp 是**同一个数** ——
+      // 不是"差不多相等":两侧盖的是命令决定的同一个时刻(§16.8)。
+      expect(state.messages.get(SESSION)?.[0]?.timestamp).toBe(2000)
     })
   },
 )

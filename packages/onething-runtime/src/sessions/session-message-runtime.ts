@@ -281,7 +281,13 @@ export class OnethingSessionMessageRuntime<
     sessionId: string,
     messageId: string,
     newContent: string,
-    options?: { contentParts?: TMessage['contentParts'] | null },
+    /**
+     * `now`:调用方指定这次改写盖上去的时刻。**编辑重发是唯一一条由归约器合成
+     * 消息字段的命令**(它给被改写的那条盖新 `timestamp`),而事件账本那一侧也要
+     * 记同一个数 —— 让两边各读一次表就是让恒等门去比两个时钟。
+     * 不传则本实现自取(老调用点一字未变)。
+     */
+    options?: { contentParts?: TMessage['contentParts'] | null; now?: number },
   ): boolean {
     const applied = this.run(sessionId, {
       type: 'truncateFrom',
@@ -290,7 +296,7 @@ export class OnethingSessionMessageRuntime<
       newContent,
       hasContentParts: Boolean(options && Object.prototype.hasOwnProperty.call(options, 'contentParts')),
       contentParts: options?.contentParts as unknown[] | null | undefined,
-      now: this.now(),
+      now: options?.now ?? this.now(),
     })
     if (!applied) return false
 

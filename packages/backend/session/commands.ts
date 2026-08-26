@@ -19,14 +19,15 @@
  * `app/stores/sessions.ts` 上还留着的那批 `updateMessage*` **不是**死路径:
  * 它们是 core 引擎注入的 store 端口的实现,接口形状 P0 不许动(§6)。
  *
- * **F2-a:三条命令的事件产地已经翻转**(§16.2 的 F2 行 / §16.7)。
- * `appendMessage` / `deleteMessage` / `patchMessage` 现在的执行序是
+ * **F2-a/F2-b:五条命令的事件产地已经翻转**(§16.2 的 F2 行 / §16.7 / §16.8)。
+ * `appendMessage` / `deleteMessage` / `patchMessage`(F2-a)与
+ * `upsertMessage` / `truncateFrom`(F2-b)现在的执行序是
  * **事件 append(同步可见)→ reducer 应用到 store**,事件构造住在
  * `command-events.ts`(`sessionCommandEvents`),是命令的第一手表达;老 reducer
  * 降级为 F0 的影子验证器(§16.5),独立推导同一件事供恒等门对账。
- * 于是"命令内读得到自己刚写的"对这三条成立(F1 的同步可见,§16.6)。
- * 其余命令(upsert / truncateFrom / replaceAll / patchSession)仍是老口径 ——
- * reducer 先跑,`event-translator.ts` 从 mutation 反推,F2-b/c 再翻。
+ * 于是"命令内读得到自己刚写的"对这五条成立(F1 的同步可见,§16.6)。
+ * 其余命令(replaceAll / patchSession)仍是老口径 ——
+ * reducer 先跑,`event-translator.ts` 从 mutation 反推,F2-c 再翻。
  *
  * **事件写侧取材纪律(§13.18 发现 B)**:命令面在写完端口后给翻译器递数,一律走
  * `sessionReads.*FromTranscript`(恒读 `messages.jsonl` 真相面),**永不**走
@@ -85,7 +86,14 @@ export interface SessionMessageCommandRuntime {
     sessionId: string,
     messageId: string,
     newContent: string,
-    options?: { contentParts?: ChatMessage['contentParts'] | null },
+    /**
+     * `now` 是 F2-b 加的一格(§16.8):`truncateFrom{inclusive:false}` 是唯一一条
+     * **由 reducer 合成消息字段**的命令(它给被改写的那条盖新 `timestamp`)。
+     * 翻转之后事件写在 reducer 之前,两条推导要盖同一个数,否则恒等门比的是两个
+     * 时钟读数。所以时刻由命令决定一次,顺着这一格递进来;不传则实现自取
+     * (老调用点一字未变)。
+     */
+    options?: { contentParts?: ChatMessage['contentParts'] | null; now?: number },
   ): boolean
   replaceAllMessages(
     sessionId: string,
@@ -192,13 +200,20 @@ export interface CreateSessionCommandsOptions {
   events?: typeof sessionCommandEvents | null
   /**
    * S1a 的影子写(§10.2 第一行采集点):reducer 落定之后把这次命令翻成事件。
-   * **F2 之后这里只剩没翻转的那几条**(upsert / truncateFrom / replaceAll /
-   * patchSession);翻转过的走上面的 `events`。
+   * **F2-b 之后这里只剩没翻转的那两条命令**(replaceAll / patchSession);
+   * 翻转过的走上面的 `events`。
    *
    * 是**选项**而不是硬接线,因为命令面的单元测试要的是"命令做对了什么",
    * 不该顺带把一份事件日志写到某个临时目录里去。生产实例默认接上。
    */
   translator?: typeof sessionEventTranslator | null
+  /**
+   * 命令自己的时钟(F2-b,§16.8)。今天只有 `truncateFrom{inclusive:false}` 用得上:
+   * 它是唯一一条由 reducer 合成消息字段的命令,翻转之后"盖哪个 timestamp"必须由
+   * 命令决定一次、同时喂给事件与 reducer。可注入是为了**字节回归**能在两棵树上
+   * 跑出同一个数(与 `OnethingSessionMessageRuntime` 的 `options.now` 同款做法)。
+   */
+  now?: () => number
 }
 
 export function createSessionCommands(
@@ -211,6 +226,7 @@ export function createSessionCommands(
   const events = options.events === undefined
     ? sessionCommandEvents
     : options.events
+  const now = options.now ?? Date.now
 
   return {
     /**
@@ -229,14 +245,26 @@ export function createSessionCommands(
       ports.messages.addMessage(sessionId, message)
     },
 
+    /**
+     * F2-b:**事件先,store 后**。
+     *
+     * 一个判据同时回答两个问题 —— "这条消息在不在":reducer 用它分 insert / replace
+     * 两支(`findIndex === -1`),事件用它分 append / `fullBody` patch 两档。所以
+     * 只问一次,而且问的是与 reducer **同一份 store**。
+     *
+     * §13.18 发现 B:走抄本真相面 —— events 读模式下活投影还没看到这条流中
+     * assistant 消息,`getMessage` 的 fromEvents 岔口会误判成"新增",翻译错类。
+     * (F2-a 用的是 `getMessageFromTranscript(...) !== undefined`;换成
+     * `hasMessageInTranscript` 是同一口同一义,只是不把消息交出去、也就不必冻。)
+     *
+     * `if (changed)` 没了,不是丢了判据:reducer 的 `changed` 对 upsert **恒为 true**
+     * (两支都 `changed: true`),端口那个布尔只在"整条会话不在"时才是 false ——
+     * 而那正是 F2-a 的 `appendMessage` 已经接受的同一个洞、同一条事件(§16.8 留账)。
+     */
     upsertMessage(sessionId, payload) {
-      // 翻译要分清"新增"与"就地换掉",所以先问一次在不在。
-      // §13.18 发现 B:走抄本真相面 —— events 读模式下活投影还没看到这条流中
-      // assistant 消息,`getMessage` 的 fromEvents 岔口会误判成"新增",翻译错类。
-      const existed = sessionReads.getMessageFromTranscript(sessionId, payload.message.id) !== undefined
-      const changed = ports.messages.upsertMessage(sessionId, payload.message)
-      if (changed) translator?.upsertMessage(sessionId, payload.message, existed)
-      return changed
+      const existed = sessionReads.hasMessageInTranscript(sessionId, payload.message.id)
+      events?.upsertMessage(sessionId, payload.message, existed)
+      return ports.messages.upsertMessage(sessionId, payload.message)
     },
 
     /**
@@ -287,33 +315,48 @@ export function createSessionCommands(
       return ports.messages.updateMessageToolCalls(sessionId, payload.messageId, payload.toolCalls)
     },
 
+    /**
+     * F2-b:**事件先,store 后**。三件事按这个顺序:
+     *
+     * 1. **取材**。编辑重发那一支要编辑**前**的那条做底稿(翻转之前是 reducer 先
+     *    写完、翻译器再把改好的那条读回来;现在改由命令自己合成)。走抄本真相面
+     *    (§13.18 发现 B):`getMessage` 的 fromEvents 岔口会回读到滞后投影,把
+     *    编辑前的旧正文永久焊进 `user/message-edited.data.message`。
+     * 2. **判据**。reducer 的 `changed` 只有一个 false 的理由 —— 那条消息不在
+     *    (`applyTruncate` 的 `index === -1`)。删除那一支不需要底稿,所以单问一句
+     *    存在性;编辑那一支的底稿在不在就是同一个答案,不再多问一次。
+     * 3. **时刻**。`truncateFrom{inclusive:false}` 是唯一一条由 reducer **合成消息
+     *    字段**的命令(给被改写的那条盖新 `timestamp`)。事件排到 reducer 前面之后,
+     *    这个数必须由命令决定一次,**同时**递给事件与 reducer —— 否则事件上是命令
+     *    的时钟、store 上是 reducer 的时钟,恒等门(§16.5)比的就是两次读表。
+     *
+     * surface range 照旧在截断之前取(截断之后那些节点还在 surface 上,但"从哪条起"
+     * 要按当时的位置算)—— 事件产地本来就排在 reducer 之前,这一条自然成立。
+     */
     truncateFrom(sessionId, payload) {
-      // 翻译要在**截断之前**取 surface range(截断之后那些节点还在 surface 上,
-      // 但"从哪条起"要按当时的位置算)—— 所以先算,后写。
-      const changed = payload.inclusive
+      const before = payload.inclusive
+        ? undefined
+        : (sessionReads.getMessageFromTranscript(sessionId, payload.messageId) as ChatMessage | undefined)
+      const present = payload.inclusive
+        ? sessionReads.hasMessageInTranscript(sessionId, payload.messageId)
+        : before !== undefined
+      const at = now()
+      if (present) events?.truncateFrom(sessionId, payload, { before, now: at })
+
+      return payload.inclusive
         ? ports.messages.deleteMessageAndTruncate(sessionId, payload.messageId)
         : ports.messages.updateMessageAndTruncate(
             sessionId,
             payload.messageId,
             payload.newContent ?? '',
-            // 只有显式带了 contentParts 键才动它(与老 mutator 的 hasContentParts 同义)
-            Object.prototype.hasOwnProperty.call(payload, 'contentParts')
-              ? { contentParts: payload.contentParts }
-              : undefined,
+            {
+              // 只有显式带了 contentParts 键才动它(与老 mutator 的 hasContentParts 同义)
+              ...(Object.prototype.hasOwnProperty.call(payload, 'contentParts')
+                ? { contentParts: payload.contentParts }
+                : {}),
+              now: at,
+            },
           )
-      if (changed) {
-        translator?.truncateFrom(
-          sessionId,
-          payload,
-          payload.inclusive
-            ? undefined
-            // §13.18 发现 B:抄本真相面 —— reducer 刚把新正文+新 timestamp 落进内存
-            // store,而 `user/message-edited` 事件正要由这次翻译写出;走 fromEvents
-            // 会回读到编辑前的旧正文,把它永久焊进账本。
-            : (sessionReads.getMessageFromTranscript(sessionId, payload.messageId) as ChatMessage | undefined),
-        )
-      }
-      return changed
     },
 
     /**

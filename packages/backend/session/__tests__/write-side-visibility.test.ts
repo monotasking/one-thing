@@ -47,7 +47,6 @@ vi.mock('../../stores/sessions.js', () => ({
   readSessionTranscriptFile: () => undefined,
 }))
 
-const { sessionEventTranslator } = await import('../event-translator.js')
 const { sessionCommandEvents } = await import('../command-events.js')
 const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } = await import(
   '../event-log.js'
@@ -148,7 +147,7 @@ describe('F1:命令产出的事件在 append 返回前已经在活投影上(§16
     })
     expect(peekedMessageIds()).toEqual(['u1', 'u2'])
 
-    sessionEventTranslator.truncateFrom(SESSION, { messageId: 'u2', inclusive: true }, undefined)
+    sessionCommandEvents.truncateFrom(SESSION, { messageId: 'u2', inclusive: true }, { now: 3000 })
 
     expect(peekedMessageIds()).toEqual(['u1'])
   })

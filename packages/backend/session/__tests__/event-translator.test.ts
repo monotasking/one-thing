@@ -170,25 +170,33 @@ describe('command → event translation (§9.3)', () => {
   })
 
   it('truncateFrom(edit) replaces from that message to the end of the surface', async () => {
-    state.messages = [userMessage('u1', 'edited')]
     sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
     const run = beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
     endSessionRun(SESSION, run.runId, { outcome: 'completed' })
     sessionCommandEvents.appendMessage(SESSION, userMessage('u2'))
 
-    sessionEventTranslator.truncateFrom(SESSION, { messageId: 'u1', inclusive: false }, undefined)
+    // F2-b:底稿是编辑**前**那条(命令面从抄本真相面取来递进来),新正文与新时刻
+    // 都由命令决定 —— 不再等 reducer 写完再读回来。
+    sessionCommandEvents.truncateFrom(
+      SESSION,
+      { messageId: 'u1', inclusive: false, newContent: 'edited' },
+      { before: userMessage('u1'), now: 4242 },
+    )
 
     const edited = (await events()).find(event => event.type === 'user/message-edited')!
     // surface 上的三格:u1(1) / run-start(2) / u2(4)。全部被这一条替换掉。
     expect(edited.surfaceOp).toEqual({ op: 'replace', start: 1, end: 4 })
     expect(edited.sourceEventSeqs).toEqual([1, 2, 4])
-    expect((edited.data as unknown as { message: { content: string } }).message.content).toBe('edited')
+    const message = (edited.data as unknown as { message: ChatMessage }).message
+    expect(message.content).toBe('edited')
+    // 镜像 core 的 `applyTruncate`:盖上命令递进来的那个时刻,一格不多一格不少。
+    expect(message.timestamp).toBe(4242)
   })
 
   it('truncateFrom(regenerate) deletes inclusively with the same range', async () => {
     sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
     sessionCommandEvents.appendMessage(SESSION, userMessage('u2'))
-    sessionEventTranslator.truncateFrom(SESSION, { messageId: 'u2', inclusive: true }, undefined)
+    sessionCommandEvents.truncateFrom(SESSION, { messageId: 'u2', inclusive: true }, { now: 1 })
 
     const deleted = (await events()).find(event => event.type === 'message/deleted')!
     expect(deleted.surfaceOp).toEqual({ op: 'replace', start: 2, end: 2 })
