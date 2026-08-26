@@ -2023,6 +2023,40 @@ describe('SurfaceIndex', () => {
     ])
     expect(unresolved.violations.map(v => v.reason)).toEqual(['compact-anchor-unresolved'])
   })
+
+  /**
+   * 批 6a 尾款(§15.21):`sourceEventSeqs` 的完整性只对**消息节点**问责。
+   *
+   * `tool/result` 在 surface 上占一格却不物化成一条历史消息,而写侧的活 surface
+   * 索引根本看不见它(那两条 `tool/result` 走 `appendSessionLogEvent`,不走
+   * `appendSurfaceAwareEvent`)—— 于是同进程内落的 `tool/result` 永远进不了清单。
+   * 真机 `ec2437ff` 的 `session/compacted@6068` 就是这么红的:遮蔽 257 格、声明
+   * 173 个,差的 84 格全是 `tool/result`。整段照样被遮全,模型没多看也没少看。
+   */
+  it('does not blame a compaction for cells that are not messages', () => {
+    const line: SessionLogEventRecord[] = [
+      { seq: 1, time: 1, type: 'user/message', data: { message: { id: 'u1', role: 'user' } }, surfaceOp: 'append' },
+      { seq: 2, time: 2, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' },
+      { seq: 3, time: 3, type: 'tool/result', data: { callId: 'c1', isError: false, resultPreview: 'x' }, surfaceOp: 'append' },
+      { seq: 4, time: 4, type: 'user/message', data: { message: { id: 'u2', role: 'user' } }, surfaceOp: 'append' },
+      {
+        seq: 5, time: 5, type: 'session/compacted',
+        data: { summary: 's', messageId: 'k1', compactedMessageCount: 2, compactedThroughMessageId: 'u2' },
+        // 写侧当时看不见 seq 3(那条 `tool/result`),清单里就没有它。
+        surfaceOp: { op: 'replace', start: 1, end: 4 }, sourceEventSeqs: [1, 2, 4],
+      },
+    ]
+    const folded = foldSurface(line)
+    expect(folded.shadowed).toEqual([1, 2, 3, 4])
+    expect(folded.violations).toEqual([])
+
+    // 反证:漏的要是**消息节点**,照旧红 —— 那才是 §7.1 B5 的静默历史错乱。
+    const missingMessage = foldSurface([
+      line[0], line[1], line[2], line[3],
+      { ...line[4], sourceEventSeqs: [1, 3, 4] } as SessionLogEventRecord,
+    ])
+    expect(missingMessage.violations.map(v => v.reason)).toEqual(['source-seqs-incomplete'])
+  })
 })
 
 // ============================================================================

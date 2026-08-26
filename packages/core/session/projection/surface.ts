@@ -78,13 +78,23 @@ export class SurfaceIndex {
   private readonly violations: SurfaceViolation[] = []
   /** 消息 id → 它在 surface 上那一格的 eventSeq(压缩锚点的第二步解析用)。 */
   private readonly seqByMessageId = new Map<string, number>()
+  /**
+   * surface 上**代表一条消息**的那些格(`surfaceMessageIdOf` 认得的)。
+   *
+   * 批 6a 尾款:`sourceEventSeqs` 的完整性只对这些格问责 —— 见
+   * `declaredMessageGap`。
+   */
+  private readonly messageNodeSeqs = new Set<number>()
 
   push(event: SessionLogEventRecord): void {
     const op = event.surfaceOp
     const isNode = isSessionSurfaceNodeType(event.type)
     if (isNode) {
       const messageId = surfaceMessageIdOf(event)
-      if (messageId) this.seqByMessageId.set(messageId, event.seq)
+      if (messageId) {
+        this.seqByMessageId.set(messageId, event.seq)
+        this.messageNodeSeqs.add(event.seq)
+      }
     }
 
     if (op === undefined) {
@@ -155,12 +165,34 @@ export class SurfaceIndex {
     const removed = this.order.slice(0, to + 1)
     for (const seq of removed) this.shadowed.add(seq)
     this.order.splice(0, removed.length)
-    const declared = new Set(event.sourceEventSeqs ?? [])
-    const declaredFrom = removed.findIndex(seq => declared.has(seq))
-    if (declaredFrom === -1) return
-    if (removed.slice(declaredFrom).some(seq => !declared.has(seq))) {
+    if (this.declaredMessageGap(event, removed)) {
       this.violations.push({ eventSeq: event.seq, type: event.type, reason: 'source-seqs-incomplete' })
     }
+  }
+
+  /**
+   * 被遮蔽的那一段里,**代表消息的那些格**有没有从 `sourceEventSeqs` 里漏掉。
+   *
+   * 批 6a 尾款(§15.21):问责范围是**消息节点**,不是所有 surface 格。
+   * `tool/result` 在 surface 上占一格却不物化成一条历史消息
+   * (`surfaceMessageIdOf` 认不出它),而写侧的活 surface 索引根本看不见它 ——
+   * 那两条 `tool/result` 走的是 `appendSessionLogEvent` 而不是
+   * `appendSurfaceAwareEvent`,于是同进程内落的 `tool/result` 永远进不了
+   * `sourceEventSeqs`。真机 `ec2437ff` 的 `session/compacted@6068` 就是这么红的:
+   * 遮蔽 257 格、声明 173 个,差的 84 格**全是** `tool/result`。
+   *
+   * 那不是历史错乱:`shadowCompact` 用 `order.slice(0, to+1)` 整段遮全,模型
+   * 既没多看也没少看 —— 是一条**记账完整性**的抱怨。真正会变成静默历史错乱的
+   * 只有消息节点漏声明(§7.1 B5),所以校验只对它们问责。
+   *
+   * `declaredFrom` 的口径不变:只校验写侧声明的那一段(见 `shadowCompact` 注释)。
+   */
+  private declaredMessageGap(event: SessionLogEventRecord, removed: readonly number[]): boolean {
+    const declared = new Set(event.sourceEventSeqs ?? [])
+    const messages = removed.filter(seq => this.messageNodeSeqs.has(seq))
+    const declaredFrom = messages.findIndex(seq => declared.has(seq))
+    if (declaredFrom === -1) return false
+    return messages.slice(declaredFrom).some(seq => !declared.has(seq))
   }
 
   /**
@@ -220,8 +252,10 @@ export class SurfaceIndex {
     for (const seq of removed) this.shadowed.add(seq)
     this.order.splice(from, removed.length)
 
+    // 批 6a 尾款:只对**消息节点**问责(理由见 `declaredMessageGap`);这条路上
+    // 不放过头部(声明区的口径只属于压缩那一路)。
     const declared = new Set(event.sourceEventSeqs ?? [])
-    if (removed.some(seq => !declared.has(seq))) {
+    if (removed.some(seq => this.messageNodeSeqs.has(seq) && !declared.has(seq))) {
       this.violations.push({ eventSeq: event.seq, type: event.type, reason: 'source-seqs-incomplete' })
     }
 

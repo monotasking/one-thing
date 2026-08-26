@@ -103,3 +103,15 @@ room-1 messages: projection has 1 message(s) unknown to messages.jsonl
 # 这两行只静音 a5157107 一条,别的会话再出同款仍然红 —— 这是刻意的。
 a5157107-dfac-4a42-b910-58148e982bfb unclosed-run: run a2813feb-0373-46d4-9391-25236fb1f6f1 started at seq 233 has no run/end
 a5157107-dfac-4a42-b910-58148e982bfb messages: canonical differs for message b4a1e667-801b-4185-b17d-d4647cc807f9
+# 2026-08-26 追加 1 条(批 6a 尾款,§15.21 / §15.20):**成因已修**的存量化石。
+# `Permission.clearSession` 的 `'Session cleared'` 是拆除现场留给等待方的一句内部话,
+# 不是判决理由;修前的 `settlePendingReject` 把它当理由报进了账本
+# (`permission/answered` 带 `reason:"Session cleared"`),于是投影比 messages.jsonl
+# **多出**三处 `rejectionReason`(`1.steps.1.rejectionReason` /
+# `1.steps.1.toolCall.rejectionReason` / `1.toolCalls.1.rejectionReason`,抄本侧一律
+# `(absent)`)。修在单一构造点(`core/permission/index.ts` 的 `SettleKind`,`dc810f4f`),
+# 新写入不再产生这一格 —— 电池场景 `abort-while-awaiting-permission` 盯着,不复发。
+# 盘上这一条按 G3(事件只追加、不回填)留着,静音。
+# **hydration-contract 的 fail 1 也是它**:`scripts/session-hydration-contract.ts` 读的
+# 就是这份基线(按会话 id 降级成 `baseline-skip`),所以这一行同时收掉两道门。
+ef079fd7-d6ca-42a4-887b-499767593b7a messages: canonical differs for message 55a915aa-c27d-40bc-aee9-ffe215a76d20

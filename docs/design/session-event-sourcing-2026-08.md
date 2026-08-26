@@ -3994,6 +3994,7 @@ renderer 直接 import core reducer)。
 | 08-28 | 5 | flush 收口四项(§15.11 清单 a–d,批 6 前置)+ S3w-4 体积治理 — **已完成(§15.12)**;events.jsonl 轮转只出方案未动手(§15.12 B3,待拍板) | — |
 | 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿)。**前置已做一半**(§15.18):`fallbackHits` 的结构性地板(§15.9 诊断 1)已归位 —— `stream-executor.ts` 的写侧取材改真相面口,battery 321 → 16;余下 16 条全部是 `agent-loop-executor.ts:249`(steer 换锚点)这同一处孪生,同款一行修法,**留在批 6 里一并收**,收完删兜底的"命中率 = 0"判据才干净 | **唯一确认点**:烧 S2b 回滚读前问一次 —— **用户已确认并预授权跳过浸泡期**(2026-08-26,单用户环境口径) |
 | 08-26 | **6a** | **切 off(只翻默认与配套,不删码)** —— `ONETHING_SESSION_TRANSCRIPT` 默认 `shadow → off`(`shadow`/`primary` 降为显式回滚杆);孪生取材点 `rotateAssistantWriterIdentity` 一行修完 `fallbackHits` **16 → 0**;battery 泳道语义对调(停写泳道 → 默认档泳道 + 新增显式 `shadow` 回滚杆泳道,六条泳道);verify #6 改**存量只读对账**;§14.6 第三组裁定按推荐记录 —— **已完成(§15.19)** | — |
+| 08-26 | **6a 尾款** | 批 6a 遗下的两条真机存量红收口 —— `source-seqs-incomplete` 读侧收敛到"只对消息节点问责"(`ec2437ff` 自愈)、`Session cleared` 化石进 verify 基线(同一行同时收掉 hydration-contract 的 fail 1);verify:gate **0 new** —— **已完成(§15.21)**。**写侧留一次拍板**:让 `tool/result` 走 `appendSurfaceAwareEvent`(新账完整 + 顺带收编辑重发尾随格),是可感知行为变化,按旧行为停手 | **待拍板**:§15.21 第 1 条写侧 |
 | 08-27 | **6b** | **删旧**:storage-driver 消息写半边删(meta/index 保留)、reads 兜底删、sanitize 死码清、`session:check` 白名单收缩、裁定 9b(legacy 首触迁移)与 10(`messages.cleared-*` 退役)的实施;两根抄本回滚杆随写代码一起退役,届时回滚 = `git revert` | — |
 | 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
 | 09-05→09-08 | 12–14 | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动) | B 期细案到期过目 |
@@ -5179,6 +5180,13 @@ write-failure probes    PASS  off=命令报错   PASS  shadow=只计数
 (`ec2437ff` 的 `source-seqs-incomplete`)仍未诊断,与抄本、与本批任何一处改动都
 不沾边 —— 单独立条。
 
+> **勘误(§15.21,08-26)**:上面第 2 条里"遮掉 75 格 / 差的那 1 格是
+> `seq 4243` 一条 `message/deleted`"**点错了**。只读实算的真相是:遮蔽 **257 格**、
+> 声明 **173 个**、差的 **84 格全是 `tool/result`**(`message/deleted` 根本不是
+> surface 节点类型,永远不会进 `removed`)。类别判断没错(差的都是"占一格却不代表
+> 一条消息"的格),但产地是 `tool/result` 的两个写入点绕开了活 surface 索引 ——
+> 全部改正见 §15.21。两条红都已在那一批收口。
+
 **回滚成本**:本批一行写代码都没删,回滚 = 把 `DEFAULT_SESSION_TRANSCRIPT_MODE`
 改回 `'shadow'`(或设 `ONETHING_SESSION_TRANSCRIPT=shadow`),抄本立刻重新开始写。
 
@@ -5334,3 +5342,95 @@ history 3)、`duplicateMismatches:10`、`skipped:{history-steer-window:4}`、
 (history.ts:323,per-result 200k / total 600k 字符预算)在长历史下的落点有关,
 但没有直接证据 —— 记在这里,不当作根因的一部分。**全量重放这段事件是确定性的:
 那格 `rejectionReason` 必然出现**,反证单测即按这条时刻线复现。
+
+### 15.21 批 6a 尾款:两条真机存量红收口(2026-08-26,opus 执行,未提交)
+
+批 6a 结束时 `sessions:verify:gate` 上还剩两条真机红(§15.19 末段)。这一小批只做
+它们的收口,不碰任何写侧行为。
+
+#### 1. `ec2437ff` `surface: session/compacted@6068: source-seqs-incomplete`
+
+**§15.19 的根因描述有一处点错了,实算更正**(只读实算那份 events.jsonl):
+遮蔽的是 **257 格**(不是 75),声明了 **173 个**,差的 **84 格全部是 `tool/result`**
+——**没有一条 `message/deleted`**(`message/deleted` 压根不是 surface 节点类型,
+它带 replace op 但自己不占格,永远不会出现在 `removed` 里)。
+
+但**类别的判断是对的**:差掉的那些格都是"**在 surface 上占一格、却不代表一条
+消息**"的格(`surfaceMessageIdOf` 认不出它们)。真正的产地是另一处:
+
+- `tool/result` 是 `SESSION_SURFACE_NODE_TYPES` 里的节点,但它的两个产地
+  (`backend/wiring/engine/stream/session-event-recorder.ts:984` / `:1119`)走的是
+  `appendSessionLogEvent`,**不是** `appendSurfaceAwareEvent` —— 于是它进不了
+  `event-surface.ts` 的**活** `SurfaceIndex`。
+- 活索引在 `ensureState` 首次建起来时会 fold 一遍盘上已有的事件(那一遍**认得**
+  `tool/result`),所以缺的只是**本进程内**新落的那些 `tool/result`。
+- 写侧 `event-translator.ts` 的 `sessionCompacted` 按 `order.slice(0, at+1)` 凑
+  `sourceEventSeqs` —— 活 order 里没有这些格,清单里自然也没有。
+- 读侧整份日志重放,`order` 里**有**这些格,`shadowCompact` 的完整性检查当场报缺。
+
+**不是行为漂移**:`shadowCompact` 用 `order.slice(0, to+1)` 整段遮全,模型历史没有
+多看或少看一条 —— 这是一条**记账完整性**的抱怨。
+
+**读侧改了(本批)**:`core/session/projection/surface.ts` 的两处声明区校验
+(`shadowCompact` / `applyReplace`)只对**消息节点**问责 —— 新增
+`messageNodeSeqs`(`surfaceMessageIdOf` 认得的那些格)与私有
+`declaredMessageGap`;非消息 surface 格(`tool/result`)缺席不抱怨。会真正变成
+§7.1 B5 那种静默历史错乱的只有消息节点漏声明,校验因此收敛到它们。老文件
+(`ec2437ff`)当场自愈:`bun scripts/session-verify.ts ec2437ff-…` 由 FAIL 转
+`ok events=7293 messages=137`。合同测试新增一条双面用例
+(`does not blame a compaction for cells that are not messages`:漏 `tool/result` 绿、
+反证漏消息节点仍红);既有的 `flags a replace that forgot to declare what it shadows`
+不受影响(它漏的是 `run/start`,是消息节点)。
+
+**写侧没有改 —— 停在诊断,须拍板**。任务书里那一句"`covered → sourceEventSeqs`
+补全为全部被遮格"在 `event-translator.ts` 里**无处下手**:写侧手上那份 order 本身
+就没有 `tool/result`,而它拿不到(现读整份 events.jsonl 是 §7.2 M7 点名禁止的主线程
+同步全文件读)。唯一的真修法是把上面两处 `tool/result` 改走
+`appendSurfaceAwareEvent`,让活索引与重放一致 —— 但那**是一次可感知的行为变化**,
+不只影响压缩:
+
+- `sessionSurface().rangeFrom/wholeRange` 会开始把 `tool/result` 算进去,于是
+  编辑重发 / 删除 / 清空写下的 `surfaceOp.end` 可能从一条 `run/start` 变成它后面
+  那条 `tool/result`,**被遮蔽的格因此变多**。
+- 顺带会照出一处**同源的既有分岔**(本批只记录、不动):今天编辑重发写下的 `end`
+  是活 order 的末格(通常是 `run/start`),而读侧 order 里那条 `run/start` 后面还
+  跟着若干 `tool/result` —— `applyReplace` 的 `to` 停在 `run/start` 上,**那些
+  尾随的 `tool/result` 在读侧没有被遮掉**。它们不物化成历史消息,所以今天看不出
+  症状;要不要一起收,和上面是同一次拍板。
+
+按"用户可感知的行为变化默认保持旧行为"的口径,这一条留给用户裁定。
+
+#### 2. `ef079fd7` `Session cleared` 化石进基线
+
+成因已由 `dc810f4f` 修掉(§15.20:`'Session cleared'` 是拆除现场留给等待方的一句
+内部话,不是判决理由;修在 `core/permission/index.ts` 的单一构造点)。盘上那条
+`permission/answered` 是**修复前**写的,按 G3(事件只追加、不回填)不动它,红线
+进基线静音:`docs/audit/session-verify-baseline-2026-08-20.txt` 追加
+
+```
+ef079fd7-d6ca-42a4-887b-499767593b7a messages: canonical differs for message 55a915aa-c27d-40bc-aee9-ffe215a76d20
+```
+
+**`sessions:hydration-contract` 的 fail 1 也是它**,而且**同一行就收掉两道门**:
+`scripts/session-hydration-contract.ts` 读的就是这份基线(按会话 id 把红降级成
+`baseline-skip`),contract 没有第二份基线机制。改完 contract 由 `1 failed` 转
+`441 session(s), 0 failed`(`baseline-skip` 8 → 9)。
+
+#### 验收(实跑)
+
+| 项 | 结果 |
+| --- | --- |
+| `bun run typecheck` | 0 |
+| 定向 `packages/core/session` + `packages/backend/session` | 30 files / 364 tests 全绿 |
+| `bun run sessions:shadow-battery` | **GREEN** —— runs 368 / historyChecks 512 / mismatches 0 / appendFailures 0 / refoldMismatch 0 / fallbackHits 0 / shadow.jsonl 0 行 |
+| `bun run boundary:gate` | 0 failures |
+| `bun run session:gate` | 0 known, none new |
+| `bun run log:gate` | 4 known, none new |
+| `node scripts/session-verify-gate.mjs`(真机只读) | **ok — 13 known issue(s), none new** |
+| `bun run sessions:hydration-contract` | 441 session(s), **0 failed**(baseline-skip 9) |
+
+**另记(不属本批,只报告不动手)**:verify 门这一轮打印 **13 条 healed**,全部
+**先于本批**就已经绿了(本批只改 violation 的问责范围,动不了 canonical 投影;
+逐条复跑证过:`46dcec05` `ok`、`room-1` `ok`、`a5157107` 的 `unclosed-run` 在
+stash 掉本批改动后同样已自愈 —— 基线第 24 段本来就预告了它会自愈)。要不要就此
+收紧基线是另一次动作,不在本批范围。
