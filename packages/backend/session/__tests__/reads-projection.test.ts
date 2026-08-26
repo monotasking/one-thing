@@ -1,10 +1,14 @@
 /**
- * S2b step C(§13.14-C):读门面里最后四个方法在 `events` 读模式下的取数。
+ * 读门面的取数 —— **S3w-3 批 6b 之后只有一条路**(§13.14-C / §15.22)。
  *
- * `findMessage` / `firstUserPreview` / `iterateMessages` 走事件投影(与 S2a 那
- * 七个同一条岔口),`sliceForHistory` 走 `projectModelHistory`(模型历史,不是
- * "再抄一遍投影")。这一套用例证明的正是切读的安全前提:同一条会话上,
- * **抄本(messages)与事件(events)两条读路给出的答案一致**。
+ * S2a/S2b 时代这个文件问的是"抄本与事件两条读路给出的答案一致";批 6b 烧掉了
+ * `ONETHING_SESSION_READ` 并删掉了每个 routed 方法右边的 `?? getSessionMessages`
+ * 兜底,于是判据换成更强的一条:**读门面只认事件投影**。仓库替身里那份被故意
+ * 改坏的"抄本"从此一个字也漏不进产品读路 —— 谁把某个方法改回去当场红。
+ *
+ * `sliceForHistory` 仍然走 `projectModelHistory`(模型历史,不是"再抄一遍投影");
+ * 它下面那条 store 切片路不是抄本兜底,是**能力缺口**的退路(没装构造器 /
+ * 给了 `upToMessageId`),所以留着,并且有自己的用例。
  *
  * 与 `shadow-read-mode.test.ts` 同一套骨架:跑**真的** `reads.ts`,只替身最底下
  * 的会话仓库;`sliceForHistory` 需要模型历史构造器,测试用 core 的默认配方装上
@@ -45,7 +49,7 @@ const { getLiveSessionProjection, resetSessionProjectionCache } =
   await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
-const { setSessionReadModeForTesting, setSessionHydrateModeForTesting, DEFAULT_SESSION_HYDRATE_MODE } =
+const { setSessionHydrateModeForTesting, DEFAULT_SESSION_HYDRATE_MODE } =
   await import('../read-mode.js')
 const { hydrateSessionMessagesFromProjection } = await import('../hydrate.js')
 const { sessionProjectionOptions } = await import('../projection-blobs.js')
@@ -70,7 +74,6 @@ beforeEach(() => {
   resetSessionEventReadCache()
   resetSessionPrepareCache()
   resetSessionEventStatsCache()
-  setSessionReadModeForTesting(undefined)
   configureSessionHistoryBuilder({
     fromMessages: (messages, session) =>
       buildHistoryMessages([...messages] as never, session as never, RECIPE as never),
@@ -80,7 +83,6 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
-  setSessionReadModeForTesting(undefined)
   setSessionHydrateModeForTesting(undefined)
   configureSessionHistoryBuilder(undefined)
   fs.rmSync(state.storeDir, { recursive: true, force: true })
@@ -133,133 +135,84 @@ function setTranscript(assistantText: string, userText = 'hi'): void {
   ])
 }
 
-function readIn<T>(mode: 'messages' | 'events', fn: () => T): T {
-  setSessionReadModeForTesting(mode)
-  try {
-    return fn()
-  } finally {
-    setSessionReadModeForTesting(undefined)
-  }
-}
-
 /** ChatMessage 的可比投影:两条读路的会话身份/正文一致(events 侧多带 seq)。 */
 function identity(message: { id?: string; role?: string; content?: unknown } | undefined) {
   return message ? { id: message.id, role: message.role, content: message.content } : undefined
 }
 
-describe('S2b step C — the last four reads agree across read modes', () => {
-  beforeEach(async () => {
-    await recordRun('hello')
-    setTranscript('hello')
-  })
-
-  it('findMessage returns the same message in both modes', () => {
-    const fromMessages = readIn('messages', () =>
-      sessionReads.findMessage(SESSION, m => m.role === 'assistant'))
-    const fromEvents = readIn('events', () =>
-      sessionReads.findMessage(SESSION, m => m.role === 'assistant'))
-    expect(identity(fromEvents)).toEqual(identity(fromMessages))
-    expect(fromEvents?.content).toBe('hello')
-  })
-
-  it('findMessage from:end agrees too', () => {
-    const fromMessages = readIn('messages', () =>
-      sessionReads.findMessage(SESSION, m => m.role === 'user', { from: 'end' }))
-    const fromEvents = readIn('events', () =>
-      sessionReads.findMessage(SESSION, m => m.role === 'user', { from: 'end' }))
-    expect(identity(fromEvents)).toEqual(identity(fromMessages))
-    expect(fromEvents?.id).toBe('u1')
-  })
-
-  it('firstUserPreview agrees in both modes', () => {
-    const fromMessages = readIn('messages', () => sessionReads.firstUserPreview(SESSION))
-    const fromEvents = readIn('events', () => sessionReads.firstUserPreview(SESSION))
-    expect(fromEvents).toBe(fromMessages)
-    expect(fromEvents).toBe('hi')
-  })
-
-  it('iterateMessages yields the same sequence in both modes', () => {
-    const fromMessages = readIn('messages', () =>
-      [...sessionReads.iterateMessages(SESSION)].map(identity))
-    const fromEvents = readIn('events', () =>
-      [...sessionReads.iterateMessages(SESSION)].map(identity))
-    expect(fromEvents).toEqual(fromMessages)
-    expect(fromEvents.map(m => m?.id)).toEqual(['u1', 'a1'])
-  })
-
-  it('sliceForHistory: events mode == messages mode (the S2b history safety premise)', () => {
-    const fromMessages = readIn('messages', () => sessionReads.sliceForHistory(SESSION))
-    const fromEvents = readIn('events', () => sessionReads.sliceForHistory(SESSION))
-    expect(fromEvents).toEqual(fromMessages)
-    // provider 历史形状(不是 ChatMessage 切片):没有 timestamp / contentParts。
-    expect(fromEvents.map((m: unknown) => (m as { role?: string }).role))
-      .toEqual(['user', 'assistant'])
-  })
-
-  it('sliceForHistory events mode == projectModelHistory with the same recipe (shadow parity)', () => {
-    const fromEvents = readIn('events', () => sessionReads.sliceForHistory(SESSION))
-    const state0 = getLiveSessionProjection(SESSION)
-    const expected = materializeModelHistory(state0, { id: SESSION }, {
-      ...RECIPE,
-      ...sessionProjectionOptions(SESSION),
-    } as never)
-    expect(fromEvents).toEqual(expected)
-  })
-
-  it('sliceForHistory falls back to the transcript slice when no builder is configured', () => {
-    configureSessionHistoryBuilder(undefined)
-    const slice = readIn('messages', () => sessionReads.sliceForHistory(SESSION))
-    // 老形状(ChatMessage 切片):带 id / timestamp。
-    expect((slice as Array<{ id?: string }>).map(m => m.id)).toEqual(['u1', 'a1'])
-  })
-})
-
-/**
- * 路由自证:抄本与事件**故意分岔**,`events` 模式必须读到事件那一份 ——
- * 把某个方法改回 `getSessionMessages` 当场红(否则相同内容的一致性用例证明不了
- * 岔口真的接上了)。
- */
-describe('S2b step C — events mode reads the projection, not the transcript', () => {
+describe('读门面只认事件投影(批 6b 删兜底之后)', () => {
+  /**
+   * 抄本与事件**故意分岔**:仓库替身里那一份写着 TAMPERED,事件里写着 EVENTS。
+   * 每个方法都必须读到事件那一份 —— 把任何一个改回 `getSessionMessages` 当场红。
+   */
   beforeEach(async () => {
     await recordRun('EVENTS', 'events-user')
     setTranscript('TAMPERED', 'tampered-user')
   })
 
   it('findMessage reflects the events projection', () => {
-    expect(readIn('events', () => sessionReads.findMessage(SESSION, m => m.role === 'assistant'))?.content)
-      .toBe('EVENTS')
-    expect(readIn('messages', () => sessionReads.findMessage(SESSION, m => m.role === 'assistant'))?.content)
-      .toBe('TAMPERED')
+    const found = sessionReads.findMessage(SESSION, m => m.role === 'assistant')
+    expect(found?.content).toBe('EVENTS')
+    expect(identity(found)).toEqual({ id: 'a1', role: 'assistant', content: 'EVENTS' })
+  })
+
+  it('findMessage from:end agrees too', () => {
+    expect(sessionReads.findMessage(SESSION, m => m.role === 'user', { from: 'end' })?.content)
+      .toBe('events-user')
   })
 
   it('firstUserPreview reflects the events projection', () => {
-    expect(readIn('events', () => sessionReads.firstUserPreview(SESSION))).toBe('events-user')
-    expect(readIn('messages', () => sessionReads.firstUserPreview(SESSION))).toBe('tampered-user')
+    expect(sessionReads.firstUserPreview(SESSION)).toBe('events-user')
   })
 
   it('iterateMessages reflects the events projection', () => {
-    expect(readIn('events', () => [...sessionReads.iterateMessages(SESSION)].map(m => m.content)))
+    expect([...sessionReads.iterateMessages(SESSION)].map(m => m.content))
       .toEqual(['events-user', 'EVENTS'])
-    expect(readIn('messages', () => [...sessionReads.iterateMessages(SESSION)].map(m => m.content)))
-      .toEqual(['tampered-user', 'TAMPERED'])
+  })
+
+  it('listMessages / countMessages / getMessage reflect the events projection', () => {
+    expect(sessionReads.listMessages(SESSION).messages.map(m => m.content))
+      .toEqual(['events-user', 'EVENTS'])
+    expect(sessionReads.countMessages(SESSION)).toBe(2)
+    expect(sessionReads.getMessage(SESSION, 'a1')?.content).toBe('EVENTS')
+    expect(sessionReads.getMessageIndex(SESSION, 'a1')).toBe(1)
+    expect(sessionReads.lastMessageOfRole(SESSION, 'assistant')?.content).toBe('EVENTS')
   })
 
   it('sliceForHistory reflects the events projection (model history)', () => {
-    const fromEvents = readIn('events', () => sessionReads.sliceForHistory(SESSION))
-    const fromMessages = readIn('messages', () => sessionReads.sliceForHistory(SESSION))
-    expect(JSON.stringify(fromEvents)).toContain('EVENTS')
-    expect(JSON.stringify(fromEvents)).not.toContain('TAMPERED')
-    expect(JSON.stringify(fromMessages)).toContain('TAMPERED')
+    const history = sessionReads.sliceForHistory(SESSION)
+    expect(JSON.stringify(history)).toContain('EVENTS')
+    expect(JSON.stringify(history)).not.toContain('TAMPERED')
+    // provider 历史形状(不是 ChatMessage 切片):没有 timestamp / contentParts。
+    expect(history.map((m: unknown) => (m as { role?: string }).role)).toEqual(['user', 'assistant'])
+  })
+
+  it('sliceForHistory == projectModelHistory with the same recipe (shadow parity)', () => {
+    const state0 = getLiveSessionProjection(SESSION)
+    const expected = materializeModelHistory(state0, { id: SESSION }, {
+      ...RECIPE,
+      ...sessionProjectionOptions(SESSION),
+    } as never)
+    expect(sessionReads.sliceForHistory(SESSION)).toEqual(expected)
+  })
+
+  it('sliceForHistory still takes the store slice when no builder is configured (能力缺口,不是抄本兜底)', () => {
+    configureSessionHistoryBuilder(undefined)
+    const slice = sessionReads.sliceForHistory(SESSION)
+    // 老形状(ChatMessage 切片):带 id / timestamp。取的是内存 store,不是抄本文件。
+    expect((slice as Array<{ id?: string }>).map(m => m.id)).toEqual(['u1', 'a1'])
   })
 })
 
 /**
- * S3w-1(§15.4):兜底半边的**命中遥测**。
+ * 批 6b 的**删兜底自证**:事件里折不出历史的会话,读门面给的是空 —— 而不是
+ * 悄悄从仓库里另取一份。这条是 §15.22 那批删除的反向断言:哪天有人把
+ * `?? getSessionMessages(...)` 加回来,它就红。
  *
- * `events` 模式下折不出历史 = 这一次读仍然走在 `messages.jsonl` 上。S3w-3 要删掉
- * 这批兜底,删之前必须先把命中量到 0 —— 所以它必须先能被数出来。
+ * 判据干净的前提在真机上已核过:400 间会话已 `message/imported`、33 间原生覆盖、
+ * 0 间"有事件却折不出消息",legacy 整文件 0 间(且按裁定 9b 首触即迁)。
  */
-describe('S3w-1 — transcript fallback telemetry', () => {
+describe('批 6b — 事件折不出历史时不再退回仓库', () => {
   const NO_EVENTS = 'reads-no-events'
 
   beforeEach(() => {
@@ -268,26 +221,19 @@ describe('S3w-1 — transcript fallback telemetry', () => {
     ])
   })
 
-  it('counts a fallback when the events side has no history for this session', () => {
-    readIn('events', () => sessionReads.listMessages(NO_EVENTS))
-    readIn('events', () => sessionReads.countMessages(NO_EVENTS))
-    flushSessionEventStats()
-    expect(readSessionShadowStats().fallbackHits).toBe(2)
+  it('listMessages / countMessages / iterateMessages 都给空', () => {
+    expect(sessionReads.listMessages(NO_EVENTS).messages).toEqual([])
+    expect(sessionReads.countMessages(NO_EVENTS)).toBe(0)
+    expect([...sessionReads.iterateMessages(NO_EVENTS)]).toEqual([])
+    expect(sessionReads.firstUserPreview(NO_EVENTS)).toBeUndefined()
+    expect(sessionReads.getMessage(NO_EVENTS, 'u1')).toBeUndefined()
+    expect(sessionReads.getMessageIndex(NO_EVENTS, 'u1')).toBe(-1)
+    expect(sessionReads.lastMessageOfRole(NO_EVENTS, 'user')).toBeUndefined()
   })
 
-  it('does not count in messages mode (there every read comes from the transcript)', () => {
-    readIn('messages', () => sessionReads.listMessages(NO_EVENTS))
-    readIn('messages', () => sessionReads.countMessages(NO_EVENTS))
-    flushSessionEventStats()
-    expect(readSessionShadowStats().fallbackHits).toBe(0)
-  })
-
-  it('does not count when the projection answers', async () => {
-    await recordRun('hello')
-    resetSessionEventStatsCache()
-    readIn('events', () => sessionReads.listMessages(SESSION))
-    flushSessionEventStats()
-    expect(readSessionShadowStats().fallbackHits).toBe(0)
+  it('抄本侧那三口(F11 的真相面)照旧读得到 —— 它们本来就不经过投影', () => {
+    expect(sessionReads.listMessagesFromTranscript(NO_EVENTS).map(m => m.content)).toEqual(['legacy'])
+    expect(sessionReads.getMessageFromTranscript(NO_EVENTS, 'u1')?.content).toBe('legacy')
   })
 })
 
