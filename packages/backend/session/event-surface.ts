@@ -30,6 +30,7 @@ import {
   appendSessionLogEvent,
   isSessionEventLogEnabled,
   readSessionLogEventsSync,
+  registerSessionLogEventAppendObserver,
 } from './event-log.js'
 import { prepareSessionEventsOnce } from './prepare.js'
 
@@ -41,7 +42,34 @@ interface SessionSurfaceState {
 
 const states = new Map<string, SessionSurfaceState>()
 
+/**
+ * F1(§16.6):活 surface 的推进**只此一条路** —— 写入口的同步可见观察者。
+ *
+ * 从前推进挂在 `appendSurfaceAwareEvent` 自己身上,于是走另一扇门
+ * (`appendSessionLogEvent`)落下的事件写侧永远看不见。`tool/result` 恰好既是
+ * surface 节点、又只从采集点走那扇门(`session-event-recorder.ts`),所以同进程
+ * 内落的 `tool/result` 从来进不了 `order`/`sourceEventSeqs` —— core 的
+ * `declaredMessageGap` 注释里那条真机病历(`ec2437ff`:遮 257 格声明 173 个,
+ * 差的 84 格全是 `tool/result`)说的就是它。挂到写入口上之后,写侧的活 surface
+ * 与读侧 `foldSurface(整份文件)` 看到的是同一串事件。
+ *
+ * 注册同样发生在运行期(第一次建表时),不在 import 期。
+ */
+let appendObserverRegistered = false
+
+function ensureAppendObserver(): void {
+  if (appendObserverRegistered) return
+  appendObserverRegistered = true
+  registerSessionLogEventAppendObserver((sessionId, record) => {
+    // 不主动建表:没建表 = 这个会话的 surface 还没有人要,建表要读整份文件。
+    const state = states.get(sessionId)
+    if (!state) return
+    applyToState(state, record)
+  })
+}
+
 function ensureState(sessionId: string): SessionSurfaceState {
+  ensureAppendObserver()
   const existing = states.get(sessionId)
   if (existing) return existing
   const state: SessionSurfaceState = { index: new SurfaceIndex(), seqByMessageId: new Map() }
@@ -128,17 +156,12 @@ export function appendSurfaceAwareEvent<TType extends SessionLogEventType>(
   options: { surfaceOp?: SessionSurfaceOp; sourceEventSeqs?: number[] } = {},
 ): number | undefined {
   prepareSessionEventsOnce(sessionId)
-  const seq = appendSessionLogEvent(sessionId, type, data, options)
-  if (seq === undefined) return undefined
-  applyToState(ensureState(sessionId), {
-    seq,
-    time: Date.now(),
-    type,
-    data,
-    ...(options.surfaceOp !== undefined ? { surfaceOp: options.surfaceOp } : {}),
-    ...(options.sourceEventSeqs !== undefined ? { sourceEventSeqs: options.sourceEventSeqs } : {}),
-  } as SessionLogEventRecord)
-  return seq
+  // F1:**先把活 surface 立起来,再写** —— 推进由写入口的同步观察者负责
+  // (见 `ensureAppendObserver`),这里只保证"写下去的时候表已经在了"。
+  // 从前是写完再自己 `applyToState` 一次,那一份复刻记录也随之消失:观察者拿到的
+  // 是写入口分配 seq 时的**原件**,不会再有第二个 `Date.now()`。
+  ensureState(sessionId)
+  return appendSessionLogEvent(sessionId, type, data, options)
 }
 
 /** 这个会话在记账吗 —— 翻译器的短路闸(legacy 会话一条都不写)。 */

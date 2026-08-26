@@ -3863,7 +3863,7 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 | 期 | 交付 | 门 | 回退 |
 |---|---|---|---|
 | **F0 恒等门转向** — **已完成(§16.5,2026-08-27)** | 现 shadow(store=真相 vs 投影=影子)**角色对调**:事件/fold 侧成真相,老 reducer 降级为影子验证器;比对机制、记账口径沿用 session-shadow | 对调后真机 ≥200 run 0 失配 | 对调是比对方向,零行为变化 |
-| **F1 写侧同步可见** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
+| **F1 写侧同步可见** — **已完成(§16.6,2026-08-27)** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
 | **F2 命令面翻转(逐条)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
 | **F3 写侧回读换语义** | §14.1 的 9 处写侧回读残留全部改读 fold 后投影(F1 是前提);「写侧读抄本」纪律(§13.18)整体翻面 | 定向用例逐处 + battery | 随 F2 分批走 |
 | **F4 reducer 退役** | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
@@ -3886,6 +3886,13 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 - **同步可见 vs 崩溃窗口**:F1 把「fold 先于落盘」钉成纪律后,崩溃时活投影可能领先
   磁盘 —— refold 会把这类窗口暴露为 refold 失配,语义 fsync 检查点是兜底,F1 落地时
   重审检查点位。
+  **F1 已重审(2026-08-27,§16.6 第三节),结论修正**:这类窗口 refold **不会**报成
+  失配,它按设计 `skipped` —— 守卫是「文件末条 seq == 定格游标」,领先时文件那侧更短,
+  游标当场对不齐。这条不是 F1 新引入的:F1 之前活投影也是"读的时候把整条尾巴折进来",
+  游标同样等于"已 append 的最后一条"。真正的定性是:**崩溃后重启,活投影从文件重折,
+  领先的那一段随进程一起消失 —— 账本仍然自洽**(少一段 ≠ 错一段),而少的那一段的
+  上界由语义 fsync 检查点(调模型前 / 调工具前 / 响应收齐 / run 结束)夹住,检查点位
+  一处未动。
 - **13 条命令翻转是长尾**:compact/truncateFrom/upsert 三条携带 §13 一整章的真机判例
   (双追加、占位替换、existed 探测),每条翻转都要把对应判例搬进用例。
 
@@ -5786,3 +5793,161 @@ refoldMismatches **0** / `session-shadow.jsonl` **0 行**,四泳道一探针全 
 3. **真机 ≥200 run 0 失配**这条 F0 自己的门今天只有 32 run —— 它按设计是**浸泡期**
    拿的(批 6b 之后重新起算),不是本批能一次跑出来的数;battery 的 321 run 是它的
    离线替身。
+
+### 16.6 F1 落地记录:写侧同步可见(2026-08-27,opus 执行,未提交)
+
+**一句话**:一条事件被写入口分配到 seq 的那一刻,**还在同一个同步段里**就折进了这个
+进程的每一份活状态(活投影 + 活 surface),然后才排队落盘。"命令内读得到自己刚写的"
+从"每个读口都记得先 drain 一次"的**约定**,变成写入口自己保证的**机制**。
+
+#### 一、勘察结论(改动量取决于它):**半同步 —— 记录同步、fold 惰性**
+
+开工前的真实时序(HEAD `5f073752`):
+
+```
+appendSessionLogEvent(sessionId, type, data)          ← 同步段开始
+  ├─ seq = ++state.lastSeq                            ← 同步
+  ├─ record = {seq,time,type,data,surfaceOp,…}        ← 同步(原件只此一份)
+  ├─ state.expectedBytes += byteLength(line)          ← 同步(G12 守卫的账)
+  ├─ state.shadowTail.push(record)                    ← 同步:**记录进内存,但没折**
+  └─ state.queue = state.queue.then(appendFile)       ← 异步排队落盘
+                                                       ← 同步段结束,返回 seq
+
+……(此后任意时刻)……
+
+getLiveSessionProjection(sessionId)                    ← 读的时候才推进
+  ├─ (首次) prepareSessionEventsOnce + readSessionLogEventsSync 全量 fold
+  ├─ drainSessionLogEventTail(sessionId)              ← **取走式**尾巴
+  └─ for (record of drained) reduceSessionProjection  ← **这里才 fold**
+```
+
+- **活投影是读取时惰性折**(不是写入时同步折)。结果上"读得到自己刚写的"成立 ——
+  因为每个读口第一句都是 drain;但它是约定,不是机制:任何一个不 drain 的读法
+  (`peekSessionProjection`、拿着上一次返回的 state 不放)都看不见刚写的那条。
+- **写侧 surface 与活投影是两份独立推进,而且推进器不同**:
+  - 活投影靠**取走式尾巴**(单消费者,`projection-cache.ts` 独占);
+  - 活 surface(`event-surface.ts` 的 `SurfaceIndex` + `seqByMessageId`)靠
+    `appendSurfaceAwareEvent` **自己写完之后复刻一条记录再 push**,与尾巴无关。
+- 于是有一处**结构性缺口**:走另一扇门(`appendSessionLogEvent`)落的事件,活 surface
+  **永远看不见**。而 `tool/result` 恰好既是 `SESSION_SURFACE_NODE_TYPES` 里的节点、
+  产地(`session-event-recorder.ts:984 / :1119`)又只走那扇门 —— 这正是 §15.21 第 1 条
+  那条真机病历(`ec2437ff`:遮 257 格、声明 173 个,差的 84 格全是 `tool/result`)。
+
+所以 F1 不是"补合同断言收窄",是**真有改动量**:把两份独立推进合成一条 —— 写入口
+在同步段里通知,活投影与活 surface 都只从这一个源头前进。
+
+#### 二、落地内容(3 个源文件 + 1 个用例文件)
+
+| # | 文件 | 改了什么 |
+|---|---|---|
+| 1 | `packages/backend/session/event-log.ts` | 新增**同步可见钩子**:`SessionLogEventAppendObserver` 类型 + `registerSessionLogEventAppendObserver(observer): () => void` + 私有 `notifySessionLogEventAppended`;`appendSessionLogEvent` 在**排队落盘之前**调它。三条纪律写在类型上方:①观察者只推进**已经存在**的活状态(建表要读整份文件,挂在写路径上就是把 §7.2 M7 点名的那口同步 IO 搬进每一次 append);②注册发生在**运行期**,不在 import 期(装配层 import 纯净栅栏);③观察者抛出**不许**挡住落盘 —— 逐个 try/catch 记一行 `error`,事件照样进队列。`SHADOW_TAIL_MAX` 的注释补一段"F1 之后尾巴降级成兜底" |
+| 2 | `packages/backend/session/projection-cache.ts` | 注册一个观察者(在 `getLiveSessionProjection` 里 `ensureAppendObserver()`,进程内幂等):活投影存在就当场 `reduceSessionProjection` 并推进 `lastSeq`;不存在就原地返回(那一段仍由尾巴兜)。reduce 抛出 → **删掉这份缓存**(移动语义下 state 可能只改了一半,已经不可信)再上抛,下一次读从文件整份重折。文件头补一节"推进从读的时候提前到写的时候" |
+| 3 | `packages/backend/session/event-surface.ts` | 同样注册一个观察者(在 `ensureState` 里),`states` 里有表就 `applyToState`;`appendSurfaceAwareEvent` 改成**先 `ensureState` 再写**,并**删掉写完自己复刻一条记录 push 的那段** —— 推进从此只此一条路,而且观察者拿到的是写入口分配 seq 时的**原件**(不再有第二个 `Date.now()`) |
+| 4 | `packages/backend/session/__tests__/write-side-visibility.test.ts` | **新增**,见第四节 |
+
+**磁盘侧一个字没动**:仍然是每会话一条 `queue` 串行 `appendFile`,语义 fsync 检查点
+(`flushSessionEventLog`)四处一处未动,`flushAllSessionEventLogs` / 关停预算不变。
+
+#### 三、崩溃窗口重审(§16.4 第 2 条)
+
+**refold 的游标守卫在新时序下不误报 —— 而且它本来就不会**:
+
+- 守卫是 `events[events.length-1].seq !== cursor → skipped`(`refold.ts:174`)。活投影
+  领先磁盘时,文件那一侧**更短**,末条 seq < 定格游标,当场对不齐 → `skipped`,
+  既不进 `refoldChecks` 也不可能记 `refoldMismatches`。
+- **这不是 F1 引入的新局面**:F1 之前活投影也是"读的时候把**整条尾巴**折进来",
+  而尾巴里装的是"已经 append 的全部" —— 两个时代的 `cursor` 是同一个数
+  (= 这个进程 append 过的最后一条 seq)。F1 只把折的**时刻**从读挪到写,
+  没有改变**折了多少**。既有的反向用例(`event-write-failure.test.ts` 的
+  `skips instead of crying wolf when the cursor moved between flush and read`,
+  文件比投影长)与本批新增的正向用例(投影比文件长)现在两头都钉着。
+- 挂点也没变:`scheduleSessionRefold` 仍排在 `endSessionRun` 的 `flushSessionEventLog`
+  **之后**,那一刻文件字节是全的,所以正常路径上 `skipped` 率不受影响
+  (battery 实测 refoldChecks 225,与 F0 逐项相同)。
+
+**定性(写进 §16.4)**:崩溃时活投影可能领先磁盘;重启之后活投影是**从文件重折**出来的,
+领先的那一段随进程一起消失。**账本仍然自洽** —— 丢的是"还没到检查点的那一小段",
+是**少一段**而不是**错一段**,而这一段的上界由语义 fsync 检查点夹住(调模型前 /
+调工具前 / 响应收齐 / run 结束)。检查点位一处未动:F1 没有让这个窗口变大,
+它只是让窗口内**内存里那一份**变得更早可见。
+
+#### 四、合同断言 + 反证
+
+新文件 `packages/backend/session/__tests__/write-side-visibility.test.ts`(5 例),
+harness 与 `event-translator-write-side-read.test.ts` 同款(跑**真的**事件日志 / 投影 /
+surface,只替身最底下的会话仓库)。
+
+**断言用 `peekSessionProjection` 而不是 `getLiveSessionProjection`** —— 后者自己会
+drain 尾巴,惰性折的年代它也照样返回含这条事件的投影,拿它断言等于什么都没钉住。
+
+| 用例 | 钉住什么 |
+|---|---|
+| `appendMessage:翻译调用返回时,不推进的活投影里已经有这条消息` | 代表面 1 |
+| `patchMessage:补丁当场落在活投影的那条节点上` | 代表面 2 |
+| `truncateFrom(regenerate):遮蔽当场生效,活投影里那条已经 hidden` | 代表面 3(13 条命令不逐条,选这三个) |
+| `走 appendSessionLogEvent 落的 tool/result 也进得了写侧 surface` | 两扇门都算数;并断言写侧 `order()` 与读侧 `foldSurface(整份文件).order` **逐字相同** |
+| `折在前、落盘在后 —— 那一段没落盘时游标对不齐,refold skipped 而不是 mismatch` | 第三节的崩溃窗口。先跑一次 `match` 证明这道门通电,再把 `fs.promises.appendFile` 换成"答应了但什么都没写"制造领先,断言 `skipped` |
+
+**反证(实跑)**:把 `appendSessionLogEvent` 里那句 `notifySessionLogEventAppended`
+去掉(推进退回 drain 时惰性),这 5 例**全红**(投影三例 `expected [] to deeply equal
+[ 'u1' ]` 之类,surface 例 `expected [] to include 2`);恢复后全绿。
+
+#### 五、性能确认
+
+真机最大账本**只读**实算(`reduceSessionProjection` 逐条折 + `SurfaceIndex.push` 逐条推,
+与活路径同一段代码):
+
+| 会话 | 字节 | 事件数 | 投影 fold mean / p95 / p99 / max | surface push mean / p99 |
+|---|---|---|---|---|
+| `fe5261d9`(事件数最多) | 14.0 MB | 9435 | 1.6µs / 3.5µs / 11.2µs / 1188µs | 0.1µs / 0.3µs |
+| `46dcec05` | 19.6 MB | 9272 | 2.1µs / 6.0µs / 30.0µs / 1253µs | 0.1µs / 0.3µs |
+| `08f1fe09`(字节最大) | 48.2 MB | 258 | 3.9µs / 3.9µs / 10.7µs / 347µs | 1.2µs / 2.7µs |
+
+**读数结论**:单事件增量 fold 是 **µs 级**(p99 ≤ 30µs),整条 9000+ 事件的会话全量
+折一遍也只有 15–20ms。热路径预算不受影响 —— 而且这**不是新增开销**,是同一次 fold
+从"下一次读的时候"挪到了"写的时候",进程总功不变。唯一的尖峰(max ≈1.2ms)是
+`session/compacted` 那一条(它要走一遍全部节点),每会话只有几条,且在 F1 之前
+同样要付,只是付在读口上。
+
+#### 六、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run typecheck` | **0** |
+| 定向 `backend/session` + `backend/wiring/engine` + `backend/__tests__` + `core/session` | **94 文件 / 813 测试全绿** |
+| `bun run sessions:shadow-battery` | **GREEN** —— runs **321** / historyChecks 449 / mismatches **0** / duplicates 0 / appendFailures **0** / **refoldChecks 225 / refoldMismatches 0** / `session-shadow.jsonl` **0 行**(与 §16.5 F0 表逐项相同) |
+| `bun run boundary:gate` | ok — 0 failures |
+| `bun run session:gate` | ok — 0 known, none new |
+| `bun run log:gate` | ok — 4 known, none new |
+| `bun run transport:gate` | ok — 42 常量 / 四壳 2392 行,无上升 |
+| 真机只读 `bun run sessions:verify:gate` | ok — 13 known issue(s), none new(存量账本不受影响:F1 只改这个进程**新写**的那几条 seq 清单) |
+| 真机只读 `bun run sessions:shadow-report` | 打印正常;runs 32 / mismatches **0** / refoldMismatch **0** / shadow.jsonl 0 行。**GATE RED 只因 `runs 32 < 200`**(浸泡期计数,与本批无关);全程只读 |
+| `npx vitest run`(全量) | 1203 文件 / **11893 通过**,2 红:①`packages/renderer/components/__tests__/App.container-layout.test.ts` —— **他会话**在途的 `App.vue` 改动(工作树里 renderer 三个文件是别人的);②`packages/backend/stores/__tests__/sessions-delete-cascade.test.ts` —— 高负载抖动,**单跑绿** |
+
+#### 七、留账 / 需拍板
+
+1. **本批唯一带行为的动作:`§15.21 第 1 条`被这条机制顺带收掉了 —— 而它当时是
+   "留给用户裁定"的。** §15.21 提的修法是"把 `session-event-recorder.ts` 的两处
+   `tool/result` 改走 `appendSurfaceAwareEvent`";F1 走的是另一条路(写入口统一通知),
+   但**效果相同**:活 surface 从此看得见 `tool/result`。可感知的差别只有一处 ——
+   `sessionSurface().rangeFrom/wholeRange` 会把 `tool/result` 算进去,于是编辑重发 /
+   删除 / 清空写下的 `surfaceOp.end` 可能从一条 `run/start` 变成它后面那条
+   `tool/result`,**被遮蔽的格因此变多**,`sourceEventSeqs` 也变全。
+   - 好的一面:写侧活 surface 与读侧 `foldSurface(整份文件)` 从此**逐字相同**
+     (新增用例钉住);§15.21 顺带记录的那处"尾随 `tool/result` 在读侧没被遮掉"的
+     同源分岔一并消失。
+   - 代价:这是**新写下去的账本字节**的变化(存量文件一个字不动)。
+   - 影响面实测:battery 321 run / refold 225 次采样 **0 失配**,真机 verify
+     **none new**。
+   - **要回退只需两步**:`event-surface.ts` 的观察者体改成空(或不注册),并把
+     `appendSurfaceAwareEvent` 里写完复刻一条 `applyToState` 的老写法放回去。
+   **请裁定是留还是回退。**
+2. **`core/session/projection/surface.ts` 的 `declaredMessageGap` 收窄(批 6a 尾款)
+   现在有了第二重身份**:它当初是为了绕开这个缺口才只对消息节点问责。缺口没了之后
+   它仍然必须留着 —— **存量账本**(`ec2437ff` 这类)是缺口时代写的,读侧永远要认。
+   本批一字未动,只是它从"绕开"变成了"向后兼容"。
+3. **尾巴(`shadowTail`)没有删**:活投影还没建起来的会话(`trace.ts` /
+   `events-reads.ts` 明确不许"读一眼就把活投影建起来")仍然靠它。F1 之后它是
+   **兜底**而不是主路;取走时 `seq <= lastSeq` 天然幂等,所以两条路重叠也不会折两次。
+4. **F2 的地基已经就位**:命令翻转时"产出事件 → 当场 fold → 从投影物化 store 视图"
+   这一串里,中间那一步现在是写入口自己做的,命令面不必再显式推一次。

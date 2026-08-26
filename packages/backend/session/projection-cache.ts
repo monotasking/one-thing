@@ -11,6 +11,24 @@
  *  - 尾巴溢出过就整份重折(宁可付一次全量,也不拿缺了一段的投影去用);
  *  - `reduceSessionProjection` 是**移动语义**的(S0 §9.7 判例 9):state 交出去
  *    之后不可再用,所以这里始终持有它返回的那一份。
+ *
+ * ## F1(§16.6):推进从"读的时候"提前到"写的时候"
+ *
+ * 从前这份投影只在 `getLiveSessionProjection` 被调用时才把尾巴折进来 —— 也就是
+ * **惰性**推进。结果上没错(读之前一定先折),但"命令内读得到自己刚写的"是靠
+ * 每个读口都记得先 drain 才成立的**约定**,而不是机制。
+ *
+ * F1 把它翻成机制:写入口(`appendSessionLogEvent`)在同一个同步段里调
+ * `registerSessionLogEventAppendObserver` 注册的观察者,这里就是其中之一。
+ * 一条事件分配到 seq 的那一刻就已经折进这份投影,落盘仍然排队异步。
+ *
+ * 两条边界:
+ *  - **不主动建表**:观察者见到还没有活投影的会话原地返回。建表要读整份文件,
+ *    挂在写路径上就等于每条 append 付一次同步全文件 IO;而且 `trace.ts` /
+ *    `events-reads.ts` 明确不许"读一眼就把活投影建起来"。那一段仍由取走式尾巴
+ *    兜着,首次建表时一并折进来(下面那段 drain 照旧,`seq <= lastSeq` 天然幂等)。
+ *  - **折坏了就丢缓存**:reduce 抛出说明这份投影已经不可信,原地删掉它 ——
+ *    下一次读从文件整份重折。事件本身照样落盘(写入口不会因为观察者抛出而停手)。
  */
 
 import {
@@ -18,7 +36,11 @@ import {
   reduceSessionProjection,
   type SessionProjectionState,
 } from '@onething/core/session'
-import { drainSessionLogEventTail, readSessionLogEventsSync } from './event-log.js'
+import {
+  drainSessionLogEventTail,
+  readSessionLogEventsSync,
+  registerSessionLogEventAppendObserver,
+} from './event-log.js'
 import { prepareSessionEventsOnce } from './prepare.js'
 
 interface LiveProjection {
@@ -29,8 +51,34 @@ interface LiveProjection {
 
 const projections = new Map<string, LiveProjection>()
 
+/**
+ * 观察者的注册发生在**运行期**(第一次要建活投影的那一刻),不在 import 期 ——
+ * 装配层的 import 纯净栅栏管着这条(`__tests__/import-side-effect-free.test.ts`)。
+ */
+let appendObserverRegistered = false
+
+function ensureAppendObserver(): void {
+  if (appendObserverRegistered) return
+  appendObserverRegistered = true
+  registerSessionLogEventAppendObserver((sessionId, record) => {
+    const live = projections.get(sessionId)
+    if (!live) return
+    if (record.seq <= live.lastSeq) return
+    try {
+      live.state = reduceSessionProjection(live.state, record)
+      live.lastSeq = record.seq
+    } catch (error) {
+      // 折不进去 = 这份活投影已经不可信(移动语义下 state 可能只改了一半)。
+      // 丢掉它,下一次读从文件整份重折;写入口那边会把这次失败记成一行 error。
+      projections.delete(sessionId)
+      throw error
+    }
+  })
+}
+
 /** 这条会话的活投影,**推进到此刻**。 */
 export function getLiveSessionProjection(sessionId: string): SessionProjectionState {
+  ensureAppendObserver()
   let live = projections.get(sessionId)
   if (!live) {
     // 打开会话的那一刻(投影第一次建起来 = 事件层意义上的"打开"):把上一次

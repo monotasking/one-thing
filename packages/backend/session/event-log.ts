@@ -96,6 +96,12 @@ const FOREIGN_WRITER_CHECK_INTERVAL_MS = 500
  * 影子期的活投影要"每来一条事件推一条"才能做到 O(新事件),而它拿不到写入口的
  * 回调(装配层禁止 import 期副作用)。于是写入口把刚分配好的记录挂在这条尾巴上,
  * 消费者(`session/shadow.ts`)按需取走 —— 一次请求 / 一次 run 收尾各取一次。
+ *
+ * **F1(§16.6)之后它降级成兜底**:活投影已经建起来的会话由同步可见观察者
+ * (`registerSessionLogEventAppendObserver`)当场折进去,尾巴只服务"这条会话
+ * 还没有活投影"的那一段 —— 观察者不许为了折一条事件去读整份文件建表。
+ * 尾巴仍然照常攒(取走时 `seq <= lastSeq` 天然幂等),这样"活投影第一次建起来"
+ * 那一刻既有文件、也有这个进程刚写下还没落盘的那几条。
  * 上限只是**防呆**:一次请求之内攒满 20 万条事件不可能发生,真发生了宁可让影子
  * 从文件重折一遍,也不能让一条永不消费的队列吃光内存。
  */
@@ -316,8 +322,65 @@ function ensureSessionEventDir(state: SessionEventLogState, sessionId: string): 
 }
 
 /**
+ * F1(§16.6):**写侧同步可见钩子**。
+ *
+ * 一条事件被分配到 seq 的那一刻,还在**同一个同步段里**就交给进程内的活状态
+ * (活投影 `projection-cache.ts` / 活 surface `event-surface.ts`),然后才排队
+ * 落盘。于是"命令内读得到自己刚写的"从纪律变成机制:调用方拿到 seq 返回值时,
+ * 这条事件已经在内存的每一份活状态上了 —— 不必等落盘,也不必等下一次读把尾巴
+ * 折进去。
+ *
+ * 三条纪律:
+ *
+ * 1. **只推进已经存在的活状态**。观察者见到一条自己还没建表的会话必须原地返回 ——
+ *    建表意味着一次同步全文件读,把它挂在写路径上就是把 §7.2 M7 点名的那口 IO
+ *    搬进了每一次 append。没建表的那一段仍由取走式尾巴(`shadowTail`)兜着,
+ *    活状态第一次建起来时一并折进去。
+ * 2. **注册发生在运行期,不在 import 期**(装配层的 import 纯净栅栏)。观察者由
+ *    消费者自己在"第一次建表"的路径上注册,所以只 import 这个模块不会改变任何
+ *    进程状态。
+ * 3. **观察者抛出不许打断记账**。这里逐个 try/catch 并记一行 error:活投影折坏了
+ *    最坏是那份缓存不可信(消费者自己丢缓存,下一次读从文件整份重折),但这条
+ *    事件必须照样落盘 —— `events.jsonl` 是唯一持久化。
+ */
+export type SessionLogEventAppendObserver = (
+  sessionId: string,
+  record: SessionLogEventRecord,
+) => void
+
+const appendObservers = new Set<SessionLogEventAppendObserver>()
+
+/** 注册一个同步可见观察者。返回注销函数(测试与会话删除用)。 */
+export function registerSessionLogEventAppendObserver(
+  observer: SessionLogEventAppendObserver,
+): () => void {
+  appendObservers.add(observer)
+  return () => {
+    appendObservers.delete(observer)
+  }
+}
+
+function notifySessionLogEventAppended(sessionId: string, record: SessionLogEventRecord): void {
+  for (const observer of appendObservers) {
+    try {
+      observer(sessionId, record)
+    } catch (error) {
+      // 纪律 3:折坏了不许把这条事件挡在磁盘外面。
+      log.error(
+        'live fold of an appended session event failed',
+        { sessionId, seq: record.seq, type: record.type },
+        error,
+      )
+    }
+  }
+}
+
+/**
  * 追加一条 v2 事件。返回分配到的 seq(会话不记账时返回 undefined)。
  * 调用方拿 seq 做因果引用(`tool/result.sourceSeq`、`surfaceOp` 的 range)。
+ *
+ * F1 起这个函数**返回之前**活投影与活 surface 已经含有这条事件(见
+ * `registerSessionLogEventAppendObserver`);落盘仍然是排队异步的。
  */
 export function appendSessionLogEvent<TType extends SessionLogEventType>(
   sessionId: string,
@@ -363,6 +426,10 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   if (REMEMBERED_LAST_EVENT_TYPES.has(type)) state.lastByType.set(type, record)
   const line = encodeSessionLogEventLine(record)
   state.expectedBytes += Buffer.byteLength(line, 'utf8')
+
+  // F1(§16.6):**先折进活状态,再排队落盘**。中间没有 await,所以调用方拿到
+  // 返回值的那一刻,内存里的每一份活状态都已经含有这条事件。
+  notifySessionLogEventAppended(sessionId, record)
 
   if (wantsEventTail()) {
     if (state.shadowTail.length >= SHADOW_TAIL_MAX) {
