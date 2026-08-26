@@ -40,6 +40,7 @@ vi.mock('../../stores/sessions.js', () => ({
 }))
 
 const { sessionEventTranslator } = await import('../event-translator.js')
+const { sessionCommandEvents } = await import('../command-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
   '../event-log.js'
 )
@@ -88,7 +89,7 @@ describe(
     it('truncateFrom(edit) writes the reducer-settled content/timestamp, not the pre-edit projection', async () => {
       // 投影侧:账本上是编辑前的 'v1' / timestamp 1000。
       setTranscript([{ id: 'u1', role: 'user', content: 'v1', timestamp: 1000 }])
-      sessionEventTranslator.appendMessage(SESSION, {
+      sessionCommandEvents.appendMessage(SESSION, {
         id: 'u1',
         role: 'user',
         content: 'v1',
@@ -118,7 +119,7 @@ describe('transcript accessors stay read-mode blind for the write side (§13.18 
     // 账本上 u1='v1'(投影侧);抄本换成 'v2'(reducer 落定侧)。upsert/truncate 写侧
     // 取材若走 getMessage 的 fromEvents 岔口,拿到的是滞后投影的旧正文。
     setTranscript([{ id: 'u1', role: 'user', content: 'v1', timestamp: 1000 }])
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'u1',
       role: 'user',
       content: 'v1',
@@ -139,7 +140,7 @@ describe('transcript accessors stay read-mode blind for the write side (§13.18 
       { id: 'u0', role: 'user', content: 'hi', timestamp: 1 },
       { id: 'a-mark', role: 'assistant', content: 'has @@marker@@', timestamp: 6 },
     ])
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'u0',
       role: 'user',
       content: 'hi',
@@ -178,7 +179,7 @@ describe('transcript accessors stay read-mode blind for the write side (§13.18 
       ],
     }
     // 账本上是占位标题那一份(收尾修复要写的 `tool/result` 还没进账本)。
-    sessionEventTranslator.appendMessage(SESSION, projectionPlaceholder)
+    sessionCommandEvents.appendMessage(SESSION, projectionPlaceholder)
     await flushSessionEventLog(SESSION)
     resetSessionProjectionCache(SESSION)
     // 抄本(store)上是 metadata 时刻已写下的自报标题 'sleep 20'。

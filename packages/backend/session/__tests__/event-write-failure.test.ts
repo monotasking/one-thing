@@ -128,23 +128,23 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
   })
 
   it('the translator lets a write failure out (everything else it still swallows)', async () => {
-    const { sessionEventTranslator } = await import('../event-translator.js')
+    const { sessionCommandEvents } = await import('../command-events.js')
     const message = (id: string) =>
       ({ id, role: 'user', content: `x-${id}`, timestamp: 1 } as unknown as Parameters<
-        typeof sessionEventTranslator.appendMessage
+        typeof sessionCommandEvents.appendMessage
       >[1])
 
     makeJsonlSession('w4')
-    sessionEventTranslator.appendMessage('w4', message('m1'))
+    sessionCommandEvents.appendMessage('w4', message('m1'))
     await flushSessionEventLog('w4')
 
     const appendFile = vi.spyOn(fs.promises, 'appendFile')
       .mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }))
-    sessionEventTranslator.appendMessage('w4', message('m2'))
+    sessionCommandEvents.appendMessage('w4', message('m2'))
     await flushSessionEventLog('w4')
 
     // 同一条错误穿过 `safely` 上抛 —— 命令面于是报得出来。
-    expect(() => sessionEventTranslator.appendMessage('w4', message('m3')))
+    expect(() => sessionCommandEvents.appendMessage('w4', message('m3')))
       .toThrow(SessionEventWriteError)
 
     appendFile.mockRestore()

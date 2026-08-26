@@ -3864,7 +3864,7 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 |---|---|---|---|
 | **F0 恒等门转向** — **已完成(§16.5,2026-08-27)** | 现 shadow(store=真相 vs 投影=影子)**角色对调**:事件/fold 侧成真相,老 reducer 降级为影子验证器;比对机制、记账口径沿用 session-shadow | 对调后真机 ≥200 run 0 失配 | 对调是比对方向,零行为变化 |
 | **F1 写侧同步可见** — **已完成(§16.6,2026-08-27)** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
-| **F2 命令面翻转(逐条)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
+| **F2 命令面翻转(逐条)** — **F2-a 已完成(§16.7,2026-08-27):appendMessage / deleteMessage / patchMessage**;F2-b/c 待开 | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
 | **F3 写侧回读换语义** | §14.1 的 9 处写侧回读残留全部改读 fold 后投影(F1 是前提);「写侧读抄本」纪律(§13.18)整体翻面 | 定向用例逐处 + battery | 随 F2 分批走 |
 | **F4 reducer 退役** | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
 
@@ -5951,3 +5951,151 @@ drain 尾巴,惰性折的年代它也照样返回含这条事件的投影,拿它
    **兜底**而不是主路;取走时 `seq <= lastSeq` 天然幂等,所以两条路重叠也不会折两次。
 4. **F2 的地基已经就位**:命令翻转时"产出事件 → 当场 fold → 从投影物化 store 视图"
    这一串里,中间那一步现在是写入口自己做的,命令面不必再显式推一次。
+
+### 16.7 F2-a 落地记录:简单消息命令翻成「命令即事件」(2026-08-27,opus 执行,未提交)
+
+**一句话**:`appendMessage` / `deleteMessage` / `patchMessage` 这三条命令的事件**产地**
+从"翻译器从 store 的 mutation 反推"翻成"命令面自己第一手构造",执行序随之变成
+**事件 append(F1 保证同步可见)→ reducer 应用到 store**。写下去的事件字节一字未变
+(HEAD worktree 双跑逐行比对),变的只是谁先说话。
+
+#### 〇、先勘误 §16.2 的 F2 行口径
+
+F2 行原文写的是「命令产出事件 → fold → **store 视图从投影物化**」。**F2 不做最后那一步**
+—— "store 从投影物化"是 **F4** 的终局;F2 期间老 reducer 必须**继续独立地**把命令应用到
+store,因为它正是 F0 恒等门(§16.5)那第二条推导。翻转前后的角色是:
+
+| | 事件 | store |
+|---|---|---|
+| 翻转前 | 派生物(从 mutation 反推) | 唯一推导 |
+| **F2 翻转后** | **第一手表达**(命令直接产出) | **影子验证器**(F0 的 B 列),独立推导同一件事 |
+| F4 终局 | 唯一源头 | 物化缓存(不再独立推导,恒等门随之退役) |
+
+「两条独立推导」是恒等门存在的前提;F2 期间一步都不能少。
+
+#### 一、逐命令翻转表
+
+| 命令 | 事件构造搬到哪 | 翻译器删了哪段 | 新执行序 |
+|---|---|---|---|
+| `appendMessage` | `session/command-events.ts` → `sessionCommandEvents.appendMessage`(逐字搬迁) | `event-translator.ts` 的 `appendMessage` 方法整段删除 | `events.appendMessage()` → `ports.messages.addMessage()` |
+| `deleteMessage` | 同上 → `sessionCommandEvents.deleteMessage` | `deleteMessage` 方法整段删除 | 存在性判定 → `events.deleteMessage()` → `ports.messages.deleteMessage()` / `deleteMessageWhere()` |
+| `patchMessage` | 同上 → `sessionCommandEvents.patchMessage`(含 `fullBody` 档) | `patchMessage` 方法整段删除 | 存在性判定 → `events.patchMessage()` → `ports.messages.patchMessageFields()` |
+
+**共用取材件也一并搬走,而且只有一份**:`messageForEvent` / `attachmentsForEvent` /
+`safely` / `BODY_KEYS` / `DERIVED_KEYS` 现在住 `command-events.ts` 并导出,
+`event-translator.ts` 从那里 import。两个产地各自演化出一份 `messageForEvent`,
+就是"同一条消息在两种事件里长得不一样"的温床。
+
+**翻译器上现在只剩 6 个方法**:`upsertMessage` / `truncateFrom` / `replaceAll` /
+`patchSession` / `sessionCreated` / `sessionCompacted`(用例逐字钉住这份名单)。
+`upsertMessage` 仍是老口径(reducer 后翻译),但它借道**同一份**
+`sessionCommandEvents.appendMessage` / `.patchMessage({fullBody:true})` —— 借的是构造,
+不是复制一份。
+
+#### 二、判例迁移清单(一条都没丢)
+
+| 判例 | 出处 | 现在住哪 |
+|---|---|---|
+| assistant 且 `isStreaming` → **不写**(`run/start` 才是它在 surface 上的格) | §9.3 | `sessionCommandEvents.appendMessage` 第一句 |
+| user → `user/message`;其余(system / error / 落定的 assistant)→ `system/message`,role 原样 | §9.3 | 同上 |
+| 附件 `base64Data` → `BlobRef`;blob 写不进去就**摘掉**而不是留原文 | §10.1 G8 | `attachmentsForEvent` |
+| 正文三件套(`content`/`contentParts`/`reasoning`)永不进 `message/patched` | §9.2 | `BODY_KEYS`(`fullBody` 是唯一放行档,只给 upsert) |
+| 派生字段(`isStreaming`/`isThinking`/`thinkingStartTime`/`seq`/`steps`/`toolCalls`)一律丢弃 | §9.2 | `DERIVED_KEYS` |
+| `turnContext` 单独走 `context/turn-update`,不是一条 patch | §9.2 | `sessionCommandEvents.patchMessage` |
+| 丢完剩下全空 → 一条事件都不写 | §9.3 | 同上 |
+| `deleteMessage` 只遮蔽**它自己那一格**(后面的照旧在 surface 上) | §9.3 | `sessionCommandEvents.deleteMessage` |
+| legacy 会话(不记账)一条都不写 | §9.3 | 三个方法开头的 `isSessionTranslationEnabled` |
+| 写侧取材走抄本真相面,永不走随读模式分岔的门面 | §13.18 发现 B | 命令面的 `hasMessageInTranscript` / `findMessageFromTranscript`(整体翻面归 F3) |
+| `SessionEventWriteError` 上抛,其余自吞 | §14.6 裁定 7 | `safely`(搬迁后一字未改) |
+
+#### 三、"改没改成"的判据怎么接住
+
+翻转之前,事件写不写由 reducer 的回执 `changed` 决定(`if (changed) translator.…`)。
+翻转之后不能再等它 —— 等回执就是又把事件排到了 store 后面。所以命令面**自己先问一次
+同一个问题**:
+
+- `appendMessage`:reducer 的 `changed` **恒为 true**(`applyAppend` 无条件返回)——
+  没有要问的,直接产出。
+- `patchMessage` / `deleteMessage`:reducer 只有一个 false 的理由 ——
+  `findIndex(item => item.id === messageId) === -1`。于是命令面在**同一份 store** 上问
+  存在性,判据一字未变。
+- `deleteMessage(matchMarker)`:**本来就是**先找后删(事件要写 id,而端口只返回布尔),
+  F2-a 只是把事件从"删完之后"提到了"删之前"。
+
+新增 `sessionReads.hasMessageInTranscript(sessionId, messageId)`(`reads.ts`)。
+为什么不复用 `getMessageFromTranscript(...) !== undefined`:那一口会 `guard()` 一整条消息
+(dev / vitest 下是**深冻结**),而 `patchMessage` 是逐 token 的热路径,每次补丁冻一条
+带 steps/toolCalls 的消息不划算。存在性问答不把消息交出去,也就不需要冻。
+
+#### 四、字节回归(U0 的方法:HEAD worktree 双跑)
+
+一份**固定命令脚本**(17 条事件:`appendMessage` 四种分支含附件 / `run` 一对 /
+三种 `patchMessage` 含 turnContext 与 ghost / `upsertMessage` 两支 / 三种 `deleteMessage` /
+`truncateFrom` 两支 / `replaceAll` 两支 / `patchSession`),在同一份临时 store 上跑完,
+把 `events.jsonl` 抄出来:
+
+| 树 | 行数 | 原始字节 |
+|---|---|---|
+| HEAD `fc572b20`(worktree) | 17 | 3029 |
+| F2-a(本树) | 17 | 3029 |
+
+逐行比对(`time` 与随机 `runId` 归一后)**diffs 0 —— 逐字节相同**。归一前唯一的两处
+差异就是那两个 uuid(`run/start` / `run/end` 的 `runId`)。临时用例与 worktree 已删除。
+
+#### 五、用例
+
+新文件 `packages/backend/session/__tests__/command-events-order.test.ts`(8 例),
+harness 与 `write-side-visibility.test.ts` 同款(跑**真的**事件日志 / 投影 / surface,
+替身只有最底下的会话仓库与 store 端口)。
+
+**时序怎么钉**:store 端口(= reducer 那一步)**内部**回头 `peekSessionProjection` 看一眼
+——事件真的先落了,那一刻投影里就已经有这次命令的结果。用 `peek`(不推进)而不是
+`getLiveSessionProjection`(自己会 drain 尾巴),后者拿来断言等于什么都没钉住。
+
+| 用例 | 钉住什么 |
+|---|---|
+| `翻译器不再认得 appendMessage / deleteMessage / patchMessage` | 产地唯一 —— 逐字断言翻译器上只剩那 6 个方法名 |
+| `事件逐字段与翻转前相同` | `user/message` 的 `surfaceOp:'append'` + 整条消息;`message/patched` 的 `{messageId,patch}`;`message/deleted` 的 `surfaceOp{replace,2,2}` + `sourceEventSeqs[2]` |
+| `正文 / 派生字段照旧不进 message/patched` | BODY_KEYS / DERIVED_KEYS 判例 |
+| `那条消息不在 = 一条事件都不写` | 新判据与 reducer 的 `changed` 同源 |
+| `appendMessage:store 端口被调到的那一刻,活投影里已经有这条消息` | 时序 1 |
+| `patchMessage:补丁在 store 端口之前就落在活投影的那条节点上` | 时序 2(端口内读到 `patches:{u1:{steered:true}}`) |
+| `deleteMessage(messageId):遮蔽先生效` | 时序 3 |
+| `deleteMessage(matchMarker):先找、先记事件、后删 store` | 时序 4 |
+
+既有四个用例文件的调用点随产地改名(`sessionEventTranslator.` → `sessionCommandEvents.`,
+断言值一字未动):`event-translator.test.ts` / `write-side-visibility.test.ts` /
+`event-write-failure.test.ts` / `event-translator-write-side-read.test.ts`。
+
+**反证(实跑)**:把 `commands.ts` 里这三条的顺序倒回去(`reducer` 先、事件后,判据换回
+`if (changed)`),四条时序用例**全红**;恢复后全绿。产地那四条不受顺序影响 —— 它们钉的
+是另一件事。
+
+#### 六、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run sessions:shadow-battery`(**F0 恒等门 = 本批主门**) | **GREEN** —— runs **321** / historyChecks 449 / mismatches **0** / duplicates 0 / appendFailures **0** / **refoldChecks 225 / refoldMismatches 0** / `session-shadow.jsonl` **0 行**;与 §16.5 / §16.6 逐项相同 |
+| 字节回归(HEAD worktree 双跑) | 17 行 / 3029 字节,**diffs 0** |
+| `bun run typecheck` | **0** |
+| 定向 `backend/session` + `core/session` + `backend/wiring/engine` | **94 文件 / 818 测试全绿** |
+| `packages/backend` 全包 | **280 文件 / 2380 通过**(1 文件 3 例 skipped,live provider) |
+| `bun run boundary:gate` | ok — 0 failures |
+| `bun run session:gate` | ok — 0 known, none new |
+| `bun run log:gate` | ok — 4 known, none new |
+| `bun run transport:gate` | ok — 42 常量 / 四壳 2392 行,无上升 |
+| 真机只读 `bun run sessions:verify:gate` | ok — 13 known issue(s), **none new**;全程只读,`~/.onething` 一字未写 |
+
+#### 七、留账
+
+1. **`hasMessageInTranscript` 这个名字里的 "Transcript" 与 §16.5 留账 1 是同一笔账** ——
+   停写之后它读的是**内存 store**,不是抄本文件。改名连同 `get/find/listMessagesFromTranscript`
+   一起**归 F3**(那一批本来就要把"写侧读抄本"整体翻面成读投影)。
+2. **`createSessionCommands` 现在有两个可选事件端口**:`events`(已翻转的命令)与
+   `translator`(没翻转的)。F2-b/c 每翻一条就从后者挪到前者;F2 走完 `translator` 只剩
+   `sessionCreated` / `sessionCompacted` 两个**非命令**采集点,那时再决定它叫什么。
+3. **`event-translator.ts` 里的 `translationRunId` 是死导出**(全仓零调用点)。本批未动
+   —— 它与 F2 无关,清理留给 F4 的删码批。
+4. **F2-b 的下一站**:`upsertMessage`(携 §13.18 的 existed 探测判例)与 `truncateFrom`
+   (携双追加 / 占位替换判例);`replaceAll` / `compact` 排 F2-c(compact 携 §15 批 P 的
+   遮蔽判例)。

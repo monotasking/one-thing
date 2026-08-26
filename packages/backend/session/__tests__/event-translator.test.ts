@@ -48,6 +48,7 @@ vi.mock('../reads.js', () => ({
 }))
 
 const { sessionEventTranslator } = await import('../event-translator.js')
+const { sessionCommandEvents } = await import('../command-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
   '../event-log.js'
 )
@@ -90,12 +91,12 @@ async function types(): Promise<string[]> {
 
 describe('command → event translation (§9.3)', () => {
   it('appendMessage: user → user/message, system → system/message, streaming assistant → nothing', async () => {
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u1'))
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'sys1', role: 'system', content: 'marker', timestamp: 2,
     })
     // 助手占位由 `run/start` 表达 —— 一条消息一格,不能有两格。
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'a1', role: 'assistant', content: '', timestamp: 3, isStreaming: true,
     })
 
@@ -104,8 +105,8 @@ describe('command → event translation (§9.3)', () => {
   })
 
   it('patchMessage: body and derived fields never make it into message/patched', async () => {
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u1'))
-    sessionEventTranslator.patchMessage(SESSION, 'u1', {
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
+    sessionCommandEvents.patchMessage(SESSION, 'u1', {
       content: 'rewritten',
       reasoning: 'nope',
       isStreaming: false,
@@ -117,13 +118,13 @@ describe('command → event translation (§9.3)', () => {
     expect(patched?.type === 'message/patched' && patched.data.patch).toEqual({ steered: true })
 
     // 只有正文字段的 patch 一条事件都不写。
-    sessionEventTranslator.patchMessage(SESSION, 'u1', { content: 'again' } as Partial<ChatMessage>)
+    sessionCommandEvents.patchMessage(SESSION, 'u1', { content: 'again' } as Partial<ChatMessage>)
     expect((await events()).filter(event => event.type === 'message/patched')).toHaveLength(1)
   })
 
   it('patchMessage: turnContext becomes context/turn-update, not a patch', async () => {
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u1'))
-    sessionEventTranslator.patchMessage(SESSION, 'u1', {
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
+    sessionCommandEvents.patchMessage(SESSION, 'u1', {
       turnContext: { set: { datetime: '2026-08-19' } },
     } as Partial<ChatMessage>)
 
@@ -137,7 +138,7 @@ describe('command → event translation (§9.3)', () => {
 
   it('user attachments land as BlobRef, never as inline base64', async () => {
     const base64 = Buffer.from('imagine an image').toString('base64')
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       ...userMessage('u1'),
       attachments: [{
         id: 'att1', fileName: 'a.png', mimeType: 'image/png',
@@ -159,9 +160,9 @@ describe('command → event translation (§9.3)', () => {
   })
 
   it('deleteMessage shadows exactly its own surface node', async () => {
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u1'))
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u2'))
-    sessionEventTranslator.deleteMessage(SESSION, 'u1')
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u2'))
+    sessionCommandEvents.deleteMessage(SESSION, 'u1')
 
     const deleted = (await events()).find(event => event.type === 'message/deleted')!
     expect(deleted.surfaceOp).toEqual({ op: 'replace', start: 1, end: 1 })
@@ -170,10 +171,10 @@ describe('command → event translation (§9.3)', () => {
 
   it('truncateFrom(edit) replaces from that message to the end of the surface', async () => {
     state.messages = [userMessage('u1', 'edited')]
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u1'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
     const run = beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
     endSessionRun(SESSION, run.runId, { outcome: 'completed' })
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u2'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u2'))
 
     sessionEventTranslator.truncateFrom(SESSION, { messageId: 'u1', inclusive: false }, undefined)
 
@@ -185,8 +186,8 @@ describe('command → event translation (§9.3)', () => {
   })
 
   it('truncateFrom(regenerate) deletes inclusively with the same range', async () => {
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u1'))
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u2'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u2'))
     sessionEventTranslator.truncateFrom(SESSION, { messageId: 'u2', inclusive: true }, undefined)
 
     const deleted = (await events()).find(event => event.type === 'message/deleted')!
@@ -195,8 +196,8 @@ describe('command → event translation (§9.3)', () => {
   })
 
   it('replaceAll(clear) shadows the whole surface; replaced re-imports every message (G11)', async () => {
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u1'))
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u2'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u2'))
 
     sessionEventTranslator.replaceAll(SESSION, [], 'clear')
     const cleared = (await events()).find(event => event.type === 'session/cleared')!
@@ -221,8 +222,8 @@ describe('command → event translation (§9.3)', () => {
    * `canonicalChatMessage` 判的等。
    */
   it('G11 end-to-end: MESSAGES_REPLACED → cleared + imported, and the projection is the replaced list', async () => {
-    sessionEventTranslator.appendMessage(SESSION, userMessage('old1', 'before 1'))
-    sessionEventTranslator.appendMessage(SESSION, userMessage('old2', 'before 2'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('old1', 'before 1'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('old2', 'before 2'))
 
     const replacement: ChatMessage[] = [
       userMessage('n1', 'after 1'),
@@ -271,9 +272,9 @@ describe('command → event translation (§9.3)', () => {
   })
 
   it('session/compacted replaces up to the cutoff; a failed compact shadows nothing', async () => {
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u1'))
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u2'))
-    sessionEventTranslator.appendMessage(SESSION, userMessage('u3'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u2'))
+    sessionCommandEvents.appendMessage(SESSION, userMessage('u3'))
 
     sessionEventTranslator.sessionCompacted(SESSION, {
       messageId: 'c1',
@@ -300,7 +301,7 @@ describe('command → event translation (§9.3)', () => {
   })
 
   it('writes nothing at all for a session that is not on the event ledger', async () => {
-    sessionEventTranslator.appendMessage('legacy-session', userMessage('u1'))
+    sessionCommandEvents.appendMessage('legacy-session', userMessage('u1'))
     expect(fs.existsSync(path.join(state.sessionsDir, 'legacy-session'))).toBe(false)
   })
 })

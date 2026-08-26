@@ -2,6 +2,15 @@
  * 命令面 → 事件的**翻译器**(S1a,§9.3 的表 + §10.2 的第一行采集点)。
  *
  * `sessionCommands` 的 reducer 落定之后,这里把"刚刚发生了什么"翻成 v2 事件。
+ *
+ * **F2 起这里是"还没翻转的那几条"的家**(§16.2 的 F2 行 / §16.7)。翻转过的命令
+ * 事件产地搬进了 `command-events.ts`(`sessionCommandEvents`),在那里事件是命令的
+ * **第一手表达**、写在 reducer **之前**;留在本文件里的这几条仍是老口径:从
+ * store 的 mutation 反推,写在 reducer **之后**。F2-a 已搬走三条:
+ * `appendMessage` / `deleteMessage` / `patchMessage`。
+ * 共用的取材件(`messageForEvent` / `attachmentsForEvent` / `safely` /
+ * BODY_KEYS / DERIVED_KEYS)只有一份,住在 `command-events.ts`。
+ *
  * 三条纪律:
  *
  * 1. **翻译在 reducer 成功之后**。命令没改成任何东西(找不到那条消息、
@@ -22,101 +31,18 @@
  * **有一个例外**:`SessionEventWriteError` 往上抛(批 6b 起无条件)—— 见 `safely`。
  */
 
-import type { ChatMessage, ChatSession, MessageAttachment } from '@shared/ipc.js'
-import type { BlobRef } from '@onething/core/session'
-import { putSessionBlob } from './blob-store.js'
+import type { ChatMessage, ChatSession } from '@shared/ipc.js'
+import { messageForEvent, safely, sessionCommandEvents } from './command-events.js'
 import { appendSurfaceAwareEvent, isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
-import { SessionEventWriteError } from './event-log.js'
 import { currentSessionRun } from './runs.js'
 import { sessionReads } from './reads.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
 
-
-/** 正文字段永远不走命令翻译(它们的来源是 chunks)。 */
-const BODY_KEYS = new Set(['content', 'contentParts', 'reasoning'])
-/** 派生字段:投影自己算得出来,记一份补丁只会制造第二个真相。 */
-const DERIVED_KEYS = new Set(['isStreaming', 'isThinking', 'thinkingStartTime', 'seq', 'steps', 'toolCalls'])
-
-/**
- * 翻译失败一律自吞 —— **除了"账本写不进去"这一类**(§14.6 裁定 7;S3w-3 批 6b
- * 起无条件,从前只在停写档)。
- *
- * 自吞的理由在文件头:翻译坏了不能影响聊天。但 `SessionEventWriteError` 说的
- * 不是"翻译坏了",是"这条事件没落进磁盘";而 `events.jsonl` 已是唯一持久化,
- * 吞掉它等于让一段历史悄悄消失。所以这一类往上抛,由命令面的调用方(RPC 域 /
- * 命令总线)变成一次可见的失败。
- */
-function safely(what: string, run: () => void): void {
-  try {
-    run()
-  } catch (error) {
-    if (error instanceof SessionEventWriteError) throw error
-    log.warn('session event translation failed', { what }, error)
-  }
-}
-
-/**
- * 附件里的 `base64Data` 换成 `BlobRef`(§10.1 G8)。
- *
- * 一张图能有几 MB,而事件行是要被逐行 parse 的 —— 把 base64 写进事件行等于让
- * 每一次 fold 都把它读一遍。落 blob、行里只留 `{hash, bytes, mime}`。
- * blob 写不进去时**摘掉** `base64Data`(而不是留原文):事件行的大小上限是
- * 硬约束,而正文还在 `messages.jsonl` 里 —— 影子期不会因此丢东西。
- */
-function attachmentsForEvent(
-  sessionId: string,
-  attachments: readonly MessageAttachment[] | undefined,
-): unknown[] | undefined {
-  if (!attachments?.length) return undefined
-  return attachments.map(attachment => {
-    if (!attachment.base64Data) return attachment
-    const blob: BlobRef | undefined = putSessionBlob(
-      sessionId,
-      Buffer.from(attachment.base64Data, 'base64'),
-      attachment.mimeType,
-    )
-    const { base64Data: _dropped, ...rest } = attachment
-    return blob ? { ...rest, base64Data: blob } : rest
-  })
-}
-
-/** 一条消息在事件里的形状:正文原样,附件换引用。 */
-function messageForEvent(sessionId: string, message: ChatMessage): Record<string, unknown> {
-  const attachments = attachmentsForEvent(sessionId, message.attachments)
-  const { attachments: _dropped, ...rest } = message
-  return {
-    ...rest,
-    ...(attachments ? { attachments } : {}),
-  }
-}
-
-// ============ 命令翻译 ============
+// ============ 命令翻译(还没翻转产地的那几条) ============
 
 export const sessionEventTranslator = {
-  /**
-   * `appendMessage`。三条分支:
-   *  - user → `user/message`;
-   *  - assistant **且 isStreaming** → 不翻译:它是一次执行的占位,
-   *    `run/start` 才是它在 surface 上的那一格(§9.3);
-   *  - 其余(system / error / 直接落定的 assistant)→ `system/message`,
-   *    role 原样。它是一条**完整消息**,和 `message/imported` 同形。
-   */
-  appendMessage(sessionId: string, message: ChatMessage): void {
-    if (!isSessionTranslationEnabled(sessionId)) return
-    safely('appendMessage', () => {
-      if (message.role === 'assistant' && message.isStreaming) return
-      const type = message.role === 'user' ? 'user/message' : 'system/message'
-      appendSurfaceAwareEvent(
-        sessionId,
-        type,
-        { message: messageForEvent(sessionId, message) as never },
-        { surfaceOp: 'append' },
-      )
-    })
-  },
-
   /**
    * `upsertMessage` 命中已有的那条 = **整条换掉**(S1b 补齐,§10.7 缺口 6)。
    *
@@ -134,55 +60,19 @@ export const sessionEventTranslator = {
    * 过了,所以这里拿到的确实是完整的一条。
    */
   upsertMessage(sessionId: string, message: ChatMessage, existed: boolean): void {
+    // F2-a:这两条的事件构造已经搬进 `command-events.ts`(命令面第一手产地)。
+    // upsert 自己还没翻转(F2-b),所以它仍然从这里借道 —— 借的是**同一份**构造,
+    // 不是复制一份。
     if (!existed) {
-      sessionEventTranslator.appendMessage(sessionId, message)
+      sessionCommandEvents.appendMessage(sessionId, message)
       return
     }
-    sessionEventTranslator.patchMessage(
+    sessionCommandEvents.patchMessage(
       sessionId,
       message.id,
       message as Partial<ChatMessage>,
       { fullBody: true },
     )
-  },
-
-  /**
-   * `patchMessage`。`turnContext` 单独走 `context/turn-update`(它取代了
-   * `ChatMessage.turnContext` 字段,§9.2);正文与派生字段一律丢弃;
-   * 剩下全空就一条都不写。
-   */
-  patchMessage(
-    sessionId: string,
-    messageId: string,
-    patch: Partial<ChatMessage>,
-    options: { fullBody?: boolean } = {},
-  ): void {
-    if (!isSessionTranslationEnabled(sessionId)) return
-    safely('patchMessage', () => {
-      const turnContext = (patch as { turnContext?: { set?: Record<string, string>; removed?: string[] } }).turnContext
-      if (turnContext) {
-        appendSurfaceAwareEvent(sessionId, 'context/turn-update', {
-          messageId,
-          ...(turnContext.set ? { set: turnContext.set } : {}),
-          ...(turnContext.removed ? { removed: turnContext.removed } : {}),
-        })
-      }
-
-      const kept: Record<string, unknown> = {}
-      for (const [key, value] of Object.entries(patch)) {
-        if (key === 'turnContext' || key === 'id') continue
-        if (DERIVED_KEYS.has(key)) continue
-        // `fullBody`(upsert 的整条替换)是唯一放行正文的档;归约器仍然会对
-        // assistant 节点把这三格剥掉。
-        if (!options.fullBody && BODY_KEYS.has(key)) continue
-        if (value === undefined) continue
-        kept[key] = key === 'attachments'
-          ? attachmentsForEvent(sessionId, value as MessageAttachment[])
-          : value
-      }
-      if (Object.keys(kept).length === 0) return
-      appendSurfaceAwareEvent(sessionId, 'message/patched', { messageId, patch: kept })
-    })
   },
 
   /**
@@ -224,22 +114,6 @@ export const sessionEventTranslator = {
           message: messageForEvent(sessionId, message as ChatMessage) as never,
         },
         { ...options, surfaceOp: surfaceOp ?? 'append' },
-      )
-    })
-  },
-
-  /** `deleteMessage`:只遮蔽它自己那一格(后面的照旧在 surface 上)。 */
-  deleteMessage(sessionId: string, messageId: string): void {
-    if (!isSessionTranslationEnabled(sessionId)) return
-    safely('deleteMessage', () => {
-      const seq = sessionSurface(sessionId).seqOf(messageId)
-      appendSurfaceAwareEvent(
-        sessionId,
-        'message/deleted',
-        { messageId },
-        seq !== undefined
-          ? { surfaceOp: { op: 'replace', start: seq, end: seq }, sourceEventSeqs: [seq] }
-          : {},
       )
     })
   },

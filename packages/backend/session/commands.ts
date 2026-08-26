@@ -19,6 +19,15 @@
  * `app/stores/sessions.ts` 上还留着的那批 `updateMessage*` **不是**死路径:
  * 它们是 core 引擎注入的 store 端口的实现,接口形状 P0 不许动(§6)。
  *
+ * **F2-a:三条命令的事件产地已经翻转**(§16.2 的 F2 行 / §16.7)。
+ * `appendMessage` / `deleteMessage` / `patchMessage` 现在的执行序是
+ * **事件 append(同步可见)→ reducer 应用到 store**,事件构造住在
+ * `command-events.ts`(`sessionCommandEvents`),是命令的第一手表达;老 reducer
+ * 降级为 F0 的影子验证器(§16.5),独立推导同一件事供恒等门对账。
+ * 于是"命令内读得到自己刚写的"对这三条成立(F1 的同步可见,§16.6)。
+ * 其余命令(upsert / truncateFrom / replaceAll / patchSession)仍是老口径 ——
+ * reducer 先跑,`event-translator.ts` 从 mutation 反推,F2-b/c 再翻。
+ *
  * **事件写侧取材纪律(§13.18 发现 B)**:命令面在写完端口后给翻译器递数,一律走
  * `sessionReads.*FromTranscript`(恒读 `messages.jsonl` 真相面),**永不**走
  * `getMessage` / `findMessage` 这类随 `ONETHING_SESSION_READ` 分岔的门面 ——
@@ -45,6 +54,7 @@ import {
   updateSessionsIndexMetaForCommands,
 } from '../stores/sessions.js'
 import { assertContentPartIsCarriable } from './content-part-guard.js'
+import { sessionCommandEvents } from './command-events.js'
 import { sessionEventTranslator } from './event-translator.js'
 import { sessionReads } from './reads.js'
 
@@ -173,7 +183,17 @@ export interface SessionCommands {
 
 export interface CreateSessionCommandsOptions {
   /**
+   * **已翻转命令的事件产地**(F2,§16.2 的 F2 行)。命令先在这里把事件构造出来
+   * 并 append,reducer 随后才把同一条命令应用到 store。
+   *
+   * 是**选项**而不是硬接线,理由与 `translator` 同:命令面的单元测试要的是
+   * "命令做对了什么",不该顺带把一份事件日志写到某个临时目录里去。生产默认接上。
+   */
+  events?: typeof sessionCommandEvents | null
+  /**
    * S1a 的影子写(§10.2 第一行采集点):reducer 落定之后把这次命令翻成事件。
+   * **F2 之后这里只剩没翻转的那几条**(upsert / truncateFrom / replaceAll /
+   * patchSession);翻转过的走上面的 `events`。
    *
    * 是**选项**而不是硬接线,因为命令面的单元测试要的是"命令做对了什么",
    * 不该顺带把一份事件日志写到某个临时目录里去。生产实例默认接上。
@@ -188,14 +208,25 @@ export function createSessionCommands(
   const translator = options.translator === undefined
     ? sessionEventTranslator
     : options.translator
+  const events = options.events === undefined
+    ? sessionCommandEvents
+    : options.events
 
   return {
+    /**
+     * F2-a:**事件先,store 后**。
+     *
+     * append 是无条件成功的(reducer 的 `changed` 恒为 true),所以这里没有"改没改成"
+     * 要问 —— 直接产出事件。F1 保证 `appendSurfaceAwareEvent` 返回时活投影与活 surface
+     * 已经前进(§16.6),于是**命令内读得到自己刚写的**;随后的 `addMessage` 是 F0 的
+     * 影子验证器(§16.5)在独立推导同一件事。
+     */
     appendMessage(sessionId, payload) {
       const message = payload.stampCollab && ports.stampCollabAgentId
         ? ports.stampCollabAgentId(sessionId, payload.message)
         : payload.message
+      events?.appendMessage(sessionId, message)
       ports.messages.addMessage(sessionId, message)
-      translator?.appendMessage(sessionId, message)
     },
 
     upsertMessage(sessionId, payload) {
@@ -208,15 +239,26 @@ export function createSessionCommands(
       return changed
     },
 
+    /**
+     * F2-a:**事件先,store 后**。
+     *
+     * reducer 的 `changed` 只有一个 false 的理由 —— 那条消息不在(`index === -1`)。
+     * 翻转之后不能再等它的回执(等回执就是又把事件排到了 store 后面),所以命令面
+     * 自己先问同一个问题,问的是**同一份 store**(`hasMessageInTranscript` 与 reducer
+     * 的 `findIndex` 同源),于是"写不写这条事件"的判据一字未变。
+     *
+     * (F3 才把这一侧的取材整体翻成读投影;F2-a 照 §13.18 的纪律仍走抄本面。)
+     */
     patchMessage(sessionId, payload) {
-      const changed = ports.messages.patchMessageFields(
+      if (sessionReads.hasMessageInTranscript(sessionId, payload.messageId)) {
+        events?.patchMessage(sessionId, payload.messageId, payload.patch)
+      }
+      return ports.messages.patchMessageFields(
         sessionId,
         payload.messageId,
         payload.patch,
         payload.hint,
       )
-      if (changed) translator?.patchMessage(sessionId, payload.messageId, payload.patch)
-      return changed
     },
 
     appendContentPart(sessionId, payload) {
@@ -274,20 +316,25 @@ export function createSessionCommands(
       return changed
     },
 
+    /**
+     * F2-a:**事件先,store 后**。判据同 `patchMessage` —— reducer 只在"那条消息
+     * 不在"时不改任何东西,所以命令面先在同一份 store 上问一次存在性。
+     *
+     * 按 marker 删的那一支**本来就是**先找后删(命令面不知道删掉的是哪一条,
+     * 而事件要写 id),F2-a 只是把事件从"删完之后"提到了"删之前"。
+     */
     deleteMessage(sessionId, payload) {
       if ('messageId' in payload) {
-        const changed = ports.messages.deleteMessage(sessionId, payload.messageId)
-        if (changed) translator?.deleteMessage(sessionId, payload.messageId)
-        return changed
+        if (sessionReads.hasMessageInTranscript(sessionId, payload.messageId)) {
+          events?.deleteMessage(sessionId, payload.messageId)
+        }
+        return ports.messages.deleteMessage(sessionId, payload.messageId)
       }
-      // 按 marker 删:命令面不知道删掉的是哪一条,所以先找出来再删
-      // (`deleteMessageWhere` 内部会再找一次 —— 两次 find 换一条能翻译的事件)。
       // §13.18 发现 B:抄本真相面 —— events 读模式下活投影滞后会找不到,
-      // 该翻译的 `message/deleted` 整条丢失。
+      // 该产出的 `message/deleted` 整条丢失。
       const target = sessionReads.findMessageFromTranscript(sessionId, payload.matchMarker)
-      const changed = ports.messages.deleteMessageWhere(sessionId, payload.matchMarker)
-      if (changed && target) translator?.deleteMessage(sessionId, target.id)
-      return changed
+      if (target) events?.deleteMessage(sessionId, target.id)
+      return ports.messages.deleteMessageWhere(sessionId, payload.matchMarker)
     },
 
     /**

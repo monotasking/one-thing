@@ -48,6 +48,7 @@ vi.mock('../../stores/sessions.js', () => ({
 }))
 
 const { sessionEventTranslator } = await import('../event-translator.js')
+const { sessionCommandEvents } = await import('../command-events.js')
 const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } = await import(
   '../event-log.js'
 )
@@ -104,7 +105,7 @@ describe('F1:命令产出的事件在 append 返回前已经在活投影上(§16
     openLiveProjection()
     expect(peekedMessageIds()).toEqual([])
 
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'u1',
       role: 'user',
       content: 'hello',
@@ -117,14 +118,14 @@ describe('F1:命令产出的事件在 append 返回前已经在活投影上(§16
 
   it('patchMessage:补丁当场落在活投影的那条节点上', () => {
     openLiveProjection()
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'u1',
       role: 'user',
       content: 'hello',
       timestamp: 1000,
     })
 
-    sessionEventTranslator.patchMessage(SESSION, 'u1', { metadata: { tag: 'f1' } } as Partial<ChatMessage>)
+    sessionCommandEvents.patchMessage(SESSION, 'u1', { metadata: { tag: 'f1' } } as Partial<ChatMessage>)
 
     expect((peekedNode('u1')?.patch as Record<string, unknown> | undefined)?.metadata).toEqual({
       tag: 'f1',
@@ -133,13 +134,13 @@ describe('F1:命令产出的事件在 append 返回前已经在活投影上(§16
 
   it('truncateFrom(regenerate):遮蔽当场生效,活投影里那条已经 hidden', () => {
     openLiveProjection()
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'u1',
       role: 'user',
       content: 'first',
       timestamp: 1000,
     })
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'u2',
       role: 'user',
       content: 'second',
@@ -159,7 +160,7 @@ describe('F1:活 surface 也由写入口推进 —— 两扇门都算数(§16.6)
     // 那扇门(`session-event-recorder.ts`)。F1 之前写侧的活 surface 永远看不见它
     // (core `declaredMessageGap` 注释里的真机病历 `ec2437ff`),F1 之后看得见。
     const surface = sessionSurface(SESSION)
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'u1',
       role: 'user',
       content: 'hello',
@@ -190,7 +191,7 @@ describe('F1:活 surface 也由写入口推进 —— 两扇门都算数(§16.6)
 describe('F1 崩溃窗口:活投影领先磁盘时 refold 跳过而不是报红(§16.4)', () => {
   it('折在前、落盘在后 —— 那一段没落盘时游标对不齐,refold skipped 而不是 mismatch', async () => {
     openLiveProjection()
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'u1',
       role: 'user',
       content: 'landed',
@@ -206,7 +207,7 @@ describe('F1 崩溃窗口:活投影领先磁盘时 refold 跳过而不是报红(
     const append = vi
       .spyOn(fs.promises, 'appendFile')
       .mockImplementation((async () => undefined) as never)
-    sessionEventTranslator.appendMessage(SESSION, {
+    sessionCommandEvents.appendMessage(SESSION, {
       id: 'u2',
       role: 'user',
       content: 'lost with the process',

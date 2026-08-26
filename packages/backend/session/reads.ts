@@ -189,6 +189,22 @@ export const sessionReads = {
     return message ? guard(message) : undefined
   },
 
+  /**
+   * **抄本侧**问一句"这条消息在不在" —— F2-a 的写侧判据(§16.7)。
+   *
+   * 为什么不用 `getMessageFromTranscript(...) !== undefined`:那一口会 `guard()`
+   * 一整条消息(dev / vitest 下是深冻结),而 `patchMessage` 是逐 token 的热路径,
+   * 每次补丁冻一条带 steps/toolCalls 的消息不划算。这里只回答存在性,不把消息
+   * 交出去,所以也不需要冻。
+   *
+   * 判据与 core reducer 的 `findIndex(item => item.id === messageId)` **同源同义**:
+   * 翻转之后命令面要在 reducer 之前自己回答"这次命令改不改得成",而"改不成"的
+   * 唯一理由就是这条消息不在。
+   */
+  hasMessageInTranscript(sessionId: string, messageId: string): boolean {
+    return getSessionMessages(sessionId)?.some(item => item.id === messageId) ?? false
+  },
+
   /** **抄本侧**按谓词查一条(F11:同 `getMessageFromTranscript`,事件写侧取材用)。 */
   findMessageFromTranscript(
     sessionId: string,
