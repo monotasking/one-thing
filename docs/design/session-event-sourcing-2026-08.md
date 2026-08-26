@@ -3992,7 +3992,7 @@ renderer 直接 import core reducer)。
 | 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 — **已完成(§15.11)**,含 §14.7 风险② flush 顺序审计(只出清单,动手归批 6) | — |
 | 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5)—— **首杀已修**:refold 门在真机上抓到第一例失配(补水改写活投影),根因/修法/新场景见 §15.13。**第二笔账也来自真机**:refold 首采在 17MB 账本上一口气阻塞主进程 ≈115ms("答完顿一下"),已改协作式分片,连同当晚整轮延迟诊断的归责结论见 §15.14。**第三笔:history 影子 2 条假红**(steering 换锚点的同步点与消费侧之间那一小段窗口),同一个窗口里还藏着一颗压缩重建**真丢一整轮**的雷(今天没撞上),两处已收口,见 §15.15。**第四笔:渲染层"正文看不见"**(真机 9 条历史消息整条回答被卷进折叠区)——**不是数据丢失**,是空轮的渲染锚点被挂到了末尾,批 3 翻默认让"无锚点消息"成为常态点着了这根引信;修 A(锚点按轮次序就位)已落地,修 B 待拍板,见 §15.16 | 正常使用即可 |
 | 08-28 | 5 | flush 收口四项(§15.11 清单 a–d,批 6 前置)+ S3w-4 体积治理 — **已完成(§15.12)**;events.jsonl 轮转只出方案未动手(§15.12 B3,待拍板) | — |
-| 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿) | **唯一确认点**:烧 S2b 回滚读前问一次 |
+| 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿)。**前置已做一半**(§15.18):`fallbackHits` 的结构性地板(§15.9 诊断 1)已归位 —— `stream-executor.ts` 的写侧取材改真相面口,battery 321 → 16;余下 16 条全部是 `agent-loop-executor.ts:249`(steer 换锚点)这同一处孪生,同款一行修法,**留在批 6 里一并收**,收完删兜底的"命中率 = 0"判据才干净 | **唯一确认点**:烧 S2b 回滚读前问一次 |
 | 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
 | 09-05→09-08 | 12–14 | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动) | B 期细案到期过目 |
 | ≈ 09-08 | 终 | 全线收口:事件唯一真相、UI 同词汇;refold 常驻唯一耐久门 | — |
@@ -4912,3 +4912,70 @@ reasoning:14, text:14]` —— 孤儿回到队首,`lastProcessIndex` 停在 `rea
 `bun run ui:gate` 不新增(本批零 `.vue`/CSS 改动)。按工单未跑全量(另一会话在途的
 renderer 布局改动会干扰)。`~/.onething` 全程只读(fixture 是读出来后脱敏重写的形状,
 不是拷贝真实内容)。
+
+
+### 15.17 修 B 裁定(2026-08-26,用户):不做,先观察
+
+work-group 分界的"正文永不进折叠区"硬保底(§15.16 修 B)用户裁定**暂不加**,只靠
+修 A(锚点就位插入,3e6de773)+ 三条真机 fixture 观察。若锚点错位类再次出现同样的
+"正文被吞"形状,再回来拍 b1/b2。
+
+### 15.18 批 6 前置:写侧读抄本的 `fallbackHits` 地板归位(2026-08-26,opus 执行,未提交)
+
+**病灶**(§15.9 诊断 1 已点名):`fallbackHits` 恒等于 run 数,不是"投影折不出会话
+历史"这件坏事,而是**一处写侧取材点走错了口**。`wiring/engine/stream/
+stream-executor.ts` 的 `executeMessageStream` 在写 `run/start` **之前**要读一次助手
+占位消息(把它的时刻/agentId/source/origin 带进 `run/start`),而这条 assistant 此刻
+在事件账本里还没有产地 —— 翻译器故意不翻 `isStreaming` 的 assistant,`run/start`
+才是它的那一格。于是走 routed 的 `sessionReads.getMessage` 时 `fromEvents` 恒折不出,
+每个 run 必然掉进 `?? getSessionMessages` 兜底、计一次 `fallbackHits`。
+
+**修法**(一行 + 一段注释,行为逐字等价):改走真相面
+`sessionReads.getMessageFromTranscript`。这不是换个名字图省事,是把这处取材点归到
+§14.1「写侧回读残留」表 + 批 7 纪律(§13.18 发现 B)该在的位置上:**事件写侧的取材
+恒读抄本,永不随 `ONETHING_SESSION_READ` 分岔**。取到的消息与从前逐字相同 —— 兜底
+半边读的就是同一个 `getSessionMessages(sessionId)` —— 只是不再经过"投影折不出 →
+兜底"这条路径、不再计数。S3w-3 删兜底前那个"命中率必须量成 0"因此才可能成立。
+
+**读数**(`sessions:shadow-battery`,同一台机器前后两跑):
+
+| | runs | fallbackHits | mismatches / appendFailures / refoldMismatch |
+|---|---|---|---|
+| 修前 | 321 | **321**(= run 数,§15.9 说的结构性地板) | 0 / 0 / 0 |
+| 修后 | 321 | **16** | 0 / 0 / 0 |
+
+**余下 16 条,全部同一处,已用堆栈实证**(临时在 `countSessionReadFallback` 里打栈
+跑一次 battery,读完即删,未入库):
+
+```
+countSessionReadFallback ← transcriptFallback ← sessionReads.getMessage
+  ← rotateAssistantWriterIdentity (agent-loop-executor.ts:249)
+  ← createNextAssistantWriter ← applyAgentLoopTurnStartWithAdapters
+```
+
+**它是 stream-executor:182 在 steer 那条路上的孪生**:`rotateAssistantWriterIdentity`
+刚 `store.addMessage` 出一条新的 assistant 占位(为读回 `stampCollabAgentId` 盖上的
+`agentId`/`source`),紧接着就要用它去 `rotateSessionRun` —— 也就是说,**这次读的
+产物正是它自己那一格 `run/start`**,读的时候账本里当然还没有。同一病灶、同一修法
+(改 `getMessageFromTranscript`),16 = battery 里 steering 场景的换锚点次数。
+
+**本批不动它**(用户令:核对与列清单,不扩大改动面),留给批 6 一并收:改完
+`fallbackHits` 应当到 0,S3w-3 的删兜底判据届时才是干净的。
+
+**§14.1 表其余各行的核对结论**(逐条看过,无第三处):
+
+- `commands.ts:209/275/291`、`event-translator.ts:220`、`agent-loop-executor.ts:525/
+  567/617` —— 已经是 `*FromTranscript`,不经过 `fromEvents`,**不计**。
+- `agent-loop-executor.ts:762`(resume 占位)、`tool-orchestrator.ts:120`、
+  `tool-execution.ts:126`、`agent-loop-executor.ts:874`、`agent-loop-runtime.ts:207/269`、
+  `stream-engine-runtime.ts:68/70`、`context-compact.ts:90/304`、
+  `triggers/session-toc.ts:44/122` —— 这些读都发生在 `run/start` **之后**,那条
+  assistant 在投影里已经有产地,`fromEvents` 折得出,battery 实测零命中。它们仍是
+  §14.1 表意义上的"写侧回读"(F3 期要换语义),但**不构成 `fallbackHits` 地板**。
+- `rpc/domains/sessions.ts:173/188`、`server/runtime.ts`、`stores/sessions.ts` ——
+  产品读路/杂用,本就该走 routed 口,不在本批口径内。
+
+**验收**(全部实跑):`bun run typecheck` 0;定向
+`vitest run packages/backend/wiring/engine packages/backend/session` 84 文件 / 667 用例
+全绿;`sessions:shadow-battery` GREEN(runs 321、mismatches 0、appendFailures 0、
+refoldMismatch 0、fallbackHits 16);`boundary:gate` / `session:gate` / `log:gate` 全绿。

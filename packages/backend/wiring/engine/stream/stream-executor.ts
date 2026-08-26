@@ -179,7 +179,19 @@ export async function executeMessageStream(
   const engine = getStreamEngine()
   // 助手占位消息在进这扇门之前就建好了 —— 把它的时刻带进 `run/start`,投影
   // 物化出来的那一条才与事实同一个时刻(S1b 的影子断言按它比)。
-  const assistantPlaceholder = sessionReads.getMessage(
+  //
+  // §15.18(批 6 前置):这里读的是**事件写侧的取材**(它的产物就是下一行的
+  // `run/start` 事件),所以按 §14.1「写侧回读残留」表 + 批 7 纪律(§13.18 发现 B)
+  // 走真相面 `getMessageFromTranscript` —— 恒读内存 store 的抄本,永不随
+  // `ONETHING_SESSION_READ` 分岔。**不是**图省事换个名字:走 routed 的
+  // `getMessage` 时,此刻这条 assistant 在事件账本里还没有产地(翻译器故意不翻
+  // `isStreaming` 的 assistant,`run/start` 才是它的那一格),于是 `fromEvents`
+  // 恒折不出、每个 run 必然掉进 `?? getSessionMessages` 兜底并计一次
+  // `fallbackHits` —— 那就是 §15.9 诊断 1 说的「fallbackHits 恒等于 run 数」这条
+  // 结构性地板。换成真相面后取到的消息**逐字相同**(兜底半边读的就是同一个
+  // `getSessionMessages`),只是不再经过"投影折不出→兜底"的路径、不再计数,
+  // S3w-3 删兜底前的那个"命中率量成 0"因此才可能成立。
+  const assistantPlaceholder = sessionReads.getMessageFromTranscript(
     params.sessionId,
     params.assistantMessageId,
   )

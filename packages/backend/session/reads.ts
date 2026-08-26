@@ -105,13 +105,16 @@ function fromEvents<T>(read: () => T | undefined): T | undefined {
  *    永远到不了 0,门也就永远没有判据(battery 实测:不加这一条会计出 820 次,
  *    全部是空会话的例行读)。
  *
- * **已知的结构性地板**(S3w-1 实测,battery:命中数恰好 = run 数):
- * `stream-executor.ts:182` 在 `run/start` **之前**读助手占位消息(为了把它的时刻
- * 带进 `run/start`)—— 那条消息此刻在事件账本里还没有产地(翻译器故意不翻
- * `isStreaming` 的 assistant,`run/start` 才是它的那一格),于是每个 run 必然
- * 命中一次兜底。它本身是 §14.1 表里的"写侧读抄本",按批 7 的纪律本该走
- * `getMessageFromTranscript`(那口不经过 `fromEvents`,也就不算兜底)。要把这个
- * 数压到 0,先把这类写侧取材点归位;这不在 S3w-1 的改动面里,记在案。
+ * **曾经的结构性地板,已归位一半**(§15.9 诊断 1 → §15.18):写 `run/start` **之前**
+ * 读助手占位消息的那类取材点 —— 那条 assistant 此刻在事件账本里还没有产地(翻译器
+ * 故意不翻 `isStreaming` 的 assistant,`run/start` 才是它的那一格),于是 `fromEvents`
+ * 恒折不出、每次必然掉进兜底。它们本来就是 §14.1 表里的"写侧读抄本",按批 7 的
+ * 纪律该走 `getMessageFromTranscript`(那口不经过 `fromEvents`,也就不算兜底)。
+ *  - `stream-executor.ts` 的那一处**已改**(§15.18):battery 321 → 16。
+ *  - `agent-loop-executor.ts:249`(steer 换锚点 `rotateAssistantWriterIdentity`,
+ *    刚 `addMessage` 就读回来喂自己那一格 `run/start`)是它的孪生,**还没改**,
+ *    余下的 16 全部出自这里。批 6 一并收,收完这个数才该是 0 —— S3w-3 删兜底的
+ *    判据("命中率量成 0")以此为准。
  */
 function fallbackCarriesHistory(value: unknown): boolean {
   if (value === undefined || value === null) return false
