@@ -35,6 +35,10 @@
  * 记账:不等记 `<store>/log/session-shadow.jsonl` 一行 `kind:'refold'`,计数进
  * `session-shadow-stats.json` 的 `refoldChecks` / `refoldMismatches`;
  * `sessions:shadow-report` 打印两者并把 **`refoldMismatches = 0` 纳入门判据**。
+ *
+ * 方向(F0,§16.2):摘要的 `a` 列是**文件字节重折**(真相 —— 账本是唯一持久化),
+ * `b` 列是内存活投影。这条从一开始就是这个次序,F0 没有动它;写入口盖的
+ * `truth:'events'` 标记对这一类同样成立(两侧都由事件推导,真相在文件那一侧)。
  */
 
 import fs from 'node:fs'

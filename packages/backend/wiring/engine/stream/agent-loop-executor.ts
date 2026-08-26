@@ -884,10 +884,10 @@ export async function executeAgentLoopStreamGeneration(
 						role: message.role,
 						content: message.content,
 					})),
-				// S1b:发出去之前比一次历史(§10.4 第二条)。
-				// §15.15:换锚点的同步点与消费侧之间那一小段窗口里不比 —— 真相侧
+				// S1b:发出去之前比一次历史(§10.4 第二条;F0 之后是恒等门,§16.2)。
+				// §15.15:换锚点的同步点与消费侧之间那一小段窗口里不比 —— store 侧
 				// 现算的历史会被上一条 assistant 的 `isStreaming` 整条滤掉,比出来
-				// 差一整轮而投影没错(与 run 断言的 `shadowGate` 同一条判例)。
+				// 差一整轮而两侧都没错(与 run 断言的 `shadowGate` 同一条判例)。
 				onRequestRecipe: (runId) =>
 					checkSessionHistoryShadowForRequest(ctx.sessionId, runId, {
 						pendingAssistantRotation: Boolean(state.pendingAssistantRotation),

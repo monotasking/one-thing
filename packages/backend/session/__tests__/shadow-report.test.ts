@@ -61,6 +61,20 @@ describe('shadow report', () => {
     expect(report.lastDiffs).toHaveLength(3)
   })
 
+  /**
+   * F0(§16.2):方向标记。转向后的行带 `truth:'events'`,老行没有 —— 报表把两种
+   * 行分开数出来,免得有人拿今天的列名去读昨天的两列(它们的语义正好相反)。
+   */
+  it('counts the F0 direction marker apart from the pre-F0 lines', () => {
+    writeStats({ runs: 1, mismatches: 2 })
+    writeLines([
+      { time: 1, sessionId: 's1', kind: 'messages', truth: 'events', diff: [] },
+      { time: 2, sessionId: 's1', kind: 'history', diff: [] },
+    ])
+
+    expect(buildReport(logDir).directions).toEqual({ events: 1, legacy: 1 })
+  })
+
   it('treats a missing stats file as zero, not as green', () => {
     const stats = readStats(logDir)
     expect(stats).toMatchObject({

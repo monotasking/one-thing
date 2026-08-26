@@ -3511,9 +3511,15 @@ messages.jsonl 落盘丢写类(§13.16)整类消亡。丙留作远期(或永不�
 **先把"两个独立来源"看准**:今天有两层对账 ——
 
 1. **语义层**(shadow,run/end + 请求前):内存 store(reducer 推导)vs 活投影(事件
-   推导)。**它不依赖 messages.jsonl 文件** —— 真相侧 `listMessagesFromTranscript` 读的
+   推导)。**它不依赖 messages.jsonl 文件** —— store 侧 `listMessagesFromTranscript` 读的
    是内存 store。停写后这道门**照跑不误**,且两侧仍是独立推导(reducer ≠ projection
    reducer)。
+
+   > **方向已翻(F0,2026-08-27,§16.5)**:写这一段的时候 store 是真相 a、活投影是
+   > 影子 b,一次不等读成"投影错了"。F0 把角色对调 —— **a = 事件/活投影(真相),
+   > b = 内存 store(影子验证器)**,不等默认读成"写模型没跟上账本"。两侧的取数、
+   > 判定、记账口径一字未动(比对是对称的),换的只有归因与日志两列的次序;这道门
+   > 从此叫**恒等门**,到 F4 reducer 退役时与它一起退役。
 2. **耐久层**(verify #6 + §13.16 那类真机对账):`messages.jsonl` 文件 vs 投影。它守的
    是**落盘本身**:append 丢没丢、行坏没坏、seq 乱没乱。停写后这一层的**新增量**没有了
    对象 —— 这才是真正消失的第二来源。
@@ -3856,7 +3862,7 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 
 | 期 | 交付 | 门 | 回退 |
 |---|---|---|---|
-| **F0 恒等门转向** | 现 shadow(store=真相 vs 投影=影子)**角色对调**:事件/fold 侧成真相,老 reducer 降级为影子验证器;比对机制、记账口径沿用 session-shadow | 对调后真机 ≥200 run 0 失配 | 对调是比对方向,零行为变化 |
+| **F0 恒等门转向** — **已完成(§16.5,2026-08-27)** | 现 shadow(store=真相 vs 投影=影子)**角色对调**:事件/fold 侧成真相,老 reducer 降级为影子验证器;比对机制、记账口径沿用 session-shadow | 对调后真机 ≥200 run 0 失配 | 对调是比对方向,零行为变化 |
 | **F1 写侧同步可见** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
 | **F2 命令面翻转(逐条)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
 | **F3 写侧回读换语义** | §14.1 的 9 处写侧回读残留全部改读 fold 后投影(F1 是前提);「写侧读抄本」纪律(§13.18)整体翻面 | 定向用例逐处 + battery | 随 F2 分批走 |
@@ -3874,6 +3880,9 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 
 - **安全网递减是 full 的本质代价**(§14.2 已述,用户知情拍板):F4 之后正确性凭据只剩
   refold(同源两路径),没有独立第二推导。F0–F3 期间恒等门仍在,风险集中在 F4 之后。
+  **F0 已上岗(2026-08-27,§16.5)**:恒等门的归因已经翻向事件,F1–F4 每一批的
+  "store 侧漂移"都会以 `a`=事件 / `b`=store 的形状记在 `session-shadow.jsonl` 里
+  (每行带 `truth:'events'` 方向标记),不必再靠人去反读两列。
 - **同步可见 vs 崩溃窗口**:F1 把「fold 先于落盘」钉成纪律后,崩溃时活投影可能领先
   磁盘 —— refold 会把这类窗口暴露为 refold 失配,语义 fsync 检查点是兜底,F1 落地时
   重审检查点位。
@@ -4015,7 +4024,7 @@ renderer 直接 import core reducer)。
 | 08-26 | **6a** | **切 off(只翻默认与配套,不删码)** —— `ONETHING_SESSION_TRANSCRIPT` 默认 `shadow → off`(`shadow`/`primary` 降为显式回滚杆);孪生取材点 `rotateAssistantWriterIdentity` 一行修完 `fallbackHits` **16 → 0**;battery 泳道语义对调(停写泳道 → 默认档泳道 + 新增显式 `shadow` 回滚杆泳道,六条泳道);verify #6 改**存量只读对账**;§14.6 第三组裁定按推荐记录 —— **已完成(§15.19)** | — |
 | 08-26 | **6a 尾款** | 批 6a 遗下的两条真机存量红收口 —— `source-seqs-incomplete` 读侧收敛到"只对消息节点问责"(`ec2437ff` 自愈)、`Session cleared` 化石进 verify 基线(同一行同时收掉 hydration-contract 的 fail 1);verify:gate **0 new** —— **已完成(§15.21)**。**写侧留一次拍板**:让 `tool/result` 走 `appendSurfaceAwareEvent`(新账完整 + 顺带收编辑重发尾随格),是可感知行为变化,按旧行为停手 | **待拍板**:§15.21 第 1 条写侧 |
 | 08-26 | **6b** | **删旧**:storage-driver 消息写半边删(meta/index 保留)、reads 兜底删 8 留 3、sanitize 死码清(`sanitizeSessionsOnStartupWithAdapters` 整体退役)、`session:check` 白名单收一条、裁定 9b(legacy 首触**同步**迁进 events)与 10(`messages.cleared-*` 退役)的实施;两根抄本回滚杆 + `ONETHING_SESSION_READ` 回滚读一起烧掉(写失败上抛因此成为无条件默认),battery 六泳道两探针 → 四泳道一探针,verify 基线摘 13 条已自愈 —— **已完成(§15.22)**,回滚 = `git revert` | **待拍板**:`ONETHING_SESSION_HYDRATE=messages` 这根只对存量有效且已不安全的杆要不要一并退役(§15.22 第七节) |
-| 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
+| 08-31→09-04 | 7–11 | F 线:**F0 门转向 — 已完成(§16.5)** → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
 | 09-05→09-08 | 12–14 | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动) | B 期细案到期过目 |
 | ≈ 09-08 | 终 | 全线收口:事件唯一真相、UI 同词汇;refold 常驻唯一耐久门 | — |
 
@@ -5699,3 +5708,81 @@ events+blobs ÷ messages = 1.12   (§8 的 S3w-3 验收目标 1.10–1.20 ✔)
    本批一字未动。
 3. **`clearSessionMessages` 零生产调用点**(见上表)。它是 `store.ts` /
    `stores/index.ts` 的导出面,删它属于面收敛,不在本批范围。
+
+### 16.5 F0 落地记录:恒等门转向(2026-08-27,opus 执行,未提交)
+
+**一句话**:`session-shadow` 那道门的两侧一个字没换,换的是**谁被 blame** —— 从
+「store 是真相、投影是影子」翻成「**事件/活投影是真相、内存 store 是影子验证器**」。
+比对是对称的,所以这批**零行为变化**:同一对不等,昨天红今天也红(battery 逐项对照
+见第四节)。
+
+#### 一、对调落点清单
+
+| # | 文件 | 改了什么 |
+|---|---|---|
+| 1 | `packages/backend/session/shadow.ts` | 文件头重写(「S1b 影子断言」→「恒等门」,新增一张转向前后对照表 + "为什么零行为变化");纪律 4 从"真相侧永远是抄本"改成"**验证器侧永远是 store,不许经过投影**"(取数纪律不变,变的是它守的角色);`SessionShadowKind` 注释按新语义;`SessionShadowDiffEntry.a/b` 的语义对调(a=事件真相 / b=store 验证器);新增 `SESSION_SHADOW_TRUTH` 常量 + `SessionShadowTruth` 类型 + `SessionShadowRecord.truth?` 字段;`appendSessionShadowLine` 在**唯一写入口**盖章 `truth:'events'`;`recordMismatch` 形参改名 `a/b` → `truth/verifier`;`checkSessionRunShadow` 变量 `actual` → `storeMessages`,`a/b` 两侧对调赋值;`checkSessionHistoryShadow` 两侧对调;`sessionEventCoverageIsPartial` 注释 |
+| 2 | `packages/backend/session/shadow.ts`(入参) | `SessionHistoryShadowInput.actual` → **`fromStore`**(`actual` 这个名字本身就编码着旧方向) |
+| 3 | `packages/backend/wiring/engine/stream/history-shadow.ts` | 文件头重写(真相=`materializeModelHistory`,验证对象=`buildHistoryMessages(store)`);steer 窗口那段"投影没错"→"哪一侧都没错";调用点 `actual:` → `fromStore:` |
+| 4 | `packages/backend/wiring/engine/stream/agent-loop-executor.ts` | `onRequestRecipe` 上方那三行注释的"真相侧"→"store 侧" |
+| 5 | `packages/backend/session/reads.ts` | `listMessagesFromTranscript` 的文档:「影子断言唯一合法的**真相侧**取数」→「恒等门唯一合法的**验证器侧**取数」;删掉停写后已失真的"永远来自 messages.jsonl";补一句"F0 换的是方向,'两条独立推导'这条纪律与方向无关" |
+| 6 | `packages/backend/session/refold.ts` | 文件头补方向段:`refold` 类的 `a` 从一开始就是**文件重折**(真相),F0 没动它;写入口盖的 `truth:'events'` 对这一类同样成立 |
+| 7 | `scripts/session-shadow-report.mjs` | 文件头补「方向」段;新增打印行 `[shadow] direction : A = events(真相) / B = store(影子验证器) [F0]`;`buildReport` 新增 `directions {events, legacy}`(**不进门**),打印行 `[shadow] lineDirections`;`formatDiff` 的两列改**随方向标记取名**(`diffColumnLabels`):有 `truth` 的按新语义、**没有 `truth` 的按旧语义打印**(拿今天的列名去贴昨天的行 = 把归因贴反),`refold` 类另有一对名字 |
+
+**没动的**(刻意):`kind` 取值、`stats` 的任何字段名(`runs`/`mismatches`/`byKind`/
+`skipped`/`refold*`…)、采样率、去重指纹口径、门判据、`ONETHING_SESSION_SHADOW` 开关。
+报表要能跨 F0 读同一条时间线,断代一次就再也拼不回来。
+
+#### 二、护航断言:`truth` 方向标记
+
+- **形状**:`session-shadow.jsonl` 每行多一格 `"truth":"events"`。**缺这个字段的行 =
+  F0 之前记的**,它的 A/B 两列语义正好相反。
+- **盖章点**:`appendSessionShadowLine`(**唯一**写入口,`messages`/`history`/`refold`
+  三类共用)。各采集点自己填迟早漏一处,而漏掉的那一行会被人当成老记录读反。
+- **报表**:`lineDirections` 把两种行分开数;`last diffs` 的列名逐行随标记走。
+- **它给 F1–F4 的用处**:写模型翻转期间一次不等的默认归因是"store 侧漂了",
+  日志里 `b` 列就是漂掉的那一份,不必再靠人反读。
+
+#### 三、用例
+
+| 用例 | 位置 | 钉住什么 |
+|---|---|---|
+| `records one line + one counter when the bodies differ` | `session/__tests__/shadow.test.ts` | 改的是 store 侧('HELLO'),断言 **`a==='hello'`(事件)/ `b==='HELLO'`(store)** —— 谁把两侧调回去当场红;顺带断言 `truth==='events'` |
+| `puts the projection in column A and the store in column B` | 同上(history 类) | **新增**。只有 store 侧才有的那句话必须落在 `b` 列、且**不许**出现在 `a` 列 |
+| `every recorded line carries the F0 direction marker` | 同上 | **新增**。一次 `messages` + 一次 `history` 两行都必须带 `truth:'events'` |
+| `counts the F0 direction marker apart from the pre-F0 lines` | `session/__tests__/shadow-report.test.ts` | **新增**。带标记 / 不带标记的行分开计数(`{events:1, legacy:1}`) |
+| 既有 12 处 `actual:` | `shadow.test.ts` | 随入参改名 `fromStore:`(纯改名,断言值一字未动) |
+
+#### 四、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run typecheck` | **0** |
+| 定向 `packages/backend/session` + `packages/backend/wiring/engine` | **84 文件 / 659 测试全绿** |
+| `bun run sessions:shadow-battery` | **GREEN** —— runs **321** / historyChecks 449 / mismatches **0** / duplicates 0 / appendFailures **0** / refoldChecks **225** / refoldMismatches **0** / `session-shadow.jsonl` **0 行**;四条泳道 + 一枚探针全 PASS |
+| `bun run boundary:gate` | ok — 0 failures |
+| `bun run session:gate` | ok — 0 known, none new |
+| `bun run log:gate` | ok — 4 known, none new |
+| 真机只读 `bun run sessions:shadow-report` | 打印正常(含新的 `direction` / `lineDirections` 两行);runs 32 / mismatches 0 / refoldMismatch 0 / shadow.jsonl 0 行。**GATE RED 只因 `runs 32 < 200`** —— 真机计数在批 6b 之后重新起算,与本批无关;全程只读,`~/.onething` 一字未写 |
+
+**battery 对照(这批"零行为变化"的门)**:批 6b 的落地记录(§15.22 验收表)是
+runs **321** / mismatches **0** / appendFailures **0** / refoldChecks **225** /
+refoldMismatches **0** / `session-shadow.jsonl` **0 行**,四泳道一探针全 PASS ——
+本批**逐项相同**。(`historyChecks` 是请求粒度、批 6b 表里没列;它随场景内的请求轮数
+浮动,不参与判定。)
+
+**报表两种行的打印**另在一份三行 fixture 上验过(临时 store,读完即删):老行打成
+`A(store, 旧方向)/B(events, 旧方向)`,新行打成 `A(events 真相)/B(store 验证器)`,
+`refold` 行打成 `A(events 文件重折)/B(内存活投影)`,`lineDirections` 报
+`2 events / 1 pre-F0`。
+
+#### 五、留账
+
+1. **`listMessagesFromTranscript` / `getMessageFromTranscript` / `findMessageFromTranscript`
+   这组名字里的 "Transcript"** 停写之后已经名不副实(它读的是**内存 store**,不是抄本
+   文件)。F0 只改了文档,**没改名** —— 写侧取材(§13.18)也在用这两口,改名会把 F3
+   的一半提前拽进来。**归 F3**(那一批本来就要把"写侧读抄本"整体翻面)。
+2. **F0 影子验证器的退役条件**(§16.3 第 2 条)仍待拍:F4 两条推导合一那天这道门
+   失去对象,退役门(多少 run / 多久)与 refold 采样率一并拍。
+3. **真机 ≥200 run 0 失配**这条 F0 自己的门今天只有 32 run —— 它按设计是**浸泡期**
+   拿的(批 6b 之后重新起算),不是本批能一次跑出来的数;battery 的 321 run 是它的
+   离线替身。

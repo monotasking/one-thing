@@ -155,16 +155,19 @@ export const sessionReads = {
   },
 
   /**
-   * **抄本侧**的那一份消息 —— 永远来自 `messages.jsonl`,与读模式无关(F11)。
+   * **store 侧**(reducer 推导)的那一份消息 —— 与读模式无关(F11)。
    *
-   * 这不是 `listMessages` 的一个便利别名,而是影子断言唯一合法的**真相侧**取数。
-   * `listMessages` 自 S2a 起从事件投影取数(批 6b 之后是唯一路)—— 影子拿它当
-   * "事实"去比"投影",两侧同源,门以错误的理由变绿(F11:判据污染)。所以这里
-   * **故意不经过 `fromEvents`**。
+   * 这不是 `listMessages` 的一个便利别名,而是恒等门(`session/shadow.ts`)唯一
+   * 合法的**验证器侧**取数。`listMessages` 自 S2a 起从事件投影取数(批 6b 之后是
+   * 唯一路)—— 恒等门拿它去比投影,两侧同源,门以错误的理由变绿(F11:判据污染)。
+   * 所以这里**故意不经过 `fromEvents`**。
    *
-   * 改动这个方法的人请先回答一个问题:影子的两侧还是两个来源吗?一旦这里也接上
+   * (F0,§16.2:哪一侧算真相已经翻成事件了,但"两侧必须是两条独立推导"这条纪律
+   * 与方向无关 —— 它守的是门有没有意义,不是谁被 blame。)
+   *
+   * 改动这个方法的人请先回答一个问题:恒等门的两侧还是两个来源吗?一旦这里也接上
    * 事件读法,`sessions:shadow-battery` 会在 `shadow-read-mode.test.ts` 上当场红
-   * —— 那条用例故意让抄本与事件分岔,断言影子**必须**报出来。
+   * —— 那条用例故意让 store 与事件分岔,断言这道门**必须**报出来。
    */
   listMessagesFromTranscript(sessionId: string): readonly ChatMessage[] {
     return guard(getSessionMessages(sessionId) ?? [])

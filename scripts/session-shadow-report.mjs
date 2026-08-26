@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 /**
- * 影子期的门(S1b,`docs/design/session-event-sourcing-2026-08.md` §10.4)。
+ * 恒等门(S1b 立为影子期的门 §10.4;F0 转向后是写模型 vs 读模型的常驻合同,§16.2)。
  *
  *   bun run sessions:shadow-report [--min-runs N] [--store PATH] [--json]
+ *
+ * ## 方向(F0,2026-08-27)
+ *
+ * 摘要的两列:**A = 事件侧(真相)**,**B = 内存 store / reducer(影子验证器)**;
+ * `kind:'refold'` 那一类的 A 是 `events.jsonl` 的文件重折、B 是内存活投影。
+ * 一次不等默认读成"**写模型没跟上账本**",不是"投影错了"。
+ * 每行带 `truth:'events'` 的方向标记 —— **缺这个字段的行是 F0 之前记的**,
+ * 它的两列语义正好相反(报表把两种行分开数出来给人看)。
  *
  * 读两份文件:
  *   `<store>/log/session-shadow-stats.json`  —— 计数(runs / mismatches / appendFailures / byKind)
@@ -115,7 +123,12 @@ export function buildReport(logDir, options = {}) {
   const lines = readShadowLines(logDir)
 
   const bySession = new Map()
+  // F0:方向标记的分布。`legacy` = F0 转向之前记的行(没有 `truth` 字段),
+  // 它的 A/B 两列语义与今天相反 —— 只打印,不进门。
+  const directions = { events: 0, legacy: 0 }
   for (const line of lines) {
+    if (line.truth === 'events') directions.events += 1
+    else directions.legacy += 1
     const entry = bySession.get(line.sessionId) ?? { sessionId: line.sessionId, mismatches: 0, kinds: {} }
     entry.mismatches += 1
     entry.kinds[line.kind] = (entry.kinds[line.kind] ?? 0) + 1
@@ -128,15 +141,27 @@ export function buildReport(logDir, options = {}) {
   return {
     stats,
     top,
+    directions,
     lastDiffs: lines.slice(-(options.lastDiffs ?? 5)),
     lineCount: lines.length,
   }
 }
 
+/**
+ * 两列的名字随方向标记走。F0 之前的行(无 `truth`)照它当时的语义打印 ——
+ * 拿今天的名字去贴老行,等于把归因贴反。
+ */
+function diffColumnLabels(line) {
+  if (line.truth !== 'events') return { a: 'A(store, 旧方向)', b: 'B(events, 旧方向)' }
+  if (line.kind === 'refold') return { a: 'A(events 文件重折)', b: 'B(内存活投影)' }
+  return { a: 'A(events 真相)', b: 'B(store 验证器)' }
+}
+
 function formatDiff(line) {
   const head = `  ${new Date(line.time).toISOString()}  ${line.kind}  session=${line.sessionId}${line.runId ? ` run=${line.runId}` : ''}`
+  const labels = diffColumnLabels(line)
   const body = (line.diff ?? [])
-    .map(entry => `      ${entry.path}\n        A: ${entry.a ?? '(absent)'}\n        B: ${entry.b ?? '(absent)'}`)
+    .map(entry => `      ${entry.path}\n        ${labels.a}: ${entry.a ?? '(absent)'}\n        ${labels.b}: ${entry.b ?? '(absent)'}`)
     .join('\n')
   const more = line.truncated ? `\n      …(+${line.truncated} more)` : ''
   return `${head}\n${body}${more}`
@@ -153,6 +178,8 @@ function main() {
     console.log(JSON.stringify({ store, ...report }, null, 2))
   } else {
     console.log(`[shadow] store: ${store}`)
+    // F0(§16.2):这道门今天问的是"写模型跟上账本了吗",不是"投影对不对"。
+    console.log('[shadow] direction     : A = events(真相) / B = store(影子验证器)   [F0]')
     if (stats.missing) console.log('[shadow] stats file absent — nothing has been recorded yet')
     console.log(`[shadow] runs           : ${stats.runs}   (run 粒度 —— 门只看它)`)
     console.log(`[shadow] historyChecks  : ${stats.historyChecks}   (请求粒度,一个 run 可有多次)`)
@@ -178,6 +205,11 @@ function main() {
       console.log(`[shadow] lastMismatchAt : ${new Date(stats.lastMismatchAt).toISOString()}`)
     }
     console.log(`[shadow] shadow.jsonl   : ${report.lineCount} line(s)`)
+    // F0:老行(无 `truth` 标记)的 A/B 两列语义是反的 —— 数出来,别让人读反。
+    console.log(
+      `[shadow] lineDirections  : ${report.directions.events} events`
+      + `${report.directions.legacy ? ` / ${report.directions.legacy} pre-F0(A/B 相反)` : ''}`,
+    )
 
     if (report.top.length > 0) {
       console.log('\n[shadow] top sessions by mismatches:')
