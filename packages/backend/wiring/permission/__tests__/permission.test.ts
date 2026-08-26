@@ -574,6 +574,85 @@ describe('Permission', () => {
     it('should be safe to clear non-existent session', () => {
       expect(() => Permission.clearSession('non-existent')).not.toThrow()
     })
+
+    /**
+     * S3w 批 6b 的反证:影子里那条新失配。
+     *
+     * 用户在审批卡还挂着的时候按了停止 → `engine.abort` 收尾时调
+     * `Permission.clearSession` 把这条 ask **拆掉**。抄本侧那次调用只被收尾修复
+     * 写成 `{status:'cancelled', error:'User cancelled'}`;从前账本旁听席却收到
+     * `reason:'Session cleared'`,投影照 G6 把它接成 `toolCall.rejectionReason`,
+     * 于是模型历史里那条失败结局比抄本多出 `,"rejectionReason":"Session cleared"`
+     * 整 36 个字符(真机:1012 → 1048)。
+     *
+     * 拆除不是答案:等待方那句话原样保留,账本上不记理由。
+     */
+    it('records a teardown without a rejection reason (the awaiting side still gets one)', async () => {
+      const answered: Array<{ approved: boolean; reason?: string }> = []
+      Permission.setRecorder({
+        onAnswered({ approved, reason }) {
+          answered.push({ approved, ...(reason !== undefined ? { reason } : {}) })
+        },
+      })
+      try {
+        const ask = Permission.ask({
+          type: 'bash',
+          title: 'Run command',
+          sessionId: 'teardown-ledger-test',
+          messageId: 'msg-1',
+          callId: 'call-1',
+          metadata: {},
+        })
+        const caught = ask.catch(e => e)
+
+        Permission.clearSession('teardown-ledger-test')
+
+        const err = await caught
+        // 等待方那半段代码看到的东西一个字节没变。
+        expect(err).toBeInstanceOf(Permission.RejectedError)
+        expect(err.reason).toBe('Session cleared')
+        expect(err.message).toContain('Session cleared')
+
+        // 账本上:被拒,但**没有理由** —— 因为没人答过。
+        expect(answered).toEqual([{ approved: false }])
+      } finally {
+        Permission.setRecorder(null)
+      }
+    })
+
+    it('still records the reason when a human actually rejected', async () => {
+      const answered: Array<{ approved: boolean; reason?: string }> = []
+      Permission.setRecorder({
+        onAnswered({ approved, reason }) {
+          answered.push({ approved, ...(reason !== undefined ? { reason } : {}) })
+        },
+      })
+      try {
+        const ask = Permission.ask({
+          type: 'bash',
+          title: 'Run command',
+          sessionId: 'answer-ledger-test',
+          messageId: 'msg-1',
+          callId: 'call-1',
+          metadata: {},
+        })
+        const caught = ask.catch(e => e)
+
+        const [pending] = Permission.getPending('answer-ledger-test')
+        Permission.respond({
+          sessionId: 'answer-ledger-test',
+          permissionId: pending.id,
+          response: 'reject',
+          rejectReason: '别碰这个',
+        })
+        await caught
+
+        expect(answered).toEqual([{ approved: false, reason: '别碰这个' }])
+      } finally {
+        Permission.setRecorder(null)
+        Permission.clearSession('answer-ledger-test')
+      }
+    })
   })
 
   // ─── RejectedError ────────────────────────────────────────────────

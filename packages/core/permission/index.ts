@@ -133,6 +133,14 @@ export namespace Permission {
    * 上(G6)。所以这里开一个口子,而不是让装配层去听总线再猜。
    *
    * core 仍然零依赖:这只是一个回调,落盘在 `app/session/` 那一侧。
+   *
+   * **`reason` 只属于"有人答了"那一支**(S3w 批 6b):`clearSession` 那条路没有
+   * 答案 —— 它是 abort / 会话清理**把这条 ask 拆掉**,`'Session cleared'` 是拆除
+   * 现场留给等待方的一句内部话,不是判决理由。账本上写成"被拒,理由 X"的话,
+   * 投影会照 G6 把 `rejectionReason` 接到那次调用上,而抄本侧那次调用只被收尾
+   * 修复写成 `{status:'cancelled', error:'User cancelled'}` —— 两侧从此差
+   * 一格。同一件事账本自己已经说清了:`tool/audit.outcome` 是 `'aborted'` 而不是
+   * `'denied'`。
    */
   export interface Recorder {
     onAsked?(info: Info): void
@@ -248,11 +256,27 @@ export namespace Permission {
     emitSettled(entry, 'allowed', scope !== undefined ? { scope } : {})
   }
 
-  function settlePendingReject(session: SessionState, entry: PendingEntry, error: Error): void {
+  /**
+   * 一次 pending 的收场**方式**:`answer` = 有人真的答了(理由属于这条答案);
+   * `teardown` = 没人答,这条 ask 被拆掉了(abort / 会话清理)。
+   *
+   * 等待方拿到的 `RejectedError`(含 `message` 与 `reason`)两支**逐字相同** ——
+   * 变的只有账本旁听席听到什么:拆除没有理由可记。
+   */
+  type SettleKind = 'answer' | 'teardown'
+
+  function settlePendingReject(
+    session: SessionState,
+    entry: PendingEntry,
+    error: Error,
+    kind: SettleKind = 'answer',
+  ): void {
     removePending(session, entry.info.id)
     entry.reject(error)
     for (const follower of entry.followers) follower.reject(error)
-    const reason = error instanceof RejectedError ? error.reason : undefined
+    const reason = kind === 'teardown'
+      ? undefined
+      : error instanceof RejectedError ? error.reason : undefined
     emitSettled(entry, 'rejected', reason !== undefined ? { reason } : {})
   }
 
@@ -585,6 +609,13 @@ export namespace Permission {
     return true
   }
 
+  /**
+   * 拆掉这个会话所有还没答的 ask(`engine.abort` 的最后一步 / 会话清理)。
+   *
+   * 等待方仍然拿到带 `'Session cleared'` 的 `RejectedError` —— 那句话是给
+   * "还在 await 的那半段代码"看的。但账本上这是 `teardown` 不是 `answer`:
+   * 没人答过,所以 `permission/answered` **不带 reason**(见 `Recorder` 的注释)。
+   */
   export function clearSession(sessionId: string): void {
     const session = sessions.get(sessionId)
     if (!session) return
@@ -596,7 +627,7 @@ export namespace Permission {
         pending.info.callId,
         pending.info.metadata,
         'Session cleared',
-      ))
+      ), 'teardown')
     }
 
     sessions.delete(sessionId)
