@@ -3,8 +3,9 @@
  * (`docs/design/session-event-sourcing-2026-08.md` §14.3 / §14.6 裁定 5–7 / §15.11)。
  *
  * 每一条都按**可观察的后果**写,而且都验过"反向":
- *  - 三态开关:默认 `shadow`,三个值都显式认,拼错回默认;
- *  - 写失败上抛只在 `off` 生效 —— 同一刀注下去,`shadow` 只计数、`off` 抛;
+ *  - 三态开关:**默认 `off`**(批 6a 翻,§15.19),三个值都显式认,拼错回默认;
+ *    `shadow` / `primary` 现在是显式回滚杆,所以每一处要它的用例都显式扳过去;
+ *  - 写失败上抛在 `off` 生效 = **默认行为** —— 同一刀注下去,`shadow` 只计数、`off` 抛;
  *  - refold:文件字节与内存活投影不等时记 `kind:'refold'` 并计 `refoldMismatches`;
  *    相等时一行不写(否则这道门只是在打印日志)。
  */
@@ -90,20 +91,37 @@ function userMessage(sessionId: string, id: string): void {
 
 // ============ 三态开关(裁定 5) ============
 
-describe('ONETHING_SESSION_TRANSCRIPT (§14.6 裁定 5)', () => {
-  it('defaults to shadow and reads all three values explicitly', () => {
-    expect(DEFAULT_SESSION_TRANSCRIPT_MODE).toBe('shadow')
-    expect(getSessionTranscriptMode()).toBe('shadow')
-    expect(isSessionTranscriptOff()).toBe(false)
+describe('ONETHING_SESSION_TRANSCRIPT (§14.6 裁定 5;批 6a 翻默认 §15.19)', () => {
+  // 钉的是**常量**,不是"什么都不设时读到什么"(批 3 判例,§15.10):后者要去读
+  // 进程环境变量,于是谁在 shell 里扳过回滚杆这条就红,而那是开关在正常工作、
+  // 不是默认值改了。两档回滚杆各自的行为由下面显式设档的用例担着。
+  it('defaults to off — the transcript is no longer written', () => {
+    expect(DEFAULT_SESSION_TRANSCRIPT_MODE).toBe('off')
+    setSessionTranscriptModeForTesting(DEFAULT_SESSION_TRANSCRIPT_MODE)
+    expect(getSessionTranscriptMode()).toBe('off')
+    expect(isSessionTranscriptOff()).toBe(true)
+    setSessionTranscriptModeForTesting(undefined)
+  })
 
+  it('reads all three values explicitly; a typo falls back to the default', () => {
     for (const mode of ['primary', 'shadow', 'off'] as const) {
       process.env.ONETHING_SESSION_TRANSCRIPT = mode
       expect(getSessionTranscriptMode()).toBe(mode)
     }
-    // 拼错 = 默认。`primary` / `off` 都是要被显式说出口的档,谁也不该被
-    // "非 X 即默认"吞掉,而一个不认识的值只能回到默认那一档。
-    process.env.ONETHING_SESSION_TRANSCRIPT = 'offf'
+    // 拼错 = 默认。默认翻到 `off` 之后,`shadow` / `primary` 是那两根必须被显式
+    // 认出来的**回滚杆**,谁也不该被"非 off 即默认"吞掉;而一个不认识的值只能
+    // 回到默认那一档。
+    process.env.ONETHING_SESSION_TRANSCRIPT = 'shadoww'
+    expect(getSessionTranscriptMode()).toBe(DEFAULT_SESSION_TRANSCRIPT_MODE)
+  })
+
+  it('shadow is the rollback lever: the transcript comes back and writes stop escalating', () => {
+    process.env.ONETHING_SESSION_TRANSCRIPT = 'shadow'
     expect(getSessionTranscriptMode()).toBe('shadow')
+    expect(isSessionTranscriptOff()).toBe(false)
+    process.env.ONETHING_SESSION_TRANSCRIPT = 'primary'
+    expect(getSessionTranscriptMode()).toBe('primary')
+    expect(isSessionTranscriptOff()).toBe(false)
   })
 
   it('the testing override wins over the environment and gives it back', () => {
@@ -119,6 +137,9 @@ describe('ONETHING_SESSION_TRANSCRIPT (§14.6 裁定 5)', () => {
 
 describe('write failure escalation (§14.6 裁定 7)', () => {
   it('shadow counts a queued append failure; off raises it on the next write', async () => {
+    // 批 6a 之后 `off` 是默认,所以 `shadow` 那一半要**显式扳过去** —— 它现在是
+    // 回滚杆,不再是"什么都不设"的那一档。
+    setSessionTranscriptModeForTesting('shadow')
     makeJsonlSession('w1')
     userMessage('w1', 'm1')
     await flushSessionEventLog('w1')
@@ -127,7 +148,7 @@ describe('write failure escalation (§14.6 裁定 7)', () => {
     const appendFile = vi.spyOn(fs.promises, 'appendFile')
       .mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }))
 
-    // 观察期(默认 shadow):失败只计数,写口一如既往地返回 seq。
+    // 回滚杆 shadow:失败只计数,写口一如既往地返回 seq。
     expect(appendSessionLogEvent('w1', 'user/message', {
       message: { id: 'm2', role: 'user', content: 'x' },
     })).toBeDefined()
@@ -150,6 +171,7 @@ describe('write failure escalation (§14.6 裁定 7)', () => {
   })
 
   it('off turns a G12 refusal into a throw; shadow keeps returning undefined', async () => {
+    setSessionTranscriptModeForTesting('shadow')
     makeJsonlSession('w2')
     appendSessionLogEvent('w2', 'request/end', { requestIndex: 1 })
     await flushSessionEventLog('w2')
@@ -162,7 +184,7 @@ describe('write failure escalation (§14.6 裁定 7)', () => {
     // 守卫有 500ms 检查间隔:把表往前拨,让下一次 append 真的去 stat。
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 10_000)
 
-    // shadow(默认):拒写 + 记账,但不打扰调用方。
+    // shadow(回滚杆):拒写 + 记账,但不打扰调用方。
     expect(appendSessionLogEvent('w2', 'request/end', { requestIndex: 9 })).toBeUndefined()
 
     // off:同一次拒写升级成上抛。
@@ -178,6 +200,7 @@ describe('write failure escalation (§14.6 裁定 7)', () => {
         typeof sessionEventTranslator.appendMessage
       >[1])
 
+    setSessionTranscriptModeForTesting('shadow')
     makeJsonlSession('w4')
     sessionEventTranslator.appendMessage('w4', message('m1'))
     await flushSessionEventLog('w4')
@@ -187,7 +210,7 @@ describe('write failure escalation (§14.6 裁定 7)', () => {
     sessionEventTranslator.appendMessage('w4', message('m2'))
     await flushSessionEventLog('w4')
 
-    // 观察期:翻译器照旧自吞(抄本还在写,吞掉是对的)。
+    // 回滚杆 shadow:翻译器照旧自吞(抄本还在写,吞掉是对的)。
     expect(() => sessionEventTranslator.appendMessage('w4', message('m3'))).not.toThrow()
 
     // 停写档:同一条错误穿过 `safely` 上抛 —— 命令面于是报得出来。
@@ -199,6 +222,7 @@ describe('write failure escalation (§14.6 裁定 7)', () => {
   })
 
   it('off raises a blob write failure; shadow degrades to undefined', () => {
+    setSessionTranscriptModeForTesting('shadow')
     makeJsonlSession('w3')
     const writeFile = vi.spyOn(fs, 'writeFileSync')
       .mockImplementation(() => { throw new Error('ENOSPC') })

@@ -23,19 +23,27 @@
  * 已修的每一类失配都固化成至少一个场景(映射表在运行结束时打印,与
  * §10.14 的表逐条对应)。
  *
- * **四条泳道 + 两枚探针**(S3w-1 起两条,批 3 起三条,批 4 起四条,§15.10/§15.11):
- *  1. **场景矩阵** —— 按场景表 × passes 写会话(上面那条链);
- *  2/3. **冷加载补水**(`runHydrateLane`)—— 各把 server 换成一个**空 LRU 的新
+ * **六条泳道 + 两枚探针**(S3w-1 起两条,批 3 起三条,批 4 起四条,批 6a 起六条;
+ * §15.10/§15.11/§15.19)。跑的顺序就是下面的顺序,而顺序是有理由的:
+ *  1. **场景矩阵** —— 按场景表 × passes 写会话(上面那条链),跑在**默认档**上;
+ *  2/3. **抄本两档**(`runTranscriptLane`)—— 把全场景在某一个
+ *     `ONETHING_SESSION_TRANSCRIPT` 档下再跑一遍。`default (= off)` 验产品出厂
+ *     那条路(抄本一个字节都不写,产品行为只能靠事件账本活着);
+ *     `shadow rollback` 显式扳回滚杆,验它真的把写路径接回去了(抄本必须长出来)。
+ *     判据除了场景自证与 0 新失配行,还多一条只有这两条泳道有的:
+ *     **`messages.jsonl` 该有就得有、该没有就不许有**;
+ *  4/5. **冷加载补水**(`runHydrateLane`)—— 各把 server 换成一个**空 LRU 的新
  *     进程**,在(彼此不相交的)一批会话上各接一轮:冷加载真的走一遍,补水形状
- *     漂一格,收尾的影子当场红。两条分别跑**默认档**(批 3 起 = `projection`)与
- *     **显式回滚档**(`ONETHING_SESSION_HYDRATE=messages`)——回滚杆也要一直被测着;
- *  4. **停写**(`runTranscriptOffLane`)—— `ONETHING_SESSION_TRANSCRIPT=off` 下把
- *     全场景再跑一遍:抄本一个字节都不写,产品行为只能靠事件账本活着。判据除了
- *     场景自证与 0 新失配行,还多一条只有这条泳道有的:**`messages.jsonl` 不许长**。
+ *     漂一格,收尾的影子当场红。两条分别跑**默认档**(批 3 起 = `projection`,
+ *     取材池 = 场景矩阵)与**显式回滚档**(`ONETHING_SESSION_HYDRATE=messages`,
+ *     取材池 = 上面 `shadow` 泳道 —— 批 6a 之后只有那批会话还有抄本可读);
+ *  6. **迁移历史冷补水**(`runImportedHydrateLane`,§15.13)。
  *
  * 两枚探针(`runWriteFailureProbe`,§14.6 裁定 7)在**各自的 store** 上把会话的
  * `events.jsonl` chmod 成只读,看 `off` 与 `shadow` 两档答得一不一样:前者命令
- * 报错、后者只计数。它们故意制造 `appendFailures`,所以绝不能跑在主 store 上。
+ * 报错、后者只计数。批 6a 之后 `off` 是默认,所以那一枚探针验的就是**默认行为**;
+ * `shadow` 那一枚验的是回滚杆连同它的旧语义一起回来了。它们故意制造
+ * `appendFailures`,所以绝不能跑在主 store 上。
  *
  * 门另外多了一条(§14.3-B):`session-shadow.jsonl` 里 `kind:'refold'` 的行
  * ——`events.jsonl` 文件字节重折 vs 内存活投影 —— 与语义层那两类一样,一行都不许有。
@@ -762,6 +770,81 @@ const SCENARIOS = [
   },
 
   {
+    /**
+     * **拆除口径**(§15.20,2026-08-26 真机影子新类)——**审批还挂着的时候按停止**。
+     *
+     * 病灶是一句内部话被当成了判决理由:`Permission.clearSession` 的
+     * `settlePendingReject` 拿 `'Session cleared'` 去 `emitSettled(…,'rejected',
+     * {reason})`,账本于是记下 `permission/answered {approved:false, reason:
+     * "Session cleared"}`;投影按 G6 把它接成 `tool.rejectionReason`,再顺着
+     * `toolFailureResultForAI` 流进模型历史 —— 抄本侧根本没有这一格(收尾修复
+     * 写的是 `{status:'cancelled', error:'User cancelled'}`),于是每次都多出
+     * 那 36 个字符。真机上一次中止换来 4 条失配(messages 1 是因、history 3 是果)。
+     *
+     * 会话根本没被清,是流被 abort 了 —— **事件侧是说错的那一侧**,账本自己
+     * 早就说对了:同一次调用的 `tool/audit` 写的是 `outcome:'aborted'`,既没有
+     * `decision:'deny'` 也没有 `asked:true`。
+     *
+     * 这条场景钉的就是那一格:**拆除路不许向账本报理由**。反向那半边
+     * (真人 reject 照旧带理由)由 `permission-denied` 一直守着,不重复造。
+     */
+    name: 'abort-while-awaiting-permission',
+    covers: ['§15.20:审批挂起时按停止 —— 拆除不是判决,`permission/answered` 不许带理由'],
+    permissionMode: 'normal',
+    provider: ({ turn, variant, workdir }) => (turn === 1
+      ? [
+        F.sleep(variant.firstByteMs),
+        ...F.tool('call_abort_perm', 'bash', { command: `mkdir -p ${workdir}/abort-perm-${variant.tag}`, description: 'needs approval' }, 2),
+        F.callTools(usageOf(variant, 1)),
+      ]
+      // 中止之后不该再有下一轮;留一格只为"万一走到了"别把 mock 吊死。
+      : [F.sleep(variant.firstByteMs), F.text('unreachable'), F.stop()]),
+    async drive(d) {
+      await d.send('跑个要审批的命令,然后我按停止')
+      // 等审批卡真的挂起来 —— 不靠固定 sleep。
+      const deadline = Date.now() + 30_000
+      let pending
+      while (Date.now() < deadline) {
+        const result = await d.rpc('permission', 'getPending', { sessionId: d.sessionId })
+        const list = result?.pending ?? []
+        pending = Array.isArray(list) ? list.find(item => (item.callId ?? item.toolCallId) === 'call_abort_perm') : undefined
+        if (pending) break
+        await sleep(60)
+      }
+      assert(pending, 'no pending permission prompt appeared')
+      // 账本上 `permission/asked` 也要真的落下去(写口是排队的)。
+      await d.ledgerUntil('permission/asked')
+
+      // **不答它**,直接停止 —— 这就是拆除路。
+      await d.abort()
+      await d.waitIdle(1)
+
+      // 拆除的那条回答:记,但**不带理由**(投影靠 `{approved:false}` 清
+      // `awaitingPermission`,丢了会造出新的失配,所以它必须在)。
+      let answered
+      const answerDeadline = Date.now() + 10_000
+      while (Date.now() < answerDeadline) {
+        answered = d.ledger('permission/answered')
+          .find(event => event.data?.toolCallId === 'call_abort_perm')
+        if (answered) break
+        await sleep(60)
+      }
+      assert(answered, 'the teardown never recorded a permission/answered')
+      assert(answered.data.approved === false, `teardown recorded approved=${answered.data.approved}`)
+      assert(
+        answered.data.reason === undefined,
+        `the teardown reported a rejection reason to the ledger: ${JSON.stringify(answered.data.reason)}`,
+      )
+
+      // 账本自己那一侧的佐证:这次调用是**中止**,不是被拒。
+      const audit = d.ledger('tool/audit').find(event => event.data?.callId === 'call_abort_perm')
+      assert(audit, 'the aborted call never got a tool/audit')
+      assert(audit.data.outcome === 'aborted', `tool/audit outcome = ${audit.data.outcome}`)
+      assert(audit.data.decision !== 'deny', 'an aborted call must not be audited as a denial')
+    },
+  },
+
+  {
     name: 'abort-mid-text',
     covers: ['§10.14 第7类:被打断那一轮的 contentParts 从来没落地 + 中止的执行没有 usage'],
     provider: ({ turn, variant }) => (turn === 1
@@ -1386,6 +1469,11 @@ function countShadowLines(store) {
  * 两趟各取样上限 8 条,且**互不相交**(`exclude`):泳道的价值在"冷加载路径被
  * 真的走了一遍",不在遍历全矩阵;每条会话都要起一轮真执行,全量会把 45s 的
  * 矩阵拖成两倍。相交还会让"是哪一档漂的"变成一道推理题。
+ *
+ * 批 6a(§15.19)之后两趟的**取材池也不同源**:默认档取场景矩阵(抄本已停写,
+ * 只有 `events.jsonl` 可补——正是今天真机上的形状),回滚档只能取 `shadow` 抄本
+ * 泳道跑出来的那批(全仓唯一还有 `messages.jsonl` 的会话)。`targets` 因此由调用
+ * 方给,不再从一个全局池里分。
  */
 async function runHydrateLane({ store, api, library, stopServer, startServer, targets, label, env, exclude }) {
   const lane = { label, attempted: 0, failed: [], mismatchLines: 0, skipped: false }
@@ -1555,7 +1643,7 @@ async function runImportedHydrateLane({ store, api, library, stopServer, startSe
   return lane
 }
 
-// ============================================================ 停写泳道(S3w-2)
+// ============================================================ 抄本泳道(S3w-2/3)
 
 /** 这条会话的 `messages.jsonl` 有多大(不存在 = 0)。停写档它必须一直是 0。 */
 function transcriptBytes(store, sessionId) {
@@ -1567,39 +1655,62 @@ function transcriptBytes(store, sessionId) {
 }
 
 /**
- * **停写泳道**(S3w-2,§14.3-A/C)—— `ONETHING_SESSION_TRANSCRIPT=off` 下把
- * **全场景**再跑一遍。
+ * **抄本泳道**(S3w-2 立,批 6a 语义对调,§14.3-A/C / §15.19)—— 把**全场景**在
+ * 某一个抄本档下再跑一遍。
  *
- * 它是"events 成为唯一持久化"的端到端预演:抄本一个字节都不写,所有产品行为
- * (读、补水、压缩、steering、权限、生图…)只能靠事件账本活着。
+ * 批 6a 把 `ONETHING_SESSION_TRANSCRIPT` 的默认翻到 `off` 之后,这里跑**两条**:
  *
- * 判据换了口径(§14.3-C:一次性 store 上依赖 `messages.jsonl` 的断言在这条泳道
- * 改 refold + store):
+ *  - **默认档**(不设 `ONETHING_SESSION_TRANSCRIPT`,今天 = `off`)—— 验的是
+ *    "产品出厂时走的那条路":抄本一个字节都不写,所有产品行为(读、补水、压缩、
+ *    steering、权限、生图…)只能靠事件账本活着。**这条泳道从前叫 `transcript-off`
+ *    并显式设 env**;默认翻过之后那个写法会骗人 —— 它验的其实就是默认路,而
+ *    **回滚杆一条用例都没有**(与批 3 补水泳道同一个判例,§15.10)。
+ *  - **显式回滚档**(`ONETHING_SESSION_TRANSCRIPT=shadow`)—— 验的是**回滚杆本身**:
+ *    扳回去抄本要真的重新长出来,而且那一档下所有场景照样走得通、0 新失配。
+ *    *没人跑的回滚杆,等到真要回滚那天才发现是坏的。*
+ *
+ * 判据(§14.3-C:一次性 store 上依赖 `messages.jsonl` 的断言改 refold + store):
  *  - 场景自证照旧(它们读的是 `sessions.getMessages`,S2b 之后本来就是投影);
- *  - **抄本不许长**:每条会话跑完 `messages.jsonl` 必须仍然是 0 字节 / 不存在
- *    —— 这条是停写本身的断言,别处没有;
+ *  - **抄本按档位断言**:`expectTranscript: 'absent'` 时每条会话跑完
+ *    `messages.jsonl` 必须仍然是 0 字节 / 不存在;`'present'` 时必须**长出来**
+ *    —— 后者是回滚杆真的把写路径接回去了的唯一证据;
  *  - **影子法官换 refold + store**:这条泳道期间新增的 `session-shadow.jsonl`
  *    行必须为 0。那份文件里现在有两类行:`messages`/`history`(store vs 投影,
- *    语义层)与 `refold`(文件字节 vs 内存活投影,耐久层)——一条都不许有。
+ *    语义层)与 `refold`(文件字节 vs 内存活投影,耐久层)——一条都不许有;
+ *  - **`skipped` 也算红**(在报告侧):静默少跑一档 = 门不再看着回滚杆。
  *
- * 只跑**一趟**(每个场景一次),不乘 passes:这条泳道要的是"每个场景在停写档
- * 下都走得通",不是再攒一遍 run 数;乘上去只会把 45s 的矩阵拖成两倍。
+ * 只跑**一趟**(每个场景一次),不乘 passes:这条泳道要的是"每个场景在这一档下
+ * 都走得通",不是再攒一遍 run 数;乘上去只会把 45s 的矩阵拖成两倍。
+ *
+ * 返回值带上 `sessions`:`shadow` 那一档跑出来的会话是**唯一带抄本的**,于是它们
+ * 正是补水回滚杆泳道(`ONETHING_SESSION_HYDRATE=messages`)唯一可用的取材池 ——
+ * 默认档的会话根本没有 `messages.jsonl` 可读。顺序因此也反了过来:抄本泳道要排在
+ * 补水泳道**之前**(从前是相反的,因为从前"抄本还在"是默认)。
  */
-async function runTranscriptOffLane({ store, api, library, stopServer, startServer, workdir, seed }) {
-  const lane = { attempted: 0, failed: [], mismatchLines: 0, transcriptGrew: [] }
+async function runTranscriptLane({
+  store, api, library, stopServer, startServer, workdir, seed, label, env, expectTranscript,
+}) {
+  const lane = {
+    label, env, expectTranscript, attempted: 0, failed: [], mismatchLines: 0,
+    transcriptWrong: [], sessions: [], skipped: false,
+  }
+  if (library.length === 0) {
+    lane.skipped = true
+    return lane
+  }
 
   await stopServer()
   await sleep(300)
   const before = countShadowLines(store)
-  console.log(`[battery] transcript-off lane: restarting with ONETHING_SESSION_TRANSCRIPT=off (${library.length} scenario(s))`)
-  await startServer({ ONETHING_SESSION_TRANSCRIPT: 'off' })
+  console.log(`[battery] transcript lane [${label}]: restarting (${library.length} scenario(s))`)
+  await startServer(env)
 
   for (const scenario of library) {
     lane.attempted += 1
-    const label = `${scenario.name}#off`
+    const tag = `${scenario.name}#${expectTranscript === 'present' ? 'shadow' : 'default'}`
     let sessionId
     try {
-      const created = await api('POST', '/api/sessions', { name: label })
+      const created = await api('POST', '/api/sessions', { name: tag })
       sessionId = created?.session?.id ?? created?.data?.id ?? created?.id
       if (!sessionId) throw new Error(`no session id: ${JSON.stringify(created).slice(0, 200)}`)
       await rpcCall(api, 'sessions', 'updateWorkingDirectory', { sessionId, workingDirectory: workdir })
@@ -1610,11 +1721,17 @@ async function runTranscriptOffLane({ store, api, library, stopServer, startServ
       const variant = makeVariant(makeRng(seed + lane.attempted), 0)
       const driver = new Driver(api, sessionId, scenario.name, variant, store)
       await scenario.drive(driver)
-      // 停写本身的断言:抄本一个字节都不许长出来。
+      lane.sessions.push({ scenario: scenario.name, sessionId, ok: true })
+      // 档位本身的断言 —— 别处没有这一条。
       const bytes = transcriptBytes(store, sessionId)
-      if (bytes > 0) lane.transcriptGrew.push(`${scenario.name}/${sessionId}: ${bytes} byte(s)`)
+      if (expectTranscript === 'absent' && bytes > 0) {
+        lane.transcriptWrong.push(`${scenario.name}/${sessionId}: messages.jsonl grew ${bytes} byte(s)`)
+      }
+      if (expectTranscript === 'present' && bytes === 0) {
+        lane.transcriptWrong.push(`${scenario.name}/${sessionId}: messages.jsonl never appeared`)
+      }
     } catch (error) {
-      lane.failed.push(`${label}: ${String(error?.message ?? error)}`)
+      lane.failed.push(`${tag}: ${String(error?.message ?? error)}`)
     }
   }
 
@@ -1668,7 +1785,8 @@ async function bootProbeServer({ store, port, token, extraEnv, out }) {
  * (send-message 也走命令面,但它随后展开一整轮执行,失败会散落在收尾链的
  * 好几处,判据不干净。)
  *
- * 两档的分歧就是裁定 7 本身:
+ * 两档的分歧就是裁定 7 本身(批 6a 之后 `off` 是**默认**,所以第一枚探针验的是
+ * 产品出厂行为,第二枚验的是回滚杆连同它的旧语义一起回来了):
  *  - `off` —— 至少有一次 `removeMessage` **报错**(账本是唯一持久化,写不进去
  *    不再可吞);
  *  - `shadow` —— 两次都不报错,失败**只计数**(`appendFailures > 0`)。
@@ -1806,10 +1924,12 @@ async function main() {
       ONETHING_SESSION_SHADOW: '1',
       ONETHING_LOG: 'warn',
     }
-    // 补水档由脚本自己说了算:先把继承来的那一格摘掉,免得开发者 shell 里
-    // 恰好导出过 `ONETHING_SESSION_HYDRATE`,把"默认档泳道"悄悄变成显式档
-    // ——那样两条泳道会验同一件事,而报告照样说自己在验两档。
+    // 档位由脚本自己说了算:先把继承来的那两格摘掉,免得开发者 shell 里恰好
+    // 导出过 `ONETHING_SESSION_HYDRATE` / `ONETHING_SESSION_TRANSCRIPT`,把
+    // "默认档泳道"悄悄变成显式档 —— 那样两条泳道会验同一件事,而报告照样说
+    // 自己在验两档。**先清再叠**,叠的那一层才是泳道自己说的话。
     delete env.ONETHING_SESSION_HYDRATE
+    delete env.ONETHING_SESSION_TRANSCRIPT
     Object.assign(env, extraEnv)
     server = spawn(process.execPath, [SERVER_ENTRY], {
       cwd: REPO,
@@ -1834,8 +1954,8 @@ async function main() {
   const api = makeApi(serverPort, token)
   const results = []
   const hydrateLanes = []
+  const transcriptLanes = []
   let importedLane
-  let offLane
   const writeFailureProbes = []
   const stopServer = async () => {
     if (stopped) return
@@ -1887,7 +2007,31 @@ async function main() {
     // 统计表是 1s 节流写、`unref` 的定时器,关停时没人 flush —— 等它自己落一次。
     await sleep(2500)
 
-    // ---- 补水泳道(S3w-1,§14.4;批 3 起两条,§15.10)
+    // ---- 抄本泳道(S3w-2 立,批 6a 语义对调,§14.3-A/C / §15.19)
+    //
+    // **排在补水泳道之前**(批 6a 反了顺序):默认档 = `off`,场景矩阵跑出来的
+    // 会话已经没有 `messages.jsonl` 了;而补水回滚杆(`ONETHING_SESSION_HYDRATE=
+    // messages`)要的正是一批**带抄本**的会话 —— 只有 `shadow` 这条泳道会写出来。
+    //
+    //  - `default (= off)` —— 不设 `ONETHING_SESSION_TRANSCRIPT`,验产品出厂那条路:
+    //    抄本一个字节都不写,产品行为只能靠事件账本活着;
+    //  - `shadow rollback` —— 显式扳回滚杆,验它真的把写路径接回去了(抄本必须长)。
+    for (const spec of [
+      { label: 'default (= off)', env: {}, expectTranscript: 'absent', seed: ARGS.seed + 991 },
+      {
+        label: 'shadow rollback (ONETHING_SESSION_TRANSCRIPT=shadow)',
+        env: { ONETHING_SESSION_TRANSCRIPT: 'shadow' },
+        expectTranscript: 'present',
+        seed: ARGS.seed + 1093,
+      },
+    ]) {
+      transcriptLanes.push(await runTranscriptLane({
+        store, api, library, stopServer, startServer, workdir,
+        seed: spec.seed, label: spec.label, env: spec.env, expectTranscript: spec.expectTranscript,
+      }))
+    }
+
+    // ---- 补水泳道(S3w-1,§14.4;批 3 起两条,§15.10;批 6a 换取材池)
     //
     // 第一趟把会话写完就把进程杀掉;后面每一趟都换一个**空 LRU 的新进程**,
     // 再往一批(彼此不相交的)会话上各接一轮。那一轮的第一件事就是冷加载,
@@ -1895,34 +2039,42 @@ async function main() {
     // 换句话说,这两条泳道用**既有的影子法官**验补水,不新造判据。
     //
     //  - `default` —— 不设 `ONETHING_SESSION_HYDRATE`。批 3 翻默认之后它 = 投影
-    //    补水,验的就是产品出厂那条路;
+    //    补水,验的就是产品出厂那条路;取材池 = 场景矩阵(默认档 = 停写,正是
+    //    今天真机上的形状:只有 `events.jsonl` 可补)。
     //  - `legacy` —— 显式 `ONETHING_SESSION_HYDRATE=messages`,即**回滚杆**。
     //    它也必须一直被测着:没人跑的回滚杆,等到真要回滚那天才发现是坏的。
-    const laneTargets = results.filter(entry => entry.ok && entry.sessionId)
+    //    取材池 = 上面 `shadow` 抄本泳道的会话(**唯一有抄本可读的那批**),
+    //    并且顺带把 `ONETHING_SESSION_TRANSCRIPT=shadow` 一起扳过去 —— 真要回滚
+    //    补水,抄本当然也得继续写,否则接下来那一轮就再也补不回来了。
+    //
+    // 取材**互不相交**:两条泳道的池子本来就不同源,`laneTaken` 只是把这件事
+    // 钉住,免得哪天池子合并了又变成"是哪一档漂的"那道推理题。
     const laneTaken = new Set()
+    const shadowLane = transcriptLanes.find(lane => lane.expectTranscript === 'present')
     for (const spec of [
-      { label: 'default (= projection)', env: {} },
-      { label: 'legacy rollback (ONETHING_SESSION_HYDRATE=messages)', env: { ONETHING_SESSION_HYDRATE: 'messages' } },
+      {
+        label: 'default (= projection)',
+        env: {},
+        targets: results.filter(entry => entry.ok && entry.sessionId),
+      },
+      {
+        label: 'legacy rollback (ONETHING_SESSION_HYDRATE=messages)',
+        env: { ONETHING_SESSION_HYDRATE: 'messages', ONETHING_SESSION_TRANSCRIPT: 'shadow' },
+        targets: shadowLane?.sessions ?? [],
+      },
     ]) {
       hydrateLanes.push(await runHydrateLane({
         store, api, library, stopServer, startServer,
-        targets: laneTargets, label: spec.label, env: spec.env, exclude: laneTaken,
+        targets: spec.targets, label: spec.label, env: spec.env, exclude: laneTaken,
       }))
     }
 
     // ---- 迁移历史冷补水(§15.13):refold 门真机首杀的那条形状。
     //
-    // 排在停写泳道**之前**:它要的是"抄本还在"的世界(与两条补水泳道同款)。
+    // 它自己造一条 `message/imported` 形态的会话,只吃 `events.jsonl`,与抄本档
+    // 无关 —— 所以放在哪一档之后都行,这里跟着默认档跑。
     importedLane = await runImportedHydrateLane({
       store, api, library, stopServer, startServer, workdir, seed: ARGS.seed + 613,
-    })
-
-    // ---- 停写泳道(S3w-2,§14.3-A/C):`ONETHING_SESSION_TRANSCRIPT=off` 全场景
-    //
-    // 放在最后:它把 server 换到停写档,之后这个 store 上再建的会话都不写抄本
-    // —— 前面两条泳道要的正是"抄本还在"的世界,顺序不能反。
-    offLane = await runTranscriptOffLane({
-      store, api, library, stopServer, startServer, workdir, seed: ARGS.seed + 991,
     })
 
     // ---- 写失败上抛(S3w-2 裁定 7):同一刀注两档,看两档答得一不一样。
@@ -2004,21 +2156,27 @@ async function main() {
     console.log('\n[battery] imported-history cold hydrate: FAIL (never ran)')
   }
 
-  if (offLane) {
-    console.log('\n[battery] transcript-off lane (S3w-2,§14.3-A/C:events 是唯一持久化):')
-    const red = offLane.failed.length > 0 || offLane.mismatchLines > 0 || offLane.transcriptGrew.length > 0
-    if (red) anyRed = true
-    console.log(
-      `  ${red ? 'FAIL' : 'PASS'}  ONETHING_SESSION_TRANSCRIPT=off`
-      + ` scenarios=${offLane.attempted} failed=${offLane.failed.length}`
-      + ` new-mismatch-lines=${offLane.mismatchLines} transcript-grew=${offLane.transcriptGrew.length}`,
-    )
-    for (const error of offLane.failed.slice(0, 5)) console.log(`        ${error}`)
-    for (const grew of offLane.transcriptGrew.slice(0, 5)) console.log(`        messages.jsonl grew — ${grew}`)
+  if (transcriptLanes.length === 2) {
+    console.log('\n[battery] transcript lanes (S3w-3 批 6a,§14.3-A/C / §15.19 两档):')
+    for (const lane of transcriptLanes) {
+      // 跳过也算红:两档都必须真的跑过 —— 静默少跑一档,门就不再看着回滚杆了。
+      const red = lane.skipped || lane.failed.length > 0 || lane.mismatchLines > 0
+        || lane.transcriptWrong.length > 0
+      if (red) anyRed = true
+      console.log(
+        `  ${red ? 'FAIL' : 'PASS'}  ${lane.label}`
+        + ` scenarios=${lane.attempted} failed=${lane.failed.length}`
+        + ` new-mismatch-lines=${lane.mismatchLines}`
+        + ` transcript-expected=${lane.expectTranscript} wrong=${lane.transcriptWrong.length}`
+        + `${lane.skipped ? ' (skipped — no scenario)' : ''}`,
+      )
+      for (const error of lane.failed.slice(0, 5)) console.log(`        ${error}`)
+      for (const wrong of lane.transcriptWrong.slice(0, 5)) console.log(`        ${wrong}`)
+    }
   } else {
     // 泳道没跑到 = 前面就抛了。静默略过等于门自己少看一格。
     anyRed = true
-    console.log('\n[battery] transcript-off lane: FAIL (never ran)')
+    console.log(`\n[battery] transcript lanes: FAIL (ran ${transcriptLanes.length}/2)`)
   }
 
   if (writeFailureProbes.length > 0) {

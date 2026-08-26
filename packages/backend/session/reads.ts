@@ -105,16 +105,19 @@ function fromEvents<T>(read: () => T | undefined): T | undefined {
  *    永远到不了 0,门也就永远没有判据(battery 实测:不加这一条会计出 820 次,
  *    全部是空会话的例行读)。
  *
- * **曾经的结构性地板,已归位一半**(§15.9 诊断 1 → §15.18):写 `run/start` **之前**
- * 读助手占位消息的那类取材点 —— 那条 assistant 此刻在事件账本里还没有产地(翻译器
- * 故意不翻 `isStreaming` 的 assistant,`run/start` 才是它的那一格),于是 `fromEvents`
- * 恒折不出、每次必然掉进兜底。它们本来就是 §14.1 表里的"写侧读抄本",按批 7 的
- * 纪律该走 `getMessageFromTranscript`(那口不经过 `fromEvents`,也就不算兜底)。
- *  - `stream-executor.ts` 的那一处**已改**(§15.18):battery 321 → 16。
- *  - `agent-loop-executor.ts:249`(steer 换锚点 `rotateAssistantWriterIdentity`,
- *    刚 `addMessage` 就读回来喂自己那一格 `run/start`)是它的孪生,**还没改**,
- *    余下的 16 全部出自这里。批 6 一并收,收完这个数才该是 0 —— S3w-3 删兜底的
- *    判据("命中率量成 0")以此为准。
+ * **曾经的结构性地板,已归位**(§15.9 诊断 1 → §15.18 → §15.19):写 `run/start`
+ * **之前**读助手占位消息的那类取材点 —— 那条 assistant 此刻在事件账本里还没有产地
+ * (翻译器故意不翻 `isStreaming` 的 assistant,`run/start` 才是它的那一格),于是
+ * `fromEvents` 恒折不出、每次必然掉进兜底。它们本来就是 §14.1 表里的"写侧读抄本",
+ * 按批 7 的纪律该走 `getMessageFromTranscript`(那口不经过 `fromEvents`,也就不算兜底)。
+ *  - `stream-executor.ts:194`(run 开张前读占位)—— 批 6 前置已改(§15.18):
+ *    battery 321 → 16。
+ *  - `agent-loop-executor.ts` 的 `rotateAssistantWriterIdentity`(steer 换锚点,
+ *    刚 `addMessage` 就读回来喂自己那一格 `run/start`)是它的孪生 —— 批 6a 已改
+ *    (§15.19),余下的 16 出自这里,改完 battery `fallbackHits` 落到 0。
+ *
+ * 于是 S3w-3 删兜底的判据("命中率量成 0")现在是干净的:再有非零读数,就真的是
+ * "事件里折不出这段历史"了。
  */
 function fallbackCarriesHistory(value: unknown): boolean {
   if (value === undefined || value === null) return false

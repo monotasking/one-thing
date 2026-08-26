@@ -47,12 +47,24 @@ beforeEach(() => {
   previousHome = process.env.HOME
   tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-clear-messages-test-'))
   process.env.HOME = tempHome
+  // 这个文件问的是**抄本文件**上的后果(`messages.jsonl` 归零、`messages.cleared-*`
+  // 留档)。批 6a(§15.19)把 `ONETHING_SESSION_TRANSCRIPT` 的默认翻到 `off` 之后
+  // 抄本根本不写,这些断言就没有对象了 —— 所以显式扳到回滚杆 `shadow`,让用例
+  // 继续问它本来问的那件事。走 env 而不是 `setSessionTranscriptModeForTesting`:
+  // 下面 `loadIsolatedStores` 每次 `vi.resetModules()`,测试覆写住在模块实例里会
+  // 被重置掉,而档位读的是 `process.env`,重置多少次都还在。
+  //
+  // **批 6b 会把这两条一起改写**:裁定 10 拍了 `messages.cleared-*` 退役
+  // (`session/cleared` 只遮蔽不删,事件本身就是档),届时留档那条用例随之退役,
+  // 清空那条改问事件面的遮蔽。
+  process.env.ONETHING_SESSION_TRANSCRIPT = 'shadow'
   loadedSessions = null
 })
 
 afterEach(async () => {
   await loadedSessions?.flushAllPendingSaves()
   process.env.HOME = previousHome
+  delete process.env.ONETHING_SESSION_TRANSCRIPT
   fs.rmSync(tempHome, { recursive: true, force: true })
 })
 

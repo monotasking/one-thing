@@ -246,7 +246,15 @@ function rotateAssistantWriterIdentity(state: AgentLoopExecutorState): void {
 	// (`run/start` 就是那条消息在 surface 上的那一格)。
 	// A4(§13.1):盖章发生在 `addMessage` 里(`stampCollabAgentId`),所以读的是
 	// **落库之后**的那一条,不是上面 plan 里那个还没盖章的对象。
-	const storedAssistantMessage = sessionReads.getMessage(
+	// §15.18/§15.19:走**真相面**口 —— 这处是 `stream-executor.ts:194` 在 steer
+	// 那条路上的孪生。这次读的产物正是它自己那一格 `run/start`(翻译器故意不翻
+	// `isStreaming` 的 assistant),所以走 routed 的 `getMessage` 时 `fromEvents`
+	// 恒折不出、每次换锚点必掉一次 `?? getSessionMessages` 兜底 —— `fallbackHits`
+	// 的最后一块结构性地板就在这里。取到的消息与从前逐字相同(兜底半边读的就是
+	// 同一个抄本),只是不再经过"投影折不出 → 兜底"这条路径、不再计数。纪律
+	// (§13.18 发现 B):**事件写侧的取材恒读抄本,永不随 `ONETHING_SESSION_READ`
+	// 分岔**。
+	const storedAssistantMessage = sessionReads.getMessageFromTranscript(
 		state.ctx.sessionId,
 		assistantMessageId,
 	);

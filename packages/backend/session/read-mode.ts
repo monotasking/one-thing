@@ -91,36 +91,46 @@ export function setSessionHydrateModeForTesting(mode?: SessionHydrateMode): void
 }
 
 /**
- * **抄本(`messages.jsonl`)的三态开关**(S3w-2,§14.3-A / §14.6 裁定 5)。
+ * **抄本(`messages.jsonl`)的三态开关**(S3w-2,§14.3-A / §14.6 裁定 5;
+ * S3w-3 批 6a 翻默认,§15.19)。
  *
- *   `ONETHING_SESSION_TRANSCRIPT = 'primary' | 'shadow'(默认)| 'off'`
+ *   `ONETHING_SESSION_TRANSCRIPT = 'off'(默认)| 'shadow' | 'primary'`
  *
  * 与上面两个开关问的又不是同一个问题,所以还是不合并:
  *  - `ONETHING_SESSION_READ` —— 产品线的历史从哪一侧**读**(已默认 `events`);
  *  - `ONETHING_SESSION_HYDRATE` —— 冷加载时写模型从哪一侧**补水**(已默认 `projection`);
  *  - 这一个 —— `messages.jsonl` 还**写不写**。
  *
- * 三档的语义:
+ * **默认已切到 `off`**(S3w-3 批 6a,§15.19):storage-driver 的**消息写半边跳过**
+ * (`meta.json` 与索引照写,§14.6 S3w-3 行),`events.jsonl` 成为**唯一持久化**。
+ * 这一档同时是**写失败上抛**(§14.6 裁定 7)的生效条件 —— 唯一账本写不进去不再是
+ * 可吞的旁路故障,所以上抛从"某一档的特例"变成了**默认行为**。
  *
- * - **`primary`** —— 抄本仍被当作磁盘真相之一(S3w-2 之前的世界)。**写路径与
- *   `shadow` 完全相同**;这一档留着只为记账口径与回滚叙事:哪天要把"抄本是真相"
- *   这句话重新讲一遍,扳到这里即可,不必翻代码找它当年是什么行为。
- * - **`shadow`(默认)** —— 抄本照写,但**正式降级为纯对账影子**:产品读路
- *   (S2b)与冷加载补水(S3w-1)都已全线走投影,没有任何一条产品路径消费它;
- *   它今天的唯一用处是耐久层对账(verify #6 与 §13.16 那类真机比对)。
- * - **`off`** —— storage-driver 的**消息写半边跳过**(`meta.json` 与索引照写,
- *   §14.6 S3w-3 行),`events.jsonl` 成为唯一持久化。这一档同时是**写失败上抛**
- *   (§14.6 裁定 7)的生效条件:唯一账本写不进去不再是可吞的旁路故障。
+ * 翻默认的前提(§14.6 裁定 5 的阈值,用户 2026-08-26 按 §15.8 单用户口径**预授权
+ * 跳过浸泡期**):shadow=0 ∧ refold=0 ∧ appendFailures=0 ∧ verify 全库 0 新红,
+ * 双泳道 battery GREEN。它也是**烧掉 `ONETHING_SESSION_READ=messages` 那条 S2b
+ * 回滚船**的一步(§15.8 的唯一确认点,用户已确认)。
  *
- * **本批只实现机制,默认停在 `shadow`,不切 `off`** —— 切 off 是批 6,而且是烧掉
- * `ONETHING_SESSION_READ=messages` 那条 S2b 回滚船的一步(§15.7 的唯一确认点)。
+ * **另外两档现在是显式回滚杆**,语义原样保留:
  *
- * 三个值都显式认,拼错 = 默认:`primary` 与 `off` 都是**要被显式说出口**的档,
- * 谁也不该被"非 X 即默认"吞掉。
+ * - **`shadow`** —— 抄本照写,但只是纯对账影子:产品读路(S2b)与冷加载补水
+ *   (S3w-1)都已全线走投影,没有任何一条产品路径消费它;它的用处是耐久层对账
+ *   (verify #6 的存量比对与 §13.16 那类真机比对)。**扳到这里 = 让抄本重新长出来**,
+ *   写失败也随之退回"只计数不打扰"。切 off 之后新会话没有抄本存量,所以扳回来
+ *   只能从扳回来那一刻起攒新的对账料 —— 零数据损伤,但也不会凭空补出旧抄本。
+ * - **`primary`** —— 把"抄本是磁盘真相之一"这句话重新讲一遍(S3w-2 之前的世界)。
+ *   **写路径与 `shadow` 完全相同**;这一档只承担记账口径与回滚叙事,不必翻代码
+ *   找它当年是什么行为。
+ *
+ * **批 6b 删掉 storage-driver 的消息写半边之后,这两根杆随写代码一起退役** ——
+ * 那时"回滚"的唯一形式是 `git revert`,不再是扳一个环境变量。
+ *
+ * 三个值都显式认,拼错 = 默认:默认翻过去之后,`shadow` 与 `primary` 就是那两根
+ * 必须被显式认出来的回滚杆,不能被"非 off 即默认"吞掉。
  */
 export type SessionTranscriptMode = 'primary' | 'shadow' | 'off'
 
-export const DEFAULT_SESSION_TRANSCRIPT_MODE: SessionTranscriptMode = 'shadow'
+export const DEFAULT_SESSION_TRANSCRIPT_MODE: SessionTranscriptMode = 'off'
 
 let transcriptOverride: SessionTranscriptMode | undefined
 

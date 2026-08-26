@@ -43,6 +43,7 @@ const {
   textOrBlobForEvent,
 } = await import('../blob-store.js')
 const { sessionProjectionOptions } = await import('../projection-blobs.js')
+const { setSessionTranscriptModeForTesting } = await import('../read-mode.js')
 const { projectChatMessages } = await import('@onething/core/session')
 
 beforeEach(() => {
@@ -51,10 +52,16 @@ beforeEach(() => {
   fs.mkdirSync(state.sessionsDir, { recursive: true })
   resetSessionEventLogCache()
   resetSessionEventStatsCache()
+  // 本文件问的是 **S1a 的降级纪律**(写失败只计数、G12 拒写不打扰调用方),
+  // 那是抄本还在写的那个世界。批 6a 把默认翻到 `off` 之后,同一刀会按裁定 7
+  // 上抛 —— 升级语义有它自己的用例(`transcript-off.test.ts`),这里显式扳回
+  // 回滚杆,免得两套判据互相盖住。
+  setSessionTranscriptModeForTesting('shadow')
 })
 
 afterEach(async () => {
   await flushSessionEventLog()
+  setSessionTranscriptModeForTesting(undefined)
   fs.rmSync(state.storeDir, { recursive: true, force: true })
   vi.restoreAllMocks()
 })

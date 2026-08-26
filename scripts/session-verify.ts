@@ -18,6 +18,14 @@
  *     不比字段:messages.jsonl 是脱水形态,字段级判据住在影子断言里
  *     (`sessions:shadow-report`),这里只回答"两边讲的是不是同一段历史"。
  *
+ *     **S3w-3 批 6a 起是"存量只读对账"**(§15.19):`ONETHING_SESSION_TRANSCRIPT`
+ *     默认 `off` 之后,抄本在切档那一刻**停在原地**,而 `events.jsonl` 继续独走。
+ *     所以比对范围按**抄本实际的末条**截断:投影里落在抄本覆盖区之内、抄本却不认识
+ *     的消息仍然是洞(红);抄本末条**之后**的那一段是 events 独走的新历史,不再
+ *     要求抄本跟上(计数打印,不算异常)。两头的存量语义原样保留:
+ *     legacy 前缀(事件账本开记之前)照旧算 uncovered,新会话根本没有
+ *     `messages.jsonl` —— 那不是"抄本丢了",那是这条会话生在停写之后。
+ *
  * **只读**:全程 `openSync(…, 'r')`,一个字节都不写(store 也不加锁)。
  */
 import fs from 'node:fs'
@@ -227,10 +235,25 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
       // canonical 判官零豁免。
       const hydrated = dehydrateProjectedMessages(real)
       const realById = new Map(hydrated.map(message => [message.id, message]))
+      // **存量对账的右边界**(批 6a,§15.19):投影里最后一条抄本还认识的消息。
+      // 切 off 之后抄本停在原地、事件独走,所以这一条之后的都属于"抄本管不着的
+      // 新历史";它之前的仍然要逐条对上 —— 那才是存量,漏一条就是真的洞。
+      // 抄本一条都不认识(整段 legacy 前缀 + 事件另起炉灶)时边界 = -1,
+      // 于是全篇都算独走段,与老口径下"unknownProjected 全计"相比只松不紧,
+      // 而那种会话本来就靠 coverage 那行看,不靠这条断言。
+      let lastCoveredIndex = -1
+      for (let i = 0; i < messages.length; i += 1) {
+        if (realById.has(messages[i].id)) lastCoveredIndex = i
+      }
       let unknownProjected = 0
-      for (const projected of messages) {
+      let beyondTranscript = 0
+      for (const [index, projected] of messages.entries()) {
         const counterpart = realById.get(projected.id)
-        if (!counterpart) { unknownProjected += 1; continue }
+        if (!counterpart) {
+          if (index > lastCoveredIndex) beyondTranscript += 1
+          else unknownProjected += 1
+          continue
+        }
         const a = stableStringify(canonicalChatMessage(counterpart as never))
         const b = stableStringify(canonicalChatMessage(projected as never))
         if (a !== b) {
@@ -238,11 +261,18 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
         }
       }
       if (unknownProjected > 0) {
+        // 文案一字不改:`sessions:verify:gate` 的基线按整行匹配,改字面量等于
+        // 把两条已知残余"治愈"掉再以新面孔重新出现(§15.19:基线不动)。
         issues.push({ kind: 'messages', detail: `projection has ${unknownProjected} message(s) unknown to messages.jsonl` })
       }
-      const uncovered = hydrated.length - (messages.length - unknownProjected)
-      coverage = uncovered > 0 ? `covered ${messages.length}/${hydrated.length} (legacy prefix ${uncovered} uncovered)` : undefined
-      // 顺序:被覆盖的后缀在两边必须同序
+      const covered = messages.length - unknownProjected - beyondTranscript
+      const uncovered = hydrated.length - covered
+      const parts: string[] = []
+      if (uncovered > 0) parts.push(`legacy prefix ${uncovered} uncovered`)
+      // 停写之后长出来的那一段:打印,不进门(§15.19 —— 抄本不再被要求跟上)。
+      if (beyondTranscript > 0) parts.push(`${beyondTranscript} beyond the transcript (events-only, S3w-3)`)
+      coverage = parts.length > 0 ? `covered ${covered}/${hydrated.length} (${parts.join('; ')})` : undefined
+      // 顺序:被覆盖的那一段在两边必须同序(独走段两边比不了,不参与)。
       const coveredIds = hydrated.filter(message => messages.some(p => p.id === message.id)).map(message => message.id)
       if (coveredIds.join(',') !== messages.filter(p => realById.has(p.id)).map(p => p.id).join(',')) {
         issues.push({ kind: 'messages', detail: 'covered message order differs' })

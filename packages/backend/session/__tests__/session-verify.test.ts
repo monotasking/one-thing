@@ -91,10 +91,33 @@ describe('sessions:verify', () => {
     expect(report.issues).toEqual([])
   })
 
-  it('reports a transcript that tells a different story', () => {
+  it('reports a transcript that tells a different story inside its own range', () => {
     healthy('drift')
-    writeTranscript('drift', [{ id: 'u1', role: 'user', content: 'hi', timestamp: 1 }])
+    // 抄本认识**后面**那条,却漏了中间的 `u1` —— 这是覆盖区里的洞,存量对账照旧红。
+    writeTranscript('drift', [{ id: 'a1', role: 'assistant', content: 'yo', timestamp: 2 }])
     expect(verifySession(sessionsDir, 'drift').issues.map((issue: { kind: string }) => issue.kind)).toContain('messages')
+  })
+
+  /**
+   * **存量只读对账**(S3w-3 批 6a,§15.19)。切 off 之后抄本停在原地、`events.jsonl`
+   * 继续独走,于是"投影比抄本长"不再是异常,而是这个世界的常态形状。
+   *
+   * 判据按抄本**实际的末条**截断:它之前的一格都不许漏(上一条用例),它之后的
+   * 只计数不进门 —— 而且要出现在 `coverage` 那行里,否则这条放行就是静默的。
+   */
+  it('does not blame the events-only tail that grew after the transcript stopped', () => {
+    healthy('tail')
+    writeTranscript('tail', [{ id: 'u1', role: 'user', content: 'hi', timestamp: 1 }])
+    const report = verifySession(sessionsDir, 'tail')
+    expect(report.issues).toEqual([])
+    expect(report.coverage).toContain('beyond the transcript')
+  })
+
+  /** 停写之后新建的会话根本没有 `messages.jsonl` —— 那不是"抄本丢了"(§15.19)。 */
+  it('does not blame a session born after the cutover (no messages.jsonl at all)', () => {
+    healthy('born-off')
+    fs.rmSync(path.join(sessionsDir, 'born-off', 'messages.jsonl'))
+    expect(verifySession(sessionsDir, 'born-off').issues).toEqual([])
   })
 
   /**

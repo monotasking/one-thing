@@ -3992,7 +3992,9 @@ renderer 直接 import core reducer)。
 | 08-27 | 4 | S3w-2:TRANSCRIPT 三态默认 shadow + 写失败上抛 + refold 自洽环 + battery 断言改造 — **已完成(§15.11)**,含 §14.7 风险② flush 顺序审计(只出清单,动手归批 6) | — |
 | 08-27→29 | 短窗 | 真机跑数(refold/shadow 要真数据,≈1–2 天正常使用;期间插批 5)—— **首杀已修**:refold 门在真机上抓到第一例失配(补水改写活投影),根因/修法/新场景见 §15.13。**第二笔账也来自真机**:refold 首采在 17MB 账本上一口气阻塞主进程 ≈115ms("答完顿一下"),已改协作式分片,连同当晚整轮延迟诊断的归责结论见 §15.14。**第三笔:history 影子 2 条假红**(steering 换锚点的同步点与消费侧之间那一小段窗口),同一个窗口里还藏着一颗压缩重建**真丢一整轮**的雷(今天没撞上),两处已收口,见 §15.15。**第四笔:渲染层"正文看不见"**(真机 9 条历史消息整条回答被卷进折叠区)——**不是数据丢失**,是空轮的渲染锚点被挂到了末尾,批 3 翻默认让"无锚点消息"成为常态点着了这根引信;修 A(锚点按轮次序就位)已落地,修 B 待拍板,见 §15.16 | 正常使用即可 |
 | 08-28 | 5 | flush 收口四项(§15.11 清单 a–d,批 6 前置)+ S3w-4 体积治理 — **已完成(§15.12)**;events.jsonl 轮转只出方案未动手(§15.12 B3,待拍板) | — |
-| 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿)。**前置已做一半**(§15.18):`fallbackHits` 的结构性地板(§15.9 诊断 1)已归位 —— `stream-executor.ts` 的写侧取材改真相面口,battery 321 → 16;余下 16 条全部是 `agent-loop-executor.ts:249`(steer 换锚点)这同一处孪生,同款一行修法,**留在批 6 里一并收**,收完删兜底的"命中率 = 0"判据才干净 | **唯一确认点**:烧 S2b 回滚读前问一次 |
+| 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿)。**前置已做一半**(§15.18):`fallbackHits` 的结构性地板(§15.9 诊断 1)已归位 —— `stream-executor.ts` 的写侧取材改真相面口,battery 321 → 16;余下 16 条全部是 `agent-loop-executor.ts:249`(steer 换锚点)这同一处孪生,同款一行修法,**留在批 6 里一并收**,收完删兜底的"命中率 = 0"判据才干净 | **唯一确认点**:烧 S2b 回滚读前问一次 —— **用户已确认并预授权跳过浸泡期**(2026-08-26,单用户环境口径) |
+| 08-26 | **6a** | **切 off(只翻默认与配套,不删码)** —— `ONETHING_SESSION_TRANSCRIPT` 默认 `shadow → off`(`shadow`/`primary` 降为显式回滚杆);孪生取材点 `rotateAssistantWriterIdentity` 一行修完 `fallbackHits` **16 → 0**;battery 泳道语义对调(停写泳道 → 默认档泳道 + 新增显式 `shadow` 回滚杆泳道,六条泳道);verify #6 改**存量只读对账**;§14.6 第三组裁定按推荐记录 —— **已完成(§15.19)** | — |
+| 08-27 | **6b** | **删旧**:storage-driver 消息写半边删(meta/index 保留)、reads 兜底删、sanitize 死码清、`session:check` 白名单收缩、裁定 9b(legacy 首触迁移)与 10(`messages.cleared-*` 退役)的实施;两根抄本回滚杆随写代码一起退役,届时回滚 = `git revert` | — |
 | 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
 | 09-05→09-08 | 12–14 | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动) | B 期细案到期过目 |
 | ≈ 09-08 | 终 | 全线收口:事件唯一真相、UI 同词汇;refold 常驻唯一耐久门 | — |
@@ -4979,3 +4981,356 @@ countSessionReadFallback ← transcriptFallback ← sessionReads.getMessage
 `vitest run packages/backend/wiring/engine packages/backend/session` 84 文件 / 667 用例
 全绿;`sessions:shadow-battery` GREEN(runs 321、mismatches 0、appendFailures 0、
 refoldMismatch 0、fallbackHits 16);`boundary:gate` / `session:gate` / `log:gate` 全绿。
+
+### 15.19 批 6a 落地记录:S3w-3 切 off —— 抄本停写成为默认(2026-08-26,opus 执行,未提交)
+
+**这一批把 `messages.jsonl` 从磁盘上抹掉了 —— 对新写入而言。** `events.jsonl` 从此
+是会话历史的**唯一持久化**。批 4 (§15.11) 装好的三态开关默认停在 `shadow`,这一批
+把默认扳到 `off`;和批 3 (§15.10) 翻补水默认一样,**主体只是一个常量**,配套才是
+工作量。
+
+**本批只翻默认与配套,不删码** —— 删 storage-driver 的消息写半边、删 reads 兜底、
+清 sanitize 死码、收缩 `session:check` 白名单是**批 6b**。理由是回滚成本:只要写
+代码还在,回滚就是扳一根环境变量;删了之后回滚只能 `git revert`。
+
+#### 一、用户裁定(2026-08-26)
+
+- **§15.8 表里批 6 的"唯一确认点"**(烧掉 `ONETHING_SESSION_READ=messages` 这条
+  S2b 回滚船)—— 用户确认烧。
+- **§14.6 裁定 5 的观察期阈值(≥2 周真机 ∧ ≥200 run)—— 用户按 §15.8 的单用户
+  环境口径预授权跳过**。判据里可自证的那几项(shadow=0 ∧ refold=0 ∧
+  appendFailures=0 ∧ verify 全库 0 新红 ∧ battery 全泳道 GREEN)照旧要真跑,跳掉的
+  只是"墙上的两周"。
+- **§14.6 第三组(S3w-3 开工前拍)按推荐记录**:
+  - **裁定 8(steps/toolCalls 双存)= 认**。磁盘双存随停写免费消失;内存/IPC/渲染
+    的双视图**长期保留**,形状收敛另立门户或接受为长期形态 —— 两边都有硬吃者
+    (history builder / StepsPanel / collab / resume-history / evals),收敛 = 渲染层
+    + history 大改而存储收益为零。
+  - **裁定 9a(`messages.jsonl` 存量)= 永久原地只读**。零风险零迁移;归档只省目录
+    整洁,却要多开一次批量搬文件的风险窗口。本批的 verify #6 改造就是这条裁定的
+    落法(见下)。
+  - **裁定 9b(legacy 整文件会话 `sessions/<id>.json`)= 首触迁移进 events**。
+    reads 兜底半边要把命中率量成 0 才能删,永久保留兜底 = 那批代码永远删不掉。
+    **实施在批 6b**(它属于"删旧"的前置)。
+  - **裁定 10(`messages.cleared-*` 存档)= 退役**。`session/cleared` 只遮蔽不删,
+    事件本身就是档;保留等于给"事件是唯一真相"开第一个例外。**实施在批 6b。**
+
+#### 二、默认翻转(`backend/session/read-mode.ts`)
+
+`DEFAULT_SESSION_TRANSCRIPT_MODE` `'shadow' → 'off'`。**解析逻辑一个字没改**:三个
+值本来就都显式认,所以 `shadow` / `primary` 原地变成**显式回滚杆**,语义逐字保留。
+注释按回滚语义重写,并写清两件容易想当然的事:
+
+- 扳回 `shadow` = 让抄本**重新长出来**,写失败也随之退回"只计数不打扰"。但切 off
+  之后新会话没有抄本存量,**扳回来只能从那一刻起攒新的对账料**,不会凭空补出旧抄本
+  ——"零数据损伤"指的是事件账本没被动过,不是"抄本原地复活"。
+- **批 6b 删掉写代码之后,这两根杆随之退役**,届时回滚 = `git revert`;这句话写在
+  开关注释里,免得半年后有人扳一根已经不接线的杆。
+
+连带口径:**写失败上抛(裁定 7)从"某一档的特例"变成了默认行为** —— 唯一账本写不
+进去不再是可吞的旁路故障。
+
+**测试语义对调**(`__tests__/transcript-off.test.ts`,照批 3 的判例):
+
+- 默认那条断言**钉常量 `DEFAULT_SESSION_TRANSCRIPT_MODE`**,不钉"什么都不设时读到
+  什么" —— 后者要去读进程环境变量,于是谁在 shell 里扳过回滚杆这条就红,而那是
+  开关在正常工作、不是默认值改了(§15.10 实测过的坑)。
+- 新增一条"`shadow` / `primary` 是回滚杆"的显式用例;拼错那条改成回到**新**默认。
+- 四条写失败用例里"观察期"那一半**显式扳到 `shadow`** —— 它现在是回滚杆,不再是
+  "什么都不设"的那一档。同理 `event-log-s1.test.ts` 整个文件问的是 S1a 的**降级**
+  纪律(写失败只计数、G12 拒写不打扰调用方),`beforeEach` 里显式扳回 `shadow`;
+  升级语义有它自己的用例,两套判据不该互相盖住。
+
+#### 三、孪生取材点一行修(§15.18 留下的那一处)
+
+`wiring/engine/stream/agent-loop-executor.ts` 的 `rotateAssistantWriterIdentity`:
+`sessionReads.getMessage` → `getMessageFromTranscript`。与 §15.18 改
+`stream-executor.ts:194` **同一病灶、同一修法、行为逐字等价**:它刚 `store.addMessage`
+出一条新的 assistant 占位(为读回 `stampCollabAgentId` 盖上的 `agentId`/`source`),
+紧接着要用它去 `rotateSessionRun` —— 这次读的产物**正是它自己那一格 `run/start`**,
+读的时候账本里当然还没有,于是走 routed 口时 `fromEvents` 恒折不出、每次换锚点必掉
+一次兜底。
+
+`reads.ts` 的遥测注释同步更新:两处写侧取材点都已归位,**`fallbackHits` 的结构性
+地板清零**,S3w-3 删兜底的判据("命中率量成 0")从此是干净的 —— 再有非零读数就
+真的是"事件里折不出这段历史"。
+
+#### 四、battery 泳道语义对调(`scripts/shadow-battery.mjs`,四条 → 六条)
+
+`off` 成默认之后,原来那条显式设 `ONETHING_SESSION_TRANSCRIPT=off` 的"停写泳道"
+会骗人 —— 它验的其实就是默认路,而**抄本回滚杆一条用例都没有**。与批 3 补水泳道
+一模一样的处置(§15.10 判例),`runTranscriptOffLane` 泛化成 `runTranscriptLane`:
+
+- **`default (= off)`** —— 不设 `ONETHING_SESSION_TRANSCRIPT`,验产品出厂那条路;
+  断言 `messages.jsonl` **不许长**;
+- **`shadow rollback (ONETHING_SESSION_TRANSCRIPT=shadow)`** —— 验回滚杆本身;
+  断言 `messages.jsonl` **必须长出来**(否则"扳回去了"只是句口号)。
+
+**顺序反了过来**,而且这是本批唯一有结构性后果的一处:补水回滚杆泳道
+(`ONETHING_SESSION_HYDRATE=messages`)要的是一批**带抄本**的会话,而默认档跑出来
+的会话已经没有 `messages.jsonl` 了。所以抄本泳道排在补水泳道**之前**,并且补水回滚
+杆的取材池换成 `shadow` 泳道跑出来的那批(全仓唯一还有抄本的会话),同时把
+`ONETHING_SESSION_TRANSCRIPT=shadow` 一起扳过去 —— 真要回滚补水,抄本当然也得继续
+写,否则接下来那一轮就再也补不回来了。从前的顺序理由("停写泳道放最后,前面的泳道
+要'抄本还在'的世界")在默认翻转之后自动失效。
+
+三条配套纪律照批 3 的判例逐条落:①**取样互不相交** —— 两条补水泳道现在连取材池都
+不同源,`laneTaken` 留着把这件事钉住;②**env 先清再叠** —— `startServer` 现在
+`delete env.ONETHING_SESSION_TRANSCRIPT` 之后才叠 `extraEnv`(从前只清了
+`ONETHING_SESSION_HYDRATE`),免得开发者 shell 里恰好导出过这一格,把"默认档泳道"
+悄悄变成显式档而报告照样说自己在验两档;③**`skipped` 也算红**,并且"两条泳道没都
+跑到"(`transcriptLanes.length !== 2`)直接判红,不再是静默少看一格。
+
+两枚**写失败上抛探针照跑**,一格没改:`off` 那枚现在验的是**默认行为**(命令报错),
+`shadow` 那枚验的是回滚杆连同它的旧语义(只计数)一起回来了。
+
+#### 五、verify #6 改「存量只读对账」(`scripts/session-verify.ts`)
+
+裁定 9a("存量永久原地只读")的落法。切 off 之后抄本**停在原地**而 `events.jsonl`
+继续独走,老口径("投影里抄本不认识的消息 = 红")会对每一条切档后还在用的会话恒红。
+新判据按**抄本实际的末条**截断:
+
+- 投影里落在抄本覆盖区**之内**、抄本却不认识的消息 —— 仍然是洞,照旧红;
+- 抄本末条**之后**的那一段 —— events 独走的新历史,计数进 `coverage` 那行
+  (`N beyond the transcript (events-only, S3w-3)`),**不进门**;
+- 新会话根本没有 `messages.jsonl` —— 老代码本来就 `if (transcript && …)` 跳过,
+  不算异常,只把这句写进文档口径。
+
+**基线一字不动**:`sessions:verify:gate` 按整行匹配,所以那条 `projection has N
+message(s) unknown to messages.jsonl` 的文案**故意保持逐字不变**(改字面量 = 把两条
+已知残余"治愈"掉再以新面孔重新出现)。`coverage` 那行对既有会话逐字等价
+(`beyondTranscript = 0` 时新旧算式恒等)。
+
+用例侧:原来那条"抄本讲了另一个故事"改成**洞在覆盖区之内**(抄本漏了中间那条),
+新增两条 —— 独走的尾巴不算错(且必须出现在 `coverage` 里,否则这条放行是静默的)、
+停写后新建的无抄本会话不算错。
+
+#### 六、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run typecheck` | **绿**(node + web) |
+| 定向 `packages/backend/session` + `wiring/engine` + `wiring/permission` + `stores` + `runtime/src/sessions` | **119 文件 / 908 用例**,红 1 = `sessions-delete-cascade`(§15.10 记过的同一只本机高负载抖动,单跑 3/3 绿) |
+| `bun run sessions:shadow-battery` | **GREEN** —— **27** 场景(含 §15.20 新增的 `abort-while-awaiting-permission`)×7,runs 368 / historyChecks 512 / mismatches 0 / appendFailures 0 / refoldChecks 260 / refoldMismatch 0 / shadow.jsonl 0 行;**六条泳道全 PASS**;两枚写失败探针 PASS |
+| **`fallbackHits`** | **16 → 0**(§15.18 留下的孪生点收完;结构性地板清零) |
+| `boundary:gate` / `session:gate` / `log:gate` | **全绿**(0 / 0 新 / 4 已知 0 新) |
+| `bun run sessions:hydration-contract`(真机 `~/.onething`,全程只读) | 441 会话:**pass 422 / fail 1 / baseline-skip 8 / no-events 10**。批 3 那次是 436 会话 fail 0 —— 多出来的 5 条与那 1 条 fail **都是这两天真机新写的**,fail 的成因与本批无关(诊断见下) |
+| `bun scripts/session-verify.ts --all` / `sessions:verify:gate`(真机全库,只读) | **2 NEW**(诊断见下);13 healed,其中 **2 条正是 verify #6 新口径故意放行的那个形状**(`9c94531d` 与 `room-1` 的 `projection has 1 message(s) unknown to messages.jsonl`;`room-1` 现在整条 `ok`)。**基线一字未动** |
+
+**battery 六条泳道逐条**:
+
+```
+per scenario            26/26 PASS
+transcript lanes        PASS  default (= off)                      scenarios=26 wrong=0
+                        PASS  shadow rollback (=shadow)            scenarios=26 wrong=0
+hydrate lanes           PASS  default (= projection)               sessions=8
+                        PASS  legacy rollback (HYDRATE=messages)   sessions=8
+imported-history        PASS  new-mismatch-lines=0 refold-checks=1
+write-failure probes    PASS  off=命令报错   PASS  shadow=只计数
+```
+
+#### 七、**门红:两条真机新红,与本批无关 —— 停在诊断**
+
+`sessions:verify:gate` **FAILED: 2 NEW issue(s) vs baseline**。两条都在**今天(08-26)
+才写过**的会话上,而且**在 HEAD 版本的 `session-verify.ts` 下同样复现**(用
+`git stash push -- scripts/session-verify.ts` 把本批的改动摘掉重跑,两条一字不变)——
+所以既不是本批弄出来的,也没有被本批的新口径掩盖:
+
+1. **`ef079fd7` `messages: canonical differs for message 55a915aa`** ——
+   **新失配类:`rejectionReason: 'Session cleared'` 只有投影侧有**。
+   同一件事在三个地方各留了一份证据:
+   - 真机 `session-shadow-stats.json`:`mismatches: 4`(`byKind: {messages: 1,
+     history: 3}`),**全部出自这一条会话、这一个工具调用**,时间戳都在今天 17:03–17:09;
+   - `session-shadow.jsonl` 的 `messages` 那行diff 是
+     `1.steps.1.rejectionReason` / `1.steps.1.toolCall.rejectionReason` /
+     `1.toolCalls.1.rejectionReason`,三处一律 **a=`(absent)` / b=`Session cleared`**;
+   - 账本里 `permission/answered` 带 `approved:false, reason:"Session cleared"`
+     (seq 3865),投影 reducer 把它盖到了 step/toolCall 上,而 store 的写侧
+     reducer 在这条**自动否决**路径(会话被清空/中止导致的拒批,不是用户点"拒绝")
+     上没有盖 `rejectionReason`。三条 `history` 失配是同一格在模型历史里的回声
+     (`276.content.1.result` 的 1012 vs 1048 字节)。
+   - `hydration-contract` 的那唯一 1 条 fail(`steps.1.rejectionReason`)是同一格。
+   **这是一个真正的写侧/读侧不对称,而且方向是"投影更全"**;它属于 §15.8 短窗
+   要抓的那类未知真机类(第五笔)。
+   **→ 已在 `dc810f4f` 修掉**(§15.20):`'Session cleared'` 是拆除现场留给等待方
+   的一句内部话,不是判决理由;事件侧才是说错的那一侧。修在**单一构造点**
+   (`core/permission/index.ts` 的 `settlePendingReject` 加 `SettleKind`)。
+   **`ef079fd7` 那条会话的账本存量修不掉**(事件已经落盘),所以它在
+   `sessions:verify:gate` 上作为**已知 legacy 残余**继续红,与 §15.3 P-a 的
+   grok 成本残余同一口径 —— 要么进基线,要么留着当"这一天发生过什么"的化石。
+2. **`ec2437ff` `surface: session/compacted@6068: source-seqs-incomplete`** ——
+   verify 检查 #2(`foldSurface` 的 replace 校验),与抄本、与本批的任何一处改动
+   都不沾边;会话最后写于今天 00:36。**根因已定位**(只读实算,未动手):
+   那次压缩 `surfaceOp {op:'replace', start:2, end:5518}` 遮掉 surface 上 75 格,
+   `sourceEventSeqs` 声明了 173 个 seq —— 全部存在于文件里,但**遮掉的 75 格里恰好
+   有 1 格没被声明:`seq 4243`,一条 `message/deleted`**。写侧
+   (`event-translator.ts` 的 `sessionCompacted`)是按"被压掉的那些**消息**"凑
+   `sourceEventSeqs` 的,而 `message/deleted` 是 surface 上的一格却不是一条消息,
+   于是永远进不了那张清单;读侧的完整性检查(`surface.ts:158` `shadowCompact`
+   —— 从第一个被声明的 seq 起,后面每一格都必须被声明)当场报缺。
+   **不是行为漂移**:`shadowCompact` 用 `order.slice(0, to+1)` 遮蔽,整段照样遮全,
+   模型历史没有多看或少看 —— 这是一条**记账完整性**的抱怨。
+   它与 §15.3 P-b 是同一张表的两侧(P-b 修的是"非节点 seq 进了 order",这条是
+   "节点没进声明"),修法应当同源:要么写侧把 `message/deleted` 一并计入,要么
+   读侧口径改成"只校验消息节点"。**须拍板,不在本批范围。**
+
+**处置**:第 1 条的**成因**已由 `dc810f4f` 修掉(§15.20),新写入不再产生这一格;
+留在盘上的那一条是**存量化石**,改不掉也不该回填(G3:事件只追加)。第 2 条
+(`ec2437ff` 的 `source-seqs-incomplete`)仍未诊断,与抄本、与本批任何一处改动都
+不沾边 —— 单独立条。
+
+**回滚成本**:本批一行写代码都没删,回滚 = 把 `DEFAULT_SESSION_TRANSCRIPT_MODE`
+改回 `'shadow'`(或设 `ONETHING_SESSION_TRANSCRIPT=shadow`),抄本立刻重新开始写。
+
+### 15.20 拆除口径修复:`settlePendingReject` 不向账本报内部场景理由(2026-08-26,`dc810f4f`)
+
+> 本节由 `docs/design/s3w-batch-notes-2026-08-26.md` 并入(该文件随并入删除)。
+> 修本身已提交为 `dc810f4f`;battery 新场景 `abort-while-awaiting-permission`
+> 因 `scripts/shadow-battery.mjs` 当时属批 6a 在途文件,随批 6a 一起落(见 §15.19)。
+
+#### 现象
+
+`~/.onething/log/session-shadow.jsonl` 恰好 4 行,全出自会话
+`ef079fd7-d6ca-42a4-887b-499767593b7a`(2026-08-26 17:03–17:09 本地时间):
+
+| # | 时刻(UTC) | kind | runId | 差异 |
+| --- | --- | --- | --- | --- |
+| 0 | 09:03:27.937 | messages | 3b4733dd | `1.steps.1.rejectionReason` / `1.steps.1.toolCall.rejectionReason` / `1.toolCalls.1.rejectionReason`,抄本侧 `(absent)`,投影侧 `"Session cleared"` |
+| 1 | 09:03:31.373 | history | 1c25d390 | `276.content.1.result`,1012 → 1048 字符 |
+| 2 | 09:06:42.089 | history | 2b6c7aac | 同上 |
+| 3 | 09:09:01.257 | history | fe36f8ee | 同上 |
+
+**四条是同一个根因**,不是两类:messages 那条是投影在消息上多写了一格
+`rejectionReason`;history 那三条是同一格顺着 `failureResultForAI` 流进模型历史。
+
+#### 字段级定位
+
+那 36 个字符就是 `,"rejectionReason":"Session cleared"`(1 + 17 + 1 + 17 = 36),
+插在 `toolFailureResultForAI`(`packages/core/tools/tool-result.ts:176`)的键序里
+`parameters` 与 `status` 之间。真机数据实算复核:抄本侧 1012、投影侧 1048,delta 恰 36。
+
+涉事调用 `call_01_ET_P8C7TyUxm0MWaXuQ6P9R9393`(bash,那条 `echo "=== jira cli? ==="`)。
+
+**抄本侧**(`messages.jsonl`,那次调用的全部字段):
+
+```
+{"id":"call_01_ET_…","toolId":"bash","toolName":"bash","status":"cancelled",
+ "timestamp":…,"receivedAt":…,"argsFinalizedBy":"parse","startTime":…,
+ "endTime":…,"error":"User cancelled"}
+```
+
+没有 `rejected`,没有 `rejectionReason` —— 收尾修复(`sessions/stream-abort.ts`)
+写的就是 `{status:'cancelled', error:'User cancelled'}` 那两格。
+
+**事件侧**(`events.jsonl`,seq 3863–3869,时刻线一秒之内):
+
+```
+3863 tool/call          bash
+3864 permission/asked   requestId ab1324cd  toolCallId call_01_…
+3865 permission/answered approved:false  reason:"Session cleared"   ← 说谎的那一条
+3866 tool/audit          outcome:"aborted"          ← 账本自己已经说对了
+3868 tool/result         cancelled:true  resultPreview:""
+3869 run/end             outcome:"aborted"
+```
+
+投影按 G6(`packages/core/session/projection/reducer.ts:691` `permission/answered`)
+把 `reason` 接成 `tool.rejectionReason`,再由 `materializeToolCall`(reducer.ts:1227)/
+`materializeStep`(reducer.ts:1308)落到消息上,最后由 `toolFailureResultForAI`
+带进模型历史。
+
+#### 构造点
+
+- 抄本侧:`packages/onething-runtime/src/sessions/stream-abort.ts` —— abort 收尾把
+  未结束的调用判死成 `{status:'cancelled', error:'User cancelled'}`。
+- 事件侧:`packages/core/permission/index.ts` `clearSession()` →
+  `settlePendingReject` → `emitSettled(entry,'rejected',{reason})` →
+  `Permission.Recorder.onAnswered` → `packages/backend/session/permission-events.ts:41`
+  写 `permission/answered {approved:false, reason}`。
+- 触发链:用户按停止 → `CoreStreamEngine.abort()`(core-stream-engine.ts:484)
+  最后一行 `onSessionCleared()` → `clearPermissionSession` 端口
+  (`backend/wiring/engine/stream-engine-runtime.ts:142`)→
+  `Permission.clearSession` + `Interaction.clearSession`。
+
+#### 归责
+
+**双侧独立构造的字面分歧**,且**事件侧是说错的那一侧** —— 不是采集缺口。
+
+判据是账本自己给的:同一次调用的 `tool/audit` 写的是 `outcome:"aborted"`,既没有
+`decision:"deny"` 也没有 `asked:true`;而**真正被人拒**的两次(seq 3370 / 3512)
+写的是 `{decision:"deny", asked:true, outcome:"denied"}`,抄本侧同时有 `rejected:true`
++ `rejectionReason`,两侧一致、影子无失配。
+
+也就是说:`Permission.clearSession` 的 `'Session cleared'` 是**拆除现场留给等待方
+的一句内部话**,不是判决理由 —— 会话根本没被清,是流被 abort 了。把它记成
+"被拒,理由 X" 之后,投影会凭空给模型多看一句 `rejectionReason: "Session cleared"`。
+
+#### 修复(单一构造点)
+
+`packages/core/permission/index.ts`:给 `settlePendingReject` 加一个显式的收场
+**方式** `SettleKind = 'answer' | 'teardown'`;`clearSession` 走 `'teardown'`。
+
+- `teardown` 那一支**不向账本旁听席报理由** —— 因为没人答过。
+- 等待方拿到的 `RejectedError`(`message` 与 `reason` 都含 `'Session cleared'`)
+  **一个字节没变**,总线事件 `permission:settled` 本来就不带理由,也没变。
+- 事件仍然照记 `permission/answered {approved:false}`:投影靠它清
+  `awaitingPermission`(A12),丢了会造出新的失配。
+- 没有在 canonical 加豁免,没有回填历史,没有改 reducer。
+
+`packages/core/session/trace/assemble.ts:591` 早就是 `reason !== undefined` 条件
+展开,拆除路少一格 `reason` 不影响轨迹面。
+
+#### 反证
+
+`packages/backend/wiring/permission/__tests__/permission.test.ts` 新增两只:
+
+1. `records a teardown without a rejection reason (the awaiting side still gets one)`
+   —— 拆除路:等待方仍 `err.reason === 'Session cleared'`、`err.message` 仍含那句话,
+   而旁听席只收到 `{approved:false}`。**回退 `'teardown'` 实参后此只必红**,实测:
+   `expected [{approved:false, reason:"Session cleared"}] to deeply equal [{approved:false}]`。
+2. `still records the reason when a human actually rejected` —— 防过度修复:
+   真人 `respond({response:'reject', rejectReason})` 那一支照旧带理由。
+
+**battery 场景 `abort-while-awaiting-permission`**(随批 6a 落,场景数 26 → 27):
+审批挂起 → 不答 → `command:abort`,断言账本上该 callId 的 `permission/answered` 是
+`{approved:false}` 且**无 `reason`**、`tool/audit.outcome === 'aborted'` 且非
+`decision:'deny'`,那一轮两侧仍逐字相等(影子不长新行)。反向那半边由既有的
+`permission-denied` 守着,不重复造。
+
+**这条场景的反证已实跑**(把 `permission/index.ts:630` 的 `'teardown'` 实参临时改回
+`'answer'`,跑完即 `git checkout` 还原):
+
+```
+FAIL  abort-while-awaiting-permission ok=0 failed=1 mismatch-lines=1
+      the teardown reported a rejection reason to the ledger: "Session cleared"
+[shadow] GATE RED: mismatches 3 ≠ 0
+```
+
+—— 两层独立判红:场景自己的断言,以及**影子法官各自记下 3 条失配**(默认档泳道 1 +
+shadow 回滚杆泳道 1 + 主矩阵 1)。也就是说这条场景端到端复现的就是真机那一类,
+不是只钉住了一句 assert。
+
+#### 验收(`dc810f4f` 自己那一批)
+
+| 门 | 结果 |
+| --- | --- |
+| `bun run typecheck` | 0 |
+| 定向(permission / shadow / event-log / event-translator-write-side-read / trace / projection-contract / stream-abort) | 9 文件 159 只全绿 |
+| `boundary:gate` / `session:gate` / `log:gate` | ok / 0 新 / 4 已知 0 新 |
+| `sessions:shadow-battery` | 当时未跑(`shadow-battery.mjs` 属批 6a 在途文件),随批 6a 统一跑 —— 结果见 §15.19 |
+
+#### 一处未解、不影响根因的观察
+
+同一格失配在真机上只被记了 3 个 run(1c25d390 / 2b6c7aac / fe36f8ee),per-run 去重
+(`backend/session/shadow.ts` `rememberMismatch`)另折了 10 条重复;但 09:12 之后的
+5 个 run(277ae232 / 7d62998d / f0a08e3e / 1bab5390 / 1c884683)**不再失配**,而那条
+消息在这 5 个 run 的每一次 `request/recipe` 里都还在(`hasMsg276=true`,全程无
+`session/compacted`)。events.jsonl 里在 09:09–09:12 之间没有任何触碰该 callId /
+该消息的事件。
+
+统计口径:`session-shadow-stats.json` 记 `mismatches:4`(`byKind` messages 1 /
+history 3)、`duplicateMismatches:10`、`skipped:{history-steer-window:4}`、
+`fallbackHits:79`(≈ runs 78 —— 正是 §15.18/§15.19 收掉的那块结构性地板)。
+怀疑与 `getLiveSessionProjection` 的活投影生命周期或 `buildBudgetedToolResultContent`
+(history.ts:323,per-result 200k / total 600k 字符预算)在长历史下的落点有关,
+但没有直接证据 —— 记在这里,不当作根因的一部分。**全量重放这段事件是确定性的:
+那格 `rejectionReason` 必然出现**,反证单测即按这条时刻线复现。
