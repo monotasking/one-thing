@@ -205,6 +205,19 @@ export const sessionReads = {
     return getSessionMessages(sessionId)?.some(item => item.id === messageId) ?? false
   },
 
+  /**
+   * **抄本侧**问一句"这条会话在不在" —— F2-c 补的那道判据(§16.9 的洞)。
+   *
+   * `appendMessage` / `upsertMessage` 的 reducer 恒为"改得成",唯一改不成的情形是
+   * **整条会话不在**(`OnethingSessionMessageRuntime.run` 取不到 session 就整条
+   * no-op)。F2-a/F2-b 翻转时这一格漏了,于是"往一条不存在的会话追加消息"会在
+   * 账本上留下一条 `user/message`,而 store 上什么都没有 —— 事件账本记的是事实,
+   * 不是意图。判据与 reducer 同源同义:`getSessionMessages` 取不到 = 那条会话不在。
+   */
+  hasSessionInTranscript(sessionId: string): boolean {
+    return getSessionMessages(sessionId) !== undefined
+  },
+
   /** **抄本侧**按谓词查一条(F11:同 `getMessageFromTranscript`,事件写侧取材用)。 */
   findMessageFromTranscript(
     sessionId: string,

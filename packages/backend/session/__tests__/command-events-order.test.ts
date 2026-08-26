@@ -29,6 +29,8 @@ const state = vi.hoisted(() => ({
   messages: new Map<string, ChatMessage[]>(),
   /** 每次 store 端口被调到时,活投影(不推进)里的读数。 */
   seenByStorePort: [] as { port: string; visible: string[]; patches: Record<string, unknown> }[],
+  /** `patchSession` 端口进门那一刻,投影折出来的 `sessionMeta.agentId`。 */
+  sessionMetaAtPort: [] as (string | undefined)[],
 }))
 
 vi.mock('@onething/runtime/storage', () => ({
@@ -57,7 +59,8 @@ vi.mock('../../stores/sessions.js', () => ({
 import type { SessionMessageCommandRuntime } from '../commands.js'
 
 const { createSessionCommands } = await import('../commands.js')
-const { sessionEventTranslator } = await import('../event-translator.js')
+const { sessionCommandEvents } = await import('../command-events.js')
+const { sessionLifecycleEvents } = await import('../lifecycle-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
   '../event-log.js'
 )
@@ -78,6 +81,7 @@ beforeEach(() => {
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   state.messages = new Map([[SESSION, []]])
   state.seenByStorePort = []
+  state.sessionMetaAtPort = []
   resetSessionEventLogCache()
   resetSessionSurfaceCache()
   resetSessionRuns()
@@ -185,7 +189,11 @@ function storePort(): SessionMessageCommandRuntime {
     updateMessageStep: () => false,
     updateStepsUsageByTurn: () => [],
     updateMessageToolCalls: () => false,
-    replaceAllMessages: () => false,
+    replaceAllMessages(_sessionId, messages) {
+      noteStorePort('replaceAllMessages')
+      state.messages.set(SESSION, messages.slice())
+      return true
+    },
     repairOnLoad: () => false,
   }
 }
@@ -194,10 +202,21 @@ function commandsOverStore(now = 4242) {
   return createSessionCommands(
     {
       messages: storePort(),
-      getSession: id => ({ id, messages: state.messages.get(id) ?? [] }) as never,
+      // 与真 store 同义:那条会话不在就答不上来(F2-c 的判据靠它)。
+      getSession: id => (state.messages.has(id)
+        ? ({ id, messages: state.messages.get(id) } as never)
+        : undefined),
       updateSessionsIndexMeta: () => true,
       flushSessionSave: async () => {},
-      patchSession: () => false,
+      patchSession: (id) => {
+        noteStorePort('patchSession')
+        // 会话级事件不上 surface,所以"事件先落了没有"要看投影折出来的会话元数据。
+        state.sessionMetaAtPort.push(
+          (peekSessionProjection(SESSION) as { sessionMeta?: { agentId?: string } } | undefined)
+            ?.sessionMeta?.agentId,
+        )
+        return state.messages.has(id)
+      },
     },
     { now: () => now },
   )
@@ -212,15 +231,25 @@ async function events(): Promise<SessionLogEventRecord[]> {
   return readSessionLogEventsSync(SESSION)
 }
 
-describe('F2 产地:五条命令的事件构造已经不在翻译器上(§16.7 / §16.8)', () => {
-  it('翻译器不再认得 appendMessage / deleteMessage / patchMessage / upsertMessage / truncateFrom', () => {
-    // 这五格搬去了 `command-events.ts`。留一个方法名在这里 = 两个产地,
-    // 而"同一条命令写出两种事件"是静默的。
-    // 剩下的四个里只有 replaceAll / patchSession 还是命令(F2-c 翻),
-    // sessionCreated / sessionCompacted 是非命令采集点。
-    expect(Object.keys(sessionEventTranslator).sort()).toEqual([
+describe('F2 产地:命令的事件构造全在命令面上(§16.7 / §16.8 / §16.9)', () => {
+  it('翻译器整个模块已经不在了', () => {
+    // F2-c 之后 `event-translator.ts` 整体退役 —— 十三条命令的事件产地全在
+    // `command-events.ts`,两个非命令采集点在 `lifecycle-events.ts`。
+    // 留一个模块在那里 = 第二个产地,而"同一条命令写出两种事件"是静默的。
+    expect(fs.existsSync(new URL('../event-translator.ts', import.meta.url))).toBe(false)
+  })
+
+  it('产地名单:命令面七条 + 生命周期采集点两条,一条不多一条不少', () => {
+    expect(Object.keys(sessionCommandEvents).sort()).toEqual([
+      'appendMessage',
+      'deleteMessage',
+      'patchMessage',
       'patchSession',
       'replaceAll',
+      'truncateFrom',
+      'upsertMessage',
+    ])
+    expect(Object.keys(sessionLifecycleEvents).sort()).toEqual([
       'sessionCompacted',
       'sessionCreated',
     ])
@@ -269,6 +298,65 @@ describe('F2 产地:五条命令的事件构造已经不在翻译器上(§16.7 /
     commands.truncateFrom(SESSION, { messageId: 'ghost', inclusive: false, newContent: 'x' })
 
     expect(await events()).toEqual([])
+  })
+
+  /**
+   * F2-c 补的那道判据(§16.9 的洞):`appendMessage` / `upsertMessage` 的 reducer
+   * 恒为"改得成",唯一改不成的情形是**整条会话不在** —— 那时 store 上什么都没有,
+   * 账本却会留下一条 `user/message`。两条命令口径一致:一条事件都不写。
+   */
+  it('整条会话不在 = append / upsert 一条事件都不写(F2-c 堵的洞)', async () => {
+    const commands = commandsOverStore()
+    commands.appendMessage('never-created', { message: userMessage('u1') })
+    commands.upsertMessage('never-created', { message: userMessage('u2') })
+
+    await flushSessionEventLog()
+    expect(fs.existsSync(path.join(state.sessionsDir, 'never-created'))).toBe(false)
+    // 同一份命令面在**在册**的那条会话上照旧写。
+    commands.appendMessage(SESSION, { message: userMessage('u1') })
+    expect((await events()).map(event => event.type)).toEqual(['user/message'])
+  })
+
+  it('replaceAll:clear 遮蔽整条 surface、replaced 逐条 imported、normalize 一条不写', async () => {
+    const commands = commandsOverStore()
+    commands.appendMessage(SESSION, { message: userMessage('u1') })
+    commands.appendMessage(SESSION, { message: userMessage('u2') })
+
+    await commands.replaceAll(SESSION, { messages: [], reason: 'clear' })
+    const cleared = (await events())[2]
+    expect(cleared.type).toBe('session/cleared')
+    expect(cleared.data).toEqual({ reason: 'clear' })
+    expect(cleared.surfaceOp).toEqual({ op: 'replace', start: 1, end: 2 })
+    expect(cleared.sourceEventSeqs).toEqual([1, 2])
+
+    await commands.replaceAll(SESSION, { messages: [userMessage('n1'), userMessage('n2')], reason: 'replaced' })
+    expect((await events()).map(event => event.type).slice(3))
+      .toEqual(['session/cleared', 'message/imported', 'message/imported'])
+
+    // normalize 是冷加载的形状规整,消息集合没变 —— 判例照旧,一条都不写。
+    const before = (await events()).length
+    await commands.replaceAll(SESSION, { messages: [], reason: 'normalize' })
+    expect(await events()).toHaveLength(before)
+  })
+
+  it('patchSession:只有 agent / model / workdir 进事件,而且只在真的变了的时候', async () => {
+    state.messages.set(SESSION, [])
+    const commands = commandsOverStore()
+    // 快照来自 store 上那条会话;这里让它有一份"改之前"。
+    commands.patchSession(SESSION, {
+      patch: { agentId: 'b', workingDirectory: '/new', name: 'renamed' },
+    })
+    expect((await events()).map(event => event.type))
+      .toEqual(['session/agent-changed', 'session/workdir-changed'])
+    expect((await events())[0].data).toEqual({ to: 'b' })
+    expect((await events())[1].data).toEqual({ to: '/new' })
+  })
+
+  it('patchSession:整条会话不在 = 一条事件都不写', async () => {
+    const commands = commandsOverStore()
+    commands.patchSession('never-created', { patch: { agentId: 'b' } })
+    await flushSessionEventLog()
+    expect(fs.existsSync(path.join(state.sessionsDir, 'never-created'))).toBe(false)
   })
 
   /**
@@ -485,5 +573,32 @@ describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () 
     expect(storeMessages()).toEqual([
       { id: 'u1', role: 'user', content: 'after', timestamp: 7777 },
     ])
+  })
+
+  it('replaceAll(clear):遮蔽先生效,store 端口进门时 surface 上已经空了', async () => {
+    getLiveSessionProjection(SESSION)
+    const commands = commandsOverStore()
+    commands.appendMessage(SESSION, { message: userMessage('u1') })
+    commands.appendMessage(SESSION, { message: userMessage('u2') })
+    state.seenByStorePort = []
+
+    await commands.replaceAll(SESSION, { messages: [], reason: 'clear' })
+
+    expect(state.seenByStorePort).toEqual([
+      { port: 'replaceAllMessages', visible: [], patches: {} },
+    ])
+  })
+
+  it('patchSession:事件在 store 端口之前就落账(会话级三格)', async () => {
+    getLiveSessionProjection(SESSION)
+    const commands = commandsOverStore()
+    state.seenByStorePort = []
+
+    commands.patchSession(SESSION, { patch: { agentId: 'b' } })
+
+    expect(state.seenByStorePort.map(entry => entry.port)).toEqual(['patchSession'])
+    // 端口进门那一刻,那条事件已经折进活投影的会话元数据里了。
+    expect(state.sessionMetaAtPort).toEqual(['b'])
+    expect((await events()).map(event => event.type)).toEqual(['session/agent-changed'])
   })
 })

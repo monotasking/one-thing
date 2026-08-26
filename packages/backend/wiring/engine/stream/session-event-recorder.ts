@@ -59,7 +59,7 @@ import { nextAgentLoopTurnIndexAfterFinish } from '@onething/core/engine/agent-l
 // §13.17:changes 的判定点与引擎写消息时同源(`changesFromToolMetadata`)。引
 // 那一个叶子文件而不是 `@onething/core/engine` barrel —— 同上"避免拖进整棵执行器
 // 模块图"的理由。
-import { changesFromToolMetadata } from '@onething/core/engine/tool-orchestration'
+import { changesFromToolMetadata, resultTextFromToolMetadata } from '@onething/core/engine/tool-orchestration'
 // 直接引那一个纯文件而不是 providers 的 barrel:barrel 会把六个 provider 实现
 // 一并拖进记录器的模块图,而这里要的只是一张判定表(见文件头"本模块只依赖
 // 会话事件那一层"的同一条理由)。
@@ -339,6 +339,16 @@ interface RecorderState {
    * 落账时附上。时序天然成立:metadata 在 apply 中途到,result 在 settle 后写。
    */
   changesByCallId: Map<string, ReturnType<typeof changesFromToolMetadata>>
+  /**
+   * callId → 上一条 `tool/annotate` 记下的自报结局正文(F2-c,§16.9)。
+   *
+   * **只为省字节**:同一份 metadata 被 annotate 两次是常事(edit 收尾那两条
+   * 只差一个标题),而结局正文里可能带着上百 KB 的 diff。逐字相同就不再写一遍
+   * `result` 那一格 —— 折出来的结果一字不差(annotate 是最后一条赢,而"最后
+   * 一条"的正文就是这一份)。标题照旧每条都写:它便宜,而且它才是 §15.6 里
+   * 丢掉的那一格。
+   */
+  annotatedResultByCallId: Map<string, string>
   /** 正在攒的批(每个 part 至多一个)。 */
   batches: Map<number, ChunkBatch>
   /**
@@ -437,6 +447,7 @@ export function createSessionEventRecorder(
     callSeqByCallId: new Map(),
     reportedTitleByCallId: new Map(),
     changesByCallId: new Map(),
+    annotatedResultByCallId: new Map(),
     batches: new Map(),
     openParts: new Map(),
     finishedParts: [],
@@ -933,15 +944,35 @@ export function createSessionEventRecorder(
         // 工具自报的标题(`annotate{title}`)。引擎拿它**当场**盖掉 step 标题
         // (`applyAgentLoopToolMetadata`),而结局对象里只有成功时才抄了一份 ——
         // 失败的调用没有结局对象,标题就只剩这一条路能记下来(§10.12 第 6 类)。
-        const title = event.update.title
-        if (typeof title === 'string' && title) {
-          state.reportedTitleByCallId.set(event.toolCall.id, title)
-        }
+        const title = typeof event.update.title === 'string' && event.update.title
+          ? event.update.title
+          : undefined
+        if (title) state.reportedTitleByCallId.set(event.toolCall.id, title)
         // §13.17:edit/write 的结构化 diff 就藏在这条 metadata 里(diff/diffHunks/
         // path/…),结局正文不带。抄引擎写消息的**同一把**判定点折出,记进表,
         // `tool/result` 落账时附上。最后一条带 diff 的 metadata 覆盖前一条。
         const changes = changesFromToolMetadata(event.update.metadata)
         if (changes) state.changesByCallId.set(event.toolCall.id, changes)
+        // F2-c(§16.9):自报结局的**产地**。上面两张表是"等 `tool/result` 落账时
+        // 顺带写出去"的内存缓存 —— 而 §15.6 的退出竞速里那条 `tool/result` 永远
+        // 不会来(收尾链挂在异步上,进程先走了),于是标题与结局正文这两格在账本上
+        // 永久消失。工具说一次,账本记一次:这是第一手事实,不是从收尾结果反推。
+        // 结局正文过引擎那**同一把**判定点折出(`resultTextFromToolMetadata`)。
+        const reportedResult = resultTextFromToolMetadata(event.update.metadata)
+        // 与上一条逐字相同的正文不再写一遍(见 `annotatedResultByCallId` 的说明)。
+        const newResult = reportedResult !== undefined
+          && state.annotatedResultByCallId.get(event.toolCall.id) !== reportedResult
+          ? reportedResult
+          : undefined
+        if (newResult !== undefined) state.annotatedResultByCallId.set(event.toolCall.id, newResult)
+        if (title || newResult !== undefined) {
+          appendSessionLogEvent(ctx.sessionId, 'tool/annotate', {
+            callId: event.toolCall.id,
+            ...(title ? { title } : {}),
+            ...(newResult !== undefined ? { result: textOrBlobForEvent(ctx.sessionId, newResult) } : {}),
+            ...withRunId(),
+          })
+        }
         return
       }
       case 'provider-data': {
@@ -981,6 +1012,7 @@ export function createSessionEventRecorder(
         state.reportedTitleByCallId.delete(event.toolCall.id)
         const changes = state.changesByCallId.get(event.toolCall.id)
         state.changesByCallId.delete(event.toolCall.id)
+        state.annotatedResultByCallId.delete(event.toolCall.id)
         appendSessionLogEvent(ctx.sessionId, 'tool/result', {
           callId: event.toolCall.id,
           isError,

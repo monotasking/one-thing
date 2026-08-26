@@ -3174,6 +3174,136 @@ describe('§13.8: 中止时在飞的工具 / 生图失败正文', () => {
   })
 })
 
+/**
+ * §16.9(F 线 F2-c):**工具自报结局有了自己的产地**(`tool/annotate`)。
+ *
+ * §13.8 第一类靠的是收场那一次采集(`tool/result{cancelled}`),而 §15.6 的退出
+ * 竞速里那条收场链根本没跑完 —— 账本上只剩一条 `tool/call`,自报的标题与结局
+ * 正文永久消失。现在工具每说一次账本记一条,投影因此在"永远等不到结局"时也
+ * 折得出那两格。
+ */
+describe('§16.9: 工具自报结局的产地(tool/annotate)', () => {
+  /** 退出竞速的最小形状:annotate 落了账,收尾链一步都没跑完。 */
+  it('§16.9: an annotate alone carries the title and the self-reported outcome text', () => {
+    const outcome = '{"interaction":"ask_user","outcome":"aborted","answers":[]}'
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'ask_user', argumentsRaw: '{}', messageId: 'a1' },
+    })
+    line.push({
+      time: 3, type: 'tool/annotate',
+      data: { runId: 'r', callId: 'c1', title: '提问已取消', result: { text: outcome } },
+    })
+    // `tool/result` 与 `run/end` 都没来 —— 进程先走了(§15.6)。
+    line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'aborted' } })
+
+    const step = projectChatMessages(line.events).messages[0].steps?.[0]
+    expect(step).toMatchObject({
+      title: '提问已取消',
+      result: outcome,
+      // 收场那句话仍然由 run 的收场方式派生 —— 与自报正文**两格并存**
+      // (引擎那一刻在 step 上写的正是这两格)。
+      error: CORE_ABORTED_TOOL_ERROR,
+    })
+    // 调用那一格**没有**结局对象:工具从来没返回过。
+    expect(step?.toolCall).not.toHaveProperty('result')
+  })
+
+  it('§16.9: 最后一条 annotate 赢(与引擎逐字相同的覆盖规则)', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'edit', argumentsRaw: '{}', messageId: 'a1' },
+    })
+    line.push({ time: 3, type: 'tool/annotate', data: { runId: 'r', callId: 'c1', title: 'Editing a.ts', result: { text: '{"phase":"preview"}' } } })
+    line.push({ time: 4, type: 'tool/annotate', data: { runId: 'r', callId: 'c1', title: 'Edited a.ts', result: { text: '{"phase":"done"}' } } })
+    line.push({ time: 5, type: 'run/end', data: { runId: 'r', outcome: 'aborted' } })
+
+    const step = projectChatMessages(line.events).messages[0].steps?.[0]
+    expect(step).toMatchObject({ title: 'Edited a.ts', result: '{"phase":"done"}' })
+  })
+
+  it('§16.9: `tool/result` 一到就以结局为准(自报那一份只是它缺席时的来源)', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{"command":"echo hi"}', messageId: 'a1' },
+    })
+    line.push({ time: 3, type: 'tool/annotate', data: { runId: 'r', callId: 'c1', title: 'echo hi', result: { text: '{"exitCode":-1}' } } })
+    line.push({
+      time: 4, type: 'tool/result',
+      data: { runId: 'r', callId: 'c1', isError: false, resultPreview: 'hi', result: { text: 'hi' } },
+      surfaceOp: 'append',
+    })
+    line.push({ time: 5, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+
+    const step = projectChatMessages(line.events).messages[0].steps?.[0]
+    expect(step).toMatchObject({ title: 'echo hi', result: 'hi', status: 'completed' })
+    expect(step).not.toHaveProperty('error')
+  })
+
+  /**
+   * 崩溃重开:`prepare` 给这次调用补了一条**合成的**中断结局(R-a:它在消息上
+   * 什么都没写)。自报的那一份仍然是消息上真有的那一格 —— 崩之前引擎就把它
+   * 写上去了 —— 所以投影折得出它,而收场那句话照旧由 run 的收场方式派生。
+   */
+  it('§16.9: 合成的中断结局不遮住工具自己说过的那一份', () => {
+    const outcome = '{"interaction":"ask_user","outcome":"aborted"}'
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'ask_user', argumentsRaw: '{}', messageId: 'a1' },
+    })
+    line.push({ time: 3, type: 'tool/annotate', data: { runId: 'r', callId: 'c1', title: '提问已取消', result: { text: outcome } } })
+    line.push({
+      time: 4, type: 'tool/result',
+      data: {
+        runId: 'r', callId: 'c1', isError: true,
+        resultPreview: CORE_INTERRUPTED_TOOL_ERROR,
+        result: { text: CORE_INTERRUPTED_TOOL_ERROR },
+      },
+      surfaceOp: 'append',
+    })
+    line.push({ time: 5, type: 'run/end', data: { runId: 'r', outcome: 'interrupted' } })
+
+    const step = projectChatMessages(line.events).messages[0].steps?.[0]
+    expect(step).toMatchObject({ title: '提问已取消', result: outcome, error: CORE_INTERRUPTED_TOOL_ERROR })
+  })
+
+  /**
+   * §10.16 的成对交付:**老账本没有这一类事件**。摘掉那条 `tool/annotate`,
+   * 投影的每一格与修复前逐字相同(占位标题、没有结局正文)。
+   */
+  it('§16.9 fallback: an old ledger without tool/annotate keeps the placeholder', () => {
+    const build = (withAnnotate: boolean): EventLine => {
+      const line = eventLine()
+      line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+      line.push({
+        time: 2, type: 'tool/call',
+        data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{"command":"sleep 20"}', messageId: 'a1' },
+      })
+      if (withAnnotate) {
+        line.push({ time: 3, type: 'tool/annotate', data: { runId: 'r', callId: 'c1', title: 'sleep 20' } })
+      }
+      line.push({ time: 4, type: 'run/end', data: { runId: 'r', outcome: 'aborted' } })
+      return line
+    }
+    const without = projectChatMessages(build(false).events).messages[0].steps?.[0]
+    expect(without?.title).toBe(coreToolInputStartStepTitle('bash'))
+    expect(without).not.toHaveProperty('result')
+    expect(without?.error).toBe(CORE_ABORTED_TOOL_ERROR)
+    // 有那条事件时,只有标题这一格变(它就是修复要救的那一格)。
+    const withAnnotate = projectChatMessages(build(true).events).messages[0].steps?.[0]
+    expect(withAnnotate?.title).toBe('sleep 20')
+    expect(withAnnotate).not.toHaveProperty('result')
+  })
+})
+
 describe('§13.9: 外部执行器的内轮分界 / 用量归属 / 协作回合标记', () => {
   /**
    * 真机 `web-14d8bc3f`(provider `claude-code-agent`,一次工具调用)的最小复现。

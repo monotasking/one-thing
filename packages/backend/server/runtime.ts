@@ -82,7 +82,7 @@ import {
 	sessionReads as appSessionReads,
 	sessionPreviewText,
 } from "@onething/backend/session/reads.js";
-import { sessionEventTranslator } from "@onething/backend/session/event-translator.js";
+import { sessionCommandEvents } from "@onething/backend/session/command-events.js";
 import { hydrateSessionMessagesFromProjection } from "@onething/backend/session/hydrate.js";
 import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/stores/sessions.js";
 import { configureServerPluginCatalogPort } from "./plugin-catalog.js";
@@ -1896,7 +1896,7 @@ async function createServerRuntimeOverServerBackend(
 			persistSession(session);
 			// 翻译排在写成功之后(翻译器的纪律 1)。三格里没变的那些由翻译器
 			// 自己按 before 逐格比对丢掉,这里不预筛。
-			sessionEventTranslator.patchSession(
+			sessionCommandEvents.patchSession(
 				sessionId,
 				sessionMetaFieldsOf(session),
 				beforeMeta,

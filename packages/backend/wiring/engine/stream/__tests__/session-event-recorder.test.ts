@@ -873,6 +873,73 @@ describe('session event recorder (agent loop integration)', () => {
   })
 
   /**
+   * §16.9(F2-c):**工具自报结局拿到自己的产地**。
+   *
+   * 从前这两格只攒在记录器的内存表里,等 `tool/result` 落账时顺带写出去 ——
+   * 而 §15.6 的退出竞速里那条 `tool/result` 永远不会来(收尾链挂在异步上,
+   * 进程先走了),两格于是永久消失。现在工具每说一次,账本记一条 `tool/annotate`。
+   */
+  it('§16.9: every annotate lands as its own tool/annotate (title + self-reported result)', async () => {
+    const run = beginSessionRun(SESSION_ID, { kind: 'send', assistantMessageId: 'assistant-1' })
+    const recorder = createSessionEventRecorder({
+      sessionId: SESSION_ID,
+      providerId: 'test-provider',
+      model: 'test-model',
+      getMessageId: () => 'assistant-1',
+    })
+    const toolCall = { id: 'call-1', name: 'ask_user', arguments: '{}' }
+    recorder.handle({ type: 'turn-start', turn: 1 } as never)
+    recorder.handle({ type: 'tool-call-done', turn: 1, toolCall } as never)
+    recorder.handle({
+      type: 'tool-metadata',
+      turn: 1,
+      toolCall,
+      update: { title: '提问已取消', metadata: { interaction: 'ask_user', outcome: 'aborted' } },
+    } as never)
+    // 退出竞速:`tool/result` 这条永远不会来。
+    endSessionRun(SESSION_ID, run.runId, { outcome: 'aborted' })
+    await flushSessionEventLog(SESSION_ID)
+
+    const annotate = (await readSessionLogEvents(SESSION_ID)).find(event => event.type === 'tool/annotate')
+    expect(annotate?.type === 'tool/annotate' && annotate.data).toMatchObject({
+      callId: 'call-1',
+      runId: run.runId,
+      title: '提问已取消',
+      // 正文过的是引擎那把 `resultTextFromToolMetadata`,不是采集点自己写的规则。
+      result: { text: JSON.stringify({ interaction: 'ask_user', outcome: 'aborted' }) },
+    })
+  })
+
+  it('§16.9: 逐字相同的 metadata 不再重写 result 那一格(标题照旧每条都写)', async () => {
+    const run = beginSessionRun(SESSION_ID, { kind: 'send', assistantMessageId: 'assistant-1' })
+    const recorder = createSessionEventRecorder({
+      sessionId: SESSION_ID,
+      providerId: 'test-provider',
+      model: 'test-model',
+      getMessageId: () => 'assistant-1',
+    })
+    const toolCall = { id: 'call-1', name: 'edit', arguments: '{}' }
+    recorder.handle({ type: 'turn-start', turn: 1 } as never)
+    recorder.handle({ type: 'tool-call-done', turn: 1, toolCall } as never)
+    const metadata = { path: '/a.ts', diff: '@@ -1 +1 @@', additions: 1, deletions: 0 }
+    // edit 收尾那两条:同一份 metadata,只差一个标题。
+    recorder.handle({ type: 'tool-metadata', turn: 1, toolCall, update: { metadata } } as never)
+    recorder.handle({ type: 'tool-metadata', turn: 1, toolCall, update: { title: 'Edited a.ts', metadata } } as never)
+    endSessionRun(SESSION_ID, run.runId, { outcome: 'aborted' })
+    await flushSessionEventLog(SESSION_ID)
+
+    const annotates = (await readSessionLogEvents(SESSION_ID)).filter(event => event.type === 'tool/annotate')
+    expect(annotates).toHaveLength(2)
+    expect(annotates[0].type === 'tool/annotate' && annotates[0].data.result).toEqual({
+      text: JSON.stringify(metadata),
+    })
+    expect(annotates[0].type === 'tool/annotate' && annotates[0].data.title).toBeUndefined()
+    // 第二条只补标题 —— 正文一字不差,不再抄一份(diff 可以有上百 KB)。
+    expect(annotates[1].type === 'tool/annotate' && annotates[1].data.title).toBe('Edited a.ts')
+    expect(annotates[1].type === 'tool/annotate' && annotates[1].data.result).toBeUndefined()
+  })
+
+  /**
    * §13.9:**外部执行器的形状** —— 一次请求,里面好几个回合。
    *
    * Claude Code SDK 连接器把一整段多轮会话装进一次 `streamTurn`:工具由它自己

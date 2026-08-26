@@ -19,22 +19,27 @@
  * `app/stores/sessions.ts` 上还留着的那批 `updateMessage*` **不是**死路径:
  * 它们是 core 引擎注入的 store 端口的实现,接口形状 P0 不许动(§6)。
  *
- * **F2-a/F2-b:五条命令的事件产地已经翻转**(§16.2 的 F2 行 / §16.7 / §16.8)。
- * `appendMessage` / `deleteMessage` / `patchMessage`(F2-a)与
- * `upsertMessage` / `truncateFrom`(F2-b)现在的执行序是
- * **事件 append(同步可见)→ reducer 应用到 store**,事件构造住在
- * `command-events.ts`(`sessionCommandEvents`),是命令的第一手表达;老 reducer
- * 降级为 F0 的影子验证器(§16.5),独立推导同一件事供恒等门对账。
- * 于是"命令内读得到自己刚写的"对这五条成立(F1 的同步可见,§16.6)。
- * 其余命令(replaceAll / patchSession)仍是老口径 ——
- * reducer 先跑,`event-translator.ts` 从 mutation 反推,F2-c 再翻。
+ * **F2 已走完:十三条命令的事件产地全部翻转**(§16.2 的 F2 行 / §16.7 / §16.8 /
+ * §16.9)。F2-a 三条(`appendMessage` / `deleteMessage` / `patchMessage`)、
+ * F2-b 两条(`upsertMessage` / `truncateFrom`)、F2-c 两条(`replaceAll` /
+ * `patchSession`),执行序一律是 **事件 append(同步可见)→ reducer 应用到 store**;
+ * 事件构造住在 `command-events.ts`(`sessionCommandEvents`),是命令的第一手表达。
+ * 老 reducer 降级为 F0 的影子验证器(§16.5),独立推导同一件事供恒等门对账。
+ * 于是"命令内读得到自己刚写的"对这十三条都成立(F1 的同步可见,§16.6)。
+ * `event-translator.ts` 随之整体退役;两个**非命令**采集点搬去了
+ * `lifecycle-events.ts`(`session/created` / `session/compacted`)。
  *
- * **事件写侧取材纪律(§13.18 发现 B)**:命令面在写完端口后给翻译器递数,一律走
+ * **"改没改成"由命令面自己问一次**(§16.7 第三节的纪律):问的是与 reducer
+ * **同一份 store**,判据一字未变。两类:那条**消息**不在(patch / delete /
+ * truncate / upsert 的分支判据),或者整条**会话**不在(append / upsert 的
+ * reducer 唯一的 no-op 理由 —— F2-c 补上,见 `hasSessionInTranscript`)。
+ *
+ * **事件写侧取材纪律(§13.18 发现 B)**:命令面取材一律走
  * `sessionReads.*FromTranscript`(恒读 `messages.jsonl` 真相面),**永不**走
  * `getMessage` / `findMessage` 这类随 `ONETHING_SESSION_READ` 分岔的门面 ——
- * events 读模式下活投影还没看到"正要由这次翻译写出的那条事件",走 fromEvents
+ * events 读模式下活投影还没看到"正要由这条命令写出的那条事件",走 fromEvents
  * 会自引用旧投影,把旧正文 / 误判的类别 / 丢失的删除焊进账本(写坏账本,不只是读错)。
- * `fromEvents` 岔口只属于产品读路。`event-translator.ts` 的兜底同此纪律。
+ * `fromEvents` 岔口只属于产品读路。
  */
 
 import type {
@@ -56,7 +61,6 @@ import {
 } from '../stores/sessions.js'
 import { assertContentPartIsCarriable } from './content-part-guard.js'
 import { sessionCommandEvents } from './command-events.js'
-import { sessionEventTranslator } from './event-translator.js'
 import { sessionReads } from './reads.js'
 
 /** 逐消息命令的执行体(生产实现 = `OnethingSessionMessageRuntime`)。 */
@@ -199,15 +203,6 @@ export interface CreateSessionCommandsOptions {
    */
   events?: typeof sessionCommandEvents | null
   /**
-   * S1a 的影子写(§10.2 第一行采集点):reducer 落定之后把这次命令翻成事件。
-   * **F2-b 之后这里只剩没翻转的那两条命令**(replaceAll / patchSession);
-   * 翻转过的走上面的 `events`。
-   *
-   * 是**选项**而不是硬接线,因为命令面的单元测试要的是"命令做对了什么",
-   * 不该顺带把一份事件日志写到某个临时目录里去。生产实例默认接上。
-   */
-  translator?: typeof sessionEventTranslator | null
-  /**
    * 命令自己的时钟(F2-b,§16.8)。今天只有 `truncateFrom{inclusive:false}` 用得上:
    * 它是唯一一条由 reducer 合成消息字段的命令,翻转之后"盖哪个 timestamp"必须由
    * 命令决定一次、同时喂给事件与 reducer。可注入是为了**字节回归**能在两棵树上
@@ -220,9 +215,6 @@ export function createSessionCommands(
   ports: SessionCommandsPorts,
   options: CreateSessionCommandsOptions = {},
 ): SessionCommands {
-  const translator = options.translator === undefined
-    ? sessionEventTranslator
-    : options.translator
   const events = options.events === undefined
     ? sessionCommandEvents
     : options.events
@@ -232,16 +224,20 @@ export function createSessionCommands(
     /**
      * F2-a:**事件先,store 后**。
      *
-     * append 是无条件成功的(reducer 的 `changed` 恒为 true),所以这里没有"改没改成"
-     * 要问 —— 直接产出事件。F1 保证 `appendSurfaceAwareEvent` 返回时活投影与活 surface
-     * 已经前进(§16.6),于是**命令内读得到自己刚写的**;随后的 `addMessage` 是 F0 的
-     * 影子验证器(§16.5)在独立推导同一件事。
+     * reducer 的 `applyAppend` 恒为"改得成",所以这里唯一要问的不是消息、是
+     * **整条会话在不在** —— `OnethingSessionMessageRuntime.run` 取不到 session 就
+     * 整条 no-op(F2-c 补上这道判据,§16.9;F2-a/F2-b 留的那个洞)。F1 保证
+     * `appendSurfaceAwareEvent` 返回时活投影与活 surface 已经前进(§16.6),于是
+     * **命令内读得到自己刚写的**;随后的 `addMessage` 是 F0 的影子验证器
+     * (§16.5)在独立推导同一件事。
      */
     appendMessage(sessionId, payload) {
       const message = payload.stampCollab && ports.stampCollabAgentId
         ? ports.stampCollabAgentId(sessionId, payload.message)
         : payload.message
-      events?.appendMessage(sessionId, message)
+      if (sessionReads.hasSessionInTranscript(sessionId)) {
+        events?.appendMessage(sessionId, message)
+      }
       ports.messages.addMessage(sessionId, message)
     },
 
@@ -259,11 +255,13 @@ export function createSessionCommands(
      *
      * `if (changed)` 没了,不是丢了判据:reducer 的 `changed` 对 upsert **恒为 true**
      * (两支都 `changed: true`),端口那个布尔只在"整条会话不在"时才是 false ——
-     * 而那正是 F2-a 的 `appendMessage` 已经接受的同一个洞、同一条事件(§16.8 留账)。
+     * F2-c 把这道判据补上(与 `appendMessage` 同一口、同一条裁定,§16.9)。
      */
     upsertMessage(sessionId, payload) {
-      const existed = sessionReads.hasMessageInTranscript(sessionId, payload.message.id)
-      events?.upsertMessage(sessionId, payload.message, existed)
+      if (sessionReads.hasSessionInTranscript(sessionId)) {
+        const existed = sessionReads.hasMessageInTranscript(sessionId, payload.message.id)
+        events?.upsertMessage(sessionId, payload.message, existed)
+      }
       return ports.messages.upsertMessage(sessionId, payload.message)
     },
 
@@ -388,6 +386,11 @@ export function createSessionCommands(
      * `session/cleared` —— 只遮蔽、不删除,被遮的消息事件原样躺在
      * `events.jsonl` 里,事件本身就是档。连带"留档必须在 flush 之后"那条
      * 纪律与它的前置 flush 一起消失。
+     *
+     * **F2-c:事件先,store 后**。判据本来就在第一句 —— 那条会话不在就一条事件
+     * 都不写(与 `appendMessage` / `upsertMessage` 新补的那道口径一致);
+     * `normalize` 不翻译是判例,住在事件构造里。`wholeRange()` 取的是活 surface,
+     * 与 store 无关,所以翻转前后取到的范围逐字相同。
      */
     async replaceAll(sessionId, payload) {
       const session = ports.getSession(sessionId)
@@ -395,8 +398,8 @@ export function createSessionCommands(
       const previousCount = session.messages.length
       const isClear = payload.reason === 'clear'
 
+      events?.replaceAll(sessionId, payload.messages, payload.reason)
       ports.messages.replaceAllMessages(sessionId, payload.messages, payload.reason)
-      translator?.replaceAll(sessionId, payload.messages, payload.reason)
 
       ports.updateSessionsIndexMeta(sessionId, meta => {
         meta.updatedAt = session.updatedAt
@@ -413,19 +416,29 @@ export function createSessionCommands(
       return ports.messages.repairOnLoad(sessionId, payload?.policy ?? 'startup')
     },
 
+    /**
+     * F2-c:**事件先,store 后**。
+     *
+     * reducer(`applyMetadataMutation`)只有一个 false 的理由 —— 那条会话不在
+     * (`getSession` 取不到就整条 no-op)。而命令面本来就要取 `before` 算快照,
+     * 所以这道判据是**同一次取材的副产品**:取到了 = 改得成,一次读、两个用途。
+     *
+     * 另外两个 `session/*-changed` 的产地(`stores/sessions.ts` 的
+     * `updateSessionAgent`、server 的 `sessions.update`,§13.10 M7)**绕开命令面**,
+     * 而且必须留在写成功之后 —— 它们的 `to` 取的是落库之后那一格。事件构造对
+     * 顺序中立,三处共用同一份(见 `sessionCommandEvents.patchSession`)。
+     */
     patchSession(sessionId, payload) {
       const before = ports.getSession(sessionId)
-      const snapshot = before
-        ? {
-            agentId: before.agentId,
-            lastModel: before.lastModel,
-            lastProvider: before.lastProvider,
-            workingDirectory: before.workingDirectory,
-          }
-        : undefined
-      const changed = ports.patchSession(sessionId, payload.patch, payload.mutateIndexMeta)
-      if (changed) translator?.patchSession(sessionId, payload.patch, snapshot)
-      return changed
+      if (before) {
+        events?.patchSession(sessionId, payload.patch, {
+          agentId: before.agentId,
+          lastModel: before.lastModel,
+          lastProvider: before.lastProvider,
+          workingDirectory: before.workingDirectory,
+        })
+      }
+      return ports.patchSession(sessionId, payload.patch, payload.mutateIndexMeta)
     },
   }
 }

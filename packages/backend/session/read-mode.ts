@@ -73,7 +73,7 @@ export function setSessionHydrateModeForTesting(mode?: SessionHydrateMode): void
  *
  * 连带的口径固化:**事件/blob 写失败上抛**(§14.6 裁定 7)从前是"`off` 档的
  * 特例",现在是**无条件的默认行为** —— `events.jsonl` 是唯一账本,写不进去不再
- * 是可吞的旁路故障。见 `event-log.ts` / `blob-store.ts` / `event-translator.ts`。
+ * 是可吞的旁路故障。见 `event-log.ts` / `blob-store.ts` / `command-events.ts`。
  */
 
 /**

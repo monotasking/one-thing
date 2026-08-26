@@ -53,7 +53,7 @@ export interface SurfaceViolation {
     /**
      * F3(§13.2):一次**成功**的压缩落在 surface 上却什么都没遮蔽。
      *
-     * 写侧(`event-translator.ts` 的 `sessionCompacted`)按
+     * 写侧(`lifecycle-events.ts` 的 `sessionCompacted`)按
      * `order.indexOf(throughSeq)` 找切点,找不到就 `covered = []` —— replace
      * 静默退化成 append。后果不是"少遮了一段",是**整份历史多出被压掉的那一段**:
      * 模型同时看到摘要和原文,预算翻倍而两边的账都是绿的。

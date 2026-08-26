@@ -757,6 +757,24 @@ export function changesFromToolMetadata(metadata: JsonObject | undefined): CoreT
   }
 }
 
+/**
+ * 工具**自报结局的正文** —— `annotate{details}` 折成 `step.result` 的那一份
+ * (F 线 F2-c / §16.9)。
+ *
+ * 规则一字未动地来自 `applyAgentLoopToolMetadata`(生产里活着的那条路):
+ * `metadata.output` 是字符串就用它,否则整份 metadata 的 JSON;空对象什么都不写。
+ * 提成独立函数**只为一件事**:让会话事件记录器写 `tool/annotate` 时用的是引擎
+ * 写消息时的**同一把**判定点(与 `changesFromToolMetadata` 同款纪律),而不是在
+ * 采集点再写一遍同一条规则 —— 两份规则迟早会分家,那时账本与消息就说两种话。
+ * 记录器只引这一个叶子文件,不引执行器 barrel(那会把整棵执行器模块图拖进去)。
+ */
+export function resultTextFromToolMetadata(metadata: JsonObject | undefined): string | undefined {
+  if (!metadata) return undefined
+  if (typeof metadata.output === 'string') return metadata.output
+  if (Object.keys(metadata).length > 0) return JSON.stringify(metadata)
+  return undefined
+}
+
 export function buildToolMetadataStepUpdate<TToolCall extends CoreToolCallWithChanges>(
   toolCall: TToolCall | undefined,
   update: CoreToolMetadataUpdate,

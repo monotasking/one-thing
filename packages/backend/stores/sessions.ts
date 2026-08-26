@@ -24,7 +24,8 @@ import {
 	deleteJsonFile,
 } from '@onething/runtime/storage';
 import { getCurrentSessionId, setCurrentSessionId } from "./app-state.js";
-import { sessionEventTranslator } from "../session/event-translator.js";
+import { sessionLifecycleEvents } from "../session/lifecycle-events.js";
+import { sessionCommandEvents } from "../session/command-events.js";
 import { sessionCommands } from "../session/commands.js";
 import { resetSessionEventLogCache } from "../session/event-log.js";
 import { resetSessionSurfaceCache } from "../session/event-surface.js";
@@ -377,7 +378,7 @@ export function createSession(
  */
 function recordSessionCreated(session: ChatSession): ChatSession {
 	try {
-		sessionEventTranslator.sessionCreated(session);
+		sessionLifecycleEvents.sessionCreated(session);
 	} catch (error) {
 		log.warn("session created event not recorded", { sessionId: session.id }, error);
 	}
@@ -1161,7 +1162,7 @@ export function updateSessionAgent(
 	if (!changed) return false;
 	const after = getSession(sessionId)?.agentId;
 	if (after !== undefined && after !== before) {
-		sessionEventTranslator.patchSession(
+		sessionCommandEvents.patchSession(
 			sessionId,
 			{ agentId: after },
 			before !== undefined ? { agentId: before } : undefined,

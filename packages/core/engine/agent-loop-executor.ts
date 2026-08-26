@@ -1,4 +1,5 @@
 import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
+import { resultTextFromToolMetadata } from './tool-orchestration.js'
 import {
 	type CoreIdentifiedToolCall,
 	coreToolCallSnapshot,
@@ -1516,10 +1517,12 @@ export function applyAgentLoopToolMetadata<
 		metadataUpdates.title = update.title;
 	}
 	if (update.metadata) {
-		if (typeof update.metadata.output === "string") {
-			metadataUpdates.result = update.metadata.output;
-		} else if (Object.keys(update.metadata).length > 0) {
-			metadataUpdates.result = JSON.stringify(update.metadata);
+		// F2-c(§16.9):这一条规则现在住在 `tool-orchestration.ts` 的
+		// `resultTextFromToolMetadata` —— 会话事件记录器写 `tool/annotate` 用的是
+		// 同一把判定点(而不是在采集点再写一遍同一条规则)。行为逐字未变。
+		const reportedResult = resultTextFromToolMetadata(update.metadata);
+		if (reportedResult !== undefined) {
+			metadataUpdates.result = reportedResult;
 		}
 
 		const changes = changesFromMetadata(update.metadata);

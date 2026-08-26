@@ -172,8 +172,23 @@ interface ToolState {
   cancelled?: boolean
   outcome?: 'ok' | 'invalid' | 'denied' | 'aborted' | 'failed'
   previewTitle?: string
-  /** 工具自报的标题(`tool/result.reportedTitle`)—— 引擎的 step 标题就是它。 */
+  /**
+   * 工具自报的标题 —— 引擎的 step 标题就是它。
+   *
+   * 两个产地写的是同一个值:`tool/annotate.title`(工具说的那一刻,F2-c/§16.9)
+   * 与 `tool/result.reportedTitle`(结局落账时顺带记的那一份)。老账本只有后者。
+   */
   reportedTitle?: string
+  /**
+   * 工具**自报的结局正文**(`tool/annotate.result`,F2-c/§16.9)。
+   *
+   * 它是 `step.result` 在"这次调用永远等不到 `tool/result`"时的唯一来源
+   * (§15.6 的退出竞速)。有 `tool/result` 时以结局为准 —— 引擎那边也是收尾覆盖。
+   * 老账本没有这一类事件 = 这一格缺席 = 与修复前逐字相同。
+   */
+  annotatedText?: string
+  /** 自报结局超了 64KB 那一支 —— 物化时由 resolver 换回来(与结局正文同一条线)。 */
+  annotatedBlob?: { hash: string; bytes: number; mime?: string }
   rejectionReason?: string
   /** `tool/result` 事件的 seq —— surface 剪枝按它判定。 */
   resultSeq?: number
@@ -634,6 +649,25 @@ export function reduceSessionProjection(
       if (changes && 'text' in changes) tool.changes = parseJsonSafely(changes.text)
       else if (changes && 'blob' in changes) tool.changesBlob = changes.blob
       if (event.data.reportedTitle) tool.reportedTitle = event.data.reportedTitle
+      break
+    }
+
+    case 'tool/annotate': {
+      // F2-c(§16.9):工具**自己说**的那两格。最后一条赢 —— 与引擎逐字相同
+      // (每一条带 title 的 annotate 当场盖掉 step 标题;每一条带 metadata 的
+      // 当场盖掉 step 结局正文)。它不是节点、不上 surface,只往调用状态上折。
+      const run = findRunByCallId(state, event.data.callId, event.data.runId)
+      const tool = run?.tools.get(event.data.callId)
+      if (!tool) break
+      if (event.data.title) tool.reportedTitle = event.data.title
+      const annotated = event.data.result
+      if (annotated && 'text' in annotated) {
+        tool.annotatedText = annotated.text
+        tool.annotatedBlob = undefined
+      } else if (annotated && 'blob' in annotated) {
+        tool.annotatedBlob = annotated.blob
+        tool.annotatedText = undefined
+      }
       break
     }
 
@@ -1148,6 +1182,21 @@ function resolveToolText(
   return resolveProjectionBlobRef(tool.resultBlob, options, 'step.result', messageId)
 }
 
+/**
+ * 工具**自报**的结局正文(F2-c,§16.9):事件行里的 `{text}`,或 blob 换回来的
+ * 那一份。只有 `step.result` 读它,而且只在结局那一份缺席时读 —— 见
+ * `materializeStep`。
+ */
+function resolveAnnotatedText(
+  tool: ToolState,
+  options: ProjectionMaterializeOptions,
+  messageId: string,
+): string | undefined {
+  if (tool.annotatedText !== undefined) return tool.annotatedText
+  if (!tool.annotatedBlob) return undefined
+  return resolveProjectionBlobRef(tool.annotatedBlob, options, 'step.result', messageId)
+}
+
 /** `JSON.parse`,坏了就当没有(记账坏掉不该让整份投影塌掉)。 */
 function parseJsonSafely(text: string): unknown {
   try {
@@ -1236,10 +1285,19 @@ export function materializeStep(
 ): ProjectedStep {
   const toolCall = materializeToolCall(run, tool, options)
   const usage = run.usageByTurn.get(tool.turnIndex)
-  const resultText = isSynthesizedInterrupt(tool)
+  const settledText = isSynthesizedInterrupt(tool)
     // R-a:合成的中断结局不进 `step.result` —— 消息侧那次修复只写 status + error。
     ? undefined
     : resolveToolText(tool, options, run.messageId)
+  // F2-c(§16.9):结局那一份缺席时,退到**工具自己说过的那一份**
+  // (`tool/annotate.result`)。这不是"凭空补一格":引擎在工具 annotate 的那一刻
+  // 就把它写在 `step.result` 上了(`applyAgentLoopToolMetadata`),而从前账本里
+  // 它没有产地 —— §15.6 的退出竞速一来,这一格就永久消失。有结局时以结局为准
+  // (引擎那边也是收尾覆盖);老账本没有这类事件 = 这一支不触发 = 修复前的事实。
+  const annotatedText = settledText === undefined
+    ? resolveAnnotatedText(tool, options, run.messageId)
+    : undefined
+  const resultText = settledText ?? annotatedText
   const hasResultText = resultText !== undefined
   // A12:step 那一格的说法是 `awaiting-confirmation`(调用那一格是 pending)。
   const status: ProjectedStepStatus = isAwaitingConfirmation(tool) && !run.ended
@@ -1296,11 +1354,16 @@ export function materializeStep(
     // (失败时它**就是** error 那句话),`error` 只有失败才有 —— 两格并存,不是二选一
     // (`buildAgentLoopToolResultPresentation` 的 `stepUpdate`)。
     ...(hasResultText ? { result: resultText } : {}),
-    ...(hasResultText && tool.isError && !tool.cancelled ? { error: resultText } : {}),
+    // 失败的结局里 `result` 与 `error` 是同一句话 —— 但那说的是**结局**那一份。
+    // 自报的那一份不是错误正文(工具那一刻还没失败),所以这里读 `settledText`。
+    ...(settledText !== undefined && tool.isError && !tool.cancelled ? { error: settledText } : {}),
     // 收尾修复把同一句话写在 step 上(`step.error = step.error || 那一句`)。
     // §13.8 第一类:被收场判死的那次调用**两格并存** —— `result` 是执行途中已经
     // 写下的那一份,`error` 是收场那句话(引擎写的正是这两格)。
-    ...((!hasResultText || tool.cancelled) && toolCall.error !== undefined
+    // F2-c:自报的那一份与 `cancelled` 同类 —— 引擎那一刻在 step 上写的正是
+    // **两格并存**(`result` 是执行途中自报的,`error` 是收场那句话)。所以
+    // "有正文就不写 error"这条只对**结局**那一份成立。
+    ...((!hasResultText || tool.cancelled || annotatedText !== undefined) && toolCall.error !== undefined
       ? { error: toolCall.error }
       : {}),
     ...(structured ? { partialResult: structured, partialResultIsPartial: false } : {}),

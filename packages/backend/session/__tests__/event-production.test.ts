@@ -1,5 +1,10 @@
 /**
- * S1a:命令 → 事件的翻译表(§9.3 / §10.6 第 2 条)。
+ * 命令 / 采集点 → 事件的**产出表**(§9.3 / §10.6 第 2 条)。
+ *
+ * F2-c 之后产地只有两处:`command-events.ts`(十三条命令)与
+ * `lifecycle-events.ts`(`session/created` / `session/compacted` 两个非命令
+ * 采集点)—— 翻译器已整体退役(§16.9),本文件的名字随之从 event-translator 改成
+ * event-production。
  *
  * 每条用例问的都是同一个问题:**这次命令在账本上留下了什么**,以及
  * surfaceOp / sourceEventSeqs 对不对。后者是这一期最容易写错、又最难在别处看
@@ -29,7 +34,7 @@ vi.mock('@onething/runtime/storage', () => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-// 翻译器只从读门面取消息(`session:gate` 的那条纪律),所以测试替的也是它。
+// 事件产地只从读门面取消息(`session:gate` 的那条纪律),所以测试替的也是它。
 vi.mock('../reads.js', () => ({
   sessionReads: {
     getMessage: (_sessionId: string, messageId: string) =>
@@ -47,8 +52,8 @@ vi.mock('../reads.js', () => ({
   },
 }))
 
-const { sessionEventTranslator } = await import('../event-translator.js')
 const { sessionCommandEvents } = await import('../command-events.js')
+const { sessionLifecycleEvents } = await import('../lifecycle-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
   '../event-log.js'
 )
@@ -207,18 +212,18 @@ describe('command → event translation (§9.3)', () => {
     sessionCommandEvents.appendMessage(SESSION, userMessage('u1'))
     sessionCommandEvents.appendMessage(SESSION, userMessage('u2'))
 
-    sessionEventTranslator.replaceAll(SESSION, [], 'clear')
+    sessionCommandEvents.replaceAll(SESSION, [], 'clear')
     const cleared = (await events()).find(event => event.type === 'session/cleared')!
     expect(cleared.data).toEqual({ reason: 'clear' })
     expect(cleared.surfaceOp).toEqual({ op: 'replace', start: 1, end: 2 })
     expect(cleared.sourceEventSeqs).toEqual([1, 2])
 
-    sessionEventTranslator.replaceAll(SESSION, [userMessage('n1'), userMessage('n2')], 'replaced')
+    sessionCommandEvents.replaceAll(SESSION, [userMessage('n1'), userMessage('n2')], 'replaced')
     expect((await types()).slice(3)).toEqual(['session/cleared', 'message/imported', 'message/imported'])
 
     // normalize 是冷加载的形状规整,消息集合没变 —— 一条都不写。
     const before = (await events()).length
-    sessionEventTranslator.replaceAll(SESSION, [], 'normalize')
+    sessionCommandEvents.replaceAll(SESSION, [], 'normalize')
     expect((await events())).toHaveLength(before)
   })
 
@@ -238,7 +243,7 @@ describe('command → event translation (§9.3)', () => {
       { id: 'n2', role: 'assistant', content: 'after 2', timestamp: 7, model: 'gpt-4o' },
       userMessage('n3', 'after 3'),
     ]
-    sessionEventTranslator.replaceAll(SESSION, replacement, 'replaced')
+    sessionCommandEvents.replaceAll(SESSION, replacement, 'replaced')
 
     const line = await events()
     expect(line.map(event => event.type)).toEqual([
@@ -268,7 +273,7 @@ describe('command → event translation (§9.3)', () => {
     const before = {
       agentId: 'a', lastModel: 'm', lastProvider: 'p', workingDirectory: '/old',
     }
-    sessionEventTranslator.patchSession(
+    sessionCommandEvents.patchSession(
       SESSION,
       { agentId: 'b', lastModel: 'm', workingDirectory: '/new', name: 'renamed' },
       before,
@@ -284,7 +289,7 @@ describe('command → event translation (§9.3)', () => {
     sessionCommandEvents.appendMessage(SESSION, userMessage('u2'))
     sessionCommandEvents.appendMessage(SESSION, userMessage('u3'))
 
-    sessionEventTranslator.sessionCompacted(SESSION, {
+    sessionLifecycleEvents.sessionCompacted(SESSION, {
       messageId: 'c1',
       summary: '## Goal\nx',
       compactedMessageCount: 2,
@@ -295,7 +300,7 @@ describe('command → event translation (§9.3)', () => {
     expect(compacted.surfaceOp).toEqual({ op: 'replace', start: 1, end: 2 })
     expect(compacted.sourceEventSeqs).toEqual([1, 2])
 
-    sessionEventTranslator.sessionCompacted(SESSION, {
+    sessionLifecycleEvents.sessionCompacted(SESSION, {
       messageId: 'c2',
       summary: '',
       compactedMessageCount: 1,

@@ -291,6 +291,40 @@ export interface SessionToolResultEventData {
   runId?: string
 }
 
+/**
+ * 工具**自报的结局**(`annotate{title, details}`,F 线 F2-c / §16.9)。
+ *
+ * 从前这一格在事件账本里**没有产地**:引擎当场把它盖到消息上
+ * (`applyAgentLoopToolMetadata` → `step.title` / `step.result`),而记录器只把它
+ * 攒在内存表里(`reportedTitleByCallId` / `changesByCallId`),等 `tool/result`
+ * 落账时顺带写出去。于是"工具说过话、但这次调用永远等不到结局"的那条路上
+ * (§15.6 的退出竞速:`run/end` 与批 9 的取消采集都挂在异步收尾链上,进程先走了)
+ * 这两格**永久**丢失 —— full 之下停写 `messages.jsonl` 后就再也折不出来。
+ *
+ * 所以自报结局拿到自己的产地:**工具每说一次,账本记一次**。它是第一手事实
+ * (工具自己说的),不是从收尾结果反推的二次派生(§13.8 裁定的重审见 §16.9)。
+ *
+ * 折法是**最后一条赢**,与引擎逐字相同(每一条带 title 的 annotate 当场盖掉
+ * step 标题;每一条带 metadata 的当场盖掉 step 结局正文)。`tool/result` 一到,
+ * 结局正文以它为准(引擎那边也是收尾覆盖);标题两边同源,写的是同一个值。
+ *
+ * **成对交付**(§10.16):老账本没有这一类事件 → 投影与修复前逐字相同
+ * (没等到 `tool/result` 就没有结局正文、标题停在占位)。
+ */
+export interface SessionToolAnnotateEventData {
+  callId: string
+  /** 工具自报的标题(`annotate{title}`)。 */
+  title?: string
+  /**
+   * 工具自报的结局正文 —— 引擎的**同一把**判定点折出来的那一份
+   * (`resultTextFromToolMetadata`:`metadata.output` 是字符串就用它,
+   * 否则整份 metadata 的 JSON)。与 `tool/result.result` 同一条 64KB 线,
+   * 超了走 blob(内容寻址,同一份 metadata 说两次只占一份字节)。
+   */
+  result?: { text: string } | { blob: BlobRef }
+  runId?: string
+}
+
 export interface SessionToolAuditEventData {
   callId: string
   toolId: string
@@ -749,6 +783,7 @@ export type SessionRequestStartEvent = SessionEventRecordShape<'request/start', 
 export type SessionAssistantFirstTokenEvent = SessionEventRecordShape<'assistant/first-token', SessionAssistantFirstTokenEventData>
 export type SessionToolCallEvent = SessionEventRecordShape<'tool/call', SessionToolCallEventData>
 export type SessionToolResultEvent = SessionEventRecordShape<'tool/result', SessionToolResultEventData>
+export type SessionToolAnnotateEvent = SessionEventRecordShape<'tool/annotate', SessionToolAnnotateEventData>
 export type SessionToolAuditEvent = SessionEventRecordShape<'tool/audit', SessionToolAuditEventData>
 export type SessionRequestEndEvent = SessionEventRecordShape<'request/end', SessionRequestEndEventData>
 
@@ -824,6 +859,7 @@ export type SessionLogEventRecord =
   | SessionInteractionAnsweredEvent
   | SessionContextTurnUpdateEvent
   | SessionPluginStatusEvent
+  | SessionToolAnnotateEvent
 
 export type SessionLogEventType = SessionLogEventRecord['type']
 
@@ -874,6 +910,7 @@ export const SESSION_LOG_EVENT_TYPES = [
   'interaction/answered',
   'context/turn-update',
   'plugin/status',
+  'tool/annotate',
 ] as const satisfies readonly SessionLogEventType[]
 
 /** 双向穷尽守卫:表里少一个 → 红;表里多一个(打错字)→ 红。 */

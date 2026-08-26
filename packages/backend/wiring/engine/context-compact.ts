@@ -4,7 +4,7 @@ import { generateChatResponse } from '../providers/index.js'
 import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/runtime/plugins/lifecycle.wiring'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
-import { sessionEventTranslator } from '../../session/event-translator.js'
+import { sessionLifecycleEvents } from '../../session/lifecycle-events.js'
 import { billCompactUsage } from '../usage/bill-side-line.js'
 import {
   buildContextCompactCompletedContent,
@@ -231,7 +231,7 @@ export async function compactSessionContext(options: {
     // S1a(§10.6 第 5 条):压缩是 surface 上的一次 replace —— 被压掉的那一段
     // 不再进模型历史,但**在聊天记录里照旧显示**(两种"看不见"是两回事,
     // 见 core 归约器的头注释)。range 与 sourceEventSeqs 由活 surface 算出。
-    sessionEventTranslator.sessionCompacted(options.sessionId, {
+    sessionLifecycleEvents.sessionCompacted(options.sessionId, {
       messageId: compactMessage.id,
       summary,
       compactedMessageCount: plan.messagesToSummarize.length,
@@ -262,7 +262,7 @@ export async function compactSessionContext(options: {
     // 失败的压缩也记一条:它在 UI 上是一张红卡,不是"什么都没发生"。
     // `status:'failed'` 的节点在模型历史里什么都不发(没有摘要可发),所以
     // **不带 replace** —— 一段没被压缩成功的历史不该被遮蔽掉。
-    sessionEventTranslator.sessionCompacted(options.sessionId, {
+    sessionLifecycleEvents.sessionCompacted(options.sessionId, {
       messageId: compactMessage.id,
       summary: '',
       compactedMessageCount: plan.messagesToSummarize.length,

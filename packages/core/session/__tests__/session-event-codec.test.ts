@@ -174,6 +174,7 @@ describe('codec backward compatibility', () => {
       { seq: 24, time: 33, type: 'session/cleared', data: { reason: 'clear' }, surfaceOp: { op: 'replace', start: 23, end: 23 }, sourceEventSeqs: [23] },
       { seq: 25, time: 34, type: 'message/imported', data: { message: { id: 'old1', role: 'user', content: 'legacy' } }, surfaceOp: 'append' },
       { seq: 26, time: 35, type: 'skill/activated', data: { runId: 'r1', messageId: 'a1', skill: 'agent-plan' } },
+      { seq: 27, time: 36, type: 'tool/annotate', data: { runId: 'r1', callId: 'c1', title: 'sleep 20', result: { text: '{"command":"sleep 20"}' } } },
     ]
 
     for (const record of samples) {

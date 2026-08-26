@@ -27,7 +27,7 @@
     "./session/commands.js": "./session/commands.ts",
     "./session/event-log.js": "./session/event-log.ts",
     "./session/event-surface.js": "./session/event-surface.ts",
-    "./session/event-translator.js": "./session/event-translator.ts",
+    "./session/lifecycle-events.js": "./session/lifecycle-events.ts",
     "./session/index.js": "./session/index.ts",
     "./session/prepare.js": "./session/prepare.ts",
     "./session/read-mode.js": "./session/read-mode.ts",

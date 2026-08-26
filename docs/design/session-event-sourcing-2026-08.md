@@ -3864,7 +3864,7 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 |---|---|---|---|
 | **F0 恒等门转向** — **已完成(§16.5,2026-08-27)** | 现 shadow(store=真相 vs 投影=影子)**角色对调**:事件/fold 侧成真相,老 reducer 降级为影子验证器;比对机制、记账口径沿用 session-shadow | 对调后真机 ≥200 run 0 失配 | 对调是比对方向,零行为变化 |
 | **F1 写侧同步可见** — **已完成(§16.6,2026-08-27)** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
-| **F2 命令面翻转(逐条)** — **F2-a 已完成(§16.7,2026-08-27):appendMessage / deleteMessage / patchMessage**;**F2-b 已完成(§16.8,2026-08-27):upsertMessage / truncateFrom**;F2-c 待开(replaceAll / compact + `annotate` 产地) | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
+| **F2 命令面翻转(逐条)** — **已完成**:F2-a(§16.7,2026-08-27:appendMessage / deleteMessage / patchMessage)、F2-b(§16.8,2026-08-27:upsertMessage / truncateFrom)、**F2-c(§16.9,2026-08-27:replaceAll / patchSession + 两个非命令采集点搬家 + 翻译器整体退役 + `annotate` 产地)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 —— **两项都在 F2-c 落地**(新事件 `tool/annotate`;重审结论见 §16.9 第五节) | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
 | **F3 写侧回读换语义** | §14.1 的 9 处写侧回读残留全部改读 fold 后投影(F1 是前提);「写侧读抄本」纪律(§13.18)整体翻面 | 定向用例逐处 + battery | 随 F2 分批走 |
 | **F4 reducer 退役** | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
 
@@ -6265,3 +6265,244 @@ import)、`event-translator-write-side-read.test.ts`。最后一个的**判例�
    §15.6 裁定的**必做项** —— 工具自报结局 `annotate` 拿到自己的事件产地。走完这一批
    `translator` 上只剩 `sessionCreated` / `sessionCompacted` 两个非命令采集点,
    §16.7 留账 2 说的"那时再决定它叫什么"就到期了。
+
+### 16.9 F2-c 落地记录:命令翻转收官 + 翻译器退役 + `annotate` 拿到产地(2026-08-27,opus 执行,未提交)
+
+**一句话**:最后两条命令(`replaceAll` / `patchSession`)翻成「命令即事件」,两个
+**非命令**采集点(`session/created` / `session/compacted`)搬进按角色命名的新家
+`lifecycle-events.ts`,`event-translator.ts` **整个文件删除**;同一批给工具自报结局
+一个自己的事件产地(新事件 `tool/annotate`),补上 §15.6 裁定的必做项,并顺手堵掉
+F2-a/F2-b 留账的那个洞(「整条会话不在」时照写事件)。命令那一半的事件字节一字未变
+(HEAD `aee4fcb2` worktree 双跑,31 行 / 5049 字节,diffs 0);annotate 那一半是
+**纯增行**(逐条列在第六节),既有的每一行一字未动。
+
+#### 一、逐条收官表
+
+| 命令 / 采集点 | 事件构造搬到哪 | 新执行序 |
+|---|---|---|
+| `replaceAll` | `session/command-events.ts` → `sessionCommandEvents.replaceAll`(逐字搬迁) | 会话存在性(命令第一句本来就在问)→ `events.replaceAll()` → `ports.messages.replaceAllMessages()` |
+| `patchSession` | 同上 → `sessionCommandEvents.patchSession`(逐字搬迁) | 取 `before`(快照 + 判据一次取材)→ `events.patchSession()` → `ports.patchSession()` |
+| `session/created` | **新文件** `session/lifecycle-events.ts` → `sessionLifecycleEvents.sessionCreated` | 不变(它本来就是这份日志的第一条,会话目录由它建,B4) |
+| `session/compacted` | 同上 → `sessionLifecycleEvents.sessionCompacted` | 不变(压缩结局落到消息上之后) |
+
+**为什么后两条不叫"翻转"**:它们不是命令 —— 没有哪条 `sessionCommands.<cmd>` 对应
+它们,也从来不是从 store 的 mutation 反推出来的:调用方(`stores/sessions.ts` 的
+`createSession`、`wiring/engine/context-compact.ts` 的成功/失败两条收尾路)本来就是
+把事实直说给它。所以这一步只是**改名字与住址**,行为一字未动。§16.7 留账 2 说的
+"那时再决定它叫什么"到期了,答案是:文件名说实话 —— 命令的产地叫
+`command-events.ts`,非命令的生命周期采集点叫 `lifecycle-events.ts`。
+
+**`patchSession` 有三个产地,共用同一份构造**(§13.10 M7):命令面(翻转后事件在
+reducer 之前)、`stores/sessions.ts` 的 `updateSessionAgent`、server 的
+`sessions.update`。后两条**绕开命令面**,而且必须留在写成功之后 —— 它们的 `to` 取的是
+**落库之后**那一格(agent 那一格在仓库里带着"空值回落默认 agent"的规范化;server
+那条路的会话对象是就地改的)。所以 `sessionCommandEvents.patchSession` 对"谁先说话"
+中立:它拿的是调用方算好的 `patch` 与 `before`,顺序由调用方的事实决定。
+
+#### 二、翻译器退役清单
+
+| 动作 | 落地 |
+|---|---|
+| 删文件 | `packages/backend/session/event-translator.ts`(204 行)整体删除 —— **不留纯类型/常量残留**:全仓零依赖(六个 import 点全部改指新家),`translationRunId` 这个死导出(§16.7 留账 3 / §16.8 留账 4)随文件一起消失,F4 删码批少一笔 |
+| 删导出键 | `packages/backend/package.json` 的 `"./session/event-translator.js"` 换成 `"./session/lifecycle-events.js"` |
+| 改调用点(6 处) | `session/commands.ts`(整条 `translator` 可选端口删掉)、`stores/sessions.ts` ×2(`sessionCreated` → lifecycle,`updateSessionAgent` 的 patchSession → command-events)、`server/runtime.ts` ×1、`wiring/engine/context-compact.ts` ×2 |
+| 改用例文件名 | `event-translator.test.ts` → `event-production.test.ts`;`event-translator-write-side-read.test.ts` → `event-production-write-side-read.test.ts`(断言值一字未动,只换产地名) |
+| 名单用例改判据 | 从"翻译器上只剩这几个方法名"改成 **①`event-translator.ts` 这个文件不存在**(`fs.existsSync`)+ **②两份产地名单逐字钉住**:`sessionCommandEvents` 七个方法(appendMessage / deleteMessage / patchMessage / patchSession / replaceAll / truncateFrom / upsertMessage)、`sessionLifecycleEvents` 两个(sessionCompacted / sessionCreated) |
+| 扫尾注释 | 三处指名道姓引用这个文件的注释改指新家(`session/read-mode.ts`、`core/session/projection/surface.ts`、`wiring/engine/stream/history-shadow.ts`) |
+
+#### 三、堵洞裁定:「整条会话不在」时一条事件都不写
+
+F2-a/F2-b 各留了一笔同样的账(§16.8 留账 2):`appendMessage` / `upsertMessage` 的
+reducer **恒为"改得成"**,唯一改不成的情形不是"那条消息不在",而是**整条会话不在**
+—— `OnethingSessionMessageRuntime.run` 取不到 session 就整条 no-op。翻转之后命令面
+不再等回执,于是"往一条不存在的会话追加消息"会在账本上留下一条 `user/message`,
+而 store 上什么都没有。
+
+**裁定:一条事件都不写。** 理由与 §9.3 的"只写事实"同一条 —— 事件账本记的是发生过
+的事,不是意图;而"会话都不在"连意图都算不上。落地是 `sessionReads` 上一口新的
+存在性问答:
+
+```
+hasSessionInTranscript(sessionId) = getSessionMessages(sessionId) !== undefined
+```
+
+与 reducer 的判据**同源同义**(`run()` 取不到 session 就整条 no-op),而且与
+`hasMessageInTranscript` 同一口井(抄本真相面,§13.18 发现 B)、同样不把消息交出去
+所以不必冻。三条命令口径一致:
+
+| 命令 | 判据 | 为什么是这一条 |
+|---|---|---|
+| `appendMessage` | 会话在不在 | reducer 的 `applyAppend` 恒返回 changed |
+| `upsertMessage` | 会话在不在(再问消息在不在,分 append / fullBody patch 两档) | 同上,两支都 `changed: true` |
+| `patchSession` | 会话在不在 | `applyMetadataMutation` 唯一的 false 理由;而命令面本来就要取 `before` 算快照 —— **一次读、两个用途**,不多问一次 |
+| `replaceAll` | 会话在不在 | 判据本来就在命令第一句(`ports.getSession` 取不到就直接返回) |
+
+#### 四、`annotate` 的产地:新事件 `tool/annotate`
+
+**病历(§15.6)**:工具自报结局 —— `ctx.emit({type:'annotate', title, details})` ——
+今天只落 store(引擎 `applyAgentLoopToolMetadata` 当场盖掉 `step.title` /
+`step.result`)。事件账本里它**没有产地**:记录器只把它攒在内存表
+(`reportedTitleByCallId` / `changesByCallId`)里,等 `tool/result` 落账时顺带写出去。
+退出竞速(Cmd+Q → abort → 收尾链挂在异步上,进程先走了)一来,那条 `tool/result`
+永远不会来,两格永久消失 —— `a5157107` 的「提问已取消」就是这么丢的。full 之下停写
+`messages.jsonl` 后,这一格从"偶发丢文案"恶化成"永久折不出"。
+
+**选型(为什么是新事件而不是 `tool/result` 上加一格)**:`tool/result` 那条行本身就
+是可能永远不出现的那一条 —— 把自报结局挂在它身上等于把救生圈绑在正在沉的船上。
+所以新增一类:
+
+```ts
+tool/annotate { callId, runId?, title?, result?: {text} | {blob} }
+```
+
+采集点是**annotate 的 emit 链上侵入最小的那一处**:记录器已有的
+`case 'tool-metadata'`(agent-loop 把 `ctx.emit({type:'annotate'})` 投影成的那条流
+事件)。工具说一次,账本记一条。
+
+**结局正文过引擎那把判定点,不在采集点重写规则**:`applyAgentLoopToolMetadata` 里
+"`metadata.output` 是字符串就用它,否则整份 metadata 的 JSON"这条规则提成
+`core/engine/tool-orchestration.ts` 的 `resultTextFromToolMetadata`,引擎与记录器
+**共用同一份**(与 §13.17 的 `changesFromToolMetadata` 同款纪律;引那一个叶子文件而
+不是执行器 barrel,记录器的模块图不被撑开)。执行器那边是纯提取,行为逐字未变。
+
+**投影侧**(`core/session/projection/reducer.ts`):
+
+| 格 | 规则 |
+|---|---|
+| `ToolState.reportedTitle` | `tool/annotate.title` 与 `tool/result.reportedTitle` **两个产地写同一个值**,最后一条赢(与引擎逐字相同的覆盖规则)。老账本只有后者 |
+| `ToolState.annotatedText` / `annotatedBlob` | 新增两格,`tool/annotate.result` 折进来(与结局正文同一条 64KB 线,超了走 blob,物化时由同一个 resolver 换回来) |
+| `step.result` | **结局优先**:`tool/result` 在场就用它(引擎那边也是收尾覆盖);缺席时(以及 R-a 的合成中断结局把它压掉时)退到自报的那一份 |
+| `step.error` | 自报的那一份与 `cancelled` 同类 —— 引擎那一刻在 step 上写的正是**两格并存**(`result` 是执行途中自报的,`error` 是收场那句话)。所以"有正文就不写 error"这条只对**结局**那一份成立;判据从 `!hasResultText \|\| cancelled` 放宽到再或上"正文来自自报" |
+| `toolCall.result` | **一格都不动**:引擎的 annotate 只写 step,不写调用那一格 |
+
+**大小的价钱,以及怎么收的**:自报结局里可能带着上百 KB 的 diff / 命令输出
+(edit 的 `metadata` 含截断后的 diff + hunks,上限 2000 行 / 200KB)。三条纪律把它
+按住:①与 `tool/result` **同一条 64KB 线**(`textOrBlobForEvent`,超了走内容寻址
+blob,同一份 metadata 说两次只占一份字节);②**逐字相同的正文不再写第二遍**
+(记录器新增 `annotatedResultByCallId` 备忘录;edit 收尾那两条 annotate 只差一个
+标题,第二条因此只写 title);③标题照旧每条都写 —— 它便宜,而且它才是 §15.6 里丢掉
+的那一格。实测代价见第六节。
+
+**向后兼容(§10.16 成对交付)**:老账本没有这一类事件 → 那两支一次都不触发,投影
+与修复前逐字相同(占位标题、没有结局正文)。合同里有一条 `§16.9 fallback` 专门钉
+这个等式。
+
+#### 五、§13.8「采集点不二次派生」裁定重审
+
+**原裁定**(§13.8 第一类,`captureCancelledToolResults`):"**不在这里第二次派生任何
+一格**(§10.10)"——它禁的是:收场那一刻**从收尾结果反推**再造一份结局
+(哪几次调用还没有结局由记录器的 `callSeqByCallId` 说了算;标题取
+`reportedTitleByCallId`,与正常那条 `tool/result` 同源)。病根是 §10.10 那类
+"fixture 自己写下了结论"的空转 —— 采集点凭自己的推理造出一格账本上本来没有的
+事实,两边就再也对不上了。
+
+**新裁定(2026-08-27,F2-c)**:**工具自报结局是第一手事实,采集它不违反原裁定
+精神。** 三条理由:
+
+1. **说话的人不同**。`annotate` 是**工具自己**在执行途中说的一句话,不是任何人从
+   别的东西推出来的。采集它 = 把一句已经说出口的话记下来;原裁定禁的是"没人说过
+   的话由采集点替它说"。
+2. **判定点仍然只有一个**。结局正文过的是引擎写消息时用的**同一个函数**
+   (`resultTextFromToolMetadata`),不是采集点自己写的第二份规则 —— 这正是 §13.17
+   给 `changes` 定下的做法("抄引擎写消息的**同一把**判定点折出")。
+3. **原裁定的那条路一个字都没改**。`captureCancelledToolResults` 照旧不二次派生;
+   `tool/annotate` 是另一条独立的、更早的产地。两条并存时结局优先(第四节的表),
+   所以既有的 §13.8 判例一条都没动。
+
+**边界(重申)**:采集点可以记"某人说过的话",不可以记"我推出来的结论"。判断标准
+是**这句话在别处有没有产地** —— 有,就抄同一把判定点;没有,就是二次派生。
+
+#### 六、字节回归(U0 的方法:HEAD worktree 双跑,两半分开做)
+
+**A. 命令那一半(要求逐字节相同)**。一份固定命令脚本走完十三条命令 + 两个生命周期
+采集点(31 条事件):`sessionCreated` / append 四支(user / system / 流中 assistant
+不写 / 带附件)/ run 一对 / patch 三种 + ghost / upsert 两支 / delete 两式 /
+truncate 三支(带 contentParts、不带、inclusive)/ replaceAll 三支(normalize 不写、
+replaced、clear)/ patchSession 三格 / **compact 两支**(占位→completed 带 replace、
+占位→failed 只 append)。两棵树跑在同形状的临时 store 上:
+
+| 树 | 行数 | 原始字节 |
+|---|---|---|
+| HEAD `aee4fcb2`(worktree) | 31 | 5049 |
+| F2-c(本树) | 31 | 5049 |
+
+逐行比对(`time` 与随机 `runId` 归一后)**diffs 0 —— 逐字节相同**。
+
+**B. annotate 那一半(只增不改,逐条列出)**。一份固定记录器脚本(bash 正常收尾两条
+annotate + edit 收尾三条 annotate + ask_user 的退出竞速一条 annotate),两棵树对拍:
+
+| 树 | 行数 | 原始字节 |
+|---|---|---|
+| HEAD `aee4fcb2` | 11 | 2547 |
+| F2-c(本树) | 17 | 3760 |
+
+差异**全部是插入**,既有的 11 行一字未动(`tool/result` 的 `reportedTitle` /
+`changes` / `resultData` 逐字段相同)。新增的 6 行逐条:
+
+| 新增 | 内容 | 说明 |
+|---|---|---|
+| ×2(bash) | `{callId:call-1, title:'echo hi', result:{text:'{...exitCode:-1,output:""}'}}` / `{... exitCode:0, output:'hi'}` | 工具说了两次,记了两条 |
+| ×3(edit) | `{title:'Editing a.ts', result:{...diff:""}}` / `{result:{...完整 diff}}`(**无 title**) / `{title:'Edited a.ts'}`(**无 result**) | 第三条命中去重:与上一条正文逐字相同,只补标题 |
+| ×1(ask_user) | `{title:'提问已取消', result:{text:'{"interaction":"ask_user","outcome":"aborted"}'}}` | **这一条就是 §15.6 病历里永久丢掉的那一格** |
+
+这个脚本是刻意的 annotate 密集形状(6 条 annotate / 3 次调用),真实会话里的比例远低
+于此;去重那一格把 edit 这类"同一份大 metadata 说两次"的最坏情形按住了。临时用例与
+worktree 已删除。
+
+#### 七、用例
+
+| 文件 | 新增 | 钉住什么 |
+|---|---|---|
+| `session/__tests__/command-events-order.test.ts` | 17 → **24** 例 | 产地名单换判据(翻译器**文件**不存在 + 两份名单逐字);`replaceAll` 三支判例;`patchSession` 三格判例 + 会话不在;**堵洞**:append / upsert 在"整条会话不在"时一条不写;时序两例(`replaceAll(clear)` 遮蔽先生效、`patchSession` 事件先折进活投影的 `sessionMeta`) |
+| `wiring/engine/stream/__tests__/session-event-recorder.test.ts` | 29 → **31** 例 | `tool/annotate` 逐字段(title + 过引擎判定点折出的 result + runId);去重那一格(同一份 metadata 只写一次 result,标题照写) |
+| `core/session/__tests__/projection-contract.test.ts` | 78 → **83** 例(新 `describe('§16.9')`) | 退出竞速形状(只有 annotate、没有 `tool/result`)仍折得出 title + result,且 `error` 与它**两格并存**;最后一条 annotate 赢;`tool/result` 一到以结局为准;合成的中断结局不遮住自报那一份;**§16.9 fallback**:老账本没有这类事件 = 占位标题、没有结局正文 |
+| `core/session/__tests__/session-event-codec.test.ts` | 覆盖率自检 +1 | 新类型进 round-trip 名单(双向穷尽守卫要求的那一行) |
+
+`event-production.test.ts` / `event-production-write-side-read.test.ts` 只改了产地名与
+文件名,断言值一字未动。
+
+**反证(全部实跑)**:
+
+| 改回旧写法 | 变红 |
+|---|---|
+| `replaceAll` / `patchSession` 的顺序倒回去(reducer 先、事件后,判据换回 `if (changed)`) | **2 条时序用例**(其余 22 条不受顺序影响 —— 它们钉的是另一件事) |
+| 投影不认 `tool/annotate` 的结局正文(`annotatedText` 恒 undefined) | **3 条**(退出竞速 / 最后一条赢 / 合成中断结局不遮住) |
+| 记录器不写 `tool/annotate` | **2 条**(产地两例) |
+
+#### 八、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run sessions:shadow-battery`(**F0 恒等门 = 本批主门**) | **GREEN** —— runs **321** / historyChecks 449 / mismatches **0** / duplicates 0 / appendFailures **0** / **refoldChecks 225 / refoldMismatches 0** / `session-shadow.jsonl` **0 行**;与 §16.5–§16.8 逐项相同(第一跑 refoldChecks 报 224,复跑 225 —— 那一格是**采样次数、不进门**,它的跳过闸是"文件末条 seq == 定格游标"这条竞态守卫,annotate 多写几行就更容易撞上;两跑 refoldMismatches 都是 0) |
+| 字节回归 A(命令,HEAD `aee4fcb2` worktree 双跑) | 31 行 / 5049 字节,**diffs 0** |
+| 字节回归 B(annotate,同上) | 11→17 行 / 2547→3760 字节,**全部是插入,既有行一字未动**(逐条列在第六节) |
+| `bun run typecheck` | **0** |
+| 定向 `backend/session` + `core/session` + `backend/wiring/engine` | **94 文件 / 841 测试全绿**(§16.8 是 827,+14 = 本批新例) |
+| `packages/backend` 全包 | **280 文件 / 2398 通过**(1 文件 3 例 skipped,live provider);第一跑 `sessions-delete-cascade` 1 例并发抖动,单跑 3/3 绿、复跑全包全绿 |
+| `bun run boundary:gate` | ok — 0 failures |
+| `bun run session:gate` | ok — 0 known, none new |
+| `bun run log:gate` | ok — 4 known, none new |
+| `bun run transport:gate` | ok — 42 常量 / 四壳 2392 行,无上升 |
+| 真机只读 `bun run sessions:verify:gate` | ok — 13 known issue(s), **none new**;全程只读,`~/.onething` 一字未写(跑完 `find -newermt '-10 minutes'` 零命中) |
+
+#### 九、留账
+
+1. **F2 走完了,`translator` 这个词从代码里消失了**。命令的事件产地只有
+   `command-events.ts` 一处,非命令的生命周期采集点只有 `lifecycle-events.ts` 一处;
+   工具链上的采集点仍在 `wiring/engine/stream/session-event-recorder.ts`
+   (`tool/annotate` 就是本批加在那里的)。
+2. **`hasMessageInTranscript` / `getMessageFromTranscript` / 新加的
+   `hasSessionInTranscript` 名字里的 "Transcript" 照旧归 F3**(§16.7 留账 1 /
+   §16.8 留账 3):停写之后它们读的是内存 store,不是抄本文件。三口一起改名。
+3. **账本变大了,而且这是有意的**。`tool/annotate` 让 edit / bash 这类 metadata 大的
+   工具每次调用多 1–3 行。这是把"工具自报结局"从**只在 store**变成**两侧都有**的
+   价钱 —— 换来的是 full 之下这一格折得出来,以及恒等门从此**比得到它**
+   (§13.8 第一类的两条真机病历现在有两条独立的路都能对上)。真机浸泡时值得盯一眼
+   `events.jsonl` 的增长曲线;真要再压,下一刀在"结局正文与 `changes` 的重叠"
+   (同一份 diff 今天在 annotate 与 `tool/result.changes` 里各存一份),那是 F4
+   删码批的事,不是现在。
+4. **`resultTextFromToolMetadata` 与 `buildToolMetadataStepUpdate` 仍是两份**:后者是
+   **旧编排器**那条路上的近亲(它没有 `Object.keys > 0` 那道闸,`{}` 会折出
+   `"{}"`),本批没有并它 —— 并它是行为改动,而它在生产里没有构造点。F4 删码批一起收。
+5. **F3 的下一站**:§14.1 的 9 处写侧回读残留整体翻面成读投影;F2-c 新加的那口
+   `hasSessionInTranscript` 与既有两口一起翻。

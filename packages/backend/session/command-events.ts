@@ -1,22 +1,26 @@
 /**
- * **命令面自己的事件产地**(F 线 F2,§16.2 的 F2 行 / §16.7)。
+ * **命令面自己的事件产地**(F 线 F2,§16.2 的 F2 行 / §16.7 / §16.8 / §16.9)。
  *
  * F2 之前,一条命令留在账本上的那条事件是**派生物**:命令先让 core reducer 改内存
- * store,`event-translator.ts` 再从"刚刚改成了什么"反推一条事件补上。F2 把产地翻
+ * store,一个**翻译器**(`event-translator.ts`,F2-c 已整体删除)再从"刚刚改成了
+ * 什么"反推一条事件补上。F2 把产地翻
  * 过来 —— 事件成为命令的**第一手表达**:命令面先在这里把事件构造出来并 append
  * (F1 保证 append 返回前活投影 / 活 surface 已经前进,§16.6),老 reducer 随后照常
  * 把同一条命令应用到 store,作为 F0 的**影子验证器**(§16.5)独立推导一遍。
  *
- * 所以这个文件与 `event-translator.ts` 的差别不是"放在哪儿",是**谁先说话**:
+ * 所以这个文件与那个翻译器的差别不是"放在哪儿",是**谁先说话**:
  *
  * | | 产地 | 时序 |
  * |---|---|---|
- * | `event-translator.ts`(未翻转的命令) | 从 store 的 mutation 反推 | reducer 之后 |
- * | 本文件(已翻转的命令) | 命令自己构造 | reducer **之前** |
+ * | 翻转前(退役了的 `event-translator.ts`) | 从 store 的 mutation 反推 | reducer 之后 |
+ * | 本文件 | 命令自己构造 | reducer **之前** |
  *
  * F2-a 翻转的三条:`appendMessage` / `deleteMessage` / `patchMessage`;
- * F2-b 再翻两条:`upsertMessage` / `truncateFrom`。其余命令(replaceAll / compact /
- * patchSession / sessionCreated)仍住在翻译器里,并从这里取共用的取材件 ——
+ * F2-b 再翻两条:`upsertMessage` / `truncateFrom`;F2-c 收尾两条:
+ * `replaceAll` / `patchSession` —— **十三条命令的事件产地至此全在这里**,
+ * `event-translator.ts` 随之整体退役(§16.9)。两个**非命令**采集点
+ * (`session/created` / `session/compacted`)搬去了 `lifecycle-events.ts`:
+ * 它们不是命令,谁先说话由它们各自的产地决定,名字得说实话。
  * **共用件只有一份**:两个产地各自演化出一份 `messageForEvent` 就是"同一条消息
  * 在两种事件里长得不一样"的温床。
  *
@@ -32,7 +36,7 @@
  * 4. **失败一律自吞**,除了 `SessionEventWriteError`(§14.6 裁定 7)—— 见 `safely`。
  */
 
-import type { ChatMessage, MessageAttachment } from '@shared/ipc.js'
+import type { ChatMessage, ChatSession, MessageAttachment } from '@shared/ipc.js'
 import type { BlobRef } from '@onething/core/session'
 import { putSessionBlob } from './blob-store.js'
 import { appendSurfaceAwareEvent, isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
@@ -260,6 +264,91 @@ export const sessionCommandEvents = {
         },
         { ...options, surfaceOp: surfaceOp ?? 'append' },
       )
+    })
+  },
+
+  /**
+   * `replaceAll`(F2-c)。三种 reason,两种事件:
+   *  - `clear` → 一条 `session/cleared{reason:'clear'}` 遮蔽整条 surface;
+   *  - `replaced`(collab 的 MESSAGES_REPLACED,G11)→ 同样一条 cleared,
+   *    再逐条 `message/imported` 把新的一份接上;
+   *  - `normalize` → **一条都不写**:它是冷加载的形状规整,消息集合没变
+   *    (这是判例,不是优化 —— 记一条 cleared 会把一次"什么都没发生"变成
+   *    surface 上的一次全量遮蔽)。
+   *
+   * `wholeRange()` 取的是**活 surface**,与 store 无关,所以翻转到 reducer 之前
+   * 取到的范围与从前逐字相同。
+   */
+  replaceAll(
+    sessionId: string,
+    messages: readonly ChatMessage[],
+    reason: 'clear' | 'replaced' | 'normalize',
+  ): void {
+    if (reason === 'normalize') return
+    if (!isSessionTranslationEnabled(sessionId)) return
+    safely('replaceAll', () => {
+      const whole = sessionSurface(sessionId).wholeRange()
+      appendSurfaceAwareEvent(
+        sessionId,
+        'session/cleared',
+        { reason },
+        whole
+          ? { surfaceOp: { op: 'replace', start: whole.start, end: whole.end }, sourceEventSeqs: whole.seqs }
+          : {},
+      )
+      if (reason !== 'replaced') return
+      for (const message of messages) {
+        appendSurfaceAwareEvent(
+          sessionId,
+          'message/imported',
+          { message: messageForEvent(sessionId, message) as never },
+          { surfaceOp: 'append' },
+        )
+      }
+    })
+  },
+
+  /**
+   * `patchSession`(F2-c)。只有三格进事件:agent / model / workdir —— 它们改变
+   * **模型看到的世界**(system 变量、工具的工作树、人格)。其余会话级字段
+   * (name / pin / archived / summary…)是 UI 偏好,留在 `meta.json`(§2)。
+   *
+   * **三个产地共用这一份构造**(§13.10 M7):命令面(翻转后事件在 reducer 之前)、
+   * `stores/sessions.ts` 的 `updateSessionAgent`、server 的 `sessions.update`。
+   * 后两条**绕开了命令面**,而且必须在写成功之后才叫得动这里 —— 它们的 `to`
+   * 取的是**落库之后**那一格(agent 那一格在仓库里带着"空值回落默认 agent"的
+   * 规范化;server 那条路的会话对象是就地改的)。所以本方法对"谁先说话"是中立的:
+   * 它拿的是调用方算好的 `patch` 与 `before`,顺序由调用方的事实决定。
+   */
+  patchSession(
+    sessionId: string,
+    patch: Partial<ChatSession>,
+    before: Pick<ChatSession, 'agentId' | 'lastModel' | 'lastProvider' | 'workingDirectory'> | undefined,
+  ): void {
+    if (!isSessionTranslationEnabled(sessionId)) return
+    safely('patchSession', () => {
+      if (patch.agentId !== undefined && patch.agentId !== before?.agentId) {
+        appendSurfaceAwareEvent(sessionId, 'session/agent-changed', {
+          ...(before?.agentId ? { from: before.agentId } : {}),
+          to: patch.agentId,
+        })
+      }
+      if (patch.lastModel !== undefined && patch.lastModel !== before?.lastModel) {
+        appendSurfaceAwareEvent(sessionId, 'session/model-changed', {
+          ...(before?.lastModel ? { from: before.lastModel } : {}),
+          to: patch.lastModel,
+          ...(patch.lastProvider ? { provider: patch.lastProvider } : {}),
+        })
+      }
+      if (
+        patch.workingDirectory !== undefined
+        && patch.workingDirectory !== before?.workingDirectory
+      ) {
+        appendSurfaceAwareEvent(sessionId, 'session/workdir-changed', {
+          ...(before?.workingDirectory ? { from: before.workingDirectory } : {}),
+          to: patch.workingDirectory,
+        })
+      }
     })
   },
 }

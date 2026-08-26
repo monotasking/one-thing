@@ -46,7 +46,7 @@ export interface SessionHistoryShadowRequestOptions {
  * (`createNextAssistantWriter` → `finalize()`)才落成 false。这中间的一小段窗口里,
  * store 侧现算的 `buildHistoryMessages` 会被 `core/engine/history.ts` 的
  * `if (message.isStreaming) continue` 把上一条 assistant **整条**滤掉,而投影侧不认
- * `isStreaming`(它是 `run/start`…`run/end` 之间的派生态,见 `event-translator.ts`
+ * `isStreaming`(它是 `run/start`…`run/end` 之间的派生态,见 `command-events.ts`
  * 的 `DERIVED_KEYS`)—— 比出来永远差一整轮。那是**窗口的假红**,哪一侧都没错。
  *
  * 与 run 断言那道闸是**同一条判例**:那边叫 `EndSessionRunInput.shadowGate`
