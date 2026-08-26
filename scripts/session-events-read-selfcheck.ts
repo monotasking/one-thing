@@ -36,7 +36,6 @@ import {
   verifySession,
   type SessionVerifyReport,
 } from './session-verify.ts'
-import { setSessionReadModeForTesting, getSessionReadMode } from '../packages/backend/session/read-mode.ts'
 
 /** 历史完整性那几类 —— events 物化 ≠ messages.jsonl 就落在这里。 */
 const HARD_ISSUE_KINDS = new Set(['seq', 'surface', 'projection', 'messages'])
@@ -112,9 +111,6 @@ function main(): void {
   const store = resolveStorePath(args.store)
   const sessionsDir = path.join(store, 'sessions')
 
-  // 生产读路在切默认后就是这一侧;钉住它,让自证与真机同口径。
-  setSessionReadModeForTesting('events')
-
   const baseline = loadVerifyBaseline(path.resolve(fileURLToPath(import.meta.url), '..', '..'))
   const ids = args.all || !args.sessionId ? listSessionIds(sessionsDir) : [args.sessionId]
   if (ids.length === 0) {
@@ -144,7 +140,6 @@ function main(): void {
     }
     rows.push({
       sessionId: id,
-      readMode: getSessionReadMode(),
       messages: report.messages,
       transcriptChanges: tChanges,
       ...(report.coverage ? { coverage: report.coverage } : {}),
@@ -161,7 +156,6 @@ function main(): void {
   }
 
   const summary = {
-    readMode: getSessionReadMode(),
     store,
     sessionsWithHistory: checkedWithHistory,
     newRed,
@@ -173,8 +167,7 @@ function main(): void {
     console.log(JSON.stringify({ summary, rows, freshLines }, null, 2))
   } else {
     console.log(
-      `\n[events-selfcheck] read mode = ${summary.readMode}; ` +
-        `${checkedWithHistory} session(s) with event history checked; ` +
+      `\n[events-selfcheck] ${checkedWithHistory} session(s) with event history checked; ` +
         `${knownDrift} with known drift (in verify baseline), ${newRed} with NEW integrity issue(s).`,
     )
     console.log(

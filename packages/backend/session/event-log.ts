@@ -16,12 +16,12 @@
  *    空的 jsonl 会话,整份历史当场消失。同一批里 `jsonlExists` 也开始认
  *    `events.jsonl`,鸡生蛋因此消失:新会话的第一条事件就把目录立起来。
  * 2. **写失败不再静默** —— 计进 `<store>/log/session-shadow-stats.json` 的
- *    `appendFailures`,每会话 warn 一次(`event-stats.ts`)。S1 还是影子期,
- *    所以仍然不抛;门是"计数必须为 0",不是"炸给用户看"。
- *    **S3w-2(裁定 7)给它加了一档**:`ONETHING_SESSION_TRANSCRIPT=off` —— 抄本
- *    停写、事件成为唯一持久化 —— 之后,写失败从"计数自吞"升级为
- *    **命令失败上抛**(`SessionEventWriteError`)。落点是**下一次同步写口**
- *    (append 是排队异步落盘的,失败天生晚于调用它的那一句),见 `writeFailure`。
+ *    `appendFailures`,每会话 warn 一次(`event-stats.ts`)。**S3w-3 批 6b 起
+ *    无条件上抛**(裁定 7,从前是 `ONETHING_SESSION_TRANSCRIPT=off` 那一档的
+ *    特例,而那个开关已随抄本写代码退役):抄本不在了,`events.jsonl` 是唯一
+ *    持久化,写不进去不是"影子少一笔"而是"账本少一笔",必须让调用方感知得到
+ *    (`SessionEventWriteError`)。落点是**下一次同步写口**(append 是排队异步
+ *    落盘的,失败天生晚于调用它的那一句),见 `writeFailure`。
  * 3. **语义检查点 fsync** —— `flushSessionEventLog(sessionId)` 排空队列**并**
  *    fsync。调模型前 / 调工具前 / 响应收齐 / run 结束各一次(dsh 判例)。
  *    300ms 节流那种"按时间刷"换成"按语义刷":崩溃时丢的是"还没到检查点的那
@@ -61,7 +61,7 @@ import {
   flushSessionEventStats,
   isSessionShadowEnabled,
 } from './event-stats.js'
-import { isSessionEventsReadMode, isSessionTranscriptOff } from './read-mode.js'
+
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
@@ -70,12 +70,12 @@ const log = getLogger('sessions.events')
 export const SESSION_EVENTS_LOG_FILENAME = 'events.jsonl'
 
 /**
- * 事件账本写不进去(S3w-2,§14.6 裁定 7)。
+ * 事件账本写不进去(§14.6 裁定 7;S3w-3 批 6b 起**无条件**抛)。
  *
- * **只在 `ONETHING_SESSION_TRANSCRIPT=off` 档抛** —— 那一刻 `events.jsonl` 是唯一
- * 持久化,写不进去不再是"影子少一笔"而是"账本少一笔",于是从计数自吞升级为
- * **命令失败上抛**:调用方(命令面 / 引擎收尾链)必须感知得到。`primary` /
- * `shadow` 两档维持计数(观察期里抄本还在写,拒写该记账不该打扰)。
+ * `events.jsonl` 是唯一持久化,写不进去不再是"影子少一笔"而是"账本少一笔",
+ * 于是从计数自吞升级为**命令失败上抛**:调用方(命令面 / 引擎收尾链)必须感知
+ * 得到。从前这只在 `ONETHING_SESSION_TRANSCRIPT=off` 那一档成立,而那个开关已
+ * 随抄本写代码一起退役 —— 观察期结束了。
  */
 export class SessionEventWriteError extends Error {
   readonly sessionId: string
@@ -104,12 +104,14 @@ const SHADOW_TAIL_MAX = 200_000
 /**
  * 尾巴要不要攒 —— **有没有内存里的消费者**。
  *
- * S1b 时消费者只有影子断言,所以判据是"影子开着吗"。S2a 起活投影同时是
- * `events` 读模式的取数来源,于是判据放大成两条之一。两条都关时尾巴恒空:
- * 一条永远没人取的队列只会吃内存。
+ * S1b 时消费者只有影子断言,所以判据是"影子开着吗"。S2a 起活投影同时是产品
+ * 读路的取数来源,于是判据放大成两条之一 —— 而 S3w-3 批 6b 烧掉
+ * `ONETHING_SESSION_READ` 之后,读路那条恒真:**尾巴永远在攒**,因为产品线的
+ * 每一次读都从活投影上取。这个函数留着是为了让"为什么恒真"有个说得清的落点,
+ * 不是为了将来还能关掉。
  */
 function wantsEventTail(): boolean {
-  return isSessionShadowEnabled() || isSessionEventsReadMode()
+  return true
 }
 
 /**
@@ -332,25 +334,20 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   if (type === 'session/created') ensureSessionEventDir(state, sessionId)
   if (!state.enabled) return undefined
 
-  // S3w-2(裁定 7):`off` 档下,这本账上一次落盘就没落进去 —— 它已经不完整了。
-  // 观察期(primary/shadow)里这一格只是个记号,不改变行为。
-  if (state.writeFailure && isSessionTranscriptOff()) {
+  // 裁定 7:这本账上一次落盘就没落进去 —— 它已经不完整了。
+  if (state.writeFailure) {
     throw new SessionEventWriteError(sessionId, 'queued append failed earlier', {
       cause: state.writeFailure,
     })
   }
 
   // G12(S3w-0b):外写者在场 = 本次拒写。记一笔失败(每会话 warn 一次由
-  // `countSessionEventFailure` 负责)。观察期返回 undefined —— 调用方拿不到 seq,
-  // 于是没有人会去引用一个根本没写出去的事件;`off` 档则升级为上抛(裁定 7):
-  // 抄本不在了,一条"悄悄没写进去"的事件就是一段永远补不回来的历史。
+  // `countSessionEventFailure` 负责),而且**上抛**(裁定 7):抄本不在了,一条
+  // "悄悄没写进去"的事件就是一段永远补不回来的历史。
   if (guardForeignWriter(state, sessionId)) {
     const error = new Error('another writer appended to this event log')
     countSessionEventFailure(sessionId, error, 'foreign writer detected; append refused')
-    if (isSessionTranscriptOff()) {
-      throw new SessionEventWriteError(sessionId, 'foreign writer detected', { cause: error })
-    }
-    return undefined
+    throw new SessionEventWriteError(sessionId, 'foreign writer detected', { cause: error })
   }
 
   const seq = state.lastSeq + 1

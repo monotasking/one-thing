@@ -37,7 +37,6 @@ import type {
 } from '@shared/ipc.js'
 import type { SessionCommandWriteHint } from '@onething/core/session'
 import {
-  archiveSessionMessages,
   flushSessionSave,
   getSession,
   getSessionMessageCommandRuntime,
@@ -91,8 +90,6 @@ export interface SessionCommandsPorts {
   getSession(sessionId: string): ChatSession | undefined
   updateSessionsIndexMeta(sessionId: string, update: (meta: { [key: string]: unknown }) => void): boolean
   flushSessionSave(sessionId: string): Promise<void>
-  /** 清空前把当前日志原样留档,返回留档路径(无消息可留时 undefined) */
-  archiveMessages(sessionId: string): string | undefined
   /** 协作署名(room/work/agent 会话的 assistant 消息);返回新对象 */
   stampCollabAgentId?(sessionId: string, message: ChatMessage): ChatMessage
   /** 会话级字段补丁(`meta` 写计划;消息一行不动) */
@@ -141,7 +138,6 @@ export interface ReplaceAllPayload {
 export interface ReplaceAllResult {
   replaced: boolean
   previousCount: number
-  archivePath?: string
 }
 
 export interface SessionCommands {
@@ -295,21 +291,19 @@ export function createSessionCommands(
     },
 
     /**
-     * 整份日志换掉。`reason:'clear'` 保留今天 `clearSessionMessages` 的全部行为:
-     * 先排空在途节流写入 → 留档 → 换 → 索引计数归零 → 再强刷一次。
-     * 留档必须在 flush 之后:否则留档少的正是最后那几条。
+     * 整份日志换掉。`reason:'clear'` 保留 `clearSessionMessages` 的其余行为:
+     * 换 → 索引计数归零 → 强刷一次。
+     *
+     * **留档那一步已退役**(S3w-3 批 6b,裁定 10):清空在账本上是
+     * `session/cleared` —— 只遮蔽、不删除,被遮的消息事件原样躺在
+     * `events.jsonl` 里,事件本身就是档。连带"留档必须在 flush 之后"那条
+     * 纪律与它的前置 flush 一起消失。
      */
     async replaceAll(sessionId, payload) {
       const session = ports.getSession(sessionId)
       if (!session) return { replaced: false, previousCount: 0 }
       const previousCount = session.messages.length
       const isClear = payload.reason === 'clear'
-
-      let archivePath: string | undefined
-      if (isClear) {
-        await ports.flushSessionSave(sessionId)
-        if (previousCount > 0) archivePath = ports.archiveMessages(sessionId)
-      }
 
       ports.messages.replaceAllMessages(sessionId, payload.messages, payload.reason)
       translator?.replaceAll(sessionId, payload.messages, payload.reason)
@@ -322,11 +316,7 @@ export function createSessionCommands(
 
       if (isClear) await ports.flushSessionSave(sessionId)
 
-      return {
-        replaced: true,
-        previousCount,
-        ...(archivePath ? { archivePath } : {}),
-      }
+      return { replaced: true, previousCount }
     },
 
     repairOnLoad(sessionId, payload) {
@@ -365,7 +355,6 @@ export function getSessionCommands(): SessionCommands {
       getSession,
       updateSessionsIndexMeta: updateSessionsIndexMetaForCommands,
       flushSessionSave,
-      archiveMessages: archiveSessionMessages,
       stampCollabAgentId,
       patchSession: patchSessionFields,
     })

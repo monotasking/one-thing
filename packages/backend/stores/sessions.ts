@@ -30,7 +30,6 @@ import { resetSessionEventLogCache } from "../session/event-log.js";
 import { resetSessionSurfaceCache } from "../session/event-surface.js";
 import { resetSessionRuns } from "../session/runs.js";
 import { hydrateSessionMessagesFromProjection } from "../session/hydrate.js";
-import { isSessionTranscriptOff } from "../session/read-mode.js";
 import { getSettings } from "./settings.js";
 import { expandPath } from "../wiring/tools/core/sandbox.js";
 import {
@@ -103,10 +102,6 @@ const hybridSessionStorageDriverOptions: HybridSessionStorageDriverOptions = {
 	readJsonFile,
 	writeJsonFileAsync: writeSessionJsonFileAsync,
 	deleteJsonFile,
-	// S3w-2:抄本三态开关的写侧落点(§14.3-A)。默认档 `shadow` 返回 false =
-	// 一字不改照写;`off` 才真的停掉消息写半边。**每次现算**,与读/补水两个
-	// 开关同款 —— "现在还写不写"是个一句字符串比较就能答的问题。
-	skipMessageWrites: isSessionTranscriptOff,
 	logger: consoleLog,
 };
 const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>(hybridSessionStorageDriverOptions);
@@ -789,10 +784,6 @@ export function readSessionTranscriptFile(sessionId: string): string | undefined
 	}
 }
 
-export function archiveSessionMessages(sessionId: string): string | undefined {
-	return sessionStorageDriver.archiveMessages(sessionId);
-}
-
 export { stampCollabAgentId };
 
 /**
@@ -832,22 +823,22 @@ export function deleteMessageAndTruncate(
  * 需要一个锚点,而这里没有锚点 —— 要的是整条日志归零 + meta 计数一致。
  *
  * `tokenUsage` **不动**:花掉的钱不因为记录被删而退回,用量面板与预算闸读的是
- * 同一笔账。删之前先留档一份(见驱动的 `archiveMessages`),留档路径原样返回,
- * 调用方要不要提它是它的事。
+ * 同一笔账。
+ *
+ * **留档已退役**(S3w-3 批 6b,§14.6 裁定 10):从前这里先把 `messages.jsonl`
+ * 复制成一份 `messages.cleared-<ts>.jsonl`。清空在事件账本上是
+ * `session/cleared` —— 一条**只遮蔽、不删除**的 surface 事件,被遮的消息事件
+ * 原样躺在 `events.jsonl` 里,**事件本身就是那份档**。再复制一份等于给"事件是
+ * 唯一真相"开第一个例外(还是个没有任何读取路径、只进不出的例外:真机上
+ * 179 个文件 14.3MB)。存量那批按裁定 9a 原地不动,只读化石。
  */
 export async function clearSessionMessages(sessionId: string): Promise<{
 	cleared: boolean;
 	clearedCount: number;
-	archivePath?: string;
 }> {
 	const session = sessionRepository.getSession(sessionId);
 	if (!session) return { cleared: false, clearedCount: 0 };
 	const clearedCount = sessionRepository.getSessionMessages(sessionId)?.length ?? 0;
-	// 先排空在途的节流写入,再复制:否则留档少的正是最后那几条 —— 留档唯一的
-	// 价值就是"删之前盘上是什么样",差几条就不是那个东西了。
-	await sessionRepository.flushSessionSave(sessionId);
-	const archivePath =
-		clearedCount > 0 ? sessionStorageDriver.archiveMessages(sessionId) : undefined;
 	// structural:整份日志重写(后缀写只会从某个 seq 往后追,清空不在它的语义里)——
 	// 写计划由 replaceAll 命令算出,这里不再自己拼。
 	sessionMessageRuntime!.replaceAllMessages(sessionId, [], "clear");
@@ -857,11 +848,7 @@ export async function clearSessionMessages(sessionId: string): Promise<{
 		delete meta.previewText;
 	});
 	await sessionRepository.flushSessionSave(sessionId);
-	return {
-		cleared: true,
-		clearedCount,
-		...(archivePath ? { archivePath } : {}),
-	};
+	return { cleared: true, clearedCount };
 }
 
 // Update a message and remove all messages after it

@@ -43,7 +43,6 @@ const {
   textOrBlobForEvent,
 } = await import('../blob-store.js')
 const { sessionProjectionOptions } = await import('../projection-blobs.js')
-const { setSessionTranscriptModeForTesting } = await import('../read-mode.js')
 const { projectChatMessages } = await import('@onething/core/session')
 
 beforeEach(() => {
@@ -52,16 +51,10 @@ beforeEach(() => {
   fs.mkdirSync(state.sessionsDir, { recursive: true })
   resetSessionEventLogCache()
   resetSessionEventStatsCache()
-  // 本文件问的是 **S1a 的降级纪律**(写失败只计数、G12 拒写不打扰调用方),
-  // 那是抄本还在写的那个世界。批 6a 把默认翻到 `off` 之后,同一刀会按裁定 7
-  // 上抛 —— 升级语义有它自己的用例(`transcript-off.test.ts`),这里显式扳回
-  // 回滚杆,免得两套判据互相盖住。
-  setSessionTranscriptModeForTesting('shadow')
 })
 
 afterEach(async () => {
   await flushSessionEventLog()
-  setSessionTranscriptModeForTesting(undefined)
   fs.rmSync(state.storeDir, { recursive: true, force: true })
   vi.restoreAllMocks()
 })
@@ -139,14 +132,15 @@ describe('event-log discipline flip (§10.3)', () => {
     const logs = collectLogRecordsForTests()
     // 守卫有 500ms 的检查间隔:把表往前拨,让下一次 append 真的去 stat。
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 10_000)
-    const refused = appendSessionLogEvent('s3', 'request/end', { requestIndex: 9 })
-    // 拒写是**一路拒到底**的:守卫认定之后不再 stat,后续 append 同样写不进去。
-    const refusedAgain = appendSessionLogEvent('s3', 'request/end', { requestIndex: 10 })
+    // 批 6b(裁定 7)起拒写**上抛**:唯一账本写不进去不再是可吞的旁路故障。
+    // 拒写仍是**一路拒到底**的:守卫认定之后不再 stat,后续 append 同样写不进去。
+    expect(() => appendSessionLogEvent('s3', 'request/end', { requestIndex: 9 }))
+      .toThrow('session event log write failed')
+    expect(() => appendSessionLogEvent('s3', 'request/end', { requestIndex: 10 }))
+      .toThrow('session event log write failed')
     vi.mocked(Date.now).mockRestore()
     await flushSessionEventLog('s3')
 
-    expect(refused).toBeUndefined()
-    expect(refusedAgain).toBeUndefined()
     expect(logs.messages().some(msg => msg.includes('refusing to append'))).toBe(true)
     logs.stop()
 
@@ -189,12 +183,14 @@ describe('blob store (§10.6 第 6 条)', () => {
     }
   })
 
-  it('degrades to undefined and counts the failure when the write fails', () => {
+  it('raises and counts the failure when the write fails (批 6b 起不再降级)', () => {
     makeJsonlSession('b3')
     vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
       throw new Error('EACCES')
     })
-    expect(putSessionBlob('b3', 'nope')).toBeUndefined()
+    // 从前返回 undefined(正文还在抄本里);抄本没了之后同一次失败 = 正文永久
+    // 丢失(§14.7 风险④),所以按裁定 7 上抛。计数照旧。
+    expect(() => putSessionBlob('b3', 'nope')).toThrow('session event log write failed')
     flushSessionEventStats()
     expect(readSessionShadowStats().appendFailures).toBe(1)
   })

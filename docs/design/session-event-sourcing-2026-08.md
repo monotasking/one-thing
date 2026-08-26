@@ -3399,6 +3399,25 @@ HEAD(S2b 批 8 已切读默认 `events`、迁移 `--apply` 已落地)的真实�
 
 ### 14.1 当前写模型全图(全部 HEAD 实证)
 
+> **【已删 —— 2026-08-26 批 6b(§15.22)】本节写于 2026-08-24,画的是"抄本仍在写"
+> 那个世界。它作为**勘察记录**原样留着(S3w 的全部裁定都建在这张图上),但下面这
+> 张图里的**左半支已经不存在了**:
+>
+> - `saveSessionToFile → AsyncSaveQueue → hybrid driver 脱水落 messages.jsonl`
+>   这一支只剩 `meta.json` 那一格 —— `writeSuffix` / `rewriteAll` / `encodeSuffix`
+>   与批 4 装的 `skipMessageWrites` 端口整段删除(批 6a 停写、批 6b 删码)。
+>   `events.jsonl` 是会话历史的**唯一持久化**。
+> - `appendSessionLogEvent` 那句"失败只计数不抛"也已作废:裁定 7 从"`off` 档的
+>   特例"变成**无条件上抛**。
+> - 下面那张"写侧回读残留清单"里,`reads.ts` 各 routed 方法的
+>   `?? getSessionMessages(...)` 兜底半边**删掉 8 处、保留 3 处**(保留的三处不是
+>   抄本兜底,是空会话形状口与能力缺口退路,逐条理由见 §15.22 第二节);
+>   `messages.jsonl` 那几处**只读**取材点原样活着(裁定 9a:存量原地只读)。
+> - 冷加载补水早在批 3(§15.10)就换成了投影;legacy 整文件会话按裁定 9b 在冷加载
+>   那一刻**同步**迁进 `events.jsonl`,不再迁成抄本。
+>
+> 读这一节时请把它当成"S3w 开工前的现场照片",不是当前状态。当前状态见 §15.22。
+
 **先纠正 §8 原始定义里的一个时代错位**:"旧 `updateMessage/…` 写路径删除,只剩 append"
 —— 那批 mutator 早已在 P0 收进命令面;今天没有"旧写路径"可删。真正要切的是
 **架构本身**:今天不是事件溯源,而是「store 写模型 → 双份派生」:
@@ -3995,7 +4014,7 @@ renderer 直接 import core reducer)。
 | 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿)。**前置已做一半**(§15.18):`fallbackHits` 的结构性地板(§15.9 诊断 1)已归位 —— `stream-executor.ts` 的写侧取材改真相面口,battery 321 → 16;余下 16 条全部是 `agent-loop-executor.ts:249`(steer 换锚点)这同一处孪生,同款一行修法,**留在批 6 里一并收**,收完删兜底的"命中率 = 0"判据才干净 | **唯一确认点**:烧 S2b 回滚读前问一次 —— **用户已确认并预授权跳过浸泡期**(2026-08-26,单用户环境口径) |
 | 08-26 | **6a** | **切 off(只翻默认与配套,不删码)** —— `ONETHING_SESSION_TRANSCRIPT` 默认 `shadow → off`(`shadow`/`primary` 降为显式回滚杆);孪生取材点 `rotateAssistantWriterIdentity` 一行修完 `fallbackHits` **16 → 0**;battery 泳道语义对调(停写泳道 → 默认档泳道 + 新增显式 `shadow` 回滚杆泳道,六条泳道);verify #6 改**存量只读对账**;§14.6 第三组裁定按推荐记录 —— **已完成(§15.19)** | — |
 | 08-26 | **6a 尾款** | 批 6a 遗下的两条真机存量红收口 —— `source-seqs-incomplete` 读侧收敛到"只对消息节点问责"(`ec2437ff` 自愈)、`Session cleared` 化石进 verify 基线(同一行同时收掉 hydration-contract 的 fail 1);verify:gate **0 new** —— **已完成(§15.21)**。**写侧留一次拍板**:让 `tool/result` 走 `appendSurfaceAwareEvent`(新账完整 + 顺带收编辑重发尾随格),是可感知行为变化,按旧行为停手 | **待拍板**:§15.21 第 1 条写侧 |
-| 08-27 | **6b** | **删旧**:storage-driver 消息写半边删(meta/index 保留)、reads 兜底删、sanitize 死码清、`session:check` 白名单收缩、裁定 9b(legacy 首触迁移)与 10(`messages.cleared-*` 退役)的实施;两根抄本回滚杆随写代码一起退役,届时回滚 = `git revert` | — |
+| 08-26 | **6b** | **删旧**:storage-driver 消息写半边删(meta/index 保留)、reads 兜底删 8 留 3、sanitize 死码清(`sanitizeSessionsOnStartupWithAdapters` 整体退役)、`session:check` 白名单收一条、裁定 9b(legacy 首触**同步**迁进 events)与 10(`messages.cleared-*` 退役)的实施;两根抄本回滚杆 + `ONETHING_SESSION_READ` 回滚读一起烧掉(写失败上抛因此成为无条件默认),battery 六泳道两探针 → 四泳道一探针,verify 基线摘 13 条已自愈 —— **已完成(§15.22)**,回滚 = `git revert` | **待拍板**:`ONETHING_SESSION_HYDRATE=messages` 这根只对存量有效且已不安全的杆要不要一并退役(§15.22 第七节) |
 | 08-31→09-04 | 7–11 | F 线:F0 门转向 → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
 | 09-05→09-08 | 12–14 | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动) | B 期细案到期过目 |
 | ≈ 09-08 | 终 | 全线收口:事件唯一真相、UI 同词汇;refold 常驻唯一耐久门 | — |
@@ -5106,6 +5125,52 @@ message(s) unknown to messages.jsonl` 的文案**故意保持逐字不变**(改�
 新增两条 —— 独走的尾巴不算错(且必须出现在 `coverage` 里,否则这条放行是静默的)、
 停写后新建的无抄本会话不算错。
 
+#### 四之二、跑验收时抓到的两条真 bug(都由本批开出,都在本批收口)
+
+**① 迁移之后 `load()` 交空壳 —— 不是每只仓库都装了投影补水。**
+第一版实现是"迁完 `loadJsonl()` 再读回来",于是 `load()` 交出去的是 `meta.json` 那层
+外壳,消息要靠装配层的 `hydrateMessagesFromProjection` 才填得回来。桌面 / 真 server /
+CLI 三条路都装了那个口,**但 server 的 echo/test 仓库没装** ——
+`packages/backend/server/__tests__/http.test.ts` 的 "uses the onething desktop app state
+and chat sessions by default"(它铺的正是一条 legacy 整文件会话)当场红。
+改法:`load()` **仍然交出手里读到的那一份**(带消息)——那正是迁移的输入,与迁完
+再折出来的投影逐条同源。迁移是为了让**下一次**冷加载能从事件里折出它,不是为了让
+**这一次**读不到。同时给 `createLocalServerSessionStore`(echo/test 那只仓库)补上
+补水口,与 app store 那只同一句 —— 少接一处就等于多一条暗路;只在
+`resolvedStorePath === getOnethingStorePath()` 时接(补水口读的是**进程级** store 路径,
+开在别处时接了会去读另一个 store 的账本,那比读空还坏)。
+
+**② 分页口对"没有抄本的会话"答了一个理直气壮的空页。**
+顺着 ① 查下去发现的更深一层,而且**与 legacy 无关 —— 它对每一条批 6a 之后出生的
+会话都成立**:驱动的 `getMessagesPage` / `getUserMessageMarkers` 从前问的是
+`jsonlExists()`("是不是 jsonl 布局"),那时候一条 jsonl 会话必然带着
+`messages.jsonl`;停写之后不再必然。而 `loadJsonl` 会给这种会话存下一份
+`lines: []` 的行表,于是分页从"给不出"(`undefined`,调用方降级)变成
+**`success:true, totalCount:0`** —— 把调用方整条降级链短路掉。真机上这条错答被
+`sessionReads.pageMessages` 的事件侧挡在前面,所以没爆;echo/test 仓库没有事件侧,
+一读就是空。改法:判据换成 `hasTranscript()`(盘上真的有 `messages.jsonl` 吗),
+冷热两态都验(用例先冷问一遍、再 `load()` 焐热后问第二遍 —— 病灶正是热态)。
+
+#### 五之二、`sessions:hydration-contract` 的口径补齐(**本批唯一的门口径改动**)
+
+跑验收时这道门报 **fail 2**,逐条查完两条**都不是本批的锅**,但其中一条揭出一个
+真问题:
+
+1. **`7f0ab096`(projection 330 / transcript 296)** —— 抄本自批 6a 停写之后冻在
+   296 条,而这条会话一直在用,事件涨到了 330。合同问的是"投影 ≡ 抄本",**在停写
+   之后这句话只在抄本还认识的那一段上成立**;不设边界的话这道门会在每一条还在用的
+   会话上恒红,而且一天比一天多 —— 那不是合同破了,是合同问错了。
+   §15.19 批 6a 已经给**兄弟门** `session-verify.ts` #6 立过"存量只读对账"的口径
+   (按抄本末条截断:之前是洞,之后是独走段),当时**漏了这一道**。本批把同一段
+   逻辑逐字搬过来:`lastCoveredIndex` 之后的只计数进 `beyond-transcript(events-only)`
+   类目、只打印;条数改成只比覆盖段。**这不是新裁定,是把已有裁定应用到第二个消费者。**
+2. **`room-1`(projection 1 / transcript 0)** —— 这是我摘基线摘出来的:那一行在
+   `verify` 上确实已自愈(#6 有截断),而 `hydration-contract` 读的是**同一份基线**
+   却没有截断,于是摘掉行 = 取消豁免 = 露出老问题。截断补齐之后它自然回到 pass
+   (抄本 0 条 → 覆盖段为空),不必把行加回去。
+
+补齐后:**443 会话 / 0 failed / 8 baseline-skip**。
+
 #### 六、验收(全部实跑)
 
 | 门 | 结果 |
@@ -5434,3 +5499,203 @@ ef079fd7-d6ca-42a4-887b-499767593b7a messages: canonical differs for message 55a
 逐条复跑证过:`46dcec05` `ok`、`room-1` `ok`、`a5157107` 的 `unclosed-run` 在
 stash 掉本批改动后同样已自愈 —— 基线第 24 段本来就预告了它会自愈)。要不要就此
 收紧基线是另一次动作,不在本批范围。
+
+### 15.22 批 6b 落地记录:S3w-3 删旧收官 —— 抄本写代码退场(2026-08-26,opus 执行,未提交)
+
+批 6a 只翻默认与配套、**一行写代码都没删**,理由写在那一段里:回滚成本。这一批
+兑现了它留下的每一句预告 —— `messages.jsonl` 的写代码、两根抄本回滚杆、reads 的
+抄本兜底、`messages.cleared-*` 留档,全部删除。**回滚从此是 `git revert`。**
+
+前置判据在开工前逐条实跑过(不是引用批 6a 的旧读数):
+`sessions:verify:gate` 0 new(13 healed,见下)、真机全库只读实算
+**400 间会话已 `message/imported` / 33 间原生覆盖 / 0 间"有事件却折不出消息" /
+10 间空壳(0 条消息、无 `events.jsonl`)/ legacy 整文件 0 间** —— 也就是说,
+删掉读兜底在这台机器上**结构性无损**。
+
+#### 一、删除清单(逐项)
+
+**1. `runtime/src/sessions/storage-driver.ts` 的消息写半边。**
+`encodeSuffix` / `writeSuffix` / `rewriteAll` / `writeMetaOnly` 与
+`HybridSessionStorageDriverOptions.skipMessageWrites`(批 4 装的端口)整段删除;
+`writeJsonl` 收成 `mkdir + writeMeta` 两句。`SessionWritePlan` **留在签名里但不再被
+读**(`void plan`)——写计划是命令面 reducer 的产物,它的退役属于 F 线,不是这里。
+连带删掉 `encodeJsonlHeaderLine` / `encodeJsonlMessageLine` 两个 import(写侧唯一
+的用户)与 `writeGenerations` / `migrationScheduled` / `migrationDelayMs`(异步惰性
+迁移的三件套,见第 4 条)。
+
+**2. `backend/session/reads.ts` 的抄本兜底。**
+`transcriptFallback` 包装、`fallbackCarriesHistory` 判据、`event-stats.ts` 的
+`fallbackHits` 计数器与 `countSessionReadFallback` 全删,`sessions:shadow-report`
+少打一行。**11 处兜底删掉 8 处**(`listMessages` / `getMessage` / `findMessage` /
+`getMessageIndex` / `countMessages` / `lastMessageOfRole` / `firstUserPreview` /
+`iterateMessages`)—— 保留 3 处,理由在第二节。
+
+**3. `ONETHING_SESSION_READ`(S2b 的回滚读)。**
+§15.8 表里批 6 的"唯一确认点",用户已确认烧。这不是顺手清理:兜底删掉之后
+`messages` 档只会读出一片空 —— **一根扳下去就把历史读没的杆,比没有杆危险**。
+`SessionReadMode` / `DEFAULT_SESSION_READ_MODE` / `getSessionReadMode` /
+`isSessionEventsReadMode` / `setSessionReadModeForTesting` 全删;`fromEvents` 从
+"档位岔口"变成"投影取数 + 吞异常"(warn 措辞同步改掉,没有第二侧可退了)。
+`event-log.ts` 的 `wantsEventTail()` 因此恒真(留着函数是为了让"为什么恒真"有个
+落点,不是为了将来还能关掉)。
+
+**4. `ONETHING_SESSION_TRANSCRIPT` 三态开关。**
+`SessionTranscriptMode` / `DEFAULT_SESSION_TRANSCRIPT_MODE` /
+`getSessionTranscriptMode` / `isSessionTranscriptOff` /
+`setSessionTranscriptModeForTesting` 全删,`read-mode.ts` 里给它留一段墓志铭。
+**连带口径固化**:事件 / blob 写失败上抛(裁定 7)从"`off` 档的特例"变成
+**无条件默认行为** —— `event-log.ts`(粘住的队列失败 + G12 拒写)、
+`blob-store.ts`(blob 写失败)、`event-translator.ts`(`safely` 放行
+`SessionEventWriteError`)三处的档位判断一并删掉。
+
+**5. `messages.cleared-*` 留档(裁定 10)。**
+驱动的 `archiveMessages`、`stores/sessions.ts` 的 `archiveSessionMessages`、命令面
+`SessionCommandsPorts.archiveMessages` 与 `ReplaceAllResult.archivePath`、
+`clearSessionMessages` 的返回字段,以及 `replaceAll{clear}` 里**留档前那一次强刷**
+(它存在的唯一理由是"留档必须在 flush 之后")全删。存量 179 个 / 14.3MB 按裁定 9a
+原地不动。`session-storage-report` 那一格改口径:产地关了,这个数从此不该再涨。
+
+**6. `sanitizeSessionsOnStartupWithAdapters`(core)+ 它的两个类型 + 它的单测。**
+这是**启动期全量扫描 → sanitize → 写回**那条老路的适配器,零生产调用点(仓库早
+改成 `repairOnFirstTouch` 冷加载修一次),而它整个函数的出口就是
+`options.saveSession(...)` —— **纯粹为"抄本写回"而存在**,写半边没了它连理论上的
+用处都不剩。`port-seam-audit` 也早点过它的名(§697 行:零生产实现)。
+
+**7. `session:check` 白名单收一条**:`storage-driver.ts`。它进白名单的理由是消息
+写半边要逐条编码 `session.messages`;剩下的两处访问落在驱动自己的
+`SessionLike { messages?: unknown[] }` 上,元素类型是 `unknown`,本来就不构成规则 A
+说的"一条会话的消息日志"。实测拿掉 0 命中。
+
+**8. `verify` 基线 13 条已自愈**:46dcec05 × 10、9c94531d × 1、room-1 × 1、
+a5157107 unclosed-run × 1。门在本批**开工前**就打印 healed(所以不是这批治好的),
+按基线一直以来的纪律摘除,各段留 `[已自愈…]` 批注。剩 13 条,`0 new`。
+
+**9. battery 六条泳道 → 四条,两枚探针 → 一枚**(见第三节)。
+
+#### 二、保留清单与理由
+
+| 保留 | 理由 |
+|---|---|
+| `messages.jsonl` 的**读**半边(`loadJsonl` / `readLineRange` / 冷尾页 / 游标页 / 锚点页 / marker / `readTranscriptFile` / `readTranscriptBuffer`) | 裁定 9a:存量抄本永久原地只读。`history` 工具、`verify #6` 的存量对账、影子的真相侧都还从它取数 |
+| `sessionReads.*FromTranscript` 三口 | F11:影子断言与事件写侧取材的**真相面**,本来就不经过投影;抄本没了它们读到空,判据不变(错的是"两侧同源",不是"读得到") |
+| `pageMessages` / `listUserMarkers` 右边那半 | **不是第二份真相**,是**空会话的形状口**:前者返回值不可空,而事件侧对"还没有任何消息事件的会话"返回 `undefined`,空页的形状总得有人给 |
+| `sliceForHistory` 下面那条 store 切片 | **能力缺口**的退路,与"事实在哪一侧"无关:①没装 `historyBuilder`(轻量单测)②给了 `upToMessageId`(事件版要按 seq 折,至今无调用点)。而且它取的是**内存 store**(S3w-1 起由投影补水),不是抄本文件 |
+| `SessionWritePlan` / `dirtySeq` 整套 | 命令面 reducer 的产物(`core/session/commands.ts`),驱动只是不读它了;退役归 F 线 |
+| `sanitizeSessionOnStartup` / `repairOnFirstTouch` 本体 | **没有一格是"仅服务于写回"的**:`prepare` 只承担了中断 step/toolCall 的结局合成,`isStreaming` 与会话级时间线元数据(summary / contextSize / lastInputTokens)仍然只有它管 |
+| `loadSessionWithAdapters` 里的 `saveSession(repaired)` | **意思变了但没死**:修复的消息半边落不了盘(每次冷加载现算,幂等),但会话半边正是住 `meta.json` 的那几格。就地写清楚了 |
+| `ONETHING_SESSION_HYDRATE` 开关 | 见"待拍板" |
+| `session-dehydrate.ts` 的 `session:check` 白名单条目 | 实测也已 0 命中,但它**不是被这一批改没的**(本批一个字没动它),超出授权范围,原样留着 |
+
+#### 三、裁定 9b:legacy 整文件会话首触迁移进 events
+
+触发点从"冷加载后 1 秒的惰性定时器"改成**冷加载那一刻同步做完**
+(`driver.load()` → `migrateLegacySessionNow`)。**同步是必须的,不是偏好**:
+事件层"这条会话记不记账"的判据是**会话目录在不在**(`event-log.ts` 的
+`resolveEnabled`);legacy 会话没有目录,于是从加载到迁移完成之间的每一条事件都被
+静默丢掉 —— 从前那 1 秒窗口无所谓(真相在 `messages.jsonl` 里),现在事件是唯一
+账本,丢掉就是丢历史。同步做完之后,第一条命令跑起来时目录与 imported 都已在盘上,
+`ensureState` 一读就接上号(不必碰 `resetSessionEventLogCache`:legacy 会话此前
+`resolveEnabled` 恒假,不可能留下过期的 seq 状态)。
+
+产物形状与 `scripts/migrate-sessions-events.mjs` 的 `makeImportedRecord`
+**逐字段同形**:一条消息一条 `message/imported`,`seq` 从 1 起,`time` 取消息自己
+的 `timestamp`(迁移不给历史重新盖时间戳),`data.synthetic: true` 是带内幂等标记
+(`coverageState` 认的就是这个类型),`surfaceOp: 'append'`。编码走 core 的
+`encodeSessionLogEventLine`,校验走 `decodeSessionLogEventLine` 逐条对 id —— 与从前
+迁抄本时同一道门。
+
+**只走全量导入这一档**:能走到这里 = `jsonlExists()` 为假 = 这条会话连
+`events.jsonl` 都没有,所以运维脚本那套覆盖感知合并 / 整体重编号
+(`planNativeMerge` / `shiftEventRecord`)在这条路上**结构性用不到** —— 没有既有
+事件可合、可平移。有既有事件的会话仍然走
+`scripts/migrate-sessions-events.mjs --apply`,那边一行没动。因此**没有把脚本的核心
+搬成库函数**:要复用的只有 6 行记录构造,而为它把 `planNativeMerge` 一起搬过来会
+在产品层留一段永远走不到的分支。
+
+先写暂存目录 → 逐条校验 → 原子 `rename` 换入 → 原件移进 `sessions/legacy-backup/`。
+从前那道"代际比对"(读与提交之间可能有写落盘)**结构性消失**:同步路径上读到提交
+之间一个 `await` 都没有。只留一条让路规则:**在途 legacy 写还挂着就这一轮不迁**
+(`inFlightWrites.has(...)`),下次冷加载再试 —— 否则会读到旧内容,而那次写随后又把
+legacy 文件重建出来,新数据永久落进无人读取的 backup(这正是 1.3 那条回归)。
+`storage-driver-migration-race.test.ts` 按新口径重写,钉的还是同一件事:**m2 不能丢**。
+
+**用例**:`storage-driver.test.ts` 三条 —— 冷加载 legacy 会话产出 8 条
+`message/imported`(seq 1..8、time 取消息 timestamp、`synthetic:true`、
+`surfaceOp:'append'`)且**不产出 `messages.jsonl`**、原件进 legacy-backup;已是事件
+会话 = no-op;坏掉的 legacy 文件安全失败(不留 `.migrating`、原文件原样)。
+
+**真机现状**:legacy 整文件会话 **0 间**(B8 记的那 1 间早已被旧的惰性迁移转成
+jsonl)。所以这条路今天是**为正确性而写,不是为存量而写** —— 它守的是"有人从备份
+恢复出一个 legacy 会话"那一类场景。
+
+#### 四、battery:六条泳道 → 四条,两枚探针 → 一枚
+
+- **抄本泳道**从两条收成一条。`shadow rollback` 那条验的是回滚杆能不能把写路径接
+  回去 —— 杆没了,泳道也没了。留下的那条(`no transcript (deleted in 6b)`)语义又变
+  了一次:它不再验"某一档",而是**删除本身的运行时证据** —— 全场景跑一遍,
+  `messages.jsonl` 一个字节都不许长。`expectTranscript: 'present'` 那半边判据一并删。
+- **补水泳道**从两条收成一条。`legacy rollback`(`ONETHING_SESSION_HYDRATE=messages`)
+  的取材池是"带抄本的会话",而那批会话只可能由 `shadow` 抄本泳道写出来 —— 池子的
+  产地没了,泳道也就没了可跑的会话。`laneTaken` 留着:哪天补回第二条,
+  "取材互不相交"这条纪律还在。
+- **写失败探针**从两枚收成一枚。上抛成了无条件行为,`shadow` 那枚对照探针没有了
+  对象;留下的那枚判据不变(至少一次 `removeMessage` 报错,而且报的必须是
+  `session event log write failed` 这件事,不是随便一个错误)。
+- `startServer` 里 `delete env.ONETHING_SESSION_TRANSCRIPT` 那句删掉(没有可清的了),
+  `ONETHING_SESSION_HYDRATE` 那句照旧。
+
+#### 五、测试改动(语义,不是修补)
+
+| 文件 | 改法 |
+|---|---|
+| `runtime/sessions/__tests__/storage-driver.test.ts` | 整体重写:写侧断言改"只落 meta.json / 三档写计划对存量抄本一视同仁";读侧用 `seedTranscript` **直接铺存量化石**(驱动不再有路写出它),整会话读回 / 崩溃截断自愈 / 冷尾页 / 游标页 / 锚点页 / marker 一条不减;新增裁定 9b 三条;新增"没有抄本时两口都答 undefined(冷热两态)"—— 那是上面 ② 的钉子 |
+| `runtime/sessions/__tests__/storage-driver-migration-race.test.ts` | 1.3 的回归换口径:从"先 await 排空在途写"改成"见到在途写就让这一轮",断言仍是 m2 不丢 |
+| `runtime/sessions/__tests__/crash-recovery.test.ts` | 四条用例的"落盘现场"改 `seedTranscriptFossil` 直写;第一条末尾的"修复必须写回磁盘"换成**"再冷加载一次照样修得对"**(修复从此只在内存里,幂等) |
+| `backend/session/__tests__/transcript-off.test.ts` → `event-write-failure.test.ts` | 三态开关那组整组删;上抛四条从"对照"变"直断";refold 那组一字未动 |
+| `backend/session/__tests__/event-log-s1.test.ts` | G12 拒写与 blob 写失败两条从"返回 undefined"改"上抛";`beforeEach` 里那句显式扳 `shadow` 删掉 |
+| `backend/session/__tests__/reads-read-mode.test.ts` → `reads-projection.test.ts` | "两档一致"整组换成**"只认投影"**(仓库替身里那份故意改坏的抄本一个字也漏不进来);新增一组**删兜底自证**:事件折不出历史时读门面给空,而 `*FromTranscript` 照旧读得到 |
+| `backend/session/__tests__/{shadow-read-mode,events-reads,event-translator-write-side-read}.test.ts` | 去掉档位钉子;`events-reads` 里"开关本身"那条删,"折不出历史退回抄本"那条**反过来**断言给空 |
+| `backend/rpc/__tests__/sessions-domain.test.ts` | 读路由那组从"两档对照"收成"两条读入口都落在投影上";会话存在性仍问仓(投影折不出 ≠ 查无此会话),那条逐字保留 |
+| `backend/session/__tests__/commands.test.ts` / `backend/stores/__tests__/sessions-clear-messages.test.ts` | 留档相关断言退役;`clear` 只剩写完那一次强刷。**顺带查明**:`stores` 那个 `clearSessionMessages` **今天零生产调用点** —— 群聊「清空聊天记录」走的是命令面 `sessionCommands.replaceAll{clear}`(`wiring/collab/room-config.ts`),`session/cleared` 是那条路写的。所以这个文件只断言"不再留档 + 被清的消息事件原样还在",遮蔽事件的判据在 `event-translator.test.ts` |
+| `backend/stores/__tests__/core-session-store-helpers.test.ts` | 启动期全量 sanitize 那条随函数一起删 |
+
+#### 六、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run typecheck` | 0 |
+| 定向测试(`core/session` + `backend/**` + `runtime/sessions`) | **304 文件 / 2609 用例全绿**(1 skipped) |
+| `bun run boundary:gate` | 0 boundary failures |
+| `bun run session:gate` | 0 known / 0 new |
+| `bun run log:gate` | 4 known,none new |
+| `bun run transport:gate` | 42 常量 / 四壳 2392 行,无上升(本批未碰传输面) |
+| `node scripts/session-verify-gate.mjs`(真机只读) | 13 known,**0 new**,0 healed |
+| `bun run sessions:hydration-contract`(真机只读) | 443 会话 / **0 failed** / 8 baseline-skip(口径补齐见上节) |
+| `bun run sessions:shadow-battery` | **GREEN** —— 27 场景 × 9 passes;runs 321 / mismatches 0 / appendFailures 0 / refoldChecks 225 / refoldMismatches 0 / `session-shadow.jsonl` 0 行;四条泳道 + 一枚探针全 PASS |
+| `bun run sessions:storage-report`(真机只读) | 见下 |
+
+**删旧后的存储基准(2026-08-26,443 会话 / `sessions/` 全部 1.20GB)**:
+
+```
+events.jsonl        432.0MB   ← 唯一持久化,从此只有它涨
+messages.jsonl      392.6MB   ← 存量化石,冻在停写那一刻(裁定 9a)
+blobs/                9.0MB   (orphan 0B)
+meta.json             1.5MB
+messages.cleared-*   14.3MB   ← 产地已关(裁定 10),这个数不该再涨
+legacy-backup/      381.4MB   ← S1a 迁移的原抄本副本,同样无治理器
+其它                618.4KB
+events+blobs ÷ messages = 1.12   (§8 的 S3w-3 验收目标 1.10–1.20 ✔)
+```
+
+#### 七、待拍板 / 留账
+
+1. **`ONETHING_SESSION_HYDRATE=messages` 这根杆要不要一起退役。** 本批**没动它**
+   (授权范围只写了抄本那两根),但它现在是一根**只对存量有效、而且已经不安全**的
+   杆:①停写之后出生的会话没有抄本,扳过去补出来的是空;②停写之前出生、之后又聊过
+   的会话,抄本冻在停写那一刻,扳过去等于把那之后的历史补丢。已在 `read-mode.ts`
+   就地写明"不要扳它",并撤掉了它的 battery 泳道(取材池没了)。**建议退役**,等
+   用户裁定。
+2. **§15.21 第 1 条写侧仍待拍板**(让 `tool/result` 走 `appendSurfaceAwareEvent`),
+   本批一字未动。
+3. **`clearSessionMessages` 零生产调用点**(见上表)。它是 `store.ts` /
+   `stores/index.ts` 的导出面,删它属于面收敛,不在本批范围。

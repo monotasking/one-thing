@@ -83,7 +83,7 @@ import {
 	sessionPreviewText,
 } from "@onething/backend/session/reads.js";
 import { sessionEventTranslator } from "@onething/backend/session/event-translator.js";
-import { isSessionTranscriptOff } from "@onething/backend/session/read-mode.js";
+import { hydrateSessionMessagesFromProjection } from "@onething/backend/session/hydrate.js";
 import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/stores/sessions.js";
 import { configureServerPluginCatalogPort } from "./plugin-catalog.js";
 import { configureServerSearchPort } from "./search-providers.js";
@@ -3038,10 +3038,6 @@ export function createLocalServerSessionStore(
 		readJsonFile: readCoreJsonFile,
 		writeJsonFileAsync: writeSessionJsonFileAsync,
 		deleteJsonFile,
-		// S3w-2:抄本三态开关(§14.3-A)。这只仓库是 echo/test 后端专用的
-		// (真引擎走 `createAppBackedServerSessionStore`),但判据只该有一份 ——
-		// 少接一处就等于多一条"off 档下仍在写抄本"的暗路。
-		skipMessageWrites: isSessionTranscriptOff,
 		logger: consoleLog,
 	};
 	const storageDriver = createHybridSessionStorageDriver<ServerChatSession>(hybridSessionStorageDriverOptions);
@@ -3055,6 +3051,18 @@ export function createLocalServerSessionStore(
 		writeJsonFileAsync: writeSessionJsonFileAsync,
 		deleteJsonFile,
 		storageDriver,
+		// S3w-1 的冷加载补水岔口。**这只仓库也得接**(与 app store 那只同一句):
+		// 裁定 9b 之后 legacy 整文件会话在首次冷加载那一刻就被迁进 `events.jsonl`,
+		// 从那以后**只有认事件的读者看得见它的历史** —— 少接一处,这只仓库就会把
+		// 一条刚迁完的会话读成空(`session-messages/page` 的最后一级兜底正是它)。
+		//
+		// 条件是路径对得上:补水口读的是**进程级** store 路径
+		// (`event-log.ts` 的 `getSessionEventsLogPath`),而这只仓库可以被开在任意
+		// `storePath` 上。开在别处时不接 —— 接了会去读另一个 store 的账本,那比读空
+		// 还坏。生产上这只仓库只服务 echo/test 后端,而它跟着进程 store 走。
+		...(resolvedStorePath === resolve(getOnethingStorePath())
+			? { hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection }
+			: {}),
 		getCurrentSessionId: () => getOnethingCurrentSessionId(appStatePath),
 		setCurrentSessionId: (sessionId) => {
 			setOnethingCurrentSessionId(appStatePath, sessionId);
@@ -3111,7 +3119,6 @@ export function createLocalServerSessionStore(
 				update(meta as unknown as { [key: string]: unknown }),
 			),
 		flushSessionSave: (sessionId) => repository.flushSessionSave(sessionId),
-		archiveMessages: (sessionId) => storageDriver.archiveMessages(sessionId),
 		patchSession: (sessionId, patch, mutateIndexMeta) =>
 			repository.patchSession(sessionId, patch, mutateIndexMeta),
 		// 协作署名是桌面/引擎侧的事,server 不盖章(与迁移前 `session.messages.push`

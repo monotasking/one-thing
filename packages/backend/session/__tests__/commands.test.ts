@@ -34,7 +34,6 @@ function harness(messages: ChatMessage[] = [], sessionOverrides: Partial<ChatSes
   const saves: SaveCall[] = []
   const indexMetaUpdates: Record<string, unknown>[] = []
   const sqliteCalls: string[] = []
-  const archived: string[] = []
   const flushed: string[] = []
   const sessionPatches: Record<string, unknown>[] = []
 
@@ -85,10 +84,6 @@ function harness(messages: ChatMessage[] = [], sessionOverrides: Partial<ChatSes
     flushSessionSave: async sessionId => {
       flushed.push(sessionId)
     },
-    archiveMessages: sessionId => {
-      archived.push(sessionId)
-      return `/tmp/${sessionId}.archive.jsonl`
-    },
     stampCollabAgentId: (_sessionId, msg) => ({ ...msg, agentId: 'agent-1' }),
     patchSession: (sessionId, patch, mutateIndexMeta) => {
       if (sessionId !== 's1') return false
@@ -101,7 +96,7 @@ function harness(messages: ChatMessage[] = [], sessionOverrides: Partial<ChatSes
     },
   })
 
-  return { session, commands, saves, indexMetaUpdates, sqliteCalls, archived, flushed, sessionPatches }
+  return { session, commands, saves, indexMetaUpdates, sqliteCalls, flushed, sessionPatches }
 }
 
 describe('sessionCommands — 持久化接线', () => {
@@ -216,29 +211,25 @@ describe('sessionCommands — 持久化接线', () => {
     expect(h.session.messages[0].content).toBe('edited')
   })
 
-  it('replaceAll{clear}:留档在强刷之后,写完再强刷一次,索引计数归零', async () => {
+  // 批 6b(裁定 10):留档退役 —— `session/cleared` 只遮蔽不删,事件本身就是档。
+  // 连带前置那次强刷("留档必须在 flush 之后")也消失,只剩写完那一次。
+  it('replaceAll{clear}:写完强刷一次,索引计数归零,不再留档', async () => {
     const h = harness([message('m1'), message('m2')])
 
     const result = await h.commands.replaceAll('s1', { messages: [], reason: 'clear' })
 
-    expect(result).toEqual({
-      replaced: true,
-      previousCount: 2,
-      archivePath: '/tmp/s1.archive.jsonl',
-    })
-    expect(h.flushed).toEqual(['s1', 's1'])
-    expect(h.archived).toEqual(['s1'])
+    expect(result).toEqual({ replaced: true, previousCount: 2 })
+    expect(h.flushed).toEqual(['s1'])
     expect(h.saves).toEqual([{ sessionId: 's1', lazy: false, plan: { kind: 'structural' } }])
     expect(h.session.messages).toEqual([])
     expect(h.indexMetaUpdates.at(-1)).toMatchObject({ messageCount: 0 })
   })
 
-  it('replaceAll{replaced}:不留档、不强刷', async () => {
+  it('replaceAll{replaced}:不强刷', async () => {
     const h = harness([message('m1')])
     const result = await h.commands.replaceAll('s1', { messages: [message('m9')], reason: 'replaced' })
     expect(result.replaced).toBe(true)
     expect(h.flushed).toEqual([])
-    expect(h.archived).toEqual([])
     expect(h.session.messages.map(m => m.id)).toEqual(['m9'])
   })
 

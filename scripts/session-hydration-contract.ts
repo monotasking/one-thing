@@ -35,6 +35,9 @@
  *    七类):**产品代码在这种会话上根本不会补水**(`hydrateSessionMessagesFromProjection`
  *    返回 undefined),所以它不是合同的对象;
  *  - `noTranscript` —— 没有 `messages.jsonl`(纯事件会话):老路没有对象可比;
+ *  - **抄本末条之后那一段** —— 批 6a 起抄本停写、批 6b 起写代码已删,`events.jsonl`
+ *    继续独走。所以比对范围按**抄本实际的末条**截断(与 `session-verify.ts` #6 同
+ *    口径):独走段只计数、只打印,不判红;抄本覆盖区之内的洞仍然是洞;
  *  - `partialCoverage` —— 事件只覆盖历史的后缀(混合覆盖会话)。这类**记为
  *    FAIL 的一个独立类**而不是静默跳过:翻档之后它们的 store 会少掉 legacy 前缀,
  *    这正是翻默认前必须先看清的那件事;
@@ -223,11 +226,30 @@ export function checkSession(sessionsDir: string, sessionId: string): HydrationC
   const transcriptById = new Map(fromTranscript.map(message => [message.id, message]))
   const projectionIds = new Set(fromProjection.map(message => message.id))
 
+  /**
+   * **存量对账的右边界**(S3w-3 批 6b,§15.22;口径与 `session-verify.ts` #6 逐字
+   * 相同 —— 那边批 6a 就改过,这边当时漏了)。
+   *
+   * 抄本自批 6a 停写、批 6b 删码之后**永久停在停写那一刻**,而 `events.jsonl`
+   * 继续独走。于是"投影 ≡ 抄本"这句话只在**抄本还认识的那一段**上成立;那一段
+   * 之后的每一条都是抄本管不着的新历史。不设这条边界的话,这道门会在每一条**还
+   * 在用**的会话上恒红,而且红得一天比一天多 —— 那不是合同破了,是合同问错了。
+   *
+   * 边界 = 投影里**最后一条抄本还认识的**消息。它之前的洞仍然是洞(漏一条就是
+   * 真的漏),它之后的只计数、只打印。抄本一条都不认识时边界 = -1,全篇算独走段。
+   */
+  let lastCoveredIndex = -1
+  for (const [index, projected] of fromProjection.entries()) {
+    if (transcriptById.has(projected.id)) lastCoveredIndex = index
+  }
+
   let unknownProjected = 0
-  for (const projected of fromProjection) {
+  let beyondTranscript = 0
+  for (const [index, projected] of fromProjection.entries()) {
     const counterpart = transcriptById.get(projected.id)
     if (!counterpart) {
-      unknownProjected += 1
+      if (index > lastCoveredIndex) beyondTranscript += 1
+      else unknownProjected += 1
       continue
     }
     const a = canonicalChatMessage(counterpart as never)
@@ -236,13 +258,17 @@ export function checkSession(sessionsDir: string, sessionId: string): HydrationC
     push(`canonical differs for ${projected.id} at ${firstDiffPath(a, b) ?? '(root)'}`)
   }
   if (unknownProjected > 0) push(`missing-in-transcript: ${unknownProjected} projected message(s)`)
+  if (beyondTranscript > 0) classes[`beyond-transcript(events-only)`] = (classes[`beyond-transcript(events-only)`] ?? 0) + beyondTranscript
 
   const uncovered = fromTranscript.filter(message => !projectionIds.has(message.id))
   if (uncovered.length > 0) {
     push(`missing-in-projection: ${uncovered.length} transcript message(s) (legacy prefix?)`)
   }
-  if (fromTranscript.length !== fromProjection.length) {
-    push(`count differs: transcript ${fromTranscript.length} vs projection ${fromProjection.length}`)
+  // 条数只在**被覆盖的那一段**上比(独走段两边比不了,不参与)。
+  const coveredCount = fromProjection.length - unknownProjected - beyondTranscript
+  const transcriptCovered = fromTranscript.filter(message => projectionIds.has(message.id)).length
+  if (transcriptCovered !== coveredCount) {
+    push(`count differs on the covered range: transcript ${transcriptCovered} vs projection ${coveredCount}`)
   }
   const coveredOrder = fromTranscript.filter(message => projectionIds.has(message.id)).map(message => message.id)
   const projectedOrder = fromProjection.filter(message => transcriptById.has(message.id)).map(message => message.id)

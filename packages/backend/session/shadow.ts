@@ -18,9 +18,9 @@
  *    部分一次性写死);这里不再额外豁免字段。真的不等就是真的不等 —— 那正是
  *    这道门存在的理由。
  * 4. **真相侧永远是抄本**(F11,§13.2)。取数只走
- *    `sessionReads.listMessagesFromTranscript` —— 它无视 `ONETHING_SESSION_READ`。
- *    走 `listMessages` 的话,读模式一切到 `events`,两侧就都是投影:自己跟自己
- *    比,永远相等,门以**错误的理由**变绿。切了读模式之后这道比对**照跑不误**
+ *    `sessionReads.listMessagesFromTranscript` —— 它不经过投影。
+ *    走 `listMessages` 的话两侧就都是投影:自己跟自己
+ *    比,永远相等,门以**错误的理由**变绿。切了读路之后这道比对**照跑不误**
  *    (它比的始终是"抄本 vs 投影",与谁在给产品供数无关)——S2b 之后它就是
  *    那道回头看的迁移账。
  *
@@ -320,8 +320,8 @@ export function sessionEventCoverageIsPartial(
   state: { byMessageId: Map<string, unknown> },
 ): boolean {
   if (legacyPartialSessions.has(sessionId)) return true
-  // F11:真相侧只认抄本。走 `listMessages` 的话,`ONETHING_SESSION_READ=events`
-  // 一开这份"事实"就是投影自己 —— 每条 id 当然都认得,永远判成"覆盖完整"。
+  // F11:真相侧只认抄本。走 `listMessages` 的话这份"事实"就是投影自己 ——
+  // 每条 id 当然都认得,永远判成"覆盖完整"。
   const messages = sessionReads.listMessagesFromTranscript(sessionId)
   for (const message of messages) {
     if (!state.byMessageId.has(message.id)) {

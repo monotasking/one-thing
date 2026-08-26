@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { CORE_INTERRUPTED_TOOL_ERROR } from '@onething/core/session'
 import {
   applyInheritedSessionWorkingDirectory,
   applySessionAgent,
@@ -39,7 +38,6 @@ import {
   planSessionCascadeDelete,
   prependSessionMeta,
   resolveSessionDetailsSnapshot,
-  sanitizeSessionsOnStartupWithAdapters,
   subtractSessionMessageUsage,
   sumSessionMessageUsage,
   syncSessionSideEffectWithReadyAdapters,
@@ -346,69 +344,6 @@ describe('core session store helpers', () => {
       errorMessage: 'custom sync error',
     })).toBe('error')
     expect(errors[0]?.[0]).toBe('custom sync error')
-  })
-
-  it('sanitizes startup sessions through core host adapters', () => {
-    type StartupSession = {
-      id: string
-      messages: Array<{
-        id: string
-        role: string
-        isStreaming?: boolean
-        steps?: Array<{ title: string; status: string; error?: string }>
-        toolCalls?: Array<{ status: string }>
-      }>
-    }
-    const sessions = new Map<string, StartupSession>([
-      ['s1', {
-        id: 's1',
-        messages: [
-          {
-            id: 'm1',
-            role: 'assistant',
-            isStreaming: true,
-            steps: [{ title: 'Running: bash', status: 'running' }],
-            toolCalls: [{ status: 'executing' }],
-          },
-        ],
-      }],
-      ['s2', {
-        id: 's2',
-        messages: [{ id: 'm2', role: 'user' }],
-      }],
-    ])
-    const calls: string[] = []
-    const savedSessions = new Map<string, StartupSession>()
-
-    const result = sanitizeSessionsOnStartupWithAdapters({
-      loadIndex: () => [
-        { id: 's1' },
-        { id: 's2' },
-        { id: 'missing' },
-      ],
-      loadSession: id => sessions.get(id),
-      saveSession: (id, session) => {
-        savedSessions.set(id, session)
-        calls.push(`save:${id}:${session.messages[0].isStreaming}`)
-      },
-      syncSession: session => calls.push(`sync:${session.id}`),
-    })
-
-    // COW(P0.2 area ①,F4):修好的是**新的**会话对象 —— 落盘/同步拿到的是新的那份,
-    // `loadSession` 手里那份原样不动。
-    expect(result).toEqual({ scanned: 3, sanitized: 1, missing: 1 })
-    expect(sessions.get('s1')?.messages[0]).toMatchObject({
-      isStreaming: true,
-      steps: [{ status: 'running' }],
-      toolCalls: [{ status: 'executing' }],
-    })
-    expect(savedSessions.get('s1')?.messages[0]).toMatchObject({
-      isStreaming: false,
-      // R-a(§13.6):口径以 prepare 为准 —— cancelled + 共用常量那一句。
-      steps: [{ status: 'cancelled', error: CORE_INTERRUPTED_TOOL_ERROR }],
-      toolCalls: [{ status: 'cancelled', error: CORE_INTERRUPTED_TOOL_ERROR }],
-    })
-    expect(calls).toEqual(['save:s1:false', 'sync:s1'])
   })
 
   it('loads sessions through cache, path normalization, sanitize, and host adapters', () => {

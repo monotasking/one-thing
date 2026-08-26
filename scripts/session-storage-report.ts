@@ -29,11 +29,12 @@ export interface SessionStorageRow {
   messages: number
   meta: number
   /**
-   * `messages.cleared-*` 的存档(§14.6 裁定 10 待拍的那一批)。
+   * `messages.cleared-*` 的存档 —— **只增不减的化石,产地已在 S3w-3 批 6b 关掉**
+   * (§14.6 裁定 10:`session/cleared` 只遮蔽不删,事件本身就是档)。
    *
-   * 单列是因为它今天**没有任何治理器**管:第一次真机跑出来 436 条会话里它占了
-   * 三分之一强,比 blob 孤儿大两个数量级 —— 报表要把最大的那块说出来,而不是
-   * 让它躲在"其它"里。
+   * 仍然单列:存量那批按裁定 9a 原地不动、没有治理器管,第一次真机跑出来 436 条
+   * 会话里它占了三分之一强,比 blob 孤儿大两个数量级 —— 报表要把最大的那块说出来,
+   * 而不是让它躲在"其它"里。这个数从此**不该再涨**;涨了就是留档代码活回来了。
    */
   cleared: number
   /**
@@ -214,7 +215,7 @@ function main(): void {
     console.log(`  blobs/          ${formatBytes(totals.blobs)}  (orphan/ ${formatBytes(totals.orphanBlobs)})`)
     console.log(`  messages.jsonl  ${formatBytes(totals.messages)}`)
     console.log(`  meta.json       ${formatBytes(totals.meta)}`)
-    console.log(`  messages.cleared-*  ${formatBytes(totals.cleared)}  (§14.6 裁定 10 待拍;今天没有治理器管)`)
+    console.log(`  messages.cleared-*  ${formatBytes(totals.cleared)}  (裁定 10 已退役:产地关了,存量原地只读)`)
     console.log(`  legacy-backup/  ${formatBytes(totals.legacyBackup)}  (S1a 迁移留下的原抄本副本;同样无治理器)`)
     console.log(`  其它            ${formatBytes(other)}`)
     console.log(`  sessions/ 全部  ${formatBytes(totals.total)}`)

@@ -48,9 +48,7 @@ import {
   eventsListUserMarkers,
   eventsPageMessages,
 } from './events-reads.js'
-import { countSessionReadFallback } from './event-stats.js'
 import { isSessionFreezeEnabled } from './freeze.js'
-import { isSessionEventsReadMode } from './read-mode.js'
 import { getLiveSessionProjection } from './projection-cache.js'
 import { sessionProjectionOptions } from './projection-blobs.js'
 import { getLogger } from '../wiring/logging/index.js'
@@ -74,65 +72,27 @@ function guard<T>(value: T): T {
 }
 
 /**
- * `events` 模式的取数(S2a,§11.1)。
+ * 事件投影的取数(S2a,§11.1;S3w-3 批 6b 收成唯一路)。
  *
- * 七个方法各有一行这样的岔口:开关在 `events` 上、且这条会话的事件里真的有
- * 历史时,答案从投影来;否则(默认 / 老会话)一字不改地走原来那条路。
- * **岔口只在这一层**:再往下的仓库、驱动、pager 都不知道有第二种读法。
+ * 从前这里是个岔口:`ONETHING_SESSION_READ` 在 `events` 上才走投影,否则退回
+ * `messages.jsonl`,而每个 routed 方法右边都挂着一个 `?? getSessionMessages(...)`
+ * 兜底。**两样都已删**(§15.22):开关烧了(§15.8 批 6 的唯一确认点),兜底的
+ * 命中率在批 6a 之后量成 0 —— 结构性地板(写侧读占位)两处已归位,剩下的非零
+ * 读数才真的是"事件里折不出这段历史",而那种会话在真机上是零(400 间已
+ * `message/imported`、33 间原生覆盖、10 间空壳)。legacy 整文件会话按裁定 9b
+ * 在冷加载那一刻就被迁进事件账本,不再需要读路兜。
+ *
+ * **出错仍然吞**:一次物化异常不该把整个会话面炸掉,调用方拿到 `undefined` 走
+ * 各自的空值语义(从前那句 "falling back to messages" 已经不成立 —— 没有第二侧
+ * 可退了,所以 warn 的措辞也改了)。
  */
 function fromEvents<T>(read: () => T | undefined): T | undefined {
-  if (!isSessionEventsReadMode()) return undefined
   try {
     return read()
   } catch (error) {
-    log.warn('events-mode read failed, falling back to messages', {}, error)
+    log.warn('events projection read failed', {}, error)
     return undefined
   }
-}
-
-/**
- * 兜底半边的**命中遥测**(S3w-1,§15.4)。零行为变化,只记一个数。
- *
- * 每个 routed 方法的 `?? getSessionMessages(...)` 都裹一层这个:`events` 模式
- * 下走到右边 = 事件里折不出这条会话的历史(未迁移 / legacy 整文件 / 物化出错),
- * 于是产品线的这一次读仍然走在抄本上。S3w-3 要删掉这批兜底,而**删之前必须先
- * 量到 0** —— 今天它是完全静默的。
- *
- * 两条不计的:
- *  - `messages` 模式 —— 那时每一次读都从这里过,数它没有意义;
- *  - **抄本也是空的** —— 刚建的会话、还没说第一句话的会话,两侧都没有历史。
- *    那不是"兜底救了一次",那是"这条会话还什么都没有"。把它算进去,这个数
- *    永远到不了 0,门也就永远没有判据(battery 实测:不加这一条会计出 820 次,
- *    全部是空会话的例行读)。
- *
- * **曾经的结构性地板,已归位**(§15.9 诊断 1 → §15.18 → §15.19):写 `run/start`
- * **之前**读助手占位消息的那类取材点 —— 那条 assistant 此刻在事件账本里还没有产地
- * (翻译器故意不翻 `isStreaming` 的 assistant,`run/start` 才是它的那一格),于是
- * `fromEvents` 恒折不出、每次必然掉进兜底。它们本来就是 §14.1 表里的"写侧读抄本",
- * 按批 7 的纪律该走 `getMessageFromTranscript`(那口不经过 `fromEvents`,也就不算兜底)。
- *  - `stream-executor.ts:194`(run 开张前读占位)—— 批 6 前置已改(§15.18):
- *    battery 321 → 16。
- *  - `agent-loop-executor.ts` 的 `rotateAssistantWriterIdentity`(steer 换锚点,
- *    刚 `addMessage` 就读回来喂自己那一格 `run/start`)是它的孪生 —— 批 6a 已改
- *    (§15.19),余下的 16 出自这里,改完 battery `fallbackHits` 落到 0。
- *
- * 于是 S3w-3 删兜底的判据("命中率量成 0")现在是干净的:再有非零读数,就真的是
- * "事件里折不出这段历史"了。
- */
-function fallbackCarriesHistory(value: unknown): boolean {
-  if (value === undefined || value === null) return false
-  if (Array.isArray(value)) return value.length > 0
-  if (typeof value === 'number') return value > 0
-  if (typeof value === 'object') {
-    const messages = (value as { messages?: unknown }).messages
-    return Array.isArray(messages) ? messages.length > 0 : true
-  }
-  return true
-}
-
-function transcriptFallback<T>(value: T): T {
-  if (isSessionEventsReadMode() && fallbackCarriesHistory(value)) countSessionReadFallback()
-  return value
 }
 
 /**
@@ -187,7 +147,6 @@ export const sessionReads = {
   /** 一条会话的全部消息。`sanitize` 打开时同时告诉调用方"到底动没动"。 */
   listMessages(sessionId: string, options: ListMessagesOptions = {}): ListMessagesResult {
     const messages = fromEvents(() => eventsListMessages(sessionId))
-      ?? transcriptFallback(getSessionMessages(sessionId))
     if (!messages) return { messages: [], changed: false }
     if (!options.sanitize) return { messages: guard(messages), changed: false }
     // F9:`changed` 由 sanitizer 自己带回来,不再靠 `===` 比引用。
@@ -199,14 +158,13 @@ export const sessionReads = {
    * **抄本侧**的那一份消息 —— 永远来自 `messages.jsonl`,与读模式无关(F11)。
    *
    * 这不是 `listMessages` 的一个便利别名,而是影子断言唯一合法的**真相侧**取数。
-   * `listMessages` 自 S2a 起带着 `ONETHING_SESSION_READ=events` 的岔口:开关一开,
-   * 它返回的就是事件投影本身 —— 影子拿它当"事实"去比"投影",两侧同源,门以
-   * 错误的理由变绿(F11:判据污染)。所以这里**故意不经过 `fromEvents`**。
+   * `listMessages` 自 S2a 起从事件投影取数(批 6b 之后是唯一路)—— 影子拿它当
+   * "事实"去比"投影",两侧同源,门以错误的理由变绿(F11:判据污染)。所以这里
+   * **故意不经过 `fromEvents`**。
    *
    * 改动这个方法的人请先回答一个问题:影子的两侧还是两个来源吗?一旦这里也接上
    * 事件读法,`sessions:shadow-battery` 会在 `shadow-read-mode.test.ts` 上当场红
-   * —— 那条用例把读模式钉在 `events` 上,故意让抄本与事件分岔,断言影子**必须**
-   * 报出来。
+   * —— 那条用例故意让抄本与事件分岔,断言影子**必须**报出来。
    */
   listMessagesFromTranscript(sessionId: string): readonly ChatMessage[] {
     return guard(getSessionMessages(sessionId) ?? [])
@@ -246,23 +204,28 @@ export const sessionReads = {
     return found ? guard(found) : undefined
   },
 
-  /** 不加载整会话的分页(pager 走存储驱动)。 */
+  /**
+   * 不加载整会话的分页(pager 走事件账本的 pager)。
+   *
+   * 右边那条**不是抄本兜底**(S3w-3 批 6b 删的是那种):这个方法的返回值不可空,
+   * 而事件侧对"还没有任何消息事件的会话"(刚建的、空壳的)返回 `undefined` ——
+   * 一个**空页的形状**总得有人给出来,仓库的 pager 就是它。它取的是同一份内存
+   * store(自 S3w-1 起由投影补水),不是第二份真相。
+   */
   pageMessages(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse {
     return fromEvents(() => eventsPageMessages(request))
-      ?? transcriptFallback(getSessionMessagesPage(request))
+      ?? getSessionMessagesPage(request)
   },
 
-  /** 用户消息锚点(会话目录 / 跳转用)。 */
+  /** 用户消息锚点(会话目录 / 跳转用)。右边同 `pageMessages`:空会话的形状口。 */
   listUserMarkers(sessionId: string): readonly UserMessageMarker[] | undefined {
     return fromEvents(() => eventsListUserMarkers(sessionId))
-      ?? transcriptFallback(getSessionUserMessageMarkers(sessionId));
+      ?? getSessionUserMessageMarkers(sessionId);
   },
 
   getMessage(sessionId: string, messageId: string): Readonly<ChatMessage> | undefined {
     const fromEventLog = fromEvents(() => eventsGetMessage(sessionId, messageId))
-    if (fromEventLog) return guard(fromEventLog)
-    const message = transcriptFallback(getSessionMessages(sessionId))?.find(item => item.id === messageId)
-    return message ? guard(message) : undefined
+    return fromEventLog ? guard(fromEventLog) : undefined
   },
 
   findMessage(
@@ -271,7 +234,6 @@ export const sessionReads = {
     options: { from?: 'start' | 'end' } = {},
   ): Readonly<ChatMessage> | undefined {
     const messages = fromEvents(() => eventsListMessages(sessionId))
-      ?? transcriptFallback(getSessionMessages(sessionId))
     if (!messages) return undefined
     if (options.from === 'end') {
       for (let index = messages.length - 1; index >= 0; index--) {
@@ -284,50 +246,38 @@ export const sessionReads = {
   },
 
   getMessageIndex(sessionId: string, messageId: string): number {
-    const fromEventLog = fromEvents(() => eventsGetMessageIndex(sessionId, messageId))
-    if (fromEventLog !== undefined) return fromEventLog
-    return transcriptFallback(getSessionMessages(sessionId))?.findIndex(item => item.id === messageId) ?? -1
+    return fromEvents(() => eventsGetMessageIndex(sessionId, messageId)) ?? -1
   },
 
   countMessages(sessionId: string): number {
-    const fromEventLog = fromEvents(() => eventsCountMessages(sessionId))
-    if (fromEventLog !== undefined) return fromEventLog
-    return transcriptFallback(getSessionMessages(sessionId))?.length ?? 0
+    return fromEvents(() => eventsCountMessages(sessionId)) ?? 0
   },
 
   lastMessageOfRole(sessionId: string, role: ChatMessage['role']): Readonly<ChatMessage> | undefined {
     const fromEventLog = fromEvents(() => eventsLastMessageOfRole(sessionId, role))
-    if (fromEventLog) return guard(fromEventLog)
-    const messages = transcriptFallback(getSessionMessages(sessionId))
-    if (!messages) return undefined
-    for (let index = messages.length - 1; index >= 0; index--) {
-      if (messages[index].role === role) return guard(messages[index])
-    }
-    return undefined
+    return fromEventLog ? guard(fromEventLog) : undefined
   },
 
   /** 第一条用户消息的预览文本(标题回退 / 列表预览;server 那三份实现的归口)。 */
   firstUserPreview(sessionId: string, maxLength = 120): string | undefined {
     const messages = fromEvents(() => eventsListMessages(sessionId))
-      ?? transcriptFallback(getSessionMessages(sessionId))
     return sessionPreviewText(messages ?? [], maxLength)
   },
 
   /**
    * 下一次请求发出去的那份**模型历史**(S2b step C)。
    *
-   * 两条路都产出**真机形状的历史**(provider 消息),而不是 `ChatMessage` 切片:
-   *  - `messages` 模式:抄本切片过宿主的 `buildHistoryMessages`(注入的
-   *    `historyBuilder.fromMessages`)—— 与今天真机发出去的那一份逐字节相同;
-   *  - `events` 模式:走 `projectModelHistory`(这里 = 活投影上的
-   *    `materializeModelHistory`)+ **同一份**宿主配方。§S2b #5 的裁定:事件版的
-   *    落点是 `projectModelHistory`,**不是"再抄一遍投影"**(那是可见消息投影,
-   *    压缩会话上与模型历史不同)。两侧因此逐字节相同 —— 这正是切读的安全前提,
-   *    也是历史影子(`checkSessionHistoryShadow`)比的那两份。
+   * 主路走 `projectModelHistory`(这里 = 活投影上的 `materializeModelHistory`)+
+   * 宿主配方。§S2b #5 的裁定:事件版的落点是 `projectModelHistory`,**不是"再抄
+   * 一遍投影"**(那是可见消息投影,压缩会话上与模型历史不同)。
    *
-   * `historyBuilder` 未装(纯轻量单测,没跑装配)时退回抄本 `ChatMessage` 切片,
-   * 保住 P0.1 的老形状;`upToMessageId` 落在 `events` 路上暂不支持(要按 seq 折,
-   * 无调用点),退回消息模式。
+   * **下面那条 store 切片路不是"读抄本的兜底"**(S3w-3 批 6b 删的是那种),它是
+   * **能力缺口**的退路,两个成因都与"事实在哪一侧"无关:
+   *  - `historyBuilder` 未装 —— 纯轻量单测没跑装配,退回 `ChatMessage` 切片保住
+   *    P0.1 的老形状;
+   *  - 给了 `upToMessageId` —— 事件版要按 seq 折,至今没有调用点,没写。
+   * 而 `getSessionMessages` 取的是**内存 store**(自 S3w-1 起由投影补水),不是
+   * `messages.jsonl` —— 它和主路同源,不是第二份真相。
    */
   sliceForHistory(
     sessionId: string,
@@ -357,7 +307,7 @@ export const sessionReads = {
     })
     if (fromEventLog !== undefined) return fromEventLog
 
-    const messages = transcriptFallback(getSessionMessages(sessionId))
+    const messages = getSessionMessages(sessionId)
     if (!messages) return []
     const slice = !options.upToMessageId
       ? messages
@@ -373,7 +323,6 @@ export const sessionReads = {
   /** 不物化整份数组的遍历(搜索 / 媒体 / 权限扫描)。 */
   *iterateMessages(sessionId: string): Generator<Readonly<ChatMessage>> {
     const messages = fromEvents(() => eventsListMessages(sessionId))
-      ?? transcriptFallback(getSessionMessages(sessionId))
     if (!messages) return
     for (const message of messages) yield guard(message)
   },

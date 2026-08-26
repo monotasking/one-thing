@@ -38,8 +38,14 @@ const RULE_A_ALLOWED = new Set([
   // 装配层写面 / 读面:设计文档 §1 的两扇门
   'packages/backend/session/commands.ts',
   'packages/backend/session/reads.ts',
-  // 存储形状:驱动与脱水看的是"盘上长什么样",不是会话语义
-  'packages/onething-runtime/src/sessions/storage-driver.ts',
+  // 存储形状:脱水看的是"盘上长什么样",不是会话语义
+  //
+  // `storage-driver.ts` 曾经也在这里,理由是它的**消息写半边**(全量重写 / 后缀
+  // 重写要逐条编码 `session.messages`)。S3w-3 批 6b 把那半边删了(§15.22),
+  // 剩下的只有 `buildMeta` 摘掉 messages、以及 legacy 首触迁移里数一下条数 ——
+  // 都落在驱动自己那个 `SessionLike { messages?: unknown[] }` 上,元素类型是
+  // `unknown`,本来就不构成规则 A 说的"一条会话的消息日志"。实测拿掉这条 0 命中,
+  // 所以收掉:哪天有人把驱动重新类型化到真的 `ChatMessage`,这道闸该响。
   'packages/onething-runtime/src/sessions/session-dehydrate.ts',
   // 仓库层 = 读门面的底座(P0.4):四处都是"jsonl/sqlite 取不到时回落到内存
   // 权威副本"的取数原语(getSessionMessages / 分页 / marker / 缓存快照),

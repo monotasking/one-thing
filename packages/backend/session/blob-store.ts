@@ -24,10 +24,10 @@
  * `session-shadow-stats.json` 的 `appendFailures` 并每会话 warn 一次
  * (§10.3 ②),调用方拿到 `undefined` 就退回"正文进事件行"或"只留预览"。
  *
- * **S3w-2(§14.6 裁定 7)给它加了一档**:`ONETHING_SESSION_TRANSCRIPT=off` 之后
- * blob 写失败**上抛**。理由是那条退路当场消失 —— 今天附件 base64 落 blob 失败时
- * "正文还在 messages.jsonl"(§10.1 的兜底);停写之后同一次失败 = 正文**永久丢失**
- * (§14.7 风险④)。observation 期(primary/shadow)一字不变。
+ * **S3w-3 批 6b 起 blob 写失败无条件上抛**(§14.6 裁定 7)。理由是那条退路已经
+ * 不存在 —— 从前附件 base64 落 blob 失败时"正文还在 messages.jsonl"(§10.1 的
+ * 兜底);抄本停写并删码之后,同一次失败 = 正文**永久丢失**(§14.7 风险④)。
+ * 上面那段"写失败不抛"说的是 S1 影子期的世界,已成历史。
  */
 
 import fs from 'node:fs'
@@ -40,7 +40,6 @@ import {
 } from '@onething/runtime/storage'
 import { countSessionEventFailure } from './event-stats.js'
 import { SessionEventWriteError } from './event-log.js'
-import { isSessionTranscriptOff } from './read-mode.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
@@ -63,9 +62,9 @@ export function getSessionBlobPath(sessionId: string, hash: string): string {
 /**
  * 落一段正文,拿回引用。已存在的同 hash 内容直接复用(不重写)。
  *
- * @returns 写不进去时 `undefined` —— 调用方必须有一条不写 blob 也能走的路。
- *          `ONETHING_SESSION_TRANSCRIPT=off` 时改为抛 `SessionEventWriteError`:
- *          那条退路(正文还在抄本里)已经不存在了。
+ * @returns 写不进去时抛 `SessionEventWriteError`(批 6b 起无条件)—— 那条退路
+ *          (正文还在抄本里)已经不存在了。签名里的 `undefined` 留给"没什么可写"
+ *          之外的调用方形状,不再是写失败的出口。
  */
 export function putSessionBlob(
   sessionId: string,
@@ -84,11 +83,8 @@ export function putSessionBlob(
     }
   } catch (error) {
     countSessionEventFailure(sessionId, error, 'blob write failed')
-    // S3w-2 裁定 7:停写之后 blob 写失败 = 正文永久丢失,不再可吞。
-    if (isSessionTranscriptOff()) {
-      throw new SessionEventWriteError(sessionId, 'blob write failed', { cause: error })
-    }
-    return undefined
+    // 裁定 7:抄本没了,blob 写失败 = 正文永久丢失,不再可吞。
+    throw new SessionEventWriteError(sessionId, 'blob write failed', { cause: error })
   }
   return {
     hash,

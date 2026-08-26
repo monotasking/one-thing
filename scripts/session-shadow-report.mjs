@@ -64,7 +64,6 @@ export function readStats(logDir) {
       appendFailures: Number(parsed.appendFailures) || 0,
       // S3w-1(§15.4):`events` 读模式下退回抄本的次数。不进门 —— 它量的是
       // 存量数据的覆盖面;S3w-3 删兜底之前必须先量到 0。
-      fallbackHits: Number(parsed.fallbackHits) || 0,
       // S3w-2(§14.3-B):refold 自洽环。`refoldChecks` 只打印(采样数是配置
       // 问题),`refoldMismatches` **进门** —— 它是停写之后耐久层的唯一判据。
       refoldChecks: Number(parsed.refoldChecks) || 0,
@@ -83,7 +82,6 @@ export function readStats(logDir) {
       projectionIssues: 0,
       droppedParts: 0,
       appendFailures: 0,
-      fallbackHits: 0,
       refoldChecks: 0,
       refoldMismatches: 0,
       byKind: {},
@@ -168,7 +166,6 @@ function main() {
     console.log(`[shadow] droppedParts    : ${stats.droppedParts}   (采集点丢账,不进门)`)
     console.log(`[shadow] appendFailures : ${stats.appendFailures}`)
     // S3w-1:兜底命中(events 模式下退回 messages.jsonl 的读)。不进门,S3w-3 前要量到 0。
-    console.log(`[shadow] fallbackHits   : ${stats.fallbackHits}   (退回抄本的读,不进门)`)
     // S3w-2:refold 自洽环(文件字节重折 vs 内存活投影)。采样数只打印;
     // 不等**进门** —— 停写之后它就是耐久层仅剩的那道门(§14.3-B)。
     console.log(`[shadow] refoldChecks   : ${stats.refoldChecks}   (采样次数,不进门)`)

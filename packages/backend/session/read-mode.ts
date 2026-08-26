@@ -1,58 +1,27 @@
 /**
- * 读模式开关(S2a,`docs/design/session-event-sourcing-2026-08.md` §11.1)。
+ * 会话读写档位(`docs/design/session-event-sourcing-2026-08.md` §11.1 / §14.4)。
  *
- *   `ONETHING_SESSION_READ = 'messages' | 'events'(默认)`
+ * ## `ONETHING_SESSION_READ` —— 已退役(S3w-3 批 6b,§15.22)
  *
- * **默认已切到 `events`**(S2b 批 8,§13.18):产品线的历史来自 `events.jsonl`
- * 的投影。前置全部满足才翻 —— A(批 6:settle 归位 changes)、B(批 7:事件写侧
- * 走抄本真相读)、批 9(中止在途工具的自报标题两处写侧取材归位)都已落地,
- * 双泳道 `sessions:shadow-battery` GREEN、`sessions:verify:gate` 0 新红。要回滚
- * 只需把 `ONETHING_SESSION_READ=messages` 或把这里改回 `'messages'`;messages.jsonl
- * 仍是磁盘真相(事件是投影),回滚零数据损伤。
+ * S2a 给产品读路开的那个 `messages | events` 岔口,批 8 把默认翻到 `events`,
+ * `messages` 留作回滚杆。**这一批把它烧掉了** —— §15.8 表里批 6 的"唯一确认点",
+ * 用户 2026-08-26 已确认。烧掉不是"顺手清理":`reads.ts` 的
+ * `?? getSessionMessages(...)` 兜底半边随本批删除,`messages` 档从此只会读出一片
+ * 空 —— 一根扳下去就把历史读没的杆,比没有杆危险。回滚 = `git revert`。
  *
- * 单一入口的理由与 `event-stats.ts` 的总闸相同:一个"现在读的是哪一边"的
- * 问题在代码里只该有一个答案。测试用 `setSessionReadModeForTesting` 临时切,
- * 不去改进程环境变量(vitest 是同进程并发的,改 env 会串台)。
+ * 剩下的两个档位各自问一件事,所以仍然不合并:
+ *  - `ONETHING_SESSION_HYDRATE` —— 冷加载时写模型从哪一侧**补水**;
+ *  - (`ONETHING_SESSION_TRANSCRIPT` 也已退役,见文件末尾的墓志铭。)
  */
 
-export type SessionReadMode = 'messages' | 'events'
-
-export const DEFAULT_SESSION_READ_MODE: SessionReadMode = 'events'
-
-let override: SessionReadMode | undefined
 let foreignCoreWarned = false
-
-function fromEnv(): SessionReadMode {
-  const raw = process.env.ONETHING_SESSION_READ?.trim().toLowerCase()
-  // 两个值都显式认:默认已是 events(批 8),所以 `messages` 必须能把它显式
-  // 扳回去(回滚杆),不能被"非 events 即默认"吞掉;其余一切 = 默认。
-  if (raw === 'events') return 'events'
-  if (raw === 'messages') return 'messages'
-  return DEFAULT_SESSION_READ_MODE
-}
-
-export function getSessionReadMode(): SessionReadMode {
-  return override ?? fromEnv()
-}
-
-export function isSessionEventsReadMode(): boolean {
-  return getSessionReadMode() === 'events'
-}
-
-/** 仅测试:临时切读模式;传 `undefined` 归还给环境变量。 */
-export function setSessionReadModeForTesting(mode?: SessionReadMode): void {
-  override = mode
-  foreignCoreWarned = false
-}
 
 /**
  * **冷加载补水**开关(S3w-1,§14.4 / §15.4)。
  *
  *   `ONETHING_SESSION_HYDRATE = 'messages' | 'projection'(默认)`
  *
- * 与上面那个开关问的**不是同一个问题**,所以不合并:
- *  - `ONETHING_SESSION_READ` 问的是"产品线的历史从哪一侧**读**";
- *  - 这一个问的是"LRU 冷加载时,内存 store(写模型)从哪一侧**补水**"。
+ * 问的是"LRU 冷加载时,内存 store(写模型)从哪一侧**补水**"(读路已无岔口)。
  *
  * **默认已切到 `projection`**(S3w-1 批 3,§15.10):写模型的起点也换成
  * `events.jsonl` 的投影 —— §14.1 点名的"S3w 真正要换的那根梁"换完了。翻默认的
@@ -60,12 +29,15 @@ export function setSessionReadModeForTesting(mode?: SessionReadMode): void {
  * 会话断言「投影补水 + rehydrate + sanitize ≡ 抄本 + rehydrate + sanitize」,
  * 436 会话 pass 417 / fail 0 / 0 新类。
  *
- * **`ONETHING_SESSION_HYDRATE=messages` 是显式回滚杆**(回滚语义原样保留):
- * 扳回去就是老路 —— 冷加载从 `messages.jsonl` 读。抄本仍在写(S3w-2 之前它还是
- * 磁盘真相之一),所以回滚零数据损伤,不需要迁移、不需要重放。
+ * **`ONETHING_SESSION_HYDRATE=messages` 是显式回滚杆**,但 S3w-3 批 6b 之后它是
+ * 一根**只对存量有效、且已经不安全的杆**,留着是因为退役它不在批 6b 的授权范围
+ * 内(§15.22 记了这笔账,等用户裁定):抄本自批 6a 起停写、批 6b 起写代码已删,
+ * 所以 ①停写之后出生的会话没有抄本,扳过去补出来的是空; ②停写之前出生、之后
+ * 又聊过的会话,抄本冻在停写那一刻,扳过去等于把那之后的历史补丢。**不要扳它**
+ * ——真要回滚补水,先 `git revert` 批 6b 把抄本写回来。
  *
- * 只认两个值,拼错 = 默认 —— 与读开关同款:默认翻过去之后,`messages` 就是那根
- * 必须被显式认出来的回滚杆,不能被"非 projection 即默认"吞掉。
+ * 只认两个值,拼错 = 默认:`messages` 必须被显式认出来,不能被"非 projection 即
+ * 默认"吞掉。
  */
 export type SessionHydrateMode = 'messages' | 'projection'
 
@@ -90,79 +62,31 @@ export function setSessionHydrateModeForTesting(mode?: SessionHydrateMode): void
   hydrateOverride = mode
 }
 
-/**
- * **抄本(`messages.jsonl`)的三态开关**(S3w-2,§14.3-A / §14.6 裁定 5;
- * S3w-3 批 6a 翻默认,§15.19)。
+/*
+ * ## `ONETHING_SESSION_TRANSCRIPT` —— 已退役(S3w-3 批 6b,§15.22)
  *
- *   `ONETHING_SESSION_TRANSCRIPT = 'off'(默认)| 'shadow' | 'primary'`
+ * S3w-2 给抄本开的三态开关(`primary | shadow | off`),批 6a 把默认扳到 `off`、
+ * 另两档降为显式回滚杆,并在那时就写下了这句预告:"批 6b 删掉 storage-driver 的
+ * 消息写半边之后,这两根杆随写代码一起退役"。**兑现了** —— `writeSuffix` /
+ * `rewriteAll` / `encodeSuffix` / `skipMessageWrites` 端口都已删除,一根扳不动
+ * 任何东西的杆不该留在代码里假装还能回滚。回滚 = `git revert`。
  *
- * 与上面两个开关问的又不是同一个问题,所以还是不合并:
- *  - `ONETHING_SESSION_READ` —— 产品线的历史从哪一侧**读**(已默认 `events`);
- *  - `ONETHING_SESSION_HYDRATE` —— 冷加载时写模型从哪一侧**补水**(已默认 `projection`);
- *  - 这一个 —— `messages.jsonl` 还**写不写**。
- *
- * **默认已切到 `off`**(S3w-3 批 6a,§15.19):storage-driver 的**消息写半边跳过**
- * (`meta.json` 与索引照写,§14.6 S3w-3 行),`events.jsonl` 成为**唯一持久化**。
- * 这一档同时是**写失败上抛**(§14.6 裁定 7)的生效条件 —— 唯一账本写不进去不再是
- * 可吞的旁路故障,所以上抛从"某一档的特例"变成了**默认行为**。
- *
- * 翻默认的前提(§14.6 裁定 5 的阈值,用户 2026-08-26 按 §15.8 单用户口径**预授权
- * 跳过浸泡期**):shadow=0 ∧ refold=0 ∧ appendFailures=0 ∧ verify 全库 0 新红,
- * 双泳道 battery GREEN。它也是**烧掉 `ONETHING_SESSION_READ=messages` 那条 S2b
- * 回滚船**的一步(§15.8 的唯一确认点,用户已确认)。
- *
- * **另外两档现在是显式回滚杆**,语义原样保留:
- *
- * - **`shadow`** —— 抄本照写,但只是纯对账影子:产品读路(S2b)与冷加载补水
- *   (S3w-1)都已全线走投影,没有任何一条产品路径消费它;它的用处是耐久层对账
- *   (verify #6 的存量比对与 §13.16 那类真机比对)。**扳到这里 = 让抄本重新长出来**,
- *   写失败也随之退回"只计数不打扰"。切 off 之后新会话没有抄本存量,所以扳回来
- *   只能从扳回来那一刻起攒新的对账料 —— 零数据损伤,但也不会凭空补出旧抄本。
- * - **`primary`** —— 把"抄本是磁盘真相之一"这句话重新讲一遍(S3w-2 之前的世界)。
- *   **写路径与 `shadow` 完全相同**;这一档只承担记账口径与回滚叙事,不必翻代码
- *   找它当年是什么行为。
- *
- * **批 6b 删掉 storage-driver 的消息写半边之后,这两根杆随写代码一起退役** ——
- * 那时"回滚"的唯一形式是 `git revert`,不再是扳一个环境变量。
- *
- * 三个值都显式认,拼错 = 默认:默认翻过去之后,`shadow` 与 `primary` 就是那两根
- * 必须被显式认出来的回滚杆,不能被"非 off 即默认"吞掉。
+ * 连带的口径固化:**事件/blob 写失败上抛**(§14.6 裁定 7)从前是"`off` 档的
+ * 特例",现在是**无条件的默认行为** —— `events.jsonl` 是唯一账本,写不进去不再
+ * 是可吞的旁路故障。见 `event-log.ts` / `blob-store.ts` / `event-translator.ts`。
  */
-export type SessionTranscriptMode = 'primary' | 'shadow' | 'off'
-
-export const DEFAULT_SESSION_TRANSCRIPT_MODE: SessionTranscriptMode = 'off'
-
-let transcriptOverride: SessionTranscriptMode | undefined
-
-export function getSessionTranscriptMode(): SessionTranscriptMode {
-  if (transcriptOverride) return transcriptOverride
-  const raw = process.env.ONETHING_SESSION_TRANSCRIPT?.trim().toLowerCase()
-  if (raw === 'primary') return 'primary'
-  if (raw === 'shadow') return 'shadow'
-  if (raw === 'off') return 'off'
-  return DEFAULT_SESSION_TRANSCRIPT_MODE
-}
-
-/** 抄本停写了吗 —— storage-driver 的消息写半边与写失败上抛共用这一个判据。 */
-export function isSessionTranscriptOff(): boolean {
-  return getSessionTranscriptMode() === 'off'
-}
-
-/** 仅测试:临时切抄本档;传 `undefined` 归还给环境变量。 */
-export function setSessionTranscriptModeForTesting(mode?: SessionTranscriptMode): void {
-  transcriptOverride = mode
-}
 
 /**
- * R-c(§13.6):**切读之前先问一句这个 store 还有没有别的 core。**
+ * R-c(§13.6):**这个 store 还有没有别的 core?**
  *
- * `events` 模式下产品线的历史来自 `events.jsonl`。两个写者同时往它追加时,
+ * 产品线的历史来自 `events.jsonl`。两个写者同时往它追加时,
  * seq 是各自内存里数出来的 —— 会撞号,而 `surfaceOp: replace` 引用的正是 seq,
  * 于是遮蔽区间指向别人的事件,校验还照样放行(surface 上确实有那个 seq)。
  * 迁移脚本对这件事是**硬拦**(它要重编号整份文件);这里只**喊一声**:
- * 已经开着的桌面不该因为一个环境变量而崩掉,而 server 撤锁的裁定仍然成立。
+ * 已经开着的桌面不该因此崩掉,而 server 撤锁的裁定仍然成立。
  *
  * 每进程喊一次(启动期调一次就够,喊多了没人看)。
+ * 批 6b 起无条件喊(从前只在 `events` 读档下喊,而那个档已成唯一档)。
  *
  * @param foreignCore 宿主查出来的"另一个 core"(`run/http.json` 里那位)。
  */
@@ -171,7 +95,6 @@ export function warnOnForeignCoreForEventsRead(
   foreignCore: { owner?: string; pid?: number; port?: number } | undefined,
 ): void {
   if (!foreignCore) return
-  if (!isSessionEventsReadMode()) return
   if (foreignCoreWarned) return
   foreignCoreWarned = true
   log.warn('events read mode with another live core on this store', {

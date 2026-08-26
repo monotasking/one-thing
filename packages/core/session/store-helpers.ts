@@ -109,24 +109,6 @@ export interface SyncSessionSideEffectWithReadyAdaptersOptions<TSession> {
 
 export type SyncSessionSideEffectWithReadyAdaptersResult = 'synced' | 'scheduled' | 'error'
 
-export interface SanitizeSessionsOnStartupWithAdaptersOptions<
-  TSession extends CoreTimelineSession,
-  TMeta extends { id: string },
-> {
-  loadIndex(): TMeta[]
-  loadSession(sessionId: string): TSession | undefined
-  saveSession(sessionId: string, session: TSession): void
-  syncSession?: (session: TSession) => void
-  /** COW:改了返回新会话,没改返回 undefined(F4) */
-  sanitizeSession?: (session: TSession) => TSession | undefined
-}
-
-export interface SanitizeSessionsOnStartupWithAdaptersResult {
-  scanned: number
-  sanitized: number
-  missing: number
-}
-
 export interface CoreSessionCacheAdapter<TSession> {
   get(sessionId: string): TSession | undefined
   set(sessionId: string, session: TSession): void
@@ -494,41 +476,6 @@ export function syncSessionSideEffectWithReadyAdapters<TSession>(
   }
 }
 
-export function sanitizeSessionsOnStartupWithAdapters<
-  TSession extends CoreTimelineSession,
-  TMeta extends { id: string },
->(
-  options: SanitizeSessionsOnStartupWithAdaptersOptions<TSession, TMeta>,
-): SanitizeSessionsOnStartupWithAdaptersResult {
-  const index = options.loadIndex()
-  const sanitize: (target: TSession) => TSession | undefined =
-    options.sanitizeSession
-    ?? (target => sanitizeSessionOnStartup(target as unknown as CoreSessionCommandSession) as unknown as TSession | undefined)
-  const result: SanitizeSessionsOnStartupWithAdaptersResult = {
-    scanned: index.length,
-    sanitized: 0,
-    missing: 0,
-  }
-
-  for (const meta of index) {
-    const session = options.loadSession(meta.id)
-    if (!session) {
-      result.missing += 1
-      continue
-    }
-
-    // COW:修好的是**新的会话对象**,落盘/同步都得看新的那份(F4)。
-    const repaired = sanitize(session)
-    if (!repaired) continue
-
-    options.saveSession(meta.id, repaired)
-    options.syncSession?.(repaired)
-    result.sanitized += 1
-  }
-
-  return result
-}
-
 export function loadSessionWithAdapters<
   TSession extends CoreTimelineSession & {
     workingDirectory?: string
@@ -562,6 +509,12 @@ export function loadSessionWithAdapters<
   const repaired = sanitize(session)
   const loaded = repaired ?? session
   if (repaired) {
+    // **写回还留着,但它的意思变了**(S3w-3 批 6b,§15.22):抄本写代码删掉之后,
+    // 这一次 `saveSession` 落到盘上的只有 `meta.json` —— 修复的**消息半边**从此
+    // 只活在内存写模型里(每次冷加载现算一遍,幂等;事件账本里没有这次修复的产地,
+    // 见 §13.6 R-a)。留着是因为**会话半边仍然落盘**:
+    // `computeSessionTimelineMetadataRepair` 修的 summary / contextSize /
+    // lastInputTokens 正是住 `meta.json` 的那几格。
     options.saveSession?.(options.sessionId, repaired)
     options.syncSession?.(repaired)
   }

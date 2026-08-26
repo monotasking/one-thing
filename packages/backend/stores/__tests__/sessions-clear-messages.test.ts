@@ -3,8 +3,9 @@
  * (docs/design/collab-room-clear-and-mention-all.md B)。
  *
  * 三件事必须同时成立,少一件这个功能就有幽灵:
- *  - 内存与盘上的转录都归零,meta 的计数跟着一致(否则分页会去读不存在的行);
- *  - **删之前留档一份**,而且留档里有的正是刚被删掉的那些;
+ *  - 内存与索引归零,meta 的计数跟着一致(否则分页会去读不存在的行);
+ *  - 不再另存 `messages.cleared-*` 留档(批 6b / 裁定 10):被清掉的消息事件原样
+ *    躺在 `events.jsonl` 里,事件本身就是那份档;
  *  - `updateSessionCollab` 抹得掉 `collab.seenMessageId` —— 已读游标的清除全靠
  *    它,而这个仓库有过"白名单静默吞字段"的案底,所以这条要钉死。
  */
@@ -43,33 +44,32 @@ function archivedLogs(sessionId: string): string[] {
   return fs.readdirSync(sessionDir(sessionId)).filter(name => name.startsWith('messages.cleared-'))
 }
 
+function eventTypes(sessionId: string): string[] {
+  const file = path.join(sessionDir(sessionId), 'events.jsonl')
+  if (!fs.existsSync(file)) return []
+  return fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean)
+    .map(line => JSON.parse(line).type as string)
+}
+
 beforeEach(() => {
   previousHome = process.env.HOME
   tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-clear-messages-test-'))
   process.env.HOME = tempHome
-  // 这个文件问的是**抄本文件**上的后果(`messages.jsonl` 归零、`messages.cleared-*`
-  // 留档)。批 6a(§15.19)把 `ONETHING_SESSION_TRANSCRIPT` 的默认翻到 `off` 之后
-  // 抄本根本不写,这些断言就没有对象了 —— 所以显式扳到回滚杆 `shadow`,让用例
-  // 继续问它本来问的那件事。走 env 而不是 `setSessionTranscriptModeForTesting`:
-  // 下面 `loadIsolatedStores` 每次 `vi.resetModules()`,测试覆写住在模块实例里会
-  // 被重置掉,而档位读的是 `process.env`,重置多少次都还在。
-  //
-  // **批 6b 会把这两条一起改写**:裁定 10 拍了 `messages.cleared-*` 退役
-  // (`session/cleared` 只遮蔽不删,事件本身就是档),届时留档那条用例随之退役,
-  // 清空那条改问事件面的遮蔽。
-  process.env.ONETHING_SESSION_TRANSCRIPT = 'shadow'
+  // 批 6b(§15.22)兑现了批 6a 写在这里的预告:抄本写代码已删、`messages.cleared-*`
+  // 留档按裁定 10 退役,于是这个文件问的东西整体挪到了**事件面** —— 内存与索引
+  // 归零、`session/cleared` 只遮不删、被遮的消息事件原样还在。抄本档位那根杆连同
+  // 这里的 env 设置一起消失。
   loadedSessions = null
 })
 
 afterEach(async () => {
   await loadedSessions?.flushAllPendingSaves()
   process.env.HOME = previousHome
-  delete process.env.ONETHING_SESSION_TRANSCRIPT
   fs.rmSync(tempHome, { recursive: true, force: true })
 })
 
 describe('clearSessionMessages', () => {
-  it('清空内存与盘上的转录,并把 meta 计数归零', async () => {
+  it('清空内存与索引,并把 meta 计数归零', async () => {
     const sessions = await loadIsolatedStores()
     sessions.createSession('room-1', '官网改版组')
     sessions.addMessage('room-1', userMessage('m-1', '大家早'))
@@ -81,36 +81,35 @@ describe('clearSessionMessages', () => {
     expect(result.clearedCount).toBe(2)
     expect(sessions.getSession('room-1')?.messages).toEqual([])
 
-    const log = fs.readFileSync(path.join(sessionDir('room-1'), 'messages.jsonl'), 'utf-8')
-    expect(log).not.toContain('大家早')
     const meta = JSON.parse(fs.readFileSync(path.join(sessionDir('room-1'), 'meta.json'), 'utf-8'))
     expect(meta.log.messageCount).toBe(0)
     expect(sessions.getSessionsList().find(item => item.id === 'room-1')?.messageCount).toBe(0)
   })
 
-  it('删之前留档一份,留档里正是被删掉的那些', async () => {
+  /**
+   * 批 6b(裁定 10):**留档退役,事件本身就是档。**
+   *
+   * 清空在账本上是一条 `session/cleared` —— 只遮蔽、不删除:被遮的
+   * `user/message` 原样躺在 `events.jsonl` 里。再复制一份 `messages.cleared-*`
+   * 等于给"事件是唯一真相"开第一个例外(而且是个没有任何读取路径、只进不出的
+   * 例外)。存量那批按裁定 9a 原地不动。
+   *
+   * 注意这个**存储原语**今天没有生产调用点:群聊「清空聊天记录」走的是命令面
+   * `sessionCommands.replaceAll{reason:'clear'}`(`wiring/collab/room-config.ts`),
+   * 那条路才带翻译器、才写 `session/cleared`(判据在 `event-translator.test.ts`)。
+   * 所以这里只断言"不再留档 + 被删的消息事件原样还在",不断言遮蔽事件。
+   */
+  it('不再留档:被清掉的那条消息事件原样躺在账本里', async () => {
     const sessions = await loadIsolatedStores()
     sessions.createSession('room-1', '官网改版组')
     sessions.addMessage('room-1', userMessage('m-1', '大家早'))
 
-    const result = await sessions.clearSessionMessages('room-1')
+    await sessions.clearSessionMessages('room-1')
 
-    const archives = archivedLogs('room-1')
-    expect(archives).toHaveLength(1)
-    expect(result.archivePath).toBe(path.join(sessionDir('room-1'), archives[0]))
-    expect(fs.readFileSync(result.archivePath!, 'utf-8')).toContain('大家早')
-  })
-
-  it('本来就空的会话不留档(留档是"删之前盘上是什么样",没东西可留)', async () => {
-    const sessions = await loadIsolatedStores()
-    sessions.createSession('room-1', '官网改版组')
-
-    const result = await sessions.clearSessionMessages('room-1')
-
-    expect(result.cleared).toBe(true)
-    expect(result.clearedCount).toBe(0)
-    expect(result.archivePath).toBeUndefined()
     expect(archivedLogs('room-1')).toEqual([])
+    expect(eventTypes('room-1')).toContain('user/message')
+    const events = fs.readFileSync(path.join(sessionDir('room-1'), 'events.jsonl'), 'utf-8')
+    expect(events).toContain('大家早')
   })
 
   it('查无此会话 = 什么都不做', async () => {

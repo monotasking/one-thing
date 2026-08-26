@@ -23,21 +23,21 @@
  * 已修的每一类失配都固化成至少一个场景(映射表在运行结束时打印,与
  * §10.14 的表逐条对应)。
  *
- * **六条泳道 + 两枚探针**(S3w-1 起两条,批 3 起三条,批 4 起四条,批 6a 起六条;
- * §15.10/§15.11/§15.19)。跑的顺序就是下面的顺序,而顺序是有理由的:
+ * **四条泳道 + 一枚探针**(S3w-1 起两条,批 3 起三条,批 4 起四条,批 6a 起六条,
+ * **批 6b 收回四条**;§15.10/§15.11/§15.19/§15.22)。批 6b 删掉抄本写代码之后,
+ * `ONETHING_SESSION_TRANSCRIPT` 那根杆退役,靠它活着的两条泳道与一枚探针随之退役
+ * (细账见 §15.22)。跑的顺序就是下面的顺序,而顺序是有理由的:
  *  1. **场景矩阵** —— 按场景表 × passes 写会话(上面那条链),跑在**默认档**上;
- *  2/3. **抄本两档**(`runTranscriptLane`)—— 把全场景在某一个
- *     `ONETHING_SESSION_TRANSCRIPT` 档下再跑一遍。`default (= off)` 验产品出厂
- *     那条路(抄本一个字节都不写,产品行为只能靠事件账本活着);
- *     `shadow rollback` 显式扳回滚杆,验它真的把写路径接回去了(抄本必须长出来)。
- *     判据除了场景自证与 0 新失配行,还多一条只有这两条泳道有的:
- *     **`messages.jsonl` 该有就得有、该没有就不许有**;
- *  4/5. **冷加载补水**(`runHydrateLane`)—— 各把 server 换成一个**空 LRU 的新
- *     进程**,在(彼此不相交的)一批会话上各接一轮:冷加载真的走一遍,补水形状
- *     漂一格,收尾的影子当场红。两条分别跑**默认档**(批 3 起 = `projection`,
- *     取材池 = 场景矩阵)与**显式回滚档**(`ONETHING_SESSION_HYDRATE=messages`,
- *     取材池 = 上面 `shadow` 泳道 —— 批 6a 之后只有那批会话还有抄本可读);
- *  6. **迁移历史冷补水**(`runImportedHydrateLane`,§15.13)。
+ *  2. **抄本泳道**(`runTranscriptLane`)—— 把**全场景**再跑一遍,断言
+ *     `messages.jsonl` **一个字节都不许长**。批 6b 之后它验的不再是"某一档",
+ *     而是**删除本身的运行时证据**:抄本写代码真的不在了,产品行为只能靠事件
+ *     账本活着。(从前还有一条 `shadow rollback` 泳道验回滚杆;杆没了,泳道也没了。)
+ *  3. **冷加载补水**(`runHydrateLane`)—— 把 server 换成一个**空 LRU 的新进程**,
+ *     在一批会话上接一轮:冷加载真的走一遍,补水形状漂一格,收尾的影子当场红。
+ *     只剩**默认档**(批 3 起 = `projection`);`ONETHING_SESSION_HYDRATE=messages`
+ *     那条回滚杆泳道随抄本一起退役 —— 它的取材池本来就是 `shadow` 泳道跑出来的
+ *     那批带抄本的会话,而那批会话从此不存在(§15.22 把这根杆列为待拍板)。
+ *  4. **迁移历史冷补水**(`runImportedHydrateLane`,§15.13)。
  *
  * 两枚探针(`runWriteFailureProbe`,§14.6 裁定 7)在**各自的 store** 上把会话的
  * `events.jsonl` chmod 成只读,看 `off` 与 `shadow` 两档答得一不一样:前者命令
@@ -1655,37 +1655,25 @@ function transcriptBytes(store, sessionId) {
 }
 
 /**
- * **抄本泳道**(S3w-2 立,批 6a 语义对调,§14.3-A/C / §15.19)—— 把**全场景**在
- * 某一个抄本档下再跑一遍。
+ * **抄本泳道**(S3w-2 立,批 6a 语义对调,批 6b 收成一条;§14.3-A/C / §15.19 /
+ * §15.22)—— 把**全场景**再跑一遍,断言 `messages.jsonl` 一个字节都不许长。
  *
- * 批 6a 把 `ONETHING_SESSION_TRANSCRIPT` 的默认翻到 `off` 之后,这里跑**两条**:
- *
- *  - **默认档**(不设 `ONETHING_SESSION_TRANSCRIPT`,今天 = `off`)—— 验的是
- *    "产品出厂时走的那条路":抄本一个字节都不写,所有产品行为(读、补水、压缩、
- *    steering、权限、生图…)只能靠事件账本活着。**这条泳道从前叫 `transcript-off`
- *    并显式设 env**;默认翻过之后那个写法会骗人 —— 它验的其实就是默认路,而
- *    **回滚杆一条用例都没有**(与批 3 补水泳道同一个判例,§15.10)。
- *  - **显式回滚档**(`ONETHING_SESSION_TRANSCRIPT=shadow`)—— 验的是**回滚杆本身**:
- *    扳回去抄本要真的重新长出来,而且那一档下所有场景照样走得通、0 新失配。
- *    *没人跑的回滚杆,等到真要回滚那天才发现是坏的。*
+ * 批 6b 删掉 storage-driver 的消息写半边之后,`ONETHING_SESSION_TRANSCRIPT` 那根杆
+ * 退役,这条泳道随之从"验某一档"变成**验删除本身**:产品出厂时抄本压根不写,所有
+ * 产品行为(读、补水、压缩、steering、权限、生图…)只能靠事件账本活着。
+ * 从前那条 `shadow rollback` 泳道验的是回滚杆能不能把写路径接回去 —— 杆没了,
+ * 泳道也没了(回滚从此是 `git revert`,不是一个环境变量)。
  *
  * 判据(§14.3-C:一次性 store 上依赖 `messages.jsonl` 的断言改 refold + store):
  *  - 场景自证照旧(它们读的是 `sessions.getMessages`,S2b 之后本来就是投影);
- *  - **抄本按档位断言**:`expectTranscript: 'absent'` 时每条会话跑完
- *    `messages.jsonl` 必须仍然是 0 字节 / 不存在;`'present'` 时必须**长出来**
- *    —— 后者是回滚杆真的把写路径接回去了的唯一证据;
+ *  - **抄本必须不存在**:每条会话跑完 `messages.jsonl` 仍是 0 字节 / 不存在;
  *  - **影子法官换 refold + store**:这条泳道期间新增的 `session-shadow.jsonl`
  *    行必须为 0。那份文件里现在有两类行:`messages`/`history`(store vs 投影,
  *    语义层)与 `refold`(文件字节 vs 内存活投影,耐久层)——一条都不许有;
- *  - **`skipped` 也算红**(在报告侧):静默少跑一档 = 门不再看着回滚杆。
+ *  - **`skipped` 也算红**(在报告侧):静默少跑一条 = 门自己少看一格。
  *
- * 只跑**一趟**(每个场景一次),不乘 passes:这条泳道要的是"每个场景在这一档下
- * 都走得通",不是再攒一遍 run 数;乘上去只会把 45s 的矩阵拖成两倍。
- *
- * 返回值带上 `sessions`:`shadow` 那一档跑出来的会话是**唯一带抄本的**,于是它们
- * 正是补水回滚杆泳道(`ONETHING_SESSION_HYDRATE=messages`)唯一可用的取材池 ——
- * 默认档的会话根本没有 `messages.jsonl` 可读。顺序因此也反了过来:抄本泳道要排在
- * 补水泳道**之前**(从前是相反的,因为从前"抄本还在"是默认)。
+ * 只跑**一趟**(每个场景一次),不乘 passes:这条泳道要的是"每个场景都走得通",
+ * 不是再攒一遍 run 数;乘上去只会把 45s 的矩阵拖成两倍。
  */
 async function runTranscriptLane({
   store, api, library, stopServer, startServer, workdir, seed, label, env, expectTranscript,
@@ -1707,7 +1695,7 @@ async function runTranscriptLane({
 
   for (const scenario of library) {
     lane.attempted += 1
-    const tag = `${scenario.name}#${expectTranscript === 'present' ? 'shadow' : 'default'}`
+    const tag = `${scenario.name}#no-transcript`
     let sessionId
     try {
       const created = await api('POST', '/api/sessions', { name: tag })
@@ -1724,11 +1712,8 @@ async function runTranscriptLane({
       lane.sessions.push({ scenario: scenario.name, sessionId, ok: true })
       // 档位本身的断言 —— 别处没有这一条。
       const bytes = transcriptBytes(store, sessionId)
-      if (expectTranscript === 'absent' && bytes > 0) {
+      if (bytes > 0) {
         lane.transcriptWrong.push(`${scenario.name}/${sessionId}: messages.jsonl grew ${bytes} byte(s)`)
-      }
-      if (expectTranscript === 'present' && bytes === 0) {
-        lane.transcriptWrong.push(`${scenario.name}/${sessionId}: messages.jsonl never appeared`)
       }
     } catch (error) {
       lane.failed.push(`${tag}: ${String(error?.message ?? error)}`)
@@ -1774,7 +1759,7 @@ async function bootProbeServer({ store, port, token, extraEnv, out }) {
 }
 
 /**
- * **写失败上抛**的注入用例(§14.6 裁定 7)。
+ * **写失败上抛**的注入用例(§14.6 裁定 7;批 6b 起无条件,§15.22)。
  *
  * 注入法:把这条会话的 `events.jsonl` chmod 成只读 —— 之后每一次 append 都
  * EACCES。这是能在真 server 上造出"账本写不进去"的最省事的一刀,而且它命中的
@@ -1785,27 +1770,26 @@ async function bootProbeServer({ store, port, token, extraEnv, out }) {
  * (send-message 也走命令面,但它随后展开一整轮执行,失败会散落在收尾链的
  * 好几处,判据不干净。)
  *
- * 两档的分歧就是裁定 7 本身(批 6a 之后 `off` 是**默认**,所以第一枚探针验的是
- * 产品出厂行为,第二枚验的是回滚杆连同它的旧语义一起回来了):
- *  - `off` —— 至少有一次 `removeMessage` **报错**(账本是唯一持久化,写不进去
- *    不再可吞);
- *  - `shadow` —— 两次都不报错,失败**只计数**(`appendFailures > 0`)。
+ * 判据:至少有一次 `removeMessage` **报错**,而且报的是"账本写不进去"这件事
+ * (`session event log write failed`)—— 账本是唯一持久化,写不进去不再可吞。
+ * 从前还有一枚 `shadow` 对照探针(那一档只计数不打扰);批 6b 抄本开关退役,
+ * 上抛成了无条件行为,对照没了对象,探针随之退役。
  *
  * 探针跑在**自己的 store 上**:它故意制造 `appendFailures`,留在主 store 里会
  * 让最后那道 `sessions:shadow-report` 以一个假理由变红。
  */
-async function runWriteFailureProbe({ transcript, mockPort, port, scenarioName, seed }) {
-  const probe = { transcript, ok: false, detail: '' }
-  const store = fs.mkdtempSync(path.join(os.tmpdir(), `onething-shadow-probe-${transcript}-`))
-  const token = `battery-probe-${transcript}`
+async function runWriteFailureProbe({ mockPort, port, scenarioName, seed }) {
+  const probe = { ok: false, detail: '' }
+  const store = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-shadow-probe-'))
+  const token = 'battery-probe'
   const out = []
   let stop
   try {
     const workdir = prepareStore(store, mockPort)
-    stop = await bootProbeServer({ store, port, token, extraEnv: { ONETHING_SESSION_TRANSCRIPT: transcript }, out })
+    stop = await bootProbeServer({ store, port, token, extraEnv: {}, out })
     const api = makeApi(port, token)
 
-    const created = await api('POST', '/api/sessions', { name: `write-failure-${transcript}` })
+    const created = await api('POST', '/api/sessions', { name: 'write-failure' })
     const sessionId = created?.session?.id ?? created?.data?.id ?? created?.id
     if (!sessionId) throw new Error(`no session id: ${JSON.stringify(created).slice(0, 200)}`)
     await rpcCall(api, 'sessions', 'updateWorkingDirectory', { sessionId, workingDirectory: workdir })
@@ -1851,18 +1835,13 @@ async function runWriteFailureProbe({ transcript, mockPort, port, scenarioName, 
     const appendFailures = Number(stats.appendFailures) || 0
     if (appendFailures === 0) throw new Error('the injection never bit: appendFailures stayed 0')
 
-    if (transcript === 'off') {
-      if (!surfaced) throw new Error('off: the append failure was swallowed — no command error surfaced')
-      // 报的必须是**这件事**:一个 "Message not found" 也会让 `surfaced` 有值,
-      // 而那时探针就在拿一个不相干的错误当绿灯。
-      if (!/session event log write failed/.test(surfaced)) {
-        throw new Error(`off: the command failed for another reason — ${surfaced}`)
-      }
-      probe.detail = `command failed as designed (appendFailures=${appendFailures})`
-    } else {
-      if (surfaced) throw new Error(`shadow: the failure was raised to the caller — ${surfaced}`)
-      probe.detail = `counted only, no command error (appendFailures=${appendFailures})`
+    if (!surfaced) throw new Error('the append failure was swallowed — no command error surfaced')
+    // 报的必须是**这件事**:一个 "Message not found" 也会让 `surfaced` 有值,
+    // 而那时探针就在拿一个不相干的错误当绿灯。
+    if (!/session event log write failed/.test(surfaced)) {
+      throw new Error(`the command failed for another reason — ${surfaced}`)
     }
+    probe.detail = `command failed as designed (appendFailures=${appendFailures})`
     probe.ok = true
   } catch (error) {
     probe.detail = String(error?.message ?? error)
@@ -1910,8 +1889,7 @@ async function main() {
     }]),
   ))
 
-  // 三趟都用它起 server:场景矩阵那趟 + 两条补水泳道,差别只在 `extraEnv`
-  // (S3w-1 的补水泳道,见下面 `runHydrateLane`)。
+  // 每一趟都用它起 server:场景矩阵、抄本泳道、补水泳道,差别只在 `extraEnv`。
   const serverOut = []
   let server
   let stopped = true
@@ -1924,12 +1902,11 @@ async function main() {
       ONETHING_SESSION_SHADOW: '1',
       ONETHING_LOG: 'warn',
     }
-    // 档位由脚本自己说了算:先把继承来的那两格摘掉,免得开发者 shell 里恰好
-    // 导出过 `ONETHING_SESSION_HYDRATE` / `ONETHING_SESSION_TRANSCRIPT`,把
-    // "默认档泳道"悄悄变成显式档 —— 那样两条泳道会验同一件事,而报告照样说
-    // 自己在验两档。**先清再叠**,叠的那一层才是泳道自己说的话。
+    // 档位由脚本自己说了算:先把继承来的摘掉,免得开发者 shell 里恰好导出过
+    // `ONETHING_SESSION_HYDRATE`,把"默认档泳道"悄悄变成显式档,而报告照样说
+    // 自己在验默认路。**先清再叠**,叠的那一层才是泳道自己说的话。
+    // (`ONETHING_SESSION_TRANSCRIPT` 已随批 6b 退役,没有可清的了。)
     delete env.ONETHING_SESSION_HYDRATE
-    delete env.ONETHING_SESSION_TRANSCRIPT
     Object.assign(env, extraEnv)
     server = spawn(process.execPath, [SERVER_ENTRY], {
       cwd: REPO,
@@ -2007,23 +1984,13 @@ async function main() {
     // 统计表是 1s 节流写、`unref` 的定时器,关停时没人 flush —— 等它自己落一次。
     await sleep(2500)
 
-    // ---- 抄本泳道(S3w-2 立,批 6a 语义对调,§14.3-A/C / §15.19)
+    // ---- 抄本泳道(S3w-2 立,批 6a 语义对调,批 6b 收成一条;§14.3-A/C / §15.19 / §15.22)
     //
-    // **排在补水泳道之前**(批 6a 反了顺序):默认档 = `off`,场景矩阵跑出来的
-    // 会话已经没有 `messages.jsonl` 了;而补水回滚杆(`ONETHING_SESSION_HYDRATE=
-    // messages`)要的正是一批**带抄本**的会话 —— 只有 `shadow` 这条泳道会写出来。
-    //
-    //  - `default (= off)` —— 不设 `ONETHING_SESSION_TRANSCRIPT`,验产品出厂那条路:
-    //    抄本一个字节都不写,产品行为只能靠事件账本活着;
-    //  - `shadow rollback` —— 显式扳回滚杆,验它真的把写路径接回去了(抄本必须长)。
+    // 批 6b 删掉消息写代码之后只剩一条:全场景跑一遍,`messages.jsonl` 一个字节
+    // 都不许长。这不再是"某一档",而是**删除本身的运行时证据**。
+    // (`shadow rollback` 那条随 `ONETHING_SESSION_TRANSCRIPT` 一起退役。)
     for (const spec of [
-      { label: 'default (= off)', env: {}, expectTranscript: 'absent', seed: ARGS.seed + 991 },
-      {
-        label: 'shadow rollback (ONETHING_SESSION_TRANSCRIPT=shadow)',
-        env: { ONETHING_SESSION_TRANSCRIPT: 'shadow' },
-        expectTranscript: 'present',
-        seed: ARGS.seed + 1093,
-      },
+      { label: 'no transcript (deleted in 6b)', env: {}, expectTranscript: 'absent', seed: ARGS.seed + 991 },
     ]) {
       transcriptLanes.push(await runTranscriptLane({
         store, api, library, stopServer, startServer, workdir,
@@ -2039,28 +2006,20 @@ async function main() {
     // 换句话说,这两条泳道用**既有的影子法官**验补水,不新造判据。
     //
     //  - `default` —— 不设 `ONETHING_SESSION_HYDRATE`。批 3 翻默认之后它 = 投影
-    //    补水,验的就是产品出厂那条路;取材池 = 场景矩阵(默认档 = 停写,正是
-    //    今天真机上的形状:只有 `events.jsonl` 可补)。
-    //  - `legacy` —— 显式 `ONETHING_SESSION_HYDRATE=messages`,即**回滚杆**。
-    //    它也必须一直被测着:没人跑的回滚杆,等到真要回滚那天才发现是坏的。
-    //    取材池 = 上面 `shadow` 抄本泳道的会话(**唯一有抄本可读的那批**),
-    //    并且顺带把 `ONETHING_SESSION_TRANSCRIPT=shadow` 一起扳过去 —— 真要回滚
-    //    补水,抄本当然也得继续写,否则接下来那一轮就再也补不回来了。
+    //    补水,验的就是产品出厂那条路;取材池 = 场景矩阵(会话只有 `events.jsonl`
+    //    可补,正是今天真机上的形状)。
     //
-    // 取材**互不相交**:两条泳道的池子本来就不同源,`laneTaken` 只是把这件事
-    // 钉住,免得哪天池子合并了又变成"是哪一档漂的"那道推理题。
+    // **批 6b 退役了 `legacy rollback` 那条**(`ONETHING_SESSION_HYDRATE=messages`):
+    // 它的取材池是"带抄本的会话",而抄本写代码已删,一次性 store 上再也造不出这种
+    // 会话。那根杆本身从此只对存量有效、且已经不安全(见 `read-mode.ts` 的注释),
+    // 退役与否列在 §15.22 的待拍板里。`laneTaken` 留着:哪天补回第二条泳道,
+    // "取材互不相交"这条纪律还在。
     const laneTaken = new Set()
-    const shadowLane = transcriptLanes.find(lane => lane.expectTranscript === 'present')
     for (const spec of [
       {
         label: 'default (= projection)',
         env: {},
         targets: results.filter(entry => entry.ok && entry.sessionId),
-      },
-      {
-        label: 'legacy rollback (ONETHING_SESSION_HYDRATE=messages)',
-        env: { ONETHING_SESSION_HYDRATE: 'messages', ONETHING_SESSION_TRANSCRIPT: 'shadow' },
-        targets: shadowLane?.sessions ?? [],
       },
     ]) {
       hydrateLanes.push(await runHydrateLane({
@@ -2077,19 +2036,17 @@ async function main() {
       store, api, library, stopServer, startServer, workdir, seed: ARGS.seed + 613,
     })
 
-    // ---- 写失败上抛(S3w-2 裁定 7):同一刀注两档,看两档答得一不一样。
-    // 各跑在自己的 store 上(它们故意制造 appendFailures),端口也各占一个。
+    // ---- 写失败上抛(§14.6 裁定 7):注一刀,看调用方感不感知得到。
+    // 跑在自己的 store 上(它故意制造 appendFailures),端口也另占一个。
+    // 批 6b:上抛成了**无条件**行为,`shadow` 那枚对照探针随开关一起退役。
     const probeScenario = (library.find(s => s.name === 'plain-text') ?? library[0]).name
-    for (const [index, transcript] of ['off', 'shadow'].entries()) {
-      console.log(`[battery] write-failure probe [${transcript}] …`)
-      writeFailureProbes.push(await runWriteFailureProbe({
-        transcript,
-        mockPort,
-        port: serverPort + 100 + index,
-        scenarioName: probeScenario,
-        seed: ARGS.seed + 7 + index,
-      }))
-    }
+    console.log('[battery] write-failure probe …')
+    writeFailureProbes.push(await runWriteFailureProbe({
+      mockPort,
+      port: serverPort + 100,
+      scenarioName: probeScenario,
+      seed: ARGS.seed + 7,
+    }))
   } finally {
     await stopServer()
     mock.close()
@@ -2132,9 +2089,9 @@ async function main() {
   }
 
   if (hydrateLanes.length > 0) {
-    console.log('\n[battery] hydrate lanes (S3w-1 cold load, §15.10 两档):')
+    console.log('\n[battery] hydrate lane (S3w-1 cold load;批 6b 起只剩默认档):')
     for (const lane of hydrateLanes) {
-      // 跳过也算红:两档都必须真的跑过 —— 静默少跑一档,门就不再看着回滚杆了。
+      // 跳过也算红:静默少跑一条,门就自己少看一格。
       const red = lane.skipped || lane.failed.length > 0 || lane.mismatchLines > 0
       if (red) anyRed = true
       console.log(
@@ -2156,10 +2113,10 @@ async function main() {
     console.log('\n[battery] imported-history cold hydrate: FAIL (never ran)')
   }
 
-  if (transcriptLanes.length === 2) {
-    console.log('\n[battery] transcript lanes (S3w-3 批 6a,§14.3-A/C / §15.19 两档):')
+  if (transcriptLanes.length === 1) {
+    console.log('\n[battery] transcript lane (S3w-3 批 6b:抄本写代码已删,§15.22):')
     for (const lane of transcriptLanes) {
-      // 跳过也算红:两档都必须真的跑过 —— 静默少跑一档,门就不再看着回滚杆了。
+      // 跳过也算红:静默少跑一条,门就自己少看一格。
       const red = lane.skipped || lane.failed.length > 0 || lane.mismatchLines > 0
         || lane.transcriptWrong.length > 0
       if (red) anyRed = true
@@ -2176,18 +2133,18 @@ async function main() {
   } else {
     // 泳道没跑到 = 前面就抛了。静默略过等于门自己少看一格。
     anyRed = true
-    console.log(`\n[battery] transcript lanes: FAIL (ran ${transcriptLanes.length}/2)`)
+    console.log(`\n[battery] transcript lane: FAIL (ran ${transcriptLanes.length}/1)`)
   }
 
   if (writeFailureProbes.length > 0) {
-    console.log('\n[battery] write-failure probes (S3w-2 裁定 7:off 上抛 / shadow 计数):')
+    console.log('\n[battery] write-failure probe (裁定 7:账本写不进去 = 命令失败,无条件):')
     for (const probe of writeFailureProbes) {
       if (!probe.ok) anyRed = true
-      console.log(`  ${probe.ok ? 'PASS' : 'FAIL'}  transcript=${probe.transcript.padEnd(7)} ${probe.detail}`)
+      console.log(`  ${probe.ok ? 'PASS' : 'FAIL'}  ${probe.detail}`)
     }
   } else {
     anyRed = true
-    console.log('\n[battery] write-failure probes: FAIL (never ran)')
+    console.log('\n[battery] write-failure probe: FAIL (never ran)')
   }
 
   console.log('\n[battery] fixed-class coverage:')

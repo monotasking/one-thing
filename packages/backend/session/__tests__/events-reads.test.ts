@@ -60,7 +60,6 @@ const { resetSessionEventStatsCache } = await import('../event-stats.js')
 const { resetSessionProjectionCache } = await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
-const { setSessionReadModeForTesting, getSessionReadMode } = await import('../read-mode.js')
 const { sessionReads } = await import('../reads.js')
 
 const SESSION = 'sess-1'
@@ -75,12 +74,10 @@ beforeEach(() => {
   resetSessionProjectionCache()
   resetSessionEventReadCache()
   resetSessionPrepareCache()
-  setSessionReadModeForTesting(undefined)
 })
 
 afterEach(async () => {
   await flushSessionEventLog()
-  setSessionReadModeForTesting(undefined)
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 
@@ -115,23 +112,8 @@ async function conversation(turns: number): Promise<void> {
   resetSessionProjectionCache()
 }
 
-describe('read-mode switch', () => {
-  it('defaults to events (批 8) and the messages lever flips it back', () => {
-    // 默认已切到 events(S2b 批 8);`messages` 是显式回滚杆,必须被认。
-    expect(getSessionReadMode()).toBe('events')
-    setSessionReadModeForTesting('messages')
-    expect(getSessionReadMode()).toBe('messages')
-    setSessionReadModeForTesting(undefined)
-    expect(getSessionReadMode()).toBe('events')
-  })
-})
-
-describe.each(['messages', 'events'] as const)('sessionReads in %s mode', mode => {
-  beforeEach(() => {
-    setSessionReadModeForTesting(mode)
-  })
-
-  it('answers the seven routed reads with the same content', async () => {
+describe('sessionReads over the events projection', () => {
+  it('answers the seven routed reads', async () => {
     await conversation(3)
 
     expect(sessionReads.listMessages(SESSION).messages.map(m => m.id))
@@ -157,9 +139,12 @@ describe.each(['messages', 'events'] as const)('sessionReads in %s mode', mode =
     expect(sessionReads.countMessages(SESSION)).toBe(5)
   })
 
-  it('falls back to the messages path for a session with no event history', () => {
-    // 老会话:目录在、事件里只有 E0 那七类(surface 是空的),消息事实在
-    // messages.jsonl 里。事件模式必须原样退回,而不是给出一份空历史。
+  /**
+   * 批 6b(§15.22):事件里折不出消息的会话**不再退回仓库** —— 消息类的读一律
+   * 给空。只有 `pageMessages` / `listUserMarkers` 例外,而那两口右边留的不是
+   * "第二份真相",是**空会话的形状口**(返回值不可空 / 空数组也得有个产地)。
+   */
+  it('gives nothing for a session with no event history (兜底已删)', () => {
     appendSessionLogEvent(SESSION, 'request/start', { requestIndex: 1, messageId: 'legacy' } as never)
     state.messages.set(SESSION, [
       { id: 'old1', role: 'user', content: 'legacy ask', timestamp: 1 },
@@ -167,16 +152,9 @@ describe.each(['messages', 'events'] as const)('sessionReads in %s mode', mode =
     ])
     resetSessionProjectionCache()
 
-    expect(sessionReads.listMessages(SESSION).messages.map(m => m.id)).toEqual(['old1', 'old2'])
-    expect(sessionReads.countMessages(SESSION)).toBe(2)
-    expect(sessionReads.pageMessages({ sessionId: SESSION, anchor: 'tail', limit: 10 }).messages?.map(m => m.id))
-      .toEqual(['old1', 'old2'])
-  })
-})
-
-describe('events mode specifics', () => {
-  beforeEach(() => {
-    setSessionReadModeForTesting('events')
+    expect(sessionReads.listMessages(SESSION).messages).toEqual([])
+    expect(sessionReads.countMessages(SESSION)).toBe(0)
+    expect(sessionReads.getMessage(SESSION, 'old1')).toBeUndefined()
   })
 
   it('stamps seq with the eventSeq, not the position', async () => {

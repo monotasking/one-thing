@@ -1,14 +1,14 @@
 /**
- * F11(§13.2/§13.4):**读模式切到 `events` 之后,影子还能不能证明什么。**
+ * F11(§13.2/§13.4):**产品读路走投影之后,影子还能不能证明什么。**
  *
- * S2a 给 `sessionReads` 的七个方法各开了一个 `ONETHING_SESSION_READ=events` 的
- * 岔口。影子的真相侧当时用的就是 `listMessages` —— 于是开关一开,"事实"与
- * "投影"变成同一个来源:自己跟自己比,永远相等,`sessions:shadow-report` 以
- * **错误的理由**变绿。判据被污染的门比没有门更坏。
+ * S2a 给 `sessionReads` 的七个方法开了投影取数(批 6b 之后是唯一路)。影子的
+ * 真相侧当时用的就是 `listMessages` —— 于是"事实"与"投影"变成同一个来源:
+ * 自己跟自己比,永远相等,`sessions:shadow-report` 以**错误的理由**变绿。判据
+ * 被污染的门比没有门更坏。
  *
- * 所以这一套用例把读模式钉在 `events` 上,让抄本(`messages.jsonl`)与事件
- * **故意分岔**,断言影子必须把它报出来。修之前这里是绿的(自比),现在是红的
- * —— 这正是它存在的理由。
+ * 所以这一套用例让抄本(`messages.jsonl`)与事件**故意分岔**,断言影子必须把它
+ * 报出来。修之前这里是绿的(自比),现在是红的 —— 这正是它存在的理由。
+ * (从前还要显式把读模式钉在 `events` 上;批 6b 烧掉那个开关之后不必了。)
  *
  * 与 `shadow.test.ts` 的分工:那边把 `reads.js` 整个替身掉(测的是断言逻辑),
  * 这里跑**真的** `reads.ts`(测的是取数口),只替身最底下的会话仓库。
@@ -44,7 +44,6 @@ const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache }
 const { resetSessionProjectionCache } = await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
-const { setSessionReadModeForTesting } = await import('../read-mode.js')
 const { sessionReads } = await import('../reads.js')
 const {
   checkSessionRunShadow,
@@ -74,12 +73,10 @@ beforeEach(() => {
   resetSessionPrepareCache()
   resetSessionShadowCache()
   resetSessionShadowCoverageCache()
-  setSessionReadModeForTesting(undefined)
 })
 
 afterEach(async () => {
   await flushSessionEventLog()
-  setSessionReadModeForTesting(undefined)
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 
@@ -138,13 +135,12 @@ function shadowLineCount(): number {
   }
 }
 
-describe('the transcript accessor is read-mode blind (F11)', () => {
-  it('listMessagesFromTranscript keeps answering from messages.jsonl in events mode', async () => {
+describe('the transcript accessor never routes through the projection (F11)', () => {
+  it('listMessagesFromTranscript keeps answering from messages.jsonl', async () => {
     await recordRun('hello')
     setTranscript('TAMPERED')
-    setSessionReadModeForTesting('events')
 
-    // 产品线的读面在 events 模式下给的是投影……
+    // 产品线的读面给的是投影……
     expect(sessionReads.listMessages(SESSION).messages.find(m => m.id === 'a1')?.content)
       .toBe('hello')
     // ……而影子的取数口给的仍然是抄本。两者不同,正是这道断言唯一有意义的前提。
@@ -153,12 +149,8 @@ describe('the transcript accessor is read-mode blind (F11)', () => {
   })
 })
 
-describe.each(['messages', 'events'] as const)('run assertion under read mode %s', mode => {
-  beforeEach(() => {
-    setSessionReadModeForTesting(mode)
-  })
-
-  it('reports a transcript-vs-events divergence (would have been silently green in events mode)', async () => {
+describe('run assertion', () => {
+  it('reports a transcript-vs-events divergence (would have been silently green if the shadow read the projection)', async () => {
     await recordRun('hello')
     setTranscript('TAMPERED')
 

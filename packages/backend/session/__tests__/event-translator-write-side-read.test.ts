@@ -49,7 +49,6 @@ const { resetSessionEventStatsCache } = await import('../event-stats.js')
 const { resetSessionProjectionCache } = await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
-const { setSessionReadModeForTesting } = await import('../read-mode.js')
 const { sessionReads } = await import('../reads.js')
 
 const SESSION = 'write-side-1'
@@ -67,12 +66,10 @@ beforeEach(() => {
   resetSessionProjectionCache()
   resetSessionEventReadCache()
   resetSessionPrepareCache()
-  setSessionReadModeForTesting(undefined)
 })
 
 afterEach(async () => {
   await flushSessionEventLog()
-  setSessionReadModeForTesting(undefined)
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 
@@ -85,13 +82,9 @@ async function events(): Promise<SessionLogEventRecord[]> {
   return readSessionLogEventsSync(SESSION)
 }
 
-describe.each(['messages', 'events'] as const)(
-  'event write side reads the transcript, never the lagging projection (§13.18 发现 B) — read mode %s',
-  mode => {
-    beforeEach(() => {
-      setSessionReadModeForTesting(mode)
-    })
-
+describe(
+  'event write side reads the transcript, never the lagging projection (§13.18 发现 B)',
+  () => {
     it('truncateFrom(edit) writes the reducer-settled content/timestamp, not the pre-edit projection', async () => {
       // 投影侧:账本上是编辑前的 'v1' / timestamp 1000。
       setTranscript([{ id: 'u1', role: 'user', content: 'v1', timestamp: 1000 }])
@@ -134,7 +127,6 @@ describe('transcript accessors stay read-mode blind for the write side (§13.18 
     await flushSessionEventLog(SESSION)
     resetSessionProjectionCache(SESSION)
     setTranscript([{ id: 'u1', role: 'user', content: 'v2', timestamp: 2000 }])
-    setSessionReadModeForTesting('events')
 
     // 产品读面(fromEvents)给的是投影里的旧正文 'v1'。
     expect(sessionReads.getMessage(SESSION, 'u1')?.content).toBe('v1')
@@ -155,7 +147,6 @@ describe('transcript accessors stay read-mode blind for the write side (§13.18 
     })
     await flushSessionEventLog(SESSION)
     resetSessionProjectionCache(SESSION)
-    setSessionReadModeForTesting('events')
 
     const byMarker = (m: ChatMessage) => (m.content ?? '').includes('@@marker@@')
     // 产品读面滞后 → marker-delete 会找不到 → 该翻译的 message/deleted 整条丢失。
@@ -199,7 +190,6 @@ describe('transcript accessors stay read-mode blind for the write side (§13.18 
         ],
       },
     ])
-    setSessionReadModeForTesting('events')
 
     // 产品读面(fromEvents)给的是投影里的占位标题。
     expect(sessionReads.getMessage(SESSION, 'a1')?.steps?.[0]?.title).toBe('调用工具: bash')

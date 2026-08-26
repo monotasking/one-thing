@@ -11,6 +11,7 @@ import type {
   StoredChatMessage,
   UserMessageMarker,
 } from '@onething/core/session'
+import { encodeJsonlHeaderLine, encodeJsonlMessageLine } from '@onething/core/session'
 import { createOnethingSessionRepository } from '../session-repository.js'
 import { createHybridSessionStorageDriver } from '../storage-driver.js'
 
@@ -54,6 +55,31 @@ function readJsonFile<TValue>(filePath: string, fallback: TValue): TValue {
 function writeJsonFile(filePath: string, data: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8')
+}
+
+/**
+ * 把一份"崩溃现场"直接铺到盘上(`meta.json` + `messages.jsonl`)。
+ *
+ * S3w-3 批 6b 删掉了驱动的消息写半边,`saveSessionToFile` 从此只落会话外壳 ——
+ * 于是"用一个仓库实例写出现场、再用另一个实例冷加载"这条老套路没了写的那一半。
+ * 这里改成直接写**存量抄本化石**(裁定 9a:那种文件仍然可读,只是不再由产品写
+ * 出来),读那一半、`rehydrate`、冷加载崩溃修复三段一字未动 —— 这个文件问的
+ * 正是那三段。
+ */
+function seedTranscriptFossil(sessionsDir: string, session: TestSession): void {
+  const dir = path.join(sessionsDir, session.id)
+  fs.mkdirSync(dir, { recursive: true })
+  let text = encodeJsonlHeaderLine(session.id)
+  session.messages.forEach((message, index) => {
+    text += encodeJsonlMessageLine(index + 1, message)
+  })
+  fs.writeFileSync(path.join(dir, 'messages.jsonl'), text, 'utf-8')
+  const { messages, ...rest } = session as TestSession & Record<string, unknown>
+  writeJsonFile(path.join(dir, 'meta.json'), {
+    ...rest,
+    formatVersion: 2,
+    log: { messageCount: messages.length, lastSeq: messages.length },
+  })
 }
 
 function createRepository(sessionsDir: string, cacheSize?: number) {
@@ -145,10 +171,8 @@ describe('crash recovery via cold load', () => {
     const sessionsDir = createTempSessionsDir()
     const now = Date.now()
 
-    // 用独立实例落盘"崩溃现场",再追加半行模拟进程死在 jsonl 写入中途。
-    const seeder = createRepository(sessionsDir)
-    seeder.saveSessionToFile('crashed', makeCrashedSession(now))
-    await seeder.flushSessionSave('crashed')
+    // 铺一份"崩溃现场"的存量抄本,再追加半行模拟进程死在 jsonl 写入中途。
+    seedTranscriptFossil(sessionsDir, makeCrashedSession(now))
     const logPath = path.join(sessionsDir, 'crashed', 'messages.jsonl')
     expect(fs.existsSync(logPath)).toBe(true)
     fs.appendFileSync(logPath, '{"id":"m4","role":"assistant","content":"写到一半被杀', 'utf-8')
@@ -181,11 +205,13 @@ describe('crash recovery via cold load', () => {
     expect(compact.status).toBe('failed')
     expect(compact.error).toBeTruthy()
 
-    // 修复必须写回磁盘:再开第三个实例,绕过 sanitize 的原始读取应已是修复后状态。
+    // 批 6b 起修复**只在内存里**:抄本不再被写回(消息写半边已删),事件账本上
+    // 也没有这次修复的产地(§13.6 R-a)。所以判据换成"再冷加载一次照样修得对"
+    // —— 修复是每次接手时现算的,幂等。
     await repository.flushSessionSave('crashed')
-    const raw = createRepository(sessionsDir).getSessionRaw('crashed')
-    expect(raw?.messages[1].isStreaming).toBe(false)
-    expect(raw?.messages[1].toolCalls?.map(toolCall => toolCall.status)).toEqual(['cancelled', 'cancelled'])
+    const again = createRepository(sessionsDir).getSession('crashed')
+    expect(again?.messages[1].isStreaming).toBe(false)
+    expect(again?.messages[1].toolCalls?.map(toolCall => toolCall.status)).toEqual(['cancelled', 'cancelled'])
   })
 
   it('leaves a cleanly finished session untouched', async () => {
@@ -206,8 +232,7 @@ describe('crash recovery via cold load', () => {
         } as TestMessage,
       ],
     } as TestSession
-    seeder.saveSessionToFile('clean', clean)
-    await seeder.flushSessionSave('clean')
+    seedTranscriptFossil(sessionsDir, clean)
     const before = fs.readFileSync(path.join(sessionsDir, 'clean', 'messages.jsonl'), 'utf-8')
 
     const session = createRepository(sessionsDir).getSession('clean')
@@ -252,6 +277,8 @@ describe('crash recovery via cold load', () => {
     )
     repository.saveSessionToFile('live', live)
     await repository.flushSessionSave('live')
+    // 消息写半边已删(批 6b),盘上那一份得自己铺 —— 冷加载要有东西读回来。
+    seedTranscriptFossil(sessionsDir, live)
 
     // 同一个进程里挤掉它(cacheSize=2),再读回来 —— 引擎在真机上就是这样接着写的。
     repository.createSession('other-a', 'a')
@@ -274,8 +301,7 @@ describe('crash recovery via cold load', () => {
     const sessionsDir = createTempSessionsDir()
     const now = Date.now()
     const seeder = createRepository(sessionsDir)
-    seeder.saveSessionToFile('crashed', makeCrashedSession(now))
-    await seeder.flushSessionSave('crashed')
+    seedTranscriptFossil(sessionsDir, makeCrashedSession(now))
 
     // 新进程 = 新仓库实例:第一次接手照旧修(上面那条豁免只认"本进程接手过")。
     const assistant = createRepository(sessionsDir).getSession('crashed')?.messages[1]

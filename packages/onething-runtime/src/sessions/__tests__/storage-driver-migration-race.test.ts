@@ -1,3 +1,15 @@
+/**
+ * legacy 整文件会话的首触迁移 vs 在途写(1.3 的回归,S3w-3 批 6b 改口径)。
+ *
+ * 原始病灶不变:迁移读 legacy 文件的那一刻,如果有一次尚未落盘的 legacy 写还挂在
+ * 慢盘上,迁移就会读到旧内容,而那次写随后又把 legacy 文件重建出来 —— 新数据永久
+ * 落进无人读取的 backup 里。
+ *
+ * 修法从"先 await 排空在途写"换成了"**见到在途写就让这一轮**":批 6b 起迁移是
+ * **同步**的(理由见 `migrateLegacySessionNow` 的注释:异步窗口里的事件会被丢),
+ * 同步就 await 不了。让一轮的代价只是"这次冷加载仍读 legacy",而下一次冷加载
+ * (写已落盘)迁的就是完整内容。
+ */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -32,22 +44,10 @@ function session(id: string, messageIds: string[]): TestSession {
   }
 }
 
-const tick = () => new Promise(resolve => setTimeout(resolve, 15))
-
-// 满载并行跑套件时 15ms 不够迁移走完 读legacy→写jsonl→删legacy,
-// 固定睡眠会假失败;轮询到条件成立为止(上限 5s)。
-async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!condition()) {
-    if (Date.now() > deadline) return
-    await new Promise(resolve => setTimeout(resolve, 10))
-  }
-}
-
-describe('legacy→jsonl migration vs in-flight write (1.3)', () => {
+describe('legacy→events migration vs in-flight write (1.3)', () => {
   let dir: string
   const legacyPath = (id: string) => path.join(dir, `${id}.json`)
-  const logPath = (id: string) => path.join(dir, id, 'messages.jsonl')
+  const eventsPath = (id: string) => path.join(dir, id, 'events.jsonl')
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-migrace-'))
@@ -56,7 +56,7 @@ describe('legacy→jsonl migration vs in-flight write (1.3)', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  it('does not lose a message written while migration reads the legacy file', async () => {
+  it('does not lose a message written while the legacy file is still in flight', async () => {
     // 磁盘起始:legacy 文件仅含 m1。
     fs.writeFileSync(legacyPath('s1'), JSON.stringify(session('s1', ['m1'])))
 
@@ -71,7 +71,6 @@ describe('legacy→jsonl migration vs in-flight write (1.3)', () => {
       getSessionsDir: () => dir,
       getLegacySessionPath: legacyPath,
       newSessionFormat: () => 'jsonl',
-      migrationDelayMs: 0,
       readJsonFile: (filePath, fallback) => {
         try {
           return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
@@ -90,21 +89,26 @@ describe('legacy→jsonl migration vs in-flight write (1.3)', () => {
       deleteJsonFile: filePath => fs.rmSync(filePath, { force: true }),
     })
 
-    // 在途写:把 m2 追加进来(format 仍是 legacy,因为 jsonl 尚不存在)。写入被 gate 挂起。
+    // 在途写:把 m2 追加进来(format 仍是 legacy,因为会话目录尚不存在)。写入被 gate 挂起。
     const inFlight = driver.write('s1', session('s1', ['m1', 'm2']), { kind: 'structural' })
 
-    // 触发迁移(delay 0)。修复后 migrateToJsonlNow 会先排空在途写。
-    driver.load('s1')
-    await tick() // 让迁移定时器触发并停在排空 await 上
+    // 在途写还挂着时冷加载:**这一轮不迁**,读到的是盘上那份(只有 m1)。
+    const duringFlight = driver.load('s1')
+    expect(fs.existsSync(eventsPath('s1'))).toBe(false)
+    expect(duringFlight?.messages.map(m => m.id)).toEqual(['m1'])
 
-    // 放行在途写:它把 m1+m2 写入 legacy 文件,随后迁移读到最新内容。
+    // 放行在途写:它把 m1+m2 写进 legacy 文件。
     releaseWrite()
     await inFlight
-    await waitFor(() => fs.existsSync(logPath('s1'))) // 让迁移完成提交
 
-    expect(fs.existsSync(logPath('s1'))).toBe(true)
-    const loaded = driver.load('s1')
-    // 关键回归:m2 不能丢。修复前迁移会读到旧 legacy(仅 m1)并把在途写重建的新数据遗弃。
-    expect(loaded?.messages.map(m => m.id)).toEqual(['m1', 'm2'])
+    // 下一次冷加载才迁 —— 迁的是完整内容。关键回归:m2 不能丢。
+    driver.load('s1')
+    expect(fs.existsSync(eventsPath('s1'))).toBe(true)
+    const imported = fs.readFileSync(eventsPath('s1'), 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map(line => JSON.parse(line))
+    expect(imported.map(record => record.data.message.id)).toEqual(['m1', 'm2'])
+    expect(fs.existsSync(legacyPath('s1'))).toBe(false)
   })
 })
