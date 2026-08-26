@@ -329,14 +329,35 @@ function partTurn(part: ContentPart): number {
 /**
  * 把 `data-steps` 锚点插进**已有的** parts:每一轮内容 part 之后、下一轮之前各插一个,
  * 让 `buildWorkRender` 的 Working/Worked 切分落在最后一轮工具处(而不是把最终回答也
- * 卷进 work group)。`turns` 里没有对应内容 part 的轮次挂末尾兜底,保证覆盖。
+ * 卷进 work group)。
+ *
+ * **空轮必须按轮次序就位,不能挂尾**(修 A,2026-08-26)。一轮有工具却没有任何内容
+ * part 是常态而非例外:第 1 轮的 reasoning 在 `turnIndex === 1` 且尚无正文时走 'top'
+ * 落 `message.reasoning`,根本不进 `contentParts`(见
+ * `packages/core/engine/agent-loop-executor.ts` 的 top-reasoning 分支),中间轮也可能
+ * 只有工具没有叙述。旧实现把这些"找不到落点"的轮次一律挂到 parts **末尾**,于是孤儿
+ * 锚点排在最终正文之后,`buildWorkRender` 的 `lastProcessIndex` 被推到末位 ——
+ * 整条正文被卷进折叠区,历史消息默认收起就等于正文不可见(真机 e0267646
+ * seq2–18 九条中招)。
+ *
+ * 正确落点:轮次 `t` 的锚点插在**第一个轮次大于 t 的 part 之前**;只有 `t` 确实大于
+ * 所有 part 的轮次(末轮工具之后再无内容)时才允许挂尾。
  */
 function insertDataStepsByTurn(parts: readonly ContentPart[], turns: number[]): ContentPart[] {
-  const remaining = new Set(turns)
+  const ordered = [...turns].sort((a, b) => a - b)
+  const remaining = new Set(ordered)
   const out: ContentPart[] = []
   parts.forEach((part, index) => {
-    out.push(part)
     const turnIndex = partTurn(part)
+    // 空轮就位:所有还没落地、且轮次小于本 part 的锚点,插在本 part **之前**。
+    for (const pending of ordered) {
+      if (pending >= turnIndex) break
+      if (remaining.has(pending)) {
+        out.push({ type: 'data-steps', turnIndex: pending })
+        remaining.delete(pending)
+      }
+    }
+    out.push(part)
     const next = parts[index + 1]
     const nextTurn = next ? partTurn(next) : undefined
     if (remaining.has(turnIndex) && nextTurn !== turnIndex) {
@@ -344,7 +365,8 @@ function insertDataStepsByTurn(parts: readonly ContentPart[], turns: number[]): 
       remaining.delete(turnIndex)
     }
   })
-  for (const turnIndex of turns) {
+  // 真正大于所有 part 轮次的锚点才挂尾。
+  for (const turnIndex of ordered) {
     if (remaining.has(turnIndex)) {
       out.push({ type: 'data-steps', turnIndex })
       remaining.delete(turnIndex)

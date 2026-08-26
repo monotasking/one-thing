@@ -301,6 +301,46 @@ describe('synthesizeToolAnchors(投影形态补锚点)', () => {
     expect(toolPart.toolCalls).not.toBe(calls)
   })
 
+  it('空轮(该轮有工具但没有任何内容 part)的锚点按轮次序就位,不挂尾', () => {
+    // 第 1 轮:top reasoning 落 message.reasoning,不进 contentParts → 轮 1 是空轮。
+    // 第 3 轮:只有工具没有叙述 → 中间空轮。
+    const projected: ContentPart[] = [
+      { type: 'reasoning', content: 'r2', turnIndex: 2 },
+      { type: 'reasoning', content: 'r4', turnIndex: 4 },
+      { type: 'text', content: '最终答案', turnIndex: 4 },
+    ]
+    const steps = [
+      step('a', { turnIndex: 1 }),
+      step('b', { turnIndex: 2 }),
+      step('c', { turnIndex: 3 }),
+    ]
+    const merged = synthesizeToolAnchors(projected, { steps })!
+    expect(merged.map(p => `${p.type}:${(p as { turnIndex?: number }).turnIndex ?? ''}`)).toEqual([
+      'data-steps:1', // 轮 1 空轮 → 插在第一个更大轮次的 part 之前,不是末尾
+      'reasoning:2',
+      'data-steps:2',
+      'data-steps:3', // 轮 3 空轮 → 插在轮 4 的 part 之前
+      'reasoning:4',
+      'text:4',
+    ])
+    // 分界:最后一轮工具之后的正文留在 tail(挂尾的锚点会把它卷进 work group)。
+    const after = render(merged, steps)
+    expect(after.hasWorkGroup).toBe(true)
+    expect(after.stats.toolCount).toBe(3)
+    expect(after.tailEntries.map(e => e.part.type)).toEqual(['text'])
+  })
+
+  it('轮次真的大于所有 part 轮次时仍然挂尾(末轮工具之后没有内容)', () => {
+    const projected: ContentPart[] = [{ type: 'text', content: 't1', turnIndex: 1 }]
+    const steps = [step('a', { turnIndex: 1 }), step('b', { turnIndex: 2 })]
+    const merged = synthesizeToolAnchors(projected, { steps })!
+    expect(merged.map(p => `${p.type}:${(p as { turnIndex?: number }).turnIndex ?? ''}`)).toEqual([
+      'text:1',
+      'data-steps:1',
+      'data-steps:2',
+    ])
+  })
+
   it('多轮乱序 turnIndex 全覆盖:每一轮都有一个 data-steps 锚点', () => {
     const projected: ContentPart[] = [
       { type: 'text', content: 't0', turnIndex: 0 },
@@ -321,4 +361,121 @@ describe('synthesizeToolAnchors(投影形态补锚点)', () => {
     expect(after.stats.toolCount).toBe(3)
     expect(rowIds(after).sort()).toEqual(['a', 'b', 'c'])
   })
+})
+
+/**
+ * 真机形状钉死(修 A,2026-08-26)。
+ *
+ * 取自会话 `e0267646-3dc5-4315-a0bf-2cba1bf8701b` 的 seq2 / seq4 / seq6 三条 assistant
+ * 消息:**正文脱敏成占位串,轮次结构逐格保真**。三条共同的形状是
+ *
+ *   · **第 1 轮永远是空轮** —— `turnIndex === 1` 且尚无正文时,reasoning 走 'top' 落
+ *     `message.reasoning`,不进 `contentParts`,于是轮 1 有工具却没有任何内容 part;
+ *   · **中间还可能有空轮** —— seq4 缺轮 6、seq6 缺轮 37(该轮只有工具没有叙述);
+ *   · **每轮多工具**,末轮只有正文(text)没有工具。
+ *
+ * 撤掉修 A(空轮锚点挂尾)时,这些孤儿 `data-steps` 排在最终 text 之后,
+ * `buildWorkRender` 的 `lastProcessIndex` 被推到末位 → `tailEntries` 为空 → 整条正文
+ * 被卷进折叠区,历史消息默认收起就等于正文不可见。下面每条 fixture 都断言
+ * `tailEntries` 恰是那条最终正文。
+ */
+describe('synthesizeToolAnchors × 真机 fixture(e0267646 seq2/seq4/seq6)', () => {
+  /** `['reasoning', 2]` → `{ type:'reasoning', content:'r2', turnIndex:2 }`。 */
+  function buildParts(spec: ReadonlyArray<readonly ['reasoning' | 'text', number]>): ContentPart[] {
+    return spec.map(([type, turnIndex]) =>
+      ({ type, content: `${type[0]}${turnIndex}`, turnIndex }) as ContentPart)
+  }
+
+  function buildSteps(turns: readonly number[]): Step[] {
+    return turns.map((turnIndex, index) => step(`tc${index}`, { turnIndex }))
+  }
+
+  function range(from: number, to: number): number[] {
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i)
+  }
+
+  function entries(parts: readonly ContentPart[]): WorkPartEntry[] {
+    return parts.map((part, index) => ({ part, key: `${part.type}-${index}` }))
+  }
+
+  function render(parts: readonly ContentPart[], steps: Step[]) {
+    const byId = new Map(steps.filter(s => s.toolCallId).map(s => [s.toolCallId as string, s]))
+    return buildWorkRender({
+      entries: entries(parts),
+      role: 'assistant',
+      findStep: id => byId.get(id),
+      stepsForTurn: turnIndex =>
+        (turnIndex === undefined ? steps : steps.filter(s => (s.turnIndex ?? 0) === turnIndex)),
+    })
+  }
+
+  const fixtures = [
+    {
+      name: 'seq2:轮 1 空轮 + 轮 2–13 有工具,末轮(14)只有正文',
+      parts: [
+        ...range(2, 14).map(t => ['reasoning', t] as const),
+        ['text', 14] as const,
+      ],
+      // 24 个 step,轮次 1–13(多数轮两次工具)。
+      stepTurns: [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 13],
+      emptyTurns: [1],
+    },
+    {
+      name: 'seq4:轮 1 空轮 + 中间空轮 6,末轮(11)只有正文',
+      parts: [
+        ...[2, 3, 4, 5, 7, 8, 9, 10, 11].map(t => ['reasoning', t] as const),
+        ['text', 11] as const,
+      ],
+      stepTurns: [1, 1, 2, 2, 3, 4, 4, 5, 6, 7, 8, 9, 10],
+      emptyTurns: [1, 6],
+    },
+    {
+      name: 'seq6:轮 1 空轮 + 中间空轮 37 + 47 轮工具,末轮(48)只有正文',
+      parts: [
+        ...[...range(2, 36), ...range(38, 48)].map(t => ['reasoning', t] as const),
+        ['text', 48] as const,
+      ],
+      stepTurns: [...range(1, 41), 42, 42, 43, 44, 45, 45, 46, 47],
+      emptyTurns: [1, 37],
+    },
+  ] as const
+
+  for (const fixture of fixtures) {
+    it(fixture.name, () => {
+      const parts = buildParts(fixture.parts)
+      const steps = buildSteps(fixture.stepTurns)
+      const turns = [...new Set(fixture.stepTurns)].sort((a, b) => a - b)
+
+      const merged = synthesizeToolAnchors(parts, { steps })
+      expect(merged).not.toBeNull()
+
+      // 1. 覆盖 + 顺序:每一轮恰好一个锚点,且整体按轮次升序。
+      const anchorTurns = merged!
+        .filter(p => p.type === 'data-steps')
+        .map(p => (p as { turnIndex?: number }).turnIndex as number)
+      expect(anchorTurns).toEqual(turns)
+
+      // 2. 空轮锚点就位:插在第一个更大轮次的 part 之前,而不是末尾。
+      for (const emptyTurn of fixture.emptyTurns) {
+        const anchorIndex = merged!.findIndex(
+          p => p.type === 'data-steps' && (p as { turnIndex?: number }).turnIndex === emptyTurn)
+        const nextPartIndex = merged!.findIndex(
+          p => p.type !== 'data-steps' && ((p as { turnIndex?: number }).turnIndex ?? 0) > emptyTurn)
+        expect(anchorIndex).toBeGreaterThanOrEqual(0)
+        expect(nextPartIndex).toBeGreaterThanOrEqual(0)
+        expect(anchorIndex).toBeLessThan(nextPartIndex)
+      }
+
+      // 3. 最终正文永远在所有锚点之后 —— 孤儿锚点挂尾时这条必红。
+      const lastAnchorIndex = merged!.map(p => p.type).lastIndexOf('data-steps')
+      const textIndex = merged!.map(p => p.type).lastIndexOf('text')
+      expect(textIndex).toBeGreaterThan(lastAnchorIndex)
+
+      // 4. work-group 分界:正文落 tail,不被卷进折叠区。
+      const after = render(merged!, steps)
+      expect(after.hasWorkGroup).toBe(true)
+      expect(after.stats.toolCount).toBe(steps.length)
+      expect(after.tailEntries.map(e => e.part.type)).toEqual(['text'])
+    })
+  }
 })

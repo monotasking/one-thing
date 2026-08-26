@@ -149,6 +149,27 @@ describe('buildWorkRender', () => {
     expect(result.tailEntries.map(e => e.key)).toEqual(['text-4'])
   })
 
+  it('空轮锚点的位置决定正文去向:排在正文前 → 正文进 tail;挂在正文后 → 正文被卷进组', () => {
+    // 真机 e0267646 的形状:轮 1 有工具但没有任何内容 part(top reasoning 落
+    // message.reasoning),轮 2 只有最终正文。锚点该插在正文**之前**。
+    const s1 = step({ id: 's1', toolCallId: 'tc1', turnIndex: 1 })
+    const text = { type: 'text', content: '最终答案' } as ContentPart
+    const anchor = { type: 'data-steps', turnIndex: 1 } as ContentPart
+
+    const correct = render([anchor, text], { steps: [s1] })
+    expect(correct.hasWorkGroup).toBe(true)
+    expect(correct.tailEntries.map(e => e.part.type)).toEqual(['text'])
+    expect(correct.tailEntries.map(e => (e.part as { content?: string }).content)).toEqual(['最终答案'])
+    expect(correct.workEntries.map(e => e.part.type)).toEqual(['data-steps'])
+
+    // 反向:同一批 part,锚点挂尾 —— lastProcessIndex 被推到末位,tail 空,
+    // 整条正文进折叠区(历史消息默认收起 = 正文不可见)。这就是修 A 前的现场。
+    const broken = render([text, anchor], { steps: [s1] })
+    expect(broken.hasWorkGroup).toBe(true)
+    expect(broken.tailEntries).toEqual([])
+    expect(broken.workEntries.map(e => e.part.type)).toEqual(['text', 'data-steps'])
+  })
+
   it('waiting 不移动组/尾的分界', () => {
     const withWaiting = render(
       [
