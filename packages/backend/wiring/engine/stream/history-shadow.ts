@@ -67,7 +67,7 @@ export function checkSessionHistoryShadowForRequest(
     const session = sessionReads.getSession(sessionId)
     // F11(§13.2):验证器侧只能是 store 这一口。`listMessages` 自 S2a 起从投影
     // 取数(批 6b 之后是唯一路)—— 拿它来算这一份,断言就变成投影自比。
-    const messages = [...sessionReads.listMessagesFromTranscript(sessionId)]
+    const messages = [...sessionReads.listMessagesFromStore(sessionId)]
     checkSessionHistoryShadow(sessionId, {
       runId,
       fromStore: buildHistoryMessages(messages, session),

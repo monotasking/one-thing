@@ -32,14 +32,31 @@
  * **"改没改成"由命令面自己问一次**(§16.7 第三节的纪律):问的是与 reducer
  * **同一份 store**,判据一字未变。两类:那条**消息**不在(patch / delete /
  * truncate / upsert 的分支判据),或者整条**会话**不在(append / upsert 的
- * reducer 唯一的 no-op 理由 —— F2-c 补上,见 `hasSessionInTranscript`)。
+ * reducer 唯一的 no-op 理由 —— F2-c 补上,见 `hasSessionInStore`)。
  *
- * **事件写侧取材纪律(§13.18 发现 B)**:命令面取材一律走
- * `sessionReads.*FromTranscript`(恒读 `messages.jsonl` 真相面),**永不**走
- * `getMessage` / `findMessage` 这类随 `ONETHING_SESSION_READ` 分岔的门面 ——
- * events 读模式下活投影还没看到"正要由这条命令写出的那条事件",走 fromEvents
- * 会自引用旧投影,把旧正文 / 误判的类别 / 丢失的删除焊进账本(写坏账本,不只是读错)。
- * `fromEvents` 岔口只属于产品读路。
+ * **事件写侧取材纪律 —— F3 已整体翻面**(§16.10;原纪律见 §13.18 发现 B)。
+ *
+ * 从前这里写的是"命令面取材**一律**走 `*FromTranscript`,永不走 `getMessage` /
+ * `findMessage`",理由是**活投影滞后**:events 读模式下投影还没看到"正要由这条
+ * 命令写出的那条事件",走 `fromEvents` 会自引用旧投影,把旧正文 / 误判的类别 /
+ * 丢失的删除焊进账本。**这条理由已经死了** —— F1(§16.6)让事件在 `append` 返回
+ * 前就折进活投影,"命令内读得到自己刚写的"成立;`ONETHING_SESSION_READ` 那个岔口
+ * 本身也早在批 6b 烧掉了。
+ *
+ * 今天的纪律是**具名例外**,不是一刀切:**写侧默认可以读活投影**,以下三类
+ * 仍然读 store,各有各的、F1 修不了的理由(逐口写在 `reads.ts` 上):
+ *
+ *   1. **判据同源** —— 本文件这几处。它们回答的是"这次命令**改不改得成**",
+ *      而"改成"的那一侧是 reducer、reducer 问的是 store。两侧同判据,写事件与
+ *      改 store 才不会一边发生一边不发生。F4 reducer 退役时一起翻。
+ *   2. **事件产地缺口** —— 流中 assistant 占位在账本上没有那一格
+ *      (`run/start` 才是它的产地),见 `stream-executor.ts` /
+ *      `agent-loop-executor.ts` 的两处孪生取材点。
+ *   3. **只在 store 的运行时形状** —— 收尾链的 `steps[]` 结局与 `data-steps`
+ *      渲染锚点,投影故意不产出。
+ *
+ * 名字也跟着说实话了:`*FromTranscript` / `*InTranscript` → `*FromStore` /
+ * `*InStore`(抄本停写之后它们读的是**内存 store**,不是 `messages.jsonl`)。
  */
 
 import type {
@@ -235,7 +252,7 @@ export function createSessionCommands(
       const message = payload.stampCollab && ports.stampCollabAgentId
         ? ports.stampCollabAgentId(sessionId, payload.message)
         : payload.message
-      if (sessionReads.hasSessionInTranscript(sessionId)) {
+      if (sessionReads.hasSessionInStore(sessionId)) {
         events?.appendMessage(sessionId, message)
       }
       ports.messages.addMessage(sessionId, message)
@@ -248,18 +265,18 @@ export function createSessionCommands(
      * 两支(`findIndex === -1`),事件用它分 append / `fullBody` patch 两档。所以
      * 只问一次,而且问的是与 reducer **同一份 store**。
      *
-     * §13.18 发现 B:走抄本真相面 —— events 读模式下活投影还没看到这条流中
-     * assistant 消息,`getMessage` 的 fromEvents 岔口会误判成"新增",翻译错类。
-     * (F2-a 用的是 `getMessageFromTranscript(...) !== undefined`;换成
-     * `hasMessageInTranscript` 是同一口同一义,只是不把消息交出去、也就不必冻。)
+     * F3(§16.10)复核过这一处:**留在 store**,理由是上面那句「同一份 store」
+     * (判据同源),不再是原来那句"投影滞后"(§13.18 发现 B —— F1 之后已不成立)。
+     * (F2-a 用的是 `getMessageFromStore(...) !== undefined`;换成
+     * `hasMessageInStore` 是同一口同一义,只是不把消息交出去、也就不必冻。)
      *
      * `if (changed)` 没了,不是丢了判据:reducer 的 `changed` 对 upsert **恒为 true**
      * (两支都 `changed: true`),端口那个布尔只在"整条会话不在"时才是 false ——
      * F2-c 把这道判据补上(与 `appendMessage` 同一口、同一条裁定,§16.9)。
      */
     upsertMessage(sessionId, payload) {
-      if (sessionReads.hasSessionInTranscript(sessionId)) {
-        const existed = sessionReads.hasMessageInTranscript(sessionId, payload.message.id)
+      if (sessionReads.hasSessionInStore(sessionId)) {
+        const existed = sessionReads.hasMessageInStore(sessionId, payload.message.id)
         events?.upsertMessage(sessionId, payload.message, existed)
       }
       return ports.messages.upsertMessage(sessionId, payload.message)
@@ -270,13 +287,14 @@ export function createSessionCommands(
      *
      * reducer 的 `changed` 只有一个 false 的理由 —— 那条消息不在(`index === -1`)。
      * 翻转之后不能再等它的回执(等回执就是又把事件排到了 store 后面),所以命令面
-     * 自己先问同一个问题,问的是**同一份 store**(`hasMessageInTranscript` 与 reducer
+     * 自己先问同一个问题,问的是**同一份 store**(`hasMessageInStore` 与 reducer
      * 的 `findIndex` 同源),于是"写不写这条事件"的判据一字未变。
      *
-     * (F3 才把这一侧的取材整体翻成读投影;F2-a 照 §13.18 的纪律仍走抄本面。)
+     * (F3 复核结论:**不翻**。判据同源之外还有一笔账 —— 这是逐 token 的热路径,
+     * 而投影侧最便宜的存在性口 `eventsGetMessage` 每次都物化整条会话。§16.10)
      */
     patchMessage(sessionId, payload) {
-      if (sessionReads.hasMessageInTranscript(sessionId, payload.messageId)) {
+      if (sessionReads.hasMessageInStore(sessionId, payload.messageId)) {
         events?.patchMessage(sessionId, payload.messageId, payload.patch)
       }
       return ports.messages.patchMessageFields(
@@ -317,9 +335,12 @@ export function createSessionCommands(
      * F2-b:**事件先,store 后**。三件事按这个顺序:
      *
      * 1. **取材**。编辑重发那一支要编辑**前**的那条做底稿(翻转之前是 reducer 先
-     *    写完、翻译器再把改好的那条读回来;现在改由命令自己合成)。走抄本真相面
-     *    (§13.18 发现 B):`getMessage` 的 fromEvents 岔口会回读到滞后投影,把
-     *    编辑前的旧正文永久焊进 `user/message-edited.data.message`。
+     *    写完、翻译器再把改好的那条读回来;现在改由命令自己合成)。走 **store 侧**
+     *    的 `getMessageFromStore` —— F3(§16.10)复核过:原来那条理由("`getMessage`
+     *    会回读到滞后投影",§13.18 发现 B)F1 之后已不成立,今天的理由是**底稿同源**:
+     *    reducer 的 `applyTruncate` 就是拿 store 上那一条改的,事件里那条
+     *    `user/message-edited.data.message` 必须与它逐字同源,否则恒等门比的是两份
+     *    形状不同的底稿。它与下面第 3 条(时刻由命令决定一次)是同一条纪律的两半。
      * 2. **判据**。reducer 的 `changed` 只有一个 false 的理由 —— 那条消息不在
      *    (`applyTruncate` 的 `index === -1`)。删除那一支不需要底稿,所以单问一句
      *    存在性;编辑那一支的底稿在不在就是同一个答案,不再多问一次。
@@ -334,9 +355,9 @@ export function createSessionCommands(
     truncateFrom(sessionId, payload) {
       const before = payload.inclusive
         ? undefined
-        : (sessionReads.getMessageFromTranscript(sessionId, payload.messageId) as ChatMessage | undefined)
+        : (sessionReads.getMessageFromStore(sessionId, payload.messageId) as ChatMessage | undefined)
       const present = payload.inclusive
-        ? sessionReads.hasMessageInTranscript(sessionId, payload.messageId)
+        ? sessionReads.hasMessageInStore(sessionId, payload.messageId)
         : before !== undefined
       const at = now()
       if (present) events?.truncateFrom(sessionId, payload, { before, now: at })
@@ -366,14 +387,15 @@ export function createSessionCommands(
      */
     deleteMessage(sessionId, payload) {
       if ('messageId' in payload) {
-        if (sessionReads.hasMessageInTranscript(sessionId, payload.messageId)) {
+        if (sessionReads.hasMessageInStore(sessionId, payload.messageId)) {
           events?.deleteMessage(sessionId, payload.messageId)
         }
         return ports.messages.deleteMessage(sessionId, payload.messageId)
       }
-      // §13.18 发现 B:抄本真相面 —— events 读模式下活投影滞后会找不到,
-      // 该产出的 `message/deleted` 整条丢失。
-      const target = sessionReads.findMessageFromTranscript(sessionId, payload.matchMarker)
+      // F3(§16.10)复核:**留在 store**。理由不再是"投影滞后"(§13.18 发现 B,
+      // F1 之后不成立),而是**判据同源** —— 下一行 `deleteMessageWhere` 的 reducer
+      // 在同一份 store 上跑同一个谓词,两边找到的必须是同一条。
+      const target = sessionReads.findMessageFromStore(sessionId, payload.matchMarker)
       if (target) events?.deleteMessage(sessionId, target.id)
       return ports.messages.deleteMessageWhere(sessionId, payload.matchMarker)
     },

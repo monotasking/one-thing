@@ -14,7 +14,7 @@ import { completeAgentLoopStream, type AgentLoopExecutorState } from '../agent-l
  * `materializeContentParts` 不合成)。这份缺锚点的快照被 renderer 的
  * `updateSessionMessage` 整体覆盖上去,`rebuildContentParts` 见非空(有 text)不再
  * 合成锚点 → work group 头与整段工具渲染在收尾那一刻消失。修复:收尾读走
- * `getMessageFromTranscript`(与 abort 收尾 :449 同治法)。
+ * `getMessageFromStore`(与 abort 收尾 :449 同治法)。
  *
  * 用 spy 让两条读法**分岔**:抄本侧带 `data-steps`,events 侧不带。断言收尾发射的
  * 快照仍带 `data-steps` —— 只有读抄本才可能带,读投影必红。
@@ -54,7 +54,7 @@ function messageWith(contentParts: ChatMessage['contentParts']): ChatMessage {
 }
 
 const hoisted = vi.hoisted(() => ({
-  getMessageFromTranscript: vi.fn(),
+  getMessageFromStore: vi.fn(),
   getMessage: vi.fn(),
   emit: vi.fn(async (_sessionId: string, _event: unknown) => undefined),
   patchMessage: vi.fn(),
@@ -71,7 +71,7 @@ vi.mock('../../../../session/reads.js', async (importActual) => {
     ...actual,
     sessionReads: {
       ...(actual.sessionReads as Record<string, unknown>),
-      getMessageFromTranscript: hoisted.getMessageFromTranscript,
+      getMessageFromStore: hoisted.getMessageFromStore,
       getMessage: hoisted.getMessage,
     },
   }
@@ -122,13 +122,13 @@ describe('settle emit reads the transcript, not the events projection', () => {
 
   it('ships the data-steps render anchor in the settled snapshot (events read mode)', async () => {
     // 抄本带锚点,投影不带 —— 两条读法分岔。
-    hoisted.getMessageFromTranscript.mockReturnValue(messageWith(transcriptContentParts))
+    hoisted.getMessageFromStore.mockReturnValue(messageWith(transcriptContentParts))
     hoisted.getMessage.mockReturnValue(messageWith(eventsProjectionContentParts))
 
     await completeAgentLoopStream(settleState(), 'Session')
 
     // 收尾读必须走抄本侧;走随读模式分岔的 getMessage 就是本 bug。
-    expect(hoisted.getMessageFromTranscript).toHaveBeenCalledWith('s1', 'm1')
+    expect(hoisted.getMessageFromStore).toHaveBeenCalledWith('s1', 'm1')
     expect(hoisted.getMessage).not.toHaveBeenCalled()
 
     const updatedCall = hoisted.emit.mock.calls.find(

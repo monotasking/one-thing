@@ -29,7 +29,7 @@ vi.mock('@onething/runtime/storage', () => ({
 // 与 `shadow.test.ts` 同款,把读面替换成一只空壳。
 vi.mock('../reads.js', () => ({
   sessionReads: {
-    listMessagesFromTranscript: () => [],
+    listMessagesFromStore: () => [],
     getMessage: () => undefined,
     getSession: () => undefined,
   },

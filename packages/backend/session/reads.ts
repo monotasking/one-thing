@@ -109,7 +109,7 @@ function fromEvents<T>(read: () => T | undefined): T | undefined {
  * `configureAppRuntimeAdapters()` 里把这两个函数装进来,`reads.ts` 只留一个端口。
  */
 export interface SessionHistoryBuilder {
-  /** 消息侧(抄本切片 → 真机历史):`buildHistoryMessages(messages, session)`。 */
+  /** 消息侧(store 切片 → 真机历史):`buildHistoryMessages(messages, session)`。 */
   fromMessages(
     messages: readonly ChatMessage[],
     session: Readonly<ChatSession> | undefined,
@@ -169,19 +169,31 @@ export const sessionReads = {
    * 事件读法,`sessions:shadow-battery` 会在 `shadow-read-mode.test.ts` 上当场红
    * —— 那条用例故意让 store 与事件分岔,断言这道门**必须**报出来。
    */
-  listMessagesFromTranscript(sessionId: string): readonly ChatMessage[] {
+  listMessagesFromStore(sessionId: string): readonly ChatMessage[] {
     return guard(getSessionMessages(sessionId) ?? [])
   },
 
   /**
-   * **抄本侧**按 id 取一条 —— 永远来自 `messages.jsonl`,**故意不经过 `fromEvents`**
-   * (F11,与 `listMessagesFromTranscript` 同款纪律)。
+   * **store 侧**按 id 取一条 —— **故意不经过 `fromEvents`**(F11,与
+   * `listMessagesFromStore` 同款纪律)。
    *
-   * 这是事件写侧(命令面 + 翻译器)取材的**唯一合法读法**:`user/message-edited` 等
-   * 事件正要由这次翻译写出,此刻活投影(§13.18 发现 B)还停在编辑前,走 `getMessage`
-   * 的 `fromEvents` 岔口会回读到旧正文并把它焊进账本。写侧读真相面,永不随读模式分岔。
+   * **F3(§16.10)把这一口的理由整个换掉了。** 从前写的是"活投影还停在写之前,
+   * 走 `getMessage` 会回读到旧正文"(§13.18 发现 B)—— **那条理由已经死了**:F1
+   * (§16.6)之后事件在 append 返回前就折进了活投影,写侧读投影读得到自己刚写的。
+   * 今天还留在 store 这一侧的,是两条**F1 修不了**的、各自具名的理由:
+   *
+   * 1. **事件产地缺口**(`stream-executor.ts` / `agent-loop-executor.ts` 的两处
+   *    孪生取材点):流中 assistant 占位消息在账本上**根本没有那一格** ——
+   *    `appendMessage` 对 `isStreaming` 的 assistant 一条事件都不写,`run/start`
+   *    才是它的产地,而这两处读的产物**正是那条 `run/start`**。这不是滞后,是
+   *    "还不存在"。F3 做过反证:把这两处换成 `getMessage`,恒等门当场
+   *    **RED / 305 条失配**(`origin` 整格丢失 + `timestamp` 差 3ms)。
+   * 2. **只在 store 的运行时形状**(收尾链的三处):settle 后的 `steps[]` 结局与
+   *    `contentParts` 上的 `data-steps` 渲染锚点,投影**故意不产出**。
+   *
+   * 判据类的读(`hasMessageInStore` / `hasSessionInStore`)另有第三条理由,见那两口。
    */
-  getMessageFromTranscript(
+  getMessageFromStore(
     sessionId: string,
     messageId: string,
   ): Readonly<ChatMessage> | undefined {
@@ -190,23 +202,34 @@ export const sessionReads = {
   },
 
   /**
-   * **抄本侧**问一句"这条消息在不在" —— F2-a 的写侧判据(§16.7)。
+   * **store 侧**问一句"这条消息在不在" —— F2-a 的写侧判据(§16.7)。
    *
-   * 为什么不用 `getMessageFromTranscript(...) !== undefined`:那一口会 `guard()`
+   * 为什么不用 `getMessageFromStore(...) !== undefined`:那一口会 `guard()`
    * 一整条消息(dev / vitest 下是深冻结),而 `patchMessage` 是逐 token 的热路径,
    * 每次补丁冻一条带 steps/toolCalls 的消息不划算。这里只回答存在性,不把消息
    * 交出去,所以也不需要冻。
    *
-   * 判据与 core reducer 的 `findIndex(item => item.id === messageId)` **同源同义**:
-   * 翻转之后命令面要在 reducer 之前自己回答"这次命令改不改得成",而"改不成"的
-   * 唯一理由就是这条消息不在。
+   * **F3 为什么没把它翻成读投影**(§16.10,第三条理由 ——「判据同源」):
+   * 它回答的不是"账本上有没有",而是"**这次命令改不改得成**",而"改成"的那一侧
+   * 是 reducer,reducer 问的是 store(`findIndex(item => item.id === messageId)`)。
+   * 两侧用同一个判据,写事件与改 store 才不会一边发生一边不发生。翻成投影的
+   * 代价还有一笔:投影侧最便宜的存在性口是 `eventsGetMessage`,它每次都把**整条
+   * 会话**物化一遍 —— 放在逐 token 的热路径上不划算。
+   * F3 量过:battery 321 run 里 store 答案与投影答案 **0 次分岔**(四个消息级判据
+   * 逐次对照),所以这不是"投影答不对",是"现在换没有收益、且丢掉同源性"。
+   * reducer 退役那天(F4)这一口跟着退役,不是提前翻面。
    */
-  hasMessageInTranscript(sessionId: string, messageId: string): boolean {
+  hasMessageInStore(sessionId: string, messageId: string): boolean {
     return getSessionMessages(sessionId)?.some(item => item.id === messageId) ?? false
   },
 
   /**
-   * **抄本侧**问一句"这条会话在不在" —— F2-c 补的那道判据(§16.9 的洞)。
+   * **store 侧**问一句"这条会话在不在" —— F2-c 补的那道判据(§16.9 的洞)。
+   *
+   * **F3 为什么连翻都翻不了**(§16.10):投影**答不出这个问题**。事件侧对"一条
+   * 事件都没有的会话"与"根本不存在的会话"给的是同一个答案(`nodes.length === 0`)
+   * —— 而这道判据要分的正是这两者(刚建的空会话必须能追加第一条消息)。会话在不在
+   * 是 `meta.json` / 仓库那一层的事实,不是消息事件折得出来的。
    *
    * `appendMessage` / `upsertMessage` 的 reducer 恒为"改得成",唯一改不成的情形是
    * **整条会话不在**(`OnethingSessionMessageRuntime.run` 取不到 session 就整条
@@ -214,12 +237,19 @@ export const sessionReads = {
    * 账本上留下一条 `user/message`,而 store 上什么都没有 —— 事件账本记的是事实,
    * 不是意图。判据与 reducer 同源同义:`getSessionMessages` 取不到 = 那条会话不在。
    */
-  hasSessionInTranscript(sessionId: string): boolean {
+  hasSessionInStore(sessionId: string): boolean {
     return getSessionMessages(sessionId) !== undefined
   },
 
-  /** **抄本侧**按谓词查一条(F11:同 `getMessageFromTranscript`,事件写侧取材用)。 */
-  findMessageFromTranscript(
+  /**
+   * **store 侧**按谓词查一条(F11:同 `getMessageFromStore`,事件写侧取材用)。
+   *
+   * 唯一消费者是 `deleteMessage{matchMarker}`:命令面不知道要删的是哪一条,而事件
+   * 要写 id —— 找出来的那条与 reducer 的 `deleteMessageWhere` 在**同一份 store** 上
+   * 跑同一个谓词,于是"写哪条事件"与"删哪条消息"不可能指向两条不同的消息
+   * (§16.10 第三条理由:判据同源)。
+   */
+  findMessageFromStore(
     sessionId: string,
     predicate: (message: ChatMessage, index: number) => boolean,
     options: { from?: 'start' | 'end' } = {},
@@ -348,7 +378,7 @@ export const sessionReads = {
           if (index === -1) return messages
           return messages.slice(0, options.includeUpTo === false ? index : index + 1)
         })()
-    // 装了构造器 = 归一到真机历史形状;没装则保住抄本切片(老形状)。
+    // 装了构造器 = 归一到真机历史形状;没装则保住 store 切片(老形状)。
     return historyBuilder ? historyBuilder.fromMessages(slice, session) : guard(slice)
   },
 

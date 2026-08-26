@@ -31,8 +31,12 @@
  *    同一份 store,见 `commands.ts`),而不再是等 reducer 的回执。
  * 2. **正文只有一个来源**。`content` / `reasoning` / `contentParts` 永远不进
  *    `message/patched`;`isStreaming` 是 `run/start`…`run/end` 之间的**状态**,不是字段。
- * 3. **写侧取材走抄本真相面**(§13.18 发现 B):`sessionReads.*FromTranscript`,
- *    永不走随读模式分岔的 `getMessage` / `findMessage`。(这条纪律整体翻面归 F3。)
+ * 3. **写侧取材的例外表**(F3 已翻面,§16.10;原纪律 §13.18 发现 B)。从前是
+ *    "一律走 `*FromTranscript`,永不走 `getMessage`",理由是活投影滞后 —— F1
+ *    (§16.6)之后那条理由不成立了。今天写侧**默认可以读活投影**,只有三类
+ *    具名例外仍读 store:**判据同源**(命令面的存在性/底稿,见 `commands.ts`
+ *    文件头)、**事件产地缺口**(流中 assistant 占位没有那一格)、**只在 store
+ *    的运行时形状**(收尾链的 `steps[]` 与 `data-steps` 锚点)。
  * 4. **失败一律自吞**,除了 `SessionEventWriteError`(§14.6 裁定 7)—— 见 `safely`。
  */
 
@@ -187,9 +191,9 @@ export const sessionCommandEvents = {
   /**
    * `upsertMessage`(F2-b)。两条分支,岔口是**这条消息在不在**——
    * 与 core reducer 的 `findIndex(item => item.id === message.id) === -1` 同源同义,
-   * 由命令面在写事件之前从抄本真相面问一次(§13.18 发现 B:events 读模式下活投影
-   * 还没看到这条流中 assistant 消息,`getMessage` 的 fromEvents 岔口会误判成"新增",
-   * 于是把一条 `message/patched` 写成了 `system/message`)。
+   * 由命令面在写事件之前从 **store 侧**问一次(F3 §16.10 复核:留在 store,理由是
+   * 判据同源 —— 与 reducer 问同一份 store,写事件与改 store 才不会一边发生一边不
+   * 发生;原来那句"活投影滞后会误判成新增"(§13.18 发现 B)F1 之后已不成立)。
    *
    *  - **不在** → 与 `appendMessage` 是**同一条**构造(reducer 那边也正是同一个
    *    `applyAppend`):流中的 assistant 占位照旧一条都不写,`run/start` 才是它
@@ -224,7 +228,8 @@ export const sessionCommandEvents = {
    * 格子,所以这一段遮蔽比 F1 之前更全:那是已拍定的行为,不是本批的副作用。
    *
    * **编辑那一支的新正文由命令自己合成**(翻转之前是 reducer 先写、翻译器再从 store
-   * 把它读回来):底稿 = 编辑**前**那条(命令面从抄本真相面取,§13.18 发现 B),
+   * 把它读回来):底稿 = 编辑**前**那条(命令面从 **store 侧**取 —— 底稿同源,
+   * 见 `commands.ts` 的 `truncateFrom` 与 §16.10),
    * 叠上 `newContent` / `contentParts`,再盖上 `now`。这三步逐字镜像 core 的
    * `applyTruncate`,而 `now` 由命令决定一次、**同时**递给事件与 reducer(§16.8),
    * 所以两条推导上的 `timestamp` 不是"差不多相等",是同一个数 —— 否则恒等门

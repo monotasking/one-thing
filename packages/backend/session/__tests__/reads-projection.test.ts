@@ -231,9 +231,9 @@ describe('批 6b — 事件折不出历史时不再退回仓库', () => {
     expect(sessionReads.lastMessageOfRole(NO_EVENTS, 'user')).toBeUndefined()
   })
 
-  it('抄本侧那三口(F11 的真相面)照旧读得到 —— 它们本来就不经过投影', () => {
-    expect(sessionReads.listMessagesFromTranscript(NO_EVENTS).map(m => m.content)).toEqual(['legacy'])
-    expect(sessionReads.getMessageFromTranscript(NO_EVENTS, 'u1')?.content).toBe('legacy')
+  it('store 侧那几口(F11 的验证器面)照旧读得到 —— 它们本来就不经过投影', () => {
+    expect(sessionReads.listMessagesFromStore(NO_EVENTS).map(m => m.content)).toEqual(['legacy'])
+    expect(sessionReads.getMessageFromStore(NO_EVENTS, 'u1')?.content).toBe('legacy')
   })
 })
 

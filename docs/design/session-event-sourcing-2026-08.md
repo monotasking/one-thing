@@ -3865,7 +3865,7 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 | **F0 恒等门转向** — **已完成(§16.5,2026-08-27)** | 现 shadow(store=真相 vs 投影=影子)**角色对调**:事件/fold 侧成真相,老 reducer 降级为影子验证器;比对机制、记账口径沿用 session-shadow | 对调后真机 ≥200 run 0 失配 | 对调是比对方向,零行为变化 |
 | **F1 写侧同步可见** — **已完成(§16.6,2026-08-27)** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
 | **F2 命令面翻转(逐条)** — **已完成**:F2-a(§16.7,2026-08-27:appendMessage / deleteMessage / patchMessage)、F2-b(§16.8,2026-08-27:upsertMessage / truncateFrom)、**F2-c(§16.9,2026-08-27:replaceAll / patchSession + 两个非命令采集点搬家 + 翻译器整体退役 + `annotate` 产地)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 —— **两项都在 F2-c 落地**(新事件 `tool/annotate`;重审结论见 §16.9 第五节) | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
-| **F3 写侧回读换语义** | §14.1 的 9 处写侧回读残留全部改读 fold 后投影(F1 是前提);「写侧读抄本」纪律(§13.18)整体翻面 | 定向用例逐处 + battery | 随 F2 分批走 |
+| **F3 写侧回读换语义** — **已完成(§16.10,2026-08-27)** | 「写侧读抄本」纪律(§13.18)整体翻面:它的理由(投影滞后)被 F1 消掉了,于是从**一刀切**改成**三类具名例外**(判据同源 / 事件产地缺口 / 只在 store 的运行时形状)。**勘误 §14.1 的"9 处全部改读投影"**:以 HEAD 实况重列后,一半在批 6b 删兜底时就已经在读投影,另一半逐处复核**全部留在 store**、各带具名理由,两类做过反证(②类反证 battery **RED / 305 失配**,①类实测 321 run **0 分岔**)——**代码取数面一处未动**。同批把五口的名字改成说实话的 `*FromStore` / `*InStore`(§16.5/§16.7/§16.8/§16.9 四笔留账一次结清) | 定向用例逐处 + battery | 随 F2 分批走 |
 | **F4 reducer 退役** | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
 
 ### 16.3 F 线自己的待拍板(到期再拍)
@@ -5788,6 +5788,8 @@ refoldMismatches **0** / `session-shadow.jsonl` **0 行**,四泳道一探针全 
    这组名字里的 "Transcript"** 停写之后已经名不副实(它读的是**内存 store**,不是抄本
    文件)。F0 只改了文档,**没改名** —— 写侧取材(§13.18)也在用这两口,改名会把 F3
    的一半提前拽进来。**归 F3**(那一批本来就要把"写侧读抄本"整体翻面)。
+   → **已办**:§16.10(2026-08-27)。改名做了,取数面**一处未动** —— 逐处的
+   "留"各自换了具名理由,不再靠那条一刀切纪律。
 2. **F0 影子验证器的退役条件**(§16.3 第 2 条)仍待拍:F4 两条推导合一那天这道门
    失去对象,退役门(多少 run / 多久)与 refold 采样率一并拍。
 3. **真机 ≥200 run 0 失配**这条 F0 自己的门今天只有 32 run —— 它按设计是**浸泡期**
@@ -6494,6 +6496,7 @@ worktree 已删除。
 2. **`hasMessageInTranscript` / `getMessageFromTranscript` / 新加的
    `hasSessionInTranscript` 名字里的 "Transcript" 照旧归 F3**(§16.7 留账 1 /
    §16.8 留账 3):停写之后它们读的是内存 store,不是抄本文件。三口一起改名。
+   → **已办**:§16.10 第三节,五口一次改完(`*FromStore` / `*InStore`)。
 3. **账本变大了,而且这是有意的**。`tool/annotate` 让 edit / bash 这类 metadata 大的
    工具每次调用多 1–3 行。这是把"工具自报结局"从**只在 store**变成**两侧都有**的
    价钱 —— 换来的是 full 之下这一格折得出来,以及恒等门从此**比得到它**
@@ -6506,3 +6509,171 @@ worktree 已删除。
    `"{}"`),本批没有并它 —— 并它是行为改动,而它在生产里没有构造点。F4 删码批一起收。
 5. **F3 的下一站**:§14.1 的 9 处写侧回读残留整体翻面成读投影;F2-c 新加的那口
    `hasSessionInTranscript` 与既有两口一起翻。
+   → **已办(§16.10,2026-08-27),但结论与这句预期不同**:纪律翻面了,**取数面
+   一处没翻** —— 逐处复核后每一处都露出一条 F1 修不了的新理由(三类具名例外),
+   其中两类做过反证。五口改名一次做完(`*FromStore` / `*InStore`)。
+
+### 16.10 F3 落地记录:写侧回读换语义 + 名字说实话(2026-08-27,opus 执行,未提交)
+
+**一句话**:§13.18 那条「写侧取材**一律**读抄本」的**理由**在 F1 之后就死了(投影不再
+滞后),所以本批把它从**一刀切**改成**具名例外表**;逐处复核之后 —— **代码取数面
+一处未动,而且每一处的"不动"都换了新理由、其中两类做过反证**。真正改掉的是纪律文本
+与那五口的**名字**(`*FromTranscript` / `*InTranscript` → `*FromStore` / `*InStore`:
+抄本停写之后它们读的是**内存 store**,不是 `messages.jsonl`)。
+
+#### 〇、先说结论:为什么"全留"不是偷懒
+
+§16.2 的 F3 行原话是"§14.1 的 9 处写侧回读残留**全部改读 fold 后投影**"。以 HEAD
+实况重列之后,这句话要分成两半看:
+
+- **一半早就做完了,不在本批**:§14.1 表里 `reads.ts` 各 routed 方法右边那排
+  `?? getSessionMessages(...)` 兜底,在批 6b(§15.22)就删掉了 —— 写侧凡是走
+  `listMessages` / `getMessage` / `findMessage` 的取材点(§15.18 核对结论里那
+  "routed 但不构成地板"的一批),**今天读的已经就是活投影**,一行都不用再改。
+- **另一半改不动,而且是好事**:剩下真正读 store 的那些点,原来挂的理由都是
+  §13.18 的"投影滞后"。本批逐处追问"F1 之后这条理由还成立吗",答案是**都不成立**
+  —— 但每一处底下都露出了**另一条 F1 修不了的理由**。它们不是同一个问题,所以
+  归成三类,逐口写进代码。
+
+**三类具名例外**(取代原来那条一刀切纪律):
+
+| 类 | 是什么 | 为什么 F1 修不了 | 解冻时机 |
+|---|---|---|---|
+| **① 判据同源** | 命令面的存在性探测与编辑底稿 | 它回答的不是"账本上有没有",是"**这次命令改不改得成**" —— 而"改成"的那一侧是 reducer,reducer 问的是 store。两侧同判据,写事件与改 store 才不会一边发生一边不发生 | **F4**(reducer 退役,两条推导合一) |
+| **② 事件产地缺口** | 流中 assistant 占位在账本上**没有那一格** | `appendMessage` 对 `isStreaming` 的 assistant 一条事件都不写(`run/start` 才是它的产地),而这两处读的产物**正是那条 `run/start`**。这是"还不存在",不是"滞后" | 给流中 assistant 开产地那天(未排期) |
+| **③ 只在 store 的运行时形状** | 收尾链的 `steps[]` 结局、`contentParts` 上的 `data-steps` 渲染锚点 | `steps` 在 `DERIVED_KEYS` 里、从不进消息事件;锚点投影**故意不产出**(canonical G4 丢弃比较)。投影侧那几格是 `tool/*` 物化的,而收尾这次要写的**正是**那几条 `tool/result` | §14.5 双存移除 / F4 |
+
+另有 **F0 验证器纪律**(`shadow.ts` / `history-shadow.ts`):恒等门的验证器侧永远是
+store,**本批按令未动**。
+
+#### 一、逐处改 / 留表(HEAD 实况重列,行号为本批之后)
+
+**A. 已经在读活投影 —— 无代码改动(§15.18 那批"routed 但不构成地板")**
+
+| 位置 | 读什么 | 一行理由 |
+|---|---|---|
+| `wiring/engine/stream-engine-runtime.ts:68/70` | core 引擎 store 端口的 list/get | 批 6b 删兜底后 routed = 投影唯一路;读发生在 `run/start` 之后,折得出 |
+| `wiring/engine/stream/agent-loop-runtime.ts:207/269` | 回合内重建历史 / turnContext | 同上 |
+| `wiring/engine/stream/agent-loop-executor.ts:774` | resume 占位 | 同上(resume 时那条 assistant 已有产地) |
+| `wiring/engine/stream/agent-loop-executor.ts:886` | 收场快照映射 | 同上 |
+| `wiring/engine/stream/tool-orchestrator.ts:120` | 摘工具残留 | 同上 |
+| `wiring/engine/stream/tool-execution.ts:126` | 工具执行取消息 | 同上 |
+| `wiring/engine/context-compact.ts:90/304` | 压缩取历史 | 同上 |
+| `wiring/engine/triggers/session-toc.ts:44/122` | TOC 触发器取末条 | 同上 |
+| `session/validation.ts:66` | 活动消息校验 | 同上 |
+
+**B. 仍读 store —— 逐处留,各带具名理由**
+
+| 位置 | 读什么 | 类 | 一行理由 |
+|---|---|---|---|
+| `session/commands.ts:255` | `appendMessage` 的会话存在性 | ① + **投影答不出** | 投影对"零事件的会话"与"不存在的会话"给同一个答案,而这道判据要分的正是这两者 |
+| `session/commands.ts:278` | `upsertMessage` 的会话存在性 | 同上 | 同上 |
+| `session/commands.ts:279` | `upsertMessage` 的 `existed` 探测 | ① | 与 reducer 的 `findIndex === -1` 同一份 store、同一个判据;它同时决定事件分 append / `fullBody` 两档 |
+| `session/commands.ts:297` | `patchMessage` 存在性 | ① | 同上;另加一笔热路径账:投影侧最便宜的存在性口 `eventsGetMessage` 每次物化**整条会话** |
+| `session/commands.ts:358` | `truncateFrom(edit)` 的底稿 | ① | 底稿同源:reducer 的 `applyTruncate` 拿 store 那条改,事件里 `data.message` 必须与它逐字同源,否则恒等门比两份形状不同的底稿 |
+| `session/commands.ts:360` | `truncateFrom(regenerate)` 存在性 | ① | 同 `patchMessage` |
+| `session/commands.ts:390` | `deleteMessage{messageId}` 存在性 | ① | 同上 |
+| `session/commands.ts:398` | `deleteMessage{matchMarker}` 找目标 | ① | 下一行 `deleteMessageWhere` 的 reducer 在同一份 store 上跑同一个谓词,两边找到的必须是同一条 |
+| `wiring/engine/stream/stream-executor.ts:199` | `run/start` 前读助手占位 | ② | 读的产物正是那条 `run/start`;此刻账本上没有这一格。**反证见第二节** |
+| `wiring/engine/stream/agent-loop-executor.ts:256` | steer 换锚点(上一处的孪生) | ② | 同上 |
+| `wiring/engine/stream/agent-loop-executor.ts:533` | `captureCancelledToolResults` | ③ | 收尾修复写在 `steps[]` 上,而这次采集要写的正是那几条 `tool/result` —— 读投影则读空、采集不触发、账本缺账 |
+| `wiring/engine/stream/agent-loop-executor.ts:578` | 收尾修复 read-modify-write | ③ | 要回落的是 `steps[]`(不进事件);读投影会拿到占位标题,把引擎写好的自报标题抹掉 |
+| `wiring/engine/stream/agent-loop-executor.ts:629` | `completeAgentLoopStream` settle 快照 | ③ | store 那份 contentParts 带 `data-steps` 渲染锚点,投影故意不产出 —— 换掉就是 §15.16「正文看不见」的同一根引信 |
+| `session/shadow.ts:369/446` | 恒等门验证器侧 | **F0 纪律** | 按令未动:验证器侧永远是 store,不许经过投影(否则两侧同源,门以错误的理由变绿) |
+| `wiring/engine/stream/history-shadow.ts:70` | history 恒等门验证器侧 | **F0 纪律** | 同上 |
+
+**C. 杂用(§14.1 表最后一行)—— 留,且本就不是"写侧回读"**
+
+| 位置 | 读什么 | 一行理由 |
+|---|---|---|
+| `rpc/domains/sessions.ts:174` | `store.getSessionMessages(id) === undefined` | 正文早已走 `listMessages`(投影);这一句只借仓库的 `undefined` 还原 NOT_FOUND 契约 —— 与 B 表第一行同一个"投影答不出会话在不在" |
+| `server/runtime.ts:3129` | server 自己的 `readMessages` | server 端另一只仓库,不经过桌面读门面,不在本批口径内 |
+| `stores/sessions.ts:842` | `clearSessionMessages` 的 `clearedCount` | 清空**之前**的计数,取的是即将被 `replaceAll` 换掉的那一份;返回值给调用方看,不进账本 |
+
+#### 二、两次反证(这一批的判据,不是嘴上说的)
+
+改与不改都要能证伪,所以两类例外各做了一次**真的把它改过去**再跑门:
+
+| 反证 | 做法 | 结果 |
+|---|---|---|
+| **② 事件产地缺口** | 把 `stream-executor.ts` 与 `agent-loop-executor.ts` 两处孪生取材点换成 routed 的 `getMessage`,跑 `sessions:shadow-battery` | **RED —— runs 16 / mismatches 305**。失配形状正是缺口:assistant 的 `origin` **整格缺失**(`A(events): (absent)` / `B(store): {receivedAt, resolvedIdentity…}`)、`timestamp` 差 3ms(占位读不到 → `run/start` 自己取了个时钟)。**这一处翻不动是被门证明的,不是被注释声称的** |
+| **① 判据同源** | 把命令面四个**消息级**判据(upsert existed / patch / truncate / delete)同时接上 store 与投影两条答案、逐次比对并记录分岔,跑整轮 battery | **321 run / 0 次分岔**。也就是说:投影**答得对**,今天换过去不会错 —— 但换过去也**没有收益**,反而丢掉"与 reducer 同判据"这条性质、并给逐 token 的热路径加一次整会话物化。所以判定是**留到 F4**(reducer 退役那天两侧合一,这一口跟着退役),而不是"投影不可信" |
+
+> 口径提醒:第二次反证是**测量**不是改动,探针跑完即删,未入库。
+
+#### 三、改名对照表(全仓同步)
+
+抄本(`messages.jsonl`)自批 6a 停写、批 6b 删码之后,这五口读的是**内存 store**,
+名字里的 "Transcript" 早已名不副实(§16.5 留账 1 / §16.7 留账 1 / §16.8 留账 3 /
+§16.9 留账 2 点名的那笔账,本批一次结清)。命名与既有 `eventsListMessages` /
+`listMessages`(投影面)对仗:**读 store 的带 `Store` 字样**。
+
+| 旧名 | 新名 | 取数面(一字未变) |
+|---|---|---|
+| `listMessagesFromTranscript` | **`listMessagesFromStore`** | `getSessionMessages(sessionId) ?? []` |
+| `getMessageFromTranscript` | **`getMessageFromStore`** | `getSessionMessages(...)?.find(id)` |
+| `findMessageFromTranscript` | **`findMessageFromStore`** | `getSessionMessages(...)` + 谓词 |
+| `hasMessageInTranscript` | **`hasMessageInStore`** | `getSessionMessages(...)?.some(id)` |
+| `hasSessionInTranscript` | **`hasSessionInStore`** | `getSessionMessages(...) !== undefined` |
+
+**没改名的**(刻意,它们的 "Transcript" 是**诚实**的 —— 真的在读 `messages.jsonl`
+那个文件):`sessionReads.readTranscriptFile` / `readTranscriptBuffer`、
+`scripts/session-verify.ts` 的 `messagesFromTranscript`、
+`wiring/collab/actors` 的 `collabRoomMembersFromTranscript`(另一个域的"抄本",无关)。
+
+调用点同步:`session/commands.ts`(8)、`session/shadow.ts`(2)、
+`wiring/engine/stream/{stream-executor,agent-loop-executor,history-shadow}.ts`(6)、
+6 个用例文件。`session:check` 白名单与 `session:gate` 基线**不含这些名字**(它们守的是
+`session.messages` 的持有点),因此无需改;实跑确认 none new。
+
+#### 四、纪律文本翻面的落点
+
+| 文件 | 改了什么 |
+|---|---|
+| `session/commands.ts` 文件头 | 「事件写侧取材纪律(§13.18 发现 B)」整段重写成「**F3 已整体翻面**」:先写死原理由(投影滞后)、再写死它为什么不成立(F1 + 批 6b 烧开关),然后是**写侧默认可以读活投影**与三类具名例外 |
+| `session/command-events.ts` 纪律 3 | 「写侧取材走抄本真相面」→ 例外表版本 |
+| `session/reads.ts` 五口的文档 | 逐口换理由:`getMessageFromStore` 挂②③并写下反证读数;`hasMessageInStore` 挂①并补热路径那笔账;`hasSessionInStore` 写明**投影答不出这个问题**;`findMessageFromStore` 写明唯一消费者与同源关系;`listMessagesFromStore` 的 F0 验证器纪律**一字未动** |
+| `stream-executor.ts` / `agent-loop-executor.ts`(5 处) | 每处把"永不随 `ONETHING_SESSION_READ` 分岔"(那个开关批 6b 就烧了)与"投影滞后"换成各自那一类的真理由;两处孪生点写上反证读数 |
+| `__tests__/event-production-write-side-read.test.ts` 文件头 | 从"证明纪律普遍成立"改成"**三类例外的护栏**",并说明谁把某处改回 routed 会在这里当场红 |
+
+#### 五、用例
+
+| 用例 | 位置 | 钉住什么 | 反证 |
+|---|---|---|---|
+| `a streaming assistant placeholder has no ledger slot yet: store sees it, the projection does not` | `session/__tests__/event-production-write-side-read.test.ts` | **新增**。②类的可证伪表述:同一条流中 assistant,`getMessage` 给 `undefined`、`getMessageFromStore` 给得出 `timestamp`;并断言账本上**一条 `system/message` 都没有** | 拿掉 `command-events.ts` 里 `role==='assistant' && isStreaming` 那道 return → **红**(实跑) |
+| `hasSessionInStore separates an empty session from a missing one; the projection cannot` | 同上 | **新增**。空会话 vs 不存在的会话必须分得开,而投影两者同答 | 把 `hasSessionInStore` 改成 `length > 0`(投影式口径)→ **红**(实跑) |
+| 既有 4 条(truncate 底稿 / get / find / 收尾自报标题) | 同上 | 语义未变,标题与文件头随纪律翻面重写(`transcript` → `store`) | — |
+| `listMessagesFromStore keeps answering from the store` | `session/__tests__/shadow-read-mode.test.ts` | 标题里那句"from `messages.jsonl`"停写之后已经不真,改成 store | — |
+
+#### 六、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `bun run typecheck` | **0** |
+| 定向 `packages/backend/session` + `packages/core/session` + `packages/backend/wiring/engine` | **94 文件 / 841 测试全绿** |
+| `bunx vitest run packages/backend`(全包) | **280 文件通过 / 1 skipped,2400 测试通过 / 3 skipped** |
+| `bun run sessions:shadow-battery` | **GREEN**,且**逐项同基线**:runs **321** / historyChecks **449** / mismatches **0** / duplicates 0 / projectionIssues 0 / droppedParts 0 / appendFailures **0** / refoldChecks **225** / refoldMismatches **0** / `session-shadow.jsonl` **0 行**(本批开工前先跑了一次基线,与 §16.5 表逐项相同;收工再跑,三个数字一个不差) |
+| `bun run boundary:gate` | ok — 0 failures |
+| `bun run session:gate` | ok — 0 known, none new |
+| `bun run log:gate` | ok — 4 known, none new |
+| `bun run transport:gate` | ok — 42 常量 / 四壳 2392 行,无上升 |
+| 真机只读 `bun run sessions:verify:gate` | ok — **13 known, none new**;全程只读,`~/.onething` 一字未写 |
+
+**F0 恒等门的两条推导仍然恒等** —— 而且本批**没有**用"改绿"换过它:唯一一次红
+(反证②的 305 条失配)是**故意跑出来的**,跑完当场 revert,不是修出来的绿。
+
+#### 七、留账
+
+1. **①类的解冻点是 F4,不是"以后有空"**。F4 把 core reducer 与投影 reducer 合一那天,
+   "改不改得成"只剩一条推导,命令面这 8 处判据连同 `hasMessageInStore` /
+   `hasSessionInStore` / `findMessageFromStore` 三口一起退役。**②③两类与 F4 无关**,
+   各自的解冻条件写在第〇节的表里。
+2. **②类值得单独记一笔**:给流中 assistant 一个自己的事件产地(而不是让 `run/start`
+   兼任),会同时消掉 §15.18 那条"结构性地板"的病根、这两处取材点、以及
+   `reads.ts` 上②类那段注释。它是**行为改动**(账本每 run 多一条事件),按
+   §16.3 的规矩要单独拍板,本批只记录不动手。
+3. **`hasSessionInStore` 可能永远留在 store 侧**:会话在不在是 `meta.json` /
+   仓库那一层的事实,不是消息事件折得出来的 —— 除非 F4 之后"会话存在性"另找产地。
+   本批不预设结论,只把"投影答不出"这件事写进注释与用例。
+4. **§14.1 那张表可以退休了**:它画的是"抄本仍在写"那个世界,本节的 A/B/C 三张表是
+   它在 HEAD 上的替身。§14.1 已经挂了批 6b 的删除说明,本批不再动它。

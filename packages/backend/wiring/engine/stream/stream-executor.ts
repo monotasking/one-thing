@@ -180,18 +180,23 @@ export async function executeMessageStream(
   // 助手占位消息在进这扇门之前就建好了 —— 把它的时刻带进 `run/start`,投影
   // 物化出来的那一条才与事实同一个时刻(S1b 的影子断言按它比)。
   //
-  // §15.18(批 6 前置):这里读的是**事件写侧的取材**(它的产物就是下一行的
-  // `run/start` 事件),所以按 §14.1「写侧回读残留」表 + 批 7 纪律(§13.18 发现 B)
-  // 走真相面 `getMessageFromTranscript` —— 恒读内存 store 的抄本,永不随
-  // `ONETHING_SESSION_READ` 分岔。**不是**图省事换个名字:走 routed 的
-  // `getMessage` 时,此刻这条 assistant 在事件账本里还没有产地(翻译器故意不翻
-  // `isStreaming` 的 assistant,`run/start` 才是它的那一格),于是 `fromEvents`
-  // 恒折不出、每个 run 必然掉进 `?? getSessionMessages` 兜底并计一次
-  // `fallbackHits` —— 那就是 §15.9 诊断 1 说的「fallbackHits 恒等于 run 数」这条
-  // 结构性地板。换成真相面后取到的消息**逐字相同**(兜底半边读的就是同一个
-  // `getSessionMessages`),只是不再经过"投影折不出→兜底"的路径、不再计数,
-  // S3w-3 删兜底前的那个"命中率量成 0"因此才可能成立。
-  const assistantPlaceholder = sessionReads.getMessageFromTranscript(
+  // 这里读的是**事件写侧的取材**:它的产物就是下一行的 `run/start` 事件。
+  //
+  // **F3(§16.10)复核:留在 store,而且这一处是翻不动的那一类。** 理由不是
+  // "活投影滞后"(§13.18 发现 B —— F1 之后事件 append 返回前就折进活投影了),
+  // 而是**事件产地缺口**:此刻这条 assistant 在账本上**根本没有那一格** ——
+  // `appendMessage` 对 `isStreaming` 的 assistant 一条事件都不写,`run/start`
+  // 才是它的产地,而这次读的产物**正是那条 `run/start`**。投影折不出的不是
+  // "旧的一份",是"没有"。
+  //
+  // 反证跑过(F3):把这一处连同 `agent-loop-executor.ts` 的孪生一起换成 routed
+  // 的 `getMessage`,`sessions:shadow-battery` 当场 **RED —— 305 条失配**
+  // (assistant 的 `origin` 整格丢失、`timestamp` 差 3ms)。
+  //
+  // (§15.18 是它的前史:换成 store 侧之前这里走 routed `getMessage`,每个 run
+  // 必然掉一次 `?? getSessionMessages` 兜底 —— 那条兜底与 `fallbackHits` 计数都已
+  // 随批 6b 删除,病根却是同一个缺口。)
+  const assistantPlaceholder = sessionReads.getMessageFromStore(
     params.sessionId,
     params.assistantMessageId,
   )

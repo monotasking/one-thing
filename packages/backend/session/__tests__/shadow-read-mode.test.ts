@@ -136,7 +136,7 @@ function shadowLineCount(): number {
 }
 
 describe('the transcript accessor never routes through the projection (F11)', () => {
-  it('listMessagesFromTranscript keeps answering from messages.jsonl', async () => {
+  it('listMessagesFromStore keeps answering from the store (§16.10: 名字已改口,取数面未变)', async () => {
     await recordRun('hello')
     setTranscript('TAMPERED')
 
@@ -144,7 +144,7 @@ describe('the transcript accessor never routes through the projection (F11)', ()
     expect(sessionReads.listMessages(SESSION).messages.find(m => m.id === 'a1')?.content)
       .toBe('hello')
     // ……而影子的取数口给的仍然是抄本。两者不同,正是这道断言唯一有意义的前提。
-    expect(sessionReads.listMessagesFromTranscript(SESSION).find(m => m.id === 'a1')?.content)
+    expect(sessionReads.listMessagesFromStore(SESSION).find(m => m.id === 'a1')?.content)
       .toBe('TAMPERED')
   })
 })

@@ -36,7 +36,7 @@ vi.mock('../reads.js', () => ({
     listMessages: () => {
       throw new Error('shadow must read the transcript (F11), not the read-mode-aware listMessages')
     },
-    listMessagesFromTranscript: () => state.messages,
+    listMessagesFromStore: () => state.messages,
     getMessage: (_sessionId: string, messageId: string) =>
       state.messages.find(message => message.id === messageId),
     getSession: () => state.session,

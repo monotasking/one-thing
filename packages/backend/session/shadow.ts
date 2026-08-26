@@ -34,7 +34,7 @@
  *    部分一次性写死);这里不再额外豁免字段。真的不等就是真的不等 —— 那正是
  *    这道门存在的理由。
  * 4. **验证器侧永远是 store,不许经过投影**(F11,§13.2;F0 只翻解读,不翻取数)。
- *    store 侧取数只走 `sessionReads.listMessagesFromTranscript` —— 它不经过投影。
+ *    store 侧取数只走 `sessionReads.listMessagesFromStore` —— 它不经过投影。
  *    走 `listMessages` 的话两侧就都是投影:自己跟自己比,永远相等,门以**错误的
  *    理由**变绿。两侧必须始终是**两条独立推导**(reducer ≠ projection reducer),
  *    与谁在给产品供数无关。
@@ -366,7 +366,7 @@ export function sessionEventCoverageIsPartial(
   if (legacyPartialSessions.has(sessionId)) return true
   // F11:验证器侧只认 store 这一口。走 `listMessages` 的话这一侧就是投影自己 ——
   // 每条 id 当然都认得,永远判成"覆盖完整"。
-  const messages = sessionReads.listMessagesFromTranscript(sessionId)
+  const messages = sessionReads.listMessagesFromStore(sessionId)
   for (const message of messages) {
     if (!state.byMessageId.has(message.id)) {
       legacyPartialSessions.add(sessionId)
@@ -442,8 +442,8 @@ export function checkSessionRunShadow(
     const selected = new Set<string>([input.assistantMessageId])
     if (input.triggerMessageId) selected.add(input.triggerMessageId)
 
-    // F11:验证器侧只走 store 这一口(见 `listMessagesFromTranscript` 的注释)。
-    const storeMessages = sessionReads.listMessagesFromTranscript(sessionId).filter(
+    // F11:验证器侧只走 store 这一口(见 `listMessagesFromStore` 的注释)。
+    const storeMessages = sessionReads.listMessagesFromStore(sessionId).filter(
       message => selected.has(message.id) || message.runId === input.runId,
     )
     for (const message of storeMessages) selected.add(message.id)

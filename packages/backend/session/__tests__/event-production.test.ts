@@ -41,10 +41,10 @@ vi.mock('../reads.js', () => ({
       state.messages.find(message => message.id === messageId),
     findMessage: (_sessionId: string, predicate: (message: ChatMessage) => boolean) =>
       state.messages.find(predicate),
-    // §13.18 发现 B:写侧取材走这两扇抄本门(此替身里抄本 = state.messages)。
-    getMessageFromTranscript: (_sessionId: string, messageId: string) =>
+    // 写侧取材走这几扇 store 门(此替身里 store = state.messages);例外表见 §16.10。
+    getMessageFromStore: (_sessionId: string, messageId: string) =>
       state.messages.find(message => message.id === messageId),
-    findMessageFromTranscript: (_sessionId: string, predicate: (message: ChatMessage) => boolean) =>
+    findMessageFromStore: (_sessionId: string, predicate: (message: ChatMessage) => boolean) =>
       state.messages.find(predicate),
     // `endSessionRun` 之后会排一次影子断言(S1b),它读的也是这扇门。
     listMessages: () => ({ messages: state.messages, changed: false }),
