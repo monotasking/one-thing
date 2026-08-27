@@ -189,14 +189,65 @@ export const sessionReads = {
    * 交回调用方(端口多一格返回值),两处回读整体删除。**别再往这一口上挂"产地
    * 缺口"了** —— 产地缺口的解法是补产地(§16.11 拍板 3,F4 的硬前置),不是回读。
    *
-   * 今天还留在 store 这一侧的,只剩一条**F1 修不了**的理由:
+   * **F4-b2(§16.17)又摘掉了一条。** F3 在这里挂过"只在 store 的运行时形状"
+   * (收尾链那三处:settle 后的 `steps[]` 结局与 `contentParts` 上的 `data-steps`
+   * 渲染锚点)。那三处**搬走了** —— 它们不是"读 store",是**读活 run 的写手视图**,
+   * 见下面 `getLiveRunWriterMessage`。留在这一口上的差别是身份:这一口回答的是
+   * "reducer 眼里那条消息长什么样",与 run 在不在活窗口无关。
    *
-   * 1. **只在 store 的运行时形状**(收尾链的三处):settle 后的 `steps[]` 结局与
-   *    `contentParts` 上的 `data-steps` 渲染锚点,投影**故意不产出**。
+   * 今天还留在这一口上的,只剩**一个消费者、一条理由**:
+   *
+   * 1. **底稿同源**(①类判据同源的一半):`commands.ts` 的 `truncateFrom{inclusive:false}`
+   *    要编辑**前**那条做底稿,而 reducer 的 `applyTruncate` 拿的正是 store 上那一条。
+   *    两侧不同源,恒等门比的就是两份形状不同的底稿。它随 F4-b3 reducer 退役一起翻。
    *
    * 判据类的读(`hasMessageInStore` / `hasSessionInStore`)另有一条理由,见那两口。
    */
   getMessageFromStore(
+    sessionId: string,
+    messageId: string,
+  ): Readonly<ChatMessage> | undefined {
+    const message = getSessionMessages(sessionId)?.find(item => item.id === messageId)
+    return message ? guard(message) : undefined
+  },
+
+  /**
+   * **活 run 写手视图** —— 收尾链取材的唯一口(F4-b2,§16.17)。
+   *
+   * ## 共存口径(纪律原文,改这一口之前先读完)
+   *
+   * > **活 run 窗口内,该 run 的 assistant 消息由引擎写手对象持有并唯一可信;
+   * > 物化缓存只回答已收尾世界;窗口的边界 = `run/start` 到 settle 完成。**
+   *
+   * 三句话逐句是什么意思:
+   *
+   * 1. **"引擎写手对象"今天就是内存 store 上的那一条。** 引擎在窗口内按 id 寻址
+   *    往它上面写(`patchStep` / `updateMessageToolCalls` / `addMessageContentPart`),
+   *    同一批值同时推给渲染层。它不是"另一份缓存",它是那条消息在活窗口内的**正身**。
+   * 2. **"物化缓存只回答已收尾世界"是给 F4-b3 的约束**,不是给这一口的:store 退化成
+   *    投影物化缓存那天,物化**不许覆盖活窗口内的那条消息**(冷加载/`hydrate.ts`
+   *    今天本来就只在窗口外跑,这条约束零成本)。
+   * 3. **窗口的边界**:`run/start` 那一刻起,到收尾链(`completeAgentLoopStream` /
+   *    `emitFinalAssistantMessageUpdate` + `captureCancelledToolResults`)跑完为止。
+   *    窗口外读这一口没有意义 —— 那时该读 `listMessages` / `getMessage`(投影)。
+   *
+   * ## 为什么收尾链非读写手视图不可(两条,都不是"投影滞后")
+   *
+   * - **渲染锚点**:settle 快照(`updates.contentParts`)整体覆盖渲染层那一份,而
+   *   `data-steps` 锚点按 canonical G4 **故意不进事件、不进投影** —— 它是引擎在活窗口
+   *   内产出、只走推送路的渲染侧派生物(账本里从来没有它,§16.17 勘察已核实)。
+   *   换成投影那一份 = renderer `updateSessionMessage` 覆盖后锚点归零 = §15.16
+   *   「正文看不见」的同一根引信。
+   * - **收场结局是这里的产地本身**:被取消工具那条 `tool/result` 是
+   *   `captureCancelledToolResults` **写出去的**(`recordCancelledToolResults` →
+   *   `tool/result{cancelled:true}` → 投影的 `tool.cancelled`)。产地读投影 =
+   *   自引用,永远读空。这不是"投影缺一格"(F2-c 的 `tool/annotate` 与批 9 已经把
+   *   自报标题/自报结局的产地补齐了),是**产地不该读自己的产物**(§10.10)。
+   *
+   * 实现与 `getMessageFromStore` 逐字相同 —— **这是刻意的**:两口今天答案一样,但
+   * 问的是两个问题,F4-b3 会让它们分家(那一口随 reducer 退役,这一口留任)。
+   */
+  getLiveRunWriterMessage(
     sessionId: string,
     messageId: string,
   ): Readonly<ChatMessage> | undefined {

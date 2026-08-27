@@ -5950,7 +5950,7 @@ drain 尾巴,惰性折的年代它也照样返回含这条事件的投影,拿它
      **none new**。
    - **要回退只需两步**:`event-surface.ts` 的观察者体改成空(或不注册),并把
      `appendSurfaceAwareEvent` 里写完复刻一条 `applyToState` 的老写法放回去。
-   **请裁定是留还是回退。**
+     **请裁定是留还是回退。**
 2. **`core/session/projection/surface.ts` 的 `declaredMessageGap` 收窄(批 6a 尾款)
    现在有了第二重身份**:它当初是为了绕开这个缺口才只对消息节点问责。缺口没了之后
    它仍然必须留着 —— **存量账本**(`ec2437ff` 这类)是缺口时代写的,读侧永远要认。
@@ -7016,6 +7016,13 @@ S3w-0(`8682d980`)让**渲染层自合成**锚点,所以"显示"这一侧接得�
 
 #### 五、勘察题③:引擎流式写手与物化缓存怎么共存 —— **口径写出来了,但它自证了阻塞**
 
+> **勘误(F4-b2,§16.17 第二 / 五节)**:下表"settle"那一行的判据("读的正是投影
+> **不产出**的那几格")**只对锚点那一半成立,对结局那一半不成立** —— F2-c 的
+> `tool/annotate` 与投影的 `lingeringToolError` 之后,收场结局在事件侧有产地了;
+> 收尾链读不成投影的真原因是**它自己就是那条 `tool/result` 的产地**(自引用)。
+> 而锚点那一半本来就该住写手 / 渲染侧(G4)。所以那一行的结论从「**不能**」改成
+> 「**不需要** —— 物化缓存本来就不该管活 run 窗口」,阻塞②随之拆除。
+
 勘察前的预设是「活 run 的消息仍由引擎写手持有,settle 时账本收尾,缓存物化覆盖」。
 把它写成纪律之后,自己就露了底:
 
@@ -7251,7 +7258,7 @@ seq 5132  user/message-edited  replace[5127..5130]  sourceEventSeqs=[5127,5130]
 | 期 | 交付 | 门 |
 |---|---|---|
 | **F4-b1 step id 语义统一** ✅ **已落地(§16.16)** | 两硬阻塞之一:step 身份在发射器(uuid)与投影(`step-<callId>`)两侧统一为单一语义(以 callId 派生为准或事件携带 id,勘察后定),STEP_UPDATED 的渲染层绑定全程不断 | battery + 渲染层定向 + 流式真机走查 |
-| **F4-b2 收尾链脱锚** | 两硬阻塞之二:settle 快照(:629)与结局读取(:533/:578)不再依赖 store-only 形状(锚点住渲染层 S3w-0 已定;被取消工具结局经 tool/annotate+captureCancelled 已有产地);**活 run 共存口径成文**:活 run 窗口内消息由引擎写手持有,物化缓存只答已收尾世界 | battery + §15.16 同型走查(正文不丢) |
+| **F4-b2 收尾链脱锚** ✅ **已落地(§16.17)** | 两硬阻塞之二:settle 快照(:629)与结局读取(:533/:578)不再依赖 store-only 形状(锚点住渲染层 S3w-0 已定;被取消工具结局经 tool/annotate+captureCancelled 已有产地);**活 run 共存口径成文**:活 run 窗口内消息由引擎写手持有,物化缓存只答已收尾世界 | battery + §15.16 同型走查(正文不丢) |
 | **F4-b3 合一切换** | 13 条命令的 core reducer 分支删除,store=投影物化缓存;①类 8 处判据源切投影(补 O(1) hasMessage);告别对账(全量 battery+真机 verify 全绿)→ 恒等门退役,refold 独守;session:check 规则改写("字段赋值只许在投影 reducer") | 告别对账全绿为前置 |
 | **F4-b4 终局总结** | §16.x full 终态声明、终态架构图、常驻门清单、全部留账归档 | — |
 
@@ -7395,3 +7402,181 @@ G1 = 「step 的 `id` 不参与比较」。合一之后它的原始理由("两�
 - **G1 的收紧点挂在存量抄本上**:哪一天 `messages.jsonl` 存量退役(或 `sessions:verify`
   的抄本对账 lane 退役),G1 就可以无豁免地收紧成"比对 id",届时恒等门自己就盯得住
   step 语义,第五节那条合同用例可以随之降级为回归护栏。**在那之前它是唯一的凭据。**
+
+### 16.17 F4-b2 落地记录:收尾链脱锚 + 活 run 共存口径成文(2026-08-27,opus 执行,未提交)
+
+§16.14 战役表第二期。**硬阻塞②(§16.13 第二节)已拆除**,但拆法不是"把那几格搬进
+投影" —— 勘察下来那条路是错的。真正的答案是:**那三处根本不是"读 store",是读
+活 run 的写手视图**;把这件事从"F3 遗留的例外"改判成**一条正式纪律**,并给它一个
+说实话的名字与一道机械门。本批**没有任何行为改变**(生产改动是一次同实现的改名 +
+三个调用点),账本字节零差。
+
+#### 一、勘察题 1::629 settle 快照拿 contentParts 做什么
+
+链路(实读):`completeAgentLoopStream`(`backend/wiring/engine/stream/agent-loop-executor.ts`)
+→ core 的 `completeAgentLoopStreamWithAdapters` → `emitAgentLoopFinalMessageUpdateWithAdapters`
+(`core/engine/agent-loop-executor.ts:1231`)。那一口做三件事:
+
+1. `getMessage` 取材(**收尾修复的 read-modify-write 底稿**);
+2. `finalizeLingeringAgentLoopToolWork` 算出 `{toolCalls?, steps?}` 的 COW 修复,
+   经 `patchMessage{hint:'settle'}` 落盘;
+3. `buildAgentLoopFinalMessageUpdate({...底稿, ...修复})` 发一条 `MESSAGE_UPDATED`,
+   `updates` 的八格是 `content / reasoning / contentParts / toolCalls / steps / usage /
+   errorDetails / isStreaming:false`。
+
+**锚点在其中的作用 + 下游是谁**:第 3 步那条 `MESSAGE_UPDATED` 是**推送**,
+**不是账本** —— `session-event-recorder.ts` 没有一处监听 `MESSAGE_UPDATED`
+(实查:全仓 `MESSAGE_UPDATED` 的消费者是 IPCBridge / SSE / 网关外发 / core 的
+`session.ts` 状态机,记录器一个都不在)。它的唯一去处是渲染层的
+`chat.ts:updateSessionMessage`,而那一步是**整体覆盖**(`{...messages[i], ...updates}`),
+**不跑** `rebuildContentParts`、**不补** `synthesizeToolAnchors`。所以快照里的
+`contentParts` 带不带 `data-steps`,直接决定收尾那一刻渲染层还有没有锚点。
+
+结论:**这是渲染侧的一份推送快照,不是账本取材** —— 它带渲染锚点不但不违反 G4,
+正是 G4 的应有之义(锚点住渲染侧,而活 run 的引擎写手是它唯一的产地)。
+
+#### 二、勘察题 2::533/:578 的结局读取 —— F2-c 之后还缺格吗
+
+**不缺,但也不能改读投影 —— 理由整个换了。**
+
+- 投影**能**产出收场结局:`reducer.ts` 的 `lingeringToolError`(:1103–1117)按
+  `run.ended` + `run.outcome` 派生那句收场话;`materializeStep` 的 `annotatedText`
+  (F2-c,:1297)在结局缺席时退到 `tool/annotate.result`,自报标题走 `reportedTitle`。
+  §16.13 写的"投影不产出 steps 结局"**这句话已经不准**,本节勘误。
+- 但 `captureCancelledToolResults` **读不成投影**,原因是**循环**:被取消工具那条
+  `tool/result{cancelled:true}` 正是它自己经 `recordCancelledToolResults`
+  (`session-event-recorder.ts:1135`)写出去的,而投影的 `tool.cancelled` 由
+  `reducer.ts:632` 从那条事件派生。**产地读自己的产物 = 自引用,永远读空。**
+  这是 §10.10「采集点不二次派生」的另一面,不是缺口。
+- 顺带一条时序事实:收尾链整条跑在 `run/end` **之前**,`lingeringToolError` 的
+  `run.ended` 此刻还是 false —— 就算不循环,窗口内也答不出。
+
+判定:**改判,不是补格**。这两处的正确身份是"活 run 窗口内的写手视图读取",与
+`getMessageFromStore`(reducer 底稿同源)是两个问题。
+
+#### 三、脱锚路径:选 (b) 写手视图口,理由
+
+工单给了两条路。**(a) 引擎写手自持对象**实测**不成立**:`AgentLoopExecutorState`
+只有 `turn.orderedParts`(**单轮**),跨轮的 `contentParts` 全量只在 store 那一份上;
+而且 `contentParts` 有第二产地(生图 `image-stream.ts` 的 `addMessageContentPart`),
+让引擎另攒一份 = 新的第三条推导 + 一定会漏格(§15.16 同款风险)。
+
+选 **(b) 查询面为活 run 提供"写手视图"口** —— 侵入最小(同实现改名),且它把
+"F4-b3 要守什么"变成一个**可指认的口**,而不是散在三处注释里的默契。
+
+| 位置 | 改前 | 改后 |
+|---|---|---|
+| `backend/session/reads.ts` | — | **新增** `getLiveRunWriterMessage(sessionId, messageId)`,实现与 `getMessageFromStore` 逐字相同,文档承载共存口径全文 |
+| `agent-loop-executor.ts:530` `captureCancelledToolResults` | `getMessageFromStore` | `getLiveRunWriterMessage`,理由改判为"产地不读自己的产物" |
+| `agent-loop-executor.ts:575` `emitFinalAssistantMessageUpdate` | 同上 | 同上,理由改判为"这次要写的 `tool/result` 是下面采集点的产物" |
+| `agent-loop-executor.ts:629` `completeAgentLoopStream` | 同上 | 同上,理由改判为"锚点由写手产出、只走推送路;快照是整体覆盖" |
+| `core/engine/agent-loop-executor.ts` | — | `CoreAgentLoopFinalMessageUpdate` 头注释 = 共存口径全文(core 侧落点),两处 `getMessage` 选项各挂一句指针 |
+
+`getMessageFromStore` 因此**只剩一个消费者**:`commands.ts:379` 的
+`truncateFrom{inclusive:false}` 底稿(①类判据同源),随 F4-b3 reducer 退役一起翻。
+
+#### 四、共存口径(纪律原文)
+
+> **活 run 窗口内,该 run 的 assistant 消息由引擎写手对象持有并唯一可信;
+> 物化缓存只回答已收尾世界;窗口的边界 = `run/start` 到 settle 完成。**
+
+三句逐句:
+
+1. **"引擎写手对象"今天就是内存 store 上的那一条。** 引擎在窗口内按 id 寻址往它上面写
+   (`patchStep` / `updateMessageToolCalls` / `addMessageContentPart`),同一批值同时推给
+   渲染层。它不是"另一份缓存",是那条消息在活窗口内的**正身**。
+2. **"物化缓存只回答已收尾世界"是给 F4-b3 的约束**:store 退化成投影物化缓存那天,
+   物化**不得覆盖活窗口内的那条消息**。冷加载 / `hydrate.ts` 今天本来就只在窗口外跑
+   (S3w-1),这条约束零成本。
+3. **窗口边界**:`run/start` 起,到收尾链(`completeAgentLoopStream` /
+   `emitFinalAssistantMessageUpdate` + `captureCancelledToolResults`)跑完为止。
+   窗口外读写手视图没有意义 —— 那时该读 `listMessages` / `getMessage`(投影)。
+
+**纪律覆盖的全部读取点(穷举,全仓 3 处,全在 `wiring/engine/stream/agent-loop-executor.ts`)**:
+
+| # | 行 | 取材点 | 窗口内为什么非它不可 |
+|---|---|---|---|
+| 1 | :530 | `captureCancelledToolResults` | 产地不读自己的产物(第二节) |
+| 2 | :575 | `emitFinalAssistantMessageUpdate`(错误 / abort 收场支) | 修复要回落的 `steps[]` 结局,正是 #1 待写的那几条 `tool/result` |
+| 3 | :629 | `completeAgentLoopStream`(正常收尾支) | 快照的 `data-steps` 渲染锚点只在写手侧(第一节) |
+
+落点:`reads.ts` 那一口(全文)、`core/engine/agent-loop-executor.ts` 的
+`CoreAgentLoopFinalMessageUpdate` 头注释(全文)、本节。
+
+#### 五、F3 ③类清单的处置:整类**改判并搬走**,写侧取材表只剩一类
+
+| 文件 | 改了什么 |
+|---|---|
+| `session/reads.ts` | `getMessageFromStore` 的③类段删除,换成"F4-b2 又摘掉一条 + 只剩底稿同源一个消费者";新增 `getLiveRunWriterMessage` 承载口径 |
+| `session/commands.ts` 文件头 | 例外表 二类 → **一类**(判据同源);③类改判段写明"F2-c 之后'投影不产出'不准,真理由是窗口 + 产地" |
+| `session/command-events.ts` 纪律 3 | 同上,并指向 `getLiveRunWriterMessage` |
+| `__tests__/event-production-write-side-read.test.ts` 文件头 | 从"两类例外的护栏"改成"一类例外 + **活 run 共存口径**两组护栏" |
+
+**§16.13 第五节那张共存表随之勘误**:表里"settle 那一格 = 不能"的判据是"读的正是
+投影不产出的那几格" —— 第二节证明那句话对结局那一半不成立,对锚点那一半成立但它
+**本来就该住写手侧**。两格合起来,那一行的结论从"不能"改成"**不需要** —— 物化缓存
+本来就不该管活窗口"。
+
+#### 六、用例与反证(全部实跑)
+
+| 用例 | 位置 | 钉住什么 | 反证 |
+|---|---|---|---|
+| `ships the data-steps render anchor in the settled snapshot` | `wiring/engine/stream/__tests__/settle-emit-writer-view.test.ts`(**由 `settle-emit-transcript.test.ts` 改名**) | **调用点门**:spy 让两条读法分岔,断言 `completeAgentLoopStream` 打的是 `getLiveRunWriterMessage`、`getMessage` 一次都没被叫,且快照仍带 `data-steps` / `tool-call` | 三个取材点任一改回 routed `getMessage` → **红**(实跑:改名当口这条门第一时间红) |
+| `the settle snapshot keeps render anchors when it reads the live-run writer view (§15.16 同型)` | `wiring/engine/__tests__/core-agent-loop-executor.test.ts` | **§15.16 同型合同**:同一条消息两种取材(带锚点 / 投影形状),逐字复刻 renderer 的整体覆盖,断言 ①写手侧覆盖后锚点还在 ②投影侧覆盖后锚点归零 ③**两侧正文逐字相同**(§15.16 定性:丢的是分界不是数据) | 结构自证(两支同表断言) |
+| `render anchors (data-steps) live only on the writer view, never on the run-path ledger fold` | `session/__tests__/event-production-write-side-read.test.ts` | **口门**:账本侧只有正文(run 路上锚点无产地)、写手侧带锚点,断言收尾链那一口取写手那份 | 断言里换成 `getMessage` → **红**(实跑) |
+| `the live-run writer view keeps the tool's self-reported title…`(原"批 9") | 同上 | 断言一字未动,**理由改判**为"窗口 + 产地",取材口随之改名 | — |
+
+**勘察实况一条(用例里已记档)**:`appendMessage` 那条路(整条已收尾消息直接落账)
+**是**会把 `contentParts` 原样写进事件的 —— 所以"账本里从来没有 `data-steps`"只对
+**run 那条路**成立。第一版用例照"永远没有"写,当场红,按实况改成 run 路的搭法。
+
+#### 七、字节回归(HEAD `9fd5eccb` worktree 双跑)
+
+两棵树各跑 `shadow-battery --passes 1 --seed 4041 --keep-store`,把 55 条会话的
+`events.jsonl` 全量对拍:
+
+| 项 | 读数 |
+|---|---|
+| 会话 / 行 | **55 / 55**,**1629 / 1629** |
+| 事件类型直方图(28 类) | **逐格相同** |
+| 会话的事件类型序列(35 种) | **逐条相同** |
+| 归一后差异行 | **0**(见下) |
+
+归一掉的全部是**跨树不可比的环境坐标**,每一条都追到成因:时钟 / 序号
+(`time` `seq` `dt` `time0` `durationMs`)、随机身份(uuid / `auditId` 的
+`时间戳_callId_随机`)、以及**路径依赖量** —— 两棵树的仓库根与临时 store 名不同,
+于是 `turnContext.skills`(内含技能 SKILL.md 绝对路径)、`systemPromptHash`、
+`assistant/chunks` 的工具参数正文(`mkdir -p <store>/work/...`)与它们的散列 /
+长度(`hash` `contentHash` `len`)必然不同。归一后剩下的最后 2 行差异是
+`/private` realpath 前缀 —— **归一器自身的残留**,不是账本差异。
+worktree 与两份临时 store 已删除。
+
+(结构上也不可能变:本批生产改动是**同实现改名 + 三个调用点**,记录器一处都没动,
+`MESSAGE_UPDATED` 从来不进账本。)
+
+#### 八、验收(全部实跑)
+
+| 项 | 结果 |
+|---|---|
+| `typecheck` | **0**(node + web) |
+| **battery** | **GREEN** —— 27 场景全 PASS(ok=7 failed=0 mismatch-lines=0 逐项);runs **321** / historyChecks 449 / mismatches **0** / duplicates 0 / projectionIssues 0 / droppedParts 0 / appendFailures **0** / refoldChecks 225 / refoldMismatch **0** / shadow.jsonl **0 行** —— **逐项同 §16.16 基线**;四条泳道(投影冷加载 / imported-history / 抄本 / 写失败探针)全 PASS |
+| 字节回归 | **0 差异行**(第七节) |
+| 定向测试 | `packages/backend` + `packages/core`:**367 文件 / 3421 passed / 0 failed** |
+| 全量测试 | **11931 passed / 1 failed** —— 唯一红是**他会话在途**的 `App.container-layout.test.ts`(`App.vue` + `useShellLayout.ts` 的未提交改动,与本批零交集),与 §16.16 那一轮同一只 |
+| 五门 | boundary:gate **0 failures** / transport:gate ok(42 常量 · 2392 行,一字未变)/ log:gate ok(4 已知)/ session:gate ok(0)/ ui:gate ok(81 已知) |
+| 真机 `sessions:verify:gate` | **ok — 13 known issue(s), none new**(全程只读) |
+
+#### 九、留给 F4-b3 的账
+
+- **b3 的唯一新约束**:物化缓存**不得覆盖活 run 窗口内的那条消息**(第四节第 2 句)。
+  三个受纪律保护的读取点已经在第四节穷举成表,b3 照表核对即可,不必重新勘察。
+- **①类 8 处**(判据同源)原样待 b3 —— `getMessageFromStore` 今天只剩 `truncateFrom`
+  底稿那**一个**消费者,b3 补 O(1) `hasMessage` 之后可以整口退役。
+- **③ `partialResult` 形状差**照 §16.14 默认口径:它是活 run 瞬态,窗口内由写手持有、
+  settle 后本就剥离(dehydrate 判例),物化缓存不携带 —— **本批的共存口径已经把它
+  结构性消解了**,b3 只需不去物化它。**④ `thinkingTime`** 仍待 b3 兑现。
+- **一条与本批无关的现场事实(只报告)**:开工时 `docs/design/session-event-sourcing-2026-08.md`
+  的工作树版本把 **§16.16 整节 132 行删掉了**(HEAD `9fd5eccb` 有,工作树没有;
+  文件 mtime 落在本批跑全量测试的那几分钟内 = **他会话在途覆盖**)。本批按 HEAD 原样
+  补回了那 132 行,另一处纯空白改动(第 5950 行附近)未动。若那次删除是有意的,
+  撤回这次补回即可。

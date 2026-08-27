@@ -211,6 +211,76 @@ describe('core agent-loop executor helpers', () => {
     }])
   })
 
+  /**
+   * **F4-b2(§16.17)合同用例:settle 快照必须从活 run 的写手视图取材。**
+   *
+   * §15.16 那一课的机械形状,搬到收尾链上重演一遍:
+   *
+   *  - settle 快照是**整体覆盖** —— renderer 的 `updateSessionMessage` 只做
+   *    `{...message, ...updates}`,不跑 `rebuildContentParts`、不补合成锚点;
+   *  - `data-steps` 锚点按 canonical G4 只住写手/渲染侧,投影**故意不产出**;
+   *  - 于是取材换成投影那一份 = 覆盖后锚点归零 = work group 与整段工具渲染消失,
+   *    而**正文一个字都没丢**(§15.16 定性:不是数据丢失,是分界塌了)。
+   *
+   * 两个 `getMessage` 就是那两侧;断言把"锚点在不在"与"正文丢没丢"分开钉死。
+   */
+  it('the settle snapshot keeps render anchors when it reads the live-run writer view (§15.16 同型)', async () => {
+    const writerParts = [
+      { type: 'text', content: 'answer', turnIndex: 0 },
+      { type: 'data-steps', turnIndex: 0 },
+      { type: 'text', content: 'tail', turnIndex: 1 },
+    ]
+    // 投影侧同一条消息:正文逐字相同,锚点整格没有(G4)。
+    const projectedParts = writerParts.filter(part => part.type !== 'data-steps')
+    const baseMessage = {
+      id: 'assistant-anchor',
+      content: 'answer\ntail',
+      reasoning: undefined,
+      toolCalls: [],
+      steps: [{ id: 'step-c1', status: 'completed', toolCallId: 'c1', turnIndex: 0 }],
+      usage: undefined,
+      errorDetails: undefined,
+    }
+    const snapshotFrom = async (parts: unknown[]) => {
+      const message = { ...baseMessage, contentParts: parts }
+      const events: Array<{ updates: { contentParts?: unknown[]; content?: string } }> = []
+      await emitAgentLoopFinalMessageUpdateWithAdapters({
+        sessionId: 's-anchor',
+        assistantMessageId: 'assistant-anchor',
+        getSession: () => ({ messages: [message] }),
+        getMessage: () => message,
+        emitMessageUpdated: event => {
+          events.push(event as (typeof events)[number])
+        },
+      })
+      return events[0]!.updates
+    }
+    // renderer 那一步逐字复刻:整体覆盖,不补锚点。
+    const mergeIntoRenderer = (updates: { contentParts?: unknown[] }) =>
+      ({ ...baseMessage, contentParts: writerParts, ...updates })
+
+    const fromWriter = await snapshotFrom(writerParts)
+    const fromProjection = await snapshotFrom(projectedParts)
+
+    const anchors = (parts: unknown[] | undefined) =>
+      (parts ?? []).filter(part => (part as { type?: string }).type === 'data-steps').length
+    const text = (parts: unknown[] | undefined) =>
+      (parts ?? [])
+        .filter(part => (part as { type?: string }).type === 'text')
+        .map(part => (part as { content?: string }).content)
+
+    // 写手视图取材:锚点原样带出去,覆盖之后渲染层还有它。
+    expect(anchors(fromWriter.contentParts)).toBe(1)
+    expect(anchors(mergeIntoRenderer(fromWriter).contentParts)).toBe(1)
+    // 投影取材:快照少了锚点,而 renderer 的整体覆盖把渲染层原有的那一个也抹掉。
+    expect(anchors(fromProjection.contentParts)).toBe(0)
+    expect(anchors(mergeIntoRenderer(fromProjection).contentParts)).toBe(0)
+    // 而正文两侧逐字相同 —— 这正是 §15.16 的定性:丢的是分界,不是数据。
+    expect(text(fromWriter.contentParts)).toEqual(['answer', 'tail'])
+    expect(text(fromProjection.contentParts)).toEqual(['answer', 'tail'])
+    expect(fromProjection.content).toBe(fromWriter.content)
+  })
+
   it('creates turn state and merges adjacent ordered text/reasoning parts', () => {
     const turn = createAgentLoopExecutorTurnState<unknown, { type: string; content?: string; turnIndex?: number }>()
 

@@ -9,14 +9,18 @@
  * 事件在 `append` 返回前就折进活投影,"投影滞后"这条理由已经死了;写侧**默认可以
  * 读活投影**。F3 当时留下三类具名例外;**F4-a(§16.12)摘掉了其中的"事件产地
  * 缺口"那一类** —— 那两处孪生取材点是 `run/start` 的生产者,而 `addMessage`
- * 现在把入库的那一条直接交回它们,回读整体删除。今天只剩两类(判据同源 / 只在 store 的运行时形状,逐条写在
- * `commands.ts` 文件头与 `reads.ts` 各口上),名字也早改成了说实话的
- * `*FromStore` / `*InStore`。
+ * 现在把入库的那一条直接交回它们,回读整体删除。**F4-b2(§16.17)又改判了一类**:
+ * 收尾链那三处("只在 store 的运行时形状")不是"读 store",是**读活 run 的写手视图**
+ * ——它们搬到了 `reads.ts` 的 `getLiveRunWriterMessage` 上,写侧取材表因此只剩
+ * **判据同源** 一类(逐条写在 `commands.ts` 文件头与 `reads.ts` 各口上)。名字也早
+ * 改成了说实话的 `*FromStore` / `*InStore`。
  *
- * 所以这组用例**不再是**"证明纪律普遍成立",而是那两类例外的**护栏**:它把两口井
- * 故意灌成不同的水,断言写侧取的是 store 那一份。谁把某处例外"顺手"改回 routed 的
- * `getMessage`,这里当场红。另有一条(`a streaming assistant placeholder…`)守的
- * 不再是例外,而是**产地缺口这件事实本身** —— 它是 F4 的硬前置,见那条用例的注释。
+ * 所以这组用例**不再是**"证明纪律普遍成立",而是两组**护栏**:一组守写侧取材那一类
+ * 例外,一组守**活 run 共存口径**(收尾链的写手视图:自报标题那条 + 渲染锚点那条)。
+ * 做法相同 —— 把两口井故意灌成不同的水,断言取的是写手 / store 那一份。谁把某处
+ * "顺手"改回 routed 的 `getMessage`,这里当场红。另有一条
+ * (`a streaming assistant placeholder…`)守的不再是例外,而是**产地缺口这件事实
+ * 本身** —— 它是 F4 的硬前置,见那条用例的注释。
  *
  * 与 `shadow-read-mode.test.ts` 同款:跑**真的** `reads.ts` / 事件日志 / 投影,
  * 只替身最底下的会话仓库。
@@ -230,16 +234,21 @@ describe('store-side accessors are a second well, distinct from the projection r
     expect(sessionReads.findMessageFromStore(SESSION, byMarker)?.id).toBe('a-mark')
   })
 
-  it('批 9(§13.18 同类):中止在途工具的收尾取材读到抄本的自报标题,而非滞后投影的占位', async () => {
-    // events 读模式下,中止在途工具的收尾链有两处**写侧取材**滞后投影会踩坑:
+  it('the live-run writer view keeps the tool\'s self-reported title the projection cannot have yet (批 9 / F4-b2)', async () => {
+    // 中止在途工具的收尾链有两处取材,读投影都会踩坑:
     //   ① 收尾修复(`emitFinalAssistantMessageUpdate` 的 read-modify-write)—— 读投影
-    //      的占位标题再原样写回 messages.jsonl,反把 metadata 时刻 `updateMessageStep`
-    //      写下的自报标题 'sleep 20' 抹成占位;
+    //      的占位标题再原样写回,反把 metadata 时刻 `updateMessageStep` 写下的自报
+    //      标题 'sleep 20' 抹成占位;
     //   ② 采集点(`captureCancelledToolResults`)—— 读投影找不到收尾修复刚落盘的
     //      cancelled step,`recordCancelledToolResults` 不触发 → 账本缺 `tool/result`
     //      → 投影永远退回占位标题。
-    // 两处都必须走 `*FromTranscript`。这里把两侧**故意分岔**:抄本带自报标题,活投影
-    // 停在占位,断言写侧取材面读的是抄本。
+    //
+    // **F4-b2(§16.17)改判了这条用例的理由,断言一字未动。** 从前写的是"投影不
+    // 产出这一格";F2-c 的 `tool/annotate` 之后那句话不准了(自报标题在事件侧有
+    // 产地)。今天的理由是**窗口 + 产地**:这两处跑在活 run 窗口内,而 ② 正是那条
+    // `tool/result{cancelled:true}` 的**产地本身** —— 产地读自己的产物 = 自引用。
+    // 所以它们读的是 `getLiveRunWriterMessage`(活 run 写手视图),不是投影。
+    // 这里把两侧**故意分岔**:写手视图带自报标题,活投影停在占位。
     const projectionPlaceholder: ChatMessage = {
       id: 'a1',
       role: 'assistant',
@@ -256,7 +265,7 @@ describe('store-side accessors are a second well, distinct from the projection r
     sessionCommandEvents.appendMessage(SESSION, projectionPlaceholder)
     await flushSessionEventLog(SESSION)
     resetSessionProjectionCache(SESSION)
-    // 抄本(store)上是 metadata 时刻已写下的自报标题 'sleep 20'。
+    // 写手视图(store)上是 metadata 时刻已写下的自报标题 'sleep 20'。
     setTranscript([
       {
         ...projectionPlaceholder,
@@ -268,8 +277,66 @@ describe('store-side accessors are a second well, distinct from the projection r
 
     // 产品读面(fromEvents)给的是投影里的占位标题。
     expect(sessionReads.getMessage(SESSION, 'a1')?.steps?.[0]?.title).toBe('调用工具: bash')
-    // 写侧取材面恒读抄本 → 自报标题 'sleep 20'(收尾修复不再抹掉它,采集点找得到 step)。
-    expect(sessionReads.getMessageFromStore(SESSION, 'a1')?.steps?.[0]?.title).toBe('sleep 20')
+    // 收尾链那一口恒读写手视图 → 自报标题 'sleep 20'(收尾修复不再抹掉它,采集点找得到 step)。
+    expect(sessionReads.getLiveRunWriterMessage(SESSION, 'a1')?.steps?.[0]?.title).toBe('sleep 20')
+  })
+
+  /**
+   * **F4-b2(§16.17)硬阻塞②的护栏:settle 快照的渲染锚点只在写手那一侧。**
+   *
+   * `data-steps` 是步骤面板的渲染锚点。**在 run 那条路上它没有事件产地**:正文只有
+   * `assistant/chunks` 一个来源(文本 / 推理的 delta),引擎用 `addMessageContentPart`
+   * 加上去的锚点既不落事件、投影也不合成(canonical G4 明文丢弃比较)。于是活 run
+   * 窗口里两侧天然分岔:写手手上带锚点,账本折出来的只有正文。
+   *
+   * 这里把那个分岔**照原样搭出来**(账本 = 只有正文;写手 = 正文 + 锚点),断言收尾链
+   * 那一口取的是写手那一份。它守的是 §15.16 的引信:settle 快照(`updates.contentParts`)
+   * 是**整体覆盖** —— 谁把 `completeAgentLoopStream` 的取材口换成 routed 的
+   * `getMessage`,渲染层的锚点当场归零、work group 与整段工具渲染消失。
+   *
+   * (口径的另一半 —— 快照本身 —— 钉在
+   * `wiring/engine/__tests__/core-agent-loop-executor.test.ts` 的
+   * "the settle snapshot keeps render anchors…" 上;两条合起来才是完整合同。)
+   *
+   * **注意一条勘察实况**:`appendMessage` 那条路(整条已收尾消息直接落账)**是**
+   * 会把 `contentParts` 原样写进事件的 —— 所以"账本里从来没有 data-steps"只对
+   * **run 那条路**成立,这条用例的搭法照的就是 run 那条路。
+   *
+   * 反证:把断言里的 `getLiveRunWriterMessage` 换成 `getMessage` → 立刻红。
+   */
+  it('render anchors (data-steps) live only on the writer view, never on the run-path ledger fold', async () => {
+    const textOnly: ChatMessage = {
+      id: 'a-anchor',
+      role: 'assistant',
+      content: 'done',
+      timestamp: 9,
+      contentParts: [{ type: 'text', content: 'done', turnIndex: 0 }] as ChatMessage['contentParts'],
+      steps: [
+        { id: 'step-c9', type: 'command', title: 'bash', status: 'completed', toolCallId: 'c9', timestamp: 9 },
+      ],
+    }
+    // 账本侧:只有正文那一格 —— run 路上锚点根本没有产地。
+    sessionCommandEvents.appendMessage(SESSION, textOnly)
+    await flushSessionEventLog(SESSION)
+    resetSessionProjectionCache(SESSION)
+    // 写手侧:引擎在活窗口内 `addMessageContentPart` 加上去的那个锚点。
+    setTranscript([
+      {
+        ...textOnly,
+        contentParts: [
+          { type: 'text', content: 'done', turnIndex: 0 },
+          { type: 'data-steps', turnIndex: 0 },
+        ] as ChatMessage['contentParts'],
+      },
+    ])
+
+    const anchorsOf = (message: ChatMessage | undefined) =>
+      (message?.contentParts ?? []).filter(part => part.type === 'data-steps').length
+
+    // 写手视图:锚点在位 —— settle 快照原样广播出去的正是这一份。
+    expect(anchorsOf(sessionReads.getLiveRunWriterMessage(SESSION, 'a-anchor') as ChatMessage | undefined)).toBe(1)
+    // 产品读面(投影):一个锚点都没有,而且这是**裁定**(G4),不是缺口。
+    expect(anchorsOf(sessionReads.getMessage(SESSION, 'a-anchor') as ChatMessage | undefined)).toBe(0)
   })
 
   /**

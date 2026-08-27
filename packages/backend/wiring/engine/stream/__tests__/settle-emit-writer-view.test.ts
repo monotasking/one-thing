@@ -5,22 +5,26 @@ import { completeAgentLoopStream, type AgentLoopExecutorState } from '../agent-l
 
 /**
  * 反向门:正常收尾发射的 settled 快照(`MESSAGE_UPDATED.updates.contentParts`)
- * 必须来自 **抄本真相**(`messages.jsonl`,带 `data-steps` 渲染锚点),不来自
- * events 活投影(§13.18 发现 B)。
+ * 必须来自**活 run 的写手视图**(带 `data-steps` 渲染锚点),不来自 events 投影。
  *
  * 病根:切读默认翻到 `events`(bad54a31)后,`completeAgentLoopStream` 的收尾读若
- * 走随读模式分岔的 `sessionReads.getMessage`,events 模式下拿到的投影 contentParts
- * **故意不含** `data-steps` / `tool-call`(它们是渲染锚点,canonical G4 丢弃、
+ * 走随读模式分岔的 `sessionReads.getMessage`,拿到的投影 contentParts **故意不含**
+ * `data-steps` / `tool-call`(它们是渲染锚点,canonical G4 丢弃、
  * `materializeContentParts` 不合成)。这份缺锚点的快照被 renderer 的
- * `updateSessionMessage` 整体覆盖上去,`rebuildContentParts` 见非空(有 text)不再
- * 合成锚点 → work group 头与整段工具渲染在收尾那一刻消失。修复:收尾读走
- * `getMessageFromStore`(与 abort 收尾 :449 同治法)。
+ * `updateSessionMessage` **整体覆盖**上去(那一步不跑 `rebuildContentParts`、不补
+ * 合成)→ work group 头与整段工具渲染在收尾那一刻消失。
  *
- * 用 spy 让两条读法**分岔**:抄本侧带 `data-steps`,events 侧不带。断言收尾发射的
- * 快照仍带 `data-steps` —— 只有读抄本才可能带,读投影必红。
+ * **F4-b2(§16.17)只换了这道门的名字与理由,判据一字未动。** 从前写的是"必须
+ * 来自抄本真相 `messages.jsonl`" —— 抄本停写之后那句话已经不真(读的是内存
+ * store)。今天的口径是**活 run 共存**:窗口内那条消息由引擎写手持有并唯一可信,
+ * 锚点是写手在窗口内产出、只走推送路的渲染侧派生物,取材口因此是
+ * `sessionReads.getLiveRunWriterMessage`(口径全文见 `session/reads.ts` 那一口)。
+ *
+ * 用 spy 让两条读法**分岔**:写手视图带 `data-steps`,投影侧不带。断言收尾发射的
+ * 快照仍带 `data-steps` —— 只有读写手视图才可能带,读投影必红。
  */
 
-const transcriptContentParts = [
+const writerViewContentParts = [
   { type: 'text', content: '让我看一下', turnIndex: 1 },
   {
     type: 'tool-call',
@@ -54,7 +58,7 @@ function messageWith(contentParts: ChatMessage['contentParts']): ChatMessage {
 }
 
 const hoisted = vi.hoisted(() => ({
-  getMessageFromStore: vi.fn(),
+  getLiveRunWriterMessage: vi.fn(),
   getMessage: vi.fn(),
   emit: vi.fn(async (_sessionId: string, _event: unknown) => undefined),
   patchMessage: vi.fn(),
@@ -71,7 +75,7 @@ vi.mock('../../../../session/reads.js', async (importActual) => {
     ...actual,
     sessionReads: {
       ...(actual.sessionReads as Record<string, unknown>),
-      getMessageFromStore: hoisted.getMessageFromStore,
+      getLiveRunWriterMessage: hoisted.getLiveRunWriterMessage,
       getMessage: hoisted.getMessage,
     },
   }
@@ -115,20 +119,20 @@ function settleState(): AgentLoopExecutorState {
   } as unknown as AgentLoopExecutorState
 }
 
-describe('settle emit reads the transcript, not the events projection', () => {
+describe('settle emit reads the live-run writer view, not the events projection', () => {
   afterEach(() => {
     vi.clearAllMocks()
   })
 
   it('ships the data-steps render anchor in the settled snapshot (events read mode)', async () => {
-    // 抄本带锚点,投影不带 —— 两条读法分岔。
-    hoisted.getMessageFromStore.mockReturnValue(messageWith(transcriptContentParts))
+    // 写手视图带锚点,投影不带 —— 两条读法分岔。
+    hoisted.getLiveRunWriterMessage.mockReturnValue(messageWith(writerViewContentParts))
     hoisted.getMessage.mockReturnValue(messageWith(eventsProjectionContentParts))
 
     await completeAgentLoopStream(settleState(), 'Session')
 
-    // 收尾读必须走抄本侧;走随读模式分岔的 getMessage 就是本 bug。
-    expect(hoisted.getMessageFromStore).toHaveBeenCalledWith('s1', 'm1')
+    // 收尾读必须走活 run 写手视图;走随读模式分岔的 getMessage 就是本 bug。
+    expect(hoisted.getLiveRunWriterMessage).toHaveBeenCalledWith('s1', 'm1')
     expect(hoisted.getMessage).not.toHaveBeenCalled()
 
     const updatedCall = hoisted.emit.mock.calls.find(

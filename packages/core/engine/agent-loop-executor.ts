@@ -944,6 +944,36 @@ export interface CoreAgentLoopSessionWithMessages<
 	messages: TMessage[];
 }
 
+/**
+ * **settle 快照** —— 收尾链广播给渲染侧的那一份整体覆盖。
+ *
+ * ## 活 run 共存口径(F4-b2,§16.17。改这条链之前先读完)
+ *
+ * > **活 run 窗口内,该 run 的 assistant 消息由引擎写手对象持有并唯一可信;
+ * > 物化缓存只回答已收尾世界;窗口的边界 = `run/start` 到 settle 完成。**
+ *
+ * 收尾链(`emitAgentLoopFinalMessageUpdateWithAdapters` /
+ * `completeAgentLoopStreamWithAdapters`)整条都跑在**窗口之内**,所以它的
+ * `getMessage` 取材口读的是**写手视图**,不是"事件账本的物化"。这不是历史包袱,
+ * 是两条机械事实:
+ *
+ * 1. **`contentParts` 上的渲染锚点(`data-steps`)只存在于写手那一侧。** 锚点按
+ *    裁定住渲染侧(canonical G4):不进事件、不进投影、账本里从来没有它。而这份
+ *    快照是**整体覆盖** —— 取材换成投影那一份,渲染层的锚点当场归零,work group
+ *    与整段工具渲染消失(§15.16「正文看不见」的同一根引信)。
+ * 2. **被收场判死的工具,它的 `tool/result` 是这条链自己写出去的。** 宿主在
+ *    `emitMessageUpdated` 之后按修复结果补记 `tool/result{cancelled:true}`;投影
+ *    的 `cancelled` 由那条事件派生。产地读自己的产物 = 自引用,永远读空。
+ *    (F2-c 的 `tool/annotate` 已经把自报标题 / 自报结局的产地补齐了 —— 所以
+ *    这一条**不是**"投影欠一格",是产地纪律,§10.10。)
+ *
+ * 反过来说,窗口**之外**没有任何理由读写手视图:冷加载 / 回读 / history 一律走
+ * 投影(S3w-1 起已是唯一路)。F4-b3 把 store 换成投影物化缓存时,唯一要守的
+ * 约束就是**物化不得覆盖活窗口内的那条消息**。
+ *
+ * 宿主侧的口径全文与那三个取材点,见 `packages/backend/session/reads.ts` 的
+ * `getLiveRunWriterMessage`。
+ */
 export interface CoreAgentLoopFinalMessageUpdate<
 	TMessage extends
 		CoreAgentLoopFinalMessageLike = CoreAgentLoopFinalMessageLike,
@@ -969,7 +999,12 @@ export interface CompleteAgentLoopStreamWithAdaptersOptions<
 	lastTurnUsage?: CoreAgentLoopLastTurnUsage;
 	finalize: () => CoreMaybePromise<void>;
 	getSession: (sessionId: string) => TSession | undefined;
-	/** 读门面(P0.2 C1):缺席时回落到 `getSession` 的旧读法 */
+	/**
+	 * 读门面(P0.2 C1):缺席时回落到 `getSession` 的旧读法。
+	 *
+	 * **这一口读的是活 run 的写手视图**,不是投影 —— 理由见
+	 * `CoreAgentLoopFinalMessageUpdate` 的共存口径。
+	 */
 	getMessage?: (sessionId: string, messageId: string) => TMessage | undefined;
 	/** 收尾修复的落盘口(P0.2 F3),见 `EmitAgentLoopFinalMessageUpdateWithAdaptersOptions` */
 	patchMessage?: (
@@ -996,7 +1031,12 @@ export interface EmitAgentLoopFinalMessageUpdateWithAdaptersOptions<
 	sessionId: string;
 	assistantMessageId: string;
 	getSession: (sessionId: string) => TSession | undefined;
-	/** 读门面(P0.2 C1):缺席时回落到 `getSession` 的旧读法 */
+	/**
+	 * 读门面(P0.2 C1):缺席时回落到 `getSession` 的旧读法。
+	 *
+	 * **这一口读的是活 run 的写手视图**,不是投影 —— 理由见
+	 * `CoreAgentLoopFinalMessageUpdate` 的共存口径。
+	 */
 	getMessage?: (sessionId: string, messageId: string) => TMessage | undefined;
 	/**
 	 * 收尾修复的落盘口(P0.2 F3):`finalizeLingeringAgentLoopToolWork` 不再就地

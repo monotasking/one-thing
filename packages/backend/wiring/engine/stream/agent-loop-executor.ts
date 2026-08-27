@@ -520,13 +520,14 @@ function captureCancelledToolResults(state: AgentLoopExecutorState): void {
 	try {
 		// COW:收尾修复刚刚经命令面落过盘,这里必须**重读**(P0 的那个坑)。
 		//
-		// **F3(§16.10)复核:留在 store。** 理由是**只在 store 的运行时形状**
-		// (不是"投影滞后" —— 那条理由 F1 之后已不成立):收尾修复写的是 `steps[]`
-		// 上的结局(`cancelled` + 工具自报标题),而 `steps` 在 `DERIVED_KEYS` 里、
-		// 消息命令从不把它翻进事件 —— 投影侧那几格是从 `tool/*` 事件物化出来的,
-		// 而**这次采集要写的正是那几条 `tool/result`**。读投影 → 读空 → 采集不触发
-		// → 账本缺 `tool/result` → 中止在途工具的 step 永远停在占位标题。
-		const message = sessionReads.getMessageFromStore(
+		// **F4-b2(§16.17)复核:读活 run 的写手视图。** 从前挂的理由是"投影不产出
+		// steps 结局";F2-c 的 `tool/annotate` 与批 9 之后那句话**已经不准** —— 自报
+		// 标题与自报结局在事件侧都有产地了。真正的理由换成了一条更硬的:
+		// **这一处是产地本身**。被取消工具的 `tool/result{cancelled:true}` 正是下面
+		// `recordCancelledToolResults` 写出去的,投影的 `tool.cancelled` 由它派生 ——
+		// 产地读自己的产物就是自引用,永远读空(§10.10)。写手视图不是"另一份缓存",
+		// 它是这条消息在活 run 窗口内的正身;口径全文见 `reads.ts` 那一口。
+		const message = sessionReads.getLiveRunWriterMessage(
 			state.ctx.sessionId,
 			state.ctx.assistantMessageId,
 		) as ChatMessage | undefined;
@@ -565,13 +566,13 @@ async function emitFinalAssistantMessageUpdate(
 			// 读到的消息经 `finalizeLingering…` 折成 patch 再写回(自报标题等字段随
 			// steps 数组回落)。
 			//
-			// **F 线 F3(§16.10)复核:留在 store。** 理由是**只在 store 的运行时形状**
-			// (不是"投影滞后" —— F1 之后不成立):要回落的是 `steps[]`,而 `steps` 在
-			// `DERIVED_KEYS` 里、从不进消息事件;投影侧的 steps 是 `tool/*` 物化出来的,
-			// 此刻还没有这次收尾要写的 `tool/result`。读投影 → 拿到占位标题 → 修复把
-			// 占位标题焊回消息,反把引擎写好的自报标题抹掉。
+			// **F4-b2(§16.17)复核:读活 run 的写手视图。** 要回落的是 `steps[]`,
+			// 而这一刻账本上还没有这次收尾要写的那几条 `tool/result` —— 它们是**下面
+			// `captureCancelledToolResults` 的产物**,不是投影欠的一格。修复读投影 →
+			// 拿到占位标题 → 把占位标题焊回消息,反把引擎写好的自报标题抹掉。
+			// 窗口边界与口径全文见 `reads.ts` 的 `getLiveRunWriterMessage`。
 			getMessage: (sessionId, messageId) =>
-				sessionReads.getMessageFromStore(sessionId, messageId) as
+				sessionReads.getLiveRunWriterMessage(sessionId, messageId) as
 					| ChatMessage
 					| undefined,
 			patchMessage: (sessionId, messageId, patch) => {
@@ -613,16 +614,19 @@ export async function completeAgentLoopStream(
 		// **又是**一次 read-emit:读到的消息经 `finalizeLingering…` 折成 patch 落盘,
 		// 并原样作为 settled 快照(`updates.contentParts`)广播给 renderer。
 		//
-		// **F 线 F3(§16.10)复核:留在 store,而且这一处是最不能翻的。** 理由是
-		// **只在 store 的运行时形状**(不是"投影滞后" —— F1 之后不成立):store 上那份
-		// contentParts 带着 `data-steps` 渲染锚点,而事件投影**故意不产出**它(锚点是
-		// 渲染侧的东西,canonical G4 丢弃比较,`materializeContentParts` 也不合成)。
-		// 换成 routed 的 `getMessage`,拿到的投影 contentParts 只有 text/reasoning ——
-		// renderer 的 `updateSessionMessage` 用它整体覆盖之后,`rebuildContentParts`
-		// 见非空(有 text)不再合成锚点,work group 与整段工具渲染当场消失。
-		// (那是 §15.16「正文看不见」那一课的同一根引信。)
+		// **F4-b2(§16.17)复核:读活 run 的写手视图,而且这一处是三处里最硬的。**
+		// 活窗口内那条消息的 contentParts 带着 `data-steps` 渲染锚点 —— 锚点由引擎在
+		// 窗口内产出、**只走推送路**(账本里从来没有它,canonical G4 明文丢弃,
+		// `materializeContentParts` 也不合成)。settle 快照是**整体覆盖**:换成投影
+		// 那一份,renderer 的 `updateSessionMessage` 覆盖之后锚点归零(它不跑
+		// `rebuildContentParts`,不会补合成),work group 与整段工具渲染当场消失
+		// —— §15.16「正文看不见」那一课的同一根引信。
+		//
+		// 这不是"投影欠一格"、也不是"store 私有形状":锚点住渲染侧(G4)是**裁定**,
+		// 而活 run 的写手正是它唯一的产地。口径全文见 `reads.ts` 的
+		// `getLiveRunWriterMessage`;F4-b3 的物化缓存不得覆盖活窗口内的这条消息。
 		getMessage: (sessionId, messageId) =>
-			sessionReads.getMessageFromStore(sessionId, messageId) as
+			sessionReads.getLiveRunWriterMessage(sessionId, messageId) as
 				| ChatMessage
 				| undefined,
 		patchMessage: (sessionId, messageId, patch) => {
