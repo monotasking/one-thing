@@ -19,12 +19,36 @@
  */
 
 import type { ChatSession } from '@shared/ipc.js'
+import { sessionOriginFingerprint, type SessionOriginStamp } from '@onething/core/session'
+import { getOnethingStorePath } from '@onething/runtime/storage'
 import { safely } from './command-events.js'
 import { isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
 import { writeSessionEvent } from './event-writer.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
+
+/**
+ * **产地印章**(§17.7 #2+#1)—— 写这条 `session/created` 的时候,这个进程认为
+ * 自己的 store 在哪儿。形状与理由见 `core/session/events/origin.ts`。
+ *
+ * 按 store 路径缓存(而不是每进程算一次):测试会在一个进程里换好几个临时 store,
+ * 算错就等于给那本账盖了别人的章。指纹本身是纯函数,一次几十个字符的循环。
+ */
+const originStampCache = new Map<string, SessionOriginStamp>()
+
+function sessionOriginStamp(): SessionOriginStamp {
+  const storePath = getOnethingStorePath()
+  const cached = originStampCache.get(storePath)
+  if (cached) return cached
+  const stamp: SessionOriginStamp = {
+    store: sessionOriginFingerprint(storePath),
+    // 零接线可知的唯一一格宿主标记 —— 而 vitest 正是夹具沉积最大的来源。
+    ...(process.env.VITEST ? { host: 'test' as const } : {}),
+  }
+  originStampCache.set(storePath, stamp)
+  return stamp
+}
 
 export const sessionLifecycleEvents = {
   /** 会话创建:`session/created` 是这份日志的**第一条**,目录由它建起来。 */
@@ -37,6 +61,9 @@ export const sessionLifecycleEvents = {
         ...(session.lastModel ? { model: session.lastModel } : {}),
         ...(session.lastProvider ? { provider: session.lastProvider } : {}),
         ...(session.workingDirectory ? { workingDirectory: session.workingDirectory } : {}),
+        // §17.7 #2+#1:账本自证身份。单门之后(§17.7 #6)这一条必经写入口,
+        // 所以印章天然全覆盖 —— 没有"另一扇门写的没盖章"这种缝。
+        origin: sessionOriginStamp(),
       })
     })
   },

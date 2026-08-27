@@ -355,6 +355,8 @@ export interface SessionRequestEndEventData {
 
 // ============ 会话 ============
 
+import type { SessionOriginStamp } from './origin.js'
+
 export interface SessionCreatedEventData {
   sessionId: string
   kind?: string
@@ -362,6 +364,15 @@ export interface SessionCreatedEventData {
   model?: string
   provider?: string
   workingDirectory?: string
+  /**
+   * **产地印章**(§17.7 #2+#1):写这条的时候,这个进程认为自己的 store 在哪儿。
+   *
+   * 形状与理由见 `events/origin.ts`(路径**指纹**不是路径 —— 账本会被拷来拷去、
+   * 会被贴进 issue,绝对路径不该进账本)。`sessions:verify` 读每本账第一条
+   * `session/created` 的这一格来分栏:指纹对得上 = 本机产物,全规则照旧;对不上 =
+   * 跑错 store 的进程 / 拷进来的夹具;**缺席 = 印章之前的存量账,不猜**(纪律 9)。
+   */
+  origin?: SessionOriginStamp
 }
 
 export interface SessionAgentChangedEventData {

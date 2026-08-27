@@ -40,9 +40,13 @@ import {
   // 引用扫描的**单一判据**(§15.12):GC 的孤儿判定与这里的引用完整性检查问的是
   // 同一张表的两侧,判据分家迟早会分出一边删掉另一边认的东西。
   collectSessionBlobRefHashes,
+  classifySessionOrigin,
   parseSessionLogEventLog,
+  sessionOriginFingerprint,
   projectChatMessages,
   canonicalChatMessage,
+  type SessionOriginStamp,
+  type SessionOriginVerdict,
 } from '@onething/core/session'
 import { dehydrateProjectedMessages } from '@onething/runtime/sessions/session-dehydrate'
 
@@ -60,6 +64,15 @@ export interface SessionVerifyReport {
   noEventHistory: boolean
   /** 混合覆盖会话:事件覆盖到的后缀占比(legacy 前缀不算错)。 */
   coverage?: string
+  /**
+   * **这本账是谁写的**(§17.7 #2+#1)。判据是第一条 `session/created` 上的产地
+   * 印章:`local` = 本机这个 store 的正常产物;`foreign` = 印章指向别的 store
+   * (跑错 store 的进程 / 拷进来的夹具);`unstamped` = 印章之前的存量账,**不猜**。
+   *
+   * 分栏只改**读数**,不改判据:三栏跑的是同一套五项检查,报告分开列是为了让
+   * "引擎写坏了一段历史"不再与"这本账根本不是引擎写的"同色。
+   */
+  origin: SessionOriginVerdict
   issues: SessionVerifyIssue[]
   /**
    * F6(§13.2):投影**退化**的清单(`blob-missing:…` / `turn-split-fallback:…`)。
@@ -103,11 +116,20 @@ function messagesFromTranscript(text: string): Array<{ id: string } & Record<str
   return out
 }
 
-export function verifySession(sessionsDir: string, sessionId: string): SessionVerifyReport {
+export function verifySession(
+  sessionsDir: string,
+  sessionId: string,
+  localFingerprint = '',
+): SessionVerifyReport {
   const dir = path.join(sessionsDir, sessionId)
   const eventsText = readTextIfExists(path.join(dir, 'events.jsonl')) ?? ''
   const events = parseSessionLogEventLog(eventsText)
   const issues: SessionVerifyIssue[] = []
+
+  // 0. 产地(§17.7 #2+#1):第一条 `session/created` 上那一格。
+  const created = events.find(event => event.type === 'session/created')
+  const stamp = (created?.data as { origin?: SessionOriginStamp } | undefined)?.origin
+  const origin = classifySessionOrigin(stamp, localFingerprint)
 
   // 1. seq 连续
   for (let index = 0; index < events.length; index++) {
@@ -289,6 +311,7 @@ export function verifySession(sessionsDir: string, sessionId: string): SessionVe
     bytes: Buffer.byteLength(eventsText, 'utf8'),
     noEventHistory: !hasEventHistory,
     coverage,
+    origin,
     ...(degradedLines.length > 0 ? { degraded: degradedLines } : {}),
     issues,
   }
@@ -325,27 +348,48 @@ function main(): void {
   const sessionsDir = path.join(store, 'sessions')
   const ids = args.all || !args.sessionId ? listSessionIds(sessionsDir) : [args.sessionId]
 
-  const reports = ids.map(id => verifySession(sessionsDir, id))
+  // §17.7 #2+#1:本机指纹现算(与写侧同一个纯函数、同一个 store 路径)。
+  const localFingerprint = sessionOriginFingerprint(store)
+  const reports = ids.map(id => verifySession(sessionsDir, id, localFingerprint))
   const failed = reports.filter(report => report.issues.length > 0)
+  const failedLocal = failed.filter(report => report.origin === 'local')
+  const failedForeign = failed.filter(report => report.origin !== 'local')
 
   if (args.json) {
-    console.log(JSON.stringify({ store, sessions: reports.length, failed: failed.length, reports }, null, 2))
+    console.log(JSON.stringify({
+      store,
+      localFingerprint,
+      sessions: reports.length,
+      failed: failed.length,
+      failedLocal: failedLocal.length,
+      failedForeign: failedForeign.length,
+      reports,
+    }, null, 2))
   } else {
-    console.log(`[verify] store=${store} sessions=${reports.length}`)
-    for (const report of reports) {
-      if (report.issues.length === 0) {
-        if (!args.quiet) {
-          const note = report.noEventHistory ? ' (no event history yet)' : ''
-          console.log(`  ok   ${report.sessionId}  events=${report.events} messages=${report.messages}${note}`)
-        }
-        continue
+    console.log(`[verify] store=${store} sessions=${reports.length} fingerprint=${localFingerprint}`)
+    if (!args.quiet) {
+      for (const report of reports) {
+        if (report.issues.length > 0) continue
+        const note = report.noEventHistory ? ' (no event history yet)' : ''
+        console.log(`  ok   ${report.sessionId}  events=${report.events} messages=${report.messages}${note}`)
       }
-      console.log(`  FAIL ${report.sessionId}  events=${report.events} messages=${report.messages}`)
-      for (const issue of report.issues.slice(0, 10)) {
-        console.log(`       ${issue.kind}: ${issue.detail}`)
-      }
-      if (report.issues.length > 10) console.log(`       … ${report.issues.length - 10} more`)
     }
+    // §17.7 #2+#1:**分栏**。同一套检查、两份读数 —— "引擎写坏了一段历史"
+    // 不该与"这本账根本不是本机引擎写的"同色。
+    const printFailures = (title: string, group: SessionVerifyReport[]): void => {
+      if (group.length === 0) return
+      console.log(title)
+      for (const report of group) {
+        const mark = report.origin === 'local' ? '' : `  [${report.origin}]`
+        console.log(`  FAIL ${report.sessionId}  events=${report.events} messages=${report.messages}${mark}`)
+        for (const issue of report.issues.slice(0, 10)) {
+          console.log(`       ${issue.kind}: ${issue.detail}`)
+        }
+        if (report.issues.length > 10) console.log(`       … ${report.issues.length - 10} more`)
+      }
+    }
+    printFailures('[verify] 本机账本(印章对得上 —— 这一栏红了就是代码的事):', failedLocal)
+    printFailures('[verify] 外来 / 无印章存量账本(印章指向别的 store,或印章之前写的):', failedForeign)
     // F6:退化清单单独打一段(不进门,理由见 `SessionVerifyReport.degraded`)。
     const degradedTotals = new Map<string, number>()
     for (const report of reports) {
@@ -359,7 +403,12 @@ function main(): void {
       console.log(`[verify] 投影退化(不进门,F6):${sessions} 间会话`)
       for (const [key, count] of [...degradedTotals].sort()) console.log(`       ${key} ×${count}`)
     }
-    console.log(failed.length === 0 ? '[verify] GATE GREEN' : `[verify] GATE RED (${failed.length} session(s))`)
+    console.log(
+      failed.length === 0
+        ? '[verify] GATE GREEN'
+        : `[verify] GATE RED (${failed.length} session(s):`
+          + ` 本机 ${failedLocal.length} / 外来·存量 ${failedForeign.length})`,
+    )
   }
 
   process.exit(failed.length === 0 ? 0 : 1)

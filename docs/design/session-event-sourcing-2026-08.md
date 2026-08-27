@@ -9420,7 +9420,7 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | 6 | **`pruneShadowedToolCalls` 是零命中路** | 生产者还没写。真写时要一并决定"只遮结果格"这种 op 下 `isShadowedWith` 怎么答,而不是默默让它生效 | §16.15 六-2 |
 | 7 | **`events.jsonl` 分卷轮转** | 只出了方案要点(触发条件 = 字节 + 语义边界,不是时间;归档 = 分卷 + 清单,不是 gzip 覆盖;refold 的"文件字节此刻是全的"前提要重定义),**待拍板** | §15.12 B3 |
 | 8 | **`legacy-backup/` 381.4MB** | S1a 迁移留下的原抄本副本,**没有治理器**。同批的 `messages.cleared-*`(14MB)同理。只测量未治理 | §15.12;裁定 10 |
-| 9 | **真机夹具沉积清理 + `room-1` 主人判据** | `~/.onething` 里测试年代留下的会话 / traces / debug 快照要不要删;`room-1 seq: expected seq 2 at position 1, got 3` 这条 verify 红是**收进基线**还是**修数据**——**待用户拍板**。它自 §16.20 起**每一批原样复现**(c5 这批仍是它,无新增) | §16.20 七;§16.22 五(d) |
+| 9 | **真机夹具沉积清理 + `room-1` 主人判据** —— **§17.7.3 已给判据与清单(零删除)**:`session/created` 带产地印章,verify 分三栏;`room-1` 的现场只读读出来了(夹具 + 08-27 一次已修复的测试外溢,`seq=2` 从未落盘),定性**不是引擎 bug**,删/收基线两个选项待用户拍。全表见 `docs/audit/session-ledger-origin-2026-08-28.md` | | `~/.onething` 里测试年代留下的会话 / traces / debug 快照要不要删;`room-1 seq: expected seq 2 at position 1, got 3` 这条 verify 红是**收进基线**还是**修数据**——**待用户拍板**。它自 §16.20 起**每一批原样复现**(c5 这批仍是它,无新增) | §16.20 七;§16.22 五(d) |
 | 10 | **结算态 `plugin-status` 无产地** | **§17.7.2 勘察更正:上一版这一行的"取代事件已落盘"是错的** —— `plugin/status` 只有词表条目与一条"记录在案但不改投影"的归约分支,**全仓零生产者**;插件状态这一格从头到尾是流内的(`CorePluginStatusRegistry` → chunk 流 → renderer `content-parts.ts`)。缺的不是折叠少折一步,是**写侧没有采集点**。补它 = 新起一条 plugins → 账本的采集线 + 裁定"重开会话后还看不看得到已结算的状态行"(**可感知的行为变化**)—— 停在诊断,待拍板 | §17.7.2 四-2 |
 | 11 | ~~**`toolCall.argsFinalizedBy` 无采集点**~~ **已结清(§17.7.2 四-1)** —— 定性为**采集过程的注记**("我们的流式层怎么知道参数说完了"),不是会话事实;实测全仓零消费者(只有生产者),进 canonical 豁免表是**终态**而不是欠一条产地 | §10.8;§17.7.2 |
 | 12 | **两个端口断言没被考过** | `updateMessageError` / `updateMessageTurnContext` 的 A 类断言在 battery 里**零调用**,各欠一个场景 | §16.24 九-3 |
@@ -10250,3 +10250,75 @@ appendFailures 0、shadow.jsonl 0 行);四棘轮 boundary 0(**新增单门检查
 session 0 / log 4 known-none-new / transport 42 · 2392 未动;字节回归 + S0 合同 +
 step 身份 + 账折叠预检绿(`ephemeral-policy` 8 只含 unsettled 取代者指针);
 `sessions:verify` 9 条与 HEAD 逐条同集零新增;真机 `~/.onething` 只读。
+
+#### 17.7.3 #2+#1 落地记录:账本自证身份(2026-08-28,opus 施工,未提交)
+
+**边界(用户 2026-08-28 收紧)**:方案原文里"落地时顺带清夹具(授权已在)"那句
+**不算数** —— 删真机 `~/.onething` 里的会话是破坏性动作,用户没有逐字批过删哪些。
+本批**零删除**,只做代码与清单。
+
+*一、印章的形状与理由*
+
+`session/created` 新增可选格 `origin: { store: string; host?: 'test' }`
+(`core/session/events/origin.ts`)。
+
+- **指纹,不是路径**(`sessionOriginFingerprint`:FNV-1a 双轮 → 12 位十六进制)。
+  账本会被拷来拷去、会被贴进 issue,绝对路径不该进账本;单测钉死"指纹里认不出
+  家目录的任何一段"。
+- **不是密码学哈希,也不假装是**。它要回答的问题只有一个:"和本机这个 store 是
+  同一个吗"。为一个身份标签把 `node:crypto` 拖进零依赖的 core 不划算,所以写成
+  纯函数、零 import,并在文件头写清楚**它是指纹不是秘密**。
+- **`host` 只在零接线可知时才带**。今天唯一那一格是 `process.env.VITEST` ——
+  而 vitest 正是夹具沉积最大的来源。认出 desktop / server / daemon 要新开一个
+  `configure*Host` 口,那是另一次接线;**store 指纹本身已经足以回答 verify 要问的
+  那个问题**(跑错 store 的进程写下的账本,指纹与本机对不上),所以不为它加接线。
+- **缓存按 store 路径分**,不是每进程一次:测试会在一个进程里换好几个临时 store,
+  算错就等于给那本账盖了别人的章。
+- **append-only,缺席不猜**(纪律 9):老账没有这一格 = `unstamped`,归存量栏。
+
+写侧落点是 `lifecycle-events.ts` 的 `sessionCreated` —— §17.7 #6 之后只有一扇门,
+所以印章**天然全覆盖**,没有"另一扇门写的没盖章"这种缝。
+
+*二、verify 分栏(判据从名单变成事实)*
+
+`scripts/session-verify.ts` 现算本机指纹(与写侧同一个纯函数、同一个 store 路径),
+读每本账**第一条** `session/created` 的印章,分三栏:`local` / `foreign` /
+`unstamped`。报告分两段打印,GATE 行报 `本机 N / 外来·存量 M`。
+
+**没有放松任何一道门**:退出码判据一字未改(9 条红仍然红);
+`sessions:verify:gate` 棘轮读的是 FAIL 块里的 issue 行,与分栏无关,基线文件与
+比对逻辑一个字没动(本批零新增、零治愈)。分栏改的只是**读数的颜色**。
+
+*三、9 条红的去向(实跑)*
+
+`[verify] store=~/.onething sessions=444 fingerprint=3a100bb98117`
+→ `GATE RED (9 session(s): 本机 0 / 外来·存量 9)`。
+
+**9 条全部落在存量栏,全部是 `unstamped`** —— 存量 434 本账一本都没有印章,这是
+预期(印章是今天加的)。往后新建会话都带印章,严格栏才会有内容;那一栏红了就是
+代码的事,不必再讨论"这本账是谁写的"。
+
+*四、`room-1`:只报不动,给用户拍板*
+
+只读读出它的两条事件(全文见 `docs/audit/session-ledger-origin-2026-08-28.md`):
+`seq=1` 是 `time: 1`(1970-01-01)、`agentId:'fe'`、`synthetic:true` 的
+`message/imported` —— 与 `sessions-collab-turn.test.ts` 那套夹具同形;`seq=3` 是
+**2026-08-27** 的一条 `user/message`,而那天正是 §16.22「vitest 换 HOME 泄漏真机
+store」三修的当天(那批钉死了 `logPath` 并加了 HOME 硬闸,但**已经写进去的两行
+没有回收**);断掉的 `seq=2` 从来没落盘。
+
+**定性:不是引擎写坏了一段历史,是一条夹具会话 + 一次已修复的外溢留下的残渣。**
+两个选项(**本批既没删也没收基线**):A(建议)删整目录 `~/.onething/sessions/room-1/`;
+B 收进 verify 基线 —— 代价是基线里多一条"其实是垃圾数据"的条目,而基线的语义
+是"修复前的引擎 bug 已写死在盘上"。
+
+*五、夹具清单(只读扫描摘要)*
+
+434 本账 / 444.5 MB;疑似夹具或非聊天前缀 40 本 / 19.5 MB(4.4%):
+`agent-exec-` 31 本 18.97 MB、`gateway:` 3 本、`identity:` 2 本、`web-` 3 本、
+`room-` 1 本。**前缀只是线索不是判据** —— 真正的判据(印章)从今天起才有,
+这正是方案 B 要解决的事。全表与判据见 `docs/audit/session-ledger-origin-2026-08-28.md`。
+
+*六、门读数*
+
+见本节末尾的验收段(与报告同一组读数)。
