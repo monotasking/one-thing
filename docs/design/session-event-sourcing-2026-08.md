@@ -9604,6 +9604,18 @@ refoldChecks 224 > 0、refoldMismatch 0、mismatches 0、portMismatches 0
   消费事件词汇(U-a 已拍)、删自建拼装、ui-shadow 门;B 期同窗换管。它对两轴的
   意义:渲染层从"第三份手写推导"变成同一次折叠的第三个出口——本宪法覆盖到屏幕。
   细案在开工前出,含消息列表虚拟化与等待指示(用户已并入)。
+- **勘察底账已就位(2026-08-28,零代码改动)**:`docs/audit/ui-projection-survey-2026-08-28.md`
+  —— 六问逐条带 `file:line`。三条硬读数供细案直接用:①「第三份手写推导」共 10 项,
+  其中**只有渲染锚点一项已同源**;②U-b 的浏览器 import 障碍是**三条短边**(实测传递
+  闭包:`projection/reducer.ts` 41 文件 → `tools/tool-result` → `permission/*`
+  带 `node:os|path|crypto`;`chat-messages.ts` 再多一条 → `engine/history` →
+  `agent-loop/tool-names` 带 `node:crypto`;桶 `session/index.ts` 81 文件另带
+  `storage/json-message-page` 的 `node:fs`)—— 而 `events/index.ts`(6 文件)与
+  `projection/canonical.ts`(3 文件)**已经零 node**,U-a 词汇与 ui-shadow 的法官
+  今天就能直接 import;③要动的核心面 ≈11.8k 行 / 104 个测试文件,与其他会话在途的
+  外壳布局改动**零重叠**。另有一条门设计前置:ui-shadow 会稳定报「已结算
+  `plugin-status`」那一格(§17.7.2 四-2 查明它写侧零生产者),细案须先定"具名排除
+  还是等 #10 补产地"。
 
 **建议施工序**(全部按推荐案;08-28 随 #8 勘察修订):#8a(小,A 线改说事件+删
 5 条死分支;已落地 502c0909)→ #3+#8b(节点自持物化 + 会话账折叠化,一个方案两个
@@ -10322,3 +10334,61 @@ B 收进 verify 基线 —— 代价是基线里多一条"其实是垃圾数据"
 *六、门读数*
 
 见本节末尾的验收段(与报告同一组读数)。
+
+### 17.8 #9 细案:U/B 战役 —— 屏幕成为同一次折叠的第三个出口(2026-08-28,Fable;待用户过目后开工)
+
+底账:`docs/audit/ui-projection-survey-2026-08-28.md`(六问逐条带 file:line)。
+既有裁定不动:U-a(消费事件词汇)、U-b(renderer 直 import core reducer)、
+无快照(漏序重拉)、`message:updated` 已退役。
+
+一句话:renderer 今天是**第三份手写推导**(10 项派生只有渲染锚点 1 项同源,
+`chat.ts:1507` 的 reasoning placement 是引擎规则的第二份拷贝,`linkStepsToToolCalls`
+11 处调用),本战役让它变成**同一次折叠的第三个出口**——宪法覆盖到屏幕。
+附带两件用户点名的 UI 工程:消息列表虚拟化、等待指示正确性。
+
+**批序(影子先行,与 #8b 同款打法)**
+
+- **U1-a(词汇进浏览器,零行为)**:斩三条 node 短边,让 `projection/reducer` /
+  `chat-messages` / `chunk-codec` / `canonical` 的浏览器闭包成立——
+  ① reducer→`tools/tool-result`→`permission/*`(node:os|path|crypto);
+  ② `chat-messages`→`engine/context-compact`→`engine/history`→
+  `agent-loop/tool-names`(node:crypto);③ 桶 `session/index`→
+  `storage/json-message-page`(node:fs)。走法=仓内判例「叶子路径不走桶」
+  (`plugins-client.ts:27-30`)+ 把 node 触点从闭包里拆出去(拆文件或注入,
+  施工勘察定,语义零变)。新增一道棘轮:renderer 对 core 的 import 闭包禁
+  `node:`(防这三条边长回来)。`composables/useSessionEvents.ts`(194 行
+  零消费者实验件)**删除**——U1 在 core fold 上新起,不续旧摊。
+- **U1-b(ui-shadow,只比不接)**:renderer 并行跑 core fold(事件与裸 delta
+  喂同一台 reducer),每次收尾/渲染节流点上
+  `canonicalChatMessage(手写拼装) ≡ canonicalChatMessage(fold 物化)` 逐格比。
+  两条预裁豁免:① `data-steps` 锚点——两侧**都过同一个 core
+  `render-anchors`** 再比(比合成后,不比"有无");② 已结算 `plugin-status`
+  具名排除、指针挂 #10(它写侧零生产者,§17.7.2 已查明;#10 补完即撤豁免)。
+  失配走 renderer 日志 hub 一行摘要 + 计数,测试断言 0,真机观察窗口收数。
+- **B(换管,双发期)**:推送侧把**事件账本词汇**(`SessionLogEventRecord`,
+  定律①的同一种 delta 单位)作为第一公民下发——IPC 与 SSE 同步;现行
+  session:event/session:stream 双发保留,renderer 影子 fold 改喂新管,
+  ?after= 重拉语义照旧(无快照裁定不动)。旧管退役放到 U2 之后单独一刀
+  (先证后删,与 6b 同款)。
+- **U2(切换删旧)**:chatStore 的消息拼装改读 fold 物化(store 只剩纯 UI
+  态:滚动/选中/草稿/展开),十项手写派生逐项退役(part 边界合并/reasoning
+  placement 拷贝/linkStepsToToolCalls 11 处/瞬态 part 插扫四处/work-group
+  分界改由 fold 输出派生/steps 面板 run 分组);ipc-hub 45 case 收缩为
+  「喂 fold + 纯 UI 副作用」两类。**等待指示在本批换源**:由 fold 的 run
+  态派生(run 活跃且无未闭合 part → waiting),`estimateTokens` 的 snap 源
+  保留 `stream:usage`。ui-shadow 门在切换批内反向留任(手写侧退役前最后
+  对拍),切完随旧路一起删。
+- **U3(虚拟化,独立 UI 工程批)**:`MessageList.vue`(3141 行 plain v-for)
+  引入列表虚拟化。七个已知碰面全部有现场行号与判例(跟底/overflow-anchor
+  打架史/发送 hold-top/regenerate hold/跳转导航/按 index 旁挂/work-group
+  展开 Map 缓存)。**分两级给用户选**:A=真虚拟化(useVirtualAxis 推广或
+  新写,收益最大、七面全动);B=`content-visibility` 级惰性渲染(不动
+  滚动模型,收益次之、风险小一个量级)。建议 **先 B 后看读数**——B 的
+  读数不达标再上 A,七面判例不白费。
+- 验收(每批):typecheck 0、renderer 104 测试文件绿、battery 全绿不回归、
+  ui-shadow 0 失配(U1-b 起)、真机只读;U2/U3 加渲染耗时采样(巨会话)。
+  碰撞面:外壳布局那批在途改动(App.vue/useShellLayout/layoutPrefs 等)
+  零重叠,但 `App.container-layout.test.ts` 当前因它而红——U 线不认领。
+
+**开工前置**:本节经用户过目;虚拟化 A/B 选择、#10 是否先补产地(影响
+ui-shadow 豁免撤销时点)同窗拍。
