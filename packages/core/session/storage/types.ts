@@ -92,7 +92,12 @@ export interface CoreSessionRepository<
   getSessionForGeneration(sessionId: string): TSession | undefined
   getUserMessageMarkers(sessionId: string): UserMessageMarker[] | undefined
   createSession(sessionId: string, name: string): TSession
-  addMessage(sessionId: string, message: TMessage): void
+  /**
+   * 追加一条消息,**返回真正入库的那一条**(F4-a,§16.12;与
+   * `StreamEngineStoreAdapter.addMessage` 同一条口径,理由见那里)。
+   * 宿主不改写就原样返回入参。
+   */
+  addMessage(sessionId: string, message: TMessage): TMessage
   updateMessage(sessionId: string, messageId: string, updates: Partial<TMessage>): boolean
   updateMessageAndTruncate(
     sessionId: string,

@@ -116,8 +116,8 @@ const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ChatSession, Ch
 	writeJsonFileAsync: writeSessionJsonFileAsync,
 	deleteJsonFile,
 	storageDriver: sessionStorageDriver,
-	// S3w-1:冷加载补水的岔口(`ONETHING_SESSION_HYDRATE=projection` 才真的换,
-	// 默认返回 undefined = 一字不改走 messages.jsonl)。
+	// S3w-1:冷加载补水源。F4-a 起**无条件**走投影(档位 `ONETHING_SESSION_HYDRATE`
+	// 已退役);返回 undefined = 这条会话的事件里折不出历史,仓库照旧自己加载。
 	hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection,
 	getCurrentSessionId,
 	setCurrentSessionId,
@@ -798,9 +798,15 @@ export { stampCollabAgentId };
  *
  * 语义逐字不变:`appendMessage{stampCollab:true}` 就是原来的
  * `stampCollabAgentId(...) → runtime.addMessage(...)`。
+ *
+ * **F4-a(§16.12):返回真正入库的那一条。** 盖章是 COW 的,所以调用方手里那条与
+ * 入库那条是两个对象;从前"我刚写进去的是什么"只能事后回读一次(引擎入口拿它把
+ * 助手占位的时刻 / origin 带进 `run/start`),而那次回读是一个可以不存在的时序
+ * 窗口。core 那一侧的端口签名跟着改了一格 —— **P0 形状冻结的唯一指名豁免**
+ * (§16.11 拍板 1 的注)。不盖章的会话原样返回入参,调用方不关心就当它是 void。
  */
-export function addMessage(sessionId: string, message: ChatMessage): void {
-	sessionCommands.appendMessage(sessionId, { message, stampCollab: true });
+export function addMessage(sessionId: string, message: ChatMessage): ChatMessage {
+	return sessionCommands.appendMessage(sessionId, { message, stampCollab: true });
 }
 
 // Delete a message from a session
@@ -817,40 +823,16 @@ export function deleteMessageAndTruncate(
 	return sessionCommands.truncateFrom(sessionId, { messageId, inclusive: true });
 }
 
-/**
- * 清空一条会话的全部消息(群聊「清空聊天记录」的存储原语)。
+/*
+ * `clearSessionMessages` —— **已删除**(F4-a,§16.12 / §16.11 拍板 5)。
  *
- * 与 `deleteMessageAndTruncate` 语义不同,因此不复用它:那一个是"从某条起截断",
- * 需要一个锚点,而这里没有锚点 —— 要的是整条日志归零 + meta 计数一致。
- *
- * `tokenUsage` **不动**:花掉的钱不因为记录被删而退回,用量面板与预算闸读的是
- * 同一笔账。
- *
- * **留档已退役**(S3w-3 批 6b,§14.6 裁定 10):从前这里先把 `messages.jsonl`
- * 复制成一份 `messages.cleared-<ts>.jsonl`。清空在事件账本上是
- * `session/cleared` —— 一条**只遮蔽、不删除**的 surface 事件,被遮的消息事件
- * 原样躺在 `events.jsonl` 里,**事件本身就是那份档**。再复制一份等于给"事件是
- * 唯一真相"开第一个例外(还是个没有任何读取路径、只进不出的例外:真机上
- * 179 个文件 14.3MB)。存量那批按裁定 9a 原地不动,只读化石。
+ * 它曾是群聊「清空聊天记录」的存储原语。P0.2 把那条路整体迁到命令面之后
+ * (`sessionCommands.replaceAll{reason:'clear'}`,唯一调用点
+ * `wiring/collab/room-config.ts`),这个函数就**零生产调用点**了 —— 批 6b 查明
+ * 并记账,本批按拍板 5 删除。它的全部语义(整份日志换掉 → 索引计数归零 →
+ * 强刷一次;`tokenUsage` 不动;不再留档)都在 `session/commands.ts` 的
+ * `replaceAll` 里,那一条同时才是 `session/cleared` 的产地。
  */
-export async function clearSessionMessages(sessionId: string): Promise<{
-	cleared: boolean;
-	clearedCount: number;
-}> {
-	const session = sessionRepository.getSession(sessionId);
-	if (!session) return { cleared: false, clearedCount: 0 };
-	const clearedCount = sessionRepository.getSessionMessages(sessionId)?.length ?? 0;
-	// structural:整份日志重写(后缀写只会从某个 seq 往后追,清空不在它的语义里)——
-	// 写计划由 replaceAll 命令算出,这里不再自己拼。
-	sessionMessageRuntime!.replaceAllMessages(sessionId, [], "clear");
-	updateSessionsIndexMeta(sessionId, (meta) => {
-		meta.updatedAt = session.updatedAt;
-		meta.messageCount = 0;
-		delete meta.previewText;
-	});
-	await sessionRepository.flushSessionSave(sessionId);
-	return { cleared: true, clearedCount };
-}
 
 // Update a message and remove all messages after it
 // Returns true if successful, also subtracts token usage of deleted messages from session total

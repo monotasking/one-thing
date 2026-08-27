@@ -35,8 +35,14 @@ export interface BeginSessionRunInput {
    *
    * 所以来源就是**那条占位消息本身**,不在这里重写一遍"哪种会话才盖章"的规则
    * (那会立刻变成第二个判定点,而普通聊天会话的 `session.agentId` 是恒有值的
-   * —— 照它盖章会让投影凭空多出一格)。与 `timestamp` / `origin` 同一条路数:
-   * 谁读到那条占位消息,谁把这一格递进来。
+   * —— 照它盖章会让投影凭空多出一格)。
+   *
+   * **F4-a(§16.12)把口径说准了:盖章仍是单实现,调用点指认那一处。** 从前这里
+   * 写的是"谁**读到**那条占位消息,谁把这一格递进来" —— 那句话把"回读 store"
+   * 写成了纪律的一部分,而回读只是当时值路由的走法(还带着一个可以不存在的
+   * 时序窗口)。今天 `store.addMessage` 直接把**入库的那一条**交回创建点,
+   * 创建点顺着执行入口递到这里 —— 盖章依旧只在 `appendMessage` 里发生一次,
+   * 这里只收结果。`timestamp` / `origin` 同一条路,同一条消息上带着。
    */
   agentId?: string
   /**
@@ -45,8 +51,9 @@ export interface BeginSessionRunInput {
    * `agentId` 与 `source: 'collab-turn'`。A4 只接了前一格,于是 agent 执行会话
    * 里每条助手消息在投影上都少一格 `source`(真机 `agent-exec-…`)。
    *
-   * 与 `agentId` 逐字同一条路数:谁读到那条占位消息,谁把这一格递进来 ——
-   * 不在这里重写一遍"哪种会话才盖章"的规则。
+   * 与 `agentId` 逐字同一条路数(F4-a 之后也一样):调用点拿着 `addMessage` 交回
+   * 的那条**入库**占位消息,把这一格递进来 —— 不在这里重写一遍"哪种会话才盖章"
+   * 的规则。
    */
   messageSource?: string
   provider?: string

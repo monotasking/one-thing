@@ -11,7 +11,7 @@
  * 前三步住在 `OnethingSessionMessageRuntime`(sqlite 的流式节流同步也在那里),
  * 这里负责的是"命令之外"的那点东西:
  *   - `appendMessage{stampCollab}` 的协作署名(返回新对象,不改调用方的那条);
- *   - `replaceAll{reason:'clear'}` 的留档 + 前后两次强刷 + 索引计数归零。
+ *   - `replaceAll{reason:'clear'}` 的强刷 + 索引计数归零(留档那一步批 6b 已退役)。
  *
  * P0.1 只建面,不迁调用点(strangler);P0.2/P0.3 把 78 处业务调用点与 server 迁过来;
  * P0.4 删旧路(`insertMessageAfter` 一族、store-helpers 的消息原语家族、
@@ -43,17 +43,23 @@
  * 前就折进活投影,"命令内读得到自己刚写的"成立;`ONETHING_SESSION_READ` 那个岔口
  * 本身也早在批 6b 烧掉了。
  *
- * 今天的纪律是**具名例外**,不是一刀切:**写侧默认可以读活投影**,以下三类
+ * 今天的纪律是**具名例外**,不是一刀切:**写侧默认可以读活投影**,以下两类
  * 仍然读 store,各有各的、F1 修不了的理由(逐口写在 `reads.ts` 上):
  *
  *   1. **判据同源** —— 本文件这几处。它们回答的是"这次命令**改不改得成**",
  *      而"改成"的那一侧是 reducer、reducer 问的是 store。两侧同判据,写事件与
- *      改 store 才不会一边发生一边不发生。F4 reducer 退役时一起翻。
- *   2. **事件产地缺口** —— 流中 assistant 占位在账本上没有那一格
- *      (`run/start` 才是它的产地),见 `stream-executor.ts` /
- *      `agent-loop-executor.ts` 的两处孪生取材点。
- *   3. **只在 store 的运行时形状** —— 收尾链的 `steps[]` 结局与 `data-steps`
+ *      改 store 才不会一边发生一边不发生。F4 reducer 退役时一起翻,**但
+ *      `hasSessionInStore` 除外 —— 它是永久例外**(§16.11 拍板 4)。
+ *   2. **只在 store 的运行时形状** —— 收尾链的 `steps[]` 结局与 `data-steps`
  *      渲染锚点,投影故意不产出。
+ *
+ * **F3 曾有第三类"事件产地缺口",F4-a(§16.12)已摘除。** 那一类指的是
+ * `stream-executor.ts` / `agent-loop-executor.ts` 的两处孪生取材点(流中 assistant
+ * 占位在账本上没有那一格)。缺口的事实仍然成立,但那两处是 `run/start` 的
+ * **生产者**而非消费者 —— 要的值就在它们刚写进去的那条消息上,回读只是绕路
+ * (还带一个可以不存在的时序窗口)。F4-a 让本文件的 `appendMessage` /
+ * `store.addMessage` **把入库的那一条交回调用方**,两处回读整体删除。缺口本身
+ * 的解法是**补产地**(§16.11 拍板 3,F4 的硬前置),不是回读 store。
  *
  * 名字也跟着说实话了:`*FromTranscript` / `*InTranscript` → `*FromStore` /
  * `*InStore`(抄本停写之后它们读的是**内存 store**,不是 `messages.jsonl`)。
@@ -180,7 +186,12 @@ export interface ReplaceAllResult {
 }
 
 export interface SessionCommands {
-  appendMessage(sessionId: string, payload: AppendMessagePayload): void
+  /**
+   * 追加一条消息,返回**真正入库的那一条**(F4-a,§16.12)——
+   * `stampCollab` 打开且这条会话该盖章时,它与 `payload.message` 不是同一个对象
+   * (盖章 COW)。不盖章就原样是入参那一条。
+   */
+  appendMessage(sessionId: string, payload: AppendMessagePayload): ChatMessage
   upsertMessage(sessionId: string, payload: { message: ChatMessage }): boolean
   patchMessage(
     sessionId: string,
@@ -256,6 +267,10 @@ export function createSessionCommands(
         events?.appendMessage(sessionId, message)
       }
       ports.messages.addMessage(sessionId, message)
+      // F4-a(§16.12):**把入库的那一条交回去**。盖章是 COW 的(不改调用方手里
+      // 那条),所以"我刚写进去的是什么"以前只能事后回读一次 —— 而那次回读是一个
+      // 可以不存在的时序窗口。现在由这扇门直接答。
+      return message
     },
 
     /**
@@ -401,8 +416,10 @@ export function createSessionCommands(
     },
 
     /**
-     * 整份日志换掉。`reason:'clear'` 保留 `clearSessionMessages` 的其余行为:
-     * 换 → 索引计数归零 → 强刷一次。
+     * 整份日志换掉。`reason:'clear'` 是群聊「清空聊天记录」的**唯一**落点:
+     * 换 → 索引计数归零 → 强刷一次。(那套行为原先住在
+     * `stores/clearSessionMessages` 里;P0.2 迁过来之后它零调用点,已随 F4-a
+     * 删除,§16.12。)
      *
      * **留档那一步已退役**(S3w-3 批 6b,裁定 10):清空在账本上是
      * `session/cleared` —— 只遮蔽、不删除,被遮的消息事件原样躺在

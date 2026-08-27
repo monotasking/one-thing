@@ -11,12 +11,13 @@
  *   **投影补水 + rehydrate + sanitize  ≡  loadJsonl + rehydrate + sanitize**
  *
  * 冷加载补水是 §14.7 排第一的风险:store 是翻译器的取材面,补水形状的任何漂移
- * 都会**反射进新写出的事件**。所以在把 `ONETHING_SESSION_HYDRATE` 翻成
- * `projection` 之前,先对全量真机会话把这句话验一遍。
+ * 都会**反射进新写出的事件**。这道门是批 1 为"把补水默认翻成投影"立的:翻档
+ * 之前先对全量真机会话把这句话验一遍。**档位本身已随 F4-a 退役**(§16.11
+ * 拍板 5,补水从此无条件走投影),这道门却留着 —— 它验的是那句等式,不是那根杆。
  *
  * ## 两侧是怎么造出来的(与产品代码同一条链,不是另写一遍)
  *
- * | | 老路(今天的默认) | 新路(`projection` 档) |
+ * | | 抄本侧(老路) | 投影侧(今天唯一那条路) |
  * |---|---|---|
  * | 消息 | `messages.jsonl` → `scanJsonlLog`(= 驱动的 `loadJsonl`) | `events.jsonl` → `projectChatMessages`(= `eventsListMessages` 背后那一个),摘掉位置字段 `seq`(同 `session/hydrate.ts`) |
  * | 外壳 | `meta.json` | **同一份** `meta.json` —— 补水只换消息那一格 |

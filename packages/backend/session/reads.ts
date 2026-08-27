@@ -180,18 +180,21 @@ export const sessionReads = {
    * **F3(§16.10)把这一口的理由整个换掉了。** 从前写的是"活投影还停在写之前,
    * 走 `getMessage` 会回读到旧正文"(§13.18 发现 B)—— **那条理由已经死了**:F1
    * (§16.6)之后事件在 append 返回前就折进了活投影,写侧读投影读得到自己刚写的。
-   * 今天还留在 store 这一侧的,是两条**F1 修不了**的、各自具名的理由:
    *
-   * 1. **事件产地缺口**(`stream-executor.ts` / `agent-loop-executor.ts` 的两处
-   *    孪生取材点):流中 assistant 占位消息在账本上**根本没有那一格** ——
-   *    `appendMessage` 对 `isStreaming` 的 assistant 一条事件都不写,`run/start`
-   *    才是它的产地,而这两处读的产物**正是那条 `run/start`**。这不是滞后,是
-   *    "还不存在"。F3 做过反证:把这两处换成 `getMessage`,恒等门当场
-   *    **RED / 305 条失配**(`origin` 整格丢失 + `timestamp` 差 3ms)。
-   * 2. **只在 store 的运行时形状**(收尾链的三处):settle 后的 `steps[]` 结局与
+   * **F4-a(§16.12)又摘掉了一条。** F3 在这里挂过第二类例外"事件产地缺口"
+   * ——`stream-executor.ts` / `agent-loop-executor.ts` 那两处孪生取材点。那条
+   * 事实(流中 assistant 在账本上没有那一格)仍然成立,但它证明的是"不能改读
+   * 投影",不是"必须回读 store":那两处是 `run/start` 的**生产者**,要的值就在
+   * 它们刚刚写进去的那条消息上。F4-a 让 `store.addMessage` 把**入库的那一条**
+   * 交回调用方(端口多一格返回值),两处回读整体删除。**别再往这一口上挂"产地
+   * 缺口"了** —— 产地缺口的解法是补产地(§16.11 拍板 3,F4 的硬前置),不是回读。
+   *
+   * 今天还留在 store 这一侧的,只剩一条**F1 修不了**的理由:
+   *
+   * 1. **只在 store 的运行时形状**(收尾链的三处):settle 后的 `steps[]` 结局与
    *    `contentParts` 上的 `data-steps` 渲染锚点,投影**故意不产出**。
    *
-   * 判据类的读(`hasMessageInStore` / `hasSessionInStore`)另有第三条理由,见那两口。
+   * 判据类的读(`hasMessageInStore` / `hasSessionInStore`)另有一条理由,见那两口。
    */
   getMessageFromStore(
     sessionId: string,
@@ -230,6 +233,12 @@ export const sessionReads = {
    * 事件都没有的会话"与"根本不存在的会话"给的是同一个答案(`nodes.length === 0`)
    * —— 而这道判据要分的正是这两者(刚建的空会话必须能追加第一条消息)。会话在不在
    * 是 `meta.json` / 仓库那一层的事实,不是消息事件折得出来的。
+   *
+   * **这一口是永久例外**(§16.11 拍板 4,用户 2026-08-27 裁定 A)。它不随 F4 退役
+   * ——`hasMessageInStore` 那一口是"reducer 退役那天跟着退",这一口不是:哪怕
+   * core reducer 与投影 reducer 合一、store 退化成物化缓存,"这条会话存不存在"
+   * 仍然是目录 / `meta.json` 那一层的事实,消息事件里永远没有它的产地。要改口径
+   * 只有一条路 —— 给"会话存在性"另找一个产地,那是一次单独的拍板,不是顺手翻面。
    *
    * `appendMessage` / `upsertMessage` 的 reducer 恒为"改得成",唯一改不成的情形是
    * **整条会话不在**(`OnethingSessionMessageRuntime.run` 取不到 session 就整条

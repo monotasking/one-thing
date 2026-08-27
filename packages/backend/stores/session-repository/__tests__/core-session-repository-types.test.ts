@@ -38,8 +38,10 @@ describe('core session repository contract', () => {
       getSessionForGeneration: sessionId => ({ id: sessionId, name: 'Test', messages }),
       getUserMessageMarkers: () => [{ id: 'message-1', seq: 1, timestamp: 1000, preview: 'hello' }],
       createSession: (sessionId, name) => ({ id: sessionId, name, messages: [] }),
+      // F4-a:端口交回入库的那一条。这只替身不盖章,所以原样返回入参。
       addMessage: (_sessionId, message) => {
         messages.push(message)
+        return message
       },
       updateMessage: (_sessionId, messageId, updates) => {
         const message = messages.find(item => item.id === messageId)

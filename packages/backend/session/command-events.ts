@@ -31,12 +31,14 @@
  *    同一份 store,见 `commands.ts`),而不再是等 reducer 的回执。
  * 2. **正文只有一个来源**。`content` / `reasoning` / `contentParts` 永远不进
  *    `message/patched`;`isStreaming` 是 `run/start`…`run/end` 之间的**状态**,不是字段。
- * 3. **写侧取材的例外表**(F3 已翻面,§16.10;原纪律 §13.18 发现 B)。从前是
- *    "一律走 `*FromTranscript`,永不走 `getMessage`",理由是活投影滞后 —— F1
- *    (§16.6)之后那条理由不成立了。今天写侧**默认可以读活投影**,只有三类
- *    具名例外仍读 store:**判据同源**(命令面的存在性/底稿,见 `commands.ts`
- *    文件头)、**事件产地缺口**(流中 assistant 占位没有那一格)、**只在 store
- *    的运行时形状**(收尾链的 `steps[]` 与 `data-steps` 锚点)。
+ * 3. **写侧取材的例外表**(F3 翻面 §16.10、F4-a 摘掉一类 §16.12;原纪律
+ *    §13.18 发现 B)。从前是"一律走 `*FromTranscript`,永不走 `getMessage`",
+ *    理由是活投影滞后 —— F1(§16.6)之后那条理由不成立了。今天写侧**默认可以
+ *    读活投影**,只剩两类具名例外仍读 store:**判据同源**(命令面的存在性/
+ *    底稿,见 `commands.ts` 文件头)、**只在 store 的运行时形状**(收尾链的
+ *    `steps[]` 与 `data-steps` 锚点)。F3 的第三类"事件产地缺口"(流中
+ *    assistant 占位没有那一格)已随 F4-a 摘除:那两处是 `run/start` 的生产者,
+ *    而 `addMessage` 现在把**入库的那一条**直接交回它们,不必回读。
  * 4. **失败一律自吞**,除了 `SessionEventWriteError`(§14.6 裁定 7)—— 见 `safely`。
  */
 

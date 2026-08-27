@@ -6,12 +6,11 @@
  * Uses StreamEngine for AbortController lifecycle management.
  */
 
-import type { AppSettings, ProviderConfig, ToolSettings } from '@shared/ipc.js'
+import type { AppSettings, ChatMessage, ProviderConfig, ToolSettings } from '@shared/ipc.js'
 import type { Principal } from '@onething/core/permission'
 import type { SessionRunKind } from '@onething/core/session'
 import { endSessionRun, ensureSessionRun } from '../../../session/runs.js'
 import { sessionCommands } from '../../../session/commands.js'
-import { sessionReads } from '../../../session/reads.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
@@ -88,6 +87,28 @@ export interface StreamExecutionParams {
   triggerMessageId?: string
   /** 这次执行归属的 agent(人格)。 */
   agentId?: string
+  /**
+   * F4-a(§16.12):**这次执行的助手占位消息 —— 入库的那一份**,由创建点前递。
+   *
+   * `run/start` 是这条消息在账本上的**产地**(`appendMessage` 对 `isStreaming`
+   * 的 assistant 一条事件都不写),而产地要写的 `timestamp` / `origin` /
+   * `agentId` / `source` 就在那条消息上。从前是"写进 store 再回读一次" ——
+   * 那不是取材需要,是值绕了一圈:这一处既不是消费者也没有别的地方可读,
+   * 唯一的生产者就是它自己。
+   *
+   * 现在由 `store.addMessage` **把入库的那一条交回来**(端口返回值,F4-a 的
+   * 唯一形状改动),创建点顺着这一格递过来。**是入库那一份而不是创建点手里
+   * 那一份** —— 盖章(`stampCollabAgentId`)是 COW 的,两者不是同一个对象。
+   *
+   * 形状是 `Record<string, unknown>` 而不是 `ChatMessage`:core 那一侧的消息是
+   * 泛型 `TMessage`,而 `StreamEngineStreamsAdapter.executeMessageStream` 的入参
+   * 本来就是 `Record<string, unknown>` —— 零类型代价。
+   *
+   * **缺席不回落**:那几格就空着(与"占位真的没有那几格"同一个结果),不退回去
+   * 读 store —— 回落等于把删掉的那条路留在原地,而它正是这一批要摘掉的东西。
+   * 生产上四条引擎路径全都前递。
+   */
+  assistantMessage?: Record<string, unknown>
 }
 
 /**
@@ -180,26 +201,19 @@ export async function executeMessageStream(
   // 助手占位消息在进这扇门之前就建好了 —— 把它的时刻带进 `run/start`,投影
   // 物化出来的那一条才与事实同一个时刻(S1b 的影子断言按它比)。
   //
-  // 这里读的是**事件写侧的取材**:它的产物就是下一行的 `run/start` 事件。
+  // 这里是**事件写侧的产地**:下一行的 `run/start` 就是这条占位消息在账本上的
+  // 那一格。既然是产地,取材就不该"读回来"——
   //
-  // **F3(§16.10)复核:留在 store,而且这一处是翻不动的那一类。** 理由不是
-  // "活投影滞后"(§13.18 发现 B —— F1 之后事件 append 返回前就折进活投影了),
-  // 而是**事件产地缺口**:此刻这条 assistant 在账本上**根本没有那一格** ——
-  // `appendMessage` 对 `isStreaming` 的 assistant 一条事件都不写,`run/start`
-  // 才是它的产地,而这次读的产物**正是那条 `run/start`**。投影折不出的不是
-  // "旧的一份",是"没有"。
+  // **F4-a(§16.12):值前递,两处 store 回读整体删除。** F3 曾把这一处判成
+  // "翻不动的第二类例外",理由是事件产地缺口(投影里根本没有这一格)。那条
+  // 事实没错,但它证明的是"不能改读投影",不是"必须回读 store":此刻缺的从来
+  // 不是判据,是**值的路由**。
   //
-  // 反证跑过(F3):把这一处连同 `agent-loop-executor.ts` 的孪生一起换成 routed
-  // 的 `getMessage`,`sessions:shadow-battery` 当场 **RED —— 305 条失配**
-  // (assistant 的 `origin` 整格丢失、`timestamp` 差 3ms)。
-  //
-  // (§15.18 是它的前史:换成 store 侧之前这里走 routed `getMessage`,每个 run
-  // 必然掉一次 `?? getSessionMessages` 兜底 —— 那条兜底与 `fallbackHits` 计数都已
-  // 随批 6b 删除,病根却是同一个缺口。)
-  const assistantPlaceholder = sessionReads.getMessageFromStore(
-    params.sessionId,
-    params.assistantMessageId,
-  )
+  // 路由改法是 B:`store.addMessage` 把**入库的那一条**交回创建点(端口多一格
+  // 返回值,§16.11 拍板 1 的唯一豁免),创建点顺 `params.assistantMessage` 递到
+  // 这里。盖章(`stampCollabAgentId`)已经在入库那一刻发生过,所以这一份上
+  // `agentId` / `source` 是齐的 —— 这里不再有第二个盖章点,也不再有回读窗口。
+  const assistantPlaceholder = params.assistantMessage as ChatMessage | undefined
   const assistantTimestamp = assistantPlaceholder?.timestamp
   const { run, started } = ensureSessionRun(params.sessionId, {
     kind: params.runKind ?? 'send',
@@ -262,6 +276,9 @@ async function runMessageStream(
     getSteeringQueue: sessionId => engine.getSteeringQueue(sessionId),
     getFollowUpQueue: sessionId => engine.getFollowUpQueue(sessionId),
   };
+  // F4-a:前递来的占位消息**到此为止** —— 它是 `run/start` 的取材,不是这次流
+  // 的参数。摘掉再往下传,core 那边的参数包与本批之前逐字相同。
+  const { assistantMessage: _bornAssistant, ...streamParams } = params
   const executeCoreMessageStreamOptions: ExecuteCoreMessageStreamOptions<
     StreamSender,
     AppSettings,
@@ -275,7 +292,7 @@ async function runMessageStream(
     AgentLoopStreamGenerationResult
   > = {
     params: {
-      ...params,
+      ...streamParams,
       requestedOutputModalities: await resolveRequestedOutputModalities(params),
     },
     controller: abortController,

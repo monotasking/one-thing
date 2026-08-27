@@ -7,13 +7,16 @@
  *
  * **F 线 F3(§16.10)把那条纪律翻面了,这组用例的意义随之改变。** F1(§16.6)之后
  * 事件在 `append` 返回前就折进活投影,"投影滞后"这条理由已经死了;写侧**默认可以
- * 读活投影**。今天仍留在 store 那一侧的只有三类具名例外(判据同源 / 事件产地缺口 /
- * 只在 store 的运行时形状,逐条写在 `commands.ts` 文件头与 `reads.ts` 各口上),
- * 名字也改成了说实话的 `*FromStore` / `*InStore`。
+ * 读活投影**。F3 当时留下三类具名例外;**F4-a(§16.12)摘掉了其中的"事件产地
+ * 缺口"那一类** —— 那两处孪生取材点是 `run/start` 的生产者,而 `addMessage`
+ * 现在把入库的那一条直接交回它们,回读整体删除。今天只剩两类(判据同源 / 只在 store 的运行时形状,逐条写在
+ * `commands.ts` 文件头与 `reads.ts` 各口上),名字也早改成了说实话的
+ * `*FromStore` / `*InStore`。
  *
- * 所以这组用例**不再是**"证明纪律普遍成立",而是那三类例外的**护栏**:它把两口井
+ * 所以这组用例**不再是**"证明纪律普遍成立",而是那两类例外的**护栏**:它把两口井
  * 故意灌成不同的水,断言写侧取的是 store 那一份。谁把某处例外"顺手"改回 routed 的
- * `getMessage`,这里当场红。
+ * `getMessage`,这里当场红。另有一条(`a streaming assistant placeholder…`)守的
+ * 不再是例外,而是**产地缺口这件事实本身** —— 它是 F4 的硬前置,见那条用例的注释。
  *
  * 与 `shadow-read-mode.test.ts` 同款:跑**真的** `reads.ts` / 事件日志 / 投影,
  * 只替身最底下的会话仓库。
@@ -270,19 +273,20 @@ describe('store-side accessors are a second well, distinct from the projection r
   })
 
   /**
-   * **F3(§16.10)第二类例外的护栏:事件产地缺口。**
+   * **事件产地缺口本身**(F3 §16.10 立;F4-a §16.12 换了它的身份)。
    *
-   * `stream-executor.ts` / `agent-loop-executor.ts` 那两处孪生取材点为什么翻不动 ——
-   * 不是"投影滞后"(F1 之后不成立),是流中 assistant 占位在账本上**根本没有那一格**:
-   * `appendMessage` 对 `isStreaming` 的 assistant 一条事件都不写(`run/start` 才是它
-   * 的产地),而那两处读的产物**正是那条 `run/start`**。
+   * 立它的时候它是"第二类例外的护栏" —— 钉住 `stream-executor.ts` /
+   * `agent-loop-executor.ts` 那两处孪生取材点为什么翻不动。**F4-a 把那两处回读
+   * 整体删掉了**(`addMessage` 交回入库的那一条),所以这条用例不再守着任何一处
+   * 取材。
    *
-   * 这条用例把这件事钉成可证伪的:同一条消息,store 有、投影没有。哪天
-   * `appendMessage` 给流中 assistant 也开了产地,这里会红 —— 那正是"这条例外可以
-   * 退役了"的信号,而不是要把断言改回去。
+   * 它守的是**事实本身**,而那件事实比例外重要:流中 assistant 占位在账本上
+   * 根本没有那一格 —— `appendMessage` 对 `isStreaming` 的 assistant 一条事件都
+   * 不写,`run/start` 才是它的产地。这正是 §16.11 拍板 3 说的、**F4 的硬前置**:
+   * store 一旦退化成投影的物化缓存,折不出占位就等于占位不存在。
    *
-   * (F3 的真机反证:把那两处换成 routed 的 `getMessage`,`sessions:shadow-battery`
-   * 当场 RED —— 305 条失配,assistant 的 `origin` 整格丢失、`timestamp` 差 3ms。)
+   * 所以哪天 `appendMessage`(或 `run/start` 的字段补齐)给流中 assistant 开了
+   * 真正的产地,这里会红 —— 那是"F4 的前置做完了"的信号,不是要把断言改回去。
    */
   it('a streaming assistant placeholder has no ledger slot yet: store sees it, the projection does not', async () => {
     const placeholder: ChatMessage = {
@@ -303,7 +307,7 @@ describe('store-side accessors are a second well, distinct from the projection r
     expect((await events()).some(event => event.type === 'system/message')).toBe(false)
     // 于是产品读面折不出它 —— 这是"还不存在",不是"滞后"。
     expect(sessionReads.getMessage(SESSION, 'a-stream')).toBeUndefined()
-    // 而两处孪生取材点要的 `timestamp`(带进 `run/start` 的那个)只有 store 给得出。
+    // reducer 那一侧照常有它:缺的是**账本上的产地**,不是内存里的那一条。
     expect(sessionReads.getMessageFromStore(SESSION, 'a-stream')?.timestamp).toBe(7)
   })
 

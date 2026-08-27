@@ -34,9 +34,9 @@
  *     账本活着。(从前还有一条 `shadow rollback` 泳道验回滚杆;杆没了,泳道也没了。)
  *  3. **冷加载补水**(`runHydrateLane`)—— 把 server 换成一个**空 LRU 的新进程**,
  *     在一批会话上接一轮:冷加载真的走一遍,补水形状漂一格,收尾的影子当场红。
- *     只剩**默认档**(批 3 起 = `projection`);`ONETHING_SESSION_HYDRATE=messages`
- *     那条回滚杆泳道随抄本一起退役 —— 它的取材池本来就是 `shadow` 泳道跑出来的
- *     那批带抄本的会话,而那批会话从此不存在(§15.22 把这根杆列为待拍板)。
+ *     只剩**一条**:补水无条件走投影(F4-a 起连档位都没了)。从前那条
+ *     `ONETHING_SESSION_HYDRATE=messages` 回滚杆泳道随抄本一起退役 —— 它的取材池
+ *     本来就是 `shadow` 泳道跑出来的那批带抄本的会话,而那批会话从此不存在。
  *  4. **迁移历史冷补水**(`runImportedHydrateLane`,§15.13)。
  *
  * 两枚探针(`runWriteFailureProbe`,§14.6 裁定 7)在**各自的 store** 上把会话的
@@ -1459,12 +1459,9 @@ function countShadowLines(store) {
  * 就是冷加载;那一轮的 run 收尾时恒等门照常比"投影(真相) vs store"。判据是**这条泳道
  * 期间新增的失配行必须为 0** —— 补水形状漂一格就当场红,不必新造判据。
  *
- * 批 3 把默认翻成 `projection` 之后,这里跑两趟,`env` 决定跑的是哪一档:
- *  - **默认档**(不设 `ONETHING_SESSION_HYDRATE`)—— 今天等于 `projection`,
- *    验的是"产品出厂时走的那条路";
- *  - **显式 legacy 档**(`ONETHING_SESSION_HYDRATE=messages`)—— 验的是**回滚杆
- *    本身**:扳回老路后冷加载仍然要能读出完整历史、接着写的那轮仍然要 0 失配。
- *    回滚杆没被测着 = 真要回滚的那天才发现它坏了。
+ * F4-a 退役档位之后这里只跑一趟:补水只有投影一条路,验的就是产品出厂时走的
+ * 那条路。(从前还有一趟显式 legacy 档验回滚杆;杆没了,那一趟也没了。`env`
+ * 与 `label` 两个参数留着 —— 哪天补回第二条泳道,形状还在。)
  *
  * 两趟各取样上限 8 条,且**互不相交**(`exclude`):泳道的价值在"冷加载路径被
  * 真的走了一遍",不在遍历全矩阵;每条会话都要起一轮真执行,全量会把 45s 的
@@ -1618,7 +1615,7 @@ async function runImportedHydrateLane({ store, api, library, stopServer, startSe
     await startServer({})
 
     const d = new Driver(api, sessionId, scenario.name, makeVariant(makeRng(seed), 0), store)
-    // 冷加载就在这一句:新进程的 LRU 是空的,`ONETHING_SESSION_HYDRATE` 默认投影。
+    // 冷加载就在这一句:新进程的 LRU 是空的,补水无条件走投影。
     const cold = await d.messages()
     const importedAssistant = cold.find(m => m.id === 'imported-a1')
     assert(importedAssistant, `cold load lost the imported history (got ${cold.length} message(s))`)
@@ -1738,7 +1735,6 @@ async function bootProbeServer({ store, port, token, extraEnv, out }) {
     ONETHING_LOG: 'warn',
     ...extraEnv,
   }
-  delete env.ONETHING_SESSION_HYDRATE
   const proc = spawn(process.execPath, [SERVER_ENTRY], { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'] })
   proc.stdout.on('data', d => out.push(String(d)))
   proc.stderr.on('data', d => out.push(String(d)))
@@ -1902,11 +1898,10 @@ async function main() {
       ONETHING_SESSION_SHADOW: '1',
       ONETHING_LOG: 'warn',
     }
-    // 档位由脚本自己说了算:先把继承来的摘掉,免得开发者 shell 里恰好导出过
-    // `ONETHING_SESSION_HYDRATE`,把"默认档泳道"悄悄变成显式档,而报告照样说
-    // 自己在验默认路。**先清再叠**,叠的那一层才是泳道自己说的话。
-    // (`ONETHING_SESSION_TRANSCRIPT` 已随批 6b 退役,没有可清的了。)
-    delete env.ONETHING_SESSION_HYDRATE
+    // 从前这里要先把继承来的会话档位摘掉(免得开发者 shell 里导出过某一档,
+    // 把"默认档泳道"悄悄变成显式档)。三根杆全退役了 ——
+    // `ONETHING_SESSION_TRANSCRIPT`(批 6b)、`ONETHING_SESSION_READ`(批 6b)、
+    // `ONETHING_SESSION_HYDRATE`(F4-a)—— 没有可清的了。
     Object.assign(env, extraEnv)
     server = spawn(process.execPath, [SERVER_ENTRY], {
       cwd: REPO,
@@ -2005,15 +2000,13 @@ async function main() {
     // 接着 run 收尾时恒等门照常比"投影(真相) vs store":补水形状只要漂了一格,当场红。
     // 换句话说,这两条泳道用**既有的影子法官**验补水,不新造判据。
     //
-    //  - `default` —— 不设 `ONETHING_SESSION_HYDRATE`。批 3 翻默认之后它 = 投影
-    //    补水,验的就是产品出厂那条路;取材池 = 场景矩阵(会话只有 `events.jsonl`
-    //    可补,正是今天真机上的形状)。
+    //  - `default` —— 投影补水,验的就是产品出厂那条路;取材池 = 场景矩阵
+    //    (会话只有 `events.jsonl` 可补,正是今天真机上的形状)。
     //
-    // **批 6b 退役了 `legacy rollback` 那条**(`ONETHING_SESSION_HYDRATE=messages`):
-    // 它的取材池是"带抄本的会话",而抄本写代码已删,一次性 store 上再也造不出这种
-    // 会话。那根杆本身从此只对存量有效、且已经不安全(见 `read-mode.ts` 的注释),
-    // 退役与否列在 §15.22 的待拍板里。`laneTaken` 留着:哪天补回第二条泳道,
-    // "取材互不相交"这条纪律还在。
+    // **`legacy rollback` 那条泳道已退役**:它的取材池是"带抄本的会话",而抄本
+    // 写代码批 6b 就删了,一次性 store 上再也造不出这种会话;杆本身也已随 F4-a
+    // 烧掉(§16.11 拍板 5,见 `read-mode.ts` 的墓志铭)。`laneTaken` 留着:
+    // 哪天补回第二条泳道,"取材互不相交"这条纪律还在。
     const laneTaken = new Set()
     for (const spec of [
       {
@@ -2151,7 +2144,7 @@ async function main() {
   for (const scenario of SCENARIOS) {
     for (const covered of scenario.covers) console.log(`  ${scenario.name.padEnd(22)} ${covered}`)
   }
-  console.log('  (TODO) 会话清空 —— 后端 `clearSessionMessages` 今天没有 HTTP/命令出口')
+  console.log('  (TODO) 会话清空 —— `replaceAll{clear}` 今天没有 HTTP/命令出口')
 
   const report = spawnSync('node', [
     path.join(REPO, 'scripts/session-shadow-report.mjs'),

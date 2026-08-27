@@ -17,7 +17,20 @@ export interface StreamEngineStoreAdapter<TSettings = unknown, TSession = unknow
    */
   listMessages(sessionId: string): readonly TMessage[]
   getMessage(sessionId: string, messageId: string): TMessage | undefined
-  addMessage(sessionId: string, message: TMessage): void
+  /**
+   * 追加一条消息,**返回真正入库的那一条**(F4-a,§16.12)。
+   *
+   * 返回值不是便利,是**产地的取材口**:宿主在入库那一刻可能给消息盖章
+   * (onething 的协作署名 `agentId` / `source`),而盖章是 COW 的 —— 调用方手里
+   * 那条与入库的那条是两个对象。谁要拿"这条消息实际长什么样"去写别的账
+   * (引擎入口把助手占位的时刻 / origin 带进宿主的 run 记录),就必须拿到入库
+   * 那一份,否则只能事后回读一次,而回读是一个可以不存在的时序窗口。
+   *
+   * 宿主不盖章时原样返回入参 —— core 不知道也不该知道有没有盖章这件事。
+   *
+   * **这是 P0 端口形状冻结的唯一指名豁免**(§16.11 拍板 1 的注)。
+   */
+  addMessage(sessionId: string, message: TMessage): TMessage
   renameSession(sessionId: string, name: string): void
   updateMessageAndTruncate(
     sessionId: string,

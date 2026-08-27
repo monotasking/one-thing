@@ -29,7 +29,8 @@ const mocks = vi.hoisted(() => ({
     chat: {},
   })),
   getSession: vi.fn(),
-  addMessage: vi.fn(),
+  // F4-a:端口交回入库的那一条(不盖章的替身 = 原样返回)。
+  addMessage: vi.fn((_sessionId: string, message: unknown) => message),
   deleteMessage: vi.fn(),
   getEffectiveProviderConfig: vi.fn(() => ({
     providerId: 'deepseek',

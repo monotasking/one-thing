@@ -240,22 +240,18 @@ function rotateAssistantWriterIdentity(state: AgentLoopExecutorState): void {
 	});
 	const assistantMessage: ChatMessage = plan.assistantMessage;
 
-	store.addMessage(state.ctx.sessionId, assistantMessage);
 	// S1a:steering 的 response-boundary = **两次执行**。旧的按 completed 收尾,
 	// 新的以 kind:'steer' 开张 —— 一条 assistant 消息一个 run 是投影的前提
 	// (`run/start` 就是那条消息在 surface 上的那一格)。
-	// A4(§13.1):盖章发生在 `addMessage` 里(`stampCollabAgentId`),所以读的是
-	// **落库之后**的那一条,不是上面 plan 里那个还没盖章的对象。
-	// 走 **store 侧**口 —— 这处是 `stream-executor.ts` 那处取材点在 steer 那条路上
-	// 的**孪生**:这次读的产物正是它自己那一格 `run/start`。
 	//
-	// **F3(§16.10)复核:留在 store。** 理由是**事件产地缺口**(不是"投影滞后"
-	// —— 那条理由 F1 之后已不成立):`appendMessage` 对 `isStreaming` 的 assistant
-	// 一条事件都不写,`run/start` 才是它的产地,所以此刻投影里**没有**这一格。
-	// 反证见孪生那处的注释(两处一起换成 `getMessage` → battery RED / 305 失配)。
-	const storedAssistantMessage = sessionReads.getMessageFromStore(
+	// **F4-a(§16.12):入库那一条由 `addMessage` 直接交回来。** 这处是
+	// `stream-executor.ts` 那处取材点在 steer 那条路上的**孪生**,两处一起摘掉了
+	// 回读:这次要写的 `run/start` 就是这条占位消息的产地,而"入库的它长什么样"
+	// 现在是写入那扇门自己的返回值 —— 盖章(`stampCollabAgentId`,COW)已经在
+	// 那一刻发生过,所以 `plan` 里那条与这一条不是同一个对象,要用的是这一条。
+	const storedAssistantMessage = store.addMessage(
 		state.ctx.sessionId,
-		assistantMessageId,
+		assistantMessage,
 	);
 	// 影子的闸:旧 run 现在收得比引擎写完上一条消息**早**,所以比对要等一下
 	// (见 `EndSessionRunInput.shadowGate`)。开闸的两处 = 消费侧接手完成、

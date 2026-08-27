@@ -906,7 +906,14 @@ export class CoreStreamEngine<
         toolCalls: [],
         ...(cmd.origin !== undefined ? { origin: cmd.origin } : {}),
       } as unknown as TMessage
-      this.store.addMessage(sessionId, assistantMessage)
+      // F4-a(§16.12):`addMessage` 交回**入库的那一条**。宿主可能在入库那一刻
+      // 给它盖章(协作署名),而盖章是 COW 的 —— 手里这条与入库那条不是同一个
+      // 对象。宿主的 run 记录要按入库那份写,所以接住它、往下递(见下面
+      // `assistantMessage:` 那一格)。
+      //
+      // 事件那一条**故意仍发手里这份**:`message:assistant-created` 是"引擎建了
+      // 这条消息"的通知,本批不改它的载荷(改了就是一次未经裁定的行为变化)。
+      const storedAssistantMessage = this.store.addMessage(sessionId, assistantMessage)
 
       await this.eventBus?.emit(sessionId, {
         type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
@@ -929,6 +936,12 @@ export class CoreStreamEngine<
         // S1a(session-event-sourcing §10.2):这次执行**是哪一种**,由四个入口
         // 各自盖章。宿主拿它写 `run/start.kind`;core 自己不落盘。
         runKind: 'send',
+        // F4-a(§16.12):把**入库的那条占位消息**递给宿主。宿主的 `run/start` 是
+        // 这条消息在账本上的产地,产地要的时刻 / origin / 署名就在它身上 ——
+        // 从前宿主写完再回读一次,那是值绕了一圈,还带着一个可以不存在的时序
+        // 窗口。core 不认识 `ChatMessage`(泛型 `TMessage`),这个参数包本来就是
+        // `Record<string, unknown>`,所以多一格零类型代价。
+        assistantMessage: storedAssistantMessage,
         triggerMessageId: userMessage.id,
         voiceConversation: userMessage.source === 'voice',
         speakMode: userMessage.source === 'voice',
@@ -1070,7 +1083,8 @@ export class CoreStreamEngine<
         toolCalls: [],
         ...(assistantOrigin !== undefined ? { origin: assistantOrigin } : {}),
       } as unknown as TMessage
-      this.store.addMessage(sessionId, assistantMessage)
+      // F4-a:入库那一条(见 `handleSendMessage` 那一处的理由)。
+      const storedAssistantMessage = this.store.addMessage(sessionId, assistantMessage)
 
       await this.eventBus?.emit(sessionId, {
         type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
@@ -1091,6 +1105,8 @@ export class CoreStreamEngine<
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName: session?.name,
         runKind: 'edit-resend',
+        // F4-a(§16.12):入库那条占位消息前递 —— 见 `handleSendMessage` 的理由。
+        assistantMessage: storedAssistantMessage,
         triggerMessageId: cmd.messageId,
       })
     } catch (error) {
@@ -1155,7 +1171,8 @@ export class CoreStreamEngine<
         toolCalls: [],
         ...(assistantOrigin !== undefined ? { origin: assistantOrigin } : {}),
       } as unknown as TMessage
-      this.store.addMessage(sessionId, assistantMessage)
+      // F4-a:入库那一条(见 `handleSendMessage` 那一处的理由)。
+      const storedAssistantMessage = this.store.addMessage(sessionId, assistantMessage)
 
       await this.eventBus?.emit(sessionId, {
         type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
@@ -1175,6 +1192,8 @@ export class CoreStreamEngine<
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName: session?.name,
         runKind: 'retry',
+        // F4-a(§16.12):入库那条占位消息前递 —— 见 `handleSendMessage` 的理由。
+        assistantMessage: storedAssistantMessage,
         ...(lastUserMessage?.id ? { triggerMessageId: lastUserMessage.id } : {}),
       })
     } catch (error) {

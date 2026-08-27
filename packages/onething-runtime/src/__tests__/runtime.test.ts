@@ -126,8 +126,10 @@ function createHarness() {
       getMessage: (id, messageId) => id === session.id
         ? session.messages.find(message => message.id === messageId)
         : undefined,
+      // F4-a:端口交回入库的那一条(这只替身不盖章,原样返回)。
       addMessage: (_id, message) => {
         session.messages.push(message)
+        return message
       },
       renameSession: (_id, name) => {
         session.name = name

@@ -69,7 +69,8 @@ vi.mock('../../../../session/commands.js', async () => {
   return {
     sessionCommands: {
       ...facade.sessionCommands,
-      // 清空历史迁移前走 `store.clearSessionMessages`;命令面上是 replaceAll{clear}。
+      // 清空历史在命令面上是 replaceAll{clear}(P0.2 之前那个 store 原语
+      // `clearSessionMessages` 已随 F4-a 删除,§16.12)。
       replaceAll: async (sessionId: string, payload: { messages: unknown[]; reason: string }) => {
         const session = mocks.sessions.get(sessionId) as FakeSession | undefined
         if (!session) return { replaced: false, previousCount: 0 }
@@ -132,14 +133,6 @@ vi.mock('../../../../store.js', () => ({
   getSessionsList: () => [...mocks.sessions.values()],
   addMessage: (sessionId: string, message: Record<string, unknown>) => {
     (mocks.sessions.get(sessionId) as FakeSession | undefined)?.messages.push(message)
-  },
-  clearSessionMessages: async (sessionId: string) => {
-    const session = mocks.sessions.get(sessionId) as FakeSession | undefined
-    if (!session) return { cleared: false, clearedCount: 0 }
-    const clearedCount = session.messages.length
-    session.messages.length = 0
-    mocks.cleared.push(sessionId)
-    return { cleared: true, clearedCount }
   },
   createSession: (id: string, name: string) => createFake(id, name),
   createSessionWithoutFocus: (id: string, name: string) => createFake(id, name),

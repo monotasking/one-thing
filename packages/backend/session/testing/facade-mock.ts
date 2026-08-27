@@ -145,8 +145,10 @@ export const sessionReads = {
 }
 
 export const sessionCommands = {
+  // F4-a:命令面交回入库的那一条。这只替身不盖章,原样返回入参。
   appendMessage(sessionId: string, payload: { message: AnyMessage; stampCollab?: boolean }) {
     resolveSession(sessionId)?.messages?.push(payload.message)
+    return payload.message
   },
   upsertMessage(sessionId: string, payload: { message: AnyMessage }) {
     const messages = messagesOf(sessionId)

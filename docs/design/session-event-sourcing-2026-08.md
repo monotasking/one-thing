@@ -3866,7 +3866,7 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 | **F1 写侧同步可见** — **已完成(§16.6,2026-08-27)** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
 | **F2 命令面翻转(逐条)** — **已完成**:F2-a(§16.7,2026-08-27:appendMessage / deleteMessage / patchMessage)、F2-b(§16.8,2026-08-27:upsertMessage / truncateFrom)、**F2-c(§16.9,2026-08-27:replaceAll / patchSession + 两个非命令采集点搬家 + 翻译器整体退役 + `annotate` 产地)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 —— **两项都在 F2-c 落地**(新事件 `tool/annotate`;重审结论见 §16.9 第五节) | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
 | **F3 写侧回读换语义** — **已完成(§16.10,2026-08-27)** | 「写侧读抄本」纪律(§13.18)整体翻面:它的理由(投影滞后)被 F1 消掉了,于是从**一刀切**改成**三类具名例外**(判据同源 / 事件产地缺口 / 只在 store 的运行时形状)。**勘误 §14.1 的"9 处全部改读投影"**:以 HEAD 实况重列后,一半在批 6b 删兜底时就已经在读投影,另一半逐处复核**全部留在 store**、各带具名理由,两类做过反证(②类反证 battery **RED / 305 失配**,①类实测 321 run **0 分岔**)——**代码取数面一处未动**。同批把五口的名字改成说实话的 `*FromStore` / `*InStore`(§16.5/§16.7/§16.8/§16.9 四笔留账一次结清) | 定向用例逐处 + battery | 随 F2 分批走 |
-| **F4 reducer 退役** | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
+| **F4 reducer 退役** — **F4-a 已完成(§16.12,2026-08-27)**:占位值前递(`addMessage` 交回入库那一条,P0 形状冻结的唯一豁免)+ 两处 store 回读删除(F3 例外表②类摘除)+ 清账(HYDRATE 杆退役 / `clearSessionMessages` 死面删 / `hasSessionInStore` 永久标注)。**余下 F4-b**:补占位产地(拍板 3)→ reducer 合一 → F0 恒等门退役 | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
 
 ### 16.3 F 线自己的待拍板(到期再拍)
 
@@ -4030,8 +4030,8 @@ renderer 直接 import core reducer)。
 | 08-29/30 | 6 | **S3w-3 切 off + 删旧**(短窗判据绿)。**前置已做一半**(§15.18):`fallbackHits` 的结构性地板(§15.9 诊断 1)已归位 —— `stream-executor.ts` 的写侧取材改真相面口,battery 321 → 16;余下 16 条全部是 `agent-loop-executor.ts:249`(steer 换锚点)这同一处孪生,同款一行修法,**留在批 6 里一并收**,收完删兜底的"命中率 = 0"判据才干净 | **唯一确认点**:烧 S2b 回滚读前问一次 —— **用户已确认并预授权跳过浸泡期**(2026-08-26,单用户环境口径) |
 | 08-26 | **6a** | **切 off(只翻默认与配套,不删码)** —— `ONETHING_SESSION_TRANSCRIPT` 默认 `shadow → off`(`shadow`/`primary` 降为显式回滚杆);孪生取材点 `rotateAssistantWriterIdentity` 一行修完 `fallbackHits` **16 → 0**;battery 泳道语义对调(停写泳道 → 默认档泳道 + 新增显式 `shadow` 回滚杆泳道,六条泳道);verify #6 改**存量只读对账**;§14.6 第三组裁定按推荐记录 —— **已完成(§15.19)** | — |
 | 08-26 | **6a 尾款** | 批 6a 遗下的两条真机存量红收口 —— `source-seqs-incomplete` 读侧收敛到"只对消息节点问责"(`ec2437ff` 自愈)、`Session cleared` 化石进 verify 基线(同一行同时收掉 hydration-contract 的 fail 1);verify:gate **0 new** —— **已完成(§15.21)**。**写侧留一次拍板**:让 `tool/result` 走 `appendSurfaceAwareEvent`(新账完整 + 顺带收编辑重发尾随格),是可感知行为变化,按旧行为停手 | **待拍板**:§15.21 第 1 条写侧 |
-| 08-26 | **6b** | **删旧**:storage-driver 消息写半边删(meta/index 保留)、reads 兜底删 8 留 3、sanitize 死码清(`sanitizeSessionsOnStartupWithAdapters` 整体退役)、`session:check` 白名单收一条、裁定 9b(legacy 首触**同步**迁进 events)与 10(`messages.cleared-*` 退役)的实施;两根抄本回滚杆 + `ONETHING_SESSION_READ` 回滚读一起烧掉(写失败上抛因此成为无条件默认),battery 六泳道两探针 → 四泳道一探针,verify 基线摘 13 条已自愈 —— **已完成(§15.22)**,回滚 = `git revert` | **待拍板**:`ONETHING_SESSION_HYDRATE=messages` 这根只对存量有效且已不安全的杆要不要一并退役(§15.22 第七节) |
-| 08-31→09-04 | 7–11 | F 线:**F0 门转向 — 已完成(§16.5)** → F1 同步可见 → F2 命令翻转(3 小批,含 annotate 产地+§13.8 重审)→ F3 回读换语义 → F4 reducer 退役+端口解冻 | F4 端口解冻范围到期拍板 |
+| 08-26 | **6b** | **删旧**:storage-driver 消息写半边删(meta/index 保留)、reads 兜底删 8 留 3、sanitize 死码清(`sanitizeSessionsOnStartupWithAdapters` 整体退役)、`session:check` 白名单收一条、裁定 9b(legacy 首触**同步**迁进 events)与 10(`messages.cleared-*` 退役)的实施;两根抄本回滚杆 + `ONETHING_SESSION_READ` 回滚读一起烧掉(写失败上抛因此成为无条件默认),battery 六泳道两探针 → 四泳道一探针,verify 基线摘 13 条已自愈 —— **已完成(§15.22)**,回滚 = `git revert` | ~~待拍板~~ **已拍并落地**:`ONETHING_SESSION_HYDRATE=messages` 那根杆已随 F4-a 退役(§16.11 拍板 5 / §16.12 第三节) |
+| 08-31→09-04 | 7–11 | F 线:**F0 门转向(§16.5)/ F1 同步可见(§16.6)/ F2 命令翻转 三小批(§16.7/§16.8/§16.9)/ F3 回读换语义(§16.10)/ F4-a 值前递 + 清账(§16.12)—— 均已完成**;余下 **F4-b**:补流中占位的事件产地(拍板 3)→ reducer 合一 → F0 恒等门退役+端口解冻 | 端口解冻已拍(§16.11 拍板 1 + `addMessage` 唯一豁免);拍板 3/4/5 已拍并落地 |
 | 09-05→09-08 | 12–14 | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动) | B 期细案到期过目 |
 | ≈ 09-08 | 终 | 全线收口:事件唯一真相、UI 同词汇;refold 常驻唯一耐久门 | — |
 
@@ -6677,3 +6677,204 @@ store,**本批按令未动**。
    本批不预设结论,只把"投影答不出"这件事写进注释与用例。
 4. **§14.1 那张表可以退休了**:它画的是"抄本仍在写"那个世界,本节的 A/B/C 三张表是
    它在 HEAD 上的替身。§14.1 已经挂了批 6b 的删除说明,本批不再动它。
+
+### 16.11 F4 方案与拍板包(2026-08-27,Fable 设计,待用户拍板后开工)
+
+F4 = F 线终局:core/session/commands.ts 的 reducer 与 projection/reducer 合一,store 从
+"独立写模型"退化为**投影的物化缓存**;F0 恒等门退役,refold 成为唯一常驻耐久门。
+规模 1–2 批。五项拍板(推荐加粗):
+
+1. **P0 端口解冻范围**:**A. 只换实现不换形状(推荐)**——引擎注入的 store 端口签名
+   保持(P0 合同继续有效),实现底下改为"命令面(事件产地)→ 投影物化视图";
+   B. 端口改说事件词汇——彻底但把 F4 变成引擎接口重构,留给远期。
+   > **勘误 / 豁免(2026-08-27,用户跳出本拍板重拍;落地见 §16.12)**:形状冻结继续
+   > 有效,**唯一指名豁免 —— `addMessage` 返回入库成品**(`void → TMessage`)。
+   > 理由 = 消灭占位回读的时序窗口:盖章(`stampCollabAgentId`)是 COW 的,"我刚写
+   > 进去的那条长什么样"只有写入那扇门自己答得起,让它答,盖章仍是一处实现,而
+   > 那次回读连同它的时序窗口一起消失。**只此一格**,不作为动其他端口的先例。
+2. **F0 恒等门退役条件**:**A. F4 落地批内退役(推荐)**——合一后 store=物化视图,
+   比对失去对象;退役前跑一次全量 battery + 真机 verify 作最终对账;refold(文件字节
+   vs 内存活投影,两条独立路径仍在)升格唯一常驻门,采样率维持 EVERY=5 首 run 必采;
+   B. 保留一段时间比"物化 vs 重折"——与 refold 重复,不推荐。
+3. **流中 assistant 独立事件产地(F3 ②类)**:**A. 做,且是 F4 的硬前置(推荐)**——
+   合一后 store 物化自投影,而流中占位在账本上没那一格(F3 反证:硬读投影 305 失配,
+   origin 整格缺失),不补产地则物化缓存折不出占位、②类两处取材当场断粮。落法:
+   run/start 已是占位的事件产地,把占位所需全量字段(origin/timestamp 等)补齐在
+   run/start.data 上(不新增事件类型,每 run 零额外行);读侧投影物化出占位消息
+   (isStreaming 语义由 run 开闭推导)。B. 不做——F4 无法合一,等于否决 F4。
+   > **勘误(2026-08-27,F4-a 勘察)**:本条把"F3 反证 305 失配"当成了"那两处取材
+   > 非回读不可"的证据,**这一半不成立**。反证证明的是"不能改读投影",不是"必须
+   > 回读 store":那两处是 `run/start` 的**生产者**而非消费者,恒等门判据下字段
+   > 一格不缺 —— 病根是**值的路由**(值在创建点手里,却绕 store 一圈取回)。
+   > 用户按 A′ 优先裁定、勘察否掉 A′ 后再跳出重拍 B(见 §16.12 〇/一),两处回读
+   > 已整体删除。**本条正文其余部分照旧成立**:产地缺口这件事实还在,补产地仍是
+   > F4 合一的硬前置,只是它不再有"两处取材断粮"这个附带理由。
+4. **hasSessionInStore 归宿**:**A. 永久留在 store/meta 侧(推荐)**——"会话在不在"
+   是 meta.json/目录层事实,不是消息事件折得出来的;写进 §16.10 例外表成为永久纪律
+   (**已落地**:`reads.ts` 与 `commands.ts` 文件头都补了"永久"标注,§16.12 第三节);
+   B. 强行事件化(session/created 反查)——零事件老会话与不存在会话不可分,F3 用例
+   已证伪。
+5. **顺带清账(推荐都做)**:`ONETHING_SESSION_HYDRATE=messages` 回滚杆退役(批 6b
+   已注"不要扳它",不安全杆不该存在);`stores/clearSessionMessages` 死面删除
+   (批 6b 查明零生产调用)。 —— **两项均已落地(§16.12 第三节)**。
+
+**F4 之后**:F 线完结,full 终态成立(命令即事件、状态即折叠、refold 唯一耐久门)。
+剩余路线图:B 期 + U1/U2 renderer 同窗(细案届时出),远期另册(events 分卷轮转、
+legacy-backup 处置、tool/result 进 surface 的写侧一票已由 F1 收、②类同源注释清理)。
+
+### 16.12 F4-a 落地记录:占位值前递(`addMessage` 交回入库那一条)+ 清账(2026-08-27,opus 执行,未提交)
+
+F4 的第一小批。目标只有一件事:**把 `stream-executor.ts` / `agent-loop-executor.ts`
+那两处"写完再回读一次"的 store 取材整体删掉**,顺带结清 §16.11 拍板 4/5 两笔清账。
+
+#### 〇、先勘察盖章面(它决定方案怎么走)
+
+工单要求先读清 `stampCollabAgentId` 的产地与全部调用点,再决定方案。实况:
+
+| 问 | 答 |
+|---|---|
+| 产地 | `packages/backend/stores/sessions.ts` 的一个模块内函数(P0.1 起 **COW**:返回新对象,不改调用方手里那条),`export { stampCollabAgentId }` 只为命令面装配 |
+| 调用点 | **只有一处**:`session/commands.ts` 的 `appendMessage`,且要 `payload.stampCollab === true` |
+| 有没有第二个盖章点 | **没有** |
+| 盖哪些消息 | 判据是 `role==='assistant' && !agentId` **且**会话形态 ∈ room/work/agent;但**这道门本身覆盖所有消息** —— `stampCollab:true` 的四个调用点是 `stores/sessions.addMessage`(= core 引擎注入的 store 端口,它下面挂着 core 的 6 个创建点、`context-compact`、`agent-loop-runtime` 的注入消息、steer 换锚点、`rpc/domains/sessions`)、collab `ingress`(user)、`say-tool`(自带 agentId 的 assistant) |
+| 盖的依据 | `sessionRepository.getSession(sessionId)` 的 `kind` / `agentId`,加消息自己的 `source` / `origin.source`(见函数上那段 W14b 注释) |
+
+**结论:A′(整体前移到消息出生管线)不成立。** 三条理由,任一条都足够:
+
+1. 助手占位的**出生点在 `packages/core`**(`core-stream-engine.ts` 三处),而 core 不认识
+   也不该认识 `stampCollabAgentId`。前移要新开一个"消息出生装饰"端口
+   (`CoreStreamEngineRuntime` 12 槽 → 13)。
+2. 盖章今天覆盖的是**所有**经 `store.addMessage` 的消息,不只是助手占位。只前移助手
+   占位那一类 = 立刻多出**第二个盖章点**(正是勘察要防的那件事);全部前移 = 一个
+   判定摊到 ~10 个创建点(core 6 + compact + 注入 + steer + 两个 collab 写点)。
+3. `store.addMessage` 侧降级为断言,等于要求包括 `rpc/domains/sessions` 在内的每个
+   写点都记得先盖章 —— 把一条"进门必过"的纪律换成一条"请你记得"的约定。
+
+于是先按工单的退路做了 **A**(创建点前递未盖章的对象 + 宿主复用同一个盖章函数补盖,
+幂等)。A 的代价是**第二次调用盖章函数** —— 实现仍是一处,但调用点多了一个。
+
+#### 一、改判:A → B-窄版(2026-08-27,用户跳出既有拍板重拍)
+
+用户在 A 落地后跳出原拍板重拍:**不走 A′/A,走 B-窄版** ——
+`addMessage` 端口从"无返回"改成**返回真正入库的那一条**。
+
+B 比 A 省在哪里,正是上面勘察给出的:盖章是 COW 的,所以"入库的它长什么样"这个问题
+**只有写入那扇门自己答得起**。让它答,盖章仍然只发生一次、仍然只有一处实现,而
+A 的第二次调用、以及"回读"这个可以不存在的时序窗口,一起消失。
+
+**这是 P0 端口形状冻结的唯一指名豁免**,记在 §16.11 拍板 1 名下(见那一节的勘误注)。
+
+#### 二、逐处改动表
+
+| 文件 | 改了什么 |
+|---|---|
+| `core/engine/stream-runtime.ts` | `StreamEngineStoreAdapter.addMessage` 返回 `TMessage`(带整段理由与豁免出处) |
+| `core/session/storage/types.ts` | 仓库端口的 `addMessage` 同一条口径 |
+| `backend/session/commands.ts` | `SessionCommands.appendMessage` 返回 `ChatMessage`;实现把盖过章的 `message` 交回 |
+| `backend/stores/sessions.ts` | `addMessage` 返回 `sessionCommands.appendMessage(...)` 的结果 |
+| `core/engine/core-stream-engine.ts` ×3 | send / edit-resend / retry 三个创建点接住返回值,经 `assistantMessage:` 递给宿主 |
+| `backend/wiring/engine/stream/stream-executor.ts` | `StreamExecutionParams` 新增 `assistantMessage?: Record<string, unknown>`;**删除** `sessionReads.getMessageFromStore` 那一处回读;进 core 的参数包里把这一格摘掉(下游逐字不变) |
+| `backend/wiring/engine/stream/agent-loop-executor.ts` | steer 换锚点那处**删除**回读,改用 `store.addMessage` 的返回值 |
+| `backend/session/reads.ts` | `getMessageFromStore` 摘掉②类"事件产地缺口",只剩①类;`hasSessionInStore` 补**永久例外**标注(拍板 4) |
+| `backend/session/commands.ts` / `command-events.ts` 文件头 | 例外表 三类 → **两类** |
+| `backend/session/runs.ts` | `agentId` / `messageSource` 两格的口径改成「单实现,调用点指认此处」(原文把"回读"写进了纪律) |
+
+**两处刻意没动**,都写在代码注释里:
+
+1. `message:assistant-created` 事件**仍然发创建点手里那条**(未盖章的)。改成发入库
+   那条是一次可感知的行为变化(渲染层会突然看见 `agentId` / `source`),按
+   §16.3 的规矩不在本批自作主张。
+2. 缺席不回落:`params.assistantMessage` 没给时 `run/start` 那几格就空着,**不**退回去
+   读 store —— 回落等于把删掉的那条路留在原地。生产四条路径全都前递。
+
+#### 三、清账(§16.11 拍板 4 / 5)
+
+| 项 | 处置 |
+|---|---|
+| `ONETHING_SESSION_HYDRATE` 回滚杆(拍板 5) | **退役**。`read-mode.ts` 的档位一族(`SessionHydrateMode` / `DEFAULT_*` / `getSessionHydrateMode` / `isSessionProjectionHydrateMode` / `setSessionHydrateModeForTesting`)整体删除并留墓志铭;`hydrate.ts` 去掉档位判据(补水无条件走投影);`session-repository.ts` / `stores/sessions.ts` 两处注释、`shadow-battery.mjs` 的两处 `delete env` 与三段泳道注释、`session-hydration-contract.ts` 的表头与前言同步。用例:`reads-projection.test.ts` 的"默认值"与"回滚杆"两条随档位退役,剩两条验唯一那条路。**这个文件本身没有档位了,只剩跨进程告警** |
+| `stores/clearSessionMessages`(拍板 5) | **删除**(P0.2 之后零生产调用点;群聊清空走命令面 `replaceAll{reason:'clear'}`)。连带 `stores/index.ts` / `store.ts` 两处再导出;`sessions-clear-messages.test.ts` 里清空那三条断言退役,文件按角色改名为 `sessions-collab-cursor.test.ts`(只剩已读游标那条);`room-config.test.ts` 的 store 替身摘掉这一口;battery 的 TODO 行改口。**renderer 的 `chatStore.clearSessionMessages` 同名不同物,一字未动** |
+| `hasSessionInStore`(拍板 4) | 例外表里补**永久**标注与理由:它不随 F4 退役 —— 会话存不存在是目录 / `meta.json` 那一层的事实,消息事件里永远没有它的产地 |
+
+#### 四、用例
+
+| 用例 | 位置 | 钉住什么 |
+|---|---|---|
+| `addMessage hands back the stored message, stamp included (F4-a port contract)` | `stores/__tests__/sessions-collab-turn.test.ts` | **新增**。端口豁免的护栏:返回的那条盖过章、入参那条一字未动(COW)、返回的就是落库那条(不是第三个副本)。谁把 `addMessage` 改回 `void` 或让它返回入参,这里当场红 |
+| `addMessage returns the message unchanged where nothing stamps it` | 同上 | **新增**。不盖章的会话原样返回入参(`toBe` 同一性) |
+| `a streaming assistant placeholder has no ledger slot yet…` | `session/__tests__/event-production-write-side-read.test.ts` | **身份改变,断言不变**:它不再是"第二类例外的护栏"(那两处回读没了),而是钉住**产地缺口这件事实本身** —— §16.11 拍板 3 说的 F4 硬前置。哪天补上产地这里会红,那是前置做完了的信号 |
+| `S3w-1 — projection hydrate source` | `session/__tests__/reads-projection.test.ts` | 4 例 → **2 例**(档位退役) |
+| `clearSessionMessages` 三例 | `stores/__tests__/` | **退役**(存储原语已删) |
+
+#### 五、字节回归(HEAD worktree 双跑 + **同树对照组**)
+
+方法:HEAD(`be2cfb7d`)开 worktree(独立 `node_modules/@onething/*` 指向 worktree 自身
+的包,否则会编译到本树源码),两棵树各 `server:build` 后跑
+`shadow-battery --passes 1 --seed 4041 --concurrency 1 --keep-store`,再逐会话对拍
+`events.jsonl`。
+
+battery 三次全 GREEN 且**逐项同基线**:
+
+| 树 | runs | historyChecks | mismatches | appendFailures | refoldChecks | refoldMismatch |
+|---|---|---|---|---|---|---|
+| HEAD 第一跑 | 87 | 119 | 0 | 0 | 63 | 0 |
+| HEAD 第二跑(对照组) | 87 | — | 0 | 0 | 63 | 0 |
+| 本树(B) | 87 | 119 | 0 | 0 | 63 | 0 |
+
+**逐会话对拍(55 会话,归一化掉 store 路径 / 仓库路径 / uuid / 时钟 / `dt` / 小时粒度的
+`datetime` 变量与由它派生的 `systemPromptHash`)**:
+
+| 对拍 | 逐字节相同 | 有差异 |
+|---|---|---|
+| **对照组** HEAD 第一跑 vs HEAD 第二跑 | 35 / 55 | 20 |
+| **本批** HEAD 第一跑 vs 本树 | 35 / 55 | 20 |
+
+**"本批有差异而对照组没有"的会话:0 条;反向也是 0 条。** 两张差异表逐条同名 ——
+也就是说本批在 `events.jsonl` 上**一个字节都没改**,那 20 条是**环境噪声地板**,与
+代码无关。噪声的两个来源(逐条查明):① 一次性 store 目录名(`onething-shadow-battery-XXXXXX`)
+会被烘进工具入参正文与它的 `hash` / `contentHash`(`len` 两侧逐字相同,只有 hash 不同);
+② `file-mutations` 的审计路径带墙上时刻。
+
+**F3 反证的同型验证(本批的核心判据)**——87 条 `run/start` 逐条对拍:
+
+| 判据 | 结果 |
+|---|---|
+| key 集合不一致 | **0** |
+| 非易失值(`kind`/`provider`/`model`/`origin` 结构)不一致 | **0** |
+| `origin` 在场数(HEAD / 本树) | **83 / 83** |
+| `timestamp` 在场数 | **87 / 87** |
+| `triggerMessageId` 在场数 | **83 / 83** |
+
+F3 那次反证(硬换读投影)当场 305 失配、`origin` **整格丢失**、`timestamp` 差 3ms;
+本批同一处改动之后**这两格一条都没少**。
+
+覆盖缺口(如实记):battery 的场景矩阵里没有 room / agent 形态会话,所以
+`agentId` / `messageSource` 两格在双跑里都是 **0 / 0** —— 盖章那条路**不由 battery 覆盖**,
+它由上面新增的两条端口合同用例覆盖。
+
+#### 六、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `typecheck` | 0 |
+| `boundary:gate` | ok — 0 failures |
+| `session:gate` | ok — 0 known, none new |
+| `log:gate` | ok — 4 known, none new |
+| `transport:gate` | ok — 42 常量 / 四壳 2392 行,不变 |
+| `packages/backend` + `packages/core` + runtime 定向 | 3422 passed / 1 failed |
+| `sessions:shadow-battery`(seed 4041) | **GREEN**,逐项同基线(见上表) |
+| 真机 `sessions:verify:gate`(只读) | 见下 |
+
+那 1 条 failed 是 `stores/__tests__/sessions-delete-cascade.test.ts` 的
+「会话目录与它的轨迹目录一起消失」:它的 `waitGone` 只等 1s(100×10ms),整包并跑时
+超时。**已证是本机负载抖动、与本批无关**:单跑绿(1056ms,贴着上限),而且**同一条
+在干净的 HEAD worktree 上并跑时同样红**。
+
+#### 七、留账
+
+1. **②类例外没了,但它指向的那件事还在**:流中 assistant 占位在账本上没有产地。
+   §16.11 拍板 3 说的"把占位所需字段补齐在 `run/start.data` 上"仍是 F4 合一的硬前置,
+   `event-production-write-side-read.test.ts` 那条用例现在就守着它。
+2. **`message:assistant-created` 的载荷**是本批唯一刻意留下的不一致(发的是未盖章
+   那条)。它是可感知行为,改不改要单独拍板。
+3. **端口豁免只此一格**。`addMessage` 之外的 P0 端口形状仍然冻结;下一个想动的人
+   请先回到 §16.11 拍板 1,而不是引用本条当先例。

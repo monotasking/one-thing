@@ -60,6 +60,45 @@ describe('room turn epoch marker', () => {
     expect(stored?.source).toBe('collab-turn')
   })
 
+  /**
+   * **F4-a(§16.12):`addMessage` 交回的必须是入库的那一条,不是入参那一条。**
+   *
+   * 这是 P0 端口形状冻结的唯一豁免(§16.11 拍板 1)的护栏。盖章是 COW 的,所以
+   * "入参"与"入库"在会盖章的会话上是两个对象 —— 引擎入口拿返回值把助手占位的
+   * 署名 / 时刻 / origin 带进 `run/start`,拿错一份账本上就少两格
+   * (真机 `agent-exec-…` 的 `1.source` 缺失就是这一格丢的样子,§13.9)。
+   *
+   * 谁把 `addMessage` 改回 `void`、或者让它返回入参,这里当场红。
+   */
+  it('addMessage hands back the stored message, stamp included (F4-a port contract)', async () => {
+    const sessions = await loadIsolatedStores()
+    sessions.createSession('room-1', '官网改版组')
+    sessions.updateSessionCollab('room-1', { kind: 'room', room: { memberAgentIds: ['fe'] } })
+    sessions.updateSessionAgent('room-1', 'fe')
+
+    const incoming = assistantMessage('m-1')
+    const returned = sessions.addMessage('room-1', incoming)
+
+    // 返回的是盖过章的那一条……
+    expect(returned.agentId).toBe('fe')
+    expect(returned.source).toBe('collab-turn')
+    // ……而调用方手里那条一字未动(COW,P0.1 的纪律)。
+    expect(incoming.agentId).toBeUndefined()
+    expect(incoming.source).toBeUndefined()
+    // 返回的就是落库的那一条,不是第三个副本。
+    expect(returned).toEqual(sessions.getSession('room-1')?.messages[0])
+  })
+
+  it('addMessage returns the message unchanged where nothing stamps it', async () => {
+    const sessions = await loadIsolatedStores()
+    sessions.createSession('chat-1', '普通会话')
+
+    const incoming = assistantMessage('m-1')
+    const returned = sessions.addMessage('chat-1', incoming)
+
+    expect(returned).toBe(incoming)
+  })
+
   it('stamps a turn that carries the drive channel envelope — production shape (真机回归)', async () => {
     // The engine copies the DRIVE's origin onto the reply it creates, so every
     // real room turn arrives as origin.source='collab'. That is inbound
