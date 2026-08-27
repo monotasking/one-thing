@@ -26,8 +26,9 @@ vi.mock('@onething/runtime/storage', () => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } =
+const { flushSessionEventLog, resetSessionEventLogCache } =
   await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../projection-cache.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
 const { getSessionShadowLogPath } = await import('../shadow.js')
@@ -77,7 +78,7 @@ function shadowLines(): Array<Record<string, unknown>> {
 
 /** 一条带 usage 的助手 run,折进活投影。 */
 function recordRunWithUsage(usage: Record<string, number>): void {
-  appendSessionLogEvent(SESSION, 'run/start', {
+  writeSessionEvent(SESSION, 'run/start', {
     runId: RUN,
     kind: 'send',
     assistantMessageId: 'a1',
@@ -85,7 +86,7 @@ function recordRunWithUsage(usage: Record<string, number>): void {
     provider: 'openai',
     model: 'gpt-4o',
   } as never, { surfaceOp: 'append' })
-  appendSessionLogEvent(SESSION, 'request/response', {
+  writeSessionEvent(SESSION, 'request/response', {
     runId: RUN,
     requestIndex: 1,
     usage,
@@ -141,7 +142,7 @@ describe('port fact assertion', () => {
    */
   it('never builds the projection just to assert — and says so in portChecks', () => {
     // 事件写下去了,但没有人建过活投影。
-    appendSessionLogEvent(SESSION, 'run/start', {
+    writeSessionEvent(SESSION, 'run/start', {
       runId: RUN, kind: 'send', assistantMessageId: 'a1', timestamp: 2000,
       provider: 'openai', model: 'gpt-4o',
     } as never, { surfaceOp: 'append' })

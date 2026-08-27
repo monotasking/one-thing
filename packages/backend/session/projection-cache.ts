@@ -18,7 +18,7 @@
  * **惰性**推进。结果上没错(读之前一定先折),但"命令内读得到自己刚写的"是靠
  * 每个读口都记得先 drain 才成立的**约定**,而不是机制。
  *
- * F1 把它翻成机制:写入口(`appendSessionLogEvent`)在同一个同步段里调
+ * F1 把它翻成机制:写入口(`writeSessionEvent`)在同一个同步段里调
  * `registerSessionLogEventAppendObserver` 注册的观察者,这里就是其中之一。
  * 一条事件分配到 seq 的那一刻就已经折进这份投影,落盘仍然排队异步。
  *

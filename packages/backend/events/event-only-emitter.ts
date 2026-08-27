@@ -15,7 +15,7 @@ import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
 import { createCoreEventOnlyEmitter, type CoreEventOnlyStoreHooks } from '@onething/core/engine'
 import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk, CoreEventOnlyEventBusLike, CoreEventOnlyStreamChannelLike } from '@onething/core/engine'
 import { getEventBus, getStreamChannel } from './index.js'
-import { appendSessionLogEvent } from '../session/event-log.js'
+import { writeSessionEvent } from '../session/event-writer.js'
 import { currentSessionRunId } from '../session/runs.js'
 import { getLogger } from '../wiring/logging/index.js'
 import type { JsonObject } from '@onething/core'
@@ -85,7 +85,7 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
       store.updateMessageSkill(targetSessionId, targetMessageId, skillName)
       try {
         const runId = currentSessionRunId(targetSessionId)
-        appendSessionLogEvent(targetSessionId, 'skill/activated', {
+        writeSessionEvent(targetSessionId, 'skill/activated', {
           messageId: targetMessageId,
           skill: skillName,
           ...(runId ? { runId } : {}),

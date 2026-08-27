@@ -17,8 +17,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-const { appendSessionLogEvent, flushSessionEventLog, readSessionLogEvents, resetSessionEventLogCache } =
+const { flushSessionEventLog, readSessionLogEvents, resetSessionEventLogCache } =
   await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 
 const SESSION = 'pinning-1'
 
@@ -53,7 +54,7 @@ afterEach(async () => {
 
 describe('session event log store pinning', () => {
   it('lands the bytes in the store that allocated the seq, not the one live at flush time', async () => {
-    expect(appendSessionLogEvent(SESSION, 'session/created', { sessionId: SESSION })).toBe(1)
+    expect(writeSessionEvent(SESSION, 'session/created', { sessionId: SESSION })).toBe(1)
 
     // 落盘还在队列上。此刻把进程的 store 换掉 —— 旧代码的回调会在这之后才解析
     // 路径,于是写进 B。
@@ -65,10 +66,10 @@ describe('session event log store pinning', () => {
   })
 
   it('keeps a whole run of appends in one store when the store changes mid-flight', async () => {
-    expect(appendSessionLogEvent(SESSION, 'session/created', { sessionId: SESSION })).toBe(1)
+    expect(writeSessionEvent(SESSION, 'session/created', { sessionId: SESSION })).toBe(1)
     process.env.ONETHING_STORE_PATH = storeB
     expect(
-      appendSessionLogEvent(SESSION, 'user/message', {
+      writeSessionEvent(SESSION, 'user/message', {
         message: { id: 'u1', role: 'user', content: 'hi', timestamp: 1000 },
       } as never, { surfaceOp: 'append' }),
     ).toBe(2)

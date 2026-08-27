@@ -163,18 +163,22 @@ export const SESSION_EPHEMERAL_FACT_POLICY: readonly SessionEphemeralFactPolicy[
     what: '插件"正在干活"的状态行。它是**流内型**瞬态:活到流结束,不被正文顶掉,'
       + '同 id 再来一次就地更新。',
     supersededBy: ['plugin/status'],
-    substitute: '带 `durationMs` 的**结算态**(或 `cleared`)—— 它在账本上有落点'
-      + '(`plugin/status` 事件带 `startedAt` / `durationMs` / `cleared`),所以这条短命事实'
-      + '确实被一条持久事件取代。',
+    substitute: '带 `durationMs` 的**结算态**(或 `cleared`)—— 词表里有它的落点'
+      + '(`plugin/status`,带 `startedAt` / `durationMs` / `cleared`)。',
     proofKind: 'substitute-derivable',
     proofs: [
       { file: PLUGIN_STATUS, test: 'is stream-scoped transient, not placeholder transient' },
       { file: PLUGIN_STATUS, test: '已结算的那条不再是 transient —— 定格的总耗时活过回合收尾' },
       { file: PLUGIN_STATUS, test: '回合收尾:在跑的被扫掉,已结算的留下' },
     ],
-    note: '**留账**:取代事件已经落盘,但折叠侧今天不物化它(`reducer.ts` 把 `plugin/status`'
-      + '列在"记录在案但不改投影"那一档),于是**结算态**的那一格在消息上没有产地 ——'
-      + '`content-part-guard.ts` 因此把它判红。这条不是豁免,是一个公开缺口,记在 §17 归档表。',
+    note: '**留账 #10(§17.7 #7 勘察更正,2026-08-28)**:上一版这里写的是"取代事件'
+      + '已经落盘,只是折叠侧不物化" —— **实测是错的**。`plugin/status` 只有词表条目'
+      + '(`events/types.ts`)与一条"记录在案但不改投影"的归约分支,**全仓没有任何'
+      + '生产者往账本写过它**:插件状态这一格从头到尾是流内的 —— `CorePluginStatusRegistry`'
+      + '把 part 推进 chunk 流,renderer 的 `content-parts.ts` 就地更新那一格。'
+      + '所以结算态在消息上没有产地,不是"折叠少折了一步",是**写侧根本没有采集点**。'
+      + '补它 = 新起一条 plugins → 会话账本的采集线,并且要裁定"重开会话之后还看不看'
+      + '得到那条状态行"(可感知的行为变化)—— 停在诊断,记在 §17.5 #10。',
   },
   {
     id: 'codec.unflushed-delta',

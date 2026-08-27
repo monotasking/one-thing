@@ -36,7 +36,8 @@ const {
   resetSessionShadowCache,
   summarizeShadowDiff,
 } = await import('../shadow.js')
-const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } = await import('../event-log.js')
+const { flushSessionEventLog, resetSessionEventLogCache } = await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { beginSessionRun, endSessionRun, resetSessionRuns } = await import('../runs.js')
 const {
   flushSessionEventStats,
@@ -70,7 +71,7 @@ function userMessage(id: string, content: string): ChatMessage {
 
 /** 一个最小 run:用户消息 + 一条只有文本的助手回答。 */
 function recordSimpleRun(assistantId: string, text: string): string {
-  appendSessionLogEvent(SESSION, 'user/message', {
+  writeSessionEvent(SESSION, 'user/message', {
     message: userMessage('u1', 'hi') as never,
   }, { surfaceOp: 'append' })
   const run = beginSessionRun(SESSION, {
@@ -81,7 +82,7 @@ function recordSimpleRun(assistantId: string, text: string): string {
     provider: 'openai',
     model: 'gpt-4o',
   })
-  appendSessionLogEvent(SESSION, 'assistant/chunks', {
+  writeSessionEvent(SESSION, 'assistant/chunks', {
     runId: run.runId,
     requestIndex: 1,
     messageId: assistantId,
@@ -91,7 +92,7 @@ function recordSimpleRun(assistantId: string, text: string): string {
     dt: [0],
     text: [text],
   })
-  appendSessionLogEvent(SESSION, 'assistant/part-end', {
+  writeSessionEvent(SESSION, 'assistant/part-end', {
     runId: run.runId,
     requestIndex: 1,
     messageId: assistantId,
@@ -99,8 +100,8 @@ function recordSimpleRun(assistantId: string, text: string): string {
     kind: 'text',
     len: text.length,
   })
-  appendSessionLogEvent(SESSION, 'request/end', { runId: run.runId, requestIndex: 1 })
-  appendSessionLogEvent(SESSION, 'message/patched', {
+  writeSessionEvent(SESSION, 'request/end', { runId: run.runId, requestIndex: 1 })
+  writeSessionEvent(SESSION, 'message/patched', {
     messageId: assistantId,
     patch: { runId: run.runId },
   })

@@ -48,9 +48,8 @@ vi.mock('../../stores/sessions.js', () => ({
   readSessionTranscriptFile: () => undefined,
 }))
 
-const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } = await import(
-  '../event-log.js'
-)
+const { flushSessionEventLog, resetSessionEventLogCache } = await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { resetSessionSurfaceCache } = await import('../event-surface.js')
 const { resetSessionRuns } = await import('../runs.js')
 const { resetSessionEventStatsCache } = await import('../event-stats.js')
@@ -91,7 +90,7 @@ afterEach(async () => {
 /** 开一次执行:`run/start` 是这条 assistant 消息在账本上的产地(§16.20)。 */
 function beginRun(): void {
   getLiveSessionProjection(SESSION)
-  appendSessionLogEvent(SESSION, 'run/start', {
+  writeSessionEvent(SESSION, 'run/start', {
     runId: RUN,
     kind: 'chat',
     assistantMessageId: MESSAGE,
@@ -165,7 +164,7 @@ describe('c3-a:打包行落账时不许把同一段正文折第二遍(§16.23)',
     foldLiveSessionLogicalDelta(SESSION, RUN, delta('我查', 1001))
     foldLiveSessionLogicalDelta(SESSION, RUN, delta('一下。', 1002))
 
-    appendSessionLogEvent(SESSION, 'assistant/chunks', chunksRow(['我查', '一下。'], 1001) as never, {
+    writeSessionEvent(SESSION, 'assistant/chunks', chunksRow(['我查', '一下。'], 1001) as never, {
       projectionPreFolded: true,
       preFoldedDeltaCount: 2,
     })
@@ -179,14 +178,14 @@ describe('c3-a:打包行落账时不许把同一段正文折第二遍(§16.23)',
     foldLiveSessionLogicalDelta(SESSION, RUN, delta('我查', 1001))
     foldLiveSessionLogicalDelta(SESSION, RUN, delta('一下。', 1002))
 
-    appendSessionLogEvent(SESSION, 'assistant/chunks', chunksRow(['我查', '一下。'], 1001) as never)
+    writeSessionEvent(SESSION, 'assistant/chunks', chunksRow(['我查', '一下。'], 1001) as never)
 
     expect(peekedText()).toBe('我查一下。我查一下。')
   })
 
   it('没提前折过的那一行照常折(声明缺席 = 打包行自己负责)', () => {
     beginRun()
-    appendSessionLogEvent(SESSION, 'assistant/chunks', chunksRow(['直接', '落账'], 1001) as never)
+    writeSessionEvent(SESSION, 'assistant/chunks', chunksRow(['直接', '落账'], 1001) as never)
     expect(peekedText()).toBe('直接落账')
   })
 })
@@ -203,7 +202,7 @@ describe('c3-a:声明不被盲信 —— 投影重建过就照常折(§16.23)', 
     getLiveSessionProjection(SESSION)
     expect(liveSessionProjectionAheadDeltas(SESSION)).toBe(0)
 
-    appendSessionLogEvent(SESSION, 'assistant/chunks', chunksRow(['提前折的那一段'], 1001) as never, {
+    writeSessionEvent(SESSION, 'assistant/chunks', chunksRow(['提前折的那一段'], 1001) as never, {
       projectionPreFolded: true,
       preFoldedDeltaCount: 1,
     })

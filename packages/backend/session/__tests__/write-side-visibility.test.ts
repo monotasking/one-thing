@@ -12,7 +12,7 @@
  * 这条事件的投影,拿它断言等于什么都没钉住。`peekSessionProjection` 只看缓存、
  * 一步都不推进 —— 只有"写的时候就折了"才让它看得见。
  *
- * **反证**(F1 的回退判据):把 `appendSessionLogEvent` 里那句
+ * **反证**(F1 的回退判据):把 `writeSessionEvent` 里那句
  * `notifySessionLogEventAppended` 删掉(推进退回 drain 时惰性),本文件的
  * 投影三例与 surface 一例当场全红。
  *
@@ -48,9 +48,8 @@ vi.mock('../../stores/sessions.js', () => ({
 }))
 
 const { sessionCommandEvents } = await import('../command-events.js')
-const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } = await import(
-  '../event-log.js'
-)
+const { flushSessionEventLog, resetSessionEventLogCache } = await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { resetSessionSurfaceCache, sessionSurface } = await import('../event-surface.js')
 const { resetSessionRuns } = await import('../runs.js')
 const { resetSessionEventStatsCache } = await import('../event-stats.js')
@@ -154,8 +153,8 @@ describe('F1:命令产出的事件在 append 返回前已经在活投影上(§16
 })
 
 describe('F1:活 surface 也由写入口推进 —— 两扇门都算数(§16.6)', () => {
-  it('走 appendSessionLogEvent 落的 tool/result 也进得了写侧 surface', async () => {
-    // `tool/result` 既是 surface 节点、又只从采集点走 `appendSessionLogEvent`
+  it('走 writeSessionEvent 落的 tool/result 也进得了写侧 surface', async () => {
+    // `tool/result` 既是 surface 节点、又只从采集点走 `writeSessionEvent`
     // 那扇门(`session-event-recorder.ts`)。F1 之前写侧的活 surface 永远看不见它
     // (core `declaredMessageGap` 注释里的真机病历 `ec2437ff`),F1 之后看得见。
     const surface = sessionSurface(SESSION)
@@ -167,7 +166,7 @@ describe('F1:活 surface 也由写入口推进 —— 两扇门都算数(§16.6)
     })
     const before = surface.order().length
 
-    const seq = appendSessionLogEvent(
+    const seq = writeSessionEvent(
       SESSION,
       'tool/result',
       { callId: 'c1', ok: true } as never,
@@ -237,13 +236,13 @@ describe('F1-a:截断区间不吞别人家的 tool/result(§16.15)', () => {
   it('在途 run 的 tool/result 排在插话之后 —— 它不进这次截断的区间', () => {
     const surface = sessionSurface(SESSION)
     // 上一条 run 与它在途的那次调用。
-    const runStart = appendSessionLogEvent(
+    const runStart = writeSessionEvent(
       SESSION,
       'run/start',
       { runId: 'r1', kind: 'send', assistantMessageId: 'a1' } as never,
       { surfaceOp: 'append' },
     )
-    appendSessionLogEvent(
+    writeSessionEvent(
       SESSION,
       'tool/call',
       { runId: 'r1', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1' } as never,
@@ -256,7 +255,7 @@ describe('F1-a:截断区间不吞别人家的 tool/result(§16.15)', () => {
       timestamp: 2000,
     })
     // 在途那次调用的结局**排在插话后面**落到 surface 上。
-    const foreignResult = appendSessionLogEvent(
+    const foreignResult = writeSessionEvent(
       SESSION,
       'tool/result',
       { runId: 'r1', callId: 'c1', isError: false, resultPreview: 'ok' } as never,
@@ -278,18 +277,18 @@ describe('F1-a:截断区间不吞别人家的 tool/result(§16.15)', () => {
       timestamp: 2000,
     })
     // 这条 run 整个生在插话**之后**:它的结局与它自己一起被遮才是对的。
-    const runStart = appendSessionLogEvent(
+    const runStart = writeSessionEvent(
       SESSION,
       'run/start',
       { runId: 'r2', kind: 'send', assistantMessageId: 'a2' } as never,
       { surfaceOp: 'append' },
     )
-    appendSessionLogEvent(
+    writeSessionEvent(
       SESSION,
       'tool/call',
       { runId: 'r2', callId: 'c2', name: 'bash', argumentsRaw: '{}', messageId: 'a2' } as never,
     )
-    const ownResult = appendSessionLogEvent(
+    const ownResult = writeSessionEvent(
       SESSION,
       'tool/result',
       { runId: 'r2', callId: 'c2', isError: false, resultPreview: 'ok' } as never,

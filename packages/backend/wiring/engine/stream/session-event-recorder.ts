@@ -78,12 +78,8 @@ import {
   type SessionEventToolSchema,
   type SessionRequestHeaderEventData,
 } from '@onething/runtime/sessions/session-events'
-import {
-  appendSessionLogEvent,
-  findLastSessionEventSync,
-  flushSessionEventLog,
-  nextSessionRequestIndex,
-} from '../../../session/event-log.js'
+import { findLastSessionEventSync, flushSessionEventLog, nextSessionRequestIndex } from '../../../session/event-log.js'
+import { writeSessionEvent } from '../../../session/event-writer.js'
 import { foldLiveSessionLogicalDelta } from '../../../session/projection-cache.js'
 import { textOrBlobForEvent } from '../../../session/blob-store.js'
 import { countSessionEventDroppedPart } from '../../../session/event-stats.js'
@@ -463,7 +459,7 @@ export function createSessionEventRecorder(
       state.lastToolsHashLoaded = true
     }
     if (state.lastToolsHash === hash) return hash
-    appendSessionLogEvent(ctx.sessionId, 'request/tools', {
+    writeSessionEvent(ctx.sessionId, 'request/tools', {
       requestIndex,
       toolsHash: hash,
       tools,
@@ -498,7 +494,7 @@ export function createSessionEventRecorder(
     const next = envelope(requestIndex, toolsHash)
     if (isSameRequestHeaderEnvelope(state.lastHeader, next)) return
     next.reason = state.lastHeader ? 'change' : 'initial'
-    appendSessionLogEvent(ctx.sessionId, 'request/header', { ...next, ...withRunId() })
+    writeSessionEvent(ctx.sessionId, 'request/header', { ...next, ...withRunId() })
     state.lastHeader = next
   }
 
@@ -512,7 +508,7 @@ export function createSessionEventRecorder(
       contentHash: hashSessionEventContent(`${message.role}\n${message.content ?? ''}`),
     }))
     const params = ctx.getRequestParams?.()
-    appendSessionLogEvent(ctx.sessionId, 'request/recipe', {
+    writeSessionEvent(ctx.sessionId, 'request/recipe', {
       runId: id,
       requestIndex,
       systemPromptHash: hashSessionEventSystemPrompt(ctx.systemPrompt ?? ''),
@@ -587,7 +583,7 @@ export function createSessionEventRecorder(
       const preFoldedDeltaCount = preFoldedByPart.get(data.partIndex) ?? 0
       preFoldedByPart.delete(data.partIndex)
       const fullyPreFolded = preFoldedDeltaCount === data.text.length && preFoldedDeltaCount > 0
-      appendSessionLogEvent(ctx.sessionId, 'assistant/chunks', data, {
+      writeSessionEvent(ctx.sessionId, 'assistant/chunks', data, {
         ...(fullyPreFolded
           ? { projectionPreFolded: true, preFoldedDeltaCount }
           : {}),
@@ -660,7 +656,7 @@ export function createSessionEventRecorder(
     }
     const hash = hashSessionEventContent(part.text)
     state.finishedParts.push({ partIndex, kind: part.kind, len: part.text.length, hash })
-    appendSessionLogEvent(ctx.sessionId, 'assistant/part-end', {
+    writeSessionEvent(ctx.sessionId, 'assistant/part-end', {
       runId: id,
       requestIndex: part.requestIndex,
       messageId: part.messageId,
@@ -725,7 +721,7 @@ export function createSessionEventRecorder(
     if (partIndex === undefined) return
     const hash = hashSessionEventContent(text)
     state.finishedParts.push({ partIndex, kind: 'provider-data', len: text.length, hash })
-    appendSessionLogEvent(ctx.sessionId, 'assistant/part-end', {
+    writeSessionEvent(ctx.sessionId, 'assistant/part-end', {
       runId: id,
       requestIndex,
       messageId: ctx.getMessageId(),
@@ -790,7 +786,7 @@ export function createSessionEventRecorder(
         const toolsHash = maybeWriteTools(requestIndex)
         maybeWriteHeader(requestIndex, toolsHash)
         writeRecipe(requestIndex, toolsHash)
-        appendSessionLogEvent(ctx.sessionId, 'request/start', {
+        writeSessionEvent(ctx.sessionId, 'request/start', {
           requestIndex,
           messageId: ctx.getMessageId(),
           ...withRunId(),
@@ -850,7 +846,7 @@ export function createSessionEventRecorder(
         if (state.requestIndex === undefined) return
         if (!state.firstTokenWritten) {
           state.firstTokenWritten = true
-          appendSessionLogEvent(ctx.sessionId, 'assistant/first-token', {
+          writeSessionEvent(ctx.sessionId, 'assistant/first-token', {
             requestIndex: state.requestIndex,
             messageId: ctx.getMessageId(),
             ...withRunId(),
@@ -886,7 +882,7 @@ export function createSessionEventRecorder(
         // A11:引擎藏起来的调用在账本上带一格 `hidden` —— 投影据此不产出
         // toolCalls/steps(轨迹与审计照旧看得见)。答不上来 = 可见。
         const hidden = ctx.isToolCallHidden?.(event.toolCall.id) === true
-        const seq = appendSessionLogEvent(ctx.sessionId, 'tool/call', {
+        const seq = writeSessionEvent(ctx.sessionId, 'tool/call', {
           callId: event.toolCall.id,
           name: event.toolCall.name,
           ...(hidden ? { hidden: true } : {}),
@@ -930,7 +926,7 @@ export function createSessionEventRecorder(
           : undefined
         if (newResult !== undefined) state.annotatedResultByCallId.set(event.toolCall.id, newResult)
         if (title || newResult !== undefined) {
-          appendSessionLogEvent(ctx.sessionId, 'tool/annotate', {
+          writeSessionEvent(ctx.sessionId, 'tool/annotate', {
             callId: event.toolCall.id,
             ...(title ? { title } : {}),
             ...(newResult !== undefined ? { result: textOrBlobForEvent(ctx.sessionId, newResult) } : {}),
@@ -958,7 +954,7 @@ export function createSessionEventRecorder(
         state.attempt = event.attempt
         const id = runId()
         if (!id || state.requestIndex === undefined) return
-        appendSessionLogEvent(ctx.sessionId, 'request/error', {
+        writeSessionEvent(ctx.sessionId, 'request/error', {
           runId: id,
           requestIndex: state.requestIndex,
           error: { message: event.error },
@@ -977,7 +973,7 @@ export function createSessionEventRecorder(
         const changes = state.changesByCallId.get(event.toolCall.id)
         state.changesByCallId.delete(event.toolCall.id)
         state.annotatedResultByCallId.delete(event.toolCall.id)
-        appendSessionLogEvent(ctx.sessionId, 'tool/result', {
+        writeSessionEvent(ctx.sessionId, 'tool/result', {
           callId: event.toolCall.id,
           isError,
           // 预览**保留**:老文件只有它,轨迹面板也只读它。
@@ -1010,7 +1006,7 @@ export function createSessionEventRecorder(
         const usage = normalizeUsage(event.usage)
         const id = runId()
         if (id) {
-          appendSessionLogEvent(ctx.sessionId, 'request/response', {
+          writeSessionEvent(ctx.sessionId, 'request/response', {
             runId: id,
             requestIndex: state.requestIndex,
             messageId: ctx.getMessageId(),
@@ -1025,7 +1021,7 @@ export function createSessionEventRecorder(
             ...(state.toolCallIds.length > 0 ? { toolCallIds: [...state.toolCallIds] } : {}),
           })
         }
-        appendSessionLogEvent(ctx.sessionId, 'request/end', {
+        writeSessionEvent(ctx.sessionId, 'request/end', {
           requestIndex: state.requestIndex,
           ...(event.finishReason ? { stopReason: event.finishReason } : {}),
           ...(event.usage
@@ -1076,7 +1072,7 @@ export function createSessionEventRecorder(
                 : {}),
             }
           : { message: String(error) }
-        appendSessionLogEvent(ctx.sessionId, 'request/error', {
+        writeSessionEvent(ctx.sessionId, 'request/error', {
           runId: id,
           requestIndex: state.requestIndex,
           error: normalized,
@@ -1112,7 +1108,7 @@ export function createSessionEventRecorder(
           const changes = state.changesByCallId.get(call.callId)
           state.changesByCallId.delete(call.callId)
           const text = call.result ?? ''
-          appendSessionLogEvent(ctx.sessionId, 'tool/result', {
+          writeSessionEvent(ctx.sessionId, 'tool/result', {
             callId: call.callId,
             // 收场判死不是"工具失败":引擎写的是 `cancelled`,那句收场话由 run
             // 的收场方式派生(投影的 `lingeringToolError`),不是工具报的错。

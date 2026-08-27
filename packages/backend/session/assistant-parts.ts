@@ -29,10 +29,8 @@
  */
 
 import { projectionBlobUrl } from '@onething/core/session'
-import {
-  appendSessionLogEvent,
-  nextSessionRequestIndex,
-} from './event-log.js'
+import { nextSessionRequestIndex } from './event-log.js'
+import { writeSessionEvent } from './event-writer.js'
 import { putSessionBlob } from './blob-store.js'
 import { currentSessionRun, nextSessionRunPartIndex } from './runs.js'
 import { getLogger } from '../wiring/logging/index.js'
@@ -100,7 +98,7 @@ export function recordSynthesizedAssistantText(
     const now = Date.now()
     // 正文的唯一来源仍然是 `assistant/chunks` 的 fold —— 这里也走它(一条 delta),
     // 而不是给 part-end 加第二个正文字段(§9.2 的类型级门盯着这条)。
-    appendSessionLogEvent(sessionId, 'assistant/chunks', {
+    writeSessionEvent(sessionId, 'assistant/chunks', {
       runId: run.runId,
       requestIndex,
       messageId,
@@ -110,7 +108,7 @@ export function recordSynthesizedAssistantText(
       dt: [0],
       text: [payload],
     })
-    appendSessionLogEvent(sessionId, 'assistant/part-end', {
+    writeSessionEvent(sessionId, 'assistant/part-end', {
       runId: run.runId,
       requestIndex,
       messageId,

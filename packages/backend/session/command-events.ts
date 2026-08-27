@@ -47,7 +47,8 @@
 import type { ChatMessage, ChatSession, MessageAttachment } from '@shared/ipc.js'
 import type { BlobRef } from '@onething/core/session'
 import { putSessionBlob } from './blob-store.js'
-import { appendSurfaceAwareEvent, isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
+import { isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
+import { writeSessionEvent } from './event-writer.js'
 import { SessionEventWriteError } from './event-log.js'
 import { getLogger } from '../wiring/logging/index.js'
 
@@ -125,7 +126,7 @@ export const sessionCommandEvents = {
     safely('appendMessage', () => {
       if (message.role === 'assistant' && message.isStreaming) return
       const type = message.role === 'user' ? 'user/message' : 'system/message'
-      appendSurfaceAwareEvent(
+      writeSessionEvent(
         sessionId,
         type,
         { message: messageForEvent(sessionId, message) as never },
@@ -139,7 +140,7 @@ export const sessionCommandEvents = {
     if (!isSessionTranslationEnabled(sessionId)) return
     safely('deleteMessage', () => {
       const seq = sessionSurface(sessionId).seqOf(messageId)
-      appendSurfaceAwareEvent(
+      writeSessionEvent(
         sessionId,
         'message/deleted',
         { messageId },
@@ -172,7 +173,7 @@ export const sessionCommandEvents = {
       const at = options.time !== undefined ? { time: options.time } : {}
       const turnContext = (patch as { turnContext?: { set?: Record<string, string>; removed?: string[] } }).turnContext
       if (turnContext) {
-        appendSurfaceAwareEvent(
+        writeSessionEvent(
           sessionId,
           'context/turn-update',
           {
@@ -197,7 +198,7 @@ export const sessionCommandEvents = {
           : value
       }
       if (Object.keys(kept).length === 0) return
-      appendSurfaceAwareEvent(
+      writeSessionEvent(
         sessionId,
         'message/patched',
         {
@@ -284,13 +285,13 @@ export const sessionCommandEvents = {
       }
 
       if (payload.inclusive) {
-        appendSurfaceAwareEvent(sessionId, 'message/deleted', { messageId: payload.messageId }, options)
+        writeSessionEvent(sessionId, 'message/deleted', { messageId: payload.messageId }, options)
         return
       }
       // 底稿不在 = 这次命令什么都改不成(reducer 的 `index === -1`)。命令面已经
       // 用同一个判据挡在前面,这里是第二道 —— 只写事实。
       if (!context.before) return
-      appendSurfaceAwareEvent(
+      writeSessionEvent(
         sessionId,
         'user/message-edited',
         {
@@ -325,7 +326,7 @@ export const sessionCommandEvents = {
     safely('replaceAll', () => {
       const at = time !== undefined ? { time } : {}
       const whole = sessionSurface(sessionId).wholeRange()
-      appendSurfaceAwareEvent(
+      writeSessionEvent(
         sessionId,
         'session/cleared',
         { reason },
@@ -341,7 +342,7 @@ export const sessionCommandEvents = {
       )
       if (reason !== 'replaced') return
       for (const message of messages) {
-        appendSurfaceAwareEvent(
+        writeSessionEvent(
           sessionId,
           'message/imported',
           { message: messageForEvent(sessionId, message) as never },
@@ -371,13 +372,13 @@ export const sessionCommandEvents = {
     if (!isSessionTranslationEnabled(sessionId)) return
     safely('patchSession', () => {
       if (patch.agentId !== undefined && patch.agentId !== before?.agentId) {
-        appendSurfaceAwareEvent(sessionId, 'session/agent-changed', {
+        writeSessionEvent(sessionId, 'session/agent-changed', {
           ...(before?.agentId ? { from: before.agentId } : {}),
           to: patch.agentId,
         })
       }
       if (patch.lastModel !== undefined && patch.lastModel !== before?.lastModel) {
-        appendSurfaceAwareEvent(sessionId, 'session/model-changed', {
+        writeSessionEvent(sessionId, 'session/model-changed', {
           ...(before?.lastModel ? { from: before.lastModel } : {}),
           to: patch.lastModel,
           ...(patch.lastProvider ? { provider: patch.lastProvider } : {}),
@@ -387,7 +388,7 @@ export const sessionCommandEvents = {
         patch.workingDirectory !== undefined
         && patch.workingDirectory !== before?.workingDirectory
       ) {
-        appendSurfaceAwareEvent(sessionId, 'session/workdir-changed', {
+        writeSessionEvent(sessionId, 'session/workdir-changed', {
           ...(before?.workingDirectory ? { from: before.workingDirectory } : {}),
           to: patch.workingDirectory,
         })

@@ -17,10 +17,11 @@ vi.mock('@onething/runtime/storage', () => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-const { appendSessionLogEvent, flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache } =
+const { flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache } =
   await import('../event-log.js')
 const { resetSessionEventStatsCache } = await import('../event-stats.js')
-const { appendSurfaceAwareEvent, resetSessionSurfaceCache } = await import('../event-surface.js')
+const { resetSessionSurfaceCache } = await import('../event-surface.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../projection-cache.js')
 const { prepareSessionEvents, prepareSessionEventsOnce, resetSessionPrepareCache, scanUnclosedRuns } =
   await import('../prepare.js')
@@ -47,19 +48,19 @@ afterEach(async () => {
 
 /** 一条被杀在工具执行中途的会话。 */
 async function crashedMidTool(): Promise<void> {
-  appendSessionLogEvent(SESSION, 'user/message', {
+  writeSessionEvent(SESSION, 'user/message', {
     message: { id: 'u1', role: 'user', content: 'go', timestamp: 1 },
   } as never, { surfaceOp: 'append' })
-  appendSessionLogEvent(SESSION, 'run/start', {
+  writeSessionEvent(SESSION, 'run/start', {
     runId: 'r1', kind: 'send', assistantMessageId: 'a1', timestamp: 2,
   } as never, { surfaceOp: 'append' })
-  appendSessionLogEvent(SESSION, 'tool/call', {
+  writeSessionEvent(SESSION, 'tool/call', {
     runId: 'r1', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1',
   } as never)
-  appendSessionLogEvent(SESSION, 'tool/call', {
+  writeSessionEvent(SESSION, 'tool/call', {
     runId: 'r1', callId: 'c2', name: 'read', argumentsRaw: '{}', messageId: 'a1',
   } as never)
-  appendSessionLogEvent(SESSION, 'tool/result', {
+  writeSessionEvent(SESSION, 'tool/result', {
     runId: 'r1', callId: 'c1', isError: false, resultPreview: 'ok', result: { text: 'ok' },
   } as never)
   await flushSessionEventLog(SESSION)
@@ -126,14 +127,14 @@ describe('prepare: 未闭合的 run', () => {
    * 两处判据是同一件事:"这次调用有没有 `tool/result`"。
    */
   it('§13.8-1: a cancellation result satisfies the dangling-call scan', async () => {
-    appendSessionLogEvent(SESSION, 'run/start', {
+    writeSessionEvent(SESSION, 'run/start', {
       runId: 'r1', kind: 'send', assistantMessageId: 'a1', timestamp: 2,
     } as never, { surfaceOp: 'append' })
-    appendSessionLogEvent(SESSION, 'tool/call', {
+    writeSessionEvent(SESSION, 'tool/call', {
       runId: 'r1', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1',
     } as never)
     // 收场采集点写下的那一条(引擎中止时的结局 + 自报标题)。
-    appendSessionLogEvent(SESSION, 'tool/result', {
+    writeSessionEvent(SESSION, 'tool/result', {
       runId: 'r1', callId: 'c1', isError: false, cancelled: true,
       resultPreview: '{"content":[]}', result: { text: '{"content":[]}' }, reportedTitle: 'sleep 20',
     } as never, { surfaceOp: 'append' })
@@ -164,13 +165,13 @@ describe('prepare: 未闭合的 run', () => {
   it('stops at the first fully closed run instead of reading the whole log', async () => {
     // 前面两个已经收好尾的回合 + 最后一个被杀在半路的。
     for (const index of [1, 2]) {
-      appendSessionLogEvent(SESSION, 'user/message', {
+      writeSessionEvent(SESSION, 'user/message', {
         message: { id: `x${index}`, role: 'user', content: 'q', timestamp: index },
       } as never, { surfaceOp: 'append' })
-      appendSessionLogEvent(SESSION, 'run/start', {
+      writeSessionEvent(SESSION, 'run/start', {
         runId: `done${index}`, kind: 'send', assistantMessageId: `y${index}`,
       } as never, { surfaceOp: 'append' })
-      appendSessionLogEvent(SESSION, 'run/end', { runId: `done${index}`, outcome: 'completed' } as never)
+      writeSessionEvent(SESSION, 'run/end', { runId: `done${index}`, outcome: 'completed' } as never)
     }
     await crashedMidTool()
 
@@ -181,10 +182,10 @@ describe('prepare: 未闭合的 run', () => {
 
   it('leaves a properly closed run alone', async () => {
     await crashedMidTool()
-    appendSessionLogEvent(SESSION, 'tool/result', {
+    writeSessionEvent(SESSION, 'tool/result', {
       runId: 'r1', callId: 'c2', isError: false, resultPreview: 'ok', result: { text: 'ok' },
     } as never)
-    appendSessionLogEvent(SESSION, 'run/end', { runId: 'r1', outcome: 'completed' } as never)
+    writeSessionEvent(SESSION, 'run/end', { runId: 'r1', outcome: 'completed' } as never)
     await flushSessionEventLog(SESSION)
     resetSessionEventLogCache()
 
@@ -227,7 +228,7 @@ describe('prepare: 未闭合的 run', () => {
 
     // 冷启动之后**第一件事**就是翻译器写那条用户消息(没有任何人先打开会话、
     // 也没有 beginSessionRun)。
-    appendSurfaceAwareEvent(SESSION, 'user/message', {
+    writeSessionEvent(SESSION, 'user/message', {
       message: { id: 'u2', role: 'user', content: 'again', timestamp: 9 },
     } as never, { surfaceOp: 'append' })
     await flushSessionEventLog(SESSION)

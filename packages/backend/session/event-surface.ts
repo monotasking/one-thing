@@ -27,11 +27,10 @@ import {
   type SessionSurfaceOp,
 } from '@onething/core/session'
 import {
-  appendSessionLogEvent,
   isSessionEventLogEnabled,
   readSessionLogEventsSync,
-  registerSessionLogEventAppendObserver,
 } from './event-log.js'
+import { registerSessionEventObserver } from './event-writer.js'
 import { prepareSessionEventsOnce } from './prepare.js'
 
 interface SessionSurfaceState {
@@ -58,7 +57,8 @@ interface SessionSurfaceState {
 const states = new Map<string, SessionSurfaceState>()
 
 /**
- * F1(§16.6):活 surface 的推进**只此一条路** —— 写入口的同步可见观察者。
+ * F1(§16.6):活 surface 的推进**只此一条路** —— 那扇门的同步可见观察者
+ * (§17.7 #6:门内实现细节,不是外挂的第三件东西)。
  *
  * 从前推进挂在 `appendSurfaceAwareEvent` 自己身上,于是走另一扇门
  * (`appendSessionLogEvent`)落下的事件写侧永远看不见。`tool/result` 恰好既是
@@ -75,12 +75,22 @@ let appendObserverRegistered = false
 function ensureAppendObserver(): void {
   if (appendObserverRegistered) return
   appendObserverRegistered = true
-  registerSessionLogEventAppendObserver((sessionId, record) => {
+  registerSessionEventObserver((sessionId, record) => {
     // 不主动建表:没建表 = 这个会话的 surface 还没有人要,建表要读整份文件。
     const state = states.get(sessionId)
     if (!state) return
     applyToState(state, record)
   })
+}
+
+/**
+ * 立起这条会话的活 surface(**只立表,不推进**)。
+ *
+ * §17.7 #6:唯一的调用者是**那扇门**(`event-writer.ts`)——"写一条事件"这件事
+ * 的第二步。首次会从 `events.jsonl` 同步 fold 一遍;之后是一次 Map 查询。
+ */
+export function ensureSessionSurfaceState(sessionId: string): void {
+  ensureState(sessionId)
 }
 
 function ensureState(sessionId: string): SessionSurfaceState {
@@ -236,41 +246,15 @@ export function sessionSurface(sessionId: string): SessionSurfaceView {
   }
 }
 
-/**
- * 追加一条事件**并**把它推进本会话的 surface 索引。
+/*
+ * `appendSurfaceAwareEvent` —— **已删除**(§17.7 #6:两门一眼收敛为单门)。
  *
- * 翻译器只走这一扇门:直接调 `appendSessionLogEvent` 的话索引就漏了那一条,
- * 下一次 `rangeFrom` 会少遮蔽一格(而那种错是静默的)。
- *
- * §13.10 M6:**上一个进程留下的未闭合 run 在这里收尾**。从前 prepare 的两个
- * 入口是 `beginSessionRun` 与活投影第一次建起来 —— 都排在"这条会话的任何一次
- * **执行**之前",而账本上先落地的不是执行,是那条**用户消息**
- * (`handleSendMessage` 先 `store.addMessage` 再 `beginSessionRun`)。于是崩溃
- * 之后重开说的第一句话把合成的收尾挤到了自己后面:真机上读到
- * `tool/call | user/message | tool/result(interrupted) | run/end`。
- * 正确的口径不是"任何一次执行之前",是**这个进程往这份账本写第一个字之前** ——
- * 而那扇门就是这里。递归安全:`prepareSessionEventsOnce` 在真跑之前就把会话记进
- * 了 `prepared`,它自己合成的那几条走回这里时是一次 `Set.has`。
+ * 它做的两件"额外"的事(`prepareSessionEventsOnce` + 立活 surface)不是某一类
+ * 事件的特权,是**每一条事件**都该走的步骤 —— 它们成了那扇门的第 1、2 步
+ * (`event-writer.ts` 的 `appendSessionEvent`)。于是"走哪扇门"这道选择题没有了,
+ * 而选错门的后果从来是静默的(`ec2437ff`:`tool/result` 走素门,本进程内落的
+ * 那些格进不了活索引,压缩写下的 `sourceEventSeqs` 少 84 格)。
  */
-export function appendSurfaceAwareEvent<TType extends SessionLogEventType>(
-  sessionId: string,
-  type: TType,
-  data: SessionLogEventDataFor<TType>,
-  options: {
-    surfaceOp?: SessionSurfaceOp
-    sourceEventSeqs?: number[]
-    /** 时钟同源(§17.7.1 批 2 裁定 1):调用方已取过刻,原样递给写入口。 */
-    time?: number
-  } = {},
-): number | undefined {
-  prepareSessionEventsOnce(sessionId)
-  // F1:**先把活 surface 立起来,再写** —— 推进由写入口的同步观察者负责
-  // (见 `ensureAppendObserver`),这里只保证"写下去的时候表已经在了"。
-  // 从前是写完再自己 `applyToState` 一次,那一份复刻记录也随之消失:观察者拿到的
-  // 是写入口分配 seq 时的**原件**,不会再有第二个 `Date.now()`。
-  ensureState(sessionId)
-  return appendSessionLogEvent(sessionId, type, data, options)
-}
 
 /** 这个会话在记账吗 —— 翻译器的短路闸(legacy 会话一条都不写)。 */
 export function isSessionTranslationEnabled(sessionId: string): boolean {

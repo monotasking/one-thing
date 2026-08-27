@@ -20,13 +20,8 @@ vi.mock('@onething/runtime/storage', () => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-const {
-  appendSessionLogEvent,
-  flushSessionEventLog,
-  getSessionEventsLogPath,
-  readSessionLogEvents,
-  resetSessionEventLogCache,
-} = await import('../event-log.js')
+const { flushSessionEventLog, getSessionEventsLogPath, readSessionLogEvents, resetSessionEventLogCache } = await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const {
   flushSessionEventStats,
   getSessionShadowStatsPath,
@@ -69,7 +64,7 @@ describe('event-log discipline flip (§10.3)', () => {
   it('creates the session directory for session/created and only for it', async () => {
     // 目录还不存在:`session/created` 自己把它立起来,并成为第一条事件。
     expect(fs.existsSync(path.join(state.sessionsDir, 'fresh'))).toBe(false)
-    expect(appendSessionLogEvent('fresh', 'session/created', { sessionId: 'fresh' })).toBe(1)
+    expect(writeSessionEvent('fresh', 'session/created', { sessionId: 'fresh' })).toBe(1)
     await flushSessionEventLog('fresh')
 
     const events = await readSessionLogEvents('fresh')
@@ -78,7 +73,7 @@ describe('event-log discipline flip (§10.3)', () => {
 
     // 别的类型仍然一个目录都不建 —— legacy 整文件会话被误判成空 jsonl 会话
     // 就是整份历史当场消失(B4)。
-    expect(appendSessionLogEvent('legacy', 'request/end', { requestIndex: 1 })).toBeUndefined()
+    expect(writeSessionEvent('legacy', 'request/end', { requestIndex: 1 })).toBeUndefined()
     expect(fs.existsSync(path.join(state.sessionsDir, 'legacy'))).toBe(false)
   })
 
@@ -87,8 +82,8 @@ describe('event-log discipline flip (§10.3)', () => {
     const logs = collectLogRecordsForTests()
     vi.spyOn(fs.promises, 'appendFile').mockRejectedValue(new Error('ENOSPC'))
 
-    appendSessionLogEvent('s1', 'request/end', { requestIndex: 1 })
-    appendSessionLogEvent('s1', 'request/end', { requestIndex: 2 })
+    writeSessionEvent('s1', 'request/end', { requestIndex: 1 })
+    writeSessionEvent('s1', 'request/end', { requestIndex: 2 })
     await flushSessionEventLog('s1')
     flushSessionEventStats()
 
@@ -103,7 +98,7 @@ describe('event-log discipline flip (§10.3)', () => {
   it('has everything on disk after a checkpoint flush', async () => {
     makeJsonlSession('s2')
     for (let index = 1; index <= 20; index++) {
-      appendSessionLogEvent('s2', 'request/end', { requestIndex: index })
+      writeSessionEvent('s2', 'request/end', { requestIndex: index })
     }
     await flushSessionEventLog('s2')
 
@@ -120,7 +115,7 @@ describe('event-log discipline flip (§10.3)', () => {
    */
   it('G12: refuses the append once another writer touched the log', async () => {
     makeJsonlSession('s3')
-    appendSessionLogEvent('s3', 'request/end', { requestIndex: 1 })
+    writeSessionEvent('s3', 'request/end', { requestIndex: 1 })
     await flushSessionEventLog('s3')
 
     // 第二个写者(另一个进程)直接往文件里追了三条。
@@ -134,9 +129,9 @@ describe('event-log discipline flip (§10.3)', () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 10_000)
     // 批 6b(裁定 7)起拒写**上抛**:唯一账本写不进去不再是可吞的旁路故障。
     // 拒写仍是**一路拒到底**的:守卫认定之后不再 stat,后续 append 同样写不进去。
-    expect(() => appendSessionLogEvent('s3', 'request/end', { requestIndex: 9 }))
+    expect(() => writeSessionEvent('s3', 'request/end', { requestIndex: 9 }))
       .toThrow('session event log write failed')
-    expect(() => appendSessionLogEvent('s3', 'request/end', { requestIndex: 10 }))
+    expect(() => writeSessionEvent('s3', 'request/end', { requestIndex: 10 }))
       .toThrow('session event log write failed')
     vi.mocked(Date.now).mockRestore()
     await flushSessionEventLog('s3')

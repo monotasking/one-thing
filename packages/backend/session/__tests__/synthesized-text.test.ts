@@ -31,8 +31,9 @@ vi.mock('../runs.js', () => ({
   },
 }))
 
-const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } =
+const { flushSessionEventLog, resetSessionEventLogCache } =
   await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { resetSessionEventStatsCache } = await import('../event-stats.js')
 const { resetSessionSurfaceCache } = await import('../event-surface.js')
 const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../projection-cache.js')
@@ -78,15 +79,15 @@ describe('R-b:生图正文进账本', () => {
   })
 
   it('projects the image turn exactly as the message carries it', async () => {
-    appendSessionLogEvent(SESSION, 'user/message', {
+    writeSessionEvent(SESSION, 'user/message', {
       message: { id: 'u1', role: 'user', content: 'draw a cat', timestamp: 1 },
     } as never, { surfaceOp: 'append' })
-    appendSessionLogEvent(SESSION, 'run/start', {
+    writeSessionEvent(SESSION, 'run/start', {
       runId: 'r1', kind: 'send', assistantMessageId: 'a1', timestamp: 2,
     } as never, { surfaceOp: 'append' })
     state.run = { runId: 'r1', partCounter: 0 }
     expect(recordSynthesizedAssistantText(SESSION, 'a1', MARKDOWN)).toBe(true)
-    appendSessionLogEvent(SESSION, 'run/end', { runId: 'r1', outcome: 'completed' } as never)
+    writeSessionEvent(SESSION, 'run/end', { runId: 'r1', outcome: 'completed' } as never)
     await flushSessionEventLog(SESSION)
     resetSessionProjectionCache()
 
@@ -118,15 +119,15 @@ describe('R-b:生图正文进账本', () => {
    */
   it('records the image-failure body as content only (§13.8-2)', async () => {
     const body = '图片生成失败: fetch failed'
-    appendSessionLogEvent(SESSION, 'user/message', {
+    writeSessionEvent(SESSION, 'user/message', {
       message: { id: 'u1', role: 'user', content: 'draw a cat', timestamp: 1 },
     } as never, { surfaceOp: 'append' })
-    appendSessionLogEvent(SESSION, 'run/start', {
+    writeSessionEvent(SESSION, 'run/start', {
       runId: 'r1', kind: 'send', assistantMessageId: 'a1', timestamp: 2,
     } as never, { surfaceOp: 'append' })
     state.run = { runId: 'r1', partCounter: 0 }
     expect(recordSynthesizedAssistantText(SESSION, 'a1', body, { contentOnly: true })).toBe(true)
-    appendSessionLogEvent(SESSION, 'run/end', { runId: 'r1', outcome: 'completed' } as never)
+    writeSessionEvent(SESSION, 'run/end', { runId: 'r1', outcome: 'completed' } as never)
     await flushSessionEventLog(SESSION)
     resetSessionProjectionCache()
 

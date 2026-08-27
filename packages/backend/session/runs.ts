@@ -17,7 +17,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { SessionRunKind } from '@onething/core/session'
-import { appendSurfaceAwareEvent } from './event-surface.js'
+import { writeSessionEvent } from './event-writer.js'
 import { prepareSessionEventsOnce } from './prepare.js'
 import { flushSessionEventLog } from './event-log.js'
 import { scheduleSessionRefold } from './refold.js'
@@ -174,7 +174,7 @@ export function beginSessionRun(
 
   const runId = randomUUID()
   const agentId = input.agentId
-  const startSeq = appendSurfaceAwareEvent(
+  const startSeq = writeSessionEvent(
     sessionId,
     'run/start',
     {
@@ -296,7 +296,7 @@ export async function endSessionRun(
     ? handle.pendingOutcome
     : input.outcome
   const error = normalizeRunError(input.error ?? handle.pendingError)
-  appendSurfaceAwareEvent(sessionId, 'run/end', {
+  writeSessionEvent(sessionId, 'run/end', {
     runId: handle.runId,
     outcome,
     ...(error ? { error } : {}),

@@ -7217,6 +7217,36 @@ function checkRuntimeOwnsSessionUpdateFlows(): void {
  * 字符串匹配更紧),而"写路只有一扇门"由规则 A/C 守。
  */
 
+/**
+ * **事件写入只有一扇门**(§17.7 #6)。
+ *
+ * `appendSessionLogEvent`(`event-log.ts`)是低层落账:分配 seq、编码、通知观察者、
+ * 排队落盘。它**不**做 prepare、也**不**立活 surface —— 那两步是门
+ * (`event-writer.ts` 的 `writeSessionEvent`)的第 1、2 步。直接调低层的后果是
+ * 静默的:`ec2437ff` 那条病历里,`tool/result` 走素门落账,于是本进程内的那些
+ * surface 格进不了活索引,压缩写下的 `sourceEventSeqs` 少 84 格。
+ *
+ * 所以这里守一条:**除了那扇门,没有人该提到 `appendSessionLogEvent`**。
+ * (`event-log.ts` 自己是定义处;测试里也不许 —— 测试绕开门就等于在验一条
+ * 生产上不存在的路。)
+ */
+function checkSessionEventSingleWriteDoor(): void {
+  const door = 'packages/backend/session/event-writer.ts'
+  const definition = 'packages/backend/session/event-log.ts'
+  const offenders = walkFiles(path.join(root, 'packages'), [], { includeTests: true })
+    .filter(file => /\.ts$/.test(file))
+    .filter(file => rel(file) !== door && rel(file) !== definition)
+    // 只看**剥掉注释之后**的代码(与形状类规则同一条纪律:注释里提一句名字
+    // 不该打假红,假红会逼人放宽规则)。
+    .flatMap(file => codeOnlyLines(fs.readFileSync(file, 'utf-8'))
+      .filter(({ code }) => /\bappendSessionLogEvent\b/.test(code))
+      .map(({ raw, lineNo }) => `${rel(file)}:${lineNo}: ${raw.trim()}`))
+  assertNoMatches(
+    'session event log has a single write door (packages/backend/session/event-writer.ts)',
+    offenders,
+  )
+}
+
 function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/working-directory.ts')
   // P4c 第五批:调用点已是 RPC 域。
@@ -9770,6 +9800,7 @@ checkRuntimeOwnsMcpCapabilityOperations()
 checkRuntimeOwnsMcpIpcOperations()
 checkRuntimeOwnsSessionBranchCreation()
 checkRuntimeOwnsSessionUpdateFlows()
+checkSessionEventSingleWriteDoor()
 checkRuntimeOwnsSessionWorkingDirectoryFlow()
 checkRuntimeOwnsSessionSystemMarkerFlow()
 checkRuntimeOwnsSessionIpcOperations()

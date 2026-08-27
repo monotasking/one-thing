@@ -54,8 +54,9 @@ vi.mock('../../stores/sessions.js', () => ({
   readSessionTranscriptFile: () => undefined,
 }))
 
-const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } =
+const { flushSessionEventLog, resetSessionEventLogCache } =
   await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { resetSessionEventStatsCache } = await import('../event-stats.js')
 const { resetSessionProjectionCache } = await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
@@ -86,17 +87,17 @@ function turn(index: number): void {
   const userId = `u${index}`
   const assistantId = `a${index}`
   const runId = `r${index}`
-  appendSessionLogEvent(SESSION, 'user/message', {
+  writeSessionEvent(SESSION, 'user/message', {
     message: { id: userId, role: 'user', content: `ask ${index}`, timestamp: index * 10 },
   } as never, { surfaceOp: 'append' })
-  appendSessionLogEvent(SESSION, 'run/start', {
+  writeSessionEvent(SESSION, 'run/start', {
     runId, kind: 'send', assistantMessageId: assistantId, timestamp: index * 10 + 1,
   } as never, { surfaceOp: 'append' })
-  appendSessionLogEvent(SESSION, 'assistant/chunks', {
+  writeSessionEvent(SESSION, 'assistant/chunks', {
     runId, requestIndex: index, messageId: assistantId, partIndex: index * 2,
     kind: 'text', time0: 1, dt: [0], text: [`reply ${index}`],
   } as never)
-  appendSessionLogEvent(SESSION, 'run/end', { runId, outcome: 'completed' } as never)
+  writeSessionEvent(SESSION, 'run/end', { runId, outcome: 'completed' } as never)
 
   const existing = (state.messages.get(SESSION) ?? []) as unknown[]
   state.messages.set(SESSION, [
@@ -129,7 +130,7 @@ describe('sessionReads over the events projection', () => {
 
   it('hides a deleted message on both sides', async () => {
     await conversation(3)
-    appendSessionLogEvent(SESSION, 'message/deleted', { messageId: 'u2' } as never)
+    writeSessionEvent(SESSION, 'message/deleted', { messageId: 'u2' } as never)
     await flushSessionEventLog(SESSION)
     resetSessionProjectionCache()
     state.messages.set(SESSION, (state.messages.get(SESSION) as Array<{ id: string }>).filter(m => m.id !== 'u2'))
@@ -145,7 +146,7 @@ describe('sessionReads over the events projection', () => {
    * "第二份真相",是**空会话的形状口**(返回值不可空 / 空数组也得有个产地)。
    */
   it('gives nothing for a session with no event history (兜底已删)', () => {
-    appendSessionLogEvent(SESSION, 'request/start', { requestIndex: 1, messageId: 'legacy' } as never)
+    writeSessionEvent(SESSION, 'request/start', { requestIndex: 1, messageId: 'legacy' } as never)
     state.messages.set(SESSION, [
       { id: 'old1', role: 'user', content: 'legacy ask', timestamp: 1 },
       { id: 'old2', role: 'assistant', content: 'legacy reply', timestamp: 2 },

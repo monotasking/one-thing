@@ -42,8 +42,9 @@ vi.mock('../../stores/sessions.js', () => ({
   readSessionTranscriptFile: () => undefined,
 }))
 
-const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } =
+const { flushSessionEventLog, resetSessionEventLogCache } =
   await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { resetSessionProjectionCache } = await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
@@ -75,10 +76,10 @@ afterEach(async () => {
 
 /** 事件侧的一个最小 run(与 `shadow.test.ts` 的 `recordSimpleRun` 同形)。 */
 async function recordRun(text: string): Promise<void> {
-  appendSessionLogEvent(SESSION, 'user/message', {
+  writeSessionEvent(SESSION, 'user/message', {
     message: { id: 'u1', role: 'user', content: 'hi', timestamp: 1000 },
   } as never, { surfaceOp: 'append' })
-  appendSessionLogEvent(SESSION, 'run/start', {
+  writeSessionEvent(SESSION, 'run/start', {
     runId: RUN,
     kind: 'send',
     assistantMessageId: 'a1',
@@ -87,18 +88,18 @@ async function recordRun(text: string): Promise<void> {
     provider: 'openai',
     model: 'gpt-4o',
   } as never, { surfaceOp: 'append' })
-  appendSessionLogEvent(SESSION, 'assistant/chunks', {
+  writeSessionEvent(SESSION, 'assistant/chunks', {
     runId: RUN, requestIndex: 1, messageId: 'a1', partIndex: 0,
     kind: 'text', time0: 2001, dt: [0], text: [text],
   } as never)
-  appendSessionLogEvent(SESSION, 'assistant/part-end', {
+  writeSessionEvent(SESSION, 'assistant/part-end', {
     runId: RUN, requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', len: text.length,
   } as never)
-  appendSessionLogEvent(SESSION, 'request/end', { runId: RUN, requestIndex: 1 } as never)
-  appendSessionLogEvent(SESSION, 'message/patched', {
+  writeSessionEvent(SESSION, 'request/end', { runId: RUN, requestIndex: 1 } as never)
+  writeSessionEvent(SESSION, 'message/patched', {
     messageId: 'a1', patch: { runId: RUN },
   } as never)
-  appendSessionLogEvent(SESSION, 'run/end', { runId: RUN, outcome: 'completed' } as never)
+  writeSessionEvent(SESSION, 'run/end', { runId: RUN, outcome: 'completed' } as never)
   await flushSessionEventLog(SESSION)
   resetSessionProjectionCache()
 }

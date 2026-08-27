@@ -2155,8 +2155,8 @@ describe('SurfaceIndex', () => {
    * 批 6a 尾款(§15.21):`sourceEventSeqs` 的完整性只对**消息节点**问责。
    *
    * `tool/result` 在 surface 上占一格却不物化成一条历史消息,而写侧的活 surface
-   * 索引根本看不见它(那两条 `tool/result` 走 `appendSessionLogEvent`,不走
-   * `appendSurfaceAwareEvent`)—— 于是同进程内落的 `tool/result` 永远进不了清单。
+   * 索引根本看不见它(那两条 `tool/result` 走 `writeSessionEvent`,不走
+   * `writeSessionEvent`)—— 于是同进程内落的 `tool/result` 永远进不了清单。
    * 真机 `ec2437ff` 的 `session/compacted@6068` 就是这么红的:遮蔽 257 格、声明
    * 173 个,差的 84 格全是 `tool/result`。整段照样被遮全,模型没多看也没少看。
    */

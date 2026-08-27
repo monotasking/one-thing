@@ -13,7 +13,7 @@
  * 2. **两种读模式都跑**。`messages` 模式下它只补事件账本、不动消息
  *    (那边仍由 `sanitizeSessionOnStartup` 管),所以默认行为一字不变。
  * 3. **不碰活着的 run**。靠的不是运行时判断,而是**调用点**:三个入口
- *    (`appendSurfaceAwareEvent` 的开头、`beginSessionRun` 的开头、活投影第一次
+ *    (`writeSessionEvent` 的开头、`beginSessionRun` 的开头、活投影第一次
  *    建起来之前)都排在这条会话的任何一次执行**之前**,而
  *    `prepareSessionEventsOnce` 每进程每会话只真的跑一次。
  *    等到有 run 活着的时候,这条会话早已 prepare 过了。这样 prepare 就不必反过来
@@ -46,7 +46,7 @@ import {
   type SessionEventByteReader,
   type SessionLogEventRecord,
 } from '@onething/core/session'
-import { appendSurfaceAwareEvent } from './event-surface.js'
+import { writeSessionEvent } from './event-writer.js'
 import { getSessionEventsLogPath, isSessionEventLogEnabled } from './event-log.js'
 import { getLogger } from '../wiring/logging/index.js'
 
@@ -157,7 +157,7 @@ export function prepareSessionEvents(sessionId: string): PrepareSessionEventsRes
   for (const run of [...open].sort((a, b) => a.startSeq - b.startSeq)) {
     for (const call of run.calls) {
       if (run.results.has(call.callId)) continue
-      appendSurfaceAwareEvent(sessionId, 'tool/result', {
+      writeSessionEvent(sessionId, 'tool/result', {
         callId: call.callId,
         isError: true,
         resultPreview: INTERRUPTED_RESULT_TEXT,
@@ -167,7 +167,7 @@ export function prepareSessionEvents(sessionId: string): PrepareSessionEventsRes
       })
       toolResults += 1
     }
-    appendSurfaceAwareEvent(sessionId, 'run/end', { runId: run.runId, outcome: 'interrupted' })
+    writeSessionEvent(sessionId, 'run/end', { runId: run.runId, outcome: 'interrupted' })
     const closed = closedRuns.get(sessionId) ?? new Set<string>()
     closed.add(run.runId)
     closedRuns.set(sessionId, closed)

@@ -187,8 +187,8 @@ export class SurfaceIndex {
    * 批 6a 尾款(§15.21):问责范围是**消息节点**,不是所有 surface 格。
    * `tool/result` 在 surface 上占一格却不物化成一条历史消息
    * (`surfaceMessageIdOf` 认不出它),而写侧的活 surface 索引根本看不见它 ——
-   * 那两条 `tool/result` 走的是 `appendSessionLogEvent` 而不是
-   * `appendSurfaceAwareEvent`,于是同进程内落的 `tool/result` 永远进不了
+   * 那两条 `tool/result` 走的是 `writeSessionEvent` 而不是
+   * `writeSessionEvent`,于是同进程内落的 `tool/result` 永远进不了
    * `sourceEventSeqs`。真机 `ec2437ff` 的 `session/compacted@6068` 就是这么红的:
    * 遮蔽 257 格、声明 173 个,差的 84 格**全是** `tool/result`。
    *

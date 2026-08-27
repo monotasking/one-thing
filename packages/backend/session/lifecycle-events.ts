@@ -20,7 +20,8 @@
 
 import type { ChatSession } from '@shared/ipc.js'
 import { safely } from './command-events.js'
-import { appendSurfaceAwareEvent, isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
+import { isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
+import { writeSessionEvent } from './event-writer.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
@@ -29,7 +30,7 @@ export const sessionLifecycleEvents = {
   /** 会话创建:`session/created` 是这份日志的**第一条**,目录由它建起来。 */
   sessionCreated(session: ChatSession): void {
     safely('sessionCreated', () => {
-      appendSurfaceAwareEvent(session.id, 'session/created', {
+      writeSessionEvent(session.id, 'session/created', {
         sessionId: session.id,
         ...(session.kind ? { kind: session.kind } : {}),
         ...(session.agentId ? { agentId: session.agentId } : {}),
@@ -87,7 +88,7 @@ export const sessionLifecycleEvents = {
         })
       }
 
-      appendSurfaceAwareEvent(
+      writeSessionEvent(
         sessionId,
         'session/compacted',
         {

@@ -9421,8 +9421,8 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | 7 | **`events.jsonl` 分卷轮转** | 只出了方案要点(触发条件 = 字节 + 语义边界,不是时间;归档 = 分卷 + 清单,不是 gzip 覆盖;refold 的"文件字节此刻是全的"前提要重定义),**待拍板** | §15.12 B3 |
 | 8 | **`legacy-backup/` 381.4MB** | S1a 迁移留下的原抄本副本,**没有治理器**。同批的 `messages.cleared-*`(14MB)同理。只测量未治理 | §15.12;裁定 10 |
 | 9 | **真机夹具沉积清理 + `room-1` 主人判据** | `~/.onething` 里测试年代留下的会话 / traces / debug 快照要不要删;`room-1 seq: expected seq 2 at position 1, got 3` 这条 verify 红是**收进基线**还是**修数据**——**待用户拍板**。它自 §16.20 起**每一批原样复现**(c5 这批仍是它,无新增) | §16.20 七;§16.22 五(d) |
-| 10 | **结算态 `plugin-status` 无产地** | 取代事件(`plugin/status` 带 `durationMs`)**已落盘**,但折叠侧不物化它(reducer 把 `plugin/status` 列在"记录在案但不改投影"),于是**结算态**那一格在消息上没有产地,`content-part-guard.ts` 判红。**这不是豁免,是公开缺口** | 本批(§17.1 策略表 note) |
-| 11 | **`toolCall.argsFinalizedBy` 无采集点** | 流式层的诊断位,事件面上没有对应产地。判据丢它,留作公开缺口 | §10.8 |
+| 10 | **结算态 `plugin-status` 无产地** | **§17.7.2 勘察更正:上一版这一行的"取代事件已落盘"是错的** —— `plugin/status` 只有词表条目与一条"记录在案但不改投影"的归约分支,**全仓零生产者**;插件状态这一格从头到尾是流内的(`CorePluginStatusRegistry` → chunk 流 → renderer `content-parts.ts`)。缺的不是折叠少折一步,是**写侧没有采集点**。补它 = 新起一条 plugins → 账本的采集线 + 裁定"重开会话后还看不看得到已结算的状态行"(**可感知的行为变化**)—— 停在诊断,待拍板 | §17.7.2 四-2 |
+| 11 | ~~**`toolCall.argsFinalizedBy` 无采集点**~~ **已结清(§17.7.2 四-1)** —— 定性为**采集过程的注记**("我们的流式层怎么知道参数说完了"),不是会话事实;实测全仓零消费者(只有生产者),进 canonical 豁免表是**终态**而不是欠一条产地 | §10.8;§17.7.2 |
 | 12 | **两个端口断言没被考过** | `updateMessageError` / `updateMessageTurnContext` 的 A 类断言在 battery 里**零调用**,各欠一个场景 | §16.24 九-3 |
 | 13 | **U1 / U2 + B 期路线** | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动),细案届时出 | §16.11 尾;`docs/design/ui-event-stream-2026-08.md` |
 | 14 | **②类同源注释清理** | 远期另册,纯文字 | §16.11 尾 |
@@ -10146,3 +10146,107 @@ session 0(2212 文件 0 命中)/ log 4 known-none-new / transport 42 · 2392 未
   不接管**(裁定,保持行为逐字不变),折叠侧照旧折得出自己那一份但不落格 ——
   要不要给它们补产地是单独一次拍板。
 - **冷加载修复仍以存储突变落盘**(见二);"搬成纯派生出口"那一半停在诊断。
+
+#### 17.7.2 #6 单门 + #7 产地两条落地记录(2026-08-28,opus 施工,未提交)
+
+*一、单门的形状与收编清单(#6)*
+
+新件 `packages/backend/session/event-writer.ts` —— **全仓唯一的写入口**:
+
+```
+writeSessionEvent(sessionId, type, data, options)
+  ├─ prepareSessionEventsOnce     崩溃残留在写第一个字之前收掉(§13.10 M6)
+  ├─ ensureSessionSurfaceState    活 surface 立起来(首次从文件 fold 一遍)
+  └─ appendSessionLogEvent        分配 seq → 编码 → **同步通知观察者** → 排队落盘
+       └─ 观察者(门内实现细节):活 surface / 活投影 + 会话账
+```
+
+收编清单:
+
+| 从前 | 现在 |
+|---|---|
+| `appendSurfaceAwareEvent`(带 surface 门) | **删除**;它多做的两步成了门的第 1、2 步 |
+| `appendSessionLogEvent`(素门,17 个生产调用点直调) | 降为**低层落账**,只有门能调 |
+| `registerSessionLogEventAppendObserver`(F1 的眼,外挂第三件) | 门的契约:`registerSessionEventObserver` 从门出口,消费者(活 surface / 投影缓存)不再去底层模块找 |
+| `ensureState`(event-surface 私有) | 具名导出 `ensureSessionSurfaceState`,唯一调用者是门 |
+
+对外签名只有一个方法 + 一个观察者注册。**新事件类型不再有选择题**:走这扇门就
+自动拿到 surface / 折叠 / 落盘全套;是不是 surface 节点由**词表**
+(`isSessionSurfaceNodeType`)决定,不由调用点决定。
+
+新棘轮:`scripts/headless-boundary-check.ts` 的
+`checkSessionEventSingleWriteDoor` —— **除了门与定义处,全仓(含测试)不许提
+`appendSessionLogEvent`**。它看的是**剥掉注释之后**的代码(与形状类规则同一条
+纪律:注释里提个名字不该打假红,假红会逼人放宽规则)。
+
+*二、素门调用点勘察表(合并前 17 处生产调用,逐一确认 surface 待遇)*
+
+| 事件种 | 调用点 | 是 surface 节点吗 | 合并后待遇 |
+|---|---|---|---|
+| `request/tools` `request/header` `request/recipe` `request/start` `request/response` `request/end` `request/error`×2 | `session-event-recorder.ts` | 否 | 门内自然分流:不落 surface 格 |
+| `assistant/chunks` `assistant/part-end`×2 `assistant/first-token` | 同上 | 否 | 同上(`assistant/chunks` 仍走 `projectionPreFolded` 那条快路) |
+| `tool/call` `tool/annotate` | 同上 | 否 | 同上 |
+| **`tool/result`×2** | 同上 | **是** | **本案的那一格**:见第三节 |
+| `skill/activated` | `events/event-only-emitter.ts` | 否 | 门内自然分流 |
+
+**一条"为了合门给非 surface 事件强造 surface 格"都没有** —— 门不发明格,格由词表判。
+
+*三、`tool/result` 写侧落定(§15.21 那票)与读侧零回归的证据*
+
+先把事实说准:§15.21 写这一票时,活 surface 的推进还挂在带 surface 门自己身上,
+所以素门落的 `tool/result` **完全**进不了活索引。**F1(§16.6)已经把推进挪到了
+写入口的观察者上**,从那以后只要这条会话的 surface 表**已经立着**,素门落的
+`tool/result` 就进得去 —— `trimForeignTrailingToolResults`(F1-a,§16.15)正是
+为"`tool/result` 已经出现在 range 里"而写的。
+
+所以本案真正补上的是**剩下那半格**:素门不做 `ensureState`,于是"表还没立起来时
+落的那些 `tool/result`"仍然会漏。合并之后每一条事件都先立表,写侧活索引与读侧
+`foldSurface(整份文件)` 从此**在任何时刻**看到同一串事件。
+
+读侧零回归的证据(实跑):
+
+- `sessions:shadow-battery` **GATE GREEN**:runs 321、refoldChecks **218**、
+  refoldMismatches 0(refold 比的正是"文件字节重折 ≡ 内存活投影 + 活会话账",
+  写侧活 surface 一旦多算/少算一格,遮蔽范围就会在这里现形);
+- `sessions:verify` 9 条 FAIL,与 HEAD **逐条同集**(存量账本的 surface 声明区
+  校验一条没有新红);
+- `packages/backend/session` + `packages/core/session` 39 文件 400 只用例全绿
+  (含 S0 合同的 surface 双面用例与 `write-side-visibility` 那两只)。
+
+*四、#7 两条的定性与落法*
+
+**(1) `argsFinalizedBy` —— 定性为采集过程的注记,进豁免表是终态(留账 #11 结清)。**
+判据是 §13.8 那把尺子的另一面:它说的不是"模型/工具做了什么",是"**我们的流式层
+怎么知道参数说完了**"。逐口实测消费面:全仓只有生产者
+(`core/engine/stream-processor.ts` 盖章 → `event-only-emitter.ts` 顺
+`TOOL_INPUT_END` 发出去),**没有任何一处拿它做判断** —— renderer 零引用、工具
+执行链零引用、权限链零引用。它连"影响读侧行为"的资格都没有,补产地只会让账本
+多记一句没人读的自述。`canonical.ts` 的表格行与 `canonicalToolCall` 的注释从
+"留作 §10.8 公开缺口"改写为这条定性(零行为改动)。
+
+**(2) 结算态 `plugin/status` —— 停在诊断,留账 #10 不结清。**
+任务书的前提("取代事件已经落盘,只需折叠侧物化")**实测是错的**:
+
+- 词表里有 `plugin/status`(`events/types.ts`),归约器把它列在"记录在案但不改
+  投影"那一档 —— 但**全仓没有任何生产者往账本写过它**(逐口 grep:只有词表条目、
+  归约分支、一条编解码单测的字面量)。
+- 插件状态这一格从头到尾是**流内**的:`CorePluginStatusRegistry`
+  (`core/plugins/status.ts`)把 part 推进 chunk 流,renderer 的
+  `stores/helpers/content-parts.ts` 就地更新/结算那一格。它从来没有经过会话账本。
+
+所以缺的不是"折叠少折一步",是**写侧根本没有采集点**。补它 = 新起一条
+plugins → 会话账本的采集线,而且要裁定一件**用户可感知**的事:**重开会话之后
+还看不看得到那条已结算的状态行**(今天看不到 —— 它随流消失)。按"行为裁定须先问"
+停在诊断。`ephemeral-policy.ts` 的那条 `note` 已按实测更正(它此前记着一句错的
+"已经落盘"),`content-part-guard.ts` 对已结算 `plugin-status` 判红的口径一字未动。
+
+*五、门读数*
+
+typecheck 0(node + web);三包全量 **7834 绿 / 775 文件**(2 只文件级红是本机
+高负载抖动:`server/http` 的 watch-SSE 与 `terminal/service.smoke`,合并单跑
+30/30 绿);`sessions:shadow-battery` **GATE GREEN**(runs 321、refoldChecks 218 > 0、
+refoldMismatches 0、mismatches 0、portMismatches 0(265 次)、accountMismatches 0、
+appendFailures 0、shadow.jsonl 0 行);四棘轮 boundary 0(**新增单门检查**)/
+session 0 / log 4 known-none-new / transport 42 · 2392 未动;字节回归 + S0 合同 +
+step 身份 + 账折叠预检绿(`ephemeral-policy` 8 只含 unsettled 取代者指针);
+`sessions:verify` 9 条与 HEAD 逐条同集零新增;真机 `~/.onething` 只读。

@@ -35,7 +35,7 @@
  * | 空数组 | 丢 | `toolCalls: []` 与没有 toolCalls 是同一件事 |
  * | `steps` / `toolCalls` 顺序 | 按 id 排序 | 数组序是派生物(到达序 vs 落盘序),身份是 id |
  * | step/toolCall 的 `timestamp` `startTime` `endTime` `receivedAt` `durationMs` | 丢 | 同一件事的两次读表(引擎 vs 事件),差 1~2ms |
- * | toolCall 的 `argsFinalizedBy` | 丢 | 流式层诊断位,事件面上没有采集点(§10.8 公开缺口) |
+ * | toolCall 的 `argsFinalizedBy` | 丢 | **采集过程的注记,不是会话事实**(§17.7 #7 定性,留账 #11 结清):它说的是"我们的流式层怎么知道参数说完了",全仓零消费者 —— 见 `canonicalToolCall` |
  * | `usage.durationMs` | 丢 | 一次流的墙钟量测,不是用量 |
  * | toolCall 的 `requiresConfirmation: false` / `canRespond: false` | 与缺席同义 | 确认闸的收场态,不是事实的一部分 |
  * | step 的 `id` | 丢 | G1:老抄本里是停写那一刻的 uuid(下面那段长注释) |
@@ -172,9 +172,19 @@ function canonicalStep(step: unknown): unknown {
  * toolCall 上的同一条时钟规则,外加 `argsFinalizedBy`。
  *
  * `argsFinalizedBy`(`'parse' | 'provider-done'`)记的是**参数流是怎么收尾的** ——
- * 中途 JSON 补齐,还是等 provider 报完。它是流式层的诊断位,事件账本上没有
- * 对应的采集点(agent-loop 的 `AgentToolCall` 只有 id/name/arguments),
- * 也不影响任何一格正文。留作 §10.8 的公开缺口。
+ * 中途 JSON 补齐,还是等 provider 报完。
+ *
+ * **§17.7 #7 定性(2026-08-28,勘察后结清留账 #11):它是采集过程的注记,不是
+ * 会话事实 —— 所以进豁免表是终态,不是欠一条产地。** 判据是 §13.8 那条尺子
+ * (「这句话在别处有没有产地」)的另一面:它说的不是"模型/工具做了什么",是
+ * "**我们的流式层怎么知道参数说完了**"。逐口实测过消费面:全仓只有生产者
+ * (`core/engine/stream-processor.ts` 盖章 → `event-only-emitter.ts` 顺着
+ * `TOOL_INPUT_END` 发出去),**没有任何一处拿它做判断** —— renderer 零引用、
+ * 工具执行链零引用、权限链零引用。换句话说它连"影响读侧行为"的资格都没有,
+ * 补一条产地只会让账本多记一句没人读的自述。
+ *
+ * 从前这里写的是"留作 §10.8 的公开缺口" —— 那句话把它记成了**欠账**。
+ * 它不是欠账,是**不该进账本**的东西。
  */
 function canonicalToolCall(toolCall: unknown): unknown {
   if (!toolCall || typeof toolCall !== 'object') return canonicalValue(toolCall)

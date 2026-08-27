@@ -27,8 +27,9 @@ vi.mock('@onething/runtime/storage', () => ({
 
 const { materializeNode } = await import('@onething/core/session')
 const { rehydrateSessionFromStorage } = await import('@onething/runtime/sessions/session-dehydrate')
-const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } =
+const { flushSessionEventLog, resetSessionEventLogCache } =
   await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../projection-cache.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
 const { resetSessionEventStatsCache } = await import('../event-stats.js')
@@ -143,7 +144,7 @@ describe('物化 memo 是节点自持的(§17.7.1 批 1)', () => {
     // 先建活投影:写入口的观察者**不主动建表**,建了它才会把后面每一条折进来。
     getLiveSessionProjection(SESSION)
     for (const [type, data, options] of SCRIPT) {
-      appendSessionLogEvent(SESSION, type as never, data as never, options as never)
+      writeSessionEvent(SESSION, type as never, data as never, options as never)
       const fresh = freshMessages()
       const memoized = materializeSessionMessages(SESSION)
       if (fresh.length === 0) {
@@ -157,20 +158,20 @@ describe('物化 memo 是节点自持的(§17.7.1 批 1)', () => {
   it('改一条 run 只重算那一条:别的消息交出来的还是同一个对象', () => {
     getLiveSessionProjection(SESSION)
     for (const [type, data, options] of SCRIPT.slice(0, 21)) {
-      appendSessionLogEvent(SESSION, type as never, data as never, options as never)
+      writeSessionEvent(SESSION, type as never, data as never, options as never)
     }
     const before = materializeSessionMessages(SESSION)
     expect(before).toBeDefined()
     const firstUser = before?.[0]
     const firstAssistant = before?.[1]
 
-    appendSessionLogEvent(SESSION, 'user/message' as never, {
+    writeSessionEvent(SESSION, 'user/message' as never, {
       message: { id: 'u9', role: 'user', content: 'again', timestamp: 8000 },
     } as never, { surfaceOp: 'append' } as never)
-    appendSessionLogEvent(SESSION, 'run/start' as never, {
+    writeSessionEvent(SESSION, 'run/start' as never, {
       runId: 'r9', kind: 'send', assistantMessageId: 'a9', triggerMessageId: 'u9', timestamp: 9000,
     } as never, { surfaceOp: 'append' } as never)
-    appendSessionLogEvent(SESSION, 'assistant/chunks' as never, {
+    writeSessionEvent(SESSION, 'assistant/chunks' as never, {
       runId: 'r9', requestIndex: 9, messageId: 'a9', partIndex: 0,
       kind: 'text', time0: 9001, dt: [0], text: ['new'],
     } as never)
@@ -185,7 +186,7 @@ describe('物化 memo 是节点自持的(§17.7.1 批 1)', () => {
   it('什么都没变的时候交回的是同一个数组实例(换装点据此不写会话对象)', () => {
     getLiveSessionProjection(SESSION)
     for (const [type, data, options] of SCRIPT.slice(0, 21)) {
-      appendSessionLogEvent(SESSION, type as never, data as never, options as never)
+      writeSessionEvent(SESSION, type as never, data as never, options as never)
     }
     expect(materializeSessionMessages(SESSION)).toBe(materializeSessionMessages(SESSION))
   })

@@ -19,15 +19,8 @@ vi.mock('@onething/runtime/storage', () => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-const {
-  appendSessionLogEvent,
-  flushAllSessionEventLogs,
-  flushSessionEventLedger,
-  flushSessionEventLog,
-  getSessionEventsLogPath,
-  resetSessionEventLogCache,
-  SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS,
-} = await import('../event-log.js')
+const { flushAllSessionEventLogs, flushSessionEventLedger, flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache, SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS } = await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const {
   getSessionShadowStatsPath,
   resetSessionEventStatsCache,
@@ -69,8 +62,8 @@ describe('flushSessionEventLedger (§15.12 (a)(b))', () => {
   it('drains the queued append and fsyncs before it returns', async () => {
     const sessionId = 's-drain'
     makeJsonlSession(sessionId)
-    appendSessionLogEvent(sessionId, 'session/created', { sessionId })
-    appendSessionLogEvent(sessionId, 'user/message', {
+    writeSessionEvent(sessionId, 'session/created', { sessionId })
+    writeSessionEvent(sessionId, 'user/message', {
       message: { id: 'm1', role: 'user', content: 'hi', timestamp: 1 },
     })
     // 反向:排空之前那条事件还只在队列里(append 是排队异步落盘的)。
@@ -89,12 +82,12 @@ describe('flushSessionEventLedger (§15.12 (a)(b))', () => {
     // 落盘,否则门读到的是少一截的账。
     const sessionId = 's-stats'
     makeJsonlSession(sessionId)
-    appendSessionLogEvent(sessionId, 'session/created', { sessionId })
+    writeSessionEvent(sessionId, 'session/created', { sessionId })
     await flushSessionEventLog(sessionId)
     expect(fs.existsSync(getSessionShadowStatsPath())).toBe(false)
 
     vi.spyOn(fs.promises, 'appendFile').mockRejectedValue(new Error('disk full'))
-    appendSessionLogEvent(sessionId, 'user/message', {
+    writeSessionEvent(sessionId, 'user/message', {
       message: { id: 'm1', role: 'user', content: 'hi', timestamp: 1 },
     })
 
@@ -109,13 +102,13 @@ describe('flushSessionEventLedger (§15.12 (a)(b))', () => {
   it('returns timedOut instead of hanging (and never throws) when the queue stalls', async () => {
     const sessionId = 's-stall'
     makeJsonlSession(sessionId)
-    appendSessionLogEvent(sessionId, 'session/created', { sessionId })
+    writeSessionEvent(sessionId, 'session/created', { sessionId })
     await flushSessionEventLog(sessionId)
     // 卡住那一刀落在 append 上:排空 = 等这条队列。
     vi.spyOn(fs.promises, 'appendFile').mockImplementation(
       () => new Promise<void>(() => undefined),
     )
-    appendSessionLogEvent(sessionId, 'user/message', {
+    writeSessionEvent(sessionId, 'user/message', {
       message: { id: 'm1', role: 'user', content: 'hi', timestamp: 1 },
     })
 
@@ -154,9 +147,9 @@ describe('session blob GC (§15.12 B1)', () => {
   it('archives an unreferenced blob into blobs/orphan/ instead of deleting it', async () => {
     const sessionId = 's-gc'
     makeJsonlSession(sessionId)
-    appendSessionLogEvent(sessionId, 'session/created', { sessionId })
+    writeSessionEvent(sessionId, 'session/created', { sessionId })
     const referenced = putSessionBlob(sessionId, 'x'.repeat(100), 'text/plain')!
-    appendSessionLogEvent(sessionId, 'user/message', {
+    writeSessionEvent(sessionId, 'user/message', {
       message: { id: 'm1', role: 'user', content: 'hi', timestamp: 1, blob: referenced },
     })
     await flushSessionEventLog(sessionId)
@@ -196,7 +189,7 @@ describe('session blob GC (§15.12 B1)', () => {
     //    会凭空消失,而它指着的 blob 会当场变成"孤儿"。
     const malformed = 's-malformed'
     makeJsonlSession(malformed)
-    appendSessionLogEvent(malformed, 'session/created', { sessionId: malformed })
+    writeSessionEvent(malformed, 'session/created', { sessionId: malformed })
     await flushSessionEventLog(malformed)
     const orphanB = makeOrphan(malformed, 'b'.repeat(80))
     fs.appendFileSync(getSessionEventsLogPath(malformed), '{ this is not json\n')
@@ -209,7 +202,7 @@ describe('session blob GC (§15.12 B1)', () => {
   it('leaves a freshly written blob alone (its event may not be on disk yet)', async () => {
     const sessionId = 's-fresh'
     makeJsonlSession(sessionId)
-    appendSessionLogEvent(sessionId, 'session/created', { sessionId })
+    writeSessionEvent(sessionId, 'session/created', { sessionId })
     await flushSessionEventLog(sessionId)
     const ref = putSessionBlob(sessionId, 'z'.repeat(90), 'text/plain')!
 
@@ -230,7 +223,7 @@ describe('session blob GC (§15.12 B1)', () => {
   it('does not re-archive what already sits in blobs/orphan/', async () => {
     const sessionId = 's-twice'
     makeJsonlSession(sessionId)
-    appendSessionLogEvent(sessionId, 'session/created', { sessionId })
+    writeSessionEvent(sessionId, 'session/created', { sessionId })
     await flushSessionEventLog(sessionId)
     makeOrphan(sessionId, 'c'.repeat(80))
 
@@ -244,8 +237,8 @@ describe('session blob GC (§15.12 B1)', () => {
   it('reports missing references even for sessions it skips', async () => {
     const sessionId = 's-missing'
     makeJsonlSession(sessionId)
-    appendSessionLogEvent(sessionId, 'session/created', { sessionId })
-    appendSessionLogEvent(sessionId, 'user/message', {
+    writeSessionEvent(sessionId, 'session/created', { sessionId })
+    writeSessionEvent(sessionId, 'user/message', {
       message: {
         id: 'm1',
         role: 'user',

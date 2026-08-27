@@ -43,8 +43,9 @@ vi.mock('../../stores/sessions.js', () => ({
   readSessionTranscriptFile: () => undefined,
 }))
 
-const { appendSessionLogEvent, flushSessionEventLog, resetSessionEventLogCache } =
+const { flushSessionEventLog, resetSessionEventLogCache } =
   await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { getLiveSessionProjection, resetSessionProjectionCache } =
   await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
@@ -87,10 +88,10 @@ afterEach(async () => {
 
 /** 事件侧的一个最小 run(与 `shadow-read-mode.test.ts` 的 `recordRun` 同形)。 */
 async function recordRun(text: string, userText = 'hi'): Promise<void> {
-  appendSessionLogEvent(SESSION, 'user/message', {
+  writeSessionEvent(SESSION, 'user/message', {
     message: { id: 'u1', role: 'user', content: userText, timestamp: 1000 },
   } as never, { surfaceOp: 'append' })
-  appendSessionLogEvent(SESSION, 'run/start', {
+  writeSessionEvent(SESSION, 'run/start', {
     runId: RUN,
     kind: 'send',
     assistantMessageId: 'a1',
@@ -99,18 +100,18 @@ async function recordRun(text: string, userText = 'hi'): Promise<void> {
     provider: 'openai',
     model: 'gpt-4o',
   } as never, { surfaceOp: 'append' })
-  appendSessionLogEvent(SESSION, 'assistant/chunks', {
+  writeSessionEvent(SESSION, 'assistant/chunks', {
     runId: RUN, requestIndex: 1, messageId: 'a1', partIndex: 0,
     kind: 'text', time0: 2001, dt: [0], text: [text],
   } as never)
-  appendSessionLogEvent(SESSION, 'assistant/part-end', {
+  writeSessionEvent(SESSION, 'assistant/part-end', {
     runId: RUN, requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', len: text.length,
   } as never)
-  appendSessionLogEvent(SESSION, 'request/end', { runId: RUN, requestIndex: 1 } as never)
-  appendSessionLogEvent(SESSION, 'message/patched', {
+  writeSessionEvent(SESSION, 'request/end', { runId: RUN, requestIndex: 1 } as never)
+  writeSessionEvent(SESSION, 'message/patched', {
     messageId: 'a1', patch: { runId: RUN },
   } as never)
-  appendSessionLogEvent(SESSION, 'run/end', { runId: RUN, outcome: 'completed' } as never)
+  writeSessionEvent(SESSION, 'run/end', { runId: RUN, outcome: 'completed' } as never)
   await flushSessionEventLog(SESSION)
   resetSessionProjectionCache()
 }
@@ -283,7 +284,7 @@ describe('S3w-1 — projection hydrate never writes back into the live projectio
     fs.mkdirSync(path.join(state.sessionsDir, IMPORTED), { recursive: true })
     // 迁移后的脱水形状:step 只有 `toolCallId`(没有 `toolCall`),消息级
     // `toolCalls` 齐 —— 正是 rehydrate 会去补的那一格。
-    appendSessionLogEvent(IMPORTED, 'message/imported', {
+    writeSessionEvent(IMPORTED, 'message/imported', {
       message: {
         id: 'a1',
         role: 'assistant',

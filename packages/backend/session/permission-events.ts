@@ -17,7 +17,7 @@
 
 import { Permission } from '@onething/core/permission'
 import { Interaction } from '@onething/core/interaction'
-import { appendSessionLogEvent } from './event-log.js'
+import { writeSessionEvent } from './event-writer.js'
 import { currentSessionRunId } from './runs.js'
 
 function runIdOf(sessionId: string): { runId?: string } {
@@ -28,7 +28,7 @@ function runIdOf(sessionId: string): { runId?: string } {
 export function installSessionPermissionEventRecorders(): void {
   Permission.setRecorder({
     onAsked(info) {
-      appendSessionLogEvent(info.sessionId, 'permission/asked', {
+      writeSessionEvent(info.sessionId, 'permission/asked', {
         requestId: info.id,
         ...runIdOf(info.sessionId),
         ...(info.callId ? { toolCallId: info.callId } : {}),
@@ -47,18 +47,18 @@ export function installSessionPermissionEventRecorders(): void {
         ...(reason !== undefined ? { reason } : {}),
       }
       if (toolCallIds.length === 0) {
-        appendSessionLogEvent(info.sessionId, 'permission/answered', base)
+        writeSessionEvent(info.sessionId, 'permission/answered', base)
         return
       }
       for (const toolCallId of toolCallIds) {
-        appendSessionLogEvent(info.sessionId, 'permission/answered', { ...base, toolCallId })
+        writeSessionEvent(info.sessionId, 'permission/answered', { ...base, toolCallId })
       }
     },
   })
 
   Interaction.setRecorder({
     onAsked(request) {
-      appendSessionLogEvent(request.sessionId, 'interaction/asked', {
+      writeSessionEvent(request.sessionId, 'interaction/asked', {
         requestId: request.id,
         ...runIdOf(request.sessionId),
         ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
@@ -66,7 +66,7 @@ export function installSessionPermissionEventRecorders(): void {
       })
     },
     onAnswered(request, answer) {
-      appendSessionLogEvent(request.sessionId, 'interaction/answered', {
+      writeSessionEvent(request.sessionId, 'interaction/answered', {
         requestId: request.id,
         ...runIdOf(request.sessionId),
         ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),

@@ -35,13 +35,8 @@ vi.mock('../reads.js', () => ({
   },
 }))
 
-const {
-  appendSessionLogEvent,
-  flushSessionEventLog,
-  getSessionEventsLogPath,
-  resetSessionEventLogCache,
-  SessionEventWriteError,
-} = await import('../event-log.js')
+const { flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache, SessionEventWriteError } = await import('../event-log.js')
+const { writeSessionEvent } = await import('../event-writer.js')
 const { putSessionBlob } = await import('../blob-store.js')
 const {
   flushSessionEventStats,
@@ -77,7 +72,7 @@ function makeJsonlSession(sessionId: string): void {
 }
 
 function userMessage(sessionId: string, id: string): void {
-  appendSessionLogEvent(sessionId, 'user/message', {
+  writeSessionEvent(sessionId, 'user/message', {
     message: { id, role: 'user', content: `hello ${id}`, timestamp: 1 },
   })
 }
@@ -95,7 +90,7 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
       .mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }))
 
     // 第一刀还拿得到 seq —— append 是排队异步落盘的,失败天生晚于调用它的那一句。
-    expect(appendSessionLogEvent('w1', 'user/message', {
+    expect(writeSessionEvent('w1', 'user/message', {
       message: { id: 'm2', role: 'user', content: 'x' },
     })).toBeDefined()
     await flushSessionEventLog('w1')
@@ -103,7 +98,7 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
     expect(readSessionShadowStats().appendFailures).toBeGreaterThan(0)
 
     // 失败粘住了:下一次写口就是一次可见的命令失败。
-    expect(() => appendSessionLogEvent('w1', 'user/message', {
+    expect(() => writeSessionEvent('w1', 'user/message', {
       message: { id: 'm3', role: 'user', content: 'x' },
     })).toThrow(SessionEventWriteError)
 
@@ -112,7 +107,7 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
 
   it('a G12 refusal is a throw, not a silent undefined', async () => {
     makeJsonlSession('w2')
-    appendSessionLogEvent('w2', 'request/end', { requestIndex: 1 })
+    writeSessionEvent('w2', 'request/end', { requestIndex: 1 })
     await flushSessionEventLog('w2')
 
     // 第二个写者直接往文件里追了一条。
@@ -123,7 +118,7 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
     // 守卫有 500ms 检查间隔:把表往前拨,让下一次 append 真的去 stat。
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 10_000)
 
-    expect(() => appendSessionLogEvent('w2', 'request/end', { requestIndex: 9 }))
+    expect(() => writeSessionEvent('w2', 'request/end', { requestIndex: 9 }))
       .toThrow(SessionEventWriteError)
   })
 
@@ -168,7 +163,7 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
 describe('refold self-consistency loop (§14.3-B)', () => {
   async function seedProjection(sessionId: string): Promise<void> {
     makeJsonlSession(sessionId)
-    appendSessionLogEvent(sessionId, 'session/created', { sessionId })
+    writeSessionEvent(sessionId, 'session/created', { sessionId })
     userMessage(sessionId, 'm1')
     userMessage(sessionId, 'm2')
     await flushSessionEventLog(sessionId)
