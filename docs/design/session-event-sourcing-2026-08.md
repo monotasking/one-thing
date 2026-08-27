@@ -9400,7 +9400,7 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | **策略表收敛 + 指针解析** | 定律三:每条短命登记都被取代,且证明指针不烂 | `core/session/__tests__/ephemeral-policy.test.ts` |
 | **`decode∘encode ≡ id`** | 定律二:打包是压缩不是语义 | `core/session/__tests__/session-chunk-codec.test.ts` |
 | **字节回归** | 打包行的时机与字节与从前逐字节相同 | `session-chunk-bytes.test.ts` |
-| **S0 合同(A/B 两线)** | 命令线 ≡ 事件线,模型历史逐字节相同 | `core/session/__tests__/projection-contract.test.ts` |
+| **S0 合同(A/B 两线)** | 期望折叠产物 ≡ 事件线(#8a 起 A 线不再说"命令"),模型历史逐字节相同 | `core/session/__tests__/projection-contract.test.ts` |
 | **step 身份合同** | 两条路上 step id 语义同源 | `step-identity-contract.test.ts` |
 | `sessions:verify`(只读) | 存量账本对账 | `scripts/session-verify.ts` |
 | 补水合同 | 冷加载补水 ≡ 投影 | `scripts/session-hydration-contract.ts` |
@@ -9413,8 +9413,8 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | # | 留账 | 状态 / 判据 | 出处 |
 |---|---|---|---|
 | 1 | **大会话按节点物化缓存** | 稳态是亚微秒(一次 map 查询 + 一次 `!==`),代价全在**活 run 窗口内**:每条 delta 换失效号,`getSession` ~30 次/run,258 条消息 / 50MB 的巨型会话上一次物化 46ms。方向是**只重算改动过的那几条**,不是回头改换装点 | §16.27 六 |
-| 2 | **老 reducer 远期退役** | c4-d **改判保留**:它今天的两个身份是「会话级派生的算法」+「S0 合同测试 A 线的词汇」,不再是消息数组的维护者。**退役条件**:A 线换一种表达"引擎往消息上写了什么"的词汇——删了它 A 线当场退化成恒真等式 | §16.27 四 |
-| 3 | **三口判据同源退役** | 挂在第 2 条上。今天三口读的已是物化视图,**不是第二份真相**,只是同一份真相的 store 侧门牌 | §16.27 四 |
+| 2 | **老 reducer 远期退役** | c4-d 改判保留两个身份;**#8a(08-28)已兑现退役条件、消掉身份 2** —— A 线改说事件(`ExpectedLine`),5 条生产零流量的端口专用分支与 15 个零调用端口口真删,`SessionCommand` 12→7。**剩下的唯一身份是「会话级派生的算法」,而它是真生产依赖**(7 条活分支各在写路上,全仓唯一的 `updatedAt`/`lastProvider`/总账扣减/`contextSize`·`summary` 失效/lazy 档产地)。往下 = **#8b**,并入 #3 出方案 | §16.27 四;§17.7 #8a |
+| 3 | **三口判据同源退役** | 挂在第 2 条上 —— **#8a 未动它**:三口全部挂在那 7 条**活**分支上当"写不写事件"的判据(`pin` 同理),分支活着就不能退。今天三口读的已是物化视图,**不是第二份真相**,只是同一份真相的 store 侧门牌。真正的退役随 #8b | §16.27 四;§17.7 #8a |
 | 4 | **`tool/result` 进 surface 的写侧一票** | **已由 F1 收**(§16.15);另册里那条记录作废 | §16.15;§16.11 |
 | 5 | **A 只修尾随格** | 归属在段外、却排在段**中间**的 `tool/result` 表达不出来(replace 的 op 是位置连续段)。全库零例;真要修得先给 surface op 词汇加"非连续遮蔽" | §16.15 六-1 |
 | 6 | **`pruneShadowedToolCalls` 是零命中路** | 生产者还没写。真写时要一并决定"只遮结果格"这种 op 下 `isShadowedWith` 怎么答,而不是默默让它生效 | §16.15 六-2 |
@@ -9453,3 +9453,157 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 另有一处位置差(不影响读图):短命策略表画在流侧,实际住在**词汇表旁**
 (`core/session/events/ephemeral-policy.ts`),消费者是 `canonical.ts` 与
 `content-part-guard.ts` 两处。
+
+### 17.7 留账方案集(2026-08-28,Fable;评审口径=可维护性+可迭代性两轴,hotfix 即架构告警)
+
+用户裁定口径:若某项的"当前修法"是补丁形态,即视为架构有病,宁调架构不惧复杂度。
+本节对 §17.5 中需要方案的每项给 1–2 案,标注 hotfix 味与推荐。#1/#4 属数据处置授权
+不设方案。
+
+**#3 物化缓存粒度**
+- 现状 hotfix 味:失效号是**外挂账本**(进程级计数器 + 模块内 Map),缓存的"谁作废"
+  与领域对象(投影节点)分离——典型的旁挂簿记。
+- 方案 A(细化外挂):失效号按消息分桶,Map<messageId, 版本>。可维护性:簿记逻辑
+  仍在物化模块里,两份真相(节点态 vs 桶号)要人肉对齐;可迭代性:再加一层视图
+  (如 U 线的 renderer 视图)就要再挂一套桶。**hotfix 味未除。**
+- 方案 B(节点自持,推荐):物化成品成为 **ProjectionNode 自己的惰性属性**——reducer
+  触碰节点时顺手清掉该节点的 memo,列表组装=对可见节点 map 一次(命中即取 memo)。
+  缓存与失效跟着对象走,外挂簿记消失。可维护性:失效逻辑住在唯一会改节点的地方
+  (reducer),不可能漏;可迭代性:任何新视图(UI 折叠、trace、history)都白捡同一份
+  节点级 memo。面向对象审核:通过(状态与其呈现内聚于对象)。
+
+**#2+#1 verify 账本主人判据(连带夹具清理)**
+- 现状 hotfix 味:verify 把"谁的账本"当成不存在的问题,外部进程污染与引擎断号同色;
+  夹具沉积靠基线静音。
+- 方案 A(判据补丁):verify 按会话 id 模式排除夹具名单。名单要维护,新夹具再漏
+  再加——补丁。
+- 方案 B(账本自证身份,推荐):`session/created` 事件携带**产地印章**(store 路径指纹
+  /宿主类型),verify 读第一条事件即知账本主人,非本机产地=降级为"外来账本"单列。
+  可维护性:判据从名单变成事实;可迭代性:未来多 store/多宿主(server、移动端)
+  天然有身份可查。落地时顺带清夹具沉积(授权已在)。
+
+**#5 events.jsonl 分卷轮转**
+- 方案 A(外部治理脚本):janitor 式按字节切卷+清单文件。hotfix 味:治理逻辑住在
+  账本之外,清单是第二份真相,refold/trace 都要学会读清单——三个读者三次适配。
+- 方案 B(编码器第二职责,推荐):轮转定性为**存储编码的一部分**(定律二的自然延伸):
+  编解码器管"逻辑事件流 ↔ 物理文件组",分卷边界=段边界的放大版,卷索引是**可再生
+  缓存**(丢了从卷头重建)而非真相。可维护性:读者仍只面对"一条逻辑事件流",三个
+  读者零适配;可迭代性:未来压缩算法、远端归档都是编码器内部演进。前置:数字到
+  阈值再动(现 400MB 未到)。
+
+**#6 事件写入的"两门一眼"收敛**
+- 现状 hotfix 味:带 surface 门 + 素门 + F1 观察者眼,三件拼出"写入口"——历史累积
+  形态,ec2437ff 病历(素门事件活 surface 看不见)正是拼缝的产物,F1 的眼是补拼缝的。
+- 方案(单门,推荐,无 B 案):合并为**一个写入口对象**,surface 记账成为它的内部
+  步骤(所有 surface 格同门),观察者眼降级为门内实现细节。可维护性:"事件怎么进
+  系统"一个类讲完;可迭代性:未来任何新事件类型自动获得 surface/折叠/落盘全套,
+  不再有"走哪扇门"的选择题。注:edit-resend 遮蔽范围会因 tool/result 同门而更完整
+  ——即 §15.21 挂起那一票,随本案自然落定(读侧兼容批 P 已铺)。
+
+**#7 三条产地小尾巴**
+- 结算态 plugin-status:按定律一补产地(一条 `plugin/status` 终态事件),短命表里
+  unsettled 的取代者从此真实存在。无 B 案——"没有产地的事实"在本宪法下就是 bug。
+- argsFinalizedBy:同上,归 `tool/call` 已有事件补一格,或判定为派生量进豁免表
+  (勘察定,倾向后者:它描述"参数怎么定稿的",是采集过程注记不是会话事实)。
+- 两个端口断言未经真机:非方案项,浸泡自然覆盖。
+
+**#8 reducer/三口的最终退役**
+- 现状:reducer 降格为合同测试 A 线的"活词汇"留任——这是权宜,不是终态。
+- 方案 A(留任制度化):A 线合同改名"引擎写入语义样本",reducer 永久保留为测试
+  基准。可维护性:两份语义长期并存,改命令仍要看两处——与"不乱"目标相悖。
+- 方案 B(A 线改说事件,推荐):合同测试的输入从"命令序列"改为"事件序列 + 期望
+  折叠产物"(事件即词汇,不再需要 reducer 当翻译),reducer 与三口随之真删。可维护
+  性:全仓最后一份双语消失;可迭代性:新命令的合同=写一段事件剧本,门槛更低。
+  排期:独立小批,随时可做。
+- **08-28 勘察勘误(#8 首棒停诊,一行未改)**:上面"随之真删"是对 §17.5 #2 的
+  **摘要丢格**——#2 原文记着 reducer 的**两个身份**,本节只复述了"A 线词汇"一个。
+  逐口实测(非测试文件零漏):15 个消息级端口生产零调用(§16.27 那批,确实只剩
+  A 线在用),但 **7 条分支活在生产写路上**(append / upsert / patch / delete /
+  truncate / replaceAll / repairOnLoad),它们是全仓**唯一**的会话级派生产地:
+  `updatedAt`(会话列表排序唯一写者)、`lastProvider/lastModel`、截断时把
+  `subtractedUsageFromProjection` 减到会话总账、`contextSize`/`lastInputTokens`/
+  `summary` 失效、`result.lazy`(5s lazy 落盘档判据)。下游真消费者:index meta、
+  plugins/sessions 上下文占比、radio DJ 闸、evals、tasks dispatch。三口
+  (`get/has/findMessageFromStore`)全部挂在这 7 条活分支上当"写不写事件"判据,
+  pin 防的也是活分支的二次应用——**分支活着,三口与 pin 就不能动**。
+  已死可划掉的两格:`writePlan` 被 storage-driver 收下不再读(批 6b);sqlite
+  适配器零注入,`commandMessageSeq`→sqlite 链空转。
+- **据此拆两半**:
+  - **#8a(立即施工,无争议)**:A 线改说事件(`CommandLine`→`ExpectedLine`,
+    21 条场景一条不丢;纪律:期望产物必须从场景描述按引擎写法逐格拼,**绝不能**
+    抄投影输出当字面量——否则合同静默退化成恒真等式,此纪律落进文件头注释;
+    `truncateFrom{inclusive:false}` 的 timestamp 覆盖与 truncate 的 usage 扣减
+    两格要显式表达,今天是白捡 reducer 的)+ 只删 5 条生产零流量分支
+    (`appendContentPart`/`upsertStep`/`patchStep`/`patchStepsUsageByTurn`/
+    `setToolCalls`)及专用类型,`SessionCommand` 联合收缩到 7 条;
+    `session:check` 规则 B 理由改写成只剩身份 1。三口与 pin 原地不动。
+  - **#8b(并入 #3,同一条定律①)**:「**会话账也是折叠产物**」——`updatedAt`/
+    `lastProvider,lastModel`/usage 总账/`contextSize` 失效/lazy 档全部改为从事件
+    折叠得出,与 #3 的节点自持物化是同一方案的两个层级(消息级 memo + 会话级
+    derived)。#8b 落地后 7 条活分支、三口、pin 才能一起真删。方案随 #3 细案一起出。
+
+**#8a 落地记录(2026-08-28,opus 施工,未提交;7 文件 +410 −562)**
+
+*A 线迁移清单* —— `CommandLine`(命令序列 → 老 reducer)换成 `ExpectedLine`
+(场景描述 → 期望折叠产物,普通对象数组落格)。**21 条 A/B 对拍场景一条不丢,逐条
+过**:single text turn / turn with reasoning / reasoning 两个落点(top vs inline)/
+steering 劈两条消息 / steer 无 `continuesRunId` 的兜底推断 / 失败但完成的工具保留
+结构化结局与自报标题 / edit changes 上 toolCall 与 step.toolCall / `providerCostUSD`
+一路到 `steps[].usage` / 两次请求含 denied 权限 / 流式 bash 读 SKILL.md 的
+skill-read+skillUsed / abort 中止在飞工具 / abort 在参数流中(孤儿占位活、未完成回合
+不落 parts)/ regenerate 砍旧回合 / edit-and-resend 改写并截断 / 中段删除 / 压缩
+(UI 留、模型历史折)/ collab clear 并继续写 / 系统标记来去 / imported 老消息逐字
+透传 / 链式 surface replace(压缩后再编辑)/ turn context 落用户消息并回放进历史。
+另有 3 处 A 线读点同步迁移:`flushPendingExecutionUsage`、`compact`/`failedCompact`
+的 `session.messages.findIndex` 与摘要写入(改走 `patchSession`)、§13.10 M3 用例
+的 `scenario.a.messages[4].timestamp`(getter 未变,零改动)。该文件 86 tests 全绿。
+
+*两条纪律已落进文件头注释*:① 期望产物按引擎写法逐格拼、**绝不抄投影输出当字面量**
+(否则退化成 B7 点名的恒真等式),派生仍由 `getStepType` / `detectSkillUsage` /
+`createCoreToolInputStartArtifacts` / `finalizeLingeringAgentLoopToolWork` /
+`buildContextCompactContent` 现算;② `truncateFrom{inclusive:false}` 的 timestamp
+覆盖与 truncate 的 usage 扣减由 `ExpectedLine.truncateFrom` **显式**表达 ——
+扣减之后照旧交给 `computeSessionTimelineMetadataRepair` 决定 `summary`/`contextSize`
+存废(`summary` 进 `sessionMeta`,是模型历史断言的入参,漏了链式 replace 那条当场分岔)。
+
+*删除清单*:core `applySessionCommand` 的 5 条端口专用分支 +
+`SessionCommandMeta.updatedStepIds` + `CoreToolCallState` import,`SessionCommand`
+联合 12 → **7**;`OnethingSessionMessageRuntime` 的 **15 个零调用端口口**
+(content/reasoning/streaming/usage/toolCalls/contentParts/addContentPart/
+thinkingTime/skill/error/turnContext/addStep/updateStep/updateSteps/
+stepsUsageByTurn);`core/session/__tests__/commands.test.ts` 的 5 组分支单测;
+`session-message-runtime.test.ts` 的 `owns content, tool, and step mutations` 一只。
+
+*一处方案外的牵连,已就地解决(不是停诊项)*:`step-identity-contract.test.ts`
+(§17.4 常驻门"step 身份合同")是这 5 条分支的**第二个**测试侧消费者,拿
+`applySessionCommand({type:'patchStep'})` 当"引擎发一次 patchStep"的落法。它证的
+从来不是 reducer,而是"引擎手上的 step id ≡ 投影物化出来的那一条",所以改由本地
+`patchStepById` 按 id 寻址 —— 认领规则、命中即 COW、落空即原样返回,与被删分支逐字
+同义,正反两只用例(命中 3/3、旧 uuid 全部静默落空)判据一字未动。
+
+*端口签名冻结(§17.3 纪律 13)未被破*:那条冻的是**引擎侧** `backend/stores/sessions.ts`
+那 15 个同名口的形状,因为四条 A 类事实断言(usage/skillUsed/errorDetails/turnContext)
+与 `assertContentPartIsCarriable` 守卫挂在**那里**。本批删的是 runtime 那一层的同名
+方法,其上一条断言都没有;引擎侧签名与五处断言/守卫一个字未动。
+
+*门读数*:typecheck 0(node+web);core+backend/session+runtime/sessions 定向
+**1362 绿 / 133 文件**;`sessions:shadow-battery` **GATE GREEN**(runs 321、
+refoldChecks 224 > 0、refoldMismatch 0、mismatches 0、portMismatches 0
+[端口事实比过 265 次]、appendFailures 0、shadow.jsonl 0 行);字节回归
+`session-chunk-bytes` 1 绿 + `session-chunk-codec` 5 绿 + `ephemeral-policy` 8 绿;
+四棘轮 boundary 0 / session 0 / log 4 known-none-new / transport 42 常量·四壳 2392
+均未动。`sessions:verify` 9 条 FAIL —— **与 HEAD(8c4f54bd)干净工作树逐条同集**
+(另建 worktree 实跑对照),本批零新增;验收词条"只剩 room-1"是旧读数,真机 store
+上另外 8 条是存量抄本对账的既有失配,归 §17.5 存量账,不属本批。真机 `~/.onething`
+只读。
+
+**#9 U1/U2 + B 期(下一场战役,细案另出)**
+- 唯一结构正确路径,无 B 案:renderer 直接 import core 投影 reducer(U-b 已拍)、
+  消费事件词汇(U-a 已拍)、删自建拼装、ui-shadow 门;B 期同窗换管。它对两轴的
+  意义:渲染层从"第三份手写推导"变成同一次折叠的第三个出口——本宪法覆盖到屏幕。
+  细案在开工前出,含消息列表虚拟化与等待指示(用户已并入)。
+
+**建议施工序**(全部按推荐案;08-28 随 #8 勘察修订):#8a(小,A 线改说事件+删
+5 条死分支)→ #3+#8b(节点自持物化 + 会话账折叠化,一个方案两个层级;落地后
+reducer 7 条活分支/三口/pin 一起真删)→ #6(单门,含 #7 产地两条)→ #2+#1
+(主人印章+清夹具)→ #9(U/B 战役)→ #5(数字到阈值再动)。

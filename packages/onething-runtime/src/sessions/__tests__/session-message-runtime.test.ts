@@ -162,7 +162,10 @@ describe('onething session message runtime', () => {
       provider: 'deepseek',
       model: 'deepseek-chat',
     }))
-    runtime.updateMessageContent('s1', 'm1', 'partial response')
+    // §17.7 #8a:`updateMessageContent` / `updateMessageStreaming` 两个薄包装随
+    // 那 15 个零调用端口一起删了,这里改走还活着的 `patchMessageFields` —— 它与
+    // 那两口是同一条私有 `patchMessage` 路,节流验的也还是同一件事。
+    runtime.patchMessageFields('s1', 'm1', { content: 'partial response' }, 'stream')
 
     expect(sqlite.syncMessage).not.toHaveBeenCalled()
     expect(sessions.get('s1')?.messages[0]).toMatchObject({
@@ -170,7 +173,7 @@ describe('onething session message runtime', () => {
       isStreaming: true,
     })
 
-    runtime.updateMessageStreaming('s1', 'm1', false)
+    runtime.patchMessageFields('s1', 'm1', { isStreaming: false })
     vi.advanceTimersByTime(500)
 
     expect(sqlite.syncMessage).toHaveBeenCalledTimes(1)
@@ -215,31 +218,14 @@ describe('onething session message runtime', () => {
     expect(sqlite.syncSessionUsage).toHaveBeenCalled()
   })
 
-  it('owns content, tool, and step mutations behind host repository adapters', () => {
-    const session = createSession([
-      createMessage('m1', {
-        content: 'initial',
-        steps: [{ id: 'step-1', title: 'Run', turnIndex: 1 }],
-      }),
-    ])
-    const { runtime, sessions, saveSessionToFile, sqlite } = createHarness(session)
-
-    expect(runtime.addMessageContentPart('s1', 'm1', { type: 'text', text: 'hello' })).toBe(true)
-    expect(runtime.updateMessageToolCalls('s1', 'm1', [{ id: 'tool-1', name: 'read' }])).toBe(true)
-    expect(runtime.addMessageStep('s1', 'm1', { id: 'step-2', title: 'Read', toolCallId: 'call-1', turnIndex: 2 }))
-      .toBe(true)
-    expect(runtime.updateMessageStep('s1', 'm1', 'step-1', { status: 'done' })).toBe(true)
-    expect(runtime.updateStepsUsageByTurn('s1', 'm1', 2, usage(3, 4))).toEqual(['step-2'])
-
-    expect(sessions.get('s1')?.messages[0]).toMatchObject({
-      contentParts: [{ type: 'text', text: 'hello' }],
-      toolCalls: [{ id: 'tool-1', name: 'read' }],
-      steps: [
-        { id: 'step-1', status: 'done' },
-        { id: 'step-2', usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 } },
-      ],
-    })
-    expect(saveSessionToFile).toHaveBeenCalled()
-    expect(sqlite.syncMessage).toHaveBeenCalledWith('s1', expect.objectContaining({ id: 'm1' }), 1)
-  })
+  /*
+   * `owns content, tool, and step mutations behind host repository adapters`
+   * —— **随那 15 个零调用端口一起删除**(§17.7 #8a,2026-08-28)。
+   *
+   * 它验的是 `addMessageContentPart` / `updateMessageToolCalls` /
+   * `addMessageStep` / `updateMessageStep` / `updateStepsUsageByTurn` 这五口在
+   * 本层的落法,而这五口(连同另外十口)在 c4-d 之后生产零调用、本批整批删除。
+   * 落盘与 sqlite 那两条断言不因此失守:上面两只用例(流式节流 / delete+truncate)
+   * 走的是同一个 `saveSessionToFile` 与同一组 sqlite 适配器。
+   */
 })

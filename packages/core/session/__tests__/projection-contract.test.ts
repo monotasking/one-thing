@@ -2,24 +2,49 @@
  * S0 合同测试(docs/design/session-event-sourcing-2026-08.md §9.5)。
  *
  * 每个场景**同时**跑两条线:
- *  - **A 线**(今天的真相):命令序列 → `applySessionCommand` 逐条 → `ChatMessage[]`;
+ *  - **A 线**(引擎往消息上写了什么):场景描述 → 照引擎写法**逐格拼**出期望的
+ *    折叠产物 → `ChatMessage[]`;
  *  - **B 线**(事件溯源):同一场景按 §9.3 翻译成事件 → `projectChatMessages`。
  *
  * 断言 `canonical(A) ≡ canonical(B)`,以及
  * `projectModelHistory(B, meta) ≡ buildHistoryMessages(A, session)`。
  *
+ * ## A 线为什么不再说"命令"(§17.7 #8a,2026-08-28)
+ *
+ * 从前 A 线的词汇是**命令序列**,由 `core/session/commands.ts` 的老 reducer 逐条
+ * 折成 `ChatMessage[]`。那让全仓多出一份"改一条消息意味着什么"的双语:改命令要
+ * 看两处。#8a 把它换成 `ExpectedLine` —— 同一套引擎写法,直接落在普通对象数组上,
+ * 于是那 5 条**生产零流量**的 reducer 分支(`appendContentPart` / `upsertStep` /
+ * `patchStep` / `patchStepsUsageByTurn` / `setToolCalls`)失去最后一个消费者,随本批
+ * 真删。`ExpectedLine` 是**夹具**,不是第二个语义权威:它只做数组落格,不算派生。
+ *
+ * ## 两条必须守住的纪律(违反其一,这道门当场静默失效)
+ *
+ * 1. **期望产物按引擎写法逐格拼,绝不抄投影输出当字面量。**
+ *    派生字段一律现算:step 的 type/title 走 `getStepType` /
+ *    `coreToolInputStartStepTitle`,技能识别走 `detectSkillUsage`,参数流占位走
+ *    `createCoreToolInputStartArtifacts`,收场修复走
+ *    `finalizeLingeringAgentLoopToolWork`,压缩卡正文走 `buildContextCompactContent`
+ *    (§10.10)。一旦有人把 `projectChatMessages` 的输出复制成 fixture,两条线就
+ *    共享了输出路径,等式退化成恒真 —— 正是下面 B7 点名的那个病。
+ * 2. **`truncateFrom{inclusive:false}` 的 timestamp 覆盖、truncate 的 usage 扣减,
+ *    A 线要显式表达。** 这两格从前是白捡老 reducer 的(`applyTruncate` 顺手做);
+ *    reducer 一走它们就没人做了。编辑重发盖新 `timestamp` 直接进 canonical 比对,
+ *    截断扣减经 `computeSessionTimelineMetadataRepair` 决定 `summary` 存废 ——
+ *    而 `summary` 在 `sessionMeta` 里,是模型历史断言的入参。
+ *
  * ## 为什么这不是恒真的(审查 B7 点名的那条)
  *
  * 原稿的金测是 `projectChatMessages(synthesize(messages)) ≡ messages` ——
  * 因为 `message/imported` 原样带全部字段,那个等式恒成立,证不了任何事。
- * 这里两条线的**输入是同一个场景描述,输出路径完全不共享**:A 线走命令 reducer
+ * 这里两条线的**输入是同一个场景描述,输出路径完全不共享**:A 线按引擎的写法
  * 逐字段拼消息,B 线走 delta fold + 工具事件派生。任何一个派生规则写错
  * (part 顺序、turnIndex 归属、denied 的状态映射、usage 累计口径、compact 的
  * 遮蔽范围)两条线立刻分叉。
  *
  * ## 它证不了什么(诚实交代,§9.7 的缺口清单里逐条列了)
  *
- * A 线的命令序列是**照引擎的写法手写的**,不是引擎本体。事件里没有来源的字段
+ * A 线是**照引擎的写法手写的**,不是引擎本体。事件里没有来源的字段
  * (step 的 `id`/`title`、`thinkingTime`、`data-steps` 占位 part、
  * `rejectionReason`)在两条线上都不出现 —— 它们要等 S1 影子期才验得了。
  */
@@ -38,13 +63,16 @@ import { buildHistoryMessages } from '../../engine/history.js'
 import { detectSkillUsage, getStepType } from '../../engine/tool-step.js'
 import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
 import { buildContextCompactContent } from '../../engine/context-compact.js'
-import { applySessionCommand } from '../commands.js'
 import {
   CORE_INTERRUPTED_PERMISSION_ERROR,
   CORE_INTERRUPTED_TOOL_ERROR,
 } from '../interrupted.js'
-import { computeInterruptedStepRepair, computeSessionRepairOnLoad } from '../timeline.js'
-import type { CoreSessionCommandMessage, SessionCommand } from '../commands.js'
+import {
+  computeInterruptedStepRepair,
+  computeSessionRepairOnLoad,
+  computeSessionTimelineMetadataRepair,
+} from '../timeline.js'
+import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../commands.js'
 import { encodeSessionLogEventLine } from '../events/index.js'
 import type { SessionLogEventRecord, SessionRunKind } from '../events/index.js'
 import { foldEventPageBackward } from '../storage/events/index.js'
@@ -214,24 +242,188 @@ class Clock {
 }
 
 // ============================================================================
-// A 线:命令序列 → ChatMessage[]
+// A 线:场景描述 → 期望折叠产物
 // ============================================================================
 
-interface CommandSession {
+interface ExpectedSession {
   id: string
   messages: CoreSessionCommandMessage[]
   updatedAt: number
+  totalInputTokens?: number
+  totalOutputTokens?: number
+  totalTokens?: number
+  contextSize?: number
+  lastInputTokens?: number
   summary?: string
   summaryUpToMessageId?: string
   summaryCreatedAt?: number
 }
 
-class CommandLine {
-  session: CommandSession = { id: 's1', messages: [], updatedAt: 0 }
+type ExpectedMessage = CoreSessionCommandMessage & Record<string, unknown>
 
-  run(command: SessionCommand<CoreSessionCommandMessage>): void {
-    const result = applySessionCommand(this.session, command)
-    if (result.changed) this.session = result.session
+/**
+ * A 线的落格器 —— **夹具,不是第二个语义权威**。
+ *
+ * 每个方法只做一件事:把"引擎在这一刻往消息上写了什么"落到普通对象数组里。
+ * 派生一律不在这里算(见文件头纪律 1),所以它没有资格成为"改一条消息意味着
+ * 什么"的第二份说法 —— 这正是它取代老 reducer 的理由(§17.7 #8a)。
+ *
+ * 写法照抄引擎侧的三条口径:`upsertStep` 按 `toolCallId` 认领、
+ * `setStepsUsageByTurn` 按回合号盖、`truncateFrom` 的两格结算见那个方法。
+ */
+class ExpectedLine {
+  session: ExpectedSession = { id: 's1', messages: [], updatedAt: 0 }
+
+  private at(messageId: string): number {
+    return this.session.messages.findIndex(message => message.id === messageId)
+  }
+
+  private writeAt(index: number, next: ExpectedMessage): void {
+    const messages = this.session.messages.slice()
+    messages[index] = next
+    this.session.messages = messages
+  }
+
+  find(messageId: string): ExpectedMessage | undefined {
+    const index = this.at(messageId)
+    return index === -1 ? undefined : (this.session.messages[index] as ExpectedMessage)
+  }
+
+  append(message: ExpectedMessage, now: number): void {
+    this.session.messages = [...this.session.messages, message]
+    this.session.updatedAt = now
+  }
+
+  patch(messageId: string, patch: Record<string, unknown>): void {
+    const index = this.at(messageId)
+    if (index === -1) return
+    this.writeAt(index, { ...this.session.messages[index], ...patch } as ExpectedMessage)
+  }
+
+  /** 会话级字段(压缩写摘要那一步)。消息一行不动。 */
+  patchSession(patch: Partial<ExpectedSession>): void {
+    this.session = { ...this.session, ...patch }
+  }
+
+  appendPart(messageId: string, part: unknown): void {
+    const index = this.at(messageId)
+    if (index === -1) return
+    const current = this.session.messages[index]
+    this.writeAt(index, {
+      ...current,
+      contentParts: [...(current.contentParts ?? []), part],
+    } as ExpectedMessage)
+  }
+
+  setToolCalls(messageId: string, toolCalls: unknown[]): void {
+    this.patch(messageId, { toolCalls })
+  }
+
+  /**
+   * 引擎的落法:**按 `toolCallId` 认领**已有那一格再合并,认不到才追加
+   * (`{...existing, ...step}`,不是整格替换)。
+   */
+  upsertStep(messageId: string, step: CoreSessionCommandStep): void {
+    const index = this.at(messageId)
+    if (index === -1) return
+    const current = this.session.messages[index]
+    const steps = current.steps ?? []
+    const existingIndex = steps.findIndex(existing =>
+      Boolean(existing.toolCallId && existing.toolCallId === step.toolCallId))
+    const nextSteps = existingIndex >= 0
+      ? steps.map((existing, at) => (at === existingIndex ? { ...existing, ...step } : existing))
+      : [...steps, step]
+    this.writeAt(index, { ...current, steps: nextSteps } as ExpectedMessage)
+  }
+
+  setStepsUsageByTurn(messageId: string, turnIndex: number, usage: unknown): void {
+    const index = this.at(messageId)
+    if (index === -1) return
+    const current = this.session.messages[index]
+    if (!current.steps) return
+    this.writeAt(index, {
+      ...current,
+      steps: current.steps.map(step => (step.turnIndex === turnIndex ? { ...step, usage } : step)),
+    } as ExpectedMessage)
+  }
+
+  deleteMessage(messageId: string, now: number): void {
+    const index = this.at(messageId)
+    if (index === -1) return
+    this.session.messages = this.session.messages
+      .slice(0, index)
+      .concat(this.session.messages.slice(index + 1))
+    this.session.updatedAt = now
+  }
+
+  /**
+   * 截断。**两格结算必须写在这里**(文件头纪律 2):
+   *
+   *  - `inclusive:false`(编辑重发)给留下的那条盖上**新的 `timestamp`** ——
+   *    它直接进 canonical 比对,漏了就是"两条线差一个时刻";
+   *  - 被砍掉那些消息的 usage 从会话总账扣回去,再把扣完的消息序列交给
+   *    `computeSessionTimelineMetadataRepair` 决定 `summary` / `contextSize`
+   *    的存废 —— `summary` 是 `sessionMeta` 的一格,模型历史断言读它。
+   *
+   * 这两件从前是白捡老 reducer 的 `applyTruncate`,#8a 起由 A 线自己说。
+   */
+  truncateFrom(
+    messageId: string,
+    options: { inclusive: boolean; newContent?: unknown; now: number },
+  ): void {
+    const index = this.at(messageId)
+    if (index === -1) return
+    const keepIndex = options.inclusive ? index : index + 1
+
+    // ① 扣减:被砍掉那些消息的 usage 之和。
+    const subtracted = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+    for (const message of this.session.messages.slice(keepIndex)) {
+      if (!message.usage) continue
+      subtracted.inputTokens += message.usage.inputTokens
+      subtracted.outputTokens += message.usage.outputTokens
+      subtracted.totalTokens += message.usage.totalTokens
+    }
+
+    let kept = this.session.messages.slice(0, keepIndex)
+    // ② 覆盖:编辑重发保留锚点那条,换正文并盖上这一刻。
+    if (!options.inclusive) {
+      kept = kept.slice()
+      kept[index] = {
+        ...this.session.messages[index],
+        content: options.newContent,
+        timestamp: options.now,
+      } as ExpectedMessage
+    }
+    this.session.messages = kept
+    this.session.updatedAt = options.now
+
+    if (subtracted.totalTokens > 0) {
+      this.session.totalInputTokens = Math.max(0, (this.session.totalInputTokens ?? 0) - subtracted.inputTokens)
+      this.session.totalOutputTokens = Math.max(0, (this.session.totalOutputTokens ?? 0) - subtracted.outputTokens)
+      this.session.totalTokens = Math.max(0, (this.session.totalTokens ?? 0) - subtracted.totalTokens)
+    }
+
+    // ③ 会话级元数据修复 —— 引擎自己那一份算法,A 线不手写结论(§10.10)。
+    const repair = computeSessionTimelineMetadataRepair(
+      {
+        id: this.session.id,
+        summary: this.session.summary,
+        summaryUpToMessageId: this.session.summaryUpToMessageId,
+        summaryCreatedAt: this.session.summaryCreatedAt,
+        contextSize: this.session.contextSize,
+        lastInputTokens: this.session.lastInputTokens,
+      },
+      kept,
+      { recomputeContextSize: true },
+    )
+    const next = { ...this.session, ...repair.patch } as Record<string, unknown>
+    for (const key of repair.deletes) delete next[key]
+    this.session = next as unknown as ExpectedSession
+  }
+
+  replaceAll(messages: ExpectedMessage[], now: number): void {
+    this.session.messages = messages
+    this.session.updatedAt = now
   }
 
   get messages(): Record<string, unknown>[] {
@@ -443,26 +635,22 @@ interface CarriedExecution {
   usage?: ProjectedStepUsage
 }
 
-function applyTurnCommands(
-  line: CommandLine,
+function writeTurnToExpected(
+  line: ExpectedLine,
   turn: TurnSpec,
   timeline: TurnTimeline,
   carried: CarriedExecution = { turns: 0 },
 ): { usage?: ProjectedStepUsage } {
-  line.run({
-    type: 'appendMessage',
-    now: timeline.start,
-    message: {
-      id: turn.messageId,
-      role: 'assistant',
-      content: '',
-      timestamp: timeline.start,
-      isStreaming: true,
-      ...(turn.provider ? { provider: turn.provider } : {}),
-      ...(turn.model ? { model: turn.model } : {}),
-      ...(turn.messageSource ? { source: turn.messageSource } : {}),
-    } as CoreSessionCommandMessage,
-  })
+  line.append({
+    id: turn.messageId,
+    role: 'assistant',
+    content: '',
+    timestamp: timeline.start,
+    isStreaming: true,
+    ...(turn.provider ? { provider: turn.provider } : {}),
+    ...(turn.model ? { model: turn.model } : {}),
+    ...(turn.messageSource ? { source: turn.messageSource } : {}),
+  } as ExpectedMessage, timeline.start)
 
   let text = ''
   let reasoning = ''
@@ -484,46 +672,34 @@ function applyTurnCommands(
       const placement = turnIndex === 1 && text.length === 0 && toolCalls.length === 0 ? 'top' : 'inline'
       if (placement === 'top') {
         reasoning += request.reasoning
-        line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { reasoning } as never, hint: 'stream' })
+        line.patch(turn.messageId, { reasoning })
       } else if (!request.unfinished) {
         // `inline` 的推理只有一个落点:turn-end 的 `persistTurnContentParts`。
         // 走不到那一刻就一格都没有(top 那一支是实时写字段的,照旧有)。
-        line.run({
-          type: 'appendContentPart',
-          messageId: turn.messageId,
-          part: { type: 'reasoning', content: request.reasoning, turnIndex },
-        })
+        line.appendPart(turn.messageId, { type: 'reasoning', content: request.reasoning, turnIndex })
       }
     }
     if (request.text !== undefined) {
       text += request.text
-      line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { content: text } as never, hint: 'stream' })
+      line.patch(turn.messageId, { content: text })
       if (!request.unfinished) {
-        line.run({
-          type: 'appendContentPart',
-          messageId: turn.messageId,
-          part: { type: 'text', content: request.text, turnIndex },
-        })
+        line.appendPart(turn.messageId, { type: 'text', content: request.text, turnIndex })
       }
     }
     if (request.providerData !== undefined && !request.unfinished) {
       // 引擎:`applyAgentLoopProviderDataWithAdapters` → `appendOrderedPart`。
       // 它不进 `message.content`(不是正文),只占 contentParts 的一格。
-      line.run({
-        type: 'appendContentPart',
-        messageId: turn.messageId,
-        part: { type: 'provider-data', providerData: request.providerData, turnIndex },
+      line.appendPart(turn.messageId, {
+        type: 'provider-data',
+        providerData: request.providerData,
+        turnIndex,
       })
     }
     if (request.textAfter !== undefined) {
       text += request.textAfter
-      line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { content: text } as never, hint: 'stream' })
+      line.patch(turn.messageId, { content: text })
       if (!request.unfinished) {
-        line.run({
-          type: 'appendContentPart',
-          messageId: turn.messageId,
-          part: { type: 'text', content: request.textAfter, turnIndex },
-        })
+        line.appendPart(turn.messageId, { type: 'text', content: request.textAfter, turnIndex })
       }
     }
     if (request.usage) {
@@ -562,12 +738,8 @@ function applyTurnCommands(
           timestamp: slots.inputEnd ?? slots.call,
         })
         toolCalls.push(placeholderToolCall as unknown as ProjectedToolCall)
-        line.run({
-          type: 'setToolCalls',
-          messageId: turn.messageId,
-          toolCalls: toolCalls.map(entry => ({ ...entry })) as never,
-        })
-        line.run({ type: 'upsertStep', messageId: turn.messageId, step: placeholderStep as never })
+        line.setToolCalls(turn.messageId, toolCalls.map(entry => ({ ...entry })))
+        line.upsertStep(turn.messageId, placeholderStep as unknown as CoreSessionCommandStep)
         return
       }
       const call = toolCallOf(tool, slots.call, slots.inputEnd)
@@ -576,19 +748,14 @@ function applyTurnCommands(
       // 与账本上的 `skill/activated`。A 线落前者,B 线落后者 —— 判据是同一个函数。
       const skill = detectSkillUsage(tool.name, tool.args as Parameters<typeof detectSkillUsage>[1])
       if (skill) {
-        line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { skillUsed: skill } as never, hint: 'settle' })
+        line.patch(turn.messageId, { skillUsed: skill })
       }
       toolCalls.push(call)
-      line.run({
-        type: 'setToolCalls',
-        messageId: turn.messageId,
-        toolCalls: toolCalls.map(entry => ({ ...entry })) as never,
-      })
-      line.run({
-        type: 'upsertStep',
-        messageId: turn.messageId,
-        step: stepOf(tool, call, slots.call, toolTurnIndex) as never,
-      })
+      line.setToolCalls(turn.messageId, toolCalls.map(entry => ({ ...entry })))
+      line.upsertStep(
+        turn.messageId,
+        stepOf(tool, call, slots.call, toolTurnIndex) as unknown as CoreSessionCommandStep,
+      )
     })
 
     runTools(request.tools ?? [], slot.tools, turnIndex)
@@ -600,42 +767,33 @@ function applyTurnCommands(
     runTools(request.roundBoundary?.tools ?? [], slot.boundaryTools ?? [], boundaryTurnIndex)
     if (request.roundBoundary?.text !== undefined && !request.unfinished) {
       text += request.roundBoundary.text
-      line.run({ type: 'patchMessage', messageId: turn.messageId, patch: { content: text } as never, hint: 'stream' })
-      line.run({
-        type: 'appendContentPart',
-        messageId: turn.messageId,
-        part: { type: 'text', content: request.roundBoundary.text, turnIndex: boundaryTurnIndex },
+      line.patch(turn.messageId, { content: text })
+      line.appendPart(turn.messageId, {
+        type: 'text',
+        content: request.roundBoundary.text,
+        turnIndex: boundaryTurnIndex,
       })
     }
     if (request.roundBoundary?.providerData !== undefined && !request.unfinished) {
-      line.run({
-        type: 'appendContentPart',
-        messageId: turn.messageId,
-        part: {
-          type: 'provider-data',
-          providerData: request.roundBoundary.providerData,
-          turnIndex: boundaryTurnIndex,
-        },
+      line.appendPart(turn.messageId, {
+        type: 'provider-data',
+        providerData: request.roundBoundary.providerData,
+        turnIndex: boundaryTurnIndex,
       })
     }
 
     if (request.usage) {
-      line.run({
-        type: 'patchStepsUsageByTurn',
-        messageId: turn.messageId,
-        // 引擎写 usage 的时刻是**带 usage 的那条 finish**,记的是那一刻的回合号。
-        // 外部执行器那条路上分界的 finish 不带 usage,所以用量落在分界之后 ——
-        // 工具那个回合的 step 于是没有 usage(真机如此)。
-        turnIndex: boundaryTurnIndex,
-        usage: normalizedUsage(request.usage),
-      })
+      // 引擎写 usage 的时刻是**带 usage 的那条 finish**,记的是那一刻的回合号。
+      // 外部执行器那条路上分界的 finish 不带 usage,所以用量落在分界之后 ——
+      // 工具那个回合的 step 于是没有 usage(真机如此)。
+      line.setStepsUsageByTurn(turn.messageId, boundaryTurnIndex, normalizedUsage(request.usage))
     }
   })
 
   // 收场修复 —— 引擎本人那一份(`emitAgentLoopFinalMessageUpdateWithAdapters`
   // 里调的就是这个函数)。abort 那条路带 `'User cancelled'`,其余两条不带
   // 参数,于是写默认那一句。fixture 不手抄字面量(§10.10)。
-  const settling = line.session.messages.find(message => message.id === turn.messageId)
+  const settling = line.find(turn.messageId)
   const repair = settling
     ? finalizeLingeringAgentLoopToolWork(
       settling as never,
@@ -644,20 +802,15 @@ function applyTurnCommands(
     )
     : undefined
   if (repair?.toolCalls) {
-    line.run({ type: 'setToolCalls', messageId: turn.messageId, toolCalls: repair.toolCalls as never })
+    line.setToolCalls(turn.messageId, repair.toolCalls as unknown[])
   }
   for (const step of repair?.steps ?? []) {
-    line.run({ type: 'upsertStep', messageId: turn.messageId, step: step as never })
+    line.upsertStep(turn.messageId, step as unknown as CoreSessionCommandStep)
   }
 
-  line.run({
-    type: 'patchMessage',
-    messageId: turn.messageId,
-    patch: {
-      isStreaming: false,
-      ...(turn.outcome === 'error' && turn.error ? { errorDetails: turn.error } : {}),
-    } as never,
-    hint: 'settle',
+  line.patch(turn.messageId, {
+    isStreaming: false,
+    ...(turn.outcome === 'error' && turn.error ? { errorDetails: turn.error } : {}),
   })
 
   return usage ? { usage } : {}
@@ -969,7 +1122,7 @@ interface UserSpec { id: string; content: string; turnContext?: { set?: Record<s
 
 class Scenario {
   readonly clock = new Clock()
-  readonly a = new CommandLine()
+  readonly a = new ExpectedLine()
   readonly b = new EventLine()
   /** 消息 id → 它在 B 线上的节点 seq(replace 的 range 用)。 */
   readonly nodeSeq = new Map<string, number>()
@@ -977,15 +1130,13 @@ class Scenario {
   user(spec: UserSpec): void {
     const time = this.clock.next()
     const message = { id: spec.id, role: 'user', content: spec.content, timestamp: time }
-    this.a.run({ type: 'appendMessage', now: time, message: message as CoreSessionCommandMessage })
+    this.a.append(message as ExpectedMessage, time)
     const event = this.b.push({ time, type: 'user/message', data: { message }, surfaceOp: 'append' })
     this.nodeSeq.set(spec.id, event.seq)
 
     if (spec.turnContext) {
       const at = this.clock.next()
-      this.a.run({
-        type: 'patchMessage', messageId: spec.id, patch: { turnContext: spec.turnContext } as never, hint: 'settle',
-      })
+      this.a.patch(spec.id, { turnContext: spec.turnContext })
       this.b.push({
         time: at,
         type: 'context/turn-update',
@@ -997,14 +1148,14 @@ class Scenario {
   systemMarker(id: string, content: string): void {
     const time = this.clock.next()
     const message = { id, role: 'system', content, timestamp: time }
-    this.a.run({ type: 'appendMessage', now: time, message: message as CoreSessionCommandMessage })
+    this.a.append(message as ExpectedMessage, time)
     const event = this.b.push({ time, type: 'system/message', data: { message }, surfaceOp: 'append' })
     this.nodeSeq.set(id, event.seq)
   }
 
   imported(message: Record<string, unknown>): void {
     const time = this.clock.next()
-    this.a.run({ type: 'appendMessage', now: time, message: message as unknown as CoreSessionCommandMessage })
+    this.a.append(message as unknown as ExpectedMessage, time)
     const event = this.b.push({
       time,
       type: 'message/imported',
@@ -1034,7 +1185,7 @@ class Scenario {
 
     const timeline = planTurn(turn, this.clock)
     const requestIndexBase = this.requestIndex
-    const result = applyTurnCommands(this.a, turn, timeline, carried)
+    const result = writeTurnToExpected(this.a, turn, timeline, carried)
     const before = this.b.events.length
     // 回合号的基数与 A 线同一个(`carried.turns`)—— 两条线各写各的,但数的是
     // 同一件事:引擎的 `state.turnIndex`。
@@ -1057,17 +1208,12 @@ class Scenario {
     const pending = this.pendingExecutionUsage
     if (!pending) return
     this.pendingExecutionUsage = undefined
-    this.a.run({
-      type: 'patchMessage',
-      messageId: pending.messageId,
-      patch: { usage: pending.usage } as never,
-      hint: 'settle',
-    })
+    this.a.patch(pending.messageId, { usage: pending.usage })
   }
 
   deleteMessage(messageId: string): void {
     const time = this.clock.next()
-    this.a.run({ type: 'deleteMessage', messageId, now: time })
+    this.a.deleteMessage(messageId, time)
     const seq = this.nodeSeq.get(messageId)!
     this.b.push({
       time,
@@ -1081,7 +1227,7 @@ class Scenario {
   /** regenerate:连这条一起砍,后面的一并没了。 */
   regenerateFrom(messageId: string): void {
     const time = this.clock.next()
-    this.a.run({ type: 'truncateFrom', messageId, inclusive: true, now: time })
+    this.a.truncateFrom(messageId, { inclusive: true, now: time })
     const seq = this.nodeSeq.get(messageId)!
     const shadowed = this.b.surfaceFrom(seq)
     this.b.push({
@@ -1095,7 +1241,7 @@ class Scenario {
 
   editResend(messageId: string, newContent: string): void {
     const time = this.clock.next()
-    this.a.run({ type: 'truncateFrom', messageId, inclusive: false, newContent, now: time })
+    this.a.truncateFrom(messageId, { inclusive: false, newContent, now: time })
     const seq = this.nodeSeq.get(messageId)!
     const shadowed = this.b.surfaceFrom(seq)
     const message = { id: messageId, role: 'user', content: newContent, timestamp: time }
@@ -1111,7 +1257,7 @@ class Scenario {
 
   clear(): void {
     const time = this.clock.next()
-    this.a.run({ type: 'replaceAll', messages: [], reason: 'clear', now: time })
+    this.a.replaceAll([], time)
     const shadowed = this.b.surfaceRange().all
     this.b.push({
       time,
@@ -1135,11 +1281,7 @@ class Scenario {
       content: buildContextCompactContent({ status: 'compacting', compactedMessageCount: count, compactedThroughMessageId: options.throughMessageId }),
       timestamp: time,
     }
-    this.a.run({
-      type: 'appendMessage',
-      now: time,
-      message: marker as CoreSessionCommandMessage,
-    })
+    this.a.append(marker as ExpectedMessage, time)
     // §13.10 M3:`store.addMessage(标记消息)` 在 B 线上**确实**记了一条
     // `system/message`(翻译器的 appendMessage:role 不是 user、也不是流式助手)。
     // 从前这个 fixture 只写 `session/compacted` —— 又一处"fixture 写下结论"的
@@ -1148,22 +1290,16 @@ class Scenario {
     // 标记那一格是 surface 上的一个节点 —— 先登记,下面的 `surfaceGroupEnd`
     // 才不会把它当成"挂在切点后面的附属事件"一起圈进遮蔽区间。
     this.nodeSeq.set(options.messageId, markerEvent.seq)
-    this.a.session = {
-      ...this.a.session,
+    this.a.patchSession({
       summary: options.summary,
       summaryUpToMessageId: options.throughMessageId,
       summaryCreatedAt: time,
-    }
-    this.a.run({
-      type: 'patchMessage',
-      messageId: options.messageId,
-      hint: 'settle',
-      patch: {
-        content: buildContextCompactContent({
-          status: 'completed', summary: options.summary,
-          compactedMessageCount: count, compactedThroughMessageId: options.throughMessageId,
-        }),
-      } as never,
+    })
+    this.a.patch(options.messageId, {
+      content: buildContextCompactContent({
+        status: 'completed', summary: options.summary,
+        compactedMessageCount: count, compactedThroughMessageId: options.throughMessageId,
+      }),
     })
 
     // 遮蔽的是"从 surface 开头到切点那个节点(连同它挂着的 tool/result)"。
@@ -1210,25 +1346,16 @@ class Scenario {
       }),
       timestamp: time,
     }
-    this.a.run({
-      type: 'appendMessage',
-      now: time,
-      message: marker as CoreSessionCommandMessage,
-    })
+    this.a.append(marker as ExpectedMessage, time)
     // B 线记的正是那条占位(翻译器的 `appendMessage`);正文补丁不进账本。
     this.b.push({ time, type: 'system/message', data: { message: marker }, surfaceOp: 'append' })
-    this.a.run({
-      type: 'patchMessage',
-      messageId: options.messageId,
-      hint: 'settle',
-      patch: {
-        content: buildContextCompactContent({
-          status: 'failed',
-          compactedMessageCount: count,
-          error: options.error,
-          compactedThroughMessageId: options.throughMessageId,
-        }),
-      } as never,
+    this.a.patch(options.messageId, {
+      content: buildContextCompactContent({
+        status: 'failed',
+        compactedMessageCount: count,
+        error: options.error,
+        compactedThroughMessageId: options.throughMessageId,
+      }),
     })
     // 翻译器对失败的压缩写的是 `surfaceOp: 'append'` —— 它不遮蔽任何东西。
     // 时刻用 `clock.next()`:收尾那条事件晚于消息自己的 timestamp(真机上差

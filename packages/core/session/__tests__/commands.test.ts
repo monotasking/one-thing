@@ -124,112 +124,15 @@ describe('applySessionCommand — COW 与写计划', () => {
     expect(lazyOf({ content: 'x' }, 'settle')).toBe(false)
   })
 
-  it('appendContentPart:新 parts 数组,原消息不动', () => {
-    const before = session([message('m1', { contentParts: [{ type: 'text' }] })])
-    const result = applySessionCommand(before, {
-      type: 'appendContentPart',
-      messageId: 'm1',
-      part: { type: 'image' },
-    })
-    expect(result.writePlan).toEqual({ kind: 'message', dirtySeq: 1 })
-    expect(result.lazy).toBe(false)
-    expect(result.session.messages[0].contentParts).toHaveLength(2)
-    expect(before.messages[0].contentParts).toHaveLength(1)
-  })
-
-  it('upsertStep:按 toolCallId 去重合并,否则追加', () => {
-    const before = session([
-      message('m1', { steps: [{ id: 's1', title: 'old', toolCallId: 'c1' }] }),
-    ])
-
-    const merged = applySessionCommand(before, {
-      type: 'upsertStep',
-      messageId: 'm1',
-      step: { id: 's1', title: 'new', toolCallId: 'c1', status: 'done' },
-    })
-    expect(merged.session.messages[0].steps).toHaveLength(1)
-    expect(merged.session.messages[0].steps![0]).toMatchObject({ title: 'new', status: 'done' })
-    expect(before.messages[0].steps![0].title).toBe('old')
-
-    const appended = applySessionCommand(before, {
-      type: 'upsertStep',
-      messageId: 'm1',
-      step: { id: 's2', title: 'other', toolCallId: 'c2' },
-    })
-    expect(appended.session.messages[0].steps).toHaveLength(2)
-    expect(appended.writePlan).toEqual({ kind: 'message', dirtySeq: 1 })
-  })
-
-  it('patchStep:status 缺席 → lazy;带 status → 立即档', () => {
-    const before = session([message('m1', { steps: [{ id: 's1', title: 't' }] })])
-
-    const running = applySessionCommand(before, {
-      type: 'patchStep',
-      messageId: 'm1',
-      stepId: 's1',
-      updates: { title: 'tick' },
-    })
-    expect(running.lazy).toBe(true)
-    expect(running.writePlan).toEqual({ kind: 'message', dirtySeq: 1 })
-    expect(before.messages[0].steps![0].title).toBe('t')
-
-    const settled = applySessionCommand(before, {
-      type: 'patchStep',
-      messageId: 'm1',
-      stepId: 's1',
-      updates: { status: 'done' },
-    })
-    expect(settled.lazy).toBe(false)
-
-    const missing = applySessionCommand(before, {
-      type: 'patchStep',
-      messageId: 'm1',
-      stepId: 'nope',
-      updates: { status: 'done' },
-    })
-    expect(missing.changed).toBe(false)
-  })
-
-  it('patchStepsUsageByTurn:只在真的写到 step 时才算改动', () => {
-    const before = session([
-      message('m1', {
-        steps: [
-          { id: 's1', title: 'a', turnIndex: 0 },
-          { id: 's2', title: 'b', turnIndex: 1 },
-        ],
-      }),
-    ])
-
-    const hit = applySessionCommand(before, {
-      type: 'patchStepsUsageByTurn',
-      messageId: 'm1',
-      turnIndex: 1,
-      usage: { inputTokens: 3 },
-    })
-    expect(hit.changed).toBe(true)
-    expect(hit.meta?.updatedStepIds).toEqual(['s2'])
-    expect(hit.writePlan).toEqual({ kind: 'message', dirtySeq: 1 })
-    // 没命中的 step 保持同一引用
-    expect(hit.session.messages[0].steps![0]).toBe(before.messages[0].steps![0])
-
-    const miss = applySessionCommand(before, {
-      type: 'patchStepsUsageByTurn',
-      messageId: 'm1',
-      turnIndex: 7,
-      usage: {},
-    })
-    expect(miss.changed).toBe(false)
-    expect(miss.meta?.updatedStepIds).toEqual([])
-  })
-
-  it('setToolCalls:整表写回,数组引用原样保留(引擎共享那一份)', () => {
-    const before = session([message('m1')])
-    const toolCalls = [{ status: 'executing' }]
-    const result = applySessionCommand(before, { type: 'setToolCalls', messageId: 'm1', toolCalls })
-    expect(result.writePlan).toEqual({ kind: 'message', dirtySeq: 1 })
-    expect(result.session.messages[0].toolCalls).toBe(toolCalls)
-    expect(before.messages[0].toolCalls).toBeUndefined()
-  })
+  /*
+   * `appendContentPart` / `upsertStep` / `patchStep` / `patchStepsUsageByTurn` /
+   * `setToolCalls` 的五组用例 —— **随那五条分支一起删除**(§17.7 #8a,2026-08-28)。
+   *
+   * 五条分支是端口专用的:c4-d 之后 `OnethingSessionMessageRuntime` 那 15 个热写
+   * 端口零调用(事实产地全在事件流上),命令面上从来没有过调用者,最后一个消费者
+   * 是 S0 合同 A 线的"命令词汇"。A 线改说事件之后,连同这五组单测一并退役 ——
+   * 留着就是给一段不存在的代码写规格。
+   */
 
   it('truncateFrom(inclusive):structural + 扣 usage + 重算 contextSize', () => {
     const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 }

@@ -22,8 +22,14 @@
  * 断言 = 把投影物化出来的消息**当作 store**,replay 引擎会发的每一次
  * `patchStep(stepId)`,每一次都必须命中。
  *
- * 反证在下面第二个用例里:换回旧语义(现生一个 uuid)当场全部落空,而
- * `applySessionCommand` 一声不吭 —— 那就是这道门要挡的那件事。
+ * 反证在下面第二个用例里:换回旧语义(现生一个 uuid)当场全部落空,而**一声不吭**
+ * —— 那就是这道门要挡的那件事。
+ *
+ * **#8a(2026-08-28)换了落法,没换判据**:从前这里调老 reducer 的 `patchStep`
+ * 分支;那条分支是生产零流量的端口专用分支,随 §17.7 #8a 删除。这道门证的从来
+ * 不是 reducer,是"引擎手上的 step id 与投影物化出来的那一条是同一个东西",所以
+ * 改由 `patchStepById` 就地按 id 寻址 —— 认领规则(`steps.findIndex(step =>
+ * step.id === stepId)`)、命中即 COW、落空即原样返回,与被删那条分支逐字同义。
  *
  * 场景是**多工具多轮 + steer**:一条 run 里两次工具调用(其中一次参数是流式的),
  * steering 把执行劈成第二条助手消息,里面还有第三次调用。
@@ -32,8 +38,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createCoreId } from '../../engine/ids.js'
 import { createCoreStreamProcessor } from '../../engine/stream-processor.js'
-import { applySessionCommand } from '../commands.js'
-import type { CoreSessionCommandMessage } from '../commands.js'
+import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../commands.js'
 import type { SessionLogEventRecord } from '../events/index.js'
 import { projectChatMessages } from '../projection/index.js'
 
@@ -174,9 +179,36 @@ function engineStepIdsFor(sessionId: string, messageId: string, tools: readonly 
 
 // ---------------------------------------------------------------------------
 
-function projectedSession(): { messages: CoreSessionCommandMessage[]; updatedAt: number } {
+type ProjectedStore = { messages: CoreSessionCommandMessage[]; updatedAt: number }
+
+function projectedSession(): ProjectedStore {
   const { messages } = projectChatMessages(steeredMultiToolEvents())
   return { messages: messages as unknown as CoreSessionCommandMessage[], updatedAt: 0 }
+}
+
+/**
+ * 「引擎发一次 `patchStep(stepId, updates)`」落在这份 store 上的样子。
+ *
+ * **按 id 认领**(不递归 childSteps),命中就 COW 出新的会话/消息/步骤,落空就
+ * 原样把入参交回去 —— 后者正是这道门的反证要抓的"静默 no-op"。
+ */
+function patchStepById(
+  session: ProjectedStore,
+  messageId: string,
+  stepId: string,
+  updates: Partial<CoreSessionCommandStep>,
+): { changed: boolean; session: ProjectedStore } {
+  const index = session.messages.findIndex(message => message.id === messageId)
+  if (index === -1) return { changed: false, session }
+  const steps = session.messages[index].steps
+  if (!steps) return { changed: false, session }
+  const stepIndex = steps.findIndex(step => step.id === stepId)
+  if (stepIndex === -1) return { changed: false, session }
+
+  const nextSteps = steps.map((step, at) => (at === stepIndex ? { ...step, ...updates } : step))
+  const messages = session.messages.slice()
+  messages[index] = { ...messages[index], steps: nextSteps }
+  return { changed: true, session: { ...session, messages } }
 }
 
 describe('F4-b1:step 身份在引擎写手与投影物化两侧是同一个东西', () => {
@@ -201,12 +233,7 @@ describe('F4-b1:step 身份在引擎写手与投影物化两侧是同一个东�
         `projection/engine step id split for ${entry.callId}`,
       ).toBe(entry.stepId)
 
-      const result = applySessionCommand(session, {
-        type: 'patchStep',
-        messageId: entry.messageId,
-        stepId: entry.stepId,
-        updates: { status: 'cancelled' },
-      })
+      const result = patchStepById(session, entry.messageId, entry.stepId, { status: 'cancelled' })
       expect(result.changed, `patchStep(${entry.stepId}) fell through`).toBe(true)
       session = result.session
     }
@@ -222,14 +249,10 @@ describe('F4-b1:step 身份在引擎写手与投影物化两侧是同一个东�
   it('反证:换回旧语义(引擎现生 uuid)每一次 patchStep 都静默落空', () => {
     const session = projectedSession()
     for (const [messageId, tools] of [['a1', RUN1_TOOLS], ['a2', RUN2_TOOLS]] as const) {
-      for (const tool of tools) {
+      // 每一次调用发一次 —— 换的是 id 的来路,不是调用的次数。
+      for (let attempt = 0; attempt < tools.length; attempt += 1) {
         const legacyStepId = createCoreId()
-        const result = applySessionCommand(session, {
-          type: 'patchStep',
-          messageId,
-          stepId: legacyStepId,
-          updates: { status: 'cancelled' },
-        })
+        const result = patchStepById(session, messageId, legacyStepId, { status: 'cancelled' })
         // 没抛、没红、什么都没发生 —— 这正是它当初躲过所有门的原因。
         expect(result.changed).toBe(false)
         expect(result.session).toBe(session)

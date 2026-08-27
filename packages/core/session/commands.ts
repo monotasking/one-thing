@@ -1,8 +1,25 @@
 /**
  * 会话消息命令面(纯函数层)—— docs/design/session-commands-p0-2026-08.md §1/§2。
  *
- * 这里是**唯一**知道"改一条会话消息意味着什么"的地方:
- *   - 语义:12 个命令(append/upsert/patch/…/repairOnLoad),外面不再有第二种写法;
+ * ## 今天它是什么(F4-c c4-d 改判 + §17.7 #8a 收缩)
+ *
+ * 它**不再是消息数组的维护者** —— 那件事 c4-d 交给了折叠产物
+ * (`session-repository.refreshMessagesFromProjection`,§16.27)。剩下的唯一身份是
+ * **会话级派生的算法**:截断要扣多少 token、`contextSize` / `summary` 怎么重算、
+ * `updatedAt` / `lastProvider` / 索引计数 / 落盘 lazy 档怎么定。算这些要摸消息,
+ * 所以它照旧持有消息数组、也照旧在 `session:check` 规则 B 的白名单里。
+ *
+ * **#8a(2026-08-28)删掉了 5 条生产零流量的分支** —— `appendContentPart` /
+ * `upsertStep` / `patchStep` / `patchStepsUsageByTurn` / `setToolCalls`。它们的
+ * 端口(`OnethingSessionMessageRuntime` 里那 15 口)在 c4-d 之后零调用,唯一的
+ * 消费者是 S0 合同测试 A 线的"命令词汇";A 线改说事件之后它们连那个消费者也没了。
+ * 剩下 7 条(append / upsert / patch / truncate / delete / replaceAll /
+ * repairOnLoad)每一条都在生产写路上,见 `backend/session/commands.ts`。
+ *
+ * 会话级派生搬去哪儿(= 整个 reducer 的最终退役)是留账 #8b,与 #3 合并出方案。
+ *
+ * ## 三条一直没变的约定
+ *   - 语义:7 个命令,外面不再有第二种写法;
  *   - COW:改哪条消息就新建哪条(以及 messages 数组本身),没改的原样复用引用 ——
  *     这样"谁变了"是可判定的(引用比较),而不是靠深比较猜;
  *   - 写计划:`SessionWritePlan`(后缀写 / 全量重写)与 lazy 档在这里**集中计算**,
@@ -19,7 +36,6 @@ import type {
   CoreSessionRepairMessagePatch,
   CoreTimelineMessage,
   CoreTimelineStep,
-  CoreToolCallState,
 } from './timeline.js'
 import { computeSessionRepairOnLoad, computeSessionTimelineMetadataRepair } from './timeline.js'
 
@@ -90,16 +106,16 @@ export type SessionCommand<TMessage extends CoreSessionCommandMessage = CoreSess
       patch: Partial<TMessage>
       hint?: SessionCommandWriteHint
     }
-  | { type: 'appendContentPart'; messageId: string; part: unknown }
-  | { type: 'upsertStep'; messageId: string; step: CoreSessionCommandStep }
-  | {
-      type: 'patchStep'
-      messageId: string
-      stepId: string
-      updates: Partial<CoreSessionCommandStep>
-    }
-  | { type: 'patchStepsUsageByTurn'; messageId: string; turnIndex: number; usage: unknown }
-  | { type: 'setToolCalls'; messageId: string; toolCalls: CoreToolCallState[] }
+  /*
+   * `appendContentPart` / `upsertStep` / `patchStep` / `patchStepsUsageByTurn` /
+   * `setToolCalls` —— **已删除**(§17.7 #8a,2026-08-28)。
+   *
+   * 五条都是**端口专用**分支:c4-d 之后 `OnethingSessionMessageRuntime` 那 15 个
+   * 热写端口零调用(引擎侧同名口早已空转,产地全在事件流上 —— `tool/*` /
+   * `assistant/part-end` / `request/response.usage`),命令面上更是从来没有过调用者。
+   * 最后一个消费者是 S0 合同 A 线拿它们当"引擎往消息上写了什么"的词汇;A 线改说
+   * 事件之后(`projection-contract.test.ts` 的 `ExpectedLine`),纯减法删除。
+   */
   | {
       type: 'truncateFrom'
       messageId: string
@@ -161,8 +177,6 @@ export interface SessionCommandMeta<TMessage> {
   subtractedUsage?: CoreSessionTokenUsage
   /** delete / truncate:命中的下标 */
   index?: number
-  /** patchStepsUsageByTurn:实际被写了 usage 的 step id */
-  updatedStepIds?: string[]
   /** repairOnLoad:这次修复应用了哪些 patch */
   repairPatches?: SessionCommandRepairPatches<TMessage>
   /** upsertMessage:是新增还是就地替换 */
@@ -285,111 +299,6 @@ export function applySessionCommand<
         changedMessageIds: [command.messageId],
         writePlan: messagePlan(index),
         lazy: resolveLazy(command.hint, command.patch),
-        indexMetaChanged: false,
-        meta: { message: next, index },
-      }
-    }
-
-    case 'appendContentPart': {
-      const index = session.messages.findIndex(item => item.id === command.messageId)
-      if (index === -1) return noChange(session)
-      const current = session.messages[index]
-      const next = {
-        ...current,
-        contentParts: [...(current.contentParts ?? []), command.part],
-      } as TMessage
-      return {
-        session: withSession(session, { messages: replaceAt(session.messages, index, next) }),
-        changed: true,
-        changedMessageIds: [command.messageId],
-        writePlan: messagePlan(index),
-        lazy: false,
-        indexMetaChanged: false,
-        meta: { message: next, index },
-      }
-    }
-
-    case 'upsertStep': {
-      const index = session.messages.findIndex(item => item.id === command.messageId)
-      if (index === -1) return noChange(session)
-      const current = session.messages[index]
-      const steps = current.steps ?? []
-      const existingIndex = steps.findIndex(existing =>
-        Boolean(existing.toolCallId && existing.toolCallId === command.step.toolCallId),
-      )
-      const nextSteps = existingIndex >= 0
-        ? replaceAt(steps, existingIndex, { ...steps[existingIndex], ...command.step })
-        : [...steps, command.step]
-      const next = { ...current, steps: nextSteps } as TMessage
-      return {
-        session: withSession(session, { messages: replaceAt(session.messages, index, next) }),
-        changed: true,
-        changedMessageIds: [command.messageId],
-        writePlan: messagePlan(index),
-        lazy: false,
-        indexMetaChanged: false,
-        meta: { message: next, index },
-      }
-    }
-
-    case 'patchStep': {
-      const index = session.messages.findIndex(item => item.id === command.messageId)
-      if (index === -1) return noChange(session)
-      const current = session.messages[index]
-      const steps = current.steps
-      if (!steps) return noChange(session)
-      const stepIndex = steps.findIndex(step => step.id === command.stepId)
-      if (stepIndex === -1) return noChange(session)
-      const nextSteps = replaceAt(steps, stepIndex, { ...steps[stepIndex], ...command.updates })
-      const next = { ...current, steps: nextSteps } as TMessage
-      return {
-        session: withSession(session, { messages: replaceAt(session.messages, index, next) }),
-        changed: true,
-        changedMessageIds: [command.messageId],
-        writePlan: messagePlan(index),
-        // step 存活期间的活跃计时/部分输出更新是高频的;完成态(status 变更)按边界立即调度。
-        lazy: command.updates.status === undefined,
-        indexMetaChanged: false,
-        meta: { message: next, index },
-      }
-    }
-
-    case 'patchStepsUsageByTurn': {
-      const index = session.messages.findIndex(item => item.id === command.messageId)
-      if (index === -1) return noChange(session)
-      const current = session.messages[index]
-      if (!current.steps) return { ...noChange<TSession, TMessage>(session), meta: { updatedStepIds: [] } }
-      const updatedStepIds: string[] = []
-      const nextSteps = current.steps.map(step => {
-        if (step.turnIndex !== command.turnIndex) return step
-        updatedStepIds.push(step.id)
-        return { ...step, usage: command.usage }
-      })
-      if (updatedStepIds.length === 0) {
-        return { ...noChange<TSession, TMessage>(session), meta: { updatedStepIds } }
-      }
-      const next = { ...current, steps: nextSteps } as TMessage
-      return {
-        session: withSession(session, { messages: replaceAt(session.messages, index, next) }),
-        changed: true,
-        changedMessageIds: [command.messageId],
-        writePlan: messagePlan(index),
-        lazy: false,
-        indexMetaChanged: false,
-        meta: { message: next, index, updatedStepIds },
-      }
-    }
-
-    case 'setToolCalls': {
-      const index = session.messages.findIndex(item => item.id === command.messageId)
-      if (index === -1) return noChange(session)
-      const next = { ...session.messages[index], toolCalls: command.toolCalls } as TMessage
-      return {
-        session: withSession(session, { messages: replaceAt(session.messages, index, next) }),
-        changed: true,
-        changedMessageIds: [command.messageId],
-        writePlan: messagePlan(index),
-        lazy: false,
         indexMetaChanged: false,
         meta: { message: next, index },
       }

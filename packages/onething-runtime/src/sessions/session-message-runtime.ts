@@ -6,7 +6,6 @@ import {
   getSessionTokenUsageSnapshot,
   type CoreSessionCommandMessage,
   type CoreSessionCommandSession,
-  type CoreSessionCommandStep,
   type CoreSessionCacheAdapter,
   type CoreSessionEditableMessage,
   type CoreSessionMessageWithId,
@@ -123,6 +122,15 @@ export class OnethingSessionMessageRuntime<
       mentions?: CoreSessionMessageMentions
     },
   TMeta extends CoreSessionMeta,
+  /*
+   * `TStep` / `TContentPart` / `TToolCall` —— #8a 之后**类体里不再有方法用到它们**
+   * (用它们的那 15 口删了),但它们是这个类**已声明的形状**的一部分:上面
+   * `TMessage` 的约束(`CoreSessionMessageWithSteps<TStep>` / `contentParts?:
+   * TContentPart[]` / `toolCalls?: TToolCall[]`)与构造参数的
+   * `OnethingSessionMessageRuntimeOptions<…>` 都吃它们,两处生产构造点
+   * (`backend/stores/sessions.ts` / `backend/server/runtime.ts`)都按 6 个类型参数写。
+   * 删它们 = 改形状,不在本批范围 —— 留着,eslint 的三条 unused 警告是已知的。
+   */
   TStep extends CoreSessionStepWithId = CoreSessionStepWithId,
   TContentPart = unknown,
   TToolCall = unknown,
@@ -340,129 +348,30 @@ export class OnethingSessionMessageRuntime<
     return true
   }
 
-  // 逐 token 高频路径:只更新缓存并用 lazy 档兜底落盘,避免流式期间反复全量写盘。
-  updateMessageContent(sessionId: string, messageId: string, newContent: string): boolean {
-    return this.patchMessage(sessionId, messageId, { content: newContent } as Partial<TMessage>, 'stream')
-  }
-
-  updateMessageReasoning(sessionId: string, messageId: string, reasoning: string): boolean {
-    return this.patchMessage(sessionId, messageId, { reasoning } as Partial<TMessage>, 'stream')
-  }
-
-  updateMessageStreaming(sessionId: string, messageId: string, isStreaming: boolean): boolean {
-    return this.patchMessage(sessionId, messageId, { isStreaming } as Partial<TMessage>)
-  }
-
-  updateMessageUsage(sessionId: string, messageId: string, usage: CoreSessionTokenUsage): boolean {
-    return this.patchMessage(sessionId, messageId, { usage } as Partial<TMessage>)
-  }
-
-  updateMessageToolCalls(sessionId: string, messageId: string, toolCalls: TToolCall[]): boolean {
-    const applied = this.run(sessionId, {
-      type: 'setToolCalls',
-      messageId,
-      toolCalls: toolCalls as never,
-    })
-    if (!applied) return false
-    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
-    return true
-  }
-
-  updateMessageContentParts(sessionId: string, messageId: string, contentParts: TMessage['contentParts']): boolean {
-    return this.patchMessage(sessionId, messageId, { contentParts } as Partial<TMessage>, 'stream')
-  }
-
-  addMessageContentPart(sessionId: string, messageId: string, part: TContentPart): boolean {
-    const applied = this.run(sessionId, { type: 'appendContentPart', messageId, part })
-    if (!applied) return false
-    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
-    return true
-  }
-
-  updateMessageThinkingTime(sessionId: string, messageId: string, thinkingTime: number): boolean {
-    return this.patchMessage(sessionId, messageId, { thinkingTime } as Partial<TMessage>, 'stream')
-  }
-
-  updateMessageSkill(sessionId: string, messageId: string, skillUsed: string): boolean {
-    return this.patchMessage(sessionId, messageId, { skillUsed } as Partial<TMessage>)
-  }
-
-  updateMessageError(sessionId: string, messageId: string, errorDetails: string): boolean {
-    return this.patchMessage(sessionId, messageId, { errorDetails } as Partial<TMessage>)
-  }
-
   /*
-   * `updateMessageReactions` (W8) / `updateMessageReplyTo` (W13.2) /
-   * `updateMessageMentions` (W14a) —— **deleted** in F4-c c4 (§16.24).
+   * **15 个热写端口 —— 已删除**(§17.7 #8a,2026-08-28)。
    *
-   * All three were "stamp IM metadata onto an already-written message" wrappers
-   * around `patchMessage`. The three room coordinators that used to call them
-   * moved to the command surface (`sessionCommands.patchMessage`, whose origin
-   * event is `message/patched`) back in P0.2; the c3-a port census (§16.23)
-   * confirmed zero production callers. Pure subtraction — the message shape
-   * still carries `reactions` / `replyTo` / `mentions`, only the three
-   * redundant doorways are gone.
+   * `updateMessageContent` / `Reasoning` / `Streaming` / `Usage` / `ToolCalls` /
+   * `ContentParts` / `addMessageContentPart` / `ThinkingTime` / `Skill` /
+   * `Error` / `TurnContext` / `addMessageStep` / `updateMessageStep` /
+   * `updateMessageSteps` / `updateStepsUsageByTurn`。
+   *
+   * F4-c c4-d(§16.27)把引擎侧那 15 个同名口整批空转之后,**这一层的实现零调用点**
+   * ——引擎的写路早已不经过这里(它的事实产地全在事件流上:`assistant/chunks` 的
+   * 逻辑 delta、`tool/call|annotate|result`、`request/response.usage`、
+   * `skill/activated`、`run/end.error`、`context/turn-update`),而命令面从来没有
+   * 调过它们。留着只会让人以为"往这里写还能影响 store"。
+   *
+   * **它们不是 §16.27 纪律 13 说的"端口签名冻结"的对象**:那条冻的是**引擎侧**
+   * 那 15 个口(`backend/stores/sessions.ts`)的形状 —— 因为四条 A 类事实断言
+   * (usage / skillUsed / errorDetails / turnContext)与 contentPart 守卫是挂在
+   * **那里**的采样点。本层这 15 个方法上一条断言都没有,整口删除属于退役、不属于
+   * 改形状,引擎侧签名一个字未动。
+   *
+   * 命令面还在用的 9 口(add / upsert / patchFields / delete×2 / truncate×2 /
+   * replaceAll / repairOnLoad)照旧,私有的 `patchMessage` 也留任 —— 它是
+   * `patchMessageFields` 的实现。
    */
-
-  /**
-   * The turn-context delta delivered with a user message (prompt-channels
-   * 2026-08-18). Written once, at request-build time, by the assembly layer's
-   * `SessionTurnContext`; every later rebuild of that turn replays the stored
-   * delta, which is what keeps the request bytes identical across the tool
-   * loop. Metadata on an already-written message — the ordinary patch path.
-   */
-  updateMessageTurnContext(
-    sessionId: string,
-    messageId: string,
-    turnContext: unknown,
-  ): boolean {
-    return this.patchMessage(sessionId, messageId, { turnContext } as unknown as Partial<TMessage>)
-  }
-
-  addMessageStep(sessionId: string, messageId: string, step: TStep): boolean {
-    const applied = this.run(sessionId, {
-      type: 'upsertStep',
-      messageId,
-      step: step as unknown as CoreSessionCommandStep,
-    })
-    if (!applied) return false
-    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
-    return true
-  }
-
-  updateMessageStep(sessionId: string, messageId: string, stepId: string, updates: Partial<TStep>): boolean {
-    // lazy 档由命令面按 `updates.status === undefined` 决定(完成态立即调度)。
-    const applied = this.run(sessionId, {
-      type: 'patchStep',
-      messageId,
-      stepId,
-      updates: updates as unknown as Partial<CoreSessionCommandStep>,
-    })
-    if (!applied) return false
-    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
-    return true
-  }
-
-  updateMessageSteps(sessionId: string, messageId: string, steps: TStep[] | undefined): boolean {
-    return this.patchMessage(sessionId, messageId, { steps } as Partial<TMessage>)
-  }
-
-  updateStepsUsageByTurn(
-    sessionId: string,
-    messageId: string,
-    turnIndex: number,
-    usage: CoreSessionTokenUsage,
-  ): string[] {
-    const applied = this.run(sessionId, {
-      type: 'patchStepsUsageByTurn',
-      messageId,
-      turnIndex,
-      usage,
-    })
-    if (!applied) return []
-    this.syncMessageToSqliteIfReady(applied.session, this.commandMessage(applied.result), this.commandMessageSeq(applied.result))
-    return applied.result.meta?.updatedStepIds ?? []
-  }
 
   /**
    * `upsertMessage` 命令:按 id 存在就整条替换(后缀写),不存在就追加(与

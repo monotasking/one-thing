@@ -33,7 +33,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
  * 每一条都要有一句能站住的理由 —— 白名单里的文件此后不受棘轮监督。
  */
 const RULE_A_ALLOWED = new Set([
-  // 纯 reducer:12 命令唯一的实现处
+  // 纯 reducer:7 命令唯一的实现处(#8a 删掉 5 条端口专用分支后从 12 收缩到 7)
   'packages/core/session/commands.ts',
   // 装配层写面 / 读面:设计文档 §1 的两扇门
   'packages/backend/session/commands.ts',
@@ -56,30 +56,30 @@ const RULE_A_ALLOWED = new Set([
 /**
  * 规则 B 的白名单:唯一允许改消息/step/toolCall 字段的地方。
  *
- * **F4-c c4-d 第四次改写理由,名单仍旧没换**(§16.27)。
+ * **§17.7 #8a 第五次改写理由,名单仍旧没换**(2026-08-28;上一次是 c4-d,§16.27)。
  *
  * c4-b(§16.25)拆掉了"活 run 写手视图"那三条依赖之后,剩下的最后一格是**身份**:
  * 内存 store 的消息数组由谁维护。**c4-d 把它换了** —— 折叠产物成为唯一维护者
  * (`session-repository.refreshMessagesFromProjection`,全仓唯一一处
  * `session.messages = …`,见下面规则 C 的具名例外),引擎那 15 个热写端口整批空转。
  *
- * 于是这个 reducer **不再是消息数组的维护者**。它今天的两个身份是:
+ * 于是这个 reducer **不再是消息数组的维护者**。c4-d 当时记了它的两个身份;#8a 把
+ * 第二个身份消掉了(S0 合同 A 线改说事件,那五条生产零流量的端口专用分支
+ * —— `appendContentPart` / `upsertStep` / `patchStep` / `patchStepsUsageByTurn` /
+ * `setToolCalls` —— 随之真删)。**今天它只剩一个身份**:
  *
- *   1. **会话级派生的算法**:截断要扣多少 token、`contextSize` 怎么重算、
- *      `updatedAt` / 索引计数 / 落盘计划怎么定 —— 这些不是消息事实,是会话账。
- *      算它们要摸消息(`sumUsage` / `computeSessionTimelineMetadataRepair`),
- *      所以规则 B 仍然要放它进来。
- *   2. **S0 合同测试的 A 线词汇**(`core/session/__tests__/projection-contract.test.ts`):
- *      "命令序列 → ChatMessage[]" 那一侧就是它,与"事件序列 → 投影"逐格对拍。
- *      这条判据是活的,所以那五条**生产零流量**的端口专用分支
- *      (`appendContentPart` / `upsertStep` / `patchStep` / `patchStepsUsageByTurn`
- *      / `setToolCalls`)**没有删** —— 删了 A 线就说不出"引擎往消息上写了什么"。
- *      §16.25/§16.26 判它们"整批删除"时没把这条判据算进去,c4-d 据实改判并记在
- *      §16.27 第四节。生产侧那五个**命令面包装**已经删掉了(见
- *      `backend/session/commands.ts`),留下的只有 reducer 这一半。
+ *   **会话级派生的算法**:截断要扣多少 token、`contextSize` / `summary` 怎么重算、
+ *   `updatedAt` / `lastProvider` / 索引计数 / 落盘 lazy 档怎么定 —— 这些不是消息
+ *   事实,是会话账。算它们要摸消息(`sumUsage` /
+ *   `computeSessionTimelineMetadataRepair`),所以规则 B 仍然要放它进来。
+ *
+ * 这个身份该搬去哪儿(= 整个 reducer 的最终退役)是留账 **#8b**,与 #3「节点自持」
+ * 合并出方案。在那之前,这一格是**真的生产依赖**,不是历史残留:剩下的 7 条命令
+ * (append / upsert / patch / truncate / delete / replaceAll / repairOnLoad)每一条
+ * 都在 `backend/session/commands.ts` 的写路上。
  *
  * 所以名单一字未动,而**它守的东西又变了**:今天守的是"对 ChatMessage/Step/ToolCall
- * 的字段赋值只有一个算法处"。往这个名单里加文件之前请先读 §16.27。
+ * 的字段赋值只有一个算法处"。往这个名单里加文件之前请先读 §16.27 与 §17.7 #8a。
  *
  * (投影 reducer 改的是 `ProjectionNode`,不是 `ChatMessage`/`Step`/`ToolCall`,
  * 规则 B 本来就够不着它 —— 名单里不需要有它。)
