@@ -31,6 +31,9 @@ import { resetSessionEventLogCache } from "../session/event-log.js";
 import { resetSessionSurfaceCache } from "../session/event-surface.js";
 import { resetSessionRuns } from "../session/runs.js";
 import { hydrateSessionMessagesFromProjection } from "../session/hydrate.js";
+import { materializeSessionMessages } from "../session/materialized-messages.js";
+import { eventsHasMessage } from "../session/events-reads.js";
+import { hasLiveSessionProjection } from "../session/projection-cache.js";
 import { getSettings } from "./settings.js";
 import { expandPath } from "../wiring/tools/core/sandbox.js";
 import {
@@ -120,6 +123,10 @@ const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ChatSession, Ch
 	// S3w-1:冷加载补水源。F4-a 起**无条件**走投影(档位 `ONETHING_SESSION_HYDRATE`
 	// 已退役);返回 undefined = 这条会话的事件里折不出历史,仓库照旧自己加载。
 	hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection,
+	// F4-c c4-d(§16.27):**物化视图** —— 每次交出会话时,消息那一格从折叠产物取。
+	// 这一口装上之后,内存 store 的消息数组只有一个维护者(折叠产物),18 个热写
+	// 端口整批空转;返回 undefined = 这条会话没有可用的折叠产物,保留仓库那一份。
+	materializeMessagesFromProjection: materializeSessionMessages,
 	getCurrentSessionId,
 	setCurrentSessionId,
 	getDefaultWorkingDirectory: () =>
@@ -789,6 +796,42 @@ export function readSessionTranscriptFile(sessionId: string): string | undefined
 export { stampCollabAgentId };
 
 /**
+ * ## F4-c c4-d(§16.27):**15 个热写端口整批空转**
+ *
+ * 从这一批起,内存 store 的消息数组由**折叠产物**维护(仓库的
+ * `refreshMessagesFromProjection` 是全仓唯一的换装点)。于是这些端口往数组里写的
+ * 那一笔**没有读者**:下一次 `getSession` 就把它换掉了。留着写不是"保险",是
+ * 第二个维护者 —— 而两个维护者正是 c3/c4 一路查下来所有分岔的病根。
+ *
+ * 每一口的事实在账本上都有产地(§16.23 的 18 端口分类表,A/B/D 三类):
+ * 正文与推理是逻辑 delta(c3-a 盖章即折)、工具三口是 `tool/call|result|annotate`、
+ * 用量是 `request/response.usage`、技能是 `skill/activated`、错误是 `run/end.error`、
+ * 回合上下文是 `context/turn-update`、`isStreaming` 由 `run/start`/`run/end` 开闭推导。
+ *
+ * **端口本身不删**:它们的签名是 core 引擎注入的 store 端口(P0 §6 冻结),
+ * 删签名是一次跨包的接口改动,与本批无关。空转之后它们只回答一个问题 ——
+ * **"这条消息在不在"**(RPC 面靠这个布尔回 `success`;`image-stream` 那两处靠它
+ * 判"写进去了没有")。
+ *
+ * `updateMessageStreaming` 一并空转:§16.23 第五节判它"今天翻不得",理由是
+ * **恒等门会当场红**(store 摘掉这一格而折叠侧的 run 还没闭)。恒等门 c4 已经
+ * 退役(§16.24),而"读改物化"正是那一节写的解除条件 —— 本批两件同批落地。
+ */
+function portTargetExists(sessionId: string, messageId: string): boolean {
+	// 有活投影就问它(O(1),不物化);没有就退回内存 store 那一份 —— 与
+	// `materializeSessionMessages` 的边界同源:没有活投影时消息数组仍归仓库。
+	// **不主动建活投影**:建表要同步读整份文件,这一口挂在逐 token 的热路径上。
+	if (hasLiveSessionProjection(sessionId)) {
+		return eventsHasMessage(sessionId, messageId);
+	}
+	return (
+		sessionRepository
+			.getSessionMessages(sessionId)
+			?.some((message) => message.id === messageId) ?? false
+	);
+}
+
+/**
  * Add a message to a session.
  *
  * S1a:这四条 store 端口(add / delete / truncate 两式)是 **core 引擎**写消息
@@ -857,39 +900,34 @@ export function updateMessageAndTruncate(
 export function updateMessageContent(
 	sessionId: string,
 	messageId: string,
-	newContent: string,
+	_newContent: string,
 ): boolean {
-	return sessionMessageRuntime!.updateMessageContent(
-		sessionId,
-		messageId,
-		newContent,
-	);
+	// **c4-d 起空转**(见 `portTargetExists` 上面那段)。产地 = `assistant/chunks`
+	// 的逻辑 delta(c3-a 盖章即折);生图 / 压缩那三条非 provider 正文各有自己的
+	// 产地(`assistant/part-end{contentOnly}` / `session/compacted`)。
+	return portTargetExists(sessionId, messageId);
 }
 
 // Update message reasoning (for streaming, does not affect sort order)
 export function updateMessageReasoning(
 	sessionId: string,
 	messageId: string,
-	reasoning: string,
+	_reasoning: string,
 ): boolean {
-	return sessionMessageRuntime!.updateMessageReasoning(
-		sessionId,
-		messageId,
-		reasoning,
-	);
+	// **c4-d 起空转**。产地同 `updateMessageContent`(reasoning kind 的逻辑 delta)。
+	return portTargetExists(sessionId, messageId);
 }
 
 // Update message streaming status (does not affect sort order)
 export function updateMessageStreaming(
 	sessionId: string,
 	messageId: string,
-	isStreaming: boolean,
+	_isStreaming: boolean,
 ): boolean {
-	return sessionMessageRuntime!.updateMessageStreaming(
-		sessionId,
-		messageId,
-		isStreaming,
-	);
+	// **c4-d 起空转**。`isStreaming` 由 run 开闭推导(`chat-messages.ts` 的
+	// `...(node.ended ? {} : { isStreaming: true })`),不是一格独立事实 ——
+	// c4-b 的钥匙② 已经把最后一个把它当寻址索引的消费者(停止按钮)换掉了。
+	return portTargetExists(sessionId, messageId);
 }
 
 /**
@@ -914,33 +952,29 @@ export function updateMessageUsage(
 	},
 ): boolean {
 	assertPortFactIsFolded(sessionId, messageId, 'usage', usage);
-	return sessionMessageRuntime!.updateMessageUsage(sessionId, messageId, usage);
+	// **c4-d 起空转**(断言留任:它比的是"端口手里的事实 ≡ 折叠值")。
+	return portTargetExists(sessionId, messageId);
 }
 
 // Update message tool calls (does not affect sort order)
 export function updateMessageToolCalls(
 	sessionId: string,
 	messageId: string,
-	toolCalls: ToolCall[],
+	_toolCalls: ToolCall[],
 ): boolean {
-	return sessionMessageRuntime!.updateMessageToolCalls(
-		sessionId,
-		messageId,
-		toolCalls,
-	);
+	// **c4-d 起空转**。产地 = `tool/call` / `tool/result` / `tool/annotate`;
+	// 参数流是 `tool-input` kind 的 delta 段。
+	return portTargetExists(sessionId, messageId);
 }
 
 // Update message content parts (does not affect sort order)
 export function updateMessageContentParts(
 	sessionId: string,
 	messageId: string,
-	contentParts: ChatMessage["contentParts"],
+	_contentParts: ChatMessage["contentParts"],
 ): boolean {
-	return sessionMessageRuntime!.updateMessageContentParts(
-		sessionId,
-		messageId,
-		contentParts,
-	);
+	// **c4-d 起空转**。产地 = `assistant/part-end` + parts 物化。
+	return portTargetExists(sessionId, messageId);
 }
 
 // Add a single content part to message (does not affect sort order)
@@ -953,11 +987,8 @@ export function addMessageContentPart(
 	// 引擎的 `persistTurnContentParts` 走的是这条路(不是命令面),所以守卫必须
 	// 也站在这里 —— 两个调用点,一个判定函数。
 	assertContentPartIsCarriable(sessionId, part)
-	return sessionMessageRuntime!.addMessageContentPart(
-		sessionId,
-		messageId,
-		part,
-	);
+	// **c4-d 起空转**(守卫留任:它问的是"这一格在账本上有没有落点")。
+	return portTargetExists(sessionId, messageId);
 }
 
 /**
@@ -1002,11 +1033,8 @@ export function updateMessageSkill(
 	skillUsed: string,
 ): boolean {
 	assertPortFactIsFolded(sessionId, messageId, 'skillUsed', skillUsed);
-	return sessionMessageRuntime!.updateMessageSkill(
-		sessionId,
-		messageId,
-		skillUsed,
-	);
+	// **c4-d 起空转**(断言留任)。
+	return portTargetExists(sessionId, messageId);
 }
 
 /**
@@ -1021,11 +1049,8 @@ export function updateMessageError(
 	errorDetails: string,
 ): boolean {
 	assertPortFactIsFolded(sessionId, messageId, 'errorDetails', errorDetails);
-	return sessionMessageRuntime!.updateMessageError(
-		sessionId,
-		messageId,
-		errorDetails,
-	);
+	// **c4-d 起空转**(断言留任)。
+	return portTargetExists(sessionId, messageId);
 }
 
 /*
@@ -1056,20 +1081,18 @@ export function updateMessageTurnContext(
 	turnContext: NonNullable<ChatMessage["turnContext"]>,
 ): boolean {
 	assertPortFactIsFolded(sessionId, messageId, 'turnContext', turnContext);
-	return sessionMessageRuntime!.updateMessageTurnContext(
-		sessionId,
-		messageId,
-		turnContext,
-	);
+	// **c4-d 起空转**(断言留任)。
+	return portTargetExists(sessionId, messageId);
 }
 
 // Add a step to a message (does not affect sort order)
 export function addMessageStep(
 	sessionId: string,
 	messageId: string,
-	step: Step,
+	_step: Step,
 ): boolean {
-	return sessionMessageRuntime!.addMessageStep(sessionId, messageId, step);
+	// **c4-d 起空转**。产地 = `tool/call` → `materializeSteps`。
+	return portTargetExists(sessionId, messageId);
 }
 
 // Update a step in a message (does not affect sort order)
@@ -1077,31 +1100,28 @@ export function addMessageStep(
 export function updateMessageStep(
 	sessionId: string,
 	messageId: string,
-	stepId: string,
-	updates: Partial<Step>,
+	_stepId: string,
+	_updates: Partial<Step>,
 ): boolean {
-	return sessionMessageRuntime!.updateMessageStep(
-		sessionId,
-		messageId,
-		stepId,
-		updates,
-	);
+	// **c4-d 起空转**。产地 = `tool/call` / `tool/result` / `tool/annotate`。
+	return portTargetExists(sessionId, messageId);
 }
 
 export function updateMessageSteps(
 	sessionId: string,
 	messageId: string,
-	steps: Step[] | undefined,
+	_steps: Step[] | undefined,
 ): boolean {
-	return sessionMessageRuntime!.updateMessageSteps(sessionId, messageId, steps);
+	// **c4-d 起空转**。产地同 `updateMessageStep`。
+	return portTargetExists(sessionId, messageId);
 }
 
 // Update usage for all steps in a specific turn (does not affect sort order)
 export function updateStepsUsageByTurn(
 	sessionId: string,
 	messageId: string,
-	turnIndex: number,
-	usage: {
+	_turnIndex: number,
+	_usage: {
 		inputTokens: number;
 		outputTokens: number;
 		totalTokens: number;
@@ -1110,12 +1130,11 @@ export function updateStepsUsageByTurn(
 		reasoningTokens?: number;
 	},
 ): string[] {
-	return sessionMessageRuntime!.updateStepsUsageByTurn(
-		sessionId,
-		messageId,
-		turnIndex,
-		usage,
-	);
+	// **c4-d 起空转**。产地 = `request/response.usageTurnIndex` → `run.usageByTurn`
+	// → `steps[].usage`(§13.9)。返回值(改到了哪几个 step)全仓零消费者。
+	void sessionId;
+	void messageId;
+	return [];
 }
 
 // Update session summary (for context compacting)

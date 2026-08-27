@@ -104,6 +104,21 @@ export interface OnethingSessionRepositoryOptions<
    */
   hydrateMessagesFromProjection?(sessionId: string): TMessage[] | undefined
   /**
+   * **物化视图**(F4-c c4-d,§16.27)—— 内存 store 的消息数组从**折叠产物**取。
+   *
+   * 与 `hydrateMessagesFromProjection` 的区别是**时机**,不是内容:补水那一口只
+   * 在冷加载时问一次(换的是"从盘上读回来的那一份"),这一口在**每次交出会话**
+   * 时问一次(换的是"此刻的那一份")。装上它 = 折叠产物成为消息数组的唯一维护者:
+   * 引擎那 18 个热写端口不再需要往数组里写,老 reducer 的消息分支也随之零流量。
+   *
+   * 稳态成本 = 宿主那边一次 map 查询 + 一次版本号比较(宿主按活投影的失效号缓存);
+   * 返回 `undefined` = 这条会话没有可用的折叠产物,保留仓库自己那一份。
+   *
+   * 为什么是注入而不是直接 import:与补水那一口同一条理由 —— 投影住在装配层,
+   * 产品层的仓库不许反向依赖它。
+   */
+  materializeMessagesFromProjection?(sessionId: string): TMessage[] | undefined
+  /**
    * SQLite 退役遗留:全仓零生产填充(S4 把只为它存在的那个具名口删了,形状
    * 原地保留)。下面每个成员都缺席 = 相应分支恒为 no-op。
    */
@@ -300,8 +315,28 @@ export class OnethingSessionRepository<
     this.processOwnedSessions.clear()
   }
 
+  /**
+   * **换装点**(F4-c c4-d,§16.27):把消息那一格换成折叠产物的物化。
+   *
+   * 全仓**唯一**一处 `session.messages = …`(`session:check` 规则 C 的具名例外)。
+   * "只有一个维护者"这条不变量因此仍然成立,只是维护者从老 reducer 换成了折叠
+   * 产物 —— 而 reducer 那一半随本批整批空转。
+   *
+   * 换的是**同一个会话对象上的那一格**,不是新建一个会话:调用方(LRU 缓存、
+   * 挂起写快照、`AsyncSaveQueue.getLatest`)手里握的都是这个对象的引用,换引用
+   * 会让它们指向旧的那一份。数组整体替换、逐条不动 —— 命令面 COW 的同一条纪律。
+   */
+  private refreshMessagesFromProjection(sessionId: string, session: TSession): TSession {
+    const next = this.options.materializeMessagesFromProjection?.(sessionId)
+    if (!next) return session
+    if (next === session.messages) return session
+    session.messages = next
+    return session
+  }
+
   getCachedSession(sessionId: string): TSession | undefined {
-    return this.sessionCache.get(sessionId)
+    const session = this.sessionCache.get(sessionId)
+    return session ? this.refreshMessagesFromProjection(sessionId, session) : undefined
   }
 
   /**
@@ -310,7 +345,8 @@ export class OnethingSessionRepository<
    * 的一次会话读;取数原语归位到仓库层(白名单)。
    */
   getCachedSessionMessages(sessionId: string): TMessage[] | undefined {
-    return this.sessionCache.get(sessionId)?.messages
+    // F4-c c4-d(§16.27):走同一个换装点 —— 一份缓存两种读法就是两个视图。
+    return this.getCachedSession(sessionId)?.messages
   }
 
   deleteCachedSession(sessionId: string): void {
@@ -652,7 +688,9 @@ export class OnethingSessionRepository<
       sanitizeSession: session => this.repairOnFirstTouch(sessionId, session),
       expandPath: this.options.expandPath,
     };
-    return loadSessionWithAdapters<TSession>(loadSessionWithAdaptersOptions).session
+    const session = loadSessionWithAdapters<TSession>(loadSessionWithAdaptersOptions).session
+    // F4-c c4-d(§16.27):交出去之前换装 —— 消息那一格的维护者是折叠产物。
+    return session ? this.refreshMessagesFromProjection(sessionId, session) : session
   }
 
   /**

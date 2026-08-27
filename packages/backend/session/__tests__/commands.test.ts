@@ -136,44 +136,13 @@ describe('sessionCommands — 持久化接线', () => {
     expect(h.saves).toHaveLength(before)
   })
 
-  it('appendContentPart / upsertStep / patchStep / setToolCalls:都是 message 计划', () => {
-    const h = harness([message('m1', { steps: [{ id: 'st1', title: 't' }] as ChatMessage['steps'] })])
-
-    h.commands.appendContentPart('s1', { messageId: 'm1', part: { type: 'text', text: 'a' } as never })
-    expect(h.saves.at(-1)).toMatchObject({ lazy: false, plan: { kind: 'message', dirtySeq: 1 } })
-
-    h.commands.upsertStep('s1', { messageId: 'm1', step: { id: 'st2', title: 'x', toolCallId: 'c1' } as never })
-    expect(h.saves.at(-1)).toMatchObject({ lazy: false, plan: { kind: 'message', dirtySeq: 1 } })
-
-    h.commands.patchStep('s1', { messageId: 'm1', stepId: 'st1', updates: { title: 'tick' } as never })
-    expect(h.saves.at(-1)).toMatchObject({ lazy: true, plan: { kind: 'message', dirtySeq: 1 } })
-
-    h.commands.patchStep('s1', { messageId: 'm1', stepId: 'st1', updates: { status: 'success' } as never })
-    expect(h.saves.at(-1)).toMatchObject({ lazy: false, plan: { kind: 'message', dirtySeq: 1 } })
-
-    h.commands.setToolCalls('s1', { messageId: 'm1', toolCalls: [] })
-    expect(h.saves.at(-1)).toMatchObject({ lazy: false, plan: { kind: 'message', dirtySeq: 1 } })
-  })
-
-  it('patchStepsUsageByTurn:没命中就不写盘', () => {
-    const h = harness([
-      message('m1', { steps: [{ id: 'st1', title: 't', turnIndex: 0 }] as ChatMessage['steps'] }),
-    ])
-
-    expect(h.commands.patchStepsUsageByTurn('s1', {
-      messageId: 'm1',
-      turnIndex: 0,
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-    })).toEqual(['st1'])
-    expect(h.saves).toHaveLength(1)
-
-    expect(h.commands.patchStepsUsageByTurn('s1', {
-      messageId: 'm1',
-      turnIndex: 9,
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-    })).toEqual([])
-    expect(h.saves).toHaveLength(1)
-  })
+  /*
+   * `appendContentPart / upsertStep / patchStep / setToolCalls:都是 message 计划`
+   * 与 `patchStepsUsageByTurn:没命中就不写盘` —— **两条用例随那五条命令一起删除**
+   * (F4-c c4-d,§16.27)。它们钉的是那五条**端口专用包装**的写计划档位,而包装
+   * 本身生产零调用、c4-d 已删。core 那一侧的 reducer 分支留着(合同测试 A 线的
+   * 词汇),它的写计划由 `packages/core/session/__tests__/commands.test.ts` 覆盖。
+   */
 
   it('deleteMessage:structural + sqlite 删 + 补 index meta(E4)', () => {
     const h = harness([message('m1'), message('m2')])

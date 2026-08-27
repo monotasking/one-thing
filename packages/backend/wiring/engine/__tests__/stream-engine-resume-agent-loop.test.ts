@@ -87,6 +87,8 @@ vi.mock('../../providers/index.js', () => ({
 
 vi.mock('../stream/stream-executor.js', () => ({
   executeMessageStream: vi.fn(),
+  // F4-c c4-d(§16.27):占位入库的同一同步段里开账,由引擎创建点调。
+  openAssistantRun: vi.fn(),
 }))
 
 vi.mock('../stream/agent-loop-executor.js', () => ({

@@ -104,6 +104,8 @@ export interface OnethingProductStreamRuntimeHostAdapters<
   models: StreamEngineModelRegistryAdapter
   buildHistoryMessages: StreamEngineHistoryAdapter<TSession, TMessage, THistoryMessage>['buildMessages']
   buildResumeHistoryAfterToolConfirmation: StreamEngineHistoryAdapter<TSession, TMessage, THistoryMessage>['buildResumeAfterToolConfirmation']
+  /** F4-c c4-d(§16.27):占位入库的同一同步段里开账;缺席 = 宿主没有账本。 */
+  openAssistantRun?: StreamEngineStreamsAdapter<THistoryMessage, TStreamResult>['openAssistantRun']
   executeMessageStream: StreamEngineStreamsAdapter<THistoryMessage, TStreamResult>['executeMessageStream']
   executeAgentLoopStreamGeneration: StreamEngineStreamsAdapter<THistoryMessage, TStreamResult>['executeAgentLoopStreamGeneration']
   compactSessionContext: StreamEngineCompactionAdapter<unknown, TCompactResult>['compactSessionContext']
@@ -279,6 +281,7 @@ export function createOnethingProductStreamRuntimeFromHostAdapters<
     models: adapters.models,
     history: historyPort,
     streams: {
+      ...(adapters.openAssistantRun ? { openAssistantRun: adapters.openAssistantRun } : {}),
       executeMessageStream: adapters.executeMessageStream,
       executeAgentLoopStreamGeneration: adapters.executeAgentLoopStreamGeneration,
     },

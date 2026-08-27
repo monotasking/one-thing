@@ -166,43 +166,6 @@ export const sessionCommands = {
     Object.assign(message, payload.patch)
     return true
   },
-  appendContentPart(sessionId: string, payload: { messageId: string; part: unknown }) {
-    const message = messagesOf(sessionId).find(entry => entry.id === payload.messageId)
-    if (!message) return false
-    message.contentParts = [...(message.contentParts ?? []), payload.part]
-    return true
-  },
-  upsertStep(sessionId: string, payload: { messageId: string; step: any }) {
-    const message = messagesOf(sessionId).find(entry => entry.id === payload.messageId)
-    if (!message) return false
-    const steps = (message.steps ?? []) as any[]
-    const index = steps.findIndex(step => step.toolCallId && step.toolCallId === payload.step.toolCallId)
-    message.steps = index >= 0
-      ? steps.map((step, at) => (at === index ? { ...step, ...payload.step } : step))
-      : [...steps, payload.step]
-    return true
-  },
-  patchStep(
-    sessionId: string,
-    payload: { messageId: string; stepId: string; updates: Record<string, unknown> },
-  ) {
-    const message = messagesOf(sessionId).find(entry => entry.id === payload.messageId)
-    if (!message) return false
-    const steps = (message.steps ?? []) as any[]
-    const index = steps.findIndex(step => step.id === payload.stepId)
-    if (index < 0) return false
-    message.steps = steps.map((step, at) => (at === index ? { ...step, ...payload.updates } : step))
-    return true
-  },
-  patchStepsUsageByTurn(): string[] {
-    return []
-  },
-  setToolCalls(sessionId: string, payload: { messageId: string; toolCalls: unknown[] }) {
-    const message = messagesOf(sessionId).find(entry => entry.id === payload.messageId)
-    if (!message) return false
-    message.toolCalls = payload.toolCalls
-    return true
-  },
   truncateFrom(
     sessionId: string,
     payload: { messageId: string; inclusive: boolean; newContent?: string },

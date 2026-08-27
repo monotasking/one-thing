@@ -89,9 +89,9 @@ import {
   stampCollabAgentId,
   updateSessionsIndexMetaForCommands,
 } from '../stores/sessions.js'
-import { assertContentPartIsCarriable } from './content-part-guard.js'
 import { sessionCommandEvents } from './command-events.js'
 import { sessionReads } from './reads.js'
+import { withSessionCommandPin } from './materialized-messages.js'
 
 /**
  * 截断要从会话总账扣回去的用量(§16.25 钥匙③)。三格与 `ChatMessage['usage']`
@@ -138,16 +138,6 @@ export interface SessionMessageCommandRuntime {
     patch: Partial<ChatMessage>,
     hint?: SessionCommandWriteHint,
   ): boolean
-  addMessageContentPart(sessionId: string, messageId: string, part: ContentPart): boolean
-  addMessageStep(sessionId: string, messageId: string, step: Step): boolean
-  updateMessageStep(sessionId: string, messageId: string, stepId: string, updates: Partial<Step>): boolean
-  updateStepsUsageByTurn(
-    sessionId: string,
-    messageId: string,
-    turnIndex: number,
-    usage: NonNullable<ChatMessage['usage']>,
-  ): string[]
-  updateMessageToolCalls(sessionId: string, messageId: string, toolCalls: ToolCall[]): boolean
   deleteMessage(sessionId: string, messageId: string): boolean
   deleteMessageWhere(sessionId: string, matchMarker: (message: ChatMessage) => boolean): boolean
   deleteMessageAndTruncate(
@@ -247,17 +237,20 @@ export interface SessionCommands {
     sessionId: string,
     payload: { messageId: string; patch: Partial<ChatMessage>; hint?: SessionCommandWriteHint },
   ): boolean
-  appendContentPart(sessionId: string, payload: { messageId: string; part: ContentPart }): boolean
-  upsertStep(sessionId: string, payload: { messageId: string; step: Step }): boolean
-  patchStep(
-    sessionId: string,
-    payload: { messageId: string; stepId: string; updates: Partial<Step> },
-  ): boolean
-  patchStepsUsageByTurn(
-    sessionId: string,
-    payload: { messageId: string; turnIndex: number; usage: NonNullable<ChatMessage['usage']> },
-  ): string[]
-  setToolCalls(sessionId: string, payload: { messageId: string; toolCalls: ToolCall[] }): boolean
+  /*
+   * `appendContentPart` / `upsertStep` / `patchStep` / `patchStepsUsageByTurn` /
+   * `setToolCalls` —— **已删除**(F4-c c4-d,§16.27)。
+   *
+   * 这五条是**端口专用**的包装:生产上引擎从来不经命令面写它们,而是直调
+   * `sessionMessageRuntime`(§16.23 的 18 端口分类表实测:命令面上零调用)。
+   * c4-d 让那 15 个端口整批空转之后,连那条直调也不写 store 了 —— 五条包装
+   * 于是既没有调用者也没有被包装的动作,纯减法删除。
+   *
+   * 它们在 core 那一侧的 reducer 分支**留着**:`projection-contract.test.ts`
+   * 的 A 线("命令序列 → ChatMessage[]",与事件投影逐格对拍)拿它们表达"引擎
+   * 往消息上写了什么" —— 那条判据是活的。理由全文见 `scripts/session-check.mjs`
+   * 规则 B 的注释与 §16.27 第四节。
+   */
   truncateFrom(sessionId: string, payload: TruncateFromPayload): boolean
   deleteMessage(sessionId: string, payload: DeleteMessagePayload): boolean
   replaceAll(sessionId: string, payload: ReplaceAllPayload): Promise<ReplaceAllResult>
@@ -316,7 +309,7 @@ export function createSessionCommands(
       if (sessionReads.hasSessionInStore(sessionId)) {
         events?.appendMessage(sessionId, message)
       }
-      ports.messages.addMessage(sessionId, message)
+      withSessionCommandPin(() => ports.messages.addMessage(sessionId, message))
       // F4-a(§16.12):**把入库的那一条交回去**。盖章是 COW 的(不改调用方手里
       // 那条),所以"我刚写进去的是什么"以前只能事后回读一次 —— 而那次回读是一个
       // 可以不存在的时序窗口。现在由这扇门直接答。
@@ -344,7 +337,7 @@ export function createSessionCommands(
         const existed = sessionReads.hasMessageInStore(sessionId, payload.message.id)
         events?.upsertMessage(sessionId, payload.message, existed)
       }
-      return ports.messages.upsertMessage(sessionId, payload.message)
+      return withSessionCommandPin(() => ports.messages.upsertMessage(sessionId, payload.message))
     },
 
     /**
@@ -362,38 +355,12 @@ export function createSessionCommands(
       if (sessionReads.hasMessageInStore(sessionId, payload.messageId)) {
         events?.patchMessage(sessionId, payload.messageId, payload.patch)
       }
-      return ports.messages.patchMessageFields(
+      return withSessionCommandPin(() => ports.messages.patchMessageFields(
         sessionId,
         payload.messageId,
         payload.patch,
         payload.hint,
-      )
-    },
-
-    appendContentPart(sessionId, payload) {
-      assertContentPartIsCarriable(sessionId, payload.part)
-      return ports.messages.addMessageContentPart(sessionId, payload.messageId, payload.part)
-    },
-
-    upsertStep(sessionId, payload) {
-      return ports.messages.addMessageStep(sessionId, payload.messageId, payload.step)
-    },
-
-    patchStep(sessionId, payload) {
-      return ports.messages.updateMessageStep(sessionId, payload.messageId, payload.stepId, payload.updates)
-    },
-
-    patchStepsUsageByTurn(sessionId, payload) {
-      return ports.messages.updateStepsUsageByTurn(
-        sessionId,
-        payload.messageId,
-        payload.turnIndex,
-        payload.usage,
-      )
-    },
-
-    setToolCalls(sessionId, payload) {
-      return ports.messages.updateMessageToolCalls(sessionId, payload.messageId, payload.toolCalls)
+      ))
     },
 
     /**
@@ -436,7 +403,7 @@ export function createSessionCommands(
         : undefined
       if (present) events?.truncateFrom(sessionId, payload, { before, now: at })
 
-      return payload.inclusive
+      return withSessionCommandPin(() => (payload.inclusive
         ? ports.messages.deleteMessageAndTruncate(sessionId, payload.messageId, {
             ...(subtractedUsage ? { subtractedUsage } : {}),
           })
@@ -452,7 +419,7 @@ export function createSessionCommands(
               now: at,
               ...(subtractedUsage ? { subtractedUsage } : {}),
             },
-          )
+          )))
     },
 
     /**
@@ -467,14 +434,14 @@ export function createSessionCommands(
         if (sessionReads.hasMessageInStore(sessionId, payload.messageId)) {
           events?.deleteMessage(sessionId, payload.messageId)
         }
-        return ports.messages.deleteMessage(sessionId, payload.messageId)
+        return withSessionCommandPin(() => ports.messages.deleteMessage(sessionId, payload.messageId))
       }
       // F3(§16.10)复核:**留在 store**。理由不再是"投影滞后"(§13.18 发现 B,
       // F1 之后不成立),而是**判据同源** —— 下一行 `deleteMessageWhere` 的 reducer
       // 在同一份 store 上跑同一个谓词,两边找到的必须是同一条。
       const target = sessionReads.findMessageFromStore(sessionId, payload.matchMarker)
       if (target) events?.deleteMessage(sessionId, target.id)
-      return ports.messages.deleteMessageWhere(sessionId, payload.matchMarker)
+      return withSessionCommandPin(() => ports.messages.deleteMessageWhere(sessionId, payload.matchMarker))
     },
 
     /**
@@ -500,7 +467,10 @@ export function createSessionCommands(
       const isClear = payload.reason === 'clear'
 
       events?.replaceAll(sessionId, payload.messages, payload.reason)
-      ports.messages.replaceAllMessages(sessionId, payload.messages, payload.reason)
+      // 定格只圈同步这一半 —— 下面还有一次 `await flush`。
+      withSessionCommandPin(() =>
+        ports.messages.replaceAllMessages(sessionId, payload.messages, payload.reason),
+      )
 
       ports.updateSessionsIndexMeta(sessionId, meta => {
         meta.updatedAt = session.updatedAt
@@ -571,11 +541,6 @@ export const sessionCommands: SessionCommands = {
   appendMessage: (sessionId, payload) => getSessionCommands().appendMessage(sessionId, payload),
   upsertMessage: (sessionId, payload) => getSessionCommands().upsertMessage(sessionId, payload),
   patchMessage: (sessionId, payload) => getSessionCommands().patchMessage(sessionId, payload),
-  appendContentPart: (sessionId, payload) => getSessionCommands().appendContentPart(sessionId, payload),
-  upsertStep: (sessionId, payload) => getSessionCommands().upsertStep(sessionId, payload),
-  patchStep: (sessionId, payload) => getSessionCommands().patchStep(sessionId, payload),
-  patchStepsUsageByTurn: (sessionId, payload) => getSessionCommands().patchStepsUsageByTurn(sessionId, payload),
-  setToolCalls: (sessionId, payload) => getSessionCommands().setToolCalls(sessionId, payload),
   truncateFrom: (sessionId, payload) => getSessionCommands().truncateFrom(sessionId, payload),
   deleteMessage: (sessionId, payload) => getSessionCommands().deleteMessage(sessionId, payload),
   replaceAll: (sessionId, payload) => getSessionCommands().replaceAll(sessionId, payload),

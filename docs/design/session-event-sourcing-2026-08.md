@@ -7829,7 +7829,7 @@ transport/ui)。
 | part-boundary 状态机(U0) | **编解码器的编码半边**(迁居,合同随迁) |
 | recorder 的打包段 | 编码器写入端(素门落账时机不变) |
 | 18 个热写端口 | 签名不动,实现=**发逻辑事件**(折叠前进即写) |
-| 老 reducer(core/session/commands.ts) | **删除**(c4)—— c4 停在诊断(写手窗口);**c4-b 已退役写手窗口**(§16.25 三把钥匙),仍未删:只剩最后一格 —— store 的消息数组还由它维护,而它自己要读那份数组(`deriveRetainedContextSize`)。往下走 = 一次"读侧改从物化取"的切换 + 一次性能裁定(§16.25 第四节) |
+| 老 reducer(core/session/commands.ts) | **删除**(c4)—— c4 停在诊断(写手窗口);**c4-b 已退役写手窗口**(§16.25 三把钥匙);**c4-c 把 B 案真做了一遍并回退**(§16.26):性能前提成立(`getSession` ~39 次/run,不逐 token)、静默期物化 ≡ store(90 采样 89 等),但 `retry-message` 当场红 —— 根因是**流式 assistant 占位在账本上没有 append 期产地**(产地是其后的 `run/start`,实测 322/644 次落后一拍),读侧换装会清掉写模型手里刚建的那条占位。**c4-d 一批切完**(§16.27,用户裁甲第二形态):`run/start` 提前到与 `store.addMessage` 同一同步段,读侧改从物化取,15 端口空转,5 条零调用命令面包装删除。**reducer 本身没删** —— 它今天是「会话级派生的算法 + S0 合同测试 A 线的词汇」,不再是消息数组的维护者 |
 | 恒等门(F0) | c4 告别对账后**退役** —— **已退役**(§16.24) |
 | refold | **保留**,唯一常驻耐久门(比对点=编码器刷新点,游标守卫语义不变) |
 | 投影 reducer | 唯一状态推导;学会折逻辑 delta(数组累积 O(1)) |
@@ -7845,7 +7845,7 @@ transport/ui)。
 | **c1** | ~~出生事实补齐:run/start 携占位全字段,折叠出生占位(拍板 3 兑现)~~ **已改判并结案(§16.20):产地与折叠分支 F4-a 时就齐了,88 是取样窗口的读数**。c1 的实际产出 = 那份读数 + 窗口宽度记档,零生产改动 | ~~88→0~~ 改判:`run/start` 落账那一刻 88/88 逐格相等(实测) |
 | **c2** | 编解码器就位:状态机迁居、读侧解码折叠、素门/带 surface 门写入走编码器;decode∘encode 性质测试;老文件逐字节同折合同 | **✅ 已落地(§16.21)**:字节回归 0 差、decode∘encode 性质测试绿、全库 433 账本折叠指纹 0 差、性能 1.04×、battery GREEN |
 | **c3** | 18 端口翻转为发事件(分 2–3 小批,流式性能实测每 delta 折叠开销) | 探针 B 九路全零 + 性能预算 + battery。**c3-a 已落地(§16.23)**:18 口全量分类表 + 流式首刀(逻辑 delta 盖章即折)—— `reasoning` 18/18→**0**、`content` 126/126→**8/124**(残差 6 非前缀 + 2 整段,全是 C 类"另有产地"的非 provider 正文产地,不是滞后);`isStreaming` 按读数**改判不翻**(见 §16.23 第五节)。剩 c3-b(工具三口)/ c3-c(收尾三口) |
-| **c4** | 非流式合一收尾、老 reducer 删除、告别对账、恒等门退役、session:check 改写、策略表+收敛测试落地 | **🟡 部分落地(§16.24)**:告别对账全绿(runs 321 / mismatches 0 / 真机 verify 无新增)→ **恒等门已退役**;三个死口删除;`thinkingTime` 兑现"取投影值";`refold` 补采;新立**端口事实断言**(逐格替身,battery 比过 265 次 0 失配)。**老 reducer 删除与 A 类端口空转停在诊断** —— 三条硬证据(settle 读写手视图的 `steps`/`data-steps` 锚点、abort 按 `isStreaming` 寻址、truncate 用量结算)都指向同一个根因:§16.17 的**活 run 写手窗口**今天由内存 store 承担,而本批口径是不动它。往下走要先裁定"写手窗口退役吗"(§16.24 第五节)。**c4-b 已把那三条依赖全部拆除并删掉 `getLiveRunWriterMessage`**(§16.25:锚点由共享纯件从折叠产物现算、abort 按活 run 登记簿寻址、截断用量结算从折叠产物取;施工中探针抓到三处真回归并各留一条合同用例)。**端口空转与 reducer 分支删除仍未做**,但挡路的只剩一格 —— store 的消息数组还由老 reducer 维护、而归约器自己要读它;往下 = 一次"读侧改从物化取"的切换 + 一次 A/B/C 性能裁定(§16.25 第四节) |
+| **c4** | 非流式合一收尾、老 reducer 删除、告别对账、恒等门退役、session:check 改写、策略表+收敛测试落地 | **✅ 已落地(c4-d,§16.27;策略表+收敛测试顺延 c5)**;过程记录:**🟡 部分落地(§16.24)**:告别对账全绿(runs 321 / mismatches 0 / 真机 verify 无新增)→ **恒等门已退役**;三个死口删除;`thinkingTime` 兑现"取投影值";`refold` 补采;新立**端口事实断言**(逐格替身,battery 比过 265 次 0 失配)。**老 reducer 删除与 A 类端口空转停在诊断** —— 三条硬证据(settle 读写手视图的 `steps`/`data-steps` 锚点、abort 按 `isStreaming` 寻址、truncate 用量结算)都指向同一个根因:§16.17 的**活 run 写手窗口**今天由内存 store 承担,而本批口径是不动它。往下走要先裁定"写手窗口退役吗"(§16.24 第五节)。**c4-b 已把那三条依赖全部拆除并删掉 `getLiveRunWriterMessage`**(§16.25:锚点由共享纯件从折叠产物现算、abort 按活 run 登记簿寻址、截断用量结算从折叠产物取;施工中探针抓到三处真回归并各留一条合同用例)。**端口空转与 reducer 分支删除仍未做**,但挡路的只剩一格 —— store 的消息数组还由老 reducer 维护、而归约器自己要读它;往下 = 一次"读侧改从物化取"的切换 + 一次 A/B/C 性能裁定(§16.25 第四节)。**c4-c 按拍定的 B 案施工并回退**(§16.26,零生产代码留存):B 的性能前提**成立**、静默期物化 ≡ store **成立**(顺带结清 §16.23 第四节 C 类残差那次产地裁定 —— 它是时机差,静默期归零),但 battery 红在 `retry-message`,根因是**流式 assistant 占位没有 append 期产地**(`command-events.ts` 对 `isStreaming` 的 assistant 一条不写,产地是其后的 `run/start`)。挡路的已不是性能,是**一次产地裁定 + 一批不可再拆的完全切换**。**c4-d 一批切完(§16.27)**:用户裁甲第二形态 —— `run/start` 落账提前到与 `store.addMessage` 同一同步段(不开第二产地,§9.3 原样),占位在创建段末尾 **306/306 在场**、任何一次外部读上 **9626 次 0 缺**;读侧现取 + 失效号缓存(不是 `lastSeq`)、补水链 + 先深拷、仓库 `refreshMessagesFromProjection` 单点换装;15 端口整批空转、5 条零调用命令面包装删除、`session:check` 规则 B 第四次改写 + 规则 C 具名例外。**施工中查明 §16.26 没写到的第二条结构事实**:换装接上之后老 reducer 会在**自己刚写的那条事件之后**再应用一次同一条命令(delete/truncate 当场 `changed:false` —— `retry-message` 的红就是它,不是占位窗口),解法是把**归约器那一步**圈进一个定格段。battery GREEN、五门 ok、全仓 11934 绿 |
 | **c5** | 三定律成文为系统宪法(§17),终态架构图,门清单 | — |
 
 规模:c3 为主,全程约 4–6 批。§16.14 战役表 b3/b4 由本节取代(b1/b2 成果原样有效:
@@ -8874,3 +8874,335 @@ reducer 维护,而"命令应用 = fold + 物化"要的是让**读**侧改从物�
 - **脚本**:`session-check.mjs` 规则 B 的理由第三次改写(名单仍然没换 ——
   今天它守的是"内存 store 的消息数组只有一个维护者")。
 - **留给下一批的工单**:全部挂在第四节那一次 A/B/C 裁定上,拍完是**一批**。
+
+### 16.26 F4-c c4-c 勘察结论:**停在诊断** —— B 案的性能前提成立、静默期等价成立,但「命令产事件→F1 同步可见」这条前提在**流式助手占位**上从来没成立过(2026-08-27,opus 施工后回退,**零生产代码留存**)
+
+#### 〇、一句话
+
+按 §16.25 第四节拍定的 **B 案(读侧现取 + 版本缓存)**把切换真做了一遍,
+`sessions:shadow-battery` **当场红在 `retry-message`**(ok=0/failed=7,
+`timed out waiting for idle (≥1 assistant)`)。用一行诊断实验证实了根因,
+而根因不是性能、不是缓存、也不是"哪一格还没折" ——
+
+> **流式 assistant 占位在账本上没有 append 期的产地。**
+> `sessionCommandEvents.appendMessage` 对 `role==='assistant' && isStreaming`
+> 一条都不写(`command-events.ts`,§9.3 的裁定),它在账本上的那一格是
+> **`run/start`**,由引擎在其后写。于是 `store.addMessage` 返回的那一刻,
+> 折叠产物里**没有**这条消息 —— 实测 **322 / 644** 次 `addMessage` 采样如此。
+
+读侧一旦现取,这条占位就在那个窗口里被物化视图**换掉**,而写模型下一刀正是
+建立在它之上的。§16.20 把这个窗口结案成"取样窗口,不是产地缺口"——那句结论
+在"没有人从投影读"的世界里成立;c4-c 要的正是让投影成为读的唯一真相,
+窗口于是从**取样问题**升级成**真相缺口**。
+
+**这是一次产地裁定,不是性能裁定**,按 §16.3 与「行为裁定须先问」不由执行侧
+顺手拍。工单四步全部挂在它上面,本批因此零生产改动收工(`git diff HEAD` 对
+`packages/{backend,core}` 与 `runtime/src/sessions` 为空)。
+
+#### 一、探针 B(c4-c 版,跑完即删)与它的读数
+
+装法:`stores/sessions.ts` 的 18 端口用**一层 `get` 陷阱**(不复制属性表、
+`this` 一律绑回本体 —— §16.23 坑 2 的干净解)+ `getSession` / `flushSessionSave`
+两个读点。判据是那把唯一的尺 `canonicalChatMessage`,逐消息、逐格,外加一份
+数组级生料差。跑 `sessions:shadow-battery` 全量(battery 全程 GREEN,
+runs 321 / portMismatches 0 / refoldMismatches 0 —— 探针没有伪造读数)。
+
+**读数一:`getSession` 是 ~39 次/run,不是逐 token 的。**
+
+| 项 | 读数 |
+|---|---|
+| `getSession` 调用次数 | **12,612**(321 个 run) |
+| 其中投影已建、可比的采样 | 11,310 |
+| 不等 | 3,295(29%) |
+
+逐 token 的写者走的是 runtime 自己的 `repository.getSession`,**不经过**这条
+导出读面。**B 案的性能前提因此成立**:读侧现取 + 版本缓存的稳态成本是一次
+map 查询 + 一次 `!==`,物化次数与读次数同阶,不与 token 数同阶。A 案担心的
+O(n²) 常数放大在 B 上不存在。
+
+**读数二:静默期(最后一次写之后 1s)物化 ≡ store,90 采样 89 相等。**
+
+| 曾经出现过的分岔 | 静默期 |
+|---|---|
+| 曾 usage 缺(59 条会话) | **已收敛** |
+| 曾中止分岔(`steps[].status A=running B=cancelled` / `error <A缺> User cancelled`,23 条) | **已收敛** —— c4-b 的 `onSettled` 真的把 `tool/result{cancelled}` 写出来了 |
+| 曾 `content 异`(压缩卡片 / 生图失败正文,10 条) | **已收敛** |
+| 曾少一条 | **已收敛** |
+| 唯一残差 ×1 | `steps[].toolCall <A缺>`(imported 会话) |
+
+**这条读数结清了 §16.23 第四节留的那次"产地裁定"**:C 类残差 8
+(压缩 / 生图卡片正文)**不是永久分岔,是时机差** —— 它在静默期归零。
+那两条"待用户拍板"里的第 1 条(卡片正文的产地)**按读数结案,不再挂账**。
+
+**唯一的静默期残差 `steps[].toolCall`** 不是账本缺口,是**补水链**:
+`rehydrateSessionFromStorage` 就地把 `step.toolCall = linked` 补上,而投影
+故意不带这一格。物化视图必须跑同一条补水链(施工版已经这么做了,方案见第三节),
+且**必须先深拷**——`materializeMessageNode` 对 `message/imported` 是浅展开,
+不深拷就等于把事件里没有的字段写进活投影,refold 当场破(§15.13 真机首杀)。
+
+**读数三:活 run 窗口内的四类差,逐条定性。**
+
+| 差 | 次数 | 定性 |
+|---|---|---|
+| `msgs.length A少1 尾=assistant` | 306(`getSession`)/ 322(`addMessage`) | **本批的红** —— 见第二节 |
+| `usage <A缺>` | 1,862 | 折叠侧 `node.usage` 门在 `outcome==='completed'`(`chat-messages.ts:176`),`run/end` 在收尾链之后 |
+| `isStreaming <B缺>` | 1,950 | 两个时刻:store 在 `finalize()` 摘掉,折叠侧等 `run/end`(§16.23 第五节同型) |
+| `contentParts <B缺>` / `steps 异` / `toolCalls 异` | 604 / 573 / 64 | 投影领先或落后一拍,静默期全收敛 |
+
+#### 二、红在哪:`retry-message`,以及那一行诊断实验
+
+施工版(已回退)做了三件事:①`projection-cache.ts` 加**失效号**(每次 state
+前进 +1,整份重建**跳号** —— 它不是 `lastSeq`:提前折的 delta 没有自己的行,
+seq 不动而 state 动了);②新件 `session/materialized-messages.ts`(读侧现取 +
+按失效号缓存 + 走同一条补水链 + 没有活投影就退回 store 那一份);
+③仓库多一个注入口 `refreshMessagesFromProjection`,`getSession` /
+`getCachedSession` 各换装一次 —— `session.messages = next` **只在那一处**发生
+(规则 B 守的"只有一个维护者"因此仍然成立,只是维护者换成了折叠产物)。
+
+`typecheck` 0,`battery` **RED**:
+
+```
+FAIL  retry-message   ok=0 failed=7 mismatch-lines=0
+      retry-message#0: [retry-message] timed out waiting for idle (≥1 assistant) (messages=1)
+```
+
+诊断实验(一行,证伪/证实用,已随施工版一起回退):
+
+```ts
+// 折叠落后一拍时不换装
+if (next.length < (session.messages?.length ?? 0)) return session
+```
+
+加上它,`retry-message` **PASS**、`no transcript` 那条 27 场景的泳道 **PASS**、
+battery **GREEN**。根因由此钉死:
+
+> 读侧换装把**写模型手里刚建好的那条助手占位**清掉了,而下一刀正建立在它上面。
+
+**那一行不能留**:它是 §16.25 拒掉的 C 案换了个样子("store 中途是陈旧的"
+这条新口径),而且它的判据是长度启发式 —— `deleteMessage` / `truncateFrom`
+本来就该让数组变短,一条按长度短路的规则迟早会把真的删除也挡下来。
+
+#### 三、往下走要什么:一次产地裁定 + 一条不可分割的施工
+
+**挡路的不是"再修一格",是一条结构事实**:store 的消息数组今天既是**读视图**
+又是**写模型**,两个身份不能同时切一半 —— 而 c4-c 想切的正是读那一半。
+
+- **完全切换**(端口整批空转 + 老 reducer 消息分支删除 + 读侧现取)之后,
+  没有任何写建立在那份数组上,占位窗口就退化成一次 ~0.2ms 的**读可见性**延迟,
+  不再是数据丢失。**但它没法分两批验证** —— 本批的红正是"只切一半"造成的。
+- 而且完全切换之后,那 ~0.2ms 里 `getSession().messages` 仍然缺最新占位。
+  实测这个窗口里的读者 **290/306 是 `CoreStreamEngine.handleSendMessage` 的
+  `sessionForHistory`**(`core-stream-engine.ts:925`),它只取 `summary` /
+  `summaryUpToMessageId` / `name` 这几格会话级字段,消息数组一格不读
+  (历史来自 `this.store.listMessages`,那已经是投影)—— 另外 16 次是
+  `handleEditAndResend` / `handleRetryMessage`,它们瞄的是**更早**的消息。
+  所以窗口本身**今天无人受伤**,但它让"store = fold(事件流),无活窗例外"
+  这句宪法在那一瞬间是假的。
+
+**因此要请用户拍的是这一条(§16.23 第四节那两条待拍板里的第 2 条已由第一节
+读数结清,这是新的一条):**
+
+> **流式 assistant 占位要不要 append 期产地?**
+>
+> - **甲:补产地** —— `sessionCommandEvents.appendMessage` 对流式 assistant
+>   也写一格(`assistant/placeholder` 或让 `run/start` 提前到同一同步段)。
+>   代价:同一条消息在账本上有两个产地的风险(§9.3 当初正是为了避免它才
+>   `return`),要重新裁定 `run/start` 与它的关系。收益:窗口消失,"无活窗例外"
+>   真的成立,c4-c 可以一批切完。
+> - **乙:承认窗口,写进宪法** —— 保留 `run/start` 是唯一产地,并把
+>   "**新建的流式占位在 `run/start` 落账前不在读视图上**"写成一条**明账口径**
+>   (像 §16.17 共存口径那样),然后一批完成切换。代价:宪法上多一条例外;
+>   收益:零新产地、零账本变化。
+> - **丙:不切** —— 老 reducer 与 15 个端口原样留着,c4 就此收在 c4-b。
+>   代价:两个维护者永久共存(今天的状态),`session:check` 规则 B 的理由
+>   第四次改写。
+
+拍完之后剩下的活是**一批**(不可再拆),内容与 §16.25 第四节列的一字不变:
+读侧现取 + 15 端口空转 + 五条端口专用 reducer 分支删除 + `session:check`
+规则 B 改写 + `getMessageFromStore` / `hasMessageInStore` / `findMessageFromStore`
+三口退役(`hasSessionInStore` 永久例外,§16.11 拍板 4),外加本批新查明的两件:
+**物化视图必须跑补水链且必须先深拷**、**失效号不能用 `lastSeq` 代替**。
+
+#### 四、本批的账
+
+- **生产代码**:**0**(施工版 3 件改 + 1 件新增全部回退;
+  `git diff HEAD -- packages/backend packages/core packages/onething-runtime/src/sessions` 为空)。
+- **探针**:`packages/backend/session/probe-b.ts`,跑完即删。
+- **结清**:§16.23 第四节待拍板第 1 条(压缩 / 生图卡片正文的产地)——
+  静默期收敛,**不是永久分岔**,不再挂账。
+- **新挂账**:第三节那条产地裁定(甲 / 乙 / 丙)。
+- **验收**:`typecheck` 0;`sessions:shadow-battery` 带探针 **GREEN**
+  (runs 321 / portChecks 265 / portMismatches 0 / refoldChecks 222–225 /
+  refoldMismatches 0 / mismatches 0 / appendFailures 0 / `session-shadow.jsonl` 0 行);
+  施工版 **RED**(`retry-message` 7/7);回退后 `git diff HEAD` 为空,
+  五门与三包全量按"与 HEAD 逐字相同"免跑。真机 `~/.onething` 全程只读
+  (battery 跑在一次性临时 store 上)。
+
+### 16.27 F4-c c4-d 落地记录:**一批切完** —— 占位产地同步化 + store 消息数组改由折叠产物维护(2026-08-27,opus 施工,未提交)
+
+#### 〇、一句话
+
+用户裁定**甲第二形态**(`run/start` 落账提前到与 `store.addMessage` 同一同步段,
+不开第二产地,§9.3 原样),c4-d 按 §16.26 第三节那份"不可再拆的一批"施工完成:
+
+> **内存 store 的消息数组 = 折叠产物的物化。** 唯一维护者是
+> `session-repository.refreshMessagesFromProjection`;15 个热写端口整批空转;
+> `getLiveRunWriterMessage` 之后连"写模型自己那份数组"也退役了。
+
+`sessions:shadow-battery` **GREEN**(runs 321 / portMismatches 0 / refoldChecks 224 /
+refoldMismatches 0 / mismatches 0 / appendFailures 0),五门 ok,全仓 11934 绿。
+
+**施工中查明 §16.26 没写到的第二条结构事实**(见第二节):`retry-message` 那条红
+**不是**占位窗口造成的 —— 占位窗口修完它照样红。真因是"读侧现取"让老 reducer
+读到了**自己刚写的那条事件之后**的世界,于是把同一条命令在已经折好的数组上再应用
+一次:`delete` / `truncate` 找不到目标,当场 `changed:false`,命令返回"没改成",
+引擎当场 `Message not found` 收工。§16.26 的一行长度启发式之所以"看起来能修",
+正是因为它顺手挡住了这次二次应用 —— 病根被那一行盖住了。
+
+#### 一、第一步:占位产地同步化(甲第二形态)
+
+| 环节 | 落点 |
+|---|---|
+| 新端口 | `core/engine/stream-runtime.ts` 的 `StreamEngineStreamsAdapter.openAssistantRun?(options)` —— **同步、无返回值、可缺席**,签名上写死"必须紧贴 `store.addMessage`,中间不许有 `await`" |
+| 调用点 | `core/engine/core-stream-engine.ts` 三处创建点(send / edit-resend / retry),都在 `store.addMessage` 返回的**下一行** |
+| 实现 | `backend/wiring/engine/stream/stream-executor.ts` 的 `openAssistantRun` → `beginSessionRun(..., { claimed: false })` |
+| 取材单实现 | 新 `buildAssistantRunInput`:预开与认领两处共用一份字段口径(算两遍就是两个产地) |
+| 认领 | `session/runs.ts` 的 `SessionRunHandle.claimed` + `ensureSessionRun` 多一支:预开那条**没有收尾人**,第一个 `ensureSessionRun` 认领它并拿 `started:true`,收尾照旧归 `executeMessageStream` 的 finally;绕开创建点的那条路(确认后恢复 / 单测直调)照旧在那里开张 |
+
+**retry 那一处顺带前移了一行**:`triggerMessageId` 从前是追加占位**之后**从
+`listMessages` 里现取的,而开账要与入库同一同步段,所以这一问提前到追加之前。
+答案逐字相同(追加的是一条 assistant 占位,不改变"最后一条用户消息是谁"),
+`historyMessages` 那次 `listMessages` 一字未动。
+
+**`sessionCommandEvents.appendMessage` 一行没改**:流式 assistant 照旧一条事件都不写
+(§16.20 第四节那条用例照旧成立且照旧该绿)。变的只是 `run/start` **什么时候**落账。
+
+#### 二、第二步施工中的红,以及它教的那件事
+
+按 §16.26 的三件套装完(失效号 / 物化视图 / 单点换装)+ 15 端口空转之后,
+`retry-message` **仍然** `ok=0 failed=7`,读数与 c4-c 一模一样
+(`timed out waiting for idle (≥1 assistant) (messages=1)`)。
+
+**这一次读了账本**:那三条会话的 `events.jsonl` 停在 `message/deleted`,
+**新 run 一条都没开** —— 也就是说引擎在 `deleteMessageAndTruncate` 那一行就收工了,
+根本没走到建占位。顺着 `handleRetryMessage` 往回读:
+
+```
+truncated = store.deleteMessageAndTruncate(...)   ← false
+if (!truncated) { emitStreamError('Message not found'); return }
+```
+
+而 `sessionCommands.truncateFrom` 的执行序是 **判据 → 事件 append(F1 同步可见)
+→ 老 reducer**。读侧现取一接上,第三步里 reducer 自己那次 `repository.getSession`
+就**换装到了自己刚写的那条事件之后**:目标消息已经被折掉了,`applyTruncate` 的
+`findIndex === -1`,`changed:false` —— 连带 `updatedAt` / 用量结算 / 索引计数 /
+落盘计划整批不发生,返回值还成了"没改成"。
+
+同族的另一半:`appendMessage` 会在已经含有这条消息的数组上**再追加一份重影**
+(下一次换装才冲掉)。`patchMessage` 因为幂等而看不出来 —— 它是这条病最会骗人的一格。
+
+**修法:定格只圈归约器那一步。**
+`materialized-messages.ts` 加一个嵌套计数 `pinDepth` 与 `withSessionCommandPin(fn)`,
+命令面把 `ports.messages.*` 那一次调用圈进去:
+
+- 它**前面**的判据 / 底稿取材照旧现取 —— 那正是"此刻"该有的那一份;
+- 它自己看到的是**事件之前**那一份 —— 也就是紧邻它的那次判据读刚换装上去的那一份;
+- 不跨 `await`(`replaceAll` 只圈同步那一半),所以立的**不是** §16.25 拒掉的 C 案
+  那条"store 中途是陈旧的"新语义:定格的宽度是一次同步调用。
+
+一条纪律写在 `pinDepth` 的注释上:**换装点只有一个,定格段也只有一个**。
+
+#### 三、第二步:终极切换(三件套 + 定格)
+
+| 件 | 落点 | 要点 |
+|---|---|---|
+| **失效号** | `session/projection-cache.ts` `LiveProjection.version` + `liveSessionProjectionVersion()` | 每次 state 前进 +1;号从**进程级**计数器取,整份重建天然跳号。**不是 `lastSeq`** —— 提前折的逻辑 delta(c3-a)那一行还压在编码器写缓冲里,`lastSeq` 不动而 state 动了,拿 seq 当版本号会让一整段正文被缓存吃掉 |
+| **物化视图** | 新件 `session/materialized-messages.ts` | 读侧现取 + 按失效号缓存 + **跑同一条补水链**(`rehydrateSessionFromStorage`)+ **先深拷**(§15.13 判例:`materializeMessageNode` 对 `message/imported` 是浅展开,补水是就地写者,不深拷就把事件里没有的字段写进活投影,refold 当场破);没有活投影 / 折不出消息 → `undefined`,调用方保留自己那一份。**不主动建表** |
+| **单点换装** | `session-repository.ts` 的 `refreshMessagesFromProjection`,由 `getSession` / `getCachedSession` 各调一次 | 全仓**唯一**一处 `session.messages = …`;换的是同一个会话对象上的那一格(LRU / 挂起写快照 / `AsyncSaveQueue.getLatest` 握的都是这个对象的引用)。`getCachedSessionMessages` 改走 `getCachedSession`,免得一份缓存两种读法 |
+
+**c4-c 那行长度启发式诊断实验一个字都没有出现。**
+
+#### 四、第三步:收官清单,以及其中一条的**改判**
+
+- **15 端口整批空转**(`backend/stores/sessions.ts`,新私有口 `portTargetExists`):
+  content / reasoning / streaming / contentParts / steps / step / toolCalls /
+  skill / error / turnContext / usage / stepsUsageByTurn / addStep /
+  addContentPart(+ 早已空转的 thinkingTime)。四条 A 类断言(usage / skillUsed /
+  errorDetails / turnContext)与 contentPart 守卫**留任**。空转之后它们只答一个
+  问题——"这条消息在不在":有活投影问新口 `eventsHasMessage`(走 `byMessageId`,
+  **O(1)、不物化**),没有就退回内存 store 那一份。`updateStepsUsageByTurn` 的
+  `string[]` 返回值全仓零消费者,返回 `[]`。
+- **`updateMessageStreaming` 一并空转**:§16.23 第五节判它"今天翻不得",理由是
+  **恒等门会当场红**;恒等门 c4 已退役(§16.24),而"读改物化"正是那一节写的
+  解除条件 —— 两件本批同批落地。
+- **5 条端口专用命令面包装删除**(`appendContentPart` / `upsertStep` / `patchStep` /
+  `patchStepsUsageByTurn` / `setToolCalls`):生产零调用,连带
+  `SessionMessageCommandRuntime` 的 5 个成员、facade-mock 的 5 个方法、两条只钉
+  它们写计划档位的用例。
+- **改判:core 那一侧的五条 reducer 分支`没有`删。** §16.25/§16.26 判它们"整批
+  删除",理由是"生产零流量"—— 那句话对**命令面包装**成立,对 reducer 分支不成立:
+  `core/session/__tests__/projection-contract.test.ts` 的 **A 线**(「命令序列 →
+  `ChatMessage[]`」,与「事件序列 → 投影」逐格对拍)正是拿这五条表达"引擎往消息
+  上写了什么"。删了 A 线就说不出话,**一条活着的判据会当场退化**。据实改判,记在这里。
+- **`session:check`**:规则 B 的理由第四次改写(今天守的是"对 `ChatMessage`/`Step`/
+  `ToolCall` 的字段赋值只有一个算法处";reducer 不再是消息数组的维护者,它的两个
+  身份是会话级派生的算法 + 合同测试 A 线的词汇);新增**规则 C 具名例外**
+  `RULE_C_ALLOWED = { session-repository.ts }` —— 唯一维护者总要有一处把折叠产物装上去。
+- **三口判据同源`没有`退役**(`getMessageFromStore` / `hasMessageInStore` /
+  `findMessageFromStore`)。§16.26 把它们的退役挂在"reducer 退役"上,而 reducer
+  按上一条**没有**退役:它仍然在算会话级派生,判据仍然要与它同源。今天这三口读的
+  已经就是物化视图(store == fold),所以它们**不再是第二份真相**,只是同一份真相的
+  store 侧门牌。`hasSessionInStore` 照旧是永久例外(§16.11 拍板 4)。
+- ③ `partialResult` / ④ 已在 §16.25 第五节结案,本批一行未动。
+
+#### 五、验收(全部实跑)
+
+| 门 | 结果 |
+| --- | --- |
+| `sessions:shadow-battery`(全量) | **GREEN** —— runs **321** / portChecks 265 / **portMismatches 0** / refoldChecks **221–225**(并发抖动)/ **refoldMismatches 0** / mismatches 0 / appendFailures 0 / duplicates 0 / projectionIssues 0 / droppedParts 0 / `session-shadow.jsonl` **0 行** |
+| **探针 C4D**(三采样点,跑完即删) | `openAssistantRun` 返回那一刻占位在场 **306 / 306**(miss 0);**任何一次 `getSession`,活 run 的那条占位在折叠产物里 —— 9,626 次采样 miss 0**(c4-c 同类是 306 次缺)。`addMessage` 返回那一刻 **322 / 322 缺** —— 与 c4-c 的 322 逐字复现,**按构造如此**:落账是它的下一行语句,中间没有 `await`,所以这个"缺"对任何读者都不可观测(单线程同步段)。真正可观测的那一格就是上面那 9,626 次 0 |
+| **字节回归** | **0 差** —— `session-chunk-bytes.test.ts` 原样绿 |
+| `typecheck` | **0**(node + web) |
+| `boundary:gate` | ok — 0 failures |
+| `session:gate` | ok — 0 known, none new(规则 C 例外落地后) |
+| `log:gate` | ok — 4 known, none new |
+| `transport:gate` | ok — 42 常量 / 四壳 2392 行,不变 |
+| `ui:gate` | ok — 81 known, none new |
+| `packages/backend` + `packages/core` + `runtime/src/sessions` | **3523 passed / 0 failed / 3 skipped**(389 文件;`sessions-delete-cascade` 满载时抖动一次,单跑 3/3 绿) |
+| 全仓 | **11934 passed / 2 failed** —— 两只都是 `App.container-layout`(**他会话在途的 renderer 改动**,本批未碰 renderer 一个字节) |
+| 真机 `sessions:verify:gate`(只读) | FAILED,**仍是 §16.20 第七节那一条** `room-1 seq: expected seq 2 at position 1, got 3`,**无新增**(本批全程未写 `~/.onething`) |
+
+#### 六、性能读数(真机会话只读拷进临时 store)
+
+| 会话 | 账本 | 消息数 | 冷折(建活投影) | 一次物化(缓存未命中) | **缓存命中 p50 / p99** |
+|---|---|---|---|---|---|
+| `08f1fe09` | 50.4 MB | 258 | 176.2 ms | 46.0 ms | **0.125 µs / 1.375 µs** |
+| `7e94ef0e` | 25.2 MB | 76 | 84.4 ms | 14.5 ms | **0.042 µs / 0.834 µs** |
+
+- **稳态(投影没前进)= 一次 map 查询 + 一次 `!==`**,亚微秒级 —— §16.25 给 B 案
+  写的那句预期成立,`getSession` 这条极热路上的新增成本可以忽略。
+- **代价在活 run 窗口内**:每条 delta 都会换失效号,所以流式期间每次
+  `getSession` 都要重物化一次。实测频次 ~30 次/run(探针那 9,626 次 / 321 run),
+  在上面那条 258 消息的巨型会话上就是 ~30 × 46 ms。battery 的会话很小,量不出来。
+  **留账**:真要治,方向是**按节点缓存物化**(只重算改动过的那几条),不是回头去改
+  换装点 —— 那是 c5 之后的事,本批只记读数不动手。
+
+#### 七、本批的账
+
+- **生产代码**:新增 1 件(`backend/session/materialized-messages.ts`);
+  改 9 件(`core/engine/{stream-runtime,core-stream-engine}.ts` /
+  `backend/session/{projection-cache,events-reads,runs,commands}.ts` /
+  `backend/stores/sessions.ts` /
+  `backend/wiring/engine/{stream-engine-runtime.ts,stream/stream-executor.ts}` /
+  `runtime/src/{product-stream-runtime.ts,sessions/session-repository.ts}`)。
+  新增事件类型 **0**;canonical 新豁免 **0**;磁盘格式变化 **0**;账本零变化。
+  renderer / providers / tsconfig **一个字节没碰**。
+- **删除**:5 条端口专用命令面包装 + 它们在 `SessionMessageCommandRuntime` /
+  facade-mock 上的成员 + 两条只钉写计划档位的用例。
+- **脚本**:`session-check.mjs` 规则 B 理由第四次改写 + 规则 C 具名例外(新)。
+- **测试**:1 处 mock 补 `openAssistantRun`(`stream-engine-resume-agent-loop`)。
+- **探针**:`backend/session/probe-c4d.ts` + 三处两行钩子,跑完即删
+  (`git status` 已确认无残留)。
+- **留账三条**:①活 run 窗口内大会话的重物化成本(第六节);②老 reducer 与三口
+  判据同源**没有**退役,理由见第四节两条改判;③策略表 + 收敛性质测试(定律三)
+  仍在 c5。

@@ -131,6 +131,17 @@ export interface StreamEngineModelRegistryAdapter {
 }
 
 export interface StreamEngineStreamsAdapter<THistoryMessage = unknown, TStreamResult = unknown> {
+  /**
+   * 助手占位**入库的同一同步段**里,宿主把这条消息在它自己的账本上开张
+   * (F4-c c4-d,`docs/design/session-event-sourcing-2026-08.md` §16.27)。
+   *
+   * 必须紧贴 `store.addMessage` 那一行,中间不许有 `await` —— 这一口的全部意义
+   * 就是"入库与开账在同一个同步段",隔一个 await 就又有窗口了。
+   *
+   * **同步、无返回值、可缺席**:core 不知道宿主有没有账本(测试的 mock store
+   * 就没有),缺席 = 宿主自己在别处开张,行为与 c4-d 之前逐字相同。
+   */
+  openAssistantRun?(options: Record<string, unknown>): void
   executeMessageStream(options: Record<string, unknown>): Promise<void>
   executeAgentLoopStreamGeneration(
     context: unknown,

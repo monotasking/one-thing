@@ -914,6 +914,18 @@ export class CoreStreamEngine<
       // 事件那一条**故意仍发手里这份**:`message:assistant-created` 是"引擎建了
       // 这条消息"的通知,本批不改它的载荷(改了就是一次未经裁定的行为变化)。
       const storedAssistantMessage = this.store.addMessage(sessionId, assistantMessage)
+      // F4-c c4-d(§16.27):**入库与开账同一同步段**。下一行起就有 `await` 了,
+      // 而每一个 await 都是一扇"账本上还没有这条消息"的窗口(§16.20 实测 p50
+      // 0.21ms;读侧一旦以折叠产物为准,那个窗口就是真相缺口而不是取样问题)。
+      this.runtime.streams.openAssistantRun?.({
+        sessionId,
+        assistantMessageId,
+        assistantMessage: storedAssistantMessage,
+        runKind: 'send',
+        triggerMessageId: userMessage.id,
+        providerId,
+        model: configWithApiKey.model,
+      })
 
       await this.eventBus?.emit(sessionId, {
         type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
@@ -1085,6 +1097,16 @@ export class CoreStreamEngine<
       } as unknown as TMessage
       // F4-a:入库那一条(见 `handleSendMessage` 那一处的理由)。
       const storedAssistantMessage = this.store.addMessage(sessionId, assistantMessage)
+      // F4-c c4-d(§16.27):入库与开账同一同步段(见 `handleSendMessage` 的理由)。
+      this.runtime.streams.openAssistantRun?.({
+        sessionId,
+        assistantMessageId,
+        assistantMessage: storedAssistantMessage,
+        runKind: 'edit-resend',
+        triggerMessageId: cmd.messageId,
+        providerId,
+        model: configWithApiKey.model,
+      })
 
       await this.eventBus?.emit(sessionId, {
         type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
@@ -1171,8 +1193,25 @@ export class CoreStreamEngine<
         toolCalls: [],
         ...(assistantOrigin !== undefined ? { origin: assistantOrigin } : {}),
       } as unknown as TMessage
+      // F4-c c4-d(§16.27):`run/start` 的 `triggerMessageId` 必须在**开账那一刻**
+      // 就在手,而开账要与入库同一同步段 —— 所以这一问提前到追加占位之前。答案与
+      // 提前之前逐字相同:追加的是一条 assistant 占位,不改变"最后一条用户消息是谁"。
+      const triggerUserMessageId = this.store
+        .listMessages(sessionId)
+        .filter(message => message.role === 'user')
+        .pop()?.id
       // F4-a:入库那一条(见 `handleSendMessage` 那一处的理由)。
       const storedAssistantMessage = this.store.addMessage(sessionId, assistantMessage)
+      // F4-c c4-d(§16.27):入库与开账同一同步段(见 `handleSendMessage` 的理由)。
+      this.runtime.streams.openAssistantRun?.({
+        sessionId,
+        assistantMessageId,
+        assistantMessage: storedAssistantMessage,
+        runKind: 'retry',
+        ...(triggerUserMessageId ? { triggerMessageId: triggerUserMessageId } : {}),
+        providerId,
+        model: configWithApiKey.model,
+      })
 
       await this.eventBus?.emit(sessionId, {
         type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,

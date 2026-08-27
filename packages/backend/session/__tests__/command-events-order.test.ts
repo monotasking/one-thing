@@ -184,11 +184,6 @@ function storePort(): SessionMessageCommandRuntime {
       state.messages.set(SESSION, next)
       return true
     },
-    addMessageContentPart: () => false,
-    addMessageStep: () => false,
-    updateMessageStep: () => false,
-    updateStepsUsageByTurn: () => [],
-    updateMessageToolCalls: () => false,
     replaceAllMessages(_sessionId, messages) {
       noteStorePort('replaceAllMessages')
       state.messages.set(SESSION, messages.slice())

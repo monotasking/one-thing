@@ -9,7 +9,12 @@
 import type { AppSettings, ChatMessage, ProviderConfig, ToolSettings } from '@shared/ipc.js'
 import type { Principal } from '@onething/core/permission'
 import type { SessionRunKind } from '@onething/core/session'
-import { endSessionRun, ensureSessionRun } from '../../../session/runs.js'
+import {
+  beginSessionRun,
+  endSessionRun,
+  ensureSessionRun,
+  type BeginSessionRunInput,
+} from '../../../session/runs.js'
 import { sessionCommands } from '../../../session/commands.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 import {
@@ -184,6 +189,78 @@ async function resolveRequestedOutputModalities(
 }
 
 /**
+ * 一条流式助手占位 → 它在账本上那一格(`run/start`)的**取材**,单实现。
+ *
+ * 三个调用点(创建点预开 / `executeMessageStream` 认领 / 两者共用的字段口径)
+ * 必须逐格一致 —— 预开写进账本的是这一份,认领时再算一遍就成了两个产地。
+ */
+function buildAssistantRunInput(input: {
+  assistantMessageId: string
+  assistantMessage?: Record<string, unknown>
+  runKind?: SessionRunKind
+  triggerMessageId?: string
+  providerId?: string
+  model?: string
+  agentId?: string
+}): BeginSessionRunInput {
+  // F4-a(§16.12):值前递 —— 这一份是 `store.addMessage` 交回的**入库那一条**
+  // (盖章 COW 之后的那个对象),不是创建点手里那条,也不是回读来的。
+  const placeholder = input.assistantMessage as ChatMessage | undefined
+  const agentId = input.agentId ?? placeholder?.agentId
+  return {
+    kind: input.runKind ?? 'send',
+    assistantMessageId: input.assistantMessageId,
+    ...(input.providerId ? { provider: input.providerId } : {}),
+    ...(input.model ? { model: input.model } : {}),
+    // A4(§13.1):占位消息上盖过的那一格就是事实(`stampCollabAgentId`)。
+    ...(agentId ? { agentId } : {}),
+    // §13.9:同一刻盖的另一格(`stampCollabAgentId` 的 `source: 'collab-turn'`)。
+    ...(placeholder?.source ? { messageSource: placeholder.source } : {}),
+    ...(input.triggerMessageId ? { triggerMessageId: input.triggerMessageId } : {}),
+    ...(placeholder?.timestamp !== undefined ? { timestamp: placeholder.timestamp } : {}),
+    ...(placeholder?.origin
+      ? { origin: placeholder.origin as unknown as Record<string, unknown> }
+      : {}),
+  }
+}
+
+/**
+ * **F4-c c4-d(§16.27):流式助手占位的账本产地,提前到入库的同一同步段。**
+ *
+ * core 的三个创建点(send / edit-resend / retry)在 `store.addMessage` 返回的
+ * 那一行调它 —— 中间不隔任何 `await`。于是"占位入库"与"`run/start` 落账"是
+ * **同一个同步段**里的两件事,F1 的同步可见让折叠当场出生这条占位。
+ *
+ * 从前 `run/start` 写在 `executeMessageStream` 里,与入库隔着
+ * `emit(MESSAGE_ASSISTANT_CREATED)` + 一次历史构建,窗口 p50 0.21ms
+ * (§16.20 第三节实测)。§16.20 把它结案成"取样窗口,不是产地缺口"——那句话
+ * 在"没有人从投影读"的世界里成立;c4-d 让物化视图成为 store 消息的唯一维护者
+ * 之后,窗口就从取样问题升级成**真相缺口**(§16.26:322/644 次 `addMessage`
+ * 返回时折叠里没有这条消息,读侧一换装就把写模型手里刚建好的占位清掉)。
+ *
+ * **不是第二个产地**(§9.3 的裁定原样成立):`sessionCommandEvents.appendMessage`
+ * 对流式 assistant 照旧一条不写,`run/start` 仍然是这条消息在账本上唯一的那一格
+ * —— 变的只是它**什么时候**落账。
+ *
+ * 这条 run **没有收尾人**(`claimed:false`)。收尾照旧归 `executeMessageStream`
+ * 的 finally:它的 `ensureSessionRun` 认领这一条,拿到 `started:true`。
+ */
+export function openAssistantRun(options: Record<string, unknown>): void {
+  const input = options as unknown as {
+    sessionId: string
+    assistantMessageId: string
+    assistantMessage?: Record<string, unknown>
+    runKind?: SessionRunKind
+    triggerMessageId?: string
+    providerId?: string
+    model?: string
+    agentId?: string
+  }
+  if (!input.sessionId || !input.assistantMessageId) return
+  beginSessionRun(input.sessionId, buildAssistantRunInput(input), { claimed: false })
+}
+
+/**
  * S1a:**每一次执行的入口**(§10.6 第 1 条)。
  *
  * runId 在这里生成一次 —— 它是四条引擎路径(send / retry / edit-resend /
@@ -213,28 +290,24 @@ export async function executeMessageStream(
   // 返回值,§16.11 拍板 1 的唯一豁免),创建点顺 `params.assistantMessage` 递到
   // 这里。盖章(`stampCollabAgentId`)已经在入库那一刻发生过,所以这一份上
   // `agentId` / `source` 是齐的 —— 这里不再有第二个盖章点,也不再有回读窗口。
-  const assistantPlaceholder = params.assistantMessage as ChatMessage | undefined
-  const assistantTimestamp = assistantPlaceholder?.timestamp
-  const { run, started } = ensureSessionRun(params.sessionId, {
-    kind: params.runKind ?? 'send',
-    assistantMessageId: params.assistantMessageId,
-    provider: params.providerId,
-    model: params.configWithApiKey.model,
-    // A4(§13.1):占位消息上盖过的那一格就是事实(`stampCollabAgentId`)。
-    // core 的入口从不传 `params.agentId`,所以在此之前这一格从来没有产地。
-    ...(params.agentId ?? assistantPlaceholder?.agentId
-      ? { agentId: (params.agentId ?? assistantPlaceholder?.agentId) as string }
-      : {}),
-    // §13.9:同一刻盖的另一格(`stampCollabAgentId` 的 `source: 'collab-turn'`)。
-    ...(assistantPlaceholder?.source
-      ? { messageSource: assistantPlaceholder.source }
-      : {}),
-    ...(params.triggerMessageId ? { triggerMessageId: params.triggerMessageId } : {}),
-    ...(assistantTimestamp !== undefined ? { timestamp: assistantTimestamp } : {}),
-    ...(assistantPlaceholder?.origin
-      ? { origin: assistantPlaceholder.origin as unknown as Record<string, unknown> }
-      : {}),
-  })
+  //
+  // **F4-c c4-d(§16.27):这里通常是"认领",不是"开张"。** 创建点已经在
+  // `store.addMessage` 的同一同步段里把 `run/start` 写掉了(`openAssistantRun`),
+  // 这一句认领它并接过收尾;字段口径由 `buildAssistantRunInput` 单实现,两处
+  // 算出来的是同一份。绕过创建点的那条路(确认后恢复 / 单测直调)照旧在这里
+  // 开张 —— 判据仍然是 `assistantMessageId`。
+  const { run, started } = ensureSessionRun(
+    params.sessionId,
+    buildAssistantRunInput({
+      assistantMessageId: params.assistantMessageId,
+      ...(params.assistantMessage ? { assistantMessage: params.assistantMessage } : {}),
+      ...(params.runKind ? { runKind: params.runKind } : {}),
+      ...(params.triggerMessageId ? { triggerMessageId: params.triggerMessageId } : {}),
+      providerId: params.providerId,
+      model: params.configWithApiKey.model,
+      ...(params.agentId ? { agentId: params.agentId } : {}),
+    }),
+  )
   // 盖在助手消息上(`ChatMessage.runId`):影子期按它把消息切成 run 来比对。
   if (started) {
     sessionCommands.patchMessage(params.sessionId, {

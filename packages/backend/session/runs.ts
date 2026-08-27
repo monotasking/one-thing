@@ -123,6 +123,19 @@ export interface SessionRunHandle {
    * §13.7)。轮换是"同一次执行换了消息锚点",所以旧 id 仍然是这次执行的凭据。
    */
   continuedRunIds: Set<string>
+  /**
+   * 这条 run 的**生命周期已经有主了吗**(F4-c c4-d,§16.27)。
+   *
+   * c4-d 把 `run/start` 的落账提前到了 `store.addMessage` 的**同一同步段**
+   * (占位一入库,账本上那一格当场就在)。开张的人因此不再是收尾的人:开张在
+   * 创建点(`openAssistantRun`),收尾照旧在 `executeMessageStream` 的 finally。
+   *
+   * 于是 `ensureSessionRun` 要分得清两件事:「这条 run 已经开了」与「已经有人
+   * 负责收它」。预开的那一条 `claimed:false`,**第一个** `ensureSessionRun`
+   * 认领它并拿到 `started:true`(= 我收尾);此后的嵌套调用照旧 `started:false`。
+   * 不认领就没人收尾,一次执行会永远挂着 `run/start`。
+   */
+  claimed: boolean
 }
 
 /** 会话 → 当前执行。一个会话同一时刻只有一次执行(引擎的 activeStreams 保证)。 */
@@ -134,7 +147,11 @@ const currentRuns = new Map<string, SessionRunHandle>()
  * `run/start` 带 `surfaceOp: 'append'` —— 助手消息节点从这里开始,它在模型可见
  * 历史上占一格(§9.2 的 surface 分类表)。
  */
-export function beginSessionRun(sessionId: string, input: BeginSessionRunInput): SessionRunHandle {
+export function beginSessionRun(
+  sessionId: string,
+  input: BeginSessionRunInput,
+  options: { claimed?: boolean } = {},
+): SessionRunHandle {
   // 上一个**进程**没收尾的那些 run 先收掉(S2a `prepare`,每会话一次)。排在
   // 这里而不是别处:它必须发生在这条会话有任何一次活着的执行之前。
   prepareSessionEventsOnce(sessionId)
@@ -174,6 +191,7 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
     kind: input.kind,
     partCounter: 0,
     continuedRunIds: new Set<string>(),
+    claimed: options.claimed !== false,
     ...(input.triggerMessageId ? { triggerMessageId: input.triggerMessageId } : {}),
     ...(startSeq !== undefined ? { startSeq } : {}),
   }
@@ -189,6 +207,10 @@ export function beginSessionRun(sessionId: string, input: BeginSessionRunInput):
  * (它绕过前者直接调)。一条 assistant 消息一个 run,所以判据是
  * `assistantMessageId` 相等 —— 相等就是同一次执行,内层不再开第二条,也不负责
  * 收尾(`started:false`)。
+ *
+ * **F4-c c4-d 多了一支:认领**(见 `SessionRunHandle.claimed`)。创建点预开的
+ * 那条 run 还没有收尾人,第一个走到这里的调用方认领它 —— 账本上不多一条
+ * `run/start`(那条在预开时就写了),但 `started:true`,收尾照旧归它。
  */
 export function ensureSessionRun(
   sessionId: string,
@@ -196,6 +218,10 @@ export function ensureSessionRun(
 ): { run: SessionRunHandle; started: boolean } {
   const current = currentRuns.get(sessionId)
   if (current && current.assistantMessageId === input.assistantMessageId) {
+    if (!current.claimed) {
+      current.claimed = true
+      return { run: current, started: true }
+    }
     return { run: current, started: false }
   }
   return { run: beginSessionRun(sessionId, input), started: true }

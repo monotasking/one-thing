@@ -56,33 +56,52 @@ const RULE_A_ALLOWED = new Set([
 /**
  * 规则 B 的白名单:唯一允许改消息/step/toolCall 字段的地方。
  *
- * **F4-c c4-b 又复核了一次,理由再换、名单仍旧没换**(§16.25)。
+ * **F4-c c4-d 第四次改写理由,名单仍旧没换**(§16.27)。
  *
- * c4(§16.24 第五节)停手的理由是三条**写手对象独有依赖**:收尾链读它的
- * `steps[]` 与 `data-steps` 渲染锚点、abort 按它的 `isStreaming` 寻址、truncate
- * 按它的 `usage` 结算扣减。**c4-b 把这三条全拆了**:
+ * c4-b(§16.25)拆掉了"活 run 写手视图"那三条依赖之后,剩下的最后一格是**身份**:
+ * 内存 store 的消息数组由谁维护。**c4-d 把它换了** —— 折叠产物成为唯一维护者
+ * (`session-repository.refreshMessagesFromProjection`,全仓唯一一处
+ * `session.messages = …`,见下面规则 C 的具名例外),引擎那 15 个热写端口整批空转。
  *
- *   ① 锚点由推送侧从折叠产物**现算**(`@onething/core/session/render-anchors`,
- *      renderer 加载路径与主进程 settle 推送同一份实现),写手不再是保管人;
- *   ② abort 按**活 run 登记簿**(`currentSessionRun`)寻址,`isStreaming` 回到
- *      "由 run 开闭推导的结论"这一个语义;
- *   ③ truncate 的用量结算由命令面从**折叠产物**算好递进归约器。
+ * 于是这个 reducer **不再是消息数组的维护者**。它今天的两个身份是:
  *
- * `getLiveRunWriterMessage` 因此已删除 —— **"活 run 写手视图"这个概念退役了**。
+ *   1. **会话级派生的算法**:截断要扣多少 token、`contextSize` 怎么重算、
+ *      `updatedAt` / 索引计数 / 落盘计划怎么定 —— 这些不是消息事实,是会话账。
+ *      算它们要摸消息(`sumUsage` / `computeSessionTimelineMetadataRepair`),
+ *      所以规则 B 仍然要放它进来。
+ *   2. **S0 合同测试的 A 线词汇**(`core/session/__tests__/projection-contract.test.ts`):
+ *      "命令序列 → ChatMessage[]" 那一侧就是它,与"事件序列 → 投影"逐格对拍。
+ *      这条判据是活的,所以那五条**生产零流量**的端口专用分支
+ *      (`appendContentPart` / `upsertStep` / `patchStep` / `patchStepsUsageByTurn`
+ *      / `setToolCalls`)**没有删** —— 删了 A 线就说不出"引擎往消息上写了什么"。
+ *      §16.25/§16.26 判它们"整批删除"时没把这条判据算进去,c4-d 据实改判并记在
+ *      §16.27 第四节。生产侧那五个**命令面包装**已经删掉了(见
+ *      `backend/session/commands.ts`),留下的只有 reducer 这一半。
  *
- * 那为什么名单还是没换?因为剩下的最后一格不是"依赖",是**身份**:内存 store
- * 上那份消息数组今天仍然由这个 reducer 维护,而"store = 折叠物化"要的是让**读**
- * 侧改从物化取(§16.25 第五节:唯一剩下的那次切换,它自带一次性能/时机裁定)。
- * 在那次切换落地之前,这个 reducer 仍然是消息字段唯一的赋值处。
- *
- * 所以名单一字未动,而**它守的东西又变了**:今天守的是"内存 store 的消息数组
- * 只有一个维护者"。往这个名单里加文件之前请先读 §16.25 第五节。
+ * 所以名单一字未动,而**它守的东西又变了**:今天守的是"对 ChatMessage/Step/ToolCall
+ * 的字段赋值只有一个算法处"。往这个名单里加文件之前请先读 §16.27。
  *
  * (投影 reducer 改的是 `ProjectionNode`,不是 `ChatMessage`/`Step`/`ToolCall`,
  * 规则 B 本来就够不着它 —— 名单里不需要有它。)
  */
 const RULE_B_ALLOWED = new Set([
   'packages/core/session/commands.ts',
+])
+
+/**
+ * 规则 C 的白名单:唯一允许**整体替换** `session.messages` 的地方(F4-c c4-d,§16.27)。
+ *
+ * 规则 C 的本意是"命令面 COW 返回新数组,没人该就地换掉那一格"。c4-d 之后那一格
+ * 有了**唯一的维护者** —— 折叠产物 —— 而维护者总要有一处把它装上去:
+ * `refreshMessagesFromProjection`。它换的是**整个数组**(逐条消息一格不动),
+ * 与 COW 的纪律同向;之所以不换会话对象本身,是因为 LRU 缓存 / 挂起写快照 /
+ * `AsyncSaveQueue.getLatest` 手里握的都是那个对象的引用。
+ *
+ * 名单只有这一条,而且不该有第二条:第二处赋值 = 第二个维护者,那正是 c3/c4
+ * 一路查下来所有分岔的病根。
+ */
+const RULE_C_ALLOWED = new Set([
+  'packages/onething-runtime/src/sessions/session-repository.ts',
 ])
 
 const MUTATING_ARRAY_METHODS = new Set(['push', 'splice', 'pop', 'shift', 'unshift', 'sort', 'reverse'])
@@ -226,7 +245,7 @@ function scan(sourceFile, checker) {
   const test = isTestFile(rel)
   const allowA = test || RULE_A_ALLOWED.has(rel)
   const allowB = test || RULE_B_ALLOWED.has(rel)
-  const allowC = test
+  const allowC = test || RULE_C_ALLOWED.has(rel)
 
   const visit = node => {
     // 规则 C:<session>.messages = …(整体赋值)

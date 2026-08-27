@@ -123,6 +123,19 @@ export function eventsListMessages(sessionId: string): ChatMessage[] | undefined
   return messages.map(message => toChatMessage(sessionId, message))
 }
 
+/**
+ * 这条会话的折叠产物里有这条消息吗 —— **不物化**(F4-c c4-d,§16.27)。
+ *
+ * 空转之后的 18 端口只剩这一个问题要答("这条消息在不在",RPC 面据此回
+ * `success`)。走 `byMessageId` 这张表:O(1),不重建 parts/steps/toolCalls,
+ * 也不深拷 —— 它挂在逐 token 的热路径上,`eventsGetMessage`(每次物化整会话)
+ * 在这里是绝对不能用的。
+ */
+export function eventsHasMessage(sessionId: string, messageId: string): boolean {
+  const node = getLiveSessionProjection(sessionId).byMessageId.get(messageId)
+  return node !== undefined && !node.hidden
+}
+
 /** 这条会话在事件里有历史吗(路由的短路闸)。 */
 export function sessionHasEventHistory(sessionId: string): boolean {
   return getLiveSessionProjection(sessionId).nodes.length > 0

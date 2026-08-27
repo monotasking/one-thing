@@ -55,9 +55,29 @@ interface LiveProjection {
    * (它比的是"文件字节重折 ≡ 内存活投影",而领先的那几条字节还没有)。
    */
   aheadDeltas: number
+  /**
+   * **失效号**(F4-c c4-d,§16.27)。这份 state **每前进一步就换一个号**,
+   * 物化视图(`materialized-messages.ts`)按它决定"上次算的还能不能用"。
+   *
+   * 为什么不是 `lastSeq`:提前折的逻辑 delta(c3-a,`foldLiveSessionLogicalDelta`)
+   * **没有自己的行** —— 它那一行还压在编码器写缓冲里,`lastSeq` 一动不动而 state
+   * 已经变了。拿 seq 当版本号,一整段正文会被物化缓存吃掉。
+   *
+   * 号从**进程级**的一个计数器取,所以"整份重建"天然跳号:重建换的是一个新的
+   * `LiveProjection` 对象,它拿到的号绝不会与旧那一份的任何一个号相同。
+   */
+  version: number
 }
 
 const projections = new Map<string, LiveProjection>()
+
+/** 进程级失效号发号器(见 `LiveProjection.version`)。 */
+let versionCounter = 0
+
+function nextProjectionVersion(): number {
+  versionCounter += 1
+  return versionCounter
+}
 
 /**
  * 观察者的注册发生在**运行期**(第一次要建活投影的那一刻),不在 import 期 ——
@@ -88,6 +108,7 @@ function ensureAppendObserver(): void {
       }
       live.state = reduceSessionProjection(live.state, record)
       live.lastSeq = record.seq
+      live.version = nextProjectionVersion()
     } catch (error) {
       // 折不进去 = 这份活投影已经不可信(移动语义下 state 可能只改了一半)。
       // 丢掉它,下一次读从文件整份重折;写入口那边会把这次失败记成一行 error。
@@ -106,11 +127,17 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
     // 进程死亡留下的未闭合 run 收掉。它自己每会话只真的跑一次,合成出来的事件
     // 走写入口那条尾巴,下面的 drain 会把它们折进来。
     prepareSessionEventsOnce(sessionId)
-    live = { state: createSessionProjectionState(), lastSeq: 0, aheadDeltas: 0 }
+    live = {
+      state: createSessionProjectionState(),
+      lastSeq: 0,
+      aheadDeltas: 0,
+      version: nextProjectionVersion(),
+    }
     for (const event of readSessionLogEventsSync(sessionId)) {
       live.state = reduceSessionProjection(live.state, event)
       live.lastSeq = Math.max(live.lastSeq, event.seq)
     }
+    live.version = nextProjectionVersion()
     projections.set(sessionId, live)
     // 首次是从文件折的,写入口那条尾巴里的记录已经在文件里(或即将写进去),
     // 丢掉它以免同一条被折两次。
@@ -119,6 +146,7 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
       if (event.seq <= live.lastSeq) continue
       live.state = reduceSessionProjection(live.state, event)
       live.lastSeq = event.seq
+      live.version = nextProjectionVersion()
     }
     return live.state
   }
@@ -132,6 +160,7 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
     if (event.seq <= live.lastSeq) continue
     live.state = reduceSessionProjection(live.state, event)
     live.lastSeq = event.seq
+    live.version = nextProjectionVersion()
   }
   return live.state
 }
@@ -157,6 +186,7 @@ export function foldLiveSessionLogicalDelta(
   try {
     if (!foldSessionLogicalDeltaAhead(live.state, runId, delta)) return false
     live.aheadDeltas += 1
+    live.version = nextProjectionVersion()
     return true
   } catch {
     // 折不进去 = 这份投影已经不可信(移动语义下 state 可能只改了一半)。
@@ -187,6 +217,17 @@ export function liveSessionProjectionAheadDeltas(sessionId: string): number {
  */
 export function liveSessionProjectionCursor(sessionId: string): number | undefined {
   return projections.get(sessionId)?.lastSeq
+}
+
+/**
+ * 这份活投影的**失效号**(F4-c c4-d,见 `LiveProjection.version`)。
+ *
+ * 没有活投影 = `undefined`。**不推进**(不 drain 尾巴):推进由
+ * `getLiveSessionProjection` 负责,这里只读号,与 `liveSessionProjectionCursor`
+ * 同款纪律 —— 调用方要的是"我上次算的那一份还作数吗",而不是"再折一遍"。
+ */
+export function liveSessionProjectionVersion(sessionId: string): number | undefined {
+  return projections.get(sessionId)?.version
 }
 
 /** 这条会话现在有活投影吗(读路径据此决定走内存还是走文件分页)。 */
