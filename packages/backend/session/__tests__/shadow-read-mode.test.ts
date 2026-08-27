@@ -138,13 +138,14 @@ describe('every product read answers from the events, never from the store (F4-c
    * 反证:这条会话的 store 侧**确实**被改过了。少这一句,上面那组断言在
    * "替身根本没生效"的情况下也会绿。
    */
-  it('the tampering really happened — the live-run writer view still sees it', async () => {
+  it('the tampering really happened — the store copy did change', async () => {
     await recordRun('hello')
     setTranscript('TAMPERED')
 
-    // 判据同源那一口照旧读 store(它回答的是"这次命令改不改得成")—— 用它做反证。
-    // (从前这里用的是 `getLiveRunWriterMessage`;那一口随写手窗口退役在 c4-b 删了,
-    //  §16.25 钥匙①。两口的实现本来就逐字相同,反证的力度一字未减。)
-    expect(sessionReads.getMessageFromStore(SESSION, 'a1')?.content).toBe('TAMPERED')
+    // 反证用的那一口(`getMessageFromStore`)随三口一起删了(§17.7.1 批 3:
+    // 它唯一的理由是与老 reducer 判据同源)。替身自己就是 store 侧的那一份,
+    // 直接问它 —— 反证的力度一字未减:替身真的生效了。
+    const stored = state.messages.get(SESSION) as { id: string; content?: string }[] | undefined
+    expect(stored?.find(item => item.id === 'a1')?.content).toBe('TAMPERED')
   })
 })

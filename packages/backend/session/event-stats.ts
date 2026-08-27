@@ -99,19 +99,15 @@ export interface SessionShadowStats {
    */
   refoldMismatches: number
   /**
-   * §17.7.1 批 2(#8b-i):**会话账对拍**真的比过几次。只打印、不进门,但它是
-   * `accountMismatches = 0` 那句话的分母 —— 0 次比较的"全对"什么都不是。
-   *
-   * 它挂在命令写路的尾巴上,而且**不建表**(没有活投影就不比),所以真机上
-   * 冷会话的第一条命令通常不计数,战场与端口断言一样是 `sessions:shadow-battery`。
+   * §17.7.1 批 2(#8b-i):**会话账对拍**真的比过几次。**批 3 起不再产生** ——
+   * 影子(store 容器 vs 折叠)随切换退役,耐久层由 refold 那一栏接班
+   * (`refold.ts`:文件字节重折的会话账 ≡ 内存活账)。字段留着是为了读得懂
+   * 批 3 之前的老 `session-shadow-stats.json`。
    */
   accountChecks: number
   /**
-   * 会话账对拍对不上的次数。**进门,必须是 0。**
-   *
-   * 两侧:事件流折出来的会话账(a)vs 会话容器上此刻那几格(b)。影子期它证明
-   * "`updatedAt` / `lastProvider` / `lastModel` / 截断的用量扣减与 timeline 修复
-   * 都折得出来";批 3 断开 reducer 之后这道门连同影子一起退役。
+   * 会话账对拍对不上的次数。**批 3 起不再产生**(见上);字段留着读老账,
+   * 门仍然认它 —— 老账里的非零必须仍然是红。
    */
   accountMismatches: number
   /** 按断言种类拆的不等计数(`messages` / `history`)。 */

@@ -1,28 +1,59 @@
 /**
- * 命令面(装配层)的接线测试:每条命令落到磁盘/ sqlite / index meta 上的动作
- * 是不是与今天一模一样 —— 写计划、lazy 档、盖不盖 index、调哪个 sqlite 适配器。
+ * **写门的接线**(§17.7.1 批 3:老 reducer 退役之后,这张表住在命令面上)。
  *
- * 这里刻意**不**碰真的 store:用 mock 仓库 + mock sqlite 装一个真的
- * `OnethingSessionMessageRuntime`,命令面照生产接法搭在它上面。
+ * 从前这个文件问的是"命令 → `OnethingSessionMessageRuntime` → 仓库"这条链上
+ * 落了什么(写计划 / lazy 档 / index meta / sqlite)。批 3 把那一层删了,于是
+ * 三件事都由写门自己做,断言也就落在写门的出口上:
+ *
+ *  - **落盘档**(`lazy`)—— 逐字复刻归约器退役前的 `resolveLazy`;
+ *  - **索引元数据** —— 哪条命令盖、哪条不盖;
+ *  - **会话账落格** —— 身份三格与截断效果都从**折叠块**取(这里注入一份假账,
+ *    产地本身由 `core/session/__tests__/session-account.test.ts` 与 battery 守)。
+ *
+ * 写计划不再有:存储驱动自 S3w-3 批 6b 起就不读它了(`storage-driver.ts` 的
+ * `void plan`),归约器一死它连产地都没有 —— 断言跟着一起退役。
  */
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
-import { createOnethingSessionMessageRuntime } from '@onething/runtime/sessions'
-import type { SessionWritePlan } from '@onething/runtime/sessions'
-import { sessionReads } from '../reads.js'
-import { createSessionCommands, type SessionMessageCommandRuntime } from '../commands.js'
+import type { SessionAccountState } from '@onething/core/session'
+
+const state = vi.hoisted(() => ({ messages: [] as ChatMessage[] }))
+
+vi.mock('../events-reads.js', () => ({
+  eventsHasMessage: (_sessionId: string, messageId: string) =>
+    state.messages.some(item => item.id === messageId),
+}))
+
+vi.mock('../reads.js', () => ({
+  sessionReads: {
+    getMessage: (_sessionId: string, messageId: string) =>
+      state.messages.find(item => item.id === messageId),
+    listMessages: () => ({ messages: state.messages, changed: false }),
+    countMessages: () => state.messages.length,
+  },
+}))
+
+const { createSessionCommands } = await import('../commands.js')
 
 interface SaveCall {
   sessionId: string
   lazy: boolean
-  plan: SessionWritePlan | undefined
 }
 
 function message(id: string, overrides: Partial<ChatMessage> = {}): ChatMessage {
   return { id, role: 'assistant', content: id, timestamp: 1, ...overrides } as ChatMessage
 }
 
-function harness(messages: ChatMessage[] = [], sessionOverrides: Partial<ChatSession> = {}) {
+const NOW = 1_700_000_000_000
+
+type AccountSource = SessionAccountState | undefined | ((call: number) => SessionAccountState | undefined)
+
+function harness(
+  messages: ChatMessage[] = [],
+  sessionOverrides: Partial<ChatSession> = {},
+  account: AccountSource = { totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, updatedAt: NOW },
+) {
+  state.messages = messages
   const session = {
     id: 's1',
     name: 's1',
@@ -34,263 +65,260 @@ function harness(messages: ChatMessage[] = [], sessionOverrides: Partial<ChatSes
 
   const saves: SaveCall[] = []
   const indexMetaUpdates: Record<string, unknown>[] = []
-  const sqliteCalls: string[] = []
   const flushed: string[] = []
   const sessionPatches: Record<string, unknown>[] = []
 
-  const runtime = createOnethingSessionMessageRuntime<
-    ChatSession,
-    ChatMessage,
-    { id: string; name: string; createdAt: number; updatedAt: number; messageCount?: number; previewText?: string },
-    NonNullable<ChatMessage['steps']>[number],
-    NonNullable<ChatMessage['contentParts']>[number],
-    NonNullable<ChatMessage['toolCalls']>[number]
-  >({
-    repository: {
+  const commands = createSessionCommands(
+    {
       getSession: id => (id === 's1' ? session : undefined),
-      getCachedSession: id => (id === 's1' ? session : undefined),
-      saveSessionToFile: (sessionId, _session, options) => {
-        saves.push({ sessionId, lazy: Boolean(options?.lazy), plan: options?.plan })
+      saveSession: (sessionId, _session, options) => {
+        saves.push({ sessionId, lazy: Boolean(options?.lazy) })
       },
-      syncSessionToSqliteIfReady: () => sqliteCalls.push('syncSession'),
       updateSessionsIndexMeta: (sessionId, update) => {
-        const meta = { id: sessionId, name: 's1', createdAt: 0, updatedAt: 0 }
+        const meta: Record<string, unknown> = { id: sessionId }
         update(meta)
-        indexMetaUpdates.push(meta as unknown as Record<string, unknown>)
+        indexMetaUpdates.push(meta)
+        return true
+      },
+      flushSessionSave: async sessionId => {
+        flushed.push(sessionId)
+      },
+      stampCollabAgentId: (_sessionId, msg) => ({ ...msg, agentId: 'agent-1' }),
+      patchSession: (sessionId, patch, mutateIndexMeta) => {
+        if (sessionId !== 's1') return false
+        Object.assign(session, patch)
+        const meta: Record<string, unknown> = { id: sessionId }
+        mutateIndexMeta?.(meta as never, session)
+        indexMetaUpdates.push(meta)
+        sessionPatches.push(patch as Record<string, unknown>)
         return true
       },
     },
-    sqlite: {
-      isSessionReady: () => true,
-      syncMessage: (_id, msg, seq) => sqliteCalls.push(`syncMessage:${msg.id}:${seq}`),
-      syncSessionMetadata: () => sqliteCalls.push('syncMetadata'),
-      syncSessionUsage: () => sqliteCalls.push('syncUsage'),
-      deleteMessage: (_id, messageId) => sqliteCalls.push(`deleteMessage:${messageId}`),
-      deleteMessageAndAfter: (_id, messageId) => sqliteCalls.push(`deleteAfter:${messageId}`),
-      upsertMessageAndTruncate: (_id, msg, seq) => sqliteCalls.push(`upsertTruncate:${msg.id}:${seq}`),
+    {
+      events: null,
+      now: () => NOW,
+      // 折叠块的取处。真生产是活投影上那一份;这里可以按"第几次问"作答,
+      // 好把"事件落账之后折叠才算出这一次的效果"演出来。
+      account: (() => {
+        let call = 0
+        return () => (typeof account === 'function' ? account(call++) : account)
+      })(),
     },
-    now: () => 1_700_000_000_000,
-    logger: { log: () => {}, error: () => {} },
-  })
+  )
 
-  const commands = createSessionCommands({
-    messages: runtime as unknown as SessionMessageCommandRuntime,
-    getSession: id => (id === 's1' ? session : undefined),
-    updateSessionsIndexMeta: (sessionId, update) => {
-      const meta: Record<string, unknown> = { id: sessionId }
-      update(meta)
-      indexMetaUpdates.push(meta)
-      return true
-    },
-    flushSessionSave: async sessionId => {
-      flushed.push(sessionId)
-    },
-    stampCollabAgentId: (_sessionId, msg) => ({ ...msg, agentId: 'agent-1' }),
-    patchSession: (sessionId, patch, mutateIndexMeta) => {
-      if (sessionId !== 's1') return false
-      Object.assign(session, patch)
-      const meta: Record<string, unknown> = { id: sessionId }
-      mutateIndexMeta?.(meta as never, session)
-      indexMetaUpdates.push(meta)
-      sessionPatches.push(patch as Record<string, unknown>)
-      return true
-    },
-  })
-
-  return { session, commands, saves, indexMetaUpdates, sqliteCalls, flushed, sessionPatches }
+  return { session, commands, saves, indexMetaUpdates, flushed, sessionPatches }
 }
 
-describe('sessionCommands — 持久化接线', () => {
-  it('appendMessage:message 计划 + sqlite 同步 + index meta;stampCollab 不改调用方那条', () => {
+beforeEach(() => {
+  state.messages = []
+})
+
+describe('写门 —— 落盘与索引元数据', () => {
+  it('appendMessage:落盘(常规档)+ 盖 index meta;stampCollab 不改调用方那条', () => {
     const h = harness([message('m1')])
     const incoming = message('m2')
 
-    h.commands.appendMessage('s1', { message: incoming, stampCollab: true })
+    const stored = h.commands.appendMessage('s1', { message: incoming, stampCollab: true })
 
-    expect(h.saves).toEqual([{ sessionId: 's1', lazy: false, plan: { kind: 'message', dirtySeq: 2 } }])
-    expect(h.sqliteCalls).toEqual(['syncMessage:m2:2', 'syncMetadata'])
+    expect(h.saves).toEqual([{ sessionId: 's1', lazy: false }])
+    // F4-a:交回的是**入库那一条**(盖过章的),而调用方手里那条一格没动。
+    expect(stored.agentId).toBe('agent-1')
+    expect(incoming).not.toHaveProperty('agentId')
     expect(h.indexMetaUpdates).toHaveLength(1)
-    // 署名是 COW 的:调用方手里那条没被动
-    expect(incoming.agentId).toBeUndefined()
-    expect(h.session.messages[1].agentId).toBe('agent-1')
   })
 
-  it('appendMessage:stampCollab 关闭时原样写入', () => {
+  it('appendMessage:会话不在 = 一件事都不做,原样交回那一条', () => {
     const h = harness([])
-    h.commands.appendMessage('s1', { message: message('m1') })
-    expect(h.session.messages[0].agentId).toBeUndefined()
+    const incoming = message('m2')
+    expect(h.commands.appendMessage('nope', { message: incoming })).toBe(incoming)
+    expect(h.saves).toEqual([])
+    expect(h.indexMetaUpdates).toEqual([])
   })
 
-  it('patchMessage:hint 决定 lazy 档', () => {
-    const h = harness([message('m1'), message('m2')])
+  it('upsertMessage:新增支盖 index meta,就地换掉支不盖', () => {
+    const h = harness([message('m1')])
 
-    h.commands.patchMessage('s1', { messageId: 'm2', patch: { content: 'tick' }, hint: 'stream' })
-    expect(h.saves.at(-1)).toEqual({ sessionId: 's1', lazy: true, plan: { kind: 'message', dirtySeq: 2 } })
-
-    h.commands.patchMessage('s1', { messageId: 'm2', patch: { isStreaming: false } })
-    expect(h.saves.at(-1)).toEqual({ sessionId: 's1', lazy: false, plan: { kind: 'message', dirtySeq: 2 } })
-
-    // 未命中 → 一次写都不发
-    const before = h.saves.length
-    expect(h.commands.patchMessage('s1', { messageId: 'nope', patch: { content: 'x' } })).toBe(false)
-    expect(h.saves).toHaveLength(before)
-  })
-
-  /*
-   * `appendContentPart / upsertStep / patchStep / setToolCalls:都是 message 计划`
-   * 与 `patchStepsUsageByTurn:没命中就不写盘` —— **两条用例随那五条命令一起删除**
-   * (F4-c c4-d,§16.27)。它们钉的是那五条**端口专用包装**的写计划档位,而包装
-   * 本身生产零调用、c4-d 已删。core 那一侧的 reducer 分支留着(合同测试 A 线的
-   * 词汇),它的写计划由 `packages/core/session/__tests__/commands.test.ts` 覆盖。
-   */
-
-  it('deleteMessage:structural + sqlite 删 + 补 index meta(E4)', () => {
-    const h = harness([message('m1'), message('m2')])
-
-    expect(h.commands.deleteMessage('s1', { messageId: 'm2' })).toBe(true)
-    expect(h.saves).toEqual([{ sessionId: 's1', lazy: false, plan: { kind: 'structural' } }])
-    expect(h.sqliteCalls).toEqual(['deleteMessage:m2', 'syncMetadata'])
+    expect(h.commands.upsertMessage('s1', { message: message('m2') })).toBe(true)
     expect(h.indexMetaUpdates).toHaveLength(1)
-    expect(h.indexMetaUpdates[0].updatedAt).toBe(h.session.updatedAt)
+
+    h.indexMetaUpdates.length = 0
+    expect(h.commands.upsertMessage('s1', { message: message('m1', { content: 'x' }) })).toBe(true)
+    expect(h.indexMetaUpdates).toEqual([])
+    expect(h.saves).toHaveLength(2)
   })
 
-  it('deleteMessage:matchMarker 形态走同一条路', () => {
-    const h = harness([message('m1'), message('m2', { content: 'marker' })])
-    expect(h.commands.deleteMessage('s1', { matchMarker: m => m.content === 'marker' })).toBe(true)
-    expect(h.session.messages.map(m => m.id)).toEqual(['m1'])
+  /**
+   * **lazy 档的映射表**(逐字复刻归约器退役前的 `resolveLazy`):
+   * `hint:'stream'` → lazy;`hint:'settle'` → 常规;不给 hint 时按键推断 ——
+   * 键集合完全落在 content / reasoning / contentParts / thinkingTime 里才算 stream 档。
+   * 除 `patchMessage` 之外的每条命令一律常规档。
+   */
+  it('patchMessage:lazy 档与归约器退役前逐字一致', () => {
+    const h = harness([message('m1')])
+
+    h.commands.patchMessage('s1', { messageId: 'm1', patch: { content: 'a' }, hint: 'stream' })
+    h.commands.patchMessage('s1', { messageId: 'm1', patch: { content: 'b' }, hint: 'settle' })
+    h.commands.patchMessage('s1', { messageId: 'm1', patch: { content: 'c' } })
+    h.commands.patchMessage('s1', { messageId: 'm1', patch: { reasoning: 'r', thinkingTime: 3 } })
+    h.commands.patchMessage('s1', { messageId: 'm1', patch: { content: 'd', skillUsed: 'x' } })
+    h.commands.patchMessage('s1', { messageId: 'm1', patch: {} })
+
+    expect(h.saves.map(save => save.lazy)).toEqual([true, false, true, true, false, false])
+    // 补丁不盖会话账,也不动索引(逐 token 的补丁不该把会话顶到列表最前面)。
+    expect(h.indexMetaUpdates).toEqual([])
+    expect(h.session.updatedAt).toBe(0)
   })
 
-  it('truncateFrom(inclusive):structural + deleteAfter + usage 同步 + index meta', () => {
+  it('patchMessage:那条消息不在 = false,一次盘都不写', () => {
+    const h = harness([message('m1')])
+    expect(h.commands.patchMessage('s1', { messageId: 'gone', patch: { content: 'x' } })).toBe(false)
+    expect(h.saves).toEqual([])
+  })
+
+  it('deleteMessage:两种形态都落盘 + 补 index meta(E4);找不到就什么都不做', () => {
+    const h = harness([message('m1'), message('m2', { skillUsed: 'mark' })])
+
+    expect(h.commands.deleteMessage('s1', { messageId: 'm1' })).toBe(true)
+    expect(h.commands.deleteMessage('s1', { matchMarker: msg => msg.skillUsed === 'mark' })).toBe(true)
+    expect(h.saves).toHaveLength(2)
+    expect(h.indexMetaUpdates).toHaveLength(2)
+
+    h.saves.length = 0
+    expect(h.commands.deleteMessage('s1', { messageId: 'gone' })).toBe(false)
+    expect(h.commands.deleteMessage('s1', { matchMarker: () => false })).toBe(false)
+    expect(h.saves).toEqual([])
+  })
+
+  it('replaceAll:盖 index 计数;clear 强刷一次,replaced 不刷', async () => {
     const h = harness([message('m1'), message('m2')])
+
+    const cleared = await h.commands.replaceAll('s1', { messages: [], reason: 'clear' })
+    expect(cleared).toEqual({ replaced: true, previousCount: 2 })
+    expect(h.flushed).toEqual(['s1'])
+    expect(h.indexMetaUpdates.at(-1)).toMatchObject({ messageCount: 0 })
+
+    h.flushed.length = 0
+    await h.commands.replaceAll('s1', { messages: [message('m3')], reason: 'replaced' })
+    expect(h.flushed).toEqual([])
+  })
+
+  it('replaceAll:会话不在 = 什么都不做', async () => {
+    const h = harness([])
+    expect(await h.commands.replaceAll('nope', { messages: [], reason: 'clear' }))
+      .toEqual({ replaced: false, previousCount: 0 })
+    expect(h.saves).toEqual([])
+  })
+
+  it('patchSession:原样转发给仓库那一口', () => {
+    const h = harness([])
+    expect(h.commands.patchSession('s1', { patch: { name: 'renamed' } })).toBe(true)
+    expect(h.sessionPatches).toEqual([{ name: 'renamed' }])
+  })
+})
+
+describe('写门 —— 会话账落格(产地是折叠)', () => {
+  it('身份三格照折叠块落', () => {
+    const h = harness([message('m1')], {}, {
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalTokens: 0,
+      updatedAt: 4242,
+      lastProvider: 'deepseek',
+      lastModel: 'deepseek-chat',
+    })
+
+    h.commands.appendMessage('s1', { message: message('m2') })
+
+    expect(h.session.updatedAt).toBe(4242)
+    expect(h.session.lastProvider).toBe('deepseek')
+    expect(h.session.lastModel).toBe('deepseek-chat')
+  })
+
+  /**
+   * 账本没启用的会话(事件目录还没建起来的那一瞬)折叠给不出答案 —— 那时按命令
+   * **自己取的那一刻**盖章。不是第二套算法:时钟同源之后,折叠对这条命令给出的
+   * `updatedAt` 就是这个数(见 `landAccountIdentity` 的注释)。
+   */
+  it('折叠给不出答案时按命令的那一刻盖章,assistant 还带上 provider/model', () => {
+    const h = harness([], {}, () => undefined)
+    h.commands.appendMessage('s1', {
+      message: message('a1', { provider: 'openai', model: 'gpt-x' }),
+    })
+    expect(h.session.updatedAt).toBe(NOW)
+    expect(h.session.lastProvider).toBe('openai')
+    expect(h.session.lastModel).toBe('gpt-x')
+  })
+
+  it('truncateFrom:扣用量 + 落 timeline 修复 + 清 summary 三件', () => {
+    const effect = {
+      subtracted: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      patch: { contextSize: 7, lastInputTokens: 7 },
+      deletes: ['summary', 'summaryUpToMessageId', 'summaryCreatedAt'],
+    }
+    const h = harness(
+      [message('m1'), message('m2')],
+      {
+        totalInputTokens: 100,
+        totalOutputTokens: 50,
+        totalTokens: 150,
+        summary: 's',
+        summaryUpToMessageId: 'gone',
+        summaryCreatedAt: 1,
+      } as Partial<ChatSession>,
+      // 第 0 次问 = 事件还没落(折叠里还没有这一次的效果);之后才有。
+      call => ({
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalTokens: 0,
+        updatedAt: 555,
+        ...(call === 0 ? {} : { lastTruncation: effect }),
+      }),
+    )
+
     expect(h.commands.truncateFrom('s1', { messageId: 'm2', inclusive: true })).toBe(true)
-    expect(h.saves).toEqual([{ sessionId: 's1', lazy: false, plan: { kind: 'structural' } }])
-    expect(h.sqliteCalls).toEqual(['deleteAfter:m2', 'syncMetadata', 'syncUsage'])
+
+    expect(h.session).toMatchObject({
+      updatedAt: 555,
+      totalInputTokens: 90,
+      totalOutputTokens: 45,
+      totalTokens: 135,
+      contextSize: 7,
+      lastInputTokens: 7,
+    })
+    expect('summary' in h.session).toBe(false)
+    expect(h.saves).toEqual([{ sessionId: 's1', lazy: false }])
     expect(h.indexMetaUpdates).toHaveLength(1)
   })
 
   /**
-   * **§16.25 钥匙③(装配层这一半):扣多少 token,由命令面从折叠产物算。**
-   *
-   * store 上那两条被砍掉的消息**一格 usage 都没有**(端口空转之后这就是常态);
-   * 折叠产物上有。断言会话总账仍然被正确扣掉 —— 只可能来自投影那一份。
-   *
-   * 反证在同一条里:不桩投影(默认这条会话在事件侧读不出消息)时,命令面递
-   * `undefined`,归约器退回老算法 —— 上面那两条 `truncateFrom` 用例正是那一支,
-   * 它们一字未改仍然绿。
+   * **同一份效果不许扣两次**。折叠为每一次截断新建一个 effect 对象,写门按
+   * **对象同一性**判"这一次折叠真的算过没有" —— 判据丢了就是上一次的扣减被
+   * 再扣一遍(而且是静默的)。
    */
-  it('truncateFrom:用量结算从折叠产物取,store 上没有 usage 也扣得对', () => {
-    const h = harness(
-      [message('m1'), message('m2'), message('m3')],
-      { totalInputTokens: 20, totalOutputTokens: 10, totalTokens: 30 },
-    )
-    const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 }
-    const spy = vi.spyOn(sessionReads, 'listMessages').mockReturnValue({
-      messages: [
-        message('m1'),
-        message('m2', { usage }),
-        message('m3', { usage }),
-      ],
-      changed: false,
-    })
-    // 判据同源那一口问的是**真的** store 单例(这套夹具用的是自带的假仓),
-    // 所以这里替身一句:命令面认为这条消息在,才轮得到算用量。
-    const present = vi.spyOn(sessionReads, 'hasMessageInStore').mockReturnValue(true)
-
-    try {
-      expect(h.commands.truncateFrom('s1', { messageId: 'm2', inclusive: true })).toBe(true)
-    } finally {
-      spy.mockRestore()
-      present.mockRestore()
+  it('truncateFrom:折叠没为这一次新算效果时,一格都不扣', () => {
+    const stale = {
+      subtracted: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      patch: {},
+      deletes: [],
     }
+    const h = harness(
+      [message('m1'), message('m2')],
+      { totalInputTokens: 100, totalOutputTokens: 50, totalTokens: 150 } as Partial<ChatSession>,
+      { totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, updatedAt: 9, lastTruncation: stale },
+    )
 
-    // store 侧那两条从头到尾没有 usage —— 老算法在这里会算出 0。
-    expect(h.session.totalInputTokens).toBe(0)
-    expect(h.session.totalOutputTokens).toBe(0)
-    expect(h.session.totalTokens).toBe(0)
+    expect(h.commands.truncateFrom('s1', { messageId: 'm2', inclusive: true })).toBe(true)
+    expect(h.session).toMatchObject({
+      totalInputTokens: 100,
+      totalOutputTokens: 50,
+      totalTokens: 150,
+    })
   })
 
-  it('truncateFrom(!inclusive):upsertMessageAndTruncate 带 index+1', () => {
-    const h = harness([message('u1', { role: 'user' }), message('m2')])
-    expect(h.commands.truncateFrom('s1', {
-      messageId: 'u1',
-      inclusive: false,
-      newContent: 'edited',
-    })).toBe(true)
-    expect(h.saves).toEqual([{ sessionId: 's1', lazy: false, plan: { kind: 'structural' } }])
-    expect(h.sqliteCalls).toEqual(['upsertTruncate:u1:1', 'syncMetadata', 'syncUsage'])
-    expect(h.session.messages).toHaveLength(1)
-    expect(h.session.messages[0].content).toBe('edited')
-  })
-
-  // 批 6b(裁定 10):留档退役 —— `session/cleared` 只遮蔽不删,事件本身就是档。
-  // 连带前置那次强刷("留档必须在 flush 之后")也消失,只剩写完那一次。
-  it('replaceAll{clear}:写完强刷一次,索引计数归零,不再留档', async () => {
-    const h = harness([message('m1'), message('m2')])
-
-    const result = await h.commands.replaceAll('s1', { messages: [], reason: 'clear' })
-
-    expect(result).toEqual({ replaced: true, previousCount: 2 })
-    expect(h.flushed).toEqual(['s1'])
-    expect(h.saves).toEqual([{ sessionId: 's1', lazy: false, plan: { kind: 'structural' } }])
-    expect(h.session.messages).toEqual([])
-    expect(h.indexMetaUpdates.at(-1)).toMatchObject({ messageCount: 0 })
-  })
-
-  it('replaceAll{replaced}:不强刷', async () => {
+  it('truncateFrom:那条消息不在 = false,一次盘都不写', () => {
     const h = harness([message('m1')])
-    const result = await h.commands.replaceAll('s1', { messages: [message('m9')], reason: 'replaced' })
-    expect(result.replaced).toBe(true)
-    expect(h.flushed).toEqual([])
-    expect(h.session.messages.map(m => m.id)).toEqual(['m9'])
-  })
-
-  it('repairOnLoad:有东西修才写盘,structural', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const h = harness([message('m1', { isStreaming: true })])
-
-    expect(h.commands.repairOnLoad('s1')).toBe(true)
-    expect(h.saves).toEqual([{ sessionId: 's1', lazy: false, plan: { kind: 'structural' } }])
-    expect(h.session.messages[0].isStreaming).toBe(false)
-
-    expect(h.commands.repairOnLoad('s1')).toBe(false)
-    expect(h.saves).toHaveLength(1)
-    vi.restoreAllMocks()
-  })
-
-  it('upsertMessage:存在 → 后缀写不盖 index;不存在 → 追加并盖 index', () => {
-    const h = harness([message('m1')])
-
-    expect(h.commands.upsertMessage('s1', { message: message('m1', { content: 'new' }) })).toBe(true)
-    expect(h.saves.at(-1)).toMatchObject({ plan: { kind: 'message', dirtySeq: 1 } })
-    expect(h.indexMetaUpdates).toHaveLength(0)
-
-    expect(h.commands.upsertMessage('s1', { message: message('m2') })).toBe(true)
-    expect(h.saves.at(-1)).toMatchObject({ plan: { kind: 'message', dirtySeq: 2 } })
-    expect(h.indexMetaUpdates).toHaveLength(1)
-  })
-})
-
-describe('sessionCommands.patchSession — 会话级字段', () => {
-  it('只改会话级字段并盖 index meta;消息一行不写', () => {
-    const h = harness([message('m1')])
-
-    expect(h.commands.patchSession('s1', {
-      patch: { name: '改过的名字', isPinned: true },
-      mutateIndexMeta: meta => {
-        ;(meta as unknown as Record<string, unknown>).name = '改过的名字'
-      },
-    })).toBe(true)
-
-    expect(h.session.name).toBe('改过的名字')
-    expect(h.session.isPinned).toBe(true)
-    // 消息路径一次都没写(saveSessionToFile 只由 12 条消息命令触发)
+    expect(h.commands.truncateFrom('s1', { messageId: 'gone', inclusive: true })).toBe(false)
+    expect(h.commands.truncateFrom('s1', { messageId: 'gone', inclusive: false, newContent: 'x' })).toBe(false)
     expect(h.saves).toEqual([])
-    expect(h.sessionPatches).toEqual([{ name: '改过的名字', isPinned: true }])
-    expect(h.indexMetaUpdates).toHaveLength(1)
-  })
-
-  it('会话不存在时返回 false', () => {
-    const h = harness([message('m1')])
-    expect(h.commands.patchSession('missing', { patch: { name: 'x' } })).toBe(false)
   })
 })

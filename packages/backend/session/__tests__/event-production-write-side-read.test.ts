@@ -55,16 +55,12 @@ vi.mock('../../stores/sessions.js', () => ({
   getSessionUserMessageMarkers: () => [],
   readSessionTranscriptFile: () => undefined,
   // 命令面的生产接线口:本用例自己搭命令面,不走 `getSessionCommands()`。
-  getSessionMessageCommandRuntime: () => {
-    throw new Error('unused in this test')
-  },
+  saveSessionForCommands: () => {},
   flushSessionSave: async () => {},
   patchSessionFields: () => false,
   stampCollabAgentId: (_sessionId: string, message: ChatMessage) => message,
   updateSessionsIndexMetaForCommands: () => true,
 }))
-
-import type { SessionMessageCommandRuntime } from '../commands.js'
 
 const { createSessionCommands } = await import('../commands.js')
 const { sessionCommandEvents } = await import('../command-events.js')
@@ -112,32 +108,13 @@ async function events(): Promise<SessionLogEventRecord[]> {
 
 /**
  * F2-b:取材那一步搬到了命令面(`commands.ts`),所以这条用例也要走命令面才问得到
- * "底稿从哪儿来"。store 端口只做归约器那一半(改抄本),事件那一半由命令自己产出。
+ * "底稿从哪儿来"。§17.7.1 批 3 之后 store 侧只剩落盘调度,底稿来自**投影物化**。
  */
 function commandsOverTranscript(now: number) {
-  const messages: SessionMessageCommandRuntime = {
-    addMessage: () => {},
-    upsertMessage: () => true,
-    patchMessageFields: () => true,
-    deleteMessage: () => true,
-    deleteMessageWhere: () => true,
-    deleteMessageAndTruncate: () => true,
-    updateMessageAndTruncate: (_sessionId, messageId, newContent, options) => {
-      const list = state.messages.get(SESSION) ?? []
-      const index = list.findIndex(item => item.id === messageId)
-      if (index === -1) return false
-      const next = list.slice()
-      next[index] = { ...next[index], content: newContent, timestamp: options?.now ?? 0 }
-      state.messages.set(SESSION, next.slice(0, index + 1))
-      return true
-    },
-    replaceAllMessages: () => false,
-    repairOnLoad: () => false,
-  }
   return createSessionCommands(
     {
-      messages,
       getSession: id => ({ id, messages: state.messages.get(id) ?? [] }) as never,
+      saveSession: () => {},
       updateSessionsIndexMeta: () => true,
       flushSessionSave: async () => {},
       patchSession: () => false,
@@ -147,13 +124,9 @@ function commandsOverTranscript(now: number) {
 }
 
 describe(
-  'event write side takes its base from the store, not from the product read face (§16.10)',
+  'the edit baseline comes from the projection, and it carries no read-path coordinates (§17.7.1 批 3)',
   () => {
-    it('truncateFrom(edit) takes its base from the store (base-sameness with the reducer)', async () => {
-      // 投影侧:账本上那一格是 `model:'from-projection'` 的旧快照。
-      setTranscript([
-        { id: 'u1', role: 'user', content: 'v1', timestamp: 1000, model: 'from-projection' },
-      ])
+    it('truncateFrom(edit) takes its base from the projection and strips seq/eventSeq', async () => {
       sessionCommandEvents.appendMessage(SESSION, {
         id: 'u1',
         role: 'user',
@@ -161,14 +134,7 @@ describe(
         timestamp: 1000,
         model: 'from-projection',
       })
-      resetSessionProjectionCache(SESSION)
-
-      // 抄本侧此刻另有一份(真机上是这条消息在别处被改过)。F2-b 之后
-      // `user/message-edited` 的底稿由**命令面**在 reducer 之前取,取的必须是抄本
-      // 这一份;走 `getMessage` 的 fromEvents 岔口就会取到上面那份滞后投影。
-      setTranscript([
-        { id: 'u1', role: 'user', content: 'v1', timestamp: 1000, model: 'from-transcript' },
-      ])
+      await flushSessionEventLog(SESSION)
 
       commandsOverTranscript(2000).truncateFrom(SESSION, {
         messageId: 'u1',
@@ -179,59 +145,27 @@ describe(
       const edited = (await events()).find(event => event.type === 'user/message-edited')
       expect(edited).toBeDefined()
       const message = (edited?.data as { message?: ChatMessage }).message
-      // 底稿来自抄本(B 的发作点);正文与时刻来自命令自己(F2-b 的翻转)。
-      expect(message?.model).toBe('from-transcript')
+      // 底稿来自投影物化;正文与时刻来自命令自己(F2-b 的翻转)。
+      expect(message?.model).toBe('from-projection')
       expect(message?.content).toBe('v2')
       expect(message?.timestamp).toBe(2000)
-      // 而 store 侧(影子验证器)独立推导出的那条,timestamp 是**同一个数** ——
-      // 不是"差不多相等":两侧盖的是命令决定的同一个时刻(§16.8)。
-      expect(state.messages.get(SESSION)?.[0]?.timestamp).toBe(2000)
+      // **读路坐标不许进事件体**:`eventsGetMessage` 会补 `seq` / `eventSeq`,
+      // 它们是"这条消息由哪条事件开头"的读侧往返,写回账本就成了第二个真相
+      // (而且下一次重折会得到不同的数)。
+      expect(message).not.toHaveProperty('seq')
+      expect(message).not.toHaveProperty('eventSeq')
     })
   },
 )
 
-describe('store-side accessors are a second well, distinct from the projection read face (§16.10)', () => {
-  it('getMessageFromStore is store-bound while getMessage answers from the projection', async () => {
-    // 账本上 u1='v1'(投影侧);抄本换成 'v2'(reducer 落定侧)。upsert/truncate 写侧
-    // 取材若走 getMessage 的 fromEvents 岔口,拿到的是滞后投影的旧正文。
-    setTranscript([{ id: 'u1', role: 'user', content: 'v1', timestamp: 1000 }])
-    sessionCommandEvents.appendMessage(SESSION, {
-      id: 'u1',
-      role: 'user',
-      content: 'v1',
-      timestamp: 1000,
-    })
-    await flushSessionEventLog(SESSION)
-    resetSessionProjectionCache(SESSION)
-    setTranscript([{ id: 'u1', role: 'user', content: 'v2', timestamp: 2000 }])
-
-    // 产品读面(fromEvents)给的是投影里的旧正文 'v1'。
-    expect(sessionReads.getMessage(SESSION, 'u1')?.content).toBe('v1')
-    // 写侧取材面恒读抄本 → 'v2'。
-    expect(sessionReads.getMessageFromStore(SESSION, 'u1')?.content).toBe('v2')
-  })
-
-  it('findMessageFromStore finds a marker the projection face cannot', async () => {
-    setTranscript([
-      { id: 'u0', role: 'user', content: 'hi', timestamp: 1 },
-      { id: 'a-mark', role: 'assistant', content: 'has @@marker@@', timestamp: 6 },
-    ])
-    sessionCommandEvents.appendMessage(SESSION, {
-      id: 'u0',
-      role: 'user',
-      content: 'hi',
-      timestamp: 1,
-    })
-    await flushSessionEventLog(SESSION)
-    resetSessionProjectionCache(SESSION)
-
-    const byMarker = (m: ChatMessage) => (m.content ?? '').includes('@@marker@@')
-    // 产品读面滞后 → marker-delete 会找不到 → 该翻译的 message/deleted 整条丢失。
-    expect(sessionReads.findMessage(SESSION, byMarker)).toBeUndefined()
-    // 写侧取材面找得到 → 事件不丢。
-    expect(sessionReads.findMessageFromStore(SESSION, byMarker)?.id).toBe('a-mark')
-  })
-
+/**
+ * `getMessageFromStore` / `findMessageFromStore` 的那三只用例 —— **随三口一起删除**
+ * (§17.7.1 批 3)。它们验的是"写侧取材面恒读抄本、与产品读面是两口井",而那条
+ * 设计的唯一理由是**与老 reducer 判据同源**;reducer 删了,两口井合成一口。
+ *
+ * 留下的是**永久例外**那一口:
+ */
+describe('the fold is the only well now (§17.7.1 批 3);`hasSessionInStore` is the one永久例外', () => {
   /**
    * **渲染锚点是折叠产物的纯函数**(F4-c c4-b,§16.25 钥匙①)。
    *
@@ -287,7 +221,8 @@ describe('store-side accessors are a second well, distinct from the projection r
    * 整体删掉了**(`addMessage` 交回入库的那一条),所以这条用例不再守着任何一处
    * 取材。
    *
-   * 它守的是**事实本身**,而那件事实比例外重要:流中 assistant 占位在账本上
+   * 它守的是**事实本身**,而那件事实比例外重要(§17.7.1 批 3 之后更要紧:判据也改
+   * 问投影了,所以"折不出来 = 不存在"对写侧同样成立):流中 assistant 占位在账本上
    * 根本没有那一格 —— `appendMessage` 对 `isStreaming` 的 assistant 一条事件都
    * 不写,`run/start` 才是它的产地。这正是 §16.11 拍板 3 说的、**F4 的硬前置**:
    * store 一旦退化成投影的物化缓存,折不出占位就等于占位不存在。
@@ -307,23 +242,14 @@ describe('store-side accessors are a second well, distinct from the projection r
     sessionCommandEvents.appendMessage(SESSION, placeholder)
     await flushSessionEventLog(SESSION)
     resetSessionProjectionCache(SESSION)
-    // reducer 那一侧照常落进 store。
-    setTranscript([placeholder])
 
     // 账本上确实一条都没有(不是"写了一条旧的")。
     expect((await events()).some(event => event.type === 'system/message')).toBe(false)
     // 于是产品读面折不出它 —— 这是"还不存在",不是"滞后"。
     expect(sessionReads.getMessage(SESSION, 'a-stream')).toBeUndefined()
-    // reducer 那一侧照常有它:缺的是**账本上的产地**,不是内存里的那一条。
-    expect(sessionReads.getMessageFromStore(SESSION, 'a-stream')?.timestamp).toBe(7)
   })
 
-  /**
-   * **F3(§16.10)第三类例外的护栏:`hasSessionInStore` 连翻都翻不了。**
-   *
-   * 投影对"一条事件都没有的会话"与"根本不存在的会话"给的是同一个答案,而这道判据
-   * 要分的正是这两者 —— 刚建的空会话必须能追加第一条消息。
-   */
+
   it('hasSessionInStore separates an empty session from a missing one; the projection cannot', () => {
     setTranscript([])
     // 空会话:store 说"在"(可以追加第一条),投影说"折不出"(与"不存在"同一个答案)。

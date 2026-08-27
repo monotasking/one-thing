@@ -34,11 +34,15 @@
 
 import {
   canonicalChatMessage,
+  createSessionAccountState,
   createSessionProjectionState,
   decodeSessionLogEventLine,
   materializeNode,
+  reduceSessionAccount,
   reduceSessionProjection,
+  type CoreTimelineMessage,
   type ProjectionMaterializeOptions,
+  type SessionAccountState,
   type SessionLogEventRecord,
   type SessionProjectionState,
 } from '@onething/core/session'
@@ -145,6 +149,39 @@ export async function foldSessionProjectionSliced(
     if (gate.spent()) await gate.yield()
   }
   return state
+}
+
+/**
+ * **消息投影 + 会话账一起折**的分片版(§17.7.1 批 3:refold 门扩栏)。
+ *
+ * 两件事必须在**同一遍**里折:会话账的截断分支要问"这条事件折进去之后还剩哪些
+ * 消息",而那是**当时**那一份投影,不是整份折完的最终态。分两遍折出来的账会在
+ * 每一次截断上算错 —— 而那正是这道门要守的那一格。
+ *
+ * 与活路径逐字同构:`projection-cache.ts` 的 `foldRecord` 也是"先折投影,再拿
+ * 折完的投影当上下文折账"。
+ */
+export async function foldSessionProjectionAndAccountSliced(
+  sessionId: string,
+  events: readonly SessionLogEventRecord[],
+  options: ProjectionMaterializeOptions,
+  gate: RefoldSliceGate,
+): Promise<{ state: SessionProjectionState; account: SessionAccountState }> {
+  let state = createSessionProjectionState()
+  let account = createSessionAccountState()
+  const context = {
+    sessionId,
+    messagesAfter: (): CoreTimelineMessage[] =>
+      state.nodes
+        .filter(node => !node.hidden)
+        .map(node => materializeNode(node, options) as unknown as CoreTimelineMessage),
+  }
+  for (const event of events) {
+    state = reduceSessionProjection(state, event)
+    account = reduceSessionAccount(account, event, context)
+    if (gate.spent()) await gate.yield()
+  }
+  return { state, account }
 }
 
 /**

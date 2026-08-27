@@ -220,21 +220,15 @@ export type {
   UserMessageMarker,
 } from './storage/index.js'
 
-export {
-  adoptSessionCommandResult,
-  applySessionCommand,
-  CORE_STRUCTURAL_WRITE_PLAN,
-} from './commands.js'
+/*
+ * `applySessionCommand` / `adoptSessionCommandResult` / `SessionCommand` 一族 /
+ * `CORE_STRUCTURAL_WRITE_PLAN` —— **已删除**(§17.7.1 批 3:老 reducer 退役)。
+ * 留下的只有形状词汇。
+ */
 export type {
   CoreSessionCommandMessage,
   CoreSessionCommandSession,
   CoreSessionCommandStep,
-  CoreSessionWritePlan,
-  SessionCommand,
-  SessionCommandMeta,
-  SessionCommandRepairPatches,
-  SessionCommandResult,
-  SessionCommandWriteHint,
 } from './commands.js'
 export { deepFreeze } from '../freeze.js'
 export {

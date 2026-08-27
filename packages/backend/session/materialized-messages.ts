@@ -90,41 +90,18 @@ const memos = new WeakMap<ProjectionNode, MessageMemo>()
  */
 const lists = new WeakMap<SessionProjectionState, ChatMessage[]>()
 
-/**
- * **归约器那一步不换装**的嵌套计数(F4-c c4-d,§16.27 第二节)。
+/*
+ * `withSessionCommandPin` / `pinDepth` —— **已删除**(§17.7.1 批 3)。
  *
- * 一条命令的执行序是 **判据(读 store)→ 事件 append(F1 同步可见)→ 老 reducer
- * 应用到 store**。换装一接上去,reducer 自己那次 `getSession` 就落在**自己刚写的
- * 那条事件之后** —— 它于是在已经折好的数组上把同一条命令再应用一次:
+ * 定格挡的是这一幕(§16.27 二 / 纪律 3):换装接上之后,老 reducer 自己那次
+ * `getSession` 落在**它刚写的那条事件之后**,于是它在已经折好的数组上把同一条
+ * 命令再应用一次 —— `delete` / `truncate` 的目标已经不在,`findIndex === -1`
+ * 当场判 `changed:false`,`updatedAt` / 用量结算 / 索引计数整批不发生。
  *
- *  - `appendMessage`:数组里多出一份重影(下一次换装才被冲掉);
- *  - `deleteMessage` / `truncateFrom`:目标**已经不在**了,`findIndex === -1`
- *    当场判 `changed:false` —— 命令的返回值变成"没改成",连带 `updatedAt` /
- *    用量结算 / 索引计数 / 落盘计划**整批不发生**。`retry-message` 的红正是它:
- *    引擎见 `deleteMessageAndTruncate` 返回 false,当场 `Message not found` 收工,
- *    账本上只剩一条 `message/deleted`,新 run 一条都没开(实测复现)。
- *
- * 所以定格**只圈归约器那一步**:它前面的判据 / 底稿取材照旧现取(要的就是此刻
- * 那一份),它自己看到的则是**事件之前**那一份 —— 也就是紧邻它的那次判据读刚
- * 换装上去的那一份。定格不跨 `await`(`replaceAll` 只圈同步那一半),不然就成了
- * §16.25 拒掉的 C 案:"store 中途是陈旧的"。
- *
- * 计数而不是布尔:命令之间可能嵌套。
+ * 批 3 把 reducer 删了:命令面自己写会话账、自己定落盘档,**没有第二次应用**,
+ * 定格也就没有要挡的东西。物化视图从此对所有调用者一视同仁 —— 少一个"这一段
+ * 里读到的东西和别处不一样"的隐性状态。
  */
-let pinDepth = 0
-
-/**
- * 跑归约器那一步:段内 `materializeSessionMessages` 一律**不换装**
- * (见 `pinDepth`)。同步段专用 —— 不要把 `await` 圈进来。
- */
-export function withSessionCommandPin<T>(fn: () => T): T {
-  pinDepth += 1
-  try {
-    return fn()
-  } finally {
-    pinDepth -= 1
-  }
-}
 
 /**
  * 这条会话此刻的消息 —— 从活投影物化,按失效号缓存。
@@ -133,9 +110,6 @@ export function withSessionCommandPin<T>(fn: () => T): T {
  * 调用方照旧用它自己那一份。
  */
 export function materializeSessionMessages(sessionId: string): ChatMessage[] | undefined {
-  // 命令段内定格(见 `pinDepth`):`undefined` = 保留调用方手里那一份,而那一份
-  // 正是进段之前的折叠产物。
-  if (pinDepth > 0) return undefined
   // 不主动建表(见文件头「边界」)。
   if (!hasLiveSessionProjection(sessionId)) return undefined
   // 推进到此刻(drain 尾巴)—— 拿到的 state 上,每条节点的 `rev` 就是此刻的号。

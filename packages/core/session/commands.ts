@@ -1,54 +1,41 @@
 /**
- * 会话消息命令面(纯函数层)—— docs/design/session-commands-p0-2026-08.md §1/§2。
+ * 会话消息的**形状词汇** + 冷加载修复的两个具名入口。
  *
- * ## 今天它是什么(F4-c c4-d 改判 + §17.7 #8a 收缩)
+ * ## 老 reducer 已经退役(§17.7.1 批 3,2026-08-28)
  *
- * 它**不再是消息数组的维护者** —— 那件事 c4-d 交给了折叠产物
- * (`session-repository.refreshMessagesFromProjection`,§16.27)。剩下的唯一身份是
- * **会话级派生的算法**:截断要扣多少 token、`contextSize` / `summary` 怎么重算、
- * `updatedAt` / `lastProvider` / 索引计数 / 落盘 lazy 档怎么定。算这些要摸消息,
- * 所以它照旧持有消息数组、也照旧在 `session:check` 规则 B 的白名单里。
+ * 这个文件从 P0 起是**会话消息命令面的纯函数层**:`applySessionCommand` 与它的
+ * 7 条分支、`SessionCommand` 联合、写计划、lazy 档、`adoptSessionCommandResult`。
+ * c4-d(§16.27)先把"消息数组的维护者"这一身份交给了折叠产物;#8a 削掉 5 条
+ * 端口专用分支;批 2(§17.7.1)让**会话账**也成为折叠产物并影子对拍 682 次 0 失配。
+ * 到批 3,它最后那个身份("会话级派生的算法")也没有了消费者 —— 整段归约器
+ * 连同 `SessionCommand` 词汇一起删除。
  *
- * **#8a(2026-08-28)删掉了 5 条生产零流量的分支** —— `appendContentPart` /
- * `upsertStep` / `patchStep` / `patchStepsUsageByTurn` / `setToolCalls`。它们的
- * 端口(`OnethingSessionMessageRuntime` 里那 15 口)在 c4-d 之后零调用,唯一的
- * 消费者是 S0 合同测试 A 线的"命令词汇";A 线改说事件之后它们连那个消费者也没了。
- * 剩下 7 条(append / upsert / patch / truncate / delete / replaceAll /
- * repairOnLoad)每一条都在生产写路上,见 `backend/session/commands.ts`。
+ * 今天的写路是一条直线,住在 `backend/session/commands.ts`:
  *
- * 会话级派生搬去哪儿(= 整个 reducer 的最终退役)是留账 #8b,与 #3 合并出方案。
+ *   判据(问投影)→ 事件 append(F1 同步可见)→ 会话账落格(折叠产物)
+ *   → 落盘调度(写门自算的 lazy 档)→ 索引元数据
  *
- * ## 三条一直没变的约定
- *   - 语义:7 个命令,外面不再有第二种写法;
- *   - COW:改哪条消息就新建哪条(以及 messages 数组本身),没改的原样复用引用 ——
- *     这样"谁变了"是可判定的(引用比较),而不是靠深比较猜;
- *   - 写计划:`SessionWritePlan`(后缀写 / 全量重写)与 lazy 档在这里**集中计算**,
- *     不再散在 22 个 mutator 里各写各的(那是 E2:5 处隐式 structural)。
+ * 留在这里的只有两样,而且都不是归约器:
  *
- * 纯度约定:`applySessionCommand` 不改入参 session、不改入参 messages/steps/toolCalls,
- * 也不落盘、不发事件。持久化/sqlite/index meta 由 `app/session/commands.ts` 接。
- * 唯一的例外是 `repairOnLoad` 里保留了原 `repairSessionTimelineMetadata` 的
- * console 输出(那几行日志是线上排障用的,搬走等于删),日志不改变返回值。
+ * 1. **形状词汇** —— `CoreSessionCommandMessage` / `CoreSessionCommandStep` /
+ *    `CoreSessionCommandSession`。它们是"一条会话 / 一条消息 / 一个 step 至少
+ *    长什么样"的结构约束,`store-helpers` 与 S0 合同测试按它们说话。
+ * 2. **冷加载修复的两个具名入口** —— `sanitizeLoadedSession` /
+ *    `sanitizeSessionOnStartup`。它们从前借道 `applySessionCommand` 的
+ *    `repairOnLoad` 分支;批 3 起直调纯算法 `computeSessionRepairOnLoad`,
+ *    语义一字未改(**COW**:变了返回新会话对象,没变返回 `undefined`)。
+ *    修复本身是**可再生的派生**(同一份消息折两次得同一个结果),它的位置在
+ *    **读路**(`session-repository.repairOnFirstTouch`),不是写路。
  */
 
 import type { CoreSessionTokenUsage } from './store-helpers.js'
 import type {
-  CoreSessionRepairMessagePatch,
   CoreTimelineMessage,
   CoreTimelineStep,
 } from './timeline.js'
-import { computeSessionRepairOnLoad, computeSessionTimelineMetadataRepair } from './timeline.js'
+import { computeSessionRepairOnLoad } from './timeline.js'
 
 // ============ 形状 ============
-
-/** 与 `sessions/storage-driver.ts` 的 `SessionWritePlan` 同形(core 不许依赖 runtime)。 */
-export interface CoreSessionWritePlan {
-  kind: 'meta' | 'message' | 'structural'
-  /** kind === 'message' 时:最低脏消息的 seq(1 起);后缀重写从这里开始 */
-  dirtySeq?: number
-}
-
-export const CORE_STRUCTURAL_WRITE_PLAN: CoreSessionWritePlan = { kind: 'structural' }
 
 export interface CoreSessionCommandStep extends CoreTimelineStep {
   id: string
@@ -82,413 +69,32 @@ export interface CoreSessionCommandSession<
   summaryCreatedAt?: number
 }
 
-// ============ 命令 ============
-
-/**
- * `patchMessage` 的落盘档提示。
- *
- * `'stream'` = 逐 token 的高频路径,走 5s 的 lazy 档(与今天
- * `updateMessageContent/Reasoning/ContentParts/ThinkingTime` 的 `{lazy:true}` 一致);
- * `'settle'` = 收尾/元数据,走 300ms 常规档。**不给 hint 时**按 patch 的键推断:
- * 键集合完全落在 content/reasoning/contentParts/thinkingTime 里就算 stream 档 ——
- * 这条推断只是为了让老 mutator 的薄包装不必逐个改口径,显式 hint 永远优先。
- */
-export type SessionCommandWriteHint = 'stream' | 'settle'
-
-const LEGACY_LAZY_PATCH_KEYS = new Set(['content', 'reasoning', 'contentParts', 'thinkingTime'])
-
-export type SessionCommand<TMessage extends CoreSessionCommandMessage = CoreSessionCommandMessage> =
-  | { type: 'appendMessage'; message: TMessage; now?: number }
-  | { type: 'upsertMessage'; message: TMessage; now?: number }
-  | {
-      type: 'patchMessage'
-      messageId: string
-      patch: Partial<TMessage>
-      hint?: SessionCommandWriteHint
-    }
-  /*
-   * `appendContentPart` / `upsertStep` / `patchStep` / `patchStepsUsageByTurn` /
-   * `setToolCalls` —— **已删除**(§17.7 #8a,2026-08-28)。
-   *
-   * 五条都是**端口专用**分支:c4-d 之后 `OnethingSessionMessageRuntime` 那 15 个
-   * 热写端口零调用(引擎侧同名口早已空转,产地全在事件流上 —— `tool/*` /
-   * `assistant/part-end` / `request/response.usage`),命令面上更是从来没有过调用者。
-   * 最后一个消费者是 S0 合同 A 线拿它们当"引擎往消息上写了什么"的词汇;A 线改说
-   * 事件之后(`projection-contract.test.ts` 的 `ExpectedLine`),纯减法删除。
-   */
-  | {
-      type: 'truncateFrom'
-      messageId: string
-      /** true = 连这条一起删(regenerate);false = 保留这条并按 newContent 改写(edit) */
-      inclusive: boolean
-      newContent?: unknown
-      /** 只有显式带了 contentParts 键才动它(与今天的 `hasContentParts` 同义) */
-      hasContentParts?: boolean
-      contentParts?: unknown[] | null
-      now?: number
-      /**
-       * 这次截断要从会话总账里扣回去的用量(F4-c c4-b,§16.25 钥匙③)。
-       *
-       * 从前这一格由归约器自己算:`sumUsage(被删的那些 store 消息)`。那条算法把
-       * "扣多少 token"钉死在 **`message.usage` 这一格必须由端口写进内存 store** 上
-       * ——`updateMessageUsage` 一空转,扣减恒为 0(§16.24 第五节证据三)。
-       *
-       * 用量的事实在流上(`request/response.usage` 求和 → 折叠节点的 `node.usage`,
-       * 端口事实断言比过 265 次 0 失配)。所以改由**命令面从折叠产物算好递进来**;
-       * 不给这一格时归约器仍按老算法自取(老调用点与单测一字未动)。
-       */
-      subtractedUsage?: CoreSessionTokenUsage
-    }
-  | {
-      type: 'deleteMessage'
-      messageId?: string
-      matchMarker?: (message: TMessage) => boolean
-      now?: number
-    }
-  | {
-      type: 'replaceAll'
-      messages: TMessage[]
-      reason: 'clear' | 'replaced' | 'normalize'
-      now?: number
-    }
-  | { type: 'repairOnLoad'; policy: 'startup' | 'loaded'; now?: number }
-
-// ============ 结果 ============
-
-export interface SessionCommandRepairPatches<TMessage> {
-  /** 逐条消息的改写(只列真的变了的) */
-  messages: CoreSessionRepairMessagePatch<TMessage>[]
-  /** 会话级字段的改写(contextSize / lastInputTokens 等) */
-  session: Record<string, unknown>
-  /** 会话级字段的删除(summary / summaryUpToMessageId / summaryCreatedAt) */
-  sessionDeletes: string[]
-}
-
-export interface SessionCommandMeta<TMessage> {
-  /** appendMessage / upsertMessage:落位后的消息 */
-  message?: TMessage
-  /** truncateFrom(inclusive:false):被改写的那条 */
-  updatedMessage?: TMessage
-  /** deleteMessage:被删的那条 */
-  deletedMessage?: TMessage
-  /** truncateFrom:被砍掉的那些 */
-  deletedMessages?: TMessage[]
-  /** truncateFrom:从会话总账里扣掉的 usage */
-  subtractedUsage?: CoreSessionTokenUsage
-  /** delete / truncate:命中的下标 */
-  index?: number
-  /** repairOnLoad:这次修复应用了哪些 patch */
-  repairPatches?: SessionCommandRepairPatches<TMessage>
-  /** upsertMessage:是新增还是就地替换 */
-  inserted?: boolean
-}
-
-export interface SessionCommandResult<TSession, TMessage> {
-  /** 变了就是新 session 对象;没变就是入参本体 */
-  session: TSession
-  changed: boolean
-  changedMessageIds: string[]
-  writePlan: CoreSessionWritePlan
-  /** true = 走 5s 的 lazy 落盘档 */
-  lazy: boolean
-  /** true = 调用方需要同步 sessions index 的 meta */
-  indexMetaChanged: boolean
-  meta?: SessionCommandMeta<TMessage>
-}
-
-// ============ 内部小工具 ============
-
-type AnyRecord = Record<string, unknown>
-
-function messagePlan(index: number): CoreSessionWritePlan {
-  return index === -1 ? { kind: 'structural' } : { kind: 'message', dirtySeq: index + 1 }
-}
-
-function noChange<TSession, TMessage>(session: TSession): SessionCommandResult<TSession, TMessage> {
-  return {
-    session,
-    changed: false,
-    changedMessageIds: [],
-    writePlan: CORE_STRUCTURAL_WRITE_PLAN,
-    lazy: false,
-    indexMetaChanged: false,
-  }
-}
-
-/** COW:换掉 messages 数组(以及跟着变的会话级字段),session 本体也是新对象。 */
-function withSession<TSession>(session: TSession, patch: AnyRecord, deletes: string[] = []): TSession {
-  const next = { ...(session as AnyRecord), ...patch }
-  for (const key of deletes) delete next[key]
-  return next as TSession
-}
-
-function replaceAt<TMessage>(messages: TMessage[], index: number, message: TMessage): TMessage[] {
-  const next = messages.slice()
-  next[index] = message
-  return next
-}
-
-function sumUsage<TMessage extends CoreSessionCommandMessage>(messages: TMessage[]): CoreSessionTokenUsage {
-  return messages.reduce<CoreSessionTokenUsage>((usage, message) => {
-    if (!message.usage) return usage
-    usage.inputTokens += message.usage.inputTokens
-    usage.outputTokens += message.usage.outputTokens
-    usage.totalTokens += message.usage.totalTokens
-    return usage
-  }, { inputTokens: 0, outputTokens: 0, totalTokens: 0 })
-}
-
-/**
- * 把命令结果**盖回原 session 容器**(会话对象身份不变)。
- *
- * 为什么不直接把 `result.session` 塞进 LRU:今天仍有调用点先 `getSession()` 拿到
- * 会话、之后再读它(`context-compact.ts` 是已知的一处),换掉对象它们就读到旧数据。
- * COW 的价值全在**消息**这一层 —— 消息对象与 messages 数组都是新的,容器复用不影响。
- * P0.2 调用点迁移完之后这个函数就可以退役,命令面直接返回新 session。
- */
-export function adoptSessionCommandResult<TSession extends object, TMessage>(
-  session: TSession,
-  result: SessionCommandResult<TSession, TMessage>,
-): boolean {
-  if (!result.changed) return false
-  const next = result.session as unknown as Record<string, unknown>
-  const current = session as unknown as Record<string, unknown>
-  if (next === current) return true
-  for (const key of Object.keys(current)) {
-    if (!(key in next)) delete current[key]
-  }
-  Object.assign(current, next)
-  return true
-}
-
-// ============ 主 reducer ============
-
-export function applySessionCommand<
-  TSession extends CoreSessionCommandSession<TMessage>,
-  TMessage extends CoreSessionCommandMessage,
->(session: TSession, command: SessionCommand<TMessage>): SessionCommandResult<TSession, TMessage> {
-  switch (command.type) {
-    case 'appendMessage':
-      return applyAppend(session, command.message, command.now ?? Date.now())
-
-    case 'upsertMessage': {
-      const index = session.messages.findIndex(item => item.id === command.message.id)
-      if (index === -1) {
-        const result = applyAppend(session, command.message, command.now ?? Date.now())
-        return { ...result, meta: { ...result.meta, inserted: true } }
-      }
-      const messages = replaceAt(session.messages, index, command.message)
-      return {
-        session: withSession(session, { messages, updatedAt: command.now ?? Date.now() }),
-        changed: true,
-        changedMessageIds: [command.message.id],
-        writePlan: messagePlan(index),
-        lazy: false,
-        indexMetaChanged: false,
-        meta: { message: command.message, index, inserted: false },
-      }
-    }
-
-    case 'patchMessage': {
-      const index = session.messages.findIndex(item => item.id === command.messageId)
-      if (index === -1) return noChange(session)
-      const next = { ...session.messages[index], ...command.patch } as TMessage
-      return {
-        session: withSession(session, { messages: replaceAt(session.messages, index, next) }),
-        changed: true,
-        changedMessageIds: [command.messageId],
-        writePlan: messagePlan(index),
-        lazy: resolveLazy(command.hint, command.patch),
-        indexMetaChanged: false,
-        meta: { message: next, index },
-      }
-    }
-
-    case 'truncateFrom':
-      return applyTruncate(session, command)
-
-    case 'deleteMessage': {
-      const index = command.messageId !== undefined
-        ? session.messages.findIndex(item => item.id === command.messageId)
-        : command.matchMarker
-          ? session.messages.findIndex(item => command.matchMarker!(item))
-          : -1
-      if (index === -1) return noChange(session)
-      const deletedMessage = session.messages[index]
-      const messages = session.messages.slice(0, index).concat(session.messages.slice(index + 1))
-      return {
-        session: withSession(session, { messages, updatedAt: command.now ?? Date.now() }),
-        changed: true,
-        changedMessageIds: [deletedMessage.id],
-        writePlan: CORE_STRUCTURAL_WRITE_PLAN,
-        lazy: false,
-        // E4:老的 applySessionDeleteMessageWithAdapters 忘了盖 index meta,
-        // 会话列表因此显示过期的 updatedAt。命令面补上。
-        indexMetaChanged: true,
-        meta: { index, deletedMessage },
-      }
-    }
-
-    case 'replaceAll': {
-      return {
-        session: withSession(session, {
-          messages: command.messages,
-          updatedAt: command.now ?? Date.now(),
-        }),
-        changed: true,
-        changedMessageIds: command.messages.map(message => message.id),
-        writePlan: CORE_STRUCTURAL_WRITE_PLAN,
-        lazy: false,
-        indexMetaChanged: true,
-      }
-    }
-
-    case 'repairOnLoad':
-      return applyRepairOnLoad(session, command.policy, command.now ?? Date.now())
-  }
-}
-
-function resolveLazy(hint: SessionCommandWriteHint | undefined, patch: AnyRecord): boolean {
-  if (hint === 'stream') return true
-  if (hint === 'settle') return false
-  const keys = Object.keys(patch)
-  return keys.length > 0 && keys.every(key => LEGACY_LAZY_PATCH_KEYS.has(key))
-}
-
-function applyAppend<
-  TSession extends CoreSessionCommandSession<TMessage>,
-  TMessage extends CoreSessionCommandMessage,
->(session: TSession, message: TMessage, now: number): SessionCommandResult<TSession, TMessage> {
-  const messages = [...session.messages, message]
-  const patch: AnyRecord = { messages, updatedAt: now }
-  if (message.role === 'assistant') {
-    if (message.provider) patch.lastProvider = message.provider
-    if (message.model) patch.lastModel = message.model
-  }
-  return {
-    session: withSession(session, patch),
-    changed: true,
-    changedMessageIds: [message.id],
-    // 追加 = 从新消息的 seq 起做后缀写
-    writePlan: { kind: 'message', dirtySeq: messages.length },
-    lazy: false,
-    indexMetaChanged: true,
-    meta: { message, index: messages.length - 1 },
-  }
-}
-
-function applyTruncate<
-  TSession extends CoreSessionCommandSession<TMessage>,
-  TMessage extends CoreSessionCommandMessage,
->(
-  session: TSession,
-  command: Extract<SessionCommand<TMessage>, { type: 'truncateFrom' }>,
-): SessionCommandResult<TSession, TMessage> {
-  const index = session.messages.findIndex(item => item.id === command.messageId)
-  if (index === -1) return noChange(session)
-
-  const now = command.now ?? Date.now()
-  const keepIndex = command.inclusive ? index : index + 1
-  const deletedMessages = session.messages.slice(keepIndex)
-  // §16.25 钥匙③:用量结算认**折叠产物**递进来的那一份;没递(老调用点)才自取。
-  const subtractedUsage = command.subtractedUsage ?? sumUsage(deletedMessages)
-
-  const kept = session.messages.slice(0, keepIndex)
-  let updatedMessage: TMessage | undefined
-  let messages = kept
-  if (!command.inclusive) {
-    const target = { ...session.messages[index] } as AnyRecord
-    target.content = command.newContent
-    if (command.hasContentParts) {
-      if (command.contentParts && command.contentParts.length > 0) {
-        target.contentParts = command.contentParts
-      } else {
-        delete target.contentParts
-      }
-    }
-    target.timestamp = now
-    updatedMessage = target as TMessage
-    messages = replaceAt(kept, index, updatedMessage)
-  }
-
-  const patch: AnyRecord = { messages, updatedAt: now }
-  if (subtractedUsage.totalTokens > 0) {
-    patch.totalInputTokens = Math.max(0, (session.totalInputTokens || 0) - subtractedUsage.inputTokens)
-    patch.totalOutputTokens = Math.max(0, (session.totalOutputTokens || 0) - subtractedUsage.outputTokens)
-    patch.totalTokens = Math.max(0, (session.totalTokens || 0) - subtractedUsage.totalTokens)
-  }
-
-  const repair = computeSessionTimelineMetadataRepair(
-    {
-      id: session.id,
-      summary: session.summary,
-      summaryUpToMessageId: session.summaryUpToMessageId,
-      summaryCreatedAt: session.summaryCreatedAt,
-      contextSize: session.contextSize,
-      lastInputTokens: session.lastInputTokens,
-    },
-    messages,
-    { recomputeContextSize: true },
-  )
-  Object.assign(patch, repair.patch)
-
-  return {
-    session: withSession(session, patch, repair.deletes),
-    changed: true,
-    changedMessageIds: updatedMessage ? [updatedMessage.id] : [],
-    // 截断语义:后缀写只会往后追,砍掉不在它的语义里
-    writePlan: CORE_STRUCTURAL_WRITE_PLAN,
-    lazy: false,
-    indexMetaChanged: true,
-    meta: { index, deletedMessages, subtractedUsage, updatedMessage },
-  }
-}
-
-function applyRepairOnLoad<
-  TSession extends CoreSessionCommandSession<TMessage>,
-  TMessage extends CoreSessionCommandMessage,
->(session: TSession, policy: 'startup' | 'loaded', now: number): SessionCommandResult<TSession, TMessage> {
-  const repair = computeSessionRepairOnLoad<TMessage>(session, session.messages, policy, now)
-  const repairPatches: SessionCommandRepairPatches<TMessage> = {
-    messages: repair.messagePatches,
-    session: repair.sessionPatch,
-    sessionDeletes: repair.sessionDeletes,
-  }
-
-  if (!repair.changed) {
-    return { ...noChange<TSession, TMessage>(session), meta: { repairPatches } }
-  }
-
-  const patch: AnyRecord = { ...repair.sessionPatch }
-  if (repair.messagesChanged) patch.messages = repair.messages
-
-  return {
-    session: withSession(session, patch, repair.sessionDeletes),
-    changed: true,
-    changedMessageIds: repair.messagePatches.map(entry => entry.messageId),
-    writePlan: CORE_STRUCTURAL_WRITE_PLAN,
-    lazy: false,
-    indexMetaChanged: false,
-    meta: { repairPatches },
-  }
-}
-
 // ============ 冷加载 / 启动期修复(COW 入口) ============
 
 /**
- * `repairOnLoad` 命令的两个具名入口 —— 旧的就地版 `sanitizeLoadedSession` /
- * `sanitizeSessionOnStartup` 的替身(P0.2 area ①,F4)。
+ * 旧的就地版 `sanitizeLoadedSession` / `sanitizeSessionOnStartup` 的替身
+ * (P0.2 area ①)。
  *
  * 语义一字不改(`'loaded'` = 只清 isStreaming + 元数据;`'startup'` = 再加中断的
- * step / toolCall / 卡死的 compact 消息),**但不再改入参**:变了就返回一个新的
+ * step / toolCall / 卡死的 compact 消息),**而且不改入参**:变了就返回一个新的
  * 会话对象(消息数组与被改的那几条消息都是新的),没变返回 `undefined`。
+ *
+ * §17.7.1 批 3:从前它借道 `applySessionCommand({type:'repairOnLoad'})` —— 归约器
+ * 退役之后直调纯算法,中间那一层没有了。产出与从前逐字相同:消息数组来自
+ * `repair.messages`,会话级那几格来自 `repair.sessionPatch` / `sessionDeletes`
+ * (`computeSessionTimelineMetadataRepair` 的同一份判定)。
  */
 function runRepairOnLoad<
   TSession extends CoreSessionCommandSession<TMessage>,
   TMessage extends CoreSessionCommandMessage,
 >(session: TSession, policy: 'startup' | 'loaded'): TSession | undefined {
-  const result = applySessionCommand<TSession, TMessage>(session, { type: 'repairOnLoad', policy })
-  return result.changed ? result.session : undefined
+  const repair = computeSessionRepairOnLoad<TMessage>(session, session.messages, policy)
+  if (!repair.changed) return undefined
+
+  const next = { ...(session as unknown as Record<string, unknown>), ...repair.sessionPatch }
+  if (repair.messagesChanged) next.messages = repair.messages
+  for (const key of repair.sessionDeletes) delete next[key]
+  return next as unknown as TSession
 }
 
 export function sanitizeLoadedSession<

@@ -52,7 +52,7 @@ import {
   canonicalProjectionMessagesSliced,
   createRefoldSliceGate,
   deepEqualPairsSliced,
-  foldSessionProjectionSliced,
+  foldSessionProjectionAndAccountSliced,
   parseSessionLogEventLogSliced,
 } from './refold-slices.js'
 import { bumpSessionShadowStats } from './event-stats.js'
@@ -64,6 +64,7 @@ import {
   getLiveSessionProjection,
   liveSessionProjectionAheadDeltas,
   liveSessionProjectionCursor,
+  peekSessionAccount,
 } from './projection-cache.js'
 import { sessionProjectionOptions } from './projection-blobs.js'
 import { appendSessionShadowLine, deepEqual, summarizeShadowDiff } from './shadow.js'
@@ -198,6 +199,10 @@ export async function checkSessionRefold(
       return 'skipped'
     }
     const b = canonicalMessages(sessionId, live)
+    // §17.7.1 批 3:**扩栏** —— 会话账也进这道门。它与消息同一份事件、同一个
+    // 刷新点,所以"文件字节重折 ≡ 内存活账"与消息那一栏是同一句话的两半。
+    // 批 2 的影子对拍(store 容器 vs 折叠)随切换退役,耐久层由这一栏接班。
+    const liveAccount = peekSessionAccount(sessionId)
 
     // ---- 这之后可以 await:上面那份快照已经与活投影脱钩。
     // 剩下的四段都走分片闸:每跑够半帧让出一次事件环(§15.14)。
@@ -207,17 +212,19 @@ export async function checkSessionRefold(
     if (events.length === 0) return 'skipped'
     if (events[events.length - 1].seq !== cursor) return 'skipped'
 
-    const refolded = await foldSessionProjectionSliced(events, gate)
+    const materialize = sessionProjectionOptions(sessionId)
+    const { state: refolded, account: refoldedAccount } =
+      await foldSessionProjectionAndAccountSliced(sessionId, events, materialize, gate)
 
-    const a = await canonicalProjectionMessagesSliced(
-      refolded,
-      sessionProjectionOptions(sessionId),
-      gate,
-    )
+    const a = await canonicalProjectionMessagesSliced(refolded, materialize, gate)
     bumpSessionShadowStats({ refoldChecks: 1 })
-    if (await deepEqualPairsSliced(a, b, deepEqual, gate)) return 'match'
+    const messagesMatch = await deepEqualPairsSliced(a, b, deepEqual, gate)
+    const accountMatch = liveAccount === undefined || deepEqual(refoldedAccount, liveAccount)
+    if (messagesMatch && accountMatch) return 'match'
 
-    const { diff, truncated } = summarizeShadowDiff(a, b)
+    const { diff, truncated } = messagesMatch
+      ? summarizeShadowDiff(refoldedAccount, liveAccount)
+      : summarizeShadowDiff(a, b)
     appendSessionShadowLine({
       time: Date.now(),
       sessionId,

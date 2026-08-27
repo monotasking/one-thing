@@ -78,6 +78,8 @@ import {
 	sessionCommands as appSessionCommands,
 	type SessionCommands,
 } from "@onething/backend/session/commands.js";
+import { sessionLifecycleEvents } from "@onething/backend/session/lifecycle-events.js";
+import { materializeSessionMessages } from "@onething/backend/session/materialized-messages.js";
 import {
 	sessionReads as appSessionReads,
 	sessionPreviewText,
@@ -245,7 +247,6 @@ import {
 } from "@onething/runtime/storage";
 import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/runtime/sessions/session-repository";
 import { createHybridSessionStorageDriver, type HybridSessionStorageDriverOptions } from "@onething/runtime/sessions/storage-driver";
-import { createOnethingSessionMessageRuntime, type OnethingSessionMessageRuntimeRepository } from "@onething/runtime/sessions/session-message-runtime";
 import {
 	deleteJsonFile,
 	readJsonFile as readCoreJsonFile,
@@ -2334,7 +2335,11 @@ function toChatMessage(
 		role: message.role === "assistant" ? "assistant" : "user",
 		content: message.content,
 		timestamp: Date.now(),
-		isStreaming: message.role === "assistant" && message.content.length === 0,
+		// §17.7.1 批 3:这只**假引擎**不写 `run/start`,所以流中占位在账本上没有
+		// 任何一格(命令面对 `isStreaming` 的 assistant 一条事件都不写,§9.3)。
+		// 真引擎那条路由 `openAssistantRun` 补产地;假引擎没有那一步,于是它的
+		// 助手消息一律以**落定**形态入账(`system/message`),正文随后由 upsert 的
+		// `fullBody` 档补上。`isStreaming` 本来就不是存储字段 —— 投影按 run 开合现算。
 		contentParts: message.content
 			? [{ type: "text", content: message.content }]
 			: [],
@@ -2376,7 +2381,19 @@ function updateServerMessage(
 					contentParts: [{ type: "text", content: updates.content }],
 				}
 			: updates;
-	store.messages.patchMessage(sessionId, { messageId, patch });
+	// §17.7.1 批 3:走 **upsert(整条替换)** 而不是 `patchMessage`。
+	//
+	// 这只 echo/test 后端是**假引擎**:它不像真引擎那样写 `run/start` + 
+	// `assistant/chunks`,助手消息的正文只从这一口进来。而 `message/patched` 的
+	// 正文三件套永远被丢弃(`BODY_KEYS`:正文只有 chunks 一个来源)—— 从前它靠
+	// 老 reducer 把补丁写进内存数组才看得见,reducer 一删就整条不见了。
+	// upsert 的 `fullBody` 档正是为"这条消息现在整条长这样"准备的,假引擎要的
+	// 就是它;真引擎那条路一格未动。
+	const existing = store.getMessages(sessionId).find((item) => item.id === messageId);
+	if (!existing) return;
+	store.messages.upsertMessage(sessionId, {
+		message: { ...existing, ...patch, isStreaming: false } as ChatMessage,
+	});
 }
 
 /**
@@ -3060,8 +3077,16 @@ export function createLocalServerSessionStore(
 		// (`event-log.ts` 的 `getSessionEventsLogPath`),而这只仓库可以被开在任意
 		// `storePath` 上。开在别处时不接 —— 接了会去读另一个 store 的账本,那比读空
 		// 还坏。生产上这只仓库只服务 echo/test 后端,而它跟着进程 store 走。
+		//
+		// §17.7.1 批 3 补上第二句(`materializeMessagesFromProjection`):c4-d 把
+		// **活**消息数组的维护者交给折叠产物时只接了 app store 那一只 —— 这只仓库
+		// 当时还有老 reducer 在写它的数组,所以看不出少接。reducer 一删,少接的
+		// 那一句就是"消息没有维护者了"。判据与上面那句逐字相同(同一个 store 才接)。
 		...(resolvedStorePath === resolve(getOnethingStorePath())
-			? { hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection }
+			? {
+					hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection,
+					materializeMessagesFromProjection: materializeSessionMessages,
+				}
 			: {}),
 		getCurrentSessionId: () => getOnethingCurrentSessionId(appStatePath),
 		setCurrentSessionId: (sessionId) => {
@@ -3085,35 +3110,13 @@ export function createLocalServerSessionStore(
 	// P0.3:echo/test 后端这只仓库与 `@onething/backend` 的那只是**两只**(同一批文件、
 	// 各有各的缓存与写队列),所以命令面也得为它单独装一份 —— `sessionCommands`
 	// 那个单例绑死在 app store 上,借过来用会写到另一份内存真相里去。
-	// 装的是同一个工厂、同一个 reducer,写计划/COW/lazy 档的算法只有那一份。
-	const repositoryPort: OnethingSessionMessageRuntimeRepository<ServerChatSession, ChatMessage, SessionMeta> = {
-		getSession: (sessionId) => repository.getSession(sessionId),
-		getCachedSession: (sessionId) => repository.getCachedSession(sessionId),
-		getCachedSessionMessages: (sessionId) =>
-			repository.getCachedSessionMessages(sessionId),
-		saveSessionToFile: (sessionId, session, options) =>
-			repository.saveSessionToFile(sessionId, session, options),
-		syncSessionToSqliteIfReady: (session) =>
-			repository.syncSessionToSqliteIfReady(session),
-		updateSessionsIndexMeta: (sessionId, update) =>
-			repository.updateSessionsIndexMeta(sessionId, update),
-	};
-	const messageRuntime = createOnethingSessionMessageRuntime<
-		ServerChatSession,
-		ChatMessage,
-		SessionMeta,
-		Step,
-		ContentPart,
-		ToolCall
-	>({
-		repository: repositoryPort,
-		now: Date.now,
-		logger: consoleLog,
-	});
-
+	// 装的是同一个工厂,判据 / 会话账 / 落盘档的算法只有那一份(§17.7.1 批 3 起
+	// 归约器退役,那层执行体也没有了)。
 	const messageCommands = createSessionCommands({
-		messages: messageRuntime,
 		getSession: (sessionId) => repository.getSession(sessionId),
+		// §17.7.1 批 3:落盘调度归写门(归约器退役,`result.lazy` 没有了产地)。
+		saveSession: (sessionId, session, options) =>
+			repository.saveSessionToFile(sessionId, session as ServerChatSession, options),
 		updateSessionsIndexMeta: (sessionId, update) =>
 			repository.updateSessionsIndexMeta(sessionId, (meta) =>
 				update(meta as unknown as { [key: string]: unknown }),
@@ -3217,6 +3220,12 @@ export function createLocalServerSessionStore(
 				preserveUpdatedAt: true,
 			});
 			saveSessionImmediately(session);
+			// §17.7.1 批 3(**补产地**):这只仓库从前不写 `session/created`,于是它
+			// 的会话**没有账本** —— 消息只活在内存 store 那份数组里,而那份数组的
+			// 维护者(老 reducer)批 3 删了。账本一开(`session/created` 顺手建目录,
+			// 见 `event-log.ts` 的 `ensureSessionEventDir`),这条路就和桌面 / 真
+			// server 走同一条:事件是产地,投影是读面。
+			sessionLifecycleEvents.sessionCreated(session as never);
 			return session;
 		},
 		createBranchSession(

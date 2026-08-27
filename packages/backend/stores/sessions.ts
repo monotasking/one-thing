@@ -38,9 +38,7 @@ import { getSettings } from "./settings.js";
 import { expandPath } from "../wiring/tools/core/sandbox.js";
 import {
 	createHybridSessionStorageDriver,
-	createOnethingSessionMessageRuntime,
 	createOnethingSessionRepository,
-	type OnethingSessionMessageRuntime,
 } from "@onething/runtime/sessions";
 import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/runtime/collab";
 import { deleteSessionTraces } from "@onething/runtime/evals/trace-store";
@@ -55,6 +53,7 @@ import {
 import {
 	CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID,
 	deriveRetainedContextSize,
+	getSessionTokenUsageSnapshot,
 	repairSessionTimelineMetadata,
 	sanitizeSessionOnStartup,
 } from "@onething/core/session";
@@ -63,7 +62,6 @@ import { assertPortFactIsFolded } from '../session/port-fact-assert.js'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
 import type { HybridSessionStorageDriverOptions } from '@onething/runtime/sessions/storage-driver'
 import type { OnethingSessionRepositoryOptions, OnethingSessionRepositoryLogger } from '@onething/runtime/sessions/session-repository'
-import type { OnethingSessionMessageRuntimeRepository } from '@onething/runtime/sessions/session-message-runtime'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 
 const log = getLogger('sessions')
@@ -83,17 +81,6 @@ export {
 // 策略:更新内存缓存后,用 300ms 节流把脏 session 异步写盘。
 // 同一 session 的多次写入在 promise 链上串行化,避免旧异步写盖新数据。
 // 关键生命周期(finalize / delete / 应用退出)会强制 flush。
-let sessionMessageRuntime:
-	| OnethingSessionMessageRuntime<
-			ChatSession,
-			ChatMessage,
-			SessionMeta,
-			Step,
-			ContentPart,
-			ToolCall
-	  >
-	| undefined;
-
 // 会话体是大文件且只被程序读取,紧凑序列化;index.json 等仍走 pretty 的 writeJsonFile。
 const writeSessionJsonFileAsync = (filePath: string, data: unknown) =>
 	writeJsonFileAsync(filePath, data, { pretty: false });
@@ -141,32 +128,6 @@ const sessionRepository = createOnethingSessionRepository<
 	SessionDetails,
 	UserMessageMarker
 >(sessionRepositoryOptions);
-
-const repositoryPort: OnethingSessionMessageRuntimeRepository<ChatSession, ChatMessage, SessionMeta> = {
-	getSession: (sessionId) => sessionRepository.getSession(sessionId),
-	getCachedSession: (sessionId) =>
-		sessionRepository.getCachedSession(sessionId),
-	getCachedSessionMessages: (sessionId) =>
-		sessionRepository.getCachedSessionMessages(sessionId),
-	saveSessionToFile: (sessionId, session, options) =>
-		sessionRepository.saveSessionToFile(sessionId, session, options),
-	syncSessionToSqliteIfReady: (session) =>
-		sessionRepository.syncSessionToSqliteIfReady(session),
-	updateSessionsIndexMeta: (sessionId, update) =>
-		sessionRepository.updateSessionsIndexMeta(sessionId, update),
-};
-sessionMessageRuntime = createOnethingSessionMessageRuntime<
-	ChatSession,
-	ChatMessage,
-	SessionMeta,
-	Step,
-	ContentPart,
-	ToolCall
->({
-	repository: repositoryPort,
-	now: Date.now,
-	logger: consoleLog,
-});
 
 function updateSessionsIndexMeta(
 	sessionId: string,
@@ -616,15 +577,33 @@ export function inheritSessionWorkingDirectory(
 	sessionWorkdirCache.set(sessionId, workingDirectory);
 }
 
+/**
+ * 用量快照(§17.7.1 批 3)。
+ *
+ * 从前它是 `OnethingSessionMessageRuntime.getSessionTokenUsage` —— 那个类最后
+ * 只剩这一个与命令无关的方法,9 个命令口随批 3 删干净之后整层退役,这一口就地
+ * 落在仓库上(算法照旧是 core 的 `getSessionTokenUsageSnapshot`,一字未改)。
+ */
+function sessionTokenUsageSnapshot(sessionId: string): {
+	totalInputTokens: number;
+	totalOutputTokens: number;
+	totalTokens: number;
+	lastInputTokens: number;
+	contextSize: number;
+} | null {
+	const session = sessionRepository.getSession(sessionId);
+	return session ? getSessionTokenUsageSnapshot(session) : null;
+}
+
 // Update session token usage (does not affect sort order)
 export function updateSessionTokenUsage(
 	sessionId: string,
 	usage: { inputTokens: number; outputTokens: number; totalTokens: number },
 	lastTurnUsage?: { inputTokens: number; outputTokens: number },
 ): void {
-	const before = sessionMessageRuntime!.getSessionTokenUsage(sessionId);
+	const before = sessionTokenUsageSnapshot(sessionId);
 	sessionRepository.updateSessionTokenUsage(sessionId, usage, lastTurnUsage);
-	const after = sessionMessageRuntime!.getSessionTokenUsage(sessionId);
+	const after = sessionTokenUsageSnapshot(sessionId);
 	log.debug("session token usage updated", {
 		sessionId,
 		source: "stream-final-usage",
@@ -647,12 +626,12 @@ export function updateSessionContextSize(
 	contextSize: number,
 	source = "direct",
 ): boolean {
-	const before = sessionMessageRuntime!.getSessionTokenUsage(sessionId);
+	const before = sessionTokenUsageSnapshot(sessionId);
 	const updated = sessionRepository.updateSessionContextSize(
 		sessionId,
 		contextSize,
 	);
-	const after = sessionMessageRuntime!.getSessionTokenUsage(sessionId);
+	const after = sessionTokenUsageSnapshot(sessionId);
 	log.debug("session context size updated", {
 		sessionId,
 		source,
@@ -681,7 +660,7 @@ export function getSessionTokenUsage(sessionId: string): {
 	lastInputTokens: number;
 	contextSize: number;
 } | null {
-	return sessionMessageRuntime!.getSessionTokenUsage(sessionId);
+	return sessionTokenUsageSnapshot(sessionId);
 }
 
 /**
@@ -753,21 +732,15 @@ function stampCollabAgentId(sessionId: string, message: ChatMessage): ChatMessag
 	};
 }
 
-/**
- * P0.1 命令面接线口(docs/design/session-commands-p0-2026-08.md §2)。
- * `app/session/commands.ts` 用这三样把 `sessionCommands` 装起来 —— 装配方向是
- * 单向的(commands → stores),这里不反向 import,避免循环。
+/*
+ * `getSessionMessageCommandRuntime` —— **已删除**(§17.7.1 批 3)。
+ *
+ * 它是命令面的执行体接线口(`OnethingSessionMessageRuntime`)。那一层从 P0.1 起
+ * 做的三件事 —— 跑归约器、按它的返回值落盘、盖索引元数据 —— 批 3 各归各家:
+ * 会话账归事件折叠,落盘档与索引元数据归写门,消息数组早在 c4-d 归了折叠产物。
+ * 命令面今天要的只有 `getSession` / `saveSessionForCommands` /
+ * `updateSessionsIndexMetaForCommands` / `flushSessionSave` 四口。
  */
-export function getSessionMessageCommandRuntime(): OnethingSessionMessageRuntime<
-	ChatSession,
-	ChatMessage,
-	SessionMeta,
-	Step,
-	ContentPart,
-	ToolCall
-> {
-	return sessionMessageRuntime!;
-}
 
 export function updateSessionsIndexMetaForCommands(
 	sessionId: string,
@@ -776,6 +749,25 @@ export function updateSessionsIndexMetaForCommands(
 	return sessionRepository.updateSessionsIndexMeta(sessionId, (meta) =>
 		update(meta as unknown as { [key: string]: unknown }),
 	);
+}
+
+/**
+ * 命令面的落盘口(§17.7.1 批 3)。
+ *
+ * 归约器退役之前,"什么时候写、走哪一档"是 `applySessionCommand` 的返回值
+ * (`result.lazy` / `result.writePlan`),由 `OnethingSessionMessageRuntime.run`
+ * 转手交给仓库。归约器一死,那张表搬进了**写门**(`session/commands.ts`),
+ * 这里只剩一条转发。
+ *
+ * **只转 `lazy`**:写计划自 S3w-3 批 6b 起在存储驱动里就没有读者了
+ * (`storage-driver.ts` 的 `void plan`),仓库的缺省(structural)与从前逐字等效。
+ */
+export function saveSessionForCommands(
+	sessionId: string,
+	session: ChatSession,
+	options?: { lazy?: boolean },
+): void {
+	sessionRepository.saveSessionToFile(sessionId, session, options);
 }
 
 /**

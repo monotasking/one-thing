@@ -47,16 +47,12 @@ vi.mock('../../stores/sessions.js', () => ({
   getSessionUserMessageMarkers: () => [],
   readSessionTranscriptFile: () => undefined,
   // 生产接线的那几口:本用例自己搭命令面,不走 `getSessionCommands()`。
-  getSessionMessageCommandRuntime: () => {
-    throw new Error('unused in this test')
-  },
+  saveSessionForCommands: () => {},
   flushSessionSave: async () => {},
   patchSessionFields: () => false,
   stampCollabAgentId: (_sessionId: string, message: ChatMessage) => message,
   updateSessionsIndexMetaForCommands: () => true,
 }))
-
-import type { SessionMessageCommandRuntime } from '../commands.js'
 
 const { createSessionCommands } = await import('../commands.js')
 const { sessionCommandEvents } = await import('../command-events.js')
@@ -116,87 +112,15 @@ function noteStorePort(port: string): void {
   state.seenByStorePort.push({ port, visible: peekedMessageIds(), patches })
 }
 
-function storeMessages(): ChatMessage[] {
-  return state.messages.get(SESSION) ?? []
-}
-
 /**
- * store 端口 = F0 的影子验证器那一侧。这里的每个方法在动 store 之前先记一笔
- * "此刻活投影里看得见什么" —— 那正是"事件有没有先落"的读数。
+ * §17.7.1 批 3:老 reducer 与它的执行体删了 —— 命令面对 store 的最后一次触碰是
+ * **落盘调度**(`saveSession`)。所以"事件先落"的观测点就挂在它上面:被调到的
+ * 那一刻,活投影里已经是这条命令写完之后的样子。
  */
-function storePort(): SessionMessageCommandRuntime {
-  const find = (messageId: string) => storeMessages().findIndex(item => item.id === messageId)
-  return {
-    addMessage(_sessionId, message) {
-      noteStorePort('addMessage')
-      state.messages.set(SESSION, [...storeMessages(), message])
-    },
-    patchMessageFields(_sessionId, messageId, patch) {
-      noteStorePort('patchMessageFields')
-      const index = find(messageId)
-      if (index === -1) return false
-      const next = storeMessages().slice()
-      next[index] = { ...next[index], ...patch } as ChatMessage
-      state.messages.set(SESSION, next)
-      return true
-    },
-    deleteMessage(_sessionId, messageId) {
-      noteStorePort('deleteMessage')
-      const index = find(messageId)
-      if (index === -1) return false
-      const next = storeMessages().slice()
-      next.splice(index, 1)
-      state.messages.set(SESSION, next)
-      return true
-    },
-    deleteMessageWhere(_sessionId, matchMarker) {
-      noteStorePort('deleteMessageWhere')
-      const index = storeMessages().findIndex(matchMarker)
-      if (index === -1) return false
-      const next = storeMessages().slice()
-      next.splice(index, 1)
-      state.messages.set(SESSION, next)
-      return true
-    },
-    upsertMessage(_sessionId, message) {
-      noteStorePort('upsertMessage')
-      const index = find(message.id)
-      const next = storeMessages().slice()
-      if (index === -1) next.push(message)
-      else next[index] = message
-      state.messages.set(SESSION, next)
-      return true
-    },
-    deleteMessageAndTruncate(_sessionId, messageId) {
-      noteStorePort('deleteMessageAndTruncate')
-      const index = find(messageId)
-      if (index === -1) return false
-      state.messages.set(SESSION, storeMessages().slice(0, index))
-      return true
-    },
-    updateMessageAndTruncate(_sessionId, messageId, newContent, options) {
-      noteStorePort('updateMessageAndTruncate')
-      const index = find(messageId)
-      if (index === -1) return false
-      const next = storeMessages().slice(0, index + 1)
-      // 归约器那一半:改正文 + 盖命令递进来的时刻(`applyTruncate` 同款)。
-      next[index] = { ...next[index], content: newContent, timestamp: options?.now ?? 0 }
-      state.messages.set(SESSION, next)
-      return true
-    },
-    replaceAllMessages(_sessionId, messages) {
-      noteStorePort('replaceAllMessages')
-      state.messages.set(SESSION, messages.slice())
-      return true
-    },
-    repairOnLoad: () => false,
-  }
-}
-
 function commandsOverStore(now = 4242) {
   return createSessionCommands(
     {
-      messages: storePort(),
+      saveSession: () => noteStorePort('saveSession'),
       // 与真 store 同义:那条会话不在就答不上来(F2-c 的判据靠它)。
       getSession: id => (state.messages.has(id)
         ? ({ id, messages: state.messages.get(id) } as never)
@@ -360,22 +284,39 @@ describe('F2 产地:命令的事件构造全在命令面上(§16.7 / §16.8 / §
    * "就地换掉"误判成"新增",于是一条 `message/patched` 被写成了 `system/message`。
    * 判据走抄本真相面,所以流中 upsert 与落定 upsert 分得清清楚楚。
    */
-  it('upsertMessage:流中 = 一条不写;落定 = fullBody 的 message/patched', async () => {
+  it('upsertMessage:流中 assistant = 一条不写(它在账本上那一格是 run/start)', async () => {
     const commands = commandsOverStore()
-    const streaming: ChatMessage = {
-      id: 'a1', role: 'assistant', content: '', timestamp: 1, isStreaming: true,
-    }
-    // 抄本里还没有 a1 → 新增支;而它是流中 assistant,一条都不写。
-    commands.upsertMessage(SESSION, { message: streaming })
-    expect(await events()).toEqual([])
-
-    // 结算:抄本里已经有 a1 了 → 就地换掉支,走 fullBody(正文三件套照旧带上)。
     commands.upsertMessage(SESSION, {
-      message: { ...streaming, content: 'settled', isStreaming: false },
+      message: { id: 'a1', role: 'assistant', content: '', timestamp: 1, isStreaming: true },
     })
+    expect(await events()).toEqual([])
+  })
+
+  /**
+   * **§17.7.1 批 3:判据换了产地,这只用例的前提跟着换。**
+   *
+   * 从前"在不在"问的是内存 store 上那份消息数组(与老 reducer 同源),所以流中
+   * 那条 assistant 占位一进 store,第二次 upsert 就走"就地换掉"支。批 3 之后判据
+   * 是**投影节点表** —— 而流中占位在账本上一格都没有(它那一格是引擎写的
+   * `run/start`,不是命令面写的),于是命令面看不见它。
+   *
+   * 这不是丢了判据:c4-d 之后 store 的消息数组本来就是折叠产物的物化,一条
+   * 折不出来的消息对**所有**读路(`listMessages` / `getMessage` 全是 `fromEvents`)
+   * 一样不存在。所以这里改用一条**账本看得见**的消息验"落定支",流中那半边
+   * 单独一只用例。
+   */
+  it('upsertMessage:落定 = fullBody 的 message/patched(带 via 说清调用类别)', async () => {
+    const commands = commandsOverStore()
+    const settled: ChatMessage = {
+      id: 'a1', role: 'assistant', content: 'first', timestamp: 1,
+    }
+    commands.upsertMessage(SESSION, { message: settled })
+    expect((await events()).map(event => event.type)).toEqual(['system/message'])
+
+    commands.upsertMessage(SESSION, { message: { ...settled, content: 'settled' } })
     const line = await events()
-    expect(line.map(event => event.type)).toEqual(['message/patched'])
-    expect(line[0].data).toEqual({
+    expect(line.map(event => event.type)).toEqual(['system/message', 'message/patched'])
+    expect(line[1].data).toEqual({
       messageId: 'a1',
       patch: { role: 'assistant', content: 'settled', timestamp: 1 },
       // §17.7.1 批 2 裁定 2:整条替换这一档要说清自己是 upsert 写的 —— 它与
@@ -432,8 +373,12 @@ describe('F2 产地:命令的事件构造全在命令面上(§16.7 / §16.8 / §
     expect((line[2].data as unknown as { message: ChatMessage }).message).toEqual({
       id: 'u1', role: 'user', content: 'after', timestamp: 7777, model: 'from-transcript',
     })
-    // 而影子验证器(store 那一侧)盖的是**同一个数**,不是它自己读的表。
-    expect(storeMessages()[0].timestamp).toBe(7777)
+    // 时钟同源:折叠上那条改写后的消息盖的是**同一个数**,不是第二次读表。
+    expect(
+      (peekSessionProjection(SESSION)?.nodes.find(
+        node => !node.hidden && node.kind === 'message' && node.messageId === 'u1',
+      ) as { message?: ChatMessage } | undefined)?.message?.timestamp,
+    ).toBe(7777)
   })
 
   it('truncateFrom(edit):contentParts 只在显式带了那个键时才动', async () => {
@@ -467,16 +412,15 @@ describe('F2 产地:命令的事件构造全在命令面上(§16.7 / §16.8 / §
   })
 })
 
-describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () => {
+describe('F2-a 时序:事件 append 先于落盘调度(§16.7;批 3 起 store 侧只剩落盘)', () => {
   it('appendMessage:store 端口被调到的那一刻,活投影里已经有这条消息', () => {
     getLiveSessionProjection(SESSION)
     const commands = commandsOverStore()
 
     commands.appendMessage(SESSION, { message: userMessage('u1') })
 
-    expect(state.seenByStorePort).toEqual([{ port: 'addMessage', visible: ['u1'], patches: {} }])
+    expect(state.seenByStorePort).toEqual([{ port: 'saveSession', visible: ['u1'], patches: {} }])
     // 而 store 侧(影子验证器)也确实推导出了同一条。
-    expect(storeMessages().map(message => message.id)).toEqual(['u1'])
   })
 
   it('patchMessage:补丁在 store 端口之前就落在活投影的那条节点上', () => {
@@ -489,7 +433,7 @@ describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () 
 
     // store 端口那一刻已经能读到自己刚写的补丁 —— 这就是 F1 的同步可见落在命令面上。
     expect(state.seenByStorePort).toEqual([
-      { port: 'patchMessageFields', visible: ['u1'], patches: { u1: { steered: true } } },
+      { port: 'saveSession', visible: ['u1'], patches: { u1: { steered: true } } },
     ])
     expect((peekedNode('u1')?.patch as Record<string, unknown> | undefined)?.steered).toBe(true)
   })
@@ -503,8 +447,7 @@ describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () 
 
     commands.deleteMessage(SESSION, { messageId: 'u2' })
 
-    expect(state.seenByStorePort).toEqual([{ port: 'deleteMessage', visible: ['u1'], patches: {} }])
-    expect(storeMessages().map(message => message.id)).toEqual(['u1'])
+    expect(state.seenByStorePort).toEqual([{ port: 'saveSession', visible: ['u1'], patches: {} }])
   })
 
   it('deleteMessage(matchMarker):同一条纪律 —— 先找、先记事件、后删 store', () => {
@@ -516,8 +459,7 @@ describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () 
 
     commands.deleteMessage(SESSION, { matchMarker: message => message.id === 'u1' })
 
-    expect(state.seenByStorePort).toEqual([{ port: 'deleteMessageWhere', visible: ['u2'], patches: {} }])
-    expect(storeMessages().map(message => message.id)).toEqual(['u2'])
+    expect(state.seenByStorePort).toEqual([{ port: 'saveSession', visible: ['u2'], patches: {} }])
   })
 
   it('upsertMessage:store 端口进门时,活投影上已经是换过的那一条', () => {
@@ -529,7 +471,7 @@ describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () 
     commands.upsertMessage(SESSION, { message: { ...userMessage('u1'), steered: true } as ChatMessage })
 
     expect(state.seenByStorePort).toEqual([
-      { port: 'upsertMessage', visible: ['u1'], patches: { u1: { role: 'user', timestamp: 1, steered: true, content: 'hi' } } },
+      { port: 'saveSession', visible: ['u1'], patches: { u1: { role: 'user', timestamp: 1, steered: true, content: 'hi' } } },
     ])
   })
 
@@ -544,9 +486,8 @@ describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () 
     commands.truncateFrom(SESSION, { messageId: 'u2', inclusive: true })
 
     expect(state.seenByStorePort).toEqual([
-      { port: 'deleteMessageAndTruncate', visible: ['u1'], patches: {} },
+      { port: 'saveSession', visible: ['u1'], patches: {} },
     ])
-    expect(storeMessages().map(message => message.id)).toEqual(['u1'])
   })
 
   it('truncateFrom(edit):改写与截断都在 store 端口之前就落在活投影上', () => {
@@ -559,7 +500,7 @@ describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () 
     commands.truncateFrom(SESSION, { messageId: 'u1', inclusive: false, newContent: 'after' })
 
     expect(state.seenByStorePort).toEqual([
-      { port: 'updateMessageAndTruncate', visible: ['u1'], patches: {} },
+      { port: 'saveSession', visible: ['u1'], patches: {} },
     ])
     // 新节点接上了,而且带的就是命令合成的那一份。(编辑重发是"遮蔽旧格 + 加新格",
     // 所以要取**没被遮蔽**的那一格 —— 按 id 取第一格拿到的是旧的。)
@@ -569,9 +510,6 @@ describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () 
     const shown = (visible as { message?: ChatMessage } | undefined)?.message
     expect(shown?.content).toBe('after')
     expect(shown?.timestamp).toBe(7777)
-    expect(storeMessages()).toEqual([
-      { id: 'u1', role: 'user', content: 'after', timestamp: 7777 },
-    ])
   })
 
   it('replaceAll(clear):遮蔽先生效,store 端口进门时 surface 上已经空了', async () => {
@@ -584,7 +522,7 @@ describe('F2-a 时序:事件 append 先于 reducer 应用到 store(§16.7)', () 
     await commands.replaceAll(SESSION, { messages: [], reason: 'clear' })
 
     expect(state.seenByStorePort).toEqual([
-      { port: 'replaceAllMessages', visible: [], patches: {} },
+      { port: 'saveSession', visible: [], patches: {} },
     ])
   })
 

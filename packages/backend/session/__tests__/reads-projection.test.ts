@@ -228,11 +228,13 @@ describe('批 6b — 事件折不出历史时不再退回仓库', () => {
     expect(sessionReads.lastMessageOfRole(NO_EVENTS, 'user')).toBeUndefined()
   })
 
-  it('store 侧那一口(写侧判据同源)照旧读得到 —— 它本来就不经过投影', () => {
-    // `listMessagesFromStore` 随恒等门一起删了(F4-c c4);`getLiveRunWriterMessage`
-    // 随写手窗口一起删了(c4-b,§16.25 钥匙①)。剩下这一口不是"第二份真相",
-    // 它回答的是"这次命令改不改得成",判据必须与 reducer 同源,理由见 `reads.ts`。
-    expect(sessionReads.getMessageFromStore(NO_EVENTS, 'u1')?.content).toBe('legacy')
+  it('store 侧只剩"这条会话在不在"那一口 —— 消息类的读一律走投影', () => {
+    // `listMessagesFromStore`(恒等门,c4)、`getLiveRunWriterMessage`(写手窗口,
+    // c4-b)、`get/has/findMessageFromStore`(写侧判据,§17.7.1 批 3)先后退役 ——
+    // 它们的共同理由都是"与老 reducer 同源",而 reducer 已经删了。
+    // 留下的永久例外只有一口:会话存不存在不是折叠得出来的事实(纪律 7)。
+    expect(sessionReads.hasSessionInStore(NO_EVENTS)).toBe(true)
+    expect(sessionReads.hasSessionInStore('no-such-session')).toBe(false)
   })
 })
 

@@ -53,9 +53,7 @@ describe('room turn epoch marker', () => {
     sessions.updateSessionCollab('room-1', { kind: 'room', room: { memberAgentIds: ['fe'] } })
     sessions.updateSessionAgent('room-1', 'fe')
 
-    sessions.addMessage('room-1', assistantMessage('m-1'))
-
-    const stored = sessions.getSession('room-1')?.messages[0]
+    const stored = sessions.addMessage('room-1', assistantMessage('m-1'))
     expect(stored?.agentId).toBe('fe')
     expect(stored?.source).toBe('collab-turn')
   })
@@ -86,7 +84,8 @@ describe('room turn epoch marker', () => {
     expect(incoming.agentId).toBeUndefined()
     expect(incoming.source).toBeUndefined()
     // 返回的就是落库的那一条,不是第三个副本。
-    expect(returned).toEqual(sessions.getSession('room-1')?.messages[0])
+    // 入库那一条 = 盖过章的那一条(store 的消息数组由折叠产物维护,§16.27 / 批 3)。
+    expect(returned).not.toBe(incoming)
   })
 
   it('addMessage returns the message unchanged where nothing stamps it', async () => {
@@ -110,12 +109,10 @@ describe('room turn epoch marker', () => {
     sessions.updateSessionCollab('room-1', { kind: 'room', room: { memberAgentIds: ['fe'] } })
     sessions.updateSessionAgent('room-1', 'fe')
 
-    sessions.addMessage('room-1', {
+    const stored = sessions.addMessage('room-1', {
       ...assistantMessage('m-drive-origin'),
       origin: { transport: 'api', source: 'collab', receivedAt: 1 },
     } as never)
-
-    const stored = sessions.getSession('room-1')?.messages[0]
     expect(stored?.source).toBe('collab-turn')
   })
 
@@ -125,12 +122,10 @@ describe('room turn epoch marker', () => {
     sessions.updateSessionCollab('room-1', { kind: 'room', room: { memberAgentIds: ['fe'] } })
     sessions.updateSessionAgent('room-1', 'fe')
 
-    sessions.addMessage('room-1', {
+    const stored = sessions.addMessage('room-1', {
       ...assistantMessage('m-say-origin'),
       origin: { transport: 'api', source: 'collab-say', receivedAt: 1 },
     } as never)
-
-    const stored = sessions.getSession('room-1')?.messages[0]
     expect(stored?.source).toBeUndefined()
   })
 
@@ -140,13 +135,13 @@ describe('room turn epoch marker', () => {
     sessions.updateSessionCollab('room-1', { kind: 'room', room: { memberAgentIds: ['fe'] } })
     sessions.updateSessionAgent('room-1', 'fe')
 
-    sessions.addMessage('room-1', assistantMessage('m-1', {
+    const stored = sessions.addMessage('room-1', assistantMessage('m-1', {
       agentId: 'fe',
       content: '明天下班前',
       source: 'collab-say',
     }))
 
-    expect(sessions.getSession('room-1')?.messages[0].source).toBe('collab-say')
+    expect(stored.source).toBe('collab-say')
   })
 
   it('stamps an AGENT execution session turn the same way (W18)', async () => {
@@ -161,9 +156,7 @@ describe('room turn epoch marker', () => {
     })
     sessions.updateSessionAgent('agent-exec-fe', 'fe')
 
-    sessions.addMessage('agent-exec-fe', assistantMessage('m-1'))
-
-    const stored = sessions.getSession('agent-exec-fe')?.messages[0]
+    const stored = sessions.addMessage('agent-exec-fe', assistantMessage('m-1'))
     expect(stored?.agentId).toBe('fe')
     expect(stored?.source).toBe('collab-turn')
   })
@@ -177,9 +170,7 @@ describe('room turn epoch marker', () => {
     })
     sessions.updateSessionAgent('work-1', 'fe')
 
-    sessions.addMessage('work-1', assistantMessage('m-1'))
-
-    const stored = sessions.getSession('work-1')?.messages[0]
+    const stored = sessions.addMessage('work-1', assistantMessage('m-1'))
     expect(stored?.agentId).toBe('fe')
     expect(stored?.source).toBeUndefined()
   })
@@ -187,13 +178,12 @@ describe('room turn epoch marker', () => {
   it('never marks an ordinary session, and never marks a user message', async () => {
     const sessions = await loadIsolatedStores()
     sessions.createSession('chat-1', '普通会话')
-    sessions.addMessage('chat-1', assistantMessage('m-1'))
-    expect(sessions.getSession('chat-1')?.messages[0].source).toBeUndefined()
+    expect(sessions.addMessage('chat-1', assistantMessage('m-1')).source).toBeUndefined()
 
     sessions.createSession('room-1', '官网改版组')
     sessions.updateSessionCollab('room-1', { kind: 'room', room: { memberAgentIds: ['fe'] } })
     sessions.updateSessionAgent('room-1', 'fe')
-    sessions.addMessage('room-1', { id: 'u-1', role: 'user', content: '大家看看', timestamp: 1 })
-    expect(sessions.getSession('room-1')?.messages[0].source).toBeUndefined()
+    const stored = sessions.addMessage('room-1', { id: 'u-1', role: 'user', content: '大家看看', timestamp: 1 })
+    expect(stored.source).toBeUndefined()
   })
 })

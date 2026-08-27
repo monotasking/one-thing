@@ -164,137 +164,42 @@ export const sessionReads = {
    * 要**这条会话在不在**问 `hasSessionInStore`,其余一律 `listMessages`(投影)。
    */
 
-  /**
-   * **store 侧**按 id 取一条 —— **故意不经过 `fromEvents`**(F11,与
-   * `listMessagesFromStore` 同款纪律)。
-   *
-   * **F3(§16.10)把这一口的理由整个换掉了。** 从前写的是"活投影还停在写之前,
-   * 走 `getMessage` 会回读到旧正文"(§13.18 发现 B)—— **那条理由已经死了**:F1
-   * (§16.6)之后事件在 append 返回前就折进了活投影,写侧读投影读得到自己刚写的。
-   *
-   * **F4-a(§16.12)又摘掉了一条。** F3 在这里挂过第二类例外"事件产地缺口"
-   * ——`stream-executor.ts` / `agent-loop-executor.ts` 那两处孪生取材点。那条
-   * 事实(流中 assistant 在账本上没有那一格)仍然成立,但它证明的是"不能改读
-   * 投影",不是"必须回读 store":那两处是 `run/start` 的**生产者**,要的值就在
-   * 它们刚刚写进去的那条消息上。F4-a 让 `store.addMessage` 把**入库的那一条**
-   * 交回调用方(端口多一格返回值),两处回读整体删除。**别再往这一口上挂"产地
-   * 缺口"了** —— 产地缺口的解法是补产地(§16.11 拍板 3,F4 的硬前置),不是回读。
-   *
-   * **F4-b2(§16.17)又摘掉了一条。** F3 在这里挂过"只在 store 的运行时形状"
-   * (收尾链那三处:settle 后的 `steps[]` 结局与 `contentParts` 上的 `data-steps`
-   * 渲染锚点)。那三处**搬走了** —— 它们不是"读 store",是**读活 run 的写手视图**,
-   * 见 `getLiveRunWriterMessage` —— 而**那一口 c4-b 已经删了**(§16.25 钥匙①:
-   * 锚点改由推送侧从折叠产物现算,收尾链改读投影)。留在这一口上的差别是身份:
-   * 这一口回答的是"reducer 眼里那条消息长什么样",与 run 在不在活窗口无关。
-   *
-   * 今天还留在这一口上的,只剩**一个消费者、一条理由**:
-   *
-   * 1. **底稿同源**(①类判据同源的一半):`commands.ts` 的 `truncateFrom{inclusive:false}`
-   *    要编辑**前**那条做底稿,而 reducer 的 `applyTruncate` 拿的正是 store 上那一条。
-   *    两侧不同源,恒等门比的就是两份形状不同的底稿。它随 F4-b3 reducer 退役一起翻。
-   *
-   * 判据类的读(`hasMessageInStore` / `hasSessionInStore`)另有一条理由,见那两口。
-   */
-  getMessageFromStore(
-    sessionId: string,
-    messageId: string,
-  ): Readonly<ChatMessage> | undefined {
-    const message = getSessionMessages(sessionId)?.find(item => item.id === messageId)
-    return message ? guard(message) : undefined
-  },
-
   /*
-   * `getLiveRunWriterMessage` —— **已删除**(F4-c c4-b,§16.25 钥匙①)。
+   * `getMessageFromStore` / `hasMessageInStore` / `findMessageFromStore` ——
+   * **已删除**(§17.7.1 批 3)。
    *
-   * 它是 F4-b2(§16.17)立的「活 run 写手视图」:窗口内那条 assistant 消息由
-   * **引擎写手对象**(= 内存 store 上的那一条)持有并唯一可信,收尾链三处非读它
-   * 不可。那条口径把 18 个热写端口整体钉死 —— 端口一空转,写手对象就空,settle
-   * 快照就空(§16.24 第五节证据一)。
+   * 三口从 F2 起是**写侧判据**:命令面要问"这次命令改不改得成",而"改成"的
+   * 那一侧是老 reducer、reducer 问的是内存 store 上那份消息数组。两侧同判据,
+   * 写事件与改 store 才不会一边发生一边不发生(§16.10 第三条理由:判据同源)。
    *
-   * 当时非读它不可的两条理由,c4-b 各给了出路:
+   * 批 3 把 reducer 删了 —— 同源的那个对象没有了,三口的**唯一理由**随之消失。
+   * 判据改问投影:存在性走 `eventsHasMessage`(节点表 O(1),不物化),底稿与
+   * 谓词查走 `getMessage` / `listMessages`(投影物化)。c4-d 之后 store 的消息
+   * 数组本来就是折叠产物的物化,所以这不是换真相,是把门牌摘掉。
    *
-   * 1. **渲染锚点**(`data-steps`,canonical G4 故意不进事件/投影)—— 它是 steps
-   *    的 `turnIndex` 的**纯函数**,由推送侧从折叠产物**现算**
-   *    (`@onething/core/session/render-anchors`,与 renderer 加载路径同一份实现)。
-   *    锚点不再需要一个保管人。
-   * 2. **收场结局的自引用** —— 解法不是"改读投影"(那条路走不通:`steps` /
-   *    `toolCalls` 在 `message/patched` 的 `DERIVED_KEYS` 里,收尾修复的补丁
-   *    进不了账本),而是**不回读**:收尾修复把产物经 `onSettled` 直接递给
-   *    采集点。零时序窗口,也没有自引用可谈。
-   *
-   * 收尾链今天读 `getMessage`(投影)。要 store 侧的一条消息,只剩下面那三口 ——
-   * 它们回答的都是"判据同源"那一类问题,不是"这条消息长什么样"。
+   * **`hasSessionInStore` 留任,而且是永久例外**(下面那一口,§16.11 拍板 4 /
+   * 纪律 7)。
    */
-
-  /**
-   * **store 侧**问一句"这条消息在不在" —— F2-a 的写侧判据(§16.7)。
-   *
-   * 为什么不用 `getMessageFromStore(...) !== undefined`:那一口会 `guard()`
-   * 一整条消息(dev / vitest 下是深冻结),而 `patchMessage` 是逐 token 的热路径,
-   * 每次补丁冻一条带 steps/toolCalls 的消息不划算。这里只回答存在性,不把消息
-   * 交出去,所以也不需要冻。
-   *
-   * **F3 为什么没把它翻成读投影**(§16.10,第三条理由 ——「判据同源」):
-   * 它回答的不是"账本上有没有",而是"**这次命令改不改得成**",而"改成"的那一侧
-   * 是 reducer,reducer 问的是 store(`findIndex(item => item.id === messageId)`)。
-   * 两侧用同一个判据,写事件与改 store 才不会一边发生一边不发生。翻成投影的
-   * 代价还有一笔:投影侧最便宜的存在性口是 `eventsGetMessage`,它每次都把**整条
-   * 会话**物化一遍 —— 放在逐 token 的热路径上不划算。
-   * F3 量过:battery 321 run 里 store 答案与投影答案 **0 次分岔**(四个消息级判据
-   * 逐次对照),所以这不是"投影答不对",是"现在换没有收益、且丢掉同源性"。
-   * reducer 退役那天(F4)这一口跟着退役,不是提前翻面。
-   */
-  hasMessageInStore(sessionId: string, messageId: string): boolean {
-    return getSessionMessages(sessionId)?.some(item => item.id === messageId) ?? false
-  },
 
   /**
    * **store 侧**问一句"这条会话在不在" —— F2-c 补的那道判据(§16.9 的洞)。
    *
-   * **F3 为什么连翻都翻不了**(§16.10):投影**答不出这个问题**。事件侧对"一条
-   * 事件都没有的会话"与"根本不存在的会话"给的是同一个答案(`nodes.length === 0`)
-   * —— 而这道判据要分的正是这两者(刚建的空会话必须能追加第一条消息)。会话在不在
-   * 是 `meta.json` / 仓库那一层的事实,不是消息事件折得出来的。
+   * **投影答不出这个问题**:事件侧对"一条事件都没有的会话"与"根本不存在的
+   * 会话"给的是同一个答案(`nodes.length === 0`)—— 而这道判据要分的正是这两者
+   * (刚建的空会话必须能追加第一条消息)。会话在不在是 `meta.json` / 仓库那一层
+   * 的事实,不是消息事件折得出来的。
    *
-   * **这一口是永久例外**(§16.11 拍板 4,用户 2026-08-27 裁定 A)。它不随 F4 退役
-   * ——`hasMessageInStore` 那一口是"reducer 退役那天跟着退",这一口不是:哪怕
-   * core reducer 与投影 reducer 合一、store 退化成物化缓存,"这条会话存不存在"
-   * 仍然是目录 / `meta.json` 那一层的事实,消息事件里永远没有它的产地。要改口径
-   * 只有一条路 —— 给"会话存在性"另找一个产地,那是一次单独的拍板,不是顺手翻面。
+   * **这一口是永久例外**(§16.11 拍板 4,用户 2026-08-27 裁定 A):它不随 reducer
+   * 退役 —— 哪怕 store 退化成物化缓存,"这条会话存不存在"仍然是目录 / `meta.json`
+   * 那一层的事实。要改口径只有一条路 —— 给"会话存在性"另找一个产地,那是一次
+   * 单独的拍板,不是顺手翻面。
    *
-   * `appendMessage` / `upsertMessage` 的 reducer 恒为"改得成",唯一改不成的情形是
-   * **整条会话不在**(`OnethingSessionMessageRuntime.run` 取不到 session 就整条
-   * no-op)。F2-a/F2-b 翻转时这一格漏了,于是"往一条不存在的会话追加消息"会在
-   * 账本上留下一条 `user/message`,而 store 上什么都没有 —— 事件账本记的是事实,
-   * 不是意图。判据与 reducer 同源同义:`getSessionMessages` 取不到 = 那条会话不在。
+   * 命令面唯一改不成的情形就是**整条会话不在**:F2-a/F2-b 翻转时这一格漏了,
+   * 于是"往一条不存在的会话追加消息"会在账本上留下一条 `user/message`,而 store
+   * 上什么都没有 —— 事件账本记的是事实,不是意图。
    */
   hasSessionInStore(sessionId: string): boolean {
     return getSessionMessages(sessionId) !== undefined
-  },
-
-  /**
-   * **store 侧**按谓词查一条(F11:同 `getMessageFromStore`,事件写侧取材用)。
-   *
-   * 唯一消费者是 `deleteMessage{matchMarker}`:命令面不知道要删的是哪一条,而事件
-   * 要写 id —— 找出来的那条与 reducer 的 `deleteMessageWhere` 在**同一份 store** 上
-   * 跑同一个谓词,于是"写哪条事件"与"删哪条消息"不可能指向两条不同的消息
-   * (§16.10 第三条理由:判据同源)。
-   */
-  findMessageFromStore(
-    sessionId: string,
-    predicate: (message: ChatMessage, index: number) => boolean,
-    options: { from?: 'start' | 'end' } = {},
-  ): Readonly<ChatMessage> | undefined {
-    const messages = getSessionMessages(sessionId)
-    if (!messages) return undefined
-    if (options.from === 'end') {
-      for (let index = messages.length - 1; index >= 0; index--) {
-        if (predicate(messages[index], index)) return guard(messages[index])
-      }
-      return undefined
-    }
-    const found = messages.find(predicate)
-    return found ? guard(found) : undefined
   },
 
   /**

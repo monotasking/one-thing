@@ -33,7 +33,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
  * 每一条都要有一句能站住的理由 —— 白名单里的文件此后不受棘轮监督。
  */
 const RULE_A_ALLOWED = new Set([
-  // 纯 reducer:7 命令唯一的实现处(#8a 删掉 5 条端口专用分支后从 12 收缩到 7)
+  // 冷加载修复(§17.7.1 批 3:老 reducer 删了,这里只剩两个具名入口 ——
+  // 修复要摸整份消息数组)
   'packages/core/session/commands.ts',
   // 装配层写面 / 读面:设计文档 §1 的两扇门
   'packages/backend/session/commands.ts',
@@ -56,30 +57,22 @@ const RULE_A_ALLOWED = new Set([
 /**
  * 规则 B 的白名单:唯一允许改消息/step/toolCall 字段的地方。
  *
- * **§17.7 #8a 第五次改写理由,名单仍旧没换**(2026-08-28;上一次是 c4-d,§16.27)。
+ * **§17.7.1 批 3 第六次改写理由 —— 这一次名单换了含义**(2026-08-28;上一次是
+ * #8a,再上一次是 c4-d §16.27)。
  *
- * c4-b(§16.25)拆掉了"活 run 写手视图"那三条依赖之后,剩下的最后一格是**身份**:
- * 内存 store 的消息数组由谁维护。**c4-d 把它换了** —— 折叠产物成为唯一维护者
- * (`session-repository.refreshMessagesFromProjection`,全仓唯一一处
- * `session.messages = …`,见下面规则 C 的具名例外),引擎那 15 个热写端口整批空转。
+ * 老 reducer(`applySessionCommand`)**已经删了**。它最后的身份是"会话级派生的
+ * 算法"(截断扣多少 token、`contextSize`/`summary` 怎么重算、`updatedAt` /
+ * `lastProvider` 怎么定),而批 2 把同一本账做成了**事件的折叠产物**
+ * (`core/session/account.ts`),批 3 让写门直接读折叠块 —— 于是那个算法没有了
+ * 第二处实现。
  *
- * 于是这个 reducer **不再是消息数组的维护者**。c4-d 当时记了它的两个身份;#8a 把
- * 第二个身份消掉了(S0 合同 A 线改说事件,那五条生产零流量的端口专用分支
- * —— `appendContentPart` / `upsertStep` / `patchStep` / `patchStepsUsageByTurn` /
- * `setToolCalls` —— 随之真删)。**今天它只剩一个身份**:
+ * 名单上仍然是 `core/session/commands.ts`,但它今天装的是**另一件东西**:
+ * 冷加载修复的两个具名入口(`sanitizeSessionOnStartup` / `sanitizeLoadedSession`)
+ * —— 修复要改 step / toolCall 的字段(把中断的改成 cancelled),而且它是**可再生
+ * 的派生**,住在读路(`session-repository.repairOnFirstTouch`)。
  *
- *   **会话级派生的算法**:截断要扣多少 token、`contextSize` / `summary` 怎么重算、
- *   `updatedAt` / `lastProvider` / 索引计数 / 落盘 lazy 档怎么定 —— 这些不是消息
- *   事实,是会话账。算它们要摸消息(`sumUsage` /
- *   `computeSessionTimelineMetadataRepair`),所以规则 B 仍然要放它进来。
- *
- * 这个身份该搬去哪儿(= 整个 reducer 的最终退役)是留账 **#8b**,与 #3「节点自持」
- * 合并出方案。在那之前,这一格是**真的生产依赖**,不是历史残留:剩下的 7 条命令
- * (append / upsert / patch / truncate / delete / replaceAll / repairOnLoad)每一条
- * 都在 `backend/session/commands.ts` 的写路上。
- *
- * 所以名单一字未动,而**它守的东西又变了**:今天守的是"对 ChatMessage/Step/ToolCall
- * 的字段赋值只有一个算法处"。往这个名单里加文件之前请先读 §16.27 与 §17.7 #8a。
+ * 所以规则 B 守的那句话没变、而且更紧了:**对 ChatMessage / Step / ToolCall 的
+ * 字段赋值只有一个算法处**。往这个名单里加文件之前请先读 §17.7.1 批 3。
  *
  * (投影 reducer 改的是 `ProjectionNode`,不是 `ChatMessage`/`Step`/`ToolCall`,
  * 规则 B 本来就够不着它 —— 名单里不需要有它。)

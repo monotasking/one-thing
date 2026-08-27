@@ -9413,8 +9413,8 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | # | 留账 | 状态 / 判据 | 出处 |
 |---|---|---|---|
 | 1 | **大会话按节点物化缓存** | 稳态是亚微秒(一次 map 查询 + 一次 `!==`),代价全在**活 run 窗口内**:每条 delta 换失效号,`getSession` ~30 次/run,258 条消息 / 50MB 的巨型会话上一次物化 46ms。方向是**只重算改动过的那几条**,不是回头改换装点 —— **§17.7.1 批 1 已落地**(memo 成为节点自持属性,外挂簿记整体删除;实测 49.5ms → 一条 delta 0.026ms) | §16.27 六;§17.7.1 批 1 |
-| 2 | **老 reducer 远期退役** | c4-d 改判保留两个身份;**#8a(08-28)已兑现退役条件、消掉身份 2** —— A 线改说事件(`ExpectedLine`),5 条生产零流量的端口专用分支与 15 个零调用端口口真删,`SessionCommand` 12→7。**剩下的唯一身份是「会话级派生的算法」,而它是真生产依赖**(7 条活分支各在写路上,全仓唯一的 `updatedAt`/`lastProvider`/总账扣减/`contextSize`·`summary` 失效/lazy 档产地)。往下 = **#8b**,并入 #3 出方案 | §16.27 四;§17.7 #8a |
-| 3 | **三口判据同源退役** | 挂在第 2 条上 —— **#8a 未动它**:三口全部挂在那 7 条**活**分支上当"写不写事件"的判据(`pin` 同理),分支活着就不能退。今天三口读的已是物化视图,**不是第二份真相**,只是同一份真相的 store 侧门牌。真正的退役随 #8b | §16.27 四;§17.7 #8a |
+| 2 | ~~**老 reducer 远期退役**~~ **已结清(§17.7.1 批 3)** —— `applySessionCommand` 与 7 条分支、`SessionCommand` 联合、`adoptSessionCommandResult`、`OnethingSessionMessageRuntime` 整层全部真删;会话账改由事件折叠产出,落盘档与索引元数据归写门。原文如下 | c4-d 改判保留两个身份;**#8a(08-28)已兑现退役条件、消掉身份 2** —— A 线改说事件(`ExpectedLine`),5 条生产零流量的端口专用分支与 15 个零调用端口口真删,`SessionCommand` 12→7。**剩下的唯一身份是「会话级派生的算法」,而它是真生产依赖**(7 条活分支各在写路上,全仓唯一的 `updatedAt`/`lastProvider`/总账扣减/`contextSize`·`summary` 失效/lazy 档产地)。往下 = **#8b**,并入 #3 出方案 | §16.27 四;§17.7 #8a |
+| 3 | ~~**三口判据同源退役**~~ **已结清(§17.7.1 批 3)** —— `get/has/findMessageFromStore` 随 reducer 一起删,判据改问投影(`eventsHasMessage` / `getMessage`);`hasSessionInStore` 按纪律 7 永久留任。`withSessionCommandPin` / `pinDepth` 同批删除(它防的"归约器二次应用"不存在了)。原文如下 | 挂在第 2 条上 —— **#8a 未动它**:三口全部挂在那 7 条**活**分支上当"写不写事件"的判据(`pin` 同理),分支活着就不能退。今天三口读的已是物化视图,**不是第二份真相**,只是同一份真相的 store 侧门牌。真正的退役随 #8b | §16.27 四;§17.7 #8a |
 | 4 | **`tool/result` 进 surface 的写侧一票** | **已由 F1 收**(§16.15);另册里那条记录作废 | §16.15;§16.11 |
 | 5 | **A 只修尾随格** | 归属在段外、却排在段**中间**的 `tool/result` 表达不出来(replace 的 op 是位置连续段)。全库零例;真要修得先给 surface op 词汇加"非连续遮蔽" | §16.15 六-1 |
 | 6 | **`pruneShadowedToolCalls` 是零命中路** | 生产者还没写。真写时要一并决定"只遮结果格"这种 op 下 `isShadowedWith` 怎么答,而不是默默让它生效 | §16.15 六-2 |
@@ -9426,6 +9426,8 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | 12 | **两个端口断言没被考过** | `updateMessageError` / `updateMessageTurnContext` 的 A 类断言在 battery 里**零调用**,各欠一个场景 | §16.24 九-3 |
 | 13 | **U1 / U2 + B 期路线** | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动),细案届时出 | §16.11 尾;`docs/design/ui-event-stream-2026-08.md` |
 | 14 | **②类同源注释清理** | 远期另册,纯文字 | §16.11 尾 |
+| 15 | **usage / `contextSize` 的正向写者没有事件产地** | `applySessionTokenUsage`(agent-loop 收尾)/ `updateSessionContextSize`(provider-finish)/ server 的 `applyServerSessionUsage` 三处**就地写会话容器**,不经命令面也不产事件。§17.7.1 批 3 **明确不接管**(接管 = 改 token 记账行为,与"零可感知行为变化"相悖);折叠侧照旧折得出自己那一份,只是不落格。补产地与否是单独一次拍板 | §17.7.1 批 2 五 / 批 3 八 |
+| 16 | **冷加载修复仍以存储突变落盘** | `sanitizeSessionOnStartup` 已改为直调 `computeSessionRepairOnLoad`(纯派生、COW),但结果仍由 `loadSessionWithAdapters` 写回 `meta.json`。"搬成纯派生出口"那一半**停在诊断**:它唯一的差别是盘上带不带修好的值(下次冷加载幂等地再修一遍),属于存储可见的变化而没有消费者要求 | §17.7.1 批 3 二 |
 
 ### 17.6 两态图 artifact 与终态的出入(图待更新,本节只记差异)
 
@@ -10020,3 +10022,127 @@ transport 42 常量 · 四壳 2392 均未动;字节回归 `session-chunk-bytes` 
    互相盖的时序如在影子里现形为失配,那是真病灶,修产地不修门(纪律 11)。
    选型照批 2 勘察定案:独立 `SessionAccountState` 增量折叠,truncate 类事件
    向投影要一次消息列表,不挂进消息 reducer。
+
+**批 3(#8b-ii,切换)落地记录(2026-08-28,opus 施工,未提交;20 文件改 + 3 件整删)**
+
+*一、切换选型与理由*
+
+**会话账落在写门的命令收尾处**(`backend/session/commands.ts` 读
+`peekSessionAccount`),不扩 `refreshMessagesFromProjection`。理由是**幂等性**:
+
+- 身份三格(`updatedAt`/`lastProvider`/`lastModel`)是绝对值,谁写都一样;
+- 但**截断效果**(用量扣减)是**增量**,在每次 `getSession` 的换装点上应用会
+  一扣再扣;
+- 而 usage / `contextSize` 的**正向**写者(`applySessionTokenUsage` /
+  `updateSessionContextSize` / server 的 `applyServerSessionUsage`)**本批不接管**
+  (裁定:保持行为逐字不变)——换装点若无条件盖会话账,等于每次读会话都把这三个
+  写者的成果抹掉。
+
+所以落点与批 2 的两类影子断言**一一对应**:命令收尾落身份三格(绝对值),
+`truncateFrom` 收尾落 `lastTruncation`(增量)。批 2 的 682 次 0 失配证的正是这两笔。
+
+折叠是否真为**这一次**截断算过,靠 `lastTruncation` 的**对象同一性**判(折叠每次
+截断新建一个 effect 对象)——判据丢了就是上一次的扣减被静默再扣一遍。
+
+**账本没启用时的取处**:`isSessionEventLogEnabled === false`(事件目录还没落盘的
+那一瞬)折叠给不出答案,此时按命令**自己取的那一刻**盖 `updatedAt`。这不是第二套
+算法:时钟同源(批 2 裁定 1)之后,折叠对这几条命令给出的 `updatedAt` 就是这个数。
+
+*二、删除清单(真删,不是空转)*
+
+| 删的东西 | 出处 |
+|---|---|
+| `applySessionCommand` + 7 条分支 + `SessionCommand` 联合 + `SessionCommandResult`/`Meta`/`RepairPatches` + `CoreSessionWritePlan`/`CORE_STRUCTURAL_WRITE_PLAN` + `adoptSessionCommandResult` + `resolveLazy`/`sumUsage`/COW 小工具 | `core/session/commands.ts`(507 行 → 110 行) |
+| `withSessionCommandPin` / `pinDepth` | `backend/session/materialized-messages.ts` |
+| `getMessageFromStore` / `hasMessageInStore` / `findMessageFromStore` | `backend/session/reads.ts`(`hasSessionInStore` 留任,纪律 7) |
+| `OnethingSessionMessageRuntime` **整件**(9 个命令口 + `run`/`patchMessage`/`runDeleteMessage`/`commandMessage(Seq)`/`logSubtractedMessageUsage` + 全部 sqlite 同步 + `cancelPendingSqliteMessageSyncs`)与它的测试 | `onething-runtime/src/sessions/session-message-runtime.ts` 文件删除 |
+| `getSessionMessageCommandRuntime` + `repositoryPort` + 两处构造 | `backend/stores/sessions.ts` / `backend/server/runtime.ts` |
+| `SessionCommands.repairOnLoad`(命令面那层包装) | 生产零调用点,#8a 口径纯减法 |
+| `account-shadow.ts`(批 2 的影子对拍)整件 | 计数字段留成读老账的字段 |
+| `checkRuntimeOwnsSessionMessageRuntime`(boundary 检查) | 守的那一层不存在了;它守的那句话由 `session:check` 规则 A/B/C 用 AST 守 |
+
+**类型词汇留任**:`CoreSessionCommandMessage` / `CoreSessionCommandStep` /
+`CoreSessionCommandSession` 有真消费者(`store-helpers.ts` 与 S0 合同测试),
+留的是形状不是算法。`SessionCommandWriteHint` 搬进写门(它今天是写档的入参)。
+
+`sanitizeLoadedSession` / `sanitizeSessionOnStartup` **留任但换实现**:直调
+`computeSessionRepairOnLoad`(纯派生、COW,语义一字未改),不再借道归约器。
+**修复仍在原位落盘**:"不再以存储突变落盘"那一半**没有做** —— 它唯一的差别是
+`meta.json` 上带不带修好的值(下次冷加载会再修一遍,幂等),属于存储可见的变化
+而没有消费者要求它,按"存疑停诊"留给后批。
+
+*三、lazy 落盘档映射表(逐字复刻归约器退役前的 `resolveLazy`)*
+
+| 命令 | 写档 |
+|---|---|
+| `patchMessage` + `hint:'stream'` | **lazy**(5s) |
+| `patchMessage` + `hint:'settle'` | 常规(300ms) |
+| `patchMessage` 无 hint,键集合 ⊆ {content, reasoning, contentParts, thinkingTime} | **lazy** |
+| `patchMessage` 无 hint,其余(含空补丁) | 常规 |
+| `appendMessage` / `upsertMessage` / `truncateFrom` / `deleteMessage` / `replaceAll` | 常规 |
+| 判据不成立(会话/消息不在) | **一次盘都不写** |
+
+**写计划(`SessionWritePlan`)整体不再计算**:存储驱动自 S3w-3 批 6b 起就不读它了
+(`storage-driver.ts` 的 `void plan`),归约器一死它连产地都没有 —— 与其在逐 token
+的热路径上为一个没人读的字段做一次下标查找,不如不算。仓库缺省 structural,
+落盘调度行为逐字不变。
+
+*四、判据换产地 + 三处补接线(施工中门抓出来的)*
+
+判据从 store 消息数组改问**投影**:存在性 `eventsHasMessage`(节点表 O(1),不物化),
+底稿 / 谓词查 `sessionReads.getMessage` / `listMessages`。三处必须一起补:
+
+1. **底稿不许带读路坐标**。`eventsGetMessage` 会补 `seq` / `eventSeq`(这条消息由
+   哪条事件开头),而底稿是要**写回事件体**的 —— 坐标进了账本就是第二个真相,
+   下一次重折还会得到不同的数。写门新增 `editBaseline` 摘掉这两格(单测钉死)。
+2. **standalone server 那只仓库没接活投影**。c4-d 把消息数组的维护者交给折叠时
+   只接了 app store 一只 —— 那只仓库当时还有老 reducer 在写数组,少接看不出来。
+   reducer 一删就是"消息没有维护者"。按与它旁边那句 `hydrateMessagesFromProjection`
+   **逐字相同的判据**(同一个 store 才接)补上 `materializeMessagesFromProjection`。
+3. **假引擎(echo/test 后端)的助手消息没有产地**。它不写 `run/start` 也不写
+   `assistant/chunks`,助手正文只从 `MESSAGE_UPDATED` 那一口进来,而
+   `message/patched` 的正文三件套永远被丢弃(`BODY_KEYS`)—— 从前靠老 reducer
+   把补丁写进内存数组才看得见。补法是让这只**测试替身**以落定形态入账:创建时
+   不再标 `isStreaming`(它本来就不是存储字段,投影按 run 开合现算),更新走
+   upsert 的 `fullBody` 档。真引擎那条路一格未动。
+
+顺带一处产地补齐:standalone server 的 `createSession` 从前不写 `session/created`,
+于是它的会话**没有账本**;现在与桌面 / 真 server 同一条路。
+
+*五、`normalize` 定局:留着,不删*
+
+`replaceAll{reason:'normalize'}` 生产零调用点(全仓 grep 只剩类型声明),账本上
+照旧一条事件都不写(判例:一次"什么都没发生"不该在 surface 上变成一次全量遮蔽)。
+**没有随死码删** —— 它是 `ReplaceAllPayload.reason` 的合法取值,删它要连带改三处
+形状,而一个零流量的枚举值不值得一次形状变更。批 2 给它的"排除在对拍外"随影子
+一起退役(影子没了)。
+
+*六、影子退役 + refold 扩栏*
+
+`account-shadow.ts` 整件删除;耐久判据并进 **refold**:文件字节重折的**会话账**
+≡ 内存活会话账,与消息那一栏同一次采样、同一份事件。两者必须在**同一遍**里折
+(`foldSessionProjectionAndAccountSliced`)—— 会话账的截断分支要问"这条事件折进去
+之后还剩哪些消息",那是**当时**那一份投影,不是整份折完的最终态;分两遍折出来的
+账会在每一次截断上算错,而那正是这道门要守的那一格。
+
+`session-account.test.ts` 的确定性预检留任(它守"折叠器只读事件字段")。
+
+*七、门读数*
+
+typecheck 0(node + web);三包全量 **7835 绿 / 776 文件**(基线 7849 −
+`session-message-runtime.test.ts` 的 2 只 − 老 reducer 那 12 只 + 新增/改写的
+若干;两只文件级加载红是本机高负载抖动,单跑 4/4 绿);
+`sessions:shadow-battery` **GATE GREEN** —— runs 321、refoldChecks 224 > 0
+(**已含会话账栏**)、refoldMismatches 0、mismatches 0、portMismatches 0(265 次)、
+appendFailures 0、shadow.jsonl 0 行;四棘轮 boundary 0(退役一条死检查)/
+session 0(2212 文件 0 命中)/ log 4 known-none-new / transport 42 · 2392 未动;
+字节回归 + S0 合同 86 + step 身份 2 绿;`sessions:verify` 9 条 FAIL 与 HEAD 逐条
+同集零新增;真机 `~/.onething` 只读。
+
+*八、留账*
+
+- **usage / `contextSize` 的正向写者仍无事件产地**(`applySessionTokenUsage` /
+  `updateSessionContextSize` / server `applyServerSessionUsage`)。本批**明确
+  不接管**(裁定,保持行为逐字不变),折叠侧照旧折得出自己那一份但不落格 ——
+  要不要给它们补产地是单独一次拍板。
+- **冷加载修复仍以存储突变落盘**(见二);"搬成纯派生出口"那一半停在诊断。

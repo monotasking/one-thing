@@ -7204,44 +7204,18 @@ function checkRuntimeOwnsSessionUpdateFlows(): void {
   assertNoMatches('packages/onething-runtime owns session update flows', lines)
 }
 
-function checkRuntimeOwnsSessionMessageRuntime(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/session-message-runtime.ts')
-  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/sessions/__tests__/session-message-runtime.test.ts')
-  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/sessions/index.ts')
-  const mainStoreFile = path.join(root, 'packages/backend/stores/sessions.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
-  const mainStoreContent = fs.existsSync(mainStoreFile) ? fs.readFileSync(mainStoreFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'createOnethingSessionMessageRuntime',
-    'OnethingSessionMessageRuntime',
-    'syncMessageToSqliteIfReady',
-    'updateMessageAndTruncate',
-    'updateStepsUsageByTurn',
-  ]
-  const lines = [
-    ...(!fs.existsSync(runtimeFile)
-      ? [`${rel(runtimeFile)}: missing runtime-owned session message runtime`]
-      : []),
-    ...(!fs.existsSync(runtimeTestFile)
-      ? [`${rel(runtimeTestFile)}: missing runtime-owned session message runtime tests`]
-      : []),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned session message runtime symbol ${symbol}`),
-    ...(!runtimeIndexContent.includes('./session-message-runtime.js')
-      ? [`${rel(runtimeIndexFile)}: missing session message runtime public export`]
-      : []),
-    ...(!mainStoreContent.includes('createOnethingSessionMessageRuntime')
-      ? [`${rel(mainStoreFile)}: main sessions facade must delegate message mutations to createOnethingSessionMessageRuntime`]
-      : []),
-    ...(fs.existsSync(mainStoreFile)
-      ? matchingLines(mainStoreFile, MAIN_SESSION_MESSAGE_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['packages/backend/stores/sessions.ts: missing sessions store facade']),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns session message mutation runtime', lines)
-}
+/*
+ * `checkRuntimeOwnsSessionMessageRuntime` —— **已删除**(§17.7.1 批 3)。
+ *
+ * 它守的是"消息 mutation 的执行体归 `packages/onething-runtime`"这条分层
+ * (`OnethingSessionMessageRuntime` 那一层)。批 3 把老 reducer 与那一层整件删了:
+ * 会话账由事件折叠产出、落盘档与索引元数据由写门自算、消息数组早在 c4-d 就归了
+ * 折叠产物 —— 被守的那个东西不存在了,守它的门只会以"文件不见了"的理由常红。
+ *
+ * 它守的**那句话**没有失守,只是换了看门人:"对 ChatMessage / Step / ToolCall 的
+ * 字段赋值只有一个算法处"由 `scripts/session-check.mjs` 规则 B 用 AST 守着(比
+ * 字符串匹配更紧),而"写路只有一扇门"由规则 A/C 守。
+ */
 
 function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/working-directory.ts')
@@ -9796,7 +9770,6 @@ checkRuntimeOwnsMcpCapabilityOperations()
 checkRuntimeOwnsMcpIpcOperations()
 checkRuntimeOwnsSessionBranchCreation()
 checkRuntimeOwnsSessionUpdateFlows()
-checkRuntimeOwnsSessionMessageRuntime()
 checkRuntimeOwnsSessionWorkingDirectoryFlow()
 checkRuntimeOwnsSessionSystemMarkerFlow()
 checkRuntimeOwnsSessionIpcOperations()
