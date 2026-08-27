@@ -9428,6 +9428,8 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | 14 | **②类同源注释清理** | 远期另册,纯文字 | §16.11 尾 |
 | 15 | **usage / `contextSize` 的正向写者没有事件产地** | `applySessionTokenUsage`(agent-loop 收尾)/ `updateSessionContextSize`(provider-finish)/ server 的 `applyServerSessionUsage` 三处**就地写会话容器**,不经命令面也不产事件。§17.7.1 批 3 **明确不接管**(接管 = 改 token 记账行为,与"零可感知行为变化"相悖);折叠侧照旧折得出自己那一份,只是不落格。补产地与否是单独一次拍板 | §17.7.1 批 2 五 / 批 3 八 |
 | 16 | **冷加载修复仍以存储突变落盘** | `sanitizeSessionOnStartup` 已改为直调 `computeSessionRepairOnLoad`(纯派生、COW),但结果仍由 `loadSessionWithAdapters` 写回 `meta.json`。"搬成纯派生出口"那一半**停在诊断**:它唯一的差别是盘上带不带修好的值(下次冷加载幂等地再修一遍),属于存储可见的变化而没有消费者要求 | §17.7.1 批 3 二 |
+| 17 | **`sessionEvents.list` 没有分页** | 契约就是 `{sessionId}` → `{events}`(`@shared/ipc/session-events.ts:59-65`),**整份拉**。ui-refold 因此必须靠采样 + 双闸兜住(见 §17.8.3);真机实测最大一本 50.4MB / 258 条事件 —— 条数闸拦不住它,字节闸才拦得住。真正的修法是给 `list` 加 `after`/`limit`(或随留账 #7 分卷一起定),**本批不修** | §17.8.3 |
+| 18 | **ui-refold 两条豁免待追认** | ① **`tool-call` 渲染锚点**:工具行的锚点有两种形状(`render-anchors.ts:39` 自己把 `data-steps` 与 `tool-call` 并列),live 落前者、重放合成后者且**明文不互相冲掉**;而尺子(`canonical.ts:103`)只丢 `data-steps` —— 因为 S 线影子是折 vs 折,从没有 live 侧上台。**要不要由 G4 一并收进去(改的是 S 线共用的尺)待拍**。② **`attachments`**:账本存 `BlobRef`,renderer 没有 blob 读取口,带附件的消息两侧结构上不可能相等。两条都在 ui-refold 内具名排除,各配一只反证测试 | §17.8.3 |
 
 ### 17.6 两态图 artifact 与终态的出入(图待更新,本节只记差异)
 
@@ -10492,3 +10494,159 @@ appendFailures 0);**五棘轮** boundary 0(**含新增的 renderer/core 浏览�
 字节回归 + S0 合同 + step 身份 + 账预检 + 产地判据 = 7 文件 **120 绿**;
 `sessions:verify` **9 条(本机 0 / 外来·存量 9)**,与 HEAD 逐条同集零新增;
 真机 `~/.onething` 只读。
+
+#### 17.8.2 U1-b 勘察结论:**停在诊断** —— 影子要比的那两侧,今天喂不到同一种词汇(2026-08-28,opus 勘察,零代码改动)
+
+一句话:U1-b 的字面落法(「ipc-hub 收到的**事件与裸 delta** 同步喂同一台 core
+reducer」)在今天的管子上**造不出一个说得清的判据** —— 不是难做,是做出来的绿
+证明不了它该证明的事。两条实证:
+
+*一、renderer 手上根本没有折叠器要吃的词汇*
+
+- UI 事件流(U0 的双发)**只运着两种事件**:`SessionUiStreamSourceEvent =
+  UiAssistantDeltaChunk | UiAssistantPartEndChunk`(`backend/events/ui-stream.ts`)
+  —— coalescer 把前者合成 `assistant/chunks`。**没有 `run/start`、没有
+  `user/message`、没有 `tool/*`、没有 `run/end`、没有 `message/deleted` /
+  `user/message-edited` / `session/cleared` / `session/compacted`。**
+  而且它默认还是关的(`ONETHING_UI_STREAM=legacy`)。
+- 折叠器对此的反应是**沉默**:`projection/reducer.ts:565-566`
+  ——`const run = forWrite(state.runs.get(event.data.runId)); if (!run) break`。
+  一条 `assistant/chunks` 落在没开张的 run 上,**折进去等于零**。`run/start` 是
+  硬前提,而它不下发。
+- renderer 今天收到的是**总线词汇**(`SESSION_EVENT_TYPES` 那 45 型:
+  `STREAM_START` / `TOOL_CALL` / `MESSAGE_UPDATED` …,`services/ipc-hub.ts:74-308`)
+  加三条裸 delta(:347/:351/:355)。它与账本词汇是**两套**。
+
+*二、于是"喂同一台 reducer"必然先要一个翻译器 —— 而它会把门喂坏*
+
+要让 fold 出东西,得在 renderer 里把总线词汇翻成 `SessionLogEventRecord`
+(`STREAM_START`→`run/start`、`TOOL_CALL`→`tool/call`、…)。那样一来:
+
+1. 它是**新的一份手写推导**,长在正要去重的那一层 —— 与 #9 的目标("渲染层从
+   第三份手写推导变成同一次折叠的第三个出口")正相反;
+2. 它自己**没有裁判**。谁来证翻译器是对的?
+3. 最要命的一条:此后 ui-shadow 比的是「手写拼装」vs「fold(手写翻译器喂的)」
+   —— **两侧的输入都出自 renderer 自己的手**。绿了只证明"翻译器与拼装器互相同意",
+   **证不了"折叠与账本一致"**。这正是 F11 记过的**判据污染**(§16.24 退役恒等门
+   时的同一条理由:门不能自己跟自己比)。
+
+按纪律 11(不许调绿)与"拿不准停诊",这一批**一行代码都不落**。
+
+*三、可行的两个形状,都需要一次裁定(不属实施细节)*
+
+| 形状 | 怎么做 | 判据强度 | 代价 |
+|---|---|---|---|
+| **甲:等 B(换管)** | 推送侧把 `SessionLogEventRecord` 作为第一公民下发(§17.8 的 B 行原话),renderer 影子 fold 直接喂新管 | **最强**:两侧同源同输入,正是 U1-b 设计要的那句等式 | U1-b 排在 B 之后;而 B 今天是冻结项 |
+| **乙:拉账本对拍(今天就能做,零新管)** | 收尾时 `sessionEventsApi.list({sessionId})` 取**真账本**(`shared/ipc/session-events.ts:59-65`,renderer 侧客户端 `platform/session-events-client.ts:23` 已在),core reducer 折一遍,与手写拼装过 `canonicalChatMessage` 比 | **真判据**(吃的是账本原词汇,没有翻译器),但**换了问题**:它比的是"渲染层拼出来的 ≡ 账本折出来的",管子丢了一段与拼装器算错了会**同色** | ①只能在**收尾**比(流中 renderer 没有账本可读),工单里"流中节流比"这一档做不了;②`list` 是**整份**读、没有分页(domain `list` 直接 `readSessionEvents(sessionId)`),48MB 的会话每次收尾拉一遍不可接受 —— 必须像 refold 那样**采样**(每会话每 N 个 run 一次) |
+
+两个形状都**不是**工单写的那一个,所以谁也不能顺手选。**推荐乙**(它今天就能给出
+真读数、零新管、与 refold 同款采样纪律),但那是一次设计裁定:它把 ui-shadow 从
+"两个消费者比对"改成"消费者 vs durable 账本",判据语义变了。
+
+*四、顺带确认(为下一棒省事)*
+
+- **U1-a 的成果没有白费**:四条叶子路径的浏览器闭包已经成立,冒烟测试证过
+  renderer 侧折得出消息树、canonical 也跑得起来(`92aeb513`)。甲乙两案都直接用它。
+- **豁免两条的处理不变**:`data-steps` 两侧都过同一个 core `render-anchors` 再比;
+  已结算 `plugin-status` 具名排除(指针挂留账 #10,补完即撤)。
+- **失配出口的设施都在**:renderer 日志 hub(`services/log.ts`)+
+  `window.__onethingLog.dump()`,`getLogger('renderer.ui-shadow')` 零新增设施。
+
+*五、本批交付*
+
+零生产代码改动;工作树只多这一段文档。未跑门(无改动可证)。
+往下:请在甲/乙之间裁定,或把 B 的冻结解开。
+
+
+### 17.8.3 U1-b 落地记录:**ui-refold 上岗** —— 屏幕上那份 ≡ 账本折出来的那份(2026-08-28,opus 施工,未提交)
+
+*一、门是什么(裁定走乙之后的形状)*
+
+原字面设计是「两个消费者对拍」:同一批 UI 事件喂手写拼装与 core 折叠。**造不出**——
+UI 事件流只运 `assistant/delta` / `assistant/part-end`,折叠器要的 `run/start` 根本不下发
+(`reducer.ts:565-566`),硬做就要在 renderer 里写一个总线词汇→账本词汇的翻译器,两侧输入
+都出自 renderer 自己的手(判据污染)。裁定改成:
+
+```
+canonical(手写拼装的 ChatMessage[])  ≡  canonical(真账本 → core fold → 物化)
+```
+
+账本走 `sessionEventsApi.list` 原词汇拉回来,**门不喂自己**。接受的代价(裁定明写):
+"管子丢了一段"与"拼装器算错"在这道门里同色;故障定位留给 B 之后的两消费者对拍。
+
+*二、挂点与开销*
+
+挂在**一处**:`services/ipc-hub.ts` 统一事件面的三条收尾分支(`stream:complete` /
+`stream:error` / `stream:aborted`)各加一行 `scheduleUiRefold(sessionId, readHandMessages)`,
+现有 case 的行为一格未改,chatStore 一行没动。判定同步(便宜),比对丢宏任务;
+全路径 try/catch 自吞,**永不进渲染路径**。
+
+闸门取值与真机读数(434 本真账本,只读):
+
+| 闸 | 取值 | 依据 |
+|---|---|---|
+| 采样 `UI_REFOLD_EVERY` | 5(首次必采) | 与主进程 `refold.ts` 同款 |
+| 消息条数 `UI_REFOLD_MAX_MESSAGES` | 300(拉之前,免费) | 手写侧现成读数 |
+| 事件条数 `UI_REFOLD_MAX_EVENTS` | 5000(拉之后,学费闸) | 真机 5/434 本超线 |
+| 字节 `UI_REFOLD_MAX_BYTES` | 4MB(拉之后,**每会话只称一次**) | **量出来的**:最大一本 50.4MB 只有 258 条事件 / 258 条消息,两道条数闸都拦不住 |
+
+算力开销(真机账本抽样,fold + canonical 逐格比):最大那本 258 事件 / 258 消息
+= fold 0.4ms + 比 9.7ms;中位数以下都在 1ms 以内。真正贵的是**传输**(整份拉),
+这正是四道闸存在的理由。
+
+*三、十项手写派生的覆盖*
+
+底账 `docs/audit/ui-projection-survey-2026-08-28.md` §1.2 的十项:
+
+| # | 派生 | 本门 | 说明 |
+|---|---|---|---|
+| 1 | part 边界 / 合并 | ✔ `streaming-text` / `reasoning-then-text` | 两侧 `contentParts` 逐格 |
+| 2 | reasoning placement | ✔ `reasoning-then-text` | 引擎规则的第二份拷贝当场对账 |
+| 3 | tool ↔ step 连线 | ✔ `tool-call-and-result` | steps / toolCalls 逐格(含 step 类型、turnIndex、step 级 usage) |
+| 4 | tool 渲染状态 | ✔ `tool-call-and-result` | status / result 落在同一格 |
+| 5 | 瞬态 part 的插与扫 | ✔ `transient-waiting-swept` | 账本无此事件,收尾必须扫干净 |
+| 6 | work group 分界 | — | renderer 独有规则,**不在消息树上**(纯函数吃这棵树);树对了它由构造对 |
+| 7 | 渲染锚点 | ✔(经尺子) | 已同源;`data-steps` 由 canonical 归一,`tool-call` 见留账 18 |
+| 8 | 等待 / 生成读数 | 部分 | 相位来源(`isStreaming` / usage 回填)在树上、已比;`estimateTokens` 不在树上 |
+| 9 | steps 面板 run 分组 | — | 同 6,纯函数吃这棵树 |
+| 10 | 滚动 / 锚定 | — | 纯 UI 关切,不属投影 |
+
+**结论**:门覆盖了投影面上的 1/2/3/4/5/7 与 8 的一半;6/9/10 结构上不在被比的那棵树上,
+它们是这棵树的下游纯函数 —— 树对了它们由构造对,U2 切换时随手写侧一起退役。
+
+*四、测试与战果*
+
+- 判据 9 只(`stores/__tests__/ui-refold.test.ts`):5 条剧本(总线侧驱动**真的 chatStore**,
+  账本侧是手写事件夹具,同一剧本两种词汇)+ 4 只豁免反证 + 1 只负对照(证明账本侧真折得出树,
+  不是空比空)。
+- 挂点 9 只(`services/__tests__/ipc-hub-ui-refold.test.ts`):三条收尾分支各一格、
+  失配出口是活的(账本换一句话就报红)、四道闸各一格、拉账本炸了自吞。
+- **零真失配**:施工中报出的六次红全部是**夹具保真度**,不是产品病灶,逐条修在夹具上:
+  ① 缺 `request/*` 开合 → part 不物化(`reducer.ts:1757` 只放行已结算请求);
+  ② 总线 chunk 少 `turnIndex`;③ 消息级 usage 是 `message:updated` 回填的,不是乐观写;
+  ④ reasoning 的正文在 `chunk.reasoning` 不在 `content`;⑤ 工具事件的键是
+  `callId`/`name`/`argumentsRaw`,结局是结构化的 `{text}`;⑥ step 的类型由引擎按工具名算
+  (`read` → `tool-call`)。**手写管道一行未改** —— 本批没有发现需要改手写侧的 bug。
+
+*五、真机观察窗口:未取到,原因如实*
+
+按裁定要在真机 desktop 收计数。本批**没取到**,过程与定性:
+
+- 造了只读支架(临时 store + 假 provider + 真 `dist/server`),在**真浏览器**里跑通了
+  web 壳:`window.__onethingUiRefold.stats()` 在页面上活着,把手装载正常。
+- 但那条泳道**一条 `session:event` 都没送到 renderer**:服务端账本三轮跑完
+  (events.jsonl 有完整 `run/start … run/end`),浏览器里 chatStore 的
+  `sessionMessages` 始终是 0 条,SSE 连上(readyState 1)却收不到任何具名事件。
+  收尾事件不来 → 门一次都不会跑(`checks: 0`,与代码一致)。
+- 这条是**该泳道自己的既有状况**,与 ui-refold 无关(本批只在收尾分支上加了一行调用);
+  按纪律 15「诊断批不夹带」**没有顺手去修它**,也不改判为本批战果。
+- 桌面泳道要真机计数得能驱动 Electron UI(本机没有那条自动化缝)。门是**默认开**的,
+  正常使用即自证:`window.__onethingUiRefold.stats()` 读 `checks / mismatches`。
+
+*六、验收*
+
+typecheck 0;renderer 3525 绿(唯一红 `App.container-layout` 是外壳布局那批的在途改动,
+不认领)+ 本批新增 18 只绿;core / backend / shared 3548 绿;
+shadow-battery GREEN(runs 224 / refoldMismatch 0 / accountMismatch 0 / appendFailures 0);
+四道棘轮 boundary·session·log·transport 全绿;真机 store 只读(只统计与读取,零写入)。
+**未提交。**

@@ -15,6 +15,7 @@ import { getLogger } from '@/services/log'
  */
 
 import { useChatStore } from '@/stores/chat'
+import { installUiRefoldHandle, scheduleUiRefold } from '@/stores/ui-refold'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useInteractionsStore } from '@/stores/interactions'
 import { useScratchpadStore } from '@/stores/scratchpad'
@@ -56,12 +57,24 @@ function debugGapMs(key: string, now = Date.now()): number | undefined {
   return previous === undefined ? undefined : now - previous
 }
 
+/**
+ * ui-refold 的**验证器侧**取数(§17.8 U1-b):屏幕上正在渲染的那一份。
+ *
+ * 门只读、不碰 store 的任何状态 —— 传成回调是为了让 `ui-refold.ts` 不依赖
+ * chatStore(它于是可以被单测直接喂夹具)。
+ */
+function readHandMessages(sessionId: string) {
+  return useChatStore().sessionMessages.get(sessionId) ?? []
+}
+
 export function initializeIPCHub() {
   if (initialized) {
     log.debug('hub already initialized, skipping')
     return
   }
   initialized = true
+  // §17.8 U1-b:ui-refold 的现场把手(`window.__onethingUiRefold.stats()`)。
+  installUiRefoldHandle()
 
   // ── Unified event channel ─────────────────────
   // All structured events (steps, tools, stream lifecycle, etc.)
@@ -74,15 +87,21 @@ export function initializeIPCHub() {
       case SESSION_EVENT_TYPES.STREAM_COMPLETE:
         log.trace('session event stream:complete', { sessionId, event })
         store.handleStreamComplete({ sessionId, ...event.data })
+        // §17.8 U1-b:**收尾采样** —— 屏幕上那份 ≡ 账本折出来的那份。
+        // 挂在分发口这一处(不散进 chatStore),现有 case 的行为一格未改;
+        // 判定同步、比对丢宏任务,自吞不进渲染路径(见 `ui-refold.ts`)。
+        scheduleUiRefold(sessionId, readHandMessages)
         break
 
       case SESSION_EVENT_TYPES.STREAM_ERROR:
         log.trace('session event stream:error', { sessionId, event })
         store.handleStreamError({ sessionId, ...event.data })
+        scheduleUiRefold(sessionId, readHandMessages)
         break
 
       case SESSION_EVENT_TYPES.STREAM_ABORTED:
         store.handleStreamComplete({ sessionId, aborted: true })
+        scheduleUiRefold(sessionId, readHandMessages)
         break
 
       // Per-turn usage: snaps the composer's live token readout to real numbers.
