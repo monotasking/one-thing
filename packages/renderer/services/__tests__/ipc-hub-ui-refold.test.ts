@@ -22,7 +22,8 @@ const listMock = vi.fn(async () => ({ events: [] as unknown[] }))
 
 vi.mock('@/platform/session-events-client', () => ({
   sessionEventsApi: {
-    list: (...args: unknown[]) => listMock(...(args as [])),
+    // 门拉的是**全集**那条(`listRaw`),不是轨迹面板的老七类 `list`。
+    listRaw: (...args: unknown[]) => listMock(...(args as [])),
   },
 }))
 

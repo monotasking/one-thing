@@ -9428,7 +9428,7 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | 14 | **②类同源注释清理** | 远期另册,纯文字 | §16.11 尾 |
 | 15 | **usage / `contextSize` 的正向写者没有事件产地** | `applySessionTokenUsage`(agent-loop 收尾)/ `updateSessionContextSize`(provider-finish)/ server 的 `applyServerSessionUsage` 三处**就地写会话容器**,不经命令面也不产事件。§17.7.1 批 3 **明确不接管**(接管 = 改 token 记账行为,与"零可感知行为变化"相悖);折叠侧照旧折得出自己那一份,只是不落格。补产地与否是单独一次拍板 | §17.7.1 批 2 五 / 批 3 八 |
 | 16 | **冷加载修复仍以存储突变落盘** | `sanitizeSessionOnStartup` 已改为直调 `computeSessionRepairOnLoad`(纯派生、COW),但结果仍由 `loadSessionWithAdapters` 写回 `meta.json`。"搬成纯派生出口"那一半**停在诊断**:它唯一的差别是盘上带不带修好的值(下次冷加载幂等地再修一遍),属于存储可见的变化而没有消费者要求 | §17.7.1 批 3 二 |
-| 17 | **`sessionEvents.list` 没有分页** | 契约就是 `{sessionId}` → `{events}`(`@shared/ipc/session-events.ts:59-65`),**整份拉**。ui-refold 因此必须靠采样 + 双闸兜住(见 §17.8.3);真机实测最大一本 50.4MB / 258 条事件 —— 条数闸拦不住它,字节闸才拦得住。真正的修法是给 `list` 加 `after`/`limit`(或随留账 #7 分卷一起定),**本批不修** | §17.8.3 |
+| 17 | **会话事件读面没有分页**(`list` / `listRaw` 都是) | 契约就是 `{sessionId}` → `{events}`,**整份拉**。投影消费者从此走 `listRaw`(全集原词汇;老 `list` 是轨迹面板的老七类词汇,两者语义不同不是范围不同 —— 见 §17.8.4),但**分页这一格两条都欠着**。ui-refold 因此必须靠采样 + 双闸兜住(见 §17.8.3);真机实测最大一本 50.4MB / 258 条事件 —— 条数闸拦不住它,字节闸才拦得住。真正的修法是给读面加 `after`/`limit`(或随留账 #7 分卷一起定),**未修** | §17.8.3;§17.8.4 |
 | 18 | **ui-refold 两条豁免待追认** | ① **`tool-call` 渲染锚点**:工具行的锚点有两种形状(`render-anchors.ts:39` 自己把 `data-steps` 与 `tool-call` 并列),live 落前者、重放合成后者且**明文不互相冲掉**;而尺子(`canonical.ts:103`)只丢 `data-steps` —— 因为 S 线影子是折 vs 折,从没有 live 侧上台。**要不要由 G4 一并收进去(改的是 S 线共用的尺)待拍**。② **`attachments`**:账本存 `BlobRef`,renderer 没有 blob 读取口,带附件的消息两侧结构上不可能相等。两条都在 ui-refold 内具名排除,各配一只反证测试 | §17.8.3 |
 
 ### 17.6 两态图 artifact 与终态的出入(图待更新,本节只记差异)
@@ -10367,7 +10367,11 @@ B 收进 verify 基线 —— 代价是基线里多一条"其实是垃圾数据"
   `render-anchors`** 再比(比合成后,不比"有无");② 已结算 `plugin-status`
   具名排除、指针挂 #10(它写侧零生产者,§17.7.2 已查明;#10 补完即撤豁免)。
   失配走 renderer 日志 hub 一行摘要 + 计数,测试断言 0,真机观察窗口收数。
-- **B(换管,双发期)**:推送侧把**事件账本词汇**(`SessionLogEventRecord`,
+- **B(换管,双发期)**〔**推送面已验活**:§17.8 施工时撞见的"web 泳道 SSE 连上但具名
+  事件零到达"已查清 —— 判定支架接错,同一条 standalone 泳道三段全通(服务端出口 11 帧 /
+  代理+EventSource 25 帧 / 全流程上屏),详见 `docs/audit/web-lane-sse-diagnosis-2026-08-28.md`;
+  同一份勘察另抓到一条真缺口:`sessionEvents.list` 只交付老七类,ui-refold 的账本侧在真机上
+  恒折 0 条,修法待拍〕:推送侧把**事件账本词汇**(`SessionLogEventRecord`,
   定律①的同一种 delta 单位)作为第一公民下发——IPC 与 SSE 同步;现行
   session:event/session:stream 双发保留,renderer 影子 fold 改喂新管,
   ?after= 重拉语义照旧(无快照裁定不动)。旧管退役放到 U2 之后单独一刀
@@ -10650,3 +10654,84 @@ typecheck 0;renderer 3525 绿(唯一红 `App.container-layout` 是外壳布局�
 shadow-battery GREEN(runs 224 / refoldMismatch 0 / accountMismatch 0 / appendFailures 0);
 四道棘轮 boundary·session·log·transport 全绿;真机 store 只读(只统计与读取,零写入)。
 **未提交。**
+
+
+### 17.8.4 U1-b 补丁:真机假红的根因与修复 —— 门喂错了输入(2026-08-28,opus 施工,未提交)
+
+*一、定性*
+
+U1-b 的裁定原话是「账本从 `sessionEventsApi.list` 拉回来 —— **原词汇,无翻译器**」。
+实现没兑现那半句:`sessionEvents.list` 交付的**不是**原词汇,而是**老七类**——
+`rpc/domains/session-events.ts` → `readSessionEvents`(`session/event-log.ts:717`)→
+`parseSessionEventLog`(`runtime/src/sessions/session-events.ts:178`)在出口按
+`SESSION_EVENT_TYPES` 再筛一道,v2 新增类型按「未来版本的新类型」跳过。
+
+于是折叠器的开张事件(`session/created` / `user/message` / `run/start`)一条都拿不到,
+账本侧**恒折出 0 条消息**,门在真机上必然假红。真机读数(诊断那条会话):盘上 47 条 /
+18 类,`list` 交回 16 条 / 8 类;现场日志一行:
+
+```
+warn ui-refold mismatch { hand: 6, ledger: 0, diff: [{ path: '.length', a: '0', b: '6' }] }
+```
+
+**这不是新拍板,是本批缺陷**:门喂了错输入,单测因为直接喂 v2 夹具而全绿。
+诊断全文:`docs/audit/web-lane-sse-diagnosis-2026-08-28.md`。
+
+*二、修法:append-only,老口一字不动*
+
+`sessionEvents` 域新增**独立方法** `listRaw`(不是给 `list` 加参数 —— 老七类是轨迹面板的
+**词汇**,语义不同不是范围不同,混在一个方法里迟早有人传错开关):
+
+| 面 | 读法 | 词汇 | 消费者 |
+|---|---|---|---|
+| `list`(不动) | `readSessionEvents` → `parseSessionEventLog` | 老七类 | 轨迹面板 / `inspectCall` |
+| **`listRaw`**(新) | `readSessionLogEvents`(`event-log.ts:729`) | **v2 全集** | 投影消费者(ui-refold,B 期 renderer fold) |
+
+两条读**同一份文件**,分叉只在解码器。落点三处,壳零改动(加数据面方法的标准两步):
+契约 `@shared/ipc/session-events.ts`(`ListRawSessionEvents{Request,Response}` + 路由表 +
+`SessionLogEventRecord` 类型再导出)、handler `packages/backend/rpc/domains/session-events.ts`、
+客户端**零改动**(`createRouterClient` 从路由名单现生成,`platform/session-events-client.ts`
+一个字没动)。http 侧自动同享:`POST /api/rpc` 走同一张派发表。
+
+ui-refold 改喂 `listRaw`(`stores/ui-refold.ts`)。**四道闸口径一格未变**:采样 EVERY=5、
+消息条数 300(拉前)、事件条数 5000 与字节 4MB(拉后,每会话只称一次)。新口不 supply
+字节数,字节仍由客户端 `JSON.stringify` 现称 —— 与改口前同一套代码路径。
+
+*三、真链路证据*
+
+新增 `packages/backend/rpc/__tests__/session-events-listraw-projection.test.ts`(3 只,
+**不绕 RPC**:写真的 `events.jsonl` → `dispatchRpc` → 把交回来的事件原样喂折叠器):
+
+1. `listRaw` 交回 9 条全集(`session/created` / `user/message` / `run/start` 都在),
+   折出 `[user, assistant]` 两条消息、正文对得上;
+2. 同一份账本过 RPC 回来与屏幕侧逐格相等(`diff: []`)—— 门在**真机形态**下是绿的;
+3. 老 `list` 依旧只交老七类、折出来是空树 —— 这一格是**防换回去**的钉子,不是 bug 断言。
+
+原有 9 只判据测试(`stores/__tests__/ui-refold.test.ts`,直接喂夹具)保留:它们证的是
+**比较器**;挂点 9 只(`services/__tests__/ipc-hub-ui-refold.test.ts`)改成 mock `listRaw`。
+
+*四、验收*
+
+typecheck 0;renderer + core/backend/shared 全绿(唯一红 `App.container-layout` 是外壳
+布局在途批,不认领);battery GREEN;boundary / session / log / transport 四棘轮 + renderer→core
+浏览器闭包棘轮全绿;`sessions:verify` 零新增;真机只读。**未提交。**
+
+*五、真机复跑读数(同一支架,`listRaw` 之后)*
+
+浏览器里走产品全流程,`window.__onethingUiRefold.stats()`:`checks: 2 / mismatches: 2`,
+但**失配的形状彻底变了** —— 账本侧从"折出 0 条"变成"折出 2 条、与屏幕侧条数一致",
+只剩两格**账本有、屏幕没有**的字段:
+
+```
+diff: [ { path: '.0.turnContext', a: '{"set":{"skills":…}}(4609 字符)', b: '(absent)' },
+        { path: '.1.runId',       a: '6d9aed0d-…',                      b: '(absent)' } ]
+```
+
+两格都是**服务端记的账,渲染侧从来没收到过**:`turnContext` 是 `context/turn-update`
+(尾块去重的持久化),`runId` 是 `run/start` 之后 `message/patched` 盖上的。**这正是这道门
+存在的理由:live 与重放确实不一致**。要么 B 期把这两格随推送面下发(推荐:它们是事实,
+不是坐标),要么进具名豁免 —— **两条路都是可感知行为/判据的裁定,停在诊断,不擅自选。**
+
+同一次复跑还撞出一条**与本批无关的真缺陷**并查到根因(SSE 广播按会话归属误滤,产品用 UI
+建的会话在 standalone server 上收不到任何推送),证据链与修复方向见
+`docs/audit/web-lane-sse-diagnosis-2026-08-28.md` 第五节;**未修**。

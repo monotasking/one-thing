@@ -11,7 +11,7 @@
 import type { RouteHandlers } from '@onething/core/ipc'
 import type { SessionEventsRoutes } from '@shared/ipc/session-events.js'
 import { resolveToolCallInspection } from '@onething/runtime/sessions/session-events'
-import { readSessionEvents } from '../../session/event-log.js'
+import { readSessionEvents, readSessionLogEvents } from '../../session/event-log.js'
 // 路径消毒的那道门与轨迹读实现同住一处:S3 之前它是本文件的私有函数,而 S3 把
 // 调用点从 2 个变成 4 个 —— 一道安全门有两份拷贝,迟早只改其中一份。
 import { isSafeSessionId, readSessionTrace, readSessionTraceResponseText } from '../../session/trace.js'
@@ -20,6 +20,19 @@ export const sessionEventsRpcHandlers: RouteHandlers<SessionEventsRoutes> = {
   async list(request) {
     if (!isSafeSessionId(request?.sessionId)) return { events: [] }
     return { events: await readSessionEvents(request.sessionId) }
+  },
+  /**
+   * 全集原词汇。`list` 那条在出口按**老七类**再筛一道(`parseSessionEventLog`),
+   * 那是轨迹面板的词汇;投影消费者(ui-refold / 未来的 B 期 renderer fold)要的是
+   * 账本上真正写着的每一条 —— 折叠器的开张事件(`session/created` / `user/message` /
+   * `run/start`)全在七类之外,喂 `list` 折出来必然是空树。
+   *
+   * 两条读法**共用同一份文件**,分叉只在解码器:这里走 `readSessionLogEvents`
+   * (`event-log.ts` 的 v2 全集读法),`list` 一字不动。
+   */
+  async listRaw(request) {
+    if (!isSafeSessionId(request?.sessionId)) return { events: [] }
+    return { events: await readSessionLogEvents(request.sessionId) }
   },
   async inspectCall(request) {
     if (!isSafeSessionId(request?.sessionId)) return { inspection: null }

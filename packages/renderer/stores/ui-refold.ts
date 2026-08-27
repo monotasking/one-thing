@@ -14,7 +14,9 @@
  *
  *   `canonical(手写拼装的 ChatMessage[])` ≡ `canonical(真账本 → core fold → 物化)`
  *
- * 账本从 `sessionEventsApi.list` 拉回来 —— **原词汇,无翻译器**,门不喂自己。
+ * 账本从 `sessionEventsApi.listRaw` 拉回来 —— **全集原词汇,无翻译器**,门不喂自己。
+ * (**必须是 `listRaw` 不是 `list`**:后者在出口按老七类再筛一道,是轨迹面板的词汇,
+ * 折叠器要的开张事件全被筛掉 —— U1-b 真机首跑那条 `hand:6 / ledger:0` 就是它。)
  * 它证的是终局真正要的那句等式:**屏幕 ≡ 账本**。
  *
  * **接受的代价**(裁定明写):两侧不再共享输入,于是"管子丢了一段"与"拼装器算错"
@@ -27,7 +29,8 @@
  *
  * ## 采样与体积闸(必做)
  *
- * 拉的是**整份**账本(`sessionEvents.list` 没有分页,留账见 §17.5),所以两道闸:
+ * 拉的是**整份**账本(`sessionEvents.listRaw` 与老 `list` 一样没有分页,留账见
+ * §17.5),所以两道闸:
  *
  *  - **采样**:每会话每 `UI_REFOLD_EVERY` 次收尾采一次,**首次必采**(与主进程
  *    `refold.ts` 同款,同一条理由:一条只跑了一轮的会话也该被看一眼);
@@ -313,7 +316,10 @@ async function runUiRefold(
       return
     }
 
-    const { events } = await sessionEventsApi.list({ sessionId })
+    // **全集原词汇**(`listRaw`,不是 `list`):`list` 在出口按老七类再筛一道,
+    // 折叠器要的开张事件全被筛掉,真机上折出来恒为空树 —— U1-b 首跑真机那条
+    // `hand:6 / ledger:0` 就是它(诊断见 `docs/audit/web-lane-sse-diagnosis-2026-08-28.md`)。
+    const { events } = await sessionEventsApi.listRaw({ sessionId })
     if (!events || events.length === 0) {
       stats.skippedNoLedger += 1
       return

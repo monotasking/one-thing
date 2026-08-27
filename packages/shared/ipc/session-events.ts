@@ -2,6 +2,7 @@ import type {
   SessionEventRecord,
   SessionToolCallInspection,
 } from "@onething/runtime/sessions/session-events";
+import type { SessionLogEventRecord } from "@onething/core/session/events";
 import type {
   SessionTrace,
   SessionTraceCompaction,
@@ -44,6 +45,7 @@ export type {
  * 「一个形状一个出处」。
  */
 export type {
+  SessionLogEventRecord,
   SessionTrace,
   SessionTraceCompaction,
   SessionTracePermission,
@@ -63,6 +65,23 @@ export interface ListSessionEventsRequest {
 export interface ListSessionEventsResponse {
   /** 按 seq 升序。会话没有事件日志时是空数组 —— 那不是错误。 */
   events: SessionEventRecord[];
+}
+
+export interface ListRawSessionEventsRequest {
+  sessionId: string;
+}
+
+export interface ListRawSessionEventsResponse {
+  /**
+   * **全集原词汇**,按 seq 升序;没有日志时是空数组。
+   *
+   * 与 `list` 的区别是词汇不是范围:`list` 交付的是**老七类**(轨迹面板的词汇,
+   * `parseSessionEventLog` 在出口按 `SESSION_EVENT_TYPES` 再筛一道),这里交付的是
+   * 账本上真正写着的每一条(`session/created` / `user/message` / `run/*` /
+   * `assistant/*` / `message/patched` / … )。**投影消费者必须走这一条** ——
+   * 折叠器要的开张事件全在老七类之外,喂 `list` 折出来的是空树。
+   */
+  events: SessionLogEventRecord[];
 }
 
 export interface InspectSessionToolCallRequest {
@@ -110,6 +129,14 @@ export interface GetSessionTraceResponseTextResponse {
  */
 export type SessionEventsRoutes = {
   list: { input: ListSessionEventsRequest; output: ListSessionEventsResponse };
+  /**
+   * 全集原词汇。`list` 是轨迹面板的老七类词汇,两者**语义不同不是范围不同**,
+   * 所以是独立方法而不是 `list` 的一个开关。
+   */
+  listRaw: {
+    input: ListRawSessionEventsRequest;
+    output: ListRawSessionEventsResponse;
+  };
   inspectCall: {
     input: InspectSessionToolCallRequest;
     output: InspectSessionToolCallResponse;
@@ -128,5 +155,5 @@ export type SessionEventsRoutes = {
 
 export const sessionEventsRouter = defineRouter<SessionEventsRoutes>(
   "sessionEvents",
-  ["list", "inspectCall", "getTrace", "getResponseText"],
+  ["list", "listRaw", "inspectCall", "getTrace", "getResponseText"],
 );
