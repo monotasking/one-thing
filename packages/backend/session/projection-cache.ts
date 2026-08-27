@@ -33,7 +33,9 @@
 
 import {
   createSessionProjectionState,
+  foldSessionLogicalDeltaAhead,
   reduceSessionProjection,
+  type SessionLogicalDelta,
   type SessionProjectionState,
 } from '@onething/core/session'
 import {
@@ -47,6 +49,12 @@ interface LiveProjection {
   state: SessionProjectionState
   /** 已经折进 state 的最后一条 seq。 */
   lastSeq: number
+  /**
+   * **已经折进 state、但它那一行还压在编码器写缓冲里**的逻辑 delta 条数
+   * (F4-c c3-a)。>0 = 这份活投影领先磁盘,`refold` 那道耐久门此刻不可比
+   * (它比的是"文件字节重折 ≡ 内存活投影",而领先的那几条字节还没有)。
+   */
+  aheadDeltas: number
 }
 
 const projections = new Map<string, LiveProjection>()
@@ -60,11 +68,24 @@ let appendObserverRegistered = false
 function ensureAppendObserver(): void {
   if (appendObserverRegistered) return
   appendObserverRegistered = true
-  registerSessionLogEventAppendObserver((sessionId, record) => {
+  registerSessionLogEventAppendObserver((sessionId, record, options) => {
     const live = projections.get(sessionId)
     if (!live) return
     if (record.seq <= live.lastSeq) return
     try {
+      // F4-c c3-a:这一行的每一条 delta 在**盖章那一刻**就已经折进去了
+      // (`foldLiveSessionLogicalDelta`)。再折一遍 = 同一段正文进两次。
+      // 游标照旧前进 —— 这一行确实已经在这份投影上了。
+      // 判据不只看那句声明,还要看**这份投影自己记的领先条数** —— 中间若因为
+      // 尾巴溢出 / 折坏而重建过(`projections.delete` + 从文件整份重折),那几条
+      // 提前折进去的正文已经随旧 state 一起没了,`aheadDeltas` 会归零,这一行
+      // 就必须照常折。少一句自证 = 一段正文静默消失。
+      const preFolded = options?.preFoldedDeltaCount ?? 0
+      if (options?.projectionPreFolded && preFolded > 0 && live.aheadDeltas >= preFolded) {
+        live.lastSeq = record.seq
+        live.aheadDeltas -= preFolded
+        return
+      }
       live.state = reduceSessionProjection(live.state, record)
       live.lastSeq = record.seq
     } catch (error) {
@@ -85,7 +106,7 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
     // 进程死亡留下的未闭合 run 收掉。它自己每会话只真的跑一次,合成出来的事件
     // 走写入口那条尾巴,下面的 drain 会把它们折进来。
     prepareSessionEventsOnce(sessionId)
-    live = { state: createSessionProjectionState(), lastSeq: 0 }
+    live = { state: createSessionProjectionState(), lastSeq: 0, aheadDeltas: 0 }
     for (const event of readSessionLogEventsSync(sessionId)) {
       live.state = reduceSessionProjection(live.state, event)
       live.lastSeq = Math.max(live.lastSeq, event.seq)
@@ -113,6 +134,45 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
     live.lastSeq = event.seq
   }
   return live.state
+}
+
+/**
+ * **一条盖过章的逻辑 delta 当场进折叠**(F4-c c3-a,§16.23)。
+ *
+ * 采集点(`session-event-recorder.ts` 的编码器 `onDelta`)在把 delta 推进写缓冲的
+ * 同一刻调它。返回 `true` = 折进去了,调用方落那一行时必须声明
+ * `projectionPreFolded`;返回 `false` = 没折(这条会话还没有活投影 / 这次执行的
+ * 节点还不在),调用方照旧让打包行自己折。
+ *
+ * 两条边界与 F1 那个观察者逐字相同:**不主动建表**(建表要同步读整份文件,挂在
+ * 逐 token 的热路径上就是每条 delta 一次全文件 IO),**折坏了就丢缓存**。
+ */
+export function foldLiveSessionLogicalDelta(
+  sessionId: string,
+  runId: string,
+  delta: SessionLogicalDelta,
+): boolean {
+  const live = projections.get(sessionId)
+  if (!live) return false
+  try {
+    if (!foldSessionLogicalDeltaAhead(live.state, runId, delta)) return false
+    live.aheadDeltas += 1
+    return true
+  } catch {
+    // 折不进去 = 这份投影已经不可信(移动语义下 state 可能只改了一半)。
+    projections.delete(sessionId)
+    return false
+  }
+}
+
+/**
+ * 这份活投影**领先磁盘**几条 delta(F4-c c3-a)。
+ *
+ * `refold` 那道耐久门只在 0 的时候可比 —— 与它原本那条游标守卫同一个道理:
+ * 采样撞上写,比出来的"多了一段"说明的是采样时机,不是账本坏了。
+ */
+export function liveSessionProjectionAheadDeltas(sessionId: string): number {
+  return projections.get(sessionId)?.aheadDeltas ?? 0
 }
 
 /**

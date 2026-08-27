@@ -269,8 +269,13 @@ export interface SessionChunkEncoderOptions extends CoreAssistantPartBoundaryOpt
    *
    * 调用方在这里做"落在这一段上的账":正文累计(part-end 的 len/hash 从它来)、
    * UI 流小批。位置与从前逐字相同 —— 批里推完、64 条闸判定之前。
+   *
+   * `at` = 这条 delta 的**盖章时刻**,与打包行里 `time0 + dt[i]` 逐字相同
+   * (F4-c c3-a 加的一格)。调用方把 delta 提前折进活投影时必须用它,否则
+   * 提前折那一份与打包行重折那一份的时刻会差几微秒 —— 折出来的
+   * `reasoningFirstAt/LastAt` 就成了两个值。
    */
-  onDelta?: (partIndex: number, text: string, meta: SessionChunkPartMeta) => void
+  onDelta?: (partIndex: number, text: string, meta: SessionChunkPartMeta, at: number) => void
   now?: () => number
   batchSize?: number
   batchIntervalMs?: number
@@ -389,7 +394,7 @@ export function createSessionChunkEncoder(
     batch.dt.push(at - batch.time0)
     batch.text.push(text)
     // 同一条 delta,**同一份段身份**,交回调用方一份(UI 流 / 正文累计)。
-    options.onDelta?.(partIndex, text, meta)
+    options.onDelta?.(partIndex, text, meta, at)
     // 64 条闸。
     if (batch.text.length >= batchSize) flushBatch(partIndex)
   }

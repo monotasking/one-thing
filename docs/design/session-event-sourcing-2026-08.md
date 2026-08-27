@@ -7844,7 +7844,7 @@ transport/ui)。
 |---|---|---|
 | **c1** | ~~出生事实补齐:run/start 携占位全字段,折叠出生占位(拍板 3 兑现)~~ **已改判并结案(§16.20):产地与折叠分支 F4-a 时就齐了,88 是取样窗口的读数**。c1 的实际产出 = 那份读数 + 窗口宽度记档,零生产改动 | ~~88→0~~ 改判:`run/start` 落账那一刻 88/88 逐格相等(实测) |
 | **c2** | 编解码器就位:状态机迁居、读侧解码折叠、素门/带 surface 门写入走编码器;decode∘encode 性质测试;老文件逐字节同折合同 | **✅ 已落地(§16.21)**:字节回归 0 差、decode∘encode 性质测试绿、全库 433 账本折叠指纹 0 差、性能 1.04×、battery GREEN |
-| **c3** | 18 端口翻转为发事件(分 2–3 小批,流式性能实测每 delta 折叠开销) | 探针 B 九路全零 + 性能预算 + battery |
+| **c3** | 18 端口翻转为发事件(分 2–3 小批,流式性能实测每 delta 折叠开销) | 探针 B 九路全零 + 性能预算 + battery。**c3-a 已落地(§16.23)**:18 口全量分类表 + 流式首刀(逻辑 delta 盖章即折)—— `reasoning` 18/18→**0**、`content` 126/126→**8/124**(残差 6 非前缀 + 2 整段,全是 C 类"另有产地"的非 provider 正文产地,不是滞后);`isStreaming` 按读数**改判不翻**(见 §16.23 第五节)。剩 c3-b(工具三口)/ c3-c(收尾三口) |
 | **c4** | 非流式合一收尾、老 reducer 删除、告别对账、恒等门退役、session:check 改写、策略表+收敛测试落地 | 告别对账全绿为前置 |
 | **c5** | 三定律成文为系统宪法(§17),终态架构图,门清单 | — |
 
@@ -8210,3 +8210,237 @@ store 底下、名字叫 themes",不是 store 叫什么。
 - **未做((d),等用户拍板)**:真机夹具沉积的**数据清理**(`~/.onething` 里那些
   测试年代留下的会话 / traces / debug 快照),以及 `room-1` 断号那条 verify 红线的
   **主人判据**(是收进基线、还是修数据)。本批全程只读真机库。
+
+---
+
+### 16.23 F4-c c3-a 落地记录:18 端口全量分类 + 流式首刀(逻辑 delta 盖章即折)(2026-08-27,opus 施工,未提交)
+
+#### 〇、一句话
+
+18 个 `sessionMessageRuntime` 端口按三定律逐口分了类(下面第二节那张表就是 c3 后续
+小批的施工图);**首刀量出来的事实与工单的假设不同**:流式正文/推理这两口的差
+**不是产地缺口,是纯滞后** —— 探针实测 `content` 126 次采样 126 次不等,而其中
+**120/120 是"A 是 B 的前缀"**(112 次 A 整段为空)。产地早就在(recorder 盖章),
+差的只是**折叠什么时候动**:编码器为了攒批把 delta 压在写缓冲里(2s / 64 条),
+折叠要等打包行落账才前进。于是首刀不是"补产地",是**把逻辑事实与存储编码解耦**:
+盖过章的那一条 delta 当场进折叠,字节照旧按两道闸攒。
+
+读数:`reasoning` **18/18 → 0**,`content` **126/126 → 8/124**(残差 8 全是 C 类
+另有产地的非 provider 正文,见第四节)。字节 **0 差**、battery **GREEN**、
+每 delta 折叠开销 **0.017 µs**。
+
+`updateMessageStreaming` 那一刀**按读数改判、没有翻**——它不是 D 类可空转的,
+理由与反证在第五节。
+
+#### 一、探针 C3(§16.18 探针 B 的逐口复刻;跑完即删)
+
+装在 `stores/sessions.ts` 那 18 个导出包装的调用点上(**不包 runtime 对象**),
+每次写完当场采一次:A = 活投影物化出的那条消息,B = store 缓存里的那条,
+判据 = `canonicalChatMessage`(与恒等门同一台机器),外加一份生料差。
+`sessions:shadow-battery --passes 1 --seed 4041 --concurrency 1`。
+
+**探针自己踩过三个坑,每一个都会伪造读数,记在这里省得下一个人再踩:**
+
+1. **`process.on('SIGTERM', () => { dump(); process.exit(0) })`** —— 这把 server
+   自己的优雅收尾(flush 挂起写入)整个抢掉了,imported-hydrate 泳道于是拿到一个
+   没落盘的 store,**当场两条失配**(`history` + `messages`,store 侧 0 条消息)。
+   探针不许改变进程生命周期:**只挂 `'exit'`**。
+2. **包装 runtime 对象**(复制属性表)—— 那个对象有自有可变字段
+   (`pendingSqliteMessageSyncs` / `streamSyncThrottleMs` / …),复制一份就让
+   "探针那份"与"本体那份"各自演化。改 `Proxy` 也不够干净,最后落到**调用点直接
+   喊一声**。
+3. **`getLiveSessionProjection` 会建表**(`prepareSessionEventsOnce` + 同步读整份
+   文件)。挂在写路径上就改变了产品自己的建表时机 —— 采样前先问
+   `hasLiveSessionProjection`,没有就不采。
+
+三坑修完,带探针的 battery 与基线**逐项相同**(runs 87 / mismatches 0 /
+refoldMismatches 0),读数才可信。
+
+#### 二、18 端口全量分类表(c3 后续小批的施工图)
+
+分类口径就是 §16.19 的三定律:**A 已有产地**(事实已在流上,端口翻转 = 空转或
+发已有事件)/ **B delta 道**(增量,喂编码器)/ **C 需补新事实**(真事实、账本
+无产地)/ **D 短命-被取代**(不持久化,fold 推导或仅活窗装饰)。
+
+`samples/unequal` = 本次 battery 的采样数与 canonical 不等数(**c3-a 之后**的读数)。
+
+| # | 端口 | 类 | 生产调用点(非测试) | 账本产地 / 折叠落点 | samples/unequal | 处置 |
+|---|---|---|---|---|---|---|
+| 1 | `updateMessageContent` | **B**(+C 残差) | `core/engine/stream-processor.ts:449`(provider 正文);另三个非 provider 产地:`image-stream.ts:67/80/83`、`context-compact.ts:170/221/259`、`media/image-generation.ts` | `assistant/chunks` → `foldAssistantLogicalDelta`;生图/压缩那三处另有各自产地(`assistant/part-end{synthetic|contentOnly}` / `session/compacted`) | **126/126 → 8/124** | **c3-a 已翻**(盖章即折)。残差 8 = C 类,见第四节 |
+| 2 | `updateMessageReasoning` | **B** | `core/engine/stream-processor.ts:463`(仅 `placement==='top'`) | 同上;`materializeTopReasoning` 只取头一段 | **18/18 → 0** | **c3-a 已翻,归零** |
+| 3 | `updateMessageStreaming` | **D(改判:今天翻不得)** | `stream-processor.ts:594`(finalize)、`image-stream.ts:87`、`stream-abort.ts` 三处、`image-generation.ts` 三处、`rpc/domains/chat.ts` | `isStreaming` 由 `run/start`/`run/end` 开闭推导(`chat-messages.ts:181`),**折叠早就会** | 94/90 | **不翻**,理由与反证见第五节 |
+| 4 | `updateMessageContentParts` | A | `tool-orchestrator.ts:136` | `assistant/part-end` + parts 物化 | **0 调用**(本 battery) | 随 c3-c 收尾链一起 |
+| 5 | `updateMessageSteps` | A | `tool-orchestrator.ts:129` | `tool/call|result|audit` | **0 调用** | 随 c3-c |
+| 6 | `updateMessageStep` | A | `event-only-emitter.ts:343`、`rpc/domains/{chat,tools}.ts`、`tools/tool-call-state.ts`、`stream-abort.ts` | `tool/call` / `tool/result` / `tool/annotate`(F2-c 后 annotate 齐) | 206/114 | **c3-b** |
+| 7 | `updateMessageToolCalls` | A | `stream-processor.ts` ×5、`tool-orchestration.ts` ×5、`agent-loop-executor.ts` ×4、`tool-execution.ts:127`、`rpc/domains/tools.ts` | 同上;参数流是 `tool-input` kind 的 delta 段 | 208/208 | **c3-b** |
+| 8 | `updateMessageThinkingTime` | **D** | `rpc/domains/chat.ts`(**渲染层写回**)、`server/runtime.ts:2074` | `deriveThinkingTime` 从 chunks 时刻算;`ALWAYS_DROPPED_KEYS` 明文豁免 | **0 调用** | **不再写**(用户已拍"取投影值");退役随 c4 |
+| 9 | `updateMessageSkill` | A | `event-only-emitter.ts:365` | `skill/activated` → `run.skillUsed`(reducer:694) | 2/2 | **c3-c**(端口改发已有事件或空转) |
+| 10 | `updateMessageError` | A | `agent-loop-executor.ts:210/2370` | `run/end.error` → `run.errorDetails`(reducer:513) | **0 调用** | **c3-c** |
+| 11 | `updateMessageReplyTo` | **死口** | **零生产调用**(只剩测试) | `message/patched`(已走命令面 —— 测试注释原话:"迁移前这条写走 `store.updateMessageReplyTo`;命令面上它是一次普通 patch") | — | **c4 直接删** |
+| 12 | `updateMessageReactions` | **死口** | **零生产调用** | 同上 | — | **c4 直接删** |
+| 13 | `updateMessageMentions` | **死口** | **零生产调用** | 同上 | — | **c4 直接删** |
+| 14 | `updateMessageTurnContext` | A | `agent-loop-runtime.ts:266/271` ← `session-turn-context.wiring.ts` | `context/turn-update` → `node.turnContext`(reducer:684) | **0 调用** | **c3-c**(空转) |
+| 15 | `updateMessageUsage` | A | `agent-loop-executor.ts:953` | `request/response.usage` 求和 → `node.usage`(reducer:529) | 74/74 | **c3-c** |
+| 16 | `updateStepsUsageByTurn` | A | `agent-loop-executor.ts:741`、`agent-loop-turn.ts:38` | `request/response.usageTurnIndex` → `run.usageByTurn` → `steps[].usage`(reducer:536,§13.9) | 110/84 | **c3-c**(84 里 78 是 `contentParts <B缺>`——**投影领先**) |
+| 17 | `addMessageStep` | A | `event-only-emitter.ts:338` | `tool/call` → `materializeSteps` | 42/42 | **c3-b** |
+| 18 | `addMessageContentPart` | A | `agent-loop-executor.ts:1441`(`persistTurnContentParts`)、`image-stream.ts:72`、`image-generation.ts` | `assistant/part-end`;`data-steps` 锚点按 G4 **故意不进**(渲染坐标,非正文) | **124/4** | **c3-c**(已近零 —— c2 的编解码器收掉了大头) |
+
+**三条读出来的结论:**
+
+- **"九条热写路"其实是"三死口 + 五零调用 + 十条真在跑"**。§16.18 那张表把
+  `updateMessageReplyTo/Reactions/Mentions` 算在里面 —— 它们**生产上一次都不调**
+  (W8/W13.2/W14a 那三条 IM 写路早就走命令面的 `patchMessage` 了,测试注释白纸黑字
+  写着"迁移前")。c4 删这三个口是纯减法,不需要任何产地。
+- **C 类只有一格,而且只在 `content` 上**:生图/压缩那三条"引擎自己合成一段正文"
+  的路。它们各自**有**产地(`recordSynthesizedText` / `session/compacted`),
+  但产地不在**每一次 `updateMessageContent`** 上 —— 见第四节。
+- **A 类占压倒多数(12/18)**:事实全都已经在流上,端口翻转是"空转 + 读改物化",
+  不是"补词汇表"。**词汇表本批一个类型都不用加**。
+
+#### 三、首刀:逻辑 delta 盖章即折(定律二的最后一格)
+
+**判据先量,再动手。** 探针给 `content` / `reasoning` 每次采样多记一格:A 与 B
+的字符串关系。
+
+| | 改前 | 改后 |
+|---|---|---|
+| `content` | 126 采样 / 126 不等 —— **120 次 "A 是 B 的前缀"**(其中 112 次 A 整段为空)、0 次非前缀 | 124 采样 / **8** 不等 —— **116 次逐字相等**、6 次非前缀、2 次 A 整段为空 |
+| `reasoning` | 18 / 18 —— **18/18 "A 是 B 的前缀"**,全是 A 整段为空 | 18 / **0** —— 18/18 逐字相等 |
+
+**"纯滞后"这三个字就是本批的全部诊断**:产地在(recorder 盖章在前,引擎写 store
+在后,同一条 `AgentStreamEvent` 分岔 —— `attachSessionEventRecorder` 里
+`recorder.handle(event)` 排在 `existing?.(event)` 之前),折叠不在。**同一个 delta
+本来就只进一次流**,工单担心的"重复写路"不存在;要归一的是**时机**。
+
+改了什么(6 件,+185 −11):
+
+| 件 | 改动 |
+|---|---|
+| `core/session/projection/reducer.ts` | 新导出 `foldSessionLogicalDeltaAhead(state, runId, delta)` —— 把私有的 `foldAssistantLogicalDelta` 开一个口给"提前折"。折的是与打包行**逐字相同**的那条逻辑 delta |
+| `core/session/events/chunk-codec.ts` | `onDelta` 回吐口多一格 `at`(= 编码器盖的那个时刻,与打包行里 `time0 + dt[i]` 逐字相同)。**不加这一格**,提前折那份与重折那份的 `reasoningFirstAt/LastAt` 会差几微秒 |
+| `backend/session/projection-cache.ts` | 新口 `foldLiveSessionLogicalDelta` + `liveSessionProjectionAheadDeltas`;`LiveProjection` 多一格 `aheadDeltas`(领先磁盘几条)。两条边界与 F1 那个观察者**逐字相同**:不主动建表、折坏了就丢缓存 |
+| `backend/session/event-log.ts` | `appendSessionLogEvent` 的 options 多两格 `SessionLogEventAppendHints`(`projectionPreFolded` / `preFoldedDeltaCount`),透传给观察者。**不进 record,不落盘** —— 它是写入口对活状态说的话,不是账本内容 |
+| `backend/wiring/engine/stream/session-event-recorder.ts` | `onDelta` 里提前折一次并逐段计数;`emitChunks` 按**逐条数对得上**声明这一行折过了 |
+| `backend/session/refold.ts` | `aheadDeltas > 0` 时 skip 这次采样(§16.19 原话「比对点 = 编码器刷新点」) |
+
+**两条自证纪律**(都写进了代码注释,也都有反证用例):
+
+1. **声明按"逐条数对得上"发,不发"都折过了"**。只要这一批里有一条没折成
+   (会话还没有活投影 / 那次执行的节点还不在),计数就对不上,整行照旧交给折叠
+   —— 宁可整行重折一次(幂等,因为那几条本来也没折进去),不肯让一段正文静默消失。
+2. **观察者不盲信那句声明**,它还要看这份投影自己记的 `aheadDeltas`。中间若因为
+   尾巴溢出 / 折坏而**重建过**(`projections.delete` + 从文件整份重折),提前折进去
+   的那几条已经随旧 state 一起没了,计数归零 —— 这一行就必须照常折。少这一句自证
+   = 一段正文静默消失。
+
+**磁盘格式 / 账本体积 / 渲染层 / IPC:零变化。** 字节回归金样(c2 录的)0 差。
+
+#### 四、残差 8 是什么:C 类,不是滞后
+
+改后 `content` 剩 8 次不等,分两种,**都不是时机问题**:
+
+- **6 次"非前缀"** —— 投影侧与 store 侧是两段**不同的话**,不是一段话的两截。
+  产地是 `updateMessageContent` 的三条**非 provider** 调用路:
+  `image-stream.ts` 的失败分支正文、`context-compact.ts` 的三处(进度 /
+  完成 / 失败卡片正文)、`media/image-generation.ts`。它们各自在账本上**有**产地
+  (`recordSynthesizedAssistantText` 的 `contentOnly` / `session/compacted`),但那些
+  产地落在**别的时刻、别的形状**上 —— 比如压缩卡片的正文在账本上是
+  `session/compacted{summary,status}` 折出来的一整块,而 store 上是
+  `buildContextCompact*Content` 拼的那段 markdown。
+- **2 次"A 整段为空"** —— 提前折返回 `false` 的那两次(采样那一刻折叠侧还没有
+  这次执行的节点),打包行随后自己折,不丢账。
+
+**这两种都不该由 c3-a 处理**:第一种是"同一格两个产地"的老议题(§9.3 判例),
+要么让那三条路也走盖章、要么承认卡片正文由 `session/compacted` 单独负责 —— 那是
+一次**产地裁定**,按 §16.3 与"行为裁定须先问"不由执行侧顺手拍;第二种是采样窗口
+(与 §16.20 第三节同型)。两条都留给 c3-c 与用户拍板。
+
+#### 五、`updateMessageStreaming` 改判:D 类**语义**成立,但今天翻不得(带反证)
+
+工单第 2 步写的是「按 D 类处理,端口实现改空转或断言」。语义上完全对 ——
+`isStreaming` 确实由 run 开闭推导,折叠侧 `chat-messages.ts:181`
+(`...(node.ended ? {} : { isStreaming: true })`)早就会。**但读数说反了方向**:
+
+```
+updateMessageStreaming  samples 94 / unequal 90
+   isStreaming <B缺> × 90      ← A(投影)有,B(store)没有
+```
+
+也就是说这一口被调用的那一刻(`finalize()`,`false`),**store 当场把这一格摘掉,
+而折叠侧的 run 还没闭**(`run/end` 落在其后的收尾链里)。端口改空转的后果是:
+store 那条消息从此**一直带着 `isStreaming: true`**,而投影在 `run/end` 之后把它
+丢掉 —— canonical 对这一格有专门条目(`if (value === true) out.isStreaming = true`),
+**F0 恒等门在每个 run 收尾当场红**。
+
+这不是"再等等"的谨慎,是一条结构约束:**这一口的空转必须与"store 读改物化"
+同批落地**,而那是 c4 的活(§16.19 映射表把恒等门退役也排在 c4)。
+本批照实翻案,不夹带。
+
+**顺带钉一条同族的**:第 8 号 `updateMessageThinkingTime` 的 D 类判定**成立且无
+成本** —— 它本 battery 零调用,生产上唯一的写者是**渲染层回写**
+(`rpc/domains/chat.ts`),而 canonical 早就把它列进 `ALWAYS_DROPPED_KEYS`。
+它可以随 c4 直接退役,不必等读改物化。
+
+#### 六、为什么读侧那一半没做(`store 消息读取=物化活投影节点`)
+
+工单第 1 步的最后一句是「store 消息读取 = 物化活投影节点」。**没做,而且不该在
+c3 做**,理由写在 `reads.ts:158-171` 那段注释里,一字未改:
+
+> `listMessagesFromStore` 是恒等门(`session/shadow.ts`)**唯一合法的验证器侧取数**
+> …… 一旦这里也接上事件读法,`sessions:shadow-battery` 会在
+> `shadow-read-mode.test.ts` 上当场红 —— 那条用例故意让 store 与事件分岔,断言
+> 这道门**必须**报出来。
+
+c3-a 的做法保住了两侧同源性:**store 照旧自己写,折叠提前到同一刻** —— 于是
+两条推导仍然独立,却不再错相。读侧翻面(连同恒等门退役、老 reducer 删除)是 c4
+的一整批,§16.19 分期表本来就是这么排的。
+
+#### 七、验收(全部实跑)
+
+| 门 | 结果 |
+| --- | --- |
+| **探针 C3(首刀靶)** | `content` **126/126 → 8/124**(116 逐字相等);`reasoning` **18/18 → 0**;`addMessageContentPart` 6→4;`updateStepsUsageByTurn` 86→84;其余路**无一变差** |
+| **字节回归** | **0 差** —— c2 那份搬家前录的金样 `session-chunk-bytes.test.ts` 原样绿(19 行 / 4262 字节) |
+| `decode ∘ encode ≡ id` | `session-chunk-codec.test.ts` 5 条全绿 |
+| **每 delta 折叠开销** | **0.017 µs/条**(20 万条 3.4ms,5 跑取最小)。对照 c2 的全库读侧折叠 ≈0.49 µs/条 —— 提前折那一句是它的 **3.5%**,而一条流式 delta 本身要走 SSE 解析 + 事件总线 + 合帧,量级在**微秒到几十微秒**。预算(≤1.5×)通过,余量三个数量级 |
+| 新增合同用例 | `write-side-visibility-delta.test.ts` **7 条全绿**,含**两条反证**:①不声明 `projectionPreFolded` → 正文当场翻倍(证明那句声明承重);②投影重建过之后声明仍被折(证明不盲信) |
+| `typecheck` | **0** |
+| `boundary:gate` | ok — 0 failures |
+| `session:gate` | ok — 0 known, none new |
+| `log:gate` | ok — 4 known, none new |
+| `transport:gate` | ok — 42 常量 / 四壳 2392 行,不变 |
+| `packages/backend` + `packages/core` + `runtime/src/sessions` | **3535 passed / 1 failed / 3 skipped** —— 唯一失败是 `sessions-delete-cascade` 的 `waitGone`,**单跑 3/3 绿**(§16.21 记过的同一只本机满载抖动,不在 delta 路径上) |
+| `sessions:shadow-battery`(全量) | **GREEN** —— runs 321 / historyChecks 433 / mismatches 0 / duplicates 0 / projectionIssues 0 / droppedParts 0 / appendFailures 0 / refoldChecks **224** / **refoldMismatches 0** / `session-shadow.jsonl` **0 行** |
+| 真机 `sessions:verify:gate`(只读) | FAILED,**仍是 §16.20 第七节那一条** `room-1 seq: expected seq 2 at position 1, got 3`,**无新增**(本批全程未写 `~/.onething`,battery 跑在一次性临时 store 上) |
+
+**refoldChecks 224 vs §16.21 的 225**:少的那一次正是新加的守卫
+(`aheadDeltas > 0` 时跳过)。它是 §16.19 明文授权的口径(「比对点 = 编码器刷新点」),
+代价是每 321 个 run 少采一次样,`refoldMismatches` 仍然 0。
+
+#### 八、本批的账
+
+- **生产代码**:改 6 件(`core/session/projection/reducer.ts` /
+  `core/session/events/chunk-codec.ts` / `backend/session/event-log.ts` /
+  `backend/session/projection-cache.ts` / `backend/session/refold.ts` /
+  `backend/wiring/engine/stream/session-event-recorder.ts`),**+185 −11**。
+  新增词汇表类型:**0**;canonical 新豁免:**0**;磁盘格式变化:**0**。
+- **测试**:新增 1 件(`write-side-visibility-delta.test.ts`,7 条含两条反证)。
+- **探针**:装在 `stores/sessions.ts` 上,跑完 `git checkout` 卸载;
+  `git status packages/backend packages/core` 只剩上面那 6 件 + 1 件新用例。
+- **留给 c3-b / c3-c 的账**(第二节那张表就是工单):
+  - **c3-b**(工具三口):`updateMessageToolCalls` / `updateMessageStep` /
+    `addMessageStep`。注意 c3-a 之后它们的差**换了形状**——参数流(`tool-input`
+    kind)现在也提前折了,于是出现 `toolCalls[].streamingArgs <B缺>` /
+    `arguments.command <A缺>` 这类**投影领先**的新格。那是预期,不是回归
+    (battery 恒等门 0 失配)。
+  - **c3-c**(收尾与元数据五口):`updateMessageUsage` / `updateStepsUsageByTurn` /
+    `updateMessageSkill` / `updateMessageError` / `updateMessageTurnContext` /
+    `addMessageContentPart` / `updateMessageContentParts` / `updateMessageSteps`。
+  - **c4 纯减法**:三个死口(`ReplyTo` / `Reactions` / `Mentions`)整体删除;
+    `updateMessageThinkingTime` 退役;`updateMessageStreaming` 随读改物化一起空转。
+- **两条待用户拍板**(本批不擅自拍,§16.3 + "行为裁定须先问"):
+  1. **压缩 / 生图卡片正文的产地**(第四节那 6 次非前缀):让那三条路也走盖章,
+     还是承认卡片正文由 `session/compacted` / `assistant/part-end{contentOnly}`
+     单独负责、`updateMessageContent` 在那三处不参与折叠对账?
+  2. **`refold` 少采那一次**要不要补 —— 例如收尾链 `flushAll()` 之后**必采一次**,
+     把守卫的代价还回来。

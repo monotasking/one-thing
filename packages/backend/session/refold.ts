@@ -60,7 +60,11 @@ import {
   getSessionEventsLogPath,
   sessionEventTailEnabled,
 } from './event-log.js'
-import { getLiveSessionProjection, liveSessionProjectionCursor } from './projection-cache.js'
+import {
+  getLiveSessionProjection,
+  liveSessionProjectionAheadDeltas,
+  liveSessionProjectionCursor,
+} from './projection-cache.js'
 import { sessionProjectionOptions } from './projection-blobs.js'
 import { appendSessionShadowLine, deepEqual, summarizeShadowDiff } from './shadow.js'
 import { getLogger } from '../wiring/logging/index.js'
@@ -163,6 +167,11 @@ export async function checkSessionRefold(
     if (live.nodes.length === 0) return 'skipped'
     const cursor = liveSessionProjectionCursor(sessionId)
     if (cursor === undefined) return 'skipped'
+    // F4-c c3-a(§16.19「比对点 = 编码器刷新点」):活投影里有几条 delta 已经
+    // 折进来了、而它那一行还压在编码器写缓冲里 —— 那几条字节文件上还没有,
+    // 此刻两侧本来就不可比。与上面那条游标守卫同一个道理:宁可少比一次,
+    // 不许报一次假红。收尾链的 `flushAll` 会把缓冲清空,run 收尾这一刻通常是 0。
+    if (liveSessionProjectionAheadDeltas(sessionId) > 0) return 'skipped'
     const b = canonicalMessages(sessionId, live)
 
     // ---- 这之后可以 await:上面那份快照已经与活投影脱钩。

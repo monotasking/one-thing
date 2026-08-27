@@ -377,9 +377,25 @@ function ensureSessionEventDir(state: SessionEventLogState, sessionId: string): 
  *    最坏是那份缓存不可信(消费者自己丢缓存,下一次读从文件整份重折),但这条
  *    事件必须照样落盘 —— `events.jsonl` 是唯一持久化。
  */
+/**
+ * F4-c c3-a:落这一行的人对**活状态**说的两句话。
+ *
+ * 只有 `assistant/chunks` 用得上:定律二把它判成存储编码之后,它装的那几条逻辑
+ * delta 在**盖章那一刻**就已经进过折叠了(`foldLiveSessionLogicalDelta`)——
+ * 再折一遍就是同一段正文进两次。活 surface 那一侧不受影响(它记的是 seq 与节点
+ * 归属,与折不折无关),所以这两格只有活投影会读。
+ */
+export interface SessionLogEventAppendHints {
+  /** 这一行的内容已经折进活投影了,观察者只推游标、不再折。 */
+  projectionPreFolded?: boolean
+  /** 它提前折进去了几条(活投影据此减掉"领先磁盘"的计数)。 */
+  preFoldedDeltaCount?: number
+}
+
 export type SessionLogEventAppendObserver = (
   sessionId: string,
   record: SessionLogEventRecord,
+  hints?: SessionLogEventAppendHints,
 ) => void
 
 const appendObservers = new Set<SessionLogEventAppendObserver>()
@@ -394,10 +410,14 @@ export function registerSessionLogEventAppendObserver(
   }
 }
 
-function notifySessionLogEventAppended(sessionId: string, record: SessionLogEventRecord): void {
+function notifySessionLogEventAppended(
+  sessionId: string,
+  record: SessionLogEventRecord,
+  hints?: SessionLogEventAppendHints,
+): void {
   for (const observer of appendObservers) {
     try {
-      observer(sessionId, record)
+      observer(sessionId, record, hints)
     } catch (error) {
       // 纪律 3:折坏了不许把这条事件挡在磁盘外面。
       log.error(
@@ -420,7 +440,10 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   sessionId: string,
   type: TType,
   data: SessionLogEventDataFor<TType>,
-  options: { surfaceOp?: SessionSurfaceOp; sourceEventSeqs?: number[] } = {},
+  options: {
+    surfaceOp?: SessionSurfaceOp
+    sourceEventSeqs?: number[]
+  } & SessionLogEventAppendHints = {},
 ): number | undefined {
   let state: SessionEventLogState
   try {
@@ -463,7 +486,14 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
 
   // F1(§16.6):**先折进活状态,再排队落盘**。中间没有 await,所以调用方拿到
   // 返回值的那一刻,内存里的每一份活状态都已经含有这条事件。
-  notifySessionLogEventAppended(sessionId, record)
+  notifySessionLogEventAppended(sessionId, record, {
+    ...(options.projectionPreFolded !== undefined
+      ? { projectionPreFolded: options.projectionPreFolded }
+      : {}),
+    ...(options.preFoldedDeltaCount !== undefined
+      ? { preFoldedDeltaCount: options.preFoldedDeltaCount }
+      : {}),
+  })
 
   if (wantsEventTail()) {
     if (state.shadowTail.length >= SHADOW_TAIL_MAX) {

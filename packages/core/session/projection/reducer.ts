@@ -901,6 +901,33 @@ function ensurePart(
  *
  * 正文累计是 `+=`:V8 的 rope 让它是 O(1) 摊还,不复制已经攒下的那一段。
  */
+/**
+ * **写在事实前的那一格补上**(F4-c c3-a,§16.23)。
+ *
+ * 定律二把打包行判成存储编码之后,还剩一条时间差:编码器为了攒批,把逻辑 delta
+ * 在**写缓冲**里压住(2s / 64 条两道闸),而折叠只在打包行落账那一刻才前进 ——
+ * 于是"引擎写 store 的那一刻"投影侧还是空的(c3-a 实测:126/126 不等,而且
+ * **120/120 都是纯滞后**,A 永远是 B 的前缀,其中 112 次 A 整段为空)。
+ *
+ * 这一口让**盖过章的那一条 delta 当场进折叠**,与编码器的写缓冲解耦:
+ * 逻辑上事实立刻可见,字节上照旧按两道闸攒批落盘。§16.19 的原话 ——
+ * 「编码器写缓冲是唯一"内存领先磁盘"的窗口,归存储层,非语义例外」。
+ *
+ * 调用方随后落账那一行时必须声明「这一行已经折过了」(`projectionPreFolded`),
+ * 否则同一段正文会被折两遍。返回值就是那个声明的依据:`false` = 这条 delta
+ * 没能进折叠(这次执行的节点还不在),调用方照旧让打包行自己折。
+ */
+export function foldSessionLogicalDeltaAhead(
+  state: SessionProjectionState,
+  runId: string,
+  delta: SessionLogicalDelta,
+): boolean {
+  const run = state.runs.get(runId)
+  if (!run) return false
+  foldAssistantLogicalDelta(run, delta)
+  return true
+}
+
 function foldAssistantLogicalDelta(
   run: AssistantNode,
   delta: SessionLogicalDelta,

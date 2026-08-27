@@ -84,6 +84,7 @@ import {
   flushSessionEventLog,
   nextSessionRequestIndex,
 } from '../../../session/event-log.js'
+import { foldLiveSessionLogicalDelta } from '../../../session/projection-cache.js'
 import { textOrBlobForEvent } from '../../../session/blob-store.js'
 import { countSessionEventDroppedPart } from '../../../session/event-stats.js'
 import {
@@ -556,6 +557,12 @@ export function createSessionEventRecorder(
   }
 
   /**
+   * F4-c c3-a:每一段**已经提前折进活投影**的 delta 条数(刷行时清账)。
+   * 它是 `emitChunks` 那句声明的唯一依据 —— 见那里的注释。
+   */
+  const preFoldedByPart = new Map<number, number>()
+
+  /**
    * F4-c 定律二:**打包器**。段边界判定、攒批、两道闸(2s / 64 条)、刷行 ——
    * 整块住在 core 的编码器里;这里喂它逻辑 delta,并接住它的四个回吐口。
    *
@@ -568,7 +575,21 @@ export function createSessionEventRecorder(
     // 一段身上挂着什么,只有这一份账(`openParts`)。
     resolvePart: partIndex => state.openParts.get(partIndex),
     emitChunks: data => {
-      appendSessionLogEvent(ctx.sessionId, 'assistant/chunks', data)
+      // F4-c c3-a(§16.23):这一行装的每一条 delta,在**盖章那一刻**已经折进
+      // 活投影了(下面 `onDelta` 那一句)。这里如实声明,观察者才不会折第二遍。
+      //
+      // 判据是**逐条数**而不是一句"都折过了":只要这一批里有一条没折成
+      // (会话还没有活投影 / 那次执行的节点还不在),计数就对不上,整行照旧
+      // 交给折叠 —— 宁可整行重折一次(幂等,因为那几条本来也没折进去),
+      // 不肯让一段正文静默消失。
+      const preFoldedDeltaCount = preFoldedByPart.get(data.partIndex) ?? 0
+      preFoldedByPart.delete(data.partIndex)
+      const fullyPreFolded = preFoldedDeltaCount === data.text.length && preFoldedDeltaCount > 0
+      appendSessionLogEvent(ctx.sessionId, 'assistant/chunks', data, {
+        ...(fullyPreFolded
+          ? { projectionPreFolded: true, preFoldedDeltaCount }
+          : {}),
+      })
     },
     onPartOpened: ref => registerPart(ref),
     onPartEnded: ref => endPart(ref.partIndex),
@@ -578,11 +599,32 @@ export function createSessionEventRecorder(
      * (`sessions:shadow-report` 打印它)。仍然不抛:记账不打断聊天。
      */
     onPartDropped: () => countSessionEventDroppedPart(ctx.sessionId),
-    onDelta: (partIndex, delta) => {
+    onDelta: (partIndex, delta, _meta, at) => {
       const part = state.openParts.get(partIndex)
       if (!part) return
       // part-end 的 len/hash 从这份累计来。
       part.text += delta
+      // F4-c c3-a(§16.23):**折叠当场前进**。
+      //
+      // 定律二把打包行判成存储编码之后还剩一条时间差:编码器为了攒批把这条
+      // delta 压在写缓冲里(2s / 64 条),而折叠要等那一行落账才动 —— 于是
+      // 引擎写 store 的那一刻,投影侧还是空的(c3-a 实测 126/126 不等,
+      // 120/120 纯滞后)。这一句把"逻辑事实"与"存储编码"解耦:事实立刻可见,
+      // 字节照旧按两道闸攒。时刻用编码器盖的那个 `at`,不是这里再读一次表。
+      if (foldLiveSessionLogicalDelta(ctx.sessionId, part.runId, {
+        runId: part.runId,
+        messageId: part.messageId,
+        partIndex,
+        kind: part.kind,
+        requestIndex: part.requestIndex,
+        ...(part.toolCallId ? { toolCallId: part.toolCallId } : {}),
+        ...(part.toolName ? { toolName: part.toolName } : {}),
+        turnIndex: part.turnIndex,
+        time: at,
+        text: delta,
+      })) {
+        preFoldedByPart.set(partIndex, (preFoldedByPart.get(partIndex) ?? 0) + 1)
+      }
       // U0:同一条 delta,**同一份段身份**,发一份给 UI 流(16ms 小批由 coalescer
       // 合)。落盘那份继续按 2s/64 攒 —— 词汇同名同形,只是节奏不同。
       ctx.emitUiEvent?.({
