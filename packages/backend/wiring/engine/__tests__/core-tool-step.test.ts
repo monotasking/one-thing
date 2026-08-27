@@ -31,17 +31,18 @@ describe('core tool step helpers', () => {
     )
   })
 
-  it('creates a running step from an injected id and timestamp', () => {
+  // F4-b1(§16.16):id 不再是入参 —— step 的身份就是它那次调用的身份,
+  // `coreStepIdForToolCall` 是全链路唯一产地。
+  it('derives the step id from the tool call id', () => {
     expect(createToolExecutionStep({
       id: 'call_1',
       toolName: 'write',
       arguments: { filePath: '/tmp/a.txt' },
     }, {
-      id: 'step_1',
       timestamp: 123,
       turnIndex: 2,
     })).toEqual({
-      id: 'step_1',
+      id: 'step-call_1',
       type: 'tool-call',
       title: 'Tool: write: a.txt',
       status: 'running',
@@ -56,18 +57,17 @@ describe('core tool step helpers', () => {
     })
   })
 
-  it('creates a running step through injected id and clock providers', () => {
+  it('creates a running step through an injected clock, id still derived', () => {
     expect(createToolExecutionStepWithFactory({
       id: 'call_2',
       toolName: 'bash',
       arguments: { command: 'npm test' },
     }, {
-      createId: () => 'step_2',
       now: () => 456,
       skillName: null,
       turnIndex: 3,
     })).toEqual({
-      id: 'step_2',
+      id: 'step-call_2',
       type: 'command',
       title: 'Run: npm test',
       status: 'running',

@@ -12,7 +12,6 @@ import type { Principal } from '@onething/core/permission'
 import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '../../../events/event-only-emitter.js'
 import {
-  createCoreId,
   createToolExecutionStepWithFactory,
   detectSkillUsage,
   executeCoreToolAndUpdate,
@@ -95,8 +94,9 @@ export function createStep(
   skillName?: string | null,
   turnIndex?: number
 ): Step {
+  // F4-b1(§16.16):id 不再由这里现生 —— `createToolExecutionStep` 从
+  // `toolCall.id` 派生(`coreStepIdForToolCall`),全链路只此一条规则。
   const createToolStepWithFactoryOptions: CreateToolStepWithFactoryOptions = {
-    createId: createCoreId,
     now: Date.now,
     skillName,
     turnIndex,

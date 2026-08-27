@@ -55,12 +55,10 @@ const noopEmitter = {
 describe('工具调用表的 COW(F3):store 深冻结之后引擎照样跑得动', () => {
   it('流式处理器:占位 → 参数收全 → 解析失败改判,三次写回都不改已交出去的对象', () => {
     const store = freezingToolCallStore()
-    let stepSeq = 0
     const processor = createCoreStreamProcessor({
       ctx: { sessionId: 's1', assistantMessageId: 'm1' },
       store,
       emitter: noopEmitter,
-      createStepId: () => `step-${++stepSeq}`,
       resolveToolIdentity: (toolName: string) => ({
         toolId: toolName,
         displayName: toolName,

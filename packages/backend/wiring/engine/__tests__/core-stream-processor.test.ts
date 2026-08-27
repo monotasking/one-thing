@@ -165,7 +165,6 @@ describe('core stream processor helpers', () => {
         sessionId: 's1',
         assistantMessageId: 'a1',
       },
-      createStepId: () => 'step-1',
       resolveToolIdentity: (toolName) => ({
         toolId: toolName === 'read_file' ? 'read' : toolName,
         displayName: toolName === 'read_file' ? 'read' : toolName,
@@ -227,7 +226,8 @@ describe('core stream processor helpers', () => {
     expect(events).toEqual([
       'text:0:hello',
       'reasoning:0:top:thinking',
-      'step:step-1:tool-call:call-1',
+      // F4-b1(§16.16):占位 step 的 id 由 callId 派生,与投影物化逐字相同。
+      'step:step-call-1:tool-call:call-1',
       'tool-start:call-1:read:input-streaming',
       'tool-delta:call-1:{"path":',
       'tool-delta:call-1:"/tmp/a.txt"}',

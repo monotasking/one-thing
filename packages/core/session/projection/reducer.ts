@@ -31,7 +31,7 @@ import type {
 } from '../events/types.js'
 import { CORE_ABORTED_TOOL_ERROR, CORE_LINGERING_TOOL_ERROR } from '../../engine/agent-loop-executor.js'
 import { coreStepTypeForToolName, coreToolInputStartStepTitle } from '../../engine/stream-processor.js'
-import { getStepType } from '../../engine/tool-step.js'
+import { coreStepIdForToolCall, getStepType } from '../../engine/tool-step.js'
 import { toolResultToStructured } from '../../tools/tool-result.js'
 import {
   CORE_INTERRUPTED_PERMISSION_ERROR,
@@ -1321,9 +1321,10 @@ export function materializeStep(
     : undefined
   return {
     // G1(§10.1):事件里**不带** stepId。派生一个确定性的 —— 同一份日志投两次
-    // 得到同一个 id,而它与 toolCallId 一一对应;比较时 `canonicalChatMessage`
-    // 忽略它并按 toolCallId 排序(那才是身份)。
-    id: `step-${tool.callId}`,
+    // 得到同一个 id,而它与 toolCallId 一一对应。
+    // F4-b1(§16.16):引擎发射器那侧也已经改成同一条派生规则
+    // (`coreStepIdForToolCall`,唯一产地),两侧从此逐字相同。
+    id: coreStepIdForToolCall(tool.callId),
     // 与引擎同一条规则(`tool-execution.ts` → `getStepType`):bash 按命令内容分
     // command/file-read/skill-read/file-write,其余工具 tool-call。参数以
     // argumentsRaw 的解析结果为准(唯一参数真相),解析失败为 {} 与引擎同行为。
@@ -1503,7 +1504,7 @@ export function materializeOrphanSteps(run: AssistantNode): ProjectedStep[] {
     const toolCall = materializeOrphanToolCall(run, part)
     const turnIndex = partTurnIndex(run, part)
     return {
-      id: `step-${toolCall.id}`,
+      id: coreStepIdForToolCall(toolCall.id),
       type: coreStepTypeForToolName(toolCall.toolName),
       title: coreToolInputStartStepTitle(toolCall.toolName),
       status: toolCall.status === 'cancelled' ? 'cancelled' : 'running',

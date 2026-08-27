@@ -117,10 +117,6 @@ async function runThroughExecutor(messages: ClaudeCodeSdkMessage[]): Promise<Run
 
   const processor = createCoreStreamProcessor<CoreStreamToolCallLike, TestPart>({
     ctx: { sessionId: 's1', assistantMessageId: 'm1' },
-    createStepId: (() => {
-      let n = 0
-      return () => `step-${++n}`
-    })(),
     resolveToolIdentity: (toolName: string) => ({ toolId: toolName, displayName: toolName, isMcp: false }),
     store: {
       updateMessageContent: () => {},

@@ -31,7 +31,6 @@ describe('onething stream processor', () => {
         content: 'Hello',
         reasoning: 'Think',
       },
-      createStepId: () => 'step-1',
       store,
       emitter,
       resolveToolIdentity,
@@ -67,8 +66,9 @@ describe('onething stream processor', () => {
         }),
       ]),
     )
+    // F4-b1(§16.16):step id = `step-<callId>`,与投影物化同一条派生规则。
     expect(emitter.sendStepAdded).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'step-1',
+      id: 'step-tool-call-2',
       toolCallId: 'tool-call-2',
     }))
     expect(completedInput).toMatchObject({

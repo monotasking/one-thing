@@ -7240,3 +7240,158 @@ seq 5132  user/message-edited  replace[5127..5130]  sourceEventSeqs=[5127,5130]
    那格"工具结果剪枝"将来能用同一个 replace 机制表达 —— 那个生产者还没写。真写的时候
    要一并决定"只遮结果格"这种 op 下 `isShadowedWith` 怎么答(今天它会答 false =不剪),
    而不是默默让它生效。
+
+### 16.14 F4-b 战役重排(2026-08-27,用户拍板 B:翻 §14.5,硬推终局)
+
+用户在 §16.13 三条拍板上选 **B**:推翻 §14.5"内存双视图长期保留"的旧裁定,接受
+渲染层 + history 改造代价,把 reducer 合一推到底。§14.5 原文就此作废(翻案记录:
+2026-08-27,用户;原裁定的"收敛=大改、存储收益零"事实判断仍准确,被推翻的是
+"因此不做"的结论)。战役分四期:
+
+| 期 | 交付 | 门 |
+|---|---|---|
+| **F4-b1 step id 语义统一** ✅ **已落地(§16.16)** | 两硬阻塞之一:step 身份在发射器(uuid)与投影(`step-<callId>`)两侧统一为单一语义(以 callId 派生为准或事件携带 id,勘察后定),STEP_UPDATED 的渲染层绑定全程不断 | battery + 渲染层定向 + 流式真机走查 |
+| **F4-b2 收尾链脱锚** | 两硬阻塞之二:settle 快照(:629)与结局读取(:533/:578)不再依赖 store-only 形状(锚点住渲染层 S3w-0 已定;被取消工具结局经 tool/annotate+captureCancelled 已有产地);**活 run 共存口径成文**:活 run 窗口内消息由引擎写手持有,物化缓存只答已收尾世界 | battery + §15.16 同型走查(正文不丢) |
+| **F4-b3 合一切换** | 13 条命令的 core reducer 分支删除,store=投影物化缓存;①类 8 处判据源切投影(补 O(1) hasMessage);告别对账(全量 battery+真机 verify 全绿)→ 恒等门退役,refold 独守;session:check 规则改写("字段赋值只许在投影 reducer") | 告别对账全绿为前置 |
+| **F4-b4 终局总结** | §16.x full 终态声明、终态架构图、常驻门清单、全部留账归档 | — |
+
+**③④ 两条可感知差的处置(默认口径,用户如异议随时改)**:
+- ③ `partialResult` 键集差:按 F4-b2 的共存口径**结构性消解**——它是活 run 瞬态,
+  settle 后本就剥离(dehydrate 判例),物化缓存不携带,活窗口由引擎对象持有,
+  终态无行为变化。
+- ④ `thinkingTime`:合一后统一取投影值(store 侧今天缺失)——方向是"多保留一格
+  真实读数",接受。
+
+风险登记:F4-b3 之后正确性凭据只剩 refold(§16.13 已述,用户知情拍板);b1/b2 期间
+恒等门仍在场护航,按批推进门红即停。
+
+### 16.16 F4-b1 落地记录:step 身份语义统一(2026-08-27,opus 执行,未提交)
+
+§16.14 战役表第一期。**硬阻塞①(§16.13 第二节)已拆除**:step 的身份在全链路
+(引擎发射器 → store → IPC/渲染层 → 事件 → 投影物化)只剩一种语义。
+
+#### 一、勘察:step id 今天的全部产地与消费者
+
+| # | 产地 | id 形状 | 生产里活着吗 |
+|---|---|---|---|
+| 1 | `core/engine/stream-processor.ts:526` `handleToolInputStart` | `createStepId()` = `createCoreId()` **uuid** | **是** —— agent-loop 那条路的占位 step 就出自这里 |
+| 2 | `backend/wiring/engine/stream/tool-execution.ts` `createStep` → `createToolExecutionStepWithFactory({createId: createCoreId})` | **uuid** | 旧编排器路径(`tool-orchestration.ts:975`,只在"按 id / 按 toolCallId 都找不到既有 step"时才走) |
+| 3 | `runtime/src/toolkit/ipc-observer.wiring.ts` `stepFromEvent` | `` `${callId}:${event.id}` `` | **零生产者** —— 全仓没有一个工具发 `ToolEvent{type:'step'}`(子步骤是有合同没产地的观察面) |
+| 4 | `core/session/projection/reducer.ts` `materializeStep` / `materializeOrphanSteps` | `` `step-${callId}` `` | 是(投影侧) |
+| 5 | `renderer/stores/helpers/tool-step-view.ts` `stepFromToolCall` | 裸 `callId` | 渲染层本地合成,不持久、不回写 |
+
+消费者:
+- **store**:`core/session/commands.ts:329` 的 `patchStep` —— `steps.findIndex(step => step.id === command.stepId)`,**严格按 id**,找不到就静默 `noChange`;
+- **渲染层**:`chat.ts` 的 `handleStepAdded` / `handleStepUpdated` / `findMessageStep` 三处**早就是 `s.id === stepId || s.toolCallId === …` 的双判据**,`useSessionEvents.ts` 的 `STEP_UPDATED` 是单判据(`s.id === event.stepId`);
+- **事件账本**:`events.jsonl` 的事件类型表里**根本没有 step 这一类**(`core/session/events/types.ts`),`stepId` 从来没有落过盘。
+
+**非工具 step:不存在。** 这是选方案的关键读数 —— `CoreStepForToolCall.toolCallId` 是
+**必填**;三个产地(占位 / 编排器 / 子步骤)每一个都写了 `toolCallId`;`Step.toolCallId`
+在契约上可选,只是因为渲染层那份合成 view 复用了同一个类型。所以"纯 reasoning/text step
+没有 callId 怎么办"这一格是空的,甲方案不需要第二条派生来源。
+
+#### 二、选甲(全链路统一为 callId 派生),理由
+
+**决定性的一条:那个 uuid 没有任何持久存在。** `messages.jsonl` 自 F4-a 起停写
+(§15.22),冷加载 `hydrate.ts` **无条件**走投影(S3w-1,档位已在 F4-a 烧掉)——
+也就是说 uuid 只活在**进程内的那一个 run 窗口**里,重启之后同一条 step 本来就已经
+叫 `step-<callId>` 了。§16.13 记的"旧会话 id 断代"这条代价,**读数上早就是现状**,
+甲不新增它。
+
+对照方案乙(事件携带引擎 uuid):要给 `run/start` 或 `tool/call` 加一格 `stepId`,
+换来的是 ① 账本增量(每次调用多一个 36 字节的 uuid,而它承载的信息量 = 零,因为
+它与 callId 一一对应)② 老账本必须走降级路径(没有那一格时回落派生),而降级路径
+一旦存在,两套语义就**永远**并存 —— 那正是这一期要消灭的东西 ③ canonical 要为
+新字段开新豁免。三条都是净负债。
+
+**甲的成本清单(逐条兑现):**
+- 事件账本:**零字节变化**(下面第四节有实测);
+- 老账本:**不需要降级路径** —— 它们本来就是从投影折出来的,折出来就是 `step-<callId>`;
+- 渲染层绑定:`chat.ts` 三处双判据、`tool-step-view` 三处 `toolCallId ||` 优先,**一处都不用改**;steps 列表也不拿 `step.id` 当 Vue `:key`(全仓核过);
+- 唯一语义变化:新会话的 step id 从 uuid 变成 `step-<callId>` —— 而屏幕上没有任何一处显示 step id。
+
+#### 三、改了什么
+
+**唯一产地**:`core/engine/tool-step.ts` 新增 `coreStepIdForToolCall(callId) => \`step-${callId}\``,
+从 `core/engine/index.ts` 导出。全链路四个点都改成调它:
+
+1. `stream-processor.ts:handleToolInputStart` —— `createStepId()` 改成 `coreStepIdForToolCall(toolCallId)`;
+2. `createToolExecutionStep` —— `options.id` 这个入参**删掉**,就地从 `toolCall.id` 派生
+   (连带 `CreateToolStepOptions.id` / `CreateToolStepWithFactoryOptions.createId` 两个口一起删);
+3. `reducer.ts` 的 `materializeStep` / `materializeOrphanSteps` —— 两处 `` `step-${…}` `` 字面量换成调用;
+4. `CreateCoreStreamProcessorOptions.createStepId` / `CreateOnethingStreamProcessorOptions.createStepId`
+   **两个注入口一起删** —— 这不是顺手清理:一个"可以注入任意 id 工厂"的缝就是这条 bug
+   的形状本身,留着它等于把已经补好的洞重新打开(6 处测试调用点随之更新)。
+
+子步骤(`stepFromEvent` 的 `<callId>:<stepId>`)**不动**:它已经是 callId 派生的确定性
+id、与 `step-<callId>` 不冲突,而投影侧根本没有它的物化点(零生产者)。硬统一它只会
+改一个没人读的字符串。
+
+**边缝**:`headless-boundary-check.ts` 的 `checkRuntimeOwnsStreamProcessorAdapter`
+从前把 `createCoreId` 列为 runtime 适配器的必备符号、把 `createStepId: createCoreId`
+列为后端门面的禁令 —— 两条钉的都是"step id 的工厂归谁"。工厂已经不存在,两条一起
+下线(禁令那条留着就是一条**永远匹配不到**的僵尸断言,P2 清过同一类);规则本身要守的
+"装配 core 处理器的是 runtime 适配器"由 `createCoreStreamProcessor` 照旧钉住。
+
+#### 四、canonical G1 **不收紧**(评估后的结论,附读数)
+
+G1 = 「step 的 `id` 不参与比较」。合一之后它的原始理由("两侧本来就不可能相等")
+已经消失,所以问题是真的:能不能收紧成"比对 id",让恒等门直接盯住 step 语义?
+
+**答案是不能,而挡路的是老账本,不是纯度。** `sessions:verify`(真机常驻门)拿
+`messages.jsonl` —— F4-a 起**永久停写**的存量抄本 —— 逐条过 `canonicalChatMessage`
+零豁免比对。而那些抄本里的 step id 是停写那一刻的 uuid。真机实测:
+
+| 读数 | 值 |
+|---|---|
+| `~/.onething/sessions` 会话数 | 443 |
+| 带 `messages.jsonl` 的 | 441 |
+| **抄本里带 uuid step id 的会话** | **284** |
+| **抄本里的 uuid step id 条数** | **18126** |
+| 抄本里已经是 `step-` 形状的 | 846 |
+
+收紧 = 给 `sessions:verify` 加一条"老抄本 step id 豁免"。工单口径写死了这一条:
+**若收紧需老账本豁免路径则不收**。照办,理由记在 `canonical.ts` 的 G1 注释里
+(那条注释同时改口:前提已消掉,豁免留任的原因换成了老抄本)。
+
+门看不见的那件事由**一条常驻合同**接住,见下。
+
+#### 五、合同用例(流式走查替身)
+
+`packages/core/session/__tests__/step-identity-contract.test.ts`,场景 = **多工具多轮 + steer**
+(一条 run 两次调用其中一次流式参数 + steering 劈出第二条助手消息里的第三次调用)。
+
+它**跨两条路取值**,不是两边问同一个函数(那样就恒真了):
+- 引擎侧:真跑 `createCoreStreamProcessor.handleToolInputStart(...)`,读它自己记的
+  `getStepIdForToolCall(callId)` —— 生产里 `sendToolInputEnd` / `existingStepId` /
+  `stepIdsByToolCallId` 拿的都是这一格;
+- 投影侧:真喂一份事件账本给 `projectChatMessages`。
+
+断言 = 把投影物化出来的消息**当作 store**,replay 引擎会发的每一次 `patchStep(stepId)`,
+三次全部命中且真的改到了(不是"返回值说命中")。第二个用例是反面:换回旧语义
+(现生 uuid)三次全部 `changed === false` 且 `session` 原样返回 —— **静默落空**,
+正是它当初躲过所有门的样子。
+
+**反证实跑**:把 `handleToolInputStart` 的 id 临时改回一个随机串,该用例当场红
+(`projection/engine step id split for call_bash_1: expected 'step-call_bash_1' to be 'COUNTERPROOF-…'`),
+改回即绿。
+
+#### 六、验收
+
+| 项 | 结果 |
+|---|---|
+| `typecheck` | 0 |
+| **battery** | **GREEN** —— 27 场景全 PASS(ok=7 failed=0 mismatch-lines=0 逐项),投影冷加载 lane / imported-history lane / 抄本 lane / write-failure lane 全 PASS;runs **321** / mismatches **0** / appendFailures **0** / refoldMismatch **0** / shadow.jsonl **0 行** —— 逐项同基线 |
+| **字节回归** | **零**。结构上不可能变:事件类型表里没有 step 这一类,`STEP_ADDED`/`STEP_UPDATED` 是 IPC/总线事件、从不进账本。实测复核:battery 产出的 11 条会话 / 469 行 / 399KB 账本里,`data` 的键名**没有一个**匹配 `/step/i`;全库唯一提到 step 的那一行是 `message/imported` 的 fixture,而它那条 step 连 `id` 都没有 |
+| 定向测试 | core/session + core/engine + backend/session + backend/wiring/engine + renderer/stores + renderer/composables + runtime toolkit/external-agents:**2131 passed / 0 failed** |
+| 全量测试 | 11929 passed / **1 failed** —— 唯一红是**他会话在途**的 `App.container-layout.test.ts`(`App.vue` + `useShellLayout.ts` 的未提交改动,与本批零交集,已 `git diff` 逐文件核过) |
+| 四门 | boundary:gate **0 failures** / transport:gate ok(42 常量 · 2392 行,一字未变)/ log:gate ok / session:gate ok(0)/ ui:gate ok(81 已知) |
+| 真机 `sessions:verify:gate` | **ok — 13 known issue(s), none new**(全程只读) |
+
+#### 七、留给 F4-b2 / b3 的账
+
+- **硬阻塞②(锚点与收尾链)原样待拆** —— F4-b2 的题目,本批一个字没动;
+- **③ `partialResult` 形状差 / ④ `thinkingTime`** 照 §16.14 的默认口径待兑现;
+- **G1 的收紧点挂在存量抄本上**:哪一天 `messages.jsonl` 存量退役(或 `sessions:verify`
+  的抄本对账 lane 退役),G1 就可以无豁免地收紧成"比对 id",届时恒等门自己就盯得住
+  step 语义,第五节那条合同用例可以随之降级为回归护栏。**在那之前它是唯一的凭据。**

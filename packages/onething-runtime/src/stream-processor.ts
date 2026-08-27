@@ -1,6 +1,5 @@
 import type { JsonObject } from '@onething/core'
 import {
-  createCoreId,
   createCoreStreamProcessor,
   type CoreReasoningPlacement,
   type CoreResolvedTool,
@@ -26,7 +25,6 @@ export interface CreateOnethingStreamProcessorOptions<
   store: CoreStreamProcessorStore<TToolCall>
   emitter: CoreStreamProcessorEmitter<TToolCall, TStep, TReasoningPlacement>
   resolveToolIdentity(toolName: string, args?: JsonObject): CoreResolvedTool
-  createStepId?: () => string
   logger?: CoreStreamProcessorLogger
 }
 
@@ -43,7 +41,6 @@ export function createOnethingStreamProcessor<
       assistantMessageId: options.assistantMessageId,
     },
     initialContent: options.initialContent,
-    createStepId: options.createStepId ?? createCoreId,
     resolveToolIdentity: options.resolveToolIdentity,
     store: options.store,
     emitter: options.emitter,

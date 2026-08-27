@@ -20,17 +20,36 @@ export interface CoreStepForToolCall<TToolCall extends CoreToolCallForStep = Cor
 }
 
 export interface CreateToolStepOptions {
-  id: string
   timestamp: number
   skillName?: string | null
   turnIndex?: number
 }
 
 export interface CreateToolStepWithFactoryOptions {
-  createId: () => string
   now: () => number
   skillName?: string | null
   turnIndex?: number
+}
+
+/**
+ * **step 身份的唯一产地**(F4-b1,§16.16)。
+ *
+ * 一条 step 的身份就是它那次工具调用的身份 —— 全链路(引擎发射器 → store →
+ * IPC/渲染层 → 事件 → 投影物化)只认这一条派生规则,谁都不许再造第二个。
+ *
+ * 从前引擎在 `tool_input_start` 那一刻现生一个 `createCoreId()` 的 uuid,而投影
+ * 物化(`materializeStep`)写死 `step-${callId}`:两套 id 指同一件事,而
+ * `patchStep` 是**按 id 认**的(`steps.findIndex(step => step.id === stepId)`),
+ * 两侧互换即静默 `findIndex === -1`,并且没有任何一道门会红(canonical G1 明文
+ * 丢掉 step `id`)。那是 §16.13 记的硬阻塞①。
+ *
+ * 选 callId 派生而不是"让事件携带引擎 uuid",理由是那个 uuid **没有任何持久存在**:
+ * `messages.jsonl` 自 F4-a 起停写,冷加载无条件走投影(`hydrate.ts`),所以 uuid
+ * 只活在进程内的那一个 run 窗口里 —— 让它与它早就有的确定性对应物合一,账本一个
+ * 字节不变,老账本因此天然不需要降级路径(它们本来就是从投影折出来的)。
+ */
+export function coreStepIdForToolCall(toolCallId: string): string {
+  return `step-${toolCallId}`
 }
 
 /**
@@ -116,7 +135,7 @@ export function createToolExecutionStep<TToolCall extends CoreToolCallForStep>(
   options: CreateToolStepOptions,
 ): CoreStepForToolCall<TToolCall> {
   return {
-    id: options.id,
+    id: coreStepIdForToolCall(toolCall.id),
     type: getStepType(toolCall.toolName, toolCall.arguments),
     title: generateStepTitle(toolCall.toolName, toolCall.arguments, options.skillName),
     status: 'running',
@@ -132,7 +151,6 @@ export function createToolExecutionStepWithFactory<TToolCall extends CoreToolCal
   options: CreateToolStepWithFactoryOptions,
 ): CoreStepForToolCall<TToolCall> {
   return createToolExecutionStep(toolCall, {
-    id: options.createId(),
     timestamp: options.now(),
     skillName: options.skillName,
     turnIndex: options.turnIndex,

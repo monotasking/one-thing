@@ -1,6 +1,7 @@
 import { coreToolCallSnapshot, patchCoreToolCall } from './tool-call-cow.js'
 import type { JsonObject } from '../json.js'
 import type { CoreReasoningPlacement } from './ipc-emitter.js'
+import { coreStepIdForToolCall } from './tool-step.js'
 import { toLogger, type CompatLogger } from '../logging/index.js'
 
 export interface CoreResolvedTool {
@@ -349,7 +350,6 @@ export interface CreateCoreStreamProcessorOptions<
   store: CoreStreamProcessorStore<TToolCall>
   emitter: CoreStreamProcessorEmitter<TToolCall, TStep, TReasoningPlacement>
   resolveToolIdentity: (toolName: string, args?: JsonObject) => CoreResolvedTool
-  createStepId: () => string
   initialContent?: {
     content?: string
     reasoning?: string
@@ -413,7 +413,6 @@ export function createCoreStreamProcessor<
     ctx,
     store,
     emitter,
-    createStepId,
     initialContent,
   } = options
   const logger = toLogger(options.logger)
@@ -523,7 +522,9 @@ export function createCoreStreamProcessor<
     handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number, handleOptions: { publish?: boolean } = {}): void {
       const visible = rememberVisibility(toolCallId, handleOptions.publish)
       const resolved = options.resolveToolIdentity(toolName)
-      const stepId = createStepId()
+      // F4-b1(§16.16):step 的身份 = 它那次调用的身份。从前这里现生一个 uuid,
+      // 与投影物化的 `step-${callId}` 是两套说法(§16.13 硬阻塞①)。
+      const stepId = coreStepIdForToolCall(toolCallId)
       const {
         placeholderToolCall,
         placeholderStep,

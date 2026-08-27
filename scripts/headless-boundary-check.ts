@@ -1193,7 +1193,11 @@ const CORE_TOOL_RESULT_PERMISSION_ERROR_DUPLICATE_FORBIDDEN_PATTERNS: RegExp[] =
 const MAIN_STREAM_PROCESSOR_ADAPTER_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]@onething\/runtime['"]/,
   /createCoreStreamProcessor/,
-  /createStepId:\s*createCoreId/,
+  // F4-b1(§16.16):`createStepId: createCoreId` 这条从前钉的是"step id 的工厂
+  // 归 runtime 适配器,后端门面不许自己造"。那个工厂已经没有了 —— step id 由
+  // `coreStepIdForToolCall(callId)` 派生,唯一产地在 core。留着一条**永远匹配
+  // 不到**的断言只会让人以为它还在守什么(P2 清过同一类僵尸断言),故删;
+  // 规则本身的意思由上面那条 `createCoreStreamProcessor` 照旧守住。
   /ctx:\s*\{\s*sessionId:\s*ctx\.sessionId/,
 ]
 
@@ -6865,10 +6869,12 @@ function checkRuntimeOwnsStreamProcessorAdapter(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/stream-processor.ts')
   const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/stream-processor.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  // F4-b1(§16.16):`createCoreId` 从这张必备表里下线 —— 适配器不再持有 step id
+  // 的工厂(id 由 callId 派生,产地在 `core/engine/tool-step.ts`)。规则要守的
+  // "装配 core 处理器的是 runtime 适配器、后端只留门面"由这两个符号照旧钉住。
   const requiredRuntimeSymbols = [
     'createOnethingStreamProcessor',
     'createCoreStreamProcessor',
-    'createCoreId',
   ]
   const lines = [
     ...requiredRuntimeSymbols

@@ -418,6 +418,7 @@ export type {
 } from "./agent-loop-runtime.js";
 
 export {
+	coreStepIdForToolCall,
 	createToolExecutionStep,
 	createToolExecutionStepWithFactory,
 	detectSkillUsage,

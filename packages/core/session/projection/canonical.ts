@@ -116,10 +116,25 @@ function sortByKey(items: readonly unknown[], key: 'id' | 'toolCallId'): unknown
 }
 
 /**
- * G1(§10.1):**step 的 `id` 不参与比较**。事件里从来没有 stepId ——
- * 引擎实时那一份是 `createCoreId()` 随机生成的,投影那一份是
- * `step-${callId}` 派生的,两者永远不等而这不说明任何事。身份是
- * `toolCallId`:排序按它,比较也不看 id。`childSteps` 递归同款。
+ * G1(§10.1):**step 的 `id` 不参与比较**。
+ *
+ * 立这条时的理由是"两侧本来就不可能相等":事件里从来没有 stepId,引擎实时
+ * 那一份是 `createCoreId()` 随机生成的,投影那一份是 `step-${callId}` 派生的。
+ *
+ * **F4-b1(§16.16)把那个前提消掉了** —— 引擎侧改成同一条派生规则
+ * (`coreStepIdForToolCall`,唯一产地),活链路上两侧从此逐字相同。
+ *
+ * **但这条豁免不收紧**,理由是**老账本**,不是审美:`sessions:verify` 拿
+ * `messages.jsonl`(F4-a 起永久停写的存量抄本)逐条过 `canonicalChatMessage`,
+ * 而那些抄本里的 step id 是停写那一刻的 uuid —— 真机实测 443 条会话里 **284 条
+ * 带 18126 个 uuid step id**。收紧 = 给那道门加一条"老抄本豁免",而豁免路径
+ * 本身就是这张表最该少的东西(§16.13 记的正是"恒等门证明的是 canonical 之后
+ * 相等,不是可以互换")。
+ *
+ * 身份仍然是 `toolCallId`:排序按它,比较也不看 id。`childSteps` 递归同款。
+ * 门看不见的那件事(两侧 id 语义是否还是同一个)由
+ * `session/__tests__/step-identity-contract.test.ts` 跨两条路取值钉住 ——
+ * 那是一条常驻合同,不是一次性验收。
  */
 function canonicalStep(step: unknown): unknown {
   if (!step || typeof step !== 'object') return canonicalValue(step)
