@@ -12,14 +12,20 @@
  * | 档 | 种类 | 理由 |
  * |---|---|---|
  * | **承载** | `text` / `reasoning` / `provider-data` / `image` | 事件词表里有对应的 part kind |
- * | **豁免** | `waiting` / `image-loading` / `data-steps` / 未结算的 `plugin-status` | 判据(`canonicalChatMessage` 的 `isTransientPart`)当场丢掉它们 —— 追加即撤的东西 append-only 表达不了(§7.2 M3) |
+ * | **豁免** | `waiting` / `image-loading` / 未结算的 `plugin-status` | **策略表条目**(定律三,`core/session/events/ephemeral-policy.ts` 的 `contentPart.placeholder` / `contentPart.plugin-status.unsettled`):有取代它的持久事件,判据当场丢掉它们 |
+ * | **豁免** | `data-steps` | **渲染锚点**(G4),位置算得出来,不是正文 —— 与上一档不同源,理由也不同 |
  * | **红** | 其余(含**已结算**的 `plugin-status`) | 消息上有、账本上没有、判据也不放过 = 一条必然的不等 |
+ *
+ * 前两档的名单**不在这里抄**:短命那一档从 `isEphemeralContentPart` 读(策略表
+ * 是它的唯一产地),渲染锚点那一档只有一种,就地写死。
  *
  * 开关与深冻结**同一个**(`ONETHING_SESSION_FREEZE`,缺省 vitest 下开):
  * 开发/测试期当场抛,生产期每种类一条 warn(记账问题不许打断聊天)。
  * 两个调用点(命令面与 store 面)共用这一个函数 —— 那两条路都通向同一个
  * core reducer,而 core 是零依赖层,拿不到这个开关。
  */
+
+import { isEphemeralContentPart } from '@onething/core/session'
 
 import { isSessionFreezeEnabled } from './freeze.js'
 import { getLogger } from '../wiring/logging/index.js'
@@ -28,9 +34,6 @@ const log = getLogger('sessions.events')
 
 /** 事件词表里有对应 part kind 的那几种。 */
 const CARRIED_PART_TYPES = new Set(['text', 'reasoning', 'provider-data', 'image'])
-
-/** 判据当场丢掉的那几种(与 core `isTransientPart` 同口径)。 */
-const TRANSIENT_PART_TYPES = new Set(['waiting', 'image-loading', 'data-steps'])
 
 const warnedTypes = new Set<string>()
 
@@ -45,10 +48,11 @@ export function describeUncarriableContentPart(part: unknown): string | undefine
   const type = typeof record.type === 'string' ? record.type : undefined
   if (!type) return 'content part has no type'
   if (CARRIED_PART_TYPES.has(type)) return undefined
-  if (TRANSIENT_PART_TYPES.has(type)) return undefined
-  // 未结算的插件状态是瞬态(判据丢掉它);结算之后那一格要参与比较,而账本上
-  // 没有任何东西记过它。
-  if (type === 'plugin-status' && record.durationMs === undefined) return undefined
+  // 定律三登记在册的短命 part(占位型两种 + **未结算**的插件状态)。结算之后
+  // 那一格要参与比较,而账本上没有任何东西记过它 —— 那条留账写在策略表的 note 里。
+  if (isEphemeralContentPart(record)) return undefined
+  // G4 渲染锚点:算得出来,不是正文(与上一档不同源)。
+  if (type === 'data-steps') return undefined
   return `content part '${type}' has no session-event landing (see content-part-guard.ts)`
 }
 

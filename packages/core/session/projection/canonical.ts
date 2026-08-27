@@ -8,27 +8,37 @@
  * 于是那道门要么永远红要么被人调成永远绿。这个函数把"不等但不算数"的那部分
  * 一次性写死。
  *
- * ## 丢掉什么,为什么
+ * ## 丢掉什么,为什么 —— **两张表,不是一张**
+ *
+ * F4-c c5 起,"丢掉"的理由分两族,各有各的家:
+ *
+ * **① 短命-被取代** → 不在这里,在 `events/ephemeral-policy.ts`(定律三的封闭
+ * 策略表)。每条都带着"取代它的持久事件"与一条机器能跑的收敛性质测试。这里只
+ * **消费**它:`EPHEMERAL_MESSAGE_KEYS` / `EPHEMERAL_STEP_KEYS` /
+ * `isEphemeralContentPart` 三个口读过来,判据不再自己抄一份名单。
+ * 今天登记在册的有:`isThinking` + `thinkingStartTime`、step 的 `partialResult`
+ * 族、`waiting` / `image-loading` / 未结算的 `plugin-status` 三种瞬态 part
+ * (以及判据看不见的两条:`toolCall.streamingArgs`、编码器的未刷 delta)。
+ *
+ * **② 杂项** → 留在下面这张表。它们**不是**"会被取代的短命事实",各带各的
+ * 一句人话,而且每一条都只有一句人话 —— 这正是两者分家的意义:
  *
  * | 字段 | 处置 | 理由 |
  * |---|---|---|
  * | `seq` | 丢 | 位置,不是身份。删一条前面的消息它全平移(§3.2 它在 S2 退役) |
  * | `eventSeq` | 丢 | 投影独有的事件坐标,命令线没有它 |
  * | `sessionId` | 丢 | 上下文字段,同一条消息在不同读法下有无都算对 |
- * | `isThinking` / `thinkingStartTime` | 丢 | 纯 UI 活跃态(渲染侧自己走秒) |
- * | `isStreaming` | 只保留 `true` | `false` 与缺席是同一件事 |
- * | 瞬态 part | 丢 | `waiting` / `image-loading` / 未结算的 `plugin-status`:追加即撤,append-only 表达不了(§7.2 M3) |
+ * | `thinkingTime` | 丢 | G5:**派生量**(投影从 chunks 时刻算,消息里常常没有)。它是策略表 `message.thinking-activity` 的**替身**,不是短命事实本身 |
+ * | `isStreaming` | 只保留 `true` | `false` 与缺席是同一件事。**这一格本身是策略表条目**(`run/end` 取代),这里只是那条 `false ≡ 缺席` 的归一 |
+ * | `data-steps` part | 丢 | G4:步骤面板的**渲染锚点**,位置算得出来,不是正文。它不会被任何事件"取代",所以不进策略表 |
  * | `undefined` 值的键 | 丢 | `{a: undefined}` 与 `{}` 是同一条消息 |
  * | 空数组 | 丢 | `toolCalls: []` 与没有 toolCalls 是同一件事 |
  * | `steps` / `toolCalls` 顺序 | 按 id 排序 | 数组序是派生物(到达序 vs 落盘序),身份是 id |
- *
- * | `thinkingTime` | 丢 | G5:派生量(投影从 chunks 时刻算,消息里常常没有) |
- * | `data-steps` part | 丢 | G4:步骤面板的**渲染锚点**,位置算得出来,不是正文 |
  * | step/toolCall 的 `timestamp` `startTime` `endTime` `receivedAt` `durationMs` | 丢 | 同一件事的两次读表(引擎 vs 事件),差 1~2ms |
  * | toolCall 的 `argsFinalizedBy` | 丢 | 流式层诊断位,事件面上没有采集点(§10.8 公开缺口) |
- * | step 的 `partialResult` / `partialResultIsPartial` | 丢 | 工具结局的派生缓存:落盘时被摘掉,冷加载重算(重启前后本就不同) |
  * | `usage.durationMs` | 丢 | 一次流的墙钟量测,不是用量 |
  * | toolCall 的 `requiresConfirmation: false` / `canRespond: false` | 与缺席同义 | 确认闸的收场态,不是事实的一部分 |
+ * | step 的 `id` | 丢 | G1:老抄本里是停写那一刻的 uuid(下面那段长注释) |
  *
  * **不丢**的:`contentParts` 的顺序(那是正文本身)、消息级 `timestamp`、
  * `usage` 的 token 计数、`errorDetails`、工具的**结构化结局**。它们不等就是
@@ -40,22 +50,30 @@
  */
 
 import { stringifyToolResult, toolCallArguments } from '../../agent-loop/wire-format.js'
+import {
+  EPHEMERAL_MESSAGE_KEYS,
+  EPHEMERAL_STEP_KEYS,
+  isEphemeralContentPart,
+} from '../events/ephemeral-policy.js'
 
 export interface CanonicalizeOptions {
   /** 额外忽略的顶层字段(S1 影子期用来临时豁免还没接上的采集点)。 */
   ignoreKeys?: readonly string[]
 }
 
-const ALWAYS_DROPPED_KEYS = new Set([
+const ALWAYS_DROPPED_KEYS: ReadonlySet<string> = new Set([
+  // —— 杂项(坐标 / 派生量),各带各的理由 ——
   'seq',
   'eventSeq',
   'sessionId',
-  'isThinking',
-  'thinkingStartTime',
   // G5(§10.1):`thinkingTime` 是**派生**的 —— 投影从 chunks 的时刻算,引擎那份
   // 账里它是渲染层事后写上的(常常根本没有)。S1b 实测:同一次执行,投影算出
   // 20ms,messages.jsonl 那条一格都没有。派生量不参与"是不是同一条消息"。
   'thinkingTime',
+  // —— 策略表条目(定律三):`message.thinking-activity` 的两格 ——
+  // 名单不在这里,在 `events/ephemeral-policy.ts`;那边每一条都带取代事件与
+  // 一条收敛性质测试。这里只是把它读过来。
+  ...EPHEMERAL_MESSAGE_KEYS,
 ])
 
 /**
@@ -71,28 +89,18 @@ const ALWAYS_DROPPED_KEYS = new Set([
 const DERIVED_CLOCK_KEYS = new Set(['timestamp', 'startTime', 'endTime', 'receivedAt', 'durationMs'])
 
 /**
- * step 上的**派生缓存** —— `partialResult` / `partialResultIsPartial`。
+ * **G4(§10.1):渲染锚点,不是短命事实。**
  *
- * 判据不是我说的,是这条产品线的持久化层自己写的:`session-dehydrate.ts:127`
- * 落盘时把结算过的 `partialResult` 整格摘掉(注释原话:"A settled
- * partialResult duplicates toolCall.result"),冷加载再由
- * `rehydrateSessionFromStorage` 用 `toolResultToStructured(toolCall.result)`
- * 算回来。也就是说**同一条消息在重启前后本来就不是同一个值** —— 它是工具结局的
- * 一份派生缓存,不是消息事实。投影按冷加载那条规则产出它(S2 切读之后看到的就是
- * 那一份),但它不参与"是不是同一条消息"。
+ * `data-steps` 是步骤面板的**锚点**:位置由"这一轮有没有工具调用"算得出来
+ * (`planAgentLoopTurnContentPersistence` / `core/session/render-anchors.ts`),
+ * 事件里没有它也不该有它 —— 它不是正文,是一个渲染坐标。
+ *
+ * 它**不进策略表**:没有任何一条持久事件"取代"它,它压根不是一件被记录的事实。
+ * 这一条与 `isEphemeralContentPart` 分开写,正是为了让"被取代"与"算得出来"
+ * 两种理由各自可辨认。
  */
-const DERIVED_STEP_CACHE_KEYS = new Set(['partialResult', 'partialResultIsPartial'])
-
-/** 与 shared 层契约里的 `isTransientPart` 同口径(core 不引 shared,判据抄在这里)。 */
-function isTransientPart(part: unknown): boolean {
-  if (!part || typeof part !== 'object') return false
-  const record = part as { type?: unknown; durationMs?: unknown }
-  if (record.type === 'waiting' || record.type === 'image-loading') return true
-  // G4(§10.1):占位 part 永远住在渲染侧。`data-steps` 是**步骤面板的锚点**,
-  // 位置由"这一轮有没有工具调用"算得出来(`planAgentLoopTurnContentPersistence`),
-  // 事件里没有它也不该有它 —— 它不是正文,是一个渲染坐标。
-  if (record.type === 'data-steps') return true
-  return record.type === 'plugin-status' && record.durationMs === undefined
+function isRenderAnchorPart(part: unknown): boolean {
+  return !!part && typeof part === 'object' && (part as { type?: unknown }).type === 'data-steps'
 }
 
 function canonicalValue(value: unknown): unknown {
@@ -141,7 +149,8 @@ function canonicalStep(step: unknown): unknown {
   const out: Record<string, unknown> = {}
   for (const key of Object.keys(step as Record<string, unknown>).sort()) {
     if (key === 'id') continue
-    if (DERIVED_CLOCK_KEYS.has(key) || DERIVED_STEP_CACHE_KEYS.has(key)) continue
+    // 时钟噪声(杂项)+ `step.partialResult` 族(策略表条目,名单从那边读)。
+    if (DERIVED_CLOCK_KEYS.has(key) || EPHEMERAL_STEP_KEYS.has(key)) continue
     const value = (step as Record<string, unknown>)[key]
     if (value === undefined) continue
     if (key === 'childSteps') {
@@ -205,6 +214,8 @@ export function canonicalChatMessage(
     const value = message[key]
     if (value === undefined) continue
 
+    // 策略表条目 `message.isStreaming`(定律三:`run/end` 取代)。这里做的只是
+    // 那条归一:`false` 与缺席是同一件事 —— 收敛性质本身在 ephemeral-policy 那边。
     if (key === 'isStreaming') {
       if (value === true) out.isStreaming = true
       continue
@@ -212,7 +223,10 @@ export function canonicalChatMessage(
 
     if (key === 'contentParts') {
       if (!Array.isArray(value)) continue
-      const parts = value.filter(part => !isTransientPart(part)).map(canonicalValue)
+      // 两种"丢",两条理由:策略表登记的短命 part(会被取代)+ 渲染锚点(算得出来)。
+      const parts = value
+        .filter(part => !isEphemeralContentPart(part) && !isRenderAnchorPart(part))
+        .map(canonicalValue)
       if (parts.length > 0) out.contentParts = parts
       continue
     }

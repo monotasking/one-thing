@@ -7846,10 +7846,17 @@ transport/ui)。
 | **c2** | 编解码器就位:状态机迁居、读侧解码折叠、素门/带 surface 门写入走编码器;decode∘encode 性质测试;老文件逐字节同折合同 | **✅ 已落地(§16.21)**:字节回归 0 差、decode∘encode 性质测试绿、全库 433 账本折叠指纹 0 差、性能 1.04×、battery GREEN |
 | **c3** | 18 端口翻转为发事件(分 2–3 小批,流式性能实测每 delta 折叠开销) | 探针 B 九路全零 + 性能预算 + battery。**c3-a 已落地(§16.23)**:18 口全量分类表 + 流式首刀(逻辑 delta 盖章即折)—— `reasoning` 18/18→**0**、`content` 126/126→**8/124**(残差 6 非前缀 + 2 整段,全是 C 类"另有产地"的非 provider 正文产地,不是滞后);`isStreaming` 按读数**改判不翻**(见 §16.23 第五节)。剩 c3-b(工具三口)/ c3-c(收尾三口) |
 | **c4** | 非流式合一收尾、老 reducer 删除、告别对账、恒等门退役、session:check 改写、策略表+收敛测试落地 | **✅ 已落地(c4-d,§16.27;策略表+收敛测试顺延 c5)**;过程记录:**🟡 部分落地(§16.24)**:告别对账全绿(runs 321 / mismatches 0 / 真机 verify 无新增)→ **恒等门已退役**;三个死口删除;`thinkingTime` 兑现"取投影值";`refold` 补采;新立**端口事实断言**(逐格替身,battery 比过 265 次 0 失配)。**老 reducer 删除与 A 类端口空转停在诊断** —— 三条硬证据(settle 读写手视图的 `steps`/`data-steps` 锚点、abort 按 `isStreaming` 寻址、truncate 用量结算)都指向同一个根因:§16.17 的**活 run 写手窗口**今天由内存 store 承担,而本批口径是不动它。往下走要先裁定"写手窗口退役吗"(§16.24 第五节)。**c4-b 已把那三条依赖全部拆除并删掉 `getLiveRunWriterMessage`**(§16.25:锚点由共享纯件从折叠产物现算、abort 按活 run 登记簿寻址、截断用量结算从折叠产物取;施工中探针抓到三处真回归并各留一条合同用例)。**端口空转与 reducer 分支删除仍未做**,但挡路的只剩一格 —— store 的消息数组还由老 reducer 维护、而归约器自己要读它;往下 = 一次"读侧改从物化取"的切换 + 一次 A/B/C 性能裁定(§16.25 第四节)。**c4-c 按拍定的 B 案施工并回退**(§16.26,零生产代码留存):B 的性能前提**成立**、静默期物化 ≡ store **成立**(顺带结清 §16.23 第四节 C 类残差那次产地裁定 —— 它是时机差,静默期归零),但 battery 红在 `retry-message`,根因是**流式 assistant 占位没有 append 期产地**(`command-events.ts` 对 `isStreaming` 的 assistant 一条不写,产地是其后的 `run/start`)。挡路的已不是性能,是**一次产地裁定 + 一批不可再拆的完全切换**。**c4-d 一批切完(§16.27)**:用户裁甲第二形态 —— `run/start` 落账提前到与 `store.addMessage` 同一同步段(不开第二产地,§9.3 原样),占位在创建段末尾 **306/306 在场**、任何一次外部读上 **9626 次 0 缺**;读侧现取 + 失效号缓存(不是 `lastSeq`)、补水链 + 先深拷、仓库 `refreshMessagesFromProjection` 单点换装;15 端口整批空转、5 条零调用命令面包装删除、`session:check` 规则 B 第四次改写 + 规则 C 具名例外。**施工中查明 §16.26 没写到的第二条结构事实**:换装接上之后老 reducer 会在**自己刚写的那条事件之后**再应用一次同一条命令(delete/truncate 当场 `changed:false` —— `retry-message` 的红就是它,不是占位窗口),解法是把**归约器那一步**圈进一个定格段。battery GREEN、五门 ok、全仓 11934 绿 |
-| **c5** | 三定律成文为系统宪法(§17),终态架构图,门清单 | — |
+| **c5** | 三定律成文为系统宪法(§17),终态架构图,门清单;**定律三的策略表 + 收敛性质测试**(从 c4 顺延) | **✅ 已落地(§17 + `core/session/events/ephemeral-policy.ts`)**:7 条封闭策略条目(各带取代事件 / 收敛性质形状 / 可解析的证明指针),`canonical.ts` 的豁免表就此分家为**策略条目**与**杂项**两族;新增 `ephemeral-policy.test.ts` 8 条(指针逐条解析回磁盘 + 5 条收敛性质,各带反证);`content-part-guard.ts` 改从同一张表读,全仓不再有第二份瞬态名单。验收:battery GREEN(runs 321 / portMismatches 0 / refoldChecks 224 / refoldMismatches 0 / shadow.jsonl 0 行)、typecheck 0、五门 ok、真机 verify 仅 `room-1` 已知条 |
 
-规模:c3 为主,全程约 4–6 批。§16.14 战役表 b3/b4 由本节取代(b1/b2 成果原样有效:
-step 身份、收尾链定性、共存口径降级为 c3 完成前的过渡描述)。
+规模:c3 为主,全程约 4–6 批 —— **实际 c1…c5 共 8 批**(c1 / c2 / 真机污染三修 /
+c3-a / c4 / c4-b / c4-c 停诊 / c4-d / c5),其中两批停在诊断、一批施工后整批回退。
+§16.14 战役表 b3/b4 由本节取代(b1/b2 成果原样有效:step 身份、收尾链定性、
+共存口径降级为 c3 完成前的过渡描述)。
+
+**分期表终态化(c5 收章)**:上表五行今天全部结案 —— c1 改判结案(零代码)、
+c2 / c3-a / c4-d / c5 落地、c3-b / c3-c 两小批**没有单独跑**:c4-d 的"读侧改从
+物化取 + 15 端口整批空转"把它们的目标一次吃掉了(端口不再有"自己的写"要翻转,
+翻不翻发事件这个问题随之消失)。终态口径见 §17。
 
 ### 16.20 F4-c c1 结论:**改判并结案**——88 是取样窗口的读数,不是产地缺口;`run/start` 落账那一刻占位 88/88 逐格相等(2026-08-27,opus 勘察,**零生产代码改动**)
 
@@ -9206,3 +9213,243 @@ if (!truncated) { emitStreamError('Message not found'); return }
 - **留账三条**:①活 run 窗口内大会话的重物化成本(第六节);②老 reducer 与三口
   判据同源**没有**退役,理由见第四节两条改判;③策略表 + 收敛性质测试(定律三)
   仍在 c5。
+
+---
+
+## 17. 系统宪法(F4-c c5 收章,2026-08-27)
+
+> **三句话读懂这个系统。**
+>
+> 1. 会话里发生的每一件事——用户发一条、模型吐一个字、工具跑完一步——都是一条
+>    **逻辑事件**,汇进同一条流;这条流是全系统**唯一的生产线**。
+> 2. 往一边,投影 reducer 当场把它折成状态,`session.messages` 只是那份状态的
+>    **物化视图**;往另一边,编码器把同一条流压成打包行落进 `events.jsonl` ——
+>    磁盘上**只有这一份真相**。
+> 3. 一件事实允许不落盘,当且仅当**另一条落了盘的事实使它冗余**,而且那句"使它
+>    冗余"要有一条跑得起来的测试。
+>
+> 下面三节把这三句话写成定律、画成图、拆成纪律。第 17.5 节是所有还没做完的事。
+
+### 17.1 三定律
+
+底本是 §16.19 B 节。措辞按 c1–c5 的落地实况修订过,**语义没有变**。
+
+---
+
+**定律一:只有一种词汇,delta 是逻辑单位。**
+
+每个事实——模型吐一个字、工具出一段输出、用户发一条消息——是**一条逻辑事件**。
+折叠、投影 reducer、判据(`canonicalChatMessage`)、UI 流,全都只说这一种话。
+
+**不存在"瞬态事件"与"持久事件"两个物种。** 一条 delta 从写入端走到读取端,身份
+自始至终是它自己;中途被攒进一行还是单独一行,是存储的事,不是它的事。
+
+> *落地实况*:c3-a 起,流式的每一条逻辑 delta 在**盖章那一刻**就折进活投影
+> (§16.23 第三节),而不是等打包行刷出去。"提前折"因此不是优化,是定律一的
+> 直接后果。
+
+---
+
+**定律二:打包是压缩,不是语义。**
+
+`events.jsonl` 里那条 `assistant/chunks`(一行攒 N 条 delta)**定性为存储编码**:
+
+- **写入端**:逻辑 delta 进编码器,编码器按段落边界与两道闸(2s / 64 条)刷出
+  打包行 —— **时机与字节与从前逐字节相同**;
+- **读取端**:打包行经解码器展开回逻辑 delta 流,再交给投影 reducer 折。
+
+唯一合同:**`decode(encode(x)) ≡ x`**。
+
+U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 delta 落在哪一段、哪一段
+该收了"决定的正是"刷哪一行"。
+
+> *落地实况*:`packages/core/session/events/chunk-codec.ts`(§16.21)。写侧字节
+> 0 差、读侧全库 433 个账本折叠指纹 0 差、性能 1.04×。上一版方案里的"瞬态事件道"
+> 与"边界交接断言"两个补丁,因为这条定律而**整个消失了**。
+
+---
+
+**定律三:短命事实必须被证明会被取代。**
+
+一种事实允许不持久化,**当且仅当**后续某条**持久事件**使它冗余(工具中途的输出
+⊂ 它最终的结果)。
+
+短命种类登记在词汇表旁的**封闭策略表**
+(`packages/core/session/events/ephemeral-policy.ts`),每条必须交齐三样:
+
+1. **取代它的持久事件**(事件类型的名字,不是一句话);
+2. **收敛性质的形状**——只有两种,不许自创第三种:
+   - `strip-homomorphism`:折到取代事件**之后**把这一格抹掉,`canonical` 一字不变;
+     折到取代事件**之前**抹掉会变(**反证**,证明这条登记不是空转);
+   - `substitute-derivable`:取代事件在场时替身逐格算得出来,缺席时替身**不出现**
+     (不补 0 假装有);
+3. **证明指针**——落到具体的 `it(...)` 名字上,而且
+   `__tests__/ephemeral-policy.test.ts` 会**逐条把它解析回磁盘**。文件搬家、用例
+   改名,那道门当场红:指针因此不会烂。
+
+**反过来,不是"被取代"的豁免不许写进策略表。** 坐标(`seq`)、派生量
+(`thinkingTime`)、两次读表的时钟噪声(`startTime`/`endTime`)、渲染锚点
+(`data-steps`,G4)留在 `canonical.ts` 的**杂项表**里,各带各的一句人话。两张表
+分家的意义就在这里:策略表里每一条都有一条机器能跑的收敛证明,杂项表里每一条都
+只有一句人话——混在一起时没人分得清哪条是哪条。
+
+**表外还有一条**:登记一条短命事实**不等于**允许产品行为退化。判据仍然是 §9.4
+那句话——*拿投影那一份当真相,用户看到的东西会不会变?* 会变的一格不许进这张表,
+它该做的是**补一个采集点**(工具结局的 metadata 就是这么补上来的,不是豁免掉的)。
+
+**今天登记在册的 7 条**(全表见源文件):
+
+| id | 短命事实 | 取代它的持久事件 | 性质 |
+|---|---|---|---|
+| `message.isStreaming` | "这条助手消息还在生成中" | `run/end` | strip |
+| `message.thinking-activity` | `isThinking` + `thinkingStartTime`,UI 活跃态 | 推理段 `assistant/chunks` → `thinkingTime` | substitute |
+| `step.partialResult` | 工具执行途中的结局缓存(+`partialResultIsPartial`) | `tool/result` → `toolResultToStructured` | substitute |
+| `toolCall.streamingArgs` | "参数还在生成"(消息上那一格是空串) | `tool/call.argumentsRaw` | strip |
+| `contentPart.placeholder` | `waiting` / `image-loading` 两种占位 | 同位真正的正文 / 图片 part | substitute |
+| `contentPart.plugin-status.unsettled` | 未结算的插件状态行 | `plugin/status`(带 `durationMs` / `cleared`) | substitute |
+| `codec.unflushed-delta` | 编码器写缓冲里还没刷出的 delta | `assistant/chunks` 打包行 | strip |
+
+**终局的一句话**:`store = fold(事件流)`,**无活窗例外**。第一个字即事件,折叠
+当场前进;编码器的写缓冲是唯一"内存领先磁盘"的窗口,它归存储层(fsync 检查点
+原管),**不是语义例外**。磁盘格式 / 账本体积 / 渲染层 / IPC:零变化。
+
+### 17.2 终态架构(数据流一条线)
+
+```
+                        ┌──────────────────────────────────────────────┐
+  事实源                │            逻辑事件流(唯一生产线)          │
+  ─────────             │  一条事实 = 一条逻辑事件,delta 是最小单位   │
+                        └──────────────────────────────────────────────┘
+  用户命令 ──────────┐                        │
+   backend/session/  │                        │
+   command-events.ts │                        │
+   (13 命令唯一产地)  │                        │
+                     ├──▶ 事件写入口(两扇门) │
+  模型 delta ────────┤    · appendSurfaceAwareEvent (event-surface.ts) —— 带 surface 记账
+   provider SSE →    │    · appendSessionLogEvent   (event-log.ts)     —— 素门
+   引擎 chunk        │           │
+                     │           ├── F1 同步可见钩子 registerSessionLogEventAppendObserver
+  工具事实 ──────────┘           │      两扇门都过它:落盘**之前**单源前进
+   tool/call|annotate|result     │
+   session-event-recorder.ts     ▼
+                        ┌────────────────────┬────────────────────────┐
+                        │   ① 折叠(读那半)  │   ② 编码(写那半)      │
+                        └────────────────────┴────────────────────────┘
+                                 │                        │
+   core/session/projection/      │                        │  core/session/events/
+   reducer.ts  ─ 折 ─▶  活投影   │                        │  chunk-codec.ts
+   (唯一状态推导)      LiveProjection (backend/session/    │  · U0 段边界状态机
+                                 projection-cache.ts)     │  · 两道闸 2s / 64 条
+                                 │  + 失效号 version      │  · decode∘encode ≡ x
+                                 ▼                        ▼
+   chat-messages.ts     物化视图 materialized-messages.ts   events.jsonl + blobs/
+   materializeNode      · 现取 + 按失效号缓存               (**磁盘上唯一的真相**)
+                        · 跑同一条补水链 · 先深拷           messages.jsonl 永久停写
+                                 │                              │
+                    单点换装 refreshMessagesFromProjection       │ 冷加载:解码 → 折叠
+                    (runtime/src/sessions/session-repository.ts) │
+                    全仓**唯一**一处 `session.messages = …`  ◀───┘
+                                 │
+                                 ▼
+          读者:引擎收尾链 / sessionReads / IPC·SSE 推送 / renderer
+          （渲染锚点 data-steps 由 core/session/render-anchors.ts 从折叠产物现算，
+            不进账本、不进正文）
+```
+
+**三处必须记住的落点**:
+
+1. **写入口是两扇门、一只眼**。两扇门(带 surface / 素门)对应两类产地(命令面 /
+   采集器),那只眼(F1 观察者)让**活投影与活 surface 在排队落盘之前就前进** ——
+   "命令产事件、事件当场可见"这件事就靠它。
+2. **18 个热写端口签名不动,实现空转**。它们今天只答一个问题——"这条消息在不在"
+   (有活投影问 `eventsHasMessage`,O(1) 不物化;没有就退回内存 store)。四条 A 类
+   断言(usage / skillUsed / errorDetails / turnContext)与 contentPart 守卫留任,
+   它们是**端口事实断言**(`backend/session/port-fact-assert.ts`)的采样点。
+3. **常驻门只剩三类**:耐久(refold)、逐格(端口事实断言)、语义(策略表收敛 +
+   S0 合同 + 编解码器性质)。恒等门在 c4 告别对账之后**已退役**(§16.24)。
+
+### 17.3 终态纪律清单
+
+每条一句话 + 出处。这些是**已经被真机或回归打脸打出来的**,不是审美偏好。
+
+| # | 纪律 | 出处 |
+|---|---|---|
+| 1 | **F1 同步可见**:两扇写入门都过 `registerSessionLogEventAppendObserver`,活投影在排队落盘**之前**就前进——否则"命令产事件"在同一个 tick 里读不出来 | 批 F1;§16.19 A |
+| 2 | **单点换装**:全仓唯一一处 `session.messages = …` 在 `refreshMessagesFromProjection`;`session:check` 规则 C 给它一条**具名**例外,不是通配 | §16.27 三/四 |
+| 3 | **`withSessionCommandPin` 圈住归约器那一步**:换装接上之后,老 reducer 会在**自己刚写的那条事件之后**再应用一次同一条命令(`delete`/`truncate` 当场 `changed:false`)。定格段只圈 `ports.messages.*` 那一次调用,它前面的判据/底稿照旧现取 | §16.27 二 |
+| 4 | **补水前先深拷**:`materializeMessageNode` 对 `message/imported` 是**浅展开**,而补水是就地写者——不深拷就会把事件里没有的字段写进活投影,refold 当场破 | §15.13 判例;§16.27 三 |
+| 5 | **缓存键是失效号,不是 `lastSeq`**:提前折的逻辑 delta 那一行还压在编码器写缓冲里,`lastSeq` 不动而 state 动了——拿 seq 当版本号会让**一整段正文**被缓存吃掉 | §16.27 三 |
+| 6 | **G4:锚点住渲染**:`data-steps` 是步骤面板的**渲染坐标**,位置由"这一轮有没有工具调用"算得出来,不是正文——事件里没有它也不该有它 | §10.1 G4;§16.25 钥匙① |
+| 7 | **`hasSessionInStore` 是永久例外**:"这间会话的外壳在不在 store 里"是 store 自己的事实,不是折叠产物。`getMessageFromStore` / `hasMessageInStore` / `findMessageFromStore` 三口今天读的已经是物化视图,不再是第二份真相 | §16.11 拍板 4;§16.27 四 |
+| 8 | **§13.8 新裁定**:采集点可以记"**某人说过的话**",不可以记"**我推出来的结论**"。判断标准是**这句话在别处有没有产地**——有,就抄同一把判定点;没有,就是二次派生 | §16.9 五 |
+| 9 | **成对交付**:新字段缺席 = **修复前的行为**。老账本上一格都不许猜 | §10.16 |
+| 10 | **判据只有一把尺**:`canonicalChatMessage`。不许为某条路开局部豁免——"canonical 之后相等"证明的不是"可以互换" | §9.4;§16.13 |
+| 11 | **不许调绿**:门红了改事实,不改门 | §8;`backend/session/shadow.ts` |
+| 12 | **命令是 COW**:先捕获 `session.messages`、再 `await`、再读那个变量会拿到旧数组。`await` 之后重读 | P0(`docs/design/session-commands-p0-2026-08.md`) |
+| 13 | **端口签名冻结**:18 个 `sessionMessageRuntime` 口签名不动、实现空转;A 类断言与 contentPart 守卫留任(它们是端口事实断言的采样点) | §16.27 四 |
+| 14 | **真机只读**:跑门不写 `~/.onething`。跨库写已根治 + `vitest.setup.ts` 全局硬闸 | §16.22 |
+| 15 | **停诊批不夹带**:勘察结论是勘察结论,一行生产代码都不落;要落先拍板 | §16.3;"行为裁定须先问" |
+
+### 17.4 常驻门清单
+
+| 门 | 它证明什么 | 落点 |
+|---|---|---|
+| `sessions:shadow-battery` | 27 场景四泳道跑一遍,refold + 端口事实全绿 | `scripts/shadow-battery.mjs` |
+| **refold**(耐久) | 文件字节重折 ≡ 内存活投影(比对点 = 编码器刷新点) | `backend/session/refold.ts` |
+| **端口事实断言**(逐格) | 恒等门的逐格替身:端口收到的值 ≡ 折叠算出的值 | `backend/session/port-fact-assert.ts` |
+| **策略表收敛 + 指针解析** | 定律三:每条短命登记都被取代,且证明指针不烂 | `core/session/__tests__/ephemeral-policy.test.ts` |
+| **`decode∘encode ≡ id`** | 定律二:打包是压缩不是语义 | `core/session/__tests__/session-chunk-codec.test.ts` |
+| **字节回归** | 打包行的时机与字节与从前逐字节相同 | `session-chunk-bytes.test.ts` |
+| **S0 合同(A/B 两线)** | 命令线 ≡ 事件线,模型历史逐字节相同 | `core/session/__tests__/projection-contract.test.ts` |
+| **step 身份合同** | 两条路上 step id 语义同源 | `step-identity-contract.test.ts` |
+| `sessions:verify`(只读) | 存量账本对账 | `scripts/session-verify.ts` |
+| 补水合同 | 冷加载补水 ≡ 投影 | `scripts/session-hydration-contract.ts` |
+| 五道棘轮 | boundary / session / log / transport / ui | `scripts/*-gate.mjs` |
+
+### 17.5 留账归档表(全部未竟项)
+
+一张表收全。**没有第二个地方记这些事**——往下开工先看这里。
+
+| # | 留账 | 状态 / 判据 | 出处 |
+|---|---|---|---|
+| 1 | **大会话按节点物化缓存** | 稳态是亚微秒(一次 map 查询 + 一次 `!==`),代价全在**活 run 窗口内**:每条 delta 换失效号,`getSession` ~30 次/run,258 条消息 / 50MB 的巨型会话上一次物化 46ms。方向是**只重算改动过的那几条**,不是回头改换装点 | §16.27 六 |
+| 2 | **老 reducer 远期退役** | c4-d **改判保留**:它今天的两个身份是「会话级派生的算法」+「S0 合同测试 A 线的词汇」,不再是消息数组的维护者。**退役条件**:A 线换一种表达"引擎往消息上写了什么"的词汇——删了它 A 线当场退化成恒真等式 | §16.27 四 |
+| 3 | **三口判据同源退役** | 挂在第 2 条上。今天三口读的已是物化视图,**不是第二份真相**,只是同一份真相的 store 侧门牌 | §16.27 四 |
+| 4 | **`tool/result` 进 surface 的写侧一票** | **已由 F1 收**(§16.15);另册里那条记录作废 | §16.15;§16.11 |
+| 5 | **A 只修尾随格** | 归属在段外、却排在段**中间**的 `tool/result` 表达不出来(replace 的 op 是位置连续段)。全库零例;真要修得先给 surface op 词汇加"非连续遮蔽" | §16.15 六-1 |
+| 6 | **`pruneShadowedToolCalls` 是零命中路** | 生产者还没写。真写时要一并决定"只遮结果格"这种 op 下 `isShadowedWith` 怎么答,而不是默默让它生效 | §16.15 六-2 |
+| 7 | **`events.jsonl` 分卷轮转** | 只出了方案要点(触发条件 = 字节 + 语义边界,不是时间;归档 = 分卷 + 清单,不是 gzip 覆盖;refold 的"文件字节此刻是全的"前提要重定义),**待拍板** | §15.12 B3 |
+| 8 | **`legacy-backup/` 381.4MB** | S1a 迁移留下的原抄本副本,**没有治理器**。同批的 `messages.cleared-*`(14MB)同理。只测量未治理 | §15.12;裁定 10 |
+| 9 | **真机夹具沉积清理 + `room-1` 主人判据** | `~/.onething` 里测试年代留下的会话 / traces / debug 快照要不要删;`room-1 seq: expected seq 2 at position 1, got 3` 这条 verify 红是**收进基线**还是**修数据**——**待用户拍板**。它自 §16.20 起**每一批原样复现**(c5 这批仍是它,无新增) | §16.20 七;§16.22 五(d) |
+| 10 | **结算态 `plugin-status` 无产地** | 取代事件(`plugin/status` 带 `durationMs`)**已落盘**,但折叠侧不物化它(reducer 把 `plugin/status` 列在"记录在案但不改投影"),于是**结算态**那一格在消息上没有产地,`content-part-guard.ts` 判红。**这不是豁免,是公开缺口** | 本批(§17.1 策略表 note) |
+| 11 | **`toolCall.argsFinalizedBy` 无采集点** | 流式层的诊断位,事件面上没有对应产地。判据丢它,留作公开缺口 | §10.8 |
+| 12 | **两个端口断言没被考过** | `updateMessageError` / `updateMessageTurnContext` 的 A 类断言在 battery 里**零调用**,各欠一个场景 | §16.24 九-3 |
+| 13 | **U1 / U2 + B 期路线** | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动),细案届时出 | §16.11 尾;`docs/design/ui-event-stream-2026-08.md` |
+| 14 | **②类同源注释清理** | 远期另册,纯文字 | §16.11 尾 |
+
+### 17.6 两态图 artifact 与终态的出入(图待更新,本节只记差异)
+
+`会话流水线两态`(artifact `1ef58ddd`)画的是 §16.19 **方案态**的终局。c1–c5 走完
+之后有五处与实况不符,更新时按下面这五条改:
+
+1. **老 reducer 没有删除**。图里"− 消失"首条与下图"已删除/退役"框都写了它。实况:
+   c4-d **据实改判**保留——它不再维护消息数组,但仍是会话级派生的算法与 S0 合同
+   A 线的词汇(留账表第 2 条)。
+2. **18 个热写端口没有删,是"空转"**。"热写直改 store"这件事确实消失了(图上这句
+   对),但端口本身签名冻结、实现空转,而且仍答"这条消息在不在";四条 A 类断言与
+   contentPart 守卫**留任**,它们是端口事实断言的采样点。
+3. **"`run/start` 携占位全字段(出生即可折)"不是新增**。§16.20 改判:那些格
+   F4-a 时就齐了,88 是**取样窗口**的读数而非产地缺口,c1 零代码改动。c4-d 真正做
+   的是把 `run/start` 的**落账时机**提前到与 `store.addMessage` 同一同步段——
+   新增的是时机,不是字段。
+4. **"store = 物化视图"下面缺三件**:唯一维护者是 `refreshMessagesFromProjection`
+   (**单点换装**)、缓存键是**失效号**(不是 `lastSeq`)、取材要**先深拷再跑补水链**。
+   这三件是 c4-d 施工里代价最大的三格,图上一格都没有。
+5. **恒等门退役之后有替代者**。图上只画了"恒等门消失",实况是它被
+   **端口事实断言**(`port-fact-assert.ts`,battery 比过 265 次 0 失配)逐格接住;
+   终态常驻门是 **refold + 端口事实断言 + 语义三件套**(策略表收敛 / S0 合同 /
+   编解码器性质),不是"refold 一个"。
+
+另有一处位置差(不影响读图):短命策略表画在流侧,实际住在**词汇表旁**
+(`core/session/events/ephemeral-policy.ts`),消费者是 `canonical.ts` 与
+`content-part-guard.ts` 两处。
