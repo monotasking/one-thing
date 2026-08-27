@@ -9412,7 +9412,7 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 
 | # | 留账 | 状态 / 判据 | 出处 |
 |---|---|---|---|
-| 1 | **大会话按节点物化缓存** | 稳态是亚微秒(一次 map 查询 + 一次 `!==`),代价全在**活 run 窗口内**:每条 delta 换失效号,`getSession` ~30 次/run,258 条消息 / 50MB 的巨型会话上一次物化 46ms。方向是**只重算改动过的那几条**,不是回头改换装点 | §16.27 六 |
+| 1 | **大会话按节点物化缓存** | 稳态是亚微秒(一次 map 查询 + 一次 `!==`),代价全在**活 run 窗口内**:每条 delta 换失效号,`getSession` ~30 次/run,258 条消息 / 50MB 的巨型会话上一次物化 46ms。方向是**只重算改动过的那几条**,不是回头改换装点 —— **§17.7.1 批 1 已落地**(memo 成为节点自持属性,外挂簿记整体删除;实测 49.5ms → 一条 delta 0.026ms) | §16.27 六;§17.7.1 批 1 |
 | 2 | **老 reducer 远期退役** | c4-d 改判保留两个身份;**#8a(08-28)已兑现退役条件、消掉身份 2** —— A 线改说事件(`ExpectedLine`),5 条生产零流量的端口专用分支与 15 个零调用端口口真删,`SessionCommand` 12→7。**剩下的唯一身份是「会话级派生的算法」,而它是真生产依赖**(7 条活分支各在写路上,全仓唯一的 `updatedAt`/`lastProvider`/总账扣减/`contextSize`·`summary` 失效/lazy 档产地)。往下 = **#8b**,并入 #3 出方案 | §16.27 四;§17.7 #8a |
 | 3 | **三口判据同源退役** | 挂在第 2 条上 —— **#8a 未动它**:三口全部挂在那 7 条**活**分支上当"写不写事件"的判据(`pin` 同理),分支活着就不能退。今天三口读的已是物化视图,**不是第二份真相**,只是同一份真相的 store 侧门牌。真正的退役随 #8b | §16.27 四;§17.7 #8a |
 | 4 | **`tool/result` 进 surface 的写侧一票** | **已由 F1 收**(§16.15);另册里那条记录作废 | §16.15;§16.11 |
@@ -9604,6 +9604,148 @@ refoldChecks 224 > 0、refoldMismatch 0、mismatches 0、portMismatches 0
   细案在开工前出,含消息列表虚拟化与等待指示(用户已并入)。
 
 **建议施工序**(全部按推荐案;08-28 随 #8 勘察修订):#8a(小,A 线改说事件+删
-5 条死分支)→ #3+#8b(节点自持物化 + 会话账折叠化,一个方案两个层级;落地后
-reducer 7 条活分支/三口/pin 一起真删)→ #6(单门,含 #7 产地两条)→ #2+#1
-(主人印章+清夹具)→ #9(U/B 战役)→ #5(数字到阈值再动)。
+5 条死分支;已落地 502c0909)→ #3+#8b(节点自持物化 + 会话账折叠化,一个方案两个
+层级;落地后 reducer 7 条活分支/三口/pin 一起真删)→ #6(单门,含 #7 产地两条)
+→ #2+#1(主人印章+清夹具)→ #9(U/B 战役)→ #5(数字到阈值再动)。
+
+#### 17.7.1 #3+#8b 合并细案(2026-08-28,Fable;定律①的同一件事,两个层级)
+
+一句话:**折叠产物是唯一状态**这条定律,今天在消息级靠外挂簿记撑着、在会话级还
+没兑现。本案两个层级一起兑现,兑现完 reducer 的最后一个身份消失,连同三口与 pin
+一起真删——#8b 的"搬去哪儿"答案就是:**搬进折叠**。
+
+**层级一(#3):物化 memo 成为 ProjectionNode 的自持属性**
+
+- 现状:`backend/session/materialized-messages.ts` 用进程级失效号 + 模块内 Map 当
+  缓存账本,任何一条 delta 换号 → 整列表重物化(258 条消息/50MB 的会话一次 46ms,
+  `getSession` ~30 次/run)。缓存的"谁作废"与领域对象分离,是旁挂簿记。
+- 改法:物化成品(深拷+补水后的 `ChatMessage`)变成节点的惰性 memo。**失效机制
+  由施工前勘察定夺,两条路二选一**:
+  - 若投影 reducer 对节点是 COW(触碰即新建节点对象)——memo 天然随旧对象报废,
+    **零失效代码**,列表组装 = 对可见节点 map 一次,命中(对象同一性)即取 memo;
+  - 若 reducer 就地改节点——在唯一改节点的那几个 mutation helper 里清 memo,
+    失效逻辑住在唯一会改节点的地方,不可能漏。
+- 纪律不变:memo 存的是**深拷贝后补过水**的成品(§15.13 判例、§17.3 纪律 4/5),
+  交出去的引用不许被就地改(freeze 闸照旧);`refreshMessagesFromProjection` 仍是
+  唯一换装点,只是从"整列表重算"退化成"map 节点取 memo"。进程级失效号与模块 Map
+  整体删除。
+- 面向对象审核:通过——状态(节点)与其呈现(物化成品)内聚于同一对象,任何新
+  视图(UI 折叠 / trace / history)白捡同一份节点级 memo。
+
+**层级二(#8b):会话账也是折叠产物**
+
+reducer 剩余 7 条分支的全部产出是**会话级派生**,逐格给出折叠产地:
+
+| 会话账格 | 今天(reducer) | 折叠产地 |
+|---|---|---|
+| `updatedAt` | 每条消息命令盖 `now` | 账目事件的 `time` 折叠(只有对应今天 7 条命令的事件才盖——`tool/audit` 等旁录不盖,行为不变) |
+| `lastProvider` / `lastModel` | append assistant 时盖 | `run/start`/`request/*` 已带的 provider/model 字段 |
+| usage 总账三件 | append 时累加、truncate 时按 `subtractedUsageFromProjection` 扣 | `request/response.usage` 累加;truncate 事件**已携带** `subtractedUsage`(c4-b 钥匙③),折叠侧直接消费 |
+| `contextSize`/`lastInputTokens`/`summary` 失效 | `computeSessionTimelineMetadataRepair` | 同一函数,调用点搬进会话账折叠(truncation 类事件触发) |
+| lazy 落盘档 | `result.lazy` | **不是状态,是写门的事**:事件种类 → 写档的映射表放在写入口(流式 delta=lazy,结构变更=即时),`session-repository.ts:238` 改读它 |
+| `meta.message`(B-窄版回读) | reducer 回传 | F1 同步折叠后从物化节点取(B-窄版语义不变:返回的仍是"入库成品") |
+
+- 会话账折叠器落在 core(纯函数,吃事件流出会话账块),与消息投影同源同刷新点;
+  换装点扩成"消息 + 会话账"一次换。refold 门**扩栏**:文件字节重折的会话账 ≡ 活
+  会话账(新增比对格)。
+- 三口(`get/has/findMessageFromStore`)的调用点(写门里的"写不写事件"判据)改为
+  直接问投影节点表;`hasSessionInStore` 永久例外照旧(纪律 7)。
+- `adoptSessionCommandResult` / `withSessionCommandPin` 随 reducer 一起删(pin 防
+  的"reducer 二次应用"不再存在)。
+- 消费者(index meta / plugins-sessions 上下文占比 / radio DJ 闸 / evals / tasks
+  dispatch)读的字段名不变,零改动。
+
+**施工分批与迁移护栏**(影子先行,沿用本战役屡次抓真雷的打法):
+
+- **批 1(#3)**:节点 memo + 删外挂簿记。门:battery 同基线全绿 + refold 0 失配 +
+  巨会话物化耗时采样(46ms → 应降一个量级)。
+- **批 2(#8b-i,影子)**:会话账折叠器上线**只比不接**——reducer 照跑,每次写后
+  比对两边会话账逐格相等(battery + 真机影子线),红了先修折叠器。
+- **批 3(#8b-ii,切换)**:写门断开 reducer(7 条分支/`adoptSessionCommandResult`/
+  pin/三口真删,no-op 判据改问投影),会话账改读折叠块,影子比对退役。门:全套
+  (typecheck/三包/battery/refold 扩栏/四棘轮/字节回归/verify 零新增),真机只读。
+
+每批遇到与本细案冲突的事实(如 reducer 之外还有会话账写者、COW 判断两可)一律
+停在诊断,不硬切。
+
+**批 1(#3)落地记录(2026-08-28,opus 施工,未提交;3 文件改 + 1 个新门,+152 −101)**
+
+*勘察三问的答案*:
+
+1. **reducer 对节点是就地改,不是 COW** —— 判据不是猜的,是文件头那条写死的
+   「所有权约定」:归约器返回**同一个** state 对象(`return state`),内部的
+   Map / 数组 / 节点是**线性持有**的(每条事件复制全部节点会让活跃会话的增量
+   维护退化成 O(n²),而它跑在主线程上)。所以细案里"零失效代码"那一支不成立,
+   走的是另一支:**失效住进唯一会改节点的地方**。落法是 `forWrite(node)` ——
+   归约器里每一条要往节点(或它挂着的 part / tool)上写的分支都从它手里取节点,
+   号顺手前进,一共 18 处;纯读的取法(`partTurnIndex` / `findToolInputPartEnd` /
+   物化那一半)不经它。**`hidden` 不进 rev**:它不是产物的一部分,是"这条节点
+   进不进列表"的判据,组装时每次现问(删除 / 清空 / 截断三处因此不换号)。
+   一条同样重要的结构事实:**物化只吃节点**(`materializeNode(node, options)`
+   一格 state 都不读)—— 没有这一条,按节点缓存根本不成立。
+
+2. **补水链的落点**:成品 = `materializeNode` → `structuredClone` → 
+   `rehydrateSessionFromStorage`,三步全在**memo 生成的那一刻、每节点一次**。
+   §15.13 那条判例在按节点缓存之后更要命:物化对 `message/imported` 是浅展开
+   (`steps` 与其中的 step 对象是活投影节点本体),补水又是就地写者,所以顺序
+   钉死为"先深拷再补水";而若把补水挪到**取** memo 的时候,它就会写在缓存的成品
+   上,下一次取到的是被写过的那一份 —— 缓存当场从加速器变成污染源。纪律已落进
+   `materialized-messages.ts` 文件头。顺带核实 `rehydrateSessionFromStorage` 是
+   **逐条消息独立**的(每条自建 `toolCallsById`),所以"整份补水"与"每条各补一次"
+   逐字等价。另:c4-d 那段代码里 `seq` 的"加了再摘"是读路自己的往返
+   (`eventsListMessages` 补 `seq: eventSeq`,物化视图再摘掉),投影本身不产
+   `seq`,所以新路两步都省掉,交出去的键与键序不变。
+
+3. **失效号与那张 Map 的读者**:`liveSessionProjectionVersion` 全仓只有
+   `materialized-messages.ts` 一个消费者(含测试零命中),模块内那张
+   `Map<sessionId, {version, messages}>` 是私有的,而它的清理口
+   `resetMaterializedSessionMessages` **零调用**(死导出)。三样一起删干净,
+   `LiveProjection.version` / 进程级计数器 / 6 处换号点随之消失。
+
+*取舍(节点自持 vs WeakMap)*:**号在节点上,成品在 WeakMap 里**。`BaseNode.rev`
+是领域事实("我变过没有"),归 core;成品是**这条读路**独有的(深拷 + 补过水的
+`ChatMessage`),而 core 的 `materializeNode` 的产物取决于**物化选项**——refold
+那道门与模型历史各自带着自己的选项走同一口,把成品塞进节点会让三个消费者抢同一格。
+所以成品按 `WeakMap<ProjectionNode, {rev, message}>` 存在装配层:键是节点对象,
+节点没了成品跟着没,没有"谁去清"这个问题(也就没有清漏的可能),core 也不必认识
+产品层类型。另有一张 `WeakMap<SessionProjectionState, ChatMessage[]>` **不是缓存
+是实例稳定器**:换装点那句 `if (next === session.messages) return session` 从前
+靠整份缓存成立,按节点组装之后每次都是新数组;逐条同一就交回上一次那个数组,
+读侧看到的与 c4-d 逐字相同。两张表都随领域对象生灭,外挂簿记为零。
+
+*新门*:`backend/session/__tests__/materialized-memo.test.ts` —— 这套东西的唯一
+失败模式是**漏一处 rev**(改了节点没换号,读侧悄无声息地交出上一刻那一份),
+所以逐条事件地问"memo 组装 ≡ 完全不用 memo 现算",脚本走过 30 条事件覆盖每一种
+会写节点的类型;第二只用例问**粒度**(改第二条 run 时第一条消息交出来的必须还是
+同一个对象),第三只问数组实例稳定。**负对照实跑**:分别摘掉 `run` 侧与 `message`
+侧的 `forWrite` 各跑一次,两次都当场红。
+
+*门读数*:typecheck 0(node+web);三包全量 **7838 绿 / 777 文件**(= 基线 7835 +
+本批新增 3;三轮里两轮全绿,另一轮 2 只本机高负载抖动
+[`server/http` + `stores/sessions-delete-cascade`],单跑 32/32 绿,与本批无关);
+`sessions:shadow-battery` **GATE GREEN**(runs 321、refoldChecks 222 > 0、
+refoldMismatch 0、mismatches 0、portMismatches 0、appendFailures 0、
+shadow.jsonl 0 行);四棘轮 boundary 0 / session 0 / log 4 known-none-new /
+transport 42 常量·四壳 2392 均未动;字节回归 `session-chunk-bytes` 1 +
+`session-chunk-codec` 5 + `ephemeral-policy` 8 全绿;`sessions:verify` 9 条 FAIL,
+与 HEAD(502c0909)**逐条同集**(同机 stash 对照实跑,零新增)。真机
+`~/.onething` 只读 —— 采样用的两条会话是**拷到临时 store** 上跑的。
+
+*性能采样*(真机账本拷贝,中位数 / 11 次,预热后):
+
+| 会话 | 账本 | 可见消息 | 改前:整份重算 | 改后:一条 delta | 改后:最贵那条节点 | 稳态(无变化) |
+|---|---|---|---|---|---|---|
+| `08f1fe09` | 48.1MB / 258 事件 | 258 | **49.5ms** | **0.026ms** | 5.7ms | 0.006ms |
+| `46dcec05` | 19.7MB / 9272 事件 | 182 | **96.5ms** | **0.015ms** | 5.9ms | 0.009ms |
+
+"改前"是 c4-d 主体的逐字复刻(整份物化 + 整份深拷 + 整份补水),"改后"是真的
+`materializeSessionMessages`。典型情形(一条 delta 落在活 run 上)降三个量级;
+即便撞上账本里最贵的那条节点,单条重算也在 6ms 以内 —— §16.27 六那条留账
+("方向是只重算改动过的那几条")就此结清。折一遍整份文件仍要 360ms / 215ms,
+那是**建表**一次性的账,不在本批范围。
+
+*未做 / 留给后批*:`getLiveSessionProjection` 之外的读口
+(`eventsGetMessage` / `eventsGetMessageIndex` / `eventsLastMessageOfRole` /
+`eventsPageMessages` / `eventsListUserMarkers`)仍是每次现物化整会话,**没有**
+接这份 memo —— 它们的产物不带补水(形状不同),要共享得先裁定"读口的产物统一
+成哪一种"。本批不动,行为与 HEAD 逐字相同。

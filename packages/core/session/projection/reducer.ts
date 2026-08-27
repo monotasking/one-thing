@@ -13,6 +13,10 @@
  * (§7.2 M7 点名的那条)。需要历史某一刻的快照就 `projectChatMessages(events,
  * {upToSeq})` 重跑一次:那是纯的。
  *
+ * 就地改的代价是"谁变了"看不出来,所以节点自己记着 —— `BaseNode.rev`
+ * (§17.7.1 批 1):要往节点上写的分支一律经 `forWrite` 取节点,号顺手前进,
+ * 视图侧据此只重算变了的那一条。
+ *
  * ## 两种"看不见"是两回事
  *
  * - **UI 隐藏**(`node.hidden`):删除 / 清空 / 编辑重发截断掉的消息。UI 上没了。
@@ -72,6 +76,20 @@ interface BaseNode {
   hidden: boolean
   /** `message/patched` 的叠加层。 */
   patch: Record<string, unknown>
+  /**
+   * **这条节点的物化产物换过几次**(§17.7.1 批 1)。
+   *
+   * 节点是**就地改**的(见文件头那条"线性持有"),所以"我上次算出来的那一份
+   * 还作数吗"这个问题只能由节点自己回答 —— 视图侧按 `(节点对象, rev)` 记住
+   * 它算出来的成品,号一动就重算那**一条**。从前这件事由装配层一个进程级
+   * 计数器 + 一张按会话 id 的表兜着,于是任何一条 delta 都让**整份列表**作废
+   * (258 条消息的会话上一次 46ms,§16.27 六)。
+   *
+   * 号只在**物化产物可能变了**的时候前进 —— 由 `forWrite` 一处负责:归约器里
+   * 每一条要往节点上写的分支都从它手里取节点。`hidden` **不进** rev:它不是
+   * 产物的一部分,而是"这条节点进不进列表"的判据,列表组装每次现问。
+   */
+  rev: number
 }
 
 export interface MessageNode extends BaseNode {
@@ -404,7 +422,7 @@ export function reduceSessionProjection(
     }
 
     case 'message/patched': {
-      const node = state.byMessageId.get(event.data.messageId)
+      const node = forWrite(state.byMessageId.get(event.data.messageId))
       if (node) Object.assign(node.patch, sanitizePatch(node, event.data.patch))
       break
     }
@@ -437,6 +455,7 @@ export function reduceSessionProjection(
           ?? placeholder?.time ?? event.time,
         hidden: false,
         patch: {},
+        rev: 0,
         messageId: event.data.messageId,
         summary: event.data.summary,
         compactedMessageCount: event.data.compactedMessageCount,
@@ -467,7 +486,7 @@ export function reduceSessionProjection(
       // 显式字段为准,只在缺席时兜底。
       const continuesRunId = event.data.continuesRunId
         ?? (event.data.kind === 'steer' ? lastRunId(state) : undefined)
-      const continued = continuesRunId ? state.runs.get(continuesRunId) : undefined
+      const continued = continuesRunId ? forWrite(state.runs.get(continuesRunId)) : undefined
       const node: AssistantNode = {
         kind: 'assistant',
         eventSeq: event.seq,
@@ -475,6 +494,7 @@ export function reduceSessionProjection(
         time: event.data.timestamp ?? event.time,
         hidden: false,
         patch: {},
+        rev: 0,
         runId: event.data.runId,
         messageId: event.data.assistantMessageId,
         agentId: event.data.agentId,
@@ -505,7 +525,7 @@ export function reduceSessionProjection(
     }
 
     case 'run/end': {
-      const run = state.runs.get(event.data.runId)
+      const run = forWrite(state.runs.get(event.data.runId))
       if (run) {
         run.ended = true
         run.outcome = event.data.outcome
@@ -523,7 +543,7 @@ export function reduceSessionProjection(
     case 'request/recipe':
     case 'request/response':
     case 'request/error': {
-      const run = state.runs.get(event.data.runId)
+      const run = forWrite(state.runs.get(event.data.runId))
       if (!run) break
       turnOf(run, event.data.requestIndex)
       if (event.type === 'request/response' && event.data.usage) {
@@ -542,7 +562,7 @@ export function reduceSessionProjection(
     }
 
     case 'assistant/chunks': {
-      const run = state.runs.get(event.data.runId)
+      const run = forWrite(state.runs.get(event.data.runId))
       if (!run) break
       // F4-c 定律二(§16.19):打包行是**存储编码,不是语义**。先经解码器展开回
       // 逻辑 delta,再一条一条折 —— 折叠只认识 delta 这一种词汇,"一行装了几条"
@@ -555,7 +575,7 @@ export function reduceSessionProjection(
     }
 
     case 'assistant/part-end': {
-      const run = state.runs.get(event.data.runId)
+      const run = forWrite(state.runs.get(event.data.runId))
       if (!run) break
       const part = ensurePart(
         run, event.data.partIndex, event.data.kind, event.data.requestIndex,
@@ -582,7 +602,7 @@ export function reduceSessionProjection(
     }
 
     case 'tool/call': {
-      const run = resolveRun(state, event.data.runId, event.data.messageId)
+      const run = forWrite(resolveRun(state, event.data.runId, event.data.messageId))
       if (!run) break
       const existing = run.tools.get(event.data.callId)
       const tool: ToolState = existing ?? {
@@ -618,7 +638,7 @@ export function reduceSessionProjection(
     }
 
     case 'tool/result': {
-      const run = findRunByCallId(state, event.data.callId, event.data.runId)
+      const run = forWrite(findRunByCallId(state, event.data.callId, event.data.runId))
       if (!run) break
       const tool = run.tools.get(event.data.callId)
       if (!tool) break
@@ -653,7 +673,7 @@ export function reduceSessionProjection(
       // F2-c(§16.9):工具**自己说**的那两格。最后一条赢 —— 与引擎逐字相同
       // (每一条带 title 的 annotate 当场盖掉 step 标题;每一条带 metadata 的
       // 当场盖掉 step 结局正文)。它不是节点、不上 surface,只往调用状态上折。
-      const run = findRunByCallId(state, event.data.callId, event.data.runId)
+      const run = forWrite(findRunByCallId(state, event.data.callId, event.data.runId))
       const tool = run?.tools.get(event.data.callId)
       if (!tool) break
       if (event.data.title) tool.reportedTitle = event.data.title
@@ -669,7 +689,7 @@ export function reduceSessionProjection(
     }
 
     case 'tool/audit': {
-      const run = findRunByCallId(state, event.data.callId, event.data.runId)
+      const run = forWrite(findRunByCallId(state, event.data.callId, event.data.runId))
       const tool = run?.tools.get(event.data.callId)
       if (!tool) break
       tool.toolId = event.data.toolId
@@ -679,7 +699,7 @@ export function reduceSessionProjection(
     }
 
     case 'context/turn-update': {
-      const node = state.byMessageId.get(event.data.messageId)
+      const node = forWrite(state.byMessageId.get(event.data.messageId))
       if (node?.kind === 'message') {
         node.turnContext = {
           ...(event.data.set ? { set: event.data.set } : {}),
@@ -690,19 +710,19 @@ export function reduceSessionProjection(
     }
 
     case 'skill/activated': {
-      const run = resolveRun(state, event.data.runId, event.data.messageId)
+      const run = forWrite(resolveRun(state, event.data.runId, event.data.messageId))
       if (run) run.skillUsed = event.data.skill
       break
     }
 
     case 'request/start': {
-      const run = resolveRun(state, event.data.runId, event.data.messageId)
+      const run = forWrite(resolveRun(state, event.data.runId, event.data.messageId))
       if (run && run.firstRequestStartAt === undefined) run.firstRequestStartAt = event.time
       break
     }
 
     case 'assistant/first-token': {
-      const run = resolveRun(state, event.data.runId, event.data.messageId)
+      const run = forWrite(resolveRun(state, event.data.runId, event.data.messageId))
       if (run && run.firstTokenAt === undefined) run.firstTokenAt = event.time
       break
     }
@@ -712,7 +732,7 @@ export function reduceSessionProjection(
         state.permissionCallIdByRequestId.set(event.data.requestId, event.data.toolCallId)
         // A12:从这一刻起这次调用在等确认,直到 `permission/answered` 到达。
         state.awaitingPermissionCallIds.add(event.data.toolCallId)
-        const asked = findRunByCallId(state, event.data.toolCallId, event.data.runId)
+        const asked = forWrite(findRunByCallId(state, event.data.toolCallId, event.data.runId))
         const tool = asked?.tools.get(event.data.toolCallId)
         if (tool) tool.awaitingPermission = true
       }
@@ -725,7 +745,7 @@ export function reduceSessionProjection(
         ?? state.permissionCallIdByRequestId.get(event.data.requestId)
       if (answeredCallId) {
         state.awaitingPermissionCallIds.delete(answeredCallId)
-        const answeredRun = findRunByCallId(state, answeredCallId, event.data.runId)
+        const answeredRun = forWrite(findRunByCallId(state, answeredCallId, event.data.runId))
         const answeredTool = answeredRun?.tools.get(answeredCallId)
         if (answeredTool) answeredTool.awaitingPermission = false
       }
@@ -735,7 +755,7 @@ export function reduceSessionProjection(
       const reason = event.data.reason
       if (reason === undefined) break
       state.rejectionReasonByCallId.set(callId, reason)
-      const run = findRunByCallId(state, callId, event.data.runId)
+      const run = forWrite(findRunByCallId(state, callId, event.data.runId))
       const tool = run?.tools.get(callId)
       if (tool) tool.rejectionReason = reason
       break
@@ -743,7 +763,7 @@ export function reduceSessionProjection(
 
     case 'request/end': {
       // 这一轮走到了 `turn-end` —— 引擎正是在这一刻把它的 part 落到消息上。
-      const run = resolveRun(state, event.data.runId, undefined)
+      const run = forWrite(resolveRun(state, event.data.runId, undefined))
       if (run) run.settledRequests.add(event.data.requestIndex)
       break
     }
@@ -792,6 +812,21 @@ export function reduceSessionProjection(
 
 // ============ 内部 ============
 
+/**
+ * 取一个**准备写**的节点 —— 顺手把它此刻的物化产物判作废(`BaseNode.rev`)。
+ *
+ * 归约器里每一条要往节点(或它挂着的 part / tool)上写的分支都经这一口取节点,
+ * 于是"改了谁"与"作废谁"是同一行代码,不可能各写各的。**只包会写的那些取法**:
+ * 纯读(`partTurnIndex` / `findToolInputPartEnd` / 物化那一半)不经它。
+ *
+ * 只设 `hidden` 的那几处(删除 / 清空 / 截断)**不经它**:`hidden` 不是产物的
+ * 一部分(见 `BaseNode.rev`)。
+ */
+function forWrite<T extends ProjectionNode>(node: T | undefined): T | undefined {
+  if (node) node.rev += 1
+  return node
+}
+
 function register(state: SessionProjectionState, node: ProjectionNode): void {
   state.nodes.push(node)
   state.byEventSeq.set(node.eventSeq, node)
@@ -810,6 +845,7 @@ function addMessageNode(
     time,
     hidden: false,
     patch: {},
+    rev: 0,
     messageId: message.id,
     message,
   }
@@ -922,7 +958,7 @@ export function foldSessionLogicalDeltaAhead(
   runId: string,
   delta: SessionLogicalDelta,
 ): boolean {
-  const run = state.runs.get(runId)
+  const run = forWrite(state.runs.get(runId))
   if (!run) return false
   foldAssistantLogicalDelta(run, delta)
   return true
