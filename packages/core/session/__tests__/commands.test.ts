@@ -256,6 +256,39 @@ describe('applySessionCommand — COW 与写计划', () => {
     expect(result.session.updatedAt).toBe(NOW)
   })
 
+  /**
+   * **§16.25 钥匙③:用量结算认递进来的那一份,不认 store 上的 `message.usage`。**
+   *
+   * 这一格从前钉死了一条依赖:扣多少 token = `sumUsage(被删的那些 store 消息)`,
+   * 于是 `updateMessageUsage` 端口一空转,扣减恒为 0(§16.24 第五节证据三)。
+   * 用量的事实在流上(`request/response.usage` → `node.usage`),所以命令面改从
+   * 折叠产物算好递进来。
+   *
+   * 反证也在这一条里:store 上那两条消息**根本没有 usage**(老算法会算出 0),
+   * 而会话总账仍然被正确扣掉了 30 —— 只可能来自递进来的那一份。
+   */
+  it('truncateFrom:subtractedUsage 递进来时,归约器认它而不是 store 上的 usage', () => {
+    const before = session(
+      [message('m1'), message('m2'), message('m3')],
+      { totalInputTokens: 20, totalOutputTokens: 10, totalTokens: 30 },
+    )
+
+    const result = applySessionCommand(before, {
+      type: 'truncateFrom',
+      messageId: 'm2',
+      inclusive: true,
+      now: NOW,
+      subtractedUsage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
+    })
+
+    // 老算法在这份夹具上会算出 0(store 消息一格 usage 都没有)。
+    expect(result.meta?.deletedMessages?.every(m => m.usage === undefined)).toBe(true)
+    expect(result.meta?.subtractedUsage).toEqual({ inputTokens: 20, outputTokens: 10, totalTokens: 30 })
+    expect(result.session.totalInputTokens).toBe(0)
+    expect(result.session.totalOutputTokens).toBe(0)
+    expect(result.session.totalTokens).toBe(0)
+  })
+
   it('truncateFrom(!inclusive):保留并改写锚点,contentParts 只在显式声明时才动', () => {
     const before = session([
       message('u1', { role: 'user', contentParts: [{ type: 'text' }] }),

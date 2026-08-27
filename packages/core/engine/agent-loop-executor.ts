@@ -967,12 +967,18 @@ export interface CoreAgentLoopSessionWithMessages<
  *    (F2-c 的 `tool/annotate` 已经把自报标题 / 自报结局的产地补齐了 —— 所以
  *    这一条**不是**"投影欠一格",是产地纪律,§10.10。)
  *
- * 反过来说,窗口**之外**没有任何理由读写手视图:冷加载 / 回读 / history 一律走
- * 投影(S3w-1 起已是唯一路)。F4-b3 把 store 换成投影物化缓存时,唯一要守的
- * 约束就是**物化不得覆盖活窗口内的那条消息**。
+ * **F4-c c4-b(§16.25 钥匙①)把这段口径整个换掉了,写在这里备查。** 两条理由
+ * 各有出路,写手视图那一口已经删除:
  *
- * 宿主侧的口径全文与那三个取材点,见 `packages/backend/session/reads.ts` 的
- * `getLiveRunWriterMessage`。
+ *  - **渲染锚点**是 steps 的 `turnIndex` 的**纯函数**,由推送侧从折叠产物**现算**
+ *    (`@onething/core/session/render-anchors`,renderer 加载路径用的是同一份);
+ *    锚点因此不再需要一个保管人,G4"不进事件、不进投影"的裁定一字未动。
+ *  - **自引用**那条不靠"改读投影"解决(`steps`/`toolCalls` 在 `message/patched`
+ *    的 `DERIVED_KEYS` 里,收尾修复的补丁进不了账本):改成**不回读** ——
+ *    修复的产物经 `onSettled` 直接递给采集点。
+ *
+ * 宿主侧今天的取材口:`packages/backend/wiring/engine/stream/agent-loop-executor.ts`
+ * 的 `readSettleMessage`(投影 + 现算锚点)。
  */
 export interface CoreAgentLoopFinalMessageUpdate<
 	TMessage extends
@@ -1022,6 +1028,22 @@ export interface CompleteAgentLoopStreamWithAdaptersOptions<
 		usage?: CoreAgentLoopUsage;
 		lastTurnUsage?: CoreAgentLoopLastTurnUsage;
 	}) => CoreMaybePromise<void>;
+	/**
+	 * 收尾修复写在**没结局的调用**上的那句话(F4-c c4-b,§16.25)。
+	 *
+	 * 正常收尾这一路从前不需要它:用户按停止之后,桌面那条清理路先一步把 step
+	 * 判死并写下 `'User cancelled'`,而收尾修复只筛 `running|pending`,已经
+	 * `cancelled` 的那些它一律放过 —— 于是"先到的那一份决定了账上留下什么"。
+	 *
+	 * 收尾链改读折叠产物之后这条race 的答案翻了面(**探针实测 48/330**):清理路
+	 * 那次判死只写了内存 store,账本与投影都不知道,于是修复看见的仍然是 `running`,
+	 * 照 `LINGERING_TOOL_ERROR` 盖章 —— 用户按了停止,卡片上却写"工具没有报告完成"。
+	 *
+	 * 所以停止这件事得由**登记簿**说出来(与 §16.25 钥匙②同一条道理:寻址与结论
+	 * 都不该问那几格易变的运行时状态)。宿主在这里递 `CORE_ABORTED_TOOL_ERROR`,
+	 * 当且仅当这次执行已经被记成 `aborted`。缺席 = 老行为逐字不变。
+	 */
+	errorMessage?: string;
 }
 
 export interface EmitAgentLoopFinalMessageUpdateWithAdaptersOptions<
@@ -1053,6 +1075,19 @@ export interface EmitAgentLoopFinalMessageUpdateWithAdaptersOptions<
 		updates: CoreAgentLoopFinalMessageUpdate<TMessage>;
 	}) => CoreMaybePromise<void>;
 	errorMessage?: string;
+	/**
+	 * **收尾修复之后那条消息的正身**(F4-c c4-b,§16.25)。
+	 *
+	 * 收尾链上排在这一步后面的采集点(宿主的 `captureCancelledToolResults`)要的
+	 * 正是"修复判死了哪几个 step"。它从前**回读**一次消息来拿 —— 而那次回读只在
+	 * 内存 store 上成立:修复的落盘走命令面 `patchMessage{steps,toolCalls}`,
+	 * 而 `steps` / `toolCalls` 在 `message/patched` 的 `DERIVED_KEYS` 里
+	 * (投影自己从 `tool/*` 折,不认补丁),所以**回读投影一定读不到修复结果**。
+	 *
+	 * 与其让采集点去猜该读哪一侧,不如把刚刚决定好的那一份直接递给它:
+	 * 同一次修复的产物,零回读、零时序窗口,也不再有"产地读自己产物"的自引用。
+	 */
+	onSettled?: (message: TMessage) => void;
 }
 
 export function createAgentLoopExecutorTurnState<
@@ -1300,13 +1335,13 @@ export async function emitAgentLoopFinalMessageUpdateWithAdapters<
 		);
 	}
 
+	const settled = { ...updatedMessage, ...repair } as TMessage;
+	options.onSettled?.(settled);
+
 	await options.emitMessageUpdated({
 		type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
 		messageId: options.assistantMessageId,
-		updates: buildAgentLoopFinalMessageUpdate({
-			...updatedMessage,
-			...repair,
-		} as TMessage),
+		updates: buildAgentLoopFinalMessageUpdate(settled),
 	});
 	return true;
 }

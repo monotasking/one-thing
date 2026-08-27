@@ -51,7 +51,22 @@ export interface CancelOnethingStreamingStepsForAbortOptions<
   TSession extends OnethingAbortSessionLike<TMessage> = OnethingAbortSessionLike<TMessage>,
 > {
   sessionId: string
-  getSession(sessionId: string): TSession | null | undefined
+  /**
+   * **这条会话正在跑的那次执行,写的是哪条 assistant 消息**(F4-c c4-b,§16.25 钥匙②)。
+   *
+   * 从前这里是 `getSession(sessionId).messages.find(m => m.isStreaming)` —— 按
+   * `isStreaming` **反查**消息。那条寻址把停止按钮钉死在"内存 store 上那一格布尔"
+   * 上:`updateMessageStreaming(false)` 一旦空转,这一格就永远留着 `true`,下一次
+   * 停止会摸到一条早就收尾的消息(§16.24 第五节证据二)。
+   *
+   * 今天改成**问登记簿**:活 run 的 `assistantMessageId` 引擎自己一直记着
+   * (装配层由 `currentSessionRun(sessionId)` 交进来),消息本身则从折叠产物取。
+   * 于是 `isStreaming` 回到它唯一的语义 —— 由 run 开闭推导出来的**结论**,
+   * 而不再兼职当寻址索引。
+   *
+   * 没有活 run = 没有要停的流,整段清理不跑(与"找不到 streaming 消息"同义)。
+   */
+  getActiveRunMessage(sessionId: string): TMessage | null | undefined
   updateMessageStep(
     sessionId: string,
     messageId: string,
@@ -137,10 +152,7 @@ export async function cancelOnethingStreamingStepsForAbort<
 >(
   options: CancelOnethingStreamingStepsForAbortOptions<TToolCall, TStep, TMessage, TSession>,
 ): Promise<CancelOnethingStreamingStepsForAbortResult> {
-  const session = options.getSession(options.sessionId)
-  if (!session) return { completed: false, cancelledSteps: 0 }
-
-  const streamingMessage = session.messages.find(message => message.isStreaming)
+  const streamingMessage = options.getActiveRunMessage(options.sessionId)
   if (!streamingMessage?.steps) return { completed: false, cancelledSteps: 0 }
 
   const now = Date.now()
@@ -235,7 +247,7 @@ export async function abortOnethingStreamsForIpc<
     options.clearPermission(sessionId)
     await cancelOnethingStreamingStepsForAbort({
       sessionId,
-      getSession: options.getSession,
+      getActiveRunMessage: options.getActiveRunMessage,
       updateMessageStep: options.updateMessageStep,
       updateMessageStreaming: options.updateMessageStreaming,
       flushSessionSave: options.flushSessionSave,

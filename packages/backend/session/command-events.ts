@@ -39,8 +39,8 @@
  *    缺口"(流中 assistant 占位没有那一格)已随 F4-a 摘除:那两处是 `run/start`
  *    的生产者,而 `addMessage` 现在把**入库的那一条**直接交回它们,不必回读。
  *    F3 的第二类"只在 store 的运行时形状"(收尾链的 `steps[]` 与 `data-steps`
- *    锚点)已随 F4-b2 **改判并搬走** —— 那三处跑在活 run 窗口内、读的是**引擎
- *    写手视图**,口径写在 `reads.ts` 的 `getLiveRunWriterMessage` 上,不是本表条目。
+ *    锚点)已随 F4-b2 改判搬走,又随 **F4-c c4-b(§16.25 钥匙①)整个消失** ——
+ *    锚点由推送侧从折叠产物现算,收尾链改读投影,`getLiveRunWriterMessage` 已删。
  * 4. **失败一律自吞**,除了 `SessionEventWriteError`(§14.6 裁定 7)—— 见 `safely`。
  */
 

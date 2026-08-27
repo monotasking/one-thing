@@ -7,11 +7,9 @@ import {
 
 describe('cancelOnethingStreamingStepsForAbort', () => {
   it('cancels running and awaiting-confirmation steps before completing the stream', async () => {
-    const session = {
-      messages: [{
-        id: 'assistant-1',
-        isStreaming: true,
-        steps: [
+    const runMessage = {
+      id: 'assistant-1',
+      steps: [
           { id: 'step-1', status: 'running', toolCall: { id: 'tool-1', status: 'executing' } },
           {
             id: 'step-2',
@@ -24,8 +22,7 @@ describe('cancelOnethingStreamingStepsForAbort', () => {
             },
           },
           { id: 'step-3', status: 'completed' },
-        ],
-      }],
+      ],
     }
     const updateMessageStep = vi.fn()
     const updateMessageStreaming = vi.fn()
@@ -34,7 +31,7 @@ describe('cancelOnethingStreamingStepsForAbort', () => {
 
     await expect(cancelOnethingStreamingStepsForAbort({
       sessionId: 'session-1',
-      getSession: () => session,
+      getActiveRunMessage: () => runMessage,
       updateMessageStep,
       updateMessageStreaming,
       flushSessionSave,
@@ -82,7 +79,7 @@ describe('cancelOnethingStreamingStepsForAbort', () => {
     const updateMessageStep = vi.fn()
     const result = await cancelOnethingStreamingStepsForAbort({
       sessionId: 'session-1',
-      getSession: () => ({ messages: [{ id: 'assistant-1', isStreaming: true }] }),
+      getActiveRunMessage: () => ({ id: 'assistant-1' }),
       updateMessageStep,
       updateMessageStreaming: vi.fn(),
       flushSessionSave: vi.fn(),
@@ -94,12 +91,9 @@ describe('cancelOnethingStreamingStepsForAbort', () => {
   })
 
   it('orchestrates abort for one session across legacy streams, engine, permissions, and step cleanup', async () => {
-    const session = {
-      messages: [{
-        id: 'assistant-1',
-        isStreaming: true,
-        steps: [{ id: 'step-1', status: 'running' }],
-      }],
+    const runMessage = {
+      id: 'assistant-1',
+      steps: [{ id: 'step-1', status: 'running' }],
     }
     const abortLegacyStream = vi.fn(() => true)
     const abortEngineStream = vi.fn(() => true)
@@ -116,7 +110,7 @@ describe('cancelOnethingStreamingStepsForAbort', () => {
       abortEngineStream,
       abortAllEngineStreams: vi.fn(),
       clearPermission,
-      getSession: () => session,
+      getActiveRunMessage: () => runMessage,
       updateMessageStep,
       updateMessageStreaming,
       flushSessionSave,
@@ -151,7 +145,7 @@ describe('cancelOnethingStreamingStepsForAbort', () => {
       abortEngineStream: vi.fn(),
       abortAllEngineStreams,
       clearPermission,
-      getSession: vi.fn(),
+      getActiveRunMessage: vi.fn(),
       updateMessageStep,
       updateMessageStreaming: vi.fn(),
       flushSessionSave: vi.fn(),

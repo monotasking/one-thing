@@ -142,7 +142,9 @@ describe('every product read answers from the events, never from the store (F4-c
     await recordRun('hello')
     setTranscript('TAMPERED')
 
-    // 写手视图是活 run 窗口内的正身(§16.17 共存口径),它照旧读 store。
-    expect(sessionReads.getLiveRunWriterMessage(SESSION, 'a1')?.content).toBe('TAMPERED')
+    // 判据同源那一口照旧读 store(它回答的是"这次命令改不改得成")—— 用它做反证。
+    // (从前这里用的是 `getLiveRunWriterMessage`;那一口随写手窗口退役在 c4-b 删了,
+    //  §16.25 钥匙①。两口的实现本来就逐字相同,反证的力度一字未减。)
+    expect(sessionReads.getMessageFromStore(SESSION, 'a1')?.content).toBe('TAMPERED')
   })
 })

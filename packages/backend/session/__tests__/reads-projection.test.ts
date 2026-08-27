@@ -228,11 +228,11 @@ describe('批 6b — 事件折不出历史时不再退回仓库', () => {
     expect(sessionReads.lastMessageOfRole(NO_EVENTS, 'user')).toBeUndefined()
   })
 
-  it('store 侧那两口(写侧判据同源 / 活 run 写手视图)照旧读得到 —— 它们本来就不经过投影', () => {
-    // `listMessagesFromStore` 随恒等门一起删了(F4-c c4);留任的这两口不是
-    // "第二份真相",它们各自回答的问题在投影上没有产地,理由见 `reads.ts`。
+  it('store 侧那一口(写侧判据同源)照旧读得到 —— 它本来就不经过投影', () => {
+    // `listMessagesFromStore` 随恒等门一起删了(F4-c c4);`getLiveRunWriterMessage`
+    // 随写手窗口一起删了(c4-b,§16.25 钥匙①)。剩下这一口不是"第二份真相",
+    // 它回答的是"这次命令改不改得成",判据必须与 reducer 同源,理由见 `reads.ts`。
     expect(sessionReads.getMessageFromStore(NO_EVENTS, 'u1')?.content).toBe('legacy')
-    expect(sessionReads.getLiveRunWriterMessage(NO_EVENTS, 'u1')?.content).toBe('legacy')
   })
 })
 

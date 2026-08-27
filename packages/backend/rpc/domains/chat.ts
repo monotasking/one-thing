@@ -56,6 +56,8 @@ import { emitCoreSessionEventSafely } from '@onething/core/events'
 import type { ChatRoutes } from '@shared/ipc/chat.js'
 import * as store from '../../store.js'
 import { getEventBus } from '../../events/index.js'
+import { currentSessionRun } from '../../session/runs.js'
+import { sessionReads } from '../../session/reads.js'
 import { abortCollabRoomTurnForStop } from '../../wiring/collab/index.js'
 import { getStreamEngine } from '../../wiring/engine/index.js'
 import { buildSystemPromptSnapshot } from '../../wiring/engine/prompt/system-prompt-snapshot.js'
@@ -184,7 +186,16 @@ export const chatRpcHandlers: RpcRouteHandlers<ChatRoutes> = {
         }
       },
       clearPermission: sid => Permission.clearSession(sid),
-      getSession: sid => store.getSession(sid),
+      // §16.25 钥匙②:停止按钮按**活 run 登记簿**寻址,不再按 `isStreaming` 反查。
+      // 登记簿(`currentSessionRun`)是引擎自己记的"这条会话正在跑哪次执行、写哪条
+      // assistant 消息";消息本体从折叠产物取。理由全文见 `getActiveRunMessage`。
+      getActiveRunMessage: sid => {
+        const runMessageId = currentSessionRun(sid)?.assistantMessageId
+        if (!runMessageId) return undefined
+        return sessionReads.getMessage(sid, runMessageId) as
+          | OnethingAbortMessageLike<OnethingAbortStepLike<OnethingAbortToolCallLike>>
+          | undefined
+      },
       updateMessageStep: (sid, messageId, stepId, updates) =>
         store.updateMessageStep(
           sid,

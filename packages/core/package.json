@@ -35,6 +35,7 @@
     "./tools": "./tools/index.ts",
     "./session": "./session/index.ts",
     "./session/events/chunk-codec": "./session/events/chunk-codec.ts",
+    "./session/render-anchors": "./session/render-anchors.ts",
     "./session/storage": "./session/storage/index.ts",
     "./slash-commands": "./slash-commands.ts"
   },

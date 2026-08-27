@@ -10,6 +10,7 @@
 
 import type { ContentPart, Step, ToolCall } from '@/types'
 import { isPlaceholderTransientPart, isTransientPart } from '@shared/ipc/chat'
+import { synthesizeCoreToolAnchors } from '@onething/core/session/render-anchors'
 import { mergeToolCall } from './tool-calls'
 
 type TurnTextPart = Extract<ContentPart, { type: 'text' | 'reasoning' }>
@@ -309,88 +310,12 @@ export function rebuildLoadedContentParts(message: {
   return parts
 }
 
-/** 一条 contentParts 是否已带工具渲染锚点(`data-steps` 或 `tool-call`)。 */
-function hasToolAnchor(parts: readonly ContentPart[]): boolean {
-  return parts.some(part => part.type === 'data-steps' || part.type === 'tool-call')
-}
-
-/** 消息里有没有真的工具活儿:含 toolCall 的 step,或非空 toolCalls。 */
-function messageHasToolWork(message: { steps?: Step[]; toolCalls?: ToolCall[] }): boolean {
-  const steps = message.steps ?? []
-  if (steps.some(s => s.toolCall !== undefined || s.toolCallId !== undefined)) return true
-  return (message.toolCalls?.length ?? 0) > 0
-}
-
-/** part 的所属轮次;缺省视为第 0 轮(单轮老消息 / content-only 那一格)。 */
-function partTurn(part: ContentPart): number {
-  return (part as { turnIndex?: number }).turnIndex ?? 0
-}
-
 /**
- * 把 `data-steps` 锚点插进**已有的** parts:每一轮内容 part 之后、下一轮之前各插一个,
- * 让 `buildWorkRender` 的 Working/Worked 切分落在最后一轮工具处(而不是把最终回答也
- * 卷进 work group)。
+ * 加载路径的**锚点自合成**(S3w-0 立法;F4-c c4-b 上收为共享纯件)。
  *
- * **空轮必须按轮次序就位,不能挂尾**(修 A,2026-08-26)。一轮有工具却没有任何内容
- * part 是常态而非例外:第 1 轮的 reasoning 在 `turnIndex === 1` 且尚无正文时走 'top'
- * 落 `message.reasoning`,根本不进 `contentParts`(见
- * `packages/core/engine/agent-loop-executor.ts` 的 top-reasoning 分支),中间轮也可能
- * 只有工具没有叙述。旧实现把这些"找不到落点"的轮次一律挂到 parts **末尾**,于是孤儿
- * 锚点排在最终正文之后,`buildWorkRender` 的 `lastProcessIndex` 被推到末位 ——
- * 整条正文被卷进折叠区,历史消息默认收起就等于正文不可见(真机 e0267646
- * seq2–18 九条中招)。
- *
- * 正确落点:轮次 `t` 的锚点插在**第一个轮次大于 t 的 part 之前**;只有 `t` 确实大于
- * 所有 part 的轮次(末轮工具之后再无内容)时才允许挂尾。
- */
-function insertDataStepsByTurn(parts: readonly ContentPart[], turns: number[]): ContentPart[] {
-  const ordered = [...turns].sort((a, b) => a - b)
-  const remaining = new Set(ordered)
-  const out: ContentPart[] = []
-  parts.forEach((part, index) => {
-    const turnIndex = partTurn(part)
-    // 空轮就位:所有还没落地、且轮次小于本 part 的锚点,插在本 part **之前**。
-    for (const pending of ordered) {
-      if (pending >= turnIndex) break
-      if (remaining.has(pending)) {
-        out.push({ type: 'data-steps', turnIndex: pending })
-        remaining.delete(pending)
-      }
-    }
-    out.push(part)
-    const next = parts[index + 1]
-    const nextTurn = next ? partTurn(next) : undefined
-    if (remaining.has(turnIndex) && nextTurn !== turnIndex) {
-      out.push({ type: 'data-steps', turnIndex })
-      remaining.delete(turnIndex)
-    }
-  })
-  // 真正大于所有 part 轮次的锚点才挂尾。
-  for (const turnIndex of ordered) {
-    if (remaining.has(turnIndex)) {
-      out.push({ type: 'data-steps', turnIndex })
-      remaining.delete(turnIndex)
-    }
-  }
-  return out
-}
-
-/**
- * 加载路径的**锚点自合成**(S3w-0)。
- *
- * events 读模式下的投影**故意不产出**渲染锚点(canonical G4:`data-steps` 是渲染侧
- * 派生物,不进事件、不进投影),于是投影补水的 contentParts 只有 `text`/`reasoning`,
- * 没有 `data-steps`/`tool-call`。这里按消息**自己**的 steps/toolCalls 现合成锚点,
- * 让工具行与 work-group 不再依赖任何地方持久化的锚点(S2b 前靠"结束读抄本把锚点
- * 带出来"止血,S3w 抽掉 messages.jsonl 补水后止血失效)。
- *
- * 三条纪律:
- *   · **只在缺锚点且有工具时动手** —— 已带锚点的历史消息(迁移会话、流式消息)返回
- *     `null`(no-op),绝不重复插。流式期间 contentParts 早就有 `tool-call`/`data-steps`,
- *     这里一律不碰,不会把 live 的 `tool-call` 冲成 `data-steps` 导致行 remount。
- *   · **turnIndex 全覆盖** —— steps 里出现的每个 turnIndex 都得到一个 `data-steps`,
- *     否则那一轮的 step 折不出、工具行不显示。
- *   · **幂等** —— 同一条已合成过(或本就带锚点)的消息再过一遍不变。
+ * 实现搬去了 `@onething/core/session/render-anchors` —— 主进程的 settle 推送
+ * 必须与这里**逐字同算**(§16.25 钥匙①:锚点由折叠产物现算,不再由活 run 的
+ * 写手对象保管)。两个宿主 import 同一份,谁都不许再抄第二份。
  *
  * 返回补好锚点的新 parts;无需改动时返回 `null`。
  */
@@ -398,17 +323,5 @@ export function synthesizeToolAnchors(
   parts: readonly ContentPart[],
   message: { steps?: Step[]; toolCalls?: ToolCall[] },
 ): ContentPart[] | null {
-  if (hasToolAnchor(parts)) return null
-  if (!messageHasToolWork(message)) return null
-
-  const steps = message.steps ?? []
-  if (steps.length > 0) {
-    const turns = [...new Set(steps.map(s => s.turnIndex ?? 0))].sort((a, b) => a - b)
-    return insertDataStepsByTurn(parts, turns)
-  }
-
-  // 更老的、只存了 toolCalls 的消息:一个 tool-call 兜底块挂末尾(与
-  // rebuildLoadedContentParts 的空路径同款)。
-  const toolCalls = message.toolCalls ?? []
-  return [...parts, { type: 'tool-call', toolCalls: [...toolCalls] }]
+  return synthesizeCoreToolAnchors<ContentPart>(parts, message)
 }

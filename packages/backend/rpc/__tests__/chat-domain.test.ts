@@ -40,6 +40,10 @@ const engine = vi.hoisted(() => ({
   getActiveSessionIds: vi.fn(() => [] as string[]),
 }))
 const permission = vi.hoisted(() => ({ clearSession: vi.fn() }))
+// §16.25 钥匙②:停止按钮按**活 run 登记簿**寻址(不再按 `isStreaming` 反查),
+// 消息本体从折叠产物取。域把这两口接对了没有,就是本用例要钉的事。
+const runs = vi.hoisted(() => ({ currentSessionRun: vi.fn() }))
+const reads = vi.hoisted(() => ({ sessionReads: { getMessage: vi.fn() } }))
 const collab = vi.hoisted(() => ({ abortCollabRoomTurnForStop: vi.fn(() => false) }))
 const eventBus = vi.hoisted(() => ({ emit: vi.fn(async () => {}) }))
 const prompt = vi.hoisted(() => ({ buildSystemPromptSnapshot: vi.fn() }))
@@ -53,6 +57,8 @@ vi.mock('../../wiring/engine/index.js', () => ({ getStreamEngine: () => engine }
 vi.mock('../../wiring/permission/index.js', () => ({ Permission: permission }))
 vi.mock('../../wiring/collab/index.js', () => collab)
 vi.mock('../../events/index.js', () => ({ getEventBus: () => eventBus }))
+vi.mock('../../session/runs.js', () => runs)
+vi.mock('../../session/reads.js', () => reads)
 vi.mock('../../wiring/engine/prompt/system-prompt-snapshot.js', () => prompt)
 vi.mock('../../wiring/providers/index.js', () => providers)
 vi.mock('../../wiring/engine/stream/provider-helpers.js', () => ({
@@ -82,6 +88,8 @@ describe('chat RPC domain', () => {
     collab.abortCollabRoomTurnForStop.mockReset().mockReturnValue(false)
     eventBus.emit.mockReset().mockResolvedValue(undefined)
     prompt.buildSystemPromptSnapshot.mockReset()
+    runs.currentSessionRun.mockReset()
+    reads.sessionReads.getMessage.mockReset()
 
     const { resetRpcRegistryForTests, registerRouterHandlers, chatRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
@@ -195,13 +203,10 @@ describe('chat RPC domain', () => {
   it('aborts one session: engine stop + permission clear + full stream cleanup', async () => {
     const { dispatchRpc } = await loadDomain()
     engine.abort.mockReturnValue(true)
-    store.getSession.mockReturnValue({
-      id: SESSION_ID,
-      messages: [{
-        id: 'assistant-1',
-        isStreaming: true,
-        steps: [{ id: 'step-1', status: 'running', toolCall: { status: 'executing' } }],
-      }],
+    runs.currentSessionRun.mockReturnValue({ runId: 'run-1', assistantMessageId: 'assistant-1' })
+    reads.sessionReads.getMessage.mockReturnValue({
+      id: 'assistant-1',
+      steps: [{ id: 'step-1', status: 'running', toolCall: { status: 'executing' } }],
     })
 
     await expect(
@@ -219,16 +224,47 @@ describe('chat RPC domain', () => {
     )
     expect(store.updateMessageStreaming).toHaveBeenCalledWith(SESSION_ID, 'assistant-1', false)
     expect(store.flushSessionSave).toHaveBeenCalledWith(SESSION_ID)
+    // 寻址口自证:问的是登记簿,拿到的 id 才去折叠产物取消息。
+    expect(runs.currentSessionRun).toHaveBeenCalledWith(SESSION_ID)
+    expect(reads.sessionReads.getMessage).toHaveBeenCalledWith(SESSION_ID, 'assistant-1')
     // 事件三条:step:updated / message:updated / stream:complete{aborted:true}。
     const emitted = (eventBus.emit.mock.calls as unknown as unknown[][])
       .map(call => (call[1] as { type: string }).type)
     expect(emitted).toEqual(['step:updated', 'message:updated', 'stream:complete'])
   })
 
+  /**
+   * 反证(§16.25 钥匙②):**一条早就收尾、却还挂着 `isStreaming: true` 的消息**
+   * 不许被停止按钮摸到。
+   *
+   * 这正是老寻址(`session.messages.find(m => m.isStreaming)`)的坏死方式:
+   * `updateMessageStreaming(false)` 一旦空转,那一格永远留着 `true`,下一次停止
+   * 就会去判死一条早已结束的消息的 step。今天判据换成登记簿 —— 没有活 run 就
+   * 没有要停的流,那一格布尔说什么都不算数。
+   */
+  it('never addresses a settled message by its stale isStreaming flag', async () => {
+    const { dispatchRpc } = await loadDomain()
+    engine.abort.mockReturnValue(false)
+    runs.currentSessionRun.mockReturnValue(undefined)
+    reads.sessionReads.getMessage.mockReturnValue({
+      id: 'assistant-1',
+      isStreaming: true,
+      steps: [{ id: 'step-1', status: 'running' }],
+    })
+
+    await expect(
+      dispatchRpc({ domain: 'chat', method: 'abortStream', payload: { sessionId: SESSION_ID } }),
+    ).resolves.toEqual({ ok: true, data: { success: false } })
+
+    expect(reads.sessionReads.getMessage).not.toHaveBeenCalled()
+    expect(store.updateMessageStep).not.toHaveBeenCalled()
+    expect(store.updateMessageStreaming).not.toHaveBeenCalled()
+  })
+
   it('answers `success:false` when nothing was actually running', async () => {
     const { dispatchRpc } = await loadDomain()
     engine.abort.mockReturnValue(false)
-    store.getSession.mockReturnValue(undefined)
+    runs.currentSessionRun.mockReturnValue(undefined)
 
     await expect(
       dispatchRpc({ domain: 'chat', method: 'abortStream', payload: { sessionId: SESSION_ID } }),

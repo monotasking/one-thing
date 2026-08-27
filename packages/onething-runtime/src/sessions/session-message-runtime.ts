@@ -248,12 +248,21 @@ export class OnethingSessionMessageRuntime<
     return true
   }
 
-  deleteMessageAndTruncate(sessionId: string, messageId: string): boolean {
+  deleteMessageAndTruncate(
+    sessionId: string,
+    messageId: string,
+    /**
+     * `subtractedUsage`(§16.25 钥匙③):这次截断要从会话总账扣回去的用量,由命令面
+     * 从**折叠产物**算好递进来。不传则归约器按老算法自取(老调用点一字未动)。
+     */
+    options?: { subtractedUsage?: { inputTokens: number; outputTokens: number; totalTokens: number } },
+  ): boolean {
     const applied = this.run(sessionId, {
       type: 'truncateFrom',
       messageId,
       inclusive: true,
       now: this.now(),
+      ...(options?.subtractedUsage ? { subtractedUsage: options.subtractedUsage } : {}),
     })
     if (!applied) return false
 
@@ -287,7 +296,12 @@ export class OnethingSessionMessageRuntime<
      * 记同一个数 —— 让两边各读一次表就是让恒等门去比两个时钟。
      * 不传则本实现自取(老调用点一字未变)。
      */
-    options?: { contentParts?: TMessage['contentParts'] | null; now?: number },
+    options?: {
+      contentParts?: TMessage['contentParts'] | null
+      now?: number
+      /** §16.25 钥匙③:用量结算的那一份,见 `deleteMessageAndTruncate`。 */
+      subtractedUsage?: { inputTokens: number; outputTokens: number; totalTokens: number }
+    },
   ): boolean {
     const applied = this.run(sessionId, {
       type: 'truncateFrom',
@@ -297,6 +311,7 @@ export class OnethingSessionMessageRuntime<
       hasContentParts: Boolean(options && Object.prototype.hasOwnProperty.call(options, 'contentParts')),
       contentParts: options?.contentParts as unknown[] | null | undefined,
       now: options?.now ?? this.now(),
+      ...(options?.subtractedUsage ? { subtractedUsage: options.subtractedUsage } : {}),
     })
     if (!applied) return false
 

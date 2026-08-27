@@ -1,6 +1,7 @@
 import * as store from "../../../store.js";
 import { sessionCommands } from "../../../session/commands.js";
 import { sessionReads } from "../../../session/reads.js";
+import { synthesizeCoreToolAnchors } from "@onething/core/session/render-anchors";
 import {
 	endSessionRun,
 	ensureSessionRun,
@@ -502,6 +503,79 @@ export function runAgentLoopPostResponseHooks(options: {
 }
 
 /**
+ * **收尾链的唯一取材口**(F4-c c4-b,§16.25 钥匙①)—— 折叠产物 + 现算渲染锚点。
+ *
+ * ## 它取代了什么
+ *
+ * F4-b2(§16.17)在这里立过「活 run 写手视图」:窗口内那条 assistant 消息由
+ * **引擎写手对象**持有并唯一可信,而"写手对象"今天就是内存 store 上的那一条。
+ * 那条口径把 18 个热写端口整体钉死 —— 它们一空转,写手对象就空,settle 快照
+ * 就空(§16.24 第五节证据一)。
+ *
+ * ## 为什么现在可以换
+ *
+ * 当时非读写手不可的理由只有两条,今天两条都各有出路:
+ *
+ * 1. **渲染锚点**(`data-steps`)。它按 canonical G4 **故意不进事件、不进投影**
+ *    —— 这是裁定,不是缺口。但"不进账本"不等于"必须由写手保管":锚点是
+ *    steps 的 `turnIndex` 的**纯函数**,从折叠产物**现算**即可,而且必须与
+ *    renderer 加载路径逐字同算(单实现:`@onething/core/session/render-anchors`)。
+ *    于是流式那一刻看到的分界,与刷新之后看到的分界,是同一个函数算出来的。
+ * 2. **收场结局的自引用**(`captureCancelledToolResults` 读的正是它自己待写的
+ *    `tool/result{cancelled}`)。这一条**不是靠"改读投影"解决的,那条路走不通**
+ *    ——`steps` / `toolCalls` 在 `message/patched` 的 `DERIVED_KEYS` 里,收尾
+ *    修复的补丁**根本进不了账本**(投影只认 `tool/*` 折出来的那一份)。施工时
+ *    先按"读投影"做过一版,探针当场量到 48/330 条:投影侧那几个 step 仍停在
+ *    `running`,采集点一条 `tool/result{cancelled}` 都不写。
+ *    真正的解法是**不回读** —— 收尾修复把产物经 `onSettled` 直接递给采集点
+ *    (见 `captureCancelledToolResults`)。零时序窗口,也没有自引用可谈。
+ *
+ * 锚点只加在**推送**这一路上:落账的那一侧一格都没多(账本零变化)。
+ */
+function readSettleMessage(
+	sessionId: string,
+	messageId: string,
+	/**
+	 * 正常收尾那一路才填 usage(见下)。中止 / 出错那两路**必须不填** ——
+	 * 账本口径是"用量只在一次执行正常收尾时写一次",被打断的那条消息本来就没有
+	 * 用量(`chat-messages.ts` 的那段注释与真机 `17b342a2…`)。探针实测:不加这个
+	 * 条件,中止路上会凭空多出 16/330 条带用量的快照。
+	 */
+	completedUsage?: AgentLoopExecutorState["accumulatedUsage"],
+): ChatMessage | undefined {
+	const message = sessionReads.getMessage(sessionId, messageId) as
+		| ChatMessage
+		| undefined;
+	if (!message) return undefined;
+	let out = message;
+	// **`?? []` 是承重的,不是防御性写法**(c4-b 探针实测:少了它 16/330 条快照丢锚点)。
+	// 一次"只调了工具、一个字都没说"的收场(中止在途工具是常见形态)在折叠侧
+	// **整格没有 contentParts** —— `materializeAssistantNode` 只在 `length > 0` 时才
+	// 带这一格。而写手那一份有一个纯锚点数组 `[{data-steps}]`。照抄"整格没有"就是把
+	// 渲染层那条消息的 contentParts 整体覆盖成 `undefined` = 工具行当场消失,
+	// §15.16 的同一根引信。空数组进去,锚点照样合成得出来。
+	const parts = message.contentParts ?? [];
+	const withAnchors = synthesizeCoreToolAnchors(parts, message);
+	if (withAnchors) out = { ...out, contentParts: withAnchors };
+	// **`usage` 是"时刻",不是"分岔"**(§16.23 第五节同型,c4-b 探针实测 266/266)。
+	//
+	// 折叠侧只在 `node.outcome === 'completed'` 时才交出 `node.usage`
+	// (`chat-messages.ts` 那一段:被打断 / 出错的那条消息**没有**用量,这是裁定),
+	// 而 `run/end` 排在收尾链**之后** —— settle 读的这一刻 run 还开着,于是投影恒为
+	// "还没有用量"。快照是**整体覆盖**广播的,照抄这一格就等于把渲染层那条消息的
+	// token 读数抹掉一直到下次重载。
+	//
+	// 补的不是"另一份事实":`state.accumulatedUsage` 正是 `updateMessageUsage`
+	// 写进去的同一个对象(`agent-loop-executor` 的用量收尾那一处),端口事实断言
+	// 每次都拿它与 `node.usage` 比过。只在折叠侧**还没到时候**时补,折叠侧一旦
+	// 有值就以折叠侧为准。
+	if (out.usage === undefined && completedUsage) {
+		out = { ...out, usage: completedUsage };
+	}
+	return out;
+}
+
+/**
  * §13.8 第一类:收场之后,把引擎写在**未结调用**上的东西记进账本。
  *
  * 中止 / 请求最终出错这两条收场路上,已经派工出去的工具永远等不到那条
@@ -515,23 +589,25 @@ export function runAgentLoopPostResponseHooks(options: {
  * 停在 `awaiting-confirmation`(引擎明确放过它们,恢复流还要用),因此天然
  * 不在这张表里。
  */
-function captureCancelledToolResults(state: AgentLoopExecutorState): void {
+function captureCancelledToolResults(
+	state: AgentLoopExecutorState,
+	settled: ChatMessage | undefined,
+): void {
 	const recorder = state.eventRecorder;
 	if (!recorder) return;
 	try {
-		// COW:收尾修复刚刚经命令面落过盘,这里必须**重读**(P0 的那个坑)。
+		// **F4-c c4-b:不再回读,直接用收尾修复刚刚决定好的那一份**(`onSettled`)。
 		//
-		// **F4-b2(§16.17)复核:读活 run 的写手视图。** 从前挂的理由是"投影不产出
-		// steps 结局";F2-c 的 `tool/annotate` 与批 9 之后那句话**已经不准** —— 自报
-		// 标题与自报结局在事件侧都有产地了。真正的理由换成了一条更硬的:
-		// **这一处是产地本身**。被取消工具的 `tool/result{cancelled:true}` 正是下面
-		// `recordCancelledToolResults` 写出去的,投影的 `tool.cancelled` 由它派生 ——
-		// 产地读自己的产物就是自引用,永远读空(§10.10)。写手视图不是"另一份缓存",
-		// 它是这条消息在活 run 窗口内的正身;口径全文见 `reads.ts` 那一口。
-		const message = sessionReads.getLiveRunWriterMessage(
-			state.ctx.sessionId,
-			state.ctx.assistantMessageId,
-		) as ChatMessage | undefined;
+		// 从前这里重读一次消息,读的是内存 store —— 而那次回读只在 store 上成立:
+		// 修复的落盘走命令面 `patchMessage{steps,toolCalls}`,可 `steps`/`toolCalls`
+		// 都在 `message/patched` 的 `DERIVED_KEYS` 里(投影只认 `tool/*` 折出来的
+		// 那一份,不认补丁)。所以"改读投影"在这一处是**读不到修复结果**的:探针
+		// 实测 48/330 条,投影侧那几个 step 仍停在 `running`,采集点于是一条
+		// `tool/result{cancelled:true}` 都不写 —— 被取消工具的结局整批丢账。
+		//
+		// 递一份进来就同时解决了三件事:拿到的是这次修复的**产物本身**(零时序
+		// 窗口)、不再依赖任何一侧的缓存形状、也不再有"产地读自己的产物"那条自引用。
+		const message = settled;
 		if (!message) return;
 		const calls: SessionCancelledToolResult[] = [];
 		for (const step of message.steps ?? []) {
@@ -558,6 +634,8 @@ async function emitFinalAssistantMessageUpdate(
 	state: AgentLoopExecutorState,
 	errorMessage?: string,
 ): Promise<void> {
+	// 收尾修复的产物 —— 下面的采集点要的就是它(见 `captureCancelledToolResults`)。
+	let settled: ChatMessage | undefined;
 	try {
 		const emitAgentLoopFinalMessageUpdateWithAdaptersOptions: EmitAgentLoopFinalMessageUpdateWithAdaptersOptions<ChatMessage, ChatSession> = {
 			sessionId: state.ctx.sessionId,
@@ -567,15 +645,10 @@ async function emitFinalAssistantMessageUpdate(
 			// 读到的消息经 `finalizeLingering…` 折成 patch 再写回(自报标题等字段随
 			// steps 数组回落)。
 			//
-			// **F4-b2(§16.17)复核:读活 run 的写手视图。** 要回落的是 `steps[]`,
-			// 而这一刻账本上还没有这次收尾要写的那几条 `tool/result` —— 它们是**下面
-			// `captureCancelledToolResults` 的产物**,不是投影欠的一格。修复读投影 →
-			// 拿到占位标题 → 把占位标题焊回消息,反把引擎写好的自报标题抹掉。
-			// 窗口边界与口径全文见 `reads.ts` 的 `getLiveRunWriterMessage`。
-			getMessage: (sessionId, messageId) =>
-				sessionReads.getLiveRunWriterMessage(sessionId, messageId) as
-					| ChatMessage
-					| undefined,
+			// **F4-c c4-b:改读折叠产物 + 现算渲染锚点**(全文见 `readSettleMessage`)。
+			// 要回落的是 `steps[]`,而自报标题 / 自报结局在 F2-c 的 `tool/annotate`
+			// 之后事件侧都有产地了 —— 从前"读投影会拿到占位标题"的那条理由已经不准。
+			getMessage: (sessionId, messageId) => readSettleMessage(sessionId, messageId),
 			patchMessage: (sessionId, messageId, patch) => {
 				sessionCommands.patchMessage(sessionId, {
 					messageId,
@@ -587,6 +660,9 @@ async function emitFinalAssistantMessageUpdate(
 				await getEventBus().emit(state.ctx.sessionId, event);
 			},
 			errorMessage,
+			onSettled: (message) => {
+				settled = message;
+			},
 		};
 		await emitAgentLoopFinalMessageUpdateWithAdapters<ChatMessage, ChatSession>(
 			emitAgentLoopFinalMessageUpdateWithAdaptersOptions,
@@ -594,9 +670,8 @@ async function emitFinalAssistantMessageUpdate(
 	} catch {
 		// Event system may not be initialized in tests.
 	}
-	// 修复落盘之后才读得到它 —— 采集点排在这里,不在上面那个 try 里(事件系统
-	// 没起来不该让账本少一笔)。
-	captureCancelledToolResults(state);
+	// 采集点排在这里,不在上面那个 try 里(事件系统没起来不该让账本少一笔)。
+	captureCancelledToolResults(state, settled);
 }
 
 export async function completeAgentLoopStream(
@@ -615,21 +690,18 @@ export async function completeAgentLoopStream(
 		// **又是**一次 read-emit:读到的消息经 `finalizeLingering…` 折成 patch 落盘,
 		// 并原样作为 settled 快照(`updates.contentParts`)广播给 renderer。
 		//
-		// **F4-b2(§16.17)复核:读活 run 的写手视图,而且这一处是三处里最硬的。**
-		// 活窗口内那条消息的 contentParts 带着 `data-steps` 渲染锚点 —— 锚点由引擎在
-		// 窗口内产出、**只走推送路**(账本里从来没有它,canonical G4 明文丢弃,
-		// `materializeContentParts` 也不合成)。settle 快照是**整体覆盖**:换成投影
-		// 那一份,renderer 的 `updateSessionMessage` 覆盖之后锚点归零(它不跑
-		// `rebuildContentParts`,不会补合成),work group 与整段工具渲染当场消失
-		// —— §15.16「正文看不见」那一课的同一根引信。
+		// **F4-c c4-b:三处里最硬的这一处也翻了。** settle 快照是**整体覆盖**广播给
+		// renderer 的,而它的 contentParts 必须带 `data-steps` 渲染锚点 —— 少了锚点,
+		// renderer 的 `updateSessionMessage` 覆盖之后 work group 与整段工具渲染当场
+		// 消失(§15.16「正文看不见」那一课的同一根引信)。
 		//
-		// 这不是"投影欠一格"、也不是"store 私有形状":锚点住渲染侧(G4)是**裁定**,
-		// 而活 run 的写手正是它唯一的产地。口径全文见 `reads.ts` 的
-		// `getLiveRunWriterMessage`;F4-b3 的物化缓存不得覆盖活窗口内的这条消息。
+		// 从前锚点由活 run 的写手对象保管,于是快照非读写手不可。今天锚点由
+		// **同一个共享纯件**从折叠产物现算(`readSettleMessage` →
+		// `@onething/core/session/render-anchors`),renderer 加载路径用的正是它 ——
+		// 于是"流式收尾看到的分界"与"刷新之后看到的分界"逐字同源,而写手对象不再是
+		// 锚点的必经保管人。锚点仍然**只走推送路**:账本一格没多(G4 裁定不变)。
 		getMessage: (sessionId, messageId) =>
-			sessionReads.getLiveRunWriterMessage(sessionId, messageId) as
-				| ChatMessage
-				| undefined,
+			readSettleMessage(sessionId, messageId, state.accumulatedUsage),
 		patchMessage: (sessionId, messageId, patch) => {
 			sessionCommands.patchMessage(sessionId, {
 				messageId,

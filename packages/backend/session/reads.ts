@@ -161,8 +161,7 @@ export const sessionReads = {
    * `fromEvents`,好让门的两侧始终是两条独立推导(F11:判据污染)。恒等门 c4
    * 退役之后它零消费者 —— 而"一条故意绕开投影的整会话读法"留在读门面上只会
    * 变成下一个人的第二份真相。要 store 侧的整份消息,今天没有正当理由;
-   * 要**这条会话在不在**问 `hasSessionInStore`,要**活 run 写手视图**问
-   * `getLiveRunWriterMessage`,其余一律 `listMessages`(投影)。
+   * 要**这条会话在不在**问 `hasSessionInStore`,其余一律 `listMessages`(投影)。
    */
 
   /**
@@ -184,8 +183,9 @@ export const sessionReads = {
    * **F4-b2(§16.17)又摘掉了一条。** F3 在这里挂过"只在 store 的运行时形状"
    * (收尾链那三处:settle 后的 `steps[]` 结局与 `contentParts` 上的 `data-steps`
    * 渲染锚点)。那三处**搬走了** —— 它们不是"读 store",是**读活 run 的写手视图**,
-   * 见下面 `getLiveRunWriterMessage`。留在这一口上的差别是身份:这一口回答的是
-   * "reducer 眼里那条消息长什么样",与 run 在不在活窗口无关。
+   * 见 `getLiveRunWriterMessage` —— 而**那一口 c4-b 已经删了**(§16.25 钥匙①:
+   * 锚点改由推送侧从折叠产物现算,收尾链改读投影)。留在这一口上的差别是身份:
+   * 这一口回答的是"reducer 眼里那条消息长什么样",与 run 在不在活窗口无关。
    *
    * 今天还留在这一口上的,只剩**一个消费者、一条理由**:
    *
@@ -203,49 +203,28 @@ export const sessionReads = {
     return message ? guard(message) : undefined
   },
 
-  /**
-   * **活 run 写手视图** —— 收尾链取材的唯一口(F4-b2,§16.17)。
+  /*
+   * `getLiveRunWriterMessage` —— **已删除**(F4-c c4-b,§16.25 钥匙①)。
    *
-   * ## 共存口径(纪律原文,改这一口之前先读完)
+   * 它是 F4-b2(§16.17)立的「活 run 写手视图」:窗口内那条 assistant 消息由
+   * **引擎写手对象**(= 内存 store 上的那一条)持有并唯一可信,收尾链三处非读它
+   * 不可。那条口径把 18 个热写端口整体钉死 —— 端口一空转,写手对象就空,settle
+   * 快照就空(§16.24 第五节证据一)。
    *
-   * > **活 run 窗口内,该 run 的 assistant 消息由引擎写手对象持有并唯一可信;
-   * > 物化缓存只回答已收尾世界;窗口的边界 = `run/start` 到 settle 完成。**
+   * 当时非读它不可的两条理由,c4-b 各给了出路:
    *
-   * 三句话逐句是什么意思:
+   * 1. **渲染锚点**(`data-steps`,canonical G4 故意不进事件/投影)—— 它是 steps
+   *    的 `turnIndex` 的**纯函数**,由推送侧从折叠产物**现算**
+   *    (`@onething/core/session/render-anchors`,与 renderer 加载路径同一份实现)。
+   *    锚点不再需要一个保管人。
+   * 2. **收场结局的自引用** —— 解法不是"改读投影"(那条路走不通:`steps` /
+   *    `toolCalls` 在 `message/patched` 的 `DERIVED_KEYS` 里,收尾修复的补丁
+   *    进不了账本),而是**不回读**:收尾修复把产物经 `onSettled` 直接递给
+   *    采集点。零时序窗口,也没有自引用可谈。
    *
-   * 1. **"引擎写手对象"今天就是内存 store 上的那一条。** 引擎在窗口内按 id 寻址
-   *    往它上面写(`patchStep` / `updateMessageToolCalls` / `addMessageContentPart`),
-   *    同一批值同时推给渲染层。它不是"另一份缓存",它是那条消息在活窗口内的**正身**。
-   * 2. **"物化缓存只回答已收尾世界"是给 F4-b3 的约束**,不是给这一口的:store 退化成
-   *    投影物化缓存那天,物化**不许覆盖活窗口内的那条消息**(冷加载/`hydrate.ts`
-   *    今天本来就只在窗口外跑,这条约束零成本)。
-   * 3. **窗口的边界**:`run/start` 那一刻起,到收尾链(`completeAgentLoopStream` /
-   *    `emitFinalAssistantMessageUpdate` + `captureCancelledToolResults`)跑完为止。
-   *    窗口外读这一口没有意义 —— 那时该读 `listMessages` / `getMessage`(投影)。
-   *
-   * ## 为什么收尾链非读写手视图不可(两条,都不是"投影滞后")
-   *
-   * - **渲染锚点**:settle 快照(`updates.contentParts`)整体覆盖渲染层那一份,而
-   *   `data-steps` 锚点按 canonical G4 **故意不进事件、不进投影** —— 它是引擎在活窗口
-   *   内产出、只走推送路的渲染侧派生物(账本里从来没有它,§16.17 勘察已核实)。
-   *   换成投影那一份 = renderer `updateSessionMessage` 覆盖后锚点归零 = §15.16
-   *   「正文看不见」的同一根引信。
-   * - **收场结局是这里的产地本身**:被取消工具那条 `tool/result` 是
-   *   `captureCancelledToolResults` **写出去的**(`recordCancelledToolResults` →
-   *   `tool/result{cancelled:true}` → 投影的 `tool.cancelled`)。产地读投影 =
-   *   自引用,永远读空。这不是"投影缺一格"(F2-c 的 `tool/annotate` 与批 9 已经把
-   *   自报标题/自报结局的产地补齐了),是**产地不该读自己的产物**(§10.10)。
-   *
-   * 实现与 `getMessageFromStore` 逐字相同 —— **这是刻意的**:两口今天答案一样,但
-   * 问的是两个问题,F4-b3 会让它们分家(那一口随 reducer 退役,这一口留任)。
+   * 收尾链今天读 `getMessage`(投影)。要 store 侧的一条消息,只剩下面那三口 ——
+   * 它们回答的都是"判据同源"那一类问题,不是"这条消息长什么样"。
    */
-  getLiveRunWriterMessage(
-    sessionId: string,
-    messageId: string,
-  ): Readonly<ChatMessage> | undefined {
-    const message = getSessionMessages(sessionId)?.find(item => item.id === messageId)
-    return message ? guard(message) : undefined
-  },
 
   /**
    * **store 侧**问一句"这条消息在不在" —— F2-a 的写侧判据(§16.7)。

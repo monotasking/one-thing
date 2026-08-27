@@ -51,13 +51,14 @@
  *      改 store 才不会一边发生一边不发生。F4-b3 reducer 退役时一起翻,**但
  *      `hasSessionInStore` 除外 —— 它是永久例外**(§16.11 拍板 4)。
  *
- * **F3 的第二类"只在 store 的运行时形状",F4-b2(§16.17)已改判并搬走。** 那一类
- * 指的是收尾链那三处(`steps[]` 结局 / `data-steps` 渲染锚点)。改判的内容:自报
- * 标题与自报结局在 F2-c 之后**事件侧有产地了**,所以"投影不产出"这条理由不准;
- * 真正的理由是那三处跑在**活 run 窗口内**,读的是**引擎写手视图**而非"store 这份
- * 缓存"——锚点由写手产出且按 G4 只走推送路,收场结局那条 `tool/result` 更是这条链
- * 自己的产物。它们从此挂在 `reads.ts` 的 `getLiveRunWriterMessage` 上,不再是本文件
- * 这张写侧取材表的条目。
+ * **F3 的第二类"只在 store 的运行时形状",F4-b2(§16.17)改判搬走,F4-c c4-b
+ * (§16.25 钥匙①)整个消失。** 那一类指的是收尾链那三处(`steps[]` 结局 /
+ * `data-steps` 渲染锚点)。b2 的改判是"它们读的是**引擎写手视图**而非 store 缓存";
+ * c4-b 把写手视图本身退役了 —— 锚点是 steps 的纯函数,由推送侧从折叠产物现算
+ * (`render-anchors`,与 renderer 加载路径同一份实现);收场结局改由收尾修复
+ * 经 `onSettled` **直接递给采集点**,不再回读任何一侧(`steps`/`toolCalls` 在
+ * `message/patched` 的 `DERIVED_KEYS` 里,补丁本来就进不了账本)。收尾链因此
+ * 改读 `getMessage`,`getLiveRunWriterMessage` 已删。
  *
  * **F3 曾有第三类"事件产地缺口",F4-a(§16.12)已摘除。** 那一类指的是
  * `stream-executor.ts` / `agent-loop-executor.ts` 的两处孪生取材点(流中 assistant
@@ -92,6 +93,41 @@ import { assertContentPartIsCarriable } from './content-part-guard.js'
 import { sessionCommandEvents } from './command-events.js'
 import { sessionReads } from './reads.js'
 
+/**
+ * 截断要从会话总账扣回去的用量(§16.25 钥匙③)。三格与 `ChatMessage['usage']`
+ * 的前三格同形 —— 它算的就是被砍掉那些消息的用量之和。
+ */
+export interface SessionTruncateUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
+/**
+ * 从**折叠产物**算这次截断要扣回去的用量。
+ *
+ * `inclusive` = 连锚点那条一起删(regenerate);否则锚点那条留下、从它**之后**算起
+ * (edit)。与归约器的 `keepIndex` 逐字同义 —— 两侧算的必须是同一批消息。
+ */
+function subtractedUsageFromProjection(
+  sessionId: string,
+  messageId: string,
+  inclusive: boolean,
+): SessionTruncateUsage | undefined {
+  const messages = sessionReads.listMessages(sessionId).messages
+  const index = messages.findIndex(item => item.id === messageId)
+  if (index === -1) return undefined
+  const deleted = messages.slice(inclusive ? index : index + 1)
+  const usage: SessionTruncateUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+  for (const message of deleted) {
+    if (!message.usage) continue
+    usage.inputTokens += message.usage.inputTokens
+    usage.outputTokens += message.usage.outputTokens
+    usage.totalTokens += message.usage.totalTokens
+  }
+  return usage
+}
+
 /** 逐消息命令的执行体(生产实现 = `OnethingSessionMessageRuntime`)。 */
 export interface SessionMessageCommandRuntime {
   addMessage(sessionId: string, message: ChatMessage): void
@@ -114,7 +150,11 @@ export interface SessionMessageCommandRuntime {
   updateMessageToolCalls(sessionId: string, messageId: string, toolCalls: ToolCall[]): boolean
   deleteMessage(sessionId: string, messageId: string): boolean
   deleteMessageWhere(sessionId: string, matchMarker: (message: ChatMessage) => boolean): boolean
-  deleteMessageAndTruncate(sessionId: string, messageId: string): boolean
+  deleteMessageAndTruncate(
+    sessionId: string,
+    messageId: string,
+    options?: { subtractedUsage?: SessionTruncateUsage },
+  ): boolean
   updateMessageAndTruncate(
     sessionId: string,
     messageId: string,
@@ -126,7 +166,11 @@ export interface SessionMessageCommandRuntime {
      * 时钟读数。所以时刻由命令决定一次,顺着这一格递进来;不传则实现自取
      * (老调用点一字未变)。
      */
-    options?: { contentParts?: ChatMessage['contentParts'] | null; now?: number },
+    options?: {
+      contentParts?: ChatMessage['contentParts'] | null
+      now?: number
+      subtractedUsage?: SessionTruncateUsage
+    },
   ): boolean
   replaceAllMessages(
     sessionId: string,
@@ -381,10 +425,21 @@ export function createSessionCommands(
         ? sessionReads.hasMessageInStore(sessionId, payload.messageId)
         : before !== undefined
       const at = now()
+      // 4. **用量结算**(§16.25 钥匙③)。截断要把被删那些消息的 token 从会话总账里扣
+      //    回去,而"扣多少"从前是归约器按 **store 上的 `message.usage`** 现算的 ——
+      //    那一格由 `updateMessageUsage` 端口写,于是端口一空转扣减就恒为 0。用量的
+      //    事实在流上(`request/response.usage` → `node.usage`),所以这里从**折叠
+      //    产物**算好递进去。必须在事件落账**之前**取:截断事件一写,被删的那些节点
+      //    就不在投影里了。
+      const subtractedUsage = present
+        ? subtractedUsageFromProjection(sessionId, payload.messageId, payload.inclusive)
+        : undefined
       if (present) events?.truncateFrom(sessionId, payload, { before, now: at })
 
       return payload.inclusive
-        ? ports.messages.deleteMessageAndTruncate(sessionId, payload.messageId)
+        ? ports.messages.deleteMessageAndTruncate(sessionId, payload.messageId, {
+            ...(subtractedUsage ? { subtractedUsage } : {}),
+          })
         : ports.messages.updateMessageAndTruncate(
             sessionId,
             payload.messageId,
@@ -395,6 +450,7 @@ export function createSessionCommands(
                 ? { contentParts: payload.contentParts }
                 : {}),
               now: at,
+              ...(subtractedUsage ? { subtractedUsage } : {}),
             },
           )
     },

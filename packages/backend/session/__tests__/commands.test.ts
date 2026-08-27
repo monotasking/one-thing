@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import { createOnethingSessionMessageRuntime } from '@onething/runtime/sessions'
 import type { SessionWritePlan } from '@onething/runtime/sessions'
+import { sessionReads } from '../reads.js'
 import { createSessionCommands, type SessionMessageCommandRuntime } from '../commands.js'
 
 interface SaveCall {
@@ -196,6 +197,47 @@ describe('sessionCommands — 持久化接线', () => {
     expect(h.saves).toEqual([{ sessionId: 's1', lazy: false, plan: { kind: 'structural' } }])
     expect(h.sqliteCalls).toEqual(['deleteAfter:m2', 'syncMetadata', 'syncUsage'])
     expect(h.indexMetaUpdates).toHaveLength(1)
+  })
+
+  /**
+   * **§16.25 钥匙③(装配层这一半):扣多少 token,由命令面从折叠产物算。**
+   *
+   * store 上那两条被砍掉的消息**一格 usage 都没有**(端口空转之后这就是常态);
+   * 折叠产物上有。断言会话总账仍然被正确扣掉 —— 只可能来自投影那一份。
+   *
+   * 反证在同一条里:不桩投影(默认这条会话在事件侧读不出消息)时,命令面递
+   * `undefined`,归约器退回老算法 —— 上面那两条 `truncateFrom` 用例正是那一支,
+   * 它们一字未改仍然绿。
+   */
+  it('truncateFrom:用量结算从折叠产物取,store 上没有 usage 也扣得对', () => {
+    const h = harness(
+      [message('m1'), message('m2'), message('m3')],
+      { totalInputTokens: 20, totalOutputTokens: 10, totalTokens: 30 },
+    )
+    const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 }
+    const spy = vi.spyOn(sessionReads, 'listMessages').mockReturnValue({
+      messages: [
+        message('m1'),
+        message('m2', { usage }),
+        message('m3', { usage }),
+      ],
+      changed: false,
+    })
+    // 判据同源那一口问的是**真的** store 单例(这套夹具用的是自带的假仓),
+    // 所以这里替身一句:命令面认为这条消息在,才轮得到算用量。
+    const present = vi.spyOn(sessionReads, 'hasMessageInStore').mockReturnValue(true)
+
+    try {
+      expect(h.commands.truncateFrom('s1', { messageId: 'm2', inclusive: true })).toBe(true)
+    } finally {
+      spy.mockRestore()
+      present.mockRestore()
+    }
+
+    // store 侧那两条从头到尾没有 usage —— 老算法在这里会算出 0。
+    expect(h.session.totalInputTokens).toBe(0)
+    expect(h.session.totalOutputTokens).toBe(0)
+    expect(h.session.totalTokens).toBe(0)
   })
 
   it('truncateFrom(!inclusive):upsertMessageAndTruncate 带 index+1', () => {

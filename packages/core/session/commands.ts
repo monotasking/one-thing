@@ -110,6 +110,18 @@ export type SessionCommand<TMessage extends CoreSessionCommandMessage = CoreSess
       hasContentParts?: boolean
       contentParts?: unknown[] | null
       now?: number
+      /**
+       * 这次截断要从会话总账里扣回去的用量(F4-c c4-b,§16.25 钥匙③)。
+       *
+       * 从前这一格由归约器自己算:`sumUsage(被删的那些 store 消息)`。那条算法把
+       * "扣多少 token"钉死在 **`message.usage` 这一格必须由端口写进内存 store** 上
+       * ——`updateMessageUsage` 一空转,扣减恒为 0(§16.24 第五节证据三)。
+       *
+       * 用量的事实在流上(`request/response.usage` 求和 → 折叠节点的 `node.usage`,
+       * 端口事实断言比过 265 次 0 失配)。所以改由**命令面从折叠产物算好递进来**;
+       * 不给这一格时归约器仍按老算法自取(老调用点与单测一字未动)。
+       */
+      subtractedUsage?: CoreSessionTokenUsage
     }
   | {
       type: 'deleteMessage'
@@ -469,7 +481,8 @@ function applyTruncate<
   const now = command.now ?? Date.now()
   const keepIndex = command.inclusive ? index : index + 1
   const deletedMessages = session.messages.slice(keepIndex)
-  const subtractedUsage = sumUsage(deletedMessages)
+  // §16.25 钥匙③:用量结算认**折叠产物**递进来的那一份;没递(老调用点)才自取。
+  const subtractedUsage = command.subtractedUsage ?? sumUsage(deletedMessages)
 
   const kept = session.messages.slice(0, keepIndex)
   let updatedMessage: TMessage | undefined
