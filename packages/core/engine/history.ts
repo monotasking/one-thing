@@ -542,6 +542,39 @@ export function canSplitHistoryTurnGroups(
 	return splitAssistantMessageIntoTurnGroups(message, toolCalls) !== undefined;
 }
 
+/**
+ * F1-c(§16.15):比"逐格相加 == 整条正文"时用的归一 —— 只抹空白。
+ *
+ * 分裂路径粘的是 `\n\n`,实时写 `content` 的是 delta 直接累加:健康的消息两者
+ * 只在空白上不同。抹掉空白之后仍然不等 = 真的少了(或多了)一段正文。
+ */
+function stripHistoryTextWhitespace(text: string): string {
+	return text.replace(/\s+/g, "");
+}
+
+/**
+ * F1-c(§16.15):这条消息的 `contentParts` 把 `message.content` 装全了吗。
+ *
+ * **分裂重放的前置条件,也是唯一的判定点** —— 投影那边要在自己那份物化消息上
+ * 问同一个问题(看得见这一类退化),抄一份就是第二个判定点。
+ *
+ * `content` 为空 = 没有正文可丢,不问。
+ */
+export function historyContentPartsCoverContent(
+	message: CoreHistoryChatMessage,
+): boolean {
+	const content = message.content ?? "";
+	if (!content) return true;
+	let partsText = "";
+	for (const part of message.contentParts ?? []) {
+		if (part.type === "text" && part.content) partsText += part.content;
+	}
+	return (
+		stripHistoryTextWhitespace(content) ===
+		stripHistoryTextWhitespace(partsText)
+	);
+}
+
 function splitAssistantMessageIntoTurnGroups(
 	message: CoreHistoryChatMessage,
 	toolCalls: CoreHistoryToolCall[],
@@ -577,10 +610,20 @@ function splitAssistantMessageIntoTurnGroups(
 		group(turnIndex).toolCalls.push(toolCall);
 	}
 
-	// The message-level content string is the merged rendering; if the parts
-	// carry no text while the message does, the parts are not authoritative.
-	const hasPartText = [...groups.values()].some((g) => g.texts.length > 0);
-	if (message.content && !hasPartText) return undefined;
+	// The message-level content string is the merged rendering; the per-turn
+	// texts must add up to it, or the parts are not authoritative.
+	//
+	// F1-c(§16.15):从前这里只挡住"一格 part 文本都没有"那一端 —— 而真正会
+	// **吞正文**的是"少了一格"。`contentParts` 有一道 `requestSettled` 闸
+	// (被 abort / 出错重试的那一轮不落 part),`message.content` 没有:那一轮的
+	// 正文实时写在 content 上、却没有对应的 part。分裂路径只按 part 重放,于是
+	// 那一段真实正文在下一次请求里凭空消失,而 collapsed 路径原样带着它。
+	//
+	// 所以判据收紧成"逐格相加 == 整条正文"。比较**忽略空白**:分裂路径按
+	// `\n\n` 重新粘,而 content 是 delta 直接累加的,两者只在空白上不同。
+	// 方向是保守的 —— 对不上就不分裂(退回 collapsed),宁可少一次忠实重放,
+	// 不肯丢一个字。content 为空时不问(那时没有正文可丢)。
+	if (!historyContentPartsCoverContent(message)) return undefined;
 
 	return [...groups.values()].sort((a, b) => a.turnIndex - b.turnIndex);
 }

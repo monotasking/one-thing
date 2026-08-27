@@ -38,6 +38,21 @@ interface SessionSurfaceState {
   index: SurfaceIndex
   /** 消息 id → 它在 surface 上那一格的 eventSeq(assistant 用 `run/start` 的)。 */
   seqByMessageId: Map<string, number>
+  /**
+   * F1-a(§16.15):`tool/result` 这一格**归属**哪条消息的那一格。
+   *
+   * `tool/result` 在 surface 上占一格,却不物化成一条历史消息 —— 它折进所属 run
+   * 的那条 assistant 消息里。所以"这一格该不该跟着某次截断一起被遮"取决于
+   * **它归属的那条 assistant 消息在不在同一段里**,而不取决于它自己排在哪。
+   * 值是那条 run 的 `run/start` 的 seq(assistant 消息在 surface 上的那一格)。
+   */
+  ownerSeqBySurfaceSeq: Map<number, number>
+  /** run id → 那条 run 的 `run/start` seq。 */
+  runStartSeqByRunId: Map<string, number>
+  /** 工具调用 id → 它所属 run 的 `run/start` seq(`tool/result` 缺 runId 时的解法)。 */
+  runStartSeqByCallId: Map<string, number>
+  /** 最近一条 `run/start` 的 seq(事件缺 runId 时的最后一手)。 */
+  lastRunStartSeq?: number
 }
 
 const states = new Map<string, SessionSurfaceState>()
@@ -72,7 +87,13 @@ function ensureState(sessionId: string): SessionSurfaceState {
   ensureAppendObserver()
   const existing = states.get(sessionId)
   if (existing) return existing
-  const state: SessionSurfaceState = { index: new SurfaceIndex(), seqByMessageId: new Map() }
+  const state: SessionSurfaceState = {
+    index: new SurfaceIndex(),
+    seqByMessageId: new Map(),
+    ownerSeqBySurfaceSeq: new Map(),
+    runStartSeqByRunId: new Map(),
+    runStartSeqByCallId: new Map(),
+  }
   // 首次使用:把盘上已有的那份 fold 一遍。老会话(只有 E0 七类)fold 出来是
   // 一张空 surface —— 那是**对的**:它的消息事实还在 messages.jsonl 里,
   // S2 的迁移脚本才会把它们变成 `message/imported`。
@@ -85,12 +106,52 @@ function ensureState(sessionId: string): SessionSurfaceState {
 
 function applyToState(state: SessionSurfaceState, event: SessionLogEventRecord): void {
   state.index.push(event)
+  trackToolOwnership(state, event)
   if (!isSessionSurfaceNodeType(event.type)) return
   // 批 P-b:节点判定与"这条事件代表哪条消息"的判定都只此一份(core 的
   // `isSessionSurfaceNodeType` / `surfaceMessageIdOf`)—— 写侧曾自带一份同名
   // 函数,两份各自演化就是"切点切在读侧不认得的格上"那类静默错乱的温床。
   const messageId = surfaceMessageIdOf(event)
   if (messageId) state.seqByMessageId.set(messageId, event.seq)
+}
+
+/**
+ * F1-a(§16.15):记住每一格 `tool/result` **归属**哪条 assistant 消息。
+ *
+ * 归属只认 run:`run/start` 建号,`tool/call` 把 callId 挂到当前 run 上,
+ * `tool/result` 优先按自己的 runId 解、其次按 callId 解、最后退回最近一条
+ * `run/start`(老账本这三格都可能缺 —— 解不出就是"没有归属",按不设限处理,
+ * 与修复前逐字相同)。
+ */
+function trackToolOwnership(state: SessionSurfaceState, event: SessionLogEventRecord): void {
+  switch (event.type) {
+    case 'run/start': {
+      state.runStartSeqByRunId.set(event.data.runId, event.seq)
+      state.lastRunStartSeq = event.seq
+      return
+    }
+    case 'tool/call': {
+      const owner = resolveRunStartSeq(state, event.data.runId)
+      if (owner !== undefined) state.runStartSeqByCallId.set(event.data.callId, owner)
+      return
+    }
+    case 'tool/result': {
+      const owner = resolveRunStartSeq(state, event.data.runId)
+        ?? state.runStartSeqByCallId.get(event.data.callId)
+      if (owner !== undefined) state.ownerSeqBySurfaceSeq.set(event.seq, owner)
+      return
+    }
+    default:
+      return
+  }
+}
+
+function resolveRunStartSeq(state: SessionSurfaceState, runId: string | undefined): number | undefined {
+  if (runId !== undefined) {
+    const known = state.runStartSeqByRunId.get(runId)
+    if (known !== undefined) return known
+  }
+  return state.lastRunStartSeq
 }
 
 export interface SessionSurfaceView {
@@ -104,10 +165,52 @@ export interface SessionSurfaceView {
    *
    * **按位置切,不按 seq 大小**:压缩之后那个节点排在最前面而 seq 最大,
    * 按大小筛会把它一起圈进来。
+   *
+   * F1-a(§16.15):**尾随的"别人家的 `tool/result`"不进这一段**。见
+   * `trimForeignTrailingToolResults`。
    */
   rangeFrom(messageId: string): { start: number; end: number; seqs: number[] } | undefined
   /** 整条 surface 的 replace range(清空 / 全量替换用)。 */
   wholeRange(): { start: number; end: number; seqs: number[] } | undefined
+}
+
+/**
+ * F1-a(§16.15):把"从 `at` 到末尾"这一段**尾部**那些归属在段外的 `tool/result`
+ * 摘掉,返回真正该被这次 replace 遮蔽的那串 seq。
+ *
+ * 病历(真机 `ef079fd7`,两条):**工具在途时用户插了一句话**。那一刻 surface 上
+ * 依次落下 `user/message@5127`(用户那句)、`tool/result@5130`(在途那次调用的结局,
+ * 它归属的 `run/start@5106` 排在更前面)。随后的 edit-resend 从 5127 切到末尾,
+ * 于是这条 replace 连带遮住了 5130 —— 而 5130 归属的那条 assistant 消息**还在
+ * surface 上**。引擎那边这次截断只删了用户那句往后的消息,那条 assistant 消息连同
+ * 它的工具调用一个字节没动;投影这边却因为结局格被遮而把整次调用摘掉,于是
+ * 少一对 assistant+tool、正文并格 —— 每次请求复发一条影子失配。
+ *
+ * 判据是**归属**,不是位置:一格 `tool/result` 只有在"它归属的那条消息也在这一段里"
+ * 时才跟着遮。归属解不出来(老账本缺 runId / callId 线索)= 不设限,与修复前逐字相同。
+ *
+ * 只修**尾随**格:replace 的 op 是位置上连续的一段(`SurfaceIndex.applyReplace`
+ * 按 `order.slice(from, to+1)` 遮),中间挖洞表达不出来。而这一类格只会出现在尾部 ——
+ * 它们是"这条消息落账之后、这次截断之前"那段时间里在途 run 落下的结局。
+ */
+function trimForeignTrailingToolResults(
+  state: SessionSurfaceState,
+  order: readonly number[],
+  at: number,
+): number[] {
+  const seqs = order.slice(at)
+  const inRange = new Set(seqs)
+  let end = seqs.length
+  while (end > 1) {
+    const owner = state.ownerSeqBySurfaceSeq.get(seqs[end - 1])
+    // 不是 `tool/result`(没有归属登记)/ 归属就在这一段里 → 到此为止。
+    if (owner === undefined || inRange.has(owner)) break
+    // 归属那一格已经不在 surface 上(早被遮过)→ 它不会再被谁读到,一起遮掉即可。
+    if (order.indexOf(owner) === -1) break
+    inRange.delete(seqs[end - 1])
+    end -= 1
+  }
+  return end === seqs.length ? seqs : seqs.slice(0, end)
 }
 
 export function sessionSurface(sessionId: string): SessionSurfaceView {
@@ -122,7 +225,7 @@ export function sessionSurface(sessionId: string): SessionSurfaceView {
       const order = orderOf()
       const at = order.indexOf(start)
       if (at === -1) return undefined
-      const seqs = order.slice(at)
+      const seqs = trimForeignTrailingToolResults(state, order, at)
       return { start: seqs[0], end: seqs[seqs.length - 1], seqs }
     },
     wholeRange() {

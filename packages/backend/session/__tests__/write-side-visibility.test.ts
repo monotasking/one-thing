@@ -221,3 +221,81 @@ describe('F1 崩溃窗口:活投影领先磁盘时 refold 跳过而不是报红(
     await expect(checkSessionRefold(SESSION)).resolves.toBe('skipped')
   })
 })
+
+/**
+ * **F1-a 收口**(§16.15):`rangeFrom` 不吞"归属节点在段外"的尾随 `tool/result`。
+ *
+ * F1 让写侧的活 surface 看得见 `tool/result` 之后,edit-resend 的 replace 区间
+ * 顺手圈进了**别人家**的那一格 —— 工具在途时用户插一句话,在途那次调用的结局
+ * 就排在那句话后面落到 surface 上。读侧的工具结果剪枝据此把一次还活着的调用
+ * 整个摘掉(真机 `ef079fd7` 两条坏区间)。
+ *
+ * **反证**:把 `trimForeignTrailingToolResults` 换回 `order.slice(at)`,
+ * 第一例当场红(区间与 `sourceEventSeqs` 都会多出那一格)。
+ */
+describe('F1-a:截断区间不吞别人家的 tool/result(§16.15)', () => {
+  it('在途 run 的 tool/result 排在插话之后 —— 它不进这次截断的区间', () => {
+    const surface = sessionSurface(SESSION)
+    // 上一条 run 与它在途的那次调用。
+    const runStart = appendSessionLogEvent(
+      SESSION,
+      'run/start',
+      { runId: 'r1', kind: 'send', assistantMessageId: 'a1' } as never,
+      { surfaceOp: 'append' },
+    )
+    appendSessionLogEvent(
+      SESSION,
+      'tool/call',
+      { runId: 'r1', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1' } as never,
+    )
+    // 用户就在工具在途时插了一句话。
+    sessionCommandEvents.appendMessage(SESSION, {
+      id: 'u2',
+      role: 'user',
+      content: 'wait',
+      timestamp: 2000,
+    })
+    // 在途那次调用的结局**排在插话后面**落到 surface 上。
+    const foreignResult = appendSessionLogEvent(
+      SESSION,
+      'tool/result',
+      { runId: 'r1', callId: 'c1', isError: false, resultPreview: 'ok' } as never,
+      { surfaceOp: 'append' },
+    )
+    expect(surface.order()).toEqual([runStart, surface.seqOf('u2'), foreignResult])
+
+    const range = surface.rangeFrom('u2')
+    // 只切到插话那一格为止:结局那一格归属的 `run/start` 还在段外。
+    expect(range).toEqual({ start: surface.seqOf('u2'), end: surface.seqOf('u2'), seqs: [surface.seqOf('u2')] })
+  })
+
+  it('归属就在段内的 tool/result 照旧跟着遮 —— 收口只针对"别人家"', () => {
+    const surface = sessionSurface(SESSION)
+    sessionCommandEvents.appendMessage(SESSION, {
+      id: 'u2',
+      role: 'user',
+      content: 'wait',
+      timestamp: 2000,
+    })
+    // 这条 run 整个生在插话**之后**:它的结局与它自己一起被遮才是对的。
+    const runStart = appendSessionLogEvent(
+      SESSION,
+      'run/start',
+      { runId: 'r2', kind: 'send', assistantMessageId: 'a2' } as never,
+      { surfaceOp: 'append' },
+    )
+    appendSessionLogEvent(
+      SESSION,
+      'tool/call',
+      { runId: 'r2', callId: 'c2', name: 'bash', argumentsRaw: '{}', messageId: 'a2' } as never,
+    )
+    const ownResult = appendSessionLogEvent(
+      SESSION,
+      'tool/result',
+      { runId: 'r2', callId: 'c2', isError: false, resultPreview: 'ok' } as never,
+      { surfaceOp: 'append' },
+    )
+
+    expect(surface.rangeFrom('u2')?.seqs).toEqual([surface.seqOf('u2'), runStart, ownResult])
+  })
+})

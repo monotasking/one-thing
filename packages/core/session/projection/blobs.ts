@@ -25,10 +25,12 @@ import { isBlobRef } from '../events/types.js'
  * 一次**退化**的记录:投影给出的这一格不是完整事实。
  *
  *  - `blob-missing`(F6):引用换不回正文 —— 附件被摘掉 / 结果留着引用;
- *  - `turn-split-fallback`(F8):多回合的助手消息掉回"合并成一段独白"的老口径。
+ *  - `turn-split-fallback`(F8):多回合的助手消息掉回"合并成一段独白"的老口径;
+ *  - `content-parts-incomplete`(F1-c,§16.15):`contentParts` 没装全
+ *    `message.content` —— 分裂重放会吞掉差的那一段正文,所以这条消息退回 collapsed。
  */
 export interface ProjectionIssue {
-  kind: 'blob-missing' | 'turn-split-fallback'
+  kind: 'blob-missing' | 'turn-split-fallback' | 'content-parts-incomplete'
   /** 哪一格退化了(`attachments.base64Data` / `tool.result` / `part.text` …)。 */
   where: string
   hash?: string

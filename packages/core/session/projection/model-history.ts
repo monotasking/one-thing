@@ -23,6 +23,7 @@ import {
   canSplitHistoryTurnGroups,
   compactedHistoryPreamble,
   completedHistoryToolCalls,
+  historyContentPartsCoverContent,
 } from '../../engine/history.js'
 import { TurnContextLedger } from '../../engine/turn-context.js'
 import type { BlobRef, SessionLogEventRecord } from '../events/types.js'
@@ -258,6 +259,21 @@ function checkTurnSplitFallback(
   options: ProjectionMaterializeOptions,
 ): void {
   if (!options.onIssue) return
+  const messageId = typeof (message as { id?: unknown }).id === 'string'
+    ? { messageId: (message as { id: string }).id }
+    : {}
+
+  // F1-c(§16.15):**先问"正文装全了吗"**,再问"分裂得起来吗"。
+  //
+  // 这一格从前是盲的:`contentParts` 有一道 `requestSettled` 闸(被 abort /
+  // 出错重试的那一轮不落 part),`content` 没有。少掉那一格之后剩下的 part 常常
+  // 只属于一个回合,于是下面那句"单回合本来就走 collapsed"提前返回,把一次
+  // **真的少了一段正文**当成正常情况放过去了。正文对不上是它自己的一类退化,
+  // 与"分裂不起来"是两件事,所以留自己的一条 issue。
+  if (!historyContentPartsCoverContent(message)) {
+    options.onIssue({ kind: 'content-parts-incomplete', where: 'history.contentParts', ...messageId })
+  }
+
   const parts = message.contentParts ?? []
   const turns = new Set<number>()
   let missing = false
@@ -270,15 +286,28 @@ function checkTurnSplitFallback(
   // 单回合的消息本来就走 collapsed —— 那不是退化。
   if (!missing && turns.size <= 1) return
   if (canSplitHistoryTurnGroups(message, completedHistoryToolCalls(message))) return
-  options.onIssue({
-    kind: 'turn-split-fallback',
-    where: 'history.turnGroups',
-    ...(typeof (message as { id?: unknown }).id === 'string'
-      ? { messageId: (message as { id: string }).id }
-      : {}),
-  })
+  options.onIssue({ kind: 'turn-split-fallback', where: 'history.turnGroups', ...messageId })
 }
 
+/**
+ * F1-b(§16.15):**调用与结果同时被遮才剪**。
+ *
+ * 从前的判据只看结果格(`resultSeq` 被遮 = 摘掉整次调用),而"被遮"这件事会
+ * 溅到别人身上:工具在途时用户插一句话,在途那次调用的 `tool/result` 就排在
+ * 那句话**后面**落到 surface 上;随后对那句话的 edit-resend 从它切到末尾,
+ * 顺手遮掉了这一格 —— 而它归属的那条 assistant 消息还在 surface 上。引擎那边
+ * 那次截断只删了用户那句往后的消息,那条 assistant 消息连同它的工具调用一个字节
+ * 没动;投影这边整次调用消失,`splitAssistantMessageIntoTurnGroups` 只剩一组、
+ * 退回 collapsed,于是少一对 assistant+tool、正文并格。真机 `ef079fd7` 两条坏区间
+ * 已经烙进账本,每一次请求复发一条失配。
+ *
+ * 写侧的口子由 F1-a 堵上(新账不再写出这种区间);这里改的是**判据本身**,治的是
+ * 已经写下去的那一份 —— 投影向引擎真实行为对齐,与批 P"读侧语义修正治存量"同判例。
+ *
+ * 新判据:结果格被遮 **且** 这次调用那条事件被**同一次**遮蔽一起摘掉
+ * (`isShadowedWith` —— `tool/call` 没有自己的 surface 格,问不了 `isShadowed`)。
+ * 压缩那一路整段前缀遮蔽,调用与结果都在段内,行为不变。
+ */
 function pruneShadowedToolCalls(
   node: AssistantNode,
   message: ProjectedChatMessage,
@@ -286,9 +315,11 @@ function pruneShadowedToolCalls(
 ): ProjectedChatMessage {
   if (!message.toolCalls || message.toolCalls.length === 0) return message
   const kept = message.toolCalls.filter(toolCall => {
-    const resultSeq = node.tools.get(toolCall.id)?.resultSeq
-    if (resultSeq === undefined) return true
-    return !state.surface.isShadowed(resultSeq)
+    const tool = node.tools.get(toolCall.id)
+    const resultSeq = tool?.resultSeq
+    if (tool === undefined || resultSeq === undefined) return true
+    if (!state.surface.isShadowed(resultSeq)) return true
+    return !state.surface.isShadowedWith(tool.callSeq, resultSeq)
   })
   if (kept.length === message.toolCalls.length) return message
   return { ...message, toolCalls: kept }

@@ -85,6 +85,16 @@ export class SurfaceIndex {
    * `declaredMessageGap`。
    */
   private readonly messageNodeSeqs = new Set<number>()
+  /**
+   * F1-b(§16.15):每一次遮蔽**实际摘掉的那一段**(按 seq 的最小/最大)。
+   *
+   * `shadowed` 里只可能有 surface 格的 seq —— `tool/call` 不是 surface 节点,
+   * 永远不在里面。可"这次调用是不是跟着这次遮蔽一起没的"恰恰要问它。遮蔽本来
+   * 就是一次**区间**动作,所以问法是:调用那条事件落在**同一次**遮蔽摘掉的区间里吗。
+   */
+  private readonly shadowSpans: Array<{ from: number; to: number }> = []
+  /** 被摘掉的每一格 → 摘掉它的那一次遮蔽在 `shadowSpans` 里的下标。 */
+  private readonly shadowSpanIndexBySeq = new Map<number, number>()
 
   push(event: SessionLogEventRecord): void {
     const op = event.surfaceOp
@@ -164,6 +174,7 @@ export class SurfaceIndex {
   private shadowCompact(event: SessionLogEventRecord, to: number): void {
     const removed = this.order.slice(0, to + 1)
     for (const seq of removed) this.shadowed.add(seq)
+    this.recordShadowSpan(removed)
     this.order.splice(0, removed.length)
     if (this.declaredMessageGap(event, removed)) {
       this.violations.push({ eventSeq: event.seq, type: event.type, reason: 'source-seqs-incomplete' })
@@ -250,6 +261,7 @@ export class SurfaceIndex {
 
     const removed = this.order.slice(from, to + 1)
     for (const seq of removed) this.shadowed.add(seq)
+    this.recordShadowSpan(removed)
     this.order.splice(from, removed.length)
 
     // 批 6a 尾款:只对**消息节点**问责(理由见 `declaredMessageGap`);这条路上
@@ -264,6 +276,35 @@ export class SurfaceIndex {
 
   isShadowed(eventSeq: number): boolean {
     return this.shadowed.has(eventSeq)
+  }
+
+  private recordShadowSpan(removed: readonly number[]): void {
+    if (removed.length === 0) return
+    let from = removed[0]
+    let to = removed[0]
+    for (const seq of removed) {
+      if (seq < from) from = seq
+      if (seq > to) to = seq
+    }
+    const index = this.shadowSpans.push({ from, to }) - 1
+    for (const seq of removed) this.shadowSpanIndexBySeq.set(seq, index)
+  }
+
+  /**
+   * F1-b(§16.15):`memberSeq` 那一格被摘掉的**那一次**遮蔽,连 `eventSeq` 一起摘了吗。
+   *
+   * 给不是 surface 格的事件用 —— 今天唯一的调用方是模型历史那边的工具结果剪枝:
+   * `tool/call` 没有自己的格,`isShadowed` 对它永远答 false,而要问的正是
+   * "这次调用是不是跟结果一起没的"。问的是**同一次**遮蔽,不是"任何一次":
+   * 别的截断顺手覆盖到这个 seq 号段与这次调用毫无关系。
+   *
+   * `memberSeq` 没被摘过 → false(问题本身不成立)。
+   */
+  isShadowedWith(eventSeq: number, memberSeq: number): boolean {
+    const index = this.shadowSpanIndexBySeq.get(memberSeq)
+    if (index === undefined) return false
+    const span = this.shadowSpans[index]
+    return eventSeq >= span.from && eventSeq <= span.to
   }
 
   /**

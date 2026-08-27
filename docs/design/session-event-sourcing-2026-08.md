@@ -3866,7 +3866,7 @@ fold 出状态」。终局:**事件是唯一源头,store 是物化缓存**;core 
 | **F1 写侧同步可见** — **已完成(§16.6,2026-08-27)** | 命令产出的事件先 fold 进活投影(projection-cache 增量 fold 已有)再异步落盘;「命令内读得到自己刚写的」成为纪律,fsync 检查点保留 | 恒等门 + 既有全量测试 | 开关 |
 | **F2 命令面翻转(逐条)** — **已完成**:F2-a(§16.7,2026-08-27:appendMessage / deleteMessage / patchMessage)、F2-b(§16.8,2026-08-27:upsertMessage / truncateFrom)、**F2-c(§16.9,2026-08-27:replaceAll / patchSession + 两个非命令采集点搬家 + 翻译器整体退役 + `annotate` 产地)** | 13 条命令分小批改造:命令产出事件 → fold → store 视图从投影物化;翻译器逐命令退役(命令即事件)。顺序:append/delete/patch 类先,upsert/truncateFrom/compact 后(compact 携 §15 批 P 的遮蔽判例作回归)。**必做项(§15.6 裁定):工具自报结局 `annotate` 获得自己的事件产地**(否则停写后该格永久折不出),连同 §13.8 "采集点不二次派生"裁定一起重审 —— **两项都在 F2-c 落地**(新事件 `tool/annotate`;重审结论见 §16.9 第五节) | 每小批:F0 恒等门 0 失配 + battery + 全量 | 逐命令开关或 revert |
 | **F3 写侧回读换语义** — **已完成(§16.10,2026-08-27)** | 「写侧读抄本」纪律(§13.18)整体翻面:它的理由(投影滞后)被 F1 消掉了,于是从**一刀切**改成**三类具名例外**(判据同源 / 事件产地缺口 / 只在 store 的运行时形状)。**勘误 §14.1 的"9 处全部改读投影"**:以 HEAD 实况重列后,一半在批 6b 删兜底时就已经在读投影,另一半逐处复核**全部留在 store**、各带具名理由,两类做过反证(②类反证 battery **RED / 305 失配**,①类实测 321 run **0 分岔**)——**代码取数面一处未动**。同批把五口的名字改成说实话的 `*FromStore` / `*InStore`(§16.5/§16.7/§16.8/§16.9 四笔留账一次结清) | 定向用例逐处 + battery | 随 F2 分批走 |
-| **F4 reducer 退役** — **F4-a 已完成(§16.12,2026-08-27)**:占位值前递(`addMessage` 交回入库那一条,P0 形状冻结的唯一豁免)+ 两处 store 回读删除(F3 例外表②类摘除)+ 清账(HYDRATE 杆退役 / `clearSessionMessages` 死面删 / `hasSessionInStore` 永久标注)。**余下 F4-b**:补占位产地(拍板 3)→ reducer 合一 → F0 恒等门退役 | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
+| **F4 reducer 退役** — **F4-a 已完成(§16.12,2026-08-27)**:占位值前递(`addMessage` 交回入库那一条,P0 形状冻结的唯一豁免)+ 两处 store 回读删除(F3 例外表②类摘除)+ 清账(HYDRATE 杆退役 / `clearSessionMessages` 死面删 / `hasSessionInStore` 永久标注)。**F4-b 已勘察,停在诊断(§16.13,2026-08-27)—— 未动一行代码,待用户拍板**:实测「物化视图 ≢ store 消息」(run 收尾逐格对拍 50 条路径分岔,恒等门按 canonical 判据对这 50 条**全盲**),其中四类是消费者真吃的格;而 §14.5 早有裁定「内存/IPC/渲染的双视图**保留**,不在范围内」—— 那正是 store。合一的前提是先推翻或另立那条裁定 | core/session/commands.ts reducer 与 projection/reducer 合一;P0 冻结的引擎 store 端口按新形状解冻重审(单独拍板);F0 影子门退役,refold 自洽环成为终局唯一常驻耐久门 | 全量 + battery + refold 常驻 0 | 本期才删码,revert |
 
 ### 16.3 F 线自己的待拍板(到期再拍)
 
@@ -5802,6 +5802,13 @@ refoldMismatches **0** / `session-shadow.jsonl` **0 行**,四泳道一探针全 
 进程的每一份活状态(活投影 + 活 surface),然后才排队落盘。"命令内读得到自己刚写的"
 从"每个读口都记得先 drain 一次"的**约定**,变成写入口自己保证的**机制**。
 
+> **勘误(见 §16.15)**:本批"活 surface 从此看得见 `tool/result`"这一条带出了一个
+> 当时没想到的后果 —— 截断类命令的 replace 区间会顺手圈进**在途 run 落下的那一格
+> 结局**(工具在途时用户插一句话就长这个形状),读侧的工具结果剪枝据此把一次还活着
+> 的调用整个摘掉。真机 `ef079fd7` 两条坏区间已烙进账本。本批下面写的"这一段遮蔽比
+> F1 之前更全:那是已拍定的行为,不是本批的副作用" —— 前半句仍然对,后半句只对
+> **归属在段内**的那些格;归属在段外的那一类是本批的回归,由 §16.15 三刀收口。
+
 #### 一、勘察结论(改动量取决于它):**半同步 —— 记录同步、fold 惰性**
 
 开工前的真实时序(HEAD `5f073752`):
@@ -6878,3 +6885,358 @@ F3 那次反证(硬换读投影)当场 305 失配、`origin` **整格丢失**、
    那条)。它是可感知行为,改不改要单独拍板。
 3. **端口豁免只此一格**。`addMessage` 之外的 P0 端口形状仍然冻结;下一个想动的人
    请先回到 §16.11 拍板 1,而不是引用本条当先例。
+
+### 16.13 F4-b 勘察结论:**停在诊断**——「store 退化为物化缓存」与 §14.5 既有裁定正面冲突(2026-08-27,opus 勘察,**零代码改动**)
+
+工单要求「先勘察后动手」,并写明**若勘察发现物化视图与老 reducer 产物有真差异就停在
+诊断、不硬改绿**。勘察做完了,结论是**停**。本节是那份诊断:三道勘察题的答案、一次
+真机量测的读数、四类阻塞、以及给用户的拍板包。**本批一行生产代码都没改**(唯一动过的
+是一枚跑完即删的探针,见第一节),文档只改了 §16.2 的 F4 行 + 本节。
+
+#### 〇、一句话
+
+F4-b 的终局定义是「**store 从独立写模型退化为投影的物化缓存**」。而 §14.5 早就为
+**同一件事**下过一条相反的裁定 ——
+
+> **内存/IPC/渲染的双视图保留,不在 S3w 范围**。消费者两边都有硬吃者:history builder
+> (`core/engine/history.ts:96-97`,toolCalls 出工具结果、steps 出 turn 切分)、renderer
+> (StepsPanel / tool-display / work-group,`step.toolCall` 与顶层同引用)、collab
+> worker-mind-port、resume-history、evals。收敛这层形状 = 渲染层 + history 大改,存储
+> 收益为零 —— **另立门户,或接受"两个视图"为长期形态**。
+
+—— **那个"内存视图"就是 store**。§16.10 的③类例外也是拿这条裁定当解冻条件的
+(表里写的是"§14.5 双存移除 / F4")。所以 F4-b 不是"再干一批活",是**要先推翻 §14.5**;
+而推翻它的代价 §14.5 自己已经算过:渲染层 + history 大改,存储收益零。
+
+这不是"实现难",是**方案层的前置没做**。硬做的话第一步就要替用户拍四个可感知的
+行为变化(见第三节),而 §16.3 的规矩是这类事单独拍板。
+
+#### 一、勘察题①:物化视图 vs store 消息,**逐格**等价吗?——不等价,50 条路径
+
+**方法(可复现)**:在 `shadow.ts` 的 `checkSessionRunShadow` 里加一枚 `ONETHING_F4_PROBE`
+门控的探针 —— 在恒等门 canonical **之前**把两侧原样逐格对拍(同一对入参:
+`materializeNode(node)` vs `listMessagesFromStore`),把每一处路径与两侧短值写成一行;
+跑 `sessions:shadow-battery --passes 1 --seed 4041`(27 场景 / 87 run / 172 条消息命中),
+读完当场 `git checkout` 撤掉。**探针不入库**,与 §16.10 第二节两次反证同一条做法。
+
+读数:**恒等门 `mismatches` = 0,而逐格对拍 = 50 条不同路径**。两个数字都对 ——
+canonical 的整张豁免表(`ALWAYS_DROPPED_KEYS` / `DERIVED_CLOCK_KEYS` /
+`DERIVED_STEP_CACHE_KEYS` / `isTransientPart` / 空数组 / `undefined` / step `id` /
+`argsFinalizedBy`)丢掉的**正是这 50 条**。也就是说:
+
+> **恒等门证明的是"canonical 之后相等",不是"可以互换"。这两句话之间的缝,恰好就是
+> F4-b 要往里塞 store 的那条缝。**
+
+按频次分档(A=投影物化 / B=内存 store,命中数 = 有此路径分岔的消息条数):
+
+| # | 路径 | 命中 | A(投影) | B(store) | 定性 |
+|---|---|---|---|---|---|
+| 1 | `eventSeq` | 172 | 有 | 缺 | 噪声(投影独有坐标) |
+| 2 | `isStreaming` | 88 | 缺 | `false` | 噪声(`false` ≡ 缺席) |
+| 3 | `thinkingStartTime` | 88 | 缺 | 有 | 噪声(纯 UI 活跃态) |
+| 4 | `usage.durationMs` | 74 | 缺 | 有 | 噪声(墙钟) |
+| 5 | **`thinkingTime`** | 73 | **有** | **缺** | **④ 可感知**:换过去屏幕上会凭空多出"思考了 74ms" |
+| 6 | `toolCalls` | 58 | 缺 | `[]` | 噪声(空数组) |
+| 7 | **`steps[].id`** | 42 | `step-<callId>` | uuid | **① 硬阻塞**,见第二节 |
+| 8 | `toolCalls[].argsFinalizedBy` / `steps[].toolCall.argsFinalizedBy` | 40 / 40 | 缺 | 有 | 噪声(流式诊断位,§10.8 公开缺口) |
+| 9 | **`steps[].partialResult.*`** | 28+28+24×4+10+4×10+2×4 | **另一种形状** | **另一种形状** | **③ 可感知**,见下 |
+| 10 | **`contentParts` 整族**(`.length` 24 / `[].type` 26 / `[].content` 26 / `[].turnIndex` 22 / 整格缺 2) | — | 无 `data-steps` | 有 `data-steps` | **② 硬阻塞**,见第二节 |
+| 11 | `toolCalls[]` / `steps[]` / `steps[].toolCall` 的 `timestamp` `startTime` `endTime` `receivedAt` `durationMs` | 19/19/19/11/11/11/11/8 | 差 1–2ms | 差 1–2ms | 噪声(两次读表) |
+| 12 | `steps[].toolCall.canRespond` / `requiresConfirmation` | 6 / 4 / 2 | `false`↔缺 | 双向 | 噪声(确认闸收场态) |
+
+第 9 条展开(它是"两个结构不同的对象",不是"某一格差一点"):
+
+| 侧 | `steps[].partialResult.details` 的键 |
+|---|---|
+| A 投影 | `command` `workingDirectory` `exitCode` `path` `diff` `diffHunks` `additions` `deletions` `originalContentHash` `afterContentHash` `auditId` `auditPath` `bytesWritten` `lineCount` `created` |
+| B store | `title` `metadata{command,workingDirectory,exitCode,output}` `output` `attachments` |
+
+canonical 之所以敢丢它,理由写在 `DERIVED_STEP_CACHE_KEYS` 上:「同一条消息在**重启
+前后**本来就不是同一个值」。那句话成立 —— 但它说的是**冷加载**换形状,不是**流中**
+换形状。F4-b 要换的是后者。
+
+#### 二、两条硬阻塞(不是审美,是机械上跑不通)
+
+**① `steps[].id` —— 引擎按 id 寻址步骤,而物化视图换了一套 id。**
+
+`core/engine/event-only-emitter.ts:343` 的 `sendStepUpdated(stepId, updates)` 同时做两件事:
+`store.updateMessageStep(sessionId, msgId, stepId, updates)` + 往渲染层推一条
+`STEP_UPDATED`。那个 `stepId` 是引擎自己 `createCoreId()` 生成的 uuid;而 reducer 的
+`patchStep` 用 `steps.findIndex(step => step.id === command.stepId)` 认它。物化视图里
+step 的 id 是 `step-${callId}`(投影派生,`materializeStep`)—— 换过去之后每一次
+`patchStep(uuid)` 当场 `findIndex === -1` **静默 no-op**,而渲染层那侧照收
+`STEP_UPDATED`(它不经过 store)。结果是**内存与屏幕分家**,而且没有任何一道门会红:
+canonical 明文丢掉 step `id`(G1),恒等门看不见这件事。
+
+要跨过它只有两条路,都超出"只换实现不换形状":把引擎的 step id 改成
+`step-${callId}`(id 语义变化 + 渲染层 key 变化 + 旧会话 id 断代),或者让 store 保留
+自己的 id 只吃投影的内容 —— 后者不是"物化",是**第三条推导**,比今天更糟。
+
+**② `contentParts` —— 投影按裁定**故意不产出** `data-steps`,数组因此错位。**
+
+canonical G4 与 §14.4 都写死了:渲染锚点住渲染侧,「投影产出 data-steps」是**已被否决
+的备选**(原话:"违反'锚点住渲染侧'(G4),canonical 要开豁免")。实测后果不是"少一格"
+而是**整条数组错位**:`contentParts[i].type` 在 26 条消息上对不上号
+(A 的 `reasoning` 撞 B 的 `data-steps`、A 的 `text` 撞 B 的 `reasoning`)、
+`.turnIndex` 22 条不同、`.length` 24 条不同、还有 2 条消息 store 侧只有
+`[{type:'data-steps',turnIndex:1}]` 而投影侧整格没有。
+
+S3w-0(`8682d980`)让**渲染层自合成**锚点,所以"显示"这一侧接得住;接不住的是
+**收尾链**:`agent-loop-executor.ts:629` 的 `completeAgentLoopStream` settle 快照拿的
+就是 store 那份带锚点的 `contentParts`(§16.10 ③类原话:"换掉就是 §15.16「正文看不见」
+的同一根引信"),以及 `:533` `captureCancelledToolResults` / `:578` 收尾修复读的
+`steps[]` 结局 —— 被取消的工具从来没有 `tool/result`,读投影**读空**、采集不触发、
+账本缺账。
+
+#### 三、两类可感知行为变化(硬做的话第一步就得替用户拍)
+
+| # | 变化 | 用户看得见什么 |
+|---|---|---|
+| ③ | `steps[].partialResult` 换成投影那一份 | 工具卡在**执行当中**显示的结构化结局换一套形状(自报标题 `details.title`、`output`、`attachments` 消失;`diff` / `diffHunks` / 审计路径出现) |
+| ④ | `thinkingTime` 从投影物化进 store | 每条助手消息**凭空多出**一个思考时长读数(今天 store 上常常根本没有这一格) |
+
+按 §16.3 的规矩(以及用户对"行为裁定须先问"的既有指令),这两条不该由执行侧顺手拍。
+
+#### 四、勘察题②:F3 ①类 8 处在合一后怎么自然解决 —— **路径成立,但它是果不是因**
+
+答案本身是干净的,记在这里备用:合一之后"改不改得成"只剩一条推导(投影),命令面
+那 8 处 `hasMessageInStore` / `getMessageFromStore` / `findMessageFromStore` 判据源
+一起改成投影面(`getMessage` / `findMessage` / `hasMessage`),`reads.ts` 上①类那三口
+随之退役。**判据可信度已经量过**:§16.10 第二节的①类反证跑了 **321 run / 0 次分岔**
+—— 投影答得对。唯一不跟着退役的是 `hasSessionInStore`(§16.11 拍板 4 已定为永久例外:
+"会话在不在"是 `meta.json` / 目录层的事实,消息事件里永远没有它的产地)。
+
+代价也量过并记在案(§16.10):`patchMessage` 是逐 token 的热路径,而投影侧最便宜的
+存在性口 `eventsGetMessage` 每次物化**整条会话**。合一时要么给投影加一个 O(1) 的
+`hasMessage(sessionId, messageId)`(`byMessageId.has`,现成的),要么这条热路径变慢。
+推荐前者,顺手可做。
+
+**但**:这 8 处的解冻**依赖**合一,不是反过来。合一停了,它们原地不动 —— §16.10
+给它们挂的理由("与 reducer 同一份 store,两侧同判据")今天仍然逐字成立。
+
+#### 五、勘察题③:引擎流式写手与物化缓存怎么共存 —— **口径写出来了,但它自证了阻塞**
+
+勘察前的预设是「活 run 的消息仍由引擎写手持有,settle 时账本收尾,缓存物化覆盖」。
+把它写成纪律之后,自己就露了底:
+
+| 阶段 | 谁持有那条消息 | 物化缓存能不能覆盖 |
+|---|---|---|
+| `run/start` 之前 | 引擎创建点(F4-a 之后由 `addMessage` 交回入库那一条) | 账本上还没有这条消息的那一格(§16.12 留账 1) |
+| run 进行中 | 引擎写手按 **id 寻址**(`patchStep(stepId)` / `updateMessageToolCalls` / `addMessageContentPart`),同一批值同时推给渲染层 | **不能**:覆盖 = 换掉 step id(阻塞①)+ 抹掉锚点(阻塞②)+ 换掉 partialResult 形状(③) |
+| settle | 收尾链**读** store 的 `steps[]` / `contentParts`,再写回 | **不能**:读的正是投影不产出的那几格(§16.10 ③类) |
+| run 结束之后 / 冷加载 | 已经是物化了(S3w-1,`hydrate.ts` 无条件走投影) | **已经成立** —— 这一格 F 线早就做完了 |
+
+也就是说,「物化缓存」这个终局在**冷侧已经是现状**,阻塞全部集中在**活 run 那个窗口**;
+而那个窗口正是 §14.5 说的"内存/IPC/渲染双视图"的作用域。三题的答案在这里合流。
+
+#### 六、给用户的拍板包(F4-b 要往下走,必须先答这三条)
+
+1. **§14.5 的裁定翻不翻?** 翻 = 接受"渲染层 + history 大改"(§14.5 自己的估价),
+   收益是 F 线终局成立、reducer 少一份、F0 门可退役;不翻 = **F 线到 F4-a 为止收官**,
+   `core/session/commands.ts` 作为 F0 影子验证器**长期留任**(它今天不是死码,是恒等门
+   的另一侧),refold + F0 两道门并存。**推荐后者**,理由与 §14.2 当初推荐 lite 同一条:
+   丙的纯度收益换不回它的风险与安全网损失,而 F0–F4-a 已经把用户可感知的价值全拿到了
+   (命令即事件、单一持久化、双存从磁盘消失、写侧同步可见、回读窗口消灭)。
+2. **若翻**:第三节那两条可感知变化(`partialResult` 形状 / `thinkingTime` 现身)照旧
+   要逐条拍;第二节两条硬阻塞各自需要一个子期(step id 语义统一 / 锚点与收尾链改造),
+   规模远超"1–2 批"。
+3. **若不翻**:§16.2 的 F4 行、§16.11 拍板 2(F0 门退役条件)、§16.10 留账 1(①类
+   解冻点)三处都要改口 —— 它们今天都写着"F4 那天"。本节先不动它们,等拍板。
+
+#### 七、本批的账
+
+- **代码改动:0**(探针跑完即删,`git checkout` 已确认与 HEAD 逐字相同)。
+- **文档改动:2 处** —— §16.2 的 F4 行改口 + 本节。
+- **实跑读数**:`sessions:shadow-battery --passes 1 --seed 4041` —— runs 87 /
+  historyChecks 119 / **mismatches 0** / duplicates 0 / projectionIssues 0 /
+  droppedParts 0 / appendFailures 0 / refoldChecks 63 / **refoldMismatches 0** /
+  `session-shadow.jsonl` 0 行;四条泳道与写失败探针全 PASS。
+  (`--passes 1` 下 `runs 87 < min-runs 200`,门按口径判 RED —— 与 §16.12 第五节
+  字节回归那三跑同一个已知口径,不是失配。)
+- **告别对账没有跑**:它是"切换完成之后"的动作,而本批没有切换。F0 恒等门**照旧上岗**。
+
+#### 八、真机只读对账捎带读到一条**新红**(与本批无关,停在诊断)
+
+跑 `sessions:verify:gate` 时顺手跑了 `sessions:shadow-report`(只读),读数:
+
+```
+runs 62 / historyChecks 209 / mismatches 4 / duplicateMismatches 7
+projectionIssues 0 / droppedParts 0 / appendFailures 0
+refoldChecks 16 / refoldMismatches 0
+byKind { history: 4 }   skipped { history-steer-window: 1 }
+```
+
+`sessions:verify:gate` **ok — 13 known, none new**;红的是 shadow 那一侧的 4 条
+`kind:'history'`,时刻 2026-08-27 03:24–03:31(用户当时正在真机上聊天),**全部落在
+同一条会话 `ef079fd7`** —— 就是 §15.21 那条 `Session cleared` 化石会话。
+
+**与本批无关**是可判定的:本批生产代码改动 0(`git diff` 对 `packages/` 空),
+本批的 battery 跑在一次性临时 store 上,从头到尾没写过 `~/.onething`。
+
+形状(四行同型,取最后一条):
+
+| 位置 | A(events 真相) | B(store 验证器) |
+|---|---|---|
+| `.length` | 372 | **375** |
+| `356.content` | 比 B **多**一段("工具列表正常,说明 chrome-devtools 这个 MCP…") | 少那一段 |
+| `358` | `role:user`("chrome没有弹出来mcp连接申请,") | `role:assistant` + `toolCalls:[call_00_ET_…20941]` |
+| `359` | `role:assistant`(下一轮正文 + reasoningContent) | `role:tool`(那次调用的结果) |
+| `360`… | 整体**前移 2 格** | — |
+
+也就是说:**事件侧的模型历史少了一对 `assistant(toolCalls)` + `tool(result)`**,
+而那一轮的正文被并进了前一格。
+
+**已排除数据丢失**(只读核对该会话 `events.jsonl`,5.9MB):那个 callId
+`call_00_ET_05UwmNXVnWDX8QtMa8V20941` 在账本里**五条俱全** ——
+`assistant/chunks`(seq 5123)/ `assistant/part-end`(5124)/ `tool/call`(5125)/
+`tool/audit`(5128)/ `tool/result`(5130)。**事实全在账上,分岔在
+`materializeModelHistory` 的轮次切分**:那一轮没有被切成独立的一格,正文被折进了
+上一格。嫌疑指向这条会话上的 `session/cleared` 遮蔽段与轮次重建的交叉(§15.21 收口
+的是同一条会话的 **surface** 化石,这一条是 **history**,不是同一个类)。
+
+**按 §15.19 第七节的先例:停在诊断,不在本批修**。它是真实使用那半边门的产出
+(CLAUDE.md 说的"unknown unknowns"),需要单独一批,而且要先决定它是投影缺陷还是
+这条化石会话的既有伤 —— 判据是**换一条干净会话能不能复现同一形状**。
+
+---
+
+### 16.15 F1 回归修复批落地记录:被别人的截断溅到的 `tool/result`(2026-08-27,opus 执行,未提交)
+
+**一句话**:F1(`fc572b20`)让写侧的活 surface 看得见 `tool/result` 之后,截断类命令的
+replace 区间会顺手圈进**在途 run 落下的那一格结局**;读侧的工具结果剪枝按 `resultSeq`
+判,就把一次**还活着**的调用整个摘掉 —— 每次请求复发一条历史失配。三刀:写侧收口(A)、
+读侧判据改正(B,治已烙的存量)、外加一颗与 F1 无关的独立老雷(C:分裂重放会静默吞掉
+未结算那一轮的真实正文)。
+
+#### 一、回归链(从 §16.13 第八节那条"新红"追下来)
+
+真机 `ef079fd7-d6ca-42a4-887b-499767593b7a`,场景是**工具在途时用户插话 → steer →
+edit-resend**。账本上那一段的形状:
+
+```
+seq 5106  run/start   r1 → a1            ← 这条 assistant 消息的 surface 格
+seq 5125  tool/call   c=…20941 (turn 2)  ← 第 2 轮的调用,还在跑
+seq 5127  user/message u2 "chrome没有弹出来mcp连接申请，"   ← 用户插话,落到 surface 上
+seq 5130  tool/result c=…20941           ← 在途那次调用的结局,排在插话**后面**
+seq 5132  user/message-edited  replace[5127..5130]  sourceEventSeqs=[5127,5130]
+```
+
+1. **写侧**(`backend/session/event-surface.ts:119` 的 `rangeFrom`):按位置 `order.slice(at)`
+   一刀切到末尾,于是 5130 进了区间 —— 而它归属的 `run/start@5106` 在段外,**那条
+   assistant 消息还在 surface 上**。
+2. **读侧**(`core/session/projection/model-history.ts:282` 的 `pruneShadowedToolCalls`):
+   判据是"`resultSeq` 被遮 → 摘掉整次调用"。于是 `a1` 少了一次调用。
+3. **后果**:`splitAssistantMessageIntoTurnGroups` 因此只剩 1 组 → 退回 collapsed →
+   模型历史里**少一对 `assistant(toolCalls)` + `tool(result)`**,那一轮的正文并进前一格。
+   §16.13 第八节记的 `.length a=401 / b=404`、`358.role a=user / b=assistant` 就是它。
+
+引擎那边这次截断只删了用户那句往后的消息,`a1` 连同它的两次调用**一个字节没动** ——
+所以这是**投影单边错**,不是两侧都错。
+
+**全库只读扫描**(433 份 `events.jsonl`,`foldSessionProjection` + 现判据):
+`pruneShadowedToolCalls` 今天在整个真机 store 上**只剪掉过这 2 次调用**,全都是这一类
+坏区间,全都在 `ef079fd7`。压缩那一路一次都没走到这里 —— 整段前缀遮蔽时那条 assistant
+消息自己也被遮了,节点根本不进 `nodes`。
+
+#### 二、三刀
+
+**A —— 写侧收口**(`packages/backend/session/event-surface.ts`)。
+`rangeFrom` 的 replace 区间与 `sourceEventSeqs` 不再吞"**归属节点起点在 `start` 之前**"
+的尾随格:活 surface 额外记一张 `tool/result seq → 它所属 run 的 run/start seq` 的表
+(`run/start` 建号 → `tool/call` 把 callId 挂到当前 run → `tool/result` 优先按 runId 解、
+其次按 callId、最后退回最近一条 `run/start`;三条线索都缺 = 没有归属 = 不设限,与修复前
+逐字相同),`rangeFrom` 从尾部往回剥掉归属在段外的那些格。`wholeRange` 不动。
+
+只修**尾随**格是机械约束不是取巧:replace 的 op 在 `SurfaceIndex.applyReplace` 里是
+`order.slice(from, to+1)` 的**位置连续段**,中间挖洞表达不出来。而这一类格只会出现在
+尾部 —— 它们正是"这条消息落账之后、这次截断之前"那段时间里在途 run 落下的结局。
+
+**B —— 读侧判据改正**(`core/session/projection/{surface,model-history}.ts`)。
+判据从"`resultSeq` 被遮"改成"**调用与结果被同一次遮蔽一起摘掉**"。
+`tool/call` 不是 surface 节点,`shadowed` 里永远没有它,所以问法必须是**区间**的:
+`SurfaceIndex` 记下每一次遮蔽实际摘掉的那一段(`{from,to}` = removed 的 seq 最小/最大)
+与"每一格是被第几次遮蔽摘的",新口 `isShadowedWith(eventSeq, memberSeq)` 回答"摘掉
+`memberSeq` 的**那一次**,连 `eventSeq` 一起摘了吗"。问同一次而不是任何一次 —— 别的
+截断顺手覆盖到这个 seq 号段与这次调用毫无关系。
+
+- `ef079fd7` 两条坏区间当场自愈:`tool/call@5125` 落在 `[5127..5130]` 之外 → 不剪。
+- 压缩整段前缀遮蔽:调用与结果都在段内 → 照剪,行为不变(而且如上所述,今天真机上
+  这条路一次都没走到)。
+- 这是**读侧语义修正治存量**,与批 P 同判例;canonical 零豁免。
+
+**C —— 独立老雷收口**(`core/engine/history.ts` + `core/session/projection/model-history.ts`,
+与 F1 无关,是本次诊断顺手挖出来的)。
+
+`contentParts` 有一道 `requestSettled` 闸(被 abort / 出错重试的那一轮不落 part),
+`message.content` **没有** —— 那一轮的正文实时写在 content 上却没有对应的 part
+(reducer.ts:1655 有闸 / 1686 `materializePartText` 无闸,不对称)。而分裂重放
+(`splitAssistantMessageIntoTurnGroups`)只按 part 重放,于是那一段**真实正文**在下一次
+请求里凭空消失。从前那里只挡住"一格 part 文本都没有"这一端。
+
+- **C①**:判据收紧成"逐格相加 == 整条正文"(比较忽略空白 —— 分裂路径按 `\n\n` 重粘,
+  content 是 delta 直接累加,健康的消息只在空白上不同)。对不上就**退回 collapsed**:
+  宁可少一次忠实重放,不肯丢一个字。判定只此一处
+  (`historyContentPartsCoverContent`,导出给投影侧用同一个函数问)。
+- **C②**:`checkTurnSplitFallback` 补盲。这一格从前是盲的 —— 掉了那一格 part 之后
+  剩下的常常只属于一个回合,`if (!missing && turns.size <= 1) return` 提前返回,把一次
+  **真的少了一段正文**当成正常情况放过去。现在先问"正文装全了吗",不全就记一条
+  新的 `ProjectionIssue{kind:'content-parts-incomplete', where:'history.contentParts'}`。
+
+**C 的行为方向是"更不丢内容"**,并且**两侧同时改**:store 侧那条消息的
+`contentParts` 也缺同一格(引擎的落点就是 `persistTurnContentParts`),所以两侧一起
+退回 collapsed,恒等门照旧相等。
+
+#### 三、反事实读数(全部实跑,只读)
+
+**存量自愈证明(真机 `ef079fd7`,只读重折)**。b 侧的输入用 `projectChatMessages(events)`
+顶替 store —— 那正是 S1 影子断言在每个 `run/end` 钉住的等式(这条会话的 chat 影子是绿的),
+而它的 `messages.jsonl` 早已永久停写(63 行,根本没有这两条消息),离线取不到 store 那一份。
+两侧过**同一条** `buildHistoryMessages` 配方,只差取数路:
+
+| 判据 | `a` = `projectModelHistory` | `b` = 引擎配方 | 逐条不等 |
+| --- | --- | --- | --- |
+| 旧(`resultSeq` 被遮就剪) | 381 | 382 | **54** 条(自 idx 327 起全线错位) |
+| 新(同一次遮蔽才剪) | 382 | 382 | **0** |
+
+**全库回归**(433 份账本,同一对比逐会话跑两遍):`worse: 0 / better: 1 / same: 432`
+—— 只有 `ef079fd7` 从 54 → 0,没有任何一条会话因为 B 变差。
+
+**C 的影响面**(全库扫描,`canSplit` 新旧判据对比):surface 上 400 条助手消息里
+**5 条**(分布在 3 个会话)从"能分裂"翻成"退回 collapsed",一共**追回 10142 个
+非空白字符**的真实正文 —— 那正是从前每次请求都在静默丢掉的那一段。
+
+#### 四、用例与反证
+
+| 用例 | 位置 | 反证(必红) |
+| --- | --- | --- |
+| B:在途结局被别人的截断溅到 → 不剪,`c1`/`c2` 与两条结局都在,且 `a==b` | `core/session/__tests__/projection-contract.test.ts` §16.15 组 | 把第二问换成 `return false`(退回旧判据)→ 红 |
+| A:尾随的"别人家"`tool/result` 不进区间 | `backend/session/__tests__/write-side-visibility.test.ts` F1-a 组 | `trimForeignTrailingToolResults` 换回 `order.slice(at)` → 红 |
+| A 的对照:归属就在段内的结局照旧跟着遮 | 同上 | —(收口只针对"别人家") |
+| C:未结算那一轮的正文退回 collapsed 且不丢 + `content-parts-incomplete` 可见 | `core/session/__tests__/projection-contract.test.ts` §16.15 组 | 判据换回 `hasPartText` → 红 |
+
+三条反证均已实跑确认为红,随后原样还原。
+
+#### 五、验收
+
+- `typecheck` 0(node + web);
+- `packages/core/session` + `packages/core/engine` + `packages/backend/session` 定向 451/451 绿;
+- `packages/backend` 全包 2398 绿 / 1 skip(首轮有一条 `sessions-delete-cascade` 的
+  `waitGone` 计时抖动,单跑与复跑均绿);
+- 全量 `vitest run` 11927 绿,唯一一条红是 `renderer/App.container-layout` —— 它属于
+  工作树里**另一条会话**未提交的 `App.vue` / `useShellLayout.ts` 改动,与本批零交集;
+- 四门:`boundary:gate` ok(0)、`session:gate` ok(0 new)、`log:gate` ok(4 known,none new)、
+  `transport:gate` ok(42 常量 / 四壳 2392 行,未变);
+- 真机只读 `sessions:verify:gate` ok —— 13 known,**none new**;
+- `sessions:shadow-battery` **GREEN**:runs 321 / historyChecks 449 /
+  mismatches **0** / duplicates 0 / projectionIssues 0 / droppedParts 0 /
+  appendFailures 0 / refoldMismatch 0 —— 零项逐项同基线。
+
+#### 六、留在账上的两条
+
+1. **A 只修尾随格**。归属在段外、却排在段**中间**的 `tool/result`(在途 run 在插话之后
+   又落了一格结局、再之后才开了新 run)今天表达不出来 —— replace 的 op 是位置连续段。
+   全库零例;真要修,得先给 surface 的 op 词汇加"非连续遮蔽",那是另一批。
+2. **`pruneShadowedToolCalls` 今天在真机上是一条零命中的路**。它存在是为了 §3.1 表里
+   那格"工具结果剪枝"将来能用同一个 replace 机制表达 —— 那个生产者还没写。真写的时候
+   要一并决定"只遮结果格"这种 op 下 `isShadowedWith` 怎么答(今天它会答 false =不剪),
+   而不是默默让它生效。

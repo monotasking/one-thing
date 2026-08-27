@@ -3561,3 +3561,185 @@ describe('§13.10: 压缩标记只有一格 / agent 切换进账本', () => {
     expect(foldSessionProjection(events).sessionMeta).toEqual({ agentId: 'onething' })
   })
 })
+
+// ============================================================================
+// §16.15 F1 回归修复批:工具在途时用户插话 → steer → edit-resend
+//
+// F1 让写侧的活 surface 看得见 `tool/result` 之后,edit-resend 的 replace 区间
+// 顺手遮住了**别人家**的那一格,读侧的工具结果剪枝按 `resultSeq` 判就把一次
+// 还活着的调用整个摘掉。三刀:写侧收口(A,在 backend)、读侧判据改正(B)、
+// 分裂护栏收紧 + 退化可见(C)。
+// ============================================================================
+
+describe('§16.15 F1 回归:被别人的截断溅到的 tool/result', () => {
+  /**
+   * B:**调用与结果同时被遮才剪**。
+   *
+   * 真机 `ef079fd7` 的形状,最小化到一条事件线:`a1` 的第 2 轮工具还在跑时用户
+   * 插了一句(`u2` 落在 surface 上),那次调用的 `tool/result` 随后才落 —— 排在
+   * `u2` **后面**。接着对 `u2` 的 edit-resend 从 `u2` 切到末尾,连带遮住了它。
+   * 而 `a1` 还在 surface 上:引擎那边这条消息与它的两次调用一个字节没动。
+   *
+   * **反证**:把判据退回"`resultSeq` 被遮就剪"(去掉 `isShadowedWith` 那一问),
+   * 本例当场红 —— `c2` 与它的结果一起从模型历史里消失。
+   */
+  it('B: an in-flight tool result swept up by someone else\'s truncation is NOT pruned', () => {
+    const line = eventLine()
+    line.push({
+      time: 1, type: 'user/message',
+      data: { message: { id: 'u1', role: 'user', content: 'go', timestamp: 1 } }, surfaceOp: 'append',
+    })
+    line.push({ time: 2, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 3, type: 'assistant/chunks',
+      data: { runId: 'r1', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 3, dt: [0], text: ['one'] },
+    })
+    line.push({
+      time: 4, type: 'assistant/part-end',
+      data: { runId: 'r1', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', len: 3 },
+    })
+    line.push({
+      time: 5, type: 'tool/call',
+      data: { runId: 'r1', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1', turnIndex: 1 },
+    })
+    line.push({
+      time: 6, type: 'tool/result',
+      data: { runId: 'r1', callId: 'c1', isError: false, resultPreview: 'ok', result: { text: 'ok' } },
+      surfaceOp: 'append',
+    })
+    line.push({ time: 7, type: 'request/end', data: { runId: 'r1', requestIndex: 1 } })
+    line.push({
+      time: 8, type: 'assistant/chunks',
+      data: { runId: 'r1', requestIndex: 2, messageId: 'a1', partIndex: 1, kind: 'text', time0: 8, dt: [0], text: ['two'] },
+    })
+    line.push({
+      time: 9, type: 'assistant/part-end',
+      data: { runId: 'r1', requestIndex: 2, messageId: 'a1', partIndex: 1, kind: 'text', len: 3 },
+    })
+    // 第 2 轮的调用还在跑 —— 用户就在这一刻插了话。
+    const inFlight = line.push({
+      time: 10, type: 'tool/call',
+      data: { runId: 'r1', callId: 'c2', name: 'bash', argumentsRaw: '{}', messageId: 'a1', turnIndex: 2 },
+    })
+    const interjection = line.push({
+      time: 11, type: 'user/message',
+      data: { message: { id: 'u2', role: 'user', content: 'wait', timestamp: 11 } }, surfaceOp: 'append',
+    })
+    // 在途那次调用的结局排在插话**后面**落到 surface 上 —— 病根的形状。
+    const inFlightResult = line.push({
+      time: 12, type: 'tool/result',
+      data: { runId: 'r1', callId: 'c2', isError: false, resultPreview: 'ok2', result: { text: 'ok2' } },
+      surfaceOp: 'append',
+    })
+    expect(inFlight.seq).toBeLessThan(interjection.seq)
+    expect(inFlightResult.seq).toBeGreaterThan(interjection.seq)
+    line.push({ time: 13, type: 'request/end', data: { runId: 'r1', requestIndex: 2 } })
+    line.push({ time: 14, type: 'run/end', data: { runId: 'r1', outcome: 'completed' } })
+    // 已经烙进账本的那条坏区间:从插话切到末尾,把别人家的结局也圈了进去。
+    line.push({
+      time: 15, type: 'user/message-edited',
+      data: { messageId: 'u2', message: { id: 'u2', role: 'user', content: 'edited', timestamp: 15 } },
+      surfaceOp: { op: 'replace', start: interjection.seq, end: inFlightResult.seq },
+      sourceEventSeqs: [interjection.seq, inFlightResult.seq],
+    })
+
+    const history = projectModelHistory(line.events, {}, {
+      buildMessageContent: defaultHistoryMessageContent,
+    })
+    const json = JSON.stringify(history)
+    // 两次调用与两条结局都还在:引擎那边这条消息一个字节没动。
+    expect(json).toContain('c1')
+    expect(json).toContain('c2')
+    // 正文没有并格 —— 两轮各自成对发出去。
+    const assistants = history.filter(message => message.role === 'assistant')
+    expect(assistants.flatMap(message => (message as { toolCalls?: { toolCallId: string }[] }).toolCalls ?? [])
+      .map(call => call.toolCallId)).toEqual(['c1', 'c2'])
+
+    // a==b:同一份事件,投影侧的模型历史 == 引擎配方跑在投影出的消息上。
+    const fromMessages = buildHistoryMessages(
+      projectChatMessages(line.events).messages as unknown as CoreHistoryChatMessage[],
+      {},
+      { buildMessageContent: defaultHistoryMessageContent },
+    )
+    expect(canonicalHistoryMessages(history as unknown as Record<string, unknown>[]))
+      .toEqual(canonicalHistoryMessages(fromMessages as unknown as Record<string, unknown>[]))
+  })
+
+  /**
+   * C:**未结算那一轮的正文不许被分裂吞掉**(独立老雷,与 F1 无关)。
+   *
+   * `contentParts` 有一道 `requestSettled` 闸(被 abort / 出错重试的那一轮不落
+   * part),`message.content` 没有。分裂路径只按 part 重放,于是那一段真实正文
+   * 在下一次请求里凭空消失。收紧后的判据("逐格相加 == 整条正文")让这条消息
+   * 退回 collapsed —— 宁可不分裂,不肯丢一个字 —— 并留下一条 issue。
+   *
+   * **反证**:去掉 `historyContentPartsCoverContent` 那一问,`two` 当场从历史里消失。
+   */
+  it('C: an unsettled turn\'s text keeps the message collapsed instead of being swallowed', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', time0: 2, dt: [0], text: ['one'] },
+    })
+    line.push({
+      time: 3, type: 'assistant/part-end',
+      data: { runId: 'r', requestIndex: 1, messageId: 'a1', partIndex: 0, kind: 'text', len: 3 },
+    })
+    line.push({
+      time: 4, type: 'tool/call',
+      data: { runId: 'r', callId: 'c1', name: 'bash', argumentsRaw: '{}', messageId: 'a1', turnIndex: 1 },
+    })
+    line.push({
+      time: 5, type: 'tool/result',
+      data: { runId: 'r', callId: 'c1', isError: false, resultPreview: 'ok', result: { text: 'ok' } },
+      surfaceOp: 'append',
+    })
+    line.push({ time: 6, type: 'request/end', data: { runId: 'r', requestIndex: 1 } })
+    // 第 2 轮:正文实时写在 content 上,而它的 `request/end` **永远不会来**
+    // (用户 abort / 请求出错重试)—— 于是这一格没有 contentPart。
+    line.push({
+      time: 7, type: 'assistant/chunks',
+      data: { runId: 'r', requestIndex: 2, messageId: 'a1', partIndex: 1, kind: 'text', time0: 7, dt: [0], text: ['two'] },
+    })
+    line.push({
+      time: 8, type: 'assistant/part-end',
+      data: { runId: 'r', requestIndex: 2, messageId: 'a1', partIndex: 1, kind: 'text', len: 3 },
+    })
+    line.push({
+      time: 9, type: 'tool/call',
+      data: { runId: 'r', callId: 'c2', name: 'bash', argumentsRaw: '{}', messageId: 'a1', turnIndex: 2 },
+    })
+    line.push({
+      time: 10, type: 'tool/result',
+      data: { runId: 'r', callId: 'c2', isError: false, resultPreview: 'ok2', result: { text: 'ok2' } },
+      surfaceOp: 'append',
+    })
+    line.push({ time: 11, type: 'run/end', data: { runId: 'r', outcome: 'completed' } })
+
+    const message = projectChatMessages(line.events).messages[0]
+    // 病灶的形状:正文有两轮,contentParts 只有第 1 轮。
+    expect(message.content).toContain('one')
+    expect(message.content).toContain('two')
+    expect((message.contentParts ?? []).filter(part => part.type === 'text')).toHaveLength(1)
+
+    const issues: unknown[] = []
+    const history = projectModelHistory(line.events, {}, {
+      buildMessageContent: defaultHistoryMessageContent,
+      onIssue: issue => issues.push(issue),
+    })
+    // 退回 collapsed:一条 assistant(带全部正文与两次调用)+ 一条 tool。
+    const assistants = history.filter(entry => entry.role === 'assistant')
+    expect(assistants).toHaveLength(1)
+    expect((assistants[0] as { content: string }).content).toContain('one')
+    expect((assistants[0] as { content: string }).content).toContain('two')
+    expect((assistants[0] as { toolCalls?: { toolCallId: string }[] }).toolCalls?.map(call => call.toolCallId))
+      .toEqual(['c1', 'c2'])
+    // C②:这一类退化从前是盲的(剪枝后 turns.size<=1 提前 return)。
+    expect(issues).toContainEqual(expect.objectContaining({
+      kind: 'content-parts-incomplete',
+      where: 'history.contentParts',
+      messageId: 'a1',
+    }))
+  })
+})
