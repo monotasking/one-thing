@@ -120,7 +120,7 @@ export const sessionCommandEvents = {
    *  - 其余(system / error / 直接落定的 assistant)→ `system/message`,
    *    role 原样。它是一条**完整消息**,和 `message/imported` 同形。
    */
-  appendMessage(sessionId: string, message: ChatMessage): void {
+  appendMessage(sessionId: string, message: ChatMessage, time?: number): void {
     if (!isSessionTranslationEnabled(sessionId)) return
     safely('appendMessage', () => {
       if (message.role === 'assistant' && message.isStreaming) return
@@ -129,13 +129,13 @@ export const sessionCommandEvents = {
         sessionId,
         type,
         { message: messageForEvent(sessionId, message) as never },
-        { surfaceOp: 'append' },
+        { surfaceOp: 'append', ...(time !== undefined ? { time } : {}) },
       )
     })
   },
 
   /** `deleteMessage`(F2-a):只遮蔽它自己那一格(后面的照旧在 surface 上)。 */
-  deleteMessage(sessionId: string, messageId: string): void {
+  deleteMessage(sessionId: string, messageId: string, time?: number): void {
     if (!isSessionTranslationEnabled(sessionId)) return
     safely('deleteMessage', () => {
       const seq = sessionSurface(sessionId).seqOf(messageId)
@@ -143,9 +143,12 @@ export const sessionCommandEvents = {
         sessionId,
         'message/deleted',
         { messageId },
-        seq !== undefined
-          ? { surfaceOp: { op: 'replace', start: seq, end: seq }, sourceEventSeqs: [seq] }
-          : {},
+        {
+          ...(seq !== undefined
+            ? { surfaceOp: { op: 'replace' as const, start: seq, end: seq }, sourceEventSeqs: [seq] }
+            : {}),
+          ...(time !== undefined ? { time } : {}),
+        },
       )
     })
   },
@@ -162,17 +165,23 @@ export const sessionCommandEvents = {
     sessionId: string,
     messageId: string,
     patch: Partial<ChatMessage>,
-    options: { fullBody?: boolean } = {},
+    options: { fullBody?: boolean; time?: number } = {},
   ): void {
     if (!isSessionTranslationEnabled(sessionId)) return
     safely('patchMessage', () => {
+      const at = options.time !== undefined ? { time: options.time } : {}
       const turnContext = (patch as { turnContext?: { set?: Record<string, string>; removed?: string[] } }).turnContext
       if (turnContext) {
-        appendSurfaceAwareEvent(sessionId, 'context/turn-update', {
-          messageId,
-          ...(turnContext.set ? { set: turnContext.set } : {}),
-          ...(turnContext.removed ? { removed: turnContext.removed } : {}),
-        })
+        appendSurfaceAwareEvent(
+          sessionId,
+          'context/turn-update',
+          {
+            messageId,
+            ...(turnContext.set ? { set: turnContext.set } : {}),
+            ...(turnContext.removed ? { removed: turnContext.removed } : {}),
+          },
+          at,
+        )
       }
 
       const kept: Record<string, unknown> = {}
@@ -188,7 +197,19 @@ export const sessionCommandEvents = {
           : value
       }
       if (Object.keys(kept).length === 0) return
-      appendSurfaceAwareEvent(sessionId, 'message/patched', { messageId, patch: kept })
+      appendSurfaceAwareEvent(
+        sessionId,
+        'message/patched',
+        {
+          messageId,
+          patch: kept,
+          // §17.7.1 批 2 裁定 2:`fullBody` 这一档就是 upsert 的整条替换,而它
+          // 与 `patchMessage` 在会话账上的待遇不同(前者盖 `updatedAt`)。事件上
+          // 记的是**调用类别**这个事实,盖不盖章的策略住 `core/session/account.ts`。
+          ...(options.fullBody ? { via: 'upsert' as const } : {}),
+        },
+        at,
+      )
     })
   },
 
@@ -209,16 +230,16 @@ export const sessionCommandEvents = {
    * 借道的是**同一份**构造而不是复制一份 —— 两个产地各自演化出一份 append/patch,
    * 就是"同一条命令写出两种事件"的温床。
    */
-  upsertMessage(sessionId: string, message: ChatMessage, existed: boolean): void {
+  upsertMessage(sessionId: string, message: ChatMessage, existed: boolean, time?: number): void {
     if (!existed) {
-      sessionCommandEvents.appendMessage(sessionId, message)
+      sessionCommandEvents.appendMessage(sessionId, message, time)
       return
     }
     sessionCommandEvents.patchMessage(
       sessionId,
       message.id,
       message as Partial<ChatMessage>,
-      { fullBody: true },
+      { fullBody: true, ...(time !== undefined ? { time } : {}) },
     )
   },
 
@@ -255,7 +276,12 @@ export const sessionCommandEvents = {
       const surfaceOp = range
         ? ({ op: 'replace', start: range.start, end: range.end } as const)
         : undefined
-      const options = surfaceOp ? { surfaceOp, sourceEventSeqs: range!.seqs } : {}
+      // 时钟同源(裁定 1):`context.now` 是命令取的那**一次**刻 —— 它既是事件
+      // 的落账时刻、又是 reducer 盖 `updatedAt` 与被改写消息 `timestamp` 的那个数。
+      const options = {
+        ...(surfaceOp ? { surfaceOp, sourceEventSeqs: range!.seqs } : {}),
+        time: context.now,
+      }
 
       if (payload.inclusive) {
         appendSurfaceAwareEvent(sessionId, 'message/deleted', { messageId: payload.messageId }, options)
@@ -292,18 +318,26 @@ export const sessionCommandEvents = {
     sessionId: string,
     messages: readonly ChatMessage[],
     reason: 'clear' | 'replaced' | 'normalize',
+    time?: number,
   ): void {
     if (reason === 'normalize') return
     if (!isSessionTranslationEnabled(sessionId)) return
     safely('replaceAll', () => {
+      const at = time !== undefined ? { time } : {}
       const whole = sessionSurface(sessionId).wholeRange()
       appendSurfaceAwareEvent(
         sessionId,
         'session/cleared',
         { reason },
-        whole
-          ? { surfaceOp: { op: 'replace', start: whole.start, end: whole.end }, sourceEventSeqs: whole.seqs }
-          : {},
+        {
+          ...(whole
+            ? {
+                surfaceOp: { op: 'replace' as const, start: whole.start, end: whole.end },
+                sourceEventSeqs: whole.seqs,
+              }
+            : {}),
+          ...at,
+        },
       )
       if (reason !== 'replaced') return
       for (const message of messages) {
@@ -311,7 +345,7 @@ export const sessionCommandEvents = {
           sessionId,
           'message/imported',
           { message: messageForEvent(sessionId, message) as never },
-          { surfaceOp: 'append' },
+          { surfaceOp: 'append', ...at },
         )
       }
     })

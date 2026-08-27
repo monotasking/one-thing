@@ -435,6 +435,20 @@ export interface SessionMessageDeletedEventData {
 export interface SessionMessagePatchedEventData {
   messageId: string
   patch: Record<string, unknown>
+  /**
+   * 这条补丁是**哪一条命令**写的(§17.7.1 批 2 裁定 2)。
+   *
+   * `upsertMessage` 命中已有消息时写的是"整条替换"的那一档(`fullBody`),而它
+   * 与 `patchMessage` 在**会话账**上的待遇不同:upsert 盖 `updatedAt`,patch 不盖
+   * (`core/session/commands.ts` 的两条分支)。两者的事件形状完全同构,所以
+   * 事件上必须带一格**调用类别**——它是命令面亲知的事实(§13.8:可以记别人
+   * 说的话),而"盖不盖章"这条**策略**住在折叠器一处(`session/account.ts`)。
+   *
+   * 不另起 `message/replaced` 事件种:形状同构,分种只多一个词汇分支。
+   * **成对交付**(§10.16):老账本没有这一格 → 按 `patchMessage` 待遇不盖,
+   * 与那些行当年的行为一致。
+   */
+  via?: 'upsert'
 }
 
 export interface SessionMessageImportedEventData {
@@ -516,6 +530,24 @@ export interface SessionRunStartEventData {
    * **成对交付**(§10.16):老文件没有这一格 → 缺席仍是缺席,不猜。
    */
   messageSource?: string
+  /**
+   * **这次开张顺手创建了那条助手占位消息**(§17.7.1 批 2 裁定 1)。
+   *
+   * 流式助手占位是命令面**唯一不写事件**的一档(§9.3:它在 surface 上的那一格
+   * 就是这条 `run/start`)。可老 reducer 在那次 `appendMessage` 上照样盖了会话账
+   * 的三格(`updatedAt` / `lastProvider` / `lastModel`),于是会话账要折出来,
+   * 这条 `run/start` 就得说清楚**它是不是那次入库的那一格**。
+   *
+   * 只有 `openAssistantRun`(与 `store.addMessage` 同一同步段,c4-d)带它;
+   * 绕过创建点的那条路(确认后恢复 / 单测直调)在 `executeMessageStream` 里
+   * 以 `started:true` 开张的 `run/start` **不带** —— 那条路上没有 `addMessage`,
+   * reducer 一格都没盖。写者亲知的事实,不是折叠时"看节点存不存在"的推断
+   * (§13.8 的取向)。
+   *
+   * **成对交付**(§10.16):老账本没有这一格 → 不盖章,与那些行当年的行为一致
+   * (它们对应时段的盖章早已物化在 `meta.json` 里)。
+   */
+  createdAssistantMessage?: boolean
 }
 
 export interface SessionRunEndEventData {

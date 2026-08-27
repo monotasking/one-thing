@@ -1150,13 +1150,48 @@ export function updateSessionSummary(
 	);
 }
 
+/**
+ * 换模型(模型选择器 / agent 绑定)。
+ *
+ * **§17.7.1 批 2:这条路也绕开命令面,而且从前一条事件都不写** —— 与
+ * `updateSessionAgent` 同一个病(§13.10 M7 当年只补了 agent 那一格)。会话账
+ * 上的 `lastProvider` / `lastModel` 因此有两个写者:归约器(追加助手消息时盖)
+ * 与这里(用户挑模型),而只有前者在账本上有产地。批 2 的影子对拍当场把它照
+ * 出来了:一条"只挑了模型还没开跑"的会话上,容器有这两格、折叠没有(真机
+ * battery 16/40 条失配)。
+ *
+ * 修的是**产地**不是门(纪律 11):补一条 `session/model-changed`,用的就是
+ * `updateSessionAgent` 那条路数与**同一份**事件构造(`sessionCommandEvents.
+ * patchSession` 认的正是 agent / model+provider / workdir 这同一张表)。写成功
+ * 之后再记、`to` 取落库之后那一格,理由与 agent 那一处逐字相同。用户可感知的
+ * 行为一格未变:只多了一行账。
+ */
 export function updateSessionModel(
 	sessionId: string,
 	provider: string,
 	model: string,
 	options: { pinned?: boolean } = {},
 ): boolean {
-	return sessionRepository.updateSessionModel(sessionId, provider, model, options);
+	const before = getSession(sessionId);
+	const beforeModel = before?.lastModel;
+	const beforeProvider = before?.lastProvider;
+	const changed = sessionRepository.updateSessionModel(sessionId, provider, model, options);
+	if (!changed) return changed;
+	const after = getSession(sessionId);
+	if (after?.lastModel !== undefined && after.lastModel !== beforeModel) {
+		sessionCommandEvents.patchSession(
+			sessionId,
+			{
+				lastModel: after.lastModel,
+				...(after.lastProvider !== undefined ? { lastProvider: after.lastProvider } : {}),
+			},
+			{
+				...(beforeModel !== undefined ? { lastModel: beforeModel } : {}),
+				...(beforeProvider !== undefined ? { lastProvider: beforeProvider } : {}),
+			},
+		);
+	}
+	return changed;
 }
 
 /**

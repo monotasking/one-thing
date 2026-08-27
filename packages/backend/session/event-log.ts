@@ -435,6 +435,12 @@ function notifySessionLogEventAppended(
  *
  * F1 起这个函数**返回之前**活投影与活 surface 已经含有这条事件(见
  * `registerSessionLogEventAppendObserver`);落盘仍然是排队异步的。
+ *
+ * **`options.time`(§17.7.1 批 2 裁定 1:时钟同源)**:调用方**已经取过一次刻**
+ * 并且要拿同一个数去盖别处时,把它递进来。今天唯一的用法是命令面 ——
+ * 一条命令取一次 `now()`,既盖这条事件、又递给老 reducer 去写 `updatedAt`,
+ * 于是"账折叠出来的时刻"与"store 上那一格"是**同一个数**而不是两次读表
+ * (影子对拍不许留容差窗)。不递就照旧现读。
  */
 export function appendSessionLogEvent<TType extends SessionLogEventType>(
   sessionId: string,
@@ -443,6 +449,8 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   options: {
     surfaceOp?: SessionSurfaceOp
     sourceEventSeqs?: number[]
+    /** 事件的落账时刻。缺省 `Date.now()`;见上面「时钟同源」。 */
+    time?: number
   } & SessionLogEventAppendHints = {},
 ): number | undefined {
   let state: SessionEventLogState
@@ -474,7 +482,7 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   state.lastSeq = seq
   const record = {
     seq,
-    time: Date.now(),
+    time: options.time ?? Date.now(),
     type,
     data,
     ...(options.surfaceOp !== undefined ? { surfaceOp: options.surfaceOp } : {}),

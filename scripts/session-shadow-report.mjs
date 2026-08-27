@@ -24,7 +24,7 @@
  *   `<store>/log/session-shadow.jsonl`       —— 每一次不等的字段级摘要
  *
  * **门 = runs ≥ 200 ∧ refoldChecks > 0 ∧ refoldMismatches = 0 ∧ mismatches = 0
- * ∧ portMismatches = 0 ∧ appendFailures = 0**。`--min-runs` 只放宽第一条 ——
+ * ∧ portMismatches = 0 ∧ accountMismatches = 0 ∧ appendFailures = 0**。`--min-runs` 只放宽第一条 ——
  * 分批验证时用得着。
  * 其余不给开关:一次不等就是一次"账本与内存分岔",没有"少量可接受"。
  *
@@ -85,6 +85,10 @@ export function readStats(logDir) {
       // 问题),`refoldMismatches` **进门** —— 它是停写之后耐久层的唯一判据。
       refoldChecks: Number(parsed.refoldChecks) || 0,
       refoldMismatches: Number(parsed.refoldMismatches) || 0,
+      // §17.7.1 批 2(#8b-i):会话账对拍。`accountChecks` 只打印(它是分母),
+      // `accountMismatches` **进门** —— 影子期"会话级派生也折得出来"的逐格证明。
+      accountChecks: Number(parsed.accountChecks) || 0,
+      accountMismatches: Number(parsed.accountMismatches) || 0,
       byKind: parsed.byKind && typeof parsed.byKind === 'object' ? parsed.byKind : {},
       skipped: parsed.skipped && typeof parsed.skipped === 'object' ? parsed.skipped : {},
       lastMismatchAt: Number(parsed.lastMismatchAt) || undefined,
@@ -103,6 +107,8 @@ export function readStats(logDir) {
       appendFailures: 0,
       refoldChecks: 0,
       refoldMismatches: 0,
+      accountChecks: 0,
+      accountMismatches: 0,
       byKind: {},
       skipped: {},
       missing: true,
@@ -210,6 +216,7 @@ function main() {
     // 不等**进门** —— 停写之后它就是耐久层仅剩的那道门(§14.3-B)。
     console.log(`[shadow] refoldChecks   : ${stats.refoldChecks}   (采样次数 —— c4 起进门:必须 > 0)`)
     console.log(`[shadow] refoldMismatch : ${stats.refoldMismatches}`)
+    console.log(`[shadow] accountMismatch: ${stats.accountMismatches}   (会话账折叠 vs 容器,比过 ${stats.accountChecks} 次)`)
     console.log(`[shadow] byKind         : ${JSON.stringify(stats.byKind)}`)
     // 跳过 ≠ 不等:门只看 mismatches。列出来是为了让"这条会话为什么没被比"看得见
     // —— `legacyPartial` = 老会话的 events.jsonl 只覆盖了历史尾巴(§10.9)。
@@ -244,6 +251,7 @@ function main() {
   // S3w-2:refold 与 mismatches 同级 —— 一个是"写模型 vs 读模型",另一个是
   // "文件 vs 内存",停写之后两道都不许有"少量可接受"。
   if (stats.refoldMismatches !== 0) failures.push(`refoldMismatches ${stats.refoldMismatches} ≠ 0`)
+  if (stats.accountMismatches !== 0) failures.push(`accountMismatches ${stats.accountMismatches} ≠ 0`)
   // c4:恒等门退役之后 refold 是唯一在跑的比对 —— "一次都没跑"与"全绿"在报表上
   // 长得一模一样,所以采样数本身进门。
   if (stats.runs >= args.minRuns && stats.refoldChecks === 0) {
@@ -256,7 +264,8 @@ function main() {
   }
   console.log(
     `\n[shadow] GATE GREEN (runs ≥ ${args.minRuns}, refoldChecks ${stats.refoldChecks} > 0, refoldMismatches = 0, `
-    + 'mismatches = 0, portMismatches = 0, appendFailures = 0)',
+    + `mismatches = 0, portMismatches = 0, accountMismatches = 0 (比过 ${stats.accountChecks} 次), `
+    + 'appendFailures = 0)',
   )
 }
 

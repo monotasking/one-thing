@@ -92,6 +92,11 @@ import {
 import { sessionCommandEvents } from './command-events.js'
 import { sessionReads } from './reads.js'
 import { withSessionCommandPin } from './materialized-messages.js'
+import {
+  checkSessionTruncationAccount,
+  scheduleSessionAccountCheck,
+  snapshotTruncationCells,
+} from './account-shadow.js'
 
 /**
  * 截断要从会话总账扣回去的用量(§16.25 钥匙③)。三格与 `ChatMessage['usage']`
@@ -130,20 +135,30 @@ function subtractedUsageFromProjection(
 
 /** 逐消息命令的执行体(生产实现 = `OnethingSessionMessageRuntime`)。 */
 export interface SessionMessageCommandRuntime {
-  addMessage(sessionId: string, message: ChatMessage): void
-  upsertMessage(sessionId: string, message: ChatMessage): boolean
+  /**
+   * `options.now`(§17.7.1 批 2 裁定 1:**时钟同源**)。命令取一次刻,既盖账目
+   * 事件、又递给归约器去写 `updatedAt` —— 于是"事件折出来的时刻"与"store 上
+   * 那一格"是同一个数,而不是两次读表(影子对拍不许留容差窗)。六个会盖
+   * `updatedAt` 的口都收这一格;`patchMessageFields` 不收(那条分支不盖章)。
+   */
+  addMessage(sessionId: string, message: ChatMessage, options?: { now?: number }): void
+  upsertMessage(sessionId: string, message: ChatMessage, options?: { now?: number }): boolean
   patchMessageFields(
     sessionId: string,
     messageId: string,
     patch: Partial<ChatMessage>,
     hint?: SessionCommandWriteHint,
   ): boolean
-  deleteMessage(sessionId: string, messageId: string): boolean
-  deleteMessageWhere(sessionId: string, matchMarker: (message: ChatMessage) => boolean): boolean
+  deleteMessage(sessionId: string, messageId: string, options?: { now?: number }): boolean
+  deleteMessageWhere(
+    sessionId: string,
+    matchMarker: (message: ChatMessage) => boolean,
+    options?: { now?: number },
+  ): boolean
   deleteMessageAndTruncate(
     sessionId: string,
     messageId: string,
-    options?: { subtractedUsage?: SessionTruncateUsage },
+    options?: { subtractedUsage?: SessionTruncateUsage; now?: number },
   ): boolean
   updateMessageAndTruncate(
     sessionId: string,
@@ -166,6 +181,7 @@ export interface SessionMessageCommandRuntime {
     sessionId: string,
     messages: ChatMessage[],
     reason: 'clear' | 'replaced' | 'normalize',
+    options?: { now?: number },
   ): boolean
   repairOnLoad(sessionId: string, policy?: 'startup' | 'loaded'): boolean
 }
@@ -306,10 +322,22 @@ export function createSessionCommands(
       const message = payload.stampCollab && ports.stampCollabAgentId
         ? ports.stampCollabAgentId(sessionId, payload.message)
         : payload.message
+      // 时钟同源(§17.7.1 批 2 裁定 1):一条命令**取一次刻**,既盖账目事件、
+      // 又递给归约器写 `updatedAt`。
+      //
+      // 流式助手占位是唯一不写事件的一档(§9.3:它在账本上的那一格是
+      // `run/start`)。那一路的刻在**创建点**就取过一次了 —— 它同时是消息的
+      // `timestamp` 与 `run/start.timestamp`(`buildAssistantRunInput`),所以这里
+      // 认那一个数,三处才是同一个刻而不是三次读表。
+      const streamingAssistant = message.role === 'assistant' && Boolean(message.isStreaming)
+      const at = streamingAssistant && typeof message.timestamp === 'number'
+        ? message.timestamp
+        : now()
       if (sessionReads.hasSessionInStore(sessionId)) {
-        events?.appendMessage(sessionId, message)
+        events?.appendMessage(sessionId, message, at)
       }
-      withSessionCommandPin(() => ports.messages.addMessage(sessionId, message))
+      withSessionCommandPin(() => ports.messages.addMessage(sessionId, message, { now: at }))
+      scheduleSessionAccountCheck(sessionId, ports.getSession)
       // F4-a(§16.12):**把入库的那一条交回去**。盖章是 COW 的(不改调用方手里
       // 那条),所以"我刚写进去的是什么"以前只能事后回读一次 —— 而那次回读是一个
       // 可以不存在的时序窗口。现在由这扇门直接答。
@@ -333,11 +361,20 @@ export function createSessionCommands(
      * F2-c 把这道判据补上(与 `appendMessage` 同一口、同一条裁定,§16.9)。
      */
     upsertMessage(sessionId, payload) {
+      const message = payload.message
+      const streamingAssistant = message.role === 'assistant' && Boolean(message.isStreaming)
+      const at = streamingAssistant && typeof message.timestamp === 'number'
+        ? message.timestamp
+        : now()
       if (sessionReads.hasSessionInStore(sessionId)) {
-        const existed = sessionReads.hasMessageInStore(sessionId, payload.message.id)
-        events?.upsertMessage(sessionId, payload.message, existed)
+        const existed = sessionReads.hasMessageInStore(sessionId, message.id)
+        events?.upsertMessage(sessionId, message, existed, at)
       }
-      return withSessionCommandPin(() => ports.messages.upsertMessage(sessionId, payload.message))
+      const changed = withSessionCommandPin(
+        () => ports.messages.upsertMessage(sessionId, message, { now: at }),
+      )
+      scheduleSessionAccountCheck(sessionId, ports.getSession)
+      return changed
     },
 
     /**
@@ -401,10 +438,23 @@ export function createSessionCommands(
       const subtractedUsage = present
         ? subtractedUsageFromProjection(sessionId, payload.messageId, payload.inclusive)
         : undefined
+      // §17.7.1 批 2:截断这一格走**增量**对拍 —— 比的是"这次截断把会话账改成
+      // 了什么",而不是绝对值(usage 的**正向**产地不在事件流上,见
+      // `account-shadow.ts` 文件头)。
+      //
+      // **这一句必须排在事件落账之前**(批 2 施工实测的一记自伤):`ports.getSession`
+      // 会顺手把 store 的消息数组换装到**此刻**的折叠产物,而截断事件一写、目标
+      // 节点当场就被遮蔽 —— 于是紧接着的归约器(定格段里)看到的是一份**已经
+      // 删干净**的数组,`findIndex === -1` 当场 `changed:false`,`updatedAt` /
+      // 用量结算 / 索引计数整批不发生(纪律 3 说的正是这一幕,而定格只挡得住
+      // 定格段**里面**的换装)。门当场把它照了出来:真机 battery 上每一次截断
+      // 都记一条 `updatedAt` 失配。观测者不许改变被观测的那件事。
+      const accountBefore = snapshotTruncationCells(ports.getSession(sessionId))
       if (present) events?.truncateFrom(sessionId, payload, { before, now: at })
 
-      return withSessionCommandPin(() => (payload.inclusive
+      const truncated = withSessionCommandPin(() => (payload.inclusive
         ? ports.messages.deleteMessageAndTruncate(sessionId, payload.messageId, {
+            now: at,
             ...(subtractedUsage ? { subtractedUsage } : {}),
           })
         : ports.messages.updateMessageAndTruncate(
@@ -420,6 +470,15 @@ export function createSessionCommands(
               ...(subtractedUsage ? { subtractedUsage } : {}),
             },
           )))
+      if (truncated) {
+        checkSessionTruncationAccount(
+          sessionId,
+          accountBefore,
+          snapshotTruncationCells(ports.getSession(sessionId)),
+        )
+      }
+      scheduleSessionAccountCheck(sessionId, ports.getSession)
+      return truncated
     },
 
     /**
@@ -430,18 +489,27 @@ export function createSessionCommands(
      * 而事件要写 id),F2-a 只是把事件从"删完之后"提到了"删之前"。
      */
     deleteMessage(sessionId, payload) {
+      const at = now()
       if ('messageId' in payload) {
         if (sessionReads.hasMessageInStore(sessionId, payload.messageId)) {
-          events?.deleteMessage(sessionId, payload.messageId)
+          events?.deleteMessage(sessionId, payload.messageId, at)
         }
-        return withSessionCommandPin(() => ports.messages.deleteMessage(sessionId, payload.messageId))
+        const removed = withSessionCommandPin(
+          () => ports.messages.deleteMessage(sessionId, payload.messageId, { now: at }),
+        )
+        scheduleSessionAccountCheck(sessionId, ports.getSession)
+        return removed
       }
       // F3(§16.10)复核:**留在 store**。理由不再是"投影滞后"(§13.18 发现 B,
       // F1 之后不成立),而是**判据同源** —— 下一行 `deleteMessageWhere` 的 reducer
       // 在同一份 store 上跑同一个谓词,两边找到的必须是同一条。
       const target = sessionReads.findMessageFromStore(sessionId, payload.matchMarker)
-      if (target) events?.deleteMessage(sessionId, target.id)
-      return withSessionCommandPin(() => ports.messages.deleteMessageWhere(sessionId, payload.matchMarker))
+      if (target) events?.deleteMessage(sessionId, target.id, at)
+      const removed = withSessionCommandPin(
+        () => ports.messages.deleteMessageWhere(sessionId, payload.matchMarker, { now: at }),
+      )
+      scheduleSessionAccountCheck(sessionId, ports.getSession)
+      return removed
     },
 
     /**
@@ -466,11 +534,15 @@ export function createSessionCommands(
       const previousCount = session.messages.length
       const isClear = payload.reason === 'clear'
 
-      events?.replaceAll(sessionId, payload.messages, payload.reason)
+      const at = now()
+      events?.replaceAll(sessionId, payload.messages, payload.reason, at)
       // 定格只圈同步这一半 —— 下面还有一次 `await flush`。
       withSessionCommandPin(() =>
-        ports.messages.replaceAllMessages(sessionId, payload.messages, payload.reason),
+        ports.messages.replaceAllMessages(sessionId, payload.messages, payload.reason, { now: at }),
       )
+      // 具名例外(裁定 3):`normalize` 盖 `updatedAt` 却判例明写**不产事件**
+      // (今天生产零调用点)。批 3 勘察"补产地还是随死码删";在那之前它不进对拍。
+      if (payload.reason !== 'normalize') scheduleSessionAccountCheck(sessionId, ports.getSession)
 
       ports.updateSessionsIndexMeta(sessionId, meta => {
         meta.updatedAt = session.updatedAt
@@ -483,6 +555,14 @@ export function createSessionCommands(
       return { replaced: true, previousCount }
     },
 
+    /**
+     * **会话账对拍的具名例外**(§17.7.1 批 2 裁定 3)。这一口在生产上零调用点 ——
+     * `repairOnLoad` 那条归约器分支真正的入口是冷加载的 `sanitizeSessionOnStartup`
+     * (`core/session/commands.ts`),它**整条绕开命令面与事件面**却会写
+     * `contextSize`/`lastInputTokens` 并删 summary 三件。批 3 的方向已定:修复是
+     * 可再生的派生,归宿是折叠/补水的读路出口,那条旁路随 reducer 一起退役。
+     * 在那之前这里不挂对拍点(挂了必红,而红的是"账本里根本没有这一格")。
+     */
     repairOnLoad(sessionId, payload) {
       return ports.messages.repairOnLoad(sessionId, payload?.policy ?? 'startup')
     },

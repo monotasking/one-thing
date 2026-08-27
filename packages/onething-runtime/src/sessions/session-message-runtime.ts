@@ -208,11 +208,18 @@ export class OnethingSessionMessageRuntime<
     return plan?.kind === 'message' ? (plan.dirtySeq ?? 0) : 0
   }
 
-  addMessage(sessionId: string, message: TMessage): void {
+  /**
+   * `options.now`(§17.7.1 批 2 裁定 1:**时钟同源**):这次命令盖在会话账上的
+   * 时刻由调用方决定一次。写门取一次刻,既盖账目事件、又递到这里 —— 于是
+   * "事件折出来的 `updatedAt`"与"store 上那一格"是同一个数,而不是两次读表。
+   * 不传则本实现自取(老调用点与单测一字未动)。六个会盖 `updatedAt` 的口
+   * (add / upsert / delete×2 / truncate×2 / replaceAll)都收这一格。
+   */
+  addMessage(sessionId: string, message: TMessage, options?: { now?: number }): void {
     const applied = this.run(sessionId, {
       type: 'appendMessage',
       message: message as unknown as CoreSessionCommandMessage,
-      now: this.now(),
+      now: options?.now ?? this.now(),
     })
     if (!applied) return
     this.syncMessageToSqliteIfReady(applied.session, message, this.commandMessageSeq(applied.result))
@@ -220,8 +227,12 @@ export class OnethingSessionMessageRuntime<
       applySessionMessageAppendToMeta(meta, applied.session, message))
   }
 
-  deleteMessage(sessionId: string, messageId: string): boolean {
-    return this.runDeleteMessage(sessionId, { type: 'deleteMessage', messageId, now: this.now() })
+  deleteMessage(sessionId: string, messageId: string, options?: { now?: number }): boolean {
+    return this.runDeleteMessage(sessionId, {
+      type: 'deleteMessage',
+      messageId,
+      now: options?.now ?? this.now(),
+    })
   }
 
   /**
@@ -263,13 +274,17 @@ export class OnethingSessionMessageRuntime<
      * `subtractedUsage`(§16.25 钥匙③):这次截断要从会话总账扣回去的用量,由命令面
      * 从**折叠产物**算好递进来。不传则归约器按老算法自取(老调用点一字未动)。
      */
-    options?: { subtractedUsage?: { inputTokens: number; outputTokens: number; totalTokens: number } },
+    options?: {
+      subtractedUsage?: { inputTokens: number; outputTokens: number; totalTokens: number }
+      /** 时钟同源(裁定 1),见 `addMessage`。 */
+      now?: number
+    },
   ): boolean {
     const applied = this.run(sessionId, {
       type: 'truncateFrom',
       messageId,
       inclusive: true,
-      now: this.now(),
+      now: options?.now ?? this.now(),
       ...(options?.subtractedUsage ? { subtractedUsage: options.subtractedUsage } : {}),
     })
     if (!applied) return false
@@ -377,11 +392,11 @@ export class OnethingSessionMessageRuntime<
    * `upsertMessage` 命令:按 id 存在就整条替换(后缀写),不存在就追加(与
    * `addMessage` 同路)。server 的"写一条已存在的消息"走这里,不再自己拼。
    */
-  upsertMessage(sessionId: string, message: TMessage): boolean {
+  upsertMessage(sessionId: string, message: TMessage, options?: { now?: number }): boolean {
     const applied = this.run(sessionId, {
       type: 'upsertMessage',
       message: message as unknown as CoreSessionCommandMessage,
-      now: this.now(),
+      now: options?.now ?? this.now(),
     })
     if (!applied) return false
     this.syncMessageToSqliteIfReady(applied.session, message, this.commandMessageSeq(applied.result))
@@ -403,11 +418,15 @@ export class OnethingSessionMessageRuntime<
   }
 
   /** `deleteMessage` 命令的"按内容找"形态(system marker 的删除口径)。 */
-  deleteMessageWhere(sessionId: string, matchMarker: (message: TMessage) => boolean): boolean {
+  deleteMessageWhere(
+    sessionId: string,
+    matchMarker: (message: TMessage) => boolean,
+    options?: { now?: number },
+  ): boolean {
     return this.runDeleteMessage(sessionId, {
       type: 'deleteMessage',
       matchMarker: matchMarker as unknown as (message: CoreSessionCommandMessage) => boolean,
-      now: this.now(),
+      now: options?.now ?? this.now(),
     })
   }
 
@@ -420,12 +439,13 @@ export class OnethingSessionMessageRuntime<
     sessionId: string,
     messages: TMessage[],
     reason: 'clear' | 'replaced' | 'normalize',
+    options?: { now?: number },
   ): boolean {
     const applied = this.run(sessionId, {
       type: 'replaceAll',
       messages: messages as unknown as CoreSessionCommandMessage[],
       reason,
-      now: this.now(),
+      now: options?.now ?? this.now(),
     })
     return Boolean(applied)
   }

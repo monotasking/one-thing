@@ -72,10 +72,14 @@ const DIFF_VALUE_CHARS = 120
  *   `sessionMessageRuntime` 端口的入参(**b**)vs 活投影上同一格的折叠值
  *   (**a**)。它是恒等门退役之后"A 类端口的事实已经在流上"那句话的逐格替身。
  *
+ * - `account` —— **会话账对拍**(§17.7.1 批 2 / #8b-i):事件流折出来的会话账
+ *   (**a**)vs 会话容器上此刻那几格的值(**b**)。它是"会话级派生也是折叠产物"
+ *   这句话在影子期的逐格证明;批 3 切换之后随影子一起退役。
+ *
  * **老日志里仍然读得到 `'messages'` / `'history'` 两个取值** —— 那是 c4 之前记的
  * 行,读日志的脚本按字符串认,不靠这个联合类型。
  */
-export type SessionShadowKind = 'refold' | 'port'
+export type SessionShadowKind = 'refold' | 'port' | 'account'
 
 /**
  * 方向标记(F0,§16.2):`a` 侧代表谁。

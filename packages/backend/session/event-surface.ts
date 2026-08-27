@@ -256,7 +256,12 @@ export function appendSurfaceAwareEvent<TType extends SessionLogEventType>(
   sessionId: string,
   type: TType,
   data: SessionLogEventDataFor<TType>,
-  options: { surfaceOp?: SessionSurfaceOp; sourceEventSeqs?: number[] } = {},
+  options: {
+    surfaceOp?: SessionSurfaceOp
+    sourceEventSeqs?: number[]
+    /** 时钟同源(§17.7.1 批 2 裁定 1):调用方已取过刻,原样递给写入口。 */
+    time?: number
+  } = {},
 ): number | undefined {
   prepareSessionEventsOnce(sessionId)
   // F1:**先把活 surface 立起来,再写** —— 推进由写入口的同步观察者负责

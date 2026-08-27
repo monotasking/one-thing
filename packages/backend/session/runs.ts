@@ -80,6 +80,16 @@ export interface BeginSessionRunInput {
    * 理由与后果见 `SessionRunStartEventData.continuesRunId`。
    */
   continuesRunId?: string
+  /**
+   * **这次开张顺手创建了那条助手占位消息**(§17.7.1 批 2 裁定 1)。
+   *
+   * 只有 `openAssistantRun` 填 true —— 它与 `store.addMessage` 在同一个同步段
+   * (c4-d),那次 `appendMessage` 是命令面**唯一不写事件**的一档,而老 reducer
+   * 在它上面照样盖了会话账的三格。会话账要折得出来,这条 `run/start` 就得说清
+   * 自己是不是那次入库的那一格。绕过创建点开张的那条路(确认后恢复 / 单测直调)
+   * 不填 —— 那条路上没有 `addMessage`,reducer 一格都没盖。
+   */
+  createdAssistantMessage?: boolean
 }
 
 export interface SessionRunHandle {
@@ -180,6 +190,7 @@ export function beginSessionRun(
       ...(input.timestamp !== undefined ? { timestamp: input.timestamp } : {}),
       ...(input.origin ? { origin: input.origin } : {}),
       ...(input.continuesRunId ? { continuesRunId: input.continuesRunId } : {}),
+      ...(input.createdAssistantMessage ? { createdAssistantMessage: true } : {}),
     },
     { surfaceOp: 'append' },
   )

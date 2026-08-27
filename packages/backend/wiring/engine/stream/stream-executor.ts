@@ -202,6 +202,12 @@ function buildAssistantRunInput(input: {
   providerId?: string
   model?: string
   agentId?: string
+  /**
+   * §17.7.1 批 2 裁定 1:这次开张**顺手创建了**那条占位消息吗。只有
+   * `openAssistantRun` 传 true(它与 `store.addMessage` 同一同步段);
+   * `executeMessageStream` 的认领/兜底开张不传。
+   */
+  createdAssistantMessage?: boolean
 }): BeginSessionRunInput {
   // F4-a(§16.12):值前递 —— 这一份是 `store.addMessage` 交回的**入库那一条**
   // (盖章 COW 之后的那个对象),不是创建点手里那条,也不是回读来的。
@@ -221,6 +227,7 @@ function buildAssistantRunInput(input: {
     ...(placeholder?.origin
       ? { origin: placeholder.origin as unknown as Record<string, unknown> }
       : {}),
+    ...(input.createdAssistantMessage ? { createdAssistantMessage: true } : {}),
   }
 }
 
@@ -257,7 +264,13 @@ export function openAssistantRun(options: Record<string, unknown>): void {
     agentId?: string
   }
   if (!input.sessionId || !input.assistantMessageId) return
-  beginSessionRun(input.sessionId, buildAssistantRunInput(input), { claimed: false })
+  beginSessionRun(
+    input.sessionId,
+    // §17.7.1 批 2 裁定 1:**这一条**就是占位入库的那一格(会话账据它盖
+    // `updatedAt` / `lastProvider` / `lastModel`),所以显式说出来。
+    buildAssistantRunInput({ ...input, createdAssistantMessage: true }),
+    { claimed: false },
+  )
 }
 
 /**

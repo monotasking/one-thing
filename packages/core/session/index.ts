@@ -27,6 +27,20 @@ export {
   sanitizeLoadedSession,
   sanitizeSessionOnStartup,
 } from './commands.js'
+// §17.7.1 批 2(#8b-i):会话账的折叠器。影子期只比不接,批 3 起是那几格的唯一产地。
+export {
+  createSessionAccountState,
+  foldSessionAccount,
+  reduceSessionAccount,
+  SESSION_ACCOUNT_FIELDS,
+} from './account.js'
+export type {
+  SessionAccountField,
+  SessionAccountFoldContext,
+  SessionAccountState,
+  SessionAccountTruncationEffect,
+  SessionAccountUsage,
+} from './account.js'
 
 // 事件溯源 S0(docs/design/session-event-sourcing-2026-08.md §9):
 // 事件词表 + 编解码 + 两个纯投影。core 拥有类型,runtime 与 renderer 都从这里读。

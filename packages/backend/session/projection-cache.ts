@@ -32,9 +32,15 @@
  */
 
 import {
+  createSessionAccountState,
   createSessionProjectionState,
   foldSessionLogicalDeltaAhead,
+  materializeNode,
+  reduceSessionAccount,
   reduceSessionProjection,
+  type CoreTimelineMessage,
+  type SessionAccountState,
+  type SessionLogEventRecord,
   type SessionLogicalDelta,
   type SessionProjectionState,
 } from '@onething/core/session'
@@ -44,9 +50,16 @@ import {
   registerSessionLogEventAppendObserver,
 } from './event-log.js'
 import { prepareSessionEventsOnce } from './prepare.js'
+import { sessionProjectionOptions } from './projection-blobs.js'
 
 interface LiveProjection {
   state: SessionProjectionState
+  /**
+   * 这条会话的**会话账**(§17.7.1 批 2 / #8b-i)—— 与消息投影同源同刷新点:
+   * 同一个 F1 观察者、同一次重建。它是**独立的值语义结构**,不挂进
+   * `SessionProjectionState`(理由见 `core/session/account.ts` 文件头)。
+   */
+  account: SessionAccountState
   /** 已经折进 state 的最后一条 seq。 */
   lastSeq: number
   /**
@@ -73,6 +86,31 @@ const projections = new Map<string, LiveProjection>()
  */
 let appendObserverRegistered = false
 
+/**
+ * 会话账折叠的上下文:**只有截断类事件**会真的调它(一个会话一生几次),
+ * 所以它是惰性的 —— 普通事件一次都不物化。
+ *
+ * 交出去的是"这条事件折进投影**之后**"的可见消息:`reduceSessionAccount` 在
+ * `reduceSessionProjection` 之后跑,`live.state` 此刻已经是事后那一份。
+ */
+function accountFoldContext(sessionId: string, live: LiveProjection) {
+  return {
+    sessionId,
+    messagesAfter(): CoreTimelineMessage[] {
+      const materialize = sessionProjectionOptions(sessionId)
+      return live.state.nodes
+        .filter(node => !node.hidden)
+        .map(node => materializeNode(node, materialize) as unknown as CoreTimelineMessage)
+    },
+  }
+}
+
+/** 把一条事件同时折进消息投影与会话账(两者永远同一个刷新点)。 */
+function foldRecord(sessionId: string, live: LiveProjection, record: SessionLogEventRecord): void {
+  live.state = reduceSessionProjection(live.state, record)
+  live.account = reduceSessionAccount(live.account, record, accountFoldContext(sessionId, live))
+}
+
 function ensureAppendObserver(): void {
   if (appendObserverRegistered) return
   appendObserverRegistered = true
@@ -94,7 +132,7 @@ function ensureAppendObserver(): void {
         live.aheadDeltas -= preFolded
         return
       }
-      live.state = reduceSessionProjection(live.state, record)
+      foldRecord(sessionId, live, record)
       live.lastSeq = record.seq
     } catch (error) {
       // 折不进去 = 这份活投影已经不可信(移动语义下 state 可能只改了一半)。
@@ -116,11 +154,12 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
     prepareSessionEventsOnce(sessionId)
     live = {
       state: createSessionProjectionState(),
+      account: createSessionAccountState(),
       lastSeq: 0,
       aheadDeltas: 0,
     }
     for (const event of readSessionLogEventsSync(sessionId)) {
-      live.state = reduceSessionProjection(live.state, event)
+      foldRecord(sessionId, live, event)
       live.lastSeq = Math.max(live.lastSeq, event.seq)
     }
     projections.set(sessionId, live)
@@ -129,7 +168,7 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
     const drained = drainSessionLogEventTail(sessionId)
     for (const event of drained.records) {
       if (event.seq <= live.lastSeq) continue
-      live.state = reduceSessionProjection(live.state, event)
+      foldRecord(sessionId, live, event)
       live.lastSeq = event.seq
     }
     return live.state
@@ -142,7 +181,7 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
   }
   for (const event of records) {
     if (event.seq <= live.lastSeq) continue
-    live.state = reduceSessionProjection(live.state, event)
+    foldRecord(sessionId, live, event)
     live.lastSeq = event.seq
   }
   return live.state
@@ -204,6 +243,17 @@ export function liveSessionProjectionCursor(sessionId: string): number | undefin
 /** 这条会话现在有活投影吗(读路径据此决定走内存还是走文件分页)。 */
 export function hasLiveSessionProjection(sessionId: string): boolean {
   return projections.has(sessionId)
+}
+
+/**
+ * 这条会话的**会话账**(§17.7.1 批 2)——**不建表**。
+ *
+ * 没有活投影就交回 `undefined`:建表要同步读整份文件,而这一口的唯一消费者是
+ * 影子对拍(挂在命令写路的尾巴上)。为一次对拍付一次全文件 IO 是本末倒置,
+ * 与 `portTargetExists` / F1 观察者的边界同源。
+ */
+export function peekSessionAccount(sessionId: string): SessionAccountState | undefined {
+  return projections.get(sessionId)?.account
 }
 
 /** 会话删除 / 测试:丢掉活投影。 */

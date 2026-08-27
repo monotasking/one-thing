@@ -98,6 +98,22 @@ export interface SessionShadowStats {
    * 耐久层守的那几类:append 静默丢、坏行、seq 错乱、fsync 缺口、G12 外写者。
    */
   refoldMismatches: number
+  /**
+   * §17.7.1 批 2(#8b-i):**会话账对拍**真的比过几次。只打印、不进门,但它是
+   * `accountMismatches = 0` 那句话的分母 —— 0 次比较的"全对"什么都不是。
+   *
+   * 它挂在命令写路的尾巴上,而且**不建表**(没有活投影就不比),所以真机上
+   * 冷会话的第一条命令通常不计数,战场与端口断言一样是 `sessions:shadow-battery`。
+   */
+  accountChecks: number
+  /**
+   * 会话账对拍对不上的次数。**进门,必须是 0。**
+   *
+   * 两侧:事件流折出来的会话账(a)vs 会话容器上此刻那几格(b)。影子期它证明
+   * "`updatedAt` / `lastProvider` / `lastModel` / 截断的用量扣减与 timeline 修复
+   * 都折得出来";批 3 断开 reducer 之后这道门连同影子一起退役。
+   */
+  accountMismatches: number
   /** 按断言种类拆的不等计数(`messages` / `history`)。 */
   byKind: Record<string, number>
   /**
@@ -125,6 +141,8 @@ const EMPTY: SessionShadowStats = {
   droppedParts: 0,
   refoldChecks: 0,
   refoldMismatches: 0,
+  accountChecks: 0,
+  accountMismatches: 0,
   byKind: {},
   skipped: {},
 }
@@ -156,6 +174,8 @@ function load(): SessionShadowStats {
       droppedParts: Number(parsed.droppedParts) || 0,
       refoldChecks: Number(parsed.refoldChecks) || 0,
       refoldMismatches: Number(parsed.refoldMismatches) || 0,
+      accountChecks: Number(parsed.accountChecks) || 0,
+      accountMismatches: Number(parsed.accountMismatches) || 0,
       byKind: normalizeByKind(parsed.byKind),
       skipped: normalizeByKind(parsed.skipped),
       ...(Number(parsed.lastMismatchAt) ? { lastMismatchAt: Number(parsed.lastMismatchAt) } : {}),
@@ -220,6 +240,8 @@ export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void
   if (patch.portChecks) stats.portChecks += patch.portChecks
   if (patch.refoldChecks) stats.refoldChecks += patch.refoldChecks
   if (patch.refoldMismatches) stats.refoldMismatches += patch.refoldMismatches
+  if (patch.accountChecks) stats.accountChecks += patch.accountChecks
+  if (patch.accountMismatches) stats.accountMismatches += patch.accountMismatches
   if (patch.mismatches) {
     stats.mismatches += patch.mismatches
     stats.lastMismatchAt = Date.now()

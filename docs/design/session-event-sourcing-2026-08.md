@@ -9749,3 +9749,274 @@ transport 42 常量·四壳 2392 均未动;字节回归 `session-chunk-bytes` 1 
 `eventsPageMessages` / `eventsListUserMarkers`)仍是每次现物化整会话,**没有**
 接这份 memo —— 它们的产物不带补水(形状不同),要共享得先裁定"读口的产物统一
 成哪一种"。本批不动,行为与 HEAD 逐字相同。
+
+**批 2(#8b-i,影子)勘察结论:停在诊断 —— 会话账有四格在事件流上没有产地
+(2026-08-28,opus 勘察,零生产代码改动)**
+
+一句话:细案的「会话账逐格产地表」把 reducer 的**盖章面**记宽了一格、记窄了两格,
+而且把 usage 累加的产地记在了 reducer 身上。逐条实测之后,`updatedAt` 这一格在
+**四种情形**上从事件流里推不出来 —— 其中两种是"reducer 盖了章但一条事件都没写",
+一种是"两条盖章面不同的命令写出同一种事件、事件上没有判据",一种是"事件有、但
+它同时也在 reducer 不盖章的路上出现"。按施工令「一格都别硬折」,本批不落一行
+生产代码。
+
+*一、reducer 今天的盖章面(逐分支实测,`packages/core/session/commands.ts`)*
+
+`updatedAt` 的赋值点全仓只有 5 处:282(upsert 命中替换)、320(delete)、
+336(replaceAll)、363(`applyAppend`)、414(`applyTruncate`)。于是:
+
+| 命令 | 盖 `updatedAt` | 其余会话级派生 |
+|---|---|---|
+| `appendMessage`(:271→`applyAppend`) | **是** | assistant 且带 provider/model → `lastProvider`/`lastModel`(:364-366) |
+| `upsertMessage`(:274) | **是**(两支都盖) | 新增支同 append;命中支只盖 `updatedAt` |
+| `patchMessage`(:292) | **否** | 无(`indexMetaChanged: false`) |
+| `truncateFrom`(:307→`applyTruncate`) | **是** | usage 三件**扣减**(:415-419)+ `computeSessionTimelineMetadataRepair`(:421,`recomputeContextSize: true`) |
+| `deleteMessage`(:310) | **是** | 无 |
+| `replaceAll`(:332) | **是**(三种 reason 都盖) | 无 |
+| `repairOnLoad`(:346) | **否** | `computeSessionTimelineMetadataRepair` 的 patch/deletes |
+
+另核实:`session.updatedAt` 在 `backend/stores/sessions.ts` 与
+`onething-runtime/src/sessions/session-repository.ts` 上**一个赋值点都没有** ——
+桌面侧"reducer 是唯一写者"这句话成立(server 那份 store 是另一只仓库,
+`server/runtime.ts:1869/2416/2536` 自己写 `updatedAt`)。
+
+*二、7 条命令的事件产出(`backend/session/command-events.ts`)*
+
+| 命令 | 事件 |
+|---|---|
+| `appendMessage` | user → `user/message`;**assistant 且 `isStreaming` → 一条都不写**(:126,§9.3 判例);其余 → `system/message` |
+| `upsertMessage` | 不在 → 同 append(:214);**在 → `message/patched{fullBody}`**(:217) |
+| `patchMessage` | `message/patched` 与/或 `context/turn-update`;`kept` 空则一条不写(:190) |
+| `truncateFrom` | inclusive → `message/deleted`;否则 → `user/message-edited` |
+| `deleteMessage` | `message/deleted` |
+| `replaceAll` | `clear`/`replaced` → `session/cleared`(+ N 条 `message/imported`);**`normalize` → 一条都不写**(:296,判例) |
+| `repairOnLoad` | **零事件**(写门 :486-488 根本不叫事件面) |
+
+*三、四处对不上(每一处都是"折叠推不出 reducer 的那一格")*
+
+1. **流式 assistant 占位:reducer 盖章、账本零事件。** 这是最热的一条路(每个
+   助手回合一次)。它在账本上的那一格是 `run/start`,但那条事件由
+   `wiring/engine/stream/stream-executor.ts:248 openAssistantRun` 写,不是写门 ——
+   拿它当 `updatedAt`/`lastProvider`/`lastModel` 的产地有**两个**问题:
+   (a) 时刻是**另一次** `Date.now()`(见第四节);
+   (b) **它比盖章面宽** —— 绕过创建点的那条路(确认后恢复 / 单测直调)在
+   `executeMessageStream` 里以 `started:true` 开张 `run/start`,而那条路上**没有**
+   `addMessage`,reducer 一格都没盖。拿 `run/start` 折 `updatedAt` = 在恢复时凭空
+   把会话顶到列表最前面。
+2. **`message/patched` 一格两义。** `upsertMessage` 命中支盖 `updatedAt`、
+   `patchMessage` 不盖,两者写出的是**同一种事件**,数据形状是同一个
+   `{messageId, patch}`(upsert 只是多带正文三件套)。事件上没有任何判据能分开
+   它们 —— 靠"patch 里有没有 `role`"这类形状猜测正是纪律 8 禁的"记我推出来的
+   结论"。流量:`sessionCommands.upsertMessage` 桌面侧**零调用点**,唯一生产
+   调用者是 server(`server/runtime.ts:2357 upsertServerMessage`),而
+   `sessions:shadow-battery` 正是在 server 上跑,所以这条歧义在门上是活的。
+3. **`replaceAll{normalize}`:reducer 盖章、判例明写不产事件。** 今天生产零调用
+   (`replaceAll` 的生产调用只有 `wiring/collab/room-config.ts:150/160` 的
+   `clear` 与 server 的 `replaced`),所以没有流量,但它是盖章面上折叠表达不了的
+   一格,切换时必须先有裁定。
+4. **`repairOnLoad`:细案把它算成"写路上的活分支",实况不是。**
+   `sessionCommands.repairOnLoad` **生产零调用点**;这条分支在生产上是被
+   `sanitizeLoadedSession` / `sanitizeSessionOnStartup`(`core/session/commands.ts:494/501`)
+   直接调到的 —— 冷加载路径,**整条绕开命令面与事件面**,却真的会写
+   `contextSize`/`lastInputTokens` 并删 `summary` 三件。它不盖 `updatedAt`,所以
+   不影响排序那一格,但"会话账搬进折叠"要面对它:折叠侧看不到这次修复。
+
+*四、时钟同源勘察结论:硬前提今天不成立,而且不止差一次读表*
+
+- 事件的 `time` 在 `backend/session/event-log.ts:476` 由 `Date.now()` 现读,
+  append 口**没有**注入时刻的形参。
+- reducer 的 `now` 由 `OnethingSessionMessageRuntime` 在构造命令时现读
+  (`session-message-runtime.ts:215/224/272/384/410/428/438`,`this.now = Date.now`)。
+- 执行序是「写门先 append 事件(读表 T1)→ 端口再构造命令(读表 T2)」,
+  T2 ≥ T1,同毫秒是常态、跨毫秒是偶发。
+- **唯一已经同源的那一处不是这件事**:`truncateFrom` 的 `at`(`commands.ts:394`)
+  同时喂给事件数据里被改写消息的 `timestamp` 与 reducer 的 `command.now`
+  (§16.8);它与事件记录自己的 `time` 仍是两次读表。
+- 所以"命令面取一次、既递 reducer 又盖事件"要落地,得给
+  `appendSurfaceAwareEvent` / `appendSessionLogEvent` 加一格可选 `time` 并从写门
+  贯下去。**这一步本身可做且行为等价**,但它只覆盖写门自己产的事件 ——
+  第三节第 1 条那条 `run/start` 在写门之外,改不到。单独落它属于夹带(纪律 15),
+  故本批未动。
+
+*五、细案表另外三格与实况的出入(不阻塞,但记账)*
+
+- **usage 总账的累加产地不是 reducer,也不在命令面。** reducer 只**扣**
+  (`applyTruncate`);累加住在
+  `wiring/engine/stream/agent-loop-executor.ts:1026 updateSessionUsage` →
+  `backend/session/usage.ts:13` → `core/session/store-helpers.ts:836
+  applySessionTokenUsage`,就地改 session,**同时**按 `lastTurnUsage` 写
+  `contextSize`/`lastInputTokens`。折叠版若改吃 `request/response.usage` 累加,
+  那是**另一套算法**与一个活着的非命令写者并存,不是"同一本账"。
+- **truncate 事件并**不**携带 `subtractedUsage`。** c4-b 钥匙③递的是
+  命令面 → 端口 → reducer 那条线(`commands.ts:401`),事件数据里全仓无此字段
+  (`grep subtractedUsage` 零命中于 `events/types.ts`)。折叠侧要自己按
+  `subtractedUsageFromProjection` 同一把判定点现算 —— **可行**,只是表上那句
+  "已携带"是错的。
+- **`contextSize`/`lastInputTokens` 有三个写者**:上面那条 `applySessionTokenUsage`、
+  `session-repository.ts:501 updateSessionContextSize`(由
+  `events/event-only-emitter.ts:73` 在 provider-finish 时叫)、以及 reducer 的
+  truncate 修复。"搬进折叠"要连前两个一起翻,否则折叠块与就地写者互相盖。
+
+*六、要拍板的三件事(#8b 能不能往下走全看它们)*
+
+1. **`updatedAt` 的产地**:是(a)给写门产的每条账目事件补一格显式 `time` 并
+   让 `run/start` 也走写门(= 把流式占位的 `updatedAt` 产地补上),还是
+   (b)承认 `updatedAt` 是**写门的事**(与 lazy 档同类,不是折叠产物)、
+   #8b 只搬 usage/timeline 那几格。(b)最省,但 §17.5 #2 的"reducer 退役"
+   就此只完成一半。
+2. **`message/patched` 要不要分家**:upsert 命中支改写一种自己的事件
+   (如 `message/replaced`),还是承认 upsert 的 `updatedAt` 盖章是历史包袱、
+   与 `patchMessage` 拉平(**这是可感知的行为变化,必须用户拍**)。
+3. **`normalize` 与 `repairOnLoad` 两条无事件路**:补产地,还是明确记成
+   "不进折叠账"的具名例外。
+
+*勘察阶段交付*:零生产代码改动。三件裁定见上一节;施工照裁定继续,记录见下。
+
+**批 2(#8b-i,影子)落地记录(2026-08-28,opus 施工,未提交;10 文件改 + 2 新件 +
+1 新门)**
+
+*一、选型与理由(照勘察定案,裁定 4 认可)*
+
+会话账是**独立的 `SessionAccountState`**(`packages/core/session/account.ts`),
+值语义、每条事件返回新对象;**不挂进** `projection/reducer.ts` 的 state。两条理由
+写在文件头:①会话账里唯一要看整份消息列表的那一格(截断触发的
+`computeSessionTimelineMetadataRepair`)若住进消息归约器,就等于让**每一条**事件
+都背上一次可能的整会话物化,而它一个会话一生只跑几次;②消息归约器是**移动语义 +
+线性持有**(节点就地改、`forWrite` 换 rev),会话账是值语义,两种所有权约定同住一个
+state 上迟早有人拿旧引用读新账。
+
+刷新点仍然同源:装配层把它挂在**同一个** F1 写入口观察者上
+(`projection-cache.ts` 的 `foldRecord` —— 消息投影与会话账同一行推进、同一次重建),
+截断类事件才惰性问一次"之后还剩哪些消息"(`accountFoldContext`)。
+
+*二、时钟同源(裁定 1 第一件)*
+
+勘察结论(上一节第四节)是"今天不同源,而且不止差一次读表"。落法:
+
+- `event-log.ts` 的 append 口加可选 `time`,`appendSurfaceAwareEvent` 透传;
+- 写门 `backend/session/commands.ts` **一条命令取一次刻**,既盖账目事件、又经
+  `options.now` 递给归约器。六个会盖 `updatedAt` 的端口口
+  (`addMessage`/`upsertMessage`/`deleteMessage`/`deleteMessageWhere`/
+  `deleteMessageAndTruncate`/`replaceAllMessages`)各加一格 `options.now`,
+  缺省仍自取(老调用点与单测一字未动);`patchMessageFields` 不收 —— 那条分支不盖章。
+- **流式助手占位那一档**(命令面唯一不写事件的一档)的刻在**创建点**就取过一次:
+  它同时是消息的 `timestamp` 与 `run/start.timestamp`(`buildAssistantRunInput`)。
+  写门对这一档认那个数(`at = message.timestamp`),折叠对 `run/start` 也认
+  `data.timestamp` —— 三处于是同一个刻,而不是三次读表。
+
+*三、两格新事实(裁定 1 第二件 / 裁定 2)*
+
+- `SessionRunStartEventData.createdAssistantMessage?: boolean` —— 只有
+  `openAssistantRun` 与 **steer 换锚点**(`rotateAssistantWriterIdentity`)带它;
+  绕过创建点的 `started:true` 开张不带。折叠只对带它的 `run/start` 盖
+  `updatedAt`/`lastProvider`/`lastModel`。
+- `SessionMessagePatchedEventData.via?: 'upsert'` —— `fullBody` 这一档就是 upsert
+  的整条替换。两格都 append-only、可选,旧账缺席 = 不盖(纪律 9)。
+
+*四、对拍覆盖面(裁定 4 口径:比容器上此刻的值,不是 reducer 算的值)*
+
+两类断言,合起来盖住老 reducer 在会话级的全部产出:
+
+| 断言 | 挂点 | 比什么 |
+|---|---|---|
+| **绝对值** | 6 条会盖章的命令写路收尾(微任务,每会话每次去重一条) | `updatedAt` / `lastProvider` / `lastModel` 折叠值 vs 容器此刻的值 |
+| **增量** | `truncateFrom` 收尾(同步) | usage 三件的扣减 + `contextSize`/`lastInputTokens` 改写 + summary 是否被清 —— 折叠的 `lastTruncation` vs 容器的前后差 |
+
+增量而非绝对值的理由(勘察第五节):usage / `contextSize` 的**正向**产地不在事件流上
+(`applySessionTokenUsage` 等三个写者),拿绝对值比就是在比两套累加算法,而批 3 要
+接管的恰恰只有这个增量。折叠侧那几格的绝对值照旧在折,只是影子期不拿它去对无关
+写者的账。
+
+**排在微任务里**是必须的:流式占位那一路的账目事件 `run/start` 由
+`openAssistantRun` 在 `store.addMessage` **返回之后**的下一行落账(同一同步段),
+同步段里比就是在比一份"事件还没写"的折叠 —— 那是采样时机,不是不等。
+
+两条**具名例外**(裁定 3,各带指针注释):`replaceAll{normalize}`(盖章却判例明写
+不产事件,生产零调用点)与 `repairOnLoad`(根本不在命令写路上)。
+
+*五、门当场抓到的三条真雷(全部**修产地不修门**)*
+
+首跑 **40 条失配 / 666 次比对**,三类,逐条查到根因:
+
+1. **steer 换锚点漏了那一格事实(16 条)**。`rotateAssistantWriterIdentity` 里
+   `store.addMessage` 与 `rotateSessionRun` 是**同一个同步段**——与
+   `openAssistantRun` 逐字同一件事,可它的 `run/start` 没带
+   `createdAssistantMessage`,于是每一次 steering 会话账都少盖一次章(实测
+   `updatedAt` 容器侧领先 89ms / 1162ms 两种形态)。补上那一格。
+2. **模型选择器的写没有产地(16 条)**。`stores/sessions.ts` 的
+   `updateSessionModel` 绕开命令面**且一条事件都不写** —— 与 `updateSessionAgent`
+   同一个病,而 §13.10 M7 当年只补了 agent 那一格。于是一条"只挑了模型还没开跑"
+   的会话上,容器有 `lastProvider`/`lastModel` 而账本没有(真机 `dall-e-3` /
+   `battery-cost-model` 两个场景稳定复现)。按 agent 那条路数补一条
+   `session/model-changed`,用的是**同一份**事件构造;用户可感知行为一格未变,
+   只多了一行账。折叠侧相应认这一格(裁定 4 的口径:无论谁写)。
+3. **观测者改变了被观测的事(8 条,施工自伤)**。截断的增量对拍要在归约器两侧
+   各取一次快照,而 `ports.getSession` 会顺手把 store 的消息数组**换装到此刻**的
+   折叠产物 —— 快照排在事件落账之后,归约器(定格段里)看到的就是一份已经删干净
+   的数组,`findIndex === -1` 当场 `changed:false`,`updatedAt`/用量结算/索引计数
+   整批不发生(纪律 3 说的正是这一幕,而定格只挡得住定格段**里面**的换装)。
+   快照移到事件之前。判例已落进 `commands.ts` 的注释:**影子的读不许穿过定格窗口**。
+
+三条修完,**8 → 0**。
+
+*六、门读数*
+
+typecheck 0(node + web);`sessions:shadow-battery` **GATE GREEN** —— runs 321、
+refoldChecks 224 > 0、refoldMismatches 0、mismatches 0、portMismatches 0
+(比过 265 次)、**accountMismatches 0(比过 682 次)**、appendFailures 0、
+shadow.jsonl 0 行;四棘轮 boundary 0 / session 0 / log 4 known-none-new /
+transport 42 常量 · 四壳 2392 均未动;字节回归 `session-chunk-bytes` +
+`session-chunk-codec` 5 + `ephemeral-policy` 8 + S0 合同 86 + step 身份 2 全绿;
+三包全量见下;`sessions:verify` 与 HEAD 逐条同集零新增。真机 `~/.onething`
+**只读**(battery 全程在临时 store 上)。
+
+*七、留给批 3 的三件*
+
+1. `replaceAll{normalize}` 与 `repairOnLoad` 两条具名例外的终局(裁定 3 已定方向);
+2. usage / `contextSize` 的**正向**写者(`applySessionTokenUsage` /
+   `updateSessionContextSize` / server 的 `applyServerSessionUsage`)还没有事件产地
+   —— 批 3 要么给它们补产地、要么明确它们留在容器上由折叠账**不接管**;
+3. 影子对拍本身随切换退役(`account-shadow.ts` 整件删,`accountChecks` /
+   `accountMismatches` 两个计数留成读老账的字段)。
+
+*七、裁定(2026-08-28,Fable;裁定原则=零可感知行为变化——凡真正改行为的选项
+一律不选、保旧行为,故三件均可在"按序开工"授权内就地定,不须用户改判;若用户
+另有偏好,推翻本节任何一条都只影响批 2/3 的实现,不影响已落库的批 1)*
+
+1. **`updatedAt` 是折叠产物,走(a)改良版**。理由:它是"这间会话最后一次变账
+   是什么时候",本质是账目事件时间的折叠——判给写门(b 案)等于承认有一格状态
+   永远折不出来,§17.5 #2 只退役一半,与定律①相悖。落法三件:
+   - **时钟同源**:`event-log.ts` 的 append 口加可选 `time` 形参;写门取一次时刻,
+     既盖事件又递 reducer(影子期两边同值;切换后事件是唯一来源)。行为等价
+     (消掉的只是同一毫秒内两读 `Date.now()` 的差)。
+   - **`run/start` 补一格事实**:`openAssistantRun` 的同步段里 `addMessage` 与
+     `run/start` 本就同刻落账(c4-d),让 `run/start` 带上"本次开张**创建了**
+     占位消息"的显式字段(写者亲知的事实,§13.8 合规;确认后恢复那条
+     `started:true` 的 `run/start` 不带它)。折叠只对带此字段的 `run/start` 盖
+     `updatedAt`/`lastProvider`/`lastModel`——**盖章面与今天 reducer 逐字相同**。
+     不走"折叠时看节点存不存在"的推断路:显式事实优于推断(§13.8 的取向)。
+   - 该字段 append-only、可选,旧账本零迁移(缺席=不盖,而旧账本里对应时段的
+     盖章早已物化在 meta.json,冷账不受影响)。
+2. **`message/patched` 补事实、不拉平**。"拉平盖章"是可感知行为变化,不选。
+   `message/patched` 加可选 `via: 'upsert'`(命令面亲知的调用类别,是事实;
+   "盖不盖 `updatedAt`"这条**策略**住在折叠器一处)。不另起 `message/replaced`
+   事件种:形状与 patched 完全同构,分种只多一个词汇分支。append-only,旧账
+   缺席=按 `patchMessage` 待遇=不盖,与历史行为一致(旧账里 server upsert 的
+   盖章同上,已物化不回溯)。
+3. **`normalize` 与 `repairOnLoad`:批 2 记具名例外,终局方向已定不硬切**。
+   - `replaceAll{normalize}`:生产零流量,影子期**排除在对拍外**(具名例外+指针);
+     批 3 勘察它是补产地还是随死码删(倾向后者——零流量的分支不值得一个事件种,
+     但删除要按 #8a 的口径先证零消费)。
+   - `repairOnLoad`:它是**读侧修复**(冷加载对遗留/损坏状态的确定性归一),
+     终局归宿是折叠/补水出口(修复=可再生派生,不该以存储突变的形态存在)——
+     与 `computeSessionRepairOnLoad` 已在读路的既有形态同向。批 2 排除对拍;
+     批 3 勘察其产出(`contextSize`/`lastInputTokens`/`summary` 三件)的消费面
+     后把修复搬到读路出口,`sanitizeSessionOnStartup` 直调 reducer 那条旁路
+     随 reducer 一起退役。
+4. **细案表三处更正照单全收**(usage 累加产地在 `applySessionTokenUsage` 不在
+   reducer;truncate 事件不携带 `subtractedUsage`,折叠侧按同一把判定点自算;
+   `contextSize` 三写者)。**影子对拍的口径随之修正**:账折叠器对拍的对象是
+   "会话容器上这些字段此刻的值"(无论谁写的),不是"reducer 算的值"——三写者
+   互相盖的时序如在影子里现形为失配,那是真病灶,修产地不修门(纪律 11)。
+   选型照批 2 勘察定案:独立 `SessionAccountState` 增量折叠,truncate 类事件
+   向投影要一次消息列表,不挂进消息 reducer。

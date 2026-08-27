@@ -270,6 +270,12 @@ function rotateAssistantWriterIdentity(state: AgentLoopExecutorState): void {
 			provider: state.ctx.providerId,
 			model: state.ctx.providerConfig.model,
 			timestamp: now,
+			// §17.7.1 批 2 裁定 1:换锚点这一路与 `openAssistantRun` 是**同一件事**
+			// —— 上面那行 `store.addMessage` 与这条 `run/start` 在同一个同步段里,
+			// 而那次追加是命令面唯一不写事件的一档(流式 assistant 占位)。所以它
+			// 同样要说清"这次开张创建了占位消息",否则会话账在每一次 steering 上
+			// 都少盖一次章(批 2 影子实测:`updatedAt` B 侧领先)。
+			createdAssistantMessage: true,
 			...(storedAssistantMessage?.agentId
 				? { agentId: storedAssistantMessage.agentId }
 				: {}),

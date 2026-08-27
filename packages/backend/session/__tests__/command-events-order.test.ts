@@ -378,6 +378,10 @@ describe('F2 产地:命令的事件构造全在命令面上(§16.7 / §16.8 / §
     expect(line[0].data).toEqual({
       messageId: 'a1',
       patch: { role: 'assistant', content: 'settled', timestamp: 1 },
+      // §17.7.1 批 2 裁定 2:整条替换这一档要说清自己是 upsert 写的 —— 它与
+      // `patchMessage` 在会话账上的待遇不同(前者盖 `updatedAt`),而两者的事件
+      // 形状完全同构。盖不盖章的策略住 `core/session/account.ts` 一处。
+      via: 'upsert',
     })
   })
 
