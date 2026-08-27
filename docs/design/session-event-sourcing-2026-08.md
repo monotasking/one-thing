@@ -7259,7 +7259,7 @@ seq 5132  user/message-edited  replace[5127..5130]  sourceEventSeqs=[5127,5130]
 |---|---|---|
 | **F4-b1 step id 语义统一** ✅ **已落地(§16.16)** | 两硬阻塞之一:step 身份在发射器(uuid)与投影(`step-<callId>`)两侧统一为单一语义(以 callId 派生为准或事件携带 id,勘察后定),STEP_UPDATED 的渲染层绑定全程不断 | battery + 渲染层定向 + 流式真机走查 |
 | **F4-b2 收尾链脱锚** ✅ **已落地(§16.17)** | 两硬阻塞之二:settle 快照(:629)与结局读取(:533/:578)不再依赖 store-only 形状(锚点住渲染层 S3w-0 已定;被取消工具结局经 tool/annotate+captureCancelled 已有产地);**活 run 共存口径成文**:活 run 窗口内消息由引擎写手持有,物化缓存只答已收尾世界 | battery + §15.16 同型走查(正文不丢) |
-| **F4-b3 合一切换** | 13 条命令的 core reducer 分支删除,store=投影物化缓存;①类 8 处判据源切投影(补 O(1) hasMessage);告别对账(全量 battery+真机 verify 全绿)→ 恒等门退役,refold 独守;session:check 规则改写("字段赋值只许在投影 reducer") | 告别对账全绿为前置 |
+| **F4-b3 合一切换** ⛔ **停在诊断(§16.18)** | 原案:13 条命令的 core reducer 分支删除,store=投影物化缓存;①类 8 处判据源切投影(补 O(1) hasMessage);告别对账(全量 battery+真机 verify 全绿)→ 恒等门退役,refold 独守;session:check 规则改写("字段赋值只许在投影 reducer")。**勘察结论:切不动** —— 引擎九个热写入口**绕开命令面**、那条路上零事件产地(逐口实测不等,`content` 126/126);§16.11 拍板 3(占位产地)三期都没做(88/88 `<整条投影缺>`);§16.17 第四节的共存口径与"store=物化产物"正面冲突。待用户在 §16.18 第五节两条上拍板 | 告别对账全绿为前置(**未开跑**) |
 | **F4-b4 终局总结** | §16.x full 终态声明、终态架构图、常驻门清单、全部留账归档 | — |
 
 **③④ 两条可感知差的处置(默认口径,用户如异议随时改)**:
@@ -7580,3 +7580,432 @@ worktree 与两份临时 store 已删除。
   文件 mtime 落在本批跑全量测试的那几分钟内 = **他会话在途覆盖**)。本批按 HEAD 原样
   补回了那 132 行,另一处纯空白改动(第 5950 行附近)未动。若那次删除是有意的,
   撤回这次补回即可。
+
+### 16.18 F4-b3 勘察结论:**停在诊断**——「命令即事件」在**五条绕开命令面的引擎热写路**上从来没有成立过(2026-08-27,opus 勘察,**零生产代码改动**)
+
+工单第 1 步是勘察,并写明「任何一步与勘察矛盾就停在诊断」「剩真差 → 停诊列清」。
+勘察做完了,结论是**停** —— 但阻塞点**不是** §16.13 说的那两条(b1/b2 确实把它们
+处理掉了),而是一件此前三期都没量过的事:**F4-b3 要切换的那条"命令 → 事件 →
+fold → 物化"的链,在引擎最热的九个写入口上根本不经过命令面,那条路上一条事件
+都不产生**。本节是那份诊断:两枚探针的读数、逐口不等表、以及给用户的拍板包。
+
+#### 〇、一句话
+
+F4-b3 的前提是「命令产出事件 → fold(F1 同步可见)→ store 视图从物化取」。
+**前半句对 13 条命令成立(F2 已成),但引擎的流式写手不走这 13 条命令。**
+实测:`packages/backend/stores/sessions.ts` 上有 **23 处** `sessionMessageRuntime!.*`
+直接调用,它们是 core 引擎注入的 store 端口实现(文件头自己写着"不是死路径…
+接口形状 P0 不许动"),`addMessageContentPart` 那一处的注释更是明写
+「引擎的 `persistTurnContentParts` 走的是这条路(**不是命令面**)」。
+
+于是在这九个口上,「事件」与「store 写」是**两个不同的生产者在不同时刻各写一次**
+(store 写在这里,事件由 `session-event-recorder.ts` 另行采集)。两条推导到
+**run 收尾**时重新合流(恒等门因此常年 0 失配),但在**每一次写的那一刻**是错相的
+—— 而"物化替代 reducer"要的恰恰是**那一刻**相等。
+
+#### 一、探针与读数(两枚,跑完即删,`git checkout` 已确认与 HEAD 逐字相同)
+
+**探针 A(§16.13 原法复跑)**:`shadow.ts` 的 `checkSessionRunShadow` 里,恒等门
+canonical **之前**把 `materializeNode(node)` 与 `listMessagesFromStore` 逐格对拍。
+`sessions:shadow-battery --passes 1 --seed 4041`,读数:
+
+| 项 | §16.13(b1/b2 之前) | 本次(HEAD `bf3ea781`) |
+|---|---|---|
+| 恒等门 `mismatches` | 0 | **0** |
+| 逐格不同的**路径**数 | 50 | **51**(1212 行) |
+| `steps[].id` | **42 命中** | **已消失** ✅(b1 的成果) |
+| `contentParts` 整族 | 在 | **原样在**(`[].type`×24 / `[].content`×24 / `.length`×24 / `[].turnIndex`×21 / 整格缺×2 / `contentParts[]`×34) |
+| `thinkingTime`(④) | 73 | **74**(A 有 / B 缺) |
+| `partialResult` 族(③) | 在 | **原样在**(`details.*` 十余格 + `partialResultIsPartial`×10) |
+| `<消息数>` | — | **88 条记录全部相等** |
+
+51 vs 50 是重新分桶(`partialResult.details.title/metadata` 与 `contentParts[]`
+从 §16.13 的合并行拆开单列),不是新增回归。**b2 在数据层一格都没动**——它是改判
+不是补格,这一点与 §16.17 自述一致。
+
+**探针 B(本节新法,回答工单真正要问的问题)**:把「每条命令/每个端口执行完的那一
+刻,投影物化出来的消息数组 ≡ reducer 写进 store 的那份吗」直接量出来 ——
+命令面用一层透明包装,九个绕行端口就地采样。同一条 battery,读数:
+
+| 口 | 采样 | 不等行 | **结构性不等**(非豁免噪声) |
+|---|---|---|---|
+| `appendMessage` | 176 | 868 | **`<整条投影缺>`×88 + `<消息数>`×88** —— 每一个 run 的 assistant 占位 |
+| `patchMessage` | 152 | 1044 | `isStreaming` A=true/B=false ×38;`toolCalls[].status` A=executing/B=cancelled ×6 |
+| `truncateFrom` | 4 | 4 | **无**(只有 `eventSeq`) |
+| `deleteMessage` | 3 | 3 | **无**(只有 `eventSeq`) |
+| `patchSession` | 56 | 56 | `<投影折不出>`×56(会话级命令,不涉消息数组) |
+| **`port:updateMessageContent`** | 126 | 1551 | **`content` A="" / B="我查一下。" ×126 —— 126/126,无一例外** |
+| **`port:updateMessageReasoning`** | 18 | 108 | **`reasoning` A缺 / B有 ×18 —— 18/18** |
+| **`port:addMessageStep`** | 42 | 496 | `steps` A缺×30、`toolCalls` A缺×30、`steps.length` 1↔2 ×12 |
+| **`port:updateMessageStep`** | 206 | 4242 | `steps[].result` A=""/B={content:[]} ×62、`toolCalls[].changes`(edit diff)A缺×12 |
+| **`port:updateMessageToolCalls`** | 208 | 3268 | `toolCalls` A缺×114、`steps` A缺×84、**`steps[].toolCall.status` A=completed/B=executing ×44**(这次是**投影领先**) |
+| **`port:addMessageContentPart`** | 128 | 2432 | `contentParts[]` A缺×54、`[].type` A=reasoning/B=data-steps ×42 |
+| **`port:updateMessageStreaming`** | 94 | 1710 | **`isStreaming` A=true/B=false ×118**、`usage` A缺×74 |
+| **`port:updateStepsUsageByTurn`** | 112 | 2102 | `contentParts` 整格 A有/B缺×68(**投影领先**)、`.length` 3↔2 ×22 |
+
+读法只有一句:**在九个热写入口上,把 store 换成"此刻物化出来的那一份",等于把这次
+写的东西丢掉(或者把还没写的东西提前写进去)**。`content` 那一行最干脆 ——
+126 次采样 126 次不等,投影侧是空串,store 侧是这次刚写进去的正文。
+
+#### 二、三条阻塞(按"能不能只换实现"排序)
+
+**① 九条热写路不经过命令面,那条路上零事件产地。**
+第一节的表就是证据。要让物化成为替代,得先把这九个口的事件产地搬到**与 store 写
+同一个同步段**里 —— 那不是"删 reducer 分支",那是把 `session-event-recorder.ts`
+的采集时机整体重排,而记录器的采集点本身还带着 §10.10「采集点不二次派生」与
+§16.17 第二节那条**自引用**约束(`captureCancelledToolResults` 读的正是它自己
+待写的 `tool/result`)。规模是一整期,不是本批的一步。
+
+**② 流中 assistant 占位在账本上仍然没有那一格 —— §16.11 拍板 3(F4 的硬前置)没做。**
+`command-events.ts:126` 一行写死:`if (message.role === 'assistant' && message.isStreaming) return`
+—— 占位一条事件都不写,它在 surface 上的那一格要等 `run/start`。探针 B 量到的
+**88/88 `<整条投影缺>`** 就是这件事的实测形态(88 = 本次 battery 的 run 数)。
+§16.12 留账 1 与 §16.11 拍板 3 都把"补齐 `run/start.data` 上的占位字段"列为
+**F4 合一的硬前置**;b1 做的是 step id,b2 做的是收尾链,**这一条三期都没人做**。
+在它补上之前,`appendMessage` 之后物化 = 把刚创建的 assistant 消息删掉。
+
+**③ §16.17 第四节的共存口径,与工单的终局定义正面冲突。**
+b2 立的纪律原文是:「活 run 窗口内,该 run 的 assistant 消息**由引擎写手对象持有
+并唯一可信**;物化缓存**只回答已收尾世界**」,并且第 1 句自己交代了「引擎写手对象
+**今天就是内存 store 上的那一条**」。而工单的终局是「store 的消息数组 = 投影物化
+产物 …… 老 reducer 路径删」。两句话要同时成立,只能是引擎另持一份写手对象 ——
+而 §16.17 第三节**实测过那条路不成立**(`AgentLoopExecutorState` 只有单轮
+`turn.orderedParts`,跨轮 `contentParts` 全量只在 store 那一份上;`contentParts`
+还有生图 `image-stream.ts` 这个第二产地)。
+
+所以本批第 2 步"逐命令把 reducer 应用改为物化取值"没有一个**逐格等价**的落点:
+13 条命令里只有 `truncateFrom` / `deleteMessage` 两条零结构性不等,而它们恰好是
+**不产出消息内容**的两条数组形状命令,换掉它们既不减一条推导也不动一格内容。
+
+#### 三、③④ 两条可感知差:口径仍然成立,但它们不是瓶颈
+
+- **③ `partialResult` 形状**:§16.14 的默认口径(活 run 瞬态、settle 后由
+  dehydrate 剥离、物化不携带)在**语义上**成立,探针 A 也确认它整族仍落在
+  `DERIVED_STEP_CACHE_KEYS` 豁免里。**但它是被阻塞①②挡在后面的**,本批没有兑现的
+  落点。
+- **④ `thinkingTime`**:74 命中,A 有 B 缺,`ALWAYS_DROPPED_KEYS` 明文豁免
+  (理由写在表上:"投影从 chunks 的时刻算,引擎那份账里它是渲染层事后写上的")。
+  用户已拍"取投影值"。同样等合一。
+
+两条都不是停的原因 —— 停的原因是第二节那三条。
+
+#### 四、①类 8 处判据源:原样待解冻,理由一字未变
+
+§16.13 第四节已经量过(321 run / 0 分岔)、§16.17 留账也点过名。但那一节自己
+写死了因果:「这 8 处的解冻**依赖**合一,不是反过来」。今天 reducer 仍是"改不改得成"
+的裁决者,判据就必须与它问同一份 store —— 否则会出现"事件写了而 store 没改"
+(或反过来)。合一没发生,这 8 处原地不动;`hasMessage` 那个 O(1) 口也不该先加
+(加了就是一个零消费者的口)。
+
+#### 五、给用户的拍板包(F4-b3 要往下走,必须先答这两条)
+
+1. **先补 §16.11 拍板 3 吗?** 它是三期都跳过的硬前置,而且是**唯一一条**
+   §16.11/§16.12 早就点名、至今没人做的。建议单列一期 **F4-b2.5**:让流中
+   assistant 占位在 `run/start.data` 上有完整产地(model / provider / agentId /
+   timestamp / role),门 = battery + 探针 B 上 `appendMessage` 的
+   `<整条投影缺>` 从 88 归 0。
+2. **九条热写路怎么办?** 三选一,都要单独一期:
+   - **甲(补产地)**:把九个端口的事件产地搬进与 store 写同一个同步段,
+     记录器相应改成"只做那些命令表达不了的采集"。收益最大,代价是重排采集时机,
+     并要直面 §16.17 第二节那条自引用。
+   - **乙(承认两个世界)**:正式把 §16.17 的共存口径写成**终局**而非过渡 ——
+     store 在活 run 窗口内是写手正身、窗口外是物化缓存,`applySessionCommand`
+     缩成"写手"并改名,F0 恒等门保留。F 线到此收官,`session:check` 规则改成
+     "字段赋值只许在投影 reducer **或写手**"。
+   - **丙(硬推工单原案)**:同时做甲 + 让投影产出 `data-steps` / `isStreaming`
+     —— 后者与 G4 和 §16.13 阻塞②的既有裁定直接冲突(原话:"违反'锚点住渲染侧'
+     (G4),canonical 要开豁免"),**不推荐**。
+
+按 §16.3 与用户"行为裁定须先问"的既有指令,这两条不由执行侧顺手拍。
+
+#### 六、本批的账
+
+- **生产代码改动:0**(两枚探针跑完即删;`git diff HEAD -- packages/backend
+  packages/core packages/onething-runtime/src/sessions` 空,`packages/` 下 4 个
+  untracked 全是他会话在途的 grok / renderer 文件)。
+- **文档改动:2 处** —— §16.14 战役表的 b3 行改口 + 本节。
+- **实跑读数**:
+  - `sessions:shadow-battery --passes 1 --seed 4041`(带探针,三跑)—— runs **87** /
+    historyChecks 117–119 / **mismatches 0** / duplicates 0 / projectionIssues 0 /
+    droppedParts 0 / appendFailures 0 / refoldChecks 62–63 / **refoldMismatches 0** /
+    `session-shadow.jsonl` **0 行**。(`--passes 1` 下 `runs 87 < min-runs 200`,
+    门按口径判 RED —— 与 §16.13 / §16.12 那几跑同一个已知口径,不是失配。)
+  - 真机 `sessions:verify:gate` —— **ok, 13 known, none new**(全程只读)。
+- **告别对账 / 恒等门退役 / `session:check` 改写:都没跑,也不该跑** —— 它们是
+  "切换完成之后"的动作,而本批没有切换。**F0 恒等门照旧上岗。**
+
+#### 七、真机只读对账:§16.13 第八节那条红**还在,而且长大了**(仍停在诊断)
+
+顺手跑 `sessions:shadow-report`(只读),读数:
+
+```
+runs 72 / historyChecks 251 / mismatches 10 / duplicateMismatches 14
+projectionIssues 0 / droppedParts 0 / appendFailures 0
+refoldChecks 18 / refoldMismatches 0
+byKind { history: 10 }   skipped { history-steer-window: 3 }
+lastMismatchAt 2026-08-27T03:42:21.729Z
+```
+
+与 §16.13 第八节读到的是**同一条**:全部 `kind:'history'`、全部落在化石会话
+`ef079fd7`(§15.21 那条 `Session cleared`)、形状仍是"事件侧的模型历史少了一对
+`assistant(toolCalls)` + `tool(result)`,那一轮正文被并进前一格"。从 4 条长到
+10 条,是用户 03:31→03:42 继续在那条会话上聊天的自然结果,**不是新类**。
+
+**与本批无关**可判定:本批生产代码改动 0,battery 跑在一次性临时 store 上,
+从头到尾没写过 `~/.onething`。**按 §15.19 第七节的先例,照旧停在诊断**;它的
+判据 §16.13 已经写好 —— **换一条干净会话能不能复现同一形状**。
+
+`refoldMismatches 0`(耐久层)在真机与 battery 上双绿,这一条对"恒等门将来能不能
+只留 refold"是正面读数。
+
+### 16.19 现状架构梳理 + F4-c 三定律方案(2026-08-27,Fable;用户要求"梳理与方案同卷")
+
+#### A. 现状全图(HEAD bf3ea781,每条注明出处批)
+
+**磁盘层(已终局)**:每会话唯一持久化 = `events.jsonl` + `blobs/`(批 6a/6b);
+messages.jsonl 停写删码,存量只读化石(裁定 9a);meta.json 存会话外壳。
+
+**事件写入(两扇门一只眼)**:
+- `appendSurfaceAwareEvent`(event-surface.ts:255)——带 surface 记账的门(命令面用);
+- `appendSessionLogEvent`(event-log.ts:385)——素门(采集器用);
+- `registerSessionLogEventAppendObserver`(event-log.ts:354,F1)——**同步可见钩子**:
+  两扇门都过它,活投影与活 surface 在排队落盘**之前**单源前进。
+  磁盘侧异步队列 + 四处语义 fsync 检查点 + 关停排空(批 5)。
+
+**四条数据流**:
+
+1. **命令流(用户发/编辑/删/清)**——已完成"命令即事件"(F2 三批):
+   renderer → RPC → sessionCommands → **command-events(13 命令唯一事件产地)** →
+   appendSurfaceAwareEvent(F1 同步可见)→ 老 reducer 应用 store(F0 验证器侧)→ 推送。
+   实测:非流式命令的"物化 ≡ store"已近零差(§16.18 探针 B:truncate/delete 零)。
+2. **流式流(AI 回答中)——终局唯一未竟之地**:
+   provider SSE → 引擎 chunk →
+   (a) 渲染:coalescer 16ms 合帧 → session:stream(U0 双发闸默认 legacy);
+   (b) **store 热写:18 个 `sessionMessageRuntime` 端口直调**(stores/sessions.ts,
+       updateMessageContent/Reasoning/Streaming/Steps/ToolCalls/addMessageStep/
+       addMessageContentPart 等)——**这条路零事件产地**;
+   (c) 账本:recorder 吃共享 part 边界状态机(U0,core/session/part-boundary.ts),
+       打包成 assistant/chunks,段末/检查点经素门落账;run/start|end、request/*、
+       tool/call|annotate|result 各有产地(F2-c 后 annotate 齐)。
+   → **store 与账本在流式窗口内是两个生产者,run 收尾才合流**(§16.18 探针 B:
+   九路热写全错相,126/126 content 差、88/88 占位整条缺)。
+3. **读流(产品读路)**:sessionReads → 投影 fold+materialize(S2b);冷加载补水=投影
+   (批 3);渲染锚点 renderer 自合成(S3w-0);IPC/SSE 推送面不变。
+4. **收尾流**:settle → finalize(写手视图口 getLiveRunWriterMessage,F4-b2)→
+   恒等门比对(F0:事件=真相 a,store=验证器 b)+ refold 采样(批 4,文件字节 vs
+   内存,分片 ≤16ms)。
+
+**门体系**:refold(耐久,常驻)、恒等门(语义,F0 方向)、verify(存量只读对账)、
+hydration-contract、battery(27 场景四泳道)、五道棘轮(boundary/session/log/
+transport/ui)。
+
+**终局堵点一句话**:流式窗口的 18 端口热写没有事件产地,"store=fold"在窗口内无米下锅
+(§16.18 三阻塞;其中占位产地=拍板 3 未兑现,恒等门常绿系只在合流点比)。
+
+#### B. F4-c 三定律方案(优雅版;取代 §16.14 战役表 b3 之后的路线)
+
+**定律一:只有一种词汇,delta 是逻辑单位。** 每个事实(模型吐一字、工具出一段、
+用户发一条)是一条逻辑事件;折叠、reducer、canonical、UI 流只说这种话。不存在
+"瞬态/持久"两个事件物种。
+
+**定律二:打包是压缩,不是语义。** events.jsonl 的打包行(assistant/chunks 攒 N 字)
+定性为**存储编码**:写入端逻辑 delta 进编码器,编码器按段落边界刷打包行(时机与
+字节与今天逐字节相同);读取端解码回 delta 流再折。U0 的共享边界状态机迁居编码器
+(它本来就该住那)。唯一合同:**decode(encode(x)) ≡ x**(编解码器性质测试)。
+上一版"瞬态事件道+边界交接断言"两个补丁由此消失。
+
+**定律三:短命事实必须被证明会被取代。** 一种事件允许不持久化,当且仅当后续某条
+持久事件使它冗余(工具中途输出 ⊂ 最终结果)。短命种类登记在词汇表旁**封闭策略表**,
+每种一条收敛性质测试(带它折与取代后不带它折,同态)。
+
+终局:**store = fold(事件流),无活窗例外**——第一个字即事件,折叠当场前进;
+编码器写缓冲是唯一"内存领先磁盘"窗口,归存储层(fsync 检查点原管),非语义例外。
+磁盘格式/账本体积/渲染层/IPC:零变化。
+
+**现状件 → 终局归宿映射表**:
+
+| 现状件 | 终局角色 |
+|---|---|
+| part-boundary 状态机(U0) | **编解码器的编码半边**(迁居,合同随迁) |
+| recorder 的打包段 | 编码器写入端(素门落账时机不变) |
+| 18 个热写端口 | 签名不动,实现=**发逻辑事件**(折叠前进即写) |
+| 老 reducer(core/session/commands.ts) | **删除**(c4) |
+| 恒等门(F0) | c4 告别对账后**退役** |
+| refold | **保留**,唯一常驻耐久门(比对点=编码器刷新点,游标守卫语义不变) |
+| 投影 reducer | 唯一状态推导;学会折逻辑 delta(数组累积 O(1)) |
+| coalescer / IPC / renderer | **零变化** |
+| command-events / lifecycle-events | 原样(命令流已终局) |
+| getLiveRunWriterMessage(F4-b2) | 退役(窗口消失,c4) |
+| canonical 豁免表 | 按定律三重述(短命=策略表条目,非杂项豁免) |
+
+**分期(c1–c5,每期是定律的一块)**:
+
+| 期 | 交付 | 门 |
+|---|---|---|
+| **c1** | ~~出生事实补齐:run/start 携占位全字段,折叠出生占位(拍板 3 兑现)~~ **已改判并结案(§16.20):产地与折叠分支 F4-a 时就齐了,88 是取样窗口的读数**。c1 的实际产出 = 那份读数 + 窗口宽度记档,零生产改动 | ~~88→0~~ 改判:`run/start` 落账那一刻 88/88 逐格相等(实测) |
+| **c2** | 编解码器就位:状态机迁居、读侧解码折叠、素门/带 surface 门写入走编码器;decode∘encode 性质测试;老文件逐字节同折合同 | 字节回归零差 + 全库重折等价 |
+| **c3** | 18 端口翻转为发事件(分 2–3 小批,流式性能实测每 delta 折叠开销) | 探针 B 九路全零 + 性能预算 + battery |
+| **c4** | 非流式合一收尾、老 reducer 删除、告别对账、恒等门退役、session:check 改写、策略表+收敛测试落地 | 告别对账全绿为前置 |
+| **c5** | 三定律成文为系统宪法(§17),终态架构图,门清单 | — |
+
+规模:c3 为主,全程约 4–6 批。§16.14 战役表 b3/b4 由本节取代(b1/b2 成果原样有效:
+step 身份、收尾链定性、共存口径降级为 c3 完成前的过渡描述)。
+
+### 16.20 F4-c c1 结论:**改判并结案**——88 是取样窗口的读数,不是产地缺口;`run/start` 落账那一刻占位 88/88 逐格相等(2026-08-27,opus 勘察,**零生产代码改动**)
+
+工单第 1 条写死了岔路:「若发现 88 的根因是**取样窗口**而非产地缺失,如实改判并
+停诊报告」。勘察走完,**正是那一支**。
+
+#### 〇、一句话
+
+c1 要补的那件事(「`run/start` 携占位全字段 + 折叠侧从 `run/start` 物化出占位」)
+**F4-a(§16.12)那一批就做完了**,只是当时没人从这个角度量过。今天实测:
+**`run/start` 落账返回的那一刻,88 个占位在折叠侧全部在场,而且与 store 那一份
+逐格相等(canonical 判据 0 差,88/88)**。§16.18 探针 B 读到的 88/88
+「整条投影缺」是真的,但它量的是 **`appendMessage` 返回那一刻** —— 那一刻
+`run/start` 还没写。中间那段就是窗口,宽 **p50 0.21ms / max 2.4ms**。
+
+于是 §16.18 第二节阻塞 ②(「§16.11 拍板 3 三期都没人做」)与 §16.12 留账 1
+(「产地缺口这件事实还在」)两条,**按本节的读数一并结清**:产地在,字段齐,
+折叠分支在。留下的是**次序**问题,而次序是 c3 的活。
+
+#### 一、勘察题 ①:折叠侧的 `run/start` 分支今天物化出什么
+
+**一条完整的占位助手消息,不是半条。** 逐处:
+
+| 环节 | 位置 | 事实 |
+|---|---|---|
+| 事件产地 | `backend/session/runs.ts` `beginSessionRun` | `run/start.data` 带 `runId` / `kind` / `assistantMessageId` / `agentId` / `messageSource` / `provider` / `model` / `triggerMessageId` / `triggerEventSeq` / `timestamp` / `origin` / `continuesRunId` |
+| 取材 | `wiring/engine/stream/stream-executor.ts:216-237` | 全部取自 **F4-a 前递进来的那条入库占位**(`params.assistantMessage`),不回读 store |
+| 折叠 | `core/session/projection/reducer.ts:455` `case 'run/start'` | 当场 `register` 一个 `AssistantNode`,`time = data.timestamp ?? event.time`,`agentId`/`messageSource`/`provider`/`model`/`origin` 逐格搬过去 |
+| 物化 | `core/session/projection/chat-messages.ts:130` `materializeAssistantNode` | 产出 `{id, role:'assistant', content:'', timestamp, provider, model, agentId, source, origin, isStreaming:true}` —— `isStreaming` 正是**由 run 未闭推导**(`...(node.ended ? {} : {isStreaming:true})`),与 §16.11 拍板 3 写的口径一字不差 |
+
+**也就是说拍板 3 的两句话("补齐 `run/start.data` 上的占位字段"、"读侧物化出占位、
+`isStreaming` 由 run 开闭推导")在代码里已经各有落点。** §16.18 之所以判成"没做",
+是把探针 B 的窗口读数当成了产地读数 —— 这一处本节改判。
+
+#### 二、勘察题 ②:88 缺在哪一环 —— **缺在取样点,不缺在产地**
+
+探针(§16.18 探针 B 同型,两个采样点):
+`appendMessage` 命令返回那一刻采一次(= §16.18 的取样点),
+`run/start` 的 `appendSurfaceAwareEvent` 返回那一刻(F1 同步可见已发生)再采一次。
+`sessions:shadow-battery --passes 1 --seed 4041 --concurrency 1`,**跑三次读数逐条相同**:
+
+| 采样点 | 采样数 | 折叠侧在场 | canonical 逐格相等 | 备注 |
+|---|---|---|---|---|
+| `appendMessage`(流中 assistant 占位) | 88 | **0** | — | `<整条投影缺>` **88/88**,§16.18 的 88 一字复现 |
+| `appendMessage`(user / system 消息) | 88 | 88 | **88/88** | 对照组:非流式那一半本来就齐(与 §16.18 truncate/delete 零结构差同一读数) |
+| **`run/start`** | 88 | **88** | **88/88** | **零结构性不等**;`<整条投影缺>` **0** |
+
+**判据之外的生料对拍**(判据会不会把缺口盖住?——列出来自己看):
+
+| 格 | 命中 | 判据处置与出处 |
+|---|---|---|
+| `thinkingStartTime` | 88/88(store 有 / 投影无) | `ALWAYS_DROPPED_KEYS` —— 「纯 UI 活跃态(渲染侧自己走秒)」 |
+| `toolCalls: []` | 88/88(store 有 / 投影无) | 「空数组 丢 —— `toolCalls: []` 与没有 toolCalls 是同一件事」 |
+| `contentParts: []` | 4/88(store 有 / 投影无) | 同上一行,**实测值就是空数组**(探针打印过 part 类型:`[]`) |
+| `eventSeq` | 88/88(投影有 / store 无) | 「投影独有的事件坐标,命令线没有它」 |
+
+四格全部是 canonical 判据表上早有条目、且理由与本议题无关的格。**没有一格是
+"占位少了个字段"。** 所以"补齐全字段"这件事没有落点 —— 它已经齐了。
+
+覆盖缺口如实记:battery 的场景矩阵没有 room / agent 形态会话,`agentId` /
+`messageSource` 两格在这 88 条上都是**两侧同缺**(与 §16.12 第五节的 0/0 同一条
+缺口)。那两格由 §16.12 新增的两条端口合同用例覆盖,不由本探针覆盖。
+
+#### 三、时序钉死:窗口是 **store 先、`run/start` 后**,宽 p50 0.21ms
+
+工单第 3 条要的读数。三跑一致:
+
+| 量 | 读数 |
+|---|---|
+| 次序 | **88/88 全部为正** —— `store.addMessage` 恒在 `run/start` 之前 |
+| Δt(ms) | min 0.086 / p50 **0.21** / p90 0.43–0.70 / max 1.23–2.45(三跑) |
+| 窗口内落账的事件条数(含 `run/start` 自己) | **1 条 ×84,2 条 ×4** —— 也就是说窗口里除了 `run/start` 本身,基本没有别的账 |
+
+**窗口里跑的是什么**(逐行,`core-stream-engine.ts:916` → `stream-executor.ts:218`):
+
+1. `store.addMessage(占位)` ← 窗口开始;
+2. `await eventBus.emit(MESSAGE_ASSISTANT_CREATED)` —— **渲染层已经看见这条消息了**;
+3. `store.getSession` + `history.buildMessages(store.listMessages())` —— **模型历史从一份账本还没记的 store 上建**;
+4. `executeMessageStream` → `ensureSessionRun` → `appendSurfaceAwareEvent('run/start')` ← 窗口结束。
+
+这就是三定律说的「写在事实前」的原形:窗口很窄(亚毫秒),但它里面**已经有两个
+消费者**(渲染推送、模型历史)读到了账本上还不存在的东西。**本批只量、不改**
+—— 改它是 c3(18 端口翻转为发事件)那一期的活,§16.19 的分期没有变。
+
+顺带钉一条:`run/start` 之后紧跟的 `patchMessage{runId}`(`stream-executor.ts:240`)
+发生在探针采样**之后**,所以上表那个"逐格相等"不是靠它凑齐的 —— 采样那一刻
+两侧都还没有 `runId`。
+
+#### 四、`command-events.ts:126` 那行 `return` 原样保留
+
+工单第 2 条已经写明,本节的读数是它的正面证据:占位的产地是 `run/start`,
+`appendMessage` 不该再写第二条(那就是 §9.3 判例说的"同一格两个产地")。
+`event-production-write-side-read.test.ts` 里那条
+`a streaming assistant placeholder has no ledger slot yet…` **照旧成立且照旧该绿**
+—— 它钉的是"`appendMessage` 不写事件",不是"折叠侧折不出占位"。§16.12 留账 1
+说的"哪天补上产地这里会红"这句预期**不成立**:产地补在 `run/start` 上,这条用例
+不会因此变红。**这一句也一并改判。**
+
+#### 五、本批的账
+
+- **生产代码改动:0**。探针是三处临时改动(新增 `packages/backend/session/probe-c1.ts`
+  + `commands.ts` / `runs.ts` 各两行钩子),跑完 `git checkout` 卸载;
+  `git diff HEAD -- packages/backend packages/core packages/onething-runtime/src/sessions`
+  **空**(`packages/` 下其余在途改动是他会话的 grok / renderer 文件)。
+- **文档改动:2 处** —— §16.19 分期表 c1 行改口 + 本节。
+- **用例:未新增**。按 §16.18 的停诊先例,本批不落任何代码。**建议但未擅自落地**:
+  一条"`run/start` 折叠后立即物化出占位(含 id/role/timestamp/provider/model/
+  origin/isStreaming)"的合同用例,把本节读数变成常驻棘轮 —— 它是纯增测试、零行为
+  变化,但按 §16.3 与"行为裁定须先问"的规矩,停诊批不夹带,交给用户拍。
+- **可复跑探针**:`scratchpad/probe-b-c1/`(`run-probe.mjs` 一条命令跑完
+  装探针 → 建包 → battery → 出读数 → 卸探针;`probe-c1.ts` + `hooks.patch` 是料)。
+
+#### 六、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `typecheck` | **0**(带探针时也是 0) |
+| `boundary:gate` | ok — 0 failures |
+| `session:gate` | ok — 0 known, none new |
+| `log:gate` | ok — 4 known, none new |
+| `transport:gate` | ok — 42 常量 / 四壳 2392 行,不变 |
+| `packages/backend` + `packages/core` + `runtime/src/sessions` | **3520 passed / 0 failed**(1 skipped 文件 = voice live) |
+| `sessions:shadow-battery`(seed 4041,带探针,**三跑**) | runs 87 / historyChecks 119 / **mismatches 0** / duplicates 0 / projectionIssues 0 / droppedParts 0 / appendFailures 0 / refoldChecks 63 / **refoldMismatches 0** / `session-shadow.jsonl` 0 行 —— **逐项同 §16.18 基线**(`--passes 1` 下 `runs 87 < 200` 照旧按口径判 RED) |
+| 字节回归 | **不适用**:`run/start` 一格没加,生产代码零改动,双跑无从产生差异 |
+| 真机 `sessions:verify:gate`(只读) | **FAILED,1 条新红** —— 见下节 |
+
+#### 七、真机只读对账:一条**新红**,`room-1` 的 seq 断号(与本批无关,停在诊断)
+
+```
+[session-verify-gate] FAILED: 1 NEW issue(s) vs baseline:
+  + room-1 seq: expected seq 2 at position 1, got 3
+```
+
+只读勘察:
+
+- `~/.onething/sessions/room-1/events.jsonl` 只有 **2 行**:`seq 1 message/imported{synthetic}`
+  (时刻是 epoch+1ms,批 6b 的补水合成)、`seq 3 user/message`(2026-08-27T07:12:06.307Z)。
+  **`seq 2` 从来没落到盘上。**
+- **全库扫描 433 个 `events.jsonl`,seq 不连续的只有这一条**(其余 432 条全连续)。
+  所以它是一次孤立事件,不是一类。
+- `app.jsonl` 全表 `appendFail` / `dropped` / `append failed` 关键词 **0 命中**;
+  07:00–07:30 UTC 那段里 `room-1` 一条日志都没有(那段全是另一条会话
+  `fe5261d9` 的权限流量)。**没有 appendFailure 记账,seq 却断了** —— 这两件事
+  同时成立本身就是线索。
+
+**与本批无关可判定**:本批生产代码改动 0;三跑 battery 全在一次性临时 store 上,
+`ONETHING_STORE_PATH` 由 battery 脚本指走,从头到尾没写过 `~/.onething`;而那条
+`user/message` 的时刻(本地 15:12)**早于本会话开工**(本会话第一次工具调用时
+scratchpad 目录 mtime 已是 15:47),期间桌面端一直在跑(`app.jsonl` 写到 16:04)。
+
+按 §15.19 第七节 / §16.13 第八节 / §16.18 第七节的一贯先例,**停在诊断**。
+下一个人的判据(写在这里省得重推):**seq 是谁分配的、断的那一号是哪条事件** ——
+`appendSurfaceAwareEvent` 返回 `undefined` 的那几支(会话不记账 / 写失败)会不会
+已经把号占掉;`prepareSessionEventsOnce` 合成 import 那一步与随后第一条真事件之间
+有没有第三方在同一条会话上分过号。`room-1` 是协作房间,它的入站不只桌面一条路。
+
+**另记**:§16.13 第八节 / §16.18 第七节追着的那条化石会话 `ef079fd7` 的
+`history` 失配,本批没有复跑 `sessions:shadow-report`(那是另一条线的账),
+不在本节读数里。
