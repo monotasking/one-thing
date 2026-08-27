@@ -34,9 +34,14 @@
     "./toolkit": "./toolkit/index.ts",
     "./tools": "./tools/index.ts",
     "./session": "./session/index.ts",
+    "./session/events": "./session/events/index.ts",
     "./session/events/chunk-codec": "./session/events/chunk-codec.ts",
+    "./session/projection/canonical": "./session/projection/canonical.ts",
+    "./session/projection/chat-messages": "./session/projection/chat-messages.ts",
+    "./session/projection/reducer": "./session/projection/reducer.ts",
     "./session/render-anchors": "./session/render-anchors.ts",
     "./session/storage": "./session/storage/index.ts",
+    "./session/storage/json-message-page-file": "./session/storage/json-message-page-file.ts",
     "./slash-commands": "./slash-commands.ts"
   },
   "dependencies": {}

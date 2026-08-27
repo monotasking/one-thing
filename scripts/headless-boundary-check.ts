@@ -5777,7 +5777,12 @@ function checkCoreOwnsToolPermissionErrorText(): void {
     ...requiredSymbols
       .filter(symbol => !coreTestContent.includes(symbol))
       .map(symbol => `${rel(coreTestFile)}: missing permission error text test coverage for ${symbol}`),
+    // §17.8 U1-a:那句话搬去了零依赖叶子 `permission/rejection-message.ts`
+    // (桶带 `node:crypto|os|path`,而 `tool-result` 在投影折叠器的浏览器闭包里)。
+    // 门守的**事实没变** —— "复用 core 那一份,不许自己再抄一句";变的只是它从
+    // 哪条路径取。两条都认:桶再导出的就是叶子里那两样。
     ...(!coreToolResultContent.includes("from '../permission/index.js'")
+      && !coreToolResultContent.includes("from '../permission/rejection-message.js'")
       ? [`${rel(coreToolResultFile)}: tool failure text must reuse core permission error text`]
       : []),
     ...(fs.existsSync(coreToolResultFile)
@@ -7245,6 +7250,107 @@ function checkSessionEventSingleWriteDoor(): void {
     'session event log has a single write door (packages/backend/session/event-writer.ts)',
     offenders,
   )
+}
+
+/**
+ * **renderer 对 core 的 import 闭包不许碰 `node:`**(§17.8 U1-a)。
+ *
+ * renderer 跑在浏览器里(以及 apps/web 的纯浏览器构建)。它 import 一条 core
+ * 路径时,拖进来的是那条路径的**整个传递闭包** —— 闭包里只要有一个文件写了
+ * `import fs from 'node:fs'`,打包就崩,而崩的时机是**运行时**、在别人的机器上。
+ *
+ * U1-a 为此斩了三条短边(`permission/rejection-message` / `context-compact-content`
+ * / `json-message-page-file`)。这道门守的是**它们别长回来**:
+ *
+ *  - 扫 `packages/renderer` 里每一条 `@onething/core/...` import 说明符;
+ *  - 按 core 的 `package.json` exports 表解析到文件;
+ *  - 算传递闭包(相对 import),闭包里任何一个 `node:` 都是红。
+ *
+ * 修法**不是**把这条路径从 renderer 拿掉,而是把那个 node 触点拆出闭包 ——
+ * 判例见 U1-a 的三条边。
+ */
+function checkRendererCoreImportsAreBrowserSafe(): void {
+  const coreRoot = path.join(root, 'packages/core')
+  const exportsMap = (JSON.parse(
+    fs.readFileSync(path.join(coreRoot, 'package.json'), 'utf-8'),
+  ) as { exports?: Record<string, string> }).exports ?? {}
+
+  const resolveSpecifier = (specifier: string): string | undefined => {
+    const key = specifier.replace('@onething/core', '.')
+    const mapped = exportsMap[key]
+    if (mapped) return path.join(coreRoot, mapped)
+    // 没有登记在 exports 表里的说明符解析不到 —— 那本身是另一道门的事
+    // (typecheck 会红),这里不重复报。
+    return undefined
+  }
+
+  const resolveRelative = (from: string, spec: string): string | undefined => {
+    if (!spec.startsWith('.')) return undefined
+    const base = path.normalize(path.join(path.dirname(from), spec)).replace(/\.js$/, '.ts')
+    if (fs.existsSync(base)) return base
+    const asIndex = base.replace(/\.ts$/, '/index.ts')
+    return fs.existsSync(asIndex) ? asIndex : undefined
+  }
+
+  const IMPORT_SPEC = /from\s*['"]([^'"]+)['"]/g
+  const NODE_IMPORT = /from\s*['"]node:|require\(\s*['"]node:/
+
+  /** 一条 core 入口的传递闭包里,哪些文件碰了 `node:`。 */
+  const nodeTouchesUnder = (entry: string): string[] => {
+    const seen = new Set<string>()
+    const stack = [entry]
+    const touches: string[] = []
+    while (stack.length > 0) {
+      const file = stack.pop()!
+      if (seen.has(file)) continue
+      seen.add(file)
+      let source: string
+      try {
+        source = fs.readFileSync(file, 'utf-8')
+      } catch {
+        continue
+      }
+      if (NODE_IMPORT.test(source)) touches.push(rel(file))
+      for (const match of source.matchAll(IMPORT_SPEC)) {
+        const next = resolveRelative(file, match[1])
+        if (next) stack.push(next)
+      }
+    }
+    return touches
+  }
+
+  const cache = new Map<string, string[]>()
+  const offenders: string[] = []
+  // **不扫 `__tests__`**:门守的是"打进 renderer 包的那份闭包"。测试不进包,
+  // 而且它们跑在 vitest(node)里 —— 一条测试里的 `@onething/core/permission`
+  // 既不会让浏览器崩,也不该逼着谁去拆一个只有测试要的依赖。
+  for (const file of walkFiles(path.join(root, 'packages/renderer'))) {
+    if (!/\.(ts|tsx|vue)$/.test(file) && !file.endsWith('.vue')) continue
+    let source: string
+    try {
+      source = fs.readFileSync(file, 'utf-8')
+    } catch {
+      continue
+    }
+    for (const { code, lineNo } of codeOnlyLines(source)) {
+      // `import type` / `export type` 在构建时**整句擦除**,拖不进任何东西。
+      if (/^\s*(import|export)\s+type\b/.test(code)) continue
+      for (const match of code.matchAll(IMPORT_SPEC)) {
+        const specifier = match[1]
+        if (!specifier.startsWith('@onething/core')) continue
+        const entry = resolveSpecifier(specifier)
+        if (!entry) continue
+        if (!cache.has(specifier)) cache.set(specifier, nodeTouchesUnder(entry))
+        const touches = cache.get(specifier)!
+        if (touches.length === 0) continue
+        offenders.push(
+          `${rel(file)}:${lineNo}: '${specifier}' pulls node builtins via ${touches.join(', ')}`,
+        )
+      }
+    }
+  }
+
+  assertNoMatches('renderer imports of @onething/core stay browser-safe (no node: in the closure)', offenders)
 }
 
 function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
@@ -9801,6 +9907,7 @@ checkRuntimeOwnsMcpIpcOperations()
 checkRuntimeOwnsSessionBranchCreation()
 checkRuntimeOwnsSessionUpdateFlows()
 checkSessionEventSingleWriteDoor()
+checkRendererCoreImportsAreBrowserSafe()
 checkRuntimeOwnsSessionWorkingDirectoryFlow()
 checkRuntimeOwnsSessionSystemMarkerFlow()
 checkRuntimeOwnsSessionIpcOperations()

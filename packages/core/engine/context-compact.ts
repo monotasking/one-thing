@@ -1,5 +1,11 @@
 import type { JsonObject } from "../json.js";
 import {
+	buildContextCompactContent,
+	type CoreContextCompactMessage,
+	type CoreContextCompactProgress,
+	type CoreContextCompactStatus,
+} from "./context-compact-content.js";
+import {
 	buildContextCompactMergePrompt,
 	buildContextCompactPrompt,
 } from "./compact-prompt.js";
@@ -166,64 +172,20 @@ export interface CompactPlan<
 	previousSummary?: string;
 }
 
-export type CoreContextCompactStatus = "compacting" | "completed" | "failed";
-
-export interface CoreContextCompactProgress {
-	chunk: number;
-	totalChunks: number;
-}
-
-export interface CoreContextCompactContent {
-	type: "context-compact";
-	status: CoreContextCompactStatus;
-	summary: string;
-	compactedMessageCount: number;
-	error?: string;
-	/**
-	 * P0(2026-08-14):标记消息不再插进历史中部,而是**追加到会话末尾** ——
-	 * 展示位置从此是「压缩发生的时间点」。切点因而必须写进内容:这是「压到
-	 * 哪一条为止」的唯一凭据。字段可选、位置任意 —— 旧会话中部的历史标记
-	 * 没有它,照常渲染,无需迁移。
-	 */
-	compactedThroughMessageId?: string;
-	/**
-	 * P3:多块摘要的进度(每块完成后刷一次 marker)。单块压缩不写,不多发事件。
-	 */
-	progress?: CoreContextCompactProgress;
-}
-
-export interface CoreContextCompactMessage {
-	id: string;
-	role: "system";
-	content: string;
-	timestamp: number;
-}
-
-export function buildContextCompactContent(input: {
-	status: CoreContextCompactStatus;
-	compactedMessageCount: number;
-	summary?: string;
-	error?: string;
-	compactedThroughMessageId?: string;
-	progress?: CoreContextCompactProgress;
-}): string {
-	const content: CoreContextCompactContent = {
-		type: "context-compact",
-		status: input.status,
-		summary: input.summary ?? "",
-		compactedMessageCount: input.compactedMessageCount,
-	};
-	if (input.error) {
-		content.error = input.error;
-	}
-	if (input.compactedThroughMessageId) {
-		content.compactedThroughMessageId = input.compactedThroughMessageId;
-	}
-	if (input.progress) {
-		content.progress = input.progress;
-	}
-	return JSON.stringify(content);
-}
+/*
+ * 压缩标记的**正文形状与序列化**搬去了零依赖叶子 `./context-compact-content.js`
+ * (§17.8 U1-a)。这里原样再导出 —— 既有 import 一字未改;而投影侧
+ * (`session/projection/chat-messages.ts`,它只要那一个序列化函数)改走叶子路径,
+ * 不再被压缩算法链(`./history.js` → `../agent-loop/tool-names.js` 的 `node:crypto`)
+ * 拖进 node 闭包。
+ */
+export type {
+	CoreContextCompactContent,
+	CoreContextCompactMessage,
+	CoreContextCompactProgress,
+	CoreContextCompactStatus,
+} from "./context-compact-content.js";
+export { buildContextCompactContent } from "./context-compact-content.js";
 
 export function createContextCompactMessage(input: {
 	id: string;

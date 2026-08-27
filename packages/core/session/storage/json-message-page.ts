@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import { getCoreLogger } from '../../logging/index.js'
 
 const log = getCoreLogger('core.session')
@@ -443,11 +442,9 @@ export function getMessagesPageFromJson<TMessage extends StoredChatMessage = Sto
   }
 }
 
-export function getMessagesPageFromJsonFilePath<TMessage extends StoredChatMessage = StoredChatMessage>(
-  request: GetSessionMessagesPageRequest,
-  filePath: string,
-): GetSessionMessagesPageResponse<TMessage> | null {
-  if (!fs.existsSync(filePath)) return null
-  const json = fs.readFileSync(filePath, 'utf-8')
-  return getMessagesPageFromJson<TMessage>(request, json)
-}
+/*
+ * `getMessagesPageFromJsonFilePath` —— 搬去了 `./json-message-page-file.js`
+ * (§17.8 U1-a)。它是这个文件里唯一碰 `node:fs` 的两行,而这个文件挂在
+ * `storage/index.ts` 的再导出面上 —— 留着它,`session/index.ts` 那个桶就在
+ * 浏览器里 import 不动。分页算法本身是纯的,原地不动。
+ */

@@ -6,14 +6,18 @@ import type { Principal } from './principal.js'
 import * as PermissionGrants from './permission-grants.js'
 import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/index.js'
 
-export const DEFAULT_PERMISSION_REJECTED_MESSAGE = 'The user rejected permission for this tool.'
-
-export function formatPermissionRejectedMessage(reason?: string): string {
-  const trimmedReason = typeof reason === 'string' ? reason.trim() : ''
-  return trimmedReason
-    ? `${DEFAULT_PERMISSION_REJECTED_MESSAGE} Reason: ${trimmedReason}`
-    : DEFAULT_PERMISSION_REJECTED_MESSAGE
-}
+/*
+ * 「拒绝那句话」搬去了零依赖叶子 `./rejection-message.js`(§17.8 U1-a)。
+ *
+ * 这里原样再导出 —— 既有的每一处 import 一字未改;而需要它的**纯件**
+ * (`tools/tool-result.ts`,它在投影折叠器的闭包里)改走叶子路径,不再被
+ * 这个文件的 `node:crypto` / 传递依赖的 `node:os|path` 拖进 node 闭包。
+ */
+export {
+  DEFAULT_PERMISSION_REJECTED_MESSAGE,
+  formatPermissionRejectedMessage,
+} from './rejection-message.js'
+import { formatPermissionRejectedMessage } from './rejection-message.js'
 
 export interface PermissionCommandEnvelope<TCommand = unknown> {
   sessionId: string

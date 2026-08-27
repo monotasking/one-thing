@@ -177,7 +177,6 @@ export {
   encodeMessagePageCursor,
   getMessagesPageFromArray,
   getMessagesPageFromJson,
-  getMessagesPageFromJsonFilePath,
   getUserMessageMarkersFromArray,
   resolveSessionMessagesPage,
   resolveSessionUserMessageMarkers,

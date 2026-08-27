@@ -10392,3 +10392,103 @@ B 收进 verify 基线 —— 代价是基线里多一条"其实是垃圾数据"
 
 **开工前置**:本节经用户过目;虚拟化 A/B 选择、#10 是否先补产地(影响
 ui-shadow 豁免撤销时点)同窗拍。
+
+#### 17.8.1 U1-a 落地记录:词汇进浏览器(2026-08-28,opus 施工,未提交;零行为改动)
+
+*一、三条边各自的走法*
+
+三条**全部走「把 node 触点拆出闭包」**(优先级第二档)。没有一条能靠"叶子路径
+不走桶"单独解决 —— 前两条的 node 触点在**被需要的模块自己的传递闭包里**,不是
+桶顺手带的;第三条既是桶的问题也是文件的问题,所以两档一起用。**一处都没有用注入**。
+
+| 边 | 走法 | 落点 | 为什么 |
+|---|---|---|---|
+| ① `projection/reducer` → `tools/tool-result` → `permission/{index,capability-registry,permission-grants}`(`node:crypto\|os\|path`) | **拆文件** | 新件 `core/permission/rejection-message.ts`(零 import):`DEFAULT_PERMISSION_REJECTED_MESSAGE` + `formatPermissionRejectedMessage`;`permission/index.ts` 原样再导出,`tool-result.ts` 改走叶子 | `tool-result` 从那个桶只要**一条常量 + 一次字符串拼接**,与授权系统的运行期毫无关系 —— 这不是分层错了,是一句话住错了文件 |
+| ② `projection/chat-messages` → `engine/context-compact` → `engine/history` → `agent-loop/tool-names`(`node:crypto`) | **拆文件** | 新件 `core/engine/context-compact-content.ts`:压缩标记的**形状 + 一次 `JSON.stringify`**(`buildContextCompactContent` 与四个类型);`context-compact.ts` 原样再导出,`chat-messages.ts` 改走叶子 | 投影只要那**一个序列化函数**(§13.10 M3:压缩卡正文必须与引擎写出去的那条逐字节同源,不许手抄),却被整条压缩**算法**链拖下水 |
+| ③ 桶 `session/index` → `storage/index` → `storage/json-message-page`(`node:fs`) | **拆文件 + 桶收口** | 新件 `core/session/storage/json-message-page-file.ts` 收下那两行 `fs`;`storage/index.ts` 只再导出**纯**的 `getMessagesPageFromJson`;两个真调用方(`runtime/sessions/session-repository.ts`、`backend/stores/session-repository/json-message-page.ts`)改走叶子路径 | 分页**算法**吃的是一段 JSON 文本,是纯的;只有"按路径读盘"那一口碰 fs。它留在桶的再导出面上,整条 `@onething/core/session` 就带 `node:fs` |
+
+`packages/core/package.json` 的 exports 表补了 5 条叶子键(core 没有通配,漏一条
+就是 typecheck 红):`./session/events`、`./session/projection/{reducer,chat-messages,canonical}`、
+`./session/storage/json-message-page-file`。core 的零依赖纪律未动
+(`dependencies: {}`,architecture-boundaries 测试一字未改)。
+
+*二、闭包实测(施工前 → 施工后)*
+
+| 入口 | 前 | 后 |
+|---|---|---|
+| `session/projection/reducer.ts` | 41 文件,带 `permission/{index,capability-registry,permission-grants}` | **36 文件,NONE** ✔ |
+| `session/projection/chat-messages.ts` | 48 文件,再带 `agent-loop/tool-names` | **38 文件,NONE** ✔ |
+| `session/projection/canonical.ts` | 3 文件,NONE | 3 文件,NONE ✔ |
+| `session/events/chunk-codec.ts` | 3 文件,NONE | 3 文件,NONE ✔ |
+| `session/events/index.ts` | 6 文件,NONE | 6 文件,NONE ✔ |
+| `session/render-anchors.ts` | 1 文件,NONE | 1 文件,NONE ✔ |
+| `session/projection/index.ts`(桶) | 54,两处 | 47,**仍带 `agent-loop/tool-names`** |
+| `session/index.ts`(桶) | 81,三处 | 74,**仍带 `agent-loop/tool-names`** |
+
+**两个桶留着一条边,是**有意**的**:残边是
+`projection/model-history.ts → engine/history.ts → agent-loop/tool-names.ts`,而
+`model-history` 是**给 provider 请求拼历史**的件 —— renderer 不需要它。斩它要动
+`engine/history` 对 `getAIToolName` 的用法,那是引擎侧的事,不在"零行为"这一批里。
+renderer 走叶子路径(仓内判例 `platform/plugins-client.ts:27-30`),新棘轮把这条
+纪律钉死。
+
+*三、新棘轮*
+
+`scripts/headless-boundary-check.ts` 的 **`checkRendererCoreImportsAreBrowserSafe`**
+(与单门棘轮同批注册):扫 `packages/renderer` 里每一条 `@onething/core/...`
+说明符 → 按 core 的 exports 表解析到文件 → 算传递闭包 → 闭包里任何一个 `node:`
+就是红,并打出是**经哪几个文件**带进来的。
+
+两处刻意的收窄,各有理由(是定范围,不是放水):
+
+- **不扫 `__tests__`**:门守的是"打进 renderer 包的那份闭包"。测试不进包,而且
+  跑在 vitest(node)里。实测确有一处:
+  `components/chat/__tests__/ChatPanel.external-permission.test.ts:6` 值 import
+  `@onething/core/permission` —— 它既不会让浏览器崩,也不该逼谁去拆一个只有测试
+  要的依赖。**记在这里,不静音**。
+- **跳过 `import type` / `export type`**:构建时整句擦除,拖不进任何东西。
+
+顺带改了一条**过期的代理断言**:`packages/core owns tool permission error text`
+从前用字面量 `from '../permission/index.js'` 当"复用 core 那一份"的代理。它守的
+**事实没变**(不许自己再抄一句),变的只是从哪条路径取 —— 现在两条路径都认
+(桶再导出的就是叶子里那两样)。
+
+*四、冒烟证据*
+
+`packages/renderer/stores/__tests__/core-projection-import.test.ts`(4 只,全绿):
+从 renderer 这一侧走**叶子路径** import 五个符号,喂一段最小真事件流
+(`user/message` + `run/start{createdAssistantMessage}` + 打包形态的
+`assistant/chunks{time0,dt[],text[]}` + `part-end` + `run/end`),证四件:
+
+1. 五个符号都 import 得到(exports 表 + 解析都对);
+2. 在这一侧折得出消息树 —— 一问一答、正文 `在的` 来自 chunks、`run/end` 之后
+   `isStreaming` 消失、`provider` 落到消息上;
+3. **两条路折同一段账**(逐条推 vs `projectChatMessages` 整份折)canonical 之后
+   逐格相等 —— ui-shadow 要比的正是这种等式;
+4. 打包解码器 `decodeSessionChunksEventData` 同样可用(U1-b 要吃它)。
+
+文件头写明**它不证"闭包里没有 `node:`"**(vitest 跑在 node 上,`node:fs` 在这里
+import 得动)—— 那一半由静态棘轮守。两道门各证一半,少哪一半都不算数。
+
+*五、删除*
+
+`packages/renderer/composables/useSessionEvents.ts`(194 行)—— 删前 `rg` 证**全仓
+零引用**(除自身),文件头自称 "Not yet integrated"。#8a 口径,纯减法。
+
+*六、零行为的边界*
+
+renderer 现有拼装管道**一行未动**(`chat.ts` / `ipc-hub.ts` / helpers / MessageList
+全部零 diff);`ONETHING_UI_STREAM` 仍是 `legacy` 默认;U1-b/U2/U3/B 换管未开工。
+
+*七、门读数*
+
+typecheck **0**(node + web);三包 + renderer 合并 **11361 绿 / 1125 文件**
+(唯一 1 红是 `components/__tests__/App.container-layout.test.ts` —— 外壳布局那一批
+的在途改动引起,**不认领**:本批 diff 不含任何 renderer 组件);
+`sessions:shadow-battery` **GATE GREEN**(runs 321、refoldChecks 216 > 0、
+refoldMismatches 0、mismatches 0、portMismatches 0/265 次、accountMismatches 0、
+appendFailures 0);**五棘轮** boundary 0(**含新增的 renderer/core 浏览器安全门,
+首跑绿**)/ session 0 / log 4 known-none-new / transport 42·2392 未动;
+字节回归 + S0 合同 + step 身份 + 账预检 + 产地判据 = 7 文件 **120 绿**;
+`sessions:verify` **9 条(本机 0 / 外来·存量 9)**,与 HEAD 逐条同集零新增;
+真机 `~/.onething` 只读。

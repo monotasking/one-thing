@@ -18,7 +18,10 @@
  *  - `message/patched` 最后叠加(assistant 上的正文字段会被剥掉,见 reducer)。
  */
 
-import { buildContextCompactContent } from '../../engine/context-compact.js'
+// §17.8 U1-a:走**叶子路径** —— `context-compact.ts` 为了压缩算法要
+// `engine/history.js` → `agent-loop/tool-names.js`(`node:crypto`),而这里只要
+// 那一个纯序列化函数。
+import { buildContextCompactContent } from '../../engine/context-compact-content.js'
 import type { SessionLogEventRecord } from '../events/types.js'
 import { resolveHistoryBlobRefs, type ProjectionMaterializeOptions } from './blobs.js'
 import type { AssistantNode, CompactedNode, MessageNode, ProjectionNode, SessionProjectionState } from './reducer.js'

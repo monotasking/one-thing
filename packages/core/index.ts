@@ -510,7 +510,6 @@ export {
   getCoreSessionManager,
   getMessagesPageFromArray,
   getMessagesPageFromJson,
-  getMessagesPageFromJsonFilePath,
   getUserMessageMarkersFromArray,
   initializeCoreSessionLayer,
   isCoreSessionLayerInitialized,

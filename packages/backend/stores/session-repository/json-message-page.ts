@@ -4,7 +4,7 @@ import type {
 } from '@shared/ipc.js'
 import {
   getMessagesPageFromJsonFilePath,
-} from '@onething/core/session'
+} from '@onething/core/session/storage/json-message-page-file'
 import { getOnethingSessionPath } from '@onething/runtime/storage'
 
 export function getMessagesPageFromJsonFile(
