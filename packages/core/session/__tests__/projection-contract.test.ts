@@ -2578,6 +2578,62 @@ describe('Q1: provider-data / 图片闸 / 工具身份 / 中段截断 / 压缩�
     plain.push({ time: 1, type: 'run/start', data: { runId: 'r', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
     expect(projectChatMessages(plain.events).messages[0].agentId).toBeUndefined()
   })
+
+  /**
+   * F4-c c1(§16.20):**出生事实就在 `run/start` 上**。
+   *
+   * §16.18 探针 B 读到的"88/88 整条投影缺"量的是 `appendMessage` 返回那一刻 ——
+   * 那一刻 `run/start` 还没写。它一落账,折叠侧当场物化出**一条完整的占位助手
+   * 消息**(不是半条),而且与 store 那一份逐格相等。这条用例把那份读数变成常驻
+   * 棘轮:哪天有人把某一格从 `run/start` 上摘掉,或者折叠分支少搬一格,这里当场红。
+   */
+  it('c1: run/start alone materializes a complete streaming placeholder', () => {
+    const line = eventLine()
+    line.push({
+      time: 9,
+      type: 'run/start',
+      data: {
+        runId: 'r1',
+        kind: 'send',
+        assistantMessageId: 'a1',
+        agentId: 'researcher',
+        messageSource: 'collab-turn',
+        provider: 'deepseek',
+        model: 'deepseek-chat',
+        origin: { source: 'plugin:demo' },
+        timestamp: 1700,
+      },
+      surfaceOp: 'append',
+    })
+
+    const projected = projectChatMessages(line.events)
+    expect(projected.messages).toHaveLength(1)
+    expect(projected.messages[0]).toMatchObject({
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      timestamp: 1700,
+      agentId: 'researcher',
+      // 事件上叫 `messageSource`,消息上那一格叫 `source`(§13.9-3)。
+      source: 'collab-turn',
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      origin: { source: 'plugin:demo' },
+      // `isStreaming` 不是事件字段,是状态:`run/start` 之后、`run/end` 之前。
+      isStreaming: true,
+    })
+    expect(projected.activeRun).toEqual({ runId: 'r1', messageId: 'a1' })
+    // 消息上那格 `runId` 不在这里:它的产地是紧跟其后的 `patchMessage{runId}`
+    // (§16.20 第三节)。折叠侧照实说"还没有",不猜。
+    expect(projected.messages[0].runId).toBeUndefined()
+
+    // 收了之后那一格就该消失(它表达的是"还在生成"),别的字段一格不动。
+    line.push({ time: 20, type: 'run/end', data: { runId: 'r1', outcome: 'completed' } })
+    const ended = projectChatMessages(line.events)
+    expect(ended.messages[0].isStreaming).toBeUndefined()
+    expect(ended.messages[0]).toMatchObject({ id: 'a1', timestamp: 1700, model: 'deepseek-chat' })
+    expect(ended.activeRun).toBeUndefined()
+  })
 })
 
 // ============================================================================

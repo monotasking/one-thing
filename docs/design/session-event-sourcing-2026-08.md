@@ -7843,7 +7843,7 @@ transport/ui)。
 | 期 | 交付 | 门 |
 |---|---|---|
 | **c1** | ~~出生事实补齐:run/start 携占位全字段,折叠出生占位(拍板 3 兑现)~~ **已改判并结案(§16.20):产地与折叠分支 F4-a 时就齐了,88 是取样窗口的读数**。c1 的实际产出 = 那份读数 + 窗口宽度记档,零生产改动 | ~~88→0~~ 改判:`run/start` 落账那一刻 88/88 逐格相等(实测) |
-| **c2** | 编解码器就位:状态机迁居、读侧解码折叠、素门/带 surface 门写入走编码器;decode∘encode 性质测试;老文件逐字节同折合同 | 字节回归零差 + 全库重折等价 |
+| **c2** | 编解码器就位:状态机迁居、读侧解码折叠、素门/带 surface 门写入走编码器;decode∘encode 性质测试;老文件逐字节同折合同 | **✅ 已落地(§16.21)**:字节回归 0 差、decode∘encode 性质测试绿、全库 433 账本折叠指纹 0 差、性能 1.04×、battery GREEN |
 | **c3** | 18 端口翻转为发事件(分 2–3 小批,流式性能实测每 delta 折叠开销) | 探针 B 九路全零 + 性能预算 + battery |
 | **c4** | 非流式合一收尾、老 reducer 删除、告别对账、恒等门退役、session:check 改写、策略表+收敛测试落地 | 告别对账全绿为前置 |
 | **c5** | 三定律成文为系统宪法(§17),终态架构图,门清单 | — |
@@ -8009,3 +8009,93 @@ scratchpad 目录 mtime 已是 15:47),期间桌面端一直在跑(`app.jsonl` �
 **另记**:§16.13 第八节 / §16.18 第七节追着的那条化石会话 `ef079fd7` 的
 `history` 失配,本批没有复跑 `sessions:shadow-report`(那是另一条线的账),
 不在本节读数里。
+
+### 16.21 F4-c c2 落地记录:**编解码器就位**——打包被判定为存储编码,写侧字节 0 差、读侧全库 0 差(2026-08-27,opus 施工)
+
+定律二("打包是压缩,不是语义")这一期兑现完毕:**逻辑层只有 delta**,
+`assistant/chunks` 那一行降格成存储编码;写入端把逻辑 delta 交给编码器,读取端
+把打包行交给解码器展开再折。磁盘格式、账本体积、渲染层、IPC:**零变化**。
+
+#### 一、模块落点
+
+**`packages/core/session/events/chunk-codec.ts`(新,零依赖、零 node 引用)**,
+经 `events/index.ts` 出口(`@onething/core/session` 与新增的
+`@onething/core/session/events/chunk-codec` 两个入口都到得了)。三段:
+
+| 半边 | 内容 |
+|---|---|
+| **段边界状态机** | U0 那台机器**整体迁居**(逐字保留三条规则与全部行为):`createCoreAssistantPartBoundaryMachine` + `CoreAssistantPartRef` / `…BoundaryResult` / `…BoundaryKind` / `…BoundaryOptions` / `…BoundaryMachine` |
+| **编码半边** | `createSessionChunkEncoder` —— 攒批 + 两道闸(2s / 64 条)+ 刷行,`SESSION_CHUNK_BATCH_SIZE` / `…INTERVAL_MS` 的定义也搬来了。定时器 `schedule`、时钟 `now`、批大小全可注入(缺省 = 生产值),所以性质测试不必碰假时钟 |
+| **解码半边** | `forEachSessionChunkLogicalDelta(data, visit)`(热路径:**借一格出去**,整行共用一个对象)+ `decodeSessionChunksEventData(data)`(数组形态,一条一个独立对象);`SessionLogicalDelta` = 一条已盖章的逻辑 delta(段身份 + 到达时刻 + 正文) |
+
+**谁不住进去**:一段身上挂着什么(runId / messageId / turnIndex / 正文累计 /
+len+hash / UI 流 / 掉账记账)仍然是调用方的账 —— 编码器按 `resolvePart` 向它问
+身份,按 `onPartOpened` / `onPartEnded` / `onDelta` / `onPartDropped` 把判定回吐。
+抄一份到编码器里就是第二个真相(`messageId` 会随 response-boundary 换锚点)。
+
+#### 二、迁居清单(逐件)
+
+| 从 | 到 | 备注 |
+|---|---|---|
+| `core/session/part-boundary.ts`(185 行,**整文件删除**) | `events/chunk-codec.ts` 上半 | 导出名一字未改;`core/session/index.ts` 的 `export * from './part-boundary.js'` 改成注释指路,`package.json` 的 `./session/part-boundary` 出口换成 `./session/events/chunk-codec` |
+| recorder 的 `ChunkBatch` / `flushBatch` / `flushAllBatches` / `pushDelta` 的攒批半边 / `applyPartBoundary` / `state.batches` / `state.parts` | 编码器 | recorder 净减 ~140 行 |
+| recorder 的 `SESSION_CHUNK_BATCH_SIZE` / `…INTERVAL_MS` 定义 | 编码器 | recorder 原样再导出,老调用点(两只测试)一字不改 |
+| recorder 的 `deltaInto` / `tool-call-*` / `reserve` / `endAllOpenParts` / `flush` | 改喂编码器(`encoder.delta` / `toolInputStart|Delta|Done` / `reservePart` / `endAll` / `flushAll`) | 落账时机一格不变 |
+| 留在 recorder | `registerPart`(段身份登记)、`endPart`(len/hash + `assistant/part-end` + UI 流)、`onDelta` 里的正文累计与 UI 小批、掉账计数 | 判定与记账分家之后,编码器才可能是纯件 |
+
+读侧:`projection/reducer.ts` 的 `case 'assistant/chunks'` 不再 `text.join('')`,
+改成 `forEachSessionChunkLogicalDelta(...)` → 新增的 **`foldAssistantLogicalDelta`**
+(投影 reducer 学会的那句"折一条逻辑 delta")。同段连着来时带一个 `memo` 跳过
+`ensurePart` 的重复查表(段号对不上照常查),正文累计是 `+=`(V8 rope,O(1) 摊还)。
+
+#### 三、合同读数(全部实跑)
+
+| 合同 | 做法 | 读数 |
+|---|---|---|
+| **写侧字节回归** | 新增 `backend/wiring/engine/stream/__tests__/session-chunk-bytes.test.ts`:固定剧本(四道闸各走一遍 + 换 kind 换段 + 参数流 + 自合成正文)、假时钟假定时器、runId 归一,读回 `events.jsonl` **原始文本**与金样逐字节比。金样 `fixtures/chunk-bytes-golden.jsonl` 是**在搬家前的树上录的**(把五个文件 `git checkout HEAD --` 回去跑一遍 `ONETHING_RECORD_CHUNK_BYTES=1`,再换回来比) | **0 差**(19 行 / 4262 字节,含 64 条闸、2 秒闸、part 边界、请求结束各一行) |
+| **decode ∘ encode ≡ id** | 新增 `core/session/__tests__/session-chunk-codec.test.ts`:**用生产那台编码器本人**(不是测试里再写一份打包逻辑),真机形状剧本 1 条 + 定值种子随机剧本 200 条(随机批大小 1–6、随机 tick / 定时器 / 分界),解回来按段逐条比 | 5 条用例全绿 |
+| **老文件解码折叠 ≡ 今天直接折** | `~/.onething` 只读全库:每份账本折两次 —— ① 直接折;② **把每行打包行拆成 N 条单 delta 行**再折;canonical 指纹比对。另与**搬家前 reducer** 的指纹逐会话比 | 433 账本 / 2,123,836 条 delta / 36,801 行打包行:①②**0 差**;搬家前 vs 搬家后 **0 差**(433/433) |
+| **c1 建议的占位用例** | `projection-contract.test.ts` 新增 `c1: run/start alone materializes a complete streaming placeholder`(纯增,零行为变化):`run/start` 一落账就物化出 id/role/content/timestamp/agentId/source/provider/model/origin/isStreaming 齐全的占位,`run/end` 之后 `isStreaming` 消失 | 绿。**顺带钉住一格事实**:消息上的 `runId` **不在** `run/start` 那一刻(产地是紧跟其后的 `patchMessage{runId}`,§16.20 第三节),折叠侧照实说"还没有",不猜 |
+
+#### 四、性能读数(全库真机只读,三跑取最小)
+
+| | 搬家前 | 搬家后 | 比 |
+|---|---|---|---|
+| 433 账本折叠合计 | 1006.5 ms | **1045.6 ms** | **1.04×** |
+| 最重的账本 `fe5261d9`(446k delta) | 38.0 ms | 46.9 ms | 1.23× |
+| delta 最多的前 10 条账本 | — | — | 1.09–1.33×(最坏 `0c0adc56`:9.3 → 12.4 ms) |
+
+预算(劣化 ≤2×)通过,**"打包直折"的快路没有保留**——一条路走到底。
+
+到这个读数中间过了两轮:最朴素的写法(逐 delta 建对象 + 逐 delta `ensurePart`)
+是 **1.23×**、重账本 2.1–2.8×(**超预算**);`memo` 跳重复查表拿到 1.18×;真正的
+那一刀是**热路径不逐条分配对象**(整行借一格出去)→ 1.04×。这条经验记在这里:
+**折叠热路径上,一条 delta 一个对象就是全库多花一倍时间的那一半。**
+refold 门照常(battery 里 225 次采样,0 失配)。
+
+#### 五、验收(全部实跑)
+
+| 门 | 结果 |
+|---|---|
+| `typecheck` | **0** |
+| `boundary:gate` | ok — 0 failures |
+| `session:gate` | ok — 0 known, none new |
+| `log:gate` | ok — 4 known, none new |
+| `transport:gate` | ok — 42 常量 / 四壳 2392 行,不变 |
+| `packages/backend` + `packages/core` + `runtime/src/sessions` | **3526 passed / 3 skipped**,失败集每轮不同(`sessions-delete-cascade` 的 `waitGone`、plugins 的三只 storage/KV 用例),**四只单跑 22/22 绿** —— 本机满载抖动的老毛病(与 4e4c79a5 那一批同款),四只都不在编解码器路径上 |
+| `sessions:shadow-battery` | **GREEN** —— runs 321 / historyChecks 449 / mismatches 0 / duplicates 0 / projectionIssues 0 / droppedParts 0 / appendFailures 0 / refoldChecks 225 / **refoldMismatches 0** / `session-shadow.jsonl` 0 行 |
+| 字节回归 | **0 差**(金样录自搬家前的树) |
+| 全库真机只读折叠合同 | **0 差**(433 账本,两条判据都是 0) |
+| 真机 `sessions:verify:gate`(只读) | FAILED,**仍是 §16.20 第七节那一条** `room-1 seq: expected seq 2 at position 1, got 3`,**无新增**(那条与本批无关,仍停在诊断) |
+
+#### 六、本批的账
+
+- **生产代码**:新增 1 件(`core/session/events/chunk-codec.ts`),删除 1 件
+  (`core/session/part-boundary.ts`),改 4 处(`core/session/index.ts` /
+  `core/session/events/index.ts` / `core/package.json` 出口表 /
+  `core/session/projection/reducer.ts` / `backend/.../session-event-recorder.ts`)。
+- **用例**:新增 2 个文件(codec 性质 5 条、字节回归 1 条 + 金样)+ 1 条纯增合同
+  (c1 占位)。
+- **未做,留给 c3**:18 个热写端口翻转为发事件(那一期才是"store = fold"落地),
+  以及 `stream-coalescer` 侧的 UI 小批 —— 它今天吃的就是编码器盖过章的 delta,
+  形状没变,所以本批一个字都不用改。

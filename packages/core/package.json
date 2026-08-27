@@ -34,7 +34,7 @@
     "./toolkit": "./toolkit/index.ts",
     "./tools": "./tools/index.ts",
     "./session": "./session/index.ts",
-    "./session/part-boundary": "./session/part-boundary.ts",
+    "./session/events/chunk-codec": "./session/events/chunk-codec.ts",
     "./session/storage": "./session/storage/index.ts",
     "./slash-commands": "./slash-commands.ts"
   },

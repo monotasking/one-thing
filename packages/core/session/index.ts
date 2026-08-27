@@ -35,8 +35,8 @@ export * from './projection/index.js'
 // R-a(§13.6):崩溃收口的单一口径(prepare / sanitize / 投影三处共用)。
 export * from './interrupted.js'
 // U0(ui-event-stream-2026-08 §1 规则 1):part 边界只判一次 —— 落盘打包器与
-// UI 小批发器共用这一台状态机。
-export * from './part-boundary.js'
+// UI 小批发器共用这一台状态机。F4-c 定律二(§16.19)把它请进了编码器,
+// 与打包/解包同住 `events/chunk-codec.ts`(经上面的 `events/index.js` 出口)。
 // S3 只读查询面(§12):事件 → 轨迹树的纯装配器。CLI / HTTP / 轨迹面板同源。
 export * from './trace/index.js'
 export {

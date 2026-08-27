@@ -29,6 +29,11 @@ import type {
   SessionLogEventRecord,
   SessionResponseUsage,
 } from '../events/types.js'
+// F4-c 定律二(§16.19):打包是存储编码 —— 读侧先解码回逻辑 delta 再折。
+import {
+  forEachSessionChunkLogicalDelta,
+  type SessionLogicalDelta,
+} from '../events/chunk-codec.js'
 import { CORE_ABORTED_TOOL_ERROR, CORE_LINGERING_TOOL_ERROR } from '../../engine/agent-loop-executor.js'
 import { coreStepTypeForToolName, coreToolInputStartStepTitle } from '../../engine/stream-processor.js'
 import { coreStepIdForToolCall, getStepType } from '../../engine/tool-step.js'
@@ -539,21 +544,13 @@ export function reduceSessionProjection(
     case 'assistant/chunks': {
       const run = state.runs.get(event.data.runId)
       if (!run) break
-      const part = ensurePart(
-        run, event.data.partIndex, event.data.kind, event.data.requestIndex,
-        event.data.toolCallId, event.data.toolName, event.data.turnIndex,
-      )
-      part.text += event.data.text.join('')
-      if (event.data.kind === 'reasoning' && event.data.dt.length > 0) {
-        const first = event.data.time0 + event.data.dt[0]
-        const last = event.data.time0 + event.data.dt[event.data.dt.length - 1]
-        if (run.reasoningFirstAt === undefined || first < run.reasoningFirstAt) run.reasoningFirstAt = first
-        if (run.reasoningLastAt === undefined || last > run.reasoningLastAt) run.reasoningLastAt = last
-      }
-      if (part.kind === 'tool-input' && part.toolCallId) {
-        const tool = run.tools.get(part.toolCallId)
-        if (tool) tool.streamingArgs = part.text
-      }
+      // F4-c 定律二(§16.19):打包行是**存储编码,不是语义**。先经解码器展开回
+      // 逻辑 delta,再一条一条折 —— 折叠只认识 delta 这一种词汇,"一行装了几条"
+      // 从此对它不可见。
+      let part: PartState | undefined
+      forEachSessionChunkLogicalDelta(event.data, delta => {
+        part = foldAssistantLogicalDelta(run, delta, part)
+      })
       break
     }
 
@@ -891,6 +888,47 @@ function ensurePart(
   if (toolName && part.toolName === undefined) part.toolName = toolName
   if (turnIndex !== undefined && part.turnIndex === undefined) part.turnIndex = turnIndex
   turnOf(run, requestIndex)
+  return part
+}
+
+/**
+ * **折一条逻辑 delta**(F4-c 定律二,§16.19)。
+ *
+ * 这是折叠侧认识的唯一助手正文词汇:一条 delta = 模型吐出的一段字,带着它自己
+ * 的段身份与到达时刻。打包行(`assistant/chunks`)先经解码器展开成若干条这样的
+ * delta 再进来 —— 于是"一行装了几条"是纯粹的存储细节,折出来的东西与逐条落账
+ * 的账本逐格相同(`session-chunk-codec.test.ts` 的同态性质 + 全库只读合同)。
+ *
+ * 正文累计是 `+=`:V8 的 rope 让它是 O(1) 摊还,不复制已经攒下的那一段。
+ */
+function foldAssistantLogicalDelta(
+  run: AssistantNode,
+  delta: SessionLogicalDelta,
+  /**
+   * 上一条 delta 落在的那一段。同一段连着来是 delta 流的常态(一段正文动辄几百
+   * 条),`ensurePart` 的三次查表就没必要每条都走一遍 —— 段号对不上时照常查。
+   */
+  memo?: PartState,
+): PartState {
+  const part = memo?.partIndex === delta.partIndex
+    ? memo
+    : ensurePart(
+      run, delta.partIndex, delta.kind, delta.requestIndex,
+      delta.toolCallId, delta.toolName, delta.turnIndex,
+    )
+  part.text += delta.text
+  if (delta.kind === 'reasoning') {
+    if (run.reasoningFirstAt === undefined || delta.time < run.reasoningFirstAt) {
+      run.reasoningFirstAt = delta.time
+    }
+    if (run.reasoningLastAt === undefined || delta.time > run.reasoningLastAt) {
+      run.reasoningLastAt = delta.time
+    }
+  }
+  if (part.kind === 'tool-input' && part.toolCallId) {
+    const tool = run.tools.get(part.toolCallId)
+    if (tool) tool.streamingArgs = part.text
+  }
   return part
 }
 
