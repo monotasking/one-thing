@@ -47,7 +47,9 @@ import {
   type StoredChatMessage,
   type UserMessageMarker, type ApplySessionMetadataMutationWithAdaptersOptions, type ApplySessionSideEffectMutationWithAdaptersOptions, type SyncSessionSideEffectWithReadyAdaptersOptions, type LoadSessionWithAdaptersOptions,
 } from '@onething/core/session'
-import { getMessagesPageFromJsonFilePath } from '@onething/core/session'
+// §17.8 U1-a:走**叶子路径** —— 按路径读盘的那一口带 `node:fs`,把它留在
+// `@onething/core/session` 那个桶上,整条桶就在浏览器里 import 不动。
+import { getMessagesPageFromJsonFilePath } from '@onething/core/session/storage/json-message-page-file'
 import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/core/storage'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
 import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan } from './storage-driver.js'
